@@ -309,6 +309,30 @@
     }
   }
 
+  // ── Split download button (macOS arch picker) ──
+  function initSplitDownload() {
+    document.querySelectorAll('[data-split-download]').forEach(function (wrap) {
+      var toggle = wrap.querySelector('.split-toggle');
+      var menu = wrap.querySelector('.split-menu');
+      if (!toggle || !menu) return;
+      toggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = wrap.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      document.addEventListener('click', function () {
+        wrap.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          wrap.classList.remove('open');
+          toggle.setAttribute('aria-expanded', 'false');
+        }
+      });
+    });
+  }
+
   // ── Release downloads: resolve the matching installer from the latest release ──
   function initReleaseDownloads() {
     var buttons = document.querySelectorAll('.platform-download');
@@ -472,96 +496,10 @@
   }
 
   // ── Icon library loader (Lucide for general, Simple Icons for brands) ──
+  // All icons are static `<i data-lucide="...">` in HTML; this only renders them.
 
-  /** Emoji → Lucide icon name mapping */
-  const EMOJI_TO_LUCIDE = {
-    '⚡': 'zap',
-    '🛡️': 'shield-check',
-    '🔌': 'plug',
-    '👤': 'user',
-    '🧩': 'puzzle',
-    '📖': 'book-open',
-    '🤖': 'bot',
-    '📊': 'bar-chart-3',
-    '⚙️': 'settings',
-    '🛰️': 'satellite-dish',
-    '📈': 'trending-up',
-    '🥧': 'pie-chart',
-    '✨': 'sparkles',
-    '📦': 'package',
-    '🔁': 'repeat',
-    '🛟': 'life-buoy',
-    '🖥️': 'monitor',
-    '🗄️': 'hard-drive',
-    '📡': 'radio-tower',
-    '🐢': 'gauge',
-    '🔍': 'search',
-    '🩺': 'stethoscope',
-    '💬': 'message-circle',
-    '▶️': 'play',
-    '📤': 'send',
-    '⬇️': 'download',
-    '🐘': 'database',
-    '🐬': 'droplets',
-    '✕': 'x',
-    '✓': 'check',
-  };
-
-  /** Brand logo SVGs (Simple Icons) — used for OS logos */
-  const BRAND_SVGS = {
-    apple:
-      '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>',
-    windows:
-      '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 12.5h8.5V22l-8.5-1v-8.5zm0-1h8.5V2l-8.5 1v8.5zm9.5 1h9V2.1l-9 1V12.5zm0 1v9.4l9-1V13.5h-9z"/></svg>',
-    linux:
-      '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 0 0-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.368 1.884 1.43.199.016.379-.035.551-.132a.97.97 0 0 0 .149-.104l.003.003c.371-.301.586-.733.603-1.216.016-.483-.138-.958-.454-1.33a1.548 1.548 0 0 0-.167-.164c.449-.194.827-.515 1.093-.934.333-.516.478-1.14.349-1.81-.136-.664-.6-.84-.942-1.004-.342-.165-.474-.232-.474-.597 0-.136.027-.284.082-.401.334-.664.186-1.2-.249-1.845-.665-.988-2.145-1.242-2.62-1.974-.475-.731-.235-1.694.365-2.891.464-.925.52-2.086.447-2.868-.073-.781-.27-1.13-.27-1.13s.587-.265 1.232-.466c.645-.199 1.072-.565 1.072-.565s.131-.467.138-.866c.04-.731-.195-1.2-.52-1.665-.324-.466-.658-.6-.658-.6s.267-.798.25-1.464c-.017-.664-.448-1.264-.953-1.664-.504-.399-.892-.532-.892-.532s-.065-.665-.399-1.265c-.334-.599-1.13-.798-1.73-.899-.6-.099-1.13.067-1.13.067S9.856.006 9.192 0c-.664-.006-1.264.067-1.264.067S6.667-.132 6.067.466c-.334.333-.534.865-.534.865s-.732.067-1.332.665c-.6.599-.866 1.53-.866 1.53s-.532.2-1.065.932c-.532.732-.665 1.864-.665 1.864s-.599.134-.866.866c-.265.732.067 1.797.067 1.797s-.533.665-.666 1.464c-.133.799.133 1.465.133 1.465s-.666.466-.866 1.265c-.199.799.134 1.664.134 1.664s-.467.532-.6 1.398c-.133.864.199 1.596.199 1.596l.132 3.997z"/></svg>',
-  };
-
-  /** Replace emoji text nodes inside .icon containers with Lucide SVGs */
-  function replaceEmojiIcons() {
-    document.querySelectorAll('.card .icon, .uc-row .uc-ico').forEach(function (el) {
-      var text = el.textContent.trim();
-      // Brand logos for OS
-      if (text === '🍎' && BRAND_SVGS.apple) {
-        el.innerHTML = '<span class="si">' + BRAND_SVGS.apple + '</span>';
-        return;
-      }
-      if (text === '🪟' && BRAND_SVGS.windows) {
-        el.innerHTML = '<span class="si">' + BRAND_SVGS.windows + '</span>';
-        return;
-      }
-      if (text === '🐧' && BRAND_SVGS.linux) {
-        el.innerHTML = '<span class="si">' + BRAND_SVGS.linux + '</span>';
-        return;
-      }
-      // Lucide icons
-      var lucideName = EMOJI_TO_LUCIDE[text];
-      if (lucideName) {
-        el.innerHTML = '<i data-lucide="' + lucideName + '"></i>';
-      }
-    });
-    // Replace emojis in flow-node elements (prefix text before <small>)
-    document.querySelectorAll('.flow-node').forEach(function (el) {
-      var childNodes = Array.from(el.childNodes);
-      for (var i = 0; i < childNodes.length; i++) {
-        var node = childNodes[i];
-        if (node.nodeType === 3) {
-          // Text node — check for emoji prefix
-          var t = node.textContent;
-          for (var emoji in EMOJI_TO_LUCIDE) {
-            if (t.indexOf(emoji) === 0) {
-              var iconEl = document.createElement('i');
-              iconEl.setAttribute('data-lucide', EMOJI_TO_LUCIDE[emoji]);
-              iconEl.style.marginRight = '4px';
-              el.insertBefore(iconEl, node);
-              node.textContent = t.slice(emoji.length);
-              break;
-            }
-          }
-        }
-      }
-    });
-    // Re-initialize Lucide icons if available
+  /** Render static Lucide icons declared in markup */
+  function renderStaticIcons() {
     if (typeof lucide !== 'undefined' && lucide.createIcons) {
       lucide.createIcons();
     }
@@ -577,7 +515,7 @@
     script.src = 'https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js';
     script.onload = callback;
     script.onerror = function () {
-      console.warn('[icons] Failed to load Lucide CDN, emoji icons will remain');
+      console.warn('[icons] Failed to load Lucide CDN, icons will remain empty');
     };
     document.head.appendChild(script);
   }
@@ -590,9 +528,10 @@
     renderFooter();
     initHeroDemo();
     initPlatformDetect();
+    initSplitDownload();
     initReleaseDownloads();
     initStarBadge();
     initLightbox();
-    loadLucide(replaceEmojiIcons);
+    loadLucide(renderStaticIcons);
   });
 })();

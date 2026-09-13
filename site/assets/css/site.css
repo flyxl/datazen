@@ -23,6 +23,9 @@
   --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   --shot-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
   --frame-bg: #0d1320;
+  --btn-solid-bg: #f2f5fa;
+  --btn-solid-text: #0d1526;
+  --btn-solid-hover: #ffffff;
   --radius: 14px;
   --shadow: var(--card-shadow);
   --font:
@@ -47,6 +50,9 @@ html[data-theme='light'] {
   --hero-glow-1: rgba(8, 145, 178, 0.1);
   --hero-glow-2: rgba(79, 70, 229, 0.08);
   --card-shadow: 0 10px 30px rgba(23, 35, 58, 0.08);
+  --btn-solid-bg: #17233a;
+  --btn-solid-text: #ffffff;
+  --btn-solid-hover: #0c1526;
   --shot-shadow: 0 24px 60px rgba(23, 35, 58, 0.16);
   --frame-bg: #ffffff;
 }
@@ -379,21 +385,35 @@ img {
   text-decoration: none;
   transform: translateY(-1px);
 }
+/* Split halves must not lift independently — the whole split button lifts
+   (or stays) as one unit. */
+.split-btn:hover {
+  transform: translateY(-1px);
+}
+.split-btn .btn:hover {
+  transform: none;
+}
+/* Primary action: solid, no gradient.
+   Dark theme → near-white button; light theme → deep-navy button.
+   Secondary: quiet outline on surface. */
 .btn-primary {
-  background: var(--gradient);
-  color: #fff;
-  box-shadow: 0 6px 22px rgba(34, 211, 238, 0.22);
+  background: var(--btn-solid-bg);
+  color: var(--btn-solid-text);
+  border-color: transparent;
+  box-shadow: none;
 }
 .btn-primary:hover {
-  filter: brightness(1.07);
+  background: var(--btn-solid-hover);
+  filter: none;
 }
 .btn-secondary {
   border-color: var(--border);
   color: var(--text);
-  background: var(--surface);
+  background: transparent;
 }
 .btn-secondary:hover {
-  border-color: var(--accent);
+  border-color: var(--muted);
+  background: var(--surface-2);
 }
 .btn-lg {
   padding: 13px 30px;
@@ -604,7 +624,104 @@ img {
   }
 }
 
-/* ---------- Cards ---------- */
+/* Download page: OS cards share one row height, buttons sit on one baseline.
+   The card becomes a column flex; the description grows; the action row
+   (plain button or split button) is pushed to the bottom so uneven copy
+   length can't stagger the row. */
+.download-cards .card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.download-cards .card p {
+  flex: 1;
+}
+.download-cards .card > .btn,
+.download-cards .card > .split-btn {
+  align-self: flex-start;
+  margin-top: auto;
+}
+/* OS card header: large glyph left, system name right, vertically centered. */
+.download-cards .os-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.download-cards .os-head .icon {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  margin-bottom: 0;
+  background: transparent;
+  border-radius: 0;
+}
+.download-cards .os-head .icon svg {
+  width: 30px;
+  height: 30px;
+}
+.download-cards .os-head .icon .si svg {
+  width: 30px;
+  height: 30px;
+}
+.download-cards .os-head h3 {
+  margin: 0;
+  font-size: 19px;
+}
+/* Split download button: one primary action + arch picker.
+   Single flex row: main link fills, toggle keeps its own width, both share
+   one height; the menu floats below. */
+.split-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+}
+.split-btn .split-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.split-btn .split-toggle {
+  flex: none;
+  padding-left: 12px;
+  padding-right: 12px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  font-size: 12px;
+}
+.split-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--card-shadow);
+  padding: 5px;
+  z-index: 40;
+  white-space: nowrap;
+}
+.split-btn.open .split-menu {
+  display: block;
+}
+.split-menu a {
+  display: block;
+  padding: 7px 12px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.split-menu a:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  text-decoration: none;
+}
 .card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -619,6 +736,17 @@ img {
   transform: translateY(-3px);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   box-shadow: var(--card-shadow);
+}
+/* Clickable card variant: full-area link, same type color & hover as static cards */
+a.card {
+  display: block;
+  color: var(--text);
+}
+a.card:hover {
+  text-decoration: none;
+}
+a.card h3 {
+  color: var(--text);
 }
 .card .icon {
   width: 42px;
@@ -640,8 +768,8 @@ img {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* Brand icons (Simple Icons) use fill instead of stroke */
-.card .icon .si svg {
+/* Brand icons (Simple Icons / Font Awesome) use fill instead of stroke */
+.card .icon > svg {
   fill: currentColor;
   stroke: none;
   width: 20px;
@@ -1444,6 +1572,14 @@ html[data-theme='light'] .demo-code {
 .flow-node.hl {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
 }
+/* Static Lucide icons inside flow nodes (replaces former JS inline margin) */
+.flow-node > i[data-lucide],
+.flow-node > svg.lucide {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
 .flow-arrow {
   align-self: center;
   color: var(--accent);
@@ -1625,38 +1761,4 @@ html[data-theme='light'] .download-callout {
 }
 .download-callout strong {
   color: var(--text);
-}
-.install-cmd {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 16px;
-  font-family: var(--mono);
-  font-size: 13px;
-  margin: 8px 0;
-  overflow-x: auto;
-}
-.install-cmd code {
-  flex: 1;
-  white-space: nowrap;
-  background: none;
-  padding: 0;
-  color: var(--text);
-}
-.install-cmd .copy-btn {
-  flex: none;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-  padding: 4px 10px;
-  font-size: 12px;
-}
-.install-cmd .copy-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
 }
