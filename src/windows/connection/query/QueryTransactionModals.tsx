@@ -439,7 +439,7 @@ export function QueryResultsPane({
         {!showExplain && !error && results.length > 0 && (
           <>
             {(results.length > 1 || explainResult) && (
-              <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1">
+              <div className="scrollbar-hide flex shrink-0 items-center gap-0 overflow-x-auto border-b border-edge bg-surface-alt px-1">
                 {results.map((r, idx) => (
                   <button
                     key={idx}
