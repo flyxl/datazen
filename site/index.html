@@ -177,22 +177,22 @@
           <h2>Four ways DataZen speeds up your database work</h2>
         </div>
         <div class="grid-4">
-          <a class="card" href="ai.html" style="display: block">
+          <a class="card" href="ai.html">
             <div class="icon" aria-hidden="true"><i data-lucide="search"></i></div>
             <h3>Track down slow queries</h3>
             <p>EXPLAIN visualization + AI analysis pinpoints bottlenecks in seconds.</p>
           </a>
-          <a class="card" href="features.html#mcp" style="display: block">
+          <a class="card" href="features.html#mcp">
             <div class="icon" aria-hidden="true"><i data-lucide="satellite-dish"></i></div>
             <h3>Connect AI agents to your DB</h3>
             <p>Built-in MCP server — Claude, Cursor and other agents query your data directly.</p>
           </a>
-          <a class="card" href="workflow.html" style="display: block">
+          <a class="card" href="workflow.html">
             <div class="icon" aria-hidden="true"><i data-lucide="repeat"></i></div>
             <h3>Automate daily reports</h3>
             <p>YAML workflows run queries, AI steps and exports on autopilot.</p>
           </a>
-          <a class="card" href="ai.html" style="display: block">
+          <a class="card" href="ai.html">
             <div class="icon" aria-hidden="true"><i data-lucide="sparkles"></i></div>
             <h3>Write SQL with AI</h3>
             <p>Natural language → SQL, one-click error fix, schema-aware context.</p>
@@ -227,46 +227,50 @@
           </p>
         </div>
         <div class="grid-3">
-          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+          <a class="card" href="ai.html">
             <h3>Ask your database</h3>
             <div class="uc-row ok">
-              <span class="uc-ico">💬</span><span>“Show users inactive for 30&nbsp;days.”</span>
+              <span class="uc-ico"><i data-lucide="message-circle"></i></span
+              ><span>“Show users inactive for 30&nbsp;days.”</span>
             </div>
             <div class="uc-row">
-              <span class="uc-ico">🤖</span
+              <span class="uc-ico"><i data-lucide="bot"></i></span
               ><span><b>AI reads your schema</b> and writes the SQL</span>
             </div>
             <div class="uc-row ok">
-              <span class="uc-ico">▶️</span
+              <span class="uc-ico"><i data-lucide="play"></i></span
               ><span><b>Executes instantly</b> — review, tweak or save</span>
             </div>
             <span class="tag">Natural-language SQL →</span>
           </a>
-          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+          <a class="card" href="ai.html">
             <h3>Fix broken SQL in one click</h3>
             <div class="uc-row err">
-              <span class="uc-ico">✕</span><span><code>column "usres" does not exist</code></span>
+              <span class="uc-ico"><i data-lucide="x"></i></span
+              ><span><code>column "usres" does not exist</code></span>
             </div>
             <div class="uc-row">
-              <span class="uc-ico">🩺</span
+              <span class="uc-ico"><i data-lucide="stethoscope"></i></span
               ><span><b>AI explains the cause</b> in plain language</span>
             </div>
             <div class="uc-row ok">
-              <span class="uc-ico">✓</span><span><b>Corrected SQL generated</b>, ready to run</span>
+              <span class="uc-ico"><i data-lucide="check"></i></span
+              ><span><b>Corrected SQL generated</b>, ready to run</span>
             </div>
             <span class="tag">Error diagnosis →</span>
           </a>
-          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+          <a class="card" href="ai.html">
             <h3>Know why queries are slow</h3>
             <div class="uc-row err">
-              <span class="uc-ico">🐢</span><span>EXPLAIN shows a seq scan over 12M rows</span>
+              <span class="uc-ico"><i data-lucide="gauge"></i></span
+              ><span>EXPLAIN shows a seq scan over 12M rows</span>
             </div>
             <div class="uc-row">
-              <span class="uc-ico">🔍</span
+              <span class="uc-ico"><i data-lucide="search"></i></span
               ><span><b>AI pinpoints the bottleneck</b> in the plan</span>
             </div>
             <div class="uc-row ok">
-              <span class="uc-ico">📈</span
+              <span class="uc-ico"><i data-lucide="trending-up"></i></span
               ><span><b>Suggests an index</b> — verify before applying</span>
             </div>
             <span class="tag">EXPLAIN analysis →</span>
@@ -307,6 +311,19 @@
               your desktop.
             </p>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mid-page CTA -->
+    <section class="section-tight">
+      <div class="wrap">
+        <div class="cta-band">
+          <h2>Try it in 30 seconds</h2>
+          <p>
+            Download, connect a database, write your first AI-powered query — no signup required.
+          </p>
+          <a class="btn btn-primary" href="download.html">Download DataZen — Free</a>
         </div>
       </div>
     </section>
@@ -358,13 +375,19 @@
           <p>Generate a daily sales report automatically:</p>
         </div>
         <div class="flow" style="justify-content: center">
-          <div class="flow-node">🐘 PostgreSQL<small>query today's orders</small></div>
+          <div class="flow-node">
+            <i data-lucide="database"></i>PostgreSQL<small>query today's orders</small>
+          </div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">🐬 MySQL<small>join customer data</small></div>
+          <div class="flow-node">
+            <i data-lucide="droplets"></i>MySQL<small>join customer data</small>
+          </div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">🤖 AI<small>summarize findings</small></div>
+          <div class="flow-node"><i data-lucide="bot"></i>AI<small>summarize findings</small></div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">📤 Report<small>exported &amp; ready to share</small></div>
+          <div class="flow-node">
+            <i data-lucide="send"></i>Report<small>exported &amp; ready to share</small>
+          </div>
         </div>
         <p class="center mt-2">
           <a class="tag" href="workflow.html"
@@ -399,65 +422,6 @@
             loading="lazy"
           />
         </div>
-      </div>
-    </section>
-
-    <!-- Compare -->
-    <section class="section" style="padding-top: 0">
-      <div class="wrap">
-        <div class="section-head">
-          <span class="kicker">Compare</span>
-          <h2>What traditional clients don't give you</h2>
-        </div>
-        <table class="compare">
-          <thead>
-            <tr>
-              <th scope="col">&nbsp;</th>
-              <th scope="col">DataZen</th>
-              <th scope="col">DBeaver / Navicat / DataGrip</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Built-in AI — NL2SQL, error diagnosis, EXPLAIN reading</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>MCP server for AI agents</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>Cross-database workflows</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>SQL safety guard — high-risk statement interception</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>Charts on any result set</td>
-              <td class="yes">✓</td>
-              <td class="no">Plugin or paid</td>
-            </tr>
-            <tr>
-              <td>Installer size</td>
-              <td class="yes">&lt; 15 MB</td>
-              <td class="no">Often 100 MB+</td>
-            </tr>
-            <tr>
-              <td>Price</td>
-              <td class="yes">Free · GPLv3</td>
-              <td class="no">Often paid</td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="muted" style="font-size: 12.5px; margin-top: 8px">
-          Comparison is indicative of common patterns in established database clients, as of 2026.
-        </p>
       </div>
     </section>
 

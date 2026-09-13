@@ -37,6 +37,26 @@
     />
     <link rel="icon" href="assets/logo.png" />
     <link rel="stylesheet" href="assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://flyxl.github.io/datazen/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Charts",
+            "item": "https://flyxl.github.io/datazen/charts.html"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header id="site-header"></header>
@@ -44,7 +64,7 @@
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">Home</a> / Charts</p>
-        <h1>📊 Charts</h1>
+        <h1>Charts</h1>
         <p>
           No need to export query results to Excel — one click turns a table into a chart. Field
           types are inferred automatically and chart types are recommended smartly for effortless
@@ -125,22 +145,22 @@
         <h2 style="font-size: 26px; margin-bottom: 20px">Chart types at a glance</h2>
         <div class="grid-4">
           <div class="card">
-            <div class="icon">📈</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="trending-up"></i></div>
             <h3>Line</h3>
             <p>Time series trends; compare multiple numeric columns.</p>
           </div>
           <div class="card">
-            <div class="icon">📊</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="bar-chart-3"></i></div>
             <h3>Bar</h3>
             <p>Category comparison; supports grouping and stacked exploration.</p>
           </div>
           <div class="card">
-            <div class="icon">🥧</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="pie-chart"></i></div>
             <h3>Pie</h3>
             <p>Proportion distribution; small category sets at a glance.</p>
           </div>
           <div class="card">
-            <div class="icon">✨</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="sparkles"></i></div>
             <h3>Scatter / Area</h3>
             <p>Correlation analysis / single-value trends.</p>
           </div>

@@ -45,6 +45,26 @@
     />
     <link rel="icon" href="assets/logo.png" />
     <link rel="stylesheet" href="assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://flyxl.github.io/datazen/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Workflow",
+            "item": "https://flyxl.github.io/datazen/workflow.html"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header id="site-header"></header>
@@ -52,7 +72,7 @@
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">Home</a> / Workflow</p>
-        <h1>⚙️ Workflow Automation</h1>
+        <h1>Workflow Automation</h1>
         <p>
           Turn "query → analyze → decide" into reusable flows. Run across databases, involve AI, and
           re-run anytime.
@@ -67,13 +87,19 @@
           <h2 style="font-size: 26px">Generate a daily sales report while you sleep</h2>
         </div>
         <div class="flow" style="justify-content: center">
-          <div class="flow-node">🐘 PostgreSQL<small>query today's orders</small></div>
+          <div class="flow-node">
+            <i data-lucide="database"></i>PostgreSQL<small>query today's orders</small>
+          </div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">🐬 MySQL<small>join customer data</small></div>
+          <div class="flow-node">
+            <i data-lucide="droplets"></i>MySQL<small>join customer data</small>
+          </div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">🤖 AI<small>summarize findings</small></div>
+          <div class="flow-node"><i data-lucide="bot"></i>AI<small>summarize findings</small></div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">📤 Report<small>exported &amp; ready to share</small></div>
+          <div class="flow-node">
+            <i data-lucide="send"></i>Report<small>exported &amp; ready to share</small>
+          </div>
         </div>
         <p
           class="muted center mt-2"
@@ -186,7 +212,7 @@ output:
         <h2 style="font-size: 26px; margin-bottom: 20px">Typical scenarios</h2>
         <div class="grid-3">
           <div class="card">
-            <div class="icon">📦</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="package"></i></div>
             <h3>Orders + Logistics</h3>
             <p>
               Query orders from PG, fetch logistics from MySQL, AI summarizes in one sentence —
@@ -194,7 +220,7 @@ output:
             </p>
           </div>
           <div class="card">
-            <div class="icon">🔁</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="repeat"></i></div>
             <h3>Loop Inspection</h3>
             <p>
               foreach over large orders, generate notes per row; condition handles empty result
@@ -202,7 +228,7 @@ output:
             </p>
           </div>
           <div class="card">
-            <div class="icon">🛟</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="life-buoy"></i></div>
             <h3>Graceful Fallback</h3>
             <p>
               When the primary table is missing, fallback to a backup query — flow continues with a

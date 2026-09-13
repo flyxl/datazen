@@ -37,14 +37,33 @@
     />
     <link rel="icon" href="../assets/logo.png" />
     <link rel="stylesheet" href="../assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://flyxl.github.io/datazen/zh/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "AI 助手",
+            "item": "https://flyxl.github.io/datazen/zh/ai.html"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header id="site-header"></header>
-
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">首页</a> / AI 助手</p>
-        <h1>🤖 AI 助手</h1>
+        <h1>AI 助手</h1>
         <p>从写 SQL 到读懂数据——AI 贯穿查询、诊断、分析与自动化。</p>
         <p>使用你自己的 API Key。支持 OpenAI、Anthropic、DeepSeek 及兼容接口。</p>
       </div>
@@ -196,12 +215,12 @@
         <h2 style="font-size: 26px; margin: 40px 0 20px">与外部 AI 工具协作</h2>
         <div class="grid-2">
           <div class="card">
-            <div class="icon">🖥️</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="monitor"></i></div>
             <h3>向 MCP 客户端开放能力</h3>
             <p>向兼容 MCP 的客户端开放查询、库结构、EXPLAIN 与工作流——支持无界面接入。</p>
           </div>
           <div class="card">
-            <div class="icon">🔌</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="plug"></i></div>
             <h3>在对话中扩展 AI</h3>
             <p>在对话中连接外部 MCP 服务（文件、搜索、第三方工具），扩展 AI 可用能力。</p>
           </div>

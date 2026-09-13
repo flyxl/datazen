@@ -37,14 +37,33 @@
     />
     <link rel="icon" href="../assets/logo.png" />
     <link rel="stylesheet" href="../assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://flyxl.github.io/datazen/zh/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "图表可视化",
+            "item": "https://flyxl.github.io/datazen/zh/charts.html"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header id="site-header"></header>
-
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">首页</a> / 图表可视化</p>
-        <h1>📊 图表可视化</h1>
+        <h1>图表可视化</h1>
         <p>
           查询结果不用导出到
           Excel，点一下就从表格变成图。字段类型自动推断、图表智能推荐，数据探索零门槛。
@@ -118,22 +137,22 @@
         <h2 style="font-size: 26px; margin-bottom: 20px">图表类型速览</h2>
         <div class="grid-4">
           <div class="card">
-            <div class="icon">📈</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="trending-up"></i></div>
             <h3>折线图</h3>
             <p>时间序列趋势，多条数值列对比。</p>
           </div>
           <div class="card">
-            <div class="icon">📊</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="bar-chart-3"></i></div>
             <h3>柱状图</h3>
             <p>分类对比，支持分组与堆叠式探索。</p>
           </div>
           <div class="card">
-            <div class="icon">🥧</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="pie-chart"></i></div>
             <h3>饼图</h3>
             <p>占比分布，小样本分类一目了然。</p>
           </div>
           <div class="card">
-            <div class="icon">✨</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="sparkles"></i></div>
             <h3>散点 / 面积</h3>
             <p>相关性分析 / 单值趋势。</p>
           </div>

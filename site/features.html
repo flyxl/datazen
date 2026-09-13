@@ -45,6 +45,26 @@
     />
     <link rel="icon" href="assets/logo.png" />
     <link rel="stylesheet" href="assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://flyxl.github.io/datazen/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Features",
+            "item": "https://flyxl.github.io/datazen/features.html"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header id="site-header"></header>
@@ -52,7 +72,7 @@
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">Home</a> / Features</p>
-        <h1>🧭 Features</h1>
+        <h1>Features</h1>
         <p>
           The full capability map of DataZen — from the AI assistant and MCP server to the SQL
           editor, data tools, and plugins.
@@ -62,30 +82,30 @@
 
     <section class="wrap">
       <div class="grid-3">
-        <a class="card" href="ai.html" style="display: block"
-          ><div class="icon">🤖</div>
+        <a class="card" href="ai.html"
+          ><div class="icon" aria-hidden="true"><i data-lucide="bot"></i></div>
           <h3>AI Assistant</h3>
           <p>NL2SQL, diagnosis, EXPLAIN, Chat, smart filters</p></a
         >
-        <a class="card" href="charts.html" style="display: block"
-          ><div class="icon">📊</div>
+        <a class="card" href="charts.html"
+          ><div class="icon" aria-hidden="true"><i data-lucide="bar-chart-3"></i></div>
           <h3>Charts</h3>
           <p>Smart recommendations, five chart types, PNG/SVG export</p></a
         >
-        <a class="card" href="workflow.html" style="display: block"
-          ><div class="icon">⚙️</div>
+        <a class="card" href="workflow.html"
+          ><div class="icon" aria-hidden="true"><i data-lucide="settings"></i></div>
           <h3>Workflow</h3>
           <p>Cross-database orchestration, AI-powered, reusable flows</p></a
         >
       </div>
       <div class="grid-2 mt-2">
-        <a class="card" href="#mcp" style="display: block"
-          ><div class="icon">🛰️</div>
+        <a class="card" href="#mcp"
+          ><div class="icon" aria-hidden="true"><i data-lucide="satellite-dish"></i></div>
           <h3>MCP Server / Client</h3>
           <p>Plug your databases into Claude, Cursor and other AI agents</p></a
         >
-        <a class="card" href="databases.html" style="display: block"
-          ><div class="icon">🔌</div>
+        <a class="card" href="databases.html"
+          ><div class="icon" aria-hidden="true"><i data-lucide="plug"></i></div>
           <h3>Databases</h3>
           <p>PG / MySQL / SQLite / Redis / plugins</p></a
         >

@@ -174,22 +174,22 @@
           <h2>DataZen 加速数据库工作的四种方式</h2>
         </div>
         <div class="grid-4">
-          <a class="card" href="ai.html" style="display: block">
+          <a class="card" href="ai.html">
             <div class="icon" aria-hidden="true"><i data-lucide="search"></i></div>
             <h3>追踪慢查询</h3>
             <p>EXPLAIN 可视化 + AI 分析，几秒定位瓶颈。</p>
           </a>
-          <a class="card" href="features.html#mcp" style="display: block">
+          <a class="card" href="features.html#mcp">
             <div class="icon" aria-hidden="true"><i data-lucide="satellite-dish"></i></div>
             <h3>为 AI Agent 接入数据库</h3>
             <p>内置 MCP Server——Claude、Cursor 等 Agent 直接查询你的数据。</p>
           </a>
-          <a class="card" href="workflow.html" style="display: block">
+          <a class="card" href="workflow.html">
             <div class="icon" aria-hidden="true"><i data-lucide="repeat"></i></div>
             <h3>自动化日报</h3>
             <p>YAML Workflow 自动运行查询、AI 步骤和导出。</p>
           </a>
-          <a class="card" href="ai.html" style="display: block">
+          <a class="card" href="ai.html">
             <div class="icon" aria-hidden="true"><i data-lucide="sparkles"></i></div>
             <h3>AI 写 SQL</h3>
             <p>自然语言 → SQL、一键错误修复、Schema 感知上下文。</p>
@@ -220,42 +220,51 @@
           </p>
         </div>
         <div class="grid-3">
-          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+          <a class="card" href="ai.html">
             <h3>直接问你的数据库</h3>
             <div class="uc-row ok">
-              <span class="uc-ico">💬</span><span>“找出 30 天没登录的用户。”</span>
+              <span class="uc-ico"><i data-lucide="message-circle"></i></span
+              ><span>“找出 30 天没登录的用户。”</span>
             </div>
             <div class="uc-row">
-              <span class="uc-ico">🤖</span><span><b>AI 读取 Schema</b>，替你写好 SQL</span>
+              <span class="uc-ico"><i data-lucide="bot"></i></span
+              ><span><b>AI 读取 Schema</b>，替你写好 SQL</span>
             </div>
             <div class="uc-row ok">
-              <span class="uc-ico">▶️</span><span><b>立即执行</b>——可检查、微调或收藏</span>
+              <span class="uc-ico"><i data-lucide="play"></i></span
+              ><span><b>立即执行</b>——可检查、微调或收藏</span>
             </div>
             <span class="tag">自然语言 SQL →</span>
           </a>
-          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+          <a class="card" href="ai.html">
             <h3>一键修复报错 SQL</h3>
             <div class="uc-row err">
-              <span class="uc-ico">✕</span><span><code>column "usres" does not exist</code></span>
+              <span class="uc-ico"><i data-lucide="x"></i></span
+              ><span><code>column "usres" does not exist</code></span>
             </div>
             <div class="uc-row">
-              <span class="uc-ico">🩺</span><span><b>AI 用大白话解释原因</b></span>
+              <span class="uc-ico"><i data-lucide="stethoscope"></i></span
+              ><span><b>AI 用大白话解释原因</b></span>
             </div>
             <div class="uc-row ok">
-              <span class="uc-ico">✓</span><span><b>生成修正后的 SQL</b>，可直接运行</span>
+              <span class="uc-ico"><i data-lucide="check"></i></span
+              ><span><b>生成修正后的 SQL</b>，可直接运行</span>
             </div>
             <span class="tag">错误诊断 →</span>
           </a>
-          <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
+          <a class="card" href="ai.html">
             <h3>搞清楚查询为什么慢</h3>
             <div class="uc-row err">
-              <span class="uc-ico">🐢</span><span>EXPLAIN 显示对 1200 万行做了全表扫描</span>
+              <span class="uc-ico"><i data-lucide="gauge"></i></span
+              ><span>EXPLAIN 显示对 1200 万行做了全表扫描</span>
             </div>
             <div class="uc-row">
-              <span class="uc-ico">🔍</span><span><b>AI 定位执行计划中的瓶颈</b></span>
+              <span class="uc-ico"><i data-lucide="search"></i></span
+              ><span><b>AI 定位执行计划中的瓶颈</b></span>
             </div>
             <div class="uc-row ok">
-              <span class="uc-ico">📈</span><span><b>建议加索引</b>——先验证再上线</span>
+              <span class="uc-ico"><i data-lucide="trending-up"></i></span
+              ><span><b>建议加索引</b>——先验证再上线</span>
             </div>
             <span class="tag">EXPLAIN 解读 →</span>
           </a>
@@ -286,6 +295,17 @@
             <h3>偏技术的数据使用者</h3>
             <p>浏览表结构、任意结果集一键成图、自动生成例行报表——不用离开桌面。</p>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mid-page CTA -->
+    <section class="section-tight">
+      <div class="wrap">
+        <div class="cta-band">
+          <h2>30 秒上手体验</h2>
+          <p>下载、连接数据库、写第一条 AI 驱动的 SQL——无需注册。</p>
+          <a class="btn btn-primary" href="download.html">免费下载 DataZen</a>
         </div>
       </div>
     </section>
@@ -337,13 +357,17 @@
           <p>例如：每天自动生成一份销售日报：</p>
         </div>
         <div class="flow" style="justify-content: center">
-          <div class="flow-node">🐘 PostgreSQL<small>查当日订单</small></div>
+          <div class="flow-node">
+            <i data-lucide="database"></i>PostgreSQL<small>查当日订单</small>
+          </div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">🐬 MySQL<small>关联客户数据</small></div>
+          <div class="flow-node">
+            <i data-lucide="droplets"></i>MySQL<small>关联客户数据</small>
+          </div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">🤖 AI<small>汇总分析结论</small></div>
+          <div class="flow-node"><i data-lucide="bot"></i>AI<small>汇总分析结论</small></div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">📤 报表<small>导出即可分享</small></div>
+          <div class="flow-node"><i data-lucide="send"></i>报表<small>导出即可分享</small></div>
         </div>
         <p class="center mt-2">
           <a class="tag" href="workflow.html">查询、AI 步骤、条件分支与循环——了解 Workflow →</a>
@@ -376,65 +400,6 @@
             loading="lazy"
           />
         </div>
-      </div>
-    </section>
-
-    <!-- 对比 -->
-    <section class="section" style="padding-top: 0">
-      <div class="wrap">
-        <div class="section-head">
-          <span class="kicker">横向对比</span>
-          <h2>传统客户端给不了你的东西</h2>
-        </div>
-        <table class="compare">
-          <thead>
-            <tr>
-              <th scope="col">&nbsp;</th>
-              <th scope="col">DataZen</th>
-              <th scope="col">DBeaver / Navicat / DataGrip</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>内置 AI——NL2SQL、错误诊断、EXPLAIN 解读</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>供 AI Agent 调用的 MCP Server</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>跨库 Workflow</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>SQL 安全门网——高危语句拦截</td>
-              <td class="yes">✓</td>
-              <td class="no">—</td>
-            </tr>
-            <tr>
-              <td>任意结果集出图</td>
-              <td class="yes">✓</td>
-              <td class="no">插件或付费</td>
-            </tr>
-            <tr>
-              <td>安装包体积</td>
-              <td class="yes">&lt; 15 MB</td>
-              <td class="no">普遍 100 MB 以上</td>
-            </tr>
-            <tr>
-              <td>价格</td>
-              <td class="yes">免费 · GPLv3</td>
-              <td class="no">多为付费</td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="muted" style="font-size: 12.5px; margin-top: 8px">
-          对比反映的是截至 2026 年主流数据库客户端的常见情况，仅供参考。
-        </p>
       </div>
     </section>
 

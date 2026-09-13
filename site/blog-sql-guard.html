@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Designing SQL Guard: Statement-Level Safety for Database Workspaces — DataZen</title>
+    <meta
+      name="description"
+      content="How DataZen implements a zero-trust SQL safety gate: read-only enforcement, Safe Mode, comment-stripping, and fullwidth normalization — all without a parser."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/blog-sql-guard.html" />
+    <link
+      rel="alternate"
+      hreflang="en"
+      href="https://flyxl.github.io/datazen/blog-sql-guard.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://flyxl.github.io/datazen/zh/blog-sql-guard.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://flyxl.github.io/datazen/blog-sql-guard.html"
+    />
+    <meta property="og:type" content="article" />
+    <meta
+      property="og:title"
+      content="Designing SQL Guard: Statement-Level Safety for Database Workspaces"
+    />
+    <meta
+      property="og:description"
+      content="How DataZen implements a zero-trust SQL safety gate — read-only enforcement, Safe Mode, comment-stripping, and fullwidth normalization."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/blog-sql-guard.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Designing SQL Guard: Statement-Level Safety for Database Workspaces"
+    />
+    <meta
+      name="twitter:description"
+      content="How DataZen implements a zero-trust SQL safety gate — read-only enforcement, Safe Mode, comment-stripping, and fullwidth normalization."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "Designing SQL Guard: Statement-Level Safety for Database Workspaces",
+        "author": { "@type": "Person", "name": "Xiaolong Wu" },
+        "publisher": { "@type": "Organization", "name": "DataZen" },
+        "datePublished": "2026-09-12",
+        "description": "How DataZen implements a zero-trust SQL safety gate — read-only enforcement, Safe Mode, comment-stripping, and fullwidth normalization — all without a parser.",
+        "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
+        "mainEntityOfPage": "https://flyxl.github.io/datazen/blog-sql-guard.html"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://flyxl.github.io/datazen/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Blog",
+            "item": "https://flyxl.github.io/datazen/blog-sql-guard.html"
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="site-header"></header>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb">
+          <a href="index.html">Home</a> /
+          <a href="https://github.com/flyxl/datazen/blob/main/CHANGELOG.md">Blog</a>
+        </p>
+        <h1>Designing SQL Guard: Statement-Level Safety for Database Workspaces</h1>
+        <p>How DataZen prevents costly mistakes — without a SQL parser.</p>
+        <p class="muted" style="font-size: 13px; margin-top: 8px">September 2026 · 7 min read</p>
+      </div>
+    </section>
+    <main class="wrap" style="max-width: 860px; padding-bottom: 72px">
+      <article class="docs-prose">
+        <h2>The problem</h2>
+        <p>
+          Every database tool faces the same nightmare: a user accidentally executes
+          <code>DROP TABLE</code> on a production database, or a <code>DELETE</code> without a
+          <code>WHERE</code> clause wipes thousands of rows. Most tools offer a binary choice —
+          allow everything, or lock the connection to read-only. Neither is ideal for daily work.
+        </p>
+        <p>
+          We built <strong>SQL Guard</strong> to fill the gap: a lightweight, statement-level safety
+          gate that sits between the SQL editor and the database driver, catching dangerous patterns
+          before they reach the wire.
+        </p>
+
+        <h2>Design principles</h2>
+        <p>SQL Guard follows three constraints:</p>
+        <ol>
+          <li>
+            <strong>Zero dependencies.</strong> No SQL parser, no grammar files, no tree-sitter. The
+            check runs entirely on raw text with a state machine.
+          </li>
+          <li>
+            <strong>Multi-dialect.</strong> It must work for PostgreSQL, MySQL, MariaDB, SQLite, and
+            Redis without per-dialect configuration.
+          </li>
+          <li>
+            <strong>No false positives.</strong> A safety gate that blocks legitimate queries trains
+            users to disable it. We had to make sure <code>SELECT</code> inside a CTE, a
+            dollar-quoted PL/pgSQL block, or a comment-rich migration script never triggers a false
+            alarm.
+          </li>
+        </ol>
+
+        <h2>How it works</h2>
+
+        <h3>1. Normalization</h3>
+        <p>Before classification, the input passes through two normalization passes:</p>
+        <ul>
+          <li>
+            <strong>Null-byte rejection.</strong> SQL containing <code>\0</code> is rejected
+            outright — null bytes can split keywords and bypass classification (e.g.,
+            <code>DROP\0TABLE</code>).
+          </li>
+          <li>
+            <strong>Fullwidth mapping.</strong> Fullwidth Latin characters (U+FF01 – U+FF5E) are
+            mapped to their ASCII equivalents, so <code>ＤＲＯＰ</code> becomes <code>DROP</code>.
+          </li>
+        </ul>
+
+        <h3>2. Statement splitting</h3>
+        <p>
+          The normalized SQL is split into individual statements at semicolons, respecting quoted
+          strings, block comments, dollar-quoted strings, and parenthesized subqueries. This ensures
+          a <code>SELECT</code> followed by a <code>DELETE</code> is checked as two separate
+          statements.
+        </p>
+
+        <h3>3. Comment stripping</h3>
+        <p>
+          Each statement is then stripped of comments (<code>--</code> line comments,
+          <code>/* */</code> block comments, <code>#</code> MySQL comments) without touching quoted
+          string literals. The stripped version is re-classified independently.
+        </p>
+        <p>
+          This catches the classic attack: <code>/* DROP */ SELECT 1</code> — the outer statement
+          reads as <code>SELECT</code>, but the comment hides a write verb. After stripping, the
+          scanner sees <code>DROP</code> and rejects it in read-only mode.
+        </p>
+
+        <h3>4. Verb classification</h3>
+        <p>The first keyword of the (stripped) statement is matched against two lists:</p>
+        <ul>
+          <li>
+            <strong>Read verbs:</strong> <code>SELECT</code>, <code>SHOW</code>,
+            <code>DESCRIBE</code>, <code>EXPLAIN</code>, <code>PRAGMA</code>, <code>WITH</code>,
+            <code>VALUES</code>, etc.
+          </li>
+          <li>
+            <strong>Write verbs:</strong> <code>INSERT</code>, <code>UPDATE</code>,
+            <code>DELETE</code>, <code>DROP</code>, <code>ALTER</code>, <code>CREATE</code>,
+            <code>TRUNCATE</code>, <code>GRANT</code>, <code>EXEC</code>, etc.
+          </li>
+        </ul>
+        <p>
+          A statement with an unrecognized verb is passed through if no write verb is found in any
+          of its block comments. This handles edge cases like vendor-specific extensions.
+        </p>
+
+        <h3>5. Safe Mode</h3>
+        <p>Safe Mode adds two extra rules on top of read-only enforcement:</p>
+        <ul>
+          <li><code>TRUNCATE</code> and <code>DROP</code> are always blocked.</li>
+          <li>
+            <code>UPDATE</code> and <code>DELETE</code> must have a top-level
+            <code>WHERE</code> clause. The scanner tracks parenthesis depth to ensure the
+            <code>WHERE</code> isn't buried inside a subquery.
+          </li>
+        </ul>
+
+        <h2>Where it sits in the architecture</h2>
+        <p>
+          SQL Guard runs inside the Rust backend, just before the query reaches the database driver.
+          The flow is:
+        </p>
+        <ol>
+          <li>User types SQL in the editor and hits Run.</li>
+          <li>
+            <code>check_sql()</code> runs with the connection's <code>read_only</code> and
+            <code>safe_mode</code> flags.
+          </li>
+          <li>
+            If any statement fails the check, the entire batch is rejected with a clear error
+            message — including which verb caused the rejection.
+          </li>
+          <li>
+            If all statements pass, execution proceeds normally through
+            <code>execute_driver_command</code>.
+          </li>
+        </ol>
+        <p>
+          This means SQL Guard also applies to queries generated by the AI assistant, the MCP
+          server, and Workflow steps — every SQL path goes through the same gate.
+        </p>
+
+        <h2>Edge cases we learned the hard way</h2>
+        <ul>
+          <li>
+            <strong>Dollar-quoted strings</strong> (PostgreSQL):
+            <code>$func$ DROP TABLE foo; $func$</code> is a string literal, not a DROP. The scanner
+            preserves dollar-quoted content as-is.
+          </li>
+          <li>
+            <strong>Nested parentheses:</strong>
+            <code>DELETE FROM t WHERE id IN (SELECT id FROM s)</code> must have the top-level
+            <code>WHERE</code>, not a subquery <code>WHERE</code>. The depth counter handles this.
+          </li>
+          <li>
+            <strong>Signed-off comments:</strong> Some ORMs emit
+            <code>/* ApplicationName=... */</code> before the actual query. These are harmless block
+            comments and must not trigger false positives.
+          </li>
+        </ul>
+
+        <h2>What's next</h2>
+        <p>
+          SQL Guard is intentionally simple — a text scanner, not a parser. Future extensions may
+          include:
+        </p>
+        <ul>
+          <li>
+            Per-table write permissions (allow <code>UPDATE</code> on staging tables but block
+            production).
+          </li>
+          <li>
+            Pattern-based warnings (e.g., alert on <code>SELECT *</code> in queries with no
+            <code>LIMIT</code>).
+          </li>
+          <li>An audit log that records which statements were blocked and why.</li>
+        </ul>
+
+        <h2>Try it yourself</h2>
+        <p>
+          SQL Guard is enabled by default. Open DataZen, create a connection, toggle
+          <strong>Safe Mode</strong> in the connection settings, and try running
+          <code>DELETE FROM users</code> — you'll see it rejected immediately with a request to add
+          a <code>WHERE</code> clause.
+        </p>
+        <p>
+          <a class="btn btn-primary" href="download.html">Download DataZen — Free</a>
+        </p>
+      </article>
+    </main>
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
+</html>

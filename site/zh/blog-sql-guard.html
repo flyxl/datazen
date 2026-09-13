@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>设计 SQL Guard：数据库工作台的语句级安全门网 — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen 如何实现零依赖的 SQL 安全门网：只读模式、Safe Mode、注释剥离与全角归一化——不需要解析器。"
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/zh/blog-sql-guard.html" />
+    <link
+      rel="alternate"
+      hreflang="en"
+      href="https://flyxl.github.io/datazen/blog-sql-guard.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://flyxl.github.io/datazen/zh/blog-sql-guard.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://flyxl.github.io/datazen/blog-sql-guard.html"
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="设计 SQL Guard：数据库工作台的语句级安全门网" />
+    <meta
+      property="og:description"
+      content="DataZen 如何实现零依赖的 SQL 安全门网——只读模式、Safe Mode、注释剥离与全角归一化。"
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/zh/blog-sql-guard.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="设计 SQL Guard：数据库工作台的语句级安全门网" />
+    <meta
+      name="twitter:description"
+      content="DataZen 如何实现零依赖的 SQL 安全门网——只读模式、Safe Mode、注释剥离与全角归一化。"
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png"
+    />
+    <link rel="icon" href="../assets/logo.png" />
+    <link rel="stylesheet" href="../assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "设计 SQL Guard：数据库工作台的语句级安全门网",
+        "author": { "@type": "Person", "name": "Xiaolong Wu" },
+        "publisher": { "@type": "Organization", "name": "DataZen" },
+        "datePublished": "2026-09-12",
+        "description": "DataZen 如何实现零依赖的 SQL 安全门网——只读模式、Safe Mode、注释剥离与全角归一化。",
+        "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
+        "mainEntityOfPage": "https://flyxl.github.io/datazen/zh/blog-sql-guard.html"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://flyxl.github.io/datazen/zh/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "博客",
+            "item": "https://flyxl.github.io/datazen/zh/blog-sql-guard.html"
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="site-header"></header>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb">
+          <a href="index.html">首页</a> /
+          <a href="https://github.com/flyxl/datazen/blob/main/CHANGELOG.md">博客</a>
+        </p>
+        <h1>设计 SQL Guard：数据库工作台的语句级安全门网</h1>
+        <p>如何在不需要 SQL 解析器的前提下，防止代价高昂的误操作。</p>
+        <p class="muted" style="font-size: 13px; margin-top: 8px">2026 年 9 月 · 约 7 分钟阅读</p>
+      </div>
+    </section>
+    <main class="wrap" style="max-width: 860px; padding-bottom: 72px">
+      <article class="docs-prose">
+        <h2>问题是什么</h2>
+        <p>
+          每个数据库工具都面临同样的噩梦：用户不小心在生产数据库上执行了
+          <code>DROP TABLE</code>，或者一条没有 <code>WHERE</code> 的
+          <code>DELETE</code>
+          删掉了几千行。多数工具只提供两个极端选项——完全放开，或将连接锁死为只读。日常工作中，两者都不理想。
+        </p>
+        <p>
+          我们构建了 <strong>SQL Guard</strong> 来填补这个空白：一个轻量的、语句级的安全门网，位于
+          SQL 编辑器和数据库驱动之间，在危险模式到达数据库之前拦截它们。
+        </p>
+
+        <h2>设计原则</h2>
+        <p>SQL Guard 遵循三条约束：</p>
+        <ol>
+          <li>
+            <strong>零依赖。</strong>不需要 SQL 解析器、语法文件或
+            tree-sitter。检查完全基于文本上的状态机运行。
+          </li>
+          <li>
+            <strong>多方言。</strong>必须同时适用于 PostgreSQL、MySQL、MariaDB、SQLite 和
+            Redis，无需按方言配置。
+          </li>
+          <li>
+            <strong>无误报。</strong>安全门网如果误拦合法查询，用户就会关掉它。CTE 中的
+            <code>SELECT</code>、dollar-quoted PL/pgSQL 块、注释丰富的迁移脚本都不能触发误报。
+          </li>
+        </ol>
+
+        <h2>工作原理</h2>
+
+        <h3>1. 归一化</h3>
+        <ul>
+          <li>
+            <strong>空字节拒绝。</strong>包含 <code>\0</code> 的 SQL
+            被直接拒绝——空字节可以拆分关键字，绕过分类（如 <code>DROP\0TABLE</code>）。
+          </li>
+          <li>
+            <strong>全角映射。</strong>全角拉丁字符（U+FF01 – U+FF5E）被映射为 ASCII 等价字符，使
+            <code>ＤＲＯＰ</code> 变为 <code>DROP</code>。
+          </li>
+        </ul>
+
+        <h3>2. 语句拆分</h3>
+        <p>
+          归一化后的 SQL 在分号处分割为独立语句，同时尊重引号字符串、块注释、dollar-quoted
+          字符串和括号子查询。这确保了 <code>SELECT</code> 后跟
+          <code>DELETE</code> 会被检查为两条独立语句。
+        </p>
+
+        <h3>3. 注释剥离</h3>
+        <p>
+          每条语句会被剥离注释（<code>--</code> 行注释、<code>/* */</code> 块注释、<code>#</code>
+          MySQL 注释），不触碰引号字符串字面量。剥离后的版本被独立重新分类。
+        </p>
+        <p>
+          这捕获了经典攻击：<code>/* DROP */ SELECT 1</code>——外层语句读起来是
+          <code>SELECT</code>，但注释隐藏了写动词。剥离后，扫描器看到
+          <code>DROP</code>，在只读模式下拒绝。
+        </p>
+
+        <h3>4. 动词分类</h3>
+        <ul>
+          <li>
+            <strong>读动词：</strong
+            ><code>SELECT</code
+            >、<code>SHOW</code>、<code>DESCRIBE</code>、<code>EXPLAIN</code>、<code>PRAGMA</code>、<code>WITH</code>、<code
+              >VALUES</code
+            >
+            等
+          </li>
+          <li>
+            <strong>写动词：</strong
+            ><code>INSERT</code
+            >、<code>UPDATE</code>、<code>DELETE</code>、<code>DROP</code>、<code>ALTER</code>、<code>CREATE</code>、<code>TRUNCATE</code>、<code>GRANT</code>、<code
+              >EXEC</code
+            >
+            等
+          </li>
+        </ul>
+        <p>无法识别的动词在任何块注释中未找到写动词时会被放行，以处理厂商特定扩展的边缘情况。</p>
+
+        <h3>5. Safe Mode</h3>
+        <ul>
+          <li><code>TRUNCATE</code> 和 <code>DROP</code> 始终被阻止。</li>
+          <li>
+            <code>UPDATE</code> 和 <code>DELETE</code> 必须带有顶层
+            <code>WHERE</code> 子句。扫描器追踪括号深度，确保 <code>WHERE</code> 不在子查询内部。
+          </li>
+        </ul>
+
+        <h2>在架构中的位置</h2>
+        <p>SQL Guard 运行在 Rust 后端中，查询到达数据库驱动之前：</p>
+        <ol>
+          <li>用户在编辑器中输入 SQL 并点击运行。</li>
+          <li>
+            <code>check_sql()</code> 以连接的 <code>read_only</code> 和
+            <code>safe_mode</code> 标志运行。
+          </li>
+          <li>如果任何语句未通过检查，整个批次被拒绝，并附带清晰的错误信息。</li>
+          <li>如果所有语句通过，执行正常进行。</li>
+        </ol>
+        <p>这意味着 AI 助手、MCP Server 和 Workflow 步骤生成的查询都经过同一个门网。</p>
+
+        <h2>我们踩过的坑</h2>
+        <ul>
+          <li>
+            <strong>Dollar-quoted 字符串</strong>（PostgreSQL）：<code
+              >$func$ DROP TABLE foo; $func$</code
+            >
+            是字符串字面量，不是 DROP。
+          </li>
+          <li>
+            <strong>嵌套括号：</strong
+            ><code>DELETE FROM t WHERE id IN (SELECT id FROM s)</code> 的顶层
+            <code>WHERE</code> 必须存在，子查询中的 <code>WHERE</code> 不算。
+          </li>
+          <li>
+            <strong>ORM 注释：</strong>某些 ORM 在实际查询前发送
+            <code>/* ApplicationName=... */</code>——这些无害注释不能触发误报。
+          </li>
+        </ul>
+
+        <h2>下一步</h2>
+        <p>SQL Guard 有意保持简单。未来可能的扩展：</p>
+        <ul>
+          <li>按表写权限（允许更新暂存表但阻止生产表）</li>
+          <li>模式匹配警告（如对没有 <code>LIMIT</code> 的 <code>SELECT *</code> 发出提醒）</li>
+          <li>审计日志：记录被阻止的语句及原因</li>
+        </ul>
+
+        <h2>亲自试试</h2>
+        <p>
+          SQL Guard 默认启用。打开 DataZen，创建连接，在连接设置中开启
+          <strong>Safe Mode</strong>，然后尝试运行
+          <code>DELETE FROM users</code>——你会看到它立即被拒绝，并被要求添加
+          <code>WHERE</code> 子句。
+        </p>
+        <p>
+          <a class="btn btn-primary" href="download.html">免费下载 DataZen</a>
+        </p>
+      </article>
+    </main>
+    <footer id="site-footer"></footer>
+    <script src="../assets/js/site.js"></script>
+  </body>
+</html>

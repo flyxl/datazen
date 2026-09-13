@@ -45,14 +45,33 @@
     />
     <link rel="icon" href="../assets/logo.png" />
     <link rel="stylesheet" href="../assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://flyxl.github.io/datazen/zh/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Workflow",
+            "item": "https://flyxl.github.io/datazen/zh/workflow.html"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header id="site-header"></header>
-
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">首页</a> / Workflow</p>
-        <h1>⚙️ Workflow 自动化</h1>
+        <h1>Workflow 自动化</h1>
         <p>把「查数 → 分析 → 决策」固化成可复用流程。跨库执行、可让 AI 参与、随时重跑。</p>
       </div>
     </section>
@@ -64,13 +83,17 @@
           <h2 style="font-size: 26px">睡觉时自动生成每日销售日报</h2>
         </div>
         <div class="flow" style="justify-content: center">
-          <div class="flow-node">🐘 PostgreSQL<small>查当日订单</small></div>
+          <div class="flow-node">
+            <i data-lucide="database"></i>PostgreSQL<small>查当日订单</small>
+          </div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">🐬 MySQL<small>关联客户数据</small></div>
+          <div class="flow-node">
+            <i data-lucide="droplets"></i>MySQL<small>关联客户数据</small>
+          </div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">🤖 AI<small>汇总分析结论</small></div>
+          <div class="flow-node"><i data-lucide="bot"></i>AI<small>汇总分析结论</small></div>
           <div class="flow-arrow">→</div>
-          <div class="flow-node">📤 报表<small>导出即可分享</small></div>
+          <div class="flow-node"><i data-lucide="send"></i>报表<small>导出即可分享</small></div>
         </div>
         <p
           class="muted center mt-2"
@@ -170,17 +193,17 @@ output:
         <h2 style="font-size: 26px; margin-bottom: 20px">典型场景</h2>
         <div class="grid-3">
           <div class="card">
-            <div class="icon">📦</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="package"></i></div>
             <h3>订单 + 物流</h3>
             <p>PG 查订单，MySQL 补物流，AI 汇总一句话说明，直接输出给客服。</p>
           </div>
           <div class="card">
-            <div class="icon">🔁</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="repeat"></i></div>
             <h3>循环巡检</h3>
             <p>foreach 遍历大额订单，逐条生成说明；condition 处理空结果分支。</p>
           </div>
           <div class="card">
-            <div class="icon">🛟</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="life-buoy"></i></div>
             <h3>容错降级</h3>
             <p>主表不存在时 fallback 到备查语句，流程不中断，输出提示行。</p>
           </div>

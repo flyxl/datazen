@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MCP 实战：让 AI Agent 连接你的数据库 — DataZen</title>
+    <meta
+      name="description"
+      content="DataZen MCP Server 与 Client 实战指南——AI Agent 如何通过标准协议检查 Schema、运行查询、编排 Workflow。"
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/zh/blog-mcp-integration.html" />
+    <link
+      rel="alternate"
+      hreflang="en"
+      href="https://flyxl.github.io/datazen/blog-mcp-integration.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://flyxl.github.io/datazen/zh/blog-mcp-integration.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://flyxl.github.io/datazen/blog-mcp-integration.html"
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="MCP 实战：让 AI Agent 连接你的数据库" />
+    <meta
+      property="og:description"
+      content="DataZen MCP Server 与 Client 实战指南——AI Agent 如何检查 Schema、运行查询、编排 Workflow。"
+    />
+    <meta
+      property="og:url"
+      content="https://flyxl.github.io/datazen/zh/blog-mcp-integration.html"
+    />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/05-mcp-server.png"
+    />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MCP 实战：让 AI Agent 连接你的数据库" />
+    <meta
+      name="twitter:description"
+      content="DataZen MCP Server 与 Client 实战指南——AI Agent 如何检查 Schema、运行查询、编排 Workflow。"
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/05-mcp-server.png"
+    />
+    <link rel="icon" href="../assets/logo.png" />
+    <link rel="stylesheet" href="../assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "MCP 实战：让 AI Agent 连接你的数据库",
+        "author": { "@type": "Person", "name": "Xiaolong Wu" },
+        "publisher": { "@type": "Organization", "name": "DataZen" },
+        "datePublished": "2026-09-12",
+        "description": "DataZen MCP Server 与 Client 实战指南——AI Agent 如何通过标准协议检查 Schema、运行查询、编排 Workflow。",
+        "image": "https://flyxl.github.io/datazen/assets/screenshots/05-mcp-server.png",
+        "mainEntityOfPage": "https://flyxl.github.io/datazen/zh/blog-mcp-integration.html"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "首页",
+            "item": "https://flyxl.github.io/datazen/zh/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "博客",
+            "item": "https://flyxl.github.io/datazen/zh/blog-mcp-integration.html"
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="site-header"></header>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb">
+          <a href="index.html">首页</a> /
+          <a href="https://github.com/flyxl/datazen/blob/main/CHANGELOG.md">博客</a>
+        </p>
+        <h1>MCP 实战：让 AI Agent 连接你的数据库</h1>
+        <p>从"和数据对话"到"让 Agent 帮你跑查询"——一行配置即可。</p>
+        <p class="muted" style="font-size: 13px; margin-top: 8px">2026 年 9 月 · 约 8 分钟阅读</p>
+      </div>
+    </section>
+    <main class="wrap" style="max-width: 860px; padding-bottom: 72px">
+      <article class="docs-prose">
+        <h2>什么是 MCP？</h2>
+        <p>
+          <strong>Model Context Protocol（MCP）</strong>是一种向 AI Agent
+          暴露工具、资源和提示的标准协议。可以把它理解为 AI 的 USB-C
+          接口——你只需实现一个协议，任何兼容的客户端都能连接。
+        </p>
+        <p>
+          DataZen 同时内置了 MCP <strong>Server</strong>（将数据库暴露给外部 Agent）和 MCP
+          <strong>Client</strong>（将外部工具接入 DataZen 的 AI
+          聊天）。本文通过实际案例覆盖两个方向。
+        </p>
+
+        <h2>MCP Server：将数据库暴露给 Agent</h2>
+
+        <h3>有哪些工具可用？</h3>
+        <p>DataZen 作为 MCP Server 运行时，会向连接的 Agent 暴露以下工具：</p>
+        <table class="compare" style="margin: 16px 0">
+          <thead>
+            <tr>
+              <th>工具</th>
+              <th>描述</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>list_connections</code></td>
+              <td>列出所有已配置的数据库连接</td>
+            </tr>
+            <tr>
+              <td><code>list_tables</code></td>
+              <td>列出连接中的表和视图</td>
+            </tr>
+            <tr>
+              <td><code>describe_table</code></td>
+              <td>获取列定义、索引和约束</td>
+            </tr>
+            <tr>
+              <td><code>execute_query</code></td>
+              <td>运行 SELECT 查询并返回结果</td>
+            </tr>
+            <tr>
+              <td><code>explain_query</code></td>
+              <td>获取查询的 EXPLAIN 计划</td>
+            </tr>
+            <tr>
+              <td><code>run_workflow</code></td>
+              <td>按名称或内容执行 YAML Workflow</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>凭据不会离开 DataZen。Agent 通过 Server 与数据库交互——它永远看不到原始密码。</p>
+
+        <h3>在 Claude Desktop 中配置</h3>
+        <p>在 Claude Desktop 的 MCP 配置中添加：</p>
+        <pre><code>{
+  "mcpServers": {
+    "datazen": {
+      "command": "/path/to/datazen",
+      "args": ["--mcp-stdio"]
+    }
+  }
+}</code></pre>
+        <p>
+          就这么简单。重启 Claude Desktop，你的 Agent 就能检查 Schema、运行查询，甚至执行跨库
+          Workflow。
+        </p>
+
+        <h3>真实案例："找出最慢的查询"</h3>
+        <p>连接 Claude 后，你可以这样问：</p>
+        <blockquote>
+          "列出 orders 数据库的所有表，描述 orders 表的结构，然后查询最近 7 天的订单。"
+        </blockquote>
+        <p>
+          Agent 会自动串联 <code>list_tables</code> → <code>describe_table</code> →
+          <code>execute_query</code>，用从 Schema 学到的列类型写出正确的 WHERE 子句。无需手动注入
+          Schema，无需复制粘贴表结构。
+        </p>
+
+        <h2>MCP Client：将外部工具接入 DataZen</h2>
+        <p>
+          反向同样强大。DataZen 可以作为 MCP <em>Client</em>，连接外部 MCP Server 并在 AI
+          聊天侧栏中使用其工具。
+        </p>
+        <p>例如，你可以连接：</p>
+        <ul>
+          <li><strong>文件系统</strong> MCP Server——让 AI 读取 CSV 文件用于导入</li>
+          <li><strong>GitHub</strong> MCP Server——将数据库问题与代码提交关联</li>
+          <li><strong>自定义内部 API</strong> Server——AI 可以同时调用 API 和数据库查询</li>
+        </ul>
+        <p>
+          在 设置 → AI → MCP Client 中配置外部 MCP Server，它们就会出现在聊天侧栏的可用工具列表中。
+        </p>
+
+        <h2>无头模式：<code>--mcp-stdio</code></h2>
+        <p>
+          DataZen 不仅仅是桌面应用。<code>--mcp-stdio</code> 标志启动一个无头 MCP Server——没有
+          GUI，没有 Tauri，只有纯 Rust 通过 stdin/stdout 响应 JSON-RPC 消息。
+        </p>
+        <p>这打开了服务端使用场景：</p>
+        <ul>
+          <li><strong>CI/CD 流水线：</strong>让 Agent 在部署前验证 Schema 变更</li>
+          <li><strong>ChatOps：</strong>通过 MCP 桥接将 Slack 机器人连接到数据库</li>
+          <li><strong>脚本化：</strong>将 Agent 输出管道到自动化数据库维护任务</li>
+        </ul>
+        <pre><code># 启动无头模式
+datazen --mcp-stdio
+
+# 或从 Docker 容器运行
+docker run -i datazen/datazen --mcp-stdio &lt; config.json</code></pre>
+
+        <h2>安全模型</h2>
+        <ul>
+          <li><strong>SQL Guard 对所有查询生效</strong>——包括来自 MCP Server 的查询</li>
+          <li><strong>只读连接</strong>通过 MCP 访问时仍然是只读的</li>
+          <li><strong>凭据加密存储</strong>在系统钥匙串中，MCP Server 使用连接 ID 而非原始密码</li>
+          <li><strong>无文件系统访问。</strong>无头模式不能读写文件——仅通过 stdio 通信</li>
+        </ul>
+
+        <h2>下一步</h2>
+        <ul>
+          <li><strong>流式查询</strong>——大数据集结果增量返回</li>
+          <li><strong>Resource URI</strong>——将表和 Schema 作为 MCP Resource（只读）暴露</li>
+          <li><strong>按工具权限控制</strong>——精细控制每个 Agent 可访问的工具</li>
+        </ul>
+
+        <h2>亲自试试</h2>
+        <p>
+          如果你使用 Claude Desktop、Cursor、Cline 或任何兼容 MCP 的客户端，一分钟内就能连接到
+          DataZen。
+        </p>
+        <p>
+          <a class="btn btn-primary" href="download.html">免费下载 DataZen</a>
+        </p>
+      </article>
+    </main>
+    <footer id="site-footer"></footer>
+    <script src="../assets/js/site.js"></script>
+  </body>
+</html>

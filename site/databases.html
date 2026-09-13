@@ -45,6 +45,26 @@
     />
     <link rel="icon" href="assets/logo.png" />
     <link rel="stylesheet" href="assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://flyxl.github.io/datazen/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Databases",
+            "item": "https://flyxl.github.io/datazen/databases.html"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <header id="site-header"></header>
@@ -52,7 +72,7 @@
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb"><a href="index.html">Home</a> / Databases &amp; Connections</p>
-        <h1>🔌 Databases &amp; Connections</h1>
+        <h1>Databases &amp; Connections</h1>
         <p>
           One interface for many databases: connect, browse, query, edit, and sync — all natively
           implemented.
@@ -63,32 +83,32 @@
     <section class="wrap">
       <div class="grid-3">
         <div class="card">
-          <div class="icon">🐘</div>
+          <div class="icon" aria-hidden="true"><i data-lucide="database"></i></div>
           <h3>PostgreSQL</h3>
           <p>Full schema browsing, EXPLAIN, multi-database sessions, SSL / SSH.</p>
         </div>
         <div class="card">
-          <div class="icon">🐬</div>
+          <div class="icon" aria-hidden="true"><i data-lucide="droplets"></i></div>
           <h3>MySQL / MariaDB</h3>
           <p>Compatible branches, session-level multi-database switching, data sync.</p>
         </div>
         <div class="card">
-          <div class="icon">🗄️</div>
+          <div class="icon" aria-hidden="true"><i data-lucide="hard-drive"></i></div>
           <h3>SQLite</h3>
           <p>Open local files directly — zero configuration.</p>
         </div>
         <div class="card">
-          <div class="icon">⚡</div>
+          <div class="icon" aria-hidden="true"><i data-lucide="zap"></i></div>
           <h3>Redis</h3>
           <p>Dedicated view: database list + key browser, all data types supported.</p>
         </div>
         <div class="card">
-          <div class="icon">📡</div>
+          <div class="icon" aria-hidden="true"><i data-lucide="radio-tower"></i></div>
           <h3>kiwi</h3>
           <p>Cloud database proxy plugin with domain instance semantics.</p>
         </div>
         <div class="card">
-          <div class="icon">📊</div>
+          <div class="icon" aria-hidden="true"><i data-lucide="bar-chart-3"></i></div>
           <h3>OLAP / Superset</h3>
           <p>Plugin drivers: Presto / Trino analytics engines and data exploration platforms.</p>
         </div>

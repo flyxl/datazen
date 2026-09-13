@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MCP in Practice: Connecting AI Agents to Your Database — DataZen</title>
+    <meta
+      name="description"
+      content="A practical guide to DataZen's MCP Server and Client — how AI agents can inspect schemas, run queries, and orchestrate workflows through a standard protocol."
+    />
+    <link rel="canonical" href="https://flyxl.github.io/datazen/blog-mcp-integration.html" />
+    <link
+      rel="alternate"
+      hreflang="en"
+      href="https://flyxl.github.io/datazen/blog-mcp-integration.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="zh-CN"
+      href="https://flyxl.github.io/datazen/zh/blog-mcp-integration.html"
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href="https://flyxl.github.io/datazen/blog-mcp-integration.html"
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="MCP in Practice: Connecting AI Agents to Your Database" />
+    <meta
+      property="og:description"
+      content="A practical guide to DataZen's MCP Server and Client — how AI agents inspect schemas, run queries, and orchestrate workflows."
+    />
+    <meta property="og:url" content="https://flyxl.github.io/datazen/blog-mcp-integration.html" />
+    <meta
+      property="og:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/05-mcp-server.png"
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MCP in Practice: Connecting AI Agents to Your Database" />
+    <meta
+      name="twitter:description"
+      content="A practical guide to DataZen's MCP Server and Client — how AI agents inspect schemas, run queries, and orchestrate workflows."
+    />
+    <meta
+      name="twitter:image"
+      content="https://flyxl.github.io/datazen/assets/screenshots/05-mcp-server.png"
+    />
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="assets/css/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "MCP in Practice: Connecting AI Agents to Your Database",
+        "author": { "@type": "Person", "name": "Xiaolong Wu" },
+        "publisher": { "@type": "Organization", "name": "DataZen" },
+        "datePublished": "2026-09-12",
+        "description": "A practical guide to DataZen's MCP Server and Client — how AI agents can inspect schemas, run queries, and orchestrate workflows through a standard protocol.",
+        "image": "https://flyxl.github.io/datazen/assets/screenshots/05-mcp-server.png",
+        "mainEntityOfPage": "https://flyxl.github.io/datazen/blog-mcp-integration.html"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://flyxl.github.io/datazen/"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Blog",
+            "item": "https://flyxl.github.io/datazen/blog-mcp-integration.html"
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header id="site-header"></header>
+    <section class="page-head">
+      <div class="wrap">
+        <p class="breadcrumb">
+          <a href="index.html">Home</a> /
+          <a href="https://github.com/flyxl/datazen/blob/main/CHANGELOG.md">Blog</a>
+        </p>
+        <h1>MCP in Practice: Connecting AI Agents to Your Database</h1>
+        <p>From "chat with your data" to "let your agent run your queries" — in one config line.</p>
+        <p class="muted" style="font-size: 13px; margin-top: 8px">September 2026 · 8 min read</p>
+      </div>
+    </section>
+    <main class="wrap" style="max-width: 860px; padding-bottom: 72px">
+      <article class="docs-prose">
+        <h2>What is MCP?</h2>
+        <p>
+          The <strong>Model Context Protocol (MCP)</strong> is a standard for exposing tools,
+          resources, and prompts to AI agents. Think of it as a USB-C port for AI: instead of
+          building a custom integration for every agent, you implement one protocol and any
+          compatible client can connect.
+        </p>
+        <p>
+          DataZen ships with both an MCP <strong>Server</strong> (exposing your database to external
+          agents) and an MCP <strong>Client</strong> (connecting external tools into DataZen's AI
+          chat). This post covers both directions with practical examples.
+        </p>
+
+        <h2>MCP Server: expose your database to agents</h2>
+
+        <h3>What tools are available?</h3>
+        <p>When DataZen runs as an MCP server, it exposes these tools to any connected agent:</p>
+        <table class="compare" style="margin: 16px 0">
+          <thead>
+            <tr>
+              <th>Tool</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>list_connections</code></td>
+              <td>List all configured database connections</td>
+            </tr>
+            <tr>
+              <td><code>list_tables</code></td>
+              <td>List tables and views in a connection</td>
+            </tr>
+            <tr>
+              <td><code>describe_table</code></td>
+              <td>Get column definitions, indexes, and constraints</td>
+            </tr>
+            <tr>
+              <td><code>execute_query</code></td>
+              <td>Run a SELECT query and return results</td>
+            </tr>
+            <tr>
+              <td><code>explain_query</code></td>
+              <td>Get the EXPLAIN plan for a query</td>
+            </tr>
+            <tr>
+              <td><code>run_workflow</code></td>
+              <td>Execute a YAML workflow by name or content</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Credentials never leave DataZen. The agent interacts with your database through the server
+          — it never sees raw passwords.
+        </p>
+
+        <h3>Setup in Claude Desktop</h3>
+        <p>Add this to your Claude Desktop MCP config:</p>
+        <pre><code>{
+  "mcpServers": {
+    "datazen": {
+      "command": "/path/to/datazen",
+      "args": ["--mcp-stdio"]
+    }
+  }
+}</code></pre>
+        <p>
+          That's it. Restart Claude Desktop, and your agent can now inspect schemas, run queries,
+          and even execute multi-step workflows across databases.
+        </p>
+
+        <h3>A real example: "Show me the slowest queries"</h3>
+        <p>With Claude connected to DataZen, you can ask:</p>
+        <blockquote>
+          "List all tables in the orders database, describe the orders table, and find orders from
+          the last 7 days."
+        </blockquote>
+        <p>
+          The agent will chain <code>list_tables</code> → <code>describe_table</code> →
+          <code>execute_query</code> automatically, using the column types it learned from the
+          schema to write the correct WHERE clause. No manual context injection, no copy-pasting
+          schema dumps.
+        </p>
+
+        <h2>MCP Client: bring external tools into DataZen</h2>
+        <p>
+          The reverse direction is equally powerful. DataZen can act as an MCP <em>client</em>,
+          connecting to external MCP servers and making their tools available inside the AI chat
+          sidebar.
+        </p>
+        <p>For example, you could connect:</p>
+        <ul>
+          <li>
+            A <strong>file system</strong> MCP server to let the AI read CSV files for import.
+          </li>
+          <li>
+            A <strong>GitHub</strong> MCP server to correlate database issues with repository
+            commits.
+          </li>
+          <li>
+            A <strong>custom internal API</strong> server that the AI can call alongside database
+            queries.
+          </li>
+        </ul>
+        <p>
+          Configure external MCP servers in Settings → AI → MCP Client, and they appear as available
+          tools in the chat sidebar.
+        </p>
+
+        <h2>The headless mode: <code>--mcp-stdio</code></h2>
+        <p>
+          DataZen isn't just a desktop app. The <code>--mcp-stdio</code> flag starts a headless MCP
+          server — no GUI, no Tauri, just pure Rust responding to JSON-RPC messages on stdin/stdout.
+        </p>
+        <p>This opens up server-side use cases:</p>
+        <ul>
+          <li>
+            <strong>CI/CD pipelines:</strong> Let an agent verify schema changes before deployment.
+          </li>
+          <li>
+            <strong>ChatOps:</strong> Connect a Slack bot to your database through an MCP bridge.
+          </li>
+          <li>
+            <strong>Scripting:</strong> Pipe agent output into automated database maintenance tasks.
+          </li>
+        </ul>
+        <pre><code># Start headless
+datazen --mcp-stdio
+
+# Or from a Docker container
+docker run -i datazen/datazen --mcp-stdio &lt; config.json</code></pre>
+
+        <h2>Security model</h2>
+        <p>MCP integration doesn't bypass DataZen's safety model:</p>
+        <ul>
+          <li>
+            <strong>SQL Guard applies to all queries</strong> — including those from the MCP server.
+            If a connection is in Safe Mode, the agent can't run <code>DROP</code> or
+            <code>DELETE</code> without <code>WHERE</code>.
+          </li>
+          <li>
+            <strong>Read-only connections</strong> stay read-only, even when accessed through MCP.
+          </li>
+          <li>
+            <strong>Credentials are encrypted</strong> in the OS keychain. The MCP server uses
+            connection IDs, not raw passwords.
+          </li>
+          <li>
+            <strong>No file system access.</strong> The headless mode can't read or write files — it
+            only communicates via stdio.
+          </li>
+        </ul>
+
+        <h2>What's next</h2>
+        <p>Upcoming MCP enhancements include:</p>
+        <ul>
+          <li>
+            <strong>Streaming queries</strong> for large result sets — the agent gets results
+            incrementally instead of waiting for the full payload.
+          </li>
+          <li>
+            <strong>Resource URIs</strong> — expose tables and schemas as MCP resources (read-only)
+            alongside tools.
+          </li>
+          <li>
+            <strong>Per-tool permissions</strong> — fine-grained control over which tools each
+            connected agent can access.
+          </li>
+        </ul>
+
+        <h2>Try it yourself</h2>
+        <p>
+          If you use Claude Desktop, Cursor, Cline, or any MCP-compatible client, you can connect to
+          DataZen in under a minute. Open DataZen, ensure MCP Server is enabled in Settings → AI,
+          and add the config to your agent.
+        </p>
+        <p>
+          <a class="btn btn-primary" href="download.html">Download DataZen — Free</a>
+        </p>
+      </article>
+    </main>
+    <footer id="site-footer"></footer>
+    <script src="assets/js/site.js"></script>
+  </body>
+</html>
