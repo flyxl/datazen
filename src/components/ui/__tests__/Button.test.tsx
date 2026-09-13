@@ -64,7 +64,7 @@ describe('Button', () => {
     expect(getByRole('button').className).toContain('border-edge');
 
     rerender(<Button variant="danger">Danger</Button>);
-    expect(getByRole('button').className).toContain('bg-red-500/90');
+    expect(getByRole('button').className).toContain('bg-danger');
   });
 });
 
@@ -82,11 +82,7 @@ describe('ToolbarButton', () => {
 
   it('[tester] honors explicit primary variant override', () => {
     const { getByRole } = render(
-      <ToolbarButton
-        label="Run"
-        variant="primary"
-        icon={<span data-testid="icon">▶</span>}
-      />,
+      <ToolbarButton label="Run" variant="primary" icon={<span data-testid="icon">▶</span>} />,
     );
     const btn = getByRole('button', { name: 'Run' });
     expect(btn.className).toContain('bg-accent');
@@ -103,11 +99,7 @@ describe('ToolbarButton', () => {
 
   it('[tester] uses explicit title when provided', () => {
     const { getByRole } = render(
-      <ToolbarButton
-        label="Refresh"
-        title="Reload data"
-        icon={<span>↻</span>}
-      />,
+      <ToolbarButton label="Refresh" title="Reload data" icon={<span>↻</span>} />,
     );
     expect(getByRole('button', { name: 'Refresh' })).toHaveAttribute('title', 'Reload data');
   });

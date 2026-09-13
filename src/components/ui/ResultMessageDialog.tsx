@@ -40,7 +40,7 @@ export function ResultMessageDialog({ open, kind, message, onClose }: ResultMess
             >
               {copied ? (
                 <>
-                  <Check className="h-3.5 w-3.5 text-green-400" />
+                  <Check className="h-3.5 w-3.5 text-success" />
                   <span>{t('common.copied')}</span>
                 </>
               ) : (
@@ -66,9 +66,9 @@ export function ResultMessageDialog({ open, kind, message, onClose }: ResultMess
     >
       <div className="flex items-start gap-3">
         {kind === 'error' ? (
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" aria-hidden="true" />
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-danger" aria-hidden="true" />
         ) : (
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-500" aria-hidden="true" />
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" />
         )}
         <p className="selectable select-text whitespace-pre-wrap break-words text-sm text-fg-secondary">
           {message}

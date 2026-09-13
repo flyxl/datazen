@@ -13,7 +13,7 @@ describe('@datazen/ui Button', () => {
 
   it('applies danger variant classes', () => {
     render(<Button variant="danger">Delete</Button>);
-    expect(screen.getByRole('button').className).toContain('bg-red-500/90');
+    expect(screen.getByRole('button').className).toContain('bg-danger');
   });
 });
 

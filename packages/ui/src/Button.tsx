@@ -14,7 +14,7 @@ const variants: Record<Variant, string> = {
     'border border-edge bg-transparent text-fg hover:border-edge-hi hover:bg-surface-raised disabled:opacity-50',
   ghost:
     'bg-transparent text-fg-secondary hover:bg-surface-raised hover:text-fg disabled:opacity-50',
-  danger: 'bg-red-500/90 text-white hover:bg-red-500 disabled:opacity-50',
+  danger: 'bg-danger text-on-accent hover:bg-danger/90 disabled:opacity-50',
 };
 
 const sizes: Record<Size, string> = {

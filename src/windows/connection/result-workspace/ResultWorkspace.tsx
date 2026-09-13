@@ -77,7 +77,7 @@ export function ResultWorkspace({
         className={cn('flex min-h-0 flex-1 items-center justify-center px-4', className)}
         {...tid('result-workspace-error')}
       >
-        <CopyableError message={error} copyButton className="max-w-2xl text-sm text-red-400" />
+        <CopyableError message={error} copyButton className="max-w-2xl text-sm text-danger" />
       </div>
     );
   }

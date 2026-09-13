@@ -213,7 +213,7 @@ export function ObjectBrowser({ dbSessionId, databaseType, database = null }: Ob
               {t('common.loading')}
             </div>
           )}
-          {error && <CopyableError message={error} className="px-3 py-2 text-xs text-red-400" />}
+          {error && <CopyableError message={error} className="px-3 py-2 text-xs text-danger" />}
           {!loading && objects.length === 0 && !error && (
             <div className="px-3 py-3 text-xs text-fg-muted">{t('objects.empty')}</div>
           )}

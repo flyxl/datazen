@@ -56,13 +56,13 @@ export function CopyableError({
         <button
           type="button"
           data-testid="copyable-error-copy"
-          className="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11px] text-fg-secondary hover:bg-red-500/10"
+          className="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11px] text-fg-secondary hover:bg-danger/10"
           onClick={handleCopy}
           title={t('common.copy')}
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 text-green-400" />
+              <Check className="h-3 w-3 text-success" />
               {t('common.copied')}
             </>
           ) : (

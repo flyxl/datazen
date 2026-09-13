@@ -41,21 +41,21 @@ export function QueryErrorPanel({
   const explain = onExplain ?? onDiagnose;
 
   return (
-    <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3">
+    <div className="rounded-md border border-danger/20 bg-danger/10 px-4 py-3">
       <div className="flex items-center gap-2">
-        <span className="flex-1 select-none text-xs font-semibold uppercase tracking-wide text-red-400">
+        <span className="flex-1 select-none text-xs font-semibold uppercase tracking-wide text-danger">
           {t('common.executionFailed')}
         </span>
         <button
           type="button"
           data-testid="query-copy-error"
-          className="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11px] text-fg-secondary hover:bg-red-500/10"
+          className="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11px] text-fg-secondary hover:bg-danger/10"
           onClick={handleCopyError}
           title={t('common.copy')}
         >
           {errorCopied ? (
             <>
-              <Check className="h-3 w-3 text-green-400" />
+              <Check className="h-3 w-3 text-success" />
               {t('common.copied')}
             </>
           ) : (
@@ -68,7 +68,7 @@ export function QueryErrorPanel({
       </div>
       <pre
         data-testid="query-error-message"
-        className="selectable mt-2 whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-red-400"
+        className="selectable mt-2 whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-danger"
       >
         {message}
       </pre>

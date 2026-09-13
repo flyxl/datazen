@@ -185,7 +185,7 @@ export function QueryTransactionModals({
         }
       >
         {txAbortedDetail ? (
-          <pre className="copyable max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-edge bg-surface p-2 font-mono text-[11px] text-red-400">
+          <pre className="copyable max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-edge bg-surface p-2 font-mono text-[11px] text-danger">
             {txAbortedDetail}
           </pre>
         ) : null}
@@ -212,34 +212,15 @@ export function FavoriteNameDialog({
   onSave,
 }: FavoriteNameDialogProps) {
   const { t } = useI18n();
-  if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[400px] rounded-lg border border-edge bg-surface p-4 shadow-xl">
-        <div className="mb-3 text-sm font-medium text-fg">{t('common.addToFavorites')}</div>
-        <div className="mb-2">
-          <label className="mb-1 block text-xs text-fg-muted">{t('query.favoriteTitle')}</label>
-          <input
-            type="text"
-            data-testid="query-favorite-title-input"
-            value={favoriteName}
-            onChange={(e) => onFavoriteNameChange(e.target.value)}
-            placeholder={t('query.favoriteTitlePlaceholder')}
-            className="h-8 w-full rounded border border-edge bg-surface-alt px-2 text-sm text-fg focus:border-accent focus:outline-none"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && favoriteName.trim()) onSave();
-            }}
-          />
-        </div>
-        <div className="mb-3">
-          <label className="mb-1 block text-xs text-fg-muted">SQL</label>
-          <div className="max-h-[120px] overflow-auto rounded border border-edge bg-surface-alt p-2 font-mono text-xs text-fg-secondary">
-            {favoriteDialogSql}
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
+    <Dialog
+      open={open}
+      title={t('common.addToFavorites')}
+      onClose={onClose}
+      className="max-w-md"
+      footer={
+        <>
           <Button variant="ghost" className="h-7 px-3 text-xs" onClick={onClose}>
             {t('common.cancel')}
           </Button>
@@ -252,9 +233,30 @@ export function FavoriteNameDialog({
           >
             {t('common.save')}
           </Button>
+        </>
+      }
+    >
+      <div className="mb-2">
+        <label className="mb-1 block text-xs text-fg-muted">{t('query.favoriteTitle')}</label>
+        <input
+          type="text"
+          data-testid="query-favorite-title-input"
+          value={favoriteName}
+          onChange={(e) => onFavoriteNameChange(e.target.value)}
+          placeholder={t('query.favoriteTitlePlaceholder')}
+          className="h-8 w-full rounded border border-edge bg-surface-alt px-2 text-sm text-fg focus:border-accent focus:outline-none"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && favoriteName.trim()) onSave();
+          }}
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs text-fg-muted">SQL</label>
+        <div className="max-h-[120px] overflow-auto rounded border border-edge bg-surface-alt p-2 font-mono text-xs text-fg-secondary">
+          {favoriteDialogSql}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -389,7 +391,7 @@ export function QueryResultsPane({
                 <CopyableError
                   message={explainError}
                   copyButton
-                  className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+                  className="rounded-md border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger"
                 />
               </div>
             )}

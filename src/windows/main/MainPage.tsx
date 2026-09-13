@@ -128,7 +128,7 @@ export function MainPage() {
           className="flex flex-1 flex-col items-center justify-center gap-4 px-6"
           data-testid="welcome-load-error"
         >
-          <p className="select-text text-center text-sm text-red-400">{loadError}</p>
+          <p className="select-text text-center text-sm text-danger">{loadError}</p>
           <Button data-testid="welcome-load-retry" onClick={() => void fetchConnections()}>
             {t('common.retry')}
           </Button>

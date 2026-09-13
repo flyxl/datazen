@@ -9,7 +9,11 @@ export interface QueryExecutionStatusProps {
   showCancel?: boolean;
 }
 
-export function QueryExecutionStatus({ viewModel, onCancel, showCancel = true }: QueryExecutionStatusProps) {
+export function QueryExecutionStatus({
+  viewModel,
+  onCancel,
+  showCancel = true,
+}: QueryExecutionStatusProps) {
   const { t } = useI18n();
   if (viewModel.phase === 'idle') return null;
   const active = viewModel.phase === 'running' || viewModel.phase === 'cancel_requested';
@@ -35,14 +39,20 @@ export function QueryExecutionStatus({ viewModel, onCancel, showCancel = true }:
       {active && <Loader2 className="h-3 w-3 animate-spin" />}
       <span>{phaseLabel}</span>
       {viewModel.elapsedMs != null && <span>{viewModel.elapsedMs} ms</span>}
-      {viewModel.rowCount != null && <span>{viewModel.rowCount} {t('common.rows')}</span>}
+      {viewModel.rowCount != null && (
+        <span>
+          {viewModel.rowCount} {t('common.rows')}
+        </span>
+      )}
       {viewModel.affectedRows != null && (
-        <span>{viewModel.affectedRows} {t('query.affectedRows')}</span>
+        <span>
+          {viewModel.affectedRows} {t('query.affectedRows')}
+        </span>
       )}
       {active && showCancel && (
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-red-300 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
           disabled={!canCancel}
           onClick={onCancel}
           title={

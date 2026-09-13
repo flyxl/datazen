@@ -461,7 +461,7 @@ export function DataTable({
               <button
                 type="button"
                 data-testid="data-table-delete-rows"
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-red-400 hover:bg-surface-raised hover:text-red-300"
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-danger hover:bg-surface-raised hover:text-danger"
                 onClick={() => onDeleteRows(Array.from(selectedRows).sort((a, b) => a - b))}
                 title={t('dataTable.deleteRow')}
               >

@@ -10,6 +10,7 @@ import {
   TableProperties,
 } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
+import { usePlatform } from '../../hooks/usePlatform';
 import {
   estimateExpandedToolbarWidth,
   TOOLBAR_GAP,
@@ -103,6 +104,8 @@ export function ContentToolbar({
     detailPanelApplicable,
   });
   const { ref: toolbarRef, compact } = useCompactToolbar(expandedMinWidth);
+  const platform = usePlatform();
+  const refreshTitle = `${t('connWin.refresh')} (${platform === 'macos' ? '⌘R' : 'Ctrl+R'})`;
 
   return (
     <ToolbarShell ref={toolbarRef} className="h-12 min-h-[48px] px-3">
@@ -181,7 +184,7 @@ export function ContentToolbar({
       <ToolbarButton
         compact
         variant="ghost"
-        title={`${t('connWin.refresh')} (⌘R)`}
+        title={refreshTitle}
         label={t('connWin.refresh')}
         icon={<RefreshCw className="h-3.5 w-3.5" />}
         onClick={onRefresh}
