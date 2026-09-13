@@ -23,11 +23,19 @@ import {
   isScreenshotTraceEnabled,
   saveJourneyScreenshot,
 } from './lib/screenshotTrace.js';
-import { cleanupAppDataViaIpc, seedDefaultPgConnection } from './lib/testDataLifecycle.js';
+import {
+  cleanupAppDataViaIpc,
+  createWorkerDatabase,
+  dropWorkerDatabase,
+  seedDefaultPgConnection,
+} from './lib/testDataLifecycle.js';
 import { ensureMainWindowForIpc, invokeBackend } from './helpers.js';
 import { browser } from '@wdio/globals';
 
 const WD_PORT = parseInt(process.env.E2E_WD_PORT || '4445', 10);
+
+/** Per-worker isolated database name — set in runSessionBootstrap, dropped in after. */
+let _workerDb: string | undefined;
 
 const capabilities: WebdriverIO.Capabilities[] = [{}];
 
@@ -79,7 +87,10 @@ async function runSessionBootstrap() {
       .catch((e: unknown) => done(String(e)));
   });
 
-  await seedDefaultPgConnection(browser);
+  // Create a per-worker isolated PG database so parallel specs never conflict.
+  _workerDb = createWorkerDatabase();
+
+  await seedDefaultPgConnection(browser, _workerDb);
 
   // Reload page so the new language and seeded connections take effect
   await browser.execute(() => location.reload());
@@ -358,6 +369,11 @@ export const config: WebdriverIO.Config = {
       await cleanupAppDataViaIpc(browser);
     } catch (err) {
       console.warn('[e2e-teardown]', err);
+    }
+    // Drop the per-worker isolated database.
+    if (_workerDb) {
+      dropWorkerDatabase(_workerDb);
+      _workerDb = undefined;
     }
   },
 };

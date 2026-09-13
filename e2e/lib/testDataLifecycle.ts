@@ -2,10 +2,137 @@
  * Shared E2E app-data setup / teardown via Tauri IPC.
  * Database reset lives in e2e/setup-e2e-env.sh + e2e/teardown-e2e-env.sh (run.mjs).
  */
+import { execSync } from 'node:child_process';
 import type { Browser } from '@wdio/globals';
 
 type ConnectionRow = { id: string; name?: string };
 type WorkflowRow = { id: string };
+
+// ---------------------------------------------------------------------------
+// Per-worker isolated database lifecycle
+// ---------------------------------------------------------------------------
+// Each WDIO worker creates a disposable PostgreSQL database named
+// `e2e_wd_<N>`.  Specs create their own tables inside; the database is
+// dropped after all specs in the worker finish.
+
+let _workerCounter = 0;
+
+/** PG connection params resolved once from env. */
+function pgConn() {
+  return {
+    host: process.env.E2E_PG_HOST || '127.0.0.1',
+    port: process.env.E2E_PG_PORT || '5432',
+    user: process.env.E2E_PG_USER || process.env.PG_USER || 'wuxiaolong',
+    password: process.env.E2E_PG_PASSWORD || process.env.PG_PASSWORD || '',
+  };
+}
+
+/** SQL-escape a database identifier for use inside psql -c '...' (single-quoted shell string). */
+function q(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Generate a unique worker database name.  Each WDIO worker is a separate
+ * Node.js process, so we combine PID + monotonic counter + random suffix
+ * to guarantee uniqueness even when multiple workers start simultaneously.
+ */
+function workerDbName(): string {
+  const pid = process.pid;
+  const seq = _workerCounter++;
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `e2e_w${pid}_${seq}_${rand}`;
+}
+
+/**
+ * Create a fresh, empty PostgreSQL database for the current worker,
+ * then seed it with the standard E2E fixture tables (product, e2e_contract_*).
+ * Returns the database name (`e2e_wd_0`, `e2e_wd_1`, …).
+ */
+export function createWorkerDatabase(): string {
+  const db = workerDbName();
+  const { host, port, user, password } = pgConn();
+  const env = { ...process.env, PGPASSWORD: password };
+  try {
+    execSync(
+      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE ${q(db)}'`,
+      { env, stdio: 'pipe' },
+    );
+  } catch (err: unknown) {
+    const msg = String(err);
+    if (!msg.includes('already exists')) throw err;
+  }
+
+  // PostgreSQL 15+ no longer grants CREATE on the public schema to PUBLIC.
+  // Ensure the connecting user can create tables in the new database.
+  try {
+    execSync(
+      `psql -h ${host} -p ${port} -U ${user} -d ${q(db)} -v ON_ERROR_STOP=1 -c 'GRANT ALL PRIVILEGES ON SCHEMA public TO PUBLIC; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO PUBLIC; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO PUBLIC;'`,
+      { env, stdio: 'pipe' },
+    );
+  } catch {
+    // best-effort: older PG versions already grant this
+  }
+
+  // Seed standard fixture tables so specs that expect `product` etc. work.
+  const seedSql = `
+CREATE TABLE IF NOT EXISTS product (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT 'item',
+  status TEXT NOT NULL
+);
+DELETE FROM product;
+INSERT INTO product (name, status) VALUES
+  ('Widget', 'active'), ('Gadget', 'active'),
+  ('Thing', 'pending'),  ('Gizmo', 'inactive');
+
+DO $$
+DECLARE table_name text;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'e2e_contract_conn', 'e2e_contract_data', 'e2e_contract_filter',
+    'e2e_contract_edit', 'e2e_contract_struct', 'e2e_contract_index',
+    'e2e_contract_export'
+  ] LOOP
+    EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id SERIAL PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL)', table_name);
+  END LOOP;
+END $$;
+`;
+  try {
+    execSync(`psql -h ${host} -p ${port} -U ${user} -d ${q(db)} -v ON_ERROR_STOP=1`, {
+      env,
+      input: seedSql,
+      stdio: 'pipe',
+    });
+  } catch (err: unknown) {
+    console.warn(`[e2e] seed warning for ${db}:`, String(err).slice(0, 200));
+  }
+
+  console.log(`[e2e] created worker database: ${db}`);
+  return db;
+}
+
+/**
+ * Drop a worker database (best-effort, called in global after hook).
+ */
+export function dropWorkerDatabase(db: string): void {
+  const { host, port, user, password } = pgConn();
+  const env = { ...process.env, PGPASSWORD: password };
+  try {
+    // Terminate existing connections before dropping.
+    execSync(
+      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ${q(db)} AND pid <> pg_backend_pid()'`,
+      { env, stdio: 'pipe' },
+    );
+    execSync(
+      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS ${q(db)}'`,
+      { env, stdio: 'pipe' },
+    );
+    console.log(`[e2e] dropped worker database: ${db}`);
+  } catch {
+    // best-effort
+  }
+}
 
 /** Seeded in global before hook; never deleted by global teardown. */
 export const KEEP_CONNECTION_IDS = new Set(['conn_e2e_pg']);
@@ -46,13 +173,16 @@ async function invoke<T>(
   return result as T;
 }
 
-/** Upsert a second PG connection for schema-diff / sync window specs. */
-export async function seedSecondPgConnection(browser: Browser): Promise<void> {
+/**
+ * Upsert a second PG connection for schema-diff / sync window specs.
+ * @param workerDb  Optional per-worker database name (overrides env).
+ */
+export async function seedSecondPgConnection(browser: Browser, workerDb?: string): Promise<void> {
   const pgHost = process.env.E2E_PG_HOST || process.env.PG_HOST || '127.0.0.1';
   const pgPort = Number(process.env.E2E_PG_PORT || process.env.PG_PORT) || 5432;
   const pgUser = process.env.E2E_PG_USER || process.env.PG_USER || 'postgres';
   const pgPassword = process.env.E2E_PG_PASSWORD || process.env.PG_PASSWORD || '';
-  const pgDatabase = process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
+  const pgDatabase = workerDb || process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
 
   await browser.executeAsync(
     (
@@ -89,13 +219,16 @@ export async function seedSecondPgConnection(browser: Browser): Promise<void> {
   );
 }
 
-/** Upsert the default PostgreSQL connection used by most DB specs. */
-export async function seedDefaultPgConnection(browser: Browser): Promise<void> {
+/**
+ * Upsert the default PostgreSQL connection used by most DB specs.
+ * @param workerDb  Optional per-worker database name (overrides env).
+ */
+export async function seedDefaultPgConnection(browser: Browser, workerDb?: string): Promise<void> {
   const pgHost = process.env.E2E_PG_HOST || process.env.PG_HOST || '127.0.0.1';
   const pgPort = Number(process.env.E2E_PG_PORT || process.env.PG_PORT) || 5432;
   const pgUser = process.env.E2E_PG_USER || process.env.PG_USER || 'postgres';
   const pgPassword = process.env.E2E_PG_PASSWORD || process.env.PG_PASSWORD || '';
-  const pgDatabase = process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
+  const pgDatabase = workerDb || process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
   const pgSchema = process.env.E2E_WORKER_SCHEMA || undefined;
 
   await browser.executeAsync(

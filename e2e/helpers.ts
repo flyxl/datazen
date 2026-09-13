@@ -950,6 +950,38 @@ export async function executeSQL(sql: string) {
   return executeSqlInEditor(sql);
 }
 
+/**
+ * Like `executeSQL` but **throws** when the backend reports a PostgreSQL error.
+ * Use in `before` / `after` hooks where silent failures would cascade into
+ * confusing downstream timeouts.
+ */
+export async function executeSQLChecked(sql: string) {
+  await executeSQL(sql);
+  // The regular executeSQL swallows errors; re-read the result panel for
+  // any SQL error text that appeared after execution.
+  const errorText = await browser.execute(() => {
+    // Look for the error panel/result message in the DOM.
+    const selectors = [
+      '[data-testid="result-message-content"]',
+      '[data-testid="result-panel"] [class*="text-red"]',
+      '[class*="result"][class*="error"]',
+      '[data-testid="query-result-error"]',
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      const text = el?.textContent?.trim();
+      if (text && /error|failed|不存在|denied/i.test(text)) return text;
+    }
+    // Fallback: search body for the error pattern near "Query failed".
+    const body = document.body.textContent ?? '';
+    const m = body.match(/(error returned from database[^\n]{0,200}|Query failed[^\n]{0,200})/i);
+    return m?.[0] ?? '';
+  });
+  if (errorText && /error|failed|不存在|denied/i.test(errorText)) {
+    throw new Error(`SQL 执行失败:\n${errorText}\nSQL: ${sql.trim().slice(0, 200)}`);
+  }
+}
+
 async function executeSqlInEditor(sql: string) {
   await setEditorContent(sql);
   // Stable E2E locator (vite-gated data-testid, see src/lib/tid.ts) — survives i18n switching.
@@ -1233,12 +1265,19 @@ export async function expandSchemaTableCategory(schemaName?: string, dbName?: st
   await expandSchemaCategory('tables', schemaName, dbName);
 }
 
-/** Expand db → schema → a specific object category in the navigator tree. */
+/**
+ * Expand db → [schema →] a specific object category in the navigator tree.
+ *
+ * Handles two tree shapes:
+ *  1. Multi-schema: db → schema node(s) → category  (e.g. MySQL)
+ *  2. Single-schema: db → category  (PG when all objects are in public;
+ *     the frontend collapses the schema layer via groupBySchema → null).
+ */
 export async function expandSchemaCategory(catId: string, schemaName?: string, dbName?: string) {
   const targetSchema = schemaName || process.env.E2E_WORKER_SCHEMA || 'public';
-  // Step 1: expand the db node, then wait for its schema children to mount.
-  // toggleDb fetches the table list asynchronously; on a cold start the
-  // schema rows arrive well after a fixed pause, so poll for them instead.
+
+  // Step 1: expand the db node, then wait for either schema children or
+  // the category rows to appear directly under the db.
   await browser.execute((db?: string) => {
     const isCollapsed = (el: Element) => {
       const expanded = el.getAttribute('aria-expanded');
@@ -1256,21 +1295,41 @@ export async function expandSchemaCategory(catId: string, schemaName?: string, d
         ) ?? dbs[0]);
     if (targetDb instanceof HTMLElement && isCollapsed(targetDb)) targetDb.click();
   }, dbName);
-  await browser.waitUntil(
+
+  // Poll for up to 10s: either a schema node appears, or the category
+  // appears directly under the db (single-schema flattening).
+  const hasSchemaOrCategory = await browser.waitUntil(
     async () =>
-      browser.execute((schema: string) => {
-        const schemas = Array.from(
-          document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="schema"]'),
-        );
-        const targets = [schema.toLowerCase()];
-        if (schema.toLowerCase() !== 'public') targets.push('public');
-        return targets.some((t) => schemas.some((el) => el.textContent?.toLowerCase().includes(t)));
-      }, targetSchema),
-    { timeout: 20000, timeoutMsg: '等待 schema 节点挂载超时' },
+      browser.execute(
+        (schema: string, category: string) => {
+          const schemaNodes = Array.from(
+            document.querySelectorAll('[data-testid="schema-tree-node"][data-tree-node="schema"]'),
+          );
+          // Case 1: schema node present — any match is fine.
+          const targets = [schema.toLowerCase()];
+          if (schema.toLowerCase() !== 'public') targets.push('public');
+          if (
+            targets.some((t) => schemaNodes.some((el) => el.textContent?.toLowerCase().includes(t)))
+          ) {
+            return 'schema';
+          }
+          // Case 2: no schema layer — check if category is directly under db.
+          const cats = document.querySelectorAll(
+            `[data-testid="schema-tree-node"][data-tree-node="category"][data-cat-id="${category}"]`,
+          );
+          if (cats.length > 0) return 'category';
+          return false;
+        },
+        targetSchema,
+        catId,
+      ),
+    { timeout: 10000, timeoutMsg: '等待 schema 节点或 category 节点挂载超时' },
   );
-  // Step 2: expand schema → category now that the rows exist.
-  await browser.execute(
-    (category: string, schema: string, db?: string) => {
+
+  // Step 2a: expand the schema node (if in multi-schema mode) and wait
+  // for React to re-render the category children.
+  if (hasSchemaOrCategory === 'schema') {
+    await browser.execute((schema: string) => {
       const isCollapsed = (el: Element) => {
         const expanded = el.getAttribute('aria-expanded');
         if (expanded !== null) return expanded !== 'true';
@@ -1289,17 +1348,30 @@ export async function expandSchemaCategory(catId: string, schemaName?: string, d
         const match = schemas.find((el) => el.textContent?.toLowerCase().includes(t));
         expandIfCollapsed(match);
       }
-      for (const cat of document.querySelectorAll(
-        `[data-testid="schema-tree-node"][data-tree-node="category"][data-cat-id="${category}"]`,
-      )) {
-        expandIfCollapsed(cat);
-      }
-    },
-    catId,
-    targetSchema,
-    dbName,
-  );
-  await browser.pause(800);
+    }, targetSchema);
+    // Wait for React to mount the category children after the schema click.
+    await browser.pause(600);
+  }
+
+  // Step 2b: now expand the category node(s) — categories are in the DOM
+  // after the schema re-render.
+  await browser.execute((category: string) => {
+    const isCollapsed = (el: Element) => {
+      const expanded = el.getAttribute('aria-expanded');
+      if (expanded !== null) return expanded !== 'true';
+      const cls = el.querySelector('svg')?.getAttribute('class') ?? '';
+      return cls.includes('chevron-right');
+    };
+    const expandIfCollapsed = (el: Element | null | undefined) => {
+      if (el instanceof HTMLElement && isCollapsed(el)) el.click();
+    };
+    for (const cat of document.querySelectorAll(
+      `[data-testid="schema-tree-node"][data-tree-node="category"][data-cat-id="${category}"]`,
+    )) {
+      expandIfCollapsed(cat);
+    }
+  }, catId);
+  await browser.pause(600);
 }
 
 async function setNavigatorSearch(query: string) {

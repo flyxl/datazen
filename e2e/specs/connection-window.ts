@@ -5,6 +5,7 @@ import {
   closeExtraWindows,
   openQueryTab,
   executeSQL,
+  executeSQLChecked,
   clickTableInSidebar,
   switchSubTab,
   waitForSchemaTreeLoaded,
@@ -13,6 +14,8 @@ import {
   rightClickTableInSidebar,
   waitForWebContextMenuItems,
   dismissWebContextMenu,
+  expandConnectedConnectionInNavigator,
+  expandSchemaTableCategory,
 } from '../helpers.js';
 
 const TEST_PARENT = '_e2e_idx_parent';
@@ -81,15 +84,15 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(1500);
 
     await openQueryTab();
-    await executeSQL(`DROP TABLE IF EXISTS ${TEST_CHILD}`);
-    await executeSQL(`DROP TABLE IF EXISTS ${TEST_PARENT}`);
-    await executeSQL(`
+    await executeSQLChecked(`DROP TABLE IF EXISTS ${TEST_CHILD}`);
+    await executeSQLChecked(`DROP TABLE IF EXISTS ${TEST_PARENT}`);
+    await executeSQLChecked(`
       CREATE TABLE ${TEST_PARENT} (
         id SERIAL PRIMARY KEY,
         code VARCHAR(50) UNIQUE NOT NULL
       )
     `);
-    await executeSQL(`
+    await executeSQLChecked(`
       CREATE TABLE ${TEST_CHILD} (
         id SERIAL PRIMARY KEY,
         parent_id INT NOT NULL,
@@ -100,11 +103,11 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
           REFERENCES ${TEST_PARENT}(id) ON DELETE CASCADE ON UPDATE CASCADE
       )
     `);
-    await executeSQL(`CREATE INDEX idx_child_name ON ${TEST_CHILD}(name)`);
-    await executeSQL(`CREATE UNIQUE INDEX idx_child_email ON ${TEST_CHILD}(email)`);
-    await executeSQL(`CREATE INDEX idx_child_name_score ON ${TEST_CHILD}(name, score)`);
-    await executeSQL(`INSERT INTO ${TEST_PARENT}(code) VALUES ('P001'), ('P002')`);
-    await executeSQL(`
+    await executeSQLChecked(`CREATE INDEX idx_child_name ON ${TEST_CHILD}(name)`);
+    await executeSQLChecked(`CREATE UNIQUE INDEX idx_child_email ON ${TEST_CHILD}(email)`);
+    await executeSQLChecked(`CREATE INDEX idx_child_name_score ON ${TEST_CHILD}(name, score)`);
+    await executeSQLChecked(`INSERT INTO ${TEST_PARENT}(code) VALUES ('P001'), ('P002')`);
+    await executeSQLChecked(`
       INSERT INTO ${TEST_CHILD}(parent_id, name, email, score) VALUES
         (1, 'Alice', 'alice@test.com', 90),
         (2, 'Bob', 'bob@test.com', 85)
@@ -113,6 +116,12 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
     await browser.pause(2000);
+
+    // Refresh rebuilds the tree DOM and collapses expansion state.
+    // Re-expand so subsequent tests can find individual table nodes.
+    await expandConnectedConnectionInNavigator();
+    await expandSchemaTableCategory();
+    await browser.pause(500);
   });
 
   after(async () => {
@@ -156,12 +165,8 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('点击表名应打开数据标签页 (DB-002, DB-007)', async () => {
-    // The fixture creates two tables; target the child table explicitly so
-    // this journey does not depend on virtualized navigator ordering.
     const tableName = TEST_CHILD;
     await clickTableInSidebar(tableName);
-
-    await browser.pause(2000);
     const dataTab = await $("[data-testid='sub-tab-data']");
     await dataTab.waitForDisplayed({ timeout: 8000 });
     await expect(dataTab).toBeDisplayed();
