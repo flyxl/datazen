@@ -105,10 +105,12 @@
     <section class="hero">
       <div class="wrap">
         <span class="hero-badge"><span class="dot"></span>Free &amp; Open Source</span>
-        <h1>An <span class="grad">AI database workspace</span><br />for developers and agents.</h1>
+        <h1>
+          Write SQL, fix errors, connect AI agents<br /><span class="grad">under 15 MB.</span>
+        </h1>
         <p class="lead">
-          Query, diagnose, visualize, migrate and automate your databases from one desktop app —
-          with AI and MCP built into the real workflow.
+          Natural-language SQL, one-click error diagnosis, EXPLAIN analysis, cross-database
+          workflows, and a built-in MCP server — all in one lightweight desktop app.
         </p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" id="hero-download" href="download.html"
@@ -122,14 +124,15 @@
             >View on GitHub <span id="star-count" class="star-badge"></span
           ></a>
         </div>
-        <p class="hero-note">Free · Open source · macOS / Windows / Linux</p>
+        <p class="hero-note">
+          Free · Open source · No account · BYO AI provider · macOS / Windows / Linux
+        </p>
         <p class="hero-note" id="hero-notarize-note" style="display: none">
           <strong>macOS note:</strong> If you see "damaged or cannot verify", run
           <code>xattr -cr /Applications/DataZen.app</code> then right-click → Open.
         </p>
-        <p class="hero-note">Bring your own AI provider and keep provider access under your control.</p>
 
-        <!-- Live demo: NL → SQL → result → chart -->
+        <!-- Live demo: onboarding → query → chart → AI -->
         <div class="hero-shot">
           <div class="shot-frame">
             <div class="bar"><i></i><i></i><i></i><span>DataZen</span></div>
@@ -166,13 +169,49 @@
       </div>
     </section>
 
+    <!-- Scenario navigation — what you can do -->
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">What you can do</span>
+          <h2>Four ways DataZen speeds up your database work</h2>
+        </div>
+        <div class="grid-4">
+          <a class="card" href="ai.html" style="display: block">
+            <div class="icon" aria-hidden="true"><i data-lucide="search"></i></div>
+            <h3>Track down slow queries</h3>
+            <p>EXPLAIN visualization + AI analysis pinpoints bottlenecks in seconds.</p>
+          </a>
+          <a class="card" href="features.html#mcp" style="display: block">
+            <div class="icon" aria-hidden="true"><i data-lucide="satellite-dish"></i></div>
+            <h3>Connect AI agents to your DB</h3>
+            <p>Built-in MCP server — Claude, Cursor and other agents query your data directly.</p>
+          </a>
+          <a class="card" href="workflow.html" style="display: block">
+            <div class="icon" aria-hidden="true"><i data-lucide="repeat"></i></div>
+            <h3>Automate daily reports</h3>
+            <p>YAML workflows run queries, AI steps and exports on autopilot.</p>
+          </a>
+          <a class="card" href="ai.html" style="display: block">
+            <div class="icon" aria-hidden="true"><i data-lucide="sparkles"></i></div>
+            <h3>Write SQL with AI</h3>
+            <p>Natural language → SQL, one-click error fix, schema-aware context.</p>
+          </a>
+        </div>
+      </div>
+    </section>
+
     <!-- Product loop -->
     <section class="section-tight">
       <div class="wrap stats-band">
-        <div class="stat"><b>Understand</b><span>SQL, schema, ER diagrams, Redis</span></div>
-        <div class="stat"><b>Fix</b><span>AI diagnosis, EXPLAIN, safe editing</span></div>
-        <div class="stat"><b>Move</b><span>backup, sync, transfer, schema diff</span></div>
-        <div class="stat"><b>Automate</b><span>Workflows, dashboards, MCP</span></div>
+        <div class="stat">
+          <b>Write</b><span>Natural-language SQL · schema-aware suggestions</span>
+        </div>
+        <div class="stat">
+          <b>Fix</b><span>AI diagnosis · EXPLAIN analysis · safe editing</span>
+        </div>
+        <div class="stat"><b>See</b><span>Charts · ER diagrams · Redis introspection</span></div>
+        <div class="stat"><b>Automate</b><span>Workflows · dashboards · MCP server</span></div>
       </div>
     </section>
 
@@ -375,7 +414,7 @@
             <tr>
               <th scope="col">&nbsp;</th>
               <th scope="col">DataZen</th>
-              <th scope="col">Traditional database clients</th>
+              <th scope="col">DBeaver / Navicat / DataGrip</th>
             </tr>
           </thead>
           <tbody>
@@ -395,14 +434,14 @@
               <td class="no">—</td>
             </tr>
             <tr>
-              <td>No account — open source and provider-neutral</td>
+              <td>SQL safety guard — high-risk statement interception</td>
               <td class="yes">✓</td>
-              <td class="no">Varies</td>
+              <td class="no">—</td>
             </tr>
             <tr>
               <td>Charts on any result set</td>
               <td class="yes">✓</td>
-              <td class="no">Varies</td>
+              <td class="no">Plugin or paid</td>
             </tr>
             <tr>
               <td>Installer size</td>
@@ -431,12 +470,12 @@
         </div>
         <div class="grid-3">
           <div class="card">
-            <div class="icon" aria-hidden="true">⚡</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="zap"></i></div>
             <h3>Under 15 MB</h3>
             <p>Tiny installer, near-instant startup — far lighter than typical heavy clients.</p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">🛡️</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="shield-check"></i></div>
             <h3>Your data stays local</h3>
             <p>
               DataZen operates no cloud database service. Credentials are AES-encrypted in the OS
@@ -444,7 +483,7 @@
             </p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">🔌</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="plug"></i></div>
             <h3>Bring your own AI provider</h3>
             <p>
               OpenAI, Anthropic, DeepSeek or a custom endpoint — you choose exactly where requests
@@ -452,19 +491,19 @@
             </p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">👤</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="user"></i></div>
             <h3>No account required</h3>
             <p>Download, install, connect. Nothing to sign up for, nothing phoning home.</p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">🧩</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="puzzle"></i></div>
             <h3>Extensible drivers</h3>
             <p>
               PostgreSQL, MySQL, SQLite, Redis built in. Add OLAP and specialty engines via plugins.
             </p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">📖</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="book-open"></i></div>
             <h3>Free &amp; open source</h3>
             <p>Licensed under GPLv3 — audit the full source on GitHub at any time.</p>
           </div>
@@ -587,9 +626,7 @@
           </div>
           <div class="card">
             <h3>Does data leave my device?</h3>
-            <p>
-              AI requests go only to the provider and endpoint you configure.
-            </p>
+            <p>AI requests go only to the provider and endpoint you configure.</p>
           </div>
           <div class="card">
             <h3>Can AI agents use it?</h3>
@@ -622,8 +659,8 @@
         <div class="cta-band">
           <h2>One workspace for the database work that follows every query</h2>
           <p>
-            Download free, connect a database, and move from your first query to a repeatable workflow
-            in minutes.
+            Download free, connect a database, and move from your first query to a repeatable
+            workflow in minutes.
           </p>
           <a class="btn btn-primary btn-lg" href="download.html">Download DataZen — Free</a>
           <p class="muted" style="font-size: 13px; margin-top: 14px">
@@ -644,12 +681,7 @@
               >Changelog</a
             >
             ·
-            <a
-              href="manual.html"
-              target="_blank"
-              rel="noopener"
-              >User manual</a
-            >
+            <a href="manual.html" target="_blank" rel="noopener">User manual</a>
           </p>
         </div>
       </div>

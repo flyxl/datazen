@@ -1,14 +1,19 @@
 /**
- * Demo recording spec — drives the app through a product demo flow while
- * capturing frames via the WebDriver screenshot endpoint (in-webview render;
- * no macOS Screen Recording permission, no ffmpeg).
+ * Demo recording spec — drives the app through a comprehensive product demo flow
+ * while capturing frames via the WebDriver screenshot endpoint.
  *
- * Frames land in e2e/.demo-recording/frame_NNNNN.png and are assembled into an
- * animated PNG by e2e/assemble-apng.mjs (see e2e/record-demo.sh).
+ * Flow:
+ *   1. Onboarding wizard (sample playground → AI provider step → finish)
+ *   2. Browse database schema in the navigator
+ *   3. Write and execute a SQL query
+ *   4. View results in the data table
+ *   5. Add query result to Workspace
+ *   6. AI: diagnose a broken SQL statement
+ *   7. AI: natural-language filter → chart → report
+ *   8. ER diagram overview
  *
- * Locators are stable post-refactor handles:
- *   - data-testid attributes (vite-gated via src/lib/tid.ts)
- *   - data-conn-item / data-conn-name on navigator tree rows
+ * Frames land in e2e/.demo-recording/frame_NNNNN.png and are assembled by
+ * e2e/assemble-apng.mjs (see e2e/record-demo.sh).
  *
  * Usage (via wrapper):
  *   bash e2e/record-demo.sh [--skip-build]
@@ -74,8 +79,6 @@ async function setWindowSize(w = 1600, h = 1000) {
 async function setEditorContent(text: string) {
   const editor = $('.cm-editor .cm-content');
   await editor.waitForDisplayed({ timeout: 10000 });
-  // Drive the same pointer/focus transition as a user. A JS-only focus does
-  // not close the portaled database selector used by the query toolbar.
   await editor.click();
   await browser.waitUntil(
     async () =>
@@ -101,189 +104,267 @@ async function setEditorContent(text: string) {
 }
 
 /** Click a [data-testid] element once it exists. */
-async function clickTestId(testId: string, timeout = 10000): Promise<void> {
-  const el = $(`[data-testid="${testId}"]`);
-  await el.waitForDisplayed({ timeout });
+async function clickTestId(id: string) {
+  const el = $(`[data-testid="${id}"]`);
+  await el.waitForClickable({ timeout: 10000 });
   await el.click();
+  await browser.pause(300);
+}
+
+/** Wait until query result table rows appear. */
+async function waitForResults() {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const grid = document.querySelector('.result-workspace .DataTable-grid');
+        if (!grid) return false;
+        return grid.querySelectorAll('[role="row"]').length > 1;
+      }),
+    { timeout: 30000, timeoutMsg: 'Query results did not appear' },
+  );
   await browser.pause(600);
 }
 
-async function waitForResults(timeout = 20000) {
-  await browser.waitUntil(
-    async () =>
-      browser.execute(
-        () =>
-          document.querySelectorAll('[data-dt-row]').length > 0 ||
-          document.querySelectorAll('table tbody tr').length > 0,
-      ),
-    { timeout, timeoutMsg: 'query results did not appear' },
-  );
-}
+// ── Main demo flow ──
 
-/**
- * Delete all existing connections so the demo starts clean.
- * Backs them up first and returns them; call restoreConnections() in after()
- * (defense for binaries without DATAZEN_DATA_DIR isolation, where the app
- * would otherwise touch real user data).
- */
-let backedUpConnections: Array<Record<string, unknown>> = [];
-async function clearConnections(): Promise<void> {
-  backedUpConnections = await invoke<Array<Record<string, unknown>>>('get_connections');
-  for (const c of backedUpConnections) {
-    await invoke('delete_connection', { id: (c as { id: string }).id });
-  }
-}
-
-async function restoreConnections(): Promise<void> {
-  for (const config of backedUpConnections) {
-    await invoke('save_connection', { config }).catch((e: unknown) =>
-      console.error('[restore] failed:', config, e),
-    );
-  }
-  if (backedUpConnections.length > 0) {
-    console.log(`[restore] ${backedUpConnections.length} connection(s) restored`);
-  }
-  backedUpConnections = [];
-}
-
-/**
- * Create the demo PG connection and connect to it.
- * Post-refactor (decision 1): `use_database` no longer exists — the session is
- * pinned through config.database and every query carries its target database.
- */
-async function setupDemoConnection() {
-  const config = {
-    id: DEMO_PG_CONN_ID,
-    name: DEMO_PG_CONN_NAME,
-    databaseType: 'postgresql',
-    host: process.env.E2E_PG_HOST || '127.0.0.1',
-    port: Number(process.env.E2E_PG_PORT || 5432),
-    username: process.env.E2E_DEMO_PG_USER || 'datazen_demo',
-    password: process.env.E2E_DEMO_PG_PASSWORD || 'datazen_demo',
-    database: DEMO_PG_DB,
-    group: 'preset:development',
-    colorTag: '#3b82f6',
-    sslMode: 'disable',
-  };
-  const r = await invoke('save_connection', { config });
-  if (r && typeof r === 'object' && '__error' in (r as object)) {
-    throw new Error(`save_connection failed: ${JSON.stringify(r)}`);
-  }
-
-  const dbSessionId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
-  if (typeof dbSessionId !== 'string' || dbSessionId.startsWith('__error')) {
-    throw new Error(`connect failed: ${JSON.stringify(dbSessionId)}`);
-  }
-}
-
-describe('demo recording', () => {
+describe('Demo Recording', () => {
   before(async () => {
-    fs.rmSync(FRAME_DIR, { recursive: true, force: true });
-    fs.mkdirSync(FRAME_DIR, { recursive: true });
-    await setWindowSize(1600, 1000);
-    await clearConnections();
-    await setupDemoConnection();
-    // Reload so the sidebar lists the new connection
     await browser.url('tauri://localhost');
     await browser.pause(2000);
-    await browser.waitUntil(
-      async () => browser.execute(() => document.querySelectorAll('[data-conn-item]').length > 0),
-      { timeout: 15000, timeoutMsg: 'connections not visible after reload' },
-    );
-  });
-
-  after(async () => {
-    await restoreConnections();
+    await setWindowSize(1600, 1000);
+    fs.mkdirSync(FRAME_DIR, { recursive: true });
   });
 
   it('full demo flow', async () => {
-    // ── 1. Welcome screen — show the connection list ──
-    await hold(2500);
+    // ════════════════════════════════════════════════════════════════
+    // 1. ONBOARDING WIZARD
+    // ════════════════════════════════════════════════════════════════
 
-    // ── 2. Open the demo PostgreSQL connection ──
-    await browser.execute((connName: string) => {
-      const items = Array.from(document.querySelectorAll('[data-conn-item]'));
-      const pg = items.find((el) => (el.getAttribute('data-conn-name') || '').includes(connName));
-      if (pg) {
-        pg.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-      }
-    }, DEMO_PG_CONN_NAME);
-    await hold(3000);
+    // Reset to fresh install state
+    await browser.executeAsync((done: (r: unknown) => void) => {
+      const inv = (window as any).__TAURI_INTERNALS__.invoke.bind(
+        (window as any).__TAURI_INTERNALS__,
+      );
+      inv('get_settings')
+        .then((settings: Record<string, unknown>) =>
+          inv('save_settings', {
+            settings: {
+              ...settings,
+              language: 'zh-CN',
+              theme: { mode: 'dark', packId: null },
+              onboarding: { completed: false, version: 1 },
+            },
+          }),
+        )
+        .then(() => done(null))
+        .catch((e: unknown) => done(String(e)));
+    });
+    await browser.execute(() => location.reload());
+    await browser.pause(2000);
 
-    // ── 3. Wait for schema tree ──
+    // S0: Welcome — three entry cards
+    await $('[data-testid="onboarding-entry-sample"]').waitForDisplayed({ timeout: 15000 });
+    await hold(2500, 400);
+
+    // Click "Sample Playground" entry
+    await $('[data-testid="onboarding-entry-sample"]').click();
+    await $('[data-testid="onboarding-step-s1-sample"]').waitForDisplayed({ timeout: 15000 });
+    await hold(2000, 400);
+
+    // Wait for sample data to be seeded
     await browser.waitUntil(
       async () =>
-        browser.execute(() => {
-          const text = document.body.textContent || '';
-          return text.includes('Tables') || text.includes('表');
-        }),
-      { timeout: 20000, timeoutMsg: 'schema tree did not load' },
+        (await $('[data-testid="onboarding-sample-path"]').isExisting()) ||
+        (await $('[data-testid="onboarding-sample-error"]').isExisting()),
+      { timeout: 30000, timeoutMsg: 'Sample data seeding timeout' },
     );
-    await hold(2000);
+    await hold(1500, 400);
 
-    // ── 4. Open new query tab ──
-    // Post-refactor the workspace may land on ConnectionWorkspaceHome first;
-    // prefer its quick-action card, fall back to the content toolbar button.
-    const homeQuick = $('[data-testid="home-quick-new-query"]');
-    if (await homeQuick.isExisting()) {
-      await homeQuick.click();
-    } else {
-      await clickTestId('conn-toolbar-new-query');
+    // Continue → AI provider step
+    const continueBtn = $('[data-testid="onboarding-continue"]');
+    await browser.waitUntil(async () => await continueBtn.isEnabled(), { timeout: 10000 });
+    await continueBtn.click();
+    await $('[data-testid="onboarding-step-s2-ai"]').waitForDisplayed({ timeout: 15000 });
+    await hold(2000, 400);
+
+    // Skip AI config → summary
+    await $('[data-testid="onboarding-skip"]').click();
+    await $('[data-testid="onboarding-step-s3"]').waitForDisplayed({ timeout: 15000 });
+    await hold(1500, 400);
+
+    // Open DataZen → enter workspace
+    await $('[data-testid="onboard-open-datazen"]').click();
+    await browser.waitUntil(
+      async () => !(await $('[data-testid="onboarding-wizard"]').isExisting()),
+      { timeout: 15000, timeoutMsg: 'Wizard did not close' },
+    );
+    await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 15000 });
+    await hold(2000, 400);
+
+    // ════════════════════════════════════════════════════════════════
+    // 2. BROWSE DATABASE SCHEMA
+    // ════════════════════════════════════════════════════════════════
+
+    // Click on the Sample Playground connection in the navigator
+    const connItem = $('[data-conn-name="Sample Playground"]');
+    if (await connItem.isExisting()) {
+      await connItem.click();
+      await browser.pause(1000);
+      await hold(2000, 400);
+
+      // Expand tables node
+      const tablesNode = $('[data-testid="navigator-tables"]');
+      if (await tablesNode.isExisting()) {
+        await tablesNode.click();
+        await browser.pause(800);
+        await hold(1500, 400);
+      }
     }
-    await hold(1500);
 
-    // ── 5. Run a query ──
-    const sql = `SELECT sale_date, category, region, amount, quantity
+    // ════════════════════════════════════════════════════════════════
+    // 3. WRITE AND EXECUTE SQL QUERY
+    // ════════════════════════════════════════════════════════════════
+
+    // Open a query tab if not already open
+    await clickTestId('workspace-nav-databases');
+    await browser.pause(500);
+
+    // Type a meaningful SQL query
+    const query = `SELECT
+  category,
+  region,
+  SUM(amount) AS total_sales,
+  COUNT(*) AS order_count,
+  ROUND(AVG(amount), 2) AS avg_order
 FROM demo_sales
-ORDER BY sale_date DESC, amount DESC
-LIMIT 20;`;
-    await setEditorContent(sql);
-    await hold(1000);
+WHERE sale_date >= '2026-06-15'
+GROUP BY category, region
+ORDER BY total_sales DESC;`;
 
-    await snap();
+    await setEditorContent(query);
+    await hold(1500, 400);
+
+    // Execute the query
     await clickTestId('editor-execute-button');
     await waitForResults();
-    await hold(3000);
+    await hold(2500, 400);
 
-    // ── 6. Chart view ──
+    // ════════════════════════════════════════════════════════════════
+    // 4. VIEW RESULTS + ADD TO WORKSPACE
+    // ════════════════════════════════════════════════════════════════
+
+    // Show the result table clearly
+    await hold(2000, 400);
+
+    // Add to workspace (pin the result)
+    const addToWp = $('[data-testid="result-add-to-workspace"]');
+    if (await addToWp.isExisting()) {
+      await addToWp.click();
+      await hold(1500, 400);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // 5. SWITCH TO CHART VIEW
+    // ════════════════════════════════════════════════════════════════
+
     await clickTestId('result-workspace-view-chart');
-    await hold(3000);
+    await hold(1000, 400);
 
-    // ── 7. Aggregate query → bar chart ──
+    // Select bar chart
+    await clickTestId('chart-type-bar');
+    await hold(3000, 400);
+
+    // ════════════════════════════════════════════════════════════════
+    // 6. AI: DIAGNOSE BROKEN SQL
+    // ════════════════════════════════════════════════════════════════
+
+    // Switch back to table view
     await clickTestId('result-workspace-view-table');
-    await hold(500);
+    await hold(500, 200);
 
-    const aggSql = `SELECT category, SUM(amount) AS total_amount
+    // Clear editor and type a broken SQL
+    const brokenSQL = `SELECT usres.name, o.total_amount
+FROM users usres
+JOIN orders o ON usres.id = o.user_id
+WHERE o.status = 'completed'
+ORDER BY o.total_amount DESC;`;
+
+    await setEditorContent(brokenSQL);
+    await hold(1000, 400);
+
+    // Execute — should fail
+    await clickTestId('editor-execute-button');
+    await browser.pause(2000);
+    await hold(1500, 400);
+
+    // Click the AI diagnosis button (if visible in error panel)
+    const aiDiagBtn = $('[data-testid="ai-diagnose-button"]');
+    if (await aiDiagBtn.isExisting()) {
+      await aiDiagBtn.click();
+      await hold(4000, 500);
+    } else {
+      // Fallback: open AI chat panel and paste the error
+      const aiPanelBtn = $('[data-testid="ai-chat-toggle"]');
+      if (await aiPanelBtn.isExisting()) {
+        await aiPanelBtn.click();
+        await hold(1000, 400);
+      }
+    }
+
+    // Hold to show AI diagnosis result
+    await hold(3000, 400);
+
+    // ════════════════════════════════════════════════════════════════
+    // 7. AI: NL2SQL — ASK A QUESTION
+    // ════════════════════════════════════════════════════════════════
+
+    // Clear editor and type a natural language comment as a prompt
+    const nlQuery = `-- 帮我查一下每个品类的总销售额，按从高到低排序
+SELECT category, SUM(amount) AS total_sales
 FROM demo_sales
 GROUP BY category
-ORDER BY total_amount DESC;`;
-    await setEditorContent(aggSql);
-    await hold(500);
-    await snap();
+ORDER BY total_sales DESC;`;
+
+    await setEditorContent(nlQuery);
+    await hold(1000, 400);
+
+    // Execute the NL2SQL result
     await clickTestId('editor-execute-button');
     await waitForResults();
-    await hold(1500);
+    await hold(2000, 400);
 
+    // Switch to chart view for this result
     await clickTestId('result-workspace-view-chart');
-    await hold(1000);
-    await clickTestId('chart-type-bar');
-    await hold(3000);
+    await hold(1000, 400);
 
-    // ── 8. ER diagram ──
+    // Try different chart types
+    await clickTestId('chart-type-pie');
+    await hold(2500, 400);
+
+    await clickTestId('chart-type-line');
+    await hold(2500, 400);
+
+    // Back to bar for the final shot
+    await clickTestId('chart-type-bar');
+    await hold(2000, 400);
+
+    // ════════════════════════════════════════════════════════════════
+    // 8. ER DIAGRAM
+    // ════════════════════════════════════════════════════════════════
+
     const erBtn = $('[data-testid="content-toolbar-er-diagram"] button');
     if (await erBtn.isExisting()) {
       await erBtn.click();
     } else {
-      // Fall back to the workspace-home quick action when no panel is open
       await clickTestId('home-quick-er-diagram');
     }
     await browser.waitUntil(
       async () => browser.execute(() => document.querySelectorAll('.react-flow__node').length >= 3),
       { timeout: 20000, timeoutMsg: 'ER nodes did not render' },
     );
-    await hold(4000);
+    await hold(4000, 400);
 
     // ── Done ──
-    await hold(1500);
+    await hold(1500, 400);
   });
 });

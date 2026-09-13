@@ -105,9 +105,12 @@
     <section class="hero">
       <div class="wrap">
         <span class="hero-badge"><span class="dot"></span>免费 · 开源</span>
-        <h1>面向开发者与 AI Agent 的<br /><span class="grad">AI 数据库工作台</span>。</h1>
+        <h1>
+          写 SQL、修错误、接入 AI Agent<br /><span class="grad">一个不到 15 MB 的桌面应用。</span>
+        </h1>
         <p class="lead">
-          查询、排障、可视化、迁移、自动化——AI 与 MCP 都在同一条真实数据库工作流里。
+          自然语言写 SQL、一键错误诊断、EXPLAIN 可视化、跨库 Workflow、内置 MCP
+          Server——一个轻量级桌面应用全部搞定。
         </p>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" id="hero-download" href="download.html"
@@ -121,14 +124,12 @@
             >在 GitHub 查看 <span id="star-count" class="star-badge"></span
           ></a>
         </div>
-        <p class="hero-note">免费 · 开源 · macOS / Windows / Linux</p>
+        <p class="hero-note">免费 · 开源 · 无需账号 · BYO AI 服务商 · macOS / Windows / Linux</p>
         <p class="hero-note" id="hero-notarize-note" style="display: none">
           <strong>macOS 提示：</strong>如果提示"已损坏"或"无法验证"，运行
           <code>xattr -cr /Applications/DataZen.app</code> 后右键 → 打开。
         </p>
-        <p class="hero-note">使用你自己的 AI 服务商，并保持 Provider 访问可控。</p>
 
-        <!-- 实时演示：自然语言 → SQL → 结果 → 图表 -->
         <!-- 产品演示视频 -->
         <div class="hero-shot">
           <div class="shot-frame">
@@ -165,13 +166,45 @@
       </div>
     </section>
 
+    <!-- 场景导航 — 你能做什么 -->
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head center">
+          <span class="kicker">你能做什么</span>
+          <h2>DataZen 加速数据库工作的四种方式</h2>
+        </div>
+        <div class="grid-4">
+          <a class="card" href="ai.html" style="display: block">
+            <div class="icon" aria-hidden="true"><i data-lucide="search"></i></div>
+            <h3>追踪慢查询</h3>
+            <p>EXPLAIN 可视化 + AI 分析，几秒定位瓶颈。</p>
+          </a>
+          <a class="card" href="features.html#mcp" style="display: block">
+            <div class="icon" aria-hidden="true"><i data-lucide="satellite-dish"></i></div>
+            <h3>为 AI Agent 接入数据库</h3>
+            <p>内置 MCP Server——Claude、Cursor 等 Agent 直接查询你的数据。</p>
+          </a>
+          <a class="card" href="workflow.html" style="display: block">
+            <div class="icon" aria-hidden="true"><i data-lucide="repeat"></i></div>
+            <h3>自动化日报</h3>
+            <p>YAML Workflow 自动运行查询、AI 步骤和导出。</p>
+          </a>
+          <a class="card" href="ai.html" style="display: block">
+            <div class="icon" aria-hidden="true"><i data-lucide="sparkles"></i></div>
+            <h3>AI 写 SQL</h3>
+            <p>自然语言 → SQL、一键错误修复、Schema 感知上下文。</p>
+          </a>
+        </div>
+      </div>
+    </section>
+
     <!-- 产品闭环 -->
     <section class="section-tight">
       <div class="wrap stats-band">
-        <div class="stat"><b>理解</b><span>SQL、Schema、ER 图、Redis</span></div>
-        <div class="stat"><b>解决</b><span>AI 诊断、EXPLAIN、安全编辑</span></div>
-        <div class="stat"><b>移动</b><span>备份、同步、迁移、结构对比</span></div>
-        <div class="stat"><b>自动运行</b><span>Workflow、看板、MCP</span></div>
+        <div class="stat"><b>写</b><span>自然语言 SQL · Schema 感知补全</span></div>
+        <div class="stat"><b>修</b><span>AI 诊断 · EXPLAIN 分析 · 安全编辑</span></div>
+        <div class="stat"><b>看</b><span>图表 · ER 图 · Redis 可视化</span></div>
+        <div class="stat"><b>自动化</b><span>Workflow · 看板 · MCP Server</span></div>
       </div>
     </section>
 
@@ -181,7 +214,10 @@
         <div class="section-head center">
           <span class="kicker">核心差异</span>
           <h2>AI 长在真实的数据库工作流里</h2>
-          <p>不是在表格上套个聊天框：AI 读取真实 Schema 和错误上下文，再把结果交回编辑器、图表、Workflow 或 Agent。</p>
+          <p>
+            不是在表格上套个聊天框：AI 读取真实 Schema
+            和错误上下文，再把结果交回编辑器、图表、Workflow 或 Agent。
+          </p>
         </div>
         <div class="grid-3">
           <a class="card media-card" href="ai.html" style="padding: 24px; display: block">
@@ -355,7 +391,7 @@
             <tr>
               <th scope="col">&nbsp;</th>
               <th scope="col">DataZen</th>
-              <th scope="col">传统数据库客户端</th>
+              <th scope="col">DBeaver / Navicat / DataGrip</th>
             </tr>
           </thead>
           <tbody>
@@ -375,14 +411,14 @@
               <td class="no">—</td>
             </tr>
             <tr>
-              <td>无需账号——开源且兼容多种 Provider</td>
+              <td>SQL 安全门网——高危语句拦截</td>
               <td class="yes">✓</td>
-              <td class="no">因产品而异</td>
+              <td class="no">—</td>
             </tr>
             <tr>
               <td>任意结果集出图</td>
               <td class="yes">✓</td>
-              <td class="no">因产品而异</td>
+              <td class="no">插件或付费</td>
             </tr>
             <tr>
               <td>安装包体积</td>
@@ -411,32 +447,32 @@
         </div>
         <div class="grid-3">
           <div class="card">
-            <div class="icon" aria-hidden="true">⚡</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="zap"></i></div>
             <h3>安装包 &lt;15 MB</h3>
             <p>安装包小、秒级启动，远轻于常见的重量级客户端。</p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">🛡️</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="shield-check"></i></div>
             <h3>凭据安全可控</h3>
             <p>DataZen 不运营任何云数据库服务；凭据以 AES 加密存放在系统钥匙串。</p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">🔌</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="plug"></i></div>
             <h3>自带 AI 服务商</h3>
             <p>OpenAI、Anthropic、DeepSeek 或自定义端点——请求发到哪里由你决定。</p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">👤</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="user"></i></div>
             <h3>无需注册账号</h3>
             <p>下载、安装、连库即可使用，没有任何要注册的东西。</p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">🧩</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="puzzle"></i></div>
             <h3>可扩展驱动</h3>
             <p>PostgreSQL、MySQL、SQLite、Redis 内置；OLAP 等专用引擎可通过插件扩展。</p>
           </div>
           <div class="card">
-            <div class="icon" aria-hidden="true">📖</div>
+            <div class="icon" aria-hidden="true"><i data-lucide="book-open"></i></div>
             <h3>免费开源</h3>
             <p>GPLv3 协议，完整源码随时可在 GitHub 审计。</p>
           </div>
@@ -586,7 +622,9 @@
           <h2>一款工作台，接住每条查询之后的工作</h2>
           <p>免费下载，连上数据库，从第一条查询走到可复用的 Workflow。</p>
           <a class="btn btn-primary btn-lg" href="download.html">免费下载 DataZen</a>
-          <p class="muted" style="font-size: 13px; margin-top: 14px">无需账号 · 开源 · 自带 Provider</p>
+          <p class="muted" style="font-size: 13px; margin-top: 14px">
+            无需账号 · 开源 · 自带 Provider
+          </p>
           <p class="muted" style="font-size: 13px; margin-top: 8px">
             <a
               href="https://github.com/flyxl/datazen/releases/latest"
@@ -602,12 +640,7 @@
               >更新日志</a
             >
             ·
-            <a
-              href="manual.html"
-              target="_blank"
-              rel="noopener"
-              >使用手册</a
-            >
+            <a href="manual.html" target="_blank" rel="noopener">使用手册</a>
           </p>
         </div>
       </div>

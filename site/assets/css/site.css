@@ -629,6 +629,23 @@ img {
   border-radius: 12px;
   background: var(--surface-2);
   margin-bottom: 14px;
+  color: var(--accent);
+}
+.card .icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Brand icons (Simple Icons) use fill instead of stroke */
+.card .icon .si svg {
+  fill: currentColor;
+  stroke: none;
+  width: 20px;
+  height: 20px;
 }
 .card h3 {
   font-size: 17px;
@@ -1460,6 +1477,18 @@ html[data-theme='light'] .demo-code {
   width: 20px;
   text-align: center;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.uc-row .uc-ico svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .uc-row b {
   color: var(--text);
