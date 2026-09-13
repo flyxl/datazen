@@ -629,6 +629,8 @@ jobs:
           body: |
             ## DataZen v0.2.0
 
+            ### 🇨🇳 中文
+
             基于 **Tauri v2 + Rust + React** 构建的轻量跨平台数据库桌面客户端，自 v0.1.2 以来累计 **493** 次提交。
 
             ### ✨ 重点新功能
@@ -682,33 +684,90 @@ jobs:
             **🔐 安全加固**
             IPC 错误自动脱敏（密码、Token、文件路径）；SQL Guard 增强，只读模式下注释中的写操作也被识别。
 
-            ### 发行变体
-            - **DataZen (Basic)**（默认推荐，体积最小）：4 核心原生驱动（PostgreSQL、MySQL、SQLite、Redis）+ SQL Editor 增强
-            - **DataZen (All)**（文件名含 `-all`）：全部原生驱动 + SQL Editor 增强
-            - **Akulaku**（文件名含 `-akulaku`，仅 Windows / macOS）：DataZen + 特定渠道定制驱动（Kiwi、Superset）
+            ---
 
-            ## 安装说明
+            ### 🇬🇧 English
+
+            A lightweight, cross-platform desktop database client built with **Tauri v2 + Rust + React**, with **493** commits since v0.1.2.
+
+            ### ✨ Highlights
+
+            **🚀 Onboarding Wizard**
+            3-step guided first run: connect sample DB → explore AI → start working. Built-in SQLite sample DB, 8 languages, resumable progress.
+
+            **🎯 SQL Editor 4 Execution Modes**
+            - **Run Current** (default): AST-based single statement execution at cursor position
+            - **Run Selection**: execute only highlighted code block
+            - **Run All**: execute full script or multiple DDL statements
+            - **Ask**: prompt for confirmation before each execution
+
+            **⚡ Paste as IN** (`Cmd+Shift+V` / `Ctrl+Shift+V`)
+            One-click format multiple lines of IDs into `IN ('a', 'b', 'c')` syntax.
+
+            **🛑 Dangerous Execution Guard**
+            - Auto-popup warning for UPDATE/DELETE without WHERE clause, requiring confirmation
+            - Blocks unbound parameters to prevent accidental NULL propagation
+
+            **✨ SQL Snippets Management**
+            Custom code snippets in Settings, injected into editor autocomplete in real-time.
+
+            **🔧 Toolbar Overflow Menu**
+            Query Toolbar restructured into 4 functional zones with auto-collapsing overflow dropdown on narrow screens.
+
+            **📐 Schema Diff with DAG Topology**
+            Foreign-key-aware directed acyclic graph ordering: `tables → foreign keys → indexes`. Drivers declare dialect-specific DDL via `SchemaMigrationRenderer` trait.
+
+            **🔌 Extension Points Hot-Plug**
+            Runtime SQL Editor Pro extensions (hover previews, FK JOIN completion, signature help), CodeMirror Compartment dynamic reconfiguration, package signature verification.
+
+            **🌙 Dark Theme Overhaul**
+            Full dark theme token refresh, light theme refinement, unified semantic `--color-accent-*` tokens.
+
+            **🌐 i18n Domain Packs**
+            14 domain packs with lazy loading for sub-windows, reducing initial JS bundle. 8 languages fully synced.
+
+            **🏗️ Four-Dimensional Extension System**
+            Driver (compile-time DB drivers) / Theme (visual themes) / EP (runtime extension points) / Wapp (Workspace Apps) — plugin ecosystem foundation.
+
+            **🧠 Multi-Model AI Support**
+            OpenAI, Anthropic, DeepSeek, Ollama, and custom endpoints. Local models get relaxed context; public models auto-masked. One-click SQL error diagnosis.
+
+            **📊 Query Result to Chart**
+            One-click switch between line, bar, pie, scatter charts with PNG/SVG export.
+
+            **🗄️ Built-in Redis Driver**
+            Key tree browsing, CLI, real-time Monitor, Pub/Sub.
+
+            **🔐 Security Hardening**
+            IPC error auto-masking (passwords, tokens, file paths); SQL Guard enhanced to catch write verbs in comments.
+
+            ---
+
+            ### 📦 Variants
+            - **DataZen (Basic)** (recommended): 4 core drivers (PostgreSQL, MySQL, SQLite, Redis) + SQL Editor Pro
+            - **DataZen (All)** (`-all` suffix): all native drivers + SQL Editor Pro
+            - **Akulaku** (`-akulaku` suffix, Windows/macOS only): DataZen + custom drivers (Kiwi, Superset)
+
+            ---
+
+            ## 安装说明 / Installation
 
             ### macOS
-            由于应用未经过 Apple 公证，首次打开时可能提示"已损坏"或"无法验证"。请按以下步骤操作：
-
-            1. 安装应用后，打开终端运行：
-               ```
-               xattr -cr /Applications/DataZen.app
-               ```
-            2. 然后正常打开应用即可。
-
-            或者：右键点击应用 → 选择"打开" → 在弹出的对话框中点击"打开"。
+            > The app is not Apple-notarized. After installation, run in Terminal:
+            > ```
+            > xattr -cr /Applications/DataZen.app
+            > ```
+            > Or: right-click the app → Open → confirm in the dialog.
 
             ### Windows
-            - **NSIS 安装包**：运行 `DataZen-*-windows-x64-nsis.exe` 并按提示安装。
-            - **Portable**：解压 `DataZen-*-windows-x64-portable.zip`，直接运行 `DataZen.exe`，无需安装。
+            - **NSIS installer**: run `DataZen-*-windows-x64-nsis.exe` and follow prompts
+            - **Portable**: unzip `DataZen-*-windows-x64-portable.zip`, run `DataZen.exe` directly
 
             ### Linux (x86_64)
-            - **AppImage**：`chmod +x DataZen-*.AppImage` 后直接运行（部分发行版需安装 `libfuse2`）
-            - **deb**：`sudo apt install ./DataZen-*-linux-x64.deb`
-            - **rpm**：`sudo rpm -i ./DataZen-*-linux-x64.rpm`（或发行版对应的包管理器）
-            运行时依赖 WebKitGTK（常见包名：`libwebkit2gtk-4.1-0` / `webkit2gtk4.1`）。
+            - **AppImage**: `chmod +x DataZen-*.AppImage` then run (may need `libfuse2`)
+            - **deb**: `sudo apt install ./DataZen-*-linux-x64.deb`
+            - **rpm**: `sudo rpm -i ./DataZen-*-linux-x64.rpm`
+            - Runtime dependency: WebKitGTK (`libwebkit2gtk-4.1-0` / `webkit2gtk4.1`)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
