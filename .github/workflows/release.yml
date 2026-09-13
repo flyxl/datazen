@@ -555,10 +555,17 @@ jobs:
           canonical_name() {
             local type="$1"
             local ext="$2"
-            if [ -n "$VARIANT" ]; then
-              echo "DataZen-${VERSION}-${PLATFORM}-${ARCH}-${VARIANT}-${type}.${ext}"
+            # Avoid duplicate type+ext (e.g. dmg.dmg, deb.deb, rpm.rpm, appimage.AppImage)
+            local label
+            if [ "$(echo "$type" | tr '[:upper:]' '[:lower:]')" = "$(echo "$ext" | tr '[:upper:]' '[:lower:]')" ]; then
+              label="$ext"
             else
-              echo "DataZen-${VERSION}-${PLATFORM}-${ARCH}-${type}.${ext}"
+              label="${type}.${ext}"
+            fi
+            if [ -n "$VARIANT" ]; then
+              echo "DataZen-${VERSION}-${PLATFORM}-${ARCH}-${VARIANT}-${label}"
+            else
+              echo "DataZen-${VERSION}-${PLATFORM}-${ARCH}-${label}"
             fi
           }
 
@@ -620,23 +627,65 @@ jobs:
           draft: true
           files: artifacts/*
           body: |
-            ## 版本说明
+            ## DataZen v0.2.0
 
-            本版本为 **DataZen** 正式发布版，所有变体均集成 **SQL Editor 增强**：
-            - **SQL Editor 核心增强**：表结构/字段智能悬浮预览 (Hover)、函数签名实时帮助 (Signature Help)、外键 JOIN 智能补全、智能 Intention 意图操作（星号展开、限定符补全等）、拖拽精准光标与 Paste-as-IN 高级粘贴、语句运行指示与高级参数绑定面板。
-            - **全量原生数据库驱动**：内置 PostgreSQL、MySQL、SQLite、Redis、MongoDB、SQL Server、ClickHouse、DuckDB、Elasticsearch 等全部原生驱动。
+            基于 **Tauri v2 + Rust + React** 构建的轻量跨平台数据库桌面客户端，自 v0.1.2 以来累计 **493** 次提交。
+
+            ### ✨ 重点新功能
+
+            **🚀 首次运行引导向导（Onboarding Wizard）**
+            3 步快速上手：连接示例数据库 → 探索 AI 辅助 → 开始使用。内置 SQLite 示例库，支持 8 种语言，引导进度可恢复。
+
+            **🎯 SQL 编辑器 4 模式执行策略**
+            - **Run Current**（默认）：基于 AST 自动识别光标所在单条 SQL，只执行该句
+            - **Run Selection**：仅执行鼠标高亮选中的代码块
+            - **Run All**：执行完整批处理或多段 DDL
+            - **Ask**：每次执行前弹出策略确认窗
+
+            **⚡ Paste as IN 批量导入**（`Cmd+Shift+V` / `Ctrl+Shift+V`）
+            从表格或日志复制多行 ID，在 `IN ()` 内一键格式化为 `'a', 'b', 'c'` 格式。
+
+            **🛑 高危执行拦截**
+            - 无 WHERE 的 UPDATE/DELETE 自动弹出红色警告弹窗，要求二次确认
+            - 占位符未填值时直接拦截，防止隐式 NULL 导致全表更新
+
+            **✨ SQL Snippets 管理**
+            设置页自定义代码片段，实时注入编辑器补全。
+
+            **🔧 工具栏溢出菜单**
+            Query Toolbar 重构为 4 个功能区，窄屏自动折叠为溢出下拉菜单。
+
+            **📐 Schema Diff DAG 拓扑排序**
+            基于外键依赖构建有向无环图，按 `主表 → 从表 → 外键 → 索引` 严格顺序生成 DDL。各驱动通过 `SchemaMigrationRenderer` trait 声明方言特定的 DDL 渲染逻辑。
+
+            **🔌 Extension Points（扩展点）热插拔**
+            运行时加载 SQL Editor Pro 扩展（表结构悬浮预览、外键 JOIN 补全、函数签名帮助等），CodeMirror Compartment 动态重组。扩展包支持签名验证防篡改。
+
+            **🌙 暗色主题全面刷新**
+            全站暗色主题 Token 重构，亮色主题微调，统一使用语义 Token。
+
+            **🌐 i18n 领域包架构**
+            拆分为 14 个领域包，子窗口按需惰性加载，减少首屏 JS 体积。全端 8 语言翻译同步完成。
+
+            **🏗️ 四维扩展体系**
+            Driver（编译时数据库驱动）/ Theme（外观主题）/ EP（运行时扩展点）/ Wapp（Workspace App），为插件商店生态奠定基础。
+
+            **🧠 AI 多模型支持**
+            同时支持 OpenAI、Anthropic、DeepSeek、Ollama 及自定义端点。本地模型放宽上下文限制，公网模型自动脱敏。SQL 错误一键带入 AI 诊断。
+
+            **📊 查询结果快速转图表**
+            结果集一键切换为折线图、柱状图、饼图、散点图，支持 PNG/SVG 导出。
+
+            **🗄️ 内置原生 Redis 驱动**
+            Key 树浏览、命令行交互、实时 Monitor、Pub/Sub 订阅发布。
+
+            **🔐 安全加固**
+            IPC 错误自动脱敏（密码、Token、文件路径）；SQL Guard 增强，只读模式下注释中的写操作也被识别。
 
             ### 发行变体
             - **DataZen (Basic)**（默认推荐，体积最小）：4 核心原生驱动（PostgreSQL、MySQL、SQLite、Redis）+ SQL Editor 增强
             - **DataZen (All)**（文件名含 `-all`）：全部原生驱动 + SQL Editor 增强
             - **Akulaku**（文件名含 `-akulaku`，仅 Windows / macOS）：DataZen + 特定渠道定制驱动（Kiwi、Superset）
-
-            ### 文件命名规范
-            `DataZen-{版本}-{平台}-{架构}[-{变体}]-{安装类型}.{扩展名}`
-
-            例：`DataZen-0.2.0-windows-x64-nsis.exe`、`DataZen-0.2.0-macos-arm64.dmg`、`DataZen-0.2.0-all-linux-x64.AppImage`
-
-            源码构建可进一步裁剪：`DATAZEN_DRIVERS=postgres,mongodb` 等显式列表，只编译需要的类型。
 
             ## 安装说明
 
