@@ -28,8 +28,13 @@ function pgConn() {
 }
 
 /** SQL-escape a database identifier for use inside psql -c '...' (single-quoted shell string). */
-function q(name: string): string {
+function qIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** SQL-escape a string literal for use inside psql -c '...' (e.g. WHERE datname = '...'). */
+function qLiteral(name: string): string {
+  return `'${name.replace(/'/g, "''")}'`;
 }
 
 /**
@@ -55,7 +60,7 @@ export function createWorkerDatabase(): string {
   const env = { ...process.env, PGPASSWORD: password };
   try {
     execSync(
-      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE ${q(db)}'`,
+      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE ${qIdent(db)}'`,
       { env, stdio: 'pipe' },
     );
   } catch (err: unknown) {
@@ -67,7 +72,7 @@ export function createWorkerDatabase(): string {
   // Ensure the connecting user can create tables in the new database.
   try {
     execSync(
-      `psql -h ${host} -p ${port} -U ${user} -d ${q(db)} -v ON_ERROR_STOP=1 -c 'GRANT ALL PRIVILEGES ON SCHEMA public TO PUBLIC; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO PUBLIC; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO PUBLIC;'`,
+      `psql -h ${host} -p ${port} -U ${user} -d ${qIdent(db)} -v ON_ERROR_STOP=1 -c 'GRANT ALL PRIVILEGES ON SCHEMA public TO PUBLIC; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO PUBLIC; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO PUBLIC;'`,
       { env, stdio: 'pipe' },
     );
   } catch {
@@ -99,7 +104,7 @@ BEGIN
 END $$;
 `;
   try {
-    execSync(`psql -h ${host} -p ${port} -U ${user} -d ${q(db)} -v ON_ERROR_STOP=1`, {
+    execSync(`psql -h ${host} -p ${port} -U ${user} -d ${qIdent(db)} -v ON_ERROR_STOP=1`, {
       env,
       input: seedSql,
       stdio: 'pipe',
@@ -121,16 +126,16 @@ export function dropWorkerDatabase(db: string): void {
   try {
     // Terminate existing connections before dropping.
     execSync(
-      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c 'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ${q(db)} AND pid <> pg_backend_pid()'`,
+      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = ${qLiteral(db)} AND pid <> pg_backend_pid()"`,
       { env, stdio: 'pipe' },
     );
     execSync(
-      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS ${q(db)}'`,
+      `psql -h ${host} -p ${port} -U ${user} -d postgres -v ON_ERROR_STOP=1 -c 'DROP DATABASE IF EXISTS ${qIdent(db)}'`,
       { env, stdio: 'pipe' },
     );
     console.log(`[e2e] dropped worker database: ${db}`);
-  } catch {
-    // best-effort
+  } catch (err) {
+    console.warn(`[e2e] drop worker database ${db} failed:`, String(err).slice(0, 200));
   }
 }
 

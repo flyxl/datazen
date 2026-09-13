@@ -133,7 +133,11 @@ export function usePanelHandlers({
       subTab?: 'data' | 'structure' | 'ddl',
       targetColumn?: string,
     ) => {
-      const ctx = sidebarConnCtx;
+      // Use connCtxRef instead of the closure-captured sidebarConnCtx to avoid
+      // a stale-null race: when handleSelectConnection triggers a tab switch,
+      // ContentView remounts and sidebarConnCtx may transiently be null in the
+      // closure even though the ref has already been updated to the live value.
+      const ctx = connCtxRef.current;
       if (!ctx) return;
       const currentPanels = usePanelStore
         .getState()

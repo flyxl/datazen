@@ -414,29 +414,37 @@ export function ConnectionPage() {
     database?: string;
   } | null>(null);
 
-  const handleSelectTable = useCallback((tableName: string, schema?: string, database?: string) => {
-    // Defer so that any preceding handleSelectConnection state flush + useLayoutEffect
-    // has time to update selectTableRef to the correct connection's handler.
-    pendingSelectTableRef.current = { table: tableName, schema, database };
-    requestAnimationFrame(() => {
-      if (selectTableRef.current) {
-        const p = pendingSelectTableRef.current;
-        pendingSelectTableRef.current = null;
-        if (p) selectTableRef.current(p.table, p.schema, p.database);
-      }
-    });
+  // State counter that increments on each handleSelectTable call, guaranteeing
+  // a re-render so the effect below can flush the pending selection.  Without
+  // this, a no-op setActiveIdx in handleSelectConnection would skip the re-render
+  // and the bare effect would never re-fire to pick up the pending selection.
+  const [pendingSelectVersion, setPendingSelectVersion] = useState(0);
+
+  const flushPendingSelect = useCallback(() => {
+    const p = pendingSelectTableRef.current;
+    if (!p || !selectTableRef.current) return;
+    pendingSelectTableRef.current = null;
+    selectTableRef.current(p.table, p.schema, p.database);
   }, []);
 
-  // Retry pending table selection after ContentView re-mounts (useLayoutEffect
-  // in ContentView sets selectTableRef.current; this effect fires on the next
-  // render after that layout effect, so the ref is guaranteed to be ready).
+  const handleSelectTable = useCallback(
+    (tableName: string, schema?: string, database?: string) => {
+      pendingSelectTableRef.current = { table: tableName, schema, database };
+      // Bump state to guarantee a re-render → useEffect fires → flush.
+      // Also schedule rAF as a fast path for the common case where ContentView
+      // is already mounted and selectTableRef.current is ready.
+      setPendingSelectVersion((v) => v + 1);
+      requestAnimationFrame(flushPendingSelect);
+    },
+    [flushPendingSelect],
+  );
+
+  // Reliable retry: fires after the re-render triggered by pendingSelectVersion
+  // changing.  At this point useLayoutEffect in ContentView has already set
+  // selectTableRef.current, so the ref is guaranteed to be ready.
   useEffect(() => {
-    const p = pendingSelectTableRef.current;
-    if (p && selectTableRef.current) {
-      pendingSelectTableRef.current = null;
-      selectTableRef.current(p.table, p.schema, p.database);
-    }
-  });
+    flushPendingSelect();
+  }, [pendingSelectVersion, flushPendingSelect]);
 
   const handleRefresh = useCallback(() => {
     void fetchConnections();

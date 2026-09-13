@@ -126,6 +126,16 @@ run_one() {
   kill "$app_pid" 2>/dev/null || true
   wait "$app_pid" 2>/dev/null || true
 
+  # Safety net: ensure worker database is dropped even if WDIO after hook failed.
+  local wdio_db
+  wdio_db=$(sed -n 's/.*created worker database: //p' "$logfile.wdio" 2>/dev/null | head -1 | tr -d '[:space:]')
+  if [[ -n "$wdio_db" ]]; then
+    psql -h "${E2E_PG_HOST:-127.0.0.1}" -p "${E2E_PG_PORT:-5432}" -U "${E2E_PG_USER:-wuxiaolong}" -d postgres \
+      -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${wdio_db}' AND pid <> pg_backend_pid()" 2>/dev/null || true
+    psql -h "${E2E_PG_HOST:-127.0.0.1}" -p "${E2E_PG_PORT:-5432}" -U "${E2E_PG_USER:-wuxiaolong}" -d postgres \
+      -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"${wdio_db}\"" 2>/dev/null || true
+  fi
+
   if [[ "$code" == "0" ]]; then
     echo "PASSED" > "$rfile"
     echo "[$sg] ✓ $sname PASSED"
