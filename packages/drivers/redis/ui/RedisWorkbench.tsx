@@ -4,40 +4,37 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
-  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { Database, FolderInput, Key, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { Database, FolderInput, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Button } from '@datazen/ui';
 import { Input } from '@datazen/ui';
-import { Select } from '@datazen/ui';
-import { Dialog } from '@datazen/ui';
 import { useSchemaStore } from '../../../../src/stores/schemaStore';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
-import { useColumnResize } from '../../../../src/hooks/useColumnResize';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { showNativeContextMenu } from '../../../../src/lib/nativeContextMenu';
 import { readBooleanField } from '../../../../src/lib/driverSettings';
-import { invokeGetKey, invokeScanKeys, redisCommandInvoke } from './redisInvoke';
-import type { KeyDetail, KeyEntry } from '../../../../src/types';
-import { BatchBar, invokeDeleteKeys } from './BatchBar';
+import { invokeGetKey } from './redisInvoke';
+import type { KeyDetail } from '../../../../src/types';
+import { BatchBar } from './BatchBar';
 import { hasRedisJson } from './hasRedisJson';
 import { ImportExport } from './ImportExport';
 import { invokeModulesList } from './JsonEditor';
-import { KeyDetailEditor, invokeCreateKey, invokeRename, invokeSetTtl } from './KeyEditors';
+import { KeyDetailEditor } from './KeyEditors';
 import { buildRedisKeyContextMenuItems } from './redisKeyContextMenu';
+import { KeyBrowserControls } from './KeyBrowserControls';
+import { KeyTable } from './KeyTable';
+import { useRedisKeyScan } from './useRedisKeyScan';
+import {
+  KeyWorkbenchDialogs,
+  openKeyCtxDelete,
+  openKeyCtxRename,
+  openKeyCtxTtl,
+  type KeyCtxDialog,
+} from './KeyWorkbenchDialogs';
 
-type KeyCtxDialog =
-  | { mode: 'ttl'; key: string }
-  | { mode: 'rename'; key: string }
-  | { mode: 'delete'; key: string }
-  | null;
-
-const ROW_HEIGHT = 32;
-const PAGE_SIZE = 200;
 const REDIS_DB_COUNT = 16;
 
 export interface RedisWorkbenchProps {
@@ -63,13 +60,6 @@ function mergeDatabases(fromServer: string[]): string[] {
   return [...allRedisDbs(), ...extras];
 }
 
-function formatSize(size: number): string {
-  if (!size || size < 0) return '—';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchProps>(
   function RedisWorkbench(
     { dbSessionId, initialDatabase, hideSidebar, onDbIndexChange, onDatabaseChange, onKeysChange },
@@ -90,33 +80,42 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
 
     const [selectedDb, setSelectedDb] = useState<string | null>(null);
     const [dbIndex, setDbIndex] = useState(0);
-    const [keys, setKeys] = useState<KeyEntry[]>([]);
-    const [cursor, setCursor] = useState(0);
-    const [dbSize, setDbSize] = useState(0);
-    const [keysLoading, setKeysLoading] = useState(false);
-    const [searchPattern, setSearchPattern] = useState('*');
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
     const [keyDetail, setKeyDetail] = useState<KeyDetail | null>(null);
     const [keyDetailLoading, setKeyDetailLoading] = useState(false);
     const [batchSummary, setBatchSummary] = useState<string | null>(null);
-    const [createOpen, setCreateOpen] = useState(false);
-    const [createName, setCreateName] = useState('');
-    const [createType, setCreateType] = useState('string');
-    const [createValue, setCreateValue] = useState('');
-    const [createBusy, setCreateBusy] = useState(false);
-    const [createError, setCreateError] = useState<string | null>(null);
-    const [flushDialog, setFlushDialog] = useState<'db' | 'all' | null>(null);
-    const [flushConfirm, setFlushConfirm] = useState('');
-    const [flushBusy, setFlushBusy] = useState(false);
-    const [flushError, setFlushError] = useState<string | null>(null);
     const [modules, setModules] = useState<string[] | null>(null);
     const [importExportOpen, setImportExportOpen] = useState(false);
+    const [createOpen, setCreateOpen] = useState(false);
+    const [flushDialog, setFlushDialog] = useState<'db' | 'all' | null>(null);
     const [keyCtxDialog, setKeyCtxDialog] = useState<KeyCtxDialog>(null);
-    const [keyCtxTtlInput, setKeyCtxTtlInput] = useState('');
-    const [keyCtxRenameInput, setKeyCtxRenameInput] = useState('');
-    const [keyCtxBusy, setKeyCtxBusy] = useState(false);
-    const [keyCtxError, setKeyCtxError] = useState<string | null>(null);
+
+    const {
+      keys,
+      cursor,
+      dbSize,
+      keysLoading,
+      searchPattern,
+      setSearchPattern,
+      keyTypeFilter,
+      setKeyTypeFilter,
+      viewMode,
+      setViewMode,
+      withMemory,
+      setWithMemory,
+      expandedFolders,
+      loadKeys,
+      resetSelectionState,
+      refresh: scanRefresh,
+      loadMore,
+      search: scanSearch,
+      toggleFolder,
+    } = useRedisKeyScan({
+      dbSessionId,
+      dbIndex,
+      enabled: selectedDb !== null,
+    });
 
     useEffect(() => {
       void loadForConnection(dbSessionId, { skipLoadTables: true });
@@ -145,27 +144,6 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       return base;
     }, [modules]);
 
-    const loadKeys = useCallback(
-      async (idx: number, pattern: string, cur: number, reset: boolean) => {
-        setKeysLoading(true);
-        try {
-          const result = await invokeScanKeys(dbSessionId, idx, pattern || '*', cur, PAGE_SIZE);
-          if (reset) {
-            setKeys(result.keys);
-          } else {
-            setKeys((prev) => [...prev, ...result.keys]);
-          }
-          setCursor(result.cursor);
-          setDbSize(result.dbSize);
-        } catch (e) {
-          console.error('scan_keys failed:', e);
-        } finally {
-          setKeysLoading(false);
-        }
-      },
-      [dbSessionId],
-    );
-
     const handleSelectDb = useCallback(
       (db: string) => {
         const idx = parseInt(db.replace('db', ''), 10) || 0;
@@ -173,16 +151,14 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         setDbIndex(idx);
         onDbIndexChange?.(idx);
         onDatabaseChange?.(db);
-        setKeys([]);
-        setCursor(0);
-        setDbSize(0);
         setSelectedKey(null);
         setSelectedKeys(new Set());
         setKeyDetail(null);
         setSearchPattern('*');
+        resetSelectionState();
         void loadKeys(idx, '*', 0, true);
       },
-      [loadKeys, onDatabaseChange, onDbIndexChange],
+      [loadKeys, resetSelectionState, setSearchPattern, onDatabaseChange, onDbIndexChange],
     );
 
     useEffect(() => {
@@ -200,14 +176,12 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
 
     const refreshKeys = useCallback(() => {
       if (selectedDb) {
-        setKeys([]);
-        setCursor(0);
         setSelectedKey(null);
         setSelectedKeys(new Set());
         setKeyDetail(null);
-        void loadKeys(dbIndex, searchPattern, 0, true);
+        scanRefresh();
       }
-    }, [selectedDb, dbIndex, searchPattern, loadKeys]);
+    }, [selectedDb, scanRefresh]);
 
     const handleRefresh = useCallback(() => {
       void loadForConnection(dbSessionId, { skipLoadTables: true });
@@ -219,20 +193,12 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       handleSelectDb,
     ]);
 
-    const handleLoadMore = useCallback(() => {
-      if (cursor !== 0) {
-        void loadKeys(dbIndex, searchPattern, cursor, false);
-      }
-    }, [dbIndex, searchPattern, cursor, loadKeys]);
-
     const handleSearch = useCallback(() => {
-      setKeys([]);
-      setCursor(0);
       setSelectedKey(null);
       setSelectedKeys(new Set());
       setKeyDetail(null);
-      void loadKeys(dbIndex, searchPattern, 0, true);
-    }, [dbIndex, searchPattern, loadKeys]);
+      scanSearch();
+    }, [scanSearch]);
 
     const handleSelectKey = useCallback(
       async (key: string) => {
@@ -274,64 +240,6 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       }
     };
 
-    const handleCreateKey = async () => {
-      const name = createName.trim();
-      if (!name) return;
-      setCreateBusy(true);
-      setCreateError(null);
-      try {
-        await invokeCreateKey(dbSessionId, dbIndex, name, createType, createValue);
-        setCreateOpen(false);
-        setCreateName('');
-        setCreateValue('');
-        setCreateError(null);
-        refreshKeys();
-        await handleSelectKey(name);
-      } catch (e) {
-        setCreateError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setCreateBusy(false);
-      }
-    };
-
-    const handleFlush = async () => {
-      setFlushBusy(true);
-      setFlushError(null);
-      try {
-        if (flushDialog === 'db') {
-          await redisCommandInvoke('redis', 'flush_db', {
-            dbSessionId: dbSessionId,
-            dbIndex: dbIndex,
-            allowFlush: allowFlush,
-          });
-        } else if (flushDialog === 'all') {
-          await redisCommandInvoke('redis', 'flush_all', {
-            dbSessionId: dbSessionId,
-            allowFlush: allowFlush,
-          });
-        }
-        setFlushDialog(null);
-        setFlushConfirm('');
-        setFlushError(null);
-        refreshKeys();
-      } catch (e) {
-        setFlushError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setFlushBusy(false);
-      }
-    };
-
-    const flushConfirmOk =
-      flushDialog === 'all' ? flushConfirm === 'ALL' : flushConfirm === String(dbIndex);
-
-    const closeKeyCtxDialog = useCallback(() => {
-      setKeyCtxDialog(null);
-      setKeyCtxTtlInput('');
-      setKeyCtxRenameInput('');
-      setKeyCtxError(null);
-      setKeyCtxBusy(false);
-    }, []);
-
     const handleKeyContextMenu = useCallback(
       (e: ReactMouseEvent, key: string) => {
         e.preventDefault();
@@ -348,20 +256,9 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               onCopyKey: () => {
                 void navigator.clipboard.writeText(key);
               },
-              onSetTtl: () => {
-                setKeyCtxError(null);
-                setKeyCtxTtlInput('');
-                setKeyCtxDialog({ mode: 'ttl', key });
-              },
-              onRename: () => {
-                setKeyCtxError(null);
-                setKeyCtxRenameInput(key);
-                setKeyCtxDialog({ mode: 'rename', key });
-              },
-              onDelete: () => {
-                setKeyCtxError(null);
-                setKeyCtxDialog({ mode: 'delete', key });
-              },
+              onSetTtl: () => setKeyCtxDialog(openKeyCtxTtl(key)),
+              onRename: () => setKeyCtxDialog(openKeyCtxRename(key)),
+              onDelete: () => setKeyCtxDialog(openKeyCtxDelete(key)),
             },
           }),
           { x: e.clientX, y: e.clientY },
@@ -369,100 +266,6 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       },
       [t],
     );
-
-    const handleKeyCtxSetTtl = async () => {
-      if (keyCtxDialog?.mode !== 'ttl') return;
-      setKeyCtxBusy(true);
-      setKeyCtxError(null);
-      try {
-        const secs = parseInt(keyCtxTtlInput, 10);
-        if (Number.isNaN(secs) || secs < 0) {
-          throw new Error(t('redis.ttlSeconds'));
-        }
-        await invokeSetTtl(dbSessionId, dbIndex, keyCtxDialog.key, secs);
-        closeKeyCtxDialog();
-        refreshKeys();
-        if (selectedKey === keyCtxDialog.key) {
-          await handleSelectKey(keyCtxDialog.key);
-        }
-      } catch (err) {
-        setKeyCtxError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setKeyCtxBusy(false);
-      }
-    };
-
-    const handleKeyCtxPersist = async () => {
-      if (keyCtxDialog?.mode !== 'ttl') return;
-      setKeyCtxBusy(true);
-      setKeyCtxError(null);
-      try {
-        await invokeSetTtl(dbSessionId, dbIndex, keyCtxDialog.key, -1);
-        closeKeyCtxDialog();
-        refreshKeys();
-        if (selectedKey === keyCtxDialog.key) {
-          await handleSelectKey(keyCtxDialog.key);
-        }
-      } catch (err) {
-        setKeyCtxError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setKeyCtxBusy(false);
-      }
-    };
-
-    const handleKeyCtxRename = async () => {
-      if (keyCtxDialog?.mode !== 'rename') return;
-      const next = keyCtxRenameInput.trim();
-      if (!next || next === keyCtxDialog.key) return;
-      setKeyCtxBusy(true);
-      setKeyCtxError(null);
-      try {
-        await invokeRename(dbSessionId, dbIndex, keyCtxDialog.key, next);
-        closeKeyCtxDialog();
-        if (selectedKey === keyCtxDialog.key) {
-          setSelectedKey(next);
-        }
-        setSelectedKeys((prev) => {
-          if (!prev.has(keyCtxDialog.key)) return prev;
-          const updated = new Set(prev);
-          updated.delete(keyCtxDialog.key);
-          updated.add(next);
-          return updated;
-        });
-        refreshKeys();
-        await handleSelectKey(next);
-      } catch (err) {
-        setKeyCtxError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setKeyCtxBusy(false);
-      }
-    };
-
-    const handleKeyCtxDelete = async () => {
-      if (keyCtxDialog?.mode !== 'delete') return;
-      setKeyCtxBusy(true);
-      setKeyCtxError(null);
-      try {
-        const deleted = await invokeDeleteKeys(dbSessionId, dbIndex, [keyCtxDialog.key]);
-        setBatchSummary(t('redis.deleted').replace('{count}', String(deleted)));
-        if (selectedKey === keyCtxDialog.key) {
-          setSelectedKey(null);
-          setKeyDetail(null);
-        }
-        setSelectedKeys((prev) => {
-          if (!prev.has(keyCtxDialog.key)) return prev;
-          const updated = new Set(prev);
-          updated.delete(keyCtxDialog.key);
-          return updated;
-        });
-        closeKeyCtxDialog();
-        refreshKeys();
-      } catch (err) {
-        setKeyCtxError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setKeyCtxBusy(false);
-      }
-    };
 
     return (
       <div className="flex min-h-0 flex-1">
@@ -523,6 +326,14 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   {t('redis.loadedCount').replace('{count}', String(keys.length))}
                   {cursor !== 0 && ` (${t('redis.loadMore')}…)`}
                 </span>
+                <KeyBrowserControls
+                  keyType={keyTypeFilter}
+                  onKeyTypeChange={setKeyTypeFilter}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  withMemory={withMemory}
+                  onWithMemoryChange={setWithMemory}
+                />
                 <div className="flex-1" />
                 <Button
                   variant="secondary"
@@ -536,10 +347,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                 <Button
                   variant="secondary"
                   className="h-7 gap-1 px-2 text-xs"
-                  onClick={() => {
-                    setCreateError(null);
-                    setCreateOpen(true);
-                  }}
+                  onClick={() => setCreateOpen(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />
                   {t('redis.createKey')}
@@ -557,22 +365,14 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                     <Button
                       variant="secondary"
                       className="h-7 px-2 text-xs text-danger"
-                      onClick={() => {
-                        setFlushConfirm('');
-                        setFlushError(null);
-                        setFlushDialog('db');
-                      }}
+                      onClick={() => setFlushDialog('db')}
                     >
                       {t('redis.flushDb')}
                     </Button>
                     <Button
                       variant="secondary"
                       className="h-7 px-2 text-xs text-danger"
-                      onClick={() => {
-                        setFlushConfirm('');
-                        setFlushError(null);
-                        setFlushDialog('all');
-                      }}
+                      onClick={() => setFlushDialog('all')}
                     >
                       {t('redis.flushAll')}
                     </Button>
@@ -607,6 +407,9 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                 <div className="flex min-w-0 flex-1 flex-col">
                   <KeyTable
                     keys={keys}
+                    viewMode={viewMode}
+                    expandedFolders={expandedFolders}
+                    onToggleFolder={toggleFolder}
                     selectedKey={selectedKey}
                     selectedKeys={selectedKeys}
                     onSelectKey={handleSelectKey}
@@ -615,7 +418,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                     onKeyContextMenu={handleKeyContextMenu}
                     loading={keysLoading}
                     hasMore={cursor !== 0}
-                    onLoadMore={handleLoadMore}
+                    onLoadMore={loadMore}
                   />
                 </div>
 
@@ -668,59 +471,6 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
           )}
         </div>
 
-        <Dialog
-          open={createOpen}
-          title={t('redis.createKey')}
-          onClose={() => {
-            setCreateOpen(false);
-            setCreateError(null);
-          }}
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                className="h-8 px-3 text-xs"
-                onClick={() => {
-                  setCreateOpen(false);
-                  setCreateError(null);
-                }}
-              >
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                className="h-8 px-3 text-xs"
-                disabled={createBusy || !createName.trim()}
-                onClick={() => void handleCreateKey()}
-              >
-                {t('redis.create')}
-              </Button>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <Input
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              placeholder={t('redis.keyName')}
-              className="h-8 font-mono text-xs"
-            />
-            <Select
-              value={createType}
-              onChange={setCreateType}
-              className="h-8 w-full text-xs"
-              options={createTypes.map((type) => ({ value: type, label: type }))}
-            />
-            <Input
-              value={createValue}
-              onChange={(e) => setCreateValue(e.target.value)}
-              placeholder={t('redis.value')}
-              className="h-8 font-mono text-xs"
-            />
-            {createError && <p className="text-danger">{createError}</p>}
-          </div>
-        </Dialog>
-
         <ImportExport
           dbSessionId={dbSessionId}
           dbIndex={dbIndex}
@@ -732,359 +482,29 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
           onSummary={setBatchSummary}
         />
 
-        <Dialog
-          open={flushDialog !== null}
-          title={flushDialog === 'all' ? t('redis.confirmFlushAll') : t('redis.confirmFlushDb')}
-          description={
-            flushDialog === 'all'
-              ? t('redis.typeConfirmAll')
-              : t('redis.typeConfirmDb').replace('{index}', String(dbIndex))
-          }
-          onClose={() => {
-            setFlushDialog(null);
-            setFlushConfirm('');
-            setFlushError(null);
+        <KeyWorkbenchDialogs
+          dbSessionId={dbSessionId}
+          dbIndex={dbIndex}
+          allowFlush={allowFlush}
+          createTypes={createTypes}
+          selectedKey={selectedKey}
+          onRefreshKeys={refreshKeys}
+          onSelectKey={handleSelectKey}
+          onClearSelectedKey={() => {
+            setSelectedKey(null);
+            setKeyDetail(null);
           }}
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                className="h-8 px-3 text-xs"
-                onClick={() => {
-                  setFlushDialog(null);
-                  setFlushConfirm('');
-                  setFlushError(null);
-                }}
-              >
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                className="h-8 px-3 text-xs text-danger"
-                disabled={!flushConfirmOk || flushBusy}
-                onClick={() => void handleFlush()}
-              >
-                {t('redis.flushConfirm')}
-              </Button>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <Input
-              value={flushConfirm}
-              onChange={(e) => setFlushConfirm(e.target.value)}
-              placeholder={t('redis.typeConfirmPlaceholder')}
-              className="h-8 font-mono text-xs"
-            />
-            {flushError && <p className="text-danger">{flushError}</p>}
-          </div>
-        </Dialog>
-
-        <Dialog
-          open={keyCtxDialog?.mode === 'ttl'}
-          title={t('redis.setTtl')}
-          description={keyCtxDialog?.mode === 'ttl' ? keyCtxDialog.key : undefined}
-          onClose={closeKeyCtxDialog}
-          footer={
-            <>
-              <Button variant="secondary" className="h-8 px-3 text-xs" onClick={closeKeyCtxDialog}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="secondary"
-                className="h-8 px-3 text-xs"
-                disabled={keyCtxBusy}
-                onClick={() => void handleKeyCtxPersist()}
-              >
-                {t('redis.persist')}
-              </Button>
-              <Button
-                variant="primary"
-                className="h-8 px-3 text-xs"
-                disabled={keyCtxBusy || !keyCtxTtlInput.trim()}
-                onClick={() => void handleKeyCtxSetTtl()}
-              >
-                {t('redis.setTtl')}
-              </Button>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <Input
-              value={keyCtxTtlInput}
-              onChange={(e) => setKeyCtxTtlInput(e.target.value)}
-              placeholder={t('redis.ttlSeconds')}
-              className="h-8 font-mono text-xs"
-            />
-            {keyCtxError && <p className="text-danger">{keyCtxError}</p>}
-          </div>
-        </Dialog>
-
-        <Dialog
-          open={keyCtxDialog?.mode === 'rename'}
-          title={t('redis.renameKey')}
-          description={keyCtxDialog?.mode === 'rename' ? keyCtxDialog.key : undefined}
-          onClose={closeKeyCtxDialog}
-          footer={
-            <>
-              <Button variant="secondary" className="h-8 px-3 text-xs" onClick={closeKeyCtxDialog}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                className="h-8 px-3 text-xs"
-                disabled={
-                  keyCtxBusy ||
-                  !keyCtxRenameInput.trim() ||
-                  (keyCtxDialog?.mode === 'rename' && keyCtxRenameInput.trim() === keyCtxDialog.key)
-                }
-                onClick={() => void handleKeyCtxRename()}
-              >
-                {t('redis.renameKey')}
-              </Button>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <Input
-              value={keyCtxRenameInput}
-              onChange={(e) => setKeyCtxRenameInput(e.target.value)}
-              placeholder={t('redis.keyName')}
-              className="h-8 font-mono text-xs"
-            />
-            {keyCtxError && <p className="text-danger">{keyCtxError}</p>}
-          </div>
-        </Dialog>
-
-        <Dialog
-          open={keyCtxDialog?.mode === 'delete'}
-          title={t('redis.confirmDeleteKeys')}
-          description={keyCtxDialog?.mode === 'delete' ? keyCtxDialog.key : undefined}
-          onClose={closeKeyCtxDialog}
-          footer={
-            <>
-              <Button variant="secondary" className="h-8 px-3 text-xs" onClick={closeKeyCtxDialog}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                className="h-8 px-3 text-xs text-danger"
-                disabled={keyCtxBusy}
-                onClick={() => void handleKeyCtxDelete()}
-              >
-                {t('common.delete')}
-              </Button>
-            </>
-          }
-        >
-          {keyCtxError && <p className="text-danger">{keyCtxError}</p>}
-        </Dialog>
+          onUpdateSelectedKey={setSelectedKey}
+          onUpdateSelectedKeys={setSelectedKeys}
+          onBatchSummary={setBatchSummary}
+          createOpen={createOpen}
+          onCreateOpenChange={setCreateOpen}
+          flushDialog={flushDialog}
+          onFlushDialogChange={setFlushDialog}
+          keyCtxDialog={keyCtxDialog}
+          onKeyCtxDialogChange={setKeyCtxDialog}
+        />
       </div>
     );
   },
 );
-
-function KeyTable({
-  keys,
-  selectedKey,
-  selectedKeys,
-  onSelectKey,
-  onToggleKey,
-  onToggleSelectAll,
-  onKeyContextMenu,
-  loading,
-  hasMore,
-  onLoadMore,
-}: {
-  keys: KeyEntry[];
-  selectedKey: string | null;
-  selectedKeys: Set<string>;
-  onSelectKey: (key: string) => void;
-  onToggleKey: (key: string, checked: boolean) => void;
-  onToggleSelectAll: () => void;
-  onKeyContextMenu: (e: ReactMouseEvent, key: string) => void;
-  loading: boolean;
-  hasMore: boolean;
-  onLoadMore: () => void;
-}) {
-  const { t } = useI18n();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const { columnWidths, onResizeStart } = useColumnResize({ count: 6 });
-
-  const virtualizer = useVirtualizer({
-    count: keys.length + (hasMore ? 1 : 0),
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 20,
-  });
-
-  const TYPE_COLORS: Record<string, string> = {
-    string: 'text-success',
-    hash: 'text-accent',
-    list: 'text-warning',
-    set: 'text-fg-secondary',
-    zset: 'text-danger',
-    stream: 'text-fg-muted',
-  };
-
-  const columns = [
-    '',
-    t('redis.key'),
-    t('redis.type'),
-    t('redis.ttl'),
-    t('redis.size'),
-    t('redis.preview'),
-  ];
-
-  const allSelected = keys.length > 0 && selectedKeys.size === keys.length;
-
-  return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
-      <div className="min-w-max text-[13px]">
-        <div className="sticky top-0 z-10 flex bg-surface-alt">
-          {columns.map((col, ci) => (
-            <div
-              key={col || 'check'}
-              className="relative shrink-0 border-b border-r border-edge px-3 py-2 text-left text-xs font-medium text-fg-secondary"
-              style={{
-                width: columnWidths[ci],
-                ...(ci === 0 ? { width: 36, minWidth: 36 } : {}),
-                ...(ci === 1 || ci === 5 ? { flex: '1 1 0', minWidth: 100 } : {}),
-              }}
-            >
-              {ci === 0 ? (
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={onToggleSelectAll}
-                  aria-label={t('common.selectAll')}
-                />
-              ) : (
-                col
-              )}
-              {ci > 0 && (
-                <div
-                  className="absolute right-0 top-0 z-20 h-full w-[5px] cursor-col-resize hover:bg-accent/40 active:bg-accent/60"
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    onResizeStart(ci, e.clientX);
-                  }}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-          {virtualizer.getVirtualItems().map((vRow) => {
-            if (vRow.index >= keys.length) {
-              return (
-                <div
-                  key="load-more"
-                  className="absolute left-0 flex w-full items-center justify-center border-b border-edge"
-                  style={{ top: vRow.start, height: ROW_HEIGHT }}
-                >
-                  <button
-                    type="button"
-                    className="text-xs text-accent hover:underline"
-                    onClick={onLoadMore}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <Loader2 className="inline h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      t('redis.loadMore')
-                    )}
-                  </button>
-                </div>
-              );
-            }
-
-            const entry = keys[vRow.index];
-            const isSelected = selectedKey === entry.key;
-            const isChecked = selectedKeys.has(entry.key);
-
-            return (
-              <div
-                key={entry.key}
-                className={cn(
-                  'absolute left-0 flex w-full cursor-pointer border-b border-edge',
-                  isSelected
-                    ? 'bg-accent/10'
-                    : vRow.index % 2 === 0
-                      ? 'bg-surface'
-                      : 'bg-surface-raised/50',
-                  'hover:bg-accent/5',
-                )}
-                style={{ top: vRow.start, height: ROW_HEIGHT }}
-                onClick={() => onSelectKey(entry.key)}
-                onContextMenu={(e) => onKeyContextMenu(e, entry.key)}
-              >
-                <div
-                  className="flex shrink-0 items-center justify-center border-r border-edge px-2"
-                  style={{ width: 36, minWidth: 36 }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={(e) => onToggleKey(entry.key, e.target.checked)}
-                  />
-                </div>
-                <div
-                  className="flex shrink-0 items-center overflow-hidden border-r border-edge px-3 font-mono"
-                  style={{ flex: '1 1 0', minWidth: 100, width: columnWidths[1] }}
-                >
-                  <Key className="mr-1.5 h-3 w-3 shrink-0 text-fg-muted" />
-                  <span className="truncate text-fg-secondary">{entry.key}</span>
-                </div>
-                <div
-                  className="flex shrink-0 items-center overflow-hidden border-r border-edge px-3"
-                  style={{ width: columnWidths[2] }}
-                >
-                  <span
-                    className={cn(
-                      'text-xs font-medium',
-                      TYPE_COLORS[entry.keyType] ?? 'text-fg-muted',
-                    )}
-                  >
-                    {entry.keyType}
-                  </span>
-                </div>
-                <div
-                  className="flex shrink-0 items-center overflow-hidden border-r border-edge px-3 text-xs text-fg-muted"
-                  style={{ width: columnWidths[3] }}
-                >
-                  {entry.ttl < 0 ? '∞' : `${entry.ttl}s`}
-                </div>
-                <div
-                  className="flex shrink-0 items-center overflow-hidden border-r border-edge px-3 text-xs text-fg-muted"
-                  style={{ width: columnWidths[4] }}
-                >
-                  {formatSize(entry.size)}
-                </div>
-                <div
-                  className="flex shrink-0 items-center overflow-hidden border-r border-edge px-3 font-mono text-fg-secondary"
-                  style={{ flex: '1 1 0', minWidth: 100, width: columnWidths[5] }}
-                >
-                  <span className="truncate">{entry.preview}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {keys.length === 0 && !loading && (
-          <div className="px-4 py-8 text-center text-xs text-fg-muted">{t('redis.noKeys')}</div>
-        )}
-
-        {loading && keys.length === 0 && (
-          <div className="flex items-center justify-center gap-2 py-8 text-xs text-fg-muted">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {t('common.loading')}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

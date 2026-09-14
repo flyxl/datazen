@@ -34,21 +34,49 @@ export async function redisCommandInvoke<T = unknown>(
   return unwrapData(result.data) as T;
 }
 
+export type ScanKeysOptions = {
+  /** Redis TYPE filter (string / hash / list / set / zset / stream). Empty = all. */
+  keyType?: string;
+  /** When true, size column uses MEMORY USAGE (bytes). */
+  withMemory?: boolean;
+};
+
+/**
+ * Scan keys. The 6th argument may be either `ScanKeysOptions` or a test `invoke`
+ * function (backward compatible with older call sites).
+ */
 export async function invokeScanKeys(
   dbSessionId: string,
   dbIndex: number,
   pattern: string,
   cursor: number,
   count: number,
-  invoke: RedisInvokeFn = redisCommandInvoke,
+  optionsOrInvoke: ScanKeysOptions | RedisInvokeFn = {},
+  maybeInvoke?: RedisInvokeFn,
 ): Promise<KeyScanResult> {
-  return (await invoke('redis', 'scan_keys', {
+  let options: ScanKeysOptions = {};
+  let invoke: RedisInvokeFn = redisCommandInvoke;
+  if (typeof optionsOrInvoke === 'function') {
+    invoke = optionsOrInvoke;
+  } else {
+    options = optionsOrInvoke ?? {};
+    if (maybeInvoke) invoke = maybeInvoke;
+  }
+
+  const args: Record<string, unknown> = {
     dbSessionId,
     dbIndex,
     pattern,
     cursor,
     count,
-  })) as KeyScanResult;
+  };
+  if (options.keyType && options.keyType !== 'all' && options.keyType !== '*') {
+    args.keyType = options.keyType;
+  }
+  if (options.withMemory) {
+    args.withMemory = true;
+  }
+  return (await invoke('redis', 'scan_keys', args)) as KeyScanResult;
 }
 
 export async function invokeGetKey(

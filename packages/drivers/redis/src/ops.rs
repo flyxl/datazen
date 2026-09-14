@@ -6,11 +6,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::redis_driver::parse_scan_result;
 
-/// TTL `-1` means remove expiry (PERSIST); non-negative values set EXPIRE.
+/// TTL resolution for relative seconds, absolute unix expiry, or persist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TtlCommand {
+    /// Remove expiry (PERSIST).
     Persist,
+    /// Relative expiry via EXPIRE (seconds from now).
     Expire(u64),
+    /// Absolute expiry via EXPIREAT (unix timestamp seconds).
+    ExpireAt(i64),
 }
 
 pub fn resolve_ttl(ttl_seconds: i64) -> Result<TtlCommand, String> {
@@ -19,6 +23,14 @@ pub fn resolve_ttl(ttl_seconds: i64) -> Result<TtlCommand, String> {
         n if n >= 0 => Ok(TtlCommand::Expire(n as u64)),
         _ => Err(format!("invalid ttl_seconds: {ttl_seconds}")),
     }
+}
+
+/// Resolve absolute expire-at unix timestamp (must be > 0).
+pub fn resolve_expire_at(expire_at: i64) -> Result<TtlCommand, String> {
+    if expire_at <= 0 {
+        return Err(format!("invalid expire_at: {expire_at} (expected unix timestamp > 0)"));
+    }
+    Ok(TtlCommand::ExpireAt(expire_at))
 }
 
 /// Build `(old_key, new_key)` pairs for keys that start with `old_prefix`.
@@ -109,7 +121,6 @@ pub async fn count_matching<C>(conn: &mut C, pattern: &str) -> Result<u64, Strin
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
-    // Count during SCAN without materializing every key (large keyspaces).
     if pattern == "*" {
         let dbsize: i64 = redis::cmd("DBSIZE")
             .query_async(conn)
@@ -143,7 +154,31 @@ pub async fn set_string<C>(conn: &mut C, key: &str, value: &str) -> Result<(), S
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
-    conn.set(key, value).await.map_err(|e| e.to_string())
+    set_string_with_options(conn, key, value, false).await
+}
+
+/// SET a string value. When `keep_ttl` is true, uses Redis `SET … KEEPTTL`
+/// so an existing expiry is preserved (Redis ≥ 6.0).
+pub async fn set_string_with_options<C>(
+    conn: &mut C,
+    key: &str,
+    value: &str,
+    keep_ttl: bool,
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    if keep_ttl {
+        redis::cmd("SET")
+            .arg(key)
+            .arg(value)
+            .arg("KEEPTTL")
+            .query_async::<()>(conn)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        conn.set(key, value).await.map_err(|e| e.to_string())
+    }
 }
 
 pub async fn hash_set<C>(conn: &mut C, key: &str, field: &str, value: &str) -> Result<(), String>
@@ -168,7 +203,9 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub async fn list_push<C>(
+pub async fn list_push<
+    C,
+>(
     conn: &mut C,
     key: &str,
     side: &str,
@@ -319,7 +356,22 @@ pub async fn set_ttl<C>(conn: &mut C, key: &str, ttl_seconds: i64) -> Result<(),
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
-    match resolve_ttl(ttl_seconds)? {
+    apply_ttl_command(conn, key, resolve_ttl(ttl_seconds)?).await
+}
+
+/// Set absolute expiry via EXPIREAT (unix timestamp seconds).
+pub async fn set_expire_at<C>(conn: &mut C, key: &str, expire_at: i64) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    apply_ttl_command(conn, key, resolve_expire_at(expire_at)?).await
+}
+
+async fn apply_ttl_command<C>(conn: &mut C, key: &str, cmd: TtlCommand) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    match cmd {
         TtlCommand::Persist => conn
             .persist::<_, i64>(key)
             .await
@@ -327,6 +379,13 @@ where
             .map_err(|e| e.to_string()),
         TtlCommand::Expire(secs) => conn
             .expire::<_, i64>(key, secs as i64)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+        TtlCommand::ExpireAt(ts) => redis::cmd("EXPIREAT")
+            .arg(key)
+            .arg(ts)
+            .query_async::<i64>(conn)
             .await
             .map(|_| ())
             .map_err(|e| e.to_string()),
@@ -370,6 +429,13 @@ where
         let result = match cmd {
             TtlCommand::Persist => conn.persist::<_, i64>(key).await,
             TtlCommand::Expire(secs) => conn.expire::<_, i64>(key, secs as i64).await,
+            TtlCommand::ExpireAt(ts) => {
+                redis::cmd("EXPIREAT")
+                    .arg(key)
+                    .arg(ts)
+                    .query_async::<i64>(conn)
+                    .await
+            }
         };
         match result {
             Ok(1) => updated += 1,
@@ -483,6 +549,22 @@ mod tests {
     }
 
     #[test]
+    fn plan_rename_prefix_empty_keys() {
+        assert!(plan_rename_prefix("a:", "b:", &[]).is_empty());
+    }
+
+    #[test]
+    fn plan_rename_prefix_empty_old_prefix_matches_all() {
+        let planned = plan_rename_prefix("", "pre:", &["a".into(), "b".into()]);
+        assert_eq!(
+            planned,
+            vec![("a".into(), "pre:a".into()), ("b".into(), "pre:b".into())]
+        );
+    }
+
+    // ---- PR-1: resolve_ttl / resolve_expire_at ----
+
+    #[test]
     fn ttl_sentinel_persist() {
         assert_eq!(resolve_ttl(-1).unwrap(), TtlCommand::Persist);
     }
@@ -493,8 +575,58 @@ mod tests {
     }
 
     #[test]
+    fn ttl_zero_is_expire_zero() {
+        assert_eq!(resolve_ttl(0).unwrap(), TtlCommand::Expire(0));
+    }
+
+    #[test]
+    fn ttl_large_value() {
+        assert_eq!(resolve_ttl(i64::from(u32::MAX)).unwrap(), TtlCommand::Expire(u32::MAX as u64));
+    }
+
+    #[test]
     fn ttl_sentinel_rejects_invalid() {
         assert!(resolve_ttl(-2).is_err());
+        assert!(resolve_ttl(-100).is_err());
+        let err = resolve_ttl(-2).unwrap_err();
+        assert!(err.contains("invalid ttl_seconds"), "err={err}");
+    }
+
+    #[test]
+    fn expire_at_resolves() {
+        assert_eq!(
+            resolve_expire_at(1_700_000_000).unwrap(),
+            TtlCommand::ExpireAt(1_700_000_000)
+        );
+        assert!(resolve_expire_at(0).is_err());
+        assert!(resolve_expire_at(-1).is_err());
+    }
+
+    #[test]
+    fn expire_at_rejects_zero_and_negative_with_message() {
+        let err0 = resolve_expire_at(0).unwrap_err();
+        assert!(err0.contains("expire_at"), "err0={err0}");
+        assert!(err0.contains("0"), "err0={err0}");
+        let err_neg = resolve_expire_at(-5).unwrap_err();
+        assert!(err_neg.contains("invalid expire_at"), "err_neg={err_neg}");
+    }
+
+    #[test]
+    fn expire_at_accepts_far_future() {
+        let ts = 4_102_444_800_i64;
+        assert_eq!(resolve_expire_at(ts).unwrap(), TtlCommand::ExpireAt(ts));
+    }
+
+    #[test]
+    fn expire_at_accepts_one() {
+        assert_eq!(resolve_expire_at(1).unwrap(), TtlCommand::ExpireAt(1));
+    }
+
+    #[test]
+    fn ttl_command_variants_are_distinct() {
+        assert_ne!(TtlCommand::Persist, TtlCommand::Expire(0));
+        assert_ne!(TtlCommand::Expire(1), TtlCommand::ExpireAt(1));
+        assert_eq!(TtlCommand::ExpireAt(42), TtlCommand::ExpireAt(42));
     }
 
     #[test]
@@ -507,7 +639,6 @@ mod tests {
         assert!(ensure_flush_allowed(false).is_err());
         assert!(ensure_flush_allowed(true).is_ok());
 
-        // Reset so other tests see the secure default.
         set_settings_allow_flush(false);
     }
 }
