@@ -1,6 +1,7 @@
 pub mod ai;
 mod app_data_archive;
 mod app_menu;
+#[path = "bootstrap/mod.rs"]
 mod bootstrap;
 mod cache;
 mod commands;
