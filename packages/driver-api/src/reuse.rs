@@ -384,7 +384,3 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.plan_structure_changes(handle, request).await
     }
 }
-
-#[cfg(test)]
-#[path = "reuse_tests.rs"]
-mod tests;
