@@ -1,56 +1,120 @@
-/** Database engine identifiers for the current build (injected via resolve-drivers). */
+/** Public type barrel — prefer importing from here. */
 export type { DatabaseType } from '../extensions/generated';
-import type { DatabaseType } from '../extensions/generated';
 
 export type { TunnelKind, HttpProxyTunnelConfig, WebSocketTunnelConfig, SavedTunnel } from './tunnel';
 
-export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
+export type {
+  SslMode,
+  SshAuthMethod,
+  SshTunnelConfig,
+  ConnectionConfig,
+  ServerInfo,
+  DriverCapabilities,
+  TableType,
+  DatabaseObjectKind,
+  DatabaseObject,
+  PrivilegeGrant,
+  TableInfo,
+  ColumnSchema,
+  IndexInfo,
+  ForeignKeyInfo,
+  TableSchema,
+  Value,
+  ColumnInfo,
+  QueryResult,
+  StatementResult,
+  MultiQueryResult,
+  QueryStreamEvent,
+  ExplainPlanDetail,
+  ExplainPlanNode,
+  ExplainResult,
+  QueryHistoryEntry,
+  FavoriteQuery,
+  ContextEntry,
+  ContextKind,
+  ContextItem,
+} from './connection';
 
-export type SshAuthMethod = 'password' | 'private_key' | 'agent';
+export type {
+  McpPermissionMode,
+  SqlFormatOptions,
+  SqlExecutionStrategy,
+  AppSettings,
+  FilterOperator,
+  FilterCondition,
+  SortCondition,
+} from './settings';
 
-export interface SshTunnelConfig {
-  enabled: boolean;
-  host: string;
-  port: number;
-  username: string;
-  authMethod: SshAuthMethod;
-  password?: string;
-  privateKeyPath?: string;
-  passphrase?: string;
-  /** Optional ProxyJump hop. */
-  jump?: SshTunnelConfig;
-}
+export type {
+  KeyEntry,
+  KeyScanResult,
+  KeyDetail,
+  TableDataResult,
+} from './redis';
 
-export interface ConnectionConfig {
-  id: string;
-  name: string;
-  databaseType: DatabaseType;
-  host?: string;
-  port?: number;
-  database?: string;
-  /** Presto/Trino schema within catalog */
-  schema?: string;
-  username?: string;
-  password?: string;
-  sslMode: SslMode;
-  connectionTimeout?: number;
-  /** Host-injected pool size; not typically set in the connection form. */
-  maxPoolSize?: number;
-  sshTunnel?: SshTunnelConfig;
-  /** Preferred tunnel strategy. When absent, inferred from legacy ssh/http/ws fields. */
-  tunnelKind?: TunnelKind;
-  /** Reference to a SavedTunnel in tunnels.json. When set, runtime resolves tunnel fields. */
-  tunnelId?: string;
-  httpProxyTunnel?: HttpProxyTunnelConfig;
-  websocketTunnel?: WebSocketTunnelConfig;
-  colorTag?: string;
-  group?: string;
-  lastConnectedAt?: string;
-  serverVersion?: string;
-  /** Opaque per-driver connection options (e.g. Redis topology/TLS). */
-  options?: Record<string, unknown>;
-  /** When true, the host rejects mutating SQL and row edits. */
-  readOnly?: boolean;
-  /** When true, sorted first within the connection group in the navigator. */
-  pinned?: boolean;
-}
+export type {
+  AiProviderType,
+  AiDataEgressLevel,
+  AiToolPermissionPolicy,
+  AiSafetyGateConfig,
+  AiModelProfile,
+  AiSettingsConfig,
+  AiProviderConfig,
+  ModelInfo,
+  ProviderListItem,
+  DiagnosisResult,
+  ExplainAnalysis,
+  Bottleneck,
+  ExplainSuggestion,
+  AiQuestionOption,
+  AiQuestion,
+  AiToolCall,
+  AiToolResult,
+  AiChatMessage,
+  AiChatSession,
+  StreamChunkPayload,
+  StreamErrorPayload,
+} from './ai';
+
+export type {
+  WorkflowVariable,
+  CommandCategory,
+  CommandAccessLevel,
+  DriverSaveDialogSpec,
+  DriverCommandMetadata,
+  DriverCommandDefinition,
+  WorkflowStepType,
+  ErrorHandlingConfig,
+  WorkflowStep,
+  MergeSource,
+  TransformColumn,
+  WorkflowOutput,
+  WorkflowDefinition,
+  WorkflowSchedule,
+  WorkflowListItem,
+  StepStatus,
+  StepExecutionResult,
+  WorkflowExecutionResult,
+  HistoryListItem,
+  HistoryEntry,
+} from './workflow';
+
+export type {
+  ConnectionDiagnosis,
+  ConnectionSolution,
+  QueryCategory,
+  QueryAnalysis,
+  TableCompareStatus,
+  SyncObjectKind,
+  TableComparison,
+  ColumnDiffEntry,
+  ChangedColumnDiff,
+  TableSchemaDiff,
+  McpServerConfig,
+  McpToolInfo,
+} from './diagnosis';
+
+export type { ThemePreference } from './theme';
+export type * from './dashboard';
+export type * from './chart';
+export type * from './wapp';

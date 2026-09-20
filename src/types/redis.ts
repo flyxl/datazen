@@ -1,6 +1,6 @@
 /** Key-Value (Redis) types. */
 
-// ── Key-Value (Redis) types ──
+import type { ColumnSchema, Value } from './connection';
 
 export interface KeyEntry {
   key: string;
