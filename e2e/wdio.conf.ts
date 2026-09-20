@@ -1,1 +1,4 @@
-RESTORE_FROM_ARTIFACTS_WDIO
+/**
+ * PLACEHOLDER - will be fixed immediately
+ */
+export const config = {};
