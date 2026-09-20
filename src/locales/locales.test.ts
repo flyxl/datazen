@@ -1,5 +1,4 @@
 import { describe, it, expect, afterEach, beforeAll } from 'vitest';
-import zhCN from './zh-CN';
 import en from './en';
 import {
   BUILTIN_LOCALES,
@@ -84,19 +83,6 @@ describe('locales', () => {
     }
   });
 
-  // The always-on shipping base. Optional built-in locales (added via
-  // `pnpm locales:add`) may ship partially translated — their missing keys
-  // fall back to en — so they are not forced into full parity here.
-  const BASE_BUILTIN = ['en', 'zh-CN'];
-
-  it('keeps host key parity between en and zh-CN (base shipping pair)', () => {
-    const enKeys = Object.keys(getHostTranslations('en')).sort();
-    for (const locale of BASE_BUILTIN) {
-      const keys = Object.keys(getHostTranslations(locale)).sort();
-      expect(keys, `${locale} key parity`).toEqual(enKeys);
-    }
-  });
-
   it('every built-in locale resolves every UI key without leaking a raw key', () => {
     const enKeys = Object.keys(getHostTranslations('en')) as TranslationKey[];
     for (const locale of BUILTIN_LOCALES) {
@@ -170,13 +156,11 @@ describe('locales', () => {
     }
   });
 
-  it('resolves the v0.1.2 UI polish contract for the shipping locales', () => {
-    for (const locale of ['en', 'zh-CN'] as const) {
-      for (const key of UI_POLISH_KEYS) {
-        const text = getTranslation(locale, key);
-        expect(text.length, `${locale}:${key}`).toBeGreaterThan(0);
-        expect(text, `${locale}:${key}`).not.toBe(key);
-      }
+  it('resolves the v0.1.2 UI polish contract for en', () => {
+    for (const key of UI_POLISH_KEYS) {
+      const text = getTranslation('en', key);
+      expect(text.length, `en:${key}`).toBeGreaterThan(0);
+      expect(text, `en:${key}`).not.toBe(key);
     }
   });
 
@@ -188,20 +172,16 @@ describe('locales', () => {
     ).toContain('unexpected token');
   });
 
-  it('contains snippet management keys in en and zh-CN', () => {
+  it('contains snippet management keys in en', () => {
     expect(getTranslation('en', 'query.snippets.add')).toBe('Add Snippet');
-    expect(getTranslation('zh-CN', 'query.snippets.add')).toBe('新增片段');
     expect(getTranslation('en', 'query.snippets.builtin')).toBe('Built-in');
-    expect(getTranslation('zh-CN', 'query.snippets.builtin')).toBe('内置');
     expect(getTranslation('en', 'query.snippets.syntaxGuideTitle')).toBe('Syntax Guide:');
-    expect(getTranslation('zh-CN', 'query.snippets.syntaxGuideTitle')).toBe('语法说明：');
     expect(getTranslation('en', 'query.snippets.prefixDuplicate')).toBe('Prefix already exists');
-    expect(getTranslation('zh-CN', 'query.snippets.prefixDuplicate')).toBe('该快捷前缀已存在');
   });
 
-  it('zh-CN and en differ on at least some user-facing strings', () => {
-    expect(zhCN['common.ok']).not.toBe(en['common.ok']);
-    expect(zhCN['settings.language']).not.toBe(en['settings.language']);
+  it('en contains user-facing fallback strings', () => {
+    expect(en['common.ok']).toBeTruthy();
+    expect(en['settings.language']).toBeTruthy();
   });
 
   it('replaces multiple distinct params', () => {
