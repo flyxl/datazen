@@ -432,3 +432,353 @@ export interface ProviderListItem {
   supportsStreaming: boolean;
   supportsTools: boolean;
   defaultEndpoint: string;
+  defaultProtocol: string;
+}
+
+export interface DiagnosisResult {
+  explanation: string;
+  suggestedSql: string | null;
+  changes: string[];
+}
+
+export interface ExplainAnalysis {
+  summary: string;
+  bottlenecks: Bottleneck[];
+  suggestions: ExplainSuggestion[];
+}
+
+export interface Bottleneck {
+  node: string;
+  description: string;
+  severity: 'high' | 'medium' | 'low';
+}
+
+export interface ExplainSuggestion {
+  description: string;
+  sql: string | null;
+  impact: string;
+}
+
+export interface AiQuestionOption {
+  id: string;
+  label: string;
+}
+
+export interface AiQuestion {
+  id: string;
+  prompt: string;
+  options: AiQuestionOption[];
+  allowMultiple?: boolean;
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface AiToolResult {
+  toolCallId: string;
+  content: string;
+}
+
+export interface AiChatMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  reasoning?: string;
+  questions?: AiQuestion[];
+  toolCalls?: AiToolCall[];
+  toolCallId?: string;
+}
+
+export interface AiChatSession {
+  id: string;
+  messages: AiChatMessage[];
+  isStreaming: boolean;
+  streamContent: string;
+  streamReasoning: string;
+  /** Qualified MCP tool name (mcp/server/tool) shown during streaming tool execution. */
+  streamMcpToolName: string | null;
+  requestId: string | null;
+}
+
+export interface StreamChunkPayload {
+  requestId: string;
+  content: string;
+  reasoning?: string;
+  done: boolean;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  toolCalls?: AiToolCall[];
+}
+
+export interface StreamErrorPayload {
+  requestId: string;
+  error: string;
+}
+
+// ── Workflow types ──
+
+export interface WorkflowVariable {
+  name: string;
+  type: string; // 'string' | 'number' | 'connection'
+  description: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+export type CommandCategory = 'query' | 'mutate' | 'admin' | 'observe' | 'pubSub' | 'stream' | 'io';
+
+export type CommandAccessLevel = 'read' | 'write' | 'highRisk';
+
+/**
+ * Declarative native save dialog attached to a command (host thin shell).
+ * The command returns `{ fileNameField, dataBase64Field }`; an interactive
+ * `execute_driver_command` call pops the native save dialog, writes the bytes
+ * and replaces the result with `{ resultPathField: savedPath | null }`.
+ */
+export interface DriverSaveDialogSpec {
+  fileNameField: string;
+  dataBase64Field: string;
+  filterName: string;
+  extensions: string[];
+  resultPathField: string;
+}
+
+export interface DriverCommandMetadata {
+  category: CommandCategory;
+  risk?: CommandAccessLevel | null;
+  workflow: boolean;
+  ui: boolean;
+  deprecated: boolean;
+  replacedBy?: string | null;
+  requiresConnection: boolean;
+  saveDialog?: DriverSaveDialogSpec | null;
+}
+
+export interface DriverCommandDefinition {
+  id: string;
+  name: string;
+  description?: string | null;
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown> | null;
+  permissions: string[];
+  metadata: DriverCommandMetadata;
+}
+
+export type WorkflowStepType =
+  | 'query'
+  | 'command'
+  | 'ai'
+  | 'condition'
+  | 'foreach'
+  | 'merge'
+  | 'transform';
+
+export interface ErrorHandlingConfig {
+  strategy: 'abort' | 'skip' | 'fallback';
+  fallbackSteps?: WorkflowStep[];
+}
+
+export interface WorkflowStep {
+  type: WorkflowStepType;
+  id: string;
+  sql?: string;
+  connection?: string;
+  database?: string;
+  command?: string;
+  input?: Record<string, unknown>;
+  prompt?: string;
+  timeoutSecs?: number;
+  onError?: ErrorHandlingConfig;
+  if?: string;
+  thenSteps?: WorkflowStep[];
+  elseSteps?: WorkflowStep[];
+  items?: string;
+  asVar?: string;
+  steps?: WorkflowStep[];
+  maxIterations?: number;
+  // merge step
+  sources?: MergeSource[];
+  columns?: string[];
+  // transform step
+  from?: string;
+  addColumns?: TransformColumn[];
+  filter?: string;
+  sortBy?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export interface MergeSource {
+  source: string;
+  columns?: Record<string, string>;
+  add?: Record<string, unknown>;
+}
+
+export interface TransformColumn {
+  name: string;
+  expr: string;
+}
+
+export interface WorkflowOutput {
+  format: string;
+  template?: string;
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  description: string;
+  version?: string;
+  author?: string;
+  variables: WorkflowVariable[];
+  /** Default connection inherited by data-operation steps. */
+  connection?: string;
+  /** Default database inherited by data-operation steps (multi-db connections). */
+  database?: string;
+  steps: WorkflowStep[];
+  output?: WorkflowOutput;
+  timeoutSecs?: number;
+  errorHandling?: ErrorHandlingConfig;
+  schedule?: WorkflowSchedule;
+  /** `user` | `dashboardHidden` — hidden workflows are dashboard-owned SQL bindings. */
+  visibility?: 'user' | 'dashboardHidden';
+}
+
+export interface WorkflowSchedule {
+  enabled: boolean;
+  interval_secs?: number;
+  intervalSecs?: number;
+}
+
+export interface WorkflowListItem {
+  id: string;
+  name: string;
+  description: string;
+  variables: WorkflowVariable[];
+  scheduled?: boolean;
+}
+
+export type StepStatus = 'success' | 'failed' | 'skipped' | 'timed_out';
+
+export interface StepExecutionResult {
+  stepId: string;
+  stepType: string;
+  status: StepStatus;
+  result?: Record<string, unknown>;
+  executionTimeMs: number;
+  error?: string;
+  connectionName?: string;
+  sqlExecuted?: string;
+}
+
+export interface WorkflowExecutionResult {
+  success: boolean;
+  finalOutput: string;
+  steps: StepExecutionResult[];
+  totalTimeMs: number;
+  error?: string;
+}
+
+export interface HistoryListItem {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  success: boolean;
+  totalTimeMs: number;
+  createdAt: string;
+}
+
+export interface HistoryEntry {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  variables: Record<string, unknown>;
+  result: WorkflowExecutionResult;
+  createdAt: string;
+}
+
+// ── Phase 8: Schema docs + Connection diagnosis + Query analysis ──
+
+export interface ConnectionDiagnosis {
+  diagnosis: string;
+  possibleCauses: string[];
+  solutions: ConnectionSolution[];
+  category: string;
+}
+
+export interface ConnectionSolution {
+  description: string;
+  command?: string;
+}
+
+export interface QueryCategory {
+  name: string;
+  count: number;
+  examples: string[];
+}
+
+export interface QueryAnalysis {
+  summary: string;
+  categories: QueryCategory[];
+  insights: string[];
+  frequentTables: string[];
+  recommendations: string[];
+}
+
+// ── Data Sync types ──
+
+export type TableCompareStatus = 'identical' | 'different' | 'source_only' | 'target_only';
+
+export type SyncObjectKind = 'table' | 'view' | 'function' | 'procedure';
+
+export interface TableComparison {
+  table: string;
+  kind?: SyncObjectKind;
+  status: TableCompareStatus;
+  sourceRows: number | null;
+  targetRows: number | null;
+}
+
+export interface ColumnDiffEntry {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+  isPrimaryKey: boolean;
+}
+
+export interface ChangedColumnDiff {
+  name: string;
+  source: ColumnDiffEntry;
+  target: ColumnDiffEntry;
+  changes: string[];
+}
+
+export interface TableSchemaDiff {
+  table: string;
+  /** Present on source, missing on target → ADD on deploy. */
+  addedColumns: ColumnDiffEntry[];
+  /** Present on target, missing on source → DROP on deploy. */
+  removedColumns: ColumnDiffEntry[];
+  changedColumns: ChangedColumnDiff[];
+}
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  transport: 'stdio' | 'sse' | 'streamable_http';
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface McpToolInfo {
+  serverId: string;
+  toolName: string;
+  qualifiedName: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
+}
