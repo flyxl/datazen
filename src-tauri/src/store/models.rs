@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::ai::AiProviderConfig;
-use crate::db::ConnectionConfig;
+use crate::db::{ConnectionConfig, SavedTunnel};
 
 use super::settings::AppSettings;
 
@@ -72,6 +72,8 @@ pub struct SyncTask {
 #[derive(Default)]
 pub(crate) struct StoreCache {
     pub(super) connections: Vec<ConnectionConfig>,
+    /// Independently stored tunnel definitions (`tunnels.json`).
+    pub(super) tunnels: Vec<SavedTunnel>,
     pub(super) groups: Vec<String>,
     pub(super) settings: AppSettings,
     /// Lazy: loaded on first sync / AI access.
