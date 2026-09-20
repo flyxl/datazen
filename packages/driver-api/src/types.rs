@@ -668,3 +668,23 @@ pub enum AlterStrategy {
     Direct,
     SqliteRebuild,
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum StructureChangeMode {
+    Create,
+    Alter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StructureColumnDraft {
+    pub id: String,
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub default_value: Option<String>,
+    pub comment: Option<String>,
+    pub is_primary_key: bool,
+    pub is_auto_increment: bool,
+}
