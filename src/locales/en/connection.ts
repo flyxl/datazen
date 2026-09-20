@@ -103,6 +103,8 @@ const pack = {
   'newConn.tunnelSsh': 'SSH tunnel',
   'newConn.tunnelHttpProxy': 'HTTP proxy (CONNECT)',
   'newConn.tunnelWebSocket': 'WebSocket tunnel',
+  'newConn.savedTunnel': 'Saved tunnel',
+  'newConn.savedTunnelNone': 'Inline configuration',
   'newConn.httpProxyHost': 'Proxy host',
   'newConn.httpProxyPort': 'Proxy port',
   'newConn.httpProxyScheme': 'Proxy scheme',
