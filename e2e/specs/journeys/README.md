@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | First Run → Query | 首次安装欢迎页 → 取消并重新建连 → 查看连接 → 首条查询 | `welcome-query-journey.ts` |
 | Create Connection | 连接工作区 → 驱动切换 → 填写/测试/保存 → 重载持久化 | `connection-create-journey.ts` |
+| Tunnel Form | 新建连接 → 选择 SSH/HTTP/WS 隧道 → 条件字段与校验（可选真实隧道） | `tunnel-connection-journey.ts` |
 | Browse Connection | 连接列表 → 连接首页 → Schema 树 → 数据/结构/索引/外键/DDL | `connection-browse-journey.ts` |
 | Create → Query | 新建连接 → 连接 → 新建查询 → SQL 结果 | `connection-query-journey.ts` |
 | Navigator | 最近连接分组展开 → 折叠 → 恢复 | `../connection-navigator-expansion.ts` |
