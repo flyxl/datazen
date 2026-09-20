@@ -38,7 +38,6 @@ mod tests {
 
     #[test]
     fn unique_driver_types_deduplicates_preserving_order() {
-        // Structural smoke test — full ConnectionConfig construction lives in integration tests.
         let empty: Vec<crate::db::ConnectionConfig> = vec![];
         assert!(unique_driver_types(&empty).is_empty());
     }
@@ -54,11 +53,12 @@ mod tests {
 
     #[test]
     fn test_tester_run_mcp_stdio_entry_chain_wiring() {
-        let bootstrap = include_str!("bootstrap.rs");
-        assert!(bootstrap.contains("bootstrap_run_pre_a.inc.rs") || bootstrap.contains("run_mcp_stdio"));
-        let pre = include_str!("bootstrap_run_pre_a.inc.rs");
-        assert!(pre.contains("pub fn run_mcp_stdio()"));
-        assert!(pre.contains("mcp::auth::verify_stdio_token"));
-        assert!(pre.contains("mcp::start_mcp_stdio"));
+        let run = include_str!("bootstrap_run.inc.rs");
+        assert!(run.contains("pub fn run_mcp_stdio()"));
+        assert!(run.contains("mcp::auth::verify_stdio_token"));
+        assert!(run.contains("mcp::start_mcp_stdio"));
+        assert!(run.contains("pub fn run()"));
+        let boot = include_str!("bootstrap.rs");
+        assert!(boot.contains("bootstrap_run.inc.rs"));
     }
 }
