@@ -23,7 +23,9 @@ pub mod sqlite_structure;
 pub mod sync;
 mod sync_taxonomy;
 mod traits;
+mod tunnel_types;
 mod types;
+pub use tunnel_types::*;
 
 pub use command::{
     check_command_access, execute_command_definition, execute_command_definition_for,
