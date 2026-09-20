@@ -1,13 +1,18 @@
 //! Application bootstrap: logging, AppState assembly, GUI/MCP entry points.
 //!
-//! Split by functional module so each file stays under the project 800-line limit.
-//! `generate_handler!` remains in this file so command-registration guards that
-//! `include_str!("bootstrap.rs")` keep working.
+//! Functional splits (each file ≤800 lines):
+//! - `bootstrap_helpers.inc.rs`   — log/path/MCP flags
+//! - `bootstrap_app_state.inc.rs` — AppState construction
+//! - `bootstrap_run.inc.rs`       — `run_mcp_stdio` + `run` builder/setup
+//! - `bootstrap_window.inc.rs`    — window events + process run loop
+//! - `bootstrap_tests.inc.rs`     — unit tests
+//!
+//! `generate_handler!` stays here so `include_str!("bootstrap.rs")` registration
+//! guards continue to see the IPC surface.
 
 include!("bootstrap_helpers.inc.rs");
 include!("bootstrap_app_state.inc.rs");
-include!("bootstrap_run_pre_a.inc.rs");
-include!("bootstrap_run_pre_b.inc.rs");
+include!("bootstrap_run.inc.rs");
         .invoke_handler(tauri::generate_handler![
             crate::commands::get_connections,
             crate::commands::save_connection,
@@ -129,5 +134,5 @@ include!("bootstrap_run_pre_b.inc.rs");
             #[cfg(feature = "webdriver")]
             crate::commands::test_reset_dialog_queue,
         ])
-include!("bootstrap_run_post.inc.rs");
+include!("bootstrap_window.inc.rs");
 include!("bootstrap_tests.inc.rs");
