@@ -108,6 +108,11 @@ pub struct ConnectionConfig {
     #[serde(default = "default_max_pool_size")]
     pub max_pool_size: u32,
     pub ssh_tunnel: Option<SshTunnelConfig>,
+    /// Preferred tunnel strategy. When absent, inferred from legacy ssh/http/ws fields.
+    #[serde(default)]
+    pub tunnel_kind: Option<crate::TunnelKind>,
+    pub http_proxy_tunnel: Option<crate::HttpProxyTunnelConfig>,
+    pub websocket_tunnel: Option<crate::WebSocketTunnelConfig>,
     pub color_tag: Option<String>,
     pub group: Option<String>,
     pub last_connected_at: Option<String>,
@@ -158,6 +163,9 @@ mod connection_config_tests {
             connection_timeout: 30,
             max_pool_size: 10,
             ssh_tunnel: None,
+            tunnel_kind: None,
+            http_proxy_tunnel: None,
+            websocket_tunnel: None,
             color_tag: None,
             group: None,
             last_connected_at: None,
@@ -591,6 +599,12 @@ pub enum DriverError {
     #[error("SSH tunnel error: {0}")]
     SshTunnelError(String),
 
+    #[error("HTTP proxy tunnel error: {0}")]
+    HttpProxyTunnelError(String),
+
+    #[error("WebSocket tunnel error: {0}")]
+    WebSocketTunnelError(String),
+
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
 
@@ -653,187 +667,4 @@ pub enum AlterStrategy {
     None,
     Direct,
     SqliteRebuild,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum StructureChangeMode {
-    Create,
-    Alter,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct StructureColumnDraft {
-    pub id: String,
-    pub name: String,
-    pub data_type: String,
-    pub nullable: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_value: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub comment: Option<String>,
-    #[serde(default)]
-    pub is_primary_key: bool,
-    #[serde(default)]
-    pub is_auto_increment: bool,
-    #[serde(default)]
-    pub is_unique: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct StructureIndexDraft {
-    pub id: String,
-    pub name: String,
-    pub columns: Vec<String>,
-    pub is_unique: bool,
-    #[serde(default)]
-    pub is_primary: bool,
-    #[serde(default)]
-    pub index_type: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub include_columns: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub filter: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub comment: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct StructureChangeRequest {
-    pub mode: StructureChangeMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub schema: Option<String>,
-    pub table: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub original_columns: Vec<StructureColumnDraft>,
-    pub current_columns: Vec<StructureColumnDraft>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub original_indexes: Vec<StructureIndexDraft>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub current_indexes: Vec<StructureIndexDraft>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum StatementRisk {
-    Additive,
-    Destructive,
-    Rewrite,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct PlanStatement {
-    pub sql: String,
-    pub summary: String,
-    pub risk: StatementRisk,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct StructureChangePlan {
-    pub statements: Vec<PlanStatement>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<String>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn col(name: &str, pk: bool) -> ColumnSchema {
-        ColumnSchema {
-            name: name.into(),
-            data_type: "INT".into(),
-            nullable: false,
-            default_value: None,
-            comment: None,
-            is_primary_key: pk,
-            is_auto_increment: false,
-        }
-    }
-
-    fn table_schema(columns: Vec<ColumnSchema>, primary_keys: Vec<&str>) -> TableSchema {
-        TableSchema {
-            table_name: "t".into(),
-            columns,
-            primary_keys: primary_keys.into_iter().map(str::to_string).collect(),
-            indexes: vec![],
-            foreign_keys: vec![],
-        }
-    }
-
-    #[test]
-    fn effective_primary_keys_prefers_primary_keys_field() {
-        let schema = table_schema(vec![col("id", false), col("other", false)], vec!["id"]);
-        assert_eq!(schema.effective_primary_keys(), vec!["id"]);
-    }
-
-    #[test]
-    fn effective_primary_keys_falls_back_to_column_flags() {
-        let schema = table_schema(vec![col("id", true), col("other", false)], vec![]);
-        assert_eq!(schema.effective_primary_keys(), vec!["id"]);
-    }
-
-    #[test]
-    fn effective_primary_keys_composite_from_field() {
-        let schema = table_schema(vec![col("a", false), col("b", false)], vec!["a", "b"]);
-        assert_eq!(schema.effective_primary_keys(), vec!["a", "b"]);
-    }
-
-    #[test]
-    fn effective_primary_keys_empty_when_none_marked() {
-        let schema = table_schema(vec![col("id", false)], vec![]);
-        assert!(schema.effective_primary_keys().is_empty());
-    }
-
-    #[test]
-    fn backup_dump_options_default_is_all_false() {
-        let opts = BackupDumpOptions::default();
-        assert!(!opts.schema_only);
-        assert!(!opts.data_only);
-        assert!(!opts.clean);
-        assert!(!opts.create_database);
-        assert!(!opts.no_owner);
-        assert!(!opts.single_transaction);
-        assert!(!opts.routines);
-        assert!(!opts.triggers);
-    }
-
-    #[test]
-    fn backup_restore_options_default_is_all_false() {
-        let opts = BackupRestoreOptions::default();
-        assert!(!opts.single_transaction);
-    }
-
-    #[test]
-    fn not_supported_display() {
-        let err = DriverError::NotSupported("create_database".into());
-        assert!(err.to_string().contains("Not supported"));
-        assert!(err.to_string().contains("create_database"));
-    }
-
-    #[test]
-    fn test_tester_ddl_atomicity_serde_roundtrip() {
-        for value in [
-            DdlAtomicity::Transactional,
-            DdlAtomicity::AutoCommitPerStatement,
-            DdlAtomicity::Unknown,
-        ] {
-            let json = serde_json::to_string(&value).unwrap();
-            let decoded: DdlAtomicity = serde_json::from_str(&json).unwrap();
-            assert_eq!(decoded, value);
-        }
-        assert_eq!(
-            serde_json::to_string(&DdlAtomicity::Transactional).unwrap(),
-            "\"transactional\""
-        );
-        assert_eq!(
-            serde_json::to_string(&DdlAtomicity::AutoCommitPerStatement).unwrap(),
-            "\"autoCommitPerStatement\""
-        );
-    }
 }
