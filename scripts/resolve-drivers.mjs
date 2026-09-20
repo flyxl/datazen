@@ -272,6 +272,12 @@ const BASIC_PATH_FRONTEND = {
   sqlserver: {
     dbTypes: [{ id: 'sqlserver', metaExport: 'sqlserverMeta' }],
     metaPath: '../../packages/drivers/sqlserver/ui/meta',
+    connectionForm: {
+      component: 'SqlServerConnectionFields',
+      path: '../../packages/drivers/sqlserver/ui/ConnectionFields',
+      formVariant: 'sqlserver',
+      advanced: 'SqlServerConnectionAdvanced',
+    },
   },
   clickhouse: {
     dbTypes: [{ id: 'clickhouse', metaExport: 'clickhouseMeta' }],
