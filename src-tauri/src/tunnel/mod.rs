@@ -4,8 +4,10 @@
 //! See `docs/architecture/rfc/http-https-websocket-tunnel.zh-CN.md`.
 
 mod http_proxy;
+mod websocket;
 
 pub use http_proxy::HttpProxyTunnel;
+pub use websocket::WebSocketTunnel;
 
 use crate::db::{
     ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
@@ -17,7 +19,7 @@ use std::path::Path;
 pub enum Tunnel {
     Ssh(SshTunnel),
     HttpProxy(HttpProxyTunnel),
-    // WebSocket(WebSocketTunnel) — enabled in a follow-up commit (P3).
+    WebSocket(WebSocketTunnel),
 }
 
 impl Tunnel {
@@ -25,6 +27,7 @@ impl Tunnel {
         match self {
             Self::Ssh(t) => t.local_port(),
             Self::HttpProxy(t) => t.local_port(),
+            Self::WebSocket(t) => t.local_port(),
         }
     }
 }
@@ -74,10 +77,42 @@ pub async fn start_for_connection(
         TunnelKind::None => Ok((config, None)),
         TunnelKind::Ssh => start_ssh(config, known_hosts_path).await,
         TunnelKind::HttpProxy => start_http_proxy(config).await,
-        TunnelKind::WebSocket => Err(DriverError::WebSocketTunnelError(
-            "WebSocket tunnel is not enabled in this build yet (see RFC P3)".into(),
-        )),
+        TunnelKind::WebSocket => start_websocket(config).await,
     }
+}
+
+async fn start_websocket(
+    config: ConnectionConfig,
+) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
+    let ws_cfg: WebSocketTunnelConfig = config
+        .websocket_tunnel
+        .clone()
+        .filter(|s| s.enabled)
+        .ok_or_else(|| {
+            DriverError::InvalidConfig(
+                "tunnelKind=websocket but websocketTunnel is missing or disabled".into(),
+            )
+        })?;
+
+    let remote_host = config.host.as_deref().ok_or_else(|| {
+        DriverError::InvalidConfig("WebSocket tunnel requires a database host".into())
+    })?;
+    let remote_port = config.port.ok_or_else(|| {
+        DriverError::InvalidConfig("WebSocket tunnel requires a database port".into())
+    })?;
+
+    tracing::info!(
+        url = %ws_cfg.url,
+        remote = %format!("{remote_host}:{remote_port}"),
+        mode = %ws_cfg.mode,
+        "Starting WebSocket tunnel"
+    );
+
+    let tunnel = WebSocketTunnel::start(&ws_cfg, remote_host, remote_port).await?;
+    Ok((
+        rewrite_to_local(config, tunnel.local_port()),
+        Some(Tunnel::WebSocket(tunnel)),
+    ))
 }
 
 async fn start_ssh(
@@ -227,17 +262,4 @@ mod tests {
         assert_eq!(resolve_tunnel_kind(&base_config()), TunnelKind::None);
     }
 
-    #[test]
-    fn _unused_websocket_config_type_link() {
-        // Keep WebSocketTunnelConfig in public API surface for serde/UI.
-        let _ = WebSocketTunnelConfig {
-            enabled: false,
-            url: "wss://example/tunnel".into(),
-            auth_token: None,
-            headers: None,
-            connect_timeout_secs: 30,
-            ping_interval_secs: 30,
-            mode: "datazen_v1".into(),
-        };
-    }
 }
