@@ -117,6 +117,7 @@ pub(crate) fn finish_app_state(
         query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
+        cancel_registry: crate::ai::CancellationRegistry::default(),
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state

@@ -1,14 +1,20 @@
 //! HTTP CONNECT tunnel: local TCP listener → HTTP(S) proxy CONNECT → remote DB.
 
 use crate::db::{DriverError, HttpProxyTunnelConfig};
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio_rustls::rustls::{
+    pki_types::{IpAddr, ServerName},
+    ClientConfig, RootCertStore,
+};
+use tokio_rustls::TlsConnector;
+use tokio_util::sync::CancellationToken;
 
 pub struct HttpProxyTunnel {
     local_port: u16,
-    _task: tokio::task::JoinHandle<()>,
+    cancel: CancellationToken,
+    task: tokio::task::JoinHandle<()>,
 }
 
 impl HttpProxyTunnel {
@@ -22,10 +28,9 @@ impl HttpProxyTunnel {
         remote_port: u16,
     ) -> Result<Self, DriverError> {
         let scheme = proxy.scheme.to_ascii_lowercase();
-        if scheme != "http" {
-            // TLS-to-proxy (https) lands in a follow-up; keep surface stable.
+        if scheme != "http" && scheme != "https" {
             return Err(DriverError::HttpProxyTunnelError(format!(
-                "HTTP proxy scheme '{scheme}' is not supported yet; use scheme=http (CONNECT). HTTPS-to-proxy is planned"
+                "unsupported HTTP proxy scheme '{scheme}'; use http or https"
             )));
         }
         if proxy.host.trim().is_empty() {
@@ -46,12 +51,18 @@ impl HttpProxyTunnel {
         let proxy_port = proxy.port;
         let remote_host = remote_host.to_string();
         let timeout = Duration::from_secs(u64::from(proxy.connect_timeout_secs.max(1)));
-        let auth_header = basic_auth_header(proxy.username.as_deref(), proxy.password.as_deref());
         let extra_headers: Vec<(String, String)> = proxy
             .headers
             .as_ref()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default();
+        let auth_header = extra_headers
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case("proxy-authorization"))
+            .map(|(_, value)| value.clone())
+            .or_else(|| basic_auth_header(proxy.username.as_deref(), proxy.password.as_deref()));
+        let cancel = CancellationToken::new();
+        let task_cancel = cancel.clone();
 
         tracing::info!(
             proxy = %format!("{proxy_host}:{proxy_port}"),
@@ -62,47 +73,37 @@ impl HttpProxyTunnel {
 
         let task = tokio::spawn(async move {
             loop {
-                let (mut inbound, _) = match listener.accept().await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!("HTTP proxy tunnel accept error: {e}");
-                        break;
-                    }
+                let (mut inbound, _) = tokio::select! {
+                    _ = task_cancel.cancelled() => break,
+                    result = listener.accept() => match result {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!("HTTP proxy tunnel accept error: {e}");
+                            break;
+                        }
+                    },
                 };
 
                 let proxy_host = proxy_host.clone();
                 let remote_host = remote_host.clone();
                 let auth_header = auth_header.clone();
                 let extra_headers = extra_headers.clone();
+                let child_cancel = task_cancel.clone();
+                let scheme = scheme.clone();
 
                 tokio::spawn(async move {
-                    let result = async {
-                        let mut upstream = tokio::time::timeout(
-                            timeout,
-                            TcpStream::connect((proxy_host.as_str(), proxy_port)),
-                        )
-                        .await
-                        .map_err(|_| {
-                            DriverError::HttpProxyTunnelError("connect to proxy timed out".into())
-                        })?
-                        .map_err(|e| {
-                            DriverError::HttpProxyTunnelError(format!(
-                                "connect to proxy {proxy_host}:{proxy_port}: {e}"
-                            ))
-                        })?;
-
-                        perform_connect(
-                            &mut upstream,
-                            &remote_host,
-                            remote_port,
-                            auth_header.as_deref(),
-                            &extra_headers,
-                        )
-                        .await?;
-
-                        let _ = tokio::io::copy_bidirectional(&mut inbound, &mut upstream).await;
-                        Ok::<(), DriverError>(())
-                    }
+                    let result = connect_and_copy(
+                        &mut inbound,
+                        &scheme,
+                        &proxy_host,
+                        proxy_port,
+                        &remote_host,
+                        remote_port,
+                        auth_header.as_deref(),
+                        &extra_headers,
+                        timeout,
+                        &child_cancel,
+                    )
                     .await;
 
                     if let Err(e) = result {
@@ -112,13 +113,121 @@ impl HttpProxyTunnel {
             }
         });
 
-        // Silence unused warning if Arc not needed — keep JoinHandle owned.
-        let _ = Arc::new(());
-
         Ok(Self {
             local_port,
-            _task: task,
+            cancel,
+            task,
         })
+    }
+}
+
+impl Drop for HttpProxyTunnel {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+        self.task.abort();
+    }
+}
+
+async fn connect_and_copy(
+    inbound: &mut TcpStream,
+    scheme: &str,
+    proxy_host: &str,
+    proxy_port: u16,
+    remote_host: &str,
+    remote_port: u16,
+    auth_header: Option<&str>,
+    extra_headers: &[(String, String)],
+    timeout: Duration,
+    cancel: &CancellationToken,
+) -> Result<(), DriverError> {
+    let socket = tokio::time::timeout(timeout, TcpStream::connect((proxy_host, proxy_port)))
+        .await
+        .map_err(|_| DriverError::HttpProxyTunnelError("connect to proxy timed out".into()))?
+        .map_err(|e| {
+            DriverError::HttpProxyTunnelError(format!(
+                "connect to proxy {proxy_host}:{proxy_port}: {e}"
+            ))
+        })?;
+
+    if scheme == "https" {
+        let roots = RootCertStore {
+            roots: webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect(),
+        };
+        let tls_config = ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        let server_name = if let Ok(ip) = proxy_host.parse::<std::net::IpAddr>() {
+            ServerName::IpAddress(IpAddr::from(ip))
+        } else {
+            ServerName::try_from(proxy_host.to_owned()).map_err(|e| {
+                DriverError::HttpProxyTunnelError(format!("invalid HTTPS proxy host: {e}"))
+            })?
+        };
+        let connector = TlsConnector::from(std::sync::Arc::new(tls_config));
+        let mut upstream = tokio::time::timeout(timeout, connector.connect(server_name, socket))
+            .await
+            .map_err(|_| DriverError::HttpProxyTunnelError("TLS proxy handshake timed out".into()))?
+            .map_err(|e| {
+                DriverError::HttpProxyTunnelError(format!("TLS proxy handshake failed: {e}"))
+            })?;
+        establish_and_copy(
+            inbound,
+            &mut upstream,
+            remote_host,
+            remote_port,
+            auth_header,
+            extra_headers,
+            timeout,
+            cancel,
+        )
+        .await
+    } else {
+        let mut upstream = socket;
+        establish_and_copy(
+            inbound,
+            &mut upstream,
+            remote_host,
+            remote_port,
+            auth_header,
+            extra_headers,
+            timeout,
+            cancel,
+        )
+        .await
+    }
+}
+
+async fn establish_and_copy<S>(
+    inbound: &mut TcpStream,
+    upstream: &mut S,
+    remote_host: &str,
+    remote_port: u16,
+    auth_header: Option<&str>,
+    extra_headers: &[(String, String)],
+    timeout: Duration,
+    cancel: &CancellationToken,
+) -> Result<(), DriverError>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    tokio::time::timeout(
+        timeout,
+        perform_connect(
+            upstream,
+            remote_host,
+            remote_port,
+            auth_header,
+            extra_headers,
+        ),
+    )
+    .await
+    .map_err(|_| DriverError::HttpProxyTunnelError("CONNECT handshake timed out".into()))??;
+
+    tokio::select! {
+        _ = cancel.cancelled() => Ok(()),
+        result = tokio::io::copy_bidirectional(inbound, upstream) => {
+            result.map(|_| ()).map_err(|e| DriverError::HttpProxyTunnelError(format!("proxy stream failed: {e}")))
+        }
     }
 }
 
@@ -130,7 +239,6 @@ fn basic_auth_header(user: Option<&str>, pass: Option<&str>) -> Option<String> {
 }
 
 fn base64_encode(bytes: &[u8]) -> String {
-    use std::io::Write;
     // Minimal Base64 without new crate dependency (std only).
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = Vec::with_capacity((bytes.len() + 2) / 3 * 4);
@@ -160,13 +268,16 @@ fn base64_encode(bytes: &[u8]) -> String {
     String::from_utf8(out).unwrap_or_default()
 }
 
-async fn perform_connect(
-    stream: &mut TcpStream,
+async fn perform_connect<S>(
+    stream: &mut S,
     remote_host: &str,
     remote_port: u16,
     auth_header: Option<&str>,
     extra_headers: &[(String, String)],
-) -> Result<(), DriverError> {
+) -> Result<(), DriverError>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     let mut req = format!(
         "CONNECT {remote_host}:{remote_port} HTTP/1.1\r\nHost: {remote_host}:{remote_port}\r\n"
     );
@@ -176,9 +287,14 @@ async fn perform_connect(
         req.push_str("\r\n");
     }
     for (k, v) in extra_headers {
-        // Skip hop-by-hop / dangerous overrides.
+        // These headers are controlled by the tunnel implementation.
         if k.eq_ignore_ascii_case("host") || k.eq_ignore_ascii_case("proxy-authorization") {
             continue;
+        }
+        if k.contains(['\r', '\n']) || v.contains(['\r', '\n']) {
+            return Err(DriverError::HttpProxyTunnelError(
+                "proxy header contains an invalid line break".into(),
+            ));
         }
         req.push_str(k);
         req.push_str(": ");
@@ -193,31 +309,29 @@ async fn perform_connect(
         .await
         .map_err(|e| DriverError::HttpProxyTunnelError(format!("write CONNECT: {e}")))?;
 
-    let mut reader = BufReader::new(stream);
-    let mut status_line = String::new();
-    reader
-        .read_line(&mut status_line)
-        .await
-        .map_err(|e| DriverError::HttpProxyTunnelError(format!("read CONNECT status: {e}")))?;
+    let mut response = Vec::with_capacity(512);
+    let mut byte = [0u8; 1];
+    while response.len() < 16 * 1024 {
+        let read = stream.read(&mut byte).await.map_err(|e| {
+            DriverError::HttpProxyTunnelError(format!("read CONNECT response: {e}"))
+        })?;
+        if read == 0 {
+            break;
+        }
+        response.push(byte[0]);
+        if response.ends_with(b"\r\n\r\n") || response.ends_with(b"\n\n") {
+            break;
+        }
+    }
+    let response_text = String::from_utf8_lossy(&response);
+    let status_line = response_text.lines().next().unwrap_or_default();
 
-    let code = parse_http_status(&status_line).ok_or_else(|| {
+    let code = parse_http_status(status_line).ok_or_else(|| {
         DriverError::HttpProxyTunnelError(format!(
             "invalid CONNECT response status line: {}",
             status_line.trim()
         ))
     })?;
-
-    // Drain headers until empty line.
-    loop {
-        let mut line = String::new();
-        reader
-            .read_line(&mut line)
-            .await
-            .map_err(|e| DriverError::HttpProxyTunnelError(format!("read CONNECT header: {e}")))?;
-        if line == "\r\n" || line == "\n" || line.is_empty() {
-            break;
-        }
-    }
 
     if code != 200 {
         return Err(DriverError::HttpProxyTunnelError(format!(
@@ -225,10 +339,6 @@ async fn perform_connect(
             status_line.trim()
         )));
     }
-
-    // BufReader may have buffered bytes; into_inner returns the stream.
-    // Any prefetched body bytes would be a proxy bug; we ignore for CONNECT 200.
-    let _ = reader;
     Ok(())
 }
 
@@ -265,5 +375,53 @@ mod tests {
         assert_eq!(base64_encode(b"a"), "YQ==");
         assert_eq!(base64_encode(b"ab"), "YWI=");
         assert_eq!(base64_encode(b"abc"), "YWJj");
+    }
+
+    #[tokio::test]
+    async fn forwards_bytes_through_connect_proxy() {
+        let proxy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_addr = proxy.local_addr().unwrap();
+        let proxy_task = tokio::spawn(async move {
+            let (mut client, _) = proxy.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                client.read_exact(&mut byte).await.unwrap();
+                request.push(byte[0]);
+            }
+            let request = String::from_utf8(request).unwrap();
+            assert!(request.starts_with("CONNECT db.internal:5432 HTTP/1.1"));
+            assert!(request.contains("Proxy-Authorization: Basic dTpw"));
+            client
+                .write_all(b"HTTP/1.1 200 Connection established\r\n\r\n")
+                .await
+                .unwrap();
+            let mut payload = [0u8; 4];
+            client.read_exact(&mut payload).await.unwrap();
+            assert_eq!(&payload, b"ping");
+            client.write_all(b"pong").await.unwrap();
+        });
+
+        let config = HttpProxyTunnelConfig {
+            enabled: true,
+            host: proxy_addr.ip().to_string(),
+            port: proxy_addr.port(),
+            scheme: "http".into(),
+            username: Some("u".into()),
+            password: Some("p".into()),
+            headers: None,
+            connect_timeout_secs: 3,
+        };
+        let tunnel = HttpProxyTunnel::start(&config, "db.internal", 5432)
+            .await
+            .unwrap();
+        let mut local = TcpStream::connect(("127.0.0.1", tunnel.local_port()))
+            .await
+            .unwrap();
+        local.write_all(b"ping").await.unwrap();
+        let mut response = [0u8; 4];
+        local.read_exact(&mut response).await.unwrap();
+        assert_eq!(&response, b"pong");
+        proxy_task.await.unwrap();
     }
 }

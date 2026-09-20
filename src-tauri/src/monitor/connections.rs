@@ -8,7 +8,7 @@ use tokio::sync::RwLock;
 
 use crate::db::{ConnectionConfig, ConnectionHandle, DatabaseDriver};
 use crate::services::connection_manager::{ConnectionError, ConnectionManager};
-use crate::ssh_tunnel::SshTunnel;
+use crate::tunnel::Tunnel;
 
 /// Logical registry key for a monitor connection (`monitor:{connection_id}`).
 #[cfg_attr(not(test), allow(dead_code))]
@@ -22,7 +22,7 @@ struct MonitorEntry {
     #[allow(dead_code)]
     config: ConnectionConfig,
     last_used: Instant,
-    _tunnel: Option<SshTunnel>,
+    _tunnel: Option<Tunnel>,
 }
 
 /// Holds monitor connections keyed by `connection_id` (logical key `monitor:{connection_id}`).
@@ -227,6 +227,10 @@ impl MonitorConnectionRegistry {
                     connection_timeout: 30,
                     max_pool_size: 10,
                     ssh_tunnel: None,
+                    tunnel_kind: None,
+                    tunnel_id: None,
+                    http_proxy_tunnel: None,
+                    websocket_tunnel: None,
                     color_tag: None,
                     group: None,
                     last_connected_at: None,

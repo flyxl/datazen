@@ -270,12 +270,12 @@ WebSocketTunnelError(String),
 
 | 阶段 | 交付 | 状态 |
 |------|------|------|
-| **P0** | 本 RFC 文档合入功能分支 | 进行中 |
-| **P1** | `tunnel` 模块骨架 + `Tunnel` 枚举；ConnectionManager 接线；配置类型与 serde 兼容 | 下一步 |
-| **P2** | HTTP CONNECT 实现 + 单测 | |
-| **P3** | WebSocket 客户端（datazen_v1 + raw_binary）+ 单测 | |
-| **P4** | 连接表单 UI + i18n | |
-| **P5** | 文档（用户手册 features）+ CHANGELOG 草稿 | |
+| **P0** | 本 RFC 文档合入功能分支 | 完成 |
+| **P1** | `tunnel` 模块骨架 + `Tunnel` 枚举；ConnectionManager 接线；配置类型与 serde 兼容 | 完成 |
+| **P2** | HTTP/HTTPS CONNECT 实现 + 单测/双向转发测试 | 完成 |
+| **P3** | WebSocket 客户端（datazen_v1 + raw_binary）+ 单测/relay 测试 | 完成 |
+| **P4** | 连接表单 UI + i18n | 完成 |
+| **P5** | 文档（用户手册 features）+ CHANGELOG 草稿 | 完成 |
 
 每阶段保持 **可编译、SSH 行为不回归**。
 
@@ -304,7 +304,7 @@ src/locales/**/connection*.json                             # 文案
 | 风险 | 缓解 |
 |------|------|
 | 代理对 CONNECT 目标端口白名单 | UI 提示；错误信息展示代理响应体摘要 |
-| 部分代理不支持 HTTPS 到代理 | scheme 可选 http |
+| 部分代理不支持 HTTPS 到代理 | scheme 可选 http；HTTPS 代理默认校验证书 |
 | WS 中继协议不统一 | `mode` 可切换；文档写明 DataZen v1 约定 |
 | 配置字段膨胀 | 嵌套 struct + 条件 UI |
 | 依赖体积 | 优先复用现有 TLS；WS 按需 feature |

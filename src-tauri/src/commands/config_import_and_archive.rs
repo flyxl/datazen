@@ -45,10 +45,10 @@ pub async fn pick_connection_import_path_with_dialog(
     let import_app = ImportApp::parse(&source)?;
     let is_folder = mode.trim().eq_ignore_ascii_case("folder");
     let picked = if is_folder {
-        super::dialog::pick_folder(&app).await?
+        super::super::dialog::pick_folder(&app).await?
     } else {
         let (label, exts) = import_file_filters(import_app);
-        super::dialog::open_file(
+        super::super::dialog::open_file(
             &app,
             vec![(
                 label.to_string(),
@@ -149,7 +149,7 @@ pub async fn export_app_data(
     let dest = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
         None => {
-            super::dialog::save_file(
+            super::super::dialog::save_file(
                 &app,
                 ("DataZen Archive".into(), vec!["zip".into()]),
                 default_file_name,
@@ -182,15 +182,18 @@ pub async fn import_app_data(
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
         None => {
-            super::dialog::open_file(&app, vec![("DataZen Archive".into(), vec!["zip".into()])])
-                .await?
+            super::super::dialog::open_file(
+                &app,
+                vec![("DataZen Archive".into(), vec!["zip".into()])],
+            )
+            .await?
         }
     };
     let Some(source) = source else {
         return Ok(None);
     };
     let options = app_data_archive::ImportOptions {
-        replace_encryption_key: replace_key,
+        allow_key_overwrite: replace_key,
     };
     import_app_data_from_source(&state, source, options).await?;
     Ok(Some(()))
@@ -211,7 +214,7 @@ pub async fn save_encryption_key_with_dialog(
     let key_b64 = state.store.encryption_key_b64();
     let bytes = encryption_key_export_bytes(&key_b64);
 
-    let picked = super::dialog::save_file(
+    let picked = super::super::dialog::save_file(
         &app,
         ("Encryption Key".into(), vec!["key".into()]),
         default_file_name,

@@ -270,7 +270,8 @@ async fn stream_sql_file_into_session(
         .await
         .map_err(|e| CommandError::Internal(format!("sql file reader: {e}")))?
         .map_err(CommandError::Validation)?;
-    if let Some(tail) = utf8.finish().map_err(CommandError::Validation)? {
+    let tail = utf8.finish().map_err(CommandError::Validation)?;
+    if !tail.is_empty() {
         session.feed(&tail, on_progress).await?;
     }
     session.finish(on_progress).await.map_err(Into::into)

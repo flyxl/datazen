@@ -1,72 +1,12 @@
-//! Connection manager (sessions + tunnels).
-
-use crate::db::registry::DriverRegistry;
-use crate::db::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError, ServerInfo,
-};
-use crate::tunnel::Tunnel as SshTunnel;
-use crate::store::Store;
-use std::collections::HashMap;
+use super::{ActiveSession, ConnectionError, ConnectionManager};
+use crate::db::{ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, ServerInfo};
+use crate::tunnel::Tunnel;
 use std::sync::Arc;
 use std::time::Instant;
-use thiserror::Error;
-use tokio::sync::RwLock;
-use tokio::time::{interval, Duration};
-
-struct ActiveSession {
-    handle: ConnectionHandle,
-    config: ConnectionConfig,
-    #[allow(dead_code)]
-    created_at: Instant,
-    last_used: Instant,
-    _tunnel: Option<SshTunnel>,
-}
-
-pub struct ConnectionManager {
-    registry: Arc<DriverRegistry>,
-    connections: Arc<RwLock<HashMap<String, ActiveSession>>>,
-    session_owner_map: Arc<RwLock<HashMap<String, String>>>,
-    ref_counts: Arc<RwLock<HashMap<String, usize>>>,
-    store: Arc<Store>,
-    idle_timeout: Duration,
-    connect_locks: std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-}
-
-#[derive(Debug, Error)]
-pub enum ConnectionError {
-    #[error(
-        "Connection config '{0}' not found (connectionId refers to a persisted \
-         connection configuration; no such configuration is stored)"
-    )]
-    ConnectionConfigNotFound(String),
-
-    #[error(
-        "DB session '{0}' not found (a dbSessionId is a runtime session id; \
-         maybe you passed a connectionId where a dbSessionId was expected)"
-    )]
-    DbSessionNotFound(String),
-
-    #[error("Driver not found for type: {0}")]
-    DriverNotFound(DatabaseType),
-
-    #[error("Driver error: {0}")]
-    DriverError(#[from] DriverError),
-
-    #[error("Internal error: {0}")]
-    Internal(String),
-}
 
 impl ConnectionManager {
-    pub fn new(registry: Arc<DriverRegistry>, store: Arc<Store>) -> Self {
-        Self {
-            registry,
-            connections: Arc::new(RwLock::new(HashMap::new())),
-            session_owner_map: Arc::new(RwLock::new(HashMap::new())),
-            ref_counts: Arc::new(RwLock::new(HashMap::new())),
-            store,
-            idle_timeout: Duration::from_secs(1800),
-            connect_locks: std::sync::Mutex::new(HashMap::new()),
-        }
+    pub async fn connect(&self, connection_id: &str) -> Result<String, ConnectionError> {
+        self.connect_with_config(connection_id, None).await
     }
 
     pub async fn connect_dedicated(
@@ -105,24 +45,17 @@ impl ConnectionManager {
             .write()
             .await
             .insert(db_session_id.clone(), connection_id.to_string());
-
-        let mut connections = self.connections.write().await;
-        connections.insert(
+        self.connections.write().await.insert(
             db_session_id.clone(),
             ActiveSession {
                 handle,
                 config: effective_config,
                 created_at: Instant::now(),
                 last_used: Instant::now(),
-                _tunnel: tunnel,
+                tunnel,
             },
         );
-
         Ok(db_session_id)
-    }
-
-    pub async fn connect(&self, connection_id: &str) -> Result<String, ConnectionError> {
-        self.connect_with_config(connection_id, None).await
     }
 
     pub(crate) async fn establish_connection(
@@ -134,7 +67,7 @@ impl ConnectionManager {
             Arc<dyn DatabaseDriver>,
             ConnectionHandle,
             ConnectionConfig,
-            Option<SshTunnel>,
+            Option<Tunnel>,
         ),
         ConnectionError,
     > {
@@ -143,22 +76,17 @@ impl ConnectionManager {
             .get_connection(connection_id)
             .await
             .ok_or_else(|| ConnectionError::ConnectionConfigNotFound(connection_id.to_string()))?;
-
-        let (mut effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
+        let (mut effective_config, tunnel) = self.start_tunnel(config).await?;
         if let Some(db) = database_override.map(str::trim).filter(|s| !s.is_empty()) {
             effective_config.database = Some(db.to_string());
         }
-        let pool_size = crate::store::clamp_connection_pool_size(
+        effective_config.max_pool_size = crate::store::clamp_connection_pool_size(
             self.store.get_settings().await.connection_pool_size,
         );
-        effective_config.max_pool_size = pool_size;
-
         let driver = self
             .driver_for_type(&effective_config.database_type)
             .await?;
-
         let handle = driver.connect(&effective_config).await?;
-
         Ok((driver, handle, effective_config, tunnel))
     }
 
@@ -180,8 +108,14 @@ impl ConnectionManager {
             .cloned()
     }
 
-    #[cfg(test)]
-    pub(crate) async fn session_owner_map_len(&self) -> usize {
-        self.session_owner_map.read().await.len()
+    pub(crate) async fn server_info(
+        &self,
+        db_session_id: &str,
+    ) -> Result<ServerInfo, ConnectionError> {
+        let (driver, handle) = self.get_session(db_session_id).await?;
+        driver
+            .get_server_info(&handle)
+            .await
+            .map_err(ConnectionError::DriverError)
     }
-
+}

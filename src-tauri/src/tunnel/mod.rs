@@ -213,6 +213,7 @@ mod tests {
             connection_timeout: 30,
             max_pool_size: 10,
             ssh_tunnel: None,
+            tunnel_id: None,
             http_proxy_tunnel: None,
             websocket_tunnel: None,
             tunnel_kind: None,

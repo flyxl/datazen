@@ -26,11 +26,11 @@
 配置项：
 
 - 代理主机、端口
-- scheme：`http`（推荐）或 `https`
+- scheme：`http` 或 `https`（DataZen 会先与 HTTPS 代理完成 TLS，再发送 CONNECT）
 - 可选用户名/密码（Basic）
 - 连接超时（秒）
 
-流程：本机 accept → 连接代理 → 发送 `CONNECT db-host:db-port` → 200 后双向拷贝。
+流程：本机 accept → 连接代理（HTTPS scheme 会先完成 TLS）→ 发送 `CONNECT db-host:db-port` → 200 后双向拷贝。
 
 ## 4. WebSocket 隧道
 

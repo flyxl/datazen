@@ -38,9 +38,7 @@ pub use context::*;
 pub use dashboard::*;
 pub use data::*;
 pub use data_transfer::*;
-// Webdriver builds re-export the injection IPCs for lib.rs registration;
-// production builds expose nothing from the dialog gateway beyond its
-// internal call sites (super::dialog::* within this module).
+// The dialog module is private; its commands are only re-exported for webdriver.
 #[cfg(feature = "webdriver")]
 pub use dialog::*;
 pub use driver_command::*;

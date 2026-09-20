@@ -522,6 +522,7 @@ pub async fn import_connections_with_dialog(
     ))
 }
 
+#[path = "config_import_and_archive.rs"]
 mod config_import_and_archive;
 pub use config_import_and_archive::*;
 

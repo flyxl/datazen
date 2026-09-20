@@ -1,3 +1,8 @@
+## Unreleased
+
+- Added HTTP/HTTPS CONNECT and WebSocket database tunnel support with local loopback forwarding.
+- Added SavedTunnel persistence, encrypted tunnel credentials, connection-form configuration, and relay integration tests.
+
 # 更新日志 / Changelog
 
 本文件记录 DataZen 的显著变更，重点是影响外部契约的破坏性变更。
