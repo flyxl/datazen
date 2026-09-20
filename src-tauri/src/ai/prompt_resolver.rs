@@ -463,7 +463,7 @@ mod tests {
         vars.insert("db_type", "MySQL");
         let result = render_template(template, &vars);
         assert!(result.contains("MySQL"));
-        assert!(result.contains("{{version}}"));
+        assert!(!result.contains("{{version}}"));
     }
 
     #[tokio::test]
