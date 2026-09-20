@@ -1,7 +1,5 @@
 /** Tunnel configuration types for connection forms and IPC. */
 
-import type { SshTunnelConfig } from './index';
-
 export type TunnelKind = 'none' | 'ssh' | 'httpProxy' | 'websocket';
 
 export interface HttpProxyTunnelConfig {
@@ -33,7 +31,18 @@ export interface SavedTunnel {
   id: string;
   name: string;
   kind: Exclude<TunnelKind, 'none'>;
-  ssh?: SshTunnelConfig;
+  /** Same shape as `SshTunnelConfig` in index.ts — kept structural to avoid circular imports. */
+  ssh?: {
+    enabled: boolean;
+    host: string;
+    port: number;
+    username: string;
+    authMethod: string;
+    password?: string;
+    privateKeyPath?: string;
+    passphrase?: string;
+    jump?: unknown;
+  };
   httpProxy?: HttpProxyTunnelConfig;
   websocket?: WebSocketTunnelConfig;
 }
