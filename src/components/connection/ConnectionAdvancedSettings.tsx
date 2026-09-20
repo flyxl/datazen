@@ -200,18 +200,42 @@ export function ConnectionAdvancedSettings({
             <Select
               value={form.tunnelKind}
               options={tunnelOptions}
-              onChange={(v) => form.setTunnelKind(v as TunnelKind)}
+              onChange={(v) => {
+                form.setTunnelId(null);
+                form.setTunnelKind(v as TunnelKind);
+              }}
             />
           </div>
 
-          {form.tunnelKind === 'ssh' && form.supportsSSH && (
+          {form.savedTunnels && form.savedTunnels.length > 0 && (
+            <div data-testid="new-conn-saved-tunnel">
+              <Label>{t('newConn.savedTunnel')}</Label>
+              <Select
+                value={form.tunnelId ?? ''}
+                options={[
+                  { value: '', label: t('newConn.savedTunnelNone') },
+                  ...form.savedTunnels.map((tun) => ({
+                    value: tun.id,
+                    label: `${tun.name} (${tun.kind})`,
+                  })),
+                ]}
+                onChange={(v) => form.setTunnelId(v || null)}
+              />
+            </div>
+          )}
+
+          {!form.tunnelId && form.tunnelKind === 'ssh' && form.supportsSSH && (
             <SshTunnelFields
               form={form}
               innerPanelClassName={isWindow ? 'bg-surface-alt' : 'bg-surface'}
             />
           )}
-          {form.tunnelKind === 'httpProxy' && <HttpProxyTunnelFields form={form} />}
-          {form.tunnelKind === 'websocket' && <WebSocketTunnelFields form={form} />}
+          {!form.tunnelId && form.tunnelKind === 'httpProxy' && (
+            <HttpProxyTunnelFields form={form} />
+          )}
+          {!form.tunnelId && form.tunnelKind === 'websocket' && (
+            <WebSocketTunnelFields form={form} />
+          )}
         </div>
       )}
     </>
