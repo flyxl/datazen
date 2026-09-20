@@ -6,7 +6,8 @@
 
 include!("bootstrap_helpers.inc.rs");
 include!("bootstrap_app_state.inc.rs");
-include!("bootstrap_run_pre.inc.rs");
+include!("bootstrap_run_pre_a.inc.rs");
+include!("bootstrap_run_pre_b.inc.rs");
         .invoke_handler(tauri::generate_handler![
             crate::commands::get_connections,
             crate::commands::save_connection,
