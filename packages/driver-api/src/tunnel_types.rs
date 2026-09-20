@@ -70,3 +70,22 @@ pub struct WebSocketTunnelConfig {
     #[serde(default = "default_ws_mode")]
     pub mode: String,
 }
+
+/// Independently persisted tunnel definition (stored in `tunnels.json`).
+///
+/// Connections reference a tunnel via [`crate::ConnectionConfig::tunnel_id`].
+/// Only one of `ssh` / `http_proxy` / `websocket` is populated based on `kind`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedTunnel {
+    pub id: String,
+    pub name: String,
+    /// Must be `ssh` | `httpProxy` | `websocket` (not `none`).
+    pub kind: TunnelKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<crate::SshTunnelConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_proxy: Option<HttpProxyTunnelConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub websocket: Option<WebSocketTunnelConfig>,
+}
