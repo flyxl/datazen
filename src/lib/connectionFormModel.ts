@@ -140,37 +140,81 @@ export function buildConnectionConfig(input: BuildConnectionConfigInput): Connec
     password: input.password || undefined,
   };
 
-  if (meta.connectionIncludesSchema) {
-    conn.schema = input.schema || undefined;
+  if (meta.defaultUser || meta.requiresUsername || getDriverConnectionForm(meta.connectionForm)) {
+    conn.username = input.username || meta.defaultUser || undefined;
   }
-  if (meta.hasUsername !== false && input.username) {
-    conn.username = input.username;
+  if (meta.connectionIncludesSchema) {
+    conn.schema = input.schema.trim() || 'default';
   }
   if (Object.keys(input.connectionOptions).length > 0) {
-    conn.options = { ...input.connectionOptions };
+    conn.options = clonePlainJson(input.connectionOptions) as Record<string, unknown>;
   }
-
   return conn;
 }
 
-export function coerceConnectionGroup(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  return value.trim();
-}
-
-export function sanitizeConnectionOptions(
-  options: Record<string, unknown> | undefined | null,
-): Record<string, unknown> {
-  if (!options || typeof options !== 'object' || Array.isArray(options)) return {};
-  return { ...options };
-}
-
+/** Deep-clone JSON-compatible values (throws on cycle — options must stay acyclic in state). */
 export function clonePlainJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-export function assertPlainConnectionConfig(config: ConnectionConfig): void {
-  if (config == null || typeof config !== 'object') {
+/** Sanitize opaque driver options before storing in React state. */
+export function sanitizeConnectionOptions(value: Record<string, unknown>): Record<string, unknown> {
+  return clonePlainJson(value);
+}
+
+/** Group id must stay a plain string — reject mistaken DOM/event objects from handlers. */
+export function coerceConnectionGroup(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+const FORM_STATE_MARKERS = new Set([
+  'setName',
+  'onTest',
+  'onSave',
+  'draft',
+  'meta',
+  'setOptions',
+  'handleDatabaseTypeChange',
+]);
+
+/**
+ * Assert value is a plain ConnectionConfig suitable for Tauri IPC.
+ * Rejects ConnectionFormState mistaken for config and any non-JSON values.
+ */
+export function assertPlainConnectionConfig(value: unknown): asserts value is ConnectionConfig {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('ConnectionConfig must be a plain object');
   }
+  const root = value as Record<string, unknown>;
+  for (const marker of FORM_STATE_MARKERS) {
+    if (marker in root) {
+      throw new Error(
+        `IPC received ConnectionFormState (found "${marker}") — use buildConnectionConfig() instead`,
+      );
+    }
+  }
+
+  const seen = new WeakSet<object>();
+  const walk = (current: unknown, path: string): void => {
+    if (current === undefined) return;
+    if (current === null) return;
+    const kind = typeof current;
+    if (kind === 'string' || kind === 'number' || kind === 'boolean') return;
+    if (kind === 'function' || kind === 'symbol' || kind === 'undefined') {
+      throw new Error(`ConnectionConfig contains non-serializable ${kind} at ${path || '(root)'}`);
+    }
+    if (kind !== 'object') return;
+    if (seen.has(current)) {
+      throw new Error(`ConnectionConfig contains a cycle at ${path || '(root)'}`);
+    }
+    seen.add(current);
+    if (Array.isArray(current)) {
+      current.forEach((item, index) => walk(item, `${path}[${index}]`));
+      return;
+    }
+    for (const [key, nested] of Object.entries(current)) {
+      walk(nested, path ? `${path}.${key}` : key);
+    }
+  };
+  walk(root, '');
 }
