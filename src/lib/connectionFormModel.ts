@@ -1,6 +1,14 @@
 import { DB_REGISTRY, normalizeIndexDatabaseField } from './databaseTypes';
 import { getDriverConnectionForm } from '../extensions/generated';
-import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../types';
+import type {
+  ConnectionConfig,
+  DatabaseType,
+  HttpProxyTunnelConfig,
+  SslMode,
+  SshTunnelConfig,
+  TunnelKind,
+  WebSocketTunnelConfig,
+} from '../types';
 
 function hasEnabledTlsOption(options: Record<string, unknown>): boolean {
   const tls = options.tls;
@@ -78,6 +86,9 @@ export interface BuildConnectionConfigInput {
   readOnly: boolean;
   connectionOptions: Record<string, unknown>;
   sshTunnel?: SshTunnelConfig;
+  tunnelKind?: TunnelKind;
+  httpProxyTunnel?: HttpProxyTunnelConfig;
+  websocketTunnel?: WebSocketTunnelConfig;
 }
 
 /**
@@ -104,6 +115,15 @@ export function buildConnectionConfig(input: BuildConnectionConfigInput): Connec
   if (input.sshTunnel) {
     base.sshTunnel = cloneSshTunnel(input.sshTunnel);
   }
+  if (input.tunnelKind && input.tunnelKind !== 'none') {
+    base.tunnelKind = input.tunnelKind;
+  }
+  if (input.httpProxyTunnel?.enabled) {
+    base.httpProxyTunnel = { ...input.httpProxyTunnel };
+  }
+  if (input.websocketTunnel?.enabled) {
+    base.websocketTunnel = { ...input.websocketTunnel };
+  }
 
   if (!meta || meta.connectionMode === 'file') {
     return { ...base, database: input.database };
@@ -120,81 +140,37 @@ export function buildConnectionConfig(input: BuildConnectionConfigInput): Connec
     password: input.password || undefined,
   };
 
-  if (meta.defaultUser || meta.requiresUsername || getDriverConnectionForm(meta.connectionForm)) {
-    conn.username = input.username || meta.defaultUser || undefined;
-  }
   if (meta.connectionIncludesSchema) {
-    conn.schema = input.schema.trim() || 'default';
+    conn.schema = input.schema || undefined;
+  }
+  if (meta.hasUsername !== false && input.username) {
+    conn.username = input.username;
   }
   if (Object.keys(input.connectionOptions).length > 0) {
-    conn.options = clonePlainJson(input.connectionOptions) as Record<string, unknown>;
+    conn.options = { ...input.connectionOptions };
   }
+
   return conn;
 }
 
-/** Deep-clone JSON-compatible values (throws on cycle — options must stay acyclic in state). */
+export function coerceConnectionGroup(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
+export function sanitizeConnectionOptions(
+  options: Record<string, unknown> | undefined | null,
+): Record<string, unknown> {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return {};
+  return { ...options };
+}
+
 export function clonePlainJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** Sanitize opaque driver options before storing in React state. */
-export function sanitizeConnectionOptions(value: Record<string, unknown>): Record<string, unknown> {
-  return clonePlainJson(value);
-}
-
-/** Group id must stay a plain string — reject mistaken DOM/event objects from handlers. */
-export function coerceConnectionGroup(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
-
-const FORM_STATE_MARKERS = new Set([
-  'setName',
-  'onTest',
-  'onSave',
-  'draft',
-  'meta',
-  'setOptions',
-  'handleDatabaseTypeChange',
-]);
-
-/**
- * Assert value is a plain ConnectionConfig suitable for Tauri IPC.
- * Rejects ConnectionFormState mistaken for config and any non-JSON values.
- */
-export function assertPlainConnectionConfig(value: unknown): asserts value is ConnectionConfig {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+export function assertPlainConnectionConfig(config: ConnectionConfig): void {
+  if (config == null || typeof config !== 'object') {
     throw new Error('ConnectionConfig must be a plain object');
   }
-  const root = value as Record<string, unknown>;
-  for (const marker of FORM_STATE_MARKERS) {
-    if (marker in root) {
-      throw new Error(
-        `IPC received ConnectionFormState (found "${marker}") — use buildConnectionConfig() instead`,
-      );
-    }
-  }
-
-  const seen = new WeakSet<object>();
-  const walk = (current: unknown, path: string): void => {
-    if (current === undefined) return;
-    if (current === null) return;
-    const kind = typeof current;
-    if (kind === 'string' || kind === 'number' || kind === 'boolean') return;
-    if (kind === 'function' || kind === 'symbol' || kind === 'undefined') {
-      throw new Error(`ConnectionConfig contains non-serializable ${kind} at ${path || '(root)'}`);
-    }
-    if (kind !== 'object') return;
-    if (seen.has(current)) {
-      throw new Error(`ConnectionConfig contains a cycle at ${path || '(root)'}`);
-    }
-    seen.add(current);
-    if (Array.isArray(current)) {
-      current.forEach((item, index) => walk(item, `${path}[${index}]`));
-      return;
-    }
-    for (const [key, nested] of Object.entries(current)) {
-      walk(nested, path ? `${path}.${key}` : key);
-    }
-  };
-  walk(root, '');
 }
