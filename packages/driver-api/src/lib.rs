@@ -20,11 +20,13 @@ pub mod sql_dump;
 pub mod sql_split;
 pub mod sql_target;
 pub mod sqlite_structure;
+mod structure_types;
 pub mod sync;
 mod sync_taxonomy;
 mod traits;
 mod tunnel_types;
 mod types;
+pub use structure_types::*;
 pub use tunnel_types::*;
 
 pub use command::{
