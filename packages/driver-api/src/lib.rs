@@ -57,30 +57,25 @@ pub use schema_objects::{
     ObjectKind, PrivilegeGrant,
 };
 pub use sql_dump::{RestoreSession, RestoreStatementGuard};
-pub use sql_split::{SqlStatement, split_sql_statements};
-pub use sql_target::{SqlTarget, SqlTargetKind};
-pub use sqlite_structure::*;
-pub use sync::*;
-pub use sync_taxonomy::*;
-pub use tunnel_types::{HttpProxyTunnelConfig, SavedTunnel, TunnelKind, WebSocketTunnelConfig};
+pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
+pub use sql_target::{qualify_sql_with, QualifiedSql, QualifierQuote, SqlTarget};
+pub use sync::{
+    BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
+    SyncTargetAdapter,
+};
+pub use sync_taxonomy::{normalize_driver_id, sync_category_of, sync_family_of};
 pub use traits::*;
+pub use tunnel_types::{HttpProxyTunnelConfig, SavedTunnel, TunnelKind, WebSocketTunnelConfig};
 pub use types::*;
 
-/// Inventory registration entry for a driver factory.
-pub struct DriverRegistration {
-    pub factory: fn() -> Box<dyn DatabaseDriver>,
-}
+/// Protocol version for the driver API.
+///
+/// Bump this when making breaking changes to `DatabaseDriver`, `KeyValueDriver`,
+/// or `DatabaseDriverFactory` traits.
+pub const PROTOCOL_VERSION: u32 = 3;
 
-inventory::collect!(DriverRegistration);
-
-/// Register a driver type implementing [`DatabaseDriver`].
-#[macro_export]
-macro_rules! register_driver {
-    ($ty:ty) => {
-        inventory::submit! {
-            $crate::DriverRegistration {
-                factory: || Box::new(<$ty>::default()),
-            }
-        }
-    };
-}
+/// Minimum protocol version the host still supports.
+///
+/// Plugins with version < MIN will be rejected; those between MIN and current
+/// will run in degraded mode (missing capabilities default to `false`).
+pub const MIN_PROTOCOL_VERSION: u32 = 1;
