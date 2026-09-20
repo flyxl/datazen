@@ -50,6 +50,7 @@ export function cloneConnectionConfigForIpc(config: ConnectionConfig): Connectio
   if (config.pinned !== undefined) out.pinned = config.pinned;
   if (config.sshTunnel) out.sshTunnel = cloneSshTunnel(config.sshTunnel);
   if (config.tunnelKind !== undefined) out.tunnelKind = config.tunnelKind;
+  if (config.tunnelId !== undefined) out.tunnelId = config.tunnelId;
   if (config.httpProxyTunnel) out.httpProxyTunnel = { ...config.httpProxyTunnel };
   if (config.websocketTunnel) out.websocketTunnel = { ...config.websocketTunnel };
   if (config.options && Object.keys(config.options).length > 0) {
