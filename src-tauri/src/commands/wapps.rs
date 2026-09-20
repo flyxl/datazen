@@ -178,29 +178,8 @@ impl From<&LoadedWapp> for WappSummary {
     }
 }
 
-pub(crate) fn list_wapps_impl(state: &AppState) -> Vec<WappSummary> {
-    state.wapps.list().iter().map(WappSummary::from).collect()
-}
-
-pub(crate) fn get_wapp_manifest_impl(
-    state: &AppState,
-    id: &str,
-) -> Result<WappManifest, CommandError> {
-    ensure_wapp_exists(state, id).map(|loaded| loaded.manifest)
-}
-
-#[tauri::command]
-pub async fn list_wapps(state: State<'_, AppState>) -> Result<Vec<WappSummary>, CommandError> {
-    Ok(list_wapps_impl(&state))
-}
-
-#[tauri::command]
-pub async fn get_wapp_manifest(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<WappManifest, CommandError> {
-    get_wapp_manifest_impl(&state, &id)
-}
+include!("wapps_impls.rs");
+include!("wapps_commands.rs");
 
 #[cfg(test)]
 #[path = "wapps_tests.rs"]
