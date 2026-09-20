@@ -1,5 +1,7 @@
 /** Tunnel configuration types for connection forms and IPC. */
 
+import type { SshTunnelConfig } from './index';
+
 export type TunnelKind = 'none' | 'ssh' | 'httpProxy' | 'websocket';
 
 export interface HttpProxyTunnelConfig {
@@ -24,4 +26,14 @@ export interface WebSocketTunnelConfig {
   pingIntervalSecs?: number;
   /** `datazen_v1` (JSON control + binary) or `raw_binary`. */
   mode?: 'datazen_v1' | 'raw_binary';
+}
+
+/** Independently stored tunnel entity (`tunnels.json`). Connections reference via `tunnelId`. */
+export interface SavedTunnel {
+  id: string;
+  name: string;
+  kind: Exclude<TunnelKind, 'none'>;
+  ssh?: SshTunnelConfig;
+  httpProxy?: HttpProxyTunnelConfig;
+  websocket?: WebSocketTunnelConfig;
 }
