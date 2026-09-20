@@ -21,7 +21,6 @@ mod services;
 mod sql_guard;
 mod ssh_known_hosts;
 pub mod ssh_tunnel;
-pub mod tunnel;
 mod store;
 mod theme;
 pub mod transfer;

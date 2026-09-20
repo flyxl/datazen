@@ -20,12 +20,29 @@ export interface WebSocketTunnelConfig {
   connectTimeoutSecs?: number;
 }
 
+/** SSH tunnel fields nested under a SavedTunnel (mirrors SshTunnelConfig). */
+export interface SavedTunnelSshConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  username: string;
+  authMethod: 'password' | 'private_key' | 'agent';
+  password?: string;
+  privateKeyPath?: string;
+  passphrase?: string;
+  jump?: SavedTunnelSshConfig;
+}
+
 export interface SavedTunnel {
   id: string;
   name: string;
   kind: TunnelKind;
-  sshTunnel?: import('./connection').SshTunnelConfig;
+  /** Backend field name is `ssh`; frontend may also see camelCase. */
+  ssh?: SavedTunnelSshConfig;
+  sshTunnel?: SavedTunnelSshConfig;
+  httpProxy?: HttpProxyTunnelConfig;
   httpProxyTunnel?: HttpProxyTunnelConfig;
+  websocket?: WebSocketTunnelConfig;
   websocketTunnel?: WebSocketTunnelConfig;
   createdAt?: string;
   updatedAt?: string;
