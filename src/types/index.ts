@@ -104,15 +104,18 @@ export type {
   ConnectionSolution,
   QueryCategory,
   QueryAnalysis,
+} from './diagnosis';
+
+export type {
   TableCompareStatus,
   SyncObjectKind,
   TableComparison,
   ColumnDiffEntry,
   ChangedColumnDiff,
   TableSchemaDiff,
-  McpServerConfig,
-  McpToolInfo,
-} from './diagnosis';
+} from './schema_diff';
+
+export type { McpServerConfig, McpToolInfo } from './mcp';
 
 export type { ThemePreference } from './theme';
 export type * from './dashboard';
