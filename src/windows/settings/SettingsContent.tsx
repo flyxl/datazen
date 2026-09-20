@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { getVersion } from '@tauri-apps/api/app';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '../../components/ui/PathInput';
@@ -79,6 +80,13 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
   const settings = localSettings;
 
   const [defaultLogPath, setDefaultLogPath] = useState('');
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => {});
+  }, []);
 
   const languageOptions = useMemo(
     () => [
@@ -356,6 +364,12 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 checkOnStartup={settings.checkForUpdatesOnStartup}
                 onCheckOnStartupChange={(v) => updateField('checkForUpdatesOnStartup', v)}
               />
+
+              {appVersion && (
+                <div className="pt-4 border-t border-edge">
+                  <p className="text-xs text-fg-muted">DataZen v{appVersion}</p>
+                </div>
+              )}
             </>
           )}
 

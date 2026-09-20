@@ -71,6 +71,10 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
   const showStop = isLoading && onStop;
   const hasContext = onContextItemsChange !== undefined;
 
+  // BUG-06: Store the ContextPicker's keyboard handler so we can forward events
+  // from the textarea, avoiding window capture.
+  const pickerKeyHandler = useRef<((e: KeyboardEvent) => void) | null>(null);
+
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const newValue = e.target.value;
@@ -95,10 +99,13 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // BUG-06: Forward picker navigation keys to the ContextPicker handler
+      // instead of using window capture.
       if (
         showPicker &&
         (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter' || e.key === 'Escape')
       ) {
+        pickerKeyHandler.current?.(e.nativeEvent);
         return;
       }
       if (disabled) return;
@@ -183,6 +190,9 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
             position={pickerPosition}
             dbSessionId={dbSessionId}
             database={database}
+            onReady={(handler) => {
+              pickerKeyHandler.current = handler;
+            }}
           />
         )}
 

@@ -77,6 +77,39 @@ pub(crate) async fn get_columns_impl(
     Ok(cached.columns.into_iter().map(|c| c.name).collect())
 }
 
+pub(crate) async fn get_columns_typed_impl(
+    state: &AppState,
+    db_session_id: String,
+    table: String,
+    database: String,
+) -> Result<Vec<crate::db::ColumnSchema>, CommandError> {
+    let start = Instant::now();
+    tracing::info!(%db_session_id, %table, "get_columns_typed");
+    super::query::ensure_session_database(
+        state,
+        &db_session_id,
+        Some(database.as_str()),
+        "get_columns_typed",
+    )
+    .await?;
+    let (driver, handle) = state
+        .connection_manager
+        .get_session(&db_session_id)
+        .await
+        .cmd_err("get_columns_typed")?;
+
+    let db = database.as_str();
+
+    let cached = state
+        .schema_cache
+        .get_columns(&db_session_id, db, &table, &driver, &handle)
+        .await
+        .cmd_err("get_columns_typed")?;
+
+    tracing::info!(%db_session_id, %table, count = cached.columns.len(), ms = start.elapsed().as_millis() as u64, "get_columns_typed OK");
+    Ok(cached.columns)
+}
+
 pub(crate) async fn get_all_columns_impl(
     state: &AppState,
     db_session_id: String,
@@ -458,6 +491,16 @@ pub async fn get_columns(
     database: String,
 ) -> Result<Vec<String>, CommandError> {
     get_columns_impl(&state, db_session_id, table, database).await
+}
+
+#[tauri::command]
+pub async fn get_columns_typed(
+    state: State<'_, AppState>,
+    db_session_id: String,
+    table: String,
+    database: String,
+) -> Result<Vec<crate::db::ColumnSchema>, CommandError> {
+    get_columns_typed_impl(&state, db_session_id, table, database).await
 }
 
 #[tauri::command]

@@ -161,6 +161,7 @@ pub struct AppState {
     pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
+    pub cancel_registry: crate::ai::CancellationRegistry,
 }
 
 impl AppState {

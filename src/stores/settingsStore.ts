@@ -13,7 +13,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: DEFAULT_THEME_PREFERENCE,
   language: 'en',
   limitSelectResults: true,
-  queryResultLimit: 5000,
+  queryResultLimit: 1000,
   editorFontSize: 13,
   editorFontFamily: HOST_DEFAULT_EDITOR_FONT,
   confirmOnDelete: true,

@@ -750,12 +750,16 @@ describe('generateSql', () => {
         ],
       }),
     );
-    // FROM should use alias
-    expect(sql).toContain('FROM "users" "u"');
-    // JOIN ON should use alias for left table
+    // The alias is declared in FROM …
+    expect(sql).toContain('FROM "users" AS "u"');
+    // … and every other clause must reference it, including SELECT (an alias
+    // that only appears in FROM/ON makes the alias meaningless and, when the
+    // plain table name is used elsewhere, the statement will not resolve).
+    expect(sql).toContain('"u"."name" AS "user_name"');
+    // `orders` has no alias in this fixture, so it stays unqualified — and is
+    // therefore not re-declared with `AS`.
+    expect(sql).toContain('"orders"."total"');
     expect(sql).toContain('INNER JOIN "orders" ON "u"."id" = "orders"."user_id"');
-    // SELECT should still use original table name
-    expect(sql).toContain('"users"."name" AS "user_name"');
   });
 
   it('generates no JOIN clause when joins is empty', () => {
@@ -830,7 +834,7 @@ describe('generateSql', () => {
         tableAliases: { users: 'u' },
       }),
     );
-    expect(sql).toBe('SELECT "users"."name" FROM "users" "u";');
+    expect(sql).toBe('SELECT "u"."name" FROM "users" AS "u";');
   });
 
   // ── Complete complex query with JOIN + LIMIT ────────────────
@@ -890,5 +894,51 @@ describe('generateSql', () => {
         ' WHERE "users"."active" = 1 AND ("users"."role" = \'admin\')' +
         ' GROUP BY "users"."name" ORDER BY "users"."name" ASC LIMIT 100;',
     );
+  });
+});
+
+/**
+ * Regression: a per-column sort on an aggregated column must order by the
+ * aggregate expression. `SELECT SUM(x) … GROUP BY y ORDER BY x` is rejected by
+ * every engine ("x must appear in the GROUP BY clause or be used in an
+ * aggregate function"), which made a visually valid builder state generate a
+ * statement that could not run.
+ */
+describe('generateSql — ORDER BY on an aggregated column', () => {
+  const where: QbConditionGroup = { id: 'root', logic: 'AND', conditions: [], groups: [] };
+
+  const base: GenerateSqlInput = {
+    selectedTables: ['sales'],
+    selectedColumns: [
+      { table: 'sales', column: 'region', groupBy: true },
+      { table: 'sales', column: 'amount', aggregate: 'SUM', alias: 'total', sort: 'DESC' },
+    ],
+    joins: [],
+    tableAliases: {},
+    where,
+    orderBy: [],
+    groupBy: [],
+    distinct: false,
+    limit: null,
+    offset: null,
+    databaseType: 'postgresql',
+  };
+
+  it('wraps the sort key in its aggregate', () => {
+    const sql = generateSql(base);
+    expect(sql).toContain('ORDER BY SUM("sales"."amount") DESC');
+    expect(sql).not.toMatch(/ORDER BY "sales"\."amount"/);
+  });
+
+  it('leaves non-aggregated sort keys untouched', () => {
+    const sql = generateSql({
+      ...base,
+      selectedColumns: [
+        { table: 'sales', column: 'region', groupBy: true },
+        { table: 'sales', column: 'amount', aggregate: 'SUM', alias: 'total' },
+      ],
+      orderBy: [{ table: 'sales', column: 'region', direction: 'ASC' }],
+    });
+    expect(sql).toContain('ORDER BY "sales"."region" ASC');
   });
 });

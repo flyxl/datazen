@@ -282,6 +282,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   }}
                   placeholder={t('redis.searchKeys')}
                   className="h-7 pl-7 text-xs"
+                  data-testid="redis-search-input"
                 />
               </div>
             </div>
@@ -339,6 +340,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   variant="secondary"
                   className="h-7 gap-1 px-2 text-xs"
                   title={t('connWin.refresh')}
+                  data-testid="redis-refresh"
                   onClick={handleRefresh}
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
@@ -347,6 +349,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                 <Button
                   variant="secondary"
                   className="h-7 gap-1 px-2 text-xs"
+                  data-testid="redis-create-key"
                   onClick={() => setCreateOpen(true)}
                 >
                   <Plus className="h-3.5 w-3.5" />

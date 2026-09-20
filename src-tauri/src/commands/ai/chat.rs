@@ -1,11 +1,11 @@
 //! AI chat IPC and tool-loop execution.
 
 use super::util::{
-    build_connections_context, inject_language_hint, resolve_ai, window_stream_callback,
-    StreamCallback,
+    build_connections_context, inject_language_hint, resolve_ai, resolve_safety_gate,
+    window_stream_callback, StreamCallback,
 };
 use crate::ai::budget;
-use crate::ai::safety::redact_for_egress;
+use crate::ai::safety::redact_for_gate;
 use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
@@ -150,6 +150,181 @@ pub(crate) fn classify_tool(name: &str) -> ToolKind {
     ToolKind::Unknown
 }
 
+// ─── Tool Loop Guard (FR-05) ───
+
+/// Safety guardrails for the streaming tool loop. Prevents runaway loops by
+/// enforcing round count, token budget, and duration limits.
+pub(crate) struct ToolLoopGuard {
+    max_rounds: usize,
+    max_total_tokens: usize,
+    max_duration: std::time::Duration,
+    per_tool_cap: usize,
+    #[allow(dead_code)]
+    per_round_cap: usize,
+    round: usize,
+    total_tokens: usize,
+    start_time: std::time::Instant,
+}
+
+impl ToolLoopGuard {
+    /// Default limits per FR-05.
+    const DEFAULT_MAX_ROUNDS: usize = 6;
+    const DEFAULT_MAX_TOTAL_TOKENS: usize = 24_000;
+    const DEFAULT_MAX_DURATION_SECS: u64 = 180;
+    const DEFAULT_PER_TOOL_CAP: usize = 2048;
+    const DEFAULT_PER_ROUND_CAP: usize = 12_288;
+
+    pub fn new() -> Self {
+        Self {
+            max_rounds: Self::DEFAULT_MAX_ROUNDS,
+            max_total_tokens: Self::DEFAULT_MAX_TOTAL_TOKENS,
+            max_duration: std::time::Duration::from_secs(Self::DEFAULT_MAX_DURATION_SECS),
+            per_tool_cap: Self::DEFAULT_PER_TOOL_CAP,
+            per_round_cap: Self::DEFAULT_PER_ROUND_CAP,
+            round: 0,
+            total_tokens: 0,
+            start_time: std::time::Instant::now(),
+        }
+    }
+
+    /// Check whether another round is allowed. Returns `Err(message)` if any
+    /// limit is exceeded.
+    pub fn check_round(&mut self) -> Result<(), String> {
+        self.round += 1;
+        if self.round > self.max_rounds {
+            return Err(format!(
+                "Tool loop exceeded max rounds ({})",
+                self.max_rounds
+            ));
+        }
+        if self.total_tokens >= self.max_total_tokens {
+            return Err(format!(
+                "Tool loop exceeded token budget ({}/{})",
+                self.total_tokens, self.max_total_tokens
+            ));
+        }
+        if self.start_time.elapsed() >= self.max_duration {
+            return Err(format!(
+                "Tool loop exceeded time limit ({:.0}s)",
+                self.max_duration.as_secs()
+            ));
+        }
+        Ok(())
+    }
+
+    /// Accumulate token usage from a completed stream round.
+    pub fn accumulate_usage(&mut self, usage: &TokenUsage) {
+        self.total_tokens += usage.total_tokens as usize;
+    }
+
+    /// Truncate a tool result string to the per-tool byte cap.
+    pub fn truncate_tool_result(result: &str, cap: usize) -> String {
+        let bytes = result.as_bytes();
+        if bytes.len() <= cap {
+            result.to_string()
+        } else {
+            let truncated = String::from_utf8_lossy(&bytes[..cap]).to_string();
+            format!(
+                "{}\u{2026}(truncated: {} bytes omitted)",
+                truncated,
+                bytes.len() - cap
+            )
+        }
+    }
+
+    /// Truncate a tool result to the per-tool cap and return it wrapped in a
+    /// tool message.
+    pub fn truncate_and_wrap(&self, tc: &ToolCall, result: String) -> ChatMessage {
+        let truncated = Self::truncate_tool_result(&result, self.per_tool_cap);
+        ChatMessage {
+            role: MessageRole::Tool,
+            content: truncated,
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: Some(tc.id.clone()),
+        }
+    }
+
+    /// Check if a total round result exceeds the per-round cap and truncate.
+    #[allow(dead_code)]
+    pub fn enforce_round_cap(&self, messages: &mut Vec<ChatMessage>) {
+        let total: usize = messages.iter().map(|m| m.content.len()).sum();
+        if total > self.per_round_cap {
+            // Truncate the last message to fit within the cap.
+            if let Some(last) = messages.last_mut() {
+                let excess = total - self.per_round_cap;
+                let bytes = last.content.as_bytes();
+                if bytes.len() > excess {
+                    last.content = String::from_utf8_lossy(&bytes[..bytes.len() - excess])
+                        .to_string()
+                        + "\u{2026}(round cap)";
+                }
+            }
+        }
+    }
+}
+
+impl Default for ToolLoopGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Builds a brief egress summary string describing the connections the AI has
+/// tool-based access to. Sent as the first chunk before the AI reply begins
+/// (FR-13). Does NOT include full connection details — only counts and types.
+async fn build_egress_summary(state: &AppState) -> String {
+    let connections = state.store.get_connections().await;
+    let connection_count = connections.len();
+    if connection_count == 0 {
+        return "No database connections configured.".into();
+    }
+    // Collect distinct database types
+    let mut db_types: Vec<String> = Vec::new();
+    for c in &connections {
+        if !db_types.contains(&c.database_type) {
+            db_types.push(c.database_type.clone());
+        }
+    }
+    let types_str = if db_types.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", db_types.join(", "))
+    };
+    format!(
+        "{connection_count} connection{conn_s}{types_str} accessible via tools.",
+        conn_s = if connection_count == 1 { "" } else { "s" },
+    )
+}
+
+/// Returns `true` if the tool is a read-only DB tool that can run in parallel.
+pub(crate) fn is_readonly_db_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "list_connections"
+            | "list_databases"
+            | "list_tables"
+            | "search_tables"
+            | "get_table_schema"
+    )
+}
+
+/// Returns `true` if the MCP tool needs user confirmation before execution.
+/// Heuristic: tool name contains write/delete/drop/update/create/insert, or
+/// the input schema has `x-write: true`.
+#[allow(dead_code)]
+pub(crate) fn mcp_needs_confirm(tool_name: &str, input_schema: &serde_json::Value) -> bool {
+    // Schema-based check
+    if input_schema.get("x-write") == Some(&serde_json::Value::Bool(true)) {
+        return true;
+    }
+    // Name-based heuristic
+    let lower = tool_name.to_lowercase();
+    ["write", "delete", "drop", "update", "create", "insert"]
+        .iter()
+        .any(|kw| lower.contains(kw))
+}
+
 pub(crate) async fn execute_mcp_tool(
     state: &AppState,
     server_id: &str,
@@ -231,11 +406,70 @@ pub(crate) async fn run_streaming_tool_loop(
     on_chunk: StreamCallback,
     request_id: &str,
     mut request: CompletionRequest,
-    max_rounds: usize,
+    _max_rounds: usize,
     cmd_label: &str,
-    strict_egress: bool,
+    gate: &AiSafetyGateConfig,
 ) -> Result<String, CommandError> {
-    for round in 0..max_rounds {
+    let mut guard = ToolLoopGuard::new();
+
+    // ── FR-13: Send egress summary before AI reply begins ──
+    {
+        let summary = build_egress_summary(state).await;
+        on_chunk(
+            request_id,
+            Ok(StreamChunk {
+                content: String::new(),
+                reasoning: None,
+                done: false,
+                cancelled: false,
+                usage: None,
+                tool_calls: None,
+                response_id: None,
+                egress_summary: Some(summary),
+            }),
+        );
+    }
+
+    loop {
+        // ── Cancel check (Phase C) ──
+        if let Some(ref token) = request.cancel_token {
+            if token.is_cancelled() {
+                tracing::info!(%request_id, "{cmd_label}: cancelled before round {}", guard.round);
+                on_chunk(
+                    request_id,
+                    Ok(StreamChunk {
+                        content: String::new(),
+                        reasoning: None,
+                        done: true,
+                        cancelled: false,
+                        usage: None,
+                        tool_calls: None,
+                        response_id: None,
+                        egress_summary: None,
+                    }),
+                );
+                return Ok(request_id.to_string());
+            }
+        }
+
+        // ── Guard: round / token / time budget ──
+        if let Err(msg) = guard.check_round() {
+            tracing::warn!(%request_id, "{msg}");
+            on_chunk(
+                request_id,
+                Ok(StreamChunk {
+                    content: format!("[Tool loop stopped: {msg}]"),
+                    reasoning: None,
+                    done: true,
+                    cancelled: false,
+                    usage: None,
+                    tool_calls: None,
+                    response_id: None,
+                    egress_summary: None,
+                }),
+            );
+            return Ok(request_id.to_string());
+        }
         let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
 
         let (result_tx, result_rx) = tokio::sync::oneshot::channel::<StreamRoundResult>();
@@ -270,9 +504,11 @@ pub(crate) async fn run_streaming_tool_loop(
                                         content,
                                         reasoning,
                                         done: false,
+                                        cancelled: false,
                                         usage: None,
                                         tool_calls: None,
                                         response_id: None,
+                                        egress_summary: None,
                                     }),
                                 );
                             }
@@ -315,6 +551,11 @@ pub(crate) async fn run_streaming_tool_loop(
             return Ok(request_id.to_string());
         }
 
+        // Accumulate token usage for the guard's budget check.
+        if let Some(ref usage) = result.usage {
+            guard.accumulate_usage(usage);
+        }
+
         let all_tcs = match result.tool_calls {
             Some(tcs) if !tcs.is_empty() => tcs,
             _ => {
@@ -324,9 +565,11 @@ pub(crate) async fn run_streaming_tool_loop(
                         content: String::new(),
                         reasoning: None,
                         done: true,
+                        cancelled: false,
                         usage: result.usage,
                         tool_calls: result.tool_calls,
                         response_id: result.response_id,
+                        egress_summary: None,
                     }),
                 );
                 return Ok(request_id.to_string());
@@ -360,9 +603,11 @@ pub(crate) async fn run_streaming_tool_loop(
                     content: String::new(),
                     reasoning: None,
                     done: true,
+                    cancelled: false,
                     usage: result.usage,
                     tool_calls: Some(classified.iter().map(|(tc, _)| tc.clone()).collect()),
                     response_id: result.response_id,
+                    egress_summary: None,
                 }),
             );
             return Ok(request_id.to_string());
@@ -370,16 +615,16 @@ pub(crate) async fn run_streaming_tool_loop(
 
         tracing::info!(
             %request_id,
-            round,
+            round = guard.round,
             executable_count,
             has_ask_questions,
             tool_names = ?classified.iter().map(|(t, _)| t.name.as_str()).collect::<Vec<_>>(),
             response_id = ?result.response_id,
-            "{cmd_label}: executing tools (round {round})"
+            "{cmd_label}: executing tools (round {})", guard.round
         );
         tracing::debug!(
             %request_id,
-            round,
+            round = guard.round,
             tool_count = classified.len(),
             "{cmd_label}: tools selected"
         );
@@ -408,30 +653,74 @@ pub(crate) async fn run_streaming_tool_loop(
                     content: String::new(),
                     reasoning: None,
                     done: false,
+                    cancelled: false,
                     usage: None,
                     tool_calls: Some(mcp_tool_calls),
                     response_id: None,
+                    egress_summary: None,
                 }),
             );
         }
 
         for (tc, kind) in &classified {
-            let tool_result = match kind {
+            match kind {
                 ToolKind::AskQuestions => continue,
+                ToolKind::Unknown => {
+                    // Unknown tool: send error chunk and terminate loop.
+                    tracing::warn!(
+                        %request_id,
+                        tool_name = %tc.name,
+                        "unknown tool requested by provider"
+                    );
+                    let err_msg = format!(
+                        "Tool '{}' is not available. The provider requested a tool that is not registered.",
+                        tc.name
+                    );
+                    request.messages.push(ChatMessage {
+                        role: MessageRole::Tool,
+                        content: err_msg.clone(),
+                        reasoning: None,
+                        tool_calls: None,
+                        tool_call_id: Some(tc.id.clone()),
+                    });
+                    on_chunk(
+                        request_id,
+                        Ok(StreamChunk {
+                            content: err_msg,
+                            reasoning: None,
+                            done: true,
+                            cancelled: false,
+                            usage: result.usage,
+                            tool_calls: None,
+                            response_id: result.response_id,
+                            egress_summary: None,
+                        }),
+                    );
+                    return Ok(request_id.to_string());
+                }
+                _ => {}
+            }
+        }
+
+        // Separate read-only DB tools for potential future parallel execution.
+        // Currently executed sequentially to avoid AppState clone complexity.
+        let (parallel_db_tcs, sequential_tcs): (Vec<_>, Vec<_>) = classified
+            .iter()
+            .filter(|(_, kind)| !matches!(kind, ToolKind::AskQuestions))
+            .partition(|(_, kind)| matches!(kind, ToolKind::Db(name) if is_readonly_db_tool(name)));
+
+        // Execute all tools sequentially.
+        for (tc, kind) in parallel_db_tcs.iter().chain(sequential_tcs.iter()) {
+            let tool_result = match kind {
                 ToolKind::Db(_) => execute_db_tool(state, tc).await,
                 ToolKind::Mcp {
                     server_id,
                     tool_name,
                 } => execute_mcp_tool(state, server_id, tool_name, &tc.arguments).await,
-                ToolKind::Unknown => format!("Unknown tool: {}", tc.name),
+                _ => continue,
             };
-            request.messages.push(ChatMessage {
-                role: MessageRole::Tool,
-                content: redact_for_egress(&tool_result, strict_egress),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: Some(tc.id.clone()),
-            });
+            let redacted = redact_for_gate(&tool_result, gate);
+            request.messages.push(guard.truncate_and_wrap(tc, redacted));
         }
 
         if has_ask_questions {
@@ -446,28 +735,18 @@ pub(crate) async fn run_streaming_tool_loop(
                     content: String::new(),
                     reasoning: None,
                     done: true,
+                    cancelled: false,
                     usage: result.usage,
                     tool_calls: Some(ask_tool_calls),
                     response_id: result.response_id,
+                    egress_summary: None,
                 }),
             );
             return Ok(request_id.to_string());
         }
     }
-
-    tracing::warn!(%request_id, "{cmd_label}: reached max tool rounds");
-    on_chunk(
-        request_id,
-        Ok(StreamChunk {
-            content: String::new(),
-            reasoning: None,
-            done: true,
-            usage: None,
-            tool_calls: None,
-            response_id: None,
-        }),
-    );
-    Ok(request_id.to_string())
+    // The loop always returns internally (cancel, guard, no-tools, ask_questions,
+    // or after tool execution). This point is unreachable.
 }
 
 // ─── AI Chat ───
@@ -505,7 +784,7 @@ pub(crate) async fn ai_chat_impl(
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let app_settings = state.store.get_settings().await;
-    let strict_egress = app_settings.ai_strict_egress;
+    let gate = resolve_safety_gate(&state).await;
     let lang = app_settings.language;
     let mut full_messages: Vec<ChatMessage> = Vec::new();
     let mut attach_db_tools = true;
@@ -616,7 +895,7 @@ pub(crate) async fn ai_chat_impl(
     }
 
     full_messages.extend(messages.into_iter().map(|mut message| {
-        message.content = redact_for_egress(&message.content, strict_egress);
+        message.content = redact_for_gate(&message.content, &gate);
         message
     }));
 
@@ -633,7 +912,7 @@ pub(crate) async fn ai_chat_impl(
                 {
                     let sanitized_entries: Vec<(String, String)> = entries
                         .into_iter()
-                        .map(|(path, content)| (path, redact_for_egress(&content, strict_egress)))
+                        .map(|(path, content)| (path, redact_for_gate(&content, &gate)))
                         .collect();
                     let context_block =
                         crate::commands::context::format_context_block(&sanitized_entries);
@@ -694,10 +973,15 @@ pub(crate) async fn ai_chat_impl(
         stop: None,
         tools: Some(all_tools),
         previous_response_id: None,
+        cancel_token: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
-    run_streaming_tool_loop(
+    // Register cancel token so `ai_cancel` IPC can interrupt this stream.
+    let cancel_token = state.cancel_registry.register(&request_id).await;
+    request.cancel_token = Some(cancel_token.clone());
+
+    let result = run_streaming_tool_loop(
         provider,
         state,
         on_chunk,
@@ -705,9 +989,13 @@ pub(crate) async fn ai_chat_impl(
         request,
         10,
         "ai_chat",
-        strict_egress,
+        &gate,
     )
-    .await
+    .await;
+
+    // Always unregister — normal completion or cancellation.
+    state.cancel_registry.unregister(&request_id).await;
+    result
 }
 
 #[tauri::command]
@@ -736,4 +1024,220 @@ pub async fn ai_chat(
         context_tables,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_ai_api::TokenUsage;
+
+    // ── ToolLoopGuard unit tests [tester] ──
+
+    #[test]
+    fn test_tester_guard_new_defaults() {
+        let guard = ToolLoopGuard::new();
+        assert_eq!(guard.round, 0);
+        assert_eq!(guard.total_tokens, 0);
+        assert_eq!(guard.max_rounds, 6);
+        assert_eq!(guard.max_total_tokens, 24_000);
+        assert_eq!(guard.max_duration.as_secs(), 180);
+        assert_eq!(guard.per_tool_cap, 2048);
+        assert_eq!(guard.per_round_cap, 12_288);
+    }
+
+    #[test]
+    fn test_tester_guard_check_round_succeeds_within_limits() {
+        let mut guard = ToolLoopGuard::new();
+        // First 6 rounds should succeed (max_rounds = 6)
+        for i in 1..=6 {
+            assert!(guard.check_round().is_ok(), "round {i} should succeed");
+        }
+        assert_eq!(guard.round, 6);
+    }
+
+    #[test]
+    fn test_tester_guard_check_round_fails_on_max_rounds() {
+        let mut guard = ToolLoopGuard::new();
+        for _ in 0..6 {
+            guard.check_round().unwrap();
+        }
+        // 7th round should fail
+        let err = guard.check_round().unwrap_err();
+        assert!(
+            err.contains("max rounds"),
+            "error should mention max rounds: {err}"
+        );
+    }
+
+    #[test]
+    fn test_tester_guard_check_round_fails_on_token_budget() {
+        let mut guard = ToolLoopGuard::new();
+        guard.total_tokens = 24_000; // at budget
+        let err = guard.check_round().unwrap_err();
+        assert!(
+            err.contains("token budget"),
+            "error should mention token budget: {err}"
+        );
+    }
+
+    #[test]
+    fn test_tester_guard_check_round_fails_on_time_limit() {
+        let mut guard = ToolLoopGuard::new();
+        guard.max_duration = std::time::Duration::from_millis(1); // 1ms
+                                                                  // Wait a bit to exceed the limit
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let err = guard.check_round().unwrap_err();
+        assert!(
+            err.contains("time limit"),
+            "error should mention time limit: {err}"
+        );
+    }
+
+    #[test]
+    fn test_tester_guard_accumulate_usage() {
+        let mut guard = ToolLoopGuard::new();
+        let usage = TokenUsage {
+            prompt_tokens: 100,
+            completion_tokens: 200,
+            total_tokens: 300,
+        };
+        guard.accumulate_usage(&usage);
+        assert_eq!(guard.total_tokens, 300);
+
+        guard.accumulate_usage(&usage);
+        assert_eq!(guard.total_tokens, 600);
+    }
+
+    #[test]
+    fn test_tester_guard_truncate_under_cap() {
+        let result = ToolLoopGuard::truncate_tool_result("hello", 100);
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_tester_guard_truncate_over_cap() {
+        let long = "a".repeat(3000);
+        let result = ToolLoopGuard::truncate_tool_result(&long, 100);
+        assert!(result.len() < 3000);
+        assert!(result.contains("truncated"));
+        assert!(result.contains("bytes omitted"));
+    }
+
+    #[test]
+    fn test_tester_guard_truncate_exact_cap() {
+        let exact = "a".repeat(100);
+        let result = ToolLoopGuard::truncate_tool_result(&exact, 100);
+        assert_eq!(result, exact);
+    }
+
+    #[test]
+    fn test_tester_guard_truncate_and_wrap() {
+        let guard = ToolLoopGuard::new();
+        let tc = ToolCall {
+            id: "call_1".into(),
+            name: "test".into(),
+            arguments: "{}".into(),
+        };
+        let msg = guard.truncate_and_wrap(&tc, "result content".into());
+        assert_eq!(msg.role, MessageRole::Tool);
+        assert_eq!(msg.tool_call_id.as_deref(), Some("call_1"));
+        assert_eq!(msg.content, "result content");
+    }
+
+    #[test]
+    fn test_tester_guard_truncate_and_wrap_truncates_large() {
+        let guard = ToolLoopGuard::new();
+        let tc = ToolCall {
+            id: "call_2".into(),
+            name: "test".into(),
+            arguments: "{}".into(),
+        };
+        let big = "x".repeat(4096);
+        let msg = guard.truncate_and_wrap(&tc, big);
+        assert!(msg.content.len() < 4096);
+        assert!(msg.content.contains("truncated"));
+    }
+
+    // ── classify_tool tests [tester] ──
+
+    #[test]
+    fn test_tester_classify_tool_ask_questions() {
+        assert!(matches!(
+            classify_tool("ask_questions"),
+            ToolKind::AskQuestions
+        ));
+    }
+
+    #[test]
+    fn test_tester_classify_tool_db() {
+        assert!(matches!(classify_tool("list_connections"), ToolKind::Db(_)));
+        assert!(matches!(classify_tool("list_databases"), ToolKind::Db(_)));
+        assert!(matches!(classify_tool("list_tables"), ToolKind::Db(_)));
+        assert!(matches!(classify_tool("search_tables"), ToolKind::Db(_)));
+        assert!(matches!(classify_tool("get_table_schema"), ToolKind::Db(_)));
+    }
+
+    #[test]
+    fn test_tester_classify_tool_mcp() {
+        let kind = classify_tool("mcp/server1/get_data");
+        match kind {
+            ToolKind::Mcp {
+                server_id,
+                tool_name,
+            } => {
+                assert_eq!(server_id, "server1");
+                assert_eq!(tool_name, "get_data");
+            }
+            _ => panic!("expected Mcp kind"),
+        }
+    }
+
+    #[test]
+    fn test_tester_classify_tool_unknown() {
+        assert!(matches!(
+            classify_tool("nonexistent_tool"),
+            ToolKind::Unknown
+        ));
+        assert!(matches!(classify_tool("mcp/"), ToolKind::Unknown));
+        assert!(matches!(classify_tool("mcp/server/"), ToolKind::Unknown));
+    }
+
+    // ── is_readonly_db_tool tests [tester] ──
+
+    #[test]
+    fn test_tester_is_readonly_db_tool() {
+        assert!(is_readonly_db_tool("list_connections"));
+        assert!(is_readonly_db_tool("list_databases"));
+        assert!(is_readonly_db_tool("list_tables"));
+        assert!(is_readonly_db_tool("search_tables"));
+        assert!(is_readonly_db_tool("get_table_schema"));
+        assert!(!is_readonly_db_tool("ask_questions"));
+        assert!(!is_readonly_db_tool("unknown"));
+    }
+
+    // ── mcp_needs_confirm tests [tester] ──
+
+    #[test]
+    fn test_tester_mcp_needs_confirm_schema_based() {
+        let schema = serde_json::json!({"x-write": true});
+        assert!(mcp_needs_confirm("any_tool", &schema));
+    }
+
+    #[test]
+    fn test_tester_mcp_needs_confirm_name_based() {
+        let schema = serde_json::json!({});
+        assert!(mcp_needs_confirm("write_file", &schema));
+        assert!(mcp_needs_confirm("delete_record", &schema));
+        assert!(mcp_needs_confirm("drop_table", &schema));
+        assert!(mcp_needs_confirm("update_user", &schema));
+        assert!(mcp_needs_confirm("create_index", &schema));
+        assert!(mcp_needs_confirm("insert_data", &schema));
+    }
+
+    #[test]
+    fn test_tester_mcp_needs_confirm_readonly() {
+        let schema = serde_json::json!({});
+        assert!(!mcp_needs_confirm("get_data", &schema));
+        assert!(!mcp_needs_confirm("list_files", &schema));
+    }
 }

@@ -207,3 +207,115 @@ div.text-danger,
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Visual Query Builder: relation lines ─────────────────────────────────
+   Column-to-column connectors on the diagram canvas. Colour and width come
+   from the semantic `--c-*` tokens so light and dark themes both work.
+   NOTE: these deliberately do NOT use `--color-*`; that namespace does not
+   exist, and referencing it made every connector render with an invalid
+   `stroke` (i.e. invisible). */
+.qb-relation {
+  transition: filter 0.15s;
+}
+.qb-relation-line {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  transition:
+    stroke 0.15s,
+    stroke-width 0.15s,
+    opacity 0.15s;
+}
+.qb-relation-line--candidate {
+  stroke: var(--c-fg-muted);
+  stroke-width: 1.25;
+  stroke-dasharray: 5 4;
+  opacity: 0.55;
+}
+.qb-relation-line--confirmed {
+  stroke: var(--c-accent);
+  stroke-width: 1.75;
+  opacity: 0.9;
+}
+.qb-relation-line--partial {
+  stroke: var(--c-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.6;
+}
+/* Manually created joins are visually distinct from detected constraints. */
+.qb-relation--manual .qb-relation-line {
+  stroke: var(--c-accent-2);
+  stroke-dasharray: 7 3 2 3;
+  opacity: 0.9;
+}
+.qb-relation-dot {
+  transition:
+    fill 0.15s,
+    opacity 0.15s;
+}
+.qb-relation-dot--candidate {
+  fill: var(--c-fg-muted);
+  opacity: 0.7;
+}
+.qb-relation-dot--confirmed,
+.qb-relation-dot--partial {
+  fill: var(--c-accent);
+}
+/* A connection shows a relationship, not a direction — so no arrowheads and no
+   marker-* anywhere. The only special terminal is the hollow ring below. */
+.qb-relation-dot--offscreen {
+  fill: var(--c-surface-raised);
+  stroke: var(--c-fg-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 1.5;
+}
+.qb-relation-dot--offscreen.qb-relation-dot--confirmed,
+.qb-relation-dot--offscreen.qb-relation-dot--partial {
+  stroke: var(--c-accent);
+}
+.qb-relation.is-active .qb-relation-dot--offscreen {
+  stroke-width: 2;
+}
+/* A 1.75px stroke is far too thin to hit reliably — this transparent wide copy
+   is the real click target. */
+.qb-relation-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+/* Hover / selected: brighten and thicken, so "which two columns?" is readable
+   without any label on the canvas. */
+.qb-relation.is-active .qb-relation-line {
+  opacity: 1;
+  stroke-width: 2.5;
+}
+.qb-relation.is-active {
+  filter: drop-shadow(0 0 3px var(--c-accent-ring));
+}
+.qb-relation.is-active .qb-relation-dot {
+  opacity: 1;
+}
+.qb-relation.is-dimmed {
+  opacity: 0.35;
+}
+/* Column rows belonging to the hovered relation. */
+.qb-col-row.is-related {
+  background: var(--c-accent-dim);
+}
+/* The card's column window: a fixed-height list that scrolls on its own.
+   `overscroll-behavior: contain` keeps a wheel gesture inside the card instead
+   of chaining out to the canvas scroll container (which would zoom the view
+   away from the card the pointer is on). Scrollbar styling is the global one. */
+.qb-col-list {
+  overscroll-behavior: contain;
+}
+/* Manual-join drag feedback. */
+.qb-drop-target {
+  outline: 1px dashed var(--c-accent);
+  outline-offset: -1px;
+  background: var(--c-accent-dim);
+}

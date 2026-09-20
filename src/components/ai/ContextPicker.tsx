@@ -17,6 +17,9 @@ interface ContextPickerProps {
   position?: 'above' | 'below';
   dbSessionId?: string;
   database?: string;
+  /** BUG-06: Receives the picker's keyboard handler so the parent can forward events
+   *  from the textarea, instead of using window capture. */
+  onReady?: (handler: (e: KeyboardEvent) => void) => void;
 }
 
 type View = 'root' | 'tables' | 'files';
@@ -86,6 +89,7 @@ export function ContextPicker({
   position = 'above',
   dbSessionId,
   database,
+  onReady,
 }: ContextPickerProps) {
   const { t } = useI18n();
   const [view, setView] = useState<View>('root');
@@ -239,10 +243,12 @@ export function ContextPicker({
     [rows, activeIndex, handleCategoryClick, handleSelectItem, view, handleBack, onClose],
   );
 
+  // BUG-06: Expose keyboard handler via onReady callback so the parent textarea
+  // can forward its keydown events, instead of using window capture which hijacks
+  // all keyboard events from other components.
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [handleKeyDown]);
+    onReady?.(handleKeyDown as unknown as (e: KeyboardEvent) => void);
+  }, [onReady, handleKeyDown]);
 
   useEffect(() => {
     const active = listRef.current?.querySelector('[data-active="true"]');

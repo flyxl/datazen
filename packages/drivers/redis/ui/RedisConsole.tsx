@@ -206,6 +206,7 @@ export function RedisConsole({
         <Button
           variant="run"
           className="h-7 gap-1 px-2 text-xs"
+          data-testid="redis-console-run"
           onClick={() => void handleExecute()}
           disabled={running || !commands.trim()}
         >
@@ -230,6 +231,7 @@ export function RedisConsole({
         <textarea
           ref={textareaRef}
           value={commands}
+          data-testid="redis-console-input"
           onChange={(e) => {
             setCommands(e.target.value);
             setHistoryState((prev) =>
@@ -309,7 +311,10 @@ export function RedisConsole({
                     {activeResult.ok ? t('redis.console.ok') : t('redis.console.failed')}
                   </span>
                 </div>
-                <div className="min-h-0 flex-1 overflow-auto p-4">
+                <div
+                  className="min-h-0 flex-1 overflow-auto p-4"
+                  data-testid="redis-console-result"
+                >
                   {activeResult.ok ? (
                     <pre className="whitespace-pre-wrap break-all font-mono text-[13px] text-fg-secondary">
                       {activeResult.value ?? '(nil)'}

@@ -41,6 +41,7 @@ impl AnthropicProvider {
             api_base: s.endpoint.clone(),
             api_key: s.api_key.clone(),
             max_tokens: s.max_tokens,
+            max_request_timeout: std::time::Duration::from_secs(120),
         })
     }
 }

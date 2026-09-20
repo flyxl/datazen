@@ -55,8 +55,35 @@ export interface QueryExecutionGateRefs {
   pendingExecuteRef: MutableRefObject<PendingExecute | null>;
 }
 
+/**
+ * `= "token"` / `LIKE "token"` — the shape a user writes when they mean a
+ * string literal in PostgreSQL, where double quotes actually denote an
+ * identifier.
+ */
+const POSTGRES_DOUBLE_QUOTED_OPERAND = /(?:=|<>|!=|\bLIKE\b|\bILIKE\b)\s*"([^"]+)"/gi;
+
+/**
+ * Detect a PostgreSQL comparison operand written with double quotes, which the
+ * engine reads as an identifier rather than the intended string literal.
+ *
+ * Quoted tokens that are part of a **qualified reference** are not literals and
+ * must not be reported: every generated JOIN is shaped
+ * `ON "t1"."id" = "t2"."t1_id"`, and flagging that made the runtime build its
+ * own multi-table SQL refuse to execute with a bogus "use single quotes" error.
+ */
 export function hasSuspiciousPostgresDoubleQuotedLiteral(sql: string): boolean {
-  return /(?:=|<>|!=|\bLIKE\b|\bILIKE\b)\s*"[^"]+"/i.test(sql);
+  for (const match of sql.matchAll(POSTGRES_DOUBLE_QUOTED_OPERAND)) {
+    const token = match[1] ?? '';
+    // Positions of the quoting characters, derived from the match itself.
+    const openQuoteAt = match.index + match[0].indexOf('"');
+    const closeQuoteAt = openQuoteAt + token.length + 1;
+    const charBefore = sql[openQuoteAt - 1] ?? '';
+    const charAfter = sql[closeQuoteAt + 1] ?? '';
+    // `"tbl"."col"` / `"schema"."tbl"."col"` → an identifier, not a literal.
+    if (charBefore === '.' || charAfter === '.') continue;
+    return true;
+  }
+  return false;
 }
 
 export function buildQueryPanelDiagnosisContext({

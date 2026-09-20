@@ -24,6 +24,14 @@ describe('查询→结果→图表→导出完整用户旅程 (QUERY-RESULT-JOUR
   let mainWindow: string;
   const tableName = `e2e_query_chart_journey_${Date.now().toString(36)}`;
 
+  /** Rendered height of a test-id, or 0 when it is not mounted. */
+  async function heightOf(testId: string): Promise<number> {
+    return browser.execute((id: string) => {
+      const el = document.querySelector(`[data-testid="${id}"]`);
+      return el ? el.getBoundingClientRect().height : 0;
+    }, testId);
+  }
+
   before(async () => {
     const dbSessionId = await connectBackend('conn_e2e_pg');
     try {
@@ -61,7 +69,22 @@ describe('查询→结果→图表→导出完整用户旅程 (QUERY-RESULT-JOUR
   });
 
   it('完整旅程：执行查询 → 查看表格结果 → 切换图表 → 返回并打开导出', async () => {
+    // Before the first execution the result pane is not part of the layout at
+    // all: the editor owns the panel, with the execute hint as a footer.
+    await (await $('[data-testid="query-idle-hint"]')).waitForExist({ timeout: 10000 });
+    expect(await $('[data-testid="query-results-host"]').isExisting()).toBe(false);
+    expect(await heightOf('query-editor-host')).toBeGreaterThan(
+      (await heightOf('query-panel')) * 0.6,
+    );
+
     await executeSQL(`SELECT category, amount FROM ${tableName} ORDER BY category`);
+
+    // …and it appears as soon as a statement produced something to show.
+    const resultsHost = await $('[data-testid="query-results-host"]');
+    await resultsHost.waitForExist({ timeout: 10000 });
+    expect(await resultsHost.isDisplayed()).toBe(true);
+    // Floored so a result is never squashed into an unusable strip.
+    expect(await heightOf('query-results-host')).toBeGreaterThanOrEqual(140);
 
     const table = await $('[data-testid="result-workspace-table"]');
     await table.waitForDisplayed({ timeout: 10000 });

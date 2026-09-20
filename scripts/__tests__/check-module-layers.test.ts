@@ -33,17 +33,18 @@ describe('checkModuleLayers', () => {
 
   it('reports the offending file and target when a rule is violated', () => {
     // A synthetic rule proves the detector actually inspects imports rather than
-    // trusting the rule table.
+    // trusting the rule table. QueryBuilderPanel really does import the store,
+    // so forbidding that edge must be reported.
     const probe = {
       name: 'probe',
       from: 'src/components/query-builder',
-      forbidden: ['src/lib/relationMetadata'],
+      forbidden: ['src/stores/queryBuilderStore'],
     };
     LAYER_RULES.push(probe);
     try {
       const { code, output } = run();
       expect(code).toBe(1);
-      expect(output).toContain('src/lib/relationMetadata');
+      expect(output).toContain('src/stores/queryBuilderStore');
       expect(output).toContain('probe');
     } finally {
       LAYER_RULES.pop();

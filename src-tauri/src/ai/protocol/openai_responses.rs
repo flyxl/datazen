@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 
 use super::{
     log_http_error, log_request_metadata, log_response_metadata, map_http_error,
-    normalize_base_url, ProtocolConfig, STREAM_CHUNK_TIMEOUT,
+    normalize_base_url, retry_with_backoff, ProtocolConfig, RetryConfig, STREAM_CHUNK_TIMEOUT,
 };
 
 // ─── Wire types ───
@@ -275,84 +275,91 @@ pub async fn complete(
     cfg: &ProtocolConfig,
     request: &CompletionRequest,
 ) -> Result<CompletionResponse, AiError> {
-    let url = responses_url(&cfg.api_base);
-    let body = build_request_body(cfg, request, false);
+    let retry = RetryConfig::default();
+    let cfg_ref = cfg;
+    let req_ref = request;
 
-    log_request_metadata("openai_responses", request, &body, false);
+    retry_with_backoff(&retry, || async {
+        let url = responses_url(&cfg_ref.api_base);
+        let body = build_request_body(cfg_ref, req_ref, false);
 
-    let resp = cfg
-        .http_client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", cfg.api_key))
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+        log_request_metadata("openai_responses", req_ref, &body, false);
 
-    let status = resp.status();
-    let raw = resp.text().await.unwrap_or_default();
-    log_response_metadata("openai_responses", &request.request_id, status, raw.len());
+        let resp = cfg_ref
+            .http_client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", cfg_ref.api_key))
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
 
-    if !status.is_success() {
-        return Err(map_http_error(status, &raw));
-    }
+        let status = resp.status();
+        let raw = resp.text().await.unwrap_or_default();
+        log_response_metadata("openai_responses", &req_ref.request_id, status, raw.len());
 
-    let api_resp: ResponseResp = serde_json::from_str(&raw)
-        .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
+        if !status.is_success() {
+            return Err(map_http_error(status, &raw));
+        }
 
-    let content: String = api_resp
-        .output
-        .iter()
-        .filter(|item| item.item_type == "message")
-        .flat_map(|item| item.content.iter().flatten())
-        .filter(|block| block.block_type == "output_text")
-        .filter_map(|block| block.text.as_deref())
-        .collect::<Vec<_>>()
-        .join("");
+        let api_resp: ResponseResp = serde_json::from_str(&raw)
+            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
-    let reasoning_text: String = api_resp
-        .output
-        .iter()
-        .filter(|item| item.item_type == "reasoning")
-        .flat_map(|item| item.content.iter().flatten())
-        .filter(|block| block.block_type == "reasoning_text")
-        .filter_map(|block| block.text.as_deref())
-        .collect::<Vec<_>>()
-        .join("");
+        let content: String = api_resp
+            .output
+            .iter()
+            .filter(|item| item.item_type == "message")
+            .flat_map(|item| item.content.iter().flatten())
+            .filter(|block| block.block_type == "output_text")
+            .filter_map(|block| block.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("");
 
-    let reasoning = if reasoning_text.is_empty() {
-        None
-    } else {
-        Some(reasoning_text)
-    };
+        let reasoning_text: String = api_resp
+            .output
+            .iter()
+            .filter(|item| item.item_type == "reasoning")
+            .flat_map(|item| item.content.iter().flatten())
+            .filter(|block| block.block_type == "reasoning_text")
+            .filter_map(|block| block.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("");
 
-    let tool_calls = parse_output_tool_calls(&api_resp.output);
-    let finish_reason = if tool_calls.is_some() {
-        Some("tool_calls".into())
-    } else {
-        Some("stop".into())
-    };
+        let reasoning = if reasoning_text.is_empty() {
+            None
+        } else {
+            Some(reasoning_text)
+        };
 
-    let usage = api_resp
-        .usage
-        .map(|u| TokenUsage {
-            prompt_tokens: u.input_tokens,
-            completion_tokens: u.output_tokens,
-            total_tokens: u.total_tokens,
+        let tool_calls = parse_output_tool_calls(&api_resp.output);
+        let finish_reason = if tool_calls.is_some() {
+            Some("tool_calls".into())
+        } else {
+            Some("stop".into())
+        };
+
+        let usage = api_resp
+            .usage
+            .map(|u| TokenUsage {
+                prompt_tokens: u.input_tokens,
+                completion_tokens: u.output_tokens,
+                total_tokens: u.total_tokens,
+            })
+            .unwrap_or_default();
+
+        Ok(CompletionResponse {
+            request_id: req_ref.request_id.clone(),
+            content,
+            reasoning,
+            model: api_resp.model,
+            finish_reason,
+            usage,
+            tool_calls,
+            response_id: api_resp.id,
         })
-        .unwrap_or_default();
-
-    Ok(CompletionResponse {
-        request_id: request.request_id.clone(),
-        content,
-        reasoning,
-        model: api_resp.model,
-        finish_reason,
-        usage,
-        tool_calls,
-        response_id: api_resp.id,
     })
+    .await
 }
 
 pub async fn stream_complete(
@@ -360,38 +367,48 @@ pub async fn stream_complete(
     request: &CompletionRequest,
     sender: mpsc::Sender<Result<StreamChunk, AiError>>,
 ) -> Result<(), AiError> {
-    let url = responses_url(&cfg.api_base);
-    let body = build_request_body(cfg, request, true);
+    let retry = RetryConfig::default();
+    let cfg_ref = cfg;
+    let req_ref = request;
 
-    log_request_metadata("openai_responses", request, &body, true);
+    // Retry only the initial HTTP request; once SSE streaming begins, no retry.
+    let resp = retry_with_backoff(&retry, || async {
+        let url = responses_url(&cfg_ref.api_base);
+        let body = build_request_body(cfg_ref, req_ref, true);
 
-    let resp = cfg
-        .http_client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", cfg.api_key))
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!(
-                request_id = %request.request_id,
-                "openai_responses: stream request failed"
-            );
-            AiError::RequestFailed(e.to_string())
-        })?;
+        log_request_metadata("openai_responses", req_ref, &body, true);
 
-    let status = resp.status();
-    tracing::info!(
-        request_id = %request.request_id,
-        %status,
-        "openai_responses: stream started"
-    );
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        log_http_error("openai_responses", &request.request_id, status, &text);
-        return Err(map_http_error(status, &text));
-    }
+        let resp = cfg_ref
+            .http_client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", cfg_ref.api_key))
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    request_id = %req_ref.request_id,
+                    "openai_responses: stream request failed"
+                );
+                AiError::RequestFailed(e.to_string())
+            })?;
+
+        let status = resp.status();
+        tracing::info!(
+            request_id = %req_ref.request_id,
+            %status,
+            "openai_responses: stream started"
+        );
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            log_http_error("openai_responses", &req_ref.request_id, status, &text);
+            return Err(map_http_error(status, &text));
+        }
+
+        Ok(resp)
+    })
+    .await?;
 
     let mut byte_buf = Vec::new();
     let mut stream = resp.bytes_stream();
@@ -401,9 +418,28 @@ pub async fn stream_complete(
     let mut current_fc_name = String::new();
     let mut current_fc_args = String::new();
     let mut response_id: Option<String> = None;
+    let cancel_token = request.cancel_token.clone();
 
     loop {
-        let maybe = match tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()).await {
+        // Check for cancellation before each SSE chunk read.
+        let maybe = if let Some(ref token) = cancel_token {
+            tokio::select! {
+                biased;
+                _ = token.cancelled() => {
+                    tracing::info!(
+                        request_id = %request.request_id,
+                        chunk_count,
+                        "openai_responses: stream cancelled"
+                    );
+                    break;
+                }
+                result = tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()) => result,
+            }
+        } else {
+            tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()).await
+        };
+
+        let maybe = match maybe {
             Ok(m) => m,
             Err(_) => {
                 tracing::error!(chunk_count, "openai_responses: stream timed out");
@@ -476,9 +512,11 @@ pub async fn stream_complete(
                                     content: text,
                                     reasoning: None,
                                     done: false,
+                                    cancelled: false,
                                     usage: None,
                                     tool_calls: None,
                                     response_id: None,
+                                    egress_summary: None,
                                 }))
                                 .await
                                 .is_err()
@@ -495,9 +533,11 @@ pub async fn stream_complete(
                                     content: String::new(),
                                     reasoning: Some(text),
                                     done: false,
+                                    cancelled: false,
                                     usage: None,
                                     tool_calls: None,
                                     response_id: None,
+                                    egress_summary: None,
                                 }))
                                 .await
                                 .is_err()
@@ -570,9 +610,11 @@ pub async fn stream_complete(
                             content: String::new(),
                             reasoning: None,
                             done: true,
+                            cancelled: false,
                             usage,
                             tool_calls,
                             response_id: response_id.take(),
+                            egress_summary: None,
                         }))
                         .await;
                     return Ok(());
@@ -596,9 +638,11 @@ pub async fn stream_complete(
             content: String::new(),
             reasoning: None,
             done: true,
+            cancelled: false,
             usage: None,
             tool_calls,
             response_id: response_id.take(),
+            egress_summary: None,
         }))
         .await;
 
@@ -773,6 +817,7 @@ mod tests {
             stop: None,
             tools: None,
             previous_response_id: Some("resp_prev".into()),
+            cancel_token: None,
         };
         let body = build_request_body(&cfg, &req, false);
         assert_eq!(body["previous_response_id"], "resp_prev");

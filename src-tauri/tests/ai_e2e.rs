@@ -224,6 +224,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let resp = complete_with_retry(provider.as_ref(), &request, 3)
@@ -272,6 +273,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let response = complete_with_retry(provider.as_ref(), &request, 3)
@@ -322,6 +324,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let response = complete_with_retry(provider.as_ref(), &request, 3)
@@ -378,6 +381,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let response = complete_with_retry(provider.as_ref(), &request, 3)
@@ -436,6 +440,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let response = complete_with_retry(provider.as_ref(), &request, 3)
@@ -497,6 +502,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let response = complete_with_retry(provider.as_ref(), &request, 3)
@@ -551,6 +557,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let response = complete_with_retry(provider.as_ref(), &request, 3)
@@ -608,6 +615,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let response = complete_with_retry(provider.as_ref(), &request, 3)
@@ -659,6 +667,7 @@ mod provider_tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let (tx, mut rx) =
@@ -958,6 +967,7 @@ mod deepseek_workflow_tests {
                 stop: None,
                 tools: Some(tools.clone()),
                 previous_response_id: previous_response_id.clone(),
+                cancel_token: None,
             };
 
             // Use streaming to test the full streaming path
@@ -1145,6 +1155,7 @@ mod deepseek_workflow_tests {
             stop: None,
             tools: Some(tools),
             previous_response_id: None,
+            cancel_token: None,
         };
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(32);

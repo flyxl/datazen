@@ -1,784 +1,360 @@
 /**
- * Visual Query Builder complete user journey.
+ * QB-JOURNEY-A — Visual Query Builder, normal journey.
  *
- * Covers the full lifecycle of the v2 canvas-based builder as an ordered
- * sequence of phases sharing one session:
+ * Full closed loop: open from the toolbar → add a table from the navigator →
+ * pick columns on the card → swap to the Preview tab → collapse/resize →
+ * add a WHERE condition → DISTINCT → **OK** writes the SQL back → execute and
+ * see the filtered rows.
  *
- *   1. open via the More menu
- *   2. real HTML5 drag from the sidebar schema tree onto the canvas
- *   3. select columns on the table card
- *   4. configure WHERE in the CriteriaGrid
- *   5. configure ORDER BY and DISTINCT
- *   6. set and then clear LIMIT/OFFSET
- *   7. add a condition in the Conditions panel and flip the group to OR
- *   8. apply the generated SQL, execute it, verify the result rows
- *   9. re-open, drag an FK pair in and confirm the JOIN reaches the SQL
- *  10. build a manual JOIN by clicking a column, then a column of another table
- *  11. reset (panel stays open), close
- *
- * Phases are separate `it()` blocks so a failure localises to one step instead
- * of losing every later assertion. A phase whose predecessor did not complete
- * is skipped rather than cascading into a misleading failure.
- *
- * The drag is a genuine drag: the spec dispatches `dragstart` on the product's
- * own schema-tree row (letting its handler build the payload) and then
- * `dragover`/`drop` on the builder canvas, so the real drop handler, the
- * `application/datazen-schema-object` contract and the follow-up column load
- * are all exercised. No store state is injected.
- *
- * Test data is created through backend IPC in `before`, so the journey assumes
- * nothing about pre-existing tables.
+ * Covers PRD §13.3.1 (A1–A16). See `visualQueryBuilderHelpers.ts` for the
+ * driving conventions (panel chrome = real DOM; canvas = `__qbStore`).
  */
-import { expect, browser, $ } from '@wdio/globals';
+import { browser, $, expect } from '@wdio/globals';
+import { captureJourneyStep } from '../../helpers.js';
 import {
-  captureJourneyStep,
-  closeDataExportDialogIfOpen,
-  closeExtraWindows,
-  connectBackend,
-  disconnectBackend,
-  invokeBackend,
-  openConnectionWindow,
-  openQueryTab,
-  waitForTableInSidebar,
-  withSafeModeOff,
-} from '../../helpers.js';
+  addTableCard,
+  addWhereCondition,
+  clickQbClose,
+  clickQbOk,
+  confirmDiscardIfAsked,
+  configureWhereRow,
+  dragCard,
+  dragNavigatorTableToCanvas,
+  dragSplitter,
+  existsInDom,
+  heightOf,
+  isQbOpen,
+  openQbViaMenu,
+  previewText,
+  qbCall,
+  qbRead,
+  readEditorSql,
+  removeTableCard,
+  selectCardColumn,
+  toggleAllColumns,
+  setEditorSql,
+  setupQbJourney,
+  switchQbTab,
+  teardownQbJourney,
+  waitQbClosed,
+  waitQbOpen,
+} from './visualQueryBuilderHelpers.js';
+import type { QbJourneySetup } from './visualQueryBuilderHelpers.js';
 
-const TABLE_NAME = `e2e_qb_journey_${Date.now().toString(36)}`;
+const TABLE = `e2e_qb_a_${Date.now().toString(36)}`;
+const COLUMNS = ['id', 'name', 'category', 'score'];
 
-/** Parent / child pair with a real FK, used to exercise auto-detected JOINs. */
-const PARENT_TABLE = `${TABLE_NAME}_parent`;
-const CHILD_TABLE = `${TABLE_NAME}_child`;
+/** Tall enough (16 rows) that its card must scroll internally — see A17. */
+const WIDE = `e2e_qb_a_wide_${Date.now().toString(36)}`;
+const WIDE_COLUMNS = Array.from({ length: 16 }, (_, i) => `col_${String(i + 1).padStart(2, '0')}`);
 
-/** Versioned MIME the schema tree writes and the builder canvas consumes. */
-const SCHEMA_OBJECT_MIME = 'application/datazen-schema-object';
-
-/**
- * Shared phase state. Each phase flips its own flag on success; a phase whose
- * precondition is still false is skipped so one broken step does not produce a
- * cascade of unrelated failures.
- */
-const journey = {
-  panelOpen: false,
-  tableOnCanvas: false,
-  columnsSelected: false,
-  whereApplied: false,
-  distinctApplied: false,
-  paginationApplied: false,
-  conditionApplied: false,
-  sqlApplied: false,
-  autoJoinVerified: false,
-  manualJoinVerified: false,
-};
-
-type DragWindow = Window & { __qbDragTransfer?: DataTransfer };
-
-/**
- * Assert a boolean with a message. WDIO's `expect` takes no second argument,
- * and a bare `toBe(true)` would hide which contract broke.
- */
-function expectTrue(value: boolean, message: string): void {
-  if (!value) throw new Error(message);
-}
-
-function qbPanel() {
-  return $('[data-testid="qb-panel"]');
-}
-
-async function isQbPanelOpen(): Promise<boolean> {
-  return (
-    (await qbPanel()
-      .isDisplayed()
-      .catch(() => false)) === true
-  );
-}
-
-async function openBuilderFromMoreMenu(): Promise<void> {
-  const moreMenu = await $('[data-testid="query-toolbar-more-menu-trigger"]');
-  await moreMenu.waitForClickable({ timeout: 10000 });
-  await moreMenu.click();
-  await browser.pause(300);
-
-  const qbMenuItem = await $('[data-testid="more-menu-visual-builder"]');
-  await qbMenuItem.waitForClickable({ timeout: 5000 });
-  await qbMenuItem.click();
-
-  await (await qbPanel()).waitForDisplayed({ timeout: 10000 });
-}
-
-/**
- * Narrow the navigator search to the table so its row stays mounted at the top
- * of the virtualized schema tree while we drag it. Uses the native value setter
- * so React's controlled input sees the change.
- */
-async function filterNavigatorTo(tableName: string): Promise<void> {
-  await browser.execute((name: string) => {
-    const nav =
-      document.querySelector<HTMLElement>('[data-testid="connection-navigator-aside"]') ??
-      Array.from(document.querySelectorAll('aside')).find((a) =>
-        a.querySelector('[data-conn-item]'),
-      );
-    const input = nav?.querySelector<HTMLInputElement>('input');
-    if (!input) return;
-
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    setter?.call(input, name);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  }, tableName);
-  await browser.pause(600);
-}
-
-/**
- * Dispatch the product's own `dragstart` on the sidebar table row and keep the
- * resulting DataTransfer for the matching drop.
- *
- * Resolves true only when the product handler actually populated the versioned
- * MIME — a bare synthetic event would otherwise pass silently.
- */
-async function startTableDrag(tableName: string): Promise<boolean> {
-  return browser.execute(
-    (name: string, mime: string) => {
-      const source = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          '[data-testid="schema-tree-node"][data-tree-node="table"]',
-        ),
-      ).find((node) => node.getAttribute('data-item-name') === name);
-      if (!source) return false;
-
-      const dataTransfer = new DataTransfer();
-      (window as DragWindow).__qbDragTransfer = dataTransfer;
-      source.dispatchEvent(
-        new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer }),
-      );
-      return dataTransfer.getData(mime).length > 0;
-    },
-    tableName,
-    SCHEMA_OBJECT_MIME,
-  ) as Promise<boolean>;
-}
-
-/** Drop the retained payload on the centre of the builder canvas. */
-async function dropOnCanvas(xRatio = 0.5, yRatio = 0.5): Promise<boolean> {
-  return browser.execute(
-    (xr: number, yr: number) => {
-      const canvas = document.querySelector<HTMLElement>('[data-testid="qb-diagram-canvas"]');
-      const dataTransfer = (window as DragWindow).__qbDragTransfer;
-      if (!canvas || !dataTransfer) return false;
-
-      const rect = canvas.getBoundingClientRect();
-      const clientX = Math.round(rect.left + rect.width * xr);
-      const clientY = Math.round(rect.top + rect.height * yr);
-
-      canvas.dispatchEvent(
-        new DragEvent('dragover', {
-          bubbles: true,
-          cancelable: true,
-          clientX,
-          clientY,
-          dataTransfer,
-        }),
-      );
-      const drop = new DragEvent('drop', {
-        bubbles: true,
-        cancelable: true,
-        clientX,
-        clientY,
-        dataTransfer,
-      });
-      canvas.dispatchEvent(drop);
-      return drop.defaultPrevented;
-    },
-    xRatio,
-    yRatio,
-  ) as Promise<boolean>;
-}
-
-/** Pick an option from an open @datazen/ui Select listbox by visible text. */
-async function pickSelectOption(match: string): Promise<boolean> {
-  return browser.execute((needle: string) => {
-    const listbox = document.querySelector('[data-testid="select-listbox"]');
-    if (!listbox) return false;
-    const option = Array.from(listbox.querySelectorAll('[data-testid="select-option"]')).find((o) =>
-      o.textContent?.includes(needle),
-    );
-    if (!option) return false;
-    option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    return true;
-  }, match) as Promise<boolean>;
-}
-
-async function waitForSelectListbox(): Promise<void> {
-  await browser.waitUntil(
-    () => browser.execute(() => document.querySelector('[data-testid="select-listbox"]') !== null),
-    { timeout: 5000, timeoutMsg: '下拉列表未打开' },
-  );
-}
-
-async function sqlPreviewText(): Promise<string> {
-  return (await $('[data-testid="qb-sql-preview"]')).getText();
-}
-
-/**
- * Set a React-controlled input's value through the native setter.
- *
- * `setValue('')` on a `type="number"` field is unreliable in WebKit, and both
- * the LIMIT/OFFSET and condition-value fields are React-controlled, so drive
- * them the same way the navigator filter is driven. `index` picks among
- * repeated testids (the nested condition row is the second one).
- */
-async function setInputValue(testId: string, value: string, index = 0): Promise<void> {
-  const applied = await browser.execute(
-    (id: string, v: string, i: number) => {
-      const input = document.querySelectorAll<HTMLInputElement>(`[data-testid="${id}"]`)[i];
-      if (!input) return false;
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        'value',
-      )?.set;
-      setter?.call(input, v);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      return true;
-    },
-    testId,
-    value,
-    index,
-  );
-  expectTrue(applied, `未找到输入框 ${testId}[${index}]`);
-  await browser.pause(250);
-}
-
-/**
- * Click a real button by testid through the DOM.
- *
- * Used where the control lives in an SVG <foreignObject> beneath the table
- * cards, so a coordinate click would depend on canvas geometry.
- */
-async function clickByTestId(testId: string): Promise<boolean> {
-  return browser.execute((id: string) => {
-    const btn = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
-    if (!btn) return false;
-    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    return true;
-  }, testId);
-}
-
-/** Count elements by testid straight from the DOM (avoids WDIO array typing). */
-async function countByTestId(testId: string): Promise<number> {
-  return browser.execute(
-    (id: string) => document.querySelectorAll(`[data-testid="${id}"]`).length,
-    testId,
-  );
-}
-
-/**
- * Count elements whose testid starts with a prefix. Manual JOIN ids are
- * nanoids, so they can only be matched by prefix.
- */
-async function countByTestIdPrefix(prefix: string): Promise<number> {
-  return browser.execute(
-    (p: string) => document.querySelectorAll(`[data-testid^="${p}"]`).length,
-    prefix,
-  );
-}
-
-describe('Visual Query Builder 完整用户旅程 (QB-JOURNEY)', () => {
-  let mainWindow: string;
+describe('Visual Query Builder 正常旅程 (QB-JOURNEY-A)', () => {
+  let setup: QbJourneySetup;
 
   before(async () => {
-    // Create the test table and seed rows through backend IPC (no UI dependency).
-    const dbSessionId = await connectBackend('conn_e2e_pg');
-    try {
-      await withSafeModeOff(async () => {
-        await invokeBackend('execute_query', {
-          dbSessionId,
-          sql: `DROP TABLE IF EXISTS ${TABLE_NAME}`,
-        });
-        await invokeBackend('execute_query', {
-          dbSessionId,
-          sql: `CREATE TABLE ${TABLE_NAME} (id INTEGER, name TEXT, category TEXT, score INTEGER)`,
-        });
-        await invokeBackend('execute_query', {
-          dbSessionId,
-          sql: `INSERT INTO ${TABLE_NAME} (id, name, category, score) VALUES (1, 'Alice', 'A', 90), (2, 'Bob', 'B', 80), (3, 'Charlie', 'A', 70), (4, 'Diana', 'B', 95)`,
-        });
-        // FK pair: the builder must turn this relationship into a real JOIN in
-        // the generated SQL, not just a line on the canvas.
-        await invokeBackend('execute_query', {
-          dbSessionId,
-          sql: `CREATE TABLE ${PARENT_TABLE} (id INTEGER PRIMARY KEY, label TEXT)`,
-        });
-        await invokeBackend('execute_query', {
-          dbSessionId,
-          sql: `INSERT INTO ${PARENT_TABLE} (id, label) VALUES (1, 'root'), (2, 'branch')`,
-        });
-        await invokeBackend('execute_query', {
-          dbSessionId,
-          sql: `CREATE TABLE ${CHILD_TABLE} (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES ${PARENT_TABLE}(id), note TEXT)`,
-        });
-        await invokeBackend('execute_query', {
-          dbSessionId,
-          sql: `INSERT INTO ${CHILD_TABLE} (id, parent_id, note) VALUES (1, 1, 'first'), (2, 2, 'second')`,
-        });
-      });
-    } finally {
-      await disconnectBackend(dbSessionId);
-    }
-
-    const opened = await openConnectionWindow();
-    mainWindow = opened.mainWindow;
-    await openQueryTab();
+    setup = await setupQbJourney({
+      connectionId: 'e2e_qb_a_conn',
+      connectionName: 'E2E-QB-A',
+      captureLabel: 'qba-open-suite',
+      tables: { [TABLE]: COLUMNS, [WIDE]: WIDE_COLUMNS },
+      seedStatements: [
+        `DROP TABLE IF EXISTS ${TABLE} CASCADE`,
+        `CREATE TABLE ${TABLE} (id INTEGER, name TEXT, category TEXT, score INTEGER)`,
+        `INSERT INTO ${TABLE} (id, name, category, score) VALUES ` +
+          `(1, 'Alice', 'A', 90), (2, 'Bob', 'B', 80), ` +
+          `(3, 'Charlie', 'A', 70), (4, 'Diana', 'B', 95)`,
+        `DROP TABLE IF EXISTS ${WIDE} CASCADE`,
+        `CREATE TABLE ${WIDE} (${WIDE_COLUMNS.map((c) => `${c} INTEGER`).join(', ')})`,
+      ],
+    });
+    await setEditorSql('');
   });
 
   after(async () => {
-    try {
-      await closeDataExportDialogIfOpen();
-      const dbSessionId = await connectBackend('conn_e2e_pg');
-      try {
-        await withSafeModeOff(async () => {
-          // Drop the FK child before its parent.
-          await invokeBackend('execute_query', {
-            dbSessionId,
-            sql: `DROP TABLE IF EXISTS ${CHILD_TABLE}`,
-          });
-          await invokeBackend('execute_query', {
-            dbSessionId,
-            sql: `DROP TABLE IF EXISTS ${PARENT_TABLE}`,
-          });
-          await invokeBackend('execute_query', {
-            dbSessionId,
-            sql: `DROP TABLE IF EXISTS ${TABLE_NAME}`,
-          });
-        });
-      } finally {
-        await disconnectBackend(dbSessionId);
-      }
-    } catch {
-      /* best effort; the shared E2E teardown also removes journey tables */
-    }
-    await closeExtraWindows(mainWindow);
+    await teardownQbJourney(setup);
   });
 
-  it('阶段1：More 菜单可打开可视化构建器面板', async () => {
-    await openBuilderFromMoreMenu();
-    await captureJourneyStep('qb-panel-open');
-    journey.panelOpen = true;
-  });
+  it('A1–A16: 完整正常旅程', async () => {
+    // ── A1: open the builder from the toolbar ──
+    await openQbViaMenu('qba-open');
 
-  it('阶段2：从侧边栏 schema 树真实拖放表到画布并加载列', async function () {
-    if (!journey.panelOpen) this.skip();
-
-    // Make the freshly created table reachable in the sidebar, then keep it
-    // mounted at the top of the virtualized list for the drag.
-    await waitForTableInSidebar(TABLE_NAME);
-    await filterNavigatorTo(TABLE_NAME);
-
-    const payloadReady = await startTableDrag(TABLE_NAME);
-    expectTrue(payloadReady, 'dragstart 未写入 application/datazen-schema-object 负载');
-
-    const dropped = await dropOnCanvas();
-    expectTrue(dropped, 'canvas 未消费 drop 事件');
-
-    await filterNavigatorTo('');
-
-    // The card proves the drop handler ran; the column row proves the builder
-    // then fetched columns from the backend for the dropped table.
-    await browser.waitUntil(
+    const panelId = await browser.execute(
       () =>
-        browser.execute(
-          (name: string) => !!document.querySelector(`[data-testid="qb-drag-${name}"]`),
-          TABLE_NAME,
-        ),
-      { timeout: 10000, timeoutMsg: '拖放后画布未生成表卡片' },
+        document.querySelector('[data-testid="qb-panel"]')?.getAttribute('data-qb-panel-id') ?? '',
     );
-    await (
-      await $(`[data-testid="qb-col-${TABLE_NAME}-name"]`)
-    ).waitForDisplayed({
-      timeout: 10000,
-    });
-    await captureJourneyStep('qb-table-dropped');
+    expect(panelId.length).toBeGreaterThan(0);
 
-    journey.tableOnCanvas = true;
-  });
+    // The host navigator is reused — the builder brings no tree of its own.
+    await expect(await $('[data-testid="connection-navigator-aside"]')).toBeDisplayed();
+    expect(await existsInDom('[data-testid="object-tree-panel"]')).toBe(false);
 
-  it('阶段3：勾选列后 SQL 预览包含所选列', async function () {
-    if (!journey.tableOnCanvas) this.skip();
+    // ── A2: the builder replaces the editor area ──
+    const [panelHeight, queryHeight] = await Promise.all([
+      heightOf('qb-panel'),
+      heightOf('query-panel'),
+    ]);
+    expect(panelHeight).toBeGreaterThan(queryHeight * 0.6);
 
-    // The column row carries two affordances now: the checkbox selects, and the
-    // column name arms a manual JOIN. Select via the checkbox.
-    for (const column of ['name', 'score']) {
-      const check = await $(`[data-testid="qb-col-check-${TABLE_NAME}-${column}"]`);
-      await check.waitForClickable({ timeout: 5000 });
-      await check.click();
-      await browser.pause(200);
-    }
+    // The editor stays mounted (hidden) so its undo stack survives.
+    expect(await existsInDom('[data-testid="query-editor-host"]')).toBe(true);
+    expect(
+      await $('[data-testid="query-editor-host"]')
+        .isDisplayed()
+        .catch(() => false),
+    ).toBe(false);
 
-    await browser.waitUntil(async () => (await sqlPreviewText()).includes('name'), {
+    // ── A3: defaults to the Build tab, preview not mounted ──
+    expect(await existsInDom('[data-testid="qb-statement"]')).toBe(true);
+    expect(await existsInDom('[data-testid="qb-sql-preview"]')).toBe(false);
+
+    // ── A4: drag the table in from the navigator ──
+    expect(await dragNavigatorTableToCanvas(TABLE)).toBe(true);
+    await browser.waitUntil(() => existsInDom(`[data-testid="qb-drag-${TABLE}"]`), {
       timeout: 5000,
-      timeoutMsg: 'SQL 预览未包含所选列',
+      timeoutMsg: '拖动表到画布后未生成卡片',
     });
-    const preview = await sqlPreviewText();
-    expect(preview).toContain('SELECT');
-    expect(preview).toContain(TABLE_NAME);
-    expect(preview).toContain('score');
-    await captureJourneyStep('qb-columns-selected');
-
-    journey.columnsSelected = true;
-  });
-
-  it('阶段4：CriteriaGrid 配置 WHERE 后 SQL 预览包含条件', async function () {
-    if (!journey.columnsSelected) this.skip();
-
-    const addColBtn = await $('[data-testid="criteria-add-column"]');
-    await addColBtn.waitForClickable({ timeout: 5000 });
-    await addColBtn.click();
-    await browser.pause(300);
-
-    await (await $('[data-testid="criteria-row"]')).waitForDisplayed({ timeout: 3000 });
-
-    // Field dropdown lives inside the row; the testid wraps the trigger button.
-    const fieldSelect = await $('[data-testid="criteria-field-select"] button');
-    await fieldSelect.waitForClickable({ timeout: 5000 });
-    await fieldSelect.click();
-    await waitForSelectListbox();
-    // Option labels are `table.column`; match the exact field, not just the table,
-    // or the first column of that table (`id`) would be picked instead.
-    expectTrue(await pickSelectOption(`${TABLE_NAME}.name`), '字段下拉未找到该表的 name 列选项');
-    await browser.pause(300);
-
-    const whereBtn = await $('[data-testid="criteria-where-button"]');
-    await whereBtn.waitForClickable({ timeout: 5000 });
-    await whereBtn.click();
-    await browser.pause(500);
-
-    const whereDialog = await $('[data-testid="where-editor-dialog"]');
-    await whereDialog.waitForDisplayed({ timeout: 5000 });
-
-    const whereValue = await $('[data-testid="where-value-input"]');
-    await whereValue.waitForDisplayed({ timeout: 3000 });
-    await whereValue.click();
-    await whereValue.setValue('Alice');
-    await browser.pause(200);
-
-    const saved = await browser.execute(() => {
-      const save = document.querySelector<HTMLElement>('[data-testid="where-save-button"]');
-      if (!save) return false;
-      save.click();
-      return true;
-    });
-    expectTrue(saved, 'WHERE 弹窗未找到 Save 按钮');
-    await browser.pause(500);
-
-    await browser.waitUntil(async () => (await sqlPreviewText()).includes('WHERE'), {
-      timeout: 5000,
-      timeoutMsg: 'SQL 预览未包含 WHERE',
-    });
-    expect(await sqlPreviewText()).toContain('Alice');
-    await captureJourneyStep('qb-where-added');
-
-    journey.whereApplied = true;
-  });
-
-  it('阶段5：配置 ORDER BY 与 DISTINCT 后 SQL 预览同步更新', async function () {
-    if (!journey.whereApplied) this.skip();
-
-    const sortSelect = await $('[data-testid="criteria-sort-select"]');
-    await sortSelect.waitForClickable({ timeout: 5000 });
-    await sortSelect.click();
-    await waitForSelectListbox();
-    expectTrue(await pickSelectOption('ASC'), '排序下拉未找到 ASC 选项');
-    await browser.pause(300);
-
-    await browser.waitUntil(async () => (await sqlPreviewText()).includes('ORDER BY'), {
-      timeout: 5000,
-      timeoutMsg: 'SQL 预览未包含 ORDER BY',
-    });
-    await captureJourneyStep('qb-sort-added');
-
-    const distinctCheckbox = await $('[data-testid="qb-distinct-checkbox"]');
-    await distinctCheckbox.waitForClickable({ timeout: 5000 });
-    await distinctCheckbox.click();
-    await browser.pause(300);
-
-    await browser.waitUntil(async () => (await sqlPreviewText()).includes('DISTINCT'), {
-      timeout: 5000,
-      timeoutMsg: 'SQL 预览未包含 DISTINCT',
-    });
-    await captureJourneyStep('qb-distinct-toggled');
-
-    journey.distinctApplied = true;
-  });
-
-  it('阶段6：设置 LIMIT/OFFSET 后 SQL 预览包含行窗口，清空后移除', async function () {
-    if (!journey.distinctApplied) this.skip();
-
-    const limitInput = await $('[data-testid="qb-limit-input"]');
-    await limitInput.waitForDisplayed({ timeout: 5000 });
-    await setInputValue('qb-limit-input', '5');
-
-    await browser.waitUntil(async () => (await sqlPreviewText()).includes('LIMIT 5'), {
-      timeout: 5000,
-      timeoutMsg: 'SQL 预览未包含 LIMIT 5',
-    });
-    await captureJourneyStep('qb-limit-set');
-
-    const offsetInput = await $('[data-testid="qb-offset-input"]');
-    await offsetInput.waitForDisplayed({ timeout: 5000 });
-    await setInputValue('qb-offset-input', '2');
-
-    await browser.waitUntil(async () => (await sqlPreviewText()).includes('LIMIT 5 OFFSET 2'), {
-      timeout: 5000,
-      timeoutMsg: 'SQL 预览未包含 LIMIT 5 OFFSET 2',
-    });
-    await captureJourneyStep('qb-offset-set');
-
-    // Clearing a field must drop the clause again, not emit `LIMIT 0`. The
-    // journey applies this query in phase 8, so the row window has to go.
-    await setInputValue('qb-limit-input', '');
-    await setInputValue('qb-offset-input', '');
-
-    await browser.waitUntil(async () => !(await sqlPreviewText()).includes('LIMIT'), {
-      timeout: 5000,
-      timeoutMsg: '清空后 SQL 预览仍包含 LIMIT',
-    });
-    await captureJourneyStep('qb-pagination-cleared');
-
-    journey.paginationApplied = true;
-  });
-
-  it('阶段7：条件组面板添加条件并切换为 OR 后 SQL 预览同步', async function () {
-    if (!journey.paginationApplied) this.skip();
-
-    const addCondition = await $('[data-testid="condition-add-button"]');
-    await addCondition.waitForClickable({ timeout: 5000 });
-    await addCondition.click();
-    await browser.pause(300);
-
-    // A new row is seeded with the first available field; only the value needs
-    // typing. `id` is the first column of the journey table.
-    await setInputValue('condition-value-input', '1');
-
-    await browser.waitUntil(async () => (await sqlPreviewText()).includes('"id" = 1'), {
-      timeout: 5000,
-      timeoutMsg: 'SQL 预览未包含条件组新增的条件',
-    });
-    await captureJourneyStep('qb-condition-added');
-
-    // A nested group is emitted parenthesised.
-    const addGroup = await $('[data-testid="condition-add-group-button"]');
-    await addGroup.waitForClickable({ timeout: 5000 });
-    await addGroup.click();
-    await browser.pause(300);
-
-    expectTrue((await countByTestId('condition-group-nested')) === 1, '未渲染嵌套条件组');
-
-    const nestedAdd = await $(
-      '[data-testid="condition-group-nested"] [data-testid="condition-add-button"]',
+    // The table arrives with a default alias, so the generated SQL is
+    // qualified from the very first column.
+    const alias = await browser.execute(
+      (t: string) => (window as any).__qbStore.getState().tableAliases[t] ?? '',
+      TABLE,
     );
-    await nestedAdd.waitForClickable({ timeout: 5000 });
-    await nestedAdd.click();
+    expect(alias.length).toBeGreaterThan(0);
+    await captureJourneyStep('qba-table-from-navigator');
+
+    // ── A4b: the card can be repositioned by dragging ──
+    const posBefore = (await qbRead(['tablePositions'])).tablePositions as Record<
+      string,
+      { x: number; y: number }
+    >;
+    await dragCard(TABLE, { x: 96, y: 48 });
+    const posAfter = (await qbRead(['tablePositions'])).tablePositions as Record<
+      string,
+      { x: number; y: number }
+    >;
+    expect(posAfter[TABLE]).not.toEqual(posBefore[TABLE]);
+    // Positions stay on the card grid so hand-placed cards line up.
+    expect(posAfter[TABLE]!.x % 24).toBe(0);
+    expect(posAfter[TABLE]!.y % 24).toBe(0);
+
+    // ── A5: pick two columns on the card ──
+    await selectCardColumn(TABLE, 'name');
+    await selectCardColumn(TABLE, 'score');
     await browser.pause(300);
 
-    // The nested row's value input is the second one in document order.
-    await setInputValue('condition-value-input', '3', 1);
-
-    await browser.waitUntil(async () => (await sqlPreviewText()).includes('('), {
-      timeout: 5000,
-      timeoutMsg: 'SQL 预览未包含括号包裹的嵌套条件组',
-    });
-
-    // Flipping the nested group to OR must change the connector inside it.
-    const nestedOr = await $(
-      '[data-testid="condition-group-nested"] [data-testid="condition-group-logic-or"]',
+    // ── A5b: select every column at once, then narrow back to two ──
+    await toggleAllColumns(TABLE);
+    let selectedCount = await browser.execute(
+      () => ((window as any).__qbStore.getState().selectedColumns ?? []).length,
     );
-    await nestedOr.waitForClickable({ timeout: 5000 });
-    await nestedOr.click();
-    await browser.pause(300);
-
-    await browser.waitUntil(
-      async () => {
-        const text = await sqlPreviewText();
-        return text.includes('OR') && text.includes('(');
-      },
-      { timeout: 5000, timeoutMsg: '切换 OR 后 SQL 预览未更新' },
+    expect(selectedCount).toBe(COLUMNS.length);
+    await toggleAllColumns(TABLE);
+    selectedCount = await browser.execute(
+      () => ((window as any).__qbStore.getState().selectedColumns ?? []).length,
     );
-    await captureJourneyStep('qb-condition-group-or');
-
-    // Remove the nested group again so phase 8 executes the same result set the
-    // earlier phases established.
-    const removeGroup = await $('[data-testid="condition-group-remove-button"]');
-    await removeGroup.waitForClickable({ timeout: 5000 });
-    await removeGroup.click();
+    expect(selectedCount).toBe(0);
+    await selectCardColumn(TABLE, 'name');
+    await selectCardColumn(TABLE, 'score');
     await browser.pause(300);
 
-    expectTrue((await countByTestId('condition-group-nested')) === 0, '删除后嵌套条件组仍存在');
+    // ── A6: switch to Preview ──
+    await switchQbTab('preview');
+    let sql = await previewText();
+    expect(sql).toContain('SELECT');
+    expect(sql).toContain(TABLE);
+    expect(sql).toContain('name');
+    expect(sql).toContain('score');
+    // The default alias is what the column references are qualified with.
+    expect(sql).toContain(`"${alias}"`);
+    // Mutually exclusive tabs: the clause list is unmounted while Preview is active.
+    expect(await existsInDom('[data-testid="qb-statement"]')).toBe(false);
+    await captureJourneyStep('qba-preview');
 
-    journey.conditionApplied = true;
-  });
+    // ── A7: drag the splitter up → the bottom region grows ──
+    const bottomBefore = await heightOf('qb-bottom-region');
+    await dragSplitter(-70);
+    const bottomAfter = await heightOf('qb-bottom-region');
+    expect(bottomAfter).toBeGreaterThan(bottomBefore);
+    expect(bottomAfter).toBeGreaterThanOrEqual(139);
 
-  it('阶段8：应用 SQL 并执行后结果包含筛选行', async function () {
-    if (!journey.conditionApplied) this.skip();
+    // ── A8: Ctrl/Cmd+B collapses the canvas, then restores it ──
+    const mod = process.platform === 'darwin' ? '\uE03D' : '\uE009'; // Cmd / Ctrl
+    await browser.keys([mod, 'b']);
+    await browser.pause(400);
+    expect(await existsInDom('[data-testid="qb-diagram-canvas"]')).toBe(false);
+    const collapsedHeight = await heightOf('qb-bottom-region');
+    expect(collapsedHeight).toBeGreaterThan(bottomAfter);
 
-    const applyBtn = await $('[data-testid="qb-apply-sql"]');
-    await applyBtn.waitForClickable({ timeout: 5000 });
-    await applyBtn.click();
+    await browser.keys([mod, 'b']);
+    await browser.pause(400);
+    expect(await existsInDom('[data-testid="qb-diagram-canvas"]')).toBe(true);
 
-    await browser.waitUntil(async () => !(await isQbPanelOpen()), {
-      timeout: 10000,
-      timeoutMsg: 'Apply SQL 后面板未关闭',
-    });
-    await captureJourneyStep('qb-applied-sql');
+    // ── A9/A10: build tab → add a condition row, set score >= 80 ──
+    await switchQbTab('build');
+    await addWhereCondition();
+    await configureWhereRow(0, { field: `${TABLE}.score`, operator: '>=', value: '80' });
 
-    await browser.pause(500);
-    const execBtn = await $('[data-testid="editor-execute-button"]');
-    await execBtn.waitForClickable({ timeout: 10000 });
-    await execBtn.click();
+    await switchQbTab('preview');
+    sql = await previewText();
+    expect(sql).toContain('WHERE');
+    expect(sql).toContain('>= 80');
+    await captureJourneyStep('qba-where');
+
+    // ── A11: DISTINCT ──
+    // The toggle belongs to the SELECT clause row, so it is only mounted on the
+    // Build tab — the preview we assert on afterwards is the same state.
+    await switchQbTab('build');
+    await $('[data-testid="qb-distinct-checkbox"]').click();
+    await browser.pause(300);
+    await switchQbTab('preview');
+    sql = await previewText();
+    expect(sql.toUpperCase()).toContain('SELECT DISTINCT');
+
+    // ── A12: OK writes the SQL back and focuses the editor ──
+    // The editor is already empty here, and it is CSS-hidden while the builder
+    // is up — so it must not be touched through the DOM at this point.
+    await clickQbOk();
+    await waitQbClosed();
+
+    const toast = await $('[data-testid="qb-toast"]');
+    await toast.waitForDisplayed({ timeout: 5000 });
+
+    const editorSql = (await readEditorSql()).replace(/\s+/g, ' ').trim();
+    expect(editorSql).toContain('SELECT');
+    expect(editorSql).toContain(TABLE);
+    expect(editorSql.toUpperCase()).toContain('DISTINCT');
+    expect(editorSql).toContain('>= 80');
+    expect(editorSql.toUpperCase()).toContain('WHERE');
+    await captureJourneyStep('qba-committed');
+
+    // ── A13: execute and verify the filter really applied ──
+    const exec = await $('[data-testid="editor-execute-button"]');
+    await exec.waitForClickable({ timeout: 10000 });
+    await exec.click();
 
     const resultTable = await $('[data-testid="result-workspace-table"]');
     await resultTable.waitForDisplayed({ timeout: 20000 });
-    await browser.waitUntil(async () => (await resultTable.getText()).includes('Alice'), {
-      timeout: 10000,
-      timeoutMsg: '查询结果未包含 Alice',
-    });
-    await captureJourneyStep('qb-result-after-apply');
+    const resultText = await resultTable.getText();
+    expect(resultText).toContain('Alice');
+    expect(resultText).toContain('Diana');
+    expect(resultText).not.toContain('Charlie');
+    await captureJourneyStep('qba-result');
 
-    journey.sqlApplied = true;
+    // ── A14: reopening keeps the canvas (OK does not clear it) ──
+    await openQbViaMenu('qba-reopen');
+    expect(await existsInDom(`[data-testid="qb-drag-${TABLE}"]`)).toBe(true);
+    // Tab memory (PRD F-07.1): we committed from Preview, so it reopens there
+    // with the same SQL still generated.
+    expect(await existsInDom('[data-testid="qb-sql-preview"]')).toBe(true);
+    expect(await previewText()).toContain(TABLE);
+
+    // ── A15: Reset clears the canvas but keeps the panel open ──
+    await $('[data-testid="qb-reset"]').click();
+    await browser.pause(400);
+    expect(await existsInDom(`[data-testid="qb-drag-${TABLE}"]`)).toBe(false);
+    await waitQbOpen(3000);
+
+    // ── A16: closing with × leaves the editor content untouched ──
+    // A15's Reset is itself a canvas change, so × must ask before discarding.
+    const beforeClose = (await readEditorSql()).replace(/\s+/g, ' ').trim();
+    await clickQbClose();
+    expect(await confirmDiscardIfAsked()).toBe(true);
+    await waitQbClosed();
+    const afterClose = (await readEditorSql()).replace(/\s+/g, ' ').trim();
+    expect(afterClose).toBe(beforeClose);
+    await captureJourneyStep('qba-closed');
   });
 
-  it('阶段9：拖入带外键的两张表后 SQL 预览出现 JOIN，移除后消失', async function () {
-    if (!journey.sqlApplied) this.skip();
-
-    await openBuilderFromMoreMenu();
-    expect(await isQbPanelOpen()).toBe(true);
-
-    // Drag the FK pair onto the canvas. Detection reads the schema cache, so the
-    // JOIN must appear in the preview — a line on the canvas alone is the bug
-    // this phase pins.
-    await filterNavigatorTo(PARENT_TABLE);
-    expectTrue(await startTableDrag(PARENT_TABLE), '父表 dragstart 未写入 schema 对象');
-    expectTrue(await dropOnCanvas(0.28, 0.35), '父表未被画布接收');
-    await browser.pause(600);
-
-    await filterNavigatorTo(CHILD_TABLE);
-    expectTrue(await startTableDrag(CHILD_TABLE), '子表 dragstart 未写入 schema 对象');
-    expectTrue(await dropOnCanvas(0.72, 0.6), '子表未被画布接收');
-    await browser.pause(600);
-
-    // The FK line is drawn...
-    await browser.waitUntil(
-      async () =>
-        (await countByTestId(
-          'qb-join-line-auto-' + CHILD_TABLE + '.parent_id-' + PARENT_TABLE + '.id',
-        )) === 1,
-      { timeout: 10000, timeoutMsg: '未渲染自动检测的 JOIN 连线' },
-    );
-    await captureJourneyStep('qb-auto-join-line');
-
-    // ...and it must also be in the SQL, not only on the canvas.
-    await browser.waitUntil(
-      async () => {
-        const text = await sqlPreviewText();
-        return text.includes('JOIN') && text.includes('parent_id');
-      },
-      { timeout: 10000, timeoutMsg: 'SQL 预览未包含自动检测的 JOIN' },
-    );
-    await captureJourneyStep('qb-auto-join-sql');
-
-    // Removing the auto JOIN must drop it from the SQL again (and must not be
-    // immediately re-detected).
-    const joinId = `auto-${CHILD_TABLE}.parent_id-${PARENT_TABLE}.id`;
-    expectTrue(await clickByTestId(`qb-join-remove-${joinId}`), '未找到自动检测 JOIN 的移除按钮');
+  /**
+   * A17–A20 — the three shape regressions that a "it renders something" test
+   * would miss, each one measured on the real rendered geometry:
+   *   A17 a card is a FIXED height object that scrolls its column list
+   *       internally (Navicat behaviour) instead of growing with the table;
+   *   A18 that height does not change when the list is scrolled;
+   *   A19 the preview is pretty-printed, not the generator's one long line;
+   *   A20 the preview is syntax-highlighted and fills its tab region.
+   */
+  it('A17–A20: 卡片固定高度内滚 + Preview 高亮/格式化/占满高度', async () => {
+    if (!(await isQbOpen())) await openQbViaMenu('qba-shape');
+    await qbCall('reset');
+    await addTableCard(WIDE, { x: 20, y: 20 });
+    await addTableCard(TABLE, { x: 500, y: 20 });
     await browser.pause(500);
 
-    await browser.waitUntil(async () => !(await sqlPreviewText()).includes('JOIN'), {
-      timeout: 5000,
-      timeoutMsg: '移除后 SQL 预览仍包含 JOIN',
-    });
-    await captureJourneyStep('qb-auto-join-removed');
-
-    journey.autoJoinVerified = true;
-  });
-
-  it('阶段10：点击列到列创建手动 JOIN，Esc 可取消', async function () {
-    if (!journey.autoJoinVerified) this.skip();
-
-    // ── Exit transition: Esc must disarm an armed anchor ──
-    expectTrue(await clickByTestId(`qb-col-join-${TABLE_NAME}-id`), '未找到第一张表的列');
-    await browser.waitUntil(async () => (await countByTestId('qb-join-anchor-banner')) === 1, {
-      timeout: 5000,
-      timeoutMsg: '点击列后未进入 JOIN 锚点状态',
-    });
-    expectTrue(await sqlPreviewText().then((t) => !t.includes('JOIN')), '仅锚定时不应产生 JOIN');
-
-    await browser.keys(['Escape']);
-    await browser.waitUntil(async () => (await countByTestId('qb-join-anchor-banner')) === 0, {
-      timeout: 5000,
-      timeoutMsg: 'Esc 未能取消 JOIN 锚点',
-    });
-
-    // ── Enter + complete: click a column, then a column of another table ──
-    expectTrue(await clickByTestId(`qb-col-join-${TABLE_NAME}-id`), '未找到第一张表的列');
-    await browser.waitUntil(async () => (await countByTestId('qb-join-anchor-banner')) === 1, {
-      timeout: 5000,
-      timeoutMsg: '点击列后未进入 JOIN 锚点状态',
-    });
-    await captureJourneyStep('qb-join-anchor-armed');
-
-    // No FK links these two tables, so any JOIN here is the manual one.
-    expectTrue(await clickByTestId(`qb-col-join-${PARENT_TABLE}-id`), '未找到第二张表的列');
-    await browser.waitUntil(async () => (await countByTestId('qb-join-anchor-banner')) === 0, {
-      timeout: 5000,
-      timeoutMsg: '创建 JOIN 后锚点状态未退出',
-    });
-    await browser.waitUntil(
-      async () => {
-        const text = await sqlPreviewText();
-        return (
-          text.includes('INNER JOIN') &&
-          text.includes(`"${TABLE_NAME}"."id" = "${PARENT_TABLE}"."id"`)
-        );
+    // ── A17: the 16-column card is capped and scrolls internally ──
+    const metrics = await browser.execute(
+      (wide: string, small: string) => {
+        const card = (t: string) =>
+          document.querySelector<HTMLElement>(`[data-testid="qb-drag-${t}"]`);
+        const list = (t: string) =>
+          document.querySelector<HTMLElement>(`[data-testid="qb-col-list-${t}"]`);
+        const wl = list(wide);
+        const sl = list(small);
+        return {
+          wideHeight: card(wide)?.getBoundingClientRect().height ?? 0,
+          smallHeight: card(small)?.getBoundingClientRect().height ?? 0,
+          wideListClientHeight: wl?.clientHeight ?? 0,
+          wideListScrollHeight: wl?.scrollHeight ?? 0,
+          smallScrolls: sl ? sl.scrollHeight > sl.clientHeight + 1 : true,
+        };
       },
-      { timeout: 10000, timeoutMsg: '手动 JOIN 未进入 SQL 预览' },
+      WIDE,
+      TABLE,
     );
-    await captureJourneyStep('qb-manual-join');
+    // 16 rows × 24px + padding ≈ 392px of content …
+    expect(metrics.wideListScrollHeight).toBeGreaterThan(metrics.wideListClientHeight + 100);
+    // … inside a card capped at header + 200px (≈237px), not 430px.
+    expect(metrics.wideHeight).toBeLessThan(260);
+    expect(metrics.smallHeight).toBeGreaterThan(0);
+    expect(metrics.smallHeight).toBeLessThan(metrics.wideHeight);
+    // A short table has nothing to scroll — its list must not fake a scrollbar.
+    expect(metrics.smallScrolls).toBe(false);
+    await captureJourneyStep('qba-fixed-height-card');
 
-    // The same pair must not be added twice (either click order).
-    expectTrue(await clickByTestId(`qb-col-join-${TABLE_NAME}-id`), '未找到第一张表的列');
-    expectTrue(await clickByTestId(`qb-col-join-${PARENT_TABLE}-id`), '未找到第二张表的列');
+    // ── A18: scrolling the list does not resize the card ──
+    const scrolled = await browser.execute((t: string) => {
+      const list = document.querySelector<HTMLElement>(`[data-testid="qb-col-list-${t}"]`);
+      if (!list) return null;
+      list.scrollTop = 120;
+      const card = document.querySelector<HTMLElement>(`[data-testid="qb-drag-${t}"]`);
+      return { scrollTop: list.scrollTop, height: card?.getBoundingClientRect().height ?? 0 };
+    }, WIDE);
+    expect(scrolled).not.toBeNull();
+    expect(scrolled!.scrollTop).toBeGreaterThan(0);
+    expect(scrolled!.height).toBe(metrics.wideHeight);
+
+    // ── A19–A20: preview formatting, highlighting and height ──
+    await removeTableCard(TABLE);
+    await toggleAllColumns(WIDE);
+    await switchQbTab('preview');
     await browser.pause(300);
-    // Only the manual JOIN exists here (the FK one was dismissed in 阶段9), so
-    // a duplicate would show up as a second line.
-    const joinLines = await countByTestIdPrefix('qb-join-line-');
-    expectTrue(joinLines === 1, `重复点击产生了 ${joinLines} 条 JOIN 连线`);
 
-    journey.manualJoinVerified = true;
-  });
+    const sql = await previewText();
+    // The generator's output is a single line; the preview must be formatted.
+    expect(sql).toContain('\n');
+    expect(sql.toUpperCase()).toContain('SELECT');
 
-  it('阶段11：Reset 清空查询但保持面板打开，随后可关闭', async function () {
-    if (!journey.manualJoinVerified) this.skip();
-
-    const resetBtn = await $('[data-testid="qb-reset"]');
-    await resetBtn.waitForClickable({ timeout: 5000 });
-    await resetBtn.click();
-    await browser.pause(500);
-
-    // Reset clears the query but must not dismiss the panel — closing is a
-    // separate, explicit action (qb-close).
-    expectTrue(await isQbPanelOpen(), 'Reset 后构建器面板不应关闭');
-    // The preview unmounts entirely once the generated SQL is empty again.
-    await browser.waitUntil(
-      () =>
-        browser.execute(() => document.querySelector('[data-testid="qb-sql-preview"]') === null),
-      { timeout: 5000, timeoutMsg: 'Reset 后 SQL 预览未清空' },
-    );
-    await captureJourneyStep('qb-reset');
-
-    const closeBtn = await $('[data-testid="qb-close"]');
-    await closeBtn.waitForClickable({ timeout: 5000 });
-    await closeBtn.click();
-
-    await browser.waitUntil(async () => !(await isQbPanelOpen()), {
-      timeout: 10000,
-      timeoutMsg: '关闭面板超时',
+    const preview = await browser.execute(() => {
+      const pre = document.querySelector<HTMLElement>('[data-testid="qb-sql-preview"]');
+      const tab = document.querySelector<HTMLElement>('[data-testid="qb-tab-content"]');
+      if (!pre || !tab) return null;
+      return {
+        spans: pre.querySelectorAll('span').length,
+        keywords: pre.querySelectorAll('span[class*="text-accent"]').length,
+        height: pre.getBoundingClientRect().height,
+        tabHeight: tab.getBoundingClientRect().height,
+      };
     });
-    await captureJourneyStep('qb-panel-closed');
+    expect(preview).not.toBeNull();
+    // Highlighting is real token spans, and keywords take the accent colour.
+    expect(preview!.spans).toBeGreaterThan(5);
+    expect(preview!.keywords).toBeGreaterThan(0);
+    // The preview fills the region — leaving room only for its own header row.
+    expect(preview!.height).toBeGreaterThan(120);
+    expect(preview!.height).toBeGreaterThan(preview!.tabHeight - 70);
+    await captureJourneyStep('qba-preview-shape');
+
+    // Leave the journey clean for the runner's teardown.
+    await qbCall('reset');
   });
 });

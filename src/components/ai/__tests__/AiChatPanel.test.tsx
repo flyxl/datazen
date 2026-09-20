@@ -8,6 +8,16 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock('../../../hooks/useAutoScroll', () => ({
+  useAutoScroll: () => ({
+    atBottom: true,
+    unreadCount: 0,
+    jumpToBottom: vi.fn(),
+    onScroll: vi.fn(),
+    containerRef: { current: null },
+  }),
+}));
+
 const openSettingsWindow = vi.fn();
 const openDocsWindow = vi.fn();
 vi.mock('../../../lib/windowManager', () => ({
@@ -56,7 +66,7 @@ const aiState = vi.hoisted(() => ({
   isConfigured: true,
   chatSession: {
     messages: [] as {
-      role: 'user' | 'assistant';
+      role: 'user' | 'assistant' | 'tool';
       content: string;
       reasoning?: string;
       questions?: {
@@ -74,6 +84,18 @@ const aiState = vi.hoisted(() => ({
   initChatSession: vi.fn(),
   sendChatMessage: vi.fn().mockResolvedValue(undefined),
   clearChat: vi.fn(),
+  settingsConfig: null as {
+    activeProfileId: string;
+    profiles: {
+      id: string;
+      name: string;
+      model: string;
+      isDefault?: boolean;
+      safetyGate?: string;
+    }[];
+  } | null,
+  setActiveProfile: vi.fn().mockResolvedValue(undefined),
+  loadConfig: vi.fn(),
 }));
 
 vi.mock('../../../stores/aiStore', () => ({
@@ -91,7 +113,9 @@ beforeEach(() => {
     isStreaming: false,
     streamContent: '',
     streamReasoning: '',
+    streamMcpToolName: null,
   };
+  aiState.settingsConfig = null;
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -213,7 +237,7 @@ describe('QuestionBlock', () => {
     const { getByText } = render(<QuestionBlock questions={questions} onSubmit={onSubmit} />);
     fireEvent.click(getByText('Alpha'));
     fireEvent.click(getByText('chat.questions.submit'));
-    expect(onSubmit).toHaveBeenCalledWith('Pick one\nAlpha');
+    expect(onSubmit).toHaveBeenCalledWith('[q1] Pick one\nAlpha');
   });
 });
 

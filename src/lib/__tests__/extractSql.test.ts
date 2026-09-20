@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractSqlFromResponse } from '../extractSql';
+import { extractSqlFromResponse, extractSqlStreaming } from '../extractSql';
 
 describe('extractSqlFromResponse', () => {
   it('returns empty for empty input', () => {
@@ -92,5 +92,52 @@ SELECT version()
   it('falls back to full text when no SQL is detected', () => {
     const input = 'This is just some random text without any SQL.';
     expect(extractSqlFromResponse(input)).toBe(input);
+  });
+});
+
+describe('extractSqlStreaming', () => {
+  it('returns empty for empty input', () => {
+    expect(extractSqlStreaming('')).toBe('');
+  });
+
+  it('extracts SQL from closed ```sql fence', () => {
+    const input = 'thinking...\n```sql\nSELECT 1\n```';
+    // Streaming mode preserves trailing newline — no trim
+    expect(extractSqlStreaming(input)).toBe('SELECT 1\n');
+  });
+
+  it('extracts SQL from unclosed ```sql fence', () => {
+    const input = 'thinking...\n```sql\nSELECT u.id,\n  u.name\nFROM users u';
+    expect(extractSqlStreaming(input)).toBe('SELECT u.id,\n  u.name\nFROM users u');
+  });
+
+  it('extracts SQL from unclosed bare fence', () => {
+    const input = 'Here is the query:\n```\nSELECT * FROM orders';
+    expect(extractSqlStreaming(input)).toBe('SELECT * FROM orders');
+  });
+
+  it('handles mixed text with SQL lines (no fence)', () => {
+    const input = 'Based on the schema:\nSELECT u.id, u.name\nFROM users u\nWHERE u.active = true';
+    const result = extractSqlStreaming(input);
+    expect(result).toContain('SELECT');
+    expect(result).toContain('FROM');
+    expect(result).toContain('WHERE');
+  });
+
+  it('does not trim output (preserves streaming state)', () => {
+    const input = 'SELECT ';
+    expect(extractSqlStreaming(input)).toBe('SELECT ');
+  });
+
+  it('handles empty lines inside SQL fence', () => {
+    const input = '```sql\nSELECT\n\n  id\nFROM\n  users\n```';
+    // Streaming mode preserves trailing content as-is — no trim
+    expect(extractSqlStreaming(input)).toBe('SELECT\n\n  id\nFROM\n  users\n');
+  });
+
+  it('handles multiple fence attempts (takes first)', () => {
+    const input = '```sql\nSELECT 1\n```\n\nSome text\n```sql\nSELECT 2\n```';
+    // Streaming mode preserves trailing content — no trim
+    expect(extractSqlStreaming(input)).toBe('SELECT 1\n');
   });
 });

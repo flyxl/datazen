@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use super::{
-    log_http_error, log_request_metadata, log_response_metadata, map_http_error, ProtocolConfig,
-    STREAM_CHUNK_TIMEOUT,
+    log_http_error, log_request_metadata, log_response_metadata, map_http_error,
+    retry_with_backoff, ProtocolConfig, RetryConfig, STREAM_CHUNK_TIMEOUT,
 };
 
 const API_VERSION: &str = "2023-06-01";
@@ -256,89 +256,96 @@ pub async fn complete(
     cfg: &ProtocolConfig,
     request: &CompletionRequest,
 ) -> Result<CompletionResponse, AiError> {
-    let url = build_url(&cfg.api_base);
-    let (system, messages) = build_messages(&request.messages);
+    let retry = RetryConfig::default();
+    let cfg_ref = cfg;
+    let req_ref = request;
 
-    let tools = request.tools.as_ref().map(|t| to_anthropic_tools(t));
+    retry_with_backoff(&retry, || async {
+        let url = build_url(&cfg_ref.api_base);
+        let (system, messages) = build_messages(&req_ref.messages);
 
-    let body = ApiRequest {
-        model: request.model.clone(),
-        messages,
-        max_tokens: cfg.max_tokens,
-        system,
-        temperature: request.temperature,
-        stop_sequences: request.stop.clone(),
-        stream: None,
-        tools,
-    };
+        let tools = req_ref.tools.as_ref().map(|t| to_anthropic_tools(t));
 
-    log_request_metadata("anthropic", request, &body, false);
+        let body = ApiRequest {
+            model: req_ref.model.clone(),
+            messages,
+            max_tokens: cfg_ref.max_tokens,
+            system,
+            temperature: req_ref.temperature,
+            stop_sequences: req_ref.stop.clone(),
+            stream: None,
+            tools,
+        };
 
-    let resp = cfg
-        .http_client
-        .post(&url)
-        .header("x-api-key", &cfg.api_key)
-        .header("anthropic-version", API_VERSION)
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+        log_request_metadata("anthropic", req_ref, &body, false);
 
-    let status = resp.status();
-    let raw = resp.text().await.unwrap_or_default();
-    log_response_metadata("anthropic", &request.request_id, status, raw.len());
-    if !status.is_success() {
-        return Err(map_http_error(status, &raw));
-    }
+        let resp = cfg_ref
+            .http_client
+            .post(&url)
+            .header("x-api-key", &cfg_ref.api_key)
+            .header("anthropic-version", API_VERSION)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
 
-    let api_resp: ApiResponse = serde_json::from_str(&raw)
-        .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
+        let status = resp.status();
+        let raw = resp.text().await.unwrap_or_default();
+        log_response_metadata("anthropic", &req_ref.request_id, status, raw.len());
+        if !status.is_success() {
+            return Err(map_http_error(status, &raw));
+        }
 
-    let content = api_resp
-        .content
-        .iter()
-        .filter(|b| b.block_type == "text")
-        .filter_map(|b| b.text.as_deref())
-        .collect::<Vec<_>>()
-        .join("");
+        let api_resp: ApiResponse = serde_json::from_str(&raw)
+            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
-    let reasoning_text: String = api_resp
-        .content
-        .iter()
-        .filter(|b| b.block_type == "thinking")
-        .filter_map(|b| b.text.as_deref())
-        .collect::<Vec<_>>()
-        .join("");
-    let reasoning = if reasoning_text.is_empty() {
-        None
-    } else {
-        Some(reasoning_text)
-    };
+        let content = api_resp
+            .content
+            .iter()
+            .filter(|b| b.block_type == "text")
+            .filter_map(|b| b.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("");
 
-    let tool_calls = parse_tool_use_blocks(&api_resp.content);
-    let finish_reason = if tool_calls.is_some() {
-        Some("tool_calls".into())
-    } else {
-        api_resp.stop_reason
-    };
+        let reasoning_text: String = api_resp
+            .content
+            .iter()
+            .filter(|b| b.block_type == "thinking")
+            .filter_map(|b| b.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("");
+        let reasoning = if reasoning_text.is_empty() {
+            None
+        } else {
+            Some(reasoning_text)
+        };
 
-    let total = api_resp.usage.input_tokens + api_resp.usage.output_tokens;
+        let tool_calls = parse_tool_use_blocks(&api_resp.content);
+        let finish_reason = if tool_calls.is_some() {
+            Some("tool_calls".into())
+        } else {
+            api_resp.stop_reason
+        };
 
-    Ok(CompletionResponse {
-        request_id: request.request_id.clone(),
-        content,
-        reasoning,
-        model: api_resp.model,
-        finish_reason,
-        usage: TokenUsage {
-            prompt_tokens: api_resp.usage.input_tokens,
-            completion_tokens: api_resp.usage.output_tokens,
-            total_tokens: total,
-        },
-        tool_calls,
-        response_id: None,
+        let total = api_resp.usage.input_tokens + api_resp.usage.output_tokens;
+
+        Ok(CompletionResponse {
+            request_id: req_ref.request_id.clone(),
+            content,
+            reasoning,
+            model: api_resp.model,
+            finish_reason,
+            usage: TokenUsage {
+                prompt_tokens: api_resp.usage.input_tokens,
+                completion_tokens: api_resp.usage.output_tokens,
+                total_tokens: total,
+            },
+            tool_calls,
+            response_id: None,
+        })
     })
+    .await
 }
 
 pub async fn stream_complete(
@@ -346,46 +353,56 @@ pub async fn stream_complete(
     request: &CompletionRequest,
     sender: mpsc::Sender<Result<StreamChunk, AiError>>,
 ) -> Result<(), AiError> {
-    let url = build_url(&cfg.api_base);
-    let (system, messages) = build_messages(&request.messages);
+    let retry = RetryConfig::default();
+    let cfg_ref = cfg;
+    let req_ref = request;
 
-    let tools = request.tools.as_ref().map(|t| to_anthropic_tools(t));
+    // Retry only the initial HTTP request; once SSE streaming begins, no retry.
+    let resp = retry_with_backoff(&retry, || async {
+        let url = build_url(&cfg_ref.api_base);
+        let (system, messages) = build_messages(&req_ref.messages);
 
-    let body = ApiRequest {
-        model: request.model.clone(),
-        messages,
-        max_tokens: cfg.max_tokens,
-        system,
-        temperature: request.temperature,
-        stop_sequences: request.stop.clone(),
-        stream: Some(true),
-        tools,
-    };
+        let tools = req_ref.tools.as_ref().map(|t| to_anthropic_tools(t));
 
-    log_request_metadata("anthropic", request, &body, true);
+        let body = ApiRequest {
+            model: req_ref.model.clone(),
+            messages,
+            max_tokens: cfg_ref.max_tokens,
+            system,
+            temperature: req_ref.temperature,
+            stop_sequences: req_ref.stop.clone(),
+            stream: Some(true),
+            tools,
+        };
 
-    let resp = cfg
-        .http_client
-        .post(&url)
-        .header("x-api-key", &cfg.api_key)
-        .header("anthropic-version", API_VERSION)
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+        log_request_metadata("anthropic", req_ref, &body, true);
 
-    let status = resp.status();
-    tracing::info!(
-        request_id = %request.request_id,
-        %status,
-        "anthropic: HTTP response received"
-    );
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        log_http_error("anthropic", &request.request_id, status, &text);
-        return Err(map_http_error(status, &text));
-    }
+        let resp = cfg_ref
+            .http_client
+            .post(&url)
+            .header("x-api-key", &cfg_ref.api_key)
+            .header("anthropic-version", API_VERSION)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+
+        let status = resp.status();
+        tracing::info!(
+            request_id = %req_ref.request_id,
+            %status,
+            "anthropic: HTTP response received"
+        );
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            log_http_error("anthropic", &req_ref.request_id, status, &text);
+            return Err(map_http_error(status, &text));
+        }
+
+        Ok(resp)
+    })
+    .await?;
 
     let mut byte_buf = Vec::new();
     let mut stream = resp.bytes_stream();
@@ -401,9 +418,28 @@ pub async fn stream_complete(
     }
     let mut pending_tool_uses: Vec<PendingToolUse> = Vec::new();
     let mut _current_block_type: Option<String> = None;
+    let cancel_token = request.cancel_token.clone();
 
     loop {
-        let maybe = match tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()).await {
+        // Check for cancellation before each SSE chunk read.
+        let maybe = if let Some(ref token) = cancel_token {
+            tokio::select! {
+                biased;
+                _ = token.cancelled() => {
+                    tracing::info!(
+                        request_id = %request.request_id,
+                        chunk_count,
+                        "anthropic: stream cancelled"
+                    );
+                    break;
+                }
+                result = tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()) => result,
+            }
+        } else {
+            tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()).await
+        };
+
+        let maybe = match maybe {
             Ok(m) => m,
             Err(_) => {
                 tracing::error!(chunk_count, "anthropic: stream timed out");
@@ -485,9 +521,11 @@ pub async fn stream_complete(
                                         content: text,
                                         reasoning: None,
                                         done: false,
+                                        cancelled: false,
                                         usage: None,
                                         tool_calls: None,
                                         response_id: None,
+                                        egress_summary: None,
                                     }))
                                     .await
                                     .is_err()
@@ -502,9 +540,11 @@ pub async fn stream_complete(
                                         content: String::new(),
                                         reasoning: Some(thinking),
                                         done: false,
+                                        cancelled: false,
                                         usage: None,
                                         tool_calls: None,
                                         response_id: None,
+                                        egress_summary: None,
                                     }))
                                     .await
                                     .is_err()
@@ -547,6 +587,7 @@ pub async fn stream_complete(
                                 content: String::new(),
                                 reasoning: None,
                                 done: true,
+                                cancelled: false,
                                 usage: Some(TokenUsage {
                                     prompt_tokens,
                                     completion_tokens: output_tokens,
@@ -554,6 +595,7 @@ pub async fn stream_complete(
                                 }),
                                 tool_calls,
                                 response_id: None,
+                                egress_summary: None,
                             }))
                             .await;
                         return Ok(());
@@ -584,9 +626,11 @@ pub async fn stream_complete(
             content: String::new(),
             reasoning: None,
             done: true,
+            cancelled: false,
             usage: None,
             tool_calls,
             response_id: None,
+            egress_summary: None,
         }))
         .await;
 
@@ -873,5 +917,118 @@ mod tests {
 
         let cfg = protocol_config_anthropic(&server.uri());
         probe(&cfg, "claude-test").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn complete_retries_on_429_then_succeeds() {
+        use crate::ai::protocol::test_support::{protocol_config_anthropic, sample_request};
+
+        let server = MockServer::start().await;
+
+        // First call: 429 with retry_after
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(429).set_body_json(
+                serde_json::json!({"error": {"message": "rate limited", "retry_after": 0}}),
+            ))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Second call: success
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "content": [{"type": "text", "text": "Hello from Claude"}],
+                "model": "claude-test",
+                "usage": {"input_tokens": 5, "output_tokens": 3}
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config_anthropic(&server.uri());
+        let resp = complete(&cfg, &sample_request()).await.unwrap();
+        assert_eq!(resp.content, "Hello from Claude");
+    }
+
+    #[tokio::test]
+    async fn complete_400_returns_sanitized_error() {
+        use crate::ai::protocol::test_support::{protocol_config_anthropic, sample_request};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "type": "error",
+                "error": {"type": "invalid_request_error", "message": "Invalid model id"}
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config_anthropic(&server.uri());
+        let err = complete(&cfg, &sample_request()).await.unwrap_err();
+        match err {
+            AiError::RequestFailed(msg) => {
+                assert!(msg.contains("Invalid model id"));
+            }
+            other => panic!("expected RequestFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_complete_retries_on_429_then_succeeds() {
+        use crate::ai::protocol::test_support::{
+            collect_stream, protocol_config_anthropic, sample_request,
+        };
+
+        let server = MockServer::start().await;
+
+        // First call: 429
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(429).set_body_json(
+                serde_json::json!({"error": {"message": "rate limited", "retry_after": 0}}),
+            ))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Second call: success SSE
+        let sse = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n",
+            "\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n",
+            "\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hi\"}}\n",
+            "\n",
+            "event: content_block_stop\n",
+            "data: {\"type\":\"content_block_stop\",\"index\":0}\n",
+            "\n",
+            "event: message_delta\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}\n",
+            "\n",
+            "event: message_stop\n",
+            "data: {\"type\":\"message_stop\"}\n",
+            "\n",
+        );
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(sse),
+            )
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config_anthropic(&server.uri());
+        let request = sample_request();
+        let chunks = collect_stream(|tx| stream_complete(&cfg, &request, tx)).await;
+        let ok: Vec<_> = chunks.into_iter().filter_map(Result::ok).collect();
+        assert!(ok.iter().any(|c| c.content == "Hi"));
+        assert!(ok.iter().any(|c| c.done));
     }
 }

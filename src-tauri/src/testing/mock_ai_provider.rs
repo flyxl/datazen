@@ -110,14 +110,17 @@ impl MockAiProvider {
                 content: content.clone(),
                 reasoning: None,
                 done: false,
+                cancelled: false,
                 usage: None,
                 tool_calls: None,
                 response_id: None,
+                egress_summary: None,
             },
             StreamChunk {
                 content: String::new(),
                 reasoning: None,
                 done: true,
+                cancelled: false,
                 usage: Some(TokenUsage {
                     prompt_tokens: 1,
                     completion_tokens: 2,
@@ -125,6 +128,7 @@ impl MockAiProvider {
                 }),
                 tool_calls: None,
                 response_id: None,
+                egress_summary: None,
             },
         ]);
     }
@@ -135,9 +139,11 @@ impl MockAiProvider {
             content: String::new(),
             reasoning: None,
             done: true,
+            cancelled: false,
             usage: None,
             tool_calls: Some(vec![tool]),
             response_id: None,
+            egress_summary: None,
         }]);
         self.push_stream_text(final_text);
     }
@@ -260,9 +266,11 @@ impl AiProvider for MockAiProvider {
                         content: response.content,
                         reasoning: response.reasoning,
                         done: true,
+                        cancelled: false,
                         usage: Some(response.usage),
                         tool_calls: response.tool_calls,
                         response_id: response.response_id,
+                        egress_summary: None,
                     }))
                     .await;
                 Ok(())

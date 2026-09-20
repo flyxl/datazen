@@ -9,6 +9,9 @@ vi.mock('../../commands/database', () => ({
       { name: 'orders', tableType: 'TABLE', schema: 'public', rowCount: null },
     ]),
     getColumns: vi.fn().mockResolvedValue(['id', 'name']),
+    // Default: typed endpoint unavailable → per-table path falls back to
+    // getColumns. Tests that exercise type loading mock this explicitly.
+    getColumnsTyped: vi.fn().mockRejectedValue(new Error('typed not available')),
     getAllColumns: vi.fn().mockResolvedValue({}),
   },
 }));
@@ -550,6 +553,57 @@ describe('schemaStore.ensureColumns', () => {
     expect(useSchemaStore.getState().columnMap).toEqual({
       users: ['id'],
       orders: ['id', 'name'],
+    });
+  });
+
+  it('requireTypes fetches typed columns even when the batch already filled columnMap', async () => {
+    await useSchemaStore.getState().loadTables('testdb');
+    vi.mocked(databaseCommands.getAllColumns).mockResolvedValueOnce({ users: ['id', 'name'] });
+    vi.mocked(databaseCommands.getColumnsTyped).mockResolvedValueOnce([
+      { name: 'id', dataType: 'integer' },
+      { name: 'ordered_at', dataType: 'timestamp without time zone' },
+    ] as never);
+
+    await useSchemaStore
+      .getState()
+      .ensureColumns(['users'], 'test-conn', 'testdb', { requireTypes: true });
+
+    expect(databaseCommands.getColumnsTyped).toHaveBeenCalledWith('test-conn', 'users', 'testdb');
+    expect(useSchemaStore.getState().typedColumnMap).toEqual({
+      users: { id: 'integer', ordered_at: 'timestamp without time zone' },
+    });
+  });
+
+  it('without requireTypes the batch path leaves typedColumnMap empty', async () => {
+    await useSchemaStore.getState().loadTables('testdb');
+    vi.mocked(databaseCommands.getAllColumns).mockResolvedValueOnce({ users: ['id', 'name'] });
+
+    await useSchemaStore.getState().ensureColumns(['users'], 'test-conn', 'testdb');
+
+    expect(databaseCommands.getColumnsTyped).not.toHaveBeenCalled();
+    expect(useSchemaStore.getState().typedColumnMap).toEqual({});
+    expect(useSchemaStore.getState().columnMap).toEqual({ users: ['id', 'name'] });
+  });
+
+  it('requireTypes only re-fetches tables that still lack types', async () => {
+    await useSchemaStore.getState().loadTables('testdb');
+    useSchemaStore.setState({
+      columnMap: { users: ['id'], orders: ['id'] },
+      typedColumnMap: { users: { id: 'integer' } },
+    });
+    vi.mocked(databaseCommands.getColumnsTyped).mockResolvedValueOnce([
+      { name: 'id', dataType: 'bigint' },
+    ] as never);
+
+    await useSchemaStore
+      .getState()
+      .ensureColumns(['users', 'orders'], 'test-conn', 'testdb', { requireTypes: true });
+
+    expect(databaseCommands.getColumnsTyped).toHaveBeenCalledTimes(1);
+    expect(databaseCommands.getColumnsTyped).toHaveBeenCalledWith('test-conn', 'orders', 'testdb');
+    expect(useSchemaStore.getState().typedColumnMap).toEqual({
+      users: { id: 'integer' },
+      orders: { id: 'bigint' },
     });
   });
 });

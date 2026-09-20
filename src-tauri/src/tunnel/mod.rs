@@ -127,12 +127,13 @@ async fn start_ssh(
             DriverError::InvalidConfig("tunnelKind=ssh but sshTunnel is missing or disabled".into())
         })?;
 
-    let remote_host = config.host.as_deref().ok_or_else(|| {
-        DriverError::InvalidConfig("SSH tunnel requires a database host".into())
-    })?;
-    let remote_port = config.port.ok_or_else(|| {
-        DriverError::InvalidConfig("SSH tunnel requires a database port".into())
-    })?;
+    let remote_host = config
+        .host
+        .as_deref()
+        .ok_or_else(|| DriverError::InvalidConfig("SSH tunnel requires a database host".into()))?;
+    let remote_port = config
+        .port
+        .ok_or_else(|| DriverError::InvalidConfig("SSH tunnel requires a database port".into()))?;
 
     tracing::info!(
         ssh_host = %ssh.host,
@@ -142,7 +143,10 @@ async fn start_ssh(
     );
 
     let tunnel = SshTunnel::start(ssh, remote_host, remote_port, known_hosts_path).await?;
-    Ok((rewrite_to_local(config, tunnel.local_port()), Some(Tunnel::Ssh(tunnel))))
+    Ok((
+        rewrite_to_local(config, tunnel.local_port()),
+        Some(Tunnel::Ssh(tunnel)),
+    ))
 }
 
 async fn start_http_proxy(
@@ -261,5 +265,4 @@ mod tests {
     fn resolve_kind_none_when_empty() {
         assert_eq!(resolve_tunnel_kind(&base_config()), TunnelKind::None);
     }
-
 }

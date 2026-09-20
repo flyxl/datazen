@@ -156,6 +156,10 @@ pub async fn create_sub_window(
         options.background_color.as_deref(),
     ))
     .accept_first_mouse(options.accept_first_mouse)
+    // HTML5 drag & drop (connection reordering, dropping tables into the SQL
+    // editor / Visual Builder canvas) only reaches the WebView when the native
+    // file-drop handler is off. See `create_main_window`.
+    .disable_drag_drop_handler()
     // Show after HTML (theme + splash) has loaded — not immediately after
     // build() (white/light flash), and not only via frontend show() (ACL /
     // module load failures leave the window permanently invisible).
@@ -269,6 +273,15 @@ pub fn create_main_window(app: &AppHandle) -> Result<WebviewWindow, Box<dyn std:
         .background_color(bg)
         .accept_first_mouse(true)
         .center()
+        // HTML5 drag & drop contract for the whole workspace (WebKit/WKWebView on
+        // macOS, WebView2 on Windows): Tauri's native drag-drop callback always
+        // returns `true`, so Wry never forwards draggingUpdated / drop to the
+        // WebView and every HTML5 drop silently dies. Windows are created
+        // programmatically (tauri.conf.json has no static windows), so the old
+        // `dragDropEnabled: false` config no longer applies — the flag must be
+        // set here. Host code has no `onDragDropEvent` listener, so disabling the
+        // native file-drop notification costs nothing.
+        .disable_drag_drop_handler()
         .on_page_load(|window, payload| {
             if payload.event() == PageLoadEvent::Finished {
                 let _ = window.show();
@@ -314,6 +327,8 @@ pub fn create_onboarding_window(
     .background_color(bg)
     .accept_first_mouse(true)
     .center()
+    // Same HTML5 drag & drop contract as the main window (see create_main_window).
+    .disable_drag_drop_handler()
     .on_page_load(|window, payload| {
         if payload.event() == PageLoadEvent::Finished {
             let _ = window.show();
@@ -504,6 +519,41 @@ pub async fn open_migration_sub_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// HTML5 drag & drop regression guard.
+    ///
+    /// Windows are built programmatically, so `tauri.conf.json`'s
+    /// `dragDropEnabled: false` (removed when windows moved into Rust) can no
+    /// longer reach them. Without `disable_drag_drop_handler` every HTML5 drop —
+    /// including dragging a table from the connection navigator onto the Visual
+    /// Query Builder canvas — is swallowed by Tauri's native drag-drop callback.
+    /// Needle parts are assembled at runtime so this test's own source does not
+    /// self-match `include_str!`.
+    #[test]
+    fn every_window_builder_disables_native_drag_drop() {
+        const SOURCE: &str = include_str!("window.rs");
+        let needle = concat!("WebviewWindowBuilder", "::new");
+        let opt_in = "disable_drag_drop_handler";
+
+        let builders: Vec<&str> = SOURCE.split(needle).skip(1).collect();
+        assert!(
+            builders.len() >= 3,
+            "expected at least the main / onboarding / sub-window builders, found {}",
+            builders.len()
+        );
+        for (index, segment) in builders.iter().enumerate() {
+            let chain = match segment.find(".build()") {
+                Some(end) => &segment[..end],
+                None => segment,
+            };
+            assert!(
+                chain.contains(opt_in),
+                "window builder #{} must call `{}` so HTML5 drag & drop works",
+                index,
+                opt_in
+            );
+        }
+    }
 
     #[test]
     fn main_window_needs_default_size_for_legacy_and_too_small() {

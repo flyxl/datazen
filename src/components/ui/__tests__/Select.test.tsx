@@ -60,7 +60,8 @@ describe('Select filter', () => {
 
     const list = document.querySelector('[role="listbox"]');
     expect(list).toBeInTheDocument();
-    expect(list).toHaveStyle({ width: '176px' });
+    // The list never shrinks below `listMinWidth`, and grows to its content.
+    expect(list).toHaveStyle({ minWidth: '176px', width: 'max-content' });
   });
 
   it('exposes listbox and option semantics with a unique controlled popup', () => {

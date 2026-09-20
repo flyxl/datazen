@@ -28,6 +28,7 @@ fn protocol_config_with_base(api_base: String) -> ProtocolConfig {
         api_base,
         api_key: "test-api-key".to_string(),
         max_tokens: 256,
+        max_request_timeout: std::time::Duration::from_secs(30),
     }
 }
 
@@ -46,6 +47,7 @@ pub fn sample_request() -> CompletionRequest {
         stop: None,
         tools: None,
         previous_response_id: None,
+        cancel_token: None,
     }
 }
 

@@ -12,6 +12,7 @@ serde_json = "1"
 thiserror = "1"
 inventory = "0.3"
 tokio = { version = "1", features = ["sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -87,6 +87,7 @@ export function RedisConnectionView({
           <button
             key={tab}
             type="button"
+            data-testid={`redis-tab-${tab}`}
             className={cn(
               'relative px-4 py-3 text-sm transition-colors',
               activeTab === tab ? 'text-fg font-medium' : 'text-fg-secondary hover:text-fg',

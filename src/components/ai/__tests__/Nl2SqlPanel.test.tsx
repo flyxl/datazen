@@ -94,16 +94,18 @@ describe('Nl2SqlPanel', () => {
   });
 
   it('clears input and shows error', () => {
+    // Trash button now renders when generatedSql exists (not input).
     aiState.nl2sql.input = 'query';
+    aiState.nl2sql.generatedSql = 'SELECT 1';
     aiState.nl2sqlError = 'failed';
     const { getByText } = render(
       <Nl2SqlPanel dbSessionId="c1" database="mydb" onSqlChange={vi.fn()} />,
     );
-    fireEvent.click(getByText('nl2sql.generate'));
     expect(getByText('failed')).toBeInTheDocument();
     const trashBtn = Array.from(document.querySelectorAll('button')).find((b) =>
       b.querySelector('.lucide-trash2'),
     )!;
+    expect(trashBtn).toBeDefined();
     fireEvent.click(trashBtn);
     expect(aiState.clearNl2Sql).toHaveBeenCalled();
   });

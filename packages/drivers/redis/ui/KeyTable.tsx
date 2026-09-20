@@ -1,8 +1,4 @@
-import {
-  useMemo,
-  useRef,
-  type MouseEvent as ReactMouseEvent,
-} from 'react';
+import { useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { ChevronDown, ChevronRight, Key, Loader2 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useColumnResize } from '../../../../src/hooks/useColumnResize';
@@ -201,6 +197,7 @@ export function KeyTable({
                       : 'bg-surface-raised/50',
                   'hover:bg-accent/5',
                 )}
+                data-testid={`redis-key-row-${entry.key}`}
                 style={{ top: vRow.start, height: ROW_HEIGHT }}
                 onClick={() => onSelectKey(entry.key)}
                 onContextMenu={(e) => onKeyContextMenu(e, entry.key)}
@@ -230,7 +227,12 @@ export function KeyTable({
                   className="flex shrink-0 items-center overflow-hidden border-r border-edge px-3"
                   style={{ width: columnWidths[2] }}
                 >
-                  <span className={cn('text-xs font-medium', TYPE_COLORS[entry.keyType] ?? 'text-fg-muted')}>
+                  <span
+                    className={cn(
+                      'text-xs font-medium',
+                      TYPE_COLORS[entry.keyType] ?? 'text-fg-muted',
+                    )}
+                  >
                     {entry.keyType}
                   </span>
                 </div>

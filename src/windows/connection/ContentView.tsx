@@ -14,6 +14,7 @@ import { useTableDataStore } from '../../stores/tableDataStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { usePanelStore, type ViewPanel } from '../../stores/panelStore';
+import { useQueryBuilderStore } from '../../stores/queryBuilderStore';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { ContentToolbar } from './ContentToolbar';
 import { PanelTabBar } from './PanelTabBar';
@@ -156,6 +157,19 @@ export function ContentView({
       databaseType: schemaTreeDatabaseType,
     });
   }, [schemaTreeDbSessionId, schemaTreeDatabaseType, initialDatabase, loadForConnection]);
+
+  // The visual builder belongs to the query panel that opened it, so it is torn
+  // down when that panel is closed — not when the component unmounts, because
+  // switching tabs unmounts the inactive panel and its canvas must survive that.
+  const destroyQbForPanel = useQueryBuilderStore((s) => s.destroyFor);
+  const knownPanelIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const liveIds = new Set(allPanels.map((p) => p.id));
+    for (const id of knownPanelIdsRef.current) {
+      if (!liveIds.has(id)) destroyQbForPanel(id);
+    }
+    knownPanelIdsRef.current = liveIds;
+  }, [allPanels, destroyQbForPanel]);
 
   // Keep the session-level `currentDatabase` aligned with the ACTIVE panel's
   // bound database. Without this, loadForConnection/schema-tree defaults can

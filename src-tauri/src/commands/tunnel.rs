@@ -24,12 +24,13 @@ pub(crate) async fn save_tunnel_impl(
     state.store.save_tunnel(tunnel).await.cmd_err("save_tunnel")
 }
 
-pub(crate) async fn delete_tunnel_impl(
-    state: &AppState,
-    id: String,
-) -> Result<(), CommandError> {
+pub(crate) async fn delete_tunnel_impl(state: &AppState, id: String) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_tunnel");
-    state.store.delete_tunnel(&id).await.cmd_err("delete_tunnel")
+    state
+        .store
+        .delete_tunnel(&id)
+        .await
+        .cmd_err("delete_tunnel")
 }
 
 #[tauri::command]

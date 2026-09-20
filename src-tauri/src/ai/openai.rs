@@ -41,6 +41,7 @@ impl OpenAiProvider {
             api_base: s.endpoint.clone(),
             api_key: s.api_key.clone(),
             max_tokens: s.max_tokens,
+            max_request_timeout: std::time::Duration::from_secs(120),
         })
     }
 }
@@ -72,6 +73,7 @@ impl AiProvider for OpenAiProvider {
             api_base: endpoint.into(),
             api_key: key.into(),
             max_tokens: config.max_tokens,
+            max_request_timeout: std::time::Duration::from_secs(120),
         };
         protocol::openai_chat::fetch_models(&cfg).await?;
         Ok(())
@@ -157,6 +159,7 @@ mod tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
         let err = provider.complete(&req).await.unwrap_err();
         assert!(matches!(err, AiError::NotConfigured(_)));
@@ -184,6 +187,7 @@ mod tests {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         };
         let err = provider.complete(&req).await.unwrap_err();
         assert!(matches!(err, AiError::NotConfigured(_)));

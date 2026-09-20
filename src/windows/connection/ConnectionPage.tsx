@@ -430,6 +430,9 @@ export function ConnectionPage() {
 
   const handleSelectTable = useCallback(
     (tableName: string, schema: string | null, database: string) => {
+      // Clicking a table always opens its data view — including while the
+      // visual builder is open. Tables enter the builder only by dragging a
+      // navigator row onto its canvas, so this path has no builder branch.
       pendingSelectTableRef.current = { table: tableName, schema, database };
       // Bump state to guarantee a re-render → useEffect fires → flush.
       // Also schedule rAF as a fast path for the common case where ContentView

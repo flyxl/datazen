@@ -1,6 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import type { DatabaseTypeMeta } from '../databaseMeta';
 import { resolveCreateTableSchemaFromMeta } from './resolveCreateTableSchema';
+import type { TypeCategory } from '../../components/query-builder/typeCategory';
+
+const PostgreSQLTypeCategories: Record<string, TypeCategory> = {
+  int4: 'numeric',
+  int8: 'numeric',
+  int2: 'numeric',
+  numeric: 'numeric',
+  decimal: 'numeric',
+  real: 'numeric',
+  double: 'numeric',
+  boolean: 'boolean',
+  bool: 'boolean',
+  date: 'temporal',
+  timestamp: 'temporal',
+  timestamptz: 'temporal',
+  time: 'temporal',
+  text: 'text',
+  varchar: 'text',
+  char: 'text',
+  json: 'jsonb',
+  jsonb: 'jsonb',
+  bytea: 'binary',
+};
 
 const baseMeta = {
   label: 'Test',
@@ -21,6 +44,7 @@ const baseMeta = {
   category: 'sql',
   connectionView: 'sql',
   connectionForm: 'standard',
+  qbTypeCategories: PostgreSQLTypeCategories,
 } satisfies Omit<DatabaseTypeMeta, 'databaseFieldType' | 'namespaceEnsure'>;
 
 describe('resolveCreateTableSchemaFromMeta', () => {

@@ -35,6 +35,14 @@ export interface QbCondition {
   value: string | null;
   /** Conjunction linking this condition to the previous one (ignored for the first condition). */
   conjunction: 'AND' | 'OR';
+  /**
+   * Wrap the left-hand column in an aggregate (`SUM(qty) >= 2000`).
+   *
+   * Only HAVING exposes this in the UI — `WHERE SUM(x) > 1` is invalid SQL —
+   * but the generator honours it wherever it appears so the two clause editors
+   * can share one condition editor.
+   */
+  aggregate?: QbAggregate;
 }
 
 /** A group of conditions joined by a common logic operator. Supports nesting. */
@@ -53,6 +61,11 @@ export interface QbSortItem {
   table: string;
   column: string;
   direction: 'ASC' | 'DESC';
+  /**
+   * Aggregate to wrap the sort key in, when the sorted column is aggregated.
+   * Required so `SUM(x) … GROUP BY y ORDER BY SUM(x)` stays valid SQL.
+   */
+  aggregate?: QbAggregate;
 }
 
 /** A column selection entry with optional alias, aggregate, sort, group-by, and where. */
@@ -85,6 +98,12 @@ export interface QbJoin {
   rightColumn: string;
   /** true = manually created, false = auto-detected FK. */
   isManual: boolean;
+  /**
+   * Identity of the constraint this pair belongs to (see `constraintKey`).
+   * Composite foreign keys contribute several pairs that must be confirmed,
+   * rendered and removed as one unit, so the linkage has to survive in the join.
+   */
+  constraint?: string;
 }
 
 /** A group-by entry. */

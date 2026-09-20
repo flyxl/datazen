@@ -1,13 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import {
-  getQbDialectAdapter,
-  generateJoinClause,
-  generateLimitOffset,
-  supportsLimitOffset,
-} from '../queryBuilder';
+import { getQbDialectAdapter, generateJoinClause, generateLimitOffset } from '../queryBuilder';
 import type { QbDialectAdapter } from '../queryBuilder';
 import type { QbJoin } from '../../../components/query-builder/types';
-import { DB_REGISTRY } from '../../databaseTypes';
 
 // ── Tests ─────────────────────────────────────────────────────
 
@@ -420,75 +414,109 @@ describe('generateLimitOffset', () => {
   });
 });
 
-// ── supportsLimitOffset ───────────────────────────────────────
+// ── generateJoinClause: graph ordering (regression) ───────────
 
-describe('supportsLimitOffset', () => {
-  it('is true for dialects that emit LIMIT/OFFSET', () => {
-    expect(supportsLimitOffset('postgresql')).toBe(true);
-    expect(supportsLimitOffset('mysql')).toBe(true);
-    expect(supportsLimitOffset('sqlite')).toBe(true);
+/**
+ * A flat `JOIN rightTable ON left = right` per entry produced invalid SQL as
+ * soon as three tables were chained: the FK detector returns the graph in
+ * discovery order, which is not a valid join order. These pin the walk that
+ * fixes it.
+ */
+describe('generateJoinClause — join graph ordering', () => {
+  const pg = getQbDialectAdapter('postgresql');
+
+  const join = (over: Partial<QbJoin> & Pick<QbJoin, 'leftTable' | 'rightTable'>): QbJoin => ({
+    id: `${over.leftTable}-${over.rightTable}`,
+    type: 'INNER',
+    leftColumn: 'id',
+    rightColumn: 'ref_id',
+    isManual: false,
+    ...over,
   });
 
-  it('is false for SQL Server, which has no LIMIT/OFFSET spelling', () => {
-    // Asserted only when the driver is in this build's generated registry; when
-    // it is absent the type is simply unknown, and an unknown driver defaults to
-    // supported (see the family-independence case below).
-    if (DB_REGISTRY.sqlserver) expect(supportsLimitOffset('sqlserver')).toBe(false);
-    else expect(supportsLimitOffset('sqlserver')).toBe(true);
+  it('orients a join whose FROM table is on the right-hand side', () => {
+    // FROM author; the FK was discovered as book.author_id → author.id, so the
+    // FROM table is the *right* side and must not be re-joined.
+    const result = generateJoinClause(
+      [
+        join({
+          leftTable: 'book',
+          leftColumn: 'author_id',
+          rightTable: 'author',
+          rightColumn: 'id',
+        }),
+      ],
+      {},
+      pg,
+      'author',
+    );
+    expect(result).toBe('\nINNER JOIN "book" ON "author"."id" = "book"."author_id"');
   });
 
-  it('falls back to the generic adapter for an unknown dialect', () => {
-    expect(supportsLimitOffset('some-unknown-db')).toBe(true);
-    expect(supportsLimitOffset(undefined)).toBe(true);
+  it('orders a three-table chain from the FROM table outward', () => {
+    // Discovery order (book→author, sale→book) is not a usable join order.
+    const result = generateJoinClause(
+      [
+        join({
+          leftTable: 'book',
+          leftColumn: 'author_id',
+          rightTable: 'author',
+          rightColumn: 'id',
+        }),
+        join({
+          leftTable: 'sale',
+          leftColumn: 'book_id',
+          rightTable: 'book',
+          rightColumn: 'id',
+        }),
+      ],
+      {},
+      pg,
+      'author',
+    );
+    expect(result).toBe(
+      '\nINNER JOIN "book" ON "author"."id" = "book"."author_id"' +
+        '\nINNER JOIN "sale" ON "book"."id" = "sale"."book_id"',
+    );
   });
 
-  it('honours a driver-level opt-out even when its dialect family can paginate', () => {
-    // questdb shares the postgresql dialect family, so only the driver's own
-    // declaration can turn the row window off.
-    const target = DB_REGISTRY.questdb;
-    expect(target.sqlDialect).toBe('postgresql');
-    const prev = target.supportsOffset;
-    try {
-      target.supportsOffset = false;
-      expect(supportsLimitOffset('questdb')).toBe(false);
-      // The generator must drop the clause too, not just the controls.
-      expect(generateLimitOffset(5, 2, getQbDialectAdapter('questdb'))).toBe('');
-    } finally {
-      if (prev === undefined) delete target.supportsOffset;
-      else target.supportsOffset = prev;
-    }
-    expect(supportsLimitOffset('questdb')).toBe(true);
+  it('merges repeated pairs into one JOIN with AND predicates (composite key)', () => {
+    const result = generateJoinClause(
+      [
+        join({
+          leftTable: 'child',
+          leftColumn: 'a_id',
+          rightTable: 'parent',
+          rightColumn: 'a_id',
+        }),
+        join({
+          leftTable: 'child',
+          leftColumn: 'b_id',
+          rightTable: 'parent',
+          rightColumn: 'b_id',
+        }),
+      ],
+      {},
+      pg,
+      'parent',
+    );
+    expect(result).toBe(
+      '\nINNER JOIN "child" ON "parent"."a_id" = "child"."a_id"' +
+        ' AND "parent"."b_id" = "child"."b_id"',
+    );
   });
 
-  it('is opt-out: LIMIT/OFFSET is standard SQL, so undeclared means supported', () => {
-    expect(DB_REGISTRY.postgresql.supportsOffset).toBeUndefined();
-    expect(supportsLimitOffset('postgresql')).toBe(true);
-    // Only drivers present in this build's generated registry can be asserted.
-    if (DB_REGISTRY.sqlserver) expect(DB_REGISTRY.sqlserver.supportsOffset).toBe(false);
-  });
-
-  it('lets the driver decide, not the dialect family', () => {
-    // A driver on the `sqlserver` family that declares nothing must still be
-    // supported: the family spells syntax, it does not grant or deny features.
-    const key = '__test_undeclared_sqlserver__';
-    (DB_REGISTRY as Record<string, unknown>)[key] = {
-      label: 'Test',
-      sqlDialect: 'sqlserver',
-    };
-    try {
-      expect(supportsLimitOffset(key)).toBe(true);
-      // ...and its syntax is still the T-SQL one.
-      expect(getQbDialectAdapter(key).quoteIdentifier('x')).toBe('[x]');
-    } finally {
-      delete (DB_REGISTRY as Record<string, unknown>)[key];
-    }
-  });
-
-  it('still honours the sqlserver syntax backstop when a driver declares support', () => {
-    // Defense in depth: if a driver ever declares support before the generator
-    // can emit OFFSET…FETCH, the adapter must not fall back to LIMIT.
-    const adapter = { ...getQbDialectAdapter('sqlserver'), supportsLimitOffset: true };
-    expect(adapter.formatLimitOffset(5, 2)).toBeNull();
-    expect(generateLimitOffset(5, 2, adapter)).toBe('');
+  it('never emits a second JOIN for a table already in the query', () => {
+    const result = generateJoinClause(
+      [
+        join({ leftTable: 'a', leftColumn: 'b_id', rightTable: 'b', rightColumn: 'id' }),
+        join({ leftTable: 'c', leftColumn: 'b_id', rightTable: 'b', rightColumn: 'id' }),
+      ],
+      {},
+      pg,
+      'b',
+    );
+    expect((result.match(/JOIN/g) ?? []).length).toBe(2);
+    expect(result).not.toContain('ON "b"."id" = "b"."id"');
   });
 });

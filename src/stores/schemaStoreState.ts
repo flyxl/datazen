@@ -14,6 +14,8 @@ export interface ConnectionSchemaState {
   /** All schema names including those with no tables (e.g. from PG schemata). */
   schemaNames: string[];
   columnMap: Record<string, string[]>;
+  /** Per-table column type map (table → column → raw dataType). */
+  typedColumnMap: Record<string, Record<string, string>>;
   namespaceTree: SqlNamespace;
   loadedPaths: Set<string>;
   pathItems: Record<string, TableInfo[]>;
@@ -43,6 +45,7 @@ export const CONNECTION_STATE_KEYS = [
   'views',
   'schemaNames',
   'columnMap',
+  'typedColumnMap',
   'namespaceTree',
   'loadedPaths',
   'pathItems',
@@ -68,6 +71,7 @@ export function createEmptyConnectionSchema(): ConnectionSchemaState {
     views: [],
     schemaNames: [],
     columnMap: {},
+    typedColumnMap: {},
     namespaceTree: EMPTY_NAMESPACE,
     loadedPaths: new Set(),
     pathItems: {},

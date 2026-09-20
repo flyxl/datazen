@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Sparkles, Trash2, Settings } from 'lucide-react';
+import { Loader2, Sparkles, Trash2, Settings, Square, Copy, Check } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { SqlCodeBlock } from '../SqlCodeBlock';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
+import { aiCommands } from '../../commands/ai';
 import { openSettingsWindow } from '../../lib/windowManager';
 import { AiInput } from './AiInput';
 import { AiEgressNotice } from './AiEgressNotice';
@@ -32,7 +34,9 @@ export function Nl2SqlPanel({
   const clearNl2Sql = useAiStore((s) => s.clearNl2Sql);
 
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
+  const [copied, setCopied] = useState(false);
   const lastWrittenRef = useRef('');
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Write SQL into the editor only when generation finishes (not streaming).
   useEffect(() => {
@@ -64,6 +68,25 @@ export function Nl2SqlPanel({
     nl2sql.isGenerating,
     contextItems,
   ]);
+
+  const handleStop = useCallback(() => {
+    if (nl2sql.requestId) {
+      void aiCommands.cancel(nl2sql.requestId);
+    }
+  }, [nl2sql.requestId]);
+
+  const handleCopySql = useCallback(() => {
+    const sql = nl2sql.generatedSql;
+    if (!sql) return;
+    void navigator.clipboard.writeText(sql);
+    setCopied(true);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+  }, [nl2sql.generatedSql]);
+
+  // Determine what SQL to show in the preview
+  const showPreview = nl2sql.isGenerating || !!nl2sql.generatedSql;
+  const previewSql = nl2sql.isGenerating ? nl2sql.streamingPreview : nl2sql.generatedSql;
 
   if (!isConfigured) {
     return (
@@ -104,26 +127,62 @@ export function Nl2SqlPanel({
           hideSubmit
         />
         <div className="flex shrink-0 gap-1">
-          <Button
-            variant="primary"
-            className="h-7 gap-1 px-2 text-xs"
-            disabled={!nl2sql.input.trim() || nl2sql.isGenerating || !database}
-            onClick={handleGenerate}
-          >
-            {nl2sql.isGenerating ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" />
-            )}
-            {nl2sql.isGenerating ? t('nl2sql.generating') : t('nl2sql.generate')}
-          </Button>
-          {nl2sql.input && (
-            <Button variant="ghost" className="h-7 px-1.5 text-xs" onClick={clearNl2Sql}>
-              <Trash2 className="h-3.5 w-3.5" />
+          {nl2sql.isGenerating ? (
+            <Button variant="danger" className="h-7 gap-1 px-2 text-xs" onClick={handleStop}>
+              <Square className="h-3 w-3" />
+              {t('common.stop') ?? 'Stop'}
             </Button>
+          ) : (
+            <>
+              <Button
+                variant="primary"
+                className="h-7 gap-1 px-2 text-xs"
+                disabled={!nl2sql.input.trim() || !database}
+                onClick={handleGenerate}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {t('nl2sql.generate')}
+              </Button>
+              {nl2sql.generatedSql && (
+                <>
+                  <Button
+                    variant="ghost"
+                    className="h-7 px-1.5 text-xs"
+                    title={t('common.copy') ?? 'Copy'}
+                    onClick={handleCopySql}
+                  >
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5 text-emerald-400" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                  <Button variant="ghost" className="h-7 px-1.5 text-xs" onClick={clearNl2Sql}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+            </>
           )}
         </div>
       </div>
+
+      {/* SQL Preview Area */}
+      {showPreview && previewSql && (
+        <div className="mx-2 mb-2 rounded border border-edge bg-surface overflow-hidden">
+          <div className="flex items-center justify-between border-b border-edge bg-surface-alt px-2 py-1">
+            <span className="text-[10px] text-fg-muted">
+              {nl2sql.isGenerating
+                ? (t('nl2sql.preview') ?? 'SQL Preview')
+                : (t('nl2sql.result') ?? 'Generated SQL')}
+            </span>
+            {nl2sql.isGenerating && <Loader2 className="h-3 w-3 animate-spin text-accent" />}
+          </div>
+          <div className="max-h-60 overflow-auto">
+            <SqlCodeBlock code={previewSql} />
+          </div>
+        </div>
+      )}
 
       {nl2sqlError && (
         <div className="select-text mx-2 mb-2 shrink-0 rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">

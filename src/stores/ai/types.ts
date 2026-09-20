@@ -21,6 +21,11 @@ import type {
 
 export interface Nl2SqlState {
   input: string;
+  /** Raw accumulated content during streaming (before extractSql cleanup). */
+  streamingSql: string;
+  /** Extracted SQL preview for display during streaming. */
+  streamingPreview: string;
+  /** Final cleaned SQL after generation completes. */
   generatedSql: string;
   isGenerating: boolean;
   requestId: string | null;
@@ -28,6 +33,8 @@ export interface Nl2SqlState {
 
 export const initialNl2Sql: Nl2SqlState = {
   input: '',
+  streamingSql: '',
+  streamingPreview: '',
   generatedSql: '',
   isGenerating: false,
   requestId: null,
@@ -109,7 +116,7 @@ export interface AiStore {
   }) => Promise<FilterCondition[] | null>;
   clearNlFilter: () => void;
 
-  initChatSession: () => void;
+  initChatSession: (dbSessionId?: string, database?: string) => void;
   sendChatMessage: (params: {
     dbSessionId?: string;
     database?: string;

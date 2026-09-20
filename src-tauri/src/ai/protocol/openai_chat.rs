@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use super::{
     log_http_error, log_request_metadata, log_response_metadata, map_http_error,
-    normalize_base_url, ProtocolConfig, STREAM_CHUNK_TIMEOUT,
+    normalize_base_url, retry_with_backoff, ProtocolConfig, RetryConfig, STREAM_CHUNK_TIMEOUT,
 };
 
 // ─── Wire types ───
@@ -123,19 +123,22 @@ fn to_oai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
                 let tool_calls: Vec<serde_json::Value> = m
                     .tool_calls
                     .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|tc| {
-                        serde_json::json!({
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.name,
-                                "arguments": tc.arguments,
-                            }
-                        })
+                    .map(|calls| {
+                        calls
+                            .iter()
+                            .map(|tc| {
+                                serde_json::json!({
+                                    "id": tc.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc.name,
+                                        "arguments": tc.arguments,
+                                    }
+                                })
+                            })
+                            .collect()
                     })
-                    .collect();
+                    .unwrap_or_default();
                 let mut msg = serde_json::json!({
                     "role": "assistant",
                     "tool_calls": tool_calls,
@@ -294,67 +297,74 @@ pub async fn complete(
     cfg: &ProtocolConfig,
     request: &CompletionRequest,
 ) -> Result<CompletionResponse, AiError> {
-    let url = chat_completions_url(&cfg.api_base);
-    let body = build_request_body(cfg, request, false);
+    let retry = RetryConfig::default();
+    let cfg_ref = cfg;
+    let req_ref = request;
 
-    log_request_metadata("openai_chat", request, &body, false);
+    retry_with_backoff(&retry, || async {
+        let url = chat_completions_url(&cfg_ref.api_base);
+        let body = build_request_body(cfg_ref, req_ref, false);
 
-    let resp = cfg
-        .http_client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", cfg.api_key))
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+        log_request_metadata("openai_chat", req_ref, &body, false);
 
-    let status = resp.status();
-    let raw = resp.text().await.unwrap_or_default();
-    log_response_metadata("openai_chat", &request.request_id, status, raw.len());
+        let resp = cfg_ref
+            .http_client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", cfg_ref.api_key))
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
 
-    if !status.is_success() {
-        return Err(map_http_error(status, &raw));
-    }
+        let status = resp.status();
+        let raw = resp.text().await.unwrap_or_default();
+        log_response_metadata("openai_chat", &req_ref.request_id, status, raw.len());
 
-    let resp: ChatResponseResp = serde_json::from_str(&raw)
-        .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
+        if !status.is_success() {
+            return Err(map_http_error(status, &raw));
+        }
 
-    let choice = resp
-        .choices
-        .first()
-        .ok_or_else(|| AiError::RequestFailed("No choices in response".into()))?;
+        let resp: ChatResponseResp = serde_json::from_str(&raw)
+            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
-    let (content, reasoning, tool_calls) = choice
-        .message
-        .as_ref()
-        .map(|m| {
-            let c = m.content.clone().unwrap_or_default();
-            let r = m.reasoning_content.clone().filter(|s| !s.is_empty());
-            let tc = parse_oai_tool_calls(m.tool_calls.clone());
-            (c, r, tc)
+        let choice = resp
+            .choices
+            .first()
+            .ok_or_else(|| AiError::RequestFailed("No choices in response".into()))?;
+
+        let (content, reasoning, tool_calls) = choice
+            .message
+            .as_ref()
+            .map(|m| {
+                let c = m.content.clone().unwrap_or_default();
+                let r = m.reasoning_content.clone().filter(|s| !s.is_empty());
+                let tc = parse_oai_tool_calls(m.tool_calls.clone());
+                (c, r, tc)
+            })
+            .unwrap_or_default();
+
+        let usage = resp
+            .usage
+            .map(|u| TokenUsage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: u.completion_tokens,
+                total_tokens: u.total_tokens,
+            })
+            .unwrap_or_default();
+
+        Ok(CompletionResponse {
+            request_id: req_ref.request_id.clone(),
+            content,
+            reasoning,
+            model: resp.model,
+            finish_reason: choice.finish_reason.clone(),
+            usage,
+            tool_calls,
+            response_id: None,
         })
-        .unwrap_or_default();
-
-    let usage = resp
-        .usage
-        .map(|u| TokenUsage {
-            prompt_tokens: u.prompt_tokens,
-            completion_tokens: u.completion_tokens,
-            total_tokens: u.total_tokens,
-        })
-        .unwrap_or_default();
-
-    Ok(CompletionResponse {
-        request_id: request.request_id.clone(),
-        content,
-        reasoning,
-        model: resp.model,
-        finish_reason: choice.finish_reason.clone(),
-        usage,
-        tool_calls,
-        response_id: None,
     })
+    .await
 }
 
 pub async fn stream_complete(
@@ -362,38 +372,48 @@ pub async fn stream_complete(
     request: &CompletionRequest,
     sender: mpsc::Sender<Result<StreamChunk, AiError>>,
 ) -> Result<(), AiError> {
-    let url = chat_completions_url(&cfg.api_base);
-    let body = build_request_body(cfg, request, true);
+    let retry = RetryConfig::default();
+    let cfg_ref = cfg;
+    let req_ref = request;
 
-    log_request_metadata("openai_chat", request, &body, true);
+    // Retry only the initial HTTP request; once SSE streaming begins, no retry.
+    let resp = retry_with_backoff(&retry, || async {
+        let url = chat_completions_url(&cfg_ref.api_base);
+        let body = build_request_body(cfg_ref, req_ref, true);
 
-    let resp = cfg
-        .http_client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", cfg.api_key))
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!(
-                request_id = %request.request_id,
-                "openai_chat: stream request failed"
-            );
-            AiError::RequestFailed(e.to_string())
-        })?;
+        log_request_metadata("openai_chat", req_ref, &body, true);
 
-    let status = resp.status();
-    tracing::info!(
-        request_id = %request.request_id,
-        %status,
-        "openai_chat: stream started"
-    );
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        log_http_error("openai_chat", &request.request_id, status, &text);
-        return Err(map_http_error(status, &text));
-    }
+        let resp = cfg_ref
+            .http_client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", cfg_ref.api_key))
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    request_id = %req_ref.request_id,
+                    "openai_chat: stream request failed"
+                );
+                AiError::RequestFailed(e.to_string())
+            })?;
+
+        let status = resp.status();
+        tracing::info!(
+            request_id = %req_ref.request_id,
+            %status,
+            "openai_chat: stream started"
+        );
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            log_http_error("openai_chat", &req_ref.request_id, status, &text);
+            return Err(map_http_error(status, &text));
+        }
+
+        Ok(resp)
+    })
+    .await?;
 
     let mut byte_buf = Vec::new();
     let mut stream = resp.bytes_stream();
@@ -401,9 +421,28 @@ pub async fn stream_complete(
     let mut tool_calls_acc: HashMap<usize, AccumulatedToolCall> = HashMap::new();
     let mut last_usage: Option<TokenUsage> = None;
     let mut saw_finish = false;
+    let cancel_token = request.cancel_token.clone();
 
     loop {
-        let maybe = match tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()).await {
+        // Check for cancellation before each SSE chunk read.
+        let maybe = if let Some(ref token) = cancel_token {
+            tokio::select! {
+                biased;
+                _ = token.cancelled() => {
+                    tracing::info!(
+                        request_id = %request.request_id,
+                        chunk_count,
+                        "openai_chat: stream cancelled"
+                    );
+                    break;
+                }
+                result = tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()) => result,
+            }
+        } else {
+            tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()).await
+        };
+
+        let maybe = match maybe {
             Ok(m) => m,
             Err(_) => {
                 tracing::error!(chunk_count, "openai_chat: stream timed out");
@@ -505,7 +544,9 @@ pub async fn stream_complete(
                                 content,
                                 reasoning,
                                 done: false,
+                                cancelled: false,
                                 response_id: None,
+                                egress_summary: None,
                                 usage: None,
                                 tool_calls: None,
                             }))
@@ -535,7 +576,9 @@ pub async fn stream_complete(
             content: String::new(),
             reasoning: None,
             done: true,
+            cancelled: false,
             response_id: None,
+            egress_summary: None,
             usage: last_usage,
             tool_calls,
         }))
@@ -937,5 +980,103 @@ data: [DONE]
         if let Some(e) = last_err {
             panic!("probe failed after retries: {e}");
         }
+    }
+
+    #[tokio::test]
+    async fn complete_retries_on_429_then_succeeds() {
+        use crate::ai::protocol::test_support::{protocol_config, sample_request};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+
+        // First call: 429 with retry_after
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(429).set_body_json(
+                serde_json::json!({"error": {"message": "rate limited", "retry_after": 0}}),
+            ))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Second call: success
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                "model": "gpt-test"
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let resp = complete(&cfg, &sample_request()).await.unwrap();
+        assert_eq!(resp.content, "ok");
+    }
+
+    #[tokio::test]
+    async fn complete_400_returns_sanitized_error() {
+        use crate::ai::protocol::test_support::{protocol_config, sample_request};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": {"message": "Model 'gpt-999' does not exist"}
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let err = complete(&cfg, &sample_request()).await.unwrap_err();
+        match err {
+            AiError::RequestFailed(msg) => {
+                assert!(msg.contains("Model 'gpt-999' does not exist"));
+                // Ensure raw response is not leaked
+                assert!(!msg.contains("response body omitted"));
+            }
+            other => panic!("expected RequestFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_complete_retries_on_429_then_succeeds() {
+        use crate::ai::protocol::test_support::{collect_stream, protocol_config, sample_request};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+
+        // First call: 429
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(429).set_body_json(
+                serde_json::json!({"error": {"message": "rate limited", "retry_after": 0}}),
+            ))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Second call: success
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\ndata: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(sse),
+            )
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let request = sample_request();
+        let chunks = collect_stream(|tx| stream_complete(&cfg, &request, tx)).await;
+        let ok: Vec<_> = chunks.into_iter().filter_map(Result::ok).collect();
+        assert!(ok.iter().any(|c| c.content == "Hello"));
+        assert!(ok.iter().any(|c| c.done));
     }
 }

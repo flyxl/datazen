@@ -1,4 +1,7 @@
 //! Unified schema prompt seeding for Chat / NL2SQL.
+//!
+//! [`SchemaContextPipeline`] resolves table lists and DDL for prompt injection,
+//! using the dynamic budget from [`crate::ai::budget`].
 
 use crate::ai::context::SchemaContextBuilder;
 use std::sync::Arc;
@@ -63,6 +66,11 @@ impl SchemaContextPipeline {
         Self { builder }
     }
 
+    /// Resolve schema context for a database session.
+    ///
+    /// Uses `pinned_budget` for user-selected tables and `fallback_budget` for
+    /// auto-selected tables.  Both budgets should come from
+    /// [`crate::ai::budget::split_budget`].
     pub async fn resolve(
         &self,
         db_session_id: &str,
@@ -110,33 +118,13 @@ impl SchemaContextPipeline {
             Some(ctx.schema_ddl)
         };
 
-        Ok(assemble_seed(
-            db_type,
+        Ok(PromptSeed {
+            database_type: db_type,
             table_names,
             pinned_schema_ddl,
-            supports_tools,
+            attach_db_tools: supports_tools,
             fallback_schema_ddl,
-        ))
-    }
-}
-
-fn assemble_seed(
-    database_type: String,
-    table_names: Vec<String>,
-    pinned_schema_ddl: String,
-    supports_tools: bool,
-    fallback_schema_ddl: Option<String>,
-) -> PromptSeed {
-    PromptSeed {
-        database_type,
-        table_names,
-        pinned_schema_ddl,
-        attach_db_tools: supports_tools,
-        fallback_schema_ddl: if supports_tools {
-            None
-        } else {
-            fallback_schema_ddl
-        },
+        })
     }
 }
 
@@ -145,180 +133,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn format_table_names_truncates_with_more() {
-        let names: Vec<String> = (0..5).map(|i| format!("t{i}")).collect();
-        let block = format_table_names_block(&names, 3);
-        assert!(block.contains("t0"));
-        assert!(block.contains("t2"));
-        assert!(block.contains("and 2 more"));
-        assert!(!block.contains("t3"));
+    fn format_table_names_truncates() {
+        let names: Vec<String> = (0..250).map(|i| format!("t{i}")).collect();
+        let block = format_table_names_block(&names, 200);
+        assert!(block.contains("…and 50 more"));
     }
 
     #[test]
-    fn compose_includes_pinned_and_tools_hint() {
+    fn compose_schema_system_suffix_no_pinned_no_tools() {
         let seed = PromptSeed {
-            database_type: "Postgres".into(),
+            database_type: "postgres".into(),
             table_names: vec!["users".into(), "orders".into()],
-            pinned_schema_ddl: "  users (id int PK)".into(),
-            attach_db_tools: true,
-            fallback_schema_ddl: None,
-        };
-        let text = compose_schema_system_suffix(&seed);
-        assert!(text.contains("users"));
-        assert!(text.contains("orders"));
-        assert!(text.contains("users (id int PK)"));
-        assert!(text.contains("get_table_schema"));
-        assert!(!text.contains("FULL SCHEMA FALLBACK"));
-    }
-
-    #[test]
-    fn decide_seed_fields_tools_on() {
-        let seed = assemble_seed(
-            "Postgres".into(),
-            vec!["u".into()],
-            "  u (id int)".into(),
-            true,
-            Some("SHOULD_NOT_USE".into()),
-        );
-        assert!(seed.attach_db_tools);
-        assert!(seed.fallback_schema_ddl.is_none());
-        assert_eq!(seed.pinned_schema_ddl, "  u (id int)");
-    }
-
-    #[test]
-    fn decide_seed_fields_tools_off_keeps_fallback() {
-        let seed = assemble_seed(
-            "Postgres".into(),
-            vec!["u".into()],
-            String::new(),
-            false,
-            Some("  u (id int)".into()),
-        );
-        assert!(!seed.attach_db_tools);
-        assert_eq!(seed.fallback_schema_ddl.as_deref(), Some("  u (id int)"));
-    }
-
-    #[test]
-    fn compose_suggests_search_tables_for_large_table_count() {
-        let table_names: Vec<String> = (0..600).map(|i| format!("table_{i}")).collect();
-        let seed = PromptSeed {
-            database_type: "Postgres".into(),
-            table_names,
-            pinned_schema_ddl: String::new(),
-            attach_db_tools: true,
-            fallback_schema_ddl: None,
-        };
-        let text = compose_schema_system_suffix(&seed);
-        assert!(text.contains("search_tables"));
-        assert!(!text.contains("list_tables"));
-    }
-
-    #[test]
-    fn compose_suggests_list_tables_for_small_table_count() {
-        let table_names: Vec<String> = (0..50).map(|i| format!("table_{i}")).collect();
-        let seed = PromptSeed {
-            database_type: "Postgres".into(),
-            table_names,
-            pinned_schema_ddl: String::new(),
-            attach_db_tools: true,
-            fallback_schema_ddl: None,
-        };
-        let text = compose_schema_system_suffix(&seed);
-        assert!(text.contains("list_tables"));
-        assert!(!text.contains("search_tables"));
-    }
-
-    #[test]
-    fn compose_fallback_when_no_tools() {
-        let seed = PromptSeed {
-            database_type: "Mysql".into(),
-            table_names: vec!["a".into()],
             pinned_schema_ddl: String::new(),
             attach_db_tools: false,
-            fallback_schema_ddl: Some("  a (id int)\n  b (id int)".into()),
+            fallback_schema_ddl: Some("CREATE TABLE users (...)".into()),
         };
         let text = compose_schema_system_suffix(&seed);
-        assert!(text.contains("a (id int)"));
-        assert!(!text.contains("get_table_schema"));
-    }
-
-    #[test]
-    fn compose_at_threshold_boundary_uses_list_tables() {
-        let table_names: Vec<String> = (0..LARGE_TABLE_THRESHOLD)
-            .map(|i| format!("t{i}"))
-            .collect();
-        let seed = PromptSeed {
-            database_type: "Postgres".into(),
-            table_names,
-            pinned_schema_ddl: String::new(),
-            attach_db_tools: true,
-            fallback_schema_ddl: None,
-        };
-        let text = compose_schema_system_suffix(&seed);
-        assert!(text.contains("list_tables"));
-        assert!(!text.contains("search_tables"));
-    }
-
-    #[test]
-    fn compose_just_above_threshold_uses_search_tables() {
-        let table_names: Vec<String> = (0..=LARGE_TABLE_THRESHOLD)
-            .map(|i| format!("t{i}"))
-            .collect();
-        let seed = PromptSeed {
-            database_type: "Postgres".into(),
-            table_names,
-            pinned_schema_ddl: String::new(),
-            attach_db_tools: true,
-            fallback_schema_ddl: None,
-        };
-        let text = compose_schema_system_suffix(&seed);
-        assert!(text.contains("search_tables"));
+        assert!(text.contains("Database type: postgres"));
+        assert!(text.contains("users, orders"));
+        assert!(text.contains("Schema:"));
+        assert!(text.contains("CREATE TABLE users"));
         assert!(!text.contains("list_tables"));
     }
 
     #[test]
-    fn compose_empty_tables_with_tools() {
+    fn compose_schema_system_suffix_with_pinned_and_tools() {
         let seed = PromptSeed {
-            database_type: "Postgres".into(),
-            table_names: vec![],
-            pinned_schema_ddl: String::new(),
-            attach_db_tools: true,
-            fallback_schema_ddl: None,
-        };
-        let text = compose_schema_system_suffix(&seed);
-        assert!(text.contains("(no tables)"));
-        assert!(text.contains("list_tables"));
-    }
-
-    #[test]
-    fn compose_no_tools_no_fallback() {
-        let seed = PromptSeed {
-            database_type: "Postgres".into(),
-            table_names: vec!["a".into()],
-            pinned_schema_ddl: String::new(),
-            attach_db_tools: false,
-            fallback_schema_ddl: None,
-        };
-        let text = compose_schema_system_suffix(&seed);
-        assert!(text.contains("Postgres"));
-        assert!(!text.contains("list_tables"));
-        assert!(!text.contains("search_tables"));
-        assert!(!text.contains("Schema:"));
-    }
-
-    #[test]
-    fn compose_pinned_only_no_tools() {
-        let seed = PromptSeed {
-            database_type: "Mysql".into(),
+            database_type: "mysql".into(),
             table_names: vec!["users".into(), "orders".into()],
-            pinned_schema_ddl: "CREATE TABLE users (id INT)".into(),
-            attach_db_tools: false,
+            pinned_schema_ddl: "CREATE TABLE users (id int)".into(),
+            attach_db_tools: true,
             fallback_schema_ddl: None,
         };
         let text = compose_schema_system_suffix(&seed);
         assert!(text.contains("Pinned table schemas"));
         assert!(text.contains("CREATE TABLE users"));
-        assert!(!text.contains("list_tables"));
+        // Small DB with tools: includes tool guidance for additional schema
+        assert!(text.contains("list_tables"));
     }
 
     #[test]

@@ -269,6 +269,11 @@ pub struct CompletionRequest {
     /// server-side conversation state instead of re-sending full history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_response_id: Option<String>,
+    /// Optional cancellation token for streaming requests. The protocol layer
+    /// checks this before each SSE chunk and breaks the loop if cancelled.
+    /// Not serialized over the wire — runtime only.
+    #[serde(skip)]
+    pub cancel_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,6 +301,9 @@ pub struct StreamChunk {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<String>,
     pub done: bool,
+    /// Whether this chunk was produced after the request was cancelled.
+    #[serde(default)]
+    pub cancelled: bool,
     pub usage: Option<TokenUsage>,
     /// Accumulated tool calls (only present in the final chunk when done == true).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -303,6 +311,10 @@ pub struct StreamChunk {
     /// OpenAI Responses API: the server-assigned response ID (only in done chunk).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
+    /// Egress summary sent before the AI reply begins (FR-13).
+    /// Contains a brief summary of connections/tables the AI has access to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub egress_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -341,8 +353,8 @@ pub enum AiError {
     #[error("Feature not supported: {0}")]
     NotSupported(String),
 
-    #[error("Request cancelled")]
-    Cancelled,
+    #[error("cancelled: {0}")]
+    Cancelled(String),
 
     #[error("Timeout after {0}s")]
     Timeout(u64),

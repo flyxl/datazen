@@ -63,9 +63,11 @@ function renderPicker(
   options: RenderOptions = {},
 ) {
   const anchorRef = { current: document.createElement('div') };
+  const capturedHandler = { current: null as ((e: KeyboardEvent) => void) | null };
   return {
     onSelect,
     onClose,
+    capturedHandler,
     ...render(
       <ContextPicker
         query={query}
@@ -74,6 +76,9 @@ function renderPicker(
         anchorRef={anchorRef}
         dbSessionId={options.dbSessionId}
         database={options.database}
+        onReady={(handler) => {
+          capturedHandler.current = handler;
+        }}
       />,
     ),
   };
@@ -215,7 +220,7 @@ describe('ContextPicker', () => {
   it('Escape pops nested view before closing', async () => {
     mockListFiles.mockResolvedValue(sampleFiles);
     const onClose = vi.fn();
-    renderPicker('', vi.fn(), onClose);
+    const { capturedHandler } = renderPicker('', vi.fn(), onClose);
 
     await waitFor(() => {
       expect(document.querySelector('[data-testid="context-cat-files"]')).toBeInTheDocument();
@@ -227,14 +232,15 @@ describe('ContextPicker', () => {
       expect(document.querySelector('[data-testid="context-picker-back"]')).toBeInTheDocument();
     });
 
-    fireEvent.keyDown(window, { key: 'Escape' });
+    // BUG-06: Use the captured handler directly instead of window keyDown.
+    capturedHandler.current?.(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(onClose).not.toHaveBeenCalled();
 
     await waitFor(() => {
       expect(document.querySelector('[data-testid="context-cat-files"]')).toBeInTheDocument();
     });
 
-    fireEvent.keyDown(window, { key: 'Escape' });
+    capturedHandler.current?.(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(onClose).toHaveBeenCalled();
   });
 

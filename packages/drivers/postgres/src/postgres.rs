@@ -69,6 +69,16 @@ impl DatabaseDriver for PostgresDriver {
         "postgresql".into()
     }
 
+    fn dialect_notes(&self) -> Option<String> {
+        Some(
+            "PostgreSQL uses LIMIT/OFFSET for pagination, ILIKE for case-insensitive \
+             string matching, || for string concatenation, ARRAY and JSONB types with \
+             dedicated operators (->, ->>, @>, ?), window functions (ROW_NUMBER, LAG, LEAD), \
+             CTEs with WITH, UPSERT via ON CONFLICT, and supports transactions for DDL."
+                .into(),
+        )
+    }
+
     /// F7: qualify unqualified table references with the target schema
     /// (`"schema"."t"`). The database dimension is not inlined — PG resolves
     /// it through the host pool switch (`ensure_session_database`); parse

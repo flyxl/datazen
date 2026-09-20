@@ -9,6 +9,7 @@ import {
   tablesReferencedInSql,
 } from '../../lib/sqlEditorDefaults';
 import { usePanelStore } from '../../stores/panelStore';
+import { useQueryBuilderStore } from '../../stores/queryBuilderStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
 import { useSchemaStore } from '../../stores/schemaStore';
@@ -42,9 +43,21 @@ import {
 } from './query/QueryTransactionModals';
 import { useQueryExecutionGate } from './query/useQueryExecutionGate';
 import { createQueryDropHandler, useQueryPanelWorkflows } from './query/queryDropHandler';
+import {
+  estimateQueryResultPaneHeight,
+  queryResultPaneSizing,
+} from './query/queryResultPaneHeight';
+import { resolveResultWorkspaceView } from './result-workspace/resultWorkspaceHelpers';
+import { cn } from '../../lib/cn';
 import { sendQueryErrorChatDraft } from './query/queryErrorChatPrompt';
 
 export type { QueryPanelProps } from './query/contracts';
+
+/**
+ * Persisted editor height. Presence of the stored value is also what marks the
+ * split as user-controlled rather than automatic.
+ */
+const EDITOR_HEIGHT_STORAGE_KEY = 'query-editor-height';
 
 export function QueryPanel({
   panelId,
@@ -60,6 +73,14 @@ export function QueryPanel({
   const { t } = useI18n();
   const [confirmRetry, confirmRetryDialog] = useConfirmDialog();
   const exec = useQueryExec(panelId);
+  // While the visual builder is up it replaces the whole query content area,
+  // so the result pane yields its height to the canvas (PRD §6.4 / G2).
+  const qbOpenHere = useQueryBuilderStore((s) =>
+    s.openPanelId ? s.openPanelId === panelId : s.isOpen,
+  );
+  // NOTE: the builder is torn down when the panel *tab* closes, not when this
+  // component unmounts — switching tabs unmounts the inactive panel too, and
+  // that must not throw its builder away. See ContentView's panel-diff effect.
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const driverCapabilities = useActiveConnectionStore(
     (s) => s.connections[connectionId]?.capabilities,
@@ -119,12 +140,33 @@ export function QueryPanel({
   const [executionSeq, setExecutionSeq] = useState(0);
   const resultViewMode = exec.resultViewMode ?? 'table';
 
+  /**
+   * The editor/results split starts out automatic: the editor owns whatever
+   * height the result pane does not need, and the pane itself only claims the
+   * height its content needs (capped at half by CSS). Dragging the splitter
+   * pins the editor to an explicit height for good — `editorResizeManual`
+   * remembers that choice, including across restarts via the same storage key
+   * `useResizable` persists to.
+   */
+  const [editorResizeManual, setEditorResizeManual] = useState(() => {
+    try {
+      return localStorage.getItem(`resize:${EDITOR_HEIGHT_STORAGE_KEY}`) != null;
+    } catch {
+      return false;
+    }
+  });
+  const editorViewportRef = useRef<HTMLDivElement | null>(null);
+
   const { size: editorHeight, handleRef: editorResizeRef } = useResizable({
     direction: 'vertical',
     initialSize: 280,
     minSize: 100,
     maxSize: 900,
-    storageKey: 'query-editor-height',
+    storageKey: EDITOR_HEIGHT_STORAGE_KEY,
+    onResizeStart: () => setEditorResizeManual(true),
+    // Measured at grab time: automatic sizing is CSS-driven, so `size` would
+    // otherwise still hold a stale value and the splitter would jump.
+    getStartSize: () => editorViewportRef.current?.offsetHeight,
   });
 
   const tables = useSchemaStore((s) => s.tables);
@@ -529,6 +571,41 @@ export function QueryPanel({
   const { results, activeResultIdx } = exec;
   const activeResult = results[activeResultIdx];
 
+  // Nothing has been executed yet: the editor owns the whole panel and the
+  // result pane is not mounted at all.
+  const resultsIdle =
+    !exec.running &&
+    !exec.error &&
+    !workflows.showExplain &&
+    !workflows.diagnosisVisible &&
+    results.length === 0;
+
+  // A pinned editor height only makes sense while there is something to split
+  // against; before the first execution the editor always fills the panel.
+  const editorHeightPinned = editorResizeManual && !resultsIdle;
+
+  const resultsPaneHeight = useMemo(
+    () =>
+      estimateQueryResultPaneHeight({
+        result: activeResult,
+        view: resolveResultWorkspaceView(activeResult, resultViewMode, exec.chartConfig).view,
+        hasResultTabs: results.length > 1 || workflows.explainResult != null,
+        hasError: !!exec.error,
+        showExplain: workflows.showExplain,
+        showDiagnosis: workflows.diagnosisVisible,
+      }),
+    [
+      activeResult,
+      exec.chartConfig,
+      exec.error,
+      resultViewMode,
+      results.length,
+      workflows.diagnosisVisible,
+      workflows.explainResult,
+      workflows.showExplain,
+    ],
+  );
+
   return (
     <div
       className="flex min-h-0 flex-1 flex-col"
@@ -539,6 +616,7 @@ export function QueryPanel({
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <QueryEditorSection
+            panelId={panelId}
             dbSessionId={dbSessionId}
             databaseType={databaseType}
             editorRef={editorRef}
@@ -557,6 +635,10 @@ export function QueryPanel({
             onClearParamHistory={bindState.clearHistory}
             editorHeight={editorHeight}
             editorResizeRef={editorResizeRef}
+            editorHeightPinned={editorHeightPinned}
+            showIdleHint={resultsIdle}
+            showResizeHandle={!resultsIdle}
+            editorViewportRef={editorViewportRef}
             editorSchema={editorSchema}
             editorDefaultSchema={editorDefaultSchema}
             editorDefaultTable={editorDefaultTable}
@@ -602,45 +684,59 @@ export function QueryPanel({
             onNavigateToStructure={onNavigateToStructure}
             onNavigateToDdl={onNavigateToDdl}
           />
-          <QueryResultsPane
-            dbSessionId={dbSessionId}
-            databaseType={databaseType}
-            sql={exec.sql}
-            running={exec.running}
-            error={exec.error}
-            results={results}
-            activeResultIdx={activeResultIdx}
-            activeResult={activeResult}
-            resultViewMode={resultViewMode}
-            chartConfig={exec.chartConfig}
-            resultDetailRowIndex={exec.resultDetailRowIndex}
-            queryResultExportCapability={queryResultExportCapability}
-            selectedDatabase={selectedDatabase}
-            showExplain={workflows.showExplain}
-            explainLoading={workflows.explainLoading}
-            explainError={workflows.explainError}
-            explainResult={workflows.explainResult}
-            diagnosisVisible={workflows.diagnosisVisible}
-            diagnosisContext={workflows.diagnosisContext}
-            onExplainError={workflows.handleExplainError}
-            retryActionEnabled={workflows.retryAction.enabled}
-            addToDashboardOpen={workflows.addToDashboardOpen}
-            onApplyAiSql={(v) => updateSql(panelId, v)}
-            onApplyFixSql={workflows.handleApplyFixSql}
-            onRetry={workflows.handleRetry}
-            onSetActiveResult={(idx) => setActiveResult(panelId, idx)}
-            onTogglePinResult={(idx) => usePanelStore.getState().togglePinResult(panelId, idx)}
-            onSetResultViewMode={(mode) => {
-              setResultViewModeStore(panelId, mode);
-            }}
-            onChartConfigChange={(cfg) => setChartConfig(panelId, cfg)}
-            onRowDetail={(rowIndex) => setResultDetailRow(panelId, rowIndex)}
-            onShowExplain={workflows.setShowExplain}
-            onDiagnosisVisible={workflows.setDiagnosisVisible}
-            onAddToDashboardOpen={workflows.setAddToDashboardOpen}
-            onAddToDashboardConfirm={workflows.handleAddToDashboardConfirm}
-            onAskInChat={handleAskInChat}
-          />
+          {!qbOpenHere && !resultsIdle && (
+            /*
+             * Automatic sizing: the pane claims the height its content needs,
+             * capped at half of the query content area so the editor keeps the
+             * other half. Once the user has dragged the splitter the pane simply
+             * fills what is left.
+             */
+            <div
+              className={cn('flex min-h-0 flex-col', editorHeightPinned ? 'flex-1' : 'shrink')}
+              style={queryResultPaneSizing(editorHeightPinned, resultsPaneHeight)}
+              data-testid="query-results-host"
+            >
+              <QueryResultsPane
+                dbSessionId={dbSessionId}
+                databaseType={databaseType}
+                sql={exec.sql}
+                running={exec.running}
+                error={exec.error}
+                results={results}
+                activeResultIdx={activeResultIdx}
+                activeResult={activeResult}
+                resultViewMode={resultViewMode}
+                chartConfig={exec.chartConfig}
+                resultDetailRowIndex={exec.resultDetailRowIndex}
+                queryResultExportCapability={queryResultExportCapability}
+                selectedDatabase={selectedDatabase}
+                showExplain={workflows.showExplain}
+                explainLoading={workflows.explainLoading}
+                explainError={workflows.explainError}
+                explainResult={workflows.explainResult}
+                diagnosisVisible={workflows.diagnosisVisible}
+                diagnosisContext={workflows.diagnosisContext}
+                onExplainError={workflows.handleExplainError}
+                retryActionEnabled={workflows.retryAction.enabled}
+                addToDashboardOpen={workflows.addToDashboardOpen}
+                onApplyAiSql={(v) => updateSql(panelId, v)}
+                onApplyFixSql={workflows.handleApplyFixSql}
+                onRetry={workflows.handleRetry}
+                onSetActiveResult={(idx) => setActiveResult(panelId, idx)}
+                onTogglePinResult={(idx) => usePanelStore.getState().togglePinResult(panelId, idx)}
+                onSetResultViewMode={(mode) => {
+                  setResultViewModeStore(panelId, mode);
+                }}
+                onChartConfigChange={(cfg) => setChartConfig(panelId, cfg)}
+                onRowDetail={(rowIndex) => setResultDetailRow(panelId, rowIndex)}
+                onShowExplain={workflows.setShowExplain}
+                onDiagnosisVisible={workflows.setDiagnosisVisible}
+                onAddToDashboardOpen={workflows.setAddToDashboardOpen}
+                onAddToDashboardConfirm={workflows.handleAddToDashboardConfirm}
+                onAskInChat={handleAskInChat}
+              />
+            </div>
+          )}
           <FavoriteNameDialog
             open={workflows.showFavoriteDialog}
             favoriteName={workflows.favoriteName}

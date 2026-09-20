@@ -7,14 +7,29 @@ export interface ForeignKeyRelation {
   fromColumn: string;
   toTable: string;
   toColumn: string;
+  /** Constraint name (or a synthesised key when the engine reports none). */
+  constraint: string;
+  /** 1-based position of this column pair inside the constraint. */
+  ordinal: number;
+  /** How many column pairs the constraint has (>1 = composite). */
+  pairCount: number;
+}
+
+/** Stable identity for one constraint between a table and its referenced table. */
+export function constraintKey(fromTable: string, constraint: string): string {
+  return `${fromTable}::${constraint}`;
 }
 
 /**
  * Automatically detect FK relationships between selected tables.
  *
- * Returns a list of `QbJoin` entries (with `isManual: false`) for every
- * foreign key where **both** the source and target table are present in
- * `selectedTables`.
+ * Returns one `QbJoin` per **column pair** (a composite FK yields several pairs
+ * sharing a `constraint`), for every foreign key where both the source and the
+ * referenced table are on the canvas.
+ *
+ * Self-referencing FKs are skipped: the builder cannot express a self join
+ * (`validation.ts` reports `self-join`), so offering them as confirmable
+ * candidates would let a user promote something that then blocks OK.
  *
  * @param selectedTables - Currently selected table names.
  * @param foreignKeys     - All known FK relationships from the schema.
@@ -26,7 +41,10 @@ export function useAutoJoin(selectedTables: string[], foreignKeys: ForeignKeyRel
     const tableSet = new Set(selectedTables);
 
     return foreignKeys
-      .filter((fk) => tableSet.has(fk.fromTable) && tableSet.has(fk.toTable))
+      .filter(
+        (fk) =>
+          tableSet.has(fk.fromTable) && tableSet.has(fk.toTable) && fk.fromTable !== fk.toTable,
+      )
       .map((fk) => ({
         id: `auto-${fk.fromTable}.${fk.fromColumn}-${fk.toTable}.${fk.toColumn}`,
         type: 'INNER' as const,
@@ -35,6 +53,7 @@ export function useAutoJoin(selectedTables: string[], foreignKeys: ForeignKeyRel
         rightTable: fk.toTable,
         rightColumn: fk.toColumn,
         isManual: false as const,
+        constraint: constraintKey(fk.fromTable, fk.constraint),
       }));
   }, [selectedTables, foreignKeys]);
 }

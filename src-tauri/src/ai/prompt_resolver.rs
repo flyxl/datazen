@@ -137,20 +137,25 @@ impl PromptResolver {
         }
 
         let mut templates = HashMap::new();
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path
-                    .extension()
-                    .map(|e| e == "md" || e == "txt")
-                    .unwrap_or(false)
-                {
-                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        if let Ok(content) = std::fs::read_to_string(&path) {
-                            templates.insert(stem.to_string(), content);
+        match tokio::fs::read_dir(dir).await {
+            Ok(mut entries) => {
+                while let Some(entry_result) = entries.next_entry().await.unwrap_or(None) {
+                    let path = entry_result.path();
+                    let is_template = path
+                        .extension()
+                        .map(|e| e == "md" || e == "txt")
+                        .unwrap_or(false);
+                    if is_template {
+                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            if let Ok(content) = tokio::fs::read_to_string(&path).await {
+                                templates.insert(stem.to_string(), content);
+                            }
                         }
                     }
                 }
+            }
+            Err(e) => {
+                tracing::warn!("[prompts] failed to read prompts dir: {e}");
             }
         }
 
@@ -177,7 +182,23 @@ impl PromptResolver {
     /// Resolve the effective system prompt for a scenario.
     ///
     /// `driver_type_name` is e.g. `"PostgreSQL"`, `"MySQL"`, etc.
+    /// `{{dialect_notes}}` in the resolved prompt is replaced with the driver's
+    /// dialect notes (if available) or removed entirely.
     pub async fn resolve(
+        &self,
+        scenario: PromptScenario,
+        driver: Option<&dyn DatabaseDriver>,
+        _lang: &str,
+    ) -> String {
+        self.resolve_with_dialect(scenario, driver, _lang).await
+    }
+
+    /// Resolve the effective system prompt with optional dialect notes.
+    ///
+    /// Same as [`Self::resolve`] but explicitly passes through dialect notes
+    /// from the driver. This is the primary entry point used by callers that
+    /// have a connected driver instance.
+    pub async fn resolve_with_dialect(
         &self,
         scenario: PromptScenario,
         driver: Option<&dyn DatabaseDriver>,
@@ -209,11 +230,20 @@ impl PromptResolver {
             return entry.system.clone();
         }
 
-        // 3. Driver-specific prompt
+        // 3. Driver-specific prompt (may include dialect_notes)
         if let Some(d) = driver {
             let driver_prompts = d.prompt_overrides();
             if let Some(tpl) = driver_prompts.get(&scenario) {
-                return tpl.system.clone();
+                let mut result = tpl.system.clone();
+                // Inject dialect_notes from template if present, otherwise from driver trait
+                if let Some(ref template_notes) = tpl.dialect_notes {
+                    result = result.replace("{{dialect_notes}}", template_notes);
+                } else if let Some(driver_notes) = d.dialect_notes() {
+                    result = result.replace("{{dialect_notes}}", &driver_notes);
+                } else {
+                    result = result.replace("{{dialect_notes}}", "");
+                }
+                return result;
             }
         }
 
@@ -221,12 +251,34 @@ impl PromptResolver {
         let key = scenario_to_key(scenario);
         let cache = self.template_cache.read().await;
         if let Some(tpl) = cache.get(&key) {
-            return tpl.clone();
+            // BUG-05: Apply dialect_notes even for cached templates (steps 3 & 5 already do this).
+            let mut result = tpl.clone();
+            if let Some(d) = driver {
+                if let Some(notes) = d.dialect_notes() {
+                    result = result.replace("{{dialect_notes}}", &notes);
+                } else {
+                    result = result.replace("{{dialect_notes}}", "");
+                }
+            } else {
+                result = result.replace("{{dialect_notes}}", "");
+            }
+            return result;
         }
         drop(cache);
 
         // 5. Embedded fallback
-        embedded_default(scenario).to_string()
+        let mut result = embedded_default(scenario).to_string();
+        // Apply dialect_notes from driver trait even for built-in templates
+        if let Some(d) = driver {
+            if let Some(notes) = d.dialect_notes() {
+                result = result.replace("{{dialect_notes}}", &notes);
+            } else {
+                result = result.replace("{{dialect_notes}}", "");
+            }
+        } else {
+            result = result.replace("{{dialect_notes}}", "");
+        }
+        result
     }
 
     /// Get all prompt infos for a specific driver type (for settings UI).
@@ -353,10 +405,28 @@ fn embedded_default(scenario: PromptScenario) -> &'static str {
 }
 
 /// Replace `{{key}}` placeholders in a template.
+///
+/// BUG-11: After rendering, warn about and strip any residual `{{...}}` placeholders
+/// so they are not sent verbatim to the LLM.
 pub fn render_template(template: &str, vars: &HashMap<&str, &str>) -> String {
     let mut result = template.to_string();
     for (&key, &val) in vars {
         result = result.replace(&format!("{{{{{key}}}}}"), val);
+    }
+    // Check for residual placeholders and strip them
+    if result.contains("{{") {
+        tracing::warn!(
+            residual = %result.matches("{{").count(),
+            "render_template: residual {{...}} placeholders found after rendering"
+        );
+        // Remove all remaining {{...}} patterns
+        while let Some(start) = result.find("{{") {
+            if let Some(end) = result[start..].find("}}") {
+                result.replace_range(start..start + end + 2, "");
+            } else {
+                break;
+            }
+        }
     }
     result
 }
@@ -364,6 +434,8 @@ pub fn render_template(template: &str, vars: &HashMap<&str, &str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_driver_api::async_trait;
+    use datazen_driver_api::PromptTemplate;
 
     #[test]
     fn test_embedded_defaults_cover_all_scenarios() {
@@ -546,5 +618,212 @@ mod tests {
     fn test_scenario_to_key() {
         assert_eq!(scenario_to_key(PromptScenario::Nl2Sql), "nl2sql");
         assert_eq!(scenario_to_key(PromptScenario::Chat), "chat");
+    }
+
+    /// A stub driver for testing dialect_notes integration.
+    struct StubDialectDriver {
+        dialect_notes: Option<String>,
+        prompt_overrides: std::collections::HashMap<PromptScenario, PromptTemplate>,
+    }
+
+    impl StubDialectDriver {
+        fn new(dialect_notes: Option<String>) -> Self {
+            Self {
+                dialect_notes,
+                prompt_overrides: std::collections::HashMap::new(),
+            }
+        }
+
+        fn with_prompt_override(
+            mut self,
+            scenario: PromptScenario,
+            system: &str,
+            dialect_notes: Option<String>,
+        ) -> Self {
+            self.prompt_overrides.insert(
+                scenario,
+                PromptTemplate {
+                    system: system.to_string(),
+                    dialect_notes,
+                },
+            );
+            self
+        }
+    }
+
+    #[async_trait]
+    impl DatabaseDriver for StubDialectDriver {
+        fn driver_type(&self) -> datazen_driver_api::DatabaseType {
+            "stub-dialect".into()
+        }
+
+        fn dialect_notes(&self) -> Option<String> {
+            self.dialect_notes.clone()
+        }
+
+        fn prompt_overrides(&self) -> std::collections::HashMap<PromptScenario, PromptTemplate> {
+            self.prompt_overrides.clone()
+        }
+
+        async fn connect(
+            &self,
+            _config: &datazen_driver_api::ConnectionConfig,
+        ) -> Result<datazen_driver_api::ConnectionHandle, datazen_driver_api::DriverError> {
+            Ok(datazen_driver_api::ConnectionHandle {
+                id: "c".into(),
+                pool_id: "p".into(),
+            })
+        }
+
+        async fn test_connection(
+            &self,
+            _config: &datazen_driver_api::ConnectionConfig,
+        ) -> Result<datazen_driver_api::ServerInfo, datazen_driver_api::DriverError> {
+            Ok(datazen_driver_api::ServerInfo {
+                server_version: String::new(),
+                server_type: self.driver_type(),
+            })
+        }
+
+        async fn disconnect(
+            &self,
+            _handle: datazen_driver_api::ConnectionHandle,
+        ) -> Result<(), datazen_driver_api::DriverError> {
+            Ok(())
+        }
+
+        async fn get_databases(
+            &self,
+            _handle: &datazen_driver_api::ConnectionHandle,
+        ) -> Result<Vec<String>, datazen_driver_api::DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_tables(
+            &self,
+            _handle: &datazen_driver_api::ConnectionHandle,
+            _database: &str,
+        ) -> Result<Vec<datazen_driver_api::TableInfo>, datazen_driver_api::DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_table_schema(
+            &self,
+            _handle: &datazen_driver_api::ConnectionHandle,
+            _table: &str,
+        ) -> Result<datazen_driver_api::TableSchema, datazen_driver_api::DriverError> {
+            Ok(datazen_driver_api::TableSchema {
+                table_name: String::new(),
+                columns: vec![],
+                primary_keys: vec![],
+                indexes: vec![],
+                foreign_keys: vec![],
+            })
+        }
+
+        async fn query(
+            &self,
+            _handle: &datazen_driver_api::ConnectionHandle,
+            _sql: &str,
+        ) -> Result<datazen_driver_api::QueryResult, datazen_driver_api::DriverError> {
+            Ok(datazen_driver_api::QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: None,
+                execution_time_ms: 0,
+            })
+        }
+
+        async fn query_multi(
+            &self,
+            _handle: &datazen_driver_api::ConnectionHandle,
+            _sql: &str,
+            _limit: Option<u32>,
+        ) -> Result<datazen_driver_api::MultiQueryResult, datazen_driver_api::DriverError> {
+            Ok(datazen_driver_api::MultiQueryResult {
+                results: vec![],
+                total_time_ms: 0,
+            })
+        }
+
+        async fn query_with_params(
+            &self,
+            _handle: &datazen_driver_api::ConnectionHandle,
+            _sql: &str,
+            _params: &[datazen_driver_api::Value],
+        ) -> Result<datazen_driver_api::QueryResult, datazen_driver_api::DriverError> {
+            Ok(datazen_driver_api::QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: None,
+                execution_time_ms: 0,
+            })
+        }
+
+        async fn execute(
+            &self,
+            _handle: &datazen_driver_api::ConnectionHandle,
+            _sql: &str,
+        ) -> Result<u64, datazen_driver_api::DriverError> {
+            Ok(0)
+        }
+
+        async fn cancel_query(
+            &self,
+            _handle: &datazen_driver_api::ConnectionHandle,
+        ) -> Result<(), datazen_driver_api::DriverError> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_with_dialect_notes_builtin_prompt() {
+        let tmp = tempfile::tempdir().unwrap();
+        let resolver = PromptResolver::new(tmp.path(), None);
+        let driver = StubDialectDriver::new(Some(
+            "PostgreSQL uses LIMIT/OFFSET, ILIKE for case-insensitive".into(),
+        ));
+        let result = resolver
+            .resolve_with_dialect(PromptScenario::Nl2Sql, Some(&driver), "en")
+            .await;
+        assert!(result.contains("SQL expert"));
+        assert!(result.contains("PostgreSQL uses LIMIT/OFFSET"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_with_dialect_notes_from_prompt_template() {
+        let tmp = tempfile::tempdir().unwrap();
+        let resolver = PromptResolver::new(tmp.path(), None);
+        let driver = StubDialectDriver::new(Some("Global notes".into())).with_prompt_override(
+            PromptScenario::Chat,
+            "Custom prompt with {{dialect_notes}}",
+            Some("Template-level notes".into()),
+        );
+        let result = resolver
+            .resolve_with_dialect(PromptScenario::Chat, Some(&driver), "en")
+            .await;
+        assert_eq!(result, "Custom prompt with Template-level notes");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_with_dialect_no_notes_removes_placeholder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let resolver = PromptResolver::new(tmp.path(), None);
+        let driver = StubDialectDriver::new(None);
+        let result = resolver
+            .resolve_with_dialect(PromptScenario::Nl2Sql, Some(&driver), "en")
+            .await;
+        // {{dialect_notes}} should be removed when no notes available
+        assert!(!result.contains("{{dialect_notes}}"));
+        assert!(result.contains("SQL expert"));
+    }
+
+    #[tokio::test]
+    async fn test_dialect_notes_in_prompt_template_struct() {
+        let tpl = PromptTemplate {
+            system: "Hello {{dialect_notes}}".into(),
+            dialect_notes: Some("PG specific".into()),
+        };
+        assert_eq!(tpl.dialect_notes.as_deref(), Some("PG specific"));
     }
 }

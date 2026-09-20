@@ -144,11 +144,9 @@ export function Select({
   const triggerRef = useRef<HTMLDivElement | HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number }>({
-    top: 0,
-    left: 0,
-    width: 0,
-  });
+  const [pos, setPos] = useState<{ top: number; left: number; minWidth: number; maxWidth: number }>(
+    { top: 0, left: 0, minWidth: 0, maxWidth: 0 },
+  );
 
   const strValue = String(value);
   const selectedOption = options.find((o) => o.value === strValue);
@@ -176,14 +174,14 @@ export function Select({
     const goUp = spaceBelow < listHeight && spaceAbove > spaceBelow;
     const preferredWidth = Math.max(rect.width, listMinWidth ?? 0);
     const availableRight = globalThis.innerWidth - rect.left - 8;
-    const width =
-      availableRight > 0
-        ? Math.min(preferredWidth, Math.max(rect.width, availableRight))
-        : preferredWidth;
+    // The listbox sizes to its longest option (`max-content`) instead of
+    // clamping to the trigger width — a compact trigger must not truncate
+    // option labels. `minWidth` keeps it at least as wide as the trigger.
     setPos({
       top: goUp ? rect.top - listHeight - 4 : rect.bottom + 4,
       left: rect.left,
-      width,
+      minWidth: preferredWidth,
+      maxWidth: Math.max(preferredWidth, availableRight),
     });
   }, [filteredOptions.length, listMinWidth]);
 
@@ -351,7 +349,14 @@ export function Select({
         role="listbox"
         aria-label={accessibleLabel}
         className="fixed z-[9999] overflow-y-auto rounded-[10px] border border-edge bg-surface-alt py-1 shadow-xl"
-        style={{ top: pos.top, left: pos.left, width: pos.width, maxHeight: 240 }}
+        style={{
+          top: pos.top,
+          left: pos.left,
+          minWidth: pos.minWidth,
+          maxWidth: pos.maxWidth,
+          width: 'max-content',
+          maxHeight: 240,
+        }}
         onKeyDown={handleListKeyDown}
       >
         <OptionList

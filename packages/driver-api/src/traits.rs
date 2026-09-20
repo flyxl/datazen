@@ -87,7 +87,8 @@ pub trait DatabaseDriver: Send + Sync {
         handle: &ConnectionHandle,
         table: &str,
     ) -> Result<TableSchema, DriverError>;
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError>;
+    async fn query(&self, handle: &ConnectionHandle, sql: &str)
+        -> Result<QueryResult, DriverError>;
     async fn query_multi(
         &self,
         handle: &ConnectionHandle,

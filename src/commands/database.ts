@@ -7,6 +7,7 @@ import type {
   TableDataResult,
   TableInfo,
   TableSchema,
+  ColumnSchema,
   Value,
 } from '../types';
 import type {
@@ -50,6 +51,9 @@ export const databaseCommands = {
 
   getColumns: (dbSessionId: string, table: string, database: string) =>
     invoke<string[]>('get_columns', { dbSessionId, table, database }),
+
+  getColumnsTyped: (dbSessionId: string, table: string, database: string) =>
+    invoke<ColumnSchema[]>('get_columns_typed', { dbSessionId, table, database }),
 
   getAllColumns: (dbSessionId: string, database: string) =>
     invoke<Record<string, string[]>>('get_all_columns', { dbSessionId, database }),

@@ -545,12 +545,6 @@ export function QueryResultsPane({
             )}
           </>
         )}
-
-        {!showExplain && results.length === 0 && !running && !error && (
-          <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
-            {t('query.shortcutHint')}
-          </div>
-        )}
       </div>
 
       <AddToDashboardDialog

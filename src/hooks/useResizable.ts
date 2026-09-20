@@ -8,6 +8,17 @@ export interface UseResizableOptions {
   storageKey?: string;
   /** When true, dragging towards positive axis shrinks the panel (for right-side panels). */
   reverse?: boolean;
+  /**
+   * Called on pointerdown, before the drag produces its first size. Lets a
+   * caller leave an automatic sizing mode the moment the user takes over.
+   */
+  onResizeStart?: () => void;
+  /**
+   * Overrides the size a drag starts from, in pixels. Needed when the panel is
+   * currently sized by CSS (e.g. `flex-1`) rather than by `size`, so taking
+   * over does not jump to a stale value.
+   */
+  getStartSize?: () => number | null | undefined;
 }
 
 export function useResizable({
@@ -17,6 +28,8 @@ export function useResizable({
   maxSize,
   storageKey,
   reverse = false,
+  onResizeStart,
+  getStartSize,
 }: UseResizableOptions) {
   const [size, setSize] = useState(() => {
     if (storageKey) {
@@ -31,6 +44,13 @@ export function useResizable({
 
   const sizeRef = useRef(size);
   sizeRef.current = size;
+
+  // Kept in refs: inline callbacks must not re-run the listener effect, which
+  // would drop the listeners (and `active`) in the middle of a drag.
+  const onResizeStartRef = useRef(onResizeStart);
+  onResizeStartRef.current = onResizeStart;
+  const getStartSizeRef = useRef(getStartSize);
+  getStartSizeRef.current = getStartSize;
 
   const [handleEl, setHandleEl] = useState<HTMLDivElement | null>(null);
   const handleRef = useCallback((el: HTMLDivElement | null) => {
@@ -50,9 +70,19 @@ export function useResizable({
     let active = false;
 
     function onPointerDown(e: PointerEvent) {
+      const measured = getStartSizeRef.current?.();
+      // `0` means the panel is not laid out (e.g. hidden): not a usable start.
+      const start =
+        typeof measured === 'number' && Number.isFinite(measured) && measured > 0
+          ? measured
+          : sizeRef.current;
+      // Adopt the measured size before the first move so switching the panel
+      // from CSS sizing to an explicit size cannot jump.
+      if (start !== sizeRef.current) setSize(start);
+      onResizeStartRef.current?.();
       active = true;
       startPos = direction === 'horizontal' ? e.clientX : e.clientY;
-      startSize = sizeRef.current;
+      startSize = start;
       handleEl!.setPointerCapture(e.pointerId);
       document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';

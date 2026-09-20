@@ -98,6 +98,7 @@ export function MonitorPanel({
           <button
             key={page.id}
             type="button"
+            data-testid={`redis-monitor-sub-${page.id}`}
             className={cn(
               'rounded-md px-3 py-1.5 text-xs transition-colors',
               subPage === page.id

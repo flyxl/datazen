@@ -149,17 +149,23 @@
 ### macOS 原生拖放验收
 
 `drag-drop-groups.ts` 主动构造 `DragEvent`，只能验证 DOM handler 和连接持久化，
-不能验证 NSDraggingDestination → WKWebView 的事件分发。主窗口必须配置
-`dragDropEnabled: false`：当前 Tauri runtime 的原生拖放回调始终返回 true，
-Wry 因此不调用 WKWebView 的默认 draggingEntered / draggingUpdated / performDragOperation。
-关闭后由 WebView 处理 HTML5 拖放；主窗口不再接收 Tauri 原生文件拖放通知
-（目前宿主没有使用该通知的监听器）。配置变更需要完整重启 Tauri，前端热更新不生效。
+不能验证 NSDraggingDestination → WKWebView 的事件分发。每个窗口都必须关闭原生拖放处理
+（`WebviewWindowBuilder::disable_drag_drop_handler()`，等价于旧配置项 `dragDropEnabled: false`）：
+当前 Tauri runtime 的原生拖放回调始终返回 true，Wry 因此不调用 WKWebView 的默认
+draggingEntered / draggingUpdated / performDragOperation。关闭后由 WebView 处理 HTML5 拖放；
+窗口不再接收 Tauri 原生文件拖放通知（目前宿主没有使用该通知的监听器）。
+窗口配置变更需要完整重启 Tauri，前端热更新不生效。
 
-**平台覆盖陷阱**：Tauri 使用 JSON Merge Patch，`tauri.macos.conf.json` 和
-`tauri.windows.conf.json` 的 `app.windows` 会整体替换基础配置的窗口数组，
-不是逐项合并。平台文件必须包含完整主窗口设置（尤其 `dragDropEnabled: false`），
-只修改 `tauri.conf.json` 不会修复这些平台。修改公共窗口设置时须同步平台文件；
-`scripts/__tests__/tauri-window-config.test.ts` 守护此契约，E2E 检查当前平台的有效窗口配置。
+**落点已迁移到 Rust**：自 onboarding 独立窗口改造后，所有窗口均由
+`create_main_window` / `create_onboarding_window` / `create_sub_window`
+（`src-tauri/src/commands/window.rs`）程序化创建，`app.windows` 为空数组，
+因此 `tauri.conf.json` 与平台文件里的 `dragDropEnabled` **不再对窗口生效**——
+只在配置文件里设置它不会修复任何平台。`window.rs` 内 `every_window_builder_disables_native_drag_drop`
+单测守护“每个 builder 都关闭原生拖放”这一契约，`e2e/specs/drag-drop-groups.ts`
+的配置用例检查同一份源码；`scripts/__tests__/tauri-window-config.test.ts` 继续守护
+“配置不静态定义窗口”。新增窗口创建点时必须在 builder 链上调用
+`disable_drag_drop_handler()`，否则该窗口内所有 HTML5 拖放（包括从连接树拖表到
+Visual Builder 画布）都会静默失效。
 
 每次涉及窗口配置或拖放链路变更，须在重建并重启的 macOS 应用中用真实鼠标验收：
 
@@ -167,7 +173,9 @@ Wry 因此不调用 WKWebView 的默认 draggingEntered / draggingUpdated / perf
 2. 在同组内将连接分别拖到另一连接上方和下方；出现定位线，释放后顺序正确，重启后保留。
 3. 将 Table 和 View 分别拖入同连接 SQL 编辑器；空编辑器生成查询，
    `SELECT * FROM ` 后按鼠标位置插入标识符，悬停显示光标，释放后编辑器获得焦点。
-4. 按 Escape 取消拖拽，再重新拖动；取消不修改连接或 SQL，下一次拖放仍成功。
+4. 从连接树把 Table 拖到 Visual Builder 画布：悬停时鼠标为可放置态，释放后画布出现该表卡片，
+   位置落在释放点，`SELECT` 预览包含该表。
+5. 按 Escape 取消拖拽，再重新拖动；取消不修改连接或 SQL，下一次拖放仍成功。
 
 合成事件测试通过不等于上述真机验收通过；未执行时须明确报告为待验收。
 

@@ -1,8 +1,8 @@
 //! Connection import path helpers + app-data archive + encryption key + restart.
 //! Business boundary split from `config.rs` to keep each file under push limits.
 
-use super::*;
 use super::connection_import::{detect_import_path, parse_from_app, ImportApp, PathContext};
+use super::*;
 use crate::app_data_archive;
 use tauri::AppHandle;
 
@@ -182,11 +182,8 @@ pub async fn import_app_data(
     let source = match resolve_override_path(override_path, OVERRIDE_DISABLED_MSG)? {
         Some(path) => Some(path),
         None => {
-            super::dialog::open_file(
-                &app,
-                vec![("DataZen Archive".into(), vec!["zip".into()])],
-            )
-            .await?
+            super::dialog::open_file(&app, vec![("DataZen Archive".into(), vec!["zip".into()])])
+                .await?
         }
     };
     let Some(source) = source else {

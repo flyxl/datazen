@@ -9,7 +9,7 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';
 import { t } from '../i18n.js';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 
 const GROUP_A = 'DragTestGroupA';
 const GROUP_B = 'DragTestGroupB';
@@ -19,19 +19,23 @@ const CONN_A_ID = 'drag_test_conn_a_e2e';
 const CONN_B_ID = 'drag_test_conn_b_e2e';
 
 describe('Main window HTML5 drag routing configuration', () => {
-  it('disables native file-drop interception in the effective platform configuration', () => {
-    const base = JSON.parse(
-      readFileSync(new URL('../../src-tauri/tauri.conf.json', import.meta.url), 'utf8'),
+  it('disables native file-drop interception in every programmatic window builder', () => {
+    // Windows are no longer declared in `app.windows` (see
+    // `create_main_window` / `create_onboarding_window` / `create_sub_window`),
+    // so neither `tauri.conf.json` nor the platform override can carry
+    // `dragDropEnabled`. The contract now lives in the Rust builders: without
+    // `disable_drag_drop_handler` Tauri's native drag-drop callback swallows
+    // every HTML5 drop before it reaches the WebView.
+    const source = readFileSync(
+      new URL('../../src-tauri/src/commands/window.rs', import.meta.url),
+      'utf8',
     );
-    const platform =
-      process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux';
-    const platformUrl = new URL(`../../src-tauri/tauri.${platform}.conf.json`, import.meta.url);
-    const override = existsSync(platformUrl) ? JSON.parse(readFileSync(platformUrl, 'utf8')) : {};
-    // Tauri uses JSON Merge Patch: arrays are replaced, not merged by index.
-    const windows = override.app?.windows ?? base.app.windows;
-    expect(
-      windows.find((window: { label: string }) => window.label === 'main')?.dragDropEnabled,
-    ).toBe(false);
+    const builders = source.split('WebviewWindowBuilder::new').slice(1);
+    expect(builders.length).toBeGreaterThanOrEqual(3);
+    for (const builder of builders) {
+      const chain = builder.split('.build()')[0] ?? builder;
+      expect(chain).toContain('disable_drag_drop_handler');
+    }
   });
 });
 

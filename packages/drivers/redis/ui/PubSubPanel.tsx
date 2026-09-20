@@ -222,6 +222,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
               className="mt-1 w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
               rows={3}
               placeholder={t('redis.pubsubChannelsPlaceholder')}
+              data-testid="redis-pubsub-channels"
               value={channelsInput}
               onChange={(e) => setChannelsInput(e.target.value)}
             />
@@ -233,6 +234,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
               className="mt-1 w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
               rows={2}
               placeholder={t('redis.pubsubPatternsPlaceholder')}
+              data-testid="redis-pubsub-patterns"
               value={patternsInput}
               onChange={(e) => setPatternsInput(e.target.value)}
             />
@@ -241,6 +243,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
           <Button
             variant="primary"
             className="h-8 w-full gap-1 text-xs"
+            data-testid="redis-pubsub-subscribe"
             onClick={() => void handleSubscribe()}
             disabled={subscribing}
           >
@@ -259,6 +262,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
             <input
               className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
               placeholder={t('redis.pubsubPublishChannelPlaceholder')}
+              data-testid="redis-pubsub-publish-channel"
               value={publishChannel}
               onChange={(e) => setPublishChannel(e.target.value)}
             />
@@ -266,12 +270,14 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
               className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
               rows={3}
               placeholder={t('redis.pubsubPublishMessagePlaceholder')}
+              data-testid="redis-pubsub-publish-message"
               value={publishMessage}
               onChange={(e) => setPublishMessage(e.target.value)}
             />
             <Button
               variant="secondary"
               className="h-8 w-full gap-1 text-xs"
+              data-testid="redis-pubsub-publish"
               onClick={() => void handlePublish()}
               disabled={publishing}
             >
@@ -368,12 +374,10 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-auto" data-testid="redis-pubsub-messages">
           {filteredMessages.length === 0 ? (
             <div className="flex h-full items-center justify-center p-8 text-sm text-fg-muted">
-              {messages.length === 0
-                ? t('redis.pubsubEmpty')
-                : t('redis.pubsubSearchPlaceholder')}
+              {messages.length === 0 ? t('redis.pubsubEmpty') : t('redis.pubsubSearchPlaceholder')}
             </div>
           ) : (
             <table className="w-full border-collapse text-[13px]">

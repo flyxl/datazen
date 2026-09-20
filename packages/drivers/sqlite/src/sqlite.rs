@@ -142,6 +142,17 @@ impl DatabaseDriver for SqliteDriver {
         "sqlite".into()
     }
 
+    fn dialect_notes(&self) -> Option<String> {
+        Some(
+            "SQLite uses LIMIT/OFFSET for pagination, GLOB for case-sensitive pattern \
+             matching, || for string concatenation, has limited ALTER TABLE (no DROP COLUMN \
+             before 3.35.0, no ALTER COLUMN), no separate ENUM type (use CHECK constraints), \
+             STRICT tables enforce column types, ROWID as implicit auto-increment primary key, \
+             and all DDL runs within transactions."
+                .into(),
+        )
+    }
+
     /// F7: qualify unqualified table references with the ATTACH alias
     /// (`"alias"."t"`). A DataZen SQLite connection is a single file
     /// (`main`), so this is a no-op unless the caller targets an explicit

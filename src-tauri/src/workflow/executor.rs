@@ -512,6 +512,7 @@ impl WorkflowExecutor {
                     stop: None,
                     tools: None,
                     previous_response_id: None,
+                    cancel_token: None,
                 };
                 let response = provider
                     .complete(&request)

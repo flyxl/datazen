@@ -363,9 +363,11 @@ fn test_emit_stream_chunk_builds_payload_via_callback() {
             content: "hello".into(),
             reasoning: Some("think".into()),
             done: false,
+            cancelled: false,
             usage: None,
             tool_calls: None,
             response_id: None,
+            egress_summary: None,
         }),
     );
     cb("req-2", Err(AiError::RequestFailed("bad".into())));

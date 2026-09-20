@@ -2,11 +2,7 @@ import { useState, useCallback } from 'react';
 import { Button } from '@datazen/ui';
 import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import {
-  invokeSetTtl,
-  invokeSetExpireAt,
-  type PluginInvokeFn,
-} from './keyEditorsInvokes';
+import { invokeSetTtl, invokeSetExpireAt, type PluginInvokeFn } from './keyEditorsInvokes';
 import { redisCommandInvoke } from './redisInvoke';
 
 /**
@@ -75,11 +71,13 @@ export function TtlControls({
             onChange={(e) => setTtlInput(e.target.value)}
             placeholder={t('redis.ttlSeconds')}
             className="h-7 text-xs"
+            data-testid="redis-ttl-input"
           />
         </div>
         <Button
           variant="secondary"
           className="h-7 px-2 text-xs"
+          data-testid="redis-ttl-set"
           disabled={busy}
           onClick={() =>
             void run(async () => {
@@ -106,6 +104,7 @@ export function TtlControls({
         <Button
           variant="secondary"
           className="h-7 px-2 text-xs"
+          data-testid="redis-ttl-expire-at"
           disabled={busy || !expireAtLocal}
           onClick={() =>
             void run(async () => {
@@ -125,6 +124,7 @@ export function TtlControls({
         <Button
           variant="secondary"
           className="h-7 px-2 text-xs"
+          data-testid="redis-ttl-persist"
           disabled={busy}
           onClick={() =>
             void run(async () => {

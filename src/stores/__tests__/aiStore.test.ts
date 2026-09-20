@@ -385,10 +385,19 @@ describe('aiStore', () => {
     it('handleStreamChunk updates nl2sql', () => {
       const requestId = 'req-nl2sql';
       useAiStore.setState({
-        nl2sql: { input: 'q', generatedSql: '', isGenerating: true, requestId },
+        nl2sql: {
+          input: 'q',
+          streamingSql: '',
+          streamingPreview: '',
+          generatedSql: '',
+          isGenerating: true,
+          requestId,
+        },
       });
       useAiStore.getState().handleStreamChunk({ requestId, content: 'SELECT 1', done: false });
-      expect(useAiStore.getState().nl2sql.generatedSql).toContain('SELECT');
+      // During streaming, the preview should contain the SQL content
+      expect(useAiStore.getState().nl2sql.streamingPreview).toContain('SELECT');
+      expect(useAiStore.getState().nl2sql.streamingSql).toContain('SELECT');
 
       useAiStore.getState().handleStreamChunk({ requestId, content: '', done: true });
       expect(useAiStore.getState().nl2sql.isGenerating).toBe(false);

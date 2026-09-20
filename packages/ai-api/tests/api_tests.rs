@@ -129,6 +129,7 @@ fn test_completion_request_serde() {
         stop: None,
         tools: None,
         previous_response_id: None,
+        cancel_token: None,
     };
 
     let json = serde_json::to_string(&req).unwrap();
@@ -232,6 +233,7 @@ async fn test_mock_provider_complete() {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         })
         .await;
     assert!(result.is_err());
@@ -254,6 +256,7 @@ async fn test_mock_provider_complete() {
             stop: None,
             tools: None,
             previous_response_id: None,
+            cancel_token: None,
         })
         .await
         .unwrap();
@@ -289,6 +292,7 @@ async fn test_mock_provider_stream_fallback() {
                 stop: None,
                 tools: None,
                 previous_response_id: None,
+                cancel_token: None,
             },
             tx,
         )
@@ -370,4 +374,132 @@ fn test_model_info_serde() {
     assert_eq!(parsed.id, "gpt-4o");
     assert_eq!(parsed.context_window, 128_000);
     assert!(parsed.supports_tools);
+}
+
+// ─── [tester] Wave 1 cancellation support tests ───
+
+#[test]
+fn test_tester_ai_error_cancelled_display() {
+    let err = AiError::Cancelled("user requested abort".into());
+    assert_eq!(err.to_string(), "cancelled: user requested abort");
+
+    // Verify it matches the enum pattern
+    assert!(matches!(err, AiError::Cancelled(_)));
+}
+
+#[test]
+fn test_tester_ai_error_cancelled_is_error() {
+    // Ensure Cancelled integrates with thiserror properly
+    let err: AiError = AiError::Cancelled("test".into());
+    let err_str = err.to_string();
+    assert!(err_str.starts_with("cancelled:"));
+}
+
+#[test]
+fn test_tester_stream_chunk_cancelled_default_serde() {
+    // Deserialize a StreamChunk JSON without "cancelled" field — should default to false
+    let json = r#"{
+        "content": "hello",
+        "done": true,
+        "usage": null
+    }"#;
+    let chunk: StreamChunk = serde_json::from_str(json).unwrap();
+    assert_eq!(chunk.content, "hello");
+    assert!(chunk.done);
+    assert!(
+        !chunk.cancelled,
+        "cancelled should default to false when absent"
+    );
+}
+
+#[test]
+fn test_tester_stream_chunk_cancelled_explicit_true() {
+    let chunk = StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        cancelled: true,
+        usage: None,
+        tool_calls: None,
+        response_id: None,
+    };
+    let json = serde_json::to_string(&chunk).unwrap();
+    assert!(json.contains("\"cancelled\":true"));
+
+    let parsed: StreamChunk = serde_json::from_str(&json).unwrap();
+    assert!(parsed.cancelled);
+}
+
+#[test]
+fn test_tester_stream_chunk_cancelled_explicit_false() {
+    let chunk = StreamChunk {
+        content: "test".into(),
+        reasoning: None,
+        done: false,
+        cancelled: false,
+        usage: None,
+        tool_calls: None,
+        response_id: None,
+    };
+    let json = serde_json::to_string(&chunk).unwrap();
+    // cancelled: false is serialized (serde(default) doesn't skip false)
+    assert!(json.contains("\"cancelled\":false"));
+
+    let parsed: StreamChunk = serde_json::from_str(&json).unwrap();
+    assert!(!parsed.cancelled);
+}
+
+#[test]
+fn test_tester_completion_request_cancel_token_skip() {
+    let req = CompletionRequest {
+        request_id: "r1".into(),
+        model: "m".into(),
+        messages: vec![],
+        temperature: None,
+        stop: None,
+        tools: None,
+        previous_response_id: None,
+        cancel_token: None,
+    };
+    let json = serde_json::to_string(&req).unwrap();
+    // cancel_token must NOT appear in serialized JSON (#[serde(skip)])
+    assert!(
+        !json.contains("cancel_token"),
+        "cancel_token should be skipped in serialization"
+    );
+    assert!(
+        !json.contains("cancelToken"),
+        "cancelToken should be skipped in serialization"
+    );
+}
+
+#[test]
+fn test_tester_completion_request_deserialize_without_cancel_token() {
+    // Deserialize a JSON that doesn't include cancel_token — should deserialize fine
+    let json = r#"{
+        "requestId": "r1",
+        "model": "gpt-4o",
+        "messages": []
+    }"#;
+    let req: CompletionRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(req.request_id, "r1");
+    assert!(req.cancel_token.is_none());
+}
+
+#[test]
+fn test_tester_stream_chunk_camel_case_serialization() {
+    // Ensure StreamChunk uses camelCase for all fields including cancelled
+    let chunk = StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        cancelled: false,
+        usage: None,
+        tool_calls: None,
+        response_id: None,
+    };
+    let json = serde_json::to_string(&chunk).unwrap();
+    assert!(json.contains("\"cancelled\""));
+    assert!(json.contains("\"done\""));
+    assert!(json.contains("\"content\""));
 }

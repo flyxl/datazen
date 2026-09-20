@@ -180,6 +180,14 @@ impl PostgresDriver {
             .collect();
 
         // ── foreign keys ──
+        //
+        // NOTE: the query below aggregates the referencing columns
+        // (`key_column_usage`) and the referenced columns
+        // (`constraint_column_usage`) *independently*, joined only by constraint
+        // name. A composite key therefore arrives with N x N entries —
+        // `(pa, pb) -> (a, b)` comes back as `[pa, pa, pb, pb]` against
+        // `[a, b, a, b]` — which is why the result rows are normalised through
+        // `normalise_fk_columns` before being handed out.
         let fk_rows = sqlx::query(
             r#"
             SELECT
@@ -214,13 +222,22 @@ impl PostgresDriver {
 
         let foreign_keys: Vec<ForeignKeyInfo> = fk_rows
             .iter()
-            .map(|r| ForeignKeyInfo {
-                name: r.get("fk_name"),
-                columns: r.get::<Vec<String>, _>("columns"),
-                referenced_table: r.get("ref_table"),
-                referenced_columns: r.get::<Vec<String>, _>("ref_columns"),
-                on_update: r.get("update_rule"),
-                on_delete: r.get("delete_rule"),
+            .filter_map(|r| {
+                let columns = r.get::<Vec<String>, _>("columns");
+                let referenced_columns = r.get::<Vec<String>, _>("ref_columns");
+                // Composite keys come back multiplied (see the helper) — a
+                // constraint whose sides cannot be reconciled is skipped rather
+                // than reported with an invented column pairing.
+                let (columns, referenced_columns) =
+                    normalise_fk_columns(columns, referenced_columns)?;
+                Some(ForeignKeyInfo {
+                    name: r.get("fk_name"),
+                    columns,
+                    referenced_table: r.get("ref_table"),
+                    referenced_columns,
+                    on_update: r.get("update_rule"),
+                    on_delete: r.get("delete_rule"),
+                })
             })
             .collect();
 
@@ -311,5 +328,92 @@ impl PostgresDriver {
         }
 
         Ok(result)
+    }
+}
+
+/// Collapse a foreign key's column arrays down to their ordered distinct columns.
+///
+/// `information_schema` exposes the two sides of a foreign key as independent
+/// aggregates, so a composite key is reported multiplied: a two-column key
+/// arrives as `["pa", "pa", "pb", "pb"]` against `["a", "b", "a", "b"]`.
+/// Consumers pair the arrays positionally, so that bloat silently becomes a
+/// cartesian product — four predicates for a two-column key, i.e. a wrong JOIN.
+///
+/// Returns `None` when the sides cannot be reconciled (a different number of
+/// distinct columns), letting the caller skip the constraint instead of
+/// inventing a pairing.
+pub(crate) fn normalise_fk_columns(
+    columns: Vec<String>,
+    referenced_columns: Vec<String>,
+) -> Option<(Vec<String>, Vec<String>)> {
+    use std::collections::HashSet;
+
+    let distinct = |values: Vec<String>| -> Vec<String> {
+        let mut seen: HashSet<String> = HashSet::new();
+        values
+            .into_iter()
+            .filter(|value| seen.insert(value.clone()))
+            .collect()
+    };
+
+    let from = distinct(columns);
+    let to = distinct(referenced_columns);
+    if from.is_empty() || from.len() != to.len() {
+        return None;
+    }
+    Some((from, to))
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use super::normalise_fk_columns;
+
+    fn owned(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn composite_key_is_collapsed_from_the_cartesian_bloat() {
+        // What information_schema actually returns for (pa, pb) -> (a, b).
+        let columns = owned(&["pa", "pa", "pb", "pb"]);
+        let referenced = owned(&["a", "b", "a", "b"]);
+
+        let (from, to) = normalise_fk_columns(columns, referenced).expect("reconcilable");
+
+        assert_eq!(from, owned(&["pa", "pb"]));
+        assert_eq!(to, owned(&["a", "b"]));
+    }
+
+    #[test]
+    fn three_column_key_is_collapsed() {
+        let columns = owned(&["c1", "c1", "c1", "c2", "c2", "c2", "c3", "c3", "c3"]);
+        let referenced = owned(&["p1", "p2", "p3", "p1", "p2", "p3", "p1", "p2", "p3"]);
+
+        let (from, to) = normalise_fk_columns(columns, referenced).expect("reconcilable");
+
+        assert_eq!(from, owned(&["c1", "c2", "c3"]));
+        assert_eq!(to, owned(&["p1", "p2", "p3"]));
+    }
+
+    #[test]
+    fn single_column_key_is_unchanged() {
+        let (from, to) =
+            normalise_fk_columns(owned(&["customer_id"]), owned(&["id"])).expect("reconcilable");
+        assert_eq!(from, owned(&["customer_id"]));
+        assert_eq!(to, owned(&["id"]));
+    }
+
+    #[test]
+    fn preserves_positional_order() {
+        let (from, to) =
+            normalise_fk_columns(owned(&["b", "a"]), owned(&["pb", "pa"])).expect("reconcilable");
+        assert_eq!(from, owned(&["b", "a"]));
+        assert_eq!(to, owned(&["pb", "pa"]));
+    }
+
+    #[test]
+    fn unreconcilable_sides_are_rejected_rather_than_guessed() {
+        assert!(normalise_fk_columns(owned(&["a", "b"]), owned(&["x"])).is_none());
+        assert!(normalise_fk_columns(Vec::new(), Vec::new()).is_none());
     }
 }

@@ -351,6 +351,17 @@ impl DatabaseDriver for MysqlDriver {
         "mysql".into()
     }
 
+    fn dialect_notes(&self) -> Option<String> {
+        Some(
+            "MySQL uses LIMIT offset, count (reversed order from PostgreSQL), \
+             CONCAT() for string concatenation, LIKE is case-insensitive by default \
+             (collation-dependent), ENUM and SET types, INSERT IGNORE and \
+             ON DUPLICATE KEY UPDATE for upsert, and each DDL statement auto-commits \
+             (no transactional DDL)."
+                .into(),
+        )
+    }
+
     /// F7: qualify unqualified table references with the target database
     /// (`` `db`.`t` ``), shared by the mysql/mariadb/doris/starrocks/
     /// manticore/ob_oracle variants. Parse failures pass SQL through

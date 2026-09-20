@@ -199,7 +199,7 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 
 ## i18n 国际化规则
 
-- **开发期间**：只修改 `en.ts`（英文）和可选的 `zh-CN.ts`（中文），不要同时修改其他语言文件。
+- **开发期间**：只修改 `en.ts`（英文），不要同时修改其他语言文件。
 - **发布前**：使用 `node scripts/i18n-sync-check.mjs` 检查翻译完整性，然后通过 i18n-sync skill 补齐所有语言。
 - `en.ts` 是唯一的翻译 source of truth，其他语言文件必须保持相同的 key 集合。
 - 采用领域包（Domain Packs）结构，子窗口与深层功能通过 `useLocaleDomains` 按需惰性（Lazy）加载。
