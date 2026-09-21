@@ -380,7 +380,7 @@ export function McpClientSection() {
           </div>
           <ToggleRow
             label={t('mcpClient.enabled')}
-            checked={draft.enabled}
+            checked={draft.enabled ?? true}
             onChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
           />
           <ToggleRow

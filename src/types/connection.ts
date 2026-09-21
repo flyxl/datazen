@@ -2,7 +2,14 @@
 export type { DatabaseType } from '../extensions/generated';
 import type { DatabaseType } from '../extensions/generated';
 
-export type { TunnelKind, HttpProxyTunnelConfig, WebSocketTunnelConfig, SavedTunnel } from './tunnel';
+import type { HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig } from './tunnel';
+
+export type {
+  TunnelKind,
+  HttpProxyTunnelConfig,
+  WebSocketTunnelConfig,
+  SavedTunnel,
+} from './tunnel';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 

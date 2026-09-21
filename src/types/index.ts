@@ -702,6 +702,7 @@ export interface ChangedColumnDiff {
   name: string;
   source: ColumnDiffEntry;
   target: ColumnDiffEntry;
+  changes: string[];
 }
 
 export interface TableSchemaDiff {
@@ -713,17 +714,25 @@ export interface TableSchemaDiff {
   targetOnlyIndexes: string[];
   sourceOnlyForeignKeys: string[];
   targetOnlyForeignKeys: string[];
+  missingOnTarget?: ColumnDiffEntry[];
+  extraOnTarget?: ColumnDiffEntry[];
+  added: ColumnDiffEntry[];
+  removed: ColumnDiffEntry[];
+  changed: ChangedColumnDiff[];
+  sourceDdl?: string;
+  targetDdl?: string;
 }
 
 export interface McpServerConfig {
   id: string;
   name: string;
-  transport: 'stdio' | 'sse' | 'http';
+  transport: 'stdio';
   command?: string;
   args?: string[];
   env?: Record<string, string>;
   url?: string;
   enabled?: boolean;
+  enabledForAi?: boolean;
 }
 
 export interface McpToolInfo {
@@ -733,4 +742,14 @@ export interface McpToolInfo {
   qualifiedName: string;
   description?: string;
   inputSchema: Record<string, unknown>;
+}
+
+export function isValidMcpServerId(id: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(id);
+}
+
+export interface McpClientStatus {
+  serverId: string;
+  serverName: string;
+  toolsCount: number;
 }

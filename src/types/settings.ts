@@ -3,7 +3,7 @@ import type { Value } from './connection';
 
 import type { ThemePreference } from './theme';
 import type { MonitorSettings } from './dashboard';
-import type { McpServerConfig } from './diagnosis';
+import type { McpServerConfig } from './mcp';
 
 export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
 

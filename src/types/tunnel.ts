@@ -46,3 +46,15 @@ export interface SavedTunnel {
   httpProxy?: HttpProxyTunnelConfig;
   websocket?: WebSocketTunnelConfig;
 }
+
+export interface SavedTunnelSshConfig {
+  enabled: boolean;
+  host: string;
+  port: number;
+  username: string;
+  authMethod: string;
+  password?: string;
+  privateKeyPath?: string;
+  passphrase?: string;
+  jump?: SavedTunnelSshConfig;
+}

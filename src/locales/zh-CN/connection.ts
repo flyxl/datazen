@@ -113,7 +113,8 @@ const pack = {
   'newConn.wsModeRaw': '原始二进制',
   'newConn.wsAuthToken': '鉴权 Token（可选）',
   'newConn.wsTimeout': '连接超时（秒）',
-  'newConn.wsHint': '经 WebSocket 中继转发。datazen_v1 用 open/opened 协商目标；raw_binary 直接透传字节。',
+  'newConn.wsHint':
+    '经 WebSocket 中继转发。datazen_v1 用 open/opened 协商目标；raw_binary 直接透传字节。',
   'newConn.sshTunnel': '通过 SSH 隧道连接',
   'newConn.authMethod': '认证方式',
   'newConn.authPassword': '密码',
@@ -147,6 +148,7 @@ const pack = {
   'newConn.colorOrange': '橙色',
   'newConn.colorYellow': '黄色',
   'newConn.colorGreen': '绿色',
+  'newConn.colorBlue': '蓝色',
   'newConn.colorPurple': '紫色',
   'newConn.colorPink': '粉色',
   'newConn.colorGray': '灰色',
