@@ -196,6 +196,7 @@ pub(crate) async fn get_open_databases_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<Vec<String>, CommandError> {
+    let start = std::time::Instant::now();
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -210,6 +211,12 @@ pub(crate) async fn get_open_databases_impl(
         .cmd_err("get_open_databases")?;
     open.sort();
     open.dedup();
+    tracing::info!(
+        %db_session_id,
+        count = open.len(),
+        ms = start.elapsed().as_millis() as u64,
+        "get_open_databases OK"
+    );
     Ok(open)
 }
 
