@@ -178,9 +178,12 @@ impl From<&LoadedWapp> for WappSummary {
     }
 }
 
-include!("wapps_impls.rs");
-include!("wapps_commands.rs");
+mod registry;
+mod storage;
+
+pub use registry::*;
+pub use storage::*;
 
 #[cfg(test)]
-#[path = "wapps_tests.rs"]
+#[path = "tests.rs"]
 mod tests;

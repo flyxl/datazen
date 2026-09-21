@@ -717,3 +717,10 @@ mod tests {
         assert!(parse_css_hex_color("rgb(1,2,3)").is_none());
     }
 }
+
+/// Restart the whole app (used after operations that must re-read the data dir).
+#[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    tracing::info!("restart_app");
+    app.restart();
+}

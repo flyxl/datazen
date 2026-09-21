@@ -1,7 +1,13 @@
 use super::*;
 
-const SOURCE: &str = include_str!("wapps.rs");
-const BOOTSTRAP_RS: &str = include_str!("../bootstrap/run.rs");
+const SOURCE: &str = concat!(
+    include_str!("mod.rs"),
+    "\n",
+    include_str!("registry.rs"),
+    "\n",
+    include_str!("storage.rs")
+);
+const BOOTSTRAP_RS: &str = include_str!("../../bootstrap/run.rs");
 
 #[test]
 fn merged_wapp_commands_gate_override_path_in_production() {

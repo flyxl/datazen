@@ -6,6 +6,7 @@ mod datagrip;
 mod datazen;
 mod dbeaver;
 mod dbx;
+pub(crate) mod ipc;
 mod map;
 mod navicat;
 mod rncryptor;

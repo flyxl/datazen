@@ -44,7 +44,10 @@ describe('path IPC frontend wiring', () => {
     expect(src).not.toContain('@tauri-apps/api/core');
     expect(src).not.toMatch(/invoke[<(]/);
 
-    const hostBootstrap = fs.readFileSync(path.join(ROOT, '../src-tauri/src/bootstrap.rs'), 'utf8');
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/bootstrap/run.rs'),
+      'utf8',
+    );
     expect(hostBootstrap).not.toContain('adb_list_packages');
     expect(hostBootstrap).not.toContain('adb_pull_database');
 
@@ -89,7 +92,10 @@ describe('path IPC frontend wiring', () => {
     }
 
     // Host registration surface matches the merge.
-    const hostBootstrap = fs.readFileSync(path.join(ROOT, '../src-tauri/src/bootstrap.rs'), 'utf8');
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/bootstrap/run.rs'),
+      'utf8',
+    );
     expect(hostBootstrap).toContain('commands::backup_database,');
     expect(hostBootstrap).toContain('commands::restore_sql_file,');
     expect(hostBootstrap).toContain('commands::save_encryption_key_with_dialog');
@@ -156,7 +162,10 @@ describe('path IPC frontend wiring', () => {
     }
 
     // Host registration surface matches the merge.
-    const hostBootstrap = fs.readFileSync(path.join(ROOT, '../src-tauri/src/bootstrap.rs'), 'utf8');
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/bootstrap/run.rs'),
+      'utf8',
+    );
     for (const kept of [
       'commands::export_connections,',
       'commands::import_connections_preview,',
@@ -184,7 +193,7 @@ describe('path IPC frontend wiring', () => {
     expect(connection).toContain("'pick_connection_import_path_with_dialog'");
 
     const rustConfig = fs.readFileSync(
-      path.join(ROOT, '../src-tauri/src/commands/config_import_and_archive.rs'),
+      path.join(ROOT, '../src-tauri/src/commands/connection_import/ipc.rs'),
       'utf8',
     );
     expect(rustConfig).toContain('pub async fn pick_connection_import_path_with_dialog');
@@ -252,5 +261,43 @@ describe('path IPC frontend wiring', () => {
     const rustMenu = fs.readFileSync(path.join(ROOT, '../src-tauri/src/app_menu.rs'), 'utf8');
     expect(rustMenu).toContain('register_handler_once');
     expect(rustMenu).toContain('take_once_slot');
+  });
+
+  it('every statically-invoked IPC is registered in the host handler list', () => {
+    // #37 deleted `pick_app_data_import_file` from the backend and reshaped
+    // `import_app_data`'s parameters, while the frontend kept calling both.
+    // Nothing caught it: the crate still compiled, and the only guard that
+    // looked at the handler list was reading `bootstrap.rs`, which `lib.rs` had
+    // stopped compiling. Diff the two sides directly instead.
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/bootstrap/run.rs'),
+      'utf8',
+    );
+    const registered = new Set(
+      [...hostBootstrap.matchAll(/crate::commands::([a-z_0-9]+),/g)].map((m) => m[1]),
+    );
+    registered.add('rebuild_menu');
+
+    const invoked = new Map<string, string>();
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name !== '__tests__') walk(full);
+        } else if (/\.tsx?$/.test(entry.name)) {
+          const src = fs.readFileSync(full, 'utf8');
+          for (const m of src.matchAll(/invoke(?:<[^>]*>)?\(\s*'([a-z_0-9]+)'/g)) {
+            invoked.set(m[1], path.relative(ROOT, full));
+          }
+        }
+      }
+    };
+    walk(ROOT);
+
+    expect(invoked.size).toBeGreaterThan(150);
+    const missing = [...invoked]
+      .filter(([name]) => !registered.has(name))
+      .map(([name, file]) => `${name} (${file})`);
+    expect(missing, 'frontend calls IPCs the host does not register').toEqual([]);
   });
 });

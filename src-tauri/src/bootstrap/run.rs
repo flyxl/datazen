@@ -282,6 +282,7 @@ pub fn run() {
             crate::commands::detect_connection_import_path,
             crate::commands::export_app_data,
             crate::commands::import_app_data,
+            crate::commands::pick_app_data_import_file,
             crate::commands::import_connections_from_app,
             crate::commands::pick_connection_import_path_with_dialog,
             crate::commands::restart_app,
