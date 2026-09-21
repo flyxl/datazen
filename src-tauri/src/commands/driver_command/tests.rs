@@ -778,7 +778,8 @@ async fn disabling_safe_mode_allows_update_without_where() {
 
 #[test]
 fn test_tester_ipc_commands_registered_in_bootstrap() {
-    let bootstrap = include_str!("../../bootstrap.rs");
+    // The handler list lives in the split `bootstrap/run.rs`.
+    let bootstrap = include_str!("../../bootstrap/run.rs");
     for cmd in [
         "get_driver_commands",
         "get_connection_commands",
