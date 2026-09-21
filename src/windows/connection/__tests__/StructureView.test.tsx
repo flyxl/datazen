@@ -64,10 +64,13 @@ describe('StructureView', () => {
     render(<StructureView dbSessionId="sess-1" tableName="users" database="catalog_db" />);
 
     await waitFor(() => {
+      // No loaded `TableInfo` for `users` in this render → no schema is known,
+      // which is exactly what schema-less engines expect.
       expect(schemaCache.getCachedTableSchema).toHaveBeenCalledWith(
         'sess-1',
         'users',
         'catalog_db',
+        null,
       );
     });
   });

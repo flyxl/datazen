@@ -1,10 +1,49 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::db::{TableDataResult, TableInfo, TableSchema};
-use crate::services::{FilterCondition, OrderBy, QueryExecutor, SortCondition};
+use crate::services::{metadata_schema, FilterCondition, OrderBy, QueryExecutor, SortCondition};
 use std::collections::HashMap;
 use std::time::Instant;
 use tauri::State;
+
+/// The schema embedded in a qualified table reference (`sales.orders` → `sales`).
+///
+/// Metadata callers may pass either an explicit `schema` argument or a
+/// qualified `table`; the driver resolves the embedded form itself, so the host
+/// must not shadow it with a fallback default.
+fn embedded_schema_of(table: &str) -> Option<&str> {
+    let (prefix, _) = table.rsplit_once('.')?;
+    let prefix = prefix.trim().trim_matches('"');
+    (!prefix.is_empty()).then_some(prefix)
+}
+
+/// Resolve the `schema` argument for a per-table metadata read.
+///
+/// The frontend always sends an explicit schema for schema-aware engines. This
+/// is the safety net for callers that cannot know it (MCP, AI, workflow): it
+/// falls back to the connection's configured schema and then to the driver's
+/// own convention, and it never invents a schema for a driver without a schema
+/// level — such a driver rejects one outright.
+async fn resolve_metadata_schema(
+    state: &AppState,
+    db_session_id: &str,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    table: Option<&str>,
+    explicit: Option<&str>,
+) -> Option<String> {
+    let config_schema = state
+        .connection_manager
+        .get_session_config(db_session_id)
+        .await
+        .ok()
+        .and_then(|c| c.schema);
+    metadata_schema(
+        driver,
+        explicit,
+        table.and_then(embedded_schema_of),
+        config_schema.as_deref(),
+    )
+}
 
 pub(crate) async fn get_databases_impl(
     state: &AppState,
@@ -29,14 +68,15 @@ pub(crate) async fn get_tables_impl(
     state: &AppState,
     db_session_id: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<Vec<TableInfo>, CommandError> {
     let start = Instant::now();
-    tracing::info!(%db_session_id, %database, "get_tables");
+    tracing::info!(%db_session_id, %database, schema = ?schema, "get_tables");
     let data = run_schema_catalog_command(
         state,
         &db_session_id,
         "list_tables",
-        serde_json::json!({ "database": database }),
+        serde_json::json!({ "database": database, "schema": schema }),
     )
     .await?;
     let tables = parse_tables_from_command(&data);
@@ -49,16 +89,10 @@ pub(crate) async fn get_columns_impl(
     db_session_id: String,
     table: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<Vec<String>, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, "get_columns");
-    super::query::ensure_session_database(
-        state,
-        &db_session_id,
-        Some(database.as_str()),
-        "get_columns",
-    )
-    .await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -66,10 +100,25 @@ pub(crate) async fn get_columns_impl(
         .cmd_err("get_columns")?;
 
     let db = database.as_str();
+    let schema = resolve_metadata_schema(
+        state,
+        &db_session_id,
+        driver.as_ref(),
+        Some(&table),
+        schema.as_deref(),
+    )
+    .await;
 
     let cached = state
         .schema_cache
-        .get_columns(&db_session_id, db, &table, &driver, &handle)
+        .get_columns(
+            &db_session_id,
+            db,
+            schema.as_deref(),
+            &table,
+            &driver,
+            &handle,
+        )
         .await
         .cmd_err("get_columns")?;
 
@@ -82,16 +131,10 @@ pub(crate) async fn get_columns_typed_impl(
     db_session_id: String,
     table: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<Vec<crate::db::ColumnSchema>, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, "get_columns_typed");
-    super::query::ensure_session_database(
-        state,
-        &db_session_id,
-        Some(database.as_str()),
-        "get_columns_typed",
-    )
-    .await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -99,10 +142,25 @@ pub(crate) async fn get_columns_typed_impl(
         .cmd_err("get_columns_typed")?;
 
     let db = database.as_str();
+    let schema = resolve_metadata_schema(
+        state,
+        &db_session_id,
+        driver.as_ref(),
+        Some(&table),
+        schema.as_deref(),
+    )
+    .await;
 
     let cached = state
         .schema_cache
-        .get_columns(&db_session_id, db, &table, &driver, &handle)
+        .get_columns(
+            &db_session_id,
+            db,
+            schema.as_deref(),
+            &table,
+            &driver,
+            &handle,
+        )
         .await
         .cmd_err("get_columns_typed")?;
 
@@ -114,20 +172,10 @@ pub(crate) async fn get_all_columns_impl(
     state: &AppState,
     db_session_id: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<HashMap<String, Vec<String>>, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, "get_all_columns");
-    // Pin the session to the caller's target database first (same mechanism
-    // as get_columns/get_table_schema) so batch column reads never resolve
-    // against a stale session database when the panel targets another db.
-    super::query::ensure_session_database(
-        state,
-        &db_session_id,
-        Some(database.as_str()),
-        "get_all_columns",
-    )
-    .await?;
-
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -135,9 +183,17 @@ pub(crate) async fn get_all_columns_impl(
         .cmd_err("get_all_columns")?;
 
     let database = database.as_str();
+    let schema = resolve_metadata_schema(
+        state,
+        &db_session_id,
+        driver.as_ref(),
+        None,
+        schema.as_deref(),
+    )
+    .await;
 
     let raw = driver
-        .get_all_columns(&handle, database)
+        .get_all_columns(&handle, database, schema.as_deref())
         .await
         .cmd_err("get_all_columns")?;
 
@@ -155,22 +211,29 @@ pub(crate) async fn get_table_schema_impl(
     db_session_id: String,
     table: String,
     database_pin: String,
+    schema: Option<String>,
 ) -> Result<TableSchema, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, "get_table_schema");
-    super::query::ensure_session_database(
-        state,
-        &db_session_id,
-        Some(database_pin.as_str()),
-        "get_table_schema",
-    )
-    .await?;
 
     let database = database_pin.as_str();
+    let (driver, _handle) = state
+        .connection_manager
+        .get_session(&db_session_id)
+        .await
+        .cmd_err("get_table_schema")?;
+    let schema = resolve_metadata_schema(
+        state,
+        &db_session_id,
+        driver.as_ref(),
+        Some(&table),
+        schema.as_deref(),
+    )
+    .await;
 
     if let Some(schema) = state
         .schema_cache
-        .try_get_cached_schema(&db_session_id, database, &table)
+        .try_get_cached_schema(&db_session_id, database, schema.as_deref(), &table)
         .await
     {
         tracing::info!(%db_session_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK (cache)");
@@ -181,18 +244,24 @@ pub(crate) async fn get_table_schema_impl(
         state,
         &db_session_id,
         "get_table_schema",
-        serde_json::json!({ "table": table }),
+        serde_json::json!({ "table": table, "database": database, "schema": schema }),
     )
     .await?;
-    let schema = parse_table_schema_from_command(&data).ok_or_else(|| {
+    let table_schema = parse_table_schema_from_command(&data).ok_or_else(|| {
         CommandError::Internal("get_table_schema: missing schema in command result".into())
     })?;
     state
         .schema_cache
-        .store_table_schema(&db_session_id, database, &table, schema.clone())
+        .store_table_schema(
+            &db_session_id,
+            database,
+            schema.as_deref(),
+            &table,
+            table_schema.clone(),
+        )
         .await;
-    tracing::info!(%db_session_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK");
-    Ok(schema)
+    tracing::info!(%db_session_id, %table, cols = table_schema.columns.len(), indexes = table_schema.indexes.len(), fks = table_schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK");
+    Ok(table_schema)
 }
 
 pub(crate) async fn get_table_data_impl(
@@ -206,32 +275,37 @@ pub(crate) async fn get_table_data_impl(
     skip_count: Option<bool>,
     filter_logic: Option<String>,
     database: Option<String>,
+    schema: Option<String>,
 ) -> Result<TableDataResult, CommandError> {
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, page, page_size, "get_table_data");
-    // F1: optional explicit database pin — switch the session to the caller's
-    // target database before reading (same mechanism as the query-family
-    // commands), so `config.database` below qualifies rows correctly even when
-    // the table lives outside the session's current active database.
-    super::query::ensure_session_database(
-        state,
-        &db_session_id,
-        database.as_deref(),
-        "get_table_data",
-    )
-    .await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
         .await
         .cmd_err("get_table_data")?;
 
+    // The caller's explicit target wins; the session's configured database is
+    // only a fallback for callers that pass none. Reading `config.database`
+    // unconditionally (the old behavior) silently ignored the request and
+    // resolved columns against whatever database the session sat on.
     let config = state
         .connection_manager
         .get_session_config(&db_session_id)
         .await
         .cmd_err("get_table_data")?;
-    let database = config.database.as_deref().unwrap_or("default");
+    let database = database
+        .as_deref()
+        .map(str::trim)
+        .filter(|db| !db.is_empty())
+        .or(config.database.as_deref())
+        .unwrap_or("default");
+    let schema = metadata_schema(
+        driver.as_ref(),
+        schema.as_deref(),
+        None,
+        config.schema.as_deref(),
+    );
 
     let order = sorts
         .and_then(|list| list.into_iter().next())
@@ -249,6 +323,7 @@ pub(crate) async fn get_table_data_impl(
             &handle,
             &db_session_id,
             database,
+            schema.as_deref(),
             &table,
             page,
             page_size,
@@ -267,25 +342,44 @@ pub(crate) async fn get_er_data_impl(
     state: &AppState,
     db_session_id: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<Vec<TableSchema>, CommandError> {
     let start = Instant::now();
-    tracing::info!(%db_session_id, %database, "get_er_data");
+    tracing::info!(%db_session_id, %database, schema = ?schema, "get_er_data");
+
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
         .await
         .cmd_err("get_er_data")?;
 
+    // No session pin and no `USE`: every read below carries its own explicit
+    // target, and each table's own schema (from `TableInfo`) is authoritative
+    // over the caller's filter — a filter selects *which* tables to draw, it
+    // does not relocate the ones that came back.
     let tables = driver
-        .get_tables(&handle, &database)
+        .get_tables(&handle, &database, schema.as_deref())
         .await
         .cmd_err("get_er_data")?;
 
     let mut schemas = Vec::with_capacity(tables.len());
     for table in &tables {
+        let table_schema = metadata_schema(
+            driver.as_ref(),
+            schema.as_deref(),
+            table.schema.as_deref(),
+            None,
+        );
         match state
             .schema_cache
-            .get_table_schema(&db_session_id, &database, &table.name, &driver, &handle)
+            .get_table_schema(
+                &db_session_id,
+                &database,
+                table_schema.as_deref(),
+                &table.name,
+                &driver,
+                &handle,
+            )
             .await
         {
             Ok(schema) => schemas.push(schema),
@@ -479,8 +573,9 @@ pub async fn get_tables(
     state: State<'_, AppState>,
     db_session_id: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<Vec<TableInfo>, CommandError> {
-    get_tables_impl(&state, db_session_id, database).await
+    get_tables_impl(&state, db_session_id, database, schema).await
 }
 
 #[tauri::command]
@@ -489,8 +584,9 @@ pub async fn get_columns(
     db_session_id: String,
     table: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<Vec<String>, CommandError> {
-    get_columns_impl(&state, db_session_id, table, database).await
+    get_columns_impl(&state, db_session_id, table, database, schema).await
 }
 
 #[tauri::command]
@@ -499,8 +595,9 @@ pub async fn get_columns_typed(
     db_session_id: String,
     table: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<Vec<crate::db::ColumnSchema>, CommandError> {
-    get_columns_typed_impl(&state, db_session_id, table, database).await
+    get_columns_typed_impl(&state, db_session_id, table, database, schema).await
 }
 
 #[tauri::command]
@@ -508,8 +605,9 @@ pub async fn get_all_columns(
     state: State<'_, AppState>,
     db_session_id: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<HashMap<String, Vec<String>>, CommandError> {
-    get_all_columns_impl(&state, db_session_id, database).await
+    get_all_columns_impl(&state, db_session_id, database, schema).await
 }
 
 #[tauri::command]
@@ -518,8 +616,9 @@ pub async fn get_table_schema(
     db_session_id: String,
     table: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<TableSchema, CommandError> {
-    get_table_schema_impl(&state, db_session_id, table, database).await
+    get_table_schema_impl(&state, db_session_id, table, database, schema).await
 }
 
 #[tauri::command]
@@ -534,6 +633,7 @@ pub async fn get_table_data(
     skip_count: Option<bool>,
     filter_logic: Option<String>,
     database: Option<String>,
+    schema: Option<String>,
 ) -> Result<TableDataResult, CommandError> {
     get_table_data_impl(
         &state,
@@ -546,6 +646,7 @@ pub async fn get_table_data(
         skip_count,
         filter_logic,
         database,
+        schema,
     )
     .await
 }
@@ -555,8 +656,9 @@ pub async fn get_er_data(
     state: State<'_, AppState>,
     db_session_id: String,
     database: String,
+    schema: Option<String>,
 ) -> Result<Vec<TableSchema>, CommandError> {
-    get_er_data_impl(&state, db_session_id, database).await
+    get_er_data_impl(&state, db_session_id, database, schema).await
 }
 
 #[cfg(test)]
@@ -577,22 +679,33 @@ mod tests {
             .unwrap();
         assert_eq!(dbs, vec!["app"]);
 
-        let tables = get_tables_impl(&test.state, conn_id.clone(), "app".into())
+        let tables = get_tables_impl(&test.state, conn_id.clone(), "app".into(), None)
             .await
             .unwrap();
         assert_eq!(tables.len(), 1);
         assert_eq!(tables[0].name, "users");
 
-        let cols = get_columns_impl(&test.state, conn_id.clone(), "users".into(), "app".into())
-            .await
-            .unwrap();
+        let cols = get_columns_impl(
+            &test.state,
+            conn_id.clone(),
+            "users".into(),
+            "app".into(),
+            None,
+        )
+        .await
+        .unwrap();
         assert!(cols.contains(&"id".to_string()));
         assert!(cols.contains(&"name".to_string()));
 
-        let schema =
-            get_table_schema_impl(&test.state, conn_id.clone(), "users".into(), "app".into())
-                .await
-                .unwrap();
+        let schema = get_table_schema_impl(
+            &test.state,
+            conn_id.clone(),
+            "users".into(),
+            "app".into(),
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(schema.table_name, "users");
         assert_eq!(schema.columns.len(), 2);
 
@@ -610,12 +723,13 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
         assert_eq!(data.total_rows, Some(2));
 
-        let er = get_er_data_impl(&test.state, conn_id, "app".into())
+        let er = get_er_data_impl(&test.state, conn_id, "app".into(), None)
             .await
             .unwrap();
         assert_eq!(er.len(), 1);
@@ -637,9 +751,11 @@ mod tests {
     #[tokio::test]
     async fn schema_commands_error_when_not_connected() {
         let test = TestAppState::new().await;
-        assert!(get_tables_impl(&test.state, "missing".into(), "app".into())
-            .await
-            .is_err());
+        assert!(
+            get_tables_impl(&test.state, "missing".into(), "app".into(), None)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -679,6 +795,7 @@ mod tests {
             None,
             None,
             Some(true),
+            None,
             None,
             None,
         )
@@ -846,6 +963,7 @@ mod tests {
             Some(true),
             Some("or".into()),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -853,11 +971,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_table_data_pins_session_to_target_database() {
+    async fn get_table_data_reads_the_target_database_without_switching() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("tdata-pin-db").await;
         // Sample config pins database = "app"; opening a table that lives in
-        // another database must switch the session before reading (BUG-002).
+        // another database must read *that* database (BUG-002) — via the
+        // explicit argument, never by re-pointing the shared session.
         let data = get_table_data_impl(
             &test.state,
             conn_id.clone(),
@@ -869,20 +988,110 @@ mod tests {
             Some(true),
             None,
             Some("analytics".into()),
+            None,
         )
         .await
         .unwrap();
         assert_eq!(data.rows.len(), 1);
-        assert_eq!(
-            test.mock.use_database_calls(),
-            vec!["analytics".to_string()]
+        assert!(
+            test.mock.use_database_calls().is_empty(),
+            "get_table_data must not switch the session's database"
         );
+        // The session keeps its own configured database; the request target is
+        // per-call.
         let config = test
             .state
             .connection_manager
             .get_session_config(&conn_id)
             .await
             .unwrap();
-        assert_eq!(config.database.as_deref(), Some("analytics"));
+        assert_eq!(config.database.as_deref(), Some("app"));
+    }
+
+    /// Regression (BUG-003): `get_er_data` listed the requested database's
+    /// tables but read every table's schema against whatever catalog the shared
+    /// session sat on. That produced a successful but column-less schema, which
+    /// the schema cache stored under the requested database and served for its
+    /// whole TTL — empty structure view, ER diagram without columns, and a data
+    /// grid with the right row count but blank cells. Each read now carries its
+    /// own `(database, schema)` target.
+    #[tokio::test]
+    async fn get_er_data_reads_each_tables_own_schema_and_never_caches_empty() {
+        use crate::db::{ColumnSchema, TableInfo, TableType};
+
+        fn column(name: &str) -> ColumnSchema {
+            ColumnSchema {
+                name: name.into(),
+                data_type: "text".into(),
+                nullable: true,
+                default_value: None,
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            }
+        }
+
+        let opts = MockDriverOptions {
+            databases: vec!["app".into(), "analytics".into()],
+            tables_by_database: HashMap::from([(
+                "analytics".to_string(),
+                vec![TableInfo {
+                    name: "events".into(),
+                    schema: None,
+                    table_type: TableType::Table,
+                    row_count: None,
+                }],
+            )]),
+            columns_by_database: HashMap::from([(
+                "analytics".to_string(),
+                HashMap::from([(
+                    "events".to_string(),
+                    vec![column("id"), column("name"), column("created_at")],
+                )]),
+            )]),
+            ..Default::default()
+        };
+        let test = TestAppState::with_options(opts).await;
+        // Sample config pins database = "app"; the ER view targets "analytics".
+        let (_, conn_id) = test.save_and_connect("er-pin-db").await;
+
+        let schemas = get_er_data_impl(&test.state, conn_id.clone(), "analytics".into(), None)
+            .await
+            .unwrap();
+
+        assert!(
+            test.mock.use_database_calls().is_empty(),
+            "get_er_data must read each table's schema explicitly, not by switching the session"
+        );
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(
+            schemas[0].columns.len(),
+            3,
+            "columns must come from the requested database"
+        );
+
+        // The later reads of that database must see the same columns instead of
+        // a poisoned (empty) cache entry.
+        let columns = get_columns_impl(
+            &test.state,
+            conn_id.clone(),
+            "events".into(),
+            "analytics".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(columns, vec!["id", "name", "created_at"]);
+
+        let schema = get_table_schema_impl(
+            &test.state,
+            conn_id,
+            "events".into(),
+            "analytics".into(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(schema.columns.len(), 3);
     }
 }

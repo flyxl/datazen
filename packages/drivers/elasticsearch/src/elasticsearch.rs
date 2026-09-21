@@ -8,6 +8,13 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
 
+/// The single logical namespace every Elasticsearch cluster exposes.
+///
+/// Elasticsearch has no database/schema hierarchy: indices live in one
+/// cluster-wide namespace, which is why [`DatabaseDriver::get_databases`]
+/// reports exactly this name.
+const DEFAULT_DATABASE: &str = "default";
+
 pub struct ElasticsearchDriver {
     clients: RwLock<HashMap<String, (reqwest::Client, String)>>,
 }
@@ -25,6 +32,21 @@ impl ElasticsearchDriver {
     ) -> Result<&'a (reqwest::Client, String), DriverError> {
         map.get(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
+    }
+
+    /// Logical namespace a metadata read targets.
+    ///
+    /// The explicit `database` argument is authoritative and is never read from
+    /// mutable session state — this driver keeps none (`use_database` is gone).
+    /// A blank argument falls back to the cluster's single namespace, which is
+    /// exactly the pre-contract behavior.
+    fn resolve_database(database: &str) -> &str {
+        let trimmed = database.trim();
+        if trimmed.is_empty() {
+            DEFAULT_DATABASE
+        } else {
+            trimmed
+        }
     }
 
     async fn sql_json(
@@ -179,8 +201,14 @@ impl DatabaseDriver for ElasticsearchDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // Elasticsearch's namespace *is* the cluster, so a schema argument is a
+        // caller bug (the validator rejects it).
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        let database = Self::resolve_database(database);
+        tracing::debug!(database, "elasticsearch: listing indices");
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let resp = client
@@ -218,7 +246,12 @@ impl DatabaseDriver for ElasticsearchDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let database = Self::resolve_database(database);
+        tracing::debug!(database, table, "elasticsearch: reading index mapping");
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let resp = client
@@ -266,6 +299,30 @@ impl DatabaseDriver for ElasticsearchDriver {
             indexes: Vec::new(),
             foreign_keys: Vec::new(),
         })
+    }
+
+    async fn dump_table_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<String, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        sql_dump::dump_table_ddl_from_schema(self, handle, table, database, schema).await
+    }
+
+    async fn dump_view_ddl(
+        &self,
+        _handle: &ConnectionHandle,
+        view: &str,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<String, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        Err(DriverError::NotSupported(format!(
+            "View DDL dump is not supported for {view}"
+        )))
     }
 
     async fn query(
@@ -578,5 +635,73 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn offline_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "offline".into(),
+            pool_id: "offline".into(),
+        }
+    }
+
+    #[test]
+    fn elasticsearch_has_no_schema_level() {
+        assert!(!ElasticsearchDriver::new().has_schema_level());
+    }
+
+    #[test]
+    fn resolve_database_falls_back_to_the_single_namespace() {
+        assert_eq!(
+            ElasticsearchDriver::resolve_database("analytics"),
+            "analytics"
+        );
+        assert_eq!(
+            ElasticsearchDriver::resolve_database("  analytics  "),
+            "analytics"
+        );
+        // Blank keeps the pre-contract behavior: the cluster namespace.
+        assert_eq!(ElasticsearchDriver::resolve_database(""), "default");
+        assert_eq!(ElasticsearchDriver::resolve_database("   "), "default");
+    }
+
+    /// A schema argument is a caller bug on a schema-less engine, and the
+    /// validator must reject it *before* any pool lookup — so this needs no
+    /// live Elasticsearch.
+    #[tokio::test]
+    async fn schema_argument_is_rejected_before_touching_the_connection() {
+        let driver = ElasticsearchDriver::new();
+        let handle = offline_handle();
+
+        let err = driver
+            .get_tables(&handle, "default", Some("public"))
+            .await
+            .expect_err("get_tables must reject a schema");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "{err:?}");
+
+        let err = driver
+            .get_table_schema(&handle, "users", "default", Some("public"))
+            .await
+            .expect_err("get_table_schema must reject a schema");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "{err:?}");
+
+        let err = driver
+            .dump_table_ddl(&handle, "users", "default", Some("public"))
+            .await
+            .expect_err("dump_table_ddl must reject a schema");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "{err:?}");
+
+        let err = driver
+            .dump_view_ddl(&handle, "users_view", "default", Some("public"))
+            .await
+            .expect_err("dump_view_ddl must reject a schema");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "{err:?}");
+
+        // No schema: validation passes and the read proceeds to the pool
+        // lookup, which fails for this never-connected handle.
+        let err = driver
+            .get_tables(&handle, "default", None)
+            .await
+            .expect_err("no pool for an offline handle");
+        assert!(matches!(err, DriverError::ConnectionFailed(_)), "{err:?}");
     }
 }

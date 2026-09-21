@@ -318,7 +318,7 @@ describe('TableStructureEditor branches', () => {
     mockGetTableSchema.mockResolvedValue(ALTER_SCHEMA);
     await mountAndLoad({ mode: 'alter', tableName: 'users' });
 
-    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users', 'db_b');
+    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users', 'db_b', null);
     expect(screen.getByTestId('column-table')).toBeInTheDocument();
     expect(mockGetStructureCapabilities).toHaveBeenCalledWith('conn-1');
   });

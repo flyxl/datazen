@@ -703,6 +703,7 @@ mod tests {
             &self,
             _handle: &datazen_driver_api::ConnectionHandle,
             _database: &str,
+            _schema: Option<&str>,
         ) -> Result<Vec<datazen_driver_api::TableInfo>, datazen_driver_api::DriverError> {
             Ok(vec![])
         }
@@ -711,6 +712,8 @@ mod tests {
             &self,
             _handle: &datazen_driver_api::ConnectionHandle,
             _table: &str,
+            _database: &str,
+            _schema: Option<&str>,
         ) -> Result<datazen_driver_api::TableSchema, datazen_driver_api::DriverError> {
             Ok(datazen_driver_api::TableSchema {
                 table_name: String::new(),

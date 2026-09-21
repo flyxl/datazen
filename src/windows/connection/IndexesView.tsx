@@ -13,6 +13,7 @@ import { getSqlDialect } from '../../lib/sqlDialects';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { suggestedIndexName } from './structure/StructureIndexTable';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
+import { useSchemaStore } from '../../stores/schemaStore';
 
 interface IndexesViewProps {
   dbSessionId: string;
@@ -291,12 +292,14 @@ export function IndexesView({
   const [submitting, setSubmitting] = useState(false);
   const [version, setVersion] = useState(0);
 
+  const tableSchema = useSchemaStore((st) => st.schemaOfRelation(tableName, dbSessionId));
+
   const loadSchema = useCallback(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    getCachedTableSchema(dbSessionId, tableName, database)
+    getCachedTableSchema(dbSessionId, tableName, database, tableSchema)
       .then((schema: TableSchema) => {
         if (!cancelled) {
           setIndexes(schema.indexes);
@@ -316,7 +319,7 @@ export function IndexesView({
     return () => {
       cancelled = true;
     };
-  }, [dbSessionId, tableName, database, version, t]);
+  }, [dbSessionId, tableName, database, tableSchema, version, t]);
 
   useEffect(() => loadSchema(), [loadSchema]);
 

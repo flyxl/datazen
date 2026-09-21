@@ -13,6 +13,7 @@ use crate::data_transfer::{
     execute_transfer_data, is_same_family, source_schema_to_target_ir, DropCreateContext,
     TransferExecutionResult, TransferJob, TransferMode, ValueFormatter,
 };
+use crate::services::metadata_schema;
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use datazen_driver_api::TableType;
 
@@ -113,7 +114,7 @@ pub(crate) async fn execute_data_transfer_impl(
         .cmd_err("execute_data_transfer")?;
 
     let src_tables = src_driver
-        .get_tables(&src_handle, &job.source.database)
+        .get_tables(&src_handle, &job.source.database, None)
         .await
         .cmd_err("execute_data_transfer")?;
 
@@ -122,7 +123,16 @@ pub(crate) async fn execute_data_transfer_impl(
         .iter()
         .filter(|t| matches!(t.table_type, TableType::Table))
     {
-        if let Ok(schema) = src_driver.get_table_schema(&src_handle, &table.name).await {
+        let schema = metadata_schema(src_driver.as_ref(), None, table.schema.as_deref(), None);
+        if let Ok(schema) = src_driver
+            .get_table_schema(
+                &src_handle,
+                &table.name,
+                &job.source.database,
+                schema.as_deref(),
+            )
+            .await
+        {
             source_schemas.insert(table.name.clone(), schema);
         }
     }

@@ -59,7 +59,7 @@ describe('tableSchemaForSql', () => {
         databaseType: 'postgresql',
       });
 
-      expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'public.users', 'app');
+      expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'public.users', 'app', 'public');
       expect(result?.tableName).toBe('users');
       expect(result?.columns).toHaveLength(1);
     });
@@ -111,8 +111,8 @@ describe('tableSchemaForSql', () => {
         databaseType: 'mysql',
       });
 
-      expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'users', 'mydb');
-      expect(getColumns).toHaveBeenCalledWith('sess-1', 'users', 'mydb');
+      expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'users', 'mydb', 'mydb');
+      expect(getColumns).toHaveBeenCalledWith('sess-1', 'users', 'mydb', 'mydb');
       expect(result?.columns.map((c) => c.name)).toEqual(['id', 'name']);
     });
 

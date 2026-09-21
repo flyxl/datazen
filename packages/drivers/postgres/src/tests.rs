@@ -95,20 +95,22 @@ fn resolve_connect_database_defaults_to_postgres() {
 }
 
 #[tokio::test]
-async fn use_database_is_wired() {
+async fn pool_for_target_rejects_a_blank_foreign_database() {
     let driver = PostgresDriver::new();
     let handle = ConnectionHandle {
         id: "conn".into(),
         pool_id: "missing-pool".into(),
     };
 
-    let err = driver.use_database(&handle, "").await.unwrap_err();
+    // A blank name means "the handle's own database", and that pool is missing.
+    let err = driver.pool_for_target(&handle, "").await.unwrap_err();
     assert!(
-        matches!(err, DriverError::InvalidConfig(_)),
-        "expected InvalidConfig, got {err:?}"
+        matches!(err, DriverError::ConnectionFailed(_)),
+        "expected ConnectionFailed, got {err:?}"
     );
 
-    let err = driver.use_database(&handle, "app_db").await.unwrap_err();
+    // A named foreign database needs a connect template, which is also missing.
+    let err = driver.pool_for_target(&handle, "app_db").await.unwrap_err();
     assert!(
         matches!(err, DriverError::ConnectionFailed(_)),
         "expected ConnectionFailed, got {err:?}"
@@ -116,7 +118,7 @@ async fn use_database_is_wired() {
 }
 
 #[tokio::test]
-async fn use_database_noop_when_already_active() {
+async fn pool_for_target_reuses_the_primary_pool_for_the_active_database() {
     let driver = PostgresDriver::new();
     let pool_id = "test-pool".to_string();
     driver
@@ -124,21 +126,50 @@ async fn use_database_noop_when_already_active() {
         .write()
         .await
         .insert(pool_id.clone(), "already".to_string());
+    let primary = sqlx::postgres::PgPoolOptions::new()
+        .connect_lazy("postgres://localhost/nonexistent")
+        .expect("lazy pool");
+    driver.pools.write().await.insert(pool_id.clone(), primary);
 
     let handle = ConnectionHandle {
         id: "conn".into(),
         pool_id,
     };
 
-    // No pool registered — would fail if reconnect were attempted; no-op must short-circuit.
+    // Same database (trimmed) must short-circuit to the handle's own pool rather
+    // than opening a second one — this is what keeps `USE`-style switching gone.
+    assert!(driver.is_active_database(&handle, "already").await);
+    assert!(
+        driver
+            .is_active_database(&handle, "  already  ".trim())
+            .await
+    );
     driver
-        .use_database(&handle, "already")
+        .pool_for_target(&handle, "already")
         .await
-        .expect("same database should be a no-op");
-    driver
-        .use_database(&handle, "  already  ")
+        .expect("active database resolves to the primary pool");
+    assert!(driver.database_pools.read().await.is_empty());
+
+    // The handle's own database can never be "closed" as a foreign pool.
+    let err = driver
+        .close_database_pool(&handle, "already")
         .await
-        .expect("trimmed match should be a no-op");
+        .unwrap_err();
+    assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+}
+
+#[tokio::test]
+async fn closing_an_unopened_database_pool_is_a_noop() {
+    let driver = PostgresDriver::new();
+    let handle = ConnectionHandle {
+        id: "conn".into(),
+        pool_id: "missing-pool".into(),
+    };
+    let closed = driver
+        .close_database_pool(&handle, "app_db")
+        .await
+        .expect("closing a never-opened pool is not an error");
+    assert!(!closed);
 }
 
 #[tokio::test]

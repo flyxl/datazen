@@ -20,6 +20,8 @@
     {
       "inputProperties": [
         "connection_id",
+        "database",
+        "schema",
         "table"
       ],
       "name": "describe_table",
@@ -42,6 +44,8 @@
     {
       "inputProperties": [
         "connection_id",
+        "database",
+        "schema",
         "table"
       ],
       "name": "get_schema",
@@ -65,7 +69,8 @@
     {
       "inputProperties": [
         "connection_id",
-        "database"
+        "database",
+        "schema"
       ],
       "name": "list_tables",
       "requiredInputProperties": [
@@ -103,7 +108,8 @@
         "connection_id",
         "database",
         "limit",
-        "pattern"
+        "pattern",
+        "schema"
       ],
       "name": "search_tables",
       "requiredInputProperties": [

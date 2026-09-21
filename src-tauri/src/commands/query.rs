@@ -12,43 +12,6 @@ use datazen_driver_api::{QueryExecutionId, QueryStreamCallback, QueryStreamEvent
 use tauri::ipc::Channel;
 use tauri::State;
 
-/// F1 (IPC refactor): query-family commands accept an explicit `database` pin
-/// instead of relying on a prior `use_database` IPC round-trip. When the pin
-/// differs from the session's active database, switch the live session first;
-/// `None` (or blank) is a no-op so legacy callers keep their behavior.
-pub(crate) async fn ensure_session_database(
-    state: &AppState,
-    db_session_id: &str,
-    database: Option<&str>,
-    op: &str,
-) -> Result<(), CommandError> {
-    let Some(database) = database.map(str::trim).filter(|db| !db.is_empty()) else {
-        return Ok(());
-    };
-    let active = state
-        .connection_manager
-        .get_session_config(db_session_id)
-        .await
-        .cmd_err(op)?
-        .database;
-    if active.as_deref() == Some(database) {
-        return Ok(());
-    }
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(db_session_id)
-        .await
-        .cmd_err(op)?;
-    driver.use_database(&handle, database).await.cmd_err(op)?;
-    state
-        .connection_manager
-        .set_active_database(db_session_id, database)
-        .await
-        .cmd_err(op)?;
-    tracing::info!(%db_session_id, database = %database, "session active database switched");
-    Ok(())
-}
-
 pub(crate) async fn execute_query_impl(
     state: &AppState,
     db_session_id: String,
@@ -61,21 +24,20 @@ pub(crate) async fn execute_query_impl(
         sql_preview = %crate::log_redact::sql_preview_for_log(&sql),
         "execute_query sql"
     );
-    ensure_session_database(state, &db_session_id, database.as_deref(), "execute_query").await?;
     let result = super::driver_command::execute_driver_command_impl(
         state,
         super::driver_command::ExecuteDriverCommandRequest {
             db_session_id: Some(db_session_id),
             driver_type: None,
             command: "query".into(),
-            // F7: hand the pin to the driver command too, so rewrite-capable
-            // drivers qualify unqualified relations inline (`db`.`t`) instead of
-            // relying only on the session-level `USE` switch. Session switches can
-            // go stale on pooled connections (a recycled connection can still sit
-            // on the default database), which made a query bound to a non-first
-            // database run against the first database after navigating away and
-            // back. `ensure_session_database` above stays as the pool-switch
-            // fallback for drivers without the rewrite capability.
+            // F7: the target rides the command envelope so rewrite-capable
+            // drivers qualify unqualified relations inline (`db`.`t`). There is
+            // deliberately no session switch: a `USE` on a pooled connection can
+            // go stale (a recycled connection still sits on the default
+            // database), which is how a query bound to a non-first database
+            // ended up running against the first one after navigating away and
+            // back. `schema` stays `None` so a hand-written query keeps resolving
+            // through the connection's own default (PostgreSQL `search_path`).
             database,
             schema: None,
             input: serde_json::json!({ "sql": sql }),
@@ -108,23 +70,14 @@ pub(crate) async fn execute_query_stream_impl(
     on_event: QueryStreamCallback,
     opts: ExecuteQueryStreamOpts,
 ) -> Result<(), CommandError> {
-    ensure_session_database(
-        state,
-        &db_session_id,
-        database.as_deref(),
-        "execute_query_stream",
-    )
-    .await?;
     execute_driver_command_stream_impl(
         state,
         ExecuteDriverCommandStreamRequest {
             db_session_id: Some(db_session_id),
             command: "query_stream".into(),
-            // F7: hand the pin to the driver command so rewrite-capable drivers
-            // qualify unqualified relations inline (`db`.`t`), independent of the
-            // sometimes-stale session `USE` state on pooled connections. The
-            // `ensure_session_database` call above remains the pool-switch
-            // fallback for drivers without the rewrite capability.
+            // F7: same envelope targeting as `execute_query` — rewrite-capable
+            // drivers qualify unqualified relations inline (`db`.`t`) and no
+            // session switch is performed on any path.
             database,
             schema: None,
             input: serde_json::json!({ "sql": sql }),
@@ -147,12 +100,31 @@ pub(crate) async fn get_explain_impl(
     database: Option<String>,
 ) -> Result<ExplainResult, CommandError> {
     tracing::debug!(%db_session_id, "get_explain");
-    ensure_session_database(state, &db_session_id, database.as_deref(), "get_explain").await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
         .await
         .cmd_err("get_explain")?;
+
+    // The plan must be produced for the caller's target, not for whatever
+    // database the pooled connection defaults to. Rewrite-capable drivers
+    // qualify the SQL inline; there is no session switch to fall back on.
+    let config = state
+        .connection_manager
+        .get_session_config(&db_session_id)
+        .await
+        .cmd_err("get_explain")?;
+    let database = database
+        .as_deref()
+        .map(str::trim)
+        .filter(|db| !db.is_empty())
+        .or(config.database.as_deref());
+    let schema =
+        crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
+    let sql = match driver.qualify_sql_target(&sql, database, schema.as_deref()) {
+        Some(qualified) => qualified,
+        None => sql,
+    };
 
     driver.explain(&handle, &sql).await.cmd_err("get_explain")
 }
@@ -605,6 +577,8 @@ mod tests {
                     supports_query_execution_cancel: true,
                     supports_explain: true,
                     supports_streaming_results: true,
+                    supports_offset: true,
+                    has_schema_level: true,
                 },
             )
             .await;
@@ -667,6 +641,8 @@ mod tests {
                     supports_query_execution_cancel: false,
                     supports_explain: true,
                     supports_streaming_results: true,
+                    supports_offset: true,
+                    has_schema_level: true,
                 },
             )
             .await;
@@ -708,6 +684,8 @@ mod tests {
                     supports_query_execution_cancel: true,
                     supports_explain: true,
                     supports_streaming_results: true,
+                    supports_offset: true,
+                    has_schema_level: true,
                 },
             )
             .await;
@@ -938,12 +916,14 @@ mod tests {
         .is_err());
     }
 
+    /// BUG-003 regression: a query aimed at another database must never be
+    /// served by re-pointing the shared pooled session. The target rides the
+    /// command envelope so the driver qualifies the SQL itself.
     #[tokio::test]
-    async fn execute_query_switches_session_database_when_pinned_differs() {
+    async fn execute_query_never_switches_the_session_database() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("switch-db-cfg").await;
-        // Sample config pins database = "app"; pinning another database must
-        // switch the live session before executing and update the session record.
+
         let result = execute_query_impl(
             &test.state,
             conn_id.clone(),
@@ -953,45 +933,33 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(result.results.len(), 1);
-        assert_eq!(
-            test.mock.use_database_calls(),
-            vec!["analytics".to_string()]
+
+        // The whole point of the refactor: no session switch, ever.
+        assert!(
+            test.mock.use_database_calls().is_empty(),
+            "execute_query must not switch the session's database"
         );
+        // ...and the session record still reports its own configured database,
+        // because the request target is per-call, not session state.
         let config = test
             .state
             .connection_manager
             .get_session_config(&conn_id)
             .await
             .unwrap();
-        assert_eq!(config.database.as_deref(), Some("analytics"));
+        assert_eq!(config.database.as_deref(), Some("app"));
     }
 
     #[tokio::test]
-    async fn execute_query_skips_switch_when_same_or_none() {
+    async fn execute_query_never_switches_for_same_blank_or_absent_pin() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("no-switch-db-cfg").await;
 
-        execute_query_impl(&test.state, conn_id.clone(), "SELECT 1".into(), None)
-            .await
-            .unwrap();
-        // Same as the session's active database ("app") — no driver switch.
-        execute_query_impl(
-            &test.state,
-            conn_id.clone(),
-            "SELECT 1".into(),
-            Some("app".into()),
-        )
-        .await
-        .unwrap();
-        // Blank pins are treated like None.
-        execute_query_impl(
-            &test.state,
-            conn_id.clone(),
-            "SELECT 1".into(),
-            Some("   ".into()),
-        )
-        .await
-        .unwrap();
+        for pin in [None, Some("app".to_string()), Some("   ".to_string())] {
+            execute_query_impl(&test.state, conn_id.clone(), "SELECT 1".into(), pin)
+                .await
+                .unwrap();
+        }
 
         assert!(test.mock.use_database_calls().is_empty());
         let config = test
@@ -1004,18 +972,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_explain_switches_session_database_when_pinned_differs() {
+    async fn get_explain_never_switches_the_session_database() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("explain-db-cfg").await;
         get_explain_impl(
             &test.state,
-            conn_id,
+            conn_id.clone(),
             "SELECT 1".into(),
             Some("other".into()),
         )
         .await
         .unwrap();
-        assert_eq!(test.mock.use_database_calls(), vec!["other".to_string()]);
+        assert!(
+            test.mock.use_database_calls().is_empty(),
+            "get_explain must not switch the session's database"
+        );
+        let config = test
+            .state
+            .connection_manager
+            .get_session_config(&conn_id)
+            .await
+            .unwrap();
+        assert_eq!(config.database.as_deref(), Some("app"));
     }
 
     #[tokio::test]

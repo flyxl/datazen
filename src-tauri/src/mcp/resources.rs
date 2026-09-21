@@ -141,9 +141,15 @@ impl DataZenMcpServer {
                     .and_then(|a| a.get("database"))
                     .and_then(|v| v.as_str())
                     .map(String::from);
+                let schema = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("schema"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
                 self.list_tables(Parameters(ListTablesInput {
                     connection_id: connection_id.into(),
                     database,
+                    schema,
                 }))
                 .await?
             }
@@ -167,9 +173,15 @@ impl DataZenMcpServer {
                     .as_ref()
                     .and_then(|a| a.get("limit"))
                     .and_then(|v| v.as_u64());
+                let schema = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("schema"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
                 self.search_tables(Parameters(SearchTablesInput {
                     connection_id: connection_id.into(),
                     database,
+                    schema,
                     pattern: pattern.into(),
                     limit,
                 }))

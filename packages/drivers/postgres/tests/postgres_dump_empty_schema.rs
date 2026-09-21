@@ -152,7 +152,7 @@ async fn run_assertions(
     // Precondition proof: the listing carries exactly the navigation marker the
     // old pipeline choked on — SystemTable type + blank name for our schema.
     let tables = driver
-        .get_tables(handle, database)
+        .get_tables(handle, database, None)
         .await
         .map_err(|e: DriverError| format!("get_tables failed: {e}"))?;
     let marker = tables

@@ -71,6 +71,7 @@ impl QueryExecutor {
         handle: &ConnectionHandle,
         db_session_id: &str,
         database: &str,
+        schema: Option<&str>,
         table: &str,
         page: u32,
         page_size: u32,
@@ -81,7 +82,7 @@ impl QueryExecutor {
     ) -> Result<TableDataResult, DriverError> {
         let cached = self
             .schema_cache
-            .get_columns(db_session_id, database, table, driver, handle)
+            .get_columns(db_session_id, database, schema, table, driver, handle)
             .await?;
 
         let qi = |name: &str| driver.quote_ident(name);
@@ -724,7 +725,7 @@ mod tests {
 
         let result = executor
             .get_table_data(
-                &driver, &handle, "conn1", "db1", "users", 0, 50, None, None, false, None,
+                &driver, &handle, "conn1", "db1", None, "users", 0, 50, None, None, false, None,
             )
             .await
             .unwrap();

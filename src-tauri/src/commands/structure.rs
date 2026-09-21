@@ -47,7 +47,11 @@ pub(crate) async fn plan_table_structure_changes_impl(
     state: &AppState,
     db_session_id: String,
     request: StructureChangeRequest,
-    database: Option<String>,
+    // Accepted for IPC compatibility and used by the caller when the generated
+    // DDL is executed: planning itself reads only `request`, and the target
+    // database now travels with each statement's command envelope instead of
+    // being pinned onto the session first.
+    _database: Option<String>,
 ) -> Result<StructureChangePlan, CommandError> {
     let start = Instant::now();
     tracing::info!(
@@ -57,17 +61,6 @@ pub(crate) async fn plan_table_structure_changes_impl(
         table = %request.table,
         "plan_table_structure_changes"
     );
-    // F1: optional explicit database pin — same `ensure_session_database`
-    // mechanism as query/stream/get_table_data, so cross-library DDL planning
-    // and the subsequent unqualified statement execution land on the panel's
-    // target database instead of the session's previous active one.
-    super::query::ensure_session_database(
-        state,
-        &db_session_id,
-        database.as_deref(),
-        "plan_table_structure_changes",
-    )
-    .await?;
     let (driver, handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -116,10 +109,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_switches_session_database_when_pinned_differs() {
+    async fn plan_never_switches_the_session_database() {
         let test = TestAppState::with_tables().await;
         let (_, conn_id) = test.save_and_connect("struct-pin-db").await;
         // Sample config pins database = "app"; the editor targets another one.
+        // Planning reads only the request, and the target travels with the
+        // generated statements' command envelope — so nothing switches here.
         let plan = plan_table_structure_changes_impl(
             &test.state,
             conn_id.clone(),
@@ -129,9 +124,9 @@ mod tests {
         .await
         .unwrap();
         assert!(plan.statements.is_empty());
-        assert_eq!(
-            test.mock.use_database_calls(),
-            vec!["analytics".to_string()]
+        assert!(
+            test.mock.use_database_calls().is_empty(),
+            "planning DDL must not switch the session's database"
         );
         let config = test
             .state
@@ -139,7 +134,7 @@ mod tests {
             .get_session_config(&conn_id)
             .await
             .unwrap();
-        assert_eq!(config.database.as_deref(), Some("analytics"));
+        assert_eq!(config.database.as_deref(), Some("app"));
     }
 
     #[tokio::test]

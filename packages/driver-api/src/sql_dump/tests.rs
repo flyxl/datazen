@@ -191,6 +191,7 @@ impl DatabaseDriver for TableListingDriver {
         &self,
         _handle: &ConnectionHandle,
         _database: &str,
+        _schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
         Ok(self.tables.clone())
     }
@@ -199,6 +200,8 @@ impl DatabaseDriver for TableListingDriver {
         &self,
         _handle: &ConnectionHandle,
         table: &str,
+        _database: &str,
+        _schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
         // Mirrors the real drivers: the requested name is echoed back
         // verbatim into `table_name` (a blank name would flow straight
@@ -433,6 +436,7 @@ async fn restore_feed_rejects_write_sql_when_guard_read_only() {
             &self,
             _handle: &ConnectionHandle,
             _database: &str,
+            _schema: Option<&str>,
         ) -> Result<Vec<TableInfo>, DriverError> {
             Ok(vec![])
         }
@@ -441,6 +445,8 @@ async fn restore_feed_rejects_write_sql_when_guard_read_only() {
             &self,
             _handle: &ConnectionHandle,
             _table: &str,
+            _database: &str,
+            _schema: Option<&str>,
         ) -> Result<TableSchema, DriverError> {
             Ok(TableSchema {
                 table_name: String::new(),

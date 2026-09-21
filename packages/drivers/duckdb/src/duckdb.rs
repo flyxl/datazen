@@ -77,6 +77,32 @@ impl DuckDbDriver {
         row.get::<_, i64>(idx).map(|i| i != 0).unwrap_or(false)
     }
 
+    /// Catalog an explicit metadata read targets, or `None` to keep the
+    /// pre-existing behavior.
+    ///
+    /// `get_databases()` reports `main`/`temp`, which are DuckDB *schema*
+    /// names rather than catalog names — so those two (and a blank argument)
+    /// deliberately keep the old unqualified `information_schema` /
+    /// `PRAGMA table_info` path. Any other value names an `ATTACH`ed catalog
+    /// and is used to pin the read to it.
+    fn catalog_selector(database: &str) -> Option<&str> {
+        let database = database.trim();
+        if database.is_empty()
+            || database.eq_ignore_ascii_case("main")
+            || database.eq_ignore_ascii_case("temp")
+        {
+            None
+        } else {
+            Some(database)
+        }
+    }
+
+    /// Quote a catalog name for a qualified DuckDB relation name
+    /// (`"aux"."t"`, inlined into the `PRAGMA table_info` argument string).
+    fn quote_catalog(name: &str) -> String {
+        format!("\"{}\"", name.replace('"', "\"\""))
+    }
+
     async fn with_conn<T, F>(&self, handle: &ConnectionHandle, f: F) -> Result<T, DriverError>
     where
         T: Send + 'static,
@@ -159,14 +185,31 @@ impl DatabaseDriver for DuckDbDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
-        self.with_conn(handle, |conn| {
+        // DuckDB has no schema level in this driver: reject a schema argument.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        // `main`/`temp`/blank keep the historical unqualified listing; any
+        // other value is an ATTACHed catalog and is pinned explicitly.
+        let catalog = Self::catalog_selector(database).map(str::to_string);
+        self.with_conn(handle, move |conn| {
+            let (sql, params): (&str, Vec<&dyn ::duckdb::ToSql>) = match catalog.as_ref() {
+                Some(catalog) => (
+                    "SELECT table_name, table_type FROM information_schema.tables \
+                     WHERE table_catalog = ? ORDER BY table_name",
+                    vec![catalog as &dyn ::duckdb::ToSql],
+                ),
+                None => (
+                    "SELECT table_name, table_type FROM information_schema.tables ORDER BY table_name",
+                    Vec::new(),
+                ),
+            };
             let mut stmt = conn
-                .prepare("SELECT table_name, table_type FROM information_schema.tables ORDER BY table_name")
+                .prepare(sql)
                 .map_err(|e| DriverError::QueryFailed(format!("DuckDB prepare failed: {e}")))?;
             let rows = stmt
-                .query_map([], |row| {
+                .query_map(params.as_slice(), |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1).unwrap_or_default(),
@@ -196,14 +239,31 @@ impl DatabaseDriver for DuckDbDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        // DuckDB has no schema level in this driver: pin no schema.
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let table = table.to_string();
+        // DuckDB's PRAGMA parser rejects a catalog prefix (`PRAGMA aux.table_info`),
+        // but accepts a qualified name *inside* the argument string
+        // (`PRAGMA table_info('aux.t')`). So the catalog is inlined there, and
+        // only when the caller handed us a bare table name; `main`/`temp`/blank
+        // keep the historical unqualified PRAGMA.
+        let qualified = match Self::catalog_selector(database) {
+            Some(catalog) if !table.contains('.') => {
+                format!(
+                    "{}.{}",
+                    Self::quote_catalog(catalog),
+                    self.quote_ident(&table)
+                )
+            }
+            _ => table.clone(),
+        };
+        let pragma = format!("PRAGMA table_info('{}')", qualified.replace('\'', "''"));
         self.with_conn(handle, move |conn| {
             let mut stmt = conn
-                .prepare(&format!(
-                    "PRAGMA table_info('{}')",
-                    table.replace('\'', "''")
-                ))
+                .prepare(&pragma)
                 .map_err(|e| DriverError::QueryFailed(format!("DuckDB prepare failed: {e}")))?;
             let rows = stmt
                 .query_map([], |row| {
@@ -240,19 +300,36 @@ impl DatabaseDriver for DuckDbDriver {
     async fn get_all_columns(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
-        self.with_conn(handle, |conn| {
-            let mut stmt = conn
-                .prepare(
+        // DuckDB has no schema level in this driver: reject a schema argument.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        // `main`/`temp`/blank keep the historical `table_schema = 'main'`
+        // sweep; another value is an ATTACHed catalog and is pinned by name.
+        let catalog = Self::catalog_selector(database).map(str::to_string);
+        self.with_conn(handle, move |conn| {
+            let (sql, params): (&str, Vec<&dyn ::duckdb::ToSql>) = match catalog.as_ref() {
+                Some(catalog) => (
+                    "SELECT table_name, column_name, data_type, is_nullable \
+                     FROM information_schema.columns \
+                     WHERE table_catalog = ? AND table_schema = 'main' \
+                     ORDER BY table_name, ordinal_position",
+                    vec![catalog as &dyn ::duckdb::ToSql],
+                ),
+                None => (
                     "SELECT table_name, column_name, data_type, is_nullable \
                      FROM information_schema.columns \
                      WHERE table_schema = 'main' \
                      ORDER BY table_name, ordinal_position",
-                )
+                    Vec::new(),
+                ),
+            };
+            let mut stmt = conn
+                .prepare(sql)
                 .map_err(|e| DriverError::QueryFailed(format!("DuckDB prepare failed: {e}")))?;
             let rows = stmt
-                .query_map([], |row| {
+                .query_map(params.as_slice(), |row| {
                     Ok((
                         row.get::<_, String>(0)?,                    // table_name
                         row.get::<_, String>(1)?,                    // column_name
@@ -605,14 +682,17 @@ mod tests {
             .expect("query");
         assert_eq!(rows.rows.len(), 2);
 
-        let tables = driver.get_tables(&handle, "main").await.expect("tables");
+        let tables = driver
+            .get_tables(&handle, "main", None)
+            .await
+            .expect("tables");
         assert!(
             tables.iter().any(|t| t.name == "items"),
             "expected items table, got {tables:?}"
         );
 
         let schema = driver
-            .get_table_schema(&handle, "items")
+            .get_table_schema(&handle, "items", "main", None)
             .await
             .expect("schema");
         assert!(
@@ -731,5 +811,70 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[tokio::test]
+    async fn metadata_reads_pin_explicit_attached_catalog() {
+        let driver = DuckDbDriver::new();
+        let handle = driver.connect(&memory_config()).await.unwrap();
+        driver
+            .execute(&handle, "CREATE TABLE main_only (id INTEGER PRIMARY KEY)")
+            .await
+            .unwrap();
+        driver
+            .execute(&handle, "ATTACH ':memory:' AS aux")
+            .await
+            .unwrap();
+        driver
+            .execute(
+                &handle,
+                "CREATE TABLE aux.aux_only (id INTEGER PRIMARY KEY, label VARCHAR)",
+            )
+            .await
+            .unwrap();
+
+        // An explicit attached catalog is pinned by name; `main`/`temp`/blank
+        // keep the historical unqualified listing.
+        let aux_tables = driver.get_tables(&handle, "aux", None).await.unwrap();
+        let names: Vec<&str> = aux_tables.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"aux_only"), "aux tables: {names:?}");
+        assert!(!names.contains(&"main_only"), "aux tables: {names:?}");
+
+        let main_tables = driver.get_tables(&handle, "main", None).await.unwrap();
+        assert!(
+            main_tables.iter().any(|t| t.name == "main_only"),
+            "main tables: {main_tables:?}"
+        );
+
+        // Column resolution pins the same catalog instead of the session default.
+        let aux_schema = driver
+            .get_table_schema(&handle, "aux_only", "aux", None)
+            .await
+            .unwrap();
+        assert!(
+            aux_schema.columns.iter().any(|c| c.name == "label"),
+            "aux schema: {aux_schema:?}"
+        );
+        let main_schema = driver
+            .get_table_schema(&handle, "main_only", "main", None)
+            .await
+            .unwrap();
+        assert!(
+            main_schema.columns.iter().any(|c| c.name == "id"),
+            "main schema: {main_schema:?}"
+        );
+
+        // Batch column fetch honors the same dimension.
+        let batch = driver.get_all_columns(&handle, "aux", None).await.unwrap();
+        assert!(batch.contains_key("aux_only"), "aux batch: {batch:?}");
+
+        // DuckDB has no schema level in this driver, so a schema argument fails.
+        let err = driver
+            .get_tables(&handle, "main", Some("public"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+
+        driver.disconnect(handle).await.unwrap();
     }
 }

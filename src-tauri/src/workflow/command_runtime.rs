@@ -80,20 +80,28 @@ pub async fn execute_command_with_mode(
         }
     }
 
-    // Legacy SQL workflows can select a database per step. The generic Command
-    // API deliberately does not know about SQL session state, so this adapter
-    // applies the optional database field before dispatching the command.
-    if let Some(database) = step.input.get("database").and_then(|v| v.as_str()) {
-        if !database.is_empty() {
-            driver
-                .use_database(&handle, database)
-                .await
-                .map_err(|e| WorkflowError::Driver(e.to_string()))?;
-        }
-    }
+    // Legacy SQL workflows can select a database per step. There is no session
+    // switch any more: the target travels with the command input so drivers
+    // that can qualify SQL inline (`qualify_sql_target`) rewrite unqualified
+    // relations to the step's database instead of the adapter re-pointing the
+    // shared pooled connection.
+    let mut input = step.input.clone();
+    let database = input
+        .get("database")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let schema = input
+        .get("schema")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    crate::commands::driver_command::inject_sql_target_fields(
+        &mut input,
+        database.as_deref(),
+        schema.as_deref(),
+    );
 
     driver
-        .execute_command(&handle, &step.command, step.input.clone())
+        .execute_command(&handle, &step.command, input)
         .await
         .map_err(|e| WorkflowError::Driver(e.to_string()))
 }

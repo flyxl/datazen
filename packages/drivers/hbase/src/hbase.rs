@@ -272,8 +272,14 @@ impl DatabaseDriver for HBaseDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // HBase has no schema level. Its REST surface is cluster-scoped and
+        // `get_databases` reports a single synthetic "default" namespace, so the
+        // explicit `database` argument carries no addressing meaning here — but
+        // a `schema` argument is still rejected as a caller bug.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let v = Self::get_json(client, base, "/").await?;
@@ -296,7 +302,13 @@ impl DatabaseDriver for HBaseDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        // Same shape as `get_tables`: `database` has no addressing meaning on
+        // the cluster-scoped REST API, while `schema` is validated and then
+        // ignored because HBase has no schema level.
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let v = Self::get_json(
@@ -475,6 +487,55 @@ impl DatabaseDriver for HBaseDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn unknown_pool_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "hbase-schema-contract".into(),
+            pool_id: "hbase-schema-contract".into(),
+        }
+    }
+
+    #[test]
+    fn hbase_declares_no_schema_level() {
+        assert!(!HBaseDriver::new().has_schema_level());
+    }
+
+    /// The validator is the first statement: a schema argument is rejected as
+    /// `InvalidConfig` and never masked by a connection lookup failure.
+    #[tokio::test]
+    async fn get_tables_rejects_schema_argument_first() {
+        let driver = HBaseDriver::new();
+        let err = driver
+            .get_tables(&unknown_pool_handle(), "default", Some("public"))
+            .await
+            .expect_err("schema-less driver must reject a schema argument");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn get_table_schema_rejects_schema_argument_first() {
+        let driver = HBaseDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "t", "default", Some("public"))
+            .await
+            .expect_err("schema-less driver must reject a schema argument");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+    }
+
+    /// A blank/absent schema still reaches the connection lookup: `database` is
+    /// accepted as-is (it has no addressing meaning on the cluster-scoped API).
+    #[tokio::test]
+    async fn get_table_schema_without_schema_reaches_connection_lookup() {
+        let driver = HBaseDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "t", "default", None)
+            .await
+            .expect_err("unknown pool must fail");
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "got {err:?}"
+        );
+    }
 
     #[test]
     fn command_definitions_include_query_and_catalog_commands() {

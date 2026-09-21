@@ -3,6 +3,7 @@ import { ArrowLeft, Download, Loader2, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { getCachedTableSchema, invalidateSchemaCache } from '../../lib/schemaCache';
+import { useSchemaStore } from '../../stores/schemaStore';
 import { queryCommands } from '../../commands/query';
 import { structureCommands } from '../../commands/structure';
 import { driverCommands } from '../../commands/driver';
@@ -137,6 +138,12 @@ export function TableStructureEditor({
   onCancel,
 }: TableStructureEditorProps) {
   const { t } = useI18n();
+  // The table's own schema wins over the caller's current-schema default:
+  // a per-table metadata read must target the namespace the table lives in.
+  const tableSchema =
+    useSchemaStore((st) =>
+      initialTableName ? st.schemaOfRelation(initialTableName, dbSessionId) : null,
+    ) ?? requestSchema;
   const [confirmApply, confirmApplyDialog] = useConfirmDialog();
   const uiConfig = useMemo(() => resolveUiConfig(databaseType), [databaseType]);
   const structureExportSupported = supportsAnyExport(resolveExportScope(DB_REGISTRY[databaseType]));
@@ -168,7 +175,7 @@ export function TableStructureEditor({
     const capsPromise = structureCommands.getStructureCapabilities(dbSessionId);
     const schemaPromise =
       mode === 'alter' && initialTableName
-        ? getCachedTableSchema(dbSessionId, initialTableName, database)
+        ? getCachedTableSchema(dbSessionId, initialTableName, database, tableSchema)
         : Promise.resolve(null);
 
     Promise.all([capsPromise, schemaPromise])
@@ -202,7 +209,7 @@ export function TableStructureEditor({
     return () => {
       cancelled = true;
     };
-  }, [dbSessionId, mode, initialTableName, uiConfig, t]);
+  }, [dbSessionId, mode, initialTableName, database, tableSchema, uiConfig, t]);
 
   const originalById = useMemo(
     () => new Map(originalColumns.map((c) => [c.id, c])),

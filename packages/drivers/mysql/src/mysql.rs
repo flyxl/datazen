@@ -77,6 +77,52 @@ impl MysqlDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
     }
 
+    /// Bare table name: a caller-supplied `db.table` contributes only its table
+    /// part, because the database always arrives as an explicit argument.
+    pub(crate) fn bare_table_name(table: &str) -> &str {
+        let stripped = match table.rsplit_once('.') {
+            Some((_, name)) if !name.is_empty() => name,
+            _ => table,
+        };
+        stripped.trim().trim_matches('`')
+    }
+
+    /// `` `db`.`table` `` for the `SHOW` family. MySQL accepts a qualified name
+    /// there, so a foreign database can be read without a `USE` — and therefore
+    /// without re-pointing a connection that goes back into the pool.
+    pub(crate) fn qualified_table_ref(database: &str, table: &str) -> String {
+        let bare = Self::bare_table_name(table);
+        let db = database.trim();
+        if db.is_empty() {
+            Self::quote_identifier(bare)
+        } else {
+            format!(
+                "{}.{}",
+                Self::quote_identifier(db),
+                Self::quote_identifier(bare)
+            )
+        }
+    }
+
+    /// Database a metadata read targets: the explicit argument wins, otherwise
+    /// the database this handle's pool was connected to.
+    pub(crate) async fn effective_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> String {
+        let explicit = database.trim();
+        if !explicit.is_empty() {
+            return explicit.to_string();
+        }
+        self.active_databases
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     async fn fetch_columns_with_db<'e, E>(
         executor: E,
         current_db: &str,
@@ -530,7 +576,10 @@ impl DatabaseDriver for MysqlDriver {
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // MySQL's "schema" *is* the database, so a schema argument is a caller bug.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
@@ -569,37 +618,30 @@ impl DatabaseDriver for MysqlDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let db = self.effective_database(handle, database).await;
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let mut conn = pool
             .acquire()
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        self.apply_active_database(handle, &mut conn).await?;
-
-        let current_db = {
-            let tracked = self.active_databases.read().await;
-            tracked.get(&handle.pool_id).cloned()
-        };
-        let current_db = match current_db {
-            Some(db) if !db.is_empty() => db,
-            _ => {
-                let row = sqlx::query("SELECT DATABASE()")
-                    .fetch_one(&mut *conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                row.try_get::<String, _>(0).unwrap_or_default()
-            }
-        };
-        Self::fetch_columns_with_db(&mut *conn, &current_db, table).await
+        // `information_schema` is filtered by TABLE_SCHEMA, so the borrowed
+        // connection keeps whatever default schema it was born with.
+        Self::fetch_columns_with_db(&mut *conn, &db, Self::bare_table_name(table)).await
     }
 
     async fn get_all_columns(
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        let db = self.effective_database(handle, database).await;
         // Clone the pool (cheap Arc) so no lock is held across the query.
         let pool = {
             let pools = self.pools.read().await;
@@ -609,56 +651,34 @@ impl DatabaseDriver for MysqlDriver {
             .acquire()
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        // Explicit per-call database wins: the host passes the tab-bound
-        // database so batch reads never depend on a stale session default.
-        // Only fall back to the tracked session db / SELECT DATABASE() when
-        // the caller passes nothing.
-        let pinned = database.trim();
-        if !pinned.is_empty() {
-            let sql = Self::build_use_database_sql(pinned)?;
-            Self::execute_use_on_conn(&mut conn, &sql, pinned).await?;
-            self.active_databases
-                .write()
-                .await
-                .insert(handle.pool_id.clone(), pinned.to_string());
-            return Self::fetch_all_columns_with_db(&mut *conn, pinned).await;
-        }
-        self.apply_active_database(handle, &mut conn).await?;
-
-        let current_db = {
-            let tracked = self.active_databases.read().await;
-            tracked.get(&handle.pool_id).cloned()
-        };
-        let current_db = match current_db {
-            Some(db) if !db.is_empty() => db,
-            _ => {
-                let row = sqlx::query("SELECT DATABASE()")
-                    .fetch_one(&mut *conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                row.try_get::<String, _>(0).unwrap_or_default()
-            }
-        };
-        Self::fetch_all_columns_with_db(&mut *conn, &current_db).await
+        // The batch query is filtered by TABLE_SCHEMA: an explicit per-call
+        // database is honoured and no `USE` is issued, so a stale session
+        // default can never leak into the result.
+        Self::fetch_all_columns_with_db(&mut *conn, &db).await
     }
 
     async fn get_table_schema(
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
         let t0 = std::time::Instant::now();
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let db = self.effective_database(handle, database).await;
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let mut conn = pool
             .acquire()
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        self.apply_active_database(handle, &mut conn).await?;
 
-        let q = Self::quote_identifier(table);
+        // Fully qualified, so the SHOW family resolves against `database`
+        // instead of whatever schema the pooled connection happens to default
+        // to. MySQL accepts `db.table` here — no `USE`, no pollution.
+        let q = Self::qualified_table_ref(&db, table);
 
-        // Sequential on one connection so USE (active database) applies to all SHOW calls.
         let col_rows = match sqlx::query(&format!("SHOW FULL COLUMNS FROM {}", q))
             .fetch_all(&mut *conn)
             .await
@@ -667,14 +687,13 @@ impl DatabaseDriver for MysqlDriver {
             Err(e) => {
                 let err_msg = e.to_string();
                 if Self::is_table_not_found_error(&err_msg) {
-                    tracing::info!(%table, "mysql get_table_schema: table does not exist, returning empty schema");
-                    return Ok(TableSchema {
-                        table_name: table.to_string(),
-                        columns: Vec::new(),
-                        primary_keys: Vec::new(),
-                        indexes: Vec::new(),
-                        foreign_keys: Vec::new(),
-                    });
+                    // Never report a missing relation as a table with no
+                    // columns: callers cache that, blanking the data grid.
+                    return Err(DriverError::QueryFailed(format!(
+                        "Table '{}' does not exist in database '{}'",
+                        Self::bare_table_name(table),
+                        db
+                    )));
                 }
                 return Err(DriverError::QueryFailed(err_msg));
             }
@@ -1386,60 +1405,6 @@ impl DatabaseDriver for MysqlDriver {
         true
     }
 
-    // Switch active schema for unqualified names (session + pool-safe USE).
-
-    async fn use_database(
-        &self,
-        handle: &ConnectionHandle,
-        database: &str,
-    ) -> Result<(), DriverError> {
-        let use_sql = Self::build_use_database_sql(database)?;
-        let trimmed = database.trim().to_string();
-
-        {
-            let active = self.active_databases.read().await;
-            if active.get(&handle.pool_id).map(String::as_str) == Some(trimmed.as_str()) {
-                return Ok(());
-            }
-        }
-
-        if self.transactions.lock().await.contains_key(&handle.id) {
-            return Err(DriverError::TransactionError(
-                "Cannot switch database while a transaction is open".into(),
-            ));
-        }
-
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-
-        let current = Self::current_database(pool).await?;
-        if current == trimmed {
-            drop(pools);
-            self.active_databases
-                .write()
-                .await
-                .insert(handle.pool_id.clone(), trimmed);
-            return Ok(());
-        }
-
-        // Fail fast if the database does not exist or is inaccessible.
-        // Must use text protocol — prepared statements reject USE (MySQL 1295).
-        let mut conn = pool
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        Self::execute_use_on_conn(&mut conn, &use_sql, &trimmed).await?;
-        drop(conn);
-
-        drop(pools);
-
-        self.active_databases
-            .write()
-            .await
-            .insert(handle.pool_id.clone(), trimmed);
-        Ok(())
-    }
-
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
@@ -1463,8 +1428,15 @@ impl DatabaseDriver for MysqlDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<String, DriverError> {
-        let sql = format!("SHOW CREATE TABLE {}", self.quote_ident(table));
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let db = self.effective_database(handle, database).await;
+        let sql = format!(
+            "SHOW CREATE TABLE {}",
+            Self::qualified_table_ref(&db, table)
+        );
         match self.query(handle, &sql).await {
             Ok(result) => {
                 if let Some(create) = extract_show_create_table(&result) {
@@ -1477,9 +1449,11 @@ impl DatabaseDriver for MysqlDriver {
                     }
                     return Ok(ddl);
                 }
-                sql_dump::dump_table_ddl_from_schema(self, handle, table).await
+                sql_dump::dump_table_ddl_from_schema(self, handle, table, database, schema).await
             }
-            Err(_) => sql_dump::dump_table_ddl_from_schema(self, handle, table).await,
+            Err(_) => {
+                sql_dump::dump_table_ddl_from_schema(self, handle, table, database, schema).await
+            }
         }
     }
 
@@ -1487,8 +1461,12 @@ impl DatabaseDriver for MysqlDriver {
         &self,
         handle: &ConnectionHandle,
         view: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<String, DriverError> {
-        let sql = format!("SHOW CREATE VIEW {}", self.quote_ident(view));
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let db = self.effective_database(handle, database).await;
+        let sql = format!("SHOW CREATE VIEW {}", Self::qualified_table_ref(&db, view));
         let result = self.query(handle, &sql).await?;
         let create = extract_named_create_column(&result, "Create View").or_else(|| {
             if result.columns.len() >= 2 {

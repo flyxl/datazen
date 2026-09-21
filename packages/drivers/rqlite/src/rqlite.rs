@@ -50,6 +50,44 @@ impl RqliteDriver {
             .map_err(|e| DriverError::QueryFailed(format!("RQLite JSON parse failed: {e}")))
     }
 
+    /// Resolve the attached-database name a metadata read targets.
+    ///
+    /// rqlite speaks SQLite: a relation is addressed as `alias.table` with
+    /// `main`, `temp`, or an `ATTACH` alias. The explicit `database` argument
+    /// is authoritative; blank keeps the previous behavior (`main`).
+    fn effective_database(database: &str) -> &str {
+        let database = database.trim();
+        if database.is_empty() {
+            "main"
+        } else {
+            database
+        }
+    }
+
+    /// Quote an attached-database name for use as a SQLite schema qualifier
+    /// (`"aux".sqlite_master`, `PRAGMA "aux".table_info(...)`).
+    fn quote_schema(name: &str) -> String {
+        format!("\"{}\"", name.replace('"', "\"\""))
+    }
+
+    /// SQLite-family catalog listing for one explicit attached database.
+    fn list_tables_sql(database: &str) -> String {
+        format!(
+            "SELECT name FROM {}.sqlite_master WHERE type IN ('table','view') \
+             AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            Self::quote_schema(Self::effective_database(database))
+        )
+    }
+
+    /// `PRAGMA table_info` pinned to one explicit attached database.
+    fn table_info_sql(database: &str, table: &str) -> String {
+        format!(
+            "PRAGMA {}.table_info('{}')",
+            Self::quote_schema(Self::effective_database(database)),
+            table.replace('\'', "''")
+        )
+    }
+
     fn result_from_json(v: &serde_json::Value) -> QueryResult {
         let first = v
             .get("results")
@@ -161,16 +199,14 @@ impl DatabaseDriver for RqliteDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // rqlite has no schema level: any schema argument is a caller bug.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
-        let v = Self::query_json(
-            client,
-            base,
-            "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
-        )
-        .await?;
+        let v = Self::query_json(client, base, &Self::list_tables_sql(database)).await?;
         let rows = v
             .get("results")
             .and_then(|r| r.as_array())
@@ -196,15 +232,14 @@ impl DatabaseDriver for RqliteDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        // rqlite has no schema level: a single-table read must pin no schema.
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
-        let v = Self::query_json(
-            client,
-            base,
-            &format!("PRAGMA table_info('{}')", table.replace('\'', "''")),
-        )
-        .await?;
+        let v = Self::query_json(client, base, &Self::table_info_sql(database, table)).await?;
         let rows = v
             .get("results")
             .and_then(|r| r.as_array())
@@ -451,5 +486,42 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn metadata_sql_pins_the_explicit_attached_database() {
+        // Explicit argument wins: the read must target that attached database.
+        let sql = RqliteDriver::list_tables_sql("aux");
+        assert!(sql.contains("\"aux\".sqlite_master"), "{sql}");
+        let sql = RqliteDriver::table_info_sql("aux", "items");
+        assert!(sql.contains("PRAGMA \"aux\".table_info('items')"), "{sql}");
+
+        // Blank keeps the previous behavior (`main`).
+        let sql = RqliteDriver::list_tables_sql("");
+        assert!(sql.contains("\"main\".sqlite_master"), "{sql}");
+        let sql = RqliteDriver::table_info_sql("   ", "items");
+        assert!(sql.contains("PRAGMA \"main\".table_info('items')"), "{sql}");
+
+        // Quoting survives a hostile alias / table name.
+        let sql = RqliteDriver::table_info_sql("au\"x", "it's");
+        assert!(
+            sql.contains("PRAGMA \"au\"\"x\".table_info('it''s')"),
+            "{sql}"
+        );
+    }
+
+    #[test]
+    fn metadata_reads_reject_a_schema_argument() {
+        let driver = RqliteDriver::new();
+        assert!(matches!(
+            validate_schema_target(&driver, "main", Some("public"), SchemaScope::AnySchema),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            validate_schema_target(&driver, "main", Some("public"), SchemaScope::ExactSchema),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(validate_schema_target(&driver, "main", None, SchemaScope::ExactSchema).is_ok());
+        assert!(validate_schema_target(&driver, "", Some("  "), SchemaScope::AnySchema).is_ok());
     }
 }

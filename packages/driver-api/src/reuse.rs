@@ -76,6 +76,22 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.supports_explain()
     }
 
+    fn has_schema_level(&self) -> bool {
+        self.inner.has_schema_level()
+    }
+
+    fn default_schema(&self) -> Option<&'static str> {
+        self.inner.default_schema()
+    }
+
+    async fn close_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<bool, DriverError> {
+        self.inner.close_database(handle, database).await
+    }
+
     fn ddl_atomicity(&self) -> DdlAtomicity {
         self.inner.ddl_atomicity()
     }
@@ -121,32 +137,42 @@ impl DatabaseDriver for ReuseDriver {
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
-        self.inner.get_tables(handle, database).await
+        self.inner.get_tables(handle, database, schema).await
     }
 
     async fn get_table_schema(
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
-        self.inner.get_table_schema(handle, table).await
+        self.inner
+            .get_table_schema(handle, table, database, schema)
+            .await
     }
 
     async fn get_columns(
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
-        self.inner.get_columns(handle, table).await
+        self.inner
+            .get_columns(handle, table, database, schema)
+            .await
     }
 
     async fn get_all_columns(
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
-        self.inner.get_all_columns(handle, database).await
+        self.inner.get_all_columns(handle, database, schema).await
     }
 
     async fn query(
@@ -302,14 +328,6 @@ impl DatabaseDriver for ReuseDriver {
         })
     }
 
-    async fn use_database(
-        &self,
-        handle: &ConnectionHandle,
-        database: &str,
-    ) -> Result<(), DriverError> {
-        self.inner.use_database(handle, database).await
-    }
-
     fn prompt_overrides(&self) -> HashMap<PromptScenario, PromptTemplate> {
         self.inner.prompt_overrides()
     }
@@ -318,16 +336,24 @@ impl DatabaseDriver for ReuseDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<String, DriverError> {
-        self.inner.dump_table_ddl(handle, table).await
+        self.inner
+            .dump_table_ddl(handle, table, database, schema)
+            .await
     }
 
     async fn dump_view_ddl(
         &self,
         handle: &ConnectionHandle,
         view: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<String, DriverError> {
-        self.inner.dump_view_ddl(handle, view).await
+        self.inner
+            .dump_view_ddl(handle, view, database, schema)
+            .await
     }
 
     async fn dump_routines(
@@ -537,6 +563,7 @@ mod tests {
             &self,
             _handle: &ConnectionHandle,
             _database: &str,
+            _schema: Option<&str>,
         ) -> Result<Vec<TableInfo>, DriverError> {
             Ok(vec![])
         }
@@ -545,6 +572,8 @@ mod tests {
             &self,
             _handle: &ConnectionHandle,
             table: &str,
+            _database: &str,
+            _schema: Option<&str>,
         ) -> Result<TableSchema, DriverError> {
             Ok(TableSchema {
                 table_name: table.to_string(),
@@ -705,15 +734,20 @@ mod tests {
                 &self,
                 handle: &ConnectionHandle,
                 database: &str,
+                schema: Option<&str>,
             ) -> Result<Vec<TableInfo>, DriverError> {
-                self.inner.get_tables(handle, database).await
+                self.inner.get_tables(handle, database, schema).await
             }
             async fn get_table_schema(
                 &self,
                 handle: &ConnectionHandle,
                 table: &str,
+                database: &str,
+                schema: Option<&str>,
             ) -> Result<TableSchema, DriverError> {
-                self.inner.get_table_schema(handle, table).await
+                self.inner
+                    .get_table_schema(handle, table, database, schema)
+                    .await
             }
             async fn query(
                 &self,

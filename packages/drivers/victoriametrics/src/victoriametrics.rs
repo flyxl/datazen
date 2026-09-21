@@ -10,6 +10,12 @@ use std::collections::HashMap;
 use std::time::Instant;
 use tokio::sync::RwLock;
 
+/// The single logical namespace every VictoriaMetrics server exposes.
+///
+/// Metrics live in one server-wide namespace, which is why
+/// [`DatabaseDriver::get_databases`] reports exactly this name.
+const DEFAULT_DATABASE: &str = "default";
+
 pub struct VictoriaMetricsDriver {
     clients: RwLock<HashMap<String, (reqwest::Client, String)>>,
 }
@@ -27,6 +33,21 @@ impl VictoriaMetricsDriver {
     ) -> Result<&'a (reqwest::Client, String), DriverError> {
         map.get(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
+    }
+
+    /// Logical namespace a metadata read targets.
+    ///
+    /// The explicit `database` argument is authoritative and is never read from
+    /// mutable session state — this driver keeps none (`use_database` is gone).
+    /// A blank argument falls back to the server's single namespace, which is
+    /// exactly the pre-contract behavior.
+    fn resolve_database(database: &str) -> &str {
+        let trimmed = database.trim();
+        if trimmed.is_empty() {
+            DEFAULT_DATABASE
+        } else {
+            trimmed
+        }
     }
 
     async fn get_json(
@@ -189,8 +210,13 @@ impl DatabaseDriver for VictoriaMetricsDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // VictoriaMetrics has no schema level: the server *is* the namespace.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        let database = Self::resolve_database(database);
+        tracing::debug!(database, "victoriametrics: listing metric names");
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let v = Self::get_json(client, base, "/api/v1/label/__name__/values").await?;
@@ -213,7 +239,12 @@ impl DatabaseDriver for VictoriaMetricsDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let database = Self::resolve_database(database);
+        tracing::debug!(database, table, "victoriametrics: reading series labels");
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let v = Self::get_json(
@@ -256,6 +287,30 @@ impl DatabaseDriver for VictoriaMetricsDriver {
             indexes: Vec::new(),
             foreign_keys: Vec::new(),
         })
+    }
+
+    async fn dump_table_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<String, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        sql_dump::dump_table_ddl_from_schema(self, handle, table, database, schema).await
+    }
+
+    async fn dump_view_ddl(
+        &self,
+        _handle: &ConnectionHandle,
+        view: &str,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<String, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        Err(DriverError::NotSupported(format!(
+            "View DDL dump is not supported for {view}"
+        )))
     }
 
     async fn query(
@@ -388,5 +443,73 @@ mod tests {
             })
             .sum();
         assert_eq!(rows, 1);
+    }
+
+    fn offline_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "offline".into(),
+            pool_id: "offline".into(),
+        }
+    }
+
+    #[test]
+    fn victoriametrics_has_no_schema_level() {
+        assert!(!VictoriaMetricsDriver::new().has_schema_level());
+    }
+
+    #[test]
+    fn resolve_database_falls_back_to_the_single_namespace() {
+        assert_eq!(
+            VictoriaMetricsDriver::resolve_database("analytics"),
+            "analytics"
+        );
+        assert_eq!(
+            VictoriaMetricsDriver::resolve_database("  analytics  "),
+            "analytics"
+        );
+        // Blank keeps the pre-contract behavior: the server namespace.
+        assert_eq!(VictoriaMetricsDriver::resolve_database(""), "default");
+        assert_eq!(VictoriaMetricsDriver::resolve_database("   "), "default");
+    }
+
+    /// A schema argument is a caller bug on a schema-less engine, and the
+    /// validator must reject it *before* any pool lookup — so this needs no
+    /// live VictoriaMetrics.
+    #[tokio::test]
+    async fn schema_argument_is_rejected_before_touching_the_connection() {
+        let driver = VictoriaMetricsDriver::new();
+        let handle = offline_handle();
+
+        let err = driver
+            .get_tables(&handle, "default", Some("public"))
+            .await
+            .expect_err("get_tables must reject a schema");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "{err:?}");
+
+        let err = driver
+            .get_table_schema(&handle, "up", "default", Some("public"))
+            .await
+            .expect_err("get_table_schema must reject a schema");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "{err:?}");
+
+        let err = driver
+            .dump_table_ddl(&handle, "up", "default", Some("public"))
+            .await
+            .expect_err("dump_table_ddl must reject a schema");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "{err:?}");
+
+        let err = driver
+            .dump_view_ddl(&handle, "up_view", "default", Some("public"))
+            .await
+            .expect_err("dump_view_ddl must reject a schema");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "{err:?}");
+
+        // No schema: validation passes and the read proceeds to the pool
+        // lookup, which fails for this never-connected handle.
+        let err = driver
+            .get_tables(&handle, "default", None)
+            .await
+            .expect_err("no pool for an offline handle");
+        assert!(matches!(err, DriverError::ConnectionFailed(_)), "{err:?}");
     }
 }

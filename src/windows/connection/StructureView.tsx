@@ -7,6 +7,7 @@ import type { TableSchema } from '../../types';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
 import { CopyableError } from '../../components/ui/CopyableError';
+import { useSchemaStore } from '../../stores/schemaStore';
 
 interface StructureViewProps {
   dbSessionId: string;
@@ -42,6 +43,7 @@ export function StructureView({
   onEditStructure,
 }: StructureViewProps) {
   const { t } = useI18n();
+  const tableSchema = useSchemaStore((s) => s.schemaOfRelation(tableName, dbSessionId));
   const [schema, setSchema] = useState<TableSchema | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export function StructureView({
       console.log('[StructureView] loading schema', dbSessionId, tableName, database);
     }
 
-    getCachedTableSchema(dbSessionId, tableName, database)
+    getCachedTableSchema(dbSessionId, tableName, database, tableSchema)
       .then((result) => {
         if (!cancelled) {
           setSchema(result);
@@ -104,7 +106,7 @@ export function StructureView({
     return () => {
       cancelled = true;
     };
-  }, [dbSessionId, tableName, database, t]);
+  }, [dbSessionId, tableName, database, tableSchema, t]);
 
   if (loading) {
     return (

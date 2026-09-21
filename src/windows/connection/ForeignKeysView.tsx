@@ -4,6 +4,7 @@ import { getCachedTableSchema } from '../../lib/schemaCache';
 import type { ForeignKeyInfo, TableSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { CopyableError } from '../../components/ui/CopyableError';
+import { useSchemaStore } from '../../stores/schemaStore';
 
 interface ForeignKeysViewProps {
   dbSessionId: string;
@@ -13,6 +14,7 @@ interface ForeignKeysViewProps {
 
 export function ForeignKeysView({ dbSessionId, tableName, database }: ForeignKeysViewProps) {
   const { t } = useI18n();
+  const tableSchema = useSchemaStore((s) => s.schemaOfRelation(tableName, dbSessionId));
   const [foreignKeys, setForeignKeys] = useState<ForeignKeyInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export function ForeignKeysView({ dbSessionId, tableName, database }: ForeignKey
     setLoading(true);
     setError(null);
 
-    getCachedTableSchema(dbSessionId, tableName, database)
+    getCachedTableSchema(dbSessionId, tableName, database, tableSchema)
       .then((schema: TableSchema) => {
         if (!cancelled) {
           setForeignKeys(schema.foreignKeys);
@@ -39,7 +41,7 @@ export function ForeignKeysView({ dbSessionId, tableName, database }: ForeignKey
     return () => {
       cancelled = true;
     };
-  }, [dbSessionId, tableName, database, t]);
+  }, [dbSessionId, tableName, database, tableSchema, t]);
 
   if (loading) {
     return (

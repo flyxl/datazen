@@ -72,14 +72,6 @@ impl super::MysqlDriver {
         Ok(row.try_get::<String, _>(0).unwrap_or_default())
     }
 
-    pub(crate) async fn current_database(pool: &MySqlPool) -> Result<String, DriverError> {
-        let mut conn = pool
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        Self::current_database_on_conn(&mut conn).await
-    }
-
     /// Execute SQL via the MySQL text protocol (COM_QUERY).
     ///
     /// `sqlx::query` always PREPARE's. MySQL rejects `BEGIN`/`COMMIT`/`ROLLBACK`,

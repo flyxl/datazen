@@ -1,7 +1,7 @@
 //! PostgreSQL catalog-backed DDL generation.
 
 use crate::postgres::PostgresDriver;
-use crate::sql::collect_named_ddl_column;
+use crate::sql::{collect_named_ddl_column, pg_regclass_name};
 use crate::structure::{caps_for_version, plan_structure_changes_with_caps};
 use datazen_driver_api::*;
 use sqlx::{PgPool, Row};
@@ -264,15 +264,20 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<String, DriverError> {
+        let (schema, bare_table) = crate::sql::resolve_pg_table_schema(table, schema);
+        let qualified = pg_regclass_name(schema, bare_table);
         let catalog_result = {
-            let pools = self.pools.read().await;
-            let pool = Self::get_pool(&pools, handle)?;
-            fetch_pg_table_ddl_from_catalog(pool, table, |n| self.quote_ident(n)).await
+            let pool = self.pool_for_target(handle, database).await?;
+            fetch_pg_table_ddl_from_catalog(&pool, &qualified, |n| self.quote_ident(n)).await
         };
         match catalog_result {
             Ok(ddl) => Ok(ddl),
-            Err(_) => sql_dump::dump_table_ddl_from_schema(self, handle, table).await,
+            Err(_) => {
+                sql_dump::dump_table_ddl_from_schema(self, handle, table, database, schema).await
+            }
         }
     }
 
@@ -280,12 +285,15 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
         view: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<String, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let (schema, bare_view) = crate::sql::resolve_pg_table_schema(view, schema);
+        let qualified = pg_regclass_name(schema, bare_view);
+        let pool = self.pool_for_target(handle, database).await?;
         let row = sqlx::query("SELECT pg_get_viewdef($1::regclass, true) AS def")
-            .bind(view)
-            .fetch_one(pool)
+            .bind(&qualified)
+            .fetch_one(&pool)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let def: String = row.try_get("def").unwrap_or_default();
@@ -296,7 +304,7 @@ impl PostgresDriver {
         }
         Ok(format!(
             "CREATE OR REPLACE VIEW {} AS\n{};\n",
-            self.quote_ident(view),
+            self.quote_ident(&qualified),
             def.trim().trim_end_matches(';')
         ))
     }

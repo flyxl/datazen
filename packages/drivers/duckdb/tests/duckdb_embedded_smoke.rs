@@ -53,7 +53,10 @@ async fn in_memory_query_and_schema_smoke() {
     assert_eq!(result.rows.len(), 1);
     assert!(matches!(result.rows[0][0], Some(Value::Integer(1))));
 
-    let schema = driver.get_table_schema(&handle, "t").await.unwrap();
+    let schema = driver
+        .get_table_schema(&handle, "t", "main", None)
+        .await
+        .unwrap();
     assert_eq!(schema.primary_keys, vec!["id".to_string()]);
 
     driver.disconnect(handle).await.unwrap();

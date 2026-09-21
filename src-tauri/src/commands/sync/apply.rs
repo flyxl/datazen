@@ -10,6 +10,7 @@ use crate::data_sync::{
     quote_ident_sql, ChangeSet, ComparisonResult, SyncOptions, TableMapping, TableMappingStatus,
     TableResult,
 };
+use crate::services::metadata_schema;
 
 fn ident_quote(family: &str) -> char {
     if family == "mysql" {
@@ -74,6 +75,14 @@ pub(crate) async fn compare_data_sync_impl(
         .await
         .cmd_err("compare_data_sync")?;
 
+    let src_database =
+        super::types::resolve_db_name(source_database.as_deref(), src_config.database.as_deref());
+    let src_schema_arg = metadata_schema(
+        src_driver.as_ref(),
+        source_schema.as_deref(),
+        None,
+        src_config.schema.as_deref(),
+    );
     let mut out = Vec::new();
     for mapping in inspected {
         if mapping.status != TableMappingStatus::Matched
@@ -91,7 +100,12 @@ pub(crate) async fn compare_data_sync_impl(
             ));
         }
         let schema = src_driver
-            .get_table_schema(&src_handle, &mapping.source_table)
+            .get_table_schema(
+                &src_handle,
+                &mapping.source_table,
+                &src_database,
+                src_schema_arg.as_deref(),
+            )
             .await
             .cmd_err("compare_data_sync")?;
         let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
@@ -168,10 +182,24 @@ pub(crate) async fn generate_data_sync_sql_impl(
         .await
         .cmd_err("generate_data_sync_sql")?;
 
+    let tgt_database =
+        super::types::resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
+    let tgt_schema_arg = metadata_schema(
+        tgt_driver.as_ref(),
+        target_schema.as_deref(),
+        None,
+        tgt_config.schema.as_deref(),
+    );
+
     let mut statements = Vec::new();
     for table in &set.tables {
         let schema = tgt_driver
-            .get_table_schema(&tgt_handle, &table.target_table)
+            .get_table_schema(
+                &tgt_handle,
+                &table.target_table,
+                &tgt_database,
+                tgt_schema_arg.as_deref(),
+            )
             .await
             .cmd_err("generate_data_sync_sql")?;
         let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();

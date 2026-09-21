@@ -51,6 +51,17 @@ cleanup_query_execution
 
 只有实际声明精确取消能力的 Driver 才会被 Host 当作 cancellable；兼容默认实现不会自动获得取消能力。
 
+### 2.1 database 维度的两套契约（重要）
+
+`database` 在两个方法族里语义不同，调用方必须区分：
+
+| 方法 | database 维度 | 谁负责解析 |
+| --- | --- | --- |
+| `get_tables(handle, database)` / `get_all_columns(handle, database)` | **显式参数** | 驱动自己（PG 对非 active 库临时开 pool 后关闭） |
+| `get_table_schema(handle, table)` / `get_columns(handle, table)` | **无参数**，隐含依赖会话 active 库 | **调用方必须先 pin** |
+
+Host 侧统一用 `ConnectionManager::ensure_active_database`（命令层包装为 `ensure_session_database`）在读取前 pin 会话；漏掉就会从别的库拿到答案（详见 [cache.md](cache.md) §1.8）。彻底解法是给后两个方法补上 database 参数，但那属于 Driver API 契约变更（`PROTOCOL_VERSION` + 所有驱动同步），目前以"调用方 pin + 驱动不静默"为约定。
+
 ## 3. Driver Commands
 
 Driver 可以通过 `command_definitions()` 声明 Command，通过 `execute_command()` 执行。

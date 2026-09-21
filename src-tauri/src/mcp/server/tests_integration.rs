@@ -25,6 +25,7 @@
                 ListTablesInput {
                     connection_id: "mcp-cfg".into(),
                     database: Some("app".into()),
+                    schema: None,
                 },
             ))
             .await
@@ -35,6 +36,8 @@
             .get_schema(rmcp::handler::server::wrapper::Parameters(GetSchemaInput {
                 connection_id: "mcp-cfg".into(),
                 table: "users".into(),
+                database: Some("app".into()),
+                schema: None,
             }))
             .await
             .unwrap();
@@ -45,6 +48,8 @@
                 DescribeTableInput {
                     connection_id: "mcp-cfg".into(),
                     table: "users".into(),
+                    database: Some("app".into()),
+                    schema: None,
                 },
             ))
             .await
@@ -83,6 +88,7 @@
                 SearchTablesInput {
                     connection_id: "mcp-cfg".into(),
                     database: Some("app".into()),
+                    schema: None,
                     pattern: "user".into(),
                     limit: Some(10),
                 },
@@ -97,6 +103,7 @@
                 SearchTablesInput {
                     connection_id: "mcp-cfg".into(),
                     database: Some("app".into()),
+                    schema: None,
                     pattern: "zzz_nonexistent".into(),
                     limit: None,
                 },

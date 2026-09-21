@@ -26,6 +26,20 @@ impl InfluxDbDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
     }
 
+    /// Database an InfluxQL read targets.
+    ///
+    /// The explicit `database` argument is authoritative. A blank one keeps the
+    /// pre-contract behavior: the `db=` parameter is omitted and the server's
+    /// own default database answers the query.
+    fn effective_database(database: &str) -> Option<&str> {
+        let db = database.trim();
+        if db.is_empty() {
+            None
+        } else {
+            Some(db)
+        }
+    }
+
     async fn query(
         client: &reqwest::Client,
         base: &str,
@@ -169,10 +183,20 @@ impl DatabaseDriver for InfluxDbDriver {
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // InfluxDB has no schema level: `database` is the bucket/database name,
+        // and a blank one falls back to the server's default database.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
-        let v = Self::query(client, base, Some(database), "SHOW MEASUREMENTS").await?;
+        let v = Self::query(
+            client,
+            base,
+            Self::effective_database(database),
+            "SHOW MEASUREMENTS",
+        )
+        .await?;
         let mut tables = Vec::new();
         if let Some(series) = v
             .get("results")
@@ -206,14 +230,18 @@ impl DatabaseDriver for InfluxDbDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
-        let db = String::new();
+        // The measurement is resolved inside the database named by the explicit
+        // argument; nothing is pinned on the session first.
         let v = Self::query(
             client,
             base,
-            Some(&db),
+            Self::effective_database(database),
             &format!("SHOW FIELD KEYS FROM \"{}\"", table.replace('"', "\"\"")),
         )
         .await?;
@@ -372,6 +400,69 @@ impl DatabaseDriver for InfluxDbDriver {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    fn unknown_pool_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "influx-schema-contract".into(),
+            pool_id: "influx-schema-contract".into(),
+        }
+    }
+
+    #[test]
+    fn influx_declares_no_schema_level() {
+        assert!(!InfluxDbDriver::new().has_schema_level());
+    }
+
+    /// The validator is the first statement: a schema argument is rejected as
+    /// `InvalidConfig` and never masked by a connection lookup failure.
+    #[tokio::test]
+    async fn get_tables_rejects_schema_argument_first() {
+        let driver = InfluxDbDriver::new();
+        let err = driver
+            .get_tables(&unknown_pool_handle(), "telegraf", Some("public"))
+            .await
+            .expect_err("schema-less driver must reject a schema argument");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn get_table_schema_rejects_schema_argument_first() {
+        let driver = InfluxDbDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "cpu", "telegraf", Some("public"))
+            .await
+            .expect_err("schema-less driver must reject a schema argument");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+    }
+
+    /// The explicit database is what a measurement read targets; a blank one
+    /// keeps the pre-contract "server default database" behavior.
+    #[test]
+    fn effective_database_uses_explicit_argument_only() {
+        assert_eq!(
+            InfluxDbDriver::effective_database("telegraf"),
+            Some("telegraf")
+        );
+        assert_eq!(
+            InfluxDbDriver::effective_database("  telegraf  "),
+            Some("telegraf")
+        );
+        assert_eq!(InfluxDbDriver::effective_database(""), None);
+        assert_eq!(InfluxDbDriver::effective_database("   "), None);
+    }
+
+    #[tokio::test]
+    async fn get_table_schema_blank_database_falls_back_to_server_default() {
+        let driver = InfluxDbDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "cpu", "  ", None)
+            .await
+            .expect_err("unknown pool must fail");
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "got {err:?}"
+        );
+    }
 
     #[test]
     fn result_from_json_then_stream_decoded_rows_honors_limit() {

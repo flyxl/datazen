@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use super::super::error::{CmdExt, CommandError};
-use super::super::query::ensure_session_database;
 use super::super::AppState;
 use super::helpers::{
     apply_query_result_limit, nonempty, query_result_limit_from_settings,
@@ -38,16 +37,6 @@ pub(crate) async fn execute_driver_command_stream_impl(
 
     let (driver, handle, _bound) =
         resolve_command_driver(state, request.db_session_id.as_ref(), None).await?;
-
-    // F1: pin the session's active database before streaming so unqualified
-    // SQL lands on the caller-selected database (no-op without a pin).
-    ensure_session_database(
-        state,
-        &handle.id,
-        request.database.as_deref(),
-        "execute_driver_command_stream",
-    )
-    .await?;
 
     let definition = driver
         .command_definitions()
@@ -88,8 +77,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
 
     // F7: give rewrite-capable drivers the chance to inline the SQL target
     // (dialect-qualified names, no session switch). Drivers without the
-    // capability execute the SQL as-is and the ensure_session_database pin
-    // above remains the fallback for the database dimension.
+    // capability execute the SQL as-is.
     let target_database = nonempty(request.database.as_ref()).map(str::to_string);
     let target_schema = nonempty(request.schema.as_ref()).map(str::to_string);
     if target_database.is_some() || target_schema.is_some() {

@@ -1,20 +1,65 @@
 //! Schema introspection (columns, table metadata).
 
 use crate::postgres::PostgresDriver;
-use crate::sql::{parse_pg_table_ref, pg_regclass_name};
+use crate::sql::{pg_regclass_name, resolve_pg_table_schema};
 use datazen_driver_api::*;
-use sqlx::Row;
+use sqlx::{PgPool, Row};
 use std::collections::HashMap;
+
+/// Relation kinds that own columns (mirrors the table listing query).
+const COLUMN_BEARING_RELKINDS: &str = "'r', 'v', 'm', 'f', 'p'";
+
+/// Fail loudly when `schema.table` does not resolve in the *current* database.
+///
+/// `information_schema.columns` is resolved against the session's active
+/// database, so reading a table that lives in another catalog returns no rows.
+/// That used to be reported as a successful, column-less table — which callers
+/// then cached, hiding the mistake for the whole cache TTL. A relation that
+/// genuinely exists but whose columns are privilege-filtered still resolves
+/// here, so a real (if unusual) zero-column table keeps its old behavior.
+async fn ensure_pg_relation_exists(
+    pool: &PgPool,
+    schema: Option<&str>,
+    table: &str,
+    display: &str,
+) -> Result<(), DriverError> {
+    let exists: Option<i32> = sqlx::query_scalar(&format!(
+        "SELECT 1 FROM pg_catalog.pg_class c \
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+         WHERE c.relname = $1 AND c.relkind IN ({COLUMN_BEARING_RELKINDS}) \
+           AND ($2::text IS NULL OR n.nspname = $2) \
+         LIMIT 1"
+    ))
+    .bind(table)
+    .bind(schema)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    if exists.is_some() {
+        return Ok(());
+    }
+
+    let database: String = sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(pool)
+        .await
+        .unwrap_or_default();
+    Err(DriverError::QueryFailed(format!(
+        "Table '{display}' does not exist in the current database '{database}'"
+    )))
+}
 
 impl PostgresDriver {
     pub(crate) async fn get_columns_impl(
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-        let (schema, bare_table) = parse_pg_table_ref(table);
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let (schema, bare_table) = resolve_pg_table_schema(table, schema);
+        let pool = self.pool_for_target(handle, database).await?;
         let regclass = pg_regclass_name(schema, bare_table);
 
         let cols = sqlx::query(
@@ -29,9 +74,16 @@ impl PostgresDriver {
         )
         .bind(bare_table)
         .bind(schema)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        // No columns for a relation that does not exist here: the caller asked
+        // for a table of another database (or a dropped one). Report it instead
+        // of handing out an empty column list.
+        if cols.is_empty() {
+            ensure_pg_relation_exists(&pool, schema, bare_table, table).await?;
+        }
 
         // `quote_ident($1)::regclass` fails when the table is not on search_path.
         // Columns must still load so SQL autocomplete can list fields.
@@ -44,7 +96,7 @@ impl PostgresDriver {
                     "#,
         )
         .bind(&regclass)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .unwrap_or_default();
 
@@ -73,10 +125,12 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-        let (schema, bare_table) = parse_pg_table_ref(table);
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let (schema, bare_table) = resolve_pg_table_schema(table, schema);
+        let pool = self.pool_for_target(handle, database).await?;
         let regclass = pg_regclass_name(schema, bare_table);
 
         let cols = sqlx::query(
@@ -91,11 +145,12 @@ impl PostgresDriver {
         )
         .bind(bare_table)
         .bind(schema)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
         if cols.is_empty() {
+            ensure_pg_relation_exists(&pool, schema, bare_table, table).await?;
             return Ok(TableSchema {
                 table_name: table.to_string(),
                 columns: Vec::new(),
@@ -116,7 +171,7 @@ impl PostgresDriver {
             "#,
         )
         .bind(&regclass)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .unwrap_or_default();
 
@@ -164,7 +219,7 @@ impl PostgresDriver {
             "#,
         )
         .bind(&regclass)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .unwrap_or_default();
 
@@ -216,7 +271,7 @@ impl PostgresDriver {
         )
         .bind(bare_table)
         .bind(schema)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .unwrap_or_default();
 
@@ -255,24 +310,19 @@ impl PostgresDriver {
     pub(crate) async fn get_all_columns_impl(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        let pool = self.pool_for_target(handle, database).await?;
+        let schema_ref = schema.map(str::trim).filter(|s| !s.is_empty());
 
-        let configs = self.connect_configs.read().await;
-        let schema_filter = configs
-            .get(&handle.pool_id)
-            .and_then(|c| c.schema.as_deref())
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_string);
-        drop(configs);
-
-        let schema_ref = schema_filter.as_deref().unwrap_or("public");
-
+        // `$1 IS NULL` means "every user schema", matching `get_tables` so the
+        // ER diagram and the table list always describe the same set.
         let rows = sqlx::query(
             r#"
             SELECT
+                c.table_schema,
                 c.table_name,
                 c.column_name,
                 c.data_type,
@@ -285,30 +335,50 @@ impl PostgresDriver {
                 CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END AS is_primary_key
             FROM information_schema.columns c
             LEFT JOIN (
-                SELECT ku.table_name, ku.column_name
+                SELECT ku.table_schema, ku.table_name, ku.column_name
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.key_column_usage ku
                   ON ku.constraint_name = tc.constraint_name
                  AND ku.table_schema = tc.table_schema
                 WHERE tc.constraint_type = 'PRIMARY KEY'
-                  AND tc.table_schema = $1
-            ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = $1
-            ORDER BY c.table_name, c.ordinal_position
+            ) pk ON c.table_schema = pk.table_schema
+                AND c.table_name = pk.table_name
+                AND c.column_name = pk.column_name
+            WHERE ($1::text IS NULL OR c.table_schema = $1)
+              AND c.table_schema NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY c.table_schema, c.table_name, c.ordinal_position
             "#,
         )
         .bind(schema_ref)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
         let mut result: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
+        let mut owners: HashMap<String, String> = HashMap::new();
 
         for row in &rows {
             let table_name: String = row.get("table_name");
+            let table_schema: String = row.get("table_schema");
             let col_name: String = row.get("column_name");
             let nullable: String = row.get("is_nullable");
             let is_pk: bool = row.get("is_primary_key");
+
+            // The payload is keyed by bare table name, so two same-named tables
+            // in different schemas cannot both be represented. Keep the first
+            // and say so rather than merging their columns into one table.
+            if let Some(existing) = owners.get(&table_name) {
+                if existing != &table_schema {
+                    tracing::warn!(
+                        table = %table_name,
+                        kept = %existing,
+                        skipped = %table_schema,
+                        "get_all_columns: same-named table in another schema skipped"
+                    );
+                }
+                continue;
+            }
+            owners.insert(table_name.clone(), table_schema);
 
             let column = ColumnSchema {
                 name: col_name.clone(),

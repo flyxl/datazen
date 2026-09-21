@@ -44,11 +44,15 @@ pub async fn dump_table_ddl_from_schema<D>(
     driver: &D,
     handle: &ConnectionHandle,
     table: &str,
+    database: &str,
+    schema: Option<&str>,
 ) -> Result<String, DriverError>
 where
     D: DatabaseDriver + ?Sized,
 {
-    let schema = driver.get_table_schema(handle, table).await?;
+    let schema = driver
+        .get_table_schema(handle, table, database, schema)
+        .await?;
     Ok(build_create_table_sql(&|n| driver.quote_ident(n), &schema))
 }
 
@@ -155,6 +159,7 @@ async fn dump_one_object<D, F>(
     driver: &D,
     handle: &ConnectionHandle,
     table: &TableInfo,
+    database: &str,
     opts: &BackupDumpOptions,
     current: u32,
     total: u32,
@@ -166,6 +171,9 @@ where
     F: FnMut(DumpProgress),
 {
     let tname = &table.name;
+    // The object's own namespace, as reported by `get_tables`. A database-wide
+    // dump spans every schema, so the schema is per-object, never global.
+    let object_schema = table.schema.as_deref();
     on_progress(DumpProgress {
         current,
         total,
@@ -181,12 +189,17 @@ where
 
     if !opts.data_only {
         let ddl = if view_like {
-            match driver.dump_view_ddl(handle, tname).await {
+            match driver
+                .dump_view_ddl(handle, tname, database, object_schema)
+                .await
+            {
                 Ok(sql) => sql,
                 Err(e) => format!("-- View {tname}: skipped DDL ({e})\n"),
             }
         } else {
-            driver.dump_table_ddl(handle, tname).await?
+            driver
+                .dump_table_ddl(handle, tname, database, object_schema)
+                .await?
         };
         out.push_str(&ddl);
         if !ddl.ends_with('\n') {
@@ -199,13 +212,15 @@ where
         return Ok(());
     }
 
-    let schema = driver.get_table_schema(handle, tname).await?;
+    let schema = driver
+        .get_table_schema(handle, tname, database, object_schema)
+        .await?;
     let col_names: Vec<String> = schema
         .columns
         .iter()
         .map(|c| driver.quote_ident(&c.name))
         .collect();
-    let rel = qualified_ident(&|n| driver.quote_ident(n), table.schema.as_deref(), tname);
+    let rel = qualified_ident(&|n| driver.quote_ident(n), object_schema, tname);
     let select_sql = format!("SELECT {} FROM {}", col_names.join(", "), rel);
 
     match driver.query(handle, &select_sql).await {
@@ -317,7 +332,7 @@ where
     F: FnMut(DumpProgress),
 {
     let tables: Vec<TableInfo> = driver
-        .get_tables(handle, database)
+        .get_tables(handle, database, None)
         .await?
         .into_iter()
         .filter(is_dumpable_object)
@@ -383,6 +398,7 @@ where
             driver,
             handle,
             table,
+            database,
             opts,
             current,
             total,

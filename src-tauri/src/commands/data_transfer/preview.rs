@@ -8,6 +8,7 @@ use super::inspect::inspect_data_transfer_impl;
 use crate::data_transfer::{
     build_preview, enforce_transfer_pairing, TransferJob, TransferPreview, TransferPreviewAdapters,
 };
+use crate::services::metadata_schema;
 use datazen_driver_api::TableType;
 
 pub(crate) async fn preview_data_transfer_impl(
@@ -48,7 +49,7 @@ pub(crate) async fn preview_data_transfer_impl(
         .cmd_err("preview_data_transfer")?;
 
     let src_tables = src_driver
-        .get_tables(&src_handle, &job.source.database)
+        .get_tables(&src_handle, &job.source.database, None)
         .await
         .cmd_err("preview_data_transfer")?;
 
@@ -57,7 +58,16 @@ pub(crate) async fn preview_data_transfer_impl(
         .iter()
         .filter(|t| matches!(t.table_type, TableType::Table))
     {
-        if let Ok(schema) = src_driver.get_table_schema(&src_handle, &table.name).await {
+        let schema = metadata_schema(src_driver.as_ref(), None, table.schema.as_deref(), None);
+        if let Ok(schema) = src_driver
+            .get_table_schema(
+                &src_handle,
+                &table.name,
+                &job.source.database,
+                schema.as_deref(),
+            )
+            .await
+        {
             source_schemas.insert(table.name.clone(), schema);
         }
     }

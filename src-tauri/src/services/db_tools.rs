@@ -4,7 +4,7 @@ pub const MCP_QUERY_DEFAULT_LIMIT: u32 = 100;
 pub const MCP_QUERY_MAX_LIMIT: u32 = 50_000;
 
 use crate::mcp::permission::{self, McpPermissionMode};
-use crate::services::ConnectionManager;
+use crate::services::{metadata_schema, ConnectionManager};
 use crate::store::Store;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 use std::sync::Arc;
@@ -36,6 +36,34 @@ pub async fn resolve_connection_with_id(
                 crate::log_redact::redact_secrets_for_log(&e.to_string())
             )
         })
+}
+
+/// Explicit metadata target for an MCP call.
+///
+/// The MCP surface is the one place where a table/database name is typed by a
+/// human rather than walked from the object tree, so it has no schema to hand
+/// down. It resolves the database from the caller's argument with the
+/// connection config as fallback, and the schema from the caller's argument,
+/// the config, then the driver's own convention — never a session default.
+pub async fn resolve_metadata_target(
+    connection_manager: &ConnectionManager,
+    db_session_id: &str,
+    driver: &Arc<dyn DatabaseDriver>,
+    database: Option<&str>,
+    schema: Option<&str>,
+) -> Result<(String, Option<String>), String> {
+    let config = connection_manager
+        .get_session_config(db_session_id)
+        .await
+        .map_err(|e| format!("Cannot read session config: {e}"))?;
+    let database = database
+        .map(str::trim)
+        .filter(|db| !db.is_empty())
+        .or(config.database.as_deref())
+        .unwrap_or("")
+        .to_string();
+    let schema = metadata_schema(driver.as_ref(), schema, None, config.schema.as_deref());
+    Ok((database, schema))
 }
 
 /// List all configured connections as a JSON string.
@@ -73,11 +101,21 @@ pub async fn list_databases(
 pub async fn list_tables(
     connection_manager: &ConnectionManager,
     connection_id: &str,
-    database: &str,
+    database: Option<&str>,
+    schema: Option<&str>,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (db_session_id, driver, handle) =
+        resolve_connection_with_id(connection_manager, connection_id).await?;
+    let (database, schema) = resolve_metadata_target(
+        connection_manager,
+        &db_session_id,
+        &driver,
+        database,
+        schema,
+    )
+    .await?;
     let tables = driver
-        .get_tables(&handle, database)
+        .get_tables(&handle, &database, schema.as_deref())
         .await
         .map_err(|e| format!("Error listing tables: {e}"))?;
     serde_json::to_string_pretty(&tables).map_err(|e| format!("Error: {e}"))
@@ -88,13 +126,23 @@ pub async fn list_tables(
 pub async fn search_tables(
     connection_manager: &ConnectionManager,
     connection_id: &str,
-    database: &str,
+    database: Option<&str>,
+    schema: Option<&str>,
     pattern: &str,
     limit: usize,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (db_session_id, driver, handle) =
+        resolve_connection_with_id(connection_manager, connection_id).await?;
+    let (database, schema) = resolve_metadata_target(
+        connection_manager,
+        &db_session_id,
+        &driver,
+        database,
+        schema,
+    )
+    .await?;
     let all_tables = driver
-        .get_tables(&handle, database)
+        .get_tables(&handle, &database, schema.as_deref())
         .await
         .map_err(|e| format!("Error listing tables: {e}"))?;
 
@@ -124,11 +172,25 @@ pub async fn get_table_schema(
     connection_manager: &ConnectionManager,
     connection_id: &str,
     tables: &[String],
+    database: Option<&str>,
+    schema: Option<&str>,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (db_session_id, driver, handle) =
+        resolve_connection_with_id(connection_manager, connection_id).await?;
+    let (database, schema) = resolve_metadata_target(
+        connection_manager,
+        &db_session_id,
+        &driver,
+        database,
+        schema,
+    )
+    .await?;
     let mut results = Vec::new();
     for table in tables {
-        match driver.get_table_schema(&handle, table).await {
+        match driver
+            .get_table_schema(&handle, table, &database, schema.as_deref())
+            .await
+        {
             Ok(schema) => results.push(serde_json::to_value(&schema).unwrap_or_default()),
             Err(e) => results.push(serde_json::json!({"table": table, "error": e.to_string()})),
         }
@@ -141,10 +203,21 @@ pub async fn get_single_table_schema(
     connection_manager: &ConnectionManager,
     connection_id: &str,
     table: &str,
+    database: Option<&str>,
+    schema: Option<&str>,
 ) -> Result<datazen_driver_api::TableSchema, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (db_session_id, driver, handle) =
+        resolve_connection_with_id(connection_manager, connection_id).await?;
+    let (database, schema) = resolve_metadata_target(
+        connection_manager,
+        &db_session_id,
+        &driver,
+        database,
+        schema,
+    )
+    .await?;
     driver
-        .get_table_schema(&handle, table)
+        .get_table_schema(&handle, table, &database, schema.as_deref())
         .await
         .map_err(|e| format!("Error getting schema: {e}"))
 }
@@ -302,7 +375,7 @@ mod tests {
     async fn list_tables_returns_json() {
         let (_keyring, store, mgr, _) = test_stack().await;
         store.save_connection(sample_config("c1")).await.unwrap();
-        let json = list_tables(&mgr, "c1", "app").await.unwrap();
+        let json = list_tables(&mgr, "c1", Some("app"), None).await.unwrap();
         assert!(json.contains("users"));
     }
 
@@ -310,7 +383,7 @@ mod tests {
     async fn get_table_schema_returns_pretty_json() {
         let (_keyring, store, mgr, _) = test_stack().await;
         store.save_connection(sample_config("c1")).await.unwrap();
-        let json = get_table_schema(&mgr, "c1", &["users".into()])
+        let json = get_table_schema(&mgr, "c1", &["users".into()], Some("app"), None)
             .await
             .unwrap();
         assert!(json.contains("users"));
@@ -397,7 +470,9 @@ mod tests {
         let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
         store.save_connection(sample_config("c1")).await.unwrap();
 
-        let json = search_tables(&mgr, "c1", "app", "user", 20).await.unwrap();
+        let json = search_tables(&mgr, "c1", Some("app"), None, "user", 20)
+            .await
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["totalMatches"].as_u64(), Some(2));
         assert_eq!(parsed["totalTables"].as_u64(), Some(4));
@@ -405,7 +480,9 @@ mod tests {
         let matched = parsed["matched"].as_array().unwrap();
         assert_eq!(matched.len(), 2);
 
-        let json_limited = search_tables(&mgr, "c1", "app", "user", 1).await.unwrap();
+        let json_limited = search_tables(&mgr, "c1", Some("app"), None, "user", 1)
+            .await
+            .unwrap();
         let parsed_limited: serde_json::Value = serde_json::from_str(&json_limited).unwrap();
         assert_eq!(parsed_limited["matched"].as_array().unwrap().len(), 1);
         assert_eq!(parsed_limited["totalMatches"].as_u64(), Some(2));
@@ -446,7 +523,9 @@ mod tests {
         let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
         store.save_connection(sample_config("c1")).await.unwrap();
 
-        let json = search_tables(&mgr, "c1", "app", "USER", 20).await.unwrap();
+        let json = search_tables(&mgr, "c1", Some("app"), None, "USER", 20)
+            .await
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["totalMatches"].as_u64(), Some(1));
         assert_eq!(parsed["matched"][0]["name"].as_str(), Some("UserAccounts"));
@@ -487,7 +566,9 @@ mod tests {
         let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
         store.save_connection(sample_config("c1")).await.unwrap();
 
-        let json = search_tables(&mgr, "c1", "app", "", 20).await.unwrap();
+        let json = search_tables(&mgr, "c1", Some("app"), None, "", 20)
+            .await
+            .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["totalMatches"].as_u64(), Some(2));
         assert_eq!(parsed["matched"].as_array().unwrap().len(), 2);
@@ -500,7 +581,7 @@ mod tests {
         let (_keyring, store, mgr, _) = test_stack().await;
         store.save_connection(sample_config("c1")).await.unwrap();
 
-        let json = search_tables(&mgr, "c1", "app", "nonexistent_xyz", 20)
+        let json = search_tables(&mgr, "c1", Some("app"), None, "nonexistent_xyz", 20)
             .await
             .unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

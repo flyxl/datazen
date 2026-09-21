@@ -38,8 +38,17 @@ function notifyInvalidation(dbSessionId: string, tableName?: string): void {
   for (const listener of [...invalidationListeners]) listener(dbSessionId, tableName);
 }
 
-function cacheKey(dbSessionId: string, tableName: string, database: string): string {
-  return `${dbSessionId}::${database}::${tableName}`;
+function cacheKey(
+  dbSessionId: string,
+  tableName: string,
+  database: string,
+  schema?: string | null,
+): string {
+  // The schema is part of the identity: `public.users` and `other.users` are
+  // different relations, and sharing one entry is how a foreign-schema read
+  // could serve another schema's columns.
+  const scope = schema?.trim() ? schema.trim() : '';
+  return `${dbSessionId}::${database}::${scope}::${tableName}`;
 }
 
 /** Optional DDL cache identity. When supplied, the key discriminates object
@@ -90,8 +99,9 @@ export async function getCachedTableSchema(
   dbSessionId: string,
   tableName: string,
   database: string,
+  schema?: string | null,
 ): Promise<TableSchema> {
-  const key = cacheKey(dbSessionId, tableName, database);
+  const key = cacheKey(dbSessionId, tableName, database, schema);
 
   const cached = schemaCache.get(key);
   if (isValid(cached)) return cached.data;
@@ -104,7 +114,7 @@ export async function getCachedTableSchema(
   let inflight = schemaInflight.get(key);
   if (!inflight) {
     inflight = databaseCommands
-      .getTableSchema(dbSessionId, tableName, database)
+      .getTableSchema(dbSessionId, tableName, database, schema ?? null)
       .then((data) => {
         const frozen = deepFreeze(data);
         schemaCache.set(key, { data: frozen, timestamp: Date.now() });

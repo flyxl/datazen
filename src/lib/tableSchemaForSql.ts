@@ -49,7 +49,7 @@ export async function fetchTableSchemaForSqlGeneration(args: {
 
   for (const ref of refs) {
     try {
-      const tableSchema = await getCachedTableSchema(dbSessionId, ref, database);
+      const tableSchema = await getCachedTableSchema(dbSessionId, ref, database, schema ?? null);
       if (tableSchema.columns.length > 0) {
         return { ...tableSchema, tableName };
       }
@@ -60,7 +60,12 @@ export async function fetchTableSchemaForSqlGeneration(args: {
 
   for (const ref of refs) {
     try {
-      const colNames = await databaseCommands.getColumns(dbSessionId, ref, database);
+      const colNames = await databaseCommands.getColumns(
+        dbSessionId,
+        ref,
+        database,
+        schema ?? null,
+      );
       if (colNames.length > 0) {
         return buildPseudoTableSchema(tableName, colNames);
       }

@@ -19,6 +19,8 @@ pub struct ListTablesInput {
     pub connection_id: String,
     /// Optional database name
     pub database: Option<String>,
+    /// Optional schema; omit to list every schema
+    pub schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -27,6 +29,8 @@ pub struct SearchTablesInput {
     pub connection_id: String,
     /// Optional database name
     pub database: Option<String>,
+    /// Optional schema; omit to search every schema
+    pub schema: Option<String>,
     /// Search keyword to match against table names (case-insensitive)
     pub pattern: String,
     /// Max results to return (default: 20)
@@ -39,6 +43,10 @@ pub struct GetSchemaInput {
     pub connection_id: String,
     /// Table name
     pub table: String,
+    /// Optional database name; defaults to the connection's database
+    pub database: Option<String>,
+    /// Optional schema; required for schema-aware engines (PostgreSQL, SQL Server)
+    pub schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -55,6 +63,10 @@ pub struct DescribeTableInput {
     pub connection_id: String,
     /// Table name
     pub table: String,
+    /// Optional database name; defaults to the connection's database
+    pub database: Option<String>,
+    /// Optional schema; required for schema-aware engines (PostgreSQL, SQL Server)
+    pub schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

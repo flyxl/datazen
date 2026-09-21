@@ -458,7 +458,12 @@ describe('schemaStore.ensureColumns', () => {
     await useSchemaStore.getState().ensureColumns(['users'], 'test-conn', 'testdb');
 
     expect(databaseCommands.getColumns).toHaveBeenCalledTimes(1);
-    expect(databaseCommands.getColumns).toHaveBeenCalledWith('test-conn', 'users', 'testdb');
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith(
+      'test-conn',
+      'users',
+      'testdb',
+      'public',
+    );
     expect(useSchemaStore.getState().columnMap).toEqual({ users: ['id', 'name'] });
   });
 
@@ -468,7 +473,12 @@ describe('schemaStore.ensureColumns', () => {
     useSchemaStore.setState({ columnMap: { users: ['id'] } });
     await useSchemaStore.getState().ensureColumns(['users', 'orders'], 'test-conn', 'testdb');
     expect(databaseCommands.getColumns).toHaveBeenCalledTimes(1);
-    expect(databaseCommands.getColumns).toHaveBeenCalledWith('test-conn', 'orders', 'testdb');
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith(
+      'test-conn',
+      'orders',
+      'testdb',
+      'public',
+    );
     expect(useSchemaStore.getState().columnMap).toEqual({
       users: ['id'],
       orders: ['id', 'name'],
@@ -496,6 +506,7 @@ describe('schemaStore.ensureColumns', () => {
       'test-conn',
       'wb_daily_orders',
       'hive',
+      null,
     );
     expect(useSchemaStore.getState().columnMap).toEqual({
       wb_daily_orders: ['id', 'name'],
@@ -536,8 +547,15 @@ describe('schemaStore.ensureColumns', () => {
 
     await useSchemaStore.getState().ensureColumns(['users'], 'test-conn', 'tab_db');
 
+    // The batch endpoint is deliberately schema-agnostic (AnySchema): it
+    // returns every schema's columns for the database in one round trip.
     expect(databaseCommands.getAllColumns).toHaveBeenCalledWith('test-conn', 'tab_db');
-    expect(databaseCommands.getColumns).toHaveBeenCalledWith('test-conn', 'users', 'tab_db');
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith(
+      'test-conn',
+      'users',
+      'tab_db',
+      'public',
+    );
   });
 
   it('falls back to per-table reads for tables missing from the batch result', async () => {
@@ -549,7 +567,12 @@ describe('schemaStore.ensureColumns', () => {
     await useSchemaStore.getState().ensureColumns(['users', 'orders'], 'test-conn', 'tab_db');
 
     expect(databaseCommands.getColumns).toHaveBeenCalledTimes(1);
-    expect(databaseCommands.getColumns).toHaveBeenCalledWith('test-conn', 'orders', 'tab_db');
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith(
+      'test-conn',
+      'orders',
+      'tab_db',
+      'public',
+    );
     expect(useSchemaStore.getState().columnMap).toEqual({
       users: ['id'],
       orders: ['id', 'name'],
@@ -568,7 +591,12 @@ describe('schemaStore.ensureColumns', () => {
       .getState()
       .ensureColumns(['users'], 'test-conn', 'testdb', { requireTypes: true });
 
-    expect(databaseCommands.getColumnsTyped).toHaveBeenCalledWith('test-conn', 'users', 'testdb');
+    expect(databaseCommands.getColumnsTyped).toHaveBeenCalledWith(
+      'test-conn',
+      'users',
+      'testdb',
+      'public',
+    );
     expect(useSchemaStore.getState().typedColumnMap).toEqual({
       users: { id: 'integer', ordered_at: 'timestamp without time zone' },
     });
@@ -600,7 +628,12 @@ describe('schemaStore.ensureColumns', () => {
       .ensureColumns(['users', 'orders'], 'test-conn', 'testdb', { requireTypes: true });
 
     expect(databaseCommands.getColumnsTyped).toHaveBeenCalledTimes(1);
-    expect(databaseCommands.getColumnsTyped).toHaveBeenCalledWith('test-conn', 'orders', 'testdb');
+    expect(databaseCommands.getColumnsTyped).toHaveBeenCalledWith(
+      'test-conn',
+      'orders',
+      'testdb',
+      'public',
+    );
     expect(useSchemaStore.getState().typedColumnMap).toEqual({
       users: { id: 'integer' },
       orders: { id: 'bigint' },
@@ -902,8 +935,8 @@ describe('schemaStore keyed multi-connection', () => {
     await useSchemaStore.getState().ensureColumns(['users'], 'conn-a', 'db');
     await useSchemaStore.getState().ensureColumns(['orders'], 'conn-b', 'db');
 
-    expect(databaseCommands.getColumns).toHaveBeenCalledWith('conn-a', 'users', 'db');
-    expect(databaseCommands.getColumns).toHaveBeenCalledWith('conn-b', 'orders', 'db');
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith('conn-a', 'users', 'db', null);
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith('conn-b', 'orders', 'db', null);
     expect(useSchemaStore.getState().getConnectionSchema('conn-a')?.columnMap).toEqual({
       users: ['id', 'name'],
     });

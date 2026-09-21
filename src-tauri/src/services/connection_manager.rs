@@ -454,22 +454,6 @@ impl ConnectionManager {
         Ok(active.config.clone())
     }
 
-    /// Update the active logical database for a live session (after `use_database`).
-    /// Keeps schema-cache keys and metadata lookups aligned with the session.
-    pub async fn set_active_database(
-        &self,
-        db_session_id: &str,
-        database: &str,
-    ) -> Result<(), ConnectionError> {
-        let mut connections = self.connections.write().await;
-        let active = connections
-            .get_mut(db_session_id)
-            .ok_or_else(|| ConnectionError::DbSessionNotFound(db_session_id.to_string()))?;
-        active.config.database = Some(database.to_string());
-        active.last_used = Instant::now();
-        Ok(())
-    }
-
     pub async fn test_connection(
         &self,
         config: &ConnectionConfig,
@@ -674,6 +658,7 @@ mod tests {
             &self,
             _handle: &ConnectionHandle,
             _database: &str,
+            _schema: Option<&str>,
         ) -> Result<Vec<crate::db::TableInfo>, DriverError> {
             Ok(vec![])
         }
@@ -682,6 +667,8 @@ mod tests {
             &self,
             _handle: &ConnectionHandle,
             _table: &str,
+            _database: &str,
+            _schema: Option<&str>,
         ) -> Result<crate::db::TableSchema, DriverError> {
             Err(DriverError::QueryFailed("stub".into()))
         }

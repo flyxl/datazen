@@ -104,11 +104,11 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_tables", &input.connection_id)?;
-        let db = input.database.as_deref().unwrap_or("");
         crate::services::db_tools::list_tables(
             &self.app_state.connection_manager,
             &input.connection_id,
-            db,
+            input.database.as_deref(),
+            input.schema.as_deref(),
         )
         .await
         .map_err(Self::map_err)
@@ -122,12 +122,12 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<SearchTablesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("search_tables", &input.connection_id)?;
-        let db = input.database.as_deref().unwrap_or("");
         let limit = input.limit.unwrap_or(20) as usize;
         crate::services::db_tools::search_tables(
             &self.app_state.connection_manager,
             &input.connection_id,
-            db,
+            input.database.as_deref(),
+            input.schema.as_deref(),
             &input.pattern,
             limit,
         )
@@ -169,6 +169,8 @@ impl DataZenMcpServer {
             &self.app_state.connection_manager,
             &input.connection_id,
             &tables,
+            input.database.as_deref(),
+            input.schema.as_deref(),
         )
         .await
         .map_err(Self::map_err)
@@ -203,6 +205,8 @@ impl DataZenMcpServer {
             &self.app_state.connection_manager,
             &input.connection_id,
             &input.table,
+            input.database.as_deref(),
+            input.schema.as_deref(),
         )
         .await
         .map_err(Self::map_err)?;

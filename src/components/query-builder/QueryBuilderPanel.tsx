@@ -171,7 +171,12 @@ export function QueryBuilderPanel({
       const allFks: ForeignKeyRelation[] = [];
       for (const tableName of selectedTables) {
         try {
-          const schema = await getCachedTableSchema(dbSessionId, tableName, currentDatabase ?? '');
+          const schema = await getCachedTableSchema(
+            dbSessionId,
+            tableName,
+            currentDatabase ?? '',
+            useSchemaStore.getState().schemaOfRelation(tableName, dbSessionId),
+          );
           for (const fk of schema.foreignKeys) {
             // Composite keys are normalised to their ordered distinct columns
             // before pairing positionally: `information_schema` reports the two

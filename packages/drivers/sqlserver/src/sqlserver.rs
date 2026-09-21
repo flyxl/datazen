@@ -37,60 +37,121 @@ impl SqlServerDriver {
         }
     }
 
-    fn build_use_database_sql(database: &str) -> Result<String, DriverError> {
+    /// `[database].` prefix for a catalog view, or an empty string when the
+    /// caller targets the connection's current database. SQL Server accepts
+    /// three-part names, so a metadata read of another database never needs a
+    /// session-level `USE`.
+    fn catalog_prefix(database: &str) -> String {
         let trimmed = database.trim();
         if trimmed.is_empty() {
-            return Err(DriverError::InvalidConfig(
-                "Database name must not be empty".into(),
-            ));
+            String::new()
+        } else {
+            // Bracket quoting; escape `]` by doubling.
+            format!("[{}].", trimmed.replace(']', "]]"))
         }
-        if trimmed.contains('\0') {
-            return Err(DriverError::InvalidConfig(
-                "Database name contains invalid characters".into(),
-            ));
-        }
-        // Bracket quoting; escape `]` by doubling.
-        Ok(format!("USE [{}]", trimmed.replace(']', "]]")))
     }
 
-    fn build_table_schema_sql(table: &str) -> String {
-        let escaped = table.replace('\'', "''");
+    /// List tables and views together with the schema that owns them.
+    ///
+    /// The schema column is mandatory: SQL Server has a real schema level, and
+    /// the backup/dump path feeds `TableInfo::schema` straight back into
+    /// `get_table_schema`, which the contract validator rejects when it is
+    /// missing. A schema filter is applied only when the caller pinned one;
+    /// `None` lists every schema in the database, which is the set the
+    /// connection tree groups by.
+    fn build_tables_sql(database: &str, schema: Option<&str>) -> String {
+        let catalog = Self::catalog_prefix(database);
+        let filter = match schema.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(schema) => format!(" WHERE s.name = '{}'", schema.replace('\'', "''")),
+            None => String::new(),
+        };
         format!(
-            "SELECT c.name AS column_name, t.name AS data_type, c.is_nullable, c.is_identity, \
-             dc.definition AS default_value, CAST(ep.value AS nvarchar(max)) AS comment, \
-             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
-             FROM sys.columns c \
-             JOIN sys.types t ON c.user_type_id = t.user_type_id \
-             LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id \
-             LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' \
-             LEFT JOIN ( \
-               SELECT ic.object_id, ic.column_id \
-               FROM sys.index_columns ic \
-               INNER JOIN sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
-               WHERE i.is_primary_key = 1 \
-             ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id \
-             WHERE c.object_id = OBJECT_ID('{escaped}') ORDER BY c.column_id"
+            "SELECT s.name AS schema_name, t.name AS table_name, 'TABLE' AS kind \
+             FROM {catalog}sys.tables t JOIN {catalog}sys.schemas s ON t.schema_id = s.schema_id{filter} \
+             UNION ALL \
+             SELECT s.name, v.name, 'VIEW' \
+             FROM {catalog}sys.views v JOIN {catalog}sys.schemas s ON v.schema_id = s.schema_id{filter} \
+             ORDER BY schema_name, table_name"
         )
     }
 
-    /// SQL to batch-fetch columns for ALL tables in the current database.
-    fn build_all_columns_sql() -> &'static str {
-        "SELECT t.name AS table_name, c.name AS column_name, tp.name AS data_type, \
-         c.is_nullable, c.is_identity, dc.definition AS default_value, \
-         CAST(ep.value AS nvarchar(max)) AS comment, \
-         CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
-         FROM sys.columns c \
-         JOIN sys.tables t ON c.object_id = t.object_id \
-         JOIN sys.types tp ON c.user_type_id = tp.user_type_id \
-         LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id \
-         LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' \
-         LEFT JOIN ( \
-           SELECT ic.object_id, ic.column_id \
-           FROM sys.index_columns ic \
-           INNER JOIN sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
-           WHERE i.is_primary_key = 1 \
-         ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id \
-         ORDER BY t.name, c.column_id"
+    /// Columns of one table or view, filtered by the explicit `(schema, table)`.
+    ///
+    /// `database` is inlined as a catalog prefix when non-empty, so reading
+    /// another database never needs a session `USE`. `INFORMATION_SCHEMA.COLUMNS`
+    /// is the column source; the catalog-qualified `sys.*` views add the
+    /// identity / default / primary-key / comment metadata it does not expose.
+    /// The object lookup is a derived table keyed on `(schema, name)` so a
+    /// same-named relation in another schema can never duplicate or steal rows.
+    fn build_table_schema_sql(database: &str, schema: &str, table: &str) -> String {
+        let catalog = Self::catalog_prefix(database);
+        let schema = schema.replace('\'', "''");
+        let table = table.replace('\'', "''");
+        format!(
+            "SELECT c.COLUMN_NAME AS column_name, c.DATA_TYPE AS data_type, \
+             CAST(CASE WHEN c.IS_NULLABLE = 'YES' THEN 1 ELSE 0 END AS bit) AS is_nullable, \
+             CAST(CASE WHEN sc.is_identity = 1 THEN 1 ELSE 0 END AS bit) AS is_identity, \
+             dc.definition AS default_value, CAST(ep.value AS nvarchar(max)) AS comment, \
+             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
+             FROM {catalog}INFORMATION_SCHEMA.COLUMNS c \
+             LEFT JOIN ( \
+               SELECT o.object_id, o.name AS object_name, s.name AS schema_name \
+               FROM {catalog}sys.objects o \
+               JOIN {catalog}sys.schemas s ON s.schema_id = o.schema_id \
+             ) obj ON obj.object_name = c.TABLE_NAME AND obj.schema_name = c.TABLE_SCHEMA \
+             LEFT JOIN {catalog}sys.columns sc ON sc.object_id = obj.object_id AND sc.name = c.COLUMN_NAME \
+             LEFT JOIN {catalog}sys.default_constraints dc ON dc.parent_object_id = obj.object_id AND dc.parent_column_id = sc.column_id \
+             LEFT JOIN {catalog}sys.extended_properties ep ON ep.major_id = obj.object_id AND ep.minor_id = sc.column_id AND ep.name = 'MS_Description' \
+             LEFT JOIN ( \
+               SELECT ic.object_id, ic.column_id \
+               FROM {catalog}sys.index_columns ic \
+               INNER JOIN {catalog}sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
+               WHERE i.is_primary_key = 1 \
+             ) pk ON pk.object_id = obj.object_id AND pk.column_id = sc.column_id \
+             WHERE c.TABLE_SCHEMA = '{schema}' AND c.TABLE_NAME = '{table}' \
+             ORDER BY c.ORDINAL_POSITION"
+        )
+    }
+
+    /// Batch columns for every table/view in `database` (optionally narrowed to
+    /// one `schema`). `database` is inlined as a catalog prefix, so a batch read
+    /// of another database needs no session `USE`.
+    fn build_all_columns_sql(database: &str, schema: Option<&str>) -> String {
+        let catalog = Self::catalog_prefix(database);
+        let filter = match schema.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(schema) => format!(" AND s.name = '{}'", schema.replace('\'', "''")),
+            None => String::new(),
+        };
+        format!(
+            "SELECT s.name AS schema_name, o.name AS table_name, c.name AS column_name, \
+             tp.name AS data_type, c.is_nullable, c.is_identity, dc.definition AS default_value, \
+             CAST(ep.value AS nvarchar(max)) AS comment, \
+             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
+             FROM {catalog}sys.columns c \
+             JOIN {catalog}sys.objects o ON c.object_id = o.object_id \
+             JOIN {catalog}sys.schemas s ON o.schema_id = s.schema_id \
+             JOIN {catalog}sys.types tp ON c.user_type_id = tp.user_type_id \
+             LEFT JOIN {catalog}sys.default_constraints dc ON c.default_object_id = dc.object_id \
+             LEFT JOIN {catalog}sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' \
+             LEFT JOIN ( \
+               SELECT ic.object_id, ic.column_id \
+               FROM {catalog}sys.index_columns ic \
+               INNER JOIN {catalog}sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
+               WHERE i.is_primary_key = 1 \
+             ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id \
+             WHERE o.type IN ('U', 'V'){filter} \
+             ORDER BY s.name, o.name, c.column_id"
+        )
+    }
+
+    /// Effective schema for a single-table read: the explicit argument wins,
+    /// otherwise the driver's conventional default (`dbo`). Never a hardcoded
+    /// literal at the call site, so the convention stays owned by the driver.
+    fn effective_schema<'a>(&self, schema: Option<&'a str>) -> Option<&'a str> {
+        schema
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .or(self.default_schema())
     }
 
     fn bit_true(v: &Option<Value>) -> bool {
@@ -337,6 +398,18 @@ impl DatabaseDriver for SqlServerDriver {
         "sqlserver".to_string()
     }
 
+    /// SQL Server addresses relations as `schema.table`, so a single-table read
+    /// must be given an explicit schema and `None` is a caller bug.
+    fn has_schema_level(&self) -> bool {
+        true
+    }
+
+    /// SQL Server resolves unqualified names in the user's default schema,
+    /// which is `dbo` unless the login was created with another one.
+    fn default_schema(&self) -> Option<&'static str> {
+        Some("dbo")
+    }
+
     /// F7: qualify unqualified table references with the T-SQL three-part
     /// name (`[db].[schema].t`; `[schema].t` when only a schema is given).
     /// A database-only target is never inlined — a two-part `[db].t` would
@@ -401,35 +474,44 @@ impl DatabaseDriver for SqlServerDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // Listing may legitimately span every schema; an explicit schema just
+        // narrows the set. A schema-less model would be a caller bug.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let mut map = self.clients.write().await;
         let client = map
             .get_mut(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let result = Self::run(
-            client,
-            "SELECT name, 'TABLE' AS kind FROM sys.tables UNION ALL SELECT name, 'VIEW' FROM sys.views ORDER BY name",
-        )
-        .await?;
+        let sql = Self::build_tables_sql(database, schema);
+        let result = Self::run(client, &sql).await?;
         Ok(result
             .rows
             .into_iter()
             .filter_map(|r| {
-                let name = r
+                let schema_name = r
                     .get(0)
+                    .cloned()
+                    .flatten()
+                    .map(|v| datazen_driver_http_support::value_display(&v))
+                    .unwrap_or_default();
+                let name = r
+                    .get(1)
                     .cloned()
                     .flatten()
                     .map(|v| datazen_driver_http_support::value_display(&v))?;
                 let kind = r
-                    .get(1)
+                    .get(2)
                     .cloned()
                     .flatten()
                     .map(|v| datazen_driver_http_support::value_display(&v))
                     .unwrap_or_default();
                 Some(TableInfo {
                     name,
-                    schema: None,
+                    // The backup/dump path feeds this back into
+                    // `get_table_schema`, which requires an exact schema.
+                    schema: Some(schema_name),
                     table_type: if kind == "VIEW" {
                         TableType::View
                     } else {
@@ -445,12 +527,19 @@ impl DatabaseDriver for SqlServerDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        // The validator already guarantees a schema for this driver; resolve it
+        // through `default_schema()` rather than hardcoding `dbo` at the call
+        // site, so the convention stays owned by the driver.
+        let schema = self.effective_schema(schema).unwrap_or_default();
         let mut map = self.clients.write().await;
         let client = map
             .get_mut(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let sql = Self::build_table_schema_sql(table);
+        let sql = Self::build_table_schema_sql(database, schema, table);
         let result = Self::run(client, &sql).await?;
         let columns: Vec<ColumnSchema> = result
             .rows
@@ -507,56 +596,82 @@ impl DatabaseDriver for SqlServerDriver {
     async fn get_all_columns(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let mut map = self.clients.write().await;
         let client = map
             .get_mut(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let result = Self::run(client, Self::build_all_columns_sql()).await?;
+        let result = Self::run(client, &Self::build_all_columns_sql(database, schema)).await?;
 
         let mut all_columns: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
+        let mut owners: HashMap<String, String> = HashMap::new();
 
         for row in &result.rows {
-            // SQL: table_name(0), column_name(1), data_type(2), is_nullable(3),
-            //      is_identity(4), default_value(5), comment(6), is_pk(7)
-            let table_name = row
+            // SQL: schema_name(0), table_name(1), column_name(2), data_type(3),
+            //      is_nullable(4), is_identity(5), default_value(6), comment(7),
+            //      is_pk(8)
+            let table_schema = row
                 .get(0)
                 .cloned()
                 .flatten()
                 .map(|v| datazen_driver_http_support::value_display(&v))
                 .unwrap_or_default();
-            let col_name = row
+            let table_name = row
                 .get(1)
                 .cloned()
                 .flatten()
                 .map(|v| datazen_driver_http_support::value_display(&v))
                 .unwrap_or_default();
-            let data_type = row
+            let col_name = row
                 .get(2)
                 .cloned()
                 .flatten()
                 .map(|v| datazen_driver_http_support::value_display(&v))
                 .unwrap_or_default();
-            let nullable = Self::bit_true(&row.get(3).cloned().flatten());
-            let is_pk = Self::bit_true(&row.get(7).cloned().flatten());
+            let data_type = row
+                .get(3)
+                .cloned()
+                .flatten()
+                .map(|v| datazen_driver_http_support::value_display(&v))
+                .unwrap_or_default();
+            let nullable = Self::bit_true(&row.get(4).cloned().flatten());
+            let is_pk = Self::bit_true(&row.get(8).cloned().flatten());
+
+            // The payload is keyed by bare table name, so two same-named tables
+            // in different schemas cannot both be represented. Keep the first
+            // and say so rather than merging their columns into one table.
+            if let Some(existing) = owners.get(&table_name) {
+                if existing != &table_schema {
+                    tracing::warn!(
+                        table = %table_name,
+                        kept = %existing,
+                        skipped = %table_schema,
+                        "get_all_columns: same-named table in another schema skipped"
+                    );
+                }
+                continue;
+            }
+            owners.insert(table_name.clone(), table_schema);
 
             let column = ColumnSchema {
                 name: col_name.clone(),
                 data_type,
                 nullable,
                 default_value: row
-                    .get(5)
-                    .cloned()
-                    .flatten()
-                    .map(|v| datazen_driver_http_support::value_display(&v)),
-                comment: row
                     .get(6)
                     .cloned()
                     .flatten()
                     .map(|v| datazen_driver_http_support::value_display(&v)),
+                comment: row
+                    .get(7)
+                    .cloned()
+                    .flatten()
+                    .map(|v| datazen_driver_http_support::value_display(&v)),
                 is_primary_key: is_pk,
-                is_auto_increment: Self::bit_true(&row.get(4).cloned().flatten()),
+                is_auto_increment: Self::bit_true(&row.get(5).cloned().flatten()),
             };
 
             let entry = all_columns.entry(table_name).or_default();
@@ -711,19 +826,6 @@ impl DatabaseDriver for SqlServerDriver {
         ))
     }
 
-    async fn use_database(
-        &self,
-        handle: &ConnectionHandle,
-        database: &str,
-    ) -> Result<(), DriverError> {
-        let sql = Self::build_use_database_sql(database)?;
-        let mut map = self.clients.write().await;
-        let client = map
-            .get_mut(&handle.pool_id)
-            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        Self::run(client, &sql).await.map(|_| ())
-    }
-
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
         crate::admin_commands::sqlserver_admin_command_definitions()
     }
@@ -803,25 +905,86 @@ mod tests {
     }
 
     #[test]
-    fn build_use_database_sql_brackets_and_escapes() {
-        assert_eq!(
-            SqlServerDriver::build_use_database_sql(" sales ").unwrap(),
-            "USE [sales]"
-        );
-        assert_eq!(
-            SqlServerDriver::build_use_database_sql("a]b").unwrap(),
-            "USE [a]]b]"
-        );
-        assert!(SqlServerDriver::build_use_database_sql("  ").is_err());
-        assert!(SqlServerDriver::build_use_database_sql("bad\0name").is_err());
+    fn sqlserver_declares_a_schema_level_with_dbo_default() {
+        let driver = SqlServerDriver::new();
+        assert!(driver.has_schema_level());
+        assert_eq!(driver.default_schema(), Some("dbo"));
     }
 
     #[test]
-    fn build_table_schema_sql_includes_primary_key_join() {
-        let sql = SqlServerDriver::build_table_schema_sql("dbo.users");
+    fn effective_schema_prefers_the_argument_then_the_convention() {
+        let driver = SqlServerDriver::new();
+        assert_eq!(driver.effective_schema(Some("sales")), Some("sales"));
+        assert_eq!(driver.effective_schema(Some("  sales ")), Some("sales"));
+        assert_eq!(driver.effective_schema(Some("   ")), Some("dbo"));
+        assert_eq!(driver.effective_schema(None), Some("dbo"));
+    }
+
+    #[test]
+    fn exact_schema_reads_require_an_explicit_schema() {
+        let driver = SqlServerDriver::new();
+        assert!(
+            validate_schema_target(&driver, "app", Some("dbo"), SchemaScope::ExactSchema).is_ok()
+        );
+        // Replaces the old `use_database` session-switch coverage: the target is
+        // now the explicit argument, and a missing schema is a hard error
+        // instead of silently landing on whatever the session pointed at.
+        assert!(
+            validate_schema_target(&driver, "app", None, SchemaScope::ExactSchema).is_err(),
+            "a schema-aware driver must reject an exact-schema read without a schema"
+        );
+        assert!(validate_schema_target(&driver, "app", None, SchemaScope::AnySchema).is_ok());
+    }
+
+    #[test]
+    fn build_table_schema_sql_filters_schema_and_qualifies_catalog() {
+        let sql = SqlServerDriver::build_table_schema_sql("sales", "dbo", "users");
+        assert!(sql.contains("FROM [sales].INFORMATION_SCHEMA.COLUMNS"));
+        assert!(sql.contains("c.TABLE_SCHEMA = 'dbo'"));
+        assert!(sql.contains("c.TABLE_NAME = 'users'"));
         assert!(sql.contains("is_primary_key = 1"));
-        assert!(sql.contains("OBJECT_ID('dbo.users')"));
         assert!(sql.contains("is_pk"));
+        // The object lookup must be keyed on (schema, name): joining on the bare
+        // name would let a same-named table in another schema duplicate rows.
+        assert!(sql.contains("obj.schema_name = c.TABLE_SCHEMA"));
+        assert!(!sql.contains("ON o.name = c.TABLE_NAME"));
+        // No session switch may be embedded in a read path.
+        assert!(!sql.to_uppercase().contains("USE ["));
+    }
+
+    #[test]
+    fn build_table_schema_sql_stays_local_when_database_is_blank() {
+        let sql = SqlServerDriver::build_table_schema_sql("", "dbo", "users");
+        assert!(sql.contains("FROM INFORMATION_SCHEMA.COLUMNS"));
+        assert!(!sql.contains("[]."));
+    }
+
+    #[test]
+    fn build_table_schema_sql_escapes_quotes() {
+        let sql = SqlServerDriver::build_table_schema_sql("db]", "d'bo", "us'ers");
+        assert!(sql.contains("FROM [db]]].INFORMATION_SCHEMA.COLUMNS"));
+        assert!(sql.contains("c.TABLE_SCHEMA = 'd''bo'"));
+        assert!(sql.contains("c.TABLE_NAME = 'us''ers'"));
+    }
+
+    #[test]
+    fn build_tables_sql_populates_schema_and_optionally_filters() {
+        let all = SqlServerDriver::build_tables_sql("sales", None);
+        assert!(all.contains("JOIN [sales].sys.schemas s"));
+        assert!(all.contains("s.name AS schema_name"));
+        assert!(!all.contains("WHERE s.name"));
+
+        let filtered = SqlServerDriver::build_tables_sql("sales", Some("dbo"));
+        assert!(filtered.contains("WHERE s.name = 'dbo'"));
+        assert_eq!(filtered.matches("WHERE s.name = 'dbo'").count(), 2);
+    }
+
+    #[test]
+    fn build_all_columns_sql_filters_schema_and_qualifies_catalog() {
+        let sql = SqlServerDriver::build_all_columns_sql("sales", Some("dbo"));
+        assert!(sql.contains("FROM [sales].sys.columns c"));
+        assert!(sql.contains("AND s.name = 'dbo'"));
+        assert!(sql.contains("s.name AS schema_name"));
     }
 
     #[test]

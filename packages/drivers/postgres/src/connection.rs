@@ -7,6 +7,14 @@ use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::time::Duration;
 
+/// Upper bound on cached per-database pools for one handle. Browsing many
+/// databases must not translate into unbounded server connections.
+const MAX_DATABASE_POOLS_PER_HANDLE: usize = 8;
+
+/// Connection ceiling for a cached foreign-database pool. Schema reads are
+/// short and serialized by the caller, so a small pool is enough.
+const DATABASE_POOL_MAX_CONNECTIONS: u32 = 2;
+
 pub(crate) fn build_pg_options(
     config: &ConnectionConfig,
 ) -> Result<sqlx::postgres::PgConnectOptions, DriverError> {
@@ -51,7 +59,7 @@ impl PostgresDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
     }
 
-    /// Trim and validate a database name for `use_database` / reconnect.
+    /// Trim and validate a database name before it is used to open a pool.
     pub(crate) fn validate_database_name(database: &str) -> Result<String, DriverError> {
         let trimmed = database.trim();
         if trimmed.is_empty() {
@@ -160,6 +168,131 @@ impl PostgresDriver {
                 }
             })
             .collect())
+    }
+
+    /// Whether `database` is the database this handle's primary pool is
+    /// connected to. Read-only metadata recorded at connect time — it is never
+    /// mutated to "switch" a session.
+    pub(crate) async fn is_active_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> bool {
+        self.active_databases
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .map(String::as_str)
+            == Some(database)
+    }
+
+    /// Resolve the pool that serves `database` for this handle.
+    ///
+    /// The handle's own database (and a blank name, which callers use to mean
+    /// "the current one") maps to the primary pool. Any other database gets a
+    /// dedicated cached pool, because PostgreSQL resolves unqualified relations
+    /// against the *session's* catalog and offers no way to reach another one.
+    pub(crate) async fn pool_for_target(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<PgPool, DriverError> {
+        let db = database.trim();
+        if db.is_empty() || self.is_active_database(handle, db).await {
+            let pools = self.pools.read().await;
+            return Self::get_pool(&pools, handle).cloned();
+        }
+        let db = Self::validate_database_name(db)?;
+
+        let key = (handle.pool_id.clone(), db.clone());
+        let now = self
+            .database_pool_clock
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        {
+            let mut cache = self.database_pools.write().await;
+            if let Some(entry) = cache.get_mut(&key) {
+                entry.last_used = now;
+                return Ok(entry.pool.clone());
+            }
+        }
+
+        let pool = self
+            .pool_for_named_database(handle, &db, DATABASE_POOL_MAX_CONNECTIONS, 0)
+            .await?;
+
+        let evicted = {
+            let mut cache = self.database_pools.write().await;
+            // Another caller may have won the race; prefer the cached pool and
+            // drop the one we just opened.
+            if let Some(entry) = cache.get_mut(&key) {
+                entry.last_used = now;
+                vec![pool.clone()]
+            } else {
+                cache.insert(
+                    key,
+                    crate::postgres::DatabasePoolEntry {
+                        pool: pool.clone(),
+                        last_used: now,
+                    },
+                );
+                Self::evict_database_pools(&mut cache, &handle.pool_id)
+            }
+        };
+        for stale in evicted {
+            stale.close().await;
+        }
+        Ok(pool)
+    }
+
+    /// Drop the least-recently-used foreign-database pools beyond the per-handle
+    /// cap, returning them so the caller can close them outside the lock.
+    fn evict_database_pools(
+        cache: &mut HashMap<(String, String), crate::postgres::DatabasePoolEntry>,
+        pool_id: &str,
+    ) -> Vec<PgPool> {
+        let mut owned: Vec<((String, String), u64)> = cache
+            .iter()
+            .filter(|((owner, _), _)| owner == pool_id)
+            .map(|(key, entry)| (key.clone(), entry.last_used))
+            .collect();
+        if owned.len() <= MAX_DATABASE_POOLS_PER_HANDLE {
+            return Vec::new();
+        }
+        owned.sort_by_key(|(_, last_used)| *last_used);
+        let excess = owned.len() - MAX_DATABASE_POOLS_PER_HANDLE;
+        owned
+            .into_iter()
+            .take(excess)
+            .filter_map(|(key, _)| cache.remove(&key).map(|entry| entry.pool))
+            .collect()
+    }
+
+    /// Close and forget the cached pool for one database (right-click
+    /// "close database connection"). Returns whether a pool was open.
+    pub(crate) async fn close_database_pool(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<bool, DriverError> {
+        let db = database.trim();
+        if db.is_empty() || self.is_active_database(handle, db).await {
+            return Err(DriverError::InvalidConfig(
+                "cannot close the connection's own database".into(),
+            ));
+        }
+        let removed = self
+            .database_pools
+            .write()
+            .await
+            .remove(&(handle.pool_id.clone(), db.to_string()));
+        match removed {
+            Some(entry) => {
+                entry.pool.close().await;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
     }
 
     /// Open a pool for `database` using the handle's stored connect template.
@@ -293,6 +426,20 @@ impl PostgresDriver {
         }
         self.active_databases.write().await.remove(&handle.pool_id);
         self.connect_configs.write().await.remove(&handle.pool_id);
+        let foreign_pools: Vec<PgPool> = {
+            let mut cache = self.database_pools.write().await;
+            let keys: Vec<(String, String)> = cache
+                .keys()
+                .filter(|(owner, _)| owner == &handle.pool_id)
+                .cloned()
+                .collect();
+            keys.into_iter()
+                .filter_map(|key| cache.remove(&key).map(|entry| entry.pool))
+                .collect()
+        };
+        for pool in foreign_pools {
+            pool.close().await;
+        }
         self.query_executions
             .lock()
             .await
@@ -327,105 +474,13 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
-        let db = database.trim();
-        let configs = self.connect_configs.read().await;
-        let schema_filter = configs
-            .get(&handle.pool_id)
-            .and_then(|c| c.schema.as_deref())
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_string);
-        drop(configs);
-
-        // Empty name → list tables on the currently connected database.
-        if db.is_empty() {
-            let pools = self.pools.read().await;
-            let pool = Self::get_pool(&pools, handle)?;
-            return Self::fetch_tables_from_pool(pool, schema_filter.as_deref()).await;
-        }
-
-        let active = self
-            .active_databases
-            .read()
-            .await
-            .get(&handle.pool_id)
-            .cloned();
-
-        if active.as_deref() == Some(db) {
-            let pools = self.pools.read().await;
-            let pool = Self::get_pool(&pools, handle)?;
-            return Self::fetch_tables_from_pool(pool, schema_filter.as_deref()).await;
-        }
-
-        // information_schema is per-database in Postgres — open a temporary pool
-        // for the named catalog without permanently switching the handle.
-        let temp = self.pool_for_named_database(handle, db, 1, 0).await?;
-        let result = Self::fetch_tables_from_pool(&temp, schema_filter.as_deref()).await;
-        temp.close().await;
-        result
-    }
-
-    pub(crate) async fn use_database_impl(
-        &self,
-        handle: &ConnectionHandle,
-        database: &str,
-    ) -> Result<(), DriverError> {
-        let trimmed = Self::validate_database_name(database)?;
-
-        {
-            let active = self.active_databases.read().await;
-            if active.get(&handle.pool_id).map(String::as_str) == Some(trimmed.as_str()) {
-                return Ok(());
-            }
-        }
-
-        if self.transactions.lock().await.contains_key(&handle.id) {
-            return Err(DriverError::TransactionError(
-                "Cannot switch database while a transaction is open".into(),
-            ));
-        }
-
-        // Postgres cannot USE like MySQL — reconnect the handle's pool to the target DB.
-        // Missing connect template / pool → ConnectionFailed (same shape as get_pool).
-        let max = {
-            let configs = self.connect_configs.read().await;
-            configs
-                .get(&handle.pool_id)
-                .map(|c| c.effective_max_pool_size())
-                .unwrap_or(10)
-        };
-        let min = 2u32.min(max);
-        let new_pool = self
-            .pool_for_named_database(handle, &trimmed, max, min)
-            .await?;
-        let new_control_pool = match self.pool_for_named_database(handle, &trimmed, 1, 0).await {
-            Ok(pool) => pool,
-            Err(error) => {
-                new_pool.close().await;
-                return Err(error);
-            }
-        };
-
-        let old = {
-            let mut pools = self.pools.write().await;
-            pools.insert(handle.pool_id.clone(), new_pool)
-        };
-        let old_control = {
-            let mut pools = self.control_pools.write().await;
-            pools.insert(handle.pool_id.clone(), new_control_pool)
-        };
-        self.active_databases
-            .write()
-            .await
-            .insert(handle.pool_id.clone(), trimmed);
-
-        if let Some(old) = old {
-            old.close().await;
-        }
-        if let Some(old_control) = old_control {
-            old_control.close().await;
-        }
-        Ok(())
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        // A blank or self-referential name means "the database this handle is
+        // connected to"; anything else selects (or opens) that database's pool.
+        let pool = self.pool_for_target(handle, database).await?;
+        Self::fetch_tables_from_pool(&pool, schema).await
     }
 
     pub(crate) async fn get_server_info_impl(

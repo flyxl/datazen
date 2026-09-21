@@ -29,6 +29,27 @@ impl SchemaContextBuilder {
         }
     }
 
+    /// Schema to use for the AI's metadata reads.
+    ///
+    /// The AI only ever has a database plus table names scraped from the
+    /// request or the SQL text — never a schema. So it takes the connection
+    /// config's schema and, failing that, the driver's own convention
+    /// (`public` for PostgreSQL, `dbo` for SQL Server). Nothing is remembered
+    /// on the session: every read below passes this target explicitly.
+    async fn resolve_schema(
+        &self,
+        db_session_id: &str,
+        driver: &std::sync::Arc<dyn crate::db::DatabaseDriver>,
+    ) -> Option<String> {
+        let config_schema = self
+            .connection_manager
+            .get_session_config(db_session_id)
+            .await
+            .ok()
+            .and_then(|config| config.schema);
+        crate::services::metadata_schema(driver.as_ref(), None, None, config_schema.as_deref())
+    }
+
     /// Returns only table names (no column details). Much cheaper for initial LLM calls.
     pub async fn get_table_names(
         &self,
@@ -42,9 +63,10 @@ impl SchemaContextBuilder {
             .map_err(|e| e.to_string())?;
 
         let db_type = prompt_db_type(driver.as_ref());
+        let schema = self.resolve_schema(db_session_id, &driver).await;
 
         let tables = driver
-            .get_tables(&handle, database)
+            .get_tables(&handle, database, schema.as_deref())
             .await
             .map_err(|e| e.to_string())?;
 
@@ -67,13 +89,21 @@ impl SchemaContextBuilder {
             .map_err(|e| e.to_string())?;
 
         let db_type = prompt_db_type(driver.as_ref());
+        let schema = self.resolve_schema(db_session_id, &driver).await;
         let mut ddl_parts = Vec::new();
         let mut token_estimate = 0;
 
         for table_name in table_names {
             let schema = self
                 .schema_cache
-                .get_table_schema(db_session_id, database, table_name, &driver, &handle)
+                .get_table_schema(
+                    db_session_id,
+                    database,
+                    schema.as_deref(),
+                    table_name,
+                    &driver,
+                    &handle,
+                )
                 .await;
 
             match schema {
@@ -122,8 +152,9 @@ impl SchemaContextBuilder {
             .map_err(|e| e.to_string())?;
 
         let db_type = prompt_db_type(driver.as_ref());
+        let schema = self.resolve_schema(db_session_id, &driver).await;
         let tables = driver
-            .get_tables(&handle, database)
+            .get_tables(&handle, database, schema.as_deref())
             .await
             .map_err(|e| e.to_string())?;
 
@@ -153,7 +184,14 @@ impl SchemaContextBuilder {
         for table_name in &ranked {
             let schema = self
                 .schema_cache
-                .get_table_schema(db_session_id, database, table_name, &driver, &handle)
+                .get_table_schema(
+                    db_session_id,
+                    database,
+                    schema.as_deref(),
+                    table_name,
+                    &driver,
+                    &handle,
+                )
                 .await;
 
             match schema {

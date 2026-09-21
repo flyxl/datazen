@@ -380,6 +380,8 @@ mod tests {
                     supports_query_execution_cancel: true,
                     supports_explain: true,
                     supports_streaming_results: false,
+                    supports_offset: true,
+                    has_schema_level: true,
                 },
             )
             .await;

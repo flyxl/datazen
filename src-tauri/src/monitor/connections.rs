@@ -154,6 +154,7 @@ impl MonitorConnectionRegistry {
                 &self,
                 _handle: &ConnectionHandle,
                 _database: &str,
+                _schema: Option<&str>,
             ) -> Result<Vec<crate::db::TableInfo>, crate::db::DriverError> {
                 Ok(vec![])
             }
@@ -162,6 +163,8 @@ impl MonitorConnectionRegistry {
                 &self,
                 _handle: &ConnectionHandle,
                 _table: &str,
+                _database: &str,
+                _schema: Option<&str>,
             ) -> Result<crate::db::TableSchema, crate::db::DriverError> {
                 Err(crate::db::DriverError::QueryFailed("stub".into()))
             }

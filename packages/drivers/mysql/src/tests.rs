@@ -104,61 +104,66 @@ fn build_mysql_options_drops_empty_password() {
 }
 
 #[tokio::test]
-async fn use_database_is_wired_for_mysql_and_mariadb() {
-    let mysql = MysqlDriver::new(false);
-    let mariadb = MysqlDriver::new(true);
-    assert_eq!(mysql.driver_type(), "mysql");
-    assert_eq!(mariadb.driver_type(), "mariadb");
-
-    let handle = ConnectionHandle {
-        id: "conn".into(),
-        pool_id: "missing-pool".into(),
-    };
-
-    // Empty name fails before pool lookup (validation).
-    let err = mysql.use_database(&handle, "").await.unwrap_err();
-    assert!(
-        matches!(err, DriverError::InvalidConfig(_)),
-        "expected InvalidConfig, got {err:?}"
+async fn qualified_table_ref_targets_the_requested_database() {
+    // MySQL accepts `db`.`table` in the SHOW family, which is what lets a
+    // foreign database be read without a `USE` on a pooled connection.
+    assert_eq!(
+        MysqlDriver::qualified_table_ref("mydb", "users"),
+        "`mydb`.`users`"
     );
-
-    // Missing pool surfaces ConnectionFailed — confirms trait override is invoked.
-    let err = mysql.use_database(&handle, "app_db").await.unwrap_err();
-    assert!(
-        matches!(err, DriverError::ConnectionFailed(_)),
-        "expected ConnectionFailed, got {err:?}"
+    // Backticks are escaped, not interpolated.
+    assert_eq!(
+        MysqlDriver::qualified_table_ref("my`db", "us`ers"),
+        "`my``db`.`us``ers`"
     );
-    let err = mariadb.use_database(&handle, "app_db").await.unwrap_err();
-    assert!(
-        matches!(err, DriverError::ConnectionFailed(_)),
-        "expected ConnectionFailed, got {err:?}"
+    // A pre-qualified argument keeps only its table part: the database is
+    // always the explicit argument.
+    assert_eq!(
+        MysqlDriver::qualified_table_ref("mydb", "otherdb.users"),
+        "`mydb`.`users`"
     );
+    // No database at all stays unqualified rather than inventing one.
+    assert_eq!(MysqlDriver::qualified_table_ref("  ", "users"), "`users`");
+    assert_eq!(MysqlDriver::bare_table_name("`mydb`.`users`"), "users");
 }
 
 #[tokio::test]
-async fn use_database_noop_when_already_active() {
+async fn effective_database_prefers_the_explicit_argument() {
     let driver = MysqlDriver::new(false);
     let pool_id = "test-pool".to_string();
     driver
         .active_databases
         .write()
         .await
-        .insert(pool_id.clone(), "already".to_string());
-
+        .insert(pool_id.clone(), "tracked".to_string());
     let handle = ConnectionHandle {
         id: "conn".into(),
-        pool_id,
+        pool_id: pool_id.clone(),
     };
 
-    // No pool registered — would fail if USE were attempted; no-op must short-circuit.
-    driver
-        .use_database(&handle, "already")
-        .await
-        .expect("same database should be a no-op");
-    driver
-        .use_database(&handle, "  already  ")
-        .await
-        .expect("trimmed match should be a no-op");
+    assert_eq!(
+        driver.effective_database(&handle, "explicit").await,
+        "explicit"
+    );
+    assert_eq!(driver.effective_database(&handle, "  ").await, "tracked");
+    assert_eq!(
+        driver
+            .effective_database(
+                &ConnectionHandle {
+                    id: "other".into(),
+                    pool_id: "unknown".into(),
+                },
+                ""
+            )
+            .await,
+        ""
+    );
+}
+
+#[tokio::test]
+async fn mysql_and_mariadb_declare_no_schema_level() {
+    assert!(!MysqlDriver::new(false).has_schema_level());
+    assert!(!MysqlDriver::new(true).has_schema_level());
 }
 
 #[tokio::test]

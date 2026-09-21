@@ -80,6 +80,36 @@ pub trait DatabaseDriver: Send + Sync {
         true
     }
 
+    /// Whether this driver has a **real schema level** in its namespace hierarchy.
+    ///
+    /// `true` for engines whose relations are addressed as `schema.table`
+    /// (PostgreSQL, SQL Server, DuckDB). `false` for engines where the database
+    /// *is* the namespace (MySQL/MariaDB, ClickHouse) or that have no schema
+    /// concept at all (SQLite, Redis, MongoDB, …).
+    ///
+    /// This drives [`validate_schema_target`]: a schema-aware driver **must**
+    /// receive `Some(schema)` (including the default `public`/`dbo`), and a
+    /// schema-less driver **must** receive `None`. Both mismatches are errors —
+    /// there is no implicit fallback, because an implicit schema is exactly the
+    /// kind of hidden session state that produced BUG-003.
+    fn has_schema_level(&self) -> bool {
+        false
+    }
+
+    /// Conventional schema this driver resolves unqualified relations in.
+    ///
+    /// Used only as the last resort when a caller has **no** schema to offer
+    /// (a hand-typed MCP table name, a table name scraped out of SQL text) and
+    /// the driver declares [`has_schema_level`](Self::has_schema_level). Every
+    /// caller that already knows the schema — the object tree, the ER diagram,
+    /// schema diff, sync and transfer all carry it on `TableInfo` — must pass
+    /// that real value instead. Keeping the fallback here rather than in the
+    /// host is what stops `public` / `dbo` from being hardcoded per driver
+    /// outside the driver that owns the convention.
+    fn default_schema(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Whether multi-statement DDL can be wrapped in a single transaction.
     ///
     /// Override for SQL drivers with known semantics. The default is
@@ -177,22 +207,29 @@ pub trait DatabaseDriver: Send + Sync {
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError>;
 
     async fn get_table_schema(
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError>;
 
     async fn get_columns(
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
-        let schema = self.get_table_schema(handle, table).await?;
-        let pks = schema.effective_primary_keys();
-        Ok((schema.columns, pks))
+        let table_schema = self
+            .get_table_schema(handle, table, database, schema)
+            .await?;
+        let pks = table_schema.effective_primary_keys();
+        Ok((table_schema.columns, pks))
     }
 
     /// Batch-fetch columns for all tables in the given database/schema.
@@ -206,6 +243,7 @@ pub trait DatabaseDriver: Send + Sync {
         &self,
         _handle: &ConnectionHandle,
         _database: &str,
+        _schema: Option<&str>,
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
         Err(DriverError::Unsupported(
             "get_all_columns not supported by this driver".into(),
@@ -387,14 +425,22 @@ pub trait DatabaseDriver: Send + Sync {
         })
     }
 
-    /// Switch the active database for subsequent queries.
-    /// Drivers that maintain per-session state (e.g. Kiwi) should override this.
-    async fn use_database(
+    /// Close whatever the driver opened for `database` on this handle — the
+    /// right-click "close database connection" action.
+    ///
+    /// Drivers that hold a pool (or any other resource) per browsed database
+    /// override this and return whether something was actually open. Drivers
+    /// with no per-database resource keep the default `Ok(false)`: there is
+    /// nothing to close, which is a normal outcome rather than an error.
+    ///
+    /// The handle's **own** database cannot be closed this way — use
+    /// [`Self::disconnect`] for that.
+    async fn close_database(
         &self,
         _handle: &ConnectionHandle,
         _database: &str,
-    ) -> Result<(), DriverError> {
-        Ok(())
+    ) -> Result<bool, DriverError> {
+        Ok(false)
     }
 
     /// F7: dialect-aware SQL target qualification.
@@ -450,8 +496,11 @@ pub trait DatabaseDriver: Send + Sync {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<String, DriverError> {
-        crate::sql_dump::dump_table_ddl_from_schema::<Self>(self, handle, table).await
+        crate::sql_dump::dump_table_ddl_from_schema::<Self>(self, handle, table, database, schema)
+            .await
     }
 
     /// Emit `CREATE VIEW` (or equivalent) for a view / materialized view.
@@ -462,6 +511,8 @@ pub trait DatabaseDriver: Send + Sync {
         &self,
         _handle: &ConnectionHandle,
         view: &str,
+        _database: &str,
+        _schema: Option<&str>,
     ) -> Result<String, DriverError> {
         Err(DriverError::NotSupported(format!(
             "View DDL dump is not supported for {view}"
@@ -657,6 +708,61 @@ pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
     }
 }
 
+/// How precisely a call site must pin the schema dimension.
+///
+/// Listing operations legitimately span every schema in a database (the
+/// connection tree groups tables by their own schema), while single-table
+/// resolution must be exact — an ambiguous table identity is what allowed
+/// same-named tables from different schemas to be merged into one column set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchemaScope {
+    /// Listing call: `None` means "every schema in the database".
+    AnySchema,
+    /// Resolution call: a schema-aware driver must receive `Some(schema)`.
+    ExactSchema,
+}
+
+/// Validate the `(database, schema)` target pair against a driver's capability.
+///
+/// **This is the single source of truth for the schema-dimension rule**, and it
+/// is deliberately a free function: the trait method is the only chokepoint
+/// shared by *every* caller (GUI IPC, MCP server, Workflow, `sql_dump`, reuse
+/// wrappers), so drivers must call it at the top of their
+/// `get_tables`/`get_table_schema`/`get_columns`/`get_all_columns`
+/// implementations. Host call sites may call it too, purely to fail earlier
+/// with a friendlier message — that is an optimization, not the guarantee.
+///
+/// | `has_schema_level()` | `schema` | [`SchemaScope::AnySchema`] | [`SchemaScope::ExactSchema`] |
+/// | --- | --- | --- | --- |
+/// | `true` | `Some(s)` non-blank | `Ok` | `Ok` |
+/// | `true` | `None` / blank | `Ok` (all schemas) | `Err(InvalidConfig)` |
+/// | `false` | `None` / blank | `Ok` | `Ok` |
+/// | `false` | `Some(s)` | `Err(InvalidConfig)` | `Err(InvalidConfig)` |
+///
+/// `database` is intentionally not validated here: engines differ on whether a
+/// blank database means "the session's current catalog" (PostgreSQL's listing
+/// path) or is simply invalid.
+pub fn validate_schema_target<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    database: &str,
+    schema: Option<&str>,
+    scope: SchemaScope,
+) -> Result<(), DriverError> {
+    let schema = schema.map(str::trim).filter(|s| !s.is_empty());
+    let driver_type = driver.driver_type();
+    match (driver.has_schema_level(), schema, scope) {
+        (false, Some(schema), _) => Err(DriverError::InvalidConfig(format!(
+            "driver '{driver_type}' has no schema level: schema '{schema}' is not allowed \
+             (database '{database}')"
+        ))),
+        (true, None, SchemaScope::ExactSchema) => Err(DriverError::InvalidConfig(format!(
+            "driver '{driver_type}' has a schema level: an explicit schema is required \
+             (database '{database}')"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 /// Extract the `sql` input of a standard SQL command and apply F7 target
 /// qualification when the host injected `database` / `schema` fields.
 fn sql_input_with_target<D: DatabaseDriver + ?Sized>(
@@ -763,6 +869,7 @@ mod structure_defaults_tests {
             &self,
             _handle: &ConnectionHandle,
             _database: &str,
+            _schema: Option<&str>,
         ) -> Result<Vec<TableInfo>, DriverError> {
             Ok(vec![])
         }
@@ -771,6 +878,8 @@ mod structure_defaults_tests {
             &self,
             _handle: &ConnectionHandle,
             _table: &str,
+            _database: &str,
+            _schema: Option<&str>,
         ) -> Result<TableSchema, DriverError> {
             Ok(TableSchema {
                 table_name: String::new(),
@@ -971,6 +1080,7 @@ mod structure_defaults_tests {
                 &self,
                 _: &ConnectionHandle,
                 _: &str,
+                _: Option<&str>,
             ) -> Result<Vec<TableInfo>, DriverError> {
                 Ok(vec![])
             }
@@ -979,6 +1089,8 @@ mod structure_defaults_tests {
                 &self,
                 _: &ConnectionHandle,
                 _: &str,
+                _: &str,
+                _: Option<&str>,
             ) -> Result<TableSchema, DriverError> {
                 Ok(TableSchema {
                     table_name: "users".into(),
@@ -1037,8 +1149,163 @@ mod structure_defaults_tests {
             id: "c".into(),
             pool_id: "p".into(),
         };
-        let (_cols, pks) = driver.get_columns(&handle, "users").await.unwrap();
+        let (_cols, pks) = driver
+            .get_columns(&handle, "users", "app", None)
+            .await
+            .unwrap();
         assert_eq!(pks, vec!["id"]);
+    }
+    /// `has_schema_level` defaults to false, and the validator enforces the
+    /// capability/schema pairing in both directions.
+    mod validate_schema_target_tests {
+        use super::*;
+
+        struct SchemaLess;
+        struct SchemaAware;
+
+        macro_rules! stub_driver {
+            ($name:ident, $schema_level:expr) => {
+                #[async_trait]
+                impl DatabaseDriver for $name {
+                    fn driver_type(&self) -> DatabaseType {
+                        stringify!($name).to_lowercase()
+                    }
+                    fn has_schema_level(&self) -> bool {
+                        $schema_level
+                    }
+                    async fn test_connection(
+                        &self,
+                        _: &ConnectionConfig,
+                    ) -> Result<ServerInfo, DriverError> {
+                        unreachable!()
+                    }
+                    async fn connect(
+                        &self,
+                        _: &ConnectionConfig,
+                    ) -> Result<ConnectionHandle, DriverError> {
+                        unreachable!()
+                    }
+                    async fn disconnect(&self, _: ConnectionHandle) -> Result<(), DriverError> {
+                        unreachable!()
+                    }
+                    async fn get_databases(
+                        &self,
+                        _: &ConnectionHandle,
+                    ) -> Result<Vec<String>, DriverError> {
+                        unreachable!()
+                    }
+                    async fn get_tables(
+                        &self,
+                        _: &ConnectionHandle,
+                        _: &str,
+                        _: Option<&str>,
+                    ) -> Result<Vec<TableInfo>, DriverError> {
+                        unreachable!()
+                    }
+                    async fn get_table_schema(
+                        &self,
+                        _: &ConnectionHandle,
+                        _: &str,
+                        _: &str,
+                        _: Option<&str>,
+                    ) -> Result<TableSchema, DriverError> {
+                        unreachable!()
+                    }
+                    async fn query(
+                        &self,
+                        _: &ConnectionHandle,
+                        _: &str,
+                    ) -> Result<QueryResult, DriverError> {
+                        unreachable!()
+                    }
+                    async fn query_multi(
+                        &self,
+                        _: &ConnectionHandle,
+                        _: &str,
+                        _: Option<u32>,
+                    ) -> Result<MultiQueryResult, DriverError> {
+                        unreachable!()
+                    }
+                    async fn query_with_params(
+                        &self,
+                        _: &ConnectionHandle,
+                        _: &str,
+                        _: &[Value],
+                    ) -> Result<QueryResult, DriverError> {
+                        unreachable!()
+                    }
+                    async fn execute(
+                        &self,
+                        _: &ConnectionHandle,
+                        _: &str,
+                    ) -> Result<u64, DriverError> {
+                        unreachable!()
+                    }
+                    async fn cancel_query(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
+                        unreachable!()
+                    }
+                }
+            };
+        }
+
+        stub_driver!(SchemaLess, false);
+        stub_driver!(SchemaAware, true);
+
+        #[test]
+        fn schema_less_driver_accepts_only_none() {
+            assert!(!SchemaLess.has_schema_level());
+            assert!(
+                validate_schema_target(&SchemaLess, "app", None, SchemaScope::AnySchema).is_ok()
+            );
+            assert!(
+                validate_schema_target(&SchemaLess, "app", None, SchemaScope::ExactSchema).is_ok()
+            );
+            let err =
+                validate_schema_target(&SchemaLess, "app", Some("public"), SchemaScope::AnySchema)
+                    .expect_err("schema-less driver must reject a schema");
+            assert!(err.to_string().contains("no schema level"), "{err}");
+            // Blank is treated as absent, not as a schema literally named "".
+            assert!(
+                validate_schema_target(&SchemaLess, "app", Some("  "), SchemaScope::AnySchema)
+                    .is_ok()
+            );
+        }
+
+        #[test]
+        fn schema_aware_driver_requires_schema_only_when_resolving() {
+            assert!(SchemaAware.has_schema_level());
+            // Listing spans every schema, so None is legitimate here.
+            assert!(
+                validate_schema_target(&SchemaAware, "app", None, SchemaScope::AnySchema).is_ok()
+            );
+            assert!(validate_schema_target(
+                &SchemaAware,
+                "app",
+                Some("public"),
+                SchemaScope::AnySchema
+            )
+            .is_ok());
+            assert!(validate_schema_target(
+                &SchemaAware,
+                "app",
+                Some("public"),
+                SchemaScope::ExactSchema
+            )
+            .is_ok());
+            let err = validate_schema_target(&SchemaAware, "app", None, SchemaScope::ExactSchema)
+                .expect_err("schema-aware driver must require a schema when resolving one table");
+            assert!(
+                err.to_string().contains("explicit schema is required"),
+                "{err}"
+            );
+            assert!(validate_schema_target(
+                &SchemaAware,
+                "app",
+                Some(" "),
+                SchemaScope::ExactSchema
+            )
+            .is_err());
+        }
     }
 }
 

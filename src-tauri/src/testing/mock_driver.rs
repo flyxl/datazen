@@ -1,6 +1,6 @@
 //! Configurable in-memory driver for service/cache unit tests.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +16,8 @@ use datazen_driver_api::{
     execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
     is_schema_object_command, query_command_definition, query_stream_command_definition,
     schema_catalog_command_definitions, schema_object_command_definitions,
-    try_execute_schema_catalog_command, CommandResult, DdlAtomicity, DriverCommandDefinition,
+    try_execute_schema_catalog_command, validate_schema_target, CommandResult, DdlAtomicity,
+    DriverCommandDefinition, SchemaScope,
 };
 
 #[derive(Clone)]
@@ -46,6 +47,25 @@ pub struct MockDriverOptions {
     pub rewrite_sql_target: bool,
     /// When set, overrides the default [`DdlAtomicity::Unknown`] for transaction-scope tests.
     pub ddl_atomicity: Option<DdlAtomicity>,
+    /// Per-database table lists, modelling `get_tables(handle, database)` —
+    /// the driver answers for the *requested* database. Empty keeps the flat
+    /// [`Self::tables`] behavior.
+    pub tables_by_database: HashMap<String, Vec<TableInfo>>,
+    /// Columns per database → table, modelling `get_table_schema` /
+    /// `get_columns` under the **explicit-target** contract: the answer is
+    /// looked up under the `database` argument the caller passed, and an
+    /// unknown table yields an empty column list — the silent-empty case the
+    /// Host must never cache. Empty keeps the flat [`Self::columns`] /
+    /// [`Self::table_schema`] behavior.
+    pub columns_by_database: HashMap<String, HashMap<String, Vec<ColumnSchema>>>,
+    /// Declared schema level, forwarded to `has_schema_level`. When true the
+    /// mock enforces the same rule the real drivers do: a metadata call with no
+    /// schema is rejected, so a host call site that forgets the schema fails
+    /// loudly in tests instead of silently reading the wrong namespace.
+    pub has_schema_level: bool,
+    /// Forwarded to `default_schema` (only meaningful with
+    /// [`Self::has_schema_level`]).
+    pub default_schema: Option<&'static str>,
 }
 
 impl Default for MockDriverOptions {
@@ -73,6 +93,10 @@ impl Default for MockDriverOptions {
             execute_rows_affected: 0,
             rewrite_sql_target: false,
             ddl_atomicity: None,
+            tables_by_database: HashMap::new(),
+            columns_by_database: HashMap::new(),
+            has_schema_level: false,
+            default_schema: None,
         }
     }
 }
@@ -89,8 +113,12 @@ pub struct MockDriver {
     precise_cancel_query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
     open_txs: Mutex<HashSet<String>>,
+    /// Regression tripwire: the driver contract no longer has `use_database`,
+    /// so this can only ever be empty. Host tests assert it stays empty to
+    /// prove no call path switched the session's database before a read.
     use_database_calls: Mutex<Vec<String>>,
     qualify_calls: Mutex<Vec<(Option<String>, Option<String>)>>,
+    close_database_calls: Mutex<Vec<String>>,
 }
 
 impl MockDriver {
@@ -108,12 +136,42 @@ impl MockDriver {
             open_txs: Mutex::new(HashSet::new()),
             use_database_calls: Mutex::new(Vec::new()),
             qualify_calls: Mutex::new(Vec::new()),
+            close_database_calls: Mutex::new(Vec::new()),
         })
     }
 
-    /// Databases passed to `use_database`, in call order (F1 session-switch tests).
+    /// Columns visible for `table` in the explicitly requested `database`,
+    /// when per-database columns are configured. `Some(vec![])` means "that
+    /// database has no such table" — the silent-empty case the Host must never
+    /// cache. `None` means the option is not configured at all.
+    fn columns_for_database(&self, database: &str, table: &str) -> Option<Vec<ColumnSchema>> {
+        if self.opts.columns_by_database.is_empty() {
+            return None;
+        }
+        Some(
+            self.opts
+                .columns_by_database
+                .get(database)
+                .and_then(|tables| tables.get(table))
+                .cloned()
+                .unwrap_or_default(),
+        )
+    }
+
+    /// Databases passed to `use_database`, in call order. Always empty: the
+    /// method was deleted from the contract, and this accessor exists so tests
+    /// can assert that no host path re-introduced a session switch.
     pub fn use_database_calls(&self) -> Vec<String> {
         self.use_database_calls
+            .lock()
+            .ok()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    /// Databases passed to `close_database`, in call order.
+    pub fn close_database_calls(&self) -> Vec<String> {
+        self.close_database_calls
             .lock()
             .ok()
             .map(|g| g.clone())
@@ -206,6 +264,27 @@ impl DatabaseDriver for MockDriver {
         self.opts.ddl_atomicity.unwrap_or(DdlAtomicity::Unknown)
     }
 
+    fn has_schema_level(&self) -> bool {
+        self.opts.has_schema_level
+    }
+
+    fn default_schema(&self) -> Option<&'static str> {
+        self.opts.default_schema
+    }
+
+    async fn close_database(
+        &self,
+        _handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<bool, DriverError> {
+        self.close_database_calls
+            .lock()
+            .map(|mut g| g.push(database.to_string()))
+            .map_err(|_| DriverError::QueryFailed("mock close_database lock poisoned".into()))?;
+        // Schema-aware engines model a real per-database pool; others have none.
+        Ok(self.opts.has_schema_level)
+    }
+
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
         let seq = self.session_seq.fetch_add(1, Ordering::Relaxed) + 1;
         Ok(ConnectionHandle {
@@ -232,8 +311,18 @@ impl DatabaseDriver for MockDriver {
     async fn get_tables(
         &self,
         _handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        if !self.opts.tables_by_database.is_empty() {
+            return Ok(self
+                .opts
+                .tables_by_database
+                .get(database)
+                .cloned()
+                .unwrap_or_default());
+        }
         Ok(self.opts.tables.clone())
     }
 
@@ -241,8 +330,25 @@ impl DatabaseDriver for MockDriver {
         &self,
         _handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         self.get_schema_calls.fetch_add(1, Ordering::Relaxed);
+        if let Some(columns) = self.columns_for_database(database, table) {
+            let primary_keys = columns
+                .iter()
+                .filter(|c| c.is_primary_key)
+                .map(|c| c.name.clone())
+                .collect();
+            return Ok(TableSchema {
+                table_name: table.to_string(),
+                columns,
+                primary_keys,
+                indexes: Vec::new(),
+                foreign_keys: Vec::new(),
+            });
+        }
         Ok(self
             .opts
             .table_schema
@@ -254,12 +360,25 @@ impl DatabaseDriver for MockDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         self.get_columns_calls.fetch_add(1, Ordering::Relaxed);
+        if let Some(columns) = self.columns_for_database(database, table) {
+            let primary_keys = columns
+                .iter()
+                .filter(|c| c.is_primary_key)
+                .map(|c| c.name.clone())
+                .collect();
+            return Ok((columns, primary_keys));
+        }
         if !self.opts.columns.is_empty() {
             return Ok((self.opts.columns.clone(), self.opts.primary_keys.clone()));
         }
-        let schema = self.get_table_schema(handle, table).await?;
+        let schema = self
+            .get_table_schema(handle, table, database, schema)
+            .await?;
         Ok((schema.columns, schema.primary_keys))
     }
 
@@ -369,17 +488,6 @@ impl DatabaseDriver for MockDriver {
 
     fn supports_query_execution_cancel(&self) -> bool {
         true
-    }
-
-    async fn use_database(
-        &self,
-        _handle: &ConnectionHandle,
-        database: &str,
-    ) -> Result<(), DriverError> {
-        if let Ok(mut calls) = self.use_database_calls.lock() {
-            calls.push(database.to_string());
-        }
-        Ok(())
     }
 
     /// F7 capability simulation: appends a `/* target: db=… schema=… */`

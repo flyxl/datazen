@@ -48,7 +48,7 @@ describe('schemaCache', () => {
     expect(r1).toBe(schema);
     expect(r2).toBe(schema);
     expect(mockGetTableSchema).toHaveBeenCalledTimes(1);
-    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users', 'app');
+    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users', 'app', null);
   });
 
   it('refetches after TTL expires', async () => {
@@ -128,8 +128,8 @@ describe('schemaCache', () => {
     expect(fromApp.columns[0]?.name).toBe('id');
     expect(fromAnalytics.columns[0]?.name).toBe('uid');
     expect(mockGetTableSchema).toHaveBeenCalledTimes(2);
-    expect(mockGetTableSchema).toHaveBeenNthCalledWith(1, 'conn-1', 'users', 'app');
-    expect(mockGetTableSchema).toHaveBeenNthCalledWith(2, 'conn-1', 'users', 'analytics');
+    expect(mockGetTableSchema).toHaveBeenNthCalledWith(1, 'conn-1', 'users', 'app', null);
+    expect(mockGetTableSchema).toHaveBeenNthCalledWith(2, 'conn-1', 'users', 'analytics', null);
 
     mockGetTableSchema.mockClear();
     await getCachedTableSchema('conn-1', 'users', 'app');

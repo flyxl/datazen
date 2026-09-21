@@ -133,12 +133,16 @@ export function ContentView({
     (activePanel.type !== 'table' || activePanel.subTab === 'data') &&
     (activePanel.type !== 'view' || (activePanel as ViewPanel).subTab === 'data');
 
+  // The schema of a relation, for per-table metadata reads. Never falls back to
+  // `currentDatabase`: that is a *database*, and a schema-aware driver would
+  // resolve the table in the wrong namespace while a schema-less driver would
+  // reject the argument outright. `null` means "let the host/driver decide".
   const resolveTableSchema = useCallback(
     (table: string): string | null => {
       const hit = [...schemaTables, ...schemaViews].find((tbl) => tbl.name === table);
-      return hit?.schema ?? currentDatabase ?? null;
+      return hit?.schema ?? null;
     },
-    [schemaTables, schemaViews, currentDatabase],
+    [schemaTables, schemaViews],
   );
 
   useEffect(() => {

@@ -48,9 +48,10 @@ pub struct ExecuteDriverCommandRequest {
     pub command: String,
     #[serde(default)]
     pub input: serde_json::Value,
-    /// F1: optional explicit database pin (session-bound commands only —
-    /// ignored for unbound `driverType` requests). See
-    /// `ensure_session_database` for the switching semantics.
+    /// F1: optional explicit target database. It is injected into the command
+    /// input so a rewrite-capable driver (`qualify_sql_target`) qualifies
+    /// unqualified relations itself. It never switches the session's database;
+    /// unbound `driverType` requests have no session and ignore it.
     #[serde(default)]
     pub database: Option<String>,
     /// F7: optional target schema (PG-family engines). Passed through into

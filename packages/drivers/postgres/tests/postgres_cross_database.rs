@@ -1,17 +1,21 @@
-//! Gated live integration test for `PostgresDriver::use_database` and
-//! `get_tables` catalog targeting.
+//! Gated live integration test: PostgreSQL **cross-database reads**.
+//!
+//! The driver has no `use_database`: reading a table that lives in another
+//! catalog selects (or opens) that database's pool and resolves the schema
+//! there, leaving the handle's own session untouched. That is the fix for
+//! BUG-003, where the session was re-pointed and every later read silently
+//! resolved against the wrong database.
 //!
 //! Skips cleanly when PostgreSQL is unavailable. Credentials come from process
 //! env and/or the repo-root `.env` file (`TEST_PG_*` keys, same as workflow tests).
 //!
 //! Run (skip if no Postgres):
-//!   cargo test -p datazen-driver-postgres --test postgres_use_database -- --nocapture
+//!   cargo test -p datazen-driver-postgres --test postgres_cross_database -- --nocapture
 //!
 //! Force live run with env (example — use your own secrets, do not commit them):
-//!   TEST_PG_HOST=127.0.0.1 TEST_PG_PORT=5432 TEST_PG_USER=goecoride \
-//!   TEST_PG_PASSWORD= TEST_PG_DATABASE=goecoride \
-//!   TEST_PG_DATABASE_B=postgres \
-//!   cargo test -p datazen-driver-postgres --test postgres_use_database -- --nocapture
+//!   TEST_PG_HOST=127.0.0.1 TEST_PG_PORT=5432 TEST_PG_USER=postgres \
+//!   TEST_PG_DATABASE=datazen_demo TEST_PG_DATABASE_B=postgres \
+//!   cargo test -p datazen-driver-postgres --test postgres_cross_database -- --nocapture
 //!
 //! Fixture assumption: database_a has a `users` table; database_b does not.
 
@@ -36,9 +40,9 @@ impl Default for PgTestConfig {
         Self {
             host: "127.0.0.1".into(),
             port: 5432,
-            user: "goecoride".into(),
+            user: "postgres".into(),
             password: String::new(),
-            database_a: "goecoride".into(),
+            database_a: "datazen_demo".into(),
             database_b: "postgres".into(),
         }
     }
@@ -60,34 +64,20 @@ fn load_dotenv_file() -> HashMap<String, String> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        if let Some((k, v)) = line.split_once('=') {
-            map.insert(k.trim().to_string(), v.trim().to_string());
+        if let Some((key, value)) = line.split_once('=') {
+            map.insert(key.trim().to_string(), value.trim().to_string());
         }
     }
     map
 }
 
 fn env_or_file(file: &HashMap<String, String>, key: &str) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .filter(|v| !v.is_empty())
-        .or_else(|| file.get(key).cloned().filter(|v| !v.is_empty()))
+    std::env::var(key).ok().or_else(|| file.get(key).cloned())
 }
 
-/// Gate on `TEST_PG_*` in process env or repo-root `.env`.
-/// Password may be intentionally empty.
 fn load_pg_config() -> Option<PgTestConfig> {
     let file = load_dotenv_file();
-    let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_PG_"))
-        || file.keys().any(|k| k.starts_with("TEST_PG_"));
-
-    if !has_marker {
-        eprintln!("⏭  Skipping postgres_use_database: no TEST_PG_* in env or .env");
-        return None;
-    }
-
     let mut cfg = PgTestConfig::default();
-
     if let Some(v) = env_or_file(&file, "TEST_PG_HOST") {
         cfg.host = v;
     }
@@ -112,16 +102,15 @@ fn load_pg_config() -> Option<PgTestConfig> {
     Some(cfg)
 }
 
+/// Connect **to database_b**, so database_a is always a foreign catalog.
 fn connection_config(cfg: &PgTestConfig) -> ConnectionConfig {
     ConnectionConfig {
-        id: "pg-use-database-it".into(),
-        name: "postgres use_database integration".into(),
+        id: "pg-cross-database-it".into(),
+        name: "postgres cross-database integration".into(),
         database_type: "postgresql".into(),
         host: Some(cfg.host.clone()),
         port: Some(cfg.port),
-        // Connect without a default database so use_database is the switcher
-        // (driver falls back to `postgres` for the initial listing connection).
-        database: None,
+        database: Some(cfg.database_b.clone()),
         schema: None,
         username: Some(cfg.user.clone()),
         password: Some(cfg.password.clone()),
@@ -147,25 +136,30 @@ fn cell_as_i64(value: &Option<Value>) -> Option<i64> {
     }
 }
 
-async fn assert_users_visible(
+/// The handle's own session still points at `database_b`, so an unqualified
+/// query against a database_a-only table must keep failing. If it starts
+/// succeeding, something re-pointed the session (the BUG-003 regression).
+async fn assert_handle_session_untouched(
     driver: &PostgresDriver,
     handle: &datazen_driver_api::ConnectionHandle,
+    cfg: &PgTestConfig,
     label: &str,
 ) {
-    let result = driver
+    let err = driver
         .query(handle, "SELECT COUNT(*) FROM users")
         .await
-        .unwrap_or_else(|e| panic!("{label}: unqualified users query failed: {e}"));
-    assert_eq!(result.rows.len(), 1, "{label}: expected one count row");
-    let count = cell_as_i64(&result.rows[0][0]).unwrap_or(-1);
+        .expect_err(&format!(
+            "{label}: the handle's session must stay on {} and not see {}.users",
+            cfg.database_b, cfg.database_a
+        ));
     assert!(
-        count >= 0,
-        "{label}: expected non-negative users count, got {count}"
+        matches!(err, DriverError::QueryFailed(_)),
+        "{label}: expected QueryFailed, got {err:?}"
     );
 }
 
 #[tokio::test]
-async fn use_database_switches_and_get_tables_respects_catalog() {
+async fn cross_database_reads_never_move_the_session() {
     let Some(cfg) = load_pg_config() else {
         return;
     };
@@ -209,21 +203,21 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
         }
     }
 
-    // get_tables must target the *named* catalog even before use_database.
+    // Listing targets the named catalog without touching the handle's pool.
     let a_tables = driver
-        .get_tables(&handle, &cfg.database_a)
+        .get_tables(&handle, &cfg.database_a, None)
         .await
         .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_a));
     if !a_tables.iter().any(|t| t.name == "users") {
         let _ = driver.disconnect(handle).await;
         eprintln!(
-            "⏭  Skipping: `{}.users` missing (needed to verify catalog targeting / use_database)",
+            "⏭  Skipping: `{}.users` missing (needed for the cross-database check)",
             cfg.database_a
         );
         return;
     }
     let b_tables = driver
-        .get_tables(&handle, &cfg.database_b)
+        .get_tables(&handle, &cfg.database_b, None)
         .await
         .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_b));
     if b_tables.iter().any(|t| t.name == "users") {
@@ -236,63 +230,78 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
     }
 
     println!(
-        "▶  use_database live: {} → {} on {}:{}",
-        cfg.database_a, cfg.database_b, cfg.host, cfg.port
+        "▶  cross-database live: handle on {}, reading {} on {}:{}",
+        cfg.database_b, cfg.database_a, cfg.host, cfg.port
     );
 
-    driver
-        .use_database(&handle, &cfg.database_a)
+    // ── the BUG-003 regression: reading a foreign catalog's table structure ──
+    let users_schema = driver
+        .get_table_schema(&handle, "users", &cfg.database_a, Some("public"))
         .await
-        .unwrap_or_else(|e| panic!("use_database({}) failed: {e}", cfg.database_a));
-
-    for i in 0..5 {
-        assert_users_visible(
-            &driver,
-            &handle,
-            &format!("after use_database(A), pooled query #{i}"),
-        )
-        .await;
-    }
-
-    // After switching to A, get_tables(B) must still return B's catalog (not A's).
-    let b_after = driver
-        .get_tables(&handle, &cfg.database_b)
-        .await
-        .unwrap_or_else(|e| panic!("get_tables({}) after switch to A: {e}", cfg.database_b));
+        .unwrap_or_else(|e| panic!("get_table_schema({}.users): {e}", cfg.database_a));
     assert!(
-        !b_after.iter().any(|t| t.name == "users"),
-        "get_tables(B) must not leak A's users table"
+        !users_schema.columns.is_empty(),
+        "cross-database table structure must not come back empty — that empty \
+         column list is what the data grid turned into blank cells (BUG-003)"
     );
+    let col_names: Vec<&str> = users_schema
+        .columns
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
+    println!("   {}.users columns: {col_names:?}", cfg.database_a);
 
-    driver
-        .use_database(&handle, &cfg.database_b)
+    let (cols, _pks) = driver
+        .get_columns(&handle, "users", &cfg.database_a, Some("public"))
         .await
-        .unwrap_or_else(|e| panic!("use_database({}) failed: {e}", cfg.database_b));
+        .unwrap_or_else(|e| panic!("get_columns({}.users): {e}", cfg.database_a));
+    assert_eq!(cols.len(), users_schema.columns.len());
 
+    // ── the session never moved ──
+    assert_handle_session_untouched(&driver, &handle, &cfg, "after cross-database reads").await;
+
+    // ── repeat to prove the foreign pool is stable and reused ──
     for i in 0..5 {
-        let err = driver
-            .query(&handle, "SELECT COUNT(*) FROM users")
+        let schema = driver
+            .get_table_schema(&handle, "users", &cfg.database_a, Some("public"))
             .await
-            .expect_err(&format!(
-                "after use_database(B), pooled query #{i} should not see {}.users",
-                cfg.database_a
-            ));
-        assert!(
-            matches!(err, DriverError::QueryFailed(_)),
-            "pooled query #{i}: expected QueryFailed without users table, got {err:?}"
+            .unwrap_or_else(|e| panic!("cross-database read #{i}: {e}"));
+        assert_eq!(
+            schema.columns.len(),
+            users_schema.columns.len(),
+            "cross-database read #{i} changed shape"
         );
     }
+    assert_handle_session_untouched(
+        &driver,
+        &handle,
+        &cfg,
+        "after repeated cross-database reads",
+    )
+    .await;
 
-    driver
-        .use_database(&handle, &cfg.database_a)
-        .await
-        .unwrap_or_else(|e| panic!("use_database({}) again failed: {e}", cfg.database_a));
-    assert_users_visible(&driver, &handle, "after switching back to A").await;
-
+    // ── schema is mandatory for single-table resolution on PostgreSQL ──
     let err = driver
-        .use_database(&handle, "nonexistent_db_xyz_f3_test")
+        .get_table_schema(&handle, "users", &cfg.database_a, None)
         .await
-        .expect_err("use_database(invalid) should error");
+        .expect_err("a schema-aware driver must require an explicit schema");
+    assert!(
+        matches!(err, DriverError::InvalidConfig(_)),
+        "expected InvalidConfig without a schema, got {err:?}"
+    );
+
+    // ── a schema-less driver contract violation is rejected ──
+    let err = driver
+        .get_tables(&handle, &cfg.database_a, Some("public"))
+        .await
+        .expect("listing with an explicit schema is allowed");
+    assert!(err.iter().any(|t| t.name == "users"));
+
+    // ── unknown database fails loudly instead of returning an empty list ──
+    let err = driver
+        .get_tables(&handle, "nonexistent_db_xyz_f3_test", None)
+        .await
+        .expect_err("unknown database should error");
     assert!(
         matches!(err, DriverError::QueryFailed(_)),
         "expected QueryFailed for unknown database, got: {err:?}"
@@ -305,18 +314,20 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
         "error should mention the bad database name: {msg}"
     );
 
-    // Active DB should remain A after failed switch.
-    assert_users_visible(&driver, &handle, "after failed use_database(invalid)").await;
-
-    let empty_err = driver
-        .use_database(&handle, "   ")
-        .await
-        .expect_err("empty database name should be rejected");
+    // ── closing the foreign database pool drops only that pool ──
     assert!(
-        matches!(empty_err, DriverError::InvalidConfig(_)),
-        "expected InvalidConfig for empty name, got: {empty_err:?}"
+        driver
+            .close_database(&handle, &cfg.database_a)
+            .await
+            .expect("close foreign pool"),
+        "the foreign pool should have been open"
     );
+    let schema_after_close = driver
+        .get_table_schema(&handle, "users", &cfg.database_a, Some("public"))
+        .await
+        .expect("reopening the foreign pool on demand");
+    assert!(!schema_after_close.columns.is_empty());
 
     driver.disconnect(handle).await.expect("disconnect");
-    println!("✅  PostgresDriver::use_database live checks passed");
+    println!("✅  PostgreSQL cross-database live checks passed");
 }

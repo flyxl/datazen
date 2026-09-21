@@ -52,6 +52,44 @@ impl TursoDriver {
             .map_err(|e| DriverError::QueryFailed(format!("Turso JSON parse failed: {e}")))
     }
 
+    /// Resolve the attached-database name a metadata read targets.
+    ///
+    /// libSQL speaks SQLite: a relation is addressed as `alias.table` with
+    /// `main`, `temp`, or an `ATTACH` alias. The explicit `database` argument
+    /// is authoritative; blank keeps the previous behavior (`main`).
+    fn effective_database(database: &str) -> &str {
+        let database = database.trim();
+        if database.is_empty() {
+            "main"
+        } else {
+            database
+        }
+    }
+
+    /// Quote an attached-database name for use as a SQLite schema qualifier
+    /// (`"aux".sqlite_master`, `PRAGMA "aux".table_info(...)`).
+    fn quote_schema(name: &str) -> String {
+        format!("\"{}\"", name.replace('"', "\"\""))
+    }
+
+    /// SQLite-family catalog listing for one explicit attached database.
+    fn list_tables_sql(database: &str) -> String {
+        format!(
+            "SELECT name FROM {}.sqlite_master WHERE type IN ('table','view') \
+             AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            Self::quote_schema(Self::effective_database(database))
+        )
+    }
+
+    /// `PRAGMA table_info` pinned to one explicit attached database.
+    fn table_info_sql(database: &str, table: &str) -> String {
+        format!(
+            "PRAGMA {}.table_info('{}')",
+            Self::quote_schema(Self::effective_database(database)),
+            table.replace('\'', "''")
+        )
+    }
+
     fn result_from_json(v: &serde_json::Value) -> QueryResult {
         let first = v
             .get("results")
@@ -101,15 +139,11 @@ impl TursoDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
     ) -> Result<TableSchema, DriverError> {
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
-        let v = Self::pipeline(
-            client,
-            base,
-            &format!("PRAGMA table_info('{}')", table.replace('\'', "''")),
-        )
-        .await?;
+        let v = Self::pipeline(client, base, &Self::table_info_sql(database, table)).await?;
         let result = v
             .get("results")
             .and_then(|r| r.as_array())
@@ -234,16 +268,14 @@ impl DatabaseDriver for TursoDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // Turso/libSQL has no schema level: a schema argument is a caller bug.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
-        let v = Self::pipeline(
-            client,
-            base,
-            "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
-        )
-        .await?;
+        let v = Self::pipeline(client, base, &Self::list_tables_sql(database)).await?;
         let result = v
             .get("results")
             .and_then(|r| r.as_array())
@@ -272,8 +304,12 @@ impl DatabaseDriver for TursoDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
-        self.schema(handle, table).await
+        // Turso/libSQL has no schema level: a single-table read pins no schema.
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        self.schema(handle, table, database).await
     }
 
     async fn query(
@@ -476,5 +512,42 @@ mod tests {
             })
             .sum();
         assert_eq!(rows, 2);
+    }
+
+    #[test]
+    fn metadata_sql_pins_the_explicit_attached_database() {
+        // Explicit argument wins: the read must target that attached database.
+        let sql = TursoDriver::list_tables_sql("aux");
+        assert!(sql.contains("\"aux\".sqlite_master"), "{sql}");
+        let sql = TursoDriver::table_info_sql("aux", "items");
+        assert!(sql.contains("PRAGMA \"aux\".table_info('items')"), "{sql}");
+
+        // Blank keeps the previous behavior (`main`).
+        let sql = TursoDriver::list_tables_sql("");
+        assert!(sql.contains("\"main\".sqlite_master"), "{sql}");
+        let sql = TursoDriver::table_info_sql("   ", "items");
+        assert!(sql.contains("PRAGMA \"main\".table_info('items')"), "{sql}");
+
+        // Quoting survives a hostile alias / table name.
+        let sql = TursoDriver::table_info_sql("au\"x", "it's");
+        assert!(
+            sql.contains("PRAGMA \"au\"\"x\".table_info('it''s')"),
+            "{sql}"
+        );
+    }
+
+    #[test]
+    fn metadata_reads_reject_a_schema_argument() {
+        let driver = TursoDriver::new();
+        assert!(matches!(
+            validate_schema_target(&driver, "main", Some("public"), SchemaScope::AnySchema),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            validate_schema_target(&driver, "main", Some("public"), SchemaScope::ExactSchema),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(validate_schema_target(&driver, "main", None, SchemaScope::ExactSchema).is_ok());
+        assert!(validate_schema_target(&driver, "", Some("  "), SchemaScope::AnySchema).is_ok());
     }
 }

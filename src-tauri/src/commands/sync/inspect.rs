@@ -6,6 +6,7 @@ use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use super::types::{filter_tables_by_schema, is_self_sync, resolve_db_name};
 use crate::data_sync::{classify_tables, require_data_sync_family, TableMapping, TableResult};
+use crate::services::metadata_schema;
 
 pub(crate) async fn inspect_data_sync_impl(
     state: &AppState,
@@ -59,14 +60,14 @@ pub(crate) async fn inspect_data_sync_impl(
 
     let src_tables = filter_tables_by_schema(
         src_driver
-            .get_tables(&src_handle, &src_db)
+            .get_tables(&src_handle, &src_db, source_schema.as_deref())
             .await
             .cmd_err("inspect_data_sync")?,
         source_schema.as_deref(),
     );
     let tgt_tables = filter_tables_by_schema(
         tgt_driver
-            .get_tables(&tgt_handle, &tgt_db)
+            .get_tables(&tgt_handle, &tgt_db, target_schema.as_deref())
             .await
             .cmd_err("inspect_data_sync")?,
         target_schema.as_deref(),
@@ -77,7 +78,16 @@ pub(crate) async fn inspect_data_sync_impl(
         .iter()
         .filter(|t| matches!(t.table_type, crate::db::TableType::Table))
     {
-        if let Ok(schema) = src_driver.get_table_schema(&src_handle, &table.name).await {
+        let table_schema = metadata_schema(
+            src_driver.as_ref(),
+            source_schema.as_deref(),
+            table.schema.as_deref(),
+            None,
+        );
+        if let Ok(schema) = src_driver
+            .get_table_schema(&src_handle, &table.name, &src_db, table_schema.as_deref())
+            .await
+        {
             source_schemas.insert(table.name.clone(), schema);
         }
     }
@@ -86,7 +96,16 @@ pub(crate) async fn inspect_data_sync_impl(
         .iter()
         .filter(|t| matches!(t.table_type, crate::db::TableType::Table))
     {
-        if let Ok(schema) = tgt_driver.get_table_schema(&tgt_handle, &table.name).await {
+        let table_schema = metadata_schema(
+            tgt_driver.as_ref(),
+            target_schema.as_deref(),
+            table.schema.as_deref(),
+            None,
+        );
+        if let Ok(schema) = tgt_driver
+            .get_table_schema(&tgt_handle, &table.name, &tgt_db, table_schema.as_deref())
+            .await
+        {
             target_schemas.insert(table.name.clone(), schema);
         }
     }

@@ -1,5 +1,4 @@
 use super::super::error::{CmdExt, CommandError};
-use super::super::query::ensure_session_database;
 use super::super::AppState;
 use super::access::access_level_for_mode;
 use super::helpers::{
@@ -73,27 +72,14 @@ pub(crate) async fn execute_driver_command_with_mode(
         }
     }
 
-    // F1: session-bound commands honor an optional explicit database pin and
-    // switch the live session before execution; unbound driverType requests
-    // have no session to switch and ignore it.
-    if bound {
-        ensure_session_database(
-            state,
-            &handle.id,
-            request.database.as_deref(),
-            "execute_driver_command",
-        )
-        .await?;
-    }
-
     let is_sql_command = matches!(definition.id.as_str(), "query" | "execute");
     if definition.id == "query" {
         apply_query_result_limit(state, &mut request.input).await;
     }
     // F7: pass envelope targeting into the command input so drivers that
-    // implement dialect-aware qualification (`qualify_sql_target`) can inline
-    // the target. Drivers without the capability ignore the extra fields and
-    // keep relying on the host session pin (ensure_session_database).
+    // implement dialect-aware qualification (`qualify_sql_target`) inline the
+    // target. Drivers without the capability ignore the extra fields; the host
+    // never switches the session's database for them.
     if is_sql_command {
         inject_sql_target_fields(
             &mut request.input,

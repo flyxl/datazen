@@ -54,6 +54,10 @@ pub fn schema_catalog_command_definitions() -> Vec<DriverCommandDefinition> {
                     "database": {
                         "type": "string",
                         "description": "Target database (or namespace)"
+                    },
+                    "schema": {
+                        "type": ["string", "null"],
+                        "description": "Schema to filter on; omit for every schema"
                     }
                 },
                 "required": ["database"]
@@ -91,9 +95,17 @@ pub fn schema_catalog_command_definitions() -> Vec<DriverCommandDefinition> {
                     "table": {
                         "type": "string",
                         "description": "Table name"
+                    },
+                    "database": {
+                        "type": "string",
+                        "description": "Target database (or namespace)"
+                    },
+                    "schema": {
+                        "type": ["string", "null"],
+                        "description": "Schema owning the table; required for schema-aware engines"
                     }
                 },
-                "required": ["table"]
+                "required": ["table", "database"]
             }),
             output_schema: Some(json!({
                 "type": "object",
@@ -110,6 +122,15 @@ pub fn schema_catalog_command_definitions() -> Vec<DriverCommandDefinition> {
                 .hide_from_workflow(),
         },
     ]
+}
+
+/// Read an optional non-blank string field from a command input payload.
+fn optional_input_str(input: &JsonValue, key: &str) -> Option<String> {
+    input[key]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 /// Dispatch schema catalog commands after standard SQL commands are ruled out.
@@ -142,15 +163,24 @@ pub async fn execute_schema_catalog_command<D: DatabaseDriver + ?Sized>(
             let database = input["database"]
                 .as_str()
                 .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?;
-            let tables = driver.get_tables(handle, database).await?;
+            let schema = optional_input_str(&input, "schema");
+            let tables = driver
+                .get_tables(handle, database, schema.as_deref())
+                .await?;
             Ok(CommandResult::new(json!({ "tables": tables })))
         }
         "get_table_schema" => {
             let table = input["table"]
                 .as_str()
                 .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
-            let schema = driver.get_table_schema(handle, table).await?;
-            Ok(CommandResult::new(json!({ "schema": schema })))
+            let database = input["database"]
+                .as_str()
+                .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?;
+            let schema = optional_input_str(&input, "schema");
+            let table_schema = driver
+                .get_table_schema(handle, table, database, schema.as_deref())
+                .await?;
+            Ok(CommandResult::new(json!({ "schema": table_schema })))
         }
         other => Err(DriverError::Unsupported(format!(
             "unsupported schema catalog command: {other}"

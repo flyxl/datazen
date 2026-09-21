@@ -46,23 +46,45 @@ export interface CommitPendingChangesRequest {
 export const databaseCommands = {
   getDatabases: (dbSessionId: string) => invoke<string[]>('get_databases', { dbSessionId }),
 
-  getTables: (dbSessionId: string, database: string) =>
-    invoke<TableInfo[]>('get_tables', { dbSessionId, database }),
+  /**
+   * List a database's tables. `schema` is optional and only meaningful for
+   * schema-aware engines (PostgreSQL, SQL Server); omit it to list every schema.
+   */
+  getTables: (dbSessionId: string, database: string, schema?: string | null) =>
+    invoke<TableInfo[]>('get_tables', { dbSessionId, database, schema: schema ?? null }),
 
-  getColumns: (dbSessionId: string, table: string, database: string) =>
-    invoke<string[]>('get_columns', { dbSessionId, table, database }),
+  /**
+   * `schema` is required for schema-aware engines and must be the table's own
+   * schema — pass `TableInfo.schema`, never a guess.
+   */
+  getColumns: (dbSessionId: string, table: string, database: string, schema?: string | null) =>
+    invoke<string[]>('get_columns', { dbSessionId, table, database, schema: schema ?? null }),
 
-  getColumnsTyped: (dbSessionId: string, table: string, database: string) =>
-    invoke<ColumnSchema[]>('get_columns_typed', { dbSessionId, table, database }),
+  getColumnsTyped: (dbSessionId: string, table: string, database: string, schema?: string | null) =>
+    invoke<ColumnSchema[]>('get_columns_typed', {
+      dbSessionId,
+      table,
+      database,
+      schema: schema ?? null,
+    }),
 
-  getAllColumns: (dbSessionId: string, database: string) =>
-    invoke<Record<string, string[]>>('get_all_columns', { dbSessionId, database }),
+  getAllColumns: (dbSessionId: string, database: string, schema?: string | null) =>
+    invoke<Record<string, string[]>>('get_all_columns', {
+      dbSessionId,
+      database,
+      schema: schema ?? null,
+    }),
 
-  getTableSchema: (dbSessionId: string, table: string, database: string) =>
-    invoke<TableSchema>('get_table_schema', { dbSessionId, table, database }),
+  getTableSchema: (dbSessionId: string, table: string, database: string, schema?: string | null) =>
+    invoke<TableSchema>('get_table_schema', {
+      dbSessionId,
+      table,
+      database,
+      schema: schema ?? null,
+    }),
 
-  getErData: (dbSessionId: string, database: string) =>
-    invoke<TableSchema[]>('get_er_data', { dbSessionId, database }),
+  getErData: (dbSessionId: string, database: string, schema?: string | null) =>
+    invoke<TableSchema[]>('get_er_data', { dbSessionId, database, schema: schema ?? null }),
 
   getTableData: (params: {
     dbSessionId: string;
@@ -73,8 +95,10 @@ export const databaseCommands = {
     sorts?: SortCondition[];
     skipCount?: boolean;
     filterLogic?: 'and' | 'or';
-    /** F1: optional explicit target database — host pins the session before reading. */
+    /** Explicit target database; the host reads it without switching the session. */
     database?: string | null;
+    /** Explicit target schema for schema-aware engines. */
+    schema?: string | null;
   }) =>
     invoke<TableDataResult>('get_table_data', {
       dbSessionId: params.dbSessionId,
@@ -86,6 +110,7 @@ export const databaseCommands = {
       skipCount: params.skipCount,
       filterLogic: params.filterLogic,
       database: params.database ?? null,
+      schema: params.schema ?? null,
     }),
 
   executeSQL: (dbSessionId: string, sql: string) => queryCommands.executeQuery(dbSessionId, sql),

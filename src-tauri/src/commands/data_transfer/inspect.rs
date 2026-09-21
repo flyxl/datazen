@@ -10,6 +10,7 @@ use crate::data_transfer::{
     enforce_transfer_pairing, inspect_tables, structure::enrich_create_new_target_types,
     TableInspectResult, TableMapping, TransferMode,
 };
+use crate::services::metadata_schema;
 use datazen_driver_api::TableType;
 
 pub(crate) async fn inspect_data_transfer_impl(
@@ -64,11 +65,11 @@ pub(crate) async fn inspect_data_transfer_impl(
         .cmd_err("inspect_data_transfer")?;
 
     let src_tables = src_driver
-        .get_tables(&src_handle, &src_db)
+        .get_tables(&src_handle, &src_db, None)
         .await
         .cmd_err("inspect_data_transfer")?;
     let tgt_tables = tgt_driver
-        .get_tables(&tgt_handle, &tgt_db)
+        .get_tables(&tgt_handle, &tgt_db, None)
         .await
         .cmd_err("inspect_data_transfer")?;
 
@@ -77,7 +78,11 @@ pub(crate) async fn inspect_data_transfer_impl(
         .iter()
         .filter(|t| matches!(t.table_type, TableType::Table))
     {
-        if let Ok(schema) = src_driver.get_table_schema(&src_handle, &table.name).await {
+        let schema = metadata_schema(src_driver.as_ref(), None, table.schema.as_deref(), None);
+        if let Ok(schema) = src_driver
+            .get_table_schema(&src_handle, &table.name, &src_db, schema.as_deref())
+            .await
+        {
             source_schemas.insert(table.name.clone(), schema);
         }
     }
@@ -86,7 +91,11 @@ pub(crate) async fn inspect_data_transfer_impl(
         .iter()
         .filter(|t| matches!(t.table_type, TableType::Table))
     {
-        if let Ok(schema) = tgt_driver.get_table_schema(&tgt_handle, &table.name).await {
+        let schema = metadata_schema(tgt_driver.as_ref(), None, table.schema.as_deref(), None);
+        if let Ok(schema) = tgt_driver
+            .get_table_schema(&tgt_handle, &table.name, &tgt_db, schema.as_deref())
+            .await
+        {
             target_schemas.insert(table.name.clone(), schema);
         }
     }

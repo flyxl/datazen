@@ -18,6 +18,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { getCachedTableSchema } from '../../lib/schemaCache';
 import { dataTypeTextClass } from '../../lib/dataTypeColors';
+import { useSchemaStore } from '../../stores/schemaStore';
 
 interface ExportDialogProps {
   open: boolean;
@@ -56,6 +57,7 @@ export function ExportDialog({
   dataExportCapability = 'full_table',
 }: ExportDialogProps) {
   const { t } = useI18n();
+  const tableSchema = useSchemaStore((s) => s.schemaOfRelation(tableName, dbSessionId));
   const exportLocked = dataExportCapability === 'none';
   const allowEntire =
     !exportLocked && supportsFullTableExport(dataExportCapability) && Boolean(dbSessionId);
@@ -79,7 +81,7 @@ export function ExportDialog({
     setError(null);
     if (!dbSessionId || !database) return;
     let cancelled = false;
-    void getCachedTableSchema(dbSessionId, tableName, database)
+    void getCachedTableSchema(dbSessionId, tableName, database, tableSchema)
       .then((schema) => {
         if (cancelled || schema.columns.length === 0) return;
         setLoadedColumns(schema.columns);
@@ -89,7 +91,7 @@ export function ExportDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, dbSessionId, database, tableName, columns]);
+  }, [open, dbSessionId, database, tableName, columns, tableSchema]);
 
   const toggleColumn = useCallback((col: string) => {
     setSelectedCols((prev) => {

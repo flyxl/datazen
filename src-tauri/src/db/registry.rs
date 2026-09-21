@@ -21,6 +21,14 @@ pub struct DriverCapabilities {
     pub supports_query_execution_cancel: bool,
     pub supports_explain: bool,
     pub supports_streaming_results: bool,
+    /// Whether the dialect accepts `OFFSET` in pagination. `false` for
+    /// Presto/Hive-family engines, which paginate with `LIMIT` only.
+    pub supports_offset: bool,
+    /// Whether the engine has a real second namespace level (`schema`).
+    /// `true` only for PostgreSQL and SQL Server; every other driver carries the
+    /// whole namespace in `database`, so sending it a schema is an error rather
+    /// than a hint.
+    pub has_schema_level: bool,
 }
 
 impl DriverCapabilities {
@@ -31,6 +39,8 @@ impl DriverCapabilities {
                 && driver.supports_query_execution_cancel(),
             supports_explain: factory.supports_explain(),
             supports_streaming_results: factory.supports_streaming_results(),
+            supports_offset: driver.supports_offset(),
+            has_schema_level: driver.has_schema_level(),
         }
     }
 }
@@ -266,6 +276,8 @@ mod tests {
 
     fn capabilities(supports_cancel_query: bool) -> DriverCapabilities {
         DriverCapabilities {
+            supports_offset: true,
+            has_schema_level: false,
             supports_cancel_query,
             supports_query_execution_cancel: supports_cancel_query,
             supports_explain: true,

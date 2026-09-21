@@ -102,6 +102,27 @@ impl SqliteDriver {
 
         (columns, result_rows)
     }
+
+    /// Resolve the attached-database name a metadata read targets.
+    ///
+    /// SQLite addresses a relation as `alias.table`, where the alias is `main`,
+    /// `temp`, or an `ATTACH` alias. The explicit `database` argument is
+    /// authoritative; a blank argument keeps the previous behavior and falls
+    /// back to `main` (a plain single-file connection's only database).
+    fn effective_database(database: &str) -> &str {
+        let database = database.trim();
+        if database.is_empty() {
+            "main"
+        } else {
+            database
+        }
+    }
+
+    /// Quote an attached-database name so it can be used as a SQLite schema
+    /// qualifier (`"aux".sqlite_master`, `PRAGMA "aux".table_info(...)`).
+    fn quote_schema(name: &str) -> String {
+        format!("\"{}\"", name.replace('"', "\"\""))
+    }
 }
 
 fn db_path(config: &ConnectionConfig) -> Result<String, DriverError> {
@@ -239,18 +260,24 @@ impl DatabaseDriver for SqliteDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // SQLite has no schema level: any schema argument is a caller bug.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
+        // The attached-database name comes from the explicit argument instead
+        // of a hard-coded `main`/session state; blank falls back to `main`.
+        let catalog = Self::quote_schema(Self::effective_database(database));
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
-        let rows = sqlx::query(
+        let rows = sqlx::query(&format!(
             r#"
-            SELECT name, type FROM sqlite_master
+            SELECT name, type FROM {catalog}.sqlite_master
             WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
             ORDER BY name
-            "#,
-        )
+            "#
+        ))
         .fetch_all(pool)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
@@ -280,14 +307,24 @@ impl DatabaseDriver for SqliteDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
+        // SQLite has no schema level: a single-table read must pin no schema.
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        // Resolve against the caller's attached database, never the session's
+        // implicit `main`; blank keeps the old `main` fallback.
+        let catalog = Self::quote_schema(Self::effective_database(database));
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
-        let col_rows = sqlx::query(&format!("PRAGMA table_info({})", self.quote_ident(table)))
-            .fetch_all(pool)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let col_rows = sqlx::query(&format!(
+            "PRAGMA {catalog}.table_info({})",
+            self.quote_ident(table)
+        ))
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
         let mut columns = Vec::new();
         let mut primary_keys = Vec::new();
@@ -315,10 +352,13 @@ impl DatabaseDriver for SqliteDriver {
         }
 
         // Indexes
-        let idx_rows = sqlx::query(&format!("PRAGMA index_list({})", self.quote_ident(table)))
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
+        let idx_rows = sqlx::query(&format!(
+            "PRAGMA {catalog}.index_list({})",
+            self.quote_ident(table)
+        ))
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
 
         let mut indexes = Vec::new();
         for idx_row in &idx_rows {
@@ -326,7 +366,7 @@ impl DatabaseDriver for SqliteDriver {
             let is_unique: bool = idx_row.get::<i32, _>("unique") != 0;
 
             let info_rows = sqlx::query(&format!(
-                "PRAGMA index_info(\"{}\")",
+                "PRAGMA {catalog}.index_info(\"{}\")",
                 idx_name.replace('"', "\"\"")
             ))
             .fetch_all(pool)
@@ -350,7 +390,7 @@ impl DatabaseDriver for SqliteDriver {
 
         // Foreign keys
         let fk_rows = sqlx::query(&format!(
-            "PRAGMA foreign_key_list({})",
+            "PRAGMA {catalog}.foreign_key_list({})",
             self.quote_ident(table)
         ))
         .fetch_all(pool)
@@ -989,6 +1029,92 @@ mod tests {
             other => panic!("expected bob, got {other:?}"),
         }
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn metadata_reads_honor_explicit_attached_database() {
+        let dir =
+            std::env::temp_dir().join(format!("datazen-sqlite-attach-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main_path = dir.join("main.db");
+        let aux_path = dir.join("aux.db");
+        std::fs::File::create(&main_path).unwrap();
+        std::fs::File::create(&aux_path).unwrap();
+        let main_str = main_path.to_string_lossy().to_string();
+        let aux_str = aux_path.to_string_lossy().to_string();
+
+        let driver = SqliteDriver::new();
+        let handle = driver.connect(&test_config(&main_str)).await.unwrap();
+        driver
+            .execute(&handle, "CREATE TABLE main_only (id INTEGER PRIMARY KEY)")
+            .await
+            .unwrap();
+        driver
+            .execute(
+                &handle,
+                &format!("ATTACH DATABASE '{}' AS aux", aux_str.replace('\'', "''")),
+            )
+            .await
+            .unwrap();
+        driver
+            .execute(
+                &handle,
+                "CREATE TABLE aux.aux_only (id INTEGER PRIMARY KEY, label TEXT)",
+            )
+            .await
+            .unwrap();
+
+        // The explicit attached-database argument is authoritative: reading
+        // `aux` must not leak the session's default `main` tables (or vice versa).
+        let aux_tables = driver.get_tables(&handle, "aux", None).await.unwrap();
+        let names: Vec<&str> = aux_tables.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"aux_only"), "aux tables: {names:?}");
+        assert!(!names.contains(&"main_only"), "aux tables: {names:?}");
+
+        // A blank argument keeps the previous behavior (`main`).
+        let main_tables = driver.get_tables(&handle, "", None).await.unwrap();
+        let names: Vec<&str> = main_tables.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"main_only"), "main tables: {names:?}");
+        assert!(!names.contains(&"aux_only"), "main tables: {names:?}");
+
+        // Column/index resolution follows the same explicit database argument.
+        let aux_schema = driver
+            .get_table_schema(&handle, "aux_only", "aux", None)
+            .await
+            .unwrap();
+        assert!(
+            aux_schema.columns.iter().any(|c| c.name == "label"),
+            "aux schema: {aux_schema:?}"
+        );
+        let main_schema = driver
+            .get_table_schema(&handle, "main_only", "main", None)
+            .await
+            .unwrap();
+        assert!(
+            main_schema.columns.iter().any(|c| c.name == "id"),
+            "main schema: {main_schema:?}"
+        );
+
+        // SQLite has no schema level, so a schema argument is rejected before
+        // any relation is resolved.
+        let err = driver
+            .get_tables(&handle, "main", Some("public"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+        let err = driver
+            .get_table_schema(&handle, "main_only", "main", Some("public"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+        let err = driver
+            .get_columns(&handle, "main_only", "main", Some("public"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+
+        driver.disconnect(handle).await.unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

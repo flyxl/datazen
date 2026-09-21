@@ -5,7 +5,7 @@ use datazen_driver_api::*;
 use redis::AsyncCommands;
 use std::time::{Duration, Instant};
 
-use crate::connect::{build_connection_plan, open_live_conn};
+use crate::connect::{build_connection_plan, open_live_conn, RedisLiveConn};
 use crate::redis_driver::{RedisConn, RedisDriver, TEST_CONNECTION_TLS_GRACE};
 use crate::redis_driver_on::{get_tables_on, info_server_on, query_cmd_on};
 use crate::redis_value::{parse_redis_command_args, redis_value_to_rows};
@@ -23,6 +23,15 @@ fn value_to_string(v: &redis::Value) -> String {
             .join("\n"),
         _ => String::new(),
     }
+}
+
+/// `TYPE <key>` on whichever database the given live connection is pinned to.
+async fn key_type_on(live: &mut RedisLiveConn, key: &str) -> Result<String, DriverError> {
+    with_redis_conn!(live, |conn| conn
+        .key_type(key)
+        .await
+        .map_err(|e| e.to_string()))
+    .map_err(DriverError::QueryFailed)
 }
 
 #[async_trait]
@@ -102,19 +111,15 @@ impl DatabaseDriver for RedisDriver {
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // Redis has no schema level: `database` is the logical DB index and a
+        // schema argument is a caller bug, not a hint.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let db_index = Self::parse_db_name(database)?;
         // Dedicated connection so enumerating several DBs does not flip the
         // shared session's selected database.
-        let plan = {
-            let mut conns = self.connections.write().await;
-            let rc = Self::get_conn(&mut conns, handle)?;
-            rc.plan.clone()
-        };
-        let mut live = open_live_conn(&plan).await?;
-        Self::select_db(&mut live, db_index)
-            .await
-            .map_err(DriverError::QueryFailed)?;
+        let mut live = self.open_pinned_conn(handle, db_index).await?;
         with_redis_conn!(&mut live, |conn| get_tables_on(conn, db_index, 500).await)
     }
 
@@ -122,15 +127,25 @@ impl DatabaseDriver for RedisDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, handle)?;
-
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let table_name = table.to_string();
-        let key_type: String = with_redis_conn!(&mut rc.live, |conn| {
-            conn.key_type(&table_name).await.map_err(|e| e.to_string())
-        })
-        .map_err(DriverError::QueryFailed)?;
+        let explicit_db = database.trim();
+        let key_type: String = if explicit_db.is_empty() {
+            // No DB index supplied: keep the legacy behavior and read through
+            // the session's currently selected database.
+            let mut conns = self.connections.write().await;
+            let rc = Self::get_conn(&mut conns, handle)?;
+            key_type_on(&mut rc.live, &table_name).await?
+        } else {
+            // Explicit argument wins, on a throwaway connection: the shared
+            // session is never re-pointed to reach another DB index.
+            let db_index = Self::parse_db_name(explicit_db)?;
+            let mut live = self.open_pinned_conn(handle, db_index).await?;
+            key_type_on(&mut live, &table_name).await?
+        };
 
         let columns = match key_type.as_str() {
             "hash" => vec![
@@ -342,5 +357,72 @@ impl DatabaseDriver for RedisDriver {
         Err(DriverError::NotSupported(
             "Redis does not restore SQL files; import via driver commands".into(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unknown_pool_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "redis-schema-contract".into(),
+            pool_id: "redis-schema-contract".into(),
+        }
+    }
+
+    #[test]
+    fn redis_declares_no_schema_level() {
+        assert!(!RedisDriver::new().has_schema_level());
+    }
+
+    /// The validator is the first statement: a schema argument is rejected as
+    /// `InvalidConfig` and never masked by a connection lookup failure.
+    #[tokio::test]
+    async fn get_tables_rejects_schema_argument_first() {
+        let driver = RedisDriver::new();
+        let err = driver
+            .get_tables(&unknown_pool_handle(), "db0", Some("public"))
+            .await
+            .expect_err("schema-less driver must reject a schema argument");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn get_table_schema_rejects_schema_argument_first() {
+        let driver = RedisDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "key", "db0", Some("public"))
+            .await
+            .expect_err("schema-less driver must reject a schema argument");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+    }
+
+    /// A blank `database` keeps the pre-contract behavior: the read is served by
+    /// the session's selected DB, so it proceeds to the connection lookup
+    /// instead of failing validation.
+    #[tokio::test]
+    async fn get_table_schema_blank_database_falls_back_to_session() {
+        let driver = RedisDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "key", "   ", None)
+            .await
+            .expect_err("unknown pool must fail");
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "got {err:?}"
+        );
+    }
+
+    /// An explicit `database` is parsed as a DB index (not a session switch), so
+    /// a malformed index is a query error rather than a silent fallback.
+    #[tokio::test]
+    async fn get_table_schema_rejects_unparsable_database() {
+        let driver = RedisDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "key", "not-a-db", None)
+            .await
+            .expect_err("invalid DB index must fail");
+        assert!(matches!(err, DriverError::QueryFailed(_)), "got {err:?}");
     }
 }

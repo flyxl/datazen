@@ -110,12 +110,13 @@ async fn discovers_standard_commands_from_connection() {
     assert!(ids.contains(&"execute"));
 }
 
+/// BUG-003 regression: an explicit request target must never be applied by
+/// switching the shared session's database. It travels in the command input so
+/// the driver qualifies the SQL itself.
 #[tokio::test]
-async fn execute_driver_command_pins_session_database_before_execution() {
+async fn execute_driver_command_never_switches_the_session_database() {
     let test = crate::testing::app_state::TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("cmd-pin-db").await;
-    // Sample config pins database = "app"; an explicit different pin must
-    // switch the live session before the command runs (BUG-001 fix).
     execute_driver_command_impl(
         &test.state,
         ExecuteDriverCommandRequest {
@@ -129,21 +130,23 @@ async fn execute_driver_command_pins_session_database_before_execution() {
     )
     .await
     .unwrap();
-    assert_eq!(
-        test.mock.use_database_calls(),
-        vec!["analytics".to_string()]
+    assert!(
+        test.mock.use_database_calls().is_empty(),
+        "execute_driver_command must not switch the session's database"
     );
+    // The session record keeps its own configured database: the request target
+    // is per-call, not session state.
     let config = test
         .state
         .connection_manager
         .get_session_config(&conn_id)
         .await
         .unwrap();
-    assert_eq!(config.database.as_deref(), Some("analytics"));
+    assert_eq!(config.database.as_deref(), Some("app"));
 }
 
 #[tokio::test]
-async fn execute_driver_command_skips_switch_when_pin_missing_or_same() {
+async fn execute_driver_command_never_switches_for_missing_or_same_pin() {
     let test = crate::testing::app_state::TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("cmd-no-pin").await;
     for database in [None, Some("app".into()), Some("   ".into())] {
@@ -165,7 +168,7 @@ async fn execute_driver_command_skips_switch_when_pin_missing_or_same() {
 }
 
 #[tokio::test]
-async fn execute_driver_command_pins_session_database_for_admin_commands() {
+async fn execute_driver_command_never_switches_for_admin_commands() {
     let test = crate::testing::app_state::TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("cmd-pin-admin").await;
     execute_driver_command_impl(
@@ -181,14 +184,11 @@ async fn execute_driver_command_pins_session_database_for_admin_commands() {
     )
     .await
     .unwrap();
-    assert_eq!(
-        test.mock.use_database_calls(),
-        vec!["analytics".to_string()]
-    );
+    assert!(test.mock.use_database_calls().is_empty());
 }
 
 #[tokio::test]
-async fn stream_pins_session_database_before_query_stream() {
+async fn stream_never_switches_the_session_database() {
     let test = crate::testing::app_state::TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("stream-pin-db").await;
     let callback: QueryStreamCallback = Arc::new(|_event| {});
@@ -208,17 +208,15 @@ async fn stream_pins_session_database_before_query_stream() {
     )
     .await
     .unwrap();
-    assert_eq!(
-        test.mock.use_database_calls(),
-        vec!["analytics".to_string()]
-    );
+    assert!(test.mock.use_database_calls().is_empty());
+    // The session keeps its configured database: the stream target is per-call.
     let config = test
         .state
         .connection_manager
         .get_session_config(&conn_id)
         .await
         .unwrap();
-    assert_eq!(config.database.as_deref(), Some("analytics"));
+    assert_eq!(config.database.as_deref(), Some("app"));
 }
 
 #[tokio::test]
@@ -259,18 +257,18 @@ async fn execute_driver_command_passes_target_to_qualifying_driver() {
         "{executed_sql}"
     );
 
-    // The session pin (ensure_session_database) still runs alongside the
-    // rewrite — the database dimension stays double-covered.
-    assert_eq!(
-        test.mock.use_database_calls(),
-        vec!["analytics".to_string()]
+    // The envelope rewrite is the *only* mechanism: the session is untouched.
+    assert!(
+        test.mock.use_database_calls().is_empty(),
+        "the envelope rewrite must replace the session switch, not double-cover it"
     );
 }
 
 #[tokio::test]
-async fn execute_driver_command_falls_back_when_driver_cannot_rewrite() {
-    // F7: a driver without rewrite capability executes SQL unchanged;
-    // ensure_session_database remains the fallback for the database dim.
+async fn execute_driver_command_executes_unchanged_when_driver_cannot_rewrite() {
+    // F7: a driver without rewrite capability executes SQL unchanged. There is
+    // no session-switch fallback any more — such a driver simply has no way to
+    // address a foreign target for a hand-written statement.
     let test = crate::testing::app_state::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-target-fallback").await;
 
@@ -292,11 +290,8 @@ async fn execute_driver_command_falls_back_when_driver_cannot_rewrite() {
     let executed_sql = result.data["results"][0]["sql"].as_str().unwrap();
     assert_eq!(executed_sql, "SELECT 42");
     assert!(test.mock.qualify_calls().is_empty());
-    // …and the session was still pinned to the requested database.
-    assert_eq!(
-        test.mock.use_database_calls(),
-        vec!["analytics".to_string()]
-    );
+    // …and no session switch happened behind the scenes either.
+    assert!(test.mock.use_database_calls().is_empty());
 }
 
 #[tokio::test]
@@ -421,10 +416,9 @@ async fn stream_without_capability_keeps_sql_and_pins_session() {
 
     let started_sql = started.lock().unwrap().join("\n");
     assert_eq!(started_sql, "SELECT 7");
-    assert_eq!(
-        test.mock.use_database_calls(),
-        vec!["analytics".to_string()],
-        "session pin fallback must still run on the stream path"
+    assert!(
+        test.mock.use_database_calls().is_empty(),
+        "the stream path must not fall back to a session switch"
     );
 }
 

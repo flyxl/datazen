@@ -1,25 +1,26 @@
-//! Gated live integration test for `MysqlDriver::use_database`.
+//! Gated live integration test: MySQL **cross-database reads**.
+//!
+//! The driver has no `use_database`. A metadata read for another database is
+//! served by fully qualifying the name (`` `db`.`table` `` for the `SHOW`
+//! family, `WHERE TABLE_SCHEMA = ?` for `information_schema`), so the borrowed
+//! pool connection is never re-pointed and no `USE` leaks back into the pool.
 //!
 //! Skips cleanly when MySQL is unavailable. Credentials come from process env
 //! and/or the repo-root `.env` file (same `TEST_MYSQL_*` keys as workflow tests).
 //!
 //! Run (skip if no MySQL):
-//!   cargo test -p datazen-driver-mysql --test mysql_use_database -- --nocapture
+//!   cargo test -p datazen-driver-mysql --test mysql_cross_database -- --nocapture
 //!
 //! Force live run with env (example — use your own secrets, do not commit them):
 //!   TEST_MYSQL_HOST=127.0.0.1 TEST_MYSQL_PORT=3306 TEST_MYSQL_USER=root \
 //!   TEST_MYSQL_PASSWORD= TEST_MYSQL_DATABASE=datazen_test \
 //!   TEST_MYSQL_DATABASE_B=datazen_sync_mysql_tgt \
-//!   cargo test -p datazen-driver-mysql --test mysql_use_database -- --nocapture
-//!
-//! Note: do not verify the active schema with prepared `SELECT DATABASE()` —
-//! MySQL can return the database from PREPARE time after a later `USE`. This
-//! test uses unqualified table access (and text-protocol checks in the driver).
+//!   cargo test -p datazen-driver-mysql --test mysql_cross_database -- --nocapture
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, Value};
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError};
 use datazen_driver_mysql::MysqlDriver;
 
 #[derive(Clone, Debug)]
@@ -117,13 +118,13 @@ fn load_mysql_config() -> Option<MysqlTestConfig> {
 
 fn connection_config(cfg: &MysqlTestConfig) -> ConnectionConfig {
     ConnectionConfig {
-        id: "mysql-use-database-it".into(),
-        name: "mysql use_database integration".into(),
+        id: "mysql-cross-database-it".into(),
+        name: "mysql cross-database integration".into(),
         database_type: "mysql".into(),
         host: Some(cfg.host.clone()),
         port: Some(cfg.port),
-        // Connect without a default database so use_database is the switcher.
-        database: None,
+        // Connect to database_b so database_a is always a foreign database.
+        database: Some(cfg.database_b.clone()),
         schema: None,
         username: Some(cfg.user.clone()),
         password: Some(cfg.password.clone()),
@@ -141,34 +142,8 @@ fn connection_config(cfg: &MysqlTestConfig) -> ConnectionConfig {
     }
 }
 
-fn cell_as_i64(value: &Option<Value>) -> Option<i64> {
-    match value {
-        Some(Value::Integer(i)) => Some(*i),
-        Some(Value::String(s)) => s.parse().ok(),
-        _ => None,
-    }
-}
-
-/// `datazen_test.users` exists; proves unqualified names resolve after USE.
-async fn assert_users_visible(
-    driver: &MysqlDriver,
-    handle: &datazen_driver_api::ConnectionHandle,
-    label: &str,
-) {
-    let result = driver
-        .query(handle, "SELECT COUNT(*) FROM users")
-        .await
-        .unwrap_or_else(|e| panic!("{label}: unqualified users query failed: {e}"));
-    assert_eq!(result.rows.len(), 1, "{label}: expected one count row");
-    let count = cell_as_i64(&result.rows[0][0]).unwrap_or(-1);
-    assert!(
-        count >= 0,
-        "{label}: expected non-negative users count, got {count}"
-    );
-}
-
 #[tokio::test]
-async fn use_database_switches_and_rejects_invalid() {
+async fn cross_database_reads_use_qualified_names_not_use() {
     let Some(cfg) = load_mysql_config() else {
         return;
     };
@@ -193,7 +168,6 @@ async fn use_database_switches_and_rejects_invalid() {
         }
     };
 
-    // Confirm both target databases exist (skip if fixture DBs missing).
     let dbs = match driver.get_databases(&handle).await {
         Ok(d) => d,
         Err(e) => {
@@ -215,19 +189,19 @@ async fn use_database_switches_and_rejects_invalid() {
 
     // Fixture assumption: database_a has `users`; database_b does not.
     let a_tables = driver
-        .get_tables(&handle, &cfg.database_a)
+        .get_tables(&handle, &cfg.database_a, None)
         .await
         .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_a));
     if !a_tables.iter().any(|t| t.name == "users") {
         let _ = driver.disconnect(handle).await;
         eprintln!(
-            "⏭  Skipping: `{}.users` missing (needed to verify unqualified USE)",
+            "⏭  Skipping: `{}.users` missing (needed to verify cross-database reads)",
             cfg.database_a
         );
         return;
     }
     let b_tables = driver
-        .get_tables(&handle, &cfg.database_b)
+        .get_tables(&handle, &cfg.database_b, None)
         .await
         .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_b));
     if b_tables.iter().any(|t| t.name == "users") {
@@ -240,79 +214,81 @@ async fn use_database_switches_and_rejects_invalid() {
     }
 
     println!(
-        "▶  use_database live: {} → {} on {}:{}",
-        cfg.database_a, cfg.database_b, cfg.host, cfg.port
+        "▶  cross-database live: handle on {}, reading {} on {}:{}",
+        cfg.database_b, cfg.database_a, cfg.host, cfg.port
     );
 
-    driver
-        .use_database(&handle, &cfg.database_a)
+    // ── BUG-003 regression: a foreign database's table structure must not be empty ──
+    let schema = driver
+        .get_table_schema(&handle, "users", &cfg.database_a, None)
         .await
-        .unwrap_or_else(|e| panic!("use_database({}) failed: {e}", cfg.database_a));
-
-    // Pool re-apply: several acquires must all resolve unqualified `users`.
-    for i in 0..5 {
-        assert_users_visible(
-            &driver,
-            &handle,
-            &format!("after use_database(A), pooled query #{i}"),
-        )
-        .await;
-    }
-
-    driver
-        .use_database(&handle, &cfg.database_b)
+        .unwrap_or_else(|e| panic!("get_table_schema({}.users): {e}", cfg.database_a));
+    assert!(
+        !schema.columns.is_empty(),
+        "cross-database structure must not come back empty — that empty column \
+         list is what the data grid turned into blank cells (BUG-003)"
+    );
+    let (cols, _pks) = driver
+        .get_columns(&handle, "users", &cfg.database_a, None)
         .await
-        .unwrap_or_else(|e| panic!("use_database({}) failed: {e}", cfg.database_b));
+        .unwrap_or_else(|e| panic!("get_columns({}.users): {e}", cfg.database_a));
+    assert_eq!(cols.len(), schema.columns.len());
 
-    for i in 0..5 {
-        let err = driver
-            .query(&handle, "SELECT COUNT(*) FROM users")
-            .await
-            .expect_err(&format!(
-                "after use_database(B), pooled query #{i} should not see {}.users",
-                cfg.database_a
-            ));
-        assert!(
-            matches!(err, DriverError::QueryFailed(_)),
-            "pooled query #{i}: expected QueryFailed without users table, got {err:?}"
-        );
-    }
-
-    // Switch back to A and confirm pool re-apply again.
-    driver
-        .use_database(&handle, &cfg.database_a)
-        .await
-        .unwrap_or_else(|e| panic!("use_database({}) again failed: {e}", cfg.database_a));
-    assert_users_visible(&driver, &handle, "after switching back to A").await;
-
-    // Invalid database → QueryFailed (mapped from MySQL unknown-database).
+    // ── the handle's own session is untouched: unqualified `users` is still
+    //    absent from database_b ──
     let err = driver
-        .use_database(&handle, "nonexistent_db_xyz_f1_test")
+        .query(&handle, "SELECT COUNT(*) FROM users")
         .await
-        .expect_err("use_database(invalid) should error");
+        .expect_err("the handle's session must stay on database_b and not see database_a.users");
+    assert!(
+        matches!(err, DriverError::QueryFailed(_)),
+        "expected QueryFailed, got {err:?}"
+    );
+
+    // ── repeated foreign reads stay stable (no per-acquire state to drift) ──
+    for i in 0..5 {
+        let schema = driver
+            .get_table_schema(&handle, "users", &cfg.database_a, None)
+            .await
+            .unwrap_or_else(|e| panic!("cross-database read #{i}: {e}"));
+        assert_eq!(schema.columns.len(), schema.columns.len(), "shape changed");
+    }
+    let err = driver
+        .query(&handle, "SELECT COUNT(*) FROM users")
+        .await
+        .expect_err("session must still be on database_b after repeated foreign reads");
+    assert!(matches!(err, DriverError::QueryFailed(_)), "got {err:?}");
+
+    // ── a genuinely missing relation errors instead of reporting no columns ──
+    let err = driver
+        .get_table_schema(&handle, "users", &cfg.database_b, None)
+        .await
+        .expect_err("a relation absent from the requested database must not report success");
+    assert!(
+        err.to_string().contains("does not exist"),
+        "error should name the missing relation, got: {err}"
+    );
+
+    // ── MySQL has no schema level, so a schema argument is rejected ──
+    let err = driver
+        .get_table_schema(&handle, "users", &cfg.database_a, Some("public"))
+        .await
+        .expect_err("MySQL must reject a schema argument");
+    assert!(
+        matches!(err, DriverError::InvalidConfig(_)),
+        "expected InvalidConfig, got {err:?}"
+    );
+
+    // ── unknown database fails loudly ──
+    let err = driver
+        .get_tables(&handle, "nonexistent_db_xyz_f1_test", None)
+        .await
+        .expect_err("unknown database should error");
     assert!(
         matches!(err, DriverError::QueryFailed(_)),
         "expected QueryFailed for unknown database, got: {err:?}"
     );
-    let msg = err.to_string();
-    assert!(
-        msg.contains("nonexistent_db_xyz_f1_test") || msg.to_lowercase().contains("unknown"),
-        "error should mention the bad database name: {msg}"
-    );
-
-    // Active DB should remain A after failed switch (unqualified users still works).
-    assert_users_visible(&driver, &handle, "after failed use_database(invalid)").await;
-
-    // Empty name → InvalidConfig (no round-trip to server required).
-    let empty_err = driver
-        .use_database(&handle, "   ")
-        .await
-        .expect_err("empty database name should be rejected");
-    assert!(
-        matches!(empty_err, DriverError::InvalidConfig(_)),
-        "expected InvalidConfig for empty name, got: {empty_err:?}"
-    );
 
     driver.disconnect(handle).await.expect("disconnect");
-    println!("✅  MysqlDriver::use_database live checks passed");
+    println!("✅  MySQL cross-database live checks passed");
 }

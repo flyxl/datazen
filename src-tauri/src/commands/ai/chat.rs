@@ -363,16 +363,27 @@ pub(crate) async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> S
         }
         "list_tables" => {
             let connection_id = args["connection_id"].as_str().unwrap_or("");
-            let database = args["database"].as_str().unwrap_or("");
-            crate::services::db_tools::list_tables(cm, connection_id, database).await
+            crate::services::db_tools::list_tables(
+                cm,
+                connection_id,
+                args["database"].as_str(),
+                args["schema"].as_str(),
+            )
+            .await
         }
         "search_tables" => {
             let connection_id = args["connection_id"].as_str().unwrap_or("");
-            let database = args["database"].as_str().unwrap_or("");
             let pattern = args["pattern"].as_str().unwrap_or("");
             let limit = args["limit"].as_u64().unwrap_or(20) as usize;
-            crate::services::db_tools::search_tables(cm, connection_id, database, pattern, limit)
-                .await
+            crate::services::db_tools::search_tables(
+                cm,
+                connection_id,
+                args["database"].as_str(),
+                args["schema"].as_str(),
+                pattern,
+                limit,
+            )
+            .await
         }
         "get_table_schema" => {
             let connection_id = args["connection_id"].as_str().unwrap_or("");
@@ -384,7 +395,14 @@ pub(crate) async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> S
                         .collect()
                 })
                 .unwrap_or_default();
-            crate::services::db_tools::get_table_schema(cm, connection_id, &tables).await
+            crate::services::db_tools::get_table_schema(
+                cm,
+                connection_id,
+                &tables,
+                args["database"].as_str(),
+                args["schema"].as_str(),
+            )
+            .await
         }
         other => Err(format!("Unknown tool: {other}")),
     };

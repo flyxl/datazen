@@ -322,7 +322,7 @@ async fn drop_existing_restore_targets(
     app: Option<&tauri::AppHandle>,
 ) -> Result<(), CommandError> {
     let tables = driver
-        .get_tables(handle, database)
+        .get_tables(handle, database, None)
         .await
         .cmd_err("restore_database")?;
     if tables.is_empty() {

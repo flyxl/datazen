@@ -499,14 +499,6 @@ pub(crate) async fn drop_database_impl(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| DriverError::InvalidConfig("name is required".into()))?;
 
-    // The database the handle's pool is currently attached to.
-    let active = driver
-        .active_databases
-        .read()
-        .await
-        .get(&handle.pool_id)
-        .cloned();
-
     // Pick a sentinel database (≠ target) to run the drop from. The handle's own
     // pooled connection is always allowed to query pg_database regardless of the
     // target, so no reconnect is needed just to choose the sentinel.
@@ -533,30 +525,33 @@ pub(crate) async fn drop_database_impl(
             })?
     };
 
-    // If our pool is attached to the target, reconnect it to the sentinel first —
-    // otherwise PostgreSQL refuses: "cannot drop the currently open database".
-    // use_database_impl refuses while a transaction is open, which is the safe call.
-    if active.as_deref() == Some(name) {
-        driver.use_database_impl(handle, &sentinel).await?;
-    }
+    // Run the drop from a pool attached to the sentinel — never by re-pointing
+    // the handle's own session (that is what used to leave every later read
+    // resolving against the wrong catalog, see BUG-003). The sentinel pool is
+    // released again below so we do not hold a connection to a database the user
+    // may drop next.
+    let sentinel_is_primary = driver.is_active_database(handle, &sentinel).await;
+    let sentinel_pool = driver.pool_for_target(handle, &sentinel).await?;
 
-    // Run the drop from the pool (now on the sentinel), terminating any remaining
-    // backends still connected to the target first.
-    {
-        let pools = driver.pools.read().await;
-        let pool = PostgresDriver::get_pool(&pools, handle)?;
-        sqlx::query(
-            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
-             WHERE datname = $1 AND pid <> pg_backend_pid()",
-        )
-        .bind(name)
-        .execute(pool)
+    sqlx::query(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+         WHERE datname = $1 AND pid <> pg_backend_pid()",
+    )
+    .bind(name)
+    .execute(&sentinel_pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    sentinel_pool
+        .execute(format!("DROP DATABASE {}", quote_ident(name)).as_str())
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
-        pool.execute(format!("DROP DATABASE {}", quote_ident(name)).as_str())
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    if !sentinel_is_primary {
+        // Best effort: a failure to close only leaks one idle pool.
+        if let Err(error) = driver.close_database_pool(handle, &sentinel).await {
+            tracing::warn!(%error, database = %sentinel, "failed to close sentinel pool");
+        }
     }
 
     Ok(CommandResult {
@@ -1288,10 +1283,18 @@ mod tests {
             .execute_command(&handle, "create_database", json!({ "name": current_open }))
             .await
             .expect("create second db");
-        driver
-            .use_database(&handle, &current_open)
+        // Bind a *fresh* session onto the database we are about to drop. The
+        // driver no longer re-points an existing pool, so this is how a real
+        // "connected to the target" situation is reached now.
+        driver.disconnect(handle.clone()).await.ok();
+        let on_target = ConnectionConfig {
+            database: Some(current_open.clone()),
+            ..cfg.clone()
+        };
+        let handle = driver
+            .connect(&on_target)
             .await
-            .expect("switch pool onto the db we are about to drop");
+            .expect("connect onto the db we are about to drop");
 
         let r2 = driver
             .execute_command(&handle, "drop_database", json!({ "name": current_open }))

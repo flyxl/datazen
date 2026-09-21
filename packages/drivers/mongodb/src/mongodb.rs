@@ -105,6 +105,39 @@ impl MongodbDriver {
         client.database(database).collection(name)
     }
 
+    /// Database a metadata read targets.
+    ///
+    /// The explicit `database` argument is authoritative. Only when it is blank
+    /// does the read fall back to the database this handle was connected to —
+    /// the pre-contract behavior, minus the mutable "current database" state
+    /// that `use_database` used to write back into the pool entry.
+    fn resolve_database(explicit: &str, remembered: Option<&str>) -> String {
+        let explicit = explicit.trim();
+        if !explicit.is_empty() {
+            return explicit.to_string();
+        }
+        remembered
+            .map(str::trim)
+            .filter(|db| !db.is_empty())
+            .unwrap_or("test")
+            .to_string()
+    }
+
+    /// The collection a single-relation metadata read resolves against.
+    ///
+    /// Splitting this out keeps the "which database?" decision pure and
+    /// testable: the relation is located from the explicit argument (falling
+    /// back to the remembered connection database only when it is blank), never
+    /// from mutable session state.
+    fn target_collection(
+        client: &Client,
+        table: &str,
+        database: &str,
+        remembered: Option<&str>,
+    ) -> Collection<Document> {
+        Self::collection(client, &Self::resolve_database(database, remembered), table)
+    }
+
     fn parse_command(sql: &str) -> Result<(String, serde_json::Value), DriverError> {
         let cmd: serde_json::Value = serde_json::from_str(sql.trim()).map_err(|_| {
             DriverError::QueryFailed(
@@ -273,7 +306,10 @@ impl DatabaseDriver for MongodbDriver {
         &self,
         handle: &ConnectionHandle,
         database: &str,
+        schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
+        // MongoDB has no schema level: the database *is* the namespace.
+        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
         let map = self.clients.read().await;
         let (client, _) = Self::get(&map, handle)?;
         let names = client
@@ -298,14 +334,19 @@ impl DatabaseDriver for MongodbDriver {
         &self,
         handle: &ConnectionHandle,
         table: &str,
+        database: &str,
+        schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
-        let map = self.clients.read().await;
-        let (client, database) = Self::get(&map, handle)?;
-        let db = database.clone().unwrap_or_else(|| "test".to_string());
+        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        // The explicit argument is the target database; no session/`use` state
+        // is consulted (or written) to reach it.
+        let collection = {
+            let map = self.clients.read().await;
+            let (client, remembered) = Self::get(&map, handle)?;
+            Self::target_collection(client, table, database, remembered.as_deref())
+        };
         let mut columns = Vec::new();
-        if let Some(doc) = client
-            .database(&db)
-            .collection::<Document>(table)
+        if let Some(doc) = collection
             .find_one(doc! {})
             .await
             .map_err(|e| DriverError::QueryFailed(format!("MongoDB sample failed: {e}")))?
@@ -585,30 +626,6 @@ impl DatabaseDriver for MongodbDriver {
         ))
     }
 
-    async fn use_database(
-        &self,
-        handle: &ConnectionHandle,
-        database: &str,
-    ) -> Result<(), DriverError> {
-        let trimmed = database.trim();
-        if trimmed.is_empty() {
-            return Err(DriverError::InvalidConfig(
-                "Database name must not be empty".into(),
-            ));
-        }
-        if trimmed.contains('\0') {
-            return Err(DriverError::InvalidConfig(
-                "Database name contains invalid characters".into(),
-            ));
-        }
-        let mut map = self.clients.write().await;
-        let entry = map
-            .get_mut(&handle.pool_id)
-            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        entry.1 = Some(trimmed.to_string());
-        Ok(())
-    }
-
     fn supports_explain(&self) -> bool {
         false
     }
@@ -662,22 +679,92 @@ impl DatabaseDriver for MongodbDriver {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn use_database_rejects_empty_and_updates_pool() {
-        let driver = MongodbDriver::new();
-        let handle = ConnectionHandle {
-            id: "c".into(),
-            pool_id: "missing".into(),
-        };
-        assert!(matches!(
-            driver.use_database(&handle, "  ").await,
-            Err(DriverError::InvalidConfig(_))
-        ));
+    fn unknown_pool_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "mongodb-schema-contract".into(),
+            pool_id: "mongodb-schema-contract".into(),
+        }
+    }
 
-        // Insert a stub pool entry without a live client by connecting is heavy;
-        // validate only the empty-name path here. ConnectionFailed covers missing pool.
-        let err = driver.use_database(&handle, "app").await.unwrap_err();
-        assert!(matches!(err, DriverError::ConnectionFailed(_)));
+    async fn stub_client() -> Client {
+        let options = ClientOptions::parse("mongodb://127.0.0.1:27017/?directConnection=true")
+            .await
+            .expect("URI parse must not need a server");
+        Client::with_options(options).expect("client construction must not need a server")
+    }
+
+    /// Replaces the removed `use_database` coverage.
+    ///
+    /// The old test asserted that a session switch wrote the "current database"
+    /// back into the pool entry. That state is gone: a metadata read now
+    /// resolves its relation from the explicit `database` argument, and the
+    /// remembered connection database is only a blank-argument fallback.
+    #[tokio::test]
+    async fn schema_read_resolves_against_explicit_database_argument() {
+        let client = stub_client().await;
+
+        let col = MongodbDriver::target_collection(&client, "users", "explicit_db", Some("rem"));
+        assert_eq!(col.namespace().db, "explicit_db");
+        assert_eq!(col.namespace().coll, "users");
+
+        // Explicit wins even when whitespace-padded.
+        let col = MongodbDriver::target_collection(&client, "users", "  explicit_db ", Some("rem"));
+        assert_eq!(col.namespace().db, "explicit_db");
+
+        // Blank argument keeps the pre-contract behavior.
+        let col = MongodbDriver::target_collection(&client, "users", "   ", Some("rem"));
+        assert_eq!(col.namespace().db, "rem");
+
+        // Nothing to fall back to → MongoDB's default database.
+        let col = MongodbDriver::target_collection(&client, "users", "", None);
+        assert_eq!(col.namespace().db, "test");
+    }
+
+    #[test]
+    fn resolve_database_ignores_blank_remembered_database() {
+        assert_eq!(MongodbDriver::resolve_database("app", None), "app");
+        assert_eq!(MongodbDriver::resolve_database("", Some("  ")), "test");
+        assert_eq!(
+            MongodbDriver::resolve_database("", Some("remembered")),
+            "remembered"
+        );
+    }
+
+    /// The validator is the first statement: a schema argument is rejected as
+    /// `InvalidConfig` and never masked by a connection lookup failure.
+    #[tokio::test]
+    async fn get_tables_rejects_schema_argument_first() {
+        let driver = MongodbDriver::new();
+        let err = driver
+            .get_tables(&unknown_pool_handle(), "app", Some("public"))
+            .await
+            .expect_err("schema-less driver must reject a schema argument");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn get_table_schema_rejects_schema_argument_first() {
+        let driver = MongodbDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "users", "app", Some("public"))
+            .await
+            .expect_err("schema-less driver must reject a schema argument");
+        assert!(matches!(err, DriverError::InvalidConfig(_)), "got {err:?}");
+    }
+
+    /// The connection lookup still guards metadata reads, and a blank database
+    /// falls back rather than failing validation.
+    #[tokio::test]
+    async fn get_table_schema_unknown_pool_still_fails() {
+        let driver = MongodbDriver::new();
+        let err = driver
+            .get_table_schema(&unknown_pool_handle(), "users", "", None)
+            .await
+            .expect_err("unknown pool must fail");
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "got {err:?}"
+        );
     }
 
     #[test]

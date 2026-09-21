@@ -1244,7 +1244,11 @@ async fn ai_chat_mcp_and_db_same_round() {
     for profile in &mut ai_settings.profiles {
         profile.safety_gate.data_egress_level = datazen_ai_api::AiDataEgressLevel::Unrestricted;
     }
-    test.state.store.save_ai_settings_config(&ai_settings).await.unwrap();
+    test.state
+        .store
+        .save_ai_settings_config(&ai_settings)
+        .await
+        .unwrap();
     test.save_connection("same-round-cfg").await;
     let mcp_calls = register_echo_test_mcp(&test.state).await;
 

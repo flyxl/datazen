@@ -372,7 +372,7 @@ describe('[tester] query/queryDropHandler', () => {
     });
 
     await handler({ tables: [{ tableName: 'users', schema: 'public' }] }, 10);
-    expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'public.users', 'app');
+    expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'public.users', 'app', 'public');
     expect(insertAt).toHaveBeenCalled();
   });
 

@@ -15,6 +15,7 @@ use crate::schema_diff::types::{
     SchemaDiffPlan,
 };
 use crate::services::job_registry::{cancel_job, ensure_job, remove_job};
+use crate::services::metadata_schema;
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ddl::build_create_table_ddl;
 use crate::transfer::full_types::fetch_full_column_types;
@@ -33,8 +34,13 @@ async fn fetch_target_table_schema(
     driver: &dyn datazen_driver_api::DatabaseDriver,
     handle: &datazen_driver_api::ConnectionHandle,
     table: &str,
+    database: &str,
+    schema: Option<&str>,
 ) -> Result<crate::db::TableSchema, CommandError> {
-    match driver.get_table_schema(handle, table).await {
+    match driver
+        .get_table_schema(handle, table, database, schema)
+        .await
+    {
         Ok(schema) => Ok(schema),
         Err(e) => {
             let msg = e.to_string();
@@ -89,7 +95,6 @@ pub async fn prepare_schema_diff_plan(
         .get_session_config(&target_db_session_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
-
     let (src_driver, src_handle) = state
         .connection_manager
         .get_session(&source_db_session_id)
@@ -101,17 +106,45 @@ pub async fn prepare_schema_diff_plan(
         .await
         .cmd_err("prepare_schema_diff_plan")?;
 
+    let src_database =
+        crate::commands::sync::types::resolve_db_name(None, src_config.database.as_deref());
+    let tgt_database =
+        crate::commands::sync::types::resolve_db_name(None, tgt_config.database.as_deref());
+    let src_schema_arg = metadata_schema(
+        src_driver.as_ref(),
+        None,
+        None,
+        src_config.schema.as_deref(),
+    );
+    let tgt_schema_arg = metadata_schema(
+        tgt_driver.as_ref(),
+        None,
+        None,
+        tgt_config.schema.as_deref(),
+    );
+
     let mut pairs = Vec::new();
     for table in &table_names {
         let src_table = resolve_table_for_dialect(&src_config.database_type, table);
         let tgt_table = resolve_table_for_dialect(&tgt_config.database_type, table);
         let src_schema = src_driver
-            .get_table_schema(&src_handle, &src_table)
+            .get_table_schema(
+                &src_handle,
+                &src_table,
+                &src_database,
+                src_schema_arg.as_deref(),
+            )
             .await
             .cmd_err("prepare_schema_diff_plan")?;
-        let tgt_schema = fetch_target_table_schema(tgt_driver.as_ref(), &tgt_handle, &tgt_table)
-            .await
-            .cmd_err("prepare_schema_diff_plan")?;
+        let tgt_schema = fetch_target_table_schema(
+            tgt_driver.as_ref(),
+            &tgt_handle,
+            &tgt_table,
+            &tgt_database,
+            tgt_schema_arg.as_deref(),
+        )
+        .await
+        .cmd_err("prepare_schema_diff_plan")?;
         // DDL in the plan targets the target dialect, so the pair's table identifier must be
         // target-resolved. Using `table` here leaks the source's schema qualification into the
         // target DDL (e.g. `public.table` on MySQL) and breaks deploy.
@@ -292,7 +325,6 @@ pub(crate) async fn compare_table_schemas_impl(
         .get_session_config(&target_db_session_id)
         .await
         .cmd_err("compare_table_schemas")?;
-
     let (src_driver, src_handle) = state
         .connection_manager
         .get_session(&source_db_session_id)
@@ -304,16 +336,44 @@ pub(crate) async fn compare_table_schemas_impl(
         .await
         .cmd_err("compare_table_schemas")?;
 
+    let src_database =
+        crate::commands::sync::types::resolve_db_name(None, src_config.database.as_deref());
+    let tgt_database =
+        crate::commands::sync::types::resolve_db_name(None, tgt_config.database.as_deref());
+    let src_schema_arg = metadata_schema(
+        src_driver.as_ref(),
+        None,
+        None,
+        src_config.schema.as_deref(),
+    );
+    let tgt_schema_arg = metadata_schema(
+        tgt_driver.as_ref(),
+        None,
+        None,
+        tgt_config.schema.as_deref(),
+    );
+
     let src_table = resolve_table_for_dialect(&src_config.database_type, &table_name);
     let tgt_table = resolve_table_for_dialect(&tgt_config.database_type, &table_name);
 
     let src_schema = src_driver
-        .get_table_schema(&src_handle, &src_table)
+        .get_table_schema(
+            &src_handle,
+            &src_table,
+            &src_database,
+            src_schema_arg.as_deref(),
+        )
         .await
         .cmd_err("compare_table_schemas")?;
-    let tgt_schema = fetch_target_table_schema(tgt_driver.as_ref(), &tgt_handle, &tgt_table)
-        .await
-        .cmd_err("compare_table_schemas")?;
+    let tgt_schema = fetch_target_table_schema(
+        tgt_driver.as_ref(),
+        &tgt_handle,
+        &tgt_table,
+        &tgt_database,
+        tgt_schema_arg.as_deref(),
+    )
+    .await
+    .cmd_err("compare_table_schemas")?;
 
     // Source = desired: missingOnTarget → ADD, extraOnTarget → DROP.
     // `added`/`removed` kept as aliases for one release.

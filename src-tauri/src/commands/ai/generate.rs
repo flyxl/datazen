@@ -489,10 +489,24 @@ pub(crate) async fn ai_parse_filter_impl(
         .cmd_err("ai_parse_filter")?;
 
     let db_type = prompt_db_type(driver.as_ref());
+    let config = state
+        .connection_manager
+        .get_session_config(&db_session_id)
+        .await
+        .cmd_err("ai_parse_filter")?;
+    let schema =
+        crate::services::metadata_schema(driver.as_ref(), None, None, config.schema.as_deref());
 
     let cached = state
         .schema_cache
-        .get_columns(&db_session_id, &database, &table, &driver, &handle)
+        .get_columns(
+            &db_session_id,
+            &database,
+            schema.as_deref(),
+            &table,
+            &driver,
+            &handle,
+        )
         .await
         .cmd_err("ai_parse_filter")?;
 

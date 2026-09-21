@@ -17,6 +17,21 @@ pub(crate) fn pg_regclass_name(schema: Option<&str>, table: &str) -> String {
     }
 }
 
+/// Effective `(schema, bare_table)` for a single-table call.
+///
+/// The explicit `schema` argument wins; a schema embedded in the table
+/// reference (`"public"."orders"`) is still honoured for callers that pass a
+/// pre-qualified name. Blank schemas are treated as absent so an empty string
+/// can never silently mean "whatever the session resolves".
+pub(crate) fn resolve_pg_table_schema<'a>(
+    table: &'a str,
+    schema: Option<&'a str>,
+) -> (Option<&'a str>, &'a str) {
+    let (embedded, bare) = parse_pg_table_ref(table);
+    let explicit = schema.map(str::trim).filter(|s| !s.is_empty());
+    (explicit.or(embedded), bare)
+}
+
 pub(crate) fn is_pg_result_query(sql: &str) -> bool {
     let upper = sql.trim().to_ascii_uppercase();
     upper.starts_with("SELECT")

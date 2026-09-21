@@ -104,6 +104,30 @@ impl RedisDriver {
         with_redis_conn!(live, |conn| select_db_on(conn, db_index).await)
     }
 
+    /// Open a dedicated connection already `SELECT`ed onto `db_index`.
+    ///
+    /// Metadata reads take the explicit `database` argument as the target DB
+    /// index; because Redis has no per-command database selector, that index can
+    /// only be honored by `SELECT`. Doing it on a throwaway connection keeps the
+    /// shared session's selected database untouched, so browsing one DB never
+    /// re-points a read aimed at another.
+    pub(crate) async fn open_pinned_conn(
+        &self,
+        handle: &ConnectionHandle,
+        db_index: u32,
+    ) -> Result<RedisLiveConn, DriverError> {
+        let plan = {
+            let mut conns = self.connections.write().await;
+            let rc = Self::get_conn(&mut conns, handle)?;
+            rc.plan.clone()
+        };
+        let mut live = open_live_conn(&plan).await?;
+        Self::select_db(&mut live, db_index)
+            .await
+            .map_err(DriverError::QueryFailed)?;
+        Ok(live)
+    }
+
     pub fn parse_db_name(database: &str) -> Result<u32, DriverError> {
         let s = database.trim();
         if s.is_empty() {
