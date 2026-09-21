@@ -6,6 +6,8 @@ export type BatchExportDataFormat = 'csv' | 'json' | 'sql_insert';
 
 export interface BatchExportTableInput {
   tableName: string;
+  /** Schema the table lives in (PostgreSQL family). */
+  schema?: string | null;
   /** DDL text; required when mode includes structure */
   ddl?: string | null;
   columns: { name: string }[];

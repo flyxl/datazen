@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
+import { connectionCommands } from '../../../commands/connection';
 import { databaseCommands } from '../../../commands/database';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../../types';
@@ -25,17 +26,45 @@ export function useNavigatorDbState(
   const [dbTablesMap, setDbTablesMap] = useState<Record<string, TableInfo[]>>({});
   const [dbObjectsMap, setDbObjectsMap] = useState<Record<string, DatabaseObject[]>>({});
   const [loadingDbs, setLoadingDbs] = useState<Set<string>>(new Set());
+  /**
+   * Databases the backend currently holds an open resource for, per session.
+   * A driver with no per-database resource reports none, and the tree then
+   * shows no marker at all rather than claiming everything is closed.
+   */
+  const [openDbs, setOpenDbs] = useState<Record<string, Set<string>>>({});
 
-  const reloadDbTables = useCallback(async (dbSessionId: string, dbName: string) => {
-    const tableKey = `${dbSessionId}::${dbName}`;
+  const refreshOpenDatabases = useCallback(async (dbSessionId: string) => {
     try {
-      const all = await databaseCommands.getTables(dbSessionId, dbName);
-      setDbTablesMap((prev) => ({ ...prev, [tableKey]: all }));
-      useSchemaStore.getState().setLoadedTables(dbName, all, dbSessionId);
+      const open = await connectionCommands.getOpenDatabases(dbSessionId);
+      setOpenDbs((prev) => ({ ...prev, [dbSessionId]: new Set(open) }));
     } catch {
-      // ignore
+      // The session is gone (or not connected yet): drop its entry so a stale
+      // marker cannot outlive the pool it described.
+      setOpenDbs((prev) => {
+        if (!(dbSessionId in prev)) return prev;
+        const next = { ...prev };
+        delete next[dbSessionId];
+        return next;
+      });
     }
   }, []);
+
+  const reloadDbTables = useCallback(
+    async (dbSessionId: string, dbName: string) => {
+      const tableKey = `${dbSessionId}::${dbName}`;
+      try {
+        const all = await databaseCommands.getTables(dbSessionId, dbName);
+        setDbTablesMap((prev) => ({ ...prev, [tableKey]: all }));
+        useSchemaStore.getState().setLoadedTables(dbName, all, dbSessionId);
+      } catch {
+        // ignore
+      }
+      // Reading a database is what opens its pool, so the marker is refreshed
+      // here rather than only when the user asks for it.
+      await refreshOpenDatabases(dbSessionId);
+    },
+    [refreshOpenDatabases],
+  );
 
   const activateDatabase = useCallback(
     async (dbSessionId: string, dbName: string) => {
@@ -58,6 +87,15 @@ export function useNavigatorDbState(
 
   const clearDbLocalCache = useCallback(
     (connectionId: string, _dbSessionId: string, dbName: string) => {
+      // Closing (or dropping) a database releases its pool, so it must stop
+      // being marked open immediately — the backend cannot be polled in time.
+      setOpenDbs((prev) => {
+        const current = prev[_dbSessionId];
+        if (!current?.has(dbName)) return prev;
+        const next = new Set(current);
+        next.delete(dbName);
+        return { ...prev, [_dbSessionId]: next };
+      });
       const tableKey = `${_dbSessionId}::${dbName}`;
       setDbTablesMap((prev) => {
         if (!(tableKey in prev)) return prev;
@@ -150,6 +188,8 @@ export function useNavigatorDbState(
         databaseType: conn.databaseType,
       });
 
+      await refreshOpenDatabases(entry.dbSessionId);
+
       if (isPathHierarchy) {
         await ensureNamespacePath([], entry.dbSessionId);
       }
@@ -174,6 +214,7 @@ export function useNavigatorDbState(
       loadForConnection,
       reloadDbTables,
       reloadExpandedObjectCategories,
+      refreshOpenDatabases,
     ],
   );
 
@@ -204,6 +245,7 @@ export function useNavigatorDbState(
           skipLoadTables: false,
           databaseType: conn.databaseType,
         });
+        await refreshOpenDatabases(entry.dbSessionId);
       }
 
       const prefix = `${connectionId}::${dbName}::`;
@@ -221,6 +263,7 @@ export function useNavigatorDbState(
       loadForConnection,
       reloadDbObjectCategory,
       reloadDbTables,
+      refreshOpenDatabases,
     ],
   );
 
@@ -250,6 +293,8 @@ export function useNavigatorDbState(
 
       setLoadingDbs((prev) => new Set(prev).add(tableKey));
       try {
+        // Expanding a database is what opens its pool on a driver that keeps
+        // one per database, so the marker is refreshed after the read.
         await reloadDbTables(dbSessionId, dbName);
       } catch {
         setDbTablesMap((prev) => ({ ...prev, [tableKey]: [] }));
@@ -281,6 +326,8 @@ export function useNavigatorDbState(
 
   return {
     dbTablesMap,
+    openDbs,
+    refreshOpenDatabases,
     setDbTablesMap,
     dbObjectsMap,
     loadingDbs,

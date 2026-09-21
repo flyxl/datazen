@@ -89,6 +89,8 @@ export type ExportOutputMode = 'single' | 'zip';
 
 export interface ExportTableInput {
   tableName: string;
+  /** Schema the table lives in (PostgreSQL family); resolved per table. */
+  schema?: string | null;
   columns: string[];
   ddl?: string | null;
 }
@@ -97,6 +99,10 @@ export interface ExportTablesRequest {
   /** Runtime db session id (backend `ExportTablesRequest.db_session_id`). */
   dbSessionId: string;
   databaseType?: string | null;
+  /** Database to read from; the session's own database is only a fallback. */
+  database?: string | null;
+  /** Fallback schema for tables that do not carry one. */
+  schema?: string | null;
   mode: ExportMode;
   dataFormat: ExportDataFormat;
   outputMode: ExportOutputMode;

@@ -240,7 +240,28 @@ describe('schemaDiffCommands wrappers', () => {
       useTransaction: true,
       confirmDestructive: 'DEPLOY',
       jobId: undefined,
+      targetDatabase: undefined,
+      targetSchema: undefined,
     });
+  });
+
+  it('executeDeploy forwards the target catalog and schema', async () => {
+    const plan = samplePlan();
+    await schemaDiffCommands.executeDeploy({
+      targetDbSessionId: 'tgt-5',
+      plan,
+      targetDatabase: 'analytics',
+      targetSchema: 'reporting',
+    });
+    // Without these the backend cannot route a cross-database deploy on
+    // PostgreSQL, which cannot reference another database in one statement.
+    expect(invokeMock).toHaveBeenCalledWith(
+      'execute_schema_diff_deploy',
+      expect.objectContaining({
+        targetDatabase: 'analytics',
+        targetSchema: 'reporting',
+      }),
+    );
   });
 
   it('executeDeploy omits optional keys when not provided', async () => {
@@ -252,6 +273,8 @@ describe('schemaDiffCommands wrappers', () => {
       useTransaction: undefined,
       confirmDestructive: undefined,
       jobId: undefined,
+      targetDatabase: undefined,
+      targetSchema: undefined,
     });
   });
 });

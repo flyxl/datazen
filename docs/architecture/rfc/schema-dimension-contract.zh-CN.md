@@ -339,10 +339,12 @@ Transfer / Sync / Schema-Diff 端点），本方案**保留**该能力，但连�
 | ① driver-api | ✅ | `PROTOCOL_VERSION = 4`；4 方法加 `database` + `schema`；`use_database` 删除；新增 `has_schema_level` / `default_schema` / `SchemaScope` / `validate_schema_target` / `close_database` |
 | ② PG + MySQL | ✅ | PG 105 测试、MySQL 86 测试；PG `database_pools` + LRU；MySQL 全走限定名，零 `USE` |
 | ③ 其余 16 驱动 | ✅ | 4 批子代理完成，逐 crate 测试通过（sqlite 46 / redis 131 / mongodb 16 / influxdb 10 / hbase 13 / clickhouse 33 / sqlserver 48 / kiwi 15 / olap 14 / superset 16 …） |
-| ④ host | ✅ | `cargo test -p datazen --lib` 1460 passed；`ensure_session_database` / `set_active_database` / `ensure_active_database` 全部删除 |
+| ④ host | ✅ | `cargo test -p datazen --lib` 1463 passed；`ensure_session_database` / `set_active_database` / `ensure_active_database` 全部删除 |
 | ⑤ 库关闭 | ✅ | `close_database` IPC（`commands/connection.rs`）+ 前端 `connectionCommands.closeDatabase` + 连接树右键"关闭数据库连接"（同时清后端 pool 与前端 `dbTablesCache`） |
 | ⑥ 能力位 | ✅ | `DriverCapabilities` 增加 `supports_offset` + `has_schema_level`（Rust `db/registry.rs` / TS `types/index.ts`）；前端 `src/lib/driverCapabilities.ts` 消费运行时值；`DatabaseTypeMeta.supportsOffset` 手工镜像删除 |
-| ⑦ git 驱动 | ⏳ **待发布** | 三个仓库源码已改完，但需要先发布新版 `datazen-driver-api` 再 push，最后更新 `drivers-registry.json` 中 `olap` 的 `ref` |
+| ⑦ git 驱动 | ✅ | 三仓库已 push（kiwi `7e927cf` / superset `9690044` / olap `7096c87`）；`drivers-registry.json` 的 `olap` `ref` 已钉到 `7096c873` |
+| ⑧ 目标感知查询路径 | ✅ | 新增 `qualified_sql` + `query_at` / `query_multi_at` / `execute_at` / `query_with_params_at` / `query_stream_at`；PG 覆写为按库选池；host 数据网格 / 编辑器 / 导出 / 同步 / 传输 / 备份 / 结构比对全部透传目标 |
+| ⑨ 库打开状态 | ✅ | 新增 `open_databases`（driver-api 默认空）+ `get_open_databases` IPC；PG / MySQL 实现；连接树数据库节点显示打开标记 |
 
 ### 13.2 与原方案的偏离
 
@@ -385,5 +387,50 @@ Transfer / Sync / Schema-Diff 端点），本方案**保留**该能力，但连�
 
 - 三个 git 驱动（kiwi / olap / superset）的**真实 HTTP / SQL 文本路径**无实库可验，仅编译 + 单测通过。
 - SQL Server 的三段式 catalog 名、`INFORMATION_SCHEMA.COLUMNS` + `sys.*` 联表、schema 过滤未在实库验证。
-- `olap` 当前**无法直接编译**：其 `Cargo.toml` 钉的是远端 `datazen-driver-api`（lock `@0b12d0a`），
-  该版本不含新契约。发布新版 driver-api 并更新依赖后才能 `cargo check`。
+- 三个 git 驱动均**已可编译**：`Cargo.toml` 统一改为 `path = "../../driver-api"`（仅克隆进
+  `packages/drivers/<id>/` 时可解析，与 kiwi / superset 一致），`drivers-registry.json` 的 `ref`
+  已钉到契约修订版。
+- `datazen-driver-api` 的**发布通道**：`publish-driver-api.yml` 只发 crates.io，
+  `github.com/flyxl/datazen-driver-api` 仓库（API 0.0.8 / `0b12d0a`）无人维护 —— 后续若要恢复
+  独立发布，需要先决定该仓库的归属。
+
+### 13.4 第三轮：目标感知查询路径与库打开状态
+
+第一轮（①–④）把**元数据**读取改成了显式 `(database, schema)`，但**数据**路径仍调用
+`driver.query(handle, sql)` 这类无目标签名，于是：
+
+- PostgreSQL 永远用 `Self::get_pool(&pools, handle)`（句柄自己的库）→ 只能看到第一个库的数据；
+- MySQL 不把库名内联进未限定表名 → 连接未选库时报 `1046 (3D000): No database selected`。
+
+两者同根：**目标没有到达驱动的查询路径**。修复方式是在 `DatabaseDriver` 上补一组
+目标感知方法，默认实现"改写后委托"（MySQL 因此免费修好），需要按库选池的驱动覆写：
+
+| 方法 | 默认实现 | PostgreSQL 覆写 |
+| --- | --- | --- |
+| `qualified_sql(sql, target)` | 无目标时原样返回，否则 `qualify_sql_target` | 继承（只内联 schema） |
+| `query_at` | `qualified_sql` → `query` | `pool_for_target(database)` 选池 |
+| `query_multi_at` | 同上 | 同上 |
+| `execute_at` | 同上 | 同上 |
+| `query_with_params_at` | 同上 | 同上 |
+| `query_stream_at` | 同上 | 同上 |
+
+配套语义（**新增，原方案未定义**）：
+
+1. **事务与目标的一致性**：PG 事务绑定单条连接（即句柄自己的库）。在事务内请求**其他库**
+   返回 `DriverError::TransactionError`，而不是静默读到错误的 catalog。无事务时同一条语句
+   走目标库自己的池，**不报错**。
+2. **`SqlTarget::new(database, schema)`**：空串 / 纯空白一律视为"未给出"，避免"空选择"
+   被解释成"会话默认"。
+3. **`open_databases`**：驱动报告"当前仍持有打开资源"的库集合（PG = 句柄自己的库 + 缓存的外库池；
+   MySQL = `active_databases`；其余默认空）。前端据此在连接树数据库节点上渲染打开标记；
+   `null`（驱动不上报）**不渲染任何标记**，而不是谎称"已关闭"。
+4. **未知库报错**：MySQL 的 `get_tables` 对不存在的库此前返回空列表，与 PG 的报错行为不一致；
+   现在也在 `information_schema.TABLES` 为空时回查 `SCHEMATA`，未知库报 `Unknown database`。
+
+实库验证（本地 PG 17.9 + MySQL 8，均为门控集成测试）：
+
+- `packages/drivers/postgres/tests/postgres_cross_database.rs`：带目标读外库成功、
+  无目标读同一语句失败、事务内跨库报 `TransactionError`、`open_databases` 随关闭收敛。
+- `packages/drivers/mysql/tests/mysql_cross_database.rs`：新增
+  `connection_without_a_default_database_needs_an_explicit_target` —— 无默认库连接下
+  未限定语句**复现 `1046`**，带目标语句成功。

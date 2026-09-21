@@ -817,6 +817,7 @@ export function DataSyncWindow() {
             selected,
             jobId,
             targetDatabase,
+            targetSchema || undefined,
           );
           if (result.rolledBack) {
             setErrorMsg(t('sync.rolledBack'));

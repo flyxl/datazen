@@ -53,6 +53,14 @@ export const connectionCommands = {
   closeDatabase: (dbSessionId: string, database: string) =>
     invoke<boolean>('close_database', { dbSessionId, database }),
 
+  /**
+   * Databases the session currently holds an open resource for. Drives the
+   * navigator's "open" marker. Drivers without per-database resources answer
+   * an empty list.
+   */
+  getOpenDatabases: (dbSessionId: string) =>
+    invoke<string[]>('get_open_databases', { dbSessionId }),
+
   getConnectionInfo: (dbSessionId: string) =>
     invoke<{
       databaseType: string;

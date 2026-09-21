@@ -30,6 +30,12 @@ export type UnifiedRow =
       dbName: string;
       expanded: boolean;
       loading: boolean;
+      /**
+       * Whether the backend holds an open resource for this database. `null`
+       * means the driver does not report per-database resources, so the tree
+       * shows no marker rather than claiming the database is closed.
+       */
+      isOpen: boolean | null;
       depth: number;
     }
   | {

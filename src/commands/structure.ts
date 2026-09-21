@@ -9,8 +9,8 @@ export const structureCommands = {
   getStructureCapabilities: (dbSessionId: string) =>
     invoke<StructureCapabilities>('get_structure_capabilities', { dbSessionId }),
 
-  /** F1: optional `database` pins the session to the panel's target database
-   * before planning, so cross-database DDL targets the right library. */
+  /** Optional `database` is the plan's target, so cross-database DDL resolves
+   * against the right catalog without switching the session. */
   planTableStructureChanges: (
     dbSessionId: string,
     request: StructureChangeRequest,

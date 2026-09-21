@@ -43,6 +43,7 @@ vi.mock('../../../lib/windowManager', () => ({
 }));
 
 const mockReorderConnections = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockGetOpenDatabases = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 const mockSaveConnection = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const openDataSyncWindowMock = vi.hoisted(() => vi.fn());
 const openSchemaDiffWindowMock = vi.hoisted(() => vi.fn());
@@ -52,6 +53,7 @@ vi.mock('../../../commands/connection', () => ({
   connectionCommands: {
     reorderConnections: (...args: unknown[]) => mockReorderConnections(...args),
     saveConnection: (...args: unknown[]) => mockSaveConnection(...args),
+    getOpenDatabases: (...args: unknown[]) => mockGetOpenDatabases(...args),
   },
 }));
 
@@ -1916,6 +1918,106 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
       expect(useSchemaStore.getState().schemas.get('conn-sql')?.loading).toBe(false);
     });
     expect(container.querySelector('[data-tree-node="db"]')).toBeNull();
+  });
+
+  it('marks a database node as open when the backend still holds its pool', async () => {
+    connectionsState.connections = [
+      makeConn({
+        id: 'cfg-sql',
+        name: 'SQLite Conn',
+        databaseType: 'sqlite',
+        database: '/data/app.db',
+      }),
+    ];
+    activeConnectionsState.connections = {
+      'cfg-sql': { status: 'connected', dbSessionId: 'conn-sql', connectionId: 'cfg-sql' },
+    };
+    mockGetDatabases.mockResolvedValue(['/data/app.db']);
+    mockGetTables.mockResolvedValue([{ name: 'settings', tableType: 'table' }] as TableInfo[]);
+    mockGetOpenDatabases.mockResolvedValue(['/data/app.db']);
+
+    const { container, findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-sql" />,
+    );
+    await findByText('/data/app.db');
+    await settleSessionLoad('conn-sql');
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-db-name="/data/app.db"] [data-db-open]'),
+      ).not.toBeNull();
+    });
+    expect(
+      container
+        .querySelector('[data-db-name="/data/app.db"] [data-db-open]')!
+        .getAttribute('data-db-open'),
+    ).toBe('true');
+    expect(mockGetOpenDatabases).toHaveBeenCalledWith('conn-sql');
+  });
+
+  it('marks a database node as closed once the backend released its pool', async () => {
+    connectionsState.connections = [
+      makeConn({
+        id: 'cfg-sql',
+        name: 'SQLite Conn',
+        databaseType: 'sqlite',
+        database: '/data/app.db',
+      }),
+    ];
+    activeConnectionsState.connections = {
+      'cfg-sql': { status: 'connected', dbSessionId: 'conn-sql', connectionId: 'cfg-sql' },
+    };
+    mockGetDatabases.mockResolvedValue(['/data/app.db']);
+    mockGetTables.mockResolvedValue([{ name: 'settings', tableType: 'table' }] as TableInfo[]);
+    // The driver reports nothing open (e.g. the pool was just released).
+    mockGetOpenDatabases.mockResolvedValue([]);
+
+    const { container, findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-sql" />,
+    );
+    await findByText('/data/app.db');
+    await settleSessionLoad('conn-sql');
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-db-name="/data/app.db"] [data-db-open]'),
+      ).not.toBeNull();
+    });
+    expect(
+      container
+        .querySelector('[data-db-name="/data/app.db"] [data-db-open]')!
+        .getAttribute('data-db-open'),
+    ).toBe('false');
+  });
+
+  it('shows no open marker when the driver reports no per-database resources', async () => {
+    connectionsState.connections = [
+      makeConn({
+        id: 'cfg-sql',
+        name: 'SQLite Conn',
+        databaseType: 'sqlite',
+        database: '/data/app.db',
+      }),
+    ];
+    activeConnectionsState.connections = {
+      'cfg-sql': { status: 'connected', dbSessionId: 'conn-sql', connectionId: 'cfg-sql' },
+    };
+    mockGetDatabases.mockResolvedValue(['/data/app.db']);
+    mockGetTables.mockResolvedValue([{ name: 'settings', tableType: 'table' }] as TableInfo[]);
+    // A failed/absent report must not be rendered as "closed" — the tree would
+    // be claiming knowledge the driver never provided.
+    mockGetOpenDatabases.mockRejectedValue(new Error('unsupported'));
+
+    const { container, findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-sql" />,
+    );
+    await findByText('/data/app.db');
+    await settleSessionLoad('conn-sql');
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-db-name="/data/app.db"]')).not.toBeNull();
+    });
+    expect(container.querySelector('[data-db-name="/data/app.db"] [data-db-open]')).toBeNull();
   });
 
   it('shows a loading row while single-db tables are being fetched', async () => {

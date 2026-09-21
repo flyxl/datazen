@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import type { BatchExportTableInput } from './batchExport';
 import { getCachedDDL, getCachedTableSchema } from './schemaCache';
+import { useSchemaStore } from '../stores/schemaStore';
 import { getSqlDialect, type SqlDialectStrategy } from './sqlDialects';
 
 const DEFAULT_MAX_ROWS = 100_000;
@@ -35,6 +36,12 @@ export interface LoadBatchExportTableDeps {
   }) => Promise<TableDataResult>;
   /** Defaults to getSqlDialect; injectable so unit tests need no DRIVER_DB_ENTRIES. */
   getDialect: (databaseType: string) => SqlDialectStrategy | null;
+  /**
+   * Schema the table lives in (PostgreSQL family), or null when the driver has
+   * no schema level. The backend needs it to resolve the name against the right
+   * namespace instead of the session default.
+   */
+  getRelationSchema: (dbSessionId: string, tableName: string) => string | null;
 }
 
 const defaultDeps: LoadBatchExportTableDeps = {
@@ -42,6 +49,8 @@ const defaultDeps: LoadBatchExportTableDeps = {
   getDdl: getCachedDDL,
   getTableData: databaseCommands.getTableData,
   getDialect: (databaseType) => getSqlDialect(databaseType as DatabaseType),
+  getRelationSchema: (dbSessionId, tableName) =>
+    useSchemaStore.getState().schemaOfRelation(tableName, dbSessionId),
 };
 
 /** Convert 2D row arrays to named records (same logic as tableDataStore). */
@@ -179,6 +188,10 @@ export async function loadBatchExportTableData(params: {
 
   return {
     tableName,
+    // The schema the backend must resolve this table against. PostgreSQL
+    // cannot cross databases in one statement, so a bare name would read the
+    // session's own database instead of the one the user selected.
+    schema: deps.getRelationSchema(dbSessionId, tableName),
     ddl,
     columns: schema.columns.map((c) => ({ name: c.name })),
     rows,

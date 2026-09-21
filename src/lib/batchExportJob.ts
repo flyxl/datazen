@@ -15,9 +15,14 @@ export interface RunBatchExportJobOptions {
   outputMode: BatchExportOutputMode;
   databaseType?: string;
   dbSessionId?: string;
+  /** Database to read from; the session's own database is only a fallback. */
+  database?: string | null;
+  /** Fallback schema for tables that do not carry one. */
+  schema?: string | null;
   /** Required loader that returns per-table metadata (DDL + column names). */
   loadTableExportData: (tableName: string) => Promise<{
     tableName: string;
+    schema?: string | null;
     ddl?: string | null;
     columns: { name: string }[];
     rows?: unknown[];
@@ -47,6 +52,8 @@ export async function runBatchExportJob(
     outputMode,
     databaseType,
     dbSessionId,
+    database,
+    schema,
     loadTableExportData,
     onProgress,
     exportTables = fileCommands.exportTablesStream,
@@ -67,6 +74,7 @@ export async function runBatchExportJob(
     const meta = await loadTableExportData(tableName);
     tables.push({
       tableName: meta.tableName ?? tableName,
+      schema: meta.schema ?? undefined,
       columns: meta.columns.map((c) => c.name),
       ddl: meta.ddl ?? undefined,
     });
@@ -75,6 +83,8 @@ export async function runBatchExportJob(
   const request: ExportTablesRequest = {
     dbSessionId,
     databaseType: databaseType ?? undefined,
+    database: database ?? undefined,
+    schema: schema ?? undefined,
     mode,
     dataFormat,
     outputMode,

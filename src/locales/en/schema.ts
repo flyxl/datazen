@@ -60,6 +60,10 @@ const pack = {
   'schemaTree.closeDatabaseConnectionDone':
     'Released the connection pool for "{name}". The database is still browsable and will reconnect on demand.',
   'schemaTree.closeDatabaseConnectionFailed': 'Failed to close the database connection.',
+  'schemaTree.databaseOpen': 'Connection pool open — right-click to close it',
+  'schemaTree.databaseOpenAria': 'open',
+  'schemaTree.databaseClosed': 'No open connection pool',
+  'schemaTree.databaseClosedAria': 'closed',
   'schemaTree.confirmDropDatabase':
     'Drop database "{name}"? All data will be permanently lost. This cannot be undone.',
   'schemaTree.dropSchema': 'Drop Schema',

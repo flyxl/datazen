@@ -109,12 +109,14 @@ export const syncCommands = {
     statements: DataSyncSqlStatement[],
     jobId?: string,
     targetDatabase?: string,
+    targetSchema?: string,
   ) =>
     invoke<DataSyncExecutionResult>('execute_data_sync', {
       targetDbSessionId,
       statements,
       jobId: jobId ?? null,
       targetDatabase: targetDatabase ?? null,
+      targetSchema: targetSchema ?? null,
     }),
 
   cancelDataSync: (jobId: string) => invoke<boolean>('cancel_data_sync', { jobId }),

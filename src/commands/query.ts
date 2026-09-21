@@ -20,9 +20,11 @@ export const queryCommands = {
       dbSessionId,
       command: 'query',
       input: params && Object.keys(params).length > 0 ? { sql, params } : { sql },
-      // F1: pin the session to the panel's selected database before running.
+      // The statement's target. The driver never issues `USE`: it either
+      // inlines the qualifier (MySQL family) or routes to that database's pool
+      // (PostgreSQL family), so the session is never re-pointed.
       database: database ?? null,
-      // F7: PG-family schema target — rewrite-capable drivers inline it.
+      // PG-family schema target — inlined into relation names by the driver.
       schema: schema ?? null,
     });
     return result.data as MultiQueryResult;
@@ -35,7 +37,7 @@ export const queryCommands = {
     options?: {
       applyResultLimit?: boolean;
       recordHistory?: boolean;
-      /** F1: pin the session to this database before streaming. */
+      /** Database this stream reads from. Never a session `USE`. */
       database?: string | null;
       /** F7: PG-family schema target for the stream. */
       schema?: string | null;
@@ -58,7 +60,7 @@ export const queryCommands = {
     });
   },
 
-  /** `database` pins the session to a database for this explain (F1: no use_database IPC). */
+  /** `database` is the explain's target; no session switch is involved. */
   getExplain: (dbSessionId: string, sql: string, database?: string | null) =>
     invoke<ExplainResult>('get_explain', { dbSessionId, sql, database: database ?? null }),
 

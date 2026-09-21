@@ -290,6 +290,8 @@ export function SchemaDiffWindow() {
         plan,
         useTransaction,
         confirmDestructive: planHasDestructive(plan) ? confirmText.trim() : undefined,
+        targetDatabase: endpoints.targetDatabase || null,
+        targetSchema: endpoints.targetSchema || null,
       });
       setDeployResult(result);
     } catch (e) {

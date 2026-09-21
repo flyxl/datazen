@@ -101,13 +101,16 @@ describe('runBatchExportJob', () => {
 describe('ExportTablesRequest IPC contract guard (BUG-006)', () => {
   // Mirrors `ExportTablesRequest` in src-tauri/src/commands/export.rs:
   // #[serde(rename_all = "camelCase")] over
-  //   db_session_id / database_type / mode / data_format / output_mode / tables.
+  //   db_session_id / database_type / database / schema / mode / data_format /
+  //   output_mode / tables.
   // serde has NO aliases and NO deny_unknown_fields: an unexpected key is
   // silently dropped and a missing required key is a hard rejection — so the
   // wire key set must match exactly, neither more nor less.
   const BACKEND_WIRE_KEYS = [
     'dbSessionId',
     'databaseType',
+    'database',
+    'schema',
     'mode',
     'dataFormat',
     'outputMode',
@@ -124,6 +127,8 @@ describe('ExportTablesRequest IPC contract guard (BUG-006)', () => {
       outputMode: 'single',
       dbSessionId: 'live-session-1',
       databaseType: 'postgres',
+      database: 'appdb',
+      schema: 'public',
       loadTableExportData,
       exportTables,
     });

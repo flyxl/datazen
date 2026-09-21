@@ -19,6 +19,8 @@ export interface BatchExportDialogProps {
   dbSessionId: string;
   databaseType?: string;
   database?: string;
+  /** Fallback schema (PostgreSQL family) for the exported tables. */
+  schema?: string;
   /** available table names (from schema store) */
   tables: string[];
   /** optional pre-selected table names */
@@ -54,7 +56,8 @@ export function BatchExportDialog({
   onClose,
   dbSessionId,
   databaseType,
-  database: _database,
+  database,
+  schema,
   tables,
   initialSelected,
   loadTableExportData,
@@ -157,6 +160,8 @@ export function BatchExportDialog({
           outputMode,
           databaseType,
           dbSessionId,
+          database,
+          schema,
           loadTableExportData,
           onProgress: ({ tableName }) => {
             const idx = selectedTables.indexOf(tableName);
@@ -197,6 +202,8 @@ export function BatchExportDialog({
     dataFormat,
     outputMode,
     databaseType,
+    database,
+    schema,
     loadTableExportData,
     dbSessionId,
     batchExportLocked,

@@ -197,6 +197,9 @@ export const schemaDiffCommands = {
     useTransaction?: boolean;
     confirmDestructive?: string;
     jobId?: string;
+    /** Target catalog/schema, so a cross-database deploy resolves correctly. */
+    targetDatabase?: string | null;
+    targetSchema?: string | null;
   }) =>
     invoke<SchemaDiffDeployResult>('execute_schema_diff_deploy', {
       targetDbSessionId: params.targetDbSessionId,
@@ -204,6 +207,8 @@ export const schemaDiffCommands = {
       useTransaction: params.useTransaction,
       confirmDestructive: params.confirmDestructive,
       jobId: params.jobId,
+      targetDatabase: params.targetDatabase ?? undefined,
+      targetSchema: params.targetSchema ?? undefined,
     }),
 
   cancelDeploy: (jobId: string) => cancelSchemaDiffDeploy(jobId),

@@ -38,6 +38,8 @@ export interface BuildNavigatorFlatRowsParams {
   dbTablesMap: Record<string, TableInfo[]>;
   dbObjectsMap: Record<string, DatabaseObject[]>;
   loadingDbs: Set<string>;
+  /** Per-session set of databases with an open backend resource. */
+  openDbs: Record<string, Set<string>>;
   query: string;
   t: (key: I18nKey, params?: Record<string, string | number>) => string;
   usageState?: ConnectionLocatorUsageState;
@@ -57,6 +59,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
     dbTablesMap,
     dbObjectsMap,
     loadingDbs,
+    openDbs,
     query,
     t,
   } = params;
@@ -328,6 +331,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
             dbName,
             expanded: isDbExpanded,
             loading: isLoading,
+            isOpen: openDbs[dbSessionId]?.has(dbName) ?? null,
             depth: 2,
           });
 
@@ -415,6 +419,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
           dbName,
           expanded: isDbExpanded,
           loading: schemaData.loading && schemaData.tables.length === 0,
+          isOpen: openDbs[dbSessionId]?.has(dbName) ?? null,
           depth: 2,
         });
 
