@@ -108,7 +108,7 @@
   "olap": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-olap.git",
-    "ref": "6a122aa4fc7455f7fdbb3ec0eb85e80500783b9a",
+    "ref": "7096c8737dbe25ab4529e5c3997c9f67309154d9",
     "feature": "driver-olap",
     "description": "Presto / Trino OLAP engines"
   },
