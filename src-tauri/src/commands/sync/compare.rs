@@ -27,7 +27,10 @@ pub(crate) async fn count_rows(
     let quote = if family == "mysql" { '`' } else { '"' };
     let qualified = qualify_relation_sql(family, database, schema, table, quote);
     let sql = format!("SELECT COUNT(*) FROM {qualified}");
-    let res = driver.query(handle, &sql).await.cmd_err("count_rows")?;
+    let res = driver
+        .query_at(handle, &sql, crate::db::SqlTarget::new(database, schema))
+        .await
+        .cmd_err("count_rows")?;
     if let Some(row) = res.rows.first() {
         if let Some(Some(v)) = row.first() {
             if let Some(n) = value_as_u64(v) {

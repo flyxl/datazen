@@ -9,7 +9,7 @@ use crate::data_sync::{
     build_keyset_select_sql, mysql_placeholder, postgres_placeholder, DataSyncError, Row,
     RowPageSource,
 };
-use crate::db::{ConnectionHandle, DatabaseDriver};
+use crate::db::{ConnectionHandle, DatabaseDriver, SqlTarget};
 
 pub struct DriverKeysetSource {
     driver: Arc<dyn DatabaseDriver>,
@@ -76,9 +76,17 @@ impl RowPageSource for DriverKeysetSource {
                 }
             },
         )?;
+        // The keyset SQL is already fully qualified for MySQL-family drivers,
+        // but PostgreSQL cannot cross databases in one statement: the target is
+        // what selects the pool the read must run on.
         let result = self
             .driver
-            .query_with_params(&self.handle, &sql, &params)
+            .query_with_params_at(
+                &self.handle,
+                &sql,
+                &params,
+                SqlTarget::new(self.database.as_deref(), self.schema.as_deref()),
+            )
             .await
             .map_err(|e| DataSyncError::validation(e.to_string()))?;
         Ok(result.rows)

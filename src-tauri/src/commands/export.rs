@@ -35,6 +35,10 @@ const ALLOWED_EXPORT_EXTS: &[&str] = &["sql", "csv", "json", "zip"];
 #[serde(rename_all = "camelCase")]
 pub struct TableExportInput {
     pub table_name: String,
+    /// Schema the table lives in (PostgreSQL family). Resolved per table by the
+    /// caller, because a batch can span schemas.
+    #[serde(default)]
+    pub schema: Option<String>,
     /// Column names to SELECT (empty => SELECT * and derive from result).
     #[serde(default)]
     pub columns: Vec<String>,
@@ -81,6 +85,13 @@ pub enum OutputMode {
 pub struct ExportTablesRequest {
     pub db_session_id: String,
     pub database_type: Option<String>,
+    /// Database to read from. The session's own database is only a fallback:
+    /// the tree lets the user export a table from any database it lists.
+    #[serde(default)]
+    pub database: Option<String>,
+    /// Fallback schema for tables that do not carry one.
+    #[serde(default)]
+    pub schema: Option<String>,
     pub mode: ExportMode,
     pub data_format: DataFormat,
     pub output_mode: OutputMode,
@@ -676,8 +687,22 @@ async fn write_data_file(
 
     // Capture column type errors from formatting writes if the driver is not
     // streaming rows (they are written inside the callback above).
+    //
+    // The statement carries its target: PostgreSQL cannot reference another
+    // database in one statement, so a bare `query_stream` would have streamed
+    // from the session's own database (the "second database exports the first
+    // database's rows" bug). A per-table schema wins over the request default.
     driver
-        .query_stream(&handle, &sql, None, callback)
+        .query_stream_at(
+            &handle,
+            &sql,
+            None,
+            crate::db::SqlTarget::new(
+                request.database.as_deref(),
+                table.schema.as_deref().or(request.schema.as_deref()),
+            ),
+            callback,
+        )
         .await
         .cmd_err("export")?;
 
@@ -1064,6 +1089,7 @@ mod tests {
     fn build_file_plans_matches_modes() {
         let mk = |name: &str, ddl: Option<String>| TableExportInput {
             table_name: name.into(),
+            schema: None,
             columns: vec!["id".into()],
             ddl,
         };
@@ -1071,6 +1097,8 @@ mod tests {
         let req = ExportTablesRequest {
             db_session_id: "c".into(),
             database_type: Some("postgres".into()),
+            database: None,
+            schema: None,
             mode: ExportMode::DataAndStructure,
             data_format: DataFormat::Csv,
             output_mode: OutputMode::Zip,
@@ -1095,12 +1123,14 @@ mod tests {
     fn resolve_ddl_fallback() {
         let t = TableExportInput {
             table_name: "t".into(),
+            schema: None,
             columns: vec![],
             ddl: None,
         };
         assert!(resolve_ddl(&t).contains("DDL unavailable"));
         let t2 = TableExportInput {
             table_name: "t".into(),
+            schema: None,
             columns: vec![],
             ddl: Some("CREATE TABLE;".into()),
         };

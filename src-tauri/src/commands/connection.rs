@@ -186,6 +186,33 @@ pub(crate) async fn close_database_impl(
     Ok(closed)
 }
 
+/// Databases this session currently holds an open resource for.
+///
+/// Drives the navigator's "open" marker so a user can see which database nodes
+/// a right-click "close database connection" would actually release. A driver
+/// with no per-database resource returns an empty list, which the UI renders as
+/// "no marker" rather than as an error.
+pub(crate) async fn get_open_databases_impl(
+    state: &AppState,
+    db_session_id: String,
+) -> Result<Vec<String>, CommandError> {
+    let (driver, handle) = state
+        .connection_manager
+        .get_session(&db_session_id)
+        .await
+        .map_err(|e| {
+            CommandError::NotFound(format!("DB session {db_session_id} is not connected: {e}"))
+        })?;
+
+    let mut open = driver
+        .open_databases(&handle)
+        .await
+        .cmd_err("get_open_databases")?;
+    open.sort();
+    open.dedup();
+    Ok(open)
+}
+
 pub(crate) async fn disconnect_impl(
     state: &AppState,
     db_session_id: String,
@@ -330,6 +357,14 @@ pub async fn close_database(
     database: String,
 ) -> Result<bool, CommandError> {
     close_database_impl(&state, db_session_id, database).await
+}
+
+#[tauri::command]
+pub async fn get_open_databases(
+    state: State<'_, AppState>,
+    db_session_id: String,
+) -> Result<Vec<String>, CommandError> {
+    get_open_databases_impl(&state, db_session_id).await
 }
 
 #[tauri::command]
@@ -535,6 +570,43 @@ mod coverage_tests {
         );
         // The session must survive: only the named database's resources went away.
         assert!(ping_connection_impl(&test.state, session).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn open_databases_reports_what_the_driver_still_holds() {
+        let test = TestAppState::with_options(MockDriverOptions {
+            has_schema_level: true,
+            default_schema: Some("public"),
+            open_databases: vec!["analytics".into(), "app".into(), "analytics".into()],
+            ..Default::default()
+        })
+        .await;
+        test.save_connection("od1").await;
+        let session = connect_impl(&test.state, "od1".into()).await.unwrap();
+
+        let open = get_open_databases_impl(&test.state, session).await.unwrap();
+        // Sorted and de-duplicated, so the UI marker is stable across calls.
+        assert_eq!(open, vec!["analytics".to_string(), "app".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn open_databases_is_empty_for_drivers_without_database_pools() {
+        let test = TestAppState::with_tables().await;
+        test.save_connection("od2").await;
+        let session = connect_impl(&test.state, "od2".into()).await.unwrap();
+        assert!(get_open_databases_impl(&test.state, session)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn open_databases_rejects_an_unknown_session() {
+        let test = TestAppState::with_tables().await;
+        let err = get_open_databases_impl(&test.state, "no-such-session".into())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("not connected"));
     }
 
     #[tokio::test]

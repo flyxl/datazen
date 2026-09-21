@@ -94,6 +94,7 @@ pub async fn execute_data_sync(
     statements: Vec<crate::data_sync::SqlStatement>,
     job_id: Option<String>,
     target_database: Option<String>,
+    target_schema: Option<String>,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
     execute_data_sync_impl(
         &state,
@@ -101,6 +102,7 @@ pub async fn execute_data_sync(
         statements,
         job_id,
         target_database,
+        target_schema,
     )
     .await
 }

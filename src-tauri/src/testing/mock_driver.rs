@@ -66,6 +66,9 @@ pub struct MockDriverOptions {
     /// Forwarded to `default_schema` (only meaningful with
     /// [`Self::has_schema_level`]).
     pub default_schema: Option<&'static str>,
+    /// Databases reported as holding an open resource by `open_databases`.
+    /// Empty models a driver with no per-database resource.
+    pub open_databases: Vec<String>,
 }
 
 impl Default for MockDriverOptions {
@@ -97,6 +100,7 @@ impl Default for MockDriverOptions {
             columns_by_database: HashMap::new(),
             has_schema_level: false,
             default_schema: None,
+            open_databases: Vec::new(),
         }
     }
 }
@@ -283,6 +287,10 @@ impl DatabaseDriver for MockDriver {
             .map_err(|_| DriverError::QueryFailed("mock close_database lock poisoned".into()))?;
         // Schema-aware engines model a real per-database pool; others have none.
         Ok(self.opts.has_schema_level)
+    }
+
+    async fn open_databases(&self, _handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+        Ok(self.opts.open_databases.clone())
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {

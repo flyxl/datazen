@@ -3,8 +3,9 @@
 use super::error::{CmdExt, CommandError};
 use super::sync::compare::diff_table_schemas_ir;
 use super::AppState;
+use crate::db::SqlTarget;
 use crate::schema_diff::deploy::{
-    execute_schema_diff_deploy as run_schema_diff_deploy, plan_has_destructive, DeployOptions,
+    execute_schema_diff_deploy_at as run_schema_diff_deploy, plan_has_destructive, DeployOptions,
     DESTRUCTIVE_CONFIRM_TOKEN,
 };
 use crate::schema_diff::diff_table_schemas;
@@ -253,6 +254,8 @@ pub async fn execute_schema_diff_deploy(
     use_transaction: Option<bool>,
     confirm_destructive: Option<String>,
     job_id: Option<String>,
+    target_database: Option<String>,
+    target_schema: Option<String>,
 ) -> Result<SchemaDiffDeployResult, CommandError> {
     tracing::info!(
         %target_db_session_id,
@@ -286,7 +289,15 @@ pub async fn execute_schema_diff_deploy(
         stop_on_error: true,
     };
 
-    let result = run_schema_diff_deploy(driver.as_ref(), &handle, &plan, opts, cancelled).await;
+    let result = run_schema_diff_deploy(
+        driver.as_ref(),
+        &handle,
+        &plan,
+        opts,
+        cancelled,
+        SqlTarget::new(target_database.as_deref(), target_schema.as_deref()),
+    )
+    .await;
 
     if let Some(id) = job_id.as_deref() {
         remove_job(id).await;

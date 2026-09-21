@@ -2,7 +2,7 @@ use super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLE
 use super::AppState;
 use crate::db::{
     BackupDumpOptions, BackupRestoreOptions, ConnectionHandle, DatabaseDriver, DriverError,
-    DumpPhase, DumpProgress, RestoreSession, TableInfo, TableType, Utf8ChunkDecoder,
+    DumpPhase, DumpProgress, RestoreSession, SqlTarget, TableInfo, TableType, Utf8ChunkDecoder,
 };
 use std::io::Read;
 use std::path::PathBuf;
@@ -354,7 +354,10 @@ async fn drop_existing_restore_targets(
         },
     );
 
-    let _ = driver.execute(handle, "SET FOREIGN_KEY_CHECKS=0").await;
+    let target = SqlTarget::new(Some(database), None);
+    let _ = driver
+        .execute_at(handle, "SET FOREIGN_KEY_CHECKS=0", target)
+        .await;
     for (i, table) in ordered.iter().enumerate() {
         let ident = qualify_restore_ident(driver.as_ref(), table);
         emit_restore_progress(
@@ -375,10 +378,12 @@ async fn drop_existing_restore_targets(
             format!("DROP VIEW IF EXISTS {ident}"),
             format!("DROP TABLE IF EXISTS {ident}"),
         ] {
-            let _ = driver.execute(handle, &sql).await;
+            let _ = driver.execute_at(handle, &sql, target).await;
         }
     }
-    let _ = driver.execute(handle, "SET FOREIGN_KEY_CHECKS=1").await;
+    let _ = driver
+        .execute_at(handle, "SET FOREIGN_KEY_CHECKS=1", target)
+        .await;
     Ok(())
 }
 

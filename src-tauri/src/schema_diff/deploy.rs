@@ -4,7 +4,7 @@ use super::types::{
     DdlAtomicity, DeployStatus, SchemaDiffDeployResult, SchemaDiffPlan, StatementExecResult,
     StatementRisk,
 };
-use crate::db::{ConnectionHandle, DatabaseDriver};
+use crate::db::{ConnectionHandle, DatabaseDriver, SqlTarget};
 use crate::services::transaction::TransactionScope;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -166,6 +166,30 @@ pub async fn execute_schema_diff_deploy(
     opts: DeployOptions,
     cancelled: Option<std::sync::Arc<AtomicBool>>,
 ) -> SchemaDiffDeployResult {
+    execute_schema_diff_deploy_at(
+        driver,
+        handle,
+        plan,
+        opts,
+        cancelled,
+        SqlTarget::new(None, None),
+    )
+    .await
+}
+
+/// [`execute_schema_diff_deploy`] against an explicit target database/schema.
+///
+/// The deploy statements are already qualified, but PostgreSQL cannot reference
+/// another database in one statement, so the target is what routes each
+/// statement (and the wrapping transaction) to the right catalog.
+pub async fn execute_schema_diff_deploy_at(
+    driver: &dyn DatabaseDriver,
+    handle: &ConnectionHandle,
+    plan: &SchemaDiffPlan,
+    opts: DeployOptions,
+    cancelled: Option<std::sync::Arc<AtomicBool>>,
+    target: SqlTarget<'_>,
+) -> SchemaDiffDeployResult {
     let atomicity = driver.ddl_atomicity();
     let can_tx = matches!(atomicity, DdlAtomicity::Transactional) && opts.use_transaction;
     let n = plan.statements.len();
@@ -181,7 +205,7 @@ pub async fn execute_schema_diff_deploy(
     }
 
     let tx_scope = if can_tx {
-        match TransactionScope::begin(driver, handle).await {
+        match TransactionScope::begin_at(driver, handle, target).await {
             Ok(scope) => Some(scope),
             Err(e) => {
                 return SchemaDiffDeployResult {
@@ -223,7 +247,7 @@ pub async fn execute_schema_diff_deploy(
             scope.execute(&stmt.sql).await.map(|_| ())
         } else {
             driver
-                .execute(handle, &stmt.sql)
+                .execute_at(handle, &stmt.sql, target)
                 .await
                 .map(|_| ())
                 .map_err(|e| e.to_string())

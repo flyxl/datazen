@@ -17,6 +17,7 @@ use super::model::{
     TransferMode, WriteMode,
 };
 use super::structure::{drop_and_recreate_table, table_eligible_for_data};
+use crate::db::SqlTarget;
 
 pub struct DropCreateContext<'a> {
     pub src_adapter: &'a dyn crate::transfer::adapter::SyncSourceAdapter,
@@ -240,6 +241,12 @@ pub async fn execute_transfer_data(
         ));
     }
 
+    // Transfer names are qualified, but PostgreSQL cannot cross databases in
+    // one statement: the endpoint database is what routes each read and write
+    // to the right catalog.
+    let src_target = SqlTarget::new(Some(&job.source.database), job.source.schema.as_deref());
+    let tgt_target = SqlTarget::new(Some(&job.target.database), job.target.schema.as_deref());
+
     if !matches!(
         job.mode,
         TransferMode::Data | TransferMode::StructureAndData
@@ -342,6 +349,7 @@ pub async fn execute_transfer_data(
                 &table.source_table,
                 &table.target_table,
                 ctx.source_schemas,
+                tgt_target,
             )
             .await
             {
@@ -368,7 +376,7 @@ pub async fn execute_transfer_data(
             );
             let truncate_sql = build_truncate_sql_ref(&tgt_table_ref);
             if let Err(e) = tgt_driver
-                .execute(tgt_handle, &truncate_sql)
+                .execute_at(tgt_handle, &truncate_sql, tgt_target)
                 .await
                 .map_err(|e| TransferError::validation(e.to_string()))
             {
@@ -433,7 +441,7 @@ pub async fn execute_transfer_data(
             };
 
             let result = src_driver
-                .query(src_handle, &sql)
+                .query_at(src_handle, &sql, src_target)
                 .await
                 .map_err(|e| TransferError::validation(e.to_string()))?;
 
@@ -455,7 +463,7 @@ pub async fn execute_transfer_data(
                         break;
                     }
                     if let Err(e) = tgt_driver
-                        .execute(tgt_handle, &insert_sql)
+                        .execute_at(tgt_handle, &insert_sql, tgt_target)
                         .await
                         .map_err(|e| TransferError::validation(e.to_string()))
                     {

@@ -1,6 +1,6 @@
 //! Dialect-aware transaction scope for DDL and DML operations.
 
-use crate::db::{ConnectionHandle, DatabaseDriver, DdlAtomicity, TransactionHandle};
+use crate::db::{ConnectionHandle, DatabaseDriver, DdlAtomicity, SqlTarget, TransactionHandle};
 
 /// Dialect-aware transaction scope.
 ///
@@ -13,6 +13,10 @@ pub struct TransactionScope<'a> {
     handle: &'a ConnectionHandle,
     atomicity: DdlAtomicity,
     tx: Option<TransactionHandle>,
+    /// The database this scope writes to. PostgreSQL binds a transaction to the
+    /// one connection it holds, so a statement aimed at a different database
+    /// must be refused rather than run against the wrong catalog.
+    target: SqlTarget<'a>,
 }
 
 #[allow(dead_code)]
@@ -21,6 +25,15 @@ impl<'a> TransactionScope<'a> {
     pub async fn begin(
         driver: &'a dyn DatabaseDriver,
         handle: &'a ConnectionHandle,
+    ) -> Result<Self, String> {
+        Self::begin_at(driver, handle, SqlTarget::new(None, None)).await
+    }
+
+    /// Begin a scope bound to an explicit target.
+    pub async fn begin_at(
+        driver: &'a dyn DatabaseDriver,
+        handle: &'a ConnectionHandle,
+        target: SqlTarget<'a>,
     ) -> Result<Self, String> {
         let atomicity = driver.ddl_atomicity();
         let tx = if matches!(atomicity, DdlAtomicity::Transactional) {
@@ -38,6 +51,7 @@ impl<'a> TransactionScope<'a> {
             handle,
             atomicity,
             tx,
+            target,
         })
     }
 
@@ -70,7 +84,7 @@ impl<'a> TransactionScope<'a> {
     /// Execute a SQL statement within this transaction scope.
     pub async fn execute(&self, sql: &str) -> Result<u64, String> {
         self.driver
-            .execute(self.handle, sql)
+            .execute_at(self.handle, sql, self.target)
             .await
             .map_err(|e| e.to_string())
     }

@@ -265,7 +265,7 @@ pub(crate) async fn apply_data_sync_impl(
         compared,
         options,
         target_database.clone(),
-        target_schema,
+        target_schema.clone(),
     )
     .await?;
     execute_data_sync_impl(
@@ -274,6 +274,7 @@ pub(crate) async fn apply_data_sync_impl(
         statements,
         job_id,
         target_database,
+        target_schema,
     )
     .await
 }

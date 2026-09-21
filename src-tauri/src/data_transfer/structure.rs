@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use datazen_driver_api::TableSchema;
 
-use crate::db::{ConnectionHandle, DatabaseDriver};
+use crate::db::{ConnectionHandle, DatabaseDriver, SqlTarget};
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::full_types::fetch_full_column_types;
 use crate::transfer::ir::{IRTable, IRType};
@@ -133,6 +133,10 @@ pub async fn create_target_tables(
         return Ok(Vec::new());
     }
 
+    // The DDL names are qualified, but PostgreSQL cannot cross databases in one
+    // statement: the target is what routes each statement to the right catalog.
+    let tgt_target = SqlTarget::new(Some(&job.target.database), job.target.schema.as_deref());
+
     let mut results = Vec::new();
 
     for table in inspected
@@ -168,7 +172,7 @@ pub async fn create_target_tables(
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
-            match tgt_driver.execute(tgt_handle, ddl).await {
+            match tgt_driver.execute_at(tgt_handle, ddl, tgt_target).await {
                 Ok(_) => results.push(TableExecutionResult {
                     source_table: table.source_table.clone(),
                     target_table: table.target_table.clone(),
@@ -203,7 +207,7 @@ pub async fn create_target_tables(
         }
         let ddl = build_create_ddl(&ir, tgt_adapter);
 
-        match tgt_driver.execute(tgt_handle, &ddl).await {
+        match tgt_driver.execute_at(tgt_handle, &ddl, tgt_target).await {
             Ok(_) => results.push(TableExecutionResult {
                 source_table: table.source_table.clone(),
                 target_table: table.target_table.clone(),
@@ -240,10 +244,11 @@ pub async fn drop_and_recreate_table(
     source_table: &str,
     target_table: &str,
     source_schemas: &HashMap<String, TableSchema>,
+    tgt_target: SqlTarget<'_>,
 ) -> Result<(), TransferError> {
     let drop_sql = build_drop_table_sql(target_table, tgt_adapter);
     tgt_driver
-        .execute(tgt_handle, &drop_sql)
+        .execute_at(tgt_handle, &drop_sql, tgt_target)
         .await
         .map_err(|e| TransferError::validation(format!("DROP failed: {e}")))?;
 
@@ -259,7 +264,7 @@ pub async fn drop_and_recreate_table(
     let ir = source_schema_to_target_ir(src_adapter, schema, Some(&full_types), target_table);
     let ddl = build_create_ddl(&ir, tgt_adapter);
     tgt_driver
-        .execute(tgt_handle, &ddl)
+        .execute_at(tgt_handle, &ddl, tgt_target)
         .await
         .map_err(|e| TransferError::validation(format!("CREATE failed: {e}")))?;
     Ok(())

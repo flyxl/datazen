@@ -2,7 +2,7 @@
 
 use crate::cache::SchemaCache;
 use crate::db::{
-    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, TableDataResult, Value,
+    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, SqlTarget, TableDataResult, Value,
 };
 use std::sync::Arc;
 
@@ -61,8 +61,12 @@ impl QueryExecutor {
         driver: &Arc<dyn DatabaseDriver>,
         handle: &ConnectionHandle,
         sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
     ) -> Result<crate::db::QueryResult, DriverError> {
-        driver.query(handle, sql).await
+        driver
+            .query_at(handle, sql, SqlTarget::new(database, schema))
+            .await
     }
 
     pub async fn get_table_data(
@@ -101,9 +105,11 @@ impl QueryExecutor {
             filter_logic,
         );
 
+        let target = SqlTarget::new(Some(database), schema);
+
         if skip_count {
             tracing::debug!(%table, "query_executor: skip_count, SELECT only");
-            let result = driver.query(handle, &data_sql).await?;
+            let result = driver.query_at(handle, &data_sql, target).await?;
             return Ok(TableDataResult {
                 columns: cached.columns,
                 rows: result.rows,
@@ -129,8 +135,8 @@ impl QueryExecutor {
         );
 
         let (count_res, data_res) = tokio::try_join!(
-            driver.query(handle, &count_sql),
-            driver.query(handle, &data_sql),
+            driver.query_at(handle, &count_sql, target),
+            driver.query_at(handle, &data_sql, target),
         )?;
 
         let total_rows = count_res
