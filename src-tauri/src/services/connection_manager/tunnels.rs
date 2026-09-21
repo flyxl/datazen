@@ -1,4 +1,6 @@
-use super::{ActiveSession, ConnectionError, ConnectionManager};
+#[cfg(test)]
+use super::ActiveSession;
+use super::{ConnectionError, ConnectionManager};
 use crate::db::ConnectionConfig;
 use crate::tunnel::Tunnel;
 use std::sync::Arc;
