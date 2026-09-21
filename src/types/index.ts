@@ -59,6 +59,15 @@ export interface DriverCapabilities {
   supportsQueryExecutionCancel: boolean;
   supportsExplain: boolean;
   supportsStreamingResults: boolean;
+  /** Whether the dialect accepts `OFFSET` in pagination (LIMIT-only engines: false). */
+  supportsOffset: boolean;
+  /**
+   * Whether the engine has a real second namespace level (`schema`). True only
+   * for PostgreSQL and SQL Server; every other driver carries the whole
+   * namespace in `database`, so a schema argument is an error, not a hint.
+   * Runtime truth — never infer this from the dialect or a static table.
+   */
+  hasSchemaLevel: boolean;
 }
 
 export type TableType = 'table' | 'view' | 'materializedView' | 'systemTable';

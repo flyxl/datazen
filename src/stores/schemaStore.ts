@@ -15,6 +15,7 @@ import {
 import { t } from '../locales/t';
 import type { DatabaseType, TableInfo } from '../types';
 import { bindSchemaStore } from '@datazen/driver-sdk';
+import { capabilitiesForDbSession, relationSchemaFor } from '../lib/driverCapabilities';
 import {
   computeIsMultiDatabase,
   knownTableNames,
@@ -539,9 +540,11 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       // Schema-aware engines (PostgreSQL, SQL Server) reject a schema-less
       // metadata read, and guessing would be the same class of bug this
       // replaced: resolving a table against a namespace it does not live in.
+      const capabilities = capabilitiesForDbSession(dbSessionId);
       const schemaOf = new Map<string, string | null>();
       for (const item of [...tables, ...views, ...Object.values(pathItems).flat()]) {
-        if (item.schema?.trim()) schemaOf.set(item.name, item.schema);
+        const relationSchema = relationSchemaFor(capabilities, item.schema);
+        if (relationSchema) schemaOf.set(item.name, relationSchema);
       }
       const wanted = [
         ...new Set(
