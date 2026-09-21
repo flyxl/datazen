@@ -39,7 +39,9 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 vi.mock('../../../lib/schemaCache', () => ({
-  getCachedTableSchema: vi.fn().mockResolvedValue({ foreignKeys: [] }),
+  getCachedTableSchema: vi
+    .fn()
+    .mockResolvedValue({ columns: [], primaryKeys: [], indexes: [], foreignKeys: [] }),
 }));
 
 /**

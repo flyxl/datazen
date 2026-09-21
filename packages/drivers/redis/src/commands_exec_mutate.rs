@@ -11,8 +11,13 @@
                 .or_else(|| input.get("with_memory"))
                 .and_then(JsonValue::as_bool)
                 .unwrap_or(false);
+            let no_ttl_only = input
+                .get("noTtlOnly")
+                .or_else(|| input.get("no_ttl_only"))
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(false);
             let (next, keys, db_size) = driver
-                .scan_keys_with_info(handle, db, pattern, cursor, count, key_type, with_memory)
+                .scan_keys_with_info(handle, db, pattern, cursor, count, key_type, with_memory, no_ttl_only)
                 .await?;
             json_ok(serde_json::json!({ "cursor": next, "keys": keys, "dbSize": db_size }))
         }

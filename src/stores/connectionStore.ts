@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { bindConnectionStore } from '@datazen/driver-sdk';
 import { connectionCommands } from '../commands/connection';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import {
@@ -241,3 +242,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   setSelectedGroup: (group) => set({ selectedGroup: group }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 }));
+
+// Inject the connection store into @datazen/driver-sdk for drivers that read
+// persisted connection options (schemaStoreBridge pattern).
+bindConnectionStore(useConnectionStore);

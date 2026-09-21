@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Input } from '../ui/Input';
-import { PathInput } from '../ui/PathInput';
+import { PathInput } from '@datazen/ui';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';

@@ -1,4 +1,6 @@
 import type { NativeMenuItemDef } from './nativeContextMenu';
+import type { DatabaseType } from '../types';
+import { escapeIdent, getEscapeSqlValue } from './databaseTypes';
 
 /** Caller-supplied labels (typically from `t()`). */
 export type DataTableContextMenuLabels = {
@@ -103,27 +105,24 @@ export function rowToNamedRecord(columnNames: string[], row: unknown[]): Record<
   return obj;
 }
 
-function escapeSqlValue(value: unknown): string {
-  if (value === null || value === undefined) return 'NULL';
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
-  return `'${str.replaceAll("'", "''")}'`;
+function escapeSqlValue(value: unknown, dialect?: DatabaseType): string {
+  return getEscapeSqlValue(dialect)(value);
 }
 
-function quoteIdent(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`;
+function quoteIdent(name: string, dialect?: DatabaseType): string {
+  return escapeIdent(name, dialect);
 }
 
-/** Single-row SQL INSERT (identifiers quoted with double quotes). */
+/** Single-row SQL INSERT (identifiers quoted per dialect). */
 export function formatRowAsSqlInsert(
   tableName: string,
   columnNames: string[],
   row: unknown[],
+  dialect?: DatabaseType,
 ): string {
-  const cols = columnNames.map((c) => quoteIdent(c)).join(', ');
-  const values = columnNames.map((_, i) => escapeSqlValue(row[i])).join(', ');
-  const table = quoteIdent(tableName);
+  const cols = columnNames.map((c) => quoteIdent(c, dialect)).join(', ');
+  const values = columnNames.map((_, i) => escapeSqlValue(row[i], dialect)).join(', ');
+  const table = quoteIdent(tableName, dialect);
   return `INSERT INTO ${table} (${cols}) VALUES (${values});`;
 }
 
@@ -136,6 +135,7 @@ export function formatRowAsSqlUpdate(
   columnNames: string[],
   row: unknown[],
   primaryKeyColumns?: string[],
+  dialect?: DatabaseType,
 ): string {
   const pkNames =
     primaryKeyColumns && primaryKeyColumns.length > 0
@@ -150,16 +150,16 @@ export function formatRowAsSqlUpdate(
 
   const setClauses = setCols.map((col) => {
     const idx = columnNames.indexOf(col);
-    return `${quoteIdent(col)} = ${escapeSqlValue(row[idx])}`;
+    return `${quoteIdent(col, dialect)} = ${escapeSqlValue(row[idx], dialect)}`;
   });
   const where = whereKeys
     .map((col) => {
       const idx = columnNames.indexOf(col);
-      return `${quoteIdent(col)} = ${escapeSqlValue(row[idx])}`;
+      return `${quoteIdent(col, dialect)} = ${escapeSqlValue(row[idx], dialect)}`;
     })
     .join(' AND ');
 
-  return `UPDATE ${quoteIdent(tableName)} SET ${setClauses.join(', ')} WHERE ${where};`;
+  return `UPDATE ${quoteIdent(tableName, dialect)} SET ${setClauses.join(', ')} WHERE ${where};`;
 }
 
 /**
@@ -171,6 +171,7 @@ export function formatRowAsSqlDelete(
   columnNames: string[],
   row: unknown[],
   primaryKeyColumns?: string[],
+  dialect?: DatabaseType,
 ): string {
   const pkNames =
     primaryKeyColumns && primaryKeyColumns.length > 0
@@ -182,13 +183,13 @@ export function formatRowAsSqlDelete(
       const idx = columnNames.indexOf(col);
       const val = row[idx];
       if (val === null || val === undefined) {
-        return `${quoteIdent(col)} IS NULL`;
+        return `${quoteIdent(col, dialect)} IS NULL`;
       }
-      return `${quoteIdent(col)} = ${escapeSqlValue(val)}`;
+      return `${quoteIdent(col, dialect)} = ${escapeSqlValue(val, dialect)}`;
     })
     .join(' AND ');
 
-  return `DELETE FROM ${quoteIdent(tableName)} WHERE ${where};`;
+  return `DELETE FROM ${quoteIdent(tableName, dialect)} WHERE ${where};`;
 }
 
 /**

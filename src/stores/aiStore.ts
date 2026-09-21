@@ -443,7 +443,12 @@ export const useAiStore = create<AiStore>((set, get) => ({
     if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
       const askCall = lastMsg.toolCalls.find((tc) => tc.name === 'ask_questions');
       if (askCall) {
-        newMessages.push({ id: crypto.randomUUID(), role: 'tool', content, toolCallId: askCall.id });
+        newMessages.push({
+          id: crypto.randomUUID(),
+          role: 'tool',
+          content,
+          toolCallId: askCall.id,
+        });
       } else {
         newMessages.push({ id: crypto.randomUUID(), role: 'user', content });
       }

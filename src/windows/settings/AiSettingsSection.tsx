@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FolderOpen, Plus, Sparkles } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
-import { PathInput } from '../../components/ui/PathInput';
+import { PathInput } from '@datazen/ui';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { useI18n } from '../../hooks/useI18n';

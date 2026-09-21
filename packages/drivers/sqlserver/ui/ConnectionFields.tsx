@@ -1,7 +1,7 @@
 import { Input, Select } from '@datazen/ui';
-import { useI18n } from '../../../../src/hooks/useI18n';
+import { useI18n } from '@datazen/ui';
 import { Label } from '@datazen/ui';
-import type { ConnectionFormState } from '../../../../src/components/connection/useConnectionForm';
+import type { ConnectionFormState } from '@datazen/driver-sdk';
 import { mergeSqlServerOptions, readSqlServerOptions } from './connectionOptions';
 
 export function SqlServerConnectionFields({ form }: { form: ConnectionFormState }) {
@@ -38,11 +38,19 @@ export function SqlServerConnectionFields({ form }: { form: ConnectionFormState 
       </div>
       <div>
         <Label>{t('newConn.username')}</Label>
-        <Input value={form.username} onChange={(e) => form.setUsername(e.target.value)} placeholder="sa" />
+        <Input
+          value={form.username}
+          onChange={(e) => form.setUsername(e.target.value)}
+          placeholder="sa"
+        />
       </div>
       <div>
         <Label>{t('newConn.password')}</Label>
-        <Input type="password" value={form.password} onChange={(e) => form.setPassword(e.target.value)} />
+        <Input
+          type="password"
+          value={form.password}
+          onChange={(e) => form.setPassword(e.target.value)}
+        />
       </div>
     </>
   );

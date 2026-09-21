@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
-import { PathInput } from '../../components/ui/PathInput';
+import { PathInput } from '@datazen/ui';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useSettings } from '../../hooks/useSettings';
@@ -515,6 +515,14 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 label={t('settings.editorCompletionIncludeTablePrefix')}
                 checked={settings.editorCompletionIncludeTablePrefix ?? true}
                 onChange={(v) => updateField('editorCompletionIncludeTablePrefix', v)}
+              />
+
+              <ToggleRow
+                label={t('settings.enableFkPrediction')}
+                hint={t('settings.enableFkPredictionHint')}
+                checked={settings.enableFkPrediction ?? true}
+                onChange={(v) => updateField('enableFkPrediction', v)}
+                testId="settings-toggle-enableFkPrediction"
               />
 
               <SettingRow label={t('settings.keymap.preset')}>

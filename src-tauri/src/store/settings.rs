@@ -137,6 +137,11 @@ pub struct AppSettings {
     /// Automatically qualify column completions. Default true for older settings.
     #[serde(default = "default_true")]
     pub editor_completion_include_table_prefix: bool,
+    /// Infer foreign keys from table structure and naming when the schema declares
+    /// none, and use them for JOIN suggestions and completion ranking. Default on;
+    /// predictions are always visually distinct from declared constraints.
+    #[serde(default = "default_true")]
+    pub enable_fk_prediction: bool,
     /// Keyboard shortcut preset ('default' | 'dbeaver' | 'navicat').
     #[serde(default = "default_keymap_preset")]
     pub keymap_preset: String,
@@ -245,6 +250,7 @@ impl Default for AppSettings {
             ai_strict_egress: true,
             editor_completion_quote_policy: default_completion_quote_policy(),
             editor_completion_include_table_prefix: true,
+            enable_fk_prediction: true,
             keymap_preset: default_keymap_preset(),
             custom_keymap: std::collections::HashMap::new(),
             sql_execution_strategy: default_sql_execution_strategy(),

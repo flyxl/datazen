@@ -4,7 +4,7 @@
 # 
 # 覆盖范围:
 #   1. 环境与凭据免密设置 (DATAZEN_KEYRING=file, e2e/.env AI 接入, 数据库 Seeding)
-#   2. 静态代码守护与架构规范 (Typecheck, IDs, i18n sync, Managed stubs)
+#   2. 静态代码守护与架构规范 (Typecheck, IDs, i18n sync, Managed stubs, 驱动/宿主 import 边界)
 #   3. 前端与驱动 UI 单元测试 (Vitest & Typing Journey Tests)
 #   4. Rust 后端安全治理与驱动契约测试 (Cargo test workspace)
 #   5. Webdriver 自动化打包 (tauri:build:webdriver)
@@ -75,6 +75,7 @@ pnpm typecheck || fail "TypeScript typecheck 失败"
 pnpm test:ids || fail "ID 术语一致性检查失败 (connectionId vs dbSessionId)"
 node scripts/check-managed-stubs.mjs || fail "驱动文件防污染检查失败"
 node scripts/check-structure-editor-guardrails.mjs || fail "结构编辑器守卫检查失败"
+pnpm test:boundaries || fail "驱动↔宿主 import 边界检查失败 (宿主 src / setLocale / 驱动内部)"
 
 if node scripts/i18n-sync-check.mjs; then
   printf "  ✔ 多语言翻译完整度校验通过\n"

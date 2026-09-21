@@ -2,6 +2,14 @@
 export type { DatabaseType } from '../extensions/generated';
 import type { DatabaseType } from '../extensions/generated';
 
+export type {
+  TunnelKind,
+  HttpProxyTunnelConfig,
+  WebSocketTunnelConfig,
+  SavedTunnel,
+  SavedTunnelSshConfig,
+} from './tunnel';
+
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 
 export type SshAuthMethod = 'password' | 'private_key' | 'agent';
@@ -35,6 +43,10 @@ export interface ConnectionConfig {
   /** Host-injected pool size; not typically set in the connection form. */
   maxPoolSize?: number;
   sshTunnel?: SshTunnelConfig;
+  tunnelKind?: import('./tunnel').TunnelKind;
+  tunnelId?: string;
+  httpProxyTunnel?: import('./tunnel').HttpProxyTunnelConfig;
+  websocketTunnel?: import('./tunnel').WebSocketTunnelConfig;
   colorTag?: string;
   group?: string;
   lastConnectedAt?: string;
@@ -199,7 +211,6 @@ export interface QueryHistoryEntry {
   id: string;
   connectionId: string;
   database: string;
-  /** Schema namespace when known (PG search_path is not session-tracked yet → usually absent). */
   schema?: string | null;
   sql: string;
   executedAt: string;
@@ -240,20 +251,13 @@ import type { MonitorSettings } from './dashboard';
 
 export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
 
-/** §4.2 Configurable SQL beautifier options. */
 export interface SqlFormatOptions {
   keywordCase: 'upper' | 'lower' | 'preserve';
   indentStyle: '2spaces' | '4spaces' | 'tab';
-  /** Put AND / OR at the start of the next line instead of the end of the current one. */
   breakBeforeBooleanOperators: boolean;
-  /** Blank lines inserted between consecutive statements. */
   linesBetweenQueries: number;
 }
 
-/**
- * §5.1 Which SQL the Execute action submits when there is no explicit selection.
- * `ask` prompts whenever the script holds more than one statement.
- */
 export type SqlExecutionStrategy =
   | 'current_statement'
   | 'entire_script'
@@ -269,55 +273,40 @@ export interface AppSettings {
   editorFontFamily: string;
   confirmOnDelete: boolean;
   autoCommit: boolean;
-  /** Require WHERE on UPDATE/DELETE; also block TRUNCATE/DROP. Default true. */
   safeMode: boolean;
-  /** When Safe Mode is OFF, show a confirm dialog before high-risk/production execution. Default true. */
   confirmDangerousExecution: boolean;
   defaultPageSize: number;
-  /** Max DB session pool size (Postgres/MySQL). Default 10; applies on next connect. */
   connectionPoolSize: number;
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   logPath: string;
-  /** When true, GUI may start embedded MCP on launch. Default false. */
   mcpServerEnabled: boolean;
   mcpDisabledTools: string[];
   mcpPermissionMode: McpPermissionMode;
-  /** Persistent connection IDs exposed to MCP. Empty = all connections. */
   mcpAllowedConnectionIds: string[];
   contextDir: string;
-  /** Check GitHub for app updates on startup (Basic builds only). Default false. */
   checkForUpdatesOnStartup: boolean;
-  /** Switch to chart view after query when the result is chartable. Default false. */
   autoChartOnQuery: boolean;
-  /** Dashboard monitor / tray / retention settings. */
   monitor: MonitorSettings;
-  /** Opaque per-driver settings keyed by driver id (e.g. `"redis"`). */
   driverSettings: Record<string, unknown>;
-  /** Opaque per-wapp settings keyed by wapp id. Reserved for future workspace app configs. */
   wappSettings: Record<string, unknown>;
-  /** Saved external MCP Client server configs. Runtime connections are separate. */
   mcpClientServers?: McpServerConfig[];
-  /** Strip query result rows before AI requests leave the device. Default true. */
   aiStrictEgress: boolean;
-  /** Automatically qualify column completions with a table name or alias. Default true. */
   editorCompletionIncludeTablePrefix?: boolean;
+  /**
+   * Infer foreign keys from structure and naming when the schema declares none,
+   * and use them for JOIN suggestions and completion ranking. Default true.
+   * Predictions are always visually distinct from declared constraints.
+   */
+  enableFkPrediction?: boolean;
   /** Identifier quotation policy in SQL autocomplete ('unquoted' | 'always' | 'both'). Default 'unquoted'. */
   editorCompletionQuotePolicy?: 'unquoted' | 'always' | 'both';
-  /** Keyboard shortcut preset ('default' | 'dbeaver' | 'navicat'). Default 'default'. */
   keymapPreset?: 'default' | 'dbeaver' | 'navicat';
-  /** User-customized keyboard shortcut overrides keyed by action ID. */
   customKeymap?: Partial<Record<string, string>>;
-  /** §4.2 SQL beautifier configuration. */
   sqlFormatOptions?: SqlFormatOptions;
-  /** §5.1 Execute-action statement targeting strategy. Default 'current_statement'. */
   sqlExecutionStrategy?: SqlExecutionStrategy;
-  /** §6.4 User-defined SQL snippets, merged after the built-in library. */
   sqlSnippets?: Array<{ id: string; prefix: string; descriptionKey: string; template: string }>;
-  /** SQL syntax highlighting color preset ('default' follows the active theme pack). */
   sqlSyntaxTheme?: string;
-  /** Workflow result step tabs order: 'desc' = last step first (default), 'asc' = first step first. */
   workflowStepResultOrder?: 'asc' | 'desc';
-  /** Onboarding wizard state. `undefined` or `version < 1` → show wizard. */
   onboarding?: { completed: boolean; version: number };
 }
 
@@ -345,27 +334,9 @@ export interface SortCondition {
 }
 
 // ── Key-Value (Redis) types ──
-
-export interface KeyEntry {
-  key: string;
-  keyType: string;
-  ttl: number;
-  size: number;
-  preview: string;
-}
-
-export interface KeyScanResult {
-  cursor: number;
-  keys: KeyEntry[];
-  dbSize: number;
-}
-
-export interface KeyDetail {
-  key: string;
-  keyType: string;
-  ttl: number;
-  value: unknown;
-}
+// Canonical definitions live in @datazen/driver-sdk (types-to-sdk track);
+// re-exported here so existing host imports keep working unchanged.
+export type { KeyEntry, KeyScanResult } from '@datazen/driver-sdk';
 
 /** Raw backend response — rows are 2D arrays. */
 export interface TableDataResult {
@@ -376,12 +347,8 @@ export interface TableDataResult {
   pageSize: number;
 }
 
-// ── AI Types ──
-
 export type AiProviderType = 'open_ai' | 'deep_seek' | 'ollama' | 'custom';
-
 export type AiDataEgressLevel = 'strict' | 'sample_masked' | 'unrestricted';
-
 export type AiToolPermissionPolicy = 'disabled' | 'read_only' | 'require_confirm' | 'unrestricted';
 
 export interface AiSafetyGateConfig {
@@ -486,7 +453,6 @@ export interface AiToolResult {
 }
 
 export interface AiChatMessage {
-  /** Unique message identifier for stable React keys. */
   id?: string;
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -498,13 +464,11 @@ export interface AiChatMessage {
 
 export interface AiChatSession {
   id: string;
-  /** Session isolation key used for localStorage persistence. */
   sessionKey: string;
   messages: AiChatMessage[];
   isStreaming: boolean;
   streamContent: string;
   streamReasoning: string;
-  /** Qualified MCP tool name (mcp/server/tool) shown during streaming tool execution. */
   streamMcpToolName: string | null;
   requestId: string | null;
 }
@@ -523,26 +487,17 @@ export interface StreamErrorPayload {
   error: string;
 }
 
-// ── Workflow types ──
-
 export interface WorkflowVariable {
   name: string;
-  type: string; // 'string' | 'number' | 'connection'
+  type: string;
   description: string;
   required?: boolean;
   default?: unknown;
 }
 
 export type CommandCategory = 'query' | 'mutate' | 'admin' | 'observe' | 'pubSub' | 'stream' | 'io';
-
 export type CommandAccessLevel = 'read' | 'write' | 'highRisk';
 
-/**
- * Declarative native save dialog attached to a command (host thin shell).
- * The command returns `{ fileNameField, dataBase64Field }`; an interactive
- * `execute_driver_command` call pops the native save dialog, writes the bytes
- * and replaces the result with `{ resultPathField: savedPath | null }`.
- */
 export interface DriverSaveDialogSpec {
   fileNameField: string;
   dataBase64Field: string;
@@ -604,10 +559,8 @@ export interface WorkflowStep {
   asVar?: string;
   steps?: WorkflowStep[];
   maxIterations?: number;
-  // merge step
   sources?: MergeSource[];
   columns?: string[];
-  // transform step
   from?: string;
   addColumns?: TransformColumn[];
   filter?: string;
@@ -639,16 +592,13 @@ export interface WorkflowDefinition {
   version?: string;
   author?: string;
   variables: WorkflowVariable[];
-  /** Default connection inherited by data-operation steps. */
   connection?: string;
-  /** Default database inherited by data-operation steps (multi-db connections). */
   database?: string;
   steps: WorkflowStep[];
   output?: WorkflowOutput;
   timeoutSecs?: number;
   errorHandling?: ErrorHandlingConfig;
   schedule?: WorkflowSchedule;
-  /** `user` | `dashboardHidden` — hidden workflows are dashboard-owned SQL bindings. */
   visibility?: 'user' | 'dashboardHidden';
 }
 
@@ -705,8 +655,6 @@ export interface HistoryEntry {
   createdAt: string;
 }
 
-// ── Phase 8: Schema docs + Connection diagnosis + Query analysis ──
-
 export interface ConnectionDiagnosis {
   diagnosis: string;
   possibleCauses: string[];
@@ -733,10 +681,7 @@ export interface QueryAnalysis {
   recommendations: string[];
 }
 
-// ── Data Sync types ──
-
 export type TableCompareStatus = 'identical' | 'different' | 'source_only' | 'target_only';
-
 export type SyncObjectKind = 'table' | 'view' | 'function' | 'procedure';
 
 export interface TableComparison {
@@ -763,20 +708,21 @@ export interface ChangedColumnDiff {
 
 export interface TableSchemaDiff {
   table: string;
-  /** Present on source, missing on target → ADD on deploy. */
+  sourceOnlyColumns: ColumnDiffEntry[];
+  targetOnlyColumns: ColumnDiffEntry[];
+  changedColumns: ChangedColumnDiff[];
+  sourceOnlyIndexes: string[];
+  targetOnlyIndexes: string[];
+  sourceOnlyForeignKeys: string[];
+  targetOnlyForeignKeys: string[];
   missingOnTarget?: ColumnDiffEntry[];
-  /** Present on target only → DROP on deploy. */
   extraOnTarget?: ColumnDiffEntry[];
-  /** Alias of missingOnTarget (legacy). */
   added: ColumnDiffEntry[];
-  /** Alias of extraOnTarget (legacy). */
   removed: ColumnDiffEntry[];
   changed: ChangedColumnDiff[];
   sourceDdl?: string;
   targetDdl?: string;
 }
-
-// ── MCP Client types ──
 
 export interface McpServerConfig {
   id: string;
@@ -785,20 +731,9 @@ export interface McpServerConfig {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
-  enabled: boolean;
-  /** When false, tools from this server are excluded from AI Chat. Default true. */
+  url?: string;
+  enabled?: boolean;
   enabledForAi?: boolean;
-}
-
-/** Mirrors Rust `validate_mcp_server_id`: ^[a-zA-Z0-9_-]+$ */
-export function isValidMcpServerId(id: string): boolean {
-  return /^[a-zA-Z0-9_-]+$/.test(id);
-}
-
-export interface McpClientStatus {
-  serverId: string;
-  serverName: string;
-  toolsCount: number;
 }
 
 export interface McpToolInfo {
@@ -808,4 +743,14 @@ export interface McpToolInfo {
   qualifiedName: string;
   description?: string;
   inputSchema: Record<string, unknown>;
+}
+
+export function isValidMcpServerId(id: string): boolean {
+  return /^[a-zA-Z0-9_-]+$/.test(id);
+}
+
+export interface McpClientStatus {
+  serverId: string;
+  serverName: string;
+  toolsCount: number;
 }

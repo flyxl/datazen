@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
-import { PathInput } from '../../components/ui/PathInput';
+import { PathInput } from '@datazen/ui';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { useAiStore } from '../../stores/aiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -380,7 +380,7 @@ export function McpClientSection() {
           </div>
           <ToggleRow
             label={t('mcpClient.enabled')}
-            checked={draft.enabled}
+            checked={draft.enabled ?? true}
             onChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
           />
           <ToggleRow

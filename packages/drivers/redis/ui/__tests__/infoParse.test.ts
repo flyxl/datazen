@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseInfoSections, filterInfoSections } from '../infoParse';
+import { parseInfoSections, filterInfoSections } from '../observe/infoParse';
 
 describe('parseInfoSections', () => {
   it('splits section headers', () => {

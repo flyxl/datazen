@@ -9,7 +9,7 @@ import {
   invokeSetScan,
   invokeZsetScan,
   type PluginInvokeFn,
-} from '../keyEditorsInvokes';
+} from '../value-editors/keyEditorsInvokes';
 
 describe('invokeSetString (PR-1 KEEPTTL)', () => {
   it('passes keepTtl=false by default', async () => {
@@ -103,7 +103,11 @@ describe('invokeCreateKey', () => {
   it('creates list/set/zset with expected commands', async () => {
     const invoke = vi.fn<PluginInvokeFn>().mockResolvedValue(undefined);
     await invokeCreateKey('s', 0, 'l', 'list', 'a', invoke);
-    expect(invoke).toHaveBeenCalledWith('redis', 'list_push', expect.objectContaining({ key: 'l' }));
+    expect(invoke).toHaveBeenCalledWith(
+      'redis',
+      'list_push',
+      expect.objectContaining({ key: 'l' }),
+    );
     invoke.mockClear();
     await invokeCreateKey('s', 0, 's1', 'set', 'm', invoke);
     expect(invoke).toHaveBeenCalledWith('redis', 'set_add', expect.objectContaining({ key: 's1' }));

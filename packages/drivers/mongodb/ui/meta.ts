@@ -1,3 +1,7 @@
+// Side effect: register this driver's locale packs in the shared @datazen/ui
+// i18n registry. generated.ts imports this module on every build where the
+// mongodb driver is selected, so the pack is wired without host cooperation.
+import '../locales';
 import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
 
 export const mongodbMeta = {

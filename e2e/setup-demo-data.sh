@@ -245,7 +245,26 @@ if redis_cli PING >/dev/null 2>&1; then
   redis_cli RPUSH demo:queue:orders '{"order":"ORD-2026-005","status":"已发货"}' '{"order":"ORD-2026-002","status":"运输中"}' >/dev/null
   redis_cli SADD demo:regions 华东 华北 华南 >/dev/null
   redis_cli ZADD demo:sales:rank 1299 "降噪耳机 H900" 599 "机械键盘 K870" 199 "无线鼠标 M330" >/dev/null
-  echo "  Redis db${REDIS_DB} seeded with demo:* keys"
+
+  # ── REDIS_CONSOLE_UX seeds ──
+  # Binary-safe STRING with NUL / high bytes (R2/R7: hex view must show 00 01 ff 41).
+  printf '\x00\x01\xff\x41' | redis_cli -x SET demo:bin:mixed >/dev/null
+  # gzip-compressed JSON (R8 codec GZip + R9 JSON view).
+  printf '{"hello":"gzip-pr4","n":42}' | gzip -c | redis_cli -x SET demo:gzip:json >/dev/null
+  # MessagePack map {"a":1} = 81 a1 61 01 (R8 backend decode_value).
+  printf '\x81\xa1\x61\x01' | redis_cli -x SET demo:msgpack:obj >/dev/null
+  # Multi-level namespace for hierarchical tree expansion (R5): lvl → a → b → c.
+  redis_cli SET demo:lvl:a:b:c:1 "leaf-1" >/dev/null
+  redis_cli SET demo:lvl:a:b:c:2 "leaf-2" >/dev/null
+  redis_cli SET demo:lvl:a:x "sibling" >/dev/null
+  # No-expiry key for the TTL = -1 filter (R10).
+  redis_cli SET demo:noexp:forever "never expires" >/dev/null
+
+  # ReJSON document for the JSON three-state editor (R3) — only if the module is loaded.
+  if redis_cli MODULE LIST 2>/dev/null | grep -qiE 'ReJSON|RedisJSON'; then
+    redis_cli JSON.SET demo:json:doc '$' '{"a":1,"b":[2,3],"c":{"d":true}}' >/dev/null || true
+  fi
+  echo "  Redis db${REDIS_DB} seeded with demo:* keys (incl. console-ux fixtures)"
 else
   echo "  [warn] Redis unreachable at ${REDIS_HOST}:${REDIS_PORT} — skip seeding (15-redis will [skip])"
 fi

@@ -2,7 +2,7 @@
 import { mkdtempSync, mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from 'fs';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { isAbsolute, join } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
   parseArgs,
@@ -38,6 +38,27 @@ function writeFixtureExtension(root: string) {
     )}\n`,
   );
   writeFileSync(join(root, 'dist/index.esm.js'), 'export function activate() {}\n');
+}
+
+/**
+ * Throwaway sandbox for every landing spot these flows write to.
+ *
+ * The production landing spots (`src-tauri/resources/builtin-ep/`, the pack-ep
+ * work dir under `artifacts/` and the gitignored `src/extensions/generated-pro.ts`)
+ * all live inside the real repo and are gitignored, so a test that writes there
+ * is invisible to `git status` while still deleting a developer's local Pro
+ * staging tree or leaving a Pro-edition codegen behind for later tsc/vite steps.
+ * Redirecting them keeps the suite read-only with respect to the repo.
+ */
+function makeSandbox() {
+  const root = mkdtempSync(join(tmpdir(), 'resolve-pro-sandbox-'));
+  return {
+    root,
+    stageDir: join(root, 'builtin-ep', 'sql-editor-pro'),
+    codegenPath: join(root, 'generated-pro.ts'),
+    outDir: join(root, 'artifacts'),
+    rm: () => rmSync(root, { recursive: true, force: true }),
+  };
 }
 
 describe('resolve-pro parseArgs', () => {
@@ -170,101 +191,192 @@ describe('resolve-pro codegen output', () => {
   });
 
   it('preserves existing generated-pro.ts when codegenOnly is run without explicit edition', () => {
-    const res = resolvePro({ codegenOnly: true });
-    // Should preserve existing file when no explicit edition passed
-    expect(res).toBeDefined();
+    const sb = makeSandbox();
+    try {
+      writeFileSync(sb.codegenPath, 'preserved\n');
+      const res = resolvePro({
+        codegenOnly: true,
+        stageDir: sb.stageDir,
+        codegenPath: sb.codegenPath,
+      });
+      // Should preserve existing file when no explicit edition passed
+      expect(res).toBeDefined();
+      expect(readFileSync(sb.codegenPath, 'utf-8')).toBe('preserved\n');
+    } finally {
+      sb.rm();
+    }
   });
 });
 
 describe('[tester] resolve-pro staging and edition flows', () => {
-  it('test_tester_resolvePro_community_writes_codegen_and_clears_staging', () => {
-    const staging = join(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro');
-    mkdirSync(staging, { recursive: true });
-    writeFileSync(join(staging, 'manifest.json'), '{}');
+  it('test_tester_default_staging_and_codegen_paths_stay_repo_relative', () => {
+    // Value-only assertion: the sandbox redirects below must keep the
+    // production defaults, and nothing may be written to the real paths.
+    expect(isAbsolute(GENERATED_PRO_TS)).toBe(true);
+    expect(GENERATED_PRO_TS.endsWith(join('src', 'extensions', 'generated-pro.ts'))).toBe(true);
+    expect(isAbsolute(DEFAULT_BUILTIN_EP_ROOT)).toBe(true);
+    expect(DEFAULT_BUILTIN_EP_ROOT.endsWith(join('src-tauri', 'resources', 'builtin-ep'))).toBe(
+      true,
+    );
+  });
 
-    const res = resolvePro({ edition: 'community' });
-    expect(res).toEqual({ edition: 'community', active: false });
-    expect(existsSync(GENERATED_PRO_TS)).toBe(true);
-    expect(readFileSync(GENERATED_PRO_TS, 'utf-8')).toContain("DATAZEN_EDITION = 'community'");
-    expect(existsSync(staging)).toBe(false);
+  it('test_tester_resolvePro_community_writes_codegen_and_clears_staging', () => {
+    const sb = makeSandbox();
+    try {
+      const staging = sb.stageDir;
+      mkdirSync(staging, { recursive: true });
+      writeFileSync(join(staging, 'manifest.json'), '{}');
+
+      const res = resolvePro({
+        edition: 'community',
+        stageDir: sb.stageDir,
+        codegenPath: sb.codegenPath,
+      });
+      expect(res).toEqual({ edition: 'community', active: false });
+      expect(existsSync(sb.codegenPath)).toBe(true);
+      expect(readFileSync(sb.codegenPath, 'utf-8')).toContain("DATAZEN_EDITION = 'community'");
+      expect(existsSync(staging)).toBe(false);
+    } finally {
+      sb.rm();
+    }
   });
 
   it('test_tester_resolvePro_restore_alias_for_community', () => {
-    const res = resolvePro({ restore: true });
-    expect(res.edition).toBe('community');
-    expect(res.active).toBe(false);
+    const sb = makeSandbox();
+    try {
+      const res = resolvePro({
+        restore: true,
+        stageDir: sb.stageDir,
+        codegenPath: sb.codegenPath,
+      });
+      expect(res.edition).toBe('community');
+      expect(res.active).toBe(false);
+      expect(readFileSync(sb.codegenPath, 'utf-8')).toContain("DATAZEN_EDITION = 'community'");
+    } finally {
+      sb.rm();
+    }
   });
 
   it('test_tester_ensureProCheckout_prefers_explicit_pro_path', () => {
     const extDir = mkdtempSync(join(tmpdir(), 'resolve-pro-path-'));
-    writeFileSync(join(extDir, 'package.json'), '{}');
-    const path = ensureProCheckout({ proPath: extDir, codegenOnly: true });
-    expect(path).toBe(extDir);
+    try {
+      writeFileSync(join(extDir, 'package.json'), '{}');
+      const path = ensureProCheckout({ proPath: extDir, codegenOnly: true });
+      expect(path).toBe(extDir);
+    } finally {
+      rmSync(extDir, { recursive: true, force: true });
+    }
   });
 
   it('test_tester_ensureProCheckout_returns_existing_checkout_when_present', () => {
-    const path = ensureProCheckout({ codegenOnly: true });
-    if (existsSync(join(process.cwd(), 'packages/pro-extensions/sql-editor-pro/package.json'))) {
-      expect(path).toContain('sql-editor-pro');
-    } else {
+    const sb = makeSandbox();
+    try {
+      const existing = join(sb.root, 'pro-extensions', 'sql-editor-pro');
+      mkdirSync(existing, { recursive: true });
+      writeFileSync(join(existing, 'package.json'), '{}');
+      const path = ensureProCheckout({
+        codegenOnly: true,
+        proDest: existing,
+        tmpFallbackDir: join(sb.root, 'no-fallback'),
+      });
+      expect(path).toBe(existing);
+    } finally {
+      sb.rm();
+    }
+  });
+
+  it('test_tester_ensureProCheckout_returns_null_in_codegen_only_without_checkout', () => {
+    const sb = makeSandbox();
+    try {
+      const path = ensureProCheckout({
+        codegenOnly: true,
+        proDest: join(sb.root, 'pro-extensions', 'sql-editor-pro'),
+        tmpFallbackDir: join(sb.root, 'no-fallback'),
+      });
       expect(path).toBeNull();
+    } finally {
+      sb.rm();
     }
   });
 
   it('test_tester_clearBuiltinEpStaging_removes_extension_tree', () => {
-    const staging = join(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro');
-    mkdirSync(staging, { recursive: true });
-    writeFileSync(join(staging, 'marker.txt'), 'x');
-    clearBuiltinEpStaging();
-    expect(existsSync(staging)).toBe(false);
+    const sb = makeSandbox();
+    try {
+      mkdirSync(sb.stageDir, { recursive: true });
+      writeFileSync(join(sb.stageDir, 'marker.txt'), 'x');
+      clearBuiltinEpStaging('sql-editor-pro', { stageDir: sb.stageDir });
+      expect(existsSync(sb.stageDir)).toBe(false);
+    } finally {
+      sb.rm();
+    }
   });
 
   it('test_tester_stageProExtension_stages_signed_tree', () => {
-    const extDir = mkdtempSync(join(tmpdir(), 'resolve-pro-stage-'));
-    writeFixtureExtension(extDir);
-    const result = stageProExtension({
-      extensionDir: extDir,
-      skipBuild: true,
-      mode: 'stage',
-      log: () => {},
-    });
-    expect(result.staged).toBe(true);
-    const staged = join(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro');
-    expect(existsSync(join(staged, 'manifest.json'))).toBe(true);
-    expect(existsSync(join(staged, 'dist/index.esm.js'))).toBe(true);
-    expect(existsSync(join(staged, 'signature.sig'))).toBe(true);
-    rmSync(staged, { recursive: true, force: true });
+    const sb = makeSandbox();
+    const extDir = join(sb.root, 'fixture-ext');
+    try {
+      writeFixtureExtension(extDir);
+      const result = stageProExtension({
+        extensionDir: extDir,
+        skipBuild: true,
+        mode: 'stage',
+        log: () => {},
+        stageDir: sb.stageDir,
+        outDir: sb.outDir,
+      });
+      expect(result.staged).toBe(true);
+      expect(result.stageDir).toBe(sb.stageDir);
+      expect(existsSync(join(sb.stageDir, 'manifest.json'))).toBe(true);
+      expect(existsSync(join(sb.stageDir, 'dist/index.esm.js'))).toBe(true);
+      expect(existsSync(join(sb.stageDir, 'signature.sig'))).toBe(true);
+    } finally {
+      sb.rm();
+    }
   });
 
   it('test_tester_resolvePro_pro_codegenOnly_without_staging', () => {
-    const extDir = mkdtempSync(join(tmpdir(), 'resolve-pro-pro-'));
-    writeFixtureExtension(extDir);
-    const res = resolvePro({ edition: 'pro', codegenOnly: true, proPath: extDir });
-    expect(res).toEqual({ edition: 'pro', active: true, path: extDir });
-    expect(readFileSync(GENERATED_PRO_TS, 'utf-8')).toContain("DATAZEN_EDITION = 'pro'");
-    expect(existsSync(join(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro'))).toBe(false);
+    const sb = makeSandbox();
+    const extDir = join(sb.root, 'fixture-ext');
+    try {
+      writeFixtureExtension(extDir);
+      const res = resolvePro({
+        edition: 'pro',
+        codegenOnly: true,
+        proPath: extDir,
+        stageDir: sb.stageDir,
+        codegenPath: sb.codegenPath,
+      });
+      expect(res).toEqual({ edition: 'pro', active: true, path: extDir });
+      expect(readFileSync(sb.codegenPath, 'utf-8')).toContain("DATAZEN_EDITION = 'pro'");
+      expect(existsSync(sb.stageDir)).toBe(false);
+    } finally {
+      sb.rm();
+    }
   });
 
   it('test_tester_resolvePro_uses_already_staged_tree_without_cloning', () => {
     // CI builds the extension once and hands the signed tree to every variant as
     // an artifact. resolve-pro must use that tree verbatim rather than cloning
     // the private repo again in each matrix job.
-    const staging = join(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro');
-    rmSync(staging, { recursive: true, force: true });
-    writeFixtureExtension(staging);
-    const bundle = join(staging, 'dist/index.esm.js');
-    const staged = readFileSync(bundle, 'utf-8');
-
+    const sb = makeSandbox();
     const prevGit = process.env.DATAZEN_PRO_GIT;
     delete process.env.DATAZEN_PRO_GIT;
     try {
-      const res = resolvePro({ edition: 'pro' });
+      writeFixtureExtension(sb.stageDir);
+      const bundle = join(sb.stageDir, 'dist/index.esm.js');
+      const staged = readFileSync(bundle, 'utf-8');
+
+      const res = resolvePro({
+        edition: 'pro',
+        stageDir: sb.stageDir,
+        codegenPath: sb.codegenPath,
+      });
       expect(res).toMatchObject({ edition: 'pro', active: true, prebuilt: true });
       // A clone would have overwritten the staged bundle.
       expect(readFileSync(bundle, 'utf-8')).toBe(staged);
     } finally {
       if (prevGit !== undefined) process.env.DATAZEN_PRO_GIT = prevGit;
-      rmSync(staging, { recursive: true, force: true });
+      sb.rm();
     }
   });
 
@@ -273,20 +385,28 @@ describe('[tester] resolve-pro staging and edition flows', () => {
     if (!existsSync(join(extDir, 'package.json'))) {
       return;
     }
-    clearBuiltinEpStaging();
-    const res = resolvePro({ edition: 'pro', proPath: extDir });
-    expect(res).toMatchObject({ edition: 'pro', active: true, path: extDir });
-    // Track B: the rewritten + signed bundle is staged as a Tauri resource and
-    // the codegen loads it dynamically — no static alias reference.
-    const staged = join(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro');
-    expect(existsSync(join(staged, 'dist/index.esm.js'))).toBe(true);
-    expect(existsSync(join(staged, 'signature.sig'))).toBe(true);
-    const stagedBundle = readFileSync(join(staged, 'dist/index.esm.js'), 'utf-8');
-    expect(stagedBundle).toContain('__DATAZEN_HOST__');
-    expect(readFileSync(GENERATED_PRO_TS, 'utf-8')).not.toContain(
-      '@datazen/extension-sql-editor-pro',
-    );
-    clearBuiltinEpStaging();
+    const sb = makeSandbox();
+    try {
+      const res = resolvePro({
+        edition: 'pro',
+        proPath: extDir,
+        stageDir: sb.stageDir,
+        codegenPath: sb.codegenPath,
+        outDir: sb.outDir,
+      });
+      expect(res).toMatchObject({ edition: 'pro', active: true, path: extDir });
+      // Track B: the rewritten + signed bundle is staged as a Tauri resource and
+      // the codegen loads it dynamically — no static alias reference.
+      expect(existsSync(join(sb.stageDir, 'dist/index.esm.js'))).toBe(true);
+      expect(existsSync(join(sb.stageDir, 'signature.sig'))).toBe(true);
+      const stagedBundle = readFileSync(join(sb.stageDir, 'dist/index.esm.js'), 'utf-8');
+      expect(stagedBundle).toContain('__DATAZEN_HOST__');
+      expect(readFileSync(sb.codegenPath, 'utf-8')).not.toContain(
+        '@datazen/extension-sql-editor-pro',
+      );
+    } finally {
+      sb.rm();
+    }
   }, 120_000);
 
   it('test_tester_resolvePro_unknown_edition_throws', () => {

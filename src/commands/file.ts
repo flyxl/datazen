@@ -1,58 +1,25 @@
 import { invoke } from '@tauri-apps/api/core';
+import { fileCommands as dialogFileCommands } from '@datazen/driver-sdk';
 
 export interface OpenedTextFile {
   fileName: string;
   content: string;
 }
 
-export interface OpenedBinaryFile {
-  fileName: string;
-  dataBase64: string;
-}
+export type { OpenedBinaryFile } from '@datazen/driver-sdk';
 
 /**
  * File IO that never accepts a path from JS (XSS-safe).
  * Dialog + read/write happen atomically in Rust.
+ * The native-dialog save/open helpers shared with drivers live in
+ * `@datazen/driver-sdk`; host-only streaming/session commands stay here.
  */
 export const fileCommands = {
-  /** Save UTF-8 text via native OS dialog. Returns false if cancelled. */
-  saveTextWithDialog: (
-    contents: string,
-    defaultFileName: string,
-    filterName: string,
-    extensions: string[],
-  ) =>
-    invoke<boolean>('save_text_with_dialog', {
-      contents,
-      defaultFileName,
-      filterName,
-      extensions,
-    }),
-
-  /** Save base64 bytes via native OS dialog. Returns false if cancelled. */
-  saveBase64WithDialog: (
-    dataBase64: string,
-    defaultFileName: string,
-    filterName: string,
-    extensions: string[],
-  ) =>
-    invoke<boolean>('save_base64_with_dialog', {
-      dataBase64,
-      defaultFileName,
-      filterName,
-      extensions,
-    }),
+  ...dialogFileCommands,
 
   /** Open a text file via native dialog; returns basename + content (no path). */
   openTextWithDialog: (filterName: string, extensions: string[]) =>
     invoke<OpenedTextFile | null>('open_text_with_dialog', {
-      filterName,
-      extensions,
-    }),
-
-  /** Open a binary file via native dialog; returns basename + base64 (no path). */
-  openBase64WithDialog: (filterName: string, extensions: string[]) =>
-    invoke<OpenedBinaryFile | null>('open_base64_with_dialog', {
       filterName,
       extensions,
     }),

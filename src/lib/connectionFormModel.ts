@@ -1,6 +1,14 @@
 import { DB_REGISTRY, normalizeIndexDatabaseField } from './databaseTypes';
 import { getDriverConnectionForm } from '../extensions/generated';
-import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../types';
+import type {
+  ConnectionConfig,
+  DatabaseType,
+  HttpProxyTunnelConfig,
+  SslMode,
+  SshTunnelConfig,
+  TunnelKind,
+  WebSocketTunnelConfig,
+} from '../types';
 
 function hasEnabledTlsOption(options: Record<string, unknown>): boolean {
   const tls = options.tls;
@@ -78,6 +86,11 @@ export interface BuildConnectionConfigInput {
   readOnly: boolean;
   connectionOptions: Record<string, unknown>;
   sshTunnel?: SshTunnelConfig;
+  tunnelKind?: TunnelKind;
+  /** Reference to SavedTunnel in tunnels.json */
+  tunnelId?: string;
+  httpProxyTunnel?: HttpProxyTunnelConfig;
+  websocketTunnel?: WebSocketTunnelConfig;
 }
 
 /**
@@ -101,8 +114,26 @@ export function buildConnectionConfig(input: BuildConnectionConfigInput): Connec
     readOnly: meta?.readOnly === true || input.readOnly || undefined,
   };
 
-  if (input.sshTunnel) {
-    base.sshTunnel = cloneSshTunnel(input.sshTunnel);
+  if (input.tunnelId) {
+    base.tunnelId = input.tunnelId;
+  }
+  // When referencing a SavedTunnel, skip embedding full tunnel configs.
+  if (!input.tunnelId) {
+    if (input.sshTunnel) {
+      base.sshTunnel = cloneSshTunnel(input.sshTunnel);
+    }
+    if (input.tunnelKind && input.tunnelKind !== 'none') {
+      base.tunnelKind = input.tunnelKind;
+    }
+    if (input.httpProxyTunnel?.enabled) {
+      base.httpProxyTunnel = { ...input.httpProxyTunnel };
+    }
+    if (input.websocketTunnel?.enabled) {
+      base.websocketTunnel = { ...input.websocketTunnel };
+    }
+  } else if (input.tunnelKind && input.tunnelKind !== 'none') {
+    // Optional hint for UI; runtime resolves via tunnelId.
+    base.tunnelKind = input.tunnelKind;
   }
 
   if (!meta || meta.connectionMode === 'file') {

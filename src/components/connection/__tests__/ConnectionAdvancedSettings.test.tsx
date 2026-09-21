@@ -26,6 +26,62 @@ function createMockForm(overrides: Partial<ConnectionFormState> = {}): Connectio
     setColorTag: vi.fn(),
     group: '',
     setGroup: vi.fn(),
+    supportsSSH: true,
+    tunnelKind: 'none',
+    setTunnelKind: vi.fn(),
+    sshEnabled: false,
+    setSshEnabled: vi.fn(),
+    sshHost: '',
+    setSshHost: vi.fn(),
+    sshPort: '22',
+    setSshPort: vi.fn(),
+    sshUsername: '',
+    setSshUsername: vi.fn(),
+    sshAuthMethod: 'password',
+    setSshAuthMethod: vi.fn(),
+    sshPassword: '',
+    setSshPassword: vi.fn(),
+    sshKeyPath: '',
+    setSshKeyPath: vi.fn(),
+    sshPassphrase: '',
+    setSshPassphrase: vi.fn(),
+    sshJumpEnabled: false,
+    setSshJumpEnabled: vi.fn(),
+    sshJumpHost: '',
+    setSshJumpHost: vi.fn(),
+    sshJumpPort: '22',
+    setSshJumpPort: vi.fn(),
+    sshJumpUsername: '',
+    setSshJumpUsername: vi.fn(),
+    sshJumpAuthMethod: 'password',
+    setSshJumpAuthMethod: vi.fn(),
+    sshJumpPassword: '',
+    setSshJumpPassword: vi.fn(),
+    sshJumpKeyPath: '',
+    setSshJumpKeyPath: vi.fn(),
+    sshJumpPassphrase: '',
+    setSshJumpPassphrase: vi.fn(),
+    httpProxyHost: '',
+    setHttpProxyHost: vi.fn(),
+    httpProxyPort: '8080',
+    setHttpProxyPort: vi.fn(),
+    httpProxyScheme: 'http',
+    setHttpProxyScheme: vi.fn(),
+    httpProxyUsername: '',
+    setHttpProxyUsername: vi.fn(),
+    httpProxyPassword: '',
+    setHttpProxyPassword: vi.fn(),
+    httpProxyTimeout: '30',
+    setHttpProxyTimeout: vi.fn(),
+    wsUrl: '',
+    setWsUrl: vi.fn(),
+    wsMode: 'datazen_v1',
+    setWsMode: vi.fn(),
+    wsAuthToken: '',
+    setWsAuthToken: vi.fn(),
+    wsTimeout: '30',
+    setWsTimeout: vi.fn(),
+    formVariant: 'standard',
     ...overrides,
   } as unknown as ConnectionFormState;
 }
@@ -58,5 +114,26 @@ describe('ConnectionAdvancedSettings', () => {
 
     fireEvent.click(checkbox);
     expect(setReadOnly).not.toHaveBeenCalled();
+  });
+
+  it('shows tunnel panel when supportsSSH and tunnelKind is none', () => {
+    const form = createMockForm({ tunnelKind: 'none' });
+    render(<ConnectionAdvancedSettings form={form} />);
+    fireEvent.click(screen.getByTestId('new-conn-tunnel-toggle'));
+    expect(screen.getByTestId('new-conn-tunnel-kind')).toBeInTheDocument();
+  });
+
+  it('renders HttpProxyTunnelFields when tunnelKind is httpProxy', () => {
+    const form = createMockForm({ tunnelKind: 'httpProxy' });
+    render(<ConnectionAdvancedSettings form={form} />);
+    expect(screen.getByTestId('new-conn-http-proxy-fields')).toBeInTheDocument();
+    expect(screen.queryByTestId('new-conn-ws-fields')).not.toBeInTheDocument();
+  });
+
+  it('renders WebSocketTunnelFields when tunnelKind is websocket', () => {
+    const form = createMockForm({ tunnelKind: 'websocket' });
+    render(<ConnectionAdvancedSettings form={form} />);
+    expect(screen.getByTestId('new-conn-ws-fields')).toBeInTheDocument();
+    expect(screen.queryByTestId('new-conn-http-proxy-fields')).not.toBeInTheDocument();
   });
 });

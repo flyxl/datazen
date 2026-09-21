@@ -24,6 +24,7 @@ mod schema_diff;
 mod structure;
 mod sync;
 mod theme;
+mod tunnel;
 mod wapps;
 pub(crate) mod window;
 mod workflow;
@@ -37,9 +38,7 @@ pub use context::*;
 pub use dashboard::*;
 pub use data::*;
 pub use data_transfer::*;
-// Webdriver builds re-export the injection IPCs for lib.rs registration;
-// production builds expose nothing from the dialog gateway beyond its
-// internal call sites (super::dialog::* within this module).
+// The dialog module is private; its commands are only re-exported for webdriver.
 #[cfg(feature = "webdriver")]
 pub use dialog::*;
 pub use driver_command::*;
@@ -54,6 +53,7 @@ pub use schema_diff::*;
 pub use structure::*;
 pub use sync::*;
 pub use theme::*;
+pub use tunnel::*;
 pub use wapps::*;
 pub use window::*;
 pub use workflow::*;

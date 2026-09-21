@@ -260,28 +260,32 @@ vi.mock('../../../commands/ai', () => ({
   },
 }));
 
-vi.mock('../../../components/ui/PathInput', () => ({
-  PathInput: ({
-    value,
-    onChange,
-    placeholder,
-    className,
-  }: {
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-    className?: string;
-  }) => (
-    <input
-      data-testid="path-input"
-      type="text"
-      value={value}
-      placeholder={placeholder}
-      className={className}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  ),
-}));
+vi.mock('@datazen/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@datazen/ui')>();
+  return {
+    ...actual,
+    PathInput: ({
+      value,
+      onChange,
+      placeholder,
+      className,
+    }: {
+      value: string;
+      onChange: (v: string) => void;
+      placeholder?: string;
+      className?: string;
+    }) => (
+      <input
+        data-testid="path-input"
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        className={className}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    ),
+  };
+});
 
 vi.mock('../../../components/ThemedIcon', () => ({
   ThemedIcon: () => <span data-testid="themed-icon" />,
@@ -506,6 +510,20 @@ describe('SettingsContent', () => {
 
     pickSelectOption(0, '100 common.rows');
     await waitFor(() => expect(updateSettingsMock).toHaveBeenCalledWith({ defaultPageSize: 100 }));
+  });
+
+  it('offers the smart FK prediction switch in the editor section', async () => {
+    render(<SettingsContent initialSection="editor" />);
+    await waitForSettingsLoad();
+
+    // On by default, and turning it off persists the choice.
+    const toggle = screen.getByRole('switch', { name: 'settings.enableFkPrediction' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(updateSettingsMock).toHaveBeenCalledWith({ enableFkPrediction: false }),
+    );
   });
 
   it('renders SqlSnippetsCard in editor section', async () => {

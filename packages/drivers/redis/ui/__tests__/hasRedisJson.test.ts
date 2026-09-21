@@ -3,7 +3,7 @@ import {
   hasRedisJson,
   isJsonKeyType,
   looksLikeJsonModuleDetail,
-} from '../hasRedisJson';
+} from '../value-editors/hasRedisJson';
 
 describe('hasRedisJson', () => {
   it('detects ReJSON and RedisJSON module names', () => {

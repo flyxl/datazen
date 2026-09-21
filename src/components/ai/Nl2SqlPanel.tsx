@@ -128,11 +128,7 @@ export function Nl2SqlPanel({
         />
         <div className="flex shrink-0 gap-1">
           {nl2sql.isGenerating ? (
-            <Button
-              variant="danger"
-              className="h-7 gap-1 px-2 text-xs"
-              onClick={handleStop}
-            >
+            <Button variant="danger" className="h-7 gap-1 px-2 text-xs" onClick={handleStop}>
               <Square className="h-3 w-3" />
               {t('common.stop') ?? 'Stop'}
             </Button>
@@ -161,11 +157,7 @@ export function Nl2SqlPanel({
                       <Copy className="h-3.5 w-3.5" />
                     )}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    className="h-7 px-1.5 text-xs"
-                    onClick={clearNl2Sql}
-                  >
+                  <Button variant="ghost" className="h-7 px-1.5 text-xs" onClick={clearNl2Sql}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </>
@@ -180,11 +172,11 @@ export function Nl2SqlPanel({
         <div className="mx-2 mb-2 rounded border border-edge bg-surface overflow-hidden">
           <div className="flex items-center justify-between border-b border-edge bg-surface-alt px-2 py-1">
             <span className="text-[10px] text-fg-muted">
-              {nl2sql.isGenerating ? t('nl2sql.preview') ?? 'SQL Preview' : t('nl2sql.result') ?? 'Generated SQL'}
+              {nl2sql.isGenerating
+                ? (t('nl2sql.preview') ?? 'SQL Preview')
+                : (t('nl2sql.result') ?? 'Generated SQL')}
             </span>
-            {nl2sql.isGenerating && (
-              <Loader2 className="h-3 w-3 animate-spin text-accent" />
-            )}
+            {nl2sql.isGenerating && <Loader2 className="h-3 w-3 animate-spin text-accent" />}
           </div>
           <div className="max-h-60 overflow-auto">
             <SqlCodeBlock code={previewSql} />

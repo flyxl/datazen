@@ -9,19 +9,23 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../ui/PathInput', () => ({
-  PathInput: ({
-    value,
-    onChange,
-    placeholder,
-  }: {
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-  }) => (
-    <input value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
-  ),
-}));
+vi.mock('@datazen/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@datazen/ui')>();
+  return {
+    ...actual,
+    PathInput: ({
+      value,
+      onChange,
+      placeholder,
+    }: {
+      value: string;
+      onChange: (v: string) => void;
+      placeholder?: string;
+    }) => (
+      <input value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+    ),
+  };
+});
 
 afterEach(cleanup);
 

@@ -100,6 +100,18 @@ describe('locales', () => {
     expect(getAllTranslations('invalid-locale')).toEqual(getAllTranslations('en'));
   });
 
+  it('sees driver packs that registered themselves in the shared registry', async () => {
+    // Driver translations are owned by the driver package: importing its
+    // locales entry mirrors what the app does when generated.ts loads the
+    // driver UI meta. The host never aggregates driver keys itself.
+    await import('../../packages/drivers/redis/locales');
+    expect(getAllTranslations('en')['redis.batchDelete']).toBe('Delete selected');
+    expect(getTranslation('en', 'redis.console')).toBe('Console');
+    expect(getTranslation('zh-CN', 'redis.console')).not.toBe('redis.console');
+    // Absent from the host-only snapshot: the pack is driver-scoped.
+    expect(getHostTranslations('en')['redis.batchDelete']).toBeUndefined();
+  });
+
   it('interpolates params for built-in locales', () => {
     for (const locale of BUILTIN_LOCALES) {
       expect(getTranslation(locale, 'win.query', { db: 'testdb' })).toContain('testdb');
@@ -198,6 +210,7 @@ describe('locales', () => {
   describe('extension locale registration', () => {
     afterEach(() => {
       unregisterLocale('test-lang');
+      unregisterLocale('test-lang-empty');
     });
 
     it('registers and uses an extension locale', () => {
@@ -207,8 +220,10 @@ describe('locales', () => {
     });
 
     it('falls back to en for missing keys in extension locale', () => {
-      registerLocale('test-lang', 'Test Language', {});
-      expect(getTranslation('test-lang', 'common.ok')).toBe(en['common.ok']);
+      // Fresh locale code: the shared @datazen/ui registry is append-only per
+      // key, so this must not reuse 'test-lang' from the previous case.
+      registerLocale('test-lang-empty', 'Test Empty', {});
+      expect(getTranslation('test-lang-empty', 'common.ok')).toBe(en['common.ok']);
     });
 
     it('lists extension locales with labels', () => {

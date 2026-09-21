@@ -47,6 +47,10 @@ tauri-plugin-process = "2"
 sys-locale = "0.3.2"
 flate2 = "1.1.9"
 russh = "0.60"
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tokio-rustls = "0.26"
+webpki-roots = "0.26"
+url = "2"
 reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"] }
 futures-util = "0.3"
 

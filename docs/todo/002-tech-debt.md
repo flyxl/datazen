@@ -58,13 +58,27 @@ const tableName = payload.namespace?.table;
 （多租户、分模块），不是边缘场景。
 
 **建议**：`selectedTables` 的标识改为带 namespace 的稳定 key，UI 显示短名 + schema
-前缀消歧。这与 P0-1 一样是**数据模型**层面的改动，建议合并到同一次重构。
+前缀消歧。
+
+**代价已重新评估（2026-09 实测）**：这**不是** QB 局部改动。`getAllColumns`
+（`src-tauri/src/commands/schema.rs:464`）只接收 `dbSessionId` + `database`，
+`columnMap` 以**表名**为键（`schemaStore.ts:516`），即列存储是**库级而非 schema 级**。
+要让表标识真正带 namespace，必须同时改：
+
+1. Rust `get_all_columns` 命令签名（增加 schema）
+2. `schemaStore` 的 `columnMap` 键结构
+3. schema 树 / 补全 / QB 等所有列消费方
+
+属于跨切面重构，应作为独立任务排期，不要顺手塞进 QB 的改动里。
+
+另注：当前 QB 对「从非当前 schema 拖入的表」会生成**裸表名** SQL，
+可能静默命中 search_path 下的同名表 —— 这与本项同源，一并由上述重构解决。
 
 ### P0-3 `findRelationMetadata` 的裸名回退对「生成 SQL」不安全
 
 **位置**：`src/components/sql-editor/metadata/findRelation.ts`（第 3 步按裸表名大小写不敏感匹配）
 
-**证据**：QB 侧已规避（`relationMetadataSource.ts` 改用精确 key，并有测试钉住
+**证据**：QB 侧已规避（按表名逐表取 `getCachedTableSchema`，只认精确表名，并有测试钉住
 「不同 schema 同名表不得匹配」）。但该函数仍被 `completion/schemaCompletion.ts` 使用。
 
 **影响**：补全场景下「找到点什么比什么都没有强」是合理取舍；但**任何用它来生成
@@ -151,6 +165,15 @@ Rust 侧为 `packages/driver-api` 的 `supports_offset()`（默认 `true`，
 `supports_offset()`（驱动可通过元数据文件声明），不一致则构建失败。
 
 ---
+
+## P2-5 `e2e/specs/er-diagram.ts` ER-008（PNG 导出）在 HEAD 即失败
+
+**现象**：`Error: ER PNG export did not write <temp>.png`，稳定复现，非抖动。
+
+**已核实与近期改动无关**：在改动前的代码上（`git stash` 后重新构建）跑该 spec 同样
+7 passing / 1 failing，失败项就是 ER-008。
+
+**影响**：ER spec 无法作为「全绿」验收依据；新增的 ER-009（推测关系）不受影响。
 
 ## P2 — 工程体验
 

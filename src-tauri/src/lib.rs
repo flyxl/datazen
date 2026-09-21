@@ -1,6 +1,7 @@
 pub mod ai;
 mod app_data_archive;
 mod app_menu;
+#[path = "bootstrap/mod.rs"]
 mod bootstrap;
 mod cache;
 mod commands;
@@ -25,6 +26,7 @@ mod store;
 mod theme;
 pub mod transfer;
 mod tray;
+pub mod tunnel;
 mod util;
 mod wapps;
 pub mod workflow;

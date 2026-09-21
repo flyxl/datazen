@@ -46,6 +46,8 @@ export interface RelationGroup {
   type: QbJoinType;
   /** FK constraint name, when known (used by the popover header). */
   constraint?: string;
+  /** True when the relationship was inferred, not declared — drawn dashed. */
+  predicted?: boolean;
   pairs: RelationPair[];
 }
 
@@ -79,6 +81,8 @@ export interface RelationShape {
   confirmedCount: number;
   type: QbJoinType;
   constraint?: string;
+  /** True when the relationship was inferred, not declared — drawn dashed. */
+  predicted?: boolean;
   segments: RelationSegment[];
   /**
    * Round terminals at **both** ends of every connection. Deliberately
@@ -232,6 +236,7 @@ export function buildRelationShapes(input: RelationGeometryInput): RelationShape
       kind: group.kind,
       type: group.type,
       constraint: group.constraint,
+      predicted: group.predicted,
       state,
       pairCount: group.pairs.length,
       confirmedCount: group.pairs.filter((p) => p.confirmed).length,

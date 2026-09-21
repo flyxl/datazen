@@ -3,7 +3,7 @@ import {
   applySchemaDefaults,
   listSchemaPropertyEntries,
   readBooleanField,
-} from '../../lib/driverSettings';
+} from '@datazen/driver-sdk';
 
 import { ToggleRow } from './settingsUi';
 

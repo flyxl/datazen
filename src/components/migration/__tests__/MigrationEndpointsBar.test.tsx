@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MigrationEndpointsBar } from '../MigrationEndpointsBar';
 import { ensureAllLazyDomains } from '../../../locales/lazyPacks';
 import { useSettingsStore } from '../../../stores/settingsStore';
+import { startLocaleSync } from '../../../lib/localeSync';
 
 describe('MigrationEndpointsBar i18n resolution', () => {
   beforeAll(async () => {
@@ -14,6 +15,8 @@ describe('MigrationEndpointsBar i18n resolution', () => {
         language: 'zh-CN',
       },
     });
+    // Real host wiring: settingsStore.language → @datazen/ui setLocale.
+    startLocaleSync();
   });
 
   it('renders translated labels and placeholders for schema-diff prefix without raw keys', () => {

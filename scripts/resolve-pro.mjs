@@ -261,8 +261,16 @@ export function initProExtensions(): void {
   console.log('[resolve-pro] generated-pro.ts written for Pro edition (track B builtin-ep loader active)');
 }
 
-export function clearBuiltinEpStaging(extension = 'sql-editor-pro') {
-  const target = resolve(DEFAULT_BUILTIN_EP_ROOT, extension);
+/**
+ * Remove a staged extension tree from the builtin-ep resource root.
+ *
+ * `stageDir` overrides the landing path (callers that must not touch the real
+ * staging tree — e.g. tests — redirect it to a tmp directory). When it is
+ * omitted the resolved path is byte-for-byte the historical default
+ * `builtin-ep/<extension>`.
+ */
+export function clearBuiltinEpStaging(extension = 'sql-editor-pro', { stageDir } = {}) {
+  const target = stageDir ? resolve(stageDir) : resolve(DEFAULT_BUILTIN_EP_ROOT, extension);
   if (existsSync(target)) {
     rmSync(target, { recursive: true, force: true });
     console.log(`[resolve-pro] removed staged builtin-ep at ${target}`);
@@ -275,10 +283,10 @@ export function clearBuiltinEpStaging(extension = 'sql-editor-pro') {
  * already-staged package tree (manifest.json, dist/, signature.sig, etc.)
  * — no build or signing step is needed after extraction.
  *
- * @param {{ prebuiltUrl: string, extension?: string }} opts
+ * @param {{ prebuiltUrl: string, extension?: string, stageDir?: string }} opts
  */
-export function downloadPrebuiltEp({ prebuiltUrl, extension = 'sql-editor-pro' } = {}) {
-  const target = resolve(DEFAULT_BUILTIN_EP_ROOT, extension);
+export function downloadPrebuiltEp({ prebuiltUrl, extension = 'sql-editor-pro', stageDir } = {}) {
+  const target = stageDir ? resolve(stageDir) : resolve(DEFAULT_BUILTIN_EP_ROOT, extension);
   mkdirSync(target, { recursive: true });
 
   const tmpDir = resolve(ROOT, '.pro-prebuilt-download');
@@ -339,12 +347,17 @@ export function stageProExtension({
   skipBuild = false,
   mode = 'stage',
   log = console.log,
+  stageDir,
+  outDir,
 } = {}) {
   return packEp({
     extensionDir,
     mode,
     skipBuild,
     log,
+    // `undefined` keeps pack-ep's own defaults (builtin-ep/<extension>, artifacts/).
+    stageDir,
+    outDir,
   });
 }
 
@@ -363,30 +376,44 @@ export function pinProCheckout(dir, ref, { log = console.log } = {}) {
   return head;
 }
 
-export function ensureProCheckout({ proPath, proGit, proRef, codegenOnly } = {}) {
+/**
+ * Locate (or clone) the Pro extension checkout.
+ *
+ * `proDest` and `tmpFallbackDir` are path overrides for callers that must not
+ * write into the real tree (tests redirect both into a tmp sandbox). Omitting
+ * them keeps the historical paths exactly as they were.
+ */
+export function ensureProCheckout({
+  proPath,
+  proGit,
+  proRef,
+  codegenOnly,
+  proDest = DEFAULT_PRO_DEST,
+  tmpFallbackDir = '/tmp/datazen-extension-sql-editor-pro',
+} = {}) {
   if (proPath && existsSync(proPath)) {
     console.log(`[resolve-pro] using explicitly provided pro path: ${proPath}`);
     return proPath;
   }
 
   // Check if already in packages/pro-extensions/sql-editor-pro
-  if (existsSync(DEFAULT_PRO_DEST)) {
-    console.log(`[resolve-pro] using existing checkout at ${DEFAULT_PRO_DEST}`);
-    return DEFAULT_PRO_DEST;
+  if (existsSync(proDest)) {
+    console.log(`[resolve-pro] using existing checkout at ${proDest}`);
+    return proDest;
   }
 
   // Check local fallback (/tmp/datazen-extension-sql-editor-pro)
-  const tmpFallback = '/tmp/datazen-extension-sql-editor-pro';
+  const tmpFallback = tmpFallbackDir;
   if (existsSync(tmpFallback)) {
     console.log(`[resolve-pro] copying local checkout from ${tmpFallback}`);
     mkdirSync(PRO_EXT_DIR, { recursive: true });
     try {
-      cpSync(tmpFallback, DEFAULT_PRO_DEST, { recursive: true });
+      cpSync(tmpFallback, proDest, { recursive: true });
     } catch {
       // In case cpSync fails, clone or proceed
     }
-    if (existsSync(DEFAULT_PRO_DEST)) {
-      return DEFAULT_PRO_DEST;
+    if (existsSync(proDest)) {
+      return proDest;
     }
     return tmpFallback;
   }
@@ -400,12 +427,12 @@ export function ensureProCheckout({ proPath, proGit, proRef, codegenOnly } = {})
   console.log(`[resolve-pro] cloning Pro extension from ${proGit} ...`);
   mkdirSync(PRO_EXT_DIR, { recursive: true });
   try {
-    execSync(`git clone ${proGit} ${DEFAULT_PRO_DEST}`, { stdio: 'inherit' });
-    console.log(`[resolve-pro] cloned successfully into ${DEFAULT_PRO_DEST}`);
+    execSync(`git clone ${proGit} ${proDest}`, { stdio: 'inherit' });
+    console.log(`[resolve-pro] cloned successfully into ${proDest}`);
 
     if (proRef) {
       // Detach so the pinned revision is not mistaken for a branch to commit on.
-      pinProCheckout(DEFAULT_PRO_DEST, proRef);
+      pinProCheckout(proDest, proRef);
     } else {
       console.warn(
         '[resolve-pro] WARNING: no Pro extension ref pinned ' +
@@ -414,13 +441,24 @@ export function ensureProCheckout({ proPath, proGit, proRef, codegenOnly } = {})
       );
     }
 
-    return DEFAULT_PRO_DEST;
+    return proDest;
   } catch (err) {
     console.error(`[resolve-pro] failed to clone Pro extension from ${proGit}:`, err.message);
     throw err;
   }
 }
 
+/**
+ * Resolve the build edition, writing the codegen and staging the Pro bundle.
+ *
+ * Every landing spot is overridable for callers that must not touch the real
+ * tree (tests use tmp paths for all three):
+ *   - `opts.codegenPath` → target of `generated-pro.ts` (default `GENERATED_PRO_TS`)
+ *   - `opts.stageDir`    → staging directory of the packed bundle
+ *                          (default `builtin-ep/sql-editor-pro`)
+ *   - `opts.outDir`      → pack-ep work/archive root (default `artifacts/`)
+ * Omitting them reproduces the historical defaults exactly.
+ */
 export function resolvePro(opts = {}) {
   const parsed = parseArgs();
   const explicitEdition =
@@ -432,6 +470,9 @@ export function resolvePro(opts = {}) {
   const restore = opts.restore ?? parsed.restore;
   const codegenOnly = opts.codegenOnly ?? parsed.codegenOnly;
   const prebuiltUrl = opts.prebuiltUrl ?? parsed.prebuiltUrl;
+  const codegenPath = opts.codegenPath ? resolve(opts.codegenPath) : GENERATED_PRO_TS;
+  const stageDir = opts.stageDir ? resolve(opts.stageDir) : null;
+  const outDir = opts.outDir ? resolve(opts.outDir) : undefined;
 
   // Pin precedence: explicit option > CLI/env > lock file. `null` disables the
   // pin, which is what local development wants.
@@ -445,20 +486,20 @@ export function resolvePro(opts = {}) {
   const proGit = requestedGit ?? lock.git ?? DEFAULT_PRO_GIT;
 
   // If codegenOnly is requested without an explicit edition, and generated-pro.ts already exists, preserve it!
-  if (codegenOnly && !explicitEdition && !restore && existsSync(GENERATED_PRO_TS)) {
+  if (codegenOnly && !explicitEdition && !restore && existsSync(codegenPath)) {
     console.log('[resolve-pro] generated-pro.ts already exists; preserving existing edition');
     return { edition: 'preserved', active: true };
   }
 
   if (restore || edition === 'community') {
-    clearBuiltinEpStaging();
-    writeCommunityCodegen();
+    clearBuiltinEpStaging('sql-editor-pro', { stageDir });
+    writeCommunityCodegen(codegenPath);
     return { edition: 'community', active: false };
   }
 
   if (edition === 'pro') {
     // Fast path: prebuilt tarball (downloaded in CI or via --pro-prebuilt-url)
-    const builtinEpDir = resolve(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro');
+    const builtinEpDir = stageDir ?? resolve(DEFAULT_BUILTIN_EP_ROOT, 'sql-editor-pro');
     const hasPrebuiltFiles =
       existsSync(resolve(builtinEpDir, 'manifest.json')) &&
       existsSync(resolve(builtinEpDir, 'dist/index.esm.js'));
@@ -466,12 +507,12 @@ export function resolvePro(opts = {}) {
     if (prebuiltUrl && !codegenOnly) {
       if (hasPrebuiltFiles) {
         console.log('[resolve-pro] prebuilt EP already staged, skipping download');
-        writeProCodegen(GENERATED_PRO_TS, { proPath: proPath || builtinEpDir });
+        writeProCodegen(codegenPath, { proPath: proPath || builtinEpDir });
         return { edition: 'pro', active: true, path: builtinEpDir, prebuilt: true };
       }
       try {
-        const targetPath = downloadPrebuiltEp({ prebuiltUrl });
-        writeProCodegen(GENERATED_PRO_TS, { proPath: targetPath || proPath || DEFAULT_PRO_DEST });
+        const targetPath = downloadPrebuiltEp({ prebuiltUrl, stageDir });
+        writeProCodegen(codegenPath, { proPath: targetPath || proPath || DEFAULT_PRO_DEST });
         return { edition: 'pro', active: true, path: targetPath, prebuilt: true };
       } catch (err) {
         console.warn(`[resolve-pro] prebuilt download failed, falling back to git clone: ${err.message}`);
@@ -482,16 +523,16 @@ export function resolvePro(opts = {}) {
     // shares it with every variant as an artifact), just write the codegen.
     if (hasPrebuiltFiles && !proPath && !proGitExplicit && !codegenOnly) {
       console.log('[resolve-pro] pro extension already staged in builtin-ep, writing codegen');
-      writeProCodegen(GENERATED_PRO_TS, { proPath: proPath || builtinEpDir });
+      writeProCodegen(codegenPath, { proPath: proPath || builtinEpDir });
       return { edition: 'pro', active: true, path: builtinEpDir, prebuilt: true };
     }
 
     // Standard path: clone/build from source, then stage the rewritten +
     // signed bundle as a Tauri resource (track B: loaded at runtime).
     const targetPath = ensureProCheckout({ proPath, proGit, proRef, codegenOnly });
-    writeProCodegen(GENERATED_PRO_TS, { proPath: targetPath || proPath || DEFAULT_PRO_DEST });
+    writeProCodegen(codegenPath, { proPath: targetPath || proPath || DEFAULT_PRO_DEST });
     if (!codegenOnly && targetPath) {
-      stageProExtension({ extensionDir: targetPath, mode: 'stage' });
+      stageProExtension({ extensionDir: targetPath, mode: 'stage', stageDir, outDir });
     }
     return { edition: 'pro', active: true, path: targetPath };
   }

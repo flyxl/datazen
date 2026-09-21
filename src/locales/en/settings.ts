@@ -2,6 +2,9 @@
 const pack = {
   'settings.editorCompletionIncludeTablePrefix':
     'Include table name or alias in column completions',
+  'settings.enableFkPrediction': 'Smart foreign key prediction',
+  'settings.enableFkPredictionHint':
+    'Infer foreign keys from table structure and naming when the schema declares none, and use them for JOIN suggestions and completion ranking. Predicted relationships are always marked and can be removed in one click.',
   'settings.title': 'Settings',
   'settings.general': 'General',
   'settings.extensions.title': 'Extensions',

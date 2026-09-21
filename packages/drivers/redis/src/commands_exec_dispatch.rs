@@ -12,16 +12,59 @@ match command {
                 .or_else(|| input.get("with_memory"))
                 .and_then(JsonValue::as_bool)
                 .unwrap_or(false);
+            let no_ttl_only = input
+                .get("noTtlOnly")
+                .or_else(|| input.get("no_ttl_only"))
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(false);
             let (next, keys, db_size) = driver
-                .scan_keys_with_info(handle, db, pattern, cursor, count, key_type, with_memory)
+                .scan_keys_with_info(handle, db, pattern, cursor, count, key_type, with_memory, no_ttl_only)
                 .await?;
             json_ok(serde_json::json!({ "cursor": next, "keys": keys, "dbSize": db_size }))
+        }
+        "db_sizes" => json_ok(driver.db_sizes(handle).await?),
+        "list_children" => {
+            let prefix = req_str(&input, "prefix")?;
+            let cursor = input.get("cursor").and_then(JsonValue::as_u64).unwrap_or(0);
+            let count = input
+                .get("count")
+                .and_then(JsonValue::as_u64)
+                .unwrap_or(100) as u32;
+            let sep = opt_str(&input, "sep");
+            let no_ttl_only = input
+                .get("noTtlOnly")
+                .or_else(|| input.get("no_ttl_only"))
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(false);
+            let key_type = opt_str(&input, "keyType").or_else(|| opt_str(&input, "key_type"));
+            let (children, next_cursor) = driver
+                .list_children(handle, db, prefix, cursor, count, sep, no_ttl_only, key_type)
+                .await?;
+            json_ok(serde_json::json!({ "children": children, "cursor": next_cursor }))
         }
         "get_key" => json_ok(
             driver
                 .get_key_detail(handle, db, req_str(&input, "key")?)
                 .await?,
         ),
+        "scan_values" => json_ok(driver.scan_values(handle, db, &input).await?),
+        "scan_abort" => json_ok(driver.scan_abort(handle, &input).await?),
+        "decode_value" => json_ok(
+            crate::decode::decode_value(&input)
+                .map_err(DriverError::InvalidConfig)?,
+        ),
+        "get_key_raw" => {
+            let with_memory = input
+                .get("withMemory")
+                .or_else(|| input.get("with_memory"))
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(false);
+            json_ok(
+                driver
+                    .get_key_raw(handle, db, req_str(&input, "key")?, with_memory)
+                    .await?,
+            )
+        }
         "set_string" => {
             let keep_ttl = input
                 .get("keepTtl")
@@ -36,6 +79,24 @@ match command {
                     req_str(&input, "value")?,
                     keep_ttl,
                 )
+                .await?;
+            Ok(ok())
+        }
+        "set_string_raw" => {
+            let keep_ttl = input
+                .get("keepTtl")
+                .or_else(|| input.get("keep_ttl"))
+                .and_then(JsonValue::as_bool)
+                .unwrap_or(false);
+            let b64 = req_str(&input, "dataB64")
+                .or_else(|_| req_str(&input, "data_b64"))?;
+            let bytes = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                b64.trim(),
+            )
+            .map_err(|e| DriverError::InvalidConfig(format!("invalid base64 payload: {e}")))?;
+            driver
+                .plugin_set_string_bytes(id, db, req_str(&input, "key")?, &bytes, keep_ttl)
                 .await?;
             Ok(ok())
         }
@@ -422,6 +483,7 @@ match command {
                     db,
                     req_str(&input, "key")?,
                     opt_str(&input, "path").unwrap_or("$"),
+                    opt_bool(&input, "raw"),
                 )
                 .await?,
         ),

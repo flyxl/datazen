@@ -363,6 +363,35 @@ The builder belongs to the query panel that opened it:
 - **i18n**: all UI text uses `query.visualBuilder.*` (source of truth:
   `src/locales/en/query.ts`).
 
+## Foreign key prediction
+
+Most real schemas declare no foreign keys, so the builder infers them from
+metadata alone (`src/lib/relationPrediction/`). The same engine backs the SQL
+editor's related-table ranking and the ER diagram, so the three can never
+disagree about a schema.
+
+The feature is turned off in **Settings → Editor → Smart foreign key
+prediction** (on by default). The switch governs inference only: declared
+constraints are still detected and offered with prediction off, because that is
+what the database states rather than a guess.
+
+An inferred relationship enters the canvas as an **auto-join candidate**, drawn
+dashed and amber like the ER diagram's inferred edges, and it must be confirmed
+before it reaches the SQL — a guess never changes the query silently. Only
+high-confidence, unambiguous candidates are offered at all; ambiguous or
+medium-tier ones are dropped. Declared constraints always win: a column already
+covered by a real foreign key is not predicted, and a join that is both declared
+and predicted is labelled `declared`.
+
+The engine's rules — a relationship may only target a key, type family is a gate,
+ambiguity abstains, and two references to one table stay two relationships — are
+documented in `src/lib/relationPrediction/predictRelations.ts` and pinned by
+tests. Because the ER diagram runs prediction over every table at once, the
+search is indexed rather than scanned: the naive version measured ~15s on a
+500-table schema, the indexed one ~12ms. The data-overlap probe is deliberately
+absent — it queries the database and is the part that can hurt a production
+server.
+
 ## Known Limitations
 
 - SQL Server LIMIT/OFFSET not supported (uses TOP/OFFSET-FETCH).

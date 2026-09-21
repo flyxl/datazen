@@ -2,7 +2,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   cleanFullyGeneratedContent,
-  cleanGeneratedLocalesContent,
   cleanGeneratedTsContent,
   cleanDriverInitContent,
   deinjectCargoContent,
@@ -34,20 +33,17 @@ describe('driver-deinject', () => {
 
   it('classifies fully-generated codegen paths', () => {
     expect(isFullyGeneratedManagedFile('src/extensions/generated.ts')).toBe(true);
-    expect(isFullyGeneratedManagedFile('src/extensions/generated-locales.ts')).toBe(true);
+    // Driver locale packs self-register inside their own package now, so the
+    // legacy per-driver locale aggregator codegen file no longer exists.
     expect(isFullyGeneratedManagedFile('src-tauri/src/driver_init.rs')).toBe(true);
     expect(isFullyGeneratedManagedFile('Cargo.toml')).toBe(false);
   });
 
   it('returns canonical empty codegen stubs', () => {
     expect(cleanGeneratedTsContent()).toContain('export type DatabaseType = never');
-    expect(cleanGeneratedLocalesContent()).toContain('export type DriverTranslationKey = never');
     expect(cleanDriverInitContent()).toContain('No drivers with Tauri commands enabled');
     expect(cleanFullyGeneratedContent('src/extensions/generated.ts')).toBe(
       cleanGeneratedTsContent(),
-    );
-    expect(cleanFullyGeneratedContent('src/extensions/generated-locales.ts')).toBe(
-      cleanGeneratedLocalesContent(),
     );
     expect(cleanFullyGeneratedContent('src-tauri/src/driver_init.rs')).toBe(
       cleanDriverInitContent(),

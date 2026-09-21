@@ -52,6 +52,12 @@ export interface SchemaCompletionOptions {
    * stable and relies on CM-internal filtering for the rest.
    */
   prefixHint?: string;
+  /**
+   * Extra completion boost per folded table name, for tables related to the ones
+   * the statement already mentions. Ranking only — an unrelated table stays in the
+   * list, just lower.
+   */
+  relatedTableBoosts?: ReadonlyMap<string, { boost: number; via: string; origin: string }>;
 }
 
 /**
@@ -185,6 +191,7 @@ function relationCompletionsFromSnapshot(
   metadata: EditorMetadataSnapshot,
   adapter: SqlDialectAdapter,
   qualifierParts: readonly string[],
+  relatedTableBoosts?: SchemaCompletionOptions['relatedTableBoosts'],
 ): Completion[] {
   const results: Completion[] = [];
   for (const [, rel] of metadata.relations) {
@@ -205,12 +212,15 @@ function relationCompletionsFromSnapshot(
     }
 
     const name = adapter.quoteIdentifier(rel.identity.name.name);
+    // A related table outranks an unrelated one without excluding it, so the
+    // ranking never removes a valid choice.
+    const related = relatedTableBoosts?.get(rel.identity.name.name.toLowerCase());
     results.push({
       label: name,
       type: 'type' as const,
-      detail: rel.kind,
+      detail: related ? `${rel.kind} · via ${related.via}` : rel.kind,
       apply: name,
-      boost: 10,
+      boost: 10 + (related?.boost ?? 0),
     });
   }
   return results;
@@ -870,6 +880,7 @@ export function produceSchemaCompletions(options: SchemaCompletionOptions): Sche
             snapshot,
             adapter,
             intent.qualifierParts,
+            options.relatedTableBoosts,
           ).filter((c) => {
             const k = relationKeyFromLabel(c.label, adapter, snapshot);
             return k === null || !filteredKeys.has(k);
@@ -882,6 +893,7 @@ export function produceSchemaCompletions(options: SchemaCompletionOptions): Sche
         snapshot,
         adapter,
         intent.qualifierParts,
+        options.relatedTableBoosts,
       );
       if (fromSnapshot.length > 0) {
         // If snapshot has tables, also merge any extra tables from schema that aren't in snapshot yet
@@ -987,7 +999,12 @@ export function produceSchemaCompletions(options: SchemaCompletionOptions): Sche
 
     default: {
       // Fallback: relation completions from snapshot.
-      return relationCompletionsFromSnapshot(snapshot, adapter, intent.qualifierParts);
+      return relationCompletionsFromSnapshot(
+        snapshot,
+        adapter,
+        intent.qualifierParts,
+        options.relatedTableBoosts,
+      );
     }
   }
 }

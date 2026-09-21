@@ -5,12 +5,14 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
+use crate::types::{KeyDetail, ValueFrame};
+
 use crate::connect::{
     build_connection_plan, looks_like_connection_loss, open_live_conn, open_pinned_node_conn,
     ConnectionPlan, RedisLiveConn,
 };
 use crate::redis_driver_on::{
-    get_key_detail_on, info_server_on, scan_keys_with_info_on, select_db_on,
+    get_key_detail_on, get_key_raw_on, info_server_on, scan_keys_with_info_on, select_db_on,
 };
 use crate::with_redis_conn;
 
@@ -153,6 +155,7 @@ impl RedisDriver {
         count: u32,
         key_type: Option<&str>,
         with_memory: bool,
+        no_ttl_only: bool,
     ) -> Result<(u64, Vec<KeyEntry>, u64), DriverError> {
         let t0 = std::time::Instant::now();
         tracing::info!(db_index, %pattern, cursor, count, "redis scan_keys_with_info: acquiring lock");
@@ -175,6 +178,7 @@ impl RedisDriver {
             count,
             key_type.as_deref(),
             with_memory,
+            no_ttl_only,
             t0
         )
         .await)
@@ -201,7 +205,156 @@ impl RedisDriver {
         with_redis_conn!(&mut rc.live, |conn| get_key_detail_on(conn, &key).await)
     }
 
+    pub async fn get_key_raw(
+        &self,
+        handle: &ConnectionHandle,
+        db_index: u32,
+        key: &str,
+        with_memory: bool,
+    ) -> Result<ValueFrame, DriverError> {
+        let t0 = std::time::Instant::now();
+        tracing::info!(db_index, %key, with_memory, "redis get_key_raw: acquiring lock");
+        let mut conns = self.connections.write().await;
+        tracing::info!(
+            lock_ms = t0.elapsed().as_millis() as u64,
+            "redis get_key_raw: lock acquired"
+        );
+        let rc = Self::get_conn(&mut conns, handle)?;
+        Self::select_db(&mut rc.live, db_index)
+            .await
+            .map_err(DriverError::QueryFailed)?;
+        let key = key.to_string();
+        with_redis_conn!(&mut rc.live, |conn| get_key_raw_on(conn, &key, with_memory)
+            .await)
+    }
+
+    /// Fetch key counts for every database (SELECT + DBSIZE on a dedicated connection).
+    pub async fn db_sizes(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<Vec<serde_json::Value>, DriverError> {
+        // 1. Determine db_count from CONFIG GET databases on the shared connection.
+        let db_count = {
+            let mut conns = self.connections.write().await;
+            let rc = Self::get_conn(&mut conns, handle)?;
+            with_redis_conn!(&mut rc.live, |conn| {
+                redis::cmd("CONFIG")
+                    .arg("GET")
+                    .arg("databases")
+                    .query_async::<redis::Value>(conn)
+                    .await
+                    .map_err(|e| e.to_string())
+            })
+            .map_err(DriverError::QueryFailed)
+            .and_then(|cfg_val| match cfg_val {
+                redis::Value::Array(ref items) if items.len() >= 2 => {
+                    let s = match &items[1] {
+                        redis::Value::BulkString(b) => String::from_utf8_lossy(b).into_owned(),
+                        redis::Value::Int(i) => i.to_string(),
+                        _ => "16".to_string(),
+                    };
+                    Ok(s.parse::<u32>().unwrap_or(16))
+                }
+                _ => Ok(16),
+            })?
+        };
+
+        // 2. Get the connection plan for creating dedicated connections.
+        let plan = {
+            let mut conns = self.connections.write().await;
+            let rc = Self::get_conn(&mut conns, handle)?;
+            rc.plan.clone()
+        };
+
+        // 3. For each database, open a dedicated connection, SELECT + DBSIZE.
+        let mut results = Vec::with_capacity(db_count as usize);
+        for db in 0..db_count {
+            let mut live = open_live_conn(&plan).await?;
+            Self::select_db(&mut live, db)
+                .await
+                .map_err(DriverError::QueryFailed)?;
+            let count: u64 = with_redis_conn!(&mut live, |conn| {
+                redis::cmd("DBSIZE")
+                    .query_async(conn)
+                    .await
+                    .map_err(|e| e.to_string())
+            })
+            .map_err(DriverError::QueryFailed)?;
+            results.push(serde_json::json!({ "db": db, "keys": count }));
+        }
+        Ok(results)
+    }
+
+    /// List direct children under a key prefix (leaf keys + virtual folders).
+    pub async fn list_children(
+        &self,
+        handle: &ConnectionHandle,
+        db_index: u32,
+        prefix: &str,
+        cursor: u64,
+        count: u32,
+        sep: Option<&str>,
+        no_ttl_only: bool,
+        key_type: Option<&str>,
+    ) -> Result<(Vec<crate::ops_tree::ChildEntry>, u64), DriverError> {
+        let t0 = std::time::Instant::now();
+        tracing::info!(db_index, %prefix, cursor, count, "redis list_children: acquiring lock");
+        let mut conns = self.connections.write().await;
+        tracing::info!(
+            lock_ms = t0.elapsed().as_millis() as u64,
+            "redis list_children: lock acquired"
+        );
+        let rc = Self::get_conn(&mut conns, handle)?;
+        Self::select_db(&mut rc.live, db_index)
+            .await
+            .map_err(DriverError::QueryFailed)?;
+        let prefix = prefix.to_string();
+        let sep = sep.map(str::to_string);
+        let key_type = key_type.map(str::to_string);
+        with_redis_conn!(&mut rc.live, |conn| crate::ops_tree::list_children_on(
+            conn,
+            &prefix,
+            cursor,
+            count,
+            sep.as_deref(),
+            no_ttl_only,
+            key_type.as_deref(),
+        )
+        .await)
+    }
+
+    pub async fn scan_values(
+        &self,
+        handle: &ConnectionHandle,
+        db_index: u32,
+        input: &serde_json::Value,
+    ) -> Result<serde_json::Value, DriverError> {
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, handle)?;
+        Self::select_db(&mut rc.live, db_index)
+            .await
+            .map_err(DriverError::QueryFailed)?;
+        let session = handle.pool_id.clone();
+        with_redis_conn!(&mut rc.live, |conn| {
+            crate::ops_value_search::run_scan_batch(conn, &session, input).await
+        })
+    }
+
+    pub async fn scan_abort(
+        &self,
+        handle: &ConnectionHandle,
+        input: &serde_json::Value,
+    ) -> Result<serde_json::Value, DriverError> {
+        let session = handle.pool_id.clone();
+        let requested = input
+            .get("taskId")
+            .or_else(|| input.get("task_id"))
+            .and_then(serde_json::Value::as_str);
+        Ok(crate::ops_value_search::abort_task(&session, requested).await)
+    }
+
     plugin_on_db!(plugin_set_string, (key: &str, value: &str, keep_ttl: bool) -> (), |conn| crate::ops::set_string_with_options(conn, key, value, keep_ttl));
+    plugin_on_db!(plugin_set_string_bytes, (key: &str, bytes: &[u8], keep_ttl: bool) -> (), |conn| crate::ops_write::set_string_bytes(conn, key, bytes, keep_ttl));
     plugin_on_db!(plugin_set_expire_at, (key: &str, expire_at: i64) -> (), |conn| crate::ops::set_expire_at(conn, key, expire_at));
     plugin_on_db!(plugin_hash_set, (key: &str, field: &str, value: &str) -> (), |conn| crate::ops::hash_set(conn, key, field, value));
     plugin_on_db!(plugin_hash_del, (key: &str, fields: &[String]) -> (), |conn| crate::ops::hash_del(conn, key, fields));
@@ -421,7 +574,7 @@ impl RedisDriver {
         })
     }
 
-    plugin_on_db!(plugin_json_get, (key: &str, path: &str) -> crate::ops_json::JsonGetResult, |conn| crate::ops_json::json_get(conn, key, path));
+    plugin_on_db!(plugin_json_get, (key: &str, path: &str, raw: bool) -> crate::ops_json::JsonGetResult, |conn| crate::ops_json::json_get(conn, key, path, raw));
     plugin_on_db!(plugin_json_set, (key: &str, path: &str, value: &str) -> (), |conn| crate::ops_json::json_set(conn, key, path, value));
     plugin_on_db!(plugin_json_del, (key: &str, path: &str) -> crate::ops_json::JsonDelResult, |conn| crate::ops_json::json_del(conn, key, path));
 

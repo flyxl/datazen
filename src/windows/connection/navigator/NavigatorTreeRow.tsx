@@ -22,6 +22,12 @@ import { setDragPayload } from '../schema-tree/schemaTreeDrag';
 import { PINNED_GROUP_KEY, RECENT_GROUP_KEY } from '../../../lib/connectionLocator';
 import type { UnifiedRow } from './types';
 import { createDragGhost, depthPadding, namespaceLeafContext, removeDragGhost } from './utils';
+import { useKvDbCounts } from './useKvDbCounts';
+
+/** Parse the numeric database index from a `db{n}` name; NaN when not a db name. */
+function dbIndexFromName(dbName: string): number {
+  return Number(dbName.replace(/^db/, ''));
+}
 
 export type GroupDropTarget = { groupName: string; target: 'header' | 'empty' };
 
@@ -144,6 +150,8 @@ export function NavigatorTreeRow({
   renderStatusDot,
   viewActions,
 }: NavigatorTreeRowProps) {
+  const kvDb = row.type === 'kv-db' ? row : null;
+  const dbCounts = useKvDbCounts(kvDb?.dbSessionId, kvDb?.dbCountsCommand);
   switch (row.type) {
     case 'section':
       return (
@@ -520,6 +528,14 @@ export function NavigatorTreeRow({
             fallback={Database}
           />
           <span className="selectable min-w-0 truncate">{row.dbName}</span>
+          {dbCounts[dbIndexFromName(row.dbName)] != null && (
+            <span
+              className="ml-auto shrink-0 pl-1 text-[11px] text-fg-muted"
+              data-testid={`kv-db-count-${row.dbName}`}
+            >
+              ({dbCounts[dbIndexFromName(row.dbName)]})
+            </span>
+          )}
         </button>
       );
 

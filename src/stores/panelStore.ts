@@ -105,7 +105,7 @@ interface PanelActions {
     database: string,
     sessionDatabase?: string,
   ) => void;
-  setActivePanel: (panelId: string) => void;
+  setActivePanel: (panelId: string | null) => void;
   updatePanel: (panelId: string, patch: Partial<Panel>) => void;
   closeOtherPanels: (panelId: string) => void;
   closeAllPanels: () => void;
@@ -260,7 +260,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   },
 
   setActivePanel: (panelId) => {
-    set({ activePanelId: panelId });
+    set({ activePanelId: panelId ?? null });
   },
 
   updatePanel: (panelId, patch) => {

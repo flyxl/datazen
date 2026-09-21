@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildErGraph } from '../buildErGraph';
+import type { ErPredictedRelation } from '../buildErGraph';
 import type { TableSchema } from '../../../../types';
 
 function makeSchema(
@@ -98,12 +99,7 @@ describe('buildErGraph', () => {
     it('creates one node per table', () => {
       const { nodes } = buildErGraph(allSchemas);
       expect(nodes).toHaveLength(4);
-      expect(nodes.map((n) => n.id)).toEqual([
-        'users',
-        'orders',
-        'products',
-        'order_items',
-      ]);
+      expect(nodes.map((n) => n.id)).toEqual(['users', 'orders', 'products', 'order_items']);
     });
 
     it('all nodes use tableNode type', () => {
@@ -197,10 +193,7 @@ describe('buildErGraph', () => {
       const { edges } = buildErGraph(allSchemas);
       const itemEdges = edges.filter((e) => e.source === 'order_items');
       expect(itemEdges).toHaveLength(2);
-      expect(itemEdges.map((e) => e.target).sort()).toEqual([
-        'orders',
-        'products',
-      ]);
+      expect(itemEdges.map((e) => e.target).sort()).toEqual(['orders', 'products']);
     });
 
     it('edges are animated smoothstep type', () => {
@@ -444,5 +437,89 @@ describe('buildErGraph', () => {
       expect(edges[0].source).toBe('categories');
       expect(edges[0].target).toBe('categories');
     });
+  });
+});
+
+describe('buildErGraph with inferred relationships', () => {
+  const predicted: ErPredictedRelation[] = [
+    {
+      id: 'predicted-orders-users-user_id=id',
+      fromTable: 'orders',
+      toTable: 'users',
+      columnPairs: [{ left: 'user_id', right: 'id' }],
+      score: 0.9,
+    },
+  ];
+
+  it('draws an inferred relationship as its own edge', () => {
+    const { edges } = buildErGraph(allSchemas, undefined, predicted);
+    const inferred = edges.filter((e) => e.data?.kind === 'predicted');
+    expect(inferred).toHaveLength(1);
+    expect(inferred[0]!.id).toBe('predicted-orders-users-user_id=id');
+    expect(inferred[0]!.source).toBe('orders');
+    expect(inferred[0]!.target).toBe('users');
+  });
+
+  it('keeps an inference visually distinct from a constraint', () => {
+    // The whole point of the feature is that a guess is never presented with the
+    // same certainty as something the database enforces.
+    const { edges } = buildErGraph(allSchemas, undefined, predicted);
+    const declared = edges.find((e) => e.data?.kind === 'declared')!;
+    const inferred = edges.find((e) => e.data?.kind === 'predicted')!;
+
+    expect(inferred.style?.strokeDasharray).toBeTruthy();
+    expect(inferred.animated).toBe(false);
+    expect(inferred.style?.stroke).not.toBe(declared.style?.stroke);
+    expect(inferred.markerEnd).toBeTruthy();
+  });
+
+  it('marks inferred columns as foreign keys on the node', () => {
+    const { nodes } = buildErGraph(allSchemas, undefined, predicted);
+    const ordersNode = nodes.find((n) => n.id === 'orders')!;
+    const columns = ordersNode.data.columns as { name: string; isFk: boolean }[];
+    expect(columns.find((c) => c.name === 'user_id')!.isFk).toBe(true);
+  });
+
+  it('draws no inferred edges by default', () => {
+    const { edges } = buildErGraph(allSchemas);
+    expect(edges.some((e) => e.data?.kind === 'predicted')).toBe(false);
+  });
+
+  it('skips an inference whose tables are not both present', () => {
+    const orphan: ErPredictedRelation[] = [
+      {
+        id: 'predicted-orders-ghosts-order_id=id',
+        fromTable: 'orders',
+        toTable: 'ghosts',
+        columnPairs: [{ left: 'order_id', right: 'id' }],
+        score: 0.9,
+      },
+    ];
+    const { edges } = buildErGraph(allSchemas, undefined, orphan);
+    expect(edges.some((e) => e.data?.kind === 'predicted')).toBe(false);
+  });
+
+  it('includes an inferred neighbour when focusing a table', () => {
+    // A focus view that ignored inferences would hide exactly the relationships
+    // the feature was added to surface.
+    const isolated = makeSchema('audit_log', [{ name: 'id', dataType: 'INT' }], ['id']);
+    const inferred: ErPredictedRelation[] = [
+      {
+        id: 'predicted-audit_log-users-actor_id=id',
+        fromTable: 'audit_log',
+        toTable: 'users',
+        columnPairs: [{ left: 'actor_id', right: 'id' }],
+        score: 0.8,
+      },
+    ];
+    const { nodes, edges } = buildErGraph([...allSchemas, isolated], 'users', inferred);
+    expect(nodes.map((n) => n.id)).toContain('audit_log');
+    expect(edges.some((e) => e.data?.kind === 'predicted')).toBe(true);
+  });
+
+  it('labels an inferred edge with its source column', () => {
+    const { edges } = buildErGraph(allSchemas, undefined, predicted);
+    const inferred = edges.find((e) => e.data?.kind === 'predicted')!;
+    expect(inferred.label).toBe('user_id');
   });
 });

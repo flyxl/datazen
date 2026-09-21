@@ -462,6 +462,9 @@ const pack = {
   'query.visualBuilder.sortOptionsTitle': 'Sort options',
   'query.visualBuilder.joinLabel': 'Join',
   'query.visualBuilder.joinOn': 'ON',
+  'query.visualBuilder.predictedBadge': 'predicted',
+  'query.visualBuilder.predictedBadgeTitle':
+    'Inferred from structure and naming, not a declared foreign key',
   // ── Object tree ──────────────────────────────────────────────
   'query.objectTree.title': 'Database Objects',
   'query.objectTree.schema': 'schema',

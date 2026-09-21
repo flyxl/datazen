@@ -158,8 +158,7 @@ export const aiCommands = {
   }) => invoke<string>('mcp_client_call_tool', params),
 
   /** Cancel a running AI streaming request (FR-01, backend pending). */
-  cancel: (requestId: string) =>
-    invoke<boolean>('ai_cancel', { requestId }).catch(() => false),
+  cancel: (requestId: string) => invoke<boolean>('ai_cancel', { requestId }).catch(() => false),
 
   promptList: (driverType?: string) =>
     invoke<PromptInfo[]>('prompt_list', { driverType: driverType ?? null }),

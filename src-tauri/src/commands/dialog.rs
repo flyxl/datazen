@@ -12,7 +12,7 @@
 //! Webdriver/E2E builds pre-inject dialog results through
 //! [`test_inject_dialog_result`] and clear them between cases with
 //! [`test_reset_dialog_queue`]. Both IPCs are compiled out of production
-//! builds (cfg gates here + registration gates in `bootstrap.rs`); there the queue
+//! builds (cfg gates here + registration gates in `bootstrap/run.rs`); there the queue
 //! can never receive an answer and every request reaches the native UI.
 //!
 //! There must be no second judgement path: command code never calls
@@ -301,7 +301,7 @@ mod tests {
     use super::*;
 
     const SOURCE: &str = include_str!("dialog.rs");
-    const BOOTSTRAP_RS: &str = include_str!("../bootstrap.rs");
+    const BOOTSTRAP_RS: &str = include_str!("../bootstrap/run.rs");
 
     /// `(verb, tail)` pairs assembling `test_<verb>_dialog_<tail>` needles at
     /// runtime so this test's own source never contains them verbatim

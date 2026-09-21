@@ -78,6 +78,35 @@ export function escapeIdent(name: string, dbType?: DatabaseType): string {
   return name; // no quoting (e.g. Redis)
 }
 
+/**
+ * Default SQL literal value escaper (PostgreSQL-style).
+ * - NULL / undefined → `NULL`
+ * - number → bare literal
+ * - boolean → `TRUE` / `FALSE`
+ * - object → `JSON.stringify` then single-quote with `'` → `''` escaping
+ * - string → single-quote with `'` → `''` escaping
+ */
+export function defaultEscapeSqlValue(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return `'${str.replaceAll("'", "''")}'`;
+}
+
+/**
+ * Get the SQL literal value escaper for a given database type.
+ * Returns the driver's custom escaper if registered, otherwise the
+ * host default (PostgreSQL-style single-quote doubling).
+ */
+export function getEscapeSqlValue(dbType?: string): (value: unknown) => string {
+  if (dbType) {
+    const meta = (DB_REGISTRY as Record<string, DatabaseTypeMeta | undefined>)[dbType];
+    if (meta?.escapeSqlValue) return meta.escapeSqlValue;
+  }
+  return defaultEscapeSqlValue;
+}
+
 /** Get the display label for a database type. */
 export function getDbLabel(dbType: DatabaseType): string {
   return DB_REGISTRY[dbType]?.label ?? dbType;

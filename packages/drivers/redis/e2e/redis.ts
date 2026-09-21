@@ -14,7 +14,10 @@
  * Seed data (from e2e/setup-demo-data.sh):
  *   db5 → demo:app:name (string), demo:user:1001 (hash),
  *          demo:queue:orders (list), demo:regions (set),
- *          demo:sales:rank (zset)
+ *          demo:sales:rank (zset),
+ *          demo:bin:mixed (binary 00 01 ff 41), demo:gzip:json (gzip),
+ *          demo:msgpack:obj (msgpack {"a":1}), demo:lvl:a:b:c:* (deep tree),
+ *          demo:noexp:forever (TTL -1), demo:json:doc (ReJSON if module present)
  */
 import { createConnection } from 'node:net';
 import { expect, browser, $ } from '@wdio/globals';
@@ -77,6 +80,24 @@ async function invoke<T = unknown>(cmd: string, args: Record<string, unknown> = 
     cmd,
     JSON.stringify(args),
   ) as Promise<T>;
+}
+
+/** Run a Redis Driver Command through the generic `execute_driver_command` IPC. */
+async function driverCommand<T = unknown>(
+  dbSessionId: string,
+  command: string,
+  input: Record<string, unknown> = {},
+): Promise<T> {
+  const res = await invoke<{ data: T }>('execute_driver_command', {
+    request: { dbSessionId, command, input },
+  });
+  return res.data;
+}
+
+/** Base64 → byte array, in-browser (the Node test context may lack Buffer→typed helpers). */
+function decodeB64(b64: string): number[] {
+  const bin = Buffer.from(b64, 'base64').toString('binary');
+  return Array.from(bin, (ch) => ch.charCodeAt(0));
 }
 
 /** Connect to Redis via IPC, returning the dbSessionId string. */
@@ -511,6 +532,89 @@ describe('Redis new pages E2E', () => {
         (document.body.textContent || '').includes('hello from e2e'),
       );
       expect(hasMessage).toBe(true);
+    });
+  });
+
+  // ─── Console UX overhaul (REDIS_CONSOLE_UX) — capability assertions ───
+  // These drive Driver Commands directly over IPC: deterministic, infra-tolerant,
+  // and each guards on the specific seed fixture being present so the suite stays
+  // green on servers without RedisJSON or older Redis.
+  describe('Console UX overhaul (R2/R3/R4/R5/R8)', () => {
+    const dbIndex = Number((REDIS_DEMO_DB.match(/\d+/) || ['5'])[0]);
+
+    it('db_sizes reports the demo db key count (R4 · acceptance 3)', async () => {
+      if (skipRequested() || !(await redisReachable())) return;
+      const sizes = await driverCommand<Array<{ db: number; keys: number }>>(
+        dbSessionId,
+        'db_sizes',
+        {},
+      );
+      expect(Array.isArray(sizes)).toBe(true);
+      const demo = sizes.find((s) => s.db === dbIndex);
+      expect(demo).toBeTruthy();
+      expect((demo as { keys: number }).keys).toBeGreaterThan(0);
+    });
+
+    it('get_key_raw round-trips hostile binary bytes losslessly (R2 · acceptance 1)', async () => {
+      if (skipRequested() || !(await redisReachable())) return;
+      const frame = await driverCommand<{ rawB64: string | null; logicalLen: number }>(
+        dbSessionId,
+        'get_key_raw',
+        { dbIndex, key: 'demo:bin:mixed', withMemory: false },
+      );
+      expect(frame.rawB64).toBeTruthy();
+      expect(decodeB64(frame.rawB64 as string)).toEqual([0x00, 0x01, 0xff, 0x41]);
+      expect(frame.logicalLen).toBe(4);
+    });
+
+    it('decode_value parses a MessagePack map (R8 · acceptance 2)', async () => {
+      if (skipRequested() || !(await redisReachable())) return;
+      const frame = await driverCommand<{ rawB64: string | null }>(dbSessionId, 'get_key_raw', {
+        dbIndex,
+        key: 'demo:msgpack:obj',
+        withMemory: false,
+      });
+      if (!frame.rawB64) return;
+      const decoded = await driverCommand<{ ok: boolean; json?: string }>(
+        dbSessionId,
+        'decode_value',
+        { codec: 'msgpack', data: frame.rawB64 },
+      );
+      expect(decoded.ok).toBe(true);
+      expect(JSON.parse(decoded.json as string)).toEqual({ a: 1 });
+    });
+
+    it('list_children returns per-level folders for a deep namespace (R5 · acceptance 4)', async () => {
+      if (skipRequested() || !(await redisReachable())) return;
+      const res = await driverCommand<{
+        children: Array<{ kind: string; prefix?: string; key?: string }>;
+      }>(dbSessionId, 'list_children', {
+        dbIndex,
+        prefix: 'demo',
+        cursor: 0,
+        count: 200,
+        sep: ':',
+      });
+      const folders = res.children.filter((c) => c.kind === 'folder').map((c) => c.prefix);
+      expect(folders).toContain('demo:lvl');
+    });
+
+    it('json_get with raw returns verbatim text and a parsed value (R3 · acceptance 7)', async () => {
+      if (skipRequested() || !(await redisReachable())) return;
+      let result: { value: unknown; rawText?: string | null } | undefined;
+      try {
+        result = await driverCommand(dbSessionId, 'json_get', {
+          dbIndex,
+          key: 'demo:json:doc',
+          path: '$',
+          raw: true,
+        });
+      } catch {
+        return; // RedisJSON module not loaded on this server — skip
+      }
+      if (result?.value == null) return; // key absent — skip
+      expect(result && typeof result.rawText === 'string').toBe(true);
+      expect(JSON.parse(result?.rawText as string)).toEqual(result?.value);
     });
   });
 });

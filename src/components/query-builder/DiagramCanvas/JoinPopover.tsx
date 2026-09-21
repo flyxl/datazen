@@ -74,6 +74,15 @@ export function JoinPopover({
         <span className="truncate font-medium" title={title}>
           {title}
         </span>
+        {shape.predicted && (
+          <span
+            className="shrink-0 rounded border border-dashed border-warning/60 px-1 text-[10px] text-warning"
+            title={t('query.visualBuilder.predictedBadgeTitle')}
+            data-testid="qb-join-predicted-badge"
+          >
+            {t('query.visualBuilder.predictedBadge')}
+          </span>
+        )}
         {shape.pairCount > 1 && (
           <span
             className="shrink-0 rounded bg-surface-inset px-1 text-[10px] text-fg-muted"

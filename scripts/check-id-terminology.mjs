@@ -23,7 +23,7 @@ const SCAN_DIRS = ['src', 'packages', 'e2e'];
 const SCAN_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.rs']);
 const SKIP_DIR_NAMES = new Set(['node_modules', 'dist', 'coverage', '.git']);
 // Gitignored codegen produced by resolve-drivers — never hand-written source.
-const SKIP_FILES = new Set(['src/extensions/generated.ts', 'src/extensions/generated-locales.ts']);
+const SKIP_FILES = new Set(['src/extensions/generated.ts']);
 
 /**
  * Forbidden token shapes. Every entry must carry a reason; hits are only

@@ -34,11 +34,14 @@ export function ToggleRow({
   hint,
   checked,
   onChange,
+  testId,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  /** Stable hook for tests; the accessible name is translated, so it cannot be one. */
+  testId?: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -51,6 +54,7 @@ export function ToggleRow({
         role="switch"
         aria-label={label}
         aria-checked={checked}
+        data-testid={testId}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
           checked ? 'bg-accent' : 'bg-edge'

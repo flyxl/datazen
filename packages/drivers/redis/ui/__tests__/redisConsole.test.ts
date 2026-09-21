@@ -1,15 +1,11 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import {
-  filterCompletions,
-  getCompletionPrefix,
-  REDIS_COMMANDS,
-} from '../redisCommands';
+import { filterCompletions, getCompletionPrefix, REDIS_COMMANDS } from '../console/redisCommands';
 import {
   loadConsoleHistory,
   navigateConsoleHistory,
   pushConsoleHistory,
   saveConsoleHistory,
-} from '../consoleHistory';
+} from '../console/consoleHistory';
 
 describe('filterCompletions', () => {
   it('prefers commands then keys', () => {

@@ -75,7 +75,7 @@ describe('loadSessions / saveSessions', () => {
       content: `msg-${i}`,
     }));
     const sessions = {
-      'key': { messages: msgs, lastAccess: 1000 },
+      key: { messages: msgs, lastAccess: 1000 },
     };
     saveSessions(sessions);
     const loaded = loadSessions();
@@ -85,7 +85,10 @@ describe('loadSessions / saveSessions', () => {
   });
 
   it('evicts oldest LRU when exceeding MAX_SESSIONS (20)', () => {
-    const sessions: Record<string, { messages: { role: 'user'; content: string }[]; lastAccess: number }> = {};
+    const sessions: Record<
+      string,
+      { messages: { role: 'user'; content: string }[]; lastAccess: number }
+    > = {};
     for (let i = 0; i < 22; i++) {
       sessions[`key-${i}`] = {
         messages: [{ role: 'user', content: `msg-${i}` }],
@@ -107,7 +110,7 @@ describe('loadSessions / saveSessions', () => {
 describe('touchSession', () => {
   it('updates lastAccess timestamp', () => {
     const sessions = {
-      'k': { messages: [], lastAccess: 100 },
+      k: { messages: [], lastAccess: 100 },
     };
     const updated = touchSession(sessions, 'k');
     expect(updated['k'].lastAccess).toBeGreaterThan(100);

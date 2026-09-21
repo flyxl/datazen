@@ -261,6 +261,20 @@ describe('settingsStore', () => {
     expect(applyThemePack).not.toHaveBeenCalled();
   });
 
+  it('enableFkPrediction defaults to on and can be turned off', async () => {
+    // On by default: the feature ships enabled, and a settings file written
+    // before it existed must not silently lose it.
+    expect(useSettingsStore.getState().settings.enableFkPrediction).toBe(true);
+
+    applyThemePack.mockResolvedValue({ ok: true });
+    mockSettingsCommands.saveSettings.mockResolvedValue(undefined);
+
+    await useSettingsStore.getState().updateSettings({ enableFkPrediction: false });
+
+    expect(useSettingsStore.getState().settings.enableFkPrediction).toBe(false);
+    expect(mockSettingsCommands.saveSettings).toHaveBeenCalled();
+  });
+
   it('editorCompletionQuotePolicy defaults to unquoted and can be updated', async () => {
     expect(useSettingsStore.getState().settings.editorCompletionQuotePolicy).toBe('unquoted');
 

@@ -1,11 +1,12 @@
-import { getTranslation, type I18nKey, type SupportedLocale } from './index';
-import { useSettingsStore } from '../stores/settingsStore';
+import './index'; // side effect: register the eager host dictionaries (driver/extension packs self-register)
+import { t as translate } from '@datazen/ui';
+import type { I18nKey } from './index';
 
 /**
  * Standalone translation function for use outside React components (stores, utils).
- * Reads the current language from the settings store synchronously.
+ * Resolves through the single @datazen/ui engine; the active locale is kept in
+ * sync with settingsStore.language by src/lib/localeSync.ts (host entry wiring).
  */
 export function t(key: I18nKey, params?: Record<string, string | number>): string {
-  const lang = (useSettingsStore.getState().settings.language ?? 'en') as SupportedLocale;
-  return getTranslation(lang, key, params);
+  return translate(key, params);
 }

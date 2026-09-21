@@ -33,10 +33,7 @@ import {
   readEditorColorsFromElement,
   sqlPropertyNameHighlighting,
 } from '../../lib/themeEditorColors';
-import {
-  resolveEditorFontFamily,
-  HOST_DEFAULT_EDITOR_FONT,
-} from '../../lib/resolveEditorFontFamily';
+import { resolveEditorFontFamily, HOST_DEFAULT_EDITOR_FONT } from '@datazen/driver-sdk';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { parseQualifiedPathParents } from '../../lib/sqlPathPrefix';
 import {
@@ -67,6 +64,11 @@ import { produceSchemaCompletions } from './completion/schemaCompletion';
 import { createSnippetCompletionSource, type SqlSnippetItem } from './snippets';
 import { formatEditorDocument } from './format/formatEditorDocument';
 import { getDialectAdapter } from './semantic/dialectAdapter';
+import { toPredictionTable } from '../../lib/relationPrediction/fromRelationMetadata';
+import {
+  relatedTableBoostMap,
+  relatedTableHints,
+} from '../../lib/relationPrediction/relatedTables';
 import { buildSemanticModel } from './semantic/scopeModel';
 import type { EditorMetadataSnapshot } from './metadata/types';
 import type { SqlSemanticModel } from './semantic/types';
@@ -436,6 +438,34 @@ export function createCompletionExtensions(
     };
   };
 
+  /**
+   * Related-table boosts for the snapshot's loaded relations, memoised per epoch.
+   *
+   * The snapshot is immutable for an epoch, so the relationships among its
+   * relations cannot change either — recomputing them on every keystroke would put
+   * an O(n²) scan in the typing path for no benefit.
+   */
+  let relatedBoostCache: {
+    snapshot: EditorMetadataSnapshot;
+    map: ReturnType<typeof relatedTableBoostMap>;
+  } | null = null;
+
+  function relatedTableBoosts(
+    snapshot: EditorMetadataSnapshot,
+  ): ReturnType<typeof relatedTableBoostMap> {
+    // Reference equality is the right key: the cache hands out the same snapshot
+    // object until the session epoch bumps.
+    if (relatedBoostCache && relatedBoostCache.snapshot === snapshot) {
+      return relatedBoostCache.map;
+    }
+    const tables = [...snapshot.relations].map(([id, relation]) =>
+      toPredictionTable(id, relation, relation.identity.namespacePath.at(-1)?.name),
+    );
+    const map = relatedTableBoostMap(relatedTableHints(tables), (name) => name.toLowerCase());
+    relatedBoostCache = { snapshot, map };
+    return map;
+  }
+
   // Schema-aware completion that reads modelRef and snapshot at CALL time
   // (not at creation time), so it always uses the latest semantic model and
   // metadata snapshot. Falls back to basic relation completions from the
@@ -486,6 +516,12 @@ export function createCompletionExtensions(
 
     // If we have a valid model, use the full schema-aware completion
     if (model && model.cursorIntent) {
+      // Related-table ranking is part of prediction; with it off, completion
+      // falls back to the plain schema order rather than losing any candidate.
+      const relatedBoosts =
+        snapshot && useSettingsStore.getState().settings.enableFkPrediction !== false
+          ? relatedTableBoosts(snapshot)
+          : undefined;
       const completions = produceSchemaCompletions({
         model,
         snapshot: snapshot ?? { dbSessionId: '', database: '', epoch: 0, relations: new Map() },
@@ -493,6 +529,7 @@ export function createCompletionExtensions(
         adapter: getDialectAdapter(opts.databaseType ?? 'standard'),
         quotePolicy: opts.completionQuotePolicy,
         includeTablePrefix: opts.completionIncludeTablePrefix,
+        relatedTableBoosts: relatedBoosts,
         // Short-prefix hint for the all-columns fallback (implicit typing
         // only — explicit Ctrl+Space keeps full results).
         prefixHint: context.explicit

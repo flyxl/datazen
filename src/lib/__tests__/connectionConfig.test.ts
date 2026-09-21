@@ -82,6 +82,68 @@ describe('connectionFormModel', () => {
     expect(config.group).toBeUndefined();
     expect(() => JSON.stringify(config)).not.toThrow();
   });
+
+  it('buildConnectionConfig includes httpProxyTunnel when enabled', () => {
+    const config = buildConnectionConfig({
+      newId: () => 'conn_http',
+      unnamedLabel: 'Unnamed',
+      name: 'Via HTTP',
+      databaseType: 'postgresql',
+      host: 'db.internal',
+      port: '5432',
+      database: 'postgres',
+      schema: 'public',
+      username: 'postgres',
+      password: '',
+      sslMode: 'prefer',
+      group: 'development',
+      colorTag: '#3b82f6',
+      readOnly: false,
+      connectionOptions: {},
+      tunnelKind: 'httpProxy',
+      httpProxyTunnel: {
+        enabled: true,
+        host: 'proxy.example',
+        port: 8080,
+        scheme: 'http',
+        connectTimeoutSecs: 30,
+      },
+    });
+    expect(config.tunnelKind).toBe('httpProxy');
+    expect(config.httpProxyTunnel?.host).toBe('proxy.example');
+    expect(config.sshTunnel).toBeUndefined();
+    assertPlainConnectionConfig(config);
+  });
+
+  it('buildConnectionConfig includes websocketTunnel when enabled', () => {
+    const config = buildConnectionConfig({
+      newId: () => 'conn_ws',
+      unnamedLabel: 'Unnamed',
+      name: 'Via WS',
+      databaseType: 'postgresql',
+      host: 'db.internal',
+      port: '5432',
+      database: 'postgres',
+      schema: 'public',
+      username: 'postgres',
+      password: '',
+      sslMode: 'prefer',
+      group: 'development',
+      colorTag: '#3b82f6',
+      readOnly: false,
+      connectionOptions: {},
+      tunnelKind: 'websocket',
+      websocketTunnel: {
+        enabled: true,
+        url: 'wss://relay.example/v1',
+        mode: 'datazen_v1',
+        connectTimeoutSecs: 30,
+      },
+    });
+    expect(config.tunnelKind).toBe('websocket');
+    expect(config.websocketTunnel?.url).toBe('wss://relay.example/v1');
+    assertPlainConnectionConfig(config);
+  });
 });
 
 describe('connectionConfig IPC boundary', () => {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { NativeMenuItemDef } from '../lib/nativeContextMenu';
-import { normalizeNativeMenuItems } from '../lib/nativeContextMenu';
+import { bindContextMenuBridge, normalizeNativeMenuItems } from '@datazen/driver-sdk';
+import type { NativeMenuItemDef } from '@datazen/driver-sdk';
 
 interface ContextMenuStore {
   open: boolean;
@@ -33,3 +33,11 @@ export function showWebContextMenu(
 ): void {
   useContextMenuStore.getState().show(items, pos);
 }
+
+// Inject the web-menu mount point into @datazen/driver-sdk so host and
+// driver code share one `showNativeContextMenu` implementation
+// (schemaStoreBridge pattern).
+bindContextMenuBridge({
+  show: showWebContextMenu,
+  hide: () => useContextMenuStore.getState().hide(),
+});

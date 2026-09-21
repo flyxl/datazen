@@ -22,9 +22,11 @@ import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { getCachedTableSchema } from '../../lib/schemaCache';
+import { predictRelations } from '../../lib/relationPrediction/predictRelations';
+import { toPredictionTablesFromSchemas } from '../../lib/relationPrediction/fromTableSchema';
 import { formatSql } from '../../lib/sqlFormat';
 import { cn } from '../../lib/cn';
-import type { ColumnInfo } from '../../types';
+import type { ColumnInfo, TableSchema } from '../../types';
 import type { QbJoinType } from './types';
 
 export interface QueryBuilderPanelProps {
@@ -159,6 +161,7 @@ export function QueryBuilderPanel({
 
   // ── Foreign key detection ──────────────────────────────
   const [fkRelations, setFkRelations] = useState<ForeignKeyRelation[]>([]);
+  const fkPredictionEnabled = useSettingsStore((s) => s.settings.enableFkPrediction ?? true);
 
   useEffect(() => {
     if (selectedTables.length === 0) {
@@ -169,6 +172,7 @@ export function QueryBuilderPanel({
     let cancelled = false;
     const loadFks = async () => {
       const allFks: ForeignKeyRelation[] = [];
+      const schemas: TableSchema[] = [];
       for (const tableName of selectedTables) {
         try {
           const schema = await getCachedTableSchema(
@@ -177,6 +181,7 @@ export function QueryBuilderPanel({
             currentDatabase ?? '',
             useSchemaStore.getState().schemaOfRelation(tableName, dbSessionId),
           );
+          schemas.push(schema);
           for (const fk of schema.foreignKeys) {
             // Composite keys are normalised to their ordered distinct columns
             // before pairing positionally: `information_schema` reports the two
@@ -211,6 +216,34 @@ export function QueryBuilderPanel({
           // Schema unavailable for this table — draw no relation for it.
         }
       }
+      // High-confidence, unambiguous inferences join the declared constraints as
+      // auto-join candidates. Like every candidate they must be confirmed before
+      // they reach the SQL — a guess never changes the query silently. Ambiguous
+      // or medium-tier candidates are dropped here rather than offered: the
+      // builder's candidate flow is the user's decision point already.
+      if (fkPredictionEnabled) {
+        const onCanvas = new Set(selectedTables);
+        const declaredKeys = new Set(allFks.map((fk) => `${fk.fromTable}.${fk.fromColumn}`));
+        for (const candidate of predictRelations(toPredictionTablesFromSchemas(schemas))) {
+          if (candidate.tier !== 'high' || candidate.ambiguous) continue;
+          if (!onCanvas.has(candidate.fromTable) || !onCanvas.has(candidate.toTable)) continue;
+          candidate.columnPairs.forEach((pair, i) => {
+            if (declaredKeys.has(`${candidate.fromTable}.${pair.left}`)) return;
+            allFks.push({
+              fromTable: candidate.fromTable,
+              fromColumn: pair.left,
+              toTable: candidate.toTable,
+              toColumn: pair.right,
+              // One synthesised constraint per candidate so a composite
+              // prediction confirms and renders as a single trunk.
+              constraint: `predicted::${candidate.id}`,
+              ordinal: i + 1,
+              pairCount: candidate.columnPairs.length,
+              origin: 'predicted' as const,
+            });
+          });
+        }
+      }
       if (!cancelled) {
         setFkRelations(allFks);
       }
@@ -219,7 +252,7 @@ export function QueryBuilderPanel({
     return () => {
       cancelled = true;
     };
-  }, [selectedTables, dbSessionId, currentDatabase]);
+  }, [selectedTables, dbSessionId, currentDatabase, fkPredictionEnabled]);
 
   /**
    * One entry per constraint (or manual join) — the canvas draws exactly this,

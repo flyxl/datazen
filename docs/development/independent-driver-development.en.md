@@ -38,6 +38,7 @@ datazen-driver-mydb/
 │   └── ...
 ├── ui/
 │   └── ...
+├── locales/            # frontend translations (see 6.3; only needed by drivers with UI)
 └── README.md
 ```
 
@@ -179,7 +180,54 @@ This is important for debugging because driver UI code runs in the real Datazen 
 
 The current driver resolver generates `src/extensions/generated.ts` (gitignored) from the selected driver set. Frontend contributions are therefore part of the same build-time selection as the Rust driver. `pnpm install` / `pnpm build` run `--codegen-only` when those files are missing.
 
-When adding frontend functionality, follow the structure and conventions used by existing external drivers in the registry, such as Kiwi, OLAP, and Superset.
+When adding frontend functionality, follow the structure and conventions used by existing external drivers in the registry, such as Kiwi, OLAP, and Superset, and **strictly obey the dependency boundary contract below** (full specification: [Driver ↔ Host Dependency Boundaries](driver-api-dependency-boundary.md), "Part 2").
+
+### 6.1 Frontend dependency boundary (the allowed import surface)
+
+Driver frontend code may **only** import:
+
+| Source | Provides |
+| --- | --- |
+| `@datazen/ui` | Base components (`Button` / `Input` / `Select` / `Dialog` / `Tabs` / `Badge` / `Label` / `Slider` / `TemporalValueInput` / `PathInput`), `cn`, the i18n runtime (`t` / `useI18n`, …) |
+| `@datazen/driver-sdk` | Metadata/dialect contracts such as `DatabaseTypeMeta`, sunk-down shared types (`ConnectionFormState`, `KeyEntry`, `NativeMenuItemDef`, `ConnectionViewProps`, …), Command IPC wrappers (`driverCommands` / `fileCommands`), pure helpers, the context-menu API, and the injection bridges `useBound*` (see 6.2) |
+| `@datazen/extension-points` | EP contract types only; ordinary database drivers normally do not need it |
+| npm dependencies | Third-party packages declared by the driver repository itself (e.g. `react`) |
+
+**Any relative import into the host's `src/**` is forbidden** (`../../../src/...` at any nesting depth, including `src/hooks`, `src/stores`, `src/lib`, `src/types`, `src/components`, `src/locales`). Counter-example (❌ violating) and correct form (✅):
+
+```ts
+// ❌ Counter-example: importing from the host
+import { cn } from '../../../../../src/lib/cn';
+// ✅ Correct: always go through the shared packages
+import { cn, useI18n } from '@datazen/ui';
+```
+
+The bare specifiers resolve to `packages/*/src/index.ts` both in the host build (root `tsconfig.json` paths + `vite.config.ts` alias) and in driver unit tests (`vitest.drivers.config.ts` alias, run via `pnpm test:unit:drivers`); an independent driver repository simply adds `packages/ui` and `packages/driver-sdk` as local path dependencies.
+
+### 6.2 Consuming host capabilities: sinking down and injection bridges
+
+When driver UI needs a capability that lives on the host side, use one of these patterns (decision table and full bridge inventory: contract document sections 2.2 / 2.3):
+
+- **Pure functions / IPC wrappers**: **move** the implementation down into `@datazen/driver-sdk` (one single implementation in the whole repository; copying is forbidden). After a sink-down, the old host path keeps only a **thin re-export** (a re-export pointing at the single SDK implementation, never a second implementation) **when legacy host consumers still import it**, and is **moved away entirely, leaving no empty shell, when no consumer remains**, with its consumers switching to importing the SDK directly (three-way rule: contract document sections 2.2 / 2.5). Thin-shell precedents: `src/lib/cn.ts` (the whole file is the single line `export { cn } from '@datazen/ui';`) → `@datazen/ui`, `src/lib/nativeContextMenu.ts:7-15` → SDK `nativeContextMenu`, `src/commands/driver.ts:6-11` → SDK `ipc/driverCommands`, `src/commands/file.ts:2/9` → **merged re-export** with the SDK `ipc/fileCommands` (the host keeps extra host-only commands). Move-away-without-a-shell precedents: `driverSettings`, `resolveEditorFontFamily` — the only implementations are `packages/driver-sdk/src/driverSettings.ts` and `packages/driver-sdk/src/resolveEditorFontFamily.ts`; the old host paths `src/lib/driverSettings.ts` / `src/lib/resolveEditorFontFamily.ts` no longer exist after `92a039383` moved them away, and the host consumers `src/windows/settings/DriverSettingsSection.tsx:3` and `src/components/sql-editor/editorExtensions.ts:36-38` import from `@datazen/driver-sdk` directly.
+- **Runtime state from a host zustand store / React hook**: use the capability injection bridge — driver code consumes the `useBoundX()` accessor from `@datazen/driver-sdk`, while the host calls `bindX()` at module load, right where its own store/hook is defined. Existing bridges: `useBoundSettingsStore`, `useBoundConnectionStore`, `useBoundConfirmDialog`, `useBoundSchemaStore`, and `showNativeContextMenu` (via `bindContextMenuBridge`). Driver code **never calls** `bindX`; consuming an unbound bridge throws during development (`'<X> has not been bound to driver-sdk yet.'`).
+
+```tsx
+// Driver UI example (matches the live code in packages/drivers/redis/ui)
+import { useBoundSettingsStore, useBoundConfirmDialog } from '@datazen/driver-sdk';
+
+const safeMode = useBoundSettingsStore((s) => s.settings.safeMode); // reactive subscription in a component
+// imperative reads on event/async paths: useBoundSettingsStore.getState().settings.safeMode
+const [confirm, dialog] = useBoundConfirmDialog(); // render `dialog` once; `confirm` returns Promise<boolean>
+```
+
+When a new host capability is required, **do not import it from the host**; sink it down or add a bridge following the procedure in contract document section 2.5. The ban also covers the host's **thin re-export shells** (`src/lib/cn.ts`, `src/commands/driver.ts`, …): they exist only to keep legacy host imports stable, so driver code always imports the package name instead. This is now enforced statically by the Wave 4 guard — `pnpm test:boundaries` (rule R1 resolves every specifier literal inside driver packages and rejects anything climbing into host `src/`; rule R2 blocks `setLocale` calls anywhere under `packages/**`, exempting only the i18n runtime definition file and its own unit test), see contract document section 2.6.
+
+### 6.3 i18n: one runtime and locale self-registration
+
+- `@datazen/ui` is the **one and only** i18n implementation of the whole application (lookup / `{param}` interpolation / `en` fallback); there is no bridge and no second engine. Driver code uniformly does `import { useI18n } from '@datazen/ui'` (non-React paths such as form validators receive `t` as a parameter per the SDK contract, see `DriverFormValidator`).
+- **Only the host calls `setLocale`** (the language preference is persisted and synchronized by the host settingsStore); any `setLocale` call in driver production code is a violation.
+- **Translations are provided and self-registered by the driver package**: dictionaries live in `locales/` (one file per language, keys carrying the driver's own prefix such as `redis.*` / `mongo.*`); the pure side-effect module `locales/index.ts` statically imports **every** language dictionary in that directory and calls `registerTranslations` once (the registered set does not shrink to match the host's wired optional-language set — the asymmetry is the intended end state, see contract document section 2.4.3); it is hooked up via a single side-effect import pointing at this package's `locales/` directory in the driver UI entry module (the first UI module actually imported by `generated.ts`), and **the relative depth depends on where the entry lives**: an entry at `ui/meta.ts` (e.g. mongodb) writes `import '../locales';`, an entry at `ui/shared/meta.ts` (e.g. redis, two levels deep) writes `import '../../locales';`. **This self-registration chain has landed with Wave 3 (`i18n-drivers`)** (the host-side `DRIVER_LOCALES` aggregation codegen was deleted in the same batch and no longer appears in production code); add new driver translations through your own `locales/` self-registration and never through a host aggregation step.
+- Driver-side `t()` keys are plain `string`s — there is no compile-time `I18nKey` checking; translation completeness is enforced by `node scripts/i18n-sync-check.mjs`, which scans both the host `src/locales/` and every driver package's `locales/` (a driver pack missing `locales/index.ts`, or an index that forgot to import a language file, fails as a structural issue). During development only edit your package's `en.ts` (the single source of truth).
 
 ## 7. Iterative development loop
 
@@ -338,6 +386,7 @@ The recommended development model is:
 - Run Datazen with `pnpm tauri:dev --drivers=<driver-id>`.
 - Let Datazen compile the driver into the application at build time.
 - Use the real Datazen application to debug both Rust integration and frontend UI.
+- Depend on `@datazen/ui` / `@datazen/driver-sdk` only on the frontend (no imports of host `src/**`); consume host capabilities via sink-down or `bind*`/`useBound*` bridges; i18n goes through the single runtime with self-registered locales.
 - Keep driver tests and CI in the driver repository.
 - When ready to publish, change the Datazen registry entry to a pinned `source: "git"` revision through a pull request.
 

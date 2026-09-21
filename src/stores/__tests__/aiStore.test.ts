@@ -385,7 +385,14 @@ describe('aiStore', () => {
     it('handleStreamChunk updates nl2sql', () => {
       const requestId = 'req-nl2sql';
       useAiStore.setState({
-        nl2sql: { input: 'q', streamingSql: '', streamingPreview: '', generatedSql: '', isGenerating: true, requestId },
+        nl2sql: {
+          input: 'q',
+          streamingSql: '',
+          streamingPreview: '',
+          generatedSql: '',
+          isGenerating: true,
+          requestId,
+        },
       });
       useAiStore.getState().handleStreamChunk({ requestId, content: 'SELECT 1', done: false });
       // During streaming, the preview should contain the SQL content

@@ -18,4 +18,14 @@ export {
   type TemporalValueInputProps,
   type TemporalPickerKind,
 } from './TemporalValueInput';
-export { useI18n } from '../../../src/hooks/useI18n';
+export { PathInput, type PathInputProps } from './PathInput';
+// The ONE i18n implementation shared by host, drivers and extensions.
+export {
+  setLocale,
+  getLocale,
+  registerTranslations,
+  getRegisteredTranslations,
+  t,
+  useI18n,
+  type I18nParams,
+} from './i18n';
