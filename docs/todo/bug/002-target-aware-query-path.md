@@ -177,3 +177,62 @@ MySQL 的 `get_tables` 对不存在的库此前返回**空列表**（`informatio
    让 MySQL 家族 18 个驱动零改动即被修好；只有真正需要选池的 PG 需要覆写。
 4. **实库测试必须真的会跑**：门控测试如果依赖本地不存在的 fixture，会长期静默 skip，
    等于没有测试 —— 这也是本节两个测试改成运行时发现 fixture 的原因。
+
+## 6. E2E 定位到的真正根因：**前端在读取路径上丢掉了 schema**
+
+§1–§5 修的是"目标没有到达**驱动**"。跑 E2E 后发现还有一层更靠前的问题：
+**目标没有到达 host** —— 前端在三个读取路径上把 `schema` 整个丢掉了，
+于是 host 只能回落到**连接配置里的 schema**，而表和这个 schema 根本不在一个命名空间。
+
+### 6.1 复现（E2E `table-data.ts`，`db` suite）
+
+E2E 的连接由 `e2e/run.mjs` 播种，带 `E2E_WORKER_SCHEMA=e2e_worker_0`，
+即连接配置里写着 `schema = e2e_worker_0`；而 spec 用**未限定名**建表，
+表实际落在 `public`。加日志后一目了然：
+
+```
+get_table_schema target … requested_schema=None  resolved_schema=Some("e2e_worker_0")   ← 找不到
+get_table_data   target …                        resolved_schema=Some("public")          ← 找得到
+```
+
+同一张表、同一个库，两条路径解析出**不同的 schema** —— 因为其中一条根本没把
+schema 传下来。这正是用户报告的三个现象：
+
+| 用户现象 | 对应路径 | 丢在哪 |
+| --- | --- | --- |
+| 表有数据但列值全空 / 显示不出来 | 数据网格 `get_table_data` | `tableDataStore` 调用时没传 `schema` |
+| 表结构里没有 columns | 表结构 tab | `metadataCache` 持有 `session.schema` 却从不往下传 |
+| ER 图只有表名没有列 | ER 图 | `get_er_data` 调用时没传 `schema` |
+
+### 6.2 修复
+
+| 位置 | 改动 |
+| --- | --- |
+| `src/stores/tableDataStore.ts` | `getTableData({ …, schema: context.schema ?? null })` |
+| `src/lib/relationMetadata/metadataCache.ts` | `loadTableSchema(dbSessionId, table, database, session.schema)`（并放宽 deps 签名） |
+| `src-tauri/src/commands/schema.rs` | `get_table_data` 也识别表名内嵌 schema（`sales.orders`），与其余元数据路径一致 |
+
+**核心原则**：schema 是**关系的身份**，不是"可选的提示"。
+凡是"读某张表"的调用，schema 必须随关系一起传；一旦省略，host 只能用连接级
+默认值去猜，而猜错时**报错是静默的**（表被当成不存在）。
+
+### 6.3 验证
+
+- `table-data.ts`：**11 个失败 → 16 个全部通过**（`multi-database` 6 passed、`mysql` 21 passed 不变）。
+- 新增单测：`tableDataStore` 断言 schema 随分页一起保持；`metadataCache` 4 处断言改为
+  校验第 4 个参数（schema）确实被传递。
+- `er-diagram.ts` 仍失败，但原因**无关 schema**：面板本身打不开
+  （`get_er_data` IPC 返回 7 张表正常，ER-001 通过）。该失败在本轮改动**之前**
+  的提交 `7528e620` 上可原样复现，属于既有缺陷。
+
+### 6.4 教训
+
+1. **"默认值"会把错误变成静默**：`config.schema` 作为兜底看似友好，实际让"读错命名空间"
+   和"表不存在"长得一样。兜底应当只用于**确实没有更好信息**时，而不是替代调用方已知的事实。
+2. **A/B 是唯一能证明"不是我弄坏的"的方式**：`table-data.ts` 的失败在改动前后**逐条一致**
+   （相同 spec、相同断言、相同元素超时），在 `7528e620` 上复现后即可确认为既有缺陷，
+   避免把时间花在错误的方向上。
+3. **日志缺失本身就是缺陷**：`get_table_data` 原先不记录解析后的 `(database, schema)`，
+   导致"表不存在"这条报错无法区分"目标错了"和"真的没有"。补上后 10 分钟定位根因。
+4. **E2E 的价值在"环境恰好和用户一样"**：连接带 schema、表在 public —— 这个组合单测不会构造，
+   而它正是用户真实环境的样子。
