@@ -126,7 +126,6 @@ describe('ConnectionAdvancedSettings', () => {
   it('renders HttpProxyTunnelFields when tunnelKind is httpProxy', () => {
     const form = createMockForm({ tunnelKind: 'httpProxy' });
     render(<ConnectionAdvancedSettings form={form} />);
-    fireEvent.click(screen.getByTestId('new-conn-tunnel-toggle'));
     expect(screen.getByTestId('new-conn-http-proxy-fields')).toBeInTheDocument();
     expect(screen.queryByTestId('new-conn-ws-fields')).not.toBeInTheDocument();
   });
@@ -134,7 +133,6 @@ describe('ConnectionAdvancedSettings', () => {
   it('renders WebSocketTunnelFields when tunnelKind is websocket', () => {
     const form = createMockForm({ tunnelKind: 'websocket' });
     render(<ConnectionAdvancedSettings form={form} />);
-    fireEvent.click(screen.getByTestId('new-conn-tunnel-toggle'));
     expect(screen.getByTestId('new-conn-ws-fields')).toBeInTheDocument();
     expect(screen.queryByTestId('new-conn-http-proxy-fields')).not.toBeInTheDocument();
   });

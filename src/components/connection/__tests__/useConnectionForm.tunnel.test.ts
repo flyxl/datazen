@@ -153,7 +153,9 @@ describe('useConnectionForm tunnel kinds', () => {
       result.current.setHttpProxyHost('');
       result.current.setHttpProxyPort('');
     });
-    expect(result.current.validate()).toBe(false);
+    act(() => {
+      expect(result.current.validate()).toBe(false);
+    });
     expect(result.current.validationErrors.httpProxyHost).toBe('newConn.required');
     expect(result.current.validationErrors.httpProxyPort).toBe('newConn.required');
 
@@ -161,7 +163,9 @@ describe('useConnectionForm tunnel kinds', () => {
       result.current.setTunnelKind('websocket');
       result.current.setWsUrl('');
     });
-    expect(result.current.validate()).toBe(false);
+    act(() => {
+      expect(result.current.validate()).toBe(false);
+    });
     expect(result.current.validationErrors.wsUrl).toBe('newConn.required');
   });
 

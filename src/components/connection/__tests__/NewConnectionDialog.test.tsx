@@ -119,8 +119,8 @@ describe('NewConnectionDialog', () => {
     expect(screen.getByTestId('new-conn-ssl-mode')).toBeInTheDocument();
     expect(screen.queryByTestId('new-conn-ssh-tunnel-checkbox')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId('new-conn-ssh-toggle'));
-    expect(screen.getByTestId('new-conn-ssh-tunnel-checkbox')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('new-conn-tunnel-toggle'));
+    expect(screen.getByTestId('new-conn-tunnel-kind')).toBeInTheDocument();
   });
 
   it('loads existing connection in edit mode', async () => {

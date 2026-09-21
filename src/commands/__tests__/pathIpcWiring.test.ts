@@ -184,7 +184,7 @@ describe('path IPC frontend wiring', () => {
     expect(connection).toContain("'pick_connection_import_path_with_dialog'");
 
     const rustConfig = fs.readFileSync(
-      path.join(ROOT, '../src-tauri/src/commands/config.rs'),
+      path.join(ROOT, '../src-tauri/src/commands/config_import_and_archive.rs'),
       'utf8',
     );
     expect(rustConfig).toContain('pub async fn pick_connection_import_path_with_dialog');
@@ -203,8 +203,8 @@ describe('path IPC frontend wiring', () => {
       rustConfig.indexOf('pub async fn pick_connection_import_path_with_dialog'),
       rustConfig.indexOf('pub async fn import_connections_from_app'),
     );
-    expect(pickFn).toContain('super::dialog::pick_folder');
-    expect(pickFn).toContain('super::dialog::open_file');
+    expect(pickFn).toContain('super::super::dialog::pick_folder');
+    expect(pickFn).toContain('super::super::dialog::open_file');
     expect(pickFn).not.toContain('.pick_file(');
     expect(pickFn).not.toContain('.pick_folder(');
 
