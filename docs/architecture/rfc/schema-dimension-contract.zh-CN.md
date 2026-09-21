@@ -434,3 +434,51 @@ Transfer / Sync / Schema-Diff 端点），本方案**保留**该能力，但连�
 - `packages/drivers/mysql/tests/mysql_cross_database.rs`：新增
   `connection_without_a_default_database_needs_an_explicit_target` —— 无默认库连接下
   未限定语句**复现 `1046`**，带目标语句成功。
+
+### 13.5 第四轮：前端读取路径丢 schema 与 ER 图取数
+
+E2E 定位到第一轮修复的**漏洞面**：契约与宿主都支持 `(database, schema)`，但前端有若干读取
+路径仍然只传 `(dbSessionId, table, database)`，**丢掉了 schema**。此时 `metadata_schema()`
+的优先级会回落到 `config.schema`（E2E 里是 `e2e_worker_0`），于是查表报
+`Table '...' does not exist`，而同一张表的 `get_table_data`（传了 `public`）却正常——
+这正是用户报的"表结构里没有 columns / 数据行全是空"。
+
+修复：**凡是读取路径都必须显式携带关系自身的 schema**（`public` 也要显式传，不做"省略即默认"
+的推断）。共 3 处调用点被补上第 4 个参数（详见
+`docs/todo/bug/002-target-aware-query-path.md` §6）。
+
+ER 图是最后一个仍走无 schema 调用的读取路径：`getErData(dbSessionId, database)`。
+它与其他读取路径**不同**——ER 图是**库级**的，`resolveTableSchema`（按关系解析）无法复用，
+需要"整库用哪个 schema"。最终语义（用户确认）：**取"当前面板"的 schema**：
+
+1. 新增 `panelSchema(panel)`（`src/stores/panelTypes.ts`），把每类面板映射到它所在的作用域
+   schema（table / view / query / create-table / db-object）。**不返回 database 兜底**——
+   schema 是库**内部**的命名空间，用库名顶替会让 schema 感知驱动解析到错误的命名空间，
+   而 schema 无关驱动会直接拒绝该参数。
+2. `handleOpenErDiagram` 在**打开时**把该 schema 存进 `ErDiagramPanel.schema`；若带 `focus`
+   （连接树右键"ER 图"会传表名），优先取该关系自身的 schema——为此把 `ContentView` 的
+   `resolveTableSchema` 透传进 `usePanelHandlers`（`schemaViews` 只覆盖视图，不含表）。
+3. 已存在的 ER 面板被重新打开时**跟随当前面板**刷新 schema，不保留旧命名空间。
+4. `ErDiagramView` 把它作为第 3 个参数传给 `get_er_data`，并加入 effect 依赖以便切换时重取。
+
+测试：`panelSchema` 单元用例；`usePanelHandlers` 5 条（活动面板 / focus 关系 / 视图兜底 /
+null / 重新打开跟随）；`ErDiagramView` 3 条断言 IPC 实参（做过变异校验：去掉第 3 个参数后
+3 条全挂）。前端 4605 通过。
+
+### 13.6 上游 `#37` 删除测试的恢复
+
+`7fc55501`（隧道特性）在拆分 `config.rs` / `wapps.rs` / `backup.rs` 的同时把测试体换成了
+占位符（`config.rs` 26 → 0、`wapps.rs` 11 → 0、`backup.rs` 15 → 4），提交说明称"后续补回"。
+本次从合并前分支恢复，并适配拆分后的布局：
+
+- `ipc_contract_guards` 保持**嵌套模块**：拍平后它的模块级 `const resolve` /
+  `const override_path` 会让上游同名的 `let resolve` 变成可反驳的常量模式（E0005）。
+- 这些守卫用 `include_str!` 扫描被测模块源码，因此 `SOURCE` 改为拼接两半——
+  `backup.rs` + `backup_restore.rs`、`config.rs` + `config_import_and_archive.rs`
+  （`restore_sql_file` 与应用数据命令已被拆走）。
+- `include_str!("../bootstrap.rs")` → `../bootstrap/run.rs`（bootstrap 已改为目录模块）。
+- `import_file_filters` / `export_app_data_to_dest` / `import_app_data_from_source` 改为
+  `pub(super)`：`pub use config_import_and_archive::*` 只重导出 public 项，测试已看不到它们。
+- `ConnectionConfig` fixture 补上 `#37` 新增的 4 个隧道字段。
+
+宿主测试 1423 → **1466 通过 / 0 失败**（合并前分支为 1463）。
