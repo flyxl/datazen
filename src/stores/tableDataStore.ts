@@ -359,6 +359,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         skipCount,
         filterLogic,
         database: targetDatabase,
+        // The table's own schema, not a guess: without it the host falls back
+        // to the connection default and a table outside it reads as missing.
+        schema: context.schema ?? null,
       });
       const latestConn = get().perConnection.get(dbSessionId) ?? emptyConnectionTableState();
       const updated = new Map(latestConn.tableStates);

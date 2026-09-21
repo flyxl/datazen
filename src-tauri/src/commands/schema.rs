@@ -217,6 +217,7 @@ pub(crate) async fn get_table_schema_impl(
     tracing::info!(%db_session_id, %table, "get_table_schema");
 
     let database = database_pin.as_str();
+    let requested_schema = schema.clone();
     let (driver, _handle) = state
         .connection_manager
         .get_session(&db_session_id)
@@ -230,6 +231,16 @@ pub(crate) async fn get_table_schema_impl(
         schema.as_deref(),
     )
     .await;
+    // The resolved target is what the driver will actually read; without it a
+    // "table does not exist" report cannot be told apart from a wrong target.
+    tracing::info!(
+        %db_session_id,
+        %table,
+        %database,
+        requested_schema = ?requested_schema,
+        resolved_schema = ?schema,
+        "get_table_schema target"
+    );
 
     if let Some(schema) = state
         .schema_cache
@@ -303,8 +314,17 @@ pub(crate) async fn get_table_data_impl(
     let schema = metadata_schema(
         driver.as_ref(),
         schema.as_deref(),
-        None,
+        embedded_schema_of(&table),
         config.schema.as_deref(),
+    );
+    // Mirrors the target the driver will read, so a "table does not exist"
+    // report can be told apart from a mis-resolved target.
+    tracing::info!(
+        %db_session_id,
+        %table,
+        %database,
+        resolved_schema = ?schema,
+        "get_table_data target"
     );
 
     let order = sorts

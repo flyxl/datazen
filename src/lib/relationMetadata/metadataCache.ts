@@ -55,7 +55,12 @@ interface SessionState {
 
 export interface MetadataCacheDeps {
   /** IPC-layer schema fetch; defaults to `getCachedTableSchema` (had already inflight/TTL/freeze). */
-  loadTableSchema?: (dbSessionId: string, table: string, database: string) => Promise<TableSchema>;
+  loadTableSchema?: (
+    dbSessionId: string,
+    table: string,
+    database: string,
+    schema?: string,
+  ) => Promise<TableSchema>;
   debounceMs?: number;
   errorTtlMs?: number;
   /** If false, cross-namespace relations are not requested (driver can't resolve qualified). */
@@ -271,7 +276,15 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
     }
     const table = qualifiedNameText(request.identity, session.dialectId);
     try {
-      const schema = await loadTableSchema(session.dbSessionId, table, session.database);
+      // The session's schema is part of the relation's identity: omitting it
+      // makes the host fall back to the connection default, which resolves a
+      // relation that lives elsewhere as missing.
+      const schema = await loadTableSchema(
+        session.dbSessionId,
+        table,
+        session.database,
+        session.schema,
+      );
       const metadata = schemaToMetadata(key, request.identity, request.kind, schema, now());
       session.relations.set(key, metadata);
       session.errors.delete(key);

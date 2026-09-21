@@ -40,6 +40,29 @@ async fn ensure_pg_relation_exists(
         return Ok(());
     }
 
+    // Not found under the requested schema. Report where the relation *does*
+    // live, if anywhere: this distinguishes a mis-targeted read (the relation
+    // is in another schema) from a genuinely absent table, without needing a
+    // manual psql session against the same database.
+    let elsewhere: Vec<String> = sqlx::query_scalar(&format!(
+        "SELECT n.nspname FROM pg_catalog.pg_class c \
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+         WHERE c.relname = $1 AND c.relkind IN ({COLUMN_BEARING_RELKINDS}) \
+         ORDER BY n.nspname"
+    ))
+    .bind(table)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    if !elsewhere.is_empty() {
+        tracing::warn!(
+            %table,
+            requested_schema = ?schema,
+            present_in = ?elsewhere,
+            "relation exists, but not under the requested schema"
+        );
+    }
+
     let database: String = sqlx::query_scalar("SELECT current_database()")
         .fetch_one(pool)
         .await

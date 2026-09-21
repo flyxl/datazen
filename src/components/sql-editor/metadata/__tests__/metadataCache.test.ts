@@ -58,7 +58,7 @@ describe('metadataCache', () => {
     expect(meta!.primaryKey).toEqual(['id']);
     expect(meta!.columns[0]!.name).toBe('id');
     expect(meta!.foreignKeys[0]!.referencedTable).toBe('other');
-    expect(loadTableSchema).toHaveBeenCalledWith('s1', 'public.users', 'demo');
+    expect(loadTableSchema).toHaveBeenCalledWith('s1', 'public.users', 'demo', 'public');
   });
 
   it('dedupes identical in-flight requests to one IPC call', async () => {
@@ -111,7 +111,7 @@ describe('metadataCache', () => {
     await qualified.flushNow();
     expect(qualified.getSnapshot('s1').relations.size).toBe(1); // only bare loaded
     expect(loadTableSchema).toHaveBeenCalledTimes(1);
-    expect(loadTableSchema).toHaveBeenCalledWith('s1', 'bare', 'demo');
+    expect(loadTableSchema).toHaveBeenCalledWith('s1', 'bare', 'demo', 'public');
   });
 
   it('caches a load error for the TTL, then retries after it expires', async () => {
@@ -255,7 +255,7 @@ describe('metadataCache', () => {
       loadTableSchema.mockResolvedValue(makeSchema('v'));
       cache.ensureRelations('s1', [{ identity: ident(['public'], 'v'), kind: 'view' }], ctx);
       await cache.flushNow();
-      expect(loadTableSchema).toHaveBeenCalledWith('s1', 'public.v', 'demo');
+      expect(loadTableSchema).toHaveBeenCalledWith('s1', 'public.v', 'demo', 'public');
       const meta = cache.getRelation('s1', 's1::public.v');
       expect(meta?.kind).toBe('view');
     });
@@ -295,7 +295,7 @@ describe('metadataCache', () => {
       expect(loadTableSchema).not.toHaveBeenCalled(); // still debounced
       await vi.advanceTimersByTimeAsync(50);
       await vi.waitFor(() => expect(debounced.getSnapshot('s1').relations.size).toBe(1));
-      expect(loadTableSchema).toHaveBeenCalledWith('s1', 'public.users', 'demo');
+      expect(loadTableSchema).toHaveBeenCalledWith('s1', 'public.users', 'demo', 'public');
       vi.useRealTimers();
     });
   });
