@@ -17,6 +17,7 @@ import {
   type DatabaseObjectPanel,
   type ConnectionContext,
 } from '../../stores/panelStore';
+import { panelSchema } from '../../stores/panelTypes';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildConnectionTabContextMenuItems } from '../../lib/connectionTabContextMenu';
 import {
@@ -96,6 +97,7 @@ export function usePanelHandlers({
   initialDatabase,
   lastTableSchema,
   schemaViews,
+  resolveTableSchema,
 }: {
   connCtx: ConnectionContext | null;
   showStructureEditor: boolean;
@@ -103,6 +105,12 @@ export function usePanelHandlers({
   initialDatabase: string | undefined;
   lastTableSchema: string | null;
   schemaViews: { name: string; schema?: string }[];
+  /**
+   * Resolves a relation's own schema from the loaded tree. The ER diagram is
+   * opened from the tree context menu with a table name, and `schemaViews`
+   * only covers views, so tables need this to inherit their namespace.
+   */
+  resolveTableSchema?: (table: string) => string | null;
 }): PanelHandlers {
   const { t } = useI18n();
 
@@ -119,6 +127,7 @@ export function usePanelHandlers({
   const loadTables = useSchemaStore((s) => s.loadTables);
 
   const allPanels = usePanelStore((s) => s.panels);
+  const activePanelId = usePanelStore((s) => s.activePanelId);
   const connPanels = useMemo(
     () =>
       sidebarConnCtx ? allPanels.filter((p) => p.connectionId === sidebarConnCtx.connectionId) : [],
@@ -290,9 +299,20 @@ export function usePanelHandlers({
   const handleOpenErDiagram = useCallback(
     (focus?: string) => {
       if (!sidebarConnCtx) return;
+      // "Current panel" semantics: the diagram is database-wide, so it inherits
+      // the schema of the panel the user is looking at rather than the
+      // connection default. Focusing a relation wins over the active panel.
+      const active = connPanels.find((p) => p.id === activePanelId) ?? null;
+      const focused = focus
+        ? (resolveTableSchema?.(focus) ?? schemaViews.find((v) => v.name === focus)?.schema ?? null)
+        : null;
+      const schema = focused ?? panelSchema(active);
       const existing = connPanels.find((p) => p.type === 'er-diagram');
       if (existing) {
-        if (focus) storeUpdatePanel(existing.id, { focusTable: focus });
+        storeUpdatePanel(existing.id, {
+          ...(focus ? { focusTable: focus } : {}),
+          schema,
+        });
         setActivePanel(existing.id);
         return;
       }
@@ -301,10 +321,20 @@ export function usePanelHandlers({
         type: 'er-diagram',
         id: nextPanelId('er'),
         focusTable: focus,
+        schema,
       };
       addPanel(panel);
     },
-    [sidebarConnCtx, connPanels, addPanel, setActivePanel, storeUpdatePanel],
+    [
+      sidebarConnCtx,
+      connPanels,
+      activePanelId,
+      schemaViews,
+      resolveTableSchema,
+      addPanel,
+      setActivePanel,
+      storeUpdatePanel,
+    ],
   );
 
   const handleOpenObjects = useCallback(() => {

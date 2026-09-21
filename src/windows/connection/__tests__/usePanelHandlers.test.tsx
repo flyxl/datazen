@@ -125,3 +125,125 @@ describe('usePanelHandlers.handleNewQuery binds a database to the query tab', ()
     expect(panel?.namespacePath).toEqual(['558:hive', 'snap']);
   });
 });
+
+describe('usePanelHandlers.handleOpenErDiagram inherits the current panel schema', () => {
+  const connCtx: ConnectionContext = {
+    connectionId: 'conn-1',
+    dbSessionId: 'sess-1',
+    connectionName: 'MyConn',
+    databaseType: 'postgresql',
+  };
+
+  function renderWith(
+    resolveTableSchema?: (table: string) => string | null,
+    currentDatabase: string | null = 'db_a',
+  ) {
+    return renderHook(() =>
+      usePanelHandlers({
+        connCtx,
+        showStructureEditor: false,
+        currentDatabase,
+        initialDatabase: undefined,
+        lastTableSchema: null,
+        schemaViews: [{ name: 'v_report', schema: 'reporting' }],
+        resolveTableSchema,
+      }),
+    );
+  }
+
+  function seedActiveTablePanel(tableSchema: string | null) {
+    usePanelStore.getState().addPanel({
+      id: 'tbl-1',
+      type: 'table',
+      tableName: 'orders',
+      database: 'db_a',
+      tableSchema,
+      subTab: 'data',
+      connectionId: 'conn-1',
+      dbSessionId: 'sess-1',
+      connectionName: 'MyConn',
+      databaseType: 'postgresql',
+    });
+    expect(usePanelStore.getState().activePanelId).toBe('tbl-1');
+  }
+
+  function erPanel() {
+    return usePanelStore.getState().panels.find((p) => p.type === 'er-diagram');
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    usePanelStore.getState().reset();
+    useActiveConnectionStore.getState().reset();
+  });
+
+  it('takes the schema from the panel that was active when it opened', () => {
+    seedActiveTablePanel('reporting');
+    const { result } = renderWith();
+
+    act(() => {
+      result.current.handleOpenErDiagram();
+    });
+
+    // Not the connection default, and not the database name.
+    expect(erPanel()?.schema).toBe('reporting');
+  });
+
+  it('keeps null when the active panel carries no schema', () => {
+    seedActiveTablePanel(null);
+    const { result } = renderWith();
+
+    act(() => {
+      result.current.handleOpenErDiagram();
+    });
+
+    expect(erPanel()?.schema).toBeNull();
+  });
+
+  it('prefers the focused relation schema over the active panel', () => {
+    seedActiveTablePanel('reporting');
+    const { result } = renderWith((table) => (table === 'orders' ? 'sales' : null));
+
+    act(() => {
+      result.current.handleOpenErDiagram('orders');
+    });
+
+    const panel = erPanel();
+    expect(panel?.schema).toBe('sales');
+    expect(panel && 'focusTable' in panel ? panel.focusTable : undefined).toBe('orders');
+  });
+
+  it('falls back to the loaded view schema when the resolver has no answer', () => {
+    seedActiveTablePanel('reporting');
+    const { result } = renderWith(() => null);
+
+    act(() => {
+      result.current.handleOpenErDiagram('v_report');
+    });
+
+    expect(erPanel()?.schema).toBe('reporting');
+  });
+
+  it('re-follows the current panel when an existing diagram is reopened', () => {
+    seedActiveTablePanel('reporting');
+    const { result } = renderWith();
+
+    act(() => {
+      result.current.handleOpenErDiagram();
+    });
+    expect(usePanelStore.getState().panels.filter((p) => p.type === 'er-diagram')).toHaveLength(1);
+
+    // The user switches to a table in another schema and reopens the diagram:
+    // it must follow, not keep the stale namespace.
+    act(() => {
+      usePanelStore.getState().updatePanel('tbl-1', { tableSchema: 'audit' });
+      usePanelStore.getState().setActivePanel('tbl-1');
+    });
+    act(() => {
+      result.current.handleOpenErDiagram();
+    });
+
+    expect(usePanelStore.getState().panels.filter((p) => p.type === 'er-diagram')).toHaveLength(1);
+    expect(erPanel()?.schema).toBe('audit');
+  });
+});

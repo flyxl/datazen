@@ -194,6 +194,7 @@ export function ContentView({
     initialDatabase,
     lastTableSchema,
     schemaViews,
+    resolveTableSchema,
   });
 
   const handleOpenSqlFile = useCallback(() => {

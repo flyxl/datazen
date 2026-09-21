@@ -37,6 +37,11 @@ import type { TableSchema } from '../../types';
 interface ErDiagramViewProps {
   dbSessionId: string;
   database: string;
+  /**
+   * Schema to read the diagram's tables from. Captured from the panel that was
+   * active when the diagram was opened; `null` lets the host/driver decide.
+   */
+  schema?: string | null;
   focusTable?: string;
   onSelectTable?: (tableName: string, schema: string | null, database: string) => void;
   /** Optional; when omitted, Focus still works via internal focus state. */
@@ -58,6 +63,7 @@ export function ErDiagramView(props: ErDiagramViewProps) {
 function ErDiagramInner({
   dbSessionId,
   database,
+  schema = null,
   focusTable,
   onSelectTable,
   onFocusTable,
@@ -102,7 +108,7 @@ function ErDiagramInner({
     setLoading(true);
     setError(null);
     databaseCommands
-      .getErData(dbSessionId, database)
+      .getErData(dbSessionId, database, schema)
       .then((data) => {
         if (!cancelled) {
           setSchemas(data);
@@ -118,7 +124,7 @@ function ErDiagramInner({
     return () => {
       cancelled = true;
     };
-  }, [dbSessionId, database]);
+  }, [dbSessionId, database, schema]);
 
   // Inferred relationships, drawn alongside the declared ones. The ER diagram
   // already holds a full schema per table, so this needs no extra IPC — and it is

@@ -328,6 +328,7 @@ function SqlPanelContent({
         <ErDiagramView
           dbSessionId={panel.dbSessionId}
           database={currentDatabase}
+          schema={(panel as ErDiagramPanel).schema ?? null}
           focusTable={(panel as ErDiagramPanel).focusTable}
           onSelectTable={onSelectTable}
           onFocusTable={(table) => onOpenErDiagram(table)}

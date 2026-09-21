@@ -46,6 +46,14 @@ export interface CreateTablePanel extends PanelBase {
 export interface ErDiagramPanel extends PanelBase {
   type: 'er-diagram';
   focusTable?: string;
+  /**
+   * Schema the diagram reads its tables from, captured from the panel that was
+   * active when it was opened. The diagram is database-wide, so it cannot use
+   * `resolveTableSchema` (which is per-relation); without this it would fall
+   * back to the connection default and render a different namespace than the
+   * one the user is looking at. `null` = let the host/driver decide.
+   */
+  schema?: string | null;
 }
 
 export interface ObjectsPanel extends PanelBase {
@@ -131,4 +139,32 @@ export function resolveNextActive(
   const remaining = panels.filter((p) => p.id !== removedId);
   if (remaining.length === 0) return null;
   return remaining[Math.min(idx, remaining.length - 1)].id;
+}
+
+/**
+ * The schema a panel is currently scoped to, or `null` when it carries none.
+ *
+ * Used by panels that need a *database-wide* schema (the ER diagram) so they
+ * follow the panel the user is looking at instead of the connection default.
+ * `null` is meaningful and must not be replaced by the database name: a schema
+ * is a namespace *inside* a database, and schema-less drivers reject it.
+ */
+export function panelSchema(panel: Panel | null | undefined): string | null {
+  if (!panel) return null;
+  switch (panel.type) {
+    case 'table':
+      return panel.tableSchema ?? null;
+    case 'view':
+      return panel.viewSchema ?? null;
+    case 'query':
+      return panel.schema ?? null;
+    case 'create-table':
+      return panel.tableSchema ?? null;
+    case 'er-diagram':
+      return panel.schema ?? null;
+    case 'db-object':
+      return panel.objectSchema ?? null;
+    default:
+      return null;
+  }
 }
