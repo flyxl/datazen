@@ -10,13 +10,13 @@ import { act, renderHook } from '@testing-library/react';
 const scanValues = vi.fn();
 const scanAbort = vi.fn();
 
-vi.mock('../redisInvoke', () => ({
+vi.mock('../shared/redisInvoke', () => ({
   redisCommandInvoke: vi.fn(),
   invokeScanValues: (...a: unknown[]) => scanValues(...a),
   invokeScanAbort: (...a: unknown[]) => scanAbort(...a),
 }));
 
-import { useValueSearch } from '../useValueSearch';
+import { useValueSearch } from '../value-search/useValueSearch';
 
 beforeEach(() => {
   vi.useFakeTimers();

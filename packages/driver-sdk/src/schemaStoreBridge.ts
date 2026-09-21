@@ -1,7 +1,11 @@
 import type { TableInfo } from '../../../src/types';
 
-type SchemaStoreState = {
+export type SchemaStoreState = {
   pathItems: Record<string, TableInfo[]>;
+  /** Active-session database list (flattened from the per-session cache). */
+  databases: string[];
+  loading: boolean;
+  loadForConnection: (dbSessionId: string, options?: { skipLoadTables?: boolean }) => Promise<void>;
   setLoadedTables: (database: string, tables: TableInfo[]) => void;
   mergeNamespace: (segments: string[], kind: 'branch' | 'tables', names: string[]) => void;
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
@@ -9,6 +13,7 @@ type SchemaStoreState = {
 };
 
 export type BoundSchemaStore = {
+  <T>(selector: (state: SchemaStoreState) => T): T;
   getState: () => SchemaStoreState;
   setState: (partial: Record<string, unknown>) => void;
   subscribe: (listener: (state: SchemaStoreState, prev: SchemaStoreState) => void) => () => void;
@@ -26,6 +31,23 @@ function getStore(): BoundSchemaStore {
   }
   return boundStore;
 }
+
+/**
+ * Reactive accessor for the bound host schema store (zustand-hook shape).
+ * Driver trees read `databases` / `loading` / actions through it instead of
+ * importing the host store module.
+ */
+export type UseBoundSchemaStore = {
+  <T>(selector: (state: SchemaStoreState) => T): T;
+  getState(): SchemaStoreState;
+};
+
+export const useBoundSchemaStore: UseBoundSchemaStore = Object.assign(
+  <T>(selector: (state: SchemaStoreState) => T): T => getStore()(selector),
+  {
+    getState: (): SchemaStoreState => getStore().getState(),
+  },
+);
 
 /**
  * Sync fetched tables into the host schema store (SQL editor autocomplete).

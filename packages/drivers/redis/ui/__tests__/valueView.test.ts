@@ -15,8 +15,8 @@ import {
   BROWSER_CODECS,
   BACKEND_CODECS,
   isBackendCodec,
-} from '../valueView/codecs';
-import { renderView, renderHex, type HexRow } from '../valueView/views';
+} from '../value-editors/valueView/codecs';
+import { renderView, renderHex, type HexRow } from '../value-editors/valueView/views';
 
 function text(s: string): Uint8Array {
   return new TextEncoder().encode(s);

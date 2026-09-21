@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { invokeGetKey, invokeScanKeys, type RedisInvokeFn } from '../redisInvoke';
+import { invokeGetKey, invokeScanKeys, type RedisInvokeFn } from '../shared/redisInvoke';
 
 describe('redis KV invoke helpers', () => {
   const invoke = vi.fn<RedisInvokeFn>();

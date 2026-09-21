@@ -4,7 +4,7 @@
 
 ### 1.1 设计原则
 
-1. **注册表驱动**：`src/lib/databaseTypes.ts` 的 `DB_REGISTRY` 是所有 DB 类型行为的单一数据源
+1. **注册表驱动**：`src/lib/databaseTypes.ts` 的 `DB_REGISTRY` 是所有 DB 类型行为的单一数据源（驱动条目经 codegen 的 `DRIVER_DB_ENTRIES` 在此合并，见 1.4）
 2. **路由层 if-else**：仅在组件选择边界使用 if-else，不在组件内部散布方言/类型分支
 3. **策略模式**：SQL 方言逻辑集中在 `src/lib/sqlDialects/`，连接视图集中在 `src/lib/connectionViews/`
 
@@ -51,12 +51,15 @@ src/windows/connection/
 
 ### 1.4 添加新 DB 类型检查清单
 
-1. `types/index.ts` — 添加 `DatabaseType` 联合成员
-2. `databaseTypes.ts` — 添加 `DB_REGISTRY` 条目（含 `connectionForm` / `connectionView`）
-3. （可选）`components/connection/` — 新表单 Fields 组件
-4. （可选）`connectionViews/` — 注册新视图组件
-5. （可选）`sqlDialects/` — 新方言策略文件
-6. （可选）`schema-tree/` — 新 Schema 树变体
+新 DB 类型一律以**驱动包**（`packages/drivers/<id>/` 或独立 git 仓库）形式添加，不再手改宿主注册表：
+
+1. `drivers-registry.json`（或 gitignored 的 `.drivers-dev.json`）— 注册驱动（`source: "path"` / `"git"`）
+2. 驱动 Rust crate — `datazen-driver-api` trait 实现 + `inventory` 注册
+3. 驱动前端入口 `ui/meta.ts`（或 `ui/shared/meta.ts`）— `DatabaseTypeMeta` 条目（含 `connectionForm` / `connectionView`）；`DatabaseType` 联合与 `DB_REGISTRY` 条目由 `scripts/resolve-drivers.mjs` codegen 的 `src/extensions/generated.ts`（`DRIVER_DB_ENTRIES`）自动合并，**禁止**在 `src/types/index.ts` / `src/lib/databaseTypes.ts` 手工添加
+4. （可选）驱动 `ui/` — 连接表单 Fields、连接视图、Schema 树、SQL 方言策略、设置分区
+5. （可选）驱动 `locales/` — 前端词条（契约见 [驱动 ↔ 宿主解耦契约](../../development/driver-api-dependency-boundary.md) 2.4）
+
+宿主内置的表单/视图路由组件（`components/connection/`、`connectionViews/`、`schema-tree/`）仍按下表标志分发。前端 import 面与能力注入规则见 [独立驱动开发指南](../../development/independent-driver-development.zh-CN.md) 与解耦契约 Part 2。
 
 ### 1.5 主题包 vs 数据库驱动
 

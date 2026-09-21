@@ -572,8 +572,8 @@ interface DataTableProps {
 
 右键菜单统一使用 Web 浮层（portal 到 `document.body`），入口：
 
-- `src/lib/nativeContextMenu.ts`：`NativeMenuItemDef` / `normalizeNativeMenuItems` / `nativeEditMenuItems` / `showNativeContextMenu(items, {x,y})`
-- `src/stores/contextMenuStore.ts`：`showWebContextMenu`
+- `@datazen/driver-sdk`（`packages/driver-sdk/src/nativeContextMenu.ts`）：唯一实现——`NativeMenuItemDef` / `normalizeNativeMenuItems` / `nativeEditMenuItems` / `showNativeContextMenu(items, {x,y})` / `bindContextMenuBridge`；宿主 `src/lib/nativeContextMenu.ts` 仅为薄再导出（存量 import 兼容），驱动与宿主统一从包名取用
+- `src/stores/contextMenuStore.ts`：`showWebContextMenu`；模块加载时调用 `bindContextMenuBridge({ show: showWebContextMenu, hide })` 完成挂载点注入
 - `src/components/ui/WebContextMenu.tsx`：`WebContextMenuHost`（`App.tsx` 挂载）
 - `src/lib/contextMenuPosition.ts`：根菜单与**二级菜单**在视口右/下边缘翻转或 clamp，面板不得被窗口裁切
 
@@ -590,7 +590,7 @@ interface DataTableProps {
 | 收藏 / 历史侧栏 | `src/lib/querySidebarContextMenu.ts` | `QueryPanel` |
 | Workflow 列表 / 历史 | `src/lib/workflowListContextMenu.ts` | `WorkflowPage` |
 | ER 节点 | `src/lib/erNodeContextMenu.ts` | `ErDiagramView` |
-| Redis Key | `packages/drivers/redis/ui/redisKeyContextMenu.ts` | `RedisWorkbench` |
+| Redis Key | `packages/drivers/redis/ui/key-browser/redisKeyContextMenu.ts` | `RedisWorkbench` |
 | 主窗口连接/分组 | `src/lib/mainWindowContextMenu.ts` | `ConnectionPage` |
 
 Connection Window 菜单项对齐 TablePlus：Schema（Open Structure / New Query / Copy DDL / Truncate / Drop / New Table / Import）、SQL 编辑器（Run / Run Selection / Format / Comment）、Tab（Close to the Right/Left）、DDL 视图右键 Copy。
@@ -886,7 +886,7 @@ ContentView
 
 ## 9. PathInput 控件
 
-`src/components/ui/PathInput.tsx` — 统一的路径输入/选择控件：
+`packages/ui/src/PathInput.tsx`（`@datazen/ui` 导出）— 统一的路径输入/选择控件：
 - 左侧：文本输入框（可手动输入路径）
 - 右侧：「浏览」按钮（调用 Tauri Dialog API 选择文件或目录）
 - 支持 `mode` 属性：`file` / `directory` / `save`

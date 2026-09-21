@@ -7,7 +7,7 @@ import {
   parseRedisClipboard,
   parseRedisConnectionClipboard,
   type RedisClipboardForm,
-} from '../parseRedisClipboard';
+} from '../connection/parseRedisClipboard';
 
 function stubForm(overrides: Partial<RedisClipboardForm> = {}): RedisClipboardForm {
   return {
@@ -211,9 +211,7 @@ describe('redis clipboard helpers', () => {
     expect(parseRedisClipboard('"export REDIS_URL=redis://alice@host:6379"')).toEqual(
       expect.objectContaining({ host: 'host', port: '6379', username: 'alice' }),
     );
-    expect(
-      parseRedisClipboard('redis://cache:6379?username=bob&password=s3cret&db=3'),
-    ).toEqual(
+    expect(parseRedisClipboard('redis://cache:6379?username=bob&password=s3cret&db=3')).toEqual(
       expect.objectContaining({
         host: 'cache',
         username: 'bob',
@@ -298,17 +296,13 @@ describe('redis clipboard helpers', () => {
   });
 
   it('treats localhost defaults as pristine and other fields as dirty', () => {
-    expect(isPristineRedisForm(stubForm({ host: 'localhost', port: '', database: '' }))).toBe(
-      true,
-    );
+    expect(isPristineRedisForm(stubForm({ host: 'localhost', port: '', database: '' }))).toBe(true);
     expect(isPristineRedisForm(stubForm({ username: 'alice' }))).toBe(false);
     expect(isPristineRedisForm(stubForm({ password: 'x' }))).toBe(false);
     expect(isPristineRedisForm(stubForm({ database: '1' }))).toBe(false);
     expect(isPristineRedisForm(stubForm({ port: '6380' }))).toBe(false);
     expect(
-      isPristineRedisForm(
-        stubForm({ options: { topology: 'standalone', clusterNodes: ['a:1'] } }),
-      ),
+      isPristineRedisForm(stubForm({ options: { topology: 'standalone', clusterNodes: ['a:1'] } })),
     ).toBe(false);
     expect(
       isPristineRedisForm(
@@ -326,9 +320,7 @@ describe('redis clipboard helpers', () => {
         }),
       }),
     );
-    expect(
-      parseRedisConnectionClipboard('redis-sentinel://127.0.0.1:26379/mymaster'),
-    ).toEqual(
+    expect(parseRedisConnectionClipboard('redis-sentinel://127.0.0.1:26379/mymaster')).toEqual(
       expect.objectContaining({
         name: 'mymaster',
         options: expect.objectContaining({

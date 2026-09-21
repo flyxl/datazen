@@ -6,7 +6,7 @@ import {
   packDumpZip,
   parseDumpZip,
   type DumpKeyEntry,
-} from '../importExportZip';
+} from '../key-browser/importExportZip';
 
 describe('importExportZip', () => {
   const sampleEntries: DumpKeyEntry[] = [

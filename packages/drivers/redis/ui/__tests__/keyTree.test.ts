@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildKeyTreeRows, buildServerTreeRows, folderLabel, splitKeyNamespace } from '../keyTree';
-import type { ChildEntry } from '../redisInvoke';
-import type { KeyEntry } from '../../../../../src/types';
+import {
+  buildKeyTreeRows,
+  buildServerTreeRows,
+  folderLabel,
+  splitKeyNamespace,
+} from '../key-browser/keyTree';
+import type { ChildEntry } from '../shared/redisInvoke';
+import type { KeyEntry } from '@datazen/driver-sdk';
 
 function entry(key: string): KeyEntry {
   return { key, keyType: 'string', ttl: -1, size: 0, preview: '' };

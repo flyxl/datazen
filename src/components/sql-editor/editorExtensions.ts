@@ -33,10 +33,7 @@ import {
   readEditorColorsFromElement,
   sqlPropertyNameHighlighting,
 } from '../../lib/themeEditorColors';
-import {
-  resolveEditorFontFamily,
-  HOST_DEFAULT_EDITOR_FONT,
-} from '../../lib/resolveEditorFontFamily';
+import { resolveEditorFontFamily, HOST_DEFAULT_EDITOR_FONT } from '@datazen/driver-sdk';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { parseQualifiedPathParents } from '../../lib/sqlPathPrefix';
 import {

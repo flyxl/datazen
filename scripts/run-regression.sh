@@ -4,14 +4,19 @@
 #
 # 用途：
 #   一条命令跑齐 PR 合并前的全部检查：
-#     ① cargo test -p datazen --lib          （Host Rust 单测）
-#     ② npx vitest run                       （Host 前端单测）
-#     ③ npx vitest run --config vitest.drivers.config.ts （驱动 UI 单测）
-#     ④ node scripts/check-id-terminology.mjs（ID 术语守护）
-#     ⑤ npx tsc --noEmit                     （类型检查）
-#     ⑥ npx vite build                       （前端构建）
+#     ① node scripts/check-driver-import-boundaries.mjs（驱动↔宿主 import 边界护栏）
+#     ② cargo test -p datazen --lib          （Host Rust 单测）
+#     ③ npx vitest run                       （Host 前端单测）
+#     ④ npx vitest run --config vitest.drivers.config.ts （驱动 UI 单测）
+#     ⑤ node scripts/check-id-terminology.mjs（ID 术语守护）
+#     ⑥ npx tsc --noEmit                     （类型检查）
+#     ⑦ npx vite build                       （前端构建）
 #
-# 步骤①的驱动注入与 HOME 沙箱包装：
+# 步骤①放在最前：它是秒级静态扫描，且必须在真实检出跑——gitignored 的外部树
+# （git 驱动 clone、packages/pro-extensions/*）只在全量检出存在，护栏会把其中的
+# 漂移降级为 advisory 并点名，不影响退出码（见契约 2.6 / BUG-008）。
+#
+# 步骤②的驱动注入与 HOME 沙箱包装：
 #   - 注入：worktree 生成态 capabilities/default.json 含 redis:default，要求
 #     Cargo.toml 插件 feature 注入才能通过 tauri-build ACL 校验。经仓库正规解法
 #     scripts/with-driver-inject.mjs --drivers=basic 执行（注入 → 执行 → 自动还原，
@@ -124,7 +129,7 @@ run_step() {
   STEP_NAMES+=("$name")
   STEP_NOTE=""
   echo
-  echo "▶ [$(( ${#STEP_NAMES[@]} ))/6] ${name}"
+  echo "▶ [$(( ${#STEP_NAMES[@]} ))/7] ${name}"
   echo "  \$ $*"
   local t0=$SECONDS rc=0
   if "$@"; then
@@ -153,7 +158,13 @@ echo "真实 HOME    : ${REAL_HOME}"
 echo "沙箱 HOME    : ${SANDBOX_HOME}"
 
 # ---------------------------------------------------------------------------
-# ① Host Rust 单测：with-driver-inject(basic) 外层，env 只包 cargo；
+# ① 驱动↔宿主 import 边界护栏（R1 驱动引宿主 / R2 非宿主调 setLocale / R3 宿主引驱动内部）
+# ---------------------------------------------------------------------------
+run_step "node scripts/check-driver-import-boundaries.mjs" \
+  node scripts/check-driver-import-boundaries.mjs
+
+# ---------------------------------------------------------------------------
+# ② Host Rust 单测：with-driver-inject(basic) 外层，env 只包 cargo；
 #    第 1 轮失败的用例集合在第 2 轮单独复跑（两轮结果都记录）。
 # ---------------------------------------------------------------------------
 run_cargo_lib_with_retry() {
@@ -207,21 +218,21 @@ run_cargo_lib_with_retry() {
 run_step "cargo test -p datazen --lib [注入+HOME包装+复跑]" \
   run_cargo_lib_with_retry
 
-# ② Host 前端单测
+# ③ Host 前端单测
 run_step "npx vitest run" npx vitest run
 
-# ③ Path 驱动 UI 单测
+# ④ Path 驱动 UI 单测
 run_step "npx vitest run --config vitest.drivers.config.ts" \
   npx vitest run --config vitest.drivers.config.ts
 
-# ④ ID 术语守护
+# ⑤ ID 术语守护
 run_step "node scripts/check-id-terminology.mjs" \
   node scripts/check-id-terminology.mjs
 
-# ⑤ 类型检查
+# ⑥ 类型检查
 run_step "npx tsc --noEmit" npx tsc --noEmit
 
-# ⑥ 前端构建
+# ⑦ 前端构建
 run_step "npx vite build" npx vite build
 
 print_summary

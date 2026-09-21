@@ -26,9 +26,6 @@ export type {
 } from './sqlEditorEnhancedEP';
 export { sqlEditorEnhancedEP, sqlEditorProEP } from './sqlEditorEnhancedEP';
 
-// i18n Bridge & Creator
-export * from './i18n';
-
 // SQL Editor Contracts & Semantics
 export * from './sql-editor';
 

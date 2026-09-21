@@ -6,11 +6,41 @@
 
 ## 功能总览表
 
-*暂无活跃开发轨道*
+| Track | 任务 | 状态 | 编码 Commit | 测试 Commit | 合并 Commit |
+|-------|------|------|------------|------------|------------|
+| ai-api-base | — | 未开始 | — | — | — |
+| ai-frontend | — | 未开始 | — | — | — |
+| ai-safety-prompt | — | 未开始 | — | — | — |
+| ai-ui | — | 未开始 | — | — | — |
+| cn-to-ui | — | 未开始 | — | — | — |
+| fix-redis-tests | — | 未开始 | — | — | — |
+| redis-pr3-collection-editors | — | 未开始 | — | — | — |
+| types-to-sdk | — | 未开始 | — | — | — |
+| i18n-core | — | 未开始 | — | — | — |
+| cap-bridge | — | 未开始 | — | — | — |
+| decouple-docs | — | 未开始 | — | — | — |
+| i18n-drivers | — | 未开始 | — | — | — |
+| import-guard | boundaries`，一行即可，请裁定。 | 未开始 | — | — | — |
+| r-phase | 80-86`，与 §2.4.2 对齐）✔；§5 五条裁定在文 ✔；「第 2 轮修复回合」节存在 ✔。 | 未开始 | — | — | — |
 
 ## 写锁台账
 
-*暂无写锁占用*
+| Track | 写锁代理 | Worktree | Branch | Phase | 最后心跳 |
+|-------|----------|----------|--------|-------|----------|
+| ai-api-base | — | — | feature/ai-api-base | 未开始 | — |
+| ai-frontend | — | — | feature/ai-frontend | 未开始 | — |
+| ai-safety-prompt | — | — | feature/ai-safety-prompt | 未开始 | — |
+| ai-ui | — | — | feature/ai-ui | 未开始 | — |
+| cn-to-ui | — | — | `feature/cn-to-ui`（基准 `feat/driver-decoupling` @ 040e15bde） | 未开始 | — |
+| fix-redis-tests | — | — | `feature/fix-redis-tests`（基准 `feat/driver-decoupling` @ 040e15bde） | 未开始 | — |
+| redis-pr3-collection-editors | — | — | feature/redis-pr3-collection-editors | 未开始 | — |
+| types-to-sdk | — | — | `feature/types-to-sdk`（基准 `feat/driver-decoupling` @ 040e15bde） | 未开始 | — |
+| i18n-core | — | — | `feature/i18n-core`（基准 `feat/driver-decoupling` @ c3058fdd0） | 未开始 | — |
+| cap-bridge | — | — | `feature/cap-bridge`（基准 `feat/driver-decoupling` @ c3058fdd0） | 未开始 | — |
+| decouple-docs | — | — | `feature/decouple-docs`（基准 `feat/driver-decoupling` @ d172476fc） | 未开始 | — |
+| i18n-drivers | — | — | `feature/i18n-drivers`（基准 `feat/driver-decoupling` @ d172476fc，已含 Wave 1 全部 + i18n-core + cap-bridge） | 未开始 | — |
+| import-guard | 31/232`、`CONTRIBUTING.md:91`、`.gitignore:64` 仍描述已退役的 `src/extensions/generated-locales.ts`（`i18n-drivers` 轨已登记给 `decouple-docs`/hub，本轨无权限改，维持原登记）。 | *` 均触发 deps-check 且无 TTY 报 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`（既有 `pnpm test:ids` 复现完全相同）；新接线与既有 guard 同构，CI 首步 `pnpm install` 后即正常。 | 15）： | 未开始 | — |
+| r-phase | — | — | `feature/r-phase`（基准 = Wave 4-A `import-guard` 合并后的 `feat/driver-decoupling` HEAD） | 未开始 | — |
 
 ## 波次记录
 

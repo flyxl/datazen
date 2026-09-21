@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildRedisKeyContextMenuItems,
   type RedisKeyContextMenuLabels,
-} from '../redisKeyContextMenu';
+} from '../key-browser/redisKeyContextMenu';
 
 const labels: RedisKeyContextMenuLabels = {
   copyKey: 'Copy Name',

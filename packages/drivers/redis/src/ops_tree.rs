@@ -11,8 +11,16 @@ use std::collections::HashMap;
 const DEFAULT_SEP: &str = ":";
 
 /// A child entry returned by `list_children`.
+///
+/// `rename_all` on an enum only renames variants; fields need
+/// `rename_all_fields` or the IPC payload stays snake_case (frontend expects
+/// camelCase `keyType` / `logicalLen` / `memBytes`).
 #[derive(Debug, Clone, serde::Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum ChildEntry {
     /// A leaf key (no further separator after stripping prefix).
     Key {
@@ -254,5 +262,29 @@ mod tests {
         let keys: Vec<String> = vec![];
         let children = split_children(&keys, "prefix:", &[":"]);
         assert!(children.is_empty());
+    }
+
+    #[test]
+    fn child_entry_serializes_camel_case_fields() {
+        let key = ChildEntry::Key {
+            key: "app:users:1".into(),
+            key_type: "hash".into(),
+            ttl: 42,
+            logical_len: 7,
+            mem_bytes: Some(128),
+        };
+        let json = serde_json::to_value(&key).unwrap();
+        assert_eq!(json["kind"], "key");
+        assert_eq!(json["keyType"], "hash");
+        assert_eq!(json["logicalLen"], 7);
+        assert_eq!(json["memBytes"], 128);
+        let folder = ChildEntry::Folder {
+            prefix: "app:users:".into(),
+            count: 3,
+        };
+        let fjson = serde_json::to_value(&folder).unwrap();
+        assert_eq!(fjson["kind"], "folder");
+        assert_eq!(fjson["prefix"], "app:users:");
+        assert_eq!(fjson["count"], 3);
     }
 }

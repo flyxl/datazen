@@ -12,7 +12,7 @@ locales/
   fullLocales.ts       # full dict (tests / tooling only)
   zh-CN/  en/          # per-domain packs + index (full merge) + eager.ts
   zh-CN.ts  en.ts      # re-exports of full merge (back-compat)
-  index.ts             # getTranslation / public API
+  index.ts             # dictionary registration + public API (lookup delegates to @datazen/ui t)
   de.ts fr.ts …        # optional extra locales (monolith, unchanged)
 ```
 

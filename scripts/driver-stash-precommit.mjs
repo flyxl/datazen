@@ -65,14 +65,6 @@ export function hasInjectedGeneratedTs(content) {
   return !/=\s*never\b/.test(typeLine);
 }
 
-export function hasInjectedGeneratedLocales(content) {
-  if (!content) return false;
-  if (/from '\.\.\/\.\.\/packages\/drivers\//.test(content)) return true;
-  const typeLine = content.split('\n').find((l) => /^export type DriverTranslationKey = /.test(l));
-  if (!typeLine) return false;
-  return !/=\s*never\b/.test(typeLine);
-}
-
 export function hasInjectedCapabilities(content, driverIds = DRIVER_ACL_IDS) {
   if (!content) return false;
   const re = new RegExp(`"(${driverIds.map(escapeRegex).join('|')}):`);
@@ -91,7 +83,6 @@ function escapeRegex(s) {
 export function fileHasInjection(relPath, content, driverIds = DRIVER_ACL_IDS) {
   if (relPath.endsWith('Cargo.toml')) return hasInjectedCargoContent(content);
   if (relPath.endsWith('driver_init.rs')) return hasInjectedDriverInit(content);
-  if (relPath.endsWith('generated-locales.ts')) return hasInjectedGeneratedLocales(content);
   if (relPath.endsWith('generated.ts')) return hasInjectedGeneratedTs(content);
   if (relPath.endsWith('capabilities/default.json')) {
     return hasInjectedCapabilities(content, driverIds);

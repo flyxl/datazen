@@ -8,18 +8,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-vi.mock('../../../../../src/hooks/useI18n', () => ({
+// Components take `useI18n` from the single @datazen/ui runtime; keep the
+// assertions locale-independent by overriding only that hook.
+vi.mock('@datazen/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/ui')>()),
   useI18n: () => ({ t: (key: string) => key, lang: 'en' }),
 }));
 
 const redisInvoke = vi.fn();
-vi.mock('../redisInvoke', () => ({
+vi.mock('../shared/redisInvoke', () => ({
   redisCommandInvoke: (...a: unknown[]) => redisInvoke(...a),
 }));
 
-import { formatJson, isValidJson, JSON_DISPLAY_MODES, JSON_TEXT_MODES } from '../jsonModes';
-import { JsonModeBar } from '../JsonModeBar';
-import { JsonEditor } from '../JsonEditor';
+import {
+  formatJson,
+  isValidJson,
+  JSON_DISPLAY_MODES,
+  JSON_TEXT_MODES,
+} from '../value-editors/jsonModes';
+import { JsonModeBar } from '../value-editors/JsonModeBar';
+import { JsonEditor } from '../value-editors/JsonEditor';
 
 const DOC = { a: 1, b: [2, 3], c: { d: true } };
 const RAW = JSON.stringify(DOC);

@@ -260,28 +260,32 @@ vi.mock('../../../commands/ai', () => ({
   },
 }));
 
-vi.mock('../../../components/ui/PathInput', () => ({
-  PathInput: ({
-    value,
-    onChange,
-    placeholder,
-    className,
-  }: {
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-    className?: string;
-  }) => (
-    <input
-      data-testid="path-input"
-      type="text"
-      value={value}
-      placeholder={placeholder}
-      className={className}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  ),
-}));
+vi.mock('@datazen/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@datazen/ui')>();
+  return {
+    ...actual,
+    PathInput: ({
+      value,
+      onChange,
+      placeholder,
+      className,
+    }: {
+      value: string;
+      onChange: (v: string) => void;
+      placeholder?: string;
+      className?: string;
+    }) => (
+      <input
+        data-testid="path-input"
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        className={className}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    ),
+  };
+});
 
 vi.mock('../../../components/ThemedIcon', () => ({
   ThemedIcon: () => <span data-testid="themed-icon" />,

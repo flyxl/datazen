@@ -1,26 +1,28 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   invokeCreateKey,
   invokeHashSet,
   invokeSetString,
   invokeSetTtl,
   type PluginInvokeFn,
-} from '../KeyEditors';
-import {
-  invokeBatchDeletePattern,
-  invokeDeleteKeys,
-} from '../BatchBar';
+} from '../value-editors/KeyEditors';
+import { invokeBatchDeletePattern, invokeDeleteKeys } from '../key-browser/BatchBar';
 
 describe('redis editor invoke helpers', () => {
   const invoke = vi.fn<PluginInvokeFn>().mockResolvedValue(undefined);
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('invokeSetString uses camelCase plugin args', async () => {
-    await invokeSetString('conn-1', 2, 'mykey', 'hello', invoke);
+    await invokeSetString('conn-1', 2, 'mykey', 'hello', false, invoke);
     expect(invoke).toHaveBeenCalledWith('redis', 'set_string', {
       dbSessionId: 'conn-1',
       dbIndex: 2,
       key: 'mykey',
       value: 'hello',
+      keepTtl: false,
     });
   });
 
@@ -52,6 +54,7 @@ describe('redis editor invoke helpers', () => {
       dbIndex: 0,
       key: 'new',
       value: 'data',
+      keepTtl: false,
     });
   });
 });

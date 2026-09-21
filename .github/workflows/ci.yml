@@ -64,6 +64,9 @@ jobs:
       - name: Guard version consistency
         run: pnpm test:version
 
+      - name: Guard driver/host import boundaries
+        run: pnpm test:boundaries
+
       - name: Guard i18n sync (warning only)
         run: node scripts/i18n-sync-check.mjs
         continue-on-error: true

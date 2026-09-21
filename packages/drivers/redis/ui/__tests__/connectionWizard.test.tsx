@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { RedisConnectionWizard, RedisTlsFields } from '../ConnectionWizard';
-import type { ConnectionFormState } from '../../../../../src/components/connection/useConnectionForm';
+import { RedisConnectionWizard, RedisTlsFields } from '../connection/ConnectionWizard';
+import type { ConnectionFormState } from '@datazen/driver-sdk';
 
-vi.mock('../../../../../src/hooks/useI18n', () => ({
+// Components take `useI18n` from the single @datazen/ui runtime; keep the
+// assertions locale-independent by overriding only that hook.
+vi.mock('@datazen/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/ui')>()),
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
@@ -32,9 +35,7 @@ function stubForm(overrides: Partial<ConnectionFormState> = {}): ConnectionFormS
 
 function mockClipboard(text: string | Promise<string> | Error) {
   const readText =
-    text instanceof Error
-      ? vi.fn().mockRejectedValue(text)
-      : vi.fn().mockResolvedValue(text);
+    text instanceof Error ? vi.fn().mockRejectedValue(text) : vi.fn().mockResolvedValue(text);
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { readText },

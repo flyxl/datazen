@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { bindConfirmDialog } from '@datazen/driver-sdk';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 interface ConfirmOptions {
@@ -61,3 +62,8 @@ export function useConfirmDialog(): [ConfirmFn, React.ReactNode] {
 
   return [confirm, dialog];
 }
+
+// Inject the confirm dialog hook into @datazen/driver-sdk so driver UI can
+// gate destructive actions without importing host code
+// (schemaStoreBridge pattern).
+bindConfirmDialog(useConfirmDialog);

@@ -7,20 +7,40 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { create } from 'zustand';
+import {
+  bindConfirmDialog,
+  bindConnectionStore,
+  bindSettingsStore,
+  type ConnectionBridgeState,
+  type SettingsBridgeState,
+} from '@datazen/driver-sdk';
 
 const scanKeys = vi.fn();
 const commandInvoke = vi.fn();
 
-vi.mock('../../../../../src/hooks/useI18n', () => ({
+// Components take `useI18n` from the single @datazen/ui runtime; keep the
+// assertions locale-independent by overriding only that hook.
+vi.mock('@datazen/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/ui')>()),
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../redisInvoke', () => ({
+vi.mock('../shared/redisInvoke', () => ({
   redisCommandInvoke: (...args: unknown[]) => commandInvoke(...args),
   invokeScanKeys: (...args: unknown[]) => scanKeys(...args),
 }));
 
-import { RedisConsole } from '../RedisConsole';
+import { RedisConsole } from '../console/RedisConsole';
+
+// Harness capability bindings (host injects the real ones at startup).
+bindSettingsStore(
+  create<SettingsBridgeState>(() => ({
+    settings: { safeMode: false, editorFontFamily: '', driverSettings: {} },
+  })),
+);
+bindConnectionStore(create<ConnectionBridgeState>(() => ({ connections: [] })));
+bindConfirmDialog(() => [async () => true, null]);
 
 afterEach(() => {
   cleanup();

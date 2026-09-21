@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
-import { PathInput } from '../../components/ui/PathInput';
+import { PathInput } from '@datazen/ui';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { useAiStore } from '../../stores/aiStore';
 import { useSettingsStore } from '../../stores/settingsStore';

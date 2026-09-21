@@ -1,7 +1,7 @@
 import { FileKey2, KeyRound, Shield } from 'lucide-react';
 import type { SshAuthMethod } from '../../types';
 import { Input } from '../ui/Input';
-import { PathInput } from '../ui/PathInput';
+import { PathInput } from '@datazen/ui';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { Label } from './shared';

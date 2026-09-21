@@ -1,5 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CompressionStream as NodeCompressionStream,
+  DecompressionStream as NodeDecompressionStream,
+} from 'node:stream/web';
+
+// jsdom does not implement CompressionStream / DecompressionStream; Node's
+// WHATWG Web Streams polyfill is API-compatible. Install it on globalThis so
+// the production gzip/zlib path in stringKeyValue.ts is actually exercised.
+if (typeof globalThis.DecompressionStream === 'undefined') {
+  globalThis.DecompressionStream =
+    NodeDecompressionStream as unknown as typeof globalThis.DecompressionStream;
+  globalThis.CompressionStream =
+    NodeCompressionStream as unknown as typeof globalThis.CompressionStream;
+}
+
+// jsdom's Blob has no stream() — add a minimal adapter so the
+// Blob.stream().pipeThrough(DecompressionStream) path can run in tests.
+if (typeof Blob !== 'undefined' && !Blob.prototype.stream) {
+  Object.defineProperty(Blob.prototype, 'stream', {
+    configurable: true,
+    writable: true,
+    value: function (this: Blob): ReadableStream<Uint8Array> {
+      const blob = this;
+      return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          const buf = await blob.arrayBuffer();
+          controller.enqueue(new Uint8Array(buf));
+          controller.close();
+        },
+      });
+    },
+  });
+}
+
+import {
   DECOMPRESS_MAX_BYTES,
   initialStringEditorValue,
   looksLikeJsonText,
@@ -7,13 +41,13 @@ import {
   tryPrettyJson,
   unwrapStringKeyValue,
   valueLooksCompressed,
-} from '../stringKeyValue';
+} from '../value-editors/stringKeyValue';
 
 describe('unwrapStringKeyValue', () => {
   it('unwraps { value } payload from get_key_detail', () => {
-    expect(
-      unwrapStringKeyValue({ value: '{"name":"张三","level":"vip"}' }),
-    ).toBe('{"name":"张三","level":"vip"}');
+    expect(unwrapStringKeyValue({ value: '{"name":"张三","level":"vip"}' })).toBe(
+      '{"name":"张三","level":"vip"}',
+    );
   });
 
   it('passes through raw strings', () => {
@@ -54,9 +88,9 @@ describe('tryPrettyJson / looksLikeJsonText', () => {
 
 describe('initialStringEditorValue', () => {
   it('pretty-prints JSON stored in the string wrapper', () => {
-    expect(
-      initialStringEditorValue({ value: '{"name":"张三","level":"vip"}' }),
-    ).toBe('{\n  "name": "张三",\n  "level": "vip"\n}');
+    expect(initialStringEditorValue({ value: '{"name":"张三","level":"vip"}' })).toBe(
+      '{\n  "name": "张三",\n  "level": "vip"\n}',
+    );
   });
 
   it('keeps non-JSON strings as-is', () => {
@@ -95,8 +129,8 @@ describe('valueLooksCompressed (PR-1 decompress detection)', () => {
 
   it('detects base64-encoded gzip', () => {
     const magicB64 = Buffer.from([
-      0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x01, 0x00, 0x00, 0xff, 0xff, 0x00,
-      0x00, 0x00, 0x00,
+      0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x01, 0x00, 0x00, 0xff, 0xff,
+      0x00, 0x00, 0x00, 0x00,
     ]).toString('base64');
     expect(valueLooksCompressed(magicB64)).toBe(true);
   });

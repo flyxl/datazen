@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readClusterRouting, resolvePinnedNodeAddr } from '../settingsHelpers';
+import { readClusterRouting, resolvePinnedNodeAddr } from '../connection/settingsHelpers';
 
 describe('settingsHelpers', () => {
   it('defaults clusterRouting to auto', () => {

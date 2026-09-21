@@ -23,6 +23,7 @@ import { installDocumentScrollLock } from './lib/documentScrollLock';
 import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
 import { maybeCheckOnStartup } from './lib/updater';
 import { getWindowKind } from './lib/windowKind';
+import { startLocaleSync } from './lib/localeSync';
 import { initProExtensions } from './extensions/generated-pro';
 import * as extensionPoints from '@datazen/extension-points';
 import * as jsxRuntime from 'react/jsx-runtime';
@@ -33,11 +34,9 @@ import * as cmView from '@codemirror/view';
 import * as cmState from '@codemirror/state';
 import * as cmLint from '@codemirror/lint';
 import * as cmAutocomplete from '@codemirror/autocomplete';
-import { useSettingsStore } from './stores/settingsStore';
 import { useQueryBuilderStore } from './stores/queryBuilderStore';
 import { useSchemaStore } from './stores/schemaStore';
 import { getCachedTableSchema } from './lib/schemaCache';
-import { t } from './locales/t';
 
 // Expose host shared modules so the dynamically-loaded PRO extension can
 // resolve bare specifiers from blob URLs. The pack-ep rewrite step
@@ -62,16 +61,9 @@ import { t } from './locales/t';
 (globalThis as any).__qbStore = useQueryBuilderStore;
 (globalThis as any).__schemaStore = useSchemaStore;
 
-extensionPoints.setHostLocaleBridge({
-  getLocale: () => useSettingsStore.getState().settings.language ?? 'en',
-  subscribe: (listener) =>
-    useSettingsStore.subscribe((state, prevState) => {
-      if (state.settings.language !== prevState.settings.language) {
-        listener(state.settings.language ?? 'en');
-      }
-    }),
-  translate: (key, params) => t(key, params),
-});
+// Seed the shared @datazen/ui i18n engine from the persisted language and
+// keep it in sync (settings changes → setLocale → useI18n re-renders).
+startLocaleSync();
 extensionPoints.setTableSchemaProvider(getCachedTableSchema);
 
 bootstrapDefaultIconResolver();

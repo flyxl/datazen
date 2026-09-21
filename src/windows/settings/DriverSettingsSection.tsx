@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useI18n } from '../../hooks/useI18n';
-import { mergeDriverSettings } from '../../lib/driverSettings';
+import { mergeDriverSettings } from '@datazen/driver-sdk';
 import { DRIVER_SETTINGS_ENTRIES } from '../../extensions/generated';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { AppSettings } from '../../types';

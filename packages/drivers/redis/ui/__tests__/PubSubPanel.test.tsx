@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { PubSubPanel } from '../PubSubPanel';
+import { PubSubPanel } from '../observe/PubSubPanel';
 
 // jsdom does not implement scrollIntoView
 Element.prototype.scrollIntoView = vi.fn();
 
-vi.mock('../../../../../src/hooks/useI18n', () => ({
+// Components take `useI18n` from the single @datazen/ui runtime; keep the
+// assertions locale-independent by overriding only that hook.
+vi.mock('@datazen/ui', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/ui')>()),
   useI18n: () => ({
     t: (key: string, params?: Record<string, string | number>) => {
       if (params) {
@@ -26,11 +29,11 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 const mockInvoke = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('../redisInvoke', () => ({
+vi.mock('../shared/redisInvoke', () => ({
   redisCommandInvoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
-vi.mock('../useRedisGate', () => ({
+vi.mock('../shared/useRedisGate', () => ({
   useRedisGate: () => ({ gateWrite: async () => true, gateDialog: null }),
 }));
 

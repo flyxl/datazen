@@ -1,9 +1,9 @@
 import { create } from 'zustand';
+import { bindSettingsStore, HOST_DEFAULT_EDITOR_FONT } from '@datazen/driver-sdk';
 import { settingsCommands } from '../commands/settings';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
-import { HOST_DEFAULT_EDITOR_FONT } from '../lib/resolveEditorFontFamily';
 import { DEFAULT_SQL_FORMAT_OPTIONS } from '../lib/sqlFormat';
 import { DEFAULT_THEME_PREFERENCE, normalizeThemePreference, type ThemeMode } from '../types/theme';
 import { DEFAULT_MONITOR_SETTINGS } from '../types/dashboard';
@@ -190,3 +190,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     void emitCrossWindow('datazen:settings-changed', next);
   },
 }));
+
+// Inject the settings store into @datazen/driver-sdk so driver UI can read
+// `safeMode` / `driverSettings` / editor font without importing host code
+// (schemaStoreBridge pattern).
+bindSettingsStore(useSettingsStore);

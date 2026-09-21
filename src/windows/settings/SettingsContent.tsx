@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
-import { PathInput } from '../../components/ui/PathInput';
+import { PathInput } from '@datazen/ui';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useSettings } from '../../hooks/useSettings';

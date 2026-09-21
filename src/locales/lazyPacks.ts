@@ -1,12 +1,15 @@
 /**
  * Runtime registry for lazy locale domains.
  *
- * `t()` / getTranslation stay synchronous: they read whatever packs have already
- * been merged into the registry. Feature windows call {@link ensureLocaleDomains}
- * on mount so the needed packs are present before the UI renders labels.
+ * Loaded packs are pushed straight into the shared @datazen/ui translation
+ * registry — the single lookup engine. `t()` stays synchronous: it reads
+ * whatever packs have already been merged. Feature windows call
+ * {@link ensureLocaleDomains} on mount so the needed packs are present
+ * before the UI renders labels.
  */
 import type { BuiltinLocale } from './builtinLocales';
 import { LAZY_DOMAINS, type LazyDomain } from './domains';
+import { registerTranslations } from '@datazen/ui';
 
 type Pack = Record<string, string>;
 
@@ -34,18 +37,6 @@ function isBuiltin(locale: string): locale is BuiltinLocale {
   return locale === 'en' || locale === 'zh-CN';
 }
 
-/** Synchronously read a key from already-loaded lazy packs (or undefined). */
-export function lookupLazyTranslation(locale: string, key: string): string | undefined {
-  if (!isBuiltin(locale)) return undefined;
-  const packs = registry[locale];
-  if (!packs) return undefined;
-  for (const d of LAZY_DOMAINS) {
-    const text = packs[d]?.[key];
-    if (text !== undefined) return text;
-  }
-  return undefined;
-}
-
 /** Whether a lazy domain is already in the registry for this locale. */
 export function isDomainLoaded(locale: string, domain: LazyDomain): boolean {
   if (!isBuiltin(locale)) return false;
@@ -70,6 +61,7 @@ export async function ensureLocaleDomains(
         const pack = m.default as Pack;
         if (!registry[locale]) registry[locale] = {};
         registry[locale]![domain] = pack;
+        registerTranslations({ [locale]: pack });
         if (inflight[locale]) delete inflight[locale]![domain];
         return pack;
       });

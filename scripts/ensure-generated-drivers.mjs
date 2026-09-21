@@ -4,7 +4,6 @@
  *
  * Files:
  *   src/extensions/generated.ts
- *   src/extensions/generated-locales.ts
  *   src-tauri/src/driver_init.rs
  *   src-tauri/capabilities/default.json (merged from default_host.json + drivers)
  *

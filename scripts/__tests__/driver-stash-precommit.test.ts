@@ -4,7 +4,6 @@ import {
   hasInjectedCargoContent,
   hasInjectedDriverInit,
   hasInjectedGeneratedTs,
-  hasInjectedGeneratedLocales,
   hasInjectedCapabilities,
   fileHasInjection,
   runDriverStashPrecommit,
@@ -60,12 +59,6 @@ describe('injection detectors', () => {
     ).toBe(true);
     expect(
       fileHasInjection(
-        'src/extensions/generated-locales.ts',
-        INJECTED_CONTENTS['src/extensions/generated-locales.ts'],
-      ),
-    ).toBe(true);
-    expect(
-      fileHasInjection(
         'src-tauri/src/driver_init.rs',
         INJECTED_CONTENTS['src-tauri/src/driver_init.rs'],
       ),
@@ -77,10 +70,6 @@ describe('injection detectors', () => {
     expect(hasInjectedGeneratedTs('')).toBe(false);
     expect(hasInjectedGeneratedTs('export const x = 1;\n')).toBe(false);
     expect(hasInjectedGeneratedTs(CLEAN_CONTENTS['src/extensions/generated.ts'])).toBe(false);
-    expect(hasInjectedGeneratedLocales('')).toBe(false);
-    expect(hasInjectedGeneratedLocales(CLEAN_CONTENTS['src/extensions/generated-locales.ts'])).toBe(
-      false,
-    );
     expect(hasInjectedDriverInit('')).toBe(false);
     expect(hasInjectedCapabilities('')).toBe(false);
   });

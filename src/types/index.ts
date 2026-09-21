@@ -324,19 +324,10 @@ export interface SortCondition {
   descending: boolean;
 }
 
-export interface KeyEntry {
-  key: string;
-  keyType: string;
-  ttl: number;
-  size: number;
-  preview: string;
-}
-
-export interface KeyScanResult {
-  cursor: number;
-  keys: KeyEntry[];
-  dbSize: number;
-}
+// ── Key-Value (Redis) types ──
+// Canonical definitions live in @datazen/driver-sdk (types-to-sdk track);
+// re-exported here so existing host imports keep working unchanged.
+export type { KeyEntry, KeyScanResult } from '@datazen/driver-sdk';
 
 /** Raw backend response — rows are 2D arrays. */
 export interface TableDataResult {

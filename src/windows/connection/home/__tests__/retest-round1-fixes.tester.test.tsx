@@ -10,17 +10,18 @@
  * - RecentQueriesList useRelativeTimeLabel branches: just-now, hour and day
  *   buckets, the >7d locale-date fallback, and invalid-timestamp omission.
  * - BUG-001 substance: real zh-CN rendering through the real
- *   useI18n -> settingsStore -> getTranslation chain (no hook mocks) asserting
- *   「刚刚 / N 分钟前 / N 小时前 / N 天前」, the en counterparts, and key
- *   parity in both locale packs.
+ *   settingsStore -> localeSync -> @datazen/ui engine -> useI18n chain (no
+ *   hook mocks) asserting 「刚刚 / N 分钟前 / N 小时前 / N 天前」, the en
+ *   counterparts, and key parity in both locale packs.
  */
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ConnectionCardList } from '../ConnectionCardList';
 import { RecentQueriesList } from '../RecentQueriesList';
 import { getTranslation } from '../../../../locales';
 import { getRelativeTimeParts } from '../../../../lib/relativeTime';
 import { useSettingsStore } from '../../../../stores/settingsStore';
+import { startLocaleSync } from '../../../../lib/localeSync';
 import type { ConnectionConfig, QueryHistoryEntry } from '../../../../types';
 
 vi.mock('../../../../lib/databaseTypes', () => ({
@@ -45,6 +46,17 @@ function setLanguage(language: string): void {
     settings: { ...useSettingsStore.getState().settings, language },
   });
 }
+
+// Real host wiring (main.tsx): settingsStore.language → setLocale(shared engine).
+let stopLocaleSync: (() => void) | undefined;
+
+beforeAll(() => {
+  stopLocaleSync = startLocaleSync();
+});
+
+afterAll(() => {
+  stopLocaleSync?.();
+});
 
 beforeEach(() => {
   setLanguage('en');
