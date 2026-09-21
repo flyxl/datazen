@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { ColumnSchema, DatabaseType } from '../types';
-import { escapeIdent } from './databaseTypes';
+import { escapeIdent, getEscapeSqlValue } from './databaseTypes';
 
 export type ExportFormat =
   | 'csv'
@@ -45,12 +45,8 @@ export function escapeMarkdownCell(value: unknown): string {
   return str.replaceAll('|', '\\|').replaceAll('\n', ' ').replaceAll('\r', '');
 }
 
-export function escapeSQLValue(value: unknown): string {
-  if (value === null || value === undefined) return 'NULL';
-  if (typeof value === 'number') return String(value);
-  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
-  return `'${str.replaceAll("'", "''")}'`;
+export function escapeSQLValue(value: unknown, dbType?: string): string {
+  return getEscapeSqlValue(dbType)(value);
 }
 
 export function escapeSQLIdent(name: string, dbType?: string): string {
@@ -74,8 +70,12 @@ export function formatSqlInsertHeader(
   return `INSERT INTO ${escapeSQLIdent(tableName, databaseType)} (${colList}) VALUES`;
 }
 
-export function formatSqlInsertTuple(row: Record<string, unknown>, cols: string[]): string {
-  return `(${cols.map((col) => escapeSQLValue(row[col])).join(', ')})`;
+export function formatSqlInsertTuple(
+  row: Record<string, unknown>,
+  cols: string[],
+  dbType?: string,
+): string {
+  return `(${cols.map((col) => escapeSQLValue(row[col], dbType)).join(', ')})`;
 }
 
 /** Batched INSERT statements wrapped in a transaction. */
@@ -95,7 +95,9 @@ export function formatSqlInsertScript(
   const size = Math.max(1, batchSize);
   for (let i = 0; i < dataRows.length; i += size) {
     const chunk = dataRows.slice(i, i + size);
-    const tuples = chunk.map((row) => `  ${formatSqlInsertTuple(row, cols)}`).join(',\n');
+    const tuples = chunk
+      .map((row) => `  ${formatSqlInsertTuple(row, cols, databaseType)}`)
+      .join(',\n');
     lines.push(`${header}\n${tuples};`);
   }
   lines.push(sqlCommitTransaction());
@@ -207,9 +209,12 @@ export function generateExport(options: ExportOptions): ExportResult {
       const statements = dataRows.map((row) => {
         const setClauses = cols
           .filter((c) => c !== pkName)
-          .map((col) => `${escapeSQLIdent(col, databaseType)} = ${escapeSQLValue(row[col])}`)
+          .map(
+            (col) =>
+              `${escapeSQLIdent(col, databaseType)} = ${escapeSQLValue(row[col], databaseType)}`,
+          )
           .join(', ');
-        const where = `${escapeSQLIdent(pkName, databaseType)} = ${escapeSQLValue(row[pkName])}`;
+        const where = `${escapeSQLIdent(pkName, databaseType)} = ${escapeSQLValue(row[pkName], databaseType)}`;
         return `UPDATE ${escapeSQLIdent(tableName, databaseType)} SET ${setClauses} WHERE ${where};`;
       });
       const body =

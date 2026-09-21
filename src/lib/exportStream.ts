@@ -128,7 +128,9 @@ export function createTableExportStreamer(opts: {
         ? pending.splice(0, pending.length)
         : pending.splice(0, SQL_INSERT_BATCH_SIZE);
       const header = formatSqlInsertHeader(tableName, columns, databaseType);
-      const tuples = take.map((row) => `  ${formatSqlInsertTuple(row, columns)}`).join(',\n');
+      const tuples = take
+        .map((row) => `  ${formatSqlInsertTuple(row, columns, databaseType)}`)
+        .join(',\n');
       return `${header}\n${tuples};\n`;
     };
     return {

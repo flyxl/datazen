@@ -66,6 +66,7 @@ export type UnifiedRow =
       dbName: string;
       depth: number;
       isSelected: boolean;
+      dbCountsCommand?: string;
     }
   | { type: 'db-loading'; depth: number }
   | {

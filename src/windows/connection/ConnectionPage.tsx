@@ -324,6 +324,14 @@ export function ConnectionPage() {
           syncStoresActiveConnection(existingTab.dbSessionId);
         }
         setActiveIdx(existingIdx);
+        // Sync active panel to the new connection's panels so ContentView
+        // switches immediately instead of still showing the old connection.
+        const { panels, activePanelId: curActiveId } = usePanelStore.getState();
+        const curActive = panels.find((p) => p.id === curActiveId);
+        if (curActive?.connectionId !== connectionId) {
+          const firstForConn = panels.find((p) => p.connectionId === connectionId);
+          usePanelStore.getState().setActivePanel(firstForConn?.id ?? null);
+        }
         return;
       }
       const conn = connections.find((c) => c.id === connectionId);

@@ -7,6 +7,7 @@ import { fileCommands } from '../../../../src/commands/file';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { invokeScanKeys, redisCommandInvoke } from './redisInvoke';
 import { invokeCountMatching } from './BatchBar';
+import { useRedisGate } from './useRedisGate';
 import {
   base64ToZip,
   buildJsonExport,
@@ -92,6 +93,7 @@ export function ImportExport({
   onSummary,
 }: ImportExportProps) {
   const { t } = useI18n();
+  const { gateWrite, gateDialog } = useRedisGate();
   const [exportMode, setExportMode] = useState<ExportMode>('selected');
   const [patternInput, setPatternInput] = useState(searchPattern);
   const [matchCount, setMatchCount] = useState<number | null>(null);
@@ -199,6 +201,7 @@ export function ImportExport({
   };
 
   const handleImportZip = async () => {
+    if (!(await gateWrite('write-op'))) return;
     setBusy(true);
     setError(null);
     try {
@@ -233,122 +236,125 @@ export function ImportExport({
   };
 
   return (
-    <Dialog
-      open={open}
-      title={t('redis.importExportTitle')}
-      description={t('redis.importExportDescription')}
-      onClose={() => onOpenChange(false)}
-      className="max-w-2xl"
-      footer={
-        <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
-          {t('common.close')}
-        </Button>
-      }
-    >
-      <div className="space-y-6">
-        <section className="space-y-3">
-          <h3 className="text-sm font-medium text-fg">{t('redis.importExportExport')}</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              className="h-7 px-2 text-xs"
-              variant={exportMode === 'selected' ? 'primary' : 'ghost'}
-              onClick={() => setExportMode('selected')}
-              disabled={busy}
-            >
-              {t('redis.importExportSelected')}
-              {selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}
-            </Button>
-            <Button
-              type="button"
-              className="h-7 px-2 text-xs"
-              variant={exportMode === 'pattern' ? 'primary' : 'ghost'}
-              onClick={() => setExportMode('pattern')}
-              disabled={busy}
-            >
-              {t('redis.importExportPattern')}
-            </Button>
-          </div>
+    <>
+      <Dialog
+        open={open}
+        title={t('redis.importExportTitle')}
+        description={t('redis.importExportDescription')}
+        onClose={() => onOpenChange(false)}
+        className="max-w-2xl"
+        footer={
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            {t('common.close')}
+          </Button>
+        }
+      >
+        <div className="space-y-6">
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium text-fg">{t('redis.importExportExport')}</h3>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                className="h-7 px-2 text-xs"
+                variant={exportMode === 'selected' ? 'primary' : 'ghost'}
+                onClick={() => setExportMode('selected')}
+                disabled={busy}
+              >
+                {t('redis.importExportSelected')}
+                {selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}
+              </Button>
+              <Button
+                type="button"
+                className="h-7 px-2 text-xs"
+                variant={exportMode === 'pattern' ? 'primary' : 'ghost'}
+                onClick={() => setExportMode('pattern')}
+                disabled={busy}
+              >
+                {t('redis.importExportPattern')}
+              </Button>
+            </div>
 
-          {exportMode === 'pattern' ? (
-            <div className="space-y-2">
-              <Input
-                value={patternInput}
-                onChange={(e) => {
-                  setPatternInput(e.target.value);
-                  setMatchCount(null);
-                }}
-                placeholder={t('redis.pattern')}
+            {exportMode === 'pattern' ? (
+              <div className="space-y-2">
+                <Input
+                  value={patternInput}
+                  onChange={(e) => {
+                    setPatternInput(e.target.value);
+                    setMatchCount(null);
+                  }}
+                  placeholder={t('redis.pattern')}
+                  disabled={busy}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    className="h-7 px-2 text-xs"
+                    variant="ghost"
+                    onClick={() => void loadPatternCount()}
+                    disabled={busy}
+                  >
+                    {t('redis.matchCount').replace(
+                      '{count}',
+                      matchCount == null ? '…' : String(matchCount),
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                className="h-7 px-2 text-xs"
+                onClick={() => void handleExportZip()}
+                disabled={busy}
+              >
+                {busy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                {t('redis.importExportZip')}
+              </Button>
+              <Button
+                type="button"
+                className="h-7 px-2 text-xs"
+                variant="ghost"
+                onClick={() => void handleExportJson()}
+                disabled={busy}
+              >
+                {t('redis.importExportJson')}
+              </Button>
+            </div>
+          </section>
+
+          <section className="space-y-3 border-t border-edge pt-4">
+            <h3 className="text-sm font-medium text-fg">{t('redis.importExportImport')}</h3>
+            <label className="flex items-center gap-2 text-sm text-fg-muted">
+              <input
+                type="checkbox"
+                checked={replaceExisting}
+                onChange={(e) => setReplaceExisting(e.target.checked)}
                 disabled={busy}
               />
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  className="h-7 px-2 text-xs"
-                  variant="ghost"
-                  onClick={() => void loadPatternCount()}
-                  disabled={busy}
-                >
-                  {t('redis.matchCount').replace(
-                    '{count}',
-                    matchCount == null ? '…' : String(matchCount),
-                  )}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2">
+              {t('redis.importExportReplace')}
+            </label>
+            <p className="text-xs text-fg-muted">{t('redis.importExportReplaceHint')}</p>
             <Button
               type="button"
               className="h-7 px-2 text-xs"
-              onClick={() => void handleExportZip()}
+              onClick={() => void handleImportZip()}
               disabled={busy}
             >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              {t('redis.importExportZip')}
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {t('redis.importExportImportZip')}
             </Button>
-            <Button
-              type="button"
-              className="h-7 px-2 text-xs"
-              variant="ghost"
-              onClick={() => void handleExportJson()}
-              disabled={busy}
-            >
-              {t('redis.importExportJson')}
-            </Button>
-          </div>
-        </section>
+          </section>
 
-        <section className="space-y-3 border-t border-edge pt-4">
-          <h3 className="text-sm font-medium text-fg">{t('redis.importExportImport')}</h3>
-          <label className="flex items-center gap-2 text-sm text-fg-muted">
-            <input
-              type="checkbox"
-              checked={replaceExisting}
-              onChange={(e) => setReplaceExisting(e.target.checked)}
-              disabled={busy}
-            />
-            {t('redis.importExportReplace')}
-          </label>
-          <p className="text-xs text-fg-muted">{t('redis.importExportReplaceHint')}</p>
-          <Button
-            type="button"
-            className="h-7 px-2 text-xs"
-            onClick={() => void handleImportZip()}
-            disabled={busy}
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {t('redis.importExportImportZip')}
-          </Button>
-        </section>
-
-        {error ? <p className="text-sm text-danger">{error}</p> : null}
-      </div>
-    </Dialog>
+          {error ? <p className="text-sm text-danger">{error}</p> : null}
+        </div>
+      </Dialog>
+      {gateDialog}
+    </>
   );
 }

@@ -86,6 +86,12 @@ export interface DatabaseTypeMeta {
   maxDatabaseIndex?: number;
   /** Driver capability: schema tree can browse multiple databases. Session UI uses hasMultiDatabase && databases.length > 1. */
   hasMultiDatabase?: boolean;
+  /**
+   * Driver command (executed via `execute_driver_command`) returning per-database
+   * key counts for KV drivers, so the navigator can render `db0 (52)`. Unset = no counts.
+   * Expected result: an array of `{ db: number; keys: number }`.
+   */
+  dbCountsCommand?: string;
   /** Default page size for table data; unset uses per-table or global default */
   defaultPageSize?: number;
   /** Connection form variant — extensions can provide custom form identifiers */
@@ -178,4 +184,15 @@ export interface DatabaseTypeMeta {
    * entirely — their columns are untyped and the fallback handles them.
    */
   qbTypeCategories?: Record<string, TypeCategory>;
+  /**
+   * Custom SQL literal value escaper for "Copy as SQL" / export.
+   *
+   * The host provides a default PostgreSQL-style escaper (single-quote
+   * doubling). Drivers whose dialect requires additional escaping (e.g.
+   * MySQL's backslash-escape semantics) override this function.
+   *
+   * Signature: receives a raw JS value, returns a SQL-literal string
+   * (including surrounding quotes for strings, or `NULL` / bare number).
+   */
+  escapeSqlValue?: (value: unknown) => string;
 }

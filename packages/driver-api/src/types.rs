@@ -447,15 +447,6 @@ pub struct KeyEntry {
     pub preview: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KeyDetail {
-    pub key: String,
-    pub key_type: String,
-    pub ttl: i64,
-    pub value: serde_json::Value,
-}
-
 /// Identifies an AI prompt scenario.
 ///
 /// Each scenario has a default system prompt template built into the main app.

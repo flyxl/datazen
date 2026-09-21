@@ -52,6 +52,22 @@ const mysqlDialectSpread = {
   sqlDialectProfile: mysqlDialectProfile,
 } as const;
 
+/**
+ * MySQL/MariaDB use backslash as an escape character in string literals.
+ * This escaper applies three passes in order:
+ *   1. `\` → `\\`  — preserve literal backslashes (must come first)
+ *   2. `"` → `\"`  — escape double quotes for consistency with Navicat
+ *      and to avoid issues with non-standard MySQL clients/middleware
+ *   3. `'` → `''`  — escape single quotes (SQL standard)
+ */
+function mysqlEscapeSqlValue(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return `'${str.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll("'", "''")}'`;
+}
+
 export const mysqlMeta = {
   label: 'MySQL',
   shortLabel: 'My',
@@ -83,6 +99,7 @@ export const mysqlMeta = {
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
+  escapeSqlValue: mysqlEscapeSqlValue,
 } satisfies DatabaseTypeMeta;
 
 export const mariadbMeta = {
@@ -116,6 +133,7 @@ export const mariadbMeta = {
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
+  escapeSqlValue: mysqlEscapeSqlValue,
 } satisfies DatabaseTypeMeta;
 
 export const dorisMeta = {
@@ -149,6 +167,7 @@ export const dorisMeta = {
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
+  escapeSqlValue: mysqlEscapeSqlValue,
 } satisfies DatabaseTypeMeta;
 
 export const starrocksMeta = {
@@ -182,6 +201,7 @@ export const starrocksMeta = {
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
+  escapeSqlValue: mysqlEscapeSqlValue,
 } satisfies DatabaseTypeMeta;
 
 export const manticoreMeta = {
@@ -215,6 +235,7 @@ export const manticoreMeta = {
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
+  escapeSqlValue: mysqlEscapeSqlValue,
 } satisfies DatabaseTypeMeta;
 
 export const obOracleMeta = {
@@ -248,4 +269,5 @@ export const obOracleMeta = {
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
+  escapeSqlValue: mysqlEscapeSqlValue,
 } satisfies DatabaseTypeMeta;

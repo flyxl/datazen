@@ -481,7 +481,7 @@ mod tests {
         let long_msg = "x".repeat(1000);
         let body = serde_json::json!({"error": {"message": long_msg}});
         let msg = sanitize_400_error(&body.to_string());
-        assert!(msg.len() <= 501); // 500 chars + ellipsis
+        assert!(msg.chars().count() <= 501); // 500 chars + ellipsis
         assert!(msg.ends_with('…'));
     }
 

@@ -19,8 +19,9 @@ fn redis_command_metadata(id: &str) -> DriverCommandMetadata {
         }
         "dump_keys" | "restore_keys" => CommandCategory::Io,
         "flush_db" | "flush_all" | "slowlog_reset" => CommandCategory::Admin,
-        "scan_keys" | "get_key" | "info" | "memory_sample" | "slowlog_get" | "modules_list"
-        | "cluster_nodes" | "count_matching" | "monitor_start" | "monitor_stop"
+        "scan_keys" | "get_key" | "get_key_raw" | "db_sizes" | "list_children" | "info"
+        | "memory_sample" | "slowlog_get" | "modules_list" | "cluster_nodes" | "count_matching"
+        | "scan_values" | "scan_abort" | "decode_value" | "monitor_start" | "monitor_stop"
         | "monitor_get_buffer" => CommandCategory::Observe,
         _ => CommandCategory::Mutate,
     };
@@ -82,9 +83,35 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
                     "cursor": { "type": "integer" },
                     "count": { "type": "integer" },
                     "keyType": { "type": "string", "description": "Optional Redis TYPE filter (string/hash/list/set/zset/stream)" },
-                    "withMemory": { "type": "boolean", "description": "When true, size uses MEMORY USAGE (bytes)" }
+                    "withMemory": { "type": "boolean", "description": "When true, size uses MEMORY USAGE (bytes)" },
+                    "noTtlOnly": { "type": "boolean", "description": "When true, only include keys without expiry (TTL == -1)" }
                 }),
                 &[],
+            ),
+        ),
+        cmd(
+            "db_sizes",
+            "DB Sizes",
+            "Fetch key counts for every database (SELECT + DBSIZE)",
+            "redis:allow-info",
+            serde_json::json!({ "type": "object", "properties": {} }),
+        ),
+        cmd(
+            "list_children",
+            "List children",
+            "List direct children under a key prefix (leaf keys + virtual folders)",
+            "redis:allow-info",
+            object_schema(
+                serde_json::json!({
+                    "dbIndex": db,
+                    "prefix": { "type": "string" },
+                    "cursor": { "type": "integer" },
+                    "count": { "type": "integer" },
+                    "sep": { "type": "string", "description": "Separator char (default ':')" },
+                    "noTtlOnly": { "type": "boolean" },
+                    "keyType": { "type": "string" }
+                }),
+                &["prefix"],
             ),
         ),
         cmd(
@@ -93,6 +120,64 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "Load the full value for a Redis key",
             "redis:allow-info",
             object_schema(serde_json::json!({ "dbIndex": db, "key": key }), &["key"]),
+        ),
+        cmd(
+            "scan_values",
+            "Scan values",
+            "Guarded incremental value/key search across a database (one batch per call; poll with the returned cursor)",
+            "redis:allow-info",
+            object_schema(
+                serde_json::json!({
+                    "dbIndex": db,
+                    "pattern": { "type": "string", "description": "SCAN glob (default '*')" },
+                    "query": { "type": "string", "description": "Substring to match; supports \\xNN byte escapes" },
+                    "mode": { "type": "string", "enum": ["key", "value", "all"], "description": "Search scope (v1.0 value/all match string types only)" },
+                    "cursor": { "type": "integer", "description": "Resume cursor from the previous batch (0 to start)" },
+                    "taskId": { "type": "string", "description": "Active task id to continue; omit or mismatch to start a fresh task" },
+                    "maxKeys": { "type": "integer", "description": "Cumulative SCAN key cap (clamped to 200000)" },
+                    "byteBudget": { "type": "integer", "description": "Cumulative GETRANGE byte cap (clamped to 268435456)" },
+                    "perValuePeek": { "type": "integer", "description": "Max bytes peeked per string value (clamped to 32768)" },
+                    "count": { "type": "integer", "description": "Per-batch SCAN COUNT (clamped to 2000)" }
+                }),
+                &[],
+            ),
+        ),
+        cmd(
+            "scan_abort",
+            "Abort value scan",
+            "Signal the active scan_values task to stop before its next batch (idempotent)",
+            "redis:allow-info",
+            object_schema(
+                serde_json::json!({ "taskId": { "type": "string" } }),
+                &[],
+            ),
+        ),
+        cmd(
+            "get_key_raw",
+            "Get key (binary safe)",
+            "Fetch TYPE/TTL/logical length/MEMORY USAGE and raw bytes as base64 for a string key",
+            "redis:allow-info",
+            object_schema(
+                serde_json::json!({
+                    "dbIndex": db,
+                    "key": key,
+                    "withMemory": { "type": "boolean", "description": "Include MEMORY USAGE bytes" }
+                }),
+                &["key"],
+            ),
+        ),
+        cmd(
+            "decode_value",
+            "Decode value",
+            "Parse-only decode of a base64 payload (msgpack / pickle / php / java) into a JSON tree; never executes host-language objects",
+            "redis:allow-info",
+            object_schema(
+                serde_json::json!({
+                    "codec": { "type": "string", "enum": ["msgpack", "pickle", "php", "java"] },
+                    "data": { "type": "string", "description": "base64-encoded raw bytes" }
+                }),
+                &["codec", "data"],
+            ),
         ),
         cmd(
             "set_string",
@@ -107,6 +192,21 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
                     "keepTtl": { "type": "boolean" }
                 }),
                 &["key", "value"],
+            ),
+        ),
+        cmd(
+            "set_string_raw",
+            "Set string (binary)",
+            "SET a string key from base64 raw bytes (binary-safe; optional KEEPTTL)",
+            "redis:allow-set-string",
+            object_schema(
+                serde_json::json!({
+                    "dbIndex": db,
+                    "key": key,
+                    "dataB64": { "type": "string", "description": "base64-encoded raw bytes" },
+                    "keepTtl": { "type": "boolean" }
+                }),
+                &["key", "dataB64"],
             ),
         ),
         cmd(
@@ -476,7 +576,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "JSON.GET",
             "redis:allow-json-get",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "path": { "type": "string" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "path": { "type": "string" }, "raw": { "type": "boolean" } }),
                 &["key"],
             ),
         ),

@@ -3,13 +3,14 @@ import { Plus, Trash2, Search, RefreshCw } from 'lucide-react';
 import { Button } from '@datazen/ui';
 import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import type { KeyDetail } from '../../../../src/types';
+import type { KeyDetail } from './types';
 import {
   invokeHashDel,
   invokeHashSet,
   invokeHashScan,
   type HashScanEntry,
 } from './keyEditorsInvokes';
+import type { GateWriteFn } from './useRedisGate';
 
 const PAGE_SIZE = 100;
 
@@ -17,11 +18,13 @@ export function HashEditor({
   dbSessionId,
   dbIndex,
   detail,
+  gateWrite,
   onChanged,
 }: {
   dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
+  gateWrite?: GateWriteFn;
   onChanged: () => void;
 }) {
   const { t } = useI18n();
@@ -90,6 +93,14 @@ export function HashEditor({
 
   const getValue = (field: string, original: string) => editValues[field] ?? original;
 
+  const runWrite = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (gateWrite && !(await gateWrite('write-op'))) return;
+      await fn();
+    },
+    [gateWrite],
+  );
+
   return (
     <div className="space-y-2">
       {/* Search + refresh toolbar */}
@@ -146,13 +157,14 @@ export function HashEditor({
                       variant="secondary"
                       className="h-6 px-1.5 text-[10px]"
                       onClick={() =>
-                        void invokeHashSet(
-                          dbSessionId,
-                          dbIndex,
-                          detail.key,
-                          entry.field,
-                          getValue(entry.field, entry.value),
-                        ).then(() => {
+                        void runWrite(async () => {
+                          await invokeHashSet(
+                            dbSessionId,
+                            dbIndex,
+                            detail.key,
+                            entry.field,
+                            getValue(entry.field, entry.value),
+                          );
                           setEditField(null);
                           handleRefresh();
                           onChanged();
@@ -177,12 +189,11 @@ export function HashEditor({
                     variant="ghost"
                     className="h-6 px-1.5 text-[10px] text-danger"
                     onClick={() =>
-                      void invokeHashDel(dbSessionId, dbIndex, detail.key, [entry.field]).then(
-                        () => {
-                          handleRefresh();
-                          onChanged();
-                        },
-                      )
+                      void runWrite(async () => {
+                        await invokeHashDel(dbSessionId, dbIndex, detail.key, [entry.field]);
+                        handleRefresh();
+                        onChanged();
+                      })
                     }
                   >
                     <Trash2 className="h-3 w-3" />
@@ -235,14 +246,13 @@ export function HashEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newField.trim()}
           onClick={() =>
-            void invokeHashSet(dbSessionId, dbIndex, detail.key, newField.trim(), newValue).then(
-              () => {
-                setNewField('');
-                setNewValue('');
-                handleRefresh();
-                onChanged();
-              },
-            )
+            void runWrite(async () => {
+              await invokeHashSet(dbSessionId, dbIndex, detail.key, newField.trim(), newValue);
+              setNewField('');
+              setNewValue('');
+              handleRefresh();
+              onChanged();
+            })
           }
         >
           <Plus className="h-3 w-3" />

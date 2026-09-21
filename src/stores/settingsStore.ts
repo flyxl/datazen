@@ -37,6 +37,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   mcpClientServers: [],
   aiStrictEgress: true,
   editorCompletionIncludeTablePrefix: true,
+  enableFkPrediction: true,
   editorCompletionQuotePolicy: 'unquoted',
   keymapPreset: 'default',
   customKeymap: {},

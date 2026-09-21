@@ -7,6 +7,7 @@ import { useI18n } from '../../../../src/hooks/useI18n';
 import { redisCommandInvoke } from './redisInvoke';
 import { invokeDeleteKeys } from './BatchBar';
 import { invokeCreateKey, invokeRename, invokeSetTtl } from './KeyEditors';
+import { useRedisGate } from './useRedisGate';
 
 export type KeyCtxDialog =
   | { mode: 'ttl'; key: string }
@@ -54,6 +55,7 @@ export function KeyWorkbenchDialogs({
   onKeyCtxDialogChange,
 }: KeyWorkbenchDialogsProps) {
   const { t } = useI18n();
+  const { gateWrite, gateDialog } = useRedisGate();
 
   const [createName, setCreateName] = useState('');
   const [createType, setCreateType] = useState('string');
@@ -93,6 +95,7 @@ export function KeyWorkbenchDialogs({
   const handleCreateKey = async () => {
     const name = createName.trim();
     if (!name) return;
+    if (!(await gateWrite('write-op'))) return;
     setCreateBusy(true);
     setCreateError(null);
     try {
@@ -111,6 +114,7 @@ export function KeyWorkbenchDialogs({
   };
 
   const handleFlush = async () => {
+    if (!(await gateWrite('write-op'))) return;
     setFlushBusy(true);
     setFlushError(null);
     try {
@@ -142,6 +146,7 @@ export function KeyWorkbenchDialogs({
 
   const handleKeyCtxSetTtl = async () => {
     if (keyCtxDialog?.mode !== 'ttl') return;
+    if (!(await gateWrite('write-op'))) return;
     setKeyCtxBusy(true);
     setKeyCtxError(null);
     try {
@@ -164,6 +169,7 @@ export function KeyWorkbenchDialogs({
 
   const handleKeyCtxPersist = async () => {
     if (keyCtxDialog?.mode !== 'ttl') return;
+    if (!(await gateWrite('write-op'))) return;
     setKeyCtxBusy(true);
     setKeyCtxError(null);
     try {
@@ -184,6 +190,7 @@ export function KeyWorkbenchDialogs({
     if (keyCtxDialog?.mode !== 'rename') return;
     const next = keyCtxRenameInput.trim();
     if (!next || next === keyCtxDialog.key) return;
+    if (!(await gateWrite('write-op'))) return;
     setKeyCtxBusy(true);
     setKeyCtxError(null);
     try {
@@ -210,6 +217,7 @@ export function KeyWorkbenchDialogs({
 
   const handleKeyCtxDelete = async () => {
     if (keyCtxDialog?.mode !== 'delete') return;
+    if (!(await gateWrite('write-op'))) return;
     setKeyCtxBusy(true);
     setKeyCtxError(null);
     try {
@@ -435,6 +443,7 @@ export function KeyWorkbenchDialogs({
       >
         {keyCtxError && <p className="text-danger">{keyCtxError}</p>}
       </Dialog>
+      {gateDialog}
     </>
   );
 }

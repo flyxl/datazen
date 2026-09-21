@@ -16,8 +16,8 @@ import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { showNativeContextMenu } from '../../../../src/lib/nativeContextMenu';
 import { readBooleanField } from '../../../../src/lib/driverSettings';
-import { invokeGetKey } from './redisInvoke';
-import type { KeyDetail } from '../../../../src/types';
+import { invokeGetKey, invokeDbSizes } from './redisInvoke';
+import type { KeyDetail } from './types';
 import { BatchBar } from './BatchBar';
 import { hasRedisJson } from './hasRedisJson';
 import { ImportExport } from './ImportExport';
@@ -25,8 +25,14 @@ import { invokeModulesList } from './JsonEditor';
 import { KeyDetailEditor } from './KeyEditors';
 import { buildRedisKeyContextMenuItems } from './redisKeyContextMenu';
 import { KeyBrowserControls } from './KeyBrowserControls';
+import { SafeModeBadge } from './SafeModeBadge';
 import { KeyTable } from './KeyTable';
+import { SearchModeTabs, type SearchMode } from './SearchModeTabs';
+import { useValueSearch } from './useValueSearch';
+import { ValueSearchResults } from './ValueSearchResults';
 import { useRedisKeyScan } from './useRedisKeyScan';
+import { useKeyTree } from './useKeyTree';
+import { buildServerTreeRows } from './keyTree';
 import {
   KeyWorkbenchDialogs,
   openKeyCtxDelete,
@@ -90,6 +96,8 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
     const [createOpen, setCreateOpen] = useState(false);
     const [flushDialog, setFlushDialog] = useState<'db' | 'all' | null>(null);
     const [keyCtxDialog, setKeyCtxDialog] = useState<KeyCtxDialog>(null);
+    const [dbCounts, setDbCounts] = useState<Record<number, number>>({});
+    const [searchMode, setSearchMode] = useState<SearchMode>('key');
 
     const {
       keys,
@@ -104,6 +112,8 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       setViewMode,
       withMemory,
       setWithMemory,
+      noTtlOnly,
+      setNoTtlOnly,
       expandedFolders,
       loadKeys,
       resetSelectionState,
@@ -116,6 +126,32 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       dbIndex,
       enabled: selectedDb !== null,
     });
+
+    const tree = useKeyTree({
+      dbSessionId,
+      dbIndex,
+      enabled: selectedDb !== null && viewMode === 'tree',
+      noTtlOnly,
+      keyType: keyTypeFilter,
+    });
+
+    const {
+      state: valueSearchState,
+      start: startValueSearch,
+      cancel: cancelValueSearch,
+      reset: resetValueSearch,
+    } = useValueSearch({ dbSessionId, dbIndex });
+
+    // Exit transition: leaving value search (mode → key, or db/session change)
+    // tears down any running task so no stale scan keeps polling.
+    useEffect(() => {
+      if (searchMode === 'key') resetValueSearch();
+    }, [searchMode, dbIndex, dbSessionId, resetValueSearch]);
+
+    const treeRowsOverride = useMemo(
+      () => (viewMode === 'tree' ? buildServerTreeRows(tree.levels, tree.expanded) : undefined),
+      [viewMode, tree.levels, tree.expanded],
+    );
 
     useEffect(() => {
       void loadForConnection(dbSessionId, { skipLoadTables: true });
@@ -135,6 +171,30 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         cancelled = true;
       };
     }, [dbSessionId]);
+
+    const loadDbSizes = useCallback(() => {
+      void invokeDbSizes(dbSessionId)
+        .then((sizes) => {
+          const map: Record<number, number> = {};
+          for (const s of sizes) map[s.db] = s.keys;
+          setDbCounts(map);
+        })
+        .catch(() => {
+          /* counts are best-effort enrichment */
+        });
+    }, [dbSessionId]);
+
+    // Fetch key counts for every db when entering Items for a session.
+    useEffect(() => {
+      loadDbSizes();
+    }, [loadDbSizes]);
+
+    // Keep the active db's count fresh from scan_keys' dbSize, zero extra commands.
+    useEffect(() => {
+      if (selectedDb) {
+        setDbCounts((prev) => (prev[dbIndex] === dbSize ? prev : { ...prev, [dbIndex]: dbSize }));
+      }
+    }, [selectedDb, dbIndex, dbSize]);
 
     const createTypes = useMemo(() => {
       const base = ['string', 'hash', 'list', 'set', 'zset'];
@@ -180,13 +240,15 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         setSelectedKeys(new Set());
         setKeyDetail(null);
         scanRefresh();
+        tree.refresh();
       }
-    }, [selectedDb, scanRefresh]);
+    }, [selectedDb, scanRefresh, tree]);
 
     const handleRefresh = useCallback(() => {
       void loadForConnection(dbSessionId, { skipLoadTables: true });
       refreshKeys();
-    }, [dbSessionId, loadForConnection, refreshKeys]);
+      loadDbSizes();
+    }, [dbSessionId, loadForConnection, refreshKeys, loadDbSizes]);
 
     useImperativeHandle(ref, () => ({ refreshKeys, selectDatabase: handleSelectDb }), [
       refreshKeys,
@@ -197,8 +259,17 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       setSelectedKey(null);
       setSelectedKeys(new Set());
       setKeyDetail(null);
-      scanSearch();
-    }, [scanSearch]);
+      if (searchMode === 'key') {
+        scanSearch();
+        return;
+      }
+      const query = searchPattern.trim();
+      if (!query) {
+        resetValueSearch();
+        return;
+      }
+      startValueSearch({ mode: searchMode, query, pattern: '*' });
+    }, [searchMode, scanSearch, searchPattern, startValueSearch, resetValueSearch]);
 
     const handleSelectKey = useCallback(
       async (key: string) => {
@@ -272,6 +343,9 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         {!hideSidebar && (
           <aside className="flex w-48 shrink-0 flex-col overflow-y-auto border-r border-edge bg-surface-alt">
             <div className="border-b border-edge p-2">
+              <div className="mb-2">
+                <SearchModeTabs mode={searchMode} onChange={setSearchMode} />
+              </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
                 <Input
@@ -280,7 +354,11 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleSearch();
                   }}
-                  placeholder={t('redis.searchKeys')}
+                  placeholder={
+                    searchMode === 'key'
+                      ? t('redis.searchKeys')
+                      : t('redis.search.valuePlaceholder')
+                  }
                   className="h-7 pl-7 text-xs"
                   data-testid="redis-search-input"
                 />
@@ -309,7 +387,12 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                 onClick={() => handleSelectDb(db)}
               >
                 <Database className="h-4 w-4 shrink-0" />
-                {db}
+                <span className="min-w-0 truncate">{db}</span>
+                {dbCounts[Number(db.replace('db', ''))] != null && (
+                  <span className="ml-auto shrink-0 text-[11px] text-fg-muted">
+                    ({dbCounts[Number(db.replace('db', ''))]})
+                  </span>
+                )}
               </button>
             ))}
           </aside>
@@ -327,15 +410,20 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   {t('redis.loadedCount').replace('{count}', String(keys.length))}
                   {cursor !== 0 && ` (${t('redis.loadMore')}…)`}
                 </span>
-                <KeyBrowserControls
-                  keyType={keyTypeFilter}
-                  onKeyTypeChange={setKeyTypeFilter}
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                  withMemory={withMemory}
-                  onWithMemoryChange={setWithMemory}
-                />
+                {searchMode === 'key' && (
+                  <KeyBrowserControls
+                    keyType={keyTypeFilter}
+                    onKeyTypeChange={setKeyTypeFilter}
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    withMemory={withMemory}
+                    onWithMemoryChange={setWithMemory}
+                    noTtlOnly={noTtlOnly}
+                    onNoTtlOnlyChange={setNoTtlOnly}
+                  />
+                )}
                 <div className="flex-1" />
+                <SafeModeBadge />
                 <Button
                   variant="secondary"
                   className="h-7 gap-1 px-2 text-xs"
@@ -408,21 +496,30 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
 
               <div className="flex min-h-0 flex-1">
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <KeyTable
-                    keys={keys}
-                    viewMode={viewMode}
-                    expandedFolders={expandedFolders}
-                    onToggleFolder={toggleFolder}
-                    selectedKey={selectedKey}
-                    selectedKeys={selectedKeys}
-                    onSelectKey={handleSelectKey}
-                    onToggleKey={toggleKeySelection}
-                    onToggleSelectAll={toggleSelectAll}
-                    onKeyContextMenu={handleKeyContextMenu}
-                    loading={keysLoading}
-                    hasMore={cursor !== 0}
-                    onLoadMore={loadMore}
-                  />
+                  {searchMode === 'key' ? (
+                    <KeyTable
+                      keys={keys}
+                      viewMode={viewMode}
+                      expandedFolders={viewMode === 'tree' ? tree.expanded : expandedFolders}
+                      onToggleFolder={viewMode === 'tree' ? tree.toggleFolder : toggleFolder}
+                      treeRowsOverride={treeRowsOverride}
+                      selectedKey={selectedKey}
+                      selectedKeys={selectedKeys}
+                      onSelectKey={handleSelectKey}
+                      onToggleKey={toggleKeySelection}
+                      onToggleSelectAll={toggleSelectAll}
+                      onKeyContextMenu={handleKeyContextMenu}
+                      loading={keysLoading}
+                      hasMore={cursor !== 0}
+                      onLoadMore={loadMore}
+                    />
+                  ) : (
+                    <ValueSearchResults
+                      state={valueSearchState}
+                      onSelectKey={handleSelectKey}
+                      onCancel={cancelValueSearch}
+                    />
+                  )}
                 </div>
 
                 {selectedKey && (

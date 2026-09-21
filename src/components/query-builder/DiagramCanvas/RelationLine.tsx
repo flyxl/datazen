@@ -51,6 +51,7 @@ export function RelationLine({
       className={[
         'qb-relation',
         `qb-relation--${shape.kind}`,
+        shape.predicted ? 'qb-relation--predicted' : '',
         active ? 'is-active' : '',
         dimmed ? 'is-dimmed' : '',
       ]
@@ -59,6 +60,7 @@ export function RelationLine({
       data-testid={`qb-relation-${shape.groupId}`}
       data-relation-kind={shape.kind}
       data-relation-state={shape.state}
+      data-relation-predicted={shape.predicted ? 'true' : undefined}
       data-relation-pairs={`${shape.confirmedCount}/${shape.pairCount}`}
       onPointerEnter={() => onHoverChange(shape.groupId)}
       onPointerLeave={() => onHoverChange(null)}

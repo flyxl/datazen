@@ -3,7 +3,7 @@ import { Plus, Trash2, RefreshCw } from 'lucide-react';
 import { Button } from '@datazen/ui';
 import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import type { KeyDetail } from '../../../../src/types';
+import type { KeyDetail } from './types';
 import {
   invokeListPop,
   invokeListPush,
@@ -12,6 +12,7 @@ import {
   invokeListIndex,
   invokeListRem,
 } from './keyEditorsInvokes';
+import type { GateWriteFn } from './useRedisGate';
 
 const PAGE_SIZE = 100;
 
@@ -19,11 +20,13 @@ export function ListEditor({
   dbSessionId,
   dbIndex,
   detail,
+  gateWrite,
   onChanged,
 }: {
   dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
+  gateWrite?: GateWriteFn;
   onChanged: () => void;
 }) {
   const { t } = useI18n();
@@ -78,6 +81,14 @@ export function ListEditor({
   const getValue = (index: number, original: string) =>
     editValues[offset + index] !== undefined ? editValues[offset + index] : original;
 
+  const runWrite = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (gateWrite && !(await gateWrite('write-op'))) return;
+      await fn();
+    },
+    [gateWrite],
+  );
+
   return (
     <div className="space-y-2">
       {/* Toolbar */}
@@ -122,13 +133,14 @@ export function ListEditor({
                       variant="secondary"
                       className="h-6 px-1.5 text-[10px]"
                       onClick={() =>
-                        void invokeListSet(
-                          dbSessionId,
-                          dbIndex,
-                          detail.key,
-                          offset + index,
-                          getValue(index, item),
-                        ).then(() => {
+                        void runWrite(async () => {
+                          await invokeListSet(
+                            dbSessionId,
+                            dbIndex,
+                            detail.key,
+                            offset + index,
+                            getValue(index, item),
+                          );
                           setEditIndex(null);
                           handleRefresh();
                           onChanged();
@@ -153,17 +165,19 @@ export function ListEditor({
                     variant="ghost"
                     className="h-6 px-1.5 text-[10px] text-danger"
                     onClick={() =>
-                      void invokeListIndex(dbSessionId, dbIndex, detail.key, offset + index)
-                        .then((val) => {
-                          if (val !== null) {
-                            return invokeListRem(dbSessionId, dbIndex, detail.key, 1, val);
-                          }
-                          return undefined;
-                        })
-                        .then(() => {
-                          handleRefresh();
-                          onChanged();
-                        })
+                      void runWrite(async () => {
+                        const val = await invokeListIndex(
+                          dbSessionId,
+                          dbIndex,
+                          detail.key,
+                          offset + index,
+                        );
+                        if (val !== null) {
+                          await invokeListRem(dbSessionId, dbIndex, detail.key, 1, val);
+                        }
+                        handleRefresh();
+                        onChanged();
+                      })
                     }
                   >
                     <Trash2 className="h-3 w-3" />
@@ -218,7 +232,8 @@ export function ListEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newValue}
           onClick={() =>
-            void invokeListPush(dbSessionId, dbIndex, detail.key, 'left', [newValue]).then(() => {
+            void runWrite(async () => {
+              await invokeListPush(dbSessionId, dbIndex, detail.key, 'left', [newValue]);
               setNewValue('');
               handleRefresh();
               onChanged();
@@ -233,7 +248,8 @@ export function ListEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newValue}
           onClick={() =>
-            void invokeListPush(dbSessionId, dbIndex, detail.key, 'right', [newValue]).then(() => {
+            void runWrite(async () => {
+              await invokeListPush(dbSessionId, dbIndex, detail.key, 'right', [newValue]);
               setNewValue('');
               handleRefresh();
               onChanged();
@@ -247,7 +263,8 @@ export function ListEditor({
           variant="secondary"
           className="h-7 px-2 text-xs"
           onClick={() =>
-            void invokeListPop(dbSessionId, dbIndex, detail.key, 'left').then(() => {
+            void runWrite(async () => {
+              await invokeListPop(dbSessionId, dbIndex, detail.key, 'left');
               handleRefresh();
               onChanged();
             })
@@ -259,7 +276,8 @@ export function ListEditor({
           variant="secondary"
           className="h-7 px-2 text-xs"
           onClick={() =>
-            void invokeListPop(dbSessionId, dbIndex, detail.key, 'right').then(() => {
+            void runWrite(async () => {
+              await invokeListPop(dbSessionId, dbIndex, detail.key, 'right');
               handleRefresh();
               onChanged();
             })

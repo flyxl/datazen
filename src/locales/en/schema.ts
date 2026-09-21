@@ -82,6 +82,9 @@ const pack = {
   'erDiagram.expand': 'Expand columns',
   'erDiagram.tableCount': '{count} tables',
   'erDiagram.relationCount': '{count} relationships',
+  'erDiagram.predictedCount': '{count} inferred',
+  'erDiagram.predictedHint':
+    'Relationships inferred from table structure and naming, not declared by the database. Turn this off in Settings → Editor.',
   'createDb.name': 'Database Name',
   'createDb.encoding': 'Encoding',
   'createDb.owner': 'Owner',

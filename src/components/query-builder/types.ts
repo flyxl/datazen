@@ -104,9 +104,21 @@ export interface QbJoin {
    * rendered and removed as one unit, so the linkage has to survive in the join.
    */
   constraint?: string;
+  /**
+   * Where an auto-detected join came from.
+   *
+   * `declared` is a real constraint the database enforces; `predicted` is inferred
+   * from structure and naming. The distinction is shown in the UI because the two
+   * carry very different confidence, and a predicted join must always be
+   * distinguishable from one the schema actually states.
+   *
+   * Absent on manual joins.
+   */
+  origin?: QbJoinOrigin;
 }
 
-/** A group-by entry. */
+/** How an auto-detected join was established. */
+export type QbJoinOrigin = 'declared' | 'predicted';
 export interface QbGroupByItem {
   table: string;
   column: string;

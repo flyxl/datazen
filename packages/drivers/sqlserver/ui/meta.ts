@@ -22,7 +22,7 @@ export const sqlserverMeta = {
   connectionView: 'sql',
   sqlDialect: 'sqlserver',
   databaseFieldType: 'name',
-  connectionForm: 'standard',
+  connectionForm: 'sqlserver',
   clipboardSchemes: ['sqlserver', 'mssql'],
   supportsExplain: true,
   // T-SQL has no `LIMIT`/`OFFSET` clause: pagination is `OFFSET n ROWS FETCH NEXT

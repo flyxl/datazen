@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildRelationGroups } from '../relationGroups';
 import { constraintKey, type ForeignKeyRelation } from '../hooks/useAutoJoin';
-import type { QbJoin } from '../types';
+import type { QbJoin, QbJoinOrigin } from '../types';
 
 const relation = (
   fromColumn: string,
@@ -17,6 +17,7 @@ const relation = (
   toTable = 'stock',
   ordinal = 1,
   pairCount = 2,
+  origin?: QbJoinOrigin,
 ): ForeignKeyRelation => ({
   fromTable,
   fromColumn,
@@ -25,6 +26,7 @@ const relation = (
   constraint,
   ordinal,
   pairCount,
+  origin,
 });
 
 const join = (over: Partial<QbJoin> = {}): QbJoin => ({
@@ -177,5 +179,26 @@ describe('buildRelationGroups — candidate type preview', () => {
   it('keeps the INNER default when the preview map is omitted', () => {
     const composite = [relation('item_id', 'item_id', 'fk_x', 'shipment', 'stock', 1, 1)];
     expect(build([], composite)[0]!.type).toBe('INNER');
+  });
+});
+
+describe('buildRelationGroups — predicted relationships', () => {
+  // An inference must stay visually distinct from a constraint the database
+  // enforces, so the group carries the flag every renderer keys off.
+  it('marks a group predicted when its relations were inferred', () => {
+    const inferred = [
+      relation('item_id', 'item_id', 'predicted::c1', 'shipment', 'stock', 1, 1, 'predicted'),
+    ];
+    expect(build([], inferred)[0]!.predicted).toBe(true);
+  });
+
+  it('leaves declared relations unmarked', () => {
+    const declared = [relation('item_id', 'item_id', 'fk_x', 'shipment', 'stock', 1, 1)];
+    expect(build([], declared)[0]!.predicted).toBeFalsy();
+  });
+
+  it('marks the confirmed-join safety net from its recorded origin', () => {
+    const groups = build([join({ origin: 'predicted' })], []);
+    expect(groups[0]!.predicted).toBe(true);
   });
 });

@@ -517,6 +517,14 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 onChange={(v) => updateField('editorCompletionIncludeTablePrefix', v)}
               />
 
+              <ToggleRow
+                label={t('settings.enableFkPrediction')}
+                hint={t('settings.enableFkPredictionHint')}
+                checked={settings.enableFkPrediction ?? true}
+                onChange={(v) => updateField('enableFkPrediction', v)}
+                testId="settings-toggle-enableFkPrediction"
+              />
+
               <SettingRow label={t('settings.keymap.preset')}>
                 <Select
                   value={settings.keymapPreset || 'default'}

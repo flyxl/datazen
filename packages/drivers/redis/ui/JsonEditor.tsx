@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Button } from '@datazen/ui';
 import { Input } from '@datazen/ui';
@@ -6,15 +6,26 @@ import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
 import { hasRedisJson } from './hasRedisJson';
+import { JsonModeBar } from './JsonModeBar';
+import {
+  formatJson,
+  isValidJson,
+  JSON_DISPLAY_MODES,
+  type JsonDisplayMode,
+  type JsonTextMode,
+} from './jsonModes';
+import type { GateWriteFn } from './useRedisGate';
 
 export interface JsonEditorProps {
   dbSessionId: string;
   dbIndex: number;
   redisKey: string;
+  gateWrite?: GateWriteFn;
 }
 
 interface JsonGetResult {
   value: unknown | null;
+  rawText?: string | null;
 }
 
 interface JsonDelResult {
@@ -63,12 +74,14 @@ export async function invokeJsonGet(
   dbIndex: number,
   key: string,
   path = '$',
+  raw = false,
 ): Promise<JsonGetResult> {
   return redisCommandInvoke('redis', 'json_get', {
     dbSessionId,
     dbIndex,
     key,
     path,
+    raw,
   }) as Promise<JsonGetResult>;
 }
 
@@ -114,6 +127,7 @@ function JsonTreeNode({
   name,
   value,
   depth,
+  gateWrite,
   onChanged,
 }: {
   dbSessionId: string;
@@ -123,6 +137,7 @@ function JsonTreeNode({
   name: string;
   value: JsonValue;
   depth: number;
+  gateWrite?: GateWriteFn;
   onChanged: () => void;
 }) {
   const { t } = useI18n();
@@ -154,8 +169,16 @@ function JsonTreeNode({
     [onChanged],
   );
 
+  const runWrite = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (gateWrite && !(await gateWrite('write-op'))) return;
+      await run(fn);
+    },
+    [gateWrite, run],
+  );
+
   const saveScalar = () => {
-    void run(async () => {
+    void runWrite(async () => {
       const parsed = parseScalarInput(draft, kind);
       await invokeJsonSet(dbSessionId, dbIndex, redisKey, path, parsed);
       setEditing(false);
@@ -163,13 +186,13 @@ function JsonTreeNode({
   };
 
   const deleteNode = () => {
-    void run(async () => {
+    void runWrite(async () => {
       await invokeJsonDel(dbSessionId, dbIndex, redisKey, path);
     });
   };
 
   const addChild = () => {
-    void run(async () => {
+    void runWrite(async () => {
       if (kind === 'object') {
         const field = addName.trim();
         if (!field) throw new Error(t('redis.jsonFieldRequired'));
@@ -341,6 +364,7 @@ function JsonTreeNode({
             name={child.label}
             value={child.value}
             depth={depth + 1}
+            gateWrite={gateWrite}
             onChanged={onChanged}
           />
         ))}
@@ -348,13 +372,22 @@ function JsonTreeNode({
   );
 }
 
-export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) {
+export function JsonEditor({ dbSessionId, dbIndex, redisKey, gateWrite }: JsonEditorProps) {
   const { t } = useI18n();
   const [modules, setModules] = useState<string[] | null>(null);
   const [root, setRoot] = useState<JsonValue | null>(null);
+  const [rawText, setRawText] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [initBusy, setInitBusy] = useState(false);
+  const [mode, setMode] = useState<JsonDisplayMode>('tree');
+  const [text, setText] = useState<string>('');
+  const [textError, setTextError] = useState<string | null>(null);
+  const [savingText, setSavingText] = useState(false);
+  const modeRef = useRef<JsonDisplayMode>('tree');
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   const capable = modules !== null && hasRedisJson(modules);
 
@@ -363,15 +396,23 @@ export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) 
     setLoading(true);
     setError(null);
     try {
-      const result = await invokeJsonGet(dbSessionId, dbIndex, redisKey, '$');
+      const result = await invokeJsonGet(dbSessionId, dbIndex, redisKey, '$', true);
       setRoot((result.value as JsonValue | null) ?? null);
+      setRawText(result.rawText ?? (result.value == null ? '' : JSON.stringify(result.value)));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setRoot(null);
+      setRawText('');
     } finally {
       setLoading(false);
     }
   }, [capable, dbSessionId, dbIndex, redisKey]);
+
+  // Re-derive the editable buffer from freshly loaded raw text whenever the
+  // server copy changes (load / save), but only while a text view is active.
+  useEffect(() => {
+    if (modeRef.current !== 'tree') setText(formatJson(rawText, modeRef.current as JsonTextMode));
+  }, [rawText]);
 
   useEffect(() => {
     let cancelled = false;
@@ -389,9 +430,10 @@ export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) 
           setLoading(false);
           return;
         }
-        const result = await invokeJsonGet(dbSessionId, dbIndex, redisKey, '$');
+        const result = await invokeJsonGet(dbSessionId, dbIndex, redisKey, '$', true);
         if (cancelled) return;
         setRoot((result.value as JsonValue | null) ?? null);
+        setRawText(result.rawText ?? (result.value == null ? '' : JSON.stringify(result.value)));
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : String(e));
@@ -406,13 +448,55 @@ export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) 
     };
   }, [dbSessionId, dbIndex, redisKey]);
 
+  const runWrite = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (gateWrite && !(await gateWrite('write-op'))) return;
+      await fn();
+    },
+    [gateWrite],
+  );
+
   const initRoot = () => {
-    setInitBusy(true);
-    setError(null);
-    void invokeJsonSet(dbSessionId, dbIndex, redisKey, '$', {})
-      .then(() => reload())
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setInitBusy(false));
+    void runWrite(async () => {
+      setInitBusy(true);
+      setError(null);
+      await invokeJsonSet(dbSessionId, dbIndex, redisKey, '$', {})
+        .then(() => reload())
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+        .finally(() => setInitBusy(false));
+    });
+  };
+
+  const selectMode = (next: JsonDisplayMode) => {
+    setTextError(null);
+    if (next === 'tree') {
+      setMode('tree');
+      return;
+    }
+    // Entering text view from the tree seeds from the server copy; switching
+    // between text views reformats the live buffer so edits survive (lossless).
+    const base = mode === 'tree' || text === '' ? rawText : text;
+    setText(formatJson(base, next));
+    setMode(next);
+  };
+
+  const saveText = () => {
+    if (!isValidJson(text)) {
+      setTextError(t('redis.invalidJson'));
+      return;
+    }
+    void runWrite(async () => {
+      setSavingText(true);
+      setTextError(null);
+      try {
+        await invokeJsonSet(dbSessionId, dbIndex, redisKey, '$', JSON.parse(text) as JsonValue);
+        await reload();
+      } catch (e) {
+        setTextError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSavingText(false);
+      }
+    });
   };
 
   if (modules !== null && !capable) {
@@ -433,6 +517,10 @@ export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) 
           {t('redis.refresh')}
         </Button>
       </div>
+
+      {!loading && root !== null && (
+        <JsonModeBar modes={JSON_DISPLAY_MODES} active={mode} onSelect={selectMode} />
+      )}
 
       {error && <p className="text-danger">{error}</p>}
 
@@ -457,7 +545,7 @@ export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) 
             )}
           </Button>
         </div>
-      ) : (
+      ) : mode === 'tree' ? (
         <div className="max-h-[480px] overflow-auto rounded-md border border-edge bg-surface-alt p-2">
           <JsonTreeNode
             dbSessionId={dbSessionId}
@@ -467,8 +555,38 @@ export function JsonEditor({ dbSessionId, dbIndex, redisKey }: JsonEditorProps) 
             name={redisKey}
             value={root}
             depth={0}
+            gateWrite={gateWrite}
             onChanged={() => void reload()}
           />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <textarea
+            value={text}
+            data-testid="redis-json-text"
+            onChange={(e) => {
+              setText(e.target.value);
+              setTextError(null);
+            }}
+            spellCheck={false}
+            className="min-h-[220px] w-full rounded-md border border-edge bg-surface-alt p-3 font-mono text-xs text-fg-secondary"
+          />
+          {textError && (
+            <div className="rounded-md border border-danger/20 bg-danger/10 px-2 py-1.5 text-danger">
+              {textError}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button
+              variant="primary"
+              className="h-7 px-2 text-xs"
+              disabled={savingText}
+              data-testid="redis-json-text-save"
+              onClick={saveText}
+            >
+              {t('redis.json.saveDocument')}
+            </Button>
+          </div>
         </div>
       )}
     </div>

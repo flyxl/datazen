@@ -469,19 +469,31 @@ describe('Visual Query Builder 异常旅程 (QB-JOURNEY-B)', () => {
     const targetSelector = `[data-testid="qb-col-${TABLE_B}-id"]`;
 
     expect((await pointer(handleSelector, 'pointerdown', false)).ok).toBe(true);
-    await browser.pause(200);
+    // The preview path only renders after the pointerdown state commits, and the
+    // window pointermove listener attaches in that same commit's effect. Waiting
+    // on it beats a fixed pause: under parallel-session load the debug webview
+    // can take longer than any constant allows.
+    await browser.waitUntil(() => existsInDom('[data-testid="qb-manual-join-preview"]'), {
+      timeout: 5000,
+      interval: 100,
+    });
     await pointer(targetSelector, 'pointermove', true);
-    await browser.pause(200);
 
     // During a drag the canvas draws a preview line and highlights the column
     // under the pointer, so the drop target is unambiguous.
-    expect(await existsInDom('[data-testid="qb-manual-join-preview"]')).toBe(true);
+    await browser.waitUntil(
+      () =>
+        browser.execute(
+          (sel: string) => !!document.querySelector(sel)?.classList.contains('qb-drop-target'),
+          targetSelector,
+        ),
+      { timeout: 3000, interval: 100 },
+    );
     const highlighted = await browser.execute(
       (sel: string) => !!document.querySelector(sel)?.classList.contains('qb-drop-target'),
       targetSelector,
     );
     expect(highlighted).toBe(true);
-    await captureJourneyStep('qbb-b20-drag-preview');
     await captureJourneyStep('qbb-b20-drag-preview');
 
     await pointer(targetSelector, 'pointerup', true);

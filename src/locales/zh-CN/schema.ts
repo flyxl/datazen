@@ -81,6 +81,9 @@ const pack = {
   'erDiagram.expand': '展开列',
   'erDiagram.tableCount': '{count} 张表',
   'erDiagram.relationCount': '{count} 个关系',
+  'erDiagram.predictedCount': '{count} 条推测',
+  'erDiagram.predictedHint':
+    '依据表结构与命名推测出的关系，并非数据库声明。可在「设置 → 编辑器」中关闭。',
   'createDb.name': '数据库名称',
   'createDb.encoding': '字符编码',
   'createDb.owner': '所有者',

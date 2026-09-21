@@ -30,6 +30,10 @@ vi.mock('../redisInvoke', () => ({
   redisCommandInvoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
+vi.mock('../useRedisGate', () => ({
+  useRedisGate: () => ({ gateWrite: async () => true, gateDialog: null }),
+}));
+
 describe('PubSubPanel', () => {
   afterEach(() => {
     cleanup();

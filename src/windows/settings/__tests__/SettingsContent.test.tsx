@@ -508,6 +508,20 @@ describe('SettingsContent', () => {
     await waitFor(() => expect(updateSettingsMock).toHaveBeenCalledWith({ defaultPageSize: 100 }));
   });
 
+  it('offers the smart FK prediction switch in the editor section', async () => {
+    render(<SettingsContent initialSection="editor" />);
+    await waitForSettingsLoad();
+
+    // On by default, and turning it off persists the choice.
+    const toggle = screen.getByRole('switch', { name: 'settings.enableFkPrediction' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(updateSettingsMock).toHaveBeenCalledWith({ enableFkPrediction: false }),
+    );
+  });
+
   it('renders SqlSnippetsCard in editor section', async () => {
     render(<SettingsContent initialSection="editor" />);
     expect(screen.getByText('query.snippets')).toBeInTheDocument();

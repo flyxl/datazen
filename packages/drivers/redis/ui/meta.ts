@@ -16,6 +16,7 @@ export const redisMeta = {
   supportsBackup: false,
   supportsTables: false,
   isKeyValue: true,
+  dbCountsCommand: 'db_sizes',
   popularityOrder: 4,
   supportsSQL: false,
   category: 'kv',

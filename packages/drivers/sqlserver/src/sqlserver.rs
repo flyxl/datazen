@@ -119,11 +119,30 @@ impl SqlServerDriver {
                 cfg.database(db);
             }
         }
-        let (encryption, trust) = Self::ssl_settings(&config.ssl_mode);
+        let (encryption, default_trust) = Self::ssl_settings(&config.ssl_mode);
         cfg.encryption(encryption);
-        if trust {
+
+        let trust_server_certificate = config
+            .options
+            .as_ref()
+            .and_then(|options| options.get("trustServerCertificate"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(default_trust);
+        if trust_server_certificate {
             cfg.trust_cert();
         }
+
+        if let Some(application_name) = config
+            .options
+            .as_ref()
+            .and_then(|options| options.get("applicationName"))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            cfg.application_name(application_name);
+        }
+
         Ok(cfg)
     }
 

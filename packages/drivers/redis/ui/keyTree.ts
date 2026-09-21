@@ -1,4 +1,5 @@
 import type { KeyEntry } from '../../../../src/types';
+import type { ChildEntry } from './redisInvoke';
 
 /** Flat row or expandable namespace folder in the key browser. */
 export type KeyTreeRow =
@@ -60,9 +61,7 @@ export function buildKeyTreeRows(
   const rows: KeyTreeRow[] = [];
 
   function walk(node: Node, depth: number) {
-    const folders = [...node.children.values()].sort((a, b) =>
-      a.label.localeCompare(b.label),
-    );
+    const folders = [...node.children.values()].sort((a, b) => a.label.localeCompare(b.label));
     for (const child of folders) {
       const hasChildren = child.children.size > 0;
       if (hasChildren) {
@@ -92,15 +91,67 @@ export function buildKeyTreeRows(
   return rows;
 }
 
-function countLeaves(node: {
-  children: Map<string, unknown>;
-  entry?: KeyEntry;
-}): number {
+function countLeaves(node: { children: Map<string, unknown>; entry?: KeyEntry }): number {
   let n = node.entry ? 1 : 0;
   for (const child of node.children.values()) {
     n += countLeaves(child as { children: Map<string, unknown>; entry?: KeyEntry });
   }
   return n;
+}
+
+/** Last namespace segment of a full key or folder prefix (for row labels). */
+export function folderLabel(prefix: string): string {
+  const trimmed = prefix.replace(/[:.]+$/, '');
+  const i = Math.max(trimmed.lastIndexOf(':'), trimmed.lastIndexOf('.'));
+  return i >= 0 ? trimmed.slice(i + 1) : trimmed;
+}
+
+function childToKeyEntry(child: Extract<ChildEntry, { kind: 'key' }>): KeyEntry {
+  return {
+    key: child.key,
+    keyType: child.keyType,
+    ttl: child.ttl,
+    size: child.logicalLen,
+    preview: '',
+  };
+}
+
+/**
+ * Flatten server-driven `list_children` levels into tree rows. Folders render
+ * with an estimated count (`~`) unless their level is `done`; expanded folders
+ * recurse into their cached level.
+ */
+export function buildServerTreeRows(
+  levels: Record<string, { children: ChildEntry[]; done: boolean }>,
+  expanded: Set<string>,
+  prefix = '',
+  depth = 0,
+): KeyTreeRow[] {
+  const level = levels[prefix];
+  if (!level) return [];
+  const rows: KeyTreeRow[] = [];
+  for (const child of level.children) {
+    if (child.kind === 'folder') {
+      rows.push({
+        kind: 'folder',
+        path: child.prefix,
+        label: folderLabel(child.prefix),
+        depth,
+        count: child.count,
+      });
+      if (expanded.has(child.prefix)) {
+        rows.push(...buildServerTreeRows(levels, expanded, child.prefix, depth + 1));
+      }
+    } else {
+      rows.push({
+        kind: 'key',
+        entry: childToKeyEntry(child),
+        depth,
+        label: folderLabel(child.key),
+      });
+    }
+  }
+  return rows;
 }
 
 export const KEY_TYPE_FILTERS = [

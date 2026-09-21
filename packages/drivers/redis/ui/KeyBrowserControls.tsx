@@ -13,6 +13,8 @@ export interface KeyBrowserControlsProps {
   onViewModeChange: (mode: KeyBrowserViewMode) => void;
   withMemory: boolean;
   onWithMemoryChange: (value: boolean) => void;
+  noTtlOnly: boolean;
+  onNoTtlOnlyChange: (value: boolean) => void;
 }
 
 export function KeyBrowserControls({
@@ -22,6 +24,8 @@ export function KeyBrowserControls({
   onViewModeChange,
   withMemory,
   onWithMemoryChange,
+  noTtlOnly,
+  onNoTtlOnlyChange,
 }: KeyBrowserControlsProps) {
   const { t } = useI18n();
 
@@ -77,6 +81,16 @@ export function KeyBrowserControls({
           className="rounded border-edge"
         />
         {t('redis.withMemory')}
+      </label>
+      <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-secondary">
+        <input
+          type="checkbox"
+          checked={noTtlOnly}
+          onChange={(e) => onNoTtlOnlyChange(e.target.checked)}
+          className="rounded border-edge"
+          data-testid="redis-no-ttl-only"
+        />
+        {t('redis.noTtlOnly')}
       </label>
     </div>
   );

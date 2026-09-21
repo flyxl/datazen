@@ -5,23 +5,18 @@ import { useColumnResize } from '../../../../src/hooks/useColumnResize';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import type { KeyEntry } from '../../../../src/types';
-import { buildKeyTreeRows } from './keyTree';
+import { buildKeyTreeRows, type KeyTreeRow } from './keyTree';
+import { formatSize } from './formatSize';
 import type { KeyBrowserViewMode } from './KeyBrowserControls';
 
 const ROW_HEIGHT = 32;
-
-function formatSize(size: number): string {
-  if (!size || size < 0) return '—';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 export function KeyTable({
   keys,
   viewMode = 'flat',
   expandedFolders = new Set<string>(),
   onToggleFolder,
+  treeRowsOverride,
   selectedKey,
   selectedKeys,
   onSelectKey,
@@ -36,6 +31,7 @@ export function KeyTable({
   viewMode?: KeyBrowserViewMode;
   expandedFolders?: Set<string>;
   onToggleFolder?: (path: string) => void;
+  treeRowsOverride?: KeyTreeRow[];
   selectedKey: string | null;
   selectedKeys: Set<string>;
   onSelectKey: (key: string) => void;
@@ -50,10 +46,10 @@ export function KeyTable({
   const scrollRef = useRef<HTMLDivElement>(null);
   const { columnWidths, onResizeStart } = useColumnResize({ count: 6 });
 
-  const treeRows = useMemo(
-    () => (viewMode === 'tree' ? buildKeyTreeRows(keys, expandedFolders) : null),
-    [viewMode, keys, expandedFolders],
-  );
+  const treeRows = useMemo(() => {
+    if (viewMode !== 'tree') return null;
+    return treeRowsOverride ?? buildKeyTreeRows(keys, expandedFolders);
+  }, [viewMode, treeRowsOverride, keys, expandedFolders]);
   const rowCount = treeRows ? treeRows.length : keys.length;
 
   const virtualizer = useVirtualizer({

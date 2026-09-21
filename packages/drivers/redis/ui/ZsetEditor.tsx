@@ -3,13 +3,14 @@ import { Plus, Trash2, Search, RefreshCw, ArrowUpDown } from 'lucide-react';
 import { Button } from '@datazen/ui';
 import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import type { KeyDetail } from '../../../../src/types';
+import type { KeyDetail } from './types';
 import {
   invokeZsetAdd,
   invokeZsetRemove,
   invokeZsetScan,
   type ZsetScanMember,
 } from './keyEditorsInvokes';
+import type { GateWriteFn } from './useRedisGate';
 
 const PAGE_SIZE = 100;
 
@@ -19,11 +20,13 @@ export function ZsetEditor({
   dbSessionId,
   dbIndex,
   detail,
+  gateWrite,
   onChanged,
 }: {
   dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
+  gateWrite?: GateWriteFn;
   onChanged: () => void;
 }) {
   const { t } = useI18n();
@@ -106,6 +109,14 @@ export function ZsetEditor({
     return sorted;
   }, [allMembers, sortDirection, editScores]);
 
+  const runWrite = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (gateWrite && !(await gateWrite('write-op'))) return;
+      await fn();
+    },
+    [gateWrite],
+  );
+
   return (
     <div className="space-y-2">
       {/* Search + sort + refresh toolbar */}
@@ -178,14 +189,14 @@ export function ZsetEditor({
                         variant="secondary"
                         className="h-6 px-1.5 text-[10px]"
                         onClick={() =>
-                          void (async () => {
+                          void runWrite(async () => {
                             await invokeZsetRemove(dbSessionId, dbIndex, detail.key, [item.member]);
                             await invokeZsetAdd(dbSessionId, dbIndex, detail.key, [
                               { member: item.member, score: editScores[item.member] },
                             ]);
                             handleRefresh();
                             onChanged();
-                          })()
+                          })
                         }
                       >
                         {t('common.save')}
@@ -195,12 +206,11 @@ export function ZsetEditor({
                     variant="ghost"
                     className="h-6 px-1.5 text-[10px] text-danger"
                     onClick={() =>
-                      void invokeZsetRemove(dbSessionId, dbIndex, detail.key, [item.member]).then(
-                        () => {
-                          handleRefresh();
-                          onChanged();
-                        },
-                      )
+                      void runWrite(async () => {
+                        await invokeZsetRemove(dbSessionId, dbIndex, detail.key, [item.member]);
+                        handleRefresh();
+                        onChanged();
+                      })
                     }
                   >
                     <Trash2 className="h-3 w-3" />
@@ -253,9 +263,10 @@ export function ZsetEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newMember.trim()}
           onClick={() =>
-            void invokeZsetAdd(dbSessionId, dbIndex, detail.key, [
-              { member: newMember.trim(), score: parseFloat(newScore) || 0 },
-            ]).then(() => {
+            void runWrite(async () => {
+              await invokeZsetAdd(dbSessionId, dbIndex, detail.key, [
+                { member: newMember.trim(), score: parseFloat(newScore) || 0 },
+              ]);
               setNewMember('');
               handleRefresh();
               onChanged();

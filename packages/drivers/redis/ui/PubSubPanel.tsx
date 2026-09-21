@@ -5,6 +5,7 @@ import { Button } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
+import { useRedisGate } from './useRedisGate';
 
 export interface PubSubPanelProps {
   dbSessionId: string;
@@ -47,6 +48,7 @@ function formatTime(ts: number): string {
 
 export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
   const { t } = useI18n();
+  const { gateWrite, gateDialog } = useRedisGate();
   const [channelsInput, setChannelsInput] = useState('');
   const [patternsInput, setPatternsInput] = useState('');
   const [publishChannel, setPublishChannel] = useState('');
@@ -166,6 +168,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
       setError(t('redis.pubsubChannelRequired'));
       return;
     }
+    if (!(await gateWrite('write-op', `PUBLISH ${channel} ...`))) return;
 
     setPublishing(true);
     setError(null);
@@ -181,7 +184,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
     } finally {
       setPublishing(false);
     }
-  }, [dbSessionId, publishChannel, publishMessage, t]);
+  }, [dbSessionId, publishChannel, publishMessage, t, gateWrite]);
 
   const handleClearMessages = useCallback(() => {
     setMessages([]);
@@ -419,6 +422,7 @@ export function PubSubPanel({ dbSessionId }: PubSubPanelProps) {
           </div>
         )}
       </div>
+      {gateDialog}
     </div>
   );
 }

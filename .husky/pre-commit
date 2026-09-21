@@ -3,11 +3,19 @@
 
 set -e
 
+# Snapshot the .rs files staged for THIS commit before rustfmt runs. Only these
+# are re-staged afterwards: a blanket `git add -- '*.rs'` would also sweep any
+# unstaged, in-progress Rust work in the working tree into an unrelated commit.
+STAGED_RS=$(git diff --cached --name-only --diff-filter=ACMR -- '*.rs' || true)
+
 # Format the Rust workspace.
 cargo fmt --all
 
-# Stage any files changed by rustfmt so the formatted version is committed.
-git add -- '*.rs'
+# Stage the formatted version of the files that were staged anyway.
+if [ -n "$STAGED_RS" ]; then
+  printf '%s\n' "$STAGED_RS" | tr '\n' '\0' \
+    | git add --pathspec-from-file=- --pathspec-file-nul
+fi
 
 # Format staged frontend/source files with project-local Prettier.
 # prettier is pinned in devDependencies for reproducible formatting across the team.

@@ -296,6 +296,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
               dbName,
               depth: 2,
               isSelected: false,
+              dbCountsCommand: meta.dbCountsCommand,
             });
           }
         }

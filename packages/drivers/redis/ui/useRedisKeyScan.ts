@@ -20,6 +20,7 @@ export function useRedisKeyScan({ dbSessionId, dbIndex, enabled }: UseRedisKeySc
   const [keyTypeFilter, setKeyTypeFilter] = useState('all');
   const [viewMode, setViewMode] = useState<KeyBrowserViewMode>('flat');
   const [withMemory, setWithMemory] = useState(false);
+  const [noTtlOnly, setNoTtlOnly] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   const loadKeys = useCallback(
@@ -29,6 +30,7 @@ export function useRedisKeyScan({ dbSessionId, dbIndex, enabled }: UseRedisKeySc
         const result = await invokeScanKeys(dbSessionId, idx, pattern || '*', cur, PAGE_SIZE, {
           keyType: keyTypeFilter,
           withMemory,
+          noTtlOnly,
         });
         if (reset) {
           setKeys(result.keys);
@@ -43,7 +45,7 @@ export function useRedisKeyScan({ dbSessionId, dbIndex, enabled }: UseRedisKeySc
         setKeysLoading(false);
       }
     },
-    [dbSessionId, keyTypeFilter, withMemory],
+    [dbSessionId, keyTypeFilter, withMemory, noTtlOnly],
   );
 
   const resetSelectionState = useCallback(() => {
@@ -74,14 +76,14 @@ export function useRedisKeyScan({ dbSessionId, dbIndex, enabled }: UseRedisKeySc
     void loadKeys(dbIndex, searchPattern, 0, true);
   }, [dbIndex, searchPattern, loadKeys]);
 
-  // Re-scan when type filter or memory option changes
+  // Re-scan when type filter, memory option, or no-expiry filter changes
   useEffect(() => {
     if (!enabled) return;
     setKeys([]);
     setCursor(0);
     void loadKeys(dbIndex, searchPattern, 0, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filter/memory toggles
-  }, [keyTypeFilter, withMemory]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when filter/memory/no-ttl toggles
+  }, [keyTypeFilter, withMemory, noTtlOnly]);
 
   const toggleFolder = useCallback((path: string) => {
     setExpandedFolders((prev) => {
@@ -106,6 +108,8 @@ export function useRedisKeyScan({ dbSessionId, dbIndex, enabled }: UseRedisKeySc
     setViewMode,
     withMemory,
     setWithMemory,
+    noTtlOnly,
+    setNoTtlOnly,
     expandedFolders,
     loadKeys,
     resetSelectionState,

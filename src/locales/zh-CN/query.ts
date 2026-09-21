@@ -448,6 +448,8 @@ const pack = {
   'query.visualBuilder.sortOptionsTitle': '排序选项',
   'query.visualBuilder.joinLabel': '关联',
   'query.visualBuilder.joinOn': 'ON',
+  'query.visualBuilder.predictedBadge': '推测',
+  'query.visualBuilder.predictedBadgeTitle': '由结构与命名推断，并非数据库声明的外键',
   // ── Object tree ──────────────────────────────────────────────
   'query.objectTree.title': '数据库对象',
   'query.objectTree.schema': 'schema',

@@ -8,6 +8,8 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct JsonGetResult {
     pub value: Option<serde_json::Value>,
+    /// Verbatim `JSON.GET` reply text (un-pretty), populated only when `raw` is requested.
+    pub raw_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,25 +75,33 @@ pub fn unwrap_json_get_root(value: serde_json::Value) -> serde_json::Value {
     }
 }
 
-pub async fn json_get<C>(conn: &mut C, key: &str, path: &str) -> Result<JsonGetResult, String>
+pub async fn json_get<C>(
+    conn: &mut C,
+    key: &str,
+    path: &str,
+    raw: bool,
+) -> Result<JsonGetResult, String>
 where
     C: AsyncCommands + ConnectionLike + Send,
 {
     let key = normalize_key(key)?;
     let path = normalize_path(path)?;
 
-    let raw: redis::Value = redis::cmd("JSON.GET")
+    let reply: redis::Value = redis::cmd("JSON.GET")
         .arg(key)
         .arg(&path)
         .query_async(conn)
         .await
         .map_err(|e| e.to_string())?;
 
-    if matches!(raw, redis::Value::Nil) {
-        return Ok(JsonGetResult { value: None });
+    if matches!(reply, redis::Value::Nil) {
+        return Ok(JsonGetResult {
+            value: None,
+            raw_text: None,
+        });
     }
 
-    let text = value_to_string(&raw);
+    let text = value_to_string(&reply);
     let parsed = parse_json_reply(&text)?;
     let value = parsed.map(|v| {
         if path == "$" {
@@ -100,7 +110,28 @@ where
             v
         }
     });
-    Ok(JsonGetResult { value })
+
+    let raw_text = if raw {
+        if path == "$" {
+            // Legacy `JSON.GET key` (no path) returns the whole document unwrapped.
+            let rv: redis::Value = redis::cmd("JSON.GET")
+                .arg(key)
+                .query_async(conn)
+                .await
+                .map_err(|e| e.to_string())?;
+            if matches!(rv, redis::Value::Nil) {
+                None
+            } else {
+                Some(value_to_string(&rv))
+            }
+        } else {
+            Some(text)
+        }
+    } else {
+        None
+    };
+
+    Ok(JsonGetResult { value, raw_text })
 }
 
 pub async fn json_set<C>(conn: &mut C, key: &str, path: &str, value: &str) -> Result<(), String>

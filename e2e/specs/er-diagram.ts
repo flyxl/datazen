@@ -1,8 +1,8 @@
 /**
  * ER diagram full user journey — workspace home / toolbar entry, React Flow canvas,
- * controls, search, and table/relation stats.
+ * controls, search, table/relation stats, and inferred relationships.
  *
- * Covers: ER-001~ER-008
+ * Covers: ER-001~ER-009
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import fs from 'node:fs';
@@ -19,9 +19,32 @@ import {
   openQueryTab,
   resetDialogQueue,
   waitForConnectionToolbar,
+  withSafeModeOff,
 } from '../helpers.js';
 
+/**
+ * Assert a boolean with a message.
+ *
+ * `expect` from `@wdio/globals` takes a single argument, so a message-bearing
+ * assertion needs this wrapper.
+ */
+function expectTrue(value: boolean, message: string): void {
+  if (!value) throw new Error(message);
+}
+
 const SEEDED_CONN_ID = 'conn_e2e_pg';
+
+/**
+ * A pair with **no** declared constraint, created before the panel first opens.
+ *
+ * The member column spells the owner table out in full, so the naming convention
+ * links them exactly and the engine scores it high enough to draw. Created in
+ * `before` on purpose: the ER panel loads once per session+database, so a table
+ * added after it opened would never appear.
+ */
+const PRED_OWNER = 'er_pred_owner';
+const PRED_MEMBER = 'er_pred_member';
+const PRED_COLUMN = `${PRED_OWNER}_id`;
 
 /** Click the ER Diagram panel tab (switches away from other tabs when present). */
 async function focusErPanelTab() {
@@ -68,10 +91,60 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     mainWindow = await browser.getWindowHandle();
     await connectSeededPgInWorkspace();
     await waitForConnectionToolbar();
+
+    const dbSessionId = await invokeBackend<string>('connect_dedicated', {
+      connectionId: SEEDED_CONN_ID,
+      database: null,
+    });
+    try {
+      // Safe Mode blocks DDL, so the fixture needs an explicit opt-out.
+      await withSafeModeOff(async () => {
+        await invokeBackend('execute_query', {
+          dbSessionId,
+          sql: `DROP TABLE IF EXISTS ${PRED_MEMBER}`,
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId,
+          sql: `DROP TABLE IF EXISTS ${PRED_OWNER}`,
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId,
+          sql: `CREATE TABLE ${PRED_OWNER} (id INTEGER PRIMARY KEY, label TEXT)`,
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId,
+          sql: `CREATE TABLE ${PRED_MEMBER} (id INTEGER PRIMARY KEY, ${PRED_COLUMN} INTEGER, note TEXT)`,
+        });
+      });
+    } finally {
+      await disconnectBackend(dbSessionId);
+    }
   });
 
   after(async () => {
     await closeExtraWindows(mainWindow);
+    try {
+      const dbSessionId = await invokeBackend<string>('connect_dedicated', {
+        connectionId: SEEDED_CONN_ID,
+        database: null,
+      });
+      try {
+        await withSafeModeOff(async () => {
+          await invokeBackend('execute_query', {
+            dbSessionId,
+            sql: `DROP TABLE IF EXISTS ${PRED_MEMBER}`,
+          });
+          await invokeBackend('execute_query', {
+            dbSessionId,
+            sql: `DROP TABLE IF EXISTS ${PRED_OWNER}`,
+          });
+        });
+      } finally {
+        await disconnectBackend(dbSessionId);
+      }
+    } catch {
+      /* ok */
+    }
     try {
       await resetDialogQueue();
     } catch {
@@ -172,6 +245,59 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-008)', () => {
     await firstNode.click();
     await browser.pause(500);
     await captureJourneyStep('er-table-selected', 0, true);
+  });
+
+  it('ER-009: 无外键约束的两张表也应画出推测关系，且与声明关系视觉可区分', async () => {
+    await browser.switchToWindow(mainWindow);
+    await ensureErDiagramVisible();
+
+    // Both tables must be in the graph before the edge can exist.
+    await browser.waitUntil(
+      async () =>
+        await browser.execute(
+          (owner: string, member: string) =>
+            !!document.querySelector(`[data-id="${owner}"]`) &&
+            !!document.querySelector(`[data-id="${member}"]`),
+          PRED_OWNER,
+          PRED_MEMBER,
+        ),
+      { timeout: 15000, timeoutMsg: '推测关系涉及的表未出现在 ER 图中' },
+    );
+
+    // Edges are keyed by the engine's candidate id, which is prefixed so an
+    // inferred relationship is identifiable without reading styles.
+    const predictedEdgeId = await browser.execute(
+      (member: string, owner: string) => {
+        const edges = Array.from(document.querySelectorAll('.react-flow__edge'));
+        const match = edges.find((el) => {
+          const id = el.getAttribute('data-id') ?? '';
+          return id.startsWith('predicted-') && id.includes(member) && id.includes(owner);
+        });
+        return match?.getAttribute('data-id') ?? null;
+      },
+      PRED_MEMBER,
+      PRED_OWNER,
+    );
+    expectTrue(predictedEdgeId !== null, '未画出推测出的 ER 关系');
+    await captureJourneyStep('er-predicted-relation', 0, true);
+
+    // An inference must not look like a constraint: the declared edges are solid
+    // and animated, the inferred one dashed and still.
+    const dashed = await browser.execute((edgeId: string) => {
+      const el = document.querySelector(`.react-flow__edge[data-id="${edgeId}"]`);
+      const path = el?.querySelector('path');
+      return path ? getComputedStyle(path).strokeDasharray : null;
+    }, predictedEdgeId as string);
+    expectTrue(
+      dashed !== null && dashed !== 'none' && dashed.length > 0,
+      `推测关系未使用虚线样式（strokeDasharray=${String(dashed)}）`,
+    );
+
+    // The stats must disclose how many were inferred rather than folding them
+    // into the declared total.
+    const inferredCount = await $('[data-testid="er-predicted-count"]');
+    await inferredCount.waitForDisplayed({ timeout: 10000 });
+    expectTrue(/\d/.test(await inferredCount.getText()), '统计面板未显示推测关系数量');
   });
 
   it('ER-007: 搜索框应可过滤表节点', async () => {

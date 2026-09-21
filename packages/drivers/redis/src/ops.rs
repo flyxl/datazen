@@ -78,6 +78,33 @@ pub struct BatchRenameResult {
     pub errors: Vec<KeyError>,
 }
 
+/// Issue one SCAN round-trip: `SCAN cursor COUNT n [MATCH p] [TYPE t]`.
+///
+/// Shared by the flat key browser (`scan_keys`, `count_matching`), the
+/// hierarchical `list_children`, and the guarded value search; each caller
+/// applies its own post-processing of the returned key batch.
+pub(crate) async fn scan_batch<C>(
+    conn: &mut C,
+    cursor: u64,
+    count: u32,
+    pattern: Option<&str>,
+    type_filter: Option<&str>,
+) -> Result<(u64, Vec<String>), String>
+where
+    C: redis::aio::ConnectionLike + Send,
+{
+    let mut cmd = redis::cmd("SCAN");
+    cmd.arg(cursor).arg("COUNT").arg(count.max(1));
+    if let Some(p) = pattern {
+        cmd.arg("MATCH").arg(p);
+    }
+    if let Some(t) = type_filter {
+        cmd.arg("TYPE").arg(t);
+    }
+    let raw: redis::Value = cmd.query_async(conn).await.map_err(|e| e.to_string())?;
+    Ok(parse_scan_result(&raw))
+}
+
 /// Shared SCAN loop used by key browser, pattern deletes, and counts.
 pub async fn scan_keys<C>(
     conn: &mut C,
@@ -90,13 +117,7 @@ where
     let mut keys = Vec::new();
     let mut cursor = 0u64;
     loop {
-        let mut cmd = redis::cmd("SCAN");
-        cmd.arg(cursor).arg("COUNT").arg(200);
-        if let Some(pat) = pattern {
-            cmd.arg("MATCH").arg(pat);
-        }
-        let raw: redis::Value = cmd.query_async(conn).await.map_err(|e| e.to_string())?;
-        let (next, batch) = parse_scan_result(&raw);
+        let (next, batch) = scan_batch(conn, cursor, 200, pattern, None).await?;
         keys.extend(batch);
         cursor = next;
         if cursor == 0 {
@@ -133,16 +154,7 @@ where
     let mut total = 0u64;
     let mut cursor = 0u64;
     loop {
-        let raw: redis::Value = redis::cmd("SCAN")
-            .arg(cursor)
-            .arg("MATCH")
-            .arg(pattern)
-            .arg("COUNT")
-            .arg(200)
-            .query_async(conn)
-            .await
-            .map_err(|e| e.to_string())?;
-        let (next, batch) = parse_scan_result(&raw);
+        let (next, batch) = scan_batch(conn, cursor, 200, Some(pattern), None).await?;
         total += batch.len() as u64;
         cursor = next;
         if cursor == 0 {

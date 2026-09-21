@@ -14,11 +14,13 @@ import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { redisCommandInvoke } from './redisInvoke';
+import type { GateWriteFn } from './useRedisGate';
 
 export interface StreamEditorProps {
   dbSessionId: string;
   dbIndex: number;
   redisKey: string;
+  gateWrite?: GateWriteFn;
 }
 
 interface StreamEntry {
@@ -196,7 +198,7 @@ function formatFields(fields: Record<string, string>): string {
     .join(' · ');
 }
 
-export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorProps) {
+export function StreamEditor({ dbSessionId, dbIndex, redisKey, gateWrite }: StreamEditorProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<StreamTab>('entries');
   const [entries, setEntries] = useState<StreamEntry[]>([]);
@@ -339,6 +341,14 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
     }
   }, []);
 
+  const runWrite = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (gateWrite && !(await gateWrite('write-op'))) return;
+      await runAction(fn);
+    },
+    [gateWrite, runAction],
+  );
+
   const togglePending = useCallback((id: string) => {
     setSelectedPending((prev) => {
       const next = new Set(prev);
@@ -437,7 +447,7 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
               className="h-7 gap-1 px-2 text-xs"
               disabled={busy || !newField.trim()}
               onClick={() =>
-                void runAction(async () => {
+                void runWrite(async () => {
                   await invokeXadd(dbSessionId, dbIndex, redisKey, {
                     [newField.trim()]: newValue,
                   });
@@ -518,13 +528,8 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
                           title={t('redis.streamDestroyGroup')}
                           onClick={(e) => {
                             e.stopPropagation();
-                            void runAction(async () => {
-                              await invokeXgroupDestroy(
-                                dbSessionId,
-                                dbIndex,
-                                redisKey,
-                                group.name,
-                              );
+                            void runWrite(async () => {
+                              await invokeXgroupDestroy(dbSessionId, dbIndex, redisKey, group.name);
                               if (selectedGroup === group.name) {
                                 setSelectedGroup(null);
                               }
@@ -618,7 +623,7 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
               className="h-7 gap-1 px-2 text-xs"
               disabled={busy || !newGroup.trim()}
               onClick={() =>
-                void runAction(async () => {
+                void runWrite(async () => {
                   await invokeXgroupCreate(
                     dbSessionId,
                     dbIndex,
@@ -647,7 +652,7 @@ export function StreamEditor({ dbSessionId, dbIndex, redisKey }: StreamEditorPro
                   className="ml-auto h-7 px-2 text-xs"
                   disabled={busy || selectedPending.size === 0}
                   onClick={() =>
-                    void runAction(async () => {
+                    void runWrite(async () => {
                       await invokeXack(dbSessionId, dbIndex, redisKey, selectedGroup, [
                         ...selectedPending,
                       ]);

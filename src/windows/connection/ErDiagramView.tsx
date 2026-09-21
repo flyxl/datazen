@@ -28,6 +28,10 @@ import { buildErNodeContextMenuItems } from '../../lib/erNodeContextMenu';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { TableNode } from './er/TableNode';
 import { buildErGraph } from './er/buildErGraph';
+import type { ErPredictedRelation } from './er/buildErGraph';
+import { toPredictionTablesFromSchemas } from '../../lib/relationPrediction/fromTableSchema';
+import { predictRelations } from '../../lib/relationPrediction/predictRelations';
+import { useSettingsStore } from '../../stores/settingsStore';
 import type { TableSchema } from '../../types';
 
 interface ErDiagramViewProps {
@@ -61,6 +65,7 @@ function ErDiagramInner({
   const { t } = useI18n();
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const [schemas, setSchemas] = useState<TableSchema[]>([]);
+  const fkPredictionEnabled = useSettingsStore((s) => s.settings.enableFkPrediction ?? true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,12 +120,26 @@ function ErDiagramInner({
     };
   }, [dbSessionId, database]);
 
+  // Inferred relationships, drawn alongside the declared ones. The ER diagram
+  // already holds a full schema per table, so this needs no extra IPC — and it is
+  // memoised on `schemas` because the engine walks every table in the database.
+  const predictedRelations = useMemo<ErPredictedRelation[]>(() => {
+    if (!fkPredictionEnabled || schemas.length < 2) return [];
+    return predictRelations(toPredictionTablesFromSchemas(schemas)).map((candidate) => ({
+      id: candidate.id,
+      fromTable: candidate.fromTable,
+      toTable: candidate.toTable,
+      columnPairs: candidate.columnPairs,
+      score: candidate.score,
+    }));
+  }, [fkPredictionEnabled, schemas]);
+
   useEffect(() => {
     if (loading || error) return;
-    const { nodes: n, edges: e } = buildErGraph(schemas, activeFocus);
+    const { nodes: n, edges: e } = buildErGraph(schemas, activeFocus, predictedRelations);
     setNodes(n);
     setEdges(e);
-  }, [schemas, activeFocus, loading, error, setNodes, setEdges]);
+  }, [schemas, activeFocus, predictedRelations, loading, error, setNodes, setEdges]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -164,9 +183,14 @@ function ErDiagramInner({
 
   const stats = useMemo(() => {
     const tableCount = schemas.length;
-    const relationCount = schemas.reduce((acc, s) => acc + s.foreignKeys.length, 0);
-    return { tableCount, relationCount };
-  }, [schemas]);
+    const declaredCount = schemas.reduce((acc, s) => acc + s.foreignKeys.length, 0);
+    return {
+      tableCount,
+      declaredCount,
+      predictedCount: predictedRelations.length,
+      relationCount: declaredCount + predictedRelations.length,
+    };
+  }, [schemas, predictedRelations]);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -389,6 +413,20 @@ function ErDiagramInner({
             <span>
               {t('erDiagram.relationCount').replace('{count}', String(stats.relationCount))}
             </span>
+            {/* Say how many were inferred: the total alone would present a guess
+                with the same weight as a constraint. */}
+            {stats.predictedCount > 0 && (
+              <>
+                <span className="text-edge">·</span>
+                <span
+                  className="text-warning"
+                  title={t('erDiagram.predictedHint')}
+                  data-testid="er-predicted-count"
+                >
+                  {t('erDiagram.predictedCount').replace('{count}', String(stats.predictedCount))}
+                </span>
+              </>
+            )}
           </div>
         </Panel>
       </ReactFlow>

@@ -3,12 +3,9 @@ import { Plus, Trash2, Search, RefreshCw } from 'lucide-react';
 import { Button } from '@datazen/ui';
 import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import type { KeyDetail } from '../../../../src/types';
-import {
-  invokeSetAdd,
-  invokeSetRemove,
-  invokeSetScan,
-} from './keyEditorsInvokes';
+import type { KeyDetail } from './types';
+import { invokeSetAdd, invokeSetRemove, invokeSetScan } from './keyEditorsInvokes';
+import type { GateWriteFn } from './useRedisGate';
 
 const PAGE_SIZE = 100;
 
@@ -16,11 +13,13 @@ export function SetEditor({
   dbSessionId,
   dbIndex,
   detail,
+  gateWrite,
   onChanged,
 }: {
   dbSessionId: string;
   dbIndex: number;
   detail: KeyDetail;
+  gateWrite?: GateWriteFn;
   onChanged: () => void;
 }) {
   const { t } = useI18n();
@@ -84,6 +83,14 @@ export function SetEditor({
 
   const getEditedMember = (original: string) => editMember[original] ?? original;
 
+  const runWrite = useCallback(
+    async (fn: () => Promise<void>) => {
+      if (gateWrite && !(await gateWrite('write-op'))) return;
+      await fn();
+    },
+    [gateWrite],
+  );
+
   return (
     <div className="space-y-2">
       {/* Search + refresh toolbar */}
@@ -121,9 +128,7 @@ export function SetEditor({
               <td className="px-2 py-1.5">
                 <Input
                   value={getEditedMember(member)}
-                  onChange={(e) =>
-                    setEditMember((prev) => ({ ...prev, [member]: e.target.value }))
-                  }
+                  onChange={(e) => setEditMember((prev) => ({ ...prev, [member]: e.target.value }))}
                   className="h-7 font-mono text-xs"
                 />
               </td>
@@ -134,13 +139,15 @@ export function SetEditor({
                       variant="secondary"
                       className="h-6 px-1.5 text-[10px]"
                       onClick={() =>
-                        void (async () => {
+                        void runWrite(async () => {
                           // Remove old member, add edited version
                           await invokeSetRemove(dbSessionId, dbIndex, detail.key, [member]);
-                          await invokeSetAdd(dbSessionId, dbIndex, detail.key, [editMember[member]]);
+                          await invokeSetAdd(dbSessionId, dbIndex, detail.key, [
+                            editMember[member],
+                          ]);
                           handleRefresh();
                           onChanged();
-                        })()
+                        })
                       }
                     >
                       {t('common.save')}
@@ -150,12 +157,11 @@ export function SetEditor({
                     variant="ghost"
                     className="h-6 px-1.5 text-[10px] text-danger"
                     onClick={() =>
-                      void invokeSetRemove(dbSessionId, dbIndex, detail.key, [member]).then(
-                        () => {
-                          handleRefresh();
-                          onChanged();
-                        },
-                      )
+                      void runWrite(async () => {
+                        await invokeSetRemove(dbSessionId, dbIndex, detail.key, [member]);
+                        handleRefresh();
+                        onChanged();
+                      })
                     }
                   >
                     <Trash2 className="h-3 w-3" />
@@ -202,7 +208,8 @@ export function SetEditor({
           className="h-7 gap-1 px-2 text-xs"
           disabled={!newMember.trim()}
           onClick={() =>
-            void invokeSetAdd(dbSessionId, dbIndex, detail.key, [newMember.trim()]).then(() => {
+            void runWrite(async () => {
+              await invokeSetAdd(dbSessionId, dbIndex, detail.key, [newMember.trim()]);
               setNewMember('');
               handleRefresh();
               onChanged();

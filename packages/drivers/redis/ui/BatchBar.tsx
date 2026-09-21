@@ -5,6 +5,7 @@ import { Input } from '@datazen/ui';
 import { Dialog } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { redisCommandInvoke, type RedisInvokeFn } from './redisInvoke';
+import { useRedisGate } from './useRedisGate';
 
 export interface BatchDeleteResult {
   deleted: number;
@@ -116,6 +117,7 @@ export function BatchBar({
   onSummary,
 }: BatchBarProps) {
   const { t } = useI18n();
+  const { gateWrite, gateDialog } = useRedisGate();
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [busy, setBusy] = useState(false);
   const [patternInput, setPatternInput] = useState(searchPattern);
@@ -155,6 +157,7 @@ export function BatchBar({
   };
 
   const handleDeleteSelected = async () => {
+    if (!(await gateWrite('write-op'))) return;
     setBusy(true);
     setError(null);
     try {
@@ -171,6 +174,7 @@ export function BatchBar({
   };
 
   const handleDeletePattern = async () => {
+    if (!(await gateWrite('write-op'))) return;
     setBusy(true);
     setError(null);
     try {
@@ -190,6 +194,7 @@ export function BatchBar({
   };
 
   const handleBatchTtl = async () => {
+    if (!(await gateWrite('write-op'))) return;
     setBusy(true);
     setError(null);
     try {
@@ -214,6 +219,7 @@ export function BatchBar({
   };
 
   const handleBatchRename = async () => {
+    if (!(await gateWrite('write-op'))) return;
     setBusy(true);
     setError(null);
     try {
@@ -453,6 +459,7 @@ export function BatchBar({
           {error && <p className="text-danger">{error}</p>}
         </div>
       </Dialog>
+      {gateDialog}
     </>
   );
 }

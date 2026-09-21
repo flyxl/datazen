@@ -83,6 +83,7 @@ export function buildRelationGroups({
       // defaulting to INNER.
       type: confirmedJoin?.type ?? candidateTypes[key] ?? 'INNER',
       constraint: relations[0]!.constraint,
+      predicted: relations.some((relation) => relation.origin === 'predicted'),
       pairs,
     });
   }
@@ -106,6 +107,7 @@ export function buildRelationGroups({
       id: `join:${join.id}`,
       kind: 'fk',
       type: join.type,
+      predicted: join.origin === 'predicted',
       pairs: [
         {
           fromTable: join.leftTable,

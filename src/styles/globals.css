@@ -249,6 +249,13 @@ div.text-danger,
   stroke-dasharray: 7 3 2 3;
   opacity: 0.9;
 }
+/* Inferred relationships share the ER diagram's amber dashed treatment, so a
+   guess is never read as a constraint the database enforces. */
+.qb-relation--predicted .qb-relation-line,
+.qb-relation--predicted .qb-relation-dot {
+  stroke: var(--c-warning);
+  stroke-dasharray: 4 3;
+}
 .qb-relation-dot {
   transition:
     fill 0.15s,

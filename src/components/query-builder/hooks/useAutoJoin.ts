@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { QbJoin } from '../types';
+import type { QbJoin, QbJoinOrigin } from '../types';
 
 /** Foreign key relationship metadata from the schema store. */
 export interface ForeignKeyRelation {
@@ -13,6 +13,12 @@ export interface ForeignKeyRelation {
   ordinal: number;
   /** How many column pairs the constraint has (>1 = composite). */
   pairCount: number;
+  /**
+   * Whether the database declares this relationship or it was inferred.
+   * Defaults to `declared` — the safe reading, since only a declared constraint
+   * is guaranteed to hold.
+   */
+  origin?: QbJoinOrigin;
 }
 
 /** Stable identity for one constraint between a table and its referenced table. */
@@ -54,6 +60,7 @@ export function useAutoJoin(selectedTables: string[], foreignKeys: ForeignKeyRel
         rightColumn: fk.toColumn,
         isManual: false as const,
         constraint: constraintKey(fk.fromTable, fk.constraint),
+        origin: fk.origin ?? 'declared',
       }));
   }, [selectedTables, foreignKeys]);
 }

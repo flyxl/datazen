@@ -283,6 +283,13 @@ export interface AppSettings {
   mcpClientServers?: McpServerConfig[];
   aiStrictEgress: boolean;
   editorCompletionIncludeTablePrefix?: boolean;
+  /**
+   * Infer foreign keys from structure and naming when the schema declares none,
+   * and use them for JOIN suggestions and completion ranking. Default true.
+   * Predictions are always visually distinct from declared constraints.
+   */
+  enableFkPrediction?: boolean;
+  /** Identifier quotation policy in SQL autocomplete ('unquoted' | 'always' | 'both'). Default 'unquoted'. */
   editorCompletionQuotePolicy?: 'unquoted' | 'always' | 'both';
   keymapPreset?: 'default' | 'dbeaver' | 'navicat';
   customKeymap?: Partial<Record<string, string>>;
@@ -331,13 +338,7 @@ export interface KeyScanResult {
   dbSize: number;
 }
 
-export interface KeyDetail {
-  key: string;
-  keyType: string;
-  ttl: number;
-  value: unknown;
-}
-
+/** Raw backend response — rows are 2D arrays. */
 export interface TableDataResult {
   columns: ColumnSchema[];
   rows: (Value | null)[][];

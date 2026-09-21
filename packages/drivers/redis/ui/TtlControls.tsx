@@ -4,6 +4,7 @@ import { Input } from '@datazen/ui';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { invokeSetTtl, invokeSetExpireAt, type PluginInvokeFn } from './keyEditorsInvokes';
 import { redisCommandInvoke } from './redisInvoke';
+import type { GateWriteFn } from './useRedisGate';
 
 /**
  * Reusable TTL controls component for Redis key editors.
@@ -14,6 +15,7 @@ export function TtlControls({
   dbIndex,
   keyName,
   ttl,
+  gateWrite,
   onChanged,
   invoke,
 }: {
@@ -21,6 +23,7 @@ export function TtlControls({
   dbIndex: number;
   keyName: string;
   ttl: number;
+  gateWrite?: GateWriteFn;
   onChanged: () => void;
   /** Optional override for testing (defaults to redisCommandInvoke). */
   invoke?: PluginInvokeFn;
@@ -41,6 +44,7 @@ export function TtlControls({
 
   const run = useCallback(
     async (fn: () => Promise<void>) => {
+      if (gateWrite && !(await gateWrite('write-op'))) return;
       setBusy(true);
       setError(null);
       try {
@@ -52,7 +56,7 @@ export function TtlControls({
         setBusy(false);
       }
     },
-    [onChanged],
+    [onChanged, gateWrite],
   );
 
   const ttlText = ttl < 0 ? t('redis.noExpiry') : `${ttl} ${t('redis.seconds')}`;

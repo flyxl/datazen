@@ -39,6 +39,13 @@ fn req_bool(input: &JsonValue, field: &str) -> Result<bool, DriverError> {
         })
 }
 
+fn opt_bool(input: &JsonValue, field: &str) -> bool {
+    input
+        .get(field)
+        .and_then(JsonValue::as_bool)
+        .unwrap_or(false)
+}
+
 fn db_index(input: &JsonValue) -> u32 {
     input
         .get("dbIndex")
