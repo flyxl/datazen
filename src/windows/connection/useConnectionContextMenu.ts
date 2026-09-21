@@ -191,6 +191,7 @@ export function useConnectionContextMenu({
             drop: t('schemaTree.drop'),
             dropView: t('schemaTree.dropView'),
             dropDatabase: t('schemaTree.dropDatabase'),
+            closeDatabaseConnection: t('schemaTree.closeDatabaseConnection'),
             dropSchema: t('schemaTree.dropSchema'),
             viewErDiagram: t('schemaTree.viewErDiagram'),
             newSchema: t('schemaTree.newSchema'),

@@ -32,6 +32,7 @@ import {
 } from '../../../lib/tableSchemaForSql';
 import { type GeneratedSqlType } from '../../../lib/sqlGenerator';
 import type { ConnectionOpenTarget } from '../../../lib/connectionViews/types';
+import { connectionCommands } from '../../../commands/connection';
 import { databaseCommands } from '../../../commands/database';
 import { driverCommands } from '../../../commands/driver';
 import { queryCommands } from '../../../commands/query';
@@ -207,6 +208,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
       drop: t('schemaTree.drop'),
       dropView: t('schemaTree.dropView'),
       dropDatabase: t('schemaTree.dropDatabase'),
+      closeDatabaseConnection: t('schemaTree.closeDatabaseConnection'),
       viewErDiagram: t('schemaTree.viewErDiagram'),
       newSchema: t('schemaTree.newSchema'),
       createSchema: t('common.createSchema'),
@@ -430,6 +432,28 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
           kind: 'database',
           labels: schemaLabels,
           handlers: {
+            onCloseDatabase: dbSessionId
+              ? () => {
+                  // F5: release the driver-side pool for this database and drop
+                  // the tree's local cache, so the next expand re-fetches. The
+                  // session itself stays connected.
+                  void (async () => {
+                    try {
+                      await connectionCommands.closeDatabase(dbSessionId, dbName);
+                      clearDbLocalCache(connectionId, dbSessionId, dbName);
+                      onShowMessage?.(
+                        t('schemaTree.closeDatabaseConnectionDone', { name: dbName }),
+                        'success',
+                      );
+                    } catch (err) {
+                      onShowMessage?.(
+                        extractErrorMessage(err, t('schemaTree.closeDatabaseConnectionFailed')),
+                        'error',
+                      );
+                    }
+                  })();
+                }
+              : undefined,
             onRefresh: dbSessionId
               ? () => {
                   void refreshDatabase(connectionId, dbName);

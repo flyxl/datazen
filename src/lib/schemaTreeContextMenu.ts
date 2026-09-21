@@ -41,6 +41,7 @@ export type SchemaTreeContextMenuLabels = {
   drop: string;
   dropView: string;
   dropDatabase: string;
+  closeDatabaseConnection: string;
   viewErDiagram: string;
   newSchema: string;
   createSchema: string;
@@ -82,6 +83,8 @@ export type SchemaTreeContextMenuHandlers = {
   onTruncate?: () => void;
   onDrop?: () => void;
   onDropDatabase?: () => void;
+  /** F5: release this database's backend resources without closing the session. */
+  onCloseDatabase?: () => void;
   onViewErDiagram?: () => void;
   onNewSchema?: () => void;
   onCreateSchema?: () => void;
@@ -277,9 +280,15 @@ export function buildSchemaTreeContextMenuItems(
       const dropDb = !readOnly
         ? item('drop-database', labels.dropDatabase, handlers.onDropDatabase)
         : null;
+      const closeDb = item(
+        'close-database-connection',
+        labels.closeDatabaseConnection,
+        handlers.onCloseDatabase,
+      );
       const parts = [...dbMain];
       if (syncItems.length > 0) parts.push({ kind: 'separator' as const }, ...syncItems);
       if (backupItems.length > 0) parts.push({ kind: 'separator' as const }, ...backupItems);
+      if (closeDb) parts.push({ kind: 'separator' as const }, closeDb);
       if (dropDb) return [...parts, { kind: 'separator' as const }, dropDb];
       return parts;
     }

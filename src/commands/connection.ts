@@ -44,6 +44,15 @@ export const connectionCommands = {
 
   disconnect: (dbSessionId: string) => invoke<void>('disconnect', { dbSessionId }),
 
+  /**
+   * F5: release one database's backend resources without closing the session.
+   * The session stays connected; a later read of that database re-opens a pool
+   * on demand. Returns whether anything was actually released (drivers without
+   * per-database resources answer `false`).
+   */
+  closeDatabase: (dbSessionId: string, database: string) =>
+    invoke<boolean>('close_database', { dbSessionId, database }),
+
   getConnectionInfo: (dbSessionId: string) =>
     invoke<{
       databaseType: string;

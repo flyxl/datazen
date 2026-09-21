@@ -461,6 +461,7 @@ pub fn run() {
             crate::commands::connect_dedicated,
             crate::commands::ping_connection,
             crate::commands::release_connection,
+            crate::commands::close_database,
             crate::commands::disconnect,
             crate::commands::get_connection_info,
             crate::commands::get_available_drivers,

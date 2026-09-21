@@ -139,6 +139,53 @@ pub(crate) async fn release_connection_impl(
     Ok(disconnected)
 }
 
+/// Close the driver-side connection pool that serves one database of a session.
+///
+/// This is the *only* way a database's backend resources are released without
+/// tearing down the whole session. It is deliberately not a `USE`-style switch:
+/// the shared session stays connected to whatever it was connected to, and any
+/// later metadata read simply re-opens a pool for the database it asks for.
+///
+/// The host also drops every cached schema scope of that database, so the next
+/// read re-fetches instead of serving structure from a pool that just went away.
+pub(crate) async fn close_database_impl(
+    state: &AppState,
+    db_session_id: String,
+    database: String,
+) -> Result<bool, CommandError> {
+    let database = database.trim().to_string();
+    if database.is_empty() {
+        return Err(CommandError::Validation(
+            "close_database requires a non-empty database name".into(),
+        ));
+    }
+    tracing::info!(%db_session_id, %database, "close_database");
+
+    let (driver, handle) = state
+        .connection_manager
+        .get_session(&db_session_id)
+        .await
+        .map_err(|e| {
+            CommandError::NotFound(format!("DB session {db_session_id} is not connected: {e}"))
+        })?;
+
+    // Best-effort: a driver without per-database resources returns `false`, and
+    // a failure to close must not leave stale metadata behind.
+    let closed = match driver.close_database(&handle, &database).await {
+        Ok(closed) => closed,
+        Err(e) => {
+            tracing::warn!(%db_session_id, %database, error = %e, "close_database failed");
+            false
+        }
+    };
+    state
+        .schema_cache
+        .invalidate(&db_session_id, &database, None)
+        .await;
+    tracing::info!(%db_session_id, %database, closed, "close_database OK");
+    Ok(closed)
+}
+
 pub(crate) async fn disconnect_impl(
     state: &AppState,
     db_session_id: String,
@@ -273,6 +320,16 @@ pub async fn disconnect(
     db_session_id: String,
 ) -> Result<(), CommandError> {
     disconnect_impl(&state, db_session_id).await
+}
+
+/// F5: release one database's backend resources without closing the session.
+#[tauri::command]
+pub async fn close_database(
+    state: State<'_, AppState>,
+    db_session_id: String,
+    database: String,
+) -> Result<bool, CommandError> {
+    close_database_impl(&state, db_session_id, database).await
 }
 
 #[tauri::command]
@@ -455,6 +512,61 @@ mod coverage_tests {
             .unwrap();
         assert!(torn);
         assert!(ping_connection_impl(&test.state, shared).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn close_database_releases_one_database_and_keeps_the_session() {
+        let test = TestAppState::with_options(MockDriverOptions {
+            has_schema_level: true,
+            default_schema: Some("public"),
+            ..Default::default()
+        })
+        .await;
+        test.save_connection("cd1").await;
+        let session = connect_impl(&test.state, "cd1".into()).await.unwrap();
+
+        let closed = close_database_impl(&test.state, session.clone(), "analytics".into())
+            .await
+            .unwrap();
+        assert!(closed, "a schema-aware driver reports a released pool");
+        assert_eq!(
+            test.mock.close_database_calls(),
+            vec!["analytics".to_string()]
+        );
+        // The session must survive: only the named database's resources went away.
+        assert!(ping_connection_impl(&test.state, session).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn close_database_is_a_noop_for_drivers_without_database_pools() {
+        let test = TestAppState::with_tables().await;
+        test.save_connection("cd2").await;
+        let session = connect_impl(&test.state, "cd2".into()).await.unwrap();
+        let closed = close_database_impl(&test.state, session, "app".into())
+            .await
+            .unwrap();
+        assert!(!closed);
+    }
+
+    #[tokio::test]
+    async fn close_database_rejects_blank_names_and_unknown_sessions() {
+        let test = TestAppState::with_tables().await;
+        test.save_connection("cd3").await;
+        let session = connect_impl(&test.state, "cd3".into()).await.unwrap();
+
+        let blank = close_database_impl(&test.state, session.clone(), "   ".into())
+            .await
+            .unwrap_err();
+        assert!(blank.to_string().contains("non-empty database name"));
+
+        let unknown = close_database_impl(&test.state, "no-such-session".into(), "app".into())
+            .await
+            .unwrap_err();
+        assert!(unknown.to_string().contains("not connected"));
+        assert!(
+            test.mock.close_database_calls().is_empty(),
+            "neither rejection may reach the driver"
+        );
     }
 
     #[tokio::test]

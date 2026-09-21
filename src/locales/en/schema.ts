@@ -56,6 +56,10 @@ const pack = {
   'schemaTree.compareData': 'Compare Data',
   'schemaTree.confirmDropView': 'Drop view "{name}"? This cannot be undone.',
   'schemaTree.dropDatabase': 'Drop Database',
+  'schemaTree.closeDatabaseConnection': 'Close Database Connection',
+  'schemaTree.closeDatabaseConnectionDone':
+    'Released the connection pool for "{name}". The database is still browsable and will reconnect on demand.',
+  'schemaTree.closeDatabaseConnectionFailed': 'Failed to close the database connection.',
   'schemaTree.confirmDropDatabase':
     'Drop database "{name}"? All data will be permanently lost. This cannot be undone.',
   'schemaTree.dropSchema': 'Drop Schema',
