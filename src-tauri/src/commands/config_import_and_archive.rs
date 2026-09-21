@@ -25,7 +25,7 @@ pub fn detect_connection_import_path(
     })
 }
 
-fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'static str]) {
+pub(super) fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'static str]) {
     match app {
         ImportApp::Dbx => ("DBX", &["db", "json", "sqlite"]),
         ImportApp::Navicat => ("Navicat", &["ncx", "xml"]),
@@ -103,7 +103,10 @@ pub async fn import_connections_from_app(
 }
 
 /// Export the app data ZIP archive to `dest` with options from settings.
-async fn export_app_data_to_dest(state: &AppState, dest: PathBuf) -> Result<(), CommandError> {
+pub(super) async fn export_app_data_to_dest(
+    state: &AppState,
+    dest: PathBuf,
+) -> Result<(), CommandError> {
     let settings = state.store.get_settings().await;
     let data_dir = state.store.data_dir().clone();
     let options = export_options_from_settings(&settings);
@@ -118,7 +121,7 @@ async fn export_app_data_to_dest(state: &AppState, dest: PathBuf) -> Result<(), 
 }
 
 /// Import an app data ZIP archive from `source`.
-async fn import_app_data_from_source(
+pub(super) async fn import_app_data_from_source(
     state: &AppState,
     source: PathBuf,
     options: app_data_archive::ImportOptions,
