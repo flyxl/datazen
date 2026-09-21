@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError};
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, Value};
 use datazen_driver_mysql::MysqlDriver;
 
 #[derive(Clone, Debug)]
@@ -142,6 +142,14 @@ fn connection_config(cfg: &MysqlTestConfig) -> ConnectionConfig {
     }
 }
 
+fn cell_as_i64(value: &Option<Value>) -> Option<i64> {
+    match value {
+        Some(Value::Integer(i)) => Some(*i),
+        Some(Value::String(s)) => s.parse().ok(),
+        _ => None,
+    }
+}
+
 #[tokio::test]
 async fn cross_database_reads_use_qualified_names_not_use() {
     let Some(cfg) = load_mysql_config() else {
@@ -187,31 +195,31 @@ async fn cross_database_reads_use_qualified_names_not_use() {
         }
     }
 
-    // Fixture assumption: database_a has `users`; database_b does not.
+    // Discover the fixture instead of demanding a specific table name: any
+    // table present in A and absent from B proves both directions (a targeted
+    // read reaches A, an untargeted read cannot).
     let a_tables = driver
         .get_tables(&handle, &cfg.database_a, None)
         .await
         .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_a));
-    if !a_tables.iter().any(|t| t.name == "users") {
-        let _ = driver.disconnect(handle).await;
-        eprintln!(
-            "⏭  Skipping: `{}.users` missing (needed to verify cross-database reads)",
-            cfg.database_a
-        );
-        return;
-    }
     let b_tables = driver
         .get_tables(&handle, &cfg.database_b, None)
         .await
         .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_b));
-    if b_tables.iter().any(|t| t.name == "users") {
+    let in_b: Vec<&str> = b_tables.iter().map(|t| t.name.as_str()).collect();
+    let Some(probe) = a_tables
+        .iter()
+        .find(|t| !in_b.contains(&t.name.as_str()))
+        .map(|t| t.name.clone())
+    else {
         let _ = driver.disconnect(handle).await;
         eprintln!(
-            "⏭  Skipping: `{}.users` unexpectedly exists (need empty-ish B for negative check)",
-            cfg.database_b
+            "⏭  Skipping: {} has no table missing from {} (need one for the \
+             cross-database check)",
+            cfg.database_a, cfg.database_b
         );
         return;
-    }
+    };
 
     println!(
         "▶  cross-database live: handle on {}, reading {} on {}:{}",
@@ -220,26 +228,65 @@ async fn cross_database_reads_use_qualified_names_not_use() {
 
     // ── BUG-003 regression: a foreign database's table structure must not be empty ──
     let schema = driver
-        .get_table_schema(&handle, "users", &cfg.database_a, None)
+        .get_table_schema(&handle, &probe, &cfg.database_a, None)
         .await
-        .unwrap_or_else(|e| panic!("get_table_schema({}.users): {e}", cfg.database_a));
+        .unwrap_or_else(|e| panic!("get_table_schema({}.{probe}): {e}", cfg.database_a));
     assert!(
         !schema.columns.is_empty(),
         "cross-database structure must not come back empty — that empty column \
          list is what the data grid turned into blank cells (BUG-003)"
     );
     let (cols, _pks) = driver
-        .get_columns(&handle, "users", &cfg.database_a, None)
+        .get_columns(&handle, &probe, &cfg.database_a, None)
         .await
-        .unwrap_or_else(|e| panic!("get_columns({}.users): {e}", cfg.database_a));
+        .unwrap_or_else(|e| panic!("get_columns({}.{probe}): {e}", cfg.database_a));
     assert_eq!(cols.len(), schema.columns.len());
 
-    // ── the handle's own session is untouched: unqualified `users` is still
+    // ── the handle's own session is untouched: the unqualified probe is still
     //    absent from database_b ──
     let err = driver
-        .query(&handle, "SELECT COUNT(*) FROM users")
+        .query(&handle, &format!("SELECT COUNT(*) FROM {probe}"))
         .await
-        .expect_err("the handle's session must stay on database_b and not see database_a.users");
+        .expect_err("the handle's session must stay on database_b and not see {}.{probe}");
+    assert!(
+        matches!(err, DriverError::QueryFailed(_)),
+        "expected QueryFailed, got {err:?}"
+    );
+
+    // ── the data path: a targeted statement reaches the foreign database ──
+    //
+    // This is the "1046 No database selected" regression. `query` cannot
+    // express a target, so the grid's generated statement was sent
+    // unqualified: on a connection with no default database MySQL rejected it
+    // outright, and on one with a default it read the wrong database. The same
+    // statement must work through `query_at` and keep failing without a target.
+    let target = SqlTarget::new(Some(&cfg.database_a), None);
+    let counted = driver
+        .query_at(&handle, &format!("SELECT COUNT(*) FROM {probe}"), target)
+        .await
+        .unwrap_or_else(|e| panic!("query_at({}.{probe}): {e}", cfg.database_a))
+        .rows
+        .first()
+        .and_then(|row| row.first())
+        .and_then(cell_as_i64)
+        .expect("COUNT(*) must come back as a number");
+    assert!(counted >= 0, "unexpected negative count {counted}");
+
+    // The rewrite is what made it work: the driver inlined `` `db`.`table` ``.
+    let qualified = driver.qualified_sql(
+        &format!("SELECT COUNT(*) FROM {probe}"),
+        SqlTarget::new(Some(&cfg.database_a), None),
+    );
+    assert!(
+        qualified.contains(&format!("`{}`.`{probe}`", cfg.database_a)),
+        "expected an inlined database qualifier, got: {qualified}"
+    );
+
+    // Same statement, no target: database_b still cannot see it.
+    let err = driver
+        .query(&handle, &format!("SELECT COUNT(*) FROM {probe}"))
+        .await
+        .expect_err("an untargeted statement must not reach database_a");
     assert!(
         matches!(err, DriverError::QueryFailed(_)),
         "expected QueryFailed, got {err:?}"
@@ -248,20 +295,20 @@ async fn cross_database_reads_use_qualified_names_not_use() {
     // ── repeated foreign reads stay stable (no per-acquire state to drift) ──
     for i in 0..5 {
         let schema = driver
-            .get_table_schema(&handle, "users", &cfg.database_a, None)
+            .get_table_schema(&handle, &probe, &cfg.database_a, None)
             .await
             .unwrap_or_else(|e| panic!("cross-database read #{i}: {e}"));
         assert_eq!(schema.columns.len(), schema.columns.len(), "shape changed");
     }
     let err = driver
-        .query(&handle, "SELECT COUNT(*) FROM users")
+        .query(&handle, &format!("SELECT COUNT(*) FROM {probe}"))
         .await
         .expect_err("session must still be on database_b after repeated foreign reads");
     assert!(matches!(err, DriverError::QueryFailed(_)), "got {err:?}");
 
     // ── a genuinely missing relation errors instead of reporting no columns ──
     let err = driver
-        .get_table_schema(&handle, "users", &cfg.database_b, None)
+        .get_table_schema(&handle, &probe, &cfg.database_b, None)
         .await
         .expect_err("a relation absent from the requested database must not report success");
     assert!(
@@ -271,7 +318,7 @@ async fn cross_database_reads_use_qualified_names_not_use() {
 
     // ── MySQL has no schema level, so a schema argument is rejected ──
     let err = driver
-        .get_table_schema(&handle, "users", &cfg.database_a, Some("public"))
+        .get_table_schema(&handle, &probe, &cfg.database_a, Some("public"))
         .await
         .expect_err("MySQL must reject a schema argument");
     assert!(
@@ -291,4 +338,82 @@ async fn cross_database_reads_use_qualified_names_not_use() {
 
     driver.disconnect(handle).await.expect("disconnect");
     println!("✅  MySQL cross-database live checks passed");
+}
+
+/// The exact shape of the reported bug: a connection with **no** default
+/// database.
+///
+/// MySQL answers an unqualified statement with `1046 (3D000): No database
+/// selected`. The driver never issues `USE`, so the statement has to carry its
+/// target — which is why the grid's generated `SELECT ... FROM `t`` used to
+/// fail outright on such a connection. This is the same failure mode the
+/// user-visible error came from, so it is pinned separately from the
+/// cross-database case above.
+#[tokio::test]
+async fn connection_without_a_default_database_needs_an_explicit_target() {
+    let Some(cfg) = load_mysql_config() else {
+        return;
+    };
+    let driver = MysqlDriver::new(false);
+
+    let mut config = connection_config(&cfg);
+    config.database = None;
+    let handle = match driver.connect(&config).await {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!(
+                "⏭  Skipping: cannot connect to MySQL at {}:{}: {e}",
+                cfg.host, cfg.port
+            );
+            return;
+        }
+    };
+
+    let tables = driver
+        .get_tables(&handle, &cfg.database_a, None)
+        .await
+        .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_a));
+    let Some(probe) = tables.first().map(|t| t.name.clone()) else {
+        let _ = driver.disconnect(handle).await;
+        eprintln!(
+            "⏭  Skipping: `{}` has no tables to probe with",
+            cfg.database_a
+        );
+        return;
+    };
+
+    println!(
+        "▶  no-default-database live: unqualified statement must fail, targeted must work ({}:{})",
+        cfg.host, cfg.port
+    );
+
+    // Untargeted: reproduces the reported error verbatim.
+    let err = driver
+        .query(&handle, &format!("SELECT COUNT(*) FROM {probe}"))
+        .await
+        .expect_err("an unqualified statement on a database-less connection must fail");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("1046") || msg.to_lowercase().contains("no database selected"),
+        "expected MySQL 1046 'No database selected', got: {msg}"
+    );
+
+    // Targeted: the driver inlines `` `db`.`table` `` and it works.
+    let counted = driver
+        .query_at(
+            &handle,
+            &format!("SELECT COUNT(*) FROM {probe}"),
+            SqlTarget::new(Some(&cfg.database_a), None),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("query_at({}.{probe}): {e}", cfg.database_a))
+        .rows
+        .first()
+        .and_then(|row| row.first())
+        .and_then(cell_as_i64)
+        .expect("COUNT(*) must come back as a number");
+    assert!(counted >= 0, "unexpected negative count {counted}");
+
+    driver.disconnect(handle).await.expect("disconnect");
+    println!("✅  MySQL no-default-database live checks passed");
 }

@@ -1,11 +1,10 @@
 //! F7: DuckDB SQL target qualification binding.
 //!
 //! Dialect shape: same as PostgreSQL — `"schema"."t"`. Only the **schema**
-//! dimension is rewritten inline; the **database** dimension keeps using the
-//! existing connection/session switch (host `ensure_session_database` pin),
-//! mirroring the PG-family behavior from the design baseline. With no schema
-//! target this binding is a no-op and the statement runs on the session's
-//! current default schema.
+//! dimension is rewritten inline; the **database** dimension is served by the
+//! driver's own per-database resource (see the `*_at` query methods). With no
+//! schema target this binding is a no-op and the statement runs on the
+//! session's current default schema.
 //!
 //! Best-effort by contract: parse failures pass the original text through,
 //! and the rewrite is idempotent.

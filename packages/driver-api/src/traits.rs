@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
 use crate::schema_migration::{MigrationCapabilities, MigrationRenderer, TypeNormalizer};
+use crate::sql_target::SqlTarget;
 use crate::types::*;
 use crate::{
     execute_command_definition, query_command_definition, schema_catalog_command_definitions,
@@ -316,6 +317,94 @@ pub trait DatabaseDriver: Send + Sync {
 
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError>;
 
+    /// Apply this driver's own target rewrite to `sql`.
+    ///
+    /// Drivers that inline the target into relation names (MySQL family:
+    /// `` `db`.t ``; PG family: `"schema"."t"`) implement
+    /// [`Self::qualify_sql_target`] and get this for free. A driver that keeps
+    /// per-database resources instead resolves them in the `*_at` methods
+    /// below, which override these defaults.
+    fn qualified_sql(&self, sql: &str, target: SqlTarget<'_>) -> String {
+        if !target.is_present() {
+            return sql.to_string();
+        }
+        self.qualify_sql_target(sql, target.database, target.schema)
+            .unwrap_or_else(|| sql.to_string())
+    }
+
+    /// Run `sql` against an explicit target.
+    ///
+    /// [`Self::query`] cannot express a target, which is why the database
+    /// dimension used to live in session state. A driver whose connection is
+    /// scoped to one database (PostgreSQL) would otherwise serve every read
+    /// from the connection's own database; a driver that inlines the database
+    /// into relation names (MySQL) would fail with "no database selected" on an
+    /// unqualified statement. Host call sites that know their target must use
+    /// these methods.
+    ///
+    /// The default rewrites the statement through [`Self::qualified_sql`] and
+    /// delegates to [`Self::query`], which is correct for drivers whose
+    /// connection is not database-scoped.
+    async fn query_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        let sql = self.qualified_sql(sql, target);
+        self.query(handle, &sql).await
+    }
+
+    /// [`Self::query_multi`] against an explicit target. See [`Self::query_at`].
+    async fn query_multi_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+    ) -> Result<MultiQueryResult, DriverError> {
+        let sql = self.qualified_sql(sql, target);
+        self.query_multi(handle, &sql, limit).await
+    }
+
+    /// [`Self::query_with_params`] against an explicit target.
+    /// See [`Self::query_at`].
+    async fn query_with_params_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        let sql = self.qualified_sql(sql, target);
+        self.query_with_params(handle, &sql, params).await
+    }
+
+    /// [`Self::query_stream`] against an explicit target.
+    /// See [`Self::query_at`].
+    async fn query_stream_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let sql = self.qualified_sql(sql, target);
+        self.query_stream(handle, &sql, limit, on_event).await
+    }
+
+    /// [`Self::execute`] against an explicit target. See [`Self::query_at`].
+    async fn execute_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<u64, DriverError> {
+        let sql = self.qualified_sql(sql, target);
+        self.execute(handle, &sql).await
+    }
+
     /// Return commands supported by this driver.
     ///
     /// Existing SQL drivers get the standard `query` and `execute` commands.
@@ -443,6 +532,21 @@ pub trait DatabaseDriver: Send + Sync {
         Ok(false)
     }
 
+    /// Databases this handle currently holds an open resource for.
+    ///
+    /// The counterpart of [`Self::close_database`]: it lets the UI mark which
+    /// database nodes have a live connection, so a user can see what the
+    /// right-click "close database connection" action would actually release.
+    /// A driver with no per-database resource keeps the default `Ok(vec![])`,
+    /// which the UI reads as "nothing to show" rather than "nothing is open".
+    ///
+    /// Only databases the driver opened *itself* belong here. The handle's own
+    /// database is included when the driver keeps a pool for it, because it is
+    /// genuinely open even though it cannot be closed individually.
+    async fn open_databases(&self, _handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+        Ok(Vec::new())
+    }
+
     /// F7: dialect-aware SQL target qualification.
     ///
     /// Given optional targeting information (`database`, and for PG-family
@@ -454,10 +558,9 @@ pub trait DatabaseDriver: Send + Sync {
     /// Return value:
     /// - `Some(qualified_sql)` — the driver can rewrite; parse failures pass
     ///   the original text back through (the rewrite is best-effort).
-    /// - `None` — the driver has no rewrite capability (default). The host
-    ///   executes the SQL as-is, logs, and the existing host-side
-    ///   `ensure_session_database` pin remains the fallback for the database
-    ///   dimension.
+    /// - `None` — the driver has no rewrite capability (default). The SQL is
+    ///   executed as-is and the database dimension is served by the driver's
+    ///   own per-database resources in [`Self::query_at`] and friends.
     ///
     /// Implementations must be pure/stateless and idempotent (re-qualifying
     /// already-qualified SQL is a no-op).
@@ -684,20 +787,20 @@ pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
 ) -> Result<CommandResult, DriverError> {
     match command {
         "query" => {
-            let sql = sql_input_with_target(driver, &input, "query")?;
+            let (sql, target) = sql_input_with_target(&input, "query")?;
             let limit = input
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .map(|v| v.min(u32::MAX as u64) as u32);
-            let result = driver.query_multi(handle, &sql, limit).await?;
+            let result = driver.query_multi_at(handle, &sql, limit, target).await?;
             let data = serde_json::to_value(result).map_err(|e| {
                 DriverError::QueryFailed(format!("failed to serialize query result: {e}"))
             })?;
             Ok(CommandResult::new(data))
         }
         "execute" => {
-            let sql = sql_input_with_target(driver, &input, "execute")?;
-            let rows_affected = driver.execute(handle, &sql).await?;
+            let (sql, target) = sql_input_with_target(&input, "execute")?;
+            let rows_affected = driver.execute_at(handle, &sql, target).await?;
             Ok(CommandResult::new(serde_json::json!({
                 "rowsAffected": rows_affected
             })))
@@ -763,13 +866,18 @@ pub fn validate_schema_target<D: DatabaseDriver + ?Sized>(
     }
 }
 
-/// Extract the `sql` input of a standard SQL command and apply F7 target
-/// qualification when the host injected `database` / `schema` fields.
-fn sql_input_with_target<D: DatabaseDriver + ?Sized>(
-    driver: &D,
-    input: &serde_json::Value,
+/// Extract the `sql` input of a standard SQL command together with the target
+/// the host injected into the envelope.
+///
+/// The target is returned rather than applied here: qualification is only half
+/// the story, because a driver that keeps per-database resources must also
+/// route the statement to the right one. Callers pass this to
+/// [`DatabaseDriver::query_multi_at`] / [`DatabaseDriver::execute_at`], which
+/// apply the rewrite *and* the routing.
+fn sql_input_with_target<'a>(
+    input: &'a serde_json::Value,
     command: &str,
-) -> Result<String, DriverError> {
+) -> Result<(String, SqlTarget<'a>), DriverError> {
     let sql = input
         .get("sql")
         .and_then(|v| v.as_str())
@@ -780,44 +888,15 @@ fn sql_input_with_target<D: DatabaseDriver + ?Sized>(
 
     let database = optional_target_field(input, "database");
     let schema = optional_target_field(input, "schema");
-    if database.is_none() && schema.is_none() {
-        return Ok(sql);
-    }
-
-    match driver.qualify_sql_target(&sql, database.as_deref(), schema.as_deref()) {
-        Some(qualified) => {
-            if qualified != sql {
-                tracing::info!(
-                    command,
-                    database = database.as_deref().unwrap_or(""),
-                    schema = schema.as_deref().unwrap_or(""),
-                    "SQL target qualification applied by driver"
-                );
-            }
-            Ok(qualified)
-        }
-        None => {
-            // Legacy/rewrite-incapable driver: execute unchanged. The host's
-            // ensure_session_database pin covers the database dimension; a
-            // requested PG-family schema cannot be honored here.
-            tracing::debug!(
-                command,
-                database = database.as_deref().unwrap_or(""),
-                schema = schema.as_deref().unwrap_or(""),
-                "driver has no SQL target rewrite capability; executing SQL as-is"
-            );
-            Ok(sql)
-        }
-    }
+    Ok((sql, SqlTarget { database, schema }))
 }
 
-fn optional_target_field(input: &serde_json::Value, key: &str) -> Option<String> {
+fn optional_target_field<'a>(input: &'a serde_json::Value, key: &str) -> Option<&'a str> {
     input
         .get(key)
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(str::to_string)
 }
 
 #[cfg(test)]

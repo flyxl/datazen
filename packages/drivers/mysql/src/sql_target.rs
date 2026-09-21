@@ -4,8 +4,7 @@
 //! every unqualified table reference in the targeting contexts (FROM / JOIN /
 //! INSERT INTO / UPDATE / DELETE FROM / TRUNCATE / CREATE | DROP | ALTER TABLE
 //! / CREATE INDEX ON) is prefixed with the requested database. No `USE`, no
-//! session switch; the host `ensure_session_database` pin keeps running as an
-//! independent safety net.
+//! session switch of any kind: the statement itself carries the target.
 //!
 //! The `schema` argument has no meaning on the MySQL family and is ignored.
 //! This binding is shared by every variant built on [`crate::MysqlDriver`]

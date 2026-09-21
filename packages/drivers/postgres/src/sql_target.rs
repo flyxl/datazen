@@ -1,11 +1,10 @@
 //! F7: PostgreSQL SQL target qualification binding.
 //!
 //! Dialect shape: `"schema"."t"` — the PG engine cannot inline a cross-database
-//! qualifier, so the **database** dimension keeps using the existing
-//! connection-pool switch (host `ensure_session_database` pin) and only the
-//! **schema** dimension is rewritten inline. When no schema target is present
-//! this binding is a no-op and the statement runs on the session's current
-//! `search_path`.
+//! qualifier, so only the **schema** dimension is rewritten inline. The
+//! **database** dimension is served by choosing the pool in the `*_at` query
+//! methods, never by a session switch. When no schema target is present this
+//! binding is a no-op and the statement runs on the pool's `search_path`.
 
 use datazen_driver_api::{qualify_sql_with, QualifierQuote};
 use sqlparser::dialect::PostgreSqlDialect;

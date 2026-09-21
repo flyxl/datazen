@@ -5,10 +5,10 @@
 //! unqualified table references into dialect-qualified names — e.g.
 //! `select * from users` → `select * from \`mydb\`.\`users\`` for MySQL —
 //! so the statement lands on the caller-selected target without any
-//! session-level `USE`/switch. The host stays dialect-agnostic; legacy
-//! drivers without the [`crate::DatabaseDriver::qualify_sql_target`]
-//! override keep executing SQL as-is and rely on the host
-//! `ensure_session_database` pin as fallback.
+//! session-level `USE`/switch. The host stays dialect-agnostic; drivers
+//! without the [`crate::DatabaseDriver::qualify_sql_target`] override execute
+//! the SQL as-is and serve the target through their own per-database resources
+//! in the `*_at` query methods.
 //!
 //! Rewrite rules (shared by every dialect binding):
 //! - Only *targeting contexts* are touched: table references reached through
@@ -43,6 +43,14 @@ pub struct SqlTarget<'a> {
 }
 
 impl<'a> SqlTarget<'a> {
+    /// Build a target from raw `database` / `schema` values.
+    ///
+    /// Blank values are treated as absent by the accessors below, so an empty
+    /// selection can never silently mean "whatever the session resolves".
+    pub fn new(database: Option<&'a str>, schema: Option<&'a str>) -> Self {
+        Self { database, schema }
+    }
+
     fn nonblank(value: Option<&'a str>) -> Option<&'a str> {
         value.map(str::trim).filter(|s| !s.is_empty())
     }

@@ -4,8 +4,7 @@
 //! every unqualified table reference in the targeting contexts (FROM / JOIN /
 //! INSERT INTO / UPDATE / DELETE FROM / TRUNCATE / CREATE | DROP | ALTER TABLE
 //! / CREATE INDEX ON) is prefixed with the requested database. No session
-//! switch; the host `ensure_session_database` pin keeps running as an
-//! independent safety net.
+//! switch of any kind: the statement itself carries the target.
 //!
 //! The `schema` argument has no meaning on ClickHouse (its databases are the
 //! namespace dimension) and is ignored.
@@ -101,8 +100,8 @@ mod tests {
     fn ch_specific_mutation_syntax_falls_back_to_passthrough() {
         // sqlparser's ClickHouseDialect does not model the CH-only
         // `ALTER TABLE … DELETE WHERE` mutation: parse fails and the SQL is
-        // passed through untouched (documented best-effort fallback). The
-        // host `ensure_session_database` pin still covers the target.
+        // passed through untouched (documented best-effort fallback), so the
+        // caller's own qualification is what reaches the engine.
         let mutation = "ALTER TABLE users DELETE WHERE id = 1";
         assert_eq!(qualify(mutation, Some("mydb")), mutation);
     }

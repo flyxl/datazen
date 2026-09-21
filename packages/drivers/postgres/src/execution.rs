@@ -20,6 +20,54 @@ pub(crate) struct PgQueryExecution {
 }
 
 impl PostgresDriver {
+    /// Resolve the pool a statement targeting `target` must run on.
+    ///
+    /// PostgreSQL resolves unqualified relations against the *session's*
+    /// catalog and cannot reference another database in one statement, so the
+    /// database dimension is served by choosing a pool — never by rewriting the
+    /// SQL. A blank target means "the connection's own database", which is what
+    /// a driver-agnostic caller passes when it has no database dimension.
+    pub(crate) async fn resolve_statement_pool(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+    ) -> Result<PgPool, DriverError> {
+        match target.database() {
+            None => {
+                let pools = self.pools.read().await;
+                Self::get_pool(&pools, handle).cloned()
+            }
+            Some(database) => self.pool_for_target(handle, database).await,
+        }
+    }
+
+    /// Refuse a target the open transaction cannot reach.
+    ///
+    /// A transaction holds exactly one connection, which is bound to the
+    /// database the connection was opened on. Running a statement for another
+    /// database inside it would silently read the wrong catalog, so it is an
+    /// error rather than a wrong answer. Without an open transaction the
+    /// statement simply runs on that database's own pool, so nothing to check.
+    async fn ensure_transaction_reaches(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+    ) -> Result<(), DriverError> {
+        let Some(database) = target.database() else {
+            return Ok(());
+        };
+        if self.is_active_database(handle, database).await {
+            return Ok(());
+        }
+        if !self.transactions.lock().await.contains_key(&handle.id) {
+            return Ok(());
+        }
+        Err(DriverError::TransactionError(format!(
+            "cannot run a statement for database '{database}' inside a transaction: \
+             it is bound to the connection's own database"
+        )))
+    }
+
     pub(crate) async fn is_cancel_requested(
         &self,
         handle: &ConnectionHandle,
@@ -369,6 +417,33 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<QueryResult, DriverError> {
+        let pool = {
+            let pools = self.pools.read().await;
+            Self::get_pool(&pools, handle)?.clone()
+        };
+        self.query_on(handle, sql, &pool).await
+    }
+
+    /// [`Self::query_impl`] against an explicit target: the schema is inlined
+    /// into relation names and the database selects the pool.
+    pub(crate) async fn query_at_impl(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        self.ensure_transaction_reaches(handle, target).await?;
+        let sql = self.qualified_sql(sql, target);
+        let pool = self.resolve_statement_pool(handle, target).await?;
+        self.query_on(handle, &sql, &pool).await
+    }
+
+    async fn query_on(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        pool: &PgPool,
+    ) -> Result<QueryResult, DriverError> {
         {
             let mut txs = self.transactions.lock().await;
             if let Some(conn) = txs.get_mut(&handle.id) {
@@ -391,9 +466,6 @@ impl PostgresDriver {
                 });
             }
         }
-
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
 
         let start = Instant::now();
         let rows = sqlx::query(sql)
@@ -425,6 +497,34 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         sql: &str,
         limit: Option<u32>,
+    ) -> Result<MultiQueryResult, DriverError> {
+        let pool = {
+            let pools = self.pools.read().await;
+            Self::get_pool(&pools, handle)?.clone()
+        };
+        self.query_multi_on(handle, sql, limit, &pool).await
+    }
+
+    /// [`Self::query_multi_impl`] against an explicit target.
+    pub(crate) async fn query_multi_at_impl(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+    ) -> Result<MultiQueryResult, DriverError> {
+        self.ensure_transaction_reaches(handle, target).await?;
+        let sql = self.qualified_sql(sql, target);
+        let pool = self.resolve_statement_pool(handle, target).await?;
+        self.query_multi_on(handle, &sql, limit, &pool).await
+    }
+
+    async fn query_multi_on(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        pool: &PgPool,
     ) -> Result<MultiQueryResult, DriverError> {
         let statements = sql_dump::split_sql_statements(sql);
         if statements.is_empty() {
@@ -503,9 +603,6 @@ impl PostgresDriver {
         }
         drop(txs);
 
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-
         for stmt in &statements {
             let (effective_sql, applied_limit) = apply_select_limit(stmt, limit);
             let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
@@ -576,6 +673,38 @@ impl PostgresDriver {
         limit: Option<u32>,
         on_event: QueryStreamCallback,
     ) -> Result<(), DriverError> {
+        let pool = {
+            let pools = self.pools.read().await;
+            Self::get_pool(&pools, handle)?.clone()
+        };
+        self.query_stream_on(handle, sql, limit, &pool, on_event)
+            .await
+    }
+
+    /// [`Self::query_stream_impl`] against an explicit target.
+    pub(crate) async fn query_stream_at_impl(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        self.ensure_transaction_reaches(handle, target).await?;
+        let sql = self.qualified_sql(sql, target);
+        let pool = self.resolve_statement_pool(handle, target).await?;
+        self.query_stream_on(handle, &sql, limit, &pool, on_event)
+            .await
+    }
+
+    async fn query_stream_on(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        pool: &PgPool,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
         let statements = sql_dump::split_sql_statements(sql);
         if statements.is_empty() {
             on_event(QueryStreamEvent::Done { total_time_ms: 0 });
@@ -596,10 +725,6 @@ impl PostgresDriver {
             }
         }
 
-        let pool = {
-            let pools = self.pools.read().await;
-            Self::get_pool(&pools, handle)?.clone()
-        };
         let mut conn = pool
             .acquire()
             .await
@@ -618,6 +743,34 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         sql: &str,
         params: &[Value],
+    ) -> Result<QueryResult, DriverError> {
+        let pool = {
+            let pools = self.pools.read().await;
+            Self::get_pool(&pools, handle)?.clone()
+        };
+        self.query_with_params_on(handle, sql, params, &pool).await
+    }
+
+    /// [`Self::query_with_params_impl`] against an explicit target.
+    pub(crate) async fn query_with_params_at_impl(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        self.ensure_transaction_reaches(handle, target).await?;
+        let sql = self.qualified_sql(sql, target);
+        let pool = self.resolve_statement_pool(handle, target).await?;
+        self.query_with_params_on(handle, &sql, params, &pool).await
+    }
+
+    async fn query_with_params_on(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+        pool: &PgPool,
     ) -> Result<QueryResult, DriverError> {
         {
             let mut txs = self.transactions.lock().await;
@@ -638,9 +791,6 @@ impl PostgresDriver {
                 });
             }
         }
-
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
 
         let start = Instant::now();
         let rows = Self::bind_values(sqlx::query(sql), params)
@@ -665,6 +815,32 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<u64, DriverError> {
+        let pool = {
+            let pools = self.pools.read().await;
+            Self::get_pool(&pools, handle)?.clone()
+        };
+        self.execute_on(handle, sql, &pool).await
+    }
+
+    /// [`Self::execute_impl`] against an explicit target.
+    pub(crate) async fn execute_at_impl(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<u64, DriverError> {
+        self.ensure_transaction_reaches(handle, target).await?;
+        let sql = self.qualified_sql(sql, target);
+        let pool = self.resolve_statement_pool(handle, target).await?;
+        self.execute_on(handle, &sql, &pool).await
+    }
+
+    async fn execute_on(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        pool: &PgPool,
+    ) -> Result<u64, DriverError> {
         {
             let mut txs = self.transactions.lock().await;
             if let Some(conn) = txs.get_mut(&handle.id) {
@@ -675,9 +851,6 @@ impl PostgresDriver {
                 return Ok(result.rows_affected());
             }
         }
-
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
 
         let result = sqlx::query(sql)
             .execute(pool)
@@ -700,7 +873,9 @@ impl PostgresDriver {
 
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
-        // Active DB is encoded in the pool itself (use_database swaps pools); no per-conn USE.
+        // A transaction takes one connection from the handle's own database
+        // pool; a statement aimed at another database is refused, never
+        // silently redirected.
         let mut conn = pool
             .acquire()
             .await

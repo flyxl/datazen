@@ -17,12 +17,13 @@
 //!   TEST_PG_DATABASE=datazen_demo TEST_PG_DATABASE_B=postgres \
 //!   cargo test -p datazen-driver-postgres --test postgres_cross_database -- --nocapture
 //!
-//! Fixture assumption: database_a has a `users` table; database_b does not.
+//! Fixture: discovered at runtime — any `public` relation present in
+//! database_a and absent from database_b. The test skips when there is none.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, Value};
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, Value};
 use datazen_driver_postgres::PostgresDriver;
 
 #[derive(Clone, Debug)]
@@ -143,13 +144,14 @@ async fn assert_handle_session_untouched(
     driver: &PostgresDriver,
     handle: &datazen_driver_api::ConnectionHandle,
     cfg: &PgTestConfig,
+    probe: &str,
     label: &str,
 ) {
     let err = driver
-        .query(handle, "SELECT COUNT(*) FROM users")
+        .query(handle, &format!("SELECT COUNT(*) FROM {probe}"))
         .await
         .expect_err(&format!(
-            "{label}: the handle's session must stay on {} and not see {}.users",
+            "{label}: the handle's session must stay on {} and not see {}.{probe}",
             cfg.database_b, cfg.database_a
         ));
     assert!(
@@ -208,26 +210,28 @@ async fn cross_database_reads_never_move_the_session() {
         .get_tables(&handle, &cfg.database_a, None)
         .await
         .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_a));
-    if !a_tables.iter().any(|t| t.name == "users") {
-        let _ = driver.disconnect(handle).await;
-        eprintln!(
-            "⏭  Skipping: `{}.users` missing (needed for the cross-database check)",
-            cfg.database_a
-        );
-        return;
-    }
     let b_tables = driver
         .get_tables(&handle, &cfg.database_b, None)
         .await
         .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_b));
-    if b_tables.iter().any(|t| t.name == "users") {
+
+    // Discover the fixture instead of demanding a specific table name: any
+    // `public` relation that exists in A and not in B proves both directions
+    // (a targeted read reaches A, an untargeted read cannot).
+    let in_b: Vec<&str> = b_tables.iter().map(|t| t.name.as_str()).collect();
+    let probe = a_tables
+        .iter()
+        .find(|t| t.schema.as_deref() == Some("public") && !in_b.contains(&t.name.as_str()))
+        .map(|t| t.name.clone());
+    let Some(probe) = probe else {
         let _ = driver.disconnect(handle).await;
         eprintln!(
-            "⏭  Skipping: `{}.users` unexpectedly exists (need empty-ish B for negative check)",
-            cfg.database_b
+            "⏭  Skipping: {} has no `public` table missing from {} (need one for the \
+             cross-database check)",
+            cfg.database_a, cfg.database_b
         );
         return;
-    }
+    };
 
     println!(
         "▶  cross-database live: handle on {}, reading {} on {}:{}",
@@ -236,9 +240,9 @@ async fn cross_database_reads_never_move_the_session() {
 
     // ── the BUG-003 regression: reading a foreign catalog's table structure ──
     let users_schema = driver
-        .get_table_schema(&handle, "users", &cfg.database_a, Some("public"))
+        .get_table_schema(&handle, &probe, &cfg.database_a, Some("public"))
         .await
-        .unwrap_or_else(|e| panic!("get_table_schema({}.users): {e}", cfg.database_a));
+        .unwrap_or_else(|e| panic!("get_table_schema({}.{probe}): {e}", cfg.database_a));
     assert!(
         !users_schema.columns.is_empty(),
         "cross-database table structure must not come back empty — that empty \
@@ -249,21 +253,84 @@ async fn cross_database_reads_never_move_the_session() {
         .iter()
         .map(|c| c.name.as_str())
         .collect();
-    println!("   {}.users columns: {col_names:?}", cfg.database_a);
+    println!("   {}.{probe} columns: {col_names:?}", cfg.database_a);
 
     let (cols, _pks) = driver
-        .get_columns(&handle, "users", &cfg.database_a, Some("public"))
+        .get_columns(&handle, &probe, &cfg.database_a, Some("public"))
         .await
-        .unwrap_or_else(|e| panic!("get_columns({}.users): {e}", cfg.database_a));
+        .unwrap_or_else(|e| panic!("get_columns({}.{probe}): {e}", cfg.database_a));
     assert_eq!(cols.len(), users_schema.columns.len());
 
     // ── the session never moved ──
-    assert_handle_session_untouched(&driver, &handle, &cfg, "after cross-database reads").await;
+    assert_handle_session_untouched(&driver, &handle, &cfg, &probe, "after cross-database reads")
+        .await;
+
+    // ── the data path: a targeted statement reaches the foreign catalog ──
+    //
+    // This is the regression the grid hit. `query` cannot express a target, so
+    // a read for another database ran on the handle's own pool: it either
+    // returned that database's rows or nothing at all, which the user saw as
+    // "only the first database has data". The same statement must now work
+    // through `query_at` and keep failing without a target.
+    let target = SqlTarget::new(Some(&cfg.database_a), Some("public"));
+    let result = driver
+        .query_at(&handle, &format!("SELECT COUNT(*) FROM {probe}"), target)
+        .await
+        .unwrap_or_else(|e| panic!("query_at({}.{probe}): {e}", cfg.database_a));
+    let counted = result
+        .rows
+        .first()
+        .and_then(|row| row.first())
+        .and_then(cell_as_i64)
+        .expect("COUNT(*) must come back as a number");
+    assert!(
+        counted >= 1,
+        "expected at least one row in {}.{probe}, got {counted}",
+        cfg.database_a
+    );
+
+    // The bare table name was resolved inside the requested schema, not the
+    // pool's default `search_path`.
+    let via_public = driver
+        .query_at(
+            &handle,
+            &format!("SELECT COUNT(*) FROM {probe}"),
+            SqlTarget::new(Some(&cfg.database_a), Some("public")),
+        )
+        .await
+        .expect("schema-qualified read");
+    assert_eq!(
+        via_public
+            .rows
+            .first()
+            .and_then(|row| row.first())
+            .and_then(cell_as_i64),
+        Some(counted)
+    );
+
+    // Same statement, no target: the handle's own database still cannot see it.
+    assert_handle_session_untouched(&driver, &handle, &cfg, &probe, "after a targeted read").await;
+
+    // A transaction holds one connection, so a statement for another database
+    // must be refused rather than silently read from the transaction's own.
+    let tx = driver
+        .begin_transaction(&handle)
+        .await
+        .expect("begin transaction");
+    let err = driver
+        .query_at(&handle, &format!("SELECT COUNT(*) FROM {probe}"), target)
+        .await
+        .expect_err("a foreign-database statement must not run inside the transaction");
+    assert!(
+        matches!(err, DriverError::TransactionError(_)),
+        "expected TransactionError, got {err:?}"
+    );
+    driver.rollback(tx).await.expect("rollback");
 
     // ── repeat to prove the foreign pool is stable and reused ──
     for i in 0..5 {
         let schema = driver
-            .get_table_schema(&handle, "users", &cfg.database_a, Some("public"))
+            .get_table_schema(&handle, &probe, &cfg.database_a, Some("public"))
             .await
             .unwrap_or_else(|e| panic!("cross-database read #{i}: {e}"));
         assert_eq!(
@@ -276,13 +343,14 @@ async fn cross_database_reads_never_move_the_session() {
         &driver,
         &handle,
         &cfg,
+        &probe,
         "after repeated cross-database reads",
     )
     .await;
 
     // ── schema is mandatory for single-table resolution on PostgreSQL ──
     let err = driver
-        .get_table_schema(&handle, "users", &cfg.database_a, None)
+        .get_table_schema(&handle, &probe, &cfg.database_a, None)
         .await
         .expect_err("a schema-aware driver must require an explicit schema");
     assert!(
@@ -295,7 +363,7 @@ async fn cross_database_reads_never_move_the_session() {
         .get_tables(&handle, &cfg.database_a, Some("public"))
         .await
         .expect("listing with an explicit schema is allowed");
-    assert!(err.iter().any(|t| t.name == "users"));
+    assert!(err.iter().any(|t| t.name == probe));
 
     // ── unknown database fails loudly instead of returning an empty list ──
     let err = driver
@@ -314,6 +382,20 @@ async fn cross_database_reads_never_move_the_session() {
         "error should mention the bad database name: {msg}"
     );
 
+    // ── the open-database report is what the navigator marks as "open" ──
+    let open = driver
+        .open_databases(&handle)
+        .await
+        .expect("open_databases");
+    assert!(
+        open.iter().any(|d| d == &cfg.database_a),
+        "the foreign database has an open pool and must be reported: {open:?}"
+    );
+    assert!(
+        open.iter().any(|d| d == &cfg.database_b),
+        "the handle's own database is open too: {open:?}"
+    );
+
     // ── closing the foreign database pool drops only that pool ──
     assert!(
         driver
@@ -322,8 +404,21 @@ async fn cross_database_reads_never_move_the_session() {
             .expect("close foreign pool"),
         "the foreign pool should have been open"
     );
+
+    let open_after = driver
+        .open_databases(&handle)
+        .await
+        .expect("open_databases after close");
+    assert!(
+        !open_after.iter().any(|d| d == &cfg.database_a),
+        "a closed database must stop being reported as open: {open_after:?}"
+    );
+    assert!(
+        open_after.iter().any(|d| d == &cfg.database_b),
+        "closing a foreign database must not affect the handle's own: {open_after:?}"
+    );
     let schema_after_close = driver
-        .get_table_schema(&handle, "users", &cfg.database_a, Some("public"))
+        .get_table_schema(&handle, &probe, &cfg.database_a, Some("public"))
         .await
         .expect("reopening the foreign pool on demand");
     assert!(!schema_after_close.columns.is_empty());

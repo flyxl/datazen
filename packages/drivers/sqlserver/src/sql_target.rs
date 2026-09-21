@@ -7,9 +7,9 @@
 //!
 //! A **database-only** target is intentionally *not* inlined: in T-SQL a
 //! two-part name `[db].t` means *schema* `db`, which would silently change
-//! resolution. The database dimension is instead served by the host
-//! `ensure_session_database` session pin (`USE db`), which stays active as
-//! the safety net either way.
+//! resolution. A database-only target therefore stays unresolved here and the
+//! caller must supply the schema (or a driver that resolves the database
+//! another way); no session `USE` is ever issued.
 //!
 //! Temp tables (`#tmp`) always stay in their tempdb/session scope and are
 //! never qualified. Bracket quoting escapes `]` as `]]` (T-SQL rules).

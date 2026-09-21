@@ -96,8 +96,9 @@ impl DatabaseDriver for PostgresDriver {
     }
 
     /// F7: qualify unqualified table references with the target schema
-    /// (`"schema"."t"`). The database dimension is not inlined — PG resolves
-    /// it through the host pool switch (`ensure_session_database`); parse
+    /// (`"schema"."t"`). The database dimension is **not** inlined — PG cannot
+    /// reference another database in one statement — so the `*_at` methods
+    /// below serve it by routing to that database's pool instead. Parse
     /// failures pass SQL through unchanged. See `sql_target::qualify_sql`.
     fn qualify_sql_target(
         &self,
@@ -106,6 +107,55 @@ impl DatabaseDriver for PostgresDriver {
         schema: Option<&str>,
     ) -> Option<String> {
         Some(crate::sql_target::qualify_sql(sql, database, schema))
+    }
+
+    async fn query_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        Self::query_at_impl(self, handle, sql, target).await
+    }
+
+    async fn query_multi_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+    ) -> Result<MultiQueryResult, DriverError> {
+        Self::query_multi_at_impl(self, handle, sql, limit, target).await
+    }
+
+    async fn execute_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<u64, DriverError> {
+        Self::execute_at_impl(self, handle, sql, target).await
+    }
+
+    async fn query_with_params_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        Self::query_with_params_at_impl(self, handle, sql, params, target).await
+    }
+
+    async fn query_stream_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        Self::query_stream_at_impl(self, handle, sql, limit, target, on_event).await
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
@@ -142,6 +192,10 @@ impl DatabaseDriver for PostgresDriver {
         database: &str,
     ) -> Result<bool, DriverError> {
         Self::close_database_pool(self, handle, database).await
+    }
+
+    async fn open_databases(&self, handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+        Self::open_databases_impl(self, handle).await
     }
 
     async fn get_tables(

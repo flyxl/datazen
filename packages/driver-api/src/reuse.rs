@@ -248,6 +248,67 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.execute(handle, sql).await
     }
 
+    async fn open_databases(&self, handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+        self.inner.open_databases(handle).await
+    }
+
+    fn qualified_sql(&self, sql: &str, target: SqlTarget<'_>) -> String {
+        self.inner.qualified_sql(sql, target)
+    }
+
+    async fn query_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        self.inner.query_at(handle, sql, target).await
+    }
+
+    async fn query_multi_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+    ) -> Result<MultiQueryResult, DriverError> {
+        self.inner.query_multi_at(handle, sql, limit, target).await
+    }
+
+    async fn execute_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<u64, DriverError> {
+        self.inner.execute_at(handle, sql, target).await
+    }
+
+    async fn query_with_params_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        self.inner
+            .query_with_params_at(handle, sql, params, target)
+            .await
+    }
+
+    async fn query_stream_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        target: SqlTarget<'_>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .query_stream_at(handle, sql, limit, target, on_event)
+            .await
+    }
+
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
         self.inner.command_definitions()
     }

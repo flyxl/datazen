@@ -542,6 +542,21 @@ impl DatabaseDriver for MysqlDriver {
         })
     }
 
+    /// MySQL serves every database from one pool by qualifying names, so the
+    /// only database that is genuinely "open" is the connection's own. It is
+    /// still worth reporting: the UI marks it, and `close_database` correctly
+    /// refuses to close it individually.
+    async fn open_databases(&self, handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+        Ok(self
+            .active_databases
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned()
+            .into_iter()
+            .collect())
+    }
+
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
         if let Some(mut conn) = self.transactions.lock().await.remove(&handle.id) {
             let _ = Self::execute_text_on_conn(&mut conn, "ROLLBACK").await;
@@ -595,6 +610,25 @@ impl DatabaseDriver for MysqlDriver {
         .fetch_all(pool)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        if rows.is_empty() {
+            // An unknown database and a genuinely empty one both yield zero
+            // rows here. Distinguish them so the tree reports a bad target
+            // instead of silently presenting an empty database — PostgreSQL
+            // errors on the same input, and the two must not disagree.
+            let known: Option<String> = sqlx::query_scalar(
+                "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
+            )
+            .bind(database)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            if known.is_none() {
+                return Err(DriverError::QueryFailed(format!(
+                    "Unknown database '{database}'"
+                )));
+            }
+        }
 
         Ok(rows
             .iter()

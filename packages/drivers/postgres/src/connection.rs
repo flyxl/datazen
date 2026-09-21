@@ -295,6 +295,32 @@ impl PostgresDriver {
         }
     }
 
+    /// The connection's own database plus every foreign-database pool still
+    /// cached for this handle. This is what the navigator marks as "open".
+    pub(crate) async fn open_databases_impl(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<Vec<String>, DriverError> {
+        let mut open: Vec<String> = self
+            .active_databases
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned()
+            .into_iter()
+            .collect();
+
+        let cache = self.database_pools.read().await;
+        for (owner, database) in cache.keys() {
+            if owner == &handle.pool_id {
+                open.push(database.clone());
+            }
+        }
+        open.sort();
+        open.dedup();
+        Ok(open)
+    }
+
     /// Open a pool for `database` using the handle's stored connect template.
     pub(crate) async fn pool_for_named_database(
         &self,
