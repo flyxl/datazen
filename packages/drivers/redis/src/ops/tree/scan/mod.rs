@@ -55,6 +55,8 @@ use redis::Value as RValue;
 #[allow(unused_imports)]
 use crate::connect::Topology;
 #[allow(unused_imports)]
+use crate::driver::session::normalize_type_filter;
+#[allow(unused_imports)]
 use crate::ops::key_probe::key_exists;
 #[allow(unused_imports)]
 use crate::ops::tree::budget::{is_exact_key_pattern, tree_scan_budget, ScanBudget, ScanLoopGuard};
@@ -64,11 +66,7 @@ use crate::ops::workbench::{
     SlotRoutedConnection, TTL_MISSING,
 };
 #[allow(unused_imports)]
-use crate::driver::session::normalize_type_filter;
-#[allow(unused_imports)]
-use crate::value::{
-    parse_scan_result, preview_value_to_string, truncate_preview, value_to_string,
-};
+use crate::value::{parse_scan_result, preview_value_to_string, truncate_preview, value_to_string};
 
 pub(crate) mod batch;
 pub(crate) mod budget;
@@ -78,8 +76,13 @@ pub(crate) mod page;
 pub(crate) mod transport;
 pub(crate) mod value;
 
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(crate) use batch::fetch_page_groups;
 #[allow(unused_imports)]
 pub(crate) use batch::scan_round;
+#[cfg(test)]
+pub(crate) use batch::scatter;
 pub use batch::PageKey;
 #[allow(unused_imports)]
 pub use batch::ScannedPage;
@@ -96,15 +99,19 @@ pub use meta::meta_fields_per_key;
 pub use meta::meta_slots;
 #[allow(unused_imports)]
 pub use meta::parse_meta_group;
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(crate) use meta::reply_at;
 pub use meta::KeyMeta;
 pub(crate) use page::scan_keys_page;
 pub use page::ScanKeysPage;
 pub(crate) use transport::fetch_key_group;
-#[cfg(test)]
-pub(crate) use batch::scatter;
-#[cfg(test)]
 #[allow(unused_imports)]
-pub(crate) use batch::fetch_page_groups;
+pub(crate) use transport::fold_command_answer;
+#[allow(unused_imports)]
+pub(crate) use transport::is_connection_level_failure;
+#[allow(unused_imports)]
+pub(crate) use transport::pipeline_raw;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub use transport::META_FIELDS_BASE;
@@ -116,15 +123,6 @@ pub use transport::TREE_KEYS_PER_PIPELINE;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub use transport::VALUE_FIELDS_MAX;
-#[cfg(test)]
-#[allow(unused_imports)]
-pub(crate) use meta::reply_at;
-#[allow(unused_imports)]
-pub(crate) use transport::fold_command_answer;
-#[allow(unused_imports)]
-pub(crate) use transport::is_connection_level_failure;
-#[allow(unused_imports)]
-pub(crate) use transport::pipeline_raw;
 #[allow(unused_imports)]
 pub use value::build_value_pipeline;
 #[allow(unused_imports)]

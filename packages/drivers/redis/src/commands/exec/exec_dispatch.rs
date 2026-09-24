@@ -3,8 +3,8 @@
 use datazen_driver_api::{CommandResult, ConnectionHandle, DriverError};
 use serde_json::Value as JsonValue;
 
-use crate::ops::ZsetMember;
 use crate::ops::io::RestoreKeyEntry;
+use crate::ops::ZsetMember;
 use crate::RedisDriver;
 
 fn req_str<'a>(input: &'a JsonValue, field: &str) -> Result<&'a str, DriverError> {
@@ -100,7 +100,7 @@ pub(super) async fn dispatch(
     let id = handle.pool_id.as_str();
     let db = db_index(&input);
 
-match command {
+    match command {
         "scan_keys" => {
             let pattern = opt_str(&input, "pattern").unwrap_or("*");
             let cursor = input.get("cursor").and_then(JsonValue::as_u64).unwrap_or(0);
@@ -121,9 +121,22 @@ match command {
                 .unwrap_or(false);
             // Cumulative COUNT cap for this action; absent/0 means the driver
             // derives it from the DBSIZE it reads anyway (ops_tree_budget).
-            let budget = input.get("budget").and_then(JsonValue::as_u64).filter(|v| *v > 0);
+            let budget = input
+                .get("budget")
+                .and_then(JsonValue::as_u64)
+                .filter(|v| *v > 0);
             let page = driver
-                .scan_keys_with_info(handle, db, pattern, cursor, count, key_type, with_memory, no_ttl_only, budget)
+                .scan_keys_with_info(
+                    handle,
+                    db,
+                    pattern,
+                    cursor,
+                    count,
+                    key_type,
+                    with_memory,
+                    no_ttl_only,
+                    budget,
+                )
                 .await?;
             // `dbSize` is the established spelling and must keep working as-is;
             // `dbsize` is additionally appended so all three key-tree commands
@@ -162,7 +175,10 @@ match command {
                 .or_else(|| input.get("with_memory"))
                 .and_then(JsonValue::as_bool)
                 .unwrap_or(false);
-            let budget = input.get("budget").and_then(JsonValue::as_u64).filter(|v| *v > 0);
+            let budget = input
+                .get("budget")
+                .and_then(JsonValue::as_u64)
+                .filter(|v| *v > 0);
             let page = driver
                 .list_children(
                     handle,
@@ -228,13 +244,12 @@ match command {
         }
         "set_string_raw" => {
             let keep_ttl = crate::ops::write::keep_ttl_policy(&input);
-            let b64 = req_str(&input, "dataB64")
-                .or_else(|_| req_str(&input, "data_b64"))?;
-            let bytes = base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                b64.trim(),
-            )
-            .map_err(|e| DriverError::InvalidConfig(format!("invalid base64 payload: {e}")))?;
+            let b64 = req_str(&input, "dataB64").or_else(|_| req_str(&input, "data_b64"))?;
+            let bytes =
+                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64.trim())
+                    .map_err(|e| {
+                        DriverError::InvalidConfig(format!("invalid base64 payload: {e}"))
+                    })?;
             let outcome = driver
                 .plugin_set_string_bytes(id, db, req_str(&input, "key")?, &bytes, keep_ttl)
                 .await?;
@@ -242,11 +257,21 @@ match command {
         }
         "hash_scan" => {
             let cursor = input.get("cursor").and_then(JsonValue::as_u64).unwrap_or(0);
-            let count = input.get("count").and_then(JsonValue::as_u64).unwrap_or(100) as u32;
-            let match_pattern = opt_str(&input, "matchPattern")
-                .or_else(|| opt_str(&input, "match_pattern"));
+            let count = input
+                .get("count")
+                .and_then(JsonValue::as_u64)
+                .unwrap_or(100) as u32;
+            let match_pattern =
+                opt_str(&input, "matchPattern").or_else(|| opt_str(&input, "match_pattern"));
             let (next, entries) = driver
-                .plugin_hash_scan(id, db, req_str(&input, "key")?, cursor, count, match_pattern)
+                .plugin_hash_scan(
+                    id,
+                    db,
+                    req_str(&input, "key")?,
+                    cursor,
+                    count,
+                    match_pattern,
+                )
                 .await?;
             let fields: Vec<serde_json::Value> = entries
                 .into_iter()
@@ -264,21 +289,41 @@ match command {
         }
         "set_scan" => {
             let cursor = input.get("cursor").and_then(JsonValue::as_u64).unwrap_or(0);
-            let count = input.get("count").and_then(JsonValue::as_u64).unwrap_or(100) as u32;
-            let match_pattern = opt_str(&input, "matchPattern")
-                .or_else(|| opt_str(&input, "match_pattern"));
+            let count = input
+                .get("count")
+                .and_then(JsonValue::as_u64)
+                .unwrap_or(100) as u32;
+            let match_pattern =
+                opt_str(&input, "matchPattern").or_else(|| opt_str(&input, "match_pattern"));
             let (next, members) = driver
-                .plugin_set_scan(id, db, req_str(&input, "key")?, cursor, count, match_pattern)
+                .plugin_set_scan(
+                    id,
+                    db,
+                    req_str(&input, "key")?,
+                    cursor,
+                    count,
+                    match_pattern,
+                )
                 .await?;
             json_ok(serde_json::json!({ "cursor": next, "members": members }))
         }
         "zset_scan" => {
             let cursor = input.get("cursor").and_then(JsonValue::as_u64).unwrap_or(0);
-            let count = input.get("count").and_then(JsonValue::as_u64).unwrap_or(100) as u32;
-            let match_pattern = opt_str(&input, "matchPattern")
-                .or_else(|| opt_str(&input, "match_pattern"));
+            let count = input
+                .get("count")
+                .and_then(JsonValue::as_u64)
+                .unwrap_or(100) as u32;
+            let match_pattern =
+                opt_str(&input, "matchPattern").or_else(|| opt_str(&input, "match_pattern"));
             let (next, members) = driver
-                .plugin_zset_scan(id, db, req_str(&input, "key")?, cursor, count, match_pattern)
+                .plugin_zset_scan(
+                    id,
+                    db,
+                    req_str(&input, "key")?,
+                    cursor,
+                    count,
+                    match_pattern,
+                )
                 .await?;
             let scored: Vec<serde_json::Value> = members
                 .into_iter()
@@ -339,7 +384,13 @@ match command {
             let count = input.get("count").and_then(JsonValue::as_i64).unwrap_or(1);
             json_ok(
                 driver
-                    .plugin_list_rem(id, db, req_str(&input, "key")?, count, req_str(&input, "value")?)
+                    .plugin_list_rem(
+                        id,
+                        db,
+                        req_str(&input, "key")?,
+                        count,
+                        req_str(&input, "value")?,
+                    )
                     .await?,
             )
         }
@@ -359,7 +410,10 @@ match command {
         }
         "zset_add" => {
             let members: Vec<ZsetMember> = serde_json::from_value(
-                input.get("members").cloned().unwrap_or(JsonValue::Array(vec![])),
+                input
+                    .get("members")
+                    .cloned()
+                    .unwrap_or(JsonValue::Array(vec![])),
             )
             .map_err(|e| DriverError::InvalidConfig(e.to_string()))?;
             driver
@@ -479,7 +533,10 @@ match command {
         "count_matching" => {
             // Same cumulative COUNT budget as scan_keys / list_children (PRD
             // §3.2); `truncated` means the count is a floor the UI shows `n+`.
-            let budget = input.get("budget").and_then(JsonValue::as_u64).filter(|v| *v > 0);
+            let budget = input
+                .get("budget")
+                .and_then(JsonValue::as_u64)
+                .filter(|v| *v > 0);
             json_ok(
                 driver
                     .plugin_count_matching(id, db, req_str(&input, "pattern")?, budget)
@@ -536,7 +593,11 @@ match command {
                 .get("sampleLimit")
                 .or_else(|| input.get("sample_limit"))
                 .and_then(JsonValue::as_u64);
-            json_ok(driver.plugin_type_distribution(id, db, sample_limit).await?)
+            json_ok(
+                driver
+                    .plugin_type_distribution(id, db, sample_limit)
+                    .await?,
+            )
         }
         "key_object_info" => json_ok(
             driver
@@ -557,10 +618,16 @@ match command {
         ),
         "modules_list" => json_ok(driver.plugin_modules_list(id).await?),
         "monitor_start" => {
-            let buffer_size = input.get("bufferSize").and_then(JsonValue::as_u64).map(|n| n as usize);
-            let plan = driver.connection_plan(&handle.pool_id).await
+            let buffer_size = input
+                .get("bufferSize")
+                .and_then(JsonValue::as_u64)
+                .map(|n| n as usize);
+            let plan = driver
+                .connection_plan(&handle.pool_id)
+                .await
                 .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-            let monitor_id = crate::ops::monitor::start_monitor(&plan, buffer_size).await
+            let monitor_id = crate::ops::monitor::start_monitor(&plan, buffer_size)
+                .await
                 .map_err(|e| DriverError::QueryFailed(e))?;
             json_ok(serde_json::json!({ "monitorId": monitor_id }))
         }
@@ -721,22 +788,12 @@ match command {
         ),
         "xinfo_consumers" => json_ok(
             driver
-                .plugin_xinfo_consumers(
-                    id,
-                    db,
-                    req_str(&input, "key")?,
-                    req_str(&input, "group")?,
-                )
+                .plugin_xinfo_consumers(id, db, req_str(&input, "key")?, req_str(&input, "group")?)
                 .await?,
         ),
         "stream_lag" => json_ok(
             driver
-                .plugin_stream_lag(
-                    id,
-                    db,
-                    req_str(&input, "key")?,
-                    req_str(&input, "group")?,
-                )
+                .plugin_stream_lag(id, db, req_str(&input, "key")?, req_str(&input, "group")?)
                 .await?,
         ),
         "xpending" => json_ok(

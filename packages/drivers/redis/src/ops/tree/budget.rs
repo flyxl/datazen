@@ -284,7 +284,10 @@ mod tests {
         // Guarding the deliberate divergence: value search caps at 200 000 keys,
         // the key tree at 1 000 000 COUNT. See the module docs.
         assert_eq!(HARD_MAX_TREE_BUDGET, 1_000_000);
-        assert_ne!(HARD_MAX_TREE_BUDGET, crate::ops::value_search::HARD_MAX_KEYS);
+        assert_ne!(
+            HARD_MAX_TREE_BUDGET,
+            crate::ops::value_search::HARD_MAX_KEYS
+        );
         assert_eq!(
             DEFAULT_TREE_BUDGET,
             crate::ops::value_search::DEFAULT_MAX_KEYS

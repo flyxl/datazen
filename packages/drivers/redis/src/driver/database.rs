@@ -6,8 +6,8 @@ use redis::AsyncCommands;
 use std::time::{Duration, Instant};
 
 use crate::connect::{build_connection_plan, open_live_conn, RedisLiveConn};
-use crate::driver::{RedisConn, RedisDriver, TEST_CONNECTION_TLS_GRACE};
 use crate::driver::session::{get_tables_on, info_server_on, query_cmd_on};
+use crate::driver::{RedisConn, RedisDriver, TEST_CONNECTION_TLS_GRACE};
 use crate::value::{parse_redis_command_args, redis_value_to_rows};
 use crate::with_redis_conn;
 

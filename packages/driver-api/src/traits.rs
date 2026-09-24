@@ -132,12 +132,24 @@ pub trait DatabaseDriver: Send + Sync {
             }
             Some(Value::Integer(i)) => i.to_string(),
             Some(Value::Float(f)) => f.to_string(),
-            Some(Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
-            Some(Value::Bytes(b)) => {
-                format!("'{}'", String::from_utf8_lossy(b).replace('\'', "''"))
+            Some(Value::String(s)) => {
+                let escaped = s.replace('\\', "\\\\");
+                format!("'{}'", escaped.replace('\'', "''"))
             }
-            Some(Value::Timestamp(s)) => format!("'{}'", s.replace('\'', "''")),
-            Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
+            Some(Value::Bytes(b)) => {
+                let s = String::from_utf8_lossy(b);
+                let escaped = s.replace('\\', "\\\\");
+                format!("'{}'", escaped.replace('\'', "''"))
+            }
+            Some(Value::Timestamp(s)) => {
+                let escaped = s.replace('\\', "\\\\");
+                format!("'{}'", escaped.replace('\'', "''"))
+            }
+            Some(Value::Json(j)) => {
+                let s = j.to_string();
+                let escaped = s.replace('\\', "\\\\");
+                format!("'{}'", escaped.replace('\'', "''"))
+            }
         }
     }
 

@@ -11,9 +11,7 @@ use crate::ops::workbench::{
     SlotRoutedConnection, TTL_MISSING,
 };
 #[allow(unused_imports)]
-use crate::value::{
-    parse_scan_result, preview_value_to_string, truncate_preview, value_to_string,
-};
+use crate::value::{parse_scan_result, preview_value_to_string, truncate_preview, value_to_string};
 use redis::aio::ConnectionLike;
 use redis::Value as RValue;
 

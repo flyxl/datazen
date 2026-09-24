@@ -437,12 +437,24 @@ impl DatabaseDriver for MysqlDriver {
             }
             Some(super::Value::Integer(i)) => i.to_string(),
             Some(super::Value::Float(f)) => f.to_string(),
-            Some(super::Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
-            Some(super::Value::Bytes(b)) => {
-                format!("'{}'", String::from_utf8_lossy(b).replace('\'', "''"))
+            Some(super::Value::String(s)) => {
+                let escaped = s.replace('\\', "\\\\");
+                format!("'{}'", escaped.replace('\'', "''"))
             }
-            Some(super::Value::Timestamp(s)) => format!("'{}'", s.replace('\'', "''")),
-            Some(super::Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
+            Some(super::Value::Bytes(b)) => {
+                let s = String::from_utf8_lossy(b);
+                let escaped = s.replace('\\', "\\\\");
+                format!("'{}'", escaped.replace('\'', "''"))
+            }
+            Some(super::Value::Timestamp(s)) => {
+                let escaped = s.replace('\\', "\\\\");
+                format!("'{}'", escaped.replace('\'', "''"))
+            }
+            Some(super::Value::Json(j)) => {
+                let s = j.to_string();
+                let escaped = s.replace('\\', "\\\\");
+                format!("'{}'", escaped.replace('\'', "''"))
+            }
         }
     }
 

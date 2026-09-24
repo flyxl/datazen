@@ -15,8 +15,8 @@ use crate::connect::{
     build_connection_plan, looks_like_connection_loss, open_live_conn, open_pinned_node_conn,
     ConnectionPlan, RedisLiveConn,
 };
-use session::{get_key_detail_on, get_key_raw_on, info_server_on, select_db_on};
 use crate::with_redis_conn;
+use session::{get_key_detail_on, get_key_raw_on, info_server_on, select_db_on};
 
 pub(crate) struct RedisConn {
     pub(crate) plan: ConnectionPlan,

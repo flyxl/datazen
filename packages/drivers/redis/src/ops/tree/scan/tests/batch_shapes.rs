@@ -153,5 +153,8 @@ fn tree_scan_constants_are_pinned_by_literal() {
     assert_eq!(meta_fields_per_key(false), 2);
     assert_eq!(meta_fields_per_key(true), 3);
     // The key-tree cap must never be the value-search cap.
-    assert_ne!(HARD_MAX_TREE_BUDGET, crate::ops::value_search::HARD_MAX_KEYS);
+    assert_ne!(
+        HARD_MAX_TREE_BUDGET,
+        crate::ops::value_search::HARD_MAX_KEYS
+    );
 }

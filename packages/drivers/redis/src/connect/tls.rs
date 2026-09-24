@@ -5,10 +5,7 @@ use super::parse::scheme_for_tls;
 use super::plan::TlsPlan;
 use datazen_driver_api::DriverError;
 use redis::cluster::TlsMode;
-use redis::{
-    ClientTlsConfig,
-    TlsCertificates as RedisTlsCertificates,
-};
+use redis::{ClientTlsConfig, TlsCertificates as RedisTlsCertificates};
 use std::fs;
 use std::path::Path;
 

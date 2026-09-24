@@ -5,8 +5,8 @@ use redis::FromRedisValue;
 use serde::Serialize;
 
 use crate::connect::Topology;
-use crate::ops::workbench::SlotRoutedConnection;
 use crate::driver::parse_scan_result;
+use crate::ops::workbench::SlotRoutedConnection;
 
 /// Default number of keys to sample when `limit` is omitted or zero.
 pub const DEFAULT_MEMORY_SAMPLE_LIMIT: u32 = 200;
@@ -280,7 +280,10 @@ where
             };
             if is_match {
                 matched_count += 1;
-                filtered.push(InfoEntry { key: k.clone(), value: v.clone() });
+                filtered.push(InfoEntry {
+                    key: k.clone(),
+                    value: v.clone(),
+                });
             }
         }
 
@@ -569,17 +572,13 @@ mod tests {
         use serde_json;
 
         let result = crate::ops::observe::InfoFilteredResult {
-            sections: vec![
-                crate::ops::observe::InfoSectionFiltered {
-                    name: "Server".to_string(),
-                    entries: vec![
-                        crate::ops::observe::InfoEntry {
-                            key: "redis_version".to_string(),
-                            value: "7.2.0".to_string(),
-                        },
-                    ],
-                },
-            ],
+            sections: vec![crate::ops::observe::InfoSectionFiltered {
+                name: "Server".to_string(),
+                entries: vec![crate::ops::observe::InfoEntry {
+                    key: "redis_version".to_string(),
+                    value: "7.2.0".to_string(),
+                }],
+            }],
             total_entries: 1,
             matched_entries: 1,
         };

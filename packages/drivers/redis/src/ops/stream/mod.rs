@@ -51,12 +51,12 @@ pub(crate) use parse::value_to_u64;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::parse::{
         parse_stream_entry, parse_stream_id, parse_xinfo_consumers, parse_xinfo_groups,
         parse_xpending_entries,
     };
     use super::types::validate_xgroup_name;
+    use super::*;
 
     #[test]
     fn validate_xgroup_name_rejects_empty() {
