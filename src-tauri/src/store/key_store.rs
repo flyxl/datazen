@@ -1,25 +1,37 @@
-//! Master encryption key storage: OS keychain (default when properly signed) or `.key` file.
+//! Master encryption key storage.
 //!
-//! Backend selection:
-//! - `DATAZEN_KEYRING=file` → always `.key` (dev / CI)
-//! - `DATAZEN_KEYRING=keyring` → always OS keychain
-//! - unset → OS keychain, except macOS adhoc/unsigned builds prefer `.key`
-//!   (avoids Keychain ACL re-prompts after every `tauri:dev` re-link)
+//! Backend selection (priority order):
+//! 1. `DATAZEN_KEYRING=file` → always `.key` file (dev / CI / explicit opt-in)
+//! 2. `DATAZEN_KEYRING=keyring` → always OS keychain (keyring crate)
+//! 3. unset → auto-detect:
+//!    - macOS unsigned/adhoc → platform vault (security CLI → login keychain)
+//!    - Windows → platform vault (DPAPI)
+//!    - macOS signed / Linux → OS keychain (keyring crate)
+//!
+//! Migration: on first run after upgrade, any legacy `.key` file is transparently
+//! migrated to the platform vault and the old file is deleted.
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::RngCore;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 use super::{StoreError, APP_IDENTIFIER};
 
 pub const KEYRING_ACCOUNT: &str = "app-encryption-key";
 const KEY_FILE: &str = ".key";
 
+// ---------------------------------------------------------------------------
+// Backend selection
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyBackend {
-    Keyring,
+    /// Plaintext `.key` file (explicit opt-in via `DATAZEN_KEYRING=file`).
     File,
+    /// OS keychain via `keyring` crate (macOS signed, Linux).
+    Keyring,
+    /// Platform vault: macOS security CLI / Windows DPAPI.
+    PlatformVault,
 }
 
 /// Resolve which backend stores the AES master key.
@@ -28,49 +40,57 @@ pub fn key_backend() -> KeyBackend {
         Some("file") => KeyBackend::File,
         Some("keyring") => KeyBackend::Keyring,
         _ => {
-            // Tests run as an unsigned binary but may not always set the env
-            // var (e.g. after a FileKeyringGuard Drop restores it).  Force the
-            // file backend unconditionally so `cargo test` never triggers the
-            // macOS keychain dialog.
             #[cfg(test)]
             {
                 KeyBackend::File
             }
             #[cfg(not(test))]
             {
-                if should_prefer_file_backend() {
-                    KeyBackend::File
-                } else {
-                    KeyBackend::Keyring
-                }
+                auto_detect_backend()
             }
         }
     }
 }
 
-#[allow(dead_code)]
-fn should_prefer_file_backend() -> bool {
+#[cfg(not(test))]
+fn auto_detect_backend() -> KeyBackend {
+    // macOS: unsigned/adhoc → platform vault; signed → keyring
     #[cfg(target_os = "macos")]
     {
-        static ADHOC: OnceLock<bool> = OnceLock::new();
-        let adhoc = *ADHOC.get_or_init(macos_codesign_is_adhoc_or_unsigned);
-        if adhoc {
+        if super::platform_vault::platform_vault_available() && macos_codesign_is_adhoc_or_unsigned()
+        {
             tracing::info!(
-                "Using {KEY_FILE} key backend (macOS adhoc/unsigned binary); \
-                 set DATAZEN_KEYRING=keyring to force OS Keychain"
+                "Using platform vault (macOS security CLI) for encryption key; \
+                 set DATAZEN_KEYRING=file for file backend, or DATAZEN_KEYRING=keyring for keyring crate"
             );
+            return KeyBackend::PlatformVault;
         }
-        adhoc
+        return KeyBackend::Keyring;
     }
-    #[cfg(not(target_os = "macos"))]
+    // Windows: prefer DPAPI platform vault
+    #[cfg(target_os = "windows")]
     {
-        false
+        if super::platform_vault::platform_vault_available() {
+            tracing::info!(
+                "Using platform vault (DPAPI) for encryption key; \
+                 set DATAZEN_KEYRING=file for file backend, or DATAZEN_KEYRING=keyring for keyring crate"
+            );
+            return KeyBackend::PlatformVault;
+        }
+        return KeyBackend::Keyring;
+    }
+    // Linux: keyring crate (D-Bus Secret Service)
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        KeyBackend::Keyring
     }
 }
 
-/// True when the running binary is unsigned or adhoc-signed (typical for `tauri:dev`
-/// and local unsigned `tauri:build` bundles). Proper Developer ID / App Store
-/// signatures return false.
+// ---------------------------------------------------------------------------
+// macOS ad-hoc detection
+// ---------------------------------------------------------------------------
+
+/// True when the running binary is unsigned or adhoc-signed.
 #[cfg(target_os = "macos")]
 fn macos_codesign_is_adhoc_or_unsigned() -> bool {
     let Ok(exe) = std::env::current_exe() else {
@@ -85,21 +105,20 @@ fn macos_codesign_is_adhoc_or_unsigned() -> bool {
         return true;
     };
     let text = format!(
-        "{}{}",
+        "{}",
         String::from_utf8_lossy(&out.stderr),
-        String::from_utf8_lossy(&out.stdout)
     );
     if text.contains("code object is not signed") {
         return true;
     }
-    if text.contains("Signature=adhoc")
+    text.contains("Signature=adhoc")
         || text.contains("flags=0x2(adhoc)")
         || text.contains("flags=0x2 (adhoc)")
-    {
-        return true;
-    }
-    false
 }
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
 
 pub fn key_file_path(data_dir: &Path) -> PathBuf {
     data_dir.join(KEY_FILE)
@@ -109,9 +128,14 @@ pub fn key_file_path(data_dir: &Path) -> PathBuf {
 pub fn load_or_create_master_key(data_dir: &Path) -> Result<[u8; 32], StoreError> {
     match key_backend() {
         KeyBackend::File => load_or_create_from_file(data_dir),
+        KeyBackend::PlatformVault => load_or_create_via_platform_vault(data_dir),
         KeyBackend::Keyring => load_or_create_via_keyring(data_dir),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
 
 fn decode_key_b64(key_b64: &str) -> Result<[u8; 32], StoreError> {
     let key_bytes = BASE64
@@ -156,66 +180,21 @@ fn write_key_file(data_dir: &Path, key: &[u8; 32]) -> Result<(), StoreError> {
     Ok(())
 }
 
-/// Restrict `{appData}/.key` to the owning user — same intent as `mcp.token`
-/// in [`crate::mcp::auth`].
-///
-/// - **Unix:** `chmod 600` (owner read/write only).
-/// - **Windows:** not implemented yet — no shared ACL helper in the repo and
-///   `mcp/auth.rs` applies the same Unix-only `chmod` for `mcp.token`. The file
-///   inherits default user-profile ACLs; explicit DACL hardening is tracked as
-///   a follow-up (see coordination hub R-stage leftovers).
 fn restrict_key_file_permissions(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
     }
-    #[cfg(windows)]
-    let _ = path; // ACL hardening deferred — see doc comment above
 }
 
 fn remove_key_file(data_dir: &Path) {
     let path = key_file_path(data_dir);
     if path.is_file() {
         if let Err(e) = std::fs::remove_file(&path) {
-            tracing::warn!(path = %path.display(), error = %e, "Failed to delete legacy .key after keyring migration");
+            tracing::warn!(path = %path.display(), error = %e, "Failed to delete legacy .key after migration");
         }
     }
-}
-
-/// Prefer `.key`. If missing and not in explicit `DATAZEN_KEYRING=file` mode,
-/// try exporting from the OS keychain once (covers adhoc auto-fallback after a
-/// prior keyring migration). Explicit file mode never touches Keychain so CI
-/// and hermetic tests cannot hang on ACL prompts.
-fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], StoreError> {
-    if let Some(key) = read_key_file(data_dir)? {
-        return Ok(key);
-    }
-    let explicit_file = std::env::var("DATAZEN_KEYRING").ok().as_deref() == Some("file");
-    if !explicit_file {
-        if let Ok(entry) = open_keyring_entry() {
-            match entry.get_password() {
-                Ok(key_b64) => {
-                    let key = decode_key_b64(&key_b64)?;
-                    write_key_file(data_dir, &key)?;
-                    tracing::info!(
-                        "Exported encryption key from OS keychain to {KEY_FILE} for file backend"
-                    );
-                    return Ok(key);
-                }
-                Err(keyring::v1::Error::NoEntry) => {}
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        "Could not read OS keychain while using file backend; creating {KEY_FILE} if needed"
-                    );
-                }
-            }
-        }
-    }
-    let key = generate_key();
-    write_key_file(data_dir, &key)?;
-    Ok(key)
 }
 
 fn fail_closed_no_key_source(context: &str) -> StoreError {
@@ -239,11 +218,98 @@ fn load_legacy_key_or_fail(data_dir: &Path, context: &str) -> Result<[u8; 32], S
     }
 }
 
+// ---------------------------------------------------------------------------
+// File backend
+// ---------------------------------------------------------------------------
+
+fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], StoreError> {
+    if let Some(key) = read_key_file(data_dir)? {
+        return Ok(key);
+    }
+    let explicit_file = std::env::var("DATAZEN_KEYRING").ok().as_deref() == Some("file");
+    if !explicit_file {
+        // Try platform vault first, then keyring
+        if super::platform_vault::platform_vault_available() {
+            if let Ok(Some(key)) = super::platform_vault::load_from_vault() {
+                write_key_file(data_dir, &key)?;
+                tracing::info!("Exported encryption key from platform vault to {KEY_FILE}");
+                return Ok(key);
+            }
+        }
+        if let Ok(entry) = open_keyring_entry() {
+            match entry.get_password() {
+                Ok(key_b64) => {
+                    let key = decode_key_b64(&key_b64)?;
+                    write_key_file(data_dir, &key)?;
+                    tracing::info!("Exported encryption key from OS keychain to {KEY_FILE}");
+                    return Ok(key);
+                }
+                Err(keyring::v1::Error::NoEntry) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "Could not read OS keychain; creating {KEY_FILE} if needed");
+                }
+            }
+        }
+    }
+    let key = generate_key();
+    write_key_file(data_dir, &key)?;
+    Ok(key)
+}
+
+// ---------------------------------------------------------------------------
+// Platform vault backend (macOS security CLI / Windows DPAPI)
+// ---------------------------------------------------------------------------
+
+fn load_or_create_via_platform_vault(data_dir: &Path) -> Result<[u8; 32], StoreError> {
+    // 1. Try loading from platform vault
+    match super::platform_vault::load_from_vault() {
+        Ok(Some(key)) => {
+            // Migrate legacy .key file if present
+            remove_key_file(data_dir);
+            return Ok(key);
+        }
+        Ok(None) => {}
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to read from platform vault");
+            return load_legacy_key_or_fail(data_dir, &format!("platform vault read failed ({e})"));
+        }
+    }
+
+    // 2. Vault empty — check for legacy .key file to migrate
+    if let Some(key) = read_key_file(data_dir)? {
+        if let Err(e) = super::platform_vault::store_to_vault(&key) {
+            tracing::warn!(
+                error = %e,
+                "Could not migrate .key to platform vault; keeping file fallback"
+            );
+            return Ok(key);
+        }
+        remove_key_file(data_dir);
+        tracing::info!("Migrated encryption key from legacy .key to platform vault");
+        return Ok(key);
+    }
+
+    // 3. Brand new install — generate and store
+    let key = generate_key();
+    if let Err(e) = super::platform_vault::store_to_vault(&key) {
+        tracing::warn!(
+            error = %e,
+            "Failed to store new key in platform vault; using file fallback"
+        );
+        write_key_file(data_dir, &key)?;
+    }
+    Ok(key)
+}
+
+// ---------------------------------------------------------------------------
+// Keyring backend (macOS signed / Linux)
+// ---------------------------------------------------------------------------
+
 fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], StoreError> {
     let entry = match open_keyring_entry() {
         Ok(entry) => entry,
         Err(e) => {
-            tracing::error!(error = %e, "Failed to open OS keychain entry for encryption key");
+            tracing::error!(error = %e, "Failed to open OS keychain entry");
             return load_legacy_key_or_fail(data_dir, &format!("OS keychain unavailable ({e})"));
         }
     };
@@ -257,10 +323,7 @@ fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], StoreError> {
         Err(keyring::v1::Error::NoEntry) => {
             if let Some(key) = read_key_file(data_dir)? {
                 if let Err(e) = store_in_keyring(&entry, &key) {
-                    tracing::warn!(
-                        error = %e,
-                        "Could not migrate .key to OS keychain; keeping file fallback"
-                    );
+                    tracing::warn!(error = %e, "Could not migrate .key to OS keychain; keeping file");
                     return Ok(key);
                 }
                 remove_key_file(data_dir);
@@ -268,21 +331,22 @@ fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], StoreError> {
             } else {
                 let key = generate_key();
                 if let Err(e) = store_in_keyring(&entry, &key) {
-                    tracing::warn!(
-                        error = %e,
-                        "Failed to store new encryption key in OS keychain; using file fallback"
-                    );
+                    tracing::warn!(error = %e, "Failed to store key in OS keychain; using file");
                     write_key_file(data_dir, &key)?;
                 }
                 Ok(key)
             }
         }
         Err(e) => {
-            tracing::error!(error = %e, "Failed to read encryption key from OS keychain");
+            tracing::error!(error = %e, "Failed to read from OS keychain");
             load_legacy_key_or_fail(data_dir, &format!("OS keychain read failed ({e})"))
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 pub fn keyring_is_available() -> bool {
@@ -305,7 +369,6 @@ mod tests {
     use std::sync::Mutex;
     use tempfile::tempdir;
 
-    /// `DATAZEN_KEYRING` is process-global; serialize tests that mutate it.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
@@ -424,8 +487,6 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("DATAZEN_KEYRING");
         let backend = key_backend();
-        // key_backend() 在测试模式下无论平台如何均返回 File
-        // (避免 cargo test 时弹出 macOS keychain 权限对话框)
         assert_eq!(backend, KeyBackend::File);
     }
 
@@ -436,9 +497,6 @@ mod tests {
         delete_keyring_entry_for_test();
 
         let dir = tempdir().unwrap();
-        // The OS keychain may block on an interactive authorization prompt
-        // (e.g. macOS securityd) when run locally. Guard with a timeout and
-        // skip instead of deadlocking the whole suite while holding ENV_LOCK.
         let (tx, rx) = std::sync::mpsc::channel();
         let dir_for_thread = dir.path().to_path_buf();
         std::thread::spawn(move || {
@@ -447,16 +505,12 @@ mod tests {
         let result = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
             Ok(result) => result,
             Err(_) => {
-                eprintln!(
-                    "skipping: keychain access timed out (likely an OS auth prompt); \
-                     set DATAZEN_KEYRING=file or unlock the keychain"
-                );
+                eprintln!("skipping: keychain access timed out");
                 return;
             }
         };
         match result {
             Ok(_) => {
-                // Keychain is usable in this environment — clean up and skip assertion.
                 delete_keyring_entry_for_test();
             }
             Err(err) => {
