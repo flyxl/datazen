@@ -7,20 +7,12 @@ use super::inspect::inspect_data_sync_impl;
 use super::keyset_source::DriverKeysetSource;
 use super::plans;
 use crate::data_sync::{
-    compare_table_pages_to_sink, generate_table_sql_with_preview_formatter_and_policy,
-    mysql_placeholder, postgres_typed_placeholder, quote_ident_sql, ChangeSet, ComparisonResult,
-    DataSyncError, SyncOptions, SyncSourceFilter, TableMapping, TableMappingStatus, TableResult,
+    compare_table_pages_to_sink, generate_table_sql_with_qualified_table_and_policy,
+    ChangeOperation, ChangeSet, ComparisonResult, ConflictPolicy, DataSyncError, SyncOptions,
+    SyncSourceFilter, TableChangeSet, TableMapping, TableMappingStatus, TableResult,
 };
 use crate::services::metadata_schema;
 use std::collections::HashMap;
-
-fn ident_quote(family: &str) -> char {
-    if family == "mysql" {
-        '`'
-    } else {
-        '"'
-    }
-}
 
 pub(crate) async fn compare_data_sync_impl(
     state: &AppState,
@@ -36,6 +28,20 @@ pub(crate) async fn compare_data_sync_impl(
     mappings: &[TableMapping],
     source_filters: &HashMap<String, SyncSourceFilter>,
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
+    let source_config = state
+        .connection_manager
+        .get_session_config(&source_db_session_id)
+        .await
+        .cmd_err("compare_data_sync")?;
+    let target_config = state
+        .connection_manager
+        .get_session_config(&target_db_session_id)
+        .await
+        .cmd_err("compare_data_sync")?;
+    crate::data_sync::require_data_sync_family(
+        &source_config.database_type,
+        &target_config.database_type,
+    )?;
     let (src_driver, src_handle) = state
         .connection_manager
         .get_session(&source_db_session_id)
@@ -141,7 +147,6 @@ async fn compare_data_sync_impl_inner(
         &src_config.database_type,
         &tgt_config.database_type,
     )?;
-    let quote = ident_quote(&family);
     let (src_driver, src_handle) = state
         .connection_manager
         .get_session(&source_db_session_id)
@@ -152,6 +157,8 @@ async fn compare_data_sync_impl_inner(
         .get_session(&target_db_session_id)
         .await
         .cmd_err("compare_data_sync")?;
+    let source_quote = src_driver.quote_char();
+    let target_quote = tgt_driver.quote_char();
     let source_schema = metadata_schema(
         src_driver.as_ref(),
         source_schema.as_deref(),
@@ -301,7 +308,7 @@ async fn compare_data_sync_impl_inner(
             source_schema.clone(),
             column_names.clone(),
             pk_columns.clone(),
-            quote,
+            source_quote,
             &family,
             src_key_adapter.clone(),
             src_contracts,
@@ -317,7 +324,7 @@ async fn compare_data_sync_impl_inner(
             target_schema.clone(),
             column_names.clone(),
             pk_columns.clone(),
-            quote,
+            target_quote,
             &family,
             tgt_key_adapter.clone(),
             tgt_contracts,
@@ -468,6 +475,72 @@ fn resolve_projection_types(
         .collect()
 }
 
+fn sqlserver_write_preflight(
+    schema: &datazen_driver_api::TableSchema,
+    changes: &TableChangeSet,
+    conflict_policy: ConflictPolicy,
+    target_supports_explicit_identity: bool,
+) -> Result<(), String> {
+    let has_insert = changes
+        .changes
+        .iter()
+        .any(|change| change.operation == ChangeOperation::Insert);
+    if has_insert && !target_supports_explicit_identity {
+        if let Some(column) = schema
+            .columns
+            .iter()
+            .find(|column| column.is_auto_increment)
+        {
+            return Err(format!(
+                "SQL Server Data Sync cannot insert selected rows into identity column '{}' because scoped IDENTITY_INSERT support is unavailable",
+                column.name
+            ));
+        }
+    }
+
+    let needs_optimistic_condition = conflict_policy != ConflictPolicy::Force
+        && changes.changes.iter().any(|change| {
+            matches!(
+                change.operation,
+                ChangeOperation::Update | ChangeOperation::Delete
+            )
+        });
+    if needs_optimistic_condition {
+        let primary_keys = schema.effective_primary_keys();
+        for column in &schema.columns {
+            if primary_keys.iter().any(|key| key == &column.name) {
+                continue;
+            }
+            let base_type = column
+                .data_type
+                .trim()
+                .split(['(', ' ', ','])
+                .next()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if matches!(
+                base_type.as_str(),
+                "char" | "nchar" | "varchar" | "nvarchar" | "text" | "ntext"
+            ) {
+                return Err(format!(
+                    "SQL Server optimistic write conditions cannot verify column '{}' exactly because collation and trailing-space comparison semantics are unavailable; choose an explicit conflict policy that does not compare the prior row or use a table without this column type",
+                    column.name
+                ));
+            }
+            if matches!(
+                base_type.as_str(),
+                "xml" | "image" | "geography" | "geometry" | "hierarchyid" | "sql_variant"
+            ) {
+                return Err(format!(
+                    "SQL Server optimistic write conditions do not support equality for column '{}' of type '{}'; refusing to generate UPDATE/DELETE SQL",
+                    column.name, column.data_type
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) async fn generate_data_sync_sql_impl(
     state: &AppState,
     target_db_session_id: String,
@@ -490,7 +563,6 @@ pub(crate) async fn generate_data_sync_sql_impl(
         &tgt_config.database_type,
         &tgt_config.database_type,
     )?;
-    let quote = ident_quote(&family);
     let (tgt_driver, tgt_handle) = state
         .connection_manager
         .get_session(&target_db_session_id)
@@ -532,6 +604,15 @@ pub(crate) async fn generate_data_sync_sql_impl(
             )
             .await
             .cmd_err("generate_data_sync_sql")?;
+        if family == "sqlserver" {
+            sqlserver_write_preflight(
+                &schema,
+                table,
+                options.conflict_policy,
+                preview_target.supports_explicit_identity_values(),
+            )
+            .map_err(CommandError::Validation)?;
+        }
         let projection = comparison
             .tables
             .iter()
@@ -561,31 +642,26 @@ pub(crate) async fn generate_data_sync_sql_impl(
             })?;
             Ok(preview_target.format_literal(value, ir_type))
         };
-        let stmts = if family == "mysql" {
-            generate_table_sql_with_preview_formatter_and_policy(
-                table,
-                Some(&target_database_name),
-                &pk,
-                &column_names,
-                &column_types,
-                |n| quote_ident_sql(n, quote),
-                |idx, _| mysql_placeholder(idx),
-                options.conflict_policy,
-                preview_literal,
-            )
-        } else {
-            generate_table_sql_with_preview_formatter_and_policy(
-                table,
-                target_schema.as_deref(),
-                &pk,
-                &column_names,
-                &column_types,
-                |n| quote_ident_sql(n, quote),
-                postgres_typed_placeholder,
-                options.conflict_policy,
-                preview_literal,
-            )
-        }
+        let qualified_table = preview_target.qualify_relation(
+            &target_database_name,
+            target_schema.as_deref(),
+            &table.target_table,
+        );
+        let stmts = generate_table_sql_with_qualified_table_and_policy(
+            table,
+            &qualified_table,
+            pk,
+            column_names,
+            &column_types,
+            |name| preview_target.quote_ident(name),
+            |index, data_type| {
+                tgt_driver
+                    .parameter_placeholder(index, data_type)
+                    .map_err(|error| DataSyncError::validation(error.to_string()))
+            },
+            options.conflict_policy,
+            preview_literal,
+        )
         .map_err(CommandError::from)?;
         statements.extend(stmts);
     }
@@ -667,13 +743,92 @@ pub(crate) async fn revalidate_data_sync_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::ident_quote;
+    use super::sqlserver_write_preflight;
     use crate::commands::sync::types::{resolve_options, SyncOptionsInput};
+    use crate::data_sync::{ChangeOperation, ConflictPolicy, RowChange, TableChangeSet};
+    use datazen_driver_api::{ColumnSchema, TableSchema, Value};
 
     #[test]
-    fn mysql_uses_backticks_postgres_uses_double_quotes() {
-        assert_eq!(ident_quote("mysql"), '`');
-        assert_eq!(ident_quote("postgresql"), '"');
+    fn sqlserver_write_preflight_rejects_identity_inserts_without_session_support() {
+        let schema = test_sqlserver_schema(true);
+        let changes = TableChangeSet {
+            source_table: "source".into(),
+            target_table: "target".into(),
+            changes: vec![RowChange {
+                operation: ChangeOperation::Insert,
+                key: vec![Value::Integer(1)],
+                source_row: Some(vec![
+                    Some(Value::Integer(1)),
+                    Some(Value::String("x".into())),
+                ]),
+                target_row: None,
+                changed_columns: Vec::new(),
+                selected: true,
+            }],
+        };
+        let error = sqlserver_write_preflight(&schema, &changes, ConflictPolicy::Abort, false)
+            .expect_err("IDENTITY_INSERT must not be silently skipped");
+        assert!(error.contains("IDENTITY_INSERT"), "{error}");
+    }
+
+    #[test]
+    fn sqlserver_write_preflight_rejects_unverifiable_string_conditions() {
+        let schema = test_sqlserver_schema(false);
+        let changes = TableChangeSet {
+            source_table: "source".into(),
+            target_table: "target".into(),
+            changes: vec![RowChange {
+                operation: ChangeOperation::Update,
+                key: vec![Value::Integer(1)],
+                source_row: Some(vec![
+                    Some(Value::Integer(1)),
+                    Some(Value::String("new".into())),
+                ]),
+                target_row: Some(vec![
+                    Some(Value::Integer(1)),
+                    Some(Value::String("old".into())),
+                ]),
+                changed_columns: vec!["label".into()],
+                selected: true,
+            }],
+        };
+        let error = sqlserver_write_preflight(&schema, &changes, ConflictPolicy::Abort, false)
+            .expect_err("case/trailing-space changes require exact SQL equality");
+        assert!(error.contains("collation and trailing-space"), "{error}");
+        assert!(
+            sqlserver_write_preflight(&schema, &changes, ConflictPolicy::Force, false,).is_ok()
+        );
+    }
+
+    fn test_sqlserver_schema(identity: bool) -> TableSchema {
+        TableSchema {
+            table_name: "target".into(),
+            columns: vec![
+                ColumnSchema {
+                    name: "id".into(),
+                    data_type: "int".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: identity,
+                },
+                ColumnSchema {
+                    name: "label".into(),
+                    data_type: "nvarchar(64)".into(),
+                    nullable: true,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: false,
+                    is_auto_increment: false,
+                },
+            ],
+            primary_keys: vec!["id".into()],
+            indexes: Vec::new(),
+            foreign_keys: Vec::new(),
+            check_constraints: Vec::new(),
+            table_options: Default::default(),
+        }
     }
 
     #[test]

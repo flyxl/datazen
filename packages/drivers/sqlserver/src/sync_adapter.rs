@@ -1,8 +1,9 @@
 //! SQL Server sync adapter.
 
+use datazen_driver_api::sync::contract_from_column;
 use datazen_driver_api::{
     BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
-    SyncSourceAdapter, SyncTargetAdapter, Value,
+    SyncKeyContract, SyncKeyKind, SyncSourceAdapter, SyncTargetAdapter, Value,
 };
 
 pub struct SqlServerSyncAdapter;
@@ -95,6 +96,43 @@ fn base_type(raw: &str) -> String {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for SqlServerSyncAdapter {
+    fn sync_key_contract(&self, column: &ColumnSchema) -> Result<SyncKeyContract, String> {
+        let lower = column.data_type.trim().to_ascii_lowercase();
+        let base = lower.split(['(', ' ', ',']).next().unwrap_or_default();
+        match base {
+            // SQL Server string comparisons can ignore trailing spaces and
+            // depend on a database collation. The shared bytewise contract
+            // cannot represent those semantics, so refuse string keys until a
+            // driver-owned ordering/equality contract can prove parity.
+            "char" | "nchar" | "varchar" | "nvarchar" | "text" | "ntext" => Err(format!(
+                "SQL Server text key type '{}' has collation and trailing-space semantics that Data Sync cannot verify safely",
+                column.data_type
+            )),
+            // SQL Server's UNIQUEIDENTIFIER ordering differs from the generic
+            // lexical UUID order, so it must not enter the merge/keyset path.
+            "uniqueidentifier" => Err(
+                "SQL Server UNIQUEIDENTIFIER keys do not have a verified Data Sync ordering contract".into(),
+            ),
+            // SQL Server exposes rowversion through the legacy `timestamp`
+            // type name; it is a generated version token, never a row key.
+            "timestamp" | "rowversion" => Err(
+                "SQL Server rowversion columns cannot be used as Data Sync keys".into(),
+            ),
+            "datetime2" | "datetimeoffset" => {
+                let precision = lower
+                    .split_once('(')
+                    .and_then(|(_, rest)| rest.strip_suffix(')'))
+                    .and_then(|value| value.parse::<u8>().ok())
+                    .unwrap_or(7);
+                Ok(SyncKeyContract::reject_nulls(SyncKeyKind::Timestamp {
+                    with_timezone: base == "datetimeoffset",
+                    precision,
+                }))
+            }
+            _ => contract_from_column(column),
+        }
+    }
+
     /// Rebuild declared type dimensions that INFORMATION_SCHEMA omits, so a
     /// transfer preserves bounded strings and decimal precision/scale.
     fn full_column_types_query(&self, table: &str) -> Option<String> {
@@ -407,6 +445,44 @@ mod tests {
             a.column_to_ir(&col("a", "bigint"), None).ir_type,
             IRType::Int64
         );
+    }
+
+    #[test]
+    fn sqlserver_sync_key_contract_fails_closed_for_collated_and_guid_keys() {
+        let adapter = SqlServerSyncAdapter;
+        for ty in [
+            "varchar(32)",
+            "nvarchar(64)",
+            "uniqueidentifier",
+            "rowversion",
+        ] {
+            let error = adapter
+                .sync_key_contract(&col("key", ty))
+                .expect_err("key ordering must be verified before paging");
+            assert!(!error.is_empty(), "{ty}");
+        }
+    }
+
+    #[test]
+    fn sqlserver_sync_key_contract_preserves_decimal_and_datetime_semantics() {
+        let adapter = SqlServerSyncAdapter;
+        assert!(matches!(
+            adapter.sync_key_contract(&col("key", "decimal(38, 18)")),
+            Ok(SyncKeyContract {
+                kind: SyncKeyKind::Decimal { scale: Some(18) },
+                null_policy: datazen_driver_api::SyncKeyNullPolicy::Reject,
+            })
+        ));
+        assert!(matches!(
+            adapter.sync_key_contract(&col("key", "datetimeoffset(7)")),
+            Ok(SyncKeyContract {
+                kind: SyncKeyKind::Timestamp {
+                    with_timezone: true,
+                    precision: 7,
+                },
+                null_policy: datazen_driver_api::SyncKeyNullPolicy::Reject,
+            })
+        ));
     }
 
     #[test]

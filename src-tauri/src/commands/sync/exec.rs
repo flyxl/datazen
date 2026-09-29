@@ -584,11 +584,16 @@ mod tests {
     use crate::data_sync::{
         ChangeOperation, ComparisonResult, ConflictPolicy, RowChange, TableResult,
     };
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state::{rich_mock_options, TestAppState};
+    use crate::testing::mock_driver::MockDriverOptions;
 
     #[tokio::test]
     async fn execution_streams_a_plan_larger_than_64_mib_in_order_without_full_load() {
-        let test = TestAppState::with_tables().await;
+        let test = TestAppState::with_options(MockDriverOptions {
+            parameterized_writes: true,
+            ..rich_mock_options()
+        })
+        .await;
         test.save_and_connect("sync-stream-target").await;
         let target_db_session_id = test.connect_config("sync-stream-target").await;
 
@@ -767,7 +772,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_tester_bounded_sql_preview_returns_selected_rows_in_order() {
-        let test = TestAppState::with_tables().await;
+        let test = TestAppState::with_options(MockDriverOptions {
+            parameterized_writes: true,
+            ..rich_mock_options()
+        })
+        .await;
         test.save_and_connect("sync-preview-target").await;
         let target_db_session_id = test.connect_config("sync-preview-target").await;
         let options = SyncOptions::default();
