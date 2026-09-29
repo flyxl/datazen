@@ -8,6 +8,9 @@ Optional WebdriverIO specs for the SQL Server path driver. Not included in defau
 | `sqlserver-live-e2e.ts` | Live journey through the app's own IPC (`save_connection` → `connect` → `execute_query` → `get_table_data`). Asserts dialect pagination (`OFFSET … FETCH NEXT`, never `LIMIT`), batch-only DDL such as `CREATE SCHEMA`/`CREATE VIEW`, temporal rendering and filtered/sorted paging. Creates only `dz_e2e_*` objects and drops them in `after`. |
 | `sqlserver-live-ui.ts` | Live journey through the **real window**: connects via the navigator card, expands `<db> → <schema> → Tables`, opens the scratch table in the data grid and asserts every column header, the temporal cell text (`2026-03-01`, never `Date(`/`increments`) and next-page navigation. Reuses the host harness helpers (`e2e/helpers.ts`) for tree expansion, so it also exercises the same navigator code path as the other drivers' specs. |
 | `sqlserver-metadata.ts` | Live journey through `get_table_schema` IPC. Creates parent/child scratch tables with composite primary keys, a secondary index, a composite foreign key and a CHECK constraint; verifies catalog names, columns, actions and key ordering. It also checks that a non-default column collation is preserved or rejected explicitly, then drops the scratch objects. |
+| `sqlserver-schema-diff.ts` | Real-window Schema Diff from a source database to a distinct target database on the configured server. Compares one same-schema table, generates and deploys its plan, then verifies target columns and primary key. |
+| `sqlserver-data-sync.ts` | IPC Data Sync compare → selected INSERT preview → apply. Copies explicit identity values between same-shaped SQL Server tables, checks preview serialization and verifies the target rows. |
+| `sqlserver-data-transfer.ts` | IPC Data Transfer preview → execute between two scratch schemas. Copies into a target identity table with a deliberately different seed, verifies source IDs were preserved, then confirms a normal generated-ID insert still works on the target session. |
 
 ## Prerequisites
 
@@ -20,6 +23,9 @@ Optional WebdriverIO specs for the SQL Server path driver. Not included in defau
   at: …/target/debug/datazen`); run the specs with `pnpm e2e:skip-build` in that case.
 - A reachable SQL Server / Azure SQL Database instance whose login may create and drop
   scratch schemas, tables and views.
+- The Schema Diff journey also needs two already-created, distinct databases on that
+  instance; the Data Sync and Data Transfer journeys use isolated schemas in the selected
+  database.
 
 ## Environment
 
@@ -30,6 +36,8 @@ Optional WebdriverIO specs for the SQL Server path driver. Not included in defau
 | `E2E_SQLSERVER_USER` | Login user |
 | `E2E_SQLSERVER_PASSWORD` | Password |
 | `E2E_SQLSERVER_DATABASE` | Database to connect to (optional) |
+| `E2E_SQLSERVER_SOURCE_DATABASE` | Schema Diff source database (falls back to `E2E_SQLSERVER_DATABASE`) |
+| `E2E_SQLSERVER_TARGET_DATABASE` | Schema Diff target database; must differ from the source |
 | `E2E_SQLSERVER_SCHEMA` | Default schema used by the connection config (default `dbo`) |
 | `E2E_SQLSERVER_SSL_MODE` | `disable` \| `prefer` \| `require` \| `verifyCa` \| `verifyFull` (default `require`) |
 | `E2E_SQLSERVER_TRUST_CERT` | Set to `0` to validate the server certificate chain (default trusts it) |
@@ -57,6 +65,21 @@ E2E_SQLSERVER_DATABASE=master \
 E2E_SQLSERVER_HOST=127.0.0.1 E2E_SQLSERVER_USER=sa E2E_SQLSERVER_PASSWORD='YourPassword' \
 E2E_SQLSERVER_DATABASE=master \
   pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-metadata.ts
+
+# Schema Diff compare, plan, and deploy (source and target databases must exist)
+E2E_SQLSERVER_HOST=127.0.0.1 E2E_SQLSERVER_USER=sa E2E_SQLSERVER_PASSWORD='YourPassword' \
+E2E_SQLSERVER_SOURCE_DATABASE=DataZenSource E2E_SQLSERVER_TARGET_DATABASE=DataZenTarget \
+  pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-schema-diff.ts
+
+# Data Sync selected identity INSERT journey
+E2E_SQLSERVER_HOST=127.0.0.1 E2E_SQLSERVER_USER=sa E2E_SQLSERVER_PASSWORD='YourPassword' \
+E2E_SQLSERVER_DATABASE=DataZen \
+  pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-data-sync.ts
+
+# Data Transfer into a target identity table, followed by a generated-ID insert
+E2E_SQLSERVER_HOST=127.0.0.1 E2E_SQLSERVER_USER=sa E2E_SQLSERVER_PASSWORD='YourPassword' \
+E2E_SQLSERVER_DATABASE=DataZen \
+  pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-data-transfer.ts
 ```
 
 Without credentials, the specs skip cleanly. The live specs make no assumption about

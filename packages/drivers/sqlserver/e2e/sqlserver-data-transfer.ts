@@ -15,11 +15,12 @@ const DATABASE = (process.env.E2E_SQLSERVER_DATABASE || '').trim();
 const SSL_MODE = (process.env.E2E_SQLSERVER_SSL_MODE || 'require').trim();
 const TRUST_CERT = process.env.E2E_SQLSERVER_TRUST_CERT !== '0';
 
-const SOURCE_CONNECTION_ID = 'e2e-sqlserver-transfer-source';
-const TARGET_CONNECTION_ID = 'e2e-sqlserver-transfer-target';
+const STAMP = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+const SOURCE_CONNECTION_ID = `e2e-sqlserver-transfer-source-${STAMP}`;
+const TARGET_CONNECTION_ID = `e2e-sqlserver-transfer-target-${STAMP}`;
 const TABLE = 'identity_rows';
-const SOURCE_SCHEMA = `dz_e2e_transfer_src_${Date.now().toString(36)}`;
-const TARGET_SCHEMA = `dz_e2e_transfer_tgt_${Date.now().toString(36)}`;
+const SOURCE_SCHEMA = `dz_e2e_transfer_src_${STAMP}`;
+const TARGET_SCHEMA = `dz_e2e_transfer_tgt_${STAMP}`;
 
 interface StatementPayload {
   rows: Array<Array<string | number | boolean | null>>;
@@ -62,7 +63,8 @@ async function invoke<T>(command: string, args: Record<string, unknown> = {}): P
     JSON.stringify(args),
   );
   if (result && typeof result === 'object' && '__error' in (result as Record<string, unknown>)) {
-    throw new Error(String((result as { __error: string }).__error));
+    const detail = String((result as { __error: string }).__error);
+    throw new Error(PASSWORD ? detail.replaceAll(PASSWORD, '[redacted]') : detail);
   }
   return result as T;
 }

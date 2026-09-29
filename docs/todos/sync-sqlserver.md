@@ -259,4 +259,6 @@ Data Transfer 已支持 SQL Server 源和目标路径，包括安全目标关系
 
 离线验证结果：Schema Diff Host 定向测试 228 项通过；Data Sync 执行器 37 项、SQL 生成 6 项、命令路径 28 项、执行 IPC 6 项通过；Data Transfer Host 定向测试 203 项通过；SQL Server 驱动 96 项、driver-api 199 项通过。格式检查和提交差异检查通过。
 
-尚未连接真实 SQL Server，因此 TDS 会话 toggle、Azure SQL 实际权限/目录可见性、跨数据库权限及端到端迁移结果仍需 live/integration 验证；WDIO/E2E 也未运行。实现与测试均没有读取或加载 `.env` / `.env.test`。发布前仍需按第 8 节补齐真实数据库验证，并继续确认所有不支持路径都在写入前拒绝。
+已在 `packages/drivers/sqlserver/e2e/` 增加三条可选 live WDIO journey：Schema Diff 比较、生成并部署计划；Data Sync 比较、预览并应用显式 identity 值；Data Transfer 向 identity 目标写入并验证目标会话恢复普通 identity 插入。运行参数与 scratch 数据边界见同目录 `README.md`。新 journey 的单文件严格 TypeScript 检查、Prettier 与 `git diff --check` 均通过；完整 E2E TypeScript 项目检查仍被仓库其他既有类型错误阻断。
+
+本轮未连接真实 SQL Server：执行环境没有注入 `E2E_SQLSERVER_*` 变量，Schema Diff 还需要预先存在的两个不同数据库。因此 WDIO live journey 尚待在有凭据的环境运行。实现与测试均没有读取或加载 `.env` / `.env.test`。发布前仍需按第 8 节补齐真实数据库验证，并继续确认所有不支持路径都在写入前拒绝。

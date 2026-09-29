@@ -91,7 +91,8 @@ async function invoke<T>(command: string, args: Record<string, unknown> = {}): P
     JSON.stringify(args),
   );
   if (result && typeof result === 'object' && '__error' in (result as Record<string, unknown>)) {
-    throw new Error(String((result as { __error: string }).__error));
+    const detail = String((result as { __error: string }).__error);
+    throw new Error(PASSWORD ? detail.replaceAll(PASSWORD, '[redacted]') : detail);
   }
   return result as T;
 }
