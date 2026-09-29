@@ -220,14 +220,21 @@ pub trait SyncTargetAdapter: Send + Sync {
     /// The default is a no-op so this does not alter Data Sync or Schema Diff.
     fn validate_transfer_column_type(
         &self,
-        _source_column: &ColumnSchema,
-        _source_ir: &IRColumn,
+        source_column: &ColumnSchema,
+        source_ir: &IRColumn,
         _source_text_limit_bytes: Option<u64>,
         _source_requires_collation_preservation: bool,
-        _source_type_is_native_only: bool,
+        source_type_is_native_only: bool,
         _target_native_type: Option<&str>,
         _creating_target: bool,
     ) -> Result<(), String> {
+        if source_type_is_native_only {
+            return Err(format!(
+                "source type '{}' has no target adapter proof of a lossless native mapping",
+                source_column.data_type
+            ));
+        }
+        let _ = source_ir;
         Ok(())
     }
 
@@ -320,9 +327,8 @@ pub trait SyncTargetAdapter: Send + Sync {
     }
 
     /// Whether the target accepts explicit values for identity/auto-increment
-    /// columns during INSERT. The transfer writer currently inserts mapped
-    /// source values directly and does not toggle engine-specific session
-    /// modes such as SQL Server IDENTITY_INSERT.
+    /// columns during INSERT, either directly or through a driver-managed
+    /// session mode such as SQL Server IDENTITY_INSERT.
     fn supports_explicit_identity_values(&self) -> bool {
         false
     }

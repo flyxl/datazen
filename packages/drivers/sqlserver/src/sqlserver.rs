@@ -58,6 +58,105 @@ impl SqlServerDriver {
         }
     }
 
+    fn quote_identifier(identifier: &str) -> Result<String, DriverError> {
+        if identifier.is_empty() || identifier.contains('\0') {
+            return Err(DriverError::InvalidConfig(
+                "SQL Server transfer relation identifiers must be non-empty and contain no NUL"
+                    .into(),
+            ));
+        }
+        Ok(format!("[{}]", identifier.replace(']', "]]")))
+    }
+
+    fn transfer_identity_relation(
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Result<String, DriverError> {
+        let mut parts = Vec::with_capacity(3);
+        if !database.trim().is_empty() {
+            parts.push(Self::quote_identifier(database)?);
+        }
+        let schema = schema
+            .map(str::trim)
+            .filter(|schema| !schema.is_empty())
+            .unwrap_or("dbo");
+        parts.push(Self::quote_identifier(schema)?);
+        parts.push(Self::quote_identifier(table)?);
+        Ok(parts.join("."))
+    }
+
+    /// Accept only a relation rendered by Data Transfer's SQL Server
+    /// identifier quoter. This prevents a caller from smuggling SQL into the
+    /// session toggle or the OBJECT_ID condition.
+    fn quoted_transfer_relation_parts(relation: &str) -> Option<Vec<&str>> {
+        let bytes = relation.as_bytes();
+        let mut cursor = 0;
+        let mut parts = Vec::new();
+        while cursor < bytes.len() {
+            if bytes[cursor] != b'[' {
+                return None;
+            }
+            let part_start = cursor;
+            cursor += 1;
+            let mut has_identifier_content = false;
+            let mut closed = false;
+            while cursor < bytes.len() {
+                match bytes[cursor] {
+                    b']' if bytes.get(cursor + 1) == Some(&b']') => {
+                        has_identifier_content = true;
+                        cursor += 2;
+                    }
+                    b']' => {
+                        cursor += 1;
+                        closed = true;
+                        break;
+                    }
+                    _ => {
+                        has_identifier_content = true;
+                        cursor += 1;
+                    }
+                }
+            }
+            if !closed || !has_identifier_content {
+                return None;
+            }
+            parts.push(&relation[part_start..cursor]);
+            if cursor == bytes.len() {
+                break;
+            }
+            if bytes[cursor] != b'.' {
+                return None;
+            }
+            cursor += 1;
+            if cursor == bytes.len() {
+                return None;
+            }
+        }
+        (1..=3).contains(&parts.len()).then_some(parts)
+    }
+
+    fn render_sql_file_identity_insert(
+        insert_sql: &str,
+        target_relation: &str,
+    ) -> Result<String, DriverError> {
+        let relation_parts =
+            Self::quoted_transfer_relation_parts(target_relation).ok_or_else(|| {
+                DriverError::InvalidConfig(
+                    "SQL Server SQL-file identity wrapper requires a safely quoted target relation"
+                        .into(),
+                )
+            })?;
+        let object_name = target_relation.replace('\'', "''");
+        let identity_catalog = relation_parts
+            .get(2)
+            .map(|_| format!("{}.sys.identity_columns", relation_parts[0]))
+            .unwrap_or_else(|| "sys.identity_columns".into());
+        Ok(format!(
+            "IF EXISTS (SELECT 1 FROM {identity_catalog} WHERE object_id = OBJECT_ID(N'{object_name}', N'U'))\nBEGIN\n    BEGIN TRY\n        SET IDENTITY_INSERT {target_relation} ON;\n        {insert_sql};\n        SET IDENTITY_INSERT {target_relation} OFF;\n    END TRY\n    BEGIN CATCH\n        BEGIN TRY\n            SET IDENTITY_INSERT {target_relation} OFF;\n        END TRY\n        BEGIN CATCH\n            THROW;\n        END CATCH\n        THROW;\n    END CATCH\nEND\nELSE\nBEGIN\n    {insert_sql};\nEND"
+        ))
+    }
+
     /// List tables and views together with the schema that owns them.
     ///
     /// The schema column is mandatory: SQL Server has a real schema level, and
@@ -1186,6 +1285,57 @@ impl DatabaseDriver for SqlServerDriver {
         Ok(format!("@P{index}"))
     }
 
+    fn max_bound_parameters(&self) -> usize {
+        2100
+    }
+
+    fn transfer_explicit_identity_insert_requires_session_toggle(&self) -> bool {
+        true
+    }
+
+    fn transfer_sql_file_begin_transaction(&self) -> &'static str {
+        "BEGIN TRANSACTION;"
+    }
+
+    fn transfer_sql_file_commit_transaction(&self) -> &'static str {
+        "COMMIT TRANSACTION;"
+    }
+
+    async fn set_transfer_identity_insert(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        enabled: bool,
+    ) -> Result<(), DriverError> {
+        let relation = Self::transfer_identity_relation(database, schema, table)?;
+        let mode = if enabled { "ON" } else { "OFF" };
+        let statement = format!("SET IDENTITY_INSERT {relation} {mode}");
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        Self::execute_batch(client, &statement).await
+    }
+
+    async fn discard_transfer_connection(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<(), DriverError> {
+        self.transactions.lock().await.remove(&handle.id);
+        self.clients.write().await.remove(&handle.pool_id);
+        Ok(())
+    }
+
+    fn render_transfer_sql_file_identity_insert(
+        &self,
+        insert_sql: &str,
+        target_relation: &str,
+    ) -> Result<String, DriverError> {
+        Self::render_sql_file_identity_insert(insert_sql, target_relation)
+    }
+
     async fn execute_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -1845,5 +1995,121 @@ mod tests {
     fn null_temporal_columns_stay_null() {
         assert_eq!(temporal_text(&ColumnData::Date(None)), None);
         assert_eq!(temporal_text(&ColumnData::DateTimeOffset(None)), None);
+    }
+
+    #[test]
+    fn reports_sql_server_bound_parameter_limit() {
+        assert_eq!(SqlServerDriver::new().max_bound_parameters(), 2100);
+    }
+
+    #[test]
+    fn transfer_identity_insert_relation_quotes_every_sql_server_identifier() {
+        assert_eq!(
+            SqlServerDriver::transfer_identity_relation(
+                "data]zen",
+                Some("odd.schema"),
+                "order]details"
+            )
+            .unwrap(),
+            "[data]]zen].[odd.schema].[order]]details]"
+        );
+        assert_eq!(
+            SqlServerDriver::transfer_identity_relation("", None, "items").unwrap(),
+            "[dbo].[items]"
+        );
+        assert!(SqlServerDriver::transfer_identity_relation("db", Some(""), "").is_err());
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_checks_catalog_and_cleans_up_on_error() {
+        let script = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [odd.schema].[order]]details] ([id]) VALUES (1)",
+            "[data]]zen].[odd.schema].[order]]details]",
+        )
+        .unwrap();
+        assert!(script.contains("OBJECT_ID(N'[data]]zen].[odd.schema].[order]]details]', N'U')"));
+        assert!(script.contains("FROM [data]]zen].sys.identity_columns WHERE object_id"));
+        assert!(
+            script.contains("SET IDENTITY_INSERT [data]]zen].[odd.schema].[order]]details] ON;")
+        );
+        assert!(
+            script.contains("SET IDENTITY_INSERT [data]]zen].[odd.schema].[order]]details] OFF;")
+        );
+        assert!(script.contains("BEGIN CATCH\n        BEGIN TRY\n            SET IDENTITY_INSERT"));
+        assert!(script.contains("        THROW;"));
+        assert!(script.contains("ELSE\nBEGIN\n    INSERT INTO [odd.schema]"));
+        let local_script = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
+            "[dbo].[items]",
+        )
+        .unwrap();
+        assert!(local_script.contains("FROM sys.identity_columns WHERE object_id"));
+        let apostrophe_script = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [O'Brien].[items] ([id]) VALUES (1)",
+            "[db].[O'Brien].[items]",
+        )
+        .unwrap();
+        assert!(apostrophe_script.contains("OBJECT_ID(N'[db].[O''Brien].[items]'"));
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_rejects_unquoted_relation_fragments() {
+        assert!(SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO t (id) VALUES (1)",
+            "dbo.t; DROP TABLE users"
+        )
+        .is_err());
+        assert!(SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[t] ([id]) VALUES (1)",
+            "[dbo]."
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn explicit_transfer_identity_insert_uses_a_session_toggle() {
+        let driver = SqlServerDriver::new();
+        assert!(driver.transfer_explicit_identity_insert_requires_session_toggle());
+        assert_eq!(
+            driver.transfer_sql_file_begin_transaction(),
+            "BEGIN TRANSACTION;"
+        );
+        assert_eq!(
+            driver.transfer_sql_file_commit_transaction(),
+            "COMMIT TRANSACTION;"
+        );
+    }
+
+    #[tokio::test]
+    async fn reuse_driver_forwards_transfer_identity_and_sql_file_hooks() {
+        let inner: Arc<dyn DatabaseDriver> = Arc::new(SqlServerDriver::new());
+        let driver = ReuseDriver::new(inner, "sqlserver-alias");
+        assert!(driver.transfer_explicit_identity_insert_requires_session_toggle());
+        let script = driver
+            .render_transfer_sql_file_identity_insert(
+                "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
+                "[dbo].[items]",
+            )
+            .unwrap();
+        assert!(script.contains("SET IDENTITY_INSERT [dbo].[items] ON;"));
+        assert_eq!(
+            driver.transfer_sql_file_begin_transaction(),
+            "BEGIN TRANSACTION;"
+        );
+        assert_eq!(
+            driver.transfer_sql_file_commit_transaction(),
+            "COMMIT TRANSACTION;"
+        );
+
+        let handle = ConnectionHandle {
+            id: "missing".into(),
+            pool_id: "missing".into(),
+        };
+        let error = driver
+            .set_transfer_identity_insert(&handle, "db", Some("dbo"), "items", true)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, DriverError::ConnectionFailed(_)));
+        driver.discard_transfer_connection(&handle).await.unwrap();
     }
 }

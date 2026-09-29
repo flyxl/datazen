@@ -48,7 +48,6 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
     let tgt_quote = tgt_driver.quote_char();
     let src_family = src_driver.driver_type();
     let tgt_family = tgt_driver.driver_type();
-    let batch = job.options.batch_size as usize;
     let mut tables_out = Vec::new();
     let mut total_rows = 0u64;
     let mut partial = false;
@@ -99,6 +98,27 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
             }
             continue;
         }
+
+        let max_parameters = tgt_driver.max_bound_parameters();
+        let max_batch_rows = max_parameters / columns.len();
+        if max_batch_rows == 0 {
+            tables_out.push(TableExecutionResult::database(
+                &table.source_table,
+                &table.target_table,
+                Some(0),
+                outcome_before_data_transaction(known_preamble_applied),
+                Some(format!(
+                    "target mapping has {} columns, exceeding the driver's {max_parameters}-parameter statement limit",
+                    columns.len()
+                )),
+            ));
+            partial = true;
+            if job.options.stop_on_error {
+                break;
+            }
+            continue;
+        }
+        let batch = (job.options.batch_size as usize).min(max_batch_rows);
 
         let Some(src_schema) = source_schemas.get(&table.source_table) else {
             tables_out.push(TableExecutionResult::database(
@@ -478,6 +498,18 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
                 continue;
             }
         };
+        let explicit_identity_columns = columns
+            .iter()
+            .filter(|mapping| {
+                target_schema
+                    .columns
+                    .iter()
+                    .any(|column| column.name == mapping.target_column && column.is_auto_increment)
+            })
+            .map(|mapping| mapping.target_column.clone())
+            .collect::<Vec<_>>();
+        let identity_insert_requires_toggle = !explicit_identity_columns.is_empty()
+            && tgt_driver.transfer_explicit_identity_insert_requires_session_toggle();
         let tx = match tgt_driver.begin_transaction(tgt_handle).await {
             Ok(tx) => tx,
             Err(error) => {
@@ -499,7 +531,31 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
         let mut table_error: Option<String> = None;
         let mut was_cancelled = false;
         let mut successful_data_batches = false;
+        let mut identity_insert_may_be_enabled = false;
+        if identity_insert_requires_toggle {
+            // Treat ON as potentially applied even when the call fails: the
+            // server may have changed session state before the client saw an
+            // error, so every attempted ON must be followed by an OFF attempt.
+            identity_insert_may_be_enabled = true;
+            if let Err(error) = tgt_driver
+                .set_transfer_identity_insert(
+                    tgt_handle,
+                    &target.database,
+                    target.schema.as_deref(),
+                    &table.target_table,
+                    true,
+                )
+                .await
+            {
+                table_error = Some(format!(
+                    "cannot enable explicit identity insertion: {error}"
+                ));
+            }
+        }
         'batches: loop {
+            if table_error.is_some() {
+                break;
+            }
             if cancelled.as_ref().is_some_and(|c| c.load(Ordering::SeqCst)) {
                 was_cancelled = true;
                 table_error =
@@ -570,20 +626,33 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
             was_cancelled = true;
             table_error = Some("transfer cancelled; current data transaction rolled back".into());
         }
+        let mut identity_insert_cleanup_failed = false;
+        if identity_insert_may_be_enabled {
+            if let Err(error) = tgt_driver
+                .set_transfer_identity_insert(
+                    tgt_handle,
+                    &target.database,
+                    target.schema.as_deref(),
+                    &table.target_table,
+                    false,
+                )
+                .await
+            {
+                identity_insert_cleanup_failed = true;
+                let prior_error = table_error
+                    .take()
+                    .map(|message| format!("{message}; "))
+                    .unwrap_or_default();
+                table_error = Some(format!(
+                    "{prior_error}cannot disable explicit identity insertion: {error}; target connection will be discarded after rollback"
+                ));
+            }
+        }
         // `affected` can be zero for a successful INSERT ... ON CONFLICT
         // DO NOTHING / ignore batch that still carried explicit identity
         // values. Reseed based on successful batch execution, not row-count
         // reporting, so the target sequence remains beyond imported IDs.
         if table_error.is_none() && successful_data_batches {
-            let explicit_identity_columns = columns
-                .iter()
-                .filter(|mapping| {
-                    target_schema.columns.iter().any(|column| {
-                        column.name == mapping.target_column && column.is_auto_increment
-                    })
-                })
-                .map(|mapping| mapping.target_column.clone())
-                .collect::<Vec<_>>();
             if !explicit_identity_columns.is_empty() {
                 if let Err(error) = tgt_driver
                     .advance_transfer_identity_sequences(
@@ -607,7 +676,7 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
         let outcome = if table_error.is_some() {
             table_rows = 0;
             partial = true;
-            match tgt_driver.rollback(tx).await {
+            let rollback_outcome = match tgt_driver.rollback(tx).await {
                 Ok(()) => {
                     if known_preamble_applied {
                         TableExecutionOutcome::PartiallyApplied
@@ -622,6 +691,19 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
                     ));
                     TableExecutionOutcome::Unknown
                 }
+            };
+            if identity_insert_cleanup_failed {
+                if let Err(error) = tgt_driver.discard_transfer_connection(tgt_handle).await {
+                    table_error = Some(format!(
+                        "{}; failed to discard target connection after IDENTITY_INSERT OFF failed: {error}; outcome UNKNOWN",
+                        table_error.as_deref().unwrap_or("identity cleanup failed")
+                    ));
+                    TableExecutionOutcome::Unknown
+                } else {
+                    rollback_outcome
+                }
+            } else {
+                rollback_outcome
             }
         } else if let Err(error) = tgt_driver.commit(tx).await {
             table_error = Some(format!("commit failed, outcome UNKNOWN: {error}"));
