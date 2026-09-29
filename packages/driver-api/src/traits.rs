@@ -701,14 +701,16 @@ pub trait DatabaseDriver: Send + Sync {
         Ok(insert_template.replacen(&format!("{identity_override_marker} "), "", 1))
     }
 
-    /// Wrap an SQL-file INSERT that carries explicit values for a mapped
-    /// identity column. The target relation is already safely quoted by the
-    /// host for this dialect. Drivers without a session toggle return the
-    /// statement unchanged.
+    /// Wrap an SQL-file INSERT using its actual mapped target columns and
+    /// target relation. Drivers can intersect those columns with the target
+    /// identity metadata at script execution time. The target relation is
+    /// already safely quoted by the host. Drivers without a session toggle
+    /// return the statement unchanged.
     fn render_transfer_sql_file_identity_insert(
         &self,
         insert_sql: &str,
         _target_relation: &str,
+        _mapped_target_columns: &[String],
     ) -> Result<String, DriverError> {
         Ok(insert_sql.to_string())
     }

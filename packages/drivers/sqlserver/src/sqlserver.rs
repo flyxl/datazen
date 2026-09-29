@@ -139,7 +139,20 @@ impl SqlServerDriver {
     fn render_sql_file_identity_insert(
         insert_sql: &str,
         target_relation: &str,
+        mapped_target_columns: &[String],
     ) -> Result<String, DriverError> {
+        if mapped_target_columns.is_empty() {
+            return Ok(insert_sql.to_string());
+        }
+        if mapped_target_columns
+            .iter()
+            .any(|column| column.is_empty() || column.contains('\0'))
+        {
+            return Err(DriverError::InvalidConfig(
+                "SQL Server SQL-file identity wrapper requires valid mapped target column names"
+                    .into(),
+            ));
+        }
         let relation_parts =
             Self::quoted_transfer_relation_parts(target_relation).ok_or_else(|| {
                 DriverError::InvalidConfig(
@@ -152,8 +165,13 @@ impl SqlServerDriver {
             .get(2)
             .map(|_| format!("{}.sys.identity_columns", relation_parts[0]))
             .unwrap_or_else(|| "sys.identity_columns".into());
+        let mapped_columns = mapped_target_columns
+            .iter()
+            .map(|column| format!("N'{}'", column.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(", ");
         Ok(format!(
-            "IF EXISTS (SELECT 1 FROM {identity_catalog} WHERE object_id = OBJECT_ID(N'{object_name}', N'U'))\nBEGIN\n    BEGIN TRY\n        SET IDENTITY_INSERT {target_relation} ON;\n        {insert_sql};\n        SET IDENTITY_INSERT {target_relation} OFF;\n    END TRY\n    BEGIN CATCH\n        BEGIN TRY\n            SET IDENTITY_INSERT {target_relation} OFF;\n        END TRY\n        BEGIN CATCH\n            THROW;\n        END CATCH\n        THROW;\n    END CATCH\nEND\nELSE\nBEGIN\n    {insert_sql};\nEND"
+            "IF EXISTS (SELECT 1 FROM {identity_catalog} WHERE object_id = OBJECT_ID(N'{object_name}', N'U') AND name IN ({mapped_columns}))\nBEGIN\n    BEGIN TRY\n        SET IDENTITY_INSERT {target_relation} ON;\n        {insert_sql};\n        SET IDENTITY_INSERT {target_relation} OFF;\n    END TRY\n    BEGIN CATCH\n        BEGIN TRY\n            SET IDENTITY_INSERT {target_relation} OFF;\n        END TRY\n        BEGIN CATCH\n            THROW;\n        END CATCH\n        THROW;\n    END CATCH\nEND\nELSE\nBEGIN\n    {insert_sql};\nEND"
         ))
     }
 
@@ -1332,8 +1350,9 @@ impl DatabaseDriver for SqlServerDriver {
         &self,
         insert_sql: &str,
         target_relation: &str,
+        mapped_target_columns: &[String],
     ) -> Result<String, DriverError> {
-        Self::render_sql_file_identity_insert(insert_sql, target_relation)
+        Self::render_sql_file_identity_insert(insert_sql, target_relation, mapped_target_columns)
     }
 
     async fn execute_with_params(
@@ -2025,10 +2044,13 @@ mod tests {
         let script = SqlServerDriver::render_sql_file_identity_insert(
             "INSERT INTO [odd.schema].[order]]details] ([id]) VALUES (1)",
             "[data]]zen].[odd.schema].[order]]details]",
+            &["id".into()],
         )
         .unwrap();
         assert!(script.contains("OBJECT_ID(N'[data]]zen].[odd.schema].[order]]details]', N'U')"));
-        assert!(script.contains("FROM [data]]zen].sys.identity_columns WHERE object_id"));
+        assert!(script.contains(
+            "FROM [data]]zen].sys.identity_columns WHERE object_id = OBJECT_ID(N'[data]]zen].[odd.schema].[order]]details]', N'U') AND name IN (N'id')"
+        ));
         assert!(
             script.contains("SET IDENTITY_INSERT [data]]zen].[odd.schema].[order]]details] ON;")
         );
@@ -2041,27 +2063,78 @@ mod tests {
         let local_script = SqlServerDriver::render_sql_file_identity_insert(
             "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
             "[dbo].[items]",
+            &["id".into()],
         )
         .unwrap();
         assert!(local_script.contains("FROM sys.identity_columns WHERE object_id"));
         let apostrophe_script = SqlServerDriver::render_sql_file_identity_insert(
             "INSERT INTO [O'Brien].[items] ([id]) VALUES (1)",
             "[db].[O'Brien].[items]",
+            &["user'id".into()],
         )
         .unwrap();
         assert!(apostrophe_script.contains("OBJECT_ID(N'[db].[O''Brien].[items]'"));
+        assert!(apostrophe_script.contains("name IN (N'user''id')"));
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_only_checks_inserted_mapped_columns() {
+        // The first case represents a regular source column mapped to the
+        // target identity column. The target metadata predicate discovers
+        // that mapped identity at execution time, independently of source
+        // auto-increment metadata.
+        let mapped_identity = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[items] ([id], [label]) VALUES (7, N'x')",
+            "[dbo].[items]",
+            &["id".into(), "label".into()],
+        )
+        .unwrap();
+        assert!(mapped_identity.contains("AND name IN (N'id', N'label')"));
+        assert!(mapped_identity.contains("SET IDENTITY_INSERT [dbo].[items] ON;"));
+
+        // Here the source identity maps to a regular target column while a
+        // different target identity column is omitted from the INSERT. The
+        // script's predicate can only match the actual mapped target column,
+        // so that unrelated identity cannot enable IDENTITY_INSERT.
+        let unrelated_identity = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[items] ([external_id]) VALUES (7)",
+            "[dbo].[items]",
+            &["external_id".into()],
+        )
+        .unwrap();
+        assert!(unrelated_identity.contains("AND name IN (N'external_id')"));
+        assert!(!unrelated_identity.contains("name IN (N'id'"));
+        assert!(unrelated_identity.contains("ELSE\nBEGIN\n    INSERT INTO [dbo].[items]"));
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_skips_empty_columns_and_rejects_invalid_names() {
+        let insert_sql = "INSERT INTO [dbo].[items] DEFAULT VALUES";
+        assert_eq!(
+            SqlServerDriver::render_sql_file_identity_insert(insert_sql, "[dbo].[items]", &[],)
+                .unwrap(),
+            insert_sql
+        );
+        assert!(SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
+            "[dbo].[items]",
+            &["bad\0name".into()],
+        )
+        .is_err());
     }
 
     #[test]
     fn sql_file_identity_wrapper_rejects_unquoted_relation_fragments() {
         assert!(SqlServerDriver::render_sql_file_identity_insert(
             "INSERT INTO t (id) VALUES (1)",
-            "dbo.t; DROP TABLE users"
+            "dbo.t; DROP TABLE users",
+            &["id".into()],
         )
         .is_err());
         assert!(SqlServerDriver::render_sql_file_identity_insert(
             "INSERT INTO [dbo].[t] ([id]) VALUES (1)",
-            "[dbo]."
+            "[dbo].",
+            &["id".into()],
         )
         .is_err());
     }
@@ -2089,6 +2162,7 @@ mod tests {
             .render_transfer_sql_file_identity_insert(
                 "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
                 "[dbo].[items]",
+                &["id".into()],
             )
             .unwrap();
         assert!(script.contains("SET IDENTITY_INSERT [dbo].[items] ON;"));

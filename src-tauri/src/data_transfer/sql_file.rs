@@ -472,18 +472,6 @@ pub(crate) fn target_table_ref(
     qualify_target_relation(driver, database, schema, table)
 }
 
-fn mappings_include_source_identity(
-    mappings: &[&ColumnMapping],
-    source_schema: &TableSchema,
-) -> bool {
-    mappings.iter().any(|mapping| {
-        source_schema
-            .columns
-            .iter()
-            .any(|column| column.name == mapping.source_column && column.is_auto_increment)
-    })
-}
-
 /// A custom DDL string is an opaque dialect-specific escape hatch. It cannot
 /// be safely re-rendered when the SQL-file target dialect differs from the
 /// source, so reject it before preview and execution instead of emitting a
@@ -710,6 +698,13 @@ fn insert_sql(
     row: &[Option<Value>],
 ) -> Result<String, TransferError> {
     insert_sql_batch(driver, job, table, mappings, &[row.to_vec()])
+}
+
+fn mapped_insert_target_columns(mappings: &[&ColumnMapping]) -> Vec<String> {
+    mappings
+        .iter()
+        .map(|mapping| mapping.target_column.clone())
+        .collect()
 }
 
 fn insert_sql_batch(
@@ -1110,8 +1105,8 @@ pub async fn execute_with_target(
             ),
             None => None,
         };
-        let carries_source_identity = mappings_include_source_identity(&mappings, schema);
         let target_relation = target_table_ref(target_driver, job, &table.target_table);
+        let mapped_target_columns = mapped_insert_target_columns(&mappings);
         let mut scan = super::scan::scan_rows_with_params(
             source_driver,
             handle,
@@ -1161,13 +1156,13 @@ pub async fn execute_with_target(
                     None => insert_sql_batch(target_driver, job, table, &mappings, row_chunk),
                 };
                 let rendered = rendered.and_then(|sql| {
-                    if carries_source_identity {
-                        target_driver
-                            .render_transfer_sql_file_identity_insert(&sql, &target_relation)
-                            .map_err(|error| TransferError::unsupported(error.to_string()))
-                    } else {
-                        Ok(sql)
-                    }
+                    target_driver
+                        .render_transfer_sql_file_identity_insert(
+                            &sql,
+                            &target_relation,
+                            &mapped_target_columns,
+                        )
+                        .map_err(|error| TransferError::unsupported(error.to_string()))
                 });
                 match rendered {
                     Ok(sql) => {
@@ -1306,45 +1301,35 @@ mod tests {
     }
 
     #[test]
-    fn sql_file_identity_wrapper_is_requested_only_for_mapped_source_identity_columns() {
-        let schema = TableSchema {
-            table_name: "source".into(),
-            columns: vec![ColumnSchema {
-                name: "generated_id".into(),
-                data_type: "BIGINT".into(),
-                nullable: false,
-                default_value: None,
-                comment: None,
-                is_primary_key: true,
-                is_auto_increment: true,
-            }],
-            primary_keys: vec!["generated_id".into()],
-            indexes: vec![],
-            foreign_keys: vec![],
-            check_constraints: vec![],
-            table_options: Default::default(),
-        };
-        let identity_mapping = ColumnMapping {
-            source_column: "generated_id".into(),
-            target_column: "id".into(),
-            skip: false,
-            target_native_type: None,
-        };
-        let other_mapping = ColumnMapping {
-            source_column: "regular".into(),
-            target_column: "id".into(),
-            skip: false,
-            target_native_type: None,
-        };
-        assert!(mappings_include_source_identity(
-            &[&identity_mapping],
-            &schema
-        ));
-        assert!(!mappings_include_source_identity(
-            &[&other_mapping],
-            &schema
-        ));
-        assert!(!mappings_include_source_identity(&[], &schema));
+    fn sql_file_identity_wrapper_receives_actual_mapped_target_columns() {
+        let mappings = vec![
+            ColumnMapping {
+                source_column: "ordinary_source_column".into(),
+                target_column: "target_identity".into(),
+                skip: false,
+                target_native_type: None,
+            },
+            ColumnMapping {
+                source_column: "source_identity".into(),
+                target_column: "ordinary_target_column".into(),
+                skip: false,
+                target_native_type: None,
+            },
+            ColumnMapping {
+                source_column: "unused_source_column".into(),
+                target_column: "unmapped_target_identity".into(),
+                skip: true,
+                target_native_type: None,
+            },
+        ];
+        let active_mappings = active_column_mappings(&mappings);
+        assert_eq!(
+            mapped_insert_target_columns(&active_mappings),
+            vec![
+                "target_identity".to_string(),
+                "ordinary_target_column".to_string()
+            ]
+        );
     }
 
     #[tokio::test]

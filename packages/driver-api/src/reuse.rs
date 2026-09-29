@@ -122,9 +122,13 @@ impl DatabaseDriver for ReuseDriver {
         &self,
         insert_sql: &str,
         target_relation: &str,
+        mapped_target_columns: &[String],
     ) -> Result<String, DriverError> {
-        self.inner
-            .render_transfer_sql_file_identity_insert(insert_sql, target_relation)
+        self.inner.render_transfer_sql_file_identity_insert(
+            insert_sql,
+            target_relation,
+            mapped_target_columns,
+        )
     }
 
     fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
