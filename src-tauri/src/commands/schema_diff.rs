@@ -19,8 +19,8 @@ use crate::schema_diff::objects::{
 use crate::schema_diff::plan::{is_source_unbounded_text, PlanOptions};
 use crate::schema_diff::types::TableColumnDiff;
 use crate::schema_diff::types::{
-    normalize_dialect, resolve_table_for_dialect, ColumnTypeOverride, SchemaDiffDeployResult,
-    SchemaDiffPlan,
+    normalize_dialect, resolve_table_for_dialect, uses_schema_scope, ColumnTypeOverride,
+    SchemaDiffDeployResult, SchemaDiffPlan,
 };
 use crate::schema_diff::SchemaDiffProfile;
 use crate::services::job_registry::{cancel_job, ensure_job, remove_job};
@@ -593,7 +593,7 @@ async fn fetch_target_table_dependency_catalog(
                 continue;
             }
 
-            if normalize_dialect(dialect) == "postgresql" && !selected_table.contains('.') {
+            if uses_schema_scope(dialect) && !selected_table.contains('.') {
                 let candidates = snapshots
                     .iter()
                     .filter(|(identity, _)| {
@@ -656,7 +656,7 @@ fn resolve_profile_table(dialect: &str, table: &str, schema: Option<&str>) -> St
 
 fn dependency_relation_identity(dialect: &str, table: &str, schema_scope: Option<&str>) -> String {
     let table = table.trim();
-    if normalize_dialect(dialect) == "postgresql" && !table.contains('.') {
+    if uses_schema_scope(dialect) && !table.contains('.') {
         if let Some(schema) = schema_scope.filter(|value| !value.trim().is_empty()) {
             return format!("{}.{}", schema.trim(), table);
         }
@@ -670,7 +670,7 @@ fn resolve_reviewed_table_snapshot(
     database_scope: &str,
     schema_scope: Option<&str>,
 ) -> (String, String, Option<String>) {
-    if normalize_dialect(dialect) == "postgresql" {
+    if uses_schema_scope(dialect) {
         if let Some((schema, relation)) = table.rsplit_once('.') {
             return (
                 relation.to_string(),
@@ -893,12 +893,11 @@ async fn prepare_schema_diff_plan_with_schemas_impl(
         .get_session(&target_db_session_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
-    let target_dependency_schema_scope =
-        if normalize_dialect(&tgt_config.database_type) == "postgresql" {
-            target_schema_scope.or(tgt_driver.default_schema())
-        } else {
-            None
-        };
+    let target_dependency_schema_scope = if uses_schema_scope(&tgt_config.database_type) {
+        target_schema_scope.or(tgt_driver.default_schema())
+    } else {
+        None
+    };
     ensure_distinct_schema_scope(
         src_driver.as_ref(),
         &src_handle,
@@ -2807,6 +2806,14 @@ mod tests {
             ("events".into(), "app".into(), Some("public".into()))
         );
         assert_eq!(
+            resolve_reviewed_table_snapshot("sqlserver", "sales.orders", "app", Some("dbo")),
+            ("orders".into(), "app".into(), Some("sales".into()))
+        );
+        assert_eq!(
+            resolve_reviewed_table_snapshot("sqlserver", "orders", "app", Some("dbo")),
+            ("orders".into(), "app".into(), Some("dbo".into()))
+        );
+        assert_eq!(
             resolve_reviewed_table_snapshot("mysql", "events", "app", None),
             ("events".into(), "app".into(), None)
         );
@@ -2988,6 +2995,7 @@ mod tests {
             "main"
         );
         assert_eq!(schema_catalog_database("postgresql", Some("app")), "app");
+        assert_eq!(schema_catalog_database("sqlserver", Some("app")), "app");
         assert_eq!(schema_catalog_database("mysql", None), "");
         assert_eq!(
             schema_catalog_scope("sqlite", Some("/tmp/target.sqlite")),

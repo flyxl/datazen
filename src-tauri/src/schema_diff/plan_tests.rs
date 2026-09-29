@@ -1663,6 +1663,42 @@ fn sqlite_rebuild_is_blocked_before_sql_when_target_catalog_is_not_round_trippab
 }
 
 #[test]
+fn unsupported_physical_layout_blocks_primary_key_change_and_clears_other_table_sql() {
+    let mut source = schema(vec![col("id", "integer"), col("new_id", "integer")]);
+    source.primary_keys = vec!["new_id".into()];
+    source
+        .table_options
+        .migration_blockers
+        .push("nonclustered primary key cannot be represented".into());
+    let mut target = source.clone();
+    target.primary_keys = vec!["id".into()];
+    target.table_options.migration_blockers.clear();
+
+    let safe_source = schema(vec![col("id", "integer"), col("email", "text")]);
+    let safe_target = schema(vec![col("id", "integer")]);
+    let plan = build_schema_diff_plan(
+        &[
+            ("blocked".into(), source, target),
+            ("safe".into(), safe_source, safe_target),
+        ],
+        "postgresql",
+        "postgresql",
+        PlanOptions {
+            allow_destructive: true,
+            include_indexes: true,
+            ..PlanOptions::default()
+        },
+    );
+
+    assert!(plan.statements.is_empty(), "{:?}", plan.statements);
+    assert!(plan.requirements.iter().any(|requirement| matches!(
+        requirement,
+        PlanRequirement::Unsupported { operation, reason }
+            if operation == "table:blocked" && reason.contains("nonclustered primary key")
+    )));
+}
+
+#[test]
 fn mysql_indexes_on_blob_text_columns_receive_prefix_length() {
     let mut src = schema(vec![
         col("id", "int"),

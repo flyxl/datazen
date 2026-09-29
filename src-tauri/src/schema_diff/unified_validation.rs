@@ -571,7 +571,7 @@ fn table_identity(
         .map(|(scope, name)| (Some(scope), name))
         .unwrap_or((None, raw));
     let scope = match normalize_dialect(dialect).as_str() {
-        "postgresql" => scope.or(target_schema),
+        "postgresql" | "sqlserver" => scope.or(target_schema),
         "mysql" => scope.or(target_database),
         _ => scope,
     };
