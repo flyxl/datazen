@@ -769,6 +769,50 @@ fn schema_migration_blockers_for_indexes(indexes: &[IndexInfo]) -> Vec<String> {
     blockers
 }
 
+const PHYSICAL_DATABASE_IDENTITY_SQL: &str =
+    "SELECT CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')) AS server_name, DB_ID() AS database_id WHERE NULLIF(CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')), N'') IS NOT NULL AND DB_ID() IS NOT NULL AND DB_ID(NULLIF(@P1, N'')) = DB_ID()";
+
+fn parse_physical_database_identity(result: &QueryResult) -> Option<String> {
+    if result.rows.len() != 1 || result.rows[0].len() != 2 {
+        return None;
+    }
+    let row = result.rows.first()?;
+    let server_name = match row.first()?.as_ref()? {
+        Value::String(value) if !value.trim().is_empty() => value.trim(),
+        _ => return None,
+    };
+    let database_id = match row.get(1)?.as_ref()? {
+        Value::Integer(value) if *value > 0 => value,
+        _ => return None,
+    };
+    Some(format!(
+        "sqlserver:server:{}:{}:database:{}",
+        server_name.len(),
+        server_name,
+        database_id
+    ))
+}
+
+fn parse_schema_scope_identity(result: &QueryResult) -> Option<String> {
+    if result.rows.len() != 1 || result.rows[0].len() != 1 {
+        return None;
+    }
+    let schema_id = match result
+        .rows
+        .first()
+        .and_then(|row| row.first())
+        .and_then(Option::as_ref)
+    {
+        Some(Value::Integer(value)) if *value > 0 => *value,
+        Some(Value::String(value)) => match value.trim().parse::<i64>() {
+            Ok(value) if value > 0 => value,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(format!("sqlserver:schema-id:{schema_id}"))
+}
+
 #[async_trait]
 impl DatabaseDriver for SqlServerDriver {
     fn migration_renderer(
@@ -785,6 +829,41 @@ impl DatabaseDriver for SqlServerDriver {
 
     fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
         Some(std::sync::Arc::new(super::SqlServerTypeNormalizer))
+    }
+
+    async fn physical_database_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<String>, DriverError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let parameters = [Value::String(database.trim().to_owned())];
+        let result =
+            Self::run_with_params(client, PHYSICAL_DATABASE_IDENTITY_SQL, &parameters).await?;
+        Ok(parse_physical_database_identity(&result))
+    }
+
+    async fn schema_scope_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: &str,
+    ) -> Result<Option<String>, DriverError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let parameters = [Value::String(schema.trim().to_owned())];
+        let result = Self::run_with_params(
+            client,
+            &crate::metadata::schema_scope_identity_sql(database),
+            &parameters,
+        )
+        .await?;
+        Ok(parse_schema_scope_identity(&result))
     }
 
     fn driver_type(&self) -> DatabaseType {
@@ -1559,6 +1638,103 @@ impl DatabaseDriver for SqlServerDriver {
 mod tests {
     use super::*;
     use tiberius::EncryptionLevel;
+
+    #[test]
+    fn physical_database_identity_uses_server_name_and_current_database_id() {
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("SERVERPROPERTY('ServerName')"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("DB_ID(NULLIF(@P1, N'')) = DB_ID()"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("DB_ID() AS database_id"));
+        assert!(!PHYSICAL_DATABASE_IDENTITY_SQL.contains("password"));
+
+        let result = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String("sqlserver-prod\\instance1".into())),
+                Some(Value::Integer(23)),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(
+            parse_physical_database_identity(&result).as_deref(),
+            Some("sqlserver:server:24:sqlserver-prod\\instance1:database:23")
+        );
+
+        let unknown = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String("server".into())),
+                Some(Value::Null),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&unknown), None);
+
+        let no_server_name = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String(" ".into())),
+                Some(Value::Integer(23)),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&no_server_name), None);
+
+        let ambiguous = QueryResult {
+            columns: Vec::new(),
+            rows: vec![
+                vec![
+                    Some(Value::String("server-a".into())),
+                    Some(Value::Integer(23)),
+                ],
+                vec![
+                    Some(Value::String("server-b".into())),
+                    Some(Value::Integer(23)),
+                ],
+            ],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&ambiguous), None);
+    }
+
+    #[test]
+    fn schema_scope_identity_requires_one_positive_catalog_id() {
+        let identity = |rows| QueryResult {
+            columns: Vec::new(),
+            rows,
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Integer(5))]])).as_deref(),
+            Some("sqlserver:schema-id:5")
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::String("7".into()))]]))
+                .as_deref(),
+            Some("sqlserver:schema-id:7")
+        );
+        assert_eq!(parse_schema_scope_identity(&identity(Vec::new())), None);
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![
+                vec![Some(Value::Integer(1))],
+                vec![Some(Value::Integer(2))]
+            ])),
+            None
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Integer(0))]])),
+            None
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Null)]])),
+            None
+        );
+    }
 
     #[test]
     fn schema_migration_blockers_cover_unrepresented_clustered_layouts() {

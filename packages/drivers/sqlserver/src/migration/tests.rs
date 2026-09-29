@@ -312,3 +312,18 @@ fn unsupported_operations_and_unrepresented_table_layouts_fail_closed() {
         assert!(SqlServerMigrationRenderer.render(&operation).is_err());
     }
 }
+
+#[test]
+fn schema_object_cross_scope_mapping_stays_fail_closed() {
+    for kind in [
+        ObjectKind::View,
+        ObjectKind::Function,
+        ObjectKind::Procedure,
+        ObjectKind::Trigger,
+    ] {
+        assert!(SqlServerMigrationRenderer
+            .map_schema_object_scope(kind, "dbo", "archive", "SELECT 1", &[])
+            .unwrap()
+            .is_none());
+    }
+}

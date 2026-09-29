@@ -69,6 +69,13 @@ pub(crate) fn columns_sql(database: &str) -> String {
     )
 }
 
+pub(crate) fn schema_scope_identity_sql(_database: &str) -> String {
+    // The physical identity check proves this is the configured current DB;
+    // staying unqualified also works on Azure SQL Database, which rejects
+    // three-part cross-database catalog references.
+    "SELECT schema_id FROM sys.schemas WHERE name = @P1".to_owned()
+}
+
 pub(crate) fn indexes_sql(database: &str) -> String {
     let catalog = catalog_prefix(database);
     format!(
@@ -522,6 +529,11 @@ mod tests {
             columns.contains("DATABASEPROPERTYEX(CASE WHEN @P3 = N'' THEN DB_NAME() ELSE @P3 END")
         );
         assert!(!columns.contains("@P1'"));
+        let schema_identity = schema_scope_identity_sql("db]; injected");
+        assert_eq!(
+            schema_identity,
+            "SELECT schema_id FROM sys.schemas WHERE name = @P1"
+        );
         assert!(indexes_sql("db").contains("ic.key_ordinal"));
         assert!(foreign_keys_sql("db").contains("fkc.constraint_column_id"));
         assert!(checks_sql("db").contains("cc.is_not_trusted"));

@@ -377,7 +377,7 @@ pub fn same_endpoint(source: &ConnectionConfig, target: &ConnectionConfig) -> bo
 
 /// Detect aliases that reach the same database through different connection
 /// settings. Database and schema names are only used as proof of distinct
-/// scopes when PostgreSQL's namespace rules make that conclusion reliable;
+/// scopes when the dialect's namespace rules make that conclusion reliable;
 /// MySQL database names may be case-folded and SQLite paths may be hard links.
 pub fn physical_database_scope(
     source: &ConnectionConfig,
@@ -386,6 +386,8 @@ pub fn physical_database_scope(
     target_identity: Option<&str>,
     source_schema_scope: Option<&str>,
     target_schema_scope: Option<&str>,
+    source_schema_identity: Option<&str>,
+    target_schema_identity: Option<&str>,
 ) -> PhysicalDatabaseScope {
     let source_dialect = crate::schema_diff::types::normalize_dialect(&source.database_type);
     let target_dialect = crate::schema_diff::types::normalize_dialect(&target.database_type);
@@ -406,6 +408,15 @@ pub fn physical_database_scope(
         }
         if source_dialect == "postgresql"
             && matches!((source_schema, target_schema), (Some(left), Some(right)) if left != right)
+        {
+            return PhysicalDatabaseScope::Different;
+        }
+        // SQL Server identifier equality follows the database collation, so
+        // only driver-proven schema catalog identities can establish distinct
+        // scopes. Object kinds without a proven definition rewrite remain
+        // fail-closed in the unified planner's scope-mapping checks.
+        if source_dialect == "sqlserver"
+            && matches!((source_schema_identity, target_schema_identity), (Some(left), Some(right)) if left != right)
         {
             return PhysicalDatabaseScope::Different;
         }

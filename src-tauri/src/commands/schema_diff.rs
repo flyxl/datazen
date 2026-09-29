@@ -82,6 +82,60 @@ async fn ensure_distinct_schema_scope(
         .await
         .ok()
         .flatten();
+    let is_sqlserver = crate::schema_diff::types::normalize_dialect(&source_config.database_type)
+        == "sqlserver"
+        && crate::schema_diff::types::normalize_dialect(&target_config.database_type)
+            == "sqlserver";
+    let same_physical_database = matches!(
+        (source_identity.as_deref(), target_identity.as_deref()),
+        (Some(source), Some(target)) if source == target
+    );
+    let source_schema = source_schema_scope
+        .and_then(|schema| (!schema.trim().is_empty()).then_some(schema))
+        .or_else(|| {
+            source_config
+                .schema
+                .as_deref()
+                .filter(|schema| !schema.trim().is_empty())
+        });
+    let target_schema = target_schema_scope
+        .and_then(|schema| (!schema.trim().is_empty()).then_some(schema))
+        .or_else(|| {
+            target_config
+                .schema
+                .as_deref()
+                .filter(|schema| !schema.trim().is_empty())
+        });
+    let (source_schema_identity, target_schema_identity) = if is_sqlserver && same_physical_database
+    {
+        let source_schema_identity = match source_schema {
+            Some(schema) => source_driver
+                .schema_scope_identity(
+                    source_handle,
+                    source_config.database.as_deref().unwrap_or_default(),
+                    schema,
+                )
+                .await
+                .ok()
+                .flatten(),
+            None => None,
+        };
+        let target_schema_identity = match target_schema {
+            Some(schema) => target_driver
+                .schema_scope_identity(
+                    target_handle,
+                    target_config.database.as_deref().unwrap_or_default(),
+                    schema,
+                )
+                .await
+                .ok()
+                .flatten(),
+            None => None,
+        };
+        (source_schema_identity, target_schema_identity)
+    } else {
+        (None, None)
+    };
 
     match crate::schema_diff::reviewed::physical_database_scope(
         source_config,
@@ -90,6 +144,8 @@ async fn ensure_distinct_schema_scope(
         target_identity.as_deref(),
         source_schema_scope,
         target_schema_scope,
+        source_schema_identity.as_deref(),
+        target_schema_identity.as_deref(),
     ) {
         crate::schema_diff::reviewed::PhysicalDatabaseScope::Same => {
             Err(reject_same_schema_scope())
