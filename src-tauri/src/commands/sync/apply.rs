@@ -541,6 +541,71 @@ fn sqlserver_write_preflight(
     Ok(())
 }
 
+fn identity_insert_target_for_projection(
+    family: &str,
+    schema: &datazen_driver_api::TableSchema,
+    projection_columns: &[String],
+    database: &str,
+    target_schema: Option<&str>,
+    table: &str,
+    supports_explicit_values: bool,
+    requires_session_toggle: bool,
+) -> Option<crate::data_sync::IdentityInsertTarget> {
+    if !family.eq_ignore_ascii_case("sqlserver")
+        || !supports_explicit_values
+        || !requires_session_toggle
+    {
+        return None;
+    }
+    let has_projected_identity = schema.columns.iter().any(|column| {
+        column.is_auto_increment && projection_columns.iter().any(|name| name == &column.name)
+    });
+    has_projected_identity.then(|| crate::data_sync::IdentityInsertTarget {
+        database: database.to_string(),
+        schema: target_schema.map(str::to_string),
+        table: table.to_string(),
+    })
+}
+
+fn validate_projected_identity_values(
+    schema: &datazen_driver_api::TableSchema,
+    projection_columns: &[String],
+    changes: &TableChangeSet,
+) -> Result<(), String> {
+    let identities = schema
+        .columns
+        .iter()
+        .filter(|column| {
+            column.is_auto_increment && projection_columns.iter().any(|name| name == &column.name)
+        })
+        .filter_map(|column| {
+            projection_columns
+                .iter()
+                .position(|name| name == &column.name)
+                .map(|index| (column.name.as_str(), index))
+        })
+        .collect::<Vec<_>>();
+    for (column, index) in identities {
+        for change in changes
+            .changes
+            .iter()
+            .filter(|change| change.operation == ChangeOperation::Insert)
+        {
+            let value = change
+                .source_row
+                .as_ref()
+                .and_then(|row| row.get(index))
+                .and_then(Option::as_ref);
+            if value.is_none() || matches!(value, Some(datazen_driver_api::Value::Null)) {
+                return Err(format!(
+                    "SQL Server Data Sync cannot safely insert selected rows because identity column '{column}' has a missing or NULL source value"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) async fn generate_data_sync_sql_impl(
     state: &AppState,
     target_db_session_id: String,
@@ -621,6 +686,10 @@ pub(crate) async fn generate_data_sync_sql_impl(
                 CommandError::Validation("comparison projection missing; compare again".into())
             })?;
         let column_names = &projection.columns;
+        if family == "sqlserver" && preview_target.supports_explicit_identity_values() {
+            validate_projected_identity_values(&schema, column_names, table)
+                .map_err(CommandError::Validation)?;
+        }
         let column_types = resolve_projection_types(projection, &schema, &family)?;
         let pk = &projection.primary_keys;
         let preview_types = schema
@@ -663,7 +732,30 @@ pub(crate) async fn generate_data_sync_sql_impl(
             preview_literal,
         )
         .map_err(CommandError::from)?;
-        statements.extend(stmts);
+        let has_insert = table
+            .changes
+            .iter()
+            .any(|change| change.operation == ChangeOperation::Insert);
+        let identity_insert_target = has_insert
+            .then(|| {
+                identity_insert_target_for_projection(
+                    &family,
+                    &schema,
+                    column_names,
+                    &target_database_name,
+                    target_schema.as_deref(),
+                    &table.target_table,
+                    preview_target.supports_explicit_identity_values(),
+                    tgt_driver.explicit_identity_insert_requires_session_toggle(),
+                )
+            })
+            .flatten();
+        statements.extend(stmts.into_iter().map(|mut statement| {
+            if statement.operation == ChangeOperation::Insert {
+                statement.identity_insert = identity_insert_target.clone();
+            }
+            statement
+        }));
     }
     Ok(statements)
 }
@@ -743,7 +835,10 @@ pub(crate) async fn revalidate_data_sync_impl(
 
 #[cfg(test)]
 mod tests {
-    use super::sqlserver_write_preflight;
+    use super::{
+        identity_insert_target_for_projection, sqlserver_write_preflight,
+        validate_projected_identity_values,
+    };
     use crate::commands::sync::types::{resolve_options, SyncOptionsInput};
     use crate::data_sync::{ChangeOperation, ConflictPolicy, RowChange, TableChangeSet};
     use datazen_driver_api::{ColumnSchema, TableSchema, Value};
@@ -769,6 +864,88 @@ mod tests {
         let error = sqlserver_write_preflight(&schema, &changes, ConflictPolicy::Abort, false)
             .expect_err("IDENTITY_INSERT must not be silently skipped");
         assert!(error.contains("IDENTITY_INSERT"), "{error}");
+    }
+
+    #[test]
+    fn identity_insert_runtime_target_requires_projected_identity_and_session_toggle() {
+        let schema = test_sqlserver_schema(true);
+        let projection = vec!["id".to_string(), "label".to_string()];
+        let target = identity_insert_target_for_projection(
+            "sqlserver",
+            &schema,
+            &projection,
+            "target_db",
+            Some("dbo"),
+            "target",
+            true,
+            true,
+        )
+        .expect("projected identity insert must carry its runtime session target");
+        assert_eq!(target.database, "target_db");
+        assert_eq!(target.schema.as_deref(), Some("dbo"));
+        assert_eq!(target.table, "target");
+
+        assert!(identity_insert_target_for_projection(
+            "sqlserver",
+            &schema,
+            &["label".into()],
+            "target_db",
+            Some("dbo"),
+            "target",
+            true,
+            true,
+        )
+        .is_none());
+        assert!(identity_insert_target_for_projection(
+            "sqlserver",
+            &schema,
+            &projection,
+            "target_db",
+            Some("dbo"),
+            "target",
+            true,
+            false,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn explicit_identity_insert_rejects_missing_or_null_source_identity_values() {
+        let schema = test_sqlserver_schema(true);
+        let projection = vec!["id".to_string(), "label".to_string()];
+        let changes = |id: Option<Value>| TableChangeSet {
+            source_table: "source".into(),
+            target_table: "target".into(),
+            changes: vec![RowChange {
+                operation: ChangeOperation::Insert,
+                key: vec![Value::Integer(1)],
+                source_row: Some(vec![id, Some(Value::String("x".into()))]),
+                target_row: None,
+                changed_columns: Vec::new(),
+                selected: true,
+            }],
+        };
+        assert!(
+            validate_projected_identity_values(&schema, &projection, &changes(None))
+                .unwrap_err()
+                .contains("missing or NULL")
+        );
+        assert!(validate_projected_identity_values(
+            &schema,
+            &projection,
+            &changes(Some(Value::Null))
+        )
+        .unwrap_err()
+        .contains("missing or NULL"));
+        assert!(validate_projected_identity_values(
+            &schema,
+            &projection,
+            &changes(Some(Value::Integer(1)))
+        )
+        .is_ok());
+        assert!(
+            validate_projected_identity_values(&schema, &["label".into()], &changes(None)).is_ok()
+        );
     }
 
     #[test]

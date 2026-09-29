@@ -60,9 +60,9 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.transfer_explicit_identity_insert_clause()
     }
 
-    fn transfer_explicit_identity_insert_requires_session_toggle(&self) -> bool {
+    fn explicit_identity_insert_requires_session_toggle(&self) -> bool {
         self.inner
-            .transfer_explicit_identity_insert_requires_session_toggle()
+            .explicit_identity_insert_requires_session_toggle()
     }
 
     async fn advance_transfer_identity_sequences(
@@ -77,7 +77,7 @@ impl DatabaseDriver for ReuseDriver {
             .await
     }
 
-    async fn set_transfer_identity_insert(
+    async fn set_identity_insert(
         &self,
         handle: &ConnectionHandle,
         database: &str,
@@ -86,15 +86,12 @@ impl DatabaseDriver for ReuseDriver {
         enabled: bool,
     ) -> Result<(), DriverError> {
         self.inner
-            .set_transfer_identity_insert(handle, database, schema, table, enabled)
+            .set_identity_insert(handle, database, schema, table, enabled)
             .await
     }
 
-    async fn discard_transfer_connection(
-        &self,
-        handle: &ConnectionHandle,
-    ) -> Result<(), DriverError> {
-        self.inner.discard_transfer_connection(handle).await
+    async fn discard_connection(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        self.inner.discard_connection(handle).await
     }
 
     fn transfer_sql_file_insert_batch_size(&self) -> usize {

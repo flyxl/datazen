@@ -25,7 +25,7 @@ struct State {
     source_queries: Vec<(String, Vec<Value>)>,
     identity_sync_calls: Vec<(Option<String>, String, Vec<String>)>,
     identity_insert_calls: Vec<(String, Option<String>, String, bool)>,
-    discard_transfer_connection_calls: usize,
+    discard_connection_calls: usize,
     transfer_order: Vec<&'static str>,
     write_sqls: Vec<String>,
 }
@@ -45,7 +45,7 @@ struct Driver {
     session_identity_insert: bool,
     identity_insert_on_error: bool,
     identity_insert_off_error: bool,
-    discard_transfer_connection_error: bool,
+    discard_connection_error: bool,
     affected_override: Option<u64>,
     include_identity_insert_clause: bool,
     stream_mode: u8,
@@ -241,10 +241,10 @@ impl DatabaseDriver for Driver {
         }
         Ok(())
     }
-    fn transfer_explicit_identity_insert_requires_session_toggle(&self) -> bool {
+    fn explicit_identity_insert_requires_session_toggle(&self) -> bool {
         self.session_identity_insert
     }
-    async fn set_transfer_identity_insert(
+    async fn set_identity_insert(
         &self,
         _: &ConnectionHandle,
         database: &str,
@@ -278,11 +278,11 @@ impl DatabaseDriver for Driver {
         }
         Ok(())
     }
-    async fn discard_transfer_connection(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
+    async fn discard_connection(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
         let mut state = self.state.lock().unwrap();
-        state.discard_transfer_connection_calls += 1;
+        state.discard_connection_calls += 1;
         state.transfer_order.push("discard");
-        if self.discard_transfer_connection_error {
+        if self.discard_connection_error {
             return Err(DriverError::ConnectionFailed(
                 "injected transfer connection discard failure".into(),
             ));
@@ -397,7 +397,7 @@ fn driver(rows: Rows, schema: TableSchema) -> Driver {
         session_identity_insert: false,
         identity_insert_on_error: false,
         identity_insert_off_error: false,
-        discard_transfer_connection_error: false,
+        discard_connection_error: false,
         affected_override: None,
         include_identity_insert_clause: false,
         stream_mode: 0,
@@ -703,7 +703,7 @@ async fn failed_identity_insert_on_still_attempts_off_then_rolls_back() {
     let state = target.state.lock().unwrap();
     assert_eq!(state.calls, 0);
     assert_eq!(state.rollback, 1);
-    assert_eq!(state.discard_transfer_connection_calls, 0);
+    assert_eq!(state.discard_connection_calls, 0);
     assert_eq!(
         state.transfer_order,
         vec!["identity_on", "identity_off", "rollback"]
@@ -733,7 +733,7 @@ async fn failed_identity_insert_off_rolls_back_before_discarding_the_connection(
     );
     let state = target.state.lock().unwrap();
     assert_eq!(state.rollback, 1);
-    assert_eq!(state.discard_transfer_connection_calls, 1);
+    assert_eq!(state.discard_connection_calls, 1);
     assert_eq!(state.committed.len(), 0);
     assert_eq!(
         state.transfer_order,
@@ -755,7 +755,7 @@ async fn failed_identity_insert_connection_discard_marks_outcome_unknown() {
     let mut target = driver(vec![], target_schema);
     target.session_identity_insert = true;
     target.identity_insert_off_error = true;
-    target.discard_transfer_connection_error = true;
+    target.discard_connection_error = true;
     let result = run(
         &source,
         &target,
@@ -775,7 +775,7 @@ async fn failed_identity_insert_connection_discard_marks_outcome_unknown() {
         .is_some_and(|error| error.contains("failed to discard target connection")));
     let state = target.state.lock().unwrap();
     assert_eq!(state.rollback, 1);
-    assert_eq!(state.discard_transfer_connection_calls, 1);
+    assert_eq!(state.discard_connection_calls, 1);
     assert_eq!(state.transfer_order.last(), Some(&"discard"));
 }
 
@@ -803,7 +803,7 @@ async fn failed_identity_insert_off_still_discards_after_rollback_failure() {
     );
     let state = target.state.lock().unwrap();
     assert_eq!(state.rollback, 1);
-    assert_eq!(state.discard_transfer_connection_calls, 1);
+    assert_eq!(state.discard_connection_calls, 1);
     assert_eq!(
         state.transfer_order,
         vec![

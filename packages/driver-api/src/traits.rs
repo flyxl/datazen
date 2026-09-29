@@ -623,16 +623,18 @@ pub trait DatabaseDriver: Send + Sync {
         Ok(())
     }
 
-    /// Whether Data Transfer must bracket explicit identity values with a
-    /// session-scoped mode on this target connection.
-    fn transfer_explicit_identity_insert_requires_session_toggle(&self) -> bool {
+    /// Whether explicit identity inserts require a session-scoped mode on
+    /// this connection. Shared migration paths must turn this mode off before
+    /// committing, rolling back, switching target tables, or returning the
+    /// session to general use.
+    fn explicit_identity_insert_requires_session_toggle(&self) -> bool {
         false
     }
 
-    /// Enable or disable explicit identity insertion for one transfer table.
-    /// The caller keeps the toggle within the table transaction and attempts
-    /// cleanup on every success, error, and cancellation path.
-    async fn set_transfer_identity_insert(
+    /// Enable or disable explicit identity insertion for one target table.
+    /// The caller attempts cleanup on every success, error, and cancellation
+    /// path because the state may survive transaction rollback.
+    async fn set_identity_insert(
         &self,
         _handle: &ConnectionHandle,
         _database: &str,
@@ -645,15 +647,12 @@ pub trait DatabaseDriver: Send + Sync {
         ))
     }
 
-    /// Drop a target session whose transfer-scoped state could not be reset.
-    /// Drivers that require session toggles must implement this; the default
-    /// fails closed so the host never reports that an un-dropped session is safe.
-    async fn discard_transfer_connection(
-        &self,
-        _handle: &ConnectionHandle,
-    ) -> Result<(), DriverError> {
+    /// Drop a connection whose session-scoped identity mode could not be
+    /// reset. The default fails closed so the host never reports that an
+    /// un-dropped session is safe.
+    async fn discard_connection(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Err(DriverError::Unsupported(
-            "driver cannot discard a transfer connection after session cleanup failed".into(),
+            "driver cannot discard this connection after session cleanup failed".into(),
         ))
     }
 

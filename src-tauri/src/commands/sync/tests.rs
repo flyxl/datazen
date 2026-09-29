@@ -603,6 +603,7 @@ async fn execute_data_sync_rejects_read_only_target() {
         preview_sql: "INSERT INTO t VALUES (1)".into(),
         parameters: vec![],
         row_key: vec![],
+        identity_insert: None,
     };
     let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], None, None)
         .await
@@ -806,6 +807,7 @@ async fn cancel_data_sync_stops_execute_before_start() {
         preview_sql: "INSERT INTO t VALUES (1)".into(),
         parameters: vec![],
         row_key: vec![],
+        identity_insert: None,
     };
     let error = super::execute_data_sync_impl(&test.state, id, vec![stmt], Some(job), None)
         .await

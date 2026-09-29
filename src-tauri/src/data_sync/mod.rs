@@ -61,6 +61,6 @@ pub use sql::{
     generate_table_sql, generate_table_sql_with_preview_formatter,
     generate_table_sql_with_preview_formatter_and_policy,
     generate_table_sql_with_qualified_table_and_policy, mysql_placeholder, postgres_placeholder,
-    postgres_typed_placeholder, quote_ident_sql, SqlStatement,
+    postgres_typed_placeholder, quote_ident_sql, IdentityInsertTarget, SqlStatement,
 };
 pub use state::SyncPhase;
