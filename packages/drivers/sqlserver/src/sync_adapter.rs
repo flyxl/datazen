@@ -93,6 +93,31 @@ fn base_type(raw: &str) -> String {
     lower
 }
 
+fn native_type_name(raw: &str) -> &str {
+    raw.trim()
+        .split(|character: char| character == '(' || character.is_whitespace())
+        .next()
+        .unwrap_or_default()
+}
+
+fn is_safe_native_only_type(raw: &str) -> bool {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match native_type_name(&normalized) {
+        "tinyint" | "xml" => normalized == native_type_name(&normalized),
+        "binary" => {
+            parse_length(&normalized, "binary").is_some_and(|length| (1..=8_000).contains(&length))
+        }
+        _ => false,
+    }
+}
+
+fn normalize_native_type(raw: &str) -> String {
+    raw.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for SqlServerSyncAdapter {
@@ -133,6 +158,33 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
         }
     }
 
+    fn validate_transfer_source_column(&self, column: &ColumnSchema) -> Result<(), String> {
+        let native = native_type_name(&column.data_type).to_ascii_lowercase();
+        if matches!(native.as_str(), "timestamp" | "rowversion") {
+            return Err(format!(
+                "SQL Server {native} is a generated row version, not a timestamp value; materialize it into a regular binary column before transfer"
+            ));
+        }
+        Ok(())
+    }
+
+    fn transfer_source_type_is_native_only(
+        &self,
+        _column: &ColumnSchema,
+        source_ir: &IRColumn,
+    ) -> bool {
+        matches!(&source_ir.ir_type, IRType::Other(_))
+    }
+
+    fn transfer_source_requires_collation_preservation(&self, column: &ColumnSchema) -> bool {
+        matches!(
+            native_type_name(&column.data_type)
+                .to_ascii_lowercase()
+                .as_str(),
+            "char" | "nchar" | "varchar" | "nvarchar" | "text" | "ntext"
+        )
+    }
+
     /// Rebuild declared type dimensions that INFORMATION_SCHEMA omits, so a
     /// transfer preserves bounded strings and decimal precision/scale.
     fn full_column_types_query(&self, table: &str) -> Option<String> {
@@ -148,6 +200,8 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
                                    ELSE CAST(c.max_length AS varchar(10)) END + ')' \
                       WHEN t.name IN ('decimal','numeric') THEN \
                         '(' + CAST(c.precision AS varchar(10)) + ',' + CAST(c.scale AS varchar(10)) + ')' \
+                      WHEN t.name = 'float' THEN \
+                        '(' + CAST(c.precision AS varchar(10)) + ')' \
                       WHEN t.name IN ('datetime2','datetimeoffset','time') THEN \
                         '(' + CAST(c.scale AS varchar(10)) + ')' \
                       ELSE '' END AS full_type \
@@ -214,73 +268,82 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
     fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let lower = base_type(raw);
+        let native = native_type_name(&lower);
 
-        let ir_type = if lower.starts_with("nvarchar") {
+        let ir_type = if native == "nvarchar" {
             let len = parse_length(&lower, "nvarchar");
             IRType::Varchar { length: len }
-        } else if lower.starts_with("varchar") {
+        } else if native == "varchar" {
             let len = parse_length(&lower, "varchar");
             IRType::Varchar { length: len }
-        } else if lower.starts_with("nchar") {
+        } else if native == "nchar" {
             let len = parse_length(&lower, "nchar").unwrap_or(1);
             IRType::Char { length: len }
-        } else if lower.starts_with("char(") || lower == "char" {
+        } else if native == "char" {
             let len = parse_length(&lower, "char").unwrap_or(1);
             IRType::Char { length: len }
-        } else if lower.starts_with("decimal") {
+        } else if native == "decimal" {
             let (p, s) = parse_precision(&lower, "decimal");
             IRType::Decimal {
                 precision: p,
                 scale: s,
             }
-        } else if lower.starts_with("numeric") {
+        } else if native == "numeric" {
             let (p, s) = parse_precision(&lower, "numeric");
             IRType::Decimal {
                 precision: p,
                 scale: s,
             }
-        } else if lower.starts_with("varbinary") {
+        } else if native == "money" {
+            IRType::Decimal {
+                precision: 19,
+                scale: 4,
+            }
+        } else if native == "smallmoney" {
+            IRType::Decimal {
+                precision: 10,
+                scale: 4,
+            }
+        } else if native == "varbinary" {
             let len = parse_length(&lower, "varbinary");
             IRType::Binary { length: len }
-        } else if lower.starts_with("binary") {
-            let len = parse_length(&lower, "binary");
-            IRType::Binary { length: len }
-        } else if lower == "bit" || lower.starts_with("bit(") {
+        } else if native == "binary" || native == "xml" || native == "tinyint" {
+            IRType::Other(lower.clone())
+        } else if native == "bit" {
             IRType::Bool
-        } else if lower == "tinyint" {
-            IRType::Int8
-        } else if lower == "smallint" {
+        } else if native == "smallint" {
             IRType::Int16
-        } else if lower == "int" || lower == "integer" {
+        } else if native == "int" || native == "integer" {
             IRType::Int32
-        } else if lower == "bigint" {
+        } else if native == "bigint" {
             IRType::Int64
-        } else if lower == "real" {
+        } else if native == "real" {
             IRType::Float32
-        } else if lower == "float" || lower.starts_with("float(") {
-            IRType::Float64
-        } else if lower == "text" || lower == "ntext" {
+        } else if native == "float" {
+            match parse_length(&lower, "float") {
+                Some(precision) if precision <= 24 => IRType::Float32,
+                _ => IRType::Float64,
+            }
+        } else if native == "text" || native == "ntext" {
             IRType::Text
-        } else if lower == "image" {
+        } else if native == "image" {
             IRType::Blob
-        } else if lower == "date" {
+        } else if native == "date" {
             IRType::Date
-        } else if lower == "time" || lower.starts_with("time(") {
+        } else if native == "time" {
             IRType::Time {
                 with_timezone: false,
             }
-        } else if lower == "datetime"
-            || lower == "datetime2"
-            || lower.starts_with("datetime2(")
-            || lower == "smalldatetime"
-        {
+        } else if native == "datetimeoffset" {
+            IRType::Timestamp {
+                with_timezone: true,
+            }
+        } else if matches!(native, "datetime" | "datetime2" | "smalldatetime") {
             IRType::Timestamp {
                 with_timezone: false,
             }
-        } else if lower == "uniqueidentifier" {
+        } else if native == "uniqueidentifier" {
             IRType::Uuid
-        } else if lower == "xml" {
-            IRType::Text
         } else {
             IRType::Other(raw.to_string())
         };
@@ -321,10 +384,16 @@ impl SyncTargetAdapter for SqlServerSyncAdapter {
             IRType::Binary { length: None } | IRType::Blob => "VARBINARY(MAX)".into(),
             IRType::Date => "DATE".into(),
             IRType::Time { .. } => "TIME".into(),
-            IRType::Timestamp { .. } => "DATETIME2".into(),
+            IRType::Timestamp {
+                with_timezone: true,
+            } => "DATETIMEOFFSET".into(),
+            IRType::Timestamp {
+                with_timezone: false,
+            } => "DATETIME2".into(),
             IRType::Json => "NVARCHAR(MAX)".into(),
             IRType::Uuid => "UNIQUEIDENTIFIER".into(),
             IRType::Bit { .. } => "BIT".into(),
+            IRType::Other(native) if is_safe_native_only_type(native) => native.clone(),
             IRType::Other(_) => "NVARCHAR(MAX)".into(),
         }
     }
@@ -387,6 +456,52 @@ impl SyncTargetAdapter for SqlServerSyncAdapter {
     fn auto_increment_keyword(&self) -> Option<&str> {
         Some("IDENTITY(1,1)")
     }
+
+    fn supports_explicit_identity_values(&self) -> bool {
+        true
+    }
+
+    fn validate_transfer_column_type(
+        &self,
+        source_column: &ColumnSchema,
+        source_ir: &IRColumn,
+        _source_text_limit_bytes: Option<u64>,
+        source_requires_collation_preservation: bool,
+        source_type_is_native_only: bool,
+        target_native_type: Option<&str>,
+        _creating_target: bool,
+    ) -> Result<(), String> {
+        if source_requires_collation_preservation {
+            return Err(format!(
+                "source column '{}' uses SQL Server collation semantics that cannot be proven equivalent; choose the target default collation explicitly or review a matching target collation",
+                source_column.name
+            ));
+        }
+        if matches!(&source_ir.ir_type, IRType::Decimal { precision: 0, .. }) {
+            return Err(
+                "unbounded decimal source values cannot be proven to fit SQL Server's maximum precision 38; select a bounded reviewed target type".into(),
+            );
+        }
+        if source_type_is_native_only {
+            let IRType::Other(source_native) = &source_ir.ir_type else {
+                return Err("native-only source type marker is inconsistent".into());
+            };
+            if !is_safe_native_only_type(source_native) {
+                return Err(format!(
+                    "SQL Server cannot safely recreate native-only source type '{source_native}'"
+                ));
+            }
+            let target_native = target_native_type.ok_or_else(|| {
+                "target native type is unavailable for native-only source data".to_string()
+            })?;
+            if normalize_native_type(source_native) != normalize_native_type(target_native) {
+                return Err(format!(
+                    "native-only source type '{source_native}' requires the same target type; found '{target_native}'"
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -413,6 +528,7 @@ mod tests {
         assert!(sql.contains("sys.columns"));
         assert!(sql.contains("c.max_length / 2"));
         assert!(sql.contains("c.precision"));
+        assert!(sql.contains("WHEN t.name = 'float'"));
 
         let quoted = SqlServerSyncAdapter
             .full_column_types_query("dbo.o'brien")
@@ -431,7 +547,7 @@ mod tests {
         let a = SqlServerSyncAdapter;
         assert_eq!(
             a.column_to_ir(&col("a", "tinyint"), None).ir_type,
-            IRType::Int8
+            IRType::Other("tinyint".into())
         );
         assert_eq!(
             a.column_to_ir(&col("a", "smallint"), None).ir_type,
@@ -516,7 +632,161 @@ mod tests {
             a.column_to_ir(&col("t", "uniqueidentifier"), None).ir_type,
             IRType::Uuid
         );
-        assert_eq!(a.column_to_ir(&col("x", "xml"), None).ir_type, IRType::Text);
+        assert_eq!(
+            a.column_to_ir(&col("x", "xml"), None).ir_type,
+            IRType::Other("xml".into())
+        );
+    }
+
+    #[test]
+    fn sqlserver_transfer_preserves_exact_and_native_only_types() {
+        let adapter = SqlServerSyncAdapter;
+        assert!(adapter.supports_explicit_identity_values());
+        assert_eq!(
+            adapter.column_to_ir(&col("amount", "money"), None).ir_type,
+            IRType::Decimal {
+                precision: 19,
+                scale: 4
+            }
+        );
+        assert_eq!(
+            adapter
+                .column_to_ir(&col("small_amount", "smallmoney"), None)
+                .ir_type,
+            IRType::Decimal {
+                precision: 10,
+                scale: 4
+            }
+        );
+        assert_eq!(
+            adapter
+                .column_to_ir(&col("at", "datetimeoffset(7)"), None)
+                .ir_type,
+            IRType::Timestamp {
+                with_timezone: true
+            }
+        );
+        assert_eq!(
+            adapter.ir_type_to_native(&IRType::Timestamp {
+                with_timezone: true
+            }),
+            "DATETIMEOFFSET"
+        );
+        assert_eq!(
+            adapter
+                .column_to_ir(&col("raw", "binary(16)"), None)
+                .ir_type,
+            IRType::Other("binary(16)".into())
+        );
+        assert_eq!(
+            adapter.ir_type_to_native(&IRType::Other("binary(16)".into())),
+            "binary(16)"
+        );
+        assert_eq!(
+            adapter.column_to_ir(&col("f", "float(24)"), None).ir_type,
+            IRType::Float32
+        );
+        assert_eq!(
+            adapter.column_to_ir(&col("f", "float(53)"), None).ir_type,
+            IRType::Float64
+        );
+    }
+
+    #[test]
+    fn sqlserver_transfer_rejects_generated_rowversion_and_unsafe_native_types() {
+        let adapter = SqlServerSyncAdapter;
+        assert!(adapter
+            .validate_transfer_source_column(&col("version", "rowversion"))
+            .is_err());
+        assert!(adapter
+            .validate_transfer_source_column(&col("version", "timestamp"))
+            .is_err());
+        assert!(!is_safe_native_only_type("custom_type"));
+        assert!(!is_safe_native_only_type("binary(MAX)"));
+        assert!(is_safe_native_only_type("binary(8000)"));
+    }
+
+    #[test]
+    fn sqlserver_transfer_native_only_mapping_requires_exact_target_type() {
+        let adapter = SqlServerSyncAdapter;
+        let source_column = col("raw", "tinyint");
+        let source_ir = adapter.column_to_ir(&source_column, None);
+        assert!(adapter
+            .validate_transfer_column_type(
+                &source_column,
+                &source_ir,
+                None,
+                false,
+                true,
+                Some("TINYINT"),
+                false,
+            )
+            .is_ok());
+        assert!(adapter
+            .validate_transfer_column_type(
+                &source_column,
+                &source_ir,
+                None,
+                false,
+                true,
+                Some("SMALLINT"),
+                false,
+            )
+            .is_err());
+
+        let unbounded_decimal = IRColumn {
+            name: "amount".into(),
+            ir_type: IRType::Decimal {
+                precision: 0,
+                scale: 0,
+            },
+            nullable: true,
+            default_expr: None,
+            is_primary_key: false,
+            is_auto_increment: false,
+            comment: None,
+        };
+        assert!(adapter
+            .validate_transfer_column_type(
+                &col("amount", "numeric"),
+                &unbounded_decimal,
+                None,
+                false,
+                false,
+                Some("DECIMAL(38,18)"),
+                true,
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn sqlserver_transfer_requires_explicit_collation_decision() {
+        let adapter = SqlServerSyncAdapter;
+        let source_column = col("name", "nvarchar(20)");
+        assert!(adapter.transfer_source_requires_collation_preservation(&source_column));
+        let source_ir = adapter.column_to_ir(&source_column, None);
+        assert!(adapter
+            .validate_transfer_column_type(
+                &source_column,
+                &source_ir,
+                None,
+                true,
+                false,
+                Some("NVARCHAR(20)"),
+                true,
+            )
+            .is_err());
+        assert!(adapter
+            .validate_transfer_column_type(
+                &source_column,
+                &source_ir,
+                None,
+                false,
+                false,
+                Some("NVARCHAR(20)"),
+                true,
+            )
+            .is_ok());
     }
 
     #[test]

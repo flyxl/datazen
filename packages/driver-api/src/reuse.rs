@@ -60,8 +60,53 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.transfer_explicit_identity_insert_clause()
     }
 
+    fn transfer_explicit_identity_insert_requires_session_toggle(&self) -> bool {
+        self.inner
+            .transfer_explicit_identity_insert_requires_session_toggle()
+    }
+
+    async fn advance_transfer_identity_sequences(
+        &self,
+        handle: &ConnectionHandle,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+    ) -> Result<(), DriverError> {
+        self.inner
+            .advance_transfer_identity_sequences(handle, schema, table, columns)
+            .await
+    }
+
+    async fn set_transfer_identity_insert(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        enabled: bool,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .set_transfer_identity_insert(handle, database, schema, table, enabled)
+            .await
+    }
+
+    async fn discard_transfer_connection(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<(), DriverError> {
+        self.inner.discard_transfer_connection(handle).await
+    }
+
     fn transfer_sql_file_insert_batch_size(&self) -> usize {
         self.inner.transfer_sql_file_insert_batch_size()
+    }
+
+    fn transfer_sql_file_begin_transaction(&self) -> &'static str {
+        self.inner.transfer_sql_file_begin_transaction()
+    }
+
+    fn transfer_sql_file_commit_transaction(&self) -> &'static str {
+        self.inner.transfer_sql_file_commit_transaction()
     }
 
     fn render_transfer_sql_file_insert(
@@ -71,6 +116,19 @@ impl DatabaseDriver for ReuseDriver {
     ) -> Result<String, DriverError> {
         self.inner
             .render_transfer_sql_file_insert(insert_template, identity_override_marker)
+    }
+
+    fn render_transfer_sql_file_identity_insert(
+        &self,
+        insert_sql: &str,
+        target_relation: &str,
+        mapped_target_columns: &[String],
+    ) -> Result<String, DriverError> {
+        self.inner.render_transfer_sql_file_identity_insert(
+            insert_sql,
+            target_relation,
+            mapped_target_columns,
+        )
     }
 
     fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
@@ -280,6 +338,10 @@ impl DatabaseDriver for ReuseDriver {
         data_type: Option<&str>,
     ) -> Result<String, DriverError> {
         self.inner.parameter_placeholder(index, data_type)
+    }
+
+    fn max_bound_parameters(&self) -> usize {
+        self.inner.max_bound_parameters()
     }
 
     async fn execute_with_params(

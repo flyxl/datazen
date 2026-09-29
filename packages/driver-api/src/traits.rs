@@ -451,6 +451,14 @@ pub trait DatabaseDriver: Send + Sync {
         ))
     }
 
+    /// Maximum number of bound parameters accepted by one statement.
+    /// Drivers should report the server's actual statement limit so bulk
+    /// writers can split batches before execution. The default is a
+    /// conservative portable ceiling for engines without a lower limit.
+    fn max_bound_parameters(&self) -> usize {
+        60_000
+    }
+
     /// Execute bound DML and report actual affected rows; never serialize values as SQL.
     async fn execute_with_params(
         &self,
@@ -615,6 +623,40 @@ pub trait DatabaseDriver: Send + Sync {
         Ok(())
     }
 
+    /// Whether Data Transfer must bracket explicit identity values with a
+    /// session-scoped mode on this target connection.
+    fn transfer_explicit_identity_insert_requires_session_toggle(&self) -> bool {
+        false
+    }
+
+    /// Enable or disable explicit identity insertion for one transfer table.
+    /// The caller keeps the toggle within the table transaction and attempts
+    /// cleanup on every success, error, and cancellation path.
+    async fn set_transfer_identity_insert(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+        _schema: Option<&str>,
+        _table: &str,
+        _enabled: bool,
+    ) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(
+            "target does not implement session-scoped identity insertion".into(),
+        ))
+    }
+
+    /// Drop a target session whose transfer-scoped state could not be reset.
+    /// Drivers that require session toggles must implement this; the default
+    /// fails closed so the host never reports that an un-dropped session is safe.
+    async fn discard_transfer_connection(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(
+            "driver cannot discard a transfer connection after session cleanup failed".into(),
+        ))
+    }
+
     /// Return the clause required by this dialect to accept explicit values
     /// for generated identity columns during Data Transfer. This is a
     /// transfer-only DML extension; the default keeps existing drivers and
@@ -628,6 +670,16 @@ pub trait DatabaseDriver: Send + Sync {
     /// safely process multi-row VALUES statements in a single parse/execute.
     fn transfer_sql_file_insert_batch_size(&self) -> usize {
         1
+    }
+
+    /// Transaction delimiters for one atomic Data Transfer SQL-file artifact.
+    /// Engines with different transaction batch syntax may override these.
+    fn transfer_sql_file_begin_transaction(&self) -> &'static str {
+        "BEGIN;"
+    }
+
+    fn transfer_sql_file_commit_transaction(&self) -> &'static str {
+        "COMMIT;"
     }
 
     /// Render a Data Transfer SQL-file INSERT when the target schema cannot
@@ -647,6 +699,20 @@ pub trait DatabaseDriver: Send + Sync {
             ));
         }
         Ok(insert_template.replacen(&format!("{identity_override_marker} "), "", 1))
+    }
+
+    /// Wrap an SQL-file INSERT using its actual mapped target columns and
+    /// target relation. Drivers can intersect those columns with the target
+    /// identity metadata at script execution time. The target relation is
+    /// already safely quoted by the host. Drivers without a session toggle
+    /// return the statement unchanged.
+    fn render_transfer_sql_file_identity_insert(
+        &self,
+        insert_sql: &str,
+        _target_relation: &str,
+        _mapped_target_columns: &[String],
+    ) -> Result<String, DriverError> {
+        Ok(insert_sql.to_string())
     }
 
     /// Render Data Transfer sequence synchronization statements for an SQL

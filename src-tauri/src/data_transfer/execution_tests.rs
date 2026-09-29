@@ -24,6 +24,8 @@ struct State {
     metadata_refs: Vec<String>,
     source_queries: Vec<(String, Vec<Value>)>,
     identity_sync_calls: Vec<(Option<String>, String, Vec<String>)>,
+    identity_insert_calls: Vec<(String, Option<String>, String, bool)>,
+    discard_transfer_connection_calls: usize,
     transfer_order: Vec<&'static str>,
     write_sqls: Vec<String>,
 }
@@ -40,6 +42,10 @@ struct Driver {
     schema_error_on_call: Option<usize>,
     execute_error_on_call: Option<usize>,
     identity_sync_error: bool,
+    session_identity_insert: bool,
+    identity_insert_on_error: bool,
+    identity_insert_off_error: bool,
+    discard_transfer_connection_error: bool,
     affected_override: Option<u64>,
     include_identity_insert_clause: bool,
     stream_mode: u8,
@@ -235,6 +241,54 @@ impl DatabaseDriver for Driver {
         }
         Ok(())
     }
+    fn transfer_explicit_identity_insert_requires_session_toggle(&self) -> bool {
+        self.session_identity_insert
+    }
+    async fn set_transfer_identity_insert(
+        &self,
+        _: &ConnectionHandle,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        enabled: bool,
+    ) -> Result<(), DriverError> {
+        let mut state = self.state.lock().unwrap();
+        state.identity_insert_calls.push((
+            database.to_string(),
+            schema.map(str::to_string),
+            table.to_string(),
+            enabled,
+        ));
+        state.transfer_order.push(if enabled {
+            "identity_on"
+        } else {
+            "identity_off"
+        });
+        let fail = if enabled {
+            self.identity_insert_on_error
+        } else {
+            self.identity_insert_off_error
+        };
+        if fail {
+            return Err(DriverError::QueryFailed(if enabled {
+                "injected IDENTITY_INSERT ON failure".into()
+            } else {
+                "injected IDENTITY_INSERT OFF failure".into()
+            }));
+        }
+        Ok(())
+    }
+    async fn discard_transfer_connection(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
+        let mut state = self.state.lock().unwrap();
+        state.discard_transfer_connection_calls += 1;
+        state.transfer_order.push("discard");
+        if self.discard_transfer_connection_error {
+            return Err(DriverError::ConnectionFailed(
+                "injected transfer connection discard failure".into(),
+            ));
+        }
+        Ok(())
+    }
     fn transfer_explicit_identity_insert_clause(&self) -> Option<&'static str> {
         self.include_identity_insert_clause
             .then_some("OVERRIDING SYSTEM VALUE")
@@ -288,6 +342,7 @@ impl DatabaseDriver for Driver {
     async fn rollback(&self, _: TransactionHandle) -> Result<(), DriverError> {
         let mut state = self.state.lock().unwrap();
         state.rollback += 1;
+        state.transfer_order.push("rollback");
         if self.rollback_fails {
             return Err(DriverError::TransactionError(
                 "injected rollback failure".into(),
@@ -339,6 +394,10 @@ fn driver(rows: Rows, schema: TableSchema) -> Driver {
         schema_error_on_call: None,
         execute_error_on_call: None,
         identity_sync_error: false,
+        session_identity_insert: false,
+        identity_insert_on_error: false,
+        identity_insert_off_error: false,
+        discard_transfer_connection_error: false,
         affected_override: None,
         include_identity_insert_clause: false,
         stream_mode: 0,
@@ -562,6 +621,199 @@ async fn explicit_identity_import_synchronizes_when_driver_reports_zero_affected
     assert_eq!(state.transfer_order, vec!["write", "sync", "commit"]);
     assert!(state.write_sqls[0].contains("OVERRIDING SYSTEM VALUE"));
     assert_eq!(state.committed.len(), 1);
+}
+
+#[tokio::test]
+async fn session_identity_insert_is_enabled_and_disabled_inside_the_transaction() {
+    let source = driver(vec![vec![Some(Value::Integer(41))]], schema(&["id"]));
+    let mut target_schema = schema(&["id"]);
+    target_schema.columns[0].is_auto_increment = true;
+    let mut target = driver(vec![], target_schema);
+    target.session_identity_insert = true;
+    let result = run(
+        &source,
+        &target,
+        &[inspected("source_table", vec![mapping("id", "id")])],
+        None,
+    )
+    .await;
+
+    assert!(!result.partial);
+    assert_eq!(
+        result.tables[0].outcome,
+        Some(TableExecutionOutcome::Committed)
+    );
+    let state = target.state.lock().unwrap();
+    assert_eq!(
+        state.identity_insert_calls,
+        vec![
+            ("t".into(), None, "source_table".into(), true),
+            ("t".into(), None, "source_table".into(), false),
+        ]
+    );
+    assert_eq!(
+        state.transfer_order,
+        vec!["identity_on", "write", "identity_off", "sync", "commit"]
+    );
+}
+
+#[tokio::test]
+async fn session_identity_insert_is_not_toggled_without_a_mapped_target_identity() {
+    let source = driver(vec![vec![Some(Value::Integer(41))]], schema(&["id"]));
+    let mut target = driver(vec![], schema(&["id"]));
+    target.session_identity_insert = true;
+    let result = run(
+        &source,
+        &target,
+        &[inspected("source_table", vec![mapping("id", "id")])],
+        None,
+    )
+    .await;
+
+    assert!(!result.partial);
+    assert!(target
+        .state
+        .lock()
+        .unwrap()
+        .identity_insert_calls
+        .is_empty());
+}
+
+#[tokio::test]
+async fn failed_identity_insert_on_still_attempts_off_then_rolls_back() {
+    let source = driver(vec![vec![Some(Value::Integer(41))]], schema(&["id"]));
+    let mut target_schema = schema(&["id"]);
+    target_schema.columns[0].is_auto_increment = true;
+    let mut target = driver(vec![], target_schema);
+    target.session_identity_insert = true;
+    target.identity_insert_on_error = true;
+    let result = run(
+        &source,
+        &target,
+        &[inspected("source_table", vec![mapping("id", "id")])],
+        None,
+    )
+    .await;
+
+    assert!(result.partial);
+    assert_eq!(
+        result.tables[0].outcome,
+        Some(TableExecutionOutcome::RolledBack)
+    );
+    let state = target.state.lock().unwrap();
+    assert_eq!(state.calls, 0);
+    assert_eq!(state.rollback, 1);
+    assert_eq!(state.discard_transfer_connection_calls, 0);
+    assert_eq!(
+        state.transfer_order,
+        vec!["identity_on", "identity_off", "rollback"]
+    );
+}
+
+#[tokio::test]
+async fn failed_identity_insert_off_rolls_back_before_discarding_the_connection() {
+    let source = driver(vec![vec![Some(Value::Integer(41))]], schema(&["id"]));
+    let mut target_schema = schema(&["id"]);
+    target_schema.columns[0].is_auto_increment = true;
+    let mut target = driver(vec![], target_schema);
+    target.session_identity_insert = true;
+    target.identity_insert_off_error = true;
+    let result = run(
+        &source,
+        &target,
+        &[inspected("source_table", vec![mapping("id", "id")])],
+        None,
+    )
+    .await;
+
+    assert!(result.partial);
+    assert_eq!(
+        result.tables[0].outcome,
+        Some(TableExecutionOutcome::RolledBack)
+    );
+    let state = target.state.lock().unwrap();
+    assert_eq!(state.rollback, 1);
+    assert_eq!(state.discard_transfer_connection_calls, 1);
+    assert_eq!(state.committed.len(), 0);
+    assert_eq!(
+        state.transfer_order,
+        vec![
+            "identity_on",
+            "write",
+            "identity_off",
+            "rollback",
+            "discard"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn failed_identity_insert_connection_discard_marks_outcome_unknown() {
+    let source = driver(vec![vec![Some(Value::Integer(41))]], schema(&["id"]));
+    let mut target_schema = schema(&["id"]);
+    target_schema.columns[0].is_auto_increment = true;
+    let mut target = driver(vec![], target_schema);
+    target.session_identity_insert = true;
+    target.identity_insert_off_error = true;
+    target.discard_transfer_connection_error = true;
+    let result = run(
+        &source,
+        &target,
+        &[inspected("source_table", vec![mapping("id", "id")])],
+        None,
+    )
+    .await;
+
+    assert!(result.partial);
+    assert_eq!(
+        result.tables[0].outcome,
+        Some(TableExecutionOutcome::Unknown)
+    );
+    assert!(result.tables[0]
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("failed to discard target connection")));
+    let state = target.state.lock().unwrap();
+    assert_eq!(state.rollback, 1);
+    assert_eq!(state.discard_transfer_connection_calls, 1);
+    assert_eq!(state.transfer_order.last(), Some(&"discard"));
+}
+
+#[tokio::test]
+async fn failed_identity_insert_off_still_discards_after_rollback_failure() {
+    let source = driver(vec![vec![Some(Value::Integer(41))]], schema(&["id"]));
+    let mut target_schema = schema(&["id"]);
+    target_schema.columns[0].is_auto_increment = true;
+    let mut target = driver(vec![], target_schema);
+    target.session_identity_insert = true;
+    target.identity_insert_off_error = true;
+    target.rollback_fails = true;
+    let result = run(
+        &source,
+        &target,
+        &[inspected("source_table", vec![mapping("id", "id")])],
+        None,
+    )
+    .await;
+
+    assert!(result.partial);
+    assert_eq!(
+        result.tables[0].outcome,
+        Some(TableExecutionOutcome::Unknown)
+    );
+    let state = target.state.lock().unwrap();
+    assert_eq!(state.rollback, 1);
+    assert_eq!(state.discard_transfer_connection_calls, 1);
+    assert_eq!(
+        state.transfer_order,
+        vec![
+            "identity_on",
+            "write",
+            "identity_off",
+            "rollback",
+            "discard"
+        ]
+    );
 }
 
 #[tokio::test]
@@ -1477,6 +1729,7 @@ async fn cancel_after_write_reports_current_table_and_rolls_back() {
     );
     let mut target = driver(vec![], schema(&["id"]));
     target.schema.columns[0].is_auto_increment = true;
+    target.session_identity_insert = true;
     target.cancel = Some(Arc::clone(&flag));
     let result = run(
         &source,
@@ -1498,6 +1751,14 @@ async fn cancel_after_write_reports_current_table_and_rolls_back() {
     assert_eq!(state.rollback, 1);
     assert!(state.committed.is_empty());
     assert!(state.identity_sync_calls.is_empty());
+    assert_eq!(
+        state
+            .identity_insert_calls
+            .iter()
+            .map(|call| call.3)
+            .collect::<Vec<_>>(),
+        vec![true, false]
+    );
 }
 
 #[test]

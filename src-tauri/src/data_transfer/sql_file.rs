@@ -700,6 +700,13 @@ fn insert_sql(
     insert_sql_batch(driver, job, table, mappings, &[row.to_vec()])
 }
 
+fn mapped_insert_target_columns(mappings: &[&ColumnMapping]) -> Vec<String> {
+    mappings
+        .iter()
+        .map(|mapping| mapping.target_column.clone())
+        .collect()
+}
+
 fn insert_sql_batch(
     driver: &dyn DatabaseDriver,
     job: &TransferJob,
@@ -929,7 +936,7 @@ pub async fn execute_with_target(
         .unwrap_or_default();
     let mut output = AtomicSqlFile::create_with_format(destination, encoding, compression)?;
     output.line("-- DataZen Data Transfer SQL export")?;
-    output.line("BEGIN;")?;
+    output.line(target_driver.transfer_sql_file_begin_transaction())?;
     let mut results = Vec::new();
     let mut total = 0u64;
     let mut partial = false;
@@ -1098,6 +1105,8 @@ pub async fn execute_with_target(
             ),
             None => None,
         };
+        let target_relation = target_table_ref(target_driver, job, &table.target_table);
+        let mapped_target_columns = mapped_insert_target_columns(&mappings);
         let mut scan = super::scan::scan_rows_with_params(
             source_driver,
             handle,
@@ -1146,6 +1155,15 @@ pub async fn execute_with_target(
                     }
                     None => insert_sql_batch(target_driver, job, table, &mappings, row_chunk),
                 };
+                let rendered = rendered.and_then(|sql| {
+                    target_driver
+                        .render_transfer_sql_file_identity_insert(
+                            &sql,
+                            &target_relation,
+                            &mapped_target_columns,
+                        )
+                        .map_err(|error| TransferError::unsupported(error.to_string()))
+                });
                 match rendered {
                     Ok(sql) => {
                         output.line(&format!("{sql};"))?;
@@ -1219,7 +1237,7 @@ pub async fn execute_with_target(
             .as_ref()
             .is_some_and(|flag| flag.load(Ordering::SeqCst))
     {
-        output.line("COMMIT;")?;
+        output.line(target_driver.transfer_sql_file_commit_transaction())?;
         output.finish()?;
         Ok(TransferExecutionResult {
             tables: results,
@@ -1280,6 +1298,38 @@ mod tests {
         assert!(serde_json::from_str::<SqlFileEncoding>(r#""utf16Le""#).is_ok());
         assert!(serde_json::from_str::<SqlFileEncoding>(r#""cp936""#).is_err());
         assert!(serde_json::from_str::<SqlFileCompression>(r#""brotli""#).is_err());
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_receives_actual_mapped_target_columns() {
+        let mappings = vec![
+            ColumnMapping {
+                source_column: "ordinary_source_column".into(),
+                target_column: "target_identity".into(),
+                skip: false,
+                target_native_type: None,
+            },
+            ColumnMapping {
+                source_column: "source_identity".into(),
+                target_column: "ordinary_target_column".into(),
+                skip: false,
+                target_native_type: None,
+            },
+            ColumnMapping {
+                source_column: "unused_source_column".into(),
+                target_column: "unmapped_target_identity".into(),
+                skip: true,
+                target_native_type: None,
+            },
+        ];
+        let active_mappings = active_column_mappings(&mappings);
+        assert_eq!(
+            mapped_insert_target_columns(&active_mappings),
+            vec![
+                "target_identity".to_string(),
+                "ordinary_target_column".to_string()
+            ]
+        );
     }
 
     #[tokio::test]

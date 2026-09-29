@@ -248,8 +248,16 @@ fn batch_size_hard_limit_is_user_visible_api_validation() {
     };
     job.options.batch_size = MAX_TRANSFER_BATCH_SIZE + 1;
     assert!(job.options.validate().is_err());
-    assert_eq!(effective_chunk_size(500, 200).unwrap(), 300);
-    assert_eq!(effective_chunk_size(500, 1_000).unwrap(), 60);
+    assert_eq!(
+        effective_chunk_size(500, 200, MAX_BOUND_QUERY_PARAMETERS).unwrap(),
+        300
+    );
+    assert_eq!(
+        effective_chunk_size(500, 1_000, MAX_BOUND_QUERY_PARAMETERS).unwrap(),
+        60
+    );
+    assert_eq!(effective_chunk_size(500, 200, 2_100).unwrap(), 10);
+    assert!(effective_chunk_size(500, 2_101, 2_100).is_err());
     assert!(remaining_page_limit(500, 5, Some(6)).is_some_and(|limit| limit == 1));
     assert!(remaining_page_limit(500, 6, Some(6)).is_none());
 }

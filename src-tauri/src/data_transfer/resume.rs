@@ -236,7 +236,11 @@ pub(crate) async fn execute_chunked_table(
     }
 
     let projection = source_projection(context.columns, &keys);
-    let chunk_size = effective_chunk_size(context.job.options.batch_size, context.columns.len())?;
+    let chunk_size = effective_chunk_size(
+        context.job.options.batch_size,
+        context.columns.len(),
+        context.target_driver.max_bound_parameters(),
+    )?;
     let cursor_indexes = keys
         .iter()
         .map(|key| {
