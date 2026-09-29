@@ -254,6 +254,7 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件。
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件。
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中。
+- **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的内容，也不得运行会使这些文件被读取的命令或程序；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。
 - 连接密码等凭据：AES-256-GCM；**主密钥**默认在系统钥匙串，开发/adhoc 或 `DATAZEN_KEYRING=file` 时用 `{appData}/.key`。
 - 日志文件位于 `{data_dir}/logs/`。
 
