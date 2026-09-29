@@ -150,6 +150,26 @@ fn sqlserver_text_filter_is_rejected_when_collation_parity_is_unrepresented() {
 }
 
 #[test]
+fn sqlserver_text_equality_range_like_and_membership_filters_fail_closed() {
+    let source = sqlserver_filter_schema("nvarchar(64)");
+    let target = source.clone();
+    for (operator, value) in [
+        ("eq", serde_json::json!("Ada")),
+        ("gt", serde_json::json!("Ada")),
+        ("lte", serde_json::json!("Ada")),
+        ("like", serde_json::json!("A%")),
+        ("in", serde_json::json!(["Ada", "Grace"])),
+    ] {
+        let filter = scalar_filter("name", operator, value);
+        let error = validate_sqlserver_filter(&filter, &source, &target).unwrap_err();
+        assert!(
+            error.contains("text column 'name'"),
+            "operator {operator} was not rejected for unverified SQL Server text collation: {error}"
+        );
+    }
+}
+
+#[test]
 fn sqlserver_non_text_filter_is_safe_without_collation_metadata() {
     let source = sqlserver_filter_schema("nvarchar(64)");
     let target = source.clone();
@@ -162,9 +182,10 @@ fn sqlserver_non_text_filter_is_safe_without_collation_metadata() {
 fn sqlserver_text_null_check_is_safe_without_collation_metadata() {
     let source = sqlserver_filter_schema("nvarchar(64)");
     let target = source.clone();
-    let filter = scalar_filter("name", "isNull", serde_json::Value::Null);
-
-    validate_sqlserver_filter(&filter, &source, &target).unwrap();
+    for operator in ["isNull", "isNotNull"] {
+        let filter = scalar_filter("name", operator, serde_json::Value::Null);
+        validate_sqlserver_filter(&filter, &source, &target).unwrap();
+    }
 }
 
 #[test]
