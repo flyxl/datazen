@@ -443,6 +443,27 @@ impl DatabaseDriver for ReuseDriver {
         })
     }
 
+    async fn physical_database_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<String>, DriverError> {
+        self.inner
+            .physical_database_identity(handle, database)
+            .await
+    }
+
+    async fn schema_scope_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: &str,
+    ) -> Result<Option<String>, DriverError> {
+        self.inner
+            .schema_scope_identity(handle, database, schema)
+            .await
+    }
+
     fn prompt_overrides(&self) -> HashMap<PromptScenario, PromptTemplate> {
         self.inner.prompt_overrides()
     }
@@ -659,6 +680,23 @@ mod tests {
             _handle: &ConnectionHandle,
         ) -> Result<bool, DriverError> {
             Ok(self.full_fk_catalog_visibility)
+        }
+
+        async fn physical_database_identity(
+            &self,
+            _handle: &ConnectionHandle,
+            database: &str,
+        ) -> Result<Option<String>, DriverError> {
+            Ok(Some(format!("physical:{database}")))
+        }
+
+        async fn schema_scope_identity(
+            &self,
+            _handle: &ConnectionHandle,
+            database: &str,
+            schema: &str,
+        ) -> Result<Option<String>, DriverError> {
+            Ok(Some(format!("schema:{database}:{schema}")))
         }
 
         async fn connect(
@@ -1024,6 +1062,32 @@ mod tests {
         assert!(!reuse.supports_query_execution_cancel());
         assert!(
             matches!(error, DriverError::Unsupported(message) if message.contains("compatibility driver"))
+        );
+    }
+
+    #[tokio::test]
+    async fn reuse_driver_forwards_database_and_schema_scope_identities() {
+        let reuse = ReuseDriver::new(FakeDriver::new(1, false), "sqlserver");
+        let handle = ConnectionHandle {
+            id: "h".into(),
+            pool_id: "p".into(),
+        };
+
+        assert_eq!(
+            reuse
+                .physical_database_identity(&handle, "DataZen")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("physical:DataZen")
+        );
+        assert_eq!(
+            reuse
+                .schema_scope_identity(&handle, "DataZen", "sales")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("schema:DataZen:sales")
         );
     }
 

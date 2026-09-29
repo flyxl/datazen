@@ -733,8 +733,139 @@ fn apply_sqlserver_top(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) 
     (format!("{prefix} TOP {} {body}", lim + 1), Some(lim))
 }
 
+fn schema_migration_blockers_for_indexes(indexes: &[IndexInfo]) -> Vec<String> {
+    let primary_indexes = indexes
+        .iter()
+        .filter(|index| index.is_primary)
+        .collect::<Vec<_>>();
+    let mut blockers = Vec::new();
+    if primary_indexes.len() > 1 {
+        blockers.push(
+            "SQL Server returned multiple primary-key indexes; the shared migration IR cannot identify one safely".into(),
+        );
+    } else if let Some(primary) = primary_indexes.first() {
+        let kind = primary
+            .index_type
+            .strip_prefix("UNIQUE_CONSTRAINT:")
+            .unwrap_or(&primary.index_type);
+        if !kind.eq_ignore_ascii_case("CLUSTERED") {
+            blockers.push(
+                "SQL Server primary-key clustering is nonclustered; the shared migration IR cannot preserve this property during table creation".into(),
+            );
+        }
+    }
+    if indexes.iter().any(|index| {
+        !index.is_primary
+            && index
+                .index_type
+                .strip_prefix("UNIQUE_CONSTRAINT:")
+                .unwrap_or(&index.index_type)
+                .eq_ignore_ascii_case("CLUSTERED")
+    }) {
+        blockers.push(
+            "SQL Server table has a clustered secondary index; the shared migration IR cannot prove this index layout is compatible with every planned primary-key change".into(),
+        );
+    }
+    blockers
+}
+
+const PHYSICAL_DATABASE_IDENTITY_SQL: &str =
+    "SELECT CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')) AS server_name, d.database_id AS database_id FROM sys.databases AS d WHERE d.name = DB_NAME() AND NULLIF(CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')), N'') IS NOT NULL AND DB_ID() IS NOT NULL AND DB_ID(NULLIF(@P1, N'')) = DB_ID()";
+
+fn parse_physical_database_identity(result: &QueryResult) -> Option<String> {
+    if result.rows.len() != 1 || result.rows[0].len() != 2 {
+        return None;
+    }
+    let row = result.rows.first()?;
+    let server_name = match row.first()?.as_ref()? {
+        Value::String(value) if !value.trim().is_empty() => value.trim(),
+        _ => return None,
+    };
+    let database_id = match row.get(1)?.as_ref()? {
+        Value::Integer(value) if *value > 0 => value,
+        _ => return None,
+    };
+    Some(format!(
+        "sqlserver:server:{}:{}:database:{}",
+        server_name.len(),
+        server_name,
+        database_id
+    ))
+}
+
+fn parse_schema_scope_identity(result: &QueryResult) -> Option<String> {
+    if result.rows.len() != 1 || result.rows[0].len() != 1 {
+        return None;
+    }
+    let schema_id = match result
+        .rows
+        .first()
+        .and_then(|row| row.first())
+        .and_then(Option::as_ref)
+    {
+        Some(Value::Integer(value)) if *value > 0 => *value,
+        Some(Value::String(value)) => match value.trim().parse::<i64>() {
+            Ok(value) if value > 0 => value,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(format!("sqlserver:schema-id:{schema_id}"))
+}
+
 #[async_trait]
 impl DatabaseDriver for SqlServerDriver {
+    fn migration_renderer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::SqlServerMigrationRenderer))
+    }
+
+    fn migration_capabilities(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+        Some(std::sync::Arc::new(super::SqlServerMigrationCapabilities))
+    }
+
+    fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
+        Some(std::sync::Arc::new(super::SqlServerTypeNormalizer))
+    }
+
+    async fn physical_database_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<String>, DriverError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let parameters = [Value::String(database.trim().to_owned())];
+        let result =
+            Self::run_with_params(client, PHYSICAL_DATABASE_IDENTITY_SQL, &parameters).await?;
+        Ok(parse_physical_database_identity(&result))
+    }
+
+    async fn schema_scope_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: &str,
+    ) -> Result<Option<String>, DriverError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let parameters = [Value::String(schema.trim().to_owned())];
+        let result = Self::run_with_params(
+            client,
+            &crate::metadata::schema_scope_identity_sql(database),
+            &parameters,
+        )
+        .await?;
+        Ok(parse_schema_scope_identity(&result))
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "sqlserver".to_string()
     }
@@ -944,6 +1075,7 @@ impl DatabaseDriver for SqlServerDriver {
             Self::run_with_params(client, &crate::metadata::checks_sql(database), &parameters)
                 .await?;
         let check_constraints = crate::metadata::parse_checks(check_rows)?;
+        let migration_blockers = schema_migration_blockers_for_indexes(&indexes);
         Ok(TableSchema {
             table_name: table.to_string(),
             columns,
@@ -951,7 +1083,10 @@ impl DatabaseDriver for SqlServerDriver {
             indexes,
             foreign_keys,
             check_constraints,
-            table_options: TableOptions::default(),
+            table_options: TableOptions {
+                migration_blockers,
+                ..TableOptions::default()
+            },
         })
     }
 
@@ -1503,6 +1638,145 @@ impl DatabaseDriver for SqlServerDriver {
 mod tests {
     use super::*;
     use tiberius::EncryptionLevel;
+
+    #[test]
+    fn physical_database_identity_uses_server_name_and_current_catalog_database_id() {
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("SERVERPROPERTY('ServerName')"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("d.database_id AS database_id"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("FROM sys.databases AS d"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("d.name = DB_NAME()"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("DB_ID(NULLIF(@P1, N'')) = DB_ID()"));
+        assert!(!PHYSICAL_DATABASE_IDENTITY_SQL.contains("password"));
+
+        let result = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String("sqlserver-prod\\instance1".into())),
+                Some(Value::Integer(23)),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(
+            parse_physical_database_identity(&result).as_deref(),
+            Some("sqlserver:server:24:sqlserver-prod\\instance1:database:23")
+        );
+
+        let unknown = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String("server".into())),
+                Some(Value::Null),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&unknown), None);
+
+        let no_server_name = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String(" ".into())),
+                Some(Value::Integer(23)),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&no_server_name), None);
+
+        let ambiguous = QueryResult {
+            columns: Vec::new(),
+            rows: vec![
+                vec![
+                    Some(Value::String("server-a".into())),
+                    Some(Value::Integer(23)),
+                ],
+                vec![
+                    Some(Value::String("server-b".into())),
+                    Some(Value::Integer(23)),
+                ],
+            ],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&ambiguous), None);
+    }
+
+    #[test]
+    fn schema_scope_identity_requires_one_positive_catalog_id() {
+        let identity = |rows| QueryResult {
+            columns: Vec::new(),
+            rows,
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Integer(5))]])).as_deref(),
+            Some("sqlserver:schema-id:5")
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::String("7".into()))]]))
+                .as_deref(),
+            Some("sqlserver:schema-id:7")
+        );
+        assert_eq!(parse_schema_scope_identity(&identity(Vec::new())), None);
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![
+                vec![Some(Value::Integer(1))],
+                vec![Some(Value::Integer(2))]
+            ])),
+            None
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Integer(0))]])),
+            None
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Null)]])),
+            None
+        );
+    }
+
+    #[test]
+    fn schema_migration_blockers_cover_unrepresented_clustered_layouts() {
+        let ordinary_layout = vec![
+            IndexInfo {
+                name: "PK_t".into(),
+                columns: vec!["id".into()],
+                is_unique: true,
+                is_primary: true,
+                index_type: "CLUSTERED".into(),
+            },
+            IndexInfo {
+                name: "IX_t_value".into(),
+                columns: vec!["value".into()],
+                is_unique: false,
+                is_primary: false,
+                index_type: "NONCLUSTERED".into(),
+            },
+        ];
+        assert!(schema_migration_blockers_for_indexes(&ordinary_layout).is_empty());
+
+        let nonclustered_primary = vec![IndexInfo {
+            index_type: "NONCLUSTERED".into(),
+            ..ordinary_layout[0].clone()
+        }];
+        assert!(schema_migration_blockers_for_indexes(&nonclustered_primary)
+            .iter()
+            .any(|blocker| blocker.contains("primary-key clustering is nonclustered")));
+
+        let clustered_secondary = vec![IndexInfo {
+            name: "UQ_t_value".into(),
+            columns: vec!["value".into()],
+            is_unique: true,
+            is_primary: false,
+            index_type: "UNIQUE_CONSTRAINT:CLUSTERED".into(),
+        }];
+        assert!(schema_migration_blockers_for_indexes(&clustered_secondary)
+            .iter()
+            .any(|blocker| blocker.contains("clustered secondary index")));
+    }
 
     #[test]
     fn ssl_disable_is_plaintext() {

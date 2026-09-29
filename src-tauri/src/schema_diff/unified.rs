@@ -177,7 +177,7 @@ pub(crate) fn build_unified_schema_diff_plan_with_source_scope(
             requirements,
         );
     }
-    let target_object_scope = if target_dialect == "postgresql" {
+    let target_object_scope = if uses_schema_scope(&target_dialect) {
         target_schema
     } else {
         target_database
@@ -279,6 +279,11 @@ pub(crate) fn build_unified_schema_diff_plan_with_source_scope(
                     MigrationOperation::CreateIndex { .. } | MigrationOperation::DropIndex { .. }
                 )
             });
+        }
+        if !table_operations.is_empty() {
+            if let Some(reason) = super::plan::table_migration_blocker_reason(source, target) {
+                requirements.push(unsupported(format!("table:{table}"), reason));
+            }
         }
         for operation in &table_operations {
             if let MigrationOperation::AddColumn { table, column } = operation {

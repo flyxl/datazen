@@ -774,6 +774,19 @@ pub trait DatabaseDriver: Send + Sync {
         Ok(None)
     }
 
+    /// Return a catalog identity for one exact schema scope when the driver
+    /// can prove it. The value is compared only when both endpoints have the
+    /// same physical database identity; drivers must not include credentials
+    /// or other secrets.
+    async fn schema_scope_identity(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+        _schema: &str,
+    ) -> Result<Option<String>, DriverError> {
+        Ok(None)
+    }
+
     /// Close whatever the driver opened for `database` on this handle — the
     /// right-click "close database connection" action.
     ///

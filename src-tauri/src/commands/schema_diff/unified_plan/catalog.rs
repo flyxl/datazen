@@ -37,7 +37,7 @@ pub(crate) async fn read_target_object_catalog(
                     .map(|table| DatabaseObject {
                         kind: ObjectKind::Table.as_str().into(),
                         schema: table.schema.or_else(|| {
-                            if normalize_dialect(dialect) == "postgresql" {
+                            if uses_schema_scope(dialect) {
                                 schema_scope.map(str::to_owned)
                             } else {
                                 Some(metadata_database.to_owned())

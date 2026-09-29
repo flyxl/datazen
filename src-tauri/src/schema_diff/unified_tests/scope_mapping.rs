@@ -288,3 +288,62 @@ fn target_view_with_unpreserved_metadata_blocks_create_and_rollback_rendering() 
     assert!(format!("{:?}", plan.requirements).contains("target_db.item_view"));
     assert!(format!("{:?}", plan.requirements).contains("non-default creation semantics"));
 }
+
+#[test]
+fn sqlserver_object_scope_uses_schema_and_rejects_cross_schema_mapping() {
+    let view = SchemaObjectSnapshot::view(
+        Some("dbo"),
+        "item_view",
+        "CREATE VIEW [dbo].[item_view] AS SELECT 1 AS value",
+    )
+    .with_dependencies(vec![]);
+    let plan = build_unified_schema_diff_plan_with_source_scope(
+        &[],
+        &[],
+        &[view.clone()],
+        &[],
+        &[],
+        &[],
+        &[],
+        true,
+        &[],
+        "sqlserver",
+        "sqlserver",
+        Some("dbo"),
+        Some("target_database"),
+        false,
+        true,
+        &[],
+        &MappingRenderer,
+        &TestCapabilities,
+        Some("dbo"),
+        None,
+    );
+    assert!(plan.requirements.is_empty(), "{:?}", plan.requirements);
+    assert_eq!(plan.statements.len(), 1);
+
+    let cross_schema = build_unified_schema_diff_plan_with_source_scope(
+        &[],
+        &[],
+        &[view],
+        &[],
+        &[],
+        &[],
+        &[],
+        true,
+        &[],
+        "sqlserver",
+        "sqlserver",
+        Some("sales"),
+        Some("target_database"),
+        false,
+        true,
+        &[],
+        &MappingRenderer,
+        &TestCapabilities,
+        Some("dbo"),
+        None,
+    );
+    assert!(cross_schema.statements.is_empty());
+    assert!(format!("{:?}", cross_schema.requirements).contains("Cross-scope migration"));
+}
