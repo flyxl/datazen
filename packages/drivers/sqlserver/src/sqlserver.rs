@@ -770,7 +770,7 @@ fn schema_migration_blockers_for_indexes(indexes: &[IndexInfo]) -> Vec<String> {
 }
 
 const PHYSICAL_DATABASE_IDENTITY_SQL: &str =
-    "SELECT CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')) AS server_name, DB_ID() AS database_id WHERE NULLIF(CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')), N'') IS NOT NULL AND DB_ID() IS NOT NULL AND DB_ID(NULLIF(@P1, N'')) = DB_ID()";
+    "SELECT CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')) AS server_name, d.database_id AS database_id FROM sys.databases AS d WHERE d.name = DB_NAME() AND NULLIF(CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')), N'') IS NOT NULL AND DB_ID() IS NOT NULL AND DB_ID(NULLIF(@P1, N'')) = DB_ID()";
 
 fn parse_physical_database_identity(result: &QueryResult) -> Option<String> {
     if result.rows.len() != 1 || result.rows[0].len() != 2 {
@@ -1640,10 +1640,12 @@ mod tests {
     use tiberius::EncryptionLevel;
 
     #[test]
-    fn physical_database_identity_uses_server_name_and_current_database_id() {
+    fn physical_database_identity_uses_server_name_and_current_catalog_database_id() {
         assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("SERVERPROPERTY('ServerName')"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("d.database_id AS database_id"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("FROM sys.databases AS d"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("d.name = DB_NAME()"));
         assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("DB_ID(NULLIF(@P1, N'')) = DB_ID()"));
-        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("DB_ID() AS database_id"));
         assert!(!PHYSICAL_DATABASE_IDENTITY_SQL.contains("password"));
 
         let result = QueryResult {
