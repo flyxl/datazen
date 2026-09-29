@@ -7,6 +7,16 @@ use super::changeset::TableChangeSet;
 use super::error::DataSyncError;
 use super::model::{ChangeOperation, ConflictPolicy, RowChange};
 
+/// Runtime-only identity-insert target for a generated SQL Server INSERT.
+/// This is deliberately excluded from preview JSON; apply regenerates SQL
+/// from the validated plan and attaches the trusted target metadata again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityInsertTarget {
+    pub database: String,
+    pub schema: Option<String>,
+    pub table: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlStatement {
@@ -16,6 +26,8 @@ pub struct SqlStatement {
     pub preview_sql: String,
     pub parameters: Vec<Value>,
     pub row_key: Vec<Value>,
+    #[serde(skip)]
+    pub identity_insert: Option<IdentityInsertTarget>,
 }
 
 pub fn quote_ident_sql(name: &str, quote: char) -> String {
@@ -416,6 +428,7 @@ where
         ),
         parameters: params,
         row_key: change.key.clone(),
+        identity_insert: None,
     })
 }
 
@@ -512,6 +525,7 @@ where
         ),
         parameters: params,
         row_key: change.key.clone(),
+        identity_insert: None,
     })
 }
 
@@ -578,6 +592,7 @@ where
         preview_sql: format!("DELETE FROM {qualified_table} WHERE {where_lit}"),
         parameters: params,
         row_key: change.key.clone(),
+        identity_insert: None,
     })
 }
 

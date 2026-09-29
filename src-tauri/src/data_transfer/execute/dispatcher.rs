@@ -509,7 +509,7 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
             .map(|mapping| mapping.target_column.clone())
             .collect::<Vec<_>>();
         let identity_insert_requires_toggle = !explicit_identity_columns.is_empty()
-            && tgt_driver.transfer_explicit_identity_insert_requires_session_toggle();
+            && tgt_driver.explicit_identity_insert_requires_session_toggle();
         let tx = match tgt_driver.begin_transaction(tgt_handle).await {
             Ok(tx) => tx,
             Err(error) => {
@@ -538,7 +538,7 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
             // error, so every attempted ON must be followed by an OFF attempt.
             identity_insert_may_be_enabled = true;
             if let Err(error) = tgt_driver
-                .set_transfer_identity_insert(
+                .set_identity_insert(
                     tgt_handle,
                     &target.database,
                     target.schema.as_deref(),
@@ -629,7 +629,7 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
         let mut identity_insert_cleanup_failed = false;
         if identity_insert_may_be_enabled {
             if let Err(error) = tgt_driver
-                .set_transfer_identity_insert(
+                .set_identity_insert(
                     tgt_handle,
                     &target.database,
                     target.schema.as_deref(),
@@ -693,7 +693,7 @@ pub(crate) async fn execute_transfer_data_with_resume_checkpoint(
                 }
             };
             if identity_insert_cleanup_failed {
-                if let Err(error) = tgt_driver.discard_transfer_connection(tgt_handle).await {
+                if let Err(error) = tgt_driver.discard_connection(tgt_handle).await {
                     table_error = Some(format!(
                         "{}; failed to discard target connection after IDENTITY_INSERT OFF failed: {error}; outcome UNKNOWN",
                         table_error.as_deref().unwrap_or("identity cleanup failed")

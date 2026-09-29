@@ -61,14 +61,13 @@ impl SqlServerDriver {
     fn quote_identifier(identifier: &str) -> Result<String, DriverError> {
         if identifier.is_empty() || identifier.contains('\0') {
             return Err(DriverError::InvalidConfig(
-                "SQL Server transfer relation identifiers must be non-empty and contain no NUL"
-                    .into(),
+                "SQL Server relation identifiers must be non-empty and contain no NUL".into(),
             ));
         }
         Ok(format!("[{}]", identifier.replace(']', "]]")))
     }
 
-    fn transfer_identity_relation(
+    fn identity_insert_relation(
         database: &str,
         schema: Option<&str>,
         table: &str,
@@ -84,6 +83,17 @@ impl SqlServerDriver {
         parts.push(Self::quote_identifier(schema)?);
         parts.push(Self::quote_identifier(table)?);
         Ok(parts.join("."))
+    }
+
+    fn identity_insert_statement(
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        enabled: bool,
+    ) -> Result<String, DriverError> {
+        let relation = Self::identity_insert_relation(database, schema, table)?;
+        let mode = if enabled { "ON" } else { "OFF" };
+        Ok(format!("SET IDENTITY_INSERT {relation} {mode}"))
     }
 
     /// Accept only a relation rendered by Data Transfer's SQL Server
@@ -1442,7 +1452,7 @@ impl DatabaseDriver for SqlServerDriver {
         2100
     }
 
-    fn transfer_explicit_identity_insert_requires_session_toggle(&self) -> bool {
+    fn explicit_identity_insert_requires_session_toggle(&self) -> bool {
         true
     }
 
@@ -1454,7 +1464,7 @@ impl DatabaseDriver for SqlServerDriver {
         "COMMIT TRANSACTION;"
     }
 
-    async fn set_transfer_identity_insert(
+    async fn set_identity_insert(
         &self,
         handle: &ConnectionHandle,
         database: &str,
@@ -1462,20 +1472,17 @@ impl DatabaseDriver for SqlServerDriver {
         table: &str,
         enabled: bool,
     ) -> Result<(), DriverError> {
-        let relation = Self::transfer_identity_relation(database, schema, table)?;
-        let mode = if enabled { "ON" } else { "OFF" };
-        let statement = format!("SET IDENTITY_INSERT {relation} {mode}");
+        let statement = Self::identity_insert_statement(database, schema, table, enabled)?;
         let mut clients = self.clients.write().await;
         let client = clients
             .get_mut(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        // IDENTITY_INSERT is scoped to the physical SQL Server session, so
+        // send it as a standalone batch on this mapped client.
         Self::execute_batch(client, &statement).await
     }
 
-    async fn discard_transfer_connection(
-        &self,
-        handle: &ConnectionHandle,
-    ) -> Result<(), DriverError> {
+    async fn discard_connection(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
         self.transactions.lock().await.remove(&handle.id);
         self.clients.write().await.remove(&handle.pool_id);
         Ok(())
@@ -2296,9 +2303,9 @@ mod tests {
     }
 
     #[test]
-    fn transfer_identity_insert_relation_quotes_every_sql_server_identifier() {
+    fn identity_insert_relation_quotes_every_sql_server_identifier() {
         assert_eq!(
-            SqlServerDriver::transfer_identity_relation(
+            SqlServerDriver::identity_insert_relation(
                 "data]zen",
                 Some("odd.schema"),
                 "order]details"
@@ -2307,10 +2314,10 @@ mod tests {
             "[data]]zen].[odd.schema].[order]]details]"
         );
         assert_eq!(
-            SqlServerDriver::transfer_identity_relation("", None, "items").unwrap(),
+            SqlServerDriver::identity_insert_relation("", None, "items").unwrap(),
             "[dbo].[items]"
         );
-        assert!(SqlServerDriver::transfer_identity_relation("db", Some(""), "").is_err());
+        assert!(SqlServerDriver::identity_insert_relation("db", Some(""), "").is_err());
     }
 
     #[test]
@@ -2414,9 +2421,18 @@ mod tests {
     }
 
     #[test]
-    fn explicit_transfer_identity_insert_uses_a_session_toggle() {
+    fn explicit_identity_insert_uses_a_quoted_session_toggle_statement() {
         let driver = SqlServerDriver::new();
-        assert!(driver.transfer_explicit_identity_insert_requires_session_toggle());
+        assert!(driver.explicit_identity_insert_requires_session_toggle());
+        assert_eq!(
+            SqlServerDriver::identity_insert_statement("db]name", Some("dbo"), "t]able", true)
+                .unwrap(),
+            "SET IDENTITY_INSERT [db]]name].[dbo].[t]]able] ON"
+        );
+        assert_eq!(
+            SqlServerDriver::identity_insert_statement("db", None, "items", false).unwrap(),
+            "SET IDENTITY_INSERT [db].[dbo].[items] OFF"
+        );
         assert_eq!(
             driver.transfer_sql_file_begin_transaction(),
             "BEGIN TRANSACTION;"
@@ -2428,10 +2444,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reuse_driver_forwards_transfer_identity_and_sql_file_hooks() {
+    async fn reuse_driver_forwards_identity_session_and_sql_file_hooks() {
         let inner: Arc<dyn DatabaseDriver> = Arc::new(SqlServerDriver::new());
         let driver = ReuseDriver::new(inner, "sqlserver-alias");
-        assert!(driver.transfer_explicit_identity_insert_requires_session_toggle());
+        assert!(driver.explicit_identity_insert_requires_session_toggle());
         let script = driver
             .render_transfer_sql_file_identity_insert(
                 "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
@@ -2454,10 +2470,10 @@ mod tests {
             pool_id: "missing".into(),
         };
         let error = driver
-            .set_transfer_identity_insert(&handle, "db", Some("dbo"), "items", true)
+            .set_identity_insert(&handle, "db", Some("dbo"), "items", true)
             .await
             .unwrap_err();
         assert!(matches!(error, DriverError::ConnectionFailed(_)));
-        driver.discard_transfer_connection(&handle).await.unwrap();
+        driver.discard_connection(&handle).await.unwrap();
     }
 }
