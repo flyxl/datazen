@@ -733,8 +733,60 @@ fn apply_sqlserver_top(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) 
     (format!("{prefix} TOP {} {body}", lim + 1), Some(lim))
 }
 
+fn schema_migration_blockers_for_indexes(indexes: &[IndexInfo]) -> Vec<String> {
+    let primary_indexes = indexes
+        .iter()
+        .filter(|index| index.is_primary)
+        .collect::<Vec<_>>();
+    let mut blockers = Vec::new();
+    if primary_indexes.len() > 1 {
+        blockers.push(
+            "SQL Server returned multiple primary-key indexes; the shared migration IR cannot identify one safely".into(),
+        );
+    } else if let Some(primary) = primary_indexes.first() {
+        let kind = primary
+            .index_type
+            .strip_prefix("UNIQUE_CONSTRAINT:")
+            .unwrap_or(&primary.index_type);
+        if !kind.eq_ignore_ascii_case("CLUSTERED") {
+            blockers.push(
+                "SQL Server primary-key clustering is nonclustered; the shared migration IR cannot preserve this property during table creation".into(),
+            );
+        }
+    }
+    if indexes.iter().any(|index| {
+        !index.is_primary
+            && index
+                .index_type
+                .strip_prefix("UNIQUE_CONSTRAINT:")
+                .unwrap_or(&index.index_type)
+                .eq_ignore_ascii_case("CLUSTERED")
+    }) {
+        blockers.push(
+            "SQL Server table has a clustered secondary index; the shared migration IR cannot prove this index layout is compatible with every planned primary-key change".into(),
+        );
+    }
+    blockers
+}
+
 #[async_trait]
 impl DatabaseDriver for SqlServerDriver {
+    fn migration_renderer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::SqlServerMigrationRenderer))
+    }
+
+    fn migration_capabilities(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+        Some(std::sync::Arc::new(super::SqlServerMigrationCapabilities))
+    }
+
+    fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
+        Some(std::sync::Arc::new(super::SqlServerTypeNormalizer))
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "sqlserver".to_string()
     }
@@ -944,6 +996,7 @@ impl DatabaseDriver for SqlServerDriver {
             Self::run_with_params(client, &crate::metadata::checks_sql(database), &parameters)
                 .await?;
         let check_constraints = crate::metadata::parse_checks(check_rows)?;
+        let migration_blockers = schema_migration_blockers_for_indexes(&indexes);
         Ok(TableSchema {
             table_name: table.to_string(),
             columns,
@@ -951,7 +1004,10 @@ impl DatabaseDriver for SqlServerDriver {
             indexes,
             foreign_keys,
             check_constraints,
-            table_options: TableOptions::default(),
+            table_options: TableOptions {
+                migration_blockers,
+                ..TableOptions::default()
+            },
         })
     }
 
@@ -1503,6 +1559,46 @@ impl DatabaseDriver for SqlServerDriver {
 mod tests {
     use super::*;
     use tiberius::EncryptionLevel;
+
+    #[test]
+    fn schema_migration_blockers_cover_unrepresented_clustered_layouts() {
+        let ordinary_layout = vec![
+            IndexInfo {
+                name: "PK_t".into(),
+                columns: vec!["id".into()],
+                is_unique: true,
+                is_primary: true,
+                index_type: "CLUSTERED".into(),
+            },
+            IndexInfo {
+                name: "IX_t_value".into(),
+                columns: vec!["value".into()],
+                is_unique: false,
+                is_primary: false,
+                index_type: "NONCLUSTERED".into(),
+            },
+        ];
+        assert!(schema_migration_blockers_for_indexes(&ordinary_layout).is_empty());
+
+        let nonclustered_primary = vec![IndexInfo {
+            index_type: "NONCLUSTERED".into(),
+            ..ordinary_layout[0].clone()
+        }];
+        assert!(schema_migration_blockers_for_indexes(&nonclustered_primary)
+            .iter()
+            .any(|blocker| blocker.contains("primary-key clustering is nonclustered")));
+
+        let clustered_secondary = vec![IndexInfo {
+            name: "UQ_t_value".into(),
+            columns: vec!["value".into()],
+            is_unique: true,
+            is_primary: false,
+            index_type: "UNIQUE_CONSTRAINT:CLUSTERED".into(),
+        }];
+        assert!(schema_migration_blockers_for_indexes(&clustered_secondary)
+            .iter()
+            .any(|blocker| blocker.contains("clustered secondary index")));
+    }
 
     #[test]
     fn ssl_disable_is_plaintext() {

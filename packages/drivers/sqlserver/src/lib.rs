@@ -6,13 +6,17 @@ use datazen_driver_api::*;
 
 mod admin_commands;
 mod metadata;
+mod migration;
 mod parameters;
 mod sql_target;
 mod sqlserver;
 mod structure;
 mod sync_adapter;
+mod type_normalizer;
+pub use migration::{SqlServerMigrationCapabilities, SqlServerMigrationRenderer};
 pub use sqlserver::*;
 pub use sync_adapter::SqlServerSyncAdapter;
+pub use type_normalizer::SqlServerTypeNormalizer;
 
 struct SqlServerFactory;
 impl DatabaseDriverFactory for SqlServerFactory {
