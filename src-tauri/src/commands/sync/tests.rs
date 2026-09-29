@@ -819,9 +819,14 @@ async fn cancel_data_sync_stops_execute_before_start() {
 
 #[tokio::test]
 async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state::{rich_mock_options, TestAppState};
+    use crate::testing::mock_driver::MockDriverOptions;
 
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_options(MockDriverOptions {
+        parameterized_writes: true,
+        ..rich_mock_options()
+    })
+    .await;
     test.save_and_connect("src-cmp").await;
     test.save_and_connect("tgt-cmp").await;
     let src = test.connect_config("src-cmp").await;
@@ -864,6 +869,7 @@ async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
     );
     let test = TestAppState::with_options(MockDriverOptions {
         table_schema: Some(schema),
+        parameterized_writes: true,
         ..MockDriverOptions::default()
     })
     .await;

@@ -7,7 +7,8 @@
 
 use super::filter_values::{in_values, scalar_value, value_to_json};
 use super::recordset::{
-    build_predicate, recordset_limit, validate_recordset, validate_tuple_range_order,
+    build_predicate, comparison_columns as recordset_comparison_columns, recordset_limit,
+    validate_recordset, validate_tuple_range_order,
 };
 pub use super::recordset::{SyncRecordset, SyncRecordsetBound};
 use crate::data_sync::sql::quote_ident_sql;
@@ -142,6 +143,27 @@ impl SyncSourceFilter {
             .payload()?
             .recordset
             .is_some_and(|recordset| recordset.tuple_range.is_some()))
+    }
+
+    /// Columns whose filter predicates compare values or define a range.
+    /// Null checks and limit-only recordsets do not depend on collation.
+    pub fn comparison_columns(&self, schema: &TableSchema) -> Result<Vec<String>, DataSyncError> {
+        let payload = self.payload()?;
+        let mut columns = Vec::new();
+        for condition in payload.filters {
+            if !matches!(
+                condition.operator,
+                FilterOperator::IsNull | FilterOperator::IsNotNull
+            ) {
+                columns.push(condition.column);
+            }
+        }
+        if let Some(recordset) = payload.recordset {
+            columns.extend(recordset_comparison_columns(&recordset, schema)?);
+        }
+        let mut seen = std::collections::HashSet::new();
+        columns.retain(|column| seen.insert(column.clone()));
+        Ok(columns)
     }
 
     /// Build a `WHERE ...` fragment and the values bound to its placeholders.

@@ -87,6 +87,7 @@ pub(crate) async fn inspect_data_sync_impl(
     );
 
     let mut source_schemas = HashMap::new();
+    let mut source_schema_errors = HashMap::new();
     for table in src_tables
         .iter()
         .filter(|t| matches!(t.table_type, crate::db::TableType::Table))
@@ -97,14 +98,21 @@ pub(crate) async fn inspect_data_sync_impl(
             table.schema.as_deref(),
             None,
         );
-        if let Ok(schema) = src_driver
+        match src_driver
             .get_table_schema(&src_handle, &table.name, &src_db, table_schema.as_deref())
             .await
         {
-            source_schemas.insert(table.name.clone(), schema);
+            Ok(schema) => {
+                source_schemas.insert(table.name.clone(), schema);
+            }
+            Err(error) if src_config.database_type == "sqlserver" => {
+                source_schema_errors.insert(table.name.clone(), error.to_string());
+            }
+            Err(_) => {}
         }
     }
     let mut target_schemas = HashMap::new();
+    let mut target_schema_errors = HashMap::new();
     for table in tgt_tables
         .iter()
         .filter(|t| matches!(t.table_type, crate::db::TableType::Table))
@@ -115,11 +123,17 @@ pub(crate) async fn inspect_data_sync_impl(
             table.schema.as_deref(),
             None,
         );
-        if let Ok(schema) = tgt_driver
+        match tgt_driver
             .get_table_schema(&tgt_handle, &table.name, &tgt_db, table_schema.as_deref())
             .await
         {
-            target_schemas.insert(table.name.clone(), schema);
+            Ok(schema) => {
+                target_schemas.insert(table.name.clone(), schema);
+            }
+            Err(error) if tgt_config.database_type == "sqlserver" => {
+                target_schema_errors.insert(table.name.clone(), error.to_string());
+            }
+            Err(_) => {}
         }
     }
 
@@ -136,6 +150,28 @@ pub(crate) async fn inspect_data_sync_impl(
         &target_schemas,
     );
     for result in &mut results {
+        if result.status == crate::data_sync::TableMappingStatus::Incompatible {
+            let source_error = source_schema_errors.get(&result.source_table);
+            let target_error = target_schema_errors.get(&result.target_table);
+            match (source_error, target_error) {
+                (Some(source), Some(target)) => {
+                    result.incompatible_reason = Some(format!(
+                        "SQL Server schema preflight failed; source: {source}; target: {target}"
+                    ));
+                }
+                (Some(error), None) => {
+                    result.incompatible_reason = Some(format!(
+                        "SQL Server source schema preflight failed: {error}"
+                    ));
+                }
+                (None, Some(error)) => {
+                    result.incompatible_reason = Some(format!(
+                        "SQL Server target schema preflight failed: {error}"
+                    ));
+                }
+                (None, None) => {}
+            }
+        }
         if result.status != crate::data_sync::TableMappingStatus::Matched {
             continue;
         }

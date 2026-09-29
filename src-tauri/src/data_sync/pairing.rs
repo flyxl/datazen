@@ -5,7 +5,7 @@ use crate::transfer::pairing::{normalize_sync_family, resolve_sync_pairing, Sync
 use super::error::DataSyncError;
 
 /// Families implemented for Data Synchronization V1 (P0).
-pub const V1_FAMILIES: &[&str] = &["mysql", "postgresql"];
+pub const V1_FAMILIES: &[&str] = &["mysql", "postgresql", "sqlserver"];
 
 pub fn is_v1_family(family: &str) -> bool {
     V1_FAMILIES.contains(&family)
@@ -110,6 +110,17 @@ mod tests {
     }
 
     #[test]
+    fn sqlserver_is_direct_only_within_its_family() {
+        assert_eq!(
+            require_data_sync_family("sqlserver", "mssql").unwrap(),
+            "sqlserver"
+        );
+        assert!(classify_data_sync_pair("sqlserver", "postgresql")
+            .reason
+            .is_some());
+    }
+
+    #[test]
     fn pg_to_mysql_is_transfer_not_sync() {
         let err = require_data_sync_family("postgresql", "mysql").unwrap_err();
         let msg = err.to_string();
@@ -133,8 +144,9 @@ mod tests {
     fn v1_family_helpers() {
         assert!(is_v1_family("mysql"));
         assert!(is_v1_family("postgresql"));
+        assert!(is_v1_family("sqlserver"));
         assert!(!is_v1_family("sqlite"));
-        assert_eq!(V1_FAMILIES.len(), 2);
+        assert_eq!(V1_FAMILIES.len(), 3);
     }
 
     #[test]

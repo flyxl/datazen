@@ -22,7 +22,7 @@ pub fn build_keyset_select_sql<P>(
     placeholder: P,
 ) -> Result<(String, Vec<Value>), DataSyncError>
 where
-    P: Fn(usize) -> String,
+    P: Fn(usize) -> Result<String, DataSyncError>,
 {
     let key_idents = pk_columns
         .iter()
@@ -62,7 +62,7 @@ pub fn build_keyset_select_sql_with_order<P>(
     placeholder: P,
 ) -> Result<(String, Vec<Value>), DataSyncError>
 where
-    P: Fn(usize) -> String,
+    P: Fn(usize) -> Result<String, DataSyncError>,
 {
     build_keyset_select_sql_with_order_and_filter(
         table,
@@ -99,7 +99,7 @@ pub fn build_keyset_select_sql_with_order_and_filter<P>(
     filter: Option<(&str, &[Value])>,
 ) -> Result<(String, Vec<Value>), DataSyncError>
 where
-    P: Fn(usize) -> String,
+    P: Fn(usize) -> Result<String, DataSyncError>,
 {
     let pagination_clause = format!("LIMIT {}", limit.max(1));
     build_keyset_select_sql_with_order_filter_and_pagination(
@@ -133,7 +133,7 @@ pub fn build_keyset_select_sql_with_order_filter_and_pagination<P>(
     filter: Option<(&str, &[Value])>,
 ) -> Result<(String, Vec<Value>), DataSyncError>
 where
-    P: Fn(usize) -> String,
+    P: Fn(usize) -> Result<String, DataSyncError>,
 {
     if pk_columns.is_empty() {
         return Err(DataSyncError::validation(
@@ -179,10 +179,32 @@ where
     let mut params = Vec::new();
     let mut where_clauses = Vec::new();
     if let Some(key) = after_key {
-        let pk_idents = key_order_expressions.join(", ");
-        let placeholders: Vec<String> = (1..=pk_columns.len()).map(|i| placeholder(i)).collect();
-        params.extend_from_slice(key);
-        where_clauses.push(format!("({pk_idents}) > ({})", placeholders.join(", ")));
+        // T-SQL has no row-value comparison syntax. Expand the seek into a
+        // portable lexicographic disjunction, keeping every expression in the
+        // same order used by ORDER BY. A placeholder is emitted for each
+        // occurrence so both anonymous (`?`) and positional drivers can bind
+        // the predicate without dialect-specific rewriting.
+        let mut next_parameter = 1usize;
+        let mut alternatives = Vec::with_capacity(key.len());
+        for index in 0..key.len() {
+            let mut terms = Vec::with_capacity(index + 1);
+            for equal_index in 0..index {
+                let ph = placeholder(next_parameter)?;
+                next_parameter += 1;
+                terms.push(format!("{} = {ph}", key_order_expressions[equal_index]));
+                params.push(key[equal_index].clone());
+            }
+            let ph = placeholder(next_parameter)?;
+            next_parameter += 1;
+            terms.push(format!("{} > {ph}", key_order_expressions[index]));
+            params.push(key[index].clone());
+            alternatives.push(format!("({})", terms.join(" AND ")));
+        }
+        where_clauses.push(if alternatives.len() == 1 {
+            alternatives.remove(0)
+        } else {
+            format!("({})", alternatives.join(" OR "))
+        });
     }
     if let Some((filter_sql, filter_params)) = filter {
         if filter_sql.trim().is_empty() {
@@ -214,10 +236,28 @@ where
     Ok((sql, params))
 }
 
+/// Number of bound seek parameters emitted for a composite key's portable
+/// lexicographic predicate, or zero when there is no `after_key`.
+pub fn keyset_seek_parameter_count(key_count: usize, has_after_key: bool) -> usize {
+    if has_after_key {
+        key_count.saturating_mul(key_count.saturating_add(1)) / 2
+    } else {
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::data_sync::{mysql_placeholder, postgres_placeholder};
+
+    fn mysql_ph(index: usize) -> Result<String, DataSyncError> {
+        Ok(mysql_placeholder(index))
+    }
+
+    fn postgres_ph(index: usize) -> Result<String, DataSyncError> {
+        Ok(postgres_placeholder(index))
+    }
 
     fn cols() -> Vec<String> {
         vec!["id".into(), "name".into(), "age".into()]
@@ -243,7 +283,7 @@ mod tests {
             None,
             100,
             '`',
-            mysql_placeholder,
+            mysql_ph,
         )
         .unwrap();
         assert!(params.is_empty());
@@ -265,7 +305,7 @@ mod tests {
             None,
             100,
             '`',
-            mysql_placeholder,
+            mysql_ph,
         )
         .unwrap();
         assert!(params.is_empty());
@@ -287,14 +327,14 @@ mod tests {
             Some(&[Value::Integer(42)]),
             50,
             '`',
-            mysql_placeholder,
+            mysql_ph,
         )
         .unwrap();
         assert_eq!(params.len(), 1);
         assert!(matches!(params[0], Value::Integer(42)));
         assert_eq!(
             sql,
-            "SELECT `id`, `name`, `age` FROM `users` WHERE (`id`) > (?) ORDER BY `id` ASC LIMIT 50"
+            "SELECT `id`, `name`, `age` FROM `users` WHERE (`id` > ?) ORDER BY `id` ASC LIMIT 50"
         );
     }
 
@@ -311,15 +351,16 @@ mod tests {
             Some(&[Value::Integer(1), Value::String("east".into())]),
             10,
             '`',
-            mysql_placeholder,
+            mysql_ph,
         )
         .unwrap();
-        assert_eq!(params.len(), 2);
+        assert_eq!(params.len(), 3);
         assert!(matches!(params[0], Value::Integer(1)));
-        assert!(matches!(params[1], Value::String(ref s) if s == "east"));
+        assert!(matches!(params[1], Value::Integer(1)));
+        assert!(matches!(params[2], Value::String(ref s) if s == "east"));
         assert_eq!(
             sql,
-            "SELECT `tenant`, `region`, `n` FROM `shards` WHERE (`tenant`, `region`) > (?, ?) \
+            "SELECT `tenant`, `region`, `n` FROM `shards` WHERE ((`tenant` > ?) OR (`tenant` = ? AND `region` > ?)) \
              ORDER BY `tenant` ASC, `region` ASC LIMIT 10"
         );
     }
@@ -336,7 +377,7 @@ mod tests {
             None,
             25,
             '"',
-            postgres_placeholder,
+            postgres_ph,
         )
         .unwrap();
         assert!(params.is_empty());
@@ -359,16 +400,17 @@ mod tests {
             Some(&[Value::Integer(2), Value::String("west".into())]),
             5,
             '"',
-            postgres_placeholder,
+            postgres_ph,
         )
         .unwrap();
-        assert_eq!(params.len(), 2);
+        assert_eq!(params.len(), 3);
         assert!(matches!(params[0], Value::Integer(2)));
-        assert!(matches!(params[1], Value::String(ref s) if s == "west"));
+        assert!(matches!(params[1], Value::Integer(2)));
+        assert!(matches!(params[2], Value::String(ref s) if s == "west"));
         assert_eq!(
             sql,
             "SELECT \"tenant\", \"region\", \"n\" FROM \"shards\" \
-             WHERE (\"tenant\", \"region\") > ($1, $2) \
+             WHERE ((\"tenant\" > $1) OR (\"tenant\" = $2 AND \"region\" > $3)) \
              ORDER BY \"tenant\" ASC, \"region\" ASC LIMIT 5"
         );
     }
@@ -386,7 +428,7 @@ mod tests {
             Some(&[Value::Integer(9)]),
             10,
             '"',
-            postgres_placeholder,
+            postgres_ph,
             Some(("WHERE (\"name\" = $2)", &[Value::String("active".into())])),
         )
         .unwrap();
@@ -396,7 +438,7 @@ mod tests {
         ));
         assert_eq!(
             sql,
-            "SELECT \"id\", \"name\", \"age\" FROM \"users\" WHERE (\"id\") > ($1) AND ((\"name\" = $2)) ORDER BY \"id\" ASC LIMIT 10"
+            "SELECT \"id\", \"name\", \"age\" FROM \"users\" WHERE (\"id\" > $1) AND ((\"name\" = $2)) ORDER BY \"id\" ASC LIMIT 10"
         );
     }
 
@@ -417,9 +459,9 @@ mod tests {
             Some(&[Value::String("0".into()), Value::Integer(9)]),
             25,
             '"',
-            postgres_placeholder,
+            postgres_ph,
             Some((
-                r#"WHERE ("tenant" COLLATE "C", "id") >= ($3::text, $4::integer)"#,
+                r#"WHERE ("tenant" COLLATE "C", "id") >= ($4::text, $5::integer)"#,
                 &filter_params,
             )),
         )
@@ -428,14 +470,15 @@ mod tests {
             params.as_slice(),
             [
                 Value::String(seek_tenant),
+                Value::String(seek_tenant_equal),
                 Value::Integer(seek_id),
                 Value::String(filter_tenant),
                 Value::String(filter_id),
-            ] if seek_tenant == "0" && *seek_id == 9 && filter_tenant == "1" && filter_id == "5"
+            ] if seek_tenant == "0" && seek_tenant_equal == "0" && *seek_id == 9 && filter_tenant == "1" && filter_id == "5"
         ));
         assert_eq!(
             sql,
-            r#"SELECT "tenant", "id", "value" FROM "public"."events" WHERE ("tenant" COLLATE "C", "id") > ($1, $2) AND (("tenant" COLLATE "C", "id") >= ($3::text, $4::integer)) ORDER BY "tenant" COLLATE "C" ASC, "id" ASC LIMIT 25"#
+            r#"SELECT "tenant", "id", "value" FROM "public"."events" WHERE (("tenant" COLLATE "C" > $1) OR ("tenant" COLLATE "C" = $2 AND "id" > $3)) AND (("tenant" COLLATE "C", "id") >= ($4::text, $5::integer)) ORDER BY "tenant" COLLATE "C" ASC, "id" ASC LIMIT 25"#
         );
     }
 
@@ -452,15 +495,62 @@ mod tests {
             Some(&[Value::Integer(9)]),
             "OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY",
             '[',
-            |index| format!("@p{index}"),
+            |index| Ok(format!("@p{index}")),
             None,
         )
         .unwrap();
         assert!(matches!(params.as_slice(), [Value::Integer(9)]));
         assert_eq!(
             sql,
-            "SELECT [id], [name], [age] FROM [dbo].[users] WHERE ([id]) > (@p1) ORDER BY [id] ASC OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY"
+            "SELECT [id], [name], [age] FROM [dbo].[users] WHERE ([id] > @p1) ORDER BY [id] ASC OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY"
         );
+    }
+
+    #[test]
+    fn sqlserver_composite_keyset_uses_lexicographic_seek_and_driver_pagination() {
+        let columns = vec!["tenant".into(), "sequence".into(), "value".into()];
+        let keys = vec!["tenant".into(), "sequence".into()];
+        let (sql, params) = build_keyset_select_sql_with_order_filter_and_pagination(
+            "events",
+            Some("archive"),
+            Some("dbo"),
+            "sqlserver",
+            &columns,
+            &keys,
+            &["[tenant]".into(), "[sequence]".into()],
+            Some(&[Value::Integer(3), Value::Integer(12)]),
+            "OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY",
+            '[',
+            |index| Ok(format!("@P{index}")),
+            None,
+        )
+        .unwrap();
+        assert!(matches!(
+            params.as_slice(),
+            [Value::Integer(3), Value::Integer(3), Value::Integer(12)]
+        ));
+        assert_eq!(
+            sql,
+            "SELECT [tenant], [sequence], [value] FROM [archive].[dbo].[events] WHERE (([tenant] > @P1) OR ([tenant] = @P2 AND [sequence] > @P3)) ORDER BY [tenant] ASC, [sequence] ASC OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY"
+        );
+    }
+
+    #[test]
+    fn keyset_placeholder_error_is_returned_before_query_execution() {
+        let error = build_keyset_select_sql(
+            "events",
+            None,
+            Some("dbo"),
+            "sqlserver",
+            &cols(),
+            &pk1(),
+            Some(&[Value::Integer(1)]),
+            10,
+            '[',
+            |_| Err(DataSyncError::validation("parameter limit exceeded")),
+        )
+        .expect_err("unsupported placeholder must not degrade to another dialect");
+        assert!(error.to_string().contains("parameter limit exceeded"));
     }
 
     #[test]
@@ -475,7 +565,7 @@ mod tests {
             None,
             1,
             '"',
-            postgres_placeholder,
+            postgres_ph,
         )
         .unwrap_err();
         assert!(err.to_string().contains("primary key"));
@@ -493,7 +583,7 @@ mod tests {
             Some(&[Value::Integer(1)]),
             1,
             '"',
-            postgres_placeholder,
+            postgres_ph,
         )
         .unwrap_err();
         assert!(err.to_string().contains("after_key length"));
@@ -511,7 +601,7 @@ mod tests {
             None,
             10,
             '"',
-            postgres_placeholder,
+            postgres_ph,
         )
         .unwrap();
         assert!(params.is_empty());
@@ -534,11 +624,11 @@ mod tests {
             Some(&[Value::String("a".into())]),
             10,
             '"',
-            postgres_placeholder,
+            postgres_ph,
         )
         .unwrap();
         assert_eq!(params.len(), 1);
-        assert!(sql.contains(r#"WHERE ("id" COLLATE "C") > ($1)"#));
+        assert!(sql.contains(r#"WHERE ("id" COLLATE "C" > $1)"#));
         assert!(sql.contains(r#"ORDER BY "id" COLLATE "C" ASC"#));
     }
 }

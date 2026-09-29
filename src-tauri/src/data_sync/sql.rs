@@ -249,6 +249,41 @@ where
     P: Fn(usize, Option<&str>) -> String,
     L: Fn(&str, &Option<Value>, Option<&str>) -> Result<String, DataSyncError>,
 {
+    let qualified_table = qualify_table_ident(target_schema, &table.target_table, quote_ident);
+    generate_table_sql_with_qualified_table_and_policy(
+        table,
+        &qualified_table,
+        pk_columns,
+        column_names,
+        column_types,
+        quote_ident,
+        |index, data_type| Ok(placeholder(index, data_type)),
+        conflict_policy,
+        preview_literal,
+    )
+}
+
+/// Generate a Data Sync ChangeSet using a relation string rendered by the
+/// target driver adapter and fallible driver-owned parameter placeholders.
+/// This is needed for dialects such as SQL Server, whose target reference may
+/// include database, schema, and table parts and whose placeholder indexes
+/// have a finite driver-defined range.
+pub fn generate_table_sql_with_qualified_table_and_policy<Q, P, L>(
+    table: &TableChangeSet,
+    qualified_table: &str,
+    pk_columns: &[String],
+    column_names: &[String],
+    column_types: &[String],
+    quote_ident: Q,
+    placeholder: P,
+    conflict_policy: ConflictPolicy,
+    preview_literal: L,
+) -> Result<Vec<SqlStatement>, DataSyncError>
+where
+    Q: Fn(&str) -> String + Copy,
+    P: Fn(usize, Option<&str>) -> Result<String, DataSyncError>,
+    L: Fn(&str, &Option<Value>, Option<&str>) -> Result<String, DataSyncError>,
+{
     if pk_columns.is_empty() {
         return Err(DataSyncError::validation(
             "cannot generate SQL without primary key columns",
@@ -258,7 +293,7 @@ where
     for change in &table.changes {
         out.push(statement_for_change(
             &table.target_table,
-            target_schema,
+            qualified_table,
             change,
             pk_columns,
             column_names,
@@ -274,7 +309,7 @@ where
 
 fn statement_for_change<Q, P, L>(
     table: &str,
-    schema: Option<&str>,
+    qualified_table: &str,
     change: &RowChange,
     pk_columns: &[String],
     column_names: &[String],
@@ -286,13 +321,13 @@ fn statement_for_change<Q, P, L>(
 ) -> Result<SqlStatement, DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize, Option<&str>) -> String,
+    P: Fn(usize, Option<&str>) -> Result<String, DataSyncError>,
     L: Fn(&str, &Option<Value>, Option<&str>) -> Result<String, DataSyncError>,
 {
     match change.operation {
         ChangeOperation::Insert => insert_sql(
             table,
-            schema,
+            qualified_table,
             change,
             column_names,
             column_types,
@@ -302,7 +337,7 @@ where
         ),
         ChangeOperation::Update => update_sql(
             table,
-            schema,
+            qualified_table,
             change,
             pk_columns,
             column_names,
@@ -314,7 +349,7 @@ where
         ),
         ChangeOperation::Delete => delete_sql(
             table,
-            schema,
+            qualified_table,
             change,
             pk_columns,
             column_names,
@@ -330,17 +365,9 @@ where
     }
 }
 
-fn sql_table_ref<Q: Fn(&str) -> String>(
-    table: &str,
-    schema: Option<&str>,
-    quote_ident: &Q,
-) -> String {
-    qualify_table_ident(schema, table, quote_ident)
-}
-
 fn insert_sql<Q, P, L>(
     table: &str,
-    schema: Option<&str>,
+    qualified_table: &str,
     change: &RowChange,
     column_names: &[String],
     column_types: &[String],
@@ -350,7 +377,7 @@ fn insert_sql<Q, P, L>(
 ) -> Result<SqlStatement, DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize, Option<&str>) -> String,
+    P: Fn(usize, Option<&str>) -> Result<String, DataSyncError>,
     L: Fn(&str, &Option<Value>, Option<&str>) -> Result<String, DataSyncError>,
 {
     let row = change
@@ -372,20 +399,19 @@ where
     let mut placeholders = Vec::new();
     for (i, cell) in row.iter().enumerate() {
         let col_type = column_types.get(i).map(|s| s.as_str());
-        placeholders.push(placeholder(i + 1, col_type));
+        placeholders.push(placeholder(i + 1, col_type)?);
         params.push(cell.clone().unwrap_or(Value::Null));
         preview_vals.push(preview_literal(&column_names[i], cell, col_type)?);
     }
-    let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
         table: table.into(),
         operation: ChangeOperation::Insert,
         sql: format!(
-            "INSERT INTO {qtable} ({cols}) VALUES ({})",
+            "INSERT INTO {qualified_table} ({cols}) VALUES ({})",
             placeholders.join(", ")
         ),
         preview_sql: format!(
-            "INSERT INTO {qtable} ({cols}) VALUES ({})",
+            "INSERT INTO {qualified_table} ({cols}) VALUES ({})",
             preview_vals.join(", ")
         ),
         parameters: params,
@@ -395,7 +421,7 @@ where
 
 fn update_sql<Q, P, L>(
     table: &str,
-    schema: Option<&str>,
+    qualified_table: &str,
     change: &RowChange,
     pk_columns: &[String],
     column_names: &[String],
@@ -407,7 +433,7 @@ fn update_sql<Q, P, L>(
 ) -> Result<SqlStatement, DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize, Option<&str>) -> String,
+    P: Fn(usize, Option<&str>) -> Result<String, DataSyncError>,
     L: Fn(&str, &Option<Value>, Option<&str>) -> Result<String, DataSyncError>,
 {
     let row = change
@@ -432,7 +458,7 @@ where
         set_ph.push(format!(
             "{} = {}",
             quote_ident(col),
-            placeholder(idx, col_type)
+            placeholder(idx, col_type)?
         ));
         set_lit.push(format!(
             "{} = {}",
@@ -471,17 +497,16 @@ where
     params.extend(expected_params);
     let where_ph = join_where_clauses(&where_ph, &expected_ph);
     let where_lit = join_where_clauses(&where_lit, &expected_lit);
-    let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
         table: table.into(),
         operation: ChangeOperation::Update,
         sql: format!(
-            "UPDATE {qtable} SET {} WHERE {}",
+            "UPDATE {qualified_table} SET {} WHERE {}",
             set_ph.join(", "),
             where_ph
         ),
         preview_sql: format!(
-            "UPDATE {qtable} SET {} WHERE {}",
+            "UPDATE {qualified_table} SET {} WHERE {}",
             set_lit.join(", "),
             where_lit
         ),
@@ -492,7 +517,7 @@ where
 
 fn delete_sql<Q, P, L>(
     table: &str,
-    schema: Option<&str>,
+    qualified_table: &str,
     change: &RowChange,
     pk_columns: &[String],
     column_names: &[String],
@@ -504,7 +529,7 @@ fn delete_sql<Q, P, L>(
 ) -> Result<SqlStatement, DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize, Option<&str>) -> String,
+    P: Fn(usize, Option<&str>) -> Result<String, DataSyncError>,
     L: Fn(&str, &Option<Value>, Option<&str>) -> Result<String, DataSyncError>,
 {
     let target_row = change.target_row.as_ref();
@@ -546,12 +571,11 @@ where
     let where_lit = join_where_clauses(&where_lit, &expected_lit);
     let mut params = params;
     params.extend(expected_params);
-    let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
         table: table.into(),
         operation: ChangeOperation::Delete,
-        sql: format!("DELETE FROM {qtable} WHERE {where_ph}"),
-        preview_sql: format!("DELETE FROM {qtable} WHERE {where_lit}"),
+        sql: format!("DELETE FROM {qualified_table} WHERE {where_ph}"),
+        preview_sql: format!("DELETE FROM {qualified_table} WHERE {where_lit}"),
         parameters: params,
         row_key: change.key.clone(),
     })
@@ -584,7 +608,7 @@ fn where_expected_target<Q, P, L>(
 ) -> Result<(String, String, Vec<Value>), DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize, Option<&str>) -> String,
+    P: Fn(usize, Option<&str>) -> Result<String, DataSyncError>,
     L: Fn(&str, &Option<Value>, Option<&str>) -> Result<String, DataSyncError>,
 {
     let target_row = target_row.ok_or_else(|| {
@@ -607,8 +631,8 @@ where
         let expected = target_row[position].clone().unwrap_or(Value::Null);
         let expected_option = Some(expected.clone());
         let col_type = column_types.get(position).map(|s| s.as_str());
-        let first = placeholder(index, col_type);
-        let second = placeholder(index + 1, col_type);
+        let first = placeholder(index, col_type)?;
+        let second = placeholder(index + 1, col_type)?;
         let first_lit = preview_literal(col, &expected_option, col_type)?;
         let second_lit = preview_literal(col, &expected_option, col_type)?;
         ph.push(format!(
@@ -636,7 +660,7 @@ fn where_pk<Q, P, L>(
 ) -> Result<(String, String, Vec<Value>), DataSyncError>
 where
     Q: Fn(&str) -> String,
-    P: Fn(usize, Option<&str>) -> String,
+    P: Fn(usize, Option<&str>) -> Result<String, DataSyncError>,
     L: Fn(&str, &Option<Value>, Option<&str>) -> Result<String, DataSyncError>,
 {
     if pk_columns.len() != key.len() {
@@ -657,7 +681,7 @@ where
             }
             v => {
                 let col_type = column_type(column_names, column_types, col);
-                ph.push(format!("{} = {}", ident, placeholder(index, col_type)));
+                ph.push(format!("{} = {}", ident, placeholder(index, col_type)?));
                 lit.push(format!(
                     "{} = {}",
                     ident,
@@ -825,6 +849,38 @@ mod tests {
             stmts[0].sql,
             "INSERT INTO `mydb`.`clients` (`id`, `name`) VALUES (?, ?)"
         );
+    }
+
+    #[test]
+    fn qualified_target_generator_uses_driver_relation_and_parameter_placeholders() {
+        let options = SyncOptions::default();
+        let insert = RowChange::insert(
+            vec![Value::Integer(7)],
+            vec![Some(Value::Integer(7)), Some(Value::String("Ada".into()))],
+            &options,
+        );
+        let table = TableChangeSet {
+            source_table: "users".into(),
+            target_table: "users".into(),
+            changes: vec![insert],
+        };
+        let statements = generate_table_sql_with_qualified_table_and_policy(
+            &table,
+            "[archive].[sales].[users]",
+            &["id".into()],
+            &["id".into(), "name".into()],
+            &["int".into(), "nvarchar(32)".into()],
+            |name| quote_ident_sql(name, '['),
+            |index, _| Ok(format!("@P{index}")),
+            ConflictPolicy::Abort,
+            |_, value, _| Ok(format_literal(value)),
+        )
+        .unwrap();
+        assert_eq!(
+            statements[0].sql,
+            "INSERT INTO [archive].[sales].[users] ([id], [name]) VALUES (@P1, @P2)"
+        );
+        assert_eq!(statements[0].parameters.len(), 2);
     }
 
     #[test]

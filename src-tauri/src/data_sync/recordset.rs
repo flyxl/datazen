@@ -156,6 +156,18 @@ pub(super) fn validate_recordset(
     resolve_recordset(recordset, schema).map(|_| ())
 }
 
+pub(super) fn comparison_columns(
+    recordset: &SyncRecordset,
+    schema: &TableSchema,
+) -> Result<Vec<String>, DataSyncError> {
+    let resolved = resolve_recordset(recordset, schema)?;
+    if resolved.start.is_some() || resolved.end.is_some() {
+        Ok(resolved.order_by)
+    } else {
+        Ok(Vec::new())
+    }
+}
+
 pub(super) fn recordset_limit(
     recordset: &SyncRecordset,
     schema: &TableSchema,
