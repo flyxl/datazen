@@ -86,6 +86,9 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 | 批处理专用语句 | `CREATE`/`ALTER` `SCHEMA`·`VIEW`·`PROCEDURE`·`FUNCTION`·`TRIGGER`、会话级 `SET`（`IDENTITY_INSERT`、`SHOWPLAN_TEXT`）与 `BEGIN TRAN`/`COMMIT`/`ROLLBACK` 必须经 `Client::simple_query` 作为真实 batch 发出；走 `sp_executesql` RPC 会分别报 156 / 544 / 266 |
 | EXPLAIN | `SET SHOWPLAN_TEXT ON` + 语句 + `SET SHOWPLAN_TEXT OFF` 整批执行；经 RPC 传入会**实际执行**被分析的语句 |
 | 时间值 | `date` / `time` / `datetime2` 输出精确文本，`datetimeoffset` 输出带偏移的 RFC3339；不发 Rust Debug 形式（`Date(…)` / `Time { increments: … }`） |
+| 参数 | `query_with_params` / `execute_with_params` 通过 Tiberius TDS 参数绑定传值，使用 `@P1` 到 `@P2100`；批处理专用 SQL 不接受参数并显式返回 Unsupported，SQL 文本不会拼入参数值 |
+| 结构元数据 | 目录读取保留声明类型长度/精度、主键/索引/外键列顺序、外键动作、CHECK 表达式和列注释；无法由公共模型等价表达的计算/生成列、特殊索引及禁用或不可信约束会明确拒绝，避免静默返回不完整结构。Data Transfer 当前仍拒绝二级索引、外键和 CHECK，避免这些对象在传输计划中丢失 |
+| 事务与读取快照 | `begin_transaction`、`commit`、`rollback` 在同一 TDS session 上执行；`begin_read_snapshot` 保存原隔离级别，在 `ALLOW_SNAPSHOT_ISOLATION` 可用时开始 SNAPSHOT 事务，并在提交/回滚后恢复隔离级别。失败的事务收尾会丢弃状态不确定的 session |
 | 语句切分 | 多语句按引号/注释感知的扫描器切分（`driver-api::sql_split`），不使用裸 `;` |
 | 服务端拒绝的写法 | `FETCH NEXT 0 ROWS ONLY`（10744）、缺少 `ORDER BY` 的 `OFFSET/FETCH`（102）。分页控件对 0 行页给出诊断而不是丢弃子句 |
 | 平台限制 | Azure SQL Database：`BACKUP`/`RESTORE` 40510、`msdb` 跨库名 40515、`CREATE LOGIN` 需 master（5001）、serverless 自动暂停首次登录 40613（需退避重试） |

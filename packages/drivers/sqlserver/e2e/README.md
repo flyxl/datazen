@@ -7,6 +7,7 @@ Optional WebdriverIO specs for the SQL Server path driver. Not included in defau
 | `sqlserver-smoke.ts` | Reachability placeholder: skips unless a SQL Server instance answers on `host:port`. |
 | `sqlserver-live-e2e.ts` | Live journey through the app's own IPC (`save_connection` → `connect` → `execute_query` → `get_table_data`). Asserts dialect pagination (`OFFSET … FETCH NEXT`, never `LIMIT`), batch-only DDL such as `CREATE SCHEMA`/`CREATE VIEW`, temporal rendering and filtered/sorted paging. Creates only `dz_e2e_*` objects and drops them in `after`. |
 | `sqlserver-live-ui.ts` | Live journey through the **real window**: connects via the navigator card, expands `<db> → <schema> → Tables`, opens the scratch table in the data grid and asserts every column header, the temporal cell text (`2026-03-01`, never `Date(`/`increments`) and next-page navigation. Reuses the host harness helpers (`e2e/helpers.ts`) for tree expansion, so it also exercises the same navigator code path as the other drivers' specs. |
+| `sqlserver-metadata.ts` | Live journey through `get_table_schema` IPC. Creates parent/child scratch tables with composite primary keys, a secondary index, a composite foreign key and a CHECK constraint; verifies catalog names, columns, actions and key ordering. It also checks that a non-default column collation is preserved or rejected explicitly, then drops the scratch objects. |
 
 ## Prerequisites
 
@@ -51,6 +52,11 @@ E2E_SQLSERVER_DATABASE=master \
 E2E_SQLSERVER_HOST=127.0.0.1 E2E_SQLSERVER_USER=sa E2E_SQLSERVER_PASSWORD='YourPassword' \
 E2E_SQLSERVER_DATABASE=master \
   pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-live-ui.ts
+
+# catalog metadata journey through get_table_schema IPC
+E2E_SQLSERVER_HOST=127.0.0.1 E2E_SQLSERVER_USER=sa E2E_SQLSERVER_PASSWORD='YourPassword' \
+E2E_SQLSERVER_DATABASE=master \
+  pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-metadata.ts
 ```
 
 Without credentials, the specs skip cleanly. The live specs make no assumption about

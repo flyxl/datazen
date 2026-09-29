@@ -32,7 +32,7 @@ use common::{
     cell, cell_i64, cell_string, connect, drop_quietly, live_config, scalar, with_resume_retry,
     write_allowed, LiveConfig,
 };
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver as _, DriverError};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver as _, DriverError, Value};
 use datazen_driver_sqlserver::SqlServerDriver;
 use futures_util::FutureExt as _;
 use serde_json::json;
@@ -1356,6 +1356,160 @@ async fn transaction_control_statements_work_on_their_own() {
             "the rolled-back rows must be gone"
         );
     })
+    .await;
+}
+
+#[tokio::test]
+async fn driver_transaction_api_keeps_parameterized_writes_on_the_same_session() {
+    let Some(cfg) = live_config() else { return };
+    if !write_allowed(&cfg, "SQL Server driver transaction API") {
+        return;
+    }
+    let table = cfg.scratch("driver_tx");
+    let t = dbo(&table);
+    let cleanup = vec![rollback_if_open(), format!("DROP TABLE IF EXISTS {t}")];
+    let probes = vec![object_probe(&t)];
+
+    with_cleanup(
+        &cfg,
+        "driver transaction API",
+        cleanup,
+        probes,
+        move |driver, handle| async move {
+            driver
+                .execute(
+                    &handle,
+                    &format!("CREATE TABLE {t} ([id] INT NOT NULL PRIMARY KEY, [note] NVARCHAR(100) NOT NULL)"),
+                )
+                .await
+                .expect("create transaction probe table");
+
+            let tx = driver
+                .begin_transaction(&handle)
+                .await
+                .expect("begin_transaction starts on this connection's TDS session");
+            let affected = driver
+                .execute_with_params(
+                    &handle,
+                    &format!("INSERT INTO {t} ([id], [note]) VALUES (@P1, @P2)"),
+                    &[Value::Integer(1), Value::String("O'Brien".into())],
+                )
+                .await
+                .expect("parameterized insert runs inside the open transaction");
+            assert_eq!(affected, 1);
+            assert_eq!(
+                count(&driver, &handle, &t).await,
+                1,
+                "reads on the same handle see the uncommitted write"
+            );
+            driver.rollback(tx).await.expect("rollback the first write");
+            assert_eq!(
+                count(&driver, &handle, &t).await,
+                0,
+                "rollback must clear the parameterized write"
+            );
+
+            let tx = driver
+                .begin_transaction(&handle)
+                .await
+                .expect("begin a second transaction on the same live session");
+            driver
+                .execute_with_params(
+                    &handle,
+                    &format!("INSERT INTO {t} ([id], [note]) VALUES (@P1, @P2)"),
+                    &[Value::Integer(2), Value::String("committed".into())],
+                )
+                .await
+                .expect("insert before commit");
+            driver.commit(tx).await.expect("commit the second write");
+            assert_eq!(
+                count(&driver, &handle, &t).await,
+                1,
+                "commit must leave the row visible after the transaction"
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn read_snapshot_keeps_a_stable_view_on_its_tds_session() {
+    let Some(cfg) = live_config() else { return };
+    if !write_allowed(&cfg, "SQL Server snapshot isolation") {
+        return;
+    }
+    let table = cfg.scratch("snapshot");
+    let t = dbo(&table);
+    let connect_config = cfg.default_config();
+    let cleanup = vec![rollback_if_open(), format!("DROP TABLE IF EXISTS {t}")];
+    let probes = vec![object_probe(&t)];
+
+    with_cleanup(
+        &cfg,
+        "snapshot isolation",
+        cleanup,
+        probes,
+        move |driver, first| async move {
+            let snapshot_state = scalar(
+                &driver,
+                &first,
+                "SELECT snapshot_isolation_state FROM sys.databases WHERE name = DB_NAME()",
+            )
+            .await
+            .expect("read ALLOW_SNAPSHOT_ISOLATION state");
+            if cell_i64(&snapshot_state) != Some(1) {
+                eprintln!("⏭  Skipping snapshot assertion: ALLOW_SNAPSHOT_ISOLATION is not ON");
+                return;
+            }
+
+            driver
+                .execute(
+                    &first,
+                    &format!("CREATE TABLE {t} ([id] INT NOT NULL PRIMARY KEY)"),
+                )
+                .await
+                .expect("create snapshot probe table");
+            driver
+                .execute(&first, &format!("INSERT INTO {t} ([id]) VALUES (1)"))
+                .await
+                .expect("seed snapshot probe table");
+            let second = driver
+                .connect(&connect_config)
+                .await
+                .expect("open a second TDS session");
+
+            let snapshot = driver
+                .begin_read_snapshot(&first)
+                .await
+                .expect("begin SNAPSHOT transaction on the first TDS session");
+            assert_eq!(count(&driver, &first, &t).await, 1);
+            assert_eq!(
+                driver
+                    .execute(&second, &format!("INSERT INTO {t} ([id]) VALUES (2)"))
+                    .await
+                    .expect("commit a row from the second session"),
+                1
+            );
+            assert_eq!(
+                count(&driver, &first, &t).await,
+                1,
+                "the open snapshot keeps the view established by its first read"
+            );
+            driver
+                .rollback(snapshot)
+                .await
+                .expect("end the snapshot transaction and restore isolation");
+            assert_eq!(
+                count(&driver, &first, &t).await,
+                2,
+                "after rollback, a new statement sees the second session's commit"
+            );
+            driver
+                .disconnect(second)
+                .await
+                .expect("disconnect the second TDS session");
+        },
+    )
     .await;
 }
 
