@@ -3,6 +3,7 @@ use super::filter_validation::{
 };
 use crate::data_sync::SyncSourceFilter;
 use crate::db::{ColumnSchema, TableSchema};
+use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_mysql::{MysqlDriver, MysqlSyncAdapter};
 use datazen_driver_postgres::{PgSyncAdapter, PostgresDriver};
 
@@ -45,6 +46,136 @@ fn tuple_filter(start: [&str; 2], end: [&str; 2]) -> SyncSourceFilter {
 
 fn keys() -> Vec<String> {
     vec!["tenant_id".into(), "id".into()]
+}
+
+fn sqlserver_filter_schema(filter_type: &str) -> TableSchema {
+    TableSchema {
+        table_name: "people".into(),
+        columns: vec![
+            ColumnSchema {
+                name: "id".into(),
+                data_type: "int".into(),
+                nullable: false,
+                default_value: None,
+                comment: None,
+                is_primary_key: true,
+                is_auto_increment: false,
+            },
+            ColumnSchema {
+                name: "name".into(),
+                data_type: filter_type.into(),
+                nullable: true,
+                default_value: None,
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            },
+            ColumnSchema {
+                name: "age".into(),
+                data_type: "int".into(),
+                nullable: false,
+                default_value: None,
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            },
+        ],
+        primary_keys: vec!["id".into()],
+        indexes: vec![],
+        foreign_keys: vec![],
+        check_constraints: vec![],
+        table_options: Default::default(),
+    }
+}
+
+fn scalar_filter(column: &str, operator: &str, value: serde_json::Value) -> SyncSourceFilter {
+    serde_json::from_value(serde_json::json!({
+        "filters": [{"column": column, "operator": operator, "value": value}]
+    }))
+    .expect("valid scalar sync filter JSON")
+}
+
+fn validate_sqlserver_filter(
+    filter: &SyncSourceFilter,
+    source: &TableSchema,
+    target: &TableSchema,
+) -> Result<(), String> {
+    let driver = MockDriver::new(
+        "sqlserver",
+        MockDriverOptions {
+            parameterized_writes: true,
+            ..MockDriverOptions::default()
+        },
+    );
+    let adapter = PgSyncAdapter;
+    let key_columns = vec!["id".into()];
+    let (source_contracts, target_contracts) = resolve_key_contracts(
+        &key_columns,
+        &adapter,
+        &adapter,
+        source,
+        target,
+        "people",
+        "people",
+    )
+    .map_err(|error| error.to_string())?;
+    validate_filter_endpoints(
+        filter,
+        &key_columns,
+        driver.as_ref(),
+        driver.as_ref(),
+        &adapter,
+        &adapter,
+        source,
+        target,
+        &source_contracts,
+        &target_contracts,
+        "people",
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn sqlserver_text_filter_is_rejected_when_collation_parity_is_unrepresented() {
+    let source = sqlserver_filter_schema("nvarchar(64)");
+    let target = source.clone();
+    let filter = scalar_filter("name", "eq", serde_json::json!("Ada"));
+
+    let error = validate_sqlserver_filter(&filter, &source, &target).unwrap_err();
+
+    assert!(
+        error.contains("default/per-column collation parity"),
+        "{error}"
+    );
+}
+
+#[test]
+fn sqlserver_non_text_filter_is_safe_without_collation_metadata() {
+    let source = sqlserver_filter_schema("nvarchar(64)");
+    let target = source.clone();
+    let filter = scalar_filter("age", "gte", serde_json::json!(18));
+
+    validate_sqlserver_filter(&filter, &source, &target).unwrap();
+}
+
+#[test]
+fn sqlserver_text_null_check_is_safe_without_collation_metadata() {
+    let source = sqlserver_filter_schema("nvarchar(64)");
+    let target = source.clone();
+    let filter = scalar_filter("name", "isNull", serde_json::Value::Null);
+
+    validate_sqlserver_filter(&filter, &source, &target).unwrap();
+}
+
+#[test]
+fn sqlserver_filter_rejects_unknown_alias_type_that_may_be_textual() {
+    let source = sqlserver_filter_schema("[dbo].[PersonName]");
+    let target = source.clone();
+    let filter = scalar_filter("name", "like", serde_json::json!("A%"));
+
+    let error = validate_sqlserver_filter(&filter, &source, &target).unwrap_err();
+
+    assert!(error.contains("cannot verify whether this type uses text collation semantics"));
 }
 
 #[test]
