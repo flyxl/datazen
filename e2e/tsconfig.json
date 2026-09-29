@@ -14,5 +14,9 @@
   // entry — `pnpm typecheck` runs the root tsconfig, whose `include` does not
   // reach `e2e/` — which is how a spec can sit in a suite with a broken import
   // and still be reported as clean, by never being asked.
-  "include": ["**/*.ts", "../packages/pro-extensions/*/e2e/**/*.ts"]
+  "include": [
+    "**/*.ts",
+    "../packages/pro-extensions/*/e2e/**/*.ts",
+    "../packages/drivers/sqlserver/e2e/**/*.ts"
+  ]
 }

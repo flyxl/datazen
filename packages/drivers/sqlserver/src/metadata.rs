@@ -517,6 +517,93 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_primary_key_ordinals_are_rejected() {
+        let mut first = vec![
+            text("first"),
+            text("int"),
+            bit(false),
+            bit(false),
+            None,
+            None,
+            bit(true),
+            Some(Value::Integer(1)),
+            bit(false),
+            Some(Value::Integer(0)),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+        ];
+        let mut second = first.clone();
+        first[0] = text("first");
+        second[0] = text("second");
+
+        let parsed = parse_columns(result(vec![first, second]));
+        assert!(
+            matches!(parsed, Err(DriverError::QueryFailed(ref message)) if message.contains("duplicate") || message.contains("ordinal")),
+            "duplicate primary-key ordinals should fail as incomplete metadata, got {parsed:?}"
+        );
+    }
+
+    #[test]
+    fn duplicate_secondary_index_ordinals_are_rejected() {
+        let index_row = |column: &str| {
+            vec![
+                Some(Value::Integer(2)),
+                text("ix_pair"),
+                bit(false),
+                bit(false),
+                text("NONCLUSTERED"),
+                bit(false),
+                bit(false),
+                bit(false),
+                bit(false),
+                Some(Value::Integer(1)),
+                text(column),
+                bit(false),
+                bit(false),
+                text("FG"),
+            ]
+        };
+
+        let parsed = parse_indexes(result(vec![index_row("first"), index_row("second")]));
+        assert!(
+            matches!(parsed, Err(DriverError::QueryFailed(ref message)) if message.contains("duplicate") || message.contains("ordinal")),
+            "duplicate secondary-index ordinals should fail as incomplete metadata, got {parsed:?}"
+        );
+    }
+
+    #[test]
+    fn duplicate_foreign_key_ordinals_are_rejected() {
+        let foreign_key_row = |local: &str, remote: &str| {
+            vec![
+                text("fk_pair"),
+                Some(Value::Integer(1)),
+                text(local),
+                text("dbo"),
+                text("parent"),
+                text(remote),
+                text("NO_ACTION"),
+                text("NO_ACTION"),
+                bit(false),
+                bit(false),
+                bit(false),
+            ]
+        };
+
+        let parsed = parse_foreign_keys(result(vec![
+            foreign_key_row("local_a", "remote_a"),
+            foreign_key_row("local_b", "remote_b"),
+        ]));
+        assert!(
+            matches!(parsed, Err(DriverError::QueryFailed(ref message)) if message.contains("duplicate") || message.contains("ordinal")),
+            "duplicate foreign-key ordinals should fail as incomplete metadata, got {parsed:?}"
+        );
+    }
+
+    #[test]
     fn filtered_and_untrusted_objects_fail_closed() {
         let index_row = vec![
             Some(Value::Integer(2)),
