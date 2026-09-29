@@ -126,10 +126,10 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
         schema: Option<&str>,
         table: &str,
     ) -> Option<String> {
-        // SQL Server's current schema reader only exposes columns and PKs.
-        // Refuse source objects that would otherwise disappear from the
-        // transfer plan. Keep catalog qualifiers and user names safely quoted
-        // as identifiers/literals, including `]` and apostrophes.
+        // The current transfer plan preserves columns and PKs only, so refuse
+        // table-level objects that would otherwise disappear from the export.
+        // Keep catalog qualifiers and user names safely quoted as identifiers
+        // or literals, including `]` and apostrophes.
         let catalog = if database.trim().is_empty() {
             String::new()
         } else {

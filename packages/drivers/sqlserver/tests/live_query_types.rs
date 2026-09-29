@@ -113,8 +113,8 @@ async fn scalar_types_round_trip_with_expected_variants() {
         );
     }
     assert!(
-        matches!(by_name("t_bin"), Some(Value::String(s)) if s.eq_ignore_ascii_case("0x0102ff")),
-        "varbinary decodes to a 0x hex string, got {:?}",
+        matches!(by_name("t_bin"), Some(Value::Bytes(bytes)) if bytes == &[0x01, 0x02, 0xff]),
+        "varbinary decodes to its original bytes, got {:?}",
         by_name("t_bin")
     );
     assert!(
@@ -122,6 +122,51 @@ async fn scalar_types_round_trip_with_expected_variants() {
         "xml decodes to its text, got {:?}",
         by_name("t_xml")
     );
+
+    let _ = driver.disconnect(handle).await;
+}
+
+#[tokio::test]
+async fn query_parameters_are_bound_as_values_without_sql_interpolation() {
+    let Some(cfg) = live_config() else { return };
+    let (driver, handle) = connect(&cfg).await;
+    let untrusted = "O'Brien'; SELECT 99 AS injected --";
+    let binary = vec![0, 0x27, 0xff];
+
+    let result = driver
+        .query_with_params(
+            &handle,
+            "SELECT CAST(@P1 AS nvarchar(200)) AS [text], @P2 AS [bytes], @P3 AS [null_value]",
+            &[
+                Value::String(untrusted.into()),
+                Value::Bytes(binary.clone()),
+                Value::Null,
+            ],
+        )
+        .await
+        .unwrap_or_else(|error| panic!("parameterized query failed: {error}"));
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "bound text must not inject another SELECT"
+    );
+    assert!(
+        matches!(&result.rows[0][0], Some(Value::String(value)) if value == untrusted),
+        "quotes and SQL-looking text must survive as data"
+    );
+    assert!(
+        matches!(&result.rows[0][1], Some(Value::Bytes(value)) if value == &binary),
+        "binary parameters must retain their bytes"
+    );
+    assert!(
+        matches!(result.rows[0][2].as_ref(), None | Some(Value::Null)),
+        "NULL must remain a native NULL parameter"
+    );
+
+    assert_eq!(driver.parameter_placeholder(1, None).unwrap(), "@P1");
+    assert_eq!(driver.parameter_placeholder(2100, None).unwrap(), "@P2100");
+    assert!(driver.parameter_placeholder(0, None).is_err());
+    assert!(driver.parameter_placeholder(2101, None).is_err());
 
     let _ = driver.disconnect(handle).await;
 }
