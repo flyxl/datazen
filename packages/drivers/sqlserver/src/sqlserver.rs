@@ -914,6 +914,7 @@ impl DatabaseDriver for SqlServerDriver {
         let parameters = [
             Value::String(schema.to_string()),
             Value::String(table.to_string()),
+            Value::String(database.trim().to_string()),
         ];
         let column_rows =
             Self::run_with_params(client, &crate::metadata::columns_sql(database), &parameters)

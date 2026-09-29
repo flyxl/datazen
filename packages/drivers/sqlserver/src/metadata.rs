@@ -4,7 +4,7 @@ use datazen_driver_api::{
     CheckConstraint, ColumnSchema, DriverError, ForeignKeyDeferrability, ForeignKeyInfo, IndexInfo,
     QueryResult, Value,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 fn catalog_prefix(database: &str) -> String {
     let database = database.trim();
@@ -46,7 +46,9 @@ pub(crate) fn columns_sql(database: &str) -> String {
          CAST(CASE WHEN tp.name IN ('timestamp', 'rowversion') THEN 1 ELSE 0 END AS bit) AS is_rowversion, \
          CAST(CASE WHEN ic.object_id IS NOT NULL AND \
            (TRY_CONVERT(decimal(38,0), ic.seed_value) <> 1 OR TRY_CONVERT(decimal(38,0), ic.increment_value) <> 1) \
-           THEN 1 ELSE 0 END AS bit) AS has_nondefault_identity \
+           THEN 1 ELSE 0 END AS bit) AS has_nondefault_identity, \
+         c.collation_name AS column_collation, \
+         CAST(DATABASEPROPERTYEX(CASE WHEN @P3 = N'' THEN DB_NAME() ELSE @P3 END, 'Collation') AS nvarchar(128)) AS database_collation \
          FROM {catalog}sys.columns c \
          JOIN {catalog}sys.objects o ON o.object_id = c.object_id \
          JOIN {catalog}sys.types tp ON tp.user_type_id = c.user_type_id \
@@ -124,10 +126,21 @@ pub(crate) fn parse_columns(
     let mut columns = Vec::with_capacity(result.rows.len());
     let mut key_columns = Vec::new();
     for row in result.rows {
+        if row.len() < 18 {
+            return Err(incomplete("catalog row omitted column collation metadata"));
+        }
         let name = required_text(&row, 0, "column name")?;
         let data_type = required_text(&row, 1, "declared column type")?;
         let is_primary_key = required_bool(&row, 6, "primary key flag")?;
         let key_ordinal = required_integer(&row, 7, "primary key ordinal")?;
+        let database_collation = required_text(&row, 17, "database collation")?;
+        if let Some(column_collation) = optional_text(&row, 16).filter(|value| !value.is_empty()) {
+            if !column_collation.eq_ignore_ascii_case(&database_collation) {
+                return Err(unsupported(format!(
+                    "SQL Server column '{name}' uses non-default collation '{column_collation}', which ColumnSchema cannot represent safely"
+                )));
+            }
+        }
         for (index, reason) in [
             (8, "computed columns"),
             (9, "generated-always columns"),
@@ -164,6 +177,10 @@ pub(crate) fn parse_columns(
             is_auto_increment: required_bool(&row, 3, "identity flag")?,
         });
     }
+    ensure_unique_ordinals(
+        key_columns.iter().map(|(ordinal, _)| *ordinal),
+        "primary-key",
+    )?;
     key_columns.sort_by_key(|(ordinal, _)| *ordinal);
     Ok((
         columns,
@@ -256,6 +273,10 @@ pub(crate) fn parse_indexes(result: QueryResult) -> Result<Vec<IndexInfo>, Drive
                 index.name
             )));
         }
+        ensure_unique_ordinals(
+            index.columns.iter().map(|(ordinal, _)| *ordinal),
+            &format!("index '{}' key", index.name),
+        )?;
         parsed.push(IndexInfo {
             name: index.name,
             columns: index.columns.into_iter().map(|(_, name)| name).collect(),
@@ -331,6 +352,10 @@ pub(crate) fn parse_foreign_keys(result: QueryResult) -> Result<Vec<ForeignKeyIn
                 "SQL Server foreign key '{name}' has no columns"
             )));
         }
+        ensure_unique_ordinals(
+            key.columns.iter().map(|(ordinal, _, _)| *ordinal),
+            &format!("foreign key '{name}' column"),
+        )?;
         parsed.push(ForeignKeyInfo {
             name,
             columns: key
@@ -356,6 +381,19 @@ pub(crate) fn parse_foreign_keys(result: QueryResult) -> Result<Vec<ForeignKeyIn
         });
     }
     Ok(parsed)
+}
+
+fn ensure_unique_ordinals(
+    ordinals: impl IntoIterator<Item = i64>,
+    label: &str,
+) -> Result<(), DriverError> {
+    let mut seen = HashSet::new();
+    for ordinal in ordinals {
+        if !seen.insert(ordinal) {
+            return Err(incomplete(format!("duplicate {label} ordinal {ordinal}")));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn parse_checks(result: QueryResult) -> Result<Vec<CheckConstraint>, DriverError> {
@@ -480,6 +518,9 @@ mod tests {
         assert!(columns.contains("QUOTENAME(tp_schema.name)"));
         assert!(columns.contains("[db]]].sys.schemas tp_schema"));
         assert!(columns.contains("s.name = @P1 AND o.name = @P2"));
+        assert!(
+            columns.contains("DATABASEPROPERTYEX(CASE WHEN @P3 = N'' THEN DB_NAME() ELSE @P3 END")
+        );
         assert!(!columns.contains("@P1'"));
         assert!(indexes_sql("db").contains("ic.key_ordinal"));
         assert!(foreign_keys_sql("db").contains("fkc.constraint_column_id"));
@@ -505,6 +546,8 @@ mod tests {
             bit(false),
             bit(false),
             bit(false),
+            None,
+            text("Latin1_General_100_CI_AS_SC_UTF8"),
         ];
         let mut b = a.clone();
         a[0] = text("a");
@@ -535,6 +578,8 @@ mod tests {
             bit(false),
             bit(false),
             bit(false),
+            None,
+            text("Latin1_General_100_CI_AS_SC_UTF8"),
         ];
         let mut second = first.clone();
         first[0] = text("first");
@@ -601,6 +646,35 @@ mod tests {
             matches!(parsed, Err(DriverError::QueryFailed(ref message)) if message.contains("duplicate") || message.contains("ordinal")),
             "duplicate foreign-key ordinals should fail as incomplete metadata, got {parsed:?}"
         );
+    }
+
+    #[test]
+    fn nondefault_column_collation_is_rejected() {
+        let row = vec![
+            text("label"),
+            text("nvarchar(40)"),
+            bit(true),
+            bit(false),
+            None,
+            None,
+            bit(false),
+            Some(Value::Integer(0)),
+            bit(false),
+            Some(Value::Integer(0)),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+            text("Latin1_General_100_CI_AS_SC_UTF8"),
+            text("SQL_Latin1_General_CP1_CI_AS"),
+        ];
+
+        assert!(matches!(
+            parse_columns(result(vec![row])),
+            Err(DriverError::Unsupported(message)) if message.contains("non-default collation")
+        ));
     }
 
     #[test]

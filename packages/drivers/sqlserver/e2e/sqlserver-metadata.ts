@@ -261,20 +261,13 @@ describe('SQL Server schema metadata IPC (live)', () => {
     expect(child.checkConstraints[0]?.expression).toContain('0');
   });
 
-  it('preserves a non-default column collation or refuses incomplete metadata', async () => {
-    let response: TableSchemaPayload | undefined;
+  it('refuses non-default collations that TableSchema cannot represent', async () => {
     let error = '';
     try {
-      response = await tableSchema(collationTable);
+      await tableSchema(collationTable);
     } catch (cause) {
       error = String(cause);
     }
-
-    if (response) {
-      const dataType = response.columns.find((column) => column.name === 'text_value')?.dataType ?? '';
-      expect(dataType.toLowerCase()).toContain(nonDefaultCollation.toLowerCase());
-    } else {
-      expect(error.toLowerCase()).toMatch(/collation|unsupported|not represent/);
-    }
+    expect(error.toLowerCase()).toMatch(/collation|unsupported|not represent/);
   });
 });
