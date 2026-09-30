@@ -432,7 +432,7 @@ export const ConnectionNavigatorTree = forwardRef<
   }, []);
 
   const toggleCategory = useCallback(
-    async (catKey: string, catId: string, dbSessionId: string) => {
+    async (catKey: string, catId: string, dbSessionId: string, dbName: string) => {
       const wasExpanded = expandedCats.has(catKey);
 
       setExpandedCats((prev) => {
@@ -443,7 +443,7 @@ export const ConnectionNavigatorTree = forwardRef<
       });
 
       if (wasExpanded) return;
-      await dbState.toggleCategoryLoad(catKey, catId, dbSessionId);
+      await dbState.toggleCategoryLoad(catKey, catId, dbSessionId, dbName);
     },
     [expandedCats, dbState],
   );

@@ -50,6 +50,7 @@ export function DatabaseObjectView({
         objectSignature,
         objectTargetSchema,
         objectTargetName,
+        database,
       );
       setDdl(text);
     } catch (e) {
@@ -65,6 +66,7 @@ export function DatabaseObjectView({
     objectSignature,
     objectTargetSchema,
     objectTargetName,
+    database,
   ]);
 
   useEffect(() => {

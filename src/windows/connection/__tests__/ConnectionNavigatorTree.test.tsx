@@ -109,6 +109,7 @@ vi.mock('../../../extensions/generated', () => {
       sqlDialect: 'mysql',
       defaultPort: 3306,
       clipboardSchemes: ['mysql'],
+      supportedObjectKinds: ['function', 'procedure', 'trigger', 'sequence', 'type'] as const,
     },
     sqlite: {
       ...sqlMulti,
@@ -1820,7 +1821,15 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
 
     fireEvent.click(container.querySelector('[data-item-name="fn_calc"]')!);
     await waitFor(() => {
-      expect(openObject).toHaveBeenCalledWith('function', 'fn_calc', undefined);
+      expect(openObject).toHaveBeenCalledWith(
+        'function',
+        'fn_calc',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        '/data/app.db',
+      );
     });
 
     fireEvent.click(categoryButton(container, 'trigger'));
@@ -1829,7 +1838,15 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     });
     fireEvent.click(container.querySelector('[data-item-name="tg_del"]')!);
     await waitFor(() => {
-      expect(openObject).toHaveBeenCalledWith('trigger', 'tg_del', undefined);
+      expect(openObject).toHaveBeenCalledWith(
+        'trigger',
+        'tg_del',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        '/data/app.db',
+      );
     });
 
     fireEvent.click(categoryButton(container, 'sequence'));
@@ -1886,9 +1903,25 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     });
     const routines = container.querySelectorAll('[data-item-name="lookup"]');
     fireEvent.click(routines[0]!);
-    expect(openObject).toHaveBeenCalledWith('function', 'lookup', 'public', 'integer');
+    expect(openObject).toHaveBeenCalledWith(
+      'function',
+      'lookup',
+      'public',
+      'integer',
+      undefined,
+      undefined,
+      '/data/app.db',
+    );
     fireEvent.click(routines[1]!);
-    expect(openObject).toHaveBeenCalledWith('function', 'lookup', 'public', 'text');
+    expect(openObject).toHaveBeenCalledWith(
+      'function',
+      'lookup',
+      'public',
+      'text',
+      undefined,
+      undefined,
+      '/data/app.db',
+    );
 
     fireEvent.click(categoryButton(container, 'trigger'));
     await waitFor(() => {
@@ -1902,6 +1935,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
       undefined,
       undefined,
       'orders',
+      '/data/app.db',
     );
   });
 
@@ -1968,7 +2002,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     mockGetTables.mockClear();
     await openMenuAndPick(categoryButton(container, 'procedure'), 'refresh');
     await waitFor(() => {
-      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure');
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure', '/data/app.db');
     });
     expect(container.querySelector('[data-item-name="pr_y"]')).not.toBeNull();
 
@@ -2012,7 +2046,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await triggerConnectionRefresh(findByText, 'SQLite Conn');
 
     await waitFor(() => {
-      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure');
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure', '/data/app.db');
     });
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
@@ -2040,7 +2074,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await triggerDatabaseRefresh(findByText, '/data/app.db');
 
     await waitFor(() => {
-      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function');
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function', '/data/app.db');
     });
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="fn_y"]')).not.toBeNull();
@@ -2100,7 +2134,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     mockGetDatabaseObjects.mockClear();
     await openMenuAndPick(categoryButton(container, 'function'), 'refresh');
     await waitFor(() => {
-      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function');
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function', '/data/app.db');
     });
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="fn_z"]')).not.toBeNull();
@@ -2369,6 +2403,60 @@ async function renderPgTree(
 }
 
 describe('ConnectionNavigatorTree multi-db tree variants', () => {
+  it('loads schema objects from the database node being expanded', async () => {
+    connectionsState.connections = [
+      makeConn({
+        id: 'cfg-mysql',
+        name: 'MySQL Conn',
+        databaseType: 'mysql',
+      }),
+    ];
+    activeConnectionsState.connections = {
+      'cfg-mysql': { status: 'connected', dbSessionId: 'conn-mysql', connectionId: 'cfg-mysql' },
+    };
+    mockGetDatabases.mockResolvedValue(['connection_default', 'manual_fixture_db']);
+    mockGetTables.mockResolvedValue([]);
+    mockGetDatabaseObjects.mockImplementation(
+      (_sessionId: string, kind: string, database: string) =>
+        Promise.resolve(
+          kind === 'procedure' && database === 'manual_fixture_db'
+            ? [{ kind: 'procedure', schema: 'manual_fixture_db', name: 'pr_manual_fixture' }]
+            : [],
+        ),
+    );
+    expect(connectionsState.connections[0]?.database).toBeUndefined();
+
+    const { container, findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-mysql" />,
+    );
+    await waitFor(() => {
+      expect(useSchemaStore.getState().schemas.get('conn-mysql')?.databases).toEqual([
+        'connection_default',
+        'manual_fixture_db',
+      ]);
+    });
+    const targetDatabase = await findByText('manual_fixture_db');
+    fireEvent.click(targetDatabase.closest('button')!);
+
+    const procedureCategory = await waitFor(() => {
+      const row = container.querySelector(
+        '[data-cat-key="cfg-mysql::manual_fixture_db::procedure"]',
+      );
+      expect(row).not.toBeNull();
+      return row!;
+    });
+    fireEvent.click(procedureCategory);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-item-name="pr_manual_fixture"]')).not.toBeNull();
+    });
+    expect(mockGetDatabaseObjects).toHaveBeenCalledWith(
+      'conn-mysql',
+      'procedure',
+      'manual_fixture_db',
+    );
+  });
+
   it('keeps schema-specific object categories scoped to their owning schema', async () => {
     const { container } = await renderPgTree({}, [
       { name: 't_public', tableType: 'table', schema: 'public' },

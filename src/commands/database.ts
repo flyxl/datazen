@@ -128,8 +128,12 @@ export const databaseCommands = {
       fingerprint: params.fingerprint,
     }),
 
-  getDatabaseObjects: (dbSessionId: string, kind: string) =>
-    invoke<DatabaseObject[]>('get_database_objects', { dbSessionId, kind }),
+  getDatabaseObjects: (dbSessionId: string, kind: string, database?: string | null) =>
+    invoke<DatabaseObject[]>('get_database_objects', {
+      dbSessionId,
+      kind,
+      database: database ?? null,
+    }),
 
   getObjectDdl: (
     dbSessionId: string,
@@ -139,6 +143,7 @@ export const databaseCommands = {
     signature?: string | null,
     targetSchema?: string | null,
     targetName?: string | null,
+    database?: string | null,
   ) =>
     invoke<string>('get_object_ddl', {
       dbSessionId,
@@ -148,6 +153,7 @@ export const databaseCommands = {
       signature: signature ?? null,
       targetSchema: targetSchema ?? null,
       targetName: targetName ?? null,
+      database: database ?? null,
     }),
 
   getPrivileges: (dbSessionId: string) =>

@@ -9,6 +9,25 @@ import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
 import { shouldUseMultiDatabaseTree } from './utils';
 import { useExpandedDbCacheRefresh } from '../schema-tree/useExpandedDbCacheRefresh';
 
+function databaseNameForCategory(
+  connectionId: string,
+  catKey: string,
+  expandedDbs: ReadonlySet<string>,
+  knownDatabases: readonly string[],
+): string | undefined {
+  const prefix = `${connectionId}::`;
+  const databaseNames = new Set([
+    ...knownDatabases,
+    ...[...expandedDbs]
+      .filter((dbKey) => dbKey.startsWith(prefix))
+      .map((dbKey) => dbKey.slice(prefix.length)),
+  ]);
+  const match = [...databaseNames]
+    .filter((database) => catKey.startsWith(`${prefix}${database}::`))
+    .sort((left, right) => right.length - left.length)[0];
+  return match;
+}
+
 export function useNavigatorDbState(
   activeConnections: Record<string, ConnectionEntry | undefined>,
   connections: ConnectionConfig[],
@@ -113,10 +132,10 @@ export function useNavigatorDbState(
   );
 
   const reloadDbObjectCategory = useCallback(
-    async (dbSessionId: string, catKey: string, catId: string) => {
+    async (dbSessionId: string, catKey: string, catId: string, dbName: string) => {
       if (catId === 'tables' || catId === 'views') return;
       try {
-        const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId);
+        const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId, dbName);
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: objs }));
       } catch {
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: [] }));
@@ -157,10 +176,13 @@ export function useNavigatorDbState(
         if (!catKey.startsWith(`${connectionId}::`)) continue;
         const catId = catKey.split('::').pop();
         if (!catId || catId === 'tables' || catId === 'views') continue;
-        await reloadDbObjectCategory(dbSessionId, catKey, catId);
+        const knownDatabases = useSchemaStore.getState().schemas.get(dbSessionId)?.databases ?? [];
+        const dbName = databaseNameForCategory(connectionId, catKey, expandedDbs, knownDatabases);
+        if (!dbName) continue;
+        await reloadDbObjectCategory(dbSessionId, catKey, catId, dbName);
       }
     },
-    [expandedCats, reloadDbObjectCategory],
+    [expandedCats, expandedDbs, reloadDbObjectCategory],
   );
 
   const refreshConnection = useCallback(
@@ -254,7 +276,7 @@ export function useNavigatorDbState(
         if (!catKey.startsWith(prefix)) continue;
         const catId = catKey.split('::').pop();
         if (!catId || catId === 'tables' || catId === 'views') continue;
-        await reloadDbObjectCategory(entry.dbSessionId, catKey, catId);
+        await reloadDbObjectCategory(entry.dbSessionId, catKey, catId, dbName);
       }
     },
     [
@@ -280,7 +302,7 @@ export function useNavigatorDbState(
         if (!catKey.startsWith(prefix)) continue;
         const catId = catKey.split('::').pop();
         if (!catId || catId === 'tables' || catId === 'views') continue;
-        await reloadDbObjectCategory(entry.dbSessionId, catKey, catId);
+        await reloadDbObjectCategory(entry.dbSessionId, catKey, catId, dbName);
       }
     },
     [activeConnections, expandedCats, reloadDbObjectCategory, reloadDbTables],
@@ -323,12 +345,12 @@ export function useNavigatorDbState(
   );
 
   const toggleCategoryLoad = useCallback(
-    async (catKey: string, catId: string, dbSessionId: string) => {
+    async (catKey: string, catId: string, dbSessionId: string, dbName: string) => {
       if (catId === 'tables' || catId === 'views') return;
       if (dbObjectsMap[catKey]) return;
 
       try {
-        const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId);
+        const objs = await databaseCommands.getDatabaseObjects(dbSessionId, catId, dbName);
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: objs }));
       } catch {
         setDbObjectsMap((prev) => ({ ...prev, [catKey]: [] }));

@@ -1,7 +1,7 @@
 use crate::schema_object_commands::execute_schema_object_command;
 use crate::{
     async_trait, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError,
-    MultiQueryResult, QueryResult, ServerInfo, TableInfo, TableSchema, Value,
+    MultiQueryResult, QueryResult, ServerInfo, SqlTarget, TableInfo, TableSchema, Value,
 };
 use serde_json::{json, Value as JsonValue};
 use std::collections::VecDeque;
@@ -21,6 +21,7 @@ struct TrackingDriver {
     db_type: String,
     queries: AtomicUsize,
     queried_sql: Mutex<Vec<String>>,
+    query_databases: Mutex<Vec<Option<String>>>,
     replies: Mutex<VecDeque<QueryReply>>,
 }
 
@@ -34,6 +35,7 @@ impl TrackingDriver {
             db_type: db_type.into(),
             queries: AtomicUsize::new(0),
             queried_sql: Mutex::new(Vec::new()),
+            query_databases: Mutex::new(Vec::new()),
             replies: Mutex::new(replies.into_iter().collect()),
         }
     }
@@ -48,6 +50,10 @@ impl TrackingDriver {
 
     fn queried_sql(&self) -> Vec<String> {
         self.queried_sql.lock().unwrap().clone()
+    }
+
+    fn query_databases(&self) -> Vec<Option<String>> {
+        self.query_databases.lock().unwrap().clone()
     }
 }
 
@@ -160,6 +166,19 @@ impl DatabaseDriver for TrackingDriver {
         }
     }
 
+    async fn query_at(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        target: SqlTarget<'_>,
+    ) -> Result<QueryResult, DriverError> {
+        self.query_databases
+            .lock()
+            .unwrap()
+            .push(target.database().map(str::to_string));
+        self.query(handle, sql).await
+    }
+
     async fn query_multi(
         &self,
         _: &ConnectionHandle,
@@ -223,6 +242,102 @@ fn assert_incomplete_without_edges(result: &JsonValue) {
         "catalog must fail closed: {result}"
     );
     assert_eq!(result["dependencies"], json!([]));
+}
+
+#[tokio::test]
+async fn postgres_object_catalog_query_uses_database_selected_in_tree() {
+    let catalog = QueryResult {
+        columns: ["schema", "name", "signature"]
+            .into_iter()
+            .map(super::col)
+            .collect(),
+        rows: Vec::new(),
+        rows_affected: None,
+        execution_time_ms: 0,
+    };
+    let driver = TrackingDriver::for_type("postgresql", [QueryReply::Catalog(catalog)]);
+
+    let result = execute_schema_object_command(
+        &driver,
+        "postgresql",
+        &handle(),
+        "list_objects",
+        json!({"kind":"function", "database":"manual_fixture_db"}),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.data["objects"], json!([]));
+    assert_eq!(
+        driver.query_databases(),
+        vec![Some("manual_fixture_db".into())]
+    );
+}
+
+#[tokio::test]
+async fn postgres_object_ddl_query_uses_database_selected_in_tree() {
+    let ddl = "CREATE FUNCTION public.lookup_code(integer) RETURNS text";
+    let result = QueryResult {
+        columns: vec![super::col("ddl")],
+        rows: vec![vec![Some(Value::String(ddl.into()))]],
+        rows_affected: None,
+        execution_time_ms: 0,
+    };
+    let driver = TrackingDriver::for_type("postgresql", [QueryReply::Catalog(result)]);
+
+    let result = execute_schema_object_command(
+        &driver,
+        "postgresql",
+        &handle(),
+        "get_object_ddl",
+        json!({
+            "kind":"function",
+            "name":"lookup_code",
+            "schema":"public",
+            "signature":"integer",
+            "database":"manual_fixture_db"
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.data["ddl"], json!(ddl));
+    assert_eq!(
+        driver.query_databases(),
+        vec![Some("manual_fixture_db".into())]
+    );
+}
+
+#[tokio::test]
+async fn mysql_object_ddl_uses_database_when_schema_metadata_is_absent() {
+    let result = QueryResult {
+        columns: vec![super::col("Create Procedure")],
+        rows: vec![vec![Some(Value::String(
+            "CREATE PROCEDURE `target_db`.`refresh_cache`() SELECT 1".into(),
+        ))]],
+        rows_affected: None,
+        execution_time_ms: 0,
+    };
+    let driver = TrackingDriver::for_type("mysql", [QueryReply::Catalog(result)]);
+
+    execute_schema_object_command(
+        &driver,
+        "mysql",
+        &handle(),
+        "get_object_ddl",
+        json!({
+            "kind":"procedure",
+            "name":"refresh_cache",
+            "database":"target_db"
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        driver.queried_sql(),
+        vec!["SHOW CREATE PROCEDURE `target_db`.`refresh_cache`"]
+    );
 }
 
 #[tokio::test]

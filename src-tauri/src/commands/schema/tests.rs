@@ -185,7 +185,7 @@ fn col(name: &str) -> crate::db::ColumnSchema {
 async fn unknown_object_kind_is_validation_error() {
     let test = TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("obj-bad-kind").await;
-    let err = get_database_objects_impl(&test.state, conn_id, "invalid_kind".into())
+    let err = get_database_objects_impl(&test.state, conn_id, "invalid_kind".into(), None)
         .await
         .unwrap_err();
     assert!(err.to_string().contains("Unknown object kind"));
@@ -200,7 +200,7 @@ async fn lists_database_objects_returns_empty_when_query_has_no_rows_and_no_colu
     };
     let test = TestAppState::with_options(opts).await;
     let (_, conn_id) = test.save_and_connect("obj-empty").await;
-    let rows = get_database_objects_impl(&test.state, conn_id, "function".into())
+    let rows = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap();
     assert!(rows.is_empty());
@@ -224,7 +224,7 @@ async fn lists_database_objects_from_name_column() {
     };
     let test = TestAppState::with_options(opts).await;
     let (_, conn_id) = test.save_and_connect("obj-list").await;
-    let rows = get_database_objects_impl(&test.state, conn_id, "function".into())
+    let rows = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap();
     assert_eq!(rows.len(), 1);
@@ -254,7 +254,7 @@ async fn lists_database_objects_preserves_signature_and_trigger_target() {
     };
     let test = TestAppState::with_options(opts).await;
     let (_, conn_id) = test.save_and_connect("obj-identity").await;
-    let rows = get_database_objects_impl(&test.state, conn_id, "trigger".into())
+    let rows = get_database_objects_impl(&test.state, conn_id, "trigger".into(), None)
         .await
         .unwrap();
     assert_eq!(rows[0].signature.as_deref(), Some("integer"));
@@ -304,6 +304,7 @@ async fn object_ddl_missing_object_fails_closed() {
         Some("integer".into()),
         None,
         None,
+        None,
     )
     .await
     .unwrap_err();
@@ -318,7 +319,7 @@ async fn object_catalog_preserves_permission_query_errors() {
     };
     let test = TestAppState::with_options(opts).await;
     let (_, conn_id) = test.save_and_connect("obj-permission").await;
-    let error = get_database_objects_impl(&test.state, conn_id, "function".into())
+    let error = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
         .await
         .unwrap_err();
     assert!(error.to_string().contains("permission denied"));

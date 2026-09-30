@@ -152,6 +152,7 @@ const VARIANTS: UnifiedRow[] = [
   {
     type: 'category',
     key: 'c1::db1::public::tables',
+    dbName: 'db1',
     cat: { id: 'tables' } as never,
     count: 1,
     expanded: true,

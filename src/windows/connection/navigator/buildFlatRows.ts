@@ -164,6 +164,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
       rows.push({
         type: 'category',
         key: catKey,
+        dbName,
         cat,
         count,
         expanded: isExpanded,

@@ -54,7 +54,7 @@ export interface NavigatorTreeRowProps {
   toggleConnection: (connectionId: string, sectionGroup: string) => void;
   toggleDb: (connectionId: string, dbSessionId: string, dbName: string) => void;
   toggleSchema: (schemaKey: string) => void;
-  toggleCategory: (catKey: string, catId: string, dbSessionId: string) => void;
+  toggleCategory: (catKey: string, catId: string, dbSessionId: string, dbName: string) => void;
   activateDatabase: (dbSessionId: string, dbName: string) => Promise<void>;
   ensureNamespacePath: (segments: string[], dbSessionId: string) => Promise<void>;
   setExpandedDbs: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -115,6 +115,7 @@ export interface NavigatorTreeRowProps {
       signature?: string,
       targetSchema?: string,
       targetName?: string,
+      database?: string,
     ) => void;
   };
 }
@@ -405,7 +406,7 @@ export function NavigatorTreeRow({
           onClick={() => {
             const conn = connections.find((c) => c.id === catConnectionId);
             const dbSessionId = conn ? (activeConnections[conn.id]?.dbSessionId ?? '') : '';
-            void toggleCategory(row.key, row.cat.id, dbSessionId);
+            void toggleCategory(row.key, row.cat.id, dbSessionId, row.dbName);
           }}
           onContextMenu={(e) => handleCategoryContextMenu(e, row.key, row.cat.id, catConnectionId)}
         >
@@ -519,6 +520,7 @@ export function NavigatorTreeRow({
                   signature,
                   targetSchema,
                   targetName,
+                  row.dbName,
                 );
               } else if (hasSignature) {
                 viewActions?.openObject?.(
@@ -526,9 +528,20 @@ export function NavigatorTreeRow({
                   row.obj.name,
                   row.obj.schema ?? undefined,
                   signature,
+                  undefined,
+                  undefined,
+                  row.dbName,
                 );
               } else {
-                viewActions?.openObject?.(kind, row.obj.name, row.obj.schema ?? undefined);
+                viewActions?.openObject?.(
+                  kind,
+                  row.obj.name,
+                  row.obj.schema ?? undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  row.dbName,
+                );
               }
             }
           }}

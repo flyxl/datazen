@@ -62,6 +62,7 @@ type DepthBearing =
   | {
       type: 'category';
       key: string;
+      dbName: string;
       cat: SchemaTreeCategoryDef;
       count: number;
       expanded: boolean;
@@ -214,6 +215,7 @@ export interface ConnectionNavigatorTreeProps {
       signature?: string,
       targetSchema?: string,
       targetName?: string,
+      database?: string,
     ) => void;
     openQueryHistory?: () => void;
     openServerStatus?: (ctx?: ConnectionOpenTarget) => void;

@@ -50,6 +50,7 @@ export interface PanelHandlers {
     signature?: string,
     targetSchema?: string,
     targetName?: string,
+    database?: string,
   ) => void;
   handleOpenPrivileges: () => void;
   handleOpenServerStatus: (ctx?: ConnectionOpenTarget) => void;
@@ -376,8 +377,10 @@ export function usePanelHandlers({
       signature?: string,
       targetSchema?: string,
       targetName?: string,
+      database?: string,
     ) => {
       if (!sidebarConnCtx) return;
+      const targetDatabase = database ?? currentDatabase ?? initialDatabase ?? '';
       const existing = connPanels.find(
         (p) =>
           p.type === 'db-object' &&
@@ -386,7 +389,8 @@ export function usePanelHandlers({
           (p as DatabaseObjectPanel).objectSchema === (schema ?? null) &&
           (p as DatabaseObjectPanel).objectSignature === (signature ?? null) &&
           (p as DatabaseObjectPanel).objectTargetSchema === (targetSchema ?? null) &&
-          (p as DatabaseObjectPanel).objectTargetName === (targetName ?? null),
+          (p as DatabaseObjectPanel).objectTargetName === (targetName ?? null) &&
+          (p as DatabaseObjectPanel).objectDatabase === targetDatabase,
       );
       if (existing) {
         setActivePanel(existing.id);
@@ -399,13 +403,14 @@ export function usePanelHandlers({
         objectKind: kind,
         objectName: name,
         objectSchema: schema ?? null,
+        objectDatabase: targetDatabase,
         objectSignature: signature ?? null,
         objectTargetSchema: targetSchema ?? null,
         objectTargetName: targetName ?? null,
       };
       addPanel(panel);
     },
-    [sidebarConnCtx, connPanels, addPanel, setActivePanel],
+    [sidebarConnCtx, connPanels, currentDatabase, initialDatabase, addPanel, setActivePanel],
   );
 
   const handleOpenPrivileges = useCallback(() => {

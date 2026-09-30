@@ -148,21 +148,25 @@ describe('useExpandedDbCacheRefresh', () => {
       'conn-sql',
       'cfg-sql::/data/app.db::procedure',
       'procedure',
+      '/data/app.db',
     );
     expect(handlers.loadObjectsForCat).toHaveBeenCalledWith(
       'conn-sql',
       'cfg-sql::/data/app.db::main::function',
       'function',
+      '/data/app.db',
     );
     expect(handlers.loadObjectsForCat).not.toHaveBeenCalledWith(
       'conn-sql',
       'cfg-sql::/data/app.db::tables',
       'tables',
+      '/data/app.db',
     );
     expect(handlers.loadObjectsForCat).not.toHaveBeenCalledWith(
       'conn-sql',
       'cfg-other::/data/other.db::procedure',
       'procedure',
+      '/data/other.db',
     );
     expect(handlers.loadTablesForDb).toHaveBeenCalledWith('conn-sql', '/data/app.db');
 
@@ -177,6 +181,33 @@ describe('useExpandedDbCacheRefresh', () => {
     for (const order of handlers.loadTablesForDb.mock.invocationCallOrder) {
       expect(clearOrder).toBeLessThan(order);
     }
+  });
+
+  it('routes an expanded category by its known database even when that db row is collapsed', async () => {
+    useSchemaStore.setState((s) => ({
+      schemas: new Map(s.schemas).set('conn-1', schemaEntry(['db::with-delimiter'], 0)),
+    }));
+    const handlers = makeHandlers();
+    const opts: ExpandedDbCacheRefreshOptions = {
+      ...baseOpts(handlers),
+      expandedDbs: new Set(),
+      expandedCats: new Set(['cfg-1::db::with-delimiter::app::procedure']),
+    };
+    const { rerun } = renderHookWithDeps(opts);
+
+    useSchemaStore.setState((s) => ({
+      schemas: new Map(s.schemas).set('conn-1', schemaEntry(['db::with-delimiter'], 1)),
+    }));
+    rerun();
+
+    await vi.waitFor(() => {
+      expect(handlers.loadObjectsForCat).toHaveBeenCalledWith(
+        'conn-1',
+        'cfg-1::db::with-delimiter::app::procedure',
+        'procedure',
+        'db::with-delimiter',
+      );
+    });
   });
 
   function renderHookWithDeps(opts: ExpandedDbCacheRefreshOptions) {

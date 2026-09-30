@@ -72,6 +72,10 @@ describe('fetchRelationDdl', () => {
       'table',
       'fallback',
       'app',
+      null,
+      null,
+      null,
+      'app',
     );
   });
   it('passes database to getCachedDDL namespacePath and getObjectDdl schema fallback', async () => {
@@ -96,6 +100,10 @@ describe('fetchRelationDdl', () => {
       'sess-1',
       'table',
       'users',
+      'tenant_db',
+      null,
+      null,
+      null,
       'tenant_db',
     );
   });

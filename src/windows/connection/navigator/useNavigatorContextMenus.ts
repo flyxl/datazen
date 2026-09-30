@@ -74,7 +74,12 @@ export interface NavigatorContextMenuDeps {
   refreshDatabase: (connectionId: string, dbName: string) => Promise<void>;
   refreshSchema: (connectionId: string, dbName: string, schemaName: string) => Promise<void>;
   reloadDbTables: (dbSessionId: string, dbName: string) => Promise<void>;
-  reloadDbObjectCategory: (dbSessionId: string, catKey: string, catId: string) => Promise<void>;
+  reloadDbObjectCategory: (
+    dbSessionId: string,
+    catKey: string,
+    catId: string,
+    dbName: string,
+  ) => Promise<void>;
   loadForConnection: (
     dbSessionId: string,
     opts: {
@@ -794,7 +799,16 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
         try {
           let ddl = '';
           try {
-            ddl = await databaseCommands.getObjectDdl(dbSessionId, 'table', name, schema);
+            ddl = await databaseCommands.getObjectDdl(
+              dbSessionId,
+              'table',
+              name,
+              schema,
+              null,
+              null,
+              null,
+              dbName,
+            );
           } catch {
             const dialect = getSqlDialect(conn?.databaseType ?? 'postgresql');
             if (dialect) {
@@ -1031,7 +1045,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
                   });
                 }
               } else {
-                void reloadDbObjectCategory(entry.dbSessionId, catKey, catId);
+                void reloadDbObjectCategory(entry.dbSessionId, catKey, catId, dbName);
               }
             },
             onNewTable:

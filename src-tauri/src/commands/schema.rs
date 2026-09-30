@@ -207,6 +207,7 @@ pub(crate) async fn get_database_objects_impl(
     state: &AppState,
     db_session_id: String,
     kind: String,
+    database: Option<String>,
 ) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
     if crate::schema_objects::ObjectKind::parse(&kind).is_none() {
         return Err(CommandError::Validation(format!(
@@ -217,7 +218,7 @@ pub(crate) async fn get_database_objects_impl(
         state,
         &db_session_id,
         "list_objects",
-        serde_json::json!({ "kind": kind }),
+        serde_json::json!({ "kind": kind, "database": database }),
     )
     .await?;
     Ok(parse_objects_from_command(&data))
@@ -230,8 +231,18 @@ pub(crate) async fn get_object_ddl_impl(
     name: String,
     schema: Option<String>,
 ) -> Result<String, CommandError> {
-    get_object_ddl_with_metadata_impl(state, db_session_id, kind, name, schema, None, None, None)
-        .await
+    get_object_ddl_with_metadata_impl(
+        state,
+        db_session_id,
+        kind,
+        name,
+        schema,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn get_object_ddl_with_metadata_impl(
@@ -243,6 +254,7 @@ pub(crate) async fn get_object_ddl_with_metadata_impl(
     signature: Option<String>,
     target_schema: Option<String>,
     target_name: Option<String>,
+    database: Option<String>,
 ) -> Result<String, CommandError> {
     if crate::schema_objects::ObjectKind::parse(&kind).is_none() {
         return Err(CommandError::Validation(format!(
@@ -260,6 +272,7 @@ pub(crate) async fn get_object_ddl_with_metadata_impl(
             "signature": signature,
             "targetSchema": target_schema,
             "targetName": target_name,
+            "database": database,
         }),
     )
     .await?;
@@ -289,8 +302,9 @@ pub async fn get_database_objects(
     state: State<'_, AppState>,
     db_session_id: String,
     kind: String,
+    database: Option<String>,
 ) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
-    get_database_objects_impl(&state, db_session_id, kind).await
+    get_database_objects_impl(&state, db_session_id, kind, database).await
 }
 
 #[tauri::command]
@@ -303,6 +317,7 @@ pub async fn get_object_ddl(
     signature: Option<String>,
     target_schema: Option<String>,
     target_name: Option<String>,
+    database: Option<String>,
 ) -> Result<String, CommandError> {
     get_object_ddl_with_metadata_impl(
         &state,
@@ -313,6 +328,7 @@ pub async fn get_object_ddl(
         signature,
         target_schema,
         target_name,
+        database,
     )
     .await
 }

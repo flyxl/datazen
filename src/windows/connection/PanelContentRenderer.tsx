@@ -440,7 +440,11 @@ function SqlPanelContent({
       <DatabaseObjectView
         dbSessionId={panel.dbSessionId}
         databaseType={panel.databaseType}
-        database={currentDatabase ?? ''}
+        database={
+          (panel as import('../../stores/panelStore').DatabaseObjectPanel).objectDatabase ??
+          currentDatabase ??
+          ''
+        }
         objectKind={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectKind}
         objectName={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectName}
         objectSchema={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectSchema}
