@@ -521,7 +521,11 @@ mod tests {
     }
 
     /// A representative row returned by `columns_sql`, with all SQL Server-only
-    /// metadata flags clear and no per-column collation override.
+    /// metadata flags clear and no per-column collation override. Keep this in
+    /// the query projection order: name, type, nullable, identity, default,
+    /// comment, PK flag, PK ordinal, computed, generated-always, FILESTREAM,
+    /// sparse, column-set, legacy default, rowversion, non-default identity,
+    /// column collation, database collation.
     fn column_row(name: &str) -> Vec<Option<Value>> {
         vec![
             text(name),
@@ -575,6 +579,37 @@ mod tests {
         assert!(
             columns.contains("DATABASEPROPERTYEX(CASE WHEN @P3 = N'' THEN DB_NAME() ELSE @P3 END")
         );
+        let projection = columns
+            .split(" FROM [db]]].sys.columns")
+            .next()
+            .expect("column query has a catalog source");
+        let expected_projection_order = [
+            "AS column_name",
+            "AS data_type",
+            "c.is_nullable",
+            "c.is_identity",
+            "AS default_value",
+            "AS comment",
+            "AS is_pk",
+            "AS pk_ordinal",
+            "AS is_computed",
+            "c.generated_always_type",
+            "c.is_filestream",
+            "c.is_sparse",
+            "c.is_column_set",
+            "AS has_legacy_default",
+            "AS is_rowversion",
+            "AS has_nondefault_identity",
+            "AS column_collation",
+            "AS database_collation",
+        ];
+        let mut cursor = 0;
+        for expression in expected_projection_order {
+            let Some(offset) = projection[cursor..].find(expression) else {
+                panic!("column catalog projection is missing or reorders {expression:?}");
+            };
+            cursor += offset + expression.len();
+        }
         assert!(!columns.contains("@P1'"));
         let schema_identity = schema_scope_identity_sql("db]; injected");
         assert_eq!(
@@ -584,6 +619,32 @@ mod tests {
         assert!(indexes_sql("db").contains("ic.key_ordinal"));
         assert!(foreign_keys_sql("db").contains("fkc.constraint_column_id"));
         assert!(checks_sql("db").contains("cc.is_not_trusted"));
+    }
+
+    #[test]
+    fn identity_metadata_projection_checks_nondefault_seed_and_increment() {
+        let columns = columns_sql("");
+        let identity_guard = columns
+            .split("AS has_nondefault_identity")
+            .next()
+            .expect("identity guard has a result alias");
+        for (case, expression) in [
+            (
+                "IDENTITY(10, 1) seed-only deviation",
+                "TRY_CONVERT(decimal(38,0), ic.seed_value) <> 1",
+            ),
+            (
+                "IDENTITY(1, 5) increment-only deviation",
+                "TRY_CONVERT(decimal(38,0), ic.increment_value) <> 1",
+            ),
+        ] {
+            assert!(
+                identity_guard.contains(expression),
+                "{case} must set the aggregate non-default identity flag"
+            );
+        }
+        assert!(identity_guard.contains("ic.seed_value) <> 1 OR TRY_CONVERT"));
+        assert!(columns.contains("AS has_nondefault_identity"));
     }
 
     #[test]
@@ -666,13 +727,7 @@ mod tests {
                 15,
                 Some(Value::Bool(true)),
                 "non-default IDENTITY seed/increment",
-                "IDENTITY(10, 1) seed",
-            ),
-            (
-                15,
-                Some(Value::Bool(true)),
                 "non-default IDENTITY seed/increment",
-                "IDENTITY(1, 5) increment",
             ),
             (
                 13,
@@ -687,6 +742,40 @@ mod tests {
             row[index] = value;
             assert_unsupported_column(row, reason, case);
         }
+    }
+
+    #[test]
+    fn missing_or_unreadable_sql_server_column_flags_fail_closed() {
+        let cases = [
+            (8, "computed"),
+            (9, "generated-always"),
+            (10, "FILESTREAM"),
+            (11, "sparse"),
+            (12, "column-set"),
+            (13, "legacy default"),
+            (14, "rowversion"),
+            (15, "IDENTITY"),
+        ];
+        let mut failures = Vec::new();
+
+        for (index, feature) in cases {
+            for (fault, value) in [("NULL", None), ("unreadable", text("not-a-bit"))] {
+                let mut row = column_row("special_column");
+                row[index] = value;
+                match parse_columns(result(vec![row])) {
+                    Err(DriverError::QueryFailed(message)) if message.contains(feature) => {}
+                    other => failures.push(format!(
+                        "{feature} flag {fault} at projection index {index}: got {other:?}"
+                    )),
+                }
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "SQL Server-specific catalog flags must fail closed when absent or unreadable:\n{}",
+            failures.join("\n")
+        );
     }
 
     #[test]
