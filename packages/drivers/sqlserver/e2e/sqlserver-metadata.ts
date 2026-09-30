@@ -21,6 +21,12 @@ const scratchSchema = `dz_e2e_meta_${Date.now().toString(36)}`;
 const parentTable = 'parent_pair';
 const childTable = 'child_pair';
 const collationTable = 'collation_probe';
+const identityTable = 'identity_probe';
+const nonDefaultIdentityTable = 'identity_seed_probe';
+const computedTable = 'computed_probe';
+const rowversionTable = 'rowversion_probe';
+const filteredIndexTable = 'filtered_index_probe';
+const includedIndexTable = 'included_index_probe';
 let nonDefaultCollation = '';
 
 interface ColumnSchemaPayload {
@@ -28,6 +34,7 @@ interface ColumnSchemaPayload {
   dataType: string;
   nullable: boolean;
   isPrimaryKey: boolean;
+  isAutoIncrement: boolean;
 }
 
 interface IndexPayload {
@@ -130,14 +137,26 @@ describe('SQL Server schema metadata IPC (live)', () => {
   const cleanup = async () => {
     if (dbSessionId) {
       try {
-        await setSafeMode(false);
-        for (const table of [childTable, parentTable, collationTable]) {
+        await setSafeMode(false).catch(() => undefined);
+        for (const table of [
+          childTable,
+          parentTable,
+          collationTable,
+          identityTable,
+          nonDefaultIdentityTable,
+          computedTable,
+          rowversionTable,
+          filteredIndexTable,
+          includedIndexTable,
+        ]) {
           await run(`DROP TABLE IF EXISTS ${qualified(table)}`).catch((error: unknown) => {
             console.warn(`SQL Server metadata cleanup could not drop ${table}: ${String(error)}`);
           });
         }
         await run(`DROP SCHEMA IF EXISTS ${bracket(scratchSchema)}`).catch((error: unknown) => {
-          console.warn(`SQL Server metadata cleanup could not drop scratch schema: ${String(error)}`);
+          console.warn(
+            `SQL Server metadata cleanup could not drop scratch schema: ${String(error)}`,
+          );
         });
       } finally {
         await invoke('disconnect', { dbSessionId }).catch(() => undefined);
@@ -221,6 +240,32 @@ describe('SQL Server schema metadata IPC (live)', () => {
     await run(
       `CREATE TABLE ${qualified(collationTable)} ([text_value] NVARCHAR(20) COLLATE ${nonDefaultCollation} NULL)`,
     );
+    await run(
+      `CREATE TABLE ${qualified(identityTable)} (` +
+        '[id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY, [label] NVARCHAR(40) NULL)',
+    );
+    await run(
+      `CREATE TABLE ${qualified(nonDefaultIdentityTable)} (` +
+        '[id] INT IDENTITY(10,2) NOT NULL, [label] NVARCHAR(40) NULL)',
+    );
+    await run(
+      `CREATE TABLE ${qualified(computedTable)} (` +
+        '[base_value] INT NOT NULL, [computed_value] AS ([base_value] * 2) PERSISTED)',
+    );
+    await run(
+      `CREATE TABLE ${qualified(rowversionTable)} (` +
+        '[id] INT NOT NULL, [row_version] ROWVERSION)',
+    );
+    await run(`CREATE TABLE ${qualified(filteredIndexTable)} ([value] INT NULL)`);
+    await run(
+      `CREATE NONCLUSTERED INDEX [IX_filtered_index_probe] ON ${qualified(filteredIndexTable)} ([value]) WHERE [value] IS NOT NULL`,
+    );
+    await run(
+      `CREATE TABLE ${qualified(includedIndexTable)} ([id] INT NOT NULL, [payload] NVARCHAR(40) NULL)`,
+    );
+    await run(
+      `CREATE NONCLUSTERED INDEX [IX_included_index_probe] ON ${qualified(includedIndexTable)} ([id]) INCLUDE ([payload])`,
+    );
   });
 
   after(async function () {
@@ -232,10 +277,9 @@ describe('SQL Server schema metadata IPC (live)', () => {
     const parent = await tableSchema(parentTable);
     expect(parent.columns.map((column) => column.name)).toEqual(['part_b', 'part_a', 'label']);
     expect(parent.primaryKeys).toEqual(['part_a', 'part_b']);
-    expect(parent.columns.filter((column) => column.isPrimaryKey).map((column) => column.name)).toEqual([
-      'part_b',
-      'part_a',
-    ]);
+    expect(
+      parent.columns.filter((column) => column.isPrimaryKey).map((column) => column.name),
+    ).toEqual(['part_b', 'part_a']);
 
     const child = await tableSchema(childTable);
     expect(child.primaryKeys).toEqual(['part_b', 'part_a']);
@@ -269,5 +313,72 @@ describe('SQL Server schema metadata IPC (live)', () => {
       error = String(cause);
     }
     expect(error.toLowerCase()).toMatch(/collation|unsupported|not represent/);
+  });
+
+  it('preserves SQL Server IDENTITY(1,1) as the auto-increment flag', async () => {
+    const schema = await tableSchema(identityTable);
+    expect(schema.columns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'id', isAutoIncrement: true }),
+        expect.objectContaining({ name: 'label', isAutoIncrement: false }),
+      ]),
+    );
+  });
+
+  it('rejects non-default IDENTITY seed and increment values explicitly', async () => {
+    let error = '';
+    try {
+      await tableSchema(nonDefaultIdentityTable);
+    } catch (cause) {
+      error = String(cause);
+    }
+    expect(error).toMatch(/unsupported/i);
+    expect(error).toMatch(/non-default IDENTITY seed\/increment/i);
+  });
+
+  it('rejects computed columns with an explicit Unsupported error', async () => {
+    let error = '';
+    try {
+      await tableSchema(computedTable);
+    } catch (cause) {
+      error = String(cause);
+    }
+    expect(error).toMatch(/unsupported/i);
+    expect(error).toMatch(/computed columns/i);
+  });
+
+  it('rejects rowversion columns with an explicit Unsupported error', async () => {
+    let error = '';
+    try {
+      await tableSchema(rowversionTable);
+    } catch (cause) {
+      error = String(cause);
+    }
+    expect(error).toMatch(/unsupported/i);
+    expect(error).toMatch(/rowversion columns/i);
+  });
+
+  it('rejects filtered indexes with the index name and unsupported feature in the error', async () => {
+    let error = '';
+    try {
+      await tableSchema(filteredIndexTable);
+    } catch (cause) {
+      error = String(cause);
+    }
+    expect(error).toMatch(/unsupported/i);
+    expect(error).toContain('IX_filtered_index_probe');
+    expect(error).toMatch(/filtered/i);
+  });
+
+  it('rejects INCLUDE index columns with the index name and unsupported feature in the error', async () => {
+    let error = '';
+    try {
+      await tableSchema(includedIndexTable);
+    } catch (cause) {
+      error = String(cause);
+    }
+    expect(error).toMatch(/unsupported/i);
+    expect(error).toContain('IX_included_index_probe');
+    expect(error).toMatch(/INCLUDE or descending key columns/i);
   });
 });
