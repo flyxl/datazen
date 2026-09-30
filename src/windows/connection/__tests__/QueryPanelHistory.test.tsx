@@ -44,12 +44,18 @@ const schemaSnapshot = {
   isMultiDatabase: true,
   ensuringCount: 0,
   ensureColumns: vi.fn(),
-  loadColumnMap: vi.fn(),
+  ensureDatabaseColumns: vi.fn(),
   loadTables: vi.fn(),
   ensureNamespacePath: vi.fn(),
 };
 
 vi.mock('../../../stores/schemaStore', () => ({
+  useConnectionColumnMaps: (_session: string) => ({
+    columnMap: schemaSnapshot.columnMap,
+    typedColumnMap: {},
+  }),
+  useConnectionSchemaField: (_session: string, field: keyof typeof schemaSnapshot) =>
+    schemaSnapshot[field],
   useSchemaStore: (sel: (s: typeof schemaSnapshot) => unknown) => sel(schemaSnapshot),
 }));
 

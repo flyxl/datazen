@@ -30,9 +30,15 @@ const {
   mockExportTableStructureToFile: vi.fn().mockResolvedValue('ok'),
 }));
 
-vi.mock('../../../commands/database', () => ({
-  databaseCommands: {
-    getTableSchema: (...args: unknown[]) => mockGetTableSchema(...args),
+vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
+  schemaClient: {
+    readSchema: async (session: string, ref: import('@datazen/driver-sdk').RelationRef) => ({
+      value: {
+        ref,
+        definition: await mockGetTableSchema(session, ref.name, ref.database, ref.schema),
+      },
+    }),
   },
 }));
 

@@ -9,41 +9,6 @@ import type { ConnectionEntry } from '../../../stores/activeConnectionStore';
 import { shouldUseMultiDatabaseTree } from './utils';
 import { useExpandedDbCacheRefresh } from '../schema-tree/useExpandedDbCacheRefresh';
 
-/**
- * Pin `currentDatabase` on ONE session entry without touching any other
- * session. The updater returns ONLY `{ schemas }`: spreading the whole state
- * back would re-inject the stale flattened top-level fields, and
- * `mergePartialIntoStore` would then re-apply that stale `currentDatabase` to
- * the ACTIVE session's entry — silently clobbering this pin whenever the
- * target row's session === active session (the old raw-setState path had
- * exactly this latent bug).
- */
-function pinCurrentDatabase(
-  dbSessionId: string,
-  dbName: string,
-  options?: { onlyKnownDatabases?: boolean },
-): void {
-  useSchemaStore.setState((state) => {
-    const entry = state.schemas.get(dbSessionId);
-    if (!entry || entry.currentDatabase === dbName) return { schemas: state.schemas };
-    // Path-hierarchy namespace leaves call activateDatabase with their fetch
-    // PATH ('public', '558/hive/snap'), not a real database. Pinning that as
-    // currentDatabase would corrupt the root prefix that ensureNamespacePath
-    // builds fetch paths from. Only a database the session actually knows
-    // moves the pointer; an unloaded list trusts the caller.
-    if (
-      options?.onlyKnownDatabases &&
-      entry.databases.length > 0 &&
-      !entry.databases.includes(dbName)
-    ) {
-      return { schemas: state.schemas };
-    }
-    const next = new Map(state.schemas);
-    next.set(dbSessionId, { ...entry, currentDatabase: dbName });
-    return { schemas: next };
-  });
-}
-
 export function useNavigatorDbState(
   activeConnections: Record<string, ConnectionEntry | undefined>,
   connections: ConnectionConfig[],
@@ -82,7 +47,7 @@ export function useNavigatorDbState(
     async (dbSessionId: string, dbName: string) => {
       const tableKey = `${dbSessionId}::${dbName}`;
       try {
-        const all = await databaseCommands.getTables(dbSessionId, dbName);
+        const all = await databaseCommands.listTables(dbSessionId, dbName);
         setDbTablesMap((prev) => ({ ...prev, [tableKey]: all }));
         // Background cache fills stay neutral: the pointer is owned by the
         // user's last tree click, not by whichever fan-out finishes last.
@@ -109,8 +74,8 @@ export function useNavigatorDbState(
       }
       // Cache miss: nothing fetched yet, so the pointer still has to move —
       // but only for a database this session actually knows (namespace leaves
-      // pass fetch PATHs here; see pinCurrentDatabase).
-      pinCurrentDatabase(dbSessionId, dbName, { onlyKnownDatabases: true });
+      // pass fetch PATHs here; setCurrentDatabase validates known databases).
+      useSchemaStore.getState().setCurrentDatabase(dbName, dbSessionId);
     },
     [dbTablesMap],
   );
@@ -326,16 +291,14 @@ export function useNavigatorDbState(
       // The click itself owns the selection: pin synchronously so the pointer
       // moves even on cache hits, in-flight fetches, and before the IPC
       // resolves. Previously currentDatabase only changed as an async side
-      // effect of getTables completing inside setLoadedTables — skipped on
+      // effect of listTables completing inside setLoadedTables — skipped on
       // every early-return below — which is why clicking a database did not
       // move the pointer (and "查看 ER" then showed a stale database) in a
       // non-reproducible subset of interactions.
-      pinCurrentDatabase(dbSessionId, dbName);
+      useSchemaStore.getState().setCurrentDatabase(dbName, dbSessionId);
       const tableKey = `${dbSessionId}::${dbName}`;
       if (dbTablesMap[tableKey]) {
-        // Cache hit: still refresh the flat session tables so legacy
-        // flat-field consumers see the clicked database's list (the pin
-        // above already happened; this re-pins the same value).
+        // Publish the cached catalog into the explicitly selected session.
         useSchemaStore.getState().setLoadedTables(dbName, dbTablesMap[tableKey], dbSessionId);
         return;
       }

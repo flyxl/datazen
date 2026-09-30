@@ -1,3 +1,4 @@
+import { listDatabases } from '../schema-metadata.js';
 /**
  * E2E tests for navigator tree context menus in ConnectionPage.
  *
@@ -34,7 +35,7 @@ const SEEDED_CONN_ID = 'conn_e2e_pg';
  * WDIO 全程复用同一个 Tauri 进程，而每个 spec 的 worker 数据库是按 spec
  * 创建后即删除的；Rust 侧 `connect` 对同一 connectionId 会复用仍存活的会话，
  * 于是本 spec 的 UI 连接拿到的是绑在已删除 worker 库上的旧会话，
- * `execute_query` / `get_databases` 全部报
+ * `execute_query` / `list_databases` 全部报
  * `database "e2e_w..." does not exist`，before 钩子里的
  * `pgTableExists(...)` 直接抛错导致整文件 before all hook 失败。
  * 这里强制探测并断开残留会话，随后 UI 连接会基于本 spec 的 worker 库新建会话。
@@ -95,7 +96,7 @@ async function pgSchemaExistsInDatabase(
 }
 
 async function pgDatabaseExists(dbSessionId: string, database: string): Promise<boolean> {
-  const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId });
+  const dbs = await listDatabases({ dbSessionId });
   return dbs.includes(database);
 }
 

@@ -94,12 +94,8 @@ const confirmSpy = vi.fn(async (_options: ConfirmDialogOptions) => confirmAnswer
 bindConfirmDialog(() => [confirmSpy, null]);
 bindSchemaStore(
   create<SchemaStoreState>(() => ({
-    databases: ['db0', 'db1'],
-    loading: false,
+    schemas: new Map([['sess-1', { pathItems: {}, databases: ['db0', 'db1'], loading: false }]]),
     loadForConnection: async () => {},
-    // Host-store fields this suite never exercises; bound to satisfy the bridge
-    // contract so the Redis tree only ever reads `databases` / `loading`.
-    pathItems: {},
     setLoadedTables: () => {},
     mergeNamespace: () => {},
     registerPathAliases: () => {},

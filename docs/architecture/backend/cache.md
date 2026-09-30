@@ -765,27 +765,8 @@ impl QueryExecutor {
 结论: 内存开销极小，完全可以接受
 ```
 
-### 1.8 读 Schema 前必须 pin 会话数据库（BUG-003 复盘）
+### 1.8 Schema 元数据缓存身份
 
-驱动契约是**分裂**的（见 [drivers.md](drivers.md) §2.1）：
+Schema 读取通过 `list_catalog`、`read_relation_columns` 与 `read_relation_schema` Driver Commands 进入 Host 元数据网关。关系由 `RelationRef { database, schema, name }` 精确标识；驱动的目录与列读取 API 都接收 database 和可选 schema 参数，不通过切换会话 active database 来间接指定目标。网关校验驱动的 schema 能力后，以完整关系身份读写缓存，避免跨数据库或跨 schema 的同名关系串用缓存。
 
-| 方法 | database 维度 | 谁负责解析 |
-| --- | --- | --- |
-| `get_tables(handle, database)` / `get_all_columns(handle, database)` | 显式参数 | 驱动自己 |
-| `get_table_schema(handle, table)` / `get_columns(handle, table)` | **无** | **调用方必须先 pin** |
-
-后两者只能落在会话当前 active 的库上，所以**任何 schema 读取前都必须先 `ConnectionManager::ensure_active_database(db_session_id, database)`**（Host 命令侧包装为 `ensure_session_database`，AI schema context 直接调前者）。
-
-漏掉这一步时，PG 驱动的 `information_schema.columns` 在错误的库里查不到该表，于是返回 `Ok(TableSchema { columns: [] })`——"表存在但没有列"。`SchemaCache` 再把它写进 `connection::database::table` 键，TTL（300s）内所有读该表的路径都会拿到空列：
-
-- 表结构视图不显示列（DDL 视图正常，它不走这个缓存）；
-- ER 图只有表名、没有列；
-- 数据网格行数正确但单元格全空（`build_select_sql` 见列集为空会退化成 `SELECT *`，`rowsToRecords([], rows)` 把每行映射成 `{}`）。
-
-典型触发顺序：选中库后**先打开 ER 图**（`ErDiagramView` 挂载即拉 `get_er_data`），此时会话还停在别的库 → 一次读取污染整库全部表。因此现象是"顺序依赖"而非"库依赖"。
-
-三层防护：
-
-1. **pin**：所有 schema 读取入口先 pin（Host 命令 + AI schema context）；
-2. **驱动不静默**：PG 在 `information_schema.columns` 无行时用 `pg_class` 校验关系是否真的存在，不存在则返回 `DriverError`，而不是空 schema（`CREATE TABLE t ()` 这类真·零列表仍返回空 schema）；
-3. **缓存不落空**：`SchemaCache` 不写入、也不命中 `columns.is_empty()` 的条目（一律视为 miss，并 `tracing::warn!` 留痕），把任何未来的"静默空"限制为单次请求。
+`refresh_schema_metadata` 支持 session、database 和 relation 三种失效范围，并返回缓存 generation。每次读取记录启动时的 generation，刷新之后开始的读可以填充新缓存，刷新前启动的读不能把过期结果重新写回。PostgreSQL 对“关系存在但列为空”与“目标关系不存在”分别处理；Host 的列读取结果也逐关系携带成功值或错误，避免批量读取中一个关系失败丢失其他结果。接口与类型见 [services.md](services.md) 与 [drivers.md](drivers.md) §2.1。

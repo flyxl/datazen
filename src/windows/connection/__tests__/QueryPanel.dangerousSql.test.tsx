@@ -57,7 +57,7 @@ const schemaStoreState = vi.hoisted(() => ({
   isMultiDatabase: false,
   ensuringCount: 0,
   ensureColumns: vi.fn(),
-  loadColumnMap: vi.fn(),
+  ensureDatabaseColumns: vi.fn(),
   loadTables: vi.fn(),
   ensureNamespacePath: vi.fn(),
 }));
@@ -101,6 +101,12 @@ vi.mock('../../../stores/connectionStore', () => ({
 }));
 
 vi.mock('../../../stores/schemaStore', () => ({
+  useConnectionColumnMaps: (_session: string) => ({
+    columnMap: schemaStoreState.columnMap,
+    typedColumnMap: {},
+  }),
+  useConnectionSchemaField: (_session: string, field: keyof typeof schemaStoreState) =>
+    schemaStoreState[field],
   useSchemaStore: Object.assign(
     (sel: (s: typeof schemaStoreState) => unknown) => sel(schemaStoreState),
     { getState: () => schemaStoreState },

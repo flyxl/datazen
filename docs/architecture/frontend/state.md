@@ -73,3 +73,17 @@ Tauri 多窗口的 WebView 不共享 Zustand 内存。需要同步的数据通�
 ## 6. 测试
 
 Store tests 位于 `src/stores/__tests__/`；窗口级测试位于对应 `src/windows/**/__tests__/`。
+
+## 7. Schema 身份与异步读取
+
+公共元数据类型由 `packages/driver-sdk/src/types/schemaMetadata.ts` 定义，宿主 `src/types/index.ts` 重导出兼容类型。`schemaClient` 使用统一 Driver Command 网关，列读取返回带完整 `RelationRef` 的结果；列名与类型从同一份列定义派生。
+
+`schemaStore` 的会话状态保存按 database 分组的 `tableCatalogs` 和按 session/database/schema/name 编码的 `relationColumns`。`relationKey` 使用 JSON tuple，名称中的分隔符不会导致身份碰撞。列名和类型只保存于 `relationColumns`，编辑器通过 `useConnectionColumnMaps` 在消费边界按上下文派生，投影使用 memo 保持引用稳定；同名关系身份不唯一时不猜测 schema。Query Builder 从绑定 database/schema 的关系缓存取值。
+
+`schemaRequestTracker` 为目录请求和会话生命周期提供写入屏障。切库、断连、表目录替换后，失效请求不能改写新状态；后台目录发布只更新目标 database 快照。SDK bridge 显式传递 session，不通过切换 active session 发布数据。
+
+结构与 DDL 缓存共用 `schemaResourceCache` 的 TTL、失败退避和请求去重。失效操作移除缓存与在途请求，旧 promise 的返回和清理不能覆盖或删除新请求。编辑器关系缓存另外检查 database/schema 上下文与请求身份。显式刷新补全先失效前端缓存，再调用后端刷新，并在成功后重新加载目录。
+
+`schemaStore` 顶层只持有 `schemas`、`activeDbSessionId` 和 action，不复制活动会话字段，也不维护默认会话或 `dbSessionId` 别名。所有会话 action 必须显式传入 `dbSessionId`；切换活动指针独立于更新会话数据。组件通过 `useConnectionSchemaField` 读取绑定会话，缺失会话返回稳定的空快照。
+
+宿主目录调用方通过 `databaseCommands.listTables` 接入 `schemaClient.listCatalog`，database 列表通过 `schemaClient.listDatabases` 获取。`TableInfo[]` 转换与空 schema sentinel 只在旧树模型适配边界生成。结构视图、索引、外键、导出、结构编辑器与 Query Builder 共用 `getCachedTableSchema`，其传输入口为 `read_relation_schema`。SQL 生成使用精确裸名称与独立 schema，完整结构不可用时读取同一关系的 typed columns；不再按数据库类型拼接名称并重试。QueryPanel 通过 `useConnectionSchemaField` 读取绑定 session 的字段。

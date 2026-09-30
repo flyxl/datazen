@@ -1,3 +1,4 @@
+import { schemaClient } from '@datazen/driver-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Database, HardDrive } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
@@ -135,7 +136,7 @@ export function BackupWindow() {
           /* server version is optional */
         }
 
-        const dbs = await invoke<string[]>('get_databases', { dbSessionId: sessionId });
+        const { databases: dbs } = await schemaClient.listDatabases(sessionId);
         setDatabases(dbs.map((name) => ({ name })));
 
         const dbPick = preferredDatabase ?? conn.database;

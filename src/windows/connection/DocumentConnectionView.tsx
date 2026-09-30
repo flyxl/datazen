@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { Input } from '../../components/ui/Input';
 import { SqlEditor } from '../../components/SqlEditor';
-import { useSchemaStore } from '../../stores/schemaStore';
+import { useSchemaStore, useConnectionSchemaField } from '../../stores/schemaStore';
 import { usePanelStore, nextPanelId } from '../../stores/panelStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
 import { useColumnResize } from '../../hooks/useColumnResize';
@@ -40,8 +40,8 @@ export function DocumentConnectionView({
   initialDatabase,
 }: ConnectionViewProps) {
   const { t } = useI18n();
-  const databases = useSchemaStore((s) => s.databases);
-  const loading = useSchemaStore((s) => s.loading);
+  const databases = useConnectionSchemaField(dbSessionId, 'databases');
+  const loading = useConnectionSchemaField(dbSessionId, 'loading');
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('documents');
@@ -76,7 +76,7 @@ export function DocumentConnectionView({
     async (db: string) => {
       setCollectionsLoading(true);
       try {
-        const tables = await databaseCommands.getTables(dbSessionId, db);
+        const tables = await databaseCommands.listTables(dbSessionId, db);
         setCollections(tables);
       } catch (e) {
         console.error('load collections failed:', e);

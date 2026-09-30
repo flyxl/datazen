@@ -1,137 +1,89 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { invalidateSchemaCache } from '../schemaCache';
 import {
-  driverTableRefsToTry,
   fetchTableSchemaForSqlGeneration,
   generateTableSqlWithFallbacks,
   buildPseudoTableSchema,
 } from '../tableSchemaForSql';
-
-const getTableSchema = vi.fn();
-const getColumns = vi.fn();
-
-vi.mock('../../commands/database', () => ({
-  databaseCommands: {
-    getTableSchema: (...args: unknown[]) => getTableSchema(...args),
-    getColumns: (...args: unknown[]) => getColumns(...args),
-  },
+const { readSchema, readColumns, capabilities } = vi.hoisted(() => ({
+  readSchema: vi.fn(),
+  readColumns: vi.fn(),
+  capabilities: vi.fn(),
 }));
-
+vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
+  schemaClient: { readSchema, readColumns },
+}));
+vi.mock('../driverCapabilities', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../driverCapabilities')>()),
+  capabilitiesForDbSession: capabilities,
+}));
 describe('tableSchemaForSql', () => {
   beforeEach(() => {
-    getTableSchema.mockReset();
-    getColumns.mockReset();
+    readSchema.mockReset();
+    readColumns.mockReset();
+    capabilities.mockReturnValue({ hasSchemaLevel: true });
     invalidateSchemaCache('sess-1');
   });
-
-  describe('driverTableRefsToTry', () => {
-    it('prefers schema.table for postgresql', () => {
-      expect(driverTableRefsToTry('users', 'public', 'postgresql')).toEqual([
-        'public.users',
-        'users',
-      ]);
+  it('reads a bare exact name once, preserving schema and dotted identifiers', async () => {
+    const ref = { database: 'app', schema: 'archive', name: 'users.v2' };
+    readSchema.mockResolvedValueOnce({
+      value: { ref, definition: buildPseudoTableSchema('users.v2', ['id']) },
     });
-
-    it('uses bare name only for mysql even when schema is set', () => {
-      expect(driverTableRefsToTry('users', 'mydb', 'mysql')).toEqual(['users']);
+    const result = await fetchTableSchemaForSqlGeneration({
+      dbSessionId: 'sess-1',
+      tableName: 'users.v2',
+      schema: 'archive',
+      database: 'app',
+      databaseType: 'postgresql',
     });
-
-    it('returns bare name when schema is absent', () => {
-      expect(driverTableRefsToTry('users', null, 'postgresql')).toEqual(['users']);
-    });
+    expect(readSchema).toHaveBeenCalledExactlyOnceWith('sess-1', ref);
+    expect(readColumns).not.toHaveBeenCalled();
+    expect(result?.tableName).toBe('users.v2');
   });
-
-  describe('fetchTableSchemaForSqlGeneration', () => {
-    it('returns schema from getTableSchema with bare tableName override', async () => {
-      getTableSchema.mockResolvedValueOnce({
-        tableName: 'public.users',
-        columns: [{ name: 'id', dataType: 'int', nullable: false }],
-        primaryKeys: ['id'],
-        indexes: [],
-        foreignKeys: [],
-      });
-
-      const result = await fetchTableSchemaForSqlGeneration({
-        dbSessionId: 'sess-1',
-        tableName: 'users',
-        schema: 'public',
-        database: 'app',
-        databaseType: 'postgresql',
-      });
-
-      expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'public.users', 'app', 'public');
-      expect(result?.tableName).toBe('users');
-      expect(result?.columns).toHaveLength(1);
+  it('reads typed columns in the same identity when full structure is unavailable', async () => {
+    capabilities.mockReturnValue({ hasSchemaLevel: false });
+    readSchema.mockRejectedValueOnce(new Error('unsupported'));
+    const ref = { database: 'mydb', schema: null, name: 'users' };
+    const columns = [{ name: 'id', dataType: 'int', nullable: false }];
+    readColumns.mockResolvedValueOnce({
+      results: [{ status: 'ok', value: { ref, columns, primaryKeys: ['id'] } }],
     });
-
-    it('falls back to bare name when qualified ref returns empty columns', async () => {
-      getTableSchema
-        .mockResolvedValueOnce({
-          tableName: 'public.users',
-          columns: [],
-          primaryKeys: [],
-          indexes: [],
-          foreignKeys: [],
-        })
-        .mockResolvedValueOnce({
-          tableName: 'users',
-          columns: [{ name: 'id', dataType: 'int', nullable: false }],
-          primaryKeys: ['id'],
-          indexes: [],
-          foreignKeys: [],
-        });
-
-      const result = await fetchTableSchemaForSqlGeneration({
-        dbSessionId: 'sess-1',
-        tableName: 'users',
-        schema: 'public',
-        database: 'app',
-        databaseType: 'postgresql',
-      });
-
-      expect(getTableSchema).toHaveBeenCalledTimes(2);
-      expect(result?.columns.map((c) => c.name)).toEqual(['id']);
+    const result = await fetchTableSchemaForSqlGeneration({
+      dbSessionId: 'sess-1',
+      tableName: 'users',
+      schema: 'mydb',
+      database: 'mydb',
+      databaseType: 'mysql',
     });
-
-    it('falls back to getColumns for mysql with bare name', async () => {
-      getTableSchema.mockResolvedValueOnce({
-        tableName: 'users',
-        columns: [],
-        primaryKeys: [],
-        indexes: [],
-        foreignKeys: [],
-      });
-      getColumns.mockResolvedValueOnce(['id', 'name']);
-
-      const result = await fetchTableSchemaForSqlGeneration({
-        dbSessionId: 'sess-1',
-        tableName: 'users',
-        schema: 'mydb',
-        database: 'mydb',
-        databaseType: 'mysql',
-      });
-
-      expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'users', 'mydb', 'mydb');
-      expect(getColumns).toHaveBeenCalledWith('sess-1', 'users', 'mydb', 'mydb');
-      expect(result?.columns.map((c) => c.name)).toEqual(['id', 'name']);
-    });
-
-    it('uses columnMap when IPC calls fail or return empty', async () => {
-      getTableSchema.mockRejectedValueOnce(new Error('fail'));
-      getColumns.mockRejectedValueOnce(new Error('fail'));
-
-      const result = await fetchTableSchemaForSqlGeneration({
-        dbSessionId: 'sess-1',
-        tableName: 'users',
-        database: 'mydb',
-        databaseType: 'mysql',
-        columnMap: { users: ['id', 'email'] },
-      });
-
-      expect(result).toEqual(buildPseudoTableSchema('users', ['id', 'email']));
-    });
+    expect(readSchema).toHaveBeenCalledExactlyOnceWith('sess-1', ref);
+    expect(readColumns).toHaveBeenCalledExactlyOnceWith('sess-1', [ref]);
+    expect(result?.columns).toEqual(columns);
+    expect(result?.primaryKeys).toEqual(['id']);
   });
-
+  it('uses the caller snapshot after metadata failure without retrying name variants', async () => {
+    readSchema.mockRejectedValueOnce(new Error('fail'));
+    readColumns.mockResolvedValueOnce({
+      results: [
+        {
+          status: 'error',
+          ref: { database: 'app', schema: 'public', name: 'users' },
+          error: { code: 'read-failed', message: 'fail' },
+        },
+      ],
+    });
+    const result = await fetchTableSchemaForSqlGeneration({
+      dbSessionId: 'sess-1',
+      tableName: 'users',
+      schema: 'public',
+      database: 'app',
+      databaseType: 'postgresql',
+      columnMap: { users: ['id', 'email'] },
+    });
+    expect(result).toEqual(buildPseudoTableSchema('users', ['id', 'email']));
+    expect(readSchema).toHaveBeenCalledTimes(1);
+    expect(readColumns).toHaveBeenCalledTimes(1);
+  });
   describe('generateTableSqlWithFallbacks', () => {
     const schema = buildPseudoTableSchema('users', ['id', 'name']);
 

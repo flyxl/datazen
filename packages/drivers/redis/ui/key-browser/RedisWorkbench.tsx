@@ -1,7 +1,12 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { Database } from 'lucide-react';
 import { useI18n } from '@datazen/ui';
-import { useBoundSchemaStore, useBoundSettingsStore, readBooleanField } from '@datazen/driver-sdk';
+import {
+  useBoundSchemaStore,
+  useBoundConnectionSchemaField,
+  useBoundSettingsStore,
+  readBooleanField,
+} from '@datazen/driver-sdk';
 import { ImportExport } from './ImportExport';
 import { KeyTreePane } from './KeyTreePane';
 import { DetailColumn } from './DetailColumn';
@@ -61,8 +66,8 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
     ref,
   ) {
     const { t } = useI18n();
-    const databasesFromStore = useBoundSchemaStore((s) => s.databases);
-    const loading = useBoundSchemaStore((s) => s.loading);
+    const databasesFromStore = useBoundConnectionSchemaField(dbSessionId, 'databases');
+    const loading = useBoundConnectionSchemaField(dbSessionId, 'loading');
     const loadForConnection = useBoundSchemaStore((s) => s.loadForConnection);
     const driverSettings = useBoundSettingsStore((s) => s.settings.driverSettings);
     const allowFlush = readBooleanField(

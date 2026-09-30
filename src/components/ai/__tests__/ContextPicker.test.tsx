@@ -25,7 +25,7 @@ vi.mock('../../../commands/context', () => ({
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
-    getTables: (...args: Parameters<typeof mockGetTables>) => mockGetTables(...args),
+    listTables: (...args: Parameters<typeof mockGetTables>) => mockGetTables(...args),
   },
 }));
 

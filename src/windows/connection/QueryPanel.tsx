@@ -11,7 +11,11 @@ import {
 import { paneArgs, paneKey, resolveFocusedPaneId, usePanelStore } from '../../stores/panelStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
-import { useSchemaStore } from '../../stores/schemaStore';
+import {
+  useSchemaStore,
+  useConnectionSchemaField,
+  useConnectionColumnMaps,
+} from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
@@ -174,19 +178,19 @@ export function QueryPanel({
     getStartSize: () => editorViewportRef.current?.offsetHeight,
   });
 
-  const tables = useSchemaStore((s) => s.tables);
-  const views = useSchemaStore((s) => s.views);
-  const columnMap = useSchemaStore((s) => s.columnMap);
-  const namespaceTree = useSchemaStore((s) => s.namespaceTree);
-  const pathAliases = useSchemaStore((s) => s.pathAliases);
-  const databases = useSchemaStore((s) => s.databases);
-  const currentDatabase = useSchemaStore((s) => s.currentDatabase);
-  const currentSchema = useSchemaStore((s) => s.currentSchema);
-  const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
+  const tables = useConnectionSchemaField(dbSessionId, 'tables');
+  const views = useConnectionSchemaField(dbSessionId, 'views');
+  const { columnMap } = useConnectionColumnMaps(dbSessionId);
+  const namespaceTree = useConnectionSchemaField(dbSessionId, 'namespaceTree');
+  const pathAliases = useConnectionSchemaField(dbSessionId, 'pathAliases');
+  const databases = useConnectionSchemaField(dbSessionId, 'databases');
+  const currentDatabase = useConnectionSchemaField(dbSessionId, 'currentDatabase');
+  const currentSchema = useConnectionSchemaField(dbSessionId, 'currentSchema');
+  const isMultiDb = useConnectionSchemaField(dbSessionId, 'isMultiDatabase');
   const ensureColumns = useSchemaStore((s) => s.ensureColumns);
-  const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
-  const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
-  const schemaEpoch = useSchemaStore((s) => s.schemaEpoch);
+  const ensureDatabaseColumns = useSchemaStore((s) => s.ensureDatabaseColumns);
+  const namespaceLoading = useConnectionSchemaField(dbSessionId, 'ensuringCount') > 0;
+  const schemaEpoch = useConnectionSchemaField(dbSessionId, 'schemaEpoch');
 
   const metadataSnapshot = useMetadataSnapshot(dbSessionId);
 
@@ -472,10 +476,7 @@ export function QueryPanel({
 
   // Eagerly load column metadata so SQL autocomplete can suggest columns
   // even without a FROM clause (e.g. typing "SELECT na" shows matching columns).
-  //
-  // Phase 1: For multi-DB / path-hierarchy drivers, loadForConnection skips
-  // loadTables, so `tables` stays empty. Trigger loadTables for the current
-  // database so that namespaceTree gets table entries and columnMap can be built.
+  // Load an initially skipped catalog before deriving editor columns.
   const loadTablesFn = useSchemaStore((s) => s.loadTables);
   useEffect(() => {
     if (!dbSessionId || !isMultiDb || !currentDatabase) return;
@@ -487,30 +488,28 @@ export function QueryPanel({
   // Trigger on schemaEpoch (bumped by loadTables) and namespaceTree structural
   // changes (bumped via namespaceFingerprint). Also depends on tables.length so
   // it re-fires after Phase 1 populates tables.
-  const namespaceFingerprint = useSchemaStore((s) => {
-    const tree = s.namespaceTree;
-    if (Array.isArray(tree)) return String(tree.length);
-    return Object.keys(tree).sort().join(',');
-  });
+  const namespaceFingerprint = Array.isArray(namespaceTree)
+    ? String(namespaceTree.length)
+    : Object.keys(namespaceTree).sort().join(',');
   useEffect(() => {
     if (!dbSessionId || !selectedDatabase) return;
-    void loadColumnMap(dbSessionId, selectedDatabase);
+    void ensureDatabaseColumns(dbSessionId, selectedDatabase);
   }, [
     dbSessionId,
-    loadColumnMap,
+    ensureDatabaseColumns,
     selectedDatabase,
     schemaEpoch,
     namespaceFingerprint,
     tables.length,
   ]);
 
-  // Keep the editor metadata cache pinned to the tab's database. Only
-  // switch when the bound database actually changes — switchContext drops
-  // all loaded relations, so calling it per keystroke would thrash the cache.
+  // Reload metadata only when the tab's database/schema context changes.
   useEffect(() => {
     if (!dbSessionId || !selectedDatabase) return;
     const snapshot = metadataCache.getSnapshot(dbSessionId);
-    if (snapshot.database !== selectedDatabase) {
+    const contextChanged =
+      snapshot.database !== selectedDatabase || snapshot.schema !== (selectedSchema ?? undefined);
+    if (contextChanged) {
       metadataCache.switchContext(dbSessionId, {
         database: selectedDatabase,
         schema: selectedSchema ?? undefined,

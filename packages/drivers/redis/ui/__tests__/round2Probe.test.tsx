@@ -128,12 +128,10 @@ bindConnectionStore(create<ConnectionBridgeState>(() => ({ connections: [] })));
 bindConfirmDialog(() => [async () => true, null]);
 bindSchemaStore(
   create<SchemaStoreState>(() => ({
-    databases: ['db0', 'db1'],
-    loading: false,
+    schemas: new Map([['sess-i1c', { pathItems: {}, databases: ['db0', 'db1'], loading: false }]]),
     loadForConnection: async () => {},
     // Path-tree surface this suite never drives (Redis reads the flat database
     // list only); the no-ops keep the fake a complete `SchemaStoreState`.
-    pathItems: {},
     setLoadedTables: () => {},
     mergeNamespace: () => {},
     registerPathAliases: () => {},

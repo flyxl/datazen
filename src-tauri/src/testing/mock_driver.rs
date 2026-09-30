@@ -26,6 +26,8 @@ pub struct MockDriverOptions {
     pub category: DriverCategory,
     pub columns: Vec<ColumnSchema>,
     pub primary_keys: Vec<String>,
+    /// Per-relation read failures for metadata batch partial-success tests.
+    pub column_errors_by_table: HashMap<String, String>,
     pub table_schema: Option<TableSchema>,
     pub query_rows: Vec<Vec<Option<Value>>>,
     /// Keyset pages after the first are empty for resume-executor tests.
@@ -41,6 +43,7 @@ pub struct MockDriverOptions {
     pub explain_plan: ExplainResult,
     pub server_version: String,
     pub extra_commands: Vec<DriverCommandDefinition>,
+    pub command_results: HashMap<String, serde_json::Value>,
     pub query_error: Option<String>,
     /// When set, precise execution-handle cancellation returns a driver-level
     /// error for command tests. The legacy session-wide method remains a
@@ -100,6 +103,7 @@ impl Default for MockDriverOptions {
             category: DriverCategory::Sql,
             columns: Vec::new(),
             primary_keys: Vec::new(),
+            column_errors_by_table: HashMap::new(),
             table_schema: None,
             query_rows: Vec::new(),
             empty_keyset_after_cursor: false,
@@ -117,6 +121,7 @@ impl Default for MockDriverOptions {
             },
             server_version: String::new(),
             extra_commands: Vec::new(),
+            command_results: HashMap::new(),
             query_error: None,
             cancel_error: None,
             execute_rows_affected: 0,
@@ -479,6 +484,9 @@ impl DatabaseDriver for MockDriver {
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         self.get_columns_calls.fetch_add(1, Ordering::Relaxed);
+        if let Some(message) = self.opts.column_errors_by_table.get(table) {
+            return Err(DriverError::QueryFailed(message.clone()));
+        }
         if let Some(columns) = self.columns_for_database(database, table) {
             let primary_keys = columns
                 .iter()
@@ -783,6 +791,9 @@ impl DatabaseDriver for MockDriver {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
+        if let Some(data) = self.opts.command_results.get(command) {
+            return Ok(CommandResult::new(data.clone()));
+        }
         if self
             .opts
             .extra_commands

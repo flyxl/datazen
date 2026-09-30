@@ -635,7 +635,7 @@ export function usePanelHandlers({
     if (!sidebarConnCtx?.dbSessionId) return;
     useTableDataStore.getState().invalidateCachedData(sidebarConnCtx.dbSessionId);
     if (currentDatabase) {
-      void loadTables(currentDatabase);
+      void loadTables(currentDatabase, sidebarConnCtx.dbSessionId);
     } else {
       void loadForConnection(sidebarConnCtx.dbSessionId, {
         databaseType: sidebarConnCtx.databaseType,

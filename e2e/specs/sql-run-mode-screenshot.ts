@@ -1,3 +1,4 @@
+import { readCatalog } from '../schema-metadata.js';
 /**
  * 34-sql-run-mode.png — the SQL editor's run mode: which statement to run.
  *
@@ -313,7 +314,7 @@ describe('SQL Run Mode Screenshot', () => {
     // dead demo database downgrades this spec to a skip rather than a failure.
     const dbSessionId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
     if (typeof dbSessionId === 'string' && !dbSessionId.startsWith('__error')) {
-      await invoke('get_tables', { dbSessionId, database: DEMO_PG_DB });
+      await readCatalog({ dbSessionId, database: DEMO_PG_DB });
     } else {
       console.warn(`[run-mode] demo PostgreSQL not reachable: ${String(dbSessionId)}`);
     }

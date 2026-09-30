@@ -144,7 +144,7 @@ export interface DatabaseTypeMeta {
    * On-demand SQL namespace completion strategy (host is wapp-agnostic).
    * - `default-sql`: database → tables (MySQL/MariaDB/…)
    * - `postgresql`: database → schema → table (or schema → table when single-db)
-   * - `path-hierarchy`: slash-path levels via `get_tables` + optional name→id aliases
+   * - `path-hierarchy`: slash-path levels via `list_catalog` + optional name→id aliases
    *   (extensions that use catalog/schema navigation rows with schema CATALOG|SCHEMA)
    */
   namespaceEnsure?: 'default-sql' | 'postgresql' | 'path-hierarchy';

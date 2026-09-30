@@ -76,7 +76,7 @@ const { endpointState, profile, schemaDiffCommands, databaseCommands } = vi.hois
       executeDeploy: vi.fn(),
     },
     databaseCommands: {
-      getTables: vi
+      listTables: vi
         .fn()
         .mockResolvedValue([{ name: 'users', schema: 'public', tableType: 'table' }]),
       getDatabaseObjects: vi.fn().mockResolvedValue([]),
@@ -216,7 +216,7 @@ describe('SchemaDiffWindow profile loading', () => {
       rollbackCompleteness: { complete: true, missing: [] },
       typeSuggestions: [],
     });
-    databaseCommands.getTables.mockResolvedValue([
+    databaseCommands.listTables.mockResolvedValue([
       { name: 'users', schema: 'public', tableType: 'table' },
     ]);
     databaseCommands.getDatabaseObjects.mockResolvedValue([]);
@@ -249,7 +249,7 @@ describe('SchemaDiffWindow profile loading', () => {
     await waitFor(() =>
       expect(screen.getByTestId('schema-diff-objects-panel')).toBeInTheDocument(),
     );
-    expect(databaseCommands.getTables).toHaveBeenCalledWith('source-session', 'profile-db');
+    expect(databaseCommands.listTables).toHaveBeenCalledWith('source-session', 'profile-db');
     expect(screen.getByTestId('schema-diff-table-row')).toHaveAttribute(
       'data-table-name',
       'public.users',
@@ -273,7 +273,7 @@ describe('SchemaDiffWindow profile loading', () => {
 
   it('[tester] restores a target-only profile row and forwards separate selectors', async () => {
     profile.targetOnlyTables = ['public.archive'];
-    databaseCommands.getTables.mockImplementation(async (sessionId: string) =>
+    databaseCommands.listTables.mockImplementation(async (sessionId: string) =>
       sessionId === 'source-session'
         ? [{ name: 'users', schema: 'public', tableType: 'table' }]
         : [
@@ -345,7 +345,7 @@ describe('SchemaDiffWindow profile loading', () => {
       targetSchema: 'public',
       targetName: 'orders',
     };
-    databaseCommands.getTables.mockResolvedValue([]);
+    databaseCommands.listTables.mockResolvedValue([]);
     databaseCommands.getDatabaseObjects.mockImplementation(
       async (sessionId: string, kind: string) =>
         (sessionId === 'source-session' ? [sourceRoutine] : [targetTrigger]).filter(
@@ -442,7 +442,7 @@ describe('SchemaDiffWindow profile loading', () => {
           : [otherTrigger, { ...desiredTarget }]
         ).filter((object) => object.kind === kind),
     );
-    databaseCommands.getTables.mockResolvedValue([]);
+    databaseCommands.listTables.mockResolvedValue([]);
 
     render(<SchemaDiffWindow />);
     fireEvent.click(screen.getByTestId('schema-diff-next'));

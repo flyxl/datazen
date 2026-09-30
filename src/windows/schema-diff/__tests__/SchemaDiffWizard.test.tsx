@@ -51,7 +51,7 @@ vi.mock('../../../lib/schemaDiffLimitationsPrefs', () => ({
   setSchemaDiffLimitationsDismissed: vi.fn(),
 }));
 vi.mock('../../../commands/database', () => ({
-  databaseCommands: { getTables: vi.fn(), getDatabaseObjects: vi.fn() },
+  databaseCommands: { listTables: vi.fn(), getDatabaseObjects: vi.fn() },
 }));
 vi.mock('../../../commands/file', () => ({ fileCommands: { saveTextWithDialog: vi.fn() } }));
 vi.mock('../../../commands/schemaDiff', async (original) => ({
@@ -124,7 +124,7 @@ beforeEach(() => {
   state.endpoints.isCrossDialect = false;
   state.endpoints.validateEndpoints.mockReturnValue(true);
   state.endpoints.ensureConnected.mockImplementation(async (side) => `${side}-session`);
-  vi.mocked(databaseCommands.getTables).mockResolvedValue([{ name: 'users', tableType: 'table' }]);
+  vi.mocked(databaseCommands.listTables).mockResolvedValue([{ name: 'users', tableType: 'table' }]);
   vi.mocked(databaseCommands.getDatabaseObjects).mockResolvedValue([]);
   vi.mocked(schemaDiffCommands.compareTableSchemas).mockResolvedValue({
     table: 'users',
@@ -261,7 +261,7 @@ describe('complete schema migration wizard journeys', () => {
   });
 
   it('selects a target-only table without sending it through source comparison', async () => {
-    vi.mocked(databaseCommands.getTables).mockImplementation(async (sessionId) =>
+    vi.mocked(databaseCommands.listTables).mockImplementation(async (sessionId) =>
       sessionId === 'source-session'
         ? [{ name: 'users', tableType: 'table' }]
         : [
@@ -304,7 +304,7 @@ describe('complete schema migration wizard journeys', () => {
   });
 
   it('exports and saves target-only selections as destructive profile state', async () => {
-    vi.mocked(databaseCommands.getTables).mockImplementation(async (sessionId) =>
+    vi.mocked(databaseCommands.listTables).mockImplementation(async (sessionId) =>
       sessionId === 'source-session'
         ? [{ name: 'users', tableType: 'table' }]
         : [
@@ -565,7 +565,7 @@ describe('complete schema migration wizard journeys', () => {
       targetSchema: 'public',
       targetName: 'orders',
     };
-    vi.mocked(databaseCommands.getTables).mockResolvedValue([]);
+    vi.mocked(databaseCommands.listTables).mockResolvedValue([]);
     vi.mocked(databaseCommands.getDatabaseObjects).mockImplementation(async (sessionId, kind) =>
       (sessionId === 'source-session' ? [routine] : [trigger]).filter(
         (object) => object.kind === kind,

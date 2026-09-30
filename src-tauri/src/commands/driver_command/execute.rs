@@ -35,7 +35,17 @@ pub(crate) async fn execute_driver_command_with_mode(
     )
     .await?;
 
+    let metadata_command = crate::services::schema_metadata::is_metadata_command(&request.command);
     let mut definitions = driver.command_definitions();
+    if metadata_command {
+        if request.database.is_some() || request.schema.is_some() {
+            return Err(CommandError::Validation(
+                "Metadata targets must be supplied inside input".into(),
+            ));
+        }
+        definitions.retain(|d| !crate::services::schema_metadata::is_metadata_command(&d.id));
+        definitions.extend(crate::services::schema_metadata::command_definitions());
+    }
     // Safety guard: if a driver forgot to extend schema_catalog_command_definitions,
     // inject only the missing catalog definitions so navigation/browsing is never broken.
     if is_schema_catalog_command(&request.command) {
@@ -136,10 +146,26 @@ pub(crate) async fn execute_driver_command_with_mode(
         );
     }
 
-    match driver
-        .execute_command(&handle, &request.command, request.input)
+    let outcome = if metadata_command {
+        let id = db_session_id.as_deref().ok_or_else(|| {
+            CommandError::Validation("Metadata commands require a session".into())
+        })?;
+        crate::services::schema_metadata::execute(
+            state,
+            id,
+            &driver,
+            &handle,
+            &request.command,
+            request.input,
+        )
         .await
-    {
+    } else {
+        driver
+            .execute_command(&handle, &request.command, request.input)
+            .await
+            .map_err(CommandError::from)
+    };
+    match outcome {
         Ok(result) => {
             if is_sql_command {
                 if let Some(sql) = sql.as_deref() {
