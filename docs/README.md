@@ -63,6 +63,14 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [Windows](architecture/windows.md)
 - [Testing](architecture/testing.md)
 
+### 桌面 / Web 平台演进设计（待实现）
+
+以下三份文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态，不代表当前 main 已支持团队 Web；落地后应改写为实现事实与开发流程。
+
+- [系统概要设计](architecture/platform/system-overview.md)：三种运行方式、模块职责、交互与接口。
+- [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 73 个测试用例。
+- [分阶段开发计划](development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛。
+
 ## 开发与发布
 
 - [E2E Testing](development/e2e-testing.md)

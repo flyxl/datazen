@@ -1,6 +1,6 @@
 # DataZen 系统架构
 
-> 本文档描述 **main 分支当前实现**，不是未来版本规划。具体实现以 `src-tauri/`、`packages/driver-api/` 和 `src/` 为准。
+> 本文正文描述 **main 分支当前实现**。下方单独标明的 `platform/` 设计是用户明确要求保存的待实现交付，不属于当前功能；具体实现以代码为准。
 
 ## 架构文档索引
 
@@ -36,7 +36,15 @@
 - [Windows](windows.md)
 - [Testing](testing.md)
 
-> 本目录只描述 **已落地** 的实现。方案草稿、RFC 与实施计划不长期留在 `architecture/`：
+### 平台演进目标设计（待实现）
+
+- [桌面 / Web 系统概要设计](platform/system-overview.md)
+- [连接管理详细设计与验收用例](platform/connection-management.md)
+- [分阶段开发计划](../development/platform-development-plan.md)
+
+这三份文档是本次明确请求的范围例外，状态与当前实现分开标注；实施后逐节改写为事实，不扩展为通用提案/台账目录。
+
+> 除上述明确请求的待实现设计外，本目录只描述 **已落地** 的实现。方案草稿、RFC 与实施计划不长期留在 `architecture/`：
 > 结论落地后改写为本目录的事实条目，未落地的提案不入库。演进方向的公开叙述见 [blogs/](../blogs/README.md)。
 
 ## 1. 总体结构
