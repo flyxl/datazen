@@ -719,6 +719,12 @@ mod tests {
                 "temporal row-end column",
             ),
             (
+                9,
+                Some(Value::Integer(3)),
+                "generated-always columns",
+                "unknown generated-always type",
+            ),
+            (
                 10,
                 Some(Value::Bool(true)),
                 "FILESTREAM columns",
@@ -756,6 +762,14 @@ mod tests {
             row[index] = value;
             assert_unsupported_column(row, reason, case);
         }
+
+        let mut legacy_default = column_row("legacy_default_column");
+        legacy_default[13] = bit(true);
+        assert!(matches!(
+            parse_columns(result(vec![legacy_default])),
+            Err(DriverError::Unsupported(message))
+                if message == "SQL Server table uses a legacy bound DEFAULT; its expression is not represented by sys.default_constraints"
+        ));
     }
 
     #[test]
@@ -790,6 +804,19 @@ mod tests {
             "SQL Server-specific catalog flags must fail closed when absent or unreadable:\n{}",
             failures.join("\n")
         );
+    }
+
+    #[test]
+    fn generated_always_type_does_not_accept_lossy_float_conversion() {
+        for value in [0.0, 0.5, -0.5] {
+            let mut row = column_row("generated_column");
+            row[9] = Some(Value::Float(value));
+            let parsed = parse_columns(result(vec![row]));
+            assert!(
+                parsed.is_err(),
+                "generated_always_type must be an integer; float {value} must not be truncated to zero and accepted as an ordinary column"
+            );
+        }
     }
 
     #[test]
