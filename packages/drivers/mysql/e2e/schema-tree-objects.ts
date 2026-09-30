@@ -2,8 +2,8 @@
 import { expect, browser, $ } from '@wdio/globals';
 import {
   closeExtraWindows,
-  clickCardConnectButton,
   connectBackend,
+  dblclickConnByExactName,
   disconnectBackend,
   expandConnectedConnectionInNavigator,
   expandSchemaCategory,
@@ -148,7 +148,13 @@ describe('MySQL Schema Tree object journey', function () {
       [connectionId, treeConfigSaved],
       [adminId, adminConfigSaved],
     ] as const) {
-      if (saved) await invokeBackend('delete_connection', { id }).catch(() => undefined);
+      if (saved) {
+        try {
+          await invokeBackend('delete_connection', { id });
+        } catch {
+          cleanupErrors.push(`could not delete temporary connection ${id}`);
+        }
+      }
     }
     if (mainWindow) {
       await closeExtraWindows(mainWindow).catch(() => undefined);
@@ -235,7 +241,9 @@ describe('MySQL Schema Tree object journey', function () {
       timeout: 20_000,
       timeoutMsg: `Saved MySQL connection card ${connectionName} did not appear after refresh`,
     });
-    await clickCardConnectButton(connectionName);
+    if (!(await dblclickConnByExactName(connectionName))) {
+      throw new Error(`Saved MySQL connection card ${connectionName} could not be opened`);
+    }
     await waitForConnectionToolbar();
     await expandConnectedConnectionInNavigator(connectionName);
     for (const category of ['tables', 'views', 'function', 'procedure', 'trigger']) {
