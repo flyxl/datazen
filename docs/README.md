@@ -65,11 +65,25 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 
 ### 桌面 / Web 平台演进设计（待实现）
 
-以下三份文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态，不代表当前 main 已支持团队 Web；落地后应改写为实现事实与开发流程。
+以下九份文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态，不代表当前 main 已支持团队 Web；落地后应改写为实现事实与开发流程。
+
+概要、契约与计划：
 
 - [系统概要设计](architecture/platform/system-overview.md)：三种运行方式、模块职责、交互与接口。
-- [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 74 个测试用例。
-- [分阶段开发计划](development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛。
+- [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 74 个测试用例，是接口契约、错误码与验收的唯一权威。
+- [分阶段开发计划](development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛，是阶段→补充契约归属的唯一权威。
+
+补充详细设计（P0–P2）：
+
+- [共享应用边界与端口详细设计](architecture/platform/shared-boundaries-and-ports.md)：包边界与依赖矩阵、runtime 内部模块、端口 trait 签名、请求上下文三来源与 Tauri 组装根。
+- [P0 假资源夹具与基准 harness 详细设计](architecture/platform/fake-runtime-fixtures.md)：transport-neutral fake 的资源契约、F1～F12 故障注入矩阵、CommandJournal、Barrier/DrainBarrier 与 FakeClock。
+- [持久化模型详细设计](architecture/platform/persistence-model.md)：可落盘白名单与禁落盘清单、管理库表的 DDL 与 CHECK、本地 Store ↔ 服务端 DB 映射、schema 版本与 expand/contract。
+- [驱动能力迁移详细设计](architecture/platform/driver-capability-migration.md)：path 驱动的能力现状矩阵、迁移批次与依赖图、协议版本演进门槛、过渡 adapter 的退役条件。
+
+补充详细设计（P6–P7）：
+
+- [Workflow 资源模型详细设计](architecture/platform/workflow-resource-model.md)：step / session block / transaction block 三种执行单元、目标继承链、Session/Lease/Budget 集成与版本兼容边界。
+- [团队 Web 服务与认证详细设计](architecture/platform/team-server-and-auth.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
 
 ## 开发与发布
 

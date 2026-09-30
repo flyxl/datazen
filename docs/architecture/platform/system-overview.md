@@ -70,7 +70,8 @@ flowchart TD
 | Application services | 用例、目标解析、策略编排 | 业务请求、Execution/Job 引用 | 不引用 Tauri、HTTP 框架或 React |
 | PolicyService | connection/session/job/result 授权 | AuthorizationDecision | 不通过前端角色标记授予权限 |
 | ProfileRepository | 连接配置、版本、共享范围 | ConnectionProfile | 不保存 runtime dbSessionId |
-| SecretProvider | 解密/取凭据、轮换、短期执行材料 | secretRef + 执行身份 | 不把密码返回到普通查询响应 |
+| SecretProvider | 解密/取凭据、轮换、短期执行材料 | secretRef | 不把密码返回到普通查询响应 |
+| IdentityResolver | 解析并签发执行身份（`executionIdentityKey`） | 组织/用户、连接上下文 | 不读取或产出凭据本身 |
 | DriverRegistry | 描述、协议检查、factory 注册 | descriptor、provider | 不按数据库名称拼 SQL |
 | ExecutionGateway | 参数/能力/权限校验、执行登记、取消、来源 | ExecutionReceipt、事件 | 不创建隐式共享会话 |
 | SessionRegistry | owner、状态机、串行队列、上下文 revision、会话级句柄登记 | SessionView | 不用 connectionId 代替 session 身份 |
@@ -247,7 +248,7 @@ interface ArtifactChunk {
 | --- | --- |
 | ProfileRepository | get/list、按 expectedRevision 保存、禁用；以组织限定查询 |
 | PolicyService | authorize action/resource、委托校验、权限版本变更通知 |
-| SecretProvider | resolve execution identity、读取版本化材料、轮换；材料不序列化到 API |
+| SecretProvider | 读取版本化秘密材料（`resolve(SecretRef, SecretPurpose)`）与轮换（`revision(SecretRef)`）；材料不序列化到 API |
 | JobRepository | create、状态 CAS、claim/renew、检查点、恢复待核验任务 |
 | SessionDirectory | 内存 register/get、owner epoch CAS、原子替换提交、invalidate；禁止落盘 |
 | SubmissionTokenIssuer | 签名、验证作用域/有效期/owner epoch；未知版本拒绝 |
@@ -255,6 +256,8 @@ interface ArtifactChunk {
 | EventSink | 发布带 sequence 的事件、受控订阅；终态可从 repository 重建 |
 | NetworkProvider | 按路由策略建立直连/隧道、端点校验、共享引用 |
 | BudgetCoordinator | 申请节点额度、续期、drain；失联时停止新增资源 |
+
+本表 10 行不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
 
 Desktop adapters 使用现有 Store/keychain/file 管理能力逐步适配；Server adapters 使用服务端元数据数据库、SecretProvider 与 ArtifactStore。第一版推荐 PostgreSQL 管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用。SSE 用于单向状态通知，取消走 HTTP；有双向交互需要时再引入 WebSocket。
 

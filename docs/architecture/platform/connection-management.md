@@ -202,7 +202,7 @@ type ExecutionErrorCode =
   | 'resourceLost'
   // 放弃消费或背压导致的截断中止
   | 'pipelineAborted'
-  // 派发前宿主重校验拒绝：权限撤销、额度、队列、sql_guard
+  // 已建立执行记录后由宿主二次校验拒绝：权限撤销、额度、队列、sql_guard；尚未建立记录时直接返回 ApiError，不产生本枚举取值
   | 'hostRejected';
 
 interface ExecutionReceipt {
@@ -626,6 +626,8 @@ MySQL USE 改变当前会话默认数据库；完整限定对象名不等于切�
 | 项 | 初始值 | 行为 |
 | --- | --- | --- |
 | 短操作 pool | min=0、max=2/PoolKey | 还受服务级预算约束 |
+| pool idle TTL | 60 秒 | 空 pool 元数据按 LRU 可删除；有资源的 pool 先关闭再删除 |
+| 空 pool 元数据条目上限 | 32 个 | 每 pool min=0、max=2，仍受服务总预算约束 |
 | 每用户已连接编辑器 | 5 | Opening 时预留名额；资源仍存活的 Ready/Executing/Closing/Lost 占用至确认释放 |
 | 桌面总目标连接 | 16 | idle、任务和控制资源都计入 |
 | 团队单数据库服务额度 | 20 | 管理员按目标 max connections 调整 |
@@ -669,7 +671,7 @@ cancel 所需控制连接预留在同一预算内，不能在满池时无限额�
 | organizationId/connectionId/configRevision | RequestContext + ProfileRepository 的 CAS 版本 | 新 key；旧 idle 停发并关闭 |
 | credentialRevision | SecretProvider 的不透明版本 | 新 key；不使用密码散列作为 key |
 | executionIdentityKey | IdentityResolver：DB 登录身份、委托角色、有效权限范围 | 重新解析并隔离池与缓存 |
-| policyIsolationKey | AuthorizationService：组织/用户/策略版本及只读限制 | 权限撤销立即停发，排队重新鉴权 |
+| policyIsolationKey | PolicyService：组织/用户/策略版本及只读限制 | 权限撤销立即停发，排队重新鉴权 |
 | driverResourceKey | describeResource 对 CanonicalTarget/基线的规范化结果 | 数据库绑定资源按 database 分 key |
 | networkRouteRevision | NetworkProvider 的路由/隧道/TLS 配置版本 | 新 key，旧路由不发放新租约 |
 
@@ -744,10 +746,17 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 | OutcomeUnknown | 写入/提交结果未知 | 核验执行，不自动重试 |
 | PlanStale / SourceChanged / TargetConflictRows | 计划/数据变化 | 重比对或处理冲突 |
 | IdempotencyConflict | 相同键不同输入 | 修正请求键，不能覆盖记录 |
+| Unauthenticated | 未认证 | 跳转登录；不自动重放原请求 |
+| NotFound | 不可见资源、不存在资源或二者不可区分 | 不重试，不据此推断资源存在性 |
+| PayloadTooLarge | 请求体超过物理上限 | 缩减请求 |
+| QuotaExceeded | 组织/用户/数据库额度超限 | 等待或申请配额 |
+| RateLimited | 令牌桶限流拒绝 | 按 Retry-After 退避 |
+| ServiceUnavailable | 暂无可用 worker、drain 中、管理库不可达或迁移未完成 | 退避后重发；已接受的幂等提交必须复用同一 idempotencyKey |
+| ConfigRevisionMismatch | ProfileRepository::compare_and_set 的 expectedRevision CAS 失败（命名空间目标本身合法，区别于目标冲突的 TargetConflict） | 重读最新 configRevision 后由用户决定，不自动覆盖 |
 
 每条事件带 stream sequence；重复事件忽略，缺口重新读取状态。session context 按 runtimeEpoch/dbSessionId/contextRevision 更新；比较 Counter 使用 BigInt 或十进制字符串比较，不能 Number 转换。
 
-幂等记录原子保存请求指纹和 receipt，键的有效期协议见 13.1。首版执行/Job 的完整 durable receipt 保留至少 24 小时，会话回执仅内存保留；不依赖已删除记录来识别旧请求。幂等提交只保证创建 execution 一次，不保证外部 SQL exactly-once。执行记录不可用时，客户端不能根据没有事件推断未执行。
+幂等记录原子保存请求指纹和 receipt，键的有效期协议见 13.1。首版执行/Job 的完整 durable receipt 保留至少至 `expiresAt + 24 小时`，会话回执仅内存保留；不依赖已删除记录来识别旧请求。幂等提交只保证创建 execution 一次，不保证外部 SQL exactly-once。执行记录不可用时，客户端不能根据没有事件推断未执行。
 
 ### 13.1 幂等键期限与响应分类
 
@@ -818,7 +827,7 @@ CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固�
 
 ## 16. 详细测试用例
 
-每个用例实现时保留编号。H=Host fake/runtime，D=driver，F=前端，W=Web/worker。涉及真实方言的 D 断言放驱动目录，Host 只运行统一 contract。
+每个用例实现时保留编号。H=Host fake/runtime，D=driver，F=前端，W=Web/worker 泛称（§15.3 再分 W1=单实例 HTTP/SSE、WN=多 worker）；标题写 (W) 表示该 Web 断言横跨两种部署形态，阶段性落点按 §15.3 与 §17 判定，与标题直接写 (W1)/(WN) 的用例同属一类层标签。涉及真实方言的 D 断言放驱动目录，Host 只运行统一 contract。
 
 ### 16.1 类型、身份、目标与懒连接
 
