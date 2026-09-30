@@ -17,6 +17,8 @@
   "include": [
     "**/*.ts",
     "../packages/pro-extensions/*/e2e/**/*.ts",
-    "../packages/drivers/sqlserver/e2e/**/*.ts"
+    "../packages/drivers/sqlserver/e2e/**/*.ts",
+    "../packages/drivers/mysql/e2e/**/*.ts",
+    "../packages/drivers/postgres/e2e/**/*.ts"
   ]
 }

@@ -323,6 +323,12 @@ export const config: WebdriverIO.Config = {
     contract: ['./specs/host-contract-matrix.ts'],
     // Redis driver's own E2E, not part of default full run (`pnpm e2e:redis`)
     redis: ['../packages/drivers/redis/e2e/*.ts'],
+    // Driver-owned MySQL/PostgreSQL schema-tree object journeys. These create
+    // isolated fixtures and clean them up in the driver E2E specs.
+    'schema-tree-objects': [
+      '../packages/drivers/mysql/e2e/schema-tree-objects.ts',
+      '../packages/drivers/postgres/e2e/schema-tree-objects.ts',
+    ],
     // Host-owned SQL editor gestures: Mod+D, multi-cursor, rectangular
     // selection (`pnpm e2e:sql-editor-prod`). Both specs are Community
     // behaviour, so this suite runs on any build. The Pro-only counterparts
