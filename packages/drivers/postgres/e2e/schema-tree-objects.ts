@@ -201,12 +201,14 @@ describe('PostgreSQL Schema Tree objects', () => {
   });
 
   it('creates, browses, opens definitions, and removes an isolated object schema', async () => {
-    const stamp = Date.now().toString(36);
+    const randomSuffix = Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+    const stamp = `${Date.now().toString(36)}_${randomSuffix}`;
     const schema = `e2e_schema_tree_${stamp}`;
     const connectionId = `e2e-schema-tree-${stamp}`;
     const connectionName = `E2E PostgreSQL Schema Tree ${stamp}`;
     const database = process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
     const dbSessionIdRef: { value?: string } = {};
+    let schemaCreated = false;
     let primaryFailure: unknown;
     const cleanupFailures: string[] = [];
 
@@ -252,8 +254,10 @@ describe('PostgreSQL Schema Tree objects', () => {
 
       const qSchema = quoteIdent(schema);
       const qName = (object: string) => `${qSchema}.${quoteIdent(object)}`;
+      await executeSql(dbSessionId, `CREATE SCHEMA ${qSchema}`);
+      schemaCreated = true;
+
       const statements = [
-        `CREATE SCHEMA ${qSchema}`,
         `CREATE TYPE ${qName(name.enum)} AS ENUM ('active', 'archived')`,
         `CREATE DOMAIN ${qName(name.domain)} AS text CHECK (VALUE ~ '^[A-Z0-9-]{1,24}$')`,
         `CREATE SEQUENCE ${qName(name.sequence)} START WITH 1 INCREMENT BY 1`,
@@ -460,23 +464,25 @@ describe('PostgreSQL Schema Tree objects', () => {
     } finally {
       const dbSessionId = dbSessionIdRef.value;
       if (dbSessionId) {
-        try {
-          await withSafeModeOff(() =>
-            executeSql(dbSessionId, `DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`),
-          );
-          const remaining = parseRows(
-            await executeSql(
-              dbSessionId,
-              `SELECT count(*)::int FROM information_schema.schemata WHERE schema_name = '${schema}'`,
-            ),
-          );
-          if (Number(remaining[0]?.[0]) !== 0) {
-            cleanupFailures.push(`temporary schema ${schema} remained after teardown`);
+        if (schemaCreated) {
+          try {
+            await withSafeModeOff(() =>
+              executeSql(dbSessionId, `DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`),
+            );
+            const remaining = parseRows(
+              await executeSql(
+                dbSessionId,
+                `SELECT count(*)::int FROM information_schema.schemata WHERE schema_name = '${schema}'`,
+              ),
+            );
+            if (Number(remaining[0]?.[0]) !== 0) {
+              cleanupFailures.push(`temporary schema ${schema} remained after teardown`);
+            }
+          } catch (error) {
+            cleanupFailures.push(
+              `could not remove temporary schema ${schema}: ${error instanceof Error ? error.name : 'database error'}`,
+            );
           }
-        } catch (error) {
-          cleanupFailures.push(
-            `could not remove temporary schema ${schema}: ${error instanceof Error ? error.name : 'database error'}`,
-          );
         }
         try {
           await disconnectBackend(dbSessionId);
