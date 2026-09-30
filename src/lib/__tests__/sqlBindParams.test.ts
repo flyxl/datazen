@@ -115,6 +115,64 @@ describe('parseSqlParams', () => {
       },
     ]);
   });
+
+  it('excludes T-SQL function parameters while retaining ordinary @ binds', () => {
+    const sql = `-- @comment is not a routine parameter
+CREATE FUNCTION [dbo].[fn_Normalize_AS_Code]
+(
+    @value NVARCHAR(64)
+)
+RETURNS NVARCHAR(64)
+AS
+BEGIN
+    RETURN UPPER(LTRIM(RTRIM(@value)));
+END;`;
+
+    expect(findDeclaredAtVars(sql)).toEqual(new Set(['value']));
+    expect(parseSqlParams(sql)).toEqual([]);
+    expect(parseSqlParams(`${sql}\nSELECT @value`)).toEqual([
+      {
+        name: 'value',
+        kind: 'named',
+        syntax: 'at',
+        stableId: 'named:value',
+      },
+    ]);
+    expect(parseSqlParams('SELECT @value')).toEqual([
+      {
+        name: 'value',
+        kind: 'named',
+        syntax: 'at',
+        stableId: 'named:value',
+      },
+    ]);
+  });
+
+  it('excludes T-SQL procedure signature parameters without disabling unrelated @ binds', () => {
+    const sql = `CREATE OR ALTER PROCEDURE [dbo].[p_Filter]
+    @input NVARCHAR(64), @limit INT
+AS
+BEGIN
+    SELECT @input, @limit;
+END;
+SELECT @input, @filter;`;
+
+    expect(findDeclaredAtVars(sql)).toEqual(new Set(['input', 'limit']));
+    expect(parseSqlParams(sql)).toEqual([
+      {
+        name: 'input',
+        kind: 'named',
+        syntax: 'at',
+        stableId: 'named:input',
+      },
+      {
+        name: 'filter',
+        kind: 'named',
+        syntax: 'at',
+        stableId: 'named:filter',
+      },
+    ]);
+  });
 });
 
 describe('parseSqlParamOccurrences', () => {
