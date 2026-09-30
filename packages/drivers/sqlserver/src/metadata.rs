@@ -148,25 +148,39 @@ pub(crate) fn parse_columns(
                 )));
             }
         }
-        for (index, reason) in [
-            (8, "computed columns"),
-            (9, "generated-always columns"),
-            (10, "FILESTREAM columns"),
-            (11, "sparse columns"),
-            (12, "column-set columns"),
-            (14, "rowversion columns"),
-            (15, "non-default IDENTITY seed/increment"),
+        for (index, label, reason) in [
+            (8, "computed-column flag", "computed columns"),
+            (9, "generated-always type", "generated-always columns"),
+            (10, "FILESTREAM flag", "FILESTREAM columns"),
+            (11, "sparse-column flag", "sparse columns"),
+            (12, "column-set flag", "column-set columns"),
+            (13, "legacy default flag", "legacy bound DEFAULT"),
+            (14, "rowversion flag", "rowversion columns"),
+            (
+                15,
+                "non-default IDENTITY seed/increment flag",
+                "non-default IDENTITY seed/increment",
+            ),
         ] {
-            if optional_bool(&row, index) == Some(true) {
+            // SQL Server returns generated_always_type as an integer: zero is
+            // ordinary, while 1/2 identify temporal row-start/row-end columns.
+            // Reject every non-zero value so newer generated column kinds also
+            // remain fail-closed.
+            let flag_is_set = if index == 9 {
+                required_catalog_integer(&row, index, label)? != 0
+            } else {
+                required_bool(&row, index, label)?
+            };
+            if flag_is_set && index == 13 {
+                return Err(unsupported(
+                    "SQL Server table uses a legacy bound DEFAULT; its expression is not represented by sys.default_constraints",
+                ));
+            }
+            if flag_is_set {
                 return Err(unsupported(format!(
                     "SQL Server table contains {reason}; this metadata contract cannot represent it safely"
                 )));
             }
-        }
-        if optional_bool(&row, 13) == Some(true) {
-            return Err(unsupported(
-                "SQL Server table uses a legacy bound DEFAULT; its expression is not represented by sys.default_constraints",
-            ));
         }
         if is_primary_key {
             if key_ordinal <= 0 {
@@ -486,6 +500,19 @@ fn required_integer(row: &[Option<Value>], index: usize, label: &str) -> Result<
     optional_integer(row, index).ok_or_else(|| incomplete(format!("catalog row omitted {label}")))
 }
 
+fn required_catalog_integer(
+    row: &[Option<Value>],
+    index: usize,
+    label: &str,
+) -> Result<i64, DriverError> {
+    let value = match value_at(row, index) {
+        Some(Value::Integer(value)) => Some(*value),
+        Some(Value::String(value)) => value.parse().ok(),
+        _ => None,
+    };
+    value.ok_or_else(|| incomplete(format!("catalog row omitted {label}")))
+}
+
 fn unsupported(message: impl Into<String>) -> DriverError {
     DriverError::Unsupported(message.into())
 }
@@ -500,6 +527,8 @@ fn incomplete(message: impl Into<String>) -> DriverError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const DATABASE_COLLATION: &str = "SQL_Latin1_General_CP1_CI_AS";
 
     fn result(rows: Vec<Vec<Option<Value>>>) -> QueryResult {
         QueryResult {
@@ -518,6 +547,55 @@ mod tests {
         Some(Value::Bool(value))
     }
 
+    /// A representative row returned by `columns_sql`, with all SQL Server-only
+    /// metadata flags clear and no per-column collation override. Keep this in
+    /// the query projection order: name, type, nullable, identity, default,
+    /// comment, PK flag, PK ordinal, computed, generated-always, FILESTREAM,
+    /// sparse, column-set, legacy default, rowversion, non-default identity,
+    /// column collation, database collation.
+    fn column_row(name: &str) -> Vec<Option<Value>> {
+        vec![
+            text(name),
+            text("int"),
+            bit(true),
+            bit(false),
+            None,
+            None,
+            bit(false),
+            Some(Value::Integer(0)),
+            bit(false),
+            Some(Value::Integer(0)),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+            bit(false),
+            None,
+            text(DATABASE_COLLATION),
+        ]
+    }
+
+    fn assert_unsupported_column(row: Vec<Option<Value>>, reason: &str, case: &str) {
+        match parse_columns(result(vec![row])) {
+            Err(DriverError::Unsupported(message)) => assert!(
+                message.contains(reason),
+                "{case}: expected rejection mentioning {reason:?}, got {message:?}"
+            ),
+            other => panic!("{case}: expected Unsupported, got {other:?}"),
+        }
+    }
+
+    fn assert_incomplete_column(row: Vec<Option<Value>>, reason: &str, case: &str) {
+        match parse_columns(result(vec![row])) {
+            Err(DriverError::QueryFailed(message)) => assert!(
+                message.contains(reason),
+                "{case}: expected incomplete metadata mentioning {reason:?}, got {message:?}"
+            ),
+            other => panic!("{case}: expected incomplete metadata, got {other:?}"),
+        }
+    }
+
     #[test]
     fn metadata_queries_quote_catalog_and_bind_object_names() {
         let columns = columns_sql("db]");
@@ -528,6 +606,37 @@ mod tests {
         assert!(
             columns.contains("DATABASEPROPERTYEX(CASE WHEN @P3 = N'' THEN DB_NAME() ELSE @P3 END")
         );
+        let projection = columns
+            .split(" FROM [db]]].sys.columns")
+            .next()
+            .expect("column query has a catalog source");
+        let expected_projection_order = [
+            "AS column_name",
+            "AS data_type",
+            "c.is_nullable",
+            "c.is_identity",
+            "AS default_value",
+            "AS comment",
+            "AS is_pk",
+            "AS pk_ordinal",
+            "AS is_computed",
+            "c.generated_always_type",
+            "c.is_filestream",
+            "c.is_sparse",
+            "c.is_column_set",
+            "AS has_legacy_default",
+            "AS is_rowversion",
+            "AS has_nondefault_identity",
+            "AS column_collation",
+            "AS database_collation",
+        ];
+        let mut cursor = 0;
+        for expression in expected_projection_order {
+            let Some(offset) = projection[cursor..].find(expression) else {
+                panic!("column catalog projection is missing or reorders {expression:?}");
+            };
+            cursor += offset + expression.len();
+        }
         assert!(!columns.contains("@P1'"));
         let schema_identity = schema_scope_identity_sql("db]; injected");
         assert_eq!(
@@ -540,30 +649,39 @@ mod tests {
     }
 
     #[test]
+    fn identity_metadata_projection_checks_nondefault_seed_and_increment() {
+        let columns = columns_sql("");
+        let identity_guard = columns
+            .split("AS has_nondefault_identity")
+            .next()
+            .expect("identity guard has a result alias");
+        for (case, expression) in [
+            (
+                "IDENTITY(10, 1) seed-only deviation",
+                "TRY_CONVERT(decimal(38,0), ic.seed_value) <> 1",
+            ),
+            (
+                "IDENTITY(1, 5) increment-only deviation",
+                "TRY_CONVERT(decimal(38,0), ic.increment_value) <> 1",
+            ),
+        ] {
+            assert!(
+                identity_guard.contains(expression),
+                "{case} must set the aggregate non-default identity flag"
+            );
+        }
+        assert!(identity_guard.contains("ic.seed_value) <> 1 OR TRY_CONVERT"));
+        assert!(columns.contains("AS has_nondefault_identity"));
+    }
+
+    #[test]
     fn composite_primary_key_keeps_catalog_key_order() {
-        let mut a = vec![
-            text("first"),
-            text("int"),
-            bit(false),
-            bit(false),
-            None,
-            None,
-            bit(true),
-            Some(Value::Integer(2)),
-            bit(false),
-            Some(Value::Integer(0)),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            None,
-            text("Latin1_General_100_CI_AS_SC_UTF8"),
-        ];
+        let mut a = column_row("first");
         let mut b = a.clone();
         a[0] = text("a");
         b[0] = text("z");
+        a[6] = bit(true);
+        b[6] = bit(true);
         a[7] = Some(Value::Integer(2));
         b[7] = Some(Value::Integer(1));
         let (columns, keys) = parse_columns(result(vec![a, b])).expect("parse columns");
@@ -573,35 +691,222 @@ mod tests {
 
     #[test]
     fn duplicate_primary_key_ordinals_are_rejected() {
-        let mut first = vec![
-            text("first"),
-            text("int"),
-            bit(false),
-            bit(false),
-            None,
-            None,
-            bit(true),
-            Some(Value::Integer(1)),
-            bit(false),
-            Some(Value::Integer(0)),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            None,
-            text("Latin1_General_100_CI_AS_SC_UTF8"),
-        ];
+        let mut first = column_row("first");
         let mut second = first.clone();
-        first[0] = text("first");
         second[0] = text("second");
+        first[6] = bit(true);
+        second[6] = bit(true);
+        first[7] = Some(Value::Integer(1));
+        second[7] = Some(Value::Integer(1));
 
         let parsed = parse_columns(result(vec![first, second]));
         assert!(
-            matches!(parsed, Err(DriverError::QueryFailed(ref message)) if message.contains("duplicate") || message.contains("ordinal")),
-            "duplicate primary-key ordinals should fail as incomplete metadata, got {parsed:?}"
+            matches!(
+                parsed,
+                Err(DriverError::QueryFailed(ref message))
+                    if message.contains("duplicate primary-key ordinal 1")
+            ),
+            "duplicate primary-key ordinals should identify the duplicate ordinal, got {parsed:?}"
         );
+    }
+
+    #[test]
+    fn sql_server_only_column_features_are_rejected_with_specific_reasons() {
+        let cases = [
+            (
+                8,
+                Some(Value::Bool(true)),
+                "computed columns",
+                "computed column",
+            ),
+            (
+                9,
+                Some(Value::Integer(1)),
+                "generated-always columns",
+                "temporal row-start column",
+            ),
+            (
+                9,
+                Some(Value::Integer(2)),
+                "generated-always columns",
+                "temporal row-end column",
+            ),
+            (
+                9,
+                Some(Value::Integer(3)),
+                "generated-always columns",
+                "unknown generated-always type",
+            ),
+            (
+                10,
+                Some(Value::Bool(true)),
+                "FILESTREAM columns",
+                "FILESTREAM",
+            ),
+            (11, Some(Value::Bool(true)), "sparse columns", "sparse"),
+            (
+                12,
+                Some(Value::Bool(true)),
+                "column-set columns",
+                "XML column set",
+            ),
+            (
+                14,
+                Some(Value::Bool(true)),
+                "rowversion columns",
+                "rowversion",
+            ),
+            (
+                15,
+                Some(Value::Bool(true)),
+                "non-default IDENTITY seed/increment",
+                "non-default IDENTITY seed/increment",
+            ),
+            (
+                13,
+                Some(Value::Bool(true)),
+                "legacy bound DEFAULT",
+                "legacy bound default",
+            ),
+        ];
+
+        for (index, value, reason, case) in cases {
+            let mut row = column_row(case);
+            row[index] = value;
+            assert_unsupported_column(row, reason, case);
+        }
+
+        let mut legacy_default = column_row("legacy_default_column");
+        legacy_default[13] = bit(true);
+        assert!(matches!(
+            parse_columns(result(vec![legacy_default])),
+            Err(DriverError::Unsupported(message))
+                if message == "SQL Server table uses a legacy bound DEFAULT; its expression is not represented by sys.default_constraints"
+        ));
+    }
+
+    #[test]
+    fn missing_or_unreadable_sql_server_column_flags_fail_closed() {
+        let cases = [
+            (8, "computed"),
+            (9, "generated-always"),
+            (10, "FILESTREAM"),
+            (11, "sparse"),
+            (12, "column-set"),
+            (13, "legacy default"),
+            (14, "rowversion"),
+            (15, "IDENTITY"),
+        ];
+        let mut failures = Vec::new();
+
+        for (index, feature) in cases {
+            for (fault, value) in [("NULL", None), ("unreadable", text("not-a-bit"))] {
+                let mut row = column_row("special_column");
+                row[index] = value;
+                match parse_columns(result(vec![row])) {
+                    Err(DriverError::QueryFailed(message)) if message.contains(feature) => {}
+                    other => failures.push(format!(
+                        "{feature} flag {fault} at projection index {index}: got {other:?}"
+                    )),
+                }
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "SQL Server-specific catalog flags must fail closed when absent or unreadable:\n{}",
+            failures.join("\n")
+        );
+    }
+
+    #[test]
+    fn generated_always_type_does_not_accept_lossy_float_conversion() {
+        for value in [0.0, 0.5, -0.5] {
+            let mut row = column_row("generated_column");
+            row[9] = Some(Value::Float(value));
+            let parsed = parse_columns(result(vec![row]));
+            assert!(
+                parsed.is_err(),
+                "generated_always_type must be an integer; float {value} must not be truncated to zero and accepted as an ordinary column"
+            );
+        }
+    }
+
+    #[test]
+    fn nondefault_collation_is_rejected_and_default_collation_is_case_insensitive() {
+        let mut row = column_row("label");
+        row[1] = text("nvarchar(40)");
+        row[16] = text("Latin1_General_100_CI_AS_SC_UTF8");
+        assert_unsupported_column(row, "non-default collation", "column collation override");
+
+        let mut row = column_row("label");
+        row[1] = text("nvarchar(40)");
+        row[16] = text("sql_latin1_general_cp1_ci_as");
+        row[17] = text("SQL_Latin1_General_CP1_CI_AS");
+        assert!(
+            parse_columns(result(vec![row])).is_ok(),
+            "same database collation with different case should be accepted"
+        );
+    }
+
+    #[test]
+    fn ordinary_identity_and_default_metadata_remain_representable() {
+        let mut row = column_row("id");
+        row[1] = text("int");
+        row[3] = bit(true);
+        row[4] = text("((1))");
+        row[6] = bit(true);
+        row[7] = Some(Value::Integer(1));
+        row[15] = bit(false); // IDENTITY(1, 1) has the supported seed/increment.
+
+        let (columns, primary_keys) =
+            parse_columns(result(vec![row])).expect("parse ordinary identity");
+        assert_eq!(primary_keys, vec!["id"]);
+        assert_eq!(columns[0].default_value.as_deref(), Some("((1))"));
+        assert!(columns[0].is_auto_increment);
+        assert!(columns[0].is_primary_key);
+    }
+
+    #[test]
+    fn incomplete_or_invalid_catalog_rows_name_the_missing_metadata() {
+        let short_row = column_row("id")[..17].to_vec();
+        assert_incomplete_column(
+            short_row,
+            "omitted column collation metadata",
+            "short catalog row",
+        );
+
+        let cases = [
+            (0, None, "column name"),
+            (1, None, "declared column type"),
+            (2, None, "nullability"),
+            (3, None, "identity flag"),
+            (6, None, "primary key flag"),
+            (7, None, "primary key ordinal"),
+            (17, None, "database collation"),
+            (17, text(""), "database collation"),
+        ];
+        for (index, value, reason) in cases {
+            let mut row = column_row("id");
+            row[index] = value;
+            assert_incomplete_column(row, reason, reason);
+        }
+
+        let mut invalid_ordinal = column_row("id");
+        invalid_ordinal[6] = bit(true);
+        invalid_ordinal[7] = text("not-an-ordinal");
+        assert_incomplete_column(
+            invalid_ordinal,
+            "primary key ordinal",
+            "invalid key ordinal type",
+        );
+
+        for ordinal in [0, -1] {
+            let mut invalid_ordinal = column_row("id");
+            invalid_ordinal[6] = bit(true);
+            invalid_ordinal[7] = Some(Value::Integer(ordinal));
+            assert_incomplete_column(invalid_ordinal, "no key ordinal", "nonpositive key ordinal");
+        }
     }
 
     #[test]
@@ -658,35 +963,6 @@ mod tests {
             matches!(parsed, Err(DriverError::QueryFailed(ref message)) if message.contains("duplicate") || message.contains("ordinal")),
             "duplicate foreign-key ordinals should fail as incomplete metadata, got {parsed:?}"
         );
-    }
-
-    #[test]
-    fn nondefault_column_collation_is_rejected() {
-        let row = vec![
-            text("label"),
-            text("nvarchar(40)"),
-            bit(true),
-            bit(false),
-            None,
-            None,
-            bit(false),
-            Some(Value::Integer(0)),
-            bit(false),
-            Some(Value::Integer(0)),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            bit(false),
-            text("Latin1_General_100_CI_AS_SC_UTF8"),
-            text("SQL_Latin1_General_CP1_CI_AS"),
-        ];
-
-        assert!(matches!(
-            parse_columns(result(vec![row])),
-            Err(DriverError::Unsupported(message)) if message.contains("non-default collation")
-        ));
     }
 
     #[test]
