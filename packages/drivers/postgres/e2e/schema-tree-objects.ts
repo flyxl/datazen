@@ -34,6 +34,13 @@ type ObjectDdlRequest = {
   targetName?: string;
 };
 
+type ListedDatabaseObject = {
+  kind: string;
+  schema?: string | null;
+  name: string;
+  signature?: string | null;
+};
+
 function quoteIdent(identifier: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
@@ -64,6 +71,13 @@ async function waitForEditorText(expected: string): Promise<void> {
       timeoutMsg: `Object definition editor did not contain ${expected}`,
     },
   );
+}
+
+async function searchNavigator(query: string): Promise<void> {
+  const input = await $('[data-testid="connection-search-input"]');
+  await input.waitForDisplayed({ timeout: 8000 });
+  await input.setValue(query);
+  await browser.pause(650);
 }
 
 describe('PostgreSQL Schema Tree objects', () => {
@@ -194,6 +208,24 @@ describe('PostgreSQL Schema Tree objects', () => {
 
       await clickNavigatorRefresh();
       await expandConnectedConnectionInNavigator(connectionName);
+
+      // Probe the actual driver command before asserting the rendered row.
+      // This keeps an empty PostgreSQL catalog result distinct from a row that
+      // exists but is outside the navigator's virtualized viewport.
+      const listedProcedures = await invokeBackend<ListedDatabaseObject[]>('get_database_objects', {
+        dbSessionId,
+        kind: 'procedure',
+      });
+      const listedProcedure = listedProcedures.find(
+        (object) => object.name === name.procedure && object.schema === schema,
+      );
+      if (!listedProcedure) {
+        throw new Error(
+          `PostgreSQL get_database_objects(procedure) omitted ${schema}.${name.procedure}; ` +
+            `returned: ${listedProcedures.map((object) => `${object.schema ?? ''}.${object.name}`).join(', ') || '(none)'}`,
+        );
+      }
+
       for (const category of [
         'tables',
         'views',
@@ -222,6 +254,9 @@ describe('PostgreSQL Schema Tree objects', () => {
         ['type', name.enum],
         ['type', name.domain],
       ]) {
+        // The navigator uses a virtual list. Filtering by a unique fixture
+        // name brings each real leaf into the viewport before checking it.
+        await searchNavigator(objectName);
         const node = treeNode(kind, objectName);
         await node.waitForDisplayed({
           timeout: 15000,
@@ -230,6 +265,7 @@ describe('PostgreSQL Schema Tree objects', () => {
         await expect(node).toBeDisplayed();
       }
 
+      await searchNavigator(schema);
       const schemaVisible = await browser.execute(
         (targetSchema: string) =>
           Array.from(document.querySelectorAll('[data-tree-node="schema"]')).some(
@@ -239,6 +275,7 @@ describe('PostgreSQL Schema Tree objects', () => {
       );
       expect(schemaVisible).toBe(true);
 
+      await searchNavigator(name.entries);
       const tableNode = treeNode('table', name.entries);
       await tableNode.click();
       await $('[data-testid="sub-tab-data"]').waitForDisplayed({ timeout: 15000 });
@@ -288,6 +325,7 @@ describe('PostgreSQL Schema Tree objects', () => {
         ['procedure', name.procedure],
         ['trigger', name.trigger],
       ]) {
+        await searchNavigator(objectName);
         const node = treeNode(kind, objectName);
         await node.click();
         await waitForEditorText(objectName);
