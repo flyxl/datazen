@@ -1817,7 +1817,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="fn_calc"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'function').textContent).toContain('2');
+    expect(categoryButton(container, 'function').textContent).not.toMatch(/\d/);
 
     fireEvent.click(container.querySelector('[data-item-name="fn_calc"]')!);
     await waitFor(() => {
@@ -1951,15 +1951,15 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'procedure').textContent).toContain('1');
+    expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
 
     // Category context menu → refresh → backend failure falls back to [].
     mockGetDatabaseObjects.mockRejectedValueOnce(new Error('boom'));
     await openMenuAndPick(categoryButton(container, 'procedure'), 'refresh');
     await waitFor(() => {
-      expect(categoryButton(container, 'procedure').textContent).toContain('0');
+      expect(container.querySelector('[data-item-name="pr_x"]')).toBeNull();
     });
-    expect(container.querySelector('[data-item-name="pr_x"]')).toBeNull();
+    expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
   });
 
   it('activates the clicked database in local state when nothing is cached', async () => {
@@ -2037,11 +2037,11 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'procedure').textContent).toContain('1');
+    expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
 
     // Connection-level refresh bumps schemaEpoch → epoch-triggered cache
     // invalidation must not leave the expanded category empty. The recovery
-    // wave re-fetches it and the row keeps its entries + count.
+    // wave re-fetches it and the row keeps its entries.
     mockGetDatabaseObjects.mockClear();
     await triggerConnectionRefresh(findByText, 'SQLite Conn');
 
@@ -2051,7 +2051,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'procedure').textContent).toContain('1');
+    expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
   });
 
   it('F1-BUG-005: single-db database-node refresh restores expanded categories', async () => {
@@ -2079,7 +2079,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="fn_y"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'function').textContent).toContain('1');
+    expect(categoryButton(container, 'function').textContent).not.toMatch(/\d/);
   });
 
   it('schema-level refresh reloads expanded schema-scoped categories', async () => {

@@ -421,7 +421,6 @@ export function NavigatorTreeRow({
             fallback={row.cat.icon}
           />
           <span className="min-w-0 truncate">{t(row.cat.labelKey as Parameters<typeof t>[0])}</span>
-          <span className="ml-auto shrink-0 text-[10px] text-fg-muted">{row.count}</span>
         </button>
       );
     }
