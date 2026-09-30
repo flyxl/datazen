@@ -6,7 +6,7 @@ import {
   type BackupProgressPayload,
 } from './backupProgress';
 import type { I18nKey } from '../locales';
-import type { TableInfo } from '../types';
+import { schemaClient } from '@datazen/driver-sdk';
 
 type TFunc = (key: I18nKey, params?: Record<string, string | number>) => string;
 
@@ -47,9 +47,9 @@ export async function runSqlFileExecution({
     const ok = await confirmBeforeExecute();
     if (!ok) return false;
   } else if (confirmOverwrite) {
-    const tables = await invoke<TableInfo[]>('get_tables', {
-      dbSessionId,
+    const { relations: tables } = await schemaClient.listCatalog(dbSessionId, {
       database,
+      schema: null,
     });
     if (tables.length > 0) {
       const ok = await confirmOverwrite(tables.length);

@@ -1,5 +1,5 @@
 import type { SqlNamespace } from '../lib/sqlNamespace';
-import type { TableInfo } from '../types';
+import type { TableInfo, RelationColumns } from '@datazen/driver-sdk';
 
 /** Per-session schema cache entry (map key = runtime DB session id). */
 export interface ConnectionSchemaState {
@@ -10,12 +10,12 @@ export interface ConnectionSchemaState {
   databaseType: string | null;
   isMultiDatabase: boolean;
   tables: TableInfo[];
+  /** Directory snapshots are owned by their database, not the active pointer. */
+  tableCatalogs: Record<string, TableInfo[]>;
   views: TableInfo[];
   /** All schema names including those with no tables (e.g. from PG schemata). */
   schemaNames: string[];
-  columnMap: Record<string, string[]>;
-  /** Per-table column type map (table → column → raw dataType). */
-  typedColumnMap: Record<string, Record<string, string>>;
+  relationColumns: Record<string, RelationColumns>;
   namespaceTree: SqlNamespace;
   loadedPaths: Set<string>;
   pathItems: Record<string, TableInfo[]>;
@@ -32,34 +32,6 @@ export interface ConnectionSchemaState {
 
 export const EMPTY_NAMESPACE: SqlNamespace = {};
 
-/** Fallback key when mutating schema without an active DB session (singleton compat). */
-export const DEFAULT_SCHEMA_KEY = '__default__';
-
-export const CONNECTION_STATE_KEYS = [
-  'currentDatabase',
-  'currentSchema',
-  'databases',
-  'databaseType',
-  'isMultiDatabase',
-  'tables',
-  'views',
-  'schemaNames',
-  'columnMap',
-  'typedColumnMap',
-  'namespaceTree',
-  'loadedPaths',
-  'pathItems',
-  'pathAliases',
-  'namespaceOwnedByPlugin',
-  'schemaEpoch',
-  'expanded',
-  'selectedId',
-  'loading',
-  'ensuringCount',
-  'error',
-  'columnInflight',
-] as const satisfies readonly (keyof ConnectionSchemaState)[];
-
 export function createEmptyConnectionSchema(): ConnectionSchemaState {
   return {
     currentDatabase: null,
@@ -68,10 +40,10 @@ export function createEmptyConnectionSchema(): ConnectionSchemaState {
     databaseType: null,
     isMultiDatabase: false,
     tables: [],
+    tableCatalogs: {},
     views: [],
     schemaNames: [],
-    columnMap: {},
-    typedColumnMap: {},
+    relationColumns: {},
     namespaceTree: EMPTY_NAMESPACE,
     loadedPaths: new Set(),
     pathItems: {},
@@ -87,33 +59,6 @@ export function createEmptyConnectionSchema(): ConnectionSchemaState {
   };
 }
 
-export function activeFlatten(
-  schemas: Map<string, ConnectionSchemaState>,
-  activeDbSessionId: string | null,
-): ConnectionSchemaState & { dbSessionId: string | null } {
-  const readKey =
-    activeDbSessionId ?? (schemas.has(DEFAULT_SCHEMA_KEY) ? DEFAULT_SCHEMA_KEY : null);
-  if (!readKey) {
-    return { ...createEmptyConnectionSchema(), dbSessionId: null };
-  }
-  const schema = schemas.get(readKey);
-  if (!schema) {
-    return { ...createEmptyConnectionSchema(), dbSessionId: activeDbSessionId };
-  }
-  return { ...schema, dbSessionId: activeDbSessionId };
-}
-
-export function extractSchemaPatch(
-  partial: Record<string, unknown>,
-): Partial<ConnectionSchemaState> {
-  const result: Partial<ConnectionSchemaState> = {};
-  for (const key of CONNECTION_STATE_KEYS) {
-    if (!(key in partial)) continue;
-    (result as Record<string, unknown>)[key] = partial[key as keyof ConnectionSchemaState];
-  }
-  return result;
-}
-
 export function patchConnectionSchema(
   schemas: Map<string, ConnectionSchemaState>,
   dbSessionId: string,
@@ -123,18 +68,4 @@ export function patchConnectionSchema(
   const prev = next.get(dbSessionId) ?? createEmptyConnectionSchema();
   next.set(dbSessionId, { ...prev, ...patch });
   return next;
-}
-
-export function resolveTargetConnectionId(
-  state: { activeDbSessionId: string | null },
-  dbSessionId?: string,
-): string {
-  return dbSessionId ?? state.activeDbSessionId ?? DEFAULT_SCHEMA_KEY;
-}
-
-export function resolveRealConnectionId(
-  state: { activeDbSessionId: string | null },
-  dbSessionId?: string,
-): string | null {
-  return dbSessionId ?? state.activeDbSessionId;
 }

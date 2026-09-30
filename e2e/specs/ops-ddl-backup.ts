@@ -28,7 +28,7 @@ const SEEDED_CONN_ID = 'conn_e2e_pg';
  * WDIO 全程复用同一个 Tauri 进程，而每个 spec 的 worker 数据库是按 spec
  * 创建后即删除的；Rust 侧 `connect` 对同一 connectionId 会复用仍存活的会话，
  * 于是本 spec 的 UI 连接拿到的是绑在已删除 worker 库上的旧会话，
- * schema 树取数（get_databases 等）全部报
+ * schema 树取数（list_databases 等）全部报
  * `database "e2e_w..." does not exist`。这里强制探测并断开残留会话，
  * 随后 UI 连接会基于本 spec 的 worker 库新建会话。
  */

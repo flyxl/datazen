@@ -296,17 +296,11 @@ pub fn run() {
             crate::commands::restart_app,
             crate::commands::save_encryption_key_with_dialog,
             // ── Schema 元数据 ──
-            crate::commands::get_all_columns,
-            crate::commands::get_columns,
-            crate::commands::get_columns_typed,
             crate::commands::get_database_objects,
-            crate::commands::get_databases,
             crate::commands::get_er_data,
             crate::commands::get_object_ddl,
             crate::commands::get_privileges,
             crate::commands::get_table_data,
-            crate::commands::get_table_schema,
-            crate::commands::get_tables,
             // ── 表结构编辑 ──
             crate::commands::get_structure_capabilities,
             crate::commands::plan_table_structure_changes,

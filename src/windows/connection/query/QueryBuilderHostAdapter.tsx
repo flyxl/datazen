@@ -48,27 +48,45 @@ export function QueryBuilderHostAdapter({
   );
 
   const catalog = useMemo<QueryBuilderCatalog>(() => {
+    const catalogItems =
+      sessionSchema?.tableCatalogs[database] ??
+      (sessionSchema?.currentDatabase === database
+        ? [...sessionSchema.tables, ...sessionSchema.views]
+        : []);
     const relations = [
-      ...(sessionSchema?.tables ?? []),
-      ...(sessionSchema?.views ?? []),
-      ...Object.values(sessionSchema?.pathItems ?? {}).flat(),
-    ].filter((relation) => !schema || (relation.schema ?? null) === schema);
-    const hasMatchingDatabase =
-      !sessionSchema?.currentDatabase || sessionSchema.currentDatabase === database;
+      ...catalogItems,
+      ...Object.values(
+        sessionSchema?.currentDatabase === database ? sessionSchema.pathItems : {},
+      ).flat(),
+    ].filter((relation) => !schema || relation.schema === schema);
+    const unique = new Map<string, (typeof relations)[number]>();
+    for (const relation of relations) {
+      unique.set(JSON.stringify([relation.schema ?? null, relation.name]), relation);
+    }
     const counts = new Map<string, number>();
-    if (hasMatchingDatabase) {
-      for (const relation of relations) {
-        counts.set(relation.name, (counts.get(relation.name) ?? 0) + 1);
-      }
+    for (const relation of unique.values())
+      counts.set(relation.name, (counts.get(relation.name) ?? 0) + 1);
+    const columnMap: Record<string, string[]> = {};
+    const typedColumnMap: Record<string, Record<string, string>> = {};
+    for (const value of Object.values(sessionSchema?.relationColumns ?? {})) {
+      if (
+        value.ref.database !== database ||
+        (schema && value.ref.schema !== schema) ||
+        counts.get(value.ref.name) !== 1 ||
+        !unique.has(JSON.stringify([value.ref.schema, value.ref.name]))
+      )
+        continue;
+      columnMap[value.ref.name] = value.columns.map((column) => column.name);
+      typedColumnMap[value.ref.name] = Object.fromEntries(
+        value.columns.map((column) => [column.name, column.dataType]),
+      );
     }
     return {
-      tables: hasMatchingDatabase
-        ? relations
-            .filter((relation) => counts.get(relation.name) === 1)
-            .map((relation) => ({ name: relation.name, schema: relation.schema ?? null }))
-        : [],
-      columnMap: hasMatchingDatabase ? (sessionSchema?.columnMap ?? {}) : {},
-      typedColumnMap: hasMatchingDatabase ? (sessionSchema?.typedColumnMap ?? {}) : {},
+      tables: [...unique.values()]
+        .filter((relation) => counts.get(relation.name) === 1)
+        .map((relation) => ({ name: relation.name, schema: relation.schema ?? null })),
+      columnMap,
+      typedColumnMap,
     };
   }, [sessionSchema, schema, database]);
 
@@ -76,24 +94,24 @@ export function QueryBuilderHostAdapter({
     async (names: readonly string[]) => {
       if (!dbSessionId || !database.trim() || names.length === 0) return;
       await useSchemaStore.getState().ensureColumns([...names], dbSessionId, database, {
-        requireTypes: true,
+        ...(schema ? { schema } : {}),
       });
     },
-    [dbSessionId, database],
+    [dbSessionId, database, schema],
   );
 
   const loadTableSchema = useCallback(
     async (name: string): Promise<TableSchema | null> => {
       if (!dbSessionId || !database.trim() || !name.trim()) return null;
       try {
-        const relationSchema =
-          useSchemaStore.getState().schemaOfRelation(name, dbSessionId) ?? schema;
-        return await getCachedTableSchema(dbSessionId, name, database, relationSchema);
+        const relation = catalog.tables.find((item) => item.name === name);
+        if (!relation) return null;
+        return await getCachedTableSchema(dbSessionId, relation.name, database, relation.schema);
       } catch {
         return null;
       }
     },
-    [dbSessionId, database, schema],
+    [dbSessionId, database, catalog.tables],
   );
 
   const predict = useCallback(

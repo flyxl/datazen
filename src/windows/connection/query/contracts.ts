@@ -1,3 +1,5 @@
+import { createEmptyConnectionSchema } from '../../../stores/schemaStoreState';
+import { projectRelationColumns } from '../../../stores/schemaColumnLoader';
 import type { ConnectionSchemaState } from '../../../stores/schemaStore';
 import type { QueryExecState } from '../../../stores/queryExecActions';
 import type { SqlEditorHandle } from '../../../components/SqlEditor';
@@ -34,8 +36,8 @@ export interface QueryPanelProps {
 
 export type QueryDiagnosisSchemaState = Pick<
   ConnectionSchemaState,
-  'currentDatabase' | 'currentSchema' | 'tables' | 'views' | 'columnMap'
->;
+  'currentDatabase' | 'currentSchema' | 'tables' | 'views'
+> & { columnMap: Record<string, string[]> };
 
 export type QueryDiagnosisExecution = Pick<QueryExecState, 'sql' | 'error'>;
 
@@ -165,7 +167,7 @@ export function readCurrentQueryPanelRetryValidationInput(
   if (!activeConnectionMatchesPanel) return null;
 
   const schemaStoreState = useSchemaStore.getState();
-  const schemaState = schemaStoreState.schemas.get(dbSessionId) ?? schemaStoreState;
+  const schemaState = schemaStoreState.schemas.get(dbSessionId) ?? createEmptyConnectionSchema();
   const latestContext = buildQueryPanelDiagnosisContext({
     execution,
     connectionId: panel.connectionId,
@@ -179,7 +181,15 @@ export function readCurrentQueryPanelRetryValidationInput(
       undefined,
     schema: panel.schema,
     serverVersion: activeConnection?.serverInfo?.serverVersion,
-    schemaState,
+    schemaState: {
+      ...schemaState,
+      ...projectRelationColumns(
+        schemaState,
+        dbSessionId,
+        panel.database ?? schemaState.currentDatabase ?? '',
+        panel.schema ?? undefined,
+      ),
+    },
   });
   if (!latestContext.ok) return null;
 

@@ -339,8 +339,8 @@ export function useSchemaDiffSavedSetups({
         const tgtConnId = await endpoints.ensureConnected('target');
         if (!srcConnId || !tgtConnId) return;
         const [sourceRows, targetRows] = await Promise.all([
-          databaseCommands.getTables(srcConnId, profile.sourceDatabase),
-          databaseCommands.getTables(tgtConnId, profile.targetDatabase),
+          databaseCommands.listTables(srcConnId, profile.sourceDatabase),
+          databaseCommands.listTables(tgtConnId, profile.targetDatabase),
         ]);
         const catalog = await unifiedObjects.load(
           srcConnId,

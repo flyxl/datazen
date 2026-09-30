@@ -22,7 +22,7 @@ DataZen 的 Driver 是**编译期集成**的数据库实现，不通过运行时
 
 当前 API：
 
-- `PROTOCOL_VERSION = 3`
+- `PROTOCOL_VERSION = 4`
 - `MIN_PROTOCOL_VERSION = 1`
 
 ## 2. DatabaseDriver
@@ -51,16 +51,11 @@ cleanup_query_execution
 
 只有实际声明精确取消能力的 Driver 才会被 Host 当作 cancellable；兼容默认实现不会自动获得取消能力。
 
-### 2.1 database 维度的两套契约（重要）
+### 2.1 Schema 元数据目标
 
-`database` 在两个方法族里语义不同，调用方必须区分：
+`get_tables`、`get_table_schema`、`get_columns` 和 `get_all_columns` 都接收显式 `database` 与可选 `schema`，驱动按传入目标读取，不依赖会话当前选中的数据库。Host 的 `list_catalog`、`read_relation_columns`、`read_relation_schema` 和 `refresh_schema_metadata` Driver Commands 以 `RelationRef { database, schema, name }` 表达目标；前端与扩展共用 Driver Command 网关，不再需要按数据库类型选择旧 Host schema IPC。
 
-| 方法 | database 维度 | 谁负责解析 |
-| --- | --- | --- |
-| `get_tables(handle, database)` / `get_all_columns(handle, database)` | **显式参数** | 驱动自己（PG 对非 active 库临时开 pool 后关闭） |
-| `get_table_schema(handle, table)` / `get_columns(handle, table)` | **无参数**，隐含依赖会话 active 库 | **调用方必须先 pin** |
-
-Host 侧统一用 `ConnectionManager::ensure_active_database`（命令层包装为 `ensure_session_database`）在读取前 pin 会话；漏掉就会从别的库拿到答案（详见 [cache.md](cache.md) §1.8）。彻底解法是给后两个方法补上 database 参数，但那属于 Driver API 契约变更（`PROTOCOL_VERSION` + 所有驱动同步），目前以"调用方 pin + 驱动不静默"为约定。
+有 schema 层级的驱动要求读取时提供精确 schema；schema-less 驱动使用 `null`。会话身份由 command envelope 的 `dbSessionId` 提供，与持久化连接配置 ID 分开传递。Host 缓存按 session、database、schema 和 relation 名称隔离，刷新支持 session、database 或 relation 范围。详见 [services.md](services.md) 的 Schema Metadata Gateway 与 [cache.md](cache.md) §1.8。
 
 ### 2.2 分页契约（PaginationSyntax）
 

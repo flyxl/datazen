@@ -57,7 +57,9 @@ export function ExportDialog({
   dataExportCapability = 'full_table',
 }: ExportDialogProps) {
   const { t } = useI18n();
-  const tableSchema = useSchemaStore((s) => s.schemaOfRelation(tableName, dbSessionId));
+  const tableSchema = useSchemaStore((s) =>
+    dbSessionId ? s.schemaOfRelation(tableName, dbSessionId) : null,
+  );
   const exportLocked = dataExportCapability === 'none';
   const allowEntire =
     !exportLocked && supportsFullTableExport(dataExportCapability) && Boolean(dbSessionId);

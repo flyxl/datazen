@@ -151,14 +151,12 @@ export function useConnectionContextMenu({
 
       const handleGenerateTableSql = (type: GeneratedSqlType) => {
         void (async () => {
-          const schemaState = useSchemaStore.getState().schemas.get(ctx.dbSessionId);
           const tableSchema = await fetchTableSchemaForSqlGeneration({
             dbSessionId: ctx.dbSessionId,
             tableName: name,
             schema,
             database,
             databaseType: ctxDbType,
-            columnMap: schemaState?.columnMap,
           });
           const tableRef = schema ? `${schema}.${name}` : name;
           const sql = generateTableSqlWithFallbacks(tableSchema, type, ctxDbType, {
@@ -310,7 +308,7 @@ export function useConnectionContextMenu({
                       sql,
                       () => {
                         invalidateSchemaCache(ctx.dbSessionId, name);
-                        removeRelation(name);
+                        removeRelation(name, ctx.dbSessionId);
                         handlers.handleRefresh();
                         closePanelsForTable(name);
                       },

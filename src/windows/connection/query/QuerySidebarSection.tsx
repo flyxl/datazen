@@ -65,7 +65,7 @@ export function useQueryContextPath({
   );
 
   useEffect(() => {
-    void ensureNamespacePath([]);
+    void ensureNamespacePath([], dbSessionId);
   }, [dbSessionId, selectedDatabase, ensureNamespacePath]);
 
   useEffect(() => {
@@ -78,23 +78,24 @@ export function useQueryContextPath({
       setContextPath(next);
       if (isPathHierarchy) {
         updatePanel(panelId, { namespacePath: next.length > 0 ? next : undefined });
-        if (next.length > 0) await ensureNamespacePath(next);
+        if (next.length > 0) await ensureNamespacePath(next, dbSessionId);
         return;
       }
       const db = next[0];
       // Guard: in single-database mode the context-path root can be a *schema*
       // (e.g. `public`) rather than a database — never hand a schema name to
-      // switchDatabase, which would run get_tables('public') and pin the
+      // switchDatabase, which would run listTables('public') and pin the
       // session's currentDatabase to a non-existent database.
       if (db && databases.includes(db) && db !== currentDatabase) {
         // Persist the database to the panel so that `selectedDatabase`
         // (= database ?? currentDatabase) reflects the switch even when the
         // panel already has a bound database from creation time.
         updatePanel(panelId, { database: db });
-        await switchDatabase(db);
+        await switchDatabase(db, dbSessionId);
       }
     },
     [
+      dbSessionId,
       currentDatabase,
       databases,
       ensureNamespacePath,
@@ -133,14 +134,22 @@ export function useQueryContextPath({
     (parents: string[]) => {
       if (ensureTimer.current) clearTimeout(ensureTimer.current);
       ensureTimer.current = setTimeout(() => {
-        void ensureNamespacePath(parents);
+        void ensureNamespacePath(parents, dbSessionId);
       }, 120);
       const roots = new Set(namespaceRootsFrom(namespaceTree, pathAliases, databases));
       if (parents[0] && roots.has(parents[0]) && !pathsEqual(parents, contextPath)) {
         void applyContextPath(parents);
       }
     },
-    [applyContextPath, contextPath, databases, ensureNamespacePath, namespaceTree, pathAliases],
+    [
+      applyContextPath,
+      contextPath,
+      databases,
+      dbSessionId,
+      ensureNamespacePath,
+      namespaceTree,
+      pathAliases,
+    ],
   );
 
   const syncContextFromSql = useCallback(

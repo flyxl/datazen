@@ -31,6 +31,31 @@ import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
 import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 import { toQueryExecutionViewModel } from '../../../lib/queryExecutionViewModel';
 
+const refreshSchemaMetadata = vi.hoisted(() => vi.fn().mockResolvedValue({ revision: 1 }));
+vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
+  schemaClient: {
+    refresh: refreshSchemaMetadata,
+    readSchema: async (session: string, ref: import('@datazen/driver-sdk').RelationRef) => ({
+      value: { ref, definition: await getTableSchema(session, ref.name, ref.database, ref.schema) },
+    }),
+    readColumns: async (session: string, refs: import('@datazen/driver-sdk').RelationRef[]) => ({
+      results: await Promise.all(
+        refs.map(async (ref) => ({
+          status: 'ok',
+          value: {
+            ref,
+            columns: (
+              (await getColumns(session, ref.name, ref.database, ref.schema)) as string[]
+            ).map((name) => ({ name, dataType: '', nullable: true })),
+            primaryKeys: [],
+          },
+        })),
+      ),
+    }),
+  },
+}));
+
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
@@ -384,7 +409,7 @@ describe('[tester] query/queryDropHandler', () => {
     });
 
     await handler({ tables: [{ tableName: 'users', schema: 'public' }] }, 10);
-    expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'public.users', 'app', 'public');
+    expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'users', 'app', 'public');
     expect(insertAt).toHaveBeenCalled();
   });
 
@@ -1056,6 +1081,21 @@ describe('[tester] query/QueryEditorSection', () => {
     expect(screen.getByText('query.historyRows')).toBeInTheDocument();
   });
 
+  it('keeps refresh failures visible and does not report success', async () => {
+    refreshSchemaMetadata.mockRejectedValueOnce(new Error('metadata refresh failed'));
+    const onCompletionRefreshed = vi.fn();
+    renderSection({ onCompletionRefreshed });
+    fireEvent.click(screen.getByTestId('editor-refresh-completion-button'));
+    await waitFor(() =>
+      expect(screen.getByTestId('editor-refresh-completion-button')).toHaveAttribute(
+        'title',
+        'metadata refresh failed',
+      ),
+    );
+    expect(onCompletionRefreshed).not.toHaveBeenCalled();
+    expect(schemaStoreState.loadTables).not.toHaveBeenCalled();
+  });
+
   it('guards refresh completion against double clicks', async () => {
     let resolveLoad: (() => void) | undefined;
     schemaStoreState.loadTables.mockImplementation(
@@ -1070,7 +1110,8 @@ describe('[tester] query/QueryEditorSection', () => {
     fireEvent.click(screen.getByTestId('editor-refresh-completion-button'));
     fireEvent.click(screen.getByTestId('editor-refresh-completion-button'));
 
-    expect(schemaStoreState.loadTables).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(schemaStoreState.loadTables).toHaveBeenCalledTimes(1));
+    expect(refreshSchemaMetadata).toHaveBeenCalledWith('sess-1', { kind: 'session' });
     expect(onCompletionRefreshed).not.toHaveBeenCalled();
 
     await act(async () => {

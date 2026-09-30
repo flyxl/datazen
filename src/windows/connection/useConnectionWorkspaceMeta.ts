@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
-import { useSchemaStore } from '../../stores/schemaStore';
+import { useSchemaStore, useConnectionSchemaField } from '../../stores/schemaStore';
 import { usePanelStore, type ConnectionContext, type Panel } from '../../stores/panelStore';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
@@ -48,7 +48,10 @@ export function useConnectionWorkspaceMeta(activePanel: Panel | null): Connectio
   const savedConnections = useConnectionStore((s) => s.connections);
   const activeConnections = useActiveConnectionStore((s) => s.connections);
   const storeActiveDbSessionId = useSchemaStore((s) => s.activeDbSessionId);
-  const currentDatabase = useSchemaStore((s) => s.currentDatabase);
+  const currentDatabase = useConnectionSchemaField(
+    activePanel?.dbSessionId ?? '',
+    'currentDatabase',
+  );
   const allPanels = usePanelStore((s) => s.panels);
 
   const databaseType = activePanel?.databaseType as DatabaseType | undefined;

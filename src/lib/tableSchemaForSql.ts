@@ -1,30 +1,8 @@
-import { databaseCommands } from '../commands/database';
+import { schemaClient } from '@datazen/driver-sdk';
+import { capabilitiesForDbSession, relationSchemaFor } from './driverCapabilities';
 import { getCachedTableSchema } from './schemaCache';
-import { DB_REGISTRY } from './databaseTypes';
 import { formatTableIdentifier, generateTableSql, type GeneratedSqlType } from './sqlGenerator';
-import type { DatabaseType, TableSchema } from '../types';
-
-/** Dialects whose drivers parse `schema.table` in get_table_schema / get_columns. */
-const SCHEMA_QUALIFIED_DIALECTS = new Set(['postgresql', 'sqlserver']);
-
-/**
- * Build ordered driver table refs to try when loading column metadata.
- * MySQL/SQLite bind bare TABLE_NAME — qualified refs return zero rows.
- */
-export function driverTableRefsToTry(
-  tableName: string,
-  schema: string | null,
-  databaseType: string,
-): string[] {
-  const dialect = DB_REGISTRY[databaseType as DatabaseType]?.sqlDialect ?? databaseType;
-  const schemaTrimmed = schema?.trim();
-  const qualified = schemaTrimmed ? `${schemaTrimmed}.${tableName}` : null;
-
-  if (SCHEMA_QUALIFIED_DIALECTS.has(dialect) && qualified) {
-    return qualified === tableName ? [tableName] : [qualified, tableName];
-  }
-  return [tableName];
-}
+import type { TableSchema } from '../types';
 
 export function buildPseudoTableSchema(tableName: string, colNames: string[]): TableSchema {
   return {
@@ -44,34 +22,41 @@ export async function fetchTableSchemaForSqlGeneration(args: {
   databaseType: string;
   columnMap?: Record<string, string[]>;
 }): Promise<TableSchema | null> {
-  const { dbSessionId, tableName, schema, database, databaseType, columnMap } = args;
-  const refs = driverTableRefsToTry(tableName, schema ?? null, databaseType);
-
-  for (const ref of refs) {
-    try {
-      const tableSchema = await getCachedTableSchema(dbSessionId, ref, database, schema ?? null);
-      if (tableSchema.columns.length > 0) {
-        return { ...tableSchema, tableName };
-      }
-    } catch {
-      // Try the next ref shape.
-    }
+  const { dbSessionId, tableName, schema, database, columnMap } = args;
+  const relation = {
+    database,
+    schema: relationSchemaFor(capabilitiesForDbSession(dbSessionId), schema),
+    name: tableName,
+  };
+  try {
+    const tableSchema = await getCachedTableSchema(
+      dbSessionId,
+      tableName,
+      database,
+      relation.schema,
+    );
+    if (tableSchema.columns.length > 0) return { ...tableSchema, tableName };
+  } catch {
+    // Drivers may support columns without full structure metadata.
   }
-
-  for (const ref of refs) {
-    try {
-      const colNames = await databaseCommands.getColumns(
-        dbSessionId,
-        ref,
-        database,
-        schema ?? null,
-      );
-      if (colNames.length > 0) {
-        return buildPseudoTableSchema(tableName, colNames);
-      }
-    } catch {
-      // Try the next ref shape.
+  try {
+    const response = await schemaClient.readColumns(dbSessionId, [relation]);
+    const row = response.results.find(
+      (row) =>
+        row.status === 'ok' &&
+        row.value.ref.database === database &&
+        row.value.ref.schema === relation.schema &&
+        row.value.ref.name === tableName,
+    );
+    if (row?.status === 'ok' && row.value.columns.length > 0) {
+      return {
+        ...buildPseudoTableSchema(tableName, []),
+        columns: row.value.columns,
+        primaryKeys: row.value.primaryKeys,
+      };
     }
+  } catch {
+    // Keep the caller's already loaded columns available on transport failure.
   }
 
   const cached = columnMap?.[tableName];

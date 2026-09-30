@@ -56,7 +56,7 @@ export interface ExpandedDbCacheRefreshOptions {
  *
  * Root-cause fix for "sidebar refresh flips my SQL session": the previous
  * inline implementations reloaded each expanded database through
- * `useDatabase` + `getTables`, so the LAST reloaded database silently became
+ * `useDatabase` + `listTables`, so the LAST reloaded database silently became
  * the session's active database. Drivers now expose session-neutral table
  * reads, so this hook never touches `useDatabase`.
  *

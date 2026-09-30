@@ -1,26 +1,11 @@
-import { databaseCommands } from '../commands/database';
 import { queryCommands } from '../commands/query';
 import type { TableSchema } from '../types';
 
-const CACHE_TTL = 60_000; // 60 seconds
-const ERROR_TTL = 10_000; // short-lived error suppression to avoid re-request storms
+import { relationKey, schemaClient } from '@datazen/driver-sdk';
+import { SchemaResourceCache } from './schemaResourceCache';
 
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
-
-interface ErrorEntry {
-  error: unknown;
-  timestamp: number;
-}
-
-const schemaCache = new Map<string, CacheEntry<TableSchema>>();
-const ddlCache = new Map<string, CacheEntry<string>>();
-const schemaInflight = new Map<string, Promise<TableSchema>>();
-const ddlInflight = new Map<string, Promise<string>>();
-const schemaErrors = new Map<string, ErrorEntry>();
-const ddlErrors = new Map<string, ErrorEntry>();
+const schemaCache = new SchemaResourceCache<TableSchema>();
+const ddlCache = new SchemaResourceCache<string>();
 
 /** Observers notified on every schema/DDL invalidation (downstream caches react). */
 type InvalidationListener = (dbSessionId: string, tableName?: string) => void;
@@ -44,11 +29,7 @@ function cacheKey(
   database: string,
   schema?: string | null,
 ): string {
-  // The schema is part of the identity: `public.users` and `other.users` are
-  // different relations, and sharing one entry is how a foreign-schema read
-  // could serve another schema's columns.
-  const scope = schema?.trim() ? schema.trim() : '';
-  return `${dbSessionId}::${database}::${scope}::${tableName}`;
+  return relationKey({ dbSessionId, database, schema: schema ?? null, name: tableName });
 }
 
 /** Optional DDL cache identity. When supplied, the key discriminates object
@@ -64,17 +45,13 @@ function ddlCacheKey(
   database: string,
   identity?: DdlCacheIdentity,
 ): string {
-  const kind = identity?.objectKind ?? 'table';
-  const ns = identity?.namespacePath?.length ? `${identity.namespacePath.join('.')}.` : '';
-  return `${dbSessionId}::${database}::${kind}::${ns}${tableName}`;
-}
-
-function isValid<T>(entry: CacheEntry<T> | undefined): entry is CacheEntry<T> {
-  return !!entry && Date.now() - entry.timestamp < CACHE_TTL;
-}
-
-function isErrorFresh(entry: ErrorEntry | undefined): boolean {
-  return !!entry && Date.now() - entry.timestamp < ERROR_TTL;
+  return JSON.stringify([
+    dbSessionId,
+    database,
+    identity?.objectKind ?? 'table',
+    identity?.namespacePath ?? [],
+    tableName,
+  ]);
 }
 
 function deepFreeze<T>(value: T): T {
@@ -103,34 +80,17 @@ export async function getCachedTableSchema(
 ): Promise<TableSchema> {
   const key = cacheKey(dbSessionId, tableName, database, schema);
 
-  const cached = schemaCache.get(key);
-  if (isValid(cached)) return cached.data;
-
-  const err = schemaErrors.get(key);
-  if (err && isErrorFresh(err)) {
-    throw err.error;
-  }
-
-  let inflight = schemaInflight.get(key);
-  if (!inflight) {
-    inflight = databaseCommands
-      .getTableSchema(dbSessionId, tableName, database, schema ?? null)
-      .then((data) => {
-        const frozen = deepFreeze(data);
-        schemaCache.set(key, { data: frozen, timestamp: Date.now() });
-        schemaErrors.delete(key);
-        return frozen;
-      })
-      .catch((error: unknown) => {
-        schemaErrors.set(key, { error, timestamp: Date.now() });
-        throw error;
-      })
-      .finally(() => {
-        schemaInflight.delete(key);
-      });
-    schemaInflight.set(key, inflight);
-  }
-  return inflight;
+  return schemaCache.get(key, async () =>
+    deepFreeze(
+      (
+        await schemaClient.readSchema(dbSessionId, {
+          database,
+          schema: schema ?? null,
+          name: tableName,
+        })
+      ).value.definition,
+    ),
+  );
 }
 
 /**
@@ -149,37 +109,11 @@ export async function getCachedDDL(
 ): Promise<string> {
   const key = ddlCacheKey(dbSessionId, tableName, database, identity);
 
-  const cached = ddlCache.get(key);
-  if (isValid(cached)) return cached.data;
-
-  const err = ddlErrors.get(key);
-  if (err && isErrorFresh(err)) {
-    throw err.error;
-  }
-
-  let inflight = ddlInflight.get(key);
-  if (!inflight) {
-    inflight = (async () => {
-      // Pin the session to `database` before running (mirrors query pinning in
-      // queryCommands.executeQuery's F1 path) so a copy-DDL call never resolves
-      // against a stale/active database that may not own the relation.
-      const multi = await queryCommands.executeQuery(dbSessionId, sql, undefined, database, null);
-      const row = multi.results[0]?.rows[0];
-      const data = resultExtractor(row ? [row] : []);
-      ddlCache.set(key, { data, timestamp: Date.now() });
-      ddlErrors.delete(key);
-      return data;
-    })()
-      .catch((error: unknown) => {
-        ddlErrors.set(key, { error, timestamp: Date.now() });
-        throw error;
-      })
-      .finally(() => {
-        ddlInflight.delete(key);
-      });
-    ddlInflight.set(key, inflight);
-  }
-  return inflight;
+  return ddlCache.get(key, async () => {
+    const multi = await queryCommands.executeQuery(dbSessionId, sql, undefined, database, null);
+    const row = multi.results[0]?.rows[0];
+    return resultExtractor(row ? [row] : []);
+  });
 }
 
 export interface DdlCacheInvalidateScope {
@@ -193,58 +127,28 @@ export function invalidateSchemaCache(
   identity?: DdlCacheInvalidateScope,
   database?: string,
 ): void {
-  if (!dbSessionId) {
-    schemaCache.clear();
-    schemaErrors.clear();
-    ddlCache.clear();
-    ddlErrors.clear();
-    return;
-  }
-  if (tableName) {
-    // Cache keys are `${dbSessionId}::${database}::...`. When the caller knows
-    // the database, drop that cell precisely; otherwise fall back to the
-    // prefix/suffix scan so stale entries can never survive.
-    if (database) {
-      const key = cacheKey(dbSessionId, tableName, database);
-      schemaCache.delete(key);
-      schemaErrors.delete(key);
-      const dkey = ddlCacheKey(dbSessionId, tableName, database, identity);
-      ddlCache.delete(dkey);
-      ddlErrors.delete(dkey);
-    }
-    for (const k of [...schemaCache.keys()]) {
-      if (k.startsWith(`${dbSessionId}::`) && (k.endsWith(`::${tableName}`) || k === tableName)) {
-        schemaCache.delete(k);
-      }
-    }
-    for (const k of [...schemaErrors.keys()]) {
-      if (k.startsWith(`${dbSessionId}::`) && (k.endsWith(`::${tableName}`) || k === tableName)) {
-        schemaErrors.delete(k);
-      }
-    }
-    for (const k of [...ddlCache.keys()]) {
-      if (k.startsWith(`${dbSessionId}::`) && k.endsWith(tableName)) {
-        ddlCache.delete(k);
-      }
-    }
-    for (const k of [...ddlErrors.keys()]) {
-      if (k.startsWith(`${dbSessionId}::`) && k.endsWith(tableName)) {
-        ddlErrors.delete(k);
-      }
-    }
-  } else {
-    for (const k of [...schemaCache.keys()]) {
-      if (k.startsWith(`${dbSessionId}::`)) schemaCache.delete(k);
-    }
-    for (const k of [...schemaErrors.keys()]) {
-      if (k.startsWith(`${dbSessionId}::`)) schemaErrors.delete(k);
-    }
-    for (const k of [...ddlCache.keys()]) {
-      if (k.startsWith(`${dbSessionId}::`)) ddlCache.delete(k);
-    }
-    for (const k of [...ddlErrors.keys()]) {
-      if (k.startsWith(`${dbSessionId}::`)) ddlErrors.delete(k);
-    }
-  }
-  notifyInvalidation(dbSessionId, tableName);
+  const sessions = new Set<string>();
+  const matches = (key: string, ddl: boolean): boolean => {
+    const parts: unknown = JSON.parse(key);
+    if (!Array.isArray(parts)) return false;
+    const [session, db, kind, namespace, name] = parts;
+    if (typeof session !== 'string') return false;
+    if (dbSessionId && session !== dbSessionId) return false;
+    if (database && db !== database) return false;
+    const relationName = ddl ? name : namespace;
+    if (tableName && relationName !== tableName) return false;
+    if (ddl && identity?.objectKind && kind !== identity.objectKind) return false;
+    if (
+      ddl &&
+      identity?.namespacePath &&
+      JSON.stringify(namespace) !== JSON.stringify(identity.namespacePath)
+    )
+      return false;
+    sessions.add(session);
+    return true;
+  };
+  schemaCache.invalidate((key) => matches(key, false));
+  ddlCache.invalidate((key) => matches(key, true));
+  if (dbSessionId) notifyInvalidation(dbSessionId, tableName);
+  else for (const session of sessions) notifyInvalidation(session);
 }

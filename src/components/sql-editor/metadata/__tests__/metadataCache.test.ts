@@ -299,4 +299,54 @@ describe('metadataCache', () => {
       vi.useRealTimers();
     });
   });
+  it('switching schema during a read rejects old data and keeps the new request alive', async () => {
+    let resolveOld!: (value: TableSchema) => void;
+    let resolveNew!: (value: TableSchema) => void;
+    loadTableSchema
+      .mockReturnValueOnce(
+        new Promise<TableSchema>((r) => {
+          resolveOld = r;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<TableSchema>((r) => {
+          resolveNew = r;
+        }),
+      );
+    const request: EditorRelationRequest = { identity: ident([], 'users') };
+    cache.ensureRelations('s1', [request], ctx);
+    const old = cache.flushNow();
+    cache.ensureRelations('s1', [request], { ...ctx, schema: 'archive' });
+    const fresh = cache.flushNow();
+    resolveOld(makeSchema('old'));
+    await old;
+    expect(cache.getSnapshot('s1').relations.size).toBe(0);
+    cache.ensureRelations('s1', [request], { ...ctx, schema: 'archive' });
+    await cache.flushNow();
+    expect(loadTableSchema).toHaveBeenCalledTimes(2);
+    resolveNew(makeSchema('users'));
+    await fresh;
+    expect(cache.getSnapshot('s1').schema).toBe('archive');
+    expect(cache.getSnapshot('s1').relations.size).toBe(1);
+  });
+
+  it('relation invalidation during a read rejects its late result', async () => {
+    let resolveOld!: (value: TableSchema) => void;
+    loadTableSchema.mockReturnValueOnce(
+      new Promise<TableSchema>((r) => {
+        resolveOld = r;
+      }),
+    );
+    const identity = ident([], 'users');
+    cache.ensureRelations('s1', [{ identity }], ctx);
+    const old = cache.flushNow();
+    cache.invalidateRelation('s1', identity, ctx.dialectId);
+    resolveOld(makeSchema('users'));
+    await old;
+    expect(cache.getSnapshot('s1').relations.size).toBe(0);
+    loadTableSchema.mockResolvedValueOnce(makeSchema('users'));
+    cache.ensureRelations('s1', [{ identity }], ctx);
+    await cache.flushNow();
+    expect(cache.getSnapshot('s1').relations.size).toBe(1);
+  });
 });

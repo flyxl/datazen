@@ -77,11 +77,8 @@ export function mergeSchemaDiffTablePicks(
       const targetName = targetTable
         ? qualifySchemaDiffTableName(targetTable, targetSchema)
         : undefined;
-      const origin = sourceTable && targetTable
-        ? 'both'
-        : sourceTable
-          ? 'source-only'
-          : 'target-only';
+      const origin =
+        sourceTable && targetTable ? 'both' : sourceTable ? 'source-only' : 'target-only';
       return {
         name: sourceName ?? targetName ?? relation,
         enabled: origin !== 'target-only',

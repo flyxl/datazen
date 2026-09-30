@@ -478,22 +478,6 @@ impl PostgresDriver {
             let nullable: String = row.get("is_nullable");
             let is_pk: bool = row.get("is_primary_key");
 
-            // The payload is keyed by bare table name, so two same-named tables
-            // in different schemas cannot both be represented. Keep the first
-            // and say so rather than merging their columns into one table.
-            if let Some(existing) = owners.get(&table_name) {
-                if existing != &table_schema {
-                    tracing::warn!(
-                        table = %table_name,
-                        kept = %existing,
-                        skipped = %table_schema,
-                        "get_all_columns: same-named table in another schema skipped"
-                    );
-                }
-                continue;
-            }
-            owners.insert(table_name.clone(), table_schema);
-
             let column = ColumnSchema {
                 name: col_name.clone(),
                 data_type: row.get("data_type"),
@@ -504,15 +488,36 @@ impl PostgresDriver {
                 is_auto_increment: false,
             };
 
-            let entry = result.entry(table_name).or_default();
-            entry.0.push(column);
-            if is_pk {
-                entry.1.push(col_name);
-            }
+            append_catalog_column(&mut result, &mut owners, table_name, table_schema, column);
         }
 
         Ok(result)
     }
+}
+
+/// Legacy batch output has bare-name keys: retain all columns of the first
+/// owning schema, but never merge columns from another same-named relation.
+fn append_catalog_column(
+    result: &mut HashMap<String, (Vec<ColumnSchema>, Vec<String>)>,
+    owners: &mut HashMap<String, String>,
+    table: String,
+    schema: String,
+    column: ColumnSchema,
+) {
+    if let Some(owner) = owners.get(&table) {
+        if owner != &schema {
+            tracing::warn!(%table, kept = %owner, skipped = %schema,
+                "get_all_columns: same-named table in another schema skipped");
+            return;
+        }
+    } else {
+        owners.insert(table.clone(), schema);
+    }
+    let entry = result.entry(table).or_default();
+    if column.is_primary_key {
+        entry.1.push(column.name.clone());
+    }
+    entry.0.push(column);
 }
 
 fn parse_pg_fk_deferrability(
@@ -582,10 +587,46 @@ fn parse_pg_check_definition(definition: &str) -> Option<String> {
 #[cfg(test)]
 mod schema_tests {
     use super::{
-        normalise_fk_columns, parse_pg_check_definition, parse_pg_fk_deferrability,
-        qualified_pg_table_identity, relation_supports_consistent_snapshot,
+        append_catalog_column, normalise_fk_columns, parse_pg_check_definition,
+        parse_pg_fk_deferrability, qualified_pg_table_identity,
+        relation_supports_consistent_snapshot,
     };
     use datazen_driver_api::ForeignKeyDeferrability;
+
+    #[test]
+    fn batch_columns_preserve_composite_keys_and_same_schema_columns() {
+        let mut result = std::collections::HashMap::new();
+        let mut owners = std::collections::HashMap::new();
+        for (schema, name, pk) in [
+            ("public", "tenant_id", true),
+            ("public", "id", true),
+            ("public", "name", false),
+            ("archive", "different", false),
+            ("public", "created_at", false),
+        ] {
+            append_catalog_column(
+                &mut result,
+                &mut owners,
+                "users".into(),
+                schema.into(),
+                datazen_driver_api::ColumnSchema {
+                    name: name.into(),
+                    data_type: "text".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: pk,
+                    is_auto_increment: false,
+                },
+            );
+        }
+        let (columns, keys) = &result["users"];
+        assert_eq!(
+            columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["tenant_id", "id", "name", "created_at"]
+        );
+        assert_eq!(keys, &["tenant_id", "id"]);
+    }
 
     fn owned(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_string()).collect()

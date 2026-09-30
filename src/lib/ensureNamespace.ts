@@ -14,7 +14,7 @@ export interface EnsureDeps {
   databaseType: string | null;
   isMultiDatabase: boolean;
   loadedPaths: Set<string>;
-  /** Raw `get_tables` payloads keyed by fetch path (shared with custom trees). */
+  /** Raw `list_catalog` payloads keyed by fetch path (shared with custom trees). */
   pathItems: Record<string, TableInfo[]>;
   /** SQL display name → fetch path root (e.g. numeric id). Filled by extensions via SDK. */
   pathAliases: Record<string, string>;
@@ -26,7 +26,7 @@ export interface EnsureDeps {
   cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
   getDatabases: (dbSessionId: string) => Promise<string[]>;
-  getTables: (dbSessionId: string, database: string) => Promise<TableInfo[]>;
+  listTables: (dbSessionId: string, database: string) => Promise<TableInfo[]>;
 }
 
 const inflight = new Map<string, Promise<void>>();
@@ -68,7 +68,7 @@ function resolveEnsureStrategy(databaseType: string | null): DatabaseTypeMeta['n
 
 /**
  * Path-hierarchy ensure: uses wapp-registered pathAliases for the root segment,
- * then `get_tables(rootId[/…])`. Does not parse wapp-specific database list formats.
+ * then `list_catalog(rootId[/…])`. Does not parse wapp-specific database list formats.
  */
 async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promise<void> {
   const { dbSessionId, pathAliases } = deps;
@@ -87,7 +87,7 @@ async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promis
 
   let items = deps.pathItems[fetchPath];
   if (!items) {
-    items = await deps.getTables(dbSessionId, fetchPath);
+    items = await deps.listTables(dbSessionId, fetchPath);
     deps.cachePathItems(fetchPath, items);
   }
 
@@ -121,7 +121,7 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
       databases[0];
     if (!preferred) return;
 
-    const all = await deps.getTables(dbSessionId, preferred);
+    const all = await deps.listTables(dbSessionId, preferred);
     const bySchema = new Map<string, string[]>();
     for (const item of all) {
       if (!isSchemaGroupingSchema(item.schema)) continue;
@@ -139,7 +139,7 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
 
   if (isMultiDatabase && segments.length === 1) {
     const [db] = segments;
-    const all = await deps.getTables(dbSessionId, db);
+    const all = await deps.listTables(dbSessionId, db);
     const tableItems = all.filter((item) => item.tableType !== 'view');
     const bySchema = new Map<string, string[]>();
     for (const item of tableItems) {
@@ -173,7 +173,7 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
       databases[0];
     if (!preferred) return;
 
-    const all = await deps.getTables(dbSessionId, preferred);
+    const all = await deps.listTables(dbSessionId, preferred);
     const names = all
       .filter((item) => item.tableType !== 'view' && item.schema === schema)
       .map((item) => item.name);
@@ -192,7 +192,7 @@ async function ensureDefaultSql(segments: string[], deps: EnsureDeps): Promise<v
 
   if (segments.length === 1) {
     const [db] = segments;
-    const all = await deps.getTables(dbSessionId, db);
+    const all = await deps.listTables(dbSessionId, db);
     deps.mergeNamespace([db], 'tables', tableNames(all));
   }
 }

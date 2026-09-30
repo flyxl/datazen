@@ -38,7 +38,7 @@ export interface SchemaCompletionOptions {
   model: SqlSemanticModel;
   snapshot: EditorMetadataSnapshot;
   adapter?: SqlDialectAdapter;
-  /** Full editor schema tree (from `useSchemaStore.columnMap` via `buildEditorSchema()`). */
+  /** Full editor schema tree (from the session relation-column projection via `buildEditorSchema()`). */
   schema?: SQLNamespace;
   /** Identifier quoting policy ('unquoted' | 'always' | 'both'). Default 'unquoted'. */
   quotePolicy?: CompletionQuotePolicy;
@@ -330,7 +330,7 @@ function allColumnsFromSnapshot(
  * Used as a projection fallback when no FROM clause is present AND the
  * metadata snapshot is empty (i.e. `allColumnsFromSnapshot` returns nothing).
  *
- * The `schema` is the `SqlNamespace` tree built from `useSchemaStore.columnMap`
+ * The `schema` is the `SqlNamespace` tree built from the session relation-column projection
  * via `buildEditorSchema()` — it contains ALL tables and columns loaded when
  * the connection opens, regardless of what's referenced in the current SQL.
  *

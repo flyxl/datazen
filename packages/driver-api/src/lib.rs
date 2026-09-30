@@ -14,6 +14,7 @@ mod query_stream;
 mod reuse;
 pub mod schema_catalog_commands;
 pub mod schema_dependencies;
+pub mod schema_metadata;
 pub mod schema_migration;
 pub mod schema_object_commands;
 pub mod schema_objects;

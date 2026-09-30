@@ -1,3 +1,4 @@
+import { readCatalog } from '../schema-metadata.js';
 /**
  * Editor Features Screenshot Generator.
  *
@@ -310,7 +311,7 @@ describe('SQL Editor Latest Features Screenshots', () => {
 
     const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
     if (typeof connId === 'string' && !connId.startsWith('__error')) {
-      await invoke('get_tables', { dbSessionId: connId, database: DEMO_PG_DB });
+      await readCatalog({ dbSessionId: connId, database: DEMO_PG_DB });
     }
 
     // Set UI language to zh-CN, disable safeMode, and set strategy to current_statement

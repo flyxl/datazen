@@ -213,8 +213,8 @@ export function SchemaDiffWindow() {
       const tgtConnId = await endpoints.ensureConnected('target');
       if (!srcConnId || !tgtConnId) return;
       const [sourceRows, targetRows] = await Promise.all([
-        databaseCommands.getTables(srcConnId, endpoints.sourceDatabase),
-        databaseCommands.getTables(tgtConnId, endpoints.targetDatabase),
+        databaseCommands.listTables(srcConnId, endpoints.sourceDatabase),
+        databaseCommands.listTables(tgtConnId, endpoints.targetDatabase),
       ]);
       const catalog = await unifiedObjects.load(
         srcConnId,

@@ -1,53 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import {
-  activeFlatten,
-  createEmptyConnectionSchema,
-  DEFAULT_SCHEMA_KEY,
-  extractSchemaPatch,
-  patchConnectionSchema,
-  resolveRealConnectionId,
-  resolveTargetConnectionId,
-} from '../schemaStoreState';
+import { createEmptyConnectionSchema, patchConnectionSchema } from '../schemaStoreState';
 
 describe('[tester] schemaStoreState', () => {
-  it('activeFlatten reads active session or default key', () => {
-    const schemas = new Map<string, ReturnType<typeof createEmptyConnectionSchema>>();
+  it('creates a session snapshot without legacy column projections', () => {
     const entry = createEmptyConnectionSchema();
-    entry.currentDatabase = 'app';
-    schemas.set('sess-1', entry);
-
-    expect(activeFlatten(schemas, 'sess-1').currentDatabase).toBe('app');
-    expect(activeFlatten(schemas, null).currentDatabase).toBeNull();
-
-    schemas.set(DEFAULT_SCHEMA_KEY, { ...entry, currentDatabase: 'default-db' });
-    expect(activeFlatten(schemas, null).currentDatabase).toBe('default-db');
+    expect(entry.relationColumns).toEqual({});
+    expect(entry.tableCatalogs).toEqual({});
+    expect(entry).not.toHaveProperty('columnMap');
+    expect(entry).not.toHaveProperty('typedColumnMap');
   });
 
-  it('extractSchemaPatch picks only known connection keys', () => {
-    const patch = extractSchemaPatch({
-      currentDatabase: 'app',
-      unknownField: 'ignored',
-      loading: true,
-    });
-    expect(patch).toEqual({ currentDatabase: 'app', loading: true });
-    expect(patch).not.toHaveProperty('unknownField');
+  it('patches the explicit session without mutating other sessions or the original map', () => {
+    const a = { ...createEmptyConnectionSchema(), currentDatabase: 'a' };
+    const b = { ...createEmptyConnectionSchema(), currentDatabase: 'b' };
+    const schemas = new Map([
+      ['session-a', a],
+      ['session-b', b],
+    ]);
+    const next = patchConnectionSchema(schemas, 'session-a', { currentDatabase: 'updated' });
+    expect(next.get('session-a')?.currentDatabase).toBe('updated');
+    expect(schemas.get('session-a')).toBe(a);
+    expect(next.get('session-b')).toBe(b);
   });
 
-  it('patchConnectionSchema merges into map immutably', () => {
+  it('creates only the requested session when the map is empty', () => {
     const schemas = new Map<string, ReturnType<typeof createEmptyConnectionSchema>>();
-    const next = patchConnectionSchema(schemas, 'sess-1', { currentDatabase: 'app' });
-    expect(next.get('sess-1')?.currentDatabase).toBe('app');
-    expect(schemas.has('sess-1')).toBe(false);
+    const next = patchConnectionSchema(schemas, 'session', { currentDatabase: 'app' });
+    expect([...next.keys()]).toEqual(['session']);
+    expect(schemas.size).toBe(0);
   });
 
-  it('resolveTargetConnectionId falls back to default schema key', () => {
-    expect(resolveTargetConnectionId({ activeDbSessionId: 'sess-1' })).toBe('sess-1');
-    expect(resolveTargetConnectionId({ activeDbSessionId: null })).toBe(DEFAULT_SCHEMA_KEY);
-    expect(resolveTargetConnectionId({ activeDbSessionId: null }, 'explicit')).toBe('explicit');
-  });
-
-  it('resolveRealConnectionId never uses default schema key', () => {
-    expect(resolveRealConnectionId({ activeDbSessionId: 'sess-1' })).toBe('sess-1');
-    expect(resolveRealConnectionId({ activeDbSessionId: null })).toBeNull();
+  it('keeps mutable collections isolated between freshly created sessions', () => {
+    const a = createEmptyConnectionSchema();
+    const b = createEmptyConnectionSchema();
+    a.expanded.add('db:app');
+    a.loadedPaths.add('app');
+    expect(b.expanded.size).toBe(0);
+    expect(b.loadedPaths.size).toBe(0);
+    expect(a.relationColumns).not.toBe(b.relationColumns);
   });
 });

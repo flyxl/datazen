@@ -16,7 +16,7 @@ const {
   saveSyncProfileMock,
   deleteSyncProfileMock,
   getDatabasesMock,
-  getTablesMock,
+  listTablesMock,
   aiChatMock,
   stableT,
   aiConfiguredRef,
@@ -38,7 +38,7 @@ const {
     saveSyncProfileMock: vi.fn(),
     deleteSyncProfileMock: vi.fn(),
     getDatabasesMock: vi.fn(),
-    getTablesMock: vi.fn(),
+    listTablesMock: vi.fn(),
     aiChatMock: vi.fn(),
     stableT,
     aiConfiguredRef,
@@ -92,7 +92,7 @@ vi.mock('../../../commands/sync', () => ({
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
     getDatabases: (...args: unknown[]) => getDatabasesMock(...args),
-    getTables: (...args: unknown[]) => getTablesMock(...args),
+    listTables: (...args: unknown[]) => listTablesMock(...args),
   },
 }));
 
@@ -360,8 +360,8 @@ describe('DataSyncWindow wizard', () => {
     getDatabasesMock.mockImplementation(async (connId: string) =>
       connId.includes('pg-src') || connId.includes('my') ? ['src', 'other'] : ['tgt'],
     );
-    getTablesMock.mockReset();
-    getTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
+    listTablesMock.mockReset();
+    listTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
     invokeMock.mockImplementation(
       async (
         cmd: string,
@@ -369,6 +369,7 @@ describe('DataSyncWindow wizard', () => {
           connectionId?: string;
           database?: string | null;
           dbSessionId?: string;
+          request?: { command?: string; dbSessionId?: string };
           sourceDatabaseType?: string;
           targetDatabaseType?: string;
         },
@@ -382,8 +383,12 @@ describe('DataSyncWindow wizard', () => {
           const db = args?.database ?? 'default';
           return `dedicated-${conn}-${db}`;
         }
-        if (cmd === 'get_databases') {
-          return args?.dbSessionId?.includes('pg-src') ? ['src', 'other'] : ['tgt'];
+        if (cmd === 'execute_driver_command' && args?.request?.command === 'list_databases') {
+          return {
+            data: {
+              databases: args.request.dbSessionId?.includes('pg-src') ? ['src', 'other'] : ['tgt'],
+            },
+          };
         }
         if (cmd === 'release_connection') return false;
         if (cmd === 'connect') return `live-${args?.connectionId}`;
@@ -673,7 +678,7 @@ describe('DataSyncWindow wizard', () => {
   });
 
   it('shows schema pickers for PostgreSQL when get_tables returns schemas', async () => {
-    getTablesMock.mockResolvedValue([
+    listTablesMock.mockResolvedValue([
       { name: 'users', schema: 'public', tableType: 'table' },
       { name: 'users', schema: 'app', tableType: 'table' },
     ]);
@@ -687,7 +692,7 @@ describe('DataSyncWindow wizard', () => {
   });
 
   it('discovers schemas for any SQL driver that supports table metadata', async () => {
-    getTablesMock.mockResolvedValue([
+    listTablesMock.mockResolvedValue([
       { name: 'users', schema: 'public', tableType: 'table' },
       { name: 'users', schema: 'app', tableType: 'table' },
     ]);
@@ -696,7 +701,7 @@ describe('DataSyncWindow wizard', () => {
     await pickSelect('data-sync-source', 'My Tgt');
     await waitFor(() => expect(screen.getByTestId('data-sync-source-schema')).toBeTruthy());
     expect(screen.getByTestId('data-sync-source-schema')).toHaveTextContent('public');
-    expect(getTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src');
+    expect(listTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src');
   });
 
   it('marks heterogeneous targets as unsupported in the picker', async () => {

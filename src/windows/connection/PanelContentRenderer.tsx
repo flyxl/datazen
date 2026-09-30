@@ -8,7 +8,7 @@ import { resolveExportScope } from '../../lib/exportCapability';
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
 import { invalidateSchemaCache } from '../../lib/schemaCache';
 import { getConnectionView } from '../../lib/connectionViews';
-import { useSchemaStore } from '../../stores/schemaStore';
+import { useConnectionSchemaField } from '../../stores/schemaStore';
 import { onPanelClosed } from '../../stores/panelStore';
 import {
   type Panel,
@@ -479,7 +479,7 @@ function CreateTablePanelContent({
   onCancel,
 }: CreateTablePanelContentProps) {
   const { t } = useI18n();
-  const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
+  const isMultiDb = useConnectionSchemaField(dbSessionId, 'isMultiDatabase');
   // F1: no use_database IPC gate — the editor's queries pin `database`
   // explicitly and the backend switches the session lazily.
   if (isMultiDb && !database) {

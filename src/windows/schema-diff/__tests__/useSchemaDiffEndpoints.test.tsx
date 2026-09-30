@@ -36,7 +36,7 @@ vi.mock('../../../lib/dedicatedDbSession', () => ({
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
-    getTables: vi.fn().mockResolvedValue([]),
+    listTables: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -276,7 +276,7 @@ describe('useSchemaDiffEndpoints', () => {
   });
 
   it('discovers schemas through table metadata for non-PostgreSQL SQL drivers', async () => {
-    vi.mocked(databaseCommands.getTables).mockResolvedValue([
+    vi.mocked(databaseCommands.listTables).mockResolvedValue([
       { name: 'users', schema: 'public', tableType: 'table' },
       { name: 'users', schema: 'app', tableType: 'table' },
     ]);
@@ -292,7 +292,7 @@ describe('useSchemaDiffEndpoints', () => {
     await waitFor(() => {
       expect(result.current.sourceSchemas).toEqual(['app', 'public']);
     });
-    expect(databaseCommands.getTables).toHaveBeenCalledWith(
+    expect(databaseCommands.listTables).toHaveBeenCalledWith(
       'session-mysql-tgt',
       'datazen_sync_src',
     );
@@ -303,7 +303,7 @@ describe('useSchemaDiffEndpoints', () => {
       pgConn('pg-src', 'PG Src', 'worker_db', 'e2e_worker_0'),
       pgConn('pg-tgt', 'PG Tgt', 'datazen_sync_tgt'),
     ]);
-    vi.mocked(databaseCommands.getTables).mockResolvedValue([
+    vi.mocked(databaseCommands.listTables).mockResolvedValue([
       { name: '', schema: 'public', tableType: 'systemTable' },
       { name: 'e2e_contract_conn', schema: 'e2e_worker_0', tableType: 'table' },
     ]);
