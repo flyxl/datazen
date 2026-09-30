@@ -2,14 +2,17 @@
 import { expect, browser, $ } from '@wdio/globals';
 import {
   closeExtraWindows,
+  clickCardConnectButton,
   connectBackend,
-  connectToCard,
   disconnectBackend,
   expandConnectedConnectionInNavigator,
   expandSchemaCategory,
+  findCardByName,
   invokeBackend,
+  openConnectionsWorkspace,
   parseQueryRows,
   queryScalar,
+  waitForConnectionToolbar,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../../../../e2e/helpers.js';
@@ -225,7 +228,15 @@ describe('MySQL Schema Tree object journey', function () {
       );
     });
 
-    await connectToCard(connectionName);
+    await browser.refresh();
+    await browser.pause(1_500);
+    await openConnectionsWorkspace(mainWindow);
+    await browser.waitUntil(async () => Boolean(await findCardByName(connectionName)), {
+      timeout: 20_000,
+      timeoutMsg: `Saved MySQL connection card ${connectionName} did not appear after refresh`,
+    });
+    await clickCardConnectButton(connectionName);
+    await waitForConnectionToolbar();
     await expandConnectedConnectionInNavigator(connectionName);
     for (const category of ['tables', 'views', 'function', 'procedure', 'trigger']) {
       await expandSchemaCategory(category, database, database);
