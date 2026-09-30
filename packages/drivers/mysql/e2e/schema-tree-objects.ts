@@ -360,6 +360,6 @@ describe('MySQL Schema Tree object journey', function () {
     });
     expect(response.data.ddl.trim().length).toBeGreaterThan(0);
     expect(response.data.ddl).toContain(table);
-    expect(response.data.ddl.toLowerCase()).toContain("status = 'active'");
+    expect(response.data.ddl).toMatch(/`status`\s*=\s*'active'/i);
   });
 });
