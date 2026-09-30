@@ -25,6 +25,8 @@ const identityTable = 'identity_probe';
 const nonDefaultIdentityTable = 'identity_seed_probe';
 const computedTable = 'computed_probe';
 const rowversionTable = 'rowversion_probe';
+const temporalTable = 'temporal_probe';
+const temporalHistoryTable = 'temporal_history_probe';
 const filteredIndexTable = 'filtered_index_probe';
 const includedIndexTable = 'included_index_probe';
 let nonDefaultCollation = '';
@@ -138,6 +140,9 @@ describe('SQL Server schema metadata IPC (live)', () => {
     if (dbSessionId) {
       try {
         await setSafeMode(false).catch(() => undefined);
+        await run(
+          `ALTER TABLE ${qualified(temporalTable)} SET (SYSTEM_VERSIONING = OFF)`,
+        ).catch(() => undefined);
         for (const table of [
           childTable,
           parentTable,
@@ -146,6 +151,8 @@ describe('SQL Server schema metadata IPC (live)', () => {
           nonDefaultIdentityTable,
           computedTable,
           rowversionTable,
+          temporalTable,
+          temporalHistoryTable,
           filteredIndexTable,
           includedIndexTable,
         ]) {
@@ -256,6 +263,14 @@ describe('SQL Server schema metadata IPC (live)', () => {
       `CREATE TABLE ${qualified(rowversionTable)} (` +
         '[id] INT NOT NULL, [row_version] ROWVERSION)',
     );
+    await run(
+      `CREATE TABLE ${qualified(temporalTable)} (` +
+        '[id] INT NOT NULL PRIMARY KEY CLUSTERED, ' +
+        '[valid_from] DATETIME2 GENERATED ALWAYS AS ROW START NOT NULL, ' +
+        '[valid_to] DATETIME2 GENERATED ALWAYS AS ROW END NOT NULL, ' +
+        'PERIOD FOR SYSTEM_TIME ([valid_from], [valid_to])) ' +
+        `WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = ${qualified(temporalHistoryTable)}))`,
+    );
     await run(`CREATE TABLE ${qualified(filteredIndexTable)} ([value] INT NULL)`);
     await run(
       `CREATE NONCLUSTERED INDEX [IX_filtered_index_probe] ON ${qualified(filteredIndexTable)} ([value]) WHERE [value] IS NOT NULL`,
@@ -356,6 +371,17 @@ describe('SQL Server schema metadata IPC (live)', () => {
     }
     expect(error).toMatch(/unsupported/i);
     expect(error).toMatch(/rowversion columns/i);
+  });
+
+  it('rejects temporal generated-always columns with an explicit Unsupported error', async () => {
+    let error = '';
+    try {
+      await tableSchema(temporalTable);
+    } catch (cause) {
+      error = String(cause);
+    }
+    expect(error).toMatch(/unsupported/i);
+    expect(error).toMatch(/generated-always columns/i);
   });
 
   it('rejects filtered indexes with the index name and unsupported feature in the error', async () => {
