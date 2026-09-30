@@ -11,7 +11,6 @@ import {
   connectConfig,
   disconnectBackend,
   expandConnectedConnectionInNavigator,
-  expandSchemaCategory,
   invokeBackend,
   openConnectionsWorkspace,
   waitForConnectionToolbar,
@@ -76,8 +75,118 @@ async function waitForEditorText(expected: string): Promise<void> {
 async function searchNavigator(query: string): Promise<void> {
   const input = await $('[data-testid="connection-search-input"]');
   await input.waitForDisplayed({ timeout: 8000 });
-  await input.setValue(query);
+  if (query) await input.setValue(query);
+  else await input.clearValue();
   await browser.pause(650);
+}
+
+async function scrollNavigatorToNode(
+  nodeType: 'schema' | 'category',
+  identity: string,
+): Promise<void> {
+  await browser.execute(() => {
+    const tree = document.querySelector<HTMLElement>('[data-testid="navigator-tree"]');
+    if (tree) tree.scrollTop = 0;
+  });
+
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (kind: 'schema' | 'category', value: string) => {
+          const tree = document.querySelector<HTMLElement>('[data-testid="navigator-tree"]');
+          if (!tree) return false;
+
+          const candidates = Array.from(
+            tree.querySelectorAll<HTMLElement>(`[data-tree-node="${kind}"]`),
+          );
+          const node = candidates.find((candidate) =>
+            kind === 'schema'
+              ? candidate.getAttribute('data-schema-name') === value
+              : candidate.getAttribute('data-cat-key') === value,
+          );
+          if (node) {
+            node.scrollIntoView({ block: 'center' });
+            return true;
+          }
+
+          const maxScroll = Math.max(0, tree.scrollHeight - tree.clientHeight);
+          tree.scrollTop = Math.min(
+            maxScroll,
+            tree.scrollTop === 0
+              ? 0
+              : tree.scrollTop + Math.max(160, Math.floor(tree.clientHeight * 0.75)),
+          );
+          if (tree.scrollTop === 0) {
+            tree.scrollTop = Math.min(
+              maxScroll,
+              Math.max(160, Math.floor(tree.clientHeight * 0.75)),
+            );
+          }
+          return false;
+        },
+        nodeType,
+        identity,
+      ),
+    {
+      timeout: 15000,
+      timeoutMsg: `Navigator did not mount ${nodeType} ${identity} while scrolling`,
+      interval: 100,
+    },
+  );
+  await browser.pause(100);
+}
+
+async function ensureSchemaExpanded(schema: string): Promise<void> {
+  const selector = `[data-testid="schema-tree-node"][data-tree-node="schema"][data-schema-name="${schema}"]`;
+
+  // Search force-expands the row for display, but clicking it still changes
+  // the underlying expansion state. Retry once in case the schema was already
+  // expanded before the first click.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await searchNavigator(schema);
+    const schemaNode = await $(selector);
+    await schemaNode.waitForDisplayed({ timeout: 8000 });
+    await schemaNode.click();
+    await searchNavigator('');
+    await scrollNavigatorToNode('schema', schema);
+    const currentSchemaNode = await $(selector);
+    if ((await currentSchemaNode.getAttribute('aria-expanded')) === 'true') return;
+  }
+
+  throw new Error(`Could not expand exact PostgreSQL schema ${schema}`);
+}
+
+async function expandSchemaObjectCategory(
+  connectionId: string,
+  database: string,
+  schema: string,
+  category: string,
+): Promise<void> {
+  const categoryKey = `${connectionId}::${database}::${schema}::${category}`;
+  await scrollNavigatorToNode('category', categoryKey);
+  const categoryNode = await $(
+    `[data-testid="schema-tree-node"][data-tree-node="category"][data-cat-key="${categoryKey}"]`,
+  );
+  await categoryNode.waitForDisplayed({ timeout: 8000 });
+  if ((await categoryNode.getAttribute('aria-expanded')) !== 'true') {
+    await categoryNode.click();
+  }
+  await browser.waitUntil(
+    async () =>
+      browser.execute((key: string) => {
+        const tree = document.querySelector('[data-testid="navigator-tree"]');
+        const categoryNode = Array.from(
+          tree?.querySelectorAll<HTMLElement>('[data-tree-node="category"]') ?? [],
+        ).find((candidate) => candidate.getAttribute('data-cat-key') === key);
+        const count = Number(categoryNode?.lastElementChild?.textContent?.trim());
+        return Number.isFinite(count) && count > 0;
+      }, categoryKey),
+    {
+      timeout: 15000,
+      timeoutMsg: `UI did not load PostgreSQL objects for category ${categoryKey}`,
+      interval: 100,
+    },
+  );
 }
 
 describe('PostgreSQL Schema Tree objects', () => {
@@ -208,6 +317,7 @@ describe('PostgreSQL Schema Tree objects', () => {
 
       await clickNavigatorRefresh();
       await expandConnectedConnectionInNavigator(connectionName);
+      await ensureSchemaExpanded(schema);
 
       // Probe the actual driver command before asserting the rendered row.
       // This keeps an empty PostgreSQL catalog result distinct from a row that
@@ -235,12 +345,12 @@ describe('PostgreSQL Schema Tree objects', () => {
         'sequence',
         'type',
       ]) {
-        await expandSchemaCategory(category, schema, database);
+        await expandSchemaObjectCategory(connectionId, database, schema, category);
       }
 
       const treeNode = (kind: string, objectName: string) =>
         $(
-          `[data-testid="schema-tree-node"][data-tree-node="${kind}"][data-item-name="${objectName}"]`,
+          `[data-testid="schema-tree-node"][data-tree-node="${kind}"][data-item-name="${objectName}"][data-object-schema="${schema}"]`,
         );
       for (const [kind, objectName] of [
         ['table', name.groups],
