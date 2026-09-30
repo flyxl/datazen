@@ -333,7 +333,8 @@ describe('SQL Server schema metadata IPC (live)', () => {
     } catch (cause) {
       error = String(cause);
     }
-    expect(error.toLowerCase()).toMatch(/collation|unsupported|not represent/);
+    expect(error).toMatch(/unsupported/i);
+    expect(error).toMatch(/non-default collation/i);
   });
 
   it('preserves SQL Server IDENTITY(1,1) as the auto-increment flag', async () => {
