@@ -22,16 +22,20 @@
  *   pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-live-ui.ts
  */
 import { mkdirSync } from 'node:fs';
-import { browser, $ } from '@wdio/globals';
+import { browser, $, expect } from '@wdio/globals';
 import {
   clickCardConnectButton,
   ensureMainWindowForIpc,
   expandAllGroups,
   expandConnectedConnectionInNavigator,
   expandSchemaCategory,
+  openConnectionsWorkspace,
+  openQueryTab,
+  setEditorContent,
   waitForConnectionToolbar,
   waitForSchemaTreeLoaded,
 } from '../../../../e2e/helpers.js';
+import { selectSqlEditorSubstring } from '../../../../e2e/helpers/sqlEditorHelper.js';
 
 const HOST = (process.env.E2E_SQLSERVER_HOST || '').trim();
 const PORT = Number(process.env.E2E_SQLSERVER_PORT || '1433');
@@ -48,6 +52,7 @@ const COLUMNS = ['id', 'label', 'created_on', 'recorded_at', 'amount', 'payload'
 const ROW_COUNT = 120;
 const SCREENSHOT_DIR = 'e2e/screenshots/sqlserver-driver-ui';
 const RESUME_CODE = 'not currently available';
+const FUNCTION_NAME = 'fn_NormalizeCode';
 
 const scratchSchema = `dz_e2e_ui_${Date.now().toString(36)}`;
 const scratchTableName = 'e2e_ui_rows';
@@ -137,6 +142,7 @@ describe('SQL Server driver GUI (live)', () => {
 
   const dropScratch = async () => {
     for (const statement of [
+      `DROP FUNCTION IF EXISTS [${scratchSchema}].[${FUNCTION_NAME}]`,
       `DROP TABLE IF EXISTS [${scratchSchema}].[${scratchTableName}]`,
       `DROP SCHEMA IF EXISTS [${scratchSchema}]`,
     ]) {
@@ -146,6 +152,58 @@ describe('SQL Server driver GUI (live)', () => {
         console.warn(`ℹ️  cleanup "${statement}" reported: ${String(error)}`);
       }
     }
+  };
+
+  /**
+   * Execute a selected SQL string through the actual SQL Editor gate, then
+   * return whichever observable outcome it produced. Selecting the full text
+   * avoids the editor's current-statement mode splitting routine bodies at
+   * their internal semicolons before the SQL reaches the driver.
+   */
+  const executeSelectedSql = async (
+    sql: string,
+  ): Promise<{
+    executionAdvanced: boolean;
+    gateMessage: string | null;
+    queryError: string | null;
+  }> => {
+    await setEditorContent(sql);
+    if (!(await selectSqlEditorSubstring(sql))) {
+      throw new Error('the SQL Editor did not select the complete SQL text');
+    }
+
+    const queryPanel = await $('[data-testid="query-panel"]');
+    const beforeSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
+    await $('[data-testid="editor-execute-button"]').click();
+    await browser.waitUntil(
+      async () => {
+        const currentSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
+        const gate = await $('[data-testid="result-message-ok"]');
+        const error = await $('[data-testid="query-error-message"]');
+        const executeButton = await $('[data-testid="editor-execute-button"]');
+        return (
+          (currentSeq > beforeSeq && (await executeButton.isDisplayed().catch(() => false))) ||
+          (await gate.isDisplayed().catch(() => false)) ||
+          (await error.isDisplayed().catch(() => false))
+        );
+      },
+      { timeout: 20000, timeoutMsg: 'the SQL Editor produced no execution or diagnostic result' },
+    );
+
+    const gateButton = await $('[data-testid="result-message-ok"]');
+    let gateMessage: string | null = null;
+    if (await gateButton.isDisplayed().catch(() => false)) {
+      gateMessage = await $('body').getText();
+      await gateButton.click();
+    }
+    const queryError = await browser.execute(() => {
+      const error = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="query-error-message"]'),
+      ).find((element) => element.getClientRects().length > 0);
+      return error?.innerText.trim() || null;
+    });
+    const afterSeq = Number((await queryPanel.getAttribute('data-execution-seq')) ?? '0');
+    return { executionAdvanced: afterSeq > beforeSeq, gateMessage, queryError };
   };
 
   before(async function () {
@@ -390,5 +448,90 @@ describe('SQL Server driver GUI (live)', () => {
     this.timeout(60_000);
     mkdirSync(SCREENSHOT_DIR, { recursive: true });
     await browser.saveScreenshot(`${SCREENSHOT_DIR}/table-grid.png`);
+  });
+
+  it('creates and calls a scalar function with a T-SQL local parameter in the SQL Editor', async function () {
+    this.timeout(120_000);
+
+    // The `execute_query` IPC helper bypasses the SQL Editor's bind-parameter
+    // gate, so this regression deliberately enters through the real UI. The
+    // connection was seeded after the initial app mount; reload to refresh the
+    // navigator, then connect through the same path a user follows.
+    await ensureMainWindowForIpc();
+    await browser.execute(() => location.reload());
+    await browser.waitUntil(
+      async () =>
+        browser.execute(() => !!document.querySelector('[data-testid="workspace-nav-databases"]')),
+      {
+        timeout: 60000,
+        timeoutMsg: 'the workspace did not remount after refreshing the navigator',
+      },
+    );
+    await openConnectionsWorkspace();
+    await expandAllGroups();
+    await browser.waitUntil(
+      async () =>
+        browser.execute(
+          (name: string) =>
+            Array.from(document.querySelectorAll('[data-conn-item]')).some((item) =>
+              (item.getAttribute('data-conn-name') || item.textContent || '').includes(name),
+            ),
+          CONNECTION_NAME,
+        ),
+      { timeout: 20000, timeoutMsg: 'the SQL Server connection did not appear in the navigator' },
+    );
+    await clickCardConnectButton(CONNECTION_NAME);
+    await waitForConnectionToolbar();
+    await openQueryTab();
+
+    const createFunctionSql =
+      `CREATE FUNCTION [${scratchSchema}].[${FUNCTION_NAME}]\n` +
+      '(\n' +
+      '    @value NVARCHAR(64)\n' +
+      ')\n' +
+      'RETURNS NVARCHAR(64)\n' +
+      'AS\n' +
+      'BEGIN\n' +
+      '    RETURN UPPER(LTRIM(RTRIM(@value)));\n' +
+      'END;';
+    const createResult = await executeSelectedSql(createFunctionSql);
+    expect(
+      createResult.gateMessage,
+      'T-SQL @value must not be treated as an unbound editor parameter',
+    ).toBeNull();
+    expect(
+      createResult.queryError,
+      'SQL Server must accept the scalar function definition',
+    ).toBeNull();
+    expect(createResult.executionAdvanced).toBe(true);
+
+    const callSql = `SELECT [${scratchSchema}].[${FUNCTION_NAME}](N'  Mixed Code  ') AS [normalized]`;
+    const callResult = await executeSelectedSql(callSql);
+    expect(callResult.gateMessage).toBeNull();
+    expect(callResult.queryError).toBeNull();
+    expect(callResult.executionAdvanced).toBe(true);
+    await browser.waitUntil(
+      async () =>
+        browser.execute(() =>
+          Array.from(document.querySelectorAll<HTMLElement>('[data-testid="data-table-cell"]'))
+            .filter((cell) => cell.getClientRects().length > 0)
+            .some((cell) => cell.innerText.trim() === 'MIXED CODE'),
+        ),
+      { timeout: 15000, timeoutMsg: 'the scalar function did not return trimmed uppercase text' },
+    );
+  });
+
+  it('shows a SQL Server missing-object diagnostic for invalid SQL in the editor', async function () {
+    this.timeout(60_000);
+    const missingObject = 'dz_e2e_intentionally_missing_object';
+    const result = await executeSelectedSql(`SELECT * FROM [${scratchSchema}].[${missingObject}]`);
+
+    expect(
+      result.gateMessage,
+      'invalid SQL must reach SQL Server instead of stopping at the bind gate',
+    ).toBeNull();
+    expect(result.executionAdvanced).toBe(true);
+    expect(result.queryError).toContain(missingObject);
+    expect(result.queryError).toMatch(/invalid object name/i);
   });
 });
