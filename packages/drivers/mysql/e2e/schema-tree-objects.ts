@@ -171,12 +171,20 @@ describe('MySQL Schema Tree object journey', function () {
     await invokeBackend('save_connection', { config: adminConfig });
     adminConfigSaved = true;
     adminSession = await connectBackend(adminId);
+    const existingDatabase = await execute(
+      adminSession,
+      `SELECT COUNT(*) AS value FROM information_schema.SCHEMATA ` +
+        `WHERE SCHEMA_NAME = '${database}'`,
+    );
+    if (queryScalar(existingDatabase, 'value') !== 0) {
+      throw new Error(`Refusing to use existing temporary database ${database}`);
+    }
     await withSafeModeOff(async () => {
-      databaseCreated = true;
       await execute(
         adminSession!,
         `CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
       );
+      databaseCreated = true;
     });
 
     const treeConfig = mysqlConfig(connectionId, connectionName, database);
