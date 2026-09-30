@@ -187,6 +187,24 @@ type ExecutionState =
   | 'failed'
   | 'cancelled';
 
+// 执行终态 errorCode。与 ApiError.code 是两个独立命名空间，不得互相塞入对方取值。
+// 网关按此枚举脱敏映射 driver 原始错误；driver 的错误文本、SQL 片段与绝对路径只进日志。
+type ExecutionErrorCode =
+  // 数据库返回错误；方言差异由网关归一，宿主与 UI 只见本枚举
+  | 'sqlError'
+  // 编解码/协议层失败，语句可能已送达
+  | 'protocolError'
+  // 精确取消已生效
+  | 'cancelled'
+  // 执行超过 timeout 且无法判定数据库生效范围
+  | 'timeout'
+  // 执行中物理资源丢失
+  | 'resourceLost'
+  // 放弃消费或背压导致的截断中止
+  | 'pipelineAborted'
+  // 派发前宿主重校验拒绝：权限撤销、额度、队列、sql_guard
+  | 'hostRejected';
+
 interface ExecutionReceipt {
   executionId: Id;
   streamId: Id;
@@ -227,7 +245,7 @@ interface ExecutionView {
   artifactIds: readonly Id[];
   resultCompleteness: 'pending' | 'complete' | 'truncated';
   truncationReason: string | null;
-  errorCode: string | null;
+  errorCode: ExecutionErrorCode | null;
   runtimeBinding: RuntimeResultBinding | null;
 }
 
@@ -456,13 +474,28 @@ ConnectionService 的 attachSession/detachSession 接受 AttachmentRequest，返
 | 条件 | 到期点/动作 |
 | --- | --- |
 | attached，无事务，非执行中 | lastBusinessActivity + 30 分钟，关闭 |
-| attached，active/aborted/unknown 事务，非执行中 | lastBusinessActivity + 5 分钟，回滚并关闭 |
+| attached，active/aborted/unknown 事务或游标（§6.5 已登记句柄），非执行中 | lastBusinessActivity + 5 分钟，在原资源上回滚/关闭句柄后再关闭 |
 | detached | detachedAt + 60 秒；与已适用 idle deadline 取最早 |
 | grace 内 attach | 取消掉线 deadline，不刷新 lastBusinessActivity/事务期限 |
 | 执行中 | 暂停 idle 检查，不暂停掉线 grace；grace 到期请求取消并关闭 |
 | 关闭/取消进行中 | 独立 cleanup deadline，超时隔离，记录真实 effectOutcome |
 
 lastBusinessActivity 在已接受的实际业务操作开始和终结时更新；登录心跳、读取状态、订阅和 attach 不刷新。执行中没有 detached deadline 时由执行 timeout/管理员政策管理。每个 TTL 起点在服务端用单调时钟保存；expiresAt 是最早适用 deadline 的 UTC 投影，执行中无适用期限为 null。超期动作由同 actor 串行裁决，expired 不可重附着；竞态中已进入 Closing 就不能恢复 Ready。
+
+### 6.5 会话级资源句柄登记
+
+Driver Command 可能返回超出该次 execution 生命周期的会话级句柄：事务、游标、服务端预处理对象。句柄一经返回，必须在返回 execution 终态之前向 session actor 登记；未登记的句柄视为非法，runtime 拒绝把它交给宿主。
+
+execution 终态只表示该次语句结束，不表示句柄失效。命令层自管的句柄映射不算登记。
+
+actor 对已登记句柄承担与 Lease 相同的引用责任，并据此驱动：
+
+- §6.4 的 idle 期限：存在未结束事务或游标时按 5 分钟规则，不进入 30 分钟关闭
+- §7.5 closeSession 的回滚与终结顺序
+- §9.4 归池前置中的"事务终结"：宿主侧判定的是已登记句柄为空
+- 淘汰、替换或隔离时，先在原 resource 上回滚/关闭句柄并从 actor 注销，确认后才释放资源；不得在新 resource 上复用旧句柄
+
+句柄登记只存在于内存，随 actor 终止而失效。恢复流程不得重建句柄，只允许以新 dbSessionId 显式重建。
 
 ## 7. 方法处理顺序
 
@@ -605,7 +638,7 @@ cancel 所需控制连接预留在同一预算内，不能在满池时无限额�
 
 必须全部成立：执行结束、结果协议完全消费、事务终结、锁释放、默认命名空间恢复、角色/会话变量/编码恢复、临时对象/预处理状态按 driver 契约处理、连接健康。
 
-归池条件是宿主检查全部通过 AND driver 返回 Clean。宿主检查执行终态、无活跃消费者/取消句柄、已收到 protocolDrained、预算和 owner 合法；driver 负责协议、事务、初始化基线与健康检查。任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。reset 不支持、失败或超时直接关闭。不能把 ping 成功等同于 Clean。任意 SQL 编辑器首版关闭销毁，短操作只复用工具控制的可清理资源。
+归池条件是宿主检查全部通过 AND driver 返回 Clean。宿主检查执行终态、无活跃消费者/取消句柄、已收到 protocolDrained、预算和 owner 合法、以及 §6.5 已登记句柄为空；driver 负责协议、初始化基线与健康检查。事务与游标由宿主按 §6.5 的登记记录判定，driver 不重复负责：driver 对已交出的句柄没有可见性，其 Clean 不构成事务终结的证据。任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。reset 不支持、失败或超时直接关闭。不能把 ping 成功等同于 Clean。任意 SQL 编辑器首版关闭销毁，短操作只复用工具控制的可清理资源。
 
 ### 9.5 资源类别与调度
 
@@ -697,6 +730,7 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 | OutcomeUnknown | 写入/提交结果未知 | 核验执行，不自动重试 |
 | PlanStale / SourceChanged / TargetConflictRows | 计划/数据变化 | 重比对或处理冲突 |
 | IdempotencyConflict | 相同键不同输入 | 修正请求键，不能覆盖记录 |
+| ExecutionFailed | 执行已派发但终态失败 | 读 ExecutionView.errorCode 与 effectOutcome 决定下一步，不以 code 推断生效范围 |
 
 每条事件带 stream sequence；重复事件忽略，缺口重新读取状态。session context 按 runtimeEpoch/dbSessionId/contextRevision 更新；比较 Counter 使用 BigInt 或十进制字符串比较，不能 Number 转换。
 
@@ -710,7 +744,9 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 
 openSession/context replacement 的完整指纹、SessionView/attachmentToken/receipt 只在 owner 内存保存至令牌过期或 runtime 终止。对应令牌绑定 runtimeEpoch，owner 丢失即使令牌未过期也返回 SessionLost，不能在新 owner 当作首次请求再次创建。响应丢失时，在原 runtime 内同键返回同 session/token/候选提交结果；不延长 attachment/idle TTL。会话已到期则返回其终态或 SessionLost，不恢复资源。close 的 tombstone 同样只在内存保留（默认 24 小时），逻辑额度在终态退出活动注册表时回收，隔离物理占用持续计数。
 
-RequestError（ApiError.code）表示请求被拒绝；已接受 ExecutionReceipt 不等于 SQL 成功；CancelReceipt.disposition 表示控制请求结果，不用异常 CancellationUnsupported 表示正常 unsupported。执行终态 errorCode 使用版本化错误枚举，effectOutcome 独立表达数据库生效范围。所有大小写使用 DTO 字面值，如 cancelled/rolledBack/partiallyApplied；文中 Active/Unknown 等状态展示简称不作为协议值。driver 的内部错误由网关脱敏映射，不原样暴露。
+RequestError（ApiError.code）表示请求被拒绝；已接受 ExecutionReceipt 不等于 SQL 成功；CancelReceipt.disposition 表示控制请求结果，不用异常 CancellationUnsupported 表示正常 unsupported。执行终态 errorCode 使用 §4 定义的版本化枚举 ExecutionErrorCode，与 ApiError.code 是两个命名空间；effectOutcome 独立表达数据库生效范围。所有大小写使用 DTO 字面值，如 cancelled/rolledBack/partiallyApplied；文中 Active/Unknown 等状态展示简称不作为协议值。driver 的内部错误由网关脱敏映射，不原样暴露。
+
+errorCode 与 effectOutcome 正交：sqlError 可对应 completed/rolledBack/partiallyApplied/unknown 任一。超时、取消、连接丢失导致生效范围无法判定时，effectOutcome 必须为 unknown，禁止因为"看到取消"就写 rolledBack——CM-44、CM-47 的断言依赖此规则。新增取值需要提升枚举版本并同时更新全部消费者，宿主、前端与 driver 不得各自扩展。
 
 ## 14. 开发步骤与文件职责
 
@@ -719,10 +755,10 @@ RequestError（ApiError.code）表示请求被拒绝；已接受 ExecutionReceip
 | 顺序 | 模块 | 开发任务 | 完成证据 |
 | --- | --- | --- | --- |
 | 1 | types/error | newtype、DTO、enum、schema 校验 | 类型编译、序列化往返、错误码 |
-| 2 | testing/fake_resource | 假资源、状态、屏障、故障注入 | 可观察创建/关闭/执行次数和 resourceId |
+| 2 | testing/fake_resource | 假资源、状态、屏障、故障注入；可返回事务/游标句柄的 fake 命令 | 可观察创建/关闭/执行次数、resourceId 与句柄登记状态 |
 | 3 | budget | 单机多维许可、可取消等待、幂等核销 | 并发与失败会计测试 |
 | 4 | resource | acquire/cleanup/quarantine、隧道引用 | 每阶段故障无泄漏 |
-| 5 | registry/actor | session 生命周期、队列、epoch | 连续旅程与取消竞态 |
+| 5 | registry/actor | session 生命周期、队列、epoch、§6.5 会话级句柄登记 | 连续旅程与取消竞态、句柄释放顺序（CM-73/74） |
 | 6 | execution | 幂等、授权、来源、事件 | 重复提交、旧事件、结果 ACL |
 | 7 | adapters | IPC/BackendClient、旧接口窄适配 | 桌面路径行为一致 |
 | 8 | consumers | Query/Table/metadata、三件套、Workflow | 功能契约旅程 |
@@ -1218,10 +1254,17 @@ CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固�
 
 **CM-73 空闲淘汰与活动事务句柄连续旅程（H）**
 
-- 前置：同一 session/resource 上通过 `begin_session_transaction` 创建真实 fake TransactionHandle；事务句柄在命令状态映射中，session 资源已空闲且引用计数为 0；fake clock 可驱动 idle timeout。
+- 前置：同一 session/resource 上通过 `begin_session_transaction` 创建真实 fake TransactionHandle 并按 §6.5 完成登记；宿主侧检查全部通过（无活动 execution、无消费者、已收到 protocolDrained、预算与 owner 合法）；fake clock 可驱动 idle timeout。
 - 步骤：开始事务并写入未提交 marker；推进到空闲淘汰期限并运行 cleanup；查询事务状态、尝试 commit/rollback，再用旧 dbSessionId 发起查询；记录物理 resourceId、事务 map、回滚/关闭调用。
 - 断言：淘汰不得在活动事务仍映射时静默关掉物理资源后保留可提交句柄。目标行为是在回收时先在原 resource 回滚并移除/终结事务映射，再关闭资源；回滚结果未知则转 OutcomeUnknown/SessionLost，不重新连接后复用旧 dbSessionId 或在新 resource 提交旧 handle。事务状态不得在物理 session 丢失后继续报告 Active。失败后的显式新 session 使用新 ID，marker 不提交。
 - 基线说明：旧实现应先记录复现证据：`cleanup_idle_connections` 保留 owner map，`get_session` 通过该 map 同 ID 重连，而 `session_transactions` 由命令层单独管理。此用例在连接管理重构完成前可作为已知失败，完成后必须转绿；不可删掉断言或用仅检查 UI 文案替代。
+- 保留声明：以上仅为缺陷来源记录。本用例的断言只依赖行为（存在已登记活动句柄时不得淘汰并同 ID 重建），不依赖上述任何函数名或命令层映射结构。§14 逐步删除旧管理器与旧接口时必须保留本用例与 CM-74，不得按死代码一并清理。
+
+**CM-74 会话级句柄登记与释放顺序（H/F）**
+
+- 前置：fake driver 的命令分别返回事务句柄与游标句柄各一个，均已按 §6.5 登记；另备一个未登记的句柄。
+- 步骤：推进到 idle 期限触发淘汰，在淘汰中途发起 commit；再分别走归池、setSessionContext 替换、closeSession 三条路径；最后提交未登记句柄。
+- 断言：句柄在物理资源关闭前已在原 resource 上回滚/关闭并从 actor 注销；commit 落在旧 resource 或明确失败，不出现在新 resource；driver 返回 Clean 时若宿主仍有已登记句柄，宿主检查必须失败（§9.4）；未登记句柄被拒绝返回；actor 终止后不重建任何句柄，恢复只能以新 dbSessionId 显式重建。
 
 ## 17. 验收标准与证据
 
@@ -1234,10 +1277,10 @@ CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固�
 | 三件套/Workflow | CM-40～53 | 提交边界、恢复核验、Job owner 断言 |
 | 断线/事件/幂等 | CM-54～56、70、72 | runtime/前端与 W1 适配一致性 |
 | Web/多实例/压力 | CM-57～60、71 | 按 W1/WN 阶段提交路由、分区与基准证据 |
-| 事务失效回收 | CM-73 | idle cleanup、事务 map、物理 resource 与后续显式重连的连续旅程 |
+| 事务失效回收 | CM-73、74 | idle cleanup、句柄登记与释放顺序、物理 resource 与后续显式重连的连续旅程 |
 | 补充契约 | CM-61～69 | 持久化、规范化、TTL、结果流、调度、额度与故障 journal |
 
-阶段性验收按开发计划选择对应门槛；最终验收覆盖全部适用用例，包括 CM-73；基线阶段可暂时记录该遗留缺陷，P3 连接运行时阶段必须转绿。能力 Unsupported 的 driver 测试断言“正确拒绝”，不能静默 skip 后宣称能力已验证。真实测试环境不可用必须报告未验证范围，不能用 fake 代替真实协议结论。
+阶段性验收按开发计划选择对应门槛；最终验收覆盖全部适用用例，包括 CM-73、CM-74；基线阶段可暂时记录该遗留缺陷，P3 连接运行时阶段必须转绿。能力 Unsupported 的 driver 测试断言“正确拒绝”，不能静默 skip 后宣称能力已验证。真实测试环境不可用必须报告未验证范围，不能用 fake 代替真实协议结论。
 
 结束时还必须满足：生产无裸 unwrap/expect、公共 API 无实现库类型、测试 typecheck 干净、生成文件未提交、无新增宿主数据库名称分支、无敏感日志。新驱动实现现有能力时，修改范围仅驱动包/选型/注册/元数据和测试。
 
