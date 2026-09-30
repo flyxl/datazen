@@ -167,7 +167,7 @@ pub(crate) fn parse_columns(
             // Reject every non-zero value so newer generated column kinds also
             // remain fail-closed.
             let flag_is_set = if index == 9 {
-                required_integer(&row, index, label)? != 0
+                required_catalog_integer(&row, index, label)? != 0
             } else {
                 required_bool(&row, index, label)?
             };
@@ -498,6 +498,19 @@ fn optional_integer(row: &[Option<Value>], index: usize) -> Option<i64> {
 
 fn required_integer(row: &[Option<Value>], index: usize, label: &str) -> Result<i64, DriverError> {
     optional_integer(row, index).ok_or_else(|| incomplete(format!("catalog row omitted {label}")))
+}
+
+fn required_catalog_integer(
+    row: &[Option<Value>],
+    index: usize,
+    label: &str,
+) -> Result<i64, DriverError> {
+    let value = match value_at(row, index) {
+        Some(Value::Integer(value)) => Some(*value),
+        Some(Value::String(value)) => value.parse().ok(),
+        _ => None,
+    };
+    value.ok_or_else(|| incomplete(format!("catalog row omitted {label}")))
 }
 
 fn unsupported(message: impl Into<String>) -> DriverError {
