@@ -3,13 +3,16 @@ import { expect, browser, $ } from '@wdio/globals';
 import {
   closeExtraWindows,
   connectBackend,
-  connectToCard,
+  dblclickConnByExactName,
   disconnectBackend,
   expandConnectedConnectionInNavigator,
   expandSchemaCategory,
+  findCardByName,
   invokeBackend,
+  openConnectionsWorkspace,
   parseQueryRows,
   queryScalar,
+  waitForConnectionToolbar,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../../../../e2e/helpers.js';
@@ -145,7 +148,13 @@ describe('MySQL Schema Tree object journey', function () {
       [connectionId, treeConfigSaved],
       [adminId, adminConfigSaved],
     ] as const) {
-      if (saved) await invokeBackend('delete_connection', { id }).catch(() => undefined);
+      if (saved) {
+        try {
+          await invokeBackend('delete_connection', { id });
+        } catch {
+          cleanupErrors.push(`could not delete temporary connection ${id}`);
+        }
+      }
     }
     if (mainWindow) {
       await closeExtraWindows(mainWindow).catch(() => undefined);
@@ -225,7 +234,17 @@ describe('MySQL Schema Tree object journey', function () {
       );
     });
 
-    await connectToCard(connectionName);
+    await browser.refresh();
+    await browser.pause(1_500);
+    await openConnectionsWorkspace(mainWindow);
+    await browser.waitUntil(async () => Boolean(await findCardByName(connectionName)), {
+      timeout: 20_000,
+      timeoutMsg: `Saved MySQL connection card ${connectionName} did not appear after refresh`,
+    });
+    if (!(await dblclickConnByExactName(connectionName))) {
+      throw new Error(`Saved MySQL connection card ${connectionName} could not be opened`);
+    }
+    await waitForConnectionToolbar();
     await expandConnectedConnectionInNavigator(connectionName);
     for (const category of ['tables', 'views', 'function', 'procedure', 'trigger']) {
       await expandSchemaCategory(category, database, database);
