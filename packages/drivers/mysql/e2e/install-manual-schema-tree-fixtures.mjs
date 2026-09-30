@@ -3,8 +3,8 @@
  * Install the durable MySQL Schema Tree fixture used for manual testing.
  *
  * Reads connection values only from the caller's E2E_MYSQL_* environment;
- * it does not load dotenv files or print connection settings. The E2E runner
- * already exports those variables from its configured environment.
+ * it does not load dotenv files or print connection settings. Use
+ * install-manual-schema-tree-fixtures.sh to load the repository's E2E config.
  */
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -44,7 +44,5 @@ if (result.error || result.status !== 0) {
   console.error(`[mysql-schema-tree] ${reason}; diagnostic output suppressed`);
   process.exitCode = 1;
 } else {
-  console.log(
-    '[mysql-schema-tree] durable manual fixture is ready in datazen_manual_schema_tree',
-  );
+  console.log('[mysql-schema-tree] durable manual fixture is ready in datazen_manual_schema_tree');
 }

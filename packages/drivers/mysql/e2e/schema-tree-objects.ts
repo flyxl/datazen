@@ -1,6 +1,4 @@
 /** MySQL Schema Tree journey: visible object categories, object definitions and teardown. */
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { expect, browser, $ } from '@wdio/globals';
 import {
   closeExtraWindows,
@@ -32,22 +30,6 @@ function mysqlConfig(id: string, name: string, database: string) {
   };
 }
 
-function runDurableFixtureInstaller(): void {
-  const scriptPath = fileURLToPath(
-    new URL('./install-manual-schema-tree-fixtures.mjs', import.meta.url),
-  );
-  const result = spawnSync(process.execPath, [scriptPath], {
-    env: process.env,
-    encoding: 'utf8',
-  });
-  if (result.error || result.status !== 0) {
-    throw new Error(
-      'Could not install the durable MySQL manual Schema Tree fixture; ' +
-        'see the sanitized installer diagnostic.',
-    );
-  }
-}
-
 describe('MySQL Schema Tree object journey', function () {
   this.timeout(180_000);
 
@@ -77,12 +59,17 @@ describe('MySQL Schema Tree object journey', function () {
 
   async function waitForNode(kind: string, name: string): Promise<void> {
     const selector =
-      `[data-testid="schema-tree-node"][data-tree-node="${kind}"]` +
-      `[data-item-name="${name}"]`;
-    await browser.waitUntil(async () => (await $(selector).isDisplayed().catch(() => false)), {
-      timeout: 20_000,
-      timeoutMsg: `MySQL Schema Tree did not show ${kind} ${name}`,
-    });
+      `[data-testid="schema-tree-node"][data-tree-node="${kind}"]` + `[data-item-name="${name}"]`;
+    await browser.waitUntil(
+      async () =>
+        await $(selector)
+          .isDisplayed()
+          .catch(() => false),
+      {
+        timeout: 20_000,
+        timeoutMsg: `MySQL Schema Tree did not show ${kind} ${name}`,
+      },
+    );
   }
 
   async function assertObjectDefinition(
@@ -91,8 +78,7 @@ describe('MySQL Schema Tree object journey', function () {
     expectedText: string,
   ): Promise<void> {
     const selector =
-      `[data-testid="schema-tree-node"][data-tree-node="${kind}"]` +
-      `[data-item-name="${name}"]`;
+      `[data-testid="schema-tree-node"][data-tree-node="${kind}"]` + `[data-item-name="${name}"]`;
     const node = await $(selector);
     await node.waitForDisplayed({ timeout: 20_000 });
     await node.click();
@@ -107,8 +93,7 @@ describe('MySQL Schema Tree object journey', function () {
           return visibleEditors.at(-1)?.textContent ?? '';
         });
         return (
-          definition.includes(name) &&
-          definition.toLowerCase().includes(expectedText.toLowerCase())
+          definition.includes(name) && definition.toLowerCase().includes(expectedText.toLowerCase())
         );
       },
       {
@@ -172,7 +157,6 @@ describe('MySQL Schema Tree object journey', function () {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    runDurableFixtureInstaller();
 
     const adminConfig = mysqlConfig(adminId, `Schema Tree admin ${stamp}`, ADMIN_DATABASE);
     await invokeBackend('save_connection', { config: adminConfig });
@@ -231,8 +215,8 @@ describe('MySQL Schema Tree object journey', function () {
       await execute(
         treeSession!,
         `CREATE PROCEDURE \`${procedureName}\` (IN p_parent_id INT) ` +
-          `SELECT id, code, status FROM \`${table}\` ` +
-          `WHERE parent_id = p_parent_id ORDER BY id`,
+          `UPDATE \`${table}\` SET status = 'processed' ` +
+          `WHERE parent_id = p_parent_id AND status = 'inactive'`,
       );
       await execute(
         treeSession!,
@@ -305,6 +289,16 @@ describe('MySQL Schema Tree object journey', function () {
     );
     expect(functionRows[0]?.[0]).toBe('LOWER');
 
+    await withSafeModeOff(async () => {
+      await execute(treeSession!, `CALL \`${procedureName}\`(1)`);
+    });
+    const procedureEffect = await execute(
+      treeSession!,
+      `SELECT COUNT(*) AS value FROM \`${table}\` ` +
+        `WHERE parent_id = 1 AND status = 'processed'`,
+    );
+    expect(queryScalar(procedureEffect, 'value')).toBe(1);
+
     await execute(treeSession!, `UPDATE \`${table}\` SET code = code WHERE id = 11`);
     const triggerRows = parseQueryRows(
       await execute(
@@ -325,7 +319,20 @@ describe('MySQL Schema Tree object journey', function () {
 
   it('opens function, procedure and trigger definitions from the Schema Tree', async () => {
     await assertObjectDefinition('function', functionName, 'UPPER(TRIM');
-    await assertObjectDefinition('procedure', procedureName, table);
+    await assertObjectDefinition('procedure', procedureName, 'UPDATE');
     await assertObjectDefinition('trigger', triggerName, 'CURRENT_TIMESTAMP');
+  });
+
+  it('returns the view definition through the MySQL object DDL command', async () => {
+    const response = await invokeBackend<{ data: { ddl: string } }>('execute_driver_command', {
+      request: {
+        dbSessionId: treeSession,
+        command: 'get_object_ddl',
+        input: { kind: 'view', name: view, schema: database },
+      },
+    });
+    expect(response.data.ddl).toContain(view);
+    expect(response.data.ddl).toContain(table);
+    expect(response.data.ddl.toLowerCase()).toContain("status = 'active'");
   });
 });
