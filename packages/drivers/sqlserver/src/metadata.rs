@@ -148,25 +148,39 @@ pub(crate) fn parse_columns(
                 )));
             }
         }
-        for (index, reason) in [
-            (8, "computed columns"),
-            (9, "generated-always columns"),
-            (10, "FILESTREAM columns"),
-            (11, "sparse columns"),
-            (12, "column-set columns"),
-            (14, "rowversion columns"),
-            (15, "non-default IDENTITY seed/increment"),
+        for (index, label, reason) in [
+            (8, "computed-column flag", "computed columns"),
+            (9, "generated-always type", "generated-always columns"),
+            (10, "FILESTREAM flag", "FILESTREAM columns"),
+            (11, "sparse-column flag", "sparse columns"),
+            (12, "column-set flag", "column-set columns"),
+            (13, "legacy default flag", "legacy bound DEFAULT"),
+            (14, "rowversion flag", "rowversion columns"),
+            (
+                15,
+                "non-default IDENTITY seed/increment flag",
+                "non-default IDENTITY seed/increment",
+            ),
         ] {
-            if optional_bool(&row, index) == Some(true) {
+            // SQL Server returns generated_always_type as an integer: zero is
+            // ordinary, while 1/2 identify temporal row-start/row-end columns.
+            // Reject every non-zero value so newer generated column kinds also
+            // remain fail-closed.
+            let flag_is_set = if index == 9 {
+                required_integer(&row, index, label)? != 0
+            } else {
+                required_bool(&row, index, label)?
+            };
+            if flag_is_set && index == 13 {
+                return Err(unsupported(
+                    "SQL Server table uses a legacy bound DEFAULT; its expression is not represented by sys.default_constraints",
+                ));
+            }
+            if flag_is_set {
                 return Err(unsupported(format!(
                     "SQL Server table contains {reason}; this metadata contract cannot represent it safely"
                 )));
             }
-        }
-        if optional_bool(&row, 13) == Some(true) {
-            return Err(unsupported(
-                "SQL Server table uses a legacy bound DEFAULT; its expression is not represented by sys.default_constraints",
-            ));
         }
         if is_primary_key {
             if key_ordinal <= 0 {
