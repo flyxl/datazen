@@ -944,6 +944,7 @@ fn plan_single_table(
     statements: &mut Vec<PlanStatement>,
     warnings: &mut Vec<String>,
     requirements: &mut Vec<super::types::PlanRequirement>,
+    migration_layout_blocked: &mut bool,
 ) {
     let table = match datazen_driver_api::validate_migration_identifier(table) {
         Ok(value) => value,
@@ -971,6 +972,17 @@ fn plan_single_table(
     };
     let normalizer_ref = normalizer.as_deref();
     let mut operations = super::ir::diff_to_operations(table, src, tgt, normalizer_ref);
+
+    if !operations.is_empty() {
+        if let Some(reason) = table_migration_blocker_reason(src, tgt) {
+            requirements.push(PlanRequirement::Unsupported {
+                operation: format!("table:{table}"),
+                reason,
+            });
+            *migration_layout_blocked = true;
+            return;
+        }
+    }
 
     // Type mapping belongs at the boundary between source snapshot and target driver.
     // The IR remains dialect-neutral; only replace types before rendering.
@@ -1274,6 +1286,29 @@ fn plan_single_table(
             }),
         }
     }
+}
+
+pub(crate) fn table_migration_blocker_reason(
+    source: &TableSchema,
+    target: &TableSchema,
+) -> Option<String> {
+    let source_blockers = &source.table_options.migration_blockers;
+    let target_blockers = &target.table_options.migration_blockers;
+    if source_blockers.is_empty() && target_blockers.is_empty() {
+        return None;
+    }
+
+    let mut details = Vec::new();
+    if !source_blockers.is_empty() {
+        details.push(format!("source: {}", source_blockers.join(", ")));
+    }
+    if !target_blockers.is_empty() {
+        details.push(format!("target: {}", target_blockers.join(", ")));
+    }
+    Some(format!(
+        "This table has physical layout metadata that the migration model cannot represent ({}); no DDL plan can safely alter it. Resolve the layout or compare a table whose physical structure is fully represented.",
+        details.join("; ")
+    ))
 }
 
 fn is_type_narrowing(desired: &ColumnSnapshot, current: &ColumnSnapshot) -> bool {
@@ -1773,7 +1808,7 @@ fn target_drop_relation_identity(
                 table.to_string()
             }
         }
-        "postgresql" => {
+        "postgresql" | "sqlserver" => {
             let table = table.trim();
             if table.contains('.') {
                 table.to_string()
@@ -1953,6 +1988,7 @@ pub fn build_schema_diff_plan_with_target_only_catalog_in_schema_scope(
     };
 
     let mut tables = Vec::new();
+    let mut migration_layout_blocked = false;
     let selected_drop_identities = target_only_tables
         .iter()
         .map(|table| target_drop_relation_identity(&tgt_d, table, target_database, target_schema))
@@ -1990,6 +2026,7 @@ pub fn build_schema_diff_plan_with_target_only_catalog_in_schema_scope(
             &mut statements,
             &mut warnings,
             &mut requirements,
+            &mut migration_layout_blocked,
         );
     }
 
@@ -2052,6 +2089,13 @@ pub fn build_schema_diff_plan_with_target_only_catalog_in_schema_scope(
                 });
             }
         }
+    }
+
+    if migration_layout_blocked {
+        // A blocker on any selected table invalidates the complete reviewed
+        // plan. Do not leave executable statements for other tables or
+        // target-only drops in a partially renderable plan.
+        statements.clear();
     }
 
     statements = reorder_foreign_key_statements(statements);

@@ -41,6 +41,15 @@ pub fn bound_insert_batch(
             "INSERT batch does not contain an active projection",
         ));
     }
+    let parameter_count = rows.len().checked_mul(columns.len()).ok_or_else(|| {
+        TransferError::validation("INSERT batch parameter count exceeds the supported range")
+    })?;
+    if parameter_count > driver.max_bound_parameters() {
+        return Err(TransferError::validation(format!(
+            "INSERT batch requires {parameter_count} bound parameters, exceeding the driver's {}-parameter limit",
+            driver.max_bound_parameters()
+        )));
+    }
     let mut names = std::collections::HashSet::new();
     let mut target_types = Vec::with_capacity(columns.len());
     for binding in columns {

@@ -12,6 +12,9 @@ export type {
   SqlDialectFamily,
   TableSqlDialect,
   GeneratedSqlType,
+  SqlParameterPolicy,
+  SqlParameterOccurrence,
+  SqlParameterStrategy,
 } from '../../../src/lib/sqlDialects/types';
 
 // === Database metadata ===

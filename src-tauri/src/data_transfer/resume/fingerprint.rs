@@ -161,16 +161,17 @@ pub(super) fn remaining_page_limit(
 pub(super) fn effective_chunk_size(
     user_batch_size: u32,
     target_columns: usize,
+    max_bound_parameters: usize,
 ) -> Result<u32, TransferError> {
     if target_columns == 0 {
         return Err(TransferError::validation(
             "in-table resume requires at least one target column",
         ));
     }
-    let max_rows_by_parameters = MAX_BOUND_QUERY_PARAMETERS / target_columns;
+    let max_rows_by_parameters = max_bound_parameters / target_columns;
     if max_rows_by_parameters == 0 {
         return Err(TransferError::unsupported(
-            "target mapping exceeds the safe bound-parameter limit for a single row",
+            "target mapping exceeds the driver's bound-parameter limit for a single row",
         ));
     }
     Ok(user_batch_size.min(max_rows_by_parameters as u32))

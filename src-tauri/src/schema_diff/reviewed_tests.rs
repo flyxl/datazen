@@ -159,6 +159,8 @@ fn physical_database_scope_detects_aliases_and_fails_closed_when_unknown() {
             Some("postgresql:cluster:app"),
             None,
             None,
+            None,
+            None,
         ),
         Same
     );
@@ -174,6 +176,8 @@ fn physical_database_scope_detects_aliases_and_fails_closed_when_unknown() {
             Some("postgresql:cluster:app"),
             None,
             None,
+            None,
+            None,
         ),
         Same
     );
@@ -187,6 +191,8 @@ fn physical_database_scope_detects_aliases_and_fails_closed_when_unknown() {
             Some("postgresql:cluster:app"),
             Some("public"),
             Some("archive"),
+            None,
+            None,
         ),
         Different
     );
@@ -196,6 +202,8 @@ fn physical_database_scope_detects_aliases_and_fails_closed_when_unknown() {
             &alias,
             Some("postgresql:cluster:app"),
             Some("mysql:cluster:app"),
+            None,
+            None,
             None,
             None,
         ),
@@ -209,11 +217,110 @@ fn physical_database_scope_detects_aliases_and_fails_closed_when_unknown() {
             Some("postgresql:cluster:app"),
             Some("public"),
             Some("archive"),
+            None,
+            None,
         ),
         Different
     );
     assert_eq!(
-        physical_database_scope(&a, &alias, None, None, None, None),
+        physical_database_scope(&a, &alias, None, None, None, None, None, None),
+        Unknown
+    );
+}
+
+#[test]
+fn sqlserver_physical_scope_allows_only_proven_distinct_schemas() {
+    use PhysicalDatabaseScope::{Different, Same, Unknown};
+
+    let mut source = config();
+    source.database_type = "sqlserver".into();
+    source.database = Some("DataZen".into());
+    source.schema = Some("dbo".into());
+    let identity = "sqlserver:server:13:prod-instance:database:23";
+
+    let same_schema = source.clone();
+    assert_eq!(
+        physical_database_scope(
+            &source,
+            &same_schema,
+            Some(identity),
+            Some(identity),
+            Some("dbo"),
+            Some("dbo"),
+            Some("sqlserver:schema-id:1"),
+            Some("sqlserver:schema-id:1"),
+        ),
+        Same
+    );
+
+    let mut other_schema = source.clone();
+    other_schema.schema = Some("sales".into());
+    assert_eq!(
+        physical_database_scope(
+            &source,
+            &other_schema,
+            Some(identity),
+            Some(identity),
+            Some("dbo"),
+            Some("sales"),
+            Some("sqlserver:schema-id:1"),
+            Some("sqlserver:schema-id:2"),
+        ),
+        Different
+    );
+
+    // Collation can make distinct spellings resolve to the same schema_id.
+    assert_eq!(
+        physical_database_scope(
+            &source,
+            &source,
+            Some(identity),
+            Some(identity),
+            Some("dbo"),
+            Some("DBO"),
+            Some("sqlserver:schema-id:1"),
+            Some("sqlserver:schema-id:1"),
+        ),
+        Same
+    );
+    assert_eq!(
+        physical_database_scope(
+            &source,
+            &source,
+            Some(identity),
+            Some(identity),
+            Some("dbo"),
+            Some("审计"),
+            Some("sqlserver:schema-id:1"),
+            None,
+        ),
+        Same
+    );
+
+    assert_eq!(
+        physical_database_scope(
+            &source,
+            &other_schema,
+            Some(identity),
+            Some("sqlserver:server:13:prod-instance:database:24"),
+            Some("dbo"),
+            Some("sales"),
+            None,
+            None,
+        ),
+        Different
+    );
+    assert_eq!(
+        physical_database_scope(
+            &source,
+            &other_schema,
+            None,
+            None,
+            Some("dbo"),
+            Some("sales"),
+            None,
+            None,
+        ),
         Unknown
     );
 }
@@ -235,11 +342,13 @@ fn physical_scope_uses_mysql_identity_before_case_foldable_names() {
             Some("mysql:server:canonical-app-db"),
             None,
             None,
+            None,
+            None,
         ),
         Same
     );
     assert_eq!(
-        physical_database_scope(&source, &target, None, None, None, None),
+        physical_database_scope(&source, &target, None, None, None, None, None, None),
         Unknown
     );
 }
@@ -400,7 +509,16 @@ fn postgres_names_can_prove_distinct_database_or_schema_without_identity() {
     let mut different_database = source.clone();
     different_database.database = Some("another_db".into());
     assert_eq!(
-        physical_database_scope(&source, &different_database, None, None, None, None),
+        physical_database_scope(
+            &source,
+            &different_database,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ),
         Different
     );
 
@@ -413,6 +531,8 @@ fn postgres_names_can_prove_distinct_database_or_schema_without_identity() {
             None,
             Some("public"),
             Some("archive"),
+            None,
+            None,
         ),
         Different
     );

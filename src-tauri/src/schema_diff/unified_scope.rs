@@ -27,7 +27,7 @@ pub(super) fn map_source_objects_for_target_scope(
 ) -> (Vec<SchemaObjectSnapshot>, Vec<PlanRequirement>) {
     let mut mapped = Vec::with_capacity(source.len());
     let mut requirements = Vec::new();
-    if !matches!(target_dialect, "mysql" | "postgresql") {
+    if !matches!(target_dialect, "mysql" | "postgresql" | "sqlserver") {
         return (source.to_vec(), requirements);
     }
     for object in source {

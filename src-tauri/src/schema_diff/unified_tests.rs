@@ -115,6 +115,56 @@ fn target_table(name: &str) -> SchemaObjectIdentity {
     SchemaObjectIdentity::table(Some("public"), name)
 }
 
+#[test]
+fn physical_layout_blocker_prevents_unified_pk_change_and_partial_sql() {
+    let mut source = table(
+        "blocked",
+        vec![column("id", "integer"), column("new_id", "integer")],
+        vec![],
+    );
+    source.primary_keys = vec!["new_id".into()];
+    source
+        .table_options
+        .migration_blockers
+        .push("nonclustered primary key cannot be represented".into());
+    let mut target = table(
+        "blocked",
+        vec![column("id", "integer"), column("new_id", "integer")],
+        vec![],
+    );
+    target.primary_keys = vec!["id".into()];
+
+    let safe_source = table(
+        "safe",
+        vec![column("id", "integer"), column("email", "text")],
+        vec![],
+    );
+    let safe_target = table("safe", vec![column("id", "integer")], vec![]);
+    let renderer = TestRenderer {
+        omit_rollback: false,
+    };
+    let plan = build(
+        &[
+            ("blocked".into(), source, target),
+            ("safe".into(), safe_source, safe_target),
+        ],
+        &[],
+        &[],
+        &[],
+        &[],
+        &[],
+        true,
+        &renderer,
+    );
+
+    assert!(plan.statements.is_empty(), "{:?}", plan.statements);
+    assert!(plan.requirements.iter().any(|requirement| matches!(
+        requirement,
+        PlanRequirement::Unsupported { operation, reason }
+            if operation == "table:blocked" && reason.contains("nonclustered primary key")
+    )));
+}
+
 fn build(
     table_pairs: &[(String, TableSchema, TableSchema)],
     target_only_tables: &[String],

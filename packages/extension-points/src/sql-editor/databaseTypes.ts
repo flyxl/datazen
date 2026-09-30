@@ -3,6 +3,10 @@
  */
 import type { FunctionEntry } from './functionTypes';
 import type { SqlDialectQuoteStyle, SqlProjectionAliasVisibility } from './semanticTypes';
+import type {
+  SqlParameterPolicy,
+  SqlParameterStrategy,
+} from '../../../../src/lib/sqlDialects/types';
 
 export type DatabaseType = string;
 
@@ -48,12 +52,7 @@ export interface SqlDialectProfile {
   quoteStyle: SqlDialectQuoteStyle;
   foldCase: 'lower' | 'upper' | 'preserve';
   projectionAliasVisibility: SqlProjectionAliasVisibility;
-  parameterPolicy: {
-    atNamed?: boolean;
-    question?: boolean;
-    dollarPositional?: boolean;
-    template?: boolean;
-  };
+  parameterPolicy: SqlParameterPolicy;
   reservedKeywords?: readonly string[];
 }
 
@@ -63,6 +62,8 @@ export interface DatabaseTypeMetaLite {
   sqlDialect?: string;
   sqlFunctions?: readonly FunctionEntry[];
   sqlDialectProfile?: SqlDialectProfile;
+  sqlParameterPolicy?: SqlParameterPolicy;
+  sqlParameterStrategy?: SqlParameterStrategy;
   [key: string]: unknown;
 }
 

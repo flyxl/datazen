@@ -5,6 +5,88 @@ use crate::data_sync::{quote_ident_sql, DataSyncError, SyncSourceFilter};
 use crate::db::TableSchema;
 use datazen_driver_api::{DatabaseDriver, SyncKeyContract, SyncSourceAdapter};
 
+fn sqlserver_filter_type_uses_collation(data_type: &str) -> Option<bool> {
+    let normalized = data_type
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['[', ']'], "");
+    let base_type = normalized
+        .rsplit('.')
+        .next()
+        .unwrap_or_default()
+        .split(['(', ' ', ','])
+        .next()
+        .unwrap_or_default();
+    match base_type {
+        "char" | "nchar" | "varchar" | "nvarchar" | "text" | "ntext" | "sysname" => Some(true),
+        "bit" | "tinyint" | "smallint" | "int" | "bigint" | "decimal" | "numeric" | "money"
+        | "smallmoney" | "float" | "real" | "date" | "time" | "datetime" | "smalldatetime"
+        | "datetime2" | "datetimeoffset" | "uniqueidentifier" | "binary" | "varbinary"
+        | "timestamp" | "rowversion" | "image" | "xml" | "geography" | "geometry"
+        | "hierarchyid" => Some(false),
+        // User-defined aliases and sql_variant can carry string semantics.
+        // Their base storage type is not represented in TableSchema.
+        _ => None,
+    }
+}
+
+fn validate_sqlserver_filter_collations(
+    filter: &SyncSourceFilter,
+    source_driver: &dyn DatabaseDriver,
+    target_driver: &dyn DatabaseDriver,
+    source_schema: &TableSchema,
+    target_schema: &TableSchema,
+    source_table: &str,
+) -> Result<(), CommandError> {
+    let source_is_sqlserver =
+        crate::transfer::pairing::normalize_sync_family(&source_driver.sync_family())
+            == "sqlserver";
+    let target_is_sqlserver =
+        crate::transfer::pairing::normalize_sync_family(&target_driver.sync_family())
+            == "sqlserver";
+    if !source_is_sqlserver && !target_is_sqlserver {
+        return Ok(());
+    }
+
+    for column in filter
+        .comparison_columns(source_schema)
+        .map_err(|error| CommandError::Validation(error.to_string()))?
+    {
+        for (is_sqlserver, side, schema) in [
+            (source_is_sqlserver, "source", source_schema),
+            (target_is_sqlserver, "target", target_schema),
+        ] {
+            if !is_sqlserver {
+                continue;
+            }
+            let data_type = schema
+                .columns
+                .iter()
+                .find(|candidate| candidate.name == column)
+                .map(|candidate| candidate.data_type.as_str())
+                .ok_or_else(|| {
+                    CommandError::Validation(format!(
+                        "{source_table}: SQL Server {side} filter column '{column}' is missing from inspected schema"
+                    ))
+                })?;
+            match sqlserver_filter_type_uses_collation(data_type) {
+                Some(false) => {}
+                Some(true) => {
+                    return Err(CommandError::Validation(format!(
+                        "{source_table}: SQL Server {side} filter on text column '{column}' cannot be compared safely because default/per-column collation parity is not represented or verified by Data Sync"
+                    )));
+                }
+                None => {
+                    return Err(CommandError::Validation(format!(
+                        "{source_table}: SQL Server {side} filter on column '{column}' (type '{data_type}') cannot be compared safely because Data Sync cannot verify whether this type uses text collation semantics"
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn validate_filter_schemas(
     filter: &SyncSourceFilter,
     source_schema: &TableSchema,
@@ -84,6 +166,14 @@ pub(super) fn validate_filter_endpoints(
     tgt_contracts: &[SyncKeyContract],
     source_table: &str,
 ) -> Result<(), CommandError> {
+    validate_sqlserver_filter_collations(
+        filter,
+        src_driver,
+        tgt_driver,
+        source_schema,
+        target_schema,
+        source_table,
+    )?;
     let source_key_order_expressions = pk_columns
         .iter()
         .zip(src_contracts)

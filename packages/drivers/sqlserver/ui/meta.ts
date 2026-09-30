@@ -1,5 +1,6 @@
 import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
 import { sqlserverDialect, sqlserverDialectProfile } from './dialect';
+import { sqlserverSqlParameterStrategy } from './sqlParameters';
 
 export const sqlserverMeta = {
   label: 'SQL Server',
@@ -71,4 +72,5 @@ export const sqlserverMeta = {
   },
   sqlDialectStrategy: sqlserverDialect,
   sqlDialectProfile: sqlserverDialectProfile,
+  sqlParameterStrategy: sqlserverSqlParameterStrategy,
 } satisfies DatabaseTypeMeta;

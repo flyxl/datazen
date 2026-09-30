@@ -18,9 +18,10 @@ import { useResizable } from '../../hooks/useResizable';
 import { useCompactToolbar } from '../../hooks/useCompactToolbar';
 import { queryToolbarExpandedMinWidth } from './queryToolbarWidth';
 import { formatSql } from '../../lib/sqlFormat';
-import { paramsToPayload } from '../../lib/sqlBindParams';
+import { paramsToPayload, parseSqlParams } from '../../lib/sqlBindParams';
 import { sqlEditorEnhancedEP, useExtension } from '@datazen/extension-points';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { resolveSqlParameterPolicy } from '../../lib/sqlDialects/sqlParameterPolicy';
 import { resolveExportScope } from '../../lib/exportCapability';
 import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
@@ -112,7 +113,11 @@ export function QueryPanel({
 
   const editorRef = useRef<SqlEditorHandle>(null);
   const enhanced = useExtension(sqlEditorEnhancedEP);
-  const bindState = enhanced.useBindParameters?.(exec.sql) ?? {
+  const bindParameterPolicy = useMemo(
+    () => resolveSqlParameterPolicy(databaseType),
+    [databaseType],
+  );
+  const bindState = enhanced.useBindParameters?.(exec.sql, bindParameterPolicy) ?? {
     params: [],
     values: {},
     labels: {},
@@ -124,7 +129,16 @@ export function QueryPanel({
     markSubmitted: () => {},
     getHistory: () => [],
   };
-  const sqlParams = bindState.params;
+  const parsedParamIds = useMemo(
+    () =>
+      new Set<string>(parseSqlParams(exec.sql, bindParameterPolicy).map((param) => param.stableId)),
+    [exec.sql, bindParameterPolicy],
+  );
+  const sqlParams = useMemo(
+    () =>
+      bindState.params.filter((param: { stableId: string }) => parsedParamIds.has(param.stableId)),
+    [bindState.params, parsedParamIds],
+  );
   const paramValues = bindState.values;
   const paramLabels = bindState.labels;
   const paramValuesRef = useRef<Record<string, string>>({});

@@ -16,6 +16,7 @@ pub enum CompatCode {
     ColumnExtra,
     TypeMismatch,
     NullabilityMismatch,
+    WriteabilityMismatch,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -142,6 +143,34 @@ pub fn check_table_gate(family: &str, source: &TableSchema, target: &TableSchema
                     ),
                 });
             }
+            // SQL Server identity columns affect which DML operations can
+            // write a value. Treat a source/target mismatch as a hard gate;
+            // otherwise the preview could contain a write that only fails
+            // after the apply transaction has started.
+            if family == "sqlserver" && src_col.is_auto_increment != tgt_col.is_auto_increment {
+                issues.push(CompatIssue {
+                    code: CompatCode::WriteabilityMismatch,
+                    column: Some(src_col.name.clone()),
+                    message: format!(
+                        "column '{}' has different SQL Server identity/writeability attributes (source={} target={})",
+                        src_col.name, src_col.is_auto_increment, tgt_col.is_auto_increment
+                    ),
+                });
+            }
+            if family == "sqlserver"
+                && (src_col.is_auto_increment || tgt_col.is_auto_increment)
+                && (!src_pk.iter().any(|pk| pk == &src_col.name)
+                    || !tgt_pk.iter().any(|pk| pk == &tgt_col.name))
+            {
+                issues.push(CompatIssue {
+                    code: CompatCode::WriteabilityMismatch,
+                    column: Some(src_col.name.clone()),
+                    message: format!(
+                        "SQL Server identity column '{}' must be part of the matching primary key; non-key identity columns cannot be safely synchronized",
+                        src_col.name
+                    ),
+                });
+            }
         }
     }
 
@@ -258,6 +287,26 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn sqlserver_identity_attributes_must_match_and_identity_must_be_a_key() {
+        let mut source = schema("t", vec![col("id", "INT", false, true)], vec!["id"]);
+        source.columns[0].is_auto_increment = true;
+        let mut target = source.clone();
+        target.columns[0].is_auto_increment = false;
+        let result = check_table_gate("sqlserver", &source, &target);
+        assert!(matches!(result, GateVerdict::Incompatible { ref issues }
+            if issues.iter().any(|issue| issue.code == CompatCode::WriteabilityMismatch)));
+
+        target = source.clone();
+        source.columns.push(col("sequence", "INT", false, false));
+        target.columns.push(col("sequence", "INT", false, false));
+        source.columns[1].is_auto_increment = true;
+        target.columns[1].is_auto_increment = true;
+        let result = check_table_gate("sqlserver", &source, &target);
+        assert!(matches!(result, GateVerdict::Incompatible { ref issues }
+            if issues.iter().any(|issue| issue.code == CompatCode::WriteabilityMismatch)));
     }
 
     #[test]

@@ -451,6 +451,14 @@ pub trait DatabaseDriver: Send + Sync {
         ))
     }
 
+    /// Maximum number of bound parameters accepted by one statement.
+    /// Drivers should report the server's actual statement limit so bulk
+    /// writers can split batches before execution. The default is a
+    /// conservative portable ceiling for engines without a lower limit.
+    fn max_bound_parameters(&self) -> usize {
+        60_000
+    }
+
     /// Execute bound DML and report actual affected rows; never serialize values as SQL.
     async fn execute_with_params(
         &self,
@@ -615,6 +623,39 @@ pub trait DatabaseDriver: Send + Sync {
         Ok(())
     }
 
+    /// Whether explicit identity inserts require a session-scoped mode on
+    /// this connection. Shared migration paths must turn this mode off before
+    /// committing, rolling back, switching target tables, or returning the
+    /// session to general use.
+    fn explicit_identity_insert_requires_session_toggle(&self) -> bool {
+        false
+    }
+
+    /// Enable or disable explicit identity insertion for one target table.
+    /// The caller attempts cleanup on every success, error, and cancellation
+    /// path because the state may survive transaction rollback.
+    async fn set_identity_insert(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+        _schema: Option<&str>,
+        _table: &str,
+        _enabled: bool,
+    ) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(
+            "target does not implement session-scoped identity insertion".into(),
+        ))
+    }
+
+    /// Drop a connection whose session-scoped identity mode could not be
+    /// reset. The default fails closed so the host never reports that an
+    /// un-dropped session is safe.
+    async fn discard_connection(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(
+            "driver cannot discard this connection after session cleanup failed".into(),
+        ))
+    }
+
     /// Return the clause required by this dialect to accept explicit values
     /// for generated identity columns during Data Transfer. This is a
     /// transfer-only DML extension; the default keeps existing drivers and
@@ -628,6 +669,16 @@ pub trait DatabaseDriver: Send + Sync {
     /// safely process multi-row VALUES statements in a single parse/execute.
     fn transfer_sql_file_insert_batch_size(&self) -> usize {
         1
+    }
+
+    /// Transaction delimiters for one atomic Data Transfer SQL-file artifact.
+    /// Engines with different transaction batch syntax may override these.
+    fn transfer_sql_file_begin_transaction(&self) -> &'static str {
+        "BEGIN;"
+    }
+
+    fn transfer_sql_file_commit_transaction(&self) -> &'static str {
+        "COMMIT;"
     }
 
     /// Render a Data Transfer SQL-file INSERT when the target schema cannot
@@ -647,6 +698,20 @@ pub trait DatabaseDriver: Send + Sync {
             ));
         }
         Ok(insert_template.replacen(&format!("{identity_override_marker} "), "", 1))
+    }
+
+    /// Wrap an SQL-file INSERT using its actual mapped target columns and
+    /// target relation. Drivers can intersect those columns with the target
+    /// identity metadata at script execution time. The target relation is
+    /// already safely quoted by the host. Drivers without a session toggle
+    /// return the statement unchanged.
+    fn render_transfer_sql_file_identity_insert(
+        &self,
+        insert_sql: &str,
+        _target_relation: &str,
+        _mapped_target_columns: &[String],
+    ) -> Result<String, DriverError> {
+        Ok(insert_sql.to_string())
     }
 
     /// Render Data Transfer sequence synchronization statements for an SQL
@@ -770,6 +835,19 @@ pub trait DatabaseDriver: Send + Sync {
         &self,
         _handle: &ConnectionHandle,
         _database: &str,
+    ) -> Result<Option<String>, DriverError> {
+        Ok(None)
+    }
+
+    /// Return a catalog identity for one exact schema scope when the driver
+    /// can prove it. The value is compared only when both endpoints have the
+    /// same physical database identity; drivers must not include credentials
+    /// or other secrets.
+    async fn schema_scope_identity(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+        _schema: &str,
     ) -> Result<Option<String>, DriverError> {
         Ok(None)
     }

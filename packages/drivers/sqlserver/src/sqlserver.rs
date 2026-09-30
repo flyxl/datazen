@@ -7,19 +7,26 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, QueryItem};
 use tokio::net::TcpStream;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 type SqlClient = Client<Compat<TcpStream>>;
 
 pub struct SqlServerDriver {
     clients: RwLock<HashMap<String, SqlClient>>,
+    transactions: Mutex<HashMap<String, ActiveTransaction>>,
+}
+
+struct ActiveTransaction {
+    id: String,
+    restore_isolation: Option<&'static str>,
 }
 
 impl SqlServerDriver {
     pub fn new() -> Self {
         Self {
             clients: RwLock::new(HashMap::new()),
+            transactions: Mutex::new(HashMap::new()),
         }
     }
 
@@ -51,6 +58,133 @@ impl SqlServerDriver {
         }
     }
 
+    fn quote_identifier(identifier: &str) -> Result<String, DriverError> {
+        if identifier.is_empty() || identifier.contains('\0') {
+            return Err(DriverError::InvalidConfig(
+                "SQL Server relation identifiers must be non-empty and contain no NUL".into(),
+            ));
+        }
+        Ok(format!("[{}]", identifier.replace(']', "]]")))
+    }
+
+    fn identity_insert_relation(
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Result<String, DriverError> {
+        let mut parts = Vec::with_capacity(3);
+        if !database.trim().is_empty() {
+            parts.push(Self::quote_identifier(database)?);
+        }
+        let schema = schema
+            .map(str::trim)
+            .filter(|schema| !schema.is_empty())
+            .unwrap_or("dbo");
+        parts.push(Self::quote_identifier(schema)?);
+        parts.push(Self::quote_identifier(table)?);
+        Ok(parts.join("."))
+    }
+
+    fn identity_insert_statement(
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        enabled: bool,
+    ) -> Result<String, DriverError> {
+        let relation = Self::identity_insert_relation(database, schema, table)?;
+        let mode = if enabled { "ON" } else { "OFF" };
+        Ok(format!("SET IDENTITY_INSERT {relation} {mode}"))
+    }
+
+    /// Accept only a relation rendered by Data Transfer's SQL Server
+    /// identifier quoter. This prevents a caller from smuggling SQL into the
+    /// session toggle or the OBJECT_ID condition.
+    fn quoted_transfer_relation_parts(relation: &str) -> Option<Vec<&str>> {
+        let bytes = relation.as_bytes();
+        let mut cursor = 0;
+        let mut parts = Vec::new();
+        while cursor < bytes.len() {
+            if bytes[cursor] != b'[' {
+                return None;
+            }
+            let part_start = cursor;
+            cursor += 1;
+            let mut has_identifier_content = false;
+            let mut closed = false;
+            while cursor < bytes.len() {
+                match bytes[cursor] {
+                    b']' if bytes.get(cursor + 1) == Some(&b']') => {
+                        has_identifier_content = true;
+                        cursor += 2;
+                    }
+                    b']' => {
+                        cursor += 1;
+                        closed = true;
+                        break;
+                    }
+                    _ => {
+                        has_identifier_content = true;
+                        cursor += 1;
+                    }
+                }
+            }
+            if !closed || !has_identifier_content {
+                return None;
+            }
+            parts.push(&relation[part_start..cursor]);
+            if cursor == bytes.len() {
+                break;
+            }
+            if bytes[cursor] != b'.' {
+                return None;
+            }
+            cursor += 1;
+            if cursor == bytes.len() {
+                return None;
+            }
+        }
+        (1..=3).contains(&parts.len()).then_some(parts)
+    }
+
+    fn render_sql_file_identity_insert(
+        insert_sql: &str,
+        target_relation: &str,
+        mapped_target_columns: &[String],
+    ) -> Result<String, DriverError> {
+        if mapped_target_columns.is_empty() {
+            return Ok(insert_sql.to_string());
+        }
+        if mapped_target_columns
+            .iter()
+            .any(|column| column.is_empty() || column.contains('\0'))
+        {
+            return Err(DriverError::InvalidConfig(
+                "SQL Server SQL-file identity wrapper requires valid mapped target column names"
+                    .into(),
+            ));
+        }
+        let relation_parts =
+            Self::quoted_transfer_relation_parts(target_relation).ok_or_else(|| {
+                DriverError::InvalidConfig(
+                    "SQL Server SQL-file identity wrapper requires a safely quoted target relation"
+                        .into(),
+                )
+            })?;
+        let object_name = target_relation.replace('\'', "''");
+        let identity_catalog = relation_parts
+            .get(2)
+            .map(|_| format!("{}.sys.identity_columns", relation_parts[0]))
+            .unwrap_or_else(|| "sys.identity_columns".into());
+        let mapped_columns = mapped_target_columns
+            .iter()
+            .map(|column| format!("N'{}'", column.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Ok(format!(
+            "IF EXISTS (SELECT 1 FROM {identity_catalog} WHERE object_id = OBJECT_ID(N'{object_name}', N'U') AND name IN ({mapped_columns}))\nBEGIN\n    BEGIN TRY\n        SET IDENTITY_INSERT {target_relation} ON;\n        {insert_sql};\n        SET IDENTITY_INSERT {target_relation} OFF;\n    END TRY\n    BEGIN CATCH\n        BEGIN TRY\n            SET IDENTITY_INSERT {target_relation} OFF;\n        END TRY\n        BEGIN CATCH\n            THROW;\n        END CATCH\n        THROW;\n    END CATCH\nEND\nELSE\nBEGIN\n    {insert_sql};\nEND"
+        ))
+    }
+
     /// List tables and views together with the schema that owns them.
     ///
     /// The schema column is mandatory: SQL Server has a real schema level, and
@@ -75,42 +209,12 @@ impl SqlServerDriver {
         )
     }
 
-    /// Columns of one table or view, filtered by the explicit `(schema, table)`.
-    ///
-    /// `database` is inlined as a catalog prefix when non-empty, so reading
-    /// another database never needs a session `USE`. `INFORMATION_SCHEMA.COLUMNS`
-    /// is the column source; the catalog-qualified `sys.*` views add the
-    /// identity / default / primary-key / comment metadata it does not expose.
-    /// The object lookup is a derived table keyed on `(schema, name)` so a
-    /// same-named relation in another schema can never duplicate or steal rows.
+    /// Template used by catalog-builder unit tests; object names are bound by
+    /// the caller rather than interpolated into this SQL text.
+    #[cfg(test)]
     fn build_table_schema_sql(database: &str, schema: &str, table: &str) -> String {
-        let catalog = Self::catalog_prefix(database);
-        let schema = schema.replace('\'', "''");
-        let table = table.replace('\'', "''");
-        format!(
-            "SELECT c.COLUMN_NAME AS column_name, c.DATA_TYPE AS data_type, \
-             CAST(CASE WHEN c.IS_NULLABLE = 'YES' THEN 1 ELSE 0 END AS bit) AS is_nullable, \
-             CAST(CASE WHEN sc.is_identity = 1 THEN 1 ELSE 0 END AS bit) AS is_identity, \
-             dc.definition AS default_value, CAST(ep.value AS nvarchar(max)) AS comment, \
-             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
-             FROM {catalog}INFORMATION_SCHEMA.COLUMNS c \
-             LEFT JOIN ( \
-               SELECT o.object_id, o.name AS object_name, s.name AS schema_name \
-               FROM {catalog}sys.objects o \
-               JOIN {catalog}sys.schemas s ON s.schema_id = o.schema_id \
-             ) obj ON obj.object_name = c.TABLE_NAME AND obj.schema_name = c.TABLE_SCHEMA \
-             LEFT JOIN {catalog}sys.columns sc ON sc.object_id = obj.object_id AND sc.name = c.COLUMN_NAME \
-             LEFT JOIN {catalog}sys.default_constraints dc ON dc.parent_object_id = obj.object_id AND dc.parent_column_id = sc.column_id \
-             LEFT JOIN {catalog}sys.extended_properties ep ON ep.major_id = obj.object_id AND ep.minor_id = sc.column_id AND ep.name = 'MS_Description' \
-             LEFT JOIN ( \
-               SELECT ic.object_id, ic.column_id \
-               FROM {catalog}sys.index_columns ic \
-               INNER JOIN {catalog}sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
-               WHERE i.is_primary_key = 1 \
-             ) pk ON pk.object_id = obj.object_id AND pk.column_id = sc.column_id \
-             WHERE c.TABLE_SCHEMA = '{schema}' AND c.TABLE_NAME = '{table}' \
-             ORDER BY c.ORDINAL_POSITION"
-        )
+        let _ = (schema, table);
+        crate::metadata::columns_sql(database)
     }
 
     /// Batch columns for every table/view in `database` (optionally narrowed to
@@ -124,17 +228,27 @@ impl SqlServerDriver {
         };
         format!(
             "SELECT s.name AS schema_name, o.name AS table_name, c.name AS column_name, \
-             tp.name AS data_type, c.is_nullable, c.is_identity, dc.definition AS default_value, \
+             CASE \
+               WHEN tp.is_user_defined = 1 THEN QUOTENAME(tp_schema.name) + N'.' + QUOTENAME(tp.name) \
+               WHEN tp.name IN ('nvarchar', 'nchar') THEN CONCAT(tp.name, '(', CASE WHEN c.max_length = -1 THEN 'max' ELSE CONVERT(varchar(10), c.max_length / 2) END, ')') \
+               WHEN tp.name IN ('varchar', 'char', 'varbinary', 'binary') THEN CONCAT(tp.name, '(', CASE WHEN c.max_length = -1 THEN 'max' ELSE CONVERT(varchar(10), c.max_length) END, ')') \
+               WHEN tp.name IN ('decimal', 'numeric') THEN CONCAT(tp.name, '(', c.precision, ',', c.scale, ')') \
+               WHEN tp.name IN ('time', 'datetime2', 'datetimeoffset') THEN CONCAT(tp.name, '(', c.scale, ')') \
+               WHEN tp.name = 'float' THEN CONCAT(tp.name, '(', c.precision, ')') \
+               ELSE tp.name \
+             END AS data_type, c.is_nullable, c.is_identity, dc.definition AS default_value, \
              CAST(ep.value AS nvarchar(max)) AS comment, \
-             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
+             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk, \
+             ISNULL(pk.key_ordinal, 0) AS pk_ordinal \
              FROM {catalog}sys.columns c \
              JOIN {catalog}sys.objects o ON c.object_id = o.object_id \
              JOIN {catalog}sys.schemas s ON o.schema_id = s.schema_id \
              JOIN {catalog}sys.types tp ON c.user_type_id = tp.user_type_id \
+             LEFT JOIN {catalog}sys.schemas tp_schema ON tp_schema.schema_id = tp.schema_id \
              LEFT JOIN {catalog}sys.default_constraints dc ON c.default_object_id = dc.object_id \
              LEFT JOIN {catalog}sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' \
              LEFT JOIN ( \
-               SELECT ic.object_id, ic.column_id \
+               SELECT ic.object_id, ic.column_id, ic.key_ordinal \
                FROM {catalog}sys.index_columns ic \
                INNER JOIN {catalog}sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
                WHERE i.is_primary_key = 1 \
@@ -240,12 +354,7 @@ impl SqlServerDriver {
             ColumnData::Bit(v) => v.map(Value::Bool),
             ColumnData::String(v) => v.as_ref().map(|s| Value::String(s.to_string())),
             ColumnData::Guid(v) => v.map(|g| Value::String(g.to_string())),
-            ColumnData::Binary(v) => v.as_ref().map(|b| {
-                Value::String(format!(
-                    "0x{}",
-                    b.iter().map(|x| format!("{x:02x}")).collect::<String>()
-                ))
-            }),
+            ColumnData::Binary(v) => v.as_ref().map(|b| Value::Bytes(b.to_vec())),
             ColumnData::Numeric(v) => v.map(|n| Value::String(n.to_string())),
             ColumnData::Xml(v) => v.as_ref().map(|x| Value::String(x.to_string())),
             ColumnData::DateTime(_)
@@ -313,6 +422,16 @@ impl SqlServerDriver {
         Self::run_routed(client, sql, false).await
     }
 
+    async fn run_with_params(
+        client: &mut SqlClient,
+        sql: &str,
+        params: &[Value],
+    ) -> Result<QueryResult, DriverError> {
+        let bound = crate::parameters::bind_values(params);
+        let refs = crate::parameters::to_sql_refs(&bound);
+        Self::run_routed_with_params(client, sql, &refs, false).await
+    }
+
     /// Read a result set from a statement that must go out as a real batch even
     /// though its text would normally be routed through `sp_executesql`.
     ///
@@ -324,17 +443,105 @@ impl SqlServerDriver {
         Self::run_routed(client, sql, true).await
     }
 
+    async fn execute_batch(client: &mut SqlClient, sql: &str) -> Result<(), DriverError> {
+        use futures_util::TryStreamExt;
+        let mut stream = client
+            .simple_query(sql)
+            .await
+            .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+        while stream
+            .try_next()
+            .await
+            .map_err(|e| DriverError::TransactionError(e.to_string()))?
+            .is_some()
+        {}
+        Ok(())
+    }
+
+    async fn current_isolation_level(client: &mut SqlClient) -> Result<&'static str, DriverError> {
+        let result = Self::run_batch(client, "DBCC USEROPTIONS WITH NO_INFOMSGS").await?;
+        let value = result.rows.iter().find_map(|row| {
+            let name = row
+                .first()
+                .cloned()
+                .flatten()
+                .map(|v| datazen_driver_http_support::value_display(&v))?;
+            if !name.eq_ignore_ascii_case("isolation level") {
+                return None;
+            }
+            row.get(1)
+                .cloned()
+                .flatten()
+                .map(|v| datazen_driver_http_support::value_display(&v))
+        });
+        let normalized = value.map(|value| value.to_ascii_lowercase());
+        match normalized.as_deref() {
+            Some("read uncommitted") => Ok("READ UNCOMMITTED"),
+            Some("read committed" | "read committed snapshot") => Ok("READ COMMITTED"),
+            Some("repeatable read") => Ok("REPEATABLE READ"),
+            Some("serializable") => Ok("SERIALIZABLE"),
+            Some("snapshot") => Ok("SNAPSHOT"),
+            _ => Err(DriverError::TransactionError(
+                "DBCC USEROPTIONS did not return a recognized isolation level".into(),
+            )),
+        }
+    }
+
+    async fn ensure_no_open_transaction(client: &mut SqlClient) -> Result<(), DriverError> {
+        let result = Self::run(client, "SELECT @@TRANCOUNT AS [transaction_count]").await?;
+        let count = result
+            .rows
+            .first()
+            .and_then(|row| row.first())
+            .and_then(Option::as_ref)
+            .and_then(Self::parse_transaction_count)
+            .ok_or_else(|| {
+                DriverError::TransactionError(
+                    "SQL Server did not return the active transaction count".into(),
+                )
+            })?;
+        if count != 0 {
+            return Err(DriverError::TransactionError(
+                "SQL Server session already has an open transaction".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn parse_transaction_count(value: &Value) -> Option<i64> {
+        match value {
+            Value::Integer(count) => Some(*count),
+            Value::String(count) => count.parse().ok(),
+            _ => None,
+        }
+    }
+
     async fn run_routed(
         client: &mut SqlClient,
         sql: &str,
         force_batch: bool,
     ) -> Result<QueryResult, DriverError> {
+        Self::run_routed_with_params(client, sql, &[], force_batch).await
+    }
+
+    async fn run_routed_with_params(
+        client: &mut SqlClient,
+        sql: &str,
+        params: &[&dyn tiberius::ToSql],
+        force_batch: bool,
+    ) -> Result<QueryResult, DriverError> {
         use futures_util::TryStreamExt;
         let start = Instant::now();
         let mut stream = if force_batch || needs_own_batch(sql) {
+            if !params.is_empty() {
+                return Err(DriverError::Unsupported(
+                    "SQL Server batch-only statements cannot accept bound parameters; use a parameterized RPC-compatible statement"
+                        .into(),
+                ));
+            }
             client.simple_query(sql).await
         } else {
-            client.query(sql, &[]).await
+            client.query(sql, params).await
         }
         .map_err(|e| DriverError::QueryFailed(format!("SQL Server query failed: {e}")))?;
         let mut columns: Vec<ColumnInfo> = Vec::new();
@@ -448,11 +655,46 @@ impl SqlServerDriver {
 /// aware scanner in `driver-api`.
 fn split_statements(sql: &str) -> Vec<String> {
     use datazen_driver_api::sql_split::{is_comment_only_or_empty, split_sql_statements};
+
+    // A routine definition is one SQL Server batch. The shared splitter is
+    // dialect-neutral and treats the semicolon after a statement in a
+    // BEGIN/END body as a top-level separator, which sends an incomplete
+    // CREATE FUNCTION/PROCEDURE/TRIGGER to the server. Keep the module body
+    // intact; `needs_own_batch` routes it through `simple_query` below.
+    if is_routine_definition(sql) {
+        let statement = sql.trim();
+        return if statement.is_empty() {
+            Vec::new()
+        } else {
+            vec![statement.to_string()]
+        };
+    }
+
     split_sql_statements(sql)
         .into_iter()
         .map(|s| s.trim().to_string())
         .filter(|s| !is_comment_only_or_empty(s))
         .collect()
+}
+
+fn is_routine_definition(sql: &str) -> bool {
+    let mut words = leading_keywords(sql).into_iter();
+    let Some(first) = words.next() else {
+        return false;
+    };
+    if first != "CREATE" && first != "ALTER" {
+        return false;
+    }
+
+    let mut kind = words.next();
+    if kind.as_deref() == Some("OR") {
+        let _ = words.next();
+        kind = words.next();
+    }
+    matches!(
+        kind.as_deref(),
+        Some("FUNCTION" | "PROCEDURE" | "PROC" | "TRIGGER")
+    )
 }
 
 /// T-SQL accepts a few statements **only as the first statement of a batch**:
@@ -660,8 +902,139 @@ fn apply_sqlserver_top(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) 
     (format!("{prefix} TOP {} {body}", lim + 1), Some(lim))
 }
 
+fn schema_migration_blockers_for_indexes(indexes: &[IndexInfo]) -> Vec<String> {
+    let primary_indexes = indexes
+        .iter()
+        .filter(|index| index.is_primary)
+        .collect::<Vec<_>>();
+    let mut blockers = Vec::new();
+    if primary_indexes.len() > 1 {
+        blockers.push(
+            "SQL Server returned multiple primary-key indexes; the shared migration IR cannot identify one safely".into(),
+        );
+    } else if let Some(primary) = primary_indexes.first() {
+        let kind = primary
+            .index_type
+            .strip_prefix("UNIQUE_CONSTRAINT:")
+            .unwrap_or(&primary.index_type);
+        if !kind.eq_ignore_ascii_case("CLUSTERED") {
+            blockers.push(
+                "SQL Server primary-key clustering is nonclustered; the shared migration IR cannot preserve this property during table creation".into(),
+            );
+        }
+    }
+    if indexes.iter().any(|index| {
+        !index.is_primary
+            && index
+                .index_type
+                .strip_prefix("UNIQUE_CONSTRAINT:")
+                .unwrap_or(&index.index_type)
+                .eq_ignore_ascii_case("CLUSTERED")
+    }) {
+        blockers.push(
+            "SQL Server table has a clustered secondary index; the shared migration IR cannot prove this index layout is compatible with every planned primary-key change".into(),
+        );
+    }
+    blockers
+}
+
+const PHYSICAL_DATABASE_IDENTITY_SQL: &str =
+    "SELECT CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')) AS server_name, d.database_id AS database_id FROM sys.databases AS d WHERE d.name = DB_NAME() AND NULLIF(CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')), N'') IS NOT NULL AND DB_ID() IS NOT NULL AND DB_ID(NULLIF(@P1, N'')) = DB_ID()";
+
+fn parse_physical_database_identity(result: &QueryResult) -> Option<String> {
+    if result.rows.len() != 1 || result.rows[0].len() != 2 {
+        return None;
+    }
+    let row = result.rows.first()?;
+    let server_name = match row.first()?.as_ref()? {
+        Value::String(value) if !value.trim().is_empty() => value.trim(),
+        _ => return None,
+    };
+    let database_id = match row.get(1)?.as_ref()? {
+        Value::Integer(value) if *value > 0 => value,
+        _ => return None,
+    };
+    Some(format!(
+        "sqlserver:server:{}:{}:database:{}",
+        server_name.len(),
+        server_name,
+        database_id
+    ))
+}
+
+fn parse_schema_scope_identity(result: &QueryResult) -> Option<String> {
+    if result.rows.len() != 1 || result.rows[0].len() != 1 {
+        return None;
+    }
+    let schema_id = match result
+        .rows
+        .first()
+        .and_then(|row| row.first())
+        .and_then(Option::as_ref)
+    {
+        Some(Value::Integer(value)) if *value > 0 => *value,
+        Some(Value::String(value)) => match value.trim().parse::<i64>() {
+            Ok(value) if value > 0 => value,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(format!("sqlserver:schema-id:{schema_id}"))
+}
+
 #[async_trait]
 impl DatabaseDriver for SqlServerDriver {
+    fn migration_renderer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::SqlServerMigrationRenderer))
+    }
+
+    fn migration_capabilities(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+        Some(std::sync::Arc::new(super::SqlServerMigrationCapabilities))
+    }
+
+    fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
+        Some(std::sync::Arc::new(super::SqlServerTypeNormalizer))
+    }
+
+    async fn physical_database_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<String>, DriverError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let parameters = [Value::String(database.trim().to_owned())];
+        let result =
+            Self::run_with_params(client, PHYSICAL_DATABASE_IDENTITY_SQL, &parameters).await?;
+        Ok(parse_physical_database_identity(&result))
+    }
+
+    async fn schema_scope_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: &str,
+    ) -> Result<Option<String>, DriverError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let parameters = [Value::String(schema.trim().to_owned())];
+        let result = Self::run_with_params(
+            client,
+            &crate::metadata::schema_scope_identity_sql(database),
+            &parameters,
+        )
+        .await?;
+        Ok(parse_schema_scope_identity(&result))
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "sqlserver".to_string()
     }
@@ -737,6 +1110,21 @@ impl DatabaseDriver for SqlServerDriver {
     }
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
+        let mut transactions = self.transactions.lock().await;
+        if let Some(transaction) = transactions.remove(&handle.id) {
+            if let Some(client) = self.clients.write().await.get_mut(&handle.pool_id) {
+                // Disconnect must not return a still-open SQL Server
+                // transaction to the live handle map. The client is removed
+                // below even if rollback fails.
+                let rollback = transaction.restore_isolation.map_or_else(
+                    || "ROLLBACK TRANSACTION".to_string(),
+                    |level| {
+                        format!("ROLLBACK TRANSACTION; SET TRANSACTION ISOLATION LEVEL {level}")
+                    },
+                );
+                let _ = Self::execute_batch(client, &rollback).await;
+            }
+        }
         self.clients.write().await.remove(&handle.pool_id);
         Ok(())
     }
@@ -823,51 +1211,15 @@ impl DatabaseDriver for SqlServerDriver {
         let client = map
             .get_mut(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let sql = Self::build_table_schema_sql(database, schema, table);
-        let result = Self::run(client, &sql).await?;
-        let columns: Vec<ColumnSchema> = result
-            .rows
-            .into_iter()
-            .filter_map(|r| {
-                let is_pk = Self::bit_true(&r.get(6).cloned().flatten());
-                Some(ColumnSchema {
-                    name: r
-                        .get(0)
-                        .cloned()
-                        .flatten()
-                        .map(|v| datazen_driver_http_support::value_display(&v))?,
-                    data_type: r
-                        .get(1)
-                        .cloned()
-                        .flatten()
-                        .map(|v| datazen_driver_http_support::value_display(&v))
-                        .unwrap_or_default(),
-                    nullable: r
-                        .get(2)
-                        .cloned()
-                        .flatten()
-                        .map(|v| Self::bit_true(&Some(v)))
-                        .unwrap_or(true),
-                    default_value: r
-                        .get(4)
-                        .cloned()
-                        .flatten()
-                        .map(|v| datazen_driver_http_support::value_display(&v)),
-                    comment: r
-                        .get(5)
-                        .cloned()
-                        .flatten()
-                        .map(|v| datazen_driver_http_support::value_display(&v)),
-                    is_primary_key: is_pk,
-                    is_auto_increment: Self::bit_true(&r.get(3).cloned().flatten()),
-                })
-            })
-            .collect();
-        let primary_keys: Vec<String> = columns
-            .iter()
-            .filter(|c| c.is_primary_key)
-            .map(|c| c.name.clone())
-            .collect();
+        let parameters = [
+            Value::String(schema.to_string()),
+            Value::String(table.to_string()),
+            Value::String(database.trim().to_string()),
+        ];
+        let column_rows =
+            Self::run_with_params(client, &crate::metadata::columns_sql(database), &parameters)
+                .await?;
+        let (columns, primary_keys) = crate::metadata::parse_columns(column_rows)?;
         // A relation always has at least one column, so "no columns" means the
         // table is absent (or not visible) rather than a column-less table.
         // Reporting `Ok` here would let callers cache a blank structure; this is
@@ -877,14 +1229,33 @@ impl DatabaseDriver for SqlServerDriver {
                 "Table '{schema}.{table}' does not exist in database '{database}'"
             )));
         }
+        let index_rows =
+            Self::run_with_params(client, &crate::metadata::indexes_sql(database), &parameters)
+                .await?;
+        let indexes = crate::metadata::parse_indexes(index_rows)?;
+        let foreign_key_rows = Self::run_with_params(
+            client,
+            &crate::metadata::foreign_keys_sql(database),
+            &parameters,
+        )
+        .await?;
+        let foreign_keys = crate::metadata::parse_foreign_keys(foreign_key_rows)?;
+        let check_rows =
+            Self::run_with_params(client, &crate::metadata::checks_sql(database), &parameters)
+                .await?;
+        let check_constraints = crate::metadata::parse_checks(check_rows)?;
+        let migration_blockers = schema_migration_blockers_for_indexes(&indexes);
         Ok(TableSchema {
             table_name: table.to_string(),
             columns,
             primary_keys,
-            indexes: Vec::new(),
-            foreign_keys: Vec::new(),
-            check_constraints: Vec::new(),
-            table_options: TableOptions::default(),
+            indexes,
+            foreign_keys,
+            check_constraints,
+            table_options: TableOptions {
+                migration_blockers,
+                ..TableOptions::default()
+            },
         })
     }
 
@@ -901,13 +1272,14 @@ impl DatabaseDriver for SqlServerDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
         let result = Self::run(client, &Self::build_all_columns_sql(database, schema)).await?;
 
-        let mut all_columns: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
+        let mut all_columns: HashMap<String, (Vec<ColumnSchema>, Vec<(i64, String)>)> =
+            HashMap::new();
         let mut owners: HashMap<String, String> = HashMap::new();
 
         for row in &result.rows {
             // SQL: schema_name(0), table_name(1), column_name(2), data_type(3),
             //      is_nullable(4), is_identity(5), default_value(6), comment(7),
-            //      is_pk(8)
+            //      is_pk(8), pk_ordinal(9)
             let table_schema = row
                 .get(0)
                 .cloned()
@@ -978,11 +1350,35 @@ impl DatabaseDriver for SqlServerDriver {
             let entry = all_columns.entry(table_name).or_default();
             entry.0.push(column);
             if is_pk {
-                entry.1.push(col_name);
+                let key_ordinal = row
+                    .get(9)
+                    .cloned()
+                    .flatten()
+                    .map(|v| datazen_driver_http_support::value_display(&v))
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .filter(|ordinal| *ordinal > 0)
+                    .ok_or_else(|| {
+                        DriverError::QueryFailed(
+                            "SQL Server returned incomplete composite primary-key metadata".into(),
+                        )
+                    })?;
+                entry.1.push((key_ordinal, col_name));
             }
         }
 
-        Ok(all_columns)
+        Ok(all_columns
+            .into_iter()
+            .map(|(table, (columns, mut key_columns))| {
+                key_columns.sort_by_key(|(ordinal, _)| *ordinal);
+                (
+                    table,
+                    (
+                        columns,
+                        key_columns.into_iter().map(|(_, name)| name).collect(),
+                    ),
+                )
+            })
+            .collect())
     }
 
     async fn query(
@@ -1070,9 +1466,117 @@ impl DatabaseDriver for SqlServerDriver {
         &self,
         handle: &ConnectionHandle,
         sql: &str,
-        _params: &[Value],
+        params: &[Value],
     ) -> Result<QueryResult, DriverError> {
-        self.query(handle, sql).await
+        let bound = crate::parameters::bind_values(params);
+        let refs = crate::parameters::to_sql_refs(&bound);
+        let mut map = self.clients.write().await;
+        let client = map
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        Self::run_routed_with_params(client, sql, &refs, false).await
+    }
+
+    fn parameter_placeholder(
+        &self,
+        index: usize,
+        _data_type: Option<&str>,
+    ) -> Result<String, DriverError> {
+        if !(1..=2100).contains(&index) {
+            return Err(DriverError::InvalidConfig(
+                "SQL Server parameter indexes must be between 1 and 2100".into(),
+            ));
+        }
+        Ok(format!("@P{index}"))
+    }
+
+    fn max_bound_parameters(&self) -> usize {
+        2100
+    }
+
+    fn explicit_identity_insert_requires_session_toggle(&self) -> bool {
+        true
+    }
+
+    fn transfer_sql_file_begin_transaction(&self) -> &'static str {
+        "BEGIN TRANSACTION;"
+    }
+
+    fn transfer_sql_file_commit_transaction(&self) -> &'static str {
+        "COMMIT TRANSACTION;"
+    }
+
+    async fn set_identity_insert(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        enabled: bool,
+    ) -> Result<(), DriverError> {
+        let statement = Self::identity_insert_statement(database, schema, table, enabled)?;
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        // IDENTITY_INSERT is scoped to the physical SQL Server session, so
+        // send it as a standalone batch on this mapped client.
+        Self::execute_batch(client, &statement).await
+    }
+
+    async fn discard_connection(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        self.transactions.lock().await.remove(&handle.id);
+        self.clients.write().await.remove(&handle.pool_id);
+        Ok(())
+    }
+
+    fn render_transfer_sql_file_identity_insert(
+        &self,
+        insert_sql: &str,
+        target_relation: &str,
+        mapped_target_columns: &[String],
+    ) -> Result<String, DriverError> {
+        Self::render_sql_file_identity_insert(insert_sql, target_relation, mapped_target_columns)
+    }
+
+    async fn execute_with_params(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+    ) -> Result<u64, DriverError> {
+        use futures_util::TryStreamExt;
+
+        let bound = crate::parameters::bind_values(params);
+        let refs = crate::parameters::to_sql_refs(&bound);
+        let mut map = self.clients.write().await;
+        let client = map
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        if needs_own_batch(sql) {
+            if !refs.is_empty() {
+                return Err(DriverError::Unsupported(
+                    "SQL Server batch-only statements cannot accept bound parameters; use a parameterized RPC-compatible statement"
+                        .into(),
+                ));
+            }
+            let mut stream = client
+                .simple_query(sql)
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("SQL Server execute failed: {e}")))?;
+            while stream
+                .try_next()
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("SQL Server execute failed: {e}")))?
+                .is_some()
+            {}
+            return Ok(0);
+        }
+        client
+            .execute(sql, &refs)
+            .await
+            .map(|result| result.total())
+            .map_err(|e| DriverError::QueryFailed(format!("SQL Server execute failed: {e}")))
     }
 
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
@@ -1102,6 +1606,154 @@ impl DatabaseDriver for SqlServerDriver {
             .await
             .map(|r| r.total())
             .map_err(|e| DriverError::QueryFailed(format!("SQL Server execute failed: {e}")))
+    }
+
+    async fn begin_transaction(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<TransactionHandle, DriverError> {
+        let mut transactions = self.transactions.lock().await;
+        if transactions.contains_key(&handle.id) {
+            return Err(DriverError::TransactionError(
+                "A transaction is already open on this connection".into(),
+            ));
+        }
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        Self::ensure_no_open_transaction(client).await?;
+        if let Err(error) = Self::execute_batch(client, "BEGIN TRANSACTION").await {
+            clients.remove(&handle.pool_id);
+            return Err(error);
+        }
+        let id = format!("sqlserver_tx_{}", uuid::Uuid::new_v4());
+        transactions.insert(
+            handle.id.clone(),
+            ActiveTransaction {
+                id: id.clone(),
+                restore_isolation: None,
+            },
+        );
+        Ok(TransactionHandle {
+            id,
+            connection_id: handle.id.clone(),
+        })
+    }
+
+    async fn begin_read_snapshot(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<TransactionHandle, DriverError> {
+        let mut transactions = self.transactions.lock().await;
+        if transactions.contains_key(&handle.id) {
+            return Err(DriverError::TransactionError(
+                "A transaction is already open on this connection".into(),
+            ));
+        }
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        Self::ensure_no_open_transaction(client).await?;
+        let restore_isolation = match Self::current_isolation_level(client).await {
+            Ok(level) => level,
+            Err(error) => return Err(error),
+        };
+        if let Err(error) = Self::execute_batch(
+            client,
+            "SET TRANSACTION ISOLATION LEVEL SNAPSHOT; BEGIN TRANSACTION",
+        )
+        .await
+        {
+            // SNAPSHOT may be disabled for the active database. The TDS
+            // connection is discarded so the session isolation setting cannot
+            // leak into a later operation after an uncertain partial batch.
+            clients.remove(&handle.pool_id);
+            return Err(DriverError::TransactionError(format!(
+                "could not begin a SQL Server SNAPSHOT transaction (enable ALLOW_SNAPSHOT_ISOLATION for this database): {error}"
+            )));
+        }
+        let id = format!("sqlserver_snapshot_{}", uuid::Uuid::new_v4());
+        transactions.insert(
+            handle.id.clone(),
+            ActiveTransaction {
+                id: id.clone(),
+                restore_isolation: Some(restore_isolation),
+            },
+        );
+        Ok(TransactionHandle {
+            id,
+            connection_id: handle.id.clone(),
+        })
+    }
+
+    async fn commit(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        let mut transactions = self.transactions.lock().await;
+        let restore_isolation = match transactions.get(&tx.connection_id) {
+            Some(active) if active.id == tx.id => active.restore_isolation,
+            Some(_) => {
+                return Err(DriverError::TransactionError(
+                    "Transaction handle does not match the active SQL Server transaction".into(),
+                ));
+            }
+            None => {
+                return Err(DriverError::TransactionError(
+                    "Transaction not found or already ended".into(),
+                ));
+            }
+        };
+        let statement = restore_isolation.map_or_else(
+            || "COMMIT TRANSACTION".to_string(),
+            |level| format!("COMMIT TRANSACTION; SET TRANSACTION ISOLATION LEVEL {level}"),
+        );
+        let mut clients = self.clients.write().await;
+        let result = match clients.get_mut(&tx.connection_id) {
+            Some(client) => Self::execute_batch(client, &statement).await,
+            None => Err(DriverError::ConnectionFailed(
+                "Connection pool not found".into(),
+            )),
+        };
+        transactions.remove(&tx.connection_id);
+        if result.is_err() {
+            // After a failed COMMIT the server-side transaction state is
+            // uncertain. Drop the session rather than reuse it.
+            clients.remove(&tx.connection_id);
+        }
+        result
+    }
+
+    async fn rollback(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        let mut transactions = self.transactions.lock().await;
+        let restore_isolation = match transactions.get(&tx.connection_id) {
+            Some(active) if active.id == tx.id => active.restore_isolation,
+            Some(_) => {
+                return Err(DriverError::TransactionError(
+                    "Transaction handle does not match the active SQL Server transaction".into(),
+                ));
+            }
+            None => {
+                return Err(DriverError::TransactionError(
+                    "Transaction not found or already ended".into(),
+                ));
+            }
+        };
+        let statement = restore_isolation.map_or_else(
+            || "ROLLBACK TRANSACTION".to_string(),
+            |level| format!("ROLLBACK TRANSACTION; SET TRANSACTION ISOLATION LEVEL {level}"),
+        );
+        let mut clients = self.clients.write().await;
+        let result = match clients.get_mut(&tx.connection_id) {
+            Some(client) => Self::execute_batch(client, &statement).await,
+            None => Err(DriverError::ConnectionFailed(
+                "Connection pool not found".into(),
+            )),
+        };
+        transactions.remove(&tx.connection_id);
+        if result.is_err() {
+            clients.remove(&tx.connection_id);
+        }
+        result
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
@@ -1206,6 +1858,166 @@ mod tests {
     use tiberius::EncryptionLevel;
 
     #[test]
+    fn transaction_count_accepts_native_integer_values() {
+        assert_eq!(
+            SqlServerDriver::parse_transaction_count(&Value::Integer(0)),
+            Some(0)
+        );
+        assert_eq!(
+            SqlServerDriver::parse_transaction_count(&Value::Integer(2)),
+            Some(2)
+        );
+        assert_eq!(
+            SqlServerDriver::parse_transaction_count(&Value::String("3".into())),
+            Some(3)
+        );
+        assert_eq!(
+            SqlServerDriver::parse_transaction_count(&Value::String("Integer(0)".into())),
+            None
+        );
+        assert_eq!(SqlServerDriver::parse_transaction_count(&Value::Null), None);
+    }
+
+    #[test]
+    fn physical_database_identity_uses_server_name_and_current_catalog_database_id() {
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("SERVERPROPERTY('ServerName')"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("d.database_id AS database_id"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("FROM sys.databases AS d"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("d.name = DB_NAME()"));
+        assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("DB_ID(NULLIF(@P1, N'')) = DB_ID()"));
+        assert!(!PHYSICAL_DATABASE_IDENTITY_SQL.contains("password"));
+
+        let result = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String("sqlserver-prod\\instance1".into())),
+                Some(Value::Integer(23)),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(
+            parse_physical_database_identity(&result).as_deref(),
+            Some("sqlserver:server:24:sqlserver-prod\\instance1:database:23")
+        );
+
+        let unknown = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String("server".into())),
+                Some(Value::Null),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&unknown), None);
+
+        let no_server_name = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![
+                Some(Value::String(" ".into())),
+                Some(Value::Integer(23)),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&no_server_name), None);
+
+        let ambiguous = QueryResult {
+            columns: Vec::new(),
+            rows: vec![
+                vec![
+                    Some(Value::String("server-a".into())),
+                    Some(Value::Integer(23)),
+                ],
+                vec![
+                    Some(Value::String("server-b".into())),
+                    Some(Value::Integer(23)),
+                ],
+            ],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        assert_eq!(parse_physical_database_identity(&ambiguous), None);
+    }
+
+    #[test]
+    fn schema_scope_identity_requires_one_positive_catalog_id() {
+        let identity = |rows| QueryResult {
+            columns: Vec::new(),
+            rows,
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Integer(5))]])).as_deref(),
+            Some("sqlserver:schema-id:5")
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::String("7".into()))]]))
+                .as_deref(),
+            Some("sqlserver:schema-id:7")
+        );
+        assert_eq!(parse_schema_scope_identity(&identity(Vec::new())), None);
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![
+                vec![Some(Value::Integer(1))],
+                vec![Some(Value::Integer(2))]
+            ])),
+            None
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Integer(0))]])),
+            None
+        );
+        assert_eq!(
+            parse_schema_scope_identity(&identity(vec![vec![Some(Value::Null)]])),
+            None
+        );
+    }
+
+    #[test]
+    fn schema_migration_blockers_cover_unrepresented_clustered_layouts() {
+        let ordinary_layout = vec![
+            IndexInfo {
+                name: "PK_t".into(),
+                columns: vec!["id".into()],
+                is_unique: true,
+                is_primary: true,
+                index_type: "CLUSTERED".into(),
+            },
+            IndexInfo {
+                name: "IX_t_value".into(),
+                columns: vec!["value".into()],
+                is_unique: false,
+                is_primary: false,
+                index_type: "NONCLUSTERED".into(),
+            },
+        ];
+        assert!(schema_migration_blockers_for_indexes(&ordinary_layout).is_empty());
+
+        let nonclustered_primary = vec![IndexInfo {
+            index_type: "NONCLUSTERED".into(),
+            ..ordinary_layout[0].clone()
+        }];
+        assert!(schema_migration_blockers_for_indexes(&nonclustered_primary)
+            .iter()
+            .any(|blocker| blocker.contains("primary-key clustering is nonclustered")));
+
+        let clustered_secondary = vec![IndexInfo {
+            name: "UQ_t_value".into(),
+            columns: vec!["value".into()],
+            is_unique: true,
+            is_primary: false,
+            index_type: "UNIQUE_CONSTRAINT:CLUSTERED".into(),
+        }];
+        assert!(schema_migration_blockers_for_indexes(&clustered_secondary)
+            .iter()
+            .any(|blocker| blocker.contains("clustered secondary index")));
+    }
+
+    #[test]
     fn ssl_disable_is_plaintext() {
         assert_eq!(
             SqlServerDriver::ssl_settings(&SslMode::Disable),
@@ -1264,15 +2076,12 @@ mod tests {
     #[test]
     fn build_table_schema_sql_filters_schema_and_qualifies_catalog() {
         let sql = SqlServerDriver::build_table_schema_sql("sales", "dbo", "users");
-        assert!(sql.contains("FROM [sales].INFORMATION_SCHEMA.COLUMNS"));
-        assert!(sql.contains("c.TABLE_SCHEMA = 'dbo'"));
-        assert!(sql.contains("c.TABLE_NAME = 'users'"));
+        assert!(sql.contains("FROM [sales].sys.columns c"));
+        assert!(sql.contains("s.name = @P1 AND o.name = @P2"));
         assert!(sql.contains("is_primary_key = 1"));
         assert!(sql.contains("is_pk"));
-        // The object lookup must be keyed on (schema, name): joining on the bare
-        // name would let a same-named table in another schema duplicate rows.
-        assert!(sql.contains("obj.schema_name = c.TABLE_SCHEMA"));
-        assert!(!sql.contains("ON o.name = c.TABLE_NAME"));
+        assert!(sql.contains("pk.key_ordinal"));
+        assert!(sql.contains("c.max_length"));
         // No session switch may be embedded in a read path.
         assert!(!sql.to_uppercase().contains("USE ["));
     }
@@ -1280,16 +2089,18 @@ mod tests {
     #[test]
     fn build_table_schema_sql_stays_local_when_database_is_blank() {
         let sql = SqlServerDriver::build_table_schema_sql("", "dbo", "users");
-        assert!(sql.contains("FROM INFORMATION_SCHEMA.COLUMNS"));
+        assert!(sql.contains("FROM sys.columns c"));
         assert!(!sql.contains("[]."));
     }
 
     #[test]
     fn build_table_schema_sql_escapes_quotes() {
         let sql = SqlServerDriver::build_table_schema_sql("db]", "d'bo", "us'ers");
-        assert!(sql.contains("FROM [db]]].INFORMATION_SCHEMA.COLUMNS"));
-        assert!(sql.contains("c.TABLE_SCHEMA = 'd''bo'"));
-        assert!(sql.contains("c.TABLE_NAME = 'us''ers'"));
+        assert!(sql.contains("FROM [db]]].sys.columns c"));
+        assert!(sql.contains("@P1"));
+        assert!(sql.contains("@P2"));
+        assert!(!sql.contains("d'bo"));
+        assert!(!sql.contains("us'ers"));
     }
 
     #[test]
@@ -1481,6 +2292,21 @@ mod tests {
     }
 
     #[test]
+    fn statement_splitting_keeps_routine_bodies_in_one_batch() {
+        let function = "CREATE FUNCTION [dbo].[normalize] (@value NVARCHAR(64))\n\
+                        RETURNS NVARCHAR(64)\n\
+                        AS\n\
+                        BEGIN\n\
+                            RETURN UPPER(LTRIM(RTRIM(@value)));\n\
+                        END;";
+        assert_eq!(split_statements(function), vec![function]);
+
+        let procedure = "/* migration */ CREATE OR ALTER PROCEDURE [dbo].[p] AS\n\
+                         BEGIN SELECT 1; END;";
+        assert_eq!(split_statements(procedure), vec![procedure]);
+    }
+
+    #[test]
     fn preparable_statements_stay_on_the_rpc_path() {
         for stmt in [
             "CREATE TABLE [dbo].[t] ([id] INT NOT NULL)",
@@ -1547,5 +2373,185 @@ mod tests {
     fn null_temporal_columns_stay_null() {
         assert_eq!(temporal_text(&ColumnData::Date(None)), None);
         assert_eq!(temporal_text(&ColumnData::DateTimeOffset(None)), None);
+    }
+
+    #[test]
+    fn reports_sql_server_bound_parameter_limit() {
+        assert_eq!(SqlServerDriver::new().max_bound_parameters(), 2100);
+    }
+
+    #[test]
+    fn identity_insert_relation_quotes_every_sql_server_identifier() {
+        assert_eq!(
+            SqlServerDriver::identity_insert_relation(
+                "data]zen",
+                Some("odd.schema"),
+                "order]details"
+            )
+            .unwrap(),
+            "[data]]zen].[odd.schema].[order]]details]"
+        );
+        assert_eq!(
+            SqlServerDriver::identity_insert_relation("", None, "items").unwrap(),
+            "[dbo].[items]"
+        );
+        assert!(SqlServerDriver::identity_insert_relation("db", Some(""), "").is_err());
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_checks_catalog_and_cleans_up_on_error() {
+        let script = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [odd.schema].[order]]details] ([id]) VALUES (1)",
+            "[data]]zen].[odd.schema].[order]]details]",
+            &["id".into()],
+        )
+        .unwrap();
+        assert!(script.contains("OBJECT_ID(N'[data]]zen].[odd.schema].[order]]details]', N'U')"));
+        assert!(script.contains(
+            "FROM [data]]zen].sys.identity_columns WHERE object_id = OBJECT_ID(N'[data]]zen].[odd.schema].[order]]details]', N'U') AND name IN (N'id')"
+        ));
+        assert!(
+            script.contains("SET IDENTITY_INSERT [data]]zen].[odd.schema].[order]]details] ON;")
+        );
+        assert!(
+            script.contains("SET IDENTITY_INSERT [data]]zen].[odd.schema].[order]]details] OFF;")
+        );
+        assert!(script.contains("BEGIN CATCH\n        BEGIN TRY\n            SET IDENTITY_INSERT"));
+        assert!(script.contains("        THROW;"));
+        assert!(script.contains("ELSE\nBEGIN\n    INSERT INTO [odd.schema]"));
+        let local_script = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
+            "[dbo].[items]",
+            &["id".into()],
+        )
+        .unwrap();
+        assert!(local_script.contains("FROM sys.identity_columns WHERE object_id"));
+        let apostrophe_script = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [O'Brien].[items] ([id]) VALUES (1)",
+            "[db].[O'Brien].[items]",
+            &["user'id".into()],
+        )
+        .unwrap();
+        assert!(apostrophe_script.contains("OBJECT_ID(N'[db].[O''Brien].[items]'"));
+        assert!(apostrophe_script.contains("name IN (N'user''id')"));
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_only_checks_inserted_mapped_columns() {
+        // The first case represents a regular source column mapped to the
+        // target identity column. The target metadata predicate discovers
+        // that mapped identity at execution time, independently of source
+        // auto-increment metadata.
+        let mapped_identity = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[items] ([id], [label]) VALUES (7, N'x')",
+            "[dbo].[items]",
+            &["id".into(), "label".into()],
+        )
+        .unwrap();
+        assert!(mapped_identity.contains("AND name IN (N'id', N'label')"));
+        assert!(mapped_identity.contains("SET IDENTITY_INSERT [dbo].[items] ON;"));
+
+        // Here the source identity maps to a regular target column while a
+        // different target identity column is omitted from the INSERT. The
+        // script's predicate can only match the actual mapped target column,
+        // so that unrelated identity cannot enable IDENTITY_INSERT.
+        let unrelated_identity = SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[items] ([external_id]) VALUES (7)",
+            "[dbo].[items]",
+            &["external_id".into()],
+        )
+        .unwrap();
+        assert!(unrelated_identity.contains("AND name IN (N'external_id')"));
+        assert!(!unrelated_identity.contains("name IN (N'id'"));
+        assert!(unrelated_identity.contains("ELSE\nBEGIN\n    INSERT INTO [dbo].[items]"));
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_skips_empty_columns_and_rejects_invalid_names() {
+        let insert_sql = "INSERT INTO [dbo].[items] DEFAULT VALUES";
+        assert_eq!(
+            SqlServerDriver::render_sql_file_identity_insert(insert_sql, "[dbo].[items]", &[],)
+                .unwrap(),
+            insert_sql
+        );
+        assert!(SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
+            "[dbo].[items]",
+            &["bad\0name".into()],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn sql_file_identity_wrapper_rejects_unquoted_relation_fragments() {
+        assert!(SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO t (id) VALUES (1)",
+            "dbo.t; DROP TABLE users",
+            &["id".into()],
+        )
+        .is_err());
+        assert!(SqlServerDriver::render_sql_file_identity_insert(
+            "INSERT INTO [dbo].[t] ([id]) VALUES (1)",
+            "[dbo].",
+            &["id".into()],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn explicit_identity_insert_uses_a_quoted_session_toggle_statement() {
+        let driver = SqlServerDriver::new();
+        assert!(driver.explicit_identity_insert_requires_session_toggle());
+        assert_eq!(
+            SqlServerDriver::identity_insert_statement("db]name", Some("dbo"), "t]able", true)
+                .unwrap(),
+            "SET IDENTITY_INSERT [db]]name].[dbo].[t]]able] ON"
+        );
+        assert_eq!(
+            SqlServerDriver::identity_insert_statement("db", None, "items", false).unwrap(),
+            "SET IDENTITY_INSERT [db].[dbo].[items] OFF"
+        );
+        assert_eq!(
+            driver.transfer_sql_file_begin_transaction(),
+            "BEGIN TRANSACTION;"
+        );
+        assert_eq!(
+            driver.transfer_sql_file_commit_transaction(),
+            "COMMIT TRANSACTION;"
+        );
+    }
+
+    #[tokio::test]
+    async fn reuse_driver_forwards_identity_session_and_sql_file_hooks() {
+        let inner: Arc<dyn DatabaseDriver> = Arc::new(SqlServerDriver::new());
+        let driver = ReuseDriver::new(inner, "sqlserver-alias");
+        assert!(driver.explicit_identity_insert_requires_session_toggle());
+        let script = driver
+            .render_transfer_sql_file_identity_insert(
+                "INSERT INTO [dbo].[items] ([id]) VALUES (1)",
+                "[dbo].[items]",
+                &["id".into()],
+            )
+            .unwrap();
+        assert!(script.contains("SET IDENTITY_INSERT [dbo].[items] ON;"));
+        assert_eq!(
+            driver.transfer_sql_file_begin_transaction(),
+            "BEGIN TRANSACTION;"
+        );
+        assert_eq!(
+            driver.transfer_sql_file_commit_transaction(),
+            "COMMIT TRANSACTION;"
+        );
+
+        let handle = ConnectionHandle {
+            id: "missing".into(),
+            pool_id: "missing".into(),
+        };
+        let error = driver
+            .set_identity_insert(&handle, "db", Some("dbo"), "items", true)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, DriverError::ConnectionFailed(_)));
+        driver.discard_connection(&handle).await.unwrap();
     }
 }

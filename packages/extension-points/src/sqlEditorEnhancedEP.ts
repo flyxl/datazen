@@ -10,6 +10,7 @@ import type { CompletionSource } from '@codemirror/autocomplete';
 import type React from 'react';
 import { createExtensionPoint } from './extensionPoints';
 import type { QueryBuilderContribution } from './queryBuilder';
+import type { SqlParamDialectPolicy } from './sql-editor/bindParams';
 
 /** Compartment option bags passed from host; typed loosely for cross-repo linking. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,7 +105,7 @@ export interface SqlEditorEnhancedFeatures {
   /** S5-B: Bind parameter panel renderer. */
   renderBindParamPanel?: (props: SqlEditorEnhancedOptions) => any;
   /** S5-B: Bind parameters hook. */
-  useBindParameters?: (sql: string, options?: any) => any;
+  useBindParameters?: (sql: string, policy?: SqlParamDialectPolicy) => any;
   /**
    * S4-E: as-you-type static diagnostics (unknown table / column squiggles).
    * Returns `@codemirror/lint` extensions; debounced and degraded on large documents.

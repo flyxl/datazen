@@ -249,6 +249,16 @@ pub fn normalize_dialect(raw: &str) -> String {
     }
 }
 
+/// Whether a dialect uses schema as the relation scope inside the configured
+/// database. SQL Server and PostgreSQL both keep schema identity separate from
+/// database/catalog identity.
+pub fn uses_schema_scope(dialect: &str) -> bool {
+    matches!(
+        normalize_dialect(dialect).as_str(),
+        "postgresql" | "sqlserver"
+    )
+}
+
 pub fn resolve_table_for_dialect(dialect: &str, table: &str) -> String {
     let trimmed = table.trim();
     match normalize_dialect(dialect).as_str() {
@@ -262,7 +272,7 @@ pub fn resolve_table_for_dialect(dialect: &str, table: &str) -> String {
 
 #[cfg(test)]
 mod resolve_tests {
-    use super::resolve_table_for_dialect;
+    use super::{resolve_table_for_dialect, uses_schema_scope};
     #[test]
     fn mysql_strips_pg_schema_prefix() {
         assert_eq!(
@@ -275,6 +285,17 @@ mod resolve_tests {
         assert_eq!(
             resolve_table_for_dialect("postgresql", "public.users"),
             "public.users"
+        );
+    }
+
+    #[test]
+    fn sqlserver_uses_schema_scope_and_keeps_qualified_relation() {
+        assert!(uses_schema_scope("sqlserver"));
+        assert!(uses_schema_scope("postgres"));
+        assert!(!uses_schema_scope("mysql"));
+        assert_eq!(
+            resolve_table_for_dialect("sqlserver", "sales.orders"),
+            "sales.orders"
         );
     }
     #[test]

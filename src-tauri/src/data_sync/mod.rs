@@ -40,7 +40,7 @@ pub use gate::{check_table_gate, CompatCode, CompatIssue, GateVerdict};
 pub use keyset::{
     build_keyset_select_sql, build_keyset_select_sql_with_order,
     build_keyset_select_sql_with_order_and_filter,
-    build_keyset_select_sql_with_order_filter_and_pagination,
+    build_keyset_select_sql_with_order_filter_and_pagination, keyset_seek_parameter_count,
 };
 pub use legacy::{
     is_overwrite_copy_retired_message, refuse_overwrite_copy, OVERWRITE_COPY_RETIRED,
@@ -59,7 +59,8 @@ pub use recordset::{
 pub use session::SyncSession;
 pub use sql::{
     generate_table_sql, generate_table_sql_with_preview_formatter,
-    generate_table_sql_with_preview_formatter_and_policy, mysql_placeholder, postgres_placeholder,
-    postgres_typed_placeholder, quote_ident_sql, SqlStatement,
+    generate_table_sql_with_preview_formatter_and_policy,
+    generate_table_sql_with_qualified_table_and_policy, mysql_placeholder, postgres_placeholder,
+    postgres_typed_placeholder, quote_ident_sql, IdentityInsertTarget, SqlStatement,
 };
 pub use state::SyncPhase;

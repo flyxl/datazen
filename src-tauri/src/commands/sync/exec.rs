@@ -8,8 +8,8 @@ use super::plans::{self, SelectionMatcher, StoredSyncPlan, SyncRunRequest, SyncR
 #[cfg(test)]
 use crate::data_sync::execute_statements;
 use crate::data_sync::{
-    execute_statement_batches_with_policy, DataSyncError, ExecutionResult, StatementBatchSource,
-    StatementExecutor, SyncOptions,
+    execute_statement_batches_with_policy, DataSyncError, ExecutionResult, IdentityInsertTarget,
+    StatementBatchSource, StatementExecutor, SyncOptions,
 };
 use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use async_trait::async_trait;
@@ -66,6 +66,30 @@ impl StatementExecutor for LiveExecutor {
             .execute_with_params(&self.handle, sql, params)
             .await
             .map_err(|e| crate::data_sync::DataSyncError::validation(e.to_string()))
+    }
+
+    async fn set_identity_insert(
+        &mut self,
+        target: &IdentityInsertTarget,
+        enabled: bool,
+    ) -> Result<(), crate::data_sync::DataSyncError> {
+        self.driver
+            .set_identity_insert(
+                &self.handle,
+                &target.database,
+                target.schema.as_deref(),
+                &target.table,
+                enabled,
+            )
+            .await
+            .map_err(|error| DataSyncError::validation(error.to_string()))
+    }
+
+    async fn discard_connection(&mut self) -> Result<(), crate::data_sync::DataSyncError> {
+        self.driver
+            .discard_connection(&self.handle)
+            .await
+            .map_err(|error| DataSyncError::validation(error.to_string()))
     }
 
     async fn commit(&mut self) -> Result<(), crate::data_sync::DataSyncError> {
@@ -584,11 +608,16 @@ mod tests {
     use crate::data_sync::{
         ChangeOperation, ComparisonResult, ConflictPolicy, RowChange, TableResult,
     };
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state::{rich_mock_options, TestAppState};
+    use crate::testing::mock_driver::MockDriverOptions;
 
     #[tokio::test]
     async fn execution_streams_a_plan_larger_than_64_mib_in_order_without_full_load() {
-        let test = TestAppState::with_tables().await;
+        let test = TestAppState::with_options(MockDriverOptions {
+            parameterized_writes: true,
+            ..rich_mock_options()
+        })
+        .await;
         test.save_and_connect("sync-stream-target").await;
         let target_db_session_id = test.connect_config("sync-stream-target").await;
 
@@ -724,6 +753,7 @@ mod tests {
             preview_sql: "INSERT INTO users VALUES (?)".into(),
             parameters: vec![Value::String("x".repeat(SQL_PREVIEW_IPC_MAX_BYTES + 1))],
             row_key: vec![Value::Integer(1)],
+            identity_insert: None,
         };
         let mut statements = Vec::new();
         let mut response_bytes = 2;
@@ -745,6 +775,7 @@ mod tests {
             preview_sql: "INSERT INTO users VALUES (?)".into(),
             parameters: vec![Value::String("first".into())],
             row_key: vec![Value::Integer(1)],
+            identity_insert: None,
         };
         let second = crate::data_sync::SqlStatement {
             parameters: vec![Value::String("second".into())],
@@ -767,7 +798,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_tester_bounded_sql_preview_returns_selected_rows_in_order() {
-        let test = TestAppState::with_tables().await;
+        let test = TestAppState::with_options(MockDriverOptions {
+            parameterized_writes: true,
+            ..rich_mock_options()
+        })
+        .await;
         test.save_and_connect("sync-preview-target").await;
         let target_db_session_id = test.connect_config("sync-preview-target").await;
         let options = SyncOptions::default();

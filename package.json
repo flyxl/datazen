@@ -86,6 +86,8 @@
     "e2e:migration-live": "E2E_MIGRATION_LIVE=1 node e2e/run.mjs --skip-build -- --suite migration-live-workflow",
     "e2e:schema-diff": "bash e2e/setup-schema-diff-e2e.sh && node e2e/run.mjs --skip-build -- --suite schema-diff",
     "e2e:schema-diff:build": "bash e2e/setup-schema-diff-e2e.sh && node e2e/run.mjs -- --suite schema-diff",
+    "e2e:schema-tree-objects": "E2E_SKIP_WORKER_DATABASE=1 node e2e/run.mjs -- --suite schema-tree-objects",
+    "e2e:schema-tree-objects:skip-build": "E2E_SKIP_WORKER_DATABASE=1 node e2e/run.mjs --skip-build -- --suite schema-tree-objects",
     "e2e:demo": "bash e2e/record-demo.sh",
     "e2e:demo:skip-build": "bash e2e/record-demo.sh --skip-build",
     "pretest": "node scripts/resolve-drivers.mjs --codegen-only --drivers=basic && node scripts/generate-builtin-locales.mjs",

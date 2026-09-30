@@ -99,6 +99,7 @@ vi.mock('../../../extensions/generated', () => {
       quoteChar: '"',
       sqlDialect: 'postgresql',
       defaultSchema: 'public',
+      supportedObjectKinds: ['function', 'procedure', 'trigger', 'sequence', 'type'] as const,
     },
     mysql: {
       ...sqlMulti,
@@ -2392,6 +2393,55 @@ async function renderPgTree(
 }
 
 describe('ConnectionNavigatorTree multi-db tree variants', () => {
+  it('keeps schema-specific object categories scoped to their owning schema', async () => {
+    const { container } = await renderPgTree({}, [
+      { name: 't_public', tableType: 'table', schema: 'public' },
+      { name: 't_audit', tableType: 'table', schema: 'audit' },
+    ] as TableInfo[]);
+
+    const procedures = [
+      { name: 'refresh_public_cache', kind: 'procedure', schema: 'public' },
+      { name: 'refresh_audit_cache', kind: 'procedure', schema: 'audit' },
+      { name: 'refresh_unscoped_cache', kind: 'procedure', schema: null },
+    ];
+    mockGetDatabaseObjects.mockResolvedValue(procedures);
+
+    const auditSchema = await waitFor(() => {
+      const node = container.querySelector<HTMLElement>(
+        '[data-tree-node="schema"][data-schema-name="audit"]',
+      );
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(auditSchema);
+    const auditProcedureCategory = await waitFor(() => {
+      const node = container.querySelector<HTMLElement>(
+        '[data-cat-key="cfg-pg::db_a::audit::procedure"]',
+      );
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(auditProcedureCategory);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector(
+          '[data-tree-node="procedure"][data-item-name="refresh_audit_cache"][data-object-schema="audit"]',
+        ),
+      ).not.toBeNull();
+    });
+    expect(
+      container.querySelector(
+        '[data-tree-node="procedure"][data-item-name="refresh_unscoped_cache"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        '[data-tree-node="procedure"][data-item-name="refresh_public_cache"]',
+      ),
+    ).toBeNull();
+  });
+
   it('sorts schemas with the driver default schema first', async () => {
     const { container } = await renderPgTree({}, [
       { name: 't_zeta', tableType: 'table', schema: 'zeta' },

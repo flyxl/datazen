@@ -1,25 +1,38 @@
+import type { SqlParameterStrategy } from '../../../../src/lib/sqlDialects/types';
+
 export type SqlParamKind = 'named' | 'positional';
 
-export type SqlParamSyntax = 'colon' | 'at' | 'dollar-positional' | 'question' | 'template';
+export type SqlParamSyntax =
+  | 'colon'
+  | 'at'
+  | 'dollar-positional'
+  | 'dollar-named'
+  | 'question'
+  | 'template';
 
 export type SqlParamStableId = `named:${string}` | `dollar:${number}` | `question:${number}`;
 
 export interface SqlParamDialectPolicy {
-  /** Recognize `@name` placeholders (default false). */
+  /** Recognize `@name`; driver metadata decides whether this syntax is native. */
   enableAt?: boolean;
-  /** Recognize `?` placeholders (default false). */
+  /** Recognize `?`; driver metadata decides whether this syntax is native. */
   enableQuestion?: boolean;
+  /** Recognize `$1` placeholders (default true). */
+  enableDollarPositional?: boolean;
+  /** Recognize `$name` placeholders (default false). */
+  enableDollarNamed?: boolean;
   /** Recognize `${name}` template placeholders (default true). */
   enableTemplate?: boolean;
-  /** Exclude `DECLARE @x` / `SET @x =` variables from bind descriptors (default true when enableAt). */
-  excludeDeclaredAtVars?: boolean;
+  /** Driver-owned syntax disambiguation. */
+  strategy?: SqlParameterStrategy;
 }
 
-export const DEFAULT_DIALECT_POLICY: Required<SqlParamDialectPolicy> = {
+export const DEFAULT_DIALECT_POLICY: Required<Omit<SqlParamDialectPolicy, 'strategy'>> = {
   enableAt: true,
   enableQuestion: true,
+  enableDollarPositional: true,
+  enableDollarNamed: false,
   enableTemplate: true,
-  excludeDeclaredAtVars: true,
 };
 
 export interface SqlParam {
@@ -57,8 +70,15 @@ export interface SqlBindPayloadV2 {
 const IDENT = /[A-Za-z_][A-Za-z0-9_]*/y;
 const DIGITS = /[0-9]+/y;
 
-function resolvePolicy(policy?: SqlParamDialectPolicy): Required<SqlParamDialectPolicy> {
-  return { ...DEFAULT_DIALECT_POLICY, ...policy };
+type ResolvedSqlParamDialectPolicy = Required<Omit<SqlParamDialectPolicy, 'strategy'>> &
+  Pick<SqlParamDialectPolicy, 'strategy'>;
+
+function resolvePolicy(policy?: SqlParamDialectPolicy): ResolvedSqlParamDialectPolicy {
+  return {
+    ...DEFAULT_DIALECT_POLICY,
+    ...policy,
+    strategy: policy?.strategy,
+  };
 }
 
 function namedId(name: string): SqlParamStableId {
@@ -79,10 +99,6 @@ export function parseSqlParamOccurrences(
   policy?: SqlParamDialectPolicy,
 ): SqlParamOccurrence[] {
   const resolved = resolvePolicy(policy);
-  const declaredAt =
-    resolved.enableAt && resolved.excludeDeclaredAtVars
-      ? findDeclaredAtVars(sql)
-      : new Set<string>();
   const occurrences: SqlParamOccurrence[] = [];
   let questionOrdinal = 0;
   let i = 0;
@@ -129,18 +145,16 @@ export function parseSqlParamOccurrences(
       const m = IDENT.exec(sql);
       if (m) {
         const name = m[0];
-        if (!declaredAt.has(name.toLowerCase())) {
-          const from = i;
-          const to = IDENT.lastIndex;
-          pushOccurrence(occurrences, {
-            from,
-            to,
-            id: namedId(name),
-            token: sql.slice(from, to),
-            syntax: 'at',
-            name,
-          });
-        }
+        const from = i;
+        const to = IDENT.lastIndex;
+        pushOccurrence(occurrences, {
+          from,
+          to,
+          id: namedId(name),
+          token: sql.slice(from, to),
+          syntax: 'at',
+          name,
+        });
         i = IDENT.lastIndex;
         continue;
       }
@@ -166,22 +180,43 @@ export function parseSqlParamOccurrences(
           continue;
         }
       }
-      DIGITS.lastIndex = i + 1;
-      const m = DIGITS.exec(sql);
-      if (m) {
-        const num = Number(m[0]);
-        const from = i;
-        const to = DIGITS.lastIndex;
-        pushOccurrence(occurrences, {
-          from,
-          to,
-          id: dollarId(num),
-          token: sql.slice(from, to),
-          syntax: 'dollar-positional',
-          name: m[0],
-        });
-        i = to;
-        continue;
+      if (resolved.enableDollarNamed) {
+        IDENT.lastIndex = i + 1;
+        const m = IDENT.exec(sql);
+        if (m) {
+          const name = m[0];
+          const from = i;
+          const to = IDENT.lastIndex;
+          pushOccurrence(occurrences, {
+            from,
+            to,
+            id: namedId(name),
+            token: sql.slice(from, to),
+            syntax: 'dollar-named',
+            name,
+          });
+          i = to;
+          continue;
+        }
+      }
+      if (resolved.enableDollarPositional) {
+        DIGITS.lastIndex = i + 1;
+        const m = DIGITS.exec(sql);
+        if (m) {
+          const num = Number(m[0]);
+          const from = i;
+          const to = DIGITS.lastIndex;
+          pushOccurrence(occurrences, {
+            from,
+            to,
+            id: dollarId(num),
+            token: sql.slice(from, to),
+            syntax: 'dollar-positional',
+            name: m[0],
+          });
+          i = to;
+          continue;
+        }
       }
       const dq = skipDollarQuote(sql, i);
       if (dq !== i) {
@@ -190,7 +225,7 @@ export function parseSqlParamOccurrences(
       }
     }
 
-    if (ch === '?' && resolved.enableQuestion && isQuestionBindPlaceholder(sql, i)) {
+    if (ch === '?' && resolved.enableQuestion) {
       questionOrdinal += 1;
       pushOccurrence(occurrences, {
         from: i,
@@ -208,7 +243,10 @@ export function parseSqlParamOccurrences(
     i += 1;
   }
 
-  return occurrences;
+  if (!resolved.strategy?.filterOccurrences) return occurrences;
+  const accepted = resolved.strategy.filterOccurrences(sql, occurrences);
+  const acceptedKeys = new Set(accepted.map(({ from, to, id }) => `${from}\0${to}\0${id}`));
+  return occurrences.filter(({ from, to, id }) => acceptedKeys.has(`${from}\0${to}\0${id}`));
 }
 
 /** Deduped bind descriptors derived from occurrences (stable order of first appearance). */
@@ -328,6 +366,8 @@ export function getParamLabel(param: SqlParam): string {
       return `@${param.name}`;
     case 'dollar-positional':
       return `$${param.name}`;
+    case 'dollar-named':
+      return `$${param.name}`;
     case 'question':
       return '?';
     case 'template':
@@ -372,22 +412,6 @@ export function coerceParamValue(raw: unknown): string | number | boolean | null
 
 function pushOccurrence(list: SqlParamOccurrence[], occ: SqlParamOccurrence) {
   list.push(occ);
-}
-
-function isQuestionBindPlaceholder(sql: string, i: number): boolean {
-  const next = sql[i + 1];
-  if (next === '|' || next === '&' || next === '-' || next === '#') {
-    return false;
-  }
-  let j = i + 1;
-  while (j < sql.length && sql[j] === ' ') {
-    j += 1;
-  }
-  // PostgreSQL json key existence operator: `? 'key'`
-  if (sql[j] === "'") {
-    return false;
-  }
-  return true;
 }
 
 function skipNonCode(sql: string, i: number): number {
@@ -440,54 +464,4 @@ function skipDollarQuote(sql: string, i: number): number {
 function isIdentChar(ch: string): boolean {
   const code = ch.charCodeAt(0);
   return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
-}
-
-/** Collect `@name` variables introduced by top-level DECLARE / SET in each statement. */
-export function findDeclaredAtVars(sql: string): Set<string> {
-  const declared = new Set<string>();
-  for (const stmt of splitStatements(sql)) {
-    collectDeclaredAtVarsInStatement(stmt, declared);
-  }
-  return declared;
-}
-
-function collectDeclaredAtVarsInStatement(stmt: string, declared: Set<string>) {
-  const trimmed = stmt.trimStart();
-  if (!trimmed) return;
-
-  const upper = trimmed.toUpperCase();
-  if (upper.startsWith('DECLARE')) {
-    const body = trimmed.slice('DECLARE'.length);
-    for (const m of body.matchAll(/@([A-Za-z_][A-Za-z0-9_]*)/g)) {
-      declared.add(m[1].toLowerCase());
-    }
-    return;
-  }
-
-  if (upper.startsWith('SET')) {
-    const m = /^SET\s+@([A-Za-z_][A-Za-z0-9_]*)\s*=/i.exec(trimmed);
-    if (m) {
-      declared.add(m[1].toLowerCase());
-    }
-  }
-}
-
-function splitStatements(sql: string): string[] {
-  const stmts: string[] = [];
-  let start = 0;
-  let i = 0;
-  while (i < sql.length) {
-    const skipped = skipNonCode(sql, i);
-    if (skipped !== i) {
-      i = skipped;
-      continue;
-    }
-    if (sql[i] === ';') {
-      stmts.push(sql.slice(start, i));
-      start = i + 1;
-    }
-    i += 1;
-  }
-  stmts.push(sql.slice(start));
-  return stmts;
 }

@@ -67,6 +67,7 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 
 - [E2E Testing](development/e2e-testing.md)
 - [E2E Coverage](development/e2e-coverage.md)
+- [驱动测试覆盖矩阵](development/driver-test-coverage.md)
 - [E2E IPC Migration](development/e2e-ipc-migration-guide.md)
 - [CI Test Matrix](development/ci-test-matrix.md)
 - [CI Private Drivers](development/ci-private-drivers.md)

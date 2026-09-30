@@ -156,12 +156,11 @@ pub async fn prepare_schema_unified_plan(
         .get_session(&target_db_session_id)
         .await
         .cmd_err("prepare_schema_unified_plan")?;
-    let target_dependency_schema_scope =
-        if normalize_dialect(&target_config.database_type) == "postgresql" {
-            target_schema_scope.or(target_driver.default_schema())
-        } else {
-            None
-        };
+    let target_dependency_schema_scope = if uses_schema_scope(&target_config.database_type) {
+        target_schema_scope.or(target_driver.default_schema())
+    } else {
+        None
+    };
     ensure_distinct_schema_scope(
         source_driver.as_ref(),
         &source_handle,
@@ -334,8 +333,7 @@ pub async fn prepare_schema_unified_plan(
 
     let mut planner_source_snapshots = source_snapshots.clone();
     for snapshot in &mut planner_source_snapshots {
-        let target_object_scope = if normalize_dialect(&target_config.database_type) == "postgresql"
-        {
+        let target_object_scope = if uses_schema_scope(&target_config.database_type) {
             target_dependency_schema_scope
         } else {
             Some(super::schema_catalog_database(
@@ -500,7 +498,7 @@ pub async fn prepare_schema_unified_plan(
             target_config.database_type
         )));
     };
-    let source_object_scope = if normalize_dialect(&source_config.database_type) == "postgresql" {
+    let source_object_scope = if uses_schema_scope(&source_config.database_type) {
         source_schema_scope.or(source_driver.default_schema())
     } else {
         Some(super::schema_catalog_database(
@@ -694,7 +692,7 @@ fn table_identities_from_catalog(
         .filter(|table| matches!(table.table_type, TableType::Table))
         .map(|table| {
             let scope = table.schema.as_deref().or_else(|| {
-                if normalize_dialect(dialect) == "postgresql" {
+                if uses_schema_scope(dialect) {
                     schema_scope
                 } else {
                     database
@@ -719,7 +717,7 @@ fn table_identity_for_target(
         .map(|(schema, name)| (Some(schema), name))
         .unwrap_or((None, table));
     let scope = schema.or_else(|| {
-        if normalize_dialect(dialect) == "postgresql" {
+        if uses_schema_scope(dialect) {
             schema_scope
         } else {
             database
