@@ -22,7 +22,8 @@ const parentTable = 'parent_pair';
 const childTable = 'child_pair';
 const collationTable = 'collation_probe';
 const identityTable = 'identity_probe';
-const nonDefaultIdentityTable = 'identity_seed_probe';
+const identitySeedTable = 'identity_seed_probe';
+const identityIncrementTable = 'identity_increment_probe';
 const computedTable = 'computed_probe';
 const rowversionTable = 'rowversion_probe';
 const temporalTable = 'temporal_probe';
@@ -140,15 +141,16 @@ describe('SQL Server schema metadata IPC (live)', () => {
     if (dbSessionId) {
       try {
         await setSafeMode(false).catch(() => undefined);
-        await run(
-          `ALTER TABLE ${qualified(temporalTable)} SET (SYSTEM_VERSIONING = OFF)`,
-        ).catch(() => undefined);
+        await run(`ALTER TABLE ${qualified(temporalTable)} SET (SYSTEM_VERSIONING = OFF)`).catch(
+          () => undefined,
+        );
         for (const table of [
           childTable,
           parentTable,
           collationTable,
           identityTable,
-          nonDefaultIdentityTable,
+          identitySeedTable,
+          identityIncrementTable,
           computedTable,
           rowversionTable,
           temporalTable,
@@ -252,8 +254,12 @@ describe('SQL Server schema metadata IPC (live)', () => {
         '[id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY, [label] NVARCHAR(40) NULL)',
     );
     await run(
-      `CREATE TABLE ${qualified(nonDefaultIdentityTable)} (` +
-        '[id] INT IDENTITY(10,2) NOT NULL, [label] NVARCHAR(40) NULL)',
+      `CREATE TABLE ${qualified(identitySeedTable)} (` +
+        '[id] INT IDENTITY(10,1) NOT NULL, [label] NVARCHAR(40) NULL)',
+    );
+    await run(
+      `CREATE TABLE ${qualified(identityIncrementTable)} (` +
+        '[id] INT IDENTITY(1,2) NOT NULL, [label] NVARCHAR(40) NULL)',
     );
     await run(
       `CREATE TABLE ${qualified(computedTable)} (` +
@@ -340,10 +346,21 @@ describe('SQL Server schema metadata IPC (live)', () => {
     );
   });
 
-  it('rejects non-default IDENTITY seed and increment values explicitly', async () => {
+  it('rejects a non-default IDENTITY seed explicitly', async () => {
     let error = '';
     try {
-      await tableSchema(nonDefaultIdentityTable);
+      await tableSchema(identitySeedTable);
+    } catch (cause) {
+      error = String(cause);
+    }
+    expect(error).toMatch(/unsupported/i);
+    expect(error).toMatch(/non-default IDENTITY seed\/increment/i);
+  });
+
+  it('rejects a non-default IDENTITY increment explicitly', async () => {
+    let error = '';
+    try {
+      await tableSchema(identityIncrementTable);
     } catch (cause) {
       error = String(cause);
     }
