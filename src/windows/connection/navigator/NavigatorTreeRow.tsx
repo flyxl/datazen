@@ -398,6 +398,7 @@ export function NavigatorTreeRow({
           data-testid="schema-tree-node"
           data-tree-node="category"
           data-cat-id={row.cat.id}
+          data-cat-key={row.key}
           {...itemProps}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
           style={{ paddingLeft: depthPadding(row.depth) }}
@@ -435,6 +436,7 @@ export function NavigatorTreeRow({
           data-testid="schema-tree-node"
           data-tree-node={row.catId === 'views' ? 'view' : 'table'}
           data-item-name={row.item.name}
+          data-object-schema={row.item.schema ?? undefined}
           {...itemProps}
           draggable
           onDragStart={(e) => {
@@ -497,6 +499,7 @@ export function NavigatorTreeRow({
           data-testid="schema-tree-node"
           data-tree-node={row.catId}
           data-item-name={row.obj.name}
+          data-object-schema={row.obj.schema ?? undefined}
           {...itemProps}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
           style={{ paddingLeft: depthPadding(row.depth) }}
