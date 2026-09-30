@@ -194,7 +194,7 @@ type ExecutionErrorCode =
   | 'sqlError'
   // 编解码/协议层失败，语句可能已送达
   | 'protocolError'
-  // 精确取消已生效
+  // 精确取消已送达驱动；数据库生效范围仍由 effectOutcome 表达，可能为 unknown
   | 'cancelled'
   // 执行超过 timeout 且无法判定数据库生效范围
   | 'timeout'
@@ -317,7 +317,8 @@ type ConnectionEvent =
   | { kind: 'resultChunk'; artifactId: Id; chunkIndex: Counter; source: StatementResultSource }
   | { kind: 'streamResetRequired'; reason: string };
 
-type IdempotentOperation = 'openSession' | 'executeInSession' | 'executeAtTarget' | 'setSessionContext' | 'startJob';
+// createProfile 属配置写入，不绑定会话；其余运行时会话操作绑定 owner runtimeEpoch。
+type IdempotentOperation = 'createProfile' | 'openSession' | 'executeInSession' | 'executeAtTarget' | 'setSessionContext' | 'startJob';
 
 interface SubmissionToken {
   idempotencyKey: string;
@@ -405,14 +406,14 @@ DurableExecutionRecord 保存 executionId、身份、state/effectOutcome、prove
 | changeContext | ResourceHandle、desired | Confirmed/RequiresReplacement/Unsupported | 不改宿主配置、不默默重连 |
 | begin/commit/rollback | ResourceHandle、事务选项 | TransactionObservation | 必须作用于同一资源；提交不确定返回 Unknown |
 | requestCancel | 精确 execution cancelHandle | Requested/Unsupported/AlreadyFinished | 不调用 session-wide cancel 作为隐式回退 |
-| resetResource | ResourceHandle、baseline | Clean/Discard | 成功必须满足全部清理条件 |
+| resetResource | ResourceHandle、baseline | Clean/Discard | 仅覆盖协议层与初始化基线，不含 §6.5 已登记句柄；成功必须满足全部清理条件 |
 | closeResource | ResourceHandle | Closed/CloseUnconfirmed | 幂等；未证实关闭不能伪称预算已回收 |
 
 资源句柄仅在对应 provider/worker 有效，不在客户端传递。能力接口使用标准库类型、API 自有类型和 serde；async-trait 方式遵守现有契约。
 
 ResourceDescriptor 必须包含 providerId、resourceKey、sessionContinuity、reusePolicy、initializationRequirements、connectionCostPolicy 和 namespaceShape；Command definition 提供操作级 targetRequirements。ResourceHandle 是 API 定义的不可伪造 opaque ID，由 provider 校验所有权和 epoch。
 
-ExecutionCompletion 必须包含 completionStatus、effectOutcome、statementResults、contextBefore/after、transactionObservation、protocolDrained、resourceHealth。SessionObservation 的 unknown 字段不能填入 initialTarget 假充确认。ResultSink 提供带字节大小的异步写入/完成/失败方法，写入等待表示背压；不暴露 Tokio channel 类型。
+ExecutionCompletion 必须包含 completionStatus、effectOutcome、statementResults、contextBefore/after、transactionObservation、sessionHandles、protocolDrained、resourceHealth。`sessionHandles` 是本次执行交出的会话级句柄（§6.5）：driver 必须如实返回，没有则为空数组，runtime 只对已登记项负责终态后的句柄生命周期，宿主不直接消费句柄。SessionObservation 的 unknown 字段不能填入 initialTarget 假充确认。ResultSink 提供带字节大小的异步写入/完成/失败方法，写入等待表示背压；不暴露 Tokio channel 类型。
 
 `BudgetPort` 返回 opaque 许可，并支持按实际物理连接申请/释放。SQLx 驱动必须约束内部 pool 的真实建连；仅在 acquire 时计数会漏掉 idle 连接。第三方 SDK 无法统计实际 socket 时声明保守资源成本/硬上限，或在严格服务端预算模式拒绝该能力，不能报告精确值。
 
@@ -424,6 +425,7 @@ ExecutionCompletion 必须包含 completionStatus、effectOutcome、statementRes
 | namespaceSwitch | inPlace/requiresReplacement/unsupported/unknown |
 | contextObservation | full/partial/unsupported |
 | transactionObservation | full/partial/unsupported |
+| sessionScopedHandles | supported/unsupported/unknown（是否返回事务、游标、服务端预处理句柄） |
 | resetForReuse | verified/unsupported |
 | preciseCancel | supported/unsupported/unknown |
 | snapshots | perTable/perDatabase/coordinated/unsupported |
@@ -484,7 +486,19 @@ lastBusinessActivity 在已接受的实际业务操作开始和终结时更新�
 
 ### 6.5 会话级资源句柄登记
 
-Driver Command 可能返回超出该次 execution 生命周期的会话级句柄：事务、游标、服务端预处理对象。句柄一经返回，必须在返回 execution 终态之前向 session actor 登记；未登记的句柄视为非法，runtime 拒绝把它交给宿主。
+Driver Command 可能返回超出该次 execution 生命周期的会话级句柄：事务、游标、服务端预处理对象。句柄由 §5.1 的 `ExecutionCompletion.sessionHandles` 显式交出，形状为 `SessionHandleRef`：
+
+```typescript
+interface SessionHandleRef {
+  handleId: Id;
+  kind: 'transaction' | 'cursor' | 'serverPrepared';
+  resourceId: Id;        // 所属物理资源；换资源后失效，不得在新 resource 上复用
+  runtimeEpoch: Counter; // 归属 epoch，owner 更换后旧句柄一律拒绝
+  closed: boolean;
+}
+```
+
+句柄一经返回，必须在返回 execution 终态之前向 session actor 登记；未登记的句柄视为非法，runtime 拒绝把它交给宿主。
 
 execution 终态只表示该次语句结束，不表示句柄失效。命令层自管的句柄映射不算登记。
 
@@ -730,7 +744,6 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 | OutcomeUnknown | 写入/提交结果未知 | 核验执行，不自动重试 |
 | PlanStale / SourceChanged / TargetConflictRows | 计划/数据变化 | 重比对或处理冲突 |
 | IdempotencyConflict | 相同键不同输入 | 修正请求键，不能覆盖记录 |
-| ExecutionFailed | 执行已派发但终态失败 | 读 ExecutionView.errorCode 与 effectOutcome 决定下一步，不以 code 推断生效范围 |
 
 每条事件带 stream sequence；重复事件忽略，缺口重新读取状态。session context 按 runtimeEpoch/dbSessionId/contextRevision 更新；比较 Counter 使用 BigInt 或十进制字符串比较，不能 Number 转换。
 
@@ -738,7 +751,7 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 
 ### 13.1 幂等键期限与响应分类
 
-幂等键不是客户端随意 UUID。BackendClient 先从应用服务获取签名提交令牌（本地也使用相同 port）；令牌包含随机 nonce、operation、组织/principal/client、issuedAt、expiresAt、keyVersion；运行时会话操作还绑定 owner runtimeEpoch，默认有效期 24 小时，不含秘密。issueSubmissionToken 对 openSession 选定 owner，对已有 session 操作验证并绑定其 owner；返回的 idempotencyKey 是不透明签名令牌。服务器校验签名与作用域，再以令牌摘要为去重 key；不相信客户端时间。未过期且同指纹返回同 receipt，不同指纹 IdempotencyConflict。
+幂等键不是客户端随意 UUID。BackendClient 先从应用服务获取签名提交令牌（本地也使用相同 port）；令牌包含随机 nonce、operation、组织/principal/client、issuedAt、expiresAt、keyVersion；运行时会话操作还绑定 owner runtimeEpoch，默认有效期 24 小时，不含秘密。issueSubmissionToken 对 openSession 选定 owner，对已有 session 操作验证并绑定其 owner；`createProfile` 是配置写入，不绑定会话与 runtimeEpoch，签名只限定身份、组织与操作。返回的 idempotencyKey 是不透明签名令牌。服务器校验签名与作用域，再以令牌摘要为去重 key；不相信客户端时间。未过期且同指纹返回同 receipt，不同指纹 IdempotencyConflict。
 
 超过 expiresAt：仍有记录时允许只读查询原 receipt；任何重新提交返回 IdempotencyExpired，不再次执行。完整记录至少保留至 expiresAt + 24 小时，然后可按审计策略删除；删除后过期签名令牌仍被拒绝。令牌验证密钥至少保留至已发令牌全部过期，未知 keyVersion 一律拒绝。长期离线请求需重新核验业务状态，由用户重新提交，不自动换新令牌。执行与 Job 接受记录持久化时只保存请求摘要、executionId/jobId、稳定目标/owner、状态和 receipt 的 durable 投影，禁止保存原请求里的 SessionHandle。接受记录须在 SQL/Job 派发前提交；进程重启后的非终态进入核验/OutcomeUnknown，不自动再执行。
 
@@ -746,7 +759,9 @@ openSession/context replacement 的完整指纹、SessionView/attachmentToken/re
 
 RequestError（ApiError.code）表示请求被拒绝；已接受 ExecutionReceipt 不等于 SQL 成功；CancelReceipt.disposition 表示控制请求结果，不用异常 CancellationUnsupported 表示正常 unsupported。执行终态 errorCode 使用 §4 定义的版本化枚举 ExecutionErrorCode，与 ApiError.code 是两个命名空间；effectOutcome 独立表达数据库生效范围。所有大小写使用 DTO 字面值，如 cancelled/rolledBack/partiallyApplied；文中 Active/Unknown 等状态展示简称不作为协议值。driver 的内部错误由网关脱敏映射，不原样暴露。
 
-errorCode 与 effectOutcome 正交：sqlError 可对应 completed/rolledBack/partiallyApplied/unknown 任一。超时、取消、连接丢失导致生效范围无法判定时，effectOutcome 必须为 unknown，禁止因为"看到取消"就写 rolledBack——CM-44、CM-47 的断言依赖此规则。新增取值需要提升枚举版本并同时更新全部消费者，宿主、前端与 driver 不得各自扩展。
+errorCode 与 effectOutcome 正交：sqlError 可对应 completed/rolledBack/partiallyApplied/unknown 任一。超时、protocolError、取消、连接丢失导致生效范围无法判定时，effectOutcome 必须为 unknown，禁止因为"看到取消"就写 rolledBack——CM-44、CM-47 的断言依赖此规则。`cancelled` 只表示取消请求已送达驱动，不构成"写入已回滚"的证据；pipelineAborted 至少为 partial 或 unknown。新增取值需要提升枚举版本并同时更新全部消费者，宿主、前端与 driver 不得各自扩展。
+
+派发后的执行终态失败只由 `ExecutionState='failed'` + ExecutionErrorCode + 事件表达，不产生 ApiError，也不出现在 RequestError 表中；该表只收"请求被拒绝"的场景（未认证、无权限、参数错误、版本或运行时冲突、预算或速率超限、暂时无可用 worker）。已建立执行记录后由宿主二次校验拒绝的记 `hostRejected`，尚未建立记录时直接返回 ApiError。
 
 ## 14. 开发步骤与文件职责
 

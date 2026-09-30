@@ -73,7 +73,7 @@ flowchart TD
 | SecretProvider | 解密/取凭据、轮换、短期执行材料 | secretRef + 执行身份 | 不把密码返回到普通查询响应 |
 | DriverRegistry | 描述、协议检查、factory 注册 | descriptor、provider | 不按数据库名称拼 SQL |
 | ExecutionGateway | 参数/能力/权限校验、执行登记、取消、来源 | ExecutionReceipt、事件 | 不创建隐式共享会话 |
-| SessionRegistry | owner、状态机、串行队列、上下文 revision | SessionView | 不用 connectionId 代替 session 身份 |
+| SessionRegistry | owner、状态机、串行队列、上下文 revision、会话级句柄登记 | SessionView | 不用 connectionId 代替 session 身份 |
 | ResourceManager | pool、lease、预算、隧道引用、清理 | ResourceLease | 不把清理失败资源归池 |
 | MetadataService | 明确对象身份、批量读取、缓存失效 | 元数据、revision | 不改变编辑器当前库 |
 | JobRuntime | 长任务、阶段、子执行、提交边界、恢复 | JobView、检查点 | 不把 UI 生命周期当任务生命周期 |
@@ -96,17 +96,23 @@ packages/application/        Rust 用例、DTO、错误、授权编排
 packages/runtime/            Rust session、lease、资源调度、execution、job
 packages/platform-api/       Rust SessionDirectory/BudgetCoordinator 等 ports 与环境适配
 packages/schema-diff/        共享 Schema Diff 领域引擎（从 src-tauri 分阶段抽取）
-packages/data-sync/           共享 Data Sync 领域引擎（从 src-tauri 分阶段抽取）
-packages/data-transfer/       共享 Data Transfer 领域引擎（从 src-tauri 分阶段抽取）
+packages/data-sync/          共享 Data Sync 领域引擎（从 src-tauri 分阶段抽取）
+packages/data-transfer/      共享 Data Transfer 领域引擎（从 src-tauri 分阶段抽取）
 packages/driver-api/         现有 Driver API 与可选能力
+packages/driver-sdk/         现有驱动前端元数据/方言/Command SDK
+packages/ai-api/             现有 AI Provider trait、工厂与调用协议
+packages/drivers/            现有驱动 crate 与驱动 UI 源码（随驱动选型注入）
 packages/backend-client/     TypeScript DTO/client/transport 契约
-packages/wapp-sdk/           Wapp 受控桥 SDK
-packages/extension-points/   桌面特权 EP 契约
-packages/themes/              静态主题资源与 schema
+packages/wapp-sdk/           现有 Wapp 受控桥 SDK
+packages/extension-points/   现有桌面特权 EP 契约
+packages/ui/                 现有 @datazen/ui 基础视图组件
+packages/themes/             目标静态主题资源与 schema
 server/                      Rust HTTP host 与服务端 composition root
 src-tauri/                   桌面 host、IPC/文件/窗口 adapter 与遗留命令
 src/                         共享 React 产品与平台桥
 ```
+
+标“现有”的包不在本次新建范围，按现有构建与注入方式复用；`packages/themes` 当前目录仍是旧 v1 ThemePack 存档，目标主题资源与其并存，迁移前不改旧目录。
 
 依赖方向：host → application/runtime/领域包；application/runtime → platform-api/driver-api；driver → driver-api。`SessionDirectory` 与 `BudgetCoordinator` 的接口归 `platform-api`，SessionRegistry/ResourceManager 只依赖这些 port；桌面/单进程先用内存适配，多 worker 再替换目录和全局预算适配。领域引擎归 `packages/schema-diff`、`packages/data-sync`、`packages/data-transfer`；Tauri 命令、窗口与文件选择留在 `src-tauri` adapter。领域包不得反向 import host。JobRuntime 通过注册的 JobHandler 调用领域引擎，避免 runtime 与领域 crate 循环依赖。
 
@@ -119,7 +125,7 @@ src/                         共享 React 产品与平台桥
 | DbSession | dbSessionId + owner + worker | 否 | 连续会话状态，不等于 pool；含 SessionContext 与 contextRevision |
 | Transaction state | Session actor 内的事务观察与句柄 | 否 | 不分配独立业务 ID；关闭/失效时与 Lease 同步回滚、核验和清理 |
 | ResourceLease | leaseId + owner + scope | 否 | 物理资源占用、清理与预算 |
-| Execution | executionId + owner | 可保存记录 | 一次执行及实际来源；持久化投影排除运行时绑定 |
+| Execution | executionId + owner | 是 | 一次执行及实际来源；持久化投影排除运行时绑定与 session 句柄 |
 | Job | jobId + organizationId + principal | 是 | 长任务、阶段、提交结果、恢复契约 |
 | Artifact | artifactId + ACL | 是 | 结果或文件，不等于服务器路径 |
 
@@ -149,7 +155,7 @@ BackendClient 是绑定单个 backend 的传输门面；`backendId` 用于选择
 | 服务 | 方法 | 输入 | 输出 | 语义 |
 | --- | --- | --- | --- | --- |
 | ConnectionClient | listConnections | 无 | ProfileView[] | 当前 backend 下列出授权配置；分页另行版本化，本版不传分页参数 |
-| ProfileClient | createConnection | profile draft、write-only credentials、idempotencyKey | ProfileView | 创建配置；凭据仅交 SecretProvider |
+| ProfileClient | createConnection | ProfileDraft、write-only credentials、`createProfile` 签名令牌给出的 idempotencyKey | ProfileView | 创建配置；凭据仅交 SecretProvider，不回显 |
 | ProfileClient | updateConnection | connectionId、expectedRevision、patch | ProfileView | CAS 更新；不改变已建会话 |
 | ProfileClient | disableConnection | connectionId、expectedRevision | ProfileView | 禁止新执行，已有资源按 drain/force 政策处理 |
 | ConnectionClient | openSession | OpenSessionRequest | OpenSessionReceipt | 懒建逻辑会话，返回仅 owner 持有的 attachmentToken |
@@ -160,11 +166,47 @@ BackendClient 是绑定单个 backend 的传输门面；`backendId` 用于选择
 | ConnectionClient | closeSession | handle、`mode: CloseMode` | CloseReceipt | 幂等关闭，不默认提交事务 |
 | ConnectionClient | getExecution / cancelExecution | executionId、取消操作 token | ExecutionView / CancelReceipt | 查询终态或请求精确取消 |
 | ConnectionClient | subscribeEvents | streamId、afterSequence | EventEnvelope 流 | 授权后续订；断开订阅不直接取消 SQL |
-| JobClient | startJob / getJob / cancelJob | 定义、计划、jobId 与签名 token | JobView / CancelReceipt | 持久化接受；Job 生命周期独立于窗口 |
-| ArtifactClient | readArtifact | artifactId、块范围 | ArtifactChunk | 每次授权、限大小并服从产物 TTL |
+| JobClient | startJob / listJobs / getJob / cancelJob | 定义、计划、jobId 与签名 token | JobView / CancelReceipt | 持久化接受；listJobs 只返回当前 principal 授权的 Job；Job 生命周期独立于窗口 |
+| ArtifactClient | readArtifact | artifactId、chunkIndex 或字节范围 offset/limit | ArtifactChunk | 每次授权、限大小并服从产物 TTL；越界报错，不返回服务器路径 |
 | SubmissionTokenClient | issueSubmissionToken | operation、可选 SessionHandle | SubmissionToken | 签名限定调用身份、操作和有效期 |
 
-Profile、Job、Artifact 的 DTO 和服务归属在本系统概要中定义；它们不属于连接管理 `ConnectionService`。IPC 与 HTTP adapter 都实现这些接口并共享 ApiError。
+Profile、Job、Artifact 的 DTO 和服务归属在本系统概要中定义；它们不属于连接管理 `ConnectionService`。IPC 与 HTTP adapter 都实现这些接口并共享 ApiError。连接资源 DTO（`ProfileView`、`SessionView`、`ExecutionView` 等）以[详细设计 §4.1](connection-management.md#41-服务接口与补充响应)为权威；写模型与产物 DTO 在此定义，`Id`/`Counter`/`Timestamp`/`NamespaceTarget` 沿用同一套基础类型：
+
+```typescript
+interface ProfileDraft {
+  name: string;
+  driverId: string;
+  initialNamespace: NamespaceTarget;
+  publicOptions: Readonly<Record<string, unknown>>;
+  credentials?: Readonly<Record<string, string>>;  // write-only，只交 SecretProvider
+}
+
+type ProfilePatch = Partial<Omit<ProfileDraft, 'driverId'>>;
+
+type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+interface JobView {
+  jobId: Id;
+  kind: string;
+  state: JobState;
+  stage: string | null;
+  executionIds: readonly Id[];
+  artifactIds: readonly Id[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+interface ArtifactChunk {
+  artifactId: Id;
+  chunkIndex: Counter;
+  totalChunks: Counter | null;  // 流式结果未收齐时为 null
+  offset: Counter;
+  bytes: Uint8Array;             // 只含结果字节，不含服务器路径与凭据
+  resultCompleteness: 'pending' | 'complete' | 'truncated';
+}
+```
+
+`credentials` 只出现在请求侧，`ProfileView` 只回 `credentialConfigured`；`driverId` 属目标身份，变更走新建配置而非 patch。`JobView` 由 JobRuntime 拥有，`ArtifactChunk` 由 ArtifactStore 拥有，二者都不承载 connectionId 以外的授权信息，授权仍以 PolicyService 判定为准。
 
 `ContextChangeReceipt` 包含 `session: SessionView`、`replacedSessionId: string | null` 和 `attachmentToken: string | null`；替换时 token 只返回原 owner，原地切换为 null。客户端原子切换到返回 session；失效旧句柄不得继续执行。
 
@@ -188,12 +230,12 @@ Profile、Job、Artifact 的 DTO 和服务归属在本系统概要中定义；�
 | POST `/api/v1/executions` | executeAtTarget |
 | GET `/api/v1/executions/{id}` | 执行状态 |
 | POST `/api/v1/executions/{id}/cancel` | 精确取消 |
-| POST/GET `/api/v1/jobs` | 创建/授权列表 |
+| POST/GET `/api/v1/jobs` | 创建 / 授权列表（listJobs） |
 | GET `/api/v1/jobs/{id}` | 任务状态 |
 | POST `/api/v1/jobs/{id}/cancel` | 任务取消 |
 | GET `/api/v1/events/{streamId}` | SSE，支持 Last-Event-ID |
 | POST `/api/v1/artifacts/uploads` | 配额内上传 |
-| GET `/api/v1/artifacts/{id}` | 受控结果/下载 |
+| GET `/api/v1/artifacts/{id}` | 受控结果/下载；`chunkIndex` 或 `offset`+`limit` 取块 |
 
 异步接受返回 202 + ID；参数错误 400、未认证 401、无权限 403、不可见资源 404、版本/运行时冲突 409、预算或速率超限 429、暂时无可用 worker 503。无法区分“无权限”和“不存在”的资源统一 404，避免 ID 枚举。
 
@@ -230,7 +272,7 @@ sequenceDiagram
     UI->>Adapter: openSession(initialTarget)
     Adapter->>Gateway: 已认证 RequestContext
     Gateway->>Session: 创建 New session（不建连）
-    Session-->>UI: SessionView
+    Session-->>UI: OpenSessionReceipt(session, attachmentToken)
     UI->>Adapter: executeInSession(handle, expectedContextRevision)
     Adapter->>Gateway: 校验权限与幂等
     Gateway->>Session: 排队并建立固定资源
@@ -239,7 +281,7 @@ sequenceDiagram
     Session-->>UI: 带 runtimeEpoch/dbSessionId/revision 的事件
 ```
 
-SQL 解析用于提示，不提前修改已生效上下文。会话操作串行；取消通过独立控制路径进入，不能排在待取消查询之后。
+SQL 解析用于提示，不提前修改已生效上下文。会话操作串行；取消通过独立控制路径进入，不能排在待取消查询之后。`attachmentToken` 只属于原 owner 且不落盘，handoff 必须走 attach/detach；图中的“事务状态”若指向会话级句柄（事务/游标），必须按[§6.5](connection-management.md#65-会话级资源句柄登记)在终态前登记到 session actor。
 
 ### 7.2 TablePanel 与元数据
 
@@ -303,8 +345,8 @@ Web 认证首版采用 OIDC 登录及服务端登录会话，浏览器使用 Sec
 - 会话、物理绑定和可持久化执行来源分开；`dbSessionId`、SessionHandle、lease/cursor、取消绑定与 attachment token 均不落盘，详见[连接管理 §4.4](connection-management.md#44-可落盘来源与运行时绑定)。
 - Driver 提供 namespaceShape 与操作级 targetRequirements；网关用同一 CanonicalTarget 做授权、缓存和执行，详见[§4.3](connection-management.md#43-命名空间规范化契约)及[§9.6](connection-management.md#96-poolkey版本与缓存的生产者)。
 - SessionDirectory/预算、会话失效、worker 路由和候选替换归属见[§12](connection-management.md#12-web多实例权限与结果)；丢失物理资源后返回 SessionLost，禁止透明重建。
-- Attachment、TTL、结果放弃消费与清理分别见[§6.4](connection-management.md#64-attachment-与超期处理)、[§7.7](connection-management.md#77-结果订阅与放弃消费)和[§9.4–9.5](connection-management.md#94-归池前检查)。
-- 取消回执、错误与签名幂等期限以[§13](connection-management.md#13-错误重试和事件)为权威；完整验收用例 CM-01～73 和开发阶段映射见详细设计、[开发计划](../../development/platform-development-plan.md)。
+- Attachment、TTL、结果放弃消费与清理分别见[§6.4](connection-management.md#64-attachment-与超期处理)、[§7.7](connection-management.md#77-结果订阅与放弃消费)和[§9.4–9.5](connection-management.md#94-归池前检查)；事务/游标等会话级句柄必须在终态前登记到 session actor 才允许归池，见[§6.5](connection-management.md#65-会话级资源句柄登记)。
+- 取消回执、错误与签名幂等期限以[§13](connection-management.md#13-错误重试和事件)为权威；完整验收用例 CM-01～74 和开发阶段映射见详细设计、[开发计划](../../development/platform-development-plan.md)。
 
 ## 13. 参考与维护
 
