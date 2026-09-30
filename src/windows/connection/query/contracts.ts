@@ -8,6 +8,7 @@ import { useActiveConnectionStore } from '../../../stores/activeConnectionStore'
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { buildQueryDiagnosisContext, type RetryValidationInput } from '../../../lib/aiQueryActions';
 import { parseSqlParams, paramsToPayload } from '../../../lib/sqlBindParams';
+import { resolveSqlParameterPolicy } from '../../../lib/sqlDialects/sqlParameterPolicy';
 import type { ContentViewCallbacks } from './aiDraftBridge';
 
 export interface QueryPanelProps {
@@ -182,7 +183,7 @@ export function readCurrentQueryPanelRetryValidationInput(
   });
   if (!latestContext.ok) return null;
 
-  const params = parseSqlParams(execution.sql);
+  const params = parseSqlParams(execution.sql, resolveSqlParameterPolicy(panel.databaseType));
   const boundParams = params.length > 0 ? paramsToPayload(params, paramValues) : {};
 
   return {

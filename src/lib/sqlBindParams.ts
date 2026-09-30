@@ -1,25 +1,38 @@
+import type { SqlParameterStrategy } from './sqlDialects/types';
+
 export type SqlParamKind = 'named' | 'positional';
 
-export type SqlParamSyntax = 'colon' | 'at' | 'dollar-positional' | 'question' | 'template';
+export type SqlParamSyntax =
+  | 'colon'
+  | 'at'
+  | 'dollar-positional'
+  | 'dollar-named'
+  | 'question'
+  | 'template';
 
 export type SqlParamStableId = `named:${string}` | `dollar:${number}` | `question:${number}`;
 
 export interface SqlParamDialectPolicy {
-  /** Recognize `@name` placeholders (default false). */
+  /** Recognize `@name`; driver metadata decides whether this syntax is native. */
   enableAt?: boolean;
-  /** Recognize `?` placeholders (default false). */
+  /** Recognize `?`; driver metadata decides whether this syntax is native. */
   enableQuestion?: boolean;
+  /** Recognize `$1` placeholders (default true). */
+  enableDollarPositional?: boolean;
+  /** Recognize `$name` placeholders (default false). */
+  enableDollarNamed?: boolean;
   /** Recognize `${name}` template placeholders (default true). */
   enableTemplate?: boolean;
-  /** Exclude `DECLARE` / `SET` variables and T-SQL routine parameters (default true when enableAt). */
-  excludeDeclaredAtVars?: boolean;
+  /** Driver-owned syntax disambiguation. */
+  strategy?: SqlParameterStrategy;
 }
 
-export const DEFAULT_DIALECT_POLICY: Required<SqlParamDialectPolicy> = {
+export const DEFAULT_DIALECT_POLICY: Required<Omit<SqlParamDialectPolicy, 'strategy'>> = {
   enableAt: true,
   enableQuestion: true,
+  enableDollarPositional: true,
+  enableDollarNamed: false,
   enableTemplate: true,
-  excludeDeclaredAtVars: true,
 };
 
 export interface SqlParam {
@@ -57,8 +70,15 @@ export interface SqlBindPayloadV2 {
 const IDENT = /[A-Za-z_][A-Za-z0-9_]*/y;
 const DIGITS = /[0-9]+/y;
 
-function resolvePolicy(policy?: SqlParamDialectPolicy): Required<SqlParamDialectPolicy> {
-  return { ...DEFAULT_DIALECT_POLICY, ...policy };
+type ResolvedSqlParamDialectPolicy = Required<Omit<SqlParamDialectPolicy, 'strategy'>> &
+  Pick<SqlParamDialectPolicy, 'strategy'>;
+
+function resolvePolicy(policy?: SqlParamDialectPolicy): ResolvedSqlParamDialectPolicy {
+  return {
+    ...DEFAULT_DIALECT_POLICY,
+    ...policy,
+    strategy: policy?.strategy,
+  };
 }
 
 function namedId(name: string): SqlParamStableId {
@@ -79,10 +99,6 @@ export function parseSqlParamOccurrences(
   policy?: SqlParamDialectPolicy,
 ): SqlParamOccurrence[] {
   const resolved = resolvePolicy(policy);
-  const excludeAtVars = resolved.enableAt && resolved.excludeDeclaredAtVars;
-  const declaredAt = excludeAtVars ? findNonRoutineDeclaredAtVars(sql) : new Set<string>();
-  const routineAtVars = excludeAtVars ? findTsqlRoutineSignatureAtVars(sql) : new Set<string>();
-  const routineRanges = excludeAtVars ? findTsqlRoutineRanges(sql) : [];
   const occurrences: SqlParamOccurrence[] = [];
   let questionOrdinal = 0;
   let i = 0;
@@ -129,22 +145,16 @@ export function parseSqlParamOccurrences(
       const m = IDENT.exec(sql);
       if (m) {
         const name = m[0];
-        const normalizedName = name.toLowerCase();
-        const isRoutineLocal =
-          routineAtVars.has(normalizedName) &&
-          routineRanges.some(({ from, to }) => i >= from && i < to);
-        if (!declaredAt.has(normalizedName) && !isRoutineLocal) {
-          const from = i;
-          const to = IDENT.lastIndex;
-          pushOccurrence(occurrences, {
-            from,
-            to,
-            id: namedId(name),
-            token: sql.slice(from, to),
-            syntax: 'at',
-            name,
-          });
-        }
+        const from = i;
+        const to = IDENT.lastIndex;
+        pushOccurrence(occurrences, {
+          from,
+          to,
+          id: namedId(name),
+          token: sql.slice(from, to),
+          syntax: 'at',
+          name,
+        });
         i = IDENT.lastIndex;
         continue;
       }
@@ -170,22 +180,43 @@ export function parseSqlParamOccurrences(
           continue;
         }
       }
-      DIGITS.lastIndex = i + 1;
-      const m = DIGITS.exec(sql);
-      if (m) {
-        const num = Number(m[0]);
-        const from = i;
-        const to = DIGITS.lastIndex;
-        pushOccurrence(occurrences, {
-          from,
-          to,
-          id: dollarId(num),
-          token: sql.slice(from, to),
-          syntax: 'dollar-positional',
-          name: m[0],
-        });
-        i = to;
-        continue;
+      if (resolved.enableDollarNamed) {
+        IDENT.lastIndex = i + 1;
+        const m = IDENT.exec(sql);
+        if (m) {
+          const name = m[0];
+          const from = i;
+          const to = IDENT.lastIndex;
+          pushOccurrence(occurrences, {
+            from,
+            to,
+            id: namedId(name),
+            token: sql.slice(from, to),
+            syntax: 'dollar-named',
+            name,
+          });
+          i = to;
+          continue;
+        }
+      }
+      if (resolved.enableDollarPositional) {
+        DIGITS.lastIndex = i + 1;
+        const m = DIGITS.exec(sql);
+        if (m) {
+          const num = Number(m[0]);
+          const from = i;
+          const to = DIGITS.lastIndex;
+          pushOccurrence(occurrences, {
+            from,
+            to,
+            id: dollarId(num),
+            token: sql.slice(from, to),
+            syntax: 'dollar-positional',
+            name: m[0],
+          });
+          i = to;
+          continue;
+        }
       }
       const dq = skipDollarQuote(sql, i);
       if (dq !== i) {
@@ -194,7 +225,7 @@ export function parseSqlParamOccurrences(
       }
     }
 
-    if (ch === '?' && resolved.enableQuestion && isQuestionBindPlaceholder(sql, i)) {
+    if (ch === '?' && resolved.enableQuestion) {
       questionOrdinal += 1;
       pushOccurrence(occurrences, {
         from: i,
@@ -212,7 +243,10 @@ export function parseSqlParamOccurrences(
     i += 1;
   }
 
-  return occurrences;
+  if (!resolved.strategy?.filterOccurrences) return occurrences;
+  const accepted = resolved.strategy.filterOccurrences(sql, occurrences);
+  const acceptedKeys = new Set(accepted.map(({ from, to, id }) => `${from}\0${to}\0${id}`));
+  return occurrences.filter(({ from, to, id }) => acceptedKeys.has(`${from}\0${to}\0${id}`));
 }
 
 /** Deduped bind descriptors derived from occurrences (stable order of first appearance). */
@@ -332,6 +366,8 @@ export function getParamLabel(param: SqlParam): string {
       return `@${param.name}`;
     case 'dollar-positional':
       return `$${param.name}`;
+    case 'dollar-named':
+      return `$${param.name}`;
     case 'question':
       return '?';
     case 'template':
@@ -376,22 +412,6 @@ export function coerceParamValue(raw: unknown): string | number | boolean | null
 
 function pushOccurrence(list: SqlParamOccurrence[], occ: SqlParamOccurrence) {
   list.push(occ);
-}
-
-function isQuestionBindPlaceholder(sql: string, i: number): boolean {
-  const next = sql[i + 1];
-  if (next === '|' || next === '&' || next === '-' || next === '#') {
-    return false;
-  }
-  let j = i + 1;
-  while (j < sql.length && sql[j] === ' ') {
-    j += 1;
-  }
-  // PostgreSQL json key existence operator: `? 'key'`
-  if (sql[j] === "'") {
-    return false;
-  }
-  return true;
 }
 
 function skipNonCode(sql: string, i: number): number {
@@ -444,177 +464,4 @@ function skipDollarQuote(sql: string, i: number): number {
 function isIdentChar(ch: string): boolean {
   const code = ch.charCodeAt(0);
   return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
-}
-
-/** Collect `@name` variables introduced by DECLARE / SET and T-SQL routine signatures. */
-export function findDeclaredAtVars(sql: string): Set<string> {
-  const declared = new Set<string>();
-  for (const stmt of splitStatements(sql)) {
-    collectTsqlRoutineSignatureAtVars(stmt, declared);
-    collectDeclaredAtVarsInStatement(stmt, declared);
-  }
-  return declared;
-}
-
-function findNonRoutineDeclaredAtVars(sql: string): Set<string> {
-  const declared = new Set<string>();
-  for (const stmt of splitStatements(sql)) {
-    collectDeclaredAtVarsInStatement(stmt, declared);
-  }
-  return declared;
-}
-
-function findTsqlRoutineSignatureAtVars(sql: string): Set<string> {
-  const declared = new Set<string>();
-  for (const stmt of splitStatements(sql)) {
-    collectTsqlRoutineSignatureAtVars(stmt, declared);
-  }
-  return declared;
-}
-
-function findTsqlRoutineRanges(sql: string): Array<{ from: number; to: number }> {
-  const ranges: Array<{ from: number; to: number }> = [];
-  for (const { statement, from } of splitStatementsWithOffsets(sql)) {
-    const prefix = maskNonCodeForTsql(statement);
-    const definition =
-      /^\s*(?:CREATE|ALTER)\s+(?:OR\s+ALTER\s+)?(?:FUNCTION|PROC(?:EDURE)?)\b/i.exec(prefix);
-    if (!definition) continue;
-
-    const remaining = maskNonCodeForTsql(sql.slice(from));
-    const header = remaining.slice(definition[0].length);
-    const bodyMarker = /\bAS\b/i.exec(header);
-    if (!bodyMarker) continue;
-
-    const bodyStart = definition[0].length + bodyMarker.index + bodyMarker[0].length;
-    const body = remaining.slice(bodyStart);
-    const begin = /\bBEGIN\b/i.exec(body);
-    if (!begin) {
-      const semicolon = remaining.indexOf(';', bodyStart);
-      ranges.push({ from, to: semicolon === -1 ? sql.length : from + semicolon });
-      continue;
-    }
-
-    const blockStart = bodyStart + begin.index;
-    const keywords = /\b(BEGIN|CASE|END)\b/gi;
-    keywords.lastIndex = blockStart;
-    let depth = 0;
-    let end = sql.length;
-    let match: RegExpExecArray | null;
-    while ((match = keywords.exec(remaining))) {
-      const keyword = match[1].toUpperCase();
-      if (keyword === 'BEGIN') {
-        const next = /^\s+(?:TRAN(?:SACTION)?|DIALOG|CONVERSATION|DISTRIBUTED)\b/i.exec(
-          remaining.slice(keywords.lastIndex),
-        );
-        if (!next) depth += 1;
-      } else if (keyword === 'CASE') {
-        depth += 1;
-      } else {
-        depth -= 1;
-        if (depth === 0) {
-          end = from + keywords.lastIndex;
-          const terminator = /^\s*;/.exec(sql.slice(end));
-          if (terminator) end += terminator[0].length;
-          break;
-        }
-      }
-    }
-    ranges.push({ from, to: end });
-  }
-  return ranges;
-}
-
-function splitStatementsWithOffsets(sql: string): Array<{ statement: string; from: number }> {
-  const statements: Array<{ statement: string; from: number }> = [];
-  let start = 0;
-  let i = 0;
-  while (i < sql.length) {
-    const skipped = skipNonCode(sql, i);
-    if (skipped !== i) {
-      i = skipped;
-      continue;
-    }
-    if (sql[i] === ';') {
-      statements.push({ statement: sql.slice(start, i), from: start });
-      start = i + 1;
-    }
-    i += 1;
-  }
-  statements.push({ statement: sql.slice(start), from: start });
-  return statements;
-}
-
-/** A routine parameter belongs to the T-SQL body, not to the editor's bind payload. */
-function collectTsqlRoutineSignatureAtVars(stmt: string, declared: Set<string>) {
-  const code = maskNonCodeForTsql(stmt);
-  const definition = /^\s*(?:CREATE|ALTER)\s+(?:OR\s+ALTER\s+)?(?:FUNCTION|PROC(?:EDURE)?)\b/i.exec(
-    code,
-  );
-  if (!definition) return;
-
-  const header = code.slice(definition[0].length);
-  const bodyMarker = /\bAS\b/i.exec(header);
-  if (!bodyMarker) return;
-
-  const signature = header.slice(0, bodyMarker.index);
-  for (const match of signature.matchAll(/@([A-Za-z_][A-Za-z0-9_]*)/g)) {
-    declared.add(match[1].toLowerCase());
-  }
-}
-
-/** Keep offsets stable while hiding comments, literals, and bracketed identifiers. */
-function maskNonCodeForTsql(sql: string): string {
-  const masked = sql.split('');
-  for (let i = 0; i < sql.length; ) {
-    const end = sql[i] === '[' ? skipBracketIdentifier(sql, i) : skipNonCode(sql, i);
-    if (end === i) {
-      i += 1;
-      continue;
-    }
-    for (let j = i; j < end; j += 1) {
-      if (sql[j] !== '\n' && sql[j] !== '\r') masked[j] = ' ';
-    }
-    i = end;
-  }
-  return masked.join('');
-}
-
-function skipBracketIdentifier(sql: string, i: number): number {
-  let j = i + 1;
-  while (j < sql.length) {
-    if (sql[j] === ']') {
-      if (sql[j + 1] === ']') {
-        j += 2;
-        continue;
-      }
-      return j + 1;
-    }
-    j += 1;
-  }
-  return sql.length;
-}
-
-function collectDeclaredAtVarsInStatement(stmt: string, declared: Set<string>) {
-  const trimmed = stmt.trimStart();
-  if (!trimmed) return;
-
-  const upper = trimmed.toUpperCase();
-  if (upper.startsWith('DECLARE')) {
-    const body = trimmed.slice('DECLARE'.length);
-    for (const m of body.matchAll(/@([A-Za-z_][A-Za-z0-9_]*)/g)) {
-      declared.add(m[1].toLowerCase());
-    }
-    return;
-  }
-
-  if (upper.startsWith('SET')) {
-    const m = /^SET\s+@([A-Za-z_][A-Za-z0-9_]*)\s*=/i.exec(trimmed);
-    if (m) {
-      declared.add(m[1].toLowerCase());
-    }
-  }
-}
-
-function splitStatements(sql: string): string[] {
-  return splitStatementsWithOffsets(sql).map(({ statement }) => statement);
 }

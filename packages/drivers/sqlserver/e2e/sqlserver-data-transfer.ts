@@ -168,6 +168,7 @@ describe('SQL Server Data Transfer (live)', () => {
 
     const handles = await browser.getWindowHandles();
     if (handles[0]) await browser.switchToWindow(handles[0]);
+    await browser.setTimeout({ script: 180_000 });
 
     await invoke('save_connection', {
       config: connectionConfig(SOURCE_CONNECTION_ID, 'E2E SQL Server transfer source'),
@@ -220,7 +221,8 @@ describe('SQL Server Data Transfer (live)', () => {
         mode: 'data',
         writeMode: 'insert',
         tables: [{ sourceTable: TABLE, targetTable: TABLE, enabled: true }],
-        options: { batchSize: 2, stopOnError: true },
+        // SQL Server requires an explicit choice when text collation semantics cannot be proven.
+        options: { batchSize: 2, stopOnError: true, useTargetDefaultCollation: true },
       },
     });
 

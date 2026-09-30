@@ -24,6 +24,7 @@ export const STANDARD_DIALECT_PROFILE: ResolvedSqlDialectProfile = {
     atNamed: false,
     question: false,
     dollarPositional: true,
+    dollarNamed: false,
     template: false,
   },
 };
@@ -32,42 +33,78 @@ const SQLITE_PROFILE: ResolvedSqlDialectProfile = {
   quoteStyle: 'double',
   foldCase: 'lower',
   projectionAliasVisibility: 'select-only',
-  parameterPolicy: { atNamed: false, question: true, dollarPositional: false, template: false },
+  parameterPolicy: {
+    atNamed: false,
+    question: true,
+    dollarPositional: false,
+    dollarNamed: false,
+    template: false,
+  },
 };
 
 const MYSQL_PROFILE: ResolvedSqlDialectProfile = {
   quoteStyle: 'backtick',
   foldCase: 'lower',
   projectionAliasVisibility: 'order-group',
-  parameterPolicy: { atNamed: false, question: true, dollarPositional: false, template: false },
+  parameterPolicy: {
+    atNamed: false,
+    question: true,
+    dollarPositional: false,
+    dollarNamed: false,
+    template: false,
+  },
 };
 
 const SQLSERVER_PROFILE: ResolvedSqlDialectProfile = {
   quoteStyle: 'bracket',
   foldCase: 'preserve',
   projectionAliasVisibility: 'broad',
-  parameterPolicy: { atNamed: true, question: false, dollarPositional: false, template: false },
+  parameterPolicy: {
+    atNamed: true,
+    question: false,
+    dollarPositional: false,
+    dollarNamed: false,
+    template: false,
+  },
 };
 
 const DUCKDB_PROFILE: ResolvedSqlDialectProfile = {
   quoteStyle: 'double',
   foldCase: 'lower',
   projectionAliasVisibility: 'select-only',
-  parameterPolicy: { atNamed: false, question: true, dollarPositional: true, template: false },
+  parameterPolicy: {
+    atNamed: false,
+    question: true,
+    dollarPositional: true,
+    dollarNamed: false,
+    template: false,
+  },
 };
 
 const CLICKHOUSE_PROFILE: ResolvedSqlDialectProfile = {
   quoteStyle: 'backtick',
   foldCase: 'lower',
   projectionAliasVisibility: 'broad',
-  parameterPolicy: { atNamed: false, question: false, dollarPositional: false, template: false },
+  parameterPolicy: {
+    atNamed: false,
+    question: false,
+    dollarPositional: false,
+    dollarNamed: false,
+    template: false,
+  },
 };
 
 const ORACLE_PROFILE: ResolvedSqlDialectProfile = {
   quoteStyle: 'double',
   foldCase: 'upper',
   projectionAliasVisibility: 'broad',
-  parameterPolicy: { atNamed: false, question: false, dollarPositional: false, template: false },
+  parameterPolicy: {
+    atNamed: false,
+    question: false,
+    dollarPositional: false,
+    dollarNamed: false,
+    template: false,
+  },
 };
 
 /**
@@ -109,6 +146,7 @@ function normalizeDeclaredProfile(declared: SqlDialectProfile): ResolvedSqlDiale
       atNamed: declared.parameterPolicy.atNamed ?? false,
       question: declared.parameterPolicy.question ?? false,
       dollarPositional: declared.parameterPolicy.dollarPositional ?? false,
+      dollarNamed: declared.parameterPolicy.dollarNamed ?? false,
       template: declared.parameterPolicy.template ?? false,
     },
     reservedKeywords: declared.reservedKeywords,

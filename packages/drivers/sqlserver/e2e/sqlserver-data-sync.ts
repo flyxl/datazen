@@ -202,7 +202,6 @@ describe('SQL Server Data Sync identity insert (live)', () => {
 
     const handles = await browser.getWindowHandles();
     if (handles[0]) await browser.switchToWindow(handles[0]);
-    await browser.url('tauri://localhost/');
 
     sourceSessionId = await saveAndConnect(
       SOURCE_CONNECTION_ID,
@@ -331,13 +330,13 @@ describe('SQL Server Data Sync identity insert (live)', () => {
       IDS,
     );
     for (const statement of preview) {
-      expect(Object.keys(statement)).toEqual([
-        'table',
+      expect(Object.keys(statement).sort()).toEqual([
         'operation',
-        'sql',
-        'previewSql',
         'parameters',
+        'previewSql',
         'rowKey',
+        'sql',
+        'table',
       ]);
       expect(statement.identityInsert).toBeUndefined();
       expect(statement.identity_insert).toBeUndefined();

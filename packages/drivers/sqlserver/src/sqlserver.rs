@@ -494,8 +494,7 @@ impl SqlServerDriver {
             .first()
             .and_then(|row| row.first())
             .and_then(Option::as_ref)
-            .map(datazen_driver_http_support::value_display)
-            .and_then(|value| value.parse::<i64>().ok())
+            .and_then(Self::parse_transaction_count)
             .ok_or_else(|| {
                 DriverError::TransactionError(
                     "SQL Server did not return the active transaction count".into(),
@@ -507,6 +506,14 @@ impl SqlServerDriver {
             ));
         }
         Ok(())
+    }
+
+    fn parse_transaction_count(value: &Value) -> Option<i64> {
+        match value {
+            Value::Integer(count) => Some(*count),
+            Value::String(count) => count.parse().ok(),
+            _ => None,
+        }
     }
 
     async fn run_routed(
@@ -648,11 +655,46 @@ impl SqlServerDriver {
 /// aware scanner in `driver-api`.
 fn split_statements(sql: &str) -> Vec<String> {
     use datazen_driver_api::sql_split::{is_comment_only_or_empty, split_sql_statements};
+
+    // A routine definition is one SQL Server batch. The shared splitter is
+    // dialect-neutral and treats the semicolon after a statement in a
+    // BEGIN/END body as a top-level separator, which sends an incomplete
+    // CREATE FUNCTION/PROCEDURE/TRIGGER to the server. Keep the module body
+    // intact; `needs_own_batch` routes it through `simple_query` below.
+    if is_routine_definition(sql) {
+        let statement = sql.trim();
+        return if statement.is_empty() {
+            Vec::new()
+        } else {
+            vec![statement.to_string()]
+        };
+    }
+
     split_sql_statements(sql)
         .into_iter()
         .map(|s| s.trim().to_string())
         .filter(|s| !is_comment_only_or_empty(s))
         .collect()
+}
+
+fn is_routine_definition(sql: &str) -> bool {
+    let mut words = leading_keywords(sql).into_iter();
+    let Some(first) = words.next() else {
+        return false;
+    };
+    if first != "CREATE" && first != "ALTER" {
+        return false;
+    }
+
+    let mut kind = words.next();
+    if kind.as_deref() == Some("OR") {
+        let _ = words.next();
+        kind = words.next();
+    }
+    matches!(
+        kind.as_deref(),
+        Some("FUNCTION" | "PROCEDURE" | "PROC" | "TRIGGER")
+    )
 }
 
 /// T-SQL accepts a few statements **only as the first statement of a batch**:
@@ -1816,6 +1858,27 @@ mod tests {
     use tiberius::EncryptionLevel;
 
     #[test]
+    fn transaction_count_accepts_native_integer_values() {
+        assert_eq!(
+            SqlServerDriver::parse_transaction_count(&Value::Integer(0)),
+            Some(0)
+        );
+        assert_eq!(
+            SqlServerDriver::parse_transaction_count(&Value::Integer(2)),
+            Some(2)
+        );
+        assert_eq!(
+            SqlServerDriver::parse_transaction_count(&Value::String("3".into())),
+            Some(3)
+        );
+        assert_eq!(
+            SqlServerDriver::parse_transaction_count(&Value::String("Integer(0)".into())),
+            None
+        );
+        assert_eq!(SqlServerDriver::parse_transaction_count(&Value::Null), None);
+    }
+
+    #[test]
     fn physical_database_identity_uses_server_name_and_current_catalog_database_id() {
         assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("SERVERPROPERTY('ServerName')"));
         assert!(PHYSICAL_DATABASE_IDENTITY_SQL.contains("d.database_id AS database_id"));
@@ -2226,6 +2289,21 @@ mod tests {
             vec!["SELECT '[;]' AS [c] /* ; */", "SELECT 2"]
         );
         assert!(split_statements("   ").is_empty());
+    }
+
+    #[test]
+    fn statement_splitting_keeps_routine_bodies_in_one_batch() {
+        let function = "CREATE FUNCTION [dbo].[normalize] (@value NVARCHAR(64))\n\
+                        RETURNS NVARCHAR(64)\n\
+                        AS\n\
+                        BEGIN\n\
+                            RETURN UPPER(LTRIM(RTRIM(@value)));\n\
+                        END;";
+        assert_eq!(split_statements(function), vec![function]);
+
+        let procedure = "/* migration */ CREATE OR ALTER PROCEDURE [dbo].[p] AS\n\
+                         BEGIN SELECT 1; END;";
+        assert_eq!(split_statements(procedure), vec![procedure]);
     }
 
     #[test]

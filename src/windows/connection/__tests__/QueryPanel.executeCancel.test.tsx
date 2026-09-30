@@ -144,10 +144,10 @@ extensionRegistry.register(sqlEditorEnhancedEP, {
   useBindParameters: (sql: string) => {
     const hasParam = sql.includes(':id');
     return {
-      params: hasParam ? [{ name: 'id', stableId: 'id', syntax: 'colon' }] : [],
+      params: hasParam ? [{ name: 'id', stableId: 'named:id', syntax: 'colon' }] : [],
       values: {},
       labels: hasParam ? { id: ':id' } : {},
-      activeParamIds: hasParam ? ['id'] : [],
+      activeParamIds: hasParam ? ['named:id'] : [],
       paramHistory: {},
       setValue: vi.fn(),
       applyHistoryEntry: vi.fn(),

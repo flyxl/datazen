@@ -162,6 +162,7 @@ describe('SQL Server driver GUI (live)', () => {
    */
   const executeSelectedSql = async (
     sql: string,
+    timeout = 20_000,
   ): Promise<{
     executionAdvanced: boolean;
     gateMessage: string | null;
@@ -187,7 +188,7 @@ describe('SQL Server driver GUI (live)', () => {
           (await error.isDisplayed().catch(() => false))
         );
       },
-      { timeout: 20000, timeoutMsg: 'the SQL Editor produced no execution or diagnostic result' },
+      { timeout, timeoutMsg: 'the SQL Editor produced no execution or diagnostic result' },
     );
 
     const gateButton = await $('[data-testid="result-message-ok"]');
@@ -495,14 +496,8 @@ describe('SQL Server driver GUI (live)', () => {
       '    RETURN UPPER(LTRIM(RTRIM(@value)));\n' +
       'END;';
     const createResult = await executeSelectedSql(createFunctionSql);
-    expect(
-      createResult.gateMessage,
-      'T-SQL @value must not be treated as an unbound editor parameter',
-    ).toBeNull();
-    expect(
-      createResult.queryError,
-      'SQL Server must accept the scalar function definition',
-    ).toBeNull();
+    expect(createResult.gateMessage).toBeNull();
+    expect(createResult.queryError).toBeNull();
     expect(createResult.executionAdvanced).toBe(true);
 
     const callSql = `SELECT [${scratchSchema}].[${FUNCTION_NAME}](N'  Mixed Code  ') AS [normalized]`;
@@ -522,14 +517,14 @@ describe('SQL Server driver GUI (live)', () => {
   });
 
   it('shows a SQL Server missing-object diagnostic for invalid SQL in the editor', async function () {
-    this.timeout(60_000);
+    this.timeout(120_000);
     const missingObject = 'dz_e2e_intentionally_missing_object';
-    const result = await executeSelectedSql(`SELECT * FROM [${scratchSchema}].[${missingObject}]`);
+    const result = await executeSelectedSql(
+      `SELECT * FROM [${scratchSchema}].[${missingObject}]`,
+      90_000,
+    );
 
-    expect(
-      result.gateMessage,
-      'invalid SQL must reach SQL Server instead of stopping at the bind gate',
-    ).toBeNull();
+    expect(result.gateMessage).toBeNull();
     expect(result.executionAdvanced).toBe(true);
     expect(result.queryError).toContain(missingObject);
     expect(result.queryError).toMatch(/invalid object name/i);

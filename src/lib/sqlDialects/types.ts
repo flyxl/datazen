@@ -55,8 +55,28 @@ export type SqlParameterPolicy = {
   atNamed?: boolean;
   question?: boolean;
   dollarPositional?: boolean;
+  dollarNamed?: boolean;
   template?: boolean;
 };
+
+/** A candidate bind token found by the shared SQL scanner. */
+export interface SqlParameterOccurrence {
+  from: number;
+  to: number;
+  id: string;
+  token: string;
+  syntax: 'colon' | 'at' | 'dollar-positional' | 'dollar-named' | 'question' | 'template';
+  name: string;
+  ordinal?: number;
+}
+
+/** Optional driver-owned filtering for syntax that is ambiguous in its dialect. */
+export interface SqlParameterStrategy {
+  filterOccurrences?: (
+    sql: string,
+    occurrences: readonly SqlParameterOccurrence[],
+  ) => readonly SqlParameterOccurrence[];
+}
 
 /** Placeholder policy with every flag decided. */
 export type ResolvedSqlParameterPolicy = Required<SqlParameterPolicy>;
