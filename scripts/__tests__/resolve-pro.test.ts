@@ -97,9 +97,12 @@ describe('resolve-pro parseArgs', () => {
     expect(parseArgs(['--pro-ref=abc1234']).proRef).toBe('abc1234');
   });
 
-  it('reads the pinned Pro ref from the lock file', () => {
+  it('follows the default branch: the lock file names the repo with no ref pin', () => {
+    // Release policy since v0.2.3 — Pro main is the branch whose manifest
+    // declares the host's current EXTENSION_POINTS_VERSION; a pinned older
+    // revision would be refused by checkEngineCompatibility at runtime.
     const lock = readProLock();
-    expect(lock.ref).toMatch(/^[0-9a-f]{40}$/);
+    expect(lock.ref).toBeNull();
     expect(lock.git).toContain('datazen-extension-sql-editor-pro');
   });
 

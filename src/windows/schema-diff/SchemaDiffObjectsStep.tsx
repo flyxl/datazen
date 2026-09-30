@@ -1,5 +1,6 @@
-import { Loader2 } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
+import { Checkbox } from '../../components/ui/Checkbox';
+import { Spinner } from '../../components/ui/Spinner';
 import type { SchemaDiffTablePick } from './schemaDiffTableNames';
 
 interface SchemaDiffObjectsStepProps {
@@ -22,7 +23,7 @@ export function SchemaDiffObjectsStep({
   if (loading) {
     return (
       <div data-testid="schema-diff-objects-panel" className="flex justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-accent" />
+        <Spinner size="2xl" tone="accent" />
       </div>
     );
   }
@@ -72,7 +73,7 @@ export function SchemaDiffObjectsStep({
             data-table-origin={row.origin}
             className="flex items-center gap-2 px-3 py-2 text-sm"
           >
-            <input type="checkbox" checked={row.enabled} onChange={() => onToggle(row.name)} />
+            <Checkbox checked={row.enabled} onChange={() => onToggle(row.name)} />
             <span className="flex-1 font-mono text-xs">{row.name}</span>
             <span
               data-testid={`schema-diff-table-origin-${row.name}`}

@@ -13,6 +13,7 @@ const pack = {
   'common.default': 'デフォルト',
   'common.confirm': '確認する',
   'common.search': '検索',
+  'common.reset': 'リセット',
   'common.new': '新規',
   'common.deselectAll': 'すべての選択を解除',
   'common.copy': 'コピー',

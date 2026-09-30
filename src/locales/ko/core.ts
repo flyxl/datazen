@@ -13,6 +13,7 @@ const pack = {
   'common.default': '기본값',
   'common.confirm': '확인하다',
   'common.search': '찾다',
+  'common.reset': '초기화',
   'common.new': '새로 만들기',
   'common.deselectAll': '모두 선택 취소',
   'common.copy': '복사',

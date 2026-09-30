@@ -236,7 +236,8 @@ Journey 用小数据集保证 UI 路径稳定；类型与 apply 闭环见 `SYNC-
 | `E2E_KIWI_*` | Kiwi 插件 E2E（在 kiwi 仓 `pnpm e2e:kiwi`；可写 kiwi `e2e/.env`） |
 | `E2E_AI_*` | AI 功能 E2E |
 | `DATAZEN_DRIVERS=basic` | E2E 构建时仅 basic 四核心驱动（跳过 Git / 其余 path 驱动）（见 `pnpm e2e:minimal`） |
-| `DATAZEN_E2E_QUIET=1` | 静默模式：macOS 上拒绝应用激活，跑 E2E 时不抢走本机键盘焦点（见下节；仅 `webdriver` 构建生效） |
+| `DATAZEN_E2E_QUIET` | 静默模式：macOS 上应用不激活、窗口透明，跑 E2E 时不抢本机键盘焦点。`e2e/run.mjs` 默认注入 `1`，截图/录屏链路除外（见下节；仅 `webdriver` 构建生效） |
+| `DATAZEN_E2E_QUIET_CONCEAL` | 设为 `0` 时保留可见窗口，只拦焦点抢占（见下节） |
 | `DATAZEN_KEYRING` | 主密钥后端（`file` / `keyring`）。`e2e/run.mjs` 默认注入 `file`，见下方「主密钥与系统钥匙串」 |
 
 #### 主密钥与系统钥匙串
@@ -255,41 +256,78 @@ E2E 本就不该读写开发者真实钥匙串。需要显式覆盖时设 `DATAZ
 
 ### 静默模式（`DATAZEN_E2E_QUIET`）
 
-macOS 上 DataZen 会在启动完成时把自己激活成前台应用，跑 E2E 的人的编辑器就被抢走
-焦点。设置 `DATAZEN_E2E_QUIET=1` 可以让整套 E2E 安静地跑：
+macOS 上 DataZen 会把自己顶成前台应用，跑 E2E 的人的编辑器就被抢走焦点。静默模式让
+整套 E2E 安静地跑，并且**默认开启**——`e2e/run.mjs` 启动应用时会注入
+`DATAZEN_E2E_QUIET=1`，不需要手动设置：
 
 ```bash
-DATAZEN_E2E_QUIET=1 pnpm e2e:minimal        # 静默构建 + 静默跑
-DATAZEN_E2E_QUIET=1 pnpm e2e:skip-build     # 已有 webdriver 构建时静默跑
+pnpm e2e:minimal                              # 静默跑（默认）
+pnpm e2e:skip-build                           # 已有 webdriver 构建时静默跑
+DATAZEN_E2E_QUIET=0 pnpm e2e:skip-build       # 关掉：窗口照旧可见、可抢焦点
+DATAZEN_E2E_QUIET_CONCEAL=0 pnpm e2e:skip-build  # 窗口可见，但不抢焦点
 ```
 
-- `e2e/run.mjs` 启动应用时透传当前环境变量（`env: { ...process.env }`），不需要改任何脚本。
 - 只在 `webdriver` 构建里生效，实现在 `src-tauri/src/e2e_quiet.rs`；不带该 feature 的构建里
   `enabled()` 恒为 `false`，shim 代码根本不会被编译进二进制。
-- 进程共有三处会主动激活自己：tao 的 `applicationDidFinishLaunching`（`AppState::launched`
-  里的 `window_activation_hack` + `activateIgnoringOtherApps:`）、wry 每建一个 webview 时的
-  `-[NSApplication activate]`，以及窗口 `show()` / `set_focus()` 走的 `makeKeyAndOrderFront:`。
-  前两处都发生在**第一个窗口之前**——Tauri 的 setup 钩子比它们晚，所以拦截必须放在
-  `bootstrap/run.rs` 构造 `tauri::Builder` **之前**，否则窗口策略怎么调都没用。
+- 进程共有四处会把前台抢走，后两处由 E2E 打开子窗口时触发（`commands/window.rs` 里有
+  8 处 `set_focus()`）：
+
+  | #   | 触发点                                                                                                                  | 靠什么拦                                          |
+  | --- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+  | 1   | tao `applicationDidFinishLaunching`（`AppState::launched`）里的 `window_activation_hack` + `activateIgnoringOtherApps:` | 换选择器                                          |
+  | 2   | wry 每建一个 webview 时的 `-[NSApplication activate]`（macOS 14+）                                                      | 换选择器                                          |
+  | 3   | 窗口 `show()` 走 `orderFront:`                                                                                          | 换选择器 + conceal                                |
+  | 4   | 窗口 `set_focus()` 走 `makeKeyAndOrderFront:`，AppKit 在窗口 becomeKey 时走**内部**激活路径                             | conceal（只 `orderFrontRegardless:`，不 makeKey） |
+
+  前两处发生在**第一个窗口之前**——Tauri 的 setup 钩子比它们晚，所以拦截必须放在
+  `bootstrap/run.rs` 构造 `tauri::Builder` **之前**，否则后面怎么调都没用。
+
 - 生效方式（`e2e_quiet::install()`，两件事必须一起做）：
   1. 用 objc2 把本进程 `NSApplication` **基类**上的 `activate` / `activateIgnoringOtherApps:`
-     替换成空实现。此刻 tao 的 `TaoApp` 子类还没建出来（`object_setClass` 在事件循环里），
-     而它并不自己实现这两个选择器，消息仍会落到基类。ObjC 方法替换是进程内的，系统里其它
-     应用不受影响。
-  2. 把激活策略降级为 `NSApplicationActivationPolicy::Accessory`：这个进程不再能被系统
-     激活（没有 Dock 图标、不进 Cmd-Tab），`show()` 那条经由 AppKit 内部路径的激活也随之
-     失效，窗口照常显示和渲染。
-- 只设策略不换选择器、或只在 setup 钩子里做，都拦不住启动那一次（实测两种情况都会在进程
-  启动后 0.3s 内被顶到前台）。
-- 为什么不用 `tauri.conf.json` 的 `focus: false`：DataZen 的窗口全部在代码里创建（配置里
-  `windows: []`，没有可落脚的配置项），而且 tao 每次 `set_focus()` 都会重新发起一次激活。
-- 窗口本身照常显示（`show()` / `set_focus()` 一行未改），只是进程不再被激活：静默模式下
-  WebView 里 `document.visibilityState === "visible"`、`document.hasFocus() === false`，
-  窗口继续渲染但不抢键盘。WebDriver 的 `keys` / `click` 是 JS 合成事件，
-  `saveScreenshot` 走 webview 快照，都不依赖应用处于前台状态，因此截图、视口断言、
-  CodeMirror 输入均不受影响。
-- `pnpm e2e:shots` 画廊采集与 `pnpm e2e:demo` 演示录制需要真实可见的前台窗口，跑它们时
-  不要设置该变量（默认为关闭，不设置即维持原行为）。
+     替换成空实现，并把激活策略降级为 `NSApplicationActivationPolicy::Accessory`（没有
+     Dock 图标、不进 Cmd-Tab）。此刻 tao 的 `TaoApp` 子类还没建出来（`object_setClass`
+     在事件循环里），而它并不自己实现这两个选择器，消息仍会落到基类。ObjC 方法替换是
+     进程内的，系统里其它应用不受影响。
+  2. 把 `NSWindow` 的 `orderFront:` / `makeKeyAndOrderFront:` 换成「透明窗口 + 只
+     `orderFrontRegardless:`」：`alphaValue = 0`、`ignoresMouseEvents = YES`、窗口级别
+     `NSFloatingWindowLevel`、`collectionBehavior` 加入所有 Space 且不打断全屏。
+     （`makeOrderedFront:` 不必管——macOS 15 上 `NSWindow` 并没有这个方法，运行时
+     `instance_method` 取不到。）
+- **第 2 条才是根治点。** 只做第 1 条时启动确实安静了，但 E2E 一打开子窗口，第 4 条路径
+  又把前台抢走。原因是「窗口 becomeKey → AppKit 内部激活应用」这条路径既不经过
+  `activate` 也不经过 `activateIgnoringOtherApps:`，换选择器拦不到；窗口不做 key 就没有
+  触发条件，进程也就永远拿不到前台。
+- 同一台机器、同一组 spec（`data-transfer-window.ts` + `settings.ts`，约 90 秒），开着
+  显示器断言、期间人一直在 Code / ChatGPT 之间切应用，采样 `lsappinfo front`：
+
+  | `DATAZEN_E2E_QUIET_CONCEAL` | 用例       | DataZen 抢到前台的次数                                                  |
+  | --------------------------- | ---------- | ----------------------------------------------------------------------- |
+  | `1`（默认）                 | 29/29 通过 | **0**                                                                   |
+  | `0`                         | 3 例失败   | **8**（t+1.9s / 13.4s / 47.3s / 59.0s / 62.4s / 65.1s / 73.1s / 90.8s） |
+
+  开着 conceal 时应用日志里有 68~90 条 `key request declined`（窗口号 + 选择器），说明
+  `set_focus()` 确实一路走到 `makeKeyAndOrderFront:`、确实被这条 shim 拦下，不是「本来
+  就没触发」。
+
+- 换成 `orderFrontRegardless:` 而不是完全不排序，是为了让合成器继续为窗口取帧——
+  `WKWebView` 的 `takeSnapshot` 才有内容。窗口停在 `NSFloatingWindowLevel`（普通窗口
+  之上、全屏之下）让「透明但仍在渲染」成立；alpha 0 保证用户看不见，浮在最上层保证它
+  不会因为被别的窗口盖住而不出画。
+- 静默模式下 WebView 里 `document.visibilityState === "visible"`、
+  `document.hasFocus() === false`。WebDriver 的 `click` / `keys` 都是 JS 合成
+  （`el.click()`、native setter + `InputEvent`），`saveScreenshot` 走 webview 快照，
+  都不依赖窗口可见或进程激活，因此点击、输入、视口断言、截图均不受影响。
+- 截图 / 录屏链路（`--capture`、`--screenshot`、`e2e:shots`、`e2e:demo`）需要窗口处在
+  系统正常的前台与合成状态，`e2e/run.mjs` 对这些运行默认**不**注入静默变量（判定看的是
+  命令行参数，`e2e:demo` 走的 `--spec demo-recording.ts` 同样能识别）。需要时用
+  `DATAZEN_E2E_QUIET=1` 显式覆盖。
+- 排查时可以盯着应用日志里的 `key request declined`：只要它还在涨而前台没被抢走，就说明
+  拦截生效；前台仍被抢走则说明还有第五条激活路径，需要拿它的时刻去对齐
+  `lsappinfo front` 的时间轴。
+- 跑 E2E 时建议 `caffeinate -dimsu`：屏幕熄灭或自动锁定时 WebKit 会节流 webview，
+  `data-transfer-window.ts` 里的「数据传输真实迁移」用例会成片地以
+  `operation was aborted due to timeout` / `element still not displayed after 15000ms`
+  失败。这与静默模式无关，两种配置都会中。
 
 ### Journey 截图留痕（`--screenshot`）
 

@@ -1,4 +1,6 @@
 import { Button } from '../../components/ui/Button';
+import { Checkbox } from '../../components/ui/Checkbox';
+import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
@@ -67,9 +69,7 @@ export function ColumnMappingEditor({
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-sm">
           <span className="text-fg-muted">{t('transfer.mapping.targetTable')}</span>
-          <input
-            type="text"
-            className="rounded border border-edge bg-surface px-2 py-1 font-mono text-sm"
+          <Input
             value={table.targetTable}
             data-testid="data-transfer-target-table-input"
             onChange={(e) => onChange({ targetTable: e.target.value })}
@@ -78,8 +78,7 @@ export function ColumnMappingEditor({
         </label>
         {showCreateNewToggle && (
           <label className="flex items-center gap-2 pb-1 text-sm">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={table.createNew}
               data-testid="data-transfer-create-new-toggle"
               onChange={(e) => {
@@ -249,8 +248,7 @@ function RecordsetEditor({
           <div className="text-sm font-medium">{t('transfer.mapping.recordset')}</div>
           <div className="text-xs text-fg-muted">{t('transfer.mapping.recordsetHint')}</div>
         </div>
-        <input
-          type="checkbox"
+        <Checkbox
           checked={Boolean(recordset)}
           data-testid="data-transfer-recordset-enable"
           onChange={(event) => {
@@ -292,7 +290,7 @@ function RecordsetEditor({
                       {primaryKeys.map((column, index) => (
                         <label key={column} className="flex items-center gap-2">
                           <span className="w-24 shrink-0 truncate font-mono">{column}</span>
-                          <input
+                          <Input
                             value={bound?.values[index] ?? ''}
                             placeholder={t('transfer.mapping.recordsetUnbounded')}
                             data-testid={`data-transfer-recordset-tuple-${name}-${index}`}
@@ -307,8 +305,7 @@ function RecordsetEditor({
                       ))}
                       {bound && (
                         <label className="flex items-center gap-1 text-fg-muted">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={bound.inclusive ?? true}
                             data-testid={`data-transfer-recordset-tuple-${name}-inclusive`}
                             onChange={(event) =>
@@ -354,7 +351,7 @@ function RecordsetEditor({
                           : t('transfer.mapping.recordsetEnd')}
                       </span>
                       <div className="flex items-center gap-2">
-                        <input
+                        <Input
                           value={bound?.value ?? ''}
                           placeholder={t('transfer.mapping.recordsetUnbounded')}
                           data-testid={`data-transfer-recordset-${name}`}
@@ -363,8 +360,7 @@ function RecordsetEditor({
                         />
                         {bound && (
                           <label className="flex shrink-0 items-center gap-1 text-fg-muted">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={bound.inclusive ?? true}
                               data-testid={`data-transfer-recordset-${name}-inclusive`}
                               onChange={(event) =>
@@ -383,7 +379,7 @@ function RecordsetEditor({
           )}
           <label className="flex items-center gap-2 text-xs">
             <span className="text-fg-muted">{t('transfer.mapping.recordsetLimit')}</span>
-            <input
+            <Input
               type="number"
               min={1}
               step={1}
@@ -438,9 +434,7 @@ function ColumnMappingRow({
       )}
       <div className="min-w-0 flex-1">
         {createNew ? (
-          <input
-            type="text"
-            className="w-full rounded border border-edge bg-surface px-2 py-1 font-mono text-xs"
+          <Input
             value={row.targetColumn}
             data-testid={`data-transfer-target-col-${row.sourceColumn}`}
             onChange={(e) =>
@@ -460,9 +454,8 @@ function ColumnMappingRow({
       </div>
       {showTargetType && (
         <div className="w-36 shrink-0">
-          <input
-            type="text"
-            className="w-full rounded border border-edge bg-surface px-2 py-1 font-mono text-[11px]"
+          <Input
+            className="text-[11px]"
             placeholder="VARCHAR(255)"
             value={row.targetNativeType ?? ''}
             data-testid={`data-transfer-target-type-${row.sourceColumn}`}
@@ -473,8 +466,7 @@ function ColumnMappingRow({
         </div>
       )}
       <div className="flex w-16 shrink-0 justify-center">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={row.skip ?? false}
           data-testid={`data-transfer-skip-${row.sourceColumn}`}
           onChange={(e) => onChange({ skip: e.target.checked })}

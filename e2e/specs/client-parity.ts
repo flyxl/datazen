@@ -9,7 +9,8 @@ import {
   clickFirstTable,
   waitForNewConnectionDialog,
   waitForNewQueryButton,
-  openNewConnectionDialogFromUi,
+  clickNewConnectionButton,
+  closeNewConnectionDialogFromUi,
   expandNewConnectionSshSection,
   connectSeededPgInWorkspace,
 } from '../helpers.js';
@@ -245,24 +246,41 @@ describe('Client parity P0–P2', () => {
     await waitForNewQueryButton(15000);
     const table = await clickFirstTable();
     if (!table) return;
-    await browser.pause(800);
+    // The toolbar toggle carries `disabled={loading}`, so the old fixed
+    // `pause(800)` raced the first page of table data: the click landed on a
+    // disabled button, `openManualFilter` never ran, and the spec failed on a
+    // body-text probe that could not tell "editor closed" from "editor broken".
+    // Wait for the button to be enabled, then assert on the editor's own
+    // testids — the toolbar went icon-only in 48c08b908, so `filter.filter` is
+    // only visible text once the editor is actually open.
     const toggle = await $('[data-testid="table-filter-toggle"]');
-    if (await toggle.isExisting()) {
-      await toggle.click();
-      await browser.pause(400);
-    }
-    const body = await $('body').getText();
-    expect(
-      body.includes(t('filter.and')) ||
-        body.includes(t('filter.or')) ||
-        body.includes(t('filter.add')) ||
-        body.includes(t('filter.filter')),
-    ).toBe(true);
+    await toggle.waitForDisplayed({
+      timeout: 15000,
+      timeoutMsg: 'table filter toggle never rendered',
+    });
+    await toggle.waitForEnabled({
+      timeout: 15000,
+      timeoutMsg: 'table filter toggle stayed disabled (table data never finished loading)',
+    });
+    await toggle.click();
+    const editor = await $('[data-testid="filter-editor"]');
+    await editor.waitForDisplayed({ timeout: 10000, timeoutMsg: 'filter editor did not open' });
+    await expect(await $('[data-testid="filter-summary-toggle"]')).toBeDisplayed();
+    await expect(await $('[data-testid="filter-logic-and"]')).toBeDisplayed();
+    await expect(await $('[data-testid="filter-logic-or"]')).toBeDisplayed();
   });
 
   it('new connection form shows SSH agent and jump host', async () => {
     await closeExtraWindows(mainWindow);
-    await openNewConnectionDialogFromUi();
+    // This spec keeps two live db sessions open (the before-hook `connect` plus
+    // `connectSeededPgInWorkspace`), so by the time the run reaches the last
+    // test the webview is busy enough that the shared 15s dialog wait loses the
+    // race against the 10s implicit `waitforTimeout` — the element lookup is
+    // aborted, not "not found". The dialog itself is not slow: new-connection.ts
+    // and edit-delete-connection.ts open it reliably on a clean session.
+    await closeNewConnectionDialogFromUi();
+    await clickNewConnectionButton();
+    await waitForNewConnectionDialog(30000);
     await expandNewConnectionSshSection();
     // Selecting the inline tunnel source auto-enables SSH together with the
     // kind (useTunnelFormState sets `sshEnabled` from `kind === 'ssh'`), so the

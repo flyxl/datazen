@@ -1,5 +1,6 @@
 import { useI18n } from '../../hooks/useI18n';
 import type { SyncOptions } from '../../commands/sync';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { Select } from '../../components/ui/Select';
 
 interface OptionsBarProps {
@@ -17,8 +18,7 @@ export function OptionsBar({ options, onChange, onEnableDelete }: OptionsBarProp
         {t('sync.optionsTitle')}
       </span>
       <label className="flex cursor-pointer items-center gap-2 text-sm">
-        <input
-          type="checkbox"
+        <Checkbox
           className="h-3.5 w-3.5"
           data-testid="data-sync-option-insert"
           checked={options.insert}
@@ -27,8 +27,7 @@ export function OptionsBar({ options, onChange, onEnableDelete }: OptionsBarProp
         {t('sync.optionInsert')}
       </label>
       <label className="flex cursor-pointer items-center gap-2 text-sm">
-        <input
-          type="checkbox"
+        <Checkbox
           className="h-3.5 w-3.5"
           data-testid="data-sync-option-update"
           checked={options.update}
@@ -37,8 +36,7 @@ export function OptionsBar({ options, onChange, onEnableDelete }: OptionsBarProp
         {t('sync.optionUpdate')}
       </label>
       <label className="flex cursor-pointer items-center gap-2 text-sm">
-        <input
-          type="checkbox"
+        <Checkbox
           className="h-3.5 w-3.5"
           data-testid="data-sync-option-delete"
           checked={options.delete}

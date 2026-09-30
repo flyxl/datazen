@@ -1228,6 +1228,32 @@ describe('site screenshots', () => {
     await assertGallerySize('zz-screenshots before');
     mainWindow = await browser.getWindowHandle();
 
+    // AI shots need a live provider. The e2e app data dir is wiped per run, so
+    // seed one from the env instead of relying on whatever the machine happens
+    // to have configured — otherwise the AI shots silently degrade to an error
+    // panel or get skipped entirely.
+    const aiKey = process.env.E2E_AI_API_KEY;
+    if (aiKey) {
+      const seeded = await browser.executeAsync(
+        (cfg: unknown, done: (r: string) => void) => {
+          (window as any).__TAURI_INTERNALS__
+            .invoke('ai_save_config', { config: cfg })
+            .then(() => done('ok'))
+            .catch((e: unknown) => done(String(e)));
+        },
+        {
+          providerType: process.env.E2E_AI_PROVIDER || 'custom',
+          apiKey: aiKey,
+          endpoint: process.env.E2E_AI_ENDPOINT || 'https://api.deepseek.com',
+          model: process.env.E2E_AI_MODEL || 'deepseek-flash',
+          maxTokens: 8000,
+          extra: { protocol: process.env.E2E_AI_PROTOCOL || 'open_ai_compatible' },
+        },
+      );
+      if (seeded !== 'ok') console.warn(`[warn] AI seed failed: ${seeded}`);
+      else console.log('[shot] seeded AI provider from e2e/.env');
+    }
+
     await browser.waitUntil(
       async () => browser.execute(() => document.querySelectorAll('[data-conn-item]').length > 0),
       {
@@ -1597,57 +1623,24 @@ describe('site screenshots', () => {
       await browser.pause(300);
     }
 
-    // ── 06: EXPLAIN analysis on a valid query ──
-    try {
-      await setEditorContent(
-        'SELECT region, SUM(amount) AS total_amount\nFROM demo_sales\nGROUP BY region\nORDER BY total_amount DESC;',
-      );
-      await clickToolbarButton('EXPLAIN 分析', 15000);
-      await browser.waitUntil(
-        async () =>
-          browser.execute(() => {
-            const text = document.body.textContent || '';
-            return (
-              text.includes('EXPLAIN') &&
-              (text.includes('Seq Scan') ||
-                text.includes('Index Scan') ||
-                text.includes('cost=') ||
-                text.includes('执行计划') ||
-                text.includes('分析'))
-            );
-          }),
-        { timeout: 30000, timeoutMsg: 'EXPLAIN result did not render' },
-      );
-      await shot('06-ai-explain.png', 900);
-    } catch (e) {
-      console.warn(`[warn] 06-ai-explain skipped: ${e}`);
-      await softShot('06-ai-explain.png', 500);
-    }
-
+    // 05 runs before 06 on purpose: ExplainPanel has no close control, so
+    // once 06 opens it the error panel stays suppressed for the rest of the
+    // query session (`!showExplain && error` in QueryTransactionModals).
     // ── 05: run a failing query → AI diagnosis dialog ──
     try {
       await ensureQueryPanelReady();
       await selectQueryPanelDatabase(DEMO_PG_DB);
       await setEditorContent('SELECT * FROM demo_not_exist_table;');
       await clickExecute();
-      // Wait for the error panel with the 诊断 button.
-      await browser.waitUntil(
-        async () =>
-          browser.execute(() => {
-            const btn = Array.from(document.querySelectorAll('button')).find(
-              (b) => (b.textContent || '').trim() === '诊断',
-            );
-            return !!btn;
-          }),
-        { timeout: 20000, timeoutMsg: 'error panel with 诊断 button not found' },
-      );
-      await browser.execute(() => {
-        const btn = Array.from(document.querySelectorAll('button')).find(
-          (b) => (b.textContent || '').trim() === '诊断',
-        );
-        (btn as HTMLElement | undefined)?.click();
+      // The error panel's AI entry is `query-explain-error`; its label moved
+      // from 诊断 to 解释 when the panel gained a lightbulb variant, so match the
+      // testid rather than the localized text.
+      const diagnoseBtn = await $('[data-testid="query-explain-error"]');
+      await browser.waitUntil(async () => diagnoseBtn.isExisting(), {
+        timeout: 20000,
+        timeoutMsg: 'error panel with the AI entry button did not render',
       });
-      // Diagnosis content renders 错误原因 section when done.
+      await diagnoseBtn.click();
       await browser.waitUntil(
         async () => browser.execute(() => (document.body.textContent || '').includes('错误原因')),
         { timeout: 90000, timeoutMsg: 'diagnosis content did not render' },
@@ -1673,6 +1666,33 @@ describe('site screenshots', () => {
         (close as HTMLElement | undefined)?.click();
       });
       await browser.pause(500);
+    }
+
+    // ── 06: EXPLAIN analysis on a valid query ──
+    try {
+      await setEditorContent(
+        'SELECT region, SUM(amount) AS total_amount\nFROM demo_sales\nGROUP BY region\nORDER BY total_amount DESC;',
+      );
+      await clickToolbarButton('EXPLAIN 分析', 15000);
+      await browser.waitUntil(
+        async () =>
+          browser.execute(() => {
+            const text = document.body.textContent || '';
+            return (
+              text.includes('EXPLAIN') &&
+              (text.includes('Seq Scan') ||
+                text.includes('Index Scan') ||
+                text.includes('cost=') ||
+                text.includes('执行计划') ||
+                text.includes('分析'))
+            );
+          }),
+        { timeout: 30000, timeoutMsg: 'EXPLAIN result did not render' },
+      );
+      await shot('06-ai-explain.png', 900);
+    } catch (e) {
+      console.warn(`[warn] 06-ai-explain skipped: ${e}`);
+      await softShot('06-ai-explain.png', 500);
     }
   });
 
@@ -1744,17 +1764,13 @@ describe('site screenshots', () => {
     // Give the DataTable time to fully render the loaded rows.
     await browser.pause(2500);
 
-    // The NL filter starts collapsed (Sparkles icon). Two variants exist:
-    // configured → title=智能筛选; unconfigured → title=请先在设置中配置AI服务.
-    // The store's isConfigured may lag, so accept either and click the
-    // configured one once it appears (poll instead of one-shot check).
+    // The NL filter starts collapsed (Sparkles icon). The store's isConfigured
+    // may lag, so poll for the toggle instead of checking once.
     let sparklesReady = false;
     const sdl = Date.now();
     while (Date.now() - sdl < 30000 && !sparklesReady) {
       sparklesReady = await browser.execute(() => {
-        const configured = document.querySelector(
-          'button[aria-label="智能筛选"], button[title="智能筛选"]',
-        );
+        const configured = document.querySelector('[data-testid="smart-filter-toggle"]');
         if (configured) {
           (configured as HTMLElement).scrollIntoView({ block: 'center' });
           (configured as HTMLElement).click();
@@ -1783,8 +1799,29 @@ describe('site screenshots', () => {
       if (!typed) throw new Error('NL filter input not found');
       await browser.pause(300);
 
-      // 筛选 parse button next to the input.
-      await clickToolbarButton('筛选');
+      // The parse button (label 筛选) lives inside the NL filter bar, not the
+      // toolbar, and carries no testid — a toolbar text match lands on a
+      // different control and no AI request is ever made. Scope the lookup to
+      // the input's own container instead.
+      const parseClicked = await browser.execute(() => {
+        const input = Array.from(document.querySelectorAll('input')).find((i) =>
+          (i.placeholder || '').includes('自然语言'),
+        );
+        if (!input) return 'no-input';
+        let node: HTMLElement | null = input.parentElement;
+        for (let i = 0; i < 4 && node; i += 1) {
+          const btn = Array.from(node.querySelectorAll('button')).find(
+            (b) => (b.textContent || '').trim() === '筛选',
+          );
+          if (btn) {
+            (btn as HTMLElement).click();
+            return 'clicked';
+          }
+          node = node.parentElement;
+        }
+        return 'no-button';
+      });
+      if (parseClicked !== 'clicked') throw new Error(`NL filter parse button: ${parseClicked}`);
       await browser.waitUntil(
         async () =>
           browser.execute(() => {
@@ -2562,13 +2599,26 @@ describe('site screenshots', () => {
     await shot('15-redis.png', 900);
 
     // ── 35-redis-workbench: the v0.2.2 workbench rebuild ───────────────────
-    // 15-redis shows the key browser only. This second frame deliberately keeps
-    // the right-hand tab bar in shot so the promoted first-level tabs (Slowlog
-    // is no longer nested under a "more" menu) and the MEMORY USAGE switch are
-    // both visible — those are the structural changes of the rebuild.
-    const wbTabBar = await $('[data-testid="redis-right-tab-bar"]');
-    if (await wbTabBar.isExisting()) {
-      await wbTabBar.scrollIntoView({ block: 'center' });
+    // 15-redis shows the key browser only. This second frame switches the right
+    // panel to the Console tab, so the promoted first-level tabs (detail /
+    // console / pubsub / slowlog — Slowlog is no longer nested under a "more"
+    // menu) and a real command transcript are both visible — those are the
+    // structural changes of the rebuild.
+    const consoleTab = await $('[data-testid="redis-right-tab-console"]');
+    if (await consoleTab.isExisting()) {
+      await consoleTab.click();
+      await browser.waitUntil(
+        async () => (await $('[data-testid="redis-console-input"]')).isExisting(),
+        { timeout: 5000, timeoutMsg: 'redis console input did not mount' },
+      );
+      const consoleInput = await $('[data-testid="redis-console-input"]');
+      await consoleInput.setValue('INFO memory');
+      await browser.keys('Enter');
+      await browser.waitUntil(
+        async () => (await $('[data-testid="redis-console-entry-result"]')).isExisting(),
+        { timeout: 10000, timeoutMsg: 'INFO memory produced no result' },
+      );
+      await browser.pause(600);
     }
     await shot('35-redis-workbench.png', 900);
 

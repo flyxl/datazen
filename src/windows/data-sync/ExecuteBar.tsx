@@ -1,5 +1,6 @@
-import { Loader2, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Spinner } from '../../components/ui/Spinner';
 import { useI18n } from '../../hooks/useI18n';
 
 interface ExecuteBarProps {
@@ -62,7 +63,7 @@ export function ExecuteBar({
       >
         {executing ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Spinner size="lg" />
             {t('sync.executing')}
           </>
         ) : (

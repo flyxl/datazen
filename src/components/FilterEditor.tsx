@@ -448,6 +448,7 @@ export function FilterEditor({
                 )}
                 onClick={() => onLogicChange('and')}
                 disabled={loading}
+                data-testid="filter-logic-and"
               >
                 {t('filter.and')}
               </button>
@@ -459,6 +460,7 @@ export function FilterEditor({
                 )}
                 onClick={() => onLogicChange('or')}
                 disabled={loading}
+                data-testid="filter-logic-or"
               >
                 {t('filter.or')}
               </button>

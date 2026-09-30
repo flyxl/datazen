@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/Button';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { useI18n } from '../../hooks/useI18n';
 import type { SyncOptions } from '../../commands/sync';
 import { formatCell } from '../../lib/formatters';
@@ -243,8 +244,7 @@ export function DiffDetail({
                   className="border-b border-edge/60 hover:bg-surface-alt/50"
                 >
                   <td className="p-2">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       className="h-3.5 w-3.5"
                       checked={row.selected && selectable}
                       disabled={!selectable}

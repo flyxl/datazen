@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { Copy, Loader2 } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Spinner } from '../../components/ui/Spinner';
 import { SchemaDiffPanel } from '../../components/schema/SchemaDiffPanel';
 import { useI18n } from '../../hooks/useI18n';
 import type {
@@ -89,7 +90,7 @@ export function SchemaDiffExecutionPanels({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {loading && diffs.length === 0 ? (
             <div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size="lg" />
               {t('schemaDiff.compare')}
             </div>
           ) : (
@@ -142,7 +143,7 @@ export function SchemaDiffExecutionPanels({
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
           {loading && !plan && (
             <div className="flex items-center gap-2 text-sm text-fg-muted">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size="lg" />
               {t('schemaDiff.generating')}
             </div>
           )}

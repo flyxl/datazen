@@ -14,6 +14,68 @@ _（暂无）_
 
 ---
 
+## [0.2.3] - 2026-09-30
+
+> 自 v0.2.2 以来累计 **769** 次提交。主线是**数据迁移三件套的 Navicat 对标交付**（Schema Diff / Data Sync / Data Transfer 全链路重做）、**SQL Server 驱动活体验证**、`@datazen/ui` 设计系统收敛，以及更新通道按 SKU 分轨。
+
+### ⚠️ 破坏性变更（Breaking Changes）
+
+**无。** `PROTOCOL_VERSION` 保持 4，本周期新增的 driver-api trait 方法（`pagination_syntax` / `begin_read_snapshot` / `execute_with_params` / `parameter_placeholder` / `has_complete_foreign_key_catalog_visibility` / `render_transfer_sql_file_insert` 等）**全部带默认实现**，外部驱动无需重新编译。两处存储行为升级对自动迁移、用户无需手工操作：
+
+- **加密主密钥后端升级**：macOS 未签名/ad-hoc 构建与 Windows 改用**平台保险库**（macOS `security` CLI → 登录钥匙串；Windows DPAPI 用户级加密），取代明文 `.key` 文件。升级后首次启动自动透明迁移旧 `.key` 并删除原文件；`DATAZEN_KEYRING=file` 逃生口保留（CI / 开发）。Linux 行为不变。
+- **SQL 收藏改为文件存储**：收藏不再是 SQLite 行，而是收藏目录下按 **ULID 命名**的 `.sql` 文件（元数据写成 `--` 注释行）。列表顺序即创建顺序，iCloud / Dropbox / Git 可像普通文本一样同步与合并。
+
+### 🚀 新功能（Added）
+
+#### 数据迁移三件套（Schema Diff / Data Sync / Data Transfer）
+
+- **Schema Diff 统一对象规划器 + 依赖 DAG**：视图 / 例程 / 触发器 / 外键的结构依赖以**结构化依赖目录**建模（driver-api 新增 `SchemaObjectDependencies` / `TypeDependencyUsage` / `SequenceDependencyUsage` 协议类型），迁移操作按**经过校验的 DAG 排序**部署——此前固定分组排序会破坏主键 / 索引替换顺序；审阅对象选择可持久化、可保存为可复用 Profile。
+- **可安全迁移的对象类型大幅扩充**：视图（跨库映射、混合快照拒绝）、存储过程 / 函数与触发器（声明头身份校验）、CHECK 约束、表选项、用户自定义类型、PostgreSQL 序列（身份连续性 + 回滚补齐）、目标侧删表的安全操作（外键目录守卫）、SQLite 安全表重建（catalog 与文件路径分离、陈旧部署拒绝）。MySQL 目录侧修复：视图列限定符归一化、CHECK OPTION 解析、外键依赖可见性、别名引号。
+- **Data Sync 比较执行重做**：不可变比较执行计划（指纹锁定审阅内容）、大体量比较**溢写磁盘索引存储**（进程退出后可恢复，含帧前缀校验）、比较页**流式执行**、结构化来源过滤、稳定读快照比较（driver 侧 `begin_read_snapshot`）、显式冲突策略与乐观写冲突检测、复合元组范围 / 稳定行记录集、跨页全选与翻页默认保留、归一化键契约（SQLite 文本游标按 BLOB 绑定）、取消生命周期隔离、未知结果安全对账。
+- **Data Transfer 传输引擎补强**：不可变计划执行契约、稳定记录集选取与边界校验、**有界可续传检查点**（空页续传、回滚围栏、ack 丢失防护）、外键依赖写入排序、PostgreSQL 恒等序列保留与重置、有损列映射 / 未证实排序规则拒绝、UTF-8 文本值保真、Redis 配对前置拒绝；**SQL 文件目标**新增（原子写入、编码选择、gzip 输出、按所选方言渲染、表映射 workflow、结构依赖保留、不可表示作用域拒绝）。
+- **迁移档案与调度**：三件套共享**运行历史**与可复用 Profile（AES-GCM 加密持久化），Workflows 调度器可按迁移档案定时执行。
+- **实验性配对标注**：仅**两端均为 PostgreSQL 或 MySQL** 的配对（含两者互迁）经过真实端到端迁移验证；源 / 目标任一端为其他库时，在 Data Sync / Data Transfer 界面标注「实验性」。
+
+#### SQL Server 驱动（活体验证）
+
+- 在真实 Azure SQL Database 上把 `datazen-driver-sqlserver` 跑通驱动层 / 宿主 IPC 层 / GUI 层，修复 14 项缺陷：`Incorrect syntax near 'LIMIT'` 根因（分页子句）、批处理语义（`CREATE PROCEDURE` 等走真实 batch）、事务泄漏（`BEGIN TRAN` error 266）、`explain()` 曾**实际执行**被分析的 DML（数据损坏级）改用 `SET SHOWPLAN_TEXT`。sqlserver 仅进入 **All SKU**，Basic 不含。
+
+#### 编辑器与 AI 生产力
+
+- **多光标**：`⌘/Ctrl + 点击` 添加光标、`Escape` 退出；键位以 `Prec` 提权，与复制行另辟快捷键共存。
+- **全局查询历史重做**：状态 / 时间范围 / 数据库 / Schema 四维筛选，最新 / 最早 / 最慢三种排序，批量导出、复制 SQL、在查询面板打开、一键收藏；截断时明示「{shown} / {total}」而非假装完整。
+- **面板（pane）维度状态模型**：焦点按 tab 归属路由，修复跨 tab 焦点泄漏与表数据状态串连接。
+- Pro 侧：Code Folding EP 槽位、三个通用 EP 钩子打通设置链路，`@codemirror/language` / `@codemirror/commands` 进入宿主-Pro 共享模块集。
+
+### 🔧 改进（Changed）
+
+- **`@datazen/ui` 设计系统收敛**：109 处手写转圈统一为 `Spinner`；3 个手写 tab 条收敛为 `Tabs`；连接树与 Redis 键浏览器落在共享 `VirtualTree` 壳（纯层级逻辑抽出为公共契约）；14 处内联错误条统一为 `ErrorBanner`；数据迁移三件套对话框改用公共组件。`@datazen/ui` 由 module-layers + import-boundaries **双规则守卫**强制零宿主依赖（`PathInput` 改注入式选择器，移除对 Tauri 的依赖）。
+- **分页改由驱动自主声明**：driver-api 新增 `PaginationSyntax` + `pagination_syntax()` 默认实现，宿主 4 处调用点（query_executor / data_transfer / data_sync keyset / sync keyset_source）不再硬编码 `LIMIT ? OFFSET ?`；SQL Server 走 `OFFSET … FETCH NEXT …` + `ORDER BY (SELECT NULL)` 兜底；编辑器行数上限不再对自带 `OFFSET` 的 T-SQL 注入 `TOP`（error 10741）。
+- **更新通道按 SKU 分轨**：Basic / All / Akulaku 各自发布并读取**自己的** `latest.json` / `latest-all.json` / `latest-akulaku.json`；安装前复核清单 `variant` 与构建 SKU，不符即拒装——All / Akulaku 用户不再被 Basic 构建静默替换（丢驱动）。SKU 矩阵 / tauri.conf / release.yml / 打包模板由 `pnpm test:release-variants` 四方一致性守卫看住。
+- Release CI：撤销 driver union 预热（实测墙钟 +62%，21 分钟负优化，教训已写入 ci-test-matrix.md §6.1）；`union-typecheck` 单点类型闸门保留；codegen 内容未变时不重写文件；Linux AppImage 通过 appimage.github.io 校验。
+- 依赖治理：CodeMirror 与 React 在宿主 / Pro 两侧全部钉死精确版本并纳入 seam 守卫；`scripts/` 与 `scripts/__tests__` 进入真实 tsc 闸门（修复 38 条类型错误）；pack-ep 加产物级签名闸门。
+- 文档：README 全文重写并按当前设计重拍 53 帧截图与演示视频；新增验证方法论与 worktree 隔离边界两篇开发文档。
+
+### 🐛 修复（Fixed）
+
+- **Updater / 发布**：变体被 Basic 清单替换（见上）；变体清单缺平台从静默改为失败；`PRO_DEPLOY_KEY` 缺失时 release 硬报错而非半程构建。
+- **安全**：rustls `CryptoProvider` 多提供者环境下安装改为确定性并在全新进程中验证；EP 打包「失败仍留下可复用已签名树」与 unmapped 包签名旁路封堵；`grep -F` 字面匹配修正 4 处路径注入误判。
+- **崩溃 / 窗口**：早退分支后调用 hook 导致 React error #310；Onboarding 向导 close 后未真正销毁；执行门卸载后参数聚焦定时器未清理。
+- **SQLite**：文件路径被当作 catalog 名插值到元数据查询（结构视图空列根因之一）；`ON CONFLICT` 策略 fail closed；CRLF / 多行视图体解析；Schema Diff 部署冻结 catalog 作用域。
+- **连接与表格**：关闭连接时一并关闭该库全部 tab；再次单击已选中行可取消选中；多选右键菜单作用于整个选区；连接树叶子命名空间节点不再谎报 `aria-expanded`；navigator 对象身份键保留（重载函数不再互相覆盖）。
+- **i18n**：dev 期暴露 `t()` 静默回退原始 key；宿主 document-view 字符串迁出驱动 `mongo.*` 命名空间；lazy 域 JSX 常量移入 `localesReady` 守卫之后（首帧竞态）；key 碰撞守卫补两个缺口。
+- **E2E / 构建脚本**：macOS `[target.'cfg(macros)'.dev-dependencies]` 表被驱动注入标记吞进占位段导致 Linux CI 构建破坏；`tsc -b` 用编译产物覆写真实 tsconfig；驱动注入期间 `Cargo.lock` 被弄脏（纳入 stash 保护）；worktree 创建脚本铺好环境、缺件大声报错、失败回滚。
+- 复制失败不再谎报「已复制」；复制反馈定时器可取消、可归属到具体调用与窗口。
+
+### 🧪 测试（Testing）
+
+- 迁移三件套交付周期含 tester 独立复测轮：WDIO 用例按宿主 / Pro 边界分流，元素定位统一改用 `data-testid`，拆批量消除此前**恒真、永远不会失败**的断言，并修复被它们掩盖的真实缺陷。
+- E2E macOS 静默模式：测试窗口永不成为 key window，跑 E2E 不再抢开发者焦点。
+- `scripts/` 门禁单测 27 files / 339 tests（基线 334），含守卫变异自证；契约种子建表失败不再被吞掉。
+- 发布门禁全量绿：`pnpm typecheck`、Host 单测 **549 files / 5648 tests**、driver-api + basic 四驱动 + datazen lib + ai-api（`scripts/ci-local.sh` 11 步）、sqlserver 驱动 lib 59 tests、i18n-sync 312 missing → 0。
+
+---
+
 ## [0.2.2] - 2026-09-27
 
 > 自 v0.2.1 以来累计 **800+** 次提交。主线是可视化查询构建器、Redis 工作台重做、数据库隧道，以及一次驱动契约的硬切换。

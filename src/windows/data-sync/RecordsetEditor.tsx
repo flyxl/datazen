@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../../components/ui/Button';
+import { Checkbox } from '../../components/ui/Checkbox';
+import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import type {
   DataSyncRecordset,
@@ -14,11 +16,7 @@ interface RecordsetEditorProps {
   onChange: (recordset: DataSyncRecordset | undefined) => void;
 }
 
-export function RecordsetEditor({
-  primaryKeys,
-  recordset,
-  onChange,
-}: RecordsetEditorProps) {
+export function RecordsetEditor({ primaryKeys, recordset, onChange }: RecordsetEditorProps) {
   const { t } = useI18n();
   const [limitError, setLimitError] = useState(false);
   const defaultOrder = primaryKeys.length === 1 ? primaryKeys[0] : '';
@@ -33,20 +31,20 @@ export function RecordsetEditor({
     const current = recordset?.[name];
     update({ [name]: { ...(current ?? { value: '', inclusive: true }), ...patch } });
   };
-  const updateTupleBound = (
-    name: 'start' | 'end',
-    patch: Partial<DataSyncRecordsetTupleBound>,
-  ) => {
+  const updateTupleBound = (name: 'start' | 'end', patch: Partial<DataSyncRecordsetTupleBound>) => {
     const tupleRange = recordset?.tupleRange ?? { columns: primaryKeys };
     const current = tupleRange[name];
-    const next = { ...tupleRange, [name]: { ...(current ?? { values: [], inclusive: true }), ...patch } };
+    const next = {
+      ...tupleRange,
+      [name]: { ...(current ?? { values: [], inclusive: true }), ...patch },
+    };
     update({ tupleRange: next, orderBy: undefined, start: undefined, end: undefined });
   };
   const setTupleComponent = (name: 'start' | 'end', index: number, value: string) => {
     const tupleRange = recordset?.tupleRange ?? { columns: primaryKeys };
     const current = tupleRange[name];
     const values = Array.from({ length: primaryKeys.length }, (_, component) =>
-      component === index ? value : current?.values[component] ?? '',
+      component === index ? value : (current?.values[component] ?? ''),
     );
     if (values.every((component) => component === '')) {
       const next = { ...tupleRange };
@@ -72,7 +70,10 @@ export function RecordsetEditor({
   };
 
   return (
-    <div className="space-y-2 rounded-lg border border-edge bg-surface-alt p-3" data-testid="data-sync-recordset">
+    <div
+      className="space-y-2 rounded-lg border border-edge bg-surface-alt p-3"
+      data-testid="data-sync-recordset"
+    >
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-sm font-medium">{t('sync.recordset')}</div>
@@ -112,19 +113,18 @@ export function RecordsetEditor({
                     {primaryKeys.map((column, index) => (
                       <label key={column} className="flex items-center gap-2 text-xs">
                         <span className="w-24 truncate text-fg-muted">{column}</span>
-                        <input
+                        <Input
+                          className="h-7 min-w-36 flex-1 px-2 text-xs"
                           value={bound?.values[index] ?? ''}
                           placeholder={t('sync.recordsetUnbounded')}
                           data-testid={`data-sync-recordset-${name}-${index}`}
                           onChange={(event) => setTupleComponent(name, index, event.target.value)}
-                          className="h-7 min-w-36 flex-1 rounded border border-edge bg-surface px-2 text-xs"
                         />
                       </label>
                     ))}
                     {bound && (
                       <label className="flex items-center gap-1 text-xs text-fg-muted">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={bound.inclusive !== false}
                           data-testid={`data-sync-recordset-${name}-inclusive`}
                           onChange={(event) =>
@@ -158,7 +158,8 @@ export function RecordsetEditor({
                     <span className="w-16 text-xs text-fg-muted">
                       {name === 'start' ? t('sync.recordsetStart') : t('sync.recordsetEnd')}
                     </span>
-                    <input
+                    <Input
+                      className="h-7 min-w-36 flex-1 px-2 text-xs"
                       value={bound?.value ?? ''}
                       placeholder={t('sync.recordsetUnbounded')}
                       data-testid={`data-sync-recordset-${name}`}
@@ -172,12 +173,10 @@ export function RecordsetEditor({
                           updateBound(name, { value });
                         }
                       }}
-                      className="h-7 min-w-36 flex-1 rounded border border-edge bg-surface px-2 text-xs"
                     />
                     {bound && (
                       <label className="flex items-center gap-1 text-xs text-fg-muted">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={bound.inclusive !== false}
                           data-testid={`data-sync-recordset-${name}-inclusive`}
                           onChange={(event) =>
@@ -195,14 +194,14 @@ export function RecordsetEditor({
 
           <label className="flex items-center gap-2 text-xs text-fg-muted">
             <span className="w-16">{t('sync.recordsetLimit')}</span>
-            <input
+            <Input
               type="number"
               min={1}
               value={recordset.limit ?? ''}
               placeholder={t('sync.recordsetUnbounded')}
               data-testid="data-sync-recordset-limit"
               onChange={(event) => setLimit(event.target.value)}
-              className="h-7 w-36 rounded border border-edge bg-surface px-2 text-xs"
+              className="h-7 w-36 px-2 text-xs"
             />
           </label>
           {limitError && (

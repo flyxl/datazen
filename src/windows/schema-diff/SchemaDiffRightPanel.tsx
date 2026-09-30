@@ -5,6 +5,7 @@ import type {
 } from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
+import { Tabs } from '../../components/ui/Tabs';
 import { SchemaDiffDeployPanel } from './SchemaDiffDeployPanel';
 import { SchemaDiffPlanPanel } from './SchemaDiffPlanPanel';
 
@@ -75,34 +76,22 @@ export function SchemaDiffRightPanel({
     >
       <div className="flex shrink-0 border-b border-edge">
         {!hideTabs && (
-          <>
-            <button
-              type="button"
-              className={cn(
+          <Tabs
+            items={[
+              { id: 'plan', label: t('schemaDiff.stepPlan'), testId: 'schema-diff-plan-tab' },
+              { id: 'deploy', label: t('schemaDiff.stepReview'), testId: 'schema-diff-deploy-tab' },
+            ]}
+            activeId={activeTab}
+            onChange={(id) => onTabChange(id as SchemaDiffRightPanelTab)}
+            className="flex shrink-0 border-b border-edge"
+            getTabClassName={({ selected }) =>
+              cn(
                 'px-4 py-2 text-xs font-medium',
-                activeTab === 'plan'
-                  ? 'border-b-2 border-accent text-fg'
-                  : 'text-fg-muted hover:text-fg',
-              )}
-              onClick={() => onTabChange('plan')}
-              data-testid="schema-diff-plan-tab"
-            >
-              {t('schemaDiff.stepPlan')}
-            </button>
-            <button
-              type="button"
-              className={cn(
-                'px-4 py-2 text-xs font-medium',
-                activeTab === 'deploy'
-                  ? 'border-b-2 border-accent text-fg'
-                  : 'text-fg-muted hover:text-fg',
-              )}
-              onClick={() => onTabChange('deploy')}
-              data-testid="schema-diff-deploy-tab"
-            >
-              {t('schemaDiff.stepReview')}
-            </button>
-          </>
+                selected ? 'border-b-2 border-accent text-fg' : 'text-fg-muted hover:text-fg',
+              )
+            }
+            ariaLabel={t('common.schemaDiff')}
+          />
         )}
       </div>
 

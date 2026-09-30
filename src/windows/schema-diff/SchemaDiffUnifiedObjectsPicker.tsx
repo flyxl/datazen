@@ -1,5 +1,6 @@
 import type { SchemaDiffObjectIdentity, SchemaDiffObjectKind } from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { schemaDiffObjectIdentityKey } from './schemaDiffObjectIdentity';
 
 export interface SchemaDiffObjectLoadErrors {
@@ -97,8 +98,7 @@ function ObjectSideList({
                           data-object-identity={key}
                           className="flex items-center gap-2 border-b border-edge/60 px-2 py-1.5 text-xs last:border-b-0"
                         >
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             aria-label={`${t(side === 'source' ? 'schemaDiff.objectSource' : 'schemaDiff.objectTarget')}: ${label}`}
                             checked={selectedKeys.has(key)}
                             disabled={crossDialect && !selectedKeys.has(key)}

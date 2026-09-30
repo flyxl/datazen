@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Copy, Loader2 } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
@@ -33,6 +33,7 @@ import {
   setSchemaDiffLimitationsDismissed,
 } from '../../lib/schemaDiffLimitationsPrefs';
 import { LimitationsDialog } from '../../components/ui/LimitationsDialog';
+import { Spinner } from '../../components/ui/Spinner';
 import { SCHEMA_DIFF_LIMITATION_KEYS } from './schemaDiffLimitationKeys';
 import { SchemaDiffExecutionPanels } from './SchemaDiffExecutionPanels';
 import { SchemaDiffSelectionSteps } from './SchemaDiffSelectionSteps';
@@ -754,7 +755,7 @@ export function SchemaDiffWindow() {
               disabled={!deployAllowed || loading}
               onClick={() => void handleDeploy()}
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('schemaDiff.deploy')}
+              {loading ? <Spinner size="lg" /> : t('schemaDiff.deploy')}
             </Button>
           ) : (
             <Button
@@ -762,7 +763,7 @@ export function SchemaDiffWindow() {
               disabled={!canNext || loading}
               onClick={() => void goNext()}
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('schemaDiff.next')}
+              {loading ? <Spinner size="lg" /> : t('schemaDiff.next')}
               <ChevronRight className="h-4 w-4" />
             </Button>
           )}

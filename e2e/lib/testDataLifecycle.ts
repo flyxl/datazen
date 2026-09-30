@@ -81,14 +81,18 @@ export function createWorkerDatabase(): string {
   }
 
   // Seed standard fixture tables so specs that expect `product` etc. work.
-  const workerSchema = process.env.E2E_WORKER_SCHEMA?.trim();
-  const schemaSetup = workerSchema
-    ? `CREATE SCHEMA IF NOT EXISTS ${qIdent(workerSchema)};
-GRANT ALL PRIVILEGES ON SCHEMA ${qIdent(workerSchema)} TO PUBLIC;
-SET search_path TO ${qIdent(workerSchema)};`
-    : 'SET search_path TO public;';
+  //
+  // Fixtures go to `public`, NOT to E2E_WORKER_SCHEMA: `seedDefaultPgConnection`
+  // deliberately binds `conn_e2e_pg` with no connection-level schema (see the
+  // DP-004 comment there), so every consumer that opens `product` or the
+  // contract tables through that connection resolves them in `public`. Seeding
+  // into the worker schema made those reads fail with "relation does not exist"
+  // (export-import before-hook) and the driver schema guard report
+  // `present_in=["e2e_worker_0"]` (ER / contract journeys). Worker isolation
+  // already comes from the per-worker database; E2E_WORKER_SCHEMA stays a
+  // navigator hint for `expandSchemaCategory`, which never reads the config.
   const seedSql = `
-${schemaSetup}
+SET search_path TO public;
 CREATE TABLE IF NOT EXISTS product (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL DEFAULT 'item',

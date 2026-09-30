@@ -6,7 +6,10 @@ import {
 } from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../../components/ui/Button';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { CopyableError } from '../../components/ui/CopyableError';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Input } from '../../components/ui/Input';
 import { canRunDeploy } from '../../lib/schemaDiffConfirm';
 
 export function SchemaDiffDeployPanel({
@@ -70,8 +73,7 @@ export function SchemaDiffDeployPanel({
       </div>
 
       <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={transactionRequired || (useTransaction && txSupported)}
           disabled={!txSupported || transactionRequired}
           onChange={(e) => onUseTransactionChange(e.target.checked)}
@@ -86,8 +88,7 @@ export function SchemaDiffDeployPanel({
       </label>
 
       <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
+        <Checkbox
           checked={requireRollback}
           onChange={(e) => onRequireRollbackChange(e.target.checked)}
         />
@@ -95,9 +96,9 @@ export function SchemaDiffDeployPanel({
       </label>
 
       {requireRollback && !plan.rollbackCompleteness.complete && (
-        <p className="select-text text-xs text-danger">
+        <ErrorBanner as="p" className="select-text">
           {t('schemaDiff.rollbackIncomplete')}: {plan.rollbackCompleteness.missing.join('; ')}
-        </p>
+        </ErrorBanner>
       )}
 
       {hasDestructive && (
@@ -105,8 +106,7 @@ export function SchemaDiffDeployPanel({
           <span className="text-fg-secondary">
             {t('schemaDiff.confirmDeploy', { token: DESTRUCTIVE_CONFIRM_TOKEN })}
           </span>
-          <input
-            className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-sm"
+          <Input
             value={confirmText}
             onChange={(e) => onConfirmTextChange(e.target.value)}
             placeholder={DESTRUCTIVE_CONFIRM_TOKEN}

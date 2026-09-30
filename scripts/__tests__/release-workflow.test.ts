@@ -76,8 +76,12 @@ describe('Windows release packaging', () => {
   it('builds the Pro extension once and shares it with every variant as an artifact', () => {
     // One clone/build/sign for the whole matrix instead of one per variant.
     expect(releaseWorkflow).toContain('prepare-pro-extension');
+    // v0.2.3 policy: the extension tracks Pro default-branch HEAD (the lock
+    // file's `ref` is null) because main is the branch whose manifest declares
+    // the host's EXTENSION_POINTS_VERSION. The step must still exist — dropping
+    // it would put a Pro re-clone inside every variant job.
     expect(releaseWorkflow).toContain(
-      'Clone, build and sign the Pro extension at the pinned revision',
+      'Clone, build and sign the Pro extension from the default branch',
     );
     expect(releaseWorkflow).toContain('node scripts/resolve-pro.mjs --edition=pro');
     expect(releaseWorkflow).toContain('actions/upload-artifact@v4');

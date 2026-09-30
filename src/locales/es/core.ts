@@ -13,6 +13,7 @@ const pack = {
   'common.default': 'Predeterminado',
   'common.confirm': 'Confirmar',
   'common.search': 'Buscar',
+  'common.reset': 'Restablecer',
   'common.new': 'Nuevo',
   'common.deselectAll': 'Deseleccionar todo',
   'common.copy': 'Copiar',

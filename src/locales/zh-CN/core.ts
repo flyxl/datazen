@@ -13,6 +13,7 @@ const pack = {
   'common.default': '默认',
   'common.confirm': '确认',
   'common.search': '搜索',
+  'common.reset': '重置',
   'common.new': '新建',
   'common.deselectAll': '全不选',
   'common.copy': '复制',

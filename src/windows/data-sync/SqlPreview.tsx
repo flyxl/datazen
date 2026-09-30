@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Copy, Loader2 } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Spinner } from '../../components/ui/Spinner';
 import { useCopyFeedback } from '../../components/ui/useCopyFeedback';
 import { useI18n } from '../../hooks/useI18n';
 import type {
@@ -130,7 +132,7 @@ export function SqlPreview({
           ))}
         </div>
         <div className="flex-1" />
-        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-fg-muted" />}
+        {loading && <Spinner size="md" tone="muted" />}
         <Button variant="ghost" size="sm" onClick={() => void loadPreview()}>
           {t('sync.refreshPreview')}
         </Button>
@@ -140,9 +142,9 @@ export function SqlPreview({
         </Button>
       </div>
       {previewError && (
-        <div role="alert" className="p-3 text-sm text-red-500">
+        <ErrorBanner className="p-3 text-sm">
           {isPreviewSizeLimitError ? t('sync.sqlPreviewLimitReached') : previewError}
-        </div>
+        </ErrorBanner>
       )}
       <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-relaxed text-fg-secondary">
         {previewText}

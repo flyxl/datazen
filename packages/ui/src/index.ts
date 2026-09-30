@@ -2,6 +2,12 @@ export { cn } from './cn';
 export { tid, type TidAttrs } from './tid';
 export { Button, type ButtonProps } from './Button';
 export { Input, type InputProps } from './Input';
+// The one themed checkbox / radio. Replaces the hand-written
+// `accent-accent`-tinted native controls; atomic boxes, callers keep their
+// `<label>` wrapper (click target + a11y association), so `data-testid`
+// placement is unchanged.
+export { Checkbox, type CheckboxProps } from './Checkbox';
+export { Radio, type RadioProps } from './Radio';
 export {
   Select,
   defaultSelectLabels,

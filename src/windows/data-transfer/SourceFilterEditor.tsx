@@ -3,6 +3,7 @@ import { useI18n } from '../../hooks/useI18n';
 import type { FilterCondition, FilterOperator } from '../../types';
 import type { DataSyncRecordset } from '../../commands/sync';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 
 const OPERATORS: FilterOperator[] = [
@@ -61,7 +62,10 @@ export function SourceFilterEditor({ columns, filter, onChange }: SourceFilterEd
   };
 
   return (
-    <div className="space-y-2 rounded-lg border border-edge bg-surface-alt p-3" data-testid="data-transfer-source-filter">
+    <div
+      className="space-y-2 rounded-lg border border-edge bg-surface-alt p-3"
+      data-testid="data-transfer-source-filter"
+    >
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-sm font-medium">{t('transfer.mapping.sourceFilter')}</div>
@@ -98,9 +102,13 @@ export function SourceFilterEditor({ columns, filter, onChange }: SourceFilterEd
       ) : (
         <div className="space-y-1">
           {conditions.map((condition, index) => {
-            const needsValue = condition.operator !== 'isNull' && condition.operator !== 'isNotNull';
+            const needsValue =
+              condition.operator !== 'isNull' && condition.operator !== 'isNotNull';
             return (
-              <div key={`${condition.column}-${index}`} className="flex flex-wrap items-center gap-1">
+              <div
+                key={`${condition.column}-${index}`}
+                className="flex flex-wrap items-center gap-1"
+              >
                 <Select
                   value={condition.column}
                   options={columnOptions}
@@ -120,14 +128,17 @@ export function SourceFilterEditor({ columns, filter, onChange }: SourceFilterEd
                     next[index] = {
                       ...condition,
                       operator: nextOperator,
-                      value: nextOperator === 'isNull' || nextOperator === 'isNotNull' ? undefined : condition.value ?? '',
+                      value:
+                        nextOperator === 'isNull' || nextOperator === 'isNotNull'
+                          ? undefined
+                          : (condition.value ?? ''),
                     };
                     update(next);
                   }}
                   className="!h-7 min-w-28 !text-xs"
                 />
                 {needsValue && (
-                  <input
+                  <Input
                     value={condition.value == null ? '' : String(condition.value)}
                     placeholder={condition.operator === 'in' ? 'a,b,c' : t('filter.value')}
                     onChange={(event) => {

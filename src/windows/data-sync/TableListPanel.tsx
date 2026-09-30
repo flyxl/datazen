@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import {
@@ -68,9 +69,9 @@ export function TableListPanel({
       <div className="shrink-0 space-y-2 border-b border-edge p-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
-          <input
+          <Input
             type="search"
-            className="h-8 w-full rounded-md border border-edge bg-surface pl-8 pr-2 text-xs"
+            className="h-8 w-full pl-8 pr-2 text-xs"
             placeholder={t('common.searchTables')}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}

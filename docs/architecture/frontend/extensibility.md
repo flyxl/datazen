@@ -93,6 +93,8 @@ SQL 编辑器的增强能力通过 `sqlEditorEnhancedEP`（`packages/extension-p
 | 粘贴为 IN、表拖放等粘贴增强 | Pro | `createPasteExtensions` / `createPasteAsInContextMenuItems` |
 | 多光标、查询历史、收藏 | 宿主 | `src/components/sql-editor/`、`windows/connection/query/` |
 
+**拖放负载契约是不对称的（列拖放尚不可达）**：V1 负载的 `kind` 在 Pro 消费端声明为 `'table' | 'view' | 'column'`，解析时保留 `column`（`packages/pro-extensions/sql-editor-pro/src/paste/dropCaret.ts`，附 `validates column payload structure` 单测）；但宿主生产端 `src/windows/connection/schema-tree/schemaTreeDrag.ts:21,47` 的联合类型只有 `'table' | 'view'`，也从不把列节点构造为可拖拽源。因此「从结构树拖一列进编辑器插入列限定名」这条链路**消费端就绪、生产端缺失**，功能整体不可达（无崩溃、无错误结果，属半实现特性）。补齐点在宿主：为列节点加拖拽源并扩展负载联合类型，Pro 侧无需改动。缺陷的现象、影响面与逐段链路实测见 [SE-PROD-011](../../bugs/SE-PROD-011-column-drag-drop-unreachable.md)。
+
 **测试落点（重要）：** 宿主 `e2e/` 构建的 Community 版里，上述 Pro 钩子全部走空实现，因此在 `e2e/specs/` 里断言 Pro 行为必然失败——不是用例写错，是被测代码根本不在宿主里。**凡由 EP 钩子实现的能力，其 E2E 必须写在 Pro 包内**（`packages/pro-extensions/sql-editor-pro/e2e/specs/`），与「驱动测试写在驱动 crate 内」是同一条纪律。这条规则的直接后果：改 Pro 代码后必须先重新 stage（`resolve-pro` 对已存在的 `builtin-ep` 目录会跳过重新打包），否则测的是上一次的产物。
 
 Pro 包是**独立 git 仓库**（gitignored），需独立 commit / pull / push；宿主 PR 不会带上它的改动。

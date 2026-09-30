@@ -87,6 +87,14 @@ function resetAppDataDir(dir, keep) {
 const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
 const screenshotTrace = args.includes('--screenshot');
+// 截图 / 录屏链路需要窗口处在系统正常的前台与合成状态（合成器才会把窗口内容
+// 交给 WebDriver 的 saveScreenshot 与系统录屏），静默模式会破坏这类运行，
+// 因此 e2e:shots / e2e:demo / --capture / --screenshot 默认关闭静默。
+// 判定看的是参数本身，所以任何调用方式都覆盖得到。
+const isCaptureRun = () =>
+  args.includes('--capture') ||
+  screenshotTrace ||
+  args.some((a) => /demo-recording|screenshot/i.test(a));
 const keepAppData = args.includes('--keep-app-data');
 const portArg = args.find((a, i) => args[i - 1] === '--port');
 const instancesArg = args.find((a, i) => args[i - 1] === '--instances');
@@ -296,6 +304,11 @@ function startAppInstance({ binaryPath, dataDir, port, workerIndex, onOutput }) 
   log(`Starting app instance on port ${port}: ${binaryPath}`);
   log(`App data isolation: DATAZEN_DATA_DIR=${dataDir}`);
   const workerSchema = `e2e_worker_${workerIndex ?? 0}`;
+  // 静默模式（macOS）：默认开启，避免 E2E 抢走开发者正在用的键盘焦点。
+  // 截图 / 录屏链路需要窗口处于系统正常的前台与合成状态，默认关闭；
+  // 任何情况下都可用 DATAZEN_E2E_QUIET=0/1 显式覆盖。
+  const quiet = process.env.DATAZEN_E2E_QUIET ?? (isCaptureRun() ? '0' : '1');
+  log(`macOS quiet mode: DATAZEN_E2E_QUIET=${quiet}`);
   const proc = spawn(binaryPath, [], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
@@ -308,6 +321,7 @@ function startAppInstance({ binaryPath, dataDir, port, workerIndex, onOutput }) 
       // CLI，钥匙串搜索列表一旦异常（Module Directory Service error）必弹。
       // 主密钥改落临时目录里的 `.key`，E2E 也不该碰用户真实钥匙串。
       DATAZEN_KEYRING: process.env.DATAZEN_KEYRING ?? 'file',
+      DATAZEN_E2E_QUIET: quiet,
       TAURI_WEBDRIVER_PORT: String(port),
       E2E_WD_PORT: String(port),
       E2E_WORKER_INDEX: String(workerIndex ?? 0),

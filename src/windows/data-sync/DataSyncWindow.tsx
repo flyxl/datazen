@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
@@ -8,6 +8,8 @@ import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Select } from '../../components/ui/Select';
 import { CopyableError } from '../../components/ui/CopyableError';
+import { Input } from '../../components/ui/Input';
+import { Spinner } from '../../components/ui/Spinner';
 import { aiCommands } from '../../commands/ai';
 import {
   syncCommands,
@@ -2108,12 +2110,12 @@ export function DataSyncWindow() {
               >
                 <label className="min-w-48 flex-1 text-xs text-fg-muted">
                   <span className="mb-1 block">{t('sync.profile.name')}</span>
-                  <input
+                  <Input
                     data-testid="data-sync-profile-name"
                     value={profileName}
                     onChange={(event) => setProfileName(event.target.value)}
                     placeholder={t('sync.profile.namePlaceholder')}
-                    className="h-8 w-full rounded border border-edge bg-surface px-2 text-sm text-fg"
+                    className="h-8 w-full px-2 text-sm"
                   />
                 </label>
                 <label className="min-w-48 text-xs text-fg-muted">
@@ -2214,7 +2216,7 @@ export function DataSyncWindow() {
             <div data-testid="data-sync-objects-step" className="space-y-3">
               {syncState === 'inspecting' ? (
                 <div className="flex justify-center py-12 text-sm text-fg-muted">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin text-accent" />
+                  <Spinner size="xl" tone="accent" />
                   {t('sync.inspecting')}
                 </div>
               ) : mappingResults.length > 0 ? (
@@ -2239,7 +2241,7 @@ export function DataSyncWindow() {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {syncState === 'comparing' ? (
                 <div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Spinner size="lg" />
                   {t('sync.comparing')}
                   <Button
                     variant="ghost"
@@ -2329,7 +2331,7 @@ export function DataSyncWindow() {
                   data-testid="data-sync-executing-overlay"
                   className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface/90 text-sm text-fg-muted"
                 >
-                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                  <Spinner size="2xl" tone="accent" />
                   <span>{executeProgress || t('sync.executing')}</span>
                 </div>
               )}
@@ -2434,7 +2436,7 @@ export function DataSyncWindow() {
             disabled={!canNext || busy}
             onClick={() => void goNext()}
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {busy ? <Spinner size="lg" /> : null}
             {t('sync.next')}
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -2490,7 +2492,7 @@ export function DataSyncWindow() {
       >
         {explainLoading ? (
           <div className="flex items-center gap-2 text-sm text-fg-muted">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Spinner size="lg" />
             {t('sync.executing')}
           </div>
         ) : (

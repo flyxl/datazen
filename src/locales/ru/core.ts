@@ -13,6 +13,7 @@ const pack = {
   'common.default': 'По умолчанию',
   'common.confirm': 'Подтверждать',
   'common.search': 'Поиск',
+  'common.reset': 'Сбросить',
   'common.new': 'Создать',
   'common.deselectAll': 'Отменить выбор всех',
   'common.copy': 'Копировать',

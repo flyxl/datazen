@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { Button } from '../../components/ui/Button';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Radio } from '../../components/ui/Radio';
 import { Select } from '../../components/ui/Select';
 import { Input } from '../../components/ui/Input';
 import {
@@ -38,6 +41,7 @@ import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/tra
 import { isVerifiedMigrationPair } from '../../lib/migrationVerification';
 import type { ConnectionConfig } from '../../types';
 import { LimitationsDialog } from '../../components/ui/LimitationsDialog';
+import { Spinner } from '../../components/ui/Spinner';
 import { TRANSFER_LIMITATION_KEYS } from './transferLimitationKeys';
 import { TransferExecuteConfirmDialog } from './TransferExecuteConfirmDialog';
 import { TransferMappingStep } from './TransferMappingStep';
@@ -1272,8 +1276,7 @@ export function DataTransferWindow() {
                     )}
                   >
                     <span className="flex items-center gap-2 text-sm font-medium">
-                      <input
-                        type="radio"
+                      <Radio
                         name="transfer-mode"
                         checked={mode === opt.value}
                         onChange={() => setMode(opt.value)}
@@ -1291,8 +1294,7 @@ export function DataTransferWindow() {
                 </p>
                 {(mode !== 'data' || writeMode === 'dropCreateInsert') && (
                   <label className="flex items-start gap-2 rounded border border-warning/40 bg-warning/5 p-2 text-xs">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       className="mt-0.5"
                       checked={useTargetDefaultCollation}
                       onChange={(event) => setUseTargetDefaultCollation(event.target.checked)}
@@ -1324,8 +1326,7 @@ export function DataTransferWindow() {
                 </label>
                 {writeMode !== 'insert' && (
                   <label className="flex items-center gap-2 text-sm text-warning">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={confirmedDestructive}
                       onChange={(e) => setConfirmedDestructive(e.target.checked)}
                       data-testid="data-transfer-destructive-confirm"
@@ -1335,26 +1336,22 @@ export function DataTransferWindow() {
                 )}
                 <label className="block text-sm">
                   {t('transfer.batchSize')}
-                  <input
+                  <Input
                     type="number"
                     min={1}
                     max={500}
                     step={1}
                     aria-invalid={!validBatchSize}
                     data-testid="data-transfer-batch-size"
-                    className="mt-1 w-full rounded border border-edge bg-surface px-2 py-1"
+                    className="mt-1"
                     value={batchSize}
                     onChange={(e) => setBatchSize(Number(e.target.value))}
                   />
                 </label>
                 {!validBatchSize ? (
-                  <p
-                    className="text-xs text-danger"
-                    role="alert"
-                    data-testid="data-transfer-batch-size-error"
-                  >
+                  <ErrorBanner as="p" data-testid="data-transfer-batch-size-error">
                     {t('transfer.batchSizeLimit')}
-                  </p>
+                  </ErrorBanner>
                 ) : null}
                 <p
                   className="text-xs text-fg-muted"
@@ -1364,8 +1361,7 @@ export function DataTransferWindow() {
                   {t('transfer.resumeCapabilityHint')}
                 </p>
                 <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={stopOnError}
                     onChange={(e) => setStopOnError(e.target.checked)}
                   />
@@ -1379,7 +1375,7 @@ export function DataTransferWindow() {
             <div>
               {loading ? (
                 <div className="flex justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                  <Spinner size="2xl" tone="accent" />
                 </div>
               ) : tables.length === 0 ? (
                 <div
@@ -1406,8 +1402,7 @@ export function DataTransferWindow() {
                       data-testid="data-transfer-table-row"
                       className="flex items-center gap-2 px-3 py-2 text-sm"
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={tbl.enabled}
                         onChange={() => toggleTable(tbl.sourceTable)}
                       />
@@ -1466,7 +1461,7 @@ export function DataTransferWindow() {
 
           {step === 'preview' && loading && (
             <div className="flex justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-accent" />
+              <Spinner size="2xl" tone="accent" />
             </div>
           )}
 
@@ -1477,7 +1472,7 @@ export function DataTransferWindow() {
                   data-testid="data-transfer-executing-overlay"
                   className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-lg bg-surface/90 text-sm text-fg-muted"
                 >
-                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                  <Spinner size="2xl" tone="accent" />
                   <span>{executeProgress || t('transfer.executing')}</span>
                 </div>
               )}
@@ -1700,7 +1695,7 @@ export function DataTransferWindow() {
               disabled={!canExecute || executing}
               onClick={handleExecuteClick}
             >
-              {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {executing ? <Spinner size="lg" /> : null}
               {executing ? t('transfer.executing') : t('transfer.execute')}
             </Button>
           ) : step === 'result' && result?.resumeToken ? (
@@ -1710,7 +1705,7 @@ export function DataTransferWindow() {
               disabled={executing}
               onClick={() => void runExecute(result.resumeToken ?? undefined)}
             >
-              {executing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {executing ? <Spinner size="lg" /> : null}
               {t('common.retry')}
             </Button>
           ) : step !== 'result' ? (
@@ -1719,7 +1714,7 @@ export function DataTransferWindow() {
               disabled={!canNext || loading}
               onClick={() => void goNext()}
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('transfer.next')}
+              {loading ? <Spinner size="lg" /> : t('transfer.next')}
               <ChevronRight className="h-4 w-4" />
             </Button>
           ) : null}

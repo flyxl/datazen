@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Clock3, Loader2 } from 'lucide-react';
+import { Clock3 } from 'lucide-react';
 import {
   historyCommands,
   type MigrationOperation,
@@ -8,6 +8,8 @@ import {
 import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { ErrorBanner } from '../ui/ErrorBanner';
+import { Spinner } from '../ui/Spinner';
 
 export function MigrationRunHistoryDialog({
   operation,
@@ -86,11 +88,15 @@ export function MigrationRunHistoryDialog({
         <div className="max-h-[65vh] overflow-auto text-xs" data-testid="migration-run-history">
           {loading && (
             <div className="flex items-center gap-2 p-4 text-fg-muted">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size="lg" />
               {t('common.loading')}
             </div>
           )}
-          {error && <p className="p-4 text-danger">{error}</p>}
+          {error && (
+            <ErrorBanner as="p" className="p-4">
+              {error}
+            </ErrorBanner>
+          )}
           {!loading && !error && items.length === 0 && (
             <p className="p-4 text-fg-muted">{t('migrationHistory.empty')}</p>
           )}
@@ -140,7 +146,7 @@ export function MigrationRunHistoryDialog({
                 </div>
               )}
               {selected.errorSummary && (
-                <div className="mt-2 text-danger">{selected.errorSummary}</div>
+                <ErrorBanner className="mt-2">{selected.errorSummary}</ErrorBanner>
               )}
               {operation === 'dataSync' && selected.outcome === 'unknown' && onReconcile && (
                 <div className="mt-3 border-t border-edge pt-3">

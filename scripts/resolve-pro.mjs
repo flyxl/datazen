@@ -20,10 +20,15 @@
  *   DATAZEN_PRO_GIT="https://github.com/flyxl/datazen-extension-sql-editor-pro.git"
  *   DATAZEN_PRO_REF="<commit sha or tag>"
  *
- * A freshly cloned extension is pinned to `pro-extension.lock.json` (or the
- * --pro-ref / DATAZEN_PRO_REF override) so that building a host tag reproduces
- * the exact extension revision that tag shipped. An existing local checkout is
- * left alone, so day-to-day development keeps using working-tree code.
+ * A freshly cloned extension tracks the Pro repo's **default-branch HEAD**
+ * (release policy since v0.2.3: `ref` is null in pro-extension.lock.json).
+ * Pro lands its PRs on main ahead of the host that consumes them, and main is
+ * the branch whose manifest declares the host's current EXTENSION_POINTS_VERSION
+ * — a pinned older revision would fail checkEngineCompatibility at runtime.
+ * Pinning is still available on demand (--pro-ref / DATAZEN_PRO_REF / a non-null
+ * `ref` in the lock file) to reproduce an old release. An existing local
+ * checkout is left alone, so day-to-day development keeps using working-tree
+ * code.
  *
  * When a signed tree is already staged under `builtin-ep/sql-editor-pro` and
  * nobody asked for a specific source, that tree is used as-is — this is how CI
@@ -85,11 +90,15 @@ export const GENERATED_PRO_TS = resolve(ROOT, 'src/extensions/generated-pro.ts')
 export const PRO_LOCK_FILE = resolve(ROOT, 'pro-extension.lock.json');
 
 /**
- * Read the pinned Pro extension revision.
+ * Read the Pro extension source configuration.
  *
- * The lock file is what makes a host tag reproducible: without it the clone
- * below takes the Pro repo's default-branch HEAD, so re-packaging an old tag
- * would silently bundle whatever the extension looked like at build time.
+ * Release policy since v0.2.3: `ref` is null, so a fresh clone follows the
+ * Pro repo's default-branch HEAD. Pro lands its PRs on main ahead of the host
+ * that consumes them, and main is the branch whose manifest declares the
+ * host's current EXTENSION_POINTS_VERSION — pinning an older revision would
+ * be refused by checkEngineCompatibility at runtime. Putting a sha/tag back
+ * into `ref` restores the historical per-tag reproducibility (re-packaging an
+ * old host tag bundles exactly that extension revision).
  * Returns `{ git, ref }` with `null` for anything the lock file omits.
  */
 export function readProLock(lockFile = PRO_LOCK_FILE) {
@@ -518,10 +527,13 @@ export function ensureProCheckout({
       // Detach so the pinned revision is not mistaken for a branch to commit on.
       pinProCheckout(proDest, proRef);
     } else {
-      console.warn(
-        '[resolve-pro] WARNING: no Pro extension ref pinned ' +
-          '(pro-extension.lock.json / --pro-ref / DATAZEN_PRO_REF). ' +
-          'Building the default-branch HEAD — this release is NOT reproducible.',
+      // v0.2.3 policy: no pin is the normal release path — main is the branch
+      // whose manifest matches the host EP contract. Record the resolved sha so
+      // a release log still shows which extension went in.
+      const head = execSync(`git -C ${proDest} rev-parse HEAD`, { encoding: 'utf-8' }).trim();
+      console.log(
+        `[resolve-pro] Pro extension cloned from default-branch HEAD @ ${head} ` +
+          '(per pro-extension.lock.json policy: no pin; use --pro-ref to reproduce an old release)',
       );
     }
 

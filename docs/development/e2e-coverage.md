@@ -78,7 +78,7 @@
 | 管理命令（创建/删除数据库·Schema·用户·授权/撤销权限） | `bugfix-admin-commands.ts` | Covered |
 | 侧栏导出 / 导入 | `export-import.ts` | Covered |
 | 顶栏导出对话框 / DataTable 导出 / 整表范围 / Schema 树 Web 菜单导出 | `export-import.ts` (EI-BE / EI-GRID / EI-001 / EI-002) | Covered |
-| ER 图 | `er-diagram.ts` (ER-001~ER-008) | Covered |
+| ER 图 | `er-diagram.ts` (ER-001~ER-013) | Covered（ER-008 例外：quiet 模式挂起 rAF，见 spec 内 skip 说明） |
 | 图表 | `chart-views.ts`, `chart-expand.ts` | Covered |
 | AI Chat / @ 上下文 | `ai-context*.ts`, `ai-features.ts` | Covered（需 API Key 的路径见 Exception） |
 | AI 无 Key 降级 | `ai-no-key-fallback.ts` (TC-AI-007~009) | Covered |

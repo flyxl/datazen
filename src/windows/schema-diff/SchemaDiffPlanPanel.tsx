@@ -8,6 +8,9 @@ import type {
 } from '../../commands/schemaDiff';
 import { rollbackCompletenessCounts } from '../../commands/schemaDiff';
 import { useI18n } from '../../hooks/useI18n';
+import { Checkbox } from '../../components/ui/Checkbox';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Input } from '../../components/ui/Input';
 
 function riskClass(risk: StatementRisk): string {
   switch (risk) {
@@ -48,15 +51,17 @@ function PlanRequirements({ requirements }: { requirements: PlanRequirement[] })
           );
         }
         return (
-          <div
+          <ErrorBanner
             key={`unsupported-${target}-${req.reason}`}
-            className="rounded border border-red-500/30 bg-red-500/10 p-2 text-sm text-red-400"
+            variant="boxed"
+            as="div"
+            className="text-sm"
           >
             <div className="font-medium">❌ {t('schemaDiff.requirement.unsupportedTitle')}</div>
             <div className="text-xs">
               {target}: {req.reason}
             </div>
-          </div>
+          </ErrorBanner>
         );
       })}
     </div>
@@ -129,13 +134,13 @@ function TypeSuggestionsNotice({
                   <td className="py-1.5 pr-3 font-mono text-fg-secondary">{sug.sourceType}</td>
                   <td className="py-1.5 pr-3">
                     <div className="flex items-center gap-1.5">
-                      <input
+                      <Input
                         type="text"
                         data-testid={`type-suggestion-input-${sug.column}`}
                         list={`type-options-${sug.table}-${sug.column}`}
                         value={currentOverride}
                         onChange={(e) => onOverrideChange?.(sug.table, sug.column, e.target.value)}
-                        className="w-32 rounded border border-edge bg-surface px-2 py-0.5 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+                        className="h-7 w-32 px-2 text-xs"
                       />
                       <datalist id={`type-options-${sug.table}-${sug.column}`}>
                         {COMMON_MYSQL_TEXT_TYPES.map((ty) => (
@@ -197,9 +202,9 @@ function PlanRollbackStatus({ plan }: { plan: SchemaDiffPlan }) {
 
   if (complete === 0) {
     return (
-      <p className="text-sm text-red-400" data-testid="schema-diff-rollback-status">
+      <ErrorBanner as="p" className="text-sm" data-testid="schema-diff-rollback-status">
         ❌ {t('schemaDiff.rollback.none')}
-      </p>
+      </ErrorBanner>
     );
   }
 
@@ -240,8 +245,7 @@ export function SchemaDiffPlanPanel({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={allowDestructive}
             onChange={(e) => onAllowDestructiveChange(e.target.checked)}
             data-testid="schema-diff-allow-destructive"
@@ -249,8 +253,7 @@ export function SchemaDiffPlanPanel({
           {t('schemaDiff.allowDestructive')}
         </label>
         <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={includeIndexes}
             onChange={(e) => onIncludeIndexesChange(e.target.checked)}
             data-testid="schema-diff-include-indexes"

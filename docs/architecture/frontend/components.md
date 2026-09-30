@@ -1299,7 +1299,91 @@ WebKit 会抛 `NotAllowedError`），**搬不进 `packages/ui`**——它依赖 
 `DataSyncWindow`、Redis `ValueViewer` / `useKeyRowActions`）或用的是异类反馈
 （`SqlSnippetsCard` 走 toast）。给它们加反馈属于新增功能，不在收敛范围内。
 
-## 12. 开发阶段规划
+## 12. Checkbox / Radio：原子控件的抽取边界
+
+`packages/ui/src/Checkbox.tsx` 与 `Radio.tsx` 抽取自数据迁移三件套
+（Schema Diff / Data Sync / Data Transfer）此前各自手写的
+`<input type="checkbox">` / `<input type="radio">`。两个组件的 props 都是
+`Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>` —— `type` 被剔除后由
+组件自己固定，调用方无法误传。
+
+**抽取的边界是「原子控件」，不包含外壳**。两个组件都只渲染裸 `<input>`，
+**不自带 `<label>` 包裹**：调用方保留自己的 `<label>` 外壳，因为它同时承担
+三件事 —— 点击热区、无障碍标签关联、以及把 `data-testid` 放在预期的位置。
+把外壳一并收进组件会让这三件事的调用点全部改写，`data-testid` 契约也就跟着
+漂移，收益不抵风险。因此 §10 的 `data-*` 契约在这两个组件上**天然不适用**：
+它们是开放 props 组件，`data-*` 由 `...props` 原生透传，不需要 `splitDataAttrs`。
+
+视觉上刻意**不强制盒子尺寸**。`Checkbox` / `Radio` 只给 `accent-accent` 与
+`focus-visible` 焦点环，尺寸交给调用方的 `className` 决定 —— 这三件套里
+`h-3.5 w-3.5`、`mt-0.5`、不设尺寸三种写法都存在且各有布局含义，统一成
+一个高度只会让密集表格行（DiffDetail、MappingPanel）与向导表单
+（ColumnMappingEditor、OptionsBar）二者不可兼得。
+
+## 13. 三件套的公共组件收敛
+
+数据迁移三件套此前跳过了设计系统收敛，本次补齐。判定规则按**是否存在忠实
+等价物**划分，不是按元素名：
+
+| 元素 | 处置                                                                 |
+| ---- | -------------------------------------------------------------------- |
+| 文本/数字/搜索输入 | `Input`（密集行用 `className` 收窄为 `h-7 ... text-xs`）           |
+| checkbox / radio  | `Checkbox` / `Radio`（§12）                                            |
+| 计划/部署切换条   | bar-only `Tabs` + `getTabClassName` 复现下划线选中态                  |
+| 自转 spinner      | `Spinner`（size/tone 档位与原 `Loader2` 类一对一）                     |
+| 错误提示          | `ErrorBanner`                                                          |
+| 包装 `<label>`     | **保留原样**（点击热区 + 布局，见 §12）                               |
+| `<textarea>`       | 保留原样（设计系统尚无 `Textarea`）                                     |
+| `<table>` 系列    | 保留原样（DiffDetail、SchemaDiffPlanPanel 的数据表）                   |
+| 强调色链接按钮    | 保留原样（`text-accent hover:underline`、黄色警示按钮）                |
+| 整行列表项按钮    | 保留原样（TableListPanel、SchemaDiffTableListPanel、TransferMappingStep） |
+
+### 13.1 Spinner：三件套内 19 处自转图标
+
+三件套 + `components/migration` 此前手写了 19 处
+`<Loader2 className="h-N w-N animate-spin …">`，全部换为 `<Spinner />`。
+`Spinner` 的 `size` 档位是**按这批真实调用点的盒宽反推**的
+（`md` = `h-3.5`、`lg` = `h-4`、`xl` = `h-5`、`2xl` = `h-6`），`tone` 同样
+一对一对应原手写的 `text-accent` / `text-fg-muted` / 继承当前色，因此渲染
+出来的盒子尺寸与颜色**逐处不变**。
+
+全部 19 处都**不传 `label`**。设计系统明确禁止在 `<button>` 内传 `label`
+（`Spinner.tsx:58`）：无障碍名称计算会走进后代，把隐藏文本拼进控件自身的
+可访问名，按钮会被念成 "DeployLoading" 之类的怪串。这些 spinner 绝大多数
+就坐在按钮里（next / execute / deploy），旁边还有 `t('transfer.executing')`
+这类真实文案承载语义，走装饰性默认形态是正确选择。
+
+### 13.2 ErrorBanner：只收错误，不收警告
+
+7 处纯错误提示换为 `ErrorBanner`，覆盖 SchemaDiffDeployPanel、
+SchemaDiffPlanPanel、SqlPreview、DataTransferWindow、
+MigrationRunHistoryDialog。
+
+其中 `SchemaDiffPlanPanel` 的两处原本用**裸 `red-500` / `red-400`**
+（`bg-red-500/10` / `border-red-500/30`），不是 `danger` token。这是主题盲区
+—— 字面 Tailwind 色阶不随 `--c-danger` 走，**换主题包不会变色**。收敛到
+`ErrorBanner` 的 `boxed` variant 后改走 `bg-danger/10` / `border-danger/20`，
+接入主题机制。**这是有意的可见变更，不是纯清理** —— 与 `ErrorBanner.tsx:29`
+记录的 dismiss 按钮同属一类。
+
+`role="alert"` 由 `ErrorBanner` 固定提供，调用点原有的 `role="alert"`
+不再重复传。原先靠 `getByRole('alert')` 定位的测试不受影响。
+
+**amber 警告一律不动。** `ErrorBanner.tsx:85` 明确写了它不用于警告：
+amber / `role="alert"` 的提示是另一种消息、另一种含义，走错误组件会贴错标签。
+`text-amber-600 dark:text-amber-400`（OptionsBar、ExecuteBar、EndpointsBar、
+MappingPanel、CompareSummary、DataTransferWindow）与 `text-warning` 同理保留。
+
+`SchemaDiffRightPanel` 的两标签切换条是唯一收敛的 `Tabs` 调用点：bar-only
+模式（item 不带 `content`），`getTabClassName` 复现原有的下划线选中样式，
+两个 `data-testid`（`schema-diff-plan-tab`、`schema-diff-deploy-tab`）搬进
+`item.testId`，定位契约不变。
+
+`data-testid` 净变化为 0 —— 全部原样搬入公共组件，唯一的两处删改是上述标签
+testid 从手写 `data-testid` 属性改为 `Tabs` 的 `testId` prop，最终 DOM 上仍是
+同一个属性。
+
+## 14. 开发阶段规划
 
 | 阶段                    | 内容                                                                                   | 输出                   |
 | ----------------------- | -------------------------------------------------------------------------------------- | ---------------------- |

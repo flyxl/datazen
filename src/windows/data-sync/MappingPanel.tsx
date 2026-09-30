@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import {
@@ -74,8 +75,7 @@ export function MappingPanel({
               )}
             >
               <div className="flex items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
+                <Checkbox
                   className="h-3.5 w-3.5"
                   checked={!isDisabled}
                   disabled={!canToggle}
@@ -154,35 +154,37 @@ export function MappingPanel({
                   {row.incompatibleReason}
                 </div>
               )}
-              {filterTable === row.sourceTable && onUpdateSourceFilter && row.status === 'MATCHED' && (
-                <div className="ml-9 mt-2">
-                  <RecordsetEditor
-                    primaryKeys={row.primaryKeys ?? []}
-                    recordset={row.sourceFilter?.recordset}
-                    onChange={(recordset) => {
-                      const current = row.sourceFilter;
-                      if (recordset) {
-                        onUpdateSourceFilter(row.sourceTable, {
-                          ...(current ?? { filters: [] }),
-                          recordset,
-                        });
-                        return;
-                      }
-                      if (current?.filters?.length) {
-                        const { recordset: _recordset, ...withoutRecordset } = current;
-                        onUpdateSourceFilter(row.sourceTable, withoutRecordset);
-                      } else {
-                        onUpdateSourceFilter(row.sourceTable, undefined);
-                      }
-                    }}
-                  />
-                  <SourceFilterEditor
-                    columns={row.columns ?? []}
-                    filter={row.sourceFilter}
-                    onChange={(filter) => onUpdateSourceFilter(row.sourceTable, filter)}
-                  />
-                </div>
-              )}
+              {filterTable === row.sourceTable &&
+                onUpdateSourceFilter &&
+                row.status === 'MATCHED' && (
+                  <div className="ml-9 mt-2">
+                    <RecordsetEditor
+                      primaryKeys={row.primaryKeys ?? []}
+                      recordset={row.sourceFilter?.recordset}
+                      onChange={(recordset) => {
+                        const current = row.sourceFilter;
+                        if (recordset) {
+                          onUpdateSourceFilter(row.sourceTable, {
+                            ...(current ?? { filters: [] }),
+                            recordset,
+                          });
+                          return;
+                        }
+                        if (current?.filters?.length) {
+                          const { recordset: _recordset, ...withoutRecordset } = current;
+                          onUpdateSourceFilter(row.sourceTable, withoutRecordset);
+                        } else {
+                          onUpdateSourceFilter(row.sourceTable, undefined);
+                        }
+                      }}
+                    />
+                    <SourceFilterEditor
+                      columns={row.columns ?? []}
+                      filter={row.sourceFilter}
+                      onChange={(filter) => onUpdateSourceFilter(row.sourceTable, filter)}
+                    />
+                  </div>
+                )}
             </div>
           );
         })}

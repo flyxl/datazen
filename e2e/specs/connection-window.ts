@@ -512,8 +512,11 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   it('应能打开新建查询标签 (SQ-003)', async () => {
     const newQueryBtn = await waitForNewQueryButton();
     await newQueryBtn.click();
-    await browser.pause(1000);
-    await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
+    // 运行按钮是图标式工具栏按钮（无「执行」文字），按 data-testid 定位；
+    // waitForDisplayed 取代固定 pause，面板未就绪时失败可诊断。
+    await expect(await $('[data-testid="editor-execute-button"]')).toBeDisplayed({
+      wait: 5000,
+    });
   });
 
   it('新建查询不应弹出对象加载补全框 (SQ-AC-001)', async () => {
@@ -533,6 +536,8 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
       await browser.pause(100);
     }
     expect(loadingHint).toBe(false);
-    await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
+    await expect(await $('[data-testid="editor-execute-button"]')).toBeDisplayed({
+      wait: 5000,
+    });
   });
 });
