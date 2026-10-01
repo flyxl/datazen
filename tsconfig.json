@@ -16,6 +16,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@datazen/backend-client": ["./packages/backend-client/src/index.ts"],
       "@datazen/driver-sdk": ["./packages/driver-sdk/src/index.ts"],
       "@datazen/extension-points": ["./packages/extension-points/src/index.ts"],
       "@datazen/wapp-sdk": ["./packages/wapp-sdk/src/index.ts"],
@@ -25,6 +26,7 @@
   },
   "include": [
     "src",
+    "packages/backend-client",
     "packages/driver-sdk",
     "packages/extension-points",
     "packages/wapp-sdk",
