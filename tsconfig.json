@@ -23,6 +23,27 @@
       "@datazen/ui": ["./packages/ui/src/index.ts"]
     }
   },
-  "include": ["src", "packages/driver-sdk", "packages/extension-points", "packages/wapp-sdk", "packages/ui", "packages/drivers/*/ui"],
+  "include": [
+    "src",
+    "packages/driver-sdk",
+    "packages/extension-points",
+    "packages/wapp-sdk",
+    "packages/ui",
+    "packages/drivers/clickhouse/ui",
+    "packages/drivers/duckdb/ui",
+    "packages/drivers/elasticsearch/ui",
+    "packages/drivers/hbase/ui",
+    "packages/drivers/influxdb/ui",
+    "packages/drivers/mongodb/ui",
+    "packages/drivers/mysql/ui",
+    "packages/drivers/postgres/ui",
+    "packages/drivers/redis/ui",
+    "packages/drivers/rqlite/ui",
+    "packages/drivers/sqlite/ui",
+    "packages/drivers/sqlserver/ui",
+    "packages/drivers/turso/ui",
+    "packages/drivers/vector/ui",
+    "packages/drivers/victoriametrics/ui"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
