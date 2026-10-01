@@ -627,8 +627,8 @@ pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 
 | 规则 | 说明 |
 | --- | --- |
-| 禁止读取受保护 env 文件 | 任何 Agent 或程序都不得打开、读取、解析、`source` 或打印仓库及 worktree 中 `.env` / `.env.test` 的内容；只允许检查文件是否存在与 Git 忽略状态 |
-| 禁止运行隐式加载它们的程序 | 不得执行会加载上述文件的命令或程序；`load_dotenv` 类调用在夹具中禁止出现 |
+| 禁止读取受保护 env 文件 | 任何 Agent（含子代理）不得打开、读取、解析、`source` 或打印仓库及 worktree 中 `.env` / `.env.test` 的内容；只允许检查文件是否存在与 Git 忽略状态。**测试程序运行时读 `.env` 是合法的**——集成测试本就需要其中的 `DATABASE_URL`，`load_dotenv` 类调用因此不因「读文件」本身被禁；被禁的是「把内容读进上下文」，而不是「程序读文件」 |
+| 禁止运行隐式加载它们的程序 | 不得执行会把上述文件的**内容带进自己上下文或报告**的命令；`load_dotenv` 类调用在夹具中禁止出现 |
 | 真实凭据注入方式 | 由 CI secret 或已获授权的进程环境变量注入；不写入提示、日志、报告或测试输出 |
 | 既有实现不作为范本 | `packages/drivers/postgres/tests/postgres_cross_database.rs` 现有 `load_dotenv_file()` 读取 `packages/drivers/.env`（由 `CARGO_MANIFEST_DIR` 父目录拼出）；新夹具**不复制**该写法，改造时改为只认进程环境 |
 | 启动器检查 | 开发前检查测试启动器不加载受保护文件；Host E2E 必须经 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 触发，不得裸 `cargo build` |
