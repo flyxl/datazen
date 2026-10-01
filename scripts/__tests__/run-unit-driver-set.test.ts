@@ -1,6 +1,6 @@
 /** @vitest-environment node */
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 import {
@@ -17,13 +17,56 @@ const DRIVER_SET_STEP_NAME = '- name: Frontend unit tests (all path drivers)';
 const flatten = (commands: { args: string[] }[]) =>
   commands.map((c) => c.args.join(' ').replaceAll('\\', '/'));
 
+/** Entry-point script of each planned command, in plan order. */
+const planScripts = (drivers: string, vitestArgs: string[] = []) =>
+  planDriverSetCommands({ drivers, vitestArgs }).map((c) => basename(c.args[0]));
+
+/** `flatten()` normalises to `/`, so the needles have to as well (Windows). */
+const LOCALES_GENERATOR = join('scripts', 'generate-builtin-locales.mjs').replaceAll('\\', '/');
+
 describe('run-unit-driver-set command plan', () => {
+  it('runs exactly resolve-drivers -> generate-builtin-locales -> vitest, in that order', () => {
+    // Pinned by name *and* by position on purpose: dropping or reordering any
+    // leg of the plan must fail here, because on a fresh clone every leg is
+    // load-bearing (see the two cases below).
+    expect(planScripts('all')).toEqual([
+      'resolve-drivers.mjs',
+      'generate-builtin-locales.mjs',
+      'vitest.mjs',
+    ]);
+  });
+
   it('regenerates codegen for the requested set before running vitest', () => {
     const commands = flatten(planDriverSetCommands({ drivers: 'all' }));
     expect(commands[0]).toContain('resolve-drivers.mjs');
     expect(commands[0]).toContain('--codegen-only');
     expect(commands[0]).toContain('--drivers=all');
-    expect(commands[1]).toContain('vitest.mjs run');
+    expect(commands.at(-1)).toContain('vitest.mjs run');
+  });
+
+  it('generates builtinLocales.ts, which the Host suite imports statically', () => {
+    // src/locales/index.ts does `import ... from './builtinLocales'`, and
+    // builtinLocales.ts is gitignored codegen that nothing on the *test* path
+    // generates. On a fresh clone, omitting this leg makes vitest die at import
+    // time: measured on feat/platform-p0 @ 7559759b7, 125 of 556 test files fail
+    // to load and 110 tests fail.
+    const commands = flatten(planDriverSetCommands({ drivers: 'all' }));
+    expect(commands.some((c) => c.endsWith(LOCALES_GENERATOR))).toBe(true);
+
+    // It must come after driver resolution and before vitest, or vitest still
+    // cannot resolve the import.
+    const at = (needle: string) => commands.findIndex((c) => c.includes(needle));
+    expect(at('resolve-drivers.mjs')).toBeGreaterThanOrEqual(0);
+    expect(at('generate-builtin-locales.mjs')).toBeGreaterThan(at('resolve-drivers.mjs'));
+    expect(at('vitest.mjs')).toBeGreaterThan(at('generate-builtin-locales.mjs'));
+
+    // The generator takes no arguments: it reads src/locales/builtin-locales.json
+    // and writes src/locales/builtinLocales.ts. Forwarding the driver set here
+    // would be a silent no-op masking a future contract change.
+    const entry = planDriverSetCommands({ drivers: 'all' }).find((c) =>
+      c.args[0].endsWith('generate-builtin-locales.mjs'),
+    );
+    expect(entry?.args).toHaveLength(1);
   });
 
   it('uses --codegen-only so Cargo.toml is never touched (no stash/restore needed)', () => {
@@ -46,7 +89,9 @@ describe('run-unit-driver-set command plan', () => {
       planDriverSetCommands({ drivers: 'postgres,mysql', vitestArgs: ['src/foo.test.ts'] }),
     );
     expect(commands[0]).toContain('--drivers=postgres,mysql');
-    expect(commands[1]).toContain('src/foo.test.ts');
+    // Forwarded argv must land on vitest, never on a codegen leg.
+    expect(commands.at(-1)).toContain('src/foo.test.ts');
+    expect(commands.slice(0, -1).join('\n')).not.toContain('src/foo.test.ts');
   });
 });
 
