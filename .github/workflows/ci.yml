@@ -107,20 +107,21 @@ jobs:
       # 的 18 个前端单测失败"). Do not reintroduce a blocked list here without
       # re-measuring on the current base.
       #
-      # Why still a soft gate, then — a different and much narrower reason:
-      # this step and the 10s testTimeout in vitest.config.ts have never
-      # executed on a real GitHub runner. A green run on an 8-core dev host is
-      # not evidence about a runner whose spec this project does not control.
-      # The step reports and does not block so the first CI runs can be
-      # observed; promote it to a hard gate (drop continue-on-error) once it is
-      # green on several consecutive runs, and update the row in
-      # docs/development/ci-test-matrix.md at the same time.
+      # HARD GATE — promoted from `continue-on-error: true`.
       #
-      # COUPLING WARNING: dropping continue-on-error ALSO breaks a guard —
-      # scripts/__tests__/run-unit-driver-set.test.ts:149 asserts it is true
-      # ("expected undefined to be true"). Promoting this step to a hard gate
-      # without editing that assertion turns CI red. The two edits are one
-      # change, not two.
+      # It was soft while this step and the 10s testTimeout below had never
+      # executed on a real GitHub runner, so a green 8-core dev-host run was
+      # not evidence about a runner whose spec this project does not control.
+      # That observation window is now closed by decision. The two edits are
+      # ONE change: the `continue-on-error` removed from this step, and the
+      # assertion in scripts/__tests__/run-unit-driver-set.test.ts that used
+      # to require it to be true and now requires its ABSENCE. Re-adding it
+      # deliberately has to redo both, or the suite goes red.
+      #
+      # Residual risk, stated rather than hidden: the first real-runner
+      # execution may go red for reasons unrelated to this branch. The
+      # measured budget below plus `retry: 2` in vitest.config.ts are what
+      # absorb it — neither is a licence to widen either number.
       #
       # Timeout budget, measured not guessed (per-test wall time, all 5714
       # tests, --reporter=json):
@@ -135,7 +136,6 @@ jobs:
       # docs/development/ci-test-matrix.md.
       - name: Frontend unit tests (all path drivers)
         run: pnpm test:unit:driver-set
-        continue-on-error: true
 
       - name: Check site changes
         id: site-changes

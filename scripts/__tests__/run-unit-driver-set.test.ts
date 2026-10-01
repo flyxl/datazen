@@ -145,9 +145,12 @@ describe('ci.yml runs the unit suite outside `basic`', () => {
     expect(step?.run).not.toContain('--drivers');
   });
 
-  it('is an explicit soft gate, with the measured basis in an adjacent comment', () => {
+  it('is a hard gate — continue-on-error must stay absent', () => {
     const step = frontendSteps.find((s) => s.run?.includes('test:unit:driver-set'));
-    expect(step?.['continue-on-error']).toBe(true);
+    // Absence, not `false`: the field is deleted, so a re-added `false` would
+    // also be a regression — it reads as "planned to be soft" to a maintainer.
+    expect(step).toBeDefined();
+    expect(step).not.toHaveProperty('continue-on-error');
 
     // YAML parsing discards comments, so read the rationale off the raw text
     // where a maintainer editing the step will actually see it.
@@ -155,9 +158,11 @@ describe('ci.yml runs the unit suite outside `basic`', () => {
     expect(stepIndex, 'ci.yml must keep the driver-set step name').toBeGreaterThan(-1);
     const rationale = ciWorkflowRaw.slice(Math.max(0, stepIndex - 2600), stepIndex);
 
-    // The comment must justify the soft gate by something that is still true.
+    // The comment must name the promotion AND the coupling, so that whoever
+    // re-adds continue-on-error learns from the file that two tests break.
+    expect(rationale).toMatch(/HARD GATE/);
     expect(rationale).toMatch(/continue-on-error/);
-    expect(rationale).toMatch(/hard gate/);
+    expect(rationale).toMatch(/run-unit-driver-set\.test\.ts/);
     // ... and must still carry the measured evidence for the timeout budget.
     expect(rationale).toMatch(/load 48|6-7x/);
   });
