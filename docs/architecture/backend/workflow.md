@@ -66,6 +66,22 @@ steps:
 
 Step 没有指定 `connection` 时继承 Workflow 默认 connection；Step 显式指定时覆盖默认值。这样常见的“一个 connection 执行多个 step”不需要每个 step 重复选择 connection。
 
+### 会话：共享、且不释放
+
+Workflow 的 IPC 用**持久化 `connectionId`** 指定连接（不要求连接的命令可以只给 `driverType`，见 [IPC](#ipc)）。每条 step 执行时用 `resolve_session_for_connection(connectionId)` 取得运行时会话，但**拿到的会话 ID 被直接丢弃**（`let (_runtime_id, driver, handle)`）——它只被当作 driver 句柄用完就扔。
+
+由此产生三条已实现的事实：
+
+- **与 GUI 共享同一条会话**。同一 `connectionId` 在 GUI 里已连接时，Workflow 走的是那一条，而不是另开一条。好处是上下文一致，代价是无法与主工作区隔离事务状态。
+- **引用只增不减**。该路径不调用 `release`，所以被 Workflow 执行过的会话引用计数常驻 ≥1，永远不满足空闲回收的「计数为 0」条件。会话只会在用户显式断开连接或应用退出时结束。
+- **取显示名也会建会话**。执行器为某个 step 计算展示用的连接名时同样调用 `resolve_session_for_connection`，因此一次纯粹的标签解析就能建立并钉住一条会话。
+
+唯一会释放的例外是 Workflow 定义迁移（把 YAML 转成内部定义的路径），它在解析完连接后显式归还引用。
+
+### 目标：不切库
+
+Step 的目标 database / schema **随命令输入一起下发**，宿主不做切库。能内联改写 SQL 的驱动由驱动自己把未限定名改写到 step 的目标库；不做改写的驱动则由用户自己写全限定名。宿主没有生产环境的切库路径：驱动契约里已经没有 `use_database` 方法，源码中残留的同名符号只有 Mock 驱动测试里恒空的 `use_database_calls()` 回归绊线，以及 MySQL 驱动在**建连时**内部拼 `USE` 语句的细节——后者不构成 step 级的切库命令。
+
 ## Command 模型
 
 Command 是 Driver 暴露给 Workflow / IPC / UI 的统一能力描述。

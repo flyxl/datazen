@@ -112,7 +112,19 @@ Endpoints
 - `SchemaDiffPlanPanel`
 - `SchemaDiffDeployPanel`
 
-## 6. Tests
+## 6. 连接与目标
+
+Schema Diff 的 IPC **全部**收成对的 `sourceDbSessionId` / `targetDbSessionId`：`commands/schema_diff.rs` 里没有任何一条路径会建立会话，比较、应用、预览全部消费前端已经建好的会话。
+
+- **专用会话由前端建、由前端放**。源端与目标端各自持有一条专用会话：端点组件用 `ensureDedicatedSession` 调 `connectDedicated` 建立，并在端点或目标库变化、以及组件卸载时用 `releaseDedicatedSession` 释放上一条（走的是与普通释放同一套引用计数，计数归零才真正断开）。释放发生在建立新会话**之前**，不会新旧两条同时挂着。端点没变时先 `ping` 探活，探活失败才重连。后端只做 `get_session` / `get_session_config` 查找。
+- **profile 落盘的是 `connectionId`**。加密的 profile 文件保存 `sourceConnectionId` / `targetConnectionId`，不保存任何运行时会话 ID；Deploy 的历史记录写入的同样是解析出来的 `connectionId`。
+- **反查依赖 owner 映射**。部署时把目标会话反查成 `connectionId` 以便落库；反查失败即中止部署并报「目标连接归属不可用」，不会退化成写一个空归属。Idle 回收故意保留 owner 映射正是为了让这条反查在会话物理连接消失后仍然可用。
+- **目标库在建连时就定死，不切库**。专用会话建立时把用户选中的库作为连接覆盖传下去（SQLite 例外：`main` 是目录别名，会传文件路径而不是 `main`），因此会话始终停在选中的库上，宿主不需要切库路径。
+- **只有部署阶段可取消，比较阶段不可**。`cancel_schema_diff_deploy` 收一个 `jobId`，写的是与 Data Sync / Data Transfer 同一个进程级 job 标志（`services/job_registry.rs`），后端不做任何归属校验，因此谁拿到该 jobId 都能取消；部署执行时取出这个标志并观察它（`commands/schema_diff.rs:2177-2180`）。比较（compare）本身没有对应的取消命令，只能靠关闭面板让前端释放专用会话。
+
+与另两个成员的边界：Schema Diff 负责**结构差异对比与 DDL 迁移生成**；同族数据复制属于 Data Synchronization，异构数据搬迁属于 Data Transfer。三者共用「专用会话 + 持久化 connectionId」的约束，但各自的会话由谁建立、profile 存什么并不相同。三者的取消也都落到同一张 job 标志表上，但只有 Schema Diff 的取消点局限在部署阶段。
+
+## 7. Tests
 
 - Rust unit tests：`src-tauri/src/schema_diff/**`
 - Frontend：`src/windows/schema-diff/__tests__/`
