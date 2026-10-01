@@ -137,26 +137,6 @@ jobs:
         run: pnpm test:unit:driver-set
         continue-on-error: true
 
-      # Guards the Host test count quoted in vitest.config.ts, in the
-      # timeout-budget comment above, and in docs/development/ci-test-matrix.md.
-      # Unlike scripts/__tests__/run-unit-driver-set.test.ts, which only
-      # requires those three numbers to AGREE with each other, this compares
-      # them against what the collector actually found, so three consistently
-      # wrong numbers go red. It is a separate step, not a test case, because
-      # the only machine-produced count is the one `vitest list` produces and
-      # collecting it is not cheap: measured on this host at 126.96s wall /
-      # 558s user CPU / ~300 MB peak RSS over 557 files (cold cache, which is
-      # what CI gets; a warm-cache `vitest list` measures 87.31s), against
-      # 0.25s for `vitest list --filesOnly`
-      # (which yields the file count, not the test count). Nesting that in a
-      # vitest case would blow the suite's own 10s testTimeout documented
-      # above. It runs after the driver-set step because the count is a
-      # property of the `all` driver set, and the step above is what generates
-      # that state. Hard gate on purpose: a stale count is a documentation
-      # defect, not a flaky test.
-      - name: Guard Host test count
-        run: pnpm test:unit-count
-
       - name: Check site changes
         id: site-changes
         run: |

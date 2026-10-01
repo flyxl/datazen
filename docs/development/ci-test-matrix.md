@@ -46,7 +46,6 @@
 | 守卫 | `check-managed-stubs.mjs`、`check-structure-editor-guardrails.mjs` 等 | 防止误提交 inject 产物 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
 | Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**软门禁**（`continue-on-error: true`），理由见 §2.1.1；转硬门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts:149`（见 §2.1.1 末） |
-| 用例计数守卫 | `pnpm test:unit-count` | `scripts/check-test-count.mjs`：`vitest list` 实测用例数，与本节三处引用比对。**硬门禁**，理由见 §2.1.3 |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | `packages/drivers/*/ui/__tests__/`；与 Host 单测互不收集，两步都必须跑 |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
 
@@ -161,73 +160,6 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 - `scripts/__tests__/run-unit-driver-set.test.ts` —— §2.1.1 的
   `testTimeout` / `retry` / 耗时串按**字符串存在性**守，`run-unit-driver-set.mjs`
   的三条腿与软门禁标记按结构守；**不校验这些数字是否属实**。
-- `pnpm test:unit-count` —— 例外见 §2.1.3：只有用例总数是被机器实测比对的。
-
-### 2.1.3 用例计数守卫：为什么它不在 vitest 里，而是 CI 的独立一步
-
-`vitest.config.ts`、`ci.yml` 注释、本文档 §2.1.1 各写了一个 Host 用例总数。
-手写三个数字互相比对是**同义反复**：三处同时写错，错得一样多，守卫全绿。
-所以这个数字必须有一侧是机器产出的。
-
-**做法：`pnpm test:unit-count` → `scripts/check-test-count.mjs`。**
-它复用 `scripts/run-unit-driver-set.mjs` 的驱动集规划（同样先跑两条 codegen 腿，
-把 `vitest run` 那条腿改成 `vitest list`），数出 stdout 的用例行，再和三处引用比对，
-并要求三处彼此相等。任一处对不上或三处互相矛盾即 exit 1。
-
-**为什么是 CI 的独立一步，而不是一个 vitest 用例。** 唯一机器产出的口径就是
-`vitest list`，而它要**重新收集并转换全部文件**。本机实测（darwin-arm64 /
-node v22.20.0 / 驱动集 `all`）：
-
-| 口径 | 墙钟 | user CPU | 峰值 RSS | 产出 |
-|------|------|----------|----------|------|
-| `node scripts/check-test-count.mjs`（冷缓存，含两条 codegen 腿；CI 的情形） | 126.96s | 558.27s | 约 300 MB | 5714 个用例 + 557 个文件 |
-| `vitest list`（热缓存） | 87.31s | 541.14s | 约 299 MB | 5714 行用例 + 557 个文件 |
-| `vitest list --filesOnly`（热缓存） | 0.25s | 0.31s | 约 115 MB | 557 行，**只有文件数** |
-
-> 三行同在 5714 用例 / 557 文件的基线上实测（darwin-arm64 / node v22.20.0 /
-> vitest 4.1.10）。CI 是冷缓存，所以第一行才是要拿来做预算的那个数。
-
-> 实测记录：冷缓存 126.96s（热缓存也还有 87.31s）超 20s 门槛，因此**否决**"写成一个
-> vitest 用例"的方案。
-
-把它塞进 vitest 用例，等于在跑套件的过程中再跑一遍完整收集：`vitest.config.ts`
-自己声明的 `testTimeout` 是 10s，这个用例无论如何都超时，套件会因为一个文档守卫而红。
-`--filesOnly` 够便宜，但它只给**文件数**，而三处引用的是**用例数**，口径不同，
-拿它冒充实测值就是把"便宜"换成了"守的不是那件事"。因此它是独立一步，是**硬门禁**
-（用例数陈旧属文档缺陷，不是抖动），排在 `pnpm test:unit:driver-set` 之后——
-计数是 `all` 驱动集的属性，而那一步正是生成该状态的动作。
-
-**已考虑并否决的省时方案**：直接用 `pnpm test:unit:driver-set` 自己的
-`--reporter=json` 输出，几乎零边际成本。否决理由有两条：它把计数的来源绑在被检查的
-那一步上，reporter 一改守卫就静默失效；且 `retry: 2` 与软门禁语义都可能让 json
-里的总数与 `vitest list` 的收集口径不一致。两害相权，多花这 126.96s 更划算。
-
-**这个守卫已经抓到过一次真问题。** 上线的第一次运行就红：三处引用的 5695 是本轮改动
-之前的实测值，而本轮新增的守卫用例本身已经让套件变成 5714。旧数字在同一个提交内漂移
-且无人察觉，正是因为它当时**只被"字符串还在不在"守着、没有任何机器测量**。
-
-**能力边界（必须写明）：** `run-unit-driver-set.test.ts` 里那个便宜的 vitest 守卫
-**只能**发现三处数字互相矛盾；它发现不了"三处一致地写错"。后者只有
-`pnpm test:unit-count` 能发现，而它不在 `pnpm test:unit` 里跑。两者是互补的，
-不要把前者当成真值检查。
-
-**另一半边界：它也认不出"用例真的少了"。** 实测四组变异（每组跑完复原）：
-
-| 变异 | 便宜的 vitest 守卫 | `pnpm test:unit-count` |
-|------|------|------|
-| 三处一致改成 5700 | **全绿**（37/37 通过） | **红**：三处各自报 5700 ≠ 5714 |
-| 只改 `vitest.config.ts` 一处为 5700 | **红**：三处互相矛盾 | **红** |
-| 删掉一个真用例文件，三处仍写 5714 | — | **红**：实测 5713 ≠ 5714 |
-| 删掉一个真用例文件，三处同步改成 5713 | — | **全绿** |
-
-第一行是"三处一致地写错"的确凿证据：便宜的守卫对它毫无反应。第二行说明便宜的守卫
-并非全无作用——它守的正是三处**互相矛盾**。后两行是这个守卫**守不住**的地方：它守的是
-"总数与引用相符"，不是"用例还在"。第三行它能发现；**第四行它发现不了**——删用例与
-改引用落在同一个 commit 里时，计数、引用、机器实测三者自洽，没有任何一侧会说"不"。
-因此它**不是丢用例检测器**；要检测丢用例得比对用例名单，而不是总数。
-
-解析侧是 fail-closed 的：`vitest list` 输出里只要出现一行不像用例行，它就拒绝继续，
-并把那行原样打出来（实测：用例名里带换行时触发），而不是少算一个然后照样通过。
 
 ### 2.2 rust job（Rust 段，浅克隆）
 

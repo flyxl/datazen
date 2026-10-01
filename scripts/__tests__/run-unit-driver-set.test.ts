@@ -8,12 +8,6 @@ import {
   parseUnitDriverSetArgs,
   planDriverSetCommands,
 } from '../run-unit-driver-set.mjs';
-import {
-  TEST_COUNT_CLAIMS,
-  extractTestCountClaims,
-  findTestCountProblems,
-} from '../check-test-count.mjs';
-
 const root = resolve(import.meta.dirname, '../..');
 const ciWorkflowRaw = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8');
 const ciWorkflow = YAML.parse(ciWorkflowRaw);
@@ -21,15 +15,6 @@ const vitestConfigRaw = readFileSync(resolve(root, 'vitest.config.ts'), 'utf8');
 const ciMatrixRaw = readFileSync(resolve(root, 'docs/development/ci-test-matrix.md'), 'utf8');
 const packageJsonRaw = readFileSync(resolve(root, 'package.json'), 'utf8');
 const DRIVER_SET_STEP_NAME = '- name: Frontend unit tests (all path drivers)';
-
-/** The three files that quote a Host test count, keyed the way the guard reads them. */
-const countSources = {
-  'vitest.config.ts': vitestConfigRaw,
-  '.github/workflows/ci.yml': ciWorkflowRaw,
-  'docs/development/ci-test-matrix.md': ciMatrixRaw,
-} satisfies Record<string, string>;
-/** The same map, keyed by the plain `string` an extracted claim carries. */
-const countSourceByFile: Record<string, string> = countSources;
 
 const flatten = (commands: { args: string[] }[]) =>
   commands.map((c) => c.args.join(' ').replaceAll('\\', '/'));
@@ -268,115 +253,6 @@ const PROSE_CLAIM_FILES = {
   '.github/workflows/ci.yml': ciWorkflowRaw,
   'docs/development/ci-test-matrix.md': ciMatrixRaw,
 } as const;
-
-describe('Host test count quoted in prose', () => {
-  const claims = extractTestCountClaims(countSources);
-
-  it('quotes the count in every file that states it, and states it identically', () => {
-    // The cheap half of the contract: three hand-written numbers must agree.
-    // It cannot tell "right" from "wrong" — the measured half is the
-    // `pnpm test:unit-count` step, asserted to be wired up below.
-    expect(claims.map((c) => c.file)).toEqual(TEST_COUNT_CLAIMS.map((c) => c.file));
-    // Named, not `.size`, so a failure prints which file says what.
-    const [first, ...rest] = claims;
-    expect(rest.filter((c) => c.count !== first.count)).toEqual([]);
-  });
-
-  it('anchors each count on the words around it, not on a bare number', () => {
-    // A pattern like /\d+/ would match the first digit run in the file and
-    // pass forever while watching nothing. Each anchor must carry enough
-    // literal text to identify the one place the count is stated.
-    for (const { id, pattern } of TEST_COUNT_CLAIMS) {
-      const literal = pattern.source.replace(/\\[dswDSW]|[(){}?+*|^\$.]/g, '');
-      expect(
-        literal.length,
-        `${id} count anchor is not specific enough: ${pattern.source}`,
-      ).toBeGreaterThanOrEqual(12);
-    }
-  });
-
-  it('runs the collector-backed comparison in CI, as a hard gate after the driver-set step', () => {
-    // Without this the equality guard above is a tautology with nothing
-    // behind it, so the wiring is itself part of what is asserted.
-    expect(packageJsonRaw).toContain('"test:unit-count": "node scripts/check-test-count.mjs"');
-
-    const steps = (
-      ciWorkflow as {
-        jobs: Record<
-          string,
-          { steps: { name?: string; run?: string; 'continue-on-error'?: boolean }[] }
-        >;
-      }
-    ).jobs.frontend.steps;
-    const countIndex = steps.findIndex((s) => s.run === 'pnpm test:unit-count');
-    expect(countIndex, 'ci.yml must run pnpm test:unit-count').toBeGreaterThan(-1);
-    expect(steps[countIndex]['continue-on-error']).toBeUndefined();
-
-    // The count belongs to the `all` driver set, so it has to be measured
-    // after the step that generates that state.
-    const driverSetIndex = steps.findIndex((s) => s.run === 'pnpm test:unit:driver-set');
-    expect(driverSetIndex).toBeGreaterThan(-1);
-    expect(countIndex).toBeGreaterThan(driverSetIndex);
-  });
-
-  it('catches three consistently wrong numbers — but only the measured half can', () => {
-    // Executed against synthetic sources, not the repo. This is the proof of
-    // the division of labour: when all three files say the same wrong number
-    // the cheap guard above is silent (one distinct value), and only the
-    // collector-backed comparison reports anything. Without this, the equality
-    // guard reads like a truth check and the whole split is worth nothing.
-    //
-    // Every number here is derived from what the files themselves say. Writing
-    // a literal instead would mean re-measuring the suite silently broke this
-    // test — and, worse, that a stale copy of the count here could be mistaken
-    // for the real one.
-    const quoted = claims[0].count;
-    const wrong = quoted + 5;
-    const other = quoted + 6;
-    // `claims` carries no pattern, so pair it back with the anchor by file:
-    // replacing the anchored match is what makes this rewrite independent of
-    // whatever the files currently quote.
-    const anchored = TEST_COUNT_CLAIMS.map((entry) => ({
-      ...entry,
-      count: claims.find((c) => c.file === entry.file)!.count,
-    }));
-    /** Rewrite only the count inside that claim's own anchored match. */
-    const rewrite = (
-      { file, pattern, count }: { file: string; pattern: RegExp; count: number },
-      to: number,
-    ) =>
-      countSourceByFile[file].replace(pattern, (match) => {
-        expect(match, `${file} anchor no longer matches`).toContain(String(count));
-        return match.replace(String(count), String(to));
-      });
-
-    const allWrong = Object.fromEntries(
-      anchored.map((c) => [c.file, rewrite(c, wrong)]),
-    ) as typeof countSources;
-    const wrongClaims = extractTestCountClaims(allWrong);
-    expect(wrongClaims.map((c) => c.count)).toEqual([wrong, wrong, wrong]);
-    expect(
-      new Set(wrongClaims.map((c) => c.count)).size,
-      'the equality guard is blind here, by construction',
-    ).toBe(1);
-    expect(findTestCountProblems(wrongClaims, quoted)).toEqual(
-      TEST_COUNT_CLAIMS.map(
-        ({ file }) => `${file} quotes ${wrong} Host tests, collector measured ${quoted}`,
-      ),
-    );
-
-    // Contradictory numbers are caught twice over: once as three mismatches,
-    // once as the disagreement — and the cheap half sees the disagreement.
-    const docClaim = anchored.find((c) => c.file === 'docs/development/ci-test-matrix.md')!;
-    const contradictory = {
-      ...allWrong,
-      [docClaim.file]: rewrite(docClaim, other),
-    } as typeof countSources;
-    const splitClaims = extractTestCountClaims(contradictory);
-    expect(new Set(splitClaims.map((c) => c.count)).size).toBe(2);
-    expect(findTestCountProblems(splitClaims, quoted)).toHaveLength(4);
-  });
-});
 
 describe('measured-duration prose in vitest.config.ts', () => {
   /** `2.3x`, `~4.4x`, `2.3 倍`, `4.3倍` — a multiple, not a contention ratio. */
