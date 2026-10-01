@@ -22,6 +22,7 @@ mod script;
 mod state;
 #[cfg(test)]
 mod tests;
+mod transaction;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
