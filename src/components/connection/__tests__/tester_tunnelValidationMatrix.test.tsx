@@ -91,9 +91,20 @@ function editExisting(overrides: Partial<ConnectionConfig> = {}): ConnectionConf
   };
 }
 
+/**
+ * `ConnectionConfig['databaseType']` is the codegen-derived union from
+ * `generated.ts`, so it only admits the drivers the current `--drivers` set
+ * injected — naming `sqlserver` under `--drivers=basic` is a type error even
+ * though the matrix must cover it. This keeps the union and adds the ids the
+ * matrix deliberately spans builds for; each one is still checked against the
+ * live `DB_REGISTRY` at runtime (see the exhaustiveness guard and
+ * `expectedFormVariant` below), so nothing here widens to an unchecked string.
+ */
+type CrossBuildDatabaseType = ConnectionConfig['databaseType'] | 'sqlserver';
+
 interface Variant {
   label: string;
-  databaseType: ConnectionConfig['databaseType'];
+  databaseType: CrossBuildDatabaseType;
   formVariant: string;
   hasDriverValidator: boolean;
   supportsSSH: boolean;
@@ -140,12 +151,14 @@ const VARIANTS: Variant[] = [
 ];
 
 function renderVariant(variant: Variant, tunnel: Partial<ConnectionConfig> = {}) {
+  // Downcast, not a blanket escape hatch: when the driver is absent from this
+  // build the id is still what reaches the hook, so the case keeps exercising the
+  // `meta?.connectionForm ?? 'standard'` fallback for an unregistered driver type.
+  const databaseType = variant.databaseType as ConnectionConfig['databaseType'];
   return renderHook(() =>
     useConnectionForm({
       editId: 'c-1',
-      existingConnections: [
-        editExisting({ databaseType: variant.databaseType, ...variant.base, ...tunnel }),
-      ],
+      existingConnections: [editExisting({ databaseType, ...variant.base, ...tunnel })],
     }),
   ).result;
 }
@@ -160,9 +173,19 @@ beforeEach(() => {
 describe('[tester] validate() variant matrix is exhaustive for this build', () => {
   it('test_tester covers every connectionForm variant present in DB_REGISTRY', () => {
     const registered = [...new Set(Object.values(DB_REGISTRY).map((m) => m.connectionForm))].sort();
-    const covered = [...new Set(VARIANTS.map((v) => v.formVariant))].sort();
-    // A new driver form (e.g. sqlserver) must be added to VARIANTS, not skipped.
-    expect(covered).toEqual(registered);
+    const covered = new Set(VARIANTS.map((v) => v.formVariant));
+    // One direction only: every form this build registers needs a VARIANTS entry.
+    // The reverse is deliberately NOT asserted. VARIANTS is a static manifest while
+    // DB_REGISTRY is codegen output (`resolve-drivers.mjs --drivers=<set>`), so a
+    // manifest entry for a form the current build did not inject — `sqlserver` under
+    // `--drivers=basic` — is expected, not a defect. `toEqual` on both sides made the
+    // result depend on which drivers the build happened to select instead of on real
+    // coverage, so adding a variant could only ever move the failure between builds.
+    const uncovered = registered.filter((form) => !covered.has(form));
+    expect(
+      uncovered,
+      `connectionForm(s) registered in DB_REGISTRY with no VARIANTS entry: ${uncovered.join(', ') || '(none)'} — add a variant for each so the matrix stays exhaustive.`,
+    ).toEqual([]);
   });
 
   it('test_tester the only registered driver validator in this build is redis', () => {
@@ -182,7 +205,13 @@ describe('[tester] inline tunnel validation equivalence matrix', () => {
   it.each(VARIANTS)('$label — a tunnel-free connection stays savable', (variant) => {
     const result = renderVariant(variant);
 
-    expect(result.current.formVariant).toBe(variant.formVariant);
+    // The static manifest stays authoritative for every driver this build registers —
+    // a renamed form still fails here. Only a driver outside the current codegen set
+    // has no `DB_REGISTRY` entry, and then the hook legitimately resolves the generic
+    // form (`useConnectionForm.ts`: `meta?.connectionForm ?? 'standard'`).
+    const expectedFormVariant =
+      variant.databaseType in DB_REGISTRY ? variant.formVariant : 'standard';
+    expect(result.current.formVariant).toBe(expectedFormVariant);
     expect(!!getDriverValidator(variant.formVariant)).toBe(variant.hasDriverValidator);
     expect(result.current.tunnelSource).toBe('none');
     expect(result.current.tunnelRefMissing).toBe(false);
