@@ -12,6 +12,7 @@ import {
 const root = resolve(import.meta.dirname, '../..');
 const ciWorkflowRaw = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8');
 const ciWorkflow = YAML.parse(ciWorkflowRaw);
+const vitestConfigRaw = readFileSync(resolve(root, 'vitest.config.ts'), 'utf8');
 const DRIVER_SET_STEP_NAME = '- name: Frontend unit tests (all path drivers)';
 
 const flatten = (commands: { args: string[] }[]) =>
@@ -143,7 +144,7 @@ describe('ci.yml runs the unit suite outside `basic`', () => {
     expect(step?.run).not.toContain('--drivers');
   });
 
-  it('is an explicit soft gate, with the blockers named in an adjacent comment', () => {
+  it('is an explicit soft gate, with the measured basis in an adjacent comment', () => {
     const step = frontendSteps.find((s) => s.run?.includes('test:unit:driver-set'));
     expect(step?.['continue-on-error']).toBe(true);
 
@@ -151,13 +152,61 @@ describe('ci.yml runs the unit suite outside `basic`', () => {
     // where a maintainer editing the step will actually see it.
     const stepIndex = ciWorkflowRaw.indexOf(DRIVER_SET_STEP_NAME);
     expect(stepIndex, 'ci.yml must keep the driver-set step name').toBeGreaterThan(-1);
-    const rationale = ciWorkflowRaw.slice(Math.max(0, stepIndex - 1600), stepIndex);
-    expect(rationale).toContain('tester_tunnelValidationMatrix');
-    expect(rationale).toContain('ContentView.test.tsx');
-    expect(rationale).toMatch(/continue-on-error|hard gate/);
+    const rationale = ciWorkflowRaw.slice(Math.max(0, stepIndex - 2600), stepIndex);
+
+    // The comment must justify the soft gate by something that is still true.
+    expect(rationale).toMatch(/continue-on-error/);
+    expect(rationale).toMatch(/hard gate/);
+    // ... and must still carry the measured evidence for the timeout budget.
+    expect(rationale).toMatch(/load 48|6-7x/);
+  });
+
+  it('does not advertise a blocked list that no longer exists', () => {
+    const stepIndex = ciWorkflowRaw.indexOf(DRIVER_SET_STEP_NAME);
+    expect(stepIndex).toBeGreaterThan(-1);
+    const rationale = ciWorkflowRaw.slice(Math.max(0, stepIndex - 2600), stepIndex);
+
+    // Round 1 recorded two blockers measured on 7f35e1932. They are artifacts
+    // of that stale base and are green on feat/platform-p0 @ 7559759b7, so the
+    // comment may mention them ONLY to record that they were refuted.
+    for (const stale of ['tester_tunnelValidationMatrix', 'ContentView.test.tsx']) {
+      if (rationale.includes(stale)) {
+        expect(rationale).toMatch(/stale|do not exist|artifacts? of/i);
+      }
+    }
+    // The refutation must be stated, not just implied.
+    expect(rationale).toMatch(/7559759b7/);
+    expect(rationale).toMatch(/5677 passed/);
   });
 
   it('keeps the `basic` gate too — `all` does not replace it', () => {
     expect(frontendSteps.some((s) => s.run === 'pnpm test:unit')).toBe(true);
+  });
+});
+
+describe('vitest timeout budget', () => {
+  const timeoutMatch = vitestConfigRaw.match(/^\s*testTimeout:\s*([\d_]+)\s*,?\s*$/m);
+
+  it('pins testTimeout explicitly instead of inheriting the 5s Vitest default', () => {
+    expect(
+      timeoutMatch,
+      'vitest.config.ts must set testTimeout explicitly; the Vitest default 5000 ' +
+        'left the measured worst case at 88% of budget',
+    ).not.toBeNull();
+  });
+
+  it('uses the 10s value derived from the measured duration distribution', () => {
+    // Derivation (docs/development/ci-test-matrix.md): max 4392ms at load 7,
+    // p99.9 2299ms at the same load -> 10s is ~2.3x worst case and ~4.4x p99.9.
+    expect(Number(timeoutMatch?.[1].replaceAll('_', ''))).toBe(10_000);
+  });
+
+  it('keeps the recorded measurement basis next to the value', () => {
+    const valueIndex = vitestConfigRaw.indexOf('testTimeout:');
+    expect(valueIndex).toBeGreaterThan(-1);
+    const rationale = vitestConfigRaw.slice(Math.max(0, valueIndex - 1800), valueIndex);
+    expect(rationale).toContain('1745ms');
+    expect(rationale).toContain('4392ms');
+    expect(rationale).toContain('11629ms');
   });
 });

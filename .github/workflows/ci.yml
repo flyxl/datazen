@@ -87,24 +87,39 @@ jobs:
       # (e.g. `sqlserver`) therefore escapes Host unit coverage entirely.
       # This step re-runs the same suite under `all` (all registered PATH
       # drivers: no git driver, so no deploy key and no network needed).
+      # The set lives only in run-unit-driver-set.mjs, never inline here.
       #
-      # NOT a hard gate yet, and that is deliberate. Known-red today, by
-      # measurement on feat/platform-p0 (added failures vs. the `basic`
-      # baseline of the same codegen):
-      #   1. src/components/connection/__tests__/tester_tunnelValidationMatrix.test.tsx
-      #      -> `test_tester covers every connectionForm variant present in
-      #      DB_REGISTRY`: sqlserver registers a `connectionForm` variant the
-      #      VARIANTS matrix does not cover. This is the guard doing its job
-      #      and must not be weakened; it clears when sqlserver form coverage
-      #      is added.
-      #   2. src/windows/connection/__tests__/ContentView.test.tsx (10),
-      #      ContentViewKvDbSwitch.test.tsx (5),
-      #      ContentViewKvToolbar.test.tsx (2),
-      #      src/windows/connection/__tests__/QueryPanel.executeCancel.test.tsx (1)
-      #      -> driver-set independent; they fail identically under `basic`.
-      #      Owned by the frontend-baseline track, untouched here.
-      # Drop `continue-on-error` once (1) and (2) are green and this becomes
-      # the hard gate.
+      # Status: GREEN, not known-red. An earlier revision of this comment
+      # claimed two blockers; both were artifacts of a stale base
+      # (7f35e1932, which predates d1edfa7ba / f4c2e5078 by 9 commits) and
+      # do not exist on feat/platform-p0 @ 7559759b7. Re-measured there with
+      # codegen --drivers=all + generate-builtin-locales:
+      #   Test Files 555 passed (555) | Tests 5677 passed (5677), exit 0, 140s
+      #   tester_tunnelValidationMatrix.test.tsx alone: 36 passed, exit 0
+      # The ContentView / QueryPanel.executeCancel failures named earlier were
+      # the ones cbf87a4c0 fixed ("修复 schemaStore/panelStore mock 漂移导致
+      # 的 18 个前端单测失败"). Do not reintroduce a blocked list here without
+      # re-measuring on the current base.
+      #
+      # Why still a soft gate, then — a different and much narrower reason:
+      # this step and the 10s `testTimeout` in vitest.config.ts have never
+      # executed on a real GitHub runner. Local green on 8 cores is not
+      # evidence about a 2-vCPU runner. The step reports and does not block so
+      # the first CI runs can be observed; promote it to a hard gate (drop
+      # continue-on-error) once it is green on several consecutive runs, and
+      # update the row in docs/development/ci-test-matrix.md at the same time.
+      #
+      # Timeout budget, measured not guessed (per-test wall time, all 5691
+      # tests, --reporter=json):
+      #   2 workers, load 13  (2-vCPU runner shape)  p95 57ms  p99 170ms  max  1745ms
+      #   8 workers, load  7  (mild contention)      p95 118ms p99 336ms  max  4392ms
+      #   8 workers, load 48  (6-7x contention)      p95 329ms p99 918ms  max 11629ms
+      # Vitest's 5s default leaves the load-7 worst case at 88% of budget, so
+      # it has no headroom on a smaller runner. Note testTimeout only fires for
+      # tests that yield: in the load-48 run the three slowest tests (11629ms,
+      # 6540ms, 5236ms) overran 5s and still passed, and the only real timeout
+      # was DataTransferWindow, which awaits. Full derivation in
+      # docs/development/ci-test-matrix.md.
       - name: Frontend unit tests (all path drivers)
         run: pnpm test:unit:driver-set
         continue-on-error: true
