@@ -303,3 +303,10 @@ mod tunnel_summary_tests;
 #[cfg(test)]
 #[path = "cm73_baseline_tests.rs"]
 mod cm73_baseline_tests;
+
+// Companion sweep invariants for the same spec case (`:1279-1285`): reference
+// counting, `release` ordering, and the observable physical-resource chain.
+// Same placement rationale as `cm73_baseline_tests` above.
+#[cfg(test)]
+#[path = "cm73_idle_eviction_tests.rs"]
+mod cm73_idle_eviction_tests;
