@@ -2014,6 +2014,7 @@ version = "0.0.1"
 dependencies = [
  "chrono",
  "datazen-driver-api",
+ "indexmap 2.14.0",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

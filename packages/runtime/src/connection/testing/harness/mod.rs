@@ -53,6 +53,8 @@ use crate::connection::types::{
 pub use cm73::{EvictionRaceReport, EvictionRaceOutcome};
 pub use session_cmds::GatewayError;
 
+use session_cmds::{handle_id_field, str_field, u64_field};
+
 /// 夹具顶层句柄。
 ///
 /// 拥有 provider **本体**（它不是 `Clone`：内部有 `AtomicU64` 与多个 `Mutex`），
@@ -140,15 +142,17 @@ impl FakeHarness {
 
     // ---- §9.1 命令网关 ----
 
-    /// 走 §9.1 的会话级句柄命令：查表 → 校验入参 → 分发 → `CommandResult`。
+        /// 走 §9.1 的会话级句柄命令：查表 → 校验入参 → 分发 → `CommandResult`。
     ///
-    /// `resource_handle` 必须是**由该提供方签发**的只读凭证（§3.1）；
-    /// `handle_id` 是 §9.1 表里那条命令要操作的句柄（事务 / 游标句柄）。
+    /// `resource_handle` 必须是**由该提供方签发**的只读凭证（§3.1）。
+    /// `input` 就是 §9.1 表里那条命令的入参 schema —— `handleId`、`rows`、`name`、
+    /// `holdMs`、`runtimeEpoch`、`resourceId` 全部从 `input` 里读，和真实
+    /// `execute_command` 的调用方式一致；`validate_command_input` 已经保证
+    /// schema 标了 `required` 的字段一定在。
     pub fn invoke(
         &self,
         command: SessionCommand,
         resource_handle: &crate::connection::port::ResourceHandle,
-        handle_id: &crate::connection::types::HandleId,
         input: JsonValue,
     ) -> Result<CommandResult, GatewayError> {
         let definition = session_handle_command_definition(command.id())
@@ -156,65 +160,46 @@ impl FakeHarness {
         validate_command_input(&definition, &input).map_err(GatewayError::InvalidInput)?;
 
         let data = match command {
-            SessionCommand::BeginSessionTransaction => {
-                self.begin_transaction(resource_handle)?
-            }
+            SessionCommand::BeginSessionTransaction => self.begin_transaction(resource_handle)?,
             SessionCommand::BeginSessionTransactionHold => {
-                let hold_ms = input
-                    .get("holdMs")
-                    .and_then(JsonValue::as_u64)
-                    .ok_or_else(|| GatewayError::InvalidInput("holdMs 必须是整数".to_owned()))?;
+                let hold_ms = u64_field(&input, "holdMs")?;
                 // §9.1：hold 命令**不自动终结**事务，它的存在就是为了和关闭 / 驱逐赛跑。
                 // 只推进假单调时钟，绝不 sleep。
                 self.clock().advance(std::time::Duration::from_millis(hold_ms));
                 self.begin_transaction(resource_handle)?
             }
             SessionCommand::OpenSessionCursor => {
-                let rows = input
-                    .get("rows")
-                    .and_then(JsonValue::as_u64)
-                    .ok_or_else(|| GatewayError::InvalidInput("rows 必须是整数".to_owned()))?;
+                let rows = u64_field(&input, "rows")?;
                 self.open_cursor(resource_handle, rows)?
             }
             SessionCommand::PrepareServerStatement => {
-                let name = input
-                    .get("name")
-                    .and_then(JsonValue::as_str)
-                    .ok_or_else(|| GatewayError::InvalidInput("name 必须是字符串".to_owned()))?;
+                let name = str_field(&input, "name")?;
                 self.prepare_server_statement(resource_handle, name)?
             }
             SessionCommand::CommitSessionTransaction => {
-                self.commit_transaction(resource_handle, handle_id)?
+                self.commit_transaction(resource_handle, &handle_id_field(&input)?)?
             }
             SessionCommand::RollbackSessionTransaction => {
-                self.rollback_transaction(resource_handle, handle_id)?
+                self.rollback_transaction(resource_handle, &handle_id_field(&input)?)?
             }
-            SessionCommand::CloseSessionCursor => self.close_cursor(resource_handle, handle_id)?,
+            SessionCommand::CloseSessionCursor => {
+                self.close_cursor(resource_handle, &handle_id_field(&input)?)?
+            }
             // 下面三条是 §9.2 的**反例命令**，它们存在的目的就是被判负。
             SessionCommand::BeginSessionTransactionUnregistered => {
                 self.begin_transaction_unregistered(resource_handle)?
             }
             SessionCommand::CommitWithStaleHandle => {
-                let stale_epoch = input
-                    .get("runtimeEpoch")
-                    .and_then(JsonValue::as_u64)
-                    .ok_or_else(|| {
-                        GatewayError::InvalidInput("runtimeEpoch 必须是整数".to_owned())
-                    })?;
+                let stale_epoch = crate::connection::types::Counter::new(u64_field(&input, "runtimeEpoch")?);
                 self.commit_with_stale_epoch(
                     resource_handle,
-                    handle_id,
-                    crate::connection::types::Counter::new(stale_epoch),
+                    &handle_id_field(&input)?,
+                    stale_epoch,
                 )?
             }
             SessionCommand::HandleFromOtherResource => {
-                let other = input
-                    .get("resourceId")
-                    .and_then(JsonValue::as_str)
-                    .ok_or_else(|| {
-                        GatewayError::InvalidInput("resourceId 必须是字符串".to_owned())
-                    })?;
-                self.handle_from_other_resource(resource_handle, other, handle_id)?
+                let other = str_field(&input, "resourceId")?;
+                self.handle_from_other_resource(resource_handle, other, &handle_id_field(&input)?)?
             }
         };
         Ok(CommandResult::new(data))
@@ -227,63 +212,20 @@ impl FakeHarness {
     /// 返回 `Err(消息)` 而不是直接 panic，是为了让 CM-73 这类**要对比多个检查点**的用例
     /// 能把「停住时的状态」和「收口后的状态」都拿到手再断言。
     pub fn assert_no_leak(&self) -> Result<(), String> {
-        let mut violations = Vec::new();
-
-        // I1 / I6：permit 收支平衡，且总量等于 live 资源 + 环境占用。
-        self.provider.journal().assert().ledger_violations().iter().for_each(|v| {
-            violations.push(format!("I1/I6 permit 台账：{v}"));
-        });
-        // I2：没有仍占用预算的资源。
-        let live_resources = self.provider.live_resources();
-        if !live_resources.is_empty() {
-            violations.push(format!(
-                "I2 live_resources 非空：{:?}",
-                live_resources.iter().map(|r| r.as_str()).collect::<Vec<_>>()
-            ));
-        }
-        // I3：没有未归还的 lease。
-        let live_leases = self.provider.journal().live_leases();
-        if !live_leases.is_empty() {
-            violations.push(format!(
-                "I3 live_leases 非空：{:?}",
-                live_leases.iter().map(|l| l.as_str()).collect::<Vec<_>>()
-            ));
-        }
-        // I4：没有活跃会话。
-        let active_sessions = self.provider.journal().active_sessions();
-        if !active_sessions.is_empty() {
-            violations.push(format!(
-                "I4 session_registry.active_sessions 非空：{:?}",
-                active_sessions.iter().map(|s| s.as_str()).collect::<Vec<_>>()
-            ));
-        }
-        // I5：句柄登记册必须清空。
-        let registered: Vec<String> =
-            self.provider.journal().handle_registry().keys().cloned().collect();
-        if !registered.is_empty() {
-            violations.push(format!("I5 journal.handle_registry 非空：{registered:?}"));
-        }
-        // I7：没有未回收的孤立句柄。
-        let orphans = self.provider.journal().orphan_handles();
-        if !orphans.is_empty() {
-            violations.push(format!("I7 journal.orphan_handles 非空：{orphans:?}"));
-        }
-        // I8：流事件序号连续。
-        self.provider.journal().assert().stream_violations().iter().for_each(|v| {
-            violations.push(format!("I8 events.stream_sequence：{v}"));
-        });
-        // §5.3 变化点断言：预算记账与句柄登记的每一步都必须有证据。
-        self.provider
-            .journal()
-            .assert()
-            .change_point_violations()
-            .iter()
-            .for_each(|v| violations.push(format!("§5.3 {v}")));
+        // I1–I8 一次算清：`leak_invariant_violations` 内部依次检查
+        // I2 / I3 / I4 / I5 / I1+I6(ledger) / I7 / I8。
+        let mut violations: Vec<String> =
+            self.provider.journal().assert().leak_invariant_violations();
+        // §5.3 变化点断言：预算记账与句柄登记的每一步都必须留证据。
+        violations.extend(self.provider.journal().assert().change_point_violations());
 
         if violations.is_empty() {
             Ok(())
         } else {
-            Err(format!("泄漏不变量（§4.3 I1–I8）不成立：\n  - {}", violations.join("\n  - ")))
+            Err(format!(
+                "泄漏不变量不成立（§4.3 I1–I8 / §5.3 变化点）：\n  - {}",
+                violations.join("\n  - ")
+            ))
         }
     }
 }

@@ -16,10 +16,9 @@
 //! 每次操作都要校验 `resourceId` + `runtimeEpoch` + owner」执行。
 
 use crate::connection::error::ProviderError;
-use crate::connection::execution::ExecutionId;
 use crate::connection::port::{PermitSet, ResourceHandle, Secret};
 use crate::connection::session::{HandleKind, SessionHandleRef, SessionView};
-use crate::connection::types::ResourceId;
+use crate::connection::types::{ExecutionId, ResourceId};
 
 use super::state::{FakeResource, FakeResourceState};
 
@@ -149,6 +148,15 @@ impl FakeResourceProvider {
             .get(resource_id.as_str())
             .map(|resource| resource.registered_handles())
             .unwrap_or(0)
+    }
+
+    /// §3.1 的「每次操作都要校验」对外暴露的只读入口。
+    ///
+    /// 命令网关在改动任何状态之前先跑这一道：凭证失效的资源不应该被写脏。
+    /// 校验口径与 [`FakeResourceProvider::resolve`] 完全一致
+    /// （`resourceId` + `runtimeEpoch` + owner，且资源必须还活着）。
+    pub fn verify_handle(&self, handle: &ResourceHandle) -> Result<(), ProviderError> {
+        self.resolve(&handle.resource_id, handle, false).map(|_| ())
     }
 
     /// §3.1：每次操作都要用 `ResourceHandle` 校验 `resourceId` + `runtimeEpoch` + owner。
