@@ -94,21 +94,28 @@ class TreeSnapshot {
   /**
    * Record a path this run created, for recursive removal on revert.
    *
-   * Refuses a path that already exists. A revert here is `rm -rf`, so
-   * registering a pre-existing directory destroys tracked source: the files were
+   * Refuses a path that holds git-tracked files. A revert here is `rm -rf`, so
+   * registering a package directory destroys real source, and the files were
    * never in {@link backup}, so nothing can put them back. Two mutations used to
    * do exactly that — they were written before `packages/platform-api` and
    * `packages/backend-client` landed, and once those packages existed the
    * revert silently deleted 41 tracked files and reported `REVERT FAILED`
-   * *after* the damage. A probe must never be able to delete what it is
-   * probing; fail loudly at registration instead.
+   * *after* the damage.
+   *
+   * The test is "tracked", not "exists": `packages/drivers/*` is gitignored
+   * because Git drivers are cloned there, so a probe directory under it is
+   * legitimately created and removed on every run — and an abandoned one
+   * survives an interrupted run without that making the next run unsafe.
    */
   createdDir(rel) {
-    if (existsSync(join(this.root, rel)))
+    const tracked = spawnSync('git', ['ls-files', '--', rel], { cwd: this.root, encoding: 'utf8' });
+    const files = (tracked.stdout ?? '').split('\n').filter(Boolean);
+    if (files.length)
       throw new Error(
-        `createdDir(\`${rel}\`) would make the revert rm -rf a directory that already exists. ` +
-          `A mutation that needs to touch a real package must back up the individual files it ` +
-          `overwrites (snapshot.backup) and must not register the package directory for removal.`,
+        `createdDir(\`${rel}\`) would make the revert rm -rf ${files.length} git-tracked file(s) ` +
+          `(${files[0]}...). A mutation that needs to touch a real package must back up the ` +
+          `individual files it overwrites (snapshot.backup) and must not register the package ` +
+          `directory for removal.`,
       );
     this.#created.push(rel);
   }
