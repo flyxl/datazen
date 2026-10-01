@@ -14,6 +14,8 @@
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
 | driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
 | ai-api | ✅ | 随构建链接 | `cargo test -p datazen-ai-api --lib` |
+| 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
+| 平台 crate 架构门禁（F-01..F-07） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
 | Basic path 驱动 lib | ✅ 四 crate 并行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
 | 可选 path 驱动 lib | ❌ | **All SKU** 构建时编译链接 | 改驱动 crate 时本地必跑 |
 | Git 驱动（kiwi/superset） | ❌ | **Akulaku SKU**（需 Deploy Key） | 见 [ci-private-drivers.md](./ci-private-drivers.md) |
@@ -171,6 +173,9 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 | Rust | 见下表 | Rust **stable** |
 | 清理 | `driver-file-stash.mjs restore` | 恢复被 inject 的 tracked 文件（`if: always()`） |
 | ai-api | `cargo test -p datazen-ai-api --lib` | 在 restore **之后**执行（不依赖 inject 产物） |
+| 架构门禁 | `pnpm test:platform-arch` | F-01..F-07 crate 依赖闭包检查，**阻塞** |
+| 内核 crate 单测 | `pnpm test:platform-crates` | 集合由脚本按 LAYERS 发现 |
+| 门禁自证 | `pnpm test:platform-arch:mutations` | 变异证明，**job 内最后一步** |
 
 Rust 测试顺序（与 `ci.yml` 一致）：
 
@@ -184,7 +189,40 @@ cargo test -p datazen --lib --features "$FEATURES"
 node scripts/driver-file-stash.mjs restore
 # ai-api 不依赖注入产物，放在 restore 之后
 cargo test -p datazen-ai-api --lib
+pnpm test:platform-arch
+pnpm test:platform-crates
+pnpm test:platform-arch:mutations
 ```
+
+### 2.3 平台 crate 架构门禁（F-01..F-07）
+
+规则正文见 [shared-boundaries-and-ports.md](../architecture/platform/shared-boundaries-and-ports.md) §2.4，
+执行器是 `scripts/check-platform-crate-boundaries.mjs`。
+
+**为什么落在 rust job 而不是 frontend 的严格守卫步**：门禁要读 `cargo metadata` 的
+feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；frontend job
+（`ci.yml` §2.1）没有 Rust 工具链。并进那一步只会得到一个必然失败的步骤。
+
+**为什么这里没有任何 crate 名单**：`scripts/lib/cargoWorkspace.mjs` 的 `LAYERS` 表把
+`manifest_path` 映射到层，规则的主体由 §2.4 的路径推出。因此 `packages/application`、
+`packages/platform-api`、`server/` 一旦被加进 workspace `members`，立刻自动入网——
+**新增内核 crate 不需要改 `ci.yml`，也不需要改 `package.json`**。列不出来的 member 是
+**error** 不是 pass：门禁无法分类的成员，就是没有任何规则覆盖的成员。
+
+`pnpm test:platform-crates`（`scripts/run-platform-crate-tests.mjs`）用同一张 `LAYERS` 表
+发现 `runtime` / `application` / `platform-api` / `server` 四层里真实存在的 crate 并跑
+`cargo test --lib`。它补上的是计划 :269 的空缺：`datazen-runtime` 当时带着 130 个通过的
+Rust 单测，而 CI 里没有任何一步执行它们。`--require-layers=<ids>` 可在某个阶段把「层存在
+但没被测到」从静默变成报错。
+
+**变异自证**：`scripts/platform-arch-selfcheck.mjs` 临时改写 `Cargo.toml` / 新增探针 crate，
+逐条运行门禁并断言退出码非零 + 输出点名了预期规则与 crate，再逐条还原；末尾断言
+`git status --porcelain` 为空。它放在 job 的**最后一步**，因为它会动工作树——放在这里，
+被强杀也不会污染任何后续步骤。8 个变异约 5s；它失败说明门禁本身失去了鉴别力，比门禁变红更早报警。
+
+**已知未覆盖**：门禁只读 crate 依赖闭包。`@tauri-apps/api` / `fetch(` / `XMLHttpRequest`
+这类前端字面量由 §7 的源码扫描负责，不在本门禁内；`packages/backend-client` 的 pnpm 接线
+（tsconfig paths / include / vite alias）见 §2.5，同样不在本门禁内。
 
 ## 3. 驱动预设与 SKU
 
@@ -212,11 +250,18 @@ FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-f
 cargo test -p datazen --lib --features "$FEATURES"
 node scripts/driver-file-stash.mjs restore
 cargo test -p datazen-ai-api --lib
+pnpm test:platform-arch
+pnpm test:platform-crates
 ```
 
 若改动 `site/`：`node scripts/check-site-seo.mjs`。
 
 若改动可选 path 驱动的 **Rust**：追加 `cargo test -p datazen-driver-<id> --lib`（该 crate 的 UI 单测已由 PR CI 的 `pnpm test:unit:drivers` 覆盖，无需再手工跑）。
+
+若改动 `Cargo.toml`、workspace `members` 或任何内核 crate 的依赖：追加 `pnpm test:platform-arch`。
+`pnpm test:platform-arch:mutations` 每次不必跑（它在 PR CI 里），但**改门禁本身**
+（`check-platform-crate-boundaries.mjs` / `lib/cargoWorkspace.mjs`）时必须本地跑通——
+否则你无法区分「新规则抓到了真问题」和「新规则坏了」。
 
 若改动 Host UI 交互路径：同 PR 更新 E2E（见 [e2e-testing.md](./e2e-testing.md)）；全量 E2E 耗时长，**不要求**与 PR CI 同跑，但须在 PR test plan 说明。
 
