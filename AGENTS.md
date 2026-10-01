@@ -173,6 +173,21 @@ cargo test -p datazen-ai-api --lib     # AI API 单元测试
 cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust 测试
 ```
 
+> **测试命令的长输出必须落临时文件再读**：测试/门禁命令（`vitest`、`cargo test`、`typecheck`、
+> `check-*.mjs`、`pnpm build`）的输出动辄上千行，直接回显会被工具截断，而**结论恰恰在末尾**
+> （`Test Files` / `Tests` / `test result:` / 编译错误列表 / 退出码）——被截掉就等于没跑，
+> 且极易据此误判"通过"。一律重定向到**系统临时目录**，再用 `tail` / `grep` 取需要的片段：
+>
+> ```bash
+> LOG="$(mktemp -t datazen-test).log"
+> npx vitest run > "$LOG" 2>&1; echo "EXIT=$?"     # 退出码必须单独打印并如实记录
+> tail -n 40 "$LOG"                                # 结论行
+> grep -nE 'FAIL|✗|test result:|error\[|error TS' "$LOG" | head -60   # 失败清单
+> ```
+>
+> 注意：临时文件**只放系统 temp 目录**，不得落在仓库内（会污染 `git status`）；
+> 完整日志留在文件里备查，不要为了"看全"而把整个文件回显进对话。
+
 > **测试文件参与类型检查**：`tsconfig.json` 不再排除 `__tests__/` 与 `*.test.ts(x)`，
 > 新增或修改测试后必须保证 `pnpm typecheck` 干净。历史上测试被排除在外，导致 mock
 > 与真实类型长期漂移而不被发现（例如 `TableInfo.rowCount` 实收 `null` 却声明为 `?: number`）。
