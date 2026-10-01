@@ -170,7 +170,14 @@ describe('checkSpecConsistency', () => {
   });
 
   it('fails when the spec drops a crate family the guard enforces', () => {
-    const weakened = SPEC.replace('`tonic`', '`其他`');
+    // Scope the edit to the F-03 row. A bare `SPEC.replace('`tonic`', …)` only
+    // rewrites the FIRST occurrence, so the moment §2's prose mentions the same
+    // crate the mutation lands on the paragraph instead of the table row and
+    // this test silently stops probing the rule it names.
+    const weakened = SPEC.split('\n')
+      .map((l) => (l.startsWith('| F-03 ') ? l.replace('`tonic`', '`其他`') : l))
+      .join('\n');
+    expect(weakened).not.toBe(SPEC);
     expect(checkSpecConsistency(weakened).join('\n')).toContain('F-03');
   });
 
