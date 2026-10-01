@@ -12,7 +12,8 @@
  * as a test failure that says nothing about the guard.
  */
 
-import { readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
@@ -304,5 +305,92 @@ describe('checkPlatformCrateBoundaries', () => {
       requireLayers: ['server'],
     });
     expect(result.errors.join('\n')).toContain('server');
+  });
+});
+
+/**
+ * F-07's TypeScript half, exercised against a throwaway tree.
+ *
+ * The guard resolves every scanned path from `root`, so pointing it at a temp
+ * directory keeps these cases honest — they cannot accidentally read the real
+ * `packages/backend-client`, and a failing assertion cannot leave a stray file
+ * behind in the repo.
+ */
+describe('F-07 TypeScript literals', () => {
+  const BACKEND_CLIENT = { name: 'datazen-backend-client', dir: 'packages/backend-client' };
+  // Same shape as the `clean` map inside the crate-graph describe: runtime is
+  // the only member with an edge, and it is a legal one.
+  const CLEAN: Record<string, string[]> = { 'datazen-runtime': ['datazen-driver-api'] };
+
+  function scanWith(source: string, filename = 'probe.ts') {
+    const root = mkdtempSync(join(tmpdir(), 'datazen-f07-'));
+    const dir = join(root, 'packages/backend-client/src');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, filename), source);
+    try {
+      return checkPlatformCrateBoundaries({
+        root,
+        metadata: fixture([...CORE, BACKEND_CLIENT], CLEAN),
+        specText: SPEC,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it('accepts a client that reaches the backend only through its transport', () => {
+    const result = scanWith(
+      'export function probe(url: string): void {\n  void url;\n}\n',
+    );
+    expect(result.violations).toEqual([]);
+  });
+
+  it('catches a Tauri import', () => {
+    const result = scanWith("import { invoke } from '@tauri-apps/api/core';\n");
+    expect(result.violations.join('\n')).toMatch(/F-07.*@tauri-apps\//);
+  });
+
+  it('catches a direct network call', () => {
+    const result = scanWith('export function probe(u: string) { return fetch(u); }\n');
+    expect(result.violations.join('\n')).toMatch(/F-07.*fetch\(/);
+  });
+
+  it('catches `new XMLHttpRequest()`, not just the token inside a string', () => {
+    // The matcher used to consult string literals only, so the one form the
+    // rule exists to forbid slipped through and the guard read as green.
+    const result = scanWith('export function probe() { return new XMLHttpRequest(); }\n');
+    expect(result.violations.join('\n')).toMatch(/F-07.*XMLHttpRequest/);
+  });
+
+  it('catches the Tauri token when it only appears as a string', () => {
+    const result = scanWith("export const NAME = '@tauri-apps/api/core';\n");
+    expect(result.violations.join('\n')).toMatch(/F-07.*@tauri-apps\//);
+  });
+
+  it('does not fire on prose that merely mentions a forbidden token', () => {
+    const result = scanWith(
+      '/** We never use fetch( or XMLHttpRequest here; the transport owns the wire. */\nexport const ok = 1;\n',
+      'probe.ts',
+    );
+    expect(result.violations).toEqual([]);
+  });
+
+  it('scans __tests__ too, since a test can smuggle the same call in', () => {
+    // `SKIP_DIR_NAMES` deliberately does not exclude `__tests__`; if that ever
+    // changes, this is the assertion that notices.
+    const root = mkdtempSync(join(tmpdir(), 'datazen-f07-tests-'));
+    const dir = join(root, 'packages/backend-client/__tests__');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'probe.test.ts'), 'export const load = (u: string) => fetch(u);\n');
+    try {
+      const result = checkPlatformCrateBoundaries({
+        root,
+        metadata: fixture([...CORE, BACKEND_CLIENT], CLEAN),
+        specText: SPEC,
+      });
+      expect(result.violations.join('\n')).toMatch(/F-07.*fetch\(/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
