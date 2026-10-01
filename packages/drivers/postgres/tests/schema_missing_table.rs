@@ -12,14 +12,12 @@
 //! (the driver picks that database's pool), while a relation that really is
 //! absent keeps failing instead of degrading to a column-less table.
 //!
-//! Skips when PostgreSQL is unavailable. Uses the same TEST_PG_* env / `.env`
-//! as `postgres_empty_query_columns`.
+//! Skips when PostgreSQL is unavailable. Uses `TEST_PG_*` from the **process
+//! environment only** (shell export or CI secret) — see
+//! `postgres_cross_database.rs` for why no `.env` file is read.
 //!
 //! Run:
 //!   cargo test -p datazen-driver-postgres --test schema_missing_table -- --nocapture
-
-use std::collections::HashMap;
-use std::path::PathBuf;
 
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError};
 use datazen_driver_postgres::PostgresDriver;
@@ -45,62 +43,36 @@ impl Default for PgTestConfig {
     }
 }
 
-fn load_dotenv_file() -> HashMap<String, String> {
-    let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join(".env");
-
-    let mut map = HashMap::new();
-    let Ok(content) = std::fs::read_to_string(&env_path) else {
-        return map;
-    };
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((k, v)) = line.split_once('=') {
-            map.insert(k.trim().to_string(), v.trim().to_string());
-        }
-    }
-    map
-}
-
-fn env_or_file(file: &HashMap<String, String>, key: &str) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .filter(|v| !v.is_empty())
-        .or_else(|| file.get(key).cloned().filter(|v| !v.is_empty()))
+/// Resolve a `TEST_PG_*` key from the **process environment only**.
+///
+/// No file fallback: a test must never parse `packages/drivers/.env`
+/// (AGENTS.md 「本地环境变量文件保护」). Inject the keys from the shell or CI.
+fn env_var(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.is_empty())
 }
 
 fn load_pg_config() -> Option<PgTestConfig> {
-    let file = load_dotenv_file();
-    let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_PG_"))
-        || file.keys().any(|k| k.starts_with("TEST_PG_"));
+    let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_PG_"));
 
     if !has_marker {
-        eprintln!("⏭  Skipping schema_missing_table: no TEST_PG_* in env or .env");
+        eprintln!("⏭  Skipping schema_missing_table: no TEST_PG_* in process env");
         return None;
     }
 
     let mut cfg = PgTestConfig::default();
-    if let Some(v) = env_or_file(&file, "TEST_PG_HOST") {
+    if let Some(v) = env_var("TEST_PG_HOST") {
         cfg.host = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_PORT") {
-        cfg.port = v.parse().unwrap_or(5432);
+    if let Some(v) = env_var("TEST_PG_PORT") {
+        cfg.port = v.parse().unwrap_or(cfg.port);
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_USER") {
+    if let Some(v) = env_var("TEST_PG_USER") {
         cfg.user = v;
     }
-    if let Ok(v) = std::env::var("TEST_PG_PASSWORD") {
+    if let Some(v) = env_var("TEST_PG_PASSWORD") {
         cfg.password = v;
-    } else if let Some(v) = file.get("TEST_PG_PASSWORD") {
-        cfg.password = v.clone();
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_DATABASE") {
+    if let Some(v) = env_var("TEST_PG_DATABASE") {
         cfg.database = v;
     }
     Some(cfg)

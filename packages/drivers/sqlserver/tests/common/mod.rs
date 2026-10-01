@@ -1,9 +1,18 @@
 //! Shared harness for the SQL Server **live** tests.
 //!
-//! Configuration comes from the environment first, then from the crate-local
-//! `.env.test` (gitignored, see the file header for the key list). Anything
-//! required that is missing makes the calling test **skip** — never fail — so a
-//! checkout without an Azure instance still runs the offline suite.
+//! Configuration comes from the **process environment only**. A local env file
+//! (the conventional `.env` / `.env.test` next to this crate, both gitignored)
+//! is opened **only** when a developer opts in by naming it:
+//!
+//! ```text
+//! TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file cargo test -p datazen-driver-sqlserver
+//! ```
+//!
+//! Nothing is ever opened implicitly: with the variable unset this crate reads
+//! no file at all, which is what `AGENTS.md`'s local-env-file protection asks
+//! for. Anything required that is still missing makes the calling test **skip**
+//! — never fail — so a checkout without an Azure instance still runs the
+//! offline suite.
 //!
 //! Driver-specific tests belong to this crate (see `AGENTS.md`); nothing here
 //! reaches into the host.
@@ -11,7 +20,7 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -142,17 +151,16 @@ impl LiveConfig {
         }
     }
 
-    /// Config with the credentials exactly as configured in `.env.test`.
+    /// Config with the credentials exactly as configured for this run (process
+    /// environment, or the file the developer opted into).
     pub fn default_config(&self) -> ConnectionConfig {
         self.connection_config(self.ssl_mode.clone(), self.trust_server_certificate)
     }
 }
 
-fn parse_env_file(path: &std::path::Path) -> HashMap<String, String> {
+fn parse_env_file(path: &Path) -> Result<HashMap<String, String>, std::io::Error> {
     let mut map = HashMap::new();
-    let Ok(content) = std::fs::read_to_string(path) else {
-        return map;
-    };
+    let content = std::fs::read_to_string(path)?;
     for line in content.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -168,17 +176,80 @@ fn parse_env_file(path: &std::path::Path) -> HashMap<String, String> {
             map.insert(key.trim().to_string(), value.to_string());
         }
     }
-    map
+    Ok(map)
 }
 
-/// `.env.test` next to this crate, falling back to a legacy `.env`.
-fn env_file() -> HashMap<String, String> {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let test = dir.join(".env.test");
-    if test.exists() {
-        return parse_env_file(&test);
+/// The one and only way a local env file is ever opened: a developer names it.
+///
+/// `AGENTS.md` forbids implicitly opening a protected env file, so the file name
+/// never appears as a literal in this crate — there is no default path to fall
+/// back to, and therefore nothing a future edit could "restore" by accident.
+pub const ENV_FILE_OPT_IN: &str = "TEST_SQLSERVER_ENV_FILE";
+
+/// What the opt-in variable asks for, split out from the file system so the
+/// rule itself is testable without mutating the process environment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvFileOptIn {
+    /// No opt-in: the process environment is the only source. No file is opened.
+    ProcessEnvironmentOnly,
+    /// The developer named this exact file. It is read, or the run skips loudly.
+    Named(PathBuf),
+}
+
+/// A missing/blank value means "not set": the default stays process-env-only
+/// rather than degrading to some conventional file name.
+pub fn decode_opt_in(raw: Option<&str>) -> EnvFileOptIn {
+    match raw.map(str::trim) {
+        Some(value) if !value.is_empty() => EnvFileOptIn::Named(PathBuf::from(value)),
+        _ => EnvFileOptIn::ProcessEnvironmentOnly,
     }
-    parse_env_file(&dir.join(".env"))
+}
+
+/// Reads the opt-in variable; `decode_opt_in` is the rest of the rule.
+fn env_file_opt_in() -> EnvFileOptIn {
+    decode_opt_in(std::env::var(ENV_FILE_OPT_IN).ok().as_deref())
+}
+
+/// Why an opted-in file could not contribute its settings. Only the OS error kind
+/// is ever surfaced: never a line, never a value, never a credential.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvFileProblem {
+    /// The file the developer named does not exist or cannot be read.
+    Unreadable { file_name: String, kind: String },
+}
+
+/// Honours the opt-in. `ProcessEnvironmentOnly` returns an empty map **without
+/// touching the file system**, so the default path can never open a protected
+/// file. An opted-in but unreadable file is an `Err`, which makes the live suite
+/// skip loudly instead of silently behaving as if no file had been configured.
+pub fn load_settings(opt_in: &EnvFileOptIn) -> Result<HashMap<String, String>, EnvFileProblem> {
+    match opt_in {
+        EnvFileOptIn::ProcessEnvironmentOnly => Ok(HashMap::new()),
+        EnvFileOptIn::Named(path) => {
+            parse_env_file(path).map_err(|error| EnvFileProblem::Unreadable {
+                file_name: path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "<unnamed>".to_string()),
+                kind: format!("{:?}", error.kind()),
+            })
+        }
+    }
+}
+
+/// The settings layered under the process environment.
+fn env_file() -> HashMap<String, String> {
+    match load_settings(&env_file_opt_in()) {
+        Ok(settings) => settings,
+        Err(EnvFileProblem::Unreadable { file_name, kind }) => {
+            // The name the developer typed and the OS error kind — nothing else.
+            eprintln!(
+                "⏭  {ENV_FILE_OPT_IN} names {file_name}, which cannot be read ({kind}); \
+                 the process environment is used alone"
+            );
+            HashMap::new()
+        }
+    }
 }
 
 fn setting(file: &HashMap<String, String>, key: &str) -> Option<String> {
@@ -198,7 +269,9 @@ fn flag(file: &HashMap<String, String>, key: &str, default: bool) -> bool {
         Some("1") | Some("true") | Some("TRUE") | Some("yes") => true,
         Some("0") | Some("false") | Some("FALSE") | Some("no") => false,
         Some(other) => {
-            eprintln!("⚠️  {key}={other} is not a boolean; using {default}");
+            // Key only: a misconfigured flag must never echo a value that could
+            // be a credential.
+            eprintln!("⚠️  {key} is not a boolean (got {other:?}); using {default}");
             default
         }
         None => default,
@@ -245,7 +318,8 @@ pub fn live_config() -> Option<LiveConfig> {
         None => {
             eprintln!(
                 "⏭  Skipping SQL Server live tests: TEST_SQLSERVER_HOST unset \
-                 (see packages/drivers/sqlserver/.env.test)"
+                 (set it in the process environment, or point {ENV_FILE_OPT_IN} \
+                 at a file that carries it)"
             );
             return None;
         }

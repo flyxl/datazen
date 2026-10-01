@@ -1,7 +1,9 @@
 //! Live SQL Server **admin-command surface** + **sync / keyset pagination**.
 //!
 //! Scope and safety (see also `tests/common/mod.rs`):
-//! - every test skips (never fails) when `.env.test` is absent/incomplete;
+//! - every test skips (never fails) when the instance is not configured.
+//!   Settings come from the process environment; a local env file is read
+//!   only when you opt in with `TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file`;
 //! - writes happen only when `TEST_SQLSERVER_ALLOW_WRITE=1`, only on
 //!   `cfg.scratch(..)` objects, and every scratch object is dropped in a guard
 //!   that runs even when the test body panics;
