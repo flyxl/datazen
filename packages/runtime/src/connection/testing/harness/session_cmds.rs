@@ -47,6 +47,15 @@ impl fmt::Display for GatewayError {
 
 impl std::error::Error for GatewayError {}
 
+/// §9.2 要求断言能直接 `matches!(err, GatewayError::Provider(ProviderError::SessionLost(_)))`，
+/// 所以提供方错误**原样**透传：`?` 不改写错误种类（§13：请求拒绝面与 provider 面是两个
+/// 独立命名空间，不得在此处混同）。`Provider` 变体已经在枚举里，这里只补 `?` 所需转换。
+impl From<ProviderError> for GatewayError {
+    fn from(error: ProviderError) -> Self {
+        GatewayError::Provider(error)
+    }
+}
+
 impl GatewayError {
     /// §9.2 断言要读错误码，所以给一条直达通道。
     pub fn api_code(&self) -> Option<crate::connection::error::ApiErrorCode> {
@@ -86,7 +95,7 @@ impl FakeHarness {
     /// 句柄 id 一律从该资源的 `dbSessionId` 派生的 `executionId` 派生
     /// （§8.2：`exe_<dbSessionId>_<seq:04>`），再挂 `hdl_` 前缀，
     /// 保证**跨资源不可能撞号**，也就不会出现「句柄跨资源/epoch 登记」。
-    fn next_handle_id(&self, resource: &ResourceHandle) -> Result<(crate::connection::types::ExecutionId, HandleId), GatewayError> {
+    pub(crate) fn next_handle_id(&self, resource: &ResourceHandle) -> Result<(crate::connection::types::ExecutionId, HandleId), GatewayError> {
         let slot = self
             .provider()
             .resource(&resource.resource_id)
@@ -99,7 +108,7 @@ impl FakeHarness {
         Ok((execution_id, handle_id))
     }
 
-    fn ensure_registered(&self, resource: &ResourceHandle, handle_id: &HandleId) -> Result<(), GatewayError> {
+    pub(crate) fn ensure_registered(&self, resource: &ResourceHandle, handle_id: &HandleId) -> Result<(), GatewayError> {
         let owner = self
             .journal()
             .handle_registry()
@@ -124,7 +133,7 @@ impl FakeHarness {
     ///
     /// 两条命令走同一段实现 —— `hold` 版本已经在 [`FakeHarness::invoke`] 里推进过假时钟，
     /// 且**不自动终结事务**。
-    fn begin_transaction(&self, resource: &ResourceHandle) -> Result<JsonValue, GatewayError> {
+    pub(crate) fn begin_transaction(&self, resource: &ResourceHandle) -> Result<JsonValue, GatewayError> {
         self.provider()
             .verify_handle(resource)
             .map_err(GatewayError::Provider)?;
@@ -151,7 +160,7 @@ impl FakeHarness {
     ///
     /// 游标句柄**必须显式关闭**：没有 `rows` 支撑就不回收，§9.1 的 5 分钟空闲事务规则由此可测。
     /// 这里把 `rows` 记进输出，好让用例断言「游标开了但没关 → I5 不成立」。
-    fn open_cursor(&self, resource: &ResourceHandle, rows: u64) -> Result<JsonValue, GatewayError> {
+    pub(crate) fn open_cursor(&self, resource: &ResourceHandle, rows: u64) -> Result<JsonValue, GatewayError> {
         self.provider()
             .verify_handle(resource)
             .map_err(GatewayError::Provider)?;
@@ -168,7 +177,7 @@ impl FakeHarness {
     }
 
     /// §9.1 `prepare_server_statement`（入参 `{ name }`）。
-    fn prepare_server_statement(
+    pub(crate) fn prepare_server_statement(
         &self,
         resource: &ResourceHandle,
         name: &str,
@@ -198,7 +207,7 @@ impl FakeHarness {
     /// §9.2：注入 F9 时 `effectOutcome` 必须是 `unknown`、`errorCode` 必须是**实际原因**
     /// （`protocolError` / `timeout`），不得自动重放、不得抛 `TransactionResolutionRequired`。
     /// 句柄登记**保留**：提交不可判定时句柄最终归属未知（§5.3 规则 6）。
-    fn commit_transaction(
+    pub(crate) fn commit_transaction(
         &self,
         resource: &ResourceHandle,
         handle_id: &HandleId,
@@ -218,7 +227,7 @@ impl FakeHarness {
     ///
     /// §9.2：注入 F10 时资源进 `Quarantined`、**预算占用保留** —— 错误以
     /// [`ProviderError::RollbackFailed`] 返回，`Quarantined` 事件已写进台账。
-    fn rollback_transaction(
+    pub(crate) fn rollback_transaction(
         &self,
         resource: &ResourceHandle,
         handle_id: &HandleId,
@@ -235,7 +244,7 @@ impl FakeHarness {
     }
 
     /// §9.1 `close_session_cursor`（入参 `{ handleId }`）。
-    fn close_cursor(
+    pub(crate) fn close_cursor(
         &self,
         resource: &ResourceHandle,
         handle_id: &HandleId,
@@ -261,7 +270,7 @@ impl FakeHarness {
     ///
     /// 造出一个事务句柄却**不**写 `sessionHandles` 登记册；台账里只留一条 `orphaned`。
     /// I7 断言关资源时孤儿句柄被回收。
-    fn begin_transaction_unregistered(
+    pub(crate) fn begin_transaction_unregistered(
         &self,
         resource: &ResourceHandle,
     ) -> Result<JsonValue, GatewayError> {
@@ -286,7 +295,7 @@ impl FakeHarness {
     ///
     /// §9.2：拿**过期 epoch** 的凭证提交 → 判负 `RuntimeEpochMismatch`，
     /// 且**原句柄状态不变**（不进事务台账、不注销登记）。
-    fn commit_with_stale_epoch(
+    pub(crate) fn commit_with_stale_epoch(
         &self,
         resource: &ResourceHandle,
         handle_id: &HandleId,
@@ -310,7 +319,7 @@ impl FakeHarness {
     ///
     /// §9.2：拿别的资源上的句柄在当前资源上提交 → 判负 `SessionLost`。
     /// 判定放在网关：台账里 `handleId` 的归属资源与出示凭证的资源不是同一个。
-    fn handle_from_other_resource(
+    pub(crate) fn handle_from_other_resource(
         &self,
         resource: &ResourceHandle,
         other_resource_id: &str,
@@ -358,7 +367,9 @@ fn terminal_payload(
     handle_id: &HandleId,
     harness: &FakeHarness,
 ) -> JsonValue {
-    let open: Vec<JsonValue> = harness
+    // `handle_registry()` 是 `IndexMap`，`get` 返回 `Option<&HandleRecord>`；
+    // 这里要的是「至多一个」值，所以直接 `map` 出 `JsonValue`，不做迭代。
+    let open: Option<JsonValue> = harness
         .journal()
         .handle_registry()
         .get(handle_id.as_str())
@@ -370,11 +381,10 @@ fn terminal_payload(
                 record.resource_id.clone(),
                 record.runtime_epoch,
             ))
-        })
-        .collect();
+        });
     let mut data = json!({
         "effectOutcome": completion.effect_outcome.as_str(),
-        "sessionHandles": open,
+        "sessionHandles": open.into_iter().collect::<Vec<_>>(),
     });
     if let Some(code) = completion.error_code {
         data["errorCode"] = JsonValue::String(code.as_str().to_owned());

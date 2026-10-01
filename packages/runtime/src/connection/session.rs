@@ -277,7 +277,13 @@ mod tests {
                 job_id: JobId::new("job_org-alpha_0001"),
                 stage_id: "job:job_org-alpha_0001/stage:1".into(),
             },
-            initial_target: NamespaceTarget::default(),
+            // `initial_target` 是 `ExecutionTarget`（§4：绑定的执行目标），
+            // 与 `observed_context.namespace`（命名空间）不是同一个类型。
+            initial_target: ExecutionTarget {
+                connection_id: ConnectionId::new("conn-fixture-p"),
+                namespace: NamespaceTarget::default(),
+                object: None,
+            },
             observed_context: SessionContext::new(NamespaceTarget::default(), "exec-identity-shared"),
             context_revision: Counter::new(0),
             state: SessionState::Ready,

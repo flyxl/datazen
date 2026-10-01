@@ -217,8 +217,9 @@ struct DrainState {
     drain_timer: Option<TimerId>,
     /// 每个订阅累计的事件数 / 字节数。
     subscription: SubscriptionCounters,
-    /// 每个执行累计字节数。
-    per_execution_bytes: u64,
+    /// **每个执行**累计字节数。§6.2 的 8 MiB 是「每执行」上限，不是全局标量：
+    /// 两个并发执行必须各自计量，否则先跑的会把后跑的额度吃光。
+    per_execution_bytes: Vec<(ExecutionId, u64)>,
     /// 已被截断的执行及其原因。
     truncated: Vec<(ExecutionId, TruncationReason)>,
 }
@@ -226,6 +227,14 @@ struct DrainState {
 impl DrainState {
     fn truncation_for(&self, execution_id: &ExecutionId) -> Option<TruncationReason> {
         self.truncated.iter().find(|(id, _)| id == execution_id).map(|(_, r)| *r)
+    }
+
+    fn bytes_of(&self, execution_id: &ExecutionId) -> u64 {
+        self.per_execution_bytes
+            .iter()
+            .find(|(id, _)| id == execution_id)
+            .map(|(_, bytes)| *bytes)
+            .unwrap_or(0)
     }
 }
 
@@ -261,7 +270,7 @@ impl DrainBarrier {
                     no_consumer: false,
                     drain_timer: None,
                     subscription: SubscriptionCounters::default(),
-                    per_execution_bytes: 0,
+                    per_execution_bytes: Vec::new(),
                     truncated: Vec::new(),
                 }),
                 condvar: Condvar::new(),
@@ -314,6 +323,38 @@ impl DrainBarrier {
         self.inner.lock().subscription.events
     }
 
+    /// 无消费者分支共用的判定：装载 drain 期限（只装一次），再用 FakeClock 判定是否已到期。
+    ///
+    /// 期限**只由 FakeClock 决定**，不读挂钟也不 `sleep`（§6.4）。返回 `Some(reason)`
+    /// 表示期限已过，调用方应记截断并返回 `Truncated`。
+    fn arm_drain_and_check(&self, state: &mut DrainState) -> Option<TruncationReason> {
+        let timer = match state.drain_timer {
+            Some(timer) => timer,
+            None => {
+                let timer =
+                    self.inner.clock.arm("drain-deadline", self.inner.limits.drain_deadline);
+                state.drain_timer = Some(timer);
+                timer
+            }
+        };
+        self.inner
+            .clock
+            .fired_history()
+            .iter()
+            .any(|fired| fired.id == timer)
+            .then_some(TruncationReason::NoConsumerDrainDeadline)
+    }
+
+    fn remember_truncation(
+        state: &mut DrainState,
+        execution_id: &ExecutionId,
+        reason: TruncationReason,
+    ) {
+        if state.truncation_for(execution_id).is_none() {
+            state.truncated.push((execution_id.clone(), reason));
+        }
+    }
+
     /// 一次结果写入。返回 `Accepted` / `Blocked`（背压）/ `Truncated(原因)`。
     pub fn write(&self, execution_id: &ExecutionId, chunk_index: u32, bytes: usize) -> SinkWrite {
         let bytes = bytes as u64;
@@ -324,10 +365,9 @@ impl DrainBarrier {
         }
 
         if state.no_consumer {
-            // 第一次等待时装载 drain 期限；期限由 FakeClock 判定，不读挂钟。
-            if state.drain_timer.is_none() {
-                let id = self.inner.clock.arm("drain-deadline", self.inner.limits.drain_deadline);
-                state.drain_timer = Some(id);
+            if let Some(reason) = self.arm_drain_and_check(&mut state) {
+                Self::remember_truncation(&mut state, execution_id, reason);
+                return SinkWrite::Truncated(reason);
             }
             return SinkWrite::Blocked;
         }
@@ -336,39 +376,43 @@ impl DrainBarrier {
             state.drain_timer = None;
         }
 
-        if state
-            .per_execution_bytes
-            .saturating_add(bytes)
-            > self.inner.limits.bytes_per_execution
+        if state.bytes_of(execution_id).saturating_add(bytes) > self.inner.limits.bytes_per_execution
         {
             let reason = TruncationReason::PerExecutionByteLimit;
-            state.truncated.push((execution_id.clone(), reason));
+            Self::remember_truncation(&mut state, execution_id, reason);
             return SinkWrite::Truncated(reason);
         }
 
         if state.subscription.events + 1 > self.inner.limits.events_per_subscription {
             let reason = TruncationReason::PerSubscriptionEventLimit;
-            state.truncated.push((execution_id.clone(), reason));
+            Self::remember_truncation(&mut state, execution_id, reason);
             return SinkWrite::Truncated(reason);
         }
 
         if state.subscription.bytes.saturating_add(bytes) > self.inner.limits.bytes_per_subscription {
             let reason = TruncationReason::PerSubscriptionByteLimit;
-            state.truncated.push((execution_id.clone(), reason));
+            Self::remember_truncation(&mut state, execution_id, reason);
             return SinkWrite::Truncated(reason);
         }
 
         let _ = chunk_index;
         state.subscription.events += 1;
         state.subscription.bytes += bytes;
-        state.per_execution_bytes += bytes;
+        match state.per_execution_bytes.iter_mut().find(|(id, _)| id == execution_id) {
+            Some((_, counted)) => *counted += bytes,
+            None => state.per_execution_bytes.push((execution_id.clone(), bytes)),
+        }
         SinkWrite::Accepted
     }
 
-    /// 执行结束：重置每执行字节计数（订阅级计数继续累计，直到重新建立订阅）。
-    pub fn finish_execution(&self) {
+    /// 执行结束：丢弃该执行的字节计数**和**它的截断记录（订阅级计数继续累计）。
+    ///
+    /// 必须带 `execution_id`：截断是**按执行**的粘性结论，不清掉的话同一个 id 重跑
+    /// 会永远读到上一次的 `Truncated`，§6.2 的「每执行 8 MiB」也就无法复测。
+    pub fn finish_execution(&self, execution_id: &ExecutionId) {
         let mut state = self.inner.lock();
-        state.per_execution_bytes = 0;
+        state.per_execution_bytes.retain(|(id, _)| id != execution_id);
+        state.truncated.retain(|(id, _)| id != execution_id);
         state.drain_timer = None;
     }
 
@@ -396,23 +440,17 @@ impl DrainBarrier {
             if !state.no_consumer {
                 return None;
             }
-            let timer = state.drain_timer;
-            let clock = self.inner.clock.clone();
+            // 期限必须在 `wait` **之前**判一次。若时钟在本线程走到这里之前就已推进，
+            // `condvar` 再也等不到一次唤醒，线程会永久挂住——这正是 CM-64 之前会死锁的原因。
+            if let Some(reason) = self.arm_drain_and_check(&mut state) {
+                Self::remember_truncation(&mut state, execution_id, reason);
+                return Some(reason);
+            }
             state = self
                 .inner
                 .condvar
                 .wait(state)
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if let Some(timer) = timer {
-                let elapsed = clock.fired_history().iter().any(|fired| fired.id == timer);
-                if elapsed {
-                    let reason = TruncationReason::NoConsumerDrainDeadline;
-                    if state.truncation_for(execution_id).is_none() {
-                        state.truncated.push((execution_id.clone(), reason));
-                    }
-                    return Some(reason);
-                }
-            }
         }
     }
 
@@ -541,6 +579,8 @@ mod tests {
         let worker = {
             let barrier = barrier.clone();
             std::thread::spawn(move || {
+                // `wait_for` 等的是「tag 已被到达」；必须先 arrive 才可能有人观察到。
+                barrier.arrive("hold-point");
                 barrier.wait_for("hold-point");
                 barrier.release("hold-point");
             })
@@ -559,6 +599,8 @@ mod tests {
         assert!(!barrier.is_released("eviction-close-precheck"));
         barrier.release("eviction-close-precheck");
         assert!(barrier.is_released("eviction-close-precheck"));
+        // 放行之后才到达的续点：顺序断言必须建立在**两个**真实到达之上。
+        barrier.arrive("eviction-released");
         barrier.assert_arrived_before("eviction-close-precheck", "eviction-released");
     }
 
@@ -619,7 +661,7 @@ mod tests {
             drain.truncation_of(&execution),
             Some(TruncationReason::PerExecutionByteLimit)
         );
-        drain.finish_execution();
+        drain.finish_execution(&execution);
         assert_eq!(drain.write(&execution, 3, 1), SinkWrite::Accepted, "新执行应重新计量");
     }
 

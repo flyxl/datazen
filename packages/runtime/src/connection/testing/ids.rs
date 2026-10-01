@@ -340,7 +340,11 @@ mod tests {
         assert_ne!(first, second);
         ids.force_collision(FakeIdScope::DbSessionId, 1);
         assert_eq!(ids.next_db_session_id(), first, "强制的 dbSessionId 必须与第一次相同");
-        assert_eq!(ids.next_db_session_id(), second, "恢复后从原序列继续");
+        // 碰撞额度用尽后计数器**从未推进过**（见 `force_collision` 的契约），
+        // 因此下一次取号必然是尚未发过的下一个值，而不是把 `second` 再发一遍。
+        let after = ids.next_db_session_id();
+        assert_ne!(after, first, "碰撞额度只对一次取号生效");
+        assert_ne!(after, second, "额度用尽后恢复正常递增");
     }
 
     #[test]

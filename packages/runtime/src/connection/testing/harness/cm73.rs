@@ -50,6 +50,9 @@ pub struct EvictionRaceReport {
     /// 停住那一刻新开的事务句柄（§9.3 第 3 步）。
     pub race_handle_id: HandleId,
     pub recovery_resource_id: ResourceId,
+    /// R2 的只读凭证。收尾时用它把恢复资源也走一遍正常关闭路径 ——
+    /// 否则 I2（live 资源）、I4（active session）、I1/I6（permit 收支）永远收不了口。
+    pub recovery_handle: ResourceHandle,
     pub recovery_epoch: Counter,
     pub recovery_db_session_id: DbSessionId,
     pub registered_on_recovery: usize,
@@ -111,7 +114,7 @@ impl FakeHarness {
         self.barrier().arrive(&race.release_close);
         self.barrier().release(&race.release_close);
         let close = self.evict_idle_resource(&acquired.handle)?;
-        if close.resource_release != crate::connection::ResourceRelease::Confirmed {
+        if close.resource_release != crate::connection::port::ResourceRelease::Confirmed {
             return Err(GatewayError::Provider(ProviderError::CleanupFailed(format!(
                 "R1 关闭未确认（{:?}），无法进入恢复路径",
                 close.resource_release
@@ -138,6 +141,7 @@ impl FakeHarness {
             },
             recovery_resource_id: recovered.resource_id,
             recovery_epoch: recovered.handle.runtime_epoch,
+            recovery_handle: recovered.handle,
             recovery_db_session_id: recovered.session.handle.db_session_id.clone(),
         })
     }

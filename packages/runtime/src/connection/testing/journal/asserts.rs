@@ -5,9 +5,11 @@
 //!
 //! 「返回违例列表」而不是直接 panic，是为了让负例测试能断言具体违规项。
 
-use std::collections::BTreeSet;
 
-use crate::connection::types::{DbSessionId, LeaseId, ResourceId};
+use std::collections::BTreeMap;
+
+use crate::connection::execution::EffectOutcome;
+use crate::connection::types::{Counter, DbSessionId, LeaseId, ResourceId};
 
 use super::core::CommandJournal;
 use super::entry::{HandleAction, JournalEntry, PermitEvent, ResourceEvent};
@@ -43,6 +45,14 @@ impl<'a> JournalAssert<'a> {
         let state = self.journal.inner.lock();
         let mut violations: Vec<String> = Vec::new();
         let mut live: Vec<ResourceId> = Vec::new();
+        // **持有 permit 的资源**，与上面的 live 集不是一回事：CloseUnconfirmed / Quarantined
+        // 会让资源离开 live 集却不归还 permit（§5.3 规则 3、§4.2 F8/F11）。
+        // 规则 4 的守恒式必须对账 permit 持有者，否则隔离中/关闭未确认的资源会被误报成收支不平。
+        let mut occupied: Vec<ResourceId> = Vec::new();
+        // 逐条**重放**出来的登记册：handle_id -> (登记时的 seq, resourceId, runtimeEpoch)。
+        // 规则 5/6 是变化点断言，判定依据必须是该 seq 当时的状态，不能拿最终登记册回看
+        // —— 句柄登记后被正常关闭是合法路径，用最终态回看会把每一次「先开后关」都误报成登记丢失。
+        let mut replay: BTreeMap<String, (u64, ResourceId, Counter)> = BTreeMap::new();
         let mut balance: i64 = 0;
         let permits: Vec<PermitEvent> = entries
             .iter()
@@ -60,19 +70,23 @@ impl<'a> JournalAssert<'a> {
             })
             .collect();
 
+        // 注意：`balance` 在下面的主循环里**逐条**累加，语义是「回放到当前 seq 为止
+        // 的 permit 余额」。§5.3 的变化点规则按「重放到该变化点」判定，不是按终局快照
+        // —— 若先求终局和再用它判 seq=N 处的不变量，「隔离 ⇒ 必须保留预算占用」会被
+        // 后续那条 `-1` 误伤。`entries` 全部来自 §5.2 的单计数器，按序遍历即 seq 递增。
+
         for entry in &entries {
+            // 先把 permit 余额推到「当前这一条」为止，再判当前这条的变化点规则。
             if let JournalEntry::Permit { delta, .. } = entry {
                 balance += i64::from(*delta);
             }
-        }
-
-        for entry in &entries {
             match entry {
                 JournalEntry::Resource { seq, resource_id, event, budget_class, .. } => {
                     match event {
                         // 规则 1：创建 → permit 余额 = +1 且 live_resources +1
                         ResourceEvent::Created => {
                             live.push(resource_id.clone());
+                            occupied.push(resource_id.clone());
                             if !permits.iter().any(|p| p.delta == 1) {
                                 violations.push(format!(
                                     "seq={}：资源 {} 创建但没有任何 permit 申请记录",
@@ -84,6 +98,8 @@ impl<'a> JournalAssert<'a> {
                         // 规则 2：每个 Closed → permit = -1（只有 Closed）
                         ResourceEvent::Closed => {
                             live.retain(|id| id != resource_id);
+                            // 只有确认关闭才真正交还 permit（规则 2）。
+                            occupied.retain(|id| id != resource_id);
                             if !permits.iter().any(|p| p.delta == -1 && p.budget_class == *budget_class)
                             {
                                 violations.push(format!(
@@ -94,7 +110,9 @@ impl<'a> JournalAssert<'a> {
                                 ));
                             }
                         }
-                        // 规则 3：CloseUnconfirmed / Quarantined → 余额不变（资源仍占预算）
+                        // 规则 3：CloseUnconfirmed / Quarantined → 余额不变（资源仍占预算）。
+                        // live 集按 `leaves_live_set` 语义收缩，但 `occupied` **不动**：
+                        // permit 还在手上，守恒式要按 permit 持有者对账。
                         ResourceEvent::CloseUnconfirmed | ResourceEvent::Quarantined => {
                             if balance <= 0 {
                                 violations.push(format!(
@@ -170,33 +188,42 @@ impl<'a> JournalAssert<'a> {
                 }
                 JournalEntry::Handle { seq, handle_id, resource_id, runtime_epoch, action, .. } => {
                     match action {
-                        // 规则 5：registered → 登记册条目与登记资源、epoch 一致
-                        HandleAction::Registered => match state.handles.get(handle_id) {
-                            None => violations.push(format!(
-                                "seq={}：句柄 {} 登记后不在登记册中",
-                                seq, handle_id
-                            )),
-                            Some(record) => {
-                                if &record.resource_id != resource_id {
+                        // 规则 5：registered → 登记册条目与登记资源、epoch 一致。
+                        // 判定依据是**重放到此为止**的登记册。登记本身在重放里必然存在，
+                        // 所以与真实登记册的对照推迟到回放结束：只有**回放结束时仍开着**的
+                        // 句柄才去比 `state.handles` —— 「先登记后关闭」是合法路径，
+                        // 拿最终态去回看每一次登记都会把它误报成登记丢失。
+                        HandleAction::Registered => {
+                            // 同一 handleId **二次登记**且 (resourceId, runtimeEpoch) 变了 ——
+                            // 这正是 CM-71「同一句柄配两个 epoch」的确定性形状。句柄身份必须与
+                            // 首次登记一致，否则 §3.1 的「按 runtimeEpoch 校验」就名存实亡。
+                            if let Some((first_seq, first_resource, first_epoch)) =
+                                replay.get(handle_id)
+                            {
+                                if first_resource != resource_id || first_epoch != runtime_epoch {
                                     violations.push(format!(
-                                        "seq={}：句柄 {} 的 resourceId 与登记记录不一致",
-                                        seq, handle_id
+                                        "seq={}：句柄 {} 在 seq={} 已登记为 ({} , epoch {})，\
+                                         此处却以 ({} , epoch {}) 重复登记，\
+                                         resourceId 与 runtimeEpoch 与登记记录不一致",
+                                        seq,
+                                        handle_id,
+                                        first_seq,
+                                        first_resource.as_str(),
+                                        first_epoch.get(),
+                                        resource_id.as_str(),
+                                        runtime_epoch.get(),
                                     ));
-                                }
-                                if record.runtime_epoch != *runtime_epoch {
-                                    violations.push(format!(
-                                        "seq={}：句柄 {} 的 runtimeEpoch 与登记记录不一致",
-                                        seq, handle_id
-                                    ));
-                                }
-                                if record.closed {
-                                    violations
-                                        .push(format!("seq={}：句柄 {} 登记时不得是 closed", seq, handle_id));
                                 }
                             }
-                        },
-                        // 规则 6：closed → 从登记册移除
+                            replay.insert(
+                                handle_id.clone(),
+                                (*seq, resource_id.clone(), *runtime_epoch),
+                            );
+                        }
+                        // 规则 6：closed → 登记册中不再有它。最终态在这里是合法的判据：
+                        // 关闭过的句柄若又出现在登记册里，说明有路径把它重新登记了回去。
                         HandleAction::Closed => {
+                            replay.remove(handle_id);
                             if state.handles.contains_key(handle_id) {
                                 violations.push(format!(
                                     "seq={}：句柄 {} 已 closed 但仍在登记册中",
@@ -211,14 +238,41 @@ impl<'a> JournalAssert<'a> {
             }
         }
 
-        // 规则 4（整本台账结算）：Σ delta == live_resources + idle_pools + control_sockets
+        // 规则 5 收尾：回放结束时仍开着的句柄，必须在真实登记册里有资源/epoch 一致的条目。
+        for (handle_id, (seq, resource_id, runtime_epoch)) in &replay {
+            match state.handles.get(handle_id) {
+                None => violations.push(format!(
+                    "seq={seq}：句柄 {handle_id} 登记后不在登记册中"
+                )),
+                Some(record) => {
+                    if &record.resource_id != resource_id {
+                        violations.push(format!(
+                            "seq={seq}：句柄 {handle_id} 的 resourceId 与登记记录不一致"
+                        ));
+                    }
+                    if record.runtime_epoch != *runtime_epoch {
+                        violations.push(format!(
+                            "seq={seq}：句柄 {handle_id} 的 runtimeEpoch 与登记记录不一致"
+                        ));
+                    }
+                    if record.closed {
+                        violations.push(format!(
+                            "seq={seq}：句柄 {handle_id} 登记时不得是 closed"
+                        ));
+                    }
+                }
+            }
+        }
+
+        // 规则 4（整本台账结算）：Σ delta == permit 持有者 + idle_pools + control_sockets。
+        // 对账用 `occupied` 而不是 `live`：隔离 / 关闭未确认的资源已离开 live 集却仍占 permit。
         let expected =
-            live.len() as i64 + state.idle_pools as i64 + state.control_sockets as i64;
+            occupied.len() as i64 + state.idle_pools as i64 + state.control_sockets as i64;
         if balance != expected {
             let last_seq = permits.last().map(|p| p.seq).unwrap_or(0);
             violations.push(format!(
-                "seq={last_seq}：permit 收支不平。Σdelta={balance}，期望 live_resources({})+idle_pools({})+control_sockets({})={expected}",
-                live.len(),
+                "seq={last_seq}：permit 收支不平。Σdelta={balance}，期望 permit_occupied({})+idle_pools({})+control_sockets({})={expected}",
+                occupied.len(),
                 state.idle_pools,
                 state.control_sockets
             ));

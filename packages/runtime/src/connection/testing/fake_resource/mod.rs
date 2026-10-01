@@ -50,7 +50,7 @@ const DEFAULT_CONFIG_REVISION: u64 = 7;
 
 /// F2 注入的「预算占满」窗口。只由 `ops.rs` 的 `acquire_resource` 写与读。
 #[derive(Debug, Clone)]
-struct BudgetBusy {
+pub(crate) struct BudgetBusy {
     /// 以**假单调时钟**（`FakeClock`）的纳秒计，不是墙钟 —— 断言顺序只看 journal，不靠 sleep。
     until_nanos: u64,
     reason: &'static str,

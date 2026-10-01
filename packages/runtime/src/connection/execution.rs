@@ -116,14 +116,12 @@ impl EffectOutcome {
         }
     }
 
-    /// 该终态是否「作用域不可判定」。
+    /// 该 `errorCode` 本身是否属于「作用域不可判定」的一类（§13 L774）。
     ///
-    /// §13 L774：超时 / 协议错误 / 取消 / 连接丢失且作用域不可判定时，
-    /// `effectOutcome` **必须**为 `unknown`；禁止仅因「看到取消请求」就写 `rolledBack`（CM-44、CM-47）。
-    pub fn requires_unknown_for_undecidable_error(
-        self,
-        code: Option<ExecutionErrorCode>,
-    ) -> bool {
+    /// 与终态正交：判定只看 `errorCode`。§4.2 F4 要求 `errorCode` 与 `effectOutcome`
+    /// 独立取值，所以夹具在**造出**终态时需要这条（本方法），在**校验**终态时需要
+    /// [`EffectOutcome::requires_unknown_for_undecidable_error`]。
+    pub const fn is_undecidable(code: Option<ExecutionErrorCode>) -> bool {
         matches!(
             code,
             Some(
@@ -132,7 +130,19 @@ impl EffectOutcome {
                     | ExecutionErrorCode::Cancelled
                     | ExecutionErrorCode::ResourceLost
             )
-        ) && self != EffectOutcome::Unknown
+        )
+    }
+
+    /// 该终态是否「作用域不可判定」。
+    ///
+    /// §13 L774：超时 / 协议错误 / 取消 / 连接丢失且作用域不可判定时，
+    /// `effectOutcome` **必须**为 `unknown`；禁止仅因「看到取消请求」就写 `rolledBack`（CM-44、CM-47）。
+    pub fn requires_unknown_for_undecidable_error(
+        self,
+        code: Option<ExecutionErrorCode>,
+    ) -> bool {
+        EffectOutcome::is_undecidable(code)
+            && self != EffectOutcome::Unknown
             && !matches!(self, EffectOutcome::NotStarted)
     }
 }
@@ -301,10 +311,11 @@ mod tests {
     #[test]
     fn pipeline_aborted_is_never_complete() {
         // §13 L775：pipelineAborted 至少是部分应用或未知，不存在「完整成功」。
-        assert!(!ResultCompleteness::Complete.is_complete());
+        // 协议映射只能落在 Partial / Truncated 上；`Complete` 是对照组，
+        // 证明前两条不是因为 `is_complete` 恒假才通过的。
+        assert!(ResultCompleteness::Complete.is_complete());
         assert!(!ResultCompleteness::Partial.is_complete());
         assert!(!ResultCompleteness::Truncated.is_complete());
-        assert!(ResultCompleteness::Complete.is_complete());
     }
 
     #[test]

@@ -38,4 +38,4 @@ pub use journal::{CommandJournal, JournalAssert};
 mod harness;
 
 #[cfg(any(test, feature = "test-harness"))]
-pub use harness::FakeHarness;
+pub use harness::{EvictionRaceOutcome, EvictionRaceReport, FakeHarness};

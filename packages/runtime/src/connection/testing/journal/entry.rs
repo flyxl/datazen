@@ -9,8 +9,10 @@
 
 use crate::connection::execution::{EffectOutcome, ExecutionErrorCode, TruncationRecord};
 use crate::connection::port::{BudgetClass, PermitId, PermitReason};
-use crate::connection::session::{HandleKind, SessionHandleRef};
-use crate::connection::types::{Counter, OwnerRef, PoolKeyFingerprint, ResourceId};
+use crate::connection::session::HandleKind;
+use crate::connection::types::{
+    Counter, ExecutionId, OwnerRef, PoolKeyFingerprint, ResourceId,
+};
 
 pub(crate) fn live_resources_in(entries: &[JournalEntry]) -> Vec<ResourceId> {
     let mut live: Vec<ResourceId> = Vec::new();
@@ -60,12 +62,12 @@ impl ResourceEvent {
         }
     }
 
-    /// 是否终止预算占用。只有 `Closed` 归还（§5.3 规则 2、规则 3）。
-    pub(crate) fn releases_permit(&self) -> bool {
-        matches!(self, ResourceEvent::Closed)
-    }
-
     /// 是否把资源移出 live 集合（`Closed` 才释放占用；`Quarantined` 亦不可再被 acquire）。
+
+    /// 刻意**不**在这里提供「是否归还 permit」的判据：permit 收支由
+    /// `Accounting::occupied` 这个权威标志决定（见 `fake_resource::state`），
+    /// 那是防重复 `-1`（§4.3 I1）的那一位。扫台账事件只能重算出「看起来对」，
+    /// 判不出「已经归还过一次」——所以第二份弱判据只会误导接线的人，故不提供。
     pub(crate) fn leaves_live_set(&self) -> bool {
         matches!(self, ResourceEvent::Closed | ResourceEvent::Quarantined)
     }

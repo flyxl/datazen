@@ -15,11 +15,14 @@ use crate::connection::execution::{
 use crate::connection::port::{BudgetClass, PermitId, PermitReason};
 use crate::connection::session::SessionHandleRef;
 use crate::connection::types::{
-    Counter, DbSessionId, ExecutionId, HandleId, LeaseId, OwnerRef, PoolKeyFingerprint, ResourceId,
+    DbSessionId, ExecutionId, HandleId, LeaseId, OwnerRef, PoolKeyFingerprint, ResourceId,
     StreamId,
 };
 
-use super::clock::FakeClock;
+// `clock` 是 `journal` 的**兄弟**模块（`testing::clock`），不是 `journal` 的子模块
+// ——`journal/mod.rs` 只是 `pub use super::clock::FakeClock;` 再导出，路径本身在这里不成立。
+use crate::connection::testing::clock::FakeClock;
+use super::asserts::JournalAssert;
 use super::entry::{
     HandleAction, HandleRecord, JournalEntry, PermitEvent, ResourceEvent, live_resources_in,
 };
@@ -339,7 +342,7 @@ impl CommandJournal {
         let mut state = self.inner.lock();
         match action {
             HandleAction::Registered => {
-                state.handles.insert(handle_id, record);
+                state.handles.insert(handle_id.clone(), record);
             }
             HandleAction::Closed => {
                 state.handles.remove(&handle_id);

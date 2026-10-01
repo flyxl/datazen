@@ -109,7 +109,6 @@ struct ClockState {
     timers: Vec<Timer>,
     fired: Vec<FiredTimer>,
     next_timer: u64,
-    next_waker: u64,
 }
 
 /// 时间推进回调。`advance` 结束后被调用，用于唤醒阻塞在条件变量上的等待方。
@@ -144,7 +143,6 @@ impl FakeClock {
                     timers: Vec::new(),
                     fired: Vec::new(),
                     next_timer: 1,
-                    next_waker: 1,
                 }),
                 wakers: Mutex::new(Vec::new()),
                 wakes: AtomicU64::new(0),

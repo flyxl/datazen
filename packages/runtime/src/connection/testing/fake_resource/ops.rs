@@ -246,19 +246,28 @@ impl FakeResourceProvider {
 
         // F4 / F5：派发**之后**失败 → 必须有终态记录
         // （§5.3「每次执行终态 protocolDrained 已记录或显式置 false」）。
-        let injected = match &fault {
-            Some(FaultKind::StatementDispatch { code } | FaultKind::ResultTransport { code }) => {
-                Some(execution_error_code(code))
+        //
+        // `errorCode` 与 `effectOutcome` 是两个独立命名空间（§4.2 F4），所以这里按**故障发生
+        // 在哪一步**分别取值，而不是共用一个判定：
+        //  - `StatementDispatch`：语句还没送出去，作用域**未开始** → `notStarted`；
+        //  - `ResultTransport`：语句已在服务端执行、结果读不回来 → `unknown`；
+        //  - 若 `errorCode` 本身属于不可判定类（超时 / 协议错误 / 取消 / 连接丢失），
+        //    一律压成 `unknown`，禁止回填 `completed` / `rolledBack`（CM-44、CM-47，§13 L774）。
+        let (completion_status, error_code, effect_outcome) = match &fault {
+            Some(FaultKind::StatementDispatch { code }) => {
+                let code = execution_error_code(code);
+                let outcome = if EffectOutcome::is_undecidable(Some(code)) {
+                    EffectOutcome::Unknown
+                } else {
+                    EffectOutcome::NotStarted
+                };
+                (CompletionStatus::Error, Some(code), outcome)
+            }
+            Some(FaultKind::ResultTransport { code }) => {
+                let code = execution_error_code(code);
+                (CompletionStatus::Error, Some(code), EffectOutcome::Unknown)
             }
             Some(_) => return Err(ProviderError::UnsupportedPlan),
-            None => None,
-        };
-        let (completion_status, error_code, effect_outcome) = match injected {
-            Some(code) => (
-                CompletionStatus::Error,
-                Some(code),
-                EffectOutcome::requires_unknown_for_undecidable_error(Some(code)),
-            ),
             None => (CompletionStatus::Ok, None, EffectOutcome::Completed),
         };
         self.journal.record_execution_terminal(

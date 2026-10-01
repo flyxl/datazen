@@ -18,9 +18,13 @@
 use crate::connection::error::ProviderError;
 use crate::connection::port::{PermitSet, ResourceHandle, Secret};
 use crate::connection::session::{HandleKind, SessionHandleRef, SessionView};
-use crate::connection::types::{ExecutionId, ResourceId};
+use crate::connection::types::{ExecutionId, HandleId, ResourceId};
 
 use super::state::{FakeResource, FakeResourceState};
+// `FakeResourceProvider` 定义在父模块（`mod.rs`）。子模块的 `impl` 块必须显式导入
+// 自类型：否则整个 impl 解析不到，块内 `register_handle` / `verify_handle` / `resolve`
+// 会同时退化成下游调用点上的「no method named ... on `&FakeResourceProvider`」。
+use super::FakeResourceProvider;
 
 /// `acquireResource` 的返回值。
 ///
@@ -148,6 +152,24 @@ impl FakeResourceProvider {
             .get(resource_id.as_str())
             .map(|resource| resource.registered_handles())
             .unwrap_or(0)
+    }
+
+    /// 该资源上还开着（未注销）的句柄 id，按 `HandleId` 升序 —— 注销顺序因此是确定的，
+    /// 不依赖 `HashMap` 迭代序，journal 里的 `handle closed` 顺序可复现。
+    ///
+    /// §9.3 / CM-73 的关闭路径用它来「先注销句柄、再释放资源」。
+    pub fn open_handle_ids(&self, resource_id: &ResourceId) -> Vec<HandleId> {
+        let resources = self.lock();
+        let Some(resource) = resources.get(resource_id.as_str()) else {
+            return Vec::new();
+        };
+        let mut ids: Vec<HandleId> = resource
+            .open_handles()
+            .into_iter()
+            .map(|handle| handle.handle_id.clone())
+            .collect();
+        ids.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        ids
     }
 
     /// §3.1 的「每次操作都要校验」对外暴露的只读入口。

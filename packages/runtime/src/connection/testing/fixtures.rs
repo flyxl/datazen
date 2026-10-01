@@ -24,7 +24,14 @@ pub const PROFILE_P: &str = "conn-fixture-p";
 /// §8.1 L422：`PROFILE_P_V2` —— configRevision 变化 ⇒ `poolKeyFingerprint` 必须换 key。
 pub const PROFILE_P_V2: &str = "conn-fixture-p-v2";
 
-/// §8.1 L423：A / B 两个命名空间。
+/// §8.1 L423：A / B 两个命名空间的 **目录键**。
+///
+/// 与下面的 `NS_A` / `NS_B`（database 字面量）必须分开：目录查找走 `FixtureCatalog::namespace(key)`，
+/// 目标装配走 database。两者混用会让 `fixture_target` 静默找不到命名空间。
+pub const NS_A_KEY: &str = "NS_A";
+pub const NS_B_KEY: &str = "NS_B";
+
+/// §8.1 L423：A / B 两个命名空间的 database 字面量。
 pub const NS_A: &str = "dz_ns_a";
 pub const NS_B: &str = "dz_ns_b";
 
@@ -151,8 +158,8 @@ pub fn fixtures() -> FixtureCatalog {
             },
         ],
         namespaces: vec![
-            FixtureNamespace { key: "NS_A", database: NS_A, marker_value: MARKER_A },
-            FixtureNamespace { key: "NS_B", database: NS_B, marker_value: MARKER_B },
+            FixtureNamespace { key: NS_A_KEY, database: NS_A, marker_value: MARKER_A },
+            FixtureNamespace { key: NS_B_KEY, database: NS_B, marker_value: MARKER_B },
         ],
         marker_table: MARKER_TABLE,
         marker_table_ddl: MARKER_TABLE_DDL,

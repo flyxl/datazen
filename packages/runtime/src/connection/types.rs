@@ -354,10 +354,31 @@ impl NamespaceTarget {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamespaceInput {
+    #[serde(default, deserialize_with = "double_option::present")]
     pub database: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option::present")]
     pub catalog: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option::present")]
     pub schema: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option::present")]
     pub path: Option<Option<String>>,
+}
+
+/// serde 默认把 JSON `null` 解成 `None`，于是「字段未出现」和「显式传 null」在
+/// `Option<Option<String>>` 上塌缩成同一个值，CM-07 的两个步骤就分不开。
+/// `present` 只包一层：字段出现时一定是 `Some(内层)`，`null` ⇒ `Some(None)`；
+/// 字段未出现时走 `#[serde(default)]` ⇒ `None`。
+mod double_option {
+    use serde::{Deserialize, Deserializer};
+
+    pub(super) fn present<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        // 字段出现了：内层 `None`（JSON null）也必须表达成 `Some(None)`。
+        Option::<T>::deserialize(deserializer).map(|inner| Some(inner))
+    }
 }
 
 /// 缺陷层在原始输入中的形态。
@@ -380,7 +401,10 @@ impl NamespaceInput {
         raw.as_ref().map(|inner| inner.as_deref())
     }
 
-    /// 按驱动形状构造目标。缺失层 / 空串 → `TargetRequired`。
+    /// 按驱动形状构造目标。
+    ///
+    /// 必填层**未出现 / 显式 null** → `TargetRequired`（两种形态文案不同，CM-07 才能定位）；
+    /// 必填层**给了空串** → `InvalidArgument`：空串是参数本身不合法，不是目标缺失。
     pub fn resolve(&self, shape: &NamespaceShape) -> Result<NamespaceTarget, ApiError> {
         let mut target = NamespaceTarget {
             database: String::new(),
@@ -417,13 +441,41 @@ impl NamespaceInput {
             };
             if value.is_empty() && shape.requires(layer) {
                 return Err(ApiError::new(
-                    ApiErrorCode::TargetRequired,
-                    format!("目标缺少必填层 {}（空串）", layer.as_str()),
+                    ApiErrorCode::InvalidArgument,
+                    format!("目标层 {} 不得为空串", layer.as_str()),
                 ));
             }
             target.set(layer, value);
         }
         Ok(target)
+    }
+
+    /// 解析后再与会话已记录的 `expected` 逐层比对：任一层两边都非空却不同 ⇒ `TargetConflict`。
+    ///
+    /// CM-73 / §10 的跨目标护栏需要它：句柄来自 A 命名空间的会话，命令却点名 B 命名空间，
+    /// 宿主**不得**悄悄改上下文去迁就句柄。
+    pub fn resolve_against(
+        &self,
+        expected: &NamespaceTarget,
+        shape: &NamespaceShape,
+    ) -> Result<NamespaceTarget, ApiError> {
+        let resolved = self.resolve(shape)?;
+        for layer in NamespaceLayer::ALL {
+            let mine = resolved.get(layer);
+            let theirs = expected.get(layer);
+            if !mine.is_empty() && !theirs.is_empty() && mine != theirs {
+                return Err(ApiError::new(
+                    ApiErrorCode::TargetConflict,
+                    format!(
+                        "目标层 {} 冲突：请求 {}，会话已绑定 {}",
+                        layer.as_str(),
+                        mine,
+                        theirs
+                    ),
+                ));
+            }
+        }
+        Ok(resolved)
     }
 }
 
@@ -605,14 +657,25 @@ mod tests {
 
     #[test]
     fn two_different_databases_are_a_target_conflict() {
-        // CM-07 步骤：传两个不同 database。
+        // CM-07 步骤：会话已绑 dz_ns_a，命令却点名 dz_ns_b。
         let shape = NamespaceShape::database_and_schema();
-        let input: NamespaceInput = serde_json::from_str(
-            r#"{"database":"dz_ns_a","schema":"public","catalog":"dz_ns_b"}"#,
-        )
-        .expect("parse");
-        let err = input.resolve(&shape).expect_err("两个不同 database 必须冲突");
+        let bound = NamespaceInput {
+            database: Some(Some("dz_ns_a".to_owned())),
+            schema: Some(Some("public".to_owned())),
+            ..NamespaceInput::default()
+        };
+        let requested: NamespaceInput =
+            serde_json::from_str(r#"{"database":"dz_ns_b","schema":"public"}"#).expect("parse");
+        let session_target = bound.resolve(&shape).expect("已绑定目标必须能解析");
+        let err = requested
+            .resolve_against(&session_target, &shape)
+            .expect_err("两个不同 database 必须冲突");
         assert_eq!(err.code, ApiErrorCode::TargetConflict);
+        // 同一 database 必须放行，否则护栏会误伤合法的同库操作。
+        let same = bound
+            .resolve_against(&session_target, &shape)
+            .expect("同库同名必须放行");
+        assert_eq!(same, session_target);
     }
 
     #[test]

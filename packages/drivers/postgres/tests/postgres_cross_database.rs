@@ -7,7 +7,10 @@
 //! resolved against the wrong database.
 //!
 //! Skips cleanly when PostgreSQL is unavailable. Credentials come from process
-//! env and/or the repo-root `.env` file (`TEST_PG_*` keys, same as workflow tests).
+//! env only (`TEST_PG_*` keys): per the fixture security rules, an integration
+//! test must never open a protected `.env` file, and CI secrets arrive as
+//! process env anyway. Inject them yourself, e.g.
+//!   TEST_PG_HOST=… TEST_PG_PASSWORD=… cargo test … --test postgres_cross_database
 //!
 //! Run (skip if no Postgres):
 //!   cargo test -p datazen-driver-postgres --test postgres_cross_database -- --nocapture
@@ -19,9 +22,6 @@
 //!
 //! Fixture: discovered at runtime — any `public` relation present in
 //! database_a and absent from database_b. The test skips when there is none.
-
-use std::collections::HashMap;
-use std::path::PathBuf;
 
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, Value};
 use datazen_driver_postgres::PostgresDriver;
@@ -49,54 +49,30 @@ impl Default for PgTestConfig {
     }
 }
 
-fn load_dotenv_file() -> HashMap<String, String> {
-    let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join(".env");
-
-    let mut map = HashMap::new();
-    let Ok(content) = std::fs::read_to_string(&env_path) else {
-        return map;
-    };
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((key, value)) = line.split_once('=') {
-            map.insert(key.trim().to_string(), value.trim().to_string());
-        }
-    }
-    map
-}
-
-fn env_or_file(file: &HashMap<String, String>, key: &str) -> Option<String> {
-    std::env::var(key).ok().or_else(|| file.get(key).cloned())
-}
-
+/// Credentials come from the process environment and nowhere else.
+///
+/// Deliberately no file fallback: reading a repo-local `.env` would make every
+/// developer run (and every agent run) implicitly load a protected file, and the
+/// real secret has to be injected by whoever is authorised to hold it anyway
+/// (CI secret or an explicit `TEST_PG_*=…` on the command line).
 fn load_pg_config() -> Option<PgTestConfig> {
-    let file = load_dotenv_file();
     let mut cfg = PgTestConfig::default();
-    if let Some(v) = env_or_file(&file, "TEST_PG_HOST") {
+    if let Ok(v) = std::env::var("TEST_PG_HOST") {
         cfg.host = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_PORT") {
+    if let Ok(v) = std::env::var("TEST_PG_PORT") {
         cfg.port = v.parse().unwrap_or(5432);
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_USER") {
+    if let Ok(v) = std::env::var("TEST_PG_USER") {
         cfg.user = v;
     }
     if let Ok(v) = std::env::var("TEST_PG_PASSWORD") {
         cfg.password = v;
-    } else if let Some(v) = file.get("TEST_PG_PASSWORD") {
-        cfg.password = v.clone();
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_DATABASE") {
+    if let Ok(v) = std::env::var("TEST_PG_DATABASE") {
         cfg.database_a = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_DATABASE_B") {
+    if let Ok(v) = std::env::var("TEST_PG_DATABASE_B") {
         cfg.database_b = v;
     }
 

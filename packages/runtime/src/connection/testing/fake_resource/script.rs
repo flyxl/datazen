@@ -169,7 +169,9 @@ impl FakeScript {
 
     /// 排入一个只命中一次的步骤。
     pub fn once(&self, op: ResourceOp, kind: FaultKind) {
-        self.push(op, kind, format!("{}/{}", kind.catalog_id(), op.as_str()), 1);
+        // `id` 里要用到 `kind`，所以先取出 catalog_id 再把 `kind` 整体移交给 `push`。
+        let id = format!("{}/{}", kind.catalog_id(), op.as_str());
+        self.push(op, kind, id, 1);
     }
 
     /// 是否要求关闭前先回滚 + 注销（§9.3）。

@@ -37,7 +37,7 @@ use serde_json::{json, Value as JsonValue};
 
 use crate::connection::error::ProviderError;
 use crate::connection::execution::SessionCommand;
-use crate::connection::port::{AcquireResourceRequest, BudgetClass};
+use crate::connection::port::{AcquireResourceRequest, BudgetClass, CloseReceipt, CloseResourceRequest};
 use crate::connection::testing::barrier::Barrier;
 use crate::connection::testing::clock::FakeClock;
 use crate::connection::testing::commands::session_handle_command_definition;
@@ -47,10 +47,10 @@ use crate::connection::testing::fake_resource::{
 use crate::connection::testing::ids::FakeIds;
 use crate::connection::testing::journal::CommandJournal;
 use crate::connection::types::{
-    ExecutionTarget, OwnerRef, PoolKeyFingerprint, PoolKeyInputs, WorkerId,
+    ExecutionTarget, HandleId, OwnerRef, PoolKeyFingerprint, PoolKeyInputs, WorkerId,
 };
 
-pub use cm73::{EvictionRaceReport, EvictionRaceOutcome};
+pub use cm73::{EvictionRaceOutcome, EvictionRaceReport};
 pub use session_cmds::GatewayError;
 
 use session_cmds::{handle_id_field, str_field, u64_field};
@@ -138,6 +138,34 @@ impl FakeHarness {
             db_session_id: self.ids().next_db_session_id(),
         };
         self.provider.acquire(&request)
+    }
+
+    /// §9.3 / CM-73：关闭资源。**先注销该资源上还开着的句柄，再释放资源** ——
+    /// §9 要求「淘汰、替换、隔离时必须先在原 resource 上回滚/关闭句柄并注销，
+    /// 确认后才释放资源」，§9.2 对 `open_session_cursor` 的断言也写明
+    /// 「关闭游标后 `handles` 为空才允许 `Clean` 归池」。
+    ///
+    /// 句柄注销走 [`FakeResourceProvider::close_handle`]，因此 journal 里
+    /// `handle closed` 排在 `resource Closed` **之前**，`registered_handles`
+    /// 也是注销之后重新取的，所以 `ReturnedToPool` 的前置条件是真实成立的，
+    /// 不是靠调用方填一个 0 骗过去的。
+    ///
+    /// 返回 `ProviderError` 而不是 panic：调用方（用例）自己决定怎么断言。
+    pub fn close(&self, handle: &crate::connection::port::ResourceHandle) -> Result<CloseReceipt, ProviderError> {
+        let resource_id = handle.resource_id.clone();
+        let open: Vec<HandleId> = self.provider.open_handle_ids(&resource_id);
+        for handle_id in open {
+            self.provider.close_handle(
+                &resource_id,
+                &handle_id,
+                "§9.3 关闭资源前先注销句柄",
+            )?;
+        }
+        self.provider.close_resource(&CloseResourceRequest {
+            handle: handle.clone(),
+            registered_handles: self.provider.registered_handles(&resource_id),
+            protocol_drained: true,
+        })
     }
 
     // ---- §9.1 命令网关 ----
@@ -233,6 +261,10 @@ impl FakeHarness {
 /// 便捷构造：§8.1 `NS_A` 命名空间 + 指定 connection 的执行目标。
 ///
 /// 目标值一律取自 [`crate::connection::testing::fixtures`]，用例里不许再出现硬编码字面量（§8.1 L425）。
+///
+/// 只在 `cfg(test)` 下编译：本函数目前只有同 crate 的用例调用，挂在
+/// `feature = "test-harness"` 上会让「不带 --features 的 `cargo check`」报死代码。
+#[cfg(test)]
 pub fn fixture_target(namespace_key: &str) -> ExecutionTarget {
     let catalog = crate::connection::testing::fixtures::fixtures();
     let namespace = catalog
