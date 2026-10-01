@@ -60,6 +60,8 @@
 #                             不设 = 默认 basic。合法值 = 预设 basic | :basic | all | :all |
 #                             stub，或它们的逗号组合 + drivers-registry.json 里的驱动 id。
 #                             非法值报错退出，不回落。
+#                             逐 token 去**两侧**空白（" basic " ≡ basic），token **内部**有
+#                             空白即非法（"b a s i c" 报错退出）。
 #   DATAZEN_PRO_BRANCH       显式指定 Pro 分支（覆盖上面的映射规则）
 #   NEW_WT_ROLLBACK=0        致命失败时不回滚（仅调试；会留下半成品）
 #   NEW_WT_FORCE_FAIL=<step>  故障注入钩子（用于验证回滚路径），step 取下列步骤名：
@@ -412,6 +414,9 @@ fi
 # 读 worktree 里的 drivers-registry.json —— 与 resolve-drivers.mjs 同源同文件。
 # 打印两行：① 查不到的 id（空格分隔，可能为空行）② 其中 source=git 的 id（逗号分隔）。
 # 退出码 3 = registry 不可读 ⇒ 降级为不校验（**不改值、不回落**），resolve-drivers 仍会自行拒绝。
+# `--` 是**必须**的，少了它用户值会被 node 当自身选项吃掉：NEW_WT_DRIVERS=--foo ⇒
+# `node: bad option` 非零退出 ⇒ 误命中上面第 3 条的降级分支 ⇒ 未知 id 被静默放行、留下半废轨道。
+# 实测 node v20.12.2 / v20.18.3 / v22.20.0：`--` 自身**不占** argv 位，$DRIVERS 仍落在 process.argv[1]。
 if _drv_facts="$( ( cd "$WT" && node -e '
 const fs = require("fs");
 let reg;
@@ -431,7 +436,7 @@ for (const raw of String(process.argv[1]).split(",")) {
   else if (entry.source === "git") git.push(t);
 }
 process.stdout.write(unknown.join(" ") + "\n" + git.join(",") + "\n");
-' "$DRIVERS" ) 2>/dev/null )"; then
+' -- "$DRIVERS" ) 2>/dev/null )"; then
   _drv_unknown="$(printf '%s\n' "$_drv_facts" | sed -n 1p)"
   _drv_git="$(printf '%s\n' "$_drv_facts" | sed -n 2p)"
   if [ -n "$_drv_unknown" ]; then
@@ -490,7 +495,13 @@ if [ "$_drv_ok" = 1 ]; then
 else
   _drv_why="命令非零退出或被故障注入"
   if [ -s "$_drv_log" ]; then
-    _drv_why="${_drv_why}：$(tail -n 3 "$_drv_log" | tr '\n' ' ')"
+    # 日志尾部常是 node 崩溃转储（Buffer 十六进制 / 堆栈 / 版本号），真正的原因在**头部**
+    # （进度行之后紧跟错误行）——只取末 3 行会把「为什么失败」整段丢掉。改为优先取第一条
+    # `Error:` / `fatal:` 行并带上紧随其后的 2 行（子进程 stderr 常印在下一行）；挑不到
+    # （错误信息不带这两种前缀）再退回取末 6 行。
+    _drv_pick="$(grep -m1 -A2 -E '^Error:|^fatal:' "$_drv_log" || true)"
+    [ -n "$_drv_pick" ] || _drv_pick="$(tail -n 6 "$_drv_log")"
+    _drv_why="${_drv_why}：$(printf '%s\n' "$_drv_pick" | tr '\n' ' ')"
   fi
   skipped "第 1 层 codegen（resolve-drivers）" "$_drv_why" \
     "cd ${WT} && node scripts/resolve-drivers.mjs --codegen-only --drivers=${DRIVERS}" \
