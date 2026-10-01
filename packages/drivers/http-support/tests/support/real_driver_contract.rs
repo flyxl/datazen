@@ -62,6 +62,7 @@
 //! | `real_driver_contract_live.rs` | live tier, journey half (CM-08/09/10/13/14/16) |
 //! | `real_driver_contract_live_faults.rs` | live tier, failure half (CM-17/18/22/24/26/48/69) |
 //! | `real_driver_contract_refusal.rs` | refusal tier — a withheld capability, proved with a real driver behind the branch |
+//! | `real_driver_contract_probe.rs` | the instrument the refusal tier attacks itself with: a real driver with exactly one serverless method's return value changed |
 //! | `real_driver_contract_scope.rs` | scope tier — what the guards cover, and the unverified-scope report |
 //! | this file | the template's own entry point: module wiring and the source-level env-file guard |
 //!
@@ -91,6 +92,10 @@ mod live;
 
 #[path = "real_driver_contract_live_faults.rs"]
 mod live_faults;
+
+#[path = "real_driver_contract_probe.rs"]
+mod probe;
+pub use probe::*;
 
 #[path = "real_driver_contract_refusal.rs"]
 mod refusal;
