@@ -1,8 +1,9 @@
 //! Live **schema / metadata** coverage for the SQL Server driver.
 //!
-//! Every probe runs against the Azure SQL Database configured in
-//! `packages/drivers/sqlserver/.env.test` (see `tests/common/mod.rs`). Tests
-//! that only read skip when no instance is configured; tests that create
+//! Every probe runs against a real Azure SQL Database. Settings come from the
+//! **process environment only**; a local env file is read *only* when you opt
+//! in with `TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file` (see `tests/common/mod.rs`).
+//! Tests that only read skip when no instance is configured; tests that create
 //! objects additionally require `TEST_SQLSERVER_ALLOW_WRITE=1`.
 //!
 //! What is pinned here:

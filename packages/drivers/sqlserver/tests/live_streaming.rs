@@ -8,6 +8,9 @@
 //! Safety: all writes are scratch objects gated by
 //! `TEST_SQLSERVER_ALLOW_WRITE=1` and dropped by a guard that also runs when
 //! the body panics. `tests/` is the only directory touched.
+//!
+//! Configuration comes from the **process environment only**; a local env
+//! file is read *only* when you opt in with `TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file`.
 
 mod common;
 

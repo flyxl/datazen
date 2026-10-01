@@ -1,7 +1,14 @@
 //! Live connection / TLS / authentication coverage for the SQL Server driver.
 //!
-//! Every test skips (never fails) when `packages/drivers/sqlserver/.env.test`
-//! is missing or incomplete — see `tests/common/mod.rs`.
+//! Configuration comes from the **process environment only**. A local env
+//! file is read *only* when you opt in by naming it:
+//!
+//! ```text
+//! TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file cargo test -p datazen-driver-sqlserver
+//! ```
+//!
+//! Every test skips (never fails) when the instance is not configured — see
+//! `tests/common/mod.rs`.
 
 mod common;
 

@@ -5,6 +5,9 @@
 //! `get_table_data`. These tests pin the driver-owned clause and prove the
 //! pages it produces are correct, plus keep a negative control showing the old
 //! statement really is invalid T-SQL.
+//!
+//! Configuration comes from the **process environment only**; a local env
+//! file is read *only* when you opt in with `TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file`.
 
 mod common;
 
