@@ -225,13 +225,15 @@ pub enum EnvFileProblem {
 pub fn load_settings(opt_in: &EnvFileOptIn) -> Result<HashMap<String, String>, EnvFileProblem> {
     match opt_in {
         EnvFileOptIn::ProcessEnvironmentOnly => Ok(HashMap::new()),
-        EnvFileOptIn::Named(path) => parse_env_file(path).map_err(|error| EnvFileProblem::Unreadable {
-            file_name: path
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "<unnamed>".to_string()),
-            kind: format!("{:?}", error.kind()),
-        }),
+        EnvFileOptIn::Named(path) => {
+            parse_env_file(path).map_err(|error| EnvFileProblem::Unreadable {
+                file_name: path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "<unnamed>".to_string()),
+                kind: format!("{:?}", error.kind()),
+            })
+        }
     }
 }
 

@@ -25,14 +25,80 @@ use datazen_driver_api::{
 // other tiers use. `#[path]`-included, so nothing here is a public API of the crate.
 use super::*;
 
+/// What an instance **says** about the withheld capability, folded together with
+/// what it **does** to a target, as one comparable value.
+///
+/// Folding the declaration into the comparison is the entire point of this type.
+/// `WithheldPreciseCancel` delegates `qualify_sql_target` to the inner driver,
+/// and the trait documents that method as pure and stateless — so two qualified
+/// statements are equal **no matter what the wrapper declares**. Two assertions
+/// in this file used to compare exactly that and therefore proved nothing: a
+/// qualifier that ignored its database argument, or a wrapper that quietly
+/// stopped withholding, both passed them. Any statement-only comparison in a
+/// refusal tier has zero discriminating power, and the only way to give it power
+/// is to bind the declaration to the statement.
+///
+/// `declared` and `execution_cancel` are two views of the same withholding — the
+/// contract's claim and the trait method that must contradict it — so a correct
+/// wrapper differs from the driver it wraps in exactly these two fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RefusalSnapshot {
+    declared: Capability,
+    execution_cancel: bool,
+    original: Option<String>,
+    second: Option<String>,
+    multi_database: bool,
+    schema_level: bool,
+}
+
+impl RefusalSnapshot {
+    /// One instance, read at one moment, entirely through the trait.
+    fn read<D: DatabaseDriver>(
+        driver: &D,
+        declared: Capability,
+        sql: &str,
+        original: &str,
+        second: &str,
+        schema: Option<&str>,
+    ) -> Self {
+        Self {
+            declared,
+            execution_cancel: driver.supports_query_execution_cancel(),
+            original: driver.qualify_sql_target(sql, Some(original), schema),
+            second: driver.qualify_sql_target(sql, Some(second), schema),
+            multi_database: driver.has_multi_database(),
+            schema_level: driver.has_schema_level(),
+        }
+    }
+
+    /// The same read off the wrapper, which declares for itself.
+    fn read_withheld<D: DatabaseDriver>(
+        wrapper: &WithheldPreciseCancel<D>,
+        sql: &str,
+        original: &str,
+        second: &str,
+        schema: Option<&str>,
+    ) -> Self {
+        Self::read(
+            wrapper,
+            wrapper.declared_capability(),
+            sql,
+            original,
+            second,
+            schema,
+        )
+    }
+}
+
 /// A capability the instance declares missing must produce an **explicit
 /// refusal** — never a silent success, never a skip, never a `Verify` — and the
 /// refusal must leave the session's original target exactly where it was.
 ///
-/// The order matters: the target is resolved *before* the refusals and again
-/// *after* them. Comparing a value with itself would prove nothing, and a
-/// capability that vanished without a word is exactly the failure this dimension
-/// exists to catch.
+/// The order matters: both the wrapper and the driver it wraps are read into a
+/// [`RefusalSnapshot`] *before* the refusals and again *after* them. Comparing a
+/// value with itself would prove nothing, and a capability that vanished without
+/// a word is exactly the failure this dimension exists to catch — so the
+/// comparison is against the **wrapped driver**, not against the wrapper again.
 #[tokio::test]
 async fn a_withheld_capability_is_refused_and_leaves_the_original_target_intact() {
     let contract = &crate::CONTRACT;
@@ -43,9 +109,20 @@ async fn a_withheld_capability_is_refused_and_leaves_the_original_target_intact(
     let marker = contract.dialect.marker;
     let sql = format!("SELECT {marker} FROM {marker}");
     let schema = contract.default_schema;
-    let target_before = driver.qualify_sql_target(&sql, Some(&original), schema);
+    // The second fixture target, resolved up front so the "nothing else moved"
+    // comparison below is against a reading taken *before* anything was refused.
+    let second = format!("{FIXTURE_PREFIX}b");
+    let before = RefusalSnapshot::read_withheld(&driver, &sql, &original, &second, schema);
+    let inner_before = RefusalSnapshot::read(
+        driver.inner(),
+        contract.precise_cancel,
+        &sql,
+        &original,
+        &second,
+        schema,
+    );
     assert!(
-        target_before.is_some(),
+        before.original.is_some(),
         "{} must qualify a statement for its own declared target; \
          without a starting point there is nothing left to preserve",
         contract.label
@@ -130,36 +207,76 @@ async fn a_withheld_capability_is_refused_and_leaves_the_original_target_intact(
         validate_schema_target(&driver, &original, schema, SchemaScope::AnySchema).is_ok(),
         "the declared target shape must stay accepted after a refusal"
     );
-    let target_after = driver.qualify_sql_target(&sql, Some(&original), schema);
+    let after = RefusalSnapshot::read_withheld(&driver, &sql, &original, &second, schema);
+    let inner_after = RefusalSnapshot::read(
+        driver.inner(),
+        contract.precise_cancel,
+        &sql,
+        &original,
+        &second,
+        schema,
+    );
+
     assert_eq!(
-        target_before, target_after,
-        "a refused capability must not change how the original target resolves"
+        before, after,
+        "refusing a withheld capability must change nothing else about the instance: \
+         the session's original target has to resolve exactly as it did before, or the \
+         refusal only *looks* harmless. before {before:?}, after {after:?}"
     );
     assert_eq!(
-        target_after,
-        driver.qualify_sql_target(&sql, Some(&original), schema),
-        "qualification must stay a pure function after a refusal"
+        inner_before, inner_after,
+        "the wrapped driver must itself be unchanged by refusals issued through the \
+         wrapper: before {inner_before:?}, after {inner_after:?}"
     );
-    // ...and the refusal must not have narrowed what the driver can address at
-    // all: a second target is still resolvable exactly as it was.
-    let second = format!("{FIXTURE_PREFIX}b");
+
+    // The two arms that carry the weight. `qualify_sql_target` is documented as
+    // pure, so the wrapper's *statements* cannot reveal what it withholds; only
+    // its declaration can — and it is compared against the driver's own contract
+    // declaration, never against itself.
+    assert_ne!(
+        after.declared, contract.precise_cancel,
+        "{} claims precise cancel is {:?}, and the driver it wraps is held to exactly that \
+         claim — so a wrapper that declares the same thing withholds nothing",
+        contract.label, contract.precise_cancel
+    );
+    assert_eq!(
+        after,
+        RefusalSnapshot {
+            // Two views of the one withheld protocol, so the expectation has to
+            // override two fields: the contract's claim about the wrapped driver,
+            // and the trait method the wrapper is required to contradict. Both
+            // must move, and nothing else may.
+            declared: Capability::Unsupported,
+            execution_cancel: false,
+            ..inner_after.clone()
+        },
+        "withholding one capability must change only the two views of that capability: \
+         the wrapper has to read as the driver it wraps, precise cancel overridden to \
+         Unsupported/false, and identical everywhere else. Otherwise a wrapper may break \
+         unrelated addressing power and the run still reads as 'only one capability was \
+         withheld'. wrapper {after:?}, wrapped {inner_after:?}"
+    );
+
+    // ...and the refusals must not have narrowed what the driver can address at
+    // all: a second target is still accepted, and still qualifies the way the
+    // wrapped driver qualifies it. (These two targets are *not* required to
+    // resolve differently — `qualify_sql_target` qualifies by schema here, so
+    // asserting that they must differ would be a claim about a dialect this
+    // dimension does not own.)
     assert!(
         validate_schema_target(&driver, &second, schema, SchemaScope::AnySchema).is_ok(),
         "a second fixture target must stay accepted after a refusal"
     );
     assert_eq!(
-        driver.qualify_sql_target(&sql, Some(&second), schema),
-        driver.qualify_sql_target(&sql, Some(&second), schema),
-        "every target must resolve identically after a refusal"
+        after.second, inner_after.second,
+        "the wrapper must qualify a second target exactly as the wrapped driver does"
     );
     assert_eq!(
-        driver.has_multi_database(),
-        contract.has_multi_database,
+        after.multi_database, contract.has_multi_database,
         "a refused capability must not shrink the driver's addressing power"
     );
     assert_eq!(
-        driver.has_schema_level(),
-        contract.has_schema_level,
+        after.schema_level, contract.has_schema_level,
         "a refused capability must not change the driver's namespace shape"
     );
 }

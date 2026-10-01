@@ -52,10 +52,8 @@ const CONTRACT: Contract = Contract {
         // `{table}` is filled in per live case: every live case in this crate
         // runs concurrently against the same two fixture targets, so the marker
         // relation must not be a name fixed in the dialect.
-        create_marker:
-            "CREATE TABLE IF NOT EXISTS {table} (dz_fixture_marker_value TEXT NOT NULL)",
-        insert_marker:
-            "INSERT INTO {table} (dz_fixture_marker_value) VALUES ('{marker}')",
+        create_marker: "CREATE TABLE IF NOT EXISTS {table} (dz_fixture_marker_value TEXT NOT NULL)",
+        insert_marker: "INSERT INTO {table} (dz_fixture_marker_value) VALUES ('{marker}')",
         select_marker: "SELECT dz_fixture_marker_value FROM {table}",
         drop_marker: "DROP TABLE IF EXISTS {table}",
         current_namespace: "current_database()",

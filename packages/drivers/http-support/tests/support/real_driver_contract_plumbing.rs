@@ -18,6 +18,21 @@ use super::Dialect;
 
 /// The env-file names the guard refuses to see spelled out in a string literal.
 /// Assembled from fragments so this guard cannot match its own source.
+///
+/// **What this list does not reach, stated here so the guard cannot be credited
+/// with more than it does.** `env_guard_tokens` matches these names *as source
+/// text*. A program that assembles a name at runtime — `concat!` fragments,
+/// `env_file_names()[0]`, anything that only becomes the name while `main` is
+/// already running — puts nothing in the source for any static rule to match, so
+/// this scan is green for it. That is the inherent boundary of static scanning,
+/// not a gap that a longer token list can close, and a reader who believes the
+/// opposite will draw a false conclusion from a green suite. The limit is
+/// demonstrated, not just described, in
+/// `the_static_env_guard_cannot_see_a_name_assembled_at_runtime`; the same words
+/// are printed by `unverified_scope_report`.
+///
+/// The scan also only covers sources that run this template. The crates that do
+/// not are named in `UNGUARDED_DRIVER_CRATES` and printed by the same report.
 pub fn env_file_names() -> [&'static str; 2] {
     [concat!(".en", "v"), concat!(".en", "v.test")]
 }
@@ -176,8 +191,7 @@ pub fn profile() -> Result<Profile, String> {
         port: optional_env(format!("{prefix}PORT"))
             .and_then(|v| v.parse().ok())
             .unwrap_or(contract.default_port),
-        user: optional_env(format!("{prefix}USER"))
-            .unwrap_or_else(|| contract.default_user.into()),
+        user: optional_env(format!("{prefix}USER")).unwrap_or_else(|| contract.default_user.into()),
         password: raw_env(format!("{prefix}PASSWORD")),
         b: optional_env(format!("{prefix}DATABASE_B")).unwrap_or_else(|| a.clone()),
         a,
@@ -252,11 +266,19 @@ pub fn first_cell(result: &QueryResult) -> String {
 }
 
 pub fn rows_contain(result: &QueryResult, needle: &str) -> bool {
-    result.rows.iter().flatten().any(|cell| row_text(cell).contains(needle))
+    result
+        .rows
+        .iter()
+        .flatten()
+        .any(|cell| row_text(cell).contains(needle))
 }
 
 pub fn statement_rows_contain(result: &StatementResult, needle: &str) -> bool {
-    result.rows.iter().flatten().any(|cell| row_text(cell).contains(needle))
+    result
+        .rows
+        .iter()
+        .flatten()
+        .any(|cell| row_text(cell).contains(needle))
 }
 
 /// The first cell of the first row of one statement of a raw script.
@@ -506,6 +528,19 @@ impl<D: DatabaseDriver> WithheldPreciseCancel<D> {
             super::Capability::Unsupported
         }
     }
+
+    /// The wrapped driver, so the refusal tier can compare the wrapper against
+    /// the thing it wraps.
+    ///
+    /// Without a handle on the inner instance, "withholding one capability
+    /// changed nothing else" can only be checked against the wrapper's own
+    /// values — which is a comparison with itself all over again. The wrapper's
+    /// `declared_capability()` is derived from `supports_query_execution_cancel`,
+    /// so holding the inner driver is also the only way to prove the wrapper
+    /// declares the **opposite** of what it wraps.
+    pub fn inner(&self) -> &D {
+        &self.inner
+    }
 }
 
 #[async_trait]
@@ -695,15 +730,37 @@ pub fn describe_scan_failure(dir: &Path, error: &std::io::Error) -> String {
 
 /// Every source file of the shared template, so a source-level guard scans the
 /// whole template instead of only the file that happens to hold the test.
+///
+/// **Discovered, not listed.** A hardcoded list is a guard that quietly stops
+/// covering files: splitting the template once would have left
+/// `every_required_dimension_owns_a_named_test` reading only the first four
+/// files, able to report every dimension as owned while half the live tests were
+/// invisible to it — the exact failure it exists to prevent. Walking the
+/// directory means a file added here is covered by the same commit that adds it,
+/// and the floor below fails the run instead of shrinking the scan.
 pub fn template_sources() -> Vec<PathBuf> {
     let dir = drivers_root().join("http-support/tests/support");
-    [
-        "real_driver_contract.rs",
-        "real_driver_contract_plumbing.rs",
-        "real_driver_contract_live.rs",
-        "real_driver_contract_refusal.rs",
-    ]
-    .iter()
-    .map(|name| dir.join(name))
-    .collect()
+    let mut sources = collect_rs(&dir).unwrap_or_else(|e| {
+        panic!(
+            "the template scan could not list {}: {} — an unreadable directory is never \
+             reported as a clean one",
+            dir.display(),
+            describe_scan_failure(&dir, &e)
+        )
+    });
+    assert!(
+        sources.len() >= TEMPLATE_SOURCE_FLOOR,
+        "the template directory yielded {} sources, expected the whole template (at least {}) — \
+         discovery is broken, and every 'no source reads an env file' conclusion drawn from it \
+         would be vacuous",
+        sources.len(),
+        TEMPLATE_SOURCE_FLOOR
+    );
+    sources.sort();
+    sources
 }
+
+/// The floor `template_sources` refuses to go below: one file per tier plus the
+/// root and the shared vocabulary. If this number stops matching the directory
+/// the guard's own coverage claim is wrong, so it fails loudly instead.
+pub const TEMPLATE_SOURCE_FLOOR: usize = 8;

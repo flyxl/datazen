@@ -11,9 +11,17 @@
 //! 2. the file is opened **only** through an explicit opt-in that a developer
 //!    sets, and the decision is a pure function so it can be proven without
 //!    mutating the process environment;
-//! 3. the default path opens nothing at all, and an opted-in-but-unreadable file
-//!    is an error the caller reports — never a silently empty map that would let
-//!    the run pretend the file said nothing.
+//! 3. the default path opens nothing at all, and an opted-in file that cannot be
+//!    **read** — missing, denied, or not valid UTF-8 — is an error the caller
+//!    reports, so a mis-typed path never quietly downgrades a live run.
+//!
+//! **What rule 3 does not cover, so nothing is claimed from it:** a file that
+//! reads fine but whose lines yield no setting is *not* an error. `parse_env_file`
+//! can only fail on the read itself; content it does not recognise is skipped, and
+//! a file of nothing but unrecognised lines contributes an empty map without a
+//! word. That case is neither detected nor reported — see
+//! `a_readable_file_with_nothing_parsable_is_not_reported_and_that_is_the_limit`
+//! for the behaviour this suite pins and the limit it deliberately leaves open.
 //!
 //! `AGENTS.md` forbids opening these files' contents, so this suite never reads
 //! one either: the probes below build and read a throwaway file under the
@@ -67,7 +75,11 @@ fn first_violation() -> Option<(PathBuf, String)> {
     for dir in [root.join("tests"), root.join("src")] {
         let mut sources = Vec::new();
         collect_rs(&dir, &mut sources);
-        assert!(!sources.is_empty(), "no Rust source found under {}", dir.display());
+        assert!(
+            !sources.is_empty(),
+            "no Rust source found under {}",
+            dir.display()
+        );
         for path in sources {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
@@ -88,10 +100,11 @@ fn first_violation() -> Option<(PathBuf, String)> {
 /// must never look alike to a guard that is deciding whether anything was
 /// scanned.
 fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("cannot list {}: {e}", dir.display()));
+    let entries =
+        std::fs::read_dir(dir).unwrap_or_else(|e| panic!("cannot list {}: {e}", dir.display()));
     for entry in entries {
-        let entry = entry.unwrap_or_else(|e| panic!("cannot read an entry of {}: {e}", dir.display()));
+        let entry =
+            entry.unwrap_or_else(|e| panic!("cannot read an entry of {}: {e}", dir.display()));
         let path = entry.path();
         if path.is_dir() {
             collect_rs(&path, out);
@@ -130,13 +143,22 @@ fn the_env_guard_matches_every_shape_of_env_file_literal() {
         (format!("read_to_string({q}{name}{q})", q = '"'), true),
         (format!("read_to_string({q}{name}{q})", q = '\''), true),
         (format!("join({q}../{name}{q})", q = '"'), true),
-        (format!("join({q}fixtures/{test_variant}{q})", q = '"'), true),
+        (
+            format!("join({q}fixtures/{test_variant}{q})", q = '"'),
+            true,
+        ),
         (format!("{q}{name}{q} and {q}../{name}{q}", q = '"'), true),
         // --- legal: prose in a comment, and the opt-in variable itself
-        (format!("see the crate-local {name} file for the key list"), false),
+        (
+            format!("see the crate-local {name} file for the key list"),
+            false,
+        ),
         (format!("{ENV_FILE_OPT_IN}=/path/to/file"), false),
         (format!("a variable named {}", ENV_FILE_OPT_IN), false),
-        (format!("the file has no name of its own, see {name}"), false),
+        (
+            format!("the file has no name of its own, see {name}"),
+            false,
+        ),
         // --- legal: a different file that merely starts the same way. The guard
         // must stay narrow, or it becomes noise nobody keeps.
         (format!("{q}{name}rc{q}", q = '"'), false),
@@ -158,8 +180,14 @@ fn the_env_guard_matches_every_shape_of_env_file_literal() {
 fn the_default_path_reads_the_process_environment_and_opens_nothing() {
     // Absent and blank both mean "not set" — never "fall back to a known file".
     assert_eq!(decode_opt_in(None), EnvFileOptIn::ProcessEnvironmentOnly);
-    assert_eq!(decode_opt_in(Some("")), EnvFileOptIn::ProcessEnvironmentOnly);
-    assert_eq!(decode_opt_in(Some("   \t ")), EnvFileOptIn::ProcessEnvironmentOnly);
+    assert_eq!(
+        decode_opt_in(Some("")),
+        EnvFileOptIn::ProcessEnvironmentOnly
+    );
+    assert_eq!(
+        decode_opt_in(Some("   \t ")),
+        EnvFileOptIn::ProcessEnvironmentOnly
+    );
 
     // A named path is honoured verbatim, trimmed — the developer is in charge.
     assert_eq!(
@@ -173,12 +201,14 @@ fn the_default_path_reads_the_process_environment_and_opens_nothing() {
     let probe = probe_file("dz-sqlserver-opt-in-default");
     let named = EnvFileOptIn::Named(probe.path.clone());
     assert_eq!(
-        load_settings(&named).expect("the named probe is readable").len(),
+        load_settings(&named)
+            .expect("the named probe is readable")
+            .len(),
         4,
         "the probe fixture must actually carry settings, or this proves nothing"
     );
-    let settings = load_settings(&EnvFileOptIn::ProcessEnvironmentOnly)
-        .expect("the default path never fails");
+    let settings =
+        load_settings(&EnvFileOptIn::ProcessEnvironmentOnly).expect("the default path never fails");
     assert!(
         settings.is_empty(),
         "the default path must contribute nothing without an opt-in, got {} keys",
@@ -187,19 +217,32 @@ fn the_default_path_reads_the_process_environment_and_opens_nothing() {
     probe.remove();
 }
 
-/// A named file that cannot be read is an error, not a silently empty map — an
-/// empty map is indistinguishable from "the file said nothing" and would let a
+/// A named file that cannot be **read** is an error, not a silently empty map —
+/// an empty map is indistinguishable from "the file said nothing" and would let a
 /// mis-typed path quietly downgrade a live run.
+///
+/// Scoped to the read, and only the read: `parse_env_file` returns `Err` for
+/// exactly one thing, the `read_to_string` that precedes any line is looked at.
+/// Missing, denied and not-valid-UTF-8 all land here. Content the parser does not
+/// recognise is a different story, and the test that pins it is
+/// `a_readable_file_with_nothing_parsable_is_not_reported_and_that_is_the_limit`.
 #[test]
 fn an_unreadable_opt_in_file_is_reported_instead_of_ignored() {
-    let missing = std::env::temp_dir().join(format!("dz-sqlserver-absent-probe-{}", probe_suffix()));
-    assert!(!missing.exists(), "the probe path must not exist for this case");
+    let missing =
+        std::env::temp_dir().join(format!("dz-sqlserver-absent-probe-{}", probe_suffix()));
+    assert!(
+        !missing.exists(),
+        "the probe path must not exist for this case"
+    );
 
     match load_settings(&EnvFileOptIn::Named(missing.clone())) {
         Err(EnvFileProblem::Unreadable { file_name, kind }) => {
             assert_eq!(
                 file_name,
-                missing.file_name().expect("a named path has a file name").to_string_lossy(),
+                missing
+                    .file_name()
+                    .expect("a named path has a file name")
+                    .to_string_lossy(),
                 "the report must name the file the developer typed"
             );
             assert_eq!(
@@ -257,6 +300,70 @@ fn a_named_readable_file_contributes_its_settings() {
     probe.remove();
 }
 
+/// **The limit, asserted so it is not mistaken for coverage.**
+///
+/// A readable file whose lines yield no setting is an `Ok`, not an `Err`: the
+/// parser skips what it does not recognise and the caller sees an empty map. The
+/// header used to promise the opposite — that a file which contributes nothing is
+/// reported — and no code path could keep that promise, because `parse_env_file`
+/// only fails on the read. Rather than add a branch nothing reaches, the real
+/// behaviour is pinned here and named as a limit.
+///
+/// This test is the reason the file's doc header no longer claims the case is
+/// handled: if someone later adds the detection, **this test is expected to fail**
+/// and the header must be rewritten with it. If instead this test starts passing
+/// on an `Err`, the over-claim has become true by code rather than by wording.
+///
+/// Non-UTF-8 is the one flavour that *is* reported, because `read_to_string`
+/// rejects it — an I/O failure like any other. Both arms are asserted, so the test
+/// documents where the line actually falls rather than where someone assumed it
+/// would.
+#[test]
+fn a_readable_file_with_nothing_parsable_is_not_reported_and_that_is_the_limit() {
+    // Arm one: valid UTF-8, nothing the parser recognises. Silent, and that is the
+    // documented behaviour.
+    let unreadable_content =
+        std::env::temp_dir().join(format!("dz-sqlserver-unparsable-probe-{}", probe_suffix()));
+    std::fs::write(
+        &unreadable_content,
+        "this is not a setting\nnor is this\n# nor this\n",
+    )
+    .unwrap_or_else(|e| panic!("cannot write {}: {e}", unreadable_content.display()));
+    match load_settings(&EnvFileOptIn::Named(unreadable_content.clone())) {
+        Ok(settings) => assert!(
+            settings.is_empty(),
+            "a file of unparsable lines is expected to contribute nothing; if this now holds \
+             settings the parser changed, and the header's limit needs rewriting. Got {settings:?}"
+        ),
+        Err(problem) => panic!(
+            "{unreadable_content:?} was expected to be read successfully, got {problem:?}. \
+             The parser now reports content it does not recognise — good, but then the header's \
+             'not covered' note is stale and must be rewritten with the change"
+        ),
+    }
+    std::fs::remove_file(&unreadable_content)
+        .unwrap_or_else(|e| panic!("cannot remove {}: {e}", unreadable_content.display()));
+
+    // Arm two: bytes that are not UTF-8 at all. This one is reported, as an I/O
+    // error — so the boundary is exactly "the read", not "the content".
+    let non_utf8 =
+        std::env::temp_dir().join(format!("dz-sqlserver-bytes-probe-{}", probe_suffix()));
+    std::fs::write(&non_utf8, [0xff, 0xfe, 0x00, 0x80])
+        .unwrap_or_else(|e| panic!("cannot write {}: {e}", non_utf8.display()));
+    match load_settings(&EnvFileOptIn::Named(non_utf8.clone())) {
+        Err(EnvFileProblem::Unreadable { kind, .. }) => assert_eq!(
+            kind, "InvalidData",
+            "non-UTF-8 bytes must be reported as the read error it is, not as a parse problem"
+        ),
+        Ok(settings) => panic!(
+            "non-UTF-8 bytes must fail the read, got {} settings",
+            settings.len()
+        ),
+    }
+    std::fs::remove_file(&non_utf8)
+        .unwrap_or_else(|e| panic!("cannot remove {}: {e}", non_utf8.display()));
+}
+
 /// An unreadable opt-in is handled, never a panic — the live suite must be able
 /// to skip on it.
 #[test]
@@ -300,5 +407,9 @@ impl Probe {
 /// A per-probe suffix, so two probes in the same process never collide on a path.
 fn probe_suffix() -> String {
     static SEQ: AtomicU64 = AtomicU64::new(0);
-    format!("{}-{}", std::process::id(), SEQ.fetch_add(1, Ordering::SeqCst))
+    format!(
+        "{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::SeqCst)
+    )
 }
