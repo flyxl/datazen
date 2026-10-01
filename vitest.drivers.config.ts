@@ -7,6 +7,11 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      // `packages/driver-sdk/src/ipc/desktopBinding.ts` re-exports the
+      // BackendClient surface, so driver UI tests transitively need this alias.
+      // Without it every driver UI file that touches the ipc layer fails to
+      // resolve the import — 48 files, while the host suite stays green.
+      '@datazen/backend-client': resolve(__dirname, 'packages/backend-client/src/index.ts'),
       '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
       '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
       '@datazen/wapp-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),

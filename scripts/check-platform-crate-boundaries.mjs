@@ -307,15 +307,13 @@ function checkTsLayer(root, layer, rule, errors, violations) {
         // A bare `fetch(` is a call, so it is matched against the blanked-out
         // source (comments and string bodies are already gone); a bare
         // `@tauri-apps/` would also match inside a comment, so it is matched
-        // against the literal list instead.
-        const hit = forbidden.endsWith('(')
-          ? code.includes(forbidden)
-            ? { line: code.slice(0, code.indexOf(forbidden)).split('\n').length }
-            : undefined
-          : literals.find((l) => l.value.includes(forbidden));
-        if (hit) {
+        // against the literal list too. Both are checked for every token: a
+        // literal-only check for `XMLHttpRequest` missed `new XMLHttpRequest()`,
+        // which is precisely the use the rule exists to forbid.
+        const line = findForbiddenLine(code, forbidden) ?? findLiteralLine(literals, forbidden);
+        if (line !== undefined) {
           violations.push(
-            `${rule.id}  ${rel}:${hit.line} contains \`${forbidden}\` — ${layer.path} must reach ` +
+            `${rule.id}  ${rel}:${line} contains \`${forbidden}\` — ${layer.path} must reach ` +
               `the backend through the platform client, not through Tauri IPC or the network directly.`,
           );
         }
@@ -328,6 +326,17 @@ function checkTsLayer(root, layer, rule, errors, violations) {
     errors.push(`${rule.id}: could not scan ${layer.path}: ${cause.message}`);
   }
   return files;
+}
+
+/** 1-based line of `token` in blanked source, or `undefined`. */
+function findForbiddenLine(code, token) {
+  const at = code.indexOf(token);
+  return at === -1 ? undefined : code.slice(0, at).split('\n').length;
+}
+
+/** 1-based line of the first string literal containing `token`. */
+function findLiteralLine(literals, token) {
+  return literals.find((l) => l.value.includes(token))?.line;
 }
 
 /**
