@@ -14,6 +14,18 @@ use std::collections::BTreeMap;
 use crate::resource::ResourceError;
 
 /// Which namespace levels a database has, outermost first.
+///
+/// Sole owner of this type. `session.rs` used to declare a second, identical
+/// `NamespaceLevelKind` that nothing consumed; it was removed because two
+/// definitions of one namespace concept is exactly the ambiguity the P2
+/// contract is meant to eliminate. Do not re-export or re-declare it elsewhere
+/// — import it from `crate::namespace`.
+///
+/// `PartialOrd`/`Ord` are deliberately absent: no caller sorts or orders
+/// namespace levels today. The "outermost first" contract above is enforced by
+/// [`NamespaceShape`] validation and by call sites that walk levels in written
+/// order, not by comparing them. The deleted duplicate did derive them; adding
+/// them back would be an unused API surface, not a fix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum NamespaceLevelKind {

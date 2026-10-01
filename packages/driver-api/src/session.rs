@@ -42,15 +42,6 @@ impl Default for ObservationConfidence {
     }
 }
 
-/// Lifecycle of one namespace level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum NamespaceLevelKind {
-    Database,
-    Catalog,
-    Schema,
-}
-
 /// Transaction state as read back from the same physical resource.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

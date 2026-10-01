@@ -1,8 +1,10 @@
 //! Opaque resource contract (P2).
 //!
 //! Source of truth: `docs/architecture/platform/connection-management.md` §4
-//! (DTOs and target validation order), §5.1 (the nine operations), §5.2
-//! (capabilities) and `docs/architecture/platform/driver-capability-migration.md`
+//! (DTOs and target validation order), §5.1 (the nine operation rows, which the
+//! [`ResourceProvider`] trait below spells out as 11 async methods plus 3
+//! required accessors), §5.2 (capabilities) and
+//! `docs/architecture/platform/driver-capability-migration.md`
 //! §6 (degraded legacy paths, retirement preconditions).
 //!
 //! # Why the handle is opaque
@@ -387,12 +389,24 @@ impl ResourceError {
     }
 }
 
-/// The nine resource operations (`connection-management.md` §5.1).
+/// The resource operations of `connection-management.md` §5.1.
 ///
-/// All methods are **required**, with no default bodies. A provider that
+/// §5.1 lists **nine operation rows**; this trait spells them out as **11 async
+/// methods** plus **3 required accessors** (`provider_id`, `capabilities`,
+/// `namespace_shape`) — **14 required methods** in total. The row/method gap
+/// is deliberate: §5.1 counts `begin/commit/rollback` as one row, while the
+/// trait needs three separately implemented methods so a driver can support a
+/// commit without inventing a rollback.
+///
+/// All 14 methods are **required**, with no default bodies. A provider that
 /// cannot honour one must say so in its own code, where the failure is
 /// visible, instead of inheriting a body that quietly does nothing. This is
 /// what makes "新增能力缺失不会 no-op 成功" structural rather than a convention.
+///
+/// The "no default bodies" rule is not a comment that can be ignored —
+/// `resource_no_default_bodies_tests.rs` fails the build if any method in this
+/// trait gains a body, so `impl ResourceProvider for X {}` cannot compile by
+/// accident.
 ///
 /// A provider must additionally:
 ///
@@ -503,3 +517,9 @@ pub trait ResourceProvider: Send + Sync {
 #[cfg(test)]
 #[path = "resource_tests.rs"]
 mod tests;
+
+/// Enforces "no default bodies on `ResourceProvider`" in CI rather than in
+/// review. Lives beside the trait because it reads `resource.rs` as text.
+#[cfg(test)]
+#[path = "resource_no_default_bodies_tests.rs"]
+mod no_default_bodies_tests;
