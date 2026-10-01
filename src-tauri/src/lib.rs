@@ -15,6 +15,7 @@ mod i18n_locale;
 mod log_redact;
 pub mod mcp;
 mod monitor;
+pub mod platform;
 mod product_features;
 mod redis_flush_gate;
 pub mod schema_diff;

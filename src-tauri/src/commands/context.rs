@@ -616,6 +616,7 @@ mod tests {
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
             cancel_registry: crate::ai::CancellationRegistry::default(),
+            platform: crate::platform::PlatformEntry::launch(),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
@@ -682,6 +683,7 @@ mod tests {
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
             cancel_registry: crate::ai::CancellationRegistry::default(),
+            platform: crate::platform::PlatformEntry::launch(),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();

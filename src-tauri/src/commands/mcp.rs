@@ -46,6 +46,7 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
         workflow_scheduler: state.workflow_scheduler.clone(),
         wapps: state.wapps.clone(),
         cancel_registry: state.cancel_registry.clone(),
+        platform: state.platform.clone(),
     })
 }
 
