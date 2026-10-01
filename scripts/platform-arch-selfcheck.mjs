@@ -91,8 +91,25 @@ class TreeSnapshot {
     this.#backups.push({ rel, abs, dest });
   }
 
-  /** Record a path this run created, for recursive removal on revert. */
+  /**
+   * Record a path this run created, for recursive removal on revert.
+   *
+   * Refuses a path that already exists. A revert here is `rm -rf`, so
+   * registering a pre-existing directory destroys tracked source: the files were
+   * never in {@link backup}, so nothing can put them back. Two mutations used to
+   * do exactly that — they were written before `packages/platform-api` and
+   * `packages/backend-client` landed, and once those packages existed the
+   * revert silently deleted 41 tracked files and reported `REVERT FAILED`
+   * *after* the damage. A probe must never be able to delete what it is
+   * probing; fail loudly at registration instead.
+   */
   createdDir(rel) {
+    if (existsSync(join(this.root, rel)))
+      throw new Error(
+        `createdDir(\`${rel}\`) would make the revert rm -rf a directory that already exists. ` +
+          `A mutation that needs to touch a real package must back up the individual files it ` +
+          `overwrites (snapshot.backup) and must not register the package directory for removal.`,
+      );
     this.#created.push(rel);
   }
 
@@ -188,6 +205,24 @@ function addDependency(snapshot, rel, line) {
   snapshot.backup(rel);
   const abs = join(REPO_ROOT, rel);
   writeFileSync(abs, `${readFileSync(abs, 'utf8').trimEnd()}\n${line}\n`);
+}
+
+/**
+ * Append a path dependency into one named TOML table instead of the end of file.
+ *
+ * `addDependency` is only correct when `[dependencies]` is the last table.
+ * `packages/platform-api/Cargo.toml` ends with `[dev-dependencies]`, so an
+ * end-of-file append there would silently produce a dev-dependency — a weaker
+ * probe than the rule intends, and one whose outcome depends on whether
+ * `cargo metadata` happens to resolve dev-deps of a workspace member.
+ */
+function addDependencyTo(snapshot, rel, table, line) {
+  snapshot.backup(rel);
+  const abs = join(REPO_ROOT, rel);
+  const text = readFileSync(abs, 'utf8');
+  const out2 = text.replace(`\n[${table}]\n`, `\n[${table}]\n${line}\n`);
+  if (out2 === text) throw new Error(`${rel} has no [\`${table}\`] table to extend`);
+  writeFileSync(abs, out2);
 }
 
 /**
@@ -304,16 +339,20 @@ const MUTATIONS = [
     title: 'platform-api depends back on datazen-runtime (ports <-> use cases cycle)',
     crate: 'datazen-platform-api',
     apply(snapshot) {
-      addMembers(snapshot, ['packages/platform-api']);
-      addMemberDir(
+      // `packages/platform-api` is a real package now, and already a workspace
+      // member, so this only adds the back-edge. It must back up the manifest it
+      // edits rather than register the package directory for removal: the revert
+      // here is an `rm -rf`, and registering a real package deleted its 26
+      // tracked files.
+      addDependencyTo(
         snapshot,
-        'packages/platform-api',
-        'datazen-platform-api',
-        `[dependencies]\ndatazen-runtime = { path = "${join(REPO_ROOT, 'packages/runtime')}" }\n`,
+        'packages/platform-api/Cargo.toml',
+        'dependencies',
+        `datazen-runtime = { path = "${join(REPO_ROOT, 'packages/runtime')}" }`,
       );
       return () =>
-        readOrEmpty('Cargo.toml').includes('"packages/platform-api",') &&
-        readOrEmpty('packages/platform-api/Cargo.toml').includes('datazen-runtime');
+        /^\[dependencies\]$/m.test(readOrEmpty('packages/platform-api/Cargo.toml')) &&
+        /datazen-runtime = \{ path = /m.test(readOrEmpty('packages/platform-api/Cargo.toml'));
     },
   },
   {
@@ -349,14 +388,16 @@ const MUTATIONS = [
     title: 'backend-client calls fetch() — a transport-agnostic contract gains a transport',
     crate: 'packages/backend-client',
     apply(snapshot) {
-      const rel = 'packages/backend-client';
-      mkdirSync(join(REPO_ROOT, rel, 'src'), { recursive: true });
-      snapshot.createdDir(rel);
+      // `packages/backend-client` is a real package now. Overwrite the one
+      // source file and back it up; do not register the package directory for
+      // removal — that deleted its 15 tracked files on revert.
+      const rel = 'packages/backend-client/src/index.ts';
+      snapshot.backup(rel);
       writeFileSync(
-        join(REPO_ROOT, rel, 'src/index.ts'),
+        join(REPO_ROOT, rel),
         'export async function probe(url: string) {\n  const res = await fetch(url);\n  return res.json();\n}\n',
       );
-      return () => readOrEmpty('packages/backend-client/src/index.ts').includes('fetch(');
+      return () => readOrEmpty(rel).includes('fetch(');
     },
   },
   {
