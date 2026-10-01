@@ -87,6 +87,75 @@ jobs:
       # generated.ts）之后、site 检查之前，避开 rust job 里 resolve-drivers 那段。
       - name: Driver UI unit tests
         run: pnpm test:unit:drivers
+      # The step above only ever judges `basic`, because that is what
+      # `pnpm install`'s prepare hook seeds (ensure-generated-drivers.mjs ->
+      # resolve-drivers.mjs default). A driver form `basic` does not register
+      # (e.g. `sqlserver`) therefore escapes Host unit coverage entirely.
+      # This step re-runs the same suite under `all` (all registered PATH
+      # drivers: no git driver, so no deploy key and no network needed).
+      # The set lives only in run-unit-driver-set.mjs, never inline here.
+      #
+      # Status: GREEN, not known-red. An earlier revision of this comment
+      # claimed two blockers; both were artifacts of a stale base
+      # (7f35e1932, which predates d1edfa7ba / f4c2e5078 by 9 commits) and
+      # do not exist on feat/platform-p0 @ 7559759b7. Re-measured there with
+      # codegen --drivers=all + generate-builtin-locales:
+      #   Test Files 555 passed (555) | Tests 5677 passed (5677), exit 0, 140s
+      #   tester_tunnelValidationMatrix.test.tsx alone: 36 passed, exit 0
+      # The ContentView / QueryPanel.executeCancel failures named earlier were
+      # the ones cbf87a4c0 fixed ("修复 schemaStore/panelStore mock 漂移导致
+      # 的 18 个前端单测失败"). Do not reintroduce a blocked list here without
+      # re-measuring on the current base.
+      #
+      # Why still a soft gate, then — a different and much narrower reason:
+      # this step and the 10s testTimeout in vitest.config.ts have never
+      # executed on a real GitHub runner. A green run on an 8-core dev host is
+      # not evidence about a runner whose spec this project does not control.
+      # The step reports and does not block so the first CI runs can be
+      # observed; promote it to a hard gate (drop continue-on-error) once it is
+      # green on several consecutive runs, and update the row in
+      # docs/development/ci-test-matrix.md at the same time.
+      #
+      # COUPLING WARNING: dropping continue-on-error ALSO breaks a guard —
+      # scripts/__tests__/run-unit-driver-set.test.ts:149 asserts it is true
+      # ("expected undefined to be true"). Promoting this step to a hard gate
+      # without editing that assertion turns CI red. The two edits are one
+      # change, not two.
+      #
+      # Timeout budget, measured not guessed (per-test wall time, all 5714
+      # tests, --reporter=json):
+      #   2 workers, load 13  (a local --maxWorkers=2 low-load run) p95 57ms  p99 170ms  max  1745ms
+      #   8 workers, load  7  (mild contention)                    p95 118ms p99 336ms  max  4392ms
+      #   8 workers, load 48  (6-7x contention)                    p95 329ms p99 918ms  max 11629ms
+      # Vitest's 5s default leaves the load-7 worst case at 88% of budget, so
+      # it has no headroom under any further contention. Note testTimeout only fires for
+      # tests that yield: in the load-48 run the three slowest tests (11629ms,
+      # 6540ms, 5236ms) overran 5s and still passed, and the only real timeout
+      # was DataTransferWindow, which awaits. Full derivation in
+      # docs/development/ci-test-matrix.md.
+      - name: Frontend unit tests (all path drivers)
+        run: pnpm test:unit:driver-set
+        continue-on-error: true
+
+      # Guards the Host test count quoted in vitest.config.ts, in the
+      # timeout-budget comment above, and in docs/development/ci-test-matrix.md.
+      # Unlike scripts/__tests__/run-unit-driver-set.test.ts, which only
+      # requires those three numbers to AGREE with each other, this compares
+      # them against what the collector actually found, so three consistently
+      # wrong numbers go red. It is a separate step, not a test case, because
+      # the only machine-produced count is the one `vitest list` produces and
+      # collecting it is not cheap: measured on this host at 126.96s wall /
+      # 558s user CPU / ~300 MB peak RSS over 557 files (cold cache, which is
+      # what CI gets; a warm-cache `vitest list` measures 87.31s), against
+      # 0.25s for `vitest list --filesOnly`
+      # (which yields the file count, not the test count). Nesting that in a
+      # vitest case would blow the suite's own 10s testTimeout documented
+      # above. It runs after the driver-set step because the count is a
+      # property of the `all` driver set, and the step above is what generates
+      # that state. Hard gate on purpose: a stale count is a documentation
+      # defect, not a flaky test.
+      - name: Guard Host test count
+        run: pnpm test:unit-count
 
       - name: Check site changes
         id: site-changes
