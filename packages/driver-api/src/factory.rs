@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use crate::capabilities::CapabilitySet;
+use crate::resource::ResourceProvider;
 use crate::traits::{DatabaseDriver, KeyValueDriver};
 
 /// Factory that plugins implement to register their driver.
@@ -45,6 +47,23 @@ pub trait DatabaseDriverFactory: Send + Sync + 'static {
     fn create_kv(&self) -> Option<Arc<dyn KeyValueDriver>> {
         None
     }
+
+    /// The opaque-resource provider this driver implements, if any.
+    ///
+    /// Defaults to `None`, which means "this driver has not been migrated to
+    /// the resource contract yet" — never "this driver supports everything".
+    /// A caller must go through [`DatabaseDriverFactory::require_resource_provider`]
+    /// so a missing provider surfaces as an error instead of a silent no-op.
+    fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
+        None
+    }
+
+    /// The capabilities this driver declares, for drivers that expose a
+    /// provider. Defaults to the all-unknown set, so an unmigrated driver
+    /// claims nothing.
+    fn resource_capabilities(&self) -> CapabilitySet {
+        CapabilitySet::default()
+    }
 }
 
 // Collect all factories registered across the binary (including plugins).
@@ -75,4 +94,64 @@ pub fn create_driver(driver_id: &str) -> Option<Arc<dyn DatabaseDriver>> {
         .into_iter()
         .find(|factory| factory.driver_id() == driver_id)
         .map(|factory| factory.create())
+}
+
+/// Fail-closed accessor: the provider or an explicit "not migrated" error.
+///
+/// This exists so that "the driver has no resource provider" can never be
+/// mistaken for "the driver has nothing to do" — the defect that lets 13 of 15
+/// drivers report a successful no-op cancel today
+/// (`driver-capability-migration.md` §7.1).
+pub fn require_resource_provider(
+    factory: &dyn DatabaseDriverFactory,
+) -> Result<Arc<dyn ResourceProvider>, ResourceProviderMissing> {
+    factory.resource_provider().ok_or(ResourceProviderMissing {
+        driver_id: factory.driver_id(),
+    })
+}
+
+/// A factory that has not been migrated to the resource contract.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("driver {driver_id} does not implement the resource provider contract")]
+pub struct ResourceProviderMissing {
+    pub driver_id: &'static str,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::traits::DatabaseDriver;
+
+    struct NoProviderFactory;
+
+    impl DatabaseDriverFactory for NoProviderFactory {
+        fn create(&self) -> Arc<dyn DatabaseDriver> {
+            unimplemented!("this factory only exists to prove the accessor rejects it")
+        }
+
+        fn driver_id(&self) -> &'static str {
+            "legacy-fixture"
+        }
+    }
+
+    #[test]
+    fn a_factory_without_a_provider_is_an_error_not_an_empty_provider() {
+        let factory = NoProviderFactory;
+        let error = match require_resource_provider(&factory) {
+            Ok(_) => panic!("a factory with no provider must not yield a provider"),
+            Err(error) => error,
+        };
+        assert_eq!(error.driver_id, "legacy-fixture");
+    }
+
+    #[test]
+    fn an_unmigrated_factory_declares_no_capabilities() {
+        let capabilities = NoProviderFactory.resource_capabilities();
+        // Every field defaults to unknown/unsupported, so an unmigrated driver
+        // cannot accidentally be read as a capable one.
+        assert_eq!(capabilities.stateful_session, Default::default());
+        assert_eq!(capabilities.precise_cancel, Default::default());
+        assert!(!capabilities.transactions.savepoints.enables_feature());
+        assert!(!capabilities.declares_anything());
+    }
 }
