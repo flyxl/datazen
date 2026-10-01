@@ -491,7 +491,16 @@ const FRONTEND_DRIVER_CONFIG = {
   },
 };
 
-function generateFrontendRegistry(drivers, variant) {
+/**
+ * Render the contents of `src/extensions/generated.ts` for a driver list.
+ *
+ * Split out of `generateFrontendRegistry` so tests can obtain the artifact
+ * without writing to the checkout. The emitted `DRIVER_VALIDATORS` map is the
+ * only place that records "this driver form owns a validator", and asserting on
+ * it needs the real generator rather than a restatement of
+ * `FRONTEND_DRIVER_CONFIG`. Pure apart from reading `drivers-registry.json`.
+ */
+export function renderFrontendRegistry(drivers, variant) {
   const importLines = [];
   const iconImportLines = [];
   const dbEntryLines = [];
@@ -893,8 +902,16 @@ export function hasDriverCommand(driverId: string, command: string): boolean {
 }
 `;
 
+  return content;
+}
+
+function generateFrontendRegistry(drivers, variant) {
   const outPath = workPath('src/extensions/generated.ts');
-  reportWrite(outPath, writeIfChanged(outPath, content), `(variant: ${variant})`);
+  reportWrite(
+    outPath,
+    writeIfChanged(outPath, renderFrontendRegistry(drivers, variant)),
+    `(variant: ${variant})`,
+  );
 }
 
 /**

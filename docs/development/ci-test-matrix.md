@@ -9,6 +9,7 @@
 |------|-------------------|--------------------------|---------------|
 | 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis） | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
 | Host 前端单测 | ✅ `pnpm test:unit` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` |
+| 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck` | 同上 | `pnpm typecheck` |
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
 | driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
@@ -24,7 +25,7 @@
 
 1. **Basic 必测**：每个 PR 与 `main` push 均跑 basic 四驱动 + Host 三件套（TS 单测 / Host lib / driver-api / ai-api）。
 2. **All 不进 PR CI**：`resolve-drivers --drivers=all` 仅用于 Release **All** SKU 与本地全量验证，避免 PR 流水线编译全部 path 驱动。
-3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）**不在 PR CI 矩阵内**；修改某驱动 crate 时，作者须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 UI 单测 / E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
+3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）的 **Rust lib 不在 PR CI 矩阵内**；其 **UI 单测全部进 PR CI**（`pnpm test:unit:drivers` 按文件系统收集 `packages/drivers/*/ui/__tests__/`，与 `--drivers=` 选型无关，因此可选驱动同样被覆盖）。改 Rust 时作者仍须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
 4. **契约矩阵**：Host Connection Contract（`e2e/contract/`）验证 PG/MySQL/SQLite 上同一套 Host UI journey；**不进 PR CI**，由维护者在合并前或 R 阶段跑 `pnpm e2e:contract:matrix`；fixtures 单测 `pnpm test:unit:e2e-contract` 可在本地或后续 CI 扩展中启用。
 
 ## 2. PR CI 步骤（与 workflow 对齐）
@@ -44,6 +45,7 @@
 | 类型 | `pnpm typecheck` | `tsc --noEmit` |
 | 守卫 | `check-managed-stubs.mjs`、`check-structure-editor-guardrails.mjs` 等 | 防止误提交 inject 产物 |
 | Host 单测 | `pnpm test:unit` | Vitest；`pretest:unit` 会 `--codegen-only --drivers=basic` |
+| 驱动 UI 单测 | `pnpm test:unit:drivers` | `packages/drivers/*/ui/__tests__/`；与 Host 单测互不收集，两步都必须跑 |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
 
 ### 2.2 rust job（Rust 段，浅克隆）
@@ -89,6 +91,7 @@ cargo test -p datazen-ai-api --lib
 node scripts/generate-builtin-locales.mjs
 pnpm typecheck
 pnpm test:unit
+pnpm test:unit:drivers
 node scripts/resolve-drivers.mjs --drivers=basic
 cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
@@ -99,7 +102,7 @@ cargo test -p datazen-ai-api --lib
 
 若改动 `site/`：`node scripts/check-site-seo.mjs`。
 
-若改动可选 path 驱动：追加 `cargo test -p datazen-driver-<id> --lib` 与 `pnpm test:unit:drivers`（对应 crate 的 `ui/__tests__/`）。
+若改动可选 path 驱动的 **Rust**：追加 `cargo test -p datazen-driver-<id> --lib`（该 crate 的 UI 单测已由 PR CI 的 `pnpm test:unit:drivers` 覆盖，无需再手工跑）。
 
 若改动 Host UI 交互路径：同 PR 更新 E2E（见 [e2e-testing.md](./e2e-testing.md)）；全量 E2E 耗时长，**不要求**与 PR CI 同跑，但须在 PR test plan 说明。
 

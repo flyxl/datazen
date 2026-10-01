@@ -80,6 +80,14 @@ jobs:
         # cross-repo assertions live in the Pro repo and run in the Pro's CI.
 
         run: pnpm test:unit
+
+      # Path 驱动 UI 单测（AGENTS.md「驱动测试落点」表）。宿主单测不碰
+      # packages/drivers，所以 `pnpm test:unit` 从不收集这些用例；不单独跑一步
+      # 就没有任何合并门禁执行它们。放在 codegen（`pretest:unit` 产生的
+      # generated.ts）之后、site 检查之前，避开 rust job 里 resolve-drivers 那段。
+      - name: Driver UI unit tests
+        run: pnpm test:unit:drivers
+
       - name: Check site changes
         id: site-changes
         run: |

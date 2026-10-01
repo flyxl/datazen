@@ -202,9 +202,7 @@ describe('[tester] validate() variant matrix is exhaustive for this build', () =
   });
 
   it('test_tester every driver validator this build registers has a VARIANTS row', () => {
-    const validatorsInBuild = [
-      ...new Set(Object.values(DB_REGISTRY).map((m) => m.connectionForm)),
-    ]
+    const validatorsInBuild = [...new Set(Object.values(DB_REGISTRY).map((m) => m.connectionForm))]
       .filter((formVariant) => !!getDriverValidator(formVariant))
       .sort();
     // The static manifest, which is codegen-independent: these are the variants the
@@ -247,10 +245,16 @@ describe('[tester] inline tunnel validation equivalence matrix', () => {
     // the driver come out green; that would make the matrix lie about the product defect
     // it exists to guard. `getDriverValidator` reads the same codegen output as
     // `DB_REGISTRY`, so for a driver this build did not inject it is `undefined` by
-    // construction and there is no honest assertion available there. The check is real
-    // wherever the driver exists: it runs for `redis` in every build, and for `sqlserver`
-    // under `--drivers=basic,sqlserver` / `--drivers=all`, where dropping the
-    // `validator:` registration from `resolve-drivers.mjs` turns it red.
+    // construction and there is no honest assertion available here.
+    //
+    // That gap used to be PR CI's own: PR builds `--drivers=basic`, where the sqlserver
+    // row above is skipped and this file never checks the registration in the pipeline
+    // that gates merges. `packages/drivers/sqlserver/ui/__tests__/connectionFormRegistration.test.ts`
+    // closes it — it asks the generator what it would emit instead of reading the current
+    // `generated.ts`, so it holds in every set, `--drivers=basic` included. Verified by
+    // mutation there: deleting `validator: { export: 'sqlServerValidate' }` from
+    // `resolve-drivers.mjs` fails 4 of its assertions with no driver codegen involved.
+    // `pnpm test:unit:drivers` runs in the `frontend` job, so that suite gates merges.
     if (isInThisBuild(variant)) {
       expect(!!getDriverValidator(variant.formVariant)).toBe(variant.hasDriverValidator);
     }
