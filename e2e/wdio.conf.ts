@@ -408,6 +408,7 @@ export const config: WebdriverIO.Config = {
       './specs/journeys/data-transfer-mysql-pg-journey.ts',
       './specs/journeys/data-transfer-tuple-recordset-journey.ts',
       './specs/journeys/data-transfer-fk-order-journey.ts',
+      './specs/data-transfer-structure-objects.ts',
     ],
     // Schema Diff only (`pnpm e2e:schema-diff`)
     'schema-diff': [
