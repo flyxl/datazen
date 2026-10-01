@@ -60,7 +60,7 @@ macro_rules! string_id {
 }
 
 string_id!(
-    /// 持久化连接配置 id（原 `configId`，落盘）。
+    /// 持久化连接配置 id，落盘持久化。
     ConnectionId
 );
 string_id!(
