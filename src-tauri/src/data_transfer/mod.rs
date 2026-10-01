@@ -53,4 +53,6 @@ mod execution_tests;
 #[cfg(test)]
 mod sql_structure_fixtures;
 #[cfg(test)]
+mod sql_structure_object_coverage_tests;
+#[cfg(test)]
 mod sql_structure_object_tests;

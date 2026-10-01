@@ -39,7 +39,7 @@ impl SyncSourceAdapter for Source {
 pub(crate) struct Target;
 
 impl Target {
-    fn default_target() -> Self {
+    pub(crate) fn default_target() -> Self {
         Target
     }
 }
