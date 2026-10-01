@@ -138,10 +138,10 @@ jobs:
       # them against what the collector actually found, so three consistently
       # wrong numbers go red. It is a separate step, not a test case, because
       # the only machine-produced count is the one `vitest list` produces and
-      # collecting it is not cheap: measured here at 188.81s wall / 563s user
-      # CPU / ~330 MB peak RSS over 556 files (cold cache, at the 5695-test
-      # baseline this guard was written against; a warm-cache run of the same
-      # step measures ~91s), against 0.74s for `vitest list --filesOnly`
+      # collecting it is not cheap: measured on this host at 126.96s wall /
+      # 558s user CPU / ~300 MB peak RSS over 557 files (cold cache, which is
+      # what CI gets; a warm-cache `vitest list` measures 87.31s), against
+      # 0.25s for `vitest list --filesOnly`
       # (which yields the file count, not the test count). Nesting that in a
       # vitest case would blow the suite's own 10s testTimeout documented
       # above. It runs after the driver-set step because the count is a

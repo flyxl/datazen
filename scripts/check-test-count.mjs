@@ -6,18 +6,18 @@
  * Why this is a standalone script and not a vitest case:
  * the only machine-produced count available is the one vitest itself reports,
  * and collecting it is expensive. Measured on this host (driver set `all`,
- * macOS, vitest 4.1.10, node v22.20.0), at the 5695-test baseline this
- * script was written against:
+ * macOS, vitest 4.1.10, node v22.20.0), at the 5714-test / 557-file baseline:
  *
- *   npx vitest list --filesOnly   ->    0.74s,   125 MB peak RSS,   556 lines
- *   npx vitest list               ->  188.81s,   330 MB peak RSS,  5695 lines
+ *   npx vitest list --filesOnly   ->    0.25s,   115 MB peak RSS,   557 lines
+ *   npx vitest list               ->   87.31s,   299 MB peak RSS,  5714 lines
+ *   this script, cold cache (CI)   ->  126.96s,   300 MB peak RSS,  5714 tests
  *
- * `--filesOnly` is 255x cheaper but only yields the file count, which nothing
+ * `--filesOnly` is ~349x cheaper but only yields the file count, which nothing
  * in the repo quotes. The test count needs the full collect, so a vitest case
- * asserting it would have to nest a ~189s vitest inside a running vitest: it
+ * asserting it would have to nest a ~87s vitest inside a running vitest: it
  * cannot fit the suite's own 10s `testTimeout` (documented right above it),
- * it would re-transform all ~556 files inside an already-transformed worker,
- * and it would put ~330 MB on top of the pool for three minutes on every
+ * it would re-transform all ~557 files inside an already-transformed worker,
+ * and it would put ~300 MB on top of the pool for over a minute on every
  * `pnpm test:unit` locally — in exchange for checking one integer.
  *
  * So the measurement is a CI step of its own, after the driver-set step, and
@@ -67,9 +67,21 @@ const MAX_BUFFER = 256 * 1024 * 1024;
  * @type {{ id: string, file: string, pattern: RegExp }[]}
  */
 export const TEST_COUNT_CLAIMS = [
-  { id: 'vitest.config.ts', file: 'vitest.config.ts', pattern: /per-test wall time over all (\d+) Host tests/ },
-  { id: 'ci.yml', file: '.github/workflows/ci.yml', pattern: /per-test wall time, all (\d+)\s+#\s*tests, --reporter=json\)/ },
-  { id: 'ci-test-matrix.md', file: 'docs/development/ci-test-matrix.md', pattern: /对全部 (\d+) 个 Host 用例逐条统计/ },
+  {
+    id: 'vitest.config.ts',
+    file: 'vitest.config.ts',
+    pattern: /per-test wall time over all (\d+) Host tests/,
+  },
+  {
+    id: 'ci.yml',
+    file: '.github/workflows/ci.yml',
+    pattern: /per-test wall time, all (\d+)\s+#\s*tests, --reporter=json\)/,
+  },
+  {
+    id: 'ci-test-matrix.md',
+    file: 'docs/development/ci-test-matrix.md',
+    pattern: /对全部 (\d+) 个 Host 用例逐条统计/,
+  },
 ];
 
 /**
@@ -81,7 +93,14 @@ export function extractTestCountClaims(sources) {
   return TEST_COUNT_CLAIMS.map(({ id, file, pattern }) => {
     const text = sources[file];
     if (typeof text !== 'string') throw new Error(`no source text for ${file}`);
-    const found = [...text.matchAll(new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`))];
+    const found = [
+      ...text.matchAll(
+        new RegExp(
+          pattern.source,
+          pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`,
+        ),
+      ),
+    ];
     if (found.length === 0) {
       throw new Error(
         `${file}: no Host test count found for ${pattern}. ` +
@@ -97,7 +116,9 @@ export function extractTestCountClaims(sources) {
     }
     const count = Number(found[0][1]);
     if (!Number.isInteger(count) || count <= 0) {
-      throw new Error(`${file}: Host test count parsed as ${found[0][1]}, which is not a positive integer`);
+      throw new Error(
+        `${file}: Host test count parsed as ${found[0][1]}, which is not a positive integer`,
+      );
     }
     return { id, file, count };
   });
@@ -112,7 +133,9 @@ export function findTestCountProblems(claims, measured) {
   const problems = [];
   for (const claim of claims) {
     if (claim.count !== measured) {
-      problems.push(`${claim.file} quotes ${claim.count} Host tests, collector measured ${measured}`);
+      problems.push(
+        `${claim.file} quotes ${claim.count} Host tests, collector measured ${measured}`,
+      );
     }
   }
   const distinct = new Set(claims.map((c) => c.count));
@@ -140,7 +163,9 @@ export function findTestCountProblems(claims, measured) {
 export function collectTestCount(root) {
   const plan = planDriverSetCommands({ drivers: DEFAULT_DRIVER_SET, vitestArgs: ['list'], root });
   if (plan.length !== 3) {
-    throw new Error(`planDriverSetCommands returned ${plan.length} legs; expected 2 codegen legs + 1 vitest leg`);
+    throw new Error(
+      `planDriverSetCommands returned ${plan.length} legs; expected 2 codegen legs + 1 vitest leg`,
+    );
   }
   const vitestLeg = plan[plan.length - 1];
   if (vitestLeg.args[1] !== 'run') {
@@ -153,10 +178,19 @@ export function collectTestCount(root) {
   const listLeg = { cmd: vitestLeg.cmd, args: [vitestLeg.args[0], 'list'] };
 
   for (const { cmd, args } of plan.slice(0, -1)) {
-    const codegen = spawnSync(cmd, args, { cwd: root, encoding: 'utf8', maxBuffer: MAX_BUFFER, shell: false });
+    const codegen = spawnSync(cmd, args, {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: MAX_BUFFER,
+      shell: false,
+    });
     if (codegen.error) throw codegen.error;
     if (codegen.status !== 0) {
-      const tail = `${codegen.stdout ?? ''}${codegen.stderr ?? ''}`.trim().split('\n').slice(-15).join('\n');
+      const tail = `${codegen.stdout ?? ''}${codegen.stderr ?? ''}`
+        .trim()
+        .split('\n')
+        .slice(-15)
+        .join('\n');
       process.stderr.write(`[test-count] codegen leg failed (${args.join(' ')}):\n${tail}\n`);
       process.exit(1);
     }
@@ -170,7 +204,11 @@ export function collectTestCount(root) {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    const tail = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim().split('\n').slice(-15).join('\n');
+    const tail = `${result.stdout ?? ''}${result.stderr ?? ''}`
+      .trim()
+      .split('\n')
+      .slice(-15)
+      .join('\n');
     process.stderr.write(`[test-count] vitest list failed:\n${tail}\n`);
     process.exit(1);
   }

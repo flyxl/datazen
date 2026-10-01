@@ -8,7 +8,11 @@ import {
   parseUnitDriverSetArgs,
   planDriverSetCommands,
 } from '../run-unit-driver-set.mjs';
-import { TEST_COUNT_CLAIMS, extractTestCountClaims, findTestCountProblems } from '../check-test-count.mjs';
+import {
+  TEST_COUNT_CLAIMS,
+  extractTestCountClaims,
+  findTestCountProblems,
+} from '../check-test-count.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const ciWorkflowRaw = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8');
@@ -224,7 +228,10 @@ describe('vitest timeout budget', () => {
     // the comment grows whenever the measurements are refreshed, and a fixed
     // window silently shrank once already, hiding 1745ms/4392ms.
     const basisIndex = vitestConfigRaw.indexOf("// Vitest's 5s default");
-    expect(basisIndex, 'the measurement-basis anchor for testTimeout was renamed or removed').toBeGreaterThan(-1);
+    expect(
+      basisIndex,
+      'the measurement-basis anchor for testTimeout was renamed or removed',
+    ).toBeGreaterThan(-1);
     const rationale = vitestConfigRaw.slice(basisIndex, valueIndex);
     expect(rationale).toContain('1745ms');
     expect(rationale).toContain('4392ms');
@@ -248,7 +255,9 @@ function splitSentences(text: string): string[] {
   return text
     .replace(/\r\n/g, '\n')
     .split(/\n[ \t]*\n/)
-    .flatMap((paragraph) => paragraph.replace(/\n[ \t]*/g, ' ').split(/(?<=[。；;：:])|(?<=\.)(?=\s)/))
+    .flatMap((paragraph) =>
+      paragraph.replace(/\n[ \t]*/g, ' ').split(/(?<=[。；;：:])|(?<=\.)(?=\s)/),
+    )
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
@@ -279,7 +288,10 @@ describe('Host test count quoted in prose', () => {
     // literal text to identify the one place the count is stated.
     for (const { id, pattern } of TEST_COUNT_CLAIMS) {
       const literal = pattern.source.replace(/\\[dswDSW]|[(){}?+*|^\$.]/g, '');
-      expect(literal.length, `${id} count anchor is not specific enough: ${pattern.source}`).toBeGreaterThanOrEqual(12);
+      expect(
+        literal.length,
+        `${id} count anchor is not specific enough: ${pattern.source}`,
+      ).toBeGreaterThanOrEqual(12);
     }
   });
 
@@ -288,8 +300,14 @@ describe('Host test count quoted in prose', () => {
     // behind it, so the wiring is itself part of what is asserted.
     expect(packageJsonRaw).toContain('"test:unit-count": "node scripts/check-test-count.mjs"');
 
-    const steps = (ciWorkflow as { jobs: Record<string, { steps: { name?: string; run?: string; 'continue-on-error'?: boolean }[] }> })
-      .jobs.frontend.steps;
+    const steps = (
+      ciWorkflow as {
+        jobs: Record<
+          string,
+          { steps: { name?: string; run?: string; 'continue-on-error'?: boolean }[] }
+        >;
+      }
+    ).jobs.frontend.steps;
     const countIndex = steps.findIndex((s) => s.run === 'pnpm test:unit-count');
     expect(countIndex, 'ci.yml must run pnpm test:unit-count').toBeGreaterThan(-1);
     expect(steps[countIndex]['continue-on-error']).toBeUndefined();
@@ -318,26 +336,42 @@ describe('Host test count quoted in prose', () => {
     // `claims` carries no pattern, so pair it back with the anchor by file:
     // replacing the anchored match is what makes this rewrite independent of
     // whatever the files currently quote.
-    const anchored = TEST_COUNT_CLAIMS.map((entry) => ({ ...entry, count: claims.find((c) => c.file === entry.file)!.count }));
+    const anchored = TEST_COUNT_CLAIMS.map((entry) => ({
+      ...entry,
+      count: claims.find((c) => c.file === entry.file)!.count,
+    }));
     /** Rewrite only the count inside that claim's own anchored match. */
-    const rewrite = ({ file, pattern, count }: { file: string; pattern: RegExp; count: number }, to: number) =>
+    const rewrite = (
+      { file, pattern, count }: { file: string; pattern: RegExp; count: number },
+      to: number,
+    ) =>
       countSourceByFile[file].replace(pattern, (match) => {
         expect(match, `${file} anchor no longer matches`).toContain(String(count));
         return match.replace(String(count), String(to));
       });
 
-    const allWrong = Object.fromEntries(anchored.map((c) => [c.file, rewrite(c, wrong)])) as typeof countSources;
+    const allWrong = Object.fromEntries(
+      anchored.map((c) => [c.file, rewrite(c, wrong)]),
+    ) as typeof countSources;
     const wrongClaims = extractTestCountClaims(allWrong);
     expect(wrongClaims.map((c) => c.count)).toEqual([wrong, wrong, wrong]);
-    expect(new Set(wrongClaims.map((c) => c.count)).size, 'the equality guard is blind here, by construction').toBe(1);
+    expect(
+      new Set(wrongClaims.map((c) => c.count)).size,
+      'the equality guard is blind here, by construction',
+    ).toBe(1);
     expect(findTestCountProblems(wrongClaims, quoted)).toEqual(
-      TEST_COUNT_CLAIMS.map(({ file }) => `${file} quotes ${wrong} Host tests, collector measured ${quoted}`),
+      TEST_COUNT_CLAIMS.map(
+        ({ file }) => `${file} quotes ${wrong} Host tests, collector measured ${quoted}`,
+      ),
     );
 
     // Contradictory numbers are caught twice over: once as three mismatches,
     // once as the disagreement — and the cheap half sees the disagreement.
     const docClaim = anchored.find((c) => c.file === 'docs/development/ci-test-matrix.md')!;
-    const contradictory = { ...allWrong, [docClaim.file]: rewrite(docClaim, other) } as typeof countSources;
+    const contradictory = {
+      ...allWrong,
+      [docClaim.file]: rewrite(docClaim, other),
+    } as typeof countSources;
     const splitClaims = extractTestCountClaims(contradictory);
     expect(new Set(splitClaims.map((c) => c.count)).size).toBe(2);
     expect(findTestCountProblems(splitClaims, quoted)).toHaveLength(4);
@@ -453,7 +487,10 @@ describe('retry budget in vitest.config.ts', () => {
     const costIndex = vitestConfigRaw.indexOf('COST, stated plainly');
     expect(costIndex, 'the COST declaration next to `retry` was deleted').toBeGreaterThan(-1);
     expect(vitestConfigRaw).toMatch(/reported as PASSED, so an all-green run is NOT evidence/);
-    expect(retryKeyIndex - costIndex, 'the COST declaration drifted away from the `retry` key').toBeLessThan(1200);
+    expect(
+      retryKeyIndex - costIndex,
+      'the COST declaration drifted away from the `retry` key',
+    ).toBeLessThan(1200);
   });
 });
 
