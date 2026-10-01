@@ -27,6 +27,29 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Vitest's 5s default is not a defensible budget for this suite. Measured
+    // per-test wall time over all 5691 Host tests (driver set `all`, macOS,
+    // 8 cores) at three contention levels, via `--reporter=json`:
+    //
+    //   2 workers,  load 13  (shape of a 2-vCPU CI runner)  p95 57ms  p99 170ms  max  1745ms  0 failures
+    //   8 workers,  load  7  (mild oversubscription)        p95 118ms p99 336ms  max  4392ms  0 failures
+    //   8 workers,  load 48  (6-7x oversubscription)        p95 329ms p99 918ms  max 11629ms  1 timeout
+    //
+    // The 8-worker / load-7 row is the one that matters: a single test already
+    // sits at 88% of a 5s budget on an 8-core dev box, so a GitHub-hosted
+    // runner (2-4 vCPU) with any competing load has no headroom left. 10s is
+    // ~2.3x that measured worst case and ~4.4x the load-7 p99.9 (2299ms).
+    //
+    // Scope of the guarantee: `testTimeout` can only fire for tests that YIELD
+    // to the event loop. In the load-48 run, DiffDetail (11629ms), resolve-pro
+    // (6540ms) and tableDataStore (5236ms) all overran 5s and still PASSED,
+    // because they are CPU-bound and never yield; the only test that actually
+    // timed out was DataTransferWindow, which awaits. So this raise fixes the
+    // awaiting-timeout flake class and deliberately leaves pathological 6x
+    // oversubscription still failing — a hang must stay distinguishable from
+    // slowness. Cost: a genuinely hung test now burns 10s instead of 5s before
+    // reporting. See docs/development/ci-test-matrix.md.
+    testTimeout: 10_000,
     include: [
       'src/**/*.test.{ts,tsx}',
       'scripts/__tests__/**/*.test.{ts,mjs}',
