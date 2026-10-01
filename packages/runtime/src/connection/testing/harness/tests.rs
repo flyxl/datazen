@@ -194,14 +194,14 @@ fn a_registered_handle_is_visible_in_the_registry() {
     );
 }
 
-/// §9.2 `commit_session_transaction` 注入 F9：结果**不可判定**。
+/// §9.2 `commit_session_transaction` 注入 F8：结果**不可判定**。
 ///
 /// 硬规则有三条（doc :472、:774）：
 /// 1. `effectOutcome` 必须是 `unknown`，绝不能是 `completed`；
 /// 2. `errorCode` 取**实际成因**（这里是 `protocolError`），不是笼统的 `unknown`；
 /// 3. **不自动再执行**，也**不返回** `TransactionResolutionRequired`。
 ///
-/// 第 3 条的判据是台账：`transactionOperation` 上只排了一个 F9，脚本额度用尽后
+/// 第 3 条的判据是台账：`transactionOperation` 上只排了一个 F8，脚本额度用尽后
 /// 第二次提交就是基线路径，所以「有没有被自动重放」由 `script.pending` 与
 /// 事务状态机共同表达 —— 这里断言 `pending == 0`（不重放、额度已被这一次用掉）。
 #[test]
@@ -230,7 +230,7 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
         &acquired.handle,
         json!({ "handleId": handle_id }),
     );
-    let injected = injected.expect("F9 注入的是**不可判定**，命令本身仍返回 completion");
+    let injected = injected.expect("F8 注入的是**不可判定**，命令本身仍返回 completion");
 
     assert_eq!(
         injected
@@ -238,7 +238,7 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
             .pointer("/effectOutcome")
             .and_then(|v| v.as_str()),
         Some(EffectOutcome::Unknown.as_str()),
-        "F9 之后 effectOutcome 必须是 unknown（§3.2）"
+        "F8 之后 effectOutcome 必须是 unknown（§3.2）"
     );
     assert_eq!(
         injected.data.pointer("/errorCode").and_then(|v| v.as_str()),
@@ -248,7 +248,7 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
     assert_eq!(
         harness.script().pending(ResourceOp::Transaction),
         0,
-        "F9 额度只应被这一次提交消耗掉；剩余额度就意味着存在自动重放"
+        "F8 额度只应被这一次提交消耗掉；剩余额度就意味着存在自动重放"
     );
     assert!(
         !injected
@@ -269,7 +269,7 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
         .expect("收尾 close_resource 必须成功");
 }
 
-/// §9.2 `rollback_session_transaction` 注入 F10：回滚失败。
+/// §9.2 `rollback_session_transaction` 注入 F8：回滚失败。
 ///
 /// 断言形状（doc :473）：资源进 `Quarantined`、**预算占用保留**、错误是
 /// `ProviderError::RollbackFailed`。台账上必须能看到那条 `Quarantined` 事件，
@@ -309,7 +309,7 @@ fn a_rollback_injected_with_rollback_failed_quarantines_and_keeps_the_budget() {
         Err(GatewayError::Provider(ProviderError::RollbackFailed(reason))) => {
             assert_eq!(reason, "回滚失败：连接已断", "原因必须原样透出，不被吞掉");
         }
-        other => panic!("F10 注入的必须是 RollbackFailed，实际是 {other:?}"),
+        other => panic!("F8 注入的必须是 RollbackFailed，实际是 {other:?}"),
     }
 
     // 台账上必须有 Quarantined，且预算**没有**归还。
@@ -523,6 +523,75 @@ fn a_host_that_re_registers_the_old_handle_on_the_recovery_resource_is_caught() 
         rejection.contains("不得复用旧句柄"),
         "判负信息必须说清是复用了旧句柄，实际是：{rejection}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// §6.3 CM-74：释放顺序（竞态用例编排表；淘汰是宿主行为）
+// ---------------------------------------------------------------------------
+
+/// §6.3 CM-74「淘汰 + 句柄登记并存」：journal 顺序必须是
+/// `handle closed` → `resource Closed` → `permit -1`。
+///
+/// 这里钉的是**次序**而不是「三件事都发生过」：三件都发生但次序错了，宿主就会在
+/// 句柄还挂着的时候先释放预算占用，I1（permit 收支）与 I5（登记册收口）一起破，
+/// 而任何「都发生过」式的断言都照样是绿的。
+///
+/// 钉的是**宿主关闭路径**（[`FakeHarness::close`]），因为 CM-74 的「淘汰」是宿主行为。
+/// 驱动直连路径的顺序是**故意不同**的：`close_resource` 里
+/// `reclaim_registered_handles_on_close` 排在归池判定**之后**——挪到判定之前，
+/// §4.2 F10「句柄非空 → 关闭而非归池」会被一个已经注销干净的 `registered_handles == 0`
+/// 骗过去。所以驱动直连关闭时顺序会退化成
+/// `resource Closed → permit -1 → handle closed`；本用例不覆盖那条路径，
+/// 也不应该在那条路径上断言 CM-74。
+#[test]
+fn closing_a_resource_that_still_holds_a_handle_releases_in_the_cm74_order() {
+    let harness = harness_for(NS_A_KEY);
+    let acquired = harness
+        .acquire(owner(), "pol-3", BudgetClass::Session)
+        .expect("acquire 必须成功");
+    // 故意**不**回滚：句柄仍登记在册，资源带着它进关闭路径（这才是 CM-74 的形状）。
+    let begun = harness
+        .invoke(
+            SessionCommand::BeginSessionTransaction,
+            &acquired.handle,
+            json!({}),
+        )
+        .expect("begin 必须成功");
+    let handle_id = first_handle_id(&begun);
+    let resource_id = acquired.handle.resource_id.clone();
+
+    harness
+        .close(&acquired.handle)
+        .expect("close 必须成功：带着登记句柄关闭是合法路径");
+
+    // 按台账顺序把这三步摘出来（journal entries 是按 seq 追加的，遍历序即发生序）。
+    let mut steps: Vec<&str> = Vec::new();
+    for entry in harness.journal().entries() {
+        match entry {
+            JournalEntry::Handle {
+                handle_id: owner_id,
+                action: HandleAction::Closed,
+                ..
+            } if *owner_id == handle_id => steps.push("handle closed"),
+            JournalEntry::Resource {
+                resource_id: rid,
+                event: ResourceEvent::Closed,
+                ..
+            } if rid.as_ref() == resource_id.as_ref() => steps.push("resource Closed"),
+            JournalEntry::Permit { delta: -1, .. } => steps.push("permit -1"),
+            _ => {}
+        }
+    }
+    assert_eq!(
+        steps,
+        vec!["handle closed", "resource Closed", "permit -1"],
+        "§9.3 CM-74 要求的释放顺序是 `handle closed` → `resource Closed` → `permit -1`；\
+         句柄还挂着就归还预算占用，I1 与 I5 一起破。实际次序是 {steps:?}"
+    );
+
+    harness
+        .assert_no_leak()
+        .unwrap_or_else(|violations| panic!("CM-74 顺序成立也不许留下泄漏：{violations}"));
 }
 
 // ---------------------------------------------------------------------------

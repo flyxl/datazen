@@ -98,11 +98,15 @@ impl FakeResourceProvider {
 
     /// §9.2 反例：造句柄但**不**登记，journal 写 `orphaned`。
     /// 关闭路径随后必须把它收回，否则 §4.3 的 I7 不成立。
+    ///
+    /// `reason` 会原样进 journal —— §4.2 F12 要求「runtime 拒绝把它交给宿主」
+    /// 这件事本身是可追溯的，不能只剩一个没有来由的 `orphaned`。
     pub fn orphan_handle(
         &self,
         resource_id: &ResourceId,
         kind: HandleKind,
         handle_id: crate::connection::types::HandleId,
+        reason: &str,
     ) -> Result<SessionHandleRef, ProviderError> {
         let resources = self.lock();
         let resource = resources.get(resource_id.as_str()).ok_or_else(|| {
@@ -117,7 +121,7 @@ impl FakeResourceProvider {
         self.journal.record_handle(
             &handle,
             super::super::journal::HandleAction::Orphaned,
-            "反例：造句柄但不登记",
+            reason,
         );
         Ok(handle)
     }

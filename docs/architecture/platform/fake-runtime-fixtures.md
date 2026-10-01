@@ -1,6 +1,6 @@
 # DataZen P0 transport-neutral fake resource 夹具与基准 harness 详细设计
 
-> 状态：目标设计，尚未实现。基线：2026-09-30，`8592b0fe1`。本文只交付夹具、故障注入、真实驱动契约夹具与基准 harness 的实现级设计，不代表连接管理重构已完成。
+> 状态：**夹具已落地**，实现位于 `datazen-runtime`（`packages/runtime/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§10 真实驱动契约夹具与 §11 CM-60 基准 harness 仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
 > 读者：负责 [连接管理详细设计](connection-management.md) §14 开发步骤第 2 项（`testing/fake_resource`）、§6.5 句柄登记与 §15.3 基准 harness 的实现者。
 > 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
 
@@ -56,21 +56,21 @@
 
 ## 2. 落点与模块划分
 
-拟建目录（全部位于尚未创建的 runtime crate 内，crate 包名以实际 `Cargo.toml` 为准）：
+实际目录（runtime crate `datazen-runtime` 已创建，位于 `packages/runtime/`，只有一个 lib target）：
 
 | 路径 | 职责 | 关键导出 |
 | --- | --- | --- |
 | `packages/runtime/src/connection/testing/mod.rs` | 模块入口与 `#[cfg(any(test, feature = "test-harness"))]` 门控 | `FakeHarness` |
-| `.../testing/fake_resource.rs` | fake provider、fake resource 状态机、§5.1 九个操作 | `FakeResourceProvider`、`FakeResource`、`FakeScript` |
-| `.../testing/journal.rs` | CommandJournal 与变化点断言 | `CommandJournal`、`JournalAssert` |
-| `.../testing/barrier.rs` | 命令级 barrier、协议 drain barrier | `Barrier`、`DrainBarrier` |
+| `.../testing/fake_resource/` | fake provider、fake resource 状态机、§5.1 九个操作、§4 注入点分派与目录守卫 | `FakeResourceProvider`、`FakeResource`、`FakeScript` |
+| `.../testing/journal/` | CommandJournal 与变化点断言 | `CommandJournal`、`JournalAssert` |
+| `.../testing/barrier/` | 命令级 barrier、协议 drain barrier | `Barrier`、`DrainBarrier` |
 | `.../testing/clock.rs` | FakeClock（单调 + UTC） | `FakeClock` |
 | `.../testing/ids.rs` | 可预测 ID 生成与强制碰撞 | `FakeIds`、`FakeIdScope` |
 | `.../testing/fixtures.rs` | 固定实体（组织/用户/profile/命名空间 A、B） | `fixtures()` 常量与 `install_fixtures` |
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
-| `.../testing/bench.rs` | CM-60 基准 harness | `cm60_harness()`、`cm60_stress()` |
+| `.../testing/bench.rs` | CM-60 基准 harness | **未实现**：§11 仍是目标设计，本 crate 内无此文件 |
 
-`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义）。
+`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`packages/runtime/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
 ```mermaid
 flowchart TD
@@ -94,7 +94,7 @@ flowchart TD
 隔离规则：
 
 - 夹具代码不得被生产路径引用；`src-tauri` 的 `datazen` crate 不依赖 runtime 夹具。
-- runtime crate 现有门禁 `pnpm test:layers`（`scripts/check-module-layers.mjs`）只扫描 JS/TS 源码，不覆盖 Rust；runtime crate 创建后必须把层/边界检查接入 CI 门禁，命令同步写入 CI 与开发计划 §15.1 的命令表，不把未创建命令列为现有脚本。
+- runtime crate 现有门禁 `pnpm test:layers`（`scripts/check-module-layers.mjs`）只扫描 JS/TS 源码，不覆盖 Rust；runtime crate 已创建，把层/边界检查接入 CI 门禁仍是待办，命令同步写入 CI 与开发计划 §15.1 的命令表，不把未创建命令列为现有脚本。
 - 夹具内禁止出现 `.env` / `.env.test` 的任何读取路径（见 §13）。
 
 ## 3. transport-neutral fake resource 契约
@@ -610,14 +610,19 @@ pnpm e2e:skip-build           # 复用已编译 debug 二进制
 pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 ```
 
-**crate/package 创建后才存在**（当前**不可**运行，不得在文档或 CI 中当作现有脚本）：
+**已落地、可立即运行**（runtime crate 已创建，核对自 `packages/runtime/Cargo.toml`）：
+
+```bash
+cargo test -p datazen-runtime --lib                      # 夹具单测（130 个用例，crate 只有一个 lib target）
+cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
+```
+
+**仍未创建、当前**不可**运行，不得在文档或 CI 中当作现有脚本**：
 
 | 预期命令 | 前置条件 |
 | --- | --- |
-| `cargo test -p <runtime-package> --lib` | runtime crate 创建并加入 workspace `members` |
-| `cargo test -p <runtime-package> --test contract` | 同上，且 `src-tauri/Cargo.toml` 注入依赖 |
-| `cargo test -p <runtime-package> --features test-harness` | `test-harness` feature 定义 |
-| `cargo run --release -p <runtime-package> --bin cm60-bench` | 基准入口创建 |
+| `cargo test -p datazen-runtime --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
+| `cargo run --release -p datazen-runtime --bin cm60-bench` | 基准入口创建（§11） |
 
 创建后必须同步更新平台开发计划 §15.1 的命令表与 CI 门禁，不把未创建命令列为现有脚本。
 

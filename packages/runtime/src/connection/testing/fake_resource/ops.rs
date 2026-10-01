@@ -32,7 +32,8 @@ use crate::connection::port::{
     TransactionObservation,
 };
 use crate::connection::session::{
-    AttachmentState, SessionContext, SessionHandle, SessionState, SessionView, TransactionState,
+    AttachmentState, HandleKind, SessionContext, SessionHandle, SessionState, SessionView,
+    TransactionState,
 };
 use crate::connection::testing::journal::{HandleAction, ResourceEvent};
 use crate::connection::types::{
@@ -121,6 +122,8 @@ impl FakeResourceProvider {
         &self,
         request: &AcquireResourceRequest,
     ) -> Result<(ResourceId, ResourceHandle, OpenSessionReceipt), ProviderError> {
+        // F12 要等资源真的建出来才能造句柄，所以先把注入记下来，建完再落。
+        let mut orphan_reason: Option<&'static str> = None;
         if let Some((_, kind)) = self.script.take(ResourceOp::Acquire) {
             match kind {
                 // F2：预算占满。窗口挂在假单调时钟上，**不 sleep**。
@@ -141,6 +144,8 @@ impl FakeResourceProvider {
                 FaultKind::ConnectAndInit { code } => {
                     return Err(ProviderError::ProtocolError(code.to_owned()))
                 }
+                // F12：句柄登记反例 —— 见下方 `orphan_reason` 的落点。
+                FaultKind::HandleNotReturned { reason } => orphan_reason = Some(reason),
                 _ => return Err(ProviderError::UnsupportedPlan),
             }
         }
@@ -199,6 +204,16 @@ impl FakeResourceProvider {
         }
         self.journal.register_active_session(&request.db_session_id);
 
+        // F12：句柄造出来了，runtime **拒绝**把它交给宿主 —— `acquire` 照常成功
+        // （句柄登记不是 acquire 的失败条件），但假侧只落一条 `orphaned`，
+        // 宿主登记册里永远不会有它。§4.2 F12 ⇒ I7 在关闭回收之前必然不成立。
+        if let Some(reason) = orphan_reason {
+            let execution_id = self.ids.next_execution_id(&request.db_session_id);
+            let handle_id =
+                crate::connection::types::HandleId::new(format!("hdl_{}", execution_id.as_str()));
+            self.orphan_handle(&resource_id, HandleKind::Transaction, handle_id, reason)?;
+        }
+
         let session = self.session_view(&resource_id, epoch.counter, context);
         Ok((
             resource_id,
@@ -217,8 +232,22 @@ impl FakeResourceProvider {
         &self,
         request: &ExecuteOnResourceRequest,
     ) -> Result<ExecutionCompletion, ProviderError> {
-        let resource = self.resolve(&request.handle.resource_id, &request.handle, false)?;
+        // F12 必须**在 `resolve` 之前**取脚本并改写句柄：跨 epoch 复用要死在
+        // `verify` 的 epoch 门闸上。取晚了 / 改错了字段，失败会落到 resourceId
+        // 或 owner 那一关，测到的就不再是 epoch 门闸。
         let fault = self.script.take(ResourceOp::Execute).map(|(_, kind)| kind);
+        // 只改 `runtimeEpoch`，`resourceId` 与 `ownerToken` 原样带着 ——
+        // `verify` 的顺序是 resourceId → epoch → owner，所以必然停在 epoch 这一关。
+        let presented = if matches!(fault.as_ref(), Some(FaultKind::CrossEpochHandleReuse)) {
+            ResourceHandle {
+                resource_id: request.handle.resource_id.clone(),
+                runtime_epoch: Counter(request.handle.runtime_epoch.0.saturating_sub(1)),
+                owner_token: request.handle.owner_token.clone(),
+            }
+        } else {
+            request.handle.clone()
+        };
+        let resource = self.resolve(&presented.resource_id, &presented, false)?;
 
         // F1：派发前拒绝 —— **不**写 execution 终态，因为根本没有派发过（§4.2 F1）。
         if let Some(FaultKind::UnsupportedPlan) = fault {
@@ -326,7 +355,7 @@ impl FakeResourceProvider {
         let resource = self.resolve(&request.handle.resource_id, &request.handle, false)?;
         if let Some((_, kind)) = self.script.take(ResourceOp::ChangeContext) {
             match kind {
-                // F8：需要换宿主 —— 这是 `Ok` 值，不是错误。
+                // F7：需要换宿主 —— 这是 `Ok` 值，不是错误。
                 FaultKind::RequiresReplacement { reason } => {
                     return Ok(ChangeContextOutcome::RequiresReplacement { reason })
                 }
@@ -372,7 +401,7 @@ impl FakeResourceProvider {
         &self,
         request: &RequestCancelRequest,
     ) -> Result<CancelReceipt, ProviderError> {
-        // F11：假提供方不支持精确取消 —— 返回 `Unsupported`，**不是**错误。
+        // F9：假提供方不支持精确取消 —— 返回 `Unsupported`，**不是**错误。
         if let Some((_, FaultKind::CancelRejected { code })) =
             self.script.take(ResourceOp::RequestCancel)
         {
@@ -407,11 +436,34 @@ impl FakeResourceProvider {
 
     /// §3.2 L146：`resetResource` 返回 `Clean` **不等于**事务已终结 ——
     /// `FakeResource::reset_for_reuse` 一个字都不碰 `transaction_state`。
+    ///
+    /// §4.1 的 F10 三个变体都落在这里。贯穿性硬规则：**注入只改返回值，
+    /// 不碰资源状态机** —— 否则测到的就不是「驱动说 Clean、宿主说不能归池」，
+    /// 而是我们自己把状态改脏了。`CleanButPreconditionUnmet` 尤其如此：
+    /// 资源照样走一遍真实的 `reset_for_reuse()`，只是把结论按脚本报成 `Clean`。
     pub fn reset_resource(
         &self,
         request: &ResetResourceRequest,
     ) -> Result<ResetOutcome, ProviderError> {
+        let injected = self.script.take(ResourceOp::Reset).map(|(_, kind)| kind);
         let resource = self.resolve(&request.handle.resource_id, &request.handle, false)?;
+        match injected {
+            // F10：reset 超时。基线在 reset 上**从不**报错，所以这里的 `Err`
+            // 必然来自脚本 —— 这本身就是注入生效的可观察证据。
+            Some(FaultKind::ResetTimeout) => {
+                return Err(ProviderError::CleanupFailed(format!(
+                    "reset 未在期限内返回（{}）",
+                    request.handle.resource_id.as_str()
+                )))
+            }
+            // F10：驱动自报 `Discard` 并给出用例指定的原因。基线只可能产出
+            // `SessionStillExecuting` / `HealthDegraded`，脚本能给
+            // `TemporaryObjectsPresent` 这种基线**产不出来**的原因。
+            Some(FaultKind::ResetDiscard { reason }) => {
+                return Ok(ResetOutcome::Discard { reason })
+            }
+            _ => {}
+        }
         let degraded = matches!(resource.health, ResourceHealth::Degraded);
         let key = request.handle.resource_id.as_str().to_owned();
         let live = {
@@ -422,18 +474,24 @@ impl FakeResourceProvider {
             slot.reset_for_reuse();
             slot.has_open_transaction()
         };
-        Ok(if live {
-            // 会话还在事务里 → 归池必须 `Discard`，绝不能报 `Clean`（§3.2 L146）。
-            ResetOutcome::Discard {
-                reason: ResetDiscardReason::SessionStillExecuting,
-            }
-        } else if degraded {
-            ResetOutcome::Discard {
-                reason: ResetDiscardReason::HealthDegraded,
-            }
-        } else {
-            ResetOutcome::Clean
-        })
+        Ok(
+            if matches!(injected, Some(FaultKind::CleanButPreconditionUnmet)) {
+                // F10 反例：驱动报了 `Clean`，但 `live`/`degraded` 说明宿主前置并不满足。
+                // 宿主必须自己去查 `can_return_to_pool()`，不能信驱动（§4.2 F10）。
+                ResetOutcome::Clean
+            } else if live {
+                // 会话还在事务里 → 归池必须 `Discard`，绝不能报 `Clean`（§3.2 L146）。
+                ResetOutcome::Discard {
+                    reason: ResetDiscardReason::SessionStillExecuting,
+                }
+            } else if degraded {
+                ResetOutcome::Discard {
+                    reason: ResetDiscardReason::HealthDegraded,
+                }
+            } else {
+                ResetOutcome::Clean
+            },
+        )
     }
 
     // ---- 9. closeResource ----
@@ -451,7 +509,7 @@ impl FakeResourceProvider {
         let key = request.handle.resource_id.as_str().to_owned();
         let had_transaction = resource.has_open_transaction();
 
-        // F12：关闭未确认 —— 资源留在预算占用里（§5.3 规则 3：余额不变）。
+        // F11：关闭未确认 —— 资源留在预算占用里（§5.3 规则 3：余额不变）。
         if let Some((_, FaultKind::CloseUnconfirmed { .. })) = self.script.take(ResourceOp::Close) {
             {
                 let mut resources = self.lock();
@@ -566,6 +624,9 @@ impl FakeResourceProvider {
         // 关闭路径必须收回孤立句柄（I7）、会话登记（I4）与 lease（I3），台账才收得口。
         self.journal
             .recover_orphans_on_close(&request.handle.resource_id, "closeResource");
+        // 还挂着句柄就被关掉的资源（§9.3 真实线程竞态）：句柄随会话一起死，必须一起收回（I5）。
+        self.journal
+            .reclaim_registered_handles_on_close(&request.handle.resource_id, "closeResource");
         self.journal.close_active_session(&resource.db_session_id);
         for lease in self.leases_of(&request.handle.resource_id) {
             self.journal.release_lease(&lease);

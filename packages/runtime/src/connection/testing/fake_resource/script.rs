@@ -19,6 +19,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::connection::execution::ExecutionErrorCode;
+use crate::connection::port::ResetDiscardReason;
 
 /// 九个资源层操作中可被脚本命中的一种（fake-runtime-fixtures.md §3.1）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -62,54 +63,128 @@ impl ResourceOp {
     }
 }
 
-/// 故障种类，与 §4.1 的 F1–F12 一一对应。
+/// 故障种类，**按 `docs/architecture/platform/fake-runtime-fixtures.md` §4.1 的 F1–F12 归位**。
+///
+/// 每个变体带两行机器可读的属性，缺一不可：
+/// - 首行 `/// F<n>：…` 给出 §4.1 的编号；
+/// - 另起一行 `/// 目录归属：<阶段>` 给出 §4.1 表格「阶段」单元格的原文
+///   （在第一个全角 `（` 处截断：F1「描述（`describeResource`）」→「描述」）。
+///
+/// §4.1 是唯一真源，编号与阶段都由
+/// `fake_resource::catalog_guard` 在测试运行时**解析文档表格**逐条对撞，
+/// 任何一侧单独改动都会打红。
 #[derive(Debug, Clone, PartialEq)]
 pub enum FaultKind {
     /// F1：执行计划不支持，**派发前**拒绝（`ApiErrorCode::is_pre_dispatch_rejection`）。
+    ///
+    /// 目录归属：描述
     UnsupportedPlan,
     /// F2：预算占满。`acquireResource` 报 `ResourceBusy`，超过给定 TTL 后 `Timeout`。
+    ///
+    /// 目录归属：预算申请
     BudgetBusy {
         busy_for: Duration,
         reason: &'static str,
     },
     /// F3：连接或初始化失败（`ConnectAndInit` / `SqlError` 二选一由 `code` 决定）。
+    ///
+    /// 目录归属：建连与初始化
     ConnectAndInit { code: &'static str },
     /// F4：语句**派发之后**失败。
+    ///
+    /// 目录归属：语句派发
     StatementDispatch { code: &'static str },
     /// F5：结果传输中断 —— 协议未排空，必须上报 `protocol_drained = false`。
+    ///
+    /// 目录归属：结果传输
     ResultTransport { code: &'static str },
     /// F6：观测不可判定 —— `observeSession` 三个字段全 `unknown`。
+    ///
+    /// 目录归属：观察
     ObserveUnknown,
-    /// F7：上下文切换冲突。
+    /// F7：上下文切换冲突 —— 期望重读后由用户重发（§4.2 F7）。
+    ///
+    /// 目录归属：上下文切换
     ContextConflict,
-    /// F8：上下文切换要求替换资源。
+    /// F7：上下文切换要求替换资源。这是 `Ok` 值，不是错误（§3.2 L138）。
+    ///
+    /// 目录归属：上下文切换
     RequiresReplacement { reason: String },
-    /// F9：提交结果未知。§3.2：此时 `effectOutcome` **必须**是 `unknown`。
+    /// F8：提交结果未知。§3.2：此时 `effectOutcome` **必须**是 `unknown`。
+    ///
+    /// 目录归属：事务
     CommitUnknown { code: &'static str },
-    /// F10：回滚失败 —— 资源隔离，预算占用**保留**。
+    /// F8：回滚失败 —— 资源隔离，预算占用**保留**。
+    ///
+    /// 目录归属：事务
     RollbackFailed { reason: String },
-    /// F11：取消被拒。
+    /// F9：取消被拒。`CancelReceipt.disposition=unsupported` 是**正常返回值**（§4.2 F9）。
+    ///
+    /// 目录归属：取消
     CancelRejected { code: &'static str },
-    /// F12：关闭未确认 —— 预算占用**保留**，资源仍占用。
+    /// F10：driver 报 `Clean`，但宿主前置条件（句柄登记 / 事务未终结 / 协议未排空）并不满足。
+    ///
+    /// 目录归属：重置归池
+    CleanButPreconditionUnmet,
+    /// F10：driver 报 `Discard`，`reason` 由用例指定（§4.2：归池前置不满足只能丢，不能报 `Clean`）。
+    ///
+    /// 目录归属：重置归池
+    ResetDiscard { reason: ResetDiscardReason },
+    /// F10：reset 在期限内不返回 —— 宿主只能看到「归池未完成」，**不得**当成 `Clean`。
+    ///
+    /// 目录归属：重置归池
+    ResetTimeout,
+    /// F11：关闭未确认 —— 预算占用**保留**，资源仍占用。
+    ///
+    /// 目录归属：关闭
     CloseUnconfirmed { reason: &'static str },
+    /// F11：关闭期间资源丢失 —— 资源进 `Lost`，后续执行一律被拒。
+    ///
+    /// 目录归属：关闭
+    LostDuringClose { reason: &'static str },
+    /// F12：句柄造出来了，runtime **拒绝**把它交给宿主；fake 侧标记 `orphaned`。
+    /// §4.3 的 I7 在关闭回收之前必然不成立（§4.2 F12）。
+    ///
+    /// 目录归属：句柄登记
+    HandleNotReturned { reason: &'static str },
+    /// F12：把上一个 epoch 的句柄拿到当前资源上用 —— 必须先在 epoch 门闸上失败，
+    /// 而不是放行或在资源 id 上乱报错。
+    ///
+    /// 目录归属：句柄登记
+    CrossEpochHandleReuse,
 }
 
 impl FaultKind {
     /// §4.1 的编号，供测试与报告直接引用。
+    ///
+    /// 取值以 `catalog_guard` 解析出来的 §4.1 表格为准：这里只放编号，
+    /// 编号与阶段由测试逐条对撞文档。
     pub const fn catalog_id(&self) -> &'static str {
         match self {
+            // F1 描述 → F4 语句派发
             FaultKind::UnsupportedPlan => "F1",
             FaultKind::BudgetBusy { .. } => "F2",
             FaultKind::ConnectAndInit { .. } => "F3",
             FaultKind::StatementDispatch { .. } => "F4",
             FaultKind::ResultTransport { .. } => "F5",
             FaultKind::ObserveUnknown => "F6",
+            // F7 上下文切换：`ContextConflict` 与 `requiresReplacement` 同属一行
             FaultKind::ContextConflict => "F7",
-            FaultKind::RequiresReplacement { .. } => "F8",
-            FaultKind::CommitUnknown { .. } => "F9",
-            FaultKind::RollbackFailed { .. } => "F10",
-            FaultKind::CancelRejected { .. } => "F11",
-            FaultKind::CloseUnconfirmed { .. } => "F12",
+            FaultKind::RequiresReplacement { .. } => "F7",
+            // F8 事务：`commit` 返回 `Unknown` 与 `rollback` 失败同属一行
+            FaultKind::CommitUnknown { .. } => "F8",
+            FaultKind::RollbackFailed { .. } => "F8",
+            FaultKind::CancelRejected { .. } => "F9",
+            // F10 重置归池
+            FaultKind::CleanButPreconditionUnmet => "F10",
+            FaultKind::ResetDiscard { .. } => "F10",
+            FaultKind::ResetTimeout => "F10",
+            // F11 关闭
+            FaultKind::CloseUnconfirmed { .. } => "F11",
+            FaultKind::LostDuringClose { .. } => "F11",
+            // F12 句柄登记
+            FaultKind::HandleNotReturned { .. } => "F12",
+            FaultKind::CrossEpochHandleReuse => "F12",
         }
     }
 }
@@ -240,43 +315,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_fault_catalogue_covers_f1_through_f12_with_unique_ids() {
-        let all = [
-            FaultKind::UnsupportedPlan,
-            FaultKind::BudgetBusy {
-                busy_for: Duration::from_secs(10),
-                reason: "连接数达到上限",
-            },
-            FaultKind::ConnectAndInit { code: "SqlError" },
-            FaultKind::StatementDispatch { code: "SqlError" },
-            FaultKind::ResultTransport {
-                code: "ProtocolError",
-            },
-            FaultKind::ObserveUnknown,
-            FaultKind::ContextConflict,
-            FaultKind::RequiresReplacement {
-                reason: "驱动不支持在途切库".to_owned(),
-            },
-            FaultKind::CommitUnknown { code: "Timeout" },
-            FaultKind::RollbackFailed {
-                reason: "连接已断开".to_owned(),
-            },
-            FaultKind::CancelRejected {
-                code: "HostRejected",
-            },
-            FaultKind::CloseUnconfirmed {
-                reason: "关闭握手超时",
-            },
-        ];
-        let ids: Vec<&str> = all.iter().map(FaultKind::catalog_id).collect();
-        assert_eq!(
-            ids,
-            vec!["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"]
-        );
-        let mut sorted = ids.clone();
-        sorted.sort_unstable();
-        sorted.dedup();
-        assert_eq!(sorted.len(), ids.len(), "F 编号不得重复");
+    fn the_fault_catalogue_collides_with_the_parsed_f1_through_f12_table() {
+        crate::connection::testing::fake_resource::catalog_guard::assert_catalogue_matches_doc();
     }
 
     #[test]

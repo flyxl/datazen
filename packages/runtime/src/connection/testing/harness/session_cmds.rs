@@ -223,7 +223,7 @@ impl FakeHarness {
 
     /// §9.1 `commit_session_transaction`（入参 `{ handleId }`）。
     ///
-    /// §9.2：注入 F9 时 `effectOutcome` 必须是 `unknown`、`errorCode` 必须是**实际原因**
+    /// §9.2：注入 F8 时 `effectOutcome` 必须是 `unknown`、`errorCode` 必须是**实际原因**
     /// （`protocolError` / `timeout`），不得自动重放、不得抛 `TransactionResolutionRequired`。
     /// 句柄登记**保留**：提交不可判定时句柄最终归属未知（§5.3 规则 6）。
     pub(crate) fn commit_transaction(
@@ -244,7 +244,7 @@ impl FakeHarness {
 
     /// §9.1 `rollback_session_transaction`（入参 `{ handleId }`）。
     ///
-    /// §9.2：注入 F10 时资源进 `Quarantined`、**预算占用保留** —— 错误以
+    /// §9.2：注入 F8 时资源进 `Quarantined`、**预算占用保留** —— 错误以
     /// [`ProviderError::RollbackFailed`] 返回，`Quarantined` 事件已写进台账。
     pub(crate) fn rollback_transaction(
         &self,
@@ -302,7 +302,12 @@ impl FakeHarness {
         let (_execution_id, handle_id) = self.next_handle_id(resource)?;
         let handle = self
             .provider()
-            .orphan_handle(&resource.resource_id, HandleKind::Transaction, handle_id)
+            .orphan_handle(
+                &resource.resource_id,
+                HandleKind::Transaction,
+                handle_id,
+                "§9.2 反例命令：begin 之后不登记句柄",
+            )
             .map_err(GatewayError::Provider)?;
         Ok(json!({
             "effectOutcome": crate::connection::EffectOutcome::Completed.as_str(),
@@ -379,7 +384,7 @@ impl FakeHarness {
 
 /// 终态命令（提交 / 回滚）的输出形状：`effectOutcome` + 可选 `errorCode`。
 ///
-/// 保留句柄时一并回带 `sessionHandles` —— F9 之后句柄**仍在**登记册里（§5.3 规则 6），
+/// 保留句柄时一并回带 `sessionHandles` —— F8 之后句柄**仍在**登记册里（§5.3 规则 6），
 /// 用例需要能直接看到这个事实，而不是去翻台账。
 fn terminal_payload(
     completion: &crate::connection::port::ExecutionCompletion,

@@ -1,7 +1,7 @@
 //! FakeResourceProvider —— 假资源提供方（fake-runtime-fixtures.md §2、§3、§4.1、§5.1）。
 //!
 //! 本目录即 §2 模块表里 `P[FakeResourceProvider]` 与 `R[FakeResource state machine]` 两个
-//! 节点的落点，职责按 §3.1 拆到四个文件：
+//! 节点的落点，职责按 §3.1 拆到五个文件：
 //!
 //! | 文件 | 职责 |
 //! |---|---|
@@ -9,6 +9,7 @@
 //! | [`state`] | `FakeResource` 状态机 + permit 记账锚点（§3.1、§3.2） |
 //! | [`handles`] | 句柄铸造与「登记 vs 造句柄」（§5.1 L416、§9.1、§9.2） |
 //! | [`ops`] | 九个操作的实现（§3.1 `ResourceHandle` 逐操作校验） |
+//! | `catalog_guard` | 只在 `#[cfg(test)]` 下编译：把 `script.rs` 的 F 编号与 §4.1 的表**对撞**（§4.1 F1–F12 不得错位） |
 //!
 //! **依赖方向**：本目录向下依赖 `connection::{port, session, types, capability, execution}`，
 //! 向上只被 `journal` 的**测试**引用 —— §2 要求的「`journal.rs` 不依赖 `fake_resource`」
@@ -16,6 +17,8 @@
 //!
 //! §13：假提供方**不开任何出站 socket**；本目录没有任何网络或凭据代码。
 
+#[cfg(test)]
+mod catalog_guard;
 mod handles;
 mod ops;
 mod script;

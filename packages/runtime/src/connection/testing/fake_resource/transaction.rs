@@ -1,4 +1,4 @@
-//! `transactionOperation` 的实现（fake-runtime-fixtures.md §3.1、§3.2、§4.1 F9/F10、§9.2）。
+//! `transactionOperation` 的实现（fake-runtime-fixtures.md §3.1、§3.2、§4.1 F8、§9.2）。
 //!
 //! 九个操作里事务这一条最重：它同时承载 §3.2 的三条硬规则
 //! （不可判定 ⇒ `effectOutcome = Unknown`、永不 `Completed`；回滚失败 ⇒ 隔离），
@@ -41,7 +41,7 @@ impl FakeResourceProvider {
             }
         };
 
-        // F10：回滚失败 → 资源隔离，**不归还 permit**，§5.3 规则 3 的余额保持不变。
+        // F8：回滚失败 → 资源隔离，**不归还 permit**，§5.3 规则 3 的余额保持不变。
         if let TransactionOperation::Rollback(_) = &operation {
             if let Some((_, FaultKind::RollbackFailed { reason })) =
                 self.script.take(ResourceOp::Transaction)
@@ -74,7 +74,7 @@ impl FakeResourceProvider {
             match &operation {
                 TransactionOperation::Begin => slot.transaction_state = TransactionState::Active,
                 TransactionOperation::Commit(_) => {
-                    // F9：提交结果不可判定。
+                    // F8：提交结果不可判定。
                     if let Some((_, FaultKind::CommitUnknown { code })) =
                         self.script.take(ResourceOp::Transaction)
                     {

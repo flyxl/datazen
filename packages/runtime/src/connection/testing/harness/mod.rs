@@ -28,6 +28,8 @@
 //! 用例不调用就没有断言，这是 §4.3 要的形状。
 
 mod cm73;
+#[cfg(test)]
+mod cm73_threads;
 mod session_cmds;
 #[cfg(test)]
 mod tests;

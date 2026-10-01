@@ -422,6 +422,35 @@ impl CommandJournal {
         }
     }
 
+    /// 关闭路径回收**已交给宿主、仍登记在册**的句柄（I5）。
+    ///
+    /// 与 [`Self::recover_orphans_on_close`] 是两件事：那一个收的是「fake 侧建了、
+    /// 拒绝交给宿主」的孤儿（I7）；这一个收的是宿主**已经拿到**、但随资源一起死的句柄。
+    /// §9.3 的真实线程竞态就落在这条上：驱逐线程在持有线程还挂着句柄时把资源关掉，
+    /// 台账不能因此永久留一条登记（否则 I5 永远收不口）。
+    ///
+    /// 正常路径（先回滚注销再关闭）走不到这里，所以它不会掩盖宿主自己的句柄泄漏 ——
+    /// 那条泄漏由 `leak_invariant_violations()` 在**未关闭**时就报出来。
+    pub fn reclaim_registered_handles_on_close(&self, resource_id: &ResourceId, reason: &str) {
+        let handles: Vec<HandleRecord> = self
+            .inner
+            .lock()
+            .handles
+            .values()
+            .filter(|record| !record.closed && &record.resource_id == resource_id)
+            .cloned()
+            .collect();
+        for record in handles {
+            let handle = SessionHandleRef::new(
+                HandleId::new(record.handle_id.clone()),
+                record.kind,
+                record.resource_id.clone(),
+                record.runtime_epoch,
+            );
+            self.record_handle(&handle, HandleAction::Closed, reason);
+        }
+    }
+
     // -- I3 / I4 登记簿 ---------------------------------------------------
 
     pub fn register_lease(&self, lease_id: &LeaseId, resource_id: &ResourceId) {
