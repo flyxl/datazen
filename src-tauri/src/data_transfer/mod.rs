@@ -50,3 +50,9 @@ pub(crate) static TEST_COMMIT_ACK_LOSS_TEST_LOCK: tokio::sync::Mutex<()> =
 
 #[cfg(test)]
 mod execution_tests;
+#[cfg(test)]
+mod sql_structure_fixtures;
+#[cfg(test)]
+mod sql_structure_object_coverage_tests;
+#[cfg(test)]
+mod sql_structure_object_tests;
