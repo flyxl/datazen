@@ -8,10 +8,11 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use datazen_driver_api::{DatabaseDriver, DriverError, MultiQueryResult, QueryExecutionId};
+use datazen_driver_api::{
+    ConnectionHandle, DatabaseDriver, DriverError, MultiQueryResult, QueryExecutionId,
+};
 
-// The whole template surface, so a live test can reach any helper the free tier
-// also uses. `#[path]`-included, so nothing here is a public API of the crate.
+// The whole template surface, so a live test can reach any free-tier helper too.
 use super::*;
 
 /// Open the live tier for one dimension, or return `None` after saying which
@@ -33,6 +34,12 @@ async fn cm08_two_sessions_keep_independent_databases() {
     };
     let dialect = live.dialect;
     let mut fixture = Fixture::new("cm08");
+    // The A side's teardown needs its own session, closed only after the fixture ran.
+    let mut session_a: Option<ConnectionHandle> = None;
+    // §10.2 rule 2: identically named marker tables, different marker values. The
+    // name is this case's own, so a neighbouring case cannot drop the table it reads.
+    let table = fixture.name("marker");
+    let select = render_marker(dialect.select_marker, &table);
 
     let outcome = async {
         let target_a = live.profile.a.clone();
@@ -40,10 +47,13 @@ async fn cm08_two_sessions_keep_independent_databases() {
         assert_ne!(target_a, target_b, "CM-08 needs two distinct targets");
 
         let other = live.second_session("dz-contract-cm08-a").await?;
-        // §10.2 rule 2: identically named marker tables, different marker values.
-        seed_marker(&live.driver, &other, dialect, "dz_marker_a").await?;
-        seed_marker(&live.driver, &live.handle, dialect, "dz_marker_b").await?;
-        fixture.on_drop(dialect.drop_marker.to_string());
+        session_a = Some(other.clone());
+        seed_marker(&live.driver, &other, dialect, &table, "dz_marker_a").await?;
+        seed_marker(&live.driver, &live.handle, dialect, &table, "dz_marker_b").await?;
+        // Both targets now hold the relation; drop it in each, through its own session.
+        let drop = render_marker(dialect.drop_marker, &table);
+        fixture.on_drop_extra(drop.clone());
+        fixture.on_drop(drop);
 
         let namespace_b = live.namespace().await?;
         let namespace_a = live
@@ -55,27 +65,55 @@ async fn cm08_two_sessions_keep_independent_databases() {
         assert_eq!(namespace_a, target_a, "session A drifted off its own target");
         assert_ne!(namespace_a, namespace_b, "the two sessions must stay isolated");
 
-        // The same named relation resolves inside each session's own catalog:
-        // an unqualified read never crosses over to the other session's target.
-        let read_b = live.query(dialect.select_marker).await?;
+        // The same named relation resolves inside each session's own catalog.
+        let read_b = live.query(&select).await?;
         assert!(
             rows_contain(&read_b, "dz_marker_b") && !rows_contain(&read_b, "dz_marker_a"),
             "an unqualified read must stay inside its own session: {:?}",
             read_b.rows
         );
-        let read_a = live.driver.query(&other, dialect.select_marker).await?;
+        let read_a = live.driver.query(&other, &select).await?;
         assert!(
             rows_contain(&read_a, "dz_marker_a") && !rows_contain(&read_a, "dz_marker_b"),
             "an unqualified read must stay inside its own session: {:?}",
             read_a.rows
         );
 
-        live.driver.disconnect(other).await
+        Ok::<(), DriverError>(())
     }
     .await;
 
-    let teardown = fixture.finish(&live.driver, &live.handle).await;
-    assert!(teardown.is_ok(), "fixture teardown must succeed");
+    // Drop each side's marker through the session that owns its target.
+    let teardown_a = match &session_a {
+        Some(session_a) => fixture.finish_extra(&live.driver, session_a).await,
+        None => Ok(()),
+    };
+    let teardown_b = fixture.finish(&live.driver, &live.handle).await;
+    // Teardown is verified, not assumed: a statement that silently did nothing
+    // (wrong handle, wrong target) would leave one table behind per run and pass.
+    let survived_a = match &session_a {
+        Some(session_a) => live.driver.query(session_a, &select).await.ok(),
+        None => None,
+    };
+    let survived_b = live.query(&select).await.ok();
+    let closed = match &session_a {
+        Some(session_a) => live.driver.disconnect(session_a.clone()).await,
+        None => Ok(()),
+    };
+    assert!(
+        teardown_a.is_ok() && teardown_b.is_ok(),
+        "fixture teardown must succeed in both targets: {teardown_a:?} / {teardown_b:?}"
+    );
+    // `Some(..)` means the relation is still readable: teardown did nothing.
+    assert!(
+        survived_a.is_none(),
+        "the fixture relation survived teardown in the second session's target: {survived_a:?}"
+    );
+    assert!(
+        survived_b.is_none(),
+        "the fixture relation survived teardown in the session's own target: {survived_b:?}"
+    );
+    assert!(closed.is_ok(), "the second session must close cleanly: {closed:?}");
     outcome.expect("CM-08 two independent sessions");
 }
 
@@ -93,15 +131,33 @@ async fn cm09_session_scoped_state_stays_in_its_own_session() {
         let create = render(dialect.create_temp, &temp);
         match crate::CONTRACT.session_scoped_state {
             Capability::Supported => {
+                // The owning session's statements run inside a transaction on
+                // purpose. Outside one, a pooled driver may hand the same session
+                // two different connections, and a temporary table created on the
+                // first is invisible on the second — that would assert the luck of
+                // the pool instead of the contract. A transaction is the context in
+                // which the driver pins one connection, and it is what turns "the
+                // owning session" into a fact instead of a race.
+                let tx = live.driver.begin_transaction(&live.handle).await?;
                 live.execute(&create).await?;
                 live.execute(&render(dialect.insert_temp, &temp)).await?;
                 let here = live.query(&render(dialect.select_temp, &temp)).await?;
                 assert!(!here.rows.is_empty(), "the owning session must see its own row");
+
+                // A *second handle* is a second session by construction. Re-opening
+                // the same handle would only reuse the pinned connection and could
+                // not prove anything about isolation. The owning session has just
+                // read the row, so the relation demonstrably exists at the moment
+                // the other session fails to see it.
                 let other = live.second_session("dz-contract-cm09-a").await?;
                 let leaked = live
                     .driver
                     .query(&other, &render(dialect.select_temp, &temp))
-                    .await
+                    .await;
+                // Roll the owner back before judging: the pinned connection is
+                // released even when the isolation check below fails.
+                live.driver.rollback(tx).await?;
+                let leaked = leaked
                     .expect_err("a session-scoped object must not be visible to another session");
                 assert_eq!(err_kind(&leaked), "QueryFailed");
                 live.driver.disconnect(other).await
@@ -157,11 +213,29 @@ async fn cm10_script_order_is_preserved_and_final_target_is_last() {
             results.len()
         );
         // Order is part of the contract: the select that runs after the insert must
-        // already see the row it wrote.
-        let reading = results
+        // already see the row it wrote. Statements are matched by their own verbatim
+        // text — both mention the table, so "the first result mentioning it" would
+        // silently assert on the INSERT and fail for the wrong reason.
+        let insert_sql = render(dialect.insert_named, &table);
+        let select_sql = render(dialect.select_named, &table);
+        let reported = results
             .iter()
-            .find(|result| result.sql.contains(&table))
-            .expect("the script's own select must be reported");
+            .map(|result| result.sql.as_str())
+            .collect::<Vec<_>>();
+        let insert_at = reported
+            .iter()
+            .position(|sql| *sql == insert_sql)
+            .unwrap_or_else(|| panic!("the script's own insert must be reported verbatim: {reported:?}"));
+        let read_at = reported
+            .iter()
+            .position(|sql| *sql == select_sql)
+            .unwrap_or_else(|| panic!("the script's own select must be reported verbatim: {reported:?}"));
+        assert!(
+            read_at > insert_at,
+            "statements must execute in order: the select runs after the insert, got \
+             insert at {insert_at} and select at {read_at} of {reported:?}"
+        );
+        let reading = &results[read_at];
         assert!(
             statement_rows_contain(reading, "42"),
             "statements must execute in order: the select must already see the insert"
@@ -190,34 +264,84 @@ async fn cm13_cross_target_resolution_reads_the_requested_target() {
     };
     let dialect = live.dialect;
     let mut fixture = Fixture::new("cm13");
+    // A's marker is only visible to the session opened on A, so that session
+    // stays open until its own teardown has run.
+    let mut session_a: Option<ConnectionHandle> = None;
+    // §10.2 rule 2: the *same* relation name in both targets with a different
+    // marker value in each, or a targeted read could be satisfied by the session's
+    // own table and the dimension would prove nothing. The name is this case's own,
+    // so concurrent live cases cannot share it.
+    let table = fixture.name("marker");
+    let marker_a = fixture.name("a");
+    let marker_b = fixture.name("b");
+    let select = render_marker(dialect.select_marker, &table);
 
     let outcome = async {
-        let marker_a = fixture.name("a");
-        let marker_b = fixture.name("b");
         let target_a = live.profile.a.clone();
         let other = live.second_session("dz-contract-cm13-a").await?;
-        seed_marker(&live.driver, &other, dialect, &marker_a).await?;
-        seed_marker(&live.driver, &live.handle, dialect, &marker_b).await?;
-        fixture.on_drop(dialect.drop_marker.to_string());
+        session_a = Some(other.clone());
+        seed_marker(&live.driver, &other, dialect, &table, &marker_a).await?;
+        seed_marker(&live.driver, &live.handle, dialect, &table, &marker_b).await?;
+        // One relation, two targets: both sides need a drop, each on the session
+        // that can reach it.
+        let drop = render_marker(dialect.drop_marker, &table);
+        fixture.on_drop_extra(drop.clone());
+        fixture.on_drop(drop);
 
         // Requesting A must yield A's marker, even from a session opened on B.
         let requested = live
             .driver
-            .query_at(&live.handle, dialect.select_marker, target_for(&target_a))
+            .query_at(&live.handle, &select, target_for(&target_a))
             .await?;
         assert!(
             rows_contain(&requested, &marker_a) && !rows_contain(&requested, &marker_b),
             "a targeted read must resolve the requested target's marker, got {:?}",
             requested.rows
         );
+        // The unqualified read still names the same relation, so the distinction
+        // above came from the target and not from a different table name.
+        let own = live.query(&select).await?;
+        assert!(
+            rows_contain(&own, &marker_b) && !rows_contain(&own, &marker_a),
+            "the session's own target must still answer with its own marker: {:?}",
+            own.rows
+        );
         // And the session must still be on B afterwards: qualification is not a switch.
         assert_eq!(live.namespace().await?, live.profile.b);
-        live.driver.disconnect(other).await
+        Ok::<(), DriverError>(())
     }
     .await;
 
-    let teardown = fixture.finish(&live.driver, &live.handle).await;
-    assert!(teardown.is_ok(), "fixture teardown must succeed");
+    let teardown_a = match &session_a {
+        Some(session_a) => fixture.finish_extra(&live.driver, session_a).await,
+        None => Ok(()),
+    };
+    let teardown_b = fixture.finish(&live.driver, &live.handle).await;
+    // Verified, not assumed: the relation this case created in each target must
+    // be gone from that target once teardown has run.
+    let survived_a = match &session_a {
+        Some(session_a) => live.driver.query(session_a, &select).await.ok(),
+        None => None,
+    };
+    let survived_b = live.query(&select).await.ok();
+    let closed = match &session_a {
+        Some(session_a) => live.driver.disconnect(session_a.clone()).await,
+        None => Ok(()),
+    };
+    assert!(
+        teardown_a.is_ok() && teardown_b.is_ok(),
+        "fixture teardown must succeed in both targets: {teardown_a:?} / {teardown_b:?}"
+    );
+    // `Some(..)` means the relation is still readable: teardown did nothing.
+    assert!(
+        survived_a.is_none(),
+        "the fixture relation survived teardown in the second session's target: {survived_a:?}"
+    );
+    assert!(
+        survived_b.is_none(),
+        "the fixture relation survived teardown in the session's own target: {survived_b:?}"
+    );
+    assert!(closed.is_ok(), "the second session must close cleanly: {closed:?}");
     outcome.expect("CM-13 cross-target resolution");
 }
 
@@ -247,6 +371,123 @@ async fn cm14_text_containing_the_switch_keyword_never_switches() {
     .await;
 
     outcome.expect("CM-14 keyword-shaped text must not switch database");
+}
+
+/// CM-16 — switching a driver that holds a per-database resource **replaces**
+/// the resource, and a replacement that fails keeps the old one.
+///
+/// The dimension is H/D/F and mandatory for every `requiresReplacement` driver, so
+/// the branch is taken from [`crate::Contract::per_database_resource`] rather than
+/// from the driver's name: today that is postgres (`driver-capability-migration.md:516`).
+/// The failure half is what was missing — a switch against a target that cannot be
+/// bound must not consume, poison or drop the connection, and the original target
+/// must still be readable afterwards.
+#[tokio::test]
+async fn cm16_a_failed_target_replacement_keeps_the_old_connection() {
+    let Some(live) = open(crate::contract_driver(), "CM-16").await else {
+        return;
+    };
+    let contract = &crate::CONTRACT;
+    let mut fixture = Fixture::new("cm16");
+
+    let outcome = async {
+        // §10.2 rule 1: both fixture names carry the dedicated prefix.
+        let marker_b = fixture.name("b");
+        let target_a = live.profile.a.clone();
+        // A target that looks like ours but cannot be bound: same prefix, unique
+        // name, so the failure comes from the engine, not from a rejected name.
+        let absent = fixture.name("absent");
+        let session_before = live.namespace().await?;
+        assert_eq!(
+            session_before, live.profile.b,
+            "CM-16 starts on the session's own target"
+        );
+        let table = fixture.name("marker");
+        let select = render_marker(live.dialect.select_marker, &table);
+        seed_marker(&live.driver, &live.handle, live.dialect, &table, &marker_b).await?;
+        fixture.on_drop(render_marker(live.dialect.drop_marker, &table));
+
+        // The replacement that succeeds, for contrast: for a driver that holds
+        // per-database resources, reaching the other fixture target really binds
+        // a resource for it. (`open_databases` deliberately excludes the session's
+        // own target — it is the primary pool, not a switchable one.)
+        if contract.per_database_resource {
+            live.driver
+                .query_at(&live.handle, "SELECT 1", target_for(&target_a))
+                .await?;
+            let open_after_switch = live.driver.open_databases(&live.handle).await?;
+            assert!(
+                open_after_switch.iter().any(|db| db == &target_a),
+                "a driver declaring per_database_resource must hold a resource for the \
+                 switched-to target, reported as {open_after_switch:?}"
+            );
+        }
+
+        // The replacement that fails. The statement names a relation, so under any
+        // shape the request needs that database: qualifying the name needs it, and
+        // binding a pool for it needs it too. It may fail; it may not take the
+        // working connection with it.
+        let refused = live
+            .driver
+            .query_at(&live.handle, &select, target_for(&absent))
+            .await;
+        assert!(
+            refused.is_err(),
+            "a targeted read against a database that does not exist must fail instead \
+             of returning the session's own rows"
+        );
+        let err = refused.expect_err("checked above");
+        eprintln!(
+            "↩ CM-16 替换失败（{}）：旧连接与原目标必须仍然可用",
+            err_kind(&err)
+        );
+
+        // 1. The old connection is preserved — still bound to its own target, and
+        //    the target that could not be bound left nothing behind.
+        assert_eq!(
+            live.namespace().await?,
+            live.profile.b,
+            "a failed replacement must leave the session on its original target"
+        );
+        let open_after_failure = live.driver.open_databases(&live.handle).await?;
+        assert!(
+            !open_after_failure.iter().any(|db| db == &absent),
+            "the target that failed to bind must not linger as an open resource: \
+             {open_after_failure:?}"
+        );
+
+        // 2. The original target is still queryable — with the same marker it
+        //    holds, so this is a real read and not an empty result set.
+        let still_there = live.query(&select).await?;
+        assert!(
+            rows_contain(&still_there, &marker_b),
+            "the original target must still return its own marker after a failed \
+             replacement, got {:?}",
+            still_there.rows
+        );
+        Ok::<(), DriverError>(())
+    }
+    .await;
+
+    let teardown = fixture.finish(&live.driver, &live.handle).await;
+    assert!(teardown.is_ok(), "fixture teardown must succeed");
+    if contract.per_database_resource {
+        outcome.expect("CM-16 a failed replacement must keep the old connection");
+    } else {
+        // Not a claim about the replacement half: this driver owns no per-database
+        // resource (namespaceSwitch is in-place), so there is nothing to replace —
+        // only what both shapes share: the failed switch moved nothing.
+        assert!(
+            outcome.is_ok(),
+            "a driver holding no per-database resource must survive a failed switch: {:?}",
+            outcome.err()
+        );
+        eprintln!(
+            "ℹ CM-16（{}）的『替换』分支不适用于本驱动：per_database_resource=false，\
+             本例只证明失败的定向切换没有移动会话，也没有损坏原连接。",
+            contract.label
+        );
+    }
 }
 
 /// CM-17 — a hand-written transaction rolls back, and the row it wrote is gone.

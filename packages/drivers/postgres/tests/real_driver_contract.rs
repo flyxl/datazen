@@ -19,8 +19,11 @@ mod support;
 use support::{Capability, Contract, Dialect};
 
 /// PostgreSQL is a schema-qualified, multi-database engine reached over one
-/// protocol, so its per-database routing is statement qualification rather than
-/// a separate pooled resource.
+/// protocol. Its per-database routing is a **separate pooled resource**: a
+/// statement addressed to another database runs over a pool opened for that
+/// database, and the session's own database is deliberately absent from
+/// `open_databases`, because the session reaches it by name in its connection
+/// string rather than by selecting it per statement. `CM-16` pins that down.
 const CONTRACT: Contract = Contract {
     label: "postgresql",
     driver_types: &["postgresql"],
@@ -46,12 +49,15 @@ const CONTRACT: Contract = Contract {
     reset_for_reuse: Capability::Supported,
     dialect: Dialect {
         marker: "dz_fixture_marker",
+        // `{table}` is filled in per live case: every live case in this crate
+        // runs concurrently against the same two fixture targets, so the marker
+        // relation must not be a name fixed in the dialect.
         create_marker:
-            "CREATE TABLE IF NOT EXISTS dz_fixture_marker (dz_fixture_marker_value TEXT NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS {table} (dz_fixture_marker_value TEXT NOT NULL)",
         insert_marker:
-            "INSERT INTO dz_fixture_marker (dz_fixture_marker_value) VALUES ('{marker}')",
-        select_marker: "SELECT dz_fixture_marker_value FROM dz_fixture_marker",
-        drop_marker: "DROP TABLE IF EXISTS dz_fixture_marker",
+            "INSERT INTO {table} (dz_fixture_marker_value) VALUES ('{marker}')",
+        select_marker: "SELECT dz_fixture_marker_value FROM {table}",
+        drop_marker: "DROP TABLE IF EXISTS {table}",
         current_namespace: "current_database()",
         // The switch keyword inside a string literal must not move the context.
         decoy_text_select: "SELECT 'USE dz_fixture_other' AS dz_fixture_decoy",

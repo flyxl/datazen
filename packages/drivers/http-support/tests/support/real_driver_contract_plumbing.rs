@@ -9,11 +9,50 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use datazen_driver_api::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, DriverError, QueryResult, SqlTarget,
-    SslMode, StatementResult, Value,
+    async_trait, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DdlAtomicity,
+    DriverError, QueryExecutionId, QueryResult, ServerInfo, SqlTarget, SslMode, StatementResult,
+    TableInfo, TableSchema, Value,
 };
 
 use super::Dialect;
+
+/// The env-file names the guard refuses to see spelled out in a string literal.
+/// Assembled from fragments so this guard cannot match its own source.
+pub fn env_file_names() -> [&'static str; 2] {
+    [concat!(".en", "v"), concat!(".en", "v.test")]
+}
+
+/// Every spelling that names an env file inside a string literal, plus the
+/// dotenv-style loader calls that read one implicitly.
+///
+/// Each env-file name is matched **against its closing quote**, not as a bare
+/// substring. That is what keeps `contract.env_prefix` and the backticked prose
+/// in the sibling tests legal while still catching a directory-qualified read
+/// such as `../<name>` or `fixtures/<name>` — a shape that both a bare name
+/// substring and a bare quoted-name token miss.
+pub fn env_guard_tokens() -> Vec<String> {
+    let mut tokens: Vec<String> = vec![
+        concat!("load_", "dotenv").to_string(),
+        concat!("dot", "env()").to_string(),
+        concat!("dot", "env::").to_string(),
+        concat!("dot", "envy").to_string(),
+    ];
+    for name in env_file_names() {
+        for quote in ['"', '\''] {
+            // A bare quoted name, a prefixed name and a path-qualified name all
+            // end in this suffix, in either quote style.
+            tokens.push(format!("{name}{quote}"));
+        }
+    }
+    tokens
+}
+
+/// The first forbidden token this source contains, if any.
+pub fn env_guard_violation(content: &str) -> Option<String> {
+    env_guard_tokens()
+        .into_iter()
+        .find(|token| content.contains(token.as_str()))
+}
 
 /// The only fixture prefix `fake-runtime-fixtures.md` §10.2 rule 1 accepts.
 /// Live targets that are not prefixed are refused — fail closed, no escape hatch.
@@ -50,6 +89,11 @@ pub const REQUIRED_DIMENSIONS: &[(&str, &str, &str)] = &[
         "字符串/注释里的切换关键字不触发切库",
     ),
     (
+        "CM-16",
+        "cm16_a_failed_target_replacement_keeps_the_old_connection",
+        "替换失败保留旧连接：失败的切库不得吞掉旧连接，原目标仍可查",
+    ),
+    (
         "CM-17",
         "cm17_hand_written_transaction_rolls_back_cleanly",
         "手写事务旅程与回滚",
@@ -63,6 +107,16 @@ pub const REQUIRED_DIMENSIONS: &[(&str, &str, &str)] = &[
         "CM-22",
         "cm22_precise_cancel_is_addressed_to_one_execution",
         "精确取消只作用于目标执行",
+    ),
+    (
+        // CM-23（旧取消与已完成取消）is the D layer's share of the same journey:
+        // an execution that has already finished, and an id that was never
+        // registered, must both be refused without touching a live execution. The
+        // case in `cm22_…` already asserts both (stale handle rejected, forged id
+        // rejected, session untouched afterwards), so it owns CM-23 as well.
+        "CM-23",
+        "cm22_precise_cancel_is_addressed_to_one_execution",
+        "旧取消与已完成取消：已结束/伪造的执行 id 被明确拒绝，不误伤其他执行",
     ),
     (
         "CM-24",
@@ -217,6 +271,49 @@ pub fn render(template: &str, name: &str) -> String {
     template.replace("{name}", name)
 }
 
+/// Renders a `{table}`-templated marker statement for one relation name.
+pub fn render_marker(template: &str, table: &str) -> String {
+    template.replace("{table}", table)
+}
+
+/// The bare words of one SQL statement, lowercased, with punctuation removed.
+///
+/// Used to reason about which *relation* a statement touches: a substring test
+/// cannot tell `dz_fixture_marker` from the column `dz_fixture_marker_value`, and
+/// that difference is the whole point.
+pub fn identifiers(sql: &str) -> Vec<String> {
+    sql.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_lowercase())
+        .collect()
+}
+
+/// Writes the A/B marker rows demanded by `fake-runtime-fixtures.md` §10.2 rule 2:
+/// the **same** table name in both targets, holding **different** marker values.
+///
+/// `table` is the relation name and `value` the row value. Both targets must be
+/// handed the same `table` — that is what makes a cross-target read provably
+/// target-bound — while every live case passes its own per-case name so two cases
+/// running concurrently never share a relation.
+pub async fn seed_marker<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    handle: &ConnectionHandle,
+    dialect: &Dialect,
+    table: &str,
+    value: &str,
+) -> Result<(), DriverError> {
+    driver
+        .execute(handle, &render_marker(dialect.create_marker, table))
+        .await?;
+    driver
+        .execute(
+            handle,
+            &render_marker(&dialect.insert_marker, table).replace("{marker}", value),
+        )
+        .await?;
+    Ok(())
+}
+
 /// The CM-13 target shape: the explicitly requested database plus this driver's
 /// own default schema. Blank/absent parts stay absent (`SqlTarget::nonblank`).
 pub fn target_for(database: &str) -> SqlTarget<'_> {
@@ -232,6 +329,13 @@ pub fn target_for(database: &str) -> SqlTarget<'_> {
 pub struct Fixture {
     pub tag: String,
     pub drops: Vec<String>,
+    /// Teardown for objects this case created through a **second session**.
+    ///
+    /// The A side of an A/B pair lives in the other session's target, so it is
+    /// unreachable from `finish`'s handle: dropping it there is a no-op and the
+    /// object survives every run. These statements are run on that session's own
+    /// handle, by `finish_extra`, before the session is closed.
+    pub drops_extra: Vec<String>,
 }
 
 impl Fixture {
@@ -243,6 +347,7 @@ impl Fixture {
         Self {
             tag: format!("{tag}_{}_{stamp}", std::process::id()),
             drops: Vec::new(),
+            drops_extra: Vec::new(),
         }
     }
 
@@ -253,6 +358,29 @@ impl Fixture {
 
     pub fn on_drop(&mut self, sql: String) {
         self.drops.push(sql);
+    }
+
+    /// Registers teardown for an object created through a second session; see
+    /// `drops_extra`.
+    pub fn on_drop_extra(&mut self, sql: String) {
+        self.drops_extra.push(sql);
+    }
+
+    /// Runs the statements this case created **through another session**, on that
+    /// session's handle. Must run while that session is still open, i.e. before it
+    /// is disconnected — which is the whole reason this is separate from
+    /// `finish`.
+    pub async fn finish_extra<D: DatabaseDriver + ?Sized>(
+        &mut self,
+        driver: &D,
+        handle: &ConnectionHandle,
+    ) -> Result<(), DriverError> {
+        for sql in std::mem::take(&mut self.drops_extra).into_iter().rev() {
+            // Propagated for the same reason as in `finish`: teardown must never
+            // silently pass.
+            driver.execute(handle, &sql).await?;
+        }
+        Ok(())
     }
 
     pub async fn finish<D: DatabaseDriver + ?Sized>(
@@ -267,21 +395,6 @@ impl Fixture {
         }
         Ok(())
     }
-}
-
-/// Writes the A/B marker rows demanded by `fake-runtime-fixtures.md` §10.2 rule 2:
-/// identically named tables in both targets, **different** marker values.
-pub async fn seed_marker<D: DatabaseDriver + ?Sized>(
-    driver: &D,
-    handle: &ConnectionHandle,
-    dialect: &Dialect,
-    marker: &str,
-) -> Result<(), DriverError> {
-    driver.execute(handle, dialect.create_marker).await?;
-    driver
-        .execute(handle, &dialect.insert_marker.replace("{marker}", marker))
-        .await?;
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +470,188 @@ impl<D: DatabaseDriver> Live<D> {
         self.driver.connect(&config).await
     }
 }
+// ---------------------------------------------------------------------------
+// A driver instance that really lacks a capability
+// ---------------------------------------------------------------------------
+
+/// A real driver with **precise per-execution cancel withheld**.
+///
+/// The contract's refusal branch used to be unreachable: every driver under
+/// test declared all five capabilities `Supported`, so "a missing capability
+/// produces an explicit refusal" was a value compared with itself. This wrapper
+/// gives that branch a driver behind it.
+///
+/// It is not a fake runtime (`fake-runtime-fixtures.md` §10.4): the dialect, the
+/// qualification rules, the pagination syntax and the connection behaviour are
+/// all the inner driver's own, delegated method by method. Exactly one thing is
+/// withheld, and it is withheld the way a driver that cannot do it must do it —
+/// *declare* it in [`DatabaseDriver::supports_query_execution_cancel`] and then
+/// *refuse* the call explicitly, rather than silently doing nothing or falling
+/// back to a session-wide cancel (CM-24).
+pub struct WithheldPreciseCancel<D> {
+    inner: D,
+}
+
+impl<D: DatabaseDriver> WithheldPreciseCancel<D> {
+    pub fn new(inner: D) -> Self {
+        Self { inner }
+    }
+
+    /// The capability as the trait itself reports it — read off the instance
+    /// rather than passed in, which is the whole point.
+    pub fn declared_capability(&self) -> super::Capability {
+        if self.supports_query_execution_cancel() {
+            super::Capability::Supported
+        } else {
+            super::Capability::Unsupported
+        }
+    }
+}
+
+#[async_trait]
+impl<D: DatabaseDriver> DatabaseDriver for WithheldPreciseCancel<D> {
+    // --- the withheld declaration, and the refusal that has to match it
+    fn supports_query_execution_cancel(&self) -> bool {
+        false
+    }
+
+    async fn cancel_query_with_execution(
+        &self,
+        _handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(), DriverError> {
+        Err(DriverError::Unsupported(format!(
+            "precise query cancellation is not supported for execution {}",
+            execution_id.as_str()
+        )))
+    }
+
+    // --- everything below is the inner driver's own behaviour, unchanged.
+    fn driver_type(&self) -> DatabaseType {
+        self.inner.driver_type()
+    }
+
+    fn sync_family(&self) -> String {
+        self.inner.sync_family()
+    }
+
+    fn quote_char(&self) -> char {
+        self.inner.quote_char()
+    }
+
+    fn quote_ident(&self, name: &str) -> String {
+        self.inner.quote_ident(name)
+    }
+
+    fn has_schema_level(&self) -> bool {
+        self.inner.has_schema_level()
+    }
+
+    fn has_multi_database(&self) -> bool {
+        self.inner.has_multi_database()
+    }
+
+    fn ddl_atomicity(&self) -> DdlAtomicity {
+        self.inner.ddl_atomicity()
+    }
+
+    fn format_sql_literal(&self, value: &Option<Value>) -> String {
+        self.inner.format_sql_literal(value)
+    }
+
+    fn supports_offset(&self) -> bool {
+        self.inner.supports_offset()
+    }
+
+    fn supports_explain(&self) -> bool {
+        self.inner.supports_explain()
+    }
+
+    fn command_definitions(&self) -> Vec<datazen_driver_api::DriverCommandDefinition> {
+        self.inner.command_definitions()
+    }
+
+    fn qualify_sql_target(
+        &self,
+        sql: &str,
+        database: Option<&str>,
+        schema: Option<&str>,
+    ) -> Option<String> {
+        self.inner.qualify_sql_target(sql, database, schema)
+    }
+
+    async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
+        self.inner.connect(config).await
+    }
+
+    async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
+        self.inner.test_connection(config).await
+    }
+
+    async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
+        self.inner.disconnect(handle).await
+    }
+
+    async fn get_databases(&self, handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+        self.inner.get_databases(handle).await
+    }
+
+    async fn get_tables(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<Vec<TableInfo>, DriverError> {
+        self.inner.get_tables(handle, database, schema).await
+    }
+
+    async fn get_table_schema(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+        database: &str,
+        schema: Option<&str>,
+    ) -> Result<TableSchema, DriverError> {
+        self.inner
+            .get_table_schema(handle, table, database, schema)
+            .await
+    }
+
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
+        self.inner.query(handle, sql).await
+    }
+
+    async fn query_multi(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+    ) -> Result<datazen_driver_api::MultiQueryResult, DriverError> {
+        self.inner.query_multi(handle, sql, limit).await
+    }
+
+    async fn query_with_params(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+    ) -> Result<QueryResult, DriverError> {
+        self.inner.query_with_params(handle, sql, params).await
+    }
+
+    async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
+        self.inner.execute(handle, sql).await
+    }
+
+    async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        self.inner.cancel_query(handle).await
+    }
+}
+
 /// `packages/drivers`, found by name so the depth of the crate inside the
 /// workspace never becomes a hidden assumption of the template.
 pub fn drivers_root() -> PathBuf {
@@ -367,16 +662,35 @@ pub fn drivers_root() -> PathBuf {
         .to_path_buf()
 }
 
-pub fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let path = entry.path();
+/// Every `.rs` file under `dir`, or the reason the walk could not finish.
+///
+/// "There is no file here" and "I was not allowed to look" must never look the
+/// same to a guard: a walk that swallows an unreadable directory reports a
+/// subtree it never entered as clean, which is precisely the failure mode a
+/// source-scanning guard must not have. The error travels back to the caller,
+/// which turns it into a failure.
+pub fn collect_rs(dir: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
+    let mut out = Vec::new();
+    collect_rs_into(dir, &mut out)?;
+    Ok(out)
+}
+
+fn collect_rs_into(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries {
+        let path = entry?.path();
         if path.is_dir() {
-            collect_rs(&path, out);
+            collect_rs_into(&path, out)?;
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             out.push(path);
         }
     }
+    Ok(())
+}
+
+/// What a scan could not cover, named so a green run cannot hide it.
+pub fn describe_scan_failure(dir: &Path, error: &std::io::Error) -> String {
+    format!("{} ({error})", dir.display())
 }
 
 /// Every source file of the shared template, so a source-level guard scans the
@@ -387,6 +701,7 @@ pub fn template_sources() -> Vec<PathBuf> {
         "real_driver_contract.rs",
         "real_driver_contract_plumbing.rs",
         "real_driver_contract_live.rs",
+        "real_driver_contract_refusal.rs",
     ]
     .iter()
     .map(|name| dir.join(name))

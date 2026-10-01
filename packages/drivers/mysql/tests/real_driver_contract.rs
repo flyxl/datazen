@@ -44,12 +44,15 @@ const CONTRACT: Contract = Contract {
     reset_for_reuse: Capability::Supported,
     dialect: Dialect {
         marker: "dz_fixture_marker",
+        // `{table}` is filled in per live case: every live case in this crate runs
+        // concurrently against the same two fixture targets, so the marker relation
+        // must not be a name fixed in the dialect.
         create_marker:
-            "CREATE TABLE IF NOT EXISTS dz_fixture_marker (dz_fixture_marker_value VARCHAR(255) NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS {table} (dz_fixture_marker_value VARCHAR(255) NOT NULL)",
         insert_marker:
-            "INSERT INTO dz_fixture_marker (dz_fixture_marker_value) VALUES ('{marker}')",
-        select_marker: "SELECT dz_fixture_marker_value FROM dz_fixture_marker",
-        drop_marker: "DROP TABLE IF EXISTS dz_fixture_marker",
+            "INSERT INTO {table} (dz_fixture_marker_value) VALUES ('{marker}')",
+        select_marker: "SELECT dz_fixture_marker_value FROM {table}",
+        drop_marker: "DROP TABLE IF EXISTS {table}",
         current_namespace: "DATABASE()",
         decoy_text_select: "SELECT 'USE dz_fixture_other' AS dz_fixture_decoy",
         missing_object: "dz_fixture_absent_object",

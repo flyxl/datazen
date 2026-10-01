@@ -15,9 +15,16 @@
 //!
 //! Force live run with env (example — use your own secrets, do not commit them):
 //!   TEST_MYSQL_HOST=127.0.0.1 TEST_MYSQL_PORT=3306 TEST_MYSQL_USER=root \
-//!   TEST_MYSQL_PASSWORD= TEST_MYSQL_DATABASE=datazen_test \
-//!   TEST_MYSQL_DATABASE_B=datazen_sync_mysql_tgt \
+//!   TEST_MYSQL_PASSWORD= TEST_MYSQL_DATABASE=dz_fixture_mysql_a \
+//!   TEST_MYSQL_DATABASE_B=dz_fixture_mysql_b \
 //!   cargo test -p datazen-driver-mysql --test mysql_cross_database -- --nocapture
+//!
+//! Both names carry the dedicated `dz_fixture_` prefix the shared driver contract
+//! enforces (`docs/architecture/platform/fake-runtime-fixtures.md` §10.2 rule 1),
+//! and they are two **different** databases: the test is only meaningful when the
+//! session's own catalog and the foreign catalog differ. Names without the prefix
+//! are rejected by that contract, so point the keys at your own prefixed
+//! databases rather than at a working copy.
 
 use datazen_driver_api::{
     ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, TransactionHandle, Value,
@@ -43,8 +50,8 @@ impl Default for MysqlTestConfig {
             port: 3306,
             user: "root".into(),
             password: String::new(),
-            database_a: "datazen_test".into(),
-            database_b: "datazen_sync_mysql_tgt".into(),
+            database_a: "dz_fixture_mysql_a".into(),
+            database_b: "dz_fixture_mysql_b".into(),
         }
     }
 }

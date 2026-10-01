@@ -20,8 +20,15 @@
 //!
 //! Force live run with env (example — use your own secrets, do not commit them):
 //!   TEST_PG_HOST=127.0.0.1 TEST_PG_PORT=5432 TEST_PG_USER=postgres \
-//!   TEST_PG_DATABASE=datazen_demo TEST_PG_DATABASE_B=postgres \
+//!   TEST_PG_DATABASE=dz_fixture_pg_a TEST_PG_DATABASE_B=dz_fixture_pg_b \
 //!   cargo test -p datazen-driver-postgres --test postgres_cross_database -- --nocapture
+//!
+//! Both names carry the dedicated `dz_fixture_` prefix the shared driver contract
+//! enforces (`docs/architecture/platform/fake-runtime-fixtures.md` §10.2 rule 1),
+//! and they are two **different** databases: the test is only meaningful when the
+//! session's own catalog and the foreign catalog differ. Names without the prefix
+//! are rejected by that contract, so point the keys at your own prefixed
+//! databases rather than at a working copy.
 //!
 //! Fixture: discovered at runtime — any `public` relation present in
 //! database_a and absent from database_b. The test skips when there is none.
@@ -46,8 +53,8 @@ impl Default for PgTestConfig {
             port: 5432,
             user: "postgres".into(),
             password: String::new(),
-            database_a: "datazen_demo".into(),
-            database_b: "postgres".into(),
+            database_a: "dz_fixture_pg_a".into(),
+            database_b: "dz_fixture_pg_b".into(),
         }
     }
 }
@@ -56,7 +63,9 @@ impl Default for PgTestConfig {
 ///
 /// No file fallback, deliberately: see the module header. An unset key keeps
 /// the default, so a developer with a local server on the default port still
-/// gets a live run without exporting anything.
+/// gets a live run without exporting anything; the database defaults name
+/// dedicated `dz_fixture_` databases, and a server that does not have them
+/// simply skips the test (see `cross_database_reads_never_move_the_session`).
 fn env_var(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|value| !value.is_empty())
 }
