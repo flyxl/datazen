@@ -6,8 +6,14 @@
 //! BUG-003, where the session was re-pointed and every later read silently
 //! resolved against the wrong database.
 //!
-//! Skips cleanly when PostgreSQL is unavailable. Credentials come from process
-//! env and/or the repo-root `.env` file (`TEST_PG_*` keys, same as workflow tests).
+//! Skips cleanly when PostgreSQL is unavailable. Credentials come from the
+//! **process environment only** (`TEST_PG_*` keys, injected by CI secret or by
+//! the developer shell). This file used to fall back to parsing
+//! `packages/drivers/.env`, which conflicted with the repo's `.env` protection
+//! rule (AGENTS.md 「本地环境变量文件保护」 and
+//! `docs/architecture/platform/fake-runtime-fixtures.md` §13): a test that
+//! silently sources a credential file cannot prove where its secrets came from.
+//! Inject them explicitly instead — see the env block below.
 //!
 //! Run (skip if no Postgres):
 //!   cargo test -p datazen-driver-postgres --test postgres_cross_database -- --nocapture
@@ -19,9 +25,6 @@
 //!
 //! Fixture: discovered at runtime — any `public` relation present in
 //! database_a and absent from database_b. The test skips when there is none.
-
-use std::collections::HashMap;
-use std::path::PathBuf;
 
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, Value};
 use datazen_driver_postgres::PostgresDriver;
@@ -49,54 +52,38 @@ impl Default for PgTestConfig {
     }
 }
 
-fn load_dotenv_file() -> HashMap<String, String> {
-    let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join(".env");
-
-    let mut map = HashMap::new();
-    let Ok(content) = std::fs::read_to_string(&env_path) else {
-        return map;
-    };
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((key, value)) = line.split_once('=') {
-            map.insert(key.trim().to_string(), value.trim().to_string());
-        }
-    }
-    map
+/// Resolve a `TEST_PG_*` key from the **process environment only**.
+///
+/// No file fallback, deliberately: see the module header. An unset key keeps
+/// the default, so a developer with a local server on the default port still
+/// gets a live run without exporting anything.
+fn env_var(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|value| !value.is_empty())
 }
 
-fn env_or_file(file: &HashMap<String, String>, key: &str) -> Option<String> {
-    std::env::var(key).ok().or_else(|| file.get(key).cloned())
-}
-
+/// Build the live-test config from `TEST_PG_*` process env.
+///
+/// Returns `None` only when the caller must not proceed at all; today every
+/// key has a usable default, so the gate is decided by whether the server is
+/// actually reachable (see `cross_database_reads_never_move_the_session`).
 fn load_pg_config() -> Option<PgTestConfig> {
-    let file = load_dotenv_file();
     let mut cfg = PgTestConfig::default();
-    if let Some(v) = env_or_file(&file, "TEST_PG_HOST") {
+    if let Some(v) = env_var("TEST_PG_HOST") {
         cfg.host = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_PORT") {
-        cfg.port = v.parse().unwrap_or(5432);
+    if let Some(v) = env_var("TEST_PG_PORT") {
+        cfg.port = v.parse().unwrap_or(cfg.port);
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_USER") {
+    if let Some(v) = env_var("TEST_PG_USER") {
         cfg.user = v;
     }
-    if let Ok(v) = std::env::var("TEST_PG_PASSWORD") {
+    if let Some(v) = env_var("TEST_PG_PASSWORD") {
         cfg.password = v;
-    } else if let Some(v) = file.get("TEST_PG_PASSWORD") {
-        cfg.password = v.clone();
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_DATABASE") {
+    if let Some(v) = env_var("TEST_PG_DATABASE") {
         cfg.database_a = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_DATABASE_B") {
+    if let Some(v) = env_var("TEST_PG_DATABASE_B") {
         cfg.database_b = v;
     }
 
@@ -130,6 +117,22 @@ fn connection_config(cfg: &PgTestConfig) -> ConnectionConfig {
         options: None,
         read_only: false,
         pinned: false,
+    }
+}
+
+/// Only the variant of a driver error is safe to print from a test: a connect
+/// failure can embed the connection string it was handed, and this file must
+/// never leak an injected credential into CI output.
+fn err_label(err: &DriverError) -> &'static str {
+    match err {
+        DriverError::ConnectionFailed(_) => "ConnectionFailed",
+        DriverError::ConnectionTimeout => "ConnectionTimeout",
+        DriverError::AuthenticationFailed(_) => "AuthenticationFailed",
+        DriverError::SslError(_) => "SslError",
+        DriverError::InvalidConfig(_) => "InvalidConfig",
+        DriverError::PoolExhausted => "PoolExhausted",
+        DriverError::QueryFailed(_) => "QueryFailed",
+        _ => "other",
     }
 }
 
@@ -183,8 +186,10 @@ async fn cross_database_reads_never_move_the_session() {
         Ok(h) => h,
         Err(e) => {
             eprintln!(
-                "⏭  Skipping: cannot connect to PostgreSQL at {}:{}: {e}",
-                cfg.host, cfg.port
+                "⏭  Skipping: cannot connect to PostgreSQL at {}:{} ({})",
+                cfg.host,
+                cfg.port,
+                err_label(&e)
             );
             return;
         }
@@ -194,7 +199,7 @@ async fn cross_database_reads_never_move_the_session() {
         Ok(d) => d,
         Err(e) => {
             let _ = driver.disconnect(handle).await;
-            eprintln!("⏭  Skipping: list databases failed: {e}");
+            eprintln!("⏭  Skipping: list databases failed ({})", err_label(&e));
             return;
         }
     };
@@ -204,6 +209,28 @@ async fn cross_database_reads_never_move_the_session() {
             eprintln!(
                 "⏭  Skipping: database `{needed}` not found (have: {})",
                 dbs.join(", ")
+            );
+            return;
+        }
+    }
+
+    // `get_databases` reports what the server advertises, which is a wider set
+    // than what this role may actually open (`CONNECT` is a separate privilege).
+    // Probe each catalog with `test_connection` — deliberately *not* `query_at`,
+    // so this gate never exercises the very capability the test is about to
+    // assert. An unreachable catalog is a missing fixture, so the cross-database
+    // dimension reports itself unverified instead of failing a check that never
+    // got to run.
+    for database in [&cfg.database_a, &cfg.database_b] {
+        let mut probe = connection_config(&cfg);
+        probe.id = format!("pg-cross-database-it-probe-{database}");
+        probe.database = Some((*database).clone());
+        if let Err(e) = driver.test_connection(&probe).await {
+            let _ = driver.disconnect(handle).await;
+            eprintln!(
+                "⏭  Skipping: catalog `{database}` is advertised but not openable with these \
+                 credentials ({}). Cross-database reads are therefore UNVERIFIED for this run.",
+                err_label(&e)
             );
             return;
         }

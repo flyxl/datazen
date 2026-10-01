@@ -5,8 +5,10 @@
 //! family, `WHERE TABLE_SCHEMA = ?` for `information_schema`), so the borrowed
 //! pool connection is never re-pointed and no `USE` leaks back into the pool.
 //!
-//! Skips cleanly when MySQL is unavailable. Credentials come from process env
-//! and/or the repo-root `.env` file (same `TEST_MYSQL_*` keys as workflow tests).
+//! Skips cleanly when MySQL is unavailable. Credentials come from the **process
+//! environment only** (`TEST_MYSQL_*`, injected by shell or CI secret) — see
+//! `packages/drivers/postgres/tests/postgres_cross_database.rs` for why no
+//! `.env` file is read.
 //!
 //! Run (skip if no MySQL):
 //!   cargo test -p datazen-driver-mysql --test mysql_cross_database -- --nocapture
@@ -17,12 +19,11 @@
 //!   TEST_MYSQL_DATABASE_B=datazen_sync_mysql_tgt \
 //!   cargo test -p datazen-driver-mysql --test mysql_cross_database -- --nocapture
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-
 use datazen_driver_api::{
     ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, TransactionHandle, Value,
 };
+use std::collections::HashMap;
+
 use datazen_driver_mysql::MysqlDriver;
 
 #[derive(Clone, Debug)]
@@ -48,70 +49,42 @@ impl Default for MysqlTestConfig {
     }
 }
 
-fn load_dotenv_file() -> HashMap<String, String> {
-    let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join(".env");
-
-    let mut map = HashMap::new();
-    let Ok(content) = std::fs::read_to_string(&env_path) else {
-        return map;
-    };
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((k, v)) = line.split_once('=') {
-            map.insert(k.trim().to_string(), v.trim().to_string());
-        }
-    }
-    map
+/// Resolve a `TEST_MYSQL_*` key from the **process environment only**.
+///
+/// No file fallback: a test must never parse `packages/drivers/.env`
+/// (AGENTS.md 「本地环境变量文件保护」). Inject the keys from the shell or CI.
+fn env_var(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.is_empty())
 }
 
-fn env_or_file(file: &HashMap<String, String>, key: &str) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .filter(|v| !v.is_empty())
-        .or_else(|| file.get(key).cloned().filter(|v| !v.is_empty()))
-}
-
-/// Gate on `TEST_MYSQL_*` in process env or repo-root `.env`.
-/// Password may be intentionally empty.
+/// Gate on `TEST_MYSQL_*` in the process environment. Password may be
+/// intentionally empty, so it is read without the empty filter.
 fn load_mysql_config() -> Option<MysqlTestConfig> {
-    let file = load_dotenv_file();
-    let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_MYSQL_"))
-        || file.keys().any(|k| k.starts_with("TEST_MYSQL_"));
+    let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_MYSQL_"));
 
     if !has_marker {
-        eprintln!("⏭  Skipping mysql_use_database: no TEST_MYSQL_* in env or .env");
+        eprintln!("⏭  Skipping mysql_use_database: no TEST_MYSQL_* in process env");
         return None;
     }
 
     let mut cfg = MysqlTestConfig::default();
-
-    // Prefer explicit TEST_MYSQL_* (process env wins over .env).
-    if let Some(v) = env_or_file(&file, "TEST_MYSQL_HOST") {
+    if let Some(v) = env_var("TEST_MYSQL_HOST") {
         cfg.host = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_MYSQL_PORT") {
-        cfg.port = v.parse().unwrap_or(3306);
+    if let Some(v) = env_var("TEST_MYSQL_PORT") {
+        cfg.port = v.parse().unwrap_or(cfg.port);
     }
-    if let Some(v) = env_or_file(&file, "TEST_MYSQL_USER") {
+    if let Some(v) = env_var("TEST_MYSQL_USER") {
         cfg.user = v;
     }
     // Empty password is valid; allow override from env including empty string.
     if let Ok(v) = std::env::var("TEST_MYSQL_PASSWORD") {
         cfg.password = v;
-    } else if let Some(v) = file.get("TEST_MYSQL_PASSWORD") {
-        cfg.password = v.clone();
     }
-    if let Some(v) = env_or_file(&file, "TEST_MYSQL_DATABASE") {
+    if let Some(v) = env_var("TEST_MYSQL_DATABASE") {
         cfg.database_a = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_MYSQL_DATABASE_B") {
+    if let Some(v) = env_var("TEST_MYSQL_DATABASE_B") {
         cfg.database_b = v;
     }
 
