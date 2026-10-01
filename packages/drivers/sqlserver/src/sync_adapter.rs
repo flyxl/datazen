@@ -305,7 +305,15 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
         } else {
             format!("[{}].", database.replace(']', "]]"))
         };
-        let schema = schema.unwrap_or("dbo").replace('\'', "''");
+        // A blank schema must fall back to `dbo`, exactly as an absent one
+        // does. Emitting `s.name = N''` instead would match no catalog row, so
+        // the precheck would report zero unsupported objects and silently
+        // admit every table — turning this fail-closed gate into fail-open.
+        let schema = schema
+            .map(str::trim)
+            .filter(|schema| !schema.is_empty())
+            .unwrap_or("dbo")
+            .replace('\'', "''");
         let table = table.replace('\'', "''");
         Some(format!(
             "SELECT CONCAT('computed column ', c.name) AS unsupported_object \
@@ -927,6 +935,51 @@ mod tests {
         assert!(!query.contains("foreign key "));
         assert!(!query.contains("sys.indexes"));
         assert!(!query.contains("sys.foreign_keys"));
+    }
+
+    #[test]
+    fn sqlserver_source_preflight_treats_a_blank_schema_as_absent() {
+        // `s.name = N''` matches no catalog row, so a blank schema would make
+        // the precheck report zero unsupported objects and silently admit
+        // every table. It must fall back to `dbo` instead.
+        for schema in ["", "   ", "\t\n "] {
+            let query = SqlServerSyncAdapter
+                .unsupported_transfer_structure_query("sales", Some(schema), "orders")
+                .expect("SQL Server source preflight query");
+            assert!(query.contains("s.name = N'dbo'"), "{schema:?}: {query}");
+            assert!(!query.contains("N''"), "{schema:?}: {query}");
+            assert!(
+                query.contains("FROM [sales].sys.computed_columns"),
+                "{schema:?}: {query}"
+            );
+        }
+
+        // The absent-schema fallback is unchanged, and a legitimate schema
+        // name keeps its interior space: trimming must not damage a real
+        // identifier.
+        let absent = SqlServerSyncAdapter
+            .unsupported_transfer_structure_query("sales", None, "orders")
+            .expect("SQL Server source preflight query");
+        assert!(absent.contains("s.name = N'dbo'"), "{absent}");
+
+        let named = SqlServerSyncAdapter
+            .unsupported_transfer_structure_query("sales", Some("sales data"), "orders")
+            .expect("SQL Server source preflight query");
+        assert!(named.contains("s.name = N'sales data'"), "{named}");
+        assert!(!named.contains("s.name = N''"), "{named}");
+
+        // Trimming is only a fallback decision; a padded real schema name is
+        // still quoted verbatim around its trimmed value.
+        let padded = SqlServerSyncAdapter
+            .unsupported_transfer_structure_query("sales", Some("  sales  "), "orders")
+            .expect("SQL Server source preflight query");
+        assert!(padded.contains("s.name = N'sales'"), "{padded}");
+
+        // Apostrophe escaping still applies after the fallback decision.
+        let quoted = SqlServerSyncAdapter
+            .unsupported_transfer_structure_query("sales", Some(" o'brien "), "orders")
+            .expect("SQL Server source preflight query");
+        assert!(quoted.contains("s.name = N'o''brien'"), "{quoted}");
     }
 
     #[test]
