@@ -406,6 +406,44 @@ fn qualified_target_sql_is_idempotent_and_never_switches_context() {
     assert_eq!(SqlTarget::new(Some("  "), None).database(), None);
 }
 
+/// The env-file names the guard refuses to see spelled out in a string literal.
+/// Assembled from fragments so this guard cannot match its own source.
+fn env_file_names() -> [&'static str; 2] {
+    [concat!(".en", "v"), concat!(".en", "v.test")]
+}
+
+/// Every spelling that names an env file inside a string literal, plus the
+/// dotenv-style loader calls that read one implicitly.
+///
+/// Each env-file name is matched **against its closing quote**, not as a bare
+/// substring. That is what keeps `contract.env_prefix` and the backticked prose
+/// in the sibling tests legal while still catching a directory-qualified read
+/// such as `../<name>` or `fixtures/<name>` — a shape that both a bare name
+/// substring and a bare quoted-name token miss.
+fn env_guard_tokens() -> Vec<String> {
+    let mut tokens: Vec<String> = vec![
+        concat!("load_", "dotenv").to_string(),
+        concat!("dot", "env()").to_string(),
+        concat!("dot", "env::").to_string(),
+        concat!("dot", "envy").to_string(),
+    ];
+    for name in env_file_names() {
+        for quote in ['"', '\''] {
+            // A bare quoted name, a prefixed name and a path-qualified name all
+            // end in this suffix, in either quote style.
+            tokens.push(format!("{name}{quote}"));
+        }
+    }
+    tokens
+}
+
+/// The first forbidden token this source contains, if any.
+fn env_guard_violation(content: &str) -> Option<String> {
+    env_guard_tokens()
+        .into_iter()
+        .find(|token| content.contains(token.as_str()))
+}
+
 /// §10.2 rule 5 as a regression guard: no Rust source under this driver crate's
 /// `tests/`, and no shared template source, may name an env file as a **string
 /// literal** or call a dotenv-style loader. Prose that mentions such a file in
@@ -413,18 +451,6 @@ fn qualified_target_sql_is_idempotent_and_never_switches_context() {
 /// from the docs, and it cannot be defeated by a comment.
 #[test]
 fn test_sources_never_read_env_files() {
-    // Built from fragments so this guard does not match its own source.
-    let forbidden: Vec<String> = vec![
-        concat!("load_", "dotenv").to_string(),
-        concat!("dot", "env()").to_string(),
-        concat!("dot", "env::").to_string(),
-        concat!("dot", "envy").to_string(),
-        format!("\"{}\"", concat!(".en", "v")),
-        format!("\"{}test\"", concat!(".en", "v")),
-        format!("'{}'", concat!(".en", "v")),
-        format!("'{}test'", concat!(".en", "v")),
-    ];
-
     assert!(
         file!().ends_with("http-support/tests/support/real_driver_contract.rs"),
         "this file is not the shared template (file!() = {})",
@@ -442,13 +468,134 @@ fn test_sources_never_read_env_files() {
     for path in &sources {
         let content = std::fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-        for token in &forbidden {
-            assert!(
-                !content.contains(token.as_str()),
+        if let Some(token) = env_guard_violation(&content) {
+            panic!(
                 "{} must not contain {token:?} — credentials come from the process environment only",
                 path.display()
             );
         }
+    }
+}
+
+/// The guard above only ever sees **one** driver crate: `env!("CARGO_MANIFEST_DIR")`
+/// resolves to the crate that included this template, not to the crate the file
+/// physically lives in. A crate that does not bind the template is therefore
+/// scanned by nobody, silently — which is how `sqlserver` kept reading a local
+/// env file while a guard named `test_sources_never_read_env_files` stayed green.
+///
+/// This test makes that scope explicit instead of accidental. A driver crate that
+/// ships a `tests/` directory must either bind the template (and so be scanned
+/// whenever its own contract test runs) or be listed here with its reason. Adding
+/// a driver crate and forgetting the list therefore fails loudly, and fixing a
+/// listed crate and forgetting to remove it also fails loudly.
+#[test]
+fn every_driver_crate_with_tests_either_binds_this_guard_or_is_declared() {
+    let root = drivers_root();
+    let template = template_sources();
+    let mut declared: Vec<String> = UNGUARDED_DRIVER_CRATES
+        .iter()
+        .map(|(name, _)| (*name).to_string())
+        .collect();
+    declared.sort();
+
+    let mut scanned_by_nobody: Vec<String> = Vec::new();
+    let entries = std::fs::read_dir(&root)
+        .unwrap_or_else(|e| panic!("cannot list {}: {e}", root.display()));
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.join("tests").is_dir() {
+            continue;
+        }
+        // A crate is covered when it runs the template, or when it *is* the
+        // template's home and its sources are already in the scanned set.
+        let bound = path.join("tests/real_driver_contract.rs").is_file();
+        let is_template_home = !template.is_empty() && template.iter().all(|src| src.starts_with(&path));
+        if bound || is_template_home {
+            continue;
+        }
+        scanned_by_nobody.push(entry.file_name().to_string_lossy().into_owned());
+    }
+    scanned_by_nobody.sort();
+
+    assert_eq!(
+        scanned_by_nobody, declared,
+        "driver crates that ship tests but are scanned by no run of this guard: \
+         {scanned_by_nobody:?} vs declared {declared:?}"
+    );
+    for (name, reason) in UNGUARDED_DRIVER_CRATES {
+        assert!(
+            drivers_root().join(name).join("tests").is_dir(),
+            "UNGUARDED_DRIVER_CRATES lists `{name}` but that crate no longer ships tests: \
+             remove it from the list"
+        );
+        let _ = reason;
+    }
+}
+
+/// Driver crates that ship a `tests/` directory but never run this guard, with
+/// the reason each one is not covered yet. Every entry is a known, visible gap
+/// in the §10.2 rule 5 enforcement, not a silent one.
+const UNGUARDED_DRIVER_CRATES: &[(&str, &str)] = &[
+    ("clickhouse", "no contract binding yet; no env-file read in its tests today"),
+    ("duckdb", "no contract binding yet; no env-file read in its tests today"),
+    ("mongodb", "no contract binding yet; no env-file read in its tests today"),
+    ("redis", "no contract binding yet; no env-file read in its tests today"),
+    ("sqlite", "no contract binding yet; no env-file read in its tests today"),
+    (
+        "sqlserver",
+        "tests/common/mod.rs still parses a local env file for its live suite",
+    ),
+];
+
+/// The guard's own matcher, proven against the spellings that must be caught and
+/// the ones that must stay legal.
+///
+/// Without this, a token list can quietly stop matching the shape it was written
+/// for and a green guard keeps asserting nothing. That is exactly how a
+/// directory-qualified `read_to_string` of a prefixed name and a reader of the
+/// `test` variant both passed a guard written to forbid them.
+#[test]
+fn the_env_guard_matches_every_shape_of_env_file_literal() {
+    let name = env_file_names()[0];
+    let test_variant = env_file_names()[1];
+
+    // (source, must_be_flagged)
+    let cases: Vec<(String, bool)> = vec![
+        // --- must be flagged: a quoted path that names an env file
+        (format!("read_to_string({q}{name}{q})", q = '"'), true),
+        (format!("read_to_string({q}{name}{q})", q = '\''), true),
+        (format!("read_to_string({q}../{name}{q})", q = '"'), true),
+        (format!("dir.join({q}fixtures/{name}{q})", q = '"'), true),
+        (format!("read_to_string({q}x{name}{q})", q = '"'), true),
+        (format!("read_to_string({q}{test_variant}{q})", q = '"'), true),
+        (format!("dir.join({q}{test_variant}{q})", q = '"'), true),
+        (format!("read_to_string({q}{test_variant}{q})", q = '\''), true),
+        (format!("read_to_string({q}../{test_variant}{q})", q = '"'), true),
+        // --- must be flagged: an implicit loader
+        (concat!("load_", "dotenv").to_string(), true),
+        (concat!("dot", "env::from_filename").to_string(), true),
+        (concat!("dot", "envy::from_filename").to_string(), true),
+        // --- must stay legal: prose in backticks, and substrings, not paths
+        (format!("//! why no {q}{name}{q} file is read", q = '`'), false),
+        (
+            format!("/// must never parse {q}packages/drivers/{name}{q}", q = '`'),
+            false,
+        ),
+        (
+            format!("/// configured in {q}drivers/sqlserver/{test_variant}{q}", q = '`'),
+            false,
+        ),
+        ("contract.env_prefix".to_string(), false),
+        ("TEST_PG_DATABASE".to_string(), false),
+        ("sql_guard".to_string(), false),
+    ];
+
+    for (source, must_flag) in &cases {
+        assert_eq!(
+            env_guard_violation(source).is_some(),
+            *must_flag,
+            "guard disagreed about {source:?}"
+        );
     }
 }
 
