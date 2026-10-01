@@ -338,6 +338,42 @@ pub fn report_partial_obligation(o: &PartialObligation) {
     );
 }
 
+/// The unscanned-crate section's one fixed policy sentence.
+///
+/// Deliberately **not** interpolated with anything: the count and the crate names
+/// are printed on their own lines out of `UNGUARDED_DRIVER_CRATES`, and the reason
+/// each crate is unbound stays in code rather than becoming prose here. That is
+/// the whole point — see [`unscanned_crate_section`].
+const UNGUARDED_CRATES_POLICY: &str = "以下 crate 带有 tests/ 目录，却从不绑定本契约模板，因此它们的测试源不在上面『无 env 文件读取』的结论范围内；本 guard 不对它们作任何断言，列为免检是一项已记录的缺口，不是一项结论。未绑定的原因写在 UNGUARDED_DRIVER_CRATES 的代码注释里，不打印成散文，以免自由文本变成新的声明面。";
+
+/// The report's section about the crates this guard does **not** scan.
+///
+/// Built from machine data plus one fixed literal — no hand-written crate list, and
+/// no free-text slot beside the names.
+///
+/// That slot is why the previous version needed a word blacklist to defend it. The
+/// section was assembled inline in [`scope_text`], so appending a sentence to it
+/// was a legal edit, and this one —
+///
+/// > 以上 crate 均不读取 env 文件，已纳入防护体系，具有同等保护力度。
+///
+/// — passed all 28 tests while contradicting the line two lines above it. Eight
+/// forbidden words did not close that, because the next sentence simply avoids all
+/// eight. Generating the section removes the slot; the golden in
+/// `the_report_names_every_crate_this_guard_does_not_scan` closes the rest.
+fn unscanned_crate_section() -> String {
+    let names = UNGUARDED_DRIVER_CRATES
+        .iter()
+        .map(|(name, _)| *name)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "\n--- 免检驱动 crate（共 {} 个）：本 guard 不扫描，其结论不被上面的扫描覆盖 ---\n     \
+         {UNGUARDED_CRATES_POLICY}\n     清单：{names}\n",
+        UNGUARDED_DRIVER_CRATES.len(),
+    )
+}
+
 /// The honest inventory of what a run did **not** verify, as text.
 ///
 /// Built by a function so the claims can be asserted on instead of merely
@@ -351,7 +387,9 @@ pub fn report_partial_obligation(o: &PartialObligation) {
 /// and the assertion had no subject: with no `TEST_PG_*` in the environment the
 /// `Ok` arm is never taken, the over-claim being guarded against was never even
 /// produced, and the guard passed. That is the CM-26 defect reproduced one level
-/// up, so the branch is now something a test can hold both ways.
+/// up, so the branch became something a test can hold both ways — and
+/// `check_report_claims` holds it in *both* directions, because a guard over only
+/// the arm this run happens to take would miss the one CI takes.
 fn scope_text(availability: Result<(), String>) -> String {
     let contract = &crate::CONTRACT;
     let mut out = String::new();
@@ -377,17 +415,7 @@ fn scope_text(availability: Result<(), String>) -> String {
          这一点没有任何静态规则能改变（字符串在 main 运行后才存在）。详见 \
          the_static_env_guard_cannot_see_a_name_assembled_at_runtime。\n"
     ));
-    out.push_str(&format!(
-        "\n--- 免检驱动 crate（共 {} 个）---\n     以下 crate 有 tests/ 目录，却从不运行本模板，\
-         因此它们的测试源不被本 guard 扫描，其中是否读取 env 文件**不在**上面『无 env 文件读取』\
-         的结论范围内：{}\n",
-        UNGUARDED_DRIVER_CRATES.len(),
-        UNGUARDED_DRIVER_CRATES
-            .iter()
-            .map(|(name, _)| *name)
-            .collect::<Vec<_>>()
-            .join(", ")
-    ));
+    out.push_str(&unscanned_crate_section());
     out.push_str("\n--- 只验证了一半的维度（不计入已通过）---\n");
     if PARTIAL_OBLIGATIONS.is_empty() {
         out.push_str("  （无）\n");
@@ -409,6 +437,27 @@ fn scope_text(availability: Result<(), String>) -> String {
 fn unverified_scope_report() {
     eprint!("{}", scope_text(crate::CONTRACT.availability()));
 }
+
+/// The unscanned-crate section, pinned as a **golden**.
+///
+/// Written out by hand rather than derived from `UNGUARDED_CRATES_POLICY` or
+/// `UNGUARDED_DRIVER_CRATES`: if the test built its expectation out of the same
+/// constants the report is rendered from, editing a word would rewrite the check
+/// along with it, and the assertion would be hollow. Two independent literals are
+/// the only version of this guard that says anything.
+///
+/// What it buys, stated without overselling: the section cannot gain an
+/// **unreviewed** sentence, and it cannot drift from the crate list — the two
+/// mutations that shipped green straight through this guard. What it does not buy
+/// is judgement: whoever edits the section edits this pin in the same commit, and
+/// no assertion can tell whether the new sentence is *honest*. Prose elsewhere in
+/// the report sits outside this pin by design; that is what the availability and
+/// PARTIAL_OBLIGATIONS checks are for.
+const UNGUARDED_CRATES_GOLDEN: &str = "\
+\n--- 免检驱动 crate（共 6 个）：本 guard 不扫描，其结论不被上面的扫描覆盖 ---
+     以下 crate 带有 tests/ 目录，却从不绑定本契约模板，因此它们的测试源不在上面『无 env 文件读取』的结论范围内；本 guard 不对它们作任何断言，列为免检是一项已记录的缺口，不是一项结论。未绑定的原因写在 UNGUARDED_DRIVER_CRATES 的代码注释里，不打印成散文，以免自由文本变成新的声明面。
+     清单：clickhouse, duckdb, mongodb, redis, sqlite, sqlserver
+";
 
 /// The crates this guard does **not** scan must be named in the report, by name
 /// and by count.
@@ -444,39 +493,30 @@ fn the_report_names_every_crate_this_guard_does_not_scan() {
         );
     }
 
-    // The section must not carry a coverage claim. Checked over the whole section
-    // rather than per named line, because the sentence someone would most like to
-    // add does not name a crate — it says 「以上 crate 同样不读取 env 文件，已覆盖」,
-    // and a per-name check walks straight past it. That version was written,
-    // shipped green, and only the mutation caught it.
-    let section: String = report
-        .split('\n')
-        .skip_while(|line| !line.contains("免检驱动 crate"))
-        .skip(1)
-        .take_while(|line| !line.trim_start().starts_with("---"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    // The whole section, compared to the golden — not a per-name check, and not a
+    // word blacklist. The blacklist was the previous answer and it did not hold:
+    // appending 「以上 crate 均不读取 env 文件，已纳入防护体系，具有同等保护力度。」
+    // avoids all eight forbidden words and left all 28 tests green while the report
+    // contradicted the line above it. Whack-a-mole was never going to close a
+    // free-text slot, so the slot is gone (see [`unscanned_crate_section`]) and
+    // what is left is pinned.
+    let start = report.find("\n--- 免检驱动 crate").unwrap_or_else(|| {
+        panic!("the report has no unscanned-crate section at all, so the gap is unnamed: {report}")
+    });
+    let rest = &report[start..];
+    let end = rest[1..].find("\n---").map_or(rest.len(), |i| i + 1);
+    let section = &rest[..end];
+    assert_eq!(
+        section, UNGUARDED_CRATES_GOLDEN,
+        "the unscanned-crate section no longer matches the golden. Every crate named in it \
+         escapes this guard's scan, so any wording change here is a change to what a reader is \
+         told about coverage — if the new text is accurate, re-pin the golden in the same commit."
+    );
     assert!(
         section.contains("duckdb"),
-        "the exempt section must actually list the crates; a section that only says 'the rest' \
-         is not a report. Section reads:\n{section}"
+        "the golden must actually list the crates; a section that only says 'the rest' is not \
+         a report"
     );
-    for claim in [
-        "已覆盖",
-        "受保护",
-        "同样",
-        "已扫描",
-        "本 guard 已",
-        "covered",
-        "protected",
-        "safe",
-    ] {
-        assert!(
-            !section.contains(claim),
-            "the unscanned-crate section claims '{claim}', so a reader is told these crates are \
-             covered when no run of this guard ever looks at them:\n{section}"
-        );
-    }
 
     // And the boundary has to be attached to the *claim* it qualifies, not left as
     // a footnote: a reader who reads only the free-tier line and stops must still
@@ -551,17 +591,56 @@ fn partial_obligations_are_never_reported_as_passed() {
     // Both availability arms, so no claim can hide in the one this run does not
     // take: without a live tier the `Ok` wording is never printed, and a guard
     // over the printed text alone would never see it.
-    for report in [
-        scope_text(Ok(())),
-        scope_text(Err(
-            "probe: availability held fixed for this assertion".to_string()
-        )),
+    for availability in [
+        Ok(()),
+        Err("probe: availability held fixed for this assertion".to_string()),
     ] {
-        check_report_claims(report);
+        check_report_claims(&availability, scope_text(availability.clone()));
     }
 }
 
-fn check_report_claims(report: String) {
+/// `availability` is the *input* the report was rendered from, so the printed
+/// availability line is checked against it rather than against itself.
+///
+/// The line used to be unchecked: nothing in this function read it, so the two
+/// arms were interchangeable — swapping the `Err` wording for the `Ok` wording, and
+/// swapping back, each left all 28 tests green. That is not a missing test, it is a
+/// guard asserting something other than what it claimed to hold.
+fn check_report_claims(availability: &Result<(), String>, report: String) {
+    // Spelled out here rather than shared with `scope_text`, so rewording the
+    // report turns this red instead of quietly rewriting the check with it. The
+    // residual is stated rather than hidden: wording both sides together stays
+    // possible, so what is asserted is the pairing and the mutual exclusion of the
+    // two arms, not the exact sentence.
+    let (expected_line, forbidden) = match availability {
+        Ok(()) => (
+            String::from(
+                "live 层前置条件齐备；下面列出的维度，其 live 测试只有在本次真实数据库运行中才成立。",
+            ),
+            "live 层未启用",
+        ),
+        Err(reason) => (
+            format!("live 层未启用：{reason}"),
+            "live 层前置条件齐备",
+        ),
+    };
+    // Compared line for line, not with `contains`: a substring test passes on a
+    // prefix, so it cannot see where the sentence was supposed to end — dropping
+    // the trailing "成立。" from the report leaves it green, which is the same
+    // defect one level down.
+    assert!(
+        report.lines().any(|line| line == expected_line),
+        "availability() returned {availability:?} and the report must print exactly that \
+         availability line, as a whole line. Expected a line reading:\n{expected_line}\n\
+         Report reads:\n{report}"
+    );
+    assert!(
+        !report.contains(forbidden),
+        "availability() returned {availability:?} yet the report still carries 「{forbidden}」: \
+         a run can then claim the live tier is ready when availability() said otherwise, or \
+         hide a missing live tier behind ready-looking wording. Report reads:\n{report}"
+    );
+
     for o in PARTIAL_OBLIGATIONS {
         assert!(
             REQUIRED_DIMENSIONS
