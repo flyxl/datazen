@@ -97,6 +97,7 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:unit:driver-set": "node scripts/run-unit-driver-set.mjs",
+    "test:unit-count": "node scripts/check-test-count.mjs",
     "test:unit:drivers": "vitest run --config vitest.drivers.config.ts",
     "test:pro": "vitest run --config packages/pro-extensions/sql-editor-pro/vitest.config.ts",
     "test:unit:e2e-contract": "vitest run --config vitest.e2e-contract.config.ts",

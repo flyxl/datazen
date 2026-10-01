@@ -45,6 +45,7 @@
 | 守卫 | `check-managed-stubs.mjs`、`check-structure-editor-guardrails.mjs` 等 | 防止误提交 inject 产物 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
 | Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**软门禁**（`continue-on-error: true`），理由见 §2.1.1；转硬门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts:149`（见 §2.1.1 末） |
+| 用例计数守卫 | `pnpm test:unit-count` | `scripts/check-test-count.mjs`：`vitest list` 实测用例数，与本节三处引用比对。**硬门禁**，理由见 §2.1.3 |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
 
 ### 2.1.1 为什么该步是软门禁，以及 `testTimeout` 为何取 10s
@@ -72,7 +73,7 @@
 `continue-on-error: true` 本身保留不动——首次真实 runner 运行需可观察，先软后硬是
 正确顺序。
 
-**`testTimeout` 取值依据（实测，非拍脑袋）。** 对全部 5695 个 Host 用例逐条统计
+**`testTimeout` 取值依据（实测，非拍脑袋）。** 对全部 5714 个 Host 用例逐条统计
 墙钟耗时（驱动集 `all`，8 核 macOS，`--reporter=json`），三个竞争档位：
 
 | 档位 | 运行前 1 分钟 load | p95 | p99 | p99.9 | max | 超 5s | 失败 |
@@ -125,10 +126,16 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 **守卫的边界：防删依据，不防错依据。** 该守卫断言的是"这些实测数字串**仍然存在**"
 （`1745ms` / `4392ms` / `11629ms` / `testTimeout: 10_000` / `continue-on-error: true` /
 `5677 passed`），**不是**它们是否属实。实测确认：把 `4392ms` 改成 `4400ms` 会红（串
-不匹配），但改成某个**仍然存在、只是不再真实**的数不会红；同样，把一处关于 runner 核数
-的断言整体改写成另一个仍然成立的核数说法，守卫也全绿——CI 分不出"陈旧"与"已更正"。
-所以"守卫全绿"**不等于**"文档里的数字或说法是对的"。数字的正确性只能靠重测确认，
-这是既有守卫的固有限制，本轮不修，但要记住它的边界。
+不匹配），但改成某个**仍然存在、只是不再真实**的数不会红。所以"守卫全绿"**不等于**
+"文档里的数字或说法是对的"。数字的正确性只能靠重测确认。
+
+它对 runner 核数的检查是**关键词启发式（防形不防语义）**，边界必须说清：把
+`ci.yml` 注释里那句关于 runner 核数的话整体改写成另一个"仍然成立"的说法，
+只要句中同时出现**阿拉伯数字 + `core`/`核`**与**runner**，且该句**没有**否定/免责标记
+（not、never、不推断、假定……），就会红；但写成文字（"four cores"）、或把免责标记留在
+同一段而不是同一句，都可能漏过。它拦的是最常见的复发形态，不是语义判定。
+
+用例总数是本节唯一**不靠字符串存在性**的数字，另有独立机器测量，见 §2.1.3。
 
 ### 2.1.2 `check-ci-docs-consistency.mjs` 覆盖什么、不覆盖什么
 
@@ -144,9 +151,64 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 
 **它不覆盖**：任何 runner 规格声明（核数），以及任何计时/计数声明——`testTimeout`、
 `retry`、worker 数、用例总数、各档耗时百分比与 max 值。它只在三个维度上把关，
-§2.1.1 那些数字**不是**由它守的（是由 `scripts/__tests__/run-unit-driver-set.test.ts`
-按上一节末尾所说的"字符串存在性"守的）。别因为 CI 里跑了这个脚本，就以为 runner 规格
+所以 §2.1.1 那些数字**不由它守**。别因为 CI 里跑了这个脚本，就以为 runner 规格
 或计时数据已经有守卫。本轮不改动它的检查范围。
+
+那些数字实际由两个守卫分担，能力边界不同，必须分开看：
+
+- `scripts/__tests__/run-unit-driver-set.test.ts` —— §2.1.1 的
+  `testTimeout` / `retry` / 耗时串按**字符串存在性**守，`run-unit-driver-set.mjs`
+  的三条腿与软门禁标记按结构守；**不校验这些数字是否属实**。
+- `pnpm test:unit-count` —— 例外见 §2.1.3：只有用例总数是被机器实测比对的。
+
+### 2.1.3 用例计数守卫：为什么它不在 vitest 里，而是 CI 的独立一步
+
+`vitest.config.ts`、`ci.yml` 注释、本文档 §2.1.1 各写了一个 Host 用例总数。
+手写三个数字互相比对是**同义反复**：三处同时写错，错得一样多，守卫全绿。
+所以这个数字必须有一侧是机器产出的。
+
+**做法：`pnpm test:unit-count` → `scripts/check-test-count.mjs`。**
+它复用 `scripts/run-unit-driver-set.mjs` 的驱动集规划（同样先跑两条 codegen 腿，
+把 `vitest run` 那条腿改成 `vitest list`），数出 stdout 的用例行，再和三处引用比对，
+并要求三处彼此相等。任一处对不上或三处互相矛盾即 exit 1。
+
+**为什么是 CI 的独立一步，而不是一个 vitest 用例。** 唯一机器产出的口径就是
+`vitest list`，而它要**重新收集并转换全部文件**。本机实测（darwin-arm64 /
+node v22.20.0 / 驱动集 `all`）：
+
+| 口径 | 墙钟 | user CPU | 峰值 RSS | 产出 |
+|------|------|----------|----------|------|
+| `vitest list`（冷缓存，CI 的情形） | 188.81s | 563.42s | 约 330 MB | 556 行用例 + 556 个文件 |
+| `vitest list`（热缓存） | 约 91s | — | — | 5714 行用例 + 557 个文件 |
+| `vitest list --filesOnly` | 0.74s | — | 约 125 MB | 557 行，**只有文件数** |
+
+> 两行的用例数不同是因为测量时的基线不同：188.81s 那一行测于本守卫编写时的
+> 5695 用例基线，产出列如实记下当时的数字；热缓存一行是本轮收尾时的实测。
+> CI 是冷缓存，所以 188.81s 才是要拿来做预算的那个数。
+
+> 实测记录：冷缓存 188.81s（热缓存也还有约 91s）超 20s 门槛，因此**否决**"写成一个
+> vitest 用例"的方案。
+
+把它塞进 vitest 用例，等于在跑套件的过程中再跑一遍完整收集：`vitest.config.ts`
+自己声明的 `testTimeout` 是 10s，这个用例无论如何都超时，套件会因为一个文档守卫而红。
+`--filesOnly` 够便宜，但它只给**文件数**，而三处引用的是**用例数**，口径不同，
+拿它冒充实测值就是把"便宜"换成了"守的不是那件事"。因此它是独立一步，是**硬门禁**
+（用例数陈旧属文档缺陷，不是抖动），排在 `pnpm test:unit:driver-set` 之后——
+计数是 `all` 驱动集的属性，而那一步正是生成该状态的动作。
+
+**已考虑并否决的省时方案**：直接用 `pnpm test:unit:driver-set` 自己的
+`--reporter=json` 输出，几乎零边际成本。否决理由有两条：它把计数的来源绑在被检查的
+那一步上，reporter 一改守卫就静默失效；且 `retry: 2` 与软门禁语义都可能让 json
+里的总数与 `vitest list` 的收集口径不一致。两害相权，多花这 188.81s 更划算。
+
+**这个守卫已经抓到过一次真问题。** 上线的第一次运行就红：三处引用的 5695 是本轮改动
+之前的实测值，而本轮新增的守卫用例本身已经让套件变成 5714。旧数字在同一个提交内漂移
+且无人察觉，正是因为它当时**只被"字符串还在不在"守着、没有任何机器测量**。
+
+**能力边界（必须写明）：** `run-unit-driver-set.test.ts` 里那个便宜的 vitest 守卫
+**只能**发现三处数字互相矛盾；它发现不了"三处一致地写错"。后者只有
+`pnpm test:unit-count` 能发现，而它不在 `pnpm test:unit` 里跑。两者是互补的，
+不要把前者当成真值检查。
 
 ### 2.2 rust job（Rust 段，浅克隆）
 

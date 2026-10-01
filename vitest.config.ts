@@ -28,7 +28,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     // Vitest's 5s default is not a defensible budget for this suite. Measured
-    // per-test wall time over all 5695 Host tests (driver set `all`, macOS,
+    // per-test wall time over all 5714 Host tests (driver set `all`, macOS,
     // 8 cores) at three contention levels, via `--reporter=json`:
     //
     //   2 workers,  load 13  (a local --maxWorkers=2 low-load run)  p95 57ms  p99 170ms  max  1745ms  0 failures
@@ -37,8 +37,12 @@ export default defineConfig({
     //
     // The 8-worker / load-7 row is the one that matters: a single test already
     // sits at 88% of a 5s budget on this host, so further contention has no
-    // headroom left. 10s is ~2.3x that row's max (4392ms) and ~4.4x its p99.9
-    // (2299ms). Scoped to the load-7 row, NOT a margin claim: 11629ms (worst
+    // headroom left. No multiple of any measured figure is quoted here, and
+    // docs/development/ci-test-matrix.md §2.1.1 forbids rebuilding one in this
+    // form: the load-7 row is one contention level on one host, so "10s is Nx
+    // that" asserts a baseline this file does not control, and it would sit
+    // right where "no headroom left" makes a reader take any number as overall
+    // headroom. Scoped to the load-7 row, NOT a margin claim: 11629ms (worst
     // overall) exceeds 10s outright. This project does not control the GitHub
     // runner spec, so nothing here claims what a hosted runner looks like.
     //
