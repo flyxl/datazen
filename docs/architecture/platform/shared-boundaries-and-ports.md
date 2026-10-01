@@ -1,7 +1,11 @@
 # DataZen 共享应用边界与端口详细设计
 
-> 状态：**契约层已实现，运行期接线未落地**。P1 交付了 `packages/platform-api`、`packages/application`、`packages/backend-client` 三个包与它们的单测；`packages/runtime` 的类型迁移、`server` crate、§8 的 CI 门禁脚本仍为待办，见各节标注的「尚未实现」。
-> 基线：2026-09-30，代码提交 `8592b0fe1`；契约层实现分支 `feat/platform-p1-core`（基线提交 `6175f1c1f`）。本文下述 workspace 成员、前端三处接线的事实已按实现后的根 `Cargo.toml`、`tsconfig.json`、`vite.config.ts` 复核。
+> 状态：**契约类型已实现且有单测，运行期接线为零**。已落地 `packages/platform-api`（ID / 上下文 / 目标 / 端口 / DTO）、`packages/application`（用例与错误语义）、`packages/backend-client`（传输无关客户端）、`packages/driver-api` 的资源契约、以及 `src-tauri/src/platform/` 的 Tauri 适配层。
+>
+> **「已实现」的准确含义**：类型、端口签名、构造器与 builder 已存在并有单测覆盖；**没有任何运行期路径从真实连接配置构造它们**。以 `ProfileView` 为例——`packages/platform-api/src/dto/profile.rs` 的 `ProfileView::new()` 把 `config_revision` / `credential_revision` 固定为 `Counter::ZERO`、`enabled` 固定为 `true`、`credential_configured` 固定为 `false`；`with_credential_revision` 与 `with_initial_namespace` 在 `packages/platform-api` 包外**零调用点**，包内命中全部位于 `#[cfg(test)]`（起始行 211）之后。宿主侧 `src-tauri/src/platform/adapter.rs` 的 13 个 `ConnectionUseCases` 方法因此**刻意不接线**——接线需要在 adapter 里编造缺失字段，正是 §7 回退条款禁止的伪映射。
+>
+> 待办：`packages/runtime` 的类型迁移、`server` crate，以及 §8 的 CI 门禁脚本（`check-platform-crate-boundaries.mjs` 存在且在 CI 中运行，但其 `--require-layers` 对 TypeScript 层失效、`forbiddenCode` 用裸 `indexOf` 匹配、且会把「主体存在且干净」报成 VACUOUS）。见各节标注的「尚未实现」。
+> 基线：代码提交 `78b1446dc`（Track D 合流）。本文下述 workspace 成员、前端三处接线的事实已按实现后的根 `Cargo.toml`、`tsconfig.json`、`vite.config.ts` 复核。
 > 读者：本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。标为「目标设计」的段落仍是契约，未随 P1 实现。
 > 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 
