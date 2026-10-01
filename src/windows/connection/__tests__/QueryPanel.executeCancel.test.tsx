@@ -1,10 +1,13 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, screen, act, waitFor } from '@testing-library/react';
+import { relationKey } from '@datazen/driver-sdk';
 import { QueryPanel } from '../QueryPanel';
 import { usePanelStore, type QueryPanel as QueryPanelState } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
 import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 import type { SqlEditorEnhancedOptions } from '@datazen/extension-points';
+import type { ConnectionSchemaState } from '../../../stores/schemaStoreState';
+import { seedConnectionSchema } from '../../../test/mocks/schemaStore';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -54,17 +57,8 @@ const activeConnectionStoreState = vi.hoisted(() => ({
 }));
 
 const schemaStoreState = vi.hoisted(() => ({
-  schemas: new Map(),
-  tables: [] as Array<{ name: string; tableType: 'table' | 'view'; schema?: string }>,
-  views: [] as Array<{ name: string; tableType: 'table' | 'view'; schema?: string }>,
-  columnMap: {} as Record<string, string[]>,
-  namespaceTree: [],
-  pathAliases: {},
-  databases: [] as string[],
-  currentDatabase: 'app' as string | null,
-  currentSchema: null as string | null,
-  isMultiDatabase: false,
-  ensuringCount: 0,
+  schemas: new Map<string, ConnectionSchemaState>(),
+  activeDbSessionId: 'sess-conn-1' as string | null,
   ensureColumns: vi.fn(),
   ensureDatabaseColumns: vi.fn(),
   loadTables: vi.fn(),
@@ -91,18 +85,16 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
   ),
 }));
 
-vi.mock('../../../stores/schemaStore', () => ({
-  useConnectionColumnMaps: (_session: string) => ({
-    columnMap: schemaStoreState.columnMap,
-    typedColumnMap: {},
-  }),
-  useConnectionSchemaField: (_session: string, field: keyof typeof schemaStoreState) =>
-    schemaStoreState[field],
-  useSchemaStore: Object.assign(
-    (sel: (s: typeof schemaStoreState) => unknown) => sel(schemaStoreState),
-    { getState: () => schemaStoreState },
-  ),
-}));
+// The store is keyed per db session, and the Retry guard compares a fingerprint
+// captured at render time (hooks) against one re-read at click time
+// (`query/contracts.ts` reads `getState().schemas` DIRECTLY). A flat mock state
+// gives those two readers different inputs — the map stayed empty, so every
+// "unchanged context" retry was rejected as `context-changed` for the wrong
+// reason and the "blocks" cases passed vacuously. One source of truth: the map.
+vi.mock('../../../stores/schemaStore', async () => {
+  const { schemaStoreMockModule } = await import('../../../test/mocks/schemaStore');
+  return schemaStoreMockModule(schemaStoreState);
+});
 
 vi.mock('../../../components/SqlEditor', async () => {
   const { forwardRef } = await import('react');
@@ -228,14 +220,43 @@ const PANEL_ID = 'panel-test';
  * `schema: string | null`, but this suite deliberately runs with the panel
  * *unpinned*: every `??` fallback in `buildQueryPanelDiagnosisContext` /
  * `readCurrentQueryPanelRetryValidationInput` must keep falling through to the
- * schema store — the "blocks Retry when the schema context changes" case sets
- * both `schemaStore.currentDatabase` and the active connection's to `null` and
- * expects that to be observable. `undefined` is the only value that leaves
- * those chains untouched (an empty string would short-circuit them), so the
- * fixture and the props carry it explicitly rather than a real database name.
+ * schema store — the "blocks Retry when the latest context becomes invalid"
+ * case sets both the session entry's `currentDatabase` and the active
+ * connection's to `null` and expects that to be observable. `undefined` is the
+ * only value that leaves those chains untouched (an empty string would
+ * short-circuit them), so the fixture and the props carry it explicitly rather
+ * than a real database name.
  */
 const UNPINNED_DATABASE = undefined as unknown as string;
 const NO_SCHEMA = null;
+
+const DB_SESSION = 'sess-conn-1';
+const DATABASE = 'app';
+
+/** The session every test binds the panel to; seeded per-test, never shared. */
+function seedSchema(patch: Partial<ConnectionSchemaState>): void {
+  seedConnectionSchema(schemaStoreState, DB_SESSION, patch);
+}
+
+/**
+ * Columns reach the store as `relationColumns`; `columnMap` is *derived* from
+ * them by `projectRelationColumns`, so the mock must seed them the same way or
+ * the captured and re-read fingerprints can never match.
+ */
+function seedColumns(name: string, columns: string[]): void {
+  const ref = { database: DATABASE, schema: 'public', name };
+  const existing = schemaStoreState.schemas.get(DB_SESSION)?.relationColumns ?? {};
+  seedSchema({
+    relationColumns: {
+      ...existing,
+      [relationKey({ ...ref, dbSessionId: DB_SESSION })]: {
+        ref,
+        columns: columns.map((column) => ({ name: column, dataType: 'text', nullable: true })),
+        primaryKeys: [],
+      },
+    },
+  });
+}
 
 afterEach(cleanup);
 
@@ -246,12 +267,9 @@ describe('QueryPanel execute/cancel button', () => {
     vi.clearAllMocks();
     retryConfirmation.confirm.mockResolvedValue(true);
     executeQuery.mockResolvedValue(undefined);
-    schemaStoreState.tables = [];
-    schemaStoreState.views = [];
-    schemaStoreState.columnMap = {};
-    schemaStoreState.currentDatabase = 'app';
-    schemaStoreState.currentSchema = null;
     schemaStoreState.schemas.clear();
+    schemaStoreState.activeDbSessionId = DB_SESSION;
+    seedSchema({ currentDatabase: DATABASE });
     aiState.diagnosis = null;
     aiState.isDiagnosing = false;
     aiState.diagnosisError = null;
@@ -448,9 +466,11 @@ describe('QueryPanel execute/cancel button', () => {
 
   it('executes Retry once after confirmation when schema context is unchanged', async () => {
     vi.useRealTimers();
-    schemaStoreState.tables = [{ name: 'users', tableType: 'table', schema: 'public' }];
-    schemaStoreState.views = [{ name: 'active_users', tableType: 'view', schema: 'public' }];
-    schemaStoreState.columnMap = { users: ['id', 'email'] };
+    seedSchema({
+      tables: [{ name: 'users', tableType: 'table', schema: 'public' }],
+      views: [{ name: 'active_users', tableType: 'view', schema: 'public' }],
+    });
+    seedColumns('users', ['id', 'email']);
     setFailedQuery('SELECT * FROM users');
 
     renderPanel();
@@ -463,8 +483,8 @@ describe('QueryPanel execute/cancel button', () => {
 
   it('blocks confirmed Retry when the schema context changes', async () => {
     vi.useRealTimers();
-    schemaStoreState.tables = [{ name: 'users', tableType: 'table', schema: 'public' }];
-    schemaStoreState.columnMap = { users: ['id'] };
+    seedSchema({ tables: [{ name: 'users', tableType: 'table', schema: 'public' }] });
+    seedColumns('users', ['id']);
     setFailedQuery('SELECT * FROM users');
     let resolveConfirmation: ((value: boolean) => void) | undefined;
     retryConfirmation.confirm.mockImplementationOnce(
@@ -477,8 +497,8 @@ describe('QueryPanel execute/cancel button', () => {
     renderPanel();
     fireEvent.click(screen.getByTestId('query-retry'));
     await waitFor(() => expect(retryConfirmation.confirm).toHaveBeenCalledTimes(1));
-    schemaStoreState.tables = [{ name: 'orders', tableType: 'table', schema: 'public' }];
-    schemaStoreState.columnMap = { orders: ['id'] };
+    seedSchema({ tables: [{ name: 'orders', tableType: 'table', schema: 'public' }] });
+    seedColumns('orders', ['id']);
     await act(async () => resolveConfirmation?.(true));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -675,7 +695,7 @@ describe('QueryPanel execute/cancel button', () => {
     renderPanel();
     fireEvent.click(screen.getByTestId('query-retry'));
     await waitFor(() => expect(retryConfirmation.confirm).toHaveBeenCalledTimes(1));
-    schemaStoreState.currentDatabase = null;
+    seedSchema({ currentDatabase: null });
     activeConnectionStoreState.connections['cfg-1'] = {
       ...panelConnectionState,
       currentDatabase: null,

@@ -18,6 +18,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
+import type { ConnectionSchemaState } from '../../../stores/schemaStoreState';
 
 const workspace = vi.hoisted(() => ({ isKvPanel: true }));
 
@@ -76,7 +77,16 @@ vi.mock('../usePanelHandlers', () => ({
   }),
 }));
 
-vi.mock('../../../stores/panelStore', () => {
+// `vi.mock` replaces the whole module, so the pane-identity helpers and the
+// frozen exec default `panelStore` re-exports must exist here too; both come
+// from pure leaf modules, so take the real implementations.
+vi.mock('../../../stores/panelStore', async () => {
+  const pane = await vi.importActual<typeof import('../../../stores/paneKeys')>(
+    '../../../stores/paneKeys',
+  );
+  const { EMPTY_QUERY_EXEC } = await vi.importActual<
+    typeof import('../../../stores/queryExecActions')
+  >('../../../stores/queryExecActions');
   const state = {
     panels: [{ id: 'panel-1', type: 'redis-db', title: 'db0' }],
     activePanelId: 'panel-1' as string | null,
@@ -85,7 +95,7 @@ vi.mock('../../../stores/panelStore', () => {
   };
   const usePanelStore = (selector: (s: typeof state) => unknown) => selector(state);
   usePanelStore.getState = () => state;
-  return { usePanelStore, nextPanelId: (prefix: string) => `panel-${prefix}` };
+  return { ...pane, EMPTY_QUERY_EXEC, usePanelStore, nextPanelId: (prefix: string) => `panel-${prefix}` };
 });
 
 vi.mock('../../../stores/settingsStore', () => {
@@ -102,18 +112,19 @@ vi.mock('../../../stores/connectionStore', () => {
   return { useConnectionStore };
 });
 
-vi.mock('../../../stores/schemaStore', () => {
+// Wholesale replacement of the real module, so it must expose every value export
+// it has — `useConnectionSchemaField` was missing, and `ContentView` calls it
+// three times, so every render in this file threw before asserting anything.
+vi.mock('../../../stores/schemaStore', async () => {
+  const { schemaStoreMockModule } = await import('../../../test/mocks/schemaStore');
   const state = {
-    schemas: new Map(),
-    currentDatabase: null,
-    tables: [],
-    views: [],
+    schemas: new Map<string, ConnectionSchemaState>(),
+    activeDbSessionId: null as string | null,
     loadForConnection: async () => {},
+    loadTables: async () => {},
     setCurrentDatabase: () => {},
   };
-  const useSchemaStore = (selector: (s: typeof state) => unknown) => selector(state);
-  useSchemaStore.getState = () => state;
-  return { useSchemaStore };
+  return schemaStoreMockModule(state);
 });
 
 vi.mock('../../../stores/tableDataStore', () => {
