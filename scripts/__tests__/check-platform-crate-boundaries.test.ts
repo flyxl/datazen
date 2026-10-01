@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_REQUIRED_LAYERS,
   SPEC_PATH,
   checkPlatformCrateBoundaries,
   checkSpecConsistency,
@@ -397,5 +398,158 @@ describe('F-07 TypeScript literals', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+/**
+ * Whether a rule's subject counts as present, and what `--require-layers` does
+ * about it.
+ *
+ * `packages/backend-client` has no `Cargo.toml`, so the real `cargo metadata`
+ * never lists it. Resolving a `ts` layer out of cargo's index could therefore
+ * only ever answer "absent" — which is how a clean package ended up reported as
+ * `VACUOUS F-07: no packages/backend-client yet` by the same run that scanned
+ * its 13 files, and how `--require-layers=backend-client` exited 1 on a layer
+ * that was present, clean, and fully evaluated.
+ *
+ * The fixtures below therefore declare `backend-client` **absent from the cargo
+ * graph** on purpose: that is the real shape of the workspace, and a test that
+ * quietly added it as a member would keep passing after the fix were reverted.
+ */
+describe('subject presence', () => {
+  const CLEAN: Record<string, string[]> = { 'datazen-runtime': ['datazen-driver-api'] };
+
+  /** Guard run against a throwaway tree. `files` is what lands under `packages/backend-client/src`. */
+  function withTree(files: Record<string, string> | null, requireLayers: string[] = []) {
+    const root = mkdtempSync(join(tmpdir(), 'datazen-presence-'));
+    try {
+      if (files) {
+        const dir = join(root, 'packages/backend-client/src');
+        mkdirSync(dir, { recursive: true });
+        for (const [name, source] of Object.entries(files))
+          writeFileSync(join(dir, name), source);
+      }
+      return checkPlatformCrateBoundaries({
+        root,
+        // No `backend-client` member: `fixture` is given CORE alone.
+        metadata: fixture(CORE, CLEAN),
+        specText: SPEC,
+        requireLayers,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  const vacuousF07 = (r: ReturnType<typeof withTree>) =>
+    r.vacuous.filter((v) => v.rule === 'F-07').map((v) => v.reason);
+
+  it('evaluates a present ts layer instead of calling it absent', () => {
+    // The whole point: present and clean is a PASS, and the run must not also
+    // claim the rule found nothing to check.
+    const result = withTree({ 'probe.ts': 'export const ok = 1;\n' });
+    expect(vacuousF07(result)).toEqual([]);
+    expect(result.evaluated.map((e) => e.rule)).toContain('F-07');
+    expect(result.violations).toEqual([]);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('still calls a genuinely missing ts layer vacuous', () => {
+    // The control for the case above. If this ever empties out, `--require-layers`
+    // has lost the ability to reject a layer that is not on disk.
+    expect(vacuousF07(withTree(null))).toEqual(['absent']);
+  });
+
+  it('tells an empty directory apart from a missing one', () => {
+    // `packages/backend-client/` exists but holds no scannable source. "No
+    // package yet" would be false; "nothing to read" is true.
+    const root = mkdtempSync(join(tmpdir(), 'datazen-empty-'));
+    try {
+      mkdirSync(join(root, 'packages/backend-client'), { recursive: true });
+      const result = checkPlatformCrateBoundaries({
+        root,
+        metadata: fixture(CORE, CLEAN),
+        specText: SPEC,
+        requireLayers: [],
+      });
+      expect(result.vacuous.filter((v) => v.rule === 'F-07').map((v) => v.reason)).toEqual(['empty']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('--require-layers accepts a present ts layer', () => {
+    const result = withTree({ 'probe.ts': 'export const ok = 1;\n' }, ['backend-client']);
+    expect(result.errors).toEqual([]);
+    expect(result.evaluated.map((e) => e.rule)).toContain('F-07');
+  });
+
+  it('--require-layers rejects a ts layer that is not on disk', () => {
+    const result = withTree(null, ['backend-client']);
+    expect(result.errors.join('\n')).toContain('packages/backend-client');
+    expect(result.errors.join('\n')).toContain('no source directory');
+  });
+
+  it('arms backend-client by default, so deleting it fails the gate', () => {
+    // `DEFAULT_REQUIRED_LAYERS` is what makes a *present* F-07 subject
+    // non-optional. This asserts the arming survives, and that it is the arming —
+    // not luck — that turns a deletion into an error.
+    expect(DEFAULT_REQUIRED_LAYERS).toContain('backend-client');
+    const result = withTree(null, DEFAULT_REQUIRED_LAYERS);
+    expect(result.errors.join('\n')).toContain('packages/backend-client');
+    // ...and the unarmed tree still passes.
+    expect(withTree(null).errors).toEqual([]);
+  });
+});
+
+/**
+ * F-07's code channel, which matches tokens by identifier boundary.
+ *
+ * A bare substring search turns `store.refetch()` and `cache.prefetch()` into
+ * "a direct network call" — a false positive on correct code, reported at the
+ * line of whatever happened to contain the letters `fetch` first. A guard that
+ * reports correct code as broken is a guard the team learns to delete.
+ */
+describe('F-07 transport tokens respect identifier boundaries', () => {
+  function scan(source: string) {
+    const root = mkdtempSync(join(tmpdir(), 'datazen-boundary-'));
+    const dir = join(root, 'packages/backend-client/src');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'probe.ts'), source);
+    try {
+      return checkPlatformCrateBoundaries({
+        root,
+        metadata: fixture(
+          [
+            { name: 'datazen', dir: 'src-tauri' },
+            { name: 'datazen-runtime', dir: 'packages/runtime' },
+          ],
+          {},
+        ),
+        specText: SPEC,
+        requireLayers: [],
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  it('does not read `refetch()` as a transport call', () => {
+    const result = scan(
+      'export type Q = { refetch(): void };\nexport function reload(q: Q): void {\n  q.refetch();\n}\n',
+    );
+    expect(result.violations).toEqual([]);
+  });
+
+  it('blames the call, not an earlier line that merely spells the token', () => {
+    // Line 1 spells `fetch(` inside a method signature. The substring search
+    // matched there, so the guard reported line 1 — a line with no call on it —
+    // and the developer was left hunting for a transport the file never made.
+    // Line 4 is the actual call, and it is what the boundary matcher finds.
+    const result = scan(
+      'export type Q = { refetch(): void };\nexport function load(u: string): Promise<unknown> {\n  const q = {} as Q;\n  return fetch(u).then(q.refetch);\n}\n',
+    );
+    expect(result.violations.join('\n')).toMatch(/backend-client\/src:4/);
+    expect(result.violations.join('\n')).not.toMatch(/backend-client\/src:1/);
   });
 });
