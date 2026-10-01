@@ -13,7 +13,7 @@
 # 自动完成（**每项独立失败，互不影响**）:
 #   1. git worktree + 新分支                       【致命】失败即回滚
 #   2. node_modules 软链到主检出                    【致命】失败即回滚（禁 pnpm install 的前提）
-#   3. resolve-drivers --codegen-only --drivers=basic
+#   3. resolve-drivers --codegen-only --drivers=${NEW_WT_DRIVERS:-basic}
 #   4. generate-builtin-locales（产出 src/locales/builtinLocales.ts）
 #   5. src/extensions/generated-locales.ts 拷贝（**已退役产物**，见下）
 #   6. Pro 检出 packages/pro-extensions/sql-editor-pro（local remote 取 productivity/* 分支）
@@ -37,10 +37,29 @@
 #   映射规则（可被 DATAZEN_PRO_BRANCH 覆盖）:
 #     宿主 feature/<slug>  →  Pro productivity/<slug>  →  Pro feature/<slug>  →  Pro main
 #
+# 关于第 3 项的驱动集（`NEW_WT_DRIVERS`）:
+#   codegen 产出的 src/extensions/generated.ts 是 **gitignored 的本地产物**，宿主 DB_REGISTRY
+#   直接合并它的 DRIVER_DB_ENTRIES（src/lib/databaseTypes.ts:20-22）。**驱动集不同 ⇒ 同一个
+#   宿主单测在 worktree 与主检出/CI 里读到的 DB_REGISTRY 不同，结果不可比**。本脚本历史上把
+#   `--drivers=basic` 写死且不告知调用方，于是「本地绿、CI 红」无从解释；现在由环境变量显式化:
+#     NEW_WT_DRIVERS=all          → --drivers=all（全部 **path** 驱动；**不含** git 驱动）
+#     NEW_WT_DRIVERS=basic,kiwi   → 逗号列表：预设 basic 展开 + git 驱动 kiwi
+#     NEW_WT_DRIVERS=stub         → 空驱动集（DatabaseType = never，仅供占位，不要当运行 SKU）
+#   **默认值仍是 basic**，不设变量时行为与此前完全一致；区别只在报告现在**必须写明**本次
+#   用了哪个驱动集、解析出几个驱动、有没有 git 驱动未注入，并在用的是默认 basic 时追加一条
+#   「驱动集与门禁对齐」⚠ 项（含实测的不可比面 + 手动对齐命令）。
+#   非法值（空串 / 已退役 preset none、core / 未知 expander / registry 里查不到的 id）
+#   **显式报错退出**：语法校验在副作用之前跑，id 校验在第 1 层 codegen 之前跑并回滚已建的
+#   worktree。绝不静默回落到 basic。
+#
 # 结尾固定输出「环境铺装报告」：逐项列出 铺好了什么 / 没铺成什么+原因 / 怎么手动补 /
 # 不补的后果。**不许静默降级**。
 #
 # 环境变量:
+#   NEW_WT_DRIVERS=<value>    第 1 层 codegen 的驱动集（覆盖 resolve-drivers.mjs --drivers）；
+#                             不设 = 默认 basic。合法值 = 预设 basic | :basic | all | :all |
+#                             stub，或它们的逗号组合 + drivers-registry.json 里的驱动 id。
+#                             非法值报错退出，不回落。
 #   DATAZEN_PRO_BRANCH       显式指定 Pro 分支（覆盖上面的映射规则）
 #   NEW_WT_ROLLBACK=0        致命失败时不回滚（仅调试；会留下半成品）
 #   NEW_WT_FORCE_FAIL=<step>  故障注入钩子（用于验证回滚路径），step 取下列步骤名：
@@ -121,6 +140,65 @@ esac
 
 if [ "$(pwd -P)" != "$MAIN" ]; then
   note "当前 cwd 不是主检出（$(pwd -P)）；已按脚本自身位置解析 MAIN=${MAIN}，不会嵌套创建。"
+fi
+
+# --------------------------------------------------------------------------
+# 驱动集（NEW_WT_DRIVERS）——在任何副作用之前定值并校验
+# --------------------------------------------------------------------------
+#   - 不设变量 ⇒ 默认 basic，**行为与历史一致**；
+#   - 设了但为空串 ⇒ 非法（否则就退化成「静默回落 basic」，正是本脚本要消灭的东西）；
+#   - 非法值 ⇒ 显式报错退出。
+# token 是否真实存在要查 drivers-registry.json，在第 1 层 codegen 之前用 worktree 里那份判定。
+DRIVERS_DEFAULT='basic'
+DRIVERS_EXPANDED=0   # 1 = 调用方显式指定；此时报告不再追加「与门禁对齐」⚠ 项
+
+if [ "${NEW_WT_DRIVERS+x}" = x ]; then
+  DRIVERS="$NEW_WT_DRIVERS"
+  DRIVERS_EXPANDED=1
+else
+  DRIVERS="$DRIVERS_DEFAULT"
+fi
+
+# 纯 shell 校验预设与 token 形状：不碰文件系统、无副作用。
+# 逐 token 手工切分而不是 for x in $(...)，避免 glob 展开，也避免 exit 发生在子 shell 里被吞。
+validate_drivers_syntax() {
+  local rest=$1 tok more
+  while :; do
+    case "$rest" in
+      *,*) tok=${rest%%,*}; rest=${rest#*,}; more=1 ;;   # 逗号后面**必有**一段（可能为空）
+      *)   tok=$rest; rest=''; more=0 ;;
+    esac
+    tok=${tok#"${tok%%[![:space:]]*}"}   # 去左空白
+    tok=${tok%"${tok##*[![:space:]]}"}   # 去右空白
+    case "$tok" in
+      basic|:basic|all|:all|stub) ;;     # 预设，放行
+      '')
+        die "NEW_WT_DRIVERS=\"$1\" 含空 token。合法写法是单个预设或 id 列表（如 basic / all /
+        basic,kiwi）；**想要空驱动集请显式写 stub**，不要靠空串或多余逗号表达。"
+        ;;
+      none|core)
+        die "NEW_WT_DRIVERS=\"$tok\"：该 preset 已被 resolve-drivers.mjs 退役并会直接退出。
+        请改用 basic（核心驱动集）或 stub（空驱动集）。"
+        ;;
+      :*)
+        die "NEW_WT_DRIVERS=\"$tok\"：未知 expander。支持的只有 :basic 与 :all
+        （bare basic / all 等价）。"
+        ;;
+      *[!A-Za-z0-9_-]*)
+        die "NEW_WT_DRIVERS 含非法 token \"$tok\"：驱动 id 只允许字母、数字、下划线、连字符
+        （取自 drivers-registry.json 的键）；预设只有 basic/:basic/all/:all/stub。"
+        ;;
+      *) ;;  # 形状合法，是否真实存在交给第 1 层 codegen 前的 registry 校验
+    esac
+    [ "$more" = 1 ] || break
+  done
+}
+
+validate_drivers_syntax "$DRIVERS"
+if [ "$DRIVERS_EXPANDED" = 1 ]; then
+  note "驱动集：--drivers=${DRIVERS}（NEW_WT_DRIVERS 显式指定）"
+else
+  note "驱动集：--drivers=${DRIVERS}（默认，未设置 NEW_WT_DRIVERS）"
 fi
 
 # --------------------------------------------------------------------------
@@ -330,14 +408,104 @@ fi
 # --------------------------------------------------------------------------
 # 步骤 3：三层 codegen（各自独立失败）
 # --------------------------------------------------------------------------
-note "第 1 层 codegen：resolve-drivers --codegen-only --drivers=basic"
-if maybe_fail "resolve-drivers" \
-  && ( cd "$WT" && node scripts/resolve-drivers.mjs --codegen-only --drivers=basic ) >/dev/null 2>&1; then
-  ok "generated.ts / driver_init.rs / .driver-features.json / generated-pro.ts / capabilities/default.json"
+# 驱动集 id 精确校验（放在 codegen 之前，避免跑一半才失败）：
+# 读 worktree 里的 drivers-registry.json —— 与 resolve-drivers.mjs 同源同文件。
+# 打印两行：① 查不到的 id（空格分隔，可能为空行）② 其中 source=git 的 id（逗号分隔）。
+# 退出码 3 = registry 不可读 ⇒ 降级为不校验（**不改值、不回落**），resolve-drivers 仍会自行拒绝。
+if _drv_facts="$( ( cd "$WT" && node -e '
+const fs = require("fs");
+let reg;
+try {
+  reg = JSON.parse(fs.readFileSync("drivers-registry.json", "utf8"));
+} catch (e) {
+  process.stderr.write(String(e.message) + "\n");
+  process.exit(3);
+}
+const PRESETS = new Set(["basic", ":basic", "all", ":all", "stub"]);
+const unknown = [], git = [];
+for (const raw of String(process.argv[1]).split(",")) {
+  const t = raw.trim();
+  if (!t || PRESETS.has(t)) continue;
+  const entry = reg[t];
+  if (!entry) unknown.push(t);
+  else if (entry.source === "git") git.push(t);
+}
+process.stdout.write(unknown.join(" ") + "\n" + git.join(",") + "\n");
+' "$DRIVERS" ) 2>/dev/null )"; then
+  _drv_unknown="$(printf '%s\n' "$_drv_facts" | sed -n 1p)"
+  _drv_git="$(printf '%s\n' "$_drv_facts" | sed -n 2p)"
+  if [ -n "$_drv_unknown" ]; then
+    critical_fail "NEW_WT_DRIVERS=\"${DRIVERS}\" 里的 id 不在 drivers-registry.json：${_drv_unknown}。
+  合法 id 见 drivers-registry.json 的键（path 驱动 + git 驱动）。**不会静默回落到 ${DRIVERS_DEFAULT}**。"
+  fi
 else
-  skipped "第 1 层 codegen（resolve-drivers）" "命令非零退出或被故障注入" \
-    "cd ${WT} && node scripts/resolve-drivers.mjs --codegen-only --drivers=basic" \
+  _drv_unknown=""
+  _drv_git=""
+  note "drivers-registry.json 不可读，跳过驱动 id 存在性校验；resolve-drivers.mjs 仍会自行拒绝未知 id。"
+fi
+
+note "第 1 层 codegen：resolve-drivers --codegen-only --drivers=${DRIVERS}"
+_drv_log="$(mktemp "${TMPDIR:-/tmp}/new-wt-drivers.XXXXXX")"
+_drv_ok=1
+maybe_fail "resolve-drivers" || _drv_ok=0
+if [ "$_drv_ok" = 1 ]; then
+  ( cd "$WT" && node scripts/resolve-drivers.mjs --codegen-only "--drivers=${DRIVERS}" ) \
+    >"$_drv_log" 2>&1 || _drv_ok=0
+fi
+
+if [ "$_drv_ok" = 1 ]; then
+  # 从 resolve-drivers 的输出里取事实，报告不靠猜（输出模式变了就会在报告里显形）。
+  _drv_resolved="$(sed -n 's/^.*resolved drivers: \[\(.*\)\]$/\1/p' "$_drv_log")"
+  _drv_notinj="$(sed -n 's/^.*skipping capabilities for not-injected drivers: \[\(.*\)\]$/\1/p' "$_drv_log")"
+  _drv_n=0
+  if [ -n "$_drv_resolved" ]; then
+    _drv_n="$(printf '%s\n' "$_drv_resolved" | tr ',' '\n' | grep -c '[^[:space:]]' || true)"
+  else
+    _drv_resolved="（空驱动集，stub）"
+  fi
+  _drv_fact="解析出 ${_drv_n} 个驱动 [${_drv_resolved}]"
+  if [ -n "$_drv_notinj" ]; then
+    _drv_fact="${_drv_fact}；capabilities 阶段未注入 [${_drv_notinj}]（--codegen-only 不动 src-tauri/Cargo.toml，真实构建会重算）"
+  fi
+  ok "generated.ts / driver_init.rs / .driver-features.json / generated-pro.ts / capabilities/default.json（--drivers=${DRIVERS}）；${_drv_fact}"
+
+  if [ -z "$_drv_git" ]; then
+    ok "驱动集内无 git 驱动：预设 basic / all 只展开 path 驱动；git 驱动（kiwi、olap、superset）需显式列举，如 NEW_WT_DRIVERS=basic,kiwi"
+  else
+    _drv_git_missing=""
+    for _g in $(printf '%s' "$_drv_git" | tr ',' ' '); do
+      case ",${_drv_notinj}," in
+        *",${_g},"*) _drv_git_missing="${_drv_git_missing}${_drv_git_missing:+, }${_g}" ;;
+      esac
+    done
+    if [ -n "$_drv_git_missing" ]; then
+      skipped "git 驱动未注入 capabilities：${_drv_git_missing}" \
+        "resolve-drivers 报 not-injected —— --codegen-only 不注入 src-tauri/Cargo.toml，capabilities 只反映已注入的 cargo feature" \
+        "cd ${WT} && node scripts/resolve-drivers.mjs --drivers=${DRIVERS}   # 真实构建自行重注入并重算 capabilities" \
+        "只影响 gitignored 的 src-tauri/capabilities/default.json（宿主单测与 tsc 读不到它）；这些 git 驱动已克隆进 packages/drivers/ 且已进 generated.ts。真正 cargo/tauri 构建时 resolve-drivers 会重新生成 capabilities，不会带着这份过期权限跑完整构建。"
+    else
+      ok "git 驱动 [${_drv_git}]：已克隆进 packages/drivers/ 并进入 generated.ts，无未注入项"
+    fi
+  fi
+else
+  _drv_why="命令非零退出或被故障注入"
+  if [ -s "$_drv_log" ]; then
+    _drv_why="${_drv_why}：$(tail -n 3 "$_drv_log" | tr '\n' ' ')"
+  fi
+  skipped "第 1 层 codegen（resolve-drivers）" "$_drv_why" \
+    "cd ${WT} && node scripts/resolve-drivers.mjs --codegen-only --drivers=${DRIVERS}" \
     "src/extensions/generated.ts 等缺失 → 前端 DB_REGISTRY 为空、驱动相关用例大面积失败（与你的改动无关）。"
+fi
+rm -f "$_drv_log"
+
+# 调用方没显式说驱动集时，默认 basic 与主检出/CI 的 all **不是同一份 DB_REGISTRY**，
+# 这本身就是一条必须写进报告的未铺成项（不许静默降级）。
+if [ "$DRIVERS_EXPANDED" = 0 ]; then
+  skipped "驱动集与门禁对齐（用的是默认 basic）" \
+    "未设置 NEW_WT_DRIVERS ⇒ 第 1 层 codegen 固定 --drivers=basic（postgres / mysql / sqlite / redis）；主检出与 CI 通常跑 --drivers=all（全部 path 驱动，多出 sqlserver / mongodb / clickhouse 等）。两者**不是同一个 DB_REGISTRY**。" \
+    "既有 worktree 重铺：cd ${WT} && node scripts/resolve-drivers.mjs --codegen-only --drivers=all
+ 新建轨道指定：NEW_WT_DRIVERS=all bash scripts/new-feature-worktree.sh <track> <base>" \
+    "宿主 DB_REGISTRY 直接合并 generated.ts 的 DRIVER_DB_ENTRIES（src/lib/databaseTypes.ts:20-22），驱动集一变，同一份宿主单测读到的注册表就变：① 遍历 DB_REGISTRY 的宿主单测在 basic 下少掉 sqlserver 等 11 个 db 类型，**绿/红与 CI 不可比** —— 实测 tester_tunnelValidationMatrix.test.tsx 在 basic 下 29/29 通过，同一 worktree 把 codegen 换成 all 后 registered 多出 sqlserver，:154 的 expect(covered).toEqual(registered) 直接变红；② 本轨道「宿主用例全绿」的结论只能限定在 basic 语义内，不能用来推断 CI 会不会红；③ pnpm typecheck 不受驱动集影响（实测 basic 下干净），所以类型检查通过**不能**反推驱动集已对齐。"
 fi
 
 note "第 2 层 codegen：generate-builtin-locales（产出 src/locales/builtinLocales.ts）"
@@ -551,6 +719,8 @@ printf '  环境铺装报告 / ENVIRONMENT PROVISIONING REPORT\n'
 printf '  worktree : %s\n' "$WT"
 printf '  分支     : %s（基于 %s）\n' "$BRANCH" "$BASE"
 printf '  主检出   : %s\n' "$MAIN"
+printf '  驱动集   : --drivers=%s（%s）\n' "$DRIVERS" \
+  "$([ "$DRIVERS_EXPANDED" = 1 ] && printf 'NEW_WT_DRIVERS 显式指定' || printf '默认 basic，未设置 NEW_WT_DRIVERS')"
 printf '%s\n' "$BAR"
 
 printf '\n✅ 已铺好（%d 项）\n' "${#OK_ITEMS[@]}"
