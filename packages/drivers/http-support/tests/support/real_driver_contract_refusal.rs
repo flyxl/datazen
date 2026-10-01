@@ -487,7 +487,7 @@ fn the_wrapper_trait_surface_is_fully_classified_as_checked_or_named_as_unchecke
     });
 
     let body = trait_impl_body(&text, WRAPPER_IMPL_HEADER);
-    let implemented = methods_in(&body);
+    let implemented = methods_in(&body, None);
     assert!(
         !implemented.is_empty(),
         "no trait method was found in {header:?}: the scan is broken, and an empty result \
@@ -540,6 +540,158 @@ fn the_wrapper_trait_surface_is_fully_classified_as_checked_or_named_as_unchecke
     );
 }
 
+/// Every method this file claims [`RefusalSnapshot`] compares is compared by
+/// **moving it**, not by finding it in a source file.
+///
+/// The classification test above settles which methods the wrapper *implements*.
+/// It cannot settle which methods the snapshot *reads*, and that is the claim
+/// carrying the weight: a name can sit in [`SERVERLESS_TRAIT_METHODS`] while the
+/// snapshot stopped reading it, and then the whole file goes green with real
+/// coverage silently one field short.
+///
+/// So the claim is attacked. [`Misreports`] is a real driver with exactly one
+/// named method's return value changed; for each method the probe can perturb,
+/// the snapshot is read twice — off the driver, and off the probe — and must
+/// differ. "The snapshot reads this method" is then a statement about behaviour
+/// that can be false and turn this test red, not a string that has to appear
+/// somewhere in a file.
+///
+/// **Why the perturbation set is not a second copy of the list.** It is read out
+/// of the probe's own behaviour-bearing impl — the methods whose bodies actually
+/// call [`PROBE_MARKER`] — while [`SERVERLESS_TRAIT_METHODS`] is the claim being
+/// tested. Driving the loop from the claim instead would be the tautology this
+/// exists to avoid: demoting a method would then also stop perturbing it, and
+/// the demotion would go green for exactly the reason the guard was added. The
+/// two sides are kept deliberately independent, and the cross-check below fails
+/// when they disagree rather than when the code does.
+///
+/// **One perturbation, one difference.** Each iteration also requires its
+/// snapshot to differ from *every earlier* one. Two perturbations landing on the
+/// same snapshot would mean the probe is moving two methods at once, and then
+/// the difference being asserted is the other method's field — which is exactly
+/// how a deleted field hides behind a cascading probe. Measured: the first
+/// version of this test lacked that clause and a cascading `supports_offset` →
+/// `supports_explain` corruption went green through it.
+///
+/// **Stated so the guard is not credited with more than it proves.** The loop
+/// compares whole snapshots, so it proves the snapshot is **sensitive** to that
+/// method, not that this method's field is the one carrying the difference.
+/// A probe perturbing three methods at once could still satisfy it. Ruling that
+/// out needs a hand-written field↔method map — the very duplication this test
+/// avoids — so it is left stated rather than papered over.
+#[test]
+fn every_method_claimed_as_compared_is_read_by_the_snapshot_it_is_compared_through() {
+    let probe_source = template_sources()
+        .into_iter()
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name == PROBE_SOURCE_NAME)
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "the template no longer contains {PROBE_SOURCE_NAME:?}, so the set of methods \
+                 this run can perturb cannot be established and every comparison below is \
+                 unchecked ({})",
+                file!()
+            )
+        });
+    let text = fs::read_to_string(&probe_source).unwrap_or_else(|e| {
+        panic!(
+            "{} could not be read: {e} — an unreadable file is never reported as a clean one",
+            probe_source.display()
+        )
+    });
+    let perturbable = methods_in(
+        &trait_impl_body(&text, PROBE_IMPL_HEADER),
+        Some(PROBE_MARKER),
+    );
+    assert_eq!(
+        text.matches(PROBE_IMPL_HEADER).count(),
+        1,
+        "the probe's trait impl header occurs {} times in {PROBE_SOURCE_NAME:?}; the scan below \
+         would then read whichever block comes first, which need not be the impl",
+        text.matches(PROBE_IMPL_HEADER).count()
+    );
+    assert!(
+        !perturbable.is_empty(),
+        "no perturbable method was found in {PROBE_IMPL_HEADER:?}: the scan is broken, and an \
+         empty result would make the loop below vacuous"
+    );
+
+    // Both directions, because either half alone is satisfied by the wrong thing.
+    for name in &perturbable {
+        assert!(
+            SERVERLESS_TRAIT_METHODS.contains(&name.as_str()),
+            "the probe perturbs {name:?}, so the snapshot is demonstrably sensitive to it, yet \
+             it is absent from the {}-method list the snapshot claims to read. Read it in \
+             RefusalSnapshot::read — it is readable, the probe just proved it — or move it to \
+             SERVER_REQUIRED_TRAIT_METHODS and give the reason it is not read.",
+            SERVERLESS_TRAIT_METHODS.len()
+        );
+    }
+    for name in SERVERLESS_TRAIT_METHODS {
+        assert!(
+            perturbable.contains(&name.to_string()),
+            "{name:?} is listed as compared by RefusalSnapshot, but the probe cannot perturb it, \
+             so the loop below never tests that claim. Perturbable: {perturbable:?}"
+        );
+    }
+
+    let contract = &crate::CONTRACT;
+    let marker = contract.dialect.marker;
+    let sql = format!("SELECT {marker} FROM {marker}");
+    let original = format!("{FIXTURE_PREFIX}a");
+    let second = format!("{FIXTURE_PREFIX}b");
+    let schema = contract.default_schema;
+    let baseline = RefusalSnapshot::read(
+        &crate::contract_driver(),
+        contract.precise_cancel,
+        &sql,
+        &original,
+        &second,
+        schema,
+    );
+
+    let mut seen: Vec<(String, &String)> = Vec::new();
+    for name in &perturbable {
+        let perturbed = RefusalSnapshot::read(
+            &Misreports::new(crate::contract_driver(), name),
+            contract.precise_cancel,
+            &sql,
+            &original,
+            &second,
+            schema,
+        );
+        assert_ne!(
+            perturbed,
+            baseline,
+            "changing what {name:?} returns left RefusalSnapshot byte for byte as it was, so \
+             the snapshot does not read it: the `{} methods compared, one field each` claim is \
+             unchecked for that method, and a wrapper that corrupted only {name:?} would pass \
+             every other test in this file.\n  baseline: {}\n  perturbed: {}",
+            SERVERLESS_TRAIT_METHODS.len(),
+            baseline.summary(),
+            perturbed.summary(),
+        );
+        // One perturbation, one difference. Two probes landing on the same
+        // snapshot means the probe is moving two methods at once, and the
+        // assertion above would then be reading this method's sensitivity off
+        // the *other* one's field — which is precisely how a deleted field
+        // survives a cascading probe.
+        let shape = perturbed.summary();
+        let collides = seen.iter().find(|(other, _)| other == &shape);
+        assert!(
+            collides.is_none(),
+            "perturbing {name:?} produced exactly the snapshot perturbing {} produces: the probe \
+             moves more than one method at a time, so nothing in this test can tell this method's \
+             field from that one's",
+            collides.map_or("an earlier probe".to_string(), |(_, other)| (*other)
+                .clone()),
+        );
+        seen.push((shape, name));
+    }
+}
+
 /// The body of the trait impl whose header is `header` — everything between its
 /// braces, brace-balanced, with string literals blanked.
 fn trait_impl_body(text: &str, header: &str) -> String {
@@ -573,23 +725,40 @@ fn trait_impl_body(text: &str, header: &str) -> String {
 /// Method names declared directly in a trait impl body, in source order.
 ///
 /// Depth 0 of the body is the impl's own level, so a `fn` nested inside another
-/// function is not counted.
-fn methods_in(body: &str) -> Vec<String> {
+/// function is not counted. With `marker` set, only methods whose **body**
+/// contains it are returned — which is how the probe's own source is asked what
+/// it can perturb, instead of a second hand-written list of the same names.
+fn methods_in(body: &str, marker: Option<&str>) -> Vec<String> {
     let mut depth = 0i32;
     let mut names = Vec::new();
+    let mut current: Option<String> = None;
+    let mut marked = false;
     for line in body.lines() {
-        if depth == 0 {
+        let before = depth;
+        if depth == 0 && current.is_none() {
             let trimmed = line.trim_start();
             let declaration = trimmed.strip_prefix("async ").unwrap_or(trimmed);
             if let Some(rest) = declaration.strip_prefix("fn ") {
                 if let Some(name) = rest.split(['(', '<', ' ', ':']).next() {
-                    names.push(name.to_string());
+                    current = Some(name.to_string());
+                    marked = false;
                 }
             }
+        } else if depth > 0 && marker.is_some_and(|token| line.contains(token)) {
+            marked = true;
         }
         depth += line.matches('{').count() as i32;
         depth -= line.matches('}').count() as i32;
         depth = depth.max(0);
+        // Flush on the way back out of a body, never on the signature line — a
+        // signature carries no braces of its own and would be dropped there.
+        if before > 0 && depth == 0 {
+            if let Some(name) = current.take() {
+                if marker.is_none() || marked {
+                    names.push(name);
+                }
+            }
+        }
     }
     names
 }

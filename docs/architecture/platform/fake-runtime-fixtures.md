@@ -635,7 +635,7 @@ pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 | 日志脱敏 | 夹具的 journal 不得记录凭据、附件令牌与幂等令牌 nonce；故障注入的脚本 id 可记录，字面量不可记录 |
 | 夹具不产生真实外部连接 | fake provider 禁止任何出站 socket；真实驱动测试的连接目标必须是已证明的专用测试环境 |
 | 「无 env 文件读取」结论的边界 | 该结论来自对**绑定本契约模板的 crate 源码**的静态扫描（`real_driver_contract.rs` 的 `test_sources_never_read_env_files`）。带 `tests/` 却从不绑定模板的 crate 不在其中，其名单由 `UNGUARDED_DRIVER_CRATES` 机器渲染进范围报告的「免检驱动 crate」一节，并由 `the_report_names_every_crate_this_guard_does_not_scan` 的 golden 逐字钉住。golden 只拦下**未经复核的**新增文字，拦不住与 golden 同一次提交里一起改掉的措辞；报告其余部分的散文不在该钉的范围内，由 §10.4 的结论纪律负责 |
-| 拒答层对 trait 方法的覆盖面 | `WithheldPreciseCancel<D>` 包装的 25 个 trait 方法里，13 个**不需要服务器**的方法由 `RefusalSnapshot` 逐字段比对（每方法一个字段）；其余 12 个需要活连接的方法，拒答层不开连接，其返回值**在本层无人比对**，这是设计如此而非遗漏。`the_wrapper_trait_surface_is_fully_classified_as_checked_or_named_as_unchecked` 保证这 25 个方法全部落入上述两类之一，没有第三类 |
+| 拒答层对 trait 方法的覆盖面 | `WithheldPreciseCancel<D>` 包装的 25 个 trait 方法里，13 个**不需要服务器**的方法由 `RefusalSnapshot` 逐字段比对（每方法一个字段）；其余 12 个需要活连接的方法，拒答层不开连接，其返回值**在本层无人比对**，这是设计如此而非遗漏。`the_wrapper_trait_surface_is_fully_classified_as_checked_or_named_as_unchecked` 保证这 25 个方法全部落入上述两类之一，没有第三类。分类只回答方法被分到哪里，不回答字段是否真被读：13/12 这组数字来自一张手写清单，把方法降级或删掉快照字段都改不动别处，所以 `every_method_claimed_as_compared_is_read_by_the_snapshot_it_is_compared_through` 用行为证伪它——换掉某个方法的返回值，快照必须随之改变；该测试的扰动集合读自 `real_driver_contract_probe.rs` 自身实现里的扰动调用而非那份清单，两侧互不派生。残余如实记录：比对的是整个快照，它证明的是「对该方法的扰动可见」，不是「差异落在该方法自己的字段上」，同时扰动三个方法的探针仍可蒙混过关 |
 | availability 报告行的双向绑定 | 范围报告里「live 层前置条件齐备 / live 层未启用」那一行，与 `Contract::availability()` 的返回值逐行比对（`partial_obligations_are_never_reported_as_passed`），两个分支各自持有：任一分支的措辞被换成另一分支的，两条断言都会转红 |
 
 ## 14. 验收映射
