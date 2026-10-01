@@ -28,19 +28,25 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     // Vitest's 5s default is not a defensible budget for this suite. Measured
-    // per-test wall time over all 5691 Host tests (driver set `all`, macOS,
+    // per-test wall time over all 5695 Host tests (driver set `all`, macOS,
     // 8 cores) at three contention levels, via `--reporter=json`:
     //
-    //   2 workers,  load 13  (shape of a 2-vCPU CI runner)  p95 57ms  p99 170ms  max  1745ms  0 failures
-    //   8 workers,  load  7  (mild oversubscription)        p95 118ms p99 336ms  max  4392ms  0 failures
-    //   8 workers,  load 48  (6-7x oversubscription)        p95 329ms p99 918ms  max 11629ms  1 timeout
+    //   2 workers,  load 13  (a local --maxWorkers=2 low-load run)  p95 57ms  p99 170ms  max  1745ms  0 failures
+    //   8 workers,  load  7  (mild oversubscription)                p95 118ms p99 336ms  max  4392ms  0 failures
+    //   8 workers,  load 48  (6-7x oversubscription)                p95 329ms p99 918ms  max 11629ms  1 timeout
     //
     // The 8-worker / load-7 row is the one that matters: a single test already
-    // sits at 88% of a 5s budget on an 8-core dev box, so a GitHub-hosted
-    // runner (2-4 vCPU) with any competing load has no headroom left. 10s is
-    // ~2.3x that measured worst case and ~4.4x the load-7 p99.9 (2299ms).
+    // sits at 88% of a 5s budget on this host, so further contention has no
+    // headroom left. 10s is ~2.3x that row's max (4392ms) and ~4.4x its p99.9
+    // (2299ms). Scoped to the load-7 row, NOT a margin claim: 11629ms (worst
+    // overall) exceeds 10s outright. This project does not control the GitHub
+    // runner spec, so nothing here claims what a hosted runner looks like.
     //
-    // Scope of the guarantee: `testTimeout` can only fire for tests that YIELD
+    // SCOPE: this key lives in the root `test` block, so it applies to every
+    // glob in `include` below — to `pnpm test:unit` (basic driver set) AND to
+    // `pnpm test:unit:driver-set` (all path drivers). It is NOT scoped to `all`.
+    //
+    // Scope of the guarantee: testTimeout can only fire for tests that YIELD
     // to the event loop. In the load-48 run, DiffDetail (11629ms), resolve-pro
     // (6540ms) and tableDataStore (5236ms) all overran 5s and still PASSED,
     // because they are CPU-bound and never yield; the only test that actually
@@ -50,6 +56,18 @@ export default defineConfig({
     // slowness. Cost: a genuinely hung test now burns 10s instead of 5s before
     // reporting. See docs/development/ci-test-matrix.md.
     testTimeout: 10_000,
+    // Runtime jitter is absorbed here, NOT by any assumption about how many
+    // cores a hosted runner has. Value 2 rather than 1: the failure class is
+    // contention, which can span a stretch of tests, so one immediate re-run
+    // need not land after the contention passes. The cost is only paid when a
+    // test has already failed, and it stays bounded — worst case a hanging
+    // test reports after 3 x 10s = 30s rather than retrying forever.
+    // COST, stated plainly: a test that fails and then passes on retry is
+    // reported as PASSED, so an all-green run is NOT evidence that no
+    // intermittent failure occurred. Do not read retry counts as zero from a
+    // green exit code; that inference is invalid by construction.
+    // Root-level, so — like testTimeout — it covers both CI unit-test steps.
+    retry: 2,
     include: [
       'src/**/*.test.{ts,tsx}',
       'scripts/__tests__/**/*.test.{ts,mjs}',

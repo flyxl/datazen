@@ -44,7 +44,7 @@
 | 类型 | `pnpm typecheck` | `tsc --noEmit` |
 | 守卫 | `check-managed-stubs.mjs`、`check-structure-editor-guardrails.mjs` 等 | 防止误提交 inject 产物 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
-| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**软门禁**（`continue-on-error: true`），理由见 §2.1.1；转硬门禁后应移除该标记 |
+| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**软门禁**（`continue-on-error: true`），理由见 §2.1.1；转硬门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts:149`（见 §2.1.1 末） |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
 
 ### 2.1.1 为什么该步是软门禁，以及 `testTimeout` 为何取 10s
@@ -58,22 +58,51 @@
 （修复 schemaStore/panelStore mock 漂移导致的 18 个前端单测失败）已修掉的那批。
 
 保留 `continue-on-error: true` 的真实理由很窄：**这一步与 10s 的 `testTimeout`
-都还没有在真实 GitHub runner 上跑过。** 8 核开发机全绿，不能推断 2 vCPU runner
-的全绿。软门禁让首次运行可被观察而不阻塞主干；连续若干次 CI 全绿后即可去掉该标记
-升为硬门禁，届时同步更新本节。
+都还没有在真实 GitHub runner 上跑过。** 本机 8 核开发机全绿，不能推断真实 runner
+的全绿——本项目无法控制 runner 规格，仓库可见性也未定。因此本文档与
+`vitest.config.ts` 中**不对 runner 的核数做任何断言**（下表第二列描述的是本机
+实测行的形态，不是对 CI runner 规格的推测）。软门禁让首次运行可被观察而不阻塞主干；
+连续若干次 CI 全绿后即可去掉该标记升为硬门禁，届时同步更新本节。
 
-**`testTimeout` 取值依据（实测，非拍脑袋）。** 对全部 5691 个 Host 用例逐条统计
+**⚠️ 转硬门禁是耦合改动，两处必须同时改。** 只从 `ci.yml` 删掉
+`continue-on-error: true`，会让守卫 `scripts/__tests__/run-unit-driver-set.test.ts:149`
+的 `expect(step?.['continue-on-error']).toBe(true)` 失败（`expected undefined to be true`），
+即照着上面那段"去掉该标记升为硬门禁"执行会直接造出一个红 CI。该守卫对软门禁标记的
+断言与 workflow 里的标记是**同一个契约的两端**：改 workflow 就必须同步改那行断言。
+`continue-on-error: true` 本身保留不动——首次真实 runner 运行需可观察，先软后硬是
+正确顺序。
+
+**`testTimeout` 取值依据（实测，非拍脑袋）。** 对全部 5695 个 Host 用例逐条统计
 墙钟耗时（驱动集 `all`，8 核 macOS，`--reporter=json`），三个竞争档位：
 
 | 档位 | 运行前 1 分钟 load | p95 | p99 | p99.9 | max | 超 5s | 失败 |
 |------|------|-----|-----|-------|-----|-------|------|
-| `--maxWorkers=2`（2 vCPU runner 形态） | 13.18 | 57ms | 170ms | 751ms | 1745ms | 0 | 0 |
+| `--maxWorkers=2`（本机低负载实测行） | 13.18 | 57ms | 170ms | 751ms | 1745ms | 0 | 0 |
 | 默认 8 workers，轻度超订 | 7.04 | 118ms | 336ms | 2299ms | 4392ms | 0 | 0 |
 | 默认 8 workers，6–7× 超订 | ~48 | 329ms | 918ms | 3436ms | 11629ms | 4 | 2 |
 
-结论取自中间一行：**在 8 核开发机上，最慢用例已占满 5s 预算的 88%**，
-放到 2 vCPU runner 上没有任何余量。`10_000` ms ≈ 该实测最坏值的 2.3 倍、
-同档 p99.9 的 4.4 倍，故取 10s。
+**上表原样保留，不做任何修饰。** 如实陈述三点：
+
+1. 表中最坏实测值为 `max 11629ms`，而 `10_000` **低于**该值；
+2. 11629 出现在 8 workers / load 48 档，该档另有 2 个用例失败；
+3. 本机低负载（load 13 与 load 7 两档）从未观测到接近 10s 的单例，最慢分别为
+   1745ms 与 4392ms。
+
+**本文不再给出任何倍数推导。** 此前写的 "`10_000` ms ≈ 该实测最坏值的 2.3 倍"站不住：
+它与本表自相矛盾（表里记的最坏值是 11629ms，而 10000 < 11629）。该推导已删除，
+不要再按它的形式重建。
+
+**作用范围：`testTimeout` 是根级 `test` 键，对 `include` 下全部 glob 生效。**
+它同时作用于既有的 `pnpm test:unit`（basic 驱动集步）和新增的
+`pnpm test:unit:driver-set`（`all` 步），**不是**只作用于 `all`。抬高它只会让真正
+卡死的用例晚一点被报出来，不会把原本会过的用例变红。
+
+**运行期抖动由 `retry` 兜底，不做 worker 数工程。** `vitest.config.ts` 的根级 `test`
+块设了 `retry: 2`，同样对两个步全局生效。取 2 而非 1：要吸收的是竞争抖动，它可能
+连续影响一段用例，立即重跑一次未必等得到抖动过去；成本只在**已经失败**时支付，
+且有界——最坏情况单个卡死用例在 3 × 10s = 30s 后报错，不会无限重试。
+**代价（明写，不可软化）：重试会让"首次失败、重试通过"的用例最终报为通过，因此
+不能用"本轮全绿"反推"不存在间歇性失败"。** 判断抖动要看重试计数，不能只看退出码。
 
 **保证范围的边界：`testTimeout` 只对会 yield 到事件循环的用例生效。**
 load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataStore`(5236ms)
@@ -92,6 +121,32 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 
 守卫见 `scripts/__tests__/run-unit-driver-set.test.ts`：它钉住 `testTimeout: 10_000`
 这个值，并要求上述实测数据仍留在 `vitest.config.ts` 里（改值或删依据都会红）。
+
+**守卫的边界：防删依据，不防错依据。** 该守卫断言的是"这些实测数字串**仍然存在**"
+（`1745ms` / `4392ms` / `11629ms` / `testTimeout: 10_000` / `continue-on-error: true` /
+`5677 passed`），**不是**它们是否属实。实测确认：把 `4392ms` 改成 `4400ms` 会红（串
+不匹配），但改成某个**仍然存在、只是不再真实**的数不会红；同样，把一处关于 runner 核数
+的断言整体改写成另一个仍然成立的核数说法，守卫也全绿——CI 分不出"陈旧"与"已更正"。
+所以"守卫全绿"**不等于**"文档里的数字或说法是对的"。数字的正确性只能靠重测确认，
+这是既有守卫的固有限制，本轮不修，但要记住它的边界。
+
+### 2.1.2 `check-ci-docs-consistency.mjs` 覆盖什么、不覆盖什么
+
+`scripts/check-ci-docs-consistency.mjs`（别名 `pnpm test:ci-docs`）**已经由 `ci.yml`
+的 "All strict guards" 步直接调用**（`pnpm test:ci-docs`，与 `test:ids` / `test:layers`
+同一 fail-fast 列表内）。它只做三件事：
+
+1. **drivers** —— 本文档中提到的驱动 id 是否都存在于 `drivers-registry.json`；
+2. **window boundaries** —— `windows.md` 记录的子窗口 kind 是否与 `windowKind.ts` /
+   `windowManager.ts` 一致；
+3. **toolchain** —— README / CONTRIBUTING / 本文档里的 Node / pnpm 版本是否与 `ci.yml`
+   一致、是否提到 Rust stable。
+
+**它不覆盖**：任何 runner 规格声明（核数），以及任何计时/计数声明——`testTimeout`、
+`retry`、worker 数、用例总数、各档耗时百分比与 max 值。它只在三个维度上把关，
+§2.1.1 那些数字**不是**由它守的（是由 `scripts/__tests__/run-unit-driver-set.test.ts`
+按上一节末尾所说的"字符串存在性"守的）。别因为 CI 里跑了这个脚本，就以为 runner 规格
+或计时数据已经有守卫。本轮不改动它的检查范围。
 
 ### 2.2 rust job（Rust 段，浅克隆）
 
