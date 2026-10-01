@@ -289,7 +289,12 @@ impl NamespaceShape {
 pub const UNKNOWN_SENTINEL: &str = "dz_unknown";
 
 /// 目标命名空间。四个字段全部必填，空串非法（connection-management.md §4.2）。
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// `Default` 得到四个空串层，即「**未指定任何层**」的形状 —— 与 `from_shape` 里
+/// `String::new()` 的初始值同义。它**不是**一个合法目标：`from_shape` 仍会按
+/// `NamespaceShape` 的必填层校验并对空串报 `TargetRequired`，因此 derive 只是
+/// 提供构造起点，不构成绕过 §4.2 校验的捷径。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamespaceTarget {
     pub database: String,
@@ -664,8 +669,11 @@ mod tests {
             editor_session_id: EditorSessionId::new("ed-1"),
         };
         let b = OwnerRef::Editor {
+            organization_id: OrganizationId::new("org-alpha"),
             principal_id: PrincipalId::new("user-alpha-2"),
-            ..a.clone()
+            connection_id: ConnectionId::new("conn-fixture-p"),
+            client_instance_id: ClientInstanceId::new("cli-1"),
+            editor_session_id: EditorSessionId::new("ed-1"),
         };
         assert_ne!(a.hash(), b.hash(), "换 principal 必须换 ownerHash");
         assert_eq!(a.hash(), a.clone().hash(), "同 owner 必须稳定");

@@ -8,12 +8,11 @@
 
 use std::collections::BTreeMap;
 use std::hash::{BuildHasher, Hasher};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use crate::connection::execution::ExecutionId;
 use crate::connection::port::Secret;
 use crate::connection::types::{
-    Counter, DbSessionId, JobId, LeaseId, OwnerRef, ResourceId, StreamId, WorkerId,
+    Counter, DbSessionId, ExecutionId, JobId, LeaseId, OwnerRef, ResourceId, StreamId, WorkerId,
 };
 
 /// 可以被**确定性**制造碰撞的范围。CM-71 靠它复现冲突。
@@ -102,16 +101,20 @@ fn random_u64() -> u64 {
     std::collections::hash_map::RandomState::new().build_hasher().finish()
 }
 
-/// 可预测 ID 生成器。克隆共享同一状态。
+/// 可预测 ID 生成器。克隆**共享同一状态**（`Arc`），因此 provider 与测试拿到的是
+/// 同一个序列器 —— 这是「同一个 dbSessionId 上的 executionId 连续递增」得以成立的前提。
 #[derive(Clone)]
 pub struct FakeIds {
     worker_id: WorkerId,
-    state: Mutex<IdState>,
+    state: Arc<Mutex<IdState>>,
 }
 
 impl FakeIds {
     pub fn new(worker_id: WorkerId) -> Self {
-        Self { worker_id, state: Mutex::new(IdState::default()) }
+        Self {
+            worker_id,
+            state: Arc::new(Mutex::new(IdState::default())),
+        }
     }
 
     pub fn worker_id(&self) -> &str {
@@ -136,8 +139,9 @@ impl FakeIds {
             Some(forced) => forced,
             None => {
                 state.db_session_seq += 1;
-                state.remember_first(FakeIdScope::DbSessionId, state.db_session_seq);
-                state.db_session_seq
+                let value = state.db_session_seq;
+                state.remember_first(FakeIdScope::DbSessionId, value);
+                value
             }
         };
         DbSessionId::new(format!("dbs_{}_{:04}", self.worker_id, seq))
@@ -193,7 +197,7 @@ impl FakeIds {
                     .entry(db_session_id.as_str().to_owned())
                     .or_insert(0);
                 *entry += 1;
-                entry
+                *entry
             }
         };
         EpochToken {
@@ -226,14 +230,14 @@ impl FakeIds {
     pub fn attachment_token(&self) -> Secret {
         let mut state = self.lock();
         state.token_seq += 1;
-        Secret(format!("atk_{:016x}_{:04}", random_u64(), state.token_seq))
+        Secret::new(format!("atk_{:016x}_{:04}", random_u64(), state.token_seq))
     }
 
     /// 幂等令牌 nonce。同样走真实随机源，**不得**写入 journal 或断言字面量。
     pub fn idempotency_nonce(&self) -> Secret {
         let mut state = self.lock();
         state.token_seq += 1;
-        Secret(format!("idn_{:016x}_{:04}", random_u64(), state.token_seq))
+        Secret::new(format!("idn_{:016x}_{:04}", random_u64(), state.token_seq))
     }
 }
 

@@ -40,7 +40,7 @@ impl MonoTime {
 
     /// 两个单调时刻之间的经过时间；只接受非负差值。
     pub fn saturating_duration_since(self, earlier: MonoTime) -> Duration {
-        self.0.saturating_sub(earlier.0).into()
+        Duration::from_nanos(self.0.saturating_sub(earlier.0))
     }
 }
 
@@ -90,7 +90,7 @@ pub struct Timer {
 
 impl Timer {
     pub fn remaining(&self, now: MonoTime) -> Duration {
-        self.deadline_nanos.saturating_sub(now.as_nanos()).into()
+        Duration::from_nanos(self.deadline_nanos.saturating_sub(now.as_nanos()))
     }
 }
 
@@ -322,7 +322,7 @@ impl Deadline {
 
     /// 距到期还剩多久；已到期返回零。
     pub fn remaining_at(&self, now: MonoTime) -> Duration {
-        self.due_at_nanos().saturating_sub(now.as_nanos()).into()
+        Duration::from_nanos(self.due_at_nanos().saturating_sub(now.as_nanos()))
     }
 }
 

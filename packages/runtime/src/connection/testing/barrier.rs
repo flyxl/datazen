@@ -509,7 +509,8 @@ mod tests {
         let second = barrier.arrive("eviction-close-precheck");
         assert!(first.seq < second.seq, "先到达的 seq 必须更小");
         barrier.assert_arrived_before("session-created", "eviction-close-precheck");
-        let order: Vec<&str> = barrier.order().iter().map(|a| a.tag.as_str()).collect();
+        let arrivals = barrier.order();
+        let order: Vec<&str> = arrivals.iter().map(|a| a.tag.as_str()).collect();
         assert_eq!(order, vec!["session-created", "eviction-close-precheck"]);
     }
 

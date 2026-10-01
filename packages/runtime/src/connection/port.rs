@@ -436,6 +436,14 @@ pub struct CloseResourceRequest {
 pub struct Secret(String);
 
 impl Secret {
+    /// 构造一个受保护值。
+    ///
+    /// 唯一能拿到内部串的入口。调用点必须自己保证该值不会进入 journal、报告或
+    /// 断言字面量（§13 日志脱敏）；类型本身只保证 `Debug` / `Display` 不会泄漏。
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
     /// 取值。调用点必须在使用后立即丢弃，不得存入任何长期结构、不得拼进断言。
     pub fn expose(&self) -> &str {
         &self.0

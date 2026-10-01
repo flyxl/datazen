@@ -11,12 +11,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::connection::execution::{
-    EffectOutcome, ExecutionErrorCode, ExecutionId, TruncationRecord,
+    EffectOutcome, ExecutionErrorCode, TruncationRecord,
 };
 use crate::connection::port::{BudgetClass, PermitId, PermitReason};
 use crate::connection::session::{HandleKind, SessionHandleRef};
 use crate::connection::types::{
-    Counter, DbSessionId, HandleId, LeaseId, OwnerRef, PoolKeyFingerprint, ResourceId, StreamId,
+    Counter, DbSessionId, ExecutionId, HandleId, LeaseId, OwnerRef, PoolKeyFingerprint, ResourceId,
+    StreamId,
 };
 
 use super::clock::FakeClock;
@@ -566,6 +567,22 @@ impl CommandJournal {
     pub fn assert_no_return_to_pool_without_drain(&self) {
         JournalAssert::new(self).assert_no_return_to_pool_without_drain();
     }
+
+    /// I5 直达断言。与 `assert().assert_no_open_handles()` 等价，单独暴露是为了让
+    /// 故障用例在收尾处一行调用（§4.3）。
+    pub fn assert_no_open_handles(&self) {
+        JournalAssert::new(self).assert_no_open_handles();
+    }
+
+    /// I7 直达断言（§4.3）。
+    pub fn assert_no_orphan_handles(&self) {
+        JournalAssert::new(self).assert_no_orphan_handles();
+    }
+
+    /// I8 直达断言（§4.3）。
+    pub fn assert_stream_sequence_contiguous(&self) {
+        JournalAssert::new(self).assert_stream_sequence_contiguous();
+    }
 }
 
 impl Default for CommandJournal {
@@ -977,25 +994,27 @@ mod tests {
 
     fn owner() -> OwnerRef {
         OwnerRef::Editor {
-            organization_id: "org-alpha".into(),
-            principal_id: "user-alpha-1".into(),
-            editor_session_id: "ed-1".into(),
+            organization_id: crate::connection::types::OrganizationId::new("org-alpha"),
+            principal_id: crate::connection::types::PrincipalId::new("user-alpha-1"),
+            connection_id: crate::connection::types::ConnectionId::new("conn-fixture-p"),
+            client_instance_id: crate::connection::types::ClientInstanceId::new("cli-1"),
+            editor_session_id: crate::connection::types::EditorSessionId::new("ed-1"),
         }
     }
 
     fn pool_key() -> PoolKeyFingerprint {
         PoolKeyFingerprint::derive(&crate::connection::types::PoolKeyInputs {
             connection_id: fixtures::PROFILE_P.into(),
-            config_revision: 7,
+            config_revision: crate::connection::types::ConfigRevision::new(7),
             driver_id: "fake".into(),
-            namespace: crate::connection::types::NamespaceTarget::new("dz_ns_a", "", "", ""),
+            namespace: crate::connection::types::NamespaceTarget::default(),
             execution_identity_key: fixtures::IDENTITY_SHARED.into(),
             policy_isolation_key: "policy-alpha-1".into(),
         })
     }
 
     fn resource(tag: &str) -> ResourceId {
-        ResourceId(format!("res_w1_{tag}"))
+        ResourceId::new(format!("res_w1_{tag}"))
     }
 
     fn permit(tag: &str) -> PermitId {
@@ -1004,7 +1023,7 @@ mod tests {
 
     fn handle(id: &str, res: &ResourceId, epoch: u64) -> SessionHandleRef {
         SessionHandleRef::new(
-            HandleId(id.to_string()),
+            HandleId::new(id),
             HandleKind::Transaction,
             res.clone(),
             Counter(epoch),
@@ -1200,7 +1219,7 @@ mod tests {
     fn a_terminal_execution_without_protocol_drained_is_reported() {
         let journal = CommandJournal::default();
         let res = resource("0001");
-        let exec = ExecutionId("exe-dbs_w1_0001_0001".into());
+        let exec = ExecutionId::new("exe-dbs_w1_0001_0001");
         let seq = journal.record_execution_started(&res, &exec, "query");
         // 只终结 effectOutcome，故意不记录 protocolDrained。
         journal.record_execution_terminal(seq, EffectOutcome::Completed, None, true, None);
@@ -1221,7 +1240,7 @@ mod tests {
     fn an_undecidable_error_code_can_never_be_paired_with_completed() {
         let journal = CommandJournal::default();
         let res = resource("0001");
-        let exec = ExecutionId("exe-dbs_w1_0001_0002".into());
+        let exec = ExecutionId::new("exe-dbs_w1_0001_0002");
         let seq = journal.record_execution_started(&res, &exec, "commit_session_transaction");
         journal.record_execution_terminal(
             seq,
@@ -1249,7 +1268,7 @@ mod tests {
     #[test]
     fn stream_sequence_gaps_break_invariant_i8() {
         let journal = CommandJournal::default();
-        let stream = StreamId("str_0001".into());
+        let stream = StreamId::new("str_0001");
         journal.record_stream_event(&stream, 1);
         journal.record_stream_event(&stream, 2);
         journal.record_stream_event(&stream, 3);
@@ -1288,7 +1307,7 @@ mod tests {
             "实际: {violations:?}"
         );
         // 同一场景由 §5.4 的专用入口再拦一次。
-        let mut check = CommandJournal::default();
+        let check = CommandJournal::default();
         let res2 = resource("0002");
         check.record_resource_event(
             &res2,
@@ -1332,11 +1351,11 @@ mod tests {
         let journal = CommandJournal::default();
         let res = closed_lifecycle(&journal);
         journal.recover_orphans_on_close(&res, "resource closed");
-        journal.register_lease(&LeaseId("lse_res_w1_0001#1".into()), &res);
-        journal.release_lease(&LeaseId("lse_res_w1_0001#1".into()));
+        journal.register_lease(&LeaseId::new("lse_res_w1_0001#1"), &res);
+        journal.release_lease(&LeaseId::new("lse_res_w1_0001#1"));
         journal.register_active_session(&DbSessionId::new("dbs_w1_0001"));
         journal.close_active_session(&DbSessionId::new("dbs_w1_0001"));
-        let stream = StreamId("str_0001".into());
+        let stream = StreamId::new("str_0001");
         for seq in 1..=4 {
             journal.record_stream_event(&stream, seq);
         }
