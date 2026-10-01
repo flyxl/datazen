@@ -120,6 +120,41 @@ flowchart TD
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
 
+#### 2.4.1 门禁覆盖状态
+
+F-01..F-07 由 `scripts/check-platform-crate-boundaries.mjs` 执行，在 PR CI 的 rust job 里
+**阻塞**（`pnpm test:platform-arch`），执行说明见
+[ci-test-matrix.md](../../development/ci-test-matrix.md) §2.3。判定依据是
+`cargo metadata` 的 **feature-resolved 图**（`resolve.nodes`），不是清单里声明的依赖——
+`packages[].dependencies` 会列出未启用 feature 的可选依赖，用它判定会误报。
+
+| 编号 | 门禁状态 | 说明 |
+| --- | --- | --- |
+| F-01 | ✅ 已强制 | 16 个 `packages/drivers/*` crate 全部纳入判定 |
+| F-02 | ⚠️ 已武装，部分真空 | 只 `packages/runtime` 有实体 crate；`packages/application`、`packages/platform-api` 尚未进入 workspace `members`，规则已布防，主体为空时输出 `VACUOUS` 而非静默通过 |
+| F-03 | ✅ 已强制 | 主体为 `packages/runtime` + `packages/application`（后者待落地） |
+| F-04 | ⚠️ 已武装，真空 | `packages/platform-api` 尚未落地 |
+| F-05 | 🔶 半覆盖 | Rust 侧（crate 名 `react` 等）由本门禁强制；`@tauri-apps/api` 这类前端标识归 §7 的源码字符串扫描，**不由本门禁判定** |
+| F-06 | ⚠️ 已武装，真空 | `server/` 尚未落地 |
+| F-07 | 🔶 半覆盖 | `@tauri-apps/` 与 `fetch(` / `XMLHttpRequest` 字面量由本门禁强制（源码扫描）；`packages/backend-client` 的 pnpm 接线（tsconfig paths / include / vite alias）见 §2.5，**不由本门禁判定** |
+
+两条与「可独立构建」相关的事实：
+
+- **闭包不变式是独立构建的编译期代理**：normal + build 闭包里没有 `tauri*` 与宿主 crate，
+  就不可能拖进 webview / 系统 GUI 依赖，因此 `server` 与内核 crate 可以脱离宿主进程编译。
+  它**不是**一次真实的独立构建链接。
+- **「独立构建」今天还不可验证**：`server/` 不存在，因此本轮没有可执行的 server 构建命令。
+  落地后由 `pnpm test:platform-crates` 对 `server` 层跑真实 `cargo test --lib` 承担。
+
+一个列不出来就不放过的行为：若某个 workspace member 的 `manifest_path` 不匹配任何一层，
+门禁报 **error** 并失败，而不是当作「不在范围内」跳过。无法分类的成员，就是没有任何规则覆盖的成员。
+
+已知未纳入（不在任何 F-0N 内，因此不阻塞）：`packages/drivers/redis` 的
+`[build-dependencies] tauri-plugin` 会把 `tauri-plugin`、`tauri-utils` 拉进其 normal+build 闭包。
+门禁以 `ADVISORY` 打印但**不失败**——F-01 只约束 workspace crate，没有禁止驱动依赖 `tauri*`。
+修它要改驱动清单，超出本门禁的改动范围；修掉之后应把 `tauri` 族写进 F-01 的 `forbiddenCrates`
+并删除该段 advisory。
+
 ### 2.5 workspace 成员的目标写法
 
 按根 `Cargo.toml` 现有风格（`members` 数组 + `[workspace.dependencies]` 只放被多处引用的 crate），P1 落地时新增条目形如：

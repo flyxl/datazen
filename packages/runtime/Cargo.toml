@@ -1,0 +1,26 @@
+[package]
+name = "datazen-runtime"
+version = "0.0.1"
+edition = "2021"
+description = "DataZen platform runtime kernel — transport-neutral connection resource runtime and its fake resource fixtures"
+license = "GPL-3.0-or-later"
+# 夹具（6400+ 行）只服务于 `cargo test`，不得进入发布出去的 .crate。
+# `#[cfg(any(test, feature = "test-harness"))]` 管的是**编译**：`cargo package` 是**按文件系统**
+# 打包的，`cfg` 对它没有任何影响，所以这里必须显式排除 src/connection/testing/。
+# 排除后仍然可以 `cargo package --verify`：那一步按默认 feature 构建，而默认 feature 为空，
+# `connection/mod.rs` 里的 testing 模块压根不会进入编译图。
+exclude = ["src/connection/testing/**"]
+
+[features]
+# fake-runtime-fixtures.md §12: 夹具跨 crate 暴露时沿用 src-tauri 已有的 feature 名，
+# 避免「同一个概念两个名字」。生产构建不含此 feature，夹具模块即被 cfg 剔除。
+default = []
+test-harness = []
+
+[dependencies]
+datazen-driver-api = { workspace = true }
+chrono = { version = "0.4", default-features = false }
+indexmap = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"

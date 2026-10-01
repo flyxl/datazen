@@ -4,6 +4,7 @@ members = [
     "src-tauri",
     "packages/driver-api",
     "packages/ai-api",
+    "packages/runtime",
     "packages/drivers/*",
 ]
 exclude = [

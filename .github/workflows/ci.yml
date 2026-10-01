@@ -80,6 +80,63 @@ jobs:
         # cross-repo assertions live in the Pro repo and run in the Pro's CI.
 
         run: pnpm test:unit
+
+      # Path 驱动 UI 单测（AGENTS.md「驱动测试落点」表）。宿主单测不碰
+      # packages/drivers，所以 `pnpm test:unit` 从不收集这些用例；不单独跑一步
+      # 就没有任何合并门禁执行它们。放在 codegen（`pretest:unit` 产生的
+      # generated.ts）之后、site 检查之前，避开 rust job 里 resolve-drivers 那段。
+      - name: Driver UI unit tests
+        run: pnpm test:unit:drivers
+      # The step above only ever judges `basic`, because that is what
+      # `pnpm install`'s prepare hook seeds (ensure-generated-drivers.mjs ->
+      # resolve-drivers.mjs default). A driver form `basic` does not register
+      # (e.g. `sqlserver`) therefore escapes Host unit coverage entirely.
+      # This step re-runs the same suite under `all` (all registered PATH
+      # drivers: no git driver, so no deploy key and no network needed).
+      # The set lives only in run-unit-driver-set.mjs, never inline here.
+      #
+      # Status: GREEN, not known-red. An earlier revision of this comment
+      # claimed two blockers; both were artifacts of a stale base
+      # (7f35e1932, which predates d1edfa7ba / f4c2e5078 by 9 commits) and
+      # do not exist on feat/platform-p0 @ 7559759b7. Re-measured there with
+      # codegen --drivers=all + generate-builtin-locales:
+      #   Test Files 555 passed (555) | Tests 5677 passed (5677), exit 0, 140s
+      #   tester_tunnelValidationMatrix.test.tsx alone: 36 passed, exit 0
+      # The ContentView / QueryPanel.executeCancel failures named earlier were
+      # the ones cbf87a4c0 fixed ("修复 schemaStore/panelStore mock 漂移导致
+      # 的 18 个前端单测失败"). Do not reintroduce a blocked list here without
+      # re-measuring on the current base.
+      #
+      # HARD GATE — promoted from `continue-on-error: true`.
+      #
+      # It was soft while this step and the 10s testTimeout below had never
+      # executed on a real GitHub runner, so a green 8-core dev-host run was
+      # not evidence about a runner whose spec this project does not control.
+      # That observation window is now closed by decision. The two edits are
+      # ONE change: the `continue-on-error` removed from this step, and the
+      # assertion in scripts/__tests__/run-unit-driver-set.test.ts that used
+      # to require it to be true and now requires its ABSENCE. Re-adding it
+      # deliberately has to redo both, or the suite goes red.
+      #
+      # Residual risk, stated rather than hidden: the first real-runner
+      # execution may go red for reasons unrelated to this branch. The
+      # measured budget below plus `retry: 2` in vitest.config.ts are what
+      # absorb it — neither is a licence to widen either number.
+      #
+      # Timeout budget, measured not guessed (per-test wall time, all 5714
+      # tests, --reporter=json):
+      #   2 workers, load 13  (a local --maxWorkers=2 low-load run) p95 57ms  p99 170ms  max  1745ms
+      #   8 workers, load  7  (mild contention)                    p95 118ms p99 336ms  max  4392ms
+      #   8 workers, load 48  (6-7x contention)                    p95 329ms p99 918ms  max 11629ms
+      # Vitest's 5s default leaves the load-7 worst case at 88% of budget, so
+      # it has no headroom under any further contention. Note testTimeout only fires for
+      # tests that yield: in the load-48 run the three slowest tests (11629ms,
+      # 6540ms, 5236ms) overran 5s and still passed, and the only real timeout
+      # was DataTransferWindow, which awaits. Full derivation in
+      # docs/development/ci-test-matrix.md.
+      - name: Frontend unit tests (all path drivers)
+        run: pnpm test:unit:driver-set
+
       - name: Check site changes
         id: site-changes
         run: |
@@ -166,6 +223,31 @@ jobs:
 
       - name: Rust unit tests (datazen-ai-api)
         run: cargo test -p datazen-ai-api --lib
+
+      # ── 平台内核架构门禁 ──
+      #
+      # 必须落在这里，不能并进 frontend 的「All strict guards」：那条门禁所在 job
+      # 没有 Rust 工具链（工具链在下面 rust job 的 dtolnay/rust-toolchain@stable），
+      # 而本门禁要读 `cargo metadata` 的 feature-resolved 图。放在 restore 之后，
+      # 断言的是提交态的 workspace 清单，与本地开发者看到的一致。
+      #
+      # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
+      # 新 crate 落到 packages/application / packages/platform-api / server 下就自动入网，
+      # 不需要在这里改任何一处列表。列不出来的 member 是 error 不是 pass。
+      - name: Platform crate dependency boundaries (F-01..F-07)
+        run: pnpm test:platform-arch
+
+      # 计划 :269 的 datazen-runtime CI 空缺：core crate 及其后继的 Rust 单测
+      # 在此统一执行。crate 集合同样由脚本发现，新增 core crate 无需改 CI。
+      - name: Rust unit tests (platform core crates)
+        run: pnpm test:platform-crates
+
+      # 门禁自身的变异证明，放最后一步：它会临时改写 Cargo.toml 再还原，
+      # 因此后面不得再有依赖该工作树的步骤。最后运行把「被强杀导致残留变异」
+      # 的影响面降到 0（此时整个 job 已经没有后续步骤了）。
+      # 8 个变异约 5s，失败即说明门禁已经失去鉴别力——比门禁变红更早报警。
+      - name: Platform arch guard self-proof (8 mutations)
+        run: pnpm test:platform-arch:mutations
 
   # ── 聚合 job：两段全绿才算 CI 通过。
   # 分支保护的 required status check 盯 `ci` 一个即可，拆分 job 不影响它。

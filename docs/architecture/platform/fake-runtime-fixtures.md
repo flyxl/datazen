@@ -1,6 +1,6 @@
 # DataZen P0 transport-neutral fake resource 夹具与基准 harness 详细设计
 
-> 状态：目标设计，尚未实现。基线：2026-09-30，`8592b0fe1`。本文只交付夹具、故障注入、真实驱动契约夹具与基准 harness 的实现级设计，不代表连接管理重构已完成。
+> 状态：**夹具已落地**，实现位于 `datazen-runtime`（`packages/runtime/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§10 真实驱动契约夹具与 §11 CM-60 基准 harness 仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
 > 读者：负责 [连接管理详细设计](connection-management.md) §14 开发步骤第 2 项（`testing/fake_resource`）、§6.5 句柄登记与 §15.3 基准 harness 的实现者。
 > 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
 
@@ -56,21 +56,21 @@
 
 ## 2. 落点与模块划分
 
-拟建目录（全部位于尚未创建的 runtime crate 内，crate 包名以实际 `Cargo.toml` 为准）：
+实际目录（runtime crate `datazen-runtime` 已创建，位于 `packages/runtime/`，只有一个 lib target）：
 
 | 路径 | 职责 | 关键导出 |
 | --- | --- | --- |
 | `packages/runtime/src/connection/testing/mod.rs` | 模块入口与 `#[cfg(any(test, feature = "test-harness"))]` 门控 | `FakeHarness` |
-| `.../testing/fake_resource.rs` | fake provider、fake resource 状态机、§5.1 九个操作 | `FakeResourceProvider`、`FakeResource`、`FakeScript` |
-| `.../testing/journal.rs` | CommandJournal 与变化点断言 | `CommandJournal`、`JournalAssert` |
-| `.../testing/barrier.rs` | 命令级 barrier、协议 drain barrier | `Barrier`、`DrainBarrier` |
+| `.../testing/fake_resource/` | fake provider、fake resource 状态机、§5.1 九个操作、§4 注入点分派与目录守卫 | `FakeResourceProvider`、`FakeResource`、`FakeScript` |
+| `.../testing/journal/` | CommandJournal 与变化点断言 | `CommandJournal`、`JournalAssert` |
+| `.../testing/barrier/` | 命令级 barrier、协议 drain barrier | `Barrier`、`DrainBarrier` |
 | `.../testing/clock.rs` | FakeClock（单调 + UTC） | `FakeClock` |
 | `.../testing/ids.rs` | 可预测 ID 生成与强制碰撞 | `FakeIds`、`FakeIdScope` |
 | `.../testing/fixtures.rs` | 固定实体（组织/用户/profile/命名空间 A、B） | `fixtures()` 常量与 `install_fixtures` |
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
-| `.../testing/bench.rs` | CM-60 基准 harness | `cm60_harness()`、`cm60_stress()` |
+| `.../testing/bench.rs` | CM-60 基准 harness | **未实现**：§11 仍是目标设计，本 crate 内无此文件 |
 
-`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义）。
+`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`packages/runtime/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
 ```mermaid
 flowchart TD
@@ -94,7 +94,7 @@ flowchart TD
 隔离规则：
 
 - 夹具代码不得被生产路径引用；`src-tauri` 的 `datazen` crate 不依赖 runtime 夹具。
-- runtime crate 现有门禁 `pnpm test:layers`（`scripts/check-module-layers.mjs`）只扫描 JS/TS 源码，不覆盖 Rust；runtime crate 创建后必须把层/边界检查接入 CI 门禁，命令同步写入 CI 与开发计划 §15.1 的命令表，不把未创建命令列为现有脚本。
+- runtime crate 现有门禁 `pnpm test:layers`（`scripts/check-module-layers.mjs`）只扫描 JS/TS 源码，不覆盖 Rust；runtime crate 已创建，把层/边界检查接入 CI 门禁仍是待办，命令同步写入 CI 与开发计划 §15.1 的命令表，不把未创建命令列为现有脚本。
 - 夹具内禁止出现 `.env` / `.env.test` 的任何读取路径（见 §13）。
 
 ## 3. transport-neutral fake resource 契约
@@ -610,14 +610,19 @@ pnpm e2e:skip-build           # 复用已编译 debug 二进制
 pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 ```
 
-**crate/package 创建后才存在**（当前**不可**运行，不得在文档或 CI 中当作现有脚本）：
+**已落地、可立即运行**（runtime crate 已创建，核对自 `packages/runtime/Cargo.toml`）：
+
+```bash
+cargo test -p datazen-runtime --lib                      # 夹具单测（130 个用例，crate 只有一个 lib target）
+cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
+```
+
+**仍未创建、当前**不可**运行，不得在文档或 CI 中当作现有脚本**：
 
 | 预期命令 | 前置条件 |
 | --- | --- |
-| `cargo test -p <runtime-package> --lib` | runtime crate 创建并加入 workspace `members` |
-| `cargo test -p <runtime-package> --test contract` | 同上，且 `src-tauri/Cargo.toml` 注入依赖 |
-| `cargo test -p <runtime-package> --features test-harness` | `test-harness` feature 定义 |
-| `cargo run --release -p <runtime-package> --bin cm60-bench` | 基准入口创建 |
+| `cargo test -p datazen-runtime --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
+| `cargo run --release -p datazen-runtime --bin cm60-bench` | 基准入口创建（§11） |
 
 创建后必须同步更新平台开发计划 §15.1 的命令表与 CI 门禁，不把未创建命令列为现有脚本。
 
@@ -627,13 +632,16 @@ pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 
 | 规则 | 说明 |
 | --- | --- |
-| 禁止读取受保护 env 文件 | 任何 Agent 或程序都不得打开、读取、解析、`source` 或打印仓库及 worktree 中 `.env` / `.env.test` 的内容；只允许检查文件是否存在与 Git 忽略状态 |
-| 禁止运行隐式加载它们的程序 | 不得执行会加载上述文件的命令或程序；`load_dotenv` 类调用在夹具中禁止出现 |
+| 禁止读取受保护 env 文件 | 任何 Agent（含子代理）不得打开、读取、解析、`source` 或打印仓库及 worktree 中 `.env` / `.env.test` 的内容；只允许检查文件是否存在与 Git 忽略状态。**测试程序运行时读 `.env` 是合法的**——集成测试本就需要其中的 `DATABASE_URL`，`load_dotenv` 类调用因此不因「读文件」本身被禁；被禁的是「把内容读进上下文」，而不是「程序读文件」 |
+| 禁止运行隐式加载它们的程序 | 不得执行会把上述文件的**内容带进自己上下文或报告**的命令；`load_dotenv` 类调用在夹具中禁止出现 |
 | 真实凭据注入方式 | 由 CI secret 或已获授权的进程环境变量注入；不写入提示、日志、报告或测试输出 |
 | 既有实现不作为范本 | `packages/drivers/postgres/tests/postgres_cross_database.rs` 现有 `load_dotenv_file()` 读取 `packages/drivers/.env`（由 `CARGO_MANIFEST_DIR` 父目录拼出）；新夹具**不复制**该写法，改造时改为只认进程环境 |
-| 启动器检查 | 开发前检查测试启动器不加载受保护文件；Host E2E 必须经 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 触发，不得裸 `cargo build` |
+| 启动器检查 | 开发前检查测试启动器不加载受保护文件；Host E2E 必须经 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 触发，不得裸 `cargo build」。**P0 检查结论：11 个 shell 脚本会 `source` 受保护 env 文件**（`scripts/setup-workflow-testdata.sh:10`、`scripts/run-full-automation-test.sh:49`、`scripts/run-e2e-minimal.sh:234` 经 `--env-file`/`E2E_ENV_FILE`、`packages/drivers/postgres/e2e/install-manual-schema-tree.sh:13`、`packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh:11`、`e2e/setup-e2e-env.sh:12`、`e2e/teardown-e2e-env.sh:12`、`e2e/setup-sync-dbs.sh:12`、`e2e/setup-demo-data.sh:13`、`e2e/setup-schema-diff-e2e.sh:10`、`e2e/setup-data-transfer-e2e.sh:10`）。全部是**本地操作者手动执行的 E2E 准备脚本**，不进 CI、不是夹具、也不由任何测试断言调用；`run-e2e-minimal.sh:226` 只打印变量**名**不打印值。已确认的合规样例是同目录的 `.mjs` 版本，只读 `process.env.E2E_MYSQL_*`。本阶段按「检查」交付，不改造这些脚本——改造会改变本地开发流程，属独立决策；复扫命令见下 |
 | 日志脱敏 | 夹具的 journal 不得记录凭据、附件令牌与幂等令牌 nonce；故障注入的脚本 id 可记录，字面量不可记录 |
 | 夹具不产生真实外部连接 | fake provider 禁止任何出站 socket；真实驱动测试的连接目标必须是已证明的专用测试环境 |
+| 「无 env 文件读取」结论的边界 | 该结论来自对**绑定本契约模板的 crate 源码**的静态扫描（`real_driver_contract.rs` 的 `test_sources_never_read_env_files`）。带 `tests/` 却从不绑定模板的 crate 不在其中，其名单由 `UNGUARDED_DRIVER_CRATES` 机器渲染进范围报告的「免检驱动 crate」一节，并由 `the_report_names_every_crate_this_guard_does_not_scan` 的 golden 逐字钉住。golden 只拦下**未经复核的**新增文字，拦不住与 golden 同一次提交里一起改掉的措辞；报告其余部分的散文不在该钉的范围内，由 §10.4 的结论纪律负责 |
+| 拒答层对 trait 方法的覆盖面 | `WithheldPreciseCancel<D>` 包装的 25 个 trait 方法里，13 个**不需要服务器**的方法由 `RefusalSnapshot` 逐字段比对（每方法一个字段）；其余 12 个需要活连接的方法，拒答层不开连接，其返回值**在本层无人比对**，这是设计如此而非遗漏。`the_wrapper_trait_surface_is_fully_classified_as_checked_or_named_as_unchecked` 保证这 25 个方法全部落入上述两类之一，没有第三类。分类只回答方法被分到哪里，不回答字段是否真被读：13/12 这组数字来自一张手写清单，把方法降级或删掉快照字段都改不动别处，所以 `every_method_claimed_as_compared_is_read_by_the_snapshot_it_is_compared_through` 用行为证伪它——换掉某个方法的返回值，快照必须随之改变；该测试的扰动集合读自 `real_driver_contract_probe.rs` 自身实现里的扰动调用而非那份清单，两侧互不派生。残余如实记录：比对的是整个快照，它证明的是「对该方法的扰动可见」，不是「差异落在该方法自己的字段上」，同时扰动三个方法的探针仍可蒙混过关 |
+| availability 报告行的双向绑定 | 范围报告里「live 层前置条件齐备 / live 层未启用」那一行，与 `Contract::availability()` 的返回值逐行比对（`partial_obligations_are_never_reported_as_passed`），两个分支各自持有：任一分支的措辞被换成另一分支的，两条断言都会转红 |
 
 ## 14. 验收映射
 

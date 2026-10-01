@@ -173,6 +173,21 @@ cargo test -p datazen-ai-api --lib     # AI API 单元测试
 cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust 测试
 ```
 
+> **测试命令的长输出必须落临时文件再读**：测试/门禁命令（`vitest`、`cargo test`、`typecheck`、
+> `check-*.mjs`、`pnpm build`）的输出动辄上千行，直接回显会被工具截断，而**结论恰恰在末尾**
+> （`Test Files` / `Tests` / `test result:` / 编译错误列表 / 退出码）——被截掉就等于没跑，
+> 且极易据此误判"通过"。一律重定向到**系统临时目录**，再用 `tail` / `grep` 取需要的片段：
+>
+> ```bash
+> LOG="$(mktemp -t datazen-test).log"
+> npx vitest run > "$LOG" 2>&1; echo "EXIT=$?"     # 退出码必须单独打印并如实记录
+> tail -n 40 "$LOG"                                # 结论行
+> grep -nE 'FAIL|✗|test result:|error\[|error TS' "$LOG" | head -60   # 失败清单
+> ```
+>
+> 注意：临时文件**只放系统 temp 目录**，不得落在仓库内（会污染 `git status`）；
+> 完整日志留在文件里备查，不要为了"看全"而把整个文件回显进对话。
+
 > **测试文件参与类型检查**：`tsconfig.json` 不再排除 `__tests__/` 与 `*.test.ts(x)`，
 > 新增或修改测试后必须保证 `pnpm typecheck` 干净。历史上测试被排除在外，导致 mock
 > 与真实类型长期漂移而不被发现（例如 `TableInfo.rowCount` 实收 `null` 却声明为 `?: number`）。
@@ -255,7 +270,10 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件。
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件。
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中。
-- **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的内容，也不得运行会使这些文件被读取的命令或程序；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。
+- **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的**内容**；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。
+  - **测试程序读 `.env` 是合法的**，不得因此禁止运行测试或驱动 live 套件——集成测试本就需要其中的 `DATABASE_URL` 等配置。被禁的是「把内容读进上下文」，不是「程序读文件」。误把二者混同会逼出「不跑测试」的假禁令，等于放走真实缺陷。
+  - **真正的泄漏路径是输出回显**：命令的 stdout / panic 消息 / 断言失败文本里若回显了凭据，内容照样会随对话进入模型服务商。运行任何命令前先确认其输出路径不含凭据；一旦怀疑输出可能含密钥，只摘录结构性结论（哪个文件、哪条断言、退出码、测试计数），**不要转发原始输出**，并优先用上面的「长输出落临时文件」模式取片段。
+  - 审阅「读 env 文件」的测试代码时，看**源码**（是否自造合成探针、默认值是否拒绝读文件），不看 `.env` 本身。
 - 连接密码等凭据：AES-256-GCM；**主密钥**默认在系统钥匙串，开发/adhoc 或 `DATAZEN_KEYRING=file` 时用 `{appData}/.key`。
 - 日志文件位于 `{data_dir}/logs/`。
 

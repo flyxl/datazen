@@ -2,6 +2,9 @@
 //!
 //! All probes are `SELECT CAST(...)` statements, so nothing is written and the
 //! tests run against read-only credentials too.
+//!
+//! Configuration comes from the **process environment only**; a local env
+//! file is read *only* when you opt in with `TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file`.
 
 mod common;
 

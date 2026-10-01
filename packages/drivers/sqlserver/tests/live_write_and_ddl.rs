@@ -1,6 +1,12 @@
 //! Live coverage for the SQL Server driver's **write path, transactions and DDL
-//! object lifecycle** against the real Azure SQL Database instance configured in
-//! `packages/drivers/sqlserver/.env.test`.
+//! object lifecycle** against a real Azure SQL Database instance.
+//!
+//! Configuration comes from the **process environment only**. A local env
+//! file is read *only* when you opt in by naming it:
+//!
+//! ```text
+//! TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file cargo test -p datazen-driver-sqlserver
+//! ```
 //!
 //! Regression focus: T-SQL only accepts the programmable-object definitions
 //! (`CREATE`/`ALTER` `SCHEMA`, `VIEW`, `PROCEDURE`, `FUNCTION`, `TRIGGER`,
