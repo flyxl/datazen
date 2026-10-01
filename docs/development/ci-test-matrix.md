@@ -1,14 +1,14 @@
 # CI 与测试矩阵
 
 > 与 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)、[release.yml](../../.github/workflows/release.yml) 及 [AGENTS.md](../../AGENTS.md) 测试约定配套。  
-> 目标：PR 流水线快且稳定；驱动 SKU 组合可扩展；**`all` 预设不进 PR CI**。
+> 目标：PR 流水线快且稳定；驱动 SKU 组合可扩展；**`all` 预设只进 Host 单测，不进编译矩阵**。
 
 ## 1. 总览
 
 | 层级 | PR CI（`ci.yml`） | Release（`release.yml`） | 本地 / 维护者 |
 |------|-------------------|--------------------------|---------------|
-| 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis） | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
-| Host 前端单测 | ✅ `pnpm test:unit` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` |
+| 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis）；Host 单测另跑一遍 **`all`** | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
+| Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（软门禁，见 §2.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
 | TypeScript | ✅ `pnpm typecheck` | 同上 | `pnpm typecheck` |
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
 | driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
@@ -23,8 +23,8 @@
 **原则**
 
 1. **Basic 必测**：每个 PR 与 `main` push 均跑 basic 四驱动 + Host 三件套（TS 单测 / Host lib / driver-api / ai-api）。
-2. **All 不进 PR CI**：`resolve-drivers --drivers=all` 仅用于 Release **All** SKU 与本地全量验证，避免 PR 流水线编译全部 path 驱动。
-3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）**不在 PR CI 矩阵内**；修改某驱动 crate 时，作者须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 UI 单测 / E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
+2. **All 只进 Host 单测，不进编译矩阵**：`resolve-drivers --drivers=all` 的 codegen 让 PR CI 跑一遍全部 path 驱动的 Host 前端单测——前端驱动形态是编译期 codegen，验证它不需要编译 Rust 驱动，因此 `all` 在 PR 上是廉价的；而 `cargo` 侧编译全部 path 驱动仍然只发生在 Release **All** SKU 与本地全量验证（`--drivers=all` 约 5 分钟重编译），不占 PR 流水线。
+3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）的 **Rust crate 测试不在 PR CI 矩阵内**（其前端形态由 §2.1 的 `all` 单测覆盖）；修改某驱动 crate 时，作者须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 UI 单测 / E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
 4. **契约矩阵**：Host Connection Contract（`e2e/contract/`）验证 PG/MySQL/SQLite 上同一套 Host UI journey；**不进 PR CI**，由维护者在合并前或 R 阶段跑 `pnpm e2e:contract:matrix`；fixtures 单测 `pnpm test:unit:e2e-contract` 可在本地或后续 CI 扩展中启用。
 
 ## 2. PR CI 步骤（与 workflow 对齐）
@@ -43,7 +43,8 @@
 | 代码生成 | `node scripts/generate-builtin-locales.mjs` | `builtinLocales.ts` 为 gitignore codegen |
 | 类型 | `pnpm typecheck` | `tsc --noEmit` |
 | 守卫 | `check-managed-stubs.mjs`、`check-structure-editor-guardrails.mjs` 等 | 防止误提交 inject 产物 |
-| Host 单测 | `pnpm test:unit` | Vitest；`pretest:unit` 会 `--codegen-only --drivers=basic` |
+| Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
+| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：先 `--codegen-only --drivers=all` 再 `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**软门禁**（`continue-on-error: true`），阻塞项见 `ci.yml` 该步注释；转硬门禁后应移除该标记 |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
 
 ### 2.2 rust job（Rust 段，浅克隆）
