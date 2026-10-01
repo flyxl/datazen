@@ -1,0 +1,21 @@
+[package]
+name = "datazen-application"
+version = "0.0.1"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "DataZen 应用层：用例编排、ApiError、目标计算与身份策略判定顺序"
+exclude = ["src/testing/**"]
+
+[features]
+default = []
+test-harness = []
+
+[dependencies]
+datazen-platform-api = { workspace = true }
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

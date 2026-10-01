@@ -1744,6 +1744,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-application"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "datazen-platform-api",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "datazen-driver-api"
 version = "0.0.8"
 dependencies = [
@@ -2006,6 +2018,17 @@ dependencies = [
  "tracing",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "datazen-platform-api"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

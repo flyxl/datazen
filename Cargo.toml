@@ -4,6 +4,8 @@ members = [
     "src-tauri",
     "packages/driver-api",
     "packages/ai-api",
+    "packages/platform-api",
+    "packages/application",
     "packages/runtime",
     "packages/drivers/*",
 ]
@@ -15,6 +17,8 @@ exclude = [
 
 [workspace.dependencies]
 datazen-driver-api = { path = "packages/driver-api" }
+datazen-platform-api = { path = "packages/platform-api" }
+datazen-application = { path = "packages/application" }
 
 [profile.dev]
 incremental = true

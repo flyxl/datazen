@@ -1,8 +1,8 @@
 # DataZen 共享应用边界与端口详细设计
 
-> 状态：目标设计，尚未实现。基线：2026-09-30，代码提交 `8592b0fe1`。本文交付的是开发契约，不代表已完成重构。
-> 代码核对时的工作区 HEAD 为 `e544e0699`（2026-09-30 21:08）。`8592b0fe1` 是 HEAD 的祖先，两者相差 4 个提交（改动仅限 `AGENTS.md`、`docs/`、`src/components/connection/navigator/`）；`git diff --stat 8592b0fe1..HEAD -- Cargo.toml pnpm-workspace.yaml pnpm-lock.yaml tsconfig.json vite.config.ts package.json scripts src-tauri packages .github` 输出为空，因此本文关于 workspace 成员、前端三处接线与门禁脚本的事实对两个基线一致。
-> 读者：负责 P1「抽取共享应用边界和前端传输契约」的实现者。本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。
+> 状态：**契约层已实现，运行期接线未落地**。P1 交付了 `packages/platform-api`、`packages/application`、`packages/backend-client` 三个包与它们的单测；`packages/runtime` 的类型迁移、`server` crate、§8 的 CI 门禁脚本仍为待办，见各节标注的「尚未实现」。
+> 基线：2026-09-30，代码提交 `8592b0fe1`；契约层实现分支 `feat/platform-p1-core`（基线提交 `6175f1c1f`）。本文下述 workspace 成员、前端三处接线的事实已按实现后的根 `Cargo.toml`、`tsconfig.json`、`vite.config.ts` 复核。
+> 读者：本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。标为「目标设计」的段落仍是契约，未随 P1 实现。
 > 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 
 ## 1. 本文定位与配套契约
@@ -17,7 +17,17 @@
 | 错误码取值 | [连接 §13 错误、重试和事件](connection-management.md#13-错误重试和事件) |
 | 阶段顺序与交付门槛 | [开发计划 §5 P1](../../development/platform-development-plan.md#5-p1抽取共享应用边界和前端传输契约)、[§17 补充契约的阶段归属](../../development/platform-development-plan.md#17-补充契约的阶段归属) |
 
-本文所有 crate 路径（`packages/application`、`packages/runtime`、`packages/platform-api`、`packages/backend-client`、`server/`）在基线提交上**均不存在**；仓库当前的 workspace 成员只有 `src-tauri`、`packages/driver-api`、`packages/ai-api`、`packages/drivers/*`（见根 [`Cargo.toml`](../../../Cargo.toml)）。下文提到这些路径时一律为目标设计。
+本文涉及的 crate 路径落地情况（按 `feat/platform-p1-core` 复核）：
+
+| 路径 | 状态 |
+| --- | --- |
+| `packages/platform-api` | **已实现**，`datazen-platform-api`，Cargo 成员 |
+| `packages/application` | **已实现**，`datazen-application`，Cargo 成员 |
+| `packages/backend-client` | **已实现**，TS 包，**不是** Cargo 成员，接线三处已补齐（§2.5） |
+| `packages/runtime` | 已存在于基线，但**其 ID / DTO 类型尚未迁移**到 `platform-api`（见 §2.6「待办：runtime 去重」） |
+| `server/` | **不存在**，目标设计 |
+
+`datazen-application` 的 normal + build 依赖闭包为 32 个 crate，`datazen-platform-api` 为 31 个；两者都不含 `tauri*`、不含宿主 crate `datazen`、不含 `axum`/`actix-web`/`warp`/`tonic`（`cargo metadata --format-version 1` 解析 `resolve.nodes` 闭包，见 F-02 / F-03 / F-04）。
 
 ## 2. 包边界与依赖矩阵
 
@@ -37,6 +47,7 @@ packages/platform-api/src/
 ├── id.rs                     # ID newtype（含宏）、Counter、Timestamp
 ├── context.rs                # RequestContext、OwnerRef、DelegationRef
 ├── error.rs                  # PortError
+├── target.rs                 # NamespaceTarget/ObjectTarget/CanonicalTarget、namespaceShape 与 targetRequirements
 ├── ports/
 │   ├── profile.rs            # ProfileRepository
 │   ├── policy.rs             # PolicyService
@@ -49,18 +60,23 @@ packages/platform-api/src/
 │   ├── network.rs            # NetworkProvider
 │   ├── budget.rs             # BudgetCoordinator
 │   └── identity.rs           # IdentityResolver
+├── dto/                      # 连接 §4 的契约词表：session / execution / job / artifact / profile / event / idempotency
 └── lib.rs
 
 packages/application/src/
-├── dto/                      # re-export 连接 §4 的形状，不新增字段语义
-├── error.rs                  # ApiError + code 常量
-├── target.rs                 # CanonicalTarget 计算与 targetRequirements 校验
+├── dto/
+│   ├── mod.rs                # re-export platform-api 的契约 DTO（不新增字段语义）
+│   ├── requests.rs           # 用例入参与纯校验函数
+│   ├── execution.rs          # DurableExecutionRecord（不可表示运行时绑定）
+│   └── accept.rs             # IdempotencyAcceptRecord、AcceptedSubject、接受记录保留期
+├── error.rs                  # ApiError + ApiErrorCode(31) + RetryDisposition
+├── target.rs                 # CanonicalTarget 计算与 targetRequirements 校验（§4.3 六步纯函数）
 ├── identity_policy.rs        # INV-01..INV-03 的判定顺序编排
-├── sessions.rs               # openSession/executeInSession/executeAtTarget/...
-└── lib.rs
+├── sessions.rs               # ConnectionUseCases：连接 §4.1 的 13 个方法签名
+└── lib.rs                    # ApplicationServices（§6.2 装配顺序第 7 步）
 
 packages/runtime/src/
-├── connection/               # 见 §3
+├── connection/               # 见 §3（尚未迁移到 platform-api 类型，见 §2.6）
 ├── budget.rs                 # 本机多维许可（port 之后的本地实现）
 ├── execution.rs
 ├── events.rs
@@ -68,11 +84,12 @@ packages/runtime/src/
 └── lib.rs
 
 packages/backend-client/src/
-├── types/                    # Id、Counter、Timestamp、SessionView、ExecutionView...
-├── client.ts                 # BackendClient 接口
-├── transport.ts              # BackendTransport 绑定接口、PlatformServices 接口（§7.1）
+├── types/                    # ids、target、context、session、execution、job、profile、artifact、event、idempotency、requests
+├── client.ts                 # BackendClient 接口（21 个方法）+ backendId 注入登记
+├── transport.ts              # BackendTransport 绑定接口、PlatformServices 接口（§7.1）、MethodMap
 ├── streams.ts                # AsyncIterable 事件流抽象
 ├── errors.ts                 # ApiError 反序列化
+├── __tests__/                # 契约自检、门面载荷、流与错误
 └── index.ts
 ```
 
@@ -120,68 +137,45 @@ flowchart TD
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
 
-#### 2.4.1 门禁覆盖状态
+### 2.5 workspace 成员与前端接线（已实现）
 
-F-01..F-07 由 `scripts/check-platform-crate-boundaries.mjs` 执行，在 PR CI 的 rust job 里
-**阻塞**（`pnpm test:platform-arch`），执行说明见
-[ci-test-matrix.md](../../development/ci-test-matrix.md) §2.3。判定依据是
-`cargo metadata` 的 **feature-resolved 图**（`resolve.nodes`），不是清单里声明的依赖——
-`packages[].dependencies` 会列出未启用 feature 的可选依赖，用它判定会误报。
-
-| 编号 | 门禁状态 | 说明 |
-| --- | --- | --- |
-| F-01 | ✅ 已强制 | 16 个 `packages/drivers/*` crate 全部纳入判定 |
-| F-02 | ⚠️ 已武装，部分真空 | 只 `packages/runtime` 有实体 crate；`packages/application`、`packages/platform-api` 尚未进入 workspace `members`，规则已布防，主体为空时输出 `VACUOUS` 而非静默通过 |
-| F-03 | ✅ 已强制 | 主体为 `packages/runtime` + `packages/application`（后者待落地） |
-| F-04 | ⚠️ 已武装，真空 | `packages/platform-api` 尚未落地 |
-| F-05 | 🔶 半覆盖 | Rust 侧（crate 名 `react` 等）由本门禁强制；`@tauri-apps/api` 这类前端标识归 §7 的源码字符串扫描，**不由本门禁判定** |
-| F-06 | ⚠️ 已武装，真空 | `server/` 尚未落地 |
-| F-07 | 🔶 半覆盖 | `@tauri-apps/` 与 `fetch(` / `XMLHttpRequest` 字面量由本门禁强制（源码扫描）；`packages/backend-client` 的 pnpm 接线（tsconfig paths / include / vite alias）见 §2.5，**不由本门禁判定** |
-
-两条与「可独立构建」相关的事实：
-
-- **闭包不变式是独立构建的编译期代理**：normal + build 闭包里没有 `tauri*` 与宿主 crate，
-  就不可能拖进 webview / 系统 GUI 依赖，因此 `server` 与内核 crate 可以脱离宿主进程编译。
-  它**不是**一次真实的独立构建链接。
-- **「独立构建」今天还不可验证**：`server/` 不存在，因此本轮没有可执行的 server 构建命令。
-  落地后由 `pnpm test:platform-crates` 对 `server` 层跑真实 `cargo test --lib` 承担。
-
-一个列不出来就不放过的行为：若某个 workspace member 的 `manifest_path` 不匹配任何一层，
-门禁报 **error** 并失败，而不是当作「不在范围内」跳过。无法分类的成员，就是没有任何规则覆盖的成员。
-
-已知未纳入（不在任何 F-0N 内，因此不阻塞）：`packages/drivers/redis` 的
-`[build-dependencies] tauri-plugin` 会把 `tauri-plugin`、`tauri-utils` 拉进其 normal+build 闭包。
-门禁以 `ADVISORY` 打印但**不失败**——F-01 只约束 workspace crate，没有禁止驱动依赖 `tauri*`。
-修它要改驱动清单，超出本门禁的改动范围；修掉之后应把 `tauri` 族写进 F-01 的 `forbiddenCrates`
-并删除该段 advisory。
-
-### 2.5 workspace 成员的目标写法
-
-按根 `Cargo.toml` 现有风格（`members` 数组 + `[workspace.dependencies]` 只放被多处引用的 crate），P1 落地时新增条目形如：
+根 `Cargo.toml` 的 `members` 实际新增 `packages/platform-api` 与 `packages/application` 两条，`[workspace.dependencies]` 同风格追加两条 path 依赖：
 
 ```toml
 [workspace]
 members = [
     "src-tauri",
-    "server",
-    "packages/ai-api",
-    "packages/application",
     "packages/driver-api",
-    "packages/drivers/*",
+    "packages/ai-api",
     "packages/platform-api",
+    "packages/application",
     "packages/runtime",
+    "packages/drivers/*",
 ]
+# exclude 与 [workspace.dependencies] 中的 datazen-driver-api 写法保持原样
+
+[workspace.dependencies]
+datazen-platform-api = { path = "packages/platform-api" }
+datazen-application = { path = "packages/application" }
 ```
 
-约束：`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`（上一代码块中不出现该行即为此故）。`packages/drivers/*` 的通配与三个 `exclude`（kiwi / olap / superset）保持原样，驱动注入仍由 `scripts/resolve-drivers.mjs` 写入占位段。`[workspace.dependencies]` 中 `datazen-driver-api` 现有写法 `{ path = "packages/driver-api" }` 保持不变，新增 `datazen-application` / `datazen-runtime` / `datazen-platform-api` 同风格追加。
+与本文早期草案的差异：`server` **没有**加进 `members`——`server/` 在仓库中不存在，该 crate 属更晚阶段；`packages/runtime` 本就已在基线的 `members` 中，本次未改动这一行，只补 `platform-api` 与 `application` 两条。`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`（`packages/backend-client/src/__tests__/contracts.test.ts` 有一条断言守住这点）。`packages/drivers/*` 的通配与三个 `exclude`（kiwi / olap / superset）保持原样，驱动注入仍由 `scripts/resolve-drivers.mjs` 写入占位段。
 
-前端侧要接线的不是 pnpm workspace：当前 `pnpm-workspace.yaml` 只有 `allowBuilds:`、**没有 `packages:` 通配**，`pnpm-lock.yaml` 也只有根一个 importer，因此 `packages/*` 下的前端包并不通过 pnpm 链接进 `node_modules`（`node_modules/@datazen/*` 不存在）。既有 `packages/driver-sdk`、`packages/ui`、`packages/wapp-sdk`、`packages/extension-points` 靠三处显式配置生效，`packages/backend-client` 必须同样补齐三处：
+前端侧接线的不是 pnpm workspace：`pnpm-workspace.yaml` 只有 `allowBuilds:`、**没有 `packages:` 通配**，`pnpm-lock.yaml` 也只有根一个 importer，因此 `packages/*` 下的前端包并不通过 pnpm 链接进 `node_modules`。既有 `packages/driver-sdk`、`packages/ui`、`packages/wapp-sdk`、`packages/extension-points` 靠三处显式配置生效，`packages/backend-client` 已同样补齐三处：
 
 1. `tsconfig.json` 的 `compilerOptions.paths` 增加 `@datazen/backend-client` → `./packages/backend-client/src/index.ts`；
-2. 同一文件的 `include` 数组显式加入 `packages/backend-client`（该数组当前逐个列出包目录，新增包不会自动纳入 `pnpm typecheck`）；
+2. 同一文件的 `include` 数组加入 `packages/backend-client`（该数组逐个列出包目录，新增包不会自动纳入 `pnpm typecheck`）；
 3. `vite.config.ts` 的 `resolve.alias` 增加同一条别名（应用运行期解析与 `typecheck` 解析分开，只配 paths 会在 Vite 构建时解析不到）。
 
-## 3. runtime 包内部模块
+这三处由 `contracts.test.ts` 的「TS 别名恰好接在三处」用例守住。
+
+> **尚未实现**：仓库 `vitest.config.ts` 的 `include` 通配与 `resolve.alias` 未覆盖 `packages/backend-client`（两者都在 CI 轨道的改动范围）。P1 的 40 条前端单测用临时 vitest 配置在本地跑通，合并后需把该包的测试纳入默认 `npx vitest run`。
+
+### 2.6 待办：runtime 去重（超出 P1 交付范围）
+
+`packages/runtime` 在基线上已自带 `connection/types.rs` 的 ID newtype、`ExecutionTarget`、`ApiError` / `ApiErrorCode`、`CapabilitySnapshot`，与 `platform-api` 的同名类型**是两份互不相同的类型**。F-04 要求 `platform-api` 不反向依赖 runtime，因此去重方向只能是 runtime 改为 `pub use datazen_platform_api::{…}`——这需要改动 `packages/runtime/**`，不在 P1 写范围内。相关形状差异已在本文各节按「以 platform-api 为准」记录（runtime 的 `NamespaceTarget` 四个非 `Option` 字段、`path: String`、`ConfigRevision(pub u64)` 等在迁移时必须丢弃）。
+
+## 3. runtime 包内部模块（目标设计，未随 P1 实现）
 
 ### 3.1 目录约定
 
@@ -224,9 +218,9 @@ packages/runtime/src/connection/
 - 拆分单位是职责而非行数：状态机与它的转移表同文件，序列化与协议映射进 `adapters.rs`，两者不得互相内联。
 - 生产路径禁止裸 `unwrap()` / `expect()`；错误一律 `thiserror` + `tracing`，对外统一 `CommandError` 映射（`CommandError` 定义在 `src-tauri/src/commands/error.rs`，Tauri adapter 侧职责见 [概要 §4](system-overview.md#4-模块职责与边界)）。
 
-## 4. 端口 trait 草案
+## 4. 端口 trait（已实现于 `packages/platform-api`）
 
-### 4.1 通用约定
+> 落地形态：11 个 trait 全部按 §4.1 约定建在 `packages/platform-api/src/ports/`，`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen_platform_api::…` 再导出，不重复定义。**端口只定义签名，没有任何实现**。
 
 - 所有 ID 参数使用 `platform-api` 的 newtype（`OrganizationId`、`PrincipalId`、`ConnectionId`、`DbSessionId`、`JobId`、`ExecutionId`、`ArtifactId`、`StreamId`、`RuntimeEpoch`…），**不使用裸 `String` 标识语义**。`connectionId` = 持久化配置 ID，`dbSessionId` = 运行时会话 ID，两者永不混用（[ID 术语规范](../../../AGENTS.md#id-术语规范)）。
 - **`RequestContext` 与全部 ID newtype 定义在 `platform-api`**，无行为、无平台依赖；`application` 与 `runtime` 用 `pub use` 再导出。这样端口签名（`platform-api`）与用例签名（`application`）共用同一份类型定义而不产生依赖倒置（否则 `platform-api` 必须反向依赖 `application`，与 F-04 冲突）。
@@ -240,7 +234,7 @@ packages/runtime/src/connection/
 - **本文新定义的类型**（这些名字在既有文档中或只被引用而无形体定义（如 `AuthorizationDecision`、`PortError`），或只以字段名/裸 `Counter` 出现（`delegationId`、`afterSequence`、`secretRef`、`credentialRevision`、`policyIsolationKey`、`executionIdentityKey`、`networkRouteRef`）；类型定义随 P1 一起在本包建立，语义仍以既有文档为权威）：§4.1 的 `PortError`；§4.3 的 `ProfileScope`/`ProfileRecord`/`ConfigRevision`/`JobDefinition`/`JobRecord`/`StageRecord`/`JobStateVersion`/`JobFilter`/`RecoveryFilter`/`Checkpoint`（形状即[连接 §4.2](connection-management.md#42-内部记录) 的 `JobCheckpoint`，端口层另起本名）/`CommitBoundary`/`JobClaim`/`WorkerId`/`AuthorizationSubject`/`AuthorizationAction`/`AuthorizationDecision`/`DelegationRef`/`DelegationGrant`/`PolicyIsolationKey`/`PolicyChangeStream`/`ExecutionIdentity`；§4.4 的 `SecretRef`/`SecretPurpose`/`ResolvedCredential`/`CredentialRevision`/`NetworkRouteRef`/`NetworkRouteRevision`/`RoutePlan`/`TunnelSpec`/`TunnelBinding`；§4.5 的 `SessionOwner`/`ReplacementCommit`/`ReplacementOutcome`/`InvalidationReason`/`CloseDisposition`/`BudgetRequest`/`BudgetPermit`/`BudgetPermitSet`/`NodeLease`/`DrainScope`/`DrainStatus`/`ReleaseOutcome`/`BudgetSnapshot`/`SubmissionPresentation`/`VerifiedSubmission`/`KeyVersion`；§4.6 的 `ArtifactSpec`/`ArtifactWriter`/`ChunkPayload`/`ChunkIndex`/`ByteRange`/`ExportSink`/`ExportReceipt`/`RevokeReason`/`EventSubscription`/`EventSequence`。它们是端口契约的私有词汇表，落盘与序列化规则各自写在其方法注释里。
 
 ```rust
-// packages/platform-api/src/error.rs（目标设计）
+// packages/platform-api/src/error.rs（已实现）
 #[derive(Debug, thiserror::Error)]
 pub enum PortError {
     #[error("backend unavailable: {0}")]           BackendUnavailable(String),
@@ -256,7 +250,7 @@ pub enum PortError {
 
 ### 4.2 端口方法语义的对齐来源
 
-[概要 §6.4 repositories 与环境 ports](system-overview.md#64-repositories-与环境-ports) 已给出 10 个端口的**方法语义**（谁提供什么、什么不得序列化、什么禁止落盘）。本节的 Rust 签名是那张表的类型化草案，共 11 个 trait = §6.4 的 10 行 + 本文新增的 `IdentityResolver`（§4.3 末）：§6.4 只有 10 行、最后一行是 `BudgetCoordinator`，`IdentityResolver` 不在其中（名字已见于[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 的 PoolKey 维度表中 `executionIdentityKey` 一行，但 §6.4 的端口表没有它）；它与 §6.4 的 `SecretProvider` 行还有一处职责再划分，见下方第三条。
+[概要 §6.4 repositories 与环境 ports](system-overview.md#64-repositories-与环境-ports) 已给出 10 个端口的**方法语义**（谁提供什么、什么不得序列化、什么禁止落盘）。本节的 Rust 签名是那张表的类型化结果，共 11 个 trait = §6.4 的 10 行 + 本文新增的 `IdentityResolver`（§4.3 末）：§6.4 只有 10 行、最后一行是 `BudgetCoordinator`，`IdentityResolver` 不在其中（名字已见于[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 的 PoolKey 维度表中 `executionIdentityKey` 一行，但 §6.4 的端口表没有它）；它与 §6.4 的 `SecretProvider` 行还有一处职责再划分，见下方第三条。
 
 - 签名**不得收窄** [§6.4](system-overview.md#64-repositories-与环境-ports) 列出的语义；该表没写的方法名以本文为准。
 - 端口之间允许协作（如 `ProfileRepository::disable` 后由 `PolicyService` 感知），但**不合并 trait**，以免实现方被迫实现不相关方法。
@@ -527,7 +521,7 @@ impl OpenSessionUseCase {
 }
 ```
 
-## 6. Tauri adapter 组装根
+## 6. Tauri adapter 组装根（目标设计，未随 P1 实现）
 
 ### 6.1 AppState 的职责拆分
 
@@ -573,10 +567,12 @@ flowchart TD
 
 ## 7. BackendClient 与 PlatformServices 注入
 
+> 落地形态：`packages/backend-client` 已交付类型与门面（`types/` 镜像、`BackendClient` 21 个方法、`MethodMap` 21 条、`createBackendClient` 与 backendId 登记器），**零传输实现**——`BackendTransport` / `PlatformServices` 的具体实现（桌面 Tauri、Server HTTP）由 P2 起的 adapter 提供。`BackendClient` 与 `keyof MethodMap` 之间有编译期双向对齐断言，方法集合改动会直接编译失败。
+
 ### 7.1 传输无关契约
 
 ```typescript
-// packages/backend-client/src/transport.ts（目标设计）
+// packages/backend-client/src/transport.ts（已实现，两个接口签名与本文逐字一致）
 export interface BackendTransport {
   call<K extends keyof MethodMap>(method: K, payload: MethodMap[K]['request']):
     Promise<MethodMap[K]['response']>;
@@ -631,6 +627,8 @@ export function useBackendClient(): BackendClient {
 }
 ```
 
+> **已实现的形态**：门禁 F-05 禁止本包依赖 React，因此包内没有 `useBackendClient`，实际导出的是等价的纯函数 `requireBackendClient(backendId?)`（`backend-client/src/client.ts`），抛同一句固定文案；React 侧的 hook 是 P2 调用方的事，**必须建在包外**。
+
 ## 8. 依赖护栏与 CI 门禁
 
 ### 8.1 前端侧：复用现有护栏的字符串扫描
@@ -645,6 +643,8 @@ export function useBackendClient(): BackendClient {
 `forbiddenPackages` 必须写成 `@tauri-apps/` 而非 `@tauri-apps/*`：脚本只做前缀匹配，写成带星号的值将永远匹配不到 `@tauri-apps/api/core`。现有 `packages/ui` 规则使用的正是 `'@tauri-apps/'`，此处沿用同一写法，新增官方插件子包时也无需再改脚本。
 
 driver-sdk 现有 3 个 `ipc/*.ts` 文件会命中第二条，因此该规则在 P1 落地时必须与 `packages/driver-sdk` 的迁移在同一 PR 内完成，或按 `check-driver-import-boundaries.mjs` 的 `ALLOWLIST` 精确三元组（规则 + 文件 + 说明符，带原因与到期报告）临时挂起——**禁止目录级或通配级豁免**。
+
+> **实施注意（对 `backend-client-transport-agnostic` 规则设计的要求）**：`scanSourceCode` 扫的是 `packages/backend-client/src` 下的**全部文本**，不区分 import 与注释。因此 `transport.ts` / `index.ts` 的模块文档里如果写出「本包不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest`」这句话，**规则会把这行注释本身判为违规**。规则要么排除注释，要么本包在注释里改用不触发的写法（本包当前采用后者：`@tauri-apps` 不带斜杠、`XHR` 缩写、`fetch` 不带括号）。P1 的 `src/__tests__/contracts.test.ts` 已用拼接方式构造同样三条禁用词，作为该规则的前置扫描。
 
 ### 8.2 Rust 侧：新增依赖闭包检查（目标设计，脚本尚未创建）
 
@@ -687,17 +687,17 @@ flowchart LR
 
 ### 9.1 退出标准（与[开发计划 §5 P1](../../development/platform-development-plan.md#5-p1抽取共享应用边界和前端传输契约)一致）
 
-下表「可验证方式」列中的 `datazen-platform-api` / `datazen-application` / `datazen-runtime` / `datazen-server` 四个 crate 与 `pnpm test:deps` 脚本在基线提交上均不存在，属 P1 随包创建的目标产物（与[开发计划 §15.1](../../development/platform-development-plan.md#151-当前已有命令)「不把未创建命令列为现有脚本」一致）；`pnpm test:layers`、`pnpm test:unit`、`npx vitest run`、`cargo test -p datazen --lib` 为基线已有命令。
+下表中 `datazen-platform-api` 与 `datazen-application` 两个 crate 已随 P1 创建并可跑单测；`pnpm test:deps`、`cargo build -p datazen-server`、`datazen-runtime` 的类型迁移仍未落地（脚本/目录不存在，属[开发计划 §15.1](../../development/platform-development-plan.md#151-当前已有命令)「不把未创建命令列为现有脚本」）。
 
-| 编号 | 验收项 | 可验证方式 |
-| --- | --- | --- |
-| E-1 | CM-01（ID 类型与序列化）、CM-03 会话创建幂等、CM-04 禁止配置 ID 回退、CM-05 跨用户/组织访问、CM-06 前端伪造 owner、CM-07 目标缺失与冲突的类型与 schema 断言 | `cargo test -p datazen-platform-api`、`cargo test -p datazen-application`；断言位置按[连接 §17 的类型/身份/目标组](connection-management.md#17-验收标准与证据) |
-| E-2 | DTO 往返：`SessionView`、`ExecutionView`、`ContextChangeReceipt`、`CloseReceipt`、`CancelReceipt`、`OpenSessionReceipt` 经 adapter 序列化后反序列化字段等价 | 双向 round-trip 单测，含 64 位 Counter 以十进制字符串往返 |
-| E-3 | 内核无 Tauri 编译：`packages/application`/`runtime`/`platform-api` 在没有 Tauri 的测试进程中可用 | `cargo test -p datazen-runtime --lib` 通过，且 F-02 门禁全绿 |
-| E-4 | CI 依赖图检查通过 | `pnpm test:deps`（拟新增）与 `pnpm test:layers` 在 CI 中 exit 0 |
-| E-5 | 旧桌面基本连接/查询流程保持可用 | 现有 `cargo test -p datazen --lib` 与 `npx vitest run` 不回归；基本连接 + 查询的人工旅程可用 |
-| E-6 | RequestContext 三来源可验证 | 用例签名不接受身份字段的编译期断言 + 三来源字段装配单测 |
-| E-7 | 未注入即调用报明确错误 | 前端单测覆盖 `backend-client` 与 `PlatformServices` 两条未绑定路径 |
+| 编号 | 验收项 | 可验证方式 | P1 实测 |
+| --- | --- | --- | --- |
+| E-1 | CM-01（ID 类型与序列化）、CM-03 会话创建幂等、CM-04 禁止配置 ID 回退、CM-05 跨用户/组织访问、CM-06 前端伪造 owner、CM-07 目标缺失与冲突的类型与 schema 断言 | `cargo test -p datazen-platform-api`、`cargo test -p datazen-application` | 已覆盖：ID newtype 无交叉 `From`、幂等键与接受记录、`OwnerRef::Editor` 绑定校验、§4.3 六步目标解析的必填/冲突/不适用断言 |
+| E-2 | DTO 往返：`SessionView`、`ExecutionView`、`ContextChangeReceipt`、`CloseReceipt`、`CancelReceipt`、`OpenSessionReceipt` 经 adapter 序列化后反序列化字段等价 | 双向 round-trip 单测，含 64 位 Counter 以十进制字符串往返 | 已覆盖，见 §9.3 往返测试清单 |
+| E-3 | 内核无 Tauri 编译：`packages/application`/`runtime`/`platform-api` 在没有 Tauri 的测试进程中可用 | `cargo test -p datazen-application --lib` 通过，且 F-02 门禁全绿 | 部分：两个新 crate 闭包无 `tauri*`（32 / 31 个 crate）；`datazen-runtime` 尚未接入 `platform-api`，其闭包另行核验 |
+| E-4 | CI 依赖图检查通过 | `pnpm test:deps`（拟新增）与 `pnpm test:layers` 在 CI 中 exit 0 | **未实现**：脚本不存在，属 CI 轨道 |
+| E-5 | 旧桌面基本连接/查询流程保持可用 | 现有 `cargo test -p datazen --lib` 与 `npx vitest run` 不回归；基本连接 + 查询的人工旅程可用 | 未验证：P1 未触碰既有链路，也未运行全量回归 |
+| E-6 | RequestContext 三来源可验证 | 用例签名不接受身份字段的编译期断言 + 三来源字段装配单测 | 已覆盖：`ConnectionUseCases` 每个方法首个参数是 `&RequestContext`，无身份字段入参；结构扫描用例守签名形状 |
+| E-7 | 未注入即调用报明确错误 | 前端单测覆盖 `backend-client` 与 `PlatformServices` 两条未绑定路径 | 已覆盖：`requireBackendClient()` 抛出固定文案 `BackendClient has not been bound; check that the platform adapter ran.` |
 
 ### 9.2 回退条件与回退方式
 
@@ -708,6 +708,26 @@ flowchart LR
 | `test:deps` 误报真实违规（例如 `tauri-plugin-dialog` 经 `src-tauri` 传递进入 runtime 闭包） | 以 `ALLOWLIST` 精确三元组记录原因与归属里程碑，**并在同一 PR 修正依赖方向** | 不得用 advisory 降级掩盖实际违规 |
 | 依赖图门禁在 CI 中不稳定（metadata 解析随注入变化而漂移） | 固定检查时机（resolve-drivers 之后）并把期望快照纳入脚本夹具 | 不得把门禁改成永不失败的空转 |
 
+### 9.3 DTO 往返测试清单（E-2 证据）
+
+`datazen-platform-api`（`cargo test -p datazen-platform-api --lib` → `137 passed`）：
+
+| DTO 族 | 测试 |
+| --- | --- |
+| 会话 | `session_view_round_trips_with_decimal_string_counters`、`open_session_receipt_round_trips`、`context_change_receipt_round_trips_with_optional_attachment_token` |
+| 执行 | `execution_view_round_trips_with_and_without_provenance`、`execution_receipt_round_trips` |
+| Job | `job_view_round_trips`、`job_record_and_stage_record_round_trip`、`filters_and_claims_round_trip` |
+| 制品 | `artifact_chunk_round_trips_with_decimal_string_indices`、`artifact_summary_round_trips` |
+| 事件 | `event_envelope_round_trips_with_decimal_string_sequence`、`result_chunk_event_round_trips` |
+| 配置档 | `profile_view_round_trips_without_any_secret_field`、`profile_draft_round_trips_with_initial_namespace` |
+| 幂等 | `submission_token_round_trips_and_stays_opaque`、`an_accepted_record_round_trips_across_the_boundary` |
+| 上下文 | `request_context_round_trips_with_camel_case_keys`、`editor_owner_round_trips_camel_case_fields` |
+| 目标 | `namespace_target_round_trips_camel_case_with_null_layers`、`execution_target_round_trips_with_and_without_object` |
+| 标识 | `counter_round_trips_without_precision_loss`、`string_ids_are_serde_transparent` |
+
+`datazen-application`（`cargo test -p datazen-application --lib` → `67 passed`）：`durable_record_round_trips_through_serde`、`accept_record_round_trips_and_redacts_its_key_in_debug`、`requests_round_trip_through_serde`、`delegated_context_and_job_owner_round_trip`、`api_error_round_trips_through_serde`、`serialized_shape_has_camel_case_keys`、`the_canonical_target_round_trips_and_carries_no_display_name`。
+
+64 位 `Counter` 在两个 crate 里都按**十进制字符串**往返（TS 侧 `Counter = string`，附 `isCounter` 运行时守卫——TypeScript 无法复刻 Rust 的编译期 ID 不可互换性）。
 ## 与既有设计的关系
 
 - **补充系统概要**：本文把 [概要 §4.1 目标代码组织](system-overview.md#41-目标代码组织) 列出的新建目录中属于本文边界的四个包（`platform-api` / `application` / `runtime` / `backend-client`）落到「谁拥有哪个类型、哪些反向依赖被禁止、workspace 成员怎么写」；把 §6.1 的 `RequestContext` 六字段落到三种 adapter 的逐字段取值来源；把 §6.2 的 BackendClient 落到 TS 传输无关接口与注入时机。§4.1 同时列出的 `schema-diff` / `data-sync` / `data-transfer` / `themes` / `server` 不在本文范围内。概要未涉及的端口 trait 签名、装配顺序、文件规模拆分规则由本文新增。
