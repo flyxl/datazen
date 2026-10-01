@@ -126,6 +126,17 @@ const VARIANTS: Variant[] = [
     supportsSSH: true,
     base: { host: 'cache.internal', port: 6379, database: '0' },
   },
+  {
+    // Registered driver *form* with no driver *validator* — the only shape where
+    // `isDriverForm` is true yet the validator early return never fires, so the
+    // generic `!isDriverForm` branch is skipped and nothing checks host/port.
+    label: 'driver-form (sqlserver)',
+    databaseType: 'sqlserver',
+    formVariant: 'sqlserver',
+    hasDriverValidator: false,
+    supportsSSH: true,
+    base: { host: 'db.internal', port: 1433, database: 'master', username: 'sa' },
+  },
 ];
 
 function renderVariant(variant: Variant, tunnel: Partial<ConnectionConfig> = {}) {
