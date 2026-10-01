@@ -294,3 +294,12 @@ mod tunnel_probe_tests;
 #[cfg(test)]
 #[path = "tunnel_summary_tests.rs"]
 mod tunnel_summary_tests;
+
+// CM-73 baseline evidence. Declared here (not under `services/connection_manager`)
+// because the journey spans the command layer's transaction handling and
+// `mod query` is private to `commands` — reaching it from `services` would
+// require widening production visibility, which the P0 rollback clause forbids.
+// `#[cfg(test)]` only: absent from production builds.
+#[cfg(test)]
+#[path = "cm73_baseline_tests.rs"]
+mod cm73_baseline_tests;
