@@ -1,8 +1,19 @@
 import { Input, Select } from '@datazen/ui';
 import { useI18n } from '@datazen/ui';
 import { Label } from '@datazen/ui';
-import type { ConnectionFormState } from '@datazen/driver-sdk';
+import type { ConnectionFormState, DriverFormValidator } from '@datazen/driver-sdk';
 import { mergeSqlServerOptions, readSqlServerOptions } from './connectionOptions';
+import { validateSqlServerConnection } from './connectionFieldsValidate';
+
+/**
+ * Driver form validator consumed by the host via `DRIVER_VALIDATORS` in
+ * `src/extensions/generated.ts` (registered by `scripts/resolve-drivers.mjs`
+ * under `connectionForm.validator`). Same wiring shape as the redis
+ * `redisValidate`, which is also declared next to its component module because
+ * that module is what the codegen import statement points at.
+ */
+export const sqlServerValidate: DriverFormValidator = (fields, t) =>
+  validateSqlServerConnection(fields, t);
 
 export function SqlServerConnectionFields({ form }: { form: ConnectionFormState }) {
   const { t } = useI18n();

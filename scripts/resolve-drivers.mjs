@@ -402,6 +402,7 @@ const BASIC_PATH_FRONTEND = {
       path: '../../packages/drivers/sqlserver/ui/ConnectionFields',
       formVariant: 'sqlserver',
       advanced: 'SqlServerConnectionAdvanced',
+      validator: { export: 'sqlServerValidate' },
     },
   },
   clickhouse: {
