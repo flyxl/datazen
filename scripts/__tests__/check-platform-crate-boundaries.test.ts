@@ -48,7 +48,7 @@ function fixture(
   external: Array<{ name: string }> = [],
   /** Edge kinds by `from->to`; anything unlisted is a normal dependency. */
   kinds: Record<string, 'normal' | 'build' | 'dev'> = {},
-): unknown {
+): object {
   const all = [
     ...members.map((m) => ({ name: m.name, dir: m.dir as string | null })),
     ...external.map((e) => ({ name: e.name, dir: null })),
@@ -83,7 +83,17 @@ const CORE = [
   { name: 'datazen-driver-redis', dir: 'packages/drivers/redis' },
 ];
 
-function run(metadata: unknown, specText = SPEC) {
+// `classifyMemberDir` returns a discriminated union; `.id` only exists on the
+// classified branch. Narrowing here keeps the assertion honest — a path §2.4
+// names that stops classifying must fail loudly, not yield `undefined`.
+function layerIdOf(dir: string): string {
+  const result = classifyMemberDir(dir);
+  if (!('id' in result))
+    throw new Error(`expected \`${dir}\` to classify, got ${result.unclassified}`);
+  return result.id;
+}
+
+function run(metadata: object, specText = SPEC) {
   return checkPlatformCrateBoundaries({ root: REPO_ROOT, metadata, specText });
 }
 
@@ -98,8 +108,8 @@ describe('classifyMemberDir', () => {
     ]) {
       expect(classifyMemberDir(dir).unclassified).toBeUndefined();
     }
-    expect(classifyMemberDir('packages/application').id).toBe('application');
-    expect(classifyMemberDir('packages/drivers/redis').id).toBe('driver');
+    expect(layerIdOf('packages/application')).toBe('application');
+    expect(layerIdOf('packages/drivers/redis')).toBe('driver');
   });
 
   it('respects segment boundaries so a sibling directory is not a layer', () => {
@@ -173,7 +183,9 @@ describe('checkSpecConsistency', () => {
   });
 
   it('fails when an F-row disappears entirely', () => {
-    const withoutF06 = SPEC.split('\n').filter((l) => !l.startsWith('| F-06 ')).join('\n');
+    const withoutF06 = SPEC.split('\n')
+      .filter((l) => !l.startsWith('| F-06 '))
+      .join('\n');
     expect(checkSpecConsistency(withoutF06).join('\n')).toContain('F-06');
   });
 });
@@ -211,9 +223,7 @@ describe('checkPlatformCrateBoundaries', () => {
 
   it('F-02: a tauri crate in a core crate closure is a violation', () => {
     const result = run(
-      fixture(CORE, { ...clean, 'datazen-runtime': ['tauri-plugin'] }, [
-        { name: 'tauri-plugin' },
-      ]),
+      fixture(CORE, { ...clean, 'datazen-runtime': ['tauri-plugin'] }, [{ name: 'tauri-plugin' }]),
     );
     expect(result.violations.join('\n')).toMatch(/F-02.*datazen-runtime.*→ tauri-plugin/);
   });
@@ -222,11 +232,16 @@ describe('checkPlatformCrateBoundaries', () => {
     // The check is over the *closure*, not the declared edge: a core crate
     // that never names Tauri but pulls it in through a helper is exactly the
     // case F-02 exists for.
-    const members = [...CORE, { name: 'datazen-driver-postgres', dir: 'packages/drivers/postgres' }];
+    const members = [
+      ...CORE,
+      { name: 'datazen-driver-postgres', dir: 'packages/drivers/postgres' },
+    ];
     const result = run(
-      fixture(members, { 'datazen-runtime': ['datazen-driver-postgres'], 'datazen-driver-postgres': ['tauri'] }, [
-        { name: 'tauri' },
-      ]),
+      fixture(
+        members,
+        { 'datazen-runtime': ['datazen-driver-postgres'], 'datazen-driver-postgres': ['tauri'] },
+        [{ name: 'tauri' }],
+      ),
     );
     expect(result.violations.join('\n')).toMatch(/F-02.*datazen-runtime.*→ tauri/);
   });
@@ -257,14 +272,14 @@ describe('checkPlatformCrateBoundaries', () => {
   it('F-04: platform-api depending on datazen-runtime is a violation', () => {
     const members = [...CORE, { name: 'datazen-platform-api', dir: 'packages/platform-api' }];
     const result = run(fixture(members, { ...clean, 'datazen-platform-api': ['datazen-runtime'] }));
-    expect(result.violations.join('\n')).toMatch(
-      /F-04.*datazen-platform-api.*→ datazen-runtime/,
-    );
+    expect(result.violations.join('\n')).toMatch(/F-04.*datazen-platform-api.*→ datazen-runtime/);
   });
 
   it('F-04: platform-api depending on driver-api is allowed (§2.3)', () => {
     const members = [...CORE, { name: 'datazen-platform-api', dir: 'packages/platform-api' }];
-    const result = run(fixture(members, { ...clean, 'datazen-platform-api': ['datazen-driver-api'] }));
+    const result = run(
+      fixture(members, { ...clean, 'datazen-platform-api': ['datazen-driver-api'] }),
+    );
     expect(result.violations).toEqual([]);
   });
 

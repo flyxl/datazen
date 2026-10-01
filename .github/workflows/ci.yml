@@ -224,6 +224,31 @@ jobs:
       - name: Rust unit tests (datazen-ai-api)
         run: cargo test -p datazen-ai-api --lib
 
+      # ── 平台内核架构门禁 ──
+      #
+      # 必须落在这里，不能并进 frontend 的「All strict guards」：那条门禁所在 job
+      # 没有 Rust 工具链（工具链在下面 rust job 的 dtolnay/rust-toolchain@stable），
+      # 而本门禁要读 `cargo metadata` 的 feature-resolved 图。放在 restore 之后，
+      # 断言的是提交态的 workspace 清单，与本地开发者看到的一致。
+      #
+      # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
+      # 新 crate 落到 packages/application / packages/platform-api / server 下就自动入网，
+      # 不需要在这里改任何一处列表。列不出来的 member 是 error 不是 pass。
+      - name: Platform crate dependency boundaries (F-01..F-07)
+        run: pnpm test:platform-arch
+
+      # 计划 :269 的 datazen-runtime CI 空缺：core crate 及其后继的 Rust 单测
+      # 在此统一执行。crate 集合同样由脚本发现，新增 core crate 无需改 CI。
+      - name: Rust unit tests (platform core crates)
+        run: pnpm test:platform-crates
+
+      # 门禁自身的变异证明，放最后一步：它会临时改写 Cargo.toml 再还原，
+      # 因此后面不得再有依赖该工作树的步骤。最后运行把「被强杀导致残留变异」
+      # 的影响面降到 0（此时整个 job 已经没有后续步骤了）。
+      # 8 个变异约 5s，失败即说明门禁已经失去鉴别力——比门禁变红更早报警。
+      - name: Platform arch guard self-proof (8 mutations)
+        run: pnpm test:platform-arch:mutations
+
   # ── 聚合 job：两段全绿才算 CI 通过。
   # 分支保护的 required status check 盯 `ci` 一个即可，拆分 job 不影响它。
   ci:
