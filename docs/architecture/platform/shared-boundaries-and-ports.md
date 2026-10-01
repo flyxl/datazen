@@ -646,42 +646,103 @@ export function useBackendClient(): BackendClient {
 
 driver-sdk 现有 3 个 `ipc/*.ts` 文件会命中第二条，因此该规则在 P1 落地时必须与 `packages/driver-sdk` 的迁移在同一 PR 内完成，或按 `check-driver-import-boundaries.mjs` 的 `ALLOWLIST` 精确三元组（规则 + 文件 + 说明符，带原因与到期报告）临时挂起——**禁止目录级或通配级豁免**。
 
-### 8.2 Rust 侧：新增依赖闭包检查（目标设计，脚本尚未创建）
+### 8.2 Rust 侧：依赖闭包检查（已实现）
 
-Rust 依赖不能用字符串扫描判定，必须解析依赖图。新脚本 `scripts/check-rust-dependency-boundaries.mjs`（**拟新增，基线提交上不存在**）读取 `cargo metadata --format-version 1` 的 `resolve.nodes`，对 §2.4 的 F-01～F-06 做 normal + build 双向闭包判定：
+F-01..F-07 由 **`scripts/check-platform-crate-boundaries.mjs`（548 行）** 执行，`pnpm test:platform-arch` 调用它，26 个单测在 `scripts/__tests__/check-platform-crate-boundaries.test.ts`。本节此前写的 `scripts/check-rust-dependency-boundaries.mjs` 是目标设计，**该脚本从未创建，也不需要创建**：`cargo metadata` 闭包判定本来就在上面这个脚本里。数据流：
 
 ```mermaid
 flowchart LR
-    M[cargo metadata] --> N[resolve.nodes]
-    N --> C1[F-01 驱动→宿主]
-    N --> C2[F-02 内核无 tauri*]
-    N --> C3[F-03 内核无 HTTP 框架]
-    N --> C4[F-04 platform-api 无上层]
-    N --> C6[F-06 server 独立]
-    C1 & C2 & C3 & C4 & C6 --> R[violations + exit 1]
+    M[cargo metadata --format-version 1] --> N[resolve.nodes]
+    N --> I[buildWorkspaceIndex 按目录分层]
+    I --> C1[F-01 驱动→宿主]
+    I --> C2[F-02 内核无 tauri*]
+    I --> C3[F-03 内核无 HTTP 框架]
+    I --> C4[F-04 platform-api 无上层]
+    I --> C6[F-06 server 独立]
+    C1 & C2 & C3 & C4 & C6 --> R[violations + errors → exit 1]
 ```
 
-与既有脚本的复用关系：
+判定基座（`scripts/lib/cargoWorkspace.mjs` + 守卫本体）：
 
-| 维度 | 与 `check-*.mjs` 现有护栏 |
+| 环节 | 实现位置 |
 | --- | --- |
-| 数据来源 | **不同**：本次解析 `cargo metadata` 的依赖图，不扫描源码字符串 |
-| CLI 形态 | 相同：`--root=<dir>` 选项、违规打印 `rule: file/dep`、exit 1 |
-| 白名单 | 相同思路：`ALLOWLIST` 精确三元组 + 到期报告，禁止目录级豁免 |
-| 规则分级 | 相同：blocking 与 advisory 分开，advisory 不阻断 |
-| 单测 | 相同落点：`scripts/__tests__/check-rust-dependency-boundaries.test.mjs`，用内联虚拟 `cargo metadata` JSON 夹具，不在单测里真跑 cargo |
+| 读 `cargo metadata --format-version 1` | `cargoWorkspace.mjs:140` `runCargoMetadata` |
+| 只用 `resolve.nodes`（feature-resolved 图），`packages[].dependencies` 不参与判定 | `cargoWorkspace.mjs:179` `buildWorkspaceIndex` |
+| 层归属按**目录路径**而非 crate 名：`src-tauri`=host、`packages/drivers/*`=driver、`server`=server、`packages/backend-client` 是 `kind:'ts'` | `cargoWorkspace.mjs:66-76` `LAYERS`、`:97` `classifyMemberDir` |
+| 闭包 = normal + build，`dev` 边不计（`#[cfg(test)]` 依赖不算出货依赖） | `cargoWorkspace.mjs:227` `normalBuildClosure`，只跟随 `dep_kinds` 为 `null` 或 `"build"` 的边 |
+| 列不出层的 workspace member 是 error 不是 pass | `check-platform-crate-boundaries.mjs:367-369` |
+| violations / errors → exit 1；advisory 只打印，不计入失败 | `:536`、`:541-543` |
+| 主体缺失 → `VACUOUS` + exit 0 | `:388-401`；`--require-layers=`（`:492`）或 `ARCH_GUARD_REQUIRED_LAYERS`（`:501-502`）把它升级为 error |
+| §2.4 文档表与规则表双向一致（`specTokens`、主体路径、crate 家族） | `:236` `checkSpecConsistency` |
+| F-07 走源码扫描分支，不进 Cargo 闭包 | `:417-422` 调度，`:290` `checkTsLayer` |
+
+逐条核对（第一列是**本节自定义的标题**，不是 §2.4 的行首形状）：`checkSpecConsistency` 的 `findSpecRow` 按 `^\|\s*F-0N\s*\|` 取**第一条**匹配行（`:222-227`），所以本表刻意不用 `| F-01 |` 开头，避免被守卫误认成 §2.4 的规则行。
+
+| 本节条目 | 实现位置 | 判定方式 | 状态 |
+| --- | --- | --- | --- |
+| F-01 · 驱动依赖闭包不含宿主 / platform crate | `:98-113` | `allowedLayers: ['driver','driver-api']` **反向白名单**：`LAYERS` 里新增任何一层，当天即对驱动禁用，放行必须是一次显式编辑（`:404-410`） | ✅ 已强制，`packages/drivers/*` 全部纳入 |
+| F-02 · 内核 normal+build 闭包无 `tauri*`、无 `datazen` | `:115-124` | `forbiddenLayers:['host']` + `forbiddenCrates:['tauri']`，`specSubsetOnly` 表示文档多写的 `datazen` 由 host 层覆盖 | ⚠️ 已武装，部分真空（见下） |
+| F-03 · 内核无 HTTP / 传输框架 | `:126-136` | `forbiddenCrates:'spec'` 从 §2.4 行里取 crate token 双向核对，`specCrates` 预置 `axum`/`actix-web`/`warp`/`tonic`，新增 token 无需改脚本 | ⚠️ 已武装，部分真空 |
+| F-04 · platform-api 只依赖 port 层 | `:138-146` | 同 F-01 的反向白名单形态：`['platform-api','driver-api','ai-api']` | ⚠️ 已武装，真空 |
+| F-05 · 无 UI 运行时标识 | `:148-158` | Rust 侧按 crate 名（`react`）；`@tauri-apps/api` 被 `parseSpecRow` 归为**前端 token**（`:216`），不由本门禁判定 | 🔶 半覆盖，前端半边在 §7 与 §8.1 |
+| F-06 · `server` 闭包无 `tauri*`、无 `datazen` | `:160-168` | 同 F-02 | ⚠️ 已武装，真空 |
+| F-07 · `packages/backend-client` 不含 `@tauri-apps/`、`fetch(`、`XMLHttpRequest` | `:170-178`、`:290-343` | 源码扫描：注释与字符串字面量先被 `scripts/lib/scanSourceCode.mjs` 挖空，代码通道查 `fetch(` / `XMLHttpRequest`，字面量通道查 `@tauri-apps/` | ✅ 已强制（该包已落地） |
+
+仍然真空或刻意不判的部分（不要读成 pass）：
+
+1. **F-02 / F-03 / F-04 / F-06 的主体尚未进 workspace `members`**：`packages/application`、`packages/platform-api`、`server/` 在基线上不存在。守卫输出 `VACUOUS … rule armed, nothing to check` 并 exit 0；这是"布防但无主体"，不是"检查通过"。P1 退出时要靠 `--require-layers` 把它们变成硬失败。
+2. **F-05 的 `@tauri-apps/api` 前端半边不由本门禁判**，它归 §7 的源码扫描与 §8.1 的 `backend-client-transport-agnostic` / `driver-sdk-no-direct-tauri`。
+3. **redis 驱动的 `[build-dependencies] tauri-plugin` 实测存在**，走 advisory（`:459-470`）不阻断：§2.4 的 F-01 行只列了 workspace crate 名，没有一条 F 行禁止 `tauri*` 进入驱动构建图；修它要改驱动 manifest，超出本守卫的写权限。
+4. **本门禁没有 `ALLOWLIST`**：白名单形态是上面那两条 `allowedLayers` 反转规则，`ALLOWLIST` 精确三元组（规则 + 文件 + 说明符 + 到期报告）只存在于前端字符串护栏 `check-driver-import-boundaries.mjs`。
+5. **26 个单测用内联 `cargo metadata` 夹具**（`test:46-77` 的 `fixture()`，依赖经 `metadata` 注入，`:96-98`），不在单测里真跑 cargo。所以"单测全绿"证明的是判定逻辑，不是真实 workspace 图；真实图由 CI 的 `pnpm test:platform-arch` 与 `pnpm test:platform-arch:mutations` 的 8 个变异自证覆盖。
 
 ### 8.3 CI 阻断方式
 
-`.github/workflows/ci.yml` 当前把 8 条严格守卫合并在 frontend job 的一步里（`check-managed-stubs` / `check-structure-editor-guardrails` / `pnpm test:ids` / `pnpm test:layers` / `pnpm test:ci-docs` / `pnpm test:version` / `pnpm test:boundaries` / `pnpm test:i18n-keys`），任一失败即 fail-fast；聚合 job `ci` 是 `needs: [frontend, rust]` 的唯一 required status check。新门禁按数据来源分两处接入：
+`.github/workflows/ci.yml` 把 8 条严格守卫合并在 frontend job 的一步里（`ci.yml:58-69`：`check-managed-stubs` / `check-structure-editor-guardrails` / `pnpm test:ids` / `pnpm test:layers` / `pnpm test:ci-docs` / `pnpm test:version` / `pnpm test:boundaries` / `pnpm test:i18n-keys`），任一失败即 fail-fast；聚合 job `ci` 是 `needs: [frontend, rust]`（`ci.yml:254-255`）的唯一 required status check。
+
+F-01..F-07 分两处接入，**两处都是既有步骤，本次没有新增任何 CI step**：
 
 | 门禁 | 接入位置 | 理由 |
 | --- | --- | --- |
-| `test:layers`（**在既有 `pnpm test:layers` 脚本内新增两条规则**，脚本本身已存在） | frontend job | 纯 Node 字符串扫描，无需 cargo |
-| `test:deps`（**拟新增**：`package.json` 当前没有 `test:deps`，P1 落地时新增该 script 指向 `scripts/check-rust-dependency-boundaries.mjs`） | rust job，**在 "Resolve drivers (basic)" 之后** | 驱动 crate 由 `scripts/resolve-drivers.mjs` 注入为 feature，注入前跑会漏掉驱动依赖边 |
-| `cargo build -p datazen-server`（**目标 crate**，`server/` 目录在基线上不存在） | rust job，紧随 `test:deps` | 依赖图干净不等于能构建 |
+| §8.1 的 `backend-client-transport-agnostic` 与 `driver-sdk-no-direct-tauri` | frontend job 的 `pnpm test:layers`（`ci.yml:65`，8 条守卫中的第 4 条） | 纯 Node 字符串扫描，无需 cargo。两条规则写在 `scripts/check-module-layers.mjs` 的 `LAYER_RULES` 表里，脚本已存在，因此**不需要新 script、不需要新 step** |
+| F-01..F-07 | rust job 的 `pnpm test:platform-arch`（`ci.yml:237-238`），在 `Resolve drivers (basic)` 之后 | 驱动 crate 由 `scripts/resolve-drivers.mjs` 注入为 Cargo feature，注入前读 `cargo metadata` 会漏掉驱动依赖边 |
+| F-01..F-07 的鉴别力自证 | rust job 末步 `pnpm test:platform-arch:mutations`（`ci.yml:249-250`），共 8 个变异 | 门禁自身会临时改写 manifest 再还原，所以必须排在 job 最后 |
+| 内核 crate 单测 | rust job 的 `pnpm test:platform-crates`（`ci.yml:242-243`），crate 集由脚本发现 | 新增 core crate 无需改 CI |
 
-任一失败 → 对应 job 失败 → 聚合 job `ci` 失败 → 分支保护的 required check 阻断合并。`scripts/run-regression.sh` 的本地全量门禁同步追加同一条命令，位置与现有 ① 边界护栏之后一致。
+关于本节此前列出的三项，逐一核对代码后更正：
+
+- **`pnpm test:deps` 不存在**，`package.json` 里没有这个 script，`scripts/check-rust-dependency-boundaries.mjs` 也不存在 —— 原表把它列为「拟新增」是错的：同一个判定已经由 `pnpm test:platform-arch` 承担（见 §8.2）。
+- **`datazen-server` crate 与 `server/` 目录在基线上不存在**，所以 `cargo build -p datazen-server` 无法作为验收步骤。F-06 目前是布防但真空（§8.2 末第 1 条）。
+- **`scripts/run-regression.sh` 目前不含本门禁**：该脚本只跑 `check-driver-import-boundaries.mjs`（`:163-164`）与 `check-id-terminology.mjs`（`:229-230`）两条护栏，不跑 `check-platform-crate-boundaries.mjs`，也不跑 `check-module-layers.mjs`。原句「本地全量门禁同步追加同一条命令」是目标而非现状；补进去需要改 `run-regression.sh`，不在本节范围内。
+
+任一失败 → 对应 job 失败 → 聚合 job `ci` 失败 → 分支保护的 required check 阻断合并。
+
+#### 8.3.1 F-07 当前是 advisory：armed 但未接硬门禁（实测，非推测）
+
+在 `363bcbdcd` 基线上，F-07 的主体 `packages/backend-client` **不存在**。`DEFAULT_REQUIRED_LAYERS = []`（`check-platform-crate-boundaries.mjs:189`），所以 `--require-layers` 默认不传，F-07 走到 `VACUOUS F-07: no packages/backend-client yet — rule armed, nothing to check`，`pnpm test:platform-arch` **exit 0**。同一条规则在前端护栏里也是真空的：`pnpm test:layers` 打印 `VACUOUS backend-client-transport-agnostic` 后 **exit 0**。
+
+因此 F-07 此刻的状态是「规则已写好、脚本会报，但 CI 不会因此变红」，不能读成「已阻断」。把这个状态变成真门禁的开关是 `--require-layers`，实测代价如下：
+
+| 命令 | 今日实测退出码 | 结论 |
+| --- | --- | --- |
+| `node scripts/check-platform-crate-boundaries.mjs` | 0 | F-07 真空，不阻断 |
+| `node scripts/check-platform-crate-boundaries.mjs --require-layers=backend-client` | **1**（`ERROR F-07: required layer 'packages/backend-client' has no workspace member`） | 今天打开就是**每个 PR 都红** |
+| `node scripts/check-module-layers.mjs` | 0 | 同样真空，不阻断 |
+| `node scripts/check-module-layers.mjs --require-layers=backend-client-transport-agnostic` | **2** | 同上 |
+
+所以现在**不能**打开这个开关：`packages/backend-client` 未落地，打开后与门禁「不得因尚未开始的工作阻塞无关 PR」的既有设计（`check-platform-crate-boundaries.mjs:183-187`）直接冲突。待 `packages/backend-client` 进入分支后，接入方式只有一行，两处都要改：
+
+```yaml
+# rust job，与既有步骤同处
+- name: Platform crate dependency boundaries (F-01..F-07)
+  run: pnpm test:platform-arch -- --require-layers=backend-client
+# frontend job，8 条合并守卫中的第 4 条
+- run: pnpm test:layers -- --require-layers=backend-client-transport-agnostic
+```
+
+`pnpm test:platform-arch` 当前是 `node scripts/check-platform-crate-boundaries.mjs`（无参数转发），`--` 透传需要同时改 `package.json`；更省事的是走环境变量 `ARCH_GUARD_REQUIRED_LAYERS=backend-client`（`check-platform-crate-boundaries.mjs:501-502` 已支持），前端护栏目前只认 `--require-layers`。两种都需在落地 PR 中实测一次退出码，本文不预先声称其结果。
+
+**结论**：在 `packages/backend-client` 落地前，F-07 在本节按 advisory 记录，不声称阻断；它不是被漏掉的门禁，而是主体缺失的布防态。若 §2.4.1 的覆盖状态表与本节冲突，以本节为准。
 
 ## 9. P1 退出标准与回退边界
 

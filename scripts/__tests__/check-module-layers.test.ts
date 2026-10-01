@@ -1,9 +1,10 @@
 /** @vitest-environment node */
 import { spawnSync } from 'child_process';
-import { dirname, resolve } from 'path';
+import { existsSync, readFileSync, readdirSync } from 'fs';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
-import { checkModuleLayers, LAYER_RULES } from '../check-module-layers.mjs';
+import { checkModuleLayers, collectModuleLayerFindings, LAYER_RULES } from '../check-module-layers.mjs';
 import {
   checkDriverImportBoundaries,
   createGitIgnorePredicate,
@@ -309,6 +310,220 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
       expect(mine.code).toBe(0);
       expect(theirCode).toBe(0);
       expect(theirs.join('\n')).not.toContain(rel);
+    });
+  });
+
+  /**
+   * The two port rules (§8.1), and the reason they are graded differently.
+   *
+   * `driver-sdk-no-direct-tauri` is **advisory** on this baseline: three
+   * `packages/driver-sdk/src/ipc/*.ts` files import `@tauri-apps/api/core` today,
+   * and moving them onto `BackendClient` is the frontend track's migration, not
+   * the guard's to perform. It is therefore tested for what it must *not* do —
+   * block the build on known debt, or lose the findings — rather than for a green
+   * tree. A guard that is red forever is a guard people disable; a guard that is
+   * red and says so is a debt ledger.
+   *
+   * `backend-client-transport-agnostic` is the opposite: `packages/backend-client`
+   * does not exist here, so the rule is vacuous, and this file proves it is
+   * *armed* by planting the package and making it go red.
+   */
+  describe('port rules', () => {
+    const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    const CLIENT_PROBE = 'packages/backend-client/src/__boundaryProbe__.ts';
+    const CLIENT = 'backend-client-transport-agnostic';
+
+    function ruleNamed(name: string) {
+      const rule = LAYER_RULES.find((r) => r.name === name);
+      expect(rule).toBeDefined();
+      return rule!;
+    }
+
+    /**
+     * The files under `rel` whose raw text imports a Tauri specifier.
+     *
+     * Deliberately *not* the guard's tokenizer: the guard's job is to decide
+     * which channel a needle belongs on, so an expectation derived from that same
+     * tokenizer agrees with the guard by construction and can never catch it
+     * looking in the wrong channel. A regex over the file as written is an
+     * independent statement of "these three files import Tauri today".
+     */
+    function filesImportingTauri(rel: string): string[] {
+      const out: string[] = [];
+      const walk = (dir: string) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) {
+            if (/\bfrom\s+['"]@tauri-apps\//.test(readFileSync(full, 'utf8')))
+              out.push(full.slice(REPO_ROOT.length + 1));
+          }
+        }
+      };
+      walk(resolve(REPO_ROOT, rel));
+      return out.sort();
+    }
+
+    /**
+     * Plant the file, prove it landed, then run the guard.
+     *
+     * The lock is taken by `withTempSourceFile` itself. `withProbeLock` is a
+     * plain `mkdir` lock and is deliberately not re-entrant — nesting a second
+     * acquisition around the helper makes the inner one spin the full 60s
+     * timeout against its own pid before failing, so wrapping it here would
+     * turn every case in this block into a 60s hang.
+     */
+    function clientVerdict(body: string) {
+      return withTempSourceFile(CLIENT_PROBE, body, () => {
+        expect(readFileSync(resolve(REPO_ROOT, CLIENT_PROBE), 'utf8')).toBe(body);
+        return { ...run(), findings: collectModuleLayerFindings() };
+      });
+    }
+
+    it('matches packages as prefixes, never as globs', () => {
+      // `forbiddenPackage` uses `startsWith`, so a glob would match nothing at
+      // all and the rule would pass for the rest of its life.
+      for (const rule of LAYER_RULES) {
+        for (const pkg of rule.forbiddenPackages ?? []) {
+          expect({ rule: rule.name, pkg, glob: pkg.includes('*') }).toEqual({
+            rule: rule.name,
+            pkg,
+            glob: false,
+          });
+        }
+      }
+    });
+
+    it('scans exactly the subtrees §8.1 names', () => {
+      expect(ruleNamed(CLIENT).from).toBe('packages/backend-client/src');
+      expect(ruleNamed('driver-sdk-no-direct-tauri').from).toBe('packages/driver-sdk/src');
+    });
+
+    it('grades the backend client rule blocking and the driver rule advisory', () => {
+      expect(ruleNamed(CLIENT).blocking).toBe(true);
+      expect(ruleNamed('driver-sdk-no-direct-tauri').blocking).toBe(false);
+    });
+
+    describe('driver-sdk-no-direct-tauri (advisory, known debt)', () => {
+      it('reports every file that imports Tauri, and none that does not', () => {
+        const expected = filesImportingTauri('packages/driver-sdk/src');
+        const { advisories, violations } = collectModuleLayerFindings();
+        expect(advisories.map((a) => a.file).sort()).toEqual(expected);
+        // The point of the grader: these findings exist and the tree is still
+        // green. Asserting the debt is reported *and* not enforced is what keeps
+        // the day the migration lands from looking like a regression.
+        expect(violations.filter((v) => v.rule === 'driver-sdk-no-direct-tauri')).toEqual([]);
+        expect(run().code).toBe(0);
+      });
+
+      it('says out loud that its findings are non-blocking', () => {
+        const { code, output } = run();
+        expect(code).toBe(0);
+        expect(output).toMatch(/advisory finding\(s\) \(non-blocking\)/);
+      });
+
+      it('keeps the findings out of every blocking bucket', () => {
+        const { errors, vacuous } = collectModuleLayerFindings();
+        expect(errors).toEqual([]);
+        expect(vacuous.map((v) => v.rule)).not.toContain('driver-sdk-no-direct-tauri');
+      });
+    });
+
+    describe(`backend-client-transport-agnostic (${CLIENT})`, () => {
+      it('reports the missing package as vacuous instead of claiming a pass', () => {
+        if (existsSync(resolve(REPO_ROOT, 'packages/backend-client')))
+          throw new Error(
+            'packages/backend-client exists now — this case is stale, flip it to the armed case',
+          );
+        expect(collectModuleLayerFindings().vacuous.map((v) => v.rule)).toContain(CLIENT);
+        expect(run().code).toBe(0);
+      });
+
+      it('turns that vacuous report into a failure when the rule is required', () => {
+        // `pnpm test:layers` does not pass `--require-layers` today, so this is
+        // the knob the frontend track turns on the day `packages/backend-client`
+        // is created. Pinned so it exists, and is known to work, before it is needed.
+        const logs: string[] = [];
+        const code = checkModuleLayers({
+          log: (msg: unknown) => logs.push(String(msg)),
+          requireLayers: [CLIENT],
+        });
+        expect(code).toBe(2);
+      });
+
+      it('stays quiet on a client that only reaches the transport it was handed', () => {
+        const { code, findings } = clientVerdict(
+          [
+            'export interface Transport {',
+            '  request(path: string, body: unknown): Promise<unknown>;',
+            '}',
+            'export class BackendClient {',
+            '  constructor(private readonly transport: Transport) {}',
+            '}',
+            '',
+          ].join('\n'),
+        );
+        expect(findings.vacuous.map((v) => v.rule)).not.toContain(CLIENT);
+        expect(findings.violations.filter((v) => v.rule === CLIENT)).toEqual([]);
+        expect(code).toBe(0);
+      });
+
+      it('stays quiet on a file that documents why it may not use fetch or XMLHttpRequest', () => {
+        const { code, findings } = clientVerdict(
+          [
+            '// This package owns the transport. Do not call fetch( or use',
+            '// XMLHttpRequest here — the transport is injected by the host.',
+            '/** @see BackendClient */',
+            'export const noop = (): void => undefined;',
+            '',
+          ].join('\n'),
+        );
+        expect(findings.violations.filter((v) => v.rule === CLIENT)).toEqual([]);
+        expect(code).toBe(0);
+      });
+
+      it('blocks a direct Tauri import once the package exists', () => {
+        const { code, findings } = clientVerdict(
+          "import { invoke } from '@tauri-apps/api/core';\nexport const call = invoke;\n",
+        );
+        const hits = findings.violations.filter((v) => v.rule === CLIENT);
+        expect(hits).toHaveLength(1);
+        expect(hits[0]).toMatchObject({
+          file: CLIENT_PROBE,
+          line: 1,
+          specifier: '@tauri-apps/api/core',
+        });
+        expect(code).toBe(1);
+      });
+
+      it('blocks a raw network call once the package exists', () => {
+        const { code, findings } = clientVerdict(
+          'export const load = (url: string): Promise<unknown> => fetch(url);\n',
+        );
+        const hits = findings.violations.filter((v) => v.rule === CLIENT);
+        expect(hits).toHaveLength(1);
+        expect(hits[0]).toMatchObject({
+          file: CLIENT_PROBE,
+          line: 1,
+          target: 'fetch(',
+          specifier: null,
+        });
+        expect(code).toBe(1);
+      });
+
+      it('blocks XMLHttpRequest, and does not fire on q.refetch()', () => {
+        const xhr = clientVerdict(
+          'export const open = (): XMLHttpRequest => new XMLHttpRequest();\n',
+        );
+        expect(xhr.findings.violations.filter((v) => v.rule === CLIENT)).toHaveLength(1);
+        expect(xhr.code).toBe(1);
+
+        const innocent = clientVerdict(
+          'export interface Q { refetch(): Promise<void> }\nexport const go = (q: Q) => q.refetch();\n',
+        );
+        expect(innocent.findings.violations.filter((v) => v.rule === CLIENT)).toEqual([]);
+        expect(innocent.code).toBe(0);
+      });
     });
   });
 });
