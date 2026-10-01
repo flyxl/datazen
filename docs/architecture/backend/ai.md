@@ -181,7 +181,7 @@ groups:
 
 **前端识别**：`ContextPicker` 中 `.ctx.yaml` 文件使用 `Layers` 图标区分于普通文件。
 
-### 1.10 AI Chat MCP 工具
+### 1.11 AI Chat MCP 工具
 
 `ai_chat` 在流式 tool loop 中合并两类工具定义：
 
@@ -195,3 +195,21 @@ groups:
 - 未连接 MCP Server 时行为与原先一致，仅暴露 DB tools。
 
 配置与连接管理见 [`mcp.md` — MCP Client AI 集成](./mcp.md#mcp-client-ai-集成)。
+
+### 1.12 会话、目标与取消
+
+AI 侧与数据库的接触分两类，边界互不重叠：
+
+**一、会话语义（诊断 / NL2SQL / EXPLAIN 分析 / Schema 文档）——只消费已存在的会话，不创建。**
+
+- 这些 IPC 的形参是 `db_session_id`（运行时会话 ID），不是 `connectionId`；命令体内只用 `get_session` / `get_session_config` 查找。这条边界由契约测试直接对源码断言：会话语义命令的形参必须含 `db_session_id` 且**不得**含 `connection_id`，且命令体内不得出现「把名为 `connection_id` 的变量喂给 `get_session`」的写法（`commands/ai/ipc_contract_guards.rs`）。
+- **`ai_chat` 的 schema 上下文是尽力而为**。会话取不到时不报错，而是降级为不向模型注入 db tools 并记一条告警——聊天仍可继续，只是失去「模型自己查表」的能力。诊断类命令则直接返回错误。
+- **目标不切库**。AI 与其他消费方一样把目标 database / schema 随命令传递；宿主不实现生产环境的切库路径。
+
+**二、配置语义（`ai_diagnose_connection`）——收 `connectionId`，读的是落盘配置**，用于「连不上」的故障排查，与已建立会话无关。契约测试同样钉住这一侧。
+
+**三、唯一的反向映射：`ai_analyze_queries`。** 它收运行时会话 ID，但**不碰会话**——把该 ID 反查成所属的 `connectionId`，再按连接过滤查询历史。这样「AI 分析这个面板的历史」不会把同名的其它连接的历史混进来。反查失败时退化为不按连接过滤，而不是报错。
+
+**四、AI 的工具调用与 MCP 共用一条取会话路径。** AI DB tools 走 `services/db_tools.rs`，与 MCP 完全相同：拿持久化 `connectionId`、先过连接白名单、再转成运行时会话，且**不释放引用**。因此被 AI 工具访问过的会话同样不会被空闲回收扫掉。
+
+**五、取消是 AI 自己的注册表。** AI 侧用一张按调用 ID 登记的取消令牌表（`ai/cancel.rs`），在开始时登记、结束时注销；取消一个已结束或从未开始的调用不报错，也不产生任何效果。它与 Data Sync / Data Transfer 使用的 job registry 是**两套互不相通**的机制，key 也不同（AI 是调用 ID，job registry 是 job ID）。两者都只存在于内存。
