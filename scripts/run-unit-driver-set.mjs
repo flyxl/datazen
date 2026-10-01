@@ -25,6 +25,11 @@
  * path drivers only, so it needs no deploy key and no network — unlike the
  * `all,kiwi,superset` union typechecked by release.yml.
  *
+ * This is a self-contained replacement for the whole `pretest:unit` sequence on
+ * a fresh clone: it regenerates BOTH gitignored codegen inputs the Host suite
+ * imports (`generated.ts` and `builtinLocales.ts`), because the test path runs
+ * no build step and `pretest:unit` is inert under pnpm >= 7.
+ *
  * Usage:
  *   node scripts/run-unit-driver-set.mjs
  *   node scripts/run-unit-driver-set.mjs --drivers=postgres,mysql
@@ -41,6 +46,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 const RESOLVE_DRIVERS = join('scripts', 'resolve-drivers.mjs');
+const GENERATE_BUILTIN_LOCALES = join('scripts', 'generate-builtin-locales.mjs');
 const VITEST = join('node_modules', 'vitest', 'vitest.mjs');
 
 /**
@@ -75,10 +81,22 @@ export function parseUnitDriverSetArgs(argv = process.argv.slice(2), env = proce
 }
 
 /**
- * Order matters: codegen first, so vitest imports the driver set it is about
- * to be judged against. Every command goes through `process.execPath` with
- * `shell: false`, so the plan is byte-identical on Windows, macOS and Linux
- * (no pnpm.cmd re-parse, no shell quoting of the driver set).
+ * Order matters, and both codegen steps are mandatory. Every command goes
+ * through `process.execPath` with `shell: false`, so the plan is
+ * byte-identical on Windows, macOS and Linux (no pnpm.cmd re-parse, no shell
+ * quoting of the driver set).
+ *
+ *  1. `resolve-drivers --codegen-only` writes `src/extensions/generated.ts`,
+ *     so vitest imports the driver set it is about to be judged against.
+ *  2. `generate-builtin-locales` writes `src/locales/builtinLocales.ts`, which
+ *     `src/locales/index.ts` imports **statically**. On a fresh clone that file
+ *     does not exist — it is gitignored codegen — so without this step vitest
+ *     dies at import time with `Failed to resolve import "./builtinLocales"`.
+ *     Measured on feat/platform-p0 @ 7559759b7: omitting it turns 125 of 556
+ *     test files into load failures (110 tests fail). It is NOT reachable from
+ *     the test path: only `build` / `build:bundle` / `build:with-drivers` /
+ *     `prepare` call it. The inert `pretest:unit` hook does list it, but pnpm
+ *     >= 7 never runs `pre`/`post` scripts, so it never actually runs.
  *
  * @param {{ drivers: string, vitestArgs?: string[], root?: string }} options
  * @returns {{ cmd: string, args: string[] }[]}
@@ -91,6 +109,7 @@ export function planDriverSetCommands(options) {
     // full path so Cargo.toml is never touched and no stash/restore is needed
     // (driver-file-stash.mjs owns Cargo.toml / Cargo.lock, not generated.ts).
     { cmd: process.execPath, args: [join(root, RESOLVE_DRIVERS), '--codegen-only', `--drivers=${options.drivers}`] },
+    { cmd: process.execPath, args: [join(root, GENERATE_BUILTIN_LOCALES)] },
     { cmd: process.execPath, args: [join(root, VITEST), 'run', ...vitestArgs] },
   ];
 }
