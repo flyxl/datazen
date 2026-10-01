@@ -7,10 +7,14 @@
 pub use async_trait::async_trait;
 pub use inventory;
 
+pub mod capabilities;
 pub mod command;
 mod explain_plan;
 mod factory;
+pub mod namespace;
 mod query_stream;
+pub mod resource;
+pub mod resource_adapter;
 mod reuse;
 pub mod schema_catalog_commands;
 pub mod schema_dependencies;
@@ -19,6 +23,7 @@ pub mod schema_migration;
 pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod schema_scope_mapping;
+pub mod session;
 pub mod sql_dump;
 pub mod sql_split;
 pub mod sql_target;
