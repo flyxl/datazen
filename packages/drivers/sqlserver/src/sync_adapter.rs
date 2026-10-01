@@ -2,8 +2,9 @@
 
 use datazen_driver_api::sync::contract_from_column;
 use datazen_driver_api::{
-    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
-    SyncKeyContract, SyncKeyKind, SyncSourceAdapter, SyncTargetAdapter, Value,
+    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRForeignKey, IRIndex, IRTableObjects,
+    IRType, SyncAdapterFactory, SyncKeyContract, SyncKeyKind, SyncSourceAdapter, SyncTargetAdapter,
+    TableSchema, Value,
 };
 
 pub struct SqlServerSyncAdapter;
@@ -91,6 +92,27 @@ fn base_type(raw: &str) -> String {
     let lower = raw.trim().to_lowercase();
     // Drop length/precision suffix for match, keep full string for parsers.
     lower
+}
+
+/// Map SQL Server's catalog index-type vocabulary onto the dialect-neutral
+/// index model used by the transfer IR.
+///
+/// `CLUSTERED` / `NONCLUSTERED` — and the `UNIQUE_CONSTRAINT:` prefix the
+/// catalog parser adds for constraint-backed unique indexes — describe
+/// physical layout and constraint backing rather than a different index kind:
+/// an ordinary `CREATE [UNIQUE] INDEX` reproduces the indexed columns and
+/// uniqueness, which is exactly what the IR can carry. Anything else (gin, rum,
+/// hash, …) is returned untouched so the shared renderer keeps rejecting index
+/// methods it cannot express.
+fn portable_index_type(raw: &str) -> String {
+    match raw.trim().to_ascii_uppercase().as_str() {
+        ""
+        | "CLUSTERED"
+        | "NONCLUSTERED"
+        | "UNIQUE_CONSTRAINT:CLUSTERED"
+        | "UNIQUE_CONSTRAINT:NONCLUSTERED" => String::new(),
+        _ => raw.to_string(),
+    }
 }
 
 fn native_type_name(raw: &str) -> &str {
@@ -212,14 +234,70 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
         ))
     }
 
+    /// Mirror of the shared mapping, except that SQL Server's catalog index
+    /// types are translated into the dialect-neutral vocabulary the transfer
+    /// renderers understand (see [`portable_index_type`]).
+    ///
+    /// The shared `render_index_ddl` only accepts an ordinary B-tree index, so
+    /// leaving SQL Server's `CLUSTERED` / `NONCLUSTERED` vocabulary in place
+    /// would fail the whole structure plan for any secondary index. Doing the
+    /// translation here — at the point where the catalog vocabulary enters the
+    /// IR — keeps every target adapter working, not just SQL Server itself.
+    fn table_objects_to_ir(&self, schema: &TableSchema) -> IRTableObjects {
+        IRTableObjects {
+            indexes: schema
+                .indexes
+                .iter()
+                .map(|index| IRIndex {
+                    name: index.name.clone(),
+                    columns: index.columns.clone(),
+                    is_unique: index.is_unique,
+                    is_primary: index.is_primary,
+                    index_type: portable_index_type(&index.index_type),
+                })
+                .collect(),
+            foreign_keys: schema
+                .foreign_keys
+                .iter()
+                .map(|foreign_key| IRForeignKey {
+                    name: foreign_key.name.clone(),
+                    columns: foreign_key.columns.clone(),
+                    referenced_table: foreign_key.referenced_table.clone(),
+                    referenced_columns: foreign_key.referenced_columns.clone(),
+                    on_update: foreign_key.on_update.clone(),
+                    on_delete: foreign_key.on_delete.clone(),
+                })
+                .collect(),
+        }
+    }
+
     fn unsupported_transfer_structure_query(
         &self,
         database: &str,
         schema: Option<&str>,
         table: &str,
     ) -> Option<String> {
-        // The current transfer plan preserves columns and PKs only, so refuse
-        // table-level objects that would otherwise disappear from the export.
+        // Refuse only table-level objects the transfer plan genuinely cannot
+        // recreate, so this gate keeps the same granularity as the PostgreSQL
+        // adapter: reject what is inexpressible, let through what the IR and
+        // the DDL emitters already carry.
+        //
+        // Secondary indexes and foreign keys are deliberately NOT listed. The
+        // host derives `IRTableObjects` from these same catalog rows and emits
+        // them through `render_index_ddl` / `render_foreign_key_ddl` after all
+        // CREATE TABLE statements, so rejecting them here would refuse objects
+        // Data Transfer already recreates on the target. Anything the catalog
+        // reader cannot model into `IndexInfo` / `ForeignKeyInfo` (filtered,
+        // INCLUDE or descending indexes; disabled or NOT FOR REPLICATION
+        // foreign keys) is already refused there, as is any remaining
+        // referential action the shared renderer cannot express (SET DEFAULT).
+        //
+        // What remains below is inexpressible by the IR model or by the SQL
+        // Server emitters: the model has no computed-column concept, neither
+        // emission path renders CHECK constraints, and
+        // `auto_increment_keyword()` hardcodes `IDENTITY(1,1)`, so a
+        // non-default seed or increment cannot be recreated.
+        //
         // Keep catalog qualifiers and user names safely quoted as identifiers
         // or literals, including `]` and apostrophes.
         let catalog = if database.trim().is_empty() {
@@ -233,19 +311,6 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
             "SELECT CONCAT('computed column ', c.name) AS unsupported_object \
              FROM {catalog}sys.computed_columns c \
              JOIN {catalog}sys.tables t ON t.object_id = c.object_id \
-             JOIN {catalog}sys.schemas s ON s.schema_id = t.schema_id \
-             WHERE s.name = N'{schema}' AND t.name = N'{table}' \
-             UNION ALL \
-             SELECT CONCAT('secondary index ', i.name) \
-             FROM {catalog}sys.indexes i \
-             JOIN {catalog}sys.tables t ON t.object_id = i.object_id \
-             JOIN {catalog}sys.schemas s ON s.schema_id = t.schema_id \
-             WHERE s.name = N'{schema}' AND t.name = N'{table}' \
-               AND i.index_id > 0 AND i.is_primary_key = 0 \
-             UNION ALL \
-             SELECT CONCAT('foreign key ', fk.name) \
-             FROM {catalog}sys.foreign_keys fk \
-             JOIN {catalog}sys.tables t ON t.object_id = fk.parent_object_id \
              JOIN {catalog}sys.schemas s ON s.schema_id = t.schema_id \
              WHERE s.name = N'{schema}' AND t.name = N'{table}' \
              UNION ALL \
@@ -458,6 +523,15 @@ impl SyncTargetAdapter for SqlServerSyncAdapter {
     }
 
     fn supports_explicit_identity_values(&self) -> bool {
+        true
+    }
+
+    /// SQL Server identifies an index by `(object_id, index_id)`, not by a
+    /// schema-level naming object, so two different tables may reuse the same
+    /// index name. Reporting the wider namespace here stops the host's
+    /// `ensure_unique_object_name` from rejecting a plan that SQL Server would
+    /// accept.
+    fn index_names_are_table_scoped(&self) -> bool {
         true
     }
 
@@ -834,17 +908,38 @@ mod tests {
     }
 
     #[test]
-    fn sqlserver_source_preflight_rejects_unmodeled_structure_objects() {
+    fn sqlserver_source_preflight_rejects_only_unrepresentable_structure_objects() {
         let query = SqlServerSyncAdapter
             .unsupported_transfer_structure_query("db]name", Some("sales' data"), "people's")
             .expect("SQL Server source preflight query");
+        // Escaping invariants: catalog as a quoted identifier, schema/table as
+        // quoted literals.
         assert!(query.contains("[db]]name].sys.computed_columns"));
         assert!(query.contains("s.name = N'sales'' data'"));
         assert!(query.contains("t.name = N'people''s'"));
-        assert!(query.contains("secondary index "));
-        assert!(query.contains("foreign key "));
+        // Still rejected: no IR concept, no emission path, hardcoded IDENTITY.
+        assert!(query.contains("computed column "));
         assert!(query.contains("CHECK constraint "));
         assert!(query.contains("non-default seed/increment"));
+        // Not rejected: the host emits both from the same catalog rows through
+        // `render_index_ddl` / `render_foreign_key_ddl`.
+        assert!(!query.contains("secondary index "));
+        assert!(!query.contains("foreign key "));
+        assert!(!query.contains("sys.indexes"));
+        assert!(!query.contains("sys.foreign_keys"));
+    }
+
+    #[test]
+    fn sqlserver_portable_index_type_maps_own_catalog_vocabulary_only() {
+        assert_eq!(portable_index_type("NONCLUSTERED"), "");
+        assert_eq!(portable_index_type("CLUSTERED"), "");
+        assert_eq!(portable_index_type("UNIQUE_CONSTRAINT:NONCLUSTERED"), "");
+        assert_eq!(portable_index_type("UNIQUE_CONSTRAINT:CLUSTERED"), "");
+        assert_eq!(portable_index_type("  "), "");
+        // Other engines' index methods stay visible so the shared renderer
+        // keeps rejecting them.
+        assert_eq!(portable_index_type("btree"), "btree");
+        assert_eq!(portable_index_type("GIN"), "GIN");
     }
 
     #[test]
