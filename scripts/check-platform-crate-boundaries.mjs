@@ -59,7 +59,7 @@ import {
   runCargoMetadata,
 } from './lib/cargoWorkspace.mjs';
 import { SCAN_EXTENSIONS, SKIP_DIR_NAMES, isSkippedPath } from './lib/scanTargets.mjs';
-import { scanCode } from './lib/scanSourceCode.mjs';
+import { findCodeNeedle, lineAtOffset, scanCode } from './lib/scanSourceCode.mjs';
 
 export const SPEC_PATH = 'docs/architecture/platform/shared-boundaries-and-ports.md';
 export const PREFIX = '[check-platform-arch]';
@@ -183,10 +183,17 @@ const RULES = Object.freeze([
  * covering them are **vacuous** — reported loudly, exit 0 — because refusing to
  * pass on a repo that has not started the platform work yet would block every
  * unrelated PR. `--require-layers=a,b` (or `ARCH_GUARD_REQUIRED_LAYERS`)
- * converts vacuous into error, and that is the lever to arm at the P1 exit gate
- * once the crates land.
+ * converts vacuous into error, and that is the lever to arm once a layer lands.
+ *
+ * `backend-client` is armed: it has been on disk since P1 with F-07 actively
+ * reading its source, so "armed but nothing to check" stopped being true and the
+ * default no longer has anything to protect it. It could not be armed sooner —
+ * until `resolveSubject` learned to answer a `ts` layer from the workspace
+ * directory, this entry would have made every PR red by calling a present, clean
+ * package a missing layer. `server` stays unarmed on purpose: `datazen-server`
+ * has not landed, and F-06 remains honestly vacuous until it does.
  */
-export const DEFAULT_REQUIRED_LAYERS = [];
+export const DEFAULT_REQUIRED_LAYERS = ['backend-client'];
 
 function specLayerId(pathToken) {
   const normalised = pathToken.replace(/\/\*$/, '/*');
@@ -328,15 +335,63 @@ function checkTsLayer(root, layer, rule, errors, violations) {
   return files;
 }
 
-/** 1-based line of `token` in blanked source, or `undefined`. */
+/**
+ * 1-based line of `token` in blanked source, or `undefined`.
+ *
+ * `findCodeNeedle`, not `indexOf`: the code-channel needles are `fetch(` and
+ * `XMLHttpRequest`, and a bare substring search reports `store.refetch()` and
+ * `cache.prefetch()` as transports. The first developer to name a handle after
+ * the API the package is avoiding would be told their correct code was broken —
+ * and a guard that reports correct code as broken is a guard the team learns to
+ * delete rather than satisfy. Same matcher `check-module-layers.mjs` uses, so
+ * the two guards cannot drift into disagreeing about what counts as a call.
+ *
+ * `lineAtOffset` replaces an open-coded `slice().split('\n').length` so line
+ * counting lives in one place too.
+ *
+ * @param {string} code comment-blanked source (see `scanCode`)
+ * @param {string} token
+ * @returns {number | undefined}
+ */
 function findForbiddenLine(code, token) {
-  const at = code.indexOf(token);
-  return at === -1 ? undefined : code.slice(0, at).split('\n').length;
+  const at = findCodeNeedle(code, token);
+  return at === -1 ? undefined : lineAtOffset(code, at);
 }
 
 /** 1-based line of the first string literal containing `token`. */
 function findLiteralLine(literals, token) {
   return literals.find((l) => l.value.includes(token))?.line;
+}
+
+/**
+ * Is one of a rule's subjects present — and what is the subject made of?
+ *
+ * Presence is resolved **by layer kind**, because the two kinds answer the
+ * question from different sources, and answering a `ts` layer out of cargo's
+ * index is not a weaker check. It is a check that can only ever say "no":
+ * `packages/backend-client` is a pnpm package with no `Cargo.toml`, so it never
+ * appears in `workspace_members` — while F-07 spent the same run scanning its 13
+ * source files. `--require-layers=backend-client` therefore exited 1 on a layer
+ * that was present, clean, and fully evaluated, and an unqualified
+ * `DEFAULT_REQUIRED_LAYERS` containing it would have wedged CI permanently.
+ *
+ * `rust` subjects stay with `cargo metadata`: a directory that owns no
+ * `Cargo.toml` in the resolved graph genuinely is not a crate, and the layers
+ * that are supposed to be crates (F-06's `server`) must keep reporting that.
+ *
+ * @param {string} layerId
+ * @param {Map<string, object[]>} membersByLayer
+ * @param {string} root
+ * @returns {{ path: string, kind: 'directory' | 'cargo metadata', present: boolean, members: object[] }}
+ */
+function resolveSubject(layerId, membersByLayer, root) {
+  const layer = layerById(layerId);
+  const path = layer?.path ?? layerId;
+  if (layer?.kind === 'ts') {
+    return { path, kind: 'directory', present: existsSync(resolve(root, path)), members: [] };
+  }
+  const members = membersByLayer.get(layerId) ?? [];
+  return { path, kind: 'cargo metadata', present: members.length > 0, members };
 }
 
 /**
@@ -391,22 +446,40 @@ export function checkPlatformCrateBoundaries(options) {
 
   for (const rule of RULES) {
     const subjects = [];
+    const tsLayers = [];
     for (const layerId of rule.subjects) {
-      const layer = layerById(layerId);
-      const found = membersByLayer.get(layerId) ?? [];
-      if (found.length === 0) {
-        const absent = `${layer?.path ?? layerId}`;
+      const resolved = resolveSubject(layerId, membersByLayer, root);
+      if (!resolved.present) {
+        const what = resolved.kind === 'directory' ? 'has no source directory' : 'has no workspace member';
         if (required.has(layerId)) {
           errors.push(
-            `${rule.id}: required layer \`${absent}\` has no workspace member. ` +
-              `${required.has(layerId) ? 'ARCH_GUARD_REQUIRED_LAYERS' : ''}`,
+            `${rule.id}: required layer \`${resolved.path}\` ${what}. ` +
+              `Requested by --require-layers / ARCH_GUARD_REQUIRED_LAYERS.`,
           );
         } else {
-          vacuous.push({ rule: rule.id, layer: layerId, path: absent });
+          vacuous.push({ rule: rule.id, layer: layerId, path: resolved.path, reason: 'absent' });
         }
         continue;
       }
-      subjects.push(...found);
+      if (resolved.kind === 'directory') tsLayers.push(layerId);
+      else subjects.push(...resolved.members);
+    }
+
+    // Source-text rules never reach the closure walk below, so they answer here
+    // and skip the layer-derived forbidden-set work that is meaningless for them.
+    if (rule.tsForbid) {
+      for (const layerId of tsLayers) {
+        const layer = layerById(layerId);
+        const files = checkTsLayer(root, layer, rule, errors, violations);
+        // Present, scanned, nothing found — that is a pass, not a vacuous rule.
+        // Only a directory holding no scannable source at all has nothing to
+        // check, and conflating the two is what made a clean `backend-client`
+        // report itself as "no packages/backend-client yet" in the same run that
+        // evaluated it.
+        if (files > 0) evaluated.push({ rule: rule.id, subjects: [`${layer.path}/ (${files} file(s))`] });
+        else vacuous.push({ rule: rule.id, layer: layerId, path: layer.path, reason: 'empty' });
+      }
+      continue;
     }
 
     const forbiddenNames = new Set();
@@ -421,13 +494,6 @@ export function checkPlatformCrateBoundaries(options) {
       for (const member of index.members.values()) {
         if (rule.forbiddenLayers.includes(member.layer)) forbiddenNames.add(member.name);
       }
-    }
-
-    if (rule.id === 'F-07') {
-      const layer = layerById(rule.subjects[0]);
-      const files = checkTsLayer(root, layer, rule, errors, violations);
-      if (files > 0) evaluated.push({ rule: rule.id, subjects: [`${layer.path}/ (${files} file(s))`] });
-      continue;
     }
 
     const families = rule.forbiddenCrates === 'spec' ? parseSpecRow(findSpecRow(specText, rule.id) ?? '').crates : rule.forbiddenCrates;
@@ -540,8 +606,17 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
     return 2;
   }
 
-  for (const layer of result.vacuous)
-    out(`${PREFIX} VACUOUS  ${layer.rule}: no \`${layer.path}\` yet — rule armed, nothing to check`);
+  for (const layer of result.vacuous) {
+    // Two different sentences for two different situations. "No <path> yet"
+    // means the rule is armed against something that is not on disk; "no
+    // scannable source" means the directory is there but empty of the files the
+    // rule reads. Collapsing them would let the first hide behind the second.
+    out(
+      layer.reason === 'empty'
+        ? `${PREFIX} VACUOUS  ${layer.rule}: \`${layer.path}\` holds no scannable source — rule armed, nothing to check`
+        : `${PREFIX} VACUOUS  ${layer.rule}: no \`${layer.path}\` yet — rule armed, nothing to check`,
+    );
+  }
   for (const line of result.advisories) out(`${PREFIX} ADVISORY ${line}`);
   for (const line of result.violations) err(`${PREFIX} VIOLATION ${line}`);
   for (const line of result.errors) err(`${PREFIX} ERROR    ${line}`);
