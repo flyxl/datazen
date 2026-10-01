@@ -17,6 +17,42 @@
  * same LAYERS table the boundary guard uses is edited never, and cannot drift
  * from the guard's idea of what a core crate is.
  *
+ * ## Why an unclassified member stops the run instead of reddening it at the end
+ *
+ * `lib/cargoWorkspace.mjs` classifies a member by the directory it lives in, and
+ * a member matching no layer path is an **error on purpose**: a member this
+ * classifier cannot place is a member no rule covers. The sibling gate enforces
+ * that by folding `index.unclassified` into its exit code (`errors` at :367-368
+ * → `failed = violations.length + errors.length` at :532-534). This script used
+ * to print the identical ERROR line and then fall through — the message went to
+ * stderr while execution continued and ended in `return 0` (`--dry-run`, :117-120)
+ * or in cargo's own code (:128-129). Measured at c3cf61fef on a workspace with
+ * one unclassifiable member: the guard exited 1, this runner exited 0 on both
+ * the `--dry-run` path and the real `cargo test` path.
+ *
+ * **The choice here is to abort before testing, not to aggregate into the final
+ * code**, for one reason. The crate list this script tests is derived from the
+ * same classification, so once a member is unclassifiable that list is known to
+ * be incomplete — the unclassified member may itself be a `runtime`-layer crate
+ * that belongs in the tested set. Aggregating would still print
+ * `PASS — N core crate(s) tested`, a coverage claim the same run has just
+ * disproved, and that line is the one a reader skims. Failing before the claim
+ * is made cannot mislead anyone.
+ *
+ * Nothing is lost by stopping: the observable CI contract is identical either
+ * way (same stderr, same exit 1), the fix for an unclassified member is a
+ * one-line `LAYERS` edit rather than a debugging session, and there is no reason
+ * to spend cargo's time proving the rest of the set is green before saying so.
+ * `check-platform-crate-boundaries.mjs` already takes the opposite-but-equally-
+ * deliberate route — it aggregates, because it has more than one rule to report
+ * — and it aborts early on its own input defect (`aborted: no spec`). The rule
+ * followed by both is the one that matters: never emit a green result over a
+ * workspace the classifier could not fully account for.
+ *
+ * Placing the abort during discovery, before the dry-run branch, is deliberate:
+ * `--dry-run` must not be a bypass, and dry-run exists to show the plan, not to
+ * skip the plan's own validity check.
+ *
  * @example
  * node scripts/run-platform-crate-tests.mjs --dry-run
  */
@@ -38,6 +74,11 @@ export const PREFIX = '[platform-crate-tests]';
 export const TESTED_LAYERS = Object.freeze(['runtime', 'application', 'platform-api', 'server']);
 
 /**
+ * Pure with respect to policy: it reports what the shared classifier found and
+ * makes no decision about it. `unclassified` is returned, not thrown and not
+ * swallowed, because this function is exported — callers that read it must keep
+ * seeing the same shape regardless of what `runCli` does with the value.
+ *
  * @param {{ root: string, env?: NodeJS.ProcessEnv, requireLayers?: string[], log?: (s: string) => void }} options
  */
 export function discoverCoreCrates({ root, env, log = () => {} }) {
@@ -90,9 +131,18 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
     err(`${PREFIX} ${cause.message}`);
     return 2;
   }
-  for (const reason of discovered.unclassified) err(`${PREFIX} ERROR unclassified workspace member: ${reason}`);
+  const { crates, unclassified } = discovered;
+  if (unclassified.length > 0) {
+    for (const reason of unclassified)
+      err(`${PREFIX} ERROR unclassified workspace member: ${reason}`);
+    err(
+      `${PREFIX} ABORT — ${unclassified.length} member(s) match no layer path, so the crate set ` +
+        `below is provably incomplete and testing it would report a coverage claim this run ` +
+        `cannot support. Classify them in LAYERS (scripts/lib/cargoWorkspace.mjs) and re-run.`,
+    );
+    return 1;
+  }
 
-  const { crates } = discovered;
   for (const crate of crates)
     out(`${PREFIX} discovered ${crate.name} (${layerById(crate.layer).path}/)`);
 

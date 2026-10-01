@@ -469,9 +469,18 @@ export function checkPlatformCrateBoundaries(options) {
     );
   }
 
+  // `evaluated.length` counts only rules that found at least one subject, so a
+  // bare count reads stronger than the evidence: measured at c3cf61fef this
+  // guard says "1 rule(s) evaluated over 16 crate(s)" while 11 rule×subject
+  // combos print VACUOUS, i.e. 6 of the 7 F-rows produced no verdict at all.
+  // "PASS — …" then invites reading the spec as fully checked when the truth is
+  // "everything that could be checked was checked". The vacuous count is
+  // already computed and already printed per line; naming it here costs nothing
+  // and is the only place a reader is told the denominator.
+  const subjectSlots = evaluated.reduce((n, e) => n + e.subjects.length, 0);
   const summary =
     `${index.members.size} workspace member(s) classified, ${evaluated.length} rule(s) evaluated over ` +
-    `${evaluated.reduce((n, e) => n + e.subjects.length, 0)} crate(s): ` +
+    `${subjectSlots} crate(s), ${vacuous.length} rule×subject combo(s) vacuous: ` +
     `${violations.length} violation(s), ${errors.length} error(s), ${advisories.length} advisory(ies)`;
   return { violations, errors, vacuous, advisories, evaluated, summary, index };
 }
