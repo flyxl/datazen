@@ -83,7 +83,7 @@ cargo test -p datazen-ai-api --lib
 
 ## 4. 本地 PR 基线（与 CI 对齐）
 
-贡献者在开 PR 前至少跑：
+推荐直接 `pnpm ci:local`（等价于下面全部步骤）。贡献者手工分步跑时至少：
 
 ```bash
 node scripts/generate-builtin-locales.mjs
@@ -96,6 +96,8 @@ cargo test -p datazen --lib --features "$FEATURES"
 node scripts/driver-file-stash.mjs restore
 cargo test -p datazen-ai-api --lib
 ```
+
+与 `ci.yml` 的 workflow 级 env 一致，这些步骤默认应带 `DATAZEN_KEYRING=file`（`pnpm ci:local` 已自动导出）。cargo 单测在 `cfg(test)` 下强制走文件后端，不访问系统钥匙串——macOS 上钥匙串搜索列表异常时，Keychain Services 调用会弹「找不到用于储存 app-encryption-key 的钥匙串 login」模态框并**阻塞**整条测试。只有显式设 `DATAZEN_TEST_KEYRING=1` 才启用钥匙串用例，见 [store.md — 单元测试与钥匙串弹窗](../architecture/backend/store.md#单元测试与钥匙串弹窗)。
 
 若改动 `site/`：`node scripts/check-site-seo.mjs`。
 

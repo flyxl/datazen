@@ -394,25 +394,41 @@ pub type ConfigStore = Store;
 
 ## 主加密密钥（`key_store`）
 
-连接密码、SSH 凭据、`ai_config.enc` 等均用 **AES-256-GCM**；磁盘上存密文。主密钥（32 字节）由 `src-tauri/src/store/key_store.rs` 管理，**不是**写死只用钥匙串或只用文件，而是双后端：
+连接密码、SSH 凭据、`ai_config.enc` 等均用 **AES-256-GCM**；磁盘上存密文。主密钥（32 字节）由 `src-tauri/src/store/key_store.rs` 管理，**不是**写死只用钥匙串或只用文件，而是三后端：
 
 | 后端 | 位置 | 何时使用 |
 |------|------|----------|
 | **OS Keychain** | macOS Keychain / Windows Credential Manager / Linux Secret Service；账户 `app-encryption-key`（服务标识 `APP_IDENTIFIER`） | 正式签名构建的默认路径；`DATAZEN_KEYRING=keyring` 强制 |
-| **文件 `.key`** | `{appData}/.key`（base64 主密钥） | `DATAZEN_KEYRING=file`（dev/CI）；macOS **adhoc/未签名** 二进制（`tauri:dev` 等）自动优先，避免每次重链弹钥匙串 ACL |
+| **Platform vault** | macOS：`security` CLI → 登录钥匙串，服务 `com.datazen.encryption-key` / 账户 `master-key`；Windows：DPAPI → `.key.dpapi` | macOS **adhoc/未签名** 二进制（`tauri:dev` 等）自动优先，ACL 绑 `/usr/bin/security`，避免每次重链弹钥匙串 ACL |
+| **文件 `.key`** | `{appData}/.key`（base64 主密钥，`chmod 600`） | `DATAZEN_KEYRING=file`（dev / CI / 单测）；钥匙串不可用时的兜底 |
 
 选择逻辑摘要：
 
 ```text
-DATAZEN_KEYRING=file     → File
-DATAZEN_KEYRING=keyring  → Keyring
-unset + macOS adhoc      → File
-unset + 其它             → Keyring（失败可回退已有 `.key`）
+DATAZEN_KEYRING=file       → File
+DATAZEN_KEYRING=keyring    → Keyring
+cargo test（cfg(test)）    → File（强制，见下）
+unset + macOS adhoc        → PlatformVault
+unset + Windows            → PlatformVault
+unset + macOS 签名 / Linux → Keyring（失败可回退已有 `.key`）
 ```
 
 - 首次启动随机生成主密钥并写入当前后端；已有 `.key` 时可迁移进钥匙串后删除文件。
 - 应用数据 ZIP **不包含** `.key`；跨机恢复密文需另行备份主密钥（设置流程可走 `save_encryption_key_with_dialog`）。
 - 实现入口：`Store::get_or_create_encryption_key` → `key_store::load_or_create_master_key`。
+
+### 单元测试与钥匙串弹窗
+
+macOS 上任何 Keychain Services 调用（`SecKeychainDefaultForDomain` / `SecItemCopyMatching`——`keyring`
+crate 与 `security` CLI 都走它们）在钥匙串搜索列表异常时都会弹出「找不到用于储存
+`app-encryption-key` 的钥匙串 `login`」模态框，并**阻塞**调用进程直到人工点掉。`cargo test` 一旦命中
+就整条挂死，所以：
+
+- `key_backend()` 在 `cfg(test)` 下恒为 `File`，`load_or_create_from_file` 在测试构建中也不再回探 vault / keychain。
+- 少数需要真正验证钥匙串后端的用例（`keyring_forced_*`、`keyring_creates_and_reloads_master_key`）默认跳过，
+  须显式设 `DATAZEN_TEST_KEYRING=1` 才访问 OS keychain。
+- 门禁脚本 `scripts/ci-local.sh` 与 `.github/workflows/ci.yml` 同样导出 `DATAZEN_KEYRING=file`；
+  E2E 侧的同类处理见 [E2E — 主密钥与系统钥匙串](../../development/e2e-testing.md)。
 
 ### 1.3 查询历史（明文）
 

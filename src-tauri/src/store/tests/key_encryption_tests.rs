@@ -24,11 +24,11 @@ async fn file_backend_creates_and_reloads_key() {
 }
 
 #[tokio::test]
-#[ignore = "requires OS keychain; run with: cargo test migrates_dot_key -- --ignored"]
+#[ignore = "requires OS keychain; run with: DATAZEN_TEST_KEYRING=1 cargo test migrates_dot_key -- --ignored"]
 async fn migrates_dot_key_into_keyring_and_deletes_file() {
     std::env::remove_var("DATAZEN_KEYRING");
     if !key_store::keyring_is_available() {
-        eprintln!("skip: OS keychain unavailable");
+        eprintln!("skip: OS keychain unavailable (needs DATAZEN_TEST_KEYRING=1)");
         return;
     }
     key_store::delete_keyring_entry_for_test();
