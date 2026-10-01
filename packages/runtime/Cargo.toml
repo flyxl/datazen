@@ -1,0 +1,19 @@
+[package]
+name = "datazen-runtime"
+version = "0.0.1"
+edition = "2021"
+description = "DataZen platform runtime kernel — transport-neutral connection resource runtime and its fake resource fixtures"
+license = "GPL-3.0-or-later"
+
+[features]
+# fake-runtime-fixtures.md §12: 夹具跨 crate 暴露时沿用 src-tauri 已有的 feature 名，
+# 避免「同一个概念两个名字」。生产构建不含此 feature，夹具模块即被 cfg 剔除。
+default = []
+test-harness = []
+
+[dependencies]
+datazen-driver-api = { workspace = true }
+chrono = { version = "0.4", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
