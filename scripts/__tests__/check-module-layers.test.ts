@@ -434,25 +434,41 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
     });
 
     describe(`backend-client-transport-agnostic (${CLIENT})`, () => {
-      it('reports the missing package as vacuous instead of claiming a pass', () => {
-        if (existsSync(resolve(REPO_ROOT, 'packages/backend-client')))
+      it('is armed now that the package exists, and the tree is clean', () => {
+        // Tripwire, reversed from the pre-landing form: this case asserts the
+        // package is *present*. If a later refactor removes the package, the
+        // guard silently returns to "nothing to check" and every other test in
+        // this block still passes — so fail loudly instead.
+        if (!existsSync(resolve(REPO_ROOT, 'packages/backend-client')))
           throw new Error(
-            'packages/backend-client exists now — this case is stale, flip it to the armed case',
+            'packages/backend-client is gone — this case is stale again, flip it back to the vacuous case',
           );
-        expect(collectModuleLayerFindings().vacuous.map((v) => v.rule)).toContain(CLIENT);
-        expect(run().code).toBe(0);
+        const { code, findings } = clientVerdict('export const transport = (u: string) => u;\n');
+        // Armed means "checked and clean": neither bucket may claim otherwise.
+        expect(findings.vacuous.map((v) => v.rule)).not.toContain(CLIENT);
+        expect(findings.violations.filter((v) => v.rule === CLIENT)).toEqual([]);
+        expect(code).toBe(0);
       });
 
-      it('turns that vacuous report into a failure when the rule is required', () => {
+      it('turns the rule into a failure when the layer is required', () => {
         // `pnpm test:layers` does not pass `--require-layers` today, so this is
-        // the knob the frontend track turns on the day `packages/backend-client`
-        // is created. Pinned so it exists, and is known to work, before it is needed.
+        // the knob the frontend track turns on. Pinned so it exists, and is
+        // known to work in both directions, before it is needed: required +
+        // clean must stay 0, required + violating must be 1. Exit code 2 is
+        // reserved for "the required layer is missing", which cannot happen
+        // while the package exists.
         const logs: string[] = [];
         const code = checkModuleLayers({
           log: (msg: unknown) => logs.push(String(msg)),
           requireLayers: [CLIENT],
         });
-        expect(code).toBe(2);
+        expect(code).toBe(0);
+
+        const dirty = clientVerdict(
+          "import { invoke } from '@tauri-apps/api/core';\nexport const call = invoke;\n",
+        );
+        expect(dirty.code).toBe(1);
+        expect(dirty.findings.violations.filter((v) => v.rule === CLIENT)).toHaveLength(1);
       });
 
       it('stays quiet on a client that only reaches the transport it was handed', () => {
