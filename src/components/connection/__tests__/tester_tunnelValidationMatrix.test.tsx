@@ -138,13 +138,15 @@ const VARIANTS: Variant[] = [
     base: { host: 'cache.internal', port: 6379, database: '0' },
   },
   {
-    // Registered driver *form* with no driver *validator* — the only shape where
-    // `isDriverForm` is true yet the validator early return never fires, so the
-    // generic `!isDriverForm` branch is skipped and nothing checks host/port.
+    // Driver *form* that started out without a driver *validator*: `isDriverForm`
+    // is true, so the generic `!isDriverForm` branch below the validator early
+    // return was skipped and nothing checked host/port — blank host/port saved
+    // cleanly while `ConnectionFields.tsx` renders both as `<Label required>`.
+    // `sqlServerValidate` (driver side) now owns that check, like redis.
     label: 'driver-form (sqlserver)',
     databaseType: 'sqlserver',
     formVariant: 'sqlserver',
-    hasDriverValidator: false,
+    hasDriverValidator: true,
     supportsSSH: true,
     base: { host: 'db.internal', port: 1433, database: 'master', username: 'sa' },
   },
@@ -188,15 +190,16 @@ describe('[tester] validate() variant matrix is exhaustive for this build', () =
     ).toEqual([]);
   });
 
-  it('test_tester the only registered driver validator in this build is redis', () => {
+  it('test_tester the registered driver validators in this build are redis and sqlserver', () => {
     const variantsWithValidator = [
       ...new Set(Object.values(DB_REGISTRY).map((m) => m.connectionForm)),
     ]
       .filter((formVariant) => !!getDriverValidator(formVariant))
       .sort();
-    expect(variantsWithValidator).toEqual(['redis']);
+    expect(variantsWithValidator).toEqual(['redis', 'sqlserver']);
     expect(VARIANTS.filter((v) => v.hasDriverValidator).map((v) => v.formVariant)).toEqual([
       'redis',
+      'sqlserver',
     ]);
   });
 });
