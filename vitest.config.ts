@@ -28,7 +28,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     // Vitest's 5s default is not a defensible budget for this suite. Measured
-    // per-test wall time over all 5714 Host tests (driver set `all`, macOS,
+    // per-test wall time over all 5702 Host tests (driver set `all`, macOS,
     // 8 cores) at three contention levels, via `--reporter=json`:
     //
     //   2 workers,  load 13  (a local --maxWorkers=2 low-load run)  p95 57ms  p99 170ms  max  1745ms  0 failures
