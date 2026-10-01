@@ -115,7 +115,10 @@ pub struct ApiError {
 
 impl ApiError {
     pub fn new(code: ApiErrorCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 }
 
@@ -244,7 +247,11 @@ mod tests {
         ];
         let mut seen = std::collections::BTreeSet::new();
         for code in all {
-            assert!(seen.insert(code.as_str()), "重复的错误码字面量: {}", code.as_str());
+            assert!(
+                seen.insert(code.as_str()),
+                "重复的错误码字面量: {}",
+                code.as_str()
+            );
         }
     }
 
@@ -257,7 +264,11 @@ mod tests {
             ApiErrorCode::SessionNotFound,
             ApiErrorCode::ResourceBusy,
         ] {
-            assert!(code.is_pre_dispatch_rejection(), "{} 必须是派发前拒绝", code.as_str());
+            assert!(
+                code.is_pre_dispatch_rejection(),
+                "{} 必须是派发前拒绝",
+                code.as_str()
+            );
         }
     }
 

@@ -47,7 +47,12 @@ fn handle(id: &str, res: &ResourceId, epoch: u64) -> SessionHandleRef {
 /// 走完「创建 → 确认关闭」的正常生命周期。
 fn closed_lifecycle(journal: &CommandJournal) -> ResourceId {
     let res = resource("0001");
-    journal.record_permit(&permit("0001"), 1, PermitReason::Acquire, BudgetClass::Session);
+    journal.record_permit(
+        &permit("0001"),
+        1,
+        PermitReason::Acquire,
+        BudgetClass::Session,
+    );
     journal.record_resource_event(
         &res,
         ResourceEvent::Created,
@@ -62,7 +67,12 @@ fn closed_lifecycle(journal: &CommandJournal) -> ResourceId {
         pool_key(),
         BudgetClass::Session,
     );
-    journal.record_permit(&permit("0001"), -1, PermitReason::Close, BudgetClass::Session);
+    journal.record_permit(
+        &permit("0001"),
+        -1,
+        PermitReason::Close,
+        BudgetClass::Session,
+    );
     journal.record_resource_event(
         &res,
         ResourceEvent::Closed,
@@ -77,7 +87,12 @@ fn closed_lifecycle(journal: &CommandJournal) -> ResourceId {
 fn permit_balance_moves_plus_one_on_create_and_minus_one_on_confirmed_close() {
     let journal = CommandJournal::default();
     let res = resource("0001");
-    journal.record_permit(&permit("0001"), 1, PermitReason::Acquire, BudgetClass::Session);
+    journal.record_permit(
+        &permit("0001"),
+        1,
+        PermitReason::Acquire,
+        BudgetClass::Session,
+    );
     journal.record_resource_event(
         &res,
         ResourceEvent::Created,
@@ -91,7 +106,12 @@ fn permit_balance_moves_plus_one_on_create_and_minus_one_on_confirmed_close() {
     let change_points = journal.assert().change_point_violations();
     assert!(change_points.is_empty(), "变更点违规: {change_points:?}");
 
-    journal.record_permit(&permit("0001"), -1, PermitReason::Close, BudgetClass::Session);
+    journal.record_permit(
+        &permit("0001"),
+        -1,
+        PermitReason::Close,
+        BudgetClass::Session,
+    );
     journal.record_resource_event(
         &res,
         ResourceEvent::Closed,
@@ -111,7 +131,12 @@ fn permit_balance_moves_plus_one_on_create_and_minus_one_on_confirmed_close() {
 fn close_unconfirmed_keeps_the_permit_occupied_forever() {
     let journal = CommandJournal::default();
     let res = resource("0001");
-    journal.record_permit(&permit("0001"), 1, PermitReason::Acquire, BudgetClass::Session);
+    journal.record_permit(
+        &permit("0001"),
+        1,
+        PermitReason::Acquire,
+        BudgetClass::Session,
+    );
     journal.record_resource_event(
         &res,
         ResourceEvent::Created,
@@ -145,7 +170,12 @@ fn close_unconfirmed_keeps_the_permit_occupied_forever() {
 fn quarantined_keeps_the_permit_and_leaves_the_live_set_for_rule_four() {
     let journal = CommandJournal::default();
     let res = resource("0001");
-    journal.record_permit(&permit("0001"), 1, PermitReason::Acquire, BudgetClass::Service);
+    journal.record_permit(
+        &permit("0001"),
+        1,
+        PermitReason::Acquire,
+        BudgetClass::Service,
+    );
     journal.record_resource_event(
         &res,
         ResourceEvent::Created,
@@ -161,7 +191,10 @@ fn quarantined_keeps_the_permit_and_leaves_the_live_set_for_rule_four() {
         BudgetClass::Service,
     );
     assert_eq!(journal.permit_balance(), 1, "隔离不归还预算");
-    assert!(journal.live_resources().is_empty(), "隔离资源不可再被 acquire");
+    assert!(
+        journal.live_resources().is_empty(),
+        "隔离资源不可再被 acquire"
+    );
     // live 集合已清空，但 permit 的持有者正是这张被隔离的资源 ⇒ 规则 4 应当对得平。
     // 这条断言就是判别式：若把规则 4 的分母换回 live 集，「live 空 + 余额 1」必报不平。
     let violations = journal.assert().change_point_violations();
@@ -176,9 +209,24 @@ fn the_conservation_equation_accounts_for_idle_pools_and_control_sockets() {
     let journal = CommandJournal::default();
     journal.set_idle_pools(2);
     journal.set_control_sockets(1);
-    journal.record_permit(&permit("idle-a"), 1, PermitReason::Acquire, BudgetClass::ShortOpPool);
-    journal.record_permit(&permit("idle-b"), 1, PermitReason::Acquire, BudgetClass::ShortOpPool);
-    journal.record_permit(&permit("ctl"), 1, PermitReason::Acquire, BudgetClass::Control);
+    journal.record_permit(
+        &permit("idle-a"),
+        1,
+        PermitReason::Acquire,
+        BudgetClass::ShortOpPool,
+    );
+    journal.record_permit(
+        &permit("idle-b"),
+        1,
+        PermitReason::Acquire,
+        BudgetClass::ShortOpPool,
+    );
+    journal.record_permit(
+        &permit("ctl"),
+        1,
+        PermitReason::Acquire,
+        BudgetClass::Control,
+    );
     // 三张许可分别对应 2 个空闲池 + 1 个控制 socket，没有 live resource。
     assert_eq!(journal.permit_balance(), 3);
     let change_points = journal.assert().change_point_violations();
@@ -194,7 +242,12 @@ fn the_conservation_equation_accounts_for_idle_pools_and_control_sockets() {
 #[test]
 fn a_release_without_a_matching_acquire_is_reported() {
     let journal = CommandJournal::default();
-    journal.record_permit(&permit("ghost"), -1, PermitReason::Close, BudgetClass::Session);
+    journal.record_permit(
+        &permit("ghost"),
+        -1,
+        PermitReason::Close,
+        BudgetClass::Session,
+    );
     let ledger = journal.assert().ledger_violations();
     assert!(
         ledger.iter().any(|v| v.contains("归还了未签发的 permit")),
@@ -209,7 +262,11 @@ fn registering_a_handle_keeps_its_resource_and_epoch_and_closing_removes_it() {
     let h = handle("hnd-t1", &res, 1);
     journal.record_handle(&h, HandleAction::Registered, "begin_session_transaction");
     assert_eq!(journal.handle_registry().len(), 1);
-    let record = journal.handle_registry().get("hnd-t1").cloned().expect("登记册条目");
+    let record = journal
+        .handle_registry()
+        .get("hnd-t1")
+        .cloned()
+        .expect("登记册条目");
     assert_eq!(record.resource_id, res);
     assert_eq!(record.runtime_epoch, Counter(1));
     let change_points = journal.assert().change_point_violations();
@@ -227,12 +284,22 @@ fn registering_a_handle_keeps_its_resource_and_epoch_and_closing_removes_it() {
 fn an_epoch_that_does_not_match_the_registry_entry_is_reported_with_its_seq() {
     let journal = CommandJournal::default();
     let res = resource("0001");
-    journal.record_handle(&handle("hnd-t1", &res, 1), HandleAction::Registered, "begin");
+    journal.record_handle(
+        &handle("hnd-t1", &res, 1),
+        HandleAction::Registered,
+        "begin",
+    );
     // 复用同一个 handleId 但 epoch 不同 —— CM-71 的确定性制造方式。
-    journal.record_handle(&handle("hnd-t1", &res, 2), HandleAction::Registered, "again");
+    journal.record_handle(
+        &handle("hnd-t1", &res, 2),
+        HandleAction::Registered,
+        "again",
+    );
     let violations = journal.assert().change_point_violations();
     assert!(
-        violations.iter().any(|v| v.contains("runtimeEpoch 与登记记录不一致")),
+        violations
+            .iter()
+            .any(|v| v.contains("runtimeEpoch 与登记记录不一致")),
         "实际: {violations:?}"
     );
     assert!(
@@ -250,7 +317,10 @@ fn a_terminal_execution_without_protocol_drained_is_reported() {
     // 只终结 effectOutcome，故意不记录 protocolDrained。
     journal.record_execution_terminal(seq, EffectOutcome::Completed, None, true, None);
     let violations = journal.assert().change_point_violations();
-    assert!(violations.is_empty(), "显式写入后不应报违例: {violations:?}");
+    assert!(
+        violations.is_empty(),
+        "显式写入后不应报违例: {violations:?}"
+    );
 
     // 直接构造「没写 protocolDrained」的终态：借用一条尚未终结的记录来验证规则本身。
     let partial = CommandJournal::default();
@@ -277,7 +347,9 @@ fn an_undecidable_error_code_can_never_be_paired_with_completed() {
     );
     let violations = journal.assert().change_point_violations();
     assert!(
-        violations.iter().any(|v| v.contains("effectOutcome 必须为 unknown")),
+        violations
+            .iter()
+            .any(|v| v.contains("effectOutcome 必须为 unknown")),
         "实际: {violations:?}"
     );
 
@@ -313,7 +385,12 @@ fn stream_sequence_gaps_break_invariant_i8() {
 fn returning_to_pool_with_open_handles_is_rejected_by_the_pre_pool_return_checks() {
     let journal = CommandJournal::default();
     let res = resource("0001");
-    journal.record_permit(&permit("0001"), 1, PermitReason::Acquire, BudgetClass::Session);
+    journal.record_permit(
+        &permit("0001"),
+        1,
+        PermitReason::Acquire,
+        BudgetClass::Session,
+    );
     journal.record_resource_event(
         &res,
         ResourceEvent::Created,
@@ -323,7 +400,10 @@ fn returning_to_pool_with_open_handles_is_rejected_by_the_pre_pool_return_checks
     );
     journal.record_resource_event(
         &res,
-        ResourceEvent::ReturnedToPool { protocol_drained: true, registered_handles: 1 },
+        ResourceEvent::ReturnedToPool {
+            protocol_drained: true,
+            registered_handles: 1,
+        },
         &owner(),
         pool_key(),
         BudgetClass::Session,
@@ -338,7 +418,10 @@ fn returning_to_pool_with_open_handles_is_rejected_by_the_pre_pool_return_checks
     let res2 = resource("0002");
     check.record_resource_event(
         &res2,
-        ResourceEvent::ReturnedToPool { protocol_drained: false, registered_handles: 0 },
+        ResourceEvent::ReturnedToPool {
+            protocol_drained: false,
+            registered_handles: 0,
+        },
         &owner(),
         pool_key(),
         BudgetClass::Session,
@@ -355,7 +438,11 @@ fn orphan_handles_are_only_cleared_by_the_close_path() {
     let journal = CommandJournal::default();
     let res = resource("0001");
     let h = handle("hnd-orphan", &res, 1);
-    journal.record_handle(&h, HandleAction::Orphaned, "begin_session_transaction_unregistered");
+    journal.record_handle(
+        &h,
+        HandleAction::Orphaned,
+        "begin_session_transaction_unregistered",
+    );
     assert_eq!(journal.orphan_handles().len(), 1);
     assert!(journal
         .assert()
@@ -364,7 +451,10 @@ fn orphan_handles_are_only_cleared_by_the_close_path() {
         .any(|v| v.contains("I7")));
 
     journal.recover_orphans_on_close(&res, "resource closed");
-    assert!(journal.orphan_handles().is_empty(), "关闭路径必须回收孤儿句柄");
+    assert!(
+        journal.orphan_handles().is_empty(),
+        "关闭路径必须回收孤儿句柄"
+    );
     assert!(journal.handle_registry().is_empty());
     assert!(journal
         .assert()
@@ -438,6 +528,9 @@ fn concurrent_writers_still_produce_one_deterministic_sequence() {
     }
     let seqs: Vec<u64> = journal.entries().iter().map(JournalEntry::seq).collect();
     assert_eq!(seqs.len(), 100, "每一次写入都必须留下痕迹");
-    assert!(seqs.windows(2).all(|pair| pair[0] < pair[1]), "seq 不得重复");
+    assert!(
+        seqs.windows(2).all(|pair| pair[0] < pair[1]),
+        "seq 不得重复"
+    );
     assert_eq!(journal.permits_issued(), 100);
 }

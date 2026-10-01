@@ -51,7 +51,10 @@ impl FakeResourceProvider {
     ) -> Result<SessionHandleRef, ProviderError> {
         let resources = self.lock();
         let resource = resources.get(resource_id.as_str()).ok_or_else(|| {
-            ProviderError::SessionLost(format!("资源 {} 不存在，无法铸造句柄", resource_id.as_str()))
+            ProviderError::SessionLost(format!(
+                "资源 {} 不存在，无法铸造句柄",
+                resource_id.as_str()
+            ))
         })?;
         Ok(SessionHandleRef::new(
             handle_id,
@@ -71,7 +74,10 @@ impl FakeResourceProvider {
     ) -> Result<SessionHandleRef, ProviderError> {
         let mut resources = self.lock();
         let resource = resources.get_mut(resource_id.as_str()).ok_or_else(|| {
-            ProviderError::SessionLost(format!("资源 {} 不存在，无法登记句柄", resource_id.as_str()))
+            ProviderError::SessionLost(format!(
+                "资源 {} 不存在，无法登记句柄",
+                resource_id.as_str()
+            ))
         })?;
         let handle = SessionHandleRef::new(
             handle_id.clone(),
@@ -125,7 +131,10 @@ impl FakeResourceProvider {
     ) -> Result<SessionHandleRef, ProviderError> {
         let mut resources = self.lock();
         let resource = resources.get_mut(resource_id.as_str()).ok_or_else(|| {
-            ProviderError::SessionLost(format!("资源 {} 不存在，无法关闭句柄", resource_id.as_str()))
+            ProviderError::SessionLost(format!(
+                "资源 {} 不存在，无法关闭句柄",
+                resource_id.as_str()
+            ))
         })?;
         let key = handle_id.as_str().to_owned();
         let Some(mut handle) = resource.deregister_handle(&key) else {
@@ -139,11 +148,8 @@ impl FakeResourceProvider {
         if handle.kind == HandleKind::Transaction {
             resource.transaction_state = crate::connection::session::TransactionState::None;
         }
-        self.journal.record_handle(
-            &handle,
-            super::super::journal::HandleAction::Closed,
-            reason,
-        );
+        self.journal
+            .record_handle(&handle, super::super::journal::HandleAction::Closed, reason);
         Ok(handle)
     }
 
@@ -193,15 +199,14 @@ impl FakeResourceProvider {
         handle: &ResourceHandle,
         allow_closed: bool,
     ) -> Result<FakeResource, ProviderError> {
-        let resource = self
-            .lock()
-            .get(claimed.as_str())
-            .cloned()
-            .ok_or_else(|| {
-                ProviderError::SessionLost(format!("资源 {} 不存在，句柄无法验证", claimed.as_str()))
-            })?;
+        let resource = self.lock().get(claimed.as_str()).cloned().ok_or_else(|| {
+            ProviderError::SessionLost(format!("资源 {} 不存在，句柄无法验证", claimed.as_str()))
+        })?;
         let owner = resource.owner_ref().cloned().ok_or_else(|| {
-            ProviderError::SessionLost(format!("资源 {} 没有 owner，无法验证句柄", claimed.as_str()))
+            ProviderError::SessionLost(format!(
+                "资源 {} 没有 owner，无法验证句柄",
+                claimed.as_str()
+            ))
         })?;
         // `verify` 在 resourceId 不符时先报 SessionLost、epoch 不符时再报 RuntimeEpochMismatch，
         // 正好是 §9.2 两条反例各自期望的错误码。

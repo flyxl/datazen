@@ -25,10 +25,10 @@ use crate::connection::execution::{EffectOutcome, ExecutionErrorCode};
 use crate::connection::port::{
     AcquireResourceRequest, CancelDisposition, CancelReceipt, ChangeContextOutcome,
     ChangeContextRequest, CloseReceipt, CloseResourceRequest, CompletionStatus,
-    ConnectionCostPolicy, DescribeResourceRequest, ExecutionCompletion, ExecuteOnResourceRequest,
+    ConnectionCostPolicy, DescribeResourceRequest, ExecuteOnResourceRequest, ExecutionCompletion,
     ObserveSessionRequest, OpenSessionReceipt, PermitReason, RequestCancelRequest,
-    ResourceDescriptor, ResourceHandle, ResourceHealth, ResourceRelease, ResetDiscardReason,
-    ResetOutcome, ResetResourceRequest, ReusePolicy, SessionContinuity, SessionObservation,
+    ResetDiscardReason, ResetOutcome, ResetResourceRequest, ResourceDescriptor, ResourceHandle,
+    ResourceHealth, ResourceRelease, ReusePolicy, SessionContinuity, SessionObservation,
     TransactionObservation, TransactionOperation,
 };
 use crate::connection::session::{
@@ -116,8 +116,7 @@ impl FakeResourceProvider {
         &self,
         request: &AcquireResourceRequest,
     ) -> Result<OpenSessionReceipt, ProviderError> {
-        self.create_resource(request)
-            .map(|(_, _, receipt)| receipt)
+        self.create_resource(request).map(|(_, _, receipt)| receipt)
     }
 
     /// 夹具侧的便捷包装：除了 `OpenSessionReceipt`，还要能继续操作的 `ResourceHandle`
@@ -152,7 +151,11 @@ impl FakeResourceProvider {
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     busy.until_nanos = until_nanos;
-                    busy.reason = if reason.is_empty() { "budget-busy" } else { reason };
+                    busy.reason = if reason.is_empty() {
+                        "budget-busy"
+                    } else {
+                        reason
+                    };
                 }
                 // F3：连接 + 初始化失败。
                 FaultKind::ConnectAndInit { code } => {
@@ -167,16 +170,24 @@ impl FakeResourceProvider {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if self.now_nanos() < busy.until_nanos {
-                let reason = if busy.reason.is_empty() { "budget-busy" } else { busy.reason };
+                let reason = if busy.reason.is_empty() {
+                    "budget-busy"
+                } else {
+                    busy.reason
+                };
                 return Err(ProviderError::ResourceBusy(reason));
             }
         }
 
         let resource_id = self.ids.next_resource_id();
-        let epoch = self.ids.next_runtime_epoch(&request.db_session_id, &request.owner);
+        let epoch = self
+            .ids
+            .next_runtime_epoch(&request.db_session_id, &request.owner);
         let permit_id = self.next_permit_id();
-        let context =
-            SessionContext::new(self.target.namespace.clone(), self.execution_identity.clone());
+        let context = SessionContext::new(
+            self.target.namespace.clone(),
+            self.execution_identity.clone(),
+        );
         let resource = FakeResource::new(
             resource_id.clone(),
             self.descriptor().resource_key,
@@ -191,7 +202,8 @@ impl FakeResourceProvider {
         );
         let handle = ResourceHandle::issue(&resource_id, &epoch.counter, &request.owner);
 
-        self.lock().insert(resource_id.as_str().to_owned(), resource);
+        self.lock()
+            .insert(resource_id.as_str().to_owned(), resource);
 
         // 台账顺序：permit +1 → Created → OpeningReady。
         self.journal
@@ -211,7 +223,10 @@ impl FakeResourceProvider {
         Ok((
             resource_id,
             handle,
-            OpenSessionReceipt { session, attachment_token: self.ids.attachment_token() },
+            OpenSessionReceipt {
+                session,
+                attachment_token: self.ids.attachment_token(),
+            },
         ))
     }
 
@@ -270,13 +285,8 @@ impl FakeResourceProvider {
             Some(_) => return Err(ProviderError::UnsupportedPlan),
             None => (CompletionStatus::Ok, None, EffectOutcome::Completed),
         };
-        self.journal.record_execution_terminal(
-            started,
-            effect_outcome,
-            error_code,
-            true,
-            None,
-        );
+        self.journal
+            .record_execution_terminal(started, effect_outcome, error_code, true, None);
         {
             let key = request.handle.resource_id.as_str().to_owned();
             let mut resources = self.lock();
@@ -363,13 +373,16 @@ impl FakeResourceProvider {
         let key = request.handle.resource_id.as_str().to_owned();
         let context_revision = {
             let mut resources = self.lock();
-            let slot = resources
-                .get_mut(&key)
-                .ok_or_else(|| ProviderError::SessionLost(format!("资源 {key} 在切换上下文时消失")))?;
+            let slot = resources.get_mut(&key).ok_or_else(|| {
+                ProviderError::SessionLost(format!("资源 {key} 在切换上下文时消失"))
+            })?;
             slot.context = after.clone();
             slot.context_revision.increment()
         };
-        Ok(ChangeContextOutcome::Confirmed { context: after, context_revision })
+        Ok(ChangeContextOutcome::Confirmed {
+            context: after,
+            context_revision,
+        })
     }
 
     // ---- 6. transactionOperation ----
@@ -455,7 +468,8 @@ impl FakeResourceProvider {
             };
             if let Some(mut open) = deregistered {
                 open.closed = true;
-                self.journal.record_handle(&open, HandleAction::Closed, "事务终结后注销句柄");
+                self.journal
+                    .record_handle(&open, HandleAction::Closed, "事务终结后注销句柄");
             }
         }
 
@@ -502,12 +516,19 @@ impl FakeResourceProvider {
             });
         }
         let _ = self.resolve(&request.handle.resource_id, &request.handle, false)?;
-        let disposition = if self.journal.live_executions().contains(&request.execution_id) {
+        let disposition = if self
+            .journal
+            .live_executions()
+            .contains(&request.execution_id)
+        {
             CancelDisposition::Requested
         } else {
             CancelDisposition::AlreadyFinished
         };
-        Ok(CancelReceipt { execution_id: request.execution_id.clone(), disposition })
+        Ok(CancelReceipt {
+            execution_id: request.execution_id.clone(),
+            disposition,
+        })
     }
 
     // ---- 8. resetResource ----
@@ -531,9 +552,13 @@ impl FakeResourceProvider {
         };
         Ok(if live {
             // 会话还在事务里 → 归池必须 `Discard`，绝不能报 `Clean`（§3.2 L146）。
-            ResetOutcome::Discard { reason: ResetDiscardReason::SessionStillExecuting }
+            ResetOutcome::Discard {
+                reason: ResetDiscardReason::SessionStillExecuting,
+            }
         } else if degraded {
-            ResetOutcome::Discard { reason: ResetDiscardReason::HealthDegraded }
+            ResetOutcome::Discard {
+                reason: ResetDiscardReason::HealthDegraded,
+            }
         } else {
             ResetOutcome::Clean
         })
@@ -555,8 +580,7 @@ impl FakeResourceProvider {
         let had_transaction = resource.has_open_transaction();
 
         // F12：关闭未确认 —— 资源留在预算占用里（§5.3 规则 3：余额不变）。
-        if let Some((_, FaultKind::CloseUnconfirmed { .. })) = self.script.take(ResourceOp::Close)
-        {
+        if let Some((_, FaultKind::CloseUnconfirmed { .. })) = self.script.take(ResourceOp::Close) {
             {
                 let mut resources = self.lock();
                 if let Some(slot) = resources.get_mut(&key) {
@@ -631,7 +655,10 @@ impl FakeResourceProvider {
             if drained && registered == 0 {
                 self.journal.record_resource_event(
                     &request.handle.resource_id,
-                    ResourceEvent::ReturnedToPool { protocol_drained: true, registered_handles: 0 },
+                    ResourceEvent::ReturnedToPool {
+                        protocol_drained: true,
+                        registered_handles: 0,
+                    },
                     &owner,
                     resource.pool_key.clone(),
                     resource.budget_class(),
@@ -651,12 +678,17 @@ impl FakeResourceProvider {
             let mut resources = self.lock();
             resources.get_mut(&key).and_then(|slot| {
                 slot.accounting.release().map(|plan| {
-                    (plan, slot.accounting.permit_id.clone(), slot.accounting.budget_class)
+                    (
+                        plan,
+                        slot.accounting.permit_id.clone(),
+                        slot.accounting.budget_class,
+                    )
                 })
             })
         };
         if let Some((plan, permit_id, budget_class)) = release {
-            self.journal.record_permit(&permit_id, plan.delta, plan.reason, budget_class);
+            self.journal
+                .record_permit(&permit_id, plan.delta, plan.reason, budget_class);
         }
 
         // 关闭路径必须收回孤立句柄（I7）、会话登记（I4）与 lease（I3），台账才收得口。
@@ -718,7 +750,10 @@ impl FakeResourceProvider {
         };
         drop(resources);
         SessionView {
-            handle: SessionHandle { db_session_id, runtime_epoch },
+            handle: SessionHandle {
+                db_session_id,
+                runtime_epoch,
+            },
             connection_id: self.target.connection_id.clone(),
             config_revision: self.config_revision,
             owner,
@@ -739,7 +774,10 @@ impl FakeResourceProvider {
         context: SessionContext,
     ) -> SessionView {
         SessionView {
-            handle: SessionHandle { db_session_id: self.ids.next_db_session_id(), runtime_epoch },
+            handle: SessionHandle {
+                db_session_id: self.ids.next_db_session_id(),
+                runtime_epoch,
+            },
             connection_id: self.target.connection_id.clone(),
             config_revision: self.config_revision,
             owner: owner_fallback(),
@@ -765,5 +803,7 @@ fn context_conflict(expected: Counter, actual: Counter) -> String {
 /// 资源表里理论上永远有 owner（`FakeResource::new` 必填）。这个 fallback 只让
 /// `session_view` 在异常形状下也能返回，不会给 journal 写任何东西。
 fn owner_fallback() -> OwnerRef {
-    OwnerRef::ClientSession { client_instance_id: ClientInstanceId::new("client-unknown") }
+    OwnerRef::ClientSession {
+        client_instance_id: ClientInstanceId::new("client-unknown"),
+    }
 }

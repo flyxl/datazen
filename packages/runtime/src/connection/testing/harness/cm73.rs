@@ -21,9 +21,7 @@ use serde_json::{json, Value as JsonValue};
 
 use crate::connection::error::ProviderError;
 use crate::connection::execution::SessionCommand;
-use crate::connection::port::{
-    BudgetClass, CloseReceipt, CloseResourceRequest, ResourceHandle,
-};
+use crate::connection::port::{BudgetClass, CloseReceipt, CloseResourceRequest, ResourceHandle};
 use crate::connection::testing::journal::{HandleAction, JournalEntry};
 use crate::connection::types::{Counter, DbSessionId, HandleId, LeaseId, OwnerRef, ResourceId};
 
@@ -70,7 +68,9 @@ fn first_handle_id(data: &JsonValue) -> Result<HandleId, GatewayError> {
         .and_then(|item| item["handleId"].as_str())
         .map(HandleId::new)
         .ok_or_else(|| {
-            GatewayError::InvalidInput("begin_session_transaction 没有交出 sessionHandles".to_owned())
+            GatewayError::InvalidInput(
+                "begin_session_transaction 没有交出 sessionHandles".to_owned(),
+            )
         })
 }
 
@@ -115,10 +115,12 @@ impl FakeHarness {
         self.barrier().release(&race.release_close);
         let close = self.evict_idle_resource(&acquired.handle)?;
         if close.resource_release != crate::connection::port::ResourceRelease::Confirmed {
-            return Err(GatewayError::Provider(ProviderError::CleanupFailed(format!(
-                "R1 关闭未确认（{:?}），无法进入恢复路径",
-                close.resource_release
-            ))));
+            return Err(GatewayError::Provider(ProviderError::CleanupFailed(
+                format!(
+                    "R1 关闭未确认（{:?}），无法进入恢复路径",
+                    close.resource_release
+                ),
+            )));
         }
 
         // ---- 第 5 步：恢复路径重建 R2 ----
@@ -137,7 +139,9 @@ impl FakeHarness {
             outcome: if reused.is_empty() {
                 EvictionRaceOutcome::HandlesNotReused
             } else {
-                EvictionRaceOutcome::HandlesReused { registered_on_recovery: reused.len() }
+                EvictionRaceOutcome::HandlesReused {
+                    registered_on_recovery: reused.len(),
+                }
             },
             recovery_resource_id: recovered.resource_id,
             recovery_epoch: recovered.handle.runtime_epoch,
@@ -154,13 +158,15 @@ impl FakeHarness {
         &self,
         handle: &ResourceHandle,
     ) -> Result<CloseReceipt, ProviderError> {
-        let snapshot =
-            self.provider()
-                .resource(&handle.resource_id)
-                .ok_or_else(|| ProviderError::SessionLost(format!(
+        let snapshot = self
+            .provider()
+            .resource(&handle.resource_id)
+            .ok_or_else(|| {
+                ProviderError::SessionLost(format!(
                     "资源 {} 不存在，无法驱逐",
                     handle.resource_id.as_str()
-                )))?;
+                ))
+            })?;
         self.provider().close_resource(&CloseResourceRequest {
             handle: handle.clone(),
             registered_handles: snapshot.registered_handles(),

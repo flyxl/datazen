@@ -11,9 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
-use crate::connection::execution::{
-    ExecutionErrorCode, ResultSink, SinkWrite, TruncationReason,
-};
+use crate::connection::execution::{ExecutionErrorCode, ResultSink, SinkWrite, TruncationReason};
 use crate::connection::types::ExecutionId;
 
 use super::clock::{FakeClock, MonoTime, TimerId};
@@ -51,7 +49,9 @@ struct BarrierShared {
 
 impl BarrierShared {
     fn lock(&self) -> MutexGuard<'_, BarrierState> {
-        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -80,10 +80,16 @@ impl Barrier {
         let seq = self.inner.next_seq.fetch_add(1, Ordering::SeqCst);
         {
             let mut state = self.inner.lock();
-            state.arrivals.push(Arrival { seq, tag: tag.to_string() });
+            state.arrivals.push(Arrival {
+                seq,
+                tag: tag.to_string(),
+            });
         }
         self.inner.condvar.notify_all();
-        BarrierToken { seq, tag: tag.to_string() }
+        BarrierToken {
+            seq,
+            tag: tag.to_string(),
+        }
     }
 
     /// 阻塞到 `tag` 至少被到达一次。
@@ -136,7 +142,12 @@ impl Barrier {
     }
 
     pub fn arrival_count(&self, tag: &str) -> usize {
-        self.inner.lock().arrivals.iter().filter(|a| a.tag == tag).count()
+        self.inner
+            .lock()
+            .arrivals
+            .iter()
+            .filter(|a| a.tag == tag)
+            .count()
     }
 
     /// 全部到达，按 `seq` 升序。并发写入的确定性顺序就靠它断言。
@@ -157,9 +168,9 @@ impl Barrier {
                 x < y,
                 "barrier 顺序断言失败：{a}(seq={x}) 必须先于 {b}(seq={y})"
             ),
-            _ => panic!(
-                "barrier 顺序断言失败：{a}/{b} 未全部到达（{a}={first:?}, {b}={second:?}）"
-            ),
+            _ => {
+                panic!("barrier 顺序断言失败：{a}/{b} 未全部到达（{a}={first:?}, {b}={second:?}）")
+            }
         }
     }
 }
@@ -200,7 +211,10 @@ impl DrainLimits {
 
     /// §7.2：数据缓冲 8 MiB → 测试下调到 64 KiB；其余数值不动。
     pub const fn lowered_for_tests() -> Self {
-        Self { bytes_per_execution: 64 * 1024, ..Self::design() }
+        Self {
+            bytes_per_execution: 64 * 1024,
+            ..Self::design()
+        }
     }
 }
 
@@ -226,7 +240,10 @@ struct DrainState {
 
 impl DrainState {
     fn truncation_for(&self, execution_id: &ExecutionId) -> Option<TruncationReason> {
-        self.truncated.iter().find(|(id, _)| id == execution_id).map(|(_, r)| *r)
+        self.truncated
+            .iter()
+            .find(|(id, _)| id == execution_id)
+            .map(|(_, r)| *r)
     }
 
     fn bytes_of(&self, execution_id: &ExecutionId) -> u64 {
@@ -247,7 +264,9 @@ struct DrainShared {
 
 impl DrainShared {
     fn lock(&self) -> MutexGuard<'_, DrainState> {
-        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -331,8 +350,10 @@ impl DrainBarrier {
         let timer = match state.drain_timer {
             Some(timer) => timer,
             None => {
-                let timer =
-                    self.inner.clock.arm("drain-deadline", self.inner.limits.drain_deadline);
+                let timer = self
+                    .inner
+                    .clock
+                    .arm("drain-deadline", self.inner.limits.drain_deadline);
                 state.drain_timer = Some(timer);
                 timer
             }
@@ -376,7 +397,8 @@ impl DrainBarrier {
             state.drain_timer = None;
         }
 
-        if state.bytes_of(execution_id).saturating_add(bytes) > self.inner.limits.bytes_per_execution
+        if state.bytes_of(execution_id).saturating_add(bytes)
+            > self.inner.limits.bytes_per_execution
         {
             let reason = TruncationReason::PerExecutionByteLimit;
             Self::remember_truncation(&mut state, execution_id, reason);
@@ -389,7 +411,8 @@ impl DrainBarrier {
             return SinkWrite::Truncated(reason);
         }
 
-        if state.subscription.bytes.saturating_add(bytes) > self.inner.limits.bytes_per_subscription {
+        if state.subscription.bytes.saturating_add(bytes) > self.inner.limits.bytes_per_subscription
+        {
             let reason = TruncationReason::PerSubscriptionByteLimit;
             Self::remember_truncation(&mut state, execution_id, reason);
             return SinkWrite::Truncated(reason);
@@ -398,9 +421,15 @@ impl DrainBarrier {
         let _ = chunk_index;
         state.subscription.events += 1;
         state.subscription.bytes += bytes;
-        match state.per_execution_bytes.iter_mut().find(|(id, _)| id == execution_id) {
+        match state
+            .per_execution_bytes
+            .iter_mut()
+            .find(|(id, _)| id == execution_id)
+        {
             Some((_, counted)) => *counted += bytes,
-            None => state.per_execution_bytes.push((execution_id.clone(), bytes)),
+            None => state
+                .per_execution_bytes
+                .push((execution_id.clone(), bytes)),
         }
         SinkWrite::Accepted
     }
@@ -411,7 +440,9 @@ impl DrainBarrier {
     /// 会永远读到上一次的 `Truncated`，§6.2 的「每执行 8 MiB」也就无法复测。
     pub fn finish_execution(&self, execution_id: &ExecutionId) {
         let mut state = self.inner.lock();
-        state.per_execution_bytes.retain(|(id, _)| id != execution_id);
+        state
+            .per_execution_bytes
+            .retain(|(id, _)| id != execution_id);
         state.truncated.retain(|(id, _)| id != execution_id);
         state.drain_timer = None;
     }
@@ -419,7 +450,9 @@ impl DrainBarrier {
     /// 是否已越过 drain 期限（无消费者等待被 FakeClock 判定为到期）。
     pub fn drain_deadline_elapsed(&self) -> bool {
         let state = self.inner.lock();
-        let Some(timer) = state.drain_timer else { return false };
+        let Some(timer) = state.drain_timer else {
+            return false;
+        };
         self.inner
             .clock
             .fired_history()
@@ -498,7 +531,12 @@ impl CollectingSink {
 }
 
 impl ResultSink for CollectingSink {
-    fn write(&mut self, _execution_id: &ExecutionId, _chunk_index: crate::connection::types::Counter, bytes: usize) -> SinkWrite {
+    fn write(
+        &mut self,
+        _execution_id: &ExecutionId,
+        _chunk_index: crate::connection::types::Counter,
+        bytes: usize,
+    ) -> SinkWrite {
         self.produced_bytes += bytes as u64;
         self.events += 1;
         SinkWrite::Accepted
@@ -521,7 +559,12 @@ pub struct FailingSink {
 }
 
 impl ResultSink for FailingSink {
-    fn write(&mut self, _execution_id: &ExecutionId, _chunk_index: crate::connection::types::Counter, _bytes: usize) -> SinkWrite {
+    fn write(
+        &mut self,
+        _execution_id: &ExecutionId,
+        _chunk_index: crate::connection::types::Counter,
+        _bytes: usize,
+    ) -> SinkWrite {
         SinkWrite::Truncated(TruncationReason::ProducerWriteFailed)
     }
 
@@ -614,7 +657,10 @@ mod tests {
 
         assert_eq!(drain.write(&execution, 0, 1024), SinkWrite::Blocked);
         assert_eq!(drain.write(&execution, 1, 1024), SinkWrite::Blocked);
-        assert!(!drain.drain_deadline_elapsed(), "未推进时钟前期限不得视为到期");
+        assert!(
+            !drain.drain_deadline_elapsed(),
+            "未推进时钟前期限不得视为到期"
+        );
         assert_eq!(drain.truncation_of(&execution), None);
 
         clock.advance(Duration::from_secs(10));
@@ -640,7 +686,11 @@ mod tests {
         drain.set_no_consumer(false);
         assert_eq!(drain.write(&execution, 1, 512), SinkWrite::Accepted);
         clock.advance(Duration::from_secs(600));
-        assert_eq!(drain.truncation_of(&execution), None, "消费者在期限内接管不得产生截断");
+        assert_eq!(
+            drain.truncation_of(&execution),
+            None,
+            "消费者在期限内接管不得产生截断"
+        );
         assert_eq!(drain.produced_bytes(), 512);
         assert_eq!(drain.produced_events(), 1);
     }
@@ -662,13 +712,21 @@ mod tests {
             Some(TruncationReason::PerExecutionByteLimit)
         );
         drain.finish_execution(&execution);
-        assert_eq!(drain.write(&execution, 3, 1), SinkWrite::Accepted, "新执行应重新计量");
+        assert_eq!(
+            drain.write(&execution, 3, 1),
+            SinkWrite::Accepted,
+            "新执行应重新计量"
+        );
     }
 
     #[test]
     fn subscription_limits_are_counted_independently_of_the_execution_limit() {
         let clock = FakeClock::new();
-        let limits = DrainLimits { events_per_subscription: 3, bytes_per_subscription: 1024 * 1024, ..DrainLimits::lowered_for_tests() };
+        let limits = DrainLimits {
+            events_per_subscription: 3,
+            bytes_per_subscription: 1024 * 1024,
+            ..DrainLimits::lowered_for_tests()
+        };
         let drain = DrainBarrier::new(clock, limits);
         let a = ExecutionId::new("exe_dbs_w1_0001_0001");
         let b = ExecutionId::new("exe_dbs_w1_0001_0002");
@@ -683,7 +741,11 @@ mod tests {
             drain.truncation_of(&b),
             Some(TruncationReason::PerSubscriptionEventLimit)
         );
-        assert_eq!(drain.truncation_of(&a), None, "订阅上限不得追溯到先前已接受的执行");
+        assert_eq!(
+            drain.truncation_of(&a),
+            None,
+            "订阅上限不得追溯到先前已接受的执行"
+        );
     }
 
     #[test]
@@ -708,8 +770,14 @@ mod tests {
     fn collecting_sink_counts_produced_bytes_and_terminal_state() {
         let mut sink = CollectingSink::default();
         let execution = ExecutionId::new("exe_dbs_w1_0001_0001");
-        assert_eq!(sink.write(&execution, Counter::new(0), 100), SinkWrite::Accepted);
-        assert_eq!(sink.write(&execution, Counter::new(1), 150), SinkWrite::Accepted);
+        assert_eq!(
+            sink.write(&execution, Counter::new(0), 100),
+            SinkWrite::Accepted
+        );
+        assert_eq!(
+            sink.write(&execution, Counter::new(1), 150),
+            SinkWrite::Accepted
+        );
         sink.complete(&execution, 250);
         assert_eq!(sink.produced_bytes(), 250);
         assert_eq!(sink.events(), 2);

@@ -30,8 +30,8 @@ use crate::connection::testing::fixtures::{self, NS_A_KEY, PROFILE_P};
 use crate::connection::testing::harness::fixture_target;
 use crate::connection::testing::journal::JournalEntry;
 use crate::connection::types::{
-    ConnectionId, Counter, ExecutionId, HandleId, JobId, NamespaceTarget, OrganizationId,
-    OwnerRef, PoolKeyFingerprint, PoolKeyInputs, WorkerId,
+    ConnectionId, Counter, ExecutionId, HandleId, JobId, NamespaceTarget, OrganizationId, OwnerRef,
+    PoolKeyFingerprint, PoolKeyInputs, WorkerId,
 };
 
 /// §8.1：夹具目标一律取自 `fixtures`，用例里不写硬编码字面量。
@@ -70,9 +70,8 @@ fn pool_key(provider: &FakeResourceProvider, policy_isolation_key: &str) -> Pool
 
 /// 默认假提供方：假时钟与 journal 共享同一个 `FakeClock`。
 fn provider() -> FakeResourceProvider {
-    FakeResourceProvider::new(WorkerId::new("w1"), target()).with_execution_identity(
-        fixtures::IDENTITY_SHARED,
-    )
+    FakeResourceProvider::new(WorkerId::new("w1"), target())
+        .with_execution_identity(fixtures::IDENTITY_SHARED)
 }
 
 /// 走一次 `acquire`。
@@ -87,7 +86,10 @@ fn acquire(provider: &FakeResourceProvider) -> Result<AcquiredResource, Provider
 }
 
 /// 按 §5.3 的归池前置条件关掉一张资源。
-fn close(provider: &FakeResourceProvider, acquired: &AcquiredResource) -> Result<(), ProviderError> {
+fn close(
+    provider: &FakeResourceProvider,
+    acquired: &AcquiredResource,
+) -> Result<(), ProviderError> {
     provider.close_resource(&CloseResourceRequest {
         handle: acquired.handle.clone(),
         registered_handles: provider.registered_handles(&acquired.resource_id),
@@ -108,13 +110,23 @@ fn creating_a_resource_takes_one_permit_and_closing_it_gives_it_back() {
     let acquired = acquire(&provider).expect("假提供方自带的 acquire 必须成功");
 
     // 规则 1：permit 台账 +1，live_resources 同步 +1。
-    assert_eq!(provider.journal().permits_issued(), 1, "每次资源创建必须记一笔 permit 发放");
-    assert_eq!(provider.live_resources(), vec![acquired.resource_id.clone()]);
+    assert_eq!(
+        provider.journal().permits_issued(),
+        1,
+        "每次资源创建必须记一笔 permit 发放"
+    );
+    assert_eq!(
+        provider.live_resources(),
+        vec![acquired.resource_id.clone()]
+    );
 
     close(&provider, &acquired).expect("归池必须成功");
 
     // §4.3 I2：没有残留占用预算的资源。
-    assert!(provider.live_resources().is_empty(), "归池后不得仍有资源占用预算（I2）");
+    assert!(
+        provider.live_resources().is_empty(),
+        "归池后不得仍有资源占用预算（I2）"
+    );
     // §4.3 I6：发放与归还是配平的。
     assert_eq!(
         provider.journal().assert().ledger_violations(),
@@ -136,9 +148,10 @@ fn the_change_point_rules_stay_expressible_under_injected_faults() {
     // --- F4：语句派发就失败，且失败**可判定**（SqlError）→ 作用域未开始 ---
     {
         let provider = provider();
-        provider
-            .script()
-            .once(ResourceOp::Execute, FaultKind::StatementDispatch { code: "SqlError" });
+        provider.script().once(
+            ResourceOp::Execute,
+            FaultKind::StatementDispatch { code: "SqlError" },
+        );
         let acquired = acquire(&provider).expect("acquire 必须成功");
 
         let completion = provider
@@ -159,9 +172,10 @@ fn the_change_point_rules_stay_expressible_under_injected_faults() {
     // --- F5：结果传输失败，且不可判定（Timeout）⇒ 必须 unknown ---
     {
         let provider = provider();
-        provider
-            .script()
-            .once(ResourceOp::Execute, FaultKind::ResultTransport { code: "Timeout" });
+        provider.script().once(
+            ResourceOp::Execute,
+            FaultKind::ResultTransport { code: "Timeout" },
+        );
         let acquired = acquire(&provider).expect("acquire 必须成功");
 
         let completion = provider
@@ -191,7 +205,10 @@ fn the_change_point_rules_stay_expressible_under_injected_faults() {
                 input: json!({ "sql": "SELECT 1" }),
             })
             .expect("无注入故障时必须成功");
-        assert_eq!(completion.completion_status, crate::connection::port::CompletionStatus::Ok);
+        assert_eq!(
+            completion.completion_status,
+            crate::connection::port::CompletionStatus::Ok
+        );
         assert_eq!(completion.effect_outcome, EffectOutcome::Completed);
         assert_eq!(completion.error_code, None);
     }
@@ -208,7 +225,10 @@ fn the_budget_busy_window_expires_on_the_fake_clock_not_on_sleep() {
     let provider = provider();
     provider.script().once(
         ResourceOp::Acquire,
-        FaultKind::BudgetBusy { busy_for: Duration::from_secs(10), reason: "连接数达到上限" },
+        FaultKind::BudgetBusy {
+            busy_for: Duration::from_secs(10),
+            reason: "连接数达到上限",
+        },
     );
 
     let rejected = acquire(&provider);
@@ -303,18 +323,23 @@ fn journal_sequence_is_strictly_increasing_across_writes() {
         .entries()
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Resource { resource_id, .. }
-                if *resource_id == first.resource_id =>
-            {
+            JournalEntry::Resource { resource_id, .. } if *resource_id == first.resource_id => {
                 Some(match entry {
-                    JournalEntry::Resource { event: crate::connection::testing::journal::ResourceEvent::Created, .. } => "created",
+                    JournalEntry::Resource {
+                        event: crate::connection::testing::journal::ResourceEvent::Created,
+                        ..
+                    } => "created",
                     _ => "other",
                 })
             }
             _ => None,
         })
         .collect();
-    assert_eq!(order.first().copied(), Some("created"), "Created 必须是该资源的第一条事件");
+    assert_eq!(
+        order.first().copied(),
+        Some("created"),
+        "Created 必须是该资源的第一条事件"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -356,7 +381,10 @@ fn the_fake_clock_only_moves_when_told_to() {
     let clock = FakeClock::new();
     let first = clock.monotonic();
     let second = clock.monotonic();
-    assert_eq!(first, second, "不推进就不许变 —— 否则顺序断言会被调度噪声污染");
+    assert_eq!(
+        first, second,
+        "不推进就不许变 —— 否则顺序断言会被调度噪声污染"
+    );
 
     clock.advance(Duration::from_millis(250));
     assert!(clock.monotonic() > first, "推进后必须单调变大");
@@ -373,8 +401,15 @@ fn a_different_policy_isolation_key_derives_a_different_pool_key() {
     let provider = provider();
     let first = pool_key(&provider, "pol-alpha");
     let second = pool_key(&provider, "pol-beta");
-    assert_ne!(first, second, "policyIsolationKey 不同 ⇒ 池键必须不同（CM-05 / CM-67）");
-    assert_eq!(first, pool_key(&provider, "pol-alpha"), "同一组输入必须派生出同一池键（幂等）");
+    assert_ne!(
+        first, second,
+        "policyIsolationKey 不同 ⇒ 池键必须不同（CM-05 / CM-67）"
+    );
+    assert_eq!(
+        first,
+        pool_key(&provider, "pol-alpha"),
+        "同一组输入必须派生出同一池键（幂等）"
+    );
 }
 
 // ---------------------------------------------------------------------------

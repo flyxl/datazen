@@ -61,8 +61,12 @@ impl GatewayError {
     pub fn api_code(&self) -> Option<crate::connection::error::ApiErrorCode> {
         match self {
             GatewayError::Provider(error) => error.api_code(),
-            GatewayError::UnknownCommand(_) => Some(crate::connection::error::ApiErrorCode::InvalidArgument),
-            GatewayError::InvalidInput(_) => Some(crate::connection::error::ApiErrorCode::InvalidArgument),
+            GatewayError::UnknownCommand(_) => {
+                Some(crate::connection::error::ApiErrorCode::InvalidArgument)
+            }
+            GatewayError::InvalidInput(_) => {
+                Some(crate::connection::error::ApiErrorCode::InvalidArgument)
+            }
         }
     }
 }
@@ -95,20 +99,29 @@ impl FakeHarness {
     /// 句柄 id 一律从该资源的 `dbSessionId` 派生的 `executionId` 派生
     /// （§8.2：`exe_<dbSessionId>_<seq:04>`），再挂 `hdl_` 前缀，
     /// 保证**跨资源不可能撞号**，也就不会出现「句柄跨资源/epoch 登记」。
-    pub(crate) fn next_handle_id(&self, resource: &ResourceHandle) -> Result<(crate::connection::types::ExecutionId, HandleId), GatewayError> {
+    pub(crate) fn next_handle_id(
+        &self,
+        resource: &ResourceHandle,
+    ) -> Result<(crate::connection::types::ExecutionId, HandleId), GatewayError> {
         let slot = self
             .provider()
             .resource(&resource.resource_id)
-            .ok_or_else(|| GatewayError::Provider(ProviderError::SessionLost(format!(
-                "资源 {} 不存在",
-                resource.resource_id.as_str()
-            ))))?;
+            .ok_or_else(|| {
+                GatewayError::Provider(ProviderError::SessionLost(format!(
+                    "资源 {} 不存在",
+                    resource.resource_id.as_str()
+                )))
+            })?;
         let execution_id = self.ids().next_execution_id(&slot.db_session_id);
         let handle_id = HandleId::new(format!("hdl_{}", execution_id.as_str()));
         Ok((execution_id, handle_id))
     }
 
-    pub(crate) fn ensure_registered(&self, resource: &ResourceHandle, handle_id: &HandleId) -> Result<(), GatewayError> {
+    pub(crate) fn ensure_registered(
+        &self,
+        resource: &ResourceHandle,
+        handle_id: &HandleId,
+    ) -> Result<(), GatewayError> {
         let owner = self
             .journal()
             .handle_registry()
@@ -122,10 +135,9 @@ impl FakeHarness {
                 owner.as_str(),
                 resource.resource_id.as_str()
             )))),
-            None => Err(GatewayError::Provider(ProviderError::SessionNotFound(format!(
-                "句柄 {} 未登记",
-                handle_id.as_str()
-            )))),
+            None => Err(GatewayError::Provider(ProviderError::SessionNotFound(
+                format!("句柄 {} 未登记", handle_id.as_str()),
+            ))),
         }
     }
 
@@ -133,7 +145,10 @@ impl FakeHarness {
     ///
     /// 两条命令走同一段实现 —— `hold` 版本已经在 [`FakeHarness::invoke`] 里推进过假时钟，
     /// 且**不自动终结事务**。
-    pub(crate) fn begin_transaction(&self, resource: &ResourceHandle) -> Result<JsonValue, GatewayError> {
+    pub(crate) fn begin_transaction(
+        &self,
+        resource: &ResourceHandle,
+    ) -> Result<JsonValue, GatewayError> {
         self.provider()
             .verify_handle(resource)
             .map_err(GatewayError::Provider)?;
@@ -160,7 +175,11 @@ impl FakeHarness {
     ///
     /// 游标句柄**必须显式关闭**：没有 `rows` 支撑就不回收，§9.1 的 5 分钟空闲事务规则由此可测。
     /// 这里把 `rows` 记进输出，好让用例断言「游标开了但没关 → I5 不成立」。
-    pub(crate) fn open_cursor(&self, resource: &ResourceHandle, rows: u64) -> Result<JsonValue, GatewayError> {
+    pub(crate) fn open_cursor(
+        &self,
+        resource: &ResourceHandle,
+        rows: u64,
+    ) -> Result<JsonValue, GatewayError> {
         self.provider()
             .verify_handle(resource)
             .map_err(GatewayError::Provider)?;

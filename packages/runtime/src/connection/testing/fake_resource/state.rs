@@ -14,9 +14,7 @@ use crate::connection::execution::ExecutionErrorCode;
 use crate::connection::port::{
     BudgetClass, CloseOutcome, PermitId, PermitReason, PermitSet, ResourceHealth,
 };
-use crate::connection::session::{
-    HandleKind, SessionContext, SessionHandleRef, TransactionState,
-};
+use crate::connection::session::{HandleKind, SessionContext, SessionHandleRef, TransactionState};
 use crate::connection::types::{
     Counter, DbSessionId, ExecutionTarget, OwnerRef, PoolKeyFingerprint, ResourceId,
 };
@@ -81,7 +79,11 @@ pub struct Accounting {
 
 impl Accounting {
     pub fn new(budget_class: BudgetClass, permit_id: PermitId) -> Self {
-        Self { budget_class, permit_id, occupied: true }
+        Self {
+            budget_class,
+            permit_id,
+            occupied: true,
+        }
     }
 
     /// 归还预算时返回应写入 journal 的事件；已归还过则返回 `None`（防重复 -1）。
@@ -90,7 +92,10 @@ impl Accounting {
             return None;
         }
         self.occupied = false;
-        Some(PermitEventPlan { delta: -1, reason: PermitReason::Close })
+        Some(PermitEventPlan {
+            delta: -1,
+            reason: PermitReason::Close,
+        })
     }
 }
 
@@ -171,7 +176,10 @@ impl FakeResource {
     }
 
     pub fn permit_set(&self) -> PermitSet {
-        PermitSet { class: self.accounting.budget_class.clone(), permit_ids: vec![self.accounting.permit_id.clone()] }
+        PermitSet {
+            class: self.accounting.budget_class.clone(),
+            permit_ids: vec![self.accounting.permit_id.clone()],
+        }
     }
 
     /// §9.4 归池前置检查：协议已排空 **且** 无已登记句柄。
@@ -184,12 +192,18 @@ impl FakeResource {
     }
 
     pub fn open_handles(&self) -> Vec<&SessionHandleRef> {
-        self.handles.values().filter(|handle| !handle.closed).collect()
+        self.handles
+            .values()
+            .filter(|handle| !handle.closed)
+            .collect()
     }
 
     pub fn has_open_transaction(&self) -> bool {
         matches!(self.transaction_state, TransactionState::Active)
-            || self.open_handles().iter().any(|handle| handle.kind == HandleKind::Transaction)
+            || self
+                .open_handles()
+                .iter()
+                .any(|handle| handle.kind == HandleKind::Transaction)
     }
 
     /// §9.2 `close_session_cursor` 等注销路径使用。
@@ -198,7 +212,8 @@ impl FakeResource {
     }
 
     pub fn register_handle(&mut self, handle: SessionHandleRef) {
-        self.handles.insert(handle.handle_id.as_str().to_string(), handle);
+        self.handles
+            .insert(handle.handle_id.as_str().to_string(), handle);
     }
 
     pub fn next_execution_seq(&mut self) -> u64 {
@@ -280,10 +295,7 @@ mod tests {
             accounting: Accounting::new(BudgetClass::ShortOpPool, PermitId("pmt_0001".to_string())),
             db_session_id: DbSessionId::new("dbs_w1_0001"),
             runtime_epoch: Counter::new(1),
-            context: SessionContext::unknown(
-                &NamespaceTarget::default(),
-                "exec-identity-shared",
-            ),
+            context: SessionContext::unknown(&NamespaceTarget::default(), "exec-identity-shared"),
             context_revision: Counter::ZERO,
             transaction_state: TransactionState::None,
             last_error_code: None,
@@ -313,7 +325,8 @@ mod tests {
 
     #[test]
     fn a_permit_is_returned_at_most_once() {
-        let mut accounting = Accounting::new(BudgetClass::ShortOpPool, PermitId("pmt_0001".to_string()));
+        let mut accounting =
+            Accounting::new(BudgetClass::ShortOpPool, PermitId("pmt_0001".to_string()));
         assert_eq!(accounting.release().map(|plan| plan.delta), Some(-1));
         assert!(accounting.release().is_none(), "重复关闭不得二次归还预算");
     }

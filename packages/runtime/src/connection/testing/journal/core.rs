@@ -9,23 +9,20 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::connection::execution::{
-    EffectOutcome, ExecutionErrorCode, TruncationRecord,
-};
+use crate::connection::execution::{EffectOutcome, ExecutionErrorCode, TruncationRecord};
 use crate::connection::port::{BudgetClass, PermitId, PermitReason};
 use crate::connection::session::SessionHandleRef;
 use crate::connection::types::{
-    DbSessionId, ExecutionId, HandleId, LeaseId, OwnerRef, PoolKeyFingerprint, ResourceId,
-    StreamId,
+    DbSessionId, ExecutionId, HandleId, LeaseId, OwnerRef, PoolKeyFingerprint, ResourceId, StreamId,
 };
 
 // `clock` 是 `journal` 的**兄弟**模块（`testing::clock`），不是 `journal` 的子模块
 // ——`journal/mod.rs` 只是 `pub use super::clock::FakeClock;` 再导出，路径本身在这里不成立。
-use crate::connection::testing::clock::FakeClock;
 use super::asserts::JournalAssert;
 use super::entry::{
-    HandleAction, HandleRecord, JournalEntry, PermitEvent, ResourceEvent, live_resources_in,
+    live_resources_in, HandleAction, HandleRecord, JournalEntry, PermitEvent, ResourceEvent,
 };
+use crate::connection::testing::clock::FakeClock;
 
 #[derive(Default)]
 pub(crate) struct LedgerState {
@@ -61,7 +58,9 @@ pub(crate) struct JournalShared {
 
 impl JournalShared {
     pub(crate) fn lock(&self) -> MutexGuard<'_, JournalState> {
-        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn next_seq(&self) -> u64 {
@@ -105,9 +104,19 @@ impl CommandJournal {
         self.entries()
             .into_iter()
             .filter_map(|entry| match entry {
-                JournalEntry::Permit { seq, permit_id, delta, reason, budget_class } => {
-                    Some(PermitEvent { seq, permit_id, delta, reason, budget_class })
-                }
+                JournalEntry::Permit {
+                    seq,
+                    permit_id,
+                    delta,
+                    reason,
+                    budget_class,
+                } => Some(PermitEvent {
+                    seq,
+                    permit_id,
+                    delta,
+                    reason,
+                    budget_class,
+                }),
                 _ => None,
             })
             .collect()
@@ -119,7 +128,13 @@ impl CommandJournal {
     }
 
     pub fn open_handles(&self) -> Vec<HandleRecord> {
-        self.inner.lock().handles.values().filter(|h| !h.closed).cloned().collect()
+        self.inner
+            .lock()
+            .handles
+            .values()
+            .filter(|h| !h.closed)
+            .cloned()
+            .collect()
     }
 
     /// 孤儿句柄（I7）：fake 侧建了句柄但没交给宿主。
@@ -149,11 +164,23 @@ impl CommandJournal {
     }
 
     pub fn live_leases(&self) -> Vec<LeaseId> {
-        self.inner.lock().live_leases.keys().cloned().map(LeaseId::new).collect()
+        self.inner
+            .lock()
+            .live_leases
+            .keys()
+            .cloned()
+            .map(LeaseId::new)
+            .collect()
     }
 
     pub fn active_sessions(&self) -> Vec<DbSessionId> {
-        self.inner.lock().active_sessions.iter().cloned().map(DbSessionId::new).collect()
+        self.inner
+            .lock()
+            .active_sessions
+            .iter()
+            .cloned()
+            .map(DbSessionId::new)
+            .collect()
     }
 
     pub fn set_idle_pools(&self, count: usize) {
@@ -318,7 +345,12 @@ impl CommandJournal {
 
     // -- 写入：句柄登记 / 注销 --------------------------------------------
 
-    pub fn record_handle(&self, handle: &SessionHandleRef, action: HandleAction, reason: &str) -> u64 {
+    pub fn record_handle(
+        &self,
+        handle: &SessionHandleRef,
+        action: HandleAction,
+        reason: &str,
+    ) -> u64 {
         self.record_handle_for(handle, action, reason, None)
     }
 
@@ -346,7 +378,9 @@ impl CommandJournal {
             }
             HandleAction::Closed => {
                 state.handles.remove(&handle_id);
-                state.orphan_handles.retain(|orphan| orphan.handle_id != handle_id);
+                state
+                    .orphan_handles
+                    .retain(|orphan| orphan.handle_id != handle_id);
             }
             HandleAction::Rejected | HandleAction::Orphaned => {
                 // 两者都不进入登记册，但必须留下可断言的痕迹。
@@ -391,7 +425,10 @@ impl CommandJournal {
     // -- I3 / I4 登记簿 ---------------------------------------------------
 
     pub fn register_lease(&self, lease_id: &LeaseId, resource_id: &ResourceId) {
-        self.inner.lock().live_leases.insert(lease_id.as_str().to_string(), resource_id.clone());
+        self.inner
+            .lock()
+            .live_leases
+            .insert(lease_id.as_str().to_string(), resource_id.clone());
     }
 
     pub fn release_lease(&self, lease_id: &LeaseId) {
@@ -399,11 +436,17 @@ impl CommandJournal {
     }
 
     pub fn register_active_session(&self, db_session_id: &DbSessionId) {
-        self.inner.lock().active_sessions.insert(db_session_id.as_str().to_string());
+        self.inner
+            .lock()
+            .active_sessions
+            .insert(db_session_id.as_str().to_string());
     }
 
     pub fn close_active_session(&self, db_session_id: &DbSessionId) {
-        self.inner.lock().active_sessions.remove(db_session_id.as_str());
+        self.inner
+            .lock()
+            .active_sessions
+            .remove(db_session_id.as_str());
     }
 
     // -- 断言入口（§5.4）-------------------------------------------------

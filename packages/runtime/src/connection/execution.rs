@@ -137,10 +137,7 @@ impl EffectOutcome {
     ///
     /// §13 L774：超时 / 协议错误 / 取消 / 连接丢失且作用域不可判定时，
     /// `effectOutcome` **必须**为 `unknown`；禁止仅因「看到取消请求」就写 `rolledBack`（CM-44、CM-47）。
-    pub fn requires_unknown_for_undecidable_error(
-        self,
-        code: Option<ExecutionErrorCode>,
-    ) -> bool {
+    pub fn requires_unknown_for_undecidable_error(self, code: Option<ExecutionErrorCode>) -> bool {
         EffectOutcome::is_undecidable(code)
             && self != EffectOutcome::Unknown
             && !matches!(self, EffectOutcome::NotStarted)
@@ -260,7 +257,12 @@ pub enum SinkWrite {
 /// 夹具保持同步签名即可完整表达背压、截断与 `protocolDrained` 三个可观测点，
 /// 也让 `packages/runtime` 不必引入异步运行时。真实异步 sink 由驱动契约 crate 提供。
 pub trait ResultSink {
-    fn write(&mut self, execution_id: &ExecutionId, chunk_index: Counter, bytes: usize) -> SinkWrite;
+    fn write(
+        &mut self,
+        execution_id: &ExecutionId,
+        chunk_index: Counter,
+        bytes: usize,
+    ) -> SinkWrite;
 
     fn complete(&mut self, execution_id: &ExecutionId, produced_bytes: u64);
 
@@ -278,11 +280,11 @@ mod tests {
             .requires_unknown_for_undecidable_error(Some(ExecutionErrorCode::Timeout)));
         assert!(EffectOutcome::Completed
             .requires_unknown_for_undecidable_error(Some(ExecutionErrorCode::Cancelled)));
+        assert!(!EffectOutcome::Unknown
+            .requires_unknown_for_undecidable_error(Some(ExecutionErrorCode::ProtocolError)));
         assert!(
-            !EffectOutcome::Unknown.requires_unknown_for_undecidable_error(Some(ExecutionErrorCode::ProtocolError))
-        );
-        assert!(
-            !EffectOutcome::RolledBack.requires_unknown_for_undecidable_error(Some(ExecutionErrorCode::SqlError)),
+            !EffectOutcome::RolledBack
+                .requires_unknown_for_undecidable_error(Some(ExecutionErrorCode::SqlError)),
             "sqlError 可与任何 outcome 配对"
         );
     }
@@ -295,7 +297,10 @@ mod tests {
         assert_eq!(ExecutionErrorCode::Cancelled.as_str(), "cancelled");
         assert_eq!(ExecutionErrorCode::Timeout.as_str(), "timeout");
         assert_eq!(ExecutionErrorCode::ResourceLost.as_str(), "resourceLost");
-        assert_eq!(ExecutionErrorCode::PipelineAborted.as_str(), "pipelineAborted");
+        assert_eq!(
+            ExecutionErrorCode::PipelineAborted.as_str(),
+            "pipelineAborted"
+        );
         assert_eq!(ExecutionErrorCode::HostRejected.as_str(), "hostRejected");
     }
 
@@ -338,7 +343,11 @@ mod tests {
     fn session_command_ids_round_trip() {
         for command in SessionCommand::ALL {
             let id = command.id();
-            assert_eq!(SessionCommand::from_id(id), Some(command), "命令 id 必须可反查");
+            assert_eq!(
+                SessionCommand::from_id(id),
+                Some(command),
+                "命令 id 必须可反查"
+            );
         }
         assert_eq!(SessionCommand::from_id("no_such_command"), None);
     }
@@ -348,7 +357,12 @@ mod tests {
         // §9.1：读命令只有 `open_session_cursor`，其余写类命令必须显式声明 Write。
         for command in SessionCommand::ALL {
             let expected = command != SessionCommand::OpenSessionCursor;
-            assert_eq!(command.is_write(), expected, "{} 的读写分类不对", command.id());
+            assert_eq!(
+                command.is_write(),
+                expected,
+                "{} 的读写分类不对",
+                command.id()
+            );
         }
     }
 

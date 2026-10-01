@@ -31,7 +31,7 @@ pub use clock::FakeClock;
 pub use commands::session_handle_command_definitions;
 pub use fake_resource::{FakeResource, FakeResourceProvider, FakeScript};
 pub use fixtures::fixtures;
-pub use ids::{FakeIds, FakeIdScope};
+pub use ids::{FakeIdScope, FakeIds};
 pub use journal::{CommandJournal, JournalAssert};
 
 #[cfg(any(test, feature = "test-harness"))]

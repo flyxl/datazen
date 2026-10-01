@@ -58,7 +58,13 @@ impl SessionHandleRef {
         resource_id: ResourceId,
         runtime_epoch: Counter,
     ) -> Self {
-        Self { handle_id, kind, resource_id, runtime_epoch, closed: false }
+        Self {
+            handle_id,
+            kind,
+            resource_id,
+            runtime_epoch,
+            closed: false,
+        }
     }
 }
 
@@ -208,7 +214,8 @@ mod tests {
         let id = HandleId::new("hnd-1");
         let resource = ResourceId::new("res_w1_0001");
         let epoch = Counter::new(1);
-        let handle = SessionHandleRef::new(id.clone(), HandleKind::Transaction, resource.clone(), epoch);
+        let handle =
+            SessionHandleRef::new(id.clone(), HandleKind::Transaction, resource.clone(), epoch);
         assert!(!handle.closed, "新建句柄未终结");
         assert_eq!(handle.handle_id, id);
         assert_eq!(handle.resource_id, resource);
@@ -236,10 +243,7 @@ mod tests {
 
     #[test]
     fn confirmed_context_is_the_default_shape() {
-        let ctx = SessionContext::new(
-            NamespaceTarget::default(),
-            "exec-identity-shared",
-        );
+        let ctx = SessionContext::new(NamespaceTarget::default(), "exec-identity-shared");
         assert_eq!(ctx.confidence, ContextConfidence::Confirmed);
         assert_eq!(ctx.transaction_state, TransactionState::None);
         assert!(ctx.autocommit);
@@ -284,7 +288,10 @@ mod tests {
                 namespace: NamespaceTarget::default(),
                 object: None,
             },
-            observed_context: SessionContext::new(NamespaceTarget::default(), "exec-identity-shared"),
+            observed_context: SessionContext::new(
+                NamespaceTarget::default(),
+                "exec-identity-shared",
+            ),
             context_revision: Counter::new(0),
             state: SessionState::Ready,
             attachment_state: AttachmentState::Attached,
@@ -293,7 +300,10 @@ mod tests {
         };
         assert_eq!(view.connection_id.as_str(), "conn-fixture-p");
         assert_eq!(view.handle.db_session_id.as_str(), "dbs_w1_0001");
-        assert_ne!(view.connection_id.as_str(), view.handle.db_session_id.as_str());
+        assert_ne!(
+            view.connection_id.as_str(),
+            view.handle.db_session_id.as_str()
+        );
     }
 
     #[test]
@@ -312,7 +322,10 @@ mod tests {
                 runtime_epoch: Counter::new(1),
             },
             expected_context_revision: Counter::new(2),
-            call: CommandCall { command: "select_rows".into(), input: serde_json::json!({}) },
+            call: CommandCall {
+                command: "select_rows".into(),
+                input: serde_json::json!({}),
+            },
             idempotency_key: "idem-1".into(),
         };
         // 已在会话上的操作只带 dbSessionId；配置语义由 connectionId 承担，两者不混用。
@@ -324,7 +337,10 @@ mod tests {
                 namespace: NamespaceTarget::default(),
                 object: None,
             },
-            call: CommandCall { command: "select_rows".into(), input: serde_json::json!({}) },
+            call: CommandCall {
+                command: "select_rows".into(),
+                input: serde_json::json!({}),
+            },
             idempotency_key: "idem-2".into(),
         };
         assert_eq!(at_target.target.connection_id.as_str(), "conn-fixture-p");

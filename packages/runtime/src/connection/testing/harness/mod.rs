@@ -37,7 +37,9 @@ use serde_json::{json, Value as JsonValue};
 
 use crate::connection::error::ProviderError;
 use crate::connection::execution::SessionCommand;
-use crate::connection::port::{AcquireResourceRequest, BudgetClass, CloseReceipt, CloseResourceRequest};
+use crate::connection::port::{
+    AcquireResourceRequest, BudgetClass, CloseReceipt, CloseResourceRequest,
+};
 use crate::connection::testing::barrier::Barrier;
 use crate::connection::testing::clock::FakeClock;
 use crate::connection::testing::commands::session_handle_command_definition;
@@ -78,7 +80,10 @@ impl FakeHarness {
 
     /// 用 builder 把 provider 装好再接管（执行身份、共享台账、configRevision）。
     pub fn from_provider(provider: FakeResourceProvider) -> Self {
-        Self { provider, barrier: Barrier::new() }
+        Self {
+            provider,
+            barrier: Barrier::new(),
+        }
     }
 
     // ---- 只读访问器 ----
@@ -151,15 +156,15 @@ impl FakeHarness {
     /// 不是靠调用方填一个 0 骗过去的。
     ///
     /// 返回 `ProviderError` 而不是 panic：调用方（用例）自己决定怎么断言。
-    pub fn close(&self, handle: &crate::connection::port::ResourceHandle) -> Result<CloseReceipt, ProviderError> {
+    pub fn close(
+        &self,
+        handle: &crate::connection::port::ResourceHandle,
+    ) -> Result<CloseReceipt, ProviderError> {
         let resource_id = handle.resource_id.clone();
         let open: Vec<HandleId> = self.provider.open_handle_ids(&resource_id);
         for handle_id in open {
-            self.provider.close_handle(
-                &resource_id,
-                &handle_id,
-                "§9.3 关闭资源前先注销句柄",
-            )?;
+            self.provider
+                .close_handle(&resource_id, &handle_id, "§9.3 关闭资源前先注销句柄")?;
         }
         self.provider.close_resource(&CloseResourceRequest {
             handle: handle.clone(),
@@ -170,7 +175,7 @@ impl FakeHarness {
 
     // ---- §9.1 命令网关 ----
 
-        /// 走 §9.1 的会话级句柄命令：查表 → 校验入参 → 分发 → `CommandResult`。
+    /// 走 §9.1 的会话级句柄命令：查表 → 校验入参 → 分发 → `CommandResult`。
     ///
     /// `resource_handle` 必须是**由该提供方签发**的只读凭证（§3.1）。
     /// `input` 就是 §9.1 表里那条命令的入参 schema —— `handleId`、`rows`、`name`、
@@ -193,7 +198,8 @@ impl FakeHarness {
                 let hold_ms = u64_field(&input, "holdMs")?;
                 // §9.1：hold 命令**不自动终结**事务，它的存在就是为了和关闭 / 驱逐赛跑。
                 // 只推进假单调时钟，绝不 sleep。
-                self.clock().advance(std::time::Duration::from_millis(hold_ms));
+                self.clock()
+                    .advance(std::time::Duration::from_millis(hold_ms));
                 self.begin_transaction(resource_handle)?
             }
             SessionCommand::OpenSessionCursor => {
@@ -218,7 +224,8 @@ impl FakeHarness {
                 self.begin_transaction_unregistered(resource_handle)?
             }
             SessionCommand::CommitWithStaleHandle => {
-                let stale_epoch = crate::connection::types::Counter::new(u64_field(&input, "runtimeEpoch")?);
+                let stale_epoch =
+                    crate::connection::types::Counter::new(u64_field(&input, "runtimeEpoch")?);
                 self.commit_with_stale_epoch(
                     resource_handle,
                     &handle_id_field(&input)?,

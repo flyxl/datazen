@@ -124,7 +124,9 @@ impl Shared {
     fn lock(&self) -> MutexGuard<'_, ClockState> {
         // FakeClock 是纯内存状态，锁中毒意味着某个测试 panic 已经污染了它。
         // 恢复而不是传播，保证「同线程内即可断言」的路径不会因为一次误用而永久不可用。
-        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 
@@ -173,7 +175,8 @@ impl FakeClock {
             id,
             label: label.into(),
             armed_at_nanos,
-            deadline_nanos: armed_at_nanos.saturating_add(ttl.as_nanos().min(u128::from(u64::MAX)) as u64),
+            deadline_nanos: armed_at_nanos
+                .saturating_add(ttl.as_nanos().min(u128::from(u64::MAX)) as u64),
         });
         id
     }
@@ -251,7 +254,11 @@ impl FakeClock {
     /// 判断某个期限集合里，此刻到期的到底是哪些。
     pub fn due_deadlines(&self, deadlines: &[Deadline]) -> Vec<Deadline> {
         let now = self.monotonic();
-        deadlines.iter().copied().filter(|deadline| deadline.due(now)).collect()
+        deadlines
+            .iter()
+            .copied()
+            .filter(|deadline| deadline.due(now))
+            .collect()
     }
 
     /// 推进到最早期限并返回被选中的那个；测试据此断言「实际选用的是最早者」。
@@ -352,7 +359,10 @@ mod tests {
         let cleanup = clock.arm("cleanup-deadline", secs(10));
 
         assert!(clock.advance(secs(10)).iter().any(|f| f.id == cleanup));
-        assert!(clock.expired().is_empty(), "已到期的 timer 已被 advance 消费");
+        assert!(
+            clock.expired().is_empty(),
+            "已到期的 timer 已被 advance 消费"
+        );
 
         let fired = clock.advance(secs(5 * 60 - 10));
         assert_eq!(fired.len(), 1, "只应触发 5 分钟空闲事务期限");

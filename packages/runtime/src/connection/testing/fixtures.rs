@@ -6,9 +6,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use crate::connection::types::{
-    ConfigRevision, ConnectionId, OrganizationId, PrincipalId,
-};
+use crate::connection::types::{ConfigRevision, ConnectionId, OrganizationId, PrincipalId};
 
 /// §8.1 L419：两个组织。
 pub const ORG_A: &str = "org-alpha";
@@ -112,8 +110,14 @@ pub fn fixtures() -> FixtureCatalog {
 
     FixtureCatalog {
         orgs: vec![
-            FixtureOrg { key: "ORG_A", id: org_alpha.clone() },
-            FixtureOrg { key: "ORG_B", id: org_beta.clone() },
+            FixtureOrg {
+                key: "ORG_A",
+                id: org_alpha.clone(),
+            },
+            FixtureOrg {
+                key: "ORG_B",
+                id: org_beta.clone(),
+            },
         ],
         users: vec![
             FixtureUser {
@@ -158,8 +162,16 @@ pub fn fixtures() -> FixtureCatalog {
             },
         ],
         namespaces: vec![
-            FixtureNamespace { key: NS_A_KEY, database: NS_A, marker_value: MARKER_A },
-            FixtureNamespace { key: NS_B_KEY, database: NS_B, marker_value: MARKER_B },
+            FixtureNamespace {
+                key: NS_A_KEY,
+                database: NS_A,
+                marker_value: MARKER_A,
+            },
+            FixtureNamespace {
+                key: NS_B_KEY,
+                database: NS_B,
+                marker_value: MARKER_B,
+            },
         ],
         marker_table: MARKER_TABLE,
         marker_table_ddl: MARKER_TABLE_DDL,
@@ -175,7 +187,10 @@ pub struct FixtureWorld {
 
 impl FixtureWorld {
     pub fn empty() -> Self {
-        Self { catalog: fixtures(), indexes: BTreeMap::new() }
+        Self {
+            catalog: fixtures(),
+            indexes: BTreeMap::new(),
+        }
     }
 
     /// §2 表里 `fixtures.rs` 的第二个导出。
@@ -318,10 +333,21 @@ mod tests {
     fn shared_db_account_users_differ_only_in_policy_isolation_key() {
         // §8.1 L425 / CM-05、CM-67：共享 IDENTITY_SHARED，但 policyIsolationKey 必须不同。
         let catalog = fixtures();
-        let a1 = catalog.users.iter().find(|user| user.id.as_str() == USER_A1).expect("USER_A1 必须在表里");
-        let a2 = catalog.users.iter().find(|user| user.id.as_str() == USER_A2).expect("USER_A2 必须在表里");
+        let a1 = catalog
+            .users
+            .iter()
+            .find(|user| user.id.as_str() == USER_A1)
+            .expect("USER_A1 必须在表里");
+        let a2 = catalog
+            .users
+            .iter()
+            .find(|user| user.id.as_str() == USER_A2)
+            .expect("USER_A2 必须在表里");
         assert_eq!(a1.execution_identity, IDENTITY_SHARED);
-        assert_eq!(a2.execution_identity, IDENTITY_SHARED, "两者共享同一个 DB 账号");
+        assert_eq!(
+            a2.execution_identity, IDENTITY_SHARED,
+            "两者共享同一个 DB 账号"
+        );
         assert_eq!(a1.shares_db_account_with.as_ref(), Some(&a2.id));
         assert_ne!(
             a1.policy_isolation_key, a2.policy_isolation_key,
@@ -333,18 +359,37 @@ mod tests {
     fn cross_organization_user_is_not_visible_to_org_alpha() {
         // §8.1 L421：USER_B1 跨组织不可见。
         let catalog = fixtures();
-        let a1 = catalog.users.iter().find(|user| user.id.as_str() == USER_A1).expect("USER_A1");
-        let b1 = catalog.users.iter().find(|user| user.id.as_str() == USER_B1).expect("USER_B1");
+        let a1 = catalog
+            .users
+            .iter()
+            .find(|user| user.id.as_str() == USER_A1)
+            .expect("USER_A1");
+        let b1 = catalog
+            .users
+            .iter()
+            .find(|user| user.id.as_str() == USER_B1)
+            .expect("USER_B1");
         assert_ne!(a1.organization_id, b1.organization_id);
-        assert_ne!(a1.execution_identity, b1.execution_identity, "个人执行身份必须不同于共享身份");
+        assert_ne!(
+            a1.execution_identity, b1.execution_identity,
+            "个人执行身份必须不同于共享身份"
+        );
     }
 
     #[test]
     fn profile_v2_changes_config_revision_so_pool_key_must_change() {
         // §8.1 L422：验证 poolKeyFingerprint 换 key。
         let catalog = fixtures();
-        let p = catalog.profiles.iter().find(|profile| profile.key == "PROFILE_P").expect("PROFILE_P");
-        let v2 = catalog.profiles.iter().find(|profile| profile.key == "PROFILE_P_V2").expect("PROFILE_P_V2");
+        let p = catalog
+            .profiles
+            .iter()
+            .find(|profile| profile.key == "PROFILE_P")
+            .expect("PROFILE_P");
+        let v2 = catalog
+            .profiles
+            .iter()
+            .find(|profile| profile.key == "PROFILE_P_V2")
+            .expect("PROFILE_P_V2");
         assert_ne!(p.config_revision.get(), v2.config_revision.get());
     }
 
@@ -352,8 +397,18 @@ mod tests {
     fn installed_world_resolves_every_key_and_marker() {
         let mut world = FixtureWorld::empty();
         install_fixtures(&mut world);
-        assert_eq!(world.user("USER_B1").expect("USER_B1").id.as_str(), "user-beta-1");
-        assert_eq!(world.profile("PROFILE_P_V2").expect("PROFILE_P_V2").config_revision.get(), 8);
+        assert_eq!(
+            world.user("USER_B1").expect("USER_B1").id.as_str(),
+            "user-beta-1"
+        );
+        assert_eq!(
+            world
+                .profile("PROFILE_P_V2")
+                .expect("PROFILE_P_V2")
+                .config_revision
+                .get(),
+            8
+        );
         assert_eq!(world.namespace("NS_A").expect("NS_A").database, "dz_ns_a");
         assert_eq!(world.marker_value("NS_A"), Some("dz-marker-alpha"));
         assert_eq!(world.marker_value("NS_B"), Some("dz-marker-beta"));
@@ -375,11 +430,17 @@ mod tests {
         assert_eq!(design.per_user_logical_sessions, 100);
         assert_eq!(design.per_org_logical_sessions, 1000);
         assert_eq!(design.data_buffer_per_pipeline, 8 * 1024 * 1024);
-        assert_eq!(lowered.acquire_timeout, design.acquire_timeout, "其余初值不得被下调");
+        assert_eq!(
+            lowered.acquire_timeout, design.acquire_timeout,
+            "其余初值不得被下调"
+        );
         assert_eq!(lowered.no_transaction_idle, Duration::from_secs(1800));
         assert_eq!(lowered.idle_transaction, Duration::from_secs(300));
         assert_eq!(lowered.client_disconnect_retention, Duration::from_secs(60));
-        assert_eq!(lowered.idempotency_token_ttl, Duration::from_secs(24 * 3600));
+        assert_eq!(
+            lowered.idempotency_token_ttl,
+            Duration::from_secs(24 * 3600)
+        );
         assert_eq!(lowered.drain_events_per_subscription, 256);
     }
 }

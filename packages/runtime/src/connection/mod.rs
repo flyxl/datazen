@@ -20,8 +20,8 @@ pub mod types;
 
 pub use execution::{
     EffectOutcome, ExecutionErrorCode, ExecutionReceipt, ExecutionState, ResultCompleteness,
-    ResultSink, SessionCommand, SinkWrite, StatementResult, StatementResultSource, TruncationReason,
-    TruncationRecord,
+    ResultSink, SessionCommand, SinkWrite, StatementResult, StatementResultSource,
+    TruncationReason, TruncationRecord,
 };
 pub use session::{
     AttachmentState, CloseMode, CommandCall, ContextConfidence, ExecuteAtTargetRequest,
@@ -31,8 +31,8 @@ pub use session::{
 pub use types::{
     ConfigRevision, ConnectionId, Counter, DbSessionId, ExecutionId, ExecutionTarget, HandleId,
     JobId, LeaseId, NamespaceInput, NamespaceLayer, NamespaceShape, NamespaceTarget, ObjectTarget,
-    OrganizationId, OwnerRef, PoolKeyFingerprint, PoolKeyInputs, PrincipalId, ResourceId,
-    StreamId, Timestamp, WorkerId,
+    OrganizationId, OwnerRef, PoolKeyFingerprint, PoolKeyInputs, PrincipalId, ResourceId, StreamId,
+    Timestamp, WorkerId,
 };
 
 #[cfg(any(test, feature = "test-harness"))]

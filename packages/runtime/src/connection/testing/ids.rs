@@ -89,7 +89,13 @@ impl IdState {
     fn remember_first(&mut self, scope: FakeIdScope, value: u64) {
         let key = scope as u8;
         if !self.collisions.contains_key(&key) {
-            self.collisions.insert(key, Collision { remaining: 0, value });
+            self.collisions.insert(
+                key,
+                Collision {
+                    remaining: 0,
+                    value,
+                },
+            );
         }
     }
 }
@@ -98,7 +104,9 @@ impl IdState {
 ///
 /// 用 `RandomState` 的 OS 随机种子，不引入 `rand` 依赖 —— 这是 §8.2 L441 唯一允许的真实随机源。
 fn random_u64() -> u64 {
-    std::collections::hash_map::RandomState::new().build_hasher().finish()
+    std::collections::hash_map::RandomState::new()
+        .build_hasher()
+        .finish()
 }
 
 /// 可预测 ID 生成器。克隆**共享同一状态**（`Arc`），因此 provider 与测试拿到的是
@@ -122,7 +130,9 @@ impl FakeIds {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, IdState> {
-        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// `res_<workerId>_<seq:04>`，每 provider 一份序列。
@@ -169,7 +179,10 @@ impl FakeIds {
     /// `lse_<resourceId>#<n>`，每 resource 递增，每次 acquire 一条。
     pub fn next_lease_id(&self, resource_id: &ResourceId) -> LeaseId {
         let mut state = self.lock();
-        let entry = state.lease_seq.entry(resource_id.as_str().to_owned()).or_insert(0);
+        let entry = state
+            .lease_seq
+            .entry(resource_id.as_str().to_owned())
+            .or_insert(0);
         *entry += 1;
         LeaseId::new(format!("lse_{resource_id}#{entry}"))
     }
@@ -221,9 +234,13 @@ impl FakeIds {
                 FakeIdScope::DbSessionId => state.db_session_seq,
                 FakeIdScope::RuntimeEpoch => 1,
             });
-        state
-            .collisions
-            .insert(key, Collision { remaining: k, value: existing_first });
+        state.collisions.insert(
+            key,
+            Collision {
+                remaining: k,
+                value: existing_first,
+            },
+        );
     }
 
     /// `attachmentToken`。**§8.2 L441 例外**：真实随机源，不写 journal、不打印。
@@ -244,7 +261,9 @@ impl FakeIds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection::types::{ClientInstanceId, ConnectionId, EditorSessionId, OrganizationId, PrincipalId};
+    use crate::connection::types::{
+        ClientInstanceId, ConnectionId, EditorSessionId, OrganizationId, PrincipalId,
+    };
 
     fn owner(user: &str, editor: &str) -> OwnerRef {
         OwnerRef::Editor {
@@ -304,14 +323,20 @@ mod tests {
         let a1 = ids.next_runtime_epoch(&session, &owner("user-alpha-1", "ed-1"));
         assert_eq!(a1.counter.get(), 1);
         assert_eq!(a1.text, format!("{}.1", a1.owner_hash));
-        assert!(a1.text.contains('.'), "§8.2 生成式是 `<ownerHash>.<counter>`");
+        assert!(
+            a1.text.contains('.'),
+            "§8.2 生成式是 `<ownerHash>.<counter>`"
+        );
 
         let again = ids.next_runtime_epoch(&session, &owner("user-alpha-1", "ed-1"));
         assert_eq!(again.counter.get(), 2, "同一 owner 再次取 epoch 也必须递增");
 
         let other = ids.next_runtime_epoch(&session, &owner("user-alpha-2", "ed-1"));
         assert!(other.counter.get() > a1.counter.get(), "换 owner 必增");
-        assert_ne!(other.owner_hash, a1.owner_hash, "ownerHash 必须随 owner 变化");
+        assert_ne!(
+            other.owner_hash, a1.owner_hash,
+            "ownerHash 必须随 owner 变化"
+        );
     }
 
     #[test]
@@ -325,7 +350,10 @@ mod tests {
 
         ids.force_collision(FakeIdScope::RuntimeEpoch, 1);
         let forced = ids.next_runtime_epoch(&session, &owner("user-alpha-1", "ed-1"));
-        assert_eq!(forced.counter, first.counter, "被强制的 epoch 必须与第一次完全相同");
+        assert_eq!(
+            forced.counter, first.counter,
+            "被强制的 epoch 必须与第一次完全相同"
+        );
         assert_eq!(forced.text, first.text);
 
         let after = ids.next_runtime_epoch(&session, &owner("user-alpha-1", "ed-1"));
@@ -339,7 +367,11 @@ mod tests {
         let second = ids.next_db_session_id();
         assert_ne!(first, second);
         ids.force_collision(FakeIdScope::DbSessionId, 1);
-        assert_eq!(ids.next_db_session_id(), first, "强制的 dbSessionId 必须与第一次相同");
+        assert_eq!(
+            ids.next_db_session_id(),
+            first,
+            "强制的 dbSessionId 必须与第一次相同"
+        );
         // 碰撞额度用尽后计数器**从未推进过**（见 `force_collision` 的契约），
         // 因此下一次取号必然是尚未发过的下一个值，而不是把 `second` 再发一遍。
         let after = ids.next_db_session_id();
@@ -355,6 +387,10 @@ mod tests {
         assert_eq!(format!("{token:?}"), "Secret(<redacted>)");
         assert_eq!(format!("{token}"), "<redacted>");
         assert!(token.expose().starts_with("atk_"), "内部结构仍可用于比较");
-        assert_ne!(token.expose(), ids.attachment_token().expose(), "令牌必须每次不同");
+        assert_ne!(
+            token.expose(),
+            ids.attachment_token().expose(),
+            "令牌必须每次不同"
+        );
     }
 }

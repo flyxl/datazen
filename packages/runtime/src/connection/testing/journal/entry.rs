@@ -10,14 +10,15 @@
 use crate::connection::execution::{EffectOutcome, ExecutionErrorCode, TruncationRecord};
 use crate::connection::port::{BudgetClass, PermitId, PermitReason};
 use crate::connection::session::HandleKind;
-use crate::connection::types::{
-    Counter, ExecutionId, OwnerRef, PoolKeyFingerprint, ResourceId,
-};
+use crate::connection::types::{Counter, ExecutionId, OwnerRef, PoolKeyFingerprint, ResourceId};
 
 pub(crate) fn live_resources_in(entries: &[JournalEntry]) -> Vec<ResourceId> {
     let mut live: Vec<ResourceId> = Vec::new();
     for entry in entries {
-        if let JournalEntry::Resource { resource_id, event, .. } = entry {
+        if let JournalEntry::Resource {
+            resource_id, event, ..
+        } = entry
+        {
             if matches!(event, ResourceEvent::Created) {
                 live.push(resource_id.clone());
             } else if event.leaves_live_set() {
@@ -46,7 +47,10 @@ pub enum ResourceEvent {
     /// 隔离：不归还，保留预算占用（§4.2 F8 rollback 失败）。
     Quarantined,
     /// 归池尝试。§9.4 前置检查全满足才允许发生，因此必须被单独记录以便断言它**未**发生。
-    ReturnedToPool { protocol_drained: bool, registered_handles: usize },
+    ReturnedToPool {
+        protocol_drained: bool,
+        registered_handles: usize,
+    },
 }
 
 impl ResourceEvent {

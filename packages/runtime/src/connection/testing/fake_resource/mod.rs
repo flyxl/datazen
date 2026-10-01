@@ -36,7 +36,7 @@ use crate::connection::testing::journal::CommandJournal;
 use crate::connection::types::{ConfigRevision, ExecutionTarget, LeaseId, ResourceId, WorkerId};
 
 pub use handles::AcquiredResource;
-pub use script::{EvictionRace, FaultKind, FakeScript, ResourceOp, ScriptStep};
+pub use script::{EvictionRace, FakeScript, FaultKind, ResourceOp, ScriptStep};
 pub use state::{Accounting, FakeResource, FakeResourceState, PermitEventPlan};
 
 /// 假提供方自报的 `driverId`。所有资源描述、能力快照都用它。
@@ -58,7 +58,10 @@ pub(crate) struct BudgetBusy {
 
 impl Default for BudgetBusy {
     fn default() -> Self {
-        Self { until_nanos: 0, reason: "" }
+        Self {
+            until_nanos: 0,
+            reason: "",
+        }
     }
 }
 
@@ -195,7 +198,10 @@ impl FakeResourceProvider {
     }
 
     /// 找一张同 `pool_key` 且处于 `Ready` 的可复用资源。
-    pub fn reusable_resource(&self, pool_key: &crate::connection::types::PoolKeyFingerprint) -> Option<ResourceId> {
+    pub fn reusable_resource(
+        &self,
+        pool_key: &crate::connection::types::PoolKeyFingerprint,
+    ) -> Option<ResourceId> {
         self.lock()
             .values()
             .find(|resource| resource.state.is_reusable() && &resource.pool_key == pool_key)
@@ -207,7 +213,9 @@ impl FakeResourceProvider {
     /// 资源表锁。`Mutex` 中毒时取内层值继续跑：夹具若因某个断言失败而 panic，
     /// 后续用例仍要能读到台账并给出完整失败信息。
     pub(crate) fn lock(&self) -> MutexGuard<'_, IndexMap<String, FakeResource>> {
-        self.resources.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.resources
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     pub(crate) fn leases_of(&self, resource_id: &ResourceId) -> Vec<LeaseId> {

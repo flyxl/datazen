@@ -157,12 +157,18 @@ impl CapabilitySnapshot {
 
     /// 上下文观测不可靠时 `observedContext` 必须保持 `unknown`，禁止回填 `initialTarget`。
     pub const fn context_must_stay_unknown(&self) -> bool {
-        matches!(self.context_observation, ContextObservation::Partial | ContextObservation::Unsupported)
+        matches!(
+            self.context_observation,
+            ContextObservation::Partial | ContextObservation::Unsupported
+        )
     }
 
     /// 事务观测降级时必须走 `TransactionResolutionRequired` 路径。
     pub const fn requires_transaction_resolution(&self) -> bool {
-        matches!(self.transaction_observation, TransactionObservationSupport::Partial)
+        matches!(
+            self.transaction_observation,
+            TransactionObservationSupport::Partial
+        )
     }
 
     /// 归池复用是否被驱动验证过。未验证时一切复用路径必须走关闭。
@@ -181,7 +187,10 @@ mod tests {
         assert_eq!(caps.stateful_session, StatefulSessionSupport::Supported);
         assert_eq!(caps.namespace_switch, NamespaceSwitch::InPlace);
         assert_eq!(caps.context_observation, ContextObservation::Full);
-        assert_eq!(caps.transaction_observation, TransactionObservationSupport::Full);
+        assert_eq!(
+            caps.transaction_observation,
+            TransactionObservationSupport::Full
+        );
         assert_eq!(caps.session_scoped_handles, SessionScopedHandles::Supported);
         assert_eq!(caps.reset_for_reuse, ResetForReuse::Verified);
         assert_eq!(caps.precise_cancel, PreciseCancel::Supported);

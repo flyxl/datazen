@@ -18,11 +18,11 @@ use crate::connection::error::ProviderError;
 use crate::connection::execution::{EffectOutcome, ExecutionErrorCode, SessionCommand};
 use crate::connection::port::BudgetClass;
 use crate::connection::session::HandleKind;
+use crate::connection::testing::fake_resource::{FakeResourceProvider, FaultKind, ResourceOp};
 use crate::connection::testing::fixtures::{self, NS_A_KEY, NS_B_KEY};
 use crate::connection::testing::harness::fixture_target;
 use crate::connection::testing::journal::{HandleAction, JournalEntry, ResourceEvent};
-use crate::connection::testing::fake_resource::{FaultKind, FakeResourceProvider, ResourceOp};
-use crate::connection::types::{HandleId, JobId, OwnerRef, OrganizationId, WorkerId};
+use crate::connection::types::{HandleId, JobId, OrganizationId, OwnerRef, WorkerId};
 use datazen_driver_api::command::CommandResult;
 
 /// §8.1：夹具目标取自 `fixtures`，用例里不写硬编码命名空间字面量。
@@ -52,7 +52,10 @@ fn first_handle_id(result: &CommandResult) -> String {
         .pointer("/sessionHandles/0/handleId")
         .and_then(|value| value.as_str())
         .unwrap_or_else(|| {
-            panic!("命令输出里没有 sessionHandles[0].handleId，实际是 {}", result.data)
+            panic!(
+                "命令输出里没有 sessionHandles[0].handleId，实际是 {}",
+                result.data
+            )
         })
         .to_owned()
 }
@@ -71,7 +74,11 @@ fn a_normal_session_journey_leaves_no_leak_and_balanced_change_points() {
         .expect("夹具自带的 acquire 必须成功");
 
     let begun = harness
-        .invoke(SessionCommand::BeginSessionTransaction, &acquired.handle, json!({}))
+        .invoke(
+            SessionCommand::BeginSessionTransaction,
+            &acquired.handle,
+            json!({}),
+        )
         .expect("begin_session_transaction 必须成功");
     let handle_id = first_handle_id(&begun);
 
@@ -86,7 +93,11 @@ fn a_normal_session_journey_leaves_no_leak_and_balanced_change_points() {
     // （`next_handle_id` 每次都从新的 executionId 派生）。关闭必须关**开出来的那一个**：
     // 拿事务句柄去关游标，事务在 commit 时已经注销，必然是 `SessionNotFound`。
     let opened = harness
-        .invoke(SessionCommand::OpenSessionCursor, &acquired.handle, json!({ "rows": 2 }))
+        .invoke(
+            SessionCommand::OpenSessionCursor,
+            &acquired.handle,
+            json!({ "rows": 2 }),
+        )
         .expect("open_session_cursor 必须成功");
     let cursor_handle_id = first_handle_id(&opened);
 
@@ -108,7 +119,9 @@ fn a_normal_session_journey_leaves_no_leak_and_balanced_change_points() {
 
     // 旅程终点是**关闭资源**：归还 permit、注销残留的 prepared statement 句柄、
     // 摘掉 active session，I1/I2/I4/I5/I6 才能全部收口。
-    harness.close(&acquired.handle).expect("close_resource 必须成功");
+    harness
+        .close(&acquired.handle)
+        .expect("close_resource 必须成功");
 
     // §4.3 I1–I8 + §5.3 变化点全收口。
     if let Err(violations) = harness.assert_no_leak() {
@@ -154,15 +167,16 @@ fn a_registered_handle_is_visible_in_the_registry() {
         .expect("acquire 必须成功");
 
     harness
-        .invoke(SessionCommand::BeginSessionTransaction, &acquired.handle, json!({}))
+        .invoke(
+            SessionCommand::BeginSessionTransaction,
+            &acquired.handle,
+            json!({}),
+        )
         .expect("begin 必须成功");
     let registered = harness.registered_handle_ids_on(&acquired.resource_id);
     assert_eq!(registered.len(), 1, "正常 begin 必须恰好登记一个句柄");
     assert!(
-        harness
-            .provider()
-            .registered_handles(&acquired.resource_id)
-            > 0,
+        harness.provider().registered_handles(&acquired.resource_id) > 0,
         "登记册里必须能看到这个句柄"
     );
 
@@ -171,7 +185,9 @@ fn a_registered_handle_is_visible_in_the_registry() {
         !harness.journal().handle_registry().is_empty(),
         "句柄还开着，登记册就不该是空的"
     );
-    harness.close(&acquired.handle).expect("收尾 close_resource 必须成功");
+    harness
+        .close(&acquired.handle)
+        .expect("收尾 close_resource 必须成功");
     assert!(
         harness.journal().handle_registry().is_empty(),
         "关资源之后登记册必须空（I5）"
@@ -195,7 +211,11 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
         .acquire(owner(), "pol-1", BudgetClass::Session)
         .expect("acquire 必须成功");
     let begun = harness
-        .invoke(SessionCommand::BeginSessionTransaction, &acquired.handle, json!({}))
+        .invoke(
+            SessionCommand::BeginSessionTransaction,
+            &acquired.handle,
+            json!({}),
+        )
         .expect("begin 必须成功");
     let handle_id = first_handle_id(&begun);
 
@@ -213,7 +233,10 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
     let injected = injected.expect("F9 注入的是**不可判定**，命令本身仍返回 completion");
 
     assert_eq!(
-        injected.data.pointer("/effectOutcome").and_then(|v| v.as_str()),
+        injected
+            .data
+            .pointer("/effectOutcome")
+            .and_then(|v| v.as_str()),
         Some(EffectOutcome::Unknown.as_str()),
         "F9 之后 effectOutcome 必须是 unknown（§3.2）"
     );
@@ -228,7 +251,10 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
         "F9 额度只应被这一次提交消耗掉；剩余额度就意味着存在自动重放"
     );
     assert!(
-        !injected.data.to_string().contains("TransactionResolutionRequired"),
+        !injected
+            .data
+            .to_string()
+            .contains("TransactionResolutionRequired"),
         "不可判定不得回退成 TransactionResolutionRequired：{}",
         injected.data
     );
@@ -238,7 +264,9 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
         !harness.journal().handle_registry().is_empty(),
         "不可判定的提交不得顺手注销句柄"
     );
-    harness.close(&acquired.handle).expect("收尾 close_resource 必须成功");
+    harness
+        .close(&acquired.handle)
+        .expect("收尾 close_resource 必须成功");
 }
 
 /// §9.2 `rollback_session_transaction` 注入 F10：回滚失败。
@@ -253,7 +281,11 @@ fn a_rollback_injected_with_rollback_failed_quarantines_and_keeps_the_budget() {
         .acquire(owner(), "pol-1", BudgetClass::Session)
         .expect("acquire 必须成功");
     let begun = harness
-        .invoke(SessionCommand::BeginSessionTransaction, &acquired.handle, json!({}))
+        .invoke(
+            SessionCommand::BeginSessionTransaction,
+            &acquired.handle,
+            json!({}),
+        )
         .expect("begin 必须成功");
     let handle_id = first_handle_id(&begun);
     assert_eq!(
@@ -281,11 +313,15 @@ fn a_rollback_injected_with_rollback_failed_quarantines_and_keeps_the_budget() {
     }
 
     // 台账上必须有 Quarantined，且预算**没有**归还。
-    let quarantined = harness
-        .journal()
-        .entries()
-        .iter()
-        .any(|entry| matches!(entry, JournalEntry::Resource { event: ResourceEvent::Quarantined, .. }));
+    let quarantined = harness.journal().entries().iter().any(|entry| {
+        matches!(
+            entry,
+            JournalEntry::Resource {
+                event: ResourceEvent::Quarantined,
+                ..
+            }
+        )
+    });
     assert!(quarantined, "回滚失败必须留下 Quarantined 事件");
     assert_eq!(
         harness.journal().permit_balance(),
@@ -303,7 +339,9 @@ fn a_rollback_injected_with_rollback_failed_quarantines_and_keeps_the_budget() {
         "隔离形状下规则 4 应当对得平"
     );
 
-    harness.close(&acquired.handle).expect("收尾 close_resource 必须成功");
+    harness
+        .close(&acquired.handle)
+        .expect("收尾 close_resource 必须成功");
     if let Err(violations) = harness.assert_no_leak() {
         panic!("隔离收尾不得留下泄漏：{violations}");
     }
@@ -323,7 +361,11 @@ fn a_commit_carrying_a_stale_runtime_epoch_is_rejected() {
         .expect("acquire 必须成功");
 
     let begun = harness
-        .invoke(SessionCommand::BeginSessionTransaction, &acquired.handle, json!({}))
+        .invoke(
+            SessionCommand::BeginSessionTransaction,
+            &acquired.handle,
+            json!({}),
+        )
         .expect("begin 必须成功");
     let handle_id = first_handle_id(&begun);
 
@@ -348,7 +390,9 @@ fn a_commit_carrying_a_stale_runtime_epoch_is_rejected() {
     }
 
     // 判负**不改变账本**：事务句柄仍在登记册里，归池前置不成立（§9.2）。
-    harness.close(&acquired.handle).expect("收尾 close_resource 必须成功");
+    harness
+        .close(&acquired.handle)
+        .expect("收尾 close_resource 必须成功");
 }
 
 /// §9.2 反例三：拿 A 资源的句柄去动 B 资源。
@@ -370,7 +414,11 @@ fn a_handle_from_another_resource_is_rejected() {
     );
 
     let begun = harness
-        .invoke(SessionCommand::BeginSessionTransaction, &first.handle, json!({}))
+        .invoke(
+            SessionCommand::BeginSessionTransaction,
+            &first.handle,
+            json!({}),
+        )
         .expect("begin 必须成功");
     let handle_id = first_handle_id(&begun);
 
@@ -402,8 +450,7 @@ fn the_eviction_race_recovers_on_a_fresh_resource_without_reusing_handles() {
         .expect("§9.3 编排必须跑通");
 
     // 停住那一刻开的事务必须落在 R1 上（不是新资源）。
-    let race_handles =
-        harness.registered_handle_ids_on(&report.pre_close_resource_id);
+    let race_handles = harness.registered_handle_ids_on(&report.pre_close_resource_id);
     assert_eq!(
         race_handles.len(),
         1,
@@ -491,7 +538,11 @@ fn closing_a_session_handle_empties_the_registry() {
         .acquire(owner(), "pol-2", BudgetClass::Session)
         .expect("acquire 必须成功");
     let begun = harness
-        .invoke(SessionCommand::BeginSessionTransaction, &acquired.handle, json!({}))
+        .invoke(
+            SessionCommand::BeginSessionTransaction,
+            &acquired.handle,
+            json!({}),
+        )
         .expect("begin 必须成功");
     let handle_id = first_handle_id(&begun);
 
@@ -520,9 +571,11 @@ fn closing_a_session_handle_empties_the_registry() {
         .entries()
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Handle { action, handle_id: owner_id, .. } if *owner_id == handle_id => {
-                Some(*action)
-            }
+            JournalEntry::Handle {
+                action,
+                handle_id: owner_id,
+                ..
+            } if *owner_id == handle_id => Some(*action),
             _ => None,
         })
         .collect();
@@ -543,6 +596,12 @@ fn closing_a_session_handle_empties_the_registry() {
 fn the_two_fixture_namespaces_derive_distinct_targets() {
     let a = fixture_target(NS_A_KEY);
     let b = fixture_target(NS_B_KEY);
-    assert_ne!(a.namespace, b.namespace, "两个夹具命名空间必须给出不同的执行目标");
-    assert_eq!(a.connection_id, b.connection_id, "两个命名空间共用 PROFILE_P 连接");
+    assert_ne!(
+        a.namespace, b.namespace,
+        "两个夹具命名空间必须给出不同的执行目标"
+    );
+    assert_eq!(
+        a.connection_id, b.connection_id,
+        "两个命名空间共用 PROFILE_P 连接"
+    );
 }

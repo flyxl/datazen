@@ -5,7 +5,6 @@
 //!
 //! 「返回违例列表」而不是直接 panic，是为了让负例测试能断言具体违规项。
 
-
 use std::collections::BTreeMap;
 
 use crate::connection::execution::EffectOutcome;
@@ -57,15 +56,19 @@ impl<'a> JournalAssert<'a> {
         let permits: Vec<PermitEvent> = entries
             .iter()
             .filter_map(|entry| match entry {
-                JournalEntry::Permit { seq, permit_id, delta, reason, budget_class } => {
-                    Some(PermitEvent {
-                        seq: *seq,
-                        permit_id: permit_id.clone(),
-                        delta: *delta,
-                        reason: *reason,
-                        budget_class: *budget_class,
-                    })
-                }
+                JournalEntry::Permit {
+                    seq,
+                    permit_id,
+                    delta,
+                    reason,
+                    budget_class,
+                } => Some(PermitEvent {
+                    seq: *seq,
+                    permit_id: permit_id.clone(),
+                    delta: *delta,
+                    reason: *reason,
+                    budget_class: *budget_class,
+                }),
                 _ => None,
             })
             .collect();
@@ -81,7 +84,13 @@ impl<'a> JournalAssert<'a> {
                 balance += i64::from(*delta);
             }
             match entry {
-                JournalEntry::Resource { seq, resource_id, event, budget_class, .. } => {
+                JournalEntry::Resource {
+                    seq,
+                    resource_id,
+                    event,
+                    budget_class,
+                    ..
+                } => {
                     match event {
                         // 规则 1：创建 → permit 余额 = +1 且 live_resources +1
                         ResourceEvent::Created => {
@@ -100,7 +109,9 @@ impl<'a> JournalAssert<'a> {
                             live.retain(|id| id != resource_id);
                             // 只有确认关闭才真正交还 permit（规则 2）。
                             occupied.retain(|id| id != resource_id);
-                            if !permits.iter().any(|p| p.delta == -1 && p.budget_class == *budget_class)
+                            if !permits
+                                .iter()
+                                .any(|p| p.delta == -1 && p.budget_class == *budget_class)
                             {
                                 violations.push(format!(
                                     "seq={}：资源 {} 已 Closed 但 permit 未归还（budget_class={:?}）",
@@ -125,12 +136,13 @@ impl<'a> JournalAssert<'a> {
                             live.retain(|id| id != resource_id);
                         }
                         // §9.4：归池前置不全满足时必须关闭，不得归池。
-                        ResourceEvent::ReturnedToPool { protocol_drained, registered_handles } => {
+                        ResourceEvent::ReturnedToPool {
+                            protocol_drained,
+                            registered_handles,
+                        } => {
                             if !*protocol_drained {
-                                violations.push(format!(
-                                    "seq={}：protocolDrained=false 时不得归池",
-                                    seq
-                                ));
+                                violations
+                                    .push(format!("seq={}：protocolDrained=false 时不得归池", seq));
                             }
                             if *registered_handles != 0 {
                                 violations.push(format!(
@@ -186,7 +198,14 @@ impl<'a> JournalAssert<'a> {
                         ));
                     }
                 }
-                JournalEntry::Handle { seq, handle_id, resource_id, runtime_epoch, action, .. } => {
+                JournalEntry::Handle {
+                    seq,
+                    handle_id,
+                    resource_id,
+                    runtime_epoch,
+                    action,
+                    ..
+                } => {
                     match action {
                         // 规则 5：registered → 登记册条目与登记资源、epoch 一致。
                         // 判定依据是**重放到此为止**的登记册。登记本身在重放里必然存在，
@@ -241,9 +260,7 @@ impl<'a> JournalAssert<'a> {
         // 规则 5 收尾：回放结束时仍开着的句柄，必须在真实登记册里有资源/epoch 一致的条目。
         for (handle_id, (seq, resource_id, runtime_epoch)) in &replay {
             match state.handles.get(handle_id) {
-                None => violations.push(format!(
-                    "seq={seq}：句柄 {handle_id} 登记后不在登记册中"
-                )),
+                None => violations.push(format!("seq={seq}：句柄 {handle_id} 登记后不在登记册中")),
                 Some(record) => {
                     if &record.resource_id != resource_id {
                         violations.push(format!(
@@ -256,9 +273,7 @@ impl<'a> JournalAssert<'a> {
                         ));
                     }
                     if record.closed {
-                        violations.push(format!(
-                            "seq={seq}：句柄 {handle_id} 登记时不得是 closed"
-                        ));
+                        violations.push(format!("seq={seq}：句柄 {handle_id} 登记时不得是 closed"));
                     }
                 }
             }
@@ -294,13 +309,13 @@ impl<'a> JournalAssert<'a> {
     pub fn ledger_violations(&self) -> Vec<String> {
         let state = self.journal.inner.lock();
         let mut violations = Vec::new();
-        let unmatched: Vec<&String> =
-            state.ledger.returned.difference(&state.ledger.issued).collect();
+        let unmatched: Vec<&String> = state
+            .ledger
+            .returned
+            .difference(&state.ledger.issued)
+            .collect();
         if !unmatched.is_empty() {
-            violations.push(format!(
-                "I6 不满足：归还了未签发的 permit {:?}",
-                unmatched
-            ));
+            violations.push(format!("I6 不满足：归还了未签发的 permit {:?}", unmatched));
         }
         if state.ledger.returned.len() != state.ledger.issued.len() {
             violations.push(format!(
@@ -338,11 +353,12 @@ impl<'a> JournalAssert<'a> {
             .entries()
             .into_iter()
             .filter_map(|entry| match entry {
-                JournalEntry::Handle { seq, handle_id: id, action, .. }
-                    if id == handle_id && action == HandleAction::Closed =>
-                {
-                    Some(seq)
-                }
+                JournalEntry::Handle {
+                    seq,
+                    handle_id: id,
+                    action,
+                    ..
+                } if id == handle_id && action == HandleAction::Closed => Some(seq),
                 _ => None,
             })
             .max();
@@ -362,7 +378,11 @@ impl<'a> JournalAssert<'a> {
                 JournalEntry::Resource {
                     seq,
                     resource_id,
-                    event: ResourceEvent::ReturnedToPool { protocol_drained, registered_handles },
+                    event:
+                        ResourceEvent::ReturnedToPool {
+                            protocol_drained,
+                            registered_handles,
+                        },
                     ..
                 } => {
                     let mut found = Vec::new();
@@ -387,7 +407,11 @@ impl<'a> JournalAssert<'a> {
             })
             .flatten()
             .collect();
-        assert!(violations.is_empty(), "归池前置断言失败：\n  - {}", violations.join("\n  - "));
+        assert!(
+            violations.is_empty(),
+            "归池前置断言失败：\n  - {}",
+            violations.join("\n  - ")
+        );
     }
 
     /// I2 / I3 / I4 / I5 / I7 / I8。
@@ -397,7 +421,10 @@ impl<'a> JournalAssert<'a> {
         if !live_resources.is_empty() {
             violations.push(format!(
                 "I2 不满足：live_resources 非空：{:?}",
-                live_resources.iter().map(ResourceId::as_str).collect::<Vec<_>>()
+                live_resources
+                    .iter()
+                    .map(ResourceId::as_str)
+                    .collect::<Vec<_>>()
             ));
         }
         let live_leases = self.journal.live_leases();
@@ -411,14 +438,20 @@ impl<'a> JournalAssert<'a> {
         if !active_sessions.is_empty() {
             violations.push(format!(
                 "I4 不满足：active_sessions 非空：{:?}",
-                active_sessions.iter().map(DbSessionId::as_str).collect::<Vec<_>>()
+                active_sessions
+                    .iter()
+                    .map(DbSessionId::as_str)
+                    .collect::<Vec<_>>()
             ));
         }
         let open_handles = self.journal.open_handles();
         if !open_handles.is_empty() {
             violations.push(format!(
                 "I5 不满足：handle_registry 非空：{:?}",
-                open_handles.iter().map(|h| h.handle_id.as_str()).collect::<Vec<_>>()
+                open_handles
+                    .iter()
+                    .map(|h| h.handle_id.as_str())
+                    .collect::<Vec<_>>()
             ));
         }
         violations.extend(self.ledger_violations());
@@ -426,7 +459,10 @@ impl<'a> JournalAssert<'a> {
         if !orphans.is_empty() {
             violations.push(format!(
                 "I7 不满足：orphan_handles 非空：{:?}",
-                orphans.iter().map(|h| h.handle_id.as_str()).collect::<Vec<_>>()
+                orphans
+                    .iter()
+                    .map(|h| h.handle_id.as_str())
+                    .collect::<Vec<_>>()
             ));
         }
         if !self.journal.stream_sequence_is_contiguous() {
@@ -442,7 +478,9 @@ impl<'a> JournalAssert<'a> {
             open.is_empty(),
             "I5 不满足：登记册仍有 {} 个未注销句柄：{:?}",
             open.len(),
-            open.iter().map(|h| h.handle_id.as_str()).collect::<Vec<_>>()
+            open.iter()
+                .map(|h| h.handle_id.as_str())
+                .collect::<Vec<_>>()
         );
     }
 
@@ -453,7 +491,10 @@ impl<'a> JournalAssert<'a> {
             orphans.is_empty(),
             "I7 不满足：仍有 {} 个孤儿句柄：{:?}",
             orphans.len(),
-            orphans.iter().map(|h| h.handle_id.as_str()).collect::<Vec<_>>()
+            orphans
+                .iter()
+                .map(|h| h.handle_id.as_str())
+                .collect::<Vec<_>>()
         );
     }
 

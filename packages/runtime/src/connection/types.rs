@@ -174,13 +174,17 @@ impl<'de> Deserialize<'de> for Counter {
                 f.write_str("十进制计数字符串或无符号整数")
             }
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Counter, E> {
-                v.parse::<u64>().map(Counter).map_err(serde::de::Error::custom)
+                v.parse::<u64>()
+                    .map(Counter)
+                    .map_err(serde::de::Error::custom)
             }
             fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Counter, E> {
                 Ok(Counter(v))
             }
             fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Counter, E> {
-                u64::try_from(v).map(Counter).map_err(serde::de::Error::custom)
+                u64::try_from(v)
+                    .map(Counter)
+                    .map_err(serde::de::Error::custom)
             }
         }
         deserializer.deserialize_any(V)
@@ -267,7 +271,10 @@ pub struct NamespaceShape {
 
 impl NamespaceShape {
     pub fn new(required: impl IntoIterator<Item = NamespaceLayer>) -> Self {
-        Self { required: required.into_iter().collect(), optional: Vec::new() }
+        Self {
+            required: required.into_iter().collect(),
+            optional: Vec::new(),
+        }
     }
 
     /// Postgres / MySQL 形态：database + schema 必填。
@@ -528,7 +535,13 @@ impl OwnerRef {
     pub fn hash(&self) -> String {
         let mut buf = String::new();
         match self {
-            OwnerRef::Editor { organization_id, principal_id, connection_id, client_instance_id, editor_session_id } => {
+            OwnerRef::Editor {
+                organization_id,
+                principal_id,
+                connection_id,
+                client_instance_id,
+                editor_session_id,
+            } => {
                 buf.push_str("editor|");
                 buf.push_str(organization_id.as_str());
                 buf.push('|');
@@ -540,7 +553,11 @@ impl OwnerRef {
                 buf.push('|');
                 buf.push_str(editor_session_id.as_str());
             }
-            OwnerRef::Job { organization_id, job_id, stage_id } => {
+            OwnerRef::Job {
+                organization_id,
+                job_id,
+                stage_id,
+            } => {
                 buf.push_str("job|");
                 buf.push_str(organization_id.as_str());
                 buf.push('|');
@@ -622,7 +639,10 @@ mod tests {
         // CM-01：Counter 使用大于 2^53 的十进制值，Rust/TS 往返不得丢精度。
         let big = Counter(9_007_199_254_740_993);
         let json = serde_json::to_string(&big).expect("serialize");
-        assert_eq!(json, "\"9007199254740993\"", "Counter 必须序列化成十进制字符串");
+        assert_eq!(
+            json, "\"9007199254740993\"",
+            "Counter 必须序列化成十进制字符串"
+        );
         let back: Counter = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back.get(), 9_007_199_254_740_993);
     }
@@ -703,16 +723,30 @@ mod tests {
             execution_identity_key: "exec-identity-shared".into(),
             policy_isolation_key: "policy-u1".into(),
         };
-        let revision_bumped = PoolKeyInputs { config_revision: ConfigRevision::new(8), ..base.clone() };
-        let other_policy = PoolKeyInputs { policy_isolation_key: "policy-u2".into(), ..base.clone() };
+        let revision_bumped = PoolKeyInputs {
+            config_revision: ConfigRevision::new(8),
+            ..base.clone()
+        };
+        let other_policy = PoolKeyInputs {
+            policy_isolation_key: "policy-u2".into(),
+            ..base.clone()
+        };
         let other_identity = PoolKeyInputs {
             execution_identity_key: "exec-identity-user-alpha-2".into(),
             ..base.clone()
         };
 
         let key = PoolKeyFingerprint::derive(&base);
-        assert_ne!(key, PoolKeyFingerprint::derive(&revision_bumped), "配置变更必须换 key");
-        assert_ne!(key, PoolKeyFingerprint::derive(&other_policy), "policyIsolationKey 必须换 key");
+        assert_ne!(
+            key,
+            PoolKeyFingerprint::derive(&revision_bumped),
+            "配置变更必须换 key"
+        );
+        assert_ne!(
+            key,
+            PoolKeyFingerprint::derive(&other_policy),
+            "policyIsolationKey 必须换 key"
+        );
         assert_ne!(
             key,
             PoolKeyFingerprint::derive(&other_identity),

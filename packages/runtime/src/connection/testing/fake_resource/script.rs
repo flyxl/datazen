@@ -66,7 +66,10 @@ pub enum FaultKind {
     /// F1：执行计划不支持，**派发前**拒绝（`ApiErrorCode::is_pre_dispatch_rejection`）。
     UnsupportedPlan,
     /// F2：预算占满。`acquireResource` 报 `ResourceBusy`，超过给定 TTL 后 `Timeout`。
-    BudgetBusy { busy_for: Duration, reason: &'static str },
+    BudgetBusy {
+        busy_for: Duration,
+        reason: &'static str,
+    },
     /// F3：连接或初始化失败（`ConnectAndInit` / `SqlError` 二选一由 `code` 决定）。
     ConnectAndInit { code: &'static str },
     /// F4：语句**派发之后**失败。
@@ -150,7 +153,9 @@ impl FakeScript {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Vec<ScriptStep>> {
-        self.steps.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.steps
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn flag(&self) -> std::sync::MutexGuard<'_, bool> {
@@ -164,7 +169,12 @@ impl FakeScript {
         if n == 0 {
             return;
         }
-        self.lock().push(ScriptStep { id: id.into(), op, kind, remaining: n });
+        self.lock().push(ScriptStep {
+            id: id.into(),
+            op,
+            kind,
+            remaining: n,
+        });
     }
 
     /// 排入一个只命中一次的步骤。
@@ -186,7 +196,9 @@ impl FakeScript {
     /// 取下一个命中 `op` 的故障并消耗一次额度。没有则返回 `None`（基线路径）。
     pub fn take(&self, op: ResourceOp) -> Option<(String, FaultKind)> {
         let mut steps = self.lock();
-        let step = steps.iter_mut().find(|step| step.op == op && step.remaining > 0)?;
+        let step = steps
+            .iter_mut()
+            .find(|step| step.op == op && step.remaining > 0)?;
         step.remaining -= 1;
         let kind = step.kind.clone();
         let id = step.id.clone();
@@ -229,17 +241,30 @@ mod tests {
     fn the_fault_catalogue_covers_f1_through_f12_with_unique_ids() {
         let all = [
             FaultKind::UnsupportedPlan,
-            FaultKind::BudgetBusy { busy_for: Duration::from_secs(10), reason: "连接数达到上限" },
+            FaultKind::BudgetBusy {
+                busy_for: Duration::from_secs(10),
+                reason: "连接数达到上限",
+            },
             FaultKind::ConnectAndInit { code: "SqlError" },
             FaultKind::StatementDispatch { code: "SqlError" },
-            FaultKind::ResultTransport { code: "ProtocolError" },
+            FaultKind::ResultTransport {
+                code: "ProtocolError",
+            },
             FaultKind::ObserveUnknown,
             FaultKind::ContextConflict,
-            FaultKind::RequiresReplacement { reason: "驱动不支持在途切库".to_owned() },
+            FaultKind::RequiresReplacement {
+                reason: "驱动不支持在途切库".to_owned(),
+            },
             FaultKind::CommitUnknown { code: "Timeout" },
-            FaultKind::RollbackFailed { reason: "连接已断开".to_owned() },
-            FaultKind::CancelRejected { code: "HostRejected" },
-            FaultKind::CloseUnconfirmed { reason: "关闭握手超时" },
+            FaultKind::RollbackFailed {
+                reason: "连接已断开".to_owned(),
+            },
+            FaultKind::CancelRejected {
+                code: "HostRejected",
+            },
+            FaultKind::CloseUnconfirmed {
+                reason: "关闭握手超时",
+            },
         ];
         let ids: Vec<&str> = all.iter().map(FaultKind::catalog_id).collect();
         assert_eq!(
@@ -255,7 +280,12 @@ mod tests {
     #[test]
     fn a_step_is_consumed_exactly_as_many_times_as_it_was_queued() {
         let script = FakeScript::new();
-        script.push(ResourceOp::Execute, FaultKind::StatementDispatch { code: "SqlError" }, "F4/statement", 2);
+        script.push(
+            ResourceOp::Execute,
+            FaultKind::StatementDispatch { code: "SqlError" },
+            "F4/statement",
+            2,
+        );
         assert_eq!(script.pending(ResourceOp::Execute), 2);
         assert!(script.take(ResourceOp::Execute).is_some());
         assert!(script.take(ResourceOp::Execute).is_some());
@@ -266,7 +296,12 @@ mod tests {
     #[test]
     fn a_fault_only_fires_on_its_own_operation() {
         let script = FakeScript::new();
-        script.once(ResourceOp::Close, FaultKind::CloseUnconfirmed { reason: "关闭握手超时" });
+        script.once(
+            ResourceOp::Close,
+            FaultKind::CloseUnconfirmed {
+                reason: "关闭握手超时",
+            },
+        );
         assert!(script.take(ResourceOp::Execute).is_none());
         assert!(script.take(ResourceOp::Close).is_some());
     }

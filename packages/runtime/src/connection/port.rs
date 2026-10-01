@@ -14,8 +14,8 @@ use crate::connection::session::{
     SessionContext, SessionHandleRef, SessionState, SessionView, TransactionState,
 };
 use crate::connection::types::{
-    Counter, DbSessionId, ExecutionId, ExecutionTarget, HandleId, NamespaceShape, NamespaceTarget,
-    OwnerRef, PoolKeyFingerprint, ResourceId, UNKNOWN_SENTINEL, fnv1a64_hex,
+    fnv1a64_hex, Counter, DbSessionId, ExecutionId, ExecutionTarget, HandleId, NamespaceShape,
+    NamespaceTarget, OwnerRef, PoolKeyFingerprint, ResourceId, UNKNOWN_SENTINEL,
 };
 
 /// 会话连续性。fake 固定为 `fixed`（§3.2 describeResource）。
@@ -92,7 +92,12 @@ impl ResourceHandle {
     }
 
     /// provider 在**每个**操作上校验 `resourceId` + `runtimeEpoch` + owner（§3.1 L130）。
-    pub fn verify(&self, resource_id: &ResourceId, epoch: &Counter, owner: &OwnerRef) -> Result<(), ProviderError> {
+    pub fn verify(
+        &self,
+        resource_id: &ResourceId,
+        epoch: &Counter,
+        owner: &OwnerRef,
+    ) -> Result<(), ProviderError> {
         if &self.resource_id != resource_id {
             return Err(ProviderError::SessionLost(format!(
                 "resourceId 不匹配：句柄属于 {}，操作指向 {}",
@@ -187,7 +192,10 @@ impl SessionObservation {
     /// 三个字段都可以是 `unknown`：此时 context 的 confidence 必须是 `Unknown`。
     pub fn all_unknown() -> Self {
         Self {
-            context: SessionContext::unknown(&NamespaceTarget::unknown_placeholder(), UNKNOWN_SENTINEL),
+            context: SessionContext::unknown(
+                &NamespaceTarget::unknown_placeholder(),
+                UNKNOWN_SENTINEL,
+            ),
             transaction_state: TransactionState::Unknown,
             handle_count: 0,
         }
@@ -198,8 +206,13 @@ impl SessionObservation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChangeContextOutcome {
-    Confirmed { context: SessionContext, context_revision: Counter },
-    RequiresReplacement { reason: String },
+    Confirmed {
+        context: SessionContext,
+        context_revision: Counter,
+    },
+    RequiresReplacement {
+        reason: String,
+    },
     Unsupported,
 }
 
@@ -472,7 +485,9 @@ pub struct OpenSessionReceipt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection::types::{ClientInstanceId, ConnectionId, EditorSessionId, OrganizationId, PrincipalId};
+    use crate::connection::types::{
+        ClientInstanceId, ConnectionId, EditorSessionId, OrganizationId, PrincipalId,
+    };
 
     fn owner() -> OwnerRef {
         OwnerRef::Editor {
@@ -516,7 +531,8 @@ mod tests {
 
     #[test]
     fn resource_handle_rejects_a_foreign_resource_id() {
-        let handle = ResourceHandle::issue(&ResourceId::new("res_w1_0001"), &Counter::new(1), &owner());
+        let handle =
+            ResourceHandle::issue(&ResourceId::new("res_w1_0001"), &Counter::new(1), &owner());
         let err = handle
             .verify(&ResourceId::new("res_w1_0002"), &Counter::new(1), &owner())
             .expect_err("资源 id 必须校验");
@@ -535,7 +551,10 @@ mod tests {
     fn cancel_disposition_literals_match_the_protocol_map() {
         assert_eq!(CancelDisposition::Requested.as_str(), "requested");
         assert_eq!(CancelDisposition::Unsupported.as_str(), "unsupported");
-        assert_eq!(CancelDisposition::AlreadyFinished.as_str(), "alreadyFinished");
+        assert_eq!(
+            CancelDisposition::AlreadyFinished.as_str(),
+            "alreadyFinished"
+        );
     }
 
     #[test]
