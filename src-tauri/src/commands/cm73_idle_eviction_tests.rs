@@ -12,6 +12,8 @@
 //! - is `release` authoritative, in both orderings against the sweep?
 //! - is the physical resource chain of two consecutive cycles observable?
 //! - does a rebuilt session get advertised under the *old* `dbSessionId`?
+//! - is a session recovered through the production command path idle-eligible,
+//!   i.e. is the sweep's eviction branch reachable outside a hand-built fixture?
 //!
 //! All assertions are behavioural: they read the driver journal, the command
 //! layer, and the public session id. They name no legacy `ConnectionManager`
@@ -29,12 +31,12 @@ use super::query::execute_query_impl;
 use super::AppState;
 use crate::db::registry::DriverRegistry;
 use crate::db::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError, MultiQueryResult,
-    QueryResult, ServerInfo, TableInfo, TableSchema, TransactionHandle, Value,
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError,
+    MultiQueryResult, QueryResult, ServerInfo, TableInfo, TableSchema, TransactionHandle, Value,
 };
 use crate::store::Store;
-use crate::testing::FileKeyringGuard;
 use crate::testing::app_state::{build_app_state, sample_postgres_config};
+use crate::testing::FileKeyringGuard;
 use datazen_driver_api::{
     execute_standard_sql_command, query_command_definition, CommandResult, DriverCommandDefinition,
 };
@@ -49,9 +51,17 @@ const DB_TYPE: &str = "postgres";
 /// the last test in this file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Call {
-    Connect { resource: String, connection_id: String },
-    Disconnect { resource: String },
-    Query { resource: String, connection_id: String },
+    Connect {
+        resource: String,
+        connection_id: String,
+    },
+    Disconnect {
+        resource: String,
+    },
+    Query {
+        resource: String,
+        connection_id: String,
+    },
 }
 
 impl Call {
@@ -133,20 +143,19 @@ impl DatabaseDriver for SweepDriver {
             id: format!("{resource}/conn"),
             pool_id: resource.clone(),
         };
-        self.calls
-            .lock()
-            .expect("journal")
-            .push(Call::Connect { resource: resource.clone(), connection_id: handle.id.clone() });
+        self.calls.lock().expect("journal").push(Call::Connect {
+            resource: resource.clone(),
+            connection_id: handle.id.clone(),
+        });
         self.live.lock().expect("live").insert(resource);
         Ok(handle)
     }
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
         let resource = handle.pool_id.clone();
-        self.calls
-            .lock()
-            .expect("journal")
-            .push(Call::Disconnect { resource: resource.clone() });
+        self.calls.lock().expect("journal").push(Call::Disconnect {
+            resource: resource.clone(),
+        });
         self.live.lock().expect("live").remove(&resource);
         Ok(())
     }
@@ -168,11 +177,20 @@ impl DatabaseDriver for SweepDriver {
                 handle.pool_id
             )));
         }
-        Ok(MultiQueryResult { results: vec![], total_time_ms: 0 })
+        Ok(MultiQueryResult {
+            results: vec![],
+            total_time_ms: 0,
+        })
     }
 
-    async fn query(&self, _handle: &ConnectionHandle, _sql: &str) -> Result<QueryResult, DriverError> {
-        Err(DriverError::QueryFailed("sweep driver: query is not used here".into()))
+    async fn query(
+        &self,
+        _handle: &ConnectionHandle,
+        _sql: &str,
+    ) -> Result<QueryResult, DriverError> {
+        Err(DriverError::QueryFailed(
+            "sweep driver: query is not used here".into(),
+        ))
     }
 
     async fn query_with_params(
@@ -181,30 +199,36 @@ impl DatabaseDriver for SweepDriver {
         _sql: &str,
         _params: &[Value],
     ) -> Result<QueryResult, DriverError> {
-        Err(DriverError::QueryFailed("sweep driver: query_with_params is not used here".into()))
+        Err(DriverError::QueryFailed(
+            "sweep driver: query_with_params is not used here".into(),
+        ))
     }
 
-    async fn execute(
-        &self,
-        _handle: &ConnectionHandle,
-        _sql: &str,
-    ) -> Result<u64, DriverError> {
-        Err(DriverError::QueryFailed("sweep driver: execute is not used here".into()))
+    async fn execute(&self, _handle: &ConnectionHandle, _sql: &str) -> Result<u64, DriverError> {
+        Err(DriverError::QueryFailed(
+            "sweep driver: execute is not used here".into(),
+        ))
     }
 
     async fn begin_transaction(
         &self,
         _handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
-        Err(DriverError::TransactionError("sweep driver: no transactions here".into()))
+        Err(DriverError::TransactionError(
+            "sweep driver: no transactions here".into(),
+        ))
     }
 
     async fn commit(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
-        Err(DriverError::TransactionError("sweep driver: no transactions here".into()))
+        Err(DriverError::TransactionError(
+            "sweep driver: no transactions here".into(),
+        ))
     }
 
     async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
-        Err(DriverError::TransactionError("sweep driver: no transactions here".into()))
+        Err(DriverError::TransactionError(
+            "sweep driver: no transactions here".into(),
+        ))
     }
 
     async fn get_databases(&self, _handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
@@ -227,11 +251,15 @@ impl DatabaseDriver for SweepDriver {
         _database: &str,
         _schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
-        Err(DriverError::QueryFailed("sweep driver: no schemas here".into()))
+        Err(DriverError::QueryFailed(
+            "sweep driver: no schemas here".into(),
+        ))
     }
 
     async fn get_server_info(&self, _handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
-        Err(DriverError::QueryFailed("sweep driver: no server info here".into()))
+        Err(DriverError::QueryFailed(
+            "sweep driver: no server info here".into(),
+        ))
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
@@ -270,12 +298,14 @@ struct Fixture {
 async fn fixture(connection_ids: &[&str]) -> Fixture {
     let keyring = FileKeyringGuard::set();
     let temp = tempfile::tempdir().expect("tempdir");
-    let store = Arc::new(Store::init_with_path(temp.path()).await.expect("store init"));
+    let store = Arc::new(
+        Store::init_with_path(temp.path())
+            .await
+            .expect("store init"),
+    );
     let registry = Arc::new(DriverRegistry::new());
     let driver = Arc::new(SweepDriver::new());
-    registry
-        .register_test_driver(DB_TYPE, driver.clone())
-        .await;
+    registry.register_test_driver(DB_TYPE, driver.clone()).await;
     let state = build_app_state(store.clone(), registry.clone());
     for id in connection_ids {
         store
@@ -283,22 +313,38 @@ async fn fixture(connection_ids: &[&str]) -> Fixture {
             .await
             .expect("save_connection");
     }
-    Fixture { _keyring: keyring, _temp: temp, state, driver }
+    Fixture {
+        _keyring: keyring,
+        _temp: temp,
+        state,
+        driver,
+    }
 }
 
 impl Fixture {
     /// Push the session past the production idle deadline (30 min) without
     /// touching production code, then run the sweep.
     async fn expire_and_sweep(&self, db_session_id: &str) {
-        self.state.connection_manager.expire_test_session(db_session_id).await;
-        self.state.connection_manager.cleanup_idle_connections().await;
+        self.state
+            .connection_manager
+            .expire_test_session(db_session_id)
+            .await;
+        self.state
+            .connection_manager
+            .cleanup_idle_connections()
+            .await;
     }
 
     async fn query(&self, db_session_id: &str, sql: &str) -> Result<(), String> {
-        execute_query_impl(&self.state, db_session_id.to_string(), sql.to_string(), None)
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        execute_query_impl(
+            &self.state,
+            db_session_id.to_string(),
+            sql.to_string(),
+            None,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
     }
 }
 
@@ -320,7 +366,11 @@ async fn idle_sweep_never_closes_a_session_that_still_holds_a_reference() {
         .await
         .expect("connect_dedicated");
     let resource = f.driver.connects().remove(0);
-    assert_eq!(mgr.ref_count(&db_session_id).await, 1, "a dedicated session holds one reference");
+    assert_eq!(
+        mgr.ref_count(&db_session_id).await,
+        1,
+        "a dedicated session holds one reference"
+    );
 
     for _ in 0..3 {
         f.expire_and_sweep(&db_session_id).await;
@@ -332,8 +382,15 @@ async fn idle_sweep_never_closes_a_session_that_still_holds_a_reference() {
         "an idle-looking session that still holds a reference must never be closed, journal: {:?}",
         f.driver.tags()
     );
-    assert_eq!(mgr.ref_count(&db_session_id).await, 1, "the sweep must not touch reference counts");
-    assert_eq!(mgr.owner_connection_id(&db_session_id).await.as_deref(), Some("cm73-ref-1"));
+    assert_eq!(
+        mgr.ref_count(&db_session_id).await,
+        1,
+        "the sweep must not touch reference counts"
+    );
+    assert_eq!(
+        mgr.owner_connection_id(&db_session_id).await.as_deref(),
+        Some("cm73-ref-1")
+    );
 
     // Still the same physical session, and no silent reconnect behind our back.
     let connects_before = f.driver.connects().len();
@@ -367,7 +424,11 @@ async fn idle_sweep_closes_each_unreferenced_session_once_and_keeps_one_owner_en
     for id in ["cm73-many-1", "cm73-many-2", "cm73-many-3"] {
         sessions.push(mgr.connect(id).await.expect("connect"));
     }
-    assert_eq!(f.driver.connects().len(), 3, "three distinct physical resources");
+    assert_eq!(
+        f.driver.connects().len(),
+        3,
+        "three distinct physical resources"
+    );
     assert_eq!(
         mgr.session_owner_map_len().await,
         3,
@@ -391,7 +452,11 @@ async fn idle_sweep_closes_each_unreferenced_session_once_and_keeps_one_owner_en
             "the owner entry of an evicted session must survive so recovery is possible"
         );
     }
-    assert_eq!(mgr.session_owner_map_len().await, 3, "one owner entry per evicted session");
+    assert_eq!(
+        mgr.session_owner_map_len().await,
+        3,
+        "one owner entry per evicted session"
+    );
 
     // A second sweep over the same (now connection-less) sessions must be a
     // no-op: no extra closes, no owner-map growth, no shrink either.
@@ -403,11 +468,19 @@ async fn idle_sweep_closes_each_unreferenced_session_once_and_keeps_one_owner_en
         "repeating the sweep must not re-close or resurrect sessions, journal: {:?}",
         f.driver.tags()
     );
-    assert_eq!(mgr.session_owner_map_len().await, 3, "the owner map must not drift on a no-op sweep");
+    assert_eq!(
+        mgr.session_owner_map_len().await,
+        3,
+        "the owner map must not drift on a no-op sweep"
+    );
 
     // Owner entries are not immortal: an explicit teardown still reclaims them.
     mgr.disconnect(&sessions[0]).await.expect("disconnect");
-    assert_eq!(mgr.session_owner_map_len().await, 2, "an explicit disconnect reclaims its owner entry");
+    assert_eq!(
+        mgr.session_owner_map_len().await,
+        2,
+        "an explicit disconnect reclaims its owner entry"
+    );
     assert!(mgr.owner_connection_id(&sessions[0]).await.is_none());
 }
 
@@ -427,7 +500,11 @@ async fn release_after_the_sweep_is_the_only_close_of_a_referenced_session() {
     for _ in 0..2 {
         f.expire_and_sweep(&db_session_id).await;
     }
-    assert_eq!(f.driver.disconnects(), Vec::<String>::new(), "the sweep must not close a referenced session");
+    assert_eq!(
+        f.driver.disconnects(),
+        Vec::<String>::new(),
+        "the sweep must not close a referenced session"
+    );
     f.query(&db_session_id, "SELECT 1")
         .await
         .expect("the session is still up after the sweeps");
@@ -442,7 +519,11 @@ async fn release_after_the_sweep_is_the_only_close_of_a_referenced_session() {
         f.driver.tags()
     );
     assert_eq!(mgr.ref_count(&db_session_id).await, 0);
-    assert_eq!(mgr.session_owner_map_len().await, 0, "release reclaims the owner entry");
+    assert_eq!(
+        mgr.session_owner_map_len().await,
+        0,
+        "release reclaims the owner entry"
+    );
     assert!(mgr.owner_connection_id(&db_session_id).await.is_none());
 
     mgr.cleanup_idle_connections().await;
@@ -468,9 +549,16 @@ async fn a_sweep_after_release_does_not_close_the_session_twice() {
 
     // Expired, but still referenced: the reference is the only thing standing
     // between the session and the sweep. Release it, then let the sweep run.
-    f.state.connection_manager.expire_test_session(&db_session_id).await;
+    f.state
+        .connection_manager
+        .expire_test_session(&db_session_id)
+        .await;
     assert!(mgr.release(&db_session_id).await.expect("release"));
-    assert_eq!(f.driver.disconnects(), vec![resource.clone()], "release performed the close");
+    assert_eq!(
+        f.driver.disconnects(),
+        vec![resource.clone()],
+        "release performed the close"
+    );
 
     for _ in 0..2 {
         mgr.cleanup_idle_connections().await;
@@ -482,16 +570,28 @@ async fn a_sweep_after_release_does_not_close_the_session_twice() {
         "the sweep must not re-close a session release already tore down, journal: {:?}",
         f.driver.tags()
     );
-    assert_eq!(mgr.session_owner_map_len().await, 0, "no owner entry may be left behind");
+    assert_eq!(
+        mgr.session_owner_map_len().await,
+        0,
+        "no owner entry may be left behind"
+    );
     assert_eq!(mgr.ref_count(&db_session_id).await, 0);
-    assert_eq!(f.driver.connects().len(), 1, "the torn-down session must not be silently rebuilt");
+    assert_eq!(
+        f.driver.connects().len(),
+        1,
+        "the torn-down session must not be silently rebuilt"
+    );
 
     // A query on the released id must not resurrect anything behind the user's back.
     assert!(
         f.query(&db_session_id, "SELECT 1").await.is_err(),
         "a released session must not come back as a same-id rebuild"
     );
-    assert_eq!(f.driver.connects().len(), 1, "the failed query must not have connected anything");
+    assert_eq!(
+        f.driver.connects().len(),
+        1,
+        "the failed query must not have connected anything"
+    );
 }
 
 /// Two consecutive eviction→rebuild cycles of the *same* `dbSessionId` must leave
@@ -514,7 +614,11 @@ async fn two_consecutive_eviction_cycles_of_one_session_id_are_fully_observable(
         // Cycle 1 runs on the session `connect` just opened, so it must not
         // rebuild. Every later cycle runs on a session the previous sweep
         // closed, so the recovery is exactly one new physical resource.
-        let expected_connects = if cycle == 1 { connects_before } else { connects_before + 1 };
+        let expected_connects = if cycle == 1 {
+            connects_before
+        } else {
+            connects_before + 1
+        };
         assert_eq!(
             f.driver.connects().len(),
             expected_connects,
@@ -532,7 +636,12 @@ async fn two_consecutive_eviction_cycles_of_one_session_id_are_fully_observable(
     }
 
     // 1 initial connect + exactly 1 rebuild for the second cycle.
-    assert_eq!(f.driver.connects().len(), 2, "one rebuild per eviction, journal: {:?}", f.driver.tags());
+    assert_eq!(
+        f.driver.connects().len(),
+        2,
+        "one rebuild per eviction, journal: {:?}",
+        f.driver.tags()
+    );
     let live: HashSet<String> = f.driver.live.lock().expect("live").clone();
     assert!(
         live.is_empty(),
@@ -543,7 +652,12 @@ async fn two_consecutive_eviction_cycles_of_one_session_id_are_fully_observable(
     // Ordering: the chain reads C:res-1, D:res-1, C:res-2, D:res-2 — each
     // resource is closed before its successor is opened, so a reader can
     // attribute every call to a resource that was actually alive.
-    let actual: Vec<String> = f.driver.tags().into_iter().filter(|t| !t.starts_with("Q:")).collect();
+    let actual: Vec<String> = f
+        .driver
+        .tags()
+        .into_iter()
+        .filter(|t| !t.starts_with("Q:"))
+        .collect();
     assert_eq!(
         actual,
         vec!["C:res-1", "D:res-1", "C:res-2", "D:res-2"],
@@ -603,5 +717,76 @@ async fn a_rebuilt_session_is_never_advertised_under_the_pre_loss_session_id() {
         presented[0], presented[1],
         "a new physical resource was opened but the host still presented {} for it; a caller holding only the dbSessionId cannot tell the rebuilt session from the lost one",
         presented[0]
+    );
+}
+
+/// Reachability proof (executable, not reasoning): a session recovered through the
+/// **production** command path lands in the sweep's eligible state and is really
+/// evicted by it.
+///
+/// Why this needs its own test: `cleanup_idle_connections` only closes a session
+/// whose `ref_counts` entry is 0 *and* whose `last_used` is older than the idle
+/// timeout. A fixture built with `ConnectionManager::connect` only exercises that
+/// state for the connection a caller opened, which is not the path a real caller
+/// takes. `execute_query_impl` resolves its driver through
+/// `resolve_command_driver` → `get_session`, and `get_session` falls through to
+/// `reconnect()` for a session id the sweep already closed. `reconnect` re-inserts
+/// into `connections` **without taking a reference**, so the state it produces is
+/// "live physical connection, zero references" — exactly what the sweep exists to
+/// collect, and the state the CM-73 journey is about.
+///
+/// The recovery below is an ordinary query on a `dbSessionId`; the only test-only
+/// tool is the `expire_test_session` deadline helper the rest of this file already
+/// uses to cross the 30-minute idle timeout without waiting for it.
+#[tokio::test]
+async fn a_session_recovered_through_the_host_command_path_is_still_swept_when_it_goes_idle() {
+    let f = fixture(&["cm73-reachable"]).await;
+    let mgr = &f.state.connection_manager;
+
+    let db_session_id = mgr.connect("cm73-reachable").await.expect("connect");
+    assert_eq!(
+        f.driver.connects(),
+        vec!["res-1".to_string()],
+        "precondition: opening the session connects exactly one physical resource, journal: {:?}",
+        f.driver.tags()
+    );
+
+    f.expire_and_sweep(&db_session_id).await;
+    assert_eq!(
+        f.driver.disconnects(),
+        vec!["res-1".to_string()],
+        "precondition: the first sweep closes that physical resource, journal: {:?}",
+        f.driver.tags()
+    );
+
+    // Production recovery path — `execute_query_impl` → `resolve_command_driver` →
+    // `get_session` → miss → `reconnect`. No direct `ConnectionManager::connect`,
+    // so whatever the query observes is what a real caller observes.
+    f.query(&db_session_id, "SELECT 1")
+        .await
+        .unwrap_or_else(|e| {
+            panic!("the query that triggers recovery must succeed on the rebuilt session: {e}")
+        });
+    assert_eq!(
+        f.driver.connects(),
+        vec!["res-1".to_string(), "res-2".to_string()],
+        "the query must have rebuilt the session on a brand-new physical resource, journal: {:?}",
+        f.driver.tags()
+    );
+
+    // The state the sweep's predicate keys on, measured rather than assumed.
+    assert_eq!(
+        mgr.ref_count(&db_session_id).await,
+        0,
+        "`reconnect` must not take a reference, otherwise a recovered session could never become idle-eligible"
+    );
+
+    // Therefore the next sweep must close it.
+    f.expire_and_sweep(&db_session_id).await;
+    assert_eq!(
+        f.driver.disconnects(),
+        vec!["res-1".to_string(), "res-2".to_string()],
+        "a session recovered at reference count 0 is idle-eligible and must be closed by the sweep; journal: {:?}",
+        f.driver.tags()
     );
 }

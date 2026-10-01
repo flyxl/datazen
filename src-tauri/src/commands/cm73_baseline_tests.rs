@@ -18,13 +18,13 @@
 //!   the *observed* sequence — that is the `:1284` baseline evidence. When the
 //!   P3 connection-runtime track turns CM-73 green, this test is **deleted, not
 //!   updated**: the defect it pins no longer exists.
-//! - `cm73_target_behavior_...` is `#[ignore]`d and asserts the **target
-//!   behavior only**. Per the `:1285` retention clause its assertions must
-//!   survive the removal of the legacy `ConnectionManager`, so they are written
-//!   as behavior ("while a registered live handle exists the runtime must not
-//!   evict the physical resource and must not rebuild under the same
-//!   `dbSessionId`") and never as legacy structure (no assertion that any
-//!   particular map is empty, no reliance on legacy function names).
+//! - `cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused`
+//!   is `#[ignore]`d and asserts the **target behavior only**. Per the `:1285`
+//!   retention clause its assertions must survive the removal of the legacy
+//!   `ConnectionManager`, so they are written as behavior ("the runtime must not
+//!   leave a live handle behind a closed physical resource, and must not rebuild
+//!   under the same `dbSessionId`") and never as legacy structure (no assertion
+//!   that any particular map is empty, no reliance on legacy function names).
 //!
 //! Trade-off, stated once and deliberately: observing the current `session_transactions`
 //! map is what makes the defect legible (an old handle that still points at a dead
@@ -44,14 +44,14 @@ use super::query::{
     session_transaction_status_impl,
 };
 use super::AppState;
-use crate::db::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError, MultiQueryResult,
-    QueryResult, ServerInfo, TableInfo, TableSchema, TransactionHandle, Value,
-};
 use crate::db::registry::DriverRegistry;
+use crate::db::{
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError,
+    MultiQueryResult, QueryResult, ServerInfo, TableInfo, TableSchema, TransactionHandle, Value,
+};
 use crate::store::Store;
-use crate::testing::FileKeyringGuard;
 use crate::testing::app_state::{build_app_state, sample_postgres_config};
+use crate::testing::FileKeyringGuard;
 use datazen_driver_api::{
     execute_standard_sql_command, query_command_definition, CommandResult, DriverCommandDefinition,
 };
@@ -65,12 +65,33 @@ const CONNECTION_ID: &str = "cm73-conn";
 /// resource that is actually alive.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Call {
-    Connect { resource: String },
-    Disconnect { resource: String },
-    Begin { resource: String, transaction: String },
-    Query { resource: String, sql: String },
-    Commit { resource: String, transaction: String },
-    Rollback { resource: String, transaction: String },
+    Connect {
+        resource: String,
+    },
+    Disconnect {
+        resource: String,
+    },
+    Begin {
+        resource: String,
+        transaction: String,
+    },
+    Query {
+        resource: String,
+        sql: String,
+    },
+    /// `resource` is the physical resource the **host was serving the
+    /// transaction's session id on** when the call arrived — not the resource the
+    /// transaction was opened on, which is the `Begin` call's `resource`. The two
+    /// are the same for every healthy runtime; they diverge the moment a session
+    /// id is re-pointed at a rebuilt connection.
+    Commit {
+        resource: String,
+        transaction: String,
+    },
+    Rollback {
+        resource: String,
+        transaction: String,
+    },
 }
 
 struct JournalDriver {
@@ -81,6 +102,12 @@ struct JournalDriver {
     /// connection, so this map is only consulted to resolve the `connection_id`
     /// frozen into a `TransactionHandle` — never to route a live call.
     resource_by_connection_id: Mutex<HashMap<String, String>>,
+    /// `ConnectionHandle::id` → the physical resource the host most recently
+    /// presented **under that id**. `commit`/`rollback` receive only a
+    /// `TransactionHandle`, so this is the journal's only honest way to see which
+    /// resource a finish call was routed to: the runtime can re-point a session id
+    /// at a rebuilt connection without changing the id the caller still holds.
+    host_binding: Mutex<HashMap<String, String>>,
     tx_resource: Mutex<HashMap<String, String>>,
     next_resource: AtomicUsize,
     next_transaction: AtomicUsize,
@@ -92,6 +119,7 @@ impl JournalDriver {
             calls: Mutex::new(Vec::new()),
             live: Mutex::new(HashSet::new()),
             resource_by_connection_id: Mutex::new(HashMap::new()),
+            host_binding: Mutex::new(HashMap::new()),
             tx_resource: Mutex::new(HashMap::new()),
             next_resource: AtomicUsize::new(0),
             next_transaction: AtomicUsize::new(0),
@@ -118,45 +146,66 @@ impl JournalDriver {
             .cloned()
     }
 
-    /// Resolve the resource that is currently serving `db_session_id`'s handle,
-    /// i.e. the newest `Connect` call for it.
-    fn current_resource(&self, calls: &[Call], db_session_id: &str) -> Option<String> {
-        let _ = db_session_id;
+    /// Note that the host handed out `handle`, i.e. that `handle.id` is currently
+    /// served by `handle.pool_id`. Recorded before the liveness check so that even
+    /// a call the driver rejects still counts as "the host pointed here".
+    fn bind_host(&self, handle: &ConnectionHandle) {
+        self.host_binding
+            .lock()
+            .unwrap()
+            .insert(handle.id.clone(), handle.pool_id.clone());
+    }
+
+    /// The newest physical resource the driver has opened — the one the session
+    /// id would be served by now.
+    fn current_resource(&self, calls: &[Call]) -> Option<String> {
         calls.iter().rev().find_map(|call| match call {
             Call::Connect { resource } => Some(resource.clone()),
             _ => None,
         })
     }
 
-    fn finish_transaction(
-        &self,
-        commit: bool,
-        tx: TransactionHandle,
-    ) -> Result<(), DriverError> {
-        let resource = self
+    /// Journal a commit/rollback and decide its result.
+    ///
+    /// Two different resources matter here and must not be conflated:
+    /// - *routed to*: the physical resource the host is currently serving the
+    ///   transaction's session id on. A transaction is only safe to finish on the
+    ///   resource that opened it, so a divergence is journaled, not hidden.
+    /// - *opened on*: where the transaction actually lives. This — and only this —
+    ///   decides the result, because a loss of *that* resource is what makes the
+    ///   outcome genuinely unknowable.
+    fn finish_transaction(&self, commit: bool, tx: TransactionHandle) -> Result<(), DriverError> {
+        let opened_on = self
             .tx_resource
             .lock()
             .unwrap()
             .get(&tx.id)
             .cloned()
             .unwrap_or_else(|| "unknown-resource".to_string());
+        let routed_to = self
+            .host_binding
+            .lock()
+            .unwrap()
+            .get(&tx.connection_id)
+            .cloned()
+            .unwrap_or_else(|| opened_on.clone());
         self.calls.lock().unwrap().push(if commit {
             Call::Commit {
-                resource: resource.clone(),
+                resource: routed_to,
                 transaction: tx.id.clone(),
             }
         } else {
             Call::Rollback {
-                resource: resource.clone(),
+                resource: routed_to,
                 transaction: tx.id.clone(),
             }
         });
-        if !self.live.lock().unwrap().contains(&resource) {
+        if !self.live.lock().unwrap().contains(&opened_on) {
             // A real driver must fail closed here: the outcome of the
             // transaction is genuinely unknown once its resource is gone.
             return Err(DriverError::TransactionError(format!(
                 "transaction {} was opened on {} which is already closed: outcome unknown",
-                tx.id, resource
+                tx.id, opened_on
             )));
         }
         Ok(())
@@ -178,12 +227,9 @@ impl DatabaseDriver for JournalDriver {
             id: format!("{resource}/conn"),
             pool_id: resource.clone(),
         };
-        self.calls
-            .lock()
-            .unwrap()
-            .push(Call::Connect {
-                resource: resource.clone(),
-            });
+        self.calls.lock().unwrap().push(Call::Connect {
+            resource: resource.clone(),
+        });
         self.live.lock().unwrap().insert(resource.clone());
         self.resource_by_connection_id
             .lock()
@@ -194,12 +240,9 @@ impl DatabaseDriver for JournalDriver {
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
         let resource = handle.pool_id.clone();
-        self.calls
-            .lock()
-            .unwrap()
-            .push(Call::Disconnect {
-                resource: resource.clone(),
-            });
+        self.calls.lock().unwrap().push(Call::Disconnect {
+            resource: resource.clone(),
+        });
         self.live.lock().unwrap().remove(&resource);
         Ok(())
     }
@@ -208,6 +251,7 @@ impl DatabaseDriver for JournalDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
+        self.bind_host(handle);
         let resource = self.resource_of(handle);
         if !self.live.lock().unwrap().contains(&resource) {
             return Err(DriverError::TransactionError(format!(
@@ -246,6 +290,7 @@ impl DatabaseDriver for JournalDriver {
         sql: &str,
         _limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError> {
+        self.bind_host(handle);
         let resource = self.resource_of(handle);
         if !self.live.lock().unwrap().contains(&resource) {
             return Err(DriverError::QueryFailed(format!(
@@ -340,7 +385,11 @@ struct Fixture {
 async fn fixture() -> Fixture {
     let keyring = FileKeyringGuard::set();
     let temp = tempfile::tempdir().expect("tempdir");
-    let store = Arc::new(Store::init_with_path(temp.path()).await.expect("store init"));
+    let store = Arc::new(
+        Store::init_with_path(temp.path())
+            .await
+            .expect("store init"),
+    );
     let registry = Arc::new(DriverRegistry::new());
     let driver = Arc::new(JournalDriver::new());
     registry
@@ -379,6 +428,12 @@ struct Observation {
     /// Is the old `TransactionHandle` still readable, and what does it point at?
     handle_after_query: Option<(String, String)>,
     handle_resource_after_query: Option<String>,
+    /// Did the host still route the old transaction's finish call to the driver
+    /// **after** the physical resource had already been closed? This is the
+    /// journal-level, map-free form of "a committable handle survived the loss of
+    /// the thing it commits on": a runtime that terminates the transaction before
+    /// closing never produces it.
+    old_handle_finished_after_loss: bool,
     /// Result of a rollback attempt against that old handle.
     rollback_result: Result<(), String>,
     /// Was a commit/rollback delivered to a resource other than the one that
@@ -404,7 +459,7 @@ async fn observe_journey() -> Observation {
         .expect("connect");
     let after_connect = driver.snapshot();
     let transaction_resource = driver
-        .current_resource(&after_connect, &db_session_id)
+        .current_resource(&after_connect)
         .expect("physical resource of the first connect");
 
     // 1. Real transaction handle, registered, plus an uncommitted marker.
@@ -428,10 +483,7 @@ async fn observe_journey() -> Observation {
         .connection_manager
         .expire_test_session(&db_session_id)
         .await;
-    state
-        .connection_manager
-        .cleanup_idle_connections()
-        .await;
+    state.connection_manager.cleanup_idle_connections().await;
 
     let after_evict = driver.snapshot();
     let physical_disconnect_observed = after_evict.contains(&Call::Disconnect {
@@ -446,17 +498,13 @@ async fn observe_journey() -> Observation {
         .expect("session_transaction_status");
 
     // 3. Same `dbSessionId` again — this is where the silent rebuild happens.
-    let query_after_evict_ok = execute_query_impl(
-        state,
-        db_session_id.clone(),
-        "SELECT 1".to_string(),
-        None,
-    )
-    .await
-    .is_ok();
+    let query_after_evict_ok =
+        execute_query_impl(state, db_session_id.clone(), "SELECT 1".to_string(), None)
+            .await
+            .is_ok();
 
     let after_query = driver.snapshot();
-    let resource_after_query = driver.current_resource(&after_query, &db_session_id);
+    let resource_after_query = driver.current_resource(&after_query);
     let handle_after_query = {
         let txs = state.session_transactions.lock().await;
         txs.get(&db_session_id)
@@ -472,19 +520,52 @@ async fn observe_journey() -> Observation {
         .map_err(|err| err.to_string());
 
     let final_calls = driver.snapshot();
-    let transaction_resource_owned = final_calls.iter().find_map(|call| match call {
-        Call::Begin { resource, .. } => Some(resource.clone()),
+
+    // Where the transaction was opened, per the driver journal itself.
+    let opened: Option<(String, String)> = final_calls.iter().find_map(|call| match call {
+        Call::Begin {
+            resource,
+            transaction,
+        } => Some((resource.clone(), transaction.clone())),
         _ => None,
     });
-    let transaction_call_misrouted = final_calls.iter().any(|call| {
-        let (resource, commit) = match call {
-            Call::Commit { resource, .. } => (resource, true),
-            Call::Rollback { resource, .. } => (resource, false),
-            _ => return false,
-        };
-        let _ = commit;
-        Some(resource.clone()) != transaction_resource_owned.clone()
-    });
+
+    // "The handle outlived the loss": a finish call for the journey's
+    // transaction that reaches the driver *after* the close. A runtime that
+    // terminates the transaction on the original resource before closing it
+    // produces nothing here; a runtime that keeps the resource up never closes
+    // it, so the position lookup below finds no close at all.
+    let old_handle_finished_after_loss = match opened.as_ref() {
+        None => false,
+        Some((_, transaction)) => match final_calls.iter().position(|call| {
+            matches!(call, Call::Disconnect { resource } if resource == &transaction_resource)
+        }) {
+            None => false,
+            Some(closed_at) => final_calls[closed_at..].iter().any(|call| {
+                matches!(call, Call::Commit { transaction: t, .. } | Call::Rollback { transaction: t, .. } if t == transaction)
+            }),
+        },
+    };
+
+    // Misrouting compares the resource the host delivered the finish call on
+    // against the resource the transaction was actually opened on. Both ends
+    // come from the journal: `Begin` names the origin, the finish call names the
+    // routing. They are only equal when the host never re-pointed the session id
+    // at a rebuilt connection underneath the caller's handle.
+    let transaction_call_misrouted = match opened.as_ref() {
+        None => false,
+        Some((origin, transaction)) => final_calls.iter().any(|call| match call {
+            Call::Commit {
+                resource,
+                transaction: t,
+            }
+            | Call::Rollback {
+                resource,
+                transaction: t,
+            } => t == transaction && resource != origin,
+            _ => false,
+        }),
+    };
 
     Observation {
         db_session_id,
@@ -496,6 +577,7 @@ async fn observe_journey() -> Observation {
         resource_after_query,
         handle_after_query,
         handle_resource_after_query,
+        old_handle_finished_after_loss,
         rollback_result,
         transaction_call_misrouted,
         calls: final_calls,
@@ -588,11 +670,17 @@ async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused(
     let obs = observe_journey().await;
     eprintln!("[CM-73 target] calls={:#?}", obs.calls);
 
-    // T1 — While a registered live transaction handle exists, idle eviction must
-    // not close the physical resource behind it.
+    // T1 — `:1283` does not forbid the sweep from closing a physical resource; it
+    // forbids the *conjunction* of a closed physical resource and a handle that
+    // is still offered for finishing. Both compliant shapes make the conjunction
+    // false: one keeps the resource up for the life of the transaction (nothing
+    // is closed, so the first half is false), the other terminates the
+    // transaction on the original resource *before* closing it (so no finish call
+    // can still be routed afterwards). Only "close first, keep offering the
+    // handle" — today's behavior — makes it true.
     assert!(
-        !obs.physical_disconnect_observed,
-        "idle eviction closed the physical resource {} while a live transaction handle was still registered for dbSessionId {}",
+        !(obs.physical_disconnect_observed && obs.old_handle_finished_after_loss),
+        "idle eviction closed the physical resource {} while dbSessionId {} was still handing its transaction to the driver to be finished there",
         obs.transaction_resource,
         obs.db_session_id
     );
@@ -612,9 +700,13 @@ async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused(
 
     // T3 — Transaction status must track the physical session's liveness: it may
     // not keep reporting Active once the resource is gone, and it may not stop
-    // reporting Active while the resource is still up.
+    // reporting Active while the resource is still up (`:1283` "事务状态不得在
+    // 物理 session 丢失后继续报告 Active"). Exactly one of the two must hold, so
+    // status is the *negation* of "the physical resource was closed" — under the
+    // two compliant shapes respectively: kept up → Active, torn down first →
+    // not Active.
     assert_eq!(
-        obs.status_after_evict, obs.physical_disconnect_observed,
+        obs.status_after_evict, !obs.physical_disconnect_observed,
         "transaction status ({}) disagrees with whether the physical resource {} is still alive",
         obs.status_after_evict, obs.transaction_resource
     );
@@ -623,14 +715,26 @@ async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused(
     // other than the one that opened it.
     assert!(
         !obs.transaction_call_misrouted,
-        "a transaction handle was delivered to a resource that did not open it"
+        "a transaction handle was delivered to a resource that did not open it; journal: {:#?}",
+        obs.calls
     );
 
-    // T5 — When the outcome cannot be known, unwinding must fail closed rather
-    // than report success.
-    assert!(
-        obs.rollback_result.is_err(),
-        "unwinding a transaction whose physical session is lost must fail closed, got {:?}",
-        obs.rollback_result
-    );
+    // T5 — Failing closed is conditional: the outcome is unknowable only once the
+    // resource the transaction lives on is actually gone. While it is still up,
+    // unwinding must succeed (`:1283` — only an unknown outcome becomes
+    // OutcomeUnknown/SessionLost, so a *known* outcome may never be reported as
+    // unknown); after the loss it must fail, never report success.
+    if obs.physical_disconnect_observed {
+        assert!(
+            obs.rollback_result.is_err(),
+            "unwinding a transaction whose physical session was lost must fail closed, got {:?}",
+            obs.rollback_result
+        );
+    } else {
+        assert!(
+            obs.rollback_result.is_ok(),
+            "the physical session {} is still up, so unwinding its transaction must report the real outcome instead of an unknown one, got {:?}",
+            obs.transaction_resource, obs.rollback_result
+        );
+    }
 }
