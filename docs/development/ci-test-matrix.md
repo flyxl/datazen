@@ -8,7 +8,7 @@
 | 层级 | PR CI（`ci.yml`） | Release（`release.yml`） | 本地 / 维护者 |
 |------|-------------------|--------------------------|---------------|
 | 驱动选型 | **`basic` 固定**（postgres, mysql, sqlite, redis）；Host 单测另跑一遍 **`all`** | Basic / All × 四平台 + Akulaku × 三平台（Windows / macOS，无 Linux） | 任意 `--drivers=` / `DATAZEN_DRIVERS` |
-| Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（软门禁，见 §2.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
+| Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（软门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
 | TypeScript | ✅ `pnpm typecheck` | 同上 | `pnpm typecheck` |
 | Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
 | driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
@@ -44,8 +44,54 @@
 | 类型 | `pnpm typecheck` | `tsc --noEmit` |
 | 守卫 | `check-managed-stubs.mjs`、`check-structure-editor-guardrails.mjs` 等 | 防止误提交 inject 产物 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
-| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：先 `--codegen-only --drivers=all` 再 `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**软门禁**（`continue-on-error: true`），阻塞项见 `ci.yml` 该步注释；转硬门禁后应移除该标记 |
+| Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**软门禁**（`continue-on-error: true`），理由见 §2.1.1；转硬门禁后应移除该标记 |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
+
+### 2.1.1 为什么该步是软门禁，以及 `testTimeout` 为何取 10s
+
+**软门禁的原因（与"已知红"无关）。** 早期版本的 `ci.yml` 注释记录了两个阻塞项，
+二者都是基线陈旧造成的假象：它们测于 `7f35e1932`，该基线比 `d1edfa7ba` / `f4c2e5078`
+早 9 个 commit。在 `feat/platform-p0` @ `7559759b7` 上，两者都不存在——该基线
+`--drivers=all` + locales codegen 全绿：**555 文件 / 5677 用例，exit 0，140s**；
+`tester_tunnelValidationMatrix.test.tsx` 单跑 **36 通过**。此前记为红的
+`ContentView` / `ContentViewKv*` / `QueryPanel.executeCancel`，正是 `cbf87a4c0`
+（修复 schemaStore/panelStore mock 漂移导致的 18 个前端单测失败）已修掉的那批。
+
+保留 `continue-on-error: true` 的真实理由很窄：**这一步与 10s 的 `testTimeout`
+都还没有在真实 GitHub runner 上跑过。** 8 核开发机全绿，不能推断 2 vCPU runner
+的全绿。软门禁让首次运行可被观察而不阻塞主干；连续若干次 CI 全绿后即可去掉该标记
+升为硬门禁，届时同步更新本节。
+
+**`testTimeout` 取值依据（实测，非拍脑袋）。** 对全部 5691 个 Host 用例逐条统计
+墙钟耗时（驱动集 `all`，8 核 macOS，`--reporter=json`），三个竞争档位：
+
+| 档位 | 运行前 1 分钟 load | p95 | p99 | p99.9 | max | 超 5s | 失败 |
+|------|------|-----|-----|-------|-----|-------|------|
+| `--maxWorkers=2`（2 vCPU runner 形态） | 13.18 | 57ms | 170ms | 751ms | 1745ms | 0 | 0 |
+| 默认 8 workers，轻度超订 | 7.04 | 118ms | 336ms | 2299ms | 4392ms | 0 | 0 |
+| 默认 8 workers，6–7× 超订 | ~48 | 329ms | 918ms | 3436ms | 11629ms | 4 | 2 |
+
+结论取自中间一行：**在 8 核开发机上，最慢用例已占满 5s 预算的 88%**，
+放到 2 vCPU runner 上没有任何余量。`10_000` ms ≈ 该实测最坏值的 2.3 倍、
+同档 p99.9 的 4.4 倍，故取 10s。
+
+**保证范围的边界：`testTimeout` 只对会 yield 到事件循环的用例生效。**
+load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataStore`(5236ms)
+都跑过 5s 却仍然 **passed**——它们是纯 CPU 占用、不让出事件循环，计时器无法插入；
+真正超时的只有会 await 的 `DataTransferWindow`。因此：
+
+- 抬高 `testTimeout` 只抬高**会 await 的那类超时**天花板，正是父代理在 load 55–80
+  观察到的那批失败的成因；
+- 6–7× 超订下仍会失败，这是**有意保留**的：真正的卡死必须继续与"只是慢"区分开。
+
+**权衡（明写）：** 真正卡死的用例现在要烧 10s 而不是 5s 才被报出来，
+在同一 job 里若有成片用例卡在未 resolve 的 `await` 上，报错会推迟。
+接受该代价的前提是 10s 仍然有界且有实测支撑——p99.9 为 2299ms，
+10s 远高于任何"仅仅是慢"的情形，而远低于"无限等待"。
+若将来出现整片卡死，第一步应查具体用例，而不是继续抬高该值。
+
+守卫见 `scripts/__tests__/run-unit-driver-set.test.ts`：它钉住 `testTimeout: 10_000`
+这个值，并要求上述实测数据仍留在 `vitest.config.ts` 里（改值或删依据都会红）。
 
 ### 2.2 rust job（Rust 段，浅克隆）
 
