@@ -203,7 +203,9 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 **一、会话语义（诊断 / NL2SQL / EXPLAIN 分析 / Schema 文档）——只消费已存在的会话，不创建。**
 
 - 这些 IPC 的形参是 `db_session_id`（运行时会话 ID），不是 `connectionId`；命令体内只用 `get_session` / `get_session_config` 查找。这条边界由契约测试直接对源码断言：会话语义命令的形参必须含 `db_session_id` 且**不得**含 `connection_id`，且命令体内不得出现「把名为 `connection_id` 的变量喂给 `get_session`」的写法（`commands/ai/ipc_contract_guards.rs`）。
-- **`ai_chat` 的 schema 上下文是尽力而为**。会话取不到时不报错，而是降级为不向模型注入 db tools 并记一条告警——聊天仍可继续，只是失去「模型自己查表」的能力。诊断类命令则直接返回错误。
+- **`ai_chat` 的 schema 上下文是尽力而为，但降级的方向和直觉相反**。`commands/ai/chat.rs:810-813` 用 `if let Ok((driver, _handle)) = state.connection_manager.get_session(conn_id)` 包住整段 schema 上下文构建：会话取不到时这一整块被**静默跳过**——不报错、不记日志、不追加系统消息，而 `attach_db_tools` 保持初值 `true`（`chat.rs:808`），因此 **db tools 照常注入模型**（`chat.rs:979-981`）。也就是说会话失效时的实际后果是「模型拿不到 DDL 上下文」，而不是「失去模型自己查表的能力」。
+  真正会 `warn!` 并把 `attach_db_tools` 置为 `false` 的是 `chat.rs:866-875` 的管线 `Err` 分支。但由于 `SchemaContextPipeline::resolve`（`ai/schema_pipeline.rs:74-128`）在 `:83-87` 吞掉了 `get_table_names` 的错误、在 `:98-107` 吞掉了 `build_selective_context` 的错误，唯一的 `?`（`:111-119`）只存在于 `supports_tools == false` 的分支——而那种情况下 `attach_db_tools` 本来就等于 `supports_tools`，即 `false`。**对支持工具的 provider，这条「告警 + 禁用 db tools」的分支实际不可达。**
+  与之对照，配置语义的诊断命令（`ai_diagnose_connection`）不碰会话，连接配置缺失时直接返回 `CommandError::NotFound`（`commands/ai/generate.rs:813-817`）。
 - **目标不切库**。AI 与其他消费方一样把目标 database / schema 随命令传递；宿主不实现生产环境的切库路径。
 
 **二、配置语义（`ai_diagnose_connection`）——收 `connectionId`，读的是落盘配置**，用于「连不上」的故障排查，与已建立会话无关。契约测试同样钉住这一侧。

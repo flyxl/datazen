@@ -98,10 +98,12 @@ Data Sync **不接受任何运行时会话 ID**：源端与目标端一律从任
 
 | 任务保存的目标库 | 会话来源 | 是否释放 |
 |---|---|---|
-| 与连接配置默认库不同 | `connect_dedicated(connectionId, 该库)`，始终新建物理连接 | **是**——只释放 dedicated 会话 |
-| 未指定，或就是连接配置的默认库 | `resolve_session_for_connection(connectionId)`，复用 GUI 可能已开着的同一条会话 | **否**——共享路径不释放引用 |
+| **指定了**目标库（哪怕它正好等于连接配置的默认库） | `connect_dedicated(connectionId, 该库)`，始终新建物理连接 | **是**——只释放 dedicated 会话 |
+| 未指定 / 只有空白字符 | `resolve_session_for_connection(connectionId)`，复用 GUI 可能已开着的同一条会话 | **否**——共享路径不释放引用 |
 
-区分的理由是宿主不做切库：复用那条「可变的共享会话」会让 PostgreSQL 挂在错误的库上，所以目标库非默认时必须另开一条独立会话。dedicated 会话在后续任何一步失败时也会回滚释放。
+判据是**目标库字符串是否非空**：`commands/sync/tasks.rs:77` 写的是 `database.filter(|value| !value.trim().is_empty())`，代码里**从不**把它与连接配置的默认库作比较，所以「目标库恰好等于默认库」照样开专用会话。这么判的理由是宿主不做切库：共享会话当前挂在哪个库是可变的，复用它无法保证任务落在任务自己指定的那个库上（`tasks.rs:79-82` 的注释）。dedicated 会话在后续任何一步失败时也会回滚释放。
+
+与默认库的**比较**确实存在，但它发生在开完会话**之后**，而且是**配置漂移检查**而非会话选择判据（`tasks.rs:125-139`）：持久化任务存的 database 与**连接配置当前的 `config.database` 字段**比对，不一致说明任务 outlive 了一次配置编辑（该处注释原文：`A persisted task may outlive an edited connection config`），随即释放已开的 dedicated 会话并报冲突。注意它比的是配置字段，不是会话实际挂载的库。
 
 三条随之而来的约束：
 

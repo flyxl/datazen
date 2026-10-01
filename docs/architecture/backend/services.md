@@ -76,19 +76,35 @@ dbSessionId
 |---|---|---|---|---|---|
 | **Query** | 不创建。`execute_query` / `execute_query_stream` / `get_explain` 一律收 `db_session_id` | 与同一 `connectionId` 的所有消费方共享同一条会话 | 不关闭；会话由连接面板的 `release_connection` / `disconnect` 结束 | `QueryExecutionId` + 归属校验（校验 `dbSessionId` 与执行记录一致后才允许取消） | database 随命令 envelope 传递，`schema` 固定为 `None`；不做切库，手写 SQL 落到连接默认库 |
 | **Table / DataTable / 导出** | 不创建。三个入口都只收 `db_session_id` | DataTable 写操作**复用同一 `dbSessionId` 上已存在的事务**，没有才自开一个 | 不关闭。导出同样只消费既有会话 | **导出没有中途取消**：结果里的「已取消」只代表保存对话框被放弃 | DataTable 提交前把 `dbSessionId` 映射回 `connectionId`，与表格记录上的 `connectionId` 不一致即拒绝 |
-| **Schema Diff** | 后端不创建；专用会话由前端 `useSchemaDiffEndpoints` 调 `connectDedicated` 建立并在结束时 `releaseDedicatedSession` | 不与主工作区共享 | 前端在比较结束 / 卸载时释放 | 无独立取消通道 | IPC 收成对的 `sourceDbSessionId` / `targetDbSessionId`；profile 落盘的是 `sourceConnectionId` / `targetConnectionId`，部署记录也只写 `connectionId` |
-| **Data Sync** | `resolve_task_endpoint`：任务目标库不是连接默认库时走 `connect_dedicated`，是默认库时走 `resolve_session_for_connection` | 共享路径下与 GUI 同一条会话 | 仅 dedicated 路径释放；共享路径不释放 | 进程级 job registry，按 `jobId` 取消；取消早于开始执行也有效 | 落盘的是 `sourceConnectionId` / `targetConnectionId` 与四个 database/schema 字段；任务文件里的运行时 session ID 一律不作为迁移数据 |
+| **Schema Diff** | 后端不创建；专用会话由前端 `useSchemaDiffEndpoints` 调 `connectDedicated` 建立并在结束时 `releaseDedicatedSession` | 不与主工作区共享 | 前端在比较结束 / 卸载时释放 | 进程级 job registry，按 `jobId` 取消（`cancel_schema_diff_deploy`，与 Data Sync / Data Transfer 共用同一张表）；比较阶段无取消通道 | IPC 收成对的 `sourceDbSessionId` / `targetDbSessionId`；profile 落盘的是 `sourceConnectionId` / `targetConnectionId`，部署记录也只写 `connectionId` |
+| **Data Sync** | `resolve_task_endpoint`：任务保存了**非空目标库**时走 `connect_dedicated`（含恰好等于连接默认库的情形），未指定时才走 `resolve_session_for_connection` | 共享路径下与 GUI 同一条会话 | 仅 dedicated 路径释放；共享路径不释放 | 进程级 job registry，按 `jobId` 取消；取消早于开始执行也有效 | 落盘的是 `sourceConnectionId` / `targetConnectionId` 与四个 database/schema 字段；任务文件里的运行时 session ID 一律不作为迁移数据 |
 | **Data Transfer** | 后端不创建；前端 `DataTransferWindow` 持有源 / 目标两个专用会话并负责创建与释放 | 不与主工作区共享 | 前端在窗口卸载时释放，后端事件带回 `dbSessionId` 时清掉对应一侧 | 进程级 job registry | 运行时端点是「`dbSessionId` + database (+ schema)」，只随任务内存流转；落盘的 profile 只有 `connectionId` |
 | **Workflow** | `resolve_session_for_connection`（首次执行时建立） | 与 GUI 同一条会话 | **不调用 `release`**：命令运行时与执行器都不释放，引用计数常驻 ≥1，因此这类会话不会被 idle eviction 回收 | 无独立取消通道，失败按 step 的错误策略 abort / skip / fallback | step 显式目标 → block 目标 → workflow 默认目标 → profile 初始目标；目标随命令输入走，**不做切库** |
 | **MCP** | DB tools 收**持久化 `connection_id`**，经 `resolve_connection_with_id` → `resolve_session_for_connection` 建立 | 与 GUI 共享同一个 `ConnectionManager` 实例，MCP 的一次 `query` 可能命中的正是 GUI 查询编辑器正在用的那条会话 | 不释放引用 | 无独立取消通道 | database / schema 全部来自调用参数 → 连接配置回退 → 驱动约定，**从不读会话当前库**；白名单为空时按拒绝一切处理 |
-| **AI 诊断** | 不创建。诊断、NL2SQL、EXPLAIN 分析、Schema 文档都只收 `db_session_id` | AI Chat 的 schema 上下文分支用既有会话，取不到就降级为不注入 db tools | 不关闭 | AI 侧独立的取消注册表 | 唯一反向的入口是查询历史分析：它把 `dbSessionId` 映射回 `connectionId`，再按连接过滤历史 |
+| **AI 诊断** | 不创建。诊断、NL2SQL、EXPLAIN 分析、Schema 文档都只收 `db_session_id` | AI Chat 的 schema 上下文分支用既有会话；取不到时**静默跳过 DDL 上下文，db tools 仍然注入**（见 [ai.md](./ai.md)） | 不关闭 | AI 侧独立的取消注册表 | 唯一反向的入口是查询历史分析：它把 `dbSessionId` 映射回 `connectionId`，再按连接过滤历史 |
 
 要点：
 
 - **会话创建集中在少数入口**。生产代码里真正新建会话的地方只有连接 IPC（共享 / 专用两种）、Data Sync 的端点解析、Workflow 的命令运行时与执行器、以及 db_tools（MCP 与 AI 共用）这几处；Query、DataTable、导出、Schema Diff、Data Transfer、AI 诊断都只消费已存在的 `dbSessionId`。
-- **「三件套」的专用会话不是同一套机制**。Schema Diff 与 Data Transfer 的专用会话由**前端**建立并释放；Data Sync 的专用会话由**后端**按目标库是否等于连接默认库自行决定要不要开。三者都避免与主工作区共享事务状态。
+- **「三件套」的专用会话不是同一套机制**。Schema Diff 与 Data Transfer 的专用会话由**前端**建立并释放；Data Sync 的专用会话由**后端**按任务是否保存了非空目标库自行决定要不要开（判据是字符串是否为空，不是「目标库是否等于连接默认库」，见 `commands/sync/tasks.rs:77-108`）。三者都避免与主工作区共享事务状态。
 - **共享即钉住**。Workflow 与 MCP 取得会话后不释放引用，使这些会话不再满足 idle eviction 的「计数为 0」条件。
-- **不切库是全局约束**。宿主不实现生产环境的切库路径：切库命令仅存在于测试代码中。因此所有消费方的目标都通过命令 envelope 传递。
+- **不切库是全局约束**。驱动契约里已经没有 `use_database` 方法；源码中残留的同名符号只有 Mock 驱动测试中恒空的 `use_database_calls()` 回归绊线，以及 MySQL 驱动在**建连时**内部拼 `USE` 语句的细节——两者都不构成命令级切库通道。因此所有消费方的目标都通过命令 envelope 传递。
+
+### 取消维度：三套互不相通的 key 空间
+
+「取消」在宿主里不是一个全局机制。同一时刻存在三张彼此独立的取消表，key、粒度、归属校验和生命周期都不同——**拿其中一张表的 key 去查另一张表一定落空**：
+
+| 取消表 | key | 粒度 | 归属校验 | 生命周期 | 位置 |
+|---|---|---|---|---|---|
+| 查询流执行注册表 | `QueryExecutionId` | 单次流式查询执行 | **有**：发起会话与执行记录不一致直接拒绝（`belongs to a different db session`） | 进程内；条目在每个流的终态路径上被移除，未知或已过期的 ID 报 `unknown or stale` | `AppState.query_executions`（`commands/mod.rs:88-142`） |
+| 任务 job registry | `jobId` | 整个长任务：Schema Diff 部署、Data Sync、Data Transfer | **无**：只有 jobId，不按 `connectionId` / `dbSessionId` 归类，任何拿到该 ID 的调用方都能取消 | 进程内静态表；`cancel_job` 会先把标志置位再返回，因此**先取消再开始也有效**；应用重启后全部失效 | `services/job_registry.rs`（全局 `static JOBS`） |
+| AI 调用取消注册表 | AI 调用 ID（`request_id`） | 单次 AI 调用（含流式） | **无**：只按调用 ID 查找 | 进程内；开始时登记、结束时注销，取消一个从未登记或已注销的调用返回 `false` 且无副作用 | `ai/cancel.rs` |
+
+要点：
+
+- **只有查询执行这一路做归属校验**。另两张表是「谁拿到 ID 谁取消」，所以跨面板、跨窗口误取消是可能的，这不是漏洞而是当前实现的既定语义。
+- **只有 job registry 支持「先取消再开始」**，因为 `cancel_job` 内部先 `ensure_job` 建标志再置位（`job_registry.rs:19-23`）。
+- **三者都不落盘、都不按连接或会话归类**，因此都不存在「换一个连接继续取消」的语义。判断一次取消为什么无效，先确认它用的是哪一张表的 key。
 
 ## 4. Query execution
 
@@ -124,7 +140,7 @@ DataTable 的行编辑与数据导出是两条不同的写路径，不要按同�
 
 ## 6. 长任务
 
-Data Sync、Data Transfer 等任务通过 job registry / job id 管理取消和生命周期。取消是显式的 job 操作，不应通过关闭 UI 猜测任务已经停止。Job registry 是**进程内**的取消标志表，key 是 job ID，不按 `connectionId` 或 `dbSessionId` 归类，也不落盘；应用重启后旧 job ID 不再有效。取消标志先于执行到达时被保留，因此「先取消再开始」也是被支持的顺序。
+Schema Diff 部署、Data Sync、Data Transfer 三者的任务都通过同一张 job registry / job id 管理取消和生命周期。取消是显式的 job 操作（Schema Diff 是 `cancel_schema_diff_deploy`，另两个分别是 `cancel_data_sync` / `cancel_data_transfer`），不应通过关闭 UI 猜测任务已经停止——Schema Diff 的比较阶段没有取消命令，只有部署阶段有。Job registry 是**进程内**的取消标志表，key 是 job ID，不按 `connectionId` 或 `dbSessionId` 归类，也不落盘；应用重启后旧 job ID 不再有效。取消标志先于执行到达时被保留，因此「先取消再开始」也是被支持的顺序。三张取消表的横向对比见 [3.x](#取消维度三套互不相通的-key-空间)。
 
 ## 7. 依赖方向
 
@@ -144,7 +160,7 @@ Concrete Drivers
 
 宿主在 `execute_driver_command` 网关注册 `list_catalog`、`read_relation_columns`、`read_relation_schema` 和 `refresh_schema_metadata`。会话通过 envelope 的 `dbSessionId` 指定，database/schema/name 全部放在 input 的 `RelationRef` 中；这组命令拒绝重复的 envelope database/schema，避免目标冲突。
 
-`RelationRef` 的 schema 必须显式为字符串或 null。具有 schema 层级的驱动要求精确 schema，读取不会通过 `use_database` 改变会话上下文。目录响应分开返回 schema 名称与关系条目，空 schema 不再伪装成空名称关系。
+`RelationRef` 的 schema 必须显式为字符串或 null。具有 schema 层级的驱动要求精确 schema；驱动契约里已经没有 `use_database`，元数据读取不会改变会话上下文，目标只能由调用方在 `RelationRef` 里写全。目录响应分开返回 schema 名称与关系条目，空 schema 不再伪装成空名称关系。
 
 列读取每次最多接受 256 个目标，按完整身份去重，响应按请求顺序为各关系返回 `ok` 或 `error`。同一 database/schema 的未缓存目标可以使用驱动批量读取；驱动不支持批量读取时使用逐关系读取。完整结构缓存同时填充列缓存；失败信息经过凭据脱敏。
 

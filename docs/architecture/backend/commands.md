@@ -50,7 +50,7 @@ Command 的参数名携带语义，不是随意的命名。`connection_id` 是�
 | `db_session_id` | 操作已建立的会话 | `execute_query`、`execute_query_stream`、`get_explain`、`close_database`、`release_connection`、`disconnect`、`preview_pending_changes`、`execute_row_change_plan`、`commit_pending_changes`、`write_data_file`、Schema Diff 的一整组 IPC、`ai_generate_sql`、`ai_diagnose_error`、`ai_analyze_explain`、`ai_generate_schema_doc` |
 | `source_/target_db_session_id` | 迁移三件套的成对运行时目标 | Schema Diff 的比较 / 应用 / 预览类 IPC |
 
-参数的语义决定了会不会创建会话：**创建发生在入口，不发生在操作里**。真正会建立会话的只有三处路径——连接类 command（`connect` 共享 / `connect_dedicated` 专用）、Workflow 的 step 执行（见 [workflow.md](./workflow.md)）、以及 Data Sync 的端点解析（目标库不是连接默认库时开专用会话，见 [data-sync.md](./data-sync.md)）。其余 command 一律假定会话已存在，查找失败只走「用同一个 `dbSessionId` 重建物理连接」这一条透明路径。需要把运行时 ID 换回持久化 ID 时（例如 DataTable 提交前校验归属、AI 查询历史按连接过滤、Schema Diff 落库），统一走 `owner_connection_id(db_session_id)` 反查 owner 映射，不做「两种 ID 都能试」的兼容。
+参数的语义决定了会不会创建会话：**创建发生在入口，不发生在操作里**。真正会建立会话的只有三处路径——连接类 command（`connect` 共享 / `connect_dedicated` 专用）、Workflow 的 step 执行（见 [workflow.md](./workflow.md)）、以及 Data Sync 的端点解析（任务保存了非空目标库时开专用会话，否则复用共享会话，见 [data-sync.md](./data-sync.md)）。其余 command 一律假定会话已存在，查找失败只走「用同一个 `dbSessionId` 重建物理连接」这一条透明路径。需要把运行时 ID 换回持久化 ID 时（例如 DataTable 提交前校验归属、AI 查询历史按连接过滤、Schema Diff 落库），统一走 `owner_connection_id(db_session_id)` 反查 owner 映射，不做「两种 ID 都能试」的兼容。
 
 参数语义由测试钉住，而不是靠约定：`commands/ai/ipc_contract_guards.rs` 的契约测试直接对命令源码做断言，要求会话语义命令的形参包含 `db_session_id` 且**不含** `connection_id`，配置语义命令反之；同文件的另一组断言禁止把名为 `connection_id` 的变量喂给 `get_session` / `owner_connection_id`。历史上出现过「改了名字但语义反了」的回归，这组断言就是为堵住它。
 
