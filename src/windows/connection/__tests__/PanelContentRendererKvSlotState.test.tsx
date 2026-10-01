@@ -67,11 +67,19 @@ vi.mock('../PrivilegeView', () => ({ PrivilegeView: () => null }));
 vi.mock('../ProcessListView', () => ({ ProcessListView: () => null }));
 vi.mock('../ServerStatusView', () => ({ ServerStatusView: () => null }));
 
-vi.mock('../../../stores/schemaStore', () => ({
-  useSchemaStore: Object.assign((sel: (s: Record<string, unknown>) => unknown) => sel({}), {
-    getState: () => ({}),
-  }),
-}));
+vi.mock('../../../stores/schemaStore', async () => {
+  // See ConnectionPage.test.tsx: the per-session selectors are part of the real
+  // module's surface, so the mock reproduces them via the shared double.
+  const { schemaStoreMockModule } = await import('../../../test/mocks/schemaStore');
+  const perSession = schemaStoreMockModule({ schemas: new Map(), activeDbSessionId: null });
+  return {
+    useSchemaStore: Object.assign((sel: (s: Record<string, unknown>) => unknown) => sel({}), {
+      getState: () => ({}),
+    }),
+    useConnectionSchemaField: perSession.useConnectionSchemaField,
+    useConnectionColumnMaps: perSession.useConnectionColumnMaps,
+  };
+});
 vi.mock('../../../stores/connectionStore', () => ({
   useConnectionStore: (sel: (s: { connections: unknown[] }) => unknown) => sel({ connections: [] }),
 }));

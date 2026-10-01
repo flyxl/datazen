@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import type { ConnectionSchemaState } from '../../../stores/schemaStoreState';
+import { seedConnectionSchema } from '../../../test/mocks/schemaStore';
 
 // Mock ResizeObserver for useCompactToolbar
 class MockResizeObserver {
@@ -17,12 +19,8 @@ const { getConnectionViewMock, schemaState, tableDataState, MockRedisView } = vi
     getConnectionViewMock: vi.fn((..._args: unknown[]) => MockRedisView),
     MockRedisView,
     schemaState: {
+      schemas: new Map<string, ConnectionSchemaState>(),
       activeDbSessionId: null as string | null,
-      currentDatabase: null as string | null,
-      tables: [] as { name: string; schema?: string }[],
-      views: [] as { name: string; schema?: string }[],
-      databases: [] as string[],
-      schemas: new Map<string, { currentDatabase?: string | null }>(),
       loadForConnection: vi.fn(),
       loadTables: vi.fn(),
       removeRelation: vi.fn(),
@@ -88,11 +86,14 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
   ),
 }));
 
-vi.mock('../../../stores/schemaStore', () => ({
-  useSchemaStore: Object.assign((sel: (s: typeof schemaState) => unknown) => sel(schemaState), {
-    getState: () => schemaState,
-  }),
-}));
+// The real module is replaced wholesale, so this must expose EVERY value export
+// it has — `useConnectionSchemaField` used to be missing, and every render of
+// this suite died on `No "useConnectionSchemaField" export is defined on the
+// "../../../stores/schemaStore" mock` before a single assertion ran.
+vi.mock('../../../stores/schemaStore', async () => {
+  const { schemaStoreMockModule } = await import('../../../test/mocks/schemaStore');
+  return schemaStoreMockModule(schemaState);
+});
 
 vi.mock('../../../stores/tableDataStore', () => ({
   useTableDataStore: Object.assign(
@@ -244,13 +245,7 @@ describe('ContentView', () => {
     getConnectionViewMock.mockImplementation(() => MockRedisView);
     tableDataState.byPanel = new Map();
     schemaState.activeDbSessionId = null;
-    schemaState.currentDatabase = null;
-    schemaState.tables = [];
-    schemaState.views = [];
     schemaState.schemas = new Map();
-    schemaState.loadForConnection = vi.fn();
-    schemaState.loadTables = vi.fn();
-    schemaState.removeRelation = vi.fn();
     panelStore = await import('../../../stores/panelStore');
     panelStore.usePanelStore.setState({ panels: [], activePanelId: null, queryExec: new Map() });
     ({ ContentView } = await import('../ContentView'));
@@ -406,9 +401,10 @@ describe('ContentView', () => {
       activePanelId: panel.id,
     });
     schemaState.activeDbSessionId = 'conn-1';
-    schemaState.currentDatabase = 'db_b';
-    schemaState.tables = [{ name: 'users', schema: 'public' }];
-    schemaState.loadForConnection = vi.fn();
+    seedConnectionSchema(schemaState, 'conn-1', {
+      currentDatabase: 'db_b',
+      tables: [{ name: 'users', schema: 'public', tableType: 'table' }],
+    });
 
     render(<ContentView nodeContextMenuRef={nodeContextMenuRef} />);
     expect(nodeContextMenuRef.current).toBeTypeOf('function');
@@ -454,9 +450,10 @@ describe('ContentView', () => {
       activePanelId: viewPanel.id,
     });
     schemaState.activeDbSessionId = 'conn-1';
-    schemaState.currentDatabase = 'db_b';
-    schemaState.views = [{ name: 'v_users', schema: 'public' }];
-    schemaState.loadForConnection = vi.fn();
+    seedConnectionSchema(schemaState, 'conn-1', {
+      currentDatabase: 'db_b',
+      views: [{ name: 'v_users', schema: 'public', tableType: 'view' }],
+    });
 
     render(<ContentView nodeContextMenuRef={nodeContextMenuRef} />);
     expect(nodeContextMenuRef.current).toBeTypeOf('function');

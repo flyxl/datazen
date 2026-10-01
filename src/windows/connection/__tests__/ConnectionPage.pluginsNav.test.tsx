@@ -77,15 +77,23 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
   ),
 }));
 
-vi.mock('../../../stores/schemaStore', () => ({
-  useSchemaStore: {
-    getState: () => ({
-      reset: vi.fn(),
-      removeConnection: vi.fn(),
-      setActiveConnection: vi.fn(),
-    }),
-  },
-}));
+vi.mock('../../../stores/schemaStore', async () => {
+  // See ConnectionPage.test.tsx: the per-session selectors are part of the real
+  // module's surface, so the mock reproduces them via the shared double.
+  const { schemaStoreMockModule } = await import('../../../test/mocks/schemaStore');
+  const perSession = schemaStoreMockModule({ schemas: new Map(), activeDbSessionId: null });
+  return {
+    useSchemaStore: {
+      getState: () => ({
+        reset: vi.fn(),
+        removeConnection: vi.fn(),
+        setActiveConnection: vi.fn(),
+      }),
+    },
+    useConnectionSchemaField: perSession.useConnectionSchemaField,
+    useConnectionColumnMaps: perSession.useConnectionColumnMaps,
+  };
+});
 
 vi.mock('../../../stores/tableDataStore', () => ({
   useTableDataStore: {
@@ -97,7 +105,15 @@ vi.mock('../../../stores/tableDataStore', () => ({
   },
 }));
 
-vi.mock('../../../stores/panelStore', () => {
+vi.mock('../../../stores/panelStore', async () => {
+  // See ConnectionPage.test.tsx: `panelStore` re-exports the pane-identity
+  // helpers and the frozen exec default, so the mock must expose the real ones.
+  const pane = await vi.importActual<typeof import('../../../stores/paneKeys')>(
+    '../../../stores/paneKeys',
+  );
+  const { EMPTY_QUERY_EXEC } = await vi.importActual<
+    typeof import('../../../stores/queryExecActions')
+  >('../../../stores/queryExecActions');
   const mockState = { panels: [], activePanelId: null };
   const store = (sel: (s: typeof mockState) => unknown) => sel(mockState);
   store.getState = () => ({
@@ -108,6 +124,8 @@ vi.mock('../../../stores/panelStore', () => {
     removeAllForConnection: vi.fn(),
   });
   return {
+    ...pane,
+    EMPTY_QUERY_EXEC,
     usePanelStore: store,
     nextPanelId: (prefix: string) => `panel-${prefix}-test`,
   };
