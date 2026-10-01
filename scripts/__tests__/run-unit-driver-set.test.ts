@@ -13,7 +13,6 @@ const ciWorkflowRaw = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'u
 const ciWorkflow = YAML.parse(ciWorkflowRaw);
 const vitestConfigRaw = readFileSync(resolve(root, 'vitest.config.ts'), 'utf8');
 const ciMatrixRaw = readFileSync(resolve(root, 'docs/development/ci-test-matrix.md'), 'utf8');
-const packageJsonRaw = readFileSync(resolve(root, 'package.json'), 'utf8');
 const DRIVER_SET_STEP_NAME = '- name: Frontend unit tests (all path drivers)';
 
 const flatten = (commands: { args: string[] }[]) =>
