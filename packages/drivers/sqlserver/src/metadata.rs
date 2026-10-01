@@ -527,6 +527,7 @@ fn incomplete(message: impl Into<String>) -> DriverError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_driver_api::{TableOptions, TableSchema};
 
     const DATABASE_COLLATION: &str = "SQL_Latin1_General_CP1_CI_AS";
 
@@ -1060,6 +1061,242 @@ mod tests {
         assert_eq!(
             keys[0].deferrability,
             ForeignKeyDeferrability::NotDeferrable
+        );
+    }
+
+    /// One row in the `indexes_sql` projection order: index_id, name,
+    /// is_unique, is_primary_key, type_desc, is_unique_constraint, has_filter,
+    /// is_disabled, is_hypothetical, key_ordinal, column_name,
+    /// is_included_column, is_descending_key, data_space_type.
+    fn index_row(
+        id: i64,
+        name: &str,
+        unique: bool,
+        primary: bool,
+        type_desc: &str,
+        unique_constraint: bool,
+        column: &str,
+    ) -> Vec<Option<Value>> {
+        vec![
+            Some(Value::Integer(id)),
+            text(name),
+            bit(unique),
+            bit(primary),
+            text(type_desc),
+            bit(unique_constraint),
+            bit(false),
+            bit(false),
+            bit(false),
+            Some(Value::Integer(1)),
+            text(column),
+            bit(false),
+            bit(false),
+            text("FG"),
+        ]
+    }
+
+    /// Render a parsed catalog index list through the Data Transfer IR mapping
+    /// and the shared `SyncTargetAdapter` index emitter, returning
+    /// `(name, IR index_type, rendered DDL)`. This keeps the test driven by
+    /// what `parse_indexes` really returns rather than by hand-written
+    /// `index_type` strings, so the catalog vocabulary and the transfer
+    /// normalization can never drift apart unnoticed.
+    fn transfer_index_ddl(indexes: Vec<IndexInfo>) -> Vec<(String, String, Option<String>)> {
+        use crate::sync_adapter::SqlServerSyncAdapter;
+        use datazen_driver_api::SyncSourceAdapter as _;
+        use datazen_driver_api::SyncTargetAdapter as _;
+
+        let schema = TableSchema {
+            table_name: "orders".into(),
+            columns: vec![],
+            primary_keys: vec!["id".into()],
+            indexes,
+            foreign_keys: vec![],
+            check_constraints: vec![],
+            table_options: TableOptions::default(),
+        };
+        let objects = SqlServerSyncAdapter.table_objects_to_ir(&schema);
+        objects
+            .indexes
+            .iter()
+            .map(|index| {
+                let ddl = SqlServerSyncAdapter
+                    .render_index_ddl("[dbo].[orders]", index)
+                    .ok()
+                    .flatten();
+                (index.name.clone(), index.index_type.clone(), ddl)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn parsed_catalog_index_types_all_render_in_the_transfer_plan() {
+        // A table whose primary key owns the clustered layout, so the only
+        // secondary index is nonclustered.
+        let clustered_pk = transfer_index_ddl(
+            parse_indexes(result(vec![
+                index_row(1, "PK_orders", true, true, "CLUSTERED", false, "id"),
+                index_row(
+                    2,
+                    "IX_orders_customer",
+                    false,
+                    false,
+                    "NONCLUSTERED",
+                    false,
+                    "customer_id",
+                ),
+            ]))
+            .expect("parse clustered-pk indexes"),
+        );
+        assert_eq!(
+            clustered_pk,
+            vec![
+                (
+                    "PK_orders".to_string(),
+                    String::new(),
+                    // A primary key is never emitted as a standalone index.
+                    None
+                ),
+                (
+                    "IX_orders_customer".to_string(),
+                    String::new(),
+                    Some(
+                        "CREATE INDEX [IX_orders_customer] ON [dbo].[orders] ([customer_id])"
+                            .to_string()
+                    )
+                ),
+            ]
+        );
+
+        // A heap table: the unique constraint is the clustered index, and the
+        // two `UNIQUE_CONSTRAINT:` vocabulary values must both be accepted.
+        let heap = transfer_index_ddl(
+            parse_indexes(result(vec![
+                index_row(
+                    1,
+                    "UQ_orders_email",
+                    true,
+                    false,
+                    "CLUSTERED",
+                    true,
+                    "email",
+                ),
+                index_row(
+                    2,
+                    "UQ_orders_code",
+                    true,
+                    false,
+                    "NONCLUSTERED",
+                    true,
+                    "code",
+                ),
+                index_row(
+                    3,
+                    "IX_orders_slot",
+                    false,
+                    false,
+                    "NONCLUSTERED",
+                    false,
+                    "slot",
+                ),
+            ]))
+            .expect("parse heap indexes"),
+        );
+        assert_eq!(
+            heap,
+            vec![
+                (
+                    "UQ_orders_email".to_string(),
+                    String::new(),
+                    Some(
+                        "CREATE UNIQUE INDEX [UQ_orders_email] ON [dbo].[orders] ([email])"
+                            .to_string()
+                    )
+                ),
+                (
+                    "UQ_orders_code".to_string(),
+                    String::new(),
+                    // Exactly one UNIQUE keyword: the constraint prefix must not
+                    // be re-emitted on top of `is_unique`.
+                    Some(
+                        "CREATE UNIQUE INDEX [UQ_orders_code] ON [dbo].[orders] ([code])"
+                            .to_string()
+                    )
+                ),
+                (
+                    "IX_orders_slot".to_string(),
+                    String::new(),
+                    Some("CREATE INDEX [IX_orders_slot] ON [dbo].[orders] ([slot])".to_string())
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn parsed_index_type_domain_is_exactly_the_four_translated_variants() {
+        // Every `type_desc` the parser accepts, crossed with the
+        // `is_unique_constraint` flag, defines the complete set of
+        // `IndexInfo.index_type` values production can produce. Each one must
+        // normalize to the empty string, otherwise the shared renderer rejects
+        // the whole structure plan.
+        let mut produced = Vec::new();
+        for (type_desc, unique_constraint) in [
+            ("CLUSTERED", false),
+            ("CLUSTERED", true),
+            ("NONCLUSTERED", false),
+            ("NONCLUSTERED", true),
+        ] {
+            let indexes = parse_indexes(result(vec![index_row(
+                1,
+                "IX_orders_probe",
+                unique_constraint,
+                false,
+                type_desc,
+                unique_constraint,
+                "customer_id",
+            )]))
+            .expect("parse probe index");
+            let produced_type = indexes[0].index_type.clone();
+            let rendered = transfer_index_ddl(indexes);
+            assert_eq!(
+                rendered[0].1, "",
+                "{type_desc}/{unique_constraint} did not normalize to the portable type"
+            );
+            assert!(
+                rendered[0].2.is_some(),
+                "{type_desc}/{unique_constraint} produced no CREATE INDEX statement"
+            );
+            produced.push(produced_type);
+        }
+        assert_eq!(
+            produced,
+            vec![
+                "CLUSTERED",
+                "UNIQUE_CONSTRAINT:CLUSTERED",
+                "NONCLUSTERED",
+                "UNIQUE_CONSTRAINT:NONCLUSTERED",
+            ]
+        );
+    }
+
+    #[test]
+    fn unsupported_catalog_index_type_is_rejected_before_the_transfer_mapping() {
+        // The normalization must stay a translation of SQL Server's own
+        // vocabulary, not a blanket reset: a type the parser refuses is still
+        // a hard error instead of being silently downgraded.
+        let error = parse_indexes(result(vec![index_row(
+            1,
+            "IX_orders_hash",
+            false,
+            false,
+            "HASH",
+            false,
+            "customer_id",
+        )]))
+        .expect_err("HASH index must not parse");
+        assert!(
+            error.to_string().contains("unsupported type 'HASH'"),
+            "unexpected rejection: {error}"
         );
     }
 }

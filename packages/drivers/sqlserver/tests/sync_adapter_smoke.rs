@@ -188,3 +188,160 @@ fn sqlserver_name_scoping_matches_catalog_semantics() {
     assert!(adapter.index_names_are_table_scoped());
     assert!(!adapter.foreign_key_names_are_table_scoped());
 }
+
+#[test]
+fn sqlserver_renders_every_catalog_index_type_without_manual_translation() {
+    // The four `index_type` values `parse_indexes` can produce, each with the
+    // `is_unique` flag the catalog would report for it. Whatever the parser
+    // emits must already be renderable, so no caller has to pre-translate.
+    let adapter = SqlServerSyncAdapter;
+    let schema = table_schema_with_indexes(&[
+        ("IX_a", "customer_id", false, "NONCLUSTERED"),
+        ("IX_b", "slot", false, "CLUSTERED"),
+        ("UQ_c", "email", false, "UNIQUE_CONSTRAINT:NONCLUSTERED"),
+        ("UQ_d", "code", false, "UNIQUE_CONSTRAINT:CLUSTERED"),
+    ]);
+    let rendered = adapter
+        .table_objects_to_ir(&schema)
+        .indexes
+        .iter()
+        .map(|index| {
+            let ddl = adapter
+                .render_index_ddl("[dbo].[orders]", index)
+                .expect("every catalog index type must render");
+            (
+                index.name.clone(),
+                index.index_type.clone(),
+                ddl.expect("a secondary index renders a CREATE INDEX statement"),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rendered,
+        vec![
+            (
+                "IX_a".to_string(),
+                String::new(),
+                "CREATE INDEX [IX_a] ON [dbo].[orders] ([customer_id])".to_string()
+            ),
+            (
+                "IX_b".to_string(),
+                String::new(),
+                "CREATE INDEX [IX_b] ON [dbo].[orders] ([slot])".to_string()
+            ),
+            (
+                "UQ_c".to_string(),
+                String::new(),
+                // `is_unique` is the only source of UNIQUE; the catalog prefix
+                // must not add a second one.
+                "CREATE UNIQUE INDEX [UQ_c] ON [dbo].[orders] ([email])".to_string()
+            ),
+            (
+                "UQ_d".to_string(),
+                String::new(),
+                "CREATE UNIQUE INDEX [UQ_d] ON [dbo].[orders] ([code])".to_string()
+            ),
+        ]
+    );
+    for (_, _, ddl) in &rendered {
+        assert_eq!(
+            ddl.matches("UNIQUE").count(),
+            usize::from(ddl.contains("UNIQUE")),
+            "expected at most one UNIQUE keyword in {ddl}"
+        );
+    }
+}
+
+#[test]
+fn sqlserver_untranslatable_index_type_still_fails_closed_in_the_renderer() {
+    // The mapping translates SQL Server's own vocabulary; it must not act as a
+    // blanket reset that would let an index kind the target cannot express
+    // through silently.
+    let adapter = SqlServerSyncAdapter;
+    let schema = table_schema_with_indexes(&[("IX_orders_hash", "customer_id", false, "HASH")]);
+    let objects = adapter.table_objects_to_ir(&schema);
+    assert_eq!(objects.indexes[0].index_type, "HASH");
+    let error = adapter
+        .render_index_ddl("[dbo].[orders]", &objects.indexes[0])
+        .expect_err("an untranslated index type must be rejected");
+    assert!(
+        error.contains("cannot represent index type 'HASH'"),
+        "unexpected rejection: {error}"
+    );
+}
+
+#[test]
+fn sqlserver_precheck_escapes_catalog_schema_and_table_names() {
+    let adapter = SqlServerSyncAdapter;
+    // A catalog name with a bracket must be double-bracketed, and quote
+    // characters in schema/table must be doubled so the precheck cannot be
+    // closed early by the identifier it is inspecting.
+    let query = adapter
+        .unsupported_transfer_structure_query("db]", Some("sales data"), "people's")
+        .expect("SQL Server source preflight query");
+    assert!(
+        query.contains("FROM [db]]].sys.computed_columns"),
+        "{query}"
+    );
+    assert!(query.contains("s.name = N'sales data'"), "{query}");
+    assert!(query.contains("t.name = N'people''s'"), "{query}");
+
+    // An explicit non-default schema is used verbatim; only an absent schema
+    // falls back to dbo.
+    let explicit = adapter
+        .unsupported_transfer_structure_query("sales", Some("archive"), "orders")
+        .expect("SQL Server source preflight query");
+    assert!(
+        explicit.contains("FROM [sales].sys.computed_columns"),
+        "{explicit}"
+    );
+    assert!(explicit.contains("s.name = N'archive'"), "{explicit}");
+
+    // Blank catalog and absent schema: no leading dot, dbo default, and the
+    // three retained branches stay joined by exactly two UNION ALL.
+    for (database, schema) in [("", None), ("   ", Some("dbo"))] {
+        let query = adapter
+            .unsupported_transfer_structure_query(database, schema, "orders")
+            .expect("SQL Server source preflight query");
+        assert!(query.contains("FROM sys.computed_columns"), "{query}");
+        assert!(!query.contains("FROM ."), "{query}");
+        assert!(query.contains("s.name = N'dbo'"), "{query}");
+        assert!(!query.contains("s.name = N''"), "{query}");
+        assert_eq!(query.matches("UNION ALL").count(), 2, "{query}");
+        // The removed branches must not come back through another catalog view.
+        assert!(!query.contains("sys.indexes"), "{query}");
+        assert!(!query.contains("sys.foreign_keys"), "{query}");
+    }
+}
+
+#[test]
+fn sqlserver_removed_foreign_key_branch_keeps_foreign_keys_fail_closed() {
+    // Dropping the foreign-key precheck row must not make an inexpressible
+    // referential action renderable: the shared emitter is the last gate.
+    let adapter = SqlServerSyncAdapter;
+    let mut schema = table_schema_with_indexes(&[]);
+    schema.foreign_keys = vec![ForeignKeyInfo {
+        name: "FK_orders_customers".into(),
+        columns: vec!["customer_id".into()],
+        referenced_table: "[dbo].[customers]".into(),
+        referenced_columns: vec!["id".into()],
+        on_update: "NO ACTION".into(),
+        // `normalize_action` turns SQL Server's `SET_DEFAULT` into this.
+        on_delete: "SET DEFAULT".into(),
+        deferrability: ForeignKeyDeferrability::NotDeferrable,
+    }];
+    let objects = adapter.table_objects_to_ir(&schema);
+    assert_eq!(objects.foreign_keys.len(), 1);
+    assert_eq!(objects.foreign_keys[0].on_delete, "SET DEFAULT");
+    let error = adapter
+        .render_foreign_key_ddl(
+            "[dbo].[orders]",
+            &objects.foreign_keys[0],
+            "[dbo].[customers]",
+        )
+        .expect_err("SET DEFAULT must stay unrenderable");
+    assert!(
+        error.contains("cannot represent foreign-key action 'SET DEFAULT'"),
+        "unexpected rejection: {error}"
+    );
+}
