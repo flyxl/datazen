@@ -402,3 +402,8 @@ async fn test_tester_connect_lock_poison_returns_internal() {
         other => panic!("expected ConnectionError::Internal, got {other:?}"),
     }
 }
+
+// CM-04 基线单独成文件，避免 `tests.rs` 越过单文件 800 行上限。
+// 拆分方式对齐 `schema_diff/unified_tests.rs` 的既有先例。
+#[path = "tests/cm04_baseline.rs"]
+mod cm04_baseline;
