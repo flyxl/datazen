@@ -150,7 +150,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 ///
 /// | Capability | Declared | Why |
 /// |---|---|---|
-/// | `stateful_session` | `Unknown` | `connect` opens a real `duckdb::Connection` per handle (`duckdb.rs:161-174`), so the session is not *measured absent* and `Unsupported` would be false. But `Supported` needs a contract-level guarantee — a session the host can pin state onto and resume — and `describe_resource` reports `SessionContinuity::Unknown`, with no host session generation to confirm one. §6.1 is explicit that a pool of size one is not a fixed session, so `Unknown` is the only honest answer. |
+/// | `stateful_session` | `Availability::Unknown` (blank) | Unlike the HTTP drivers, this is *not* the "a client is not a session" shape, so the mysql precedent does not carry over: `connect` opens a real in-process `duckdb::Connection` and parks it in the pool under the handle's pool id (`duckdb.rs:161-174`, open at `:165`), so genuine session state exists and `Unsupported` would be a false claim. `Supported` would instead require a session the host can pin state onto and resume, and this crate implements no such thing — the adapter refuses `change_context` outright (`resource_adapter.rs:348-355`) and exposes no session handle to carry one. Neither direction is backed, so `Unknown` keeps the gate shut; §6.1 is explicit that a pool of size one is not a fixed session. |
 /// | `namespace_switch` | `Unsupported` | DuckDB does not override `has_multi_database`, so the trait default `false` applies (`traits.rs:133-135`), and `get_databases` is a hardcoded `["main", "temp"]` (`duckdb.rs:181-183`). Any other database is reachable only as an `ATTACH`ed catalog on the very connection `connect` opened (`duckdb.rs:88-101`). The adapter refuses `change_context` outright (`resource_adapter.rs:348-355`), so an acquired resource provably cannot move. |
 /// | `context_observation` | `Unsupported` | `LegacyResourceAdapter::observe_session` returns `SessionObservation::unobservable()` on every call (`resource_adapter.rs:338-344`), and `execute_on_resource` pins `context_before`/`context_after` to `unobserved()` (`resource_adapter.rs:317-318`). No code path reads DuckDB's session state back. |
 /// | `transaction_observation` | `Unsupported` | `commit_transaction`/`rollback_transaction` error on every call (`resource_adapter.rs:370-390`), and `execute_on_resource` hardcodes `TransactionState::Unknown` / `transaction_id: None` / `effect: None` (`resource_adapter.rs:319-324`). Legacy DuckDB resolves transactions inside its own statements and the outcome cannot be read back afterwards. |
@@ -383,7 +383,12 @@ mod tests {
         // (duckdb.rs:161-174) so `Unsupported` would be false, but nothing confirms the
         // host may pin onto it, so `Unknown` stands. ClickHouse, which provably opens
         // none, gets `Unsupported`. Different evidence, different answer.
-        assert_eq!(declared.stateful_session, Availability::Unknown);
+        assert_eq!(
+            declared.stateful_session,
+            Availability::Unknown,
+            "connect opens a real in-process Connection (duckdb.rs:165), so Unsupported would \
+             be false; and no host-resumable session exists, so Supported is unbacked either"
+        );
         assert!(!registry.require_stateful_session().is_ok());
     }
 
