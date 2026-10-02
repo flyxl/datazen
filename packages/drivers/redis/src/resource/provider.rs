@@ -347,7 +347,6 @@ impl RedisResourceProvider {
     ) -> ResourceHandle {
         let resource_key = connection.id.clone();
         let mut registry = self.lock();
-        registry.closed.remove(&resource_key);
         registry.live.insert(
             resource_key.clone(),
             LiveResource {
@@ -447,9 +446,9 @@ impl RedisResourceProvider {
     ///
     /// The record is removed *before* the socket is touched, so no concurrent
     /// call can operate on a resource whose close is in flight. `Ok(None)`
-    /// means "already closed": that key is in `closed`, its budget was released
-    /// by the call that closed it, and releasing a second time is the bug this
-    /// guards.
+    /// means "already closed": the handle carries that fact, its budget was
+    /// released by the call that closed it, and releasing a second time is the
+    /// bug this guards.
     ///
     /// Ownership is checked here even though this is the one method that does
     /// not go through `resource_of`. Without it, a handle minted by some other
@@ -466,32 +465,16 @@ impl RedisResourceProvider {
         let mut registry = self.lock();
         match registry.live.remove(handle.resource_key()) {
             Some(resource) => Ok(Some(resource)),
-            None if registry.closed.contains(handle.resource_key()) => Ok(None),
+            None if handle.is_closed() => Ok(None),
             None => Err(ResourceError::InvalidResourceState {
                 resource_key: handle.resource_key().to_string(),
                 operation: operation.to_string(),
-                state: "this provider instance never held this resource, and no confirmed close \
-                        is recorded for it"
+                state: "this provider instance holds no open resource with this key: it was \
+                        never acquired here, a previous close of it was not confirmed, or the \
+                        handle belongs to another provider instance"
                     .to_string(),
             }),
         }
-    }
-
-    /// Mark a key as cleanly closed. Separate from [`Self::take_for_close`]
-    /// because the close is only *confirmed* after `disconnect` returns.
-    fn mark_closed(&self, resource_key: &str) {
-        self.lock().closed.insert(resource_key.to_string());
-    }
-
-    /// How many tombstones this instance is holding. `#[cfg(test)]`, because the
-    /// size of `closed` is not something a caller may ask about: it exists
-    /// purely so a confirmed close can be told apart from a key never held.
-    ///
-    /// Read by `tests_behaviour` to pin what `closed` actually does — see
-    /// `the_tombstone_set_only_grows_and_nothing_reclaims_it` there.
-    #[cfg(test)]
-    pub(crate) fn tombstone_count_for_test(&self) -> usize {
-        self.lock().closed.len()
     }
 }
 

@@ -14,7 +14,7 @@
 //! shell, which this module exists to avoid. The space it frees is taken by
 //! `db_index`, which is the state a Redis session genuinely carries.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use datazen_driver_api::resource::BudgetPort;
@@ -56,12 +56,13 @@ impl LiveResource {
 }
 
 /// Everything this provider instance owns, indexed by the handle's resource key.
+///
+/// Confirmed closes are deliberately **not** tracked here. A second close is
+/// made idempotent by `ResourceHandle::is_closed`, which the handle itself
+/// carries, so the provider retains nothing per closed key.
 #[derive(Default)]
 pub(super) struct ResourceRegistry {
     /// Resources that are open. A key that is absent here is not a resource of
     /// this provider, whatever a caller holds.
     pub(super) live: BTreeMap<String, LiveResource>,
-    /// Resources whose close was confirmed. A second close of one of these is
-    /// idempotent and does not release the budget again.
-    pub(super) closed: BTreeSet<String>,
 }

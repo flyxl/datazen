@@ -29,6 +29,7 @@
 //! grabs an arbitrary connection breaks session continuity, which is exactly
 //! the defect CM-19 asserts against.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -46,11 +47,69 @@ use crate::{ConnectionConfig, DriverError, QueryExecutionId};
 /// Opaque, provider-owned reference to one physical resource.
 ///
 /// See the module docs for why this is not deserializable.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+///
+/// # Identity vs. closed state
+///
+/// `provider_id` + `resource_key` + `runtime_epoch` say *which* resource this
+/// is, and that is the whole of the handle's identity: equality and hashing
+/// deliberately ignore `closed`, so closing a resource does not stop its
+/// handle from equalling the handle it was cloned from. A handle and its
+/// clones name one thing; that thing having been closed is a fact *about* it,
+/// not a change of identity, and a value that participates in equality while
+/// mutating is a trap for any future map keyed on it.
+///
+/// `closed` is the replacement for the per-provider `BTreeSet` of confirmed
+/// close keys that used to live inside each driver. That set had to be
+/// unbounded to stay exact — answering "was key K ever closed?" at an
+/// arbitrary later time means remembering every key ever issued, which is the
+/// same size as the set of keys — so every provider leaked one entry per
+/// confirmed close for the life of the process. Carrying the fact on the
+/// handle bounds it by the handles the caller still holds, and keeps the
+/// answer exact with no window and no eviction: `is_closed()` is true forever
+/// once [`Self::mark_closed`] has run.
+#[derive(Debug)]
 pub struct ResourceHandle {
     provider_id: String,
     resource_key: String,
     runtime_epoch: u64,
+    closed: Arc<AtomicBool>,
+}
+
+impl PartialEq for ResourceHandle {
+    fn eq(&self, other: &Self) -> bool {
+        // Identity only — see the type docs. `closed` is excluded on purpose.
+        self.provider_id == other.provider_id
+            && self.resource_key == other.resource_key
+            && self.runtime_epoch == other.runtime_epoch
+    }
+}
+
+impl Eq for ResourceHandle {}
+
+/// Hand-written because the derived one would be wrong in a way that only
+/// shows up later: cloning an `Arc` shares the flag, and that is exactly what
+/// a clone of a handle should mean. Closing through the copy marks the
+/// original closed too, so a caller cannot end up with two views of one
+/// resource that disagree about whether it is closed.
+impl Clone for ResourceHandle {
+    fn clone(&self) -> Self {
+        Self {
+            provider_id: self.provider_id.clone(),
+            resource_key: self.resource_key.clone(),
+            runtime_epoch: self.runtime_epoch,
+            closed: Arc::clone(&self.closed),
+        }
+    }
+}
+
+impl std::hash::Hash for ResourceHandle {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // The same three fields `PartialEq` compares, in the same order. A
+        // handle that hashes equal to another must compare equal to it.
+        self.provider_id.hash(state);
+        self.resource_key.hash(state);
+        self.runtime_epoch.hash(state);
+    }
 }
 
 impl ResourceHandle {
@@ -65,6 +124,7 @@ impl ResourceHandle {
             provider_id: provider_id.into(),
             resource_key: resource_key.into(),
             runtime_epoch,
+            closed: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -78,6 +138,36 @@ impl ResourceHandle {
 
     pub fn runtime_epoch(&self) -> u64 {
         self.runtime_epoch
+    }
+
+    /// Record that this resource's close was **confirmed** — the driver's
+    /// disconnect returned, so the budget charge really was released.
+    ///
+    /// Only call this after a successful disconnect. Calling it on an
+    /// unconfirmed close would claim a recovery that never happened and make a
+    /// later retry silently succeed while the permit stays held.
+    ///
+    /// The flag is behind an `Arc`, so every clone of this handle observes it.
+    /// That is the point: the caller may hand a copy to the next layer and
+    /// close through any one of them.
+    pub fn mark_closed(&self) {
+        // Release, not Relaxed: a reader that sees the flag set must also see
+        // everything the provider did before marking it (the budget release,
+        // the removal from the registry). The flag publishes that, so it is
+        // synchronising, not a standalone boolean.
+        self.closed.store(true, Ordering::Release);
+    }
+
+    /// Whether this resource was already closed and confirmed.
+    ///
+    /// A provider's `close_resource` reads this first: true means "already
+    /// closed, return `Ok(CloseDisposition::Closed)` and release nothing",
+    /// which is what makes a repeated close idempotent for the life of the
+    /// process with nothing retained on the provider's side.
+    ///
+    /// Acquire, to pair with [`Self::mark_closed`].
+    pub fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
     }
 
     /// The ownership + epoch check every provider operation performs before
@@ -523,3 +613,97 @@ mod tests;
 #[cfg(test)]
 #[path = "resource_no_default_bodies_tests.rs"]
 mod no_default_bodies_tests;
+
+/// The `closed` flag, asserted at the type's own level rather than only through
+/// a driver. Inline here because `resource_tests.rs` is a separate file; these
+/// are tests of this struct's own semantics, not of the contract around it.
+#[cfg(test)]
+mod closed_flag_tests {
+    use super::ResourceHandle;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn handle() -> ResourceHandle {
+        ResourceHandle::issue("postgres", "conn-1", 7)
+    }
+
+    fn hash_of(handle: &ResourceHandle) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        handle.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn a_fresh_handle_is_not_closed() {
+        assert!(
+            !handle().is_closed(),
+            "issue() must mint a handle that has never been closed"
+        );
+    }
+
+    #[test]
+    fn marking_one_clone_marks_every_clone() {
+        let original = handle();
+        let copy = original.clone();
+
+        copy.mark_closed();
+
+        assert!(
+            original.is_closed(),
+            "a clone shares the flag: closing through a copy must be visible on \
+             the handle the caller kept, or two views of one resource could \
+             disagree about whether it is closed"
+        );
+    }
+
+    #[test]
+    fn closing_does_not_change_a_handle_s_identity() {
+        let original = handle();
+        let before_hash = hash_of(&original);
+        let equal_before = original.clone();
+
+        original.mark_closed();
+
+        assert_eq!(
+            original, equal_before,
+            "identity is the provider, key and epoch — closing a resource does \
+             not stop its handle equalling the handle it was cloned from"
+        );
+        assert_eq!(
+            hash_of(&original),
+            before_hash,
+            "if the flag were hashed, two equal handles could hash differently, \
+             which breaks any map keyed on them"
+        );
+    }
+
+    #[test]
+    fn closing_one_resource_does_not_make_it_equal_to_another() {
+        let closed = handle();
+        closed.mark_closed();
+        let other = ResourceHandle::issue("postgres", "conn-2", 7);
+
+        assert_ne!(
+            closed, other,
+            "identity must still discriminate: dropping the key or the epoch \
+             from equality would make every handle compare equal once any of \
+             them is closed"
+        );
+    }
+
+    #[test]
+    fn the_receipt_shape_does_not_grow_a_closed_field() {
+        let handle = handle();
+        handle.mark_closed();
+
+        let value = serde_json::to_value(&handle).expect("handle serializes");
+        let object = value.as_object().expect("handle serializes as an object");
+        assert_eq!(
+            object.len(),
+            3,
+            "a handle is embedded in receipts; the closed flag is runtime state \
+             and adding a field would change every receipt that carries one"
+        );
+        assert!(!object.contains_key("closed"));
+    }
+}

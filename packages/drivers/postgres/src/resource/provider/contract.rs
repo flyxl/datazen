@@ -323,16 +323,19 @@ impl ResourceProvider for PostgresResourceProvider {
             match registry.live.remove(handle.resource_key()) {
                 Some(resource) => resource,
                 // A confirmed close is idempotent, and its budget was already
-                // released — releasing twice would be the bug.
-                None if registry.closed.contains(handle.resource_key()) => {
+                // released — releasing twice would be the bug. The fact rides
+                // on the handle, so this holds for the life of the process
+                // without the provider retaining a key per confirmed close.
+                None if handle.is_closed() => {
                     return Ok(CloseDisposition::Closed);
                 }
                 None => {
                     return Err(ResourceError::InvalidResourceState {
                         resource_key: handle.resource_key().to_string(),
                         operation: "close_resource".to_string(),
-                        state: "this provider instance never held this resource, and no \
-                                confirmed close is recorded for it"
+                        state: "this provider instance holds no open resource with this key: it \
+                                was never acquired here, a previous close of it was not \
+                                confirmed, or the handle belongs to another provider instance"
                             .to_string(),
                     });
                 }
@@ -341,7 +344,7 @@ impl ResourceProvider for PostgresResourceProvider {
 
         match self.driver.disconnect_impl(resource.connection).await {
             Ok(()) => {
-                self.lock().closed.insert(handle.resource_key().to_string());
+                handle.mark_closed();
                 // The connections are really gone, so the charge is really
                 // recoverable. Released here and nowhere else.
                 resource
@@ -352,8 +355,8 @@ impl ResourceProvider for PostgresResourceProvider {
             }
             Err(error) => {
                 // The pools may or may not be gone. The budget is **not**
-                // released and the resource is not recorded as closed, so the
-                // leak is visible instead of being reported as a clean close.
+                // released and the handle is not marked closed, so the leak is
+                // visible instead of being reported as a clean close.
                 tracing::warn!(
                     driver = POSTGRES_PROVIDER_ID,
                     resource_key = %handle.resource_key(),

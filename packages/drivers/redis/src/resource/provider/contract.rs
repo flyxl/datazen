@@ -339,16 +339,22 @@ impl ResourceProvider for RedisResourceProvider {
         let Some(resource) = self.take_for_close(handle, "close_resource")? else {
             // Already closed by an earlier call: the permit went with that call,
             // so the budget is already released and a second release is exactly
-            // the bug the `closed` set exists to prevent.
+            // the bug `is_closed` exists to prevent.
             return Ok(CloseDisposition::Closed);
         };
 
-        // `RedisDriver::disconnect` (`database.rs:82`) removes the connection
-        // from the registry and cannot fail after that point, so an `Ok` here is
-        // a confirmed close rather than an optimistic one.
+        // `RedisDriver::disconnect` (`database.rs:82`) discards the registry
+        // remove and contains no other statement that can fail, so it cannot
+        // return `Err` at all — not merely "cannot fail after that point". The
+        // `Err` arm below is therefore dead, and it is dead for a different
+        // reason than `postgres`'s twin: that one throws away a genuinely
+        // fallible `ROLLBACK`, this one never had a fallible call to begin with.
+        // `RedisResourceProvider::new` takes a concrete `Arc<RedisDriver>`, so
+        // there is also no way to substitute a driver that does fail, which is
+        // what keeps that arm untested rather than merely unreached.
         match self.driver.disconnect(resource.connection.clone()).await {
             Ok(()) => {
-                self.mark_closed(resource_key);
+                handle.mark_closed();
                 // The connection is really gone, so the charge is really
                 // recoverable. Released here and nowhere else.
                 resource
@@ -364,8 +370,8 @@ impl ResourceProvider for RedisResourceProvider {
             }
             Err(error) => {
                 // The connection may or may not be gone. The budget is **not**
-                // released and the resource is not recorded as closed, so the
-                // leak is visible instead of being reported as a clean close.
+                // released and the handle is not marked closed, so the leak is
+                // visible instead of being reported as a clean close.
                 tracing::warn!(
                     driver = REDIS_PROVIDER_ID,
                     resource_key,

@@ -482,75 +482,101 @@ async fn closing_a_never_held_handle_is_an_error() {
 }
 
 // ---------------------------------------------------------------------------
-// The tombstone set: what `closed` actually does
+// Idempotence of a confirmed close, and where the fact now lives
 // ---------------------------------------------------------------------------
 
-/// `closed` grows by exactly one per confirmed close and nothing ever takes a
-/// key back out of it.
+/// A confirmed close stays idempotent for the life of the process, with
+/// nothing kept on the provider to make that true.
 ///
-/// The shape is pinned deliberately. The provider instance is memoized for the
-/// life of the process (`src-tauri/src/db/registry.rs` holds it in a
-/// `OnceLock`) and a confirmed close is the only writer, so the set grows with
-/// the number of resources the process has ever closed and is never bounded.
-/// Slow, not fatal: a desktop session closes a bounded number of resources,
-/// while a headless `--mcp-stdio` server driven by an external client can close
-/// an unbounded number.
+/// The provider instance is memoized for the whole process
+/// (`src-tauri/src/db/registry.rs` holds it in a `OnceLock`) and a headless
+/// `--mcp-stdio` server can close an unbounded number of resources, so the
+/// answer cannot be "a set of keys already closed" — that set is exactly as
+/// large as every key ever issued and never stops growing. The fact rides on
+/// the handle instead, which bounds it by the handles the caller still holds
+/// and is exact with no window and no eviction.
 ///
-/// When the reclamation mechanism lands, this assertion is the one that has to
-/// change — not be deleted. The test below it says what the new shape must
-/// still guarantee.
+/// This asserts the property that makes the leak unnecessary: repeats are
+/// refused forever, from the handle that closed and from any clone of it, and
+/// none of them releases twice. It cannot assert the provider's memory is
+/// bounded, because there is no longer anything to count — that is a property
+/// of `ResourceRegistry` having no `closed` field at all.
 #[tokio::test]
-async fn the_tombstone_set_only_grows_and_nothing_reclaims_it() {
+async fn a_confirmed_close_stays_idempotent_for_every_repeat() {
     let provider = provider();
     let ledger = Arc::new(BudgetLedger::default());
+    let handle = seed_under(&provider, &ledger, "r1");
+    let copy = handle.clone();
 
-    for (index, key) in ["r1", "r2", "r3", "r4"].iter().enumerate() {
-        let handle = seed_under(&provider, &ledger, key);
-        assert_disposition(
-            provider.close_resource(&handle).await,
-            CloseDisposition::Closed,
-            "the first close is the real one",
-        );
-        assert_eq!(
-            provider.tombstone_count_for_test(),
-            index + 1,
-            "every confirmed close leaves its key behind; this is the leak"
-        );
-    }
-}
-
-/// The reclamation path is real and correct — it just cannot fire in
-/// production.
-///
-/// `register_resource` drops any tombstone for the key it is about to reuse, so
-/// re-acquiring a key does reclaim its entry. Keeping it tested matters: if it
-/// broke, a reused key would read as "already closed", and its second close
-/// would return `Ok(Closed)` without releasing anything — a far worse bug than
-/// the leak this set causes.
-///
-/// Production never reaches it: `database.rs` mints `Uuid::new_v4()` per
-/// connection, so every key is fresh and none is ever issued twice. Only
-/// [`seed`] reaches the branch, by handing over the same key twice.
-#[tokio::test]
-async fn reacquiring_a_reused_key_is_the_only_way_to_reclaim_a_tombstone() {
-    let provider = provider();
-    let ledger = Arc::new(BudgetLedger::default());
-
-    let handle = seed(&provider, &ledger);
     assert_disposition(
         provider.close_resource(&handle).await,
         CloseDisposition::Closed,
         "the first close is the real one",
     );
-    assert_eq!(provider.tombstone_count_for_test(), 1);
 
-    // `seed` always rebuilds `redis_test`, so the key is issued a second time
-    // and `register_resource` reclaims its tombstone.
-    let _reused = seed(&provider, &ledger);
+    for _ in 0..8 {
+        assert_disposition(
+            provider.close_resource(&handle).await,
+            CloseDisposition::Closed,
+            "a repeat close is a no-op, not an error",
+        );
+        assert_disposition(
+            provider.close_resource(&copy).await,
+            CloseDisposition::Closed,
+            "a clone of a closed handle reads closed too, or the caller could \
+             hold two views of one resource that disagree",
+        );
+    }
+
     assert_eq!(
-        provider.tombstone_count_for_test(),
-        0,
-        "registering a reused key must drop that key's tombstone"
+        ledger.released(),
+        vec!["permit-r1".to_string()],
+        "nine closes released once: the repeats must not release again"
+    );
+}
+
+/// The closed fact belongs to the handle that closed, not to the key.
+///
+/// This is what separates the new mechanism from the per-provider key set it
+/// replaced: under a key-indexed set, re-issuing a key would either leave the
+/// stale entry to answer for the new resource or need an explicit reclaim, and
+/// `register_resource` had to do that reclaim. Here there is nothing to
+/// reclaim, because nothing was ever recorded under the key.
+///
+/// Production keys are fresh (`database.rs` mints `Uuid::new_v4()` per
+/// connection), so only [`seed_under`] reaches this by naming the same key
+/// twice.
+#[tokio::test]
+async fn re_acquiring_a_reused_key_does_not_transfer_the_old_close() {
+    let provider = provider();
+    let ledger = Arc::new(BudgetLedger::default());
+
+    let first = seed_under(&provider, &ledger, "reused");
+    assert_disposition(
+        provider.close_resource(&first).await,
+        CloseDisposition::Closed,
+        "the first close is the real one",
+    );
+
+    // Same key, issued again: a second live resource now answers to it.
+    let second = seed_under(&provider, &ledger, "reused");
+
+    assert!(
+        !second.is_closed(),
+        "the closed fact rides on the handle that closed, not on the key: a \
+         re-acquired resource must start open, or its first close would be \
+         answered as already closed and never release its budget"
+    );
+
+    assert_disposition(
+        provider.close_resource(&second).await,
+        CloseDisposition::Closed,
+        "the re-acquired resource is live and closes for real",
+    );
+    assert_eq!(
+        ledger.released(),
+        vec!["permit-reused".to_string(), "permit-reused".to_string()],
+        "each resource's own confirmed close releases exactly once"
     );
 }
 

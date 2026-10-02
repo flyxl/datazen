@@ -155,7 +155,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// | `data` | `DataSupport::BufferedReadWrite` | **The one filled cell.** Read: `query` (:277) returns a materialized `QueryResult` built by `result_from_json` (:91-136). Write: `execute` (:348-372) posts to `/db/execute?level=strong` and returns `rows_affected`. *Not* streaming: `query_json` (:30-51) reads the whole body with `resp.text()` and parses it into a `serde_json::Value` before returning; `query_stream` (:311-337) awaits that same full body at :322 and only then replays the already-materialized `Vec` through `stream_decoded_rows` (:325). No row is emitted before the whole result set is in memory, so `streamingResults` does not hold and `StreamingReadWrite` would be a false claim. |
 /// | `backup` | `BackupSupport::Unknown` (blank) | This crate contains no backup or restore path — `backup` appears nowhere in `src/` but a test name. `ui/meta.ts:15` nevertheless sets `supportsBackup: true`, which only gates the frontend Backup window and is backed by no Rust here. `ArtifactOnly`/`ArtifactAndRestore` would repeat that unbacked claim in the contract; `Unsupported` would assert we probed a server capability this crate never touched. The contradiction is recorded here rather than papered over. |
 /// | `stateful_session` | `Availability::Unsupported` | The handle carries no session identity: the driver's entire state is `clients: RwLock<HashMap<String, (reqwest::Client, String)>>` (:11-12) — an HTTP client and a base URL under a `rqlite_<uuid>` pool id minted at `connect` (:179). Every statement is an independently constructed `POST {base}/db/query?level=strong` (:36-40); no session-establishing call is ever issued and no server-assigned session id is ever stored, so the driver can neither address nor reuse a server-side session across statements. That is the same architecture as mysql, which the corpus already rules `Unsupported` on these grounds (`packages/drivers/mysql/src/resource_capabilities.rs:74` — a client is not a session), so the architecture is *measured*, not unmeasured: `Unknown` would discard evidence the repository already holds. `SessionContinuity::Leased` describes the handle lease, not a server session. Pinned by `tests::a_described_resource_is_never_mistaken_for_a_fixed_reusable_session`. |
-/// | `namespace_switch` | `NamespaceSwitch::Unknown` (blank) | The module docs above justify refusing `change_context` with "rqlite's 'switch' is a reconnect", but the code does not back that sentence: the database name is never stored on the resource. `effective_database` (:58-65) resolves blank to `main` and `quote_schema` (:69-71) renders it as a per-statement qualifier used by `list_tables_sql`/`table_info_sql` (:74-89), while the resource is the base URL fixed at `connect` (:178-183), whose only mutation is `disconnect`'s `remove` (:191). So the driver can neither switch a live session in place nor show that a switch needs a replacement resource — the name rides along on each statement. `Unknown` keeps the gate shut; so do all three non-`InPlace` variants, and `switches_in_place` is true only for `InPlace`. |
+/// | `namespace_switch` | `NamespaceSwitch::PerRequest` | The module docs above justify refusing `change_context` with "rqlite's 'switch' is a reconnect", but the code does not back that sentence: the database name is never stored on the resource. `database` is a parameter of the trait methods themselves (`get_tables` :199-209, `get_table_schema` :231-242), `effective_database` (:58-65) resolves blank to `main` and `quote_schema` (:69-71) renders it as a per-statement qualifier used by `list_tables_sql`/`table_info_sql` (:74-89), while the resource is the base URL fixed at `connect` (:178-183), whose only mutation is `disconnect`'s `remove` (:191). So the driver can neither switch a live session in place nor show that a switch needs a replacement resource — and because the supplied name is interpolated into the statement that is actually sent, the driver demonstrably *does* read whichever database it is handed, on every call, with no switch in between. That is `PerRequest`, not a blank: `switches_in_place` is still false for it (that is true only for `InPlace`), but unlike `Unsupported` it records a capability instead of a refusal. |
 /// | `context_observation` | `ContextObservation::Unsupported` | Both the default and the measured answer: the crate contains no context read-back call, and the module docs record that `observe_session` reports every field unknown rather than back-filling the acquisition target. |
 /// | `transaction_observation` | `TransactionObservation::Unsupported` | Default and truthful. This driver issues no `BEGIN`/`COMMIT`/`ROLLBACK` — none appears anywhere in the crate — and mints no transaction handle; the resource port refuses commit and rollback because rqlite resolves transactions inside its own commands. |
 /// | `session_scoped_handles` | `SessionScopedHandleSupport::Unknown` (blank) | The only map the driver owns is `clients` (:12), whose values are `(reqwest::Client, String)`; there is no cursor, prepared-statement or transaction registry a session-scoped handle could key into. That is suggestive but not a measurement — nothing ever asked for such a handle — so unmeasured beats measured-absent. |
@@ -192,7 +192,7 @@ pub(crate) fn capabilities() -> CapabilitySet {
         // Blanks, each keeping the default that is also the honest answer.
         // They are spelled out rather than hidden behind `..Default::default()`
         // so that a later "fix" has to edit a value someone already argued for.
-        namespace_switch: NamespaceSwitch::Unknown, // the database is a per-statement qualifier, not resource state (:58-89)
+        namespace_switch: NamespaceSwitch::PerRequest, // no session to switch; `database` is a trait-method parameter interpolated into each catalog statement (:58-89)
         context_observation: ContextObservation::Unsupported, // no read-back call exists in this crate
         transaction_observation: TransactionObservation::Unsupported, // no BEGIN/COMMIT/ROLLBACK anywhere in the crate
         session_scoped_handles: SessionScopedHandleSupport::Unknown, // no cursor/statement registry, but never probed either
@@ -235,14 +235,21 @@ pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
         ),
         (
             "namespaceSwitch",
-            "Unknown, and it is an enum gap rather than a measurement. The attached database is \
-             a per-statement SQL qualifier, not state on the resource: \
-             `effective_database` maps a blank to `main` (rqlite.rs:58-65) and \
-             `quote_schema` interpolates it into the catalog SQL (rqlite.rs:69-89). There is no \
-             mutating in-place switch to measure — `get_databases` is a hard-coded \
-             `vec![\"main\"]` (rqlite.rs:195-197) — and `NamespaceSwitch` has no \"no session, \
-             addressed per request\" tier yet, so `Unsupported` would be a false measured \
-             refusal. The blank is the honest answer until the enum grows that tier."
+            "PerRequest: there is no session to switch, and the attached database is \
+             addressed on every call instead of being held as resource state. \
+             `database` is a parameter of the trait methods themselves — \
+             `get_tables(&self, handle, database: &str, schema)` (rqlite.rs:199-209) and \
+             `get_table_schema(..., database: &str, ...)` (rqlite.rs:231-242) — and it \
+             is interpolated into the outgoing catalog SQL as a quoted schema qualifier: \
+             `SELECT name FROM \"<db>\".sqlite_master ...` and `PRAGMA \"<db>\".table_info(...)` \
+             (rqlite.rs:74-89, via `effective_database` rqlite.rs:58-65 and `quote_schema` \
+             rqlite.rs:69-71). So supplying a different `database` demonstrably changes \
+             which namespace is read; the resource itself is only the base URL fixed at \
+             `connect`. `effective_database` is a pure function of its argument — no \
+             mutable pool or handle state is consulted or written. That is precisely \
+             `PerRequest`, and it is not `Unsupported`: the hard-coded \
+             `vec![\"main\"]` from `get_databases` (rqlite.rs:195-197) describes the \
+             default node's ATTACH set, not a limit on what the catalog SQL can address."
                 .to_string(),
         ),
         (
@@ -365,7 +372,7 @@ mod tests {
     use std::sync::Arc;
 
     use datazen_driver_api::capabilities::{
-        CapabilitySet, PreciseCancelSupport, SessionContinuity,
+        CapabilitySet, NamespaceSwitch, PreciseCancelSupport, SessionContinuity,
     };
     use datazen_driver_api::namespace::NamespaceTarget;
     use datazen_driver_api::require_resource_provider;
@@ -476,6 +483,18 @@ mod tests {
         assert!(
             !declared.namespace_switch.switches_in_place(),
             "the database is a per-statement SQL qualifier, not state on the resource"
+        );
+        assert_eq!(
+            declared.namespace_switch,
+            NamespaceSwitch::PerRequest,
+            "the supplied database is interpolated into the catalog SQL that is actually \
+             sent (rqlite.rs:74-89) and the resource is only the base URL, so this driver \
+             demonstrably reads whichever namespace it is handed, per call"
+        );
+        assert!(
+            declared.namespace_switch.addresses_per_request(),
+            "PerRequest must stay distinguishable from Unsupported, which would claim the \
+             driver cannot address another namespace at all — that is false here"
         );
         assert_eq!(
             declared.precise_cancel,

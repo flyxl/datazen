@@ -11,8 +11,8 @@
 //! * **The seeds are production code.** Resources are registered through
 //!   `register_resource_for_test`, which is the same `register_resource` the
 //!   acquire path calls, with only the socket half skipped. Ownership checks,
-//!   budget accounting, revision tracking and the `closed` set are the real
-//!   implementations.
+//!   budget accounting, revision tracking and the confirmed-close bookkeeping
+//!   are the real implementations.
 //! * **A missing connection is an error, never a default.** Because the seeds
 //!   carry no live `RedisConn`, every method that needs to talk to the server
 //!   fails. That is the point: a test that asserted `Ok` here would be
@@ -241,7 +241,7 @@ pub(super) fn seed(provider: &RedisResourceProvider, ledger: &Arc<BudgetLedger>)
 
 /// Same as [`seed`], but under a key the caller names. [`seed`] always reuses
 /// `redis_test`, which makes it a probe for key *reuse*; this one is what lets a
-/// test mint as many distinct keys as it needs and watch the tombstone set grow.
+/// test mint as many distinct keys as it needs.
 pub(super) fn seed_under(
     provider: &RedisResourceProvider,
     ledger: &Arc<BudgetLedger>,
