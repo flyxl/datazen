@@ -31,25 +31,41 @@
 //! refused by name.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use datazen_driver_api::capabilities::CapabilitySet;
 use datazen_driver_api::namespace::{NamespaceLevel, NamespaceLevelKind, NamespaceShape};
 use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
+use datazen_driver_api::DatabaseDriver;
 
-use crate::VictoriaMetricsDriver;
-
-/// Generation stamped onto every handle this crate mints.
+/// Epoch counter handed to each provider this crate builds.
 ///
 /// The host has no session generation to hand a driver yet
-/// (`src-tauri/src/platform/adapter.rs` records `RuntimeEpoch` as 「❌ 无会话世代」), so the
-/// provider mints its own instead of inventing a fixed constant.
-/// `LegacyResourceAdapter` checks each handle against the epoch it was built with, so a
-/// handle minted by one provider instance is rejected by any other. The counter
-/// restarts at 1 on each process start, so a handle that outlived a restart is *not*
-/// caught here — that needs a host-owned epoch, which a driver crate cannot supply.
+/// (`src-tauri/src/platform/adapter.rs` records `RuntimeEpoch` as 「❌ 无会话世代」), so
+/// the provider mints its own instead of inventing a fixed constant.
+/// `LegacyResourceAdapter` checks each handle against the epoch it was built with, so
+/// a handle minted by one provider instance is rejected by any other.
+///
+/// The counter is only advanced inside [`PROVIDER`]'s initializer, so the one
+/// provider that exists takes one epoch and keeps it: the host calls
+/// `require_resource_provider` afresh on every lookup, and a provider rebuilt per
+/// call would invalidate every handle the moment it was looked up again.
+///
+/// The counter restarts at 1 on each process start, so a handle that outlived a
+/// restart is *not* caught here — that needs a host-owned epoch, which a driver crate
+/// cannot supply.
 static PROVIDER_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+/// The one provider this process has. Memoized, so its epoch never changes and the
+/// handles it issues stay valid across however many times the host looks it up.
+static PROVIDER: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
+
+/// The epoch [`PROVIDER`] was actually built with.
+///
+/// The counter cannot answer that on its own — it advances for every provider built,
+/// memoized or not — so the value the live provider took is recorded next to it.
+static PROVIDER_EPOCH: OnceLock<u64> = OnceLock::new();
 
 /// The namespace VictoriaMetrics actually addresses.
 ///
@@ -65,13 +81,52 @@ pub(crate) fn namespace_shape() -> NamespaceShape {
     }
 }
 
-/// The real provider for `victoriametrics`.
-pub(crate) fn resource_provider() -> Arc<dyn ResourceProvider> {
+/// The real provider for `victoriametrics`, built once and shared.
+///
+/// `driver` is the instance the host also gets from `DatabaseDriverFactory::create`,
+/// not a throwaway: the provider and the host must be looking at the same driver, or
+/// a handle it issues would address a different one.
+pub(crate) fn provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvider> {
+    PROVIDER
+        .get_or_init(|| {
+            let runtime_epoch = PROVIDER_GENERATION.fetch_add(1, Ordering::Relaxed);
+            // Recorded inside the initializer, so it always describes the provider
+            // that won the race and never a discarded attempt.
+            let _ = PROVIDER_EPOCH.set(runtime_epoch);
+            Arc::new(LegacyResourceAdapter::new(
+                driver,
+                "victoriametrics",
+                env!("CARGO_PKG_VERSION"),
+                runtime_epoch,
+                namespace_shape(),
+            ))
+        })
+        .clone()
+}
+
+/// The epoch the live provider stamps into every handle it mints.
+///
+/// Test-only: production code hands a handle back to the provider that issued it and
+/// never has to compare epochs itself.
+#[cfg(test)]
+pub(crate) fn runtime_epoch() -> u64 {
+    *PROVIDER_EPOCH
+        .get()
+        .expect("the memoized provider is built before any handle is minted")
+}
+
+/// Build a provider that is *not* [`PROVIDER`], and the epoch it took.
+///
+/// Test-only. It reproduces the failure per-call construction caused, so the
+/// memoization test can show the epoch check really does refuse a foreign handle.
+#[cfg(test)]
+pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvider> {
+    let runtime_epoch = PROVIDER_GENERATION.fetch_add(1, Ordering::Relaxed);
     Arc::new(LegacyResourceAdapter::new(
-        Arc::new(VictoriaMetricsDriver::new()),
+        driver,
         "victoriametrics",
         env!("CARGO_PKG_VERSION"),
-        PROVIDER_GENERATION.fetch_add(1, Ordering::Relaxed),
+        runtime_epoch,
         namespace_shape(),
     ))
 }
@@ -95,7 +150,7 @@ pub(crate) fn resource_provider() -> Arc<dyn ResourceProvider> {
 ///
 /// A caller that needs one of these gets an explicit
 /// `ResourceError::CapabilityNotDeclared` instead of a silent empty success. Keep this
-/// byte-identical to what `resource_provider()` reports: a factory that looks rosier
+/// byte-identical to what `provider()` reports: a factory that looks rosier
 /// than its own provider is exactly the drift the contract exists to prevent.
 pub(crate) fn capabilities() -> CapabilitySet {
     CapabilitySet::default()
@@ -103,10 +158,14 @@ pub(crate) fn capabilities() -> CapabilitySet {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use datazen_driver_api::capabilities::SessionContinuity;
     use datazen_driver_api::namespace::NamespaceTarget;
     use datazen_driver_api::require_resource_provider;
-    use datazen_driver_api::resource::{DescribeResourceRequest, IdentityScope, ResourcePurpose};
+    use datazen_driver_api::resource::{
+        DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourcePurpose,
+    };
     use datazen_driver_api::{ConnectionConfig, DatabaseDriverFactory};
 
     use crate::{
@@ -273,5 +332,55 @@ mod tests {
             "VictoriaMetrics has no execution-handle protocol to advertise"
         );
         assert!(!VictoriaMetricsDriver::new().supports_query_execution_cancel());
+    }
+
+    /// The host must be able to find the same provider twice.
+    ///
+    /// `require_resource_provider` calls `DatabaseDriverFactory::resource_provider`
+    /// afresh on every lookup, and `LegacyResourceAdapter` refuses a handle whose
+    /// epoch is not the one it was built with. A provider rebuilt per call therefore
+    /// invalidated every handle the instant the host looked it up again: the resource
+    /// layer existed, and nothing could use it.
+    #[tokio::test]
+    async fn the_provider_is_memoized_so_its_own_handles_survive_the_next_lookup() {
+        let first = factory()
+            .resource_provider()
+            .expect("victoriametrics declares a real provider");
+        let second = factory()
+            .resource_provider()
+            .expect("victoriametrics declares a real provider");
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "two lookups handed back different provider instances, so a handle minted \
+             by the first is rejected by the second"
+        );
+
+        let handle =
+            ResourceHandle::issue(first.provider_id(), "connection-1", super::runtime_epoch());
+        // The epoch being checked is the one *this* provider was built with, not one
+        // the test hands over: `close_resource` is the cheapest provider call that
+        // runs the ownership + epoch check, and it answers `Ok` for a resource it
+        // simply is not holding, so a pass is attributable to the check alone.
+        second.close_resource(&handle).await.expect(
+            "a handle the provider minted must still validate against the provider \
+                 the host looks up next time",
+        );
+
+        // And the check is not vacuous: a provider built outside the memo took
+        // another epoch and still refuses the handle. That is precisely the failure
+        // per-call construction produced.
+        let stray = super::stray_provider(factory().create());
+        assert!(
+            !Arc::ptr_eq(&first, &stray),
+            "the stray provider must not be the memoized one"
+        );
+        let rejection = stray
+            .close_resource(&handle)
+            .await
+            .expect_err("a provider built outside the memo must not accept the handle");
+        assert!(
+            matches!(rejection, ResourceError::StaleRuntimeEpoch { .. }),
+            "got {rejection:?}"
+        );
     }
 }
