@@ -59,6 +59,19 @@ pub enum NamespaceSwitch {
     InPlace,
     /// The switch is possible but only by replacing the underlying resource.
     RequiresReplacement,
+    /// There is no session to switch: the driver addresses the namespace on
+    /// every request instead of holding it as session state.
+    ///
+    /// Neither neighbour above can describe this driver. [`Self::InPlace`]
+    /// needs a session that changes, and [`Self::RequiresReplacement`] needs
+    /// one that is torn down — a driver that carries the namespace in each
+    /// request has neither. Declaring [`Self::Unsupported`] for it would be a
+    /// false measured refusal: the driver demonstrably reaches another
+    /// namespace, just not by switching anything.
+    ///
+    /// The caller must supply the namespace on each call and must not expect a
+    /// switch to be visible to subsequent statements through shared state.
+    PerRequest,
     Unsupported,
     Unknown,
 }
@@ -67,6 +80,15 @@ impl NamespaceSwitch {
     /// `Unknown` must not enable in-place switching.
     pub fn switches_in_place(self) -> bool {
         matches!(self, Self::InPlace)
+    }
+
+    /// The namespace is carried per request rather than switched in place.
+    ///
+    /// True only for [`Self::PerRequest`], so a caller can tell "address this
+    /// namespace on every call" apart from [`Self::Unsupported`], which is a
+    /// measured refusal to address another namespace at all.
+    pub fn addresses_per_request(self) -> bool {
+        matches!(self, Self::PerRequest)
     }
 }
 
@@ -823,6 +845,53 @@ mod tests {
             registry.capabilities.namespace_switch = NamespaceSwitch::RequiresReplacement;
         });
         assert!(registry.require_in_place_namespace_switch().is_err());
+    }
+
+    #[test]
+    fn per_request_does_not_switch_in_place() {
+        let registry = registry_with(|registry| {
+            registry.capabilities.namespace_switch = NamespaceSwitch::PerRequest;
+        });
+        assert!(registry.require_in_place_namespace_switch().is_err());
+        assert!(!NamespaceSwitch::PerRequest.switches_in_place());
+    }
+
+    #[test]
+    fn per_request_is_not_the_same_as_a_refusal_or_an_unmeasured_answer() {
+        // The point of the variant: a driver that addresses the namespace per
+        // request must not have to declare `Unsupported`, which would be a
+        // measured refusal it did not make.
+        let registry = registry_with(|registry| {
+            registry.capabilities.namespace_switch = NamespaceSwitch::PerRequest;
+        });
+        assert!(NamespaceSwitch::PerRequest.addresses_per_request());
+        assert_ne!(NamespaceSwitch::PerRequest, NamespaceSwitch::Unsupported);
+        assert_ne!(NamespaceSwitch::PerRequest, NamespaceSwitch::Unknown);
+        // Only the new variant answers the per-request question; declaring a
+        // refusal must not start answering it.
+        assert!(!NamespaceSwitch::Unsupported.addresses_per_request());
+        assert!(!NamespaceSwitch::Unknown.addresses_per_request());
+        assert!(!NamespaceSwitch::InPlace.addresses_per_request());
+        assert!(!NamespaceSwitch::RequiresReplacement.addresses_per_request());
+        // and it is reachable through the registry rather than dropped.
+        assert_eq!(
+            registry.capabilities.namespace_switch,
+            NamespaceSwitch::PerRequest
+        );
+    }
+
+    #[test]
+    fn per_request_serializes_to_the_wire_name() {
+        // The wire form is the cross-plugin contract, so it is pinned here the
+        // way `DdlAtomicity` is in types.rs.
+        assert_eq!(
+            serde_json::to_string(&NamespaceSwitch::PerRequest).unwrap(),
+            "\"perRequest\""
+        );
+        assert_eq!(
+            serde_json::from_str::<NamespaceSwitch>("\"perRequest\"").unwrap(),
+            NamespaceSwitch::PerRequest
+        );
     }
 
     #[test]
