@@ -437,9 +437,28 @@ mod tests {
         //   * 手写 `impl serde::Serialize for PortError` 放在同文件任意位置。
         // 位置会变，类型名不会，所以按类型名归属。
         //
-        // 边界：`#[cfg(test)]` 之后不扫（本测试自己必然提到 serde）；跨文件给 `PortError`
-        // 实现 serde 也不在本守卫范围内——那是另一个文件的决定，该由那条边界的守卫负责。
-        // 本守卫只管一件事：端口层的 wire 形态不得在本模块里私定。
+        // 边界：`#[cfg(test)]` 之后不扫（本测试自己必然提到 serde）。本守卫只管一件事：
+        // **端口层的 wire 形态不得在本模块里私定。**
+        //
+        // 跨文件给 `PortError` 实现 serde，本守卫**看不见**，而且这不是待补的 TODO——
+        // 是没有守卫。实测（探针：另一个文件里 `impl serde::Serialize for PortError`，
+        // 本文件只加一行 `#[path] mod` 挂进来）：EXIT=0，守卫
+        // `the_port_error_has_no_wire_shape_of_its_own` 与一条证明
+        // `PortError` 确实已能序列化的正向测试**同时通过**。原因是结构性的：本守卫读的是
+        // `include_str!("error.rs")` 这一个字符串。
+        //
+        // 写这段注释时此处原本写的是「该由那条边界的守卫负责」。那句话是假的：全仓
+        // `include_str!` 类守卫 71 处、分布在 4 个 crate，其中 `packages/driver-api`
+        // 49 个 `.rs` 只被 1 个守卫触达，同 crate 的 `ports/secret.rs` 兄弟守卫
+        // （`resolved_credential_has_no_serde_impls_in_source`）也是只读自己那一个文件。
+        // 指给一个不存在的守卫，比不写更坏——它会让下一个读到这里的人以为这一维已经
+        // 有人兜底，而代码里没有任何东西会在它失守时报错。
+        //
+        // 要真封住只有两条路，都不在这条测试里：给 `Cargo.toml` 加 `static_assertions`
+        // 的 `assert_not_impl_any!(PortError: !Serialize)`，或在 `scripts/check-*.mjs`
+        // 里做 crate 级扫描。后者必须**遍历模块树**（从 `lib.rs` 解析 `mod`，或直接遍历
+        // 目录）——**不要手写文件清单**：清单会随新增文件静默过期，守卫照样判绿，而且
+        // 过期时没有任何信号，比只读单文件更坏。
         const ALLOWED: [&str; 2] = ["ApiErrorCode", "RetryDisposition"];
         const MARKERS: [&str; 3] = ["Serialize", "Deserialize", "serde_json"];
 
