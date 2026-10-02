@@ -21,6 +21,26 @@ pub struct VectorDriver {
     clients: RwLock<HashMap<String, (reqwest::Client, String)>>,
 }
 
+/// What one round trip proved about a session.
+///
+/// Every variant is a *measured* outcome. There is deliberately no variant that
+/// means "probably fine": [`EndpointLiveness::Unreachable`] stays separate from
+/// [`EndpointLiveness::Gone`] because only the second one proves that every
+/// handle onto this resource is dead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndpointLiveness {
+    /// The endpoint answered with a success status on this client's own
+    /// credentials and address.
+    Answered,
+    /// The endpoint answered, but not with success — bad credentials, missing
+    /// route, server error. It is there; this client cannot use it.
+    AnsweredNotUsable,
+    /// No answer at all: DNS, TLS, refused or timed out.
+    Unreachable,
+    /// The driver holds no client for this handle. Proven gone.
+    Gone,
+}
+
 impl VectorDriver {
     pub fn new() -> Self {
         Self {
@@ -71,6 +91,35 @@ impl VectorDriver {
         }
         serde_json::from_str(&text)
             .map_err(|e| DriverError::QueryFailed(format!("Qdrant JSON parse failed: {e}")))
+    }
+
+    /// One cheap round trip that establishes whether this session can still be
+    /// used.
+    ///
+    /// Qdrant has no session to read state from, so a liveness probe is the only
+    /// observation this driver can honestly make. The four outcomes are kept
+    /// apart rather than collapsed into "ok" / "not ok" because the resource
+    /// provider maps them to *different* health values — in particular a
+    /// refused connection is not the same fact as "the driver no longer holds
+    /// this client", and only the latter means every handle is dead.
+    ///
+    /// The body of the response is not read: liveness is a property of the
+    /// status line, and not consuming a possibly large collection listing keeps
+    /// the probe from turning into a payload leak.
+    pub async fn probe_liveness(&self, handle: &ConnectionHandle) -> EndpointLiveness {
+        let map = self.clients.read().await;
+        let Some((client, base)) = map.get(&handle.pool_id) else {
+            return EndpointLiveness::Gone;
+        };
+        match client.get(format!("{base}/collections")).send().await {
+            // No status at all: DNS, TLS, refused or timed out. Not proof the
+            // instance is gone.
+            Err(_) => EndpointLiveness::Unreachable,
+            Ok(response) if response.status().is_success() => EndpointLiveness::Answered,
+            // It answered — with a 401, a 404 or a 5xx. The endpoint is there;
+            // this client cannot use it.
+            Ok(_) => EndpointLiveness::AnsweredNotUsable,
+        }
     }
 
     fn points_to_result(v: &serde_json::Value) -> QueryResult {
