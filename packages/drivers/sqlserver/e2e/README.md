@@ -11,6 +11,12 @@ Optional WebdriverIO specs for the SQL Server path driver. Not included in defau
 | `sqlserver-schema-diff.ts`   | Real-window Schema Diff from a source database to a distinct target database on the configured server. Compares one same-schema table, generates and deploys its plan, then verifies target columns and primary key.                                                                                                                                                                                                                                                                      |
 | `sqlserver-data-sync.ts`     | IPC Data Sync compare → selected INSERT preview → apply. Copies explicit identity values between same-shaped SQL Server tables, checks preview serialization and verifies the target rows.                                                                                                                                                                                                                                                                                                |
 | `sqlserver-data-transfer.ts` | IPC Data Transfer preview → execute between two scratch schemas. Copies into a target identity table with a deliberately different seed, verifies source IDs were preserved, then confirms a normal generated-ID insert still works on the target session.                                                                                                                                                                                                                                |
+| `sqlserver-structure-transfer.ts` | IPC Data Transfer `structure` mode preview → execute. Transfers a parent/child pair into an empty target schema via `createNew`, carrying one index per catalog shape the parser reports — a plain `NONCLUSTERED` index, a `UNIQUE` index and a `UNIQUE` constraint (`UNIQUE_CONSTRAINT:NONCLUSTERED`) — plus a named foreign key. Asserts the preview emits `index` and `foreignKey` items with no SQL Server-only vocabulary leaked, **asserts the emission order (all tables → all indexes → all foreign keys) by index, not by sorted name lists**, then verifies the landing objects through the *target* catalog (`sys.indexes` / `sys.foreign_keys`) and confirms `structure` mode creates the tables without copying rows. `UNIQUE_CONSTRAINT:CLUSTERED` is not reachable through live DDL and is covered by the Rust test `sqlserver_renders_every_catalog_index_type_without_manual_translation`. |
+
+The `structure` mode host-generic contract (DOM block ordering plus the
+name-collision fail-closed path) is **not** asserted here — it lives in
+`e2e/specs/data-transfer-structure-objects.ts` (`DT-OBJ-1` / `DT-OBJ-2`) and is
+the responsibility of the Host spec, not of a single dialect.
 
 ## Prerequisites
 
@@ -80,6 +86,11 @@ E2E_SQLSERVER_DATABASE=DataZen \
 E2E_SQLSERVER_HOST=127.0.0.1 E2E_SQLSERVER_USER=sa E2E_SQLSERVER_PASSWORD='YourPassword' \
 E2E_SQLSERVER_DATABASE=DataZen \
   pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-data-transfer.ts
+
+# Data Transfer `structure` mode: objects + emission order (needs source and target schemas)
+E2E_SQLSERVER_HOST=127.0.0.1 E2E_SQLSERVER_USER=sa E2E_SQLSERVER_PASSWORD='YourPassword' \
+E2E_SQLSERVER_DATABASE=DataZen \
+  pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-structure-transfer.ts
 ```
 
 Without credentials, the specs skip cleanly. The live specs make no assumption about
@@ -87,6 +98,23 @@ pre-existing user tables: everything they touch is created with the `dz_e2e_` pr
 (the GUI spec's `dz_e2e_ui_` schemas are dropped in `after`, and `sqlserver-live-e2e.ts`
 also sweeps stale `dz_e2e_` schemas left behind by earlier runs).
 Credential-free runs never print the password; keep it in the environment only.
+
+### These specs never run in CI — read this before counting them as coverage
+
+Every spec in this directory is **manual-only**. Two independent reasons, both
+verified against the tree rather than assumed:
+
+1. No CI workflow sets any `E2E_SQLSERVER_*` variable, so `skipReason()` returns a
+   reason and the `it()` is skipped even if the spec were invoked.
+2. No CI workflow passes `--spec packages/drivers/sqlserver/e2e/…`, and the default
+   `specs` glob in `e2e/wdio.conf.ts` is `./specs/**/*.ts` — which does **not** reach
+   `packages/drivers/**`. Driver specs are therefore outside both the default glob
+   and every CI invocation.
+
+This is deliberate and matches `AGENTS.md` ("驱动 E2E … 显式脚本，不进默认
+`pnpm e2e`"), but it does mean a green CI says **nothing** about SQL Server. Treat
+this directory as a manual regression suite: run it before releasing a change that
+touches the SQL Server driver, and do not treat "CI is green" as evidence of coverage.
 
 ## Gotchas
 
