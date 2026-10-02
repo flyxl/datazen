@@ -303,8 +303,8 @@
 `packages/driver-api/src/lib.rs` 尾部定义两个常量：
 
 ```rust
-pub const PROTOCOL_VERSION: u32 = 4;   // lib.rs:92
-pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:98
+pub const PROTOCOL_VERSION: u32 = 4;   // lib.rs:99
+pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 ```
 
 同处文档说明：`version < MIN` 的驱动被拒绝加载；`MIN <= version < PROTOCOL_VERSION` 的驱动以**降级模式**运行，缺失的能力一律按 `false` 处理。**这是 `driver-api` 侧写下的契约承诺；宿主代码当前只打印降级警告，并没有真的把任何能力改写为 `false`（见下方闸门现状）。**
@@ -338,9 +338,11 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:98
 
 判定原则是**「老驱动在新宿主上是否仍能安全运行」**。`capabilities.rs` 里所有新枚举都按 fail-closed 默认（`unknown` / `unsupported`）设计，正是为了让「新增能力」本身不成为 breaking。
 
+**这条原则有一个它回答不了的问法。** 上表的六行都在问「老驱动还能不能跑」，但 `#[non_exhaustive]` 这类改动问的是「新的还编不编得出来」——已编好的老驱动照跑不误，答案不在这张表的任何一格里。所以门禁另有第四档 `source-breaking`，它不是本表的补充行，而是不回答本表问题的另一类改动，见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)。
+
 **升 `PROTOCOL_VERSION` 与升 `MIN` 是两件事，不要混用。** `PROTOCOL_VERSION` 是「宿主现在说的协议」，任何 breaking 改动都必须升它，否则老驱动无从判断自己是不是对新宿主说谎。而 `MIN_PROTOCOL_VERSION` 是「还愿意接受的最后一个老驱动协议」，**它是一个主动放弃老驱动的产品决定，不是 breaking 的机械后果**：本 crate 自己的 `PROTOCOL_VERSION` 已经过 `1 → 4`，`MIN` 始终停在 `1`，这正是「窗口从不被自己悄悄收窄」的含义。若某次 breaking 确实不想再兼容任何老驱动，那是**另外**再升 `MIN`，让宿主在 `pv < MIN` 时明确拒绝，而不是把它当成 breaking 的处理方式。
 
-**门禁**：`scripts/check-driver-protocol-compat.mjs`（`pnpm test:driver-protocol`，CI 中为硬门禁）。它对 10 个受治理符号的**删除 / 改写**，以及**在以 `;` 结尾的 trait 里新增 `fn` / `const` / `type`**，判为 `breaking` 并要求 `PROTOCOL_VERSION` 上升；并常驻三条断言：`min-protocol-never-lowered`、`protocol-window-non-empty`（`MIN ≤ PROTOCOL`）、`crate-version-advanced`。新增 DTO 字段或枚举取值走 `additive` / `cosmetic` 判定，不触发协议升级。
+**门禁**：`scripts/check-driver-protocol-compat.mjs`（`pnpm test:driver-protocol`，`.github/workflows/ci.yml:68` 硬门禁）。它对 10 个受治理符号的**删除 / 改写**，以及**在以 `;` 结尾的 trait 里新增 `fn` / `const` / `type`**，判为 `breaking` 并要求 `PROTOCOL_VERSION` 上升；并常驻三条断言：`min-protocol-never-lowered`、`protocol-window-non-empty`（`MIN ≤ PROTOCOL`）、`crate-version-advanced`。新增 DTO 字段或枚举取值走 `additive` / `cosmetic` 判定，不触发协议升级。第四档 `source-breaking` 的触发条件、失败配方与检测边界见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)。
 
 ### 5.4 「协议升级与驱动发布是原子兼容门槛」
 
@@ -359,6 +361,49 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:98
 **冲突时的判据**：如果某个 breaking 改动无法在本仓库内一次性覆盖全部 path 驱动（例如需要 3 个 git 驱动分别发版），那它**不能**靠下调 `MIN` 蒙混过关，必须先让 DataZen 侧以新 `PROTOCOL_VERSION` 构建、通过 registry 钉 ref 升级全部 git 驱动，最后再打开闸门。在中间状态，宿主应保持 `PROTOCOL_VERSION` 不变、拒绝加载尚未跟进的新能力，而不是接受一个半兼容的组合。
 
 **AI 侧同理**：`AI_PROTOCOL_VERSION` 变更时需要同步更新所有 AI Provider 插件，这条规则在 `AGENTS.md` 中已写明，与本文的驱动协议规则是同一套原子门槛的两次应用。
+
+### 5.5 `source-breaking`：老驱动跑得好好的，但新的编不出来
+
+门禁实际有**四档**判定，不是三档：`additive` / `breaking` / `source-breaking` / `cosmetic`（`scripts/lib/compatMatrix.mjs:24` 的 `COMPAT_MATRIX.classes`）。
+
+第四档不是给三档打补丁。有一类改动**根本不回答 §5.3 的判定原则**——「老驱动在新宿主上是否仍能安全运行」这个问题对它来说是空的。代表物是给受治理 `struct` 加 `#[non_exhaustive]`（下文把这种「以后不能再加字段」的 FOREVER 冻结简称 FOREVER 冻结）。这类改动落地的瞬间：
+
+- 已经**编好**的老驱动**完全正常**。它报告的协议版本没变，宿主不降级、不拒绝，行为一模一样。
+- 任何**还没编**的驱动**立刻编不出来**。`rustc` 报 `error[E0639]`，在对方自己的仓库里。
+
+于是旧的两档都不是「不够精确」，是**错的**：
+
+- **判 `additive` 是撒谎。** `additive` 的定义就是「现有实现方继续能编译」，而 `#[non_exhaustive]` 恰恰是让它们停止编译的那一个属性。它又是唯一会对 out-of-tree 驱动说「你没事，继续走」的那一档——那正是唯一不能发出去的消息。**用一档承诺「你不受影响」的判定，去描述一个会打破你的改动，是在骗下一个人。**
+- **判 `breaking` 会逼出一场根本没发生的线上事故。** `breaking` 的义务是升 `PROTOCOL_VERSION`（`scripts/check-driver-protocol-compat.mjs:695` 的 `breaking-change-requires-protocol-bump`）。但线上一个字节都没动，升它等于向所有驱动宣布一个不存在的线上不兼容，同时对真正会炸的地方——别人仓库里的 `cargo build`——一个字都没说。
+
+所以 `source-breaking` 自己成档：它按 `additive` 的方式动 crate 版本（`COMPAT_MATRIX.classes['source-breaking'].requires = ['crateVersion']`，`scripts/lib/compatMatrix.mjs:69-73`），并额外携带一份显式迁移说明。
+
+#### 边界一：FOREVER 冻结 ≠ 升 `PROTOCOL_VERSION`
+
+两者管的不是同一件事。`PROTOCOL_VERSION` 是宿主与驱动之间**线上**说的协议（`packages/driver-api/src/lib.rs:99`，当前 `4`；`MIN_PROTOCOL_VERSION` 在 `:105`，当前 `1`），它能表达的是一个 `[MIN, PROTOCOL]` 的**版本窗口**：装一个旧驱动，宿主据此知道该怎么对待它。FOREVER 冻结是**源码级**的，协议窗口里没有「你必须重编」这个词汇，也永远不会有——线上一位比特都没动。
+
+把它表达成协议升级，等于**用一台测不到故障的仪器去报告一个只在编译期存在的故障**。因此：改线上语义 → 升 `PROTOCOL_VERSION`；FOREVER 冻结 → 升 crate 版本 + 发迁移配方，**协议号一位都不动**。
+
+#### 边界二：失败配方，以及一个必须为 0 的自查
+
+命中 `source-breaking` 时门禁报 `source-break-requires-out-of-tree-migration`（`scripts/check-driver-protocol-compat.mjs:711`），并把 `scripts/lib/sourceBreak.mjs:44-57` 的 `OUT_OF_TREE_MIGRATION_NOTE` 原样打进失败信息——因为对 out-of-tree 作者来说，**这段门禁输出往往是他编不过之前唯一能看到的东西**。这条没有「已满足」可以 latch（上面两条有）：升 crate 版本不告诉任何人该敲什么代码，所以**配方本身就是违规项**，命中即报。
+
+同一份报告里，`breaking-change-requires-protocol-bump` 的出现次数**必须是 0**。这是防自己搞混的自查项，不是顺带的效果：`CLASS_REQUIRES` 由 `COMPAT_MATRIX.classes[cls].requires` 派生（`scripts/check-driver-protocol-compat.mjs:209`、`:692`），而 `source-breaking` 的 requires 里**没有** `protocol`。哪天这条 token 在一次 FOREVER 冻结提交里出现，就说明判定漏回了 `breaking`，第四档等于白设。
+
+#### 边界三：检测是故意窄的，不要当成「什么都抓」
+
+`SOURCE_BREAKING_ATTRIBUTES`（`scripts/lib/sourceBreak.mjs:82-91`）目前只有一条 `struct` 规则，下面四个边界都是刻意的：
+
+1. **只认整行。** 正则是 `/^\s*#\s*\[\s*non_exhaustive\s*\]\s*$/`（`:86`）。`isCosmeticLine`（`scripts/check-driver-protocol-compat.mjs:285-295`）会先丢掉纯注释行，所以「文档里提到这个属性」不会被误判；但一行 `// TODO: 加 #[non_exhaustive]` 后面确实声明着字段——子串匹配会为这个 TODO 拦下一次门禁，把一次普通字段新增报成 source break。
+2. **只认受治理 span 内的非 cosmetic 新增行。** 改写一行在 diff 里是**删除**，永远在 `breaking` 分支就返回了，压根到不了新增分支（`:533-546`）。所以这一档只能由**纯新增**触发。
+3. **只认 `kind === 'struct'`。** `trait` 的表是空的（`:90`）。
+4. **`#[serde(...)]` 仍然是 `additive`，这是对的。** 它改的是线上写出去的东西，不是能不能编译，归本文档 serde 行管，不由这张表管。**两个排除的理由不能互换**：把它排除的理由是「改线上」，而「在 `enum` 上限制的是**匹配**、不是构造」是 `non_exhaustive` 加在 enum 上时被排除的理由（`:72-75`）。拿后者去论证前者是错的——那会把一个线上问题说成构建问题，正是这张表存在的意义。
+
+#### `CapabilitySet` 的当前位置（当前事实，不是计划）
+
+`packages/driver-api/src/capabilities.rs:282` 的 `pub struct CapabilitySet` **目前没有** `#[non_exhaustive]`，紧邻的 `:281` 是 `#[serde(rename_all = "camelCase")]`。**这是当前状态，不是「待补」。**
+
+之所以现在加这个属性是**一行一处**的改动：`1434d29e3` 之后，全仓库**穷举式 `CapabilitySet` 字面量数量为 0**。12 个 path 驱动全部改为 `CapabilitySet::default()` 加逐字段赋值，形态见 `packages/drivers/postgres/src/resource/capabilities.rs:128` 的 `let mut capabilities = CapabilitySet::default();` 及其后 12 条 `capabilities.<字段> = …`（`:130-155`、`:194`、`:228`）。加属性这一步确实只有一处；但**代价落在 out-of-tree 驱动上**，那是边界二的迁移配方要交代的事：旧写法在别的仓库里编不过，而本仓库内的驱动早已全部改完。
 
 ## 6. 过渡 adapter：遗留驱动的独立受控 Command
 
@@ -472,6 +517,7 @@ P2 新增的 `capabilities.rs` / `resource.rs` / `session.rs` 必须逐条过这
 
 | 门禁 | 命令 | 基线 |
 | --- | --- | --- |
+| 驱动协议兼容 | `pnpm test:driver-protocol` | 干净。`source-breaking` 命中时只应报 `source-break-requires-out-of-tree-migration`；同一次运行里 `breaking-change-requires-protocol-bump` 出现次数**必须为 0**（自查项，见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)） |
 | 依赖边界 | `pnpm test:boundaries` | 生产代码 0 违规；fixture 2 处已知违规（不是 0 目标值） |
 | 类型 | `pnpm typecheck` | 干净，**含测试文件**（`tsconfig.json` 已不排除 `__tests__/` 与 `*.test.ts(x)`） |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | 干净 |
