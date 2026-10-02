@@ -33,7 +33,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use datazen_driver_api::capabilities::CapabilitySet;
+use datazen_driver_api::capabilities::{
+    Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
+    PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
+    TransactionObservation, TransactionSupport,
+};
+use datazen_driver_api::capability_domains::{BackupSupport, DataSupport};
 use datazen_driver_api::namespace::{NamespaceLevel, NamespaceLevelKind, NamespaceShape};
 use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
@@ -135,27 +140,74 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 
 /// What this crate can honestly claim, capability by capability.
 ///
-/// The value is `CapabilitySet::default()` — every field at the non-supporting answer —
-/// and that is the truthful statement, not an omission:
+/// Every entry below is a claim about code that **already exists** in this crate. A
+/// capability that is not proven is declared blank (`Unknown` / `Unsupported`) and
+/// says here why it could not be proven — a blank cell is a finding, not an
+/// omission.
 ///
-/// * `precise_cancel` stays non-supporting because VictoriaMetrics has no
-/// execution-handle cancel protocol. `LegacyResourceAdapter` derives this field from
-/// `supports_query_execution_cancel()`, which for VictoriaMetrics is `false`; declaring
-/// anything stronger here would make the factory disagree with the provider that
-/// actually owns the registry.
-/// * `stateful_session` stays unknown because a VictoriaMetrics HTTP session carries no
-/// server-side session
-/// * `observe_session`, `change_context`, `reset_resource`, commit and rollback stay
-/// non-supporting for the reasons in the module docs; nothing here is migrated to a
-/// session contract yet, so claiming otherwise would be a capability the port cannot
-/// honour.
+/// | Capability | Declared | Why |
+/// |---|---|---|
+/// | `stateful_session` | *(blank)* `Unknown` | the only thing a handle owns is a `reqwest::Client` and a base URL in a map keyed by connection id (`victoriametrics.rs:20`) — an HTTP transport, not a server-side session. But "no session state exists" and "the contract has a stateful session" are different statements, and this provider cannot produce the evidence the second one needs: `LegacyResourceAdapter::describe_resource` hard-codes `SessionContinuity::Unknown` and `ReusePolicy::Unknown` for every legacy driver (`resource_adapter.rs:212`, `:215`), so `Supported` here would contradict this provider's own descriptor. Unprovable from this crate alone. |
+/// | `namespace_switch` | `Unsupported` | there is no attached context to switch. The tenant is a per-request string, not session state: `resolve_database` is a pure function of the explicit argument (`victoriametrics.rs:44-51`) and the doc states that this driver keeps no mutable session state (`victoriametrics.rs:40-43`, `use_database` is gone). Nothing is switched, so nothing can be switched in place; and there is no replacement mechanism to point at either, which is why this is not `RequiresReplacement`. The adapter refuses `change_context` outright as well. Measured absent, not merely undeclared. |
+/// | `context_observation` | *(blank)* `Unsupported` | `observe_session` returns `SessionObservation::unobservable()` unconditionally in the adapter, so this provider has no code path that can report a session context. `Partial` would promise a half-answered observation that never arrives. |
+/// | `transaction_observation` | *(blank)* `Unsupported` | measured absence, not an unmeasured blank: `begin_transaction` is not overridden, so it takes the trait default that errors ("Not supported for this driver type", `traits.rs:602-609`), and `command_definitions()` publishes query, query-stream and schema-catalog commands only — no transaction command exists to invoke (`victoriametrics.rs:395-400`). The adapter refuses commit and rollback too, because VictoriaMetrics has no transactions. |
+/// | `session_scoped_handles` | *(blank)* `Unknown` | there is no cursor, prepared statement or transaction handle to mint: the handle is the connection (`victoriametrics.rs:30-36`), and the whole API surface is one HTTP GET per call (`victoriametrics.rs:53-71`). Nothing was measured because nothing was ever opened. |
+/// | `reset_for_reuse` | *(blank)* `Unsupported` | there is no verified baseline replay in this crate, and no baseline to replay: the adapter answers `ResetDisposition::Discard`. `Verified` would hand out `Ok(())` and open a feature (`capabilities.rs:417-421`) that nothing here has earned. |
+/// | `precise_cancel` | *(blank)* `Unknown` | see the note below — the adapter overwrites this cell. |
+/// | `snapshots` | *(blank)* `Unsupported` | there is no snapshot operation in this crate. `command_definitions()` publishes no snapshot command (`victoriametrics.rs:395-400`), and the HTTP API surface used here is the instant-query endpoint (`victoriametrics.rs:326-331`). Measured absence. |
+/// | `transactions.isolation_levels` | *empty* | there is no transaction to hand an option to: `begin_transaction` is the trait default error (`traits.rs:602-609`). An empty list reads as "cannot confirm any level", which is the whole truth here. |
+/// | `transactions.savepoints` | *(blank)* `Unknown` | nothing was measured, and nothing could be: the driver has no transaction surface at all. `Unsupported` would claim a measurement that was never taken. |
+/// | `transactions.max_open_transactions` | `None` | no bound can be proven without a transaction to open. `Some(0)` would claim transactions are refused *by measurement*; `None` is the honest "no measurement exists". |
+/// | `ddl_atomicity.by_operation` | *empty* | this driver does not override `DatabaseDriver::ddl_atomicity` (`traits.rs:156`, default `Unknown`), and it cannot: `execute` is a hard read-only refusal — "VictoriaMetrics is read-only via the HTTP API" (`victoriametrics.rs:389-393`) — and no DDL command is published (`victoriametrics.rs:395-400`). Inventing operation keys here would name atomicity guarantees for statements this driver cannot run at all. |
+/// | `data` | *(blank)* `Unknown` | **this cell is blank because the enum cannot express what this driver is — not because nothing is known.** Two facts are proven: rows ARE readable (`query` builds the result from the JSON response, `victoriametrics.rs:318-335`), and row write is a *measured* refusal (`execute`, `victoriametrics.rs:389-393`). But `query_stream` awaits the whole HTTP round trip first, materialises every row into a `QueryResult` (`victoriametrics.rs:364`), and only then hands them to `stream_decoded_rows` (`victoriametrics.rs:366-375`) — the events are replayed from memory after the last byte arrived. That is **buffered read-only**, and `DataSupport` has no such variant: `StreamingReadOnly` would falsely claim incremental delivery, `BufferedReadWrite` would falsely claim row write, and `Unsupported` would falsely claim row read is absent. `Unknown` is the only non-false answer available. The honest fix is a new `BufferedReadOnly` variant in `capability_domains.rs` (mirrored in `packages/application/src/capability/domain.rs`), which is out of scope here. |
+/// | `backup` | *(blank)* `Unknown` | nothing in this crate produces or consumes a backup artifact, and no backup or restore command is published (`victoriametrics.rs:395-400`). Nothing was measured, so the cell stays blank rather than claiming a measured refusal. |
 ///
-/// A caller that needs one of these gets an explicit
-/// `ResourceError::CapabilityNotDeclared` instead of a silent empty success. Keep this
-/// byte-identical to what `provider()` reports: a factory that looks rosier
-/// than its own provider is exactly the drift the contract exists to prevent.
+/// # `precise_cancel` is not this driver's cell to fill
+///
+/// `LegacyResourceAdapter::new` takes the [`CapabilitySet`] and then *overwrites*
+/// `precise_cancel` from `driver.supports_query_execution_cancel()`
+/// (`resource_adapter.rs:139-143`): `Supported` if the driver says true, `Unknown`
+/// otherwise. `VictoriaMetricsDriver` does not override that method, so it is the
+/// trait default `false` (`traits.rs:817`), and the effective value is always
+/// `Unknown` whatever is written here.
+///
+/// The value below is therefore the truthful one — and it is also the value the
+/// adapter forces, so the factory and the provider cannot drift. The driver has no
+/// per-execution cancellation on the HTTP path: `cancel_query` is an explicit
+/// `DriverError::Unsupported` whose own message says the legacy session-wide cancel
+/// does nothing (`victoriametrics.rs:405-408`) — exactly the pattern a declaration
+/// must not contradict.
+///
+/// A caller that needs a cancellation gets an explicit
+/// `ResourceError::CapabilityNotDeclared` instead of a silent empty success.
 pub(crate) fn capabilities() -> CapabilitySet {
-    CapabilitySet::default()
+    CapabilitySet {
+        // Blank — see the table. `Supported` would contradict this provider's own
+        // `describe_resource`, which always reports `SessionContinuity::Unknown`.
+        stateful_session: Availability::Unknown,
+        namespace_switch: NamespaceSwitch::Unsupported,
+        // Blank — `observe_session` is unconditionally unobservable in the adapter.
+        context_observation: ContextObservation::Unsupported,
+        // Blank — measured absence: `begin_transaction` is the trait default error.
+        transaction_observation: TransactionObservation::Unsupported,
+        // Blank — no cursor / prepared statement / transaction handle exists.
+        session_scoped_handles: SessionScopedHandleSupport::Unknown,
+        // Blank — no baseline replay exists, and the adapter answers `Discard`.
+        reset_for_reuse: ResetForReuse::Unsupported,
+        // Blank, and overwritten by the adapter regardless — see the note above.
+        precise_cancel: PreciseCancelSupport::Unknown,
+        // Blank — no snapshot operation or command exists in this crate.
+        snapshots: SnapshotSupport::Unsupported,
+        transactions: TransactionSupport::default(),
+        // Empty on purpose: no `ddl_atomicity` override exists and `execute` refuses
+        // every statement, so every operation stays `Unknown`.
+        ddl_atomicity: DdlAtomicitySupport::default(),
+        // Blank — the driver is buffered read-only and `DataSupport` has no variant
+        // for that; see the row above. Every other variant here would be a lie.
+        data: DataSupport::Unknown,
+        // Blank — no artifact code and no backup command exist in this crate.
+        backup: BackupSupport::Unknown,
+    }
 }
 
 #[cfg(test)]
@@ -211,9 +263,13 @@ mod tests {
             registry.capabilities,
             "the factory's capability view must not be rosier than the provider's own registry"
         );
+        // Polarity flipped in place when the set stopped being blank: VictoriaMetrics
+        // now declares the two cells it can prove (see `capabilities()`), so the
+        // honest assertion is that the declaration is *not* empty. Same test, same
+        // assertion, no test removed and no assertion removed.
         assert!(
-            !factory().resource_capabilities().declares_anything(),
-            "VictoriaMetrics has no migrated session contract, so it must claim nothing"
+            factory().resource_capabilities().declares_anything(),
+            "VictoriaMetrics declares only the cells its own code proves; the rest stay blank"
         );
         assert!(
             !factory()
@@ -227,6 +283,61 @@ mod tests {
             factory().resource_capabilities().stateful_session,
             datazen_driver_api::capabilities::Availability::Unknown,
             "a VictoriaMetrics HTTP session carries no server-side session"
+        );
+    }
+
+    #[test]
+    fn the_declaration_is_not_the_blank_default_set() {
+        let declared = super::capabilities();
+
+        assert_ne!(
+            declared,
+            datazen_driver_api::capabilities::CapabilitySet::default(),
+            "a driver that measurably refuses row writes and measurably has no \
+             session to switch must not answer the blank default set"
+        );
+        // The claims that are backed by code that runs.
+        assert_eq!(
+            declared.namespace_switch,
+            datazen_driver_api::capabilities::NamespaceSwitch::Unsupported,
+            "the tenant is a per-request argument; this driver keeps no session to switch"
+        );
+        assert_eq!(
+            declared.transaction_observation,
+            datazen_driver_api::capabilities::TransactionObservation::Unsupported,
+            "begin_transaction is the trait default error and no transaction command \
+             is published"
+        );
+        assert_eq!(
+            declared.snapshots,
+            datazen_driver_api::capabilities::SnapshotSupport::Unsupported,
+            "no snapshot operation or command exists in this crate"
+        );
+        // And the claims that stay blank, so a later edit that fills one of them
+        // without evidence has to break this test on purpose rather than by drift.
+        assert_eq!(
+            declared.data,
+            datazen_driver_api::capability_domains::DataSupport::Unknown,
+            "the driver is buffered read-only and DataSupport has no such variant; \
+             every other variant would claim streaming or row write that does not exist"
+        );
+        assert_eq!(
+            declared.stateful_session,
+            datazen_driver_api::capabilities::Availability::Unknown,
+            "the adapter's describe_resource hard-codes SessionContinuity::Unknown"
+        );
+        assert!(
+            declared.transactions.isolation_levels.is_empty(),
+            "there is no transaction to hand an isolation option to"
+        );
+        assert!(
+            declared.ddl_atomicity.by_operation.is_empty(),
+            "execute refuses every statement, so no operation has a proven atomicity"
+        );
+        assert_eq!(
+            declared.precise_cancel,
+            datazen_driver_api::capabilities::PreciseCancelSupport::Unknown,
+            "the adapter overwrites this cell from supports_query_execution_cancel()"
         );
     }
 
