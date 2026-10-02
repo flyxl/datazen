@@ -28,6 +28,7 @@
 //! 在端口层再定一套 JSON 形态，只会给前端多一个没有消费者的错误形状。
 
 /// 端口错误。`entity` 用 `&'static str` 承载聚合名（compile 期常量，不引入生命周期）。
+#[cfg_attr(feature = "datazen-port-wire", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PortError {
     /// 依赖的后端不可用（数据库、元数据库、文件系统……）。可重试由用例层判定。
