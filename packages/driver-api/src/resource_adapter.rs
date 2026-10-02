@@ -546,17 +546,25 @@ impl ResourceProvider for LegacyResourceAdapter {
     /// What *is* shared is the rule itself, and it is asserted in each
     /// driver's own tests.
     ///
-    /// Note that `redis` already extracted its part of this as a private
-    /// `take_for_close` (`redis/src/resource/provider.rs:460`). That is a
-    /// different move and is not a counterexample: it is private to one
-    /// provider module, has exactly one caller, and hardcodes the absent-key
-    /// policy inline — zero parameters, because there is only one policy to
-    /// express. It pays for itself by removing a block repeated under a
-    /// uniform rule. What is declined here is the cross-crate generic, where
-    /// the policy becomes a parameter and the helper is mostly parameters.
+    /// `redis` already extracted its part as a private `take_for_close`
+    /// (`redis/src/resource/provider.rs:460`). That is not a counterexample,
+    /// but both obvious readings of it are wrong. It deduplicates nothing:
+    /// it has exactly one caller (`provider/contract.rs:339`), and it was
+    /// pulled out to give two invariants a name — remove from `live` before
+    /// touching the socket, and a `None` backed by the `closed` set means
+    /// idempotent, never a second release. The same code inline would be
+    /// equally correct and just less likely to be read as a rule.
     ///
-    /// Revisit if a fourth site appears with exactly the `postgres`/`redis`
-    /// policy, so the helper would have one shape instead of three.
+    /// And it is not parameter-free: it takes `handle` and `operation` from
+    /// the caller, `operation` being the literal `"close_resource"` at the one
+    /// call site. What it has no parameters for is *policy* — the absent-key
+    /// behaviour is hardcoded in its body, so there is only one thing to
+    /// express. Cross-crate, policy joins those as parameters, which is what
+    /// makes such a helper mostly parameters.
+    ///
+    /// Revisit when a fourth site appears with exactly the `postgres`/`redis`
+    /// policy — that is, when one policy has a second place to serve. Not
+    /// merely when someone has extracted one somewhere.
     async fn close_resource(
         &self,
         handle: &ResourceHandle,
