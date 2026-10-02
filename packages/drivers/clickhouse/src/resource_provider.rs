@@ -33,7 +33,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use datazen_driver_api::capabilities::CapabilitySet;
+use datazen_driver_api::capabilities::{
+    Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
+    PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
+    TransactionObservation as TransactionObservationCap, TransactionSupport,
+};
+use datazen_driver_api::capability_domains::{BackupSupport, DataSupport};
 use datazen_driver_api::namespace::{NamespaceLevel, NamespaceLevelKind, NamespaceShape};
 use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
@@ -135,34 +140,112 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 
 /// What this crate can honestly claim, capability by capability.
 ///
-/// The value is `CapabilitySet::default()` — every field at the non-supporting answer —
-/// and that is the truthful statement, not an omission:
+/// Every row below is a claim about code that **already exists**. ClickHouse reaches the
+/// host through [`LegacyResourceAdapter`], so a cell is only filled when the path that
+/// would have to implement it is visible in `src/clickhouse.rs`, in this file, or in the
+/// adapter itself. What cannot be proven stays `Unsupported`/`Unknown`, and the row says
+/// which of the two it is and why — an unmeasured cell and a measured refusal are
+/// different diagnoses even though both fail closed.
 ///
-/// * `precise_cancel` stays non-supporting because ClickHouse has no execution-handle
-/// cancel protocol. `LegacyResourceAdapter` derives this field from
-/// `supports_query_execution_cancel()`, which for ClickHouse is `false`; declaring
-/// anything stronger here would make the factory disagree with the provider that
-/// actually owns the registry.
-/// * `stateful_session` stays unknown because a ClickHouse HTTP session is stateless
-/// per request
-/// * `observe_session`, `change_context`, `reset_resource`, commit and rollback stay
-/// non-supporting for the reasons in the module docs; nothing here is migrated to a
-/// session contract yet, so claiming otherwise would be a capability the port cannot
-/// honour.
+/// | Capability | Declared | Why |
+/// |---|---|---|
+/// | `stateful_session` | `Unsupported` | `connect` opens no physical session: it files a `reqwest::Client`, the base URL and the database under a fresh UUID and hands that id back (`clickhouse.rs:249-257`). Every statement is an independent `POST` that re-sends `database=` (`clickhouse.rs:83-87`). Measured absent, not merely unconfirmed. |
+/// | `namespace_switch` | `RequiresReplacement` | `has_multi_database` is `true` (`clickhouse.rs:189-191`), so another database *is* reachable — but it is bound once at `connect` (`clickhouse.rs:255`) and `effective_database` only ever reads it (`clickhouse.rs:49-61`). The mutating `use_database` path was removed, so a live resource cannot move; only a freshly acquired one can. |
+/// | `context_observation` | `Unsupported` | `LegacyResourceAdapter::observe_session` returns `SessionObservation::unobservable()` on every call (`resource_adapter.rs:338-344`), and `execute_on_resource` pins `context_before`/`context_after` to `unobserved()` (`resource_adapter.rs:317-318`). ClickHouse has no read-back API that could replace it. |
+/// | `transaction_observation` | `Unsupported` | `commit_transaction`/`rollback_transaction` error on every call (`resource_adapter.rs:370-390`), and `execute_on_resource` hardcodes `TransactionState::Unknown` / `transaction_id: None` / `effect: None` (`resource_adapter.rs:319-324`). A ClickHouse transaction is per-statement, so there is no outcome to read back. |
+/// | `session_scoped_handles` | `Unsupported` | `execute_on_resource` returns an empty `session_handles` because this path registers none (`resource_adapter.rs:325-326`), and ClickHouse exposes no prepared-statement, temporary-table or user-variable handle for a caller to hold. |
+/// | `reset_for_reuse` | `Unsupported` | `reset_resource` always answers `ResetDisposition::Discard` (`resource_adapter.rs:440-447`); there is no verified baseline replay, so `Verified` cannot be claimed. |
+/// | `precise_cancel` | `Unknown` | Not this function's cell to set — see the note below. |
+/// | `snapshots` | `Unsupported` | neither ClickHouse nor the adapter implements `begin_read_snapshot`, so the trait default answers `DriverError::Unsupported` (`traits.rs:734-741`). With no point-in-time read at all, there is no scope to declare. |
+/// | `transactions.isolation_levels` | empty | `DatabaseDriver::begin_transaction` is the default and errors (`traits.rs:602-609`), so `LegacyResourceAdapter::begin_transaction` (`resource_adapter.rs:357-365`) can never open one. Empty means "no level can be honoured", not "nobody wrote anything". |
+/// | `transactions.savepoints` | `Unsupported` | the same unreachable path; this crate issues no `SAVEPOINT`. |
+/// | `transactions.max_open_transactions` | `None` | there is no transaction registry at all, so there is no number to report — which is not the same as "unbounded". |
+/// | `ddl_atomicity.by_operation` | empty | `DatabaseDriver::ddl_atomicity` is not overridden here, so it answers `DdlAtomicity::Unknown` (`traits.rs:155-158`). `DdlAtomicitySupport::atomicity_for` fails closed to `Unknown` for any absent key (`capabilities.rs:240-245`), which is the correct answer for every operation: the caller wraps nothing and asks instead of assuming. |
+/// | `data` | `BufferedReadWrite` | rows are read (`query` then `result_from_json`, `clickhouse.rs:467-480` and `:106-145`) and written (`execute`, `clickhouse.rs:535-541`). But `http_query` awaits `resp.text()` (`clickhouse.rs:95-98`) and `stream_json` (`clickhouse.rs:147-184`) only feeds an already-materialized `serde_json::Value` into the batcher, so nothing is pulled incrementally over the wire and `streamingResults` does not hold. |
+/// | `backup` | `Unsupported` | `command_definitions` (`clickhouse.rs:562-570`) is a closed list of query / execute / query_stream plus the schema-catalog commands; nothing produces or consumes an artifact. |
 ///
-/// A caller that needs one of these gets an explicit
+/// # `precise_cancel` is declared here, but the adapter owns it
+///
+/// `LegacyResourceAdapter::new` overwrites this one cell from the driver's own
+/// `supports_query_execution_cancel()` (`resource_adapter.rs:139-143`), which for
+/// ClickHouse is the trait default `false` (`traits.rs:817-819`); `cancel_query` agrees
+/// by answering `DriverError::Unsupported` instead of reporting a cancellation that never
+/// happened (`clickhouse.rs:555-560`). The effective value is `Unknown` whatever is
+/// written here, and `Unknown` is the honest answer for the set too — `Supported` would
+/// be a claim no code in this crate makes, and one the adapter would erase anyway.
+///
+/// A caller that needs one of the unclaimed cells gets an explicit
 /// `ResourceError::CapabilityNotDeclared` instead of a silent empty success. Keep this
-/// byte-identical to what `provider()` reports: a factory that looks rosier
-/// than its own provider is exactly the drift the contract exists to prevent.
+/// byte-identical to what `provider()` reports: a factory that looks rosier than its own
+/// provider is exactly the drift the contract exists to prevent.
 pub(crate) fn capabilities() -> CapabilitySet {
-    CapabilitySet::default()
+    CapabilitySet {
+        // Measured absent: `connect` never opens a server-side session
+        // (clickhouse.rs:249-257) and every statement re-sends `database=` as a request
+        // parameter (clickhouse.rs:83-87), so there is nothing to pin state onto.
+        stateful_session: Availability::Unsupported,
+        // Another database is reachable, but only through a replacement resource: the
+        // database is bound once at `connect` (clickhouse.rs:255) and nothing mutates it
+        // afterwards (clickhouse.rs:49-61).
+        namespace_switch: NamespaceSwitch::RequiresReplacement,
+        // The adapter answers `unobservable()` on every call
+        // (resource_adapter.rs:338-344) and ClickHouse has no read-back API to replace it.
+        context_observation: ContextObservation::Unsupported,
+        // Commit and rollback are refused by name (resource_adapter.rs:370-390) because
+        // a ClickHouse transaction is per-statement and its outcome cannot be read back.
+        transaction_observation: TransactionObservationCap::Unsupported,
+        // The execution path registers no session-scoped handle
+        // (resource_adapter.rs:325-326).
+        session_scoped_handles: SessionScopedHandleSupport::Unsupported,
+        // `reset_resource` only ever answers `Discard` (resource_adapter.rs:440-447);
+        // there is no verified path back to an initialization baseline.
+        reset_for_reuse: ResetForReuse::Unsupported,
+        // Overwritten by the adapter from `supports_query_execution_cancel()`, which is
+        // `false` here (traits.rs:817-819, corroborated by clickhouse.rs:555-560).
+        // `Unknown` keeps the set honest on its own terms instead of only by accident of
+        // the adapter's correction.
+        precise_cancel: PreciseCancelSupport::Unknown,
+        // Neither this crate nor the adapter implements `begin_read_snapshot`; the trait
+        // default errors with `DriverError::Unsupported` (traits.rs:734-741).
+        snapshots: SnapshotSupport::Unsupported,
+        transactions: TransactionSupport {
+            // Empty on purpose. `begin_transaction` is the trait default and errors
+            // (traits.rs:602-609), so `LegacyResourceAdapter::begin_transaction`
+            // (resource_adapter.rs:357-365) can never open one. The contract reads an
+            // empty list as "cannot confirm any level", which is exactly right: no
+            // `SET TRANSACTION` is ever issued, so naming a level would advertise an
+            // option the driver silently ignores.
+            isolation_levels: Vec::new(),
+            // No `SAVEPOINT` is ever issued by this crate.
+            savepoints: Availability::Unsupported,
+            // No number at all: there is no transaction registry, so this reads as
+            // "unmeasured", not "unbounded".
+            max_open_transactions: None,
+        },
+        // Left empty on purpose. `DatabaseDriver::ddl_atomicity` is not overridden, so it
+        // answers `Unknown` (traits.rs:155-158), and `atomicity_for` fails closed to
+        // `Unknown` for any absent key (capabilities.rs:240-245). Filing a value per
+        // operation would assert a multi-statement DDL atomicity nobody measured.
+        ddl_atomicity: DdlAtomicitySupport::default(),
+        // `BufferedReadWrite`, not `StreamingReadWrite`: `http_query` awaits
+        // `resp.text()` (clickhouse.rs:95-98), so the whole result set is one string before
+        // `stream_json` (clickhouse.rs:147-184) ever sees it. Read and write are both
+        // real — this only denies `streamingResults`.
+        data: DataSupport::BufferedReadWrite,
+        // `command_definitions` (clickhouse.rs:562-570) is a closed list with no artifact
+        // producer or consumer in it, so the absence is measurable rather than unknown.
+        backup: BackupSupport::Unsupported,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use datazen_driver_api::capabilities::SessionContinuity;
+    use datazen_driver_api::capabilities::{
+        CapabilitySet, NamespaceSwitch, SessionContinuity, SnapshotSupport,
+    };
+    use datazen_driver_api::capability_domains::{BackupSupport, DataSupport};
     use datazen_driver_api::namespace::NamespaceTarget;
     use datazen_driver_api::require_resource_provider;
     use datazen_driver_api::resource::{
@@ -210,9 +293,15 @@ mod tests {
             registry.capabilities,
             "the factory's capability view must not be rosier than the provider's own registry"
         );
+        // ClickHouse now declares the cells it can back with code. The `assert_eq!`
+        // above already pins the factory to the provider; this records that the
+        // declaration is non-empty, so a silent regression back to
+        // `CapabilitySet::default()` fails here instead of in production.
         assert!(
-            !factory().resource_capabilities().declares_anything(),
-            "ClickHouse has no migrated session contract, so it must claim nothing"
+            factory().resource_capabilities().declares_anything(),
+            "ClickHouse declares what it can prove: a buffered read/write path and a \
+             replacement-only namespace switch. An empty set would be under-claiming, \
+             not caution."
         );
         assert!(
             !factory()
@@ -224,8 +313,69 @@ mod tests {
         assert!(registry.require_precise_cancel().is_err());
         assert_eq!(
             factory().resource_capabilities().stateful_session,
-            datazen_driver_api::capabilities::Availability::Unknown,
-            "a ClickHouse HTTP session is stateless per request"
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "a ClickHouse HTTP session is stateless per request, so `connect` provably \
+             opens no session for a caller to pin state onto"
+        );
+    }
+
+    /// Pins every cell the doc table above justifies. If a refactor quietly returned the
+    /// function to `CapabilitySet::default()`, all twelve claims would start lying at
+    /// once and no other test in this module would notice.
+    #[test]
+    fn every_declared_cell_matches_the_code_the_doc_comment_cites() {
+        let provider = require_resource_provider(&factory()).expect("provider is reachable");
+        let declared = crate::resource_provider::capabilities();
+        let registry = provider.capabilities();
+
+        assert_ne!(
+            declared,
+            CapabilitySet::default(),
+            "the declaration is non-empty on purpose; an all-default set is the silent \
+             regression this test exists to make loud"
+        );
+        assert_eq!(declared.data, DataSupport::BufferedReadWrite);
+        assert!(
+            declared.data.enables_row_read(),
+            "query -> result_from_json"
+        );
+        assert!(
+            declared.data.enables_row_write(),
+            "execute reports affected rows"
+        );
+        assert!(
+            !declared.data.enables_streaming_results(),
+            "http_query awaits the whole body (clickhouse.rs:95-98) and stream_json only \
+             batcher-feeds an already-materialized value, so a long-lived stream would \
+             have nothing to pull"
+        );
+        assert_eq!(
+            declared.namespace_switch,
+            NamespaceSwitch::RequiresReplacement
+        );
+        assert!(
+            registry.require_in_place_namespace_switch().is_err(),
+            "RequiresReplacement opens no in-place gate: require_in_place_namespace_switch \
+             (capabilities.rs:447) passes only for InPlace, so declaring it costs no \
+             behaviour and claims less than Unsupported would hide"
+        );
+        assert_eq!(declared.snapshots, SnapshotSupport::Unsupported);
+        assert_eq!(declared.backup, BackupSupport::Unsupported);
+        assert!(
+            declared.transactions.isolation_levels.is_empty(),
+            "an empty level list is the measured answer, not an omission: \
+             begin_transaction is the trait default and errors (traits.rs:602-609)"
+        );
+        assert!(
+            declared.transactions.max_open_transactions.is_none(),
+            "no transaction registry exists, so there is no number to report — which is \
+             not the same as unbounded"
+        );
+        assert!(
+            declared.ddl_atomicity.by_operation.is_empty(),
+            "atomicity_for fails closed to Unknown for any absent key \
+             (capabilities.rs:240-245); a driver that never overrode \
+             DatabaseDriver::ddl_atomicity must not file invented per-operation values"
         );
     }
 
