@@ -79,7 +79,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - 加入依赖护栏：core 不引用 Tauri/HTTP，driver 不引用 host，前端领域不直接绑定平台传输。
 - 加入 CI 架构检查：对 server crate 的 normal/build 依赖闭包验证不含 Tauri crate 和 UI runtime，并验证 server 独立构建；依赖检查失败即阻断合并。
 
-退出门槛：CM-01、03～07，DTO 往返与内核无 Tauri 编译、CI 依赖图检查通过；旧桌面基本连接/查询流程保持可用。
+退出门槛：CM-01、03～07 的**类型与 schema 断言**、DTO 往返与内核无 Tauri 编译、CI 依赖图检查通过；旧桌面基本连接/查询流程保持可用。同一批用例的 H 层行为断言归 §7（P3）、CM-05～07 的 W1 断言归 §11（P7），阶段归属见 §17，本条不重复计。
 
 回退：Tauri adapter 可仍调用原用例实现，但不得把新 owner 和权限语义伪映射为旧共享 session。新 frontend bridge 在未注入时明确报错。
 
@@ -98,7 +98,12 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 退出门槛：D 层 CM-07～19、22～26、30、45、48；不同 driver 不共享实现库类型；新增能力缺失不会 no-op 成功。
 
-回退：过渡 adapter 可以支持旧 driver 的独立受控 Command，但不能开放未证明的 statefulSession。协议升级与驱动发布是原子兼容门槛，不允许用下调最低版本掩盖 breaking change。
+回退：过渡 adapter 可以支持旧 driver 的独立受控 Command，但不能开放未证明的 statefulSession。
+
+「协议升级与驱动发布是原子兼容门槛，不允许用下调最低版本掩盖 breaking change」这句回退约定分两半落地，现状（`scripts/check-driver-protocol-compat.mjs`，由 `pnpm test:driver-protocol` 接入 CI 硬门禁，28 个单测）：
+
+- **已实现——"不允许下调最低版本"这半**。脚本把它写成两条不变量并直接阻断：`min-protocol-never-lowered`（`MIN_PROTOCOL_VERSION` 不得下降，报错文案即回指本节）与 `protocol-window-non-empty`（`MIN_PROTOCOL_VERSION <= PROTOCOL_VERSION`）；另外对 10 条受管契约（`CONTRACT_RULES`：`database-driver` / `key-value-driver` / `driver-factory` / `resource-provider` / `budget-port` / `resource-error` / `driver-command-definition` / `capability-set` / `capability-registry` / `reuse-driver`）内的增删改强制 `PROTOCOL_VERSION` 上移。当前窗口是 `PROTOCOL_VERSION = 4`、`MIN_PROTOCOL_VERSION = 1`。
+- **仍缺——"原子"那半，待 P0 验证**。协议号上移与驱动发布是否在同一次交付中发生，属于发布流程约束，脚本无从判定，因此没有任何门禁覆盖它；并且 `LegacyResourceAdapter`（`packages/driver-api/src/resource_adapter.rs`）不在这 10 条受管契约之内，其构造签名目前可以在不升协议号的情况下改变。**本节不新增门禁脚本**；补齐属于 CI 轨道的独立决定。
 
 ## 7. P3：统一 Session / Lease / Budget / ExecutionGateway
 
@@ -309,7 +314,7 @@ WDIO 必须使用已注入 driver 的构建；三件套可运行 app 已生成�
 | 阶段 | 必须交付的补充契约 | 验收范围 |
 | --- | --- | --- |
 | P0/P1 | DTO、持久化白名单、目标规范化、错误/回执、能力快照、令牌 port | CM-61/62/72 的类型与 schema 断言 |
-| P2 | namespaceShape、targetRequirements、规范化资源 key、driver 清理与协议 drain | CM-62/64/67 的 D 断言 |
+| P2 | namespaceShape、targetRequirements、规范化资源 key、driver 清理与协议 drain | CM-62/64/67 的 D 断言（**三条均未落地**，逐条现状见本节末） |
 | P3 | attachment、结果放弃、类别调度、逻辑配额、PoolKey/cache、替换发布、幂等过期、内存目录、事务失效回收与会话级句柄登记 | CM-61～74 的 H 断言，CM-60 基准 harness |
 | P4 | 恢复结果只读/写回、TTL 与切库错误投影、关闭结果视图行为 | CM-61～64/72 的 F 断言 |
 | P5/P6 | 能力快照计划核验、Job 多端预算、独立消费者政策 | CM-40～53 与 CM-65/67 的任务断言 |
@@ -318,3 +323,13 @@ WDIO 必须使用已注入 driver 的构建；三件套可运行 app 已生成�
 | P9 | 原子 owner 登记、碰撞/失效、跨节点替换发布、分区和全局预算 | CM-57/58/60/68/71 的 WN 断言 |
 
 测试标签代表执行层，不代表整条用例只属于某阶段。P3/P4 必须完成 CM-54～56 的 runtime/前端部分；P7 完成单实例适配部分；只有 owner 路由、worker 分区及跨节点预算推迟到 P9。P10 逐层汇总全部 74 条适用用例，不能把未执行的 D/WN 断言计为已通过。
+
+### 17.1 P2 验收范围的实际落地情况
+
+P2 行的三条 D 断言都还没有落地。已经落地的是它们各自的 **Host 侧测试夹具**，落在 `packages/runtime/src/connection/testing/`（`#[cfg(any(test, feature = "test-harness"))]`，`cargo test -p datazen-runtime --lib` → `131 passed` / 0 failed，EXIT=0）。逐条对照：
+
+- **CM-64（无消费者、截断与有界 drain）**：`testing/barrier/` 下的协议 drain barrier 夹具已可用，`barrier/tests.rs` 内 12 个单测覆盖"无消费者时写入阻塞 → FakeClock 越过 drain 期限 → 截断"（`write_without_consumer_blocks_then_truncates_after_the_drain_deadline`）、消费者恢复后不再截断、按执行字节上限独立截断、订阅额度与执行额度分别计数、sink 失败上报。**这是测试夹具而非生产实现**：artifact 配额、unsubscribe 不立即取消 SQL、协议 barrier 的 D 侧断言均未落地。
+- **CM-67（PoolKey 版本和多 database）**：`packages/platform-api/src/ports/budget/pool.rs` 的 `PoolKey` 与 `datazen-runtime` 夹具的 `policy_isolation_key` 已能支撑"换键判据"（`pool_key_equality_covers_all_eight_components` 等单测）。但**全仓没有 pool / lease 管理器的实现**——只有 `packages/platform-api/src/ports/budget/coordinator.rs:123` 的 `BudgetCoordinator` **trait**（port 契约），而 `ResourceManager`、`LeaseManager`、`SessionRegistry`、`PoolManager`、`ConnectionPool` 连类型都不存在。因此空闲资源停发并关闭、旧缓存不回填、撤权即时生效、空池元数据受 LRU 约束这四条断言未落地。
+- **CM-62（命名空间规范化矩阵）**：**代码侧零覆盖**。全仓检索（含 gitignored 目录）`CM-62` 只命中 4 个文件，且全部在 `docs/`：`connection-management.md`（用例定义）、`driver-capability-migration.md`、`persistence-model.md`、`platform-development-plan.md`（阶段表）。`.rs` / `.ts` / `.tsx` / `.js` / `.mjs` / `.toml` / `.json` / `.yml` / `.sh` 等代码与配置扩展名下命中数为 0——这条用例目前只作为待实现目标存在于文档里，没有任何代码以它的名义写断言或打点。`packages/platform-api/src/target.rs` 的 `CanonicalTarget` 属 P1 交付的类型与 schema，不是本条用例的执行；同义 ID 与 path 别名的规范化、冲突 `TargetConflict`、以及缓存 / 权限 / 驱动共用同一份 `CanonicalTarget`，均未落地。
+
+按 §3 的完成定义，契约类型存在不等于行为已实现并被断言覆盖，因此 P2 的这三条不能记为已交付。
