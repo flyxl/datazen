@@ -28,6 +28,16 @@ function run() {
   return { code, logs, output: logs.join('\n') };
 }
 
+/** The same, for the `--require-layers` argument `--require-layers=a,b` parses. */
+function runRequired(layers: string[]) {
+  const logs: string[] = [];
+  const code = checkModuleLayers({
+    log: (msg: unknown) => logs.push(String(msg)),
+    requireLayers: layers,
+  });
+  return { code, logs, output: logs.join('\n') };
+}
+
 /**
  * A tracking predicate that un-hides exactly one probe path and defers to the
  * real git state for everything else.
@@ -543,6 +553,158 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
         );
         expect(innocent.findings.violations.filter((v) => v.rule === CLIENT)).toEqual([]);
         expect(innocent.code).toBe(0);
+      });
+    });
+  });
+
+  /**
+   * The gate must not be able to pass by having checked nothing.
+   *
+   * Every assertion here is on the **exit code**, never on the guard's own
+   * findings: `collectModuleLayerFindings` is the thing under test, so a
+   * counting expectation written against it would agree with a broken guard by
+   * construction. What is asserted instead is the contract a reader of the exit
+   * code relies on — three outcomes are distinguishable, and none of them is a
+   * pass:
+   *
+   *   0 — the rule's subject was read and found clean
+   *   1 — the rule's subject was read and a needle was found
+   *   2 — the rule proved nothing (subject absent, unreadable, or never compared)
+   *
+   * `scripts/check-module-layers.mjs` reported 0 for the third case, so a rule
+   * could sit in `ci.yml`'s hard gate indefinitely while matching nothing: the
+   * subject directory existing was being taken for the subject having been read.
+   *
+   * These cases push a temporary rule onto the exported `LAYER_RULES` so the
+   * shipped loop is what runs. The table is restored in a `finally`, and a leak
+   * would turn every other case in this file red rather than passing quietly.
+   */
+  describe('an unexercised rule cannot pass', () => {
+    const PROBE_DIR = 'scripts/__boundaryProbe__';
+    const PROBE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+    /** Tauri import as written; the body every "should have been caught" case plants. */
+    const EVIL = 'import { invoke } from "@tauri-apps/api/core";\nexport const go = () => invoke("x");\n';
+
+    type Rule = (typeof LAYER_RULES)[number];
+
+    /** Run `fn` with `rule` appended to the shipped rule table. */
+    function withTempRule<T>(rule: Rule, fn: () => T): T {
+      LAYER_RULES.push(rule);
+      try {
+        return fn();
+      } finally {
+        LAYER_RULES.pop();
+      }
+    }
+
+    it('keeps every probe path invisible to git status', () => {
+      for (const rel of [PROBE_DIR, `${PROBE_DIR}/bare/__boundaryProbe__.ts`]) {
+        const ignored = spawnSync('git', ['check-ignore', '-q', '--', rel], {
+          cwd: resolve(dirname(fileURLToPath(import.meta.url)), '../..'),
+        });
+        expect({ rel, status: ignored.status }).toEqual({ rel, status: 0 });
+      }
+    });
+
+    it('refuses to pass when the subject holds no scannable source', () => {
+      // The reproduced accident: the directory exists, so the guard considered
+      // the rule exercised, while its only `.ts` file sits under `dist/` — a
+      // skip-list directory — and the blatant Tauri import goes unread. Correct
+      // behaviour is neither 0 (nothing found) nor 1 (the guard found it and
+      // reports it as a violation) but 2: the guard could not look.
+      const rel = `${PROBE_DIR}/buried/dist/__boundaryProbe__.ts`;
+      withTempSourceFile(rel, EVIL, () => {
+        expect(readFileSync(resolve(PROBE_ROOT, rel), 'utf8')).toBe(EVIL);
+        const { code } = withTempRule(
+          {
+            name: '__probe-buried-subject',
+            from: `${PROBE_DIR}/buried`,
+            forbiddenPackages: ['@tauri-apps/'],
+            blocking: true,
+          },
+          run,
+        );
+        expect(code).toBe(2);
+      });
+    });
+
+    it('refuses to pass when a rule declares no needle at all', () => {
+      // A rule with nothing to compare enforces nothing, and nothing in the
+      // output used to say so.
+      const rel = `${PROBE_DIR}/bare/__boundaryProbe__.ts`;
+      withTempSourceFile(rel, "export const n = 1;\n", () => {
+        expect(readFileSync(resolve(PROBE_ROOT, rel), 'utf8')).toBe("export const n = 1;\n");
+        const { code } = withTempRule(
+          { name: '__probe-no-needle', from: `${PROBE_DIR}/bare`, blocking: true },
+          run,
+        );
+        expect(code).toBe(2);
+      });
+    });
+
+    it('refuses to pass when a declared needle was never compared', () => {
+      // Path needles can only be compared against specifiers that resolve to a
+      // path. A subject whose files import only bare specifiers resolves none,
+      // so a rule declaring `forbidden: ['src']` proves nothing — and must not
+      // report a clean scan it never performed.
+      const rel = `${PROBE_DIR}/bare/__boundaryProbe__.ts`;
+      withTempSourceFile(rel, "import { clsx } from 'clsx';\nexport const c = clsx('a');\n", () => {
+        expect(readFileSync(resolve(PROBE_ROOT, rel), 'utf8')).toContain("from 'clsx'");
+        const { code } = withTempRule(
+          {
+            name: '__probe-unapplied-needle',
+            from: `${PROBE_DIR}/bare`,
+            forbidden: ['src'],
+            blocking: true,
+          },
+          run,
+        );
+        expect(code).toBe(2);
+      });
+    });
+
+    it('refuses to pass when a blocking rule has no subject directory', () => {
+      const { code } = withTempRule(
+        {
+          name: '__probe-absent-subject',
+          from: `${PROBE_DIR}/gone`,
+          forbiddenPackages: ['@tauri-apps/'],
+          blocking: true,
+        },
+        run,
+      );
+      expect(code).toBe(2);
+    });
+
+    it('still reports an absent advisory rule as a report, not a failure', () => {
+      // The mirror of the case above. An advisory rule that is not in force yet
+      // is consistent with its grade, so it must not redden a build — only
+      // `--require-layers`, which is a claim that it *is* in force, turns it red.
+      const rule: Rule = {
+        name: '__probe-absent-advisory',
+        from: `${PROBE_DIR}/gone`,
+        forbiddenPackages: ['@tauri-apps/'],
+        blocking: false,
+      };
+      expect(withTempRule(rule, run).code).toBe(0);
+      expect(withTempRule(rule, () => runRequired(['__probe-absent-advisory'])).code).toBe(2);
+    });
+
+    it('still reports a real subject as clean', () => {
+      // The other end of the contract, so the cases above cannot pass by the
+      // guard simply refusing everything.
+      const rel = `${PROBE_DIR}/bare/__boundaryProbe__.ts`;
+      withTempSourceFile(rel, "import { clsx } from 'clsx';\nexport const c = clsx('a');\n", () => {
+        const { code } = withTempRule(
+          {
+            name: '__probe-clean-subject',
+            from: `${PROBE_DIR}/bare`,
+            forbiddenPackages: ['@tauri-apps/'],
+            blocking: true,
+          },
+          run,
+        );
+        expect(code).toBe(0);
       });
     });
   });

@@ -175,6 +175,42 @@ function forbiddenPackage(specifier, prefixes = []) {
 }
 
 /**
+ * Every needle a rule declares, as one list tagged with the channel it is
+ * compared on.
+ *
+ * Three separate `rule.<list> ?? []` reads used to be the whole of "what this
+ * rule checks", which left the guard unable to tell the difference between
+ * "compared 400 files against 3 needles and they were clean" and "compared
+ * nothing". Both produced an empty finding list and exit 0, and nothing on
+ * stdout said which one had happened — a hard CI gate reporting success while
+ * checking nothing. Collapsing the three reads into one list is what makes the
+ * scan auditable: {@link collectModuleLayerFindings} can then require that
+ * every needle here was actually compared, and fail loudly when one was not.
+ *
+ * `axis` selects the comparison, which is the guard's existing behaviour
+ * unchanged: `path` and `package` needles are matched against each import
+ * literal, `code` needles against the comment-blanked source.
+ *
+ * MUTATED, and measured: an earlier version of this file compared against
+ * `rule.forbiddenPackages` directly while recording liveness from this list.
+ * Rewriting the comparison's argument to `[]` — a one-token edit at the read
+ * point, leaving the declaration intact — made the guard stop finding every
+ * `@tauri-apps/` import, dropped the advisory finding, and still printed
+ * `ok`, exit 0. The declaration and the read are the same fact; there must be
+ * one copy of it.
+ *
+ * @param {{ forbidden?: string[], forbiddenPackages?: string[], forbiddenCode?: string[] }} rule
+ * @returns {Array<{axis: 'path'|'package'|'code', value: string}>}
+ */
+function collectNeedles(rule) {
+  const out = [];
+  for (const value of rule.forbidden ?? []) out.push({ axis: 'path', value });
+  for (const value of rule.forbiddenPackages ?? []) out.push({ axis: 'package', value });
+  for (const value of rule.forbiddenCode ?? []) out.push({ axis: 'code', value });
+  return out;
+}
+
+/**
  * Scan every rule and return the findings, without printing anything.
  *
  * Split out from {@link checkModuleLayers} so a unit test can assert on *which
@@ -189,6 +225,7 @@ function forbiddenPackage(specifier, prefixes = []) {
  *   advisories: Array<{rule: string, file: string, line: number, text: string, specifier: string|null, target: string}>,
  *   errors: string[],
  *   vacuous: Array<{rule: string, from: string}>,
+ *   examined: number,
  * }}
  */
 export function collectModuleLayerFindings(opts = {}) {
@@ -197,30 +234,79 @@ export function collectModuleLayerFindings(opts = {}) {
   const advisories = [];
   const errors = [];
   const vacuous = [];
+  let examined = 0;
 
   for (const rule of LAYER_RULES) {
-    // A rule whose subject does not exist yet has examined nothing. Passing
-    // quietly is the one outcome that is worse than either alternative: it
-    // reads as "verified" for a package that has not been written. Report it,
-    // and let `--require-layers` turn the report into a failure for whoever
-    // claims the rule is in force.
+    const blocking = rule.blocking !== false;
+    const required = Boolean(requireLayers?.includes(rule.name));
+
+    // "The subject does not exist" and "the subject exists and is clean" must
+    // not share an exit code: the gate's whole job is to say which one it found.
+    //
+    // A rule graded `blocking` claims to be in force. An absent subject is a
+    // contradiction of that claim rather than a pending state — there is
+    // nothing to enforce — so it is an error. An advisory rule's absence is
+    // *consistent* with its grade ("not in force yet"), so it stays a report,
+    // and `--require-layers` still upgrades it for whoever claims it.
     if (!existsSync(resolve(ROOT, rule.from))) {
       vacuous.push({ rule: rule.name, from: rule.from });
-      if (requireLayers?.includes(rule.name)) {
-        errors.push(`--require-layers ${rule.name}: ${rule.from} is absent, so the rule cannot hold`);
+      if (blocking) {
+        errors.push(
+          `${rule.name}: ${rule.from} is absent, so a blocking rule cannot hold — the gate checked nothing`,
+        );
+      } else if (required) {
+        errors.push(
+          `--require-layers ${rule.name}: ${rule.from} is absent, so the rule cannot hold`,
+        );
       }
       continue;
     }
 
-    const blocking = rule.blocking !== false;
-    for (const { path: file, content: source } of collectSourceFiles(rule.from)) {
+    // The one read point for what this rule will compare, and the one place
+    // the scan can be shown to have happened.
+    //
+    // The table is split by axis *once*, here, and each axis's list is read in
+    // exactly one place — the loop that compares it. Splitting at the use site
+    // instead (comparing against `rule.forbidden` while recording liveness from
+    // `needles`) leaves two copies of one declaration: emptying only the copy
+    // the comparison reads blinds the guard while the liveness record still
+    // claims the needle was compared. That was measured, not assumed — see the
+    // `MUTATED` note above `collectNeedles`.
+    const needles = collectNeedles(rule);
+    const pathNeedles = needles.filter((n) => n.axis === 'path').map((n) => n.value);
+    const packageNeedles = needles.filter((n) => n.axis === 'package').map((n) => n.value);
+    const codeNeedles = needles.filter((n) => n.axis === 'code').map((n) => n.value);
+    const files = collectSourceFiles(rule.from);
+    const applied = new Set();
+
+    if (needles.length === 0) {
+      errors.push(
+        `${rule.name}: ${rule.from} declares no forbidden path, package or code needle — the rule cannot hold`,
+      );
+      continue;
+    }
+
+    if (files.length === 0) {
+      errors.push(
+        `${rule.name}: ${rule.from} exists but holds no scannable source file, so the rule checked nothing`,
+      );
+      continue;
+    }
+
+    for (const { path: file, content: source } of files) {
       const scan = scanCode(source);
       const { literals } = scan;
       const lines = source.split('\n');
       const record = (finding) => (blocking ? violations : advisories).push(finding);
       for (const { value, line } of literals) {
         const target = resolveSpecifier(file, value);
-        if (target && isForbidden(target, rule.forbidden)) {
+        // Recorded where the comparison is *attempted*, not where it matches.
+        // A rule whose needle happens to match nothing in a clean tree must not
+        // be reported as "never compared" — that is the whole point of the
+        // check, and conflating the two would turn every green build red.
+        if (target) for (const needle of pathNeedles) applied.add(needle);
+        for (const needle of packageNeedles) applied.add(needle);
+        if (target && isForbidden(target, pathNeedles)) {
           record({
             rule: rule.name,
             file: relative(ROOT, file),
@@ -231,7 +317,7 @@ export function collectModuleLayerFindings(opts = {}) {
           });
           continue;
         }
-        const pkg = forbiddenPackage(value, rule.forbiddenPackages);
+        const pkg = forbiddenPackage(value, packageNeedles);
         if (pkg) {
           record({
             rule: rule.name,
@@ -243,11 +329,12 @@ export function collectModuleLayerFindings(opts = {}) {
           });
         }
       }
-      for (const needle of rule.forbiddenCode ?? []) {
+      for (const needle of codeNeedles) {
         // Only the *blanked* source is searched: a comment that names
         // `fetch(` is prose, and prose that explains the rule must not trip it.
         // The needle must also start a whole token, or `q.refetch()` reads as a
         // call to the network — see `findCodeNeedle`.
+        applied.add(needle);
         const at = findCodeNeedle(scan.code, needle);
         if (at !== -1) {
           const line = lineAtOffset(scan.code, at);
@@ -262,9 +349,26 @@ export function collectModuleLayerFindings(opts = {}) {
         }
       }
     }
+
+    // Every needle the rule declares must have been put in front of at least
+    // one file. A needle that never reaches the loop cannot have found
+    // anything, so the rule is enforcing less than its own table claims while
+    // the report says `ok` — the same defect as an absent subject, one step
+    // further in. This is checked *after* the scan and against the needles the
+    // loop actually consumed, so it fails if the read above ever stops feeding
+    // it — which is exactly what happens when `needles` is emptied at source.
+    const unapplied = needles.filter((n) => !applied.has(n.value));
+    if (unapplied.length > 0) {
+      errors.push(
+        `${rule.name}: ${rule.from} was never compared against ` +
+          `${unapplied.map((n) => `\`${n.value}\``).join(', ')} — the rule checked less than it declares`,
+      );
+      continue;
+    }
+    examined += files.length;
   }
 
-  return { violations, advisories, errors, vacuous };
+  return { violations, advisories, errors, vacuous, examined };
 }
 
 /**
@@ -273,7 +377,7 @@ export function collectModuleLayerFindings(opts = {}) {
  */
 export function checkModuleLayers(opts = {}) {
   const log = opts.log ?? console.log;
-  const { violations, advisories, errors, vacuous } = collectModuleLayerFindings(opts);
+  const { violations, advisories, errors, vacuous, examined } = collectModuleLayerFindings(opts);
 
   for (const v of vacuous) {
     log(`[check-module-layers] VACUOUS  ${v.rule}: ${v.from} does not exist — rule not exercised`);
@@ -295,7 +399,11 @@ export function checkModuleLayers(opts = {}) {
   }
 
   if (violations.length === 0) {
-    const parts = [`${LAYER_RULES.length} rules`];
+    // `examined` is in the summary on purpose. A reader who sees `4 rules` and
+    // no vacuous marker has to be able to tell *how much* was actually read —
+    // without it, "4 rules, none vacuous" reads as "4 rules were enforced",
+    // which is exactly the claim this guard previously could not support.
+    const parts = [`${LAYER_RULES.length} rules`, `${examined} files examined`];
     if (vacuous.length > 0) parts.push(`${vacuous.length} vacuous`);
     if (advisories.length > 0) parts.push(`${advisories.length} advisory`);
     log(`[check-module-layers] ok (${parts.join(', ')})`);
