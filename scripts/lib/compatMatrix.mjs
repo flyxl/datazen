@@ -10,10 +10,6 @@
  */
 /**
  * The reconciliation matrix, stated as data.
- *
- * `requires` names the version numbers that must have gone *up* relative to the
- * base when a change of `class` lands inside a governed span.
- *
  * @type {Readonly<{
  *   protocol: string,
  *   minProtocol: string,
@@ -52,8 +48,15 @@ export const COMPAT_MATRIX = Object.freeze({
     }),
     additive: Object.freeze({
       requires: ['crateVersion'],
+      // An enum variant is deliberately absent from this list. It is additive
+      // only when the enum carried `#[non_exhaustive]` at the base ref, which
+      // forces every downstream `match` to hold a wildcard arm that absorbs it;
+      // without that attribute the added variant is E0004 and is classified
+      // `breaking`. No enum in `packages/driver-api/src` is `#[non_exhaustive]`
+      // today, so the exception is currently unreachable in this crate — stated
+      // here because the class means what it says, not because it is exercised.
       rationale:
-        'A new struct field, enum variant or defaulted trait method leaves existing implementors compiling and declaring nothing new, so the crate moves without the protocol moving (migration doc §5.3 row 1).',
+        'A new struct field or a defaulted trait method leaves existing implementors compiling and declaring nothing new, so the crate moves without the protocol moving (migration doc §5.3 row 1). A new enum variant does not, unless the enum is #[non_exhaustive].',
     }),
     cosmetic: Object.freeze({
       requires: [],

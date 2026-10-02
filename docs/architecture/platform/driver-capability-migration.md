@@ -343,6 +343,8 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 | 新增 trait 方法且带 fail-closed 默认体 | 否 | 不动版本；驱动不改也能编 |
 | 新增 trait 方法**没有**默认体 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
 | 改能力枚举取值或语义 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
+| 在**未标 `#[non_exhaustive]`** 的枚举里新增取值 | 是 | 升 `PROTOCOL_VERSION`；下游 `match` 缺臂（E0004），属重编译要求 |
+| 在标了 `#[non_exhaustive]` 的枚举里新增取值 | 否 | 走 `additive`；下游早已被迫写通配臂，新取值被吸收 |
 | 改 DTO 字段的必填性 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
 | 删除或改写受治理的符号（trait 方法、`const`、`type`、DTO 字段、命令定义） | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
 | 放宽已声明 `unsupported` 的行为 | 否 | 降级模式下按 `false` 处理即安全 |
@@ -354,7 +356,9 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 
 **升 `PROTOCOL_VERSION` 与升 `MIN` 是两件事，不要混用。** `PROTOCOL_VERSION` 是「宿主现在说的协议」，任何 breaking 改动都必须升它，否则老驱动无从判断自己是不是对新宿主说谎。而 `MIN_PROTOCOL_VERSION` 是「还愿意接受的最后一个老驱动协议」，**它是一个主动放弃老驱动的产品决定，不是 breaking 的机械后果**：本 crate 自己的 `PROTOCOL_VERSION` 已经过 `1 → 4`，`MIN` 始终停在 `1`，这正是「窗口从不被自己悄悄收窄」的含义。若某次 breaking 确实不想再兼容任何老驱动，那是**另外**再升 `MIN`，让宿主在 `pv < MIN` 时明确拒绝，而不是把它当成 breaking 的处理方式。
 
-**门禁**：`scripts/check-driver-protocol-compat.mjs`（`pnpm test:driver-protocol`，`.github/workflows/ci.yml:68` 硬门禁）。它对 10 个受治理符号的**删除 / 改写**，以及**在以 `;` 结尾的 trait 里新增 `fn` / `const` / `type`**，判为 `breaking` 并要求 `PROTOCOL_VERSION` 上升；并常驻三条断言：`min-protocol-never-lowered`、`protocol-window-non-empty`（`MIN ≤ PROTOCOL`）、`crate-version-advanced`。新增 DTO 字段或枚举取值走 `additive` / `cosmetic` 判定，不触发协议升级。第四档 `source-breaking` 的触发条件、失败配方与检测边界见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)。
+**门禁**：`scripts/check-driver-protocol-compat.mjs`（`pnpm test:driver-protocol`，`.github/workflows/ci.yml:68` 硬门禁）。它对受治理符号的**删除 / 改写**，以及**在以 `;` 结尾的 trait 里新增 `fn` / `const` / `type`**，判为 `breaking` 并要求 `PROTOCOL_VERSION` 上升；并常驻三条断言：`min-protocol-never-lowered`、`protocol-window-non-empty`（`MIN ≤ PROTOCOL`）、`crate-version-advanced`。新增 DTO 字段、带默认体的 trait 方法、以及**已标 `#[non_exhaustive]` 的枚举里的新增取值**走 `additive` / `cosmetic` 判定，不触发协议升级。第四档 `source-breaking` 的触发条件、失败配方与检测边界见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)。
+
+**受治理符号表不只看「声明行有没有被 diff 到」，还看成员。** 门禁先把每个符号解析成 base 与 head 两侧的**跨度**再判定，所以声明行上方插入文档不会误报、改动函数体一定会报；但跨度本身只说明「这个契约被碰过」，不说明「改了哪里」——同一个 `pub enum` 里新增一个取值，逐行 diff 出来的形状与加一行注释完全相同。因此对枚举**按成员比对**：删除或改名一个取值是 breaking，在未标 `#[non_exhaustive]` 的枚举里新增取值同样是 breaking（见上表两行），因为它让老驱动的穷尽 `match` 缺臂。结构体不因此改判——新增公有字段仍是 `additive`——只是把字段名写进报告。这条规则由 `scripts/lib/driver-protocol-members.mjs` 持有，`#[non_exhaustive]` 的例外以 **base ref** 为准：问的是「针对上一版 crate 写的驱动是否早已被迫留了通配臂」。当前 `packages/driver-api` 没有任何枚举标该属性，故该例外在本 crate 内不可达。
 
 ### 5.4 「协议升级与驱动发布是原子兼容门槛」
 

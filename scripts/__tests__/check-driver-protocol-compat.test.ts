@@ -132,11 +132,7 @@ const diffOf = (before: string, after: string): string => {
  * real diff parser rather than hand-built records — the parser is where a
  * plausible-looking classifier gets its input wrong.
  */
-const classifyViaDiff = (
-  rule: (typeof CONTRACT_RULES)[number],
-  before: string,
-  after: string,
-) => {
+const classifyViaDiff = (rule: (typeof CONTRACT_RULES)[number], before: string, after: string) => {
   const byFile = parseDiffByFile(diffOf(before, after));
   const records = byFile.get('x.rs');
   expect(records, 'the synthetic diff must produce records').toBeDefined();
@@ -146,7 +142,13 @@ const classifyViaDiff = (
 // `as const` keeps `kind` a literal type. Without it a mutable object literal
 // widens `kind` to `string`, which no longer matches the rule table's union.
 const TRAIT_RULE = { id: 'demo', file: 'x.rs', anchor: 'pub trait Demo', kind: 'trait' } as const;
-const STRUCT_RULE = { id: 'demo', file: 'x.rs', anchor: 'pub struct Demo', kind: 'struct' } as const;
+const STRUCT_RULE = {
+  id: 'demo',
+  file: 'x.rs',
+  anchor: 'pub struct Demo',
+  kind: 'struct',
+} as const;
+const ENUM_RULE = { id: 'demo', file: 'x.rs', anchor: 'pub enum Demo', kind: 'enum' } as const;
 
 describe('rule table — every governed contract exists in the tree', () => {
   it('resolves every anchor to an item of the declared kind', () => {
@@ -192,9 +194,7 @@ describe('rule table — every governed contract exists in the tree', () => {
     // them, this anchor stops resolving and the table above fails first.
     const capabilitySet = read('packages/driver-api/src/capabilities.rs');
     for (const field of ['stateful_session', 'snapshots', 'transactions', 'data', 'backup']) {
-      expect(capabilitySet, `CapabilitySet must still declare ${field}`).toContain(
-        `pub ${field}:`,
-      );
+      expect(capabilitySet, `CapabilitySet must still declare ${field}`).toContain(`pub ${field}:`);
     }
   });
 
@@ -230,7 +230,11 @@ describe('rule table — the version targets exist where the matrix says', () =>
     // The targets are spelled as short keys in `requires` and documented in
     // prose in the matrix; a typo between the two is what would silently turn
     // a mandatory bump into a no-op.
-    const documented = [COMPAT_MATRIX.protocol, COMPAT_MATRIX.minProtocol, COMPAT_MATRIX.crateVersion];
+    const documented = [
+      COMPAT_MATRIX.protocol,
+      COMPAT_MATRIX.minProtocol,
+      COMPAT_MATRIX.crateVersion,
+    ];
     const symbolOf = (target: string): string | undefined =>
       ({
         protocol: PROTOCOL_VERSION_SYMBOL,
@@ -315,7 +319,8 @@ describe('classification — an additive change is additive, not breaking', () =
 
   it('treats a new struct field as additive', () => {
     const before = 'pub struct Demo {\n    pub a: u32,\n}\n';
-    const after = 'pub struct Demo {\n    pub a: u32,\n    /// A new domain.\n    pub b: String,\n}\n';
+    const after =
+      'pub struct Demo {\n    pub a: u32,\n    /// A new domain.\n    pub b: String,\n}\n';
     const finding = classifyViaDiff(STRUCT_RULE, before, after);
     expect(finding.cls).toBe('additive');
     // The doc comment above the field is additive-adjacent noise, not a
@@ -338,7 +343,6 @@ describe('classification — a source break is neither additive nor breaking', (
   // in `capabilities.rs`: above the span's first line but inside the old span,
   // because inserting it shifts every line below down by one.
   const BASE_STRUCT = '/// Demo docs.\npub struct Demo {\n    pub a: u32,\n}\n';
-  const ENUM_RULE = { id: 'demo', file: 'x.rs', anchor: 'pub enum Demo', kind: 'enum' } as const;
 
   it('judges #[non_exhaustive] a source break, not an additive change', () => {
     const after = '/// Demo docs.\n#[non_exhaustive]\npub struct Demo {\n    pub a: u32,\n}\n';
@@ -412,6 +416,114 @@ describe('classification — a source break is neither additive nor breaking', (
   });
 });
 
+describe('classification — an enum is judged by its members, not its lines', () => {
+  // A governed enum's span says only that the contract was touched. A new
+  // variant diffs as one added line — byte-for-byte the shape of a doc comment
+  // — which is why the variant list used to be invisible to this gate, and why
+  // `NamespaceSwitch::PerRequest` could be added (commit c749e6dbb) while the
+  // gate reported a clean `ok`. The rules below are what it now reads instead.
+  const BASE_ENUM = `pub enum Demo {
+    One,
+    Two,
+}
+`;
+
+  it('treats an added variant of an exhaustive enum as breaking', () => {
+    const after = BASE_ENUM.replace('    Two,\n', '    Two,\n    Three,\n');
+    const finding = classifyViaDiff(ENUM_RULE, BASE_ENUM, after);
+    // Not `additive`. `additive` means "existing implementors keep compiling and
+    // declare nothing new", and an out-of-tree `match` over `Demo` has no arm
+    // for `Three`: rustc E0004. That is a recompile requirement, which no
+    // [MIN_PROTOCOL_VERSION, PROTOCOL_VERSION] window can express — so the class
+    // has to be `breaking`, which is exactly what obliges PROTOCOL_VERSION.
+    expect(finding.cls).toBe('breaking');
+    expect(CLASS_REQUIRES[finding.cls]).toContain('protocol');
+    expect(finding.reason).toContain('Three');
+    expect(finding.reason).toContain('E0004');
+  });
+
+  it('treats a removed variant as breaking and names it', () => {
+    const after = BASE_ENUM.replace('    Two,\n', '');
+    const finding = classifyViaDiff(ENUM_RULE, BASE_ENUM, after);
+    // The verdict predates the member comparison; what is new is that the
+    // reason names the variant, because that is the identifier an out-of-tree
+    // author has to go and search for.
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('Two');
+    expect(finding.sourceBreak).toBeUndefined();
+  });
+
+  it('treats a renamed variant as breaking, not as an addition', () => {
+    const after = BASE_ENUM.replace('    Two,', '    Renamed,');
+    // This is the shape that made the blind spot worth closing: a rename diffs
+    // as one line out and one line in, so a checker reading only line counts
+    // sees a removal and an addition and has to pick. Removal wins, because it
+    // is the one that cannot be un-done by the matching addition.
+    const finding = classifyViaDiff(ENUM_RULE, BASE_ENUM, after);
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('Two');
+  });
+
+  it('treats an added variant as additive when the base enum is #[non_exhaustive]', () => {
+    const before = '#[non_exhaustive]\npub enum Demo {\n    One,\n    Two,\n}\n';
+    const after = '#[non_exhaustive]\npub enum Demo {\n    One,\n    Two,\n    Three,\n}\n';
+    const finding = classifyViaDiff(ENUM_RULE, before, after);
+    // The genuine exception, and the only one: `#[non_exhaustive]` forces every
+    // downstream `match` to carry a wildcard arm, and that arm absorbs `Three`.
+    // So the addition really is additive here — which is what makes it worth
+    // marking the enum rather than leaving it off.
+    expect(finding.cls).toBe('additive');
+    expect(finding.reason).toContain('Three');
+  });
+
+  it('decides non_exhaustive at the base ref, not the head', () => {
+    const after = '#[non_exhaustive]\npub enum Demo {\n    One,\n    Two,\n    Three,\n}\n';
+    const finding = classifyViaDiff(ENUM_RULE, BASE_ENUM, after);
+    // The question is what a driver written against the *previous* crate was
+    // already forced to do, and at BASE_ENUM it was forced to do nothing: an
+    // exhaustive `match` compiled then and does not compile now. Adding the
+    // attribute in the same change that adds the variant does not retroactively
+    // grant the wildcard arm — and if it did, the check would be satisfiable by
+    // shipping the break and the exemption together.
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('Three');
+  });
+
+  it('leaves a comment-only edit inside an enum alone', () => {
+    const after = BASE_ENUM.replace('    One,\n', '    /// A new doc.\n    One,\n');
+    // The member comparison must not turn every doc line into a contract
+    // change; `One` and `Two` are both still there.
+    expect(classifyViaDiff(ENUM_RULE, BASE_ENUM, after).cls).toBe('cosmetic');
+  });
+
+  it('does not reclassify a struct field addition, which stays additive', () => {
+    // The struct member comparison exists to name the field, never to change the
+    // verdict: `#[derive(Default)]` still fills a new field, which is the
+    // invariant that makes a DTO growth a crate bump rather than a protocol one.
+    const before = 'pub struct Demo {\n    pub a: u32,\n}\n';
+    const after = 'pub struct Demo {\n    pub a: u32,\n    pub b: u32,\n}\n';
+    const finding = classifyViaDiff(STRUCT_RULE, before, after);
+    expect(finding.cls).toBe('additive');
+    expect(finding.reason).toContain('pub b: u32,');
+  });
+
+  it('has no real #[non_exhaustive] enum to exercise, and says so', () => {
+    // The exemption above is provable only against a synthetic fixture, because
+    // nothing in the governed crate marks an enum. Asserting that here keeps the
+    // gap visible: the day someone marks one, this test fails and the reason to
+    // decide its rule by hand rather than by fixture.
+    const enumFiles = new Set(
+      CONTRACT_RULES.filter((rule) => rule.kind === 'enum').map((rule) => rule.file),
+    );
+    expect(enumFiles.size).toBeGreaterThan(0);
+    for (const file of enumFiles) {
+      expect(read(file), `${file} must stay free of #[non_exhaustive]`).not.toContain(
+        'non_exhaustive',
+      );
+    }
+  });
+});
+
 describe('classification — cosmetics and scope', () => {
   it('ignores a doc-comment rewrite inside a governed item', () => {
     const after = BASE_TRAIT.replace('    /// Existing doc.', '    /// Rewritten doc.');
@@ -459,9 +571,14 @@ describe('classification — cosmetics and scope', () => {
     // report a spurious edit to a governed trait on every run, whether or not
     // anything had changed.
     const records = parseDiffByFile(
-      ['diff --git a/x.rs b/x.rs', '--- a/x.rs', '+++ b/x.rs', '@@ -40,1 +40,1 @@', '-old', '+new'].join(
-        '\n',
-      ) + '\n',
+      [
+        'diff --git a/x.rs b/x.rs',
+        '--- a/x.rs',
+        '+++ b/x.rs',
+        '@@ -40,1 +40,1 @@',
+        '-old',
+        '+new',
+      ].join('\n') + '\n',
     ).get('x.rs')!;
     expect(records.has(0)).toBe(false);
     expect([...records.keys()]).toEqual([40]);
@@ -472,7 +589,8 @@ describe('classification — cosmetics and scope', () => {
     const source = 'pub enum E {\n    A,\n    B,\n}\n\npub trait After {\n    fn f(&self);\n}\n';
     const span = findItemSpan(source, 'pub enum E');
     expect(span).toEqual({ start: 0, end: 3 });
-    const withLiterals = 'pub struct S {\n    pub k: K,\n}\nimpl S {\n    fn f(&self) { let s = "}"; }\n}\n';
+    const withLiterals =
+      'pub struct S {\n    pub k: K,\n}\nimpl S {\n    fn f(&self) { let s = "}"; }\n}\n';
     expect(findItemSpan(withLiterals, 'pub struct S')).toEqual({ start: 0, end: 2 });
   });
 });

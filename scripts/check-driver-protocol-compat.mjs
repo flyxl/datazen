@@ -47,6 +47,27 @@
  * does not have a default body stops compiling, which no `PROTOCOL_VERSION`
  * window can express. That is classified breaking.
  *
+ * ## Why an added enum *variant* is breaking, and a struct field is not
+ *
+ * A span tells the checker that a contract was touched. It does not tell it
+ * what changed, which is why an enum's variant list was invisible: every edit
+ * to it diffs as one added line, the same shape as a doc comment. So for
+ * `kind: 'enum'` the members are now compared across the change.
+ *
+ * An added variant is `breaking` unless the enum carried `#[non_exhaustive]` at
+ * the base ref. `additive` means "existing implementors keep compiling and have
+ * nothing new to declare", and that is false for an added variant of an
+ * exhaustively matched enum: a downstream `match` has no arm for it and rustc
+ * reports E0004, which is a recompile requirement rather than a version window.
+ * The `#[non_exhaustive]` case is a genuine exception and is honoured — every
+ * such `match` already had to carry a wildcard arm, which absorbs the new
+ * variant — and the *base* ref is what decides, because the question is whether
+ * drivers written against the previous crate were already forced to hold one.
+ * `lib/driver-protocol-members.mjs` states the rule in full.
+ *
+ * Structs are not reclassified: a new public field stays additive, as described
+ * above. The comparison there exists to name the field in the report.
+ *
  * @module check/driver-protocol-compat
  */
 
@@ -57,6 +78,14 @@ import { fileURLToPath } from 'node:url';
 
 import { COMPAT_MATRIX } from './lib/compatMatrix.mjs';
 import { detectSourceBreak } from './lib/sourceBreak.mjs';
+import { CONTRACT_RULES } from './lib/driver-protocol-rules.mjs';
+import { inspectMemberDiff, stripStringAndCharLiterals } from './lib/driver-protocol-members.mjs';
+
+// Re-exported rather than left private: the rule table and the literal stripper
+// are part of this module's published surface, and every gate and test already
+// imports them from here.
+export { CONTRACT_RULES };
+export { stripStringAndCharLiterals } from './lib/driver-protocol-members.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_PREFIX = '[check-driver-protocol-compat]';
@@ -93,108 +122,22 @@ export const MIN_PROTOCOL_VERSION_SYMBOL = 'MIN_PROTOCOL_VERSION';
  * Public contracts of `packages/driver-api` whose shape is part of the
  * driver/host ABI.
  *
- * `kind` selects how an added line inside the span is read:
+ * The table itself lives in `lib/driver-protocol-rules.mjs` — it is data, and
+ * putting it in its own module keeps this file's logic readable. Re-exported
+ * here under the name every gate, CLI and test already imports.
+ *
+ * `kind` selects how a change inside the item's span is read:
  *
  * - `trait` — an added line that declares a method with no default body (ends
  *   in `;`) breaks every existing implementor, so it is breaking. An added
  *   line with a default body (`{`) is additive.
- * - `struct` / `enum` — any added line is additive, provided the fail-closed
- *   `Default` invariant holds on the Rust side.
- *
- * `anchor` must match the item's declaration line. It is matched by
- * `includes`, so it only has to be unambiguous within the file.
- *
- * @type {ReadonlyArray<{
- *   id: string,
- *   file: string,
- *   anchor: string,
- *   kind: 'trait' | 'struct' | 'enum',
- *   implementedBy?: string,
- *   why?: string,
- * }>}
+ * - `struct` — an added line is additive, provided the fail-closed `Default`
+ *   invariant holds on the Rust side. A removed line is breaking.
+ * - `enum` — the *members* decide, not the lines: a removed or renamed variant
+ *   is breaking, and so is an added variant unless the enum carried
+ *   `#[non_exhaustive]` at the base ref. `lib/driver-protocol-members.mjs`
+ *   carries the rule and its justification.
  */
-export const CONTRACT_RULES = Object.freeze([
-  {
-    id: 'database-driver',
-    file: 'packages/driver-api/src/traits.rs',
-    anchor: 'pub trait DatabaseDriver',
-    kind: 'trait',
-    implementedBy: 'every out-of-tree driver',
-    why: 'The trait every driver implements; a signature change is a recompile requirement for the whole fleet.',
-  },
-  {
-    id: 'key-value-driver',
-    file: 'packages/driver-api/src/traits.rs',
-    anchor: 'pub trait KeyValueDriver',
-    kind: 'trait',
-    implementedBy: 'key/value drivers',
-    why: 'Same reasoning as DatabaseDriver, on the narrower KV surface.',
-  },
-  {
-    id: 'driver-factory',
-    file: 'packages/driver-api/src/factory.rs',
-    anchor: 'pub trait DatabaseDriverFactory',
-    kind: 'trait',
-    implementedBy: 'every out-of-tree driver',
-    why: 'Host registration goes through factories only (src-tauri DriverRegistry); changing it changes the discovery contract.',
-  },
-  {
-    id: 'resource-provider',
-    file: 'packages/driver-api/src/resource.rs',
-    anchor: 'pub trait ResourceProvider',
-    kind: 'trait',
-    implementedBy: 'every out-of-tree driver',
-    why: 'Supplies handles, namespaces and command execution to the host.',
-  },
-  {
-    id: 'budget-port',
-    file: 'packages/driver-api/src/resource.rs',
-    anchor: 'pub trait BudgetPort',
-    kind: 'trait',
-    implementedBy: 'the host, consumed by drivers',
-    why: 'The downlink channel for physical quota; the host implements it and drivers release against it.',
-  },
-  {
-    id: 'resource-error',
-    file: 'packages/driver-api/src/resource.rs',
-    anchor: 'pub enum ResourceError',
-    kind: 'enum',
-    implementedBy: 'both sides, as an error contract',
-    why: 'Error variants are matched on by the host; adding one is additive, renaming or narrowing is breaking.',
-  },
-  {
-    id: 'driver-command-definition',
-    file: 'packages/driver-api/src/command.rs',
-    anchor: 'pub struct DriverCommandDefinition',
-    kind: 'struct',
-    implementedBy: 'drivers produce it, host dispatches it',
-    why: 'Every SQL-editor action routes through execute_driver_command, so this struct is the command wire shape.',
-  },
-  {
-    id: 'capability-set',
-    file: 'packages/driver-api/src/capabilities.rs',
-    anchor: 'pub struct CapabilitySet',
-    kind: 'struct',
-    implementedBy: 'every out-of-tree driver',
-    why: 'The declaration a driver hands the host; a new domain is additive exactly because its Default is Unknown.',
-  },
-  {
-    id: 'capability-registry',
-    file: 'packages/driver-api/src/capabilities.rs',
-    anchor: 'pub struct CapabilityRegistry',
-    kind: 'struct',
-    implementedBy: 'the host',
-    why: 'The fail-closed surface that turns an Unsupported capability into an error instead of a silent no-op.',
-  },
-  {
-    id: 'reuse-driver',
-    file: 'packages/driver-api/src/reuse.rs',
-    anchor: 'pub struct ReuseDriver',
-    kind: 'struct',
-    implementedBy: 'every out-of-tree driver',
-    why: 'Constructed by every driver to satisfy the reuse contract; its fields are how reset is requested.',
-  },
-]);
 
 /**
  * The reconciliation matrix, stated as data.
@@ -348,19 +291,6 @@ export function findItemSpan(source, anchor) {
     }
   }
   return null;
-}
-
-/**
- * Replace the contents of string and char literals with spaces so brace
- * counting is not fooled by `"}"` or a `'{'` in a default value.
- *
- * @param {string} line
- * @returns {string}
- */
-export function stripStringAndCharLiterals(line) {
-  return line
-    .replace(/r?#*"[^"]*"#/g, (m) => ' '.repeat(m.length))
-    .replace(/'[^']*'/g, (m) => ' '.repeat(m.length));
 }
 
 /**
@@ -523,12 +453,27 @@ export function classifyContractChange(baseSource, newSource, rule, records) {
     }
   }
 
+  // The span says the contract was touched. The members say what moved inside
+  // it, and for an enum that is the whole question — a variant addition diffs
+  // as one added line, the same shape as a doc comment, so it would otherwise
+  // fall through to `additive` here. `rule.kind` decides what is compared: a
+  // struct's public field names (for the report only, never the verdict) or an
+  // enum's variants, where a gained variant really can break every downstream
+  // `match`.
+  const members = inspectMemberDiff(rule, baseSource, newSource, oldSpan, newSpan);
+
   if (removed > 0) {
     return {
       id: rule.id,
       cls: 'breaking',
-      reason: `${rule.id}: ${removed} line(s) removed from ${rule.anchor}`,
+      // The verdict is unchanged; only the reason gains the member that
+      // disappeared, because a variant's name is what an out-of-tree author
+      // has to go and look for.
+      reason: members.removalReason ?? `${rule.id}: ${removed} line(s) removed from ${rule.anchor}`,
     };
+  }
+  if (members.addedBreaking) {
+    return { id: rule.id, cls: 'breaking', reason: members.addedBreaking };
   }
   if (requiredAdditions.length > 0) {
     return {
@@ -554,7 +499,7 @@ export function classifyContractChange(baseSource, newSource, rule, records) {
     return {
       id: rule.id,
       cls: 'additive',
-      reason: `${rule.id}: ${addedMeaningful} line(s) added to ${rule.anchor} (${tolerated} cosmetic ignored), e.g. ${sample(meaningfulAdditions)}`,
+      reason: `${rule.id}: ${addedMeaningful} line(s) added to ${rule.anchor} (${tolerated} cosmetic ignored), e.g. ${sample(meaningfulAdditions)}${members.addedNote === null ? '' : ` [${members.addedNote}]`}`,
     };
   }
   return { id: rule.id, cls: 'cosmetic', reason: `${rule.id}: no non-cosmetic change` };
