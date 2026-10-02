@@ -241,6 +241,62 @@ async fn disconnect_removes_session() {
     assert_eq!(mgr.session_owner_map_len().await, 0);
 }
 
+/// Same as [`test_manager`], except the driver cannot confirm the teardown —
+/// the situation of a driver that lost the physical connection. `None` keeps
+/// the default mock behaviour.
+async fn test_manager_with_disconnect_error(
+    disconnect_error: Option<&str>,
+) -> (
+    crate::testing::FileKeyringGuard,
+    Arc<ConnectionManager>,
+    Arc<Store>,
+) {
+    let keyring = crate::testing::FileKeyringGuard::set();
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+    let registry = Arc::new(DriverRegistry::new());
+    let mock = MockDriver::new(
+        "postgres",
+        MockDriverOptions {
+            disconnect_error: disconnect_error.map(str::to_string),
+            ..Default::default()
+        },
+    );
+    registry
+        .register_test_driver("postgres", mock.clone())
+        .await;
+    let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
+    (keyring, mgr, store)
+}
+
+#[tokio::test]
+async fn disconnect_reports_a_driver_that_could_not_confirm_the_teardown() {
+    let (_keyring, mgr, store) =
+        test_manager_with_disconnect_error(Some("connection already gone")).await;
+    store.save_connection(sample_config("cfg-1")).await.unwrap();
+    let db_session_id = mgr.connect("cfg-1").await.unwrap();
+
+    // A driver that cannot confirm the teardown leaves the physical connection
+    // in an unknown state. Swallowing that reported a clean disconnect for a
+    // connection that may still be up, so the caller has to be told.
+    let err = mgr.disconnect(&db_session_id).await.unwrap_err();
+    assert!(matches!(err, ConnectionError::DriverError(_)));
+    assert!(
+        err.to_string().contains("connection already gone"),
+        "the driver failure must reach the caller verbatim, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn disconnect_is_ok_when_the_driver_confirms_the_teardown() {
+    let (_keyring, mgr, store) = test_manager_with_disconnect_error(None).await;
+    store.save_connection(sample_config("cfg-1")).await.unwrap();
+    let db_session_id = mgr.connect("cfg-1").await.unwrap();
+
+    mgr.disconnect(&db_session_id).await.unwrap();
+    assert_eq!(mgr.session_owner_map_len().await, 0);
+}
+
 #[tokio::test]
 async fn ping_returns_true_for_active_session() {
     let (_keyring, mgr, store, _) = test_manager().await;

@@ -64,9 +64,15 @@ impl<'a> TransactionScope<'a> {
     }
 
     /// Rollback the transaction. No-op for auto-commit dialects.
+    ///
+    /// A driver that cannot confirm the rollback has left the transaction in
+    /// an unknown state, so the caller is told — exactly as `commit` does.
+    /// Swallowing it reported a clean rollback for a transaction that may still
+    /// be open, and `schema_diff/deploy.rs` already treats the failure as
+    /// `DeployStatus::Unknown` when it sees one.
     pub async fn rollback(mut self) -> Result<(), String> {
         if let Some(tx) = self.tx.take() {
-            let _ = self.driver.rollback(tx).await;
+            self.driver.rollback(tx).await.map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -155,6 +161,68 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(scope.atomicity(), DdlAtomicity::Unknown);
+        assert!(!scope.is_transactional());
+        scope.rollback().await.unwrap();
+    }
+
+    /// The happy path stays happy: a driver that accepts the rollback still
+    /// yields `Ok`, so the fix cannot be satisfied by failing everything.
+    #[tokio::test]
+    async fn rollback_reports_ok_when_the_driver_accepts_it() {
+        let driver = mock_driver(DdlAtomicity::Transactional);
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle)
+            .await
+            .unwrap();
+        scope.rollback().await.unwrap();
+    }
+
+    /// A rollback the driver could not perform leaves the transaction in an
+    /// unknown state. `commit` has always reported such a failure; `rollback`
+    /// used to swallow it and answer `Ok`, which told the caller — and
+    /// `schema_diff/deploy.rs`, which downgrades to `DeployStatus::Unknown` on
+    /// a rollback error — that the transaction was closed when it may not be.
+    #[tokio::test]
+    async fn rollback_reports_a_failed_rollback() {
+        let driver = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                ddl_atomicity: Some(DdlAtomicity::Transactional),
+                rollback_error_on_call: Some(1),
+                rollback_error: Some("rollback lost its acknowledgement".into()),
+                ..Default::default()
+            },
+        );
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle)
+            .await
+            .unwrap();
+        let err = scope.rollback().await.unwrap_err();
+        assert!(
+            err.contains("rollback lost its acknowledgement"),
+            "the driver failure must reach the caller verbatim, got: {err}"
+        );
+    }
+
+    /// An auto-commit dialect never opens a transaction, so there is nothing to
+    /// roll back and nothing that can fail.
+    #[tokio::test]
+    async fn rollback_of_a_non_transactional_scope_is_unaffected() {
+        let driver = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                ddl_atomicity: Some(DdlAtomicity::AutoCommitPerStatement),
+                rollback_error_on_call: Some(1),
+                ..Default::default()
+            },
+        );
+        let handle = mock_handle();
+
+        let scope = TransactionScope::begin(driver.as_ref(), &handle)
+            .await
+            .unwrap();
         assert!(!scope.is_transactional());
         scope.rollback().await.unwrap();
     }
