@@ -25,6 +25,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+use crate::capability_domains::{BackupSupport, DataSupport};
 use crate::DdlAtomicity;
 use crate::{MIN_PROTOCOL_VERSION, PROTOCOL_VERSION};
 
@@ -289,6 +290,12 @@ pub struct CapabilitySet {
     pub snapshots: SnapshotSupport,
     pub transactions: TransactionSupport,
     pub ddl_atomicity: DdlAtomicitySupport,
+    /// The `data` domain: row read / row write / streaming results
+    /// (`platform-development-plan.md:93`).
+    pub data: DataSupport,
+    /// The `backup` domain: producing an artifact / consuming one back
+    /// (`platform-development-plan.md:93`).
+    pub backup: BackupSupport,
 }
 
 impl CapabilitySet {
@@ -442,6 +449,54 @@ impl CapabilityRegistry {
             Ok(())
         } else {
             Err(self.reject("namespaceSwitch"))
+        }
+    }
+
+    /// Require rows to be readable at all.
+    pub fn require_row_read(&self) -> Result<(), CapabilityError> {
+        if self.capabilities.data.enables_row_read() {
+            Ok(())
+        } else {
+            Err(self.reject("data.rowRead"))
+        }
+    }
+
+    /// Require rows to be writable, not merely readable.
+    ///
+    /// A read-only resource satisfies [`CapabilityRegistry::require_row_read`]
+    /// and fails here; that is the whole point of asking separately.
+    pub fn require_row_write(&self) -> Result<(), CapabilityError> {
+        if self.capabilities.data.enables_row_write() {
+            Ok(())
+        } else {
+            Err(self.reject("data.rowWrite"))
+        }
+    }
+
+    /// Require results to arrive incrementally rather than fully buffered.
+    pub fn require_streaming_results(&self) -> Result<(), CapabilityError> {
+        if self.capabilities.data.enables_streaming_results() {
+            Ok(())
+        } else {
+            Err(self.reject("data.streamingResults"))
+        }
+    }
+
+    /// Require the provider to produce a backup artifact.
+    pub fn require_backup_artifact(&self) -> Result<(), CapabilityError> {
+        if self.capabilities.backup.enables_artifact() {
+            Ok(())
+        } else {
+            Err(self.reject("backup.artifact"))
+        }
+    }
+
+    /// Require the provider to consume a backup artifact back into a resource.
+    pub fn require_restore_from_artifact(&self) -> Result<(), CapabilityError> {
+        if self.capabilities.backup.enables_restore() {
+            Ok(())
+        } else {
+            Err(self.reject("backup.restore"))
         }
     }
 
@@ -612,6 +667,37 @@ mod tests {
             registry.capabilities.namespace_switch = NamespaceSwitch::RequiresReplacement;
         });
         assert!(registry.require_in_place_namespace_switch().is_err());
+    }
+
+    #[test]
+    fn undeclared_data_and_backup_domains_reject_every_request() {
+        let registry = registry_with(|_| {});
+        for result in [
+            registry.require_row_read(),
+            registry.require_row_write(),
+            registry.require_streaming_results(),
+            registry.require_backup_artifact(),
+            registry.require_restore_from_artifact(),
+        ] {
+            let error = result.expect_err("an undeclared domain must not succeed");
+            assert!(!error.capability.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_degraded_domain_is_accepted_only_on_the_axes_it_keeps() {
+        let read_only = registry_with(|registry| {
+            registry.capabilities.data = DataSupport::StreamingReadOnly;
+        });
+        assert!(read_only.require_row_read().is_ok());
+        assert!(read_only.require_streaming_results().is_ok());
+        assert!(read_only.require_row_write().is_err());
+
+        let artifact_only = registry_with(|registry| {
+            registry.capabilities.backup = BackupSupport::ArtifactOnly;
+        });
+        assert!(artifact_only.require_backup_artifact().is_ok());
+        assert!(artifact_only.require_restore_from_artifact().is_err());
     }
 
     #[test]

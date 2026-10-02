@@ -112,6 +112,7 @@
     "test:platform-arch:mutations": "node scripts/platform-arch-selfcheck.mjs",
     "test:i18n-keys": "node scripts/i18n-key-collision-check.mjs",
     "test:version": "node scripts/check-version-consistency.mjs",
+    "test:driver-protocol": "node scripts/check-driver-protocol-compat.mjs",
     "test:release-variants": "node scripts/check-release-variants.mjs",
     "test:scripts": "vitest run scripts/__tests__",
     "test:rust:backup-i18n": "cargo test -p datazen --lib app_data_archive && cargo test -p datazen --lib i18n_locale && cargo test -p datazen --lib store::tests",

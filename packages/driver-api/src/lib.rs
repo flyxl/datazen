@@ -8,6 +8,7 @@ pub use async_trait::async_trait;
 pub use inventory;
 
 pub mod capabilities;
+pub mod capability_domains;
 pub mod command;
 mod explain_plan;
 mod factory;
@@ -34,6 +35,7 @@ mod traits;
 mod tunnel_types;
 mod types;
 
+pub use capability_domains::{BackupSupport, DataSupport};
 pub use command::{
     check_command_access, execute_command_definition, execute_command_definition_for,
     query_command_definition, query_command_definition_for, query_only_command_definitions,
