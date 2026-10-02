@@ -1,8 +1,13 @@
 //! The real [`ResourceProvider`] for the mongodb driver.
 //!
-//! `lib.rs` hands out one provider instance per `resource_provider()` call, so
-//! each instance carries its own `runtime_epoch` and its own
-//! `CapabilityRegistry` and rejects every handle minted by another.
+//! `lib.rs` hands out one provider instance for the life of the process, so
+//! every `ResourceHandle` it issues is minted against that one instance's
+//! `runtime_epoch` and `CapabilityRegistry`. Isolation is unchanged: an epoch
+//! is still drawn from a per-instance counter, so a handle minted by a
+//! *different* provider instance — one built directly in a test, or another
+//! driver's — is still rejected. What changed is that calling
+//! `resource_provider()` twice no longer produces a second instance whose only
+//! effect would be to reject the first one's handles.
 //!
 //! Three design rules shape everything below.
 //!
@@ -78,8 +83,9 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 impl MongodbResourceProvider {
     /// Build a provider bound to one driver instance. The `runtime_epoch` is
-    /// fresh per call, so a handle issued by one factory instance is rejected
-    /// by every other.
+    /// drawn from a process-wide counter, so this instance rejects every handle
+    /// minted by any other — including one from a previous instance of this
+    /// factory, should anything ever build one directly.
     pub(crate) fn new(driver: Arc<dyn DatabaseDriver>, driver_id: &str) -> Self {
         let snapshot =
             CapabilitySnapshot::new(driver_id, env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION, 0);
@@ -94,6 +100,15 @@ impl MongodbResourceProvider {
             live: Mutex::new(BTreeMap::new()),
             revision: AtomicU64::new(0),
         }
+    }
+
+    /// The driver this provider is bound to.
+    ///
+    /// `pub(crate)`, not part of any trait: it exists so the factory tests can
+    /// prove the provider holds the very `Arc` that `create()` handed out, which
+    /// is otherwise only visible by reading the factory.
+    pub(crate) fn driver(&self) -> &Arc<dyn DatabaseDriver> {
+        &self.driver
     }
 
     fn next_revision(&self) -> u64 {
