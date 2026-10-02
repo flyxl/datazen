@@ -691,6 +691,27 @@ Job 接受时先持久化记录，再获取资源。Job 资源 owner 是 jobId/s
 
 源与目标角色独立。相同 connectionId 可以不同 database；不同 connectionId 可以同一真实对象。结合服务身份、命名空间、对象映射检查重叠；身份无法证明时提示并禁止危险自覆盖模式。
 
+### 10.1.1 P5 JobHandler 与阶段协议（目标设计）
+
+JobHandler 按 kind 与 planVersion 注册，负责 `validatePlan / runStage / verifyRecovery`；runtime 负责接受记录、claim、预算申请、阶段调度、取消意图、事件和最终 cleanup。handler 不依赖窗口，不自行申请未计数连接，不通过前端卸载释放资源。runStage 接收冻结计划、stageId、当前 claim、取消信号与受控资源访问接口，输出 executionIds、已确认 CommitBoundary、Artifact 与阶段结果；未知提交输出 unknown，不能自行把失败改为成功。
+
+接受事务原子登记 Job 与幂等 receipt，提交成功才返回 jobId。queued 取消仅记录取消意图并由调度器确认 notStarted；running 取消禁止新增阶段/批次，正在执行的取消与回滚结果分别核验，再释放资源并写终态。JobState 保留既有集合，取消请求由独立字段/事件显示，不提前标 cancelled。所有 worker 写入验证当前 claim generation（[共享端口 §4.3](shared-boundaries-and-ports.md#43-持久化与授权端口)）。
+
+冻结计划必须含 planVersion、checkpointVersion、handlerVersion、稳定源/目标、config/credential/capability 版本、映射指纹与事务边界。checkpoint 只保存确认提交、稳定键和核验证据；恢复器对版本不兼容、源变化、权限变化或证据不足的计划拒绝续跑并要求重新核验/制定计划，不自动交给另一个版本 handler。提交边界记录不能因重试或恢复被覆盖。
+
+JobView 在 P5 补充派生的 effectOutcome、cancelRequested 与待核验原因；effectOutcome 根据执行事实与已确认边界确定：未派发为 notStarted；全部预期效果确认完成为 completed；全部副作用确认回滚为 rolledBack；存在已提交且未完成的范围为 partiallyApplied；任一仍无法核验的副作用为 unknown，并保留已确认部分。JobState 与 effectOutcome 独立，失败/取消不能抹掉已提交范围。
+
+| 崩溃/失败窗口 | 恢复决策 |
+| --- | --- |
+| 接受记录提交前 | 没有受理，不派发；原幂等键查询/重试仍按过期规则处理 |
+| 接受后、派发前 | 核验尚无外部效果和旧 worker 已停止后，可重新认领 |
+| 语句执行/commit 中断，目标结果不明 | 保留 unknown，先核验目标；不盲目接管或重跑 |
+| 目标 commit 成功、checkpoint 未写 | 读取同一目标事务内的批次标识/幂等记录证明已提交，补边界后才继续；不支持该证明的 driver 进入待核验 |
+| checkpoint 已写、终态未写 | 复核目标证据与冻结版本后补终态/继续未执行阶段，不重复已提交范围 |
+| cleanup 未确认 | 保留预算占用/隔离资源；确认关闭或节点隔离后才核销 |
+
+Schema Diff 以对象操作与实际 DDL 生效为边界；Data Sync/Transfer 以冻结计划的批次 ID 和提交范围为边界。目标批次记录须与业务写入同事务，且授权允许；不能擅自在用户库建辅助表。未获授权或 driver 不支持时使用可证明的业务幂等/只读核验，否则禁止自动恢复写入。P5 真实驱动旅程必须在上述每个窗口注入失败，断言目标内容、提交边界和恢复决策，而不只比较 Job 状态。
+
 ### 10.2 Schema Diff
 
 compare 短租约读取结构 → 计划 → review → 重新校验目标 → 目标专用阶段资源 → 按依赖执行 DDL。原子性按计划确认，Unknown 不承诺全部回滚。MySQL 多种 DDL 会隐式提交，[官方说明](https://dev.mysql.com/doc/refman/8.0/en/implicit-commit.html)。失败记录已生效 DDL；反向 DDL 是补偿，不等于 rollback。
@@ -726,6 +747,14 @@ SessionDirectory 保存组织/owner/worker/runtimeEpoch，不保存连接。dbSe
 池隔离由执行身份而非显示用户名决定。共享账号的应用 ACL 不能代替数据库权限；任意 SQL 的限定名/过程/角色可能绕过当前库范围。结果/缓存/event 都按组织和有效权限范围检查。配置禁用/删除拒绝新操作，已有资源按显式 drain 或强制结束策略处理。
 
 旧结果编辑：受控对象结果有完整 relation identity + PK/version，可重新授权并乐观写回原目标；任意 SQL 多表/表达式结果默认只读，driver 未证明可写映射时不猜测。临时表结果写回要求原 runtimeBinding 精确有效，否则 SessionLost；相同配置、指纹或用户不能代替原物理会话。
+
+### 12.1 P4 结果消费与上下文隔离（目标设计）
+
+客户端按 `(backendId, executionId, artifactId, chunkIndex)` 去重块，按 stream sequence 去重通知；收到 resultChunk 后只读已发布块。读失败不插入空行、不跳过该 index，恢复时先读 getExecution/产物已发布块元数据，再补缺块；streamResetRequired 清除订阅游标并重建投影，不把事件缺失解释成未执行。P3 的读取回执补充 publishedChunkCount 与发布字节前缀，便于重连恢复；最终块数由 finalize 冻结。
+
+切库、关闭 tab、替换 session 后，旧 execution 的持久来源仍可显示；session 状态投影必须匹配当前 dbSessionId/runtimeEpoch/contextRevision，旧 session 事件不得更新新会话。关闭结果视图仅解除消费，后端按明确 discard/drain 政策处理，不直接 release 物理资源；临时结果写回仍要求原 runtimeBinding。来源目标与当前下拉选择不得互相覆盖。
+
+P4 连续旅程覆盖执行→部分结果→取消/断线→恢复缺块→下一次执行，以及切库/替换期间迟到事件、重复通知、关闭结果视图、临时结果失效；逐步断言无重复行/缺行、终态真实和写回目标正确。
 
 ## 13. 错误、重试和事件
 
@@ -798,7 +827,7 @@ Host fake 提供：两个组织 O1/O2、用户 U1/U2、profile P、不同个人�
 
 真实 driver fixture：创建独立测试 database/schema，A/B 的同名 `dz_target_marker` 返回不同标记；有状态驱动提供临时对象、事务和上下文探测脚本。SQL 和测试数据由对应 driver 测试包定义。测试前验证目标属于专用测试环境，结束删除夹具。
 
-不打开、读取、解析、source 或打印 `.env` / `.env.test`，不运行隐式加载它们的程序。真实测试凭据由已配置 CI secret 或获授权的进程环境注入；开发前检查测试启动器不会加载受保护文件。使用 fake 可完成大多数宿主测试。
+Agent 不打开、读取、解析、source 或打印 `.env` / `.env.test` 内容进入上下文；测试程序运行时读取合法，不因此跳过真实驱动验证。凭据由测试程序/CI secret/获授权进程环境使用，检查启动器和失败输出不回显秘密；长输出按 AGENTS.md 落系统临时文件，只摘取结构性结论。fake 不依赖真实凭据且禁止出站连接。
 
 ### 15.2 测试分层
 

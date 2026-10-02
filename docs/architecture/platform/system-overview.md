@@ -236,7 +236,7 @@ interface ArtifactChunk {
 | POST `/api/v1/jobs/{id}/cancel` | 任务取消 |
 | GET `/api/v1/events/{streamId}` | SSE，支持 Last-Event-ID |
 | POST `/api/v1/artifacts/uploads` | 配额内上传 |
-| GET `/api/v1/artifacts/{id}` | 受控结果/下载；`chunkIndex` 或 `offset`+`limit` 取块 |
+| GET `/api/v1/artifacts/{id}` | 受控结果/下载；`metadata=1` 描述已发布前缀，或 `chunkIndex` / `offset`+`limit` 取块（互斥） |
 
 异步接受返回 202 + ID；参数错误 400、未认证 401、无权限 403、不可见资源 404、版本/运行时冲突 409、预算或速率超限 429、暂时无可用 worker 503。无法区分“无权限”和“不存在”的资源统一 404，避免 ID 枚举。
 
@@ -316,9 +316,21 @@ worker drain 停止新资源与任务，允许现有执行到安全边界。交�
 
 ### 9.1 Wapp、EP 与 Theme 的平台边界
 
-桌面与 Web 均可展示 Wapp iframe，但桥接必须调用当前 backend 的 BackendClient，经 host 校验 `origin`、`source`、一次性 nonce、消息 schema/大小、Wapp 安装身份和能力授权；禁止使用 `*` target origin。桥接只提供声明过的 Command 和 Artifact 操作，不传 dbSessionId、attachmentToken、取消句柄或数据库凭据。Web 部署使用独立受限 origin 与 sandbox/CSP；Wapp 不能从 iframe 自行取得用户 cookie 或调用任意服务端 URL。用户身份与每次操作授权由父应用和服务端重新验证，卸载/撤权即关闭桥接订阅。
+桌面与 Web 均可展示 Wapp iframe，但桥接必须调用当前 backend 的 BackendClient，经 host 校验 `origin`、`source`、一次性 nonce、消息 schema/大小、Wapp 安装身份和能力授权；Web 使用精确 target origin；桌面不透明 origin 允许定向至已登记 iframe 的 `*`，必须结合 source、一次性 nonce 与 schema 校验，不发送登录或数据库秘密。桥接只提供声明过的 Command 和 Artifact 操作，不传 dbSessionId、attachmentToken、取消句柄或数据库凭据。Web 部署使用独立受限 origin 与 sandbox/CSP；Wapp 不能从 iframe 自行取得用户 cookie 或调用任意服务端 URL。用户身份与每次操作授权由父应用和服务端重新验证，卸载/撤权即关闭桥接订阅。
 
 特权 EP 是桌面 host 内的可信扩展，Web server 不加载 native EP，也不把 EP 包下发到浏览器执行。团队版若需要同等功能，必须走显式授权的服务 API。Theme 只分发 schema 校验后的静态资源，Web CSP 禁止脚本执行；主题不能调用 backend 或访问 secret。Driver/Workspace App/EP/Theme 的扩展面相互独立。
+
+### 9.2 P9 协调与失租协议（目标设计）
+
+SessionDirectory 仍只存 TTL 内存路由；协调器必须支持 owner/epoch/替换 operation 的原子 CAS。prepared 候选不可路由，committed 同时封闭旧路由并开放新路由。API 先授权再查询/转发；内部 RPC 经 worker 身份认证并验证组织、principal、owner epoch、请求指纹与 deadline，不信任客户端指定 worker。路由失败不自动在别处重新派发未知写入。
+
+Job 仓储是认领权威，每次接管递增持久化 claimGeneration；所有阶段/边界/checkpoint 写入验证当前 claim，旧 worker 恢复后无法写仓储。续约失败停止新增资源/阶段，对已发出的执行记录真实结果并核验。fencing 只保护管理库，不保证撤销外部 SQL；新 worker 在证明旧执行终止/隔离且目标边界已核验前，不执行同一副作用范围。
+
+全局 BudgetCoordinator 将服务级额度分配为带 generation 的节点许可；各 worker 在子额度内按 P3 多维预算记账，包含 idle、控制 socket、cluster 隐藏连接、Cleaning 与 Quarantined。分配与回收通过原子 CAS，节点续约到期只禁止新增连接，不立即返还可能仍存活的额度。协调器失联时禁止新增全局许可，已获许可只能在有效期内新增资源；过期后停止新增并 drain。确认旧节点资源关闭或已被网络/进程隔离后才释放额度，不能用目录条目消失代替证明。
+
+目录/协调器重启丢失路由时，相关 session 明确 Lost；拒绝新增直到旧 worker 注册状态/额度对账完成。活动事务不从目录恢复。worker drain 顺序为停止接受新任务/会话→通知客户端→运行中执行到安全边界→终结句柄与资源→核验预算→退出；超过期限记 unknown/待核验并保守保留占用。版本/能力/网络区域不匹配的 worker 不参与新 claim，不迁移 live session。
+
+P9 故障旅程必须覆盖：关闭 sticky、多 API 路由、owner 碰撞、替换提交应答丢失、worker 暂停超过租约后恢复、协调器/目录重启、单向网络分区、续约失败时 commit 已在途、drain 超期与滚动升级。断言旧 generation 写入失败、无重复提交、目录丢失明确失效，以及任意 journal 时刻物理资源不超过未核销许可总额。
 
 ## 10. 安全和环境差异
 

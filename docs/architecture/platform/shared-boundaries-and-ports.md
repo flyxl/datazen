@@ -290,24 +290,29 @@ pub trait JobRepository: Send + Sync + 'static {
     async fn get(&self, ctx: &RequestContext, job_id: JobId) -> Result<JobRecord, PortError>;
     async fn list(&self, ctx: &RequestContext, filter: JobFilter)
         -> Result<Vec<JobRecord>, PortError>;
-    async fn record_stage(&self, ctx: &RequestContext, job_id: JobId, stage: StageRecord)
+    async fn record_stage(&self, ctx: &RequestContext, claim: &JobClaim, stage: StageRecord)
         -> Result<(), PortError>;
-    async fn record_commit_boundary(&self, ctx: &RequestContext, job_id: JobId, boundary: CommitBoundary)
+    async fn record_commit_boundary(&self, ctx: &RequestContext, claim: &JobClaim, boundary: CommitBoundary)
         -> Result<(), PortError>;
     /// 状态 CAS；并发推进同一 Job 时由版本不匹配拒绝，不做覆盖写。
-    async fn compare_and_set_state(&self, ctx: &RequestContext, job_id: JobId,
+    async fn compare_and_set_state(&self, ctx: &RequestContext, claim: &JobClaim,
         expected: JobStateVersion, next: JobState) -> Result<JobRecord, PortError>;
     /// claim/renew：多 worker 抢占与续约；续约失败即视为失联（Job 停止新增资源）。
     async fn claim(&self, ctx: &RequestContext, job_id: JobId, worker: WorkerId)
         -> Result<JobClaim, PortError>;
     async fn renew(&self, claim: &JobClaim) -> Result<JobClaim, PortError>;
     /// 检查点写入与恢复候选查询：只返回需要人工/计划核验的待办，不自动重放副作用阶段。
-    async fn save_checkpoint(&self, ctx: &RequestContext, job_id: JobId, cp: Checkpoint)
+    async fn save_checkpoint(&self, ctx: &RequestContext, claim: &JobClaim, cp: Checkpoint)
         -> Result<(), PortError>;
     async fn list_recoverable(&self, ctx: &RequestContext, filter: RecoveryFilter)
         -> Result<Vec<JobRecord>, PortError>;
 }
 
+```
+
+P5 目标修订：上述 worker 写入端口必须携带 `JobClaim`；现有代码签名尚未包含该条件，不属于已实现事实。claim 含 `jobId`、`stageId`、`workerId`、`claimGeneration`、`claimedAt`、`expiresAt`；generation 是持久化单调 Counter。claim、renew、阶段/提交边界/checkpoint 写入与状态 CAS 都在仓储事务中校验当前 generation、worker 与租约未过期；租约时间由仓储权威时钟判断。初次认领和每次接管增加 generation，续约不增加。旧 claim 返回明确失租错误且不写任何内容。未认领 queued Job 的取消使用独立请求标记，不能伪造 worker claim；恢复扫描只产生核验候选。该契约在 P5 落地，P9 才增加跨 worker 协调。
+
+```rust
 #[async_trait]
 pub trait PolicyService: Send + Sync + 'static {
     async fn authorize(&self, ctx: &RequestContext, subject: AuthorizationSubject,
@@ -432,8 +437,13 @@ pub trait ArtifactStore: Send + Sync + 'static {
         -> Result<(ArtifactId, ArtifactWriter), PortError>;
     async fn append_chunk(&self, writer: &mut ArtifactWriter, chunk: ChunkPayload)
         -> Result<ChunkIndex, PortError>;
-    /// finalize 后才可读；未 finalize 的 artifact 不可枚举也不可导出。
+    /// P3 目标接口；当前代码需同步升级，不代表已实现。
+    async fn describe(&self, ctx: &RequestContext, artifact_id: ArtifactId)
+        -> Result<ArtifactMetadata, PortError>;
+    /// finalize 固化完整性与总块数；abort 保留已发布块并标记 truncated。
     async fn finalize(&self, writer: ArtifactWriter) -> Result<ArtifactId, PortError>;
+    async fn abort(&self, writer: ArtifactWriter, reason: TruncationReason)
+        -> Result<ArtifactId, PortError>;
     async fn read_chunk(&self, ctx: &RequestContext, artifact_id: ArtifactId, chunk_index: ChunkIndex)
         -> Result<ArtifactChunk, PortError>;
     async fn read_range(&self, ctx: &RequestContext, artifact_id: ArtifactId, range: ByteRange)
@@ -456,6 +466,10 @@ pub trait EventSink: Send + Sync + 'static {
         after_sequence: Option<EventSequence>) -> Result<EventSubscription, PortError>;
 }
 ```
+
+P3 目标修订：Artifact 生命周期为 `writing → complete | truncated`，另有 `revoked/expired` 不可读终态。`append_chunk` 顺序分配 index，字节和块元数据提交后才返回并发布 `resultChunk`；已发布块不可覆盖。`read_chunk` 在 writing 期间只读取已发布 index，`read_range` 只读已发布连续前缀，不等待未来字节。未发布索引/越界返回参数错误，客户端依据事件重读，不把它当空块。`totalChunks=null` 只表示尚未终结，不禁止读取已发布块。
+
+finalize 固化块数、完整性和截断原因；正常完成记 complete，取消/失败/消费超限走显式 abort/截断终结并清理未发布字节。受控导出仅允许 complete，truncated 需用户明确确认并保留截断标记。进程异常退出的 writer 由恢复扫描标记 truncated，不宣称完整；无人引用且未发布的上传按 TTL 清理。目标端口补 describe/abort，现有实现签名在 P3 同步修订。ArtifactMetadata 含 artifactId、lifecycle、publishedChunkCount、publishedByteSize、totalChunks、resultCompleteness、truncationReason；Counter 使用十进制字符串，writing 时 totalChunks 为 null。BackendClient 增加 getArtifactMetadata，HTTP 使用 GET artifacts/{id}?metadata=1，与 chunkIndex/offset 参数互斥；每次查询先授权。上传重传是单独协议：相同 index 只允许相同摘要，不同字节拒绝，不能覆盖已发布查询结果。
 
 `PortError::ArtifactExpired` 是端口层取值，**HTTP 状态码映射由 server host 决定**，不构成端口契约：team-server 出于防 ID 枚举把 `ArtifactExpired` 与 `NotFound` 统一映射为 404（不返回 410，见[团队服务 §9.2](team-server-and-auth.md#92-apierror--http-映射表)）。
 

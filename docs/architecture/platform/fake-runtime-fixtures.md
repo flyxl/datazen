@@ -217,7 +217,7 @@ fake 的 `ExecutionCompletion` 必须逐字段给出，宿主断言才有意义�
 | F8 commit `Unknown` | `effectOutcome=unknown`，`errorCode` 取实际成因（`protocolError`/`timeout`），要求核验、不自动重试；**不**返回 `TransactionResolutionRequired`（该码只用于「事务阻止切换/关闭」） | CM-47、CM-52 |
 | F8 rollback 失败 | `RollbackFailed`，资源隔离 `Quarantined`，不归还 | CM-26、CM-64 |
 | F9 cancel `Unsupported` | `CancelReceipt.disposition=unsupported`（正常返回值，不是异常） | CM-24、CM-72 |
-| F9 取消后执行仍完成 | `executionState` 仍 `cancelled`（取消请求已送达），但 `errorCode` 报告执行真实终态 | CM-22、CM-72 |
+| F9 取消后执行仍完成 | 取消请求可为 `requested`，但最终 `executionState=succeeded`、`effectOutcome=completed`、`errorCode=null`；取消送达不覆盖实际终态 | CM-22、CM-72 |
 | F10 driver `Clean` 但句柄非空 | 宿主判定事务未终结 → **关闭**而非归池 | CM-69、CM-73、CM-74 |
 | F10 `resetForReuse=unsupported` | 直接关闭，预算在确认后核销 | CM-26、CM-69 |
 | F11 `CloseUnconfirmed` | 保留预算占用或转待核验占用，不立即归零 | CM-26、CM-27、CM-28 |
@@ -351,7 +351,7 @@ sequenceDiagram
 | CM-64 无消费者 | drain 期限到期 | 事件被截断、`protocolDrained=false`、资源被关闭 |
 | CM-73 淘汰中途发起 commit | idle 淘汰启动后（barrier 停住）发起 `begin`→`commit` | 句柄在**原 resource** 上终结后才释放资源；不得在新 resource 上复用旧句柄 |
 | CM-74 释放顺序 | 淘汰 + 句柄登记并存 | journal 顺序必须是 `handle closed` → `resource Closed` → `permit -1` |
-| CM-22 取消与完成竞态 | 取消到达后让执行继续完成 | `executionState=cancelled` 且 `errorCode` 为执行真实终态 |
+| CM-22 取消与完成竞态 | 分别用 barrier 控制取消获胜、正常完成获胜、取消不支持与写入结果未知 | 只在确认执行已取消时终态为 `cancelled`；正常完成为 `succeeded`；unsupported 不改变状态；未知副作用为 `unknown`，不能伪称已回滚 |
 | CM-69 归池竞态 | 宿主前置全部满足但 driver 返回 `Discard` | 走关闭分支，permit 只在 `Closed` 后归还 |
 
 ### 6.4 禁止用 sleep 猜顺序
@@ -536,7 +536,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 - 能力 `Unsupported` 的用例断言「**正确拒绝**」，不能静默 `skip`；若因环境缺失无法运行，必须在报告中写明未验证范围。
 - 真实测试环境不可用时，**不得用 fake 代替真实协议结论**：fake 只能证明网关/运行时行为，不能证明驱动语义。
-- 现有可运行示例：`cargo test -p datazen-driver-postgres --test postgres_cross_database`（该测试在无 Postgres 时干净跳过）。它是本文模板的起点，但**它通过自带的 `load_dotenv_file()` 读取 `packages/drivers/.env` 获取 `TEST_PG_*` 凭据**（路径由 `CARGO_MANIFEST_DIR` 的父目录拼出，不是仓库根），与 §13 纪律冲突；新夹具必须改为只从进程环境/CI secret 注入，不复制该写法。
+- 现有可运行示例：`cargo test -p datazen-driver-postgres --test postgres_cross_database`（该测试在无 Postgres 时干净跳过）。它是本文模板的起点，但**它通过自带的 `load_dotenv_file()` 读取 `packages/drivers/.env` 获取 `TEST_PG_*` 凭据**（路径由 `CARGO_MANIFEST_DIR` 的父目录拼出，不是仓库根），该程序读取本身符合 AGENTS.md，不得因而禁止运行；Agent 不查看文件内容。新 fake 不依赖真实配置，真实驱动契约按程序/CI 注入并保证输出脱敏。
 
 ## 11. 基准 harness（CM-60）
 
@@ -564,7 +564,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 ### 11.3 统计口径
 
-- p95 = 把该段全部样本升序排序后，取第 `ceil(0.95 * N)` 项（1-based），`N` 为该轮样本数；要求**每一轮**都 ≤ 10 毫秒。
+- 对每个请求先计算 `overhead = gateway_duration + registration_duration`，再把该轮 overhead 样本升序排序，取第 `ceil(0.95 * N)` 项（1-based）作为门禁 p95；要求**每一轮**都 ≤ 10 毫秒。两段单独的分位数仅用于诊断，不能分别达标就判整体通过，也不能把两段 p95 相加代替逐请求求和。
 - **排队请求单独报告**：被 `QueueFull` 拒绝或排队等待的请求不进入 p95 样本，单独给出其等待时长分位数与计数。
 - **不删除失败样本**：失败、超时、被取消的样本数与占比必须与分位数一起输出，禁止只统计成功样本。
 - 每轮输出：`N`、p50、p90、p95、p99、最大值、失败数、排队数。
@@ -633,10 +633,10 @@ cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 fea
 | 规则 | 说明 |
 | --- | --- |
 | 禁止读取受保护 env 文件 | 任何 Agent（含子代理）不得打开、读取、解析、`source` 或打印仓库及 worktree 中 `.env` / `.env.test` 的内容；只允许检查文件是否存在与 Git 忽略状态。**测试程序运行时读 `.env` 是合法的**——集成测试本就需要其中的 `DATABASE_URL`，`load_dotenv` 类调用因此不因「读文件」本身被禁；被禁的是「把内容读进上下文」，而不是「程序读文件」 |
-| 禁止运行隐式加载它们的程序 | 不得执行会把上述文件的**内容带进自己上下文或报告**的命令；`load_dotenv` 类调用在夹具中禁止出现 |
+| 输出保护与 fake 隔离 | 不得执行会把上述文件的**内容带进上下文或报告**的命令；真实测试程序读取合法，fake 不读取真实配置且不出站 |
 | 真实凭据注入方式 | 由 CI secret 或已获授权的进程环境变量注入；不写入提示、日志、报告或测试输出 |
 | 既有实现不作为范本 | `packages/drivers/postgres/tests/postgres_cross_database.rs` 现有 `load_dotenv_file()` 读取 `packages/drivers/.env`（由 `CARGO_MANIFEST_DIR` 父目录拼出）；新夹具**不复制**该写法，改造时改为只认进程环境 |
-| 启动器检查 | 开发前检查测试启动器不加载受保护文件；Host E2E 必须经 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 触发，不得裸 `cargo build」。**P0 检查结论：11 个 shell 脚本会 `source` 受保护 env 文件**（`scripts/setup-workflow-testdata.sh:10`、`scripts/run-full-automation-test.sh:49`、`scripts/run-e2e-minimal.sh:234` 经 `--env-file`/`E2E_ENV_FILE`、`packages/drivers/postgres/e2e/install-manual-schema-tree.sh:13`、`packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh:11`、`e2e/setup-e2e-env.sh:12`、`e2e/teardown-e2e-env.sh:12`、`e2e/setup-sync-dbs.sh:12`、`e2e/setup-demo-data.sh:13`、`e2e/setup-schema-diff-e2e.sh:10`、`e2e/setup-data-transfer-e2e.sh:10`）。全部是**本地操作者手动执行的 E2E 准备脚本**，不进 CI、不是夹具、也不由任何测试断言调用；`run-e2e-minimal.sh:226` 只打印变量**名**不打印值。已确认的合规样例是同目录的 `.mjs` 版本，只读 `process.env.E2E_MYSQL_*`。本阶段按「检查」交付，不改造这些脚本——改造会改变本地开发流程，属独立决策；复扫命令见下 |
+| 启动器检查 | 开发前检查测试启动器不回显受保护文件内容；Host E2E 必须经 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 触发，不得裸 `cargo build」。**P0 检查结论：11 个 shell 脚本会 `source` 受保护 env 文件**（`scripts/setup-workflow-testdata.sh:10`、`scripts/run-full-automation-test.sh:49`、`scripts/run-e2e-minimal.sh:234` 经 `--env-file`/`E2E_ENV_FILE`、`packages/drivers/postgres/e2e/install-manual-schema-tree.sh:13`、`packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh:11`、`e2e/setup-e2e-env.sh:12`、`e2e/teardown-e2e-env.sh:12`、`e2e/setup-sync-dbs.sh:12`、`e2e/setup-demo-data.sh:13`、`e2e/setup-schema-diff-e2e.sh:10`、`e2e/setup-data-transfer-e2e.sh:10`）。全部是**本地操作者手动执行的 E2E 准备脚本**，不进 CI、不是夹具、也不由任何测试断言调用；`run-e2e-minimal.sh:226` 只打印变量**名**不打印值。已确认的合规样例是同目录的 `.mjs` 版本，只读 `process.env.E2E_MYSQL_*`。本阶段按「检查」交付，不改造这些脚本——改造会改变本地开发流程，属独立决策；复扫命令见下 |
 | 日志脱敏 | 夹具的 journal 不得记录凭据、附件令牌与幂等令牌 nonce；故障注入的脚本 id 可记录，字面量不可记录 |
 | 夹具不产生真实外部连接 | fake provider 禁止任何出站 socket；真实驱动测试的连接目标必须是已证明的专用测试环境 |
 | 「无 env 文件读取」结论的边界 | 该结论来自对**绑定本契约模板的 crate 源码**的静态扫描（`real_driver_contract.rs` 的 `test_sources_never_read_env_files`）。带 `tests/` 却从不绑定模板的 crate 不在其中，其名单由 `UNGUARDED_DRIVER_CRATES` 机器渲染进范围报告的「免检驱动 crate」一节，并由 `the_report_names_every_crate_this_guard_does_not_scan` 的 golden 逐字钉住。golden 只拦下**未经复核的**新增文字，拦不住与 golden 同一次提交里一起改掉的措辞；报告其余部分的散文不在该钉的范围内，由 §10.4 的结论纪律负责 |

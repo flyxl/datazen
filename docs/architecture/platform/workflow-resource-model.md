@@ -270,7 +270,7 @@ blocks:
 | 并行 | 允许 | 同一 block 不允许 | 同一 block 不允许 |
 | 原子性 | 无 | 无 | 提交边界由 runtime 保证 |
 | 可含任意 SQL | 是 | 是 | 受限（需可证明） |
-| 默认 checkpoint 恢复 | 不适用 | **不允许从中间恢复** | 整块重跑或核验 |
+| 默认 checkpoint 恢复 | 不适用 | **不允许从中间恢复** | 先核验；仅满足 §6.2 重试证明时整块重跑 |
 | 目标冲突行为 | 各自解析 | 同一 block 内必须一致 | 同一 block 内必须一致 |
 
 ---
@@ -301,17 +301,16 @@ step 显式目标  >  block target  >  workflow 默认目标  >  profile 初始�
 ```text
 resolveTarget(step, block, workflow, profile) -> ExecutionTarget | error
 
-1. t = normalize(step.target ?? step.connection + step.database)   # L1
-2. 若 t 完整（connectionId + 必需命名空间）→ 返回 t
-3. t = normalize(block.connection + block.database)                 # L2
-4. 若 t 完整 → 返回 t
-5. t = normalize(workflow.connection + workflow.database)            # L3
-6. 若 t 完整 → 返回 t
-7. t = profile.initialTarget                                        # L4
-8. 若 profile 绑定 database 但 profile 缺失该 database → TargetRequired
-9. 若解析出的 connectionId != block 已持有资源的 connectionId 且 block 为
-   session/transaction block → TargetConflict（见 4.3）
-10. 否则按 ExecutionGateway::executeAtTarget 执行
+1. 展开模板并规范化 step、block、workflow 的目标声明；重复声明不一致 → TargetConflict。
+2. 按 L1 → L2 → L3 选择最高优先级的已声明目标；只有该级完全未声明才可回退。
+3. 选中的显式目标缺 connectionId 或操作必需命名空间 → TargetRequired；
+   不拼接另一连接的 database，不因不完整而换用低优先级连接。
+4. L1～L3 均未声明时，读取本次定义已绑定 profile 的 initialTarget；
+   未绑定 profile 或初始目标不完整 → TargetRequired，不使用调用方当前连接。
+5. 对 t 校验 namespaceShape、操作级 targetRequirements、权限与配置版本。
+6. session/transaction block 中，将 t 与 block 声明目标及已持有资源绑定比较；
+   connectionId 不同或命名空间变化不被 block/driver 允许 → TargetConflict。
+7. 所有校验通过才返回 t；独立 step 走 executeAtTarget，block 内走原资源。
 ```
 
 `normalize` 的规则：模板 `{{var}}` 先在 step 开始前解析成字面量；空串与纯空白按**未设置**处理（与现状 `inject_inherited_database` 一致）；`connection` 必须是 `connectionId`，不接受 `dbSessionId`（[命名规范](../../../AGENTS.md)）；多库驱动下 `database` 缺失即 `TargetRequired`，不允许静默使用会话当前库。
@@ -419,12 +418,14 @@ stateDiagram-v2
 | 失败位置 | 重试范围 | 前提 |
 | --- | --- | --- |
 | 独立 step 执行失败 | 该 step | 幂等键未过期；命令为可重放语义 |
-| session block 中途失败 | **整个 block，从头重跑** | 资源已确认清理；不携带中间状态 |
+| session block 中途失败 | **默认不自动重试**；满足证明后才可从头重跑 | 资源已确认清理，且整块可安全重放、确认尚未产生副作用，或已证实所有副作用完整回滚；清理连接不撤销已提交写入 |
 | transaction block 失败 | **整个 block，从头重跑** | **必须先证实已完整回滚** |
 | commit 结果未知 | **不重试** | 返回 `OutcomeUnknown`，走人工/自动核验 |
 | 计划预校验失败 | 不重试 | `UnsupportedPlan`，需修改定义 |
 
 **任意 session block 默认不能从中间 checkpoint 恢复。** 原因：块内状态（临时表、会话变量、驱动内部准备状态、已确认的上下文变化）没有可重建的持久表示，按 [§6.5](connection-management.md#65-会话级资源句柄登记) 恢复流程也禁止重建句柄，只允许以新 `dbSessionId` 显式重建。需要"从某步继续"的场景必须拆成两个 block 或两个 Workflow run，并在前一个 block 的输出中传递稳定键。
+
+P6 验收必须覆盖：第一步自动提交写入、第二步失败时不重复第一步；commit 未知不重试；完整回滚证明后允许重试；显式连接缺 database 时不落入 workflow 的另一连接；完整 step 目标也必须经过 block 冲突检查。重试使用新的执行记录并关联原失败记录，旧幂等键只用于查询原回执，不能用来启动第二次执行。
 
 ### 6.3 Checkpoint 边界
 
@@ -511,7 +512,7 @@ type PlanVerdict =
   → 该结果不进入自动重试
 ```
 
-对比允许的 session block：它**不要求**上述证明（[§3.3](#33-session-block)），因为它不承诺整块原子性；代价是失败后状态未知，必须整块重跑。
+对比允许的 session block：它**不要求**上述证明（[§3.3](#33-session-block)），因为它不承诺整块原子性；代价是失败后可能存在已提交或未知副作用，必须先核验；不能把整块重跑当作恢复方式。
 
 ---
 

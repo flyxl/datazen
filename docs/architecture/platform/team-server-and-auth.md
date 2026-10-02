@@ -92,7 +92,7 @@ flowchart TD
     A["解析子命令 serve | migrate | check-schema"] --> B["logging::init + log_redact 挂载"]
     B --> C["config::load 加载并校验 ServerConfig"]
     C --> D["rustls CryptoProvider 选择（进程内，与桌面 tls.rs 同源但独立初始化）"]
-    D --> E["migration::ensure（版本高于或低于期望均拒绝启动）"]
+    D --> E["migration::ensure（迁移至目标或验证兼容范围）"]
     E --> F["连接管理库（组织/配置/任务/审计/额度）"]
     F --> G["SecretProvider（KMS/外部密钥管理适配）"]
     G --> H["DriverRegistry（inventory 注册，随构建期驱动选型）"]
@@ -130,7 +130,7 @@ sequenceDiagram
     participant L0 as L0 连接/请求ID
     participant L1 as L1 请求体字节上限
     participant L2 as L2 认证
-    participant L3 as L3 会话解析
+    participant L3 as L3 会话参数
     participant L4 as L4 CSRF
     participant L5 as L5 体量与速率
     participant L6 as L6 授权
@@ -144,21 +144,22 @@ sequenceDiagram
     L1-->>L0: 413 请求体超限
     L0->>L2: 解析登录会话 cookie
     L2-->>L0: 401 未认证（无/过期/已撤销）
-    L0->>L3: 解析 SessionHandle + runtimeEpoch
-    L3-->>L0: 409 SessionNotFound / SessionLost
+    L0->>L3: 仅提取 SessionHandle + runtimeEpoch，不查询存在性
     L0->>L4: 校验 CSRF 令牌
     L4-->>L0: 403 跨站请求被拒
     L0->>L5: 反序列化 + 分页/取块语义上限
     L5-->>L0: 400 参数错误 / 429 超限
     L0->>L6: PolicyService.authorize
-    L6-->>L0: 404 不可见 / 403 无权限
+    L6-->>L0: 404 不可见或不存在 / 403 已可见但无动作权限
+    L6->>L6: 已授权 owner 才校验会话存活与 epoch
+    L6-->>L0: 409 SessionLost / RuntimeEpochMismatch（仅已授权 owner）
     L0->>H: 已鉴权 RequestContext
     H-->>E: 结果或 ApiError
     E-->>A: 统一错误映射 + 审计落库
     E-->>B: HTTP 响应（含 requestId）
 ```
 
-真实顺序是：连接接入 → 请求 ID → 路由匹配（L7，图上并入 handler 节点）→ 中间件链（字节上限 L1 → 认证 → 会话 → CSRF → 限流与体量 L5）→ handler → 错误映射 → 审计。一个实现约束：**字节上限的物理拦截是 L1，发生在 L2 之前**。认证层不消费请求体，但未认证请求的 body 仍会占内存；因此 `RequestBodyLimitLayer` 装在认证层外侧、对所有路由生效（这就是图中 L1 的 413 来源），L5 只负责反序列化后的语义上限（分页、取块）。
+真实顺序是：连接接入 → 请求 ID → 路由匹配（L7，图上并入 handler 节点）→ 中间件链（字节上限 L1 → 认证 → 会话参数 → CSRF → 限流与体量 L5）→ handler → 错误映射 → 审计。一个实现约束：**字节上限的物理拦截是 L1，发生在 L2 之前**。认证层不消费请求体，但未认证请求的 body 仍会占内存；因此 `RequestBodyLimitLayer` 装在认证层外侧、对所有路由生效（这就是图中 L1 的 413 来源），L5 只负责反序列化后的语义上限（分页、取块）。
 
 ### 3.2 逐层职责与失败行为
 
@@ -166,11 +167,11 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | L0 连接/请求 ID | 分配 `requestId`（下游凭此定位审计与日志），注入 trace | 头缺失则生成；不回显用户提供的任意值 | — |
 | L1 请求体字节上限 | 传输层 `Content-Length` 与流式字节双闸 | 直接中断响应，不进入业务逻辑 | 413 / 400 |
-| L2 认证 | 解析登录会话 cookie，查会话行，校验绝对/空闲到期时间与撤销标记 | `ApiError`（脱敏，不说明会话是否存在） | 401 |
-| L3 会话解析 | 校验 `SessionHandle + runtimeEpoch`，解析 owner | 句柄无效/不匹配 | 409 |
+| L2 认证 | P7 解析 cookie；P8 增加 §4.6 native 凭据互斥入口；查会话行并校验到期/撤销 | `ApiError`（脱敏，不说明会话是否存在） | 401 |
+| L3 会话参数 | 仅提取句柄与 epoch，不访问目录或报告资源存在性 | 格式错误由 L5 处理；存活/epoch 校验在 L6 可见性判断后 | — |
 | L4 CSRF | 校验令牌与登录会话绑定 | 审计单独记录，响应体不新增字段 | 403 |
 | L5 体量与速率 | 反序列化、分页/取块上限、令牌桶限流 | 参数语义错误 / 超限 | 400 / 429 |
-| L6 授权 | `PolicyService.authorize`，产出 `AuthorizationDecision` | 不可见/无权限 | 404 / 403 |
+| L6 授权 | 先按组织/owner 判断可见性，再授权动作；已授权 owner 最后检查存活与 epoch | 不可见与不存在同为 404；已授权 owner 的 Lost/epoch 冲突才为 409 | 404 / 403 / 409 |
 | L7 路由 | 匹配到 handler，未匹配路径 | 统一 404，不区分「路径不存在」与「方法不允许」 | 404 |
 | E 错误映射 | 任何层抛出的 `ApiError` → HTTP，见 [§9.2](#92-apierror--http-映射表) | 保证响应体形状恒定 | 见 §9.2 |
 | A 审计 | 记录组织、应用用户、数据库执行身份、目标、执行结果与配置版本 | 审计写失败不吞掉业务响应，但触发告警指标 | — |
@@ -193,7 +194,7 @@ sequenceDiagram
 
 ### 4.1 登录流程
 
-采用授权码 + PKCE（`S256`），首版只支持这一种交互流。本节所有时长（state 事务有效期、时钟偏移容差、登录会话寿命、cookie 生命周期）都是**首版建议值，来自部署配置**，不是协议常量。
+采用授权码 + PKCE（`S256`），首版 OIDC 只支持这一种交互流；P8 native 的交接仍复用此流，见 §4.6。本节所有时长（state 事务有效期、时钟偏移容差、登录会话寿命、cookie 生命周期）都是**首版建议值，来自部署配置**，不是协议常量。
 
 ```mermaid
 sequenceDiagram
@@ -275,6 +276,21 @@ sequenceDiagram
 
 ---
 
+### 4.6 P8 桌面团队认证与传输（目标设计）
+
+桌面首版使用系统浏览器登录与一次性交接，native HTTP adapter 持有团队服务自己的不透明登录凭据；不把浏览器 cookie、IdP token 或数据库秘密复制到普通 profile。以下路由在 P8 新增，不是现有 API：
+
+1. native adapter 生成 verifier、state 和只绑定 loopback 的临时回调，向 `POST /api/v1/auth/desktop/start` 提交 S256 challenge、state、clientInstanceId 与回调地址。服务只允许 `http://127.0.0.1:<port>/固定路径`，拒绝非 loopback 与任意跳转地址；事务有效期 5 分钟（部署可调）；start 限流并校验参数，不要求尚未获得的登录凭据。
+2. 系统浏览器打开返回的服务端 HTTPS 登录地址，复用 §4.1 的 OIDC 校验；成功后将一次性交接 code 与 state 送到登记的 loopback 回调。URL 中不携带登录凭据；code 只存摘要、绑定 challenge/backend origin/client，60 秒过期（部署可调），exchange 成功时原子消费一次。事务暂存内存，服务重启时失效并重新登录。
+3. native adapter 校验本地 state，向 `POST /api/v1/auth/desktop/exchange` 提交 code/verifier；服务再次检查 membership，创建独立 `auth_mode=native` 登录会话，返回 sessionId 与高熵随机 secret。凭据以 `sessionId.secret` 不透明值放入 `Authorization: Bearer` 使用，服务仅存 secret 的 HMAC 摘要及 keyVersion，拒绝重复 exchange；tokenEpoch 变化时同事务撤销 native 会话或轮换 secret 摘要，旧 secret 不再有效。
+4. native adapter 将 secret 存系统钥匙串，按 backend HTTPS origin、组织、principal 分区；renderer、Wapp、普通连接 profile 和日志均不接收 secret。HTTP 与 fetch SSE 使用同一 adapter，禁止重定向到其他 origin 时继续携带 Authorization，TLS 校验失败不得回退。
+5. L2 对 cookie/native 模式互斥校验；同时提供两种凭据即拒绝。native 请求只接受 native 会话，校验摘要、client binding、membership、撤销/空闲/绝对到期与 tokenEpoch；缺失 Origin 不能作为 native 认证。桌面 start/exchange 以 state/challenge/verifier 保护且豁免登录会话/CSRF 前置要求，浏览器 OIDC 回调仍校验自身 state；浏览器跨域 CORS 不开放 Authorization；cookie 修改操作仍校验 CSRF，native 模式以不可被浏览器自动附带的凭据认证。native SSE 每次重连重新认证，不伪造浏览器 Origin。
+6. native 到期重新执行登录，不以后台 SSE 保活延长 idle；登出经现有 logout 撤销本 native 会话并清理钥匙串，组织撤权同时终止订阅、拒绝排队执行。重新登录先读取旧 execution/Job，未知写入不自动重投。
+
+P8 BackendClient 绑定 `(backendId, clientGeneration)`。切换/移除 backend、登出时停止旧订阅并增加 generation；请求回执与事件投影校验两者，迟到消息不得写入新 backend 的 store。取消订阅不等于取消服务端 Job。握手校验 API major 相等、必需 minor/能力存在；不满足时禁用相应写操作并解释原因，不静默调用本地 driver。Community/Pro 能力由服务端握手公布，客户端 EP 授权不能替代服务端能力。
+
+P8 验收包括：错误 state/verifier、过期或重放 code、恶意回调地址、exchange 前服务重启、证书错误、跨 origin 重定向、HTTP/SSE 同身份、登出/撤权后的重连、双 backend 同名 ID 与迟到事件隔离；浏览器与桌面同用例结果一致。
+
 ## 5. CSRF
 
 ### 5.1 方案选择
@@ -295,9 +311,11 @@ sequenceDiagram
 | 方法/路由 | 需要 CSRF 令牌 | 说明 |
 | --- | --- | --- |
 | `GET` / `HEAD` 安全读取 | 否 | 但仍受认证与授权约束 |
-| 所有 `POST` / `PUT` / `PATCH` / `DELETE` | 是 | 含 `POST /cancel`、配置写入、artifact 上传、权限变更 |
-| `GET /api/v1/events/{streamId}`（SSE） | 否 | 浏览器 `EventSource` 无法设置自定义头；改用 `Origin` 严格校验 + cookie `SameSite` + `__Host-`，见 [§8.1](#81-端点与握手鉴权) |
+| cookie 认证的 `POST` / `PUT` / `PATCH` / `DELETE` | 是 | 含 `POST /cancel`、配置写入、artifact 上传、权限变更 |
+| `GET /api/v1/events/{streamId}`（SSE） | 否 | 浏览器 `EventSource` 无法设置自定义头；改用 Origin/同源证明或显式 CSRF 校验 + cookie `SameSite` + `__Host-`，见 [§8.1](#81-端点与握手鉴权) |
 | `GET /api/v1/auth/callback`（本文新增路由） | 否 | 自身以 `state` 校验防登录 CSRF |
+| P8 native 已认证 API（含 fetch SSE） | 不使用 cookie CSRF | §4.6 校验 native 会话凭据；不接受 cookie 降级 |
+| P8 desktop start/exchange | 否 | 限流、state/challenge/verifier 与一次性 code 校验，不是一般 API 豁免 |
 
 ### 5.3 失败行为
 
@@ -360,7 +378,7 @@ policyIsolationKey = HMAC(server_secret, organizationId
 
 ### 6.3 撤销传播
 
-组织 `permission_version` 变更后，传播按对象类型分层：
+实际 grant/deny/membership 变更与组织 `permission_version` 递增在同一管理库事务提交；仅增加版本不构成撤权。提交后发布失效通知；发布失败由持久版本重读补偿，派发/读取仍核验权威版本。传播按对象类型分层：
 
 | 对象 | 传播动作 | 断言 |
 | --- | --- | --- |
@@ -437,10 +455,10 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 浏览器 `EventSource` 无法设置自定义请求头，因此该端点的鉴权由三部分替代 CSRF 头：
 
 1. `__Host-dz_session` cookie（`Secure` + `HttpOnly` + `SameSite=Lax` + `__Host-` 前缀）；
-2. `Origin` 头必须等值于配置的 UI origin，否则 403（`EventSource` 一定带 `Origin`，CSRF 攻击页面也会带自己的 `Origin`）；
+2. `Origin` 存在时必须等值于配置的 UI origin；同源 GET 不保证带此头。缺失时要求 `Sec-Fetch-Site: same-origin`；两者都缺失的浏览器请求拒绝，客户端改用携带登录会话绑定 CSRF 头的 fetch 流。`cross-site`/`same-site` 和 `Origin: null` 均不豁免，代理不得伪造同源证明；
 3. L6 授权：`streamId` 解析出的 owner 与资源集合重新求值。
 
-如需携带额外头（例如客户端实例标识），前端改用 `fetch` + `ReadableStream` 手动解析 `text/event-stream`，服务端两种客户端同等对待。
+携带会话绑定 CSRF 头的 fetch 流在 L4 通过校验后，可不依赖 Origin 缺失时的 Fetch Metadata 证明；Origin 存在且错误仍拒绝。如需携带额外头（例如客户端实例标识），前端改用 `fetch` + `ReadableStream` 手动解析 `text/event-stream`。fetch 的 CSRF 校验及 native 客户端认证见 §4.6；不会因为缺失 Origin 就无条件放行。验收用真实浏览器覆盖原生 EventSource 的同源初连/重连、跨站请求和 fetch 流。
 
 ### 8.2 `Last-Event-ID` 回放
 
@@ -493,7 +511,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 | Artifact 上传单块 | 4 MiB（首版建议值，来自部署配置；严格小于 8 MiB 请求体上限，为 multipart 封装与请求头留出余量） | 单块超限由 L1 按 413 拒绝；组织产物配额超限 429 |
 | `listJobs` 分页 | `limit` 默认 50、上限 200 + 游标 | 400 |
 | `GET /api/v1/connections` | 按 [系统概要设计 §6.2](system-overview.md#62-backendclient-与领域客户端) 走**不分页**契约；组织内 profile 数量受组织配额约束 | 配额超限 429 |
-| `GET /api/v1/artifacts/{id}?chunkIndex=n` | 需 `0 ≤ chunkIndex < totalChunks`；流式未收齐（`totalChunks: null`）时该形式不可用 | 400 |
+| `GET /api/v1/artifacts/{id}?chunkIndex=n` | writing 期间需 `0 ≤ chunkIndex < publishedChunkCount`；终结后以冻结块数校验；`totalChunks: null` 不禁止读已发布块 | 400 |
 | `GET /api/v1/artifacts/{id}?offset=&limit=` | `limit ∈ [1, 4 MiB]`，`offset` 越界报错 | 400 |
 | 速率 | 按 principal + 路由类的令牌桶；令牌签发/开会话/提交执行/取消为严格档 | 429 + `Retry-After` |
 | 并发 SSE | 按 principal 上限 | 429 |
@@ -508,7 +526,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 | HTTP | 条件 | `ApiError.code` | `retryDisposition` | 说明 |
 | --- | --- | --- | --- | --- |
 | 400 | 请求体/查询/路径反序列化失败、参数语义错误、目标缺失或冲突、块索引或取块越界 | `InvalidArgument` / `TargetRequired` / `TargetConflict` / `TargetUnsupported` | `never` | 修复参数后重发 |
-| 401 | 无 cookie、会话过期、会话撤销、OIDC 校验失败 | `Unauthenticated` | `never` | 跳转登录；不自动重放原请求 |
+| 401 | 缺失或无效 cookie/native 凭据、会话过期、会话撤销、OIDC 校验失败 | `Unauthenticated` | `never` | 跳转登录；不自动重放原请求 |
 | 403 | 组织级动作权限不足；CSRF 失败；出站策略拒绝；SSE `Origin` 不匹配 | `PermissionDenied` | `never` | 统一脱敏文案 |
 | 404 | 不可见资源、不存在资源、不可区分二者的情形 | `NotFound` | `never` | 见 [§7](#7-不可见资源的统一-404) |
 | 410（本文**不产生**） | 端口层返回 `PortError::ArtifactExpired` 的过期/已删除 artifact | 统一映射为 `NotFound` | `never` | **不返回 410**：用状态码区分「曾经存在过」会破坏 [§7.1](#71-判定与映射) 的防 ID 枚举口径 |
@@ -619,10 +637,10 @@ flowchart LR
 
 | 主题 | 规则 |
 | --- | --- |
-| 写入 | `create writer` → `append(chunkIndex, bytes)` 允许乱序（同一 `chunkIndex` 重复写以最后一次为准）→ `finalize` 校验 chunk 覆盖 `0..totalChunks-1`，缺块则 finalize 失败并记 `resultCompleteness`/`truncationReason` |
-| 流式未收齐 | `totalChunks: null` 表示仍在写入；此时只有 `offset+limit` 可用，且不得给出完整性承诺 |
+| 写入 | 查询结果经 `create writer` → 顺序 `append_chunk` → finalize；发布后的块不可覆盖。上传单独登记 index/摘要，可乱序接收但同 index 不同字节拒绝，全部校验后才发布 |
+| 流式未收齐 | `totalChunks: null` 表示仍在写入；可按 index 读取已发布块，或按 offset+limit 读取已发布连续前缀；append 持久化后才发 resultChunk，不承诺未来完整性 |
 | 读取 | 每次请求**重新授权**（继承 execution 来源授权 + 显式 grant）；跨组织一律不可见 |
-| 取块 | `chunkIndex` 与 `offset`+`limit` 互斥；越界报 400，不泄露存储布局 |
+| 取块 | `metadata=1`、`chunkIndex` 与 `offset`+`limit` 三者互斥；元数据返回已发布块/字节数与生命周期，越界报 400，不泄露存储布局；finalize/abort、截断导出确认和恢复清理遵循 [共享边界 §4.6](shared-boundaries-and-ports.md#46-结果与事件端口) |
 | TTL | `expires_at` 到期由清理任务删字节并置元数据终态；读已过期产物在端口层是 `ArtifactExpired`，到 HTTP 层**有意**统一为 404 + `NotFound`（不返回 410），理由见 [§7.1](#71-判定与映射) |
 | ACL 变更 | 组织/连接 ACL 收紧后，旧 artifact 立即不可读；不需要也不能靠「产物已生成」豁免授权 |
 | 共享语义 | 共享 SQL 文件**不授予**结果读取权；结果默认私有 |
@@ -668,8 +686,8 @@ flowchart TD
 | --- | --- |
 | 迁移文件 | `server/migrations/` 下按 `version` 单调编号的 SQL，随二进制内嵌（版本表 `schema_migration_history` 见 [持久化模型 §3.9](persistence-model.md#39-schema_migration_history)） |
 | 触发 | 启动时在 `serve` 之前自动执行；也可显式 `migrate` / 只读 `check-schema` |
-| 事务性 | 每个迁移文件在**单个事务**内执行（PostgreSQL 支持事务 DDL）；失败整体回滚 |
-| 失败策略 | **fail-closed**：每个迁移文件在单个事务内执行、失败整体回滚；迁移失败或版本高于代码期望时拒绝启动，不进入「部分应用」状态；失败**不写** `schema_migration_history`（该表只在事务提交后记录已成功迁移），错误写入服务日志与健康检查输出（对齐 [持久化模型 §5.5](persistence-model.md#55-失败与回滚)） |
+| 事务性 | 普通迁移 DDL 与历史登记在同一事务内提交；concurrently 文件走持久化模型 §5 的事务外核验/恢复协议 |
+| 失败策略 | 普通迁移失败整体回滚，DDL 与历史一起提交可见；迁移失败、已知 checksum 不符或 schema 超出二进制支持范围时拒绝启动。高于 migrationHead 但在支持范围内的兼容 schema 允许旧镜像运行，禁止降级写；事务外迁移只在核验成功后补历史（见 [持久化模型 §5](persistence-model.md#5-schema-版本与迁移运行器)） |
 | expand/contract | expand（加表/加可空列/加索引）在同一次发布完成，旧代码仍可运行；contract（删旧列/删表）必须等旧镜像下线且跨过一次发布周期，禁止先删后加 |
 | 不涉及 | 不迁移、不触碰任何用户业务数据库；只管服务端管理库 |
 | 与运行时兼容 | 迁移在接收流量前完成，因此不存在「运行中代码遇到缺失列」的中间态；需要不停机的长 DDL 属后续议题，首版要求运维窗口 |
@@ -715,7 +733,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 
 | 校验项 | 桌面（`datazen://`） | Web（独立受限 origin） |
 | --- | --- | --- |
-| iframe 沙箱 | 自定义 scheme + `ASSET_CSP`（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`） | `sandbox` 属性：`allow-scripts allow-forms`，**不含** `allow-same-origin`/`allow-top-navigation`/`allow-popups`/`allow-modals`；CSP `connect-src 'none'; frame-ancestors 'none'` |
+| iframe 沙箱 | 自定义 scheme + `ASSET_CSP`（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`） | `sandbox="allow-scripts allow-forms allow-same-origin"`；独立 Wapp origin 必须与主应用不同源且不共享登录 cookie，禁止 top-navigation/popups/modals；CSP `connect-src 'none'`，`frame-ancestors` 仅列主应用精确 HTTPS origin |
 | `event.source` | 必须是该 iframe 的 `contentWindow`（对齐 `src/lib/wappBridge.ts`） | 同上，且必须匹配已注册 iframe |
 | `event.origin` | 不透明 origin，无法按名匹配 | **必须等值于配置中登记的 Wapp origin**，否则丢弃 |
 | 一次性 nonce | 依赖 scheme 不可被外部页面引用 | 创建 iframe 时交换，握手后立即失效，重放被拒 |
@@ -728,8 +746,8 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 - 只暴露 manifest 声明过的 Command 与 Artifact 操作，缺声明先 `E_PERMISSION`；
 - **绝不传递** `dbSessionId`、`attachmentToken`、取消句柄或数据库凭据；
 - 所有操作经当前 backend 的 `BackendClient`，父应用与服务端各自重新鉴权，Wapp 不能直连 driver 或 HTTP API；
-- iframe 跨域且 `SameSite` 生效，用户 cookie 不会随 Wapp 请求发送，Wapp 也不能自行调用任意服务端 URL；
-- Wapp 卸载或撤权即刻关闭桥接订阅。
+- Web Wapp 与主应用不同源且登录 cookie 为主应用 host-only；SameSite 不能代替不同源校验。Wapp 域名不得代理登录/API，不能被部署配置成主应用同源；Wapp 不能自行调用任意服务端 URL；
+- Wapp 卸载或撤权即刻关闭桥接订阅。Web 桥接验收必须在真实 iframe 中完成加载、nonce 握手与双向消息，并验证错误 origin/source、重放 nonce、重新导航与卸载后的消息被拒绝；不能仅用合成 message 对象证明浏览器可用。
 
 ### 15.2 EP 与 Theme
 
@@ -791,6 +809,6 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 - **P9 的多实例形态**：多 API 实例会话路由（CM-57）、worker 分区与失租接管（CM-58）、CM-60 的 WN 部分、全局预算分配与保守回收。
 - **持久化表结构**：列、索引、约束与版本演进细节在 [持久化模型](persistence-model.md)。
 - **连接与执行语义本身**：会话连续性、切库、事务、来源标注、结果完整性等由 [连接与会话管理](connection-management.md) 定义。
-- **前端交付**：Web shell 的页面/面板替换、文件选择与剪贴板实现属于 P7 前端交付，本文不描述组件结构；桌面团队客户端（P8）的 backendId、per-backend client 与跨 backend 迁移限制同样不在本文范围。
+- **前端交付**：Web shell 的页面/面板替换、文件选择与剪贴板实现属于 P7 前端交付，本文不描述组件结构；桌面团队客户端（P8）的认证、backend 生命周期与传输契约见 §4.6；具体前端组件结构不在本文范围，跨 backend 迁移首版拒绝。
 - **治理细则**：角色自定义、策略语言、多因素认证、组织层级、配额计费模型。
 - **已实现事实**：本文所有模块路径与类型名均为目标命名，落地后按仓库纪律改写为事实并更新索引。
