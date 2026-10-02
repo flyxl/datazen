@@ -324,11 +324,13 @@ worker drain 停止新资源与任务，允许现有执行到安全边界。交�
 
 ### 9.2 P9 协调与失租协议（目标设计）
 
+完整 CAS、路由、认领、预算账与故障接管协议见 [多 worker 详细设计](multi-worker-coordination.md)。首版内存目录只有一个权威实例，切换先隔离旧实例并使旧 session 失效；PostgreSQL 保存 Job 与数量型节点预算账，不保存目录或物理租约。
+
 SessionDirectory 仍只存 TTL 内存路由；协调器必须支持 owner/epoch/替换 operation 的原子 CAS。prepared 候选不可路由，committed 同时封闭旧路由并开放新路由。API 先授权再查询/转发；内部 RPC 经 worker 身份认证并验证组织、principal、owner epoch、请求指纹与 deadline，不信任客户端指定 worker。路由失败不自动在别处重新派发未知写入。
 
 Job 仓储是认领权威，每次接管递增持久化 claimGeneration；所有阶段/边界/checkpoint 写入验证当前 claim，旧 worker 恢复后无法写仓储。续约失败停止新增资源/阶段，对已发出的执行记录真实结果并核验。fencing 只保护管理库，不保证撤销外部 SQL；新 worker 在证明旧执行终止/隔离且目标边界已核验前，不执行同一副作用范围。
 
-全局 BudgetCoordinator 将服务级额度分配为带 generation 的节点许可；各 worker 在子额度内按 P3 多维预算记账，包含 idle、控制 socket、cluster 隐藏连接、Cleaning 与 Quarantined。分配与回收通过原子 CAS，节点续约到期只禁止新增连接，不立即返还可能仍存活的额度。协调器失联时禁止新增全局许可，已获许可只能在有效期内新增资源；过期后停止新增并 drain。确认旧节点资源关闭或已被网络/进程隔离后才释放额度，不能用目录条目消失代替证明。
+全局 BudgetCoordinator 将服务级额度分配为带 generation 的节点许可；各 worker 在子额度内按 P3 多维预算记账，包含 idle、控制 socket、cluster 隐藏连接、Cleaning 与 Quarantined。分配与回收通过原子 CAS，节点续约到期只禁止新增连接，不立即返还可能仍存活的额度。协调器失联时禁止新增全局许可，已获许可只能在有效期内新增资源；过期后停止新增并 drain。确认旧节点资源关闭，或取得网络/进程隔离加目标连接关闭证据后才释放额度，不能用目录条目消失代替证明。
 
 目录/协调器重启丢失路由时，相关 session 明确 Lost；拒绝新增直到旧 worker 注册状态/额度对账完成。活动事务不从目录恢复。worker drain 顺序为停止接受新任务/会话→通知客户端→运行中执行到安全边界→终结句柄与资源→核验预算→退出；超过期限记 unknown/待核验并保守保留占用。版本/能力/网络区域不匹配的 worker 不参与新 claim，不迁移 live session。
 
@@ -372,3 +374,10 @@ Web 认证首版采用 OIDC 登录及服务端登录会话，浏览器使用 Sec
 - [当前架构](../README.md)、[当前服务](../backend/services.md)、[ID 命名](../naming.md)。
 
 按阶段落地后，同步当前架构文档、公开 API 和测试，不让设计约定与实现长期并列冲突。平台特定 API 只能出现在适配层；本设计不授权绕过现有驱动边界与凭据保护。
+
+## 配套实施设计
+
+- [P5 迁移三件套与 Job](data-migration-jobs.md)
+- [P6 消费者接入](consumer-adapters.md) / [Workflow 块资源](workflow-resource-model.md)
+- [P9 多 worker 协调](multi-worker-coordination.md)
+- [团队部署、升级与恢复](../../development/team-service-operations.md)

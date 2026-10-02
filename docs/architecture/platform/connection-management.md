@@ -693,6 +693,8 @@ Job 接受时先持久化记录，再获取资源。Job 资源 owner 是 jobId/s
 
 ### 10.1.1 P5 JobHandler 与阶段协议（目标设计）
 
+三件套准备/应用、计划消费和逐批核验的具体算法见 [迁移任务详细设计](data-migration-jobs.md)。AI/MCP/Wapp、调度与辅助任务接入见 [消费者设计](consumer-adapters.md)；跨实例 owner/claim/预算协议见 [多 worker 设计](multi-worker-coordination.md)。本文仍是公共接口、错误码与 CM 用例权威。
+
 JobHandler 按 kind 与 planVersion 注册，负责 `validatePlan / runStage / verifyRecovery`；runtime 负责接受记录、claim、预算申请、阶段调度、取消意图、事件和最终 cleanup。handler 不依赖窗口，不自行申请未计数连接，不通过前端卸载释放资源。runStage 接收冻结计划、stageId、当前 claim、取消信号与受控资源访问接口，输出 executionIds、已确认 CommitBoundary、Artifact 与阶段结果；未知提交输出 unknown，不能自行把失败改为成功。
 
 接受事务原子登记 Job 与幂等 receipt，提交成功才返回 jobId。queued 取消仅记录取消意图并由调度器确认 notStarted；running 取消禁止新增阶段/批次，正在执行的取消与回滚结果分别核验，再释放资源并写终态。JobState 保留既有集合，取消请求由独立字段/事件显示，不提前标 cancelled。所有 worker 写入验证当前 claim generation（[共享端口 §4.3](shared-boundaries-and-ports.md#43-持久化与授权端口)）。
@@ -729,6 +731,8 @@ source reader → 有界缓冲 → IR 转换 → target writer。游标/快照�
 checkpoint 记录稳定键、已确认提交、源一致性证据和映射指纹。目标 commit 与本地 checkpoint 之间存在崩溃窗口，恢复依赖目标事务内批次记录/幂等或重新核验，不能仅保存 offset。SQL 文件输出不建目标数据库连接。
 
 ## 11. Workflow / AI / MCP / Wapp
+
+P6 实施采用 [Workflow §5.1](workflow-resource-model.md#51-workflow-执行是否包裹-job) 的统一 Job 包裹：block 资源仍按声明范围独立管理，资源阶段归 job 类，metadata/control 不改变类别；关闭窗口只退订。AI/MCP/Wapp、调度授权与原生工具细节见 [消费者接入](consumer-adapters.md)。
 
 Workflow 目标优先级：step 显式目标 → block target → workflow 默认目标 → profile 初始目标。独立 step 每次初始化，USE 只在 step 内生效。session block 同一资源串行、跨 step 保留状态；transaction block runtime 控制 begin/commit/rollback，禁止步骤破坏提交边界。需重连的 database 变更不得进入现有 transaction block。
 

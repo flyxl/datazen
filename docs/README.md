@@ -45,6 +45,7 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [MCP](architecture/backend/mcp.md)
 - [Workflow](architecture/backend/workflow.md)
 - [Dashboard](architecture/backend/dashboard.md)
+- [Data Transfer](architecture/backend/data-transfer.md)
 - [Data Sync](architecture/backend/data-sync.md)
 - [Schema Diff](architecture/backend/schema-diff.md)
 - [Wapps](architecture/backend/wapps.md)（含主题应用；旧 `theme.md` 已合并至此）
@@ -65,7 +66,7 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 
 ### 桌面 / Web 平台演进设计（待实现）
 
-以下九份文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态，不代表当前 main 已支持团队 Web；落地后应改写为实现事实与开发流程。
+以下文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态，不代表当前 main 已支持团队 Web；落地后应改写为实现事实与开发流程。
 
 概要、契约与计划：
 
@@ -78,10 +79,14 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [共享应用边界与端口详细设计](architecture/platform/shared-boundaries-and-ports.md)：包边界与依赖矩阵、runtime 内部模块、端口 trait 签名、请求上下文三来源与 Tauri 组装根。
 - [P0 假资源夹具与基准 harness 详细设计](architecture/platform/fake-runtime-fixtures.md)：transport-neutral fake 的资源契约、F1～F12 故障注入矩阵、CommandJournal、Barrier/DrainBarrier 与 FakeClock。
 - [持久化模型详细设计](architecture/platform/persistence-model.md)：可落盘白名单与禁落盘清单、管理库表的 DDL 与 CHECK、本地 Store ↔ 服务端 DB 映射、schema 版本与 expand/contract。
-- [驱动能力迁移详细设计](architecture/platform/driver-capability-migration.md)：path 驱动的能力现状矩阵、迁移批次与依赖图、协议版本演进门槛、过渡 adapter 的退役条件。
+- [驱动能力迁移详细设计](architecture/platform/driver-capability-migration.md)：path 能力基线、迁移批次、协议门槛、adapter 退役及 P10 path/Git 发布验收。
 
-补充详细设计（P6–P7）：
+补充详细设计与运维流程（P5–P10）：
 
+- [迁移三件套与 JobRuntime 详细设计](architecture/platform/data-migration-jobs.md)：准备/审阅/应用、计划唯一消费、多端预算、提交边界与跨进程恢复。
+- [消费者接入详细设计](architecture/platform/consumer-adapters.md)：AI 共享授权、MCP/Wapp 归属、Dashboard/Monitor 服务身份与原生工具。
+- [多 worker 协调详细设计](architecture/platform/multi-worker-coordination.md)：目录 CAS/路由、claim fencing、节点预算账、分区核销与 drain。
+- [团队服务部署、升级与恢复流程](development/team-service-operations.md)：配置与健康检查、发布兼容、备份一致性、恢复隔离与演练。
 - [Workflow 资源模型详细设计](architecture/platform/workflow-resource-model.md)：step / session block / transaction block 三种执行单元、目标继承链、Session/Lease/Budget 集成与版本兼容边界。
 - [团队 Web 服务与认证详细设计](architecture/platform/team-server-and-auth.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
 

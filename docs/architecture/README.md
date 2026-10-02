@@ -18,6 +18,7 @@
 - [MCP](backend/mcp.md)
 - [Workflow](backend/workflow.md)
 - [Dashboard](backend/dashboard.md)
+- [Data Transfer](backend/data-transfer.md)
 - [Data Sync](backend/data-sync.md)
 - [Schema Diff](backend/schema-diff.md)
 - [Wapps](backend/wapps.md)（含主题应用与首屏背景缓存；旧 `theme.md` 已合并至此）
@@ -40,9 +41,19 @@
 
 - [桌面 / Web 系统概要设计](platform/system-overview.md)
 - [连接管理详细设计与验收用例](platform/connection-management.md)
+- [共享应用边界与端口](platform/shared-boundaries-and-ports.md)
+- [假资源夹具与基准](platform/fake-runtime-fixtures.md)
+- [持久化模型](platform/persistence-model.md)
+- [驱动能力迁移与发布矩阵](platform/driver-capability-migration.md)
+- [迁移三件套与 JobRuntime](platform/data-migration-jobs.md)
+- [Workflow 资源模型](platform/workflow-resource-model.md)
+- [AI/MCP/Wapp 与辅助任务接入](platform/consumer-adapters.md)
+- [团队服务与认证](platform/team-server-and-auth.md)
+- [多 worker 协调](platform/multi-worker-coordination.md)
 - [分阶段开发计划](../development/platform-development-plan.md)
+- [团队服务部署、升级与恢复](../development/team-service-operations.md)
 
-这三份文档是本次明确请求的范围例外，状态与当前实现分开标注；实施后逐节改写为事实，不扩展为通用提案/台账目录。
+以上文档是本次明确请求的范围例外，状态与当前实现分开标注；实施后逐节改写为事实，不扩展为通用提案/台账目录。
 
 > 除上述明确请求的待实现设计外，本目录只描述 **已落地** 的实现。方案草稿、RFC 与实施计划不长期留在 `architecture/`：
 > 结论落地后改写为本目录的事实条目，未落地的提案不入库。演进方向的公开叙述见 [blogs/](../blogs/README.md)。
@@ -177,7 +188,7 @@ Source 是 desired state，Target 是 apply site。例如 source 为 `VARCHAR(25
 
 Data Sync 使用 Compare → Review → Preview → Execute，生产 compare 路径支持 keyset pagination 和 job cancellation，执行阶段使用参数化 SQL、事务和失败/取消 rollback。
 
-Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview → Result，跨方言通过 IR adapter 完成类型和值转换；DDL 由 target adapter 渲染。
+Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview → Result，跨方言通过 IR adapter 完成类型和值转换；DDL 由 target adapter 渲染。当前模型、计划消费与恢复边界见 [Data Transfer 架构](backend/data-transfer.md)。
 
 ## 7. Workflow / AI / MCP / Dashboard
 

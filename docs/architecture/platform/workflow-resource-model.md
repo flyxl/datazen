@@ -122,7 +122,7 @@ command 分支（[command_runtime.rs`](../../../src-tauri/src/workflow/command_r
 | 目标来源 | 3 处：step、workflow 默认、调用方 connectionId | 4 级：step 显式 → block → workflow 默认 → profile 初始目标 |
 | 资源持有 | 每次 command 独立 `resolve_session_for_connection` | block 声明范围，session/transaction block 跨 step 固定 Lease |
 | 事务 | 无 | runtime 控制 begin/commit/rollback，含计划预校验 |
-| 归属 | 无 | 本文提议的 Job 包裹 + `OwnerRef { kind: 'workflowBlock' }`（[§5.1](#51-workflow-执行是否包裹-job)，待 P3 定案） |
+| 归属 | 无 | P6 目标 Job 包裹 + `OwnerRef { kind: 'workflowBlock' }`（[§5.1](#51-workflow-执行是否包裹-job)） |
 | 版本 | 字段存在，从不读取 | 按版本分派解析，未知版本拒绝 |
 | 错误 | 字符串 | 版本化 `ExecutionErrorCode` + `effectOutcome` |
 | Checkpoint | 无 | 稳定目标、版本、映射指纹、已确认提交边界 |
@@ -339,13 +339,13 @@ resolveTarget(step, block, workflow, profile) -> ExecutionTarget | error
 
 ### 5.1 Workflow 执行是否包裹 Job
 
-**本文提议：包裹（待 P3 定案）**，不是既有契约。既有契约只把 Job 明确分给三件套与导出阶段：[§9.1](connection-management.md#91-默认资源政策) 给 Workflow 的资源策略是"step/block 声明范围"，[§9.5](connection-management.md#95-资源类别与调度) 的 `job` 预算类别只分给"迁移/导出阶段"，[§11](connection-management.md#11-workflow--ai--mcp--wapp) 与 CM-50～52 都没有 Workflow 产生 Job 的断言（CM-40 的前置是**迁移 Job**，属 P5）；唯一相容的既有钩子是 [§4](connection-management.md#4-dto-与字段定义) 的 `OwnerRef` 变体 `workflowBlock { jobId, blockId }` 与 [§17](connection-management.md#17-验收标准与证据) 的"Job owner 断言"。本文提议的理由是三条硬要求都只能由 Job 满足：
+**P6 目标决策：每次 Workflow 执行包裹一个 Job。** 当前代码仍未产生平台 Job（§2.5），这项决策不改写基线事实。block 是 Job 的资源阶段；独立 step、session block 与 transaction block 的资源范围仍按第 3 章，不因为 Job 包裹而共享状态。
 
-1. **窗口无关**（[INV-12](connection-management.md#3-不可破坏的不变量) / CM-40）：关闭 Workflow 窗口或桌面标签不能释放资源；
-2. **提交未知不自动重试**需要可持久化的执行记录与 `effectOutcome`（既有契约中对应 [§4.4 `DurableExecutionRecord`](connection-management.md#44-可落盘来源与运行时绑定)，不必是 Job）；
-3. **Checkpoints** 记录稳定目标、版本、映射指纹与已确认提交边界，需要落盘的 [§4.2 `JobCheckpoint`](connection-management.md#42-内部记录)。
+接受时冻结定义版本、显式目标、变量的脱敏投影和 handler/checkpoint 版本，Job 与幂等回执原子提交。大定义或敏感运行输入使用私有受控 Artifact/秘密引用，不把凭据嵌入 Job plan。GUI 运行、MCP、Dashboard 和 schedule 使用同一个接受入口。
 
-现状是全链路无 Job（[§2.5](#25-调度历史与-job)）。若 P3 采纳：block 是 Job 的阶段载体，阶段资源按 [§9.5 job 类](connection-management.md#95-资源类别与调度) 申请；GUI 前台交互式运行仍可见进度，但**资源归属**是 Job 而不是窗口。若不采纳，第 5 章其余结论按"block 资源的 owner 载体待定"降级，重试与 checkpoint 语义不变。
+Workflow 资源阶段归 job 预算类别；metadata 辅助读取仍归 metadata，取消仍归 control，不借前台界面占 interactive 保留。资源 owner 为 `workflowBlock { jobId, blockId }`，由 runtime 根据当前 claim 创建。关闭窗口仅退订，取消必须调用 cancelJob。重启只恢复稳定目标与确认边界，不恢复 block 的活 session/事务。
+
+该决策补齐 [连接 §11](connection-management.md#11-workflow--ai--mcp--wapp) 的实施落点，不改变 CM-50～52 的块语义；增加窗口关闭继续、同 key 返回同 Job、块提交未知不自动重跑与 checkpoint 不含 live handle 的 H/F/W1 断言。CM-40 原始迁移前置保持不变，Workflow 的补充旅程单独验证。
 
 ### 5.2 OwnerRef
 
@@ -358,7 +358,7 @@ block 的资源 owner 使用[连接管理 §4](connection-management.md#4-dto-�
 | 场景 | owner |
 | --- | --- |
 | Workflow block 的 session / transaction Lease | `workflowBlock { jobId, blockId }` |
-| 独立 step 的短操作 Lease | 该 step 所属 block 的 `workflowBlock`（是否归 Job 见 [§5.1](#51-workflow-执行是否包裹-job)，不用 `clientSession`） |
+| 独立 step 的短操作 Lease | 该 step 所属 block 的 `workflowBlock`（归 Job，见 [§5.1](#51-workflow-执行是否包裹-job)，不用 `clientSession`） |
 | MCP 显式 session | `clientSession { clientInstanceId, purpose }`，TTL 配额控制 |
 | Wapp session | 实例或 Job |
 
@@ -506,7 +506,7 @@ type PlanVerdict =
 静态解析/能力检查
   → UnsupportedPlan / CapabilityUnsupported
   → 不申请资源、不执行任何语句
-  → Job 记录 offendingSteps（Job 包裹本身是[本文提议](#51-workflow-执行是否包裹-job)，待 P3 定案）
+  → Job 记录 offendingSteps（Job 包裹本身是[P6 目标决策](#51-workflow-执行是否包裹-job)）
   → `ApiError.code = UnsupportedPlan`，`effectOutcome = notStarted`（预检在派发前，不产生 `ExecutionErrorCode`）
   → UI 定位到具体 step 并给出可操作原因
   → 该结果不进入自动重试
@@ -610,13 +610,15 @@ output:
 
 本节把[连接管理 §11](connection-management.md#11-workflow--ai--mcp--wapp) 的第二段落到 Workflow 侧。
 
+本节只保留 Workflow 与消费者的边界摘要；完整工具授权、MCP/Wapp 归属、调度身份与原生工具协议见 [消费者接入详细设计](consumer-adapters.md)。
+
 ### 9.1 AI
 
 | 场景 | 行为 |
 | --- | --- |
 | 默认 | AI 对数据库的操作是**独立目标操作**：每次按完整 `ExecutionTarget` 执行，不共享会话，不假设当前库 |
 | 用户显式授权当前编辑器 session | 进入**同一队列**（session actor）并共享真实状态：能看到同一 session 内已提交的临时对象，遵从同一串行规则 |
-| 授权撤销 / 附件过期 | 回到独立目标操作；已建立的会话按 [§6.4](connection-management.md#64-attachment-与超期处理) 关闭 |
+| 授权撤销 / 附件过期 | 拒绝后续绑定工具；用户重新选目标或授权后才创建新操作。只释放 grant 自有资源，不关闭用户编辑器 session |
 | AI 生成 Workflow YAML | 生成的定义必须显式写 `version` 与目标；不得依赖调用方隐式传入的连接 |
 
 对应 CM-53：未授权时读取编辑器临时对象必须失败，授权后同队列可见。
@@ -629,7 +631,7 @@ output:
 
 ### 9.3 Wapp
 
-Wapp session 归**实例或 Job**。Wapp 通过受限的 `execute_driver_command` 通道取数，宿主判定它不是 editor；它既不能加入用户的编辑器 session，也不能声称 `workflowBlock` owner。Wapp 触发的 Workflow 运行以该 Wapp 实例身份发起 Job（Job 包裹本身是[本文提议](#51-workflow-执行是否包裹-job)，待 P3 定案）。
+Wapp session 归**实例或 Job**。Wapp 通过受限的 `execute_driver_command` 通道取数，宿主判定它不是 editor；它既不能加入用户的编辑器 session，也不能声称 `workflowBlock` owner。Wapp 触发的 Workflow 运行以该 Wapp 实例身份发起 Job（Job 包裹本身是[P6 目标决策](#51-workflow-执行是否包裹-job)）。
 
 ### 9.4 后台调度与 Dashboard
 
@@ -647,7 +649,7 @@ Wapp session 归**实例或 Job**。Wapp 通过受限的 `execute_driver_command
 | --- | --- |
 | 移除 `workflow.connection.or(caller_connection_id)` 回退 | 依赖 GUI/MCP 隐式连接的 Workflow 会开始失败 |
 | 引入 block 层与资源范围 | 旧定义解析为独立 step，行为等价但资源获取路径改变 |
-| Workflow 运行产生 Job（[本文提议](#51-workflow-执行是否包裹-job)，待 P3 定案） | 历史记录、取消、重试、清理的归属改变 |
+| Workflow 运行产生 Job（[P6 目标决策](#51-workflow-执行是否包裹-job)） | 历史记录、取消、重试、清理的归属改变 |
 | 错误从字符串改为版本化 code | 前端错误展示、i18n 文案需同步 |
 | GUI 不再注入 `dbSessionId` 冒充 `connectionId` | AI 侧栏执行路径改变（[§2.8](#28-一处已确认的身份错配)） |
 
@@ -706,8 +708,8 @@ v1 定义的映射规则是机械的、无歧义的：
 1. **先加解析层**：引入 `version` 分派与 `ExecutableWorkflow`，v1 → 独立 step 映射，纯函数、有单测；此时执行器行为不变。
 2. **再开新执行路径**：block 资源调度、Job 包裹、计划预校验作为新执行器；`version: "1"` 仍走旧执行器，`version: "2"` 走新执行器。**新 block 格式不交旧 executor**（静态拒绝：`ExecutorFor(version)` 查不到即报错）。
 3. **再切断隐式目标**：移除 `workflow.connection.or(caller_connection_id)`，GUI / MCP / Dashboard 入口停止注入隐式连接；此步是唯一会打断存量工作流的行为变更，必须在前两步完成并发出迁移提示后进行。
-4. **再改错误契约**：结构化 `ExecutionErrorCode` + `effectOutcome`，前端与 i18n 同步。
-5. **回退策略**：保留 v1 解析与旧执行器；回退时新 block 格式被拒绝执行而不是错误执行，存量 v1 定义继续按独立 step 运行。
+4. **再改错误契约并删除旧资源入口**：结构化 `ExecutionErrorCode` + `effectOutcome`，前端与 i18n 同步；v1 仍保留解析兼容，但映射到同一新 runtime，迁移验收后删除旧 executor 资源调用。
+5. **回退策略**：保留 v1 解析兼容；镜像回退到旧版本时拒绝其不支持的新 block 格式，存量 v1 定义按独立 step 运行。不能为单个请求切回旧管理器，不能重放新 runtime 的未知副作用。
 
 ---
 
@@ -724,7 +726,7 @@ v1 定义的映射规则是机械的、无歧义的：
 | [CM-73 空闲淘汰与活动事务句柄连续旅程 / CM-74 会话级句柄登记与释放顺序（§16.7）](connection-management.md#167-补充契约与边界用例) | 活动事务不得被静默淘汰后同 ID 重建 | [§5.4](#54-失败与清理)、[§3.4](#34-transaction-block) |
 | [CM-65 类别保留与无饥饿（§16.7）](connection-management.md#167-补充契约与边界用例) | 类保留不被侵占、控制可用、持续队列按 4:2:1 获派发、用户轮转无饥饿、队列取消无许可泄漏；层 H，H 断言属 P3、任务断言属 P5/P6（[开发计划 §17](../../development/platform-development-plan.md#17-补充契约的阶段归属)） | [§6.1](#61-分支资源划分)、[§5.3](#53-资源获取与释放) |
 | [CM-67 PoolKey 版本和多 database（§16.7）](connection-management.md#167-补充契约与边界用例) | 按 database/policy 分 key、总 socket 不越预算、旧 idle 停发并关闭、旧缓存不能回填；层 H/D，D 断言属 P2、H 断言属 P3、任务断言属 P5/P6（[开发计划 §17](../../development/platform-development-plan.md#17-补充契约的阶段归属)） | [§4.2](#42-解析算法)、[§5.3](#53-资源获取与释放) |
-| [CM-40 任务关闭窗口继续](connection-management.md#165-三件套与-workflow) | 窗口关闭不 release 资源（前置是**迁移 Job**，属 P5） | [§5.1](#51-workflow-执行是否包裹-job)（本文提议） |
+| [CM-40 任务关闭窗口继续](connection-management.md#165-三件套与-workflow) | 窗口关闭不 release 资源（前置是**迁移 Job**，属 P5） | [§5.1](#51-workflow-执行是否包裹-job)（P6 目标） |
 
 ### 11.2 默认目标契约回归
 
@@ -762,9 +764,9 @@ v1 定义的映射规则是机械的、无歧义的：
 1. **driver 是否暴露显式的 begin/commit/rollback Command 与计划接受接口**。第 7 节依赖"受控 DML Command 声明 `transactionSafe`"，需确认 `packages/driver-api` 的 `DriverCommandDefinition` 描述结构（现状只有 `id`/`name`/`description`/`input_schema`/`output_schema`/`permissions`/`metadata`，无事务相关字段）与各驱动实现的现状。
 2. **各驱动的隐式提交清单**。MySQL 已知多种 DDL 隐式提交（[连接管理 §10.2](connection-management.md#102-schema-diff)）；PostgreSQL、SQL Server、SQLite 的对应行为需按驱动逐一核验。
 3. **[§2.8 身份错配](#28-一处已确认的身份错配) 的实际失败表现**：`WorkflowPanel` 把 `dbSessionId` 作为 `connectionId` 传入时，`get_or_connect_session` 的 owner 匹配会失败并转入 `connect(connection_id)`；代码上该路径会落到 `establish_connection` 的 `ConnectionConfigNotFound`，但需在真实环境确认，是否存在其他恰好命中的路径。
-4. **Dashboard 工作流组件的目标来源**：目前传 `None`，需确认目标 Design 中 dashboard 组件的目标是否应固化在 widget 定义里（本文未纳入）。
+4. **Dashboard 工作流组件的目标来源**：基线传 `None`；目标按 [消费者设计 §6](consumer-adapters.md#6-dashboardmonitor-与调度身份) 固定为 widget 定义的完整稳定目标，验收须证明不依赖 GUI 当前连接。
 5. **Workflow runtime 与编辑器事务管理是否会在同一物理 session 上形成双事务控制**：现状 Workflow 不复用 `services/transaction.rs`（[§2.6](#26-错误与事务)），但目标模型要求事务由 Workflow runtime 托管，需确认二者不会各自持有同一物理 resource 的事务。
-6. **调度器服务身份的凭据来源与委托权限模型**（[§9.4](#94-后台调度与-dashboard)），需与[连接管理 §10.1 公共处理](connection-management.md#101-公共处理) 中的服务身份 / 委托权限顺序对齐。
+6. **调度器服务身份的凭据来源与委托权限模型**（[§9.4](#94-后台调度与-dashboard)），授权与持久化边界按 [消费者设计 §6](consumer-adapters.md#6-dashboardmonitor-与调度身份) 实施，并验证与[连接管理 §10.1 公共处理](connection-management.md#101-公共处理) 一致。
 7. **`WorkflowStep::Ai` 无目标字段**是否需要扩展：AI 步骤若要在 session block 内读取块内临时对象，模型需增加目标引用，本文暂按"AI 步骤不参与块内资源"处理。
 
 ---

@@ -128,7 +128,7 @@ CM-61（[连接 §16.7](connection-management.md#167-补充契约与边界用例
 
 ### 3.2 表清单
 
-存在的表（13 张；顺序即 §3.3–§3.10 的 DDL 顺序，也是首批迁移文件内的建表顺序——任一表的 `REFERENCES` 目标都在它之前出现，含 `login_sessions` → `memberships` 的前后关系，理由见 §3.10）：
+目标表分两批：P7 的 13 张管理表（§3.3–§3.10），以及 P9 增加的 `budget_allocations`（§3.11）。顺序遵循外键依赖；它们是目标 schema，不表示当前已建表。
 
 | 表 | 对应 port / 用途 | 主键 |
 | --- | --- | --- |
@@ -145,6 +145,7 @@ CM-61（[连接 §16.7](connection-management.md#167-补充契约与边界用例
 | `login_sessions` | 服务端登录会话行（§3.10，W14） | `(organization_id, session_id)` |
 | `acl_entries` | 逐资源逐 action 的 grant/deny（§3.10，W15） | `(organization_id, resource_type, resource_id, subject_type, subject_id, action)` |
 | `permission_versions` | 组织级单调权限版本（§3.10，W15） | `(organization_id)` |
+| `budget_allocations`（P9） | 跨节点配额分配与保守核销，不是物理资源账 | `(organization_id, allocation_id)` |
 
 **不存在的表**（显式声明，防止后续实现"顺手加一个"）：
 
@@ -329,6 +330,15 @@ CREATE TABLE jobs (
 );
 
 CREATE INDEX idx_jobs_list     ON jobs (organization_id, created_at DESC, job_id);
+-- P5 apply 计划消费：同一计划只能接受一个应用 Job；失败也不释放消费资格。
+CREATE UNIQUE INDEX uq_jobs_apply_plan ON jobs
+    (organization_id, (plan ->> 'consumedPlanId'))
+    WHERE kind IN ('schemaDiffApply','dataSyncApply','dataTransferApply');
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_apply_plan CHECK (
+    kind NOT IN ('schemaDiffApply','dataSyncApply','dataTransferApply')
+    OR COALESCE(length(plan ->> 'consumedPlanId'), 0) > 0
+);
+
 CREATE INDEX idx_jobs_claim    ON jobs (claim_expires_at) WHERE state = 'running';
 CREATE INDEX idx_jobs_recover  ON jobs (organization_id, updated_at)
     WHERE state IN ('queued', 'running', 'cancelled');
@@ -351,9 +361,10 @@ CREATE TABLE job_checkpoints (
 );
 ```
 
+- P5 `jobs.plan.consumedPlanId` 保存 apply Job 消费的 planId，连同 planVersion、handlerVersion、checkpointVersion、selectionRevision、计划摘要与不可变 Artifact 引用一起冻结。上述唯一索引与非空 CHECK 在接受 Job/幂等记录的同一事务生效；不能仅在应用层查重。准备 Job 不写 consumedPlanId。输入参数不能覆盖权威计划。详情见 [迁移任务设计](data-migration-jobs.md)。
 - `jobs.plan` 冻结计划（[连接 §10.1](connection-management.md#101-公共处理)）：目标、`configRevision` / `credentialRevision` / 能力版本、对象结构指纹、映射、事务要求。计划冻结后任何一项变化 → `PlanStale`。
 - `jobs.worker_id` / `claim_expires_at` 是**调度租约**，不是 `ResourceLease`：它只记录"哪个 worker 负责推进这个 Job"和到期时间，**不含任何物理资源标识**，因此不违反 §2.2 的 F6。终态时必须置 NULL（由 `ck_jobs_claim` 保证成对）。`renew` 失败即视为失联，Job 停止新增资源并转人工核验，**不重新派发副作用阶段**。
-- `job_checkpoints.stable_keys` 是稳定对象键（`connectionId` + 归一化对象标识 + 版本），**不是**字节 offset；`committed_boundary` 记录已确认提交的边界对象集合与核验时间；`verification_evidence` 记录源一致性证据（[连接 §10.4](connection-management.md#104-data-transfer)）。只存 offset 的检查点在设计上不合格。
+- `job_checkpoints.stable_keys` 是稳定对象键（`connectionId` + 归一化对象标识 + 版本），**不是**字节 offset；`committed_boundary` 的 P5 目标元素包含 stageId、operationId/batchId、stableTarget、payloadDigest、真实提交 evidence 与 verifiedAt；不能只存目标结构指纹。它记录已确认提交的边界对象集合与核验时间；`verification_evidence` 记录源一致性证据（[连接 §10.4](connection-management.md#104-data-transfer)）。只存 offset 的检查点在设计上不合格。
 - 检查点**不保存** live session、lease、cursor 或句柄；恢复流程不得重建会话级句柄，只允许以新 `dbSessionId` 显式重建（[连接 §6.5](connection-management.md#65-会话级资源句柄登记)）。任务生命周期独立于窗口：关闭编辑器只取消订阅，不取消 Job（INV-12，[连接 §3](connection-management.md#3-不可破坏的不变量)）。
 
 ### 3.7 `audit_events`
@@ -531,6 +542,41 @@ CREATE TABLE permission_versions (
 - `absolute_expires_at` / `idle_expires_at` 的默认时长取团队服务（**首版建议值，来自部署配置**），本文不写死；`idle_expires_at` 只由**入站请求**顺延，登录心跳与 SSE `: keepalive` 都不刷新它（[共享边界 §4.5](shared-boundaries-and-ports.md#45-会话目录预算与令牌端口)、[团队服务 §8.3](team-server-and-auth.md#83-心跳与超时)）。
 - `memberships.external_subject` 是 IdP `sub` 在管理库中的**唯一**落库处，只用于登录映射，不进任何 API 响应；成员关系只置 `enabled = FALSE`，不物理删除（撤销要可追溯）。`acl_entries.resource_id` 用空串 `''` 表示**组织级**条目（主键列不能为 NULL），`session` / `execution` / `stream` 的条目只在需要显式 deny 时登记，默认按 owner 继承（[团队服务 §6.1](team-server-and-auth.md#61-角色与资源-acl)）。
 - 撤销必须先移除 grant、写入 deny 或禁用 membership，并在**同一事务**内递增 `permission_versions.permission_version`；版本变化只负责使缓存分区键与 PoolKey 失效，不能代替实际授权变更（[团队服务 §6.3](team-server-and-auth.md#63-撤销传播)）。`permission_versions` 每组织一行、只增不减、**永不删除**；`login_sessions` 的撤销与过期行保留至 `absolute_expires_at` 之后按审计保留期清理，因为删除会话行等价于强制重新登录，**删除永远是安全方向**。
+
+### 3.11 `budget_allocations`（P9 目标增量）
+
+P7 单实例不创建该表；P9 expand 迁移增加它，并保留兼容的旧 schema 支持区间。分配账持久化的是节点可用数量，不是 socket/ResourceLease；workerId 与 Job 调度字段一样标识本次启动的执行者，runtimeEpoch 不落库。SessionDirectory 仍禁止任何磁盘记录。
+
+```sql
+CREATE TABLE budget_allocations (
+    organization_id TEXT NOT NULL,
+    allocation_id TEXT NOT NULL,
+    operation_id TEXT NOT NULL,
+    payload_digest TEXT NOT NULL,
+    worker_id TEXT NOT NULL,
+    generation BIGINT NOT NULL DEFAULT 1 CHECK (generation > 0),
+    dimensions JSONB NOT NULL,
+    amount BIGINT NOT NULL CHECK (amount > 0),
+    returned_amount BIGINT NOT NULL DEFAULT 0,
+    state TEXT NOT NULL CHECK (state IN ('issued','expiredHeld','reclaimed')),
+    expires_at TIMESTAMPTZ NOT NULL,
+    closure_evidence JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (organization_id, allocation_id),
+    UNIQUE (organization_id, operation_id),
+    CHECK (returned_amount BETWEEN 0 AND amount),
+    CHECK (state <> 'reclaimed' OR
+           (returned_amount = amount AND closure_evidence IS NOT NULL))
+);
+CREATE INDEX idx_budget_allocations_held
+    ON budget_allocations (organization_id, worker_id, expires_at)
+    WHERE state <> 'reclaimed';
+```
+
+`dimensions` 是冻结的组织/用户/物理服务 quota key、资源种类和类别，不含资源标识。allocation 表与各 `quota_counters.reserved` 增减同事务，按稳定 key 顺序锁行；部分归还只减 returnedAmount 的增量。多端申请在一个事务中创建全部记录或全部失败；每笔 operationId 从同一 requestId 与维度序号稳定派生，重传同摘要返回原 allocationId。
+
+expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、目录重启或 worker 心跳丢失都不能清零。核销 CAS 同时检查 workerId/generation，必须有连接已关闭/旧节点隔离加目标核验的证据。证据只是脱敏证明摘要，不含数据库连接句柄或秘密。预算限额降低到已占数量以下时拒绝新分配，不能修改旧记录伪造释放。详细协议见 [多 worker 设计 §5](multi-worker-coordination.md#5-全局预算分配协议)。
 
 ## 4. 本地 Store 与服务端 DB 映射
 
@@ -747,6 +793,8 @@ P5/P9 claim 存储：`claim_generation` 在首次认领/接管时原子自增，
 | 事件体 | 不持久化 `EventEnvelope`，因此不持久化 `sessionHandle`、结果数据、SQL 原文 |
 
 ### 8.2 产物额度与 TTL
+
+P5 Job 引用的计划/输入 Artifact 另有保留锁：接受 Job 与建立引用原子提交，终态及恢复保留窗口结束前禁止普通 TTL 清理；删除 adapter 检查有效引用并 CAS 标记删除。过期计划不能新建 apply，但已接受 Job 的引用不能中途消失。准备失败的未引用字节仍按孤儿规则清理。
 
 | 项 | 首版要求 | 取值来源 |
 | --- | --- | --- |

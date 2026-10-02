@@ -344,6 +344,8 @@ pub trait IdentityResolver: Send + Sync + 'static {
 
 `JobRepository` 的落库白名单必须排除 `dbSessionId`、SessionHandle、lease/cursor、取消句柄与 attachment token（[连接 §4.4](connection-management.md#44-可落盘来源与运行时绑定)）；`ExecutionView` 的持久化投影按[连接 §4](connection-management.md#4-dto-与字段定义)的两层来源规则拆分，实时 `runtimeBinding` 只留在 runtime 内存。
 
+P5 `CommitBoundary` 目标字段扩展为 stageId、operationId/batchId、stableTarget、payloadDigest、commit evidence 与 verifiedAt，随 plan/checkpoint 格式版本同步升级；当前仅目标/指纹形态不足以证明某批写入已生效。Job 接受、planId 唯一消费与幂等记录需一个仓储事务，由 application 组合服务调用 adapter，不允许各自提交。详见 [迁移任务设计](data-migration-jobs.md)。
+
 ### 4.4 秘密、网络与执行材料端口
 
 ```rust
@@ -430,6 +432,8 @@ pub trait SubmissionTokenIssuer: Send + Sync + 'static {
 ```
 
 `SessionDirectory` **禁止**磁盘持久化、快照与 append-only 日志；丢失目录必须使相关会话明确失效，不得据此恢复物理会话（[连接 §12](connection-management.md#12-web多实例权限与结果)）。`SubmissionTokenIssuer` 的签名载荷按[连接 §4.1](connection-management.md#41-服务接口与补充响应)的 `IdempotentOperation` 覆盖，默认有效期 24 小时，过期语义见[连接 §13.1](connection-management.md#131-幂等键期限与响应分类)。
+
+P9 adapter 的目录 CAS、路由信封、预算 generation 与 expiredHeld 核销按 [多 worker 协议](multi-worker-coordination.md) 实现。现有 port 是 P1 基础签名；跨节点 operationId/查询与 fencing 字段在 P9 以版本化 DTO 补齐，并同步 fake，不能将当前签名标成完整集群协议。节点分配账允许持久化，物理 ResourceLease 和目录仍只在内存。
 
 ### 4.6 结果与事件端口
 

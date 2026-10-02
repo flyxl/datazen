@@ -406,6 +406,8 @@ AI、MCP client、Workflow 服务身份不直接拥有组织权限，而是持�
 
 签发路径：用户在 UI 显式授权「把当前 editor session 授权给 AI」→ 应用服务签发 `delegationId` → 写入执行主体。校验路径：每次 MCP/Wapp/AI 调用都重新校验（scope、有效期、父链、成员关系），**不缓存判定结果**。CM-53 的断言由这条链路保证：未授权拒绝，授权后在同队列可见，客户端断开只清理自己的资源。
 
+上述短期 delegation 用于交互工具/共享 session，不是长期调度凭据。调度以 memberships 登记的 service principal 与 ACL 作为授权权威，持久定义保存批准者、目标/action 范围、有效期与撤销版本；每次 occurrence 新建受限执行上下文，不能复用 30 分钟的 editor grant 或用户登录 cookie。定义修改、撤销和服务身份停用后派发拒绝。完整规则见 [消费者设计 §6](consumer-adapters.md#6-dashboardmonitor-与调度身份)。
+
 ### 6.5 前端角色标记禁令
 
 请求体中出现 `role`、`isAdmin`、`canExecute`、`permissions`、`organizationId`、`principalId` 任何一项时：
@@ -697,6 +699,8 @@ flowchart TD
 ---
 
 ## 14. 部署形态
+
+配置、初始化、探针、升级回退、一致性备份与灾难恢复的完整操作流程见 [团队服务运维设计](../../development/team-service-operations.md)。P9 的多节点拓扑与限制见 [协调协议](multi-worker-coordination.md)。
 
 首版是**单进程模块化单体**：HTTP listener、admin service 与 execution worker 同处一进程，因此 CM-40（关闭浏览器/窗口后 Job 继续）无需额外的后台进程分离即可成立——Job 生命周期不挂在任何 UI 连接上。
 

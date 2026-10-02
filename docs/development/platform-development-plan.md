@@ -149,6 +149,8 @@ P3 开始前同步修订已落地 DTO/port 的目标契约：Artifact 写入期�
 
 ## 9. P5：JobRuntime 与数据迁移三件套
 
+详细设计：[迁移三件套与 JobRuntime](../architecture/platform/data-migration-jobs.md)。准备与应用分别受理，apply planId 的唯一消费、逐批提交证据与 claim 校验在 P5 同步实现。
+
 **目的**：连接资源脱离 UI，任务结果真实反映提交边界。
 
 交付：
@@ -170,6 +172,8 @@ P3 开始前同步修订已落地 DTO/port 的目标契约：Artifact 写入期�
 
 ## 10. P6：Workflow、AI、MCP、Wapp 与辅助任务
 
+详细设计：[Workflow 资源模型](../architecture/platform/workflow-resource-model.md) 与 [消费者接入](../architecture/platform/consumer-adapters.md)。共享授权失效后拒绝绑定操作，MCP/Wapp 只释放自有资源，调度目标和服务授权显式保存，原生工具也计入完整预算。
+
 **目的**：消除 GUI 外入口的隐式目标和共享状态。
 
 交付：
@@ -188,6 +192,8 @@ P3 开始前同步修订已落地 DTO/port 的目标契约：Artifact 写入期�
 实施前修正 Workflow §4.2/§6.2：显式目标不完整即拒绝，不回退另一连接；block 冲突检查先于任何目标返回；session block 清理后仍默认不自动重试。退出门槛增加已自动提交一步后失败不重复写入、未知提交不重试、已确认回滚后的受控重试与 block 目标冲突。AI/MCP/Wapp 各入口分别验证 owner、授权、TTL 和 Gateway 拒绝路径。
 
 ## 11. P7：单实例团队 Web 服务
+
+详细设计：[团队服务与认证](../architecture/platform/team-server-and-auth.md)、[持久化模型](../architecture/platform/persistence-model.md) 与 [部署、升级和恢复流程](team-service-operations.md)。运维验收使用发布镜像，备份恢复不得自动重放未知外部写入。
 
 **目的**：先交付可部署、可授权的统一团队入口。
 
@@ -212,6 +218,8 @@ P3 开始前同步修订已落地 DTO/port 的目标契约：Artifact 写入期�
 
 ## 12. P8：桌面团队客户端与首版发布
 
+详细设计：[团队服务 §4.6](../architecture/platform/team-server-and-auth.md#46-p8-桌面团队认证与传输目标设计) 定义桌面登录及原生传输；[运维设计](team-service-operations.md) 定义兼容、升级和恢复演练。
+
 **目的**：同一客户端可选择本地或团队 backend，避免句柄和凭据混用。
 
 交付：
@@ -232,6 +240,8 @@ P3 开始前同步修订已落地 DTO/port 的目标契约：Artifact 写入期�
 
 ## 13. P9：多 worker、网络分区与全局预算
 
+详细设计：[多 worker 协调协议](../architecture/platform/multi-worker-coordination.md)。首版目录为单权威内存服务，Job/数量型节点预算在管理库持久化；目录切换先隔离旧实例，全部旧 session 失效。该控制面可用性限制必须进入发布说明。
+
 **目的**：扩容不破坏会话连续性和总连接上限。
 
 交付：
@@ -247,9 +257,11 @@ P3 开始前同步修订已落地 DTO/port 的目标契约：Artifact 写入期�
 
 回退：停止新任务/会话路由并 drain 至单 worker；不迁移 live session。多实例元数据可保留，但执行 owner 必须明确，不能把目录清空后继续使用旧 ID。
 
-实施协议见概要 §9.2：目录 owner/替换 CAS、仓储 claimGeneration、全局许可 generation 与保守核销、协调器失联、目录丢失和 drain 状态转换。P5 的管理库 fencing 与 P9 的全局预算许可分别验收，均不能自动撤回外部 SQL。退出门槛增加旧 worker 暂停超过租约后恢复、在途 commit、目录/协调器重启和许可未核销时禁止再分配。
+实施协议见 [多 worker 详细设计](../architecture/platform/multi-worker-coordination.md)，概要 §9.2 保留边界摘要：目录 owner/替换 CAS、仓储 claimGeneration、全局许可 generation 与保守核销、协调器失联、目录丢失和 drain 状态转换。P5 的管理库 fencing 与 P9 的全局预算许可分别验收，均不能自动撤回外部 SQL。退出门槛增加旧 worker 暂停超过租约后恢复、在途 commit、目录/协调器重启和许可未核销时禁止再分配。
 
 ## 14. P10：扩展性验收、旧路径删除与稳定化
+
+详细验收：[驱动迁移 §10.2](../architecture/platform/driver-capability-migration.md#102-p10-目标通用-contract--driver-矩阵)。实际发布选型覆盖 path 与 Git driver，Git ref 冻结为 SHA，能力声明与逐层运行结果分别记录。
 
 **目的**：验证架构目标，而不只验证代表驱动能工作。
 
@@ -333,3 +345,19 @@ P2 行的三条 D 断言都还没有落地。已经落地的是它们各自的 *
 - **CM-62（命名空间规范化矩阵）**：**代码侧零覆盖**。全仓检索（含 gitignored 目录）`CM-62` 只命中 4 个文件，且全部在 `docs/`：`connection-management.md`（用例定义）、`driver-capability-migration.md`、`persistence-model.md`、`platform-development-plan.md`（阶段表）。`.rs` / `.ts` / `.tsx` / `.js` / `.mjs` / `.toml` / `.json` / `.yml` / `.sh` 等代码与配置扩展名下命中数为 0——这条用例目前只作为待实现目标存在于文档里，没有任何代码以它的名义写断言或打点。`packages/platform-api/src/target.rs` 的 `CanonicalTarget` 属 P1 交付的类型与 schema，不是本条用例的执行；同义 ID 与 path 别名的规范化、冲突 `TargetConflict`、以及缓存 / 权限 / 驱动共用同一份 `CanonicalTarget`，均未落地。
 
 按 §3 的完成定义，契约类型存在不等于行为已实现并被断言覆盖，因此 P2 的这三条不能记为已交付。
+
+## 18. 阶段详细设计入口
+
+| 阶段 | 权威设计与实施落点 |
+| --- | --- |
+| P0 | [假资源夹具](../architecture/platform/fake-runtime-fixtures.md) |
+| P1 | [共享边界与端口](../architecture/platform/shared-boundaries-and-ports.md)、[持久化白名单](../architecture/platform/persistence-model.md) |
+| P2 | [驱动能力迁移](../architecture/platform/driver-capability-migration.md) |
+| P3/P4 | [连接管理](../architecture/platform/connection-management.md)：actor/lease/budget、Gateway 与 §12.1 结果消费 |
+| P5 | [迁移任务](../architecture/platform/data-migration-jobs.md)、持久化 §3.6、共享端口 §4.3 |
+| P6 | [Workflow](../architecture/platform/workflow-resource-model.md)、[消费者接入](../architecture/platform/consumer-adapters.md) |
+| P7/P8 | [团队服务与认证](../architecture/platform/team-server-and-auth.md)、[运维流程](team-service-operations.md)、持久化 §5/§7 |
+| P9 | [多 worker 协议](../architecture/platform/multi-worker-coordination.md)、持久化 §3.11 |
+| P10 | 驱动能力迁移 §10.2；各消费者退役条件与本计划逐层门槛 |
+
+本表是设计入口，不是完成进度。目标设计、现有实现和实际运行证据分别标明；阶段完成后同步将对应内容改写为事实。

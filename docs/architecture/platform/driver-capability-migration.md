@@ -666,14 +666,36 @@ P2 新增的 `capabilities.rs` / `resource.rs` / `session.rs` 必须逐条过这
 
 ### 10.2 P10 目标：通用 contract × driver 矩阵
 
-开发计划 P10 要求产出「通用 contract × driver 矩阵」。本文的 [§2.1](#21-矩阵) 就是这张矩阵的**当前**列，[§4](#4-迁移批次) 是它的**目标**列，两者一一对应：
+§2.1 是 path 驱动基线，不是发布支持全集。P10 按本次发布实际选型生成 path + Git driver × capability × H/D/F/W1/WN 矩阵；不把缺源码、缺服务或未选型的驱动默认为通过。能力取值按 §5.2/§5.3，不由验收表另起枚举。
 
-- 每一行是一个 path 驱动，行为固定不变（`postgres` 不会在后续新增或合并）。
-- 每一列是 §5.2 的一条能力 + `namespaceShape`，行为固定不变：能力集合只增不改，取值集合只按 §5.3 的规则演进。
-- 矩阵的填充规则固定：**已核实格由代码推出、待验证格必须走 P0、禁止猜测**。
-- 矩阵的变更规则固定：任何一格的改动只能发生在其所属批次的进出门槛通过之后，且必须附 D 层用例证据。
+#### 10.2.1 冻结选型
 
-因此 P10 读这张表时可以直接回答「某个能力在哪些驱动上可用、在哪些驱动上必须拒绝」——前者是 `supported`/`verified`/`inPlace` 的格，后者必须配 §7.2 的对应拒绝断言。
+从 `drivers-registry.json` 与 `scripts/resolve-drivers.mjs` 的实际解析结果取得选定 driverId、path/git 来源、版本和 DB entries。Git ref 必须解析为精确 commit SHA，冻结 host commit、edition、Driver API 版本、driver crate/features、UI SDK 版本与构建摘要。可移动 branch/tag 不能作为唯一复现依据；驱动子仓库有未提交修改时不计为可复现发布构建。
+
+矩阵按 driver 实现记录，并为其暴露的不同 dbType 分别跑适用方言路径；复用同 crate 不代表各服务器产品的事务、取消和上下文行为完全相同。path/Git 来源不改变契约门槛。
+
+#### 10.2.2 每个选定驱动的验证
+
+| 维度 | 必需验证与落点 |
+| --- | --- |
+| 注册与协议 | driver crate 内验证固定资源和能力描述；Host 验证发现、版本范围、缺失能力拒绝；未知高版本不得可执行 |
+| 会话/上下文 | 驱动 tests/E2E 验证 pinned identity、初始化与 observation、切换/替代、事务/句柄与清理 |
+| 取消与占用 | 驱动验证精确取消、控制连接及 cluster 子连接计数；Host 验证预算与效果投影 |
+| 三件套 | 对声明支持的比较/IR/DDL/批次恢复路径跑真实数据库；不支持路径须明确拒绝且无写入 |
+| 桌面与 Web | 共用 application 契约；W1 验证服务节点网络/凭据、浏览器结果与权限；WN 验证 owner 与节点能力匹配 |
+| SDK 与构建 | UI metadata/schema/Command 与 Rust 协议一致；在冻结选型下构建，codegen 产物不提交 |
+
+Git 驱动测试仍落在其独立仓库 `packages/drivers/<id>/` 的实际 crate/tests/ui/e2e 中；Host 不复制方言测试，也不假设所有外部 crate 命名为 `datazen-driver-<id>`。需要修改外部驱动时独立提交该仓库，再更新 registry 钉选版本；宿主提交不能代替外部提交。
+
+测试适配使用现有 `ci-private-drivers.md` 与独立驱动指南；程序可读取其合法测试配置，Agent 不读取或回显 `.env` 内容。没有仓库访问或 live 服务时记录未验证，不能编造支持事实。私有 repo URL、认证材料与数据内容不进入公开矩阵。
+
+#### 10.2.3 证据与发布判定
+
+每格保存 driver/host 精确版本、服务器产品及版本、能力声明、适用 CM 编号与层、运行入口、测试计数、退出码及限制。结果分为：verified、unsupportedVerified、notRun、failed；能力声明与验证结果分列。
+
+unsupportedVerified 要证明调用明确拒绝且没有目标副作用；notRun 仅表示未执行，不能转成 unsupported。failed 阻塞该能力发布；notRun 的能力不得列为已验证支持，发布时禁用或明确收窄支持范围。W1/WN 不能由 H fake 推断，真实驱动恢复不能由单元序列化测试推断。
+
+至少选一个冻结 SHA 的 Git driver 跑完整适用路径，并运行每个实际随发布分发的 driver。新增既有能力驱动的改动应限于该 driver、选型与 schema/UI 元数据；若需要 Host 数据库分支，先修公共能力契约，再验收扩展性。
 
 ### 10.3 阶段完成的判据
 
