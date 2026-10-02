@@ -83,7 +83,7 @@ impl FakeResourceProvider {
             reuse_policy: ReusePolicy::ResetBeforeReturn,
             initialization_requirements: vec!["capabilityProbe".to_owned()],
             connection_cost_policy: ConnectionCostPolicy::PerPhysicalConnection,
-            namespace_shape: crate::connection::types::NamespaceShape::database_and_schema(),
+            namespace_shape: crate::connection::types::schema_required_shape(),
             capabilities: self.capabilities(),
         }
     }
