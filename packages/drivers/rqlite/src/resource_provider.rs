@@ -36,11 +36,15 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use datazen_driver_api::capabilities::CapabilitySet;
+use datazen_driver_api::capabilities::{
+    Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
+    PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
+    TransactionObservation, TransactionSupport,
+};
 use datazen_driver_api::namespace::{NamespaceLevel, NamespaceLevelKind, NamespaceShape};
 use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
-use datazen_driver_api::DatabaseDriver;
+use datazen_driver_api::{BackupSupport, DataSupport, DatabaseDriver};
 
 /// Epoch counter handed to each provider this crate builds.
 ///
@@ -134,18 +138,29 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
     ))
 }
 
-/// What this crate can honestly claim about its own resources.
+/// What this crate can honestly claim about its own resources, cell by cell.
 ///
-/// `CapabilitySet::default()` is every field at its non-supporting value, and for
-/// rqlite that is the *true* answer, not a shrug:
+/// `CapabilitySet` is fail-closed: every enum's default is its *non*-supporting value,
+/// so a driver that declares nothing gates every dependent feature off. rqlite has
+/// exactly **one** cell it can prove from its own code — `data` — and eleven it
+/// deliberately leaves at the non-supporting answer. Every row below gives the
+/// declared value and the evidence behind it; a blank is the claim that the evidence
+/// is absent, not an oversight. Line numbers are `src/rqlite.rs` unless stated.
 ///
-/// * no fixed session — the driver keeps a `RwLock<HashMap<..>>` of HTTP clients, so a
-/// resource is a pooled lease (`SessionContinuity::Unknown`);
-/// * no context read-back, so `ContextObservation::Unsupported`;
-/// * no transaction observation, no verified reset-to-baseline, no savepoints and no
-/// per-operation DDL atomicity evidence — every one of those stays unknown;
-/// * **no precise cancel** — rqlite has no execution-handle protocol, so
-/// `PreciseCancelSupport` never leaves its default.
+/// | cell | declared | evidence |
+/// | --- | --- | --- |
+/// | `data` | `DataSupport::BufferedReadWrite` | **The one filled cell.** Read: `query` (:277) returns a materialized `QueryResult` built by `result_from_json` (:91-136). Write: `execute` (:348-372) posts to `/db/execute?level=strong` and returns `rows_affected`. *Not* streaming: `query_json` (:30-51) reads the whole body with `resp.text()` and parses it into a `serde_json::Value` before returning; `query_stream` (:311-337) awaits that same full body at :322 and only then replays the already-materialized `Vec` through `stream_decoded_rows` (:325). No row is emitted before the whole result set is in memory, so `streamingResults` does not hold and `StreamingReadWrite` would be a false claim. |
+/// | `backup` | `BackupSupport::Unknown` (blank) | This crate contains no backup or restore path — `backup` appears nowhere in `src/` but a test name. `ui/meta.ts:15` nevertheless sets `supportsBackup: true`, which only gates the frontend Backup window and is backed by no Rust here. `ArtifactOnly`/`ArtifactAndRestore` would repeat that unbacked claim in the contract; `Unsupported` would assert we probed a server capability this crate never touched. The contradiction is recorded here rather than papered over. |
+/// | `stateful_session` | `Availability::Unsupported` | The handle carries no session identity: the driver's entire state is `clients: RwLock<HashMap<String, (reqwest::Client, String)>>` (:11-12) — an HTTP client and a base URL under a `rqlite_<uuid>` pool id minted at `connect` (:179). Every statement is an independently constructed `POST {base}/db/query?level=strong` (:36-40); no session-establishing call is ever issued and no server-assigned session id is ever stored, so the driver can neither address nor reuse a server-side session across statements. That is the same architecture as mysql, which the corpus already rules `Unsupported` on these grounds (`packages/drivers/mysql/src/resource_capabilities.rs:74` — a client is not a session), so the architecture is *measured*, not unmeasured: `Unknown` would discard evidence the repository already holds. `SessionContinuity::Leased` describes the handle lease, not a server session. Pinned by `tests::a_described_resource_is_never_mistaken_for_a_fixed_reusable_session`. |
+/// | `namespace_switch` | `NamespaceSwitch::Unknown` (blank) | The module docs above justify refusing `change_context` with "rqlite's 'switch' is a reconnect", but the code does not back that sentence: the database name is never stored on the resource. `effective_database` (:58-65) resolves blank to `main` and `quote_schema` (:69-71) renders it as a per-statement qualifier used by `list_tables_sql`/`table_info_sql` (:74-89), while the resource is the base URL fixed at `connect` (:178-183), whose only mutation is `disconnect`'s `remove` (:191). So the driver can neither switch a live session in place nor show that a switch needs a replacement resource — the name rides along on each statement. `Unknown` keeps the gate shut; so do all three non-`InPlace` variants, and `switches_in_place` is true only for `InPlace`. |
+/// | `context_observation` | `ContextObservation::Unsupported` | Both the default and the measured answer: the crate contains no context read-back call, and the module docs record that `observe_session` reports every field unknown rather than back-filling the acquisition target. |
+/// | `transaction_observation` | `TransactionObservation::Unsupported` | Default and truthful. This driver issues no `BEGIN`/`COMMIT`/`ROLLBACK` — none appears anywhere in the crate — and mints no transaction handle; the resource port refuses commit and rollback because rqlite resolves transactions inside its own commands. |
+/// | `session_scoped_handles` | `SessionScopedHandleSupport::Unknown` (blank) | The only map the driver owns is `clients` (:12), whose values are `(reqwest::Client, String)`; there is no cursor, prepared-statement or transaction registry a session-scoped handle could key into. That is suggestive but not a measurement — nothing ever asked for such a handle — so unmeasured beats measured-absent. |
+/// | `reset_for_reuse` | `ResetForReuse::Unsupported` | Default and truthful. There is no reset path: `disconnect` (:190-193) removes the map entry and nothing else in the crate mutates `clients`, so the adapter has no verified way to return a used resource to a known baseline. |
+/// | `precise_cancel` | `PreciseCancelSupport::Unknown` | **Not the driver's cell to declare.** `LegacyResourceAdapter::new` overwrites `precise_cancel` from `DatabaseDriver::supports_query_execution_cancel()` (`packages/driver-api/src/resource_adapter.rs`), so any value written here is replaced before a caller can read it. rqlite inherits the trait default `false` and `cancel_query` answers `DriverError::Unsupported` (:393-399), so the adapter installs `Unknown` regardless. `Unknown` is written here because it is the truthful statement about a driver with no execution-handle protocol *and* the value the adapter will install, so the two views agree. |
+/// | `snapshots` | `SnapshotSupport::Unsupported` | Default and truthful. `query_json` asks for `level=strong` (:36), which buys a per-statement linearizable read — but the driver opens nothing server-side to hold it open: one statement in, one fully parsed body out, `Value` dropped at the end of the call. A `SnapshotSupport` variant must describe a snapshot a caller can pin across statements, and no such object exists here; `PerDatabase` would smuggle in a Raft-quorum claim the contract never asked about. |
+/// | `transactions` | `isolation_levels: []`, `savepoints: Unknown`, `max_open_transactions: None` (all blank) | An empty `isolation_levels` is a positive statement — "no level is confirmed" — the same way `DdlAtomicitySupport::atomicity_for` returns `Unknown` for an absent key. Nothing in the crate issues `BEGIN` or `SAVEPOINT`, so no level can be named, savepoint support has never been probed, and no bound on concurrently open transactions exists to state. |
+/// | `ddl_atomicity` | `by_operation` left empty (blank) | `RqliteDriver` does not override `DatabaseDriver::ddl_atomicity`, so the trait default `DdlAtomicity::Unknown` is the answer for every operation and an empty `by_operation` reports exactly that. `sync_family() == "sqlite"` (:145-147) is lineage, not evidence: it says nothing about how rqlite's Raft-replicated DDL behaves, so the map stays empty instead of borrowing SQLite's answer. |
 ///
 /// The value is also required to be byte-identical to what the adapter's own
 /// `CapabilityRegistry` reports, because `DatabaseDriverFactory::resource_capabilities`
@@ -154,21 +169,56 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// kill. `tests::factory_capabilities_match_the_provider` is the gate that keeps the
 /// two from drifting.
 pub(crate) fn capabilities() -> CapabilitySet {
-    CapabilitySet::default()
+    CapabilitySet {
+        // A handle is an HTTP client plus a base URL (:11-12) — it holds no
+        // session identity, every statement independently builds its own
+        // request (:36-40), and no server-assigned session id is ever stored.
+        // The corpus already rules this exact architecture `Unsupported` for
+        // mysql, so writing `Unknown` here would discard evidence the
+        // repository already holds.
+        stateful_session: Availability::Unsupported,
+
+        // The one provable data cell. Reads return rows and writes report
+        // `rows_affected`, but `query_json` parses the whole response body
+        // before `result_from_json` builds a `Vec`, and `query_stream` awaits
+        // that same body before replaying it — so the result set is fully
+        // materialized before any of it is returned and `streamingResults`
+        // does not hold. `StreamingReadWrite` would be a false claim here.
+        data: DataSupport::BufferedReadWrite,
+
+        // Blanks, each keeping the default that is also the honest answer.
+        // They are spelled out rather than hidden behind `..Default::default()`
+        // so that a later "fix" has to edit a value someone already argued for.
+        namespace_switch: NamespaceSwitch::Unknown, // the database is a per-statement qualifier, not resource state (:58-89)
+        context_observation: ContextObservation::Unsupported, // no read-back call exists in this crate
+        transaction_observation: TransactionObservation::Unsupported, // no BEGIN/COMMIT/ROLLBACK anywhere in the crate
+        session_scoped_handles: SessionScopedHandleSupport::Unknown, // no cursor/statement registry, but never probed either
+        reset_for_reuse: ResetForReuse::Unsupported, // disconnect only removes a map entry (:190-193)
+        // Overwritten downstream by the adapter; see the table for why `Unknown`
+        // is still the right thing to write here.
+        precise_cancel: PreciseCancelSupport::Unknown,
+        snapshots: SnapshotSupport::Unsupported, // `level=strong` (:36) is per-statement, not a pinnable snapshot
+        transactions: TransactionSupport::default(), // empty isolation levels, unknown savepoints, no bound
+        ddl_atomicity: DdlAtomicitySupport::default(), // no per-operation evidence; the trait default answers `Unknown`
+        backup: BackupSupport::Unknown, // no backup code here at all, despite `ui/meta.ts:15`
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use datazen_driver_api::capabilities::SessionContinuity;
+    use datazen_driver_api::capabilities::{
+        CapabilitySet, PreciseCancelSupport, SessionContinuity,
+    };
     use datazen_driver_api::namespace::NamespaceTarget;
     use datazen_driver_api::require_resource_provider;
     use datazen_driver_api::resource::{
         DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourcePurpose,
     };
-    use datazen_driver_api::{ConnectionConfig, DatabaseDriverFactory};
+    use datazen_driver_api::{BackupSupport, ConnectionConfig, DataSupport, DatabaseDriverFactory};
 
+    use crate::resource_provider::capabilities;
     use crate::{ConnectionHandle, DatabaseDriver, DriverError, RqliteDriver, RqliteFactory};
 
     fn factory() -> RqliteFactory {
@@ -207,9 +257,16 @@ mod tests {
             registry.capabilities,
             "the factory's capability view must not be rosier than the provider's own registry"
         );
+        // This assertion used to read `!declares_anything()`: the placeholder state
+        // where the whole set was `CapabilitySet::default()`. `declares_anything()`
+        // is literally `*self != Self::default()`, so keeping the old direction
+        // would forbid the one cell rqlite can prove. It is inverted, not
+        // removed — the same gate, now pointed at the real state, so the set can
+        // never silently collapse back to all-defaults without a red test.
         assert!(
-            !factory().resource_capabilities().declares_anything(),
-            "rqlite has no migrated session contract, so it must claim nothing"
+            factory().resource_capabilities().declares_anything(),
+            "rqlite declares the one cell it can prove (buffered read/write); \
+             an all-default set would mean the declaration was dropped"
         );
         assert!(
             !factory()
@@ -221,8 +278,53 @@ mod tests {
         assert!(registry.require_precise_cancel().is_err());
         assert_eq!(
             factory().resource_capabilities().stateful_session,
-            datazen_driver_api::capabilities::Availability::Unknown,
-            "a pool of HTTP clients is not a fixed session"
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "a handle is an HTTP client plus a base URL, never a server-side session"
+        );
+    }
+
+    #[test]
+    fn the_declaration_claims_only_what_the_crate_backs() {
+        let declared = capabilities();
+
+        assert_ne!(
+            declared,
+            CapabilitySet::default(),
+            "the declaration must not collapse back to every cell at its default"
+        );
+        assert_eq!(
+            declared.stateful_session,
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "the handle is an HTTP client plus a base URL, so no server-side session can be \
+             addressed across statements — the same architecture the corpus rules Unsupported \
+             for mysql"
+        );
+        assert_eq!(
+            declared.data,
+            DataSupport::BufferedReadWrite,
+            "reads and writes are real, but query_json parses the whole body before any \
+             row is emitted, so streamingResults does not hold"
+        );
+        assert!(
+            !declared.data.enables_streaming_results(),
+            "declaring BufferedReadWrite while streaming results were enabled would be \
+             the one claim this crate cannot back"
+        );
+        assert_eq!(
+            declared.backup,
+            BackupSupport::Unknown,
+            "this crate has no backup code at all, so it must not claim an artifact \
+             or a restore just because ui/meta.ts sets supportsBackup"
+        );
+        assert!(
+            !declared.namespace_switch.switches_in_place(),
+            "the database is a per-statement SQL qualifier, not state on the resource"
+        );
+        assert_eq!(
+            declared.precise_cancel,
+            PreciseCancelSupport::Unknown,
+            "no execution-handle protocol exists; the adapter overwrites this cell with \
+             the same value, which is what keeps the two views equal"
         );
     }
 
