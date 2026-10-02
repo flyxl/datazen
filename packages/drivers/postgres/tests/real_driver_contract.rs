@@ -45,8 +45,13 @@ const CONTRACT: Contract = Contract {
     // addresses one `pg_cancel_backend` PID.
     precise_cancel: Capability::Supported,
     transactions: Capability::Supported,
-    // Nothing in the contract hands a closed database back to the pool.
-    reset_for_reuse: Capability::Supported,
+    // Nothing in the contract hands a closed database back to the pool. This
+    // binding therefore mirrors the crate's own production declaration
+    // (`resource/capabilities.rs`: `ResetForReuse::Unsupported`) instead of
+    // contradicting it. `DatabaseDriver` exposes no reset/release-for-reuse
+    // method, so a `Supported` here would be unenforceable — nothing at runtime
+    // could observe the value — and would report the dimension as verified.
+    reset_for_reuse: Capability::Unsupported,
     dialect: Dialect {
         marker: "dz_fixture_marker",
         // `{table}` is filled in per live case: every live case in this crate

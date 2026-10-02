@@ -41,7 +41,13 @@ const CONTRACT: Contract = Contract {
     read_snapshots: Capability::Unsupported,
     precise_cancel: Capability::Supported,
     transactions: Capability::Supported,
-    reset_for_reuse: Capability::Supported,
+    // The crate's own production declaration is `ResetForReuse::Unsupported`
+    // (`resource_capabilities.rs`), and `DatabaseDriver` exposes no
+    // reset/release-for-reuse method. A `Supported` here contradicted all 15
+    // driver declarations while being unenforceable at runtime: flipping it to
+    // `Unsupported` changed no test outcome, because the value is only ever
+    // compared against the refusal it was handed.
+    reset_for_reuse: Capability::Unsupported,
     dialect: Dialect {
         marker: "dz_fixture_marker",
         // `{table}` is filled in per live case: every live case in this crate runs

@@ -290,6 +290,14 @@ pub struct PartialObligation {
     pub reason: &'static str,
 }
 
+/// One `Contract` capability field that has no `DatabaseDriver` method behind it.
+pub struct CapabilityWithoutTraitSurface {
+    /// The `Contract` capability field name.
+    pub capability: &'static str,
+    /// Why the binding cannot be enforced at runtime, in plain words.
+    pub reason: &'static str,
+}
+
 /// The `Contract` capability fields that are **declarations with no
 /// `DatabaseDriver` method behind them**.
 ///
@@ -300,7 +308,19 @@ pub struct PartialObligation {
 /// both sides — which is what stops `PARTIAL_OBLIGATIONS` from being emptied to
 /// make a claim disappear, the way a guarded `eprintln!` was silenced by a
 /// condition that never fired.
-pub const CAPABILITIES_WITHOUT_TRAIT_SURFACE: &[&str] = &["reset_for_reuse"];
+///
+/// Listing a capability here is not a fix: it is the acknowledgement that the
+/// declaration is unenforceable, so it may no longer be counted as verified.
+pub const CAPABILITIES_WITHOUT_TRAIT_SURFACE: &[CapabilityWithoutTraitSurface] =
+    &[CapabilityWithoutTraitSurface {
+        capability: "reset_for_reuse",
+        reason: "`DatabaseDriver` exposes no reset/release-for-reuse method. Flipping the \
+                  binding to `Unsupported` left every contract outcome byte-identical and \
+                  EXIT=0, while a control probe asserting the same field failed under that \
+                  mutation (EXIT=101): the value provably reaches runtime, but no branch \
+                  consumes it. All 15 driver crates declare `ResetForReuse::Unsupported` in \
+                  production, so a `Supported` binding could only ever have been false.",
+    }];
 
 /// Every half-asserted dimension, whether or not its live test ever ran.
 pub const PARTIAL_OBLIGATIONS: &[PartialObligation] = &[PartialObligation {
@@ -566,21 +586,24 @@ fn partial_obligations_are_never_reported_as_passed() {
 
     // The two lists must agree in both directions, one row per untestable field.
     for capability in CAPABILITIES_WITHOUT_TRAIT_SURFACE {
+        let name = capability.capability;
         let owners: Vec<&str> = PARTIAL_OBLIGATIONS
             .iter()
-            .filter(|o| o.capability == *capability)
+            .filter(|o| o.capability == name)
             .map(|o| o.dimension)
             .collect();
         assert_eq!(
             owners.len(),
             1,
-            "{capability} is declared with no testable surface, so exactly one dimension must \
+            "{name} is declared with no testable surface, so exactly one dimension must \
              carry the obligation; found {owners:?}"
         );
     }
     for o in PARTIAL_OBLIGATIONS {
         assert!(
-            CAPABILITIES_WITHOUT_TRAIT_SURFACE.contains(&o.capability),
+            CAPABILITIES_WITHOUT_TRAIT_SURFACE
+                .iter()
+                .any(|c| c.capability == o.capability),
             "{} reports an obligation against `{}`, which is not listed as lacking a testable \
              surface — either the list is stale or the note is invented",
             o.dimension,
