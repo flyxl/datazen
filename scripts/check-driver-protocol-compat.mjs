@@ -55,6 +55,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { COMPAT_MATRIX } from './lib/compatMatrix.mjs';
+import { detectSourceBreak } from './lib/sourceBreak.mjs';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const LOG_PREFIX = '[check-driver-protocol-compat]';
 
@@ -196,57 +199,11 @@ export const CONTRACT_RULES = Object.freeze([
 /**
  * The reconciliation matrix, stated as data.
  *
- * `requires` names the version numbers that must have gone *up* relative to the
- * base when a change of `class` lands inside a governed span.
- *
- * @type {Readonly<{
- *   protocol: string,
- *   minProtocol: string,
- *   crateVersion: string,
- *   classes: Readonly<Record<'breaking' | 'additive' | 'cosmetic', { requires: string[], rationale: string }>>,
- * }>}
+ * Re-exported from `lib/` — the matrix and the gate that consumes it are one
+ * subject with two files, and this module is where every gate and test has
+ * always imported it from, so the import path is deliberately unchanged.
  */
-export const COMPAT_MATRIX = Object.freeze({
-  protocol: 'PROTOCOL_VERSION (packages/driver-api/src/lib.rs)',
-  minProtocol: 'MIN_PROTOCOL_VERSION (packages/driver-api/src/lib.rs)',
-  crateVersion: 'version (packages/driver-api/Cargo.toml)',
-  // The rule table below is not invented here: it is the mechanical form of
-  // `docs/architecture/platform/driver-capability-migration.md` §5.3
-  // 「哪些改动是 breaking」, whose stated decision principle is 「老驱动在新宿主上
-  // 是否仍能安全运行」. That table's six rows map onto the three classes below
-  // as follows.
-  //
-  //   §5.3 新增 trait 方法且带 fail-closed 默认体   -> additive
-  //   §5.3 新增 trait 方法没有默认体 / 改 DTO 字段必填性 -> breaking
-  //   §5.3 改能力枚举取值或语义                       -> breaking
-  //   §5.3 放宽已声明 unsupported 的行为              -> cosmetic (no bump)
-  //   §5.3 收紧已声明 supported 的行为                 -> breaking
-  //
-  // §5.3's 「升 MIN + 升 PROTOCOL」 is encoded as a required `PROTOCOL_VERSION`
-  // bump plus the standing `min-protocol-never-lowered` invariant, not as a
-  // required MIN bump: §5.1 records `MIN = 1` against `PROTOCOL = 4` as a
-  // deliberate surviving window, and §5.4's own step 1 is the PROTOCOL bump. A
-  // rule that demanded a MIN bump on every breaking change would have failed
-  // the crate's own 1 -> 2 -> 3 -> 4 history.
-  sourceDoc: 'docs/architecture/platform/driver-capability-migration.md §5.3, §5.4',
-  classes: Object.freeze({
-    breaking: Object.freeze({
-      requires: ['protocol'],
-      rationale:
-        'A removed or altered line inside a governed span changes what a driver compiled against the old crate must send or expect; no [MIN_PROTOCOL_VERSION, PROTOCOL_VERSION] window expresses that, so the protocol generation must move (migration doc §5.4 step 1).',
-    }),
-    additive: Object.freeze({
-      requires: ['crateVersion'],
-      rationale:
-        'A new struct field, enum variant or defaulted trait method leaves existing implementors compiling and declaring nothing new, so the crate moves without the protocol moving (migration doc §5.3 row 1).',
-    }),
-    cosmetic: Object.freeze({
-      requires: [],
-      rationale:
-        'Comment-only and whitespace-only edits carry no contract meaning and move no version number; §5.3 row 5 (放宽已声明 unsupported 的行为) is the runtime counterpart.',
-    }),
-  }),
-});
+export { COMPAT_MATRIX } from './lib/compatMatrix.mjs';
 
 /** @type {Readonly<Record<string, readonly string[]>>} */
 export const CLASS_REQUIRES = Object.freeze(
@@ -574,6 +531,19 @@ export function classifyContractChange(baseSource, newSource, rule, records) {
     };
   }
   if (addedMeaningful > 0) {
+    // An addition can still be a break: `#[non_exhaustive]` shows up as one
+    // added line, so without this the ladder below would call it `additive`
+    // and tell out-of-tree drivers they are unaffected. Checked after the
+    // removal branches, because a removal is a break either way.
+    const sourceBreak = detectSourceBreak(meaningfulAdditions, rule);
+    if (sourceBreak) {
+      return {
+        id: rule.id,
+        cls: 'source-breaking',
+        reason: `${rule.id}: ${sourceBreak.attributes.join(', ')} added to ${rule.anchor} — ${sourceBreak.effect}`,
+        sourceBreak,
+      };
+    }
     return {
       id: rule.id,
       cls: 'additive',
@@ -730,6 +700,16 @@ export function evaluate(options = {}) {
       violations.push({
         code: 'additive-change-requires-crate-bump',
         message: `${LOG_PREFIX} ${rule.file}: ${finding.reason}. Adding to a governed contract must move ${COMPAT_MATRIX.crateVersion} (was ${before.crateVersion ?? '?'}, now ${after.crateVersion ?? '?'}). ${rule.why}`,
+      });
+    }
+    // A source break fires this one unconditionally — unlike the two above,
+    // there is no "already satisfied" state to latch onto. Raising the crate
+    // version does not tell an out-of-tree author what to type, and nothing
+    // else in this checker will, so the recipe is the violation.
+    if (finding.sourceBreak) {
+      violations.push({
+        code: 'source-break-requires-out-of-tree-migration',
+        message: `${LOG_PREFIX} ${rule.file}: ${finding.reason}.\n${finding.sourceBreak.migration}\n${rule.why}`,
       });
     }
   }

@@ -333,6 +333,85 @@ describe('classification — an additive change is additive, not breaking', () =
   });
 });
 
+describe('classification — a source break is neither additive nor breaking', () => {
+  // A doc line above the struct, so the attribute lands where it really lands
+  // in `capabilities.rs`: above the span's first line but inside the old span,
+  // because inserting it shifts every line below down by one.
+  const BASE_STRUCT = '/// Demo docs.\npub struct Demo {\n    pub a: u32,\n}\n';
+  const ENUM_RULE = { id: 'demo', file: 'x.rs', anchor: 'pub enum Demo', kind: 'enum' } as const;
+
+  it('judges #[non_exhaustive] a source break, not an additive change', () => {
+    const after = '/// Demo docs.\n#[non_exhaustive]\npub struct Demo {\n    pub a: u32,\n}\n';
+    const finding = classifyViaDiff(STRUCT_RULE, BASE_STRUCT, after);
+    // Not `additive`: that class exists to mean "existing implementors keep
+    // compiling and declare nothing new", and this is the one attribute that
+    // stops them compiling. Reporting it as additive is what let the change
+    // through in the first place.
+    expect(finding.cls).toBe('source-breaking');
+    expect(finding.cls).not.toBe('additive');
+    // Not `breaking` either: `breaking` obliges PROTOCOL_VERSION on the ground
+    // that no [MIN, PROTOCOL] window expresses the change. Nothing on the wire
+    // changed, so that bump would advertise a break no host can observe.
+    expect(CLASS_REQUIRES['source-breaking']).toContain('crateVersion');
+    expect(CLASS_REQUIRES['source-breaking']).not.toContain('protocol');
+  });
+
+  it('carries the migration recipe, and the recipe must not lie about ..base', () => {
+    const after = '/// Demo docs.\n#[non_exhaustive]\npub struct Demo {\n    pub a: u32,\n}\n';
+    const note = classifyViaDiff(STRUCT_RULE, BASE_STRUCT, after).sourceBreak?.migration ?? '';
+    // The obvious one-line patch does not compile: `#[non_exhaustive]` rejects
+    // the functional-update form too (rustc E0639), so `..Default::default()`
+    // is not a migration. A note that offered it would send every out-of-tree
+    // author into a second failure.
+    expect(note).toContain('E0639');
+    expect(note).toMatch(/default\(\).*explicit\s+assignment per field/s);
+    expect(note).not.toMatch(/add \.\.Default::default\(\) to keep/i);
+  });
+
+  it('does not mistake a serde attribute for a source break', () => {
+    const after =
+      '/// Demo docs.\n#[serde(rename_all = "camelCase")]\npub struct Demo {\n    pub a: u32,\n}\n';
+    const finding = classifyViaDiff(STRUCT_RULE, BASE_STRUCT, after);
+    // A serde attribute changes what goes on the wire, not what compiles. It
+    // is deliberately absent from the source-break table, so it keeps exactly
+    // the verdict it had before this class existed.
+    expect(finding.cls).not.toBe('source-breaking');
+    expect(finding.cls).toBe('additive');
+    expect(finding.sourceBreak).toBeUndefined();
+  });
+
+  it('still judges a removed field breaking, not source-breaking', () => {
+    const before = '/// Demo docs.\npub struct Demo {\n    pub a: u32,\n    pub b: u32,\n}\n';
+    const after = '/// Demo docs.\npub struct Demo {\n    pub a: u32,\n}\n';
+    const finding = classifyViaDiff(STRUCT_RULE, before, after);
+    // The pre-existing verdict must not regress: a removal is a wire break
+    // whatever else it is, and the new branch sits below the removal ones.
+    expect(finding.cls).toBe('breaking');
+    expect(finding.sourceBreak).toBeUndefined();
+  });
+
+  it('does not fire when a real code line merely mentions the attribute', () => {
+    const after =
+      '/// Demo docs.\npub struct Demo {\n    pub a: u32,\n' +
+      '    pub b: u32, // TODO: drop once #[non_exhaustive] lands\n}\n';
+    // A genuine *addition* — rewriting `pub a` in place would be a removal
+    // instead, and would never reach this table. Whole-line patterns, not
+    // substring ones: a comment-only line is already dropped upstream by
+    // `isCosmeticLine`, but this trailing comment rides in on a line that
+    // really does declare a field, so a substring match would gate on the
+    // TODO and report an ordinary field addition as a source break.
+    expect(classifyViaDiff(STRUCT_RULE, BASE_STRUCT, after).cls).toBe('additive');
+  });
+
+  it('leaves an enum alone, because there it restricts matching, not building', () => {
+    const base = 'pub enum Demo {\n    One,\n}\n';
+    const after = '#[non_exhaustive]\npub enum Demo {\n    One,\n}\n';
+    // On an enum the remedy is a wildcard arm, not `default()` plus
+    // assignments, so folding it into the struct table would misdescribe it.
+    expect(classifyViaDiff(ENUM_RULE, base, after).cls).not.toBe('source-breaking');
+  });
+});
+
 describe('classification — cosmetics and scope', () => {
   it('ignores a doc-comment rewrite inside a governed item', () => {
     const after = BASE_TRAIT.replace('    /// Existing doc.', '    /// Rewritten doc.');
