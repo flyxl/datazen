@@ -237,6 +237,13 @@ jobs:
       - name: Platform crate dependency boundaries (F-01..F-07)
         run: pnpm test:platform-arch
 
+      # 计划 :99 的「不同 driver 不共享实现库类型」。F-01 明确放行 driver→driver
+      # 边（allowedLayers 含 'driver'），所以上面那道门禁按设计看不见本条；这里补上，
+      # 同样不带手写名单——driver 集合由各 crate 源码里是否实现 DatabaseDriver 契约
+      # 判定得出，跨 driver 的 Cargo 边 / 源码 use / #[path] 收录三条通道各自独立判定。
+      - name: Driver type isolation (T-01..T-03)
+        run: pnpm test:driver-types
+
       # 计划 :269 的 datazen-runtime CI 空缺：core crate 及其后继的 Rust 单测
       # 在此统一执行。crate 集合同样由脚本发现，新增 core crate 无需改 CI。
       - name: Rust unit tests (platform core crates)
