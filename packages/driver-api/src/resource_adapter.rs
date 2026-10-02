@@ -45,7 +45,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::async_trait;
 use crate::capabilities::{
-    CapabilityRegistry, CapabilitySnapshot, PreciseCancelSupport, SessionContinuity,
+    CapabilityRegistry, CapabilitySet, CapabilitySnapshot, PreciseCancelSupport, SessionContinuity,
 };
 use crate::namespace::{NamespaceShape, NamespaceTarget, TargetRequirements};
 use crate::resource::{
@@ -104,16 +104,26 @@ impl LegacyResourceAdapter {
     /// this adapter issues is bound to it, and a handle minted under an older
     /// epoch is rejected on use.
     ///
-    /// The only capability the adapter ever declares is precise cancel, and
-    /// only when the driver itself says it implements the exact
-    /// execution-handle protocol. Everything else stays at its non-supporting
-    /// default, so `CapabilityRegistry::require_*` rejects it by name.
+    /// `capabilities` is the driver's own declaration, and it is the caller's
+    /// job to make it honest: every cell it leaves alone keeps its
+    /// non-supporting default, so `CapabilityRegistry::require_*` rejects that
+    /// capability by name. A driver that has not studied the contract passes
+    /// [`CapabilitySet::default`] and declares nothing.
+    ///
+    /// [`Self::new`] then overwrites exactly one of those cells —
+    /// `precise_cancel` — because that is the one the adapter can settle on
+    /// the driver's behalf: it is `Supported` only when the driver itself says
+    /// it implements the exact execution-handle protocol, and `Unknown`
+    /// otherwise. A caller cannot lift that cell by declaring it, which is the
+    /// point: a declaration is a claim, and this is the one claim in the set
+    /// the adapter refuses to take on faith.
     pub fn new(
         driver: Arc<dyn DatabaseDriver>,
         driver_id: impl Into<String>,
         driver_version: impl Into<String>,
         runtime_epoch: u64,
         namespace_shape: NamespaceShape,
+        capabilities: CapabilitySet,
     ) -> Self {
         let driver_id = driver_id.into();
         let mut registry = CapabilityRegistry::new(
@@ -125,6 +135,7 @@ impl LegacyResourceAdapter {
                 0,
             ),
         );
+        registry.capabilities = capabilities;
         registry.capabilities.precise_cancel = if driver.supports_query_execution_cancel() {
             PreciseCancelSupport::Supported
         } else {

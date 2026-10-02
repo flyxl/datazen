@@ -51,40 +51,46 @@ pub enum ApiErrorCode {
 }
 
 impl ApiErrorCode {
-    /// 稳定的线上字面量。协议字面量只在本处声明一次，其余位置一律引用本枚举。
+    /// 人类可读 / 日志形态的错误码。
+    ///
+    /// **线上字面量由 `#[serde(rename_all = "camelCase")]` 派生，不是手写的**；
+    /// 本函数唯一的用途是让 `Display` 的输出与序列化结果逐字一致，
+    /// 使得「日志里看到的码」与「线上 JSON 的 `code`」是同一个字符串。
+    ///
+    /// `wire_literal_matches_as_str` 对全部变体逐个比对二者，任何一侧漂移都会让该测试失败。
     pub const fn as_str(self) -> &'static str {
         match self {
-            ApiErrorCode::InvalidArgument => "InvalidArgument",
-            ApiErrorCode::TargetRequired => "TargetRequired",
-            ApiErrorCode::TargetConflict => "TargetConflict",
-            ApiErrorCode::TargetUnsupported => "TargetUnsupported",
-            ApiErrorCode::SessionNotFound => "SessionNotFound",
-            ApiErrorCode::SessionLost => "SessionLost",
-            ApiErrorCode::RuntimeEpochMismatch => "RuntimeEpochMismatch",
-            ApiErrorCode::ContextConflict => "ContextConflict",
-            ApiErrorCode::PermissionDenied => "PermissionDenied",
-            ApiErrorCode::ResourceBusy => "ResourceBusy",
-            ApiErrorCode::QueueFull => "QueueFull",
-            ApiErrorCode::TransactionResolutionRequired => "TransactionResolutionRequired",
-            ApiErrorCode::CapabilityUnsupported => "CapabilityUnsupported",
-            ApiErrorCode::UnsupportedPlan => "UnsupportedPlan",
-            ApiErrorCode::EndpointOverlap => "EndpointOverlap",
-            ApiErrorCode::SessionQuotaExceeded => "SessionQuotaExceeded",
-            ApiErrorCode::IdempotencyExpired => "IdempotencyExpired",
-            ApiErrorCode::RollbackFailed => "RollbackFailed",
-            ApiErrorCode::CleanupFailed => "CleanupFailed",
-            ApiErrorCode::OutcomeUnknown => "OutcomeUnknown",
-            ApiErrorCode::PlanStale => "PlanStale",
-            ApiErrorCode::SourceChanged => "SourceChanged",
-            ApiErrorCode::TargetConflictRows => "TargetConflictRows",
-            ApiErrorCode::IdempotencyConflict => "IdempotencyConflict",
-            ApiErrorCode::Unauthenticated => "Unauthenticated",
-            ApiErrorCode::NotFound => "NotFound",
-            ApiErrorCode::PayloadTooLarge => "PayloadTooLarge",
-            ApiErrorCode::QuotaExceeded => "QuotaExceeded",
-            ApiErrorCode::RateLimited => "RateLimited",
-            ApiErrorCode::ServiceUnavailable => "ServiceUnavailable",
-            ApiErrorCode::ConfigRevisionMismatch => "ConfigRevisionMismatch",
+            ApiErrorCode::InvalidArgument => "invalidArgument",
+            ApiErrorCode::TargetRequired => "targetRequired",
+            ApiErrorCode::TargetConflict => "targetConflict",
+            ApiErrorCode::TargetUnsupported => "targetUnsupported",
+            ApiErrorCode::SessionNotFound => "sessionNotFound",
+            ApiErrorCode::SessionLost => "sessionLost",
+            ApiErrorCode::RuntimeEpochMismatch => "runtimeEpochMismatch",
+            ApiErrorCode::ContextConflict => "contextConflict",
+            ApiErrorCode::PermissionDenied => "permissionDenied",
+            ApiErrorCode::ResourceBusy => "resourceBusy",
+            ApiErrorCode::QueueFull => "queueFull",
+            ApiErrorCode::TransactionResolutionRequired => "transactionResolutionRequired",
+            ApiErrorCode::CapabilityUnsupported => "capabilityUnsupported",
+            ApiErrorCode::UnsupportedPlan => "unsupportedPlan",
+            ApiErrorCode::EndpointOverlap => "endpointOverlap",
+            ApiErrorCode::SessionQuotaExceeded => "sessionQuotaExceeded",
+            ApiErrorCode::IdempotencyExpired => "idempotencyExpired",
+            ApiErrorCode::RollbackFailed => "rollbackFailed",
+            ApiErrorCode::CleanupFailed => "cleanupFailed",
+            ApiErrorCode::OutcomeUnknown => "outcomeUnknown",
+            ApiErrorCode::PlanStale => "planStale",
+            ApiErrorCode::SourceChanged => "sourceChanged",
+            ApiErrorCode::TargetConflictRows => "targetConflictRows",
+            ApiErrorCode::IdempotencyConflict => "idempotencyConflict",
+            ApiErrorCode::Unauthenticated => "unauthenticated",
+            ApiErrorCode::NotFound => "notFound",
+            ApiErrorCode::PayloadTooLarge => "payloadTooLarge",
+            ApiErrorCode::QuotaExceeded => "quotaExceeded",
+            ApiErrorCode::RateLimited => "rateLimited",
+            ApiErrorCode::ServiceUnavailable => "serviceUnavailable",
+            ApiErrorCode::ConfigRevisionMismatch => "configRevisionMismatch",
         }
     }
 
@@ -287,6 +293,80 @@ mod tests {
         assert_eq!(
             ProviderError::UnsupportedPlan.api_code(),
             Some(ApiErrorCode::UnsupportedPlan)
+        );
+    }
+
+    #[test]
+    fn wire_literal_matches_as_str() {
+        // §13 的 `code` 列是 camelCase。这里不手写 31 个期望值，而是把 `as_str()`
+        // 与 serde 实际派生的线上字面量逐字比对：任何一侧漂移都会让本测试失败
+        // （历史上 `as_str()` 曾返回 PascalCase，与 `#[serde(rename_all)]` 派生的
+        // 结果不一致，日志里的码与线上 JSON 的 `code` 会对不上）。
+        let all = [
+            ApiErrorCode::InvalidArgument,
+            ApiErrorCode::TargetRequired,
+            ApiErrorCode::TargetConflict,
+            ApiErrorCode::TargetUnsupported,
+            ApiErrorCode::SessionNotFound,
+            ApiErrorCode::SessionLost,
+            ApiErrorCode::RuntimeEpochMismatch,
+            ApiErrorCode::ContextConflict,
+            ApiErrorCode::PermissionDenied,
+            ApiErrorCode::ResourceBusy,
+            ApiErrorCode::QueueFull,
+            ApiErrorCode::TransactionResolutionRequired,
+            ApiErrorCode::CapabilityUnsupported,
+            ApiErrorCode::UnsupportedPlan,
+            ApiErrorCode::EndpointOverlap,
+            ApiErrorCode::SessionQuotaExceeded,
+            ApiErrorCode::IdempotencyExpired,
+            ApiErrorCode::RollbackFailed,
+            ApiErrorCode::CleanupFailed,
+            ApiErrorCode::OutcomeUnknown,
+            ApiErrorCode::PlanStale,
+            ApiErrorCode::SourceChanged,
+            ApiErrorCode::TargetConflictRows,
+            ApiErrorCode::IdempotencyConflict,
+            ApiErrorCode::Unauthenticated,
+            ApiErrorCode::NotFound,
+            ApiErrorCode::PayloadTooLarge,
+            ApiErrorCode::QuotaExceeded,
+            ApiErrorCode::RateLimited,
+            ApiErrorCode::ServiceUnavailable,
+            ApiErrorCode::ConfigRevisionMismatch,
+        ];
+        assert_eq!(all.len(), 31, "§13 的 ApiError.code 表是平铺的 31 个码");
+        for code in all {
+            let wire = serde_json::to_value(code).expect("ApiErrorCode 必须可序列化");
+            assert_eq!(
+                wire.as_str(),
+                Some(code.as_str()),
+                "{code:?} 的 Display 字面量与线上字面量不一致"
+            );
+        }
+
+        // 绝对锚点：上面对比能发现「一侧相对另一侧漂移」，但发现不了两者一起漂移
+        // （例如有人把 `rename_all` 改掉）。因此逐字钉住 §13 表中的代表性字面量。
+        assert_eq!(ApiErrorCode::InvalidArgument.as_str(), "invalidArgument");
+        assert_eq!(
+            ApiErrorCode::TransactionResolutionRequired.as_str(),
+            "transactionResolutionRequired"
+        );
+        assert_eq!(
+            ApiErrorCode::TargetConflictRows.as_str(),
+            "targetConflictRows"
+        );
+        assert_eq!(
+            ApiErrorCode::IdempotencyExpired.as_str(),
+            "idempotencyExpired"
+        );
+        assert_eq!(
+            ApiErrorCode::ServiceUnavailable.as_str(),
+            "serviceUnavailable"
+        );
+        assert_eq!(
+            ApiErrorCode::ConfigRevisionMismatch.as_str(),
+            "configRevisionMismatch"
         );
     }
 }

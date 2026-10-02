@@ -241,7 +241,14 @@ fn shape() -> NamespaceShape {
 }
 
 fn adapter(driver: LegacyFake) -> LegacyResourceAdapter {
-    LegacyResourceAdapter::new(Arc::new(driver), "legacy-fake", "0.0.1", 7, shape())
+    LegacyResourceAdapter::new(
+        Arc::new(driver),
+        "legacy-fake",
+        "0.0.1",
+        7,
+        shape(),
+        CapabilitySet::default(),
+    )
 }
 
 fn acquire_request() -> AcquireResourceRequest {
@@ -578,6 +585,7 @@ async fn a_namespace_level_this_database_lacks_is_rejected_before_connecting() {
         "0.0.1",
         7,
         NamespaceShape::default(),
+        CapabilitySet::default(),
     );
     let budget = Arc::new(CountingBudget::default());
     let err = provider

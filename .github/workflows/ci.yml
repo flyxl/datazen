@@ -184,6 +184,18 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          # dtolnay/rust-toolchain 固定跑
+          #   rustup toolchain install stable --profile minimal
+          # 而 `minimal` 只含 rustc / rust-std / cargo。rustfmt 属于 `default`
+          # profile（default = minimal + rust-docs + rustfmt + clippy），不在
+          # minimal 里，所以不写这一行时 rustfmt 不由本 workflow 保证存在。
+          # 现状之所以还能用，是 ubuntu-latest 镜像恰好预装了 rustfmt 1.9.0，
+          # 而 rustup 不会卸载已装 toolchain 上 profile 之外的 component ——
+          # 那是镜像的事实，不是本文件的契约（`ubuntu-latest` 已公告将切到
+          # Ubuntu 26.04）。显式声明的代价是「已存在时一次 no-op」，收益是下面
+          # 的 fmt 硬门禁从「碰巧能跑」变成「保证能跑」。
+          components: rustfmt
 
       - name: Install Linux system deps (Tauri / webkit2gtk)
         run: |
@@ -207,6 +219,30 @@ jobs:
 
       - name: Resolve drivers (basic)
         run: node scripts/resolve-drivers.mjs --drivers=basic
+
+      # HARD GATE — Rust 格式。此前 CI 从不检查。
+      #
+      # `.husky/pre-commit` 里有 `cargo fmt --all`，但它是「改写」而不是「失败」，
+      # 且 `git commit --no-verify` 可绕过。所以在加这一步之前，rustfmt 规则在 CI
+      # 上没有任何约束力：任何未格式化的 .rs 都能过一个全绿的 CI。rust job 原有
+      # 16 个 step，全是 test / 守卫 / codegen，没有一个跑 fmt。
+      #
+      # 位置是被迫的，不是排版偏好。`cargo fmt --all` 要加载 Cargo workspace，
+      # 而 src-tauri/src/lib.rs 声明了 `mod driver_init`，其文件是 gitignored 的
+      # codegen，只有 resolve-drivers.mjs 会生成。放在那一步之前，本门禁连加载
+      # 都做不到（实测，非推断）：
+      #   Error writing files: failed to resolve mod `driver_init`:
+      #   src-tauri/src/driver_init.rs does not exist          → EXIT=1
+      # 所以本步必须排在 Resolve drivers 之后。
+      #
+      # 基线实测（对 `git archive HEAD` 展开的 dcc1d9da2 纯净树，`--drivers=basic`，
+      # 与 CI 同一注入序列）：`cargo fmt --all -- --check` EXIT=0，覆盖 801 个
+      # .rs（800 个受版本控制的 + 生成的 driver_init.rs）。即本门禁在当前 main
+      # 上是绿的，不会让首次运行变红。
+      #
+      # 不加 continue-on-error / allowlist / `|| true`：脏树必须 fail。
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
 
       # driver-api 与四个 path 驱动均不依赖 --features / 注入产物，合并为一次
       # cargo 调用，省掉一次 workspace 加载与锁获取。
