@@ -106,6 +106,7 @@
     "test:ci-docs": "node scripts/check-ci-docs-consistency.mjs",
     "test:layers": "node scripts/check-module-layers.mjs",
     "test:boundaries": "node scripts/check-driver-import-boundaries.mjs",
+    "test:driver-types": "node scripts/check-driver-type-isolation.mjs",
     "test:platform-arch": "node scripts/check-platform-crate-boundaries.mjs",
     "test:platform-crates": "node scripts/run-platform-crate-tests.mjs",
     "test:platform-arch:mutations": "node scripts/platform-arch-selfcheck.mjs",
