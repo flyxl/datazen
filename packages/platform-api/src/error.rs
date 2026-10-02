@@ -444,8 +444,13 @@ mod tests {
         const MARKERS: [&str; 3] = ["Serialize", "Deserialize", "serde_json"];
 
         /// 从一条顶层 item 的声明行里取出它所服务的类型名。
-        /// `enum X` / `impl X` / `impl Trait for X` / `impl<T> X` 都归到 `X`；
+        /// `enum X` / `impl X` / `impl Trait for X` / `impl<T> X` / `mod X` 都归到 `X`；
         /// 取不出类型名（`use`、`pub use`）时返回空串，交给调用方当作「不是 owner」。
+        ///
+        /// 空串是有代价的：一旦某行「取不到名字」，它就不再是归属屏障，上行查找会
+        /// 穿过它落进别的 item。`mod wire { … }` 那次漏检就是这么来的——`mod` 当年不在
+        /// 关键字表里，容器内的 marker 就一路穿到了容器外某个恰好合法的类型上。
+        /// 所以这里宁可多剥一点标点，也不能让常见写法归到空串。
         fn subject_of(header: &str) -> String {
             let h = header.trim().trim_end_matches('{').trim();
             let h = h.strip_prefix("pub ").unwrap_or(h);
@@ -459,6 +464,7 @@ mod tests {
                 .or_else(|| h.strip_prefix("const"))
                 .or_else(|| h.strip_prefix("static"))
                 .or_else(|| h.strip_prefix("fn"))
+                .or_else(|| h.strip_prefix("mod "))
                 .unwrap_or(h)
                 .trim_start();
             let h = h.split_once(" for ").map_or(h, |(_, after)| after);
@@ -466,6 +472,8 @@ mod tests {
                 Some(_) => h.find('>').map_or(h, |i| h[i + 1..].trim_start()),
                 None => h,
             };
+            // `macro_rules! m`、`::path::T` 这类前缀标点先剥掉，免得 `!` 把标识符取成空串。
+            let h = h.trim_start_matches(|c: char| !c.is_alphanumeric() && c != '_');
             h.chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')
                 .collect()
@@ -473,10 +481,23 @@ mod tests {
 
         /// 一行是否是顶层 item 的声明行：顶格、且以 item 关键字开头。
         /// `#[derive(..)]` 和 `///` 文档注释都**不是**声明行——它们属于自己那个 item。
+        /// `mod` / `macro_rules` 也在表内，但它们是**容器**：容器内的 marker 归容器所有，
+        /// 不能穿过去落到容器外面某个恰好合法的类型上。
         fn item_subject(line: &str) -> Option<String> {
-            const KEYWORDS: [&str; 11] = [
-                "pub ", "impl", "const ", "static ", "fn ", "struct ", "enum ", "type ", "trait ",
-                "union ", "unsafe ",
+            const KEYWORDS: [&str; 13] = [
+                "pub ",
+                "impl",
+                "const ",
+                "static ",
+                "fn ",
+                "struct ",
+                "enum ",
+                "type ",
+                "trait ",
+                "union ",
+                "unsafe ",
+                "mod ",
+                "macro_rules",
             ];
             if line.starts_with(char::is_whitespace)
                 || !KEYWORDS.iter().any(|k| line.starts_with(k))
@@ -533,9 +554,13 @@ mod tests {
 
         // 自检：上面这个循环必须真的把 marker 归到了 wire 词汇名下。全程归到 0 个时它会
         // 因为「一个都没匹配上」而空转通过——那正是前两代守卫静默失效的同款形态。
+        //
+        // 条件与提示共用这个常量：阈值改成 3 之后，提示里那句「至少 2 处」不能还留着，
+        // 否则下一个人照着提示调参会照着一个假数字调。
+        const MIN_OWNED: usize = 2;
         assert!(
-            owned >= 2,
-            "守卫空转：只归到 {owned} 处 marker，预期至少 2 处（ApiErrorCode 与 RetryDisposition 的 derive）"
+            owned >= MIN_OWNED,
+            "守卫空转：只归到 {owned} 处 marker，预期至少 {MIN_OWNED} 处（ApiErrorCode 与 RetryDisposition 的 derive）"
         );
     }
 
