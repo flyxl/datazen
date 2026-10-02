@@ -338,9 +338,9 @@ WDIO 必须使用已注入 driver 的构建；三件套可运行 app 已生成�
 
 ### 17.1 P2 验收范围的实际落地情况
 
-P2 行的三条 D 断言都还没有落地。已经落地的是它们各自的 **Host 侧测试夹具**，落在 `packages/runtime/src/connection/testing/`（`#[cfg(any(test, feature = "test-harness"))]`，`cargo test -p datazen-runtime --lib` → `131 passed` / 0 failed，EXIT=0）。逐条对照：
+P2 行的三条 D 断言都还没有落地。已经落地的是它们各自的 **Host 侧测试夹具**，落在 `packages/runtime/src/connection/testing/`（`#[cfg(any(test, feature = "test-harness"))]`，`cargo test -p datazen-runtime --lib` → `139 passed` / 0 failed，EXIT=0（计数与退出码测于 `5b7c5b49c`）。逐条对照：
 
-- **CM-64（无消费者、截断与有界 drain）**：`testing/barrier/` 下的协议 drain barrier 夹具已可用，`barrier/tests.rs` 内 12 个单测覆盖"无消费者时写入阻塞 → FakeClock 越过 drain 期限 → 截断"（`write_without_consumer_blocks_then_truncates_after_the_drain_deadline`）、消费者恢复后不再截断、按执行字节上限独立截断、订阅额度与执行额度分别计数、sink 失败上报。**这是测试夹具而非生产实现**：artifact 配额、unsubscribe 不立即取消 SQL、协议 barrier 的 D 侧断言均未落地。
+- **CM-64（无消费者、截断与有界 drain）**：`testing/barrier/` 下的协议 drain barrier 夹具已可用，`barrier/tests.rs` 内 19 个单测（计数测于 `5b7c5b49c`）覆盖"无消费者时写入阻塞 → FakeClock 越过 drain 期限 → 截断"（`write_without_consumer_blocks_then_truncates_after_the_drain_deadline`）、消费者恢复后不再截断、按执行字节上限独立截断、订阅额度与执行额度分别计数、sink 失败上报。**这是测试夹具而非生产实现**：artifact 配额、unsubscribe 不立即取消 SQL、协议 barrier 的 D 侧断言均未落地。
 - **CM-67（PoolKey 版本和多 database）**：`packages/platform-api/src/ports/budget/pool.rs` 的 `PoolKey` 与 `datazen-runtime` 夹具的 `policy_isolation_key` 已能支撑"换键判据"（`pool_key_equality_covers_all_eight_components` 等单测）。但**全仓没有 pool / lease 管理器的实现**——只有 `packages/platform-api/src/ports/budget/coordinator.rs:123` 的 `BudgetCoordinator` **trait**（port 契约），而 `ResourceManager`、`LeaseManager`、`SessionRegistry`、`PoolManager`、`ConnectionPool` 连类型都不存在。因此空闲资源停发并关闭、旧缓存不回填、撤权即时生效、空池元数据受 LRU 约束这四条断言未落地。
 - **CM-62（命名空间规范化矩阵）**：**代码侧零覆盖**。全仓检索（含 gitignored 目录）`CM-62` 只命中 4 个文件，且全部在 `docs/`：`connection-management.md`（用例定义）、`driver-capability-migration.md`、`persistence-model.md`、`platform-development-plan.md`（阶段表）。`.rs` / `.ts` / `.tsx` / `.js` / `.mjs` / `.toml` / `.json` / `.yml` / `.sh` 等代码与配置扩展名下命中数为 0——这条用例目前只作为待实现目标存在于文档里，没有任何代码以它的名义写断言或打点。`packages/platform-api/src/target.rs` 的 `CanonicalTarget` 属 P1 交付的类型与 schema，不是本条用例的执行；同义 ID 与 path 别名的规范化、冲突 `TargetConflict`、以及缓存 / 权限 / 驱动共用同一份 `CanonicalTarget`，均未落地。
 
