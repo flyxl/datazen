@@ -15,7 +15,7 @@
 //!
 //! ## P2 待补
 //!
-//! `NamespaceShape` 与 `TargetRequirements` 的具体字段、canonical ID 折叠规则、别名表、
+//! `TargetNamespaceShape` 与 `TargetRequirements` 的具体字段、canonical ID 折叠规则、别名表、
 //! 大小写策略与 `pathSegments` 顺序语义属 P2（见 shared-boundaries §「本文不覆盖什么」）。
 //! 本模块只落地 §4.3 明确枚举的字段，驱动注册数据待 P2 补齐。
 
@@ -69,8 +69,8 @@ impl NamespaceLayer {
 /// 合并要么丢字段（`case_rules` / `aliases` 在本类型里没有落点），要么改变线上 JSON，
 /// 属于行为变更而非类型去重。故此处只声称 platform/runtime 之间的一份定义。
 ///
-/// 本类型是 platform ↔ runtime 之间 `NamespaceShape` 的**唯一**定义：`packages/runtime`
-/// 通过 `pub use datazen_platform_api::target::NamespaceShape` 直接复用它。
+/// `packages/runtime` 不持有副本：它通过 `pub use datazen_platform_api::target::TargetNamespaceShape`
+/// 把这一份直接暴露出去，因此平台侧与 runtime 侧永远编译成同一个类型。
 ///
 /// `runtime` 侧的副本原先在本文件基础上多了一个 `#[serde(default)]`。删掉它会**收窄**线上
 /// 的报文接受域：`{"required":["database"]}` 今天在 runtime 能反序列化，删掉就会开始拒绝
@@ -78,13 +78,13 @@ impl NamespaceLayer {
 /// `required` 不加 `default`：省略必填层必须被判 `TargetRequired`，放过它才是真缺陷。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NamespaceShape {
+pub struct TargetNamespaceShape {
     pub required: Vec<NamespaceLayer>,
     #[serde(default)]
     pub optional: Vec<NamespaceLayer>,
 }
 
-impl NamespaceShape {
+impl TargetNamespaceShape {
     pub fn new(
         required: impl IntoIterator<Item = NamespaceLayer>,
         optional: impl IntoIterator<Item = NamespaceLayer>,
@@ -134,7 +134,7 @@ impl LayerRequirement {
 
 /// Command definition 注册的操作级目标要求。
 ///
-/// 与 [`NamespaceShape`] **必须同时校验**，不能用一个全驱动 required 列表代替操作需求（§4.3）。
+/// 与 [`TargetNamespaceShape`] **必须同时校验**，不能用一个全驱动 required 列表代替操作需求（§4.3）。
 ///
 /// `Default` 是「全部层级可省、不允许对象」的占位值：它对命名空间形状不作任何额外要求，
 /// 因此不会掩盖错误。真实取值由 Command definition 在注册时给出（P2）。
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn namespace_shape_declares_layers() {
-        let shape = NamespaceShape::database_and_schema();
+        let shape = TargetNamespaceShape::database_and_schema();
         assert!(shape.is_required(NamespaceLayer::Database));
         assert!(!shape.is_required(NamespaceLayer::Schema));
         assert!(shape.declares(NamespaceLayer::Schema));
@@ -524,7 +524,7 @@ mod tests {
     fn namespace_shape_pins_its_wire_shape_as_literals() {
         // 全部断言都是**绝对字面量**，不与 runtime 的同名类型互相印证 ——
         // runtime 现在是 `pub use` 本类型，两边对比已无意义，且两套定义曾经就靠对比互相放过。
-        let shape = NamespaceShape::new([NamespaceLayer::Database], [NamespaceLayer::Schema]);
+        let shape = TargetNamespaceShape::new([NamespaceLayer::Database], [NamespaceLayer::Schema]);
         assert_eq!(
             serde_json::to_value(&shape).expect("serialize"),
             json!({"required": ["database"], "optional": ["schema"]})
@@ -533,7 +533,7 @@ mod tests {
         // 往返：把上面那份字面量**再读回来**并要求完全相等。
         // 旧测试只读 serialize 一侧（`get(key).is_some()` + `len()==2`），
         // 对「同一份字面量能不能被解析回来」零覆盖 —— 而那是缺陷真正藏身的另一半。
-        let back: NamespaceShape =
+        let back: TargetNamespaceShape =
             serde_json::from_value(json!({"required": ["database"], "optional": ["schema"]}))
                 .expect("线上字面量必须能被解析回来");
         assert_eq!(back, shape, "序列化与反序列化必须是同一个值");
@@ -544,7 +544,7 @@ mod tests {
             ["database", "catalog", "schema", "path"]
         );
 
-        let pg = NamespaceShape::database_and_schema();
+        let pg = TargetNamespaceShape::database_and_schema();
         assert_eq!(pg.required, vec![NamespaceLayer::Database]);
         assert_eq!(pg.optional, vec![NamespaceLayer::Schema]);
         assert!(pg.is_required(NamespaceLayer::Database));
@@ -556,14 +556,14 @@ mod tests {
         // 钉住 `#[serde(default)]` 决定的线上接受域：`optional` 省略必须仍能反序列化。
         // 这条正是删掉 `#[serde(default)]` 时唯一会变红的断言 —— 而那正是本文件注释
         // 记录过的、**无收益的破坏性收窄**（today runtime 能收，删掉就不能收）。
-        let parsed: NamespaceShape =
+        let parsed: TargetNamespaceShape =
             serde_json::from_str(r#"{"required":["database"]}"#).expect("optional 省略必须被接受");
         assert_eq!(parsed.required, vec![NamespaceLayer::Database]);
         assert_eq!(parsed.optional, Vec::<NamespaceLayer>::new());
 
         // 反面：`required` 没有 `default`，省略它必须仍然被拒。
         assert!(
-            serde_json::from_str::<NamespaceShape>(r#"{"optional":["schema"]}"#).is_err(),
+            serde_json::from_str::<TargetNamespaceShape>(r#"{"optional":["schema"]}"#).is_err(),
             "省略必填层必须被拒，放过它才是真缺陷"
         );
     }

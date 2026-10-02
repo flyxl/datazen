@@ -28,8 +28,8 @@ use std::sync::Arc;
 
 use datazen_platform_api::id::ConnectionId;
 use datazen_platform_api::target::{
-    CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget, NamespaceLayer, NamespaceShape,
-    NamespaceTarget, ObjectTarget, TargetRequirements,
+    CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget, NamespaceLayer, NamespaceTarget,
+    ObjectTarget, TargetNamespaceShape, TargetRequirements,
 };
 
 use crate::dto::requests::validate_namespace_target;
@@ -42,7 +42,7 @@ pub type AliasResolver = Arc<dyn Fn(&str) -> Option<NamespaceLayer> + Send + Syn
 pub type Canonicalizer = Arc<dyn Fn(NamespaceLayer, &str) -> Option<String> + Send + Sync>;
 
 /// 命名空间形状来源：`connectionId → 驱动注册表里声明的形状`。返回 `None` 表示连接不可解析。
-pub type ShapeProvider = Arc<dyn Fn(&ConnectionId) -> Option<NamespaceShape> + Send + Sync>;
+pub type ShapeProvider = Arc<dyn Fn(&ConnectionId) -> Option<TargetNamespaceShape> + Send + Sync>;
 
 /// 操作级要求来源：`command → Command definition 声明的 targetRequirements`。`None` 表示操作未注册。
 pub type RequirementsProvider = Arc<dyn Fn(&str) -> Option<TargetRequirements> + Send + Sync>;
@@ -149,7 +149,7 @@ impl TargetResolver {
     fn reject_unknown_layers(
         &self,
         target: &NamespaceTarget,
-        shape: &NamespaceShape,
+        shape: &TargetNamespaceShape,
     ) -> Result<(), ApiError> {
         for layer in NamespaceLayer::ALL {
             if target.has_value(layer) && !shape.declares(layer) {
@@ -336,8 +336,8 @@ mod tests {
     use super::*;
 
     /// PostgreSQL 风格形状：database 必填，schema 可省，无 catalog/path。
-    fn postgres_shape(_connection: &ConnectionId) -> Option<NamespaceShape> {
-        Some(NamespaceShape::new(
+    fn postgres_shape(_connection: &ConnectionId) -> Option<TargetNamespaceShape> {
+        Some(TargetNamespaceShape::new(
             vec![NamespaceLayer::Database],
             vec![NamespaceLayer::Schema],
         ))
