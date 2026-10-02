@@ -3,6 +3,7 @@
 //! Drivers are discovered via `inventory` factories from optional path/git
 //! driver crates linked into the host binary.
 
+use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::*;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -50,12 +51,39 @@ impl DriverCapabilities {
     }
 }
 
+/// Why a driver type has no resource provider to hand out.
+///
+/// Both variants are errors. `NotRegistered` means this build cannot supply
+/// the driver at all; `Missing` means the driver *is* here and has not been
+/// migrated to the resource contract. Callers must not read either as "this
+/// driver has nothing to do".
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ResourceProviderLookup {
+    /// The driver type could not be loaded in this build.
+    #[error("driver type '{driver_type}' is not registered in this build: {reason}")]
+    NotRegistered { driver_type: String, reason: String },
+    /// The driver is registered but ships no resource provider.
+    #[error(transparent)]
+    Missing(#[from] ResourceProviderMissing),
+}
+
 /// Holds registered drivers. Starts empty; call [`DriverRegistry::ensure_type`]
 /// (or rely on [`DriverRegistry::get`]) to load a type on demand.
 pub struct DriverRegistry {
     drivers: Arc<RwLock<HashMap<DatabaseType, Arc<dyn DatabaseDriver>>>>,
     kv_drivers: Arc<RwLock<HashMap<DatabaseType, Arc<dyn KeyValueDriver>>>>,
     capabilities: Arc<RwLock<HashMap<DatabaseType, DriverCapabilities>>>,
+    /// The factory each registered driver came from.
+    ///
+    /// A factory is the only thing that can produce a `ResourceProvider`, so
+    /// this is the host's route to one. The factory is stored — never the
+    /// provider — because a provider's identity is the factory's to promise:
+    /// a driver that memoizes returns the same instance forever, and a driver
+    /// that does not would silently invalidate the handles it already issued
+    /// if the host cached a snapshot taken at some arbitrary moment.
+    /// `every_linked_factory_resolves_or_reports_why_not` pins which drivers
+    /// make that promise today.
+    factories: Arc<RwLock<HashMap<DatabaseType, &'static dyn DatabaseDriverFactory>>>,
 }
 
 impl DriverRegistry {
@@ -64,6 +92,7 @@ impl DriverRegistry {
             drivers: Arc::new(RwLock::new(HashMap::new())),
             kv_drivers: Arc::new(RwLock::new(HashMap::new())),
             capabilities: Arc::new(RwLock::new(HashMap::new())),
+            factories: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -165,6 +194,14 @@ impl DriverRegistry {
                 let mut kv_map = self.kv_drivers.write().await;
                 kv_map.insert(kv.driver_type(), kv);
             }
+            // The driver and its factory are registered under the same keys, so
+            // the provider a caller resolves is backed by the driver this
+            // registry handed out, never by a second `create()`.
+            {
+                let mut factory_map = self.factories.write().await;
+                factory_map.insert(db_type.to_string(), *factory);
+                factory_map.insert(actual.clone(), *factory);
+            }
             if actual != db_type {
                 drivers.insert(actual, driver.clone());
             }
@@ -206,6 +243,39 @@ impl DriverRegistry {
     pub async fn loaded_types(&self) -> Vec<DatabaseType> {
         let drivers = self.drivers.read().await;
         drivers.keys().cloned().collect()
+    }
+
+    /// Resolve the opaque-resource provider of a registered driver.
+    ///
+    /// Fail-closed, and never a silent no-op: a driver that has not been
+    /// migrated to the resource contract comes back as
+    /// [`ResourceProviderMissing`], which names the driver. The two error
+    /// cases are deliberately *different* — a type this build has not loaded
+    /// is not the same as a type that was loaded and has no provider, and
+    /// collapsing them would resurrect exactly the mistake the accessor exists
+    /// to prevent.
+    ///
+    /// Every call re-resolves through the registry's own factory rather than
+    /// caching a provider. The providers that memoize hand back the same
+    /// instance, so their handles stay valid; the ones that do not are a driver
+    /// defect this accessor deliberately does not paper over.
+    pub async fn resource_provider(
+        &self,
+        db_type: &DatabaseType,
+    ) -> Result<Arc<dyn ResourceProvider>, ResourceProviderLookup> {
+        if let Err(error) = self.ensure_type(db_type).await {
+            return Err(ResourceProviderLookup::NotRegistered {
+                driver_type: db_type.clone(),
+                reason: error,
+            });
+        }
+        let factory = *self.factories.read().await.get(db_type).ok_or({
+            ResourceProviderLookup::NotRegistered {
+                driver_type: db_type.clone(),
+                reason: "not backed by an inventory factory".to_string(),
+            }
+        })?;
+        require_resource_provider(factory).map_err(ResourceProviderLookup::Missing)
     }
 
     pub async fn get_kv_driver(&self, db_type: &DatabaseType) -> Option<Arc<dyn KeyValueDriver>> {
@@ -261,6 +331,20 @@ impl DriverRegistry {
     ) {
         self.kv_drivers.write().await.insert(db_type.into(), kv);
     }
+
+    /// Register the factory a type's driver came from, for unit tests.
+    ///
+    /// Inventory only supplies real driver factories, so a test that needs a
+    /// specific provider behaviour has to hand one over directly. Pair it with
+    /// [`Self::register_test_driver`] so `ensure_type` has nothing left to load.
+    #[cfg(any(test, feature = "test-harness"))]
+    pub async fn register_test_factory(
+        &self,
+        db_type: impl Into<DatabaseType>,
+        factory: &'static dyn DatabaseDriverFactory,
+    ) {
+        self.factories.write().await.insert(db_type.into(), factory);
+    }
 }
 
 impl Default for DriverRegistry {
@@ -278,6 +362,9 @@ pub fn init_drivers() -> DriverRegistry {
 mod tests {
     use super::*;
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+    use datazen_driver_api::namespace::NamespaceShape;
+    use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
+    use std::sync::OnceLock;
 
     fn capabilities(supports_cancel_query: bool) -> DriverCapabilities {
         DriverCapabilities {
@@ -357,5 +444,268 @@ mod tests {
         assert_eq!(value["supportsExplain"], true);
         assert_eq!(value["supportsStreamingResults"], true);
         assert!(value.get("supports_cancel_query").is_none());
+    }
+
+    /// A driver factory that answers with the same memoized provider every
+    /// time, exactly as the un-migrated drivers do
+    /// (`packages/drivers/clickhouse/src/resource_provider.rs:88`).
+    struct MemoizedProviderFactory {
+        driver_id: &'static str,
+        driver: Arc<dyn DatabaseDriver>,
+        provider: OnceLock<Arc<dyn ResourceProvider>>,
+    }
+
+    impl MemoizedProviderFactory {
+        fn new(driver_id: &'static str, driver: Arc<dyn DatabaseDriver>) -> Self {
+            Self {
+                driver_id,
+                driver,
+                provider: OnceLock::new(),
+            }
+        }
+    }
+
+    impl DatabaseDriverFactory for MemoizedProviderFactory {
+        fn create(&self) -> Arc<dyn DatabaseDriver> {
+            Arc::clone(&self.driver)
+        }
+
+        fn driver_id(&self) -> &'static str {
+            self.driver_id
+        }
+
+        fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
+            Some(
+                self.provider
+                    .get_or_init(|| {
+                        Arc::new(LegacyResourceAdapter::new(
+                            Arc::clone(&self.driver),
+                            self.driver_id,
+                            "test",
+                            1,
+                            NamespaceShape::default(),
+                        ))
+                    })
+                    .clone(),
+            )
+        }
+    }
+
+    /// A driver that was never migrated to the resource contract.
+    struct UnmigratedFactory {
+        driver_id: &'static str,
+        driver: Arc<dyn DatabaseDriver>,
+    }
+
+    impl DatabaseDriverFactory for UnmigratedFactory {
+        fn create(&self) -> Arc<dyn DatabaseDriver> {
+            Arc::clone(&self.driver)
+        }
+
+        fn driver_id(&self) -> &'static str {
+            self.driver_id
+        }
+        // `resource_provider` is left at its default: this driver has nothing
+        // to offer, and the host must say so.
+    }
+
+    /// The same provider instance comes back on every lookup.
+    ///
+    /// This is the guardrail for the whole wiring: the host re-resolves on each
+    /// call instead of caching, and that is only sound because the factory
+    /// memoizes. If a factory ever rebuilt its provider per call, the handles
+    /// it had already issued would be rejected on their next use.
+    #[tokio::test]
+    async fn resource_provider_returns_the_same_instance_on_every_lookup() {
+        let registry = DriverRegistry::new();
+        let driver: Arc<dyn DatabaseDriver> =
+            MockDriver::new("memoized", MockDriverOptions::default());
+        registry
+            .register_test_driver("memoized", Arc::clone(&driver))
+            .await;
+        registry
+            .register_test_factory(
+                "memoized",
+                Box::leak(Box::new(MemoizedProviderFactory::new("memoized", driver))),
+            )
+            .await;
+
+        let first = registry
+            .resource_provider(&"memoized".to_string())
+            .await
+            .expect("a migrated driver resolves a provider");
+        let second = registry
+            .resource_provider(&"memoized".to_string())
+            .await
+            .expect("a migrated driver keeps resolving a provider");
+
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "two lookups returned different provider instances"
+        );
+    }
+
+    /// A driver without a provider is an error, not an empty success.
+    ///
+    /// If this ever degrades into `Ok`, "no provider" becomes
+    /// indistinguishable from "nothing to do" — the exact mistake the
+    /// fail-closed accessor exists to prevent.
+    #[tokio::test]
+    async fn resource_provider_reports_missing_for_an_unmigrated_driver() {
+        let registry = DriverRegistry::new();
+        let driver: Arc<dyn DatabaseDriver> =
+            MockDriver::new("unmigrated", MockDriverOptions::default());
+        registry
+            .register_test_driver("unmigrated", Arc::clone(&driver))
+            .await;
+        registry
+            .register_test_factory(
+                "unmigrated",
+                Box::leak(Box::new(UnmigratedFactory {
+                    driver_id: "unmigrated",
+                    driver,
+                })),
+            )
+            .await;
+
+        // `dyn ResourceProvider` is not comparable, so match the error out.
+        match registry.resource_provider(&"unmigrated".to_string()).await {
+            Ok(_) => panic!("a driver with no provider must not yield a provider"),
+            Err(ResourceProviderLookup::Missing(error)) => {
+                assert_eq!(error.driver_id, "unmigrated");
+            }
+            Err(other) => panic!("wrong failure for an unmigrated driver: {other}"),
+        }
+    }
+
+    /// A driver with no factory behind it is reported as its own failure.
+    ///
+    /// "This build has no such driver" and "this driver has no provider" are
+    /// different defects; collapsing them would tell a caller to go fix the
+    /// driver migration when the real problem is the build.
+    #[tokio::test]
+    async fn resource_provider_separates_an_unregistered_type_from_a_missing_provider() {
+        let registry = DriverRegistry::new();
+        registry
+            .register_test_driver(
+                "no-factory",
+                MockDriver::new("no-factory", MockDriverOptions::default()),
+            )
+            .await;
+
+        assert!(matches!(
+            registry.resource_provider(&"no-factory".to_string()).await,
+            Err(ResourceProviderLookup::NotRegistered { .. })
+        ));
+        assert!(matches!(
+            registry.resource_provider(&"absent".to_string()).await,
+            Err(ResourceProviderLookup::NotRegistered { .. })
+        ));
+    }
+
+    /// Drivers whose `resource_provider()` builds a new provider on every call
+    /// instead of returning a memoized one.
+    ///
+    /// Each of these wraps a driver it created itself, so it also binds its
+    /// provider to a `DatabaseDriver` the host never registered. A provider
+    /// like this cannot carry anything across calls: the host resolves on every
+    /// lookup, and the handles one instance issued are meaningless to the next
+    /// one. Fixed by memoizing in the driver crate — never by caching here,
+    /// which would only hide the churn behind a single lucky instance.
+    const PROVIDERS_THAT_ARE_NOT_MEMOIZED: &[&str] = &[
+        // packages/drivers/mysql/src/lib.rs — 6 factories
+        "mysql",
+        "mariadb",
+        "doris",
+        "starrocks",
+        "manticore",
+        "ob_oracle",
+        // packages/drivers/sqlite/src/lib.rs
+        "sqlite",
+    ];
+
+    /// Every factory linked into this build resolves or explains itself.
+    ///
+    /// Runs against real drivers rather than fixtures, so a driver that starts
+    /// answering `Ok` with a provider it cannot keep alive — or a driver that
+    /// drops one mid-build — fails here. Which drivers are linked depends on
+    /// the build's driver features, so the census is reported rather than
+    /// pinned; only the *properties* are pinned.
+    #[tokio::test]
+    async fn every_linked_factory_resolves_or_reports_why_not() {
+        let registry = DriverRegistry::new();
+        let mut stable: Vec<&'static str> = Vec::new();
+        let mut rebuilt_per_lookup: Vec<&'static str> = Vec::new();
+        let mut missing: Vec<&'static str> = Vec::new();
+
+        for factory in iter_driver_factories() {
+            let id = factory.driver_id();
+            match registry.resource_provider(&id.to_string()).await {
+                Ok(provider) => {
+                    let again = registry
+                        .resource_provider(&id.to_string())
+                        .await
+                        .expect("a factory that resolved once keeps resolving");
+                    if Arc::ptr_eq(&provider, &again) {
+                        stable.push(id);
+                    } else {
+                        rebuilt_per_lookup.push(id);
+                    }
+                }
+                Err(ResourceProviderLookup::Missing(error)) => {
+                    assert_eq!(
+                        error.driver_id, id,
+                        "the error must name the driver asked for"
+                    );
+                    missing.push(id);
+                }
+                Err(other) => panic!("driver '{id}' failed for the wrong reason: {other}"),
+            }
+        }
+
+        let resolved = stable.len() + rebuilt_per_lookup.len();
+        // The host links postgres, mysql and sqlite unconditionally
+        // (`src-tauri/Cargo.toml`), so an empty census would mean the loop
+        // never ran — not that there is nothing to check.
+        assert!(
+            resolved > 0,
+            "no linked driver resolved a provider; the census proved nothing"
+        );
+
+        // Ratchet in both directions: a driver nobody has looked at yet must
+        // not turn out to be rebuilt per lookup, and one that has been fixed
+        // must come off the list.
+        let unaccounted: Vec<&&str> = rebuilt_per_lookup
+            .iter()
+            .filter(|id| !PROVIDERS_THAT_ARE_NOT_MEMOIZED.contains(*id))
+            .collect();
+        assert!(
+            unaccounted.is_empty(),
+            "driver(s) {unaccounted:?} rebuild their provider on every lookup. \
+             The host resolves per call, so the handles one instance issued are \
+             rejected by the next. Memoize it in the driver crate, or add it to \
+             PROVIDERS_THAT_ARE_NOT_MEMOIZED only if a resource handle must \
+             never survive one call for that driver."
+        );
+        let stale: Vec<&&str> = PROVIDERS_THAT_ARE_NOT_MEMOIZED
+            .iter()
+            .filter(|id| !rebuilt_per_lookup.contains(*id))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "driver(s) {stale:?} are listed as rebuilding their provider but now \
+             keep the same instance; drop them from the list."
+        );
+        println!(
+            "{resolved} of {} linked factories carry a provider ({} memoized: {:?}; \
+             {} rebuilt per call: {:?}); {} reported missing {:?}",
+            stable.len() + rebuilt_per_lookup.len() + missing.len(),
+            stable.len(),
+            stable,
+            rebuilt_per_lookup.len(),
+            rebuilt_per_lookup,
+            missing.len(),
+            missing
+        );
     }
 }
