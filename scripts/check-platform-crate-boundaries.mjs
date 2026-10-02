@@ -52,6 +52,7 @@ import { join, resolve } from 'path';
 import {
   LAYERS,
   buildWorkspaceIndex,
+  declaredDependencies,
   layerById,
   manifestDir,
   matchesCrateFamily,
@@ -541,6 +542,60 @@ export function checkPlatformCrateBoundaries(options) {
     advisories.push(
       `F-01?  ${member.name} (${member.relDir}/Cargo.toml) reaches ${tauri.sort().join(', ')} ` +
         `in its normal+build closure. Not blocking: no F-row forbids tauri* for drivers.`,
+    );
+  }
+
+  // Second advisory, same source of non-blocking-ness, different source of truth.
+  //
+  // The block above walks the resolve graph, which is feature-resolved: an edge
+  // behind a feature nobody enables is not in `resolve.deps[]` at all and no
+  // closure walk can ever see it. Measured at 2530161ac, redis declares two tauri
+  // edges — `tauri-plugin` (build-dependencies, line 31) and `tauri`
+  // (dependencies, line 27, `optional = true` behind a feature no member
+  // enables) — and only the first is in the graph. This block reads the manifest
+  // instead, so the second edge becomes visible.
+  //
+  // Deliberately scoped to declared-minus-resolved, not declared-in-full:
+  //   * a declared edge that DID resolve is already reported above, and printing
+  //     it twice would make the count look like a second finding;
+  //   * a purely transitive edge (`tauri-utils` for redis) appears in neither set
+  //     here and stays the closure walk's to report.
+  // The two are complements, not two views of one set. Measured on this repo:
+  // redis DECLARES {tauri, tauri-plugin} and RESOLVES {tauri-plugin, tauri-utils}
+  // — neither contains the other, so each scan sees exactly one crate the other
+  // cannot. The host is the other shape: it declares 9 tauri crates and resolves
+  // 17, the 8 extra being transitive.
+  //
+  // No F-row is consulted, so this cannot tighten anything — it reports what the
+  // manifest says. Not blocking: whether an optional host edge should exist in a
+  // driver is a spec question for §2.4 F-01, and the guard must not answer it
+  // unilaterally.
+  for (const member of index.members.values()) {
+    let manifest;
+    try {
+      manifest = readFileSync(member.manifestPath, 'utf8');
+    } catch (err) {
+      advisories.push(
+        `read?  ${member.name} (${member.relDir}/Cargo.toml) could not be read for declared ` +
+          `dependencies (${err.code ?? err.message}). The graph above still covers its resolved edges.`,
+      );
+      continue;
+    }
+    const closure = normalBuildClosure(index, member.id);
+    const resolvedNames = new Set(
+      [...closure].map((id) => index.byId.get(id)?.name).filter(Boolean),
+    );
+    const dormant = declaredDependencies(manifest)
+      .filter((d) => matchesCrateFamily(d.name, 'tauri'))
+      .filter((d) => !resolvedNames.has(d.name));
+    if (dormant.length === 0) continue;
+    const where = dormant
+      .map((d) => `${d.name} in [${d.target === null ? d.kind : `target.${d.target}.${d.kind}`}]`)
+      .sort()
+      .join(', ');
+    advisories.push(
+      `F-01?  ${member.name} (${member.relDir}/Cargo.toml) declares ${where}, which the ` +
+        `resolved graph does not contain. Not blocking: no F-row forbids tauri* here.`,
     );
   }
 
