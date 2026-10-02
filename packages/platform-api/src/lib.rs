@@ -11,7 +11,7 @@
 //! * 目标词汇（`target`）：提交目标 → 规范化目标的形状与层次要求。
 //! * 错误词汇（`error`）：`PortError`，端口层的**唯一**失败类型。
 //! * 契约 DTO（`dto`）：跨边界传输的形状（camelCase 序列化）。
-//! * 端口（`ports`）：11 个 trait，注入方是 `Arc<dyn X>`。
+//! * 端口（`ports`）：14 个 trait，注入方是 `Arc<dyn X>`。
 //!
 //! ## 本包**不**负责什么
 //!
@@ -46,6 +46,7 @@ pub mod target;
 pub use context::{DelegationRef, OwnerRef, RequestContext};
 pub use error::PortError;
 pub use ports::{
-    ArtifactStore, BudgetCoordinator, EventSink, IdentityResolver, JobRepository, NetworkProvider,
+    ArtifactStore, BudgetCoordinator, ClusterNodeBudgetPort, ControlResourcePort,
+    DriverPoolBudgetPort, EventSink, IdentityResolver, JobRepository, NetworkProvider,
     PolicyService, ProfileRepository, SecretProvider, SessionDirectory, SubmissionTokenIssuer,
 };

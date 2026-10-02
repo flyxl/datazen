@@ -1,4 +1,4 @@
-//! 端口契约：11 个 trait，**只有 trait，没有任何具体传输类型**。
+//! 端口契约：14 个 trait，**只有 trait，没有任何具体传输类型**。
 //!
 //! 约定（§4.1）：
 //!
@@ -11,10 +11,13 @@
 //! * 每个端口文件自带它的**私有词汇表**（§2.4），私有词汇不出现在 DTO 里。
 //! * `PortError::ArtifactExpired` 是端口层取值，HTTP 映射是 server host 的职责。
 //!
-//! 11 个 trait = [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的 10 行 +
-//! 本文新增的 `IdentityResolver`。§6.4 的「repositories」是一张表，**不是一个合并 trait**：
-//! 落库面按聚合拆成 `ProfileRepository` 与 `JobRepository` 两个 trait，
-//! 实现方不必实现与自己无关的方法（§4.2 不合并 trait）。
+//! 14 个 trait = [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的 10 行 +
+//! 本文新增的 `IdentityResolver` + P2 新增的三个物理预算端口
+//! （`DriverPoolBudgetPort` / `ControlResourcePort` / `ClusterNodeBudgetPort`，见 [`budget`]）。
+//! §6.4 的「repositories」是一张表，**不是一个合并 trait**：落库面按聚合拆成
+//! `ProfileRepository` 与 `JobRepository` 两个 trait，实现方不必实现与自己无关的方法
+//! （§4.2 不合并 trait）；同一原则下，P2 的物理预算也**没有**并进 `BudgetCoordinator`
+//! ——见 [`budget`] 模块头对四个 trait 分工的说明。
 //!
 //! **不存在 `ExecutionRecordRepository`**：执行的落库投影由 runtime / server host 承担，
 //! §6.4 没有这一行，本包也不凭空加一个。
@@ -32,7 +35,9 @@ pub mod session_directory;
 pub mod token;
 
 pub use artifact::ArtifactStore;
-pub use budget::BudgetCoordinator;
+pub use budget::{
+    BudgetCoordinator, ClusterNodeBudgetPort, ControlResourcePort, DriverPoolBudgetPort,
+};
 pub use event::EventSink;
 pub use identity::IdentityResolver;
 pub use job::JobRepository;
