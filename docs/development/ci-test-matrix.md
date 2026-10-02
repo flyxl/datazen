@@ -419,8 +419,10 @@ ci-docs / version / driver-protocol / boundaries / i18n keys）、`pnpm test:uni
 `pnpm test:unit:drivers`、Rust `fmt --check` 与各 crate 单测、平台架构门禁。
 
 **结论：PR 绿灯与 E2E 覆盖无关。** 上表所有行的 `CI` 列都是 ❌，不是「暂时没接」，
-而是这套 WDIO 从来就没有进过任何 workflow。要在 CI 里跑 E2E 需要一台带 WebDriver
-与真实数据库服务的 runner，属于尚未启动的工作，不在本文档承诺范围内。
+而是这套 WDIO 从来就没有进过任何 workflow。**这是取舍，不是缺口**：CI 只要一台
+普通 runner，E2E 需要带 WebDriver 与真实数据库服务的 runner（还要窗口系统），
+两者成本不同量级，所以 E2E 留在 CI 之外跑，不在本文档承诺范围内。
+任何「E2E 全绿」的结论只对本地那次运行有效，不得当作合并门禁。
 
 ### 5.2 `pnpm e2e` 实际跑什么、跳过什么
 
