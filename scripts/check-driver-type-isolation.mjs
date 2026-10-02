@@ -22,8 +22,14 @@
  *   - `check-platform-crate-boundaries.mjs` F-01 (`:96-110`) sets
  *     `allowedLayers: ['driver','driver-api']`. `LAYERS` in
  *     `scripts/lib/cargoWorkspace.mjs:66-76` has exactly ONE `driver` layer
- *     covering `packages/drivers/*`, so **all 16 crates under that directory
- *     are the same layer and F-01 explicitly permits driver → driver edges**.
+ *     covering `packages/drivers/*`, so **every crate under that directory —
+ *     every driver and the shared `http-support` implementation library alike —
+ *     is the same layer, and F-01 explicitly permits driver → driver edges**.
+ *     Counting the crates here is stated by population rather than by a fixed
+ *     number on purpose: the number moves every time a driver lands, and a
+ *     stale count in a header comment is indistinguishable from a stale gate.
+ *     The driver/crates split that this file *does* measure is spelled out
+ *     under "S1 ∩ S2" below.
  *
  * The consequence was a gap with no guard behind it: nothing stopped
  * `packages/drivers/postgres` from taking `use datazen_driver_redis::…`, or from
@@ -763,7 +769,7 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   if (args.help) {
     out(
       `${PREFIX} usage: node scripts/check-driver-type-isolation.mjs [--root=<dir>]\n` +
-        `${PREFIX} enforces platform-development-plan.md:99 「不同 driver 不共享实现库类型」.\n` +
+        `${PREFIX} enforces platform-development-plan.md §6「P2：Driver 固定资源与可选能力契约」退出门槛 「不同 driver 不共享实现库类型」.\n` +
         `${PREFIX}   T-01  no driver depends on, or transitively reaches, another driver\n` +
         `${PREFIX}   T-02  no driver's Rust source names another driver's crate identifier\n` +
         `${PREFIX}   T-03  no driver #[path]/include! resolves into another driver's tree\n` +

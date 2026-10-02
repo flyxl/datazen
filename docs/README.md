@@ -122,3 +122,4 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 4. 设计提案不长期留在 `architecture/`：要么在 `architecture/` 落为「已实现」的事实文档，要么不入库。
 5. 对外发布文案写入本地 `posts/`，不提交。
 6. 删除或重构代码时，同步删除失效文档引用。
+7. **不新增带行号的代码引用。** 禁止写「`文件名` + `:行号`」这种形式的引用；定位一律写成「**文件 + 符号名 / 小节名**」，例如 `scripts/check-driver-type-isolation.mjs` 的 F-01 规则 `forbiddenCrates`、`docs/development/platform-development-plan.md` §6「P2：Driver 固定资源与可选能力契约」。行号是一次性坐标，代码增删一行即失效，而**没有任何门禁校验它**——实测把 `docs/architecture/platform/shared-boundaries-and-ports.md` 里指向 `.mjs` 第 99 行的引用全部改成不存在的第 14001 行，5 个门禁依旧全部 EXIT=0。**错的行号比没有行号更糟**：读者会信任这个精确坐标，跳过去发现对不上，然后连累整篇文档一起被降权；没有行号时读者反而会自己找符号。
