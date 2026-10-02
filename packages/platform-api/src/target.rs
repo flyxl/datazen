@@ -52,10 +52,25 @@ impl NamespaceLayer {
     }
 }
 
-/// 驱动 `ResourceDescriptor` 注册的命名空间形状：声明该驱动**存在哪些层级**、哪些必填。
+/// 本次请求所使用的命名空间形状：声明**哪些层必填**、哪些层存在但可省。
 ///
-/// 本类型是 `NamespaceShape` 的**唯一**定义：`packages/runtime` 通过
-/// `pub use datazen_platform_api::target::NamespaceShape` 直接复用它，不存在第二套语义。
+/// **本类型不是 `ResourceDescriptor` 登记的那个形状。** 那个是
+/// `datazen_driver_api::namespace::NamespaceShape`，即
+/// `ResourceDescriptor::namespace_shape` 字段的类型
+/// （`packages/driver-api/src/resource.rs`）。两套词汇表达的概念相邻，但**刻意不合并**：
+///
+/// | | 本类型（platform-api） | `driver-api::namespace::NamespaceShape` |
+/// |---|---|---|
+/// | 层级枚举 | `NamespaceLayer`：database / catalog / schema / **path** | `NamespaceLevelKind`：database / catalog / schema（**无 path**） |
+/// | 形状表示 | 两个集合 `required` / `optional` | `levels: Vec<NamespaceLevel>`，每层自带 `exists` + `required` |
+/// | 额外信息 | 无 | `path_segments` / `case_rules` / `canonical_id_rules` / `aliases` |
+/// | 行为 | 仅 `declares()` / `is_required()` 两个谓词 | `canonicalize()` / `resolve_alias()`，且 `canonicalize()` 返回 `CanonicalTarget` |
+///
+/// 合并要么丢字段（`case_rules` / `aliases` 在本类型里没有落点），要么改变线上 JSON，
+/// 属于行为变更而非类型去重。故此处只声称 platform/runtime 之间的一份定义。
+///
+/// 本类型是 platform ↔ runtime 之间 `NamespaceShape` 的**唯一**定义：`packages/runtime`
+/// 通过 `pub use datazen_platform_api::target::NamespaceShape` 直接复用它。
 ///
 /// `runtime` 侧的副本原先在本文件基础上多了一个 `#[serde(default)]`。删掉它会**收窄**线上
 /// 的报文接受域：`{"required":["database"]}` 今天在 runtime 能反序列化，删掉就会开始拒绝
