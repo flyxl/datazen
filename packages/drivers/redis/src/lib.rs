@@ -10,6 +10,12 @@ mod commands;
 mod connect;
 mod decode;
 mod driver;
+/// A private `redis-server` child for the live tests. Crate-level rather than
+/// nested under `resource`, because `connect::tests` needs it too — a live
+/// harness that only one module can reach is a live harness that stays
+/// `#[ignore]`d in the other one.
+#[cfg(test)]
+mod live_server;
 mod ops;
 mod resource;
 mod types;

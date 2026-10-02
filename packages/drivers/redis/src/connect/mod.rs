@@ -215,20 +215,40 @@ mod tests {
         }
     }
 
+    /// Previously `#[ignore = "requires local redis on 127.0.0.1:6379"]`.
+    ///
+    /// That reason is gone: the crate now starts its own `redis-server` on its
+    /// own port (see `crate::live_server`), so there is nothing left to ignore
+    /// and no fixed port to aim at. A stale ignore reason is worse than a
+    /// missing test — it tells the next reader the coverage is missing when it
+    /// is not.
+    ///
+    /// It runs against a *plaintext* server on purpose, because that is the
+    /// condition both halves are about: a server that cannot do TLS.
     #[tokio::test]
-    #[ignore = "requires local redis on 127.0.0.1:6379"]
-    async fn local_live_connect_prefer_plaintext_require_times_out() {
+    async fn live_prefer_falls_back_to_plaintext_and_require_refuses() {
+        let server = crate::live_server::live_server_or_skip!();
+        server.wait_until_serving().await.expect(
+            "the harness starts its own server and reports loudly if that fails; a failure here \
+             means the binary is installed but unusable",
+        );
+
         let mut cfg = base_config();
+        cfg.port = Some(server.port());
         cfg.ssl_mode = SslMode::Prefer;
         cfg.connection_timeout = 4;
         let plan = build_connection_plan(&cfg).unwrap();
         let t0 = std::time::Instant::now();
-        assert!(open_live_conn(&plan).await.is_ok());
+        open_live_conn(&plan).await.expect(
+            "Prefer must reach a plaintext server, and this one is serving plaintext on the port \
+             the harness just proved with PING",
+        );
         // TLS probe (≤5s) fails against the plaintext server, then plaintext
         // fallback connects — total should stay well under a full timeout.
         assert!(t0.elapsed() < Duration::from_secs(12));
 
         let mut cfg = base_config();
+        cfg.port = Some(server.port());
         cfg.ssl_mode = SslMode::Require;
         cfg.connection_timeout = 3;
         let plan = build_connection_plan(&cfg).unwrap();
@@ -238,7 +258,11 @@ mod tests {
             Err(e) => e,
         };
         assert!(t0.elapsed() < Duration::from_secs(10));
-        assert!(err.to_string().contains("timed out"));
+        assert!(
+            err.to_string().contains("timed out"),
+            "Require against a plaintext server must report the handshake timing out, not a \
+             generic failure that reads like a credentials problem: {err}"
+        );
     }
 
     #[test]
