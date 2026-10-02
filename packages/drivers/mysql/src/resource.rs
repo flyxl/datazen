@@ -1,10 +1,12 @@
 //! The real [`ResourceProvider`] for the mysql driver family.
 //!
-//! `lib.rs` hands out one provider instance per factory id (`mysql`,
-//! `mariadb`, `doris`, `starrocks`, `manticore`, `ob_oracle`). Every instance
-//! carries its own `provider_id`, its own `runtime_epoch` and its own
-//! `CapabilityRegistry`, so a capability granted to one id is never inherited
-//! by another.
+//! `lib.rs` hands out one memoized provider per factory id (`mysql`,
+//! `mariadb`, `doris`, `starrocks`, `manticore`, `ob_oracle`), each bound to
+//! the very driver `create()` returns. Every one of them carries its own
+//! `provider_id`, its own `runtime_epoch` and its own `CapabilityRegistry`, so
+//! a capability granted to one id is never inherited by another — while a
+//! handle issued by the same id stays valid across any number of lookups,
+//! which is exactly what the memoization buys.
 //!
 //! Two design rules shape everything below.
 //!
@@ -105,8 +107,9 @@ fn copy_transaction(handle: &TransactionHandle) -> TransactionHandle {
 
 impl MysqlResourceProvider {
     /// Build a provider bound to one driver instance. The `runtime_epoch` is
-    /// fresh per call, so a handle issued by one factory instance is rejected
-    /// by every other.
+    /// per instance, so a handle issued by one family id is rejected by every
+    /// other id. `lib.rs` memoizes exactly one instance per factory, which is
+    /// what lets a handle outlive the lookup that produced it.
     pub(crate) fn new(
         driver: Arc<dyn DatabaseDriver>,
         driver_id: &str,

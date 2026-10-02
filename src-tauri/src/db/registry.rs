@@ -362,6 +362,7 @@ pub fn init_drivers() -> DriverRegistry {
 mod tests {
     use super::*;
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+    use datazen_driver_api::capabilities::CapabilitySet;
     use datazen_driver_api::namespace::NamespaceShape;
     use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
     use std::sync::OnceLock;
@@ -484,6 +485,12 @@ mod tests {
                             "test",
                             1,
                             NamespaceShape::default(),
+                            // A fixture declares nothing: `CapabilitySet::default`
+                            // leaves every cell at its non-supporting value.
+                            // The adapter still derives `precise_cancel` from the
+                            // driver itself, which is the one claim it refuses to
+                            // take on faith.
+                            CapabilitySet::default(),
                         ))
                     })
                     .clone(),
@@ -603,34 +610,19 @@ mod tests {
         ));
     }
 
-    /// Drivers whose `resource_provider()` builds a new provider on every call
-    /// instead of returning a memoized one.
-    ///
-    /// Each of these wraps a driver it created itself, so it also binds its
-    /// provider to a `DatabaseDriver` the host never registered. A provider
-    /// like this cannot carry anything across calls: the host resolves on every
-    /// lookup, and the handles one instance issued are meaningless to the next
-    /// one. Fixed by memoizing in the driver crate — never by caching here,
-    /// which would only hide the churn behind a single lucky instance.
-    const PROVIDERS_THAT_ARE_NOT_MEMOIZED: &[&str] = &[
-        // packages/drivers/mysql/src/lib.rs — 6 factories
-        "mysql",
-        "mariadb",
-        "doris",
-        "starrocks",
-        "manticore",
-        "ob_oracle",
-        // packages/drivers/sqlite/src/lib.rs
-        "sqlite",
-    ];
-
-    /// Every factory linked into this build resolves or explains itself.
+    /// Every factory linked into this build resolves or explains itself, and
+    /// every one that resolves hands out the *same* provider on every lookup.
     ///
     /// Runs against real drivers rather than fixtures, so a driver that starts
     /// answering `Ok` with a provider it cannot keep alive — or a driver that
-    /// drops one mid-build — fails here. Which drivers are linked depends on
-    /// the build's driver features, so the census is reported rather than
-    /// pinned; only the *properties* are pinned.
+    /// drops a fresh provider mid-build — fails here. Which drivers are linked
+    /// depends on the build's driver features, so the census is reported rather
+    /// than pinned; only the *properties* are pinned.
+    ///
+    /// There is no exemption list. A driver that has not been migrated answers
+    /// `Missing` and is legitimately absent from the stable set; a driver that
+    /// answers `Ok` has claimed the resource contract, and a claim it cannot
+    /// honour across two lookups is a defect, not a documented exception.
     #[tokio::test]
     async fn every_linked_factory_resolves_or_reports_why_not() {
         let registry = DriverRegistry::new();
@@ -663,49 +655,27 @@ mod tests {
             }
         }
 
-        let resolved = stable.len() + rebuilt_per_lookup.len();
         // The host links postgres, mysql and sqlite unconditionally
-        // (`src-tauri/Cargo.toml`), so an empty census would mean the loop
+        // (`src-tauri/Cargo.toml`), so an empty stable set would mean the loop
         // never ran — not that there is nothing to check.
         assert!(
-            resolved > 0,
-            "no linked driver resolved a provider; the census proved nothing"
+            !stable.is_empty(),
+            "no linked driver resolved a memoized provider; the census proved nothing"
         );
-
-        // Ratchet in both directions: a driver nobody has looked at yet must
-        // not turn out to be rebuilt per lookup, and one that has been fixed
-        // must come off the list.
-        let unaccounted: Vec<&&str> = rebuilt_per_lookup
-            .iter()
-            .filter(|id| !PROVIDERS_THAT_ARE_NOT_MEMOIZED.contains(*id))
-            .collect();
         assert!(
-            unaccounted.is_empty(),
-            "driver(s) {unaccounted:?} rebuild their provider on every lookup. \
+            rebuilt_per_lookup.is_empty(),
+            "driver(s) {rebuilt_per_lookup:?} rebuild their provider on every lookup. \
              The host resolves per call, so the handles one instance issued are \
-             rejected by the next. Memoize it in the driver crate, or add it to \
-             PROVIDERS_THAT_ARE_NOT_MEMOIZED only if a resource handle must \
-             never survive one call for that driver."
-        );
-        let stale: Vec<&&str> = PROVIDERS_THAT_ARE_NOT_MEMOIZED
-            .iter()
-            .filter(|id| !rebuilt_per_lookup.contains(*id))
-            .collect();
-        assert!(
-            stale.is_empty(),
-            "driver(s) {stale:?} are listed as rebuilding their provider but now \
-             keep the same instance; drop them from the list."
+             rejected by the next — and the provider drives a DatabaseDriver the \
+             host never registered. Memoize the driver and its provider together \
+             in the driver crate; caching it here would only hide the churn \
+             behind one lucky instance."
         );
         println!(
-            "{resolved} of {} linked factories carry a provider ({} memoized: {:?}; \
-             {} rebuilt per call: {:?}); {} reported missing {:?}",
-            stable.len() + rebuilt_per_lookup.len() + missing.len(),
+            "{stable:?} keep one provider across lookups; {} rebuilt per call: \
+             {rebuilt_per_lookup:?}; {} reported missing {missing:?}",
             stable.len(),
-            stable,
-            rebuilt_per_lookup.len(),
-            rebuilt_per_lookup,
             missing.len(),
-            missing
         );
     }
 }

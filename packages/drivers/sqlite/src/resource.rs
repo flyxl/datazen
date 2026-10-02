@@ -1,8 +1,9 @@
 //! The real [`ResourceProvider`] for the sqlite driver.
 //!
-//! `lib.rs` hands out one provider instance per `resource_provider()` call, so
-//! each instance carries its own `runtime_epoch` and its own
-//! `CapabilityRegistry` and rejects every handle minted by another.
+//! `lib.rs` hands out one memoized provider bound to the very driver
+//! `create()` returns, so it carries one `runtime_epoch` and one
+//! `CapabilityRegistry` for the life of the process. That is what lets a
+//! handle minted by one lookup still be accepted by the next.
 //!
 //! Three design rules shape everything below.
 //!
@@ -95,8 +96,8 @@ fn copy_transaction(handle: &TransactionHandle) -> TransactionHandle {
 
 impl SqliteResourceProvider {
     /// Build a provider bound to one driver instance. The `runtime_epoch` is
-    /// fresh per call, so a handle issued by one factory instance is rejected
-    /// by every other.
+    /// per instance; `lib.rs` memoizes exactly one instance per factory, which
+    /// is what lets a handle outlive the lookup that produced it.
     pub(crate) fn new(driver: Arc<dyn DatabaseDriver>, driver_id: &str) -> Self {
         let snapshot =
             CapabilitySnapshot::new(driver_id, env!("CARGO_PKG_VERSION"), PROTOCOL_VERSION, 0);
