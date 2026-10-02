@@ -25,7 +25,7 @@ import {
   checkSpecConsistency,
   parseSpecRow,
 } from '../check-platform-crate-boundaries.mjs';
-import { classifyMemberDir, matchesCrateFamily } from '../lib/cargoWorkspace.mjs';
+import { classifyMemberDir, declaredDependencies, matchesCrateFamily } from '../lib/cargoWorkspace.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const SPEC = readFileSync(join(REPO_ROOT, SPEC_PATH), 'utf8');
@@ -228,6 +228,71 @@ describe('checkPlatformCrateBoundaries', () => {
       }),
     );
     expect(result.violations.join('\n')).toMatch(/F-01.*datazen-driver-redis/);
+  });
+
+  it('F-01: a tauri crate in a driver build graph is reported as an advisory, not a violation', () => {
+    // RED FIRST, then corrected. This test was written against the ORIGINAL
+    // behaviour — it asserted `violations` and was red at base 2530161ac, which
+    // is what proved the hole was real rather than assumed. It is kept, and it is
+    // kept *failing on the wrong array*: the guard cannot make this a violation,
+    // because F-01's `forbiddenCrates` is `[]` and §2.4's F-01 row names only
+    // workspace crates. The guard and the spec agree with each other and both are
+    // weaker than the file header, so tightening the guard here would mean the
+    // implementation quietly overriding the contract. Asserting the advisory is
+    // the honest form of the same claim: the edge is visible, and still not a
+    // verdict.
+    //
+    // Neither matcher is at fault. `normalBuildClosure` follows `kind ===
+    // "build"` edges and `matchesCrateFamily("tauri-plugin", "tauri")` is true
+    // (measured: `tauri` matches `tauri-plugin`, `tauri-build`, `tauri_utils`;
+    // `taurium` does not).
+    const result = run(
+      fixture(
+        CORE,
+        { ...clean, 'datazen-driver-redis': ['tauri-plugin'] },
+        [{ name: 'tauri-plugin' }],
+        { 'datazen-driver-redis->tauri-plugin': 'build' },
+      ),
+    );
+    expect(result.violations).toEqual([]);
+    expect(result.advisories.join('\n')).toMatch(
+      /F-01\?\s+datazen-driver-redis.*reaches tauri-plugin in its normal\+build closure\. Not blocking/,
+    );
+  });
+
+  it('a declared host edge the resolve graph drops is reported as an advisory', () => {
+    // The second half of the finding, and the reason the manifest scan exists at
+    // all. The resolve graph is feature-resolved, so an optional dependency
+    // behind a feature nobody enables is not in `resolve.deps[]` and no closure
+    // walk can reach it. `packages/drivers/redis/Cargo.toml:27` declares
+    // `tauri = { version = "2", optional = true }` and line 31 declares
+    // `tauri-plugin` as a build-dependency — only the second appears in the real
+    // resolved graph.
+    //
+    // This fixture resolves no edges for redis at all, so *neither* declaration is
+    // resolved here; the assertion is pinned to the `[dependencies]` one, which is
+    // the line that is genuinely invisible to the closure walk.
+    const result = run(fixture(CORE, { ...clean }, [{ name: 'tauri' }]));
+    expect(result.violations).toEqual([]);
+    expect(result.advisories.join('\n')).toMatch(/declares tauri in \[dependencies\]/);
+  });
+
+  it('the advisory does not double-report an edge the closure walk already found', () => {
+    // Declared-minus-resolved, not declared-in-full: an edge that resolved is the
+    // closure advisory's to report, and printing it twice would make the count
+    // read as two findings when there is one. The real redis manifest declares
+    // `tauri-plugin` (line 31) and the fixture resolves it, so it must appear only
+    // in the closure line.
+    const result = run(
+      fixture(
+        CORE,
+        { ...clean, 'datazen-driver-redis': ['tauri-plugin'] },
+        [{ name: 'tauri-plugin' }],
+        { 'datazen-driver-redis->tauri-plugin': 'build' },
+      ),
+    );
+    expect(result.advisories.join('\n')).not.toMatch(/declares tauri-plugin/);
+    expect(result.advisories.join('\n')).toMatch(/reaches tauri-plugin in its normal\+build/);
   });
 
   it('F-02: a tauri crate in a core crate closure is a violation', () => {
@@ -551,5 +616,87 @@ describe('F-07 transport tokens respect identifier boundaries', () => {
     );
     expect(result.violations.join('\n')).toMatch(/backend-client\/src:4/);
     expect(result.violations.join('\n')).not.toMatch(/backend-client\/src:1/);
+  });
+});
+
+describe('declaredDependencies — the manifest-side scan', () => {
+  // The resolve graph is feature-resolved and therefore structurally blind to
+  // optional edges (measured at 2530161ac: redis declares `tauri` optional on
+  // line 27 and it is absent from `resolve.deps[]`). These tests are hermetic —
+  // synthetic manifest text, no fixture, no real repo — because the failure mode
+  // they lock down is a parsing failure that a synthetic fixture would hide.
+
+  it('reads a plain [dependencies] declaration', () => {
+    expect(declaredDependencies('[dependencies]\nredis = "0.27"\n')).toEqual([
+      { name: 'redis', kind: 'dependencies', target: null, form: 'inline', renamed: false },
+    ]);
+  });
+
+  it('reads [build-dependencies] as shippable, which the resolve graph confirms', () => {
+    expect(
+      declaredDependencies('[build-dependencies]\ntauri-plugin = { version = "2" }\n'),
+    ).toEqual([
+      { name: 'tauri-plugin', kind: 'build-dependencies', target: null, form: 'inline', renamed: false },
+    ]);
+  });
+
+  it('reads a target-scoped table — the side door', () => {
+    // `[target.'cfg(windows)'.dependencies]` is common in cross-platform drivers
+    // and was the open question: a scanner that only matches a literal
+    // `[dependencies]` header misses it, and a door that misses the side door is
+    // not a door. The real occurrence is `src-tauri/Cargo.toml:90`.
+    expect(
+      declaredDependencies(`[target.'cfg(target_os = "macos")'.dependencies]\nobjc2 = "0.6.4"\n`),
+    ).toEqual([
+      { name: 'objc2', kind: 'dependencies', target: 'cfg(target_os = "macos")', form: 'inline', renamed: false },
+    ]);
+  });
+
+  it('reads a target-scoped build-dependencies table', () => {
+    // Same door, harder hinge: the kind is not the section it looks like, and the
+    // `cfg()` predicate may carry any number of segments.
+    expect(
+      declaredDependencies(`[target.'cfg(windows)'.build-dependencies]\ntauri-build = "2"\n`),
+    ).toEqual([
+      { name: 'tauri-build', kind: 'build-dependencies', target: 'cfg(windows)', form: 'inline', renamed: false },
+    ]);
+  });
+
+  it('reads a dotted cfg predicate without splitting inside the quotes', () => {
+    expect(
+      declaredDependencies(`[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]\nobjc2 = "0.6"\n`),
+    ).toEqual([
+      { name: 'objc2', kind: 'dependencies', target: 'cfg(all(target_os = "macos", target_arch = "aarch64"))', form: 'inline', renamed: false },
+    ]);
+  });
+
+  it('reads the [dependencies.name] sub-table form', () => {
+    expect(
+      declaredDependencies('[dependencies.tauri]\nversion = "2"\nfeatures = ["tray-icon"]\n'),
+    ).toEqual([
+      { name: 'tauri', kind: 'dependencies', target: null, form: 'table', renamed: false },
+    ]);
+  });
+
+  it('resolves a renamed dependency to the crate that would actually be linked', () => {
+    // The key is an alias; `package` is the real crate. Matching the key would let
+    // `tui = { package = "tauri" }` walk straight past a tauri-family check.
+    expect(declaredDependencies('[dependencies]\ntui = { package = "tauri", version = "2" }\n')).toEqual([
+      { name: 'tauri', kind: 'dependencies', target: null, form: 'inline', renamed: true },
+    ]);
+  });
+
+  it('does not read a non-dependency table as a dependency', () => {
+    // `[features]` is where `tauri-plugin = ["dep:tauri"]` lives in redis's
+    // manifest; a feature is not an edge, and reading it would report the same
+    // name twice for different reasons.
+    const found = declaredDependencies('[[features]]\ntauri-plugin = ["dep:tauri"]\n');
+    expect(found).toEqual([]);
+  });
+
+  it('ignores commented-out declarations', () => {
+    expect(declaredDependencies('[dependencies]\n# tauri = "2"\nredis = "0.27"\n')).toEqual([
+      { name: 'redis', kind: 'dependencies', target: null, form: 'inline', renamed: false },
+    ]);
   });
 });
