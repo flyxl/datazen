@@ -136,6 +136,16 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
         // `DdlAtomicitySupport::atomicity_for` returns `Unknown` for an
         // absent key — the caller then asks, instead of assuming.
         ddl_atomicity: DdlAtomicitySupport::default(),
+        // `data` and `backup` arrived after this table was written, so nothing
+        // here has been *declared* for them. `Unknown` is the honest and
+        // fail-closed answer — the same one `ddl_atomicity` above already leans
+        // on: the caller asks instead of assuming the driver can do row
+        // read/write, streaming results, or produce/consume an artifact.
+        // Claiming a `DataSupport`/`BackupSupport` variant here would assert
+        // evidence nobody gathered; omitting the field outright would not
+        // compile, which is the point — every capability has to say something.
+        data: Default::default(),
+        backup: Default::default(),
     }
 }
 
