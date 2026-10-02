@@ -45,7 +45,7 @@ use datazen_driver_api::{
 };
 
 use crate::mysql::MysqlDriver;
-use crate::resource_capabilities::mysql_namespace_shape;
+use crate::resource_capabilities::{mysql_connection_cost, mysql_namespace_shape};
 
 /// One acquired resource: the live driver connection plus the budget permit
 /// that was taken for it. The permit is released exactly once, by
@@ -348,10 +348,7 @@ impl ResourceProvider for MysqlResourceProvider {
             session_continuity: SessionContinuity::Leased,
             reuse_policy: ReusePolicy::Unknown,
             initialization_requirements: Vec::<InitializationRequirement>::new(),
-            connection_cost_policy: ConnectionCostPolicy::DeclaredConservative {
-                declared_cost: 1,
-                hard_cap: None,
-            },
+            connection_cost_policy: mysql_connection_cost(&request.connection_config),
         })
     }
 
@@ -361,9 +358,22 @@ impl ResourceProvider for MysqlResourceProvider {
         budget: &Arc<dyn BudgetPort>,
     ) -> Result<ResourceHandle, ResourceError> {
         self.validate_target(&request.target)?;
-        let permit = budget
-            .acquire_physical_connections(request.scope.max_physical_connections.max(1))
-            .await?;
+        // The cost policy is the single source of truth for the charge. Charging
+        // a caller's requested scope instead would let the budget admit a scope
+        // the provider then exceeds, which is exactly what the descriptor
+        // promises not to happen.
+        let ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: required,
+        } = mysql_connection_cost(&request.connection_config)
+        else {
+            return Err(ResourceError::OperationNotSupported {
+                driver: self.driver_id.clone(),
+                operation: "acquire_resource".to_string(),
+                reason: "mysql must report a bounded pool so acquisition can be charged honestly"
+                    .to_string(),
+            });
+        };
+        let permit = budget.acquire_physical_connections(required).await?;
         let connection = match self.driver.connect(&request.connection_config).await {
             Ok(connection) => connection,
             Err(error) => {

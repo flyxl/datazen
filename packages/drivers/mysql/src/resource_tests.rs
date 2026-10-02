@@ -5,6 +5,7 @@
 //! use a type simply does not mention it.
 
 use super::test_support::*;
+use crate::resource_capabilities::CONTROL_POOL_CONNECTIONS;
 
 // --- capability honesty -------------------------------------------------
 
@@ -111,6 +112,14 @@ fn namespace_shape_rejects_a_schema_level() {
 
 // --- acquire / close ----------------------------------------------------
 
+/// The number of physical connections this provider actually opens for one
+/// resource: the data pool plus the control pool. Derived rather than written
+/// out so a change to the pool arithmetic cannot silently drift from the
+/// assertions below.
+fn pool_size_plus_control() -> u32 {
+    test_config().effective_max_pool_size() + CONTROL_POOL_CONNECTIONS
+}
+
 #[tokio::test]
 async fn close_releases_the_budget_exactly_once() {
     let (provider, fake, budget) = provider();
@@ -126,8 +135,10 @@ async fn close_releases_the_budget_exactly_once() {
         provider.close_resource(&handle).await.unwrap(),
         CloseDisposition::Closed
     );
-    // 1 granted, 1 released: the repeated close must not release again.
-    assert_eq!(budget.granted(), vec![1]);
+    // One grant, one release: the repeated close must not release again. The
+    // granted figure is the pool size plus the control pool, because that is
+    // what the provider really opens.
+    assert_eq!(budget.granted(), vec![pool_size_plus_control()]);
     assert_eq!(budget.released(), 1);
     assert_eq!(fake.read(|wire| wire.disconnect_calls), 1);
 }
@@ -144,7 +155,7 @@ async fn a_failed_connect_returns_the_permit() {
         error,
         ResourceError::Driver(DriverError::ConnectionFailed(_))
     ));
-    assert_eq!(budget.granted(), vec![1]);
+    assert_eq!(budget.granted(), vec![pool_size_plus_control()]);
     assert_eq!(
         budget.released(),
         1,

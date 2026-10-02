@@ -5,6 +5,8 @@
 //! use a type simply does not mention it.
 
 use super::test_support::*;
+use super::ConnectionCostPolicy;
+use crate::resource_capabilities::{mysql_connection_cost, CONTROL_POOL_CONNECTIONS};
 
 #[tokio::test]
 async fn observe_session_reports_a_read_back_namespace_as_partial() {
@@ -293,6 +295,52 @@ async fn reset_always_discards_because_no_baseline_path_is_verified() {
     assert_eq!(
         provider.reset_resource(&handle, &baseline()).await.unwrap(),
         ResetDisposition::Discard
+    );
+}
+
+// --- declared cost -------------------------------------------------------
+
+/// CM-30: the cost a provider declares must cover the connections it really
+/// opens. `MysqlDriver::connect` builds a data pool of
+/// `effective_max_pool_size()` plus a separate control pool of one, so a
+/// declared cost of 1 understated the real figure by the entire pool and would
+/// have let a caller size a budget the provider then exceeds.
+#[test]
+fn the_declared_cost_covers_the_data_pool_and_the_control_pool() {
+    let config = test_config();
+    let ConnectionCostPolicy::PoolBounded {
+        max_physical_connections,
+    } = mysql_connection_cost(&config)
+    else {
+        panic!("mysql owns its pool and knows its size; it must not declare a guess");
+    };
+    assert_eq!(
+        max_physical_connections,
+        config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS,
+        "the declared cost must be the data pool plus the control pool"
+    );
+    assert!(
+        max_physical_connections > 1,
+        "a pool of more than one connection can never honestly cost 1"
+    );
+}
+
+#[tokio::test]
+async fn the_descriptor_reports_the_same_cost_the_driver_will_charge() {
+    let (provider, _fake, _budget) = provider();
+    let descriptor = provider
+        .describe_resource(&DescribeResourceRequest {
+            connection_config: test_config(),
+            target: NamespaceTarget::empty().with_database("app"),
+            identity_scope: IdentityScope::default(),
+            purpose: ResourcePurpose::InteractiveQuery,
+        })
+        .await
+        .expect("describe");
+    assert_eq!(
+        descriptor.connection_cost_policy,
+        mysql_connection_cost(&test_config()),
+        "describe and acquire must not be able to disagree about the cost"
     );
 }
 

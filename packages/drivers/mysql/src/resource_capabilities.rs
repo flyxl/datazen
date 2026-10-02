@@ -19,6 +19,8 @@ use datazen_driver_api::namespace::{
     CanonicalIdRules, CaseFolding, CaseRules, NamespaceLevel, NamespaceLevelKind,
     NamespacePathSegment, NamespaceShape,
 };
+use datazen_driver_api::resource::ConnectionCostPolicy;
+use datazen_driver_api::ConnectionConfig;
 use datazen_driver_api::DdlAtomicity;
 
 /// `DdlAtomicitySupport::by_operation` has no canonical key vocabulary in
@@ -114,6 +116,27 @@ pub(crate) fn mysql_capability_set(precise_cancel: bool) -> CapabilitySet {
     capabilities.ddl_atomicity = ddl_atomicity_support(DdlAtomicity::AutoCommitPerStatement);
     capabilities
 }
+
+/// The physical cost of one MySQL resource.
+///
+/// `MysqlDriver::connect` opens a pool of `effective_max_pool_size()` data
+/// connections plus a separate control pool of one, so the honest number is
+/// the configured pool size plus one — not one. The provider previously
+/// declared `DeclaredConservative { declared_cost: 1 }`, which understated the
+/// real cost by the whole pool and would have let a caller size a budget the
+/// provider then exceeds. `DeclaredConservative` is for third-party SDKs whose
+/// cost is not observable; this driver owns its pool and knows the exact size,
+/// so it reports the bounded figure.
+pub(crate) fn mysql_connection_cost(config: &ConnectionConfig) -> ConnectionCostPolicy {
+    ConnectionCostPolicy::PoolBounded {
+        max_physical_connections: config
+            .effective_max_pool_size()
+            .saturating_add(CONTROL_POOL_CONNECTIONS),
+    }
+}
+
+/// The connection held open alongside the data pool for out-of-band work.
+pub(crate) const CONTROL_POOL_CONNECTIONS: u32 = 1;
 
 /// One driver-wide DDL atomicity value, filed under every migration operation.
 pub(crate) fn ddl_atomicity_support(atomicity: DdlAtomicity) -> DdlAtomicitySupport {
