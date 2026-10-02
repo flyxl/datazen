@@ -404,6 +404,124 @@ pnpm test:platform-crates
 
 契约 journey 列表见 [e2e-coverage.md](./e2e-coverage.md) §「Host Connection Contract × Driver」。
 
+### 5.1 CI 完全不跑 E2E（不要把绿灯当覆盖）
+
+`.github/workflows/` 下只有 `ci.yml` / `pages.yml` / `publish-driver-api.yml` / `release.yml` 四个文件，
+**没有任何一个引用 wdio、webdriver 或 `pnpm e2e`**：
+
+```bash
+grep -rliE "wdio|webdriver|pnpm e2e" .github/   # 无输出
+grep -rnE "e2e:ci:" .github/workflows/            # 无输出
+```
+
+`ci.yml` 实际执行的只有：`pnpm typecheck`、strict guards（stubs / caps / IDs / layers /
+ci-docs / version / driver-protocol / boundaries / i18n keys）、`pnpm test:unit`、
+`pnpm test:unit:drivers`、Rust `fmt --check` 与各 crate 单测、平台架构门禁。
+
+**结论：PR 绿灯与 E2E 覆盖无关。** 上表所有行的 `CI` 列都是 ❌，不是「暂时没接」，
+而是这套 WDIO 从来就没有进过任何 workflow。要在 CI 里跑 E2E 需要一台带 WebDriver
+与真实数据库服务的 runner，属于尚未启动的工作，不在本文档承诺范围内。
+
+### 5.2 `pnpm e2e` 实际跑什么、跳过什么
+
+`pnpm e2e` → `node e2e/run.mjs`（不带 `--suite`）→ WDIO 使用 `e2e/wdio.conf.ts` 的默认
+`specs: ['./specs/**/*.ts']`。因此**默认全量运行 = `e2e/specs/**` 下的全部 spec**：
+
+| 项 | 数值 | 依据 |
+|----|------|------|
+| `e2e/specs/**` spec 文件总数 | 144 | `find e2e/specs -name '*.ts'` |
+| 默认排除（截图/录屏类） | 10 | `wdio.conf.ts:221-228` 的 `exclude`，仅在 `E2E_CAPTURE` 时放开 |
+| **默认实际运行** | **约 134** | 144 − 7 个 `*screenshot*` − `zz-screenshots` / `demo-recording` / `zz-diag` |
+
+跳过条件分三层：
+
+1. **截图类**：`--capture` 未开启时统一排除（`pnpm e2e:shots` 才跑）。
+2. **数据库类**：`e2e/run.mjs:49-58` 启动前跑 `e2e/setup-e2e-env.sh`，**失败只告警不中断**
+   （"DB specs may fail; UI-only specs can still run"）。约 40 个 spec 读
+   `E2E_PG_*` / `E2E_MYSQL_*`；预置库缺失时这些 spec 失败，UI 类仍可跑完。
+3. **spec 级**：`E2E_SKIP_WORKER_DATABASE=1`（`e2e:schema-tree-objects`）、`E2E_SKIP_SQLSERVER=1`、
+   `E2E_MIGRATION_LIVE=1`（`e2e:migration-live`，默认不跑）等由各 spec 自查。
+
+### 5.3 预置数据库链路（已核实）
+
+`pnpm e2e` 与 `pnpm e2e:data-transfer` 等脚本的预置库都经同一条链路：
+
+```text
+e2e/run.mjs:50-54          → bash e2e/setup-e2e-env.sh
+  setup-e2e-env.sh:113     → bash e2e/setup-sync-dbs.sh
+  setup-e2e-env.sh:116     → bash e2e/setup-demo-data.sh（失败仅告警）
+```
+
+`e2e/setup-sync-dbs.sh` 实际创建的库（已逐行核对，非推断）：
+
+| 数据库 | 脚本位置 | 用途 |
+|--------|----------|------|
+| `datazen_sync_src` / `datazen_sync_tgt` | `:51`、`:69`（PG，`CREATE DATABASE` 于 `:55`） | Data Sync 同族双库 |
+| `datazen_sync_mysql_src` / `datazen_sync_mysql_tgt` | `:98-99`（MySQL） | Data Sync 跨方言 |
+| `$MYSQL_DB`（契约 fixture 库） | `:100`，表结构在 `setup-e2e-env.sh:100-108` | 契约矩阵 + 截图 |
+
+`datazen_sync_tgt` 另在 `:88` 授只读给 `$PG_READONLY`，用于权限用例。
+
+### 5.4 契约矩阵（`pnpm e2e:contract:matrix`）覆盖什么
+
+`--suite contract` → `e2e/specs/host-contract-matrix.ts` → 对 `DEFAULT_MATRIX_DRIVERS`
+（**postgres / mysql / sqlite**，`fixtures.ts:192-196`）逐个驱动套用
+`planJourneys()`，journey 集合取 `ALL_CONTRACT_JOURNEYS`（`plan.ts:12-23`，**10 条全跑**，
+不是 core 3 条；core 3 条 `HC-DATA`/`HC-FILTER`/`HC-QUERY` 只是 F2 历史子集）。
+
+| Journey | 所需能力 | PG | MySQL | SQLite |
+|---------|----------|----|-------|--------|
+| HC-CONN / HC-QUERY | `hasSqlEditor` | ✅ | ✅ | ✅ |
+| HC-DATA / HC-FILTER | `hasTableData` | ✅ | ✅ | ✅ |
+| HC-EDIT | `hasInlineEdit` + `hasTableData` | ✅ | ✅ | ✅ |
+| HC-STRUCT | `hasStructure` | ✅ | ✅ | ✅ |
+| HC-INDEX | `hasIndexes` | ✅ | ✅ | ✅ |
+| HC-EXPORT | `hasExport` + `hasTableData` | ✅ | ✅ | ✅ |
+| HC-OBJ | `hasObjects` | ✅ | ✅ | ❌（`fixtures.ts:69` 置 false） |
+| HC-EXPLAIN | `hasExplain` + `hasSqlEditor` | ✅ | ✅ | ✅ |
+
+即 **3 × 10 = 30 格，29 跑 / 1 跳过**（SQLite 的 HC-OBJ）。
+
+**矩阵只含这 3 个驱动。** SQL Server、ClickHouse、DuckDB、MongoDB、Redis 均不在
+`DRIVER_FIXTURES` 中，它们的「Host 通用 UI 契约」目前没有任何自动化验证。
+
+### 5.5 驱动 E2E 接线现状
+
+`packages/drivers/<id>/e2e/` 按 `AGENTS.md` 本就「显式脚本，不进默认 `pnpm e2e`」。
+但「显式」不等于「可跑」——实测接线情况：
+
+**已接入 suite（可用 `pnpm e2e:<group>` 跑）：**
+
+| 驱动 | 接线位置 | 覆盖 spec |
+|------|----------|-----------|
+| redis | `wdio.conf.ts:325`（glob `../packages/drivers/redis/e2e/*.ts`） | 2 / 2 |
+| mysql + postgres | `wdio.conf.ts:328-331`（`schema-tree-objects` suite） | 各 1 / 7、1 / 6 |
+
+**完全没有任何接线**（未进 `wdio.conf.ts` 任何 suite、CI 也不引用，需手动
+`pnpm e2e:skip-build -- --spec <path>`）：
+
+| 驱动 | spec 数 | 备注 |
+|------|--------|------|
+| **sqlserver** | 8 | 全部需 `E2E_SQLSERVER_*` + `E2E_SKIP_SQLSERVER!=1`；见该目录 README 的「These specs never run in CI」 |
+| mysql | 5 | `sync-plan` / `sync-wave-one` / `wave1-isolated` / `ack-loss` / `rollback-continue` |
+| postgres | 6 | 同上 + `schema-primary-key-nullability` |
+| clickhouse | 1 | `clickhouse-smoke.ts` |
+| duckdb | 1 | `duckdb-smoke.ts` |
+| mongodb | 1 | `mongodb-smoke.ts` |
+
+**另有 4 个孤儿 WDIO 配置**，仓库内 0 处引用（`grep -rn` 无输出），只能手工
+`--config e2e/<name>.conf.ts` 跑，其对应的 spec 也不在任何 suite 内：
+
+```text
+e2e/wdio.migration-transfer-ack-loss.conf.ts
+e2e/wdio.migration-transfer-rollback-continue.conf.ts
+e2e/wdio.migration-transfer-structure-mapping-r3-tester.conf.ts
+e2e/wdio.sync-wave-one.conf.ts
+```
+
+**读法**：驱动 E2E 目前是一套**纯手工回归集**。它有价值（方言、ACL、DDL 渲染只能这么测），
+但不具备任何自动化保护——改动 SQL Server 驱动后 CI 全绿是**正常**的，不代表 SQL Server 没坏。
+
 ## 6. Release 流水线（摘要）
 
 `release.yml` 在 tag `v*` 或手动 dispatch 时构建安装包；**不**替代 PR CI 的单测矩阵。
