@@ -1,7 +1,7 @@
 //! The PostgreSQL resource provider's bookkeeping.
 //!
 //! This is a real implementation, not a shell. Every contract method — all
-//! thirteen, in [`contract`] — is bound to this crate's own connection and
+//! fourteen, in [`contract`] — is bound to this crate's own connection and
 //! execution machinery:
 //!
 //! | contract method | what actually runs |
@@ -347,6 +347,17 @@ impl PostgresResourceProvider {
         self.register_resource(connection, permit, budget)
     }
 
+    /// How many tombstones this instance is holding. `#[cfg(test)]`, because the
+    /// size of `closed` is not something a caller may ask about: it exists
+    /// purely so a confirmed close can be told apart from a key never held.
+    ///
+    /// Read by `tests_behaviour` to pin what `closed` actually does — see
+    /// `the_tombstone_set_only_grows_and_nothing_reclaims_it` there.
+    #[cfg(test)]
+    pub(crate) fn tombstone_count_for_test(&self) -> usize {
+        self.lock().closed.len()
+    }
+
     /// Commit or roll back, including the honesty rule for an unconfirmed
     /// outcome.
     async fn finish_transaction(
@@ -466,6 +477,6 @@ impl PostgresResourceProvider {
     }
 }
 
-/// The thirteen [`ResourceProvider`] methods. A child module so it sees the
+/// The fourteen [`ResourceProvider`] methods. A child module so it sees the
 /// provider's private bookkeeping without widening any visibility.
 mod contract;

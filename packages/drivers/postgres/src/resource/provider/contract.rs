@@ -1,4 +1,4 @@
-//! The thirteen contract methods, and nothing else.
+//! The fourteen contract methods, and nothing else.
 //!
 //! This file is the *declaration surface*: every method of
 //! [`ResourceProvider`] exactly as postgres answers it. The bookkeeping they

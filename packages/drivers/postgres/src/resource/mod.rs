@@ -4,7 +4,7 @@
 //!
 //! * [`capabilities`] — what this driver *declares*, with the file and line each
 //!   claim rests on. A capability that is not proven is declared unsupported.
-//! * [`provider`] — the provider itself: the state it owns and the 13 contract
+//! * [`provider`] — the provider itself: the state it owns and the 14 contract
 //!   methods, each wired to this crate's own connection and execution code.
 //! * [`registry`] — what one live resource remembers. No I/O.
 //! * [`observation`] — reading the session back off the server. Every field is
