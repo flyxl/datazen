@@ -30,9 +30,9 @@ pub use session::{
 };
 pub use types::{
     ConfigRevision, ConnectionId, Counter, DbSessionId, ExecutionId, ExecutionTarget, HandleId,
-    JobId, LeaseId, NamespaceInput, NamespaceLayer, NamespaceShape, NamespaceTarget, ObjectTarget,
-    OrganizationId, OwnerRef, PoolKeyFingerprint, PoolKeyInputs, PrincipalId, ResourceId, StreamId,
-    Timestamp, WorkerId,
+    JobId, LeaseId, NamespaceInput, NamespaceLayer, NamespaceTarget, ObjectTarget, OrganizationId,
+    OwnerRef, PoolKeyFingerprint, PoolKeyInputs, PrincipalId, ResourceId, StreamId,
+    TargetNamespaceShape, Timestamp, WorkerId,
 };
 
 #[cfg(any(test, feature = "test-harness"))]

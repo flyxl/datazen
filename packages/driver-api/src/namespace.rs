@@ -15,17 +15,26 @@ use crate::resource::ResourceError;
 
 /// Which namespace levels a database has, outermost first.
 ///
-/// Sole owner of this type. `session.rs` used to declare a second, identical
-/// `NamespaceLevelKind` that nothing consumed; it was removed because two
-/// definitions of one namespace concept is exactly the ambiguity the P2
-/// contract is meant to eliminate. Do not re-export or re-declare it elsewhere
-/// — import it from `crate::namespace`.
+/// `NamespaceLevelKind` has three values — `Database`, `Catalog`, `Schema` — and
+/// is the layer enum of this crate's `NamespaceShape`, which also carries
+/// `path_segments`, `case_rules`, `canonical_id_rules` and `aliases`, and
+/// canonicalizes via `canonicalize()` / `resolve_alias()`.
+///
+/// The platform side describes a different question — what one request declares
+/// — as `datazen_platform_api::target::TargetNamespaceShape`. Its layer enum is
+/// `NamespaceLayer` (`Database` / `Catalog` / `Schema` / `Path`), it carries only
+/// the `required` / `optional` sets plus the `declares()` / `is_required()`
+/// predicates, and it has no case, alias or canonical-id data. `Path` is
+/// meaningful only there — it names a request-supplied path, not a level a
+/// database has. `ResourceDescriptor::namespace_shape` is typed with this
+/// crate's `NamespaceShape`, not with that one, and no conversion exists
+/// between the two.
 ///
 /// `PartialOrd`/`Ord` are deliberately absent: no caller sorts or orders
 /// namespace levels today. The "outermost first" contract above is enforced by
 /// [`NamespaceShape`] validation and by call sites that walk levels in written
-/// order, not by comparing them. The deleted duplicate did derive them; adding
-/// them back would be an unused API surface, not a fix.
+/// order, not by comparing them. Adding them back would be an unused API
+/// surface, not a fix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum NamespaceLevelKind {

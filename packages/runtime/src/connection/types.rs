@@ -52,11 +52,11 @@ pub use datazen_platform_api::id::{
 /// 而本 crate 历史上的 `database_and_schema()` 把 database 与 schema **都列为必填**
 /// （见下方 `schema_required_shape()`）。两者语义不同，所以本 crate 的调用点一律显式构造，
 /// 不调用 `platform-api` 的那个便捷构造器 —— 具体取舍见 `schema_required_shape()` 的注释。
-pub use datazen_platform_api::target::{NamespaceLayer, NamespaceShape};
+pub use datazen_platform_api::target::{NamespaceLayer, TargetNamespaceShape};
 
 /// 本 crate 在**历史行为**上使用的形状：database 与 schema 都必填。
 ///
-/// 为什么不用 `NamespaceShape::database_and_schema()`：那个构造器把 schema 列为**可选**，
+/// 为什么不用 `TargetNamespaceShape::database_and_schema()`：那个构造器把 schema 列为**可选**，
 /// 而 CM-07 要求「省略必需层」判 `TargetRequired`。换成它，本文件
 /// `absent_and_null_required_layers_are_distinct_but_both_rejected` 所断言的规格行为会被静默放行 ——
 /// 这正是本文件此前拒绝合并时写下的理由（「会让原本被拒的调用静默放行」）。
@@ -64,8 +64,8 @@ pub use datazen_platform_api::target::{NamespaceLayer, NamespaceShape};
 /// 因此这里是**显式构造**而不是再 `pub use` 一个构造器：类型只有一份，但两处声明的语义各自明确，
 /// 谁想要哪种形状必须自己写出来，不存在一个名字覆盖两种含义的入口。
 /// 待 spec owner 裁定「schema 是否应改为可选」之前，`schema_required_shape()` 是本 crate 的既定语义。
-pub fn schema_required_shape() -> NamespaceShape {
-    NamespaceShape::new(
+pub fn schema_required_shape() -> TargetNamespaceShape {
+    TargetNamespaceShape::new(
         [NamespaceLayer::Database, NamespaceLayer::Schema],
         Vec::new(),
     )
@@ -83,7 +83,7 @@ pub fn schema_required_shape() -> NamespaceShape {
 // | `ConfigRevision` | `pub u64` | `version_id!` → `pub Counter` | 线上字面量相同（十进制字符串），但元组字段类型不同，不能直接别名替换 |
 // | `OwnerRef` | `WorkflowBlock{run_id, block_id}`、`Job` 带 `organization_id` | 多一个 `Editor` 变体，字段经 `rename_all_fields` 重命名 | 变体载荷与 JSON tag 都不同 |
 //
-// `NamespaceShape` / `NamespaceLayer` 曾经也在这张表里，理由是「两套语义并存」；
+// `TargetNamespaceShape` / `NamespaceLayer` 曾经也在这张表里，理由是「两套语义并存」；
 // 该条目已失效并删除：类型本身现已通过 `pub use` 收敛为一份，剩余的
 // `database_and_schema()` 语义差异改由上面的 `schema_required_shape()` 显式承载。
 //
@@ -158,7 +158,7 @@ pub const UNKNOWN_SENTINEL: &str = "dz_unknown";
 ///
 /// `Default` 得到四个空串层，即「**未指定任何层**」的形状 —— 与 `from_shape` 里
 /// `String::new()` 的初始值同义。它**不是**一个合法目标：`from_shape` 仍会按
-/// `NamespaceShape` 的必填层校验并对空串报 `TargetRequired`，因此 derive 只是
+/// `TargetNamespaceShape` 的必填层校验并对空串报 `TargetRequired`，因此 derive 只是
 /// 提供构造起点，不构成绕过 §4.2 校验的捷径。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -200,7 +200,7 @@ impl NamespaceTarget {
     }
 
     /// 按驱动形状校验：必填层缺失或为空 → `TargetRequired`。
-    pub fn validate(&self, shape: &NamespaceShape) -> Result<(), ApiError> {
+    pub fn validate(&self, shape: &TargetNamespaceShape) -> Result<(), ApiError> {
         for layer in NamespaceLayer::ALL {
             if shape.is_required(layer) && self.get(layer).is_empty() {
                 return Err(ApiError::new(
@@ -271,7 +271,7 @@ impl NamespaceInput {
     ///
     /// 必填层**未出现 / 显式 null** → `TargetRequired`（两种形态文案不同，CM-07 才能定位）；
     /// 必填层**给了空串** → `InvalidArgument`：空串是参数本身不合法，不是目标缺失。
-    pub fn resolve(&self, shape: &NamespaceShape) -> Result<NamespaceTarget, ApiError> {
+    pub fn resolve(&self, shape: &TargetNamespaceShape) -> Result<NamespaceTarget, ApiError> {
         let mut target = NamespaceTarget {
             database: String::new(),
             catalog: String::new(),
@@ -323,7 +323,7 @@ impl NamespaceInput {
     pub fn resolve_against(
         &self,
         expected: &NamespaceTarget,
-        shape: &NamespaceShape,
+        shape: &TargetNamespaceShape,
     ) -> Result<NamespaceTarget, ApiError> {
         let resolved = self.resolve(shape)?;
         for layer in NamespaceLayer::ALL {

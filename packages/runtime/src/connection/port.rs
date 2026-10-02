@@ -14,8 +14,8 @@ use crate::connection::session::{
     SessionContext, SessionHandleRef, SessionState, SessionView, TransactionState,
 };
 use crate::connection::types::{
-    fnv1a64_hex, Counter, DbSessionId, ExecutionId, ExecutionTarget, HandleId, NamespaceShape,
-    NamespaceTarget, OwnerRef, PoolKeyFingerprint, ResourceId, UNKNOWN_SENTINEL,
+    fnv1a64_hex, Counter, DbSessionId, ExecutionId, ExecutionTarget, HandleId, NamespaceTarget,
+    OwnerRef, PoolKeyFingerprint, ResourceId, TargetNamespaceShape, UNKNOWN_SENTINEL,
 };
 
 /// 会话连续性。fake 固定为 `fixed`（§3.2 describeResource）。
@@ -59,7 +59,7 @@ pub struct ResourceDescriptor {
     pub reuse_policy: ReusePolicy,
     pub initialization_requirements: Vec<String>,
     pub connection_cost_policy: ConnectionCostPolicy,
-    pub namespace_shape: NamespaceShape,
+    pub namespace_shape: TargetNamespaceShape,
     pub capabilities: CapabilitySnapshot,
 }
 
