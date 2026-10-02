@@ -326,14 +326,19 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:98
 
 | 改动 | 是否 breaking | 处理 |
 | --- | --- | --- |
-| 新增 trait 方法且带 fail-closed 默认体 | 否 | 升 `MIN` 不变；驱动不改也能编 |
-| 新增 trait 方法**没有**默认体 | 是 | 升 `MIN`，要求所有驱动显式实现后才算合规 |
-| 改能力枚举取值或语义 | 是 | 升 `MIN` + 升 `PROTOCOL_VERSION` |
-| 改 DTO 字段的必填性 | 是 | 升 `MIN` + 升 `PROTOCOL_VERSION` |
+| 新增 trait 方法且带 fail-closed 默认体 | 否 | 不动版本；驱动不改也能编 |
+| 新增 trait 方法**没有**默认体 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
+| 改能力枚举取值或语义 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
+| 改 DTO 字段的必填性 | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
+| 删除或改写受治理的符号（trait 方法、`const`、`type`、DTO 字段、命令定义） | 是 | 升 `PROTOCOL_VERSION`（`MIN` 动不动见下） |
 | 放宽已声明 `unsupported` 的行为 | 否 | 降级模式下按 `false` 处理即安全 |
 | 收紧已声明 `supported` 的行为 | 是 | 视为 breaking，需按 breaking 发布 |
 
 判定原则是**「老驱动在新宿主上是否仍能安全运行」**。`capabilities.rs` 里所有新枚举都按 fail-closed 默认（`unknown` / `unsupported`）设计，正是为了让「新增能力」本身不成为 breaking。
+
+**升 `PROTOCOL_VERSION` 与升 `MIN` 是两件事，不要混用。** `PROTOCOL_VERSION` 是「宿主现在说的协议」，任何 breaking 改动都必须升它，否则老驱动无从判断自己是不是对新宿主说谎。而 `MIN_PROTOCOL_VERSION` 是「还愿意接受的最后一个老驱动协议」，**它是一个主动放弃老驱动的产品决定，不是 breaking 的机械后果**：本 crate 自己的 `PROTOCOL_VERSION` 已经过 `1 → 4`，`MIN` 始终停在 `1`，这正是「窗口从不被自己悄悄收窄」的含义。若某次 breaking 确实不想再兼容任何老驱动，那是**另外**再升 `MIN`，让宿主在 `pv < MIN` 时明确拒绝，而不是把它当成 breaking 的处理方式。
+
+**门禁**：`scripts/check-driver-protocol-compat.mjs`（`pnpm test:driver-protocol`，CI 中为硬门禁）。它对 10 个受治理符号的**删除 / 改写**，以及**在以 `;` 结尾的 trait 里新增 `fn` / `const` / `type`**，判为 `breaking` 并要求 `PROTOCOL_VERSION` 上升；并常驻三条断言：`min-protocol-never-lowered`、`protocol-window-non-empty`（`MIN ≤ PROTOCOL`）、`crate-version-advanced`。新增 DTO 字段或枚举取值走 `additive` / `cosmetic` 判定，不触发协议升级。
 
 ### 5.4 「协议升级与驱动发布是原子兼容门槛」
 
