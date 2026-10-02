@@ -151,6 +151,6 @@ mod tests {
         assert_eq!(target.connection_id, ConnectionId::new("conn-1"));
         assert!(!target
             .namespace
-            .has_value(crate::target::NamespaceLayer::Schema));
+            .has_value(crate::target::TargetNamespaceLayer::Schema));
     }
 }
