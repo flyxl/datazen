@@ -5,11 +5,15 @@
 //! the source it is testing with `include_str!`, and those paths are
 //! relative to the file that holds them.
 
+use std::collections::HashMap;
+
 use super::*;
-use crate::db::{ColumnSchema, DriverCapabilities, DriverError, ExplainResult, Value};
+use crate::db::{
+    ColumnSchema, DriverCapabilities, DriverError, ExplainResult, TransactionHandle, Value,
+};
 use crate::store::AppSettings;
 use crate::testing::app_state::TestAppState;
-use crate::testing::mock_driver::MockDriverOptions;
+use crate::testing::mock_driver::{BeginRace, MockDriverOptions};
 
 #[tokio::test]
 async fn execute_query_success_records_history() {
@@ -618,4 +622,85 @@ fn an_absent_field_stays_absent_rather_than_becoming_an_empty_filter() {
     assert_eq!(filter.search, None);
     assert_eq!(filter.since, None);
     assert_eq!(filter.until, None);
+}
+
+// ── Lost-begin-race rollback ────────────────────────────────────────────────
+//
+// `begin_session_transaction_impl` re-reads its own bookkeeping after the
+// driver has answered. If a competing `begin` won in between, this call owns a
+// transaction it cannot register, so it must undo it. When the driver *cannot*
+// confirm that undo, the connection keeps a second, untracked open transaction —
+// a user-visible failure that must be reported rather than reported as a clean
+// begin.
+
+/// The shape of `AppState.session_transactions`.
+type SessionTransactions = std::sync::Arc<tokio::sync::Mutex<HashMap<String, TransactionHandle>>>;
+
+/// The bookkeeping the racing task and this call share. Assigning it onto
+/// `AppState` is what lets the stub driver reach in: it publishes the winner
+/// into this very map between the two reads.
+async fn losing_the_begin_race(rollback_fails: bool) -> (TestAppState, SessionTransactions) {
+    let slot = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let winner = TransactionHandle {
+        id: "winner_tx".into(),
+        // Filled in by `begin_transaction`, which knows the real session id.
+        connection_id: String::new(),
+    };
+    let mut opts = MockDriverOptions::default();
+    opts.begin_race = Some(BeginRace {
+        slot: slot.clone(),
+        winner: std::sync::Arc::new(std::sync::Mutex::new(Some(winner))),
+    });
+    if rollback_fails {
+        opts.rollback_error_on_call = Some(1);
+        opts.rollback_error = Some("injected rollback failure".into());
+    }
+    let mut test = TestAppState::with_options(opts).await;
+    test.state.session_transactions = slot.clone();
+    (test, slot)
+}
+
+#[tokio::test]
+async fn begin_session_transaction_reports_a_rollback_it_could_not_confirm() {
+    let (test, slot) = losing_the_begin_race(true).await;
+    let (_, db_session_id) = test.save_and_connect("begin-race-fail").await;
+
+    let err = begin_session_transaction_impl(&test.state, db_session_id.clone())
+        .await
+        .expect_err("an unconfirmed rollback must not be reported as a clean begin");
+    assert!(
+        err.to_string().contains("injected rollback failure"),
+        "the driver's own reason must survive into the reported error, got: {err}"
+    );
+
+    // The competing task's transaction is untouched — losing the race must not
+    // roll back somebody else's work.
+    let registered = slot.lock().await;
+    assert_eq!(
+        registered.get(&db_session_id).map(|tx| tx.id.as_str()),
+        Some("winner_tx"),
+        "the winning transaction must still be the registered one"
+    );
+}
+
+#[tokio::test]
+async fn begin_session_transaction_is_ok_when_the_losing_rollback_is_confirmed() {
+    let (test, slot) = losing_the_begin_race(false).await;
+    let (_, db_session_id) = test.save_and_connect("begin-race-ok").await;
+
+    begin_session_transaction_impl(&test.state, db_session_id.clone())
+        .await
+        .expect("a confirmed rollback of our own transaction is a clean begin");
+
+    let registered = slot.lock().await;
+    assert_eq!(
+        registered.get(&db_session_id).map(|tx| tx.id.as_str()),
+        Some("winner_tx"),
+        "the winner stays registered"
+    );
+    assert_eq!(
+        registered.len(),
+        1,
+        "the losing transaction must not be registered alongside the winner"
+    );
 }

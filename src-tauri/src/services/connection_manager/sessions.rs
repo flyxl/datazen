@@ -67,9 +67,57 @@ impl ConnectionManager {
                 // told. Swallowing it here reported a clean disconnect for a
                 // connection that may still be up.
                 //
-                // The entry is already out of `connections` by this point, so
-                // the failure cannot be retried under the same `db_session_id`;
-                // reordering the removal is a separate decision.
+                // ── Why the three removals stay above the await (decided, not
+                // incidental) ────────────────────────────────────────────────
+                // Read the block above as a **claim**, not as cleanup that got
+                // ordered before the side effect by accident. All three table
+                // removals happen before the single `.await` point, and that
+                // buys two properties the naive "disconnect first, remove the
+                // entries on success" order destroys:
+                //
+                // 1. *Exactly one teardown per handle.* `connections` is one
+                //    `RwLock<HashMap<..>>` and `remove` is atomic under its
+                //    write lock, so two concurrent `disconnect` calls for the
+                //    same `dbSessionId` cannot both obtain the same
+                //    `ActiveSession` — the loser finds `None` and returns
+                //    `Ok(())` without touching the driver. Deferring the
+                //    removal would let both callers observe the entry and both
+                //    invoke `driver.disconnect` on the same `handle`.
+                //    `DatabaseDriver::disconnect`
+                //    (`packages/driver-api/src/traits.rs:254`) carries no
+                //    idempotency contract, so a second call on a live
+                //    `pool_id` is not something the host may assume is safe.
+                // 2. *No window in which a dying session can be handed out.*
+                //    `get_or_connect_session` matches on
+                //    `session_owner_map` ∩ `connections`, and `reconnect`
+                //    resolves its owner through `session_owner_map`. Because
+                //    both entries are already gone before the await, neither
+                //    can observe the id while the physical connection is being
+                //    torn down. If the removals were deferred, a tab opening
+                //    concurrently would match the entry, bump `ref_counts` to
+                //    1 and be given a `dbSessionId` whose teardown then
+                //    succeeds — i.e. a session id that is dead on first use,
+                //    strictly worse than "not retryable", and it would also
+                //    resurrect a session that `release` had just decided was
+                //    finished.
+                //
+                // ── The residual gap this leaves, stated honestly ──────────
+                // The cost of the claim is that the failure cannot be retried:
+                // the `ActiveSession` — the host's only reference to the
+                // physical resource, since `ConnectionHandle`
+                // (`packages/driver-api/src/types.rs:309`) is plain data with
+                // no `Drop` of its own — is dropped when this function returns,
+                // so a second `disconnect` with the same id takes the
+                // `None` branch and reports `Ok(())` for a connection the
+                // driver already said it could not tear down. That is a real
+                // gap, and it is **not fixed here on purpose**: closing it
+                // requires a fourth table (a quarantine holding the unconfirmed
+                // `ActiveSession`, consulted by `disconnect` but deliberately
+                // not by `get_or_connect_session`/`reconnect`, so property 2
+                // above survives) — that is a state-shape change to the manager
+                // and needs its own review, not a drive-by inside a
+                // swallowed-error fix. Recording the shape here so the next
+                // reader does not re-derive it.
                 driver.disconnect(active.handle).await?;
             }
         }

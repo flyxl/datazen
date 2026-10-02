@@ -326,6 +326,14 @@ pub async fn execute_query_stream(
     record_history: Option<bool>,
 ) -> Result<(), CommandError> {
     let callback: QueryStreamCallback = Arc::new(move |event| {
+        // Unavoidable and not a masked defect: `Channel::send` fails only when
+        // the receiving end is gone (the webview for this stream was closed or
+        // reloaded), and there is no one left to report to — the event has
+        // nowhere to go even if it were reported. `QueryStreamCallback` returns
+        // `()`, so propagating would mean changing the callback contract for
+        // every producer. Deliberately *not* logged: this runs once per stream
+        // event, so a log line here would flood the file with the same message
+        // for the remainder of a large result set.
         let _ = on_event.send(event);
     });
     execute_query_stream_impl(
@@ -485,7 +493,28 @@ pub(crate) async fn begin_session_transaction_impl(
     let mut txs = state.session_transactions.lock().await;
     if txs.contains_key(&db_session_id) {
         drop(txs);
-        let _ = driver.rollback(tx).await;
+        // Lost the race: another `begin` for this `dbSessionId` registered its
+        // transaction while ours was being opened, so this one must be undone
+        // or the connection carries a second, untracked open transaction whose
+        // writes no commit/rollback will ever reach. If the driver cannot
+        // confirm the rollback, that dangling transaction is real and this
+        // function returning `Ok(())` would be a lie — the caller would go on
+        // to commit the *other* handle and the orphan's locks would stay held.
+        // Same ruling as `services/transaction.rs::rollback` and
+        // `ConnectionManager::disconnect`. The winner's transaction is
+        // untouched: it is already in the map, and this path only ever removes
+        // the handle this call created.
+        driver.rollback(tx).await.map_err(|e| {
+            let err: CommandError = e.into();
+            tracing::error!(
+                cmd = "begin_session_transaction",
+                db_session_id = %db_session_id,
+                error = %err,
+                "Could not roll back the transaction opened by a lost begin race; \
+                 the connection is left with an untracked open transaction",
+            );
+            err
+        })?;
         return Ok(());
     }
     txs.insert(db_session_id, tx);

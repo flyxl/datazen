@@ -20,6 +20,24 @@ use datazen_driver_api::{
     DriverCommandDefinition, SchemaScope,
 };
 
+/// Models "another task registered its own transaction for the same
+/// `dbSessionId` while this one was being opened".
+///
+/// `begin_transaction` publishes `winner` into `slot` *before* it returns, so a
+/// caller that re-reads its own bookkeeping after `await`ing the driver — which
+/// is exactly what `begin_session_transaction_impl` does — deterministically
+/// loses the race. Nothing else can reach that branch: the map is empty when the
+/// function starts, and the only writer between the two reads is the driver.
+#[derive(Clone)]
+pub struct BeginRace {
+    /// The caller's own `dbSessionId → TransactionHandle` bookkeeping.
+    pub slot: Arc<tokio::sync::Mutex<HashMap<String, TransactionHandle>>>,
+    /// The handle the competing task won with. Behind an `Arc` so it can be
+    /// taken on first use while `MockDriverOptions` stays `Clone`
+    /// (`TransactionHandle` is deliberately not `Clone`).
+    pub winner: Arc<Mutex<Option<TransactionHandle>>>,
+}
+
 #[derive(Clone)]
 pub struct MockDriverOptions {
     /// Driver category reported by `driver_category` (defaults to Sql).
@@ -64,6 +82,9 @@ pub struct MockDriverOptions {
     /// Fail the selected rollback call to model an unknown rollback outcome.
     pub rollback_error_on_call: Option<u32>,
     pub rollback_error: Option<String>,
+    /// Make `begin_transaction` hand the caller's race to a competing task —
+    /// see [`BeginRace`]. `None` (the default) keeps the single-writer model.
+    pub begin_race: Option<BeginRace>,
     /// Fail every `disconnect` to model a driver that cannot confirm the
     /// physical connection is gone. Used to pin that the Host reports such a
     /// teardown instead of claiming a clean disconnect.
@@ -134,6 +155,7 @@ impl Default for MockDriverOptions {
             commit_error_after_effect: false,
             rollback_error_on_call: None,
             rollback_error: None,
+            begin_race: None,
             disconnect_error: None,
             execute_with_params_error: None,
             execute_error: None,
@@ -721,16 +743,28 @@ impl DatabaseDriver for MockDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
-        let mut txs = self.open_txs.lock().expect("mock open_txs");
-        if !txs.insert(handle.id.clone()) {
-            return Err(DriverError::TransactionError(
-                "A transaction is already open on this connection".into(),
-            ));
+        let tx = {
+            let mut txs = self.open_txs.lock().expect("mock open_txs");
+            if !txs.insert(handle.id.clone()) {
+                return Err(DriverError::TransactionError(
+                    "A transaction is already open on this connection".into(),
+                ));
+            }
+            TransactionHandle {
+                id: format!("mock_tx_{}", handle.id),
+                connection_id: handle.id.clone(),
+            }
+        };
+        // Losing the race to a competing begin, if one is armed: publish its
+        // handle into the caller's bookkeeping *before* returning, so a caller
+        // that re-reads that bookkeeping after awaiting us always loses.
+        if let Some(race) = &self.opts.begin_race {
+            let winner = race.winner.lock().expect("mock begin_race winner").take();
+            if let Some(winner) = winner {
+                race.slot.lock().await.insert(handle.id.clone(), winner);
+            }
         }
-        Ok(TransactionHandle {
-            id: format!("mock_tx_{}", handle.id),
-            connection_id: handle.id.clone(),
-        })
+        Ok(tx)
     }
 
     async fn begin_read_snapshot(
