@@ -458,11 +458,11 @@ e2e/run.mjs:50-54          → bash e2e/setup-e2e-env.sh
 
 | 数据库 | 脚本位置 | 用途 |
 |--------|----------|------|
-| `datazen_sync_src` / `datazen_sync_tgt` | `:51`、`:69`（PG，`CREATE DATABASE` 于 `:55`） | Data Sync 同族双库 |
-| `datazen_sync_mysql_src` / `datazen_sync_mysql_tgt` | `:98-99`（MySQL） | Data Sync 跨方言 |
-| `$MYSQL_DB`（契约 fixture 库） | `:100`，表结构在 `setup-e2e-env.sh` 的 MySQL 契约 fixture 建表段 | 契约矩阵 + 截图 |
+| `datazen_sync_src` / `datazen_sync_tgt` | `setup-sync-dbs.sh`「PostgreSQL setup」段：`for db in datazen_sync_src datazen_sync_tgt` 建库循环（其 `CREATE DATABASE $db` 分支），同段第二个同名循环负责重置 fixture 表并授权 | Data Sync 同族双库 |
+| `datazen_sync_mysql_src` / `datazen_sync_mysql_tgt` | `setup-sync-dbs.sh`「MySQL setup」段三条 `CREATE DATABASE IF NOT EXISTS` 中的前两条 | Data Sync 跨方言 |
+| `$MYSQL_DB`（契约 fixture 库） | `setup-sync-dbs.sh`「MySQL setup」段第三条 `CREATE DATABASE IF NOT EXISTS`；表结构由 `setup-e2e-env.sh` 的 `e2e_contract_conn` 建表语句创建 | 契约矩阵 + 截图 |
 
-`datazen_sync_tgt` 另在 `:88` 授只读给 `$PG_READONLY`，用于权限用例。
+`datazen_sync_tgt` 另在 `setup-sync-dbs.sh`「PostgreSQL setup」段末尾的只读授权块（`GRANT CONNECT ON DATABASE datazen_sync_tgt TO ${PG_READONLY}` 起）授只读给 `$PG_READONLY`，用于权限用例。
 
 ### 5.4 契约矩阵（`pnpm e2e:contract:matrix`）覆盖什么
 
