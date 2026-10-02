@@ -544,9 +544,19 @@ impl ResourceProvider for LegacyResourceAdapter {
     /// which contract each site chose.
     ///
     /// What *is* shared is the rule itself, and it is asserted in each
-    /// driver's own tests. Revisit if a fourth site appears with exactly the
-    /// `postgres`/`redis` policy, where a two-policy helper would already pay
-    /// for itself.
+    /// driver's own tests.
+    ///
+    /// Note that `redis` already extracted its part of this as a private
+    /// `take_for_close` (`redis/src/resource/provider.rs:460`). That is a
+    /// different move and is not a counterexample: it is private to one
+    /// provider module, has exactly one caller, and hardcodes the absent-key
+    /// policy inline — zero parameters, because there is only one policy to
+    /// express. It pays for itself by removing a block repeated under a
+    /// uniform rule. What is declined here is the cross-crate generic, where
+    /// the policy becomes a parameter and the helper is mostly parameters.
+    ///
+    /// Revisit if a fourth site appears with exactly the `postgres`/`redis`
+    /// policy, so the helper would have one shape instead of three.
     async fn close_resource(
         &self,
         handle: &ResourceHandle,
