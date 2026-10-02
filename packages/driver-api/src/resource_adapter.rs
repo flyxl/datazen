@@ -526,28 +526,39 @@ impl ResourceProvider for LegacyResourceAdapter {
     ///   closed" (`Ok(Closed)`) from "never held"
     ///   (`Err(InvalidResourceState)`).
     ///
-    ///   That "not marked closed" half is currently **unreachable and therefore
-    ///   untestable**, and the next person to touch it needs to know before
-    ///   they write a test for it:
+    ///   That "not marked closed" half has **no test that can fail**, and the
+    ///   next person to touch it needs to know that *before* they try to write
+    ///   one:
     ///
-    ///   1. `postgres`'s `disconnect_impl` (`src/connection.rs`) ends in
-    ///      `Ok(())` — every `remove` / `retain` it performs is infallible and
-    ///      there is no `?` in it — so it cannot return `Err`, so the
-    ///      `CloseUnconfirmed` arm of `close_resource` is dead. `redis` is the
-    ///      same shape. Nothing in either crate produces this disposition.
-    ///   2. So "mark closed only on a *confirmed* close" has no test, in this
-    ///      repo, that can fail. Moving `handle.mark_closed()` onto the
-    ///      unconfirmed arm — the tempting one-line edit — fails **silently**:
-    ///      the handle would then claim to be closed after a close that was not
-    ///      confirmed, the retry would answer `Ok(Closed)`, the budget would
-    ///      never be released, and the entire suite would stay green. Measured:
-    ///      that mutation turns `cargo test -p datazen-driver-postgres` EXIT=0
-    ///      with 194 passed and 0 failed.
-    ///   3. So if a fault-injectable disconnect seam is ever introduced — which
-    ///      is what it would take to reach that arm — the branch **must** come
-    ///      with a test in the same change. A green suite means nothing about
-    ///      this arm today, so treating green as the permission to move the
-    ///      `mark_closed()` call is the specific mistake to avoid.
+    ///   1. The arm is not merely unreached today, it is **untestable as
+    ///      constructed** — there is no seam. `postgres` calls
+    ///      `driver.disconnect_impl(...)`, a `pub(crate)` *inherent* method
+    ///      (`connection.rs:444`), so it is not even a trait call that a test
+    ///      double could intercept; and both providers store the **concrete**
+    ///      driver (`Arc<PostgresDriver>` / `Arc<RedisDriver>`), so there is no
+    ///      `Arc<dyn DatabaseDriver>` substitution point either. Reaching this
+    ///      arm needs a production design change, not a test.
+    ///   2. So "mark closed only on a *confirmed* close" is unverified in both
+    ///      crates. Moving `handle.mark_closed()` onto the unconfirmed arm —
+    ///      the tempting one-line edit — fails **silently**: the handle would
+    ///      claim to be closed after a close that was not confirmed, the retry
+    ///      would answer `Ok(Closed)`, the budget would never be released, and
+    ///      the entire suite would stay green. Measured: that mutation turns
+    ///      `cargo test -p datazen-driver-postgres` EXIT=0 with 194 passed and
+    ///      0 failed.
+    ///   3. The trap is to read "it cannot fail right now" as "someone will make
+    ///      it failable and then test it". For `postgres` that is exactly
+    ///      backwards: its one genuinely fallible call is the `ROLLBACK` at
+    ///      `connection.rs:449`, whose error is discarded by `let _ =`. Adding a
+    ///      `?` there is a one-character change that turns the arm live in
+    ///      production and leaves it with **zero** test signal — a real budget
+    ///      leak, reported as clean. If a `?` is ever added, the test has to
+    ///      land in the same commit; adding the `?` alone is the failure mode
+    ///      this note exists to prevent.
+    ///
+    ///   The two drivers get there by different routes, which is why neither
+    ///   one's dead arm can be reasoned about from the other's: `postgres`
+    ///   throws away a real failure, `redis` never had one to throw away.
     /// - This adapter: identical budget discipline, but it keeps **no** record of
     ///   confirmed closes at all, so a missing key is always `Ok(Closed)` and the
     ///   never-held case is simply not expressible.

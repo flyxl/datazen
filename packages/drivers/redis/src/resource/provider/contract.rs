@@ -343,9 +343,15 @@ impl ResourceProvider for RedisResourceProvider {
             return Ok(CloseDisposition::Closed);
         };
 
-        // `RedisDriver::disconnect` (`database.rs:82`) removes the connection
-        // from the registry and cannot fail after that point, so an `Ok` here is
-        // a confirmed close rather than an optimistic one.
+        // `RedisDriver::disconnect` (`database.rs:82`) discards the registry
+        // remove and contains no other statement that can fail, so it cannot
+        // return `Err` at all — not merely "cannot fail after that point". The
+        // `Err` arm below is therefore dead, and it is dead for a different
+        // reason than `postgres`'s twin: that one throws away a genuinely
+        // fallible `ROLLBACK`, this one never had a fallible call to begin with.
+        // `RedisResourceProvider::new` takes a concrete `Arc<RedisDriver>`, so
+        // there is also no way to substitute a driver that does fail, which is
+        // what keeps that arm untested rather than merely unreached.
         match self.driver.disconnect(resource.connection.clone()).await {
             Ok(()) => {
                 handle.mark_closed();
