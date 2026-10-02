@@ -38,7 +38,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use datazen_driver_api::capabilities::CapabilitySet;
+use datazen_driver_api::capabilities::{
+    Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
+    PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
+    TransactionObservation, TransactionSupport,
+};
+use datazen_driver_api::capability_domains::{BackupSupport, DataSupport};
 use datazen_driver_api::namespace::{NamespaceLevel, NamespaceLevelKind, NamespaceShape};
 use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
@@ -147,27 +152,80 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 
 /// What this crate can honestly claim, capability by capability.
 ///
-/// The value is `CapabilitySet::default()` — every field at the non-supporting answer —
-/// and that is the truthful statement, not an omission:
+/// Every entry below is a claim about code that **already exists** in this crate. A
+/// capability that is not proven is declared blank (`Unknown` / `Unsupported`) and
+/// says here why it could not be proven — a blank cell is a finding, not an
+/// omission.
 ///
-/// * `precise_cancel` stays non-supporting because SQL Server has no execution-handle
-/// cancel protocol. `LegacyResourceAdapter` derives this field from
-/// `supports_query_execution_cancel()`, which for SQL Server is `false`; declaring
-/// anything stronger here would make the factory disagree with the provider that
-/// actually owns the registry.
-/// * `stateful_session` stays unknown because an MSSQL session is reachable only
-/// through a pooled connection
-/// * `observe_session`, `change_context`, `reset_resource`, commit and rollback stay
-/// non-supporting for the reasons in the module docs; nothing here is migrated to a
-/// session contract yet, so claiming otherwise would be a capability the port cannot
-/// honour.
+/// | Capability | Declared | Why |
+/// |---|---|---|
+/// | `stateful_session` | `Supported` | this driver reads **session-scoped state back off the server**, which is what the cell asks about. `current_isolation_level` issues `DBCC USEROPTIONS WITH NO_INFOMSGS` and parses the *session's* current isolation level out of the reply (`sqlserver.rs:461-488`) — a per-session diagnostic that cannot be read without a session; and `ensure_no_open_transaction` issues `SELECT @@TRANCOUNT AS [transaction_count]` and treats a nonzero count as an error (`sqlserver.rs:488-508`, called at `:1625`). The transaction handle is registered against that same `SqlClient` and dropped only when the transaction ends (`sqlserver.rs:1631-1637`, `:1717`, `:1752`). Both observations survive between statements on one connection, so the session is measured, not assumed.
 ///
-/// A caller that needs one of these gets an explicit
-/// `ResourceError::CapabilityNotDeclared` instead of a silent empty success. Keep this
-/// byte-identical to what `provider()` reports: a factory that looks rosier
-/// than its own provider is exactly the drift the contract exists to prevent.
+/// Note that this is *not* in tension with `SessionContinuity::Unknown` in this provider's own descriptor (`resource_adapter.rs:212`, `:215`). The two are independent fields: `SessionContinuity` is what the adapter can prove about a resource without a richer `DatabaseDriver` method, while `stateful_session` is the driver's own claim about its connection. `mysql`, `sqlite` and `mongodb` all report `SessionContinuity::Leased` together with `stateful_session: Unsupported` (`sqlite/src/resource.rs:14`, `mongodb/src/resource.rs:15`), so no adapter descriptor has ever implied a particular `stateful_session`. What a legacy driver may *not* claim is `SessionContinuity::Fixed` — that is what `a_described_resource_is_never_mistaken_for_a_fixed_reusable_session` guards, and this provider never asks for it. |
+/// | `namespace_switch` | `Unsupported` | nothing in this crate switches the attached database, schema or server. `sql_target::qualify_sql` rewrites the *SQL text* instead (`sql_target.rs:24-40`), the module states that no session `USE` is ever issued (`sql_target.rs:12`), and a test asserts the generated read SQL contains no `USE [` (`sqlserver.rs:2095`). The database dimension is served by the host session pin (`sql_target.rs:158-165`), which is host session management, not a capability this provider exposes; the adapter refuses `change_context` outright. Measured absent, not merely undeclared. |
+/// | `context_observation` | *(blank)* `Unsupported` | `observe_session` returns `SessionObservation::unobservable()` unconditionally in the adapter, so this provider has no code path that can report a session context. `Partial` would promise a half-answered observation that never arrives. |
+/// | `transaction_observation` | `Partial` | beginnings are real and server-confirmed: `begin_transaction` refuses a second one (`sqlserver.rs:1616-1620`), checks the server with `SELECT @@TRANCOUNT` (`sqlserver.rs:491`), issues `BEGIN TRANSACTION` (`sqlserver.rs:1626`) and returns a real `sqlserver_tx_<uuid>` handle (`sqlserver.rs:1630`), which the adapter reports as `TransactionObservation::begun(id, 0)`. Outcomes are not observable: the adapter refuses `commit_transaction` / `rollback_transaction` because the outcome cannot be read back (`resource_adapter.rs:375-389`). Beginnings yes, endings no, therefore `Partial` and never `Full`. |
+/// | `session_scoped_handles` | `Supported` | the transaction handle is a real session-scoped handle: it is registered in `transactions` under the connection id (`sqlserver.rs:1631-1637`), re-validated by id on commit and rollback (`sqlserver.rs:1693-1705`, `:1728-1740`), removed when it ends (`sqlserver.rs:1717`, `:1752`), and the backing connection is dropped when the session cannot be restored. Its validity *is* the session lifetime. |
+/// | `reset_for_reuse` | *(blank)* `Unsupported` | there is no verified baseline replay in this crate, and no baseline to replay: the adapter answers `ResetDisposition::Discard`. `Verified` would hand out `Ok(())` and open a feature (`capabilities.rs:417-421`) that nothing here has earned. |
+/// | `precise_cancel` | *(blank)* `Unknown` | see the note below — the adapter overwrites this cell. |
+/// | `snapshots` | *(blank)* `Unsupported` | `begin_read_snapshot` exists and does start `SET TRANSACTION ISOLATION LEVEL SNAPSHOT; BEGIN TRANSACTION` (`sqlserver.rs:1663-1666`), but the enum asks for the *scope* of the guarantee (`PerTable` / `PerDatabase` / `Coordinated`) and this code proves none of them. It can even fail outright, because SNAPSHOT must be enabled for the active database (`sqlserver.rs:1669-1675`). |
+/// | `transactions.isolation_levels` | *empty* | `begin_transaction` sends a bare `BEGIN TRANSACTION` with no level argument (`sqlserver.rs:1626`); there is no option the driver would honour. `current_isolation_level` only *reads back* a level the session already had and restores it afterwards (`sqlserver.rs:461-488`) — restoring an observation is not accepting a caller choice. Listing one would make `begin_transaction` accept an option it silently ignores. |
+/// | `transactions.savepoints` | `Unsupported` | the driver transaction surface is exactly `begin_transaction` / `commit_transaction` / `rollback_transaction` (`sqlserver.rs:1611`, `:1691`, `:1726`); none of them emits `SAVE TRAN` and the adapter exposes no savepoint port. A caller *can* type `SAVE TRAN` into a `query` batch — the splitter routes it to its own batch (`sqlserver.rs:2280`) — but that is raw SQL, not a handle the contract could hand back. |
+/// | `transactions.max_open_transactions` | `Some(1)` | the map is keyed by connection id and `begin_transaction` refuses when an entry already exists (`sqlserver.rs:1616-1620`), and `ensure_no_open_transaction` independently refuses when the *server* reports one open (`sqlserver.rs:490-508`, called at `:1625`). One open transaction per resource, proven on both sides of the wire. |
+/// | `ddl_atomicity.by_operation` | *empty* | this driver does not override `DatabaseDriver::ddl_atomicity`, so there is no driver-wide answer to expand per operation. `transfer_sql_file_begin_transaction()` returning `BEGIN TRANSACTION;` (`sqlserver.rs:1501-1503`) is the data-transfer *file* renderer wrapping its own generated script, not a per-migration-operation atomicity claim; mapping it onto operation names would invent the keys. `atomicity_for` therefore answers `Unknown` for every operation and the caller asks instead of assuming. |
+/// | `data` | `StreamingReadWrite` | all three axes are proven by code that runs. Row write: `execute` runs the statement and returns the server affected-row count (`sqlserver.rs:1604-1608`). Row read: `query_stream` decodes rows off the live tiberius `QueryStream`. Incremental delivery: `stream_one` pulls with `stream.try_next()` (`sqlserver.rs:622-626`) and pushes each row into `QueryRowBatcher` (`sqlserver.rs:639`), which emits a `Rows` event the moment the batch is full (`query_stream.rs:200-224`). Rows leave the driver before the last row arrives; that is the difference between streaming and a buffered replay. |
+/// | `backup` | *(blank)* `Unknown` | nothing in this crate produces or consumes a backup artifact: `admin_commands.rs` registers create-database/schema/user commands and no backup or restore command, and the crate's only two mentions of backup are comments about the host dump path feeding schema names (`sqlserver.rs:191`, `:1184`). Nothing was measured, so the cell stays blank rather than claiming a measured refusal. |
+///
+/// # `precise_cancel` is not this driver's cell to fill
+///
+/// `LegacyResourceAdapter::new` takes the [`CapabilitySet`] and then *overwrites*
+/// `precise_cancel` from `driver.supports_query_execution_cancel()`
+/// (`resource_adapter.rs:139-143`): `Supported` if the driver says true, `Unknown`
+/// otherwise. `SqlServerDriver` does not override that method, so it is the trait
+/// default `false` (`traits.rs:817`), and the effective value is always `Unknown`
+/// whatever is written here.
+///
+/// The value below is therefore the truthful one — and it is also the value the
+/// adapter forces, so the factory and the provider cannot drift. SQL Server has no
+/// execution-handle cancel protocol: `cancel_query` is an explicit
+/// `DriverError::Unsupported` that says the legacy session-wide cancel does nothing
+/// (`sqlserver.rs:1765-1767`) — exactly the pattern a declaration must not
+/// contradict.
+///
+/// A caller that needs a cancellation gets an explicit
+/// `ResourceError::CapabilityNotDeclared` instead of a silent empty success.
 pub(crate) fn capabilities() -> CapabilitySet {
-    CapabilitySet::default()
+    CapabilitySet {
+        // Filled — the driver reads session state off the server: the session's
+        // isolation level via `DBCC USEROPTIONS` and its open-transaction count via
+        // `SELECT @@TRANCOUNT`. Independent of the adapter's `SessionContinuity`.
+        stateful_session: Availability::Supported,
+        namespace_switch: NamespaceSwitch::Unsupported,
+        // Blank — `observe_session` is unconditionally unobservable in the adapter.
+        context_observation: ContextObservation::Unsupported,
+        transaction_observation: TransactionObservation::Partial,
+        session_scoped_handles: SessionScopedHandleSupport::Supported,
+        // Blank — no baseline replay exists, and the adapter answers `Discard`.
+        reset_for_reuse: ResetForReuse::Unsupported,
+        // Blank, and overwritten by the adapter regardless — see the note above.
+        precise_cancel: PreciseCancelSupport::Unknown,
+        // Blank — a SNAPSHOT-isolated transaction is not a per-table / per-database /
+        // coordinated read guarantee.
+        snapshots: SnapshotSupport::Unsupported,
+        transactions: TransactionSupport {
+            // Empty on purpose: the contract reads this as "cannot confirm any
+            // level", which is what a bare `BEGIN TRANSACTION` means.
+            isolation_levels: Vec::new(),
+            savepoints: Availability::Unsupported,
+            max_open_transactions: Some(1),
+        },
+        // Empty on purpose: no `ddl_atomicity` override exists, so every operation
+        // stays `Unknown` and the caller asks rather than assumes.
+        ddl_atomicity: DdlAtomicitySupport::default(),
+        data: DataSupport::StreamingReadWrite,
+        // Blank — no artifact code and no backup command exist in this crate.
+        backup: BackupSupport::Unknown,
+    }
 }
 
 #[cfg(test)]
@@ -221,9 +279,13 @@ mod tests {
             registry.capabilities,
             "the factory's capability view must not be rosier than the provider's own registry"
         );
+        // Polarity flipped in place when the set stopped being blank: SQL Server
+        // now declares the four cells it can prove (see `capabilities()`), so the
+        // honest assertion is that the declaration is *not* empty. Same test, same
+        // assertion, no test removed and no assertion removed.
         assert!(
-            !factory().resource_capabilities().declares_anything(),
-            "SQL Server has no migrated session contract, so it must claim nothing"
+            factory().resource_capabilities().declares_anything(),
+            "SQL Server declares only the cells its own code proves; the rest stay blank"
         );
         assert!(
             !factory()
@@ -235,8 +297,73 @@ mod tests {
         assert!(registry.require_precise_cancel().is_err());
         assert_eq!(
             factory().resource_capabilities().stateful_session,
-            datazen_driver_api::capabilities::Availability::Unknown,
-            "an MSSQL session is reachable only through a pooled connection"
+            datazen_driver_api::capabilities::Availability::Supported,
+            "the driver reads the session's isolation level and open-transaction count \
+             back off the server, so the session is measured rather than assumed"
+        );
+    }
+
+    #[test]
+    fn the_declaration_is_not_the_blank_default_set() {
+        let declared = super::capabilities();
+
+        assert_ne!(
+            declared,
+            datazen_driver_api::capabilities::CapabilitySet::default(),
+            "a driver that can stream rows off the wire, hold a session-scoped \
+             transaction handle and name its concurrency limit must not answer the \
+             blank default set"
+        );
+        // The claims that are backed by code that runs.
+        assert_eq!(
+            declared.stateful_session,
+            datazen_driver_api::capabilities::Availability::Supported,
+            "DBCC USEROPTIONS and SELECT @@TRANCOUNT both read session-scoped state \
+             back off the server, so this is measured rather than assumed"
+        );
+        assert_eq!(
+            declared.data,
+            datazen_driver_api::capability_domains::DataSupport::StreamingReadWrite,
+            "stream_one pulls from the live tiberius stream and execute returns the \
+             server's affected-row count"
+        );
+        assert_eq!(
+            declared.transactions.max_open_transactions,
+            Some(1),
+            "begin_transaction refuses a second transaction on the same connection"
+        );
+        assert_eq!(
+            declared.session_scoped_handles,
+            datazen_driver_api::capabilities::SessionScopedHandleSupport::Supported,
+            "the transaction handle is registered under the connection id and \
+             dropped with the session"
+        );
+        // And the claims that stay blank, so a later edit that fills one of them
+        // without evidence has to break this test on purpose rather than by drift.
+        assert_eq!(
+            declared.namespace_switch,
+            datazen_driver_api::capabilities::NamespaceSwitch::Unsupported,
+            "no session USE is ever issued; the driver rewrites SQL text instead"
+        );
+        assert_eq!(
+            declared.snapshots,
+            datazen_driver_api::capabilities::SnapshotSupport::Unsupported,
+            "a SNAPSHOT-isolated transaction is not a per-table / per-database / \
+             coordinated read guarantee"
+        );
+        assert!(
+            declared.transactions.isolation_levels.is_empty(),
+            "a bare BEGIN TRANSACTION honours no named level, so listing one would \
+             accept an option the driver silently ignores"
+        );
+        assert!(
+            declared.ddl_atomicity.by_operation.is_empty(),
+            "no ddl_atomicity override exists, so every operation stays Unknown"
+        );
+        assert_eq!(
+            declared.precise_cancel,
+            datazen_driver_api::capabilities::PreciseCancelSupport::Unknown,
+            "the adapter overwrites this cell from supports_query_execution_cancel()"
         );
     }
 
