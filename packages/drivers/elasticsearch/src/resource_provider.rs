@@ -94,16 +94,26 @@ pub(crate) fn provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvi
             // Recorded inside the initializer, so it always describes the provider
             // that won the race and never a discarded attempt.
             let _ = PROVIDER_EPOCH.set(runtime_epoch);
-            Arc::new(LegacyResourceAdapter::new(
-                driver,
-                "elasticsearch",
-                env!("CARGO_PKG_VERSION"),
-                runtime_epoch,
-                namespace_shape(),
-                capabilities(),
-            ))
+            Arc::new(adapter(driver, runtime_epoch))
         })
         .clone()
+}
+
+/// Build the adapter and attach this crate's evidence table.
+///
+/// Both construction sites go through here on purpose: the memoized provider and
+/// the stray one have to describe the *same* declaration, otherwise a test that
+/// compares them would be comparing two different capability claims.
+fn adapter(driver: Arc<dyn DatabaseDriver>, runtime_epoch: u64) -> LegacyResourceAdapter {
+    LegacyResourceAdapter::new(
+        driver,
+        "elasticsearch",
+        env!("CARGO_PKG_VERSION"),
+        runtime_epoch,
+        namespace_shape(),
+        capabilities(),
+    )
+    .with_evidence(capability_evidence())
 }
 
 /// The epoch the live provider stamps into every handle it mints.
@@ -124,14 +134,7 @@ pub(crate) fn runtime_epoch() -> u64 {
 #[cfg(test)]
 pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvider> {
     let runtime_epoch = PROVIDER_GENERATION.fetch_add(1, Ordering::Relaxed);
-    Arc::new(LegacyResourceAdapter::new(
-        driver,
-        "elasticsearch",
-        env!("CARGO_PKG_VERSION"),
-        runtime_epoch,
-        namespace_shape(),
-        capabilities(),
-    ))
+    Arc::new(adapter(driver, runtime_epoch))
 }
 
 /// What this crate can honestly claim, capability by capability.
@@ -150,7 +153,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// | `transaction_observation` | `Unsupported` | The driver overrides none of `begin_transaction`/`commit_transaction`/`rollback_transaction`, so the trait defaults answer the refusal, and the adapter's commit/rollback refuse with `ResourceError::OperationNotSupported`. No transaction state is ever observable. |
 /// | `session_scoped_handles` | `Unsupported` | Elasticsearch *does* hand out a server-side object — the `/_sql` cursor, closed by `close_cursor` (`elasticsearch.rs:83`) — but `query_stream` closes it before it returns (`elasticsearch.rs:364-453`, the cursor is closed on stop, on error and at end of stream). It is an implementation detail scoped to one call, never a handle handed to the caller, which is exactly §6.5's 「不表示句柄失效」 case. |
 /// | `reset_for_reuse` | `Unsupported` | Only two variants exist and no baseline-restore exists to name. The adapter answers `ResetDisposition::Discard` for `reset_resource`, and the driver has no `discard_connection` override. |
-/// | `precise_cancel` | `Unknown` | **Not mine to declare.** `LegacyResourceAdapter` overwrites this field from `supports_query_execution_cancel()` (`resource_adapter.rs:139-143`), which is `false` here, so the provider's registry holds `Unknown` no matter what this function says. Declaring `Unsupported` would make the factory disagree with the provider that owns the registry — the exact drift `factory_capabilities_match_the_provider` exists to catch. The underlying fact is a measured refusal (`cancel_query` returns `DriverError::Unsupported`, `elasticsearch.rs:514`) and is asserted by `the_legacy_cancel_refuses_instead_of_reporting_a_cancellation_that_never_happened`. |
+/// | `precise_cancel` | `Unknown` | **Not mine to declare.** `LegacyResourceAdapter` overwrites this field from `supports_query_execution_cancel()` (`resource_adapter.rs:148-152`), which is `false` here, so the provider's registry holds `Unknown` no matter what this function says. Declaring `Unsupported` would make the factory disagree with the provider that owns the registry — the exact drift `factory_capabilities_match_the_provider` exists to catch. The underlying fact is a measured refusal (`cancel_query` returns `DriverError::Unsupported`, `elasticsearch.rs:514`) and is asserted by `the_legacy_cancel_refuses_instead_of_reporting_a_cancellation_that_never_happened`. |
 /// | `snapshots` | `Unsupported` | No snapshot endpoint exists anywhere in the crate and `begin_read_snapshot` is not overridden, so the trait default refusal is the driver's own answer rather than a guess. |
 /// | `transactions.isolation_levels` | empty | No transaction can be opened at all, so there is no level to honour. Empty is read as "cannot confirm any", which is stronger than listing one. |
 /// | `transactions.savepoints` | `Unsupported` | Savepoints require an open transaction; the driver cannot open one (row above). |
@@ -193,6 +196,153 @@ pub(crate) fn capabilities() -> CapabilitySet {
     }
 }
 
+/// The evidence behind every cell [`capabilities`] fills, as the snapshot records it.
+///
+/// This is the machine-readable twin of the table above: the table is what a human
+/// reads, this is what `CapabilitySnapshot::evidence_gaps` and any future consumer
+/// read. Both are derived from the same code citations, and both must agree — a cell
+/// that is filled here without a citation above would be an unfalsifiable claim.
+///
+/// Every one of the twelve cells is listed, including the two that stay blank.
+/// A blank cell is not an absence of a finding: `preciseCancel`, `transactions` and
+/// `ddlAtomicity` are blank because the paths that would fill them are *measured*
+/// unreachable or unbacked, and that measurement is exactly what the evidence table
+/// exists to preserve. Entries marked `declined:` record a positive decision not to
+/// claim, which is the opposite of a silently empty map.
+pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "statefulSession",
+            "Unsupported: `connect` really does insert a live `reqwest::Client` plus its base \
+             URL into the pool under the handle's own pool id \
+             (elasticsearch.rs:174-190, the insert at elasticsearch.rs:185), so a session \
+             object exists — but it is a stateless HTTP client, and `disconnect` only drops \
+             the map entry (elasticsearch.rs:192-195). Nothing lets the host pin engine or \
+             index state onto that connection and resume it: `resolve_database` reads the \
+             argument on every call and never from session state \
+             (elasticsearch.rs:43-50), the adapter refuses `change_context` outright \
+             (resource_adapter.rs:407-414), and no session handle is ever minted \
+             (resource_adapter.rs:387). So the affirmative half of the claim is absent, \
+             which is what `Unsupported` is for. ClickHouse, where the same map shape holds \
+             a real HTTP session, gets the same answer for a different reason."
+                .to_string(),
+        ),
+        (
+            "namespaceSwitch",
+            "Unsupported: Elasticsearch has no database/schema hierarchy — indices live in one \
+             cluster-wide namespace (elasticsearch.rs:13) — and `get_databases` is a hardcoded \
+             `[\"default\"]` (elasticsearch.rs:197-199), so `has_multi_database` stays at its \
+             trait default `false` (traits.rs:133-135). A different index is a different \
+             request body, not a context switch, and the adapter refuses `change_context` \
+             (resource_adapter.rs:407-414), so an acquired resource provably cannot move."
+                .to_string(),
+        ),
+        (
+            "contextObservation",
+            "Unsupported: `observe_session` answers `SessionObservation::unobservable()` on \
+             every call (resource_adapter.rs:397-402) and `execute_on_resource` pins \
+             `context_before`/`context_after` to `unobserved()` (resource_adapter.rs:377-378). \
+             No code path in this crate reads Elasticsearch engine state back — the pool entry \
+             is only `(client, base)` (elasticsearch.rs:19) — so there is nothing that could \
+             replace either default."
+                .to_string(),
+        ),
+        (
+            "transactionObservation",
+            "Unsupported: `commit_transaction` (resource_adapter.rs:429-438) and \
+             `rollback_transaction` (resource_adapter.rs:440-449) both refuse by name because \
+             the outcome cannot be read back, and `execute_on_resource` hardcodes \
+             `TransactionState::Unknown` with `transaction_id: None` and `effect: None` \
+             (resource_adapter.rs:380-382). Elasticsearch has no cross-request transaction \
+             for this driver to end, so there is no outcome left to observe."
+                .to_string(),
+        ),
+        (
+            "sessionScopedHandles",
+            "Unsupported: `execute_on_resource` returns an empty `session_handles` because this \
+             path registers none (resource_adapter.rs:387), and the only server-side object \
+             that outlives a request — the SQL cursor — is owned by `query_stream` itself, \
+             which closes it on the stop path (elasticsearch.rs:431-436) and never hands it to \
+             the caller."
+                .to_string(),
+        ),
+        (
+            "resetForReuse",
+            "Unsupported: `reset_resource` always answers `ResetDisposition::Discard` \
+             (resource_adapter.rs:499-506). There is no verified baseline replay, so `Verified` \
+             would hand back a resource whose state nobody checked."
+                .to_string(),
+        ),
+        (
+            "preciseCancel",
+            "Unknown, and the adapter owns this cell. `LegacyResourceAdapter::new` overwrites \
+             it from `supports_query_execution_cancel()` (resource_adapter.rs:148-152), which \
+             this crate does not override, so the trait default `false` applies \
+             (traits.rs:817-819); `cancel_query` agrees by refusing (elasticsearch.rs:514-519) \
+             instead of reporting a cancellation that never happened — the `_tasks` interrupt \
+             path is not wired in. The value written here is the value the adapter installs, \
+             so the two views agree rather than merely not contradicting."
+                .to_string(),
+        ),
+        (
+            "snapshots",
+            "Unsupported: neither this crate nor the adapter implements `begin_read_snapshot`, \
+             so the trait default answers `DriverError::Unsupported` (traits.rs:734-741). An \
+             Elasticsearch index snapshot is a repository operation this driver never issues, \
+             so there is no point-in-time read to declare."
+                .to_string(),
+        ),
+        (
+            "transactions",
+            "declined: the declaration is deliberately blank and each blank is a measurement, not \
+             an omission. `DatabaseDriver::begin_transaction` is the trait default and errors \
+             (traits.rs:602-609), so the adapter's `begin_transaction` \
+             (resource_adapter.rs:416-425) can never open one. `isolation_levels: []` therefore \
+             reads as 'no level can be honoured' — naming a level would advertise an option the \
+             driver silently ignores, since no `SET TRANSACTION` is ever issued. \
+             `savepoints: Unsupported` follows from the same unreachable path. \
+             `max_open_transactions: None` is 'unmeasured', not 'unbounded' — there is no \
+             transaction registry in this crate to count."
+                .to_string(),
+        ),
+        (
+            "ddlAtomicity",
+            "declined: the map is empty on purpose. `DatabaseDriver::ddl_atomicity` is not \
+             overridden in this crate, so it answers `Unknown` (traits.rs:156-158), and \
+             `DdlAtomicitySupport::atomicity_for` fails closed to `Unknown` for any absent key \
+             (capabilities.rs:240-245). Filing a value per operation would assert a \
+             multi-statement DDL atomicity nobody has measured."
+                .to_string(),
+        ),
+        (
+            "data",
+            "StreamingReadWrite, the one affirmative cell: rows are read (`query`, \
+             elasticsearch.rs:330-362) and written (`execute`, elasticsearch.rs:464-469, whose \
+             affected-row figure is read out of the same `_sql` response at \
+             elasticsearch.rs:468), and `query_stream` walks the response array row by row, \
+             decoding each row and pushing it through the batcher (`batcher.push(decoded)`, \
+             elasticsearch.rs:424) before following the cursor (elasticsearch.rs:437-442). \
+             Rows leave as they arrive rather than after the whole result is buffered, which is \
+             what separates this from a driver that only materializes a full result set."
+                .to_string(),
+        ),
+        (
+            "backup",
+            "declined: `Unknown`, and the reason is narrower than it looks. What this crate \
+             registers is a closed list of commands — statement/query/query_stream plus the \
+             schema-catalog set (elasticsearch.rs:471-480) — with no artifact producer or \
+             consumer in it, and its own UI metadata declares `supportsBackup: false` \
+             (ui/meta.ts:15). Both facts are statements about this driver's surface, not \
+             measurements of the backup workflow: nothing here ever issues Elasticsearch's \
+             `/_snapshot` repository API or a restore, so `BackupSupport::Unsupported` — which \
+             is defined as *measured* and genuinely absent — would be the wrong value in the \
+             other direction too. `Unknown` claims nothing, which is the only claim the \
+             evidence here supports."
+                .to_string(),
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -207,6 +357,7 @@ mod tests {
     use datazen_driver_api::resource::{
         DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourcePurpose,
     };
+    use datazen_driver_api::resource_adapter::ADAPTER_EVIDENCE_REVISION;
     use datazen_driver_api::{BackupSupport, ConnectionConfig, DataSupport, DatabaseDriverFactory};
 
     use super::capabilities;
@@ -354,10 +505,84 @@ mod tests {
             registry.snapshot.protocol_version,
             datazen_driver_api::PROTOCOL_VERSION
         );
+        // Not an empty confirmation set: every one of the twelve cells carries an
+        // evidence record, so the snapshot reports a non-zero capability revision
+        // and no gaps. This is a stronger claim than "nothing was invented".
         assert!(
-            registry.snapshot.confirmed.is_empty(),
-            "nothing was actually confirmed for Elasticsearch, and an empty record says so"
+            registry.snapshot.capability_revision == ADAPTER_EVIDENCE_REVISION,
+            "a populated evidence table must be stamped with the adapter evidence revision; \
+             got {}",
+            registry.snapshot.capability_revision
         );
+        assert!(
+            registry.snapshot.capability_revision != 0,
+            "the revision must not be left at its zero default"
+        );
+        assert_eq!(
+            registry.evidence_gaps(),
+            Vec::<&'static str>::new(),
+            "every confirmed cell must carry an evidence record; a gap means a value was \
+             claimed without a reason"
+        );
+    }
+
+    /// The anti-fabrication guard.
+    ///
+    /// The point of recording evidence is that a cell is no longer a bare assertion in a
+    /// struct literal: someone must be able to walk from the claim to the line of code
+    /// that justifies it. A record that cites nothing is indistinguishable from a
+    /// record somebody made up, so this test requires the citation shape rather than
+    /// trusting the surrounding prose.
+    #[test]
+    fn every_capability_record_cites_the_source_line_it_claims_to_describe() {
+        let provider = require_resource_provider(&factory()).expect("provider is reachable");
+        let registry = provider.capabilities();
+        let confirmed = &registry.snapshot.confirmed;
+
+        // Restated here rather than imported, so driver-api changing its own cell list
+        // cannot quietly make this test vacuous.
+        let cells = [
+            "statefulSession",
+            "namespaceSwitch",
+            "contextObservation",
+            "transactionObservation",
+            "sessionScopedHandles",
+            "resetForReuse",
+            "preciseCancel",
+            "snapshots",
+            "transactions",
+            "ddlAtomicity",
+            "data",
+            "backup",
+        ];
+        assert_eq!(
+            confirmed.len(),
+            cells.len(),
+            "the evidence table must hold exactly one record per capability cell, no more \
+             and no fewer — extra keys would let a cell go unexamined"
+        );
+
+        for cell in cells {
+            let record = confirmed
+                .get(cell)
+                .unwrap_or_else(|| panic!("capability cell `{cell}` has no evidence record"));
+            assert!(
+                cites_a_source_line(record),
+                "evidence for `{cell}` cites no `file.rs:NNN`, so it cannot be checked \
+                 against the code: {record}"
+            );
+        }
+    }
+
+    /// True when the text points at a concrete source line, i.e. it contains
+    /// `something.rs:` immediately followed by a digit.
+    fn cites_a_source_line(text: &str) -> bool {
+        text.match_indices(".rs:").any(|(at, _)| {
+            text[at + 4..]
+                .chars()
+                .next()
+                .is_some_and(|c: char| c.is_ascii_digit())
+        })
     }
 
     #[tokio::test]

@@ -98,16 +98,26 @@ pub(crate) fn provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvi
             // Recorded inside the initializer, so it always describes the provider
             // that won the race and never a discarded attempt.
             let _ = PROVIDER_EPOCH.set(runtime_epoch);
-            Arc::new(LegacyResourceAdapter::new(
-                driver,
-                "rqlite",
-                env!("CARGO_PKG_VERSION"),
-                runtime_epoch,
-                namespace_shape(),
-                capabilities(),
-            ))
+            Arc::new(adapter(driver, runtime_epoch))
         })
         .clone()
+}
+
+/// Build the adapter and attach this crate's evidence table.
+///
+/// Both construction sites go through here on purpose: the memoized provider and
+/// the stray one have to describe the *same* declaration, otherwise a test that
+/// compares them would be comparing two different capability claims.
+fn adapter(driver: Arc<dyn DatabaseDriver>, runtime_epoch: u64) -> LegacyResourceAdapter {
+    LegacyResourceAdapter::new(
+        driver,
+        "rqlite",
+        env!("CARGO_PKG_VERSION"),
+        runtime_epoch,
+        namespace_shape(),
+        capabilities(),
+    )
+    .with_evidence(capability_evidence())
 }
 
 /// The epoch the live provider stamps into every handle it mints.
@@ -128,14 +138,7 @@ pub(crate) fn runtime_epoch() -> u64 {
 #[cfg(test)]
 pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvider> {
     let runtime_epoch = PROVIDER_GENERATION.fetch_add(1, Ordering::Relaxed);
-    Arc::new(LegacyResourceAdapter::new(
-        driver,
-        "rqlite",
-        env!("CARGO_PKG_VERSION"),
-        runtime_epoch,
-        namespace_shape(),
-        capabilities(),
-    ))
+    Arc::new(adapter(driver, runtime_epoch))
 }
 
 /// What this crate can honestly claim about its own resources, cell by cell.
@@ -204,6 +207,159 @@ pub(crate) fn capabilities() -> CapabilitySet {
     }
 }
 
+/// This crate's evidence table, in the machine-readable form the registry carries.
+///
+/// The doc table above is a claim about the same thing; this is the claim the host
+/// can read back, one record per capability cell, and each record names the line of
+/// code that justifies it. A cell that is not filled is recorded too, with a
+/// `declined:` prefix and the measurement that produced the blank — a refusal that
+/// was measured and a claim nobody could support are different diagnoses, and only
+/// the first one may be written down as a fact.
+///
+/// Entries marked `declined:` record a positive decision not to claim, which is
+/// the opposite of a silently empty map.
+pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "statefulSession",
+            "Unsupported: `connect` opens no physical session. The only state it files is a \
+             pooled `reqwest::Client` plus a base URL under a fresh `rqlite_<uuid>` key \
+             (rqlite.rs:12, inserted at rqlite.rs:180-183), and `disconnect` only removes that \
+             map entry (rqlite.rs:190-193). Every statement is an independent POST to \
+             `/db/query?level=strong` carrying nothing but its own SQL \
+             (rqlite.rs:35-38), and no server-assigned session id is ever stored. The corpus \
+             already rules this exact architecture Unsupported for mysql \
+             (mysql/src/resource_capabilities.rs:74), so `Unknown` here would discard evidence \
+             the repository already holds. Measured absent."
+                .to_string(),
+        ),
+        (
+            "namespaceSwitch",
+            "Unknown, and it is an enum gap rather than a measurement. The attached database is \
+             a per-statement SQL qualifier, not state on the resource: \
+             `effective_database` maps a blank to `main` (rqlite.rs:58-65) and \
+             `quote_schema` interpolates it into the catalog SQL (rqlite.rs:69-89). There is no \
+             mutating in-place switch to measure — `get_databases` is a hard-coded \
+             `vec![\"main\"]` (rqlite.rs:195-197) — and `NamespaceSwitch` has no \"no session, \
+             addressed per request\" tier yet, so `Unsupported` would be a false measured \
+             refusal. The blank is the honest answer until the enum grows that tier."
+                .to_string(),
+        ),
+        (
+            "contextObservation",
+            "Unsupported: `observe_session` answers `SessionObservation::unobservable()` on \
+             every call (resource_adapter.rs:397-402) and `execute_on_resource` pins \
+             `context_before`/`context_after` to `unobserved()` (resource_adapter.rs:377-378). \
+             This crate issues no read-back call that could replace either — `query_json` only \
+             parses the body of the statement it just sent (rqlite.rs:30-51). Measured absent."
+                .to_string(),
+        ),
+        (
+            "transactionObservation",
+            "Unsupported: `commit_transaction` (resource_adapter.rs:429-438) and \
+             `rollback_transaction` (resource_adapter.rs:440-449) both refuse by name because \
+             the outcome cannot be read back, and `execute_on_resource` hardcodes \
+             `TransactionState::Unknown` with `transaction_id: None` and `effect: None` \
+             (resource_adapter.rs:380-382). The crate side agrees: \
+             `DatabaseDriver::begin_transaction` is the trait default and errors \
+             (traits.rs:602-609), and `execute` posts a bare `{\"q\": sql}` body with no \
+             `BEGIN`/`COMMIT` anywhere around it (rqlite.rs:348-372). Measured absent."
+                .to_string(),
+        ),
+        (
+            "sessionScopedHandles",
+            "declined: `Unknown`, not `Unsupported`, and the distinction is deliberate. \
+             `execute_on_resource` returns an empty `session_handles` because this path \
+             registers none (resource_adapter.rs:387), and this crate keeps no cursor or \
+             statement registry — `query_multi` and `query_with_params` are one-line \
+             delegations that re-issue the whole statement (rqlite.rs:291-309, rqlite.rs:339-346) \
+             — so there is no handle to offer. But nothing here ever probed a handle-holding \
+             session either, so the record says 'not investigated' rather than claiming a \
+             measured refusal."
+                .to_string(),
+        ),
+        (
+            "resetForReuse",
+            "Unsupported: `reset_resource` always answers `ResetDisposition::Discard` \
+             (resource_adapter.rs:499-505), and the crate has no baseline to replay — \
+             `disconnect` only removes a map entry (rqlite.rs:190-193). There is no verified \
+             baseline return, so `Verified` would hand back a resource whose state nobody \
+             checked."
+                .to_string(),
+        ),
+        (
+            "preciseCancel",
+            "Unknown, and the adapter owns this cell. `LegacyResourceAdapter::new` overwrites \
+             it from `supports_query_execution_cancel()` (resource_adapter.rs:148-152), which \
+             for rqlite is the trait default `false` (traits.rs:817-819); `cancel_query` agrees \
+             by refusing (rqlite.rs:393-398) instead of reporting a cancellation that never \
+             happened. The value recorded here is the value the adapter installs, so the two \
+             views agree rather than merely not contradicting."
+                .to_string(),
+        ),
+        (
+            "snapshots",
+            "Unsupported: neither this crate nor the adapter implements `begin_read_snapshot`, \
+             so the trait default answers `DriverError::Unsupported` (traits.rs:734-741). \
+             `level=strong` on the query endpoint (rqlite.rs:36) is a per-statement consistency \
+             level, not a pinnable snapshot scope, so it cannot stand in for one."
+                .to_string(),
+        ),
+        (
+            "transactions",
+            "declined: the declaration is deliberately blank and each blank is a measurement, not \
+             an omission. `DatabaseDriver::begin_transaction` is the trait default and errors \
+             (traits.rs:602-609), so the adapter's `begin_transaction` \
+             (resource_adapter.rs:416-424) can never open one. `isolation_levels: []` therefore \
+             reads as 'no level can be honoured' — naming a level would advertise an option the \
+             driver silently ignores, since `execute` posts a bare `{\"q\": sql}` body \
+             (rqlite.rs:348-372) and no `SET TRANSACTION` is ever issued. `savepoints` is left at \
+             its `Unknown` default rather than forced to `Unsupported` \
+             (capabilities.rs:216-224) because the savepoint question is only reachable through \
+             a transaction this driver cannot open — the blank is 'never probed', which is the \
+             weaker and truthful claim. `max_open_transactions: None` is 'unmeasured', not \
+             'unbounded' — there is no transaction registry here to count."
+                .to_string(),
+        ),
+        (
+            "ddlAtomicity",
+            "declined: the map is empty on purpose. `DatabaseDriver::ddl_atomicity` is not \
+             overridden in this crate, so it answers `Unknown` (traits.rs:156-158), and \
+             `DdlAtomicitySupport::atomicity_for` fails closed to `Unknown` for any absent key \
+             (capabilities.rs:240-245). rqlite would in fact execute a DDL statement through \
+             `execute` (rqlite.rs:348-372), but a single-request statement is not the \
+             multi-statement migration atomicity this field asks about, and filing a value per \
+             operation would assert something nobody has measured."
+                .to_string(),
+        ),
+        (
+            "data",
+            "BufferedReadWrite, not StreamingReadWrite: rows are read (`query_json` then \
+             `result_from_json`, rqlite.rs:30-51 and rqlite.rs:91-136) and written (`execute` \
+             reads `rows_affected` off the reply, rqlite.rs:348-372), so both directions are \
+             real — only `streamingResults` is denied. `query_json` awaits `resp.text()` and \
+             parses it with `from_str` (rqlite.rs:42-50), and `query_stream` awaits that same \
+             body before replaying it through one `stream_decoded_rows` call \
+             (rqlite.rs:311-337); nothing is pulled incrementally over the wire. `rows_affected` \
+             is `None` for every result rqlite returns (rqlite.rs:133), so the write claim is \
+             about reaching the server, not about a row count."
+                .to_string(),
+        ),
+        (
+            "backup",
+            "declined: `Unknown`, not `Unsupported`, because this crate has no backup command at \
+             all to measure the absence of. `command_definitions` is a closed list of query / \
+             execute / query_stream plus the schema-catalog and schema-object commands \
+             (rqlite.rs:400-409), with no artifact producer or consumer in it, and \
+             `get_databases` returns a hard-coded `vec![\"main\"]` (rqlite.rs:195-197) rather \
+             than exporting one. `ui/meta.ts:15` setting `supportsBackup: true` is host metadata, \
+             not code in this crate, so it cannot support a capability claim here. The blank says \
+             'not investigated', which is the weaker and truthful claim."
+                .to_string(),
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -216,6 +372,7 @@ mod tests {
     use datazen_driver_api::resource::{
         DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourcePurpose,
     };
+    use datazen_driver_api::resource_adapter::ADAPTER_EVIDENCE_REVISION;
     use datazen_driver_api::{BackupSupport, ConnectionConfig, DataSupport, DatabaseDriverFactory};
 
     use crate::resource_provider::capabilities;
@@ -343,10 +500,81 @@ mod tests {
             registry.snapshot.protocol_version,
             datazen_driver_api::PROTOCOL_VERSION
         );
-        assert!(
-            registry.snapshot.confirmed.is_empty(),
-            "nothing was actually confirmed for rqlite, and an empty record says so"
+        assert_eq!(
+            registry.snapshot.capability_revision, ADAPTER_EVIDENCE_REVISION,
+            "the adapter merged this crate's evidence table, so the revision must be the \
+             one that merge stamps"
         );
+        assert_ne!(
+            registry.snapshot.capability_revision, 0,
+            "a revision of 0 means no evidence was ever merged and the snapshot would be \
+             indistinguishable from a driver that confirmed nothing"
+        );
+        assert_eq!(
+            registry.evidence_gaps(),
+            Vec::<&'static str>::new(),
+            "every capability cell must carry a record: a blank with a `declined:` prefix \
+             is a written-down measurement, and an absent record is not"
+        );
+    }
+
+    /// The anti-fabrication guard.
+    ///
+    /// The point of recording evidence is that a cell is no longer a bare assertion in a
+    /// struct literal: someone must be able to walk from the claim to the line of code
+    /// that justifies it. A record that cites nothing is indistinguishable from a
+    /// record somebody made up, so this test requires the citation shape rather than
+    /// trusting the surrounding prose.
+    #[test]
+    fn every_capability_record_cites_the_source_line_it_claims_to_describe() {
+        let provider = require_resource_provider(&factory()).expect("provider is reachable");
+        let registry = provider.capabilities();
+        let confirmed = &registry.snapshot.confirmed;
+
+        // Restated here rather than imported, so driver-api changing its own cell list
+        // cannot quietly make this test vacuous.
+        let cells = [
+            "statefulSession",
+            "namespaceSwitch",
+            "contextObservation",
+            "transactionObservation",
+            "sessionScopedHandles",
+            "resetForReuse",
+            "preciseCancel",
+            "snapshots",
+            "transactions",
+            "ddlAtomicity",
+            "data",
+            "backup",
+        ];
+        assert_eq!(
+            confirmed.len(),
+            cells.len(),
+            "the evidence table must hold exactly one record per capability cell, no more \
+             and no fewer — extra keys would let a cell go unexamined"
+        );
+
+        for cell in cells {
+            let record = confirmed
+                .get(cell)
+                .unwrap_or_else(|| panic!("capability cell `{cell}` has no evidence record"));
+            assert!(
+                cites_a_source_line(record),
+                "evidence for `{cell}` cites no `file.rs:NNN`, so it cannot be checked \
+                 against the code: {record}"
+            );
+        }
+    }
+
+    /// True when the text points at a concrete source line, i.e. it contains
+    /// `something.rs:` immediately followed by a digit.
+    fn cites_a_source_line(text: &str) -> bool {
+        text.match_indices(".rs:").any(|(at, _)| {
+            text[at + 4..]
+                .chars()
+                .next()
+                .is_some_and(|c: char| c.is_ascii_digit())
+        })
     }
 
     #[tokio::test]

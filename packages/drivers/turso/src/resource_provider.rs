@@ -96,16 +96,26 @@ pub(crate) fn provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvi
             // Recorded inside the initializer, so it always describes the provider
             // that won the race and never a discarded attempt.
             let _ = PROVIDER_EPOCH.set(runtime_epoch);
-            Arc::new(LegacyResourceAdapter::new(
-                driver,
-                "turso",
-                env!("CARGO_PKG_VERSION"),
-                runtime_epoch,
-                namespace_shape(),
-                capabilities(),
-            ))
+            Arc::new(adapter(driver, runtime_epoch))
         })
         .clone()
+}
+
+/// Build the adapter and attach this crate's evidence table.
+///
+/// Both construction sites go through here on purpose: the memoized provider and
+/// the stray one have to describe the *same* declaration, otherwise a test that
+/// compares them would be comparing two different capability claims.
+fn adapter(driver: Arc<dyn DatabaseDriver>, runtime_epoch: u64) -> LegacyResourceAdapter {
+    LegacyResourceAdapter::new(
+        driver,
+        "turso",
+        env!("CARGO_PKG_VERSION"),
+        runtime_epoch,
+        namespace_shape(),
+        capabilities(),
+    )
+    .with_evidence(capability_evidence())
 }
 
 /// The epoch the live provider stamps into every handle it mints.
@@ -126,14 +136,7 @@ pub(crate) fn runtime_epoch() -> u64 {
 #[cfg(test)]
 pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvider> {
     let runtime_epoch = PROVIDER_GENERATION.fetch_add(1, Ordering::Relaxed);
-    Arc::new(LegacyResourceAdapter::new(
-        driver,
-        "turso",
-        env!("CARGO_PKG_VERSION"),
-        runtime_epoch,
-        namespace_shape(),
-        capabilities(),
-    ))
+    Arc::new(adapter(driver, runtime_epoch))
 }
 
 /// What this crate can honestly claim, capability by capability.
@@ -200,6 +203,186 @@ pub(crate) fn capabilities() -> CapabilitySet {
     }
 }
 
+/// The evidence behind every cell [`capabilities`] fills, as the snapshot records it.
+///
+/// This is the machine-readable twin of the table above: the table is what a human
+/// reads, this is what `CapabilitySnapshot::evidence_gaps` and any future consumer
+/// read. Both are derived from the same code citations, and both must agree — a cell
+/// that is filled here without a citation above would be an unfalsifiable claim.
+///
+/// Every one of the twelve cells is listed, including the eleven that stay blank.
+/// A blank cell is not an absence of a finding: most of them are blank because the
+/// paths that would fill them are *measured* unreachable, and that measurement is
+/// exactly what the evidence table exists to preserve. Entries marked `declined:`
+/// record a positive decision not to claim, which is the opposite of a silently
+/// empty map — it is also the difference between "we measured this and will not
+/// claim it" and "nobody ever looked".
+///
+/// Line numbers are `src/turso.rs` unless another file is named.
+pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "statefulSession",
+            "Unsupported: `connect` opens no physical session. It files a \
+             `reqwest::Client` and the base URL under a fresh `turso_<uuid>` key \
+             minted at turso.rs:250, and returns that id — the whole of the driver's \
+             state is `clients: RwLock<HashMap<String, (reqwest::Client, String)>>` \
+             at turso.rs:11-12. Every statement independently builds its own \
+             `POST {base}/v2/pipeline` carrying a single `execute` \
+             (turso.rs:35-39), so no session-establishing call is ever issued and no \
+             server-assigned session id is ever stored; the driver can neither \
+             address nor reuse a server-side session across statements. A pooled \
+             HTTP client is not a server-side session — the corpus already rules \
+             this exact architecture `Unsupported` for mysql \
+             (packages/drivers/mysql/src/resource_capabilities.rs:74), so this is a \
+             measurement, not a blank, and `Unknown` would discard evidence the \
+             repository already holds. `SessionContinuity::Leased` describes the \
+             handle lease, not a server session."
+                .to_string(),
+        ),
+        (
+            "namespaceSwitch",
+            "declined: NamespaceSwitch::Unknown. The database name is never stored on \
+             the resource: `effective_database` resolves a blank to `main` \
+             (turso.rs:60-67), `quote_schema` renders it as a per-statement \
+             qualifier (turso.rs:71-73), and `list_tables_sql`/`table_info_sql` bake \
+             that qualifier into the SQL text (turso.rs:76-91). The resource itself is \
+             the base URL fixed at `connect` (turso.rs:243-259) and its only mutation \
+             is `disconnect`'s `remove` (turso.rs:261-264). So the driver can neither \
+             switch a live session in place nor show that a switch needs a \
+             replacement resource — the name rides along on each statement. \
+             `RequiresReplacement` would name a replacement mechanism that does not \
+             exist here; `InPlace` would be false. `Unknown` keeps the gate shut, \
+             which is the only answer the code supports."
+                .to_string(),
+        ),
+        (
+            "contextObservation",
+            "declined: ContextObservation::Unsupported — measured absence, not an \
+             unmeasured blank. This crate contains no context read-back call: \
+             `command_definitions` is a closed list of query, execute, \
+             query_stream and the schema catalog/object commands with nothing that \
+             reports session context (turso.rs:429-438), and the adapter answers \
+             `observe_session` with `SessionObservation::unobservable()` \
+             unconditionally (resource_adapter.rs:397-402). `Partial` would promise a \
+             half-answered observation that never arrives."
+                .to_string(),
+        ),
+        (
+            "transactionObservation",
+            "declined: TransactionObservation::Unsupported — measured absence. \
+             `TursoDriver` never overrides `begin_transaction`, so it takes the trait \
+             default that errors \"Not supported for this driver type\" \
+             (traits.rs:602-609), and `command_definitions` publishes no transaction \
+             command to invoke instead (turso.rs:429-438). The adapter refuses commit \
+             and rollback outright for the same reason \
+             (resource_adapter.rs:429-449). There is no BEGIN/COMMIT/ROLLBACK \
+             anywhere in this crate to observe."
+                .to_string(),
+        ),
+        (
+            "sessionScopedHandles",
+            "declined: SessionScopedHandleSupport::Unknown. There is no cursor, \
+             prepared statement or transaction handle to mint: the handle is the \
+             connection itself (turso.rs:243-259), and a statement is built inline \
+             for one request and thrown away (turso.rs:37-39) with no registry keyed \
+             by anything but the connection id. Nothing was measured because nothing \
+             was ever opened, so `Unknown` is the honest record — `Unsupported` would \
+             assert a probe that this crate never ran."
+                .to_string(),
+        ),
+        (
+            "resetForReuse",
+            "declined: ResetForReuse::Unsupported — there is no verified baseline \
+             replay in this crate, and no baseline to replay. The only lifecycle \
+             call is `disconnect`, which removes the map entry and nothing else \
+             (turso.rs:261-264); no teardown-then-reverify sequence exists to \
+             measure. The adapter correspondingly answers \
+             `ResetDisposition::Discard` (resource_adapter.rs:499-506). `Verified` \
+             would open a reuse feature on the strength of a `remove` call."
+                .to_string(),
+        ),
+        (
+            "preciseCancel",
+            "Unknown, and this driver does not get to fill it: \
+             `LegacyResourceAdapter::new` overwrites `precise_cancel` from \
+             `driver.supports_query_execution_cancel()` (resource_adapter.rs:148-152) \
+             — `Supported` if the driver says true, `Unknown` otherwise. \
+             `TursoDriver` never overrides that method, so it is the trait default \
+             `false` (traits.rs:817-819) and the effective value is `Unknown` \
+             whatever is written here. The written value is therefore both the \
+             truthful one and the one the adapter forces, so the factory view and \
+             the provider view cannot drift. The absence of the protocol is \
+             independently visible: `cancel_query` is an explicit \
+             `DriverError::Unsupported` (turso.rs:422-427) rather than the old \
+             `Ok(())` that reported a cancellation which never happened."
+                .to_string(),
+        ),
+        (
+            "snapshots",
+            "declined: SnapshotSupport::Unsupported — measured absence. There is no \
+             snapshot operation in this crate: `command_definitions` publishes no \
+             snapshot command (turso.rs:429-438), and the request shape is a single \
+             `POST {base}/v2/pipeline` carrying one `execute` statement \
+             (turso.rs:30-53), so nothing is pinned or held server-side across \
+             statements for a snapshot to name."
+                .to_string(),
+        ),
+        (
+            "transactions",
+            "declined: TransactionSupport::default() — empty `isolation_levels`, \
+             `savepoints: Unknown`, `max_open_transactions: None`. There is no \
+             transaction to hand an isolation option to: `begin_transaction` is the \
+             trait default error (traits.rs:602-609) and no transaction command is \
+             published (turso.rs:429-438). An empty list reads as \"cannot confirm \
+             any level\", which is the whole truth here; a named level would name a \
+             guarantee no statement in this crate could exercise."
+                .to_string(),
+        ),
+        (
+            "ddlAtomicity",
+            "declined: DdlAtomicitySupport::default() — `by_operation` is empty. \
+             `TursoDriver` does not override `DatabaseDriver::ddl_atomicity` at all \
+             (traits.rs:156-158, default `Unknown`), so `capabilities::atomicity_for` \
+             fails closed to `Unknown` for every operation (capabilities.rs:240-245). \
+             A driver that never overrode the hook must not file invented \
+             per-operation values; doing so would assert a per-statement guarantee \
+             this crate never measured."
+                .to_string(),
+        ),
+        (
+            "data",
+            "DataSupport::BufferedReadWrite — the one filled cell. Read: `query` \
+             (turso.rs:317-329) returns a materialized `QueryResult` built by \
+             `result_from_json`. Write: `execute` posts the statement through \
+             `pipeline` and reports `rows_written` from the response \
+             (turso.rs:388-402, :398-401), so both directions are real. Only \
+             `streamingResults` is denied: `pipeline` awaits `resp.text()` \
+             (turso.rs:44-47) and parses the whole body with `serde_json::from_str` \
+             (turso.rs:51) before returning (turso.rs:30-53), and `query_stream` \
+             awaits that same complete body (turso.rs:351-377) and only then replays \
+             the already-materialized `Vec` through `stream_decoded_rows` \
+             (turso.rs:365-374). No row is emitted before the entire result set is \
+             in memory, so `StreamingReadWrite` would be a false claim."
+                .to_string(),
+        ),
+        (
+            "backup",
+            "declined: BackupSupport::Unknown. Nothing in this crate produces or \
+             consumes a backup artifact and no backup or restore command is \
+             published — `command_definitions` is a closed list of query, execute, \
+             query_stream and the schema catalog/object commands \
+             (turso.rs:429-438). `ui/meta.ts` nevertheless sets `supportsBackup: \
+             true`, which only gates the frontend Backup window and is backed by no \
+             Rust here; repeating it as `ArtifactOnly`/`ArtifactAndRestore` would \
+             restate an unbacked claim in the contract, and `Unsupported` would \
+             assert a server capability this crate never probed. The contradiction \
+             is recorded here rather than papered over."
+                .to_string(),
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -212,6 +395,7 @@ mod tests {
     use datazen_driver_api::resource::{
         DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourcePurpose,
     };
+    use datazen_driver_api::resource_adapter::ADAPTER_EVIDENCE_REVISION;
     use datazen_driver_api::{BackupSupport, ConnectionConfig, DataSupport, DatabaseDriverFactory};
 
     use crate::resource_provider::capabilities;
@@ -339,10 +523,80 @@ mod tests {
             registry.snapshot.protocol_version,
             datazen_driver_api::PROTOCOL_VERSION
         );
-        assert!(
-            registry.snapshot.confirmed.is_empty(),
-            "nothing was actually confirmed for Turso, and an empty record says so"
+        assert_eq!(
+            registry.snapshot.capability_revision, ADAPTER_EVIDENCE_REVISION,
+            "an adapter that carries an evidence table must stamp ADAPTER_EVIDENCE_REVISION; \
+             leaving the revision at 0 would claim the snapshot predates any capability module"
         );
+        assert_ne!(
+            registry.snapshot.capability_revision, 0,
+            "revision 0 means 'no capability module existed yet' and must not carry evidence"
+        );
+        assert_eq!(
+            registry.evidence_gaps(),
+            Vec::<&'static str>::new(),
+            "all twelve capability cells must carry a record — either a real citation, or an \
+             explicit 'declined:' record of what was measured and why nothing may be claimed"
+        );
+    }
+
+    /// The anti-fabrication guard.
+    ///
+    /// The point of recording evidence is that a cell is no longer a bare assertion in a
+    /// struct literal: someone must be able to walk from the claim to the line of code
+    /// that justifies it. A record that cites nothing is indistinguishable from a
+    /// record somebody made up, so this test requires the citation shape rather than
+    /// trusting the surrounding prose.
+    #[test]
+    fn every_capability_record_cites_the_source_line_it_claims_to_describe() {
+        let provider = require_resource_provider(&factory()).expect("provider is reachable");
+        let registry = provider.capabilities();
+        let confirmed = &registry.snapshot.confirmed;
+
+        // Restated here rather than imported, so driver-api changing its own cell list
+        // cannot quietly make this test vacuous.
+        let cells = [
+            "statefulSession",
+            "namespaceSwitch",
+            "contextObservation",
+            "transactionObservation",
+            "sessionScopedHandles",
+            "resetForReuse",
+            "preciseCancel",
+            "snapshots",
+            "transactions",
+            "ddlAtomicity",
+            "data",
+            "backup",
+        ];
+        assert_eq!(
+            confirmed.len(),
+            cells.len(),
+            "the evidence table must hold exactly one record per capability cell, no more \
+             and no fewer — extra keys would let a cell go unexamined"
+        );
+
+        for cell in cells {
+            let record = confirmed
+                .get(cell)
+                .unwrap_or_else(|| panic!("capability cell `{cell}` has no evidence record"));
+            assert!(
+                cites_a_source_line(record),
+                "evidence for `{cell}` cites no `file.rs:NNN`, so it cannot be checked \
+                 against the code: {record}"
+            );
+        }
+    }
+
+    /// True when the text points at a concrete source line, i.e. it contains
+    /// `something.rs:` immediately followed by a digit.
+    fn cites_a_source_line(text: &str) -> bool {
+        text.match_indices(".rs:").any(|(at, _)| {
+            text[at + 4..]
+                .chars()
+                .next()
+                .is_some_and(|c: char| c.is_ascii_digit())
+        })
     }
 
     #[tokio::test]
