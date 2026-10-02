@@ -149,7 +149,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// | capability | declared | evidence |
 /// | --- | --- | --- |
 /// | `stateful_session` | `Unsupported` | `connect` stores `(reqwest::Client, String)` and nothing else (`influxdb.rs:11`, inserted at `:131`); `disconnect` only removes the map entry (`:149`). Every read goes through `query`, which builds a brand-new `client.get(..).send()` and attaches the bucket as a per-request `db=` parameter (`influxdb.rs:43-69`). Migration doc §2.2 counts influxdb among the drivers that store a `(client, base)` tuple and have 「完全无会话」. |
-/// | `namespace_switch` | `Unknown` | **The one cell with no legal value, and deliberately not `Unsupported`.** The driver really does enumerate buckets (`get_databases` parses a live `SHOW DATABASES`, `influxdb.rs:154-160`) and really does address a different bucket per request (`effective_database` at `:34-41` feeding the `db=` parameter at `:52`). What it cannot do is switch a *session*'s namespace, because it has no session, and `NamespaceSwitch` has no tier for 「无会话、按请求下发」 — `InPlace` needs a session that changes and `RequiresReplacement` needs one that is torn down. Migration doc P0 item #6 (`:492`) records exactly this gap and 待定义 B (`:498`) says the enum needs a new tier before mongodb/clickhouse/influxdb/duckdb can fill it. Declaring `Unsupported` would be a false measured refusal: the driver demonstrably can address another bucket, just not by switching a session. |
+/// | `namespace_switch` | `PerRequest` | **The cell the enum finally made nameable.** The driver really does enumerate buckets (`get_databases` parses a live `SHOW DATABASES`, `influxdb.rs:154-160`) and really does address a different bucket per request (`effective_database` at `:34-41` feeding the `db=` parameter at `:52`). What it cannot do is switch a *session*'s namespace, because it has no session: `InPlace` needs a session that changes and `RequiresReplacement` needs one that is torn down, so neither applies. Declaring `Unsupported` would be a false measured refusal — the driver demonstrably addresses another bucket, just not by switching a session. `PerRequest` is exactly that shape, and the migration doc's own gap (P0 item #6, 待定义 B) is what it was added to close. |
 /// | `context_observation` | `Unsupported` | There is no read-back path to observe. `effective_database` (`influxdb.rs:34-41`) is a pure function over the *argument* and never asks the server which bucket a session is on, so there is no current-context field to read back even in principle; `observe_session` returns `SessionObservation::unobservable()` for every field. |
 /// | `transaction_observation` | `Unsupported` | The driver overrides none of `begin_transaction`/`commit_transaction`/`rollback_transaction`, so the trait defaults answer the refusal, and the adapter's commit/rollback refuse with `ResourceError::OperationNotSupported`. No transaction state is ever observable. |
 /// | `session_scoped_handles` | `Unsupported` | `query_stream` materializes the whole result and finishes inside the call (`influxdb.rs:325-351`); nothing is handed to the caller that outlives the execution, and InfluxDB offers no server-side handle object to hand out in the first place. |
@@ -172,9 +172,9 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 pub(crate) fn capabilities() -> CapabilitySet {
     CapabilitySet {
         stateful_session: Availability::Unsupported,
-        // See the table: no legal value exists until `NamespaceSwitch` grows the
-        // "no session, addressed per request" tier (migration doc 待定义 B).
-        namespace_switch: NamespaceSwitch::Unknown,
+        // See the table: there is no session to switch and the chosen bucket is
+        // attached to each outgoing request as `db=` (influxdb.rs:52).
+        namespace_switch: NamespaceSwitch::PerRequest,
         context_observation: ContextObservation::Unsupported,
         transaction_observation: TransactionObservation::Unsupported,
         session_scoped_handles: SessionScopedHandleSupport::Unsupported,
@@ -225,15 +225,21 @@ pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
         ),
         (
             "namespaceSwitch",
-            "Unknown, and it is an enum gap rather than a measurement. Another bucket really is \
-             reachable — `get_databases` parses a live `SHOW DATABASES` (influxdb.rs:154-157) — \
-             but the bucket is a per-request `db=` parameter, not state on the resource \
-             (influxdb.rs:50-53), and `effective_database` only ever reads the value it was \
-             given, mapping a blank to the server default (influxdb.rs:34-41). There is no \
-             mutating in-place switch to measure, and `NamespaceSwitch` has no \"no session, \
-             addressed per request\" tier yet, so `Unsupported` would be a false measured \
-             refusal and `RequiresReplacement` would describe a replacement that does not exist. \
-             The blank is the honest answer until the enum grows that tier."
+            "PerRequest: there is no session to switch, and the database is addressed on \
+             every call instead of being held as resource state. Another bucket really is \
+             reachable — `get_databases` parses a live `SHOW DATABASES` \
+             (influxdb.rs:154-157) — and the chosen one is attached to the outgoing HTTP \
+             request itself: `query` appends `req.query(&[(\"db\", db)])` \
+             (influxdb.rs:52), which `get_tables` reaches via \
+             `Self::effective_database(database)` (influxdb.rs:196). `effective_database` \
+             is a pure function of the value it was given, mapping blank to the server \
+             default (influxdb.rs:34-41); no mutable state is consulted or written, and the \
+             resource is only the base URL fixed at `connect`. So supplying a different \
+             `database` demonstrably changes which namespace the server is asked about, \
+             per request, with nothing switched in between. There is no mutating in-place \
+             switch to measure, so `InPlace` is false; `RequiresReplacement` would describe \
+             a replacement that does not exist, and `Unsupported` would be a false measured \
+             refusal. That leaves `PerRequest`."
                 .to_string(),
         ),
         (
@@ -400,7 +406,7 @@ mod tests {
             factory().resource_capabilities(),
             CapabilitySet::default(),
             "the inert default claims nothing; `capabilities()` documents a measured refusal \
-             for every cell except `namespace_switch` and `backup`, so it must differ from \
+             or a measured capability for every cell except `backup`, so it must differ from \
              the default"
         );
         assert!(
@@ -438,9 +444,20 @@ mod tests {
         assert_eq!(caps.stateful_session, Availability::Unsupported);
         assert_eq!(
             caps.namespace_switch,
-            NamespaceSwitch::Unknown,
-            "the enum has no \"no session, addressed per request\" tier yet (migration doc \
-             待定义 B), and `Unsupported` would be a false measured refusal"
+            NamespaceSwitch::PerRequest,
+            "the supplied bucket is attached to each outgoing request as `db=` \
+             (influxdb.rs:52) and the resource is only the base URL, so this driver \
+             demonstrably reads whichever bucket it is handed, per call — and `Unsupported` \
+             would be a false measured refusal"
+        );
+        assert!(
+            caps.namespace_switch.addresses_per_request(),
+            "PerRequest must stay distinguishable from Unsupported, which would claim the \
+             driver cannot address another bucket at all — that is false here"
+        );
+        assert!(
+            !caps.namespace_switch.switches_in_place(),
+            "there is no session at all, so nothing is switched in place"
         );
         assert_eq!(caps.context_observation, ContextObservation::Unsupported);
         assert_eq!(

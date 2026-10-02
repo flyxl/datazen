@@ -151,7 +151,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// | Capability | Declared | Why |
 /// |---|---|---|
 /// | `stateful_session` | `Availability::Unsupported` | the handle owns only a `reqwest::Client` and a base URL in a map keyed by connection id (`victoriametrics.rs:20`) — an HTTP transport, not a server-side session. Every statement independently builds `GET /api/v1/query?query=…` and reads a single body (`victoriametrics.rs:318-335`); no session-establishing call is ever issued and no server-assigned session id is ever stored, so the driver can neither address nor reuse a server-side session across statements. That is the same architecture as mysql, which the corpus already rules `Unsupported` on these grounds (`packages/drivers/mysql/src/resource_capabilities.rs:74` — a client is not a session), so the architecture is *measured*, not unmeasured: `Unknown` would discard evidence the repository already holds. Note this is independent of `SessionContinuity`, which the adapter hard-codes to `Unknown` for every legacy driver (`resource_adapter.rs:271`) — a driver may honestly report one and the other differently, as sqlserver does. |
-/// | `namespace_switch` | `Unsupported` | there is no attached context to switch. The tenant is a per-request string, not session state: `resolve_database` is a pure function of the explicit argument (`victoriametrics.rs:44-51`) and the doc states that this driver keeps no mutable session state (`victoriametrics.rs:40-43`, `use_database` is gone). Nothing is switched, so nothing can be switched in place; and there is no replacement mechanism to point at either, which is why this is not `RequiresReplacement`. The adapter refuses `change_context` outright as well. Measured absent, not merely undeclared. |
+/// | `namespace_switch` | `Unsupported` | there is no attached context to switch. `resolve_database` is a pure function of the explicit argument (`victoriametrics.rs:44-51`) and the doc states that this driver keeps no mutable session state (`victoriametrics.rs:40-43`, `use_database` is gone). Nothing is switched, so nothing can be switched in place; and there is no replacement mechanism to point at either, which is why this is not `RequiresReplacement`. It is not `PerRequest` either, and the decisive fact is not how many namespaces the server has but *where the argument goes*: in `get_tables` the resolved name reaches only a `tracing::debug!` (`victoriametrics.rs:218`) while the request path is the hardcoded constant `/api/v1/label/__name__/values` (`victoriametrics.rs:222`). The driver accepts the tenant, logs it, and drops it — it never demonstrably addresses another namespace. Measured absent, not merely undeclared. |
 /// | `context_observation` | *(blank)* `Unsupported` | `observe_session` returns `SessionObservation::unobservable()` unconditionally in the adapter, so this provider has no code path that can report a session context. `Partial` would promise a half-answered observation that never arrives. |
 /// | `transaction_observation` | *(blank)* `Unsupported` | measured absence, not an unmeasured blank: `begin_transaction` is not overridden, so it takes the trait default that errors ("Not supported for this driver type", `traits.rs:602-609`), and `command_definitions()` publishes query, query-stream and schema-catalog commands only — no transaction command exists to invoke (`victoriametrics.rs:395-400`). The adapter refuses commit and rollback too, because VictoriaMetrics has no transactions. |
 /// | `session_scoped_handles` | *(blank)* `Unknown` | there is no cursor, prepared statement or transaction handle to mint: the handle is the connection (`victoriametrics.rs:30-36`), and the whole API surface is one HTTP GET per call (`victoriametrics.rs:53-71`). Nothing was measured because nothing was ever opened. |
@@ -162,7 +162,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// | `transactions.savepoints` | *(blank)* `Unknown` | nothing was measured, and nothing could be: the driver has no transaction surface at all. `Unsupported` would claim a measurement that was never taken. |
 /// | `transactions.max_open_transactions` | `None` | no bound can be proven without a transaction to open. `Some(0)` would claim transactions are refused *by measurement*; `None` is the honest "no measurement exists". |
 /// | `ddl_atomicity.by_operation` | *empty* | this driver does not override `DatabaseDriver::ddl_atomicity` (`traits.rs:156`, default `Unknown`), and it cannot: `execute` is a hard read-only refusal — "VictoriaMetrics is read-only via the HTTP API" (`victoriametrics.rs:389-393`) — and no DDL command is published (`victoriametrics.rs:395-400`). Inventing operation keys here would name atomicity guarantees for statements this driver cannot run at all. |
-/// | `data` | *(blank)* `Unknown` | **this cell is blank because the enum cannot express what this driver is — not because nothing is known.** Two facts are proven: rows ARE readable (`query` builds the result from the JSON response, `victoriametrics.rs:318-335`), and row write is a *measured* refusal (`execute`, `victoriametrics.rs:389-393`). But `query_stream` awaits the whole HTTP round trip first, materialises every row into a `QueryResult` (`victoriametrics.rs:364`), and only then hands them to `stream_decoded_rows` (`victoriametrics.rs:366-375`) — the events are replayed from memory after the last byte arrived. That is **buffered read-only**, and `DataSupport` has no such variant: `StreamingReadOnly` would falsely claim incremental delivery, `BufferedReadWrite` would falsely claim row write, and `Unsupported` would falsely claim row read is absent. `Unknown` is the only non-false answer available. The honest fix is a new `BufferedReadOnly` variant in `capability_domains.rs` (mirrored in `packages/application/src/capability/domain.rs`), which is out of scope here. |
+/// | `data` | `BufferedReadOnly` | **measured, not inferred.** Two facts are proven: rows ARE readable (`query` builds the result from the JSON response, `victoriametrics.rs:318-335`), and row write is a *measured* refusal (`execute`, `victoriametrics.rs:389-393`). `query_stream` awaits the whole HTTP round trip first, materialises every row into a `QueryResult` (`victoriametrics.rs:364`), and only then hands them to `stream_decoded_rows` (`victoriametrics.rs:366-375`) — the events are replayed from memory after the last byte arrived, falsifying the streaming axis. Buffered + read-only is now literally nameable (`DataSupport::BufferedReadOnly`, `packages/driver-api/src/capability_domains.rs:55`), so this cell no longer has to round-trip through `Unknown` to avoid lying. A prior revision called the missing variant a driver-api escalation and cited a mirror enum in `packages/application/src/capability/domain.rs`; that module contains no `DataSupport` mirror at all, and the escalation is resolved. |
 /// | `backup` | *(blank)* `Unknown` | nothing in this crate produces or consumes a backup artifact, and no backup or restore command is published (`victoriametrics.rs:395-400`). Nothing was measured, so the cell stays blank rather than claiming a measured refusal. |
 ///
 /// # `precise_cancel` is not this driver's cell to fill
@@ -209,9 +209,12 @@ pub(crate) fn capabilities() -> CapabilitySet {
         // Empty on purpose: no `ddl_atomicity` override exists and `execute` refuses
         // every statement, so every operation stays `Unknown`.
         ddl_atomicity: DdlAtomicitySupport::default(),
-        // Blank — the driver is buffered read-only and `DataSupport` has no variant
-        // for that; see the row above. Every other variant here would be a lie.
-        data: DataSupport::Unknown,
+        // Measured, not inferred: `query_stream` awaits the whole round trip and
+        // then replays a materialized `Vec` (victoriametrics.rs:363-376), so
+        // `streamingResults` does not hold; `execute` refuses every statement
+        // (victoriametrics.rs:389-393), so `rowWrite` does not hold either.
+        // Both axes are falsified, which is exactly `BufferedReadOnly`.
+        data: DataSupport::BufferedReadOnly,
         // Blank — no artifact code and no backup command exist in this crate.
         backup: BackupSupport::Unknown,
     }
@@ -260,19 +263,24 @@ pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
         (
             "namespaceSwitch",
             "declined: NamespaceSwitch::Unsupported — measured absence. There is no \
-             attached context to switch. The tenant is a per-request string, not \
-             session state: `resolve_database` is a pure function of the explicit \
-             argument (victoriametrics.rs:44-51) and its own doc states this driver \
-             keeps no mutable session state and that `use_database` is gone \
-             (victoriametrics.rs:40-41). The name rides along per request \
-             (victoriametrics.rs:218) and the resource itself is the base URL fixed \
-             at `connect` (victoriametrics.rs:183-199), whose only mutation is \
+             attached context to switch. `resolve_database` is a pure function of \
+             the explicit argument (victoriametrics.rs:44-51) and its own doc states \
+             this driver keeps no mutable session state and that `use_database` is \
+             gone (victoriametrics.rs:40-41). The resource itself is the base URL \
+             fixed at `connect` (victoriametrics.rs:183-199), whose only mutation is \
              `disconnect`'s `remove` (victoriametrics.rs:201-204). Nothing is \
-             switched, so nothing can be switched in place; and because the server \
-             exposes exactly one namespace — `get_databases` returns \
-             `vec![\"default\"]` (victoriametrics.rs:206-208) — there is no second \
-             database to replace into either, which is why this is not \
-             `RequiresReplacement`. The adapter refuses `change_context` outright \
+             switched, so nothing can be switched in place. It is NOT \
+             `RequiresReplacement` either: the server exposes exactly one \
+             namespace — `get_databases` returns `vec![\"default\"]` \
+             (victoriametrics.rs:206-208). Critically it is NOT `PerRequest`, and \
+             the reason is not the server's namespace count but where the argument \
+             *goes*: in `get_tables` the resolved name is consumed only by \
+             `tracing::debug!` (victoriametrics.rs:218) while the request path is \
+             the hardcoded constant `/api/v1/label/__name__/values` \
+             (victoriametrics.rs:222). The driver therefore does not demonstrably \
+             reach another namespace per request — it accepts the argument, logs \
+             it, and drops it. `PerRequest` would be a claim this code does not \
+             support. The adapter refuses `change_context` outright \
              (resource_adapter.rs:407-414)."
                 .to_string(),
         ),
@@ -381,24 +389,22 @@ pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
         ),
         (
             "data",
-            "declined: DataSupport::Unknown — and NOT because the behavior is \
-             unmeasured. Two facts are proven from this crate: rows ARE readable \
-             (`query` builds the result from the JSON response, \
-             victoriametrics.rs:318-335), and row write is a *measured* refusal \
-             (`execute`, victoriametrics.rs:389-393). But `query_stream` awaits the \
-             whole HTTP round trip first, materializes every row into a \
+            "data: DataSupport::BufferedReadOnly. Two facts are proven from this \
+             crate: rows ARE readable (`query` builds the result from the JSON \
+             response, victoriametrics.rs:318-335), and row write is a *measured* \
+             refusal (`execute`, victoriametrics.rs:389-393). `query_stream` awaits \
+             the whole HTTP round trip first, materializes every row into a \
              `QueryResult` (victoriametrics.rs:364), and only then hands them to \
              `stream_decoded_rows` (victoriametrics.rs:366-375) — the events are \
-             replayed from memory after the last byte arrived. That is **buffered \
-             read-only**, and `DataSupport` has no such variant \
-             (capability_domains.rs:55-85): `StreamingReadOnly` would falsely claim \
-             incremental delivery, `BufferedReadWrite` would falsely claim row write, \
-             and `Unsupported` would falsely claim row read is absent. `Unknown` is \
-             the only non-false answer the contract can express. The honest fix is a \
-             `BufferedReadOnly` variant in \
-             `packages/driver-api/src/capability_domains.rs` (mirrored in \
-             `packages/application/src/capability/domain.rs`), which is driver-api \
-             territory and out of scope for this crate — escalated, not worked around."
+             replayed from memory after the last byte arrived, so `streamingResults` \
+             is falsified. `rowWrite` is falsified by the refusal above. Buffered + \
+             read-only is now literally nameable \
+             (packages/driver-api/src/capability_domains.rs:55, `BufferedReadOnly`), \
+             so this cell no longer has to round-trip through `Unknown` to avoid \
+             lying. A prior revision of this entry escalated the missing variant as \
+             driver-api territory and cited a supposed mirror enum in \
+             `packages/application/src/capability/domain.rs`; that module holds no \
+             `DataSupport` mirror at all, and the escalation is now resolved."
                 .to_string(),
         ),
         (
@@ -524,9 +530,24 @@ mod tests {
         // without evidence has to break this test on purpose rather than by drift.
         assert_eq!(
             declared.data,
-            datazen_driver_api::capability_domains::DataSupport::Unknown,
-            "the driver is buffered read-only and DataSupport has no such variant; \
-             every other variant would claim streaming or row write that does not exist"
+            datazen_driver_api::capability_domains::DataSupport::BufferedReadOnly,
+            "query_stream materializes every row before emitting (victoriametrics.rs:364-375) \
+             and execute refuses every statement (victoriametrics.rs:389-393): buffered, \
+             readable, not writable"
+        );
+        // The two axes `BufferedReadOnly` claims are falsified individually, so the
+        // variant cannot quietly become a claim that streaming or writes exist.
+        assert!(
+            !declared.data.enables_streaming_results(),
+            "buffered: the stream replays a materialized Vec, it does not deliver incrementally"
+        );
+        assert!(
+            !declared.data.enables_row_write(),
+            "read-only: execute refuses every statement rather than reporting a refusal as an axis"
+        );
+        assert!(
+            declared.data.enables_row_read(),
+            "read: query builds a real QueryResult from the JSON response (victoriametrics.rs:318-335)"
         );
         assert_eq!(
             declared.stateful_session,
