@@ -292,8 +292,8 @@ impl VectorResourceProvider {
     }
 
     /// Add a freshly opened resource to the registry and mint its handle.
-    async fn register_resource(&self, config_id: &str, live: LiveResource) -> ResourceHandle {
-        let resource_key = Self::resource_key_for(config_id);
+    async fn register_resource(&self, connection_id: &str, live: LiveResource) -> ResourceHandle {
+        let resource_key = Self::resource_key_for(connection_id);
         let handle = ResourceHandle::issue(VECTOR_PROVIDER_ID, &resource_key, self.runtime_epoch);
         self.lock().live.insert(resource_key, live);
         handle
@@ -301,12 +301,12 @@ impl VectorResourceProvider {
 
     /// The key one resource is stored under.
     ///
-    /// Derived from the connection config id, never from credentials: two
-    /// resources for the same config share a key only if the same provider
+    /// Derived from the connection id, never from credentials: two
+    /// resources for the same connection share a key only if the same provider
     /// opened them, and the epoch — not the key — is what keeps two providers
     /// apart.
-    fn resource_key_for(config_id: &str) -> String {
-        format!("vector_resource:{config_id}")
+    fn resource_key_for(connection_id: &str) -> String {
+        format!("vector_resource:{connection_id}")
     }
 
     /// Close a resource and release its permit exactly once.
