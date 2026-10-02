@@ -74,6 +74,23 @@ pub enum DataSupport {
     /// nothing to pull incrementally.
     BufferedReadWrite,
 
+    /// Weaker than nominal on both remaining axes at once: rows can be read,
+    /// but only through a fully materialized buffer, and the resource is
+    /// read-only.
+    ///
+    /// Neither neighbour describes this driver. [`DataSupport::StreamingReadOnly`]
+    /// streams a resource it may write; [`DataSupport::BufferedReadWrite`]
+    /// writes a resource it streams. A caller offered only those two has to
+    /// pick one and is then wrong about an axis — so the combination is named
+    /// here rather than left for the caller to re-derive.
+    ///
+    /// Declaring [`DataSupport::Unsupported`] would be a false measured
+    /// refusal: the driver demonstrably reads.
+    ///
+    /// The caller must not open a long-lived stream against this, and must not
+    /// issue writes into it.
+    BufferedReadOnly,
+
     /// Measured and genuinely absent. A caller may stop asking and surface
     /// the refusal as a permanent one.
     Unsupported,
@@ -86,33 +103,62 @@ pub enum DataSupport {
 
 impl DataSupport {
     /// Rows can be read at all. True for every measured variant.
+    ///
+    /// [`DataSupport::BufferedReadOnly`] reads rows exactly like the other
+    /// measured variants; that its rows are buffered is the
+    /// [`Self::enables_streaming_results`] axis, not this one.
     pub fn enables_row_read(self) -> bool {
         matches!(
             self,
-            Self::StreamingReadWrite | Self::StreamingReadOnly | Self::BufferedReadWrite
+            Self::StreamingReadWrite
+                | Self::StreamingReadOnly
+                | Self::BufferedReadWrite
+                | Self::BufferedReadOnly
         )
     }
 
     /// Rows can be written. False for [`DataSupport::StreamingReadOnly`],
-    /// [`DataSupport::Unsupported`] and [`DataSupport::Unknown`].
+    /// [`DataSupport::BufferedReadOnly`], [`DataSupport::Unsupported`] and
+    /// [`DataSupport::Unknown`].
+    ///
+    /// [`DataSupport::BufferedReadOnly`] is listed here deliberately rather
+    /// than by omission: its being buffered says nothing about writes, and it
+    /// is read-only for the same reason [`DataSupport::StreamingReadOnly`] is.
     pub fn enables_row_write(self) -> bool {
         matches!(self, Self::StreamingReadWrite | Self::BufferedReadWrite)
     }
 
     /// Results arrive incrementally. False for
-    /// [`DataSupport::BufferedReadWrite`], which must materialize first.
+    /// [`DataSupport::BufferedReadWrite`] and [`DataSupport::BufferedReadOnly`],
+    /// which must materialize first.
+    ///
+    /// [`DataSupport::BufferedReadOnly`] is excluded by name because a
+    /// read-only resource buffers the same way a writable one does; folding
+    /// the exclusion into [`Self::enables_row_write`] would hide that it is
+    /// two independent reasons landing in the same place.
     pub fn enables_streaming_results(self) -> bool {
         matches!(self, Self::StreamingReadWrite | Self::StreamingReadOnly)
     }
 
     /// The nominal guarantee, and nothing weaker.
+    ///
+    /// [`DataSupport::BufferedReadOnly`] cannot qualify on either of the two
+    /// weaker variants' terms, so it is absent rather than merely unchecked.
     pub fn enables_feature(self) -> bool {
         matches!(self, Self::StreamingReadWrite)
     }
 
     /// Measured and degraded, rather than absent or unmeasured.
+    ///
+    /// [`DataSupport::BufferedReadOnly`] is the weakest measured answer, not
+    /// the weakest answer overall: [`DataSupport::Unsupported`] and
+    /// [`DataSupport::Unknown`] are below it and are not degraded, because
+    /// nobody measured them to be.
     pub fn is_weaker_than_nominal(self) -> bool {
-        matches!(self, Self::StreamingReadOnly | Self::BufferedReadWrite)
+        matches!(
+            self,
+            Self::StreamingReadOnly | Self::BufferedReadWrite | Self::BufferedReadOnly
+        )
     }
 
     /// Nothing was ever declared. Distinct from
@@ -197,10 +243,11 @@ impl Default for BackupSupport {
 mod tests {
     use super::*;
 
-    const DATA_VARIANTS: [DataSupport; 5] = [
+    const DATA_VARIANTS: [DataSupport; 6] = [
         DataSupport::StreamingReadWrite,
         DataSupport::StreamingReadOnly,
         DataSupport::BufferedReadWrite,
+        DataSupport::BufferedReadOnly,
         DataSupport::Unsupported,
         DataSupport::Unknown,
     ];
@@ -292,6 +339,94 @@ mod tests {
     }
 
     #[test]
+    fn every_data_variant_answers_all_six_functions_explicitly() {
+        // There is deliberately no wildcard arm in this `match`. Adding a
+        // `DataSupport` variant breaks it at compile time, which forces the
+        // author to decide where the new answer lands instead of letting it
+        // fall through every `matches!` above and quietly become "enables
+        // nothing". This is the only compile-time link between the enum and
+        // the six predicates; `DATA_VARIANTS` below is the iteration surface.
+        //
+        // Coverage is one-directional, and the direction matters:
+        // A→B (enum gains a variant, truth table has not caught up) is caught at
+        // compile time — `E0004`, because this `match` has no wildcard arm.
+        // B→A (truth table gains a row, `DATA_VARIANTS` has not caught up) is NOT
+        // caught: it compiles and the suite stays green, so the new variant's six
+        // predicates are simply never asserted. Measured, not assumed — adding a
+        // variant to both the enum and this table while leaving it out of
+        // `DATA_VARIANTS` builds clean and passes. Keeping the two surfaces in
+        // sync is currently a reviewer's job.
+        let answers = |variant: DataSupport| -> [bool; 6] {
+            match variant {
+                // row_read, row_write, streaming, feature, weaker, undeclared
+                DataSupport::StreamingReadWrite => [true, true, true, true, false, false],
+                DataSupport::StreamingReadOnly => [true, false, true, false, true, false],
+                DataSupport::BufferedReadWrite => [true, true, false, false, true, false],
+                DataSupport::BufferedReadOnly => [true, false, false, false, true, false],
+                DataSupport::Unsupported => [false, false, false, false, false, false],
+                DataSupport::Unknown => [false, false, false, false, false, true],
+            }
+        };
+        for variant in DATA_VARIANTS {
+            let [read, write, stream, feature, weaker, undeclared] = answers(variant);
+            assert_eq!(variant.enables_row_read(), read, "{variant:?} row_read");
+            assert_eq!(variant.enables_row_write(), write, "{variant:?} row_write");
+            assert_eq!(
+                variant.enables_streaming_results(),
+                stream,
+                "{variant:?} streaming_results"
+            );
+            assert_eq!(variant.enables_feature(), feature, "{variant:?} feature");
+            assert_eq!(
+                variant.is_weaker_than_nominal(),
+                weaker,
+                "{variant:?} weaker_than_nominal"
+            );
+            assert_eq!(
+                variant.is_undeclared(),
+                undeclared,
+                "{variant:?} undeclared"
+            );
+        }
+    }
+
+    #[test]
+    fn buffered_read_only_is_weaker_on_both_remaining_axes() {
+        let degraded = DataSupport::BufferedReadOnly;
+        assert!(degraded.is_weaker_than_nominal());
+        assert!(
+            degraded.enables_row_read(),
+            "buffering a read is still a read"
+        );
+        assert!(!degraded.enables_row_write(), "the resource is read-only");
+        assert!(
+            !degraded.enables_streaming_results(),
+            "a buffered result set has nothing to pull incrementally"
+        );
+        assert!(!degraded.enables_feature(), "degraded is not nominal");
+        assert!(!degraded.is_undeclared());
+        // The whole reason to name it: it is neither of its two neighbours, so
+        // a caller cannot get it right by reusing either one.
+        assert_ne!(degraded, DataSupport::StreamingReadOnly);
+        assert_ne!(degraded, DataSupport::BufferedReadWrite);
+        assert_ne!(degraded, DataSupport::Unsupported);
+    }
+
+    #[test]
+    fn a_measured_read_only_variant_is_not_a_refusal() {
+        // `BufferedReadOnly` is the case that had no home before: the driver
+        // reads, measurably, so declaring `Unsupported` would be a refusal
+        // nobody made. This asserts the distinction the new variant exists to
+        // preserve.
+        let measured = DataSupport::BufferedReadOnly;
+        assert!(measured.enables_row_read());
+        assert!(!DataSupport::Unsupported.enables_row_read());
+        assert!(measured.is_weaker_than_nominal());
+        assert!(!DataSupport::Unsupported.is_weaker_than_nominal());
+        assert!(!DataSupport::Unknown.is_weaker_than_nominal());
+    }
+
+    #[test]
     fn buffered_is_weaker_on_the_streaming_axis_only() {
         let degraded = DataSupport::BufferedReadWrite;
         assert!(degraded.is_weaker_than_nominal());
@@ -367,6 +502,16 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<DataSupport>("\"unknown\"").expect("deserialize"),
             DataSupport::Unknown
+        );
+        // `bufferedReadOnly` is a new string in a serialized capability
+        // snapshot, so it is pinned the same way the others are.
+        assert_eq!(
+            serde_json::to_string(&DataSupport::BufferedReadOnly).expect("serialize"),
+            "\"bufferedReadOnly\""
+        );
+        assert_eq!(
+            serde_json::from_str::<DataSupport>("\"bufferedReadOnly\"").expect("deserialize"),
+            DataSupport::BufferedReadOnly
         );
     }
 }

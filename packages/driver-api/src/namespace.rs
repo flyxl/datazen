@@ -22,7 +22,7 @@ use crate::resource::ResourceError;
 ///
 /// The platform side describes a different question — what one request declares
 /// — as `datazen_platform_api::target::TargetNamespaceShape`. Its layer enum is
-/// `NamespaceLayer` (`Database` / `Catalog` / `Schema` / `Path`), it carries only
+/// `TargetNamespaceLayer` (`Database` / `Catalog` / `Schema` / `Path`), it carries only
 /// the `required` / `optional` sets plus the `declares()` / `is_required()`
 /// predicates, and it has no case, alias or canonical-id data. `Path` is
 /// meaningful only there — it names a request-supplied path, not a level a
