@@ -147,7 +147,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 ///
 /// | Capability | Declared | Why |
 /// |---|---|---|
-/// | `stateful_session` | *(blank)* `Unknown` | the only thing a handle owns is a `reqwest::Client` and a base URL in a map keyed by connection id (`victoriametrics.rs:20`) — an HTTP transport, not a server-side session. But "no session state exists" and "the contract has a stateful session" are different statements, and this provider cannot produce the evidence the second one needs: `LegacyResourceAdapter::describe_resource` hard-codes `SessionContinuity::Unknown` and `ReusePolicy::Unknown` for every legacy driver (`resource_adapter.rs:212`, `:215`), so `Supported` here would contradict this provider's own descriptor. Unprovable from this crate alone. |
+/// | `stateful_session` | `Availability::Unsupported` | the handle owns only a `reqwest::Client` and a base URL in a map keyed by connection id (`victoriametrics.rs:20`) — an HTTP transport, not a server-side session. Every statement independently builds `GET /api/v1/query?query=…` and reads a single body (`victoriametrics.rs:322-336`); no session-establishing call is ever issued and no server-assigned session id is ever stored, so the driver can neither address nor reuse a server-side session across statements. That is the same architecture as mysql, which the corpus already rules `Unsupported` on these grounds (`packages/drivers/mysql/src/resource_capabilities.rs:74` — a client is not a session), so the architecture is *measured*, not unmeasured: `Unknown` would discard evidence the repository already holds. Note this is independent of `SessionContinuity`, which the adapter hard-codes to `Unknown` for every legacy driver (`resource_adapter.rs:212`) — a driver may honestly report one and the other differently, as sqlserver does. |
 /// | `namespace_switch` | `Unsupported` | there is no attached context to switch. The tenant is a per-request string, not session state: `resolve_database` is a pure function of the explicit argument (`victoriametrics.rs:44-51`) and the doc states that this driver keeps no mutable session state (`victoriametrics.rs:40-43`, `use_database` is gone). Nothing is switched, so nothing can be switched in place; and there is no replacement mechanism to point at either, which is why this is not `RequiresReplacement`. The adapter refuses `change_context` outright as well. Measured absent, not merely undeclared. |
 /// | `context_observation` | *(blank)* `Unsupported` | `observe_session` returns `SessionObservation::unobservable()` unconditionally in the adapter, so this provider has no code path that can report a session context. `Partial` would promise a half-answered observation that never arrives. |
 /// | `transaction_observation` | *(blank)* `Unsupported` | measured absence, not an unmeasured blank: `begin_transaction` is not overridden, so it takes the trait default that errors ("Not supported for this driver type", `traits.rs:602-609`), and `command_definitions()` publishes query, query-stream and schema-catalog commands only — no transaction command exists to invoke (`victoriametrics.rs:395-400`). The adapter refuses commit and rollback too, because VictoriaMetrics has no transactions. |
@@ -182,9 +182,13 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// `ResourceError::CapabilityNotDeclared` instead of a silent empty success.
 pub(crate) fn capabilities() -> CapabilitySet {
     CapabilitySet {
-        // Blank — see the table. `Supported` would contradict this provider's own
-        // `describe_resource`, which always reports `SessionContinuity::Unknown`.
-        stateful_session: Availability::Unknown,
+        // A handle is a `reqwest::Client` plus a base URL (`victoriametrics.rs:20`),
+        // nothing else; every statement independently builds `GET /api/v1/query?query=…`
+        // and reads one body (`victoriametrics.rs:322-336`). No session-establishing
+        // call is ever issued and no server-assigned session id is ever stored, so the
+        // driver can neither address nor reuse a server-side session across statements.
+        // The corpus already rules this exact architecture `Unsupported` for mysql.
+        stateful_session: Availability::Unsupported,
         namespace_switch: NamespaceSwitch::Unsupported,
         // Blank — `observe_session` is unconditionally unobservable in the adapter.
         context_observation: ContextObservation::Unsupported,
@@ -281,8 +285,9 @@ mod tests {
         assert!(registry.require_precise_cancel().is_err());
         assert_eq!(
             factory().resource_capabilities().stateful_session,
-            datazen_driver_api::capabilities::Availability::Unknown,
-            "a VictoriaMetrics HTTP session carries no server-side session"
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "a VictoriaMetrics handle is an HTTP client plus a base URL, never a \
+             server-side session"
         );
     }
 
@@ -323,8 +328,10 @@ mod tests {
         );
         assert_eq!(
             declared.stateful_session,
-            datazen_driver_api::capabilities::Availability::Unknown,
-            "the adapter's describe_resource hard-codes SessionContinuity::Unknown"
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "the handle holds an HTTP client and a base URL only, so no server-side session \
+             can be addressed across statements — the same architecture the corpus rules \
+             Unsupported for mysql"
         );
         assert!(
             declared.transactions.isolation_levels.is_empty(),
