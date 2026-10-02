@@ -521,12 +521,36 @@ impl ResourceProvider for LegacyResourceAdapter {
     /// the same one:
     ///
     /// - `postgres` / `redis`: `disconnect` errors become
-    ///   `Ok(CloseUnconfirmed)`, the budget stays charged, the key is not
-    ///   marked closed, and a `closed` set lets a later call tell "already
-    ///   closed" (`Ok(Closed)`) from "never held" (`Err(InvalidResourceState)`).
-    /// - This adapter: identical budget discipline, but it keeps **no** `closed`
-    ///   set, so a missing key is always `Ok(Closed)` and the never-held case
-    ///   is simply not expressible.
+    ///   `Ok(CloseUnconfirmed)`, the budget stays charged, the handle is not
+    ///   marked closed, and `handle.is_closed()` lets a later call tell "already
+    ///   closed" (`Ok(Closed)`) from "never held"
+    ///   (`Err(InvalidResourceState)`).
+    ///
+    ///   That "not marked closed" half is currently **unreachable and therefore
+    ///   untestable**, and the next person to touch it needs to know before
+    ///   they write a test for it:
+    ///
+    ///   1. `postgres`'s `disconnect_impl` (`src/connection.rs`) ends in
+    ///      `Ok(())` — every `remove` / `retain` it performs is infallible and
+    ///      there is no `?` in it — so it cannot return `Err`, so the
+    ///      `CloseUnconfirmed` arm of `close_resource` is dead. `redis` is the
+    ///      same shape. Nothing in either crate produces this disposition.
+    ///   2. So "mark closed only on a *confirmed* close" has no test, in this
+    ///      repo, that can fail. Moving `handle.mark_closed()` onto the
+    ///      unconfirmed arm — the tempting one-line edit — fails **silently**:
+    ///      the handle would then claim to be closed after a close that was not
+    ///      confirmed, the retry would answer `Ok(Closed)`, the budget would
+    ///      never be released, and the entire suite would stay green. Measured:
+    ///      that mutation turns `cargo test -p datazen-driver-postgres` EXIT=0
+    ///      with 194 passed and 0 failed.
+    ///   3. So if a fault-injectable disconnect seam is ever introduced — which
+    ///      is what it would take to reach that arm — the branch **must** come
+    ///      with a test in the same change. A green suite means nothing about
+    ///      this arm today, so treating green as the permission to move the
+    ///      `mark_closed()` call is the specific mistake to avoid.
+    /// - This adapter: identical budget discipline, but it keeps **no** record of
+    ///   confirmed closes at all, so a missing key is always `Ok(Closed)` and the
+    ///   never-held case is simply not expressible.
     /// - `sqlite` / `mysql`: `disconnect` errors become
     ///   `Err(ResourceError::Driver(_))`, not `CloseUnconfirmed`, and a
     ///   successful disconnect can still return `CloseUnconfirmed` when the
@@ -547,11 +571,11 @@ impl ResourceProvider for LegacyResourceAdapter {
     /// driver's own tests.
     ///
     /// `redis` already extracted its part as a private `take_for_close`
-    /// (`redis/src/resource/provider.rs:460`). That is not a counterexample,
+    /// (`redis/src/resource/provider.rs`). That is not a counterexample,
     /// but both obvious readings of it are wrong. It deduplicates nothing:
     /// it has exactly one caller (`provider/contract.rs:339`), and it was
     /// pulled out to give two invariants a name — remove from `live` before
-    /// touching the socket, and a `None` backed by the `closed` set means
+    /// touching the socket, and a `None` backed by `handle.is_closed()` means
     /// idempotent, never a second release. The same code inline would be
     /// equally correct and just less likely to be read as a rule.
     ///

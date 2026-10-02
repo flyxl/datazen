@@ -469,9 +469,10 @@ async fn close_really_drops_the_socket_and_releases_the_budget_once() {
     );
 
     // The contract says close is idempotent, and the way it earns that is the
-    // `closed` set: the permit went with the first call, so a second close
-    // cannot release it a second time. That is the assertion worth making — a
-    // second `release_physical_connections` is the bug the set exists for.
+    // closed fact the handle itself carries: the permit went with the first
+    // call, so a second close cannot release it a second time. That is the
+    // assertion worth making — a second `release_physical_connections` is the
+    // bug `is_closed` exists to prevent.
     assert_eq!(
         session
             .provider

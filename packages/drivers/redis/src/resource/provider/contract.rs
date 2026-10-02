@@ -339,7 +339,7 @@ impl ResourceProvider for RedisResourceProvider {
         let Some(resource) = self.take_for_close(handle, "close_resource")? else {
             // Already closed by an earlier call: the permit went with that call,
             // so the budget is already released and a second release is exactly
-            // the bug the `closed` set exists to prevent.
+            // the bug `is_closed` exists to prevent.
             return Ok(CloseDisposition::Closed);
         };
 
@@ -348,7 +348,7 @@ impl ResourceProvider for RedisResourceProvider {
         // a confirmed close rather than an optimistic one.
         match self.driver.disconnect(resource.connection.clone()).await {
             Ok(()) => {
-                self.mark_closed(resource_key);
+                handle.mark_closed();
                 // The connection is really gone, so the charge is really
                 // recoverable. Released here and nowhere else.
                 resource
@@ -364,8 +364,8 @@ impl ResourceProvider for RedisResourceProvider {
             }
             Err(error) => {
                 // The connection may or may not be gone. The budget is **not**
-                // released and the resource is not recorded as closed, so the
-                // leak is visible instead of being reported as a clean close.
+                // released and the handle is not marked closed, so the leak is
+                // visible instead of being reported as a clean close.
                 tracing::warn!(
                     driver = REDIS_PROVIDER_ID,
                     resource_key,
