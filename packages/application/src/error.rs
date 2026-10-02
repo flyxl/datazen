@@ -1,14 +1,31 @@
-//! 用例层的机器可读失败类型：`ApiError` + `ApiErrorCode` + `RetryDisposition`。
+//! 用例层的机器可读失败类型：`ApiError`，以及从 platform-api 再导出的
+//! [`ApiErrorCode`] 与 [`RetryDisposition`]。
 //!
 //! 依据：[概要 §6.3](../../../docs/architecture/platform/system-overview.md)「`ApiError` 包含
 //! `code`、脱敏 `message`、`requestId`、`retryDisposition`」与
 //! [连接 §13](../../../docs/architecture/platform/connection-management.md) 的 code 表。
 //!
+//! ## 为什么 code 与 disposition 不在本模块定义
+//!
+//! `ApiErrorCode`（31 个 code）与 `RetryDisposition` 是**跨边界的 wire 词汇**：
+//! `runtime` 的 `ApiError` 用的是同一份 code 枚举。此前两边各定义一份同名同形的枚举，
+//! 变体、顺序与字面值逐字相同**却是两个 Rust 类型**——既无法互传，也没有任何机制能
+//! 发现二者此后各自漂移。§4:234 定的方向是「唯一定义处放在 `platform-api`，
+//! `application` 与 `runtime` 用 `pub use` 再导出，不重复定义」；反向依赖不可行，
+//! 因为 platform-api 受 F-04 约束不得依赖本包。
+//!
+//! 随类型一同住在 platform-api 的还有它**自身的能力**：`ApiErrorCode::ALL`、
+//! `retry_disposition()`、`as_str()` 与 `Display`。这不是能力搬迁——经再导出后本 crate
+//! 内逐字照旧可用（`ApiErrorCode::ALL`、`code.retry_disposition()`、`{code}` 格式化、
+//! 本模块 `ApiError` 的 serde 形态全部不变）。这是 Rust orphan 规则（E0117）决定的唯一
+//! 合法形态：`impl` 必须与被 impl 的类型同 crate，因此这些成员无法留在本模块。
+//!
 //! ## 两条必须保持的边界
 //!
 //! 1. **本类型只表示「请求被拒绝」**。派发后的执行终态失败由
 //!    `ExecutionState = failed` + `ExecutionErrorCode` 表达（连接 §13 末段），**不是** `ApiError`。
-//!    因此本枚举里没有 `hostRejected`——它是 `ExecutionErrorCode` 的取值，由 platform-api 定义。
+//!    因此 `ApiErrorCode` 里没有 `hostRejected`——它是 `ExecutionErrorCode` 的取值，
+//!    由 platform-api 定义并在其内部以 `execution_error_codes_do_not_leak_into_this_enum` 钉住。
 //! 2. **`ApiError` 与 `ExecutionErrorCode` 是两个命名空间**，不得互相塞入对方取值。
 //! 3. **本模块不做 `PortError` → HTTP 状态码的映射**：端口失败到 HTTP 的映射是 server host
 //!    的职责（同 §4.7「`ArtifactExpired` 映射成 404 而不是 410 由 host 决定」）。端口失败到
@@ -25,219 +42,15 @@
 use datazen_platform_api::id::RequestId;
 use serde::{Deserialize, Serialize};
 
-/// 请求被拒绝的机器可读 code，取值逐字来自连接 §13 的错误表。
-///
-/// **枚举是封闭的**：新增取值等同协议版本升级，必须同时更新 driver、宿主与前端
-/// （连接 §13：「新增取值需要提升枚举版本并同时更新全部消费者，宿主、前端与 driver 不得各自扩展」）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ApiErrorCode {
-    /// DTO/Command schema 不合法。修正请求，不调用 driver。
-    InvalidArgument,
-    /// 目标缺失。不默认切库。
-    TargetRequired,
-    /// 目标重复/冲突（含 namespace 内重复表达同一层级不一致）。
-    TargetConflict,
-    /// 无法定位目标，不回退默认库。
-    TargetUnsupported,
-    /// 会话不存在。
-    SessionNotFound,
-    /// 物理会话已失效；禁止透明重建，显式新建会话必须使用新 ID。
-    SessionLost,
-    /// 旧运行时句柄：runtimeEpoch/dbSessionId 不匹配。
-    RuntimeEpochMismatch,
-    /// 上下文版本冲突，重新读取后由用户决定。
-    ContextConflict,
-    /// 当前授权拒绝；敏感资源由 host 映射为 404。
-    PermissionDenied,
-    /// 预算/队列超限。
-    ResourceBusy,
-    /// 队列超限。
-    QueueFull,
-    /// 事务阻止切换/关闭，需用户选择处理事务。
-    TransactionResolutionRequired,
-    /// 缺少所需能力。
-    CapabilityUnsupported,
-    /// 无法证明事务边界。
-    UnsupportedPlan,
-    /// 源目标对象危险重叠或无法排除自覆盖。
-    EndpointOverlap,
-    /// 逻辑会话/编辑器额度超限。
-    SessionQuotaExceeded,
-    /// 幂等键已过提交有效期：查询原执行并核验，不自动用新键重投。
-    IdempotencyExpired,
-    /// 无法证明清理（回滚失败）。
-    RollbackFailed,
-    /// 无法证明清理。
-    CleanupFailed,
-    /// 写入/提交结果未知：核验执行，不自动重试。
-    OutcomeUnknown,
-    /// 计划已过期。
-    PlanStale,
-    /// 源数据已变化。
-    SourceChanged,
-    /// 目标行冲突。
-    TargetConflictRows,
-    /// 相同幂等键不同输入：修正请求键，不能覆盖记录。
-    IdempotencyConflict,
-    /// 未认证，不自动重放原请求。
-    Unauthenticated,
-    /// 资源不可见或不存在，或二者不可区分。
-    NotFound,
-    /// 请求体超过物理上限。
-    PayloadTooLarge,
-    /// 组织/用户/数据库额度超限。
-    QuotaExceeded,
-    /// 令牌桶限流拒绝。
-    RateLimited,
-    /// 暂无可用 worker、drain 中、管理库不可达或迁移未完成。
-    ServiceUnavailable,
-    /// `ProfileRepository::compare_and_set` 的 expectedRevision CAS 失败。
-    ///
-    /// 与 `TargetConflict` 是两件事：CAS 失败说明**命名空间目标本身合法**（连接 §13 末行），
-    /// 调用方要重读最新 configRevision 后由用户决定，不得自动覆盖。
-    ConfigRevisionMismatch,
-}
-
-impl ApiErrorCode {
-    /// 协议字面值，序列化后与连接 §13 的 code 列逐字一致。
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgument => "invalidArgument",
-            Self::TargetRequired => "targetRequired",
-            Self::TargetConflict => "targetConflict",
-            Self::TargetUnsupported => "targetUnsupported",
-            Self::SessionNotFound => "sessionNotFound",
-            Self::SessionLost => "sessionLost",
-            Self::RuntimeEpochMismatch => "runtimeEpochMismatch",
-            Self::ContextConflict => "contextConflict",
-            Self::PermissionDenied => "permissionDenied",
-            Self::ResourceBusy => "resourceBusy",
-            Self::QueueFull => "queueFull",
-            Self::TransactionResolutionRequired => "transactionResolutionRequired",
-            Self::CapabilityUnsupported => "capabilityUnsupported",
-            Self::UnsupportedPlan => "unsupportedPlan",
-            Self::EndpointOverlap => "endpointOverlap",
-            Self::SessionQuotaExceeded => "sessionQuotaExceeded",
-            Self::IdempotencyExpired => "idempotencyExpired",
-            Self::RollbackFailed => "rollbackFailed",
-            Self::CleanupFailed => "cleanupFailed",
-            Self::OutcomeUnknown => "outcomeUnknown",
-            Self::PlanStale => "planStale",
-            Self::SourceChanged => "sourceChanged",
-            Self::TargetConflictRows => "targetConflictRows",
-            Self::IdempotencyConflict => "idempotencyConflict",
-            Self::Unauthenticated => "unauthenticated",
-            Self::NotFound => "notFound",
-            Self::PayloadTooLarge => "payloadTooLarge",
-            Self::QuotaExceeded => "quotaExceeded",
-            Self::RateLimited => "rateLimited",
-            Self::ServiceUnavailable => "serviceUnavailable",
-            Self::ConfigRevisionMismatch => "configRevisionMismatch",
-        }
-    }
-
-    /// 全部取值的清单，host/前端做反查与审计时使用。
-    pub const ALL: [ApiErrorCode; 31] = [
-        Self::InvalidArgument,
-        Self::TargetRequired,
-        Self::TargetConflict,
-        Self::TargetUnsupported,
-        Self::SessionNotFound,
-        Self::SessionLost,
-        Self::RuntimeEpochMismatch,
-        Self::ContextConflict,
-        Self::PermissionDenied,
-        Self::ResourceBusy,
-        Self::QueueFull,
-        Self::TransactionResolutionRequired,
-        Self::CapabilityUnsupported,
-        Self::UnsupportedPlan,
-        Self::EndpointOverlap,
-        Self::SessionQuotaExceeded,
-        Self::IdempotencyExpired,
-        Self::RollbackFailed,
-        Self::CleanupFailed,
-        Self::OutcomeUnknown,
-        Self::PlanStale,
-        Self::SourceChanged,
-        Self::TargetConflictRows,
-        Self::IdempotencyConflict,
-        Self::Unauthenticated,
-        Self::NotFound,
-        Self::PayloadTooLarge,
-        Self::QuotaExceeded,
-        Self::RateLimited,
-        Self::ServiceUnavailable,
-        Self::ConfigRevisionMismatch,
-    ];
-
-    /// 机器可读的重试政策（概要 §6.3）。
-    ///
-    /// * [`RetryDisposition::Never`]：权限、参数、能力、上下文/版本冲突、预算与速率超限。
-    /// * [`RetryDisposition::SafeRead`]：确认无副作用的读取结果。
-    /// * [`RetryDisposition::CheckExecution`]：已接受但结果未知的提交，先核验执行。
-    ///
-    /// **已知规格缺口（P1 不发明取值）**：连接 §13 对 `ResourceBusy` / `QueueFull` /
-    /// `RateLimited` / `ServiceUnavailable` / `QuotaExceeded` / `SessionQuotaExceeded`
-    /// 给的动作是「等待或按 Retry-After 退避后重发」，语义上既不是 `never`，
-    /// 也不是「确认无副作用的读取」，但概要 §6.3 只定义了三个取值。P1 对这六个 code
-    /// 保守取 `Never`（宁可不自动重试，也不要让调用方把退避重发误当作安全读），
-    /// 是否补第四个取值（例如带退避的 `retryAfterBackoff`）需要概要先给出枚举。
-    pub const fn retry_disposition(self) -> RetryDisposition {
-        match self {
-            // 「查询原执行并核验，不自动用新键重投」（idempotencyExpired）
-            // 与「核验执行，不自动重试」（outcomeUnknown）同属一类。
-            Self::OutcomeUnknown | Self::IdempotencyExpired => RetryDisposition::CheckExecution,
-            Self::NotFound | Self::SessionNotFound => RetryDisposition::SafeRead,
-            Self::InvalidArgument
-            | Self::TargetRequired
-            | Self::TargetConflict
-            | Self::TargetUnsupported
-            | Self::SessionLost
-            | Self::RuntimeEpochMismatch
-            | Self::ContextConflict
-            | Self::PermissionDenied
-            | Self::ResourceBusy
-            | Self::QueueFull
-            | Self::TransactionResolutionRequired
-            | Self::CapabilityUnsupported
-            | Self::UnsupportedPlan
-            | Self::EndpointOverlap
-            | Self::SessionQuotaExceeded
-            | Self::RollbackFailed
-            | Self::CleanupFailed
-            | Self::PlanStale
-            | Self::SourceChanged
-            | Self::TargetConflictRows
-            | Self::IdempotencyConflict
-            | Self::Unauthenticated
-            | Self::PayloadTooLarge
-            | Self::QuotaExceeded
-            | Self::RateLimited
-            | Self::ServiceUnavailable
-            | Self::ConfigRevisionMismatch => RetryDisposition::Never,
-        }
-    }
-}
-
-impl std::fmt::Display for ApiErrorCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// 机器可读的重试政策，取值与 wire 字面值一致。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum RetryDisposition {
-    /// 不重试：先修复请求或刷新状态。
-    Never,
-    /// 只允许重试确认无副作用的读取。
-    SafeRead,
-    /// 先核验已接受的执行/提交，不盲目重发。
-    CheckExecution,
-}
+// 错误码枚举与重试政策是跨边界的 wire 词汇，唯一定义处在 platform-api（§4:234）：
+// 端口报事实、用层把事实判定成业务拒绝，两侧共用同一份词汇表而不是各写一份。
+// 这里只做再导出，因此本 crate 的调用方逐字照旧使用同一批名字与同样的能力
+// （`ApiErrorCode::ALL`、`code.retry_disposition()`、`as_str()`、`Display`，以及本模块
+// `ApiError` 的 serde 形态，全部不变）。
+//
+// 这些成员「随类型同住」是由 Rust orphan 规则（E0117）决定的，不是搬迁偏好：
+// `impl` 必须与被 impl 的类型同 crate，因此无法留在本模块。理由见模块 doc。
+pub use datazen_platform_api::error::{ApiErrorCode, RetryDisposition};
 
 /// 用例层的失败类型。跨边界传输时 `code` / `requestId` / `retryDisposition` 全部必填，
 /// `message` 是**脱敏**后的给调用者文案。
@@ -325,12 +138,26 @@ impl std::error::Error for ApiError {}
 mod tests {
     use super::*;
 
-    fn code_only(source: &str) -> String {
-        source
-            .lines()
-            .filter(|line| !line.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n")
+    /// 编译期证明（不是自报）：`application::ApiErrorCode` **就是** platform-api 那一个类型，
+    /// 而不是本 crate 另有一份同名副本。
+    ///
+    /// 双向赋值只有在两侧同类型时才编译得过——若本 crate 保留了本地枚举定义，
+    /// 下面第二行的类型标注就会立刻 `mismatched types` 编译失败。
+    /// runtime 侧有对称的一条 `runtime/src/connection/error.rs`，两者都指向同一个
+    /// 第三方类型 `datazen_platform_api::error::ApiErrorCode`，因此彼此同类型。
+    #[test]
+    fn api_error_code_is_the_platform_api_type_not_a_local_copy() {
+        let from_reexport: ApiErrorCode = ApiErrorCode::NotFound;
+        let from_home: datazen_platform_api::error::ApiErrorCode = from_reexport;
+        let round_tripped: ApiErrorCode = from_home;
+        assert_eq!(round_tripped, ApiErrorCode::NotFound);
+        // 能力也必须随之可见：`ALL` 与 `retry_disposition()` 是这个类型的固有成员，
+        // 经再导出调用，证明调用方不需要改写任何一行。
+        assert_eq!(ApiErrorCode::ALL.len(), 31);
+        assert_eq!(
+            ApiErrorCode::NotFound.retry_disposition(),
+            RetryDisposition::SafeRead
+        );
     }
 
     #[test]
@@ -440,27 +267,6 @@ mod tests {
         assert!(json.get("requestId").is_none());
         let decoded: ApiError = serde_json::from_value(json).expect("deserialize");
         assert_eq!(decoded, error);
-    }
-
-    #[test]
-    fn execution_error_codes_do_not_leak_into_this_enum() {
-        // 连接 §13：执行终态 errorCode 与 ApiError.code 是两个命名空间；
-        // hostRejected 是 ExecutionErrorCode 的取值，绝不能出现在 ApiErrorCode。
-        let code = code_only(
-            include_str!("error.rs")
-                .split("#[cfg(test)]")
-                .next()
-                .unwrap_or_default(),
-        );
-        assert!(
-            !code.contains("HostRejected"),
-            "ApiErrorCode 不得包含 hostRejected"
-        );
-        assert!(!code.contains("SqlError"));
-        assert!(
-            !code.contains("Cancelled"),
-            "cancelled 属于 ExecutionErrorCode"
-        );
     }
 
     #[test]

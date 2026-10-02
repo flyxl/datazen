@@ -100,41 +100,13 @@ impl MonitorConnectionRegistry {
         // `let _ =` made this signature a promise the body could not keep: it
         // returned `Result<(), ConnectionError>` and then discarded the only
         // error it could ever produce. Propagating changes no behaviour for the
-        // current callers (`shutdown` below, which discards it by design, and
-        // the tests) and makes the contract true for the first caller that is
-        // not a teardown loop.
+        // current callers (the tests) and makes the contract true for the first
+        // caller that actually consumes the verdict.
         let entry = self.entries.write().await.remove(connection_id);
         if let Some(entry) = entry {
             entry.driver.disconnect(entry.handle).await?;
         }
         Ok(())
-    }
-
-    pub async fn shutdown(&self) {
-        let keys: Vec<String> = self.entries.read().await.keys().cloned().collect();
-        // Teardown-loop path: there is no consumer left for a per-connection
-        // `Result`, and aborting on the first failure would strand every
-        // remaining monitor connection. The errors `disconnect_monitor` now
-        // returns are collected and summarised instead of dropped one at a
-        // time.
-        let mut unconfirmed = Vec::new();
-        for connection_id in keys {
-            if let Err(e) = self.disconnect_monitor(&connection_id).await {
-                tracing::warn!(
-                    connection_id = %connection_id,
-                    error = %e,
-                    "Monitor shutdown could not confirm the physical teardown",
-                );
-                unconfirmed.push(connection_id);
-            }
-        }
-        if !unconfirmed.is_empty() {
-            tracing::warn!(
-                count = unconfirmed.len(),
-                connection_ids = ?unconfirmed,
-                "Monitor shutdown finished with unconfirmed physical teardowns",
-            );
-        }
     }
 
     #[cfg(test)]
