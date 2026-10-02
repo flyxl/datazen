@@ -161,18 +161,26 @@ impl ResultSink for RecordingSink {
 /// A TCP port nothing listens on. Reserved for "no server" in these tests.
 const UNREACHABLE_REDIS_PORT: u16 = 65001;
 
+/// The offline configuration: same shape as any other, aimed at nothing.
+///
+/// Every test in this module and in `tests_behaviour` uses this, and it is
+/// deliberately unreachable so the outcome of those tests does not depend on
+/// what the developer happens to be running. A live server on 6379 once made
+/// `acquire_resource` *succeed* here, which turned a "this path must fail"
+/// assertion into a test that passed for the wrong reason. `config_on` is the
+/// same builder aimed at a real port; it is used only by `tests_live`, which
+/// brings its own server.
 pub(super) fn config() -> ConnectionConfig {
+    config_on(UNREACHABLE_REDIS_PORT)
+}
+
+pub(super) fn config_on(port: u16) -> ConnectionConfig {
     ConnectionConfig {
         id: "cfg".into(),
         name: "n".into(),
         database_type: "redis".into(),
-        // Deliberately unreachable. This crate has no live-server harness, so
-        // every test here must behave the same on a developer machine that has
-        // Redis on 6379 as on one that does not. Pointing this at the default
-        // port would make the suite's outcome depend on what the host happens
-        // to be running — and `acquire_resource` would silently succeed.
         host: Some("127.0.0.1".into()),
-        port: Some(UNREACHABLE_REDIS_PORT),
+        port: Some(port),
         database: Some("db3".into()),
         schema: None,
         username: None,

@@ -37,4 +37,12 @@ mod tests;
 #[path = "tests_behaviour.rs"]
 mod tests_behaviour;
 
+// Live evidence against a real `redis-server`. Held apart from the two offline
+// modules on purpose: those assert that a *missing* connection is an error, and
+// this is the only place in the crate where one is present. See the module doc
+// for why the harness starts its own server rather than reusing one.
+#[cfg(test)]
+#[path = "tests_live.rs"]
+mod tests_live;
+
 pub use provider::RedisResourceProvider;
