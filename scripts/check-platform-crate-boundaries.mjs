@@ -564,7 +564,7 @@ export function checkPlatformCrateBoundaries(options) {
   // redis DECLARES {tauri, tauri-plugin} and RESOLVES {tauri-plugin, tauri-utils}
   // — neither contains the other, so each scan sees exactly one crate the other
   // cannot. The host is the other shape: it declares 9 tauri crates and resolves
-  // 17, the 8 extra being transitive.
+  // 17 — but 17-9=8 is the wrong subtraction, not a wrong tally: only 8 of the 9 declared resolve (`tauri-plugin-webdriver` is `optional = true` behind the non-default `webdriver` feature), so the true split is 8 declared-and-resolved + 9 purely transitive = 17. Take set differences, never sizes.
   //
   // No F-row is consulted, so this cannot tighten anything — it reports what the
   // manifest says. Not blocking: whether an optional host edge should exist in a

@@ -113,6 +113,18 @@
 
 **事实三：`unsupported` 的驱动大多不是「不支持」，而是「根本没接」。** 8 个驱动（duckdb、elasticsearch、hbase、influxdb、rqlite、turso、vector、victoriametrics）**一个能力方法都没覆盖**，全走 trait 默认。这在 P2 里要分两种处理：真正没有该能力的（HTTP 文档库的 `snapshots`、`transactions`）保留 `unsupported` 并补拒绝断言；引擎支持但驱动没接的（SQLite 快照、DuckDB 事务、Redis 事务）要进批次 1/2 补实现，否则 Host 会把「驱动没接」和「后端不支持」混成同一个错误，无法给出可执行的下一步。
 
+### 2.3 读表方法：`grep` 命中什么 ≠ 这个契约做不到
+
+[§2.2](#22-读表之前必须知道的三条结构事实) 讲矩阵的形状，这一节讲**怎么读出一格**。反复出现的是同一类错误：**看到某个符号、字段或方法名，就断言它的行为**。中间隔着两样东西——`pub`（能读到不代表会被调用）和 **trait 默认实现**（没有覆写的格子走的是通用实现，不是空的）。
+
+判据按这个顺序走：
+
+1. **先问「有没有覆写并拒绝」，再问别的方法。顺序颠倒会误分类。** [§5.6](#56-supportsbackup判据不是有没有覆写-dump) 里的 redis 就是反例：它显式覆写 `dump_database_with_progress` 返回 `NotSupported`，**同时**又有真实实现的 `get_tables` / `get_table_schema`（那两个是 schema 浏览用的）。先看后者会把它误判成「声明 `false` 但其实能做」。
+2. **声明与实现之间隔着 `pub` 和默认实现。** 「没写代码」≠「做不到」——通用默认实现可能真能跑；反过来 `NotSupported` 桩也可能被上游接住并降级（[§5.6](#56-supportsbackup判据不是有没有覆写-dump) 的 `dump_view_ddl`）。两个方向都不能只凭「grep 不到 / grep 到」定论。
+3. **两套并行的声明不要互推。** UI 的 `supportsBackup`（`packages/drivers/<id>/ui/meta.ts`）与 Rust 的 `CapabilitySet.backup: BackupSupport`（`packages/driver-api/src/capabilities.rs:298`）彼此独立：前者描述 UI 入口是否可达，后者是逐驱动声明的能力。任一方向的推断都是错的。
+
+**这次的真实代价（记下来是因为它已经发生过一次）：** 读到 rqlite / turso 声明 `supportsBackup: true`，而在 Rust 侧「grep 不到 backup 代码」，于是差点落成一句「前端声明了不存在的操作」。**这句是错的。** `dump_database_with_progress` 有通用默认实现（`packages/driver-api/src/traits.rs:1000-1020`），往下经 `sql_dump` 真能跑通——缺的只是「零显式覆写」，不是「能力不存在」。完整推导见 [§5.6](#56-supportsbackup判据不是有没有覆写-dump)。
+
 ## 3. 分驱动说明
 
 每节只写已读代码能证明的语义；与连接管理 §5.1 的 9 个契约操作（`describeResource` / `acquireResource` / `executeOnResource` / `observeSession` / `changeContext` / `begin|commit|rollback` / `requestCancel` / `resetResource` / `closeResource）逐条的差距在每节末尾的「与目标契约的差距」中给出。
@@ -439,6 +451,10 @@ async fn dump_database_with_progress(
 **所以「有没有自定义覆写 dump」不是判据；判据是 `get_tables` + `get_table_schema` 是否为真实现。** 一个没有 SQL 方言的 HTTP 类驱动只要实现了这两项就能跑通用 dump——尽管它压根不写 SQL。
 
 #### 普查结果
+
+**先说覆盖范围。** 这是对 **git 跟踪的 15 个 path 驱动**做的**静态源码普查**——读 `packages/drivers/<id>/ui/meta.ts` 与 Rust 源码。它**不是**运行时枚举，因此**与链接期注册无关**：`iter_driver_factories()`（`packages/driver-api/src/factory.rs:87`）确实只能枚举被链接进二进制的 crate，但那约束的是「运行时能拿到几个 factory」，不约束这份文档读了几个目录。mongodb 不在默认 basic 构建里，它的源码却在仓库中，普查照样覆盖它。**不要**据此把「未链接」当作本表的盲区。
+
+**真正没覆盖的是 registry 里 3 个 `source: "git"` 的驱动**（kiwi / olap / superset）：它们由 `resolve-drivers.mjs` 在构建时克隆到 `packages/drivers/<id>/`，落在 `.gitignore` 的 `/packages/drivers/*` 之下，**未克隆时目录根本不存在**，静态普查无从读到。它们的 `supportsBackup` 取值**本文未核查**，不要默认它们落进下面任一栏。见 [§1.3](#13-17-个-path-驱动这一表述与代码事实的出入)。
 
 15 个 path 驱动带这个字段（`http-support` 不带，它不是驱动，见 [§1.2](#12-http-support共享-helper-crate不是驱动)）。两个方向：
 
