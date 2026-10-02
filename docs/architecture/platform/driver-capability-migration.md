@@ -71,6 +71,8 @@
 
 下表是 P2 的起点形态。取值全部按连接管理 §5.2 的枚举字面量书写；「待 P0 验证」的格在 [§9](#9-待-p0-验证清单) 有对应条目。`transactions` 与 `ddlAtomicity` 在 §5.2 是自由文本范围，这里填的是从实现中读到的实际语义。
 
+本表的语义是遗留 `DatabaseDriver` trait，而不是当前的 `CapabilitySet`：后者逐驱动按真实声明核对过的现状表尚未建立，因此 `data` / `backup` 这类只存在于 `CapabilitySet` 的字段在本表中没有对应列，也不应补列。
+
 | 驱动 | statefulSession | namespaceSwitch | contextObservation | transactionObservation | sessionScopedHandles | resetForReuse | preciseCancel | snapshots | transactions（实际语义） | ddlAtomicity | namespaceShape |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | postgres | `unsupported` | `requiresReplacement` | `partial` | `partial` | `unsupported` | `unsupported` | `supported` | `perDatabase` | `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` 快照；无 savepoint；事务独占一个 `PoolConnection`，跨库语句直接拒绝 | `Transactional` | database + schema（默认 `public`） |
