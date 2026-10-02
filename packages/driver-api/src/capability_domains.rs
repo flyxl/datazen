@@ -345,8 +345,17 @@ mod tests {
         // author to decide where the new answer lands instead of letting it
         // fall through every `matches!` above and quietly become "enables
         // nothing". This is the only compile-time link between the enum and
-        // the six predicates; `DATA_VARIANTS` below is the iteration surface,
-        // and a variant added here but not there would compile.
+        // the six predicates; `DATA_VARIANTS` below is the iteration surface.
+        //
+        // Coverage is one-directional, and the direction matters:
+        // A→B (enum gains a variant, truth table has not caught up) is caught at
+        // compile time — `E0004`, because this `match` has no wildcard arm.
+        // B→A (truth table gains a row, `DATA_VARIANTS` has not caught up) is NOT
+        // caught: it compiles and the suite stays green, so the new variant's six
+        // predicates are simply never asserted. Measured, not assumed — adding a
+        // variant to both the enum and this table while leaving it out of
+        // `DATA_VARIANTS` builds clean and passes. Keeping the two surfaces in
+        // sync is currently a reviewer's job.
         let answers = |variant: DataSupport| -> [bool; 6] {
             match variant {
                 // row_read, row_write, streaming, feature, weaker, undeclared
