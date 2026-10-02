@@ -37,12 +37,25 @@ struct MongodbFactory;
 static MONGODB_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
 /// The one provider, bound to [`MONGODB_DRIVER`].
 ///
-/// Held as the concrete type rather than the `Arc<dyn ResourceProvider>` the
-/// other memoized factories use, for exactly one reason: it is what lets
-/// `create_and_resource_provider_share_one_driver` reach the driver's `Arc` and
-/// prove the binding instead of reading it out of the source. The coercion
-/// happens at the boundary, so callers still receive the same
-/// `Arc<dyn ResourceProvider>` as before.
+/// Held as the concrete type, with the erasure deferred to
+/// [`MongodbFactory::provider`], because erasing it here would discard it
+/// permanently.
+///
+/// `ResourceProvider` is `Send + Sync` and nothing more — no `Any`, and no
+/// `downcast` anywhere in `driver-api`. So an `Arc<dyn ResourceProvider>` is a
+/// one-way door: once this static is written that way, nothing in the crate can
+/// again reach the driver the provider is bound to, and "the provider drives the
+/// same driver `create()` handed out" stops being a property that can be
+/// checked and becomes something only the source text can be read for. Holding
+/// the concrete type costs one coercion at the boundary — callers still receive
+/// `Arc<dyn ResourceProvider>` — and keeps the binding inspectable, without
+/// widening the trait surface to get it back later.
+///
+/// Do not "unify" this toward the majority `Arc<dyn ResourceProvider>`:
+/// `packages/drivers/redis/src/lib.rs` holds its provider the same way, so the
+/// concrete shape is the established one for a provider whose binding to a
+/// particular driver has to remain checkable. The two shapes differ by what
+/// they throw away, not by oversight.
 static MONGODB_PROVIDER: OnceLock<Arc<MongodbResourceProvider>> = OnceLock::new();
 
 impl MongodbFactory {

@@ -104,9 +104,13 @@ impl MongodbResourceProvider {
 
     /// The driver this provider is bound to.
     ///
-    /// `pub(crate)`, not part of any trait: it exists so the factory tests can
-    /// prove the provider holds the very `Arc` that `create()` handed out, which
-    /// is otherwise only visible by reading the factory.
+    /// `pub(crate)`, deliberately not part of any trait. The `driver` field is
+    /// otherwise reachable only from inside this module, and `MONGODB_PROVIDER`
+    /// holds the concrete type precisely so the provider's binding to a
+    /// particular driver stays inspectable — `ResourceProvider` has no `Any`
+    /// supertrait, so erasing it would put that binding permanently out of
+    /// reach. This accessor is what keeps the erasure at `MongodbFactory::provider`
+    /// honest.
     pub(crate) fn driver(&self) -> &Arc<dyn DatabaseDriver> {
         &self.driver
     }
