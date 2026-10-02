@@ -459,7 +459,14 @@ function sample(lines, max = 2) {
  * @param {string} newSource contents of the file after the change
  * @param {{ id: string, file: string, anchor: string, kind: string }} rule
  * @param {Map<number, { added?: string, removed?: string }>} records
- * @returns {{ id: string, cls: 'breaking' | 'additive' | 'cosmetic', reason: string }}
+ * @returns {{ id: string, cls: 'breaking' | 'additive' | 'cosmetic' | 'source-breaking',
+ *   reason: string, sourceBreak?: { attributes: string[], effect: string, migration: string } }}
+ *   `source-breaking` and `sourceBreak` must both appear here: the body emits
+ *   them (see the `detectSourceBreak` branch below), so an annotation that
+ *   lists only the three original classes describes a value the function
+ *   never returns — which makes every exhaustive `switch` written against it
+ *   wrong. `scripts/lib/compatMatrix.mjs` already declares the four-value
+ *   union on `classes`; this annotation is the one that had drifted.
  */
 export function classifyContractChange(baseSource, newSource, rule, records) {
   const oldSpan = findItemSpan(baseSource, rule.anchor);

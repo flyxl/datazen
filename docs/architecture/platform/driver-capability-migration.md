@@ -374,7 +374,7 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 于是旧的两档都不是「不够精确」，是**错的**：
 
 - **判 `additive` 是撒谎。** `additive` 的定义就是「现有实现方继续能编译」，而 `#[non_exhaustive]` 恰恰是让它们停止编译的那一个属性。它又是唯一会对 out-of-tree 驱动说「你没事，继续走」的那一档——那正是唯一不能发出去的消息。**用一档承诺「你不受影响」的判定，去描述一个会打破你的改动，是在骗下一个人。**
-- **判 `breaking` 会逼出一场根本没发生的线上事故。** `breaking` 的义务是升 `PROTOCOL_VERSION`（`scripts/check-driver-protocol-compat.mjs:695` 的 `breaking-change-requires-protocol-bump`）。但线上一个字节都没动，升它等于向所有驱动宣布一个不存在的线上不兼容，同时对真正会炸的地方——别人仓库里的 `cargo build`——一个字都没说。
+- **判 `breaking` 会逼出一场根本没发生的线上事故。** `breaking` 的义务是升 `PROTOCOL_VERSION`（`scripts/check-driver-protocol-compat.mjs:702` 的 `breaking-change-requires-protocol-bump`）。但线上一个字节都没动，升它等于向所有驱动宣布一个不存在的线上不兼容，同时对真正会炸的地方——别人仓库里的 `cargo build`——一个字都没说。
 
 所以 `source-breaking` 自己成档：它按 `additive` 的方式动 crate 版本（`COMPAT_MATRIX.classes['source-breaking'].requires = ['crateVersion']`，`scripts/lib/compatMatrix.mjs:69-73`），并额外携带一份显式迁移说明。
 
@@ -386,15 +386,15 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 
 #### 边界二：失败配方，以及一个必须为 0 的自查
 
-命中 `source-breaking` 时门禁报 `source-break-requires-out-of-tree-migration`（`scripts/check-driver-protocol-compat.mjs:711`），并把 `scripts/lib/sourceBreak.mjs:44-57` 的 `OUT_OF_TREE_MIGRATION_NOTE` 原样打进失败信息——因为对 out-of-tree 作者来说，**这段门禁输出往往是他编不过之前唯一能看到的东西**。这条没有「已满足」可以 latch（上面两条有）：升 crate 版本不告诉任何人该敲什么代码，所以**配方本身就是违规项**，命中即报。
+命中 `source-breaking` 时门禁报 `source-break-requires-out-of-tree-migration`（`scripts/check-driver-protocol-compat.mjs:718`），并把 `scripts/lib/sourceBreak.mjs:44-57` 的 `OUT_OF_TREE_MIGRATION_NOTE` 原样打进失败信息——因为对 out-of-tree 作者来说，**这段门禁输出往往是他编不过之前唯一能看到的东西**。这条没有「已满足」可以 latch（上面两条有）：升 crate 版本不告诉任何人该敲什么代码，所以**配方本身就是违规项**，命中即报。
 
-同一份报告里，`breaking-change-requires-protocol-bump` 的出现次数**必须是 0**。这是防自己搞混的自查项，不是顺带的效果：`CLASS_REQUIRES` 由 `COMPAT_MATRIX.classes[cls].requires` 派生（`scripts/check-driver-protocol-compat.mjs:209`、`:692`），而 `source-breaking` 的 requires 里**没有** `protocol`。哪天这条 token 在一次 FOREVER 冻结提交里出现，就说明判定漏回了 `breaking`，第四档等于白设。
+同一份报告里，`breaking-change-requires-protocol-bump` 的出现次数**必须是 0**。这是防自己搞混的自查项，不是顺带的效果：`CLASS_REQUIRES` 由 `COMPAT_MATRIX.classes[cls].requires` 派生（`scripts/check-driver-protocol-compat.mjs:209`、`:699`），而 `source-breaking` 的 requires 里**没有** `protocol`。哪天这条 token 在一次 FOREVER 冻结提交里出现，就说明判定漏回了 `breaking`，第四档等于白设。
 
 #### 边界三：检测是故意窄的，不要当成「什么都抓」
 
 `SOURCE_BREAKING_ATTRIBUTES`（`scripts/lib/sourceBreak.mjs:82-91`）目前只有一条 `struct` 规则，下面四个边界都是刻意的：
 
-1. **只认整行。** 正则是 `/^\s*#\s*\[\s*non_exhaustive\s*\]\s*$/`（`:86`）。`isCosmeticLine`（`scripts/check-driver-protocol-compat.mjs:285-295`）会先丢掉纯注释行，所以「文档里提到这个属性」不会被误判；但一行 `// TODO: 加 #[non_exhaustive]` 后面确实声明着字段——子串匹配会为这个 TODO 拦下一次门禁，把一次普通字段新增报成 source break。
+1. **只认整行。** 正则是 `/^\s*#\s*\[\s*non_exhaustive\s*\]\s*$/`（`:86`）。`isCosmeticLine`（`scripts/check-driver-protocol-compat.mjs:285-296`）会先丢掉纯注释行，所以「文档里提到这个属性」不会被误判；但一行 `// TODO: 加 #[non_exhaustive]` 后面确实声明着字段——子串匹配会为这个 TODO 拦下一次门禁，把一次普通字段新增报成 source break。
 2. **只认受治理 span 内的非 cosmetic 新增行。** 改写一行在 diff 里是**删除**，永远在 `breaking` 分支就返回了，压根到不了新增分支（`:533-546`）。所以这一档只能由**纯新增**触发。
 3. **只认 `kind === 'struct'`。** `trait` 的表是空的（`:90`）。
 4. **`#[serde(...)]` 仍然是 `additive`，这是对的。** 它改的是线上写出去的东西，不是能不能编译，归本文档 serde 行管，不由这张表管。**两个排除的理由不能互换**：把它排除的理由是「改线上」，而「在 `enum` 上限制的是**匹配**、不是构造」是 `non_exhaustive` 加在 enum 上时被排除的理由（`:72-75`）。拿后者去论证前者是错的——那会把一个线上问题说成构建问题，正是这张表存在的意义。
