@@ -1,4 +1,14 @@
-//! 端口层统一错误。
+//! 错误词汇的两个半边：`PortError`（端口层事实）与 `ApiErrorCode`（跨边界业务拒绝码）。
+//!
+//! 两者共处一个模块，因为它们是**同一份跨 crate 词汇表的两端**：端口报事实、用层把事实
+//! 判定成业务拒绝，而判定结果的 wire 形态（`ApiErrorCode`）必须由两侧共用同一份定义。
+//! §4:234 定的正是这个手法——共享类型定义在本包，`application` 与 `runtime` 用
+//! `pub use` 再导出，而不是各写一份。
+//!
+//! 方向上这是**有意的**：本包不依赖 `application` / `runtime`（F-04 禁止反向依赖），
+//! 而 `application` 与 `runtime` 都是兄弟、互不依赖，所以「唯一定义处」只能是本包。
+//!
+//! # 端口层：`PortError`
 //!
 //! 变体集合来自 `shared-boundaries-and-ports.md` §4.1 的目标设计，逐条落地，**不增不减**。
 //!
@@ -68,6 +78,257 @@ impl PortError {
             Self::BackendUnavailable(_) | Self::ProviderTimeout(_) | Self::CasConflict { .. }
         )
     }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 跨边界业务拒绝码（§4:234）
+//
+// `ApiErrorCode` 与 `RetryDisposition` 是**跨边界的 wire 词汇**：`application` 的 `ApiError`
+// 序列化时写出它们，`runtime` 的 `ApiError` 也用同一个 code 枚举判定「派发前拒绝」。
+// 两边此前各定义一份同名同形的枚举——变体、顺序、字面值逐字相同，**却是两个 Rust 类型**，
+// 所以既无法互相传值，也没有任何一处转换能证明它们同步；两份定义各自漂移不会被编译器
+// 发现。唯一定义处放在本包正是 §4:234 的约定：`application` 与 `runtime` 用 `pub use`
+// 再导出，不重复定义（本包不得反向依赖它们，见 F-04）。
+//
+// 方向约束：本包不依赖 `application` / `runtime`，而那两个 crate 是互不依赖的兄弟
+// （`connection/mod.rs` 与 `application/lib.rs` 都不引用对方），所以共享定义只能落在本包。
+// ────────────────────────────────────────────────────────────────────────────
+
+use serde::{Deserialize, Serialize};
+
+/// 请求被拒绝的机器可读 code，取值逐字来自连接 §13 的错误表。
+///
+/// **枚举是封闭的**：新增取值等同协议版本升级，必须同时更新 driver、宿主与前端
+/// （连接 §13：「新增取值需要提升枚举版本并同时更新全部消费者，宿主、前端与 driver 不得各自扩展」）。
+///
+/// **只表示「请求被拒绝」**：派发后的执行终态失败由 `ExecutionState = failed` +
+/// `ExecutionErrorCode` 表达（连接 §13 末段）。因此本枚举里没有 `hostRejected`——它是
+/// `ExecutionErrorCode` 的取值，属于另一个命名空间；`api_error_code` 守卫测试钉住这一点。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ApiErrorCode {
+    /// DTO/Command schema 不合法。修正请求，不调用 driver。
+    InvalidArgument,
+    /// 目标缺失。不默认切库。
+    TargetRequired,
+    /// 目标重复/冲突（含 namespace 内重复表达同一层级不一致）。
+    TargetConflict,
+    /// 无法定位目标，不回退默认库。
+    TargetUnsupported,
+    /// 会话不存在。
+    SessionNotFound,
+    /// 物理会话已失效；禁止透明重建，显式新建会话必须使用新 ID。
+    SessionLost,
+    /// 旧运行时句柄：runtimeEpoch/dbSessionId 不匹配。
+    RuntimeEpochMismatch,
+    /// 上下文版本冲突，重新读取后由用户决定。
+    ContextConflict,
+    /// 当前授权拒绝；敏感资源由 host 映射为 404。
+    PermissionDenied,
+    /// 预算/队列超限。
+    ResourceBusy,
+    /// 队列超限。
+    QueueFull,
+    /// 事务阻止切换/关闭，需用户选择处理事务。
+    TransactionResolutionRequired,
+    /// 缺少所需能力。
+    CapabilityUnsupported,
+    /// 无法证明事务边界。
+    UnsupportedPlan,
+    /// 源目标对象危险重叠或无法排除自覆盖。
+    EndpointOverlap,
+    /// 逻辑会话/编辑器额度超限。
+    SessionQuotaExceeded,
+    /// 幂等键已过提交有效期：查询原执行并核验，不自动用新键重投。
+    IdempotencyExpired,
+    /// 无法证明清理（回滚失败）。
+    RollbackFailed,
+    /// 无法证明清理。
+    CleanupFailed,
+    /// 写入/提交结果未知：核验执行，不自动重试。
+    OutcomeUnknown,
+    /// 计划已过期。
+    PlanStale,
+    /// 源数据已变化。
+    SourceChanged,
+    /// 目标行冲突。
+    TargetConflictRows,
+    /// 相同幂等键不同输入：修正请求键，不能覆盖记录。
+    IdempotencyConflict,
+    /// 未认证，不自动重放原请求。
+    Unauthenticated,
+    /// 资源不可见或不存在，或二者不可区分。
+    NotFound,
+    /// 请求体超过物理上限。
+    PayloadTooLarge,
+    /// 组织/用户/数据库额度超限。
+    QuotaExceeded,
+    /// 令牌桶限流拒绝。
+    RateLimited,
+    /// 暂无可用 worker、drain 中、管理库不可达或迁移未完成。
+    ServiceUnavailable,
+    /// `ProfileRepository::compare_and_set` 的 expectedRevision CAS 失败。
+    ///
+    /// 与 `TargetConflict` 是两件事：CAS 失败说明**命名空间目标本身合法**（连接 §13 末行），
+    /// 调用方要重读最新 configRevision 后由用户决定，不得自动覆盖。
+    ConfigRevisionMismatch,
+}
+
+impl ApiErrorCode {
+    /// 协议字面值，序列化后与连接 §13 的 code 列逐字一致。
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidArgument => "invalidArgument",
+            Self::TargetRequired => "targetRequired",
+            Self::TargetConflict => "targetConflict",
+            Self::TargetUnsupported => "targetUnsupported",
+            Self::SessionNotFound => "sessionNotFound",
+            Self::SessionLost => "sessionLost",
+            Self::RuntimeEpochMismatch => "runtimeEpochMismatch",
+            Self::ContextConflict => "contextConflict",
+            Self::PermissionDenied => "permissionDenied",
+            Self::ResourceBusy => "resourceBusy",
+            Self::QueueFull => "queueFull",
+            Self::TransactionResolutionRequired => "transactionResolutionRequired",
+            Self::CapabilityUnsupported => "capabilityUnsupported",
+            Self::UnsupportedPlan => "unsupportedPlan",
+            Self::EndpointOverlap => "endpointOverlap",
+            Self::SessionQuotaExceeded => "sessionQuotaExceeded",
+            Self::IdempotencyExpired => "idempotencyExpired",
+            Self::RollbackFailed => "rollbackFailed",
+            Self::CleanupFailed => "cleanupFailed",
+            Self::OutcomeUnknown => "outcomeUnknown",
+            Self::PlanStale => "planStale",
+            Self::SourceChanged => "sourceChanged",
+            Self::TargetConflictRows => "targetConflictRows",
+            Self::IdempotencyConflict => "idempotencyConflict",
+            Self::Unauthenticated => "unauthenticated",
+            Self::NotFound => "notFound",
+            Self::PayloadTooLarge => "payloadTooLarge",
+            Self::QuotaExceeded => "quotaExceeded",
+            Self::RateLimited => "rateLimited",
+            Self::ServiceUnavailable => "serviceUnavailable",
+            Self::ConfigRevisionMismatch => "configRevisionMismatch",
+        }
+    }
+
+    /// 该码是否表示「请求在派发前被拒绝」。
+    ///
+    /// 这是连接 §13 L769 的判据：`true` 意味着**不产生 execution 记录**，
+    /// 该路径上不存在 `ExecutionState` / `errorCode` / `effectOutcome`；
+    /// `false` 的六个码只能出现在已有执行记录的终态里。
+    pub const fn is_pre_dispatch_rejection(self) -> bool {
+        !matches!(
+            self,
+            Self::RollbackFailed
+                | Self::CleanupFailed
+                | Self::OutcomeUnknown
+                | Self::TargetConflictRows
+                | Self::SourceChanged
+                | Self::PlanStale
+        )
+    }
+
+    /// 全部取值的清单，host/前端做反查与审计时使用。
+    pub const ALL: [ApiErrorCode; 31] = [
+        Self::InvalidArgument,
+        Self::TargetRequired,
+        Self::TargetConflict,
+        Self::TargetUnsupported,
+        Self::SessionNotFound,
+        Self::SessionLost,
+        Self::RuntimeEpochMismatch,
+        Self::ContextConflict,
+        Self::PermissionDenied,
+        Self::ResourceBusy,
+        Self::QueueFull,
+        Self::TransactionResolutionRequired,
+        Self::CapabilityUnsupported,
+        Self::UnsupportedPlan,
+        Self::EndpointOverlap,
+        Self::SessionQuotaExceeded,
+        Self::IdempotencyExpired,
+        Self::RollbackFailed,
+        Self::CleanupFailed,
+        Self::OutcomeUnknown,
+        Self::PlanStale,
+        Self::SourceChanged,
+        Self::TargetConflictRows,
+        Self::IdempotencyConflict,
+        Self::Unauthenticated,
+        Self::NotFound,
+        Self::PayloadTooLarge,
+        Self::QuotaExceeded,
+        Self::RateLimited,
+        Self::ServiceUnavailable,
+        Self::ConfigRevisionMismatch,
+    ];
+
+    /// 机器可读的重试政策（概要 §6.3）。
+    ///
+    /// * [`RetryDisposition::Never`]：权限、参数、能力、上下文/版本冲突、预算与速率超限。
+    /// * [`RetryDisposition::SafeRead`]：确认无副作用的读取结果。
+    /// * [`RetryDisposition::CheckExecution`]：已接受但结果未知的提交，先核验执行。
+    ///
+    /// **已知规格缺口（不发明取值）**：连接 §13 对 `ResourceBusy` / `QueueFull` /
+    /// `RateLimited` / `ServiceUnavailable` / `QuotaExceeded` / `SessionQuotaExceeded`
+    /// 给的动作是「等待或按 Retry-After 退避后重发」，语义上既不是 `never`，
+    /// 也不是「确认无副作用的读取」，但概要 §6.3 只定义了三个取值。这里对它们
+    /// 保守取 `Never`（宁可不自动重试，也不要让调用方把退避重发误当作安全读），
+    /// 是否补第四个取值（例如带退避的 `retryAfterBackoff`）需要概要先给出枚举。
+    pub const fn retry_disposition(self) -> RetryDisposition {
+        match self {
+            // 「查询原执行并核验，不自动用新键重投」（idempotencyExpired）
+            // 与「核验执行，不自动重试」（outcomeUnknown）同属一类。
+            Self::OutcomeUnknown | Self::IdempotencyExpired => RetryDisposition::CheckExecution,
+            Self::NotFound | Self::SessionNotFound => RetryDisposition::SafeRead,
+            Self::InvalidArgument
+            | Self::TargetRequired
+            | Self::TargetConflict
+            | Self::TargetUnsupported
+            | Self::SessionLost
+            | Self::RuntimeEpochMismatch
+            | Self::ContextConflict
+            | Self::PermissionDenied
+            | Self::ResourceBusy
+            | Self::QueueFull
+            | Self::TransactionResolutionRequired
+            | Self::CapabilityUnsupported
+            | Self::UnsupportedPlan
+            | Self::EndpointOverlap
+            | Self::SessionQuotaExceeded
+            | Self::RollbackFailed
+            | Self::CleanupFailed
+            | Self::PlanStale
+            | Self::SourceChanged
+            | Self::TargetConflictRows
+            | Self::IdempotencyConflict
+            | Self::Unauthenticated
+            | Self::PayloadTooLarge
+            | Self::QuotaExceeded
+            | Self::RateLimited
+            | Self::ServiceUnavailable
+            | Self::ConfigRevisionMismatch => RetryDisposition::Never,
+        }
+    }
+}
+
+impl std::fmt::Display for ApiErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// 机器可读的重试政策，取值与 wire 字面值一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RetryDisposition {
+    /// 不重试：先修复请求或刷新状态。
+    Never,
+    /// 只允许重试确认无副作用的读取。
+    SafeRead,
+    /// 先核验已接受的执行/提交，不盲目重发。
+    CheckExecution,
 }
 
 #[cfg(test)]
@@ -163,14 +424,24 @@ mod tests {
     fn the_port_error_has_no_wire_shape_of_its_own() {
         // 跨边界的错误类型是 `ApiError`（application 层）。如果哪天有人给 `PortError`
         // 加了 serde，这里会失败并提醒：要么删掉，要么连同 host 的映射一起改。
-        let source = include_str!("error.rs")
-            .split("#[cfg(test)]")
-            .next()
-            .unwrap_or_default();
+        //
+        // 检查范围**必须**只覆盖 `PortError` 自己的定义：同一模块里现在还有
+        // `ApiErrorCode` / `RetryDisposition`，它们是跨边界 wire 词汇、**必须**带 serde。
+        // 早先这里的写法是「取 `#[cfg(test)]` 之前的全文」，它当时成立只是因为本文件里
+        // 恰好还没有 serde 类型；一旦按 §4:234 把 `ApiErrorCode` 收进来，那条写法会
+        // 恒失败，或被人为了「让它变绿」而放宽 marker 列表——守卫就此失效。
+        let source = include_str!("error.rs");
+        let start = source
+            .find("pub enum PortError {")
+            .expect("PortError 必须仍然定义在本模块");
+        let end = source[start..]
+            .find("\n}\n")
+            .expect("PortError 枚举必须仍以列 0 的收尾大括号结束");
+        let definition = &source[start..start + end];
         for marker in ["Serialize", "Deserialize", "serde_json"] {
             assert!(
-                !source.contains(marker),
-                "PortError 不应有 serde 形态，发现了 `{marker}`：{source}"
+                !definition.contains(marker),
+                "PortError 不应有 serde 形态，发现了 `{marker}`：{definition}"
             );
         }
     }
@@ -180,5 +451,37 @@ mod tests {
         assert!(!PortError::TokenInvalid.is_transient());
         assert!(!PortError::ArtifactExpired.is_transient());
         assert!(!PortError::QuotaExceeded("rows".into()).is_transient());
+    }
+
+    /// 从 application 迁到「类型的唯一定义处」：守卫的对象是这个枚举，
+    /// 枚举在这里，守卫就得在这里——留在 application 会扫描一份不再含枚举的源文件，
+    /// 变成一条恒真的假守卫。
+    #[test]
+    fn execution_error_codes_do_not_leak_into_this_enum() {
+        // 连接 §13：执行终态 errorCode 与 ApiError.code 是两个命名空间；
+        // hostRejected 是 ExecutionErrorCode 的取值，绝不能出现在 ApiErrorCode。
+        let code = code_only(
+            include_str!("error.rs")
+                .split("#[cfg(test)]")
+                .next()
+                .unwrap_or_default(),
+        );
+        assert!(
+            !code.contains("HostRejected"),
+            "ApiErrorCode 不得包含 hostRejected"
+        );
+        assert!(!code.contains("SqlError"));
+        assert!(
+            !code.contains("Cancelled"),
+            "cancelled 属于 ExecutionErrorCode"
+        );
+    }
+
+    fn code_only(source: &str) -> String {
+        source
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }

@@ -10,106 +10,24 @@
 //!
 //! 记录已存在之后的宿主二次校验失败只能用 `ExecutionErrorCode::HostRejected`，
 //! 绝不能用 `ApiError`（§13 L777）。
+//!
+//! ## 第 1 层为什么是再导出
+//!
+//! `ApiErrorCode` 的唯一定义处在 `platform-api`（§4:234），本模块 `pub use` 它。
+//! 此前本 crate 与 `application` 各定义了一份：31 个变体逐字相同**却是两个 Rust 类型**，
+//! 既无法互传，也没有任何机制能发现此后二者各自漂移。端口报事实、用层把事实判定成
+//! 业务拒绝，两侧共用一份词汇表才是 §13 的要求。
+//!
+//! `is_pre_dispatch_rejection()` 随类型同住（Rust orphan 规则 E0117：`impl` 必须与被
+//! `impl` 的类型同 crate），经再导出后调用形态不变。`ApiError` 与 `ProviderError`
+//! 仍定义在本模块——它们是本层独有的载体，不是共享词汇。
 
 use serde::{Deserialize, Serialize};
 
-/// 请求拒绝错误码。命名空间来源：connection-management.md §13 错误表。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ApiErrorCode {
-    InvalidArgument,
-    TargetRequired,
-    TargetConflict,
-    TargetUnsupported,
-    SessionNotFound,
-    SessionLost,
-    RuntimeEpochMismatch,
-    ContextConflict,
-    PermissionDenied,
-    ResourceBusy,
-    QueueFull,
-    TransactionResolutionRequired,
-    CapabilityUnsupported,
-    UnsupportedPlan,
-    EndpointOverlap,
-    SessionQuotaExceeded,
-    IdempotencyExpired,
-    RollbackFailed,
-    CleanupFailed,
-    OutcomeUnknown,
-    PlanStale,
-    SourceChanged,
-    TargetConflictRows,
-    IdempotencyConflict,
-    Unauthenticated,
-    NotFound,
-    PayloadTooLarge,
-    QuotaExceeded,
-    RateLimited,
-    ServiceUnavailable,
-    ConfigRevisionMismatch,
-}
-
-impl ApiErrorCode {
-    /// 人类可读 / 日志形态的错误码。
-    ///
-    /// **线上字面量由 `#[serde(rename_all = "camelCase")]` 派生，不是手写的**；
-    /// 本函数唯一的用途是让 `Display` 的输出与序列化结果逐字一致，
-    /// 使得「日志里看到的码」与「线上 JSON 的 `code`」是同一个字符串。
-    ///
-    /// `wire_literal_matches_as_str` 对全部变体逐个比对二者，任何一侧漂移都会让该测试失败。
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            ApiErrorCode::InvalidArgument => "invalidArgument",
-            ApiErrorCode::TargetRequired => "targetRequired",
-            ApiErrorCode::TargetConflict => "targetConflict",
-            ApiErrorCode::TargetUnsupported => "targetUnsupported",
-            ApiErrorCode::SessionNotFound => "sessionNotFound",
-            ApiErrorCode::SessionLost => "sessionLost",
-            ApiErrorCode::RuntimeEpochMismatch => "runtimeEpochMismatch",
-            ApiErrorCode::ContextConflict => "contextConflict",
-            ApiErrorCode::PermissionDenied => "permissionDenied",
-            ApiErrorCode::ResourceBusy => "resourceBusy",
-            ApiErrorCode::QueueFull => "queueFull",
-            ApiErrorCode::TransactionResolutionRequired => "transactionResolutionRequired",
-            ApiErrorCode::CapabilityUnsupported => "capabilityUnsupported",
-            ApiErrorCode::UnsupportedPlan => "unsupportedPlan",
-            ApiErrorCode::EndpointOverlap => "endpointOverlap",
-            ApiErrorCode::SessionQuotaExceeded => "sessionQuotaExceeded",
-            ApiErrorCode::IdempotencyExpired => "idempotencyExpired",
-            ApiErrorCode::RollbackFailed => "rollbackFailed",
-            ApiErrorCode::CleanupFailed => "cleanupFailed",
-            ApiErrorCode::OutcomeUnknown => "outcomeUnknown",
-            ApiErrorCode::PlanStale => "planStale",
-            ApiErrorCode::SourceChanged => "sourceChanged",
-            ApiErrorCode::TargetConflictRows => "targetConflictRows",
-            ApiErrorCode::IdempotencyConflict => "idempotencyConflict",
-            ApiErrorCode::Unauthenticated => "unauthenticated",
-            ApiErrorCode::NotFound => "notFound",
-            ApiErrorCode::PayloadTooLarge => "payloadTooLarge",
-            ApiErrorCode::QuotaExceeded => "quotaExceeded",
-            ApiErrorCode::RateLimited => "rateLimited",
-            ApiErrorCode::ServiceUnavailable => "serviceUnavailable",
-            ApiErrorCode::ConfigRevisionMismatch => "configRevisionMismatch",
-        }
-    }
-
-    /// 该码是否表示「请求在派发前被拒绝」。
-    ///
-    /// 这是 §13 L769 的判据：`true` 意味着**不产生 execution 记录**，
-    /// 该路径上不存在 `ExecutionState` / `errorCode` / `effectOutcome`。
-    pub const fn is_pre_dispatch_rejection(self) -> bool {
-        !matches!(
-            self,
-            ApiErrorCode::RollbackFailed
-                | ApiErrorCode::CleanupFailed
-                | ApiErrorCode::OutcomeUnknown
-                | ApiErrorCode::TargetConflictRows
-                | ApiErrorCode::SourceChanged
-                | ApiErrorCode::PlanStale
-        )
-    }
-}
+// 第 1 层的 code 枚举是跨边界共享词汇，唯一定义处在 platform-api（§4:234），
+// 这里只做再导出。`is_pre_dispatch_rejection()` 属于类型自身的固有成员，
+// 按 Rust orphan 规则（E0117）与类型同住于 platform-api，经此再导出后调用不变。
+pub use datazen_platform_api::error::ApiErrorCode;
 
 /// 请求拒绝错误。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,6 +131,25 @@ impl ProviderError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 编译期证明（不是自报）：`runtime::ApiErrorCode` **就是** platform-api 那一个类型，
+    /// 而不是本 crate 另有一份同名副本。
+    ///
+    /// 双向赋值只有在两侧同类型时才编译得过——若本 crate 保留了本地枚举定义，
+    /// 下面第二行的类型标注就会立刻 `mismatched types` 编译失败。
+    /// application 侧有对称的一条 `packages/application/src/error.rs`，两者都指向
+    /// 同一个第三方类型 `datazen_platform_api::error::ApiErrorCode`，因此彼此同类型。
+    #[test]
+    fn api_error_code_is_the_platform_api_type_not_a_local_copy() {
+        let from_reexport: ApiErrorCode = ApiErrorCode::RollbackFailed;
+        let from_home: datazen_platform_api::error::ApiErrorCode = from_reexport;
+        let round_tripped: ApiErrorCode = from_home;
+        assert_eq!(round_tripped, ApiErrorCode::RollbackFailed);
+        // 能力随类型同住，经再导出后调用形态不变：执行记录已存在的终态码
+        // 不得被误判成派发前拒绝。
+        assert!(!ApiErrorCode::RollbackFailed.is_pre_dispatch_rejection());
+        assert!(ApiErrorCode::NotFound.is_pre_dispatch_rejection());
+    }
 
     #[test]
     fn api_error_code_literals_are_distinct() {
