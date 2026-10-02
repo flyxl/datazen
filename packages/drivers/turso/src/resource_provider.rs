@@ -149,7 +149,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// | --- | --- | --- |
 /// | `data` | `DataSupport::BufferedReadWrite` | **The one filled cell.** Read: `query` (:317-329) returns a materialized `QueryResult` built by `result_from_json` (:93-…). Write: `execute` (:388-…) posts a statement through `pipeline` and returns `rows_affected`. *Not* streaming: `pipeline` (:30-53) reads the whole body with `resp.text()` and parses it into a `serde_json::Value` before returning; `query_stream` (:351-377) awaits that same full body at :362 and only then replays the already-materialized `Vec` through `stream_decoded_rows` (:365-374). No row is emitted before the whole result set is in memory, so `streamingResults` does not hold and `StreamingReadWrite` would be a false claim. |
 /// | `backup` | `BackupSupport::Unknown` (blank) | This crate contains no backup or restore path — `backup` appears nowhere in `src/` but a test name. `ui/meta.ts` nevertheless sets `supportsBackup: true`, which only gates the frontend Backup window and is backed by no Rust here. `ArtifactOnly`/`ArtifactAndRestore` would repeat that unbacked claim in the contract; `Unsupported` would assert we probed a server capability this crate never touched. The contradiction is recorded here rather than papered over. |
-/// | `stateful_session` | `Availability::Unknown` (blank) | The driver's entire state is `clients: RwLock<HashMap<String, (reqwest::Client, String)>>` (:11-12) — an HTTP client and a base URL under a `turso_<uuid>` pool id minted at `connect` (:250). Every statement is an independently constructed `POST {base}/v2/pipeline` (:35-39). The driver never issues a session-establishing call nor stores a server-assigned session id, so whether Turso binds a resource to a server-side session is **unmeasured**, not measured-absent. Pinned by `tests::a_described_resource_is_never_mistaken_for_a_fixed_reusable_session`. |
+/// | `stateful_session` | `Availability::Unsupported` | The handle carries no session identity: the driver's entire state is `clients: RwLock<HashMap<String, (reqwest::Client, String)>>` (:11-12) — an HTTP client and a base URL under a `turso_<uuid>` pool id minted at `connect` (:250). Every statement is an independently constructed `POST {base}/v2/pipeline` (:35-39); no session-establishing call is ever issued and no server-assigned session id is ever stored, so the driver can neither address nor reuse a server-side session across statements. That is the same architecture as mysql, which the corpus already rules `Unsupported` on these grounds (`packages/drivers/mysql/src/resource_capabilities.rs:74` — a client is not a session), so the architecture is *measured*, not unmeasured: `Unknown` would discard evidence the repository already holds. `SessionContinuity::Leased` describes the handle lease, not a server session. Pinned by `tests::a_described_resource_is_never_mistaken_for_a_fixed_reusable_session`. |
 /// | `namespace_switch` | `NamespaceSwitch::Unknown` (blank) | The module docs above justify refusing `change_context` because "switching the Turso branch context is a reconnect", but the code does not back that sentence: the database name is never stored on the resource. `effective_database` (:60-67) resolves blank to `main` and `quote_schema` (:71-73) renders it as a per-statement qualifier used by `list_tables_sql`/`table_info_sql` (:76-91), while the resource is the base URL fixed at `connect` (:249-257), whose only mutation is `disconnect`'s `remove` (:262). So the driver can neither switch a live session in place nor show that a switch needs a replacement resource — the name rides along on each statement. `Unknown` keeps the gate shut; so do all three non-`InPlace` variants, and `switches_in_place` is true only for `InPlace`. |
 /// | `context_observation` | `ContextObservation::Unsupported` | Both the default and the measured answer: the crate contains no context read-back call, and the module docs record that `observe_session` reports every field unknown rather than back-filling the acquisition target. |
 /// | `transaction_observation` | `TransactionObservation::Unsupported` | Default and truthful. This driver issues no `BEGIN`/`COMMIT`/`ROLLBACK` — none appears anywhere in the crate — and mints no transaction handle; the resource port refuses commit and rollback because transactions are resolved inside the driver's own commands. |
@@ -166,7 +166,15 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// than its own provider is exactly the drift the contract exists to prevent.
 pub(crate) fn capabilities() -> CapabilitySet {
     CapabilitySet {
-        // The one provable cell. Reads return rows and writes report
+        // A handle is an HTTP client plus a base URL (:11-12) — it holds no
+        // session identity, every statement independently builds its own
+        // request (:35-39), and no server-assigned session id is ever stored.
+        // The corpus already rules this exact architecture `Unsupported` for
+        // mysql, so writing `Unknown` here would discard evidence the
+        // repository already holds.
+        stateful_session: Availability::Unsupported,
+
+        // The one provable data cell. Reads return rows and writes report
         // `rows_affected`, but `pipeline` parses the whole response body before
         // `result_from_json` builds a `Vec`, and `query_stream` awaits that same
         // body before replaying it — so the result set is fully materialized
@@ -177,7 +185,6 @@ pub(crate) fn capabilities() -> CapabilitySet {
         // Blanks, each keeping the default that is also the honest answer.
         // They are spelled out rather than hidden behind `..Default::default()`
         // so that a later "fix" has to edit a value someone already argued for.
-        stateful_session: Availability::Unknown, // unmeasured: no session is ever established or stored (:11-12, :250)
         namespace_switch: NamespaceSwitch::Unknown, // the database is a per-statement qualifier, not resource state (:60-91)
         context_observation: ContextObservation::Unsupported, // no read-back call exists in this crate
         transaction_observation: TransactionObservation::Unsupported, // no BEGIN/COMMIT/ROLLBACK anywhere in the crate
@@ -267,19 +274,26 @@ mod tests {
         assert!(registry.require_precise_cancel().is_err());
         assert_eq!(
             factory().resource_capabilities().stateful_session,
-            datazen_driver_api::capabilities::Availability::Unknown,
-            "a Turso HTTP request is stateless"
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "a handle is an HTTP client plus a base URL, never a server-side session"
         );
     }
 
     #[test]
-    fn the_declaration_claims_the_one_thing_turso_can_prove() {
+    fn the_declaration_claims_only_what_the_crate_backs() {
         let declared = capabilities();
 
         assert_ne!(
             declared,
             CapabilitySet::default(),
             "the declaration must not collapse back to every cell at its default"
+        );
+        assert_eq!(
+            declared.stateful_session,
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "the handle is an HTTP client plus a base URL, so no server-side session can be \
+             addressed across statements — the same architecture the corpus rules Unsupported \
+             for mysql"
         );
         assert_eq!(
             declared.data,
