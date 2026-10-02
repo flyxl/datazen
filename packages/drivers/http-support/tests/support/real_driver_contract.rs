@@ -87,6 +87,9 @@ mod free;
 #[path = "real_driver_contract_scope.rs"]
 mod scope;
 
+#[path = "real_driver_contract_rule.rs"]
+mod rule;
+
 #[path = "real_driver_contract_live.rs"]
 mod live;
 
