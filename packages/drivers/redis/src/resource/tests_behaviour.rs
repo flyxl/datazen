@@ -28,7 +28,7 @@ use crate::{RedisFactory, RedisResourceProvider};
 
 use super::capabilities::{redis_connection_cost, REDIS_PROVIDER_ID};
 use super::tests::{
-    command, execution_id, foreign_handle, interactive_scope, provider, seed, target,
+    command, execution_id, foreign_handle, interactive_scope, provider, seed, seed_under, target,
     transaction_options, BudgetLedger, RecordingSink,
 };
 
@@ -479,6 +479,79 @@ async fn closing_a_never_held_handle_is_an_error() {
         "got {error:?}"
     );
     assert!(ledger.released().is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// The tombstone set: what `closed` actually does
+// ---------------------------------------------------------------------------
+
+/// `closed` grows by exactly one per confirmed close and nothing ever takes a
+/// key back out of it.
+///
+/// The shape is pinned deliberately. The provider instance is memoized for the
+/// life of the process (`src-tauri/src/db/registry.rs` holds it in a
+/// `OnceLock`) and a confirmed close is the only writer, so the set grows with
+/// the number of resources the process has ever closed and is never bounded.
+/// Slow, not fatal: a desktop session closes a bounded number of resources,
+/// while a headless `--mcp-stdio` server driven by an external client can close
+/// an unbounded number.
+///
+/// When the reclamation mechanism lands, this assertion is the one that has to
+/// change — not be deleted. The test below it says what the new shape must
+/// still guarantee.
+#[tokio::test]
+async fn the_tombstone_set_only_grows_and_nothing_reclaims_it() {
+    let provider = provider();
+    let ledger = Arc::new(BudgetLedger::default());
+
+    for (index, key) in ["r1", "r2", "r3", "r4"].iter().enumerate() {
+        let handle = seed_under(&provider, &ledger, key);
+        assert_disposition(
+            provider.close_resource(&handle).await,
+            CloseDisposition::Closed,
+            "the first close is the real one",
+        );
+        assert_eq!(
+            provider.tombstone_count_for_test(),
+            index + 1,
+            "every confirmed close leaves its key behind; this is the leak"
+        );
+    }
+}
+
+/// The reclamation path is real and correct — it just cannot fire in
+/// production.
+///
+/// `register_resource` drops any tombstone for the key it is about to reuse, so
+/// re-acquiring a key does reclaim its entry. Keeping it tested matters: if it
+/// broke, a reused key would read as "already closed", and its second close
+/// would return `Ok(Closed)` without releasing anything — a far worse bug than
+/// the leak this set causes.
+///
+/// Production never reaches it: `database.rs` mints `Uuid::new_v4()` per
+/// connection, so every key is fresh and none is ever issued twice. Only
+/// [`seed`] reaches the branch, by handing over the same key twice.
+#[tokio::test]
+async fn reacquiring_a_reused_key_is_the_only_way_to_reclaim_a_tombstone() {
+    let provider = provider();
+    let ledger = Arc::new(BudgetLedger::default());
+
+    let handle = seed(&provider, &ledger);
+    assert_disposition(
+        provider.close_resource(&handle).await,
+        CloseDisposition::Closed,
+        "the first close is the real one",
+    );
+    assert_eq!(provider.tombstone_count_for_test(), 1);
+
+    // `seed` always rebuilds `redis_test`, so the key is issued a second time
+    // and `register_resource` reclaims its tombstone.
+    let _reused = seed(&provider, &ledger);
+    assert_eq!(
+        provider.tombstone_count_for_test(),
+        0,
+        "registering a reused key must drop that key's tombstone"
+    );
 }
 
 // ---------------------------------------------------------------------------

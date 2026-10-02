@@ -231,6 +231,25 @@ pub(super) fn seed(provider: &RedisResourceProvider, ledger: &Arc<BudgetLedger>)
     )
 }
 
+/// Same as [`seed`], but under a key the caller names. [`seed`] always reuses
+/// `redis_test`, which makes it a probe for key *reuse*; this one is what lets a
+/// test mint as many distinct keys as it needs and watch the tombstone set grow.
+pub(super) fn seed_under(
+    provider: &RedisResourceProvider,
+    ledger: &Arc<BudgetLedger>,
+    key: &str,
+) -> ResourceHandle {
+    provider.register_resource_for_test(
+        connection_handle(key),
+        BudgetPermit {
+            permit_id: format!("permit-{key}"),
+            physical_connections: 1,
+        },
+        ledger_port(ledger),
+        3,
+    )
+}
+
 pub(super) fn describe_request(config: &ConnectionConfig) -> DescribeResourceRequest {
     DescribeResourceRequest {
         connection_config: config.clone(),

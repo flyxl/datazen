@@ -189,6 +189,81 @@ async fn close_releases_the_budget_exactly_once() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// 8. The tombstone set: what `closed` actually does
+// ---------------------------------------------------------------------------
+
+/// `closed` grows by exactly one per confirmed close and nothing ever takes a
+/// key back out of it.
+///
+/// This is the shape of the whole mechanism, so it is pinned deliberately. The
+/// provider instance is memoized for the life of the process
+/// (`src-tauri/src/db/registry.rs` holds it in a `OnceLock`), and a confirmed
+/// close is the only writer, so the set grows with the number of resources the
+/// process has ever closed and is never bounded. It is a slow leak, not a
+/// crash: a desktop session closes a bounded number of resources, while a
+/// headless `--mcp-stdio` server driven by an external client can close an
+/// unbounded number.
+///
+/// When the reclamation mechanism lands, this assertion is the one that has to
+/// change — not be deleted. The two tests below it say what the new shape must
+/// still guarantee.
+#[tokio::test]
+async fn the_tombstone_set_only_grows_and_nothing_reclaims_it() {
+    let (_driver, provider) = provider_with_driver();
+    let ledger = Arc::new(BudgetLedger::default());
+
+    for (index, label) in ["a", "b", "c", "d"].iter().enumerate() {
+        let (handle, _conn) = seed_resource(&provider, Arc::clone(&ledger), label);
+        assert_eq!(
+            provider
+                .close_resource(&handle)
+                .await
+                .expect("a confirmed close"),
+            CloseDisposition::Closed,
+            "close {label} must be confirmed"
+        );
+        assert_eq!(
+            provider.tombstone_count_for_test(),
+            index + 1,
+            "every confirmed close leaves its key behind; this is the leak"
+        );
+    }
+}
+
+/// The reclamation path is real and correct — it just cannot fire in
+/// production.
+///
+/// `register_resource` drops any tombstone for the key it is about to reuse, so
+/// re-acquiring a key does reclaim its entry. That is worth keeping tested: if
+/// it ever stops working, a reused key would read as "already closed" and its
+/// second close would return `Ok(Closed)` without releasing anything, which is
+/// a far worse bug than the leak.
+///
+/// Production never reaches it, though: `connect_impl` mints
+/// `Uuid::new_v4()` per connection, so every key is fresh and no key is ever
+/// issued twice. This test reaches the branch only by handing the provider the
+/// same `ConnectionHandle` id twice, which is what `seed_resource` does for a
+/// repeated label.
+#[tokio::test]
+async fn reacquiring_a_reused_key_is_the_only_way_to_reclaim_a_tombstone() {
+    let (_driver, provider) = provider_with_driver();
+    let ledger = Arc::new(BudgetLedger::default());
+
+    let (handle, _conn) = seed_resource(&provider, Arc::clone(&ledger), "target");
+    provider.close_resource(&handle).await.expect("first close");
+    assert_eq!(provider.tombstone_count_for_test(), 1);
+
+    // Same label, so `seed_resource` rebuilds `conn-target` — the key is
+    // issued a second time, and `register_resource` reclaims its tombstone.
+    let (_reused, _conn) = seed_resource(&provider, Arc::clone(&ledger), "target");
+    assert_eq!(
+        provider.tombstone_count_for_test(),
+        0,
+        "registering a reused key must drop that key's tombstone"
+    );
+}
+
 #[tokio::test]
 async fn reset_refuses_to_promise_reuse() {
     let (_driver, provider) = provider_with_driver();

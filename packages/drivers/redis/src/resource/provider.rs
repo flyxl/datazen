@@ -482,6 +482,17 @@ impl RedisResourceProvider {
     fn mark_closed(&self, resource_key: &str) {
         self.lock().closed.insert(resource_key.to_string());
     }
+
+    /// How many tombstones this instance is holding. `#[cfg(test)]`, because the
+    /// size of `closed` is not something a caller may ask about: it exists
+    /// purely so a confirmed close can be told apart from a key never held.
+    ///
+    /// Read by `tests_behaviour` to pin what `closed` actually does — see
+    /// `the_tombstone_set_only_grows_and_nothing_reclaims_it` there.
+    #[cfg(test)]
+    pub(crate) fn tombstone_count_for_test(&self) -> usize {
+        self.lock().closed.len()
+    }
 }
 
 /// The fourteen [`ResourceProvider`] methods. A child module so it sees the
