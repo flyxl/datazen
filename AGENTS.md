@@ -194,6 +194,8 @@ cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust �
 > 若某个 mock 确实只实现子集，请用精确断言（`as unknown as X`、`satisfies`、`Pick<>`）显式说明，
 > 禁止用 `any` 绕过；也不要为了让类型通过而删测试或删断言。
 
+**同一棵工作树不得同时被提交方和验证方使用。** 验证方做变异、提交方跑门禁或 `git add`，必须用各自独立的工作树：`git worktree add --detach <path> <commit>`。实测代价：同一棵树上「提交方 `git add`」收进去的是验证方变异后的残留，于是出现一个 message 与内容完全相反的提交，且 `rev-parse` / `is-ancestor` 全部放过——旧提交本身合法，只有内容是毒的。任何门禁重跑都要**首尾各记录一次 HEAD 与工作区 sha**，证明运行期间没人动过。
+
 并行开发用子代理时，主代理直接派发独立子任务并在汇总时验收；**不写进度台账、不写缺陷清单文件**——结论必须落在代码、测试和 `docs/` 的正式文档里（`docs/features/`、`docs/architecture/`、`docs/development/`）。推广与发布文案只写本地 `posts/`（gitignored）。
 
 ### 文档维护纪律
