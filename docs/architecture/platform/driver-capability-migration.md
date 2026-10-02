@@ -405,6 +405,85 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 
 之所以现在加这个属性是**一行一处**的改动：`1434d29e3` 之后，全仓库**穷举式 `CapabilitySet` 字面量数量为 0**。12 个 path 驱动全部改为 `CapabilitySet::default()` 加逐字段赋值，形态见 `packages/drivers/postgres/src/resource/capabilities.rs:128` 的 `let mut capabilities = CapabilitySet::default();` 及其后 12 条 `capabilities.<字段> = …`（`:130-155`、`:194`、`:228`）。加属性这一步确实只有一处；但**代价落在 out-of-tree 驱动上**，那是边界二的迁移配方要交代的事：旧写法在别的仓库里编不过，而本仓库内的驱动早已全部改完。
 
+### 5.6 `supportsBackup`：判据不是「有没有覆写 dump」
+
+§5.5 讲的是**改动**该怎么判。这一节是同一类错误在**今天的状态**里已经发生的样子：UI 侧 `packages/drivers/<id>/ui/meta.ts` 上的 `supportsBackup` 布尔，与这个驱动到底能不能被备份对不上。
+
+先说判据，因为它反直觉。
+
+`DatabaseDriver` 给 `dump_database_with_progress` 提供了**通用默认实现**（`packages/driver-api/src/traits.rs:1000-1020`），原文是：
+
+```rust
+/// Same as [`Self::dump_database`] with per-object progress.
+async fn dump_database_with_progress(
+    /* ... */
+) -> Result<String, DriverError> {
+    if opts.create_database {
+        return Err(DriverError::NotSupported(
+            "Backup option 'create' (CREATE DATABASE) is not supported for this driver".into(),
+        ));
+    }
+    crate::sql_dump::dump_sql_database_with_progress::<Self, _>(
+        /* ... */
+    ).await
+}
+```
+
+也就是说**驱动不覆写 dump，不代表它不能 dump**。默认实现往下走的是 `sql_dump::dump_sql_database_with_progress`（`packages/driver-api/src/sql_dump/dump.rs:323`），而它对驱动的要求只有两项：
+
+- **`get_tables`** —— `dump.rs:334-336`，枚举可 dump 对象清单；
+- **`get_table_schema`** —— 经 `dump_table_ddl`（`dump.rs:200-202`，其默认实现在 `traits.rs:936-945`）落到 `dump.rs:54` 渲染 DDL，并在 `dump.rs:215-217` **再取一次**，这次用于生成 `INSERT INTO` 的列清单。
+
+其余环节都不是门槛：`dump_routines` / `dump_triggers` 的缺省是空串（`traits.rs:966` / `:977`）；`dump_view_ddl` 的缺省确实返回 `NotSupported`（`traits.rs:951`），但 `dump.rs:196-197` 把它接住并写成一行注释跳过。
+
+**所以「有没有自定义覆写 dump」不是判据；判据是 `get_tables` + `get_table_schema` 是否为真实现。** 一个没有 SQL 方言的 HTTP 类驱动只要实现了这两项就能跑通用 dump——尽管它压根不写 SQL。
+
+#### 普查结果
+
+15 个 path 驱动带这个字段（`http-support` 不带，它不是驱动，见 [§1.2](#12-http-support共享-helper-crate不是驱动)）。两个方向：
+
+| 方向 | 数量 | 驱动 |
+| --- | --- | --- |
+| 声明 `true` 但 `get_tables` / `get_table_schema` 未实现 | **0** | —— |
+| 声明 `false` 但两项均为真实现 | **6** | elasticsearch / hbase / influxdb / mongodb / vector / victoriametrics |
+
+这 6 个都不是 `NotSupported` 桩，`get_tables` 每个都打到真实接口：
+
+| 驱动 | `get_tables` 实际调用 | 声明位置 | `get_table_schema` |
+| --- | --- | --- | --- |
+| elasticsearch | `GET {_cat/indices}` | `elasticsearch/src/elasticsearch.rs:201` | `:245` |
+| hbase | `GET /` 取 `table` 数组 | `hbase/src/hbase.rs:272` | `:301` |
+| influxdb | `SHOW MEASUREMENTS` | `influxdb/src/influxdb.rs:182` | `:229` |
+| mongodb | `list_collection_names()` | `mongodb/src/mongodb.rs:309` | `:337` |
+| vector | `GET /collections` | `vector/src/vector.rs:194` | `:223` |
+| victoriametrics | `GET /api/v1/label/__name__/values` | `victoriametrics/src/victoriametrics.rs:210` | `:238` |
+
+（`mongodb/src/resource/test_support.rs:133` 另有一份测试用实现，不参与本表。）
+
+#### `false` 不总是错的 —— redis 是正确的那一个
+
+**不要把上表读成「`false` 就是 bug」。** 7 个声明 `false` 的驱动里，redis 是**正确**的：它显式覆写了 `dump_database_with_progress`（`packages/drivers/redis/src/driver/database.rs:340-350`）来拒绝：
+
+```rust
+Err(DriverError::NotSupported(
+    "Redis does not use SQL dump; export keys via driver commands".into(),
+))
+```
+
+覆写让通用默认实现根本不会执行——在第一道门口就返回了。它同时**也**有 `get_tables`（`database.rs:110`）和 `get_table_schema`（`:126`），但那两个是 schema 浏览用的，不是备份入口。
+
+**判定顺序：先看有没有覆写并拒绝，再看 `get_tables` / `get_table_schema`。顺序反过来就会把 redis 误判成上表的第七行。**
+
+#### 那 6 个为什么不改
+
+**当前裁定：不改，但记在这里。** 理由不是「改了会坏」——通用默认实现对它们是能跑的。理由是**打开它等于第一次启用一条从未有人跑过的路径**：六个驱动每一个都要一次真实验证（连真实集群，比对 dump 与 restore 往返），**不是一行配置，是一次未排期的验证工程**。
+
+它们的 `false` 因此是**已知偏差**而非隐藏问题。改动的前置条件是六个驱动各自的往返验证，不是本文件。
+
+#### 与 `CapabilitySet.backup` 的区别
+
+本节的 `supportsBackup` 是 UI 的 `ui/meta.ts` 字段；`CapabilitySet` 里另有一个 `pub backup: BackupSupport`（`packages/driver-api/src/capabilities.rs:298`）。**两者独立，不要互推**——前者描述 UI 入口是否可达，后者是逐驱动声明的能力。按 §2.1 的约定，本节不往矩阵里补 `backup` 列。
+
 ## 6. 过渡 adapter：遗留驱动的独立受控 Command
 
 ### 6.1 允许与禁止
