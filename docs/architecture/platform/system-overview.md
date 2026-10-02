@@ -304,6 +304,8 @@ DriverFactory 注册 descriptor、配置 schema、Command schema、资源 provid
 
 普通新增驱动只改变驱动包、选型/注册、schema、UI、文案与该驱动测试。新语义确实超出既有能力时才扩展公共契约，更新版本并迁移所有实现；不通过宿主数据库名称分支绕过。
 
+「更新版本」分两种，不能混：只有改动驱动与宿主**线上**说的内容才动 `PROTOCOL_VERSION`；给公共契约加 FOREVER 冻结（如 `#[non_exhaustive]`，「以后不能再加字段」）只动 crate 版本并附一份迁移配方，不动协议号。此时线上一个字节都没变——升协议号等于宣布一场不存在的线上事故，而真正会断的是别人的 `cargo build`；已经编好的老驱动仍然照常加载。四档判定与配方原文见 [driver-capability-migration.md §5.5](./driver-capability-migration.md#55-source-breaking老驱动跑得好好的但新的编不出来)。
+
 保留 inventory 编译期注册。原生同进程驱动属于可信代码。管理员升级发布包/镜像，worker drain 后切换；独立 driver runner 是后续隔离方案，需版本化 RPC，不能把 Rust trait 当作稳定动态 ABI。
 
 ## 9. 多实例部署与故障
