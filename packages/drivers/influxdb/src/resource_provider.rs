@@ -97,6 +97,7 @@ pub(crate) fn provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvi
                 env!("CARGO_PKG_VERSION"),
                 runtime_epoch,
                 namespace_shape(),
+                capabilities(),
             ))
         })
         .clone()
@@ -126,6 +127,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
         env!("CARGO_PKG_VERSION"),
         runtime_epoch,
         namespace_shape(),
+        capabilities(),
     ))
 }
 
