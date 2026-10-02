@@ -38,6 +38,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use crate::capability_evidence::capability_evidence;
 use datazen_driver_api::capabilities::{
     Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
     PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
@@ -110,16 +111,28 @@ pub(crate) fn provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvi
             // Recorded inside the initializer, so it always describes the provider
             // that won the race and never a discarded attempt.
             let _ = PROVIDER_EPOCH.set(runtime_epoch);
-            Arc::new(LegacyResourceAdapter::new(
-                driver,
-                "sqlserver",
-                env!("CARGO_PKG_VERSION"),
-                runtime_epoch,
-                namespace_shape(),
-                capabilities(),
-            ))
+            Arc::new(adapter(driver, runtime_epoch))
         })
         .clone()
+}
+
+/// The one construction of [`LegacyResourceAdapter`] this crate performs.
+///
+/// Both [`provider`] and the `#[cfg(test)]` stray go through here, and the
+/// builder ends in [`with_evidence`] with [`capability_evidence`] — so the live
+/// provider and a provider rebuilt outside the memo declare *the same* twelve
+/// cells with *the same* provenance. Without this, a test comparing the two
+/// would be comparing two different claims instead of two construction sites.
+fn adapter(driver: Arc<dyn DatabaseDriver>, runtime_epoch: u64) -> LegacyResourceAdapter {
+    LegacyResourceAdapter::new(
+        driver,
+        "sqlserver",
+        env!("CARGO_PKG_VERSION"),
+        runtime_epoch,
+        namespace_shape(),
+        capabilities(),
+    )
+    .with_evidence(capability_evidence())
 }
 
 /// The epoch the live provider stamps into every handle it mints.
@@ -140,14 +153,7 @@ pub(crate) fn runtime_epoch() -> u64 {
 #[cfg(test)]
 pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvider> {
     let runtime_epoch = PROVIDER_GENERATION.fetch_add(1, Ordering::Relaxed);
-    Arc::new(LegacyResourceAdapter::new(
-        driver,
-        "sqlserver",
-        env!("CARGO_PKG_VERSION"),
-        runtime_epoch,
-        namespace_shape(),
-        capabilities(),
-    ))
+    Arc::new(adapter(driver, runtime_epoch))
 }
 
 /// What this crate can honestly claim, capability by capability.
@@ -159,19 +165,19 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 ///
 /// | Capability | Declared | Why |
 /// |---|---|---|
-/// | `stateful_session` | `Supported` | this driver reads **session-scoped state back off the server**, which is what the cell asks about. `current_isolation_level` issues `DBCC USEROPTIONS WITH NO_INFOMSGS` and parses the *session's* current isolation level out of the reply (`sqlserver.rs:461-488`) — a per-session diagnostic that cannot be read without a session; and `ensure_no_open_transaction` issues `SELECT @@TRANCOUNT AS [transaction_count]` and treats a nonzero count as an error (`sqlserver.rs:488-508`, called at `:1625`). The transaction handle is registered against that same `SqlClient` and dropped only when the transaction ends (`sqlserver.rs:1631-1637`, `:1717`, `:1752`). Both observations survive between statements on one connection, so the session is measured, not assumed.
+/// | `stateful_session` | `Supported` | this driver reads **session-scoped state back off the server**, which is what the cell asks about. `current_isolation_level` issues `DBCC USEROPTIONS WITH NO_INFOMSGS` and parses the *session's* current isolation level out of the reply (`sqlserver.rs:461-488`) — a per-session diagnostic that cannot be read without a session; and `ensure_no_open_transaction` issues `SELECT @@TRANCOUNT AS [transaction_count]` and treats a nonzero count as an error (`sqlserver.rs:490-509`, called at `:1625`). The transaction handle is registered against that same `SqlClient` and dropped only when the transaction ends (`sqlserver.rs:1631-1637`, `:1717`, `:1752`). Both observations survive between statements on one connection, so the session is measured, not assumed. Independent of `resource_adapter.rs:271`, which reports `SessionContinuity::Unknown` for the *descriptor*: continuity asks whether a reconnection is survivable, which is a different question from whether the session's own state can be read.
 ///
-/// Note that this is *not* in tension with `SessionContinuity::Unknown` in this provider's own descriptor (`resource_adapter.rs:212`, `:215`). The two are independent fields: `SessionContinuity` is what the adapter can prove about a resource without a richer `DatabaseDriver` method, while `stateful_session` is the driver's own claim about its connection. `mysql`, `sqlite` and `mongodb` all report `SessionContinuity::Leased` together with `stateful_session: Unsupported` (`sqlite/src/resource.rs:14`, `mongodb/src/resource.rs:15`), so no adapter descriptor has ever implied a particular `stateful_session`. What a legacy driver may *not* claim is `SessionContinuity::Fixed` — that is what `a_described_resource_is_never_mistaken_for_a_fixed_reusable_session` guards, and this provider never asks for it. |
+/// Note that this is *not* in tension with `SessionContinuity::Unknown` in this provider's own descriptor (`resource_adapter.rs:271`, `:215`). The two are independent fields: `SessionContinuity` is what the adapter can prove about a resource without a richer `DatabaseDriver` method, while `stateful_session` is the driver's own claim about its connection. `mysql`, `sqlite` and `mongodb` all report `SessionContinuity::Leased` together with `stateful_session: Unsupported` (`sqlite/src/resource.rs:14`, `mongodb/src/resource.rs:15`), so no adapter descriptor has ever implied a particular `stateful_session`. What a legacy driver may *not* claim is `SessionContinuity::Fixed` — that is what `a_described_resource_is_never_mistaken_for_a_fixed_reusable_session` guards, and this provider never asks for it. |
 /// | `namespace_switch` | `Unsupported` | nothing in this crate switches the attached database, schema or server. `sql_target::qualify_sql` rewrites the *SQL text* instead (`sql_target.rs:24-40`), the module states that no session `USE` is ever issued (`sql_target.rs:12`), and a test asserts the generated read SQL contains no `USE [` (`sqlserver.rs:2095`). The database dimension is served by the host session pin (`sql_target.rs:158-165`), which is host session management, not a capability this provider exposes; the adapter refuses `change_context` outright. Measured absent, not merely undeclared. |
 /// | `context_observation` | *(blank)* `Unsupported` | `observe_session` returns `SessionObservation::unobservable()` unconditionally in the adapter, so this provider has no code path that can report a session context. `Partial` would promise a half-answered observation that never arrives. |
-/// | `transaction_observation` | `Partial` | beginnings are real and server-confirmed: `begin_transaction` refuses a second one (`sqlserver.rs:1616-1620`), checks the server with `SELECT @@TRANCOUNT` (`sqlserver.rs:491`), issues `BEGIN TRANSACTION` (`sqlserver.rs:1626`) and returns a real `sqlserver_tx_<uuid>` handle (`sqlserver.rs:1630`), which the adapter reports as `TransactionObservation::begun(id, 0)`. Outcomes are not observable: the adapter refuses `commit_transaction` / `rollback_transaction` because the outcome cannot be read back (`resource_adapter.rs:375-389`). Beginnings yes, endings no, therefore `Partial` and never `Full`. |
+/// | `transaction_observation` | `Partial` | beginnings are real and server-confirmed: `begin_transaction` refuses a second one (`sqlserver.rs:1616-1620`), checks the server with `SELECT @@TRANCOUNT` (`sqlserver.rs:491`), issues `BEGIN TRANSACTION` (`sqlserver.rs:1626`) and returns a real `sqlserver_tx_<uuid>` handle (`sqlserver.rs:1630`), which the adapter reports as `TransactionObservation::begun(id, 0)`. Outcomes are not observable: the adapter refuses `commit_transaction` / `rollback_transaction` because the outcome cannot be read back (`resource_adapter.rs:429-449`). Beginnings yes, endings no, therefore `Partial` and never `Full`. |
 /// | `session_scoped_handles` | `Supported` | the transaction handle is a real session-scoped handle: it is registered in `transactions` under the connection id (`sqlserver.rs:1631-1637`), re-validated by id on commit and rollback (`sqlserver.rs:1693-1705`, `:1728-1740`), removed when it ends (`sqlserver.rs:1717`, `:1752`), and the backing connection is dropped when the session cannot be restored. Its validity *is* the session lifetime. |
-/// | `reset_for_reuse` | *(blank)* `Unsupported` | there is no verified baseline replay in this crate, and no baseline to replay: the adapter answers `ResetDisposition::Discard`. `Verified` would hand out `Ok(())` and open a feature (`capabilities.rs:417-421`) that nothing here has earned. |
+/// | `reset_for_reuse` | *(blank)* `Unsupported` | there is no verified baseline replay in this crate, and no baseline to replay: the adapter answers `ResetDisposition::Discard`. `Verified` would hand out `Ok(())` and open a feature (`capabilities.rs:534-539`) that nothing here has earned. |
 /// | `precise_cancel` | *(blank)* `Unknown` | see the note below — the adapter overwrites this cell. |
 /// | `snapshots` | *(blank)* `Unsupported` | `begin_read_snapshot` exists and does start `SET TRANSACTION ISOLATION LEVEL SNAPSHOT; BEGIN TRANSACTION` (`sqlserver.rs:1663-1666`), but the enum asks for the *scope* of the guarantee (`PerTable` / `PerDatabase` / `Coordinated`) and this code proves none of them. It can even fail outright, because SNAPSHOT must be enabled for the active database (`sqlserver.rs:1669-1675`). |
 /// | `transactions.isolation_levels` | *empty* | `begin_transaction` sends a bare `BEGIN TRANSACTION` with no level argument (`sqlserver.rs:1626`); there is no option the driver would honour. `current_isolation_level` only *reads back* a level the session already had and restores it afterwards (`sqlserver.rs:461-488`) — restoring an observation is not accepting a caller choice. Listing one would make `begin_transaction` accept an option it silently ignores. |
 /// | `transactions.savepoints` | `Unsupported` | the driver transaction surface is exactly `begin_transaction` / `commit_transaction` / `rollback_transaction` (`sqlserver.rs:1611`, `:1691`, `:1726`); none of them emits `SAVE TRAN` and the adapter exposes no savepoint port. A caller *can* type `SAVE TRAN` into a `query` batch — the splitter routes it to its own batch (`sqlserver.rs:2280`) — but that is raw SQL, not a handle the contract could hand back. |
-/// | `transactions.max_open_transactions` | `Some(1)` | the map is keyed by connection id and `begin_transaction` refuses when an entry already exists (`sqlserver.rs:1616-1620`), and `ensure_no_open_transaction` independently refuses when the *server* reports one open (`sqlserver.rs:490-508`, called at `:1625`). One open transaction per resource, proven on both sides of the wire. |
+/// | `transactions.max_open_transactions` | `Some(1)` | the map is keyed by connection id and `begin_transaction` refuses when an entry already exists (`sqlserver.rs:1616-1620`), and `ensure_no_open_transaction` independently refuses when the *server* reports one open (`sqlserver.rs:490-509`, called at `:1625`). One open transaction per resource, proven on both sides of the wire. |
 /// | `ddl_atomicity.by_operation` | *empty* | this driver does not override `DatabaseDriver::ddl_atomicity`, so there is no driver-wide answer to expand per operation. `transfer_sql_file_begin_transaction()` returning `BEGIN TRANSACTION;` (`sqlserver.rs:1501-1503`) is the data-transfer *file* renderer wrapping its own generated script, not a per-migration-operation atomicity claim; mapping it onto operation names would invent the keys. `atomicity_for` therefore answers `Unknown` for every operation and the caller asks instead of assuming. |
 /// | `data` | `StreamingReadWrite` | all three axes are proven by code that runs. Row write: `execute` runs the statement and returns the server affected-row count (`sqlserver.rs:1604-1608`). Row read: `query_stream` decodes rows off the live tiberius `QueryStream`. Incremental delivery: `stream_one` pulls with `stream.try_next()` (`sqlserver.rs:622-626`) and pushes each row into `QueryRowBatcher` (`sqlserver.rs:639`), which emits a `Rows` event the moment the batch is full (`query_stream.rs:200-224`). Rows leave the driver before the last row arrives; that is the difference between streaming and a buffered replay. |
 /// | `backup` | *(blank)* `Unknown` | nothing in this crate produces or consumes a backup artifact: `admin_commands.rs` registers create-database/schema/user commands and no backup or restore command, and the crate's only two mentions of backup are comments about the host dump path feeding schema names (`sqlserver.rs:191`, `:1184`). Nothing was measured, so the cell stays blank rather than claiming a measured refusal. |
@@ -180,7 +186,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 ///
 /// `LegacyResourceAdapter::new` takes the [`CapabilitySet`] and then *overwrites*
 /// `precise_cancel` from `driver.supports_query_execution_cancel()`
-/// (`resource_adapter.rs:139-143`): `Supported` if the driver says true, `Unknown`
+/// (`resource_adapter.rs:148-152`): `Supported` if the driver says true, `Unknown`
 /// otherwise. `SqlServerDriver` does not override that method, so it is the trait
 /// default `false` (`traits.rs:817`), and the effective value is always `Unknown`
 /// whatever is written here.
@@ -238,6 +244,7 @@ mod tests {
     use datazen_driver_api::resource::{
         DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourcePurpose,
     };
+    use datazen_driver_api::resource_adapter::ADAPTER_EVIDENCE_REVISION;
     use datazen_driver_api::{ConnectionConfig, DatabaseDriverFactory};
 
     use crate::{ConnectionHandle, DatabaseDriver, DriverError, SqlServerDriver, SqlServerFactory};
@@ -382,10 +389,73 @@ mod tests {
             registry.snapshot.protocol_version,
             datazen_driver_api::PROTOCOL_VERSION
         );
-        assert!(
-            registry.snapshot.confirmed.is_empty(),
-            "nothing was actually confirmed for SQL Server, and an empty record says so"
+        assert_eq!(
+            registry.snapshot.capability_revision, ADAPTER_EVIDENCE_REVISION,
+            "the adapter stamps this revision when it merges evidence; it must not \
+             still read 0"
         );
+        assert_ne!(
+            registry.snapshot.capability_revision, 0,
+            "a revision of 0 means \"no capability module yet\" — the provider was \
+             reached, but not one that can say anything about capabilities"
+        );
+        assert_eq!(
+            registry.evidence_gaps(),
+            Vec::<&'static str>::new(),
+            "all twelve cells must carry evidence, including the ones this driver \
+             declines: a declined cell is answered, not left blank"
+        );
+    }
+
+    /// Every evidence record must name the source line it claims to describe.
+    ///
+    /// A capability claim whose explanation cannot be traced back to a file and
+    /// line is indistinguishable, to a reader, from one that was invented. This
+    /// fails when a record loses its citation, and it keeps the list of cells
+    /// honest about which twelve names this crate owes records for.
+    #[test]
+    fn every_capability_record_cites_the_source_line_it_claims_to_describe() {
+        const CELLS: [&str; 12] = [
+            "statefulSession",
+            "namespaceSwitch",
+            "contextObservation",
+            "transactionObservation",
+            "sessionScopedHandles",
+            "resetForReuse",
+            "preciseCancel",
+            "snapshots",
+            "transactions",
+            "ddlAtomicity",
+            "data",
+            "backup",
+        ];
+        let records = super::capability_evidence();
+        assert_eq!(
+            records.len(),
+            CELLS.len(),
+            "there must be exactly one evidence record per capability cell"
+        );
+        for cell in CELLS {
+            let record = records
+                .iter()
+                .find(|(key, _)| *key == cell)
+                .unwrap_or_else(|| panic!("no evidence record for capability cell `{cell}`"));
+            assert!(
+                cites_a_source_line(&record.1),
+                "the `{cell}` evidence record must cite the `file.rs:NNN` it rests on: {}",
+                record.1
+            );
+        }
+    }
+
+    /// True when `text` names a file and a line number, e.g. `sqlserver.rs:1626`.
+    fn cites_a_source_line(text: &str) -> bool {
+        text.match_indices(".rs:").any(|(at, _)| {
+            text[at + 4..]
+                .chars()
+                .next()
+                .is_some_and(|c: char| c.is_ascii_digit())
+        })
     }
 
     #[tokio::test]

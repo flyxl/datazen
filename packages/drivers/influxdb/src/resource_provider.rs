@@ -95,16 +95,26 @@ pub(crate) fn provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvi
             // Recorded inside the initializer, so it always describes the provider
             // that won the race and never a discarded attempt.
             let _ = PROVIDER_EPOCH.set(runtime_epoch);
-            Arc::new(LegacyResourceAdapter::new(
-                driver,
-                "influxdb",
-                env!("CARGO_PKG_VERSION"),
-                runtime_epoch,
-                namespace_shape(),
-                capabilities(),
-            ))
+            Arc::new(adapter(driver, runtime_epoch))
         })
         .clone()
+}
+
+/// Build the adapter and attach this crate's evidence table.
+///
+/// Both construction sites go through here on purpose: the memoized provider and
+/// the stray one have to describe the *same* declaration, otherwise a test that
+/// compares them would be comparing two different capability claims.
+fn adapter(driver: Arc<dyn DatabaseDriver>, runtime_epoch: u64) -> LegacyResourceAdapter {
+    LegacyResourceAdapter::new(
+        driver,
+        "influxdb",
+        env!("CARGO_PKG_VERSION"),
+        runtime_epoch,
+        namespace_shape(),
+        capabilities(),
+    )
+    .with_evidence(capability_evidence())
 }
 
 /// The epoch the live provider stamps into every handle it mints.
@@ -125,14 +135,7 @@ pub(crate) fn runtime_epoch() -> u64 {
 #[cfg(test)]
 pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvider> {
     let runtime_epoch = PROVIDER_GENERATION.fetch_add(1, Ordering::Relaxed);
-    Arc::new(LegacyResourceAdapter::new(
-        driver,
-        "influxdb",
-        env!("CARGO_PKG_VERSION"),
-        runtime_epoch,
-        namespace_shape(),
-        capabilities(),
-    ))
+    Arc::new(adapter(driver, runtime_epoch))
 }
 
 /// What this crate can honestly claim, capability by capability.
@@ -151,7 +154,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// | `transaction_observation` | `Unsupported` | The driver overrides none of `begin_transaction`/`commit_transaction`/`rollback_transaction`, so the trait defaults answer the refusal, and the adapter's commit/rollback refuse with `ResourceError::OperationNotSupported`. No transaction state is ever observable. |
 /// | `session_scoped_handles` | `Unsupported` | `query_stream` materializes the whole result and finishes inside the call (`influxdb.rs:325-351`); nothing is handed to the caller that outlives the execution, and InfluxDB offers no server-side handle object to hand out in the first place. |
 /// | `reset_for_reuse` | `Unsupported` | Only two variants exist and no baseline-restore exists to name. The adapter answers `ResetDisposition::Discard` for `reset_resource`, and the driver has no `discard_connection` override. |
-/// | `precise_cancel` | `Unknown` | **Not mine to declare.** `LegacyResourceAdapter` overwrites this field from `supports_query_execution_cancel()` (`resource_adapter.rs:139-143`), which is `false` here, so the provider's registry holds `Unknown` no matter what this function says. Declaring `Unsupported` would make the factory disagree with the provider that owns the registry — the exact drift `factory_capabilities_match_the_provider` exists to catch. The underlying fact is a measured refusal (`cancel_query` returns `DriverError::Unsupported`, `influxdb.rs:399`) and is asserted by `the_legacy_cancel_refuses_instead_of_reporting_a_cancellation_that_never_happened`. |
+/// | `precise_cancel` | `Unknown` | **Not mine to declare.** `LegacyResourceAdapter` overwrites this field from `supports_query_execution_cancel()` (`resource_adapter.rs:148-152`), which is `false` here, so the provider's registry holds `Unknown` no matter what this function says. Declaring `Unsupported` would make the factory disagree with the provider that owns the registry — the exact drift `factory_capabilities_match_the_provider` exists to catch. The underlying fact is a measured refusal (`cancel_query` returns `DriverError::Unsupported`, `influxdb.rs:399`) and is asserted by `the_legacy_cancel_refuses_instead_of_reporting_a_cancellation_that_never_happened`. |
 /// | `snapshots` | `Unsupported` | No snapshot endpoint exists anywhere in the crate and `begin_read_snapshot` is not overridden, so the trait default refusal is the driver's own answer rather than a guess. |
 /// | `transactions.isolation_levels` | empty | No transaction can be opened at all, so there is no level to honour. Empty is read as "cannot confirm any", which is stronger than listing one. |
 /// | `transactions.savepoints` | `Unsupported` | Savepoints require an open transaction; the driver cannot open one (row above). |
@@ -197,6 +200,145 @@ pub(crate) fn capabilities() -> CapabilitySet {
     }
 }
 
+/// This crate's evidence table, in the machine-readable form the registry carries.
+///
+/// The doc table above is a claim about the same thing; this is the claim the host
+/// can read back, one record per capability cell, and each record names the line of
+/// code that justifies it. A cell that is not filled is recorded too, with a
+/// `declined:` prefix and the measurement that produced the blank — a refusal that
+/// was measured and a claim nobody could support are different diagnoses, and only
+/// the first one may be written down as a fact.
+///
+/// Entries marked `declined:` record a positive decision not to claim, which is
+/// the opposite of a silently empty map.
+pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "statefulSession",
+            "Unsupported: `connect` opens no physical session. The only state it files is a \
+             pooled `reqwest::Client` plus a base URL under a fresh `influx_<uuid>` key \
+             (influxdb.rs:11, inserted at influxdb.rs:139-142), and `disconnect` only removes \
+             that map entry (influxdb.rs:149-152). Every statement is an independent GET that \
+             re-sends the bucket as a request parameter (influxdb.rs:49-53), so there is no \
+             server-side session for a caller to pin state onto. Measured absent."
+                .to_string(),
+        ),
+        (
+            "namespaceSwitch",
+            "Unknown, and it is an enum gap rather than a measurement. Another bucket really is \
+             reachable — `get_databases` parses a live `SHOW DATABASES` (influxdb.rs:154-157) — \
+             but the bucket is a per-request `db=` parameter, not state on the resource \
+             (influxdb.rs:50-53), and `effective_database` only ever reads the value it was \
+             given, mapping a blank to the server default (influxdb.rs:34-41). There is no \
+             mutating in-place switch to measure, and `NamespaceSwitch` has no \"no session, \
+             addressed per request\" tier yet, so `Unsupported` would be a false measured \
+             refusal and `RequiresReplacement` would describe a replacement that does not exist. \
+             The blank is the honest answer until the enum grows that tier."
+                .to_string(),
+        ),
+        (
+            "contextObservation",
+            "Unsupported: `observe_session` answers `SessionObservation::unobservable()` on \
+             every call (resource_adapter.rs:397-402) and `execute_on_resource` pins \
+             `context_before`/`context_after` to `unobserved()` (resource_adapter.rs:377-378). \
+             This crate issues no read-back call that could replace either: `query` is a \
+             fire-and-forget GET that only parses the reply it was already given \
+             (influxdb.rs:43-69)."
+                .to_string(),
+        ),
+        (
+            "transactionObservation",
+            "Unsupported: `commit_transaction` (resource_adapter.rs:429-438) and \
+             `rollback_transaction` (resource_adapter.rs:440-449) both refuse by name because \
+             the outcome cannot be read back, and `execute_on_resource` hardcodes \
+             `TransactionState::Unknown` with `transaction_id: None` and `effect: None` \
+             (resource_adapter.rs:380-382). The crate side agrees: \
+             `DatabaseDriver::begin_transaction` is the trait default and errors \
+             (traits.rs:602-609), and no `BEGIN` is ever issued by `execute` \
+             (influxdb.rs:362-382). Measured absent."
+                .to_string(),
+        ),
+        (
+            "sessionScopedHandles",
+            "Unsupported: `execute_on_resource` returns an empty `session_handles` because this \
+             path registers none (resource_adapter.rs:387). This crate could not register one \
+             either — `query` builds a fresh `client.get(..)` and parses the body inline, with no \
+             statement handle, temporary resource or session variable surviving the call \
+             (influxdb.rs:43-69)."
+                .to_string(),
+        ),
+        (
+            "resetForReuse",
+            "Unsupported: `reset_resource` always answers `ResetDisposition::Discard` \
+             (resource_adapter.rs:499-505). There is no verified baseline replay, so `Verified` \
+             would hand back a resource whose state nobody checked."
+                .to_string(),
+        ),
+        (
+            "preciseCancel",
+            "Unknown, and the adapter owns this cell. `LegacyResourceAdapter::new` overwrites \
+             it from `supports_query_execution_cancel()` (resource_adapter.rs:148-152), which \
+             for InfluxDB is the trait default `false` (traits.rs:817-819); `cancel_query` \
+             agrees by refusing (influxdb.rs:399-404) instead of reporting a cancellation that \
+             never happened. The value recorded here is the value the adapter installs, so the \
+             two views agree rather than merely not contradicting."
+                .to_string(),
+        ),
+        (
+            "snapshots",
+            "Unsupported: neither this crate nor the adapter implements `begin_read_snapshot`, \
+             so the trait default answers `DriverError::Unsupported` (traits.rs:734-741). With \
+             no point-in-time read at all there is no snapshot scope to declare."
+                .to_string(),
+        ),
+        (
+            "transactions",
+            "declined: the declaration is deliberately blank and each blank is a measurement, not \
+             an omission. `DatabaseDriver::begin_transaction` is the trait default and errors \
+             (traits.rs:602-609), so the adapter's `begin_transaction` \
+             (resource_adapter.rs:416-424) can never open one. `isolation_levels: []` therefore \
+             reads as 'no level can be honoured' — naming a level would advertise an option the \
+             driver silently ignores, since `execute` posts a bare `q=` form and nothing else \
+             (influxdb.rs:362-382). `savepoints: Unsupported` follows from the same unreachable \
+             path: this crate issues no `SAVEPOINT`. `max_open_transactions: None` is \
+             'unmeasured', not 'unbounded' — there is no transaction registry here to count."
+                .to_string(),
+        ),
+        (
+            "ddlAtomicity",
+            "declined: the map is empty on purpose. `DatabaseDriver::ddl_atomicity` is not \
+             overridden in this crate, so it answers `Unknown` (traits.rs:156-158), and \
+             `DdlAtomicitySupport::atomicity_for` fails closed to `Unknown` for any absent key \
+             (capabilities.rs:240-245). Filing a value per operation would assert a \
+             multi-statement DDL atomicity that nobody has measured."
+                .to_string(),
+        ),
+        (
+            "data",
+            "BufferedReadWrite, not StreamingReadWrite: rows are read (`query` then \
+             `result_from_json`, influxdb.rs:43-69 and the `query_stream` call into it at \
+             influxdb.rs:336-337) and written (`execute` posts a `q=` form, influxdb.rs:362-382), \
+             so both directions are real — only `streamingResults` is denied. `query_stream` \
+             awaits the whole body through `Self::query` and then hands one already-materialized \
+             value to a single `stream_decoded_rows` call (influxdb.rs:336-348); nothing is \
+             pulled incrementally over the wire. Note also that `execute` reports `Ok(0)` \
+             affected rows on any 2xx (influxdb.rs:382), which is why the write claim is about \
+             reaching the server, not about a row count."
+                .to_string(),
+        ),
+        (
+            "backup",
+            "declined: `Unknown`, not `Unsupported`, because this crate has no backup command at \
+             all to measure the absence of. `command_definitions` is a closed list of \
+             statement commands plus the schema-catalog commands and `query_stream` \
+             (influxdb.rs:385-393), with no artifact producer or consumer in it, and `get_databases` \
+             enumerates buckets (influxdb.rs:154-157) rather than exporting one. The blank says \
+             'not investigated', which is the weaker and truthful claim."
+                .to_string(),
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -211,6 +353,7 @@ mod tests {
     use datazen_driver_api::resource::{
         DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourcePurpose,
     };
+    use datazen_driver_api::resource_adapter::ADAPTER_EVIDENCE_REVISION;
     use datazen_driver_api::{BackupSupport, ConnectionConfig, DataSupport, DatabaseDriverFactory};
 
     use super::capabilities;
@@ -368,10 +511,81 @@ mod tests {
             registry.snapshot.protocol_version,
             datazen_driver_api::PROTOCOL_VERSION
         );
-        assert!(
-            registry.snapshot.confirmed.is_empty(),
-            "nothing was actually confirmed for InfluxDB, and an empty record says so"
+        assert_eq!(
+            registry.snapshot.capability_revision, ADAPTER_EVIDENCE_REVISION,
+            "the adapter merged this crate's evidence table, so the revision must be the \
+             one that merge stamps"
         );
+        assert_ne!(
+            registry.snapshot.capability_revision, 0,
+            "a revision of 0 means no evidence was ever merged and the snapshot would be \
+             indistinguishable from a driver that confirmed nothing"
+        );
+        assert_eq!(
+            registry.evidence_gaps(),
+            Vec::<&'static str>::new(),
+            "every capability cell must carry a record: a blank with a `declined:` prefix \
+             is a written-down measurement, and an absent record is not"
+        );
+    }
+
+    /// The anti-fabrication guard.
+    ///
+    /// The point of recording evidence is that a cell is no longer a bare assertion in a
+    /// struct literal: someone must be able to walk from the claim to the line of code
+    /// that justifies it. A record that cites nothing is indistinguishable from a
+    /// record somebody made up, so this test requires the citation shape rather than
+    /// trusting the surrounding prose.
+    #[test]
+    fn every_capability_record_cites_the_source_line_it_claims_to_describe() {
+        let provider = require_resource_provider(&factory()).expect("provider is reachable");
+        let registry = provider.capabilities();
+        let confirmed = &registry.snapshot.confirmed;
+
+        // Restated here rather than imported, so driver-api changing its own cell list
+        // cannot quietly make this test vacuous.
+        let cells = [
+            "statefulSession",
+            "namespaceSwitch",
+            "contextObservation",
+            "transactionObservation",
+            "sessionScopedHandles",
+            "resetForReuse",
+            "preciseCancel",
+            "snapshots",
+            "transactions",
+            "ddlAtomicity",
+            "data",
+            "backup",
+        ];
+        assert_eq!(
+            confirmed.len(),
+            cells.len(),
+            "the evidence table must hold exactly one record per capability cell, no more \
+             and no fewer — extra keys would let a cell go unexamined"
+        );
+
+        for cell in cells {
+            let record = confirmed
+                .get(cell)
+                .unwrap_or_else(|| panic!("capability cell `{cell}` has no evidence record"));
+            assert!(
+                cites_a_source_line(record),
+                "evidence for `{cell}` cites no `file.rs:NNN`, so it cannot be checked \
+                 against the code: {record}"
+            );
+        }
+    }
+
+    /// True when the text points at a concrete source line, i.e. it contains
+    /// `something.rs:` immediately followed by a digit.
+    fn cites_a_source_line(text: &str) -> bool {
+        text.match_indices(".rs:").any(|(at, _)| {
+            text[at + 4..]
+                .chars()
+                .next()
+                .is_some_and(|c: char| c.is_ascii_digit())
+        })
     }
 
     #[tokio::test]

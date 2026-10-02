@@ -7,6 +7,7 @@ use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::*;
 
 mod admin_commands;
+mod capability_evidence;
 mod metadata;
 mod migration;
 mod parameters;
