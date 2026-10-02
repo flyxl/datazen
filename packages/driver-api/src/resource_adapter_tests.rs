@@ -824,3 +824,42 @@ fn evidence_gaps_answers_from_the_confirmed_table_alone() {
     assert_eq!(snapshot.evidence_gaps(), Vec::<&'static str>::new());
     assert_eq!(snapshot.confirmed.len(), 13);
 }
+
+#[test]
+fn a_driver_can_fill_every_cell_without_transcribing_the_vocabulary() {
+    // The recipe the drivers on the `LegacyResourceAdapter` path are expected
+    // to copy, end to end and through public API only:
+    //
+    //   1. take the cell names from the crate instead of typing them,
+    //   2. attach one rationale each via `with_evidence`,
+    //   3. read the result back through `ResourceProvider::capabilities`.
+    //
+    // Step 1 is the one that cannot be checked by the driver afterwards. A
+    // typo is still a legal evidence key, so it lands in `confirmed` while the
+    // real cell stays in the gap list — a driver asserting on `confirmed.len()`
+    // sees twelve entries and passes. That failure only becomes visible if the
+    // keys came from `declared_cells()`, which is what this pins down.
+    let provider = adapter(LegacyFake::new()).with_evidence(
+        CapabilitySnapshot::declared_cells()
+            .iter()
+            .map(|cell| (*cell, format!("rationale for {cell}"))),
+    );
+
+    let registry = provider.capabilities();
+    assert_eq!(registry.evidence_gaps(), Vec::<&'static str>::new());
+    assert_eq!(
+        registry.declared_cells(),
+        CapabilitySnapshot::declared_cells()
+    );
+
+    // Every cell is present exactly once, spelled the way the crate spells it.
+    let confirmed = &registry.snapshot.confirmed;
+    for cell in CapabilitySnapshot::declared_cells() {
+        assert_eq!(
+            confirmed.get(*cell).map(String::as_str),
+            Some(format!("rationale for {cell}").as_str()),
+            "cell `{cell}` was recorded under a different key"
+        );
+    }
+    assert_eq!(confirmed.len(), CapabilitySnapshot::declared_cells().len());
+}

@@ -510,6 +510,61 @@ impl ResourceProvider for LegacyResourceAdapter {
     /// same budget twice. An unconfirmed close reports `CloseUnconfirmed` and
     /// does **not** claim the budget was recovered
     /// (`connection-management.md` §7.5).
+    ///
+    /// # Why this flow is not shared with the driver-owned providers
+    ///
+    /// Five sites implement "take, disconnect, release on success only":
+    /// this one, `postgres/src/resource/provider/contract.rs`,
+    /// `redis/src/resource/provider/contract.rs`, and
+    /// `sqlite/src/resource.rs` / `mysql/src/resource.rs`. Measured, they are
+    /// three contracts wearing one shape, and only `postgres` and `redis` are
+    /// the same one:
+    ///
+    /// - `postgres` / `redis`: `disconnect` errors become
+    ///   `Ok(CloseUnconfirmed)`, the budget stays charged, the key is not
+    ///   marked closed, and a `closed` set lets a later call tell "already
+    ///   closed" (`Ok(Closed)`) from "never held" (`Err(InvalidResourceState)`).
+    /// - This adapter: identical budget discipline, but it keeps **no** `closed`
+    ///   set, so a missing key is always `Ok(Closed)` and the never-held case
+    ///   is simply not expressible.
+    /// - `sqlite` / `mysql`: `disconnect` errors become
+    ///   `Err(ResourceError::Driver(_))`, not `CloseUnconfirmed`, and a
+    ///   successful disconnect can still return `CloseUnconfirmed` when the
+    ///   caller left a transaction open — a third outcome the two above never
+    ///   produce.
+    ///
+    /// What would be left to share is roughly a dozen lines: one `check`, one
+    /// `remove`, and one `release_physical_connections` behind a match. Getting
+    /// them behind a generic in driver-api means passing the absent-key policy,
+    /// the disconnect-error mapping, the mark-closed step, the take step and
+    /// the disconnect itself as parameters — more surface than the code it
+    /// replaces, with the budget-release invariant (the part actually worth
+    /// sharing) still written out once per site. So the flow stays duplicated
+    /// and this comment carries the reasoning instead of a helper that hides
+    /// which contract each site chose.
+    ///
+    /// What *is* shared is the rule itself, and it is asserted in each
+    /// driver's own tests.
+    ///
+    /// `redis` already extracted its part as a private `take_for_close`
+    /// (`redis/src/resource/provider.rs:460`). That is not a counterexample,
+    /// but both obvious readings of it are wrong. It deduplicates nothing:
+    /// it has exactly one caller (`provider/contract.rs:339`), and it was
+    /// pulled out to give two invariants a name — remove from `live` before
+    /// touching the socket, and a `None` backed by the `closed` set means
+    /// idempotent, never a second release. The same code inline would be
+    /// equally correct and just less likely to be read as a rule.
+    ///
+    /// And it is not parameter-free: it takes `handle` and `operation` from
+    /// the caller, `operation` being the literal `"close_resource"` at the one
+    /// call site. What it has no parameters for is *policy* — the absent-key
+    /// behaviour is hardcoded in its body, so there is only one thing to
+    /// express. Cross-crate, policy joins those as parameters, which is what
+    /// makes such a helper mostly parameters.
+    ///
+    /// Revisit when a fourth site appears with exactly the `postgres`/`redis`
+    /// policy — that is, when one policy has a second place to serve. Not
+    /// merely when someone has extracted one somewhere.
     async fn close_resource(
         &self,
         handle: &ResourceHandle,

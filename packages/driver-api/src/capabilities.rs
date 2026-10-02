@@ -306,6 +306,36 @@ impl CapabilitySet {
     }
 }
 
+/// The twelve [`CapabilitySet`] fields that each need evidence of their own,
+/// as the camelCase keys `CapabilitySet` serializes to.
+///
+/// This is the **only** copy of the vocabulary in the workspace:
+/// [`CapabilitySnapshot::evidence_gaps`] filters against it and
+/// [`CapabilitySnapshot::declared_cells`] hands it out, so the list cannot
+/// drift between the thing that counts the gaps and the thing a driver reads
+/// to fill them. In declaration order, matching [`CapabilitySet`] field for
+/// field.
+///
+/// A key in [`CapabilitySnapshot::confirmed`] that is not in this list is legal
+/// and is deliberately absent from the output of
+/// [`CapabilitySnapshot::evidence_gaps`]: `confirmed` is an evidence table, not
+/// a cell table, so evidence beyond the twelve is more information rather than
+/// an error. That is why this const is the vocabulary and not a whitelist.
+pub const CAPABILITY_CELLS: [&str; 12] = [
+    "statefulSession",
+    "namespaceSwitch",
+    "contextObservation",
+    "transactionObservation",
+    "sessionScopedHandles",
+    "resetForReuse",
+    "preciseCancel",
+    "snapshots",
+    "transactions",
+    "ddlAtomicity",
+    "data",
+    "backup",
+];
+
 /// Driver identity plus the confirmed capability evidence that was captured
 /// alongside it (`connection-management.md` §4, `CapabilitySnapshot`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -427,25 +457,24 @@ impl CapabilitySnapshot {
     /// evidence beyond the twelve is strictly more information rather than an
     /// error.
     pub fn evidence_gaps(&self) -> Vec<&'static str> {
-        const CAPABILITY_CELLS: [&str; 12] = [
-            "statefulSession",
-            "namespaceSwitch",
-            "contextObservation",
-            "transactionObservation",
-            "sessionScopedHandles",
-            "resetForReuse",
-            "preciseCancel",
-            "snapshots",
-            "transactions",
-            "ddlAtomicity",
-            "data",
-            "backup",
-        ];
         CAPABILITY_CELLS
             .iter()
             .copied()
             .filter(|cell| !self.confirmed.contains_key(*cell))
             .collect()
+    }
+
+    /// The twelve evidence cells, as the single copy [`Self::evidence_gaps`]
+    /// filters against.
+    ///
+    /// Exposed so a driver recording evidence never has to transcribe the
+    /// vocabulary by hand: a hand-written `"ddlAtomicity"` that drifts to
+    /// `"ddlAtomicity "` is accepted by [`Self::with_evidence`] (it is just an
+    /// evidence key) and then silently reappears in [`Self::evidence_gaps`] as
+    /// a cell that was never filled. Building the keys from this const makes
+    /// that misspelling unrepresentable.
+    pub fn declared_cells() -> &'static [&'static str] {
+        &CAPABILITY_CELLS
     }
 }
 
@@ -493,6 +522,15 @@ impl CapabilityRegistry {
     /// list. Callers usually hold a registry rather than a bare snapshot.
     pub fn evidence_gaps(&self) -> Vec<&'static str> {
         self.snapshot.evidence_gaps()
+    }
+
+    /// The same twelve cells [`Self::evidence_gaps`] reports gaps against.
+    ///
+    /// A driver that wants to assert it filled every cell needs the whole
+    /// vocabulary, not only the gaps it happened to leave, so the registry
+    /// forwards this alongside the gap list.
+    pub fn declared_cells(&self) -> &'static [&'static str] {
+        CapabilitySnapshot::declared_cells()
     }
 
     /// Require one session-scoped physical connection for the resource.
@@ -928,6 +966,41 @@ mod tests {
             )
             .expect("revision 7 is allowed to carry evidence");
         assert!(filled.evidence_gaps().is_empty());
+    }
+
+    #[test]
+    fn the_public_cell_list_is_the_one_the_gap_filter_uses() {
+        // `declared_cells` is now the vocabulary a driver records evidence
+        // against, so it is public API and has to be guarded on its own terms.
+        // Checking `evidence_gaps` alone would not catch this: that method reads
+        // the same const, so rewiring only the accessor to a second list would
+        // leave every existing test green while drivers filled the wrong cells.
+        let published = CapabilitySnapshot::declared_cells();
+        assert_eq!(published.len(), 12);
+        assert_eq!(published, &CAPABILITY_CELLS[..]);
+
+        // Membership — order is an implementation detail of the const, but the
+        // set must be exactly the serialized `CapabilitySet` fields, with no
+        // cell invented and none dropped.
+        let declared: Vec<String> = serde_json::to_value(CapabilitySet::default())
+            .expect("CapabilitySet is a plain data struct")
+            .as_object()
+            .expect("CapabilitySet serializes to a JSON object")
+            .keys()
+            .cloned()
+            .collect();
+        let mut published_sorted: Vec<&str> = published.to_vec();
+        published_sorted.sort_unstable();
+        let mut declared_sorted = declared.clone();
+        declared_sorted.sort();
+        assert_eq!(published_sorted, declared_sorted);
+
+        // The registry forwarder must not answer with a different vocabulary.
+        let registry = CapabilityRegistry::new(
+            "provider",
+            CapabilitySnapshot::new("driver", "1.2.3", PROTOCOL_VERSION, 7),
+        );
+        assert_eq!(registry.declared_cells(), published);
     }
 
     #[test]
