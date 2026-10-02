@@ -526,6 +526,14 @@ mod tests {
             json!({"required": ["database"], "optional": ["schema"]})
         );
 
+        // 往返：把上面那份字面量**再读回来**并要求完全相等。
+        // 旧测试只读 serialize 一侧（`get(key).is_some()` + `len()==2`），
+        // 对「同一份字面量能不能被解析回来」零覆盖 —— 而那是缺陷真正藏身的另一半。
+        let back: NamespaceShape =
+            serde_json::from_value(json!({"required": ["database"], "optional": ["schema"]}))
+                .expect("线上字面量必须能被解析回来");
+        assert_eq!(back, shape, "序列化与反序列化必须是同一个值");
+
         // 层级字面量同样逐字钉住（`as_str()` 不得偏离 `rename_all = "camelCase"`）。
         assert_eq!(
             NamespaceLayer::ALL.map(NamespaceLayer::as_str).to_vec(),

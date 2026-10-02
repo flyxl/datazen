@@ -92,6 +92,18 @@ pub fn schema_required_shape() -> NamespaceShape {
 // （4 字段结构体），`CapabilitySnapshot` 两边是**不同概念**——本 crate 的
 // `connection/capability.rs` 描述驱动能力矩阵（`confirmed: bool` + 10 个能力枚举），
 // `platform-api/src/dto/execution.rs` 描述执行审计记录（`confirmed: BTreeMap<_, _>`）。
+//
+// 第三处同名物：**`datazen-driver-api::namespace::NamespaceShape`**（`packages/driver-api/src/namespace.rs`）。
+// 它**不是**上面那份的第二份副本 —— 层枚举的名字都不一样（`NamespaceLayer` vs `NamespaceLevel`），
+// 配套还有 `NamespaceLevelKind`、`Default` 派生，且 15 个驱动用**结构体字面量**（配合
+// `..NamespaceShape::default()`）构造、从不调用 `new()`。也就是说 driver 侧是一套**独立词汇**，
+// 描述「驱动命名空间的层级与种类」，与 platform-api 描述的「一次请求声明了哪些层」不是同一维度。
+//
+// 这里显式记录，避免它再次被当成「没人知道的重复定义」：
+// 收敛它是一次真正的**词汇归一化重构**，会波及全部 15 个驱动的 provider；
+// 在 driver-type-guard phase-2 落地前不做（那 8 个驱动正在改能力值，
+// 此时动层模型等于在它下面抽地板）。排期见 backlog，不在本文件追踪。
+// 注意两份类型的层名不可直接互换，误用不会编译报错之外的任何提示 —— 迁移时必须逐驱动核对。
 
 /// 配置版本号。`PROFILE_P` = 7、`PROFILE_P_V2` = 8 时必须换 `poolKeyFingerprint`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
