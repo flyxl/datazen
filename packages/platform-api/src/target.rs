@@ -506,17 +506,6 @@ mod tests {
     }
 
     #[test]
-    fn namespace_shape_matches_the_runtime_field_shape() {
-        // 与 packages/runtime 的 `NamespaceShape { required, optional }` 逐字段一致，
-        // 这样 runtime 迁移成 `pub use` 时不产生第二套语义。
-        let shape = NamespaceShape::new([NamespaceLayer::Database], [NamespaceLayer::Path]);
-        let value = serde_json::to_value(&shape).expect("serialize");
-        assert!(value.get("required").is_some());
-        assert!(value.get("optional").is_some());
-        assert_eq!(value.as_object().map(|o| o.len()), Some(2));
-    }
-
-    #[test]
     fn namespace_shape_pins_its_wire_shape_as_literals() {
         // 全部断言都是**绝对字面量**，不与 runtime 的同名类型互相印证 ——
         // runtime 现在是 `pub use` 本类型，两边对比已无意义，且两套定义曾经就靠对比互相放过。
