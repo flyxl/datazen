@@ -802,7 +802,7 @@ F-01..F-07 分两处接入，**两处都是既有步骤，本次没有新增任�
 | 去掉 `reason:'empty'` 分支 | `tells an empty directory apart from a missing one` 失败 | 41 全绿 |
 | 向 `packages/backend-client/src/` 注入 `await fetch(u)` | **exit 1**，`VIOLATION F-07 packages/backend-client/src:2 contains \`fetch(\`` | **exit 0** |
 
-前端护栏 `check-module-layers.mjs` 是独立实现，不受上述修正影响：`pnpm test:layers` 仍打印 `VACUOUS backend-client-transport-agnostic` 并 exit 0，`--require-layers=backend-client-transport-agnostic` 仍 exit 2。该脚本不在本文节的判定范围内，其解除条件（驱动 SDK 完成迁移）见 §8.1。
+前端护栏 `check-module-layers.mjs` 是独立实现，不受上述修正影响。它已不再空转：`pnpm test:layers` 现在实际读完 4 条规则的全部主体文件（实测 84 个），exit 0 且不再打印 `VACUOUS`，`--require-layers=backend-client-transport-agnostic` 同样 exit 0。护栏现在区分「读到了且干净」（0）、「读到了且违规」（1）与「没读到」（2）三种结果——主体目录缺失、存在但没有可扫描源文件、或声明的 needle 一次都没被比较，都记为 error 而不是 `VACUOUS` + exit 0。退出条件见 §8.1。
 
 **结论**：F-07 现在是**已阻断**而非 advisory——`pnpm test:platform-arch` 在 `packages/backend-client` 被删除或引入直接 `fetch(` 时都会变红，且默认参数即如此，不需要 CI 侧任何改动。`server` 一侧仍是真空（advisory），这是事实记录，不是遗漏。
 
