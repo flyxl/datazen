@@ -745,8 +745,14 @@ mod coverage_tests {
             "disconnect must tear down the session"
         );
 
-        // Rollback-failure branch: an entry whose handle is unknown to the
-        // driver logs a warning but disconnect still succeeds.
+        // Rollback-failure branch: a pending session transaction whose handle
+        // the driver does not know. This is `disconnect_impl`'s own
+        // pre-teardown rollback (`commands/connection.rs:261`), which logs a
+        // warning and continues — a *different* path from
+        // `ConnectionManager::disconnect`, which now reports a driver that
+        // cannot confirm the teardown instead of claiming a clean disconnect.
+        // So this branch still ends in `Ok`, and this comment used to be the
+        // only place recording that.
         test.save_and_connect("tx-2").await;
         test.state.session_transactions.lock().await.insert(
             format!("{}:bogus", "tx-2"),

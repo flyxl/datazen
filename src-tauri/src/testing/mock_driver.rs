@@ -64,6 +64,10 @@ pub struct MockDriverOptions {
     /// Fail the selected rollback call to model an unknown rollback outcome.
     pub rollback_error_on_call: Option<u32>,
     pub rollback_error: Option<String>,
+    /// Fail every `disconnect` to model a driver that cannot confirm the
+    /// physical connection is gone. Used to pin that the Host reports such a
+    /// teardown instead of claiming a clean disconnect.
+    pub disconnect_error: Option<String>,
     /// Fail parameterized migration DML before it reaches the target.
     pub execute_with_params_error: Option<String>,
     /// Fail target DDL or another unparameterized mutation.
@@ -130,6 +134,7 @@ impl Default for MockDriverOptions {
             commit_error_after_effect: false,
             rollback_error_on_call: None,
             rollback_error: None,
+            disconnect_error: None,
             execute_with_params_error: None,
             execute_error: None,
             rewrite_sql_target: false,
@@ -391,7 +396,10 @@ impl DatabaseDriver for MockDriver {
     }
 
     async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
-        Ok(())
+        match &self.opts.disconnect_error {
+            Some(message) => Err(DriverError::ConnectionFailed(message.clone())),
+            None => Ok(()),
+        }
     }
 
     async fn get_databases(&self, _handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {

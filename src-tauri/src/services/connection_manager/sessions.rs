@@ -62,7 +62,15 @@ impl ConnectionManager {
         self.session_owner_map.write().await.remove(db_session_id);
         if let Some(active) = self.connections.write().await.remove(db_session_id) {
             if let Some(driver) = self.registry.get(&active.config.database_type).await {
-                let _ = driver.disconnect(active.handle).await;
+                // A driver that cannot confirm the teardown has left the
+                // physical connection in an unknown state, so the caller is
+                // told. Swallowing it here reported a clean disconnect for a
+                // connection that may still be up.
+                //
+                // The entry is already out of `connections` by this point, so
+                // the failure cannot be retried under the same `db_session_id`;
+                // reordering the removal is a separate decision.
+                driver.disconnect(active.handle).await?;
             }
         }
         Ok(())
