@@ -52,7 +52,7 @@ pub use datazen_platform_api::id::{
 /// 而本 crate 历史上的 `database_and_schema()` 把 database 与 schema **都列为必填**
 /// （见下方 `schema_required_shape()`）。两者语义不同，所以本 crate 的调用点一律显式构造，
 /// 不调用 `platform-api` 的那个便捷构造器 —— 具体取舍见 `schema_required_shape()` 的注释。
-pub use datazen_platform_api::target::{NamespaceLayer, TargetNamespaceShape};
+pub use datazen_platform_api::target::{TargetNamespaceLayer, TargetNamespaceShape};
 
 /// 本 crate 在**历史行为**上使用的形状：database 与 schema 都必填。
 ///
@@ -66,7 +66,7 @@ pub use datazen_platform_api::target::{NamespaceLayer, TargetNamespaceShape};
 /// 待 spec owner 裁定「schema 是否应改为可选」之前，`schema_required_shape()` 是本 crate 的既定语义。
 pub fn schema_required_shape() -> TargetNamespaceShape {
     TargetNamespaceShape::new(
-        [NamespaceLayer::Database, NamespaceLayer::Schema],
+        [TargetNamespaceLayer::Database, TargetNamespaceLayer::Schema],
         Vec::new(),
     )
 }
@@ -83,9 +83,9 @@ pub fn schema_required_shape() -> TargetNamespaceShape {
 // | `ConfigRevision` | `pub u64` | `version_id!` → `pub Counter` | 线上字面量相同（十进制字符串），但元组字段类型不同，不能直接别名替换 |
 // | `OwnerRef` | `WorkflowBlock{run_id, block_id}`、`Job` 带 `organization_id` | 多一个 `Editor` 变体，字段经 `rename_all_fields` 重命名 | 变体载荷与 JSON tag 都不同 |
 //
-// `TargetNamespaceShape` / `NamespaceLayer` 曾经也在这张表里，理由是「两套语义并存」；
-// 该条目已失效并删除：类型本身现已通过 `pub use` 收敛为一份，剩余的
-// `database_and_schema()` 语义差异改由上面的 `schema_required_shape()` 显式承载。
+// `TargetNamespaceShape` / `TargetNamespaceLayer` 在 platform-api 定义、经 `pub use` 重新导出，
+// 两侧编译成同一个类型；`database_and_schema()` 的语义差异由上面的
+// `schema_required_shape()` 显式承载。
 //
 // 另有两处同名物不在本文件、也不适合跨 crate 合并：
 // `ApiError` / `ApiErrorCode` 的规范定义在 `packages/application/src/error.rs`
@@ -94,16 +94,28 @@ pub fn schema_required_shape() -> TargetNamespaceShape {
 // `platform-api/src/dto/execution.rs` 描述执行审计记录（`confirmed: BTreeMap<_, _>`）。
 //
 // 第三处同名物：**`datazen-driver-api::namespace::NamespaceShape`**（`packages/driver-api/src/namespace.rs`）。
-// 它**不是**上面那份的第二份副本 —— 层枚举的名字都不一样（`NamespaceLayer` vs `NamespaceLevel`），
-// 配套还有 `NamespaceLevelKind`、`Default` 派生，且 15 个驱动用**结构体字面量**（配合
-// `..NamespaceShape::default()`）构造、从不调用 `new()`。也就是说 driver 侧是一套**独立词汇**，
-// 描述「驱动命名空间的层级与种类」，与 platform-api 描述的「一次请求声明了哪些层」不是同一维度。
+// 它**不是**上面那份的第二份副本 —— 层枚举的名字都不一样（`TargetNamespaceLayer` vs `NamespaceLevel`），
+// 配套还有 `NamespaceLevelKind`、`Default` 派生。两套词汇**刻意并存、不合并**：
+// driver 侧描述「驱动命名空间的层级与种类」（另带 `path_segments` / `case_rules` /
+// `canonical_id_rules` / `aliases`，供 `canonicalize()` / `resolve_alias()` 消费），
+// platform 侧描述「一次请求声明了哪些层」，不是同一维度，**两者之间不存在任何转换**。
 //
-// 这里显式记录，避免它再次被当成「没人知道的重复定义」：
-// 收敛它是一次真正的**词汇归一化重构**，会波及全部 15 个驱动的 provider；
-// 在 driver-type-guard phase-2 落地前不做（那 8 个驱动正在改能力值，
-// 此时动层模型等于在它下面抽地板）。排期见 backlog，不在本文件追踪。
-// 注意两份类型的层名不可直接互换，误用不会编译报错之外的任何提示 —— 迁移时必须逐驱动核对。
+// 本段序数的口径（驱动会增减，改动时请连同口径一起复核，不要只换数字）：
+//   * 仓库里有 **15 个数据库驱动 crate**，且**全部**引用 `NamespaceShape`。数法：
+//     `git grep -l -F NamespaceShape -- packages/drivers` 命中 30 个 .rs 文件，
+//     去掉 `packages/drivers/` 前缀与子路径后去重得 15 —— clickhouse / duckdb /
+//     elasticsearch / hbase / influxdb / mongodb / mysql / postgres / redis / rqlite /
+//     sqlite / sqlserver / turso / vector / victoriametrics。
+//   * `packages/drivers/*/Cargo.toml` 实为 **16** 个，多出的 `http-support`
+//     （`datazen-driver-http-support`）是共享 HTTP 辅助 crate，没有 `DatabaseDriver`
+//     impl，因此不计入驱动数。
+//   * 这 15 个**全部**用结构体字面量 `NamespaceShape { .. }` 构造，**无一处**调用
+//     `NamespaceShape::new()`（`git grep -F 'NamespaceShape::new' -- packages/drivers`
+//     命中 0）；其中 **8 个**额外配合 `..NamespaceShape::default()`
+//     （clickhouse / duckdb / elasticsearch / influxdb / rqlite / sqlserver / turso /
+//     victoriametrics）—— 不是全部 15 个。
+//
+// 两份类型的层名不可直接互换，误用只有编译错误这一个提示，不会有运行时告警。
 
 /// 配置版本号。`PROFILE_P` = 7、`PROFILE_P_V2` = 8 时必须换 `poolKeyFingerprint`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -181,27 +193,27 @@ impl NamespaceTarget {
         }
     }
 
-    pub fn get(&self, layer: NamespaceLayer) -> &str {
+    pub fn get(&self, layer: TargetNamespaceLayer) -> &str {
         match layer {
-            NamespaceLayer::Database => &self.database,
-            NamespaceLayer::Catalog => &self.catalog,
-            NamespaceLayer::Schema => &self.schema,
-            NamespaceLayer::Path => &self.path,
+            TargetNamespaceLayer::Database => &self.database,
+            TargetNamespaceLayer::Catalog => &self.catalog,
+            TargetNamespaceLayer::Schema => &self.schema,
+            TargetNamespaceLayer::Path => &self.path,
         }
     }
 
-    fn set(&mut self, layer: NamespaceLayer, value: String) {
+    fn set(&mut self, layer: TargetNamespaceLayer, value: String) {
         match layer {
-            NamespaceLayer::Database => self.database = value,
-            NamespaceLayer::Catalog => self.catalog = value,
-            NamespaceLayer::Schema => self.schema = value,
-            NamespaceLayer::Path => self.path = value,
+            TargetNamespaceLayer::Database => self.database = value,
+            TargetNamespaceLayer::Catalog => self.catalog = value,
+            TargetNamespaceLayer::Schema => self.schema = value,
+            TargetNamespaceLayer::Path => self.path = value,
         }
     }
 
     /// 按驱动形状校验：必填层缺失或为空 → `TargetRequired`。
     pub fn validate(&self, shape: &TargetNamespaceShape) -> Result<(), ApiError> {
-        for layer in NamespaceLayer::ALL {
+        for layer in TargetNamespaceLayer::ALL {
             if shape.is_required(layer) && self.get(layer).is_empty() {
                 return Err(ApiError::new(
                     ApiErrorCode::TargetRequired,
@@ -257,12 +269,12 @@ pub enum MissingLayerForm {
 }
 
 impl NamespaceInput {
-    pub fn layer(&self, layer: NamespaceLayer) -> Option<Option<&str>> {
+    pub fn layer(&self, layer: TargetNamespaceLayer) -> Option<Option<&str>> {
         let raw = match layer {
-            NamespaceLayer::Database => &self.database,
-            NamespaceLayer::Catalog => &self.catalog,
-            NamespaceLayer::Schema => &self.schema,
-            NamespaceLayer::Path => &self.path,
+            TargetNamespaceLayer::Database => &self.database,
+            TargetNamespaceLayer::Catalog => &self.catalog,
+            TargetNamespaceLayer::Schema => &self.schema,
+            TargetNamespaceLayer::Path => &self.path,
         };
         raw.as_ref().map(|inner| inner.as_deref())
     }
@@ -278,7 +290,7 @@ impl NamespaceInput {
             schema: String::new(),
             path: String::new(),
         };
-        for layer in NamespaceLayer::ALL {
+        for layer in TargetNamespaceLayer::ALL {
             let raw = self.layer(layer);
             let missing_form = match raw {
                 None => Some(MissingLayerForm::Absent),
@@ -326,7 +338,7 @@ impl NamespaceInput {
         shape: &TargetNamespaceShape,
     ) -> Result<NamespaceTarget, ApiError> {
         let resolved = self.resolve(shape)?;
-        for layer in NamespaceLayer::ALL {
+        for layer in TargetNamespaceLayer::ALL {
             let mine = resolved.get(layer);
             let theirs = expected.get(layer);
             if !mine.is_empty() && !theirs.is_empty() && mine != theirs {
@@ -465,7 +477,7 @@ impl PoolKeyFingerprint {
         buf.push('|');
         buf.push_str(&inputs.driver_id);
         buf.push('|');
-        for layer in NamespaceLayer::ALL {
+        for layer in TargetNamespaceLayer::ALL {
             buf.push_str(layer.as_str());
             buf.push('=');
             buf.push_str(inputs.namespace.get(layer));
@@ -522,9 +534,9 @@ mod tests {
             serde_json::from_str(r#"{"database":"dz_ns_a"}"#).expect("parse");
         let nulled: NamespaceInput =
             serde_json::from_str(r#"{"database":"dz_ns_a","schema":null}"#).expect("parse");
-        assert_eq!(absent.layer(NamespaceLayer::Schema), None);
-        assert_eq!(absent.layer(NamespaceLayer::Schema).is_none(), true);
-        assert_eq!(nulled.layer(NamespaceLayer::Schema), Some(None));
+        assert_eq!(absent.layer(TargetNamespaceLayer::Schema), None);
+        assert_eq!(absent.layer(TargetNamespaceLayer::Schema).is_none(), true);
+        assert_eq!(nulled.layer(TargetNamespaceLayer::Schema), Some(None));
 
         let from_absent = absent.resolve(&shape).expect_err("缺 schema 必须被拒");
         let from_null = nulled.resolve(&shape).expect_err("null schema 必须被拒");

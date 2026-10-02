@@ -27,16 +27,17 @@ use crate::id::ConnectionId;
 /// 承载的是驱动 namespace ID，**不是文件系统路径**（§4.3）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum NamespaceLayer {
+pub enum TargetNamespaceLayer {
     Database,
     Catalog,
     Schema,
     Path,
 }
 
-impl NamespaceLayer {
+impl TargetNamespaceLayer {
     /// 全部层级，供遍历与校验使用。
-    pub const ALL: [NamespaceLayer; 4] = [Self::Database, Self::Catalog, Self::Schema, Self::Path];
+    pub const ALL: [TargetNamespaceLayer; 4] =
+        [Self::Database, Self::Catalog, Self::Schema, Self::Path];
 
     /// 协议字面量，与 `#[serde(rename_all = "camelCase")]` 派生出的线格式逐字一致。
     ///
@@ -44,10 +45,10 @@ impl NamespaceLayer {
     /// 让错误信息里的层级名与实际序列化结果一致，**不是**重新声明一份协议字面量。
     pub const fn as_str(self) -> &'static str {
         match self {
-            NamespaceLayer::Database => "database",
-            NamespaceLayer::Catalog => "catalog",
-            NamespaceLayer::Schema => "schema",
-            NamespaceLayer::Path => "path",
+            TargetNamespaceLayer::Database => "database",
+            TargetNamespaceLayer::Catalog => "catalog",
+            TargetNamespaceLayer::Schema => "schema",
+            TargetNamespaceLayer::Path => "path",
         }
     }
 }
@@ -61,7 +62,7 @@ impl NamespaceLayer {
 ///
 /// | | 本类型（platform-api） | `driver-api::namespace::NamespaceShape` |
 /// |---|---|---|
-/// | 层级枚举 | `NamespaceLayer`：database / catalog / schema / **path** | `NamespaceLevelKind`：database / catalog / schema（**无 path**） |
+/// | 层级枚举 | `TargetNamespaceLayer`：database / catalog / schema / **path** | `NamespaceLevelKind`：database / catalog / schema（**无 path**） |
 /// | 形状表示 | 两个集合 `required` / `optional` | `levels: Vec<NamespaceLevel>`，每层自带 `exists` + `required` |
 /// | 额外信息 | 无 | `path_segments` / `case_rules` / `canonical_id_rules` / `aliases` |
 /// | 行为 | 仅 `declares()` / `is_required()` 两个谓词 | `canonicalize()` / `resolve_alias()`，且 `canonicalize()` 返回 `CanonicalTarget` |
@@ -79,15 +80,15 @@ impl NamespaceLayer {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TargetNamespaceShape {
-    pub required: Vec<NamespaceLayer>,
+    pub required: Vec<TargetNamespaceLayer>,
     #[serde(default)]
-    pub optional: Vec<NamespaceLayer>,
+    pub optional: Vec<TargetNamespaceLayer>,
 }
 
 impl TargetNamespaceShape {
     pub fn new(
-        required: impl IntoIterator<Item = NamespaceLayer>,
-        optional: impl IntoIterator<Item = NamespaceLayer>,
+        required: impl IntoIterator<Item = TargetNamespaceLayer>,
+        optional: impl IntoIterator<Item = TargetNamespaceLayer>,
     ) -> Self {
         Self {
             required: required.into_iter().collect(),
@@ -97,17 +98,20 @@ impl TargetNamespaceShape {
 
     /// PostgreSQL 式：database 必填，schema 可省。
     pub fn database_and_schema() -> Self {
-        Self::new([NamespaceLayer::Database], [NamespaceLayer::Schema])
+        Self::new(
+            [TargetNamespaceLayer::Database],
+            [TargetNamespaceLayer::Schema],
+        )
     }
 
     /// 该层级是否存在（required 或 optional 任一命中即存在）。
     ///
     /// 不存在的层级**只能是 null**（§4.3 步骤 2）。
-    pub fn declares(&self, layer: NamespaceLayer) -> bool {
+    pub fn declares(&self, layer: TargetNamespaceLayer) -> bool {
         self.required.contains(&layer) || self.optional.contains(&layer)
     }
 
-    pub fn is_required(&self, layer: NamespaceLayer) -> bool {
+    pub fn is_required(&self, layer: TargetNamespaceLayer) -> bool {
         self.required.contains(&layer)
     }
 }
@@ -154,8 +158,8 @@ pub struct TargetRequirements {
 impl TargetRequirements {
     /// 单一目标操作：指定的两个层级分别必填/可省，允许对象。
     pub fn single_target(
-        required: NamespaceLayer,
-        optional: NamespaceLayer,
+        required: TargetNamespaceLayer,
+        optional: TargetNamespaceLayer,
         allows_object: bool,
     ) -> Self {
         let mut requirements = Self {
@@ -167,23 +171,23 @@ impl TargetRequirements {
         requirements
     }
 
-    pub fn set(&mut self, layer: NamespaceLayer, requirement: LayerRequirement) -> &mut Self {
+    pub fn set(&mut self, layer: TargetNamespaceLayer, requirement: LayerRequirement) -> &mut Self {
         let slot = match layer {
-            NamespaceLayer::Database => &mut self.database,
-            NamespaceLayer::Catalog => &mut self.catalog,
-            NamespaceLayer::Schema => &mut self.schema,
-            NamespaceLayer::Path => &mut self.path,
+            TargetNamespaceLayer::Database => &mut self.database,
+            TargetNamespaceLayer::Catalog => &mut self.catalog,
+            TargetNamespaceLayer::Schema => &mut self.schema,
+            TargetNamespaceLayer::Path => &mut self.path,
         };
         *slot = requirement;
         self
     }
 
-    pub fn requirement_for(&self, layer: NamespaceLayer) -> LayerRequirement {
+    pub fn requirement_for(&self, layer: TargetNamespaceLayer) -> LayerRequirement {
         match layer {
-            NamespaceLayer::Database => self.database,
-            NamespaceLayer::Catalog => self.catalog,
-            NamespaceLayer::Schema => self.schema,
-            NamespaceLayer::Path => self.path,
+            TargetNamespaceLayer::Database => self.database,
+            TargetNamespaceLayer::Catalog => self.catalog,
+            TargetNamespaceLayer::Schema => self.schema,
+            TargetNamespaceLayer::Path => self.path,
         }
     }
 
@@ -228,31 +232,31 @@ impl NamespaceTarget {
         }
     }
 
-    pub fn get(&self, layer: NamespaceLayer) -> Option<&str> {
+    pub fn get(&self, layer: TargetNamespaceLayer) -> Option<&str> {
         match layer {
-            NamespaceLayer::Database => self.database.as_deref(),
-            NamespaceLayer::Catalog => self.catalog.as_deref(),
-            NamespaceLayer::Schema => self.schema.as_deref(),
-            NamespaceLayer::Path => None,
+            TargetNamespaceLayer::Database => self.database.as_deref(),
+            TargetNamespaceLayer::Catalog => self.catalog.as_deref(),
+            TargetNamespaceLayer::Schema => self.schema.as_deref(),
+            TargetNamespaceLayer::Path => None,
         }
     }
 
     /// 该层级是否带了非 null 值。`path` 只要非空即视为带了值。
-    pub fn has_value(&self, layer: NamespaceLayer) -> bool {
+    pub fn has_value(&self, layer: TargetNamespaceLayer) -> bool {
         match layer {
-            NamespaceLayer::Path => !self.path.is_empty(),
+            TargetNamespaceLayer::Path => !self.path.is_empty(),
             other => self.get(other).is_some(),
         }
     }
 
     /// 写入单个层级。`Path` 在这里是单值形态（写入 `path` 的唯一一项），
     /// 与「`NamespaceTarget.path` 是列表」的形状不冲突：清空即传 `None`。
-    pub fn set(&mut self, layer: NamespaceLayer, value: Option<String>) -> &mut Self {
+    pub fn set(&mut self, layer: TargetNamespaceLayer, value: Option<String>) -> &mut Self {
         match layer {
-            NamespaceLayer::Database => self.database = value,
-            NamespaceLayer::Catalog => self.catalog = value,
-            NamespaceLayer::Schema => self.schema = value,
-            NamespaceLayer::Path => self.path = value.into_iter().collect(),
+            TargetNamespaceLayer::Database => self.database = value,
+            TargetNamespaceLayer::Catalog => self.catalog = value,
+            TargetNamespaceLayer::Schema => self.schema = value,
+            TargetNamespaceLayer::Path => self.path = value.into_iter().collect(),
         }
         self
     }
@@ -363,12 +367,12 @@ pub struct CanonicalNamespace {
 }
 
 impl CanonicalNamespace {
-    pub fn get(&self, layer: NamespaceLayer) -> Option<&CanonicalNamespaceId> {
+    pub fn get(&self, layer: TargetNamespaceLayer) -> Option<&CanonicalNamespaceId> {
         match layer {
-            NamespaceLayer::Database => self.database.as_ref(),
-            NamespaceLayer::Catalog => self.catalog.as_ref(),
-            NamespaceLayer::Schema => self.schema.as_ref(),
-            NamespaceLayer::Path => None,
+            TargetNamespaceLayer::Database => self.database.as_ref(),
+            TargetNamespaceLayer::Catalog => self.catalog.as_ref(),
+            TargetNamespaceLayer::Schema => self.schema.as_ref(),
+            TargetNamespaceLayer::Path => None,
         }
     }
 
@@ -510,21 +514,24 @@ mod tests {
     #[test]
     fn namespace_shape_declares_layers() {
         let shape = TargetNamespaceShape::database_and_schema();
-        assert!(shape.is_required(NamespaceLayer::Database));
-        assert!(!shape.is_required(NamespaceLayer::Schema));
-        assert!(shape.declares(NamespaceLayer::Schema));
+        assert!(shape.is_required(TargetNamespaceLayer::Database));
+        assert!(!shape.is_required(TargetNamespaceLayer::Schema));
+        assert!(shape.declares(TargetNamespaceLayer::Schema));
         assert!(
-            !shape.declares(NamespaceLayer::Catalog),
+            !shape.declares(TargetNamespaceLayer::Catalog),
             "未声明的层级不存在，只能是 null"
         );
-        assert!(!shape.declares(NamespaceLayer::Path));
+        assert!(!shape.declares(TargetNamespaceLayer::Path));
     }
 
     #[test]
     fn namespace_shape_pins_its_wire_shape_as_literals() {
         // 全部断言都是**绝对字面量**，不与 runtime 的同名类型互相印证 ——
         // runtime 现在是 `pub use` 本类型，两边对比已无意义，且两套定义曾经就靠对比互相放过。
-        let shape = TargetNamespaceShape::new([NamespaceLayer::Database], [NamespaceLayer::Schema]);
+        let shape = TargetNamespaceShape::new(
+            [TargetNamespaceLayer::Database],
+            [TargetNamespaceLayer::Schema],
+        );
         assert_eq!(
             serde_json::to_value(&shape).expect("serialize"),
             json!({"required": ["database"], "optional": ["schema"]})
@@ -540,15 +547,17 @@ mod tests {
 
         // 层级字面量同样逐字钉住（`as_str()` 不得偏离 `rename_all = "camelCase"`）。
         assert_eq!(
-            NamespaceLayer::ALL.map(NamespaceLayer::as_str).to_vec(),
+            TargetNamespaceLayer::ALL
+                .map(TargetNamespaceLayer::as_str)
+                .to_vec(),
             ["database", "catalog", "schema", "path"]
         );
 
         let pg = TargetNamespaceShape::database_and_schema();
-        assert_eq!(pg.required, vec![NamespaceLayer::Database]);
-        assert_eq!(pg.optional, vec![NamespaceLayer::Schema]);
-        assert!(pg.is_required(NamespaceLayer::Database));
-        assert!(!pg.is_required(NamespaceLayer::Schema));
+        assert_eq!(pg.required, vec![TargetNamespaceLayer::Database]);
+        assert_eq!(pg.optional, vec![TargetNamespaceLayer::Schema]);
+        assert!(pg.is_required(TargetNamespaceLayer::Database));
+        assert!(!pg.is_required(TargetNamespaceLayer::Schema));
     }
 
     #[test]
@@ -558,8 +567,8 @@ mod tests {
         // 记录过的、**无收益的破坏性收窄**（today runtime 能收，删掉就不能收）。
         let parsed: TargetNamespaceShape =
             serde_json::from_str(r#"{"required":["database"]}"#).expect("optional 省略必须被接受");
-        assert_eq!(parsed.required, vec![NamespaceLayer::Database]);
-        assert_eq!(parsed.optional, Vec::<NamespaceLayer>::new());
+        assert_eq!(parsed.required, vec![TargetNamespaceLayer::Database]);
+        assert_eq!(parsed.optional, Vec::<TargetNamespaceLayer>::new());
 
         // 反面：`required` 没有 `default`，省略它必须仍然被拒。
         assert!(
@@ -571,26 +580,26 @@ mod tests {
     #[test]
     fn target_requirements_address_each_layer() {
         let mut requirements = TargetRequirements::single_target(
-            NamespaceLayer::Database,
-            NamespaceLayer::Schema,
+            TargetNamespaceLayer::Database,
+            TargetNamespaceLayer::Schema,
             true,
         );
-        requirements.set(NamespaceLayer::Catalog, LayerRequirement::Forbidden);
+        requirements.set(TargetNamespaceLayer::Catalog, LayerRequirement::Forbidden);
 
         assert_eq!(
-            requirements.requirement_for(NamespaceLayer::Database),
+            requirements.requirement_for(TargetNamespaceLayer::Database),
             LayerRequirement::Required
         );
         assert_eq!(
-            requirements.requirement_for(NamespaceLayer::Schema),
+            requirements.requirement_for(TargetNamespaceLayer::Schema),
             LayerRequirement::Optional
         );
         assert_eq!(
-            requirements.requirement_for(NamespaceLayer::Catalog),
+            requirements.requirement_for(TargetNamespaceLayer::Catalog),
             LayerRequirement::Forbidden
         );
         assert_eq!(
-            requirements.requirement_for(NamespaceLayer::Path),
+            requirements.requirement_for(TargetNamespaceLayer::Path),
             LayerRequirement::Optional
         );
         assert!(!LayerRequirement::Forbidden.accepts_value());
@@ -629,10 +638,10 @@ mod tests {
     #[test]
     fn has_value_distinguishes_absent_from_empty_path() {
         let target = NamespaceTarget::default();
-        assert!(!target.has_value(NamespaceLayer::Database));
-        assert!(!target.has_value(NamespaceLayer::Path));
+        assert!(!target.has_value(TargetNamespaceLayer::Database));
+        assert!(!target.has_value(TargetNamespaceLayer::Path));
 
         let with_path = NamespaceTarget::new(None, None, None, vec!["a".into()]);
-        assert!(with_path.has_value(NamespaceLayer::Path));
+        assert!(with_path.has_value(TargetNamespaceLayer::Path));
     }
 }

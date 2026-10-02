@@ -28,18 +28,18 @@ use std::sync::Arc;
 
 use datazen_platform_api::id::ConnectionId;
 use datazen_platform_api::target::{
-    CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget, NamespaceLayer, NamespaceTarget,
-    ObjectTarget, TargetNamespaceShape, TargetRequirements,
+    CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget, NamespaceTarget, ObjectTarget,
+    TargetNamespaceLayer, TargetNamespaceShape, TargetRequirements,
 };
 
 use crate::dto::requests::validate_namespace_target;
 use crate::error::{ApiError, ApiErrorCode};
 
 /// 别名解析：把提交态的一个值映射回它所属的层级。返回 `None` 表示不是别名。
-pub type AliasResolver = Arc<dyn Fn(&str) -> Option<NamespaceLayer> + Send + Sync>;
+pub type AliasResolver = Arc<dyn Fn(&str) -> Option<TargetNamespaceLayer> + Send + Sync>;
 
 /// 驱动规范化：把提交态标识规范化为驱动身份标识。返回 `None` 表示驱动不认这个标识。
-pub type Canonicalizer = Arc<dyn Fn(NamespaceLayer, &str) -> Option<String> + Send + Sync>;
+pub type Canonicalizer = Arc<dyn Fn(TargetNamespaceLayer, &str) -> Option<String> + Send + Sync>;
 
 /// 命名空间形状来源：`connectionId → 驱动注册表里声明的形状`。返回 `None` 表示连接不可解析。
 pub type ShapeProvider = Arc<dyn Fn(&ConnectionId) -> Option<TargetNamespaceShape> + Send + Sync>;
@@ -58,7 +58,7 @@ pub enum TargetSource {
     Session {
         confirmed: NamespaceTarget,
         /// 会话对未知层级的自我认知（连接 §4.3：`observedContext` 可能为 `unknown`）。
-        confirmed_layers: Vec<NamespaceLayer>,
+        confirmed_layers: Vec<TargetNamespaceLayer>,
     },
 }
 
@@ -151,7 +151,7 @@ impl TargetResolver {
         target: &NamespaceTarget,
         shape: &TargetNamespaceShape,
     ) -> Result<(), ApiError> {
-        for layer in NamespaceLayer::ALL {
+        for layer in TargetNamespaceLayer::ALL {
             if target.has_value(layer) && !shape.declares(layer) {
                 return Err(ApiError::new(
                     ApiErrorCode::TargetUnsupported,
@@ -181,7 +181,7 @@ impl TargetResolver {
             return Ok(requested.clone());
         }
         let mut merged = requested.clone();
-        for layer in NamespaceLayer::ALL {
+        for layer in TargetNamespaceLayer::ALL {
             if merged.has_value(layer) || !confirmed_layers.contains(&layer) {
                 continue;
             }
@@ -199,7 +199,7 @@ impl TargetResolver {
     /// 别名指到与提交槽位不同的层级时，`TargetConflict`。同名同层不算冲突——
     /// 那是合法的重复表达，必须保持一致。
     fn merge_aliases(&self, target: &NamespaceTarget) -> Result<(), ApiError> {
-        for layer in NamespaceLayer::ALL {
+        for layer in TargetNamespaceLayer::ALL {
             let Some(value) = target.get(layer) else {
                 continue;
             };
@@ -213,7 +213,7 @@ impl TargetResolver {
         }
         for segment in &target.path {
             if let Some(alias_layer) = (self.alias)(segment) {
-                if alias_layer != NamespaceLayer::Path {
+                if alias_layer != TargetNamespaceLayer::Path {
                     return Err(ApiError::target_conflict(format!(
                         "别名 {segment} 指向 {alias_layer:?}，但提交在 path 段"
                     )));
@@ -229,13 +229,14 @@ impl TargetResolver {
         target: &NamespaceTarget,
     ) -> Result<CanonicalNamespace, ApiError> {
         let database =
-            self.canonicalize_layer(NamespaceLayer::Database, target.database.as_deref())?;
+            self.canonicalize_layer(TargetNamespaceLayer::Database, target.database.as_deref())?;
         let catalog =
-            self.canonicalize_layer(NamespaceLayer::Catalog, target.catalog.as_deref())?;
-        let schema = self.canonicalize_layer(NamespaceLayer::Schema, target.schema.as_deref())?;
+            self.canonicalize_layer(TargetNamespaceLayer::Catalog, target.catalog.as_deref())?;
+        let schema =
+            self.canonicalize_layer(TargetNamespaceLayer::Schema, target.schema.as_deref())?;
         let mut path = Vec::with_capacity(target.path.len());
         for segment in &target.path {
-            let canonical = self.canonicalize_layer(NamespaceLayer::Path, Some(segment))?;
+            let canonical = self.canonicalize_layer(TargetNamespaceLayer::Path, Some(segment))?;
             // `segment` 已是 `&String`，`canonicalize_layer` 只会返回 `Some`。
             // 空结果意味着驱动把一个已知非空的片段规范化成了空身份，那在上一步已被拒绝。
             if let Some(canonical) = canonical {
@@ -252,7 +253,7 @@ impl TargetResolver {
 
     fn canonicalize_layer(
         &self,
-        layer: NamespaceLayer,
+        layer: TargetNamespaceLayer,
         value: Option<&str>,
     ) -> Result<Option<CanonicalNamespaceId>, ApiError> {
         let Some(value) = value else {
@@ -278,7 +279,7 @@ impl TargetResolver {
         target: &NamespaceTarget,
         requirements: &TargetRequirements,
     ) -> Result<(), ApiError> {
-        for layer in NamespaceLayer::ALL {
+        for layer in TargetNamespaceLayer::ALL {
             match LayerCheck::from(requirements.requirement_for(layer)) {
                 LayerCheck::Required => {
                     if !target.has_value(layer) {
@@ -338,8 +339,8 @@ mod tests {
     /// PostgreSQL 风格形状：database 必填，schema 可省，无 catalog/path。
     fn postgres_shape(_connection: &ConnectionId) -> Option<TargetNamespaceShape> {
         Some(TargetNamespaceShape::new(
-            vec![NamespaceLayer::Database],
-            vec![NamespaceLayer::Schema],
+            vec![TargetNamespaceLayer::Database],
+            vec![TargetNamespaceLayer::Schema],
         ))
     }
 
@@ -347,14 +348,14 @@ mod tests {
     fn single_target(command: &str) -> Option<TargetRequirements> {
         match command {
             "query" => Some(TargetRequirements::single_target(
-                NamespaceLayer::Database,
-                NamespaceLayer::Schema,
+                TargetNamespaceLayer::Database,
+                TargetNamespaceLayer::Schema,
                 true,
             )),
             "execute_in_session" => {
                 let mut requirements = TargetRequirements::single_target(
-                    NamespaceLayer::Database,
-                    NamespaceLayer::Schema,
+                    TargetNamespaceLayer::Database,
+                    TargetNamespaceLayer::Schema,
                     false,
                 );
                 requirements.allows_session_defaults = true;
@@ -362,8 +363,8 @@ mod tests {
             }
             // §7.3：executeAtTarget 不接受对象，也绝不从会话回填。
             "execute_at_target" => Some(TargetRequirements::single_target(
-                NamespaceLayer::Database,
-                NamespaceLayer::Schema,
+                TargetNamespaceLayer::Database,
+                TargetNamespaceLayer::Schema,
                 false,
             )),
             "list_objects" => {
@@ -378,11 +379,11 @@ mod tests {
     fn resolver() -> TargetResolver {
         TargetResolver::new(
             Arc::new(|value: &str| match value {
-                "main" => Some(NamespaceLayer::Database),
-                "sales" => Some(NamespaceLayer::Schema),
+                "main" => Some(TargetNamespaceLayer::Database),
+                "sales" => Some(TargetNamespaceLayer::Schema),
                 _ => None,
             }),
-            Arc::new(|_layer: NamespaceLayer, value: &str| {
+            Arc::new(|_layer: TargetNamespaceLayer, value: &str| {
                 let canonical = match value {
                     "app" | "main" => "app",
                     "public" => "public",
@@ -477,7 +478,7 @@ mod tests {
         let requested = target(None, Some("sales"));
         let source = TargetSource::Session {
             confirmed: target(Some("app"), Some("sales")),
-            confirmed_layers: vec![NamespaceLayer::Database],
+            confirmed_layers: vec![TargetNamespaceLayer::Database],
         };
         let error = resolver
             .compute(
@@ -499,7 +500,7 @@ mod tests {
         let requested = target(None, Some("sales"));
         let source = TargetSource::Session {
             confirmed: target(Some("app"), Some("sales")),
-            confirmed_layers: vec![NamespaceLayer::Database],
+            confirmed_layers: vec![TargetNamespaceLayer::Database],
         };
         // execute_in_session 允许回填 → 成功。
         let canonical = resolver

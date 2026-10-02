@@ -30,8 +30,8 @@ pub use session::{
 };
 pub use types::{
     ConfigRevision, ConnectionId, Counter, DbSessionId, ExecutionId, ExecutionTarget, HandleId,
-    JobId, LeaseId, NamespaceInput, NamespaceLayer, NamespaceTarget, ObjectTarget, OrganizationId,
-    OwnerRef, PoolKeyFingerprint, PoolKeyInputs, PrincipalId, ResourceId, StreamId,
+    JobId, LeaseId, NamespaceInput, NamespaceTarget, ObjectTarget, OrganizationId, OwnerRef,
+    PoolKeyFingerprint, PoolKeyInputs, PrincipalId, ResourceId, StreamId, TargetNamespaceLayer,
     TargetNamespaceShape, Timestamp, WorkerId,
 };
 
