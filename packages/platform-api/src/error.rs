@@ -28,7 +28,6 @@
 //! 在端口层再定一套 JSON 形态，只会给前端多一个没有消费者的错误形状。
 
 /// 端口错误。`entity` 用 `&'static str` 承载聚合名（compile 期常量，不引入生命周期）。
-#[cfg_attr(feature = "datazen-port-wire", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PortError {
     /// 依赖的后端不可用（数据库、元数据库、文件系统……）。可重试由用例层判定。
@@ -426,59 +425,118 @@ mod tests {
         // 跨边界的错误类型是 `ApiError`（application 层）。如果哪天有人给 `PortError`
         // 加了 serde，这里会失败并提醒：要么删掉，要么连同 host 的映射一起改。
         //
-        // 检查范围**必须**只覆盖 `PortError` 自己的代码面：同一模块里现在还有
-        // `ApiErrorCode` / `RetryDisposition`，它们是跨边界 wire 词汇、**必须**带 serde。
-        // 早先这里的写法是「取 `#[cfg(test)]` 之前的全文」，它当时成立只是因为本文件里
-        // 恰好还没有 serde 类型；一旦按 §4:234 把 `ApiErrorCode` 收进来，那条写法会
-        // 恒失败，或被人为了「让它变绿」而放宽 marker 列表——守卫就此失效。
+        // 判据不是「`PortError` 那段文本里有没有 marker」，而是**归属**：本文件里任何一处
+        // 引用 serde 的代码，都必须挂在一个允许 wire 形态的类型下（`ApiErrorCode` /
+        // `RetryDisposition`，即 §4:234 定的跨边界 wire 词汇）。挂到别的类型上就判失败——
+        // 不管它出现在第几行、出现在 derive 上方还是文件末尾。
         //
-        // 但收窄过头同样是失效，而且是**静默**的：只要取样范围比 `PortError` 的代码面小，
-        // 三条 `marker` 断言就会拿着一个查不到东西的 `definition` 永远绿。
-        // 人最自然的写法恰恰是「往 derive 列表里追加 `Serialize, Deserialize`」，
-        // 而 derive 在 `pub enum` 的**上方一行**——只锚 `pub enum` 会整条漏掉。
-        // 所以两端都贴住完整代码面：上端从 `#[derive` 起，下端到 `impl PortError` 止
-        // （在 impl 里调 `serde_json` 同样是给端口层私定 wire 形态）。
+        // 为什么不再划位置取样：前两代守卫都是「截出 `PortError` 那一段再 grep」，于是代码
+        // 每挪一次，取样段就静默缩小，守卫拿着一个查不到东西的定义永远绿。两个已复现的
+        // 绕过都出在这个洞里：
+        //   * 把 `Serialize` 追加进 derive——derive 在 `pub enum` 的**上一行**；
+        //   * 手写 `impl serde::Serialize for PortError` 放在同文件任意位置。
+        // 位置会变，类型名不会，所以按类型名归属。
+        //
+        // 边界：`#[cfg(test)]` 之后不扫（本测试自己必然提到 serde）；跨文件给 `PortError`
+        // 实现 serde 也不在本守卫范围内——那是另一个文件的决定，该由那条边界的守卫负责。
+        // 本守卫只管一件事：端口层的 wire 形态不得在本模块里私定。
+        const ALLOWED: [&str; 2] = ["ApiErrorCode", "RetryDisposition"];
+        const MARKERS: [&str; 3] = ["Serialize", "Deserialize", "serde_json"];
+
+        /// 从一条顶层 item 的声明行里取出它所服务的类型名。
+        /// `enum X` / `impl X` / `impl Trait for X` / `impl<T> X` 都归到 `X`；
+        /// 取不出类型名（`use`、`pub use`）时返回空串，交给调用方当作「不是 owner」。
+        fn subject_of(header: &str) -> String {
+            let h = header.trim().trim_end_matches('{').trim();
+            let h = h.strip_prefix("pub ").unwrap_or(h);
+            let h = h
+                .strip_prefix("impl")
+                .or_else(|| h.strip_prefix("enum"))
+                .or_else(|| h.strip_prefix("struct"))
+                .or_else(|| h.strip_prefix("union"))
+                .or_else(|| h.strip_prefix("trait"))
+                .or_else(|| h.strip_prefix("type"))
+                .or_else(|| h.strip_prefix("const"))
+                .or_else(|| h.strip_prefix("static"))
+                .or_else(|| h.strip_prefix("fn"))
+                .unwrap_or(h)
+                .trim_start();
+            let h = h.split_once(" for ").map_or(h, |(_, after)| after);
+            let h = match h.strip_prefix('<') {
+                Some(_) => h.find('>').map_or(h, |i| h[i + 1..].trim_start()),
+                None => h,
+            };
+            h.chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect()
+        }
+
+        /// 一行是否是顶层 item 的声明行：顶格、且以 item 关键字开头。
+        /// `#[derive(..)]` 和 `///` 文档注释都**不是**声明行——它们属于自己那个 item。
+        fn item_subject(line: &str) -> Option<String> {
+            const KEYWORDS: [&str; 11] = [
+                "pub ", "impl", "const ", "static ", "fn ", "struct ", "enum ", "type ", "trait ",
+                "union ", "unsafe ",
+            ];
+            if line.starts_with(char::is_whitespace)
+                || !KEYWORDS.iter().any(|k| line.starts_with(k))
+            {
+                return None;
+            }
+            match subject_of(line).as_str() {
+                "" => None,
+                name => Some(name.to_string()),
+            }
+        }
+
         let source = include_str!("error.rs");
-        let enum_at = source
-            .find("pub enum PortError {")
-            .expect("PortError 必须仍然定义在本模块");
-        let attributes_at = source[..enum_at]
-            .rfind("#[derive")
-            .expect("PortError 的 derive 属性必须仍然在枚举上方");
-        let after_enum = source[enum_at..]
-            .find("\n}\n")
-            .map(|at| enum_at + at + "\n}\n".len())
-            .expect("PortError 枚举必须仍以列 0 的收尾大括号结束");
-        let impl_at = after_enum
-            + source[after_enum..]
-                .find("impl PortError {")
-                .expect("PortError 之后必须仍有 impl PortError 块");
-        let end = source[impl_at..]
-            .find("\n}\n")
-            .map(|at| impl_at + at)
-            .expect("PortError 的 impl 块必须仍以列 0 的收尾大括号结束");
-        let definition = &source[attributes_at..end];
+        let body_end = source
+            .find("#[cfg(test)]")
+            .expect("测试模块必须仍然在本文件末尾");
+        let lines: Vec<&str> = source[..body_end].lines().collect();
 
-        // 范围自检：锚点漂移必须变成一次**显式**失败，而不是又一次没人发现的静默失效。
-        for anchor in ["#[derive", "pub enum PortError {", "impl PortError {"] {
+        let mut owned = 0usize;
+        for (index, line) in lines.iter().enumerate() {
+            let trimmed = line.trim_start();
+            // 注释给不了类型 wire 形态，否则一句「以后也许要给 PortError 加 Serialize」
+            // 就会把守卫顶红，而顶红只会被用「放宽 marker 列表」抹掉。
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            if !MARKERS.iter().any(|marker| line.contains(marker)) {
+                continue;
+            }
+            // 导入不是形态本身；它所启用的 `derive` / `impl` 会被同一套归属抓到。
+            if trimmed.starts_with("use ") {
+                continue;
+            }
+            // 归属方向取决于这一行的角色，三种都要认全，否则守卫会在自己没想到的写法上
+            // 漏掉：`pub enum X {` 属于它自己；顶格的 `#[derive(..)]` 属于它**下方**那个
+            // item（derive 总在声明之上）；函数体内的引用属于它上方那个 item。
+            let owner = match item_subject(line) {
+                Some(own) => Some(own),
+                None if line.starts_with("#[") || line.starts_with("///") => lines[index + 1..]
+                    .iter()
+                    .find_map(|later| item_subject(later)),
+                None => lines[..index]
+                    .iter()
+                    .rev()
+                    .find_map(|earlier| item_subject(earlier)),
+            };
+            let owner = owner.unwrap_or_else(|| "<模块顶层>".to_string());
             assert!(
-                definition.contains(anchor),
-                "守卫取样范围已失效，缺 `{anchor}`；范围必须覆盖 PortError 的 derive、枚举体与 impl 块"
+                ALLOWED.contains(&owner.as_str()),
+                "只有 {ALLOWED:?} 在本模块可以有 serde 形态；这一行归到了 `{owner}` 上：{trimmed}"
             );
+            owned += 1;
         }
-        // 反向自检：范围不能越界碰到隔壁的 wire 词汇，否则这条守卫会变成恒失败，
-        // 而恒失败会被人用「放宽 marker 列表」的方式抹掉——正是上面注释里最坏的那种结局。
+
+        // 自检：上面这个循环必须真的把 marker 归到了 wire 词汇名下。全程归到 0 个时它会
+        // 因为「一个都没匹配上」而空转通过——那正是前两代守卫静默失效的同款形态。
         assert!(
-            !definition.contains("pub enum ApiErrorCode"),
-            "守卫取样范围串进了 `ApiErrorCode`；本测试只应针对 PortError"
+            owned >= 2,
+            "守卫空转：只归到 {owned} 处 marker，预期至少 2 处（ApiErrorCode 与 RetryDisposition 的 derive）"
         );
-
-        for marker in ["Serialize", "Deserialize", "serde_json"] {
-            assert!(
-                !definition.contains(marker),
-                "PortError 不应有 serde 形态，发现了 `{marker}`：{definition}"
-            );
-        }
     }
 
     #[test]
