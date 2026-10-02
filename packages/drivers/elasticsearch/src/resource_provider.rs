@@ -34,11 +34,15 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use datazen_driver_api::capabilities::CapabilitySet;
+use datazen_driver_api::capabilities::{
+    Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
+    PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
+    TransactionObservation, TransactionSupport,
+};
 use datazen_driver_api::namespace::{NamespaceLevel, NamespaceLevelKind, NamespaceShape};
 use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
-use datazen_driver_api::DatabaseDriver;
+use datazen_driver_api::{BackupSupport, DataSupport, DatabaseDriver};
 
 /// Epoch counter handed to each provider this crate builds.
 ///
@@ -132,27 +136,61 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 
 /// What this crate can honestly claim, capability by capability.
 ///
-/// The value is `CapabilitySet::default()` — every field at the non-supporting answer —
-/// and that is the truthful statement, not an omission:
+/// Every row below is a claim about code that already exists in this crate, with the
+/// `file:line` that backs it. The blank-looking cells are the interesting ones, so
+/// each one says *why it cannot be filled* rather than leaving it to inference. A
+/// caller that needs one of them gets `ResourceError::CapabilityNotDeclared` from the
+/// registry, never a silent empty success.
 ///
-/// * `precise_cancel` stays non-supporting because Elasticsearch has no
-/// execution-handle cancel protocol. `LegacyResourceAdapter` derives this field from
-/// `supports_query_execution_cancel()`, which for Elasticsearch is `false`; declaring
-/// anything stronger here would make the factory disagree with the provider that
-/// actually owns the registry.
-/// * `stateful_session` stays unknown because an Elasticsearch cluster exposes no fixed
-/// session
-/// * `observe_session`, `change_context`, `reset_resource`, commit and rollback stay
-/// non-supporting for the reasons in the module docs; nothing here is migrated to a
-/// session contract yet, so claiming otherwise would be a capability the port cannot
-/// honour.
+/// | capability | declared | evidence |
+/// | --- | --- | --- |
+/// | `stateful_session` | `Unsupported` | `connect` stores `(reqwest::Client, String)` and nothing else (`elasticsearch.rs:19`, inserted at `:174`); every read/write is a fresh `client.get/post(..).send()` on that tuple (`:52-89`, `:464-469`) and `disconnect` only removes the map entry (`:192`). There is no server-side object to bind to. Migration doc §2.2 counts elasticsearch among the drivers that store a `(client, base)` tuple and have 「完全无会话」. |
+/// | `namespace_switch` | `Unsupported` | Nothing to switch *to*: `get_databases` answers `vec!["default"]` (`elasticsearch.rs:197-199`) because a cluster has one namespace, and `namespace_shape()` declares zero levels. `change_context` is refused by the adapter. Migration doc §2.1 records `unsupported`. |
+/// | `context_observation` | `Unsupported` | There is no read-back path to observe. `resolve_database` is a pure function over its argument (`elasticsearch.rs:43-50`) — the module comments at `:40` record that `use_database` is gone, so no mutable current-context field exists — and `observe_session` returns `SessionObservation::unobservable()` for every field. |
+/// | `transaction_observation` | `Unsupported` | The driver overrides none of `begin_transaction`/`commit_transaction`/`rollback_transaction`, so the trait defaults answer the refusal, and the adapter's commit/rollback refuse with `ResourceError::OperationNotSupported`. No transaction state is ever observable. |
+/// | `session_scoped_handles` | `Unsupported` | Elasticsearch *does* hand out a server-side object — the `/_sql` cursor, closed by `close_cursor` (`elasticsearch.rs:83`) — but `query_stream` closes it before it returns (`elasticsearch.rs:364-453`, the cursor is closed on stop, on error and at end of stream). It is an implementation detail scoped to one call, never a handle handed to the caller, which is exactly §6.5's 「不表示句柄失效」 case. |
+/// | `reset_for_reuse` | `Unsupported` | Only two variants exist and no baseline-restore exists to name. The adapter answers `ResetDisposition::Discard` for `reset_resource`, and the driver has no `discard_connection` override. |
+/// | `precise_cancel` | `Unknown` | **Not mine to declare.** `LegacyResourceAdapter` overwrites this field from `supports_query_execution_cancel()` (`resource_adapter.rs:139-143`), which is `false` here, so the provider's registry holds `Unknown` no matter what this function says. Declaring `Unsupported` would make the factory disagree with the provider that owns the registry — the exact drift `factory_capabilities_match_the_provider` exists to catch. The underlying fact is a measured refusal (`cancel_query` returns `DriverError::Unsupported`, `elasticsearch.rs:514`) and is asserted by `the_legacy_cancel_refuses_instead_of_reporting_a_cancellation_that_never_happened`. |
+/// | `snapshots` | `Unsupported` | No snapshot endpoint exists anywhere in the crate and `begin_read_snapshot` is not overridden, so the trait default refusal is the driver's own answer rather than a guess. |
+/// | `transactions.isolation_levels` | empty | No transaction can be opened at all, so there is no level to honour. Empty is read as "cannot confirm any", which is stronger than listing one. |
+/// | `transactions.savepoints` | `Unsupported` | Savepoints require an open transaction; the driver cannot open one (row above). |
+/// | `transactions.max_open_transactions` | `None` | Consequence of the same fact: no transaction is openable, so there is no limit to state. |
+/// | `ddl_atomicity.by_operation` | empty | `DatabaseDriver::ddl_atomicity` is not overridden, so the driver answers `DdlAtomicity::Unknown` for *any* operation. `atomicity_for()` returns `Unknown` for an unlisted operation, so an empty map reproduces the driver's own answer exactly. It is a measured "I do not know", not a hole. |
+/// | `data` | `StreamingReadWrite` | The only affirmative claim, and it is load-bearing. Reads stream incrementally through the real `/_sql` cursor: `query_stream` posts `{"cursor": c}`, pushes each decoded batch through `QueryRowBatcher::new` (`elasticsearch.rs:412`) *before* the next request, and only then asks for more (`elasticsearch.rs:364-453`). Writes are real: `execute` posts the statement and returns the server's own row count (`elasticsearch.rs:464-469`, `:468`). |
+/// | `backup` | `Unknown` | Deliberately left unmeasured. Nothing in this crate produces or consumes a backup artifact, but "this driver has no backup code" is not the same as having measured the backup workflow, so this stays `Unknown` rather than claiming a refusal nobody checked. |
 ///
-/// A caller that needs one of these gets an explicit
-/// `ResourceError::CapabilityNotDeclared` instead of a silent empty success. Keep this
-/// byte-identical to what `provider()` reports: a factory that looks rosier
+/// Keep this byte-identical to what `provider()` reports: a factory that looks rosier
 /// than its own provider is exactly the drift the contract exists to prevent.
+///
+/// The per-cell evidence lives here rather than in `CapabilitySnapshot::confirmed`,
+/// because the adapter builds that snapshot and has no way to receive a confirmation
+/// map — a driver's confirmation claim would have to be added to the adapter first.
 pub(crate) fn capabilities() -> CapabilitySet {
-    CapabilitySet::default()
+    CapabilitySet {
+        stateful_session: Availability::Unsupported,
+        namespace_switch: NamespaceSwitch::Unsupported,
+        context_observation: ContextObservation::Unsupported,
+        transaction_observation: TransactionObservation::Unsupported,
+        session_scoped_handles: SessionScopedHandleSupport::Unsupported,
+        reset_for_reuse: ResetForReuse::Unsupported,
+        // See the table: the adapter owns this cell and pins it to `Unknown`.
+        precise_cancel: PreciseCancelSupport::Unknown,
+        snapshots: SnapshotSupport::Unsupported,
+        transactions: TransactionSupport {
+            // Empty on purpose, for the same reason postgres leaves it empty: a
+            // level listed here would make `begin_transaction` accept an option
+            // the driver cannot honour.
+            isolation_levels: Vec::new(),
+            savepoints: Availability::Unsupported,
+            max_open_transactions: None,
+        },
+        // Empty on purpose: see the `ddl_atomicity` row.
+        ddl_atomicity: DdlAtomicitySupport::default(),
+        // Measured affirmative, backed by the cursor loop and the row count.
+        data: DataSupport::StreamingReadWrite,
+        // Never measured against the backup workflow. See the `backup` row.
+        backup: BackupSupport::Unknown,
+    }
 }
 
 #[cfg(test)]
@@ -160,13 +198,18 @@ mod tests {
     use std::sync::Arc;
 
     use datazen_driver_api::capabilities::SessionContinuity;
+    use datazen_driver_api::capabilities::{
+        Availability, CapabilitySet, ContextObservation, NamespaceSwitch, PreciseCancelSupport,
+        ResetForReuse, SessionScopedHandleSupport, SnapshotSupport, TransactionObservation,
+    };
     use datazen_driver_api::namespace::NamespaceTarget;
     use datazen_driver_api::require_resource_provider;
     use datazen_driver_api::resource::{
         DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourcePurpose,
     };
-    use datazen_driver_api::{ConnectionConfig, DatabaseDriverFactory};
+    use datazen_driver_api::{BackupSupport, ConnectionConfig, DataSupport, DatabaseDriverFactory};
 
+    use super::capabilities;
     use crate::{
         ConnectionHandle, DatabaseDriver, DriverError, ElasticsearchDriver, ElasticsearchFactory,
     };
@@ -207,9 +250,11 @@ mod tests {
             registry.capabilities,
             "the factory's capability view must not be rosier than the provider's own registry"
         );
-        assert!(
-            !factory().resource_capabilities().declares_anything(),
-            "Elasticsearch has no migrated session contract, so it must claim nothing"
+        assert_ne!(
+            factory().resource_capabilities(),
+            CapabilitySet::default(),
+            "the inert default claims nothing; `capabilities()` documents a measured refusal \
+             for every cell except `data`, so it must differ from the default"
         );
         assert!(
             !factory()
@@ -221,9 +266,77 @@ mod tests {
         assert!(registry.require_precise_cancel().is_err());
         assert_eq!(
             factory().resource_capabilities().stateful_session,
-            datazen_driver_api::capabilities::Availability::Unknown,
-            "an Elasticsearch cluster exposes no fixed session"
+            Availability::Unsupported,
+            "an Elasticsearch cluster exposes no fixed session, and `connect` stores nothing \
+             but a `(client, base)` tuple to prove it"
         );
+    }
+
+    /// Every cell of the declaration is pinned here, so a later edit cannot silently
+    /// drift away from the evidence table above it.
+    ///
+    /// The empty containers are asserted too, not skipped: an empty
+    /// `isolation_levels` and an empty `ddl_atomicity` map are deliberate
+    /// "cannot confirm" answers, and a future edit that fills one of them should have
+    /// to come back here.
+    #[test]
+    fn every_declared_cell_is_the_value_the_evidence_table_justifies() {
+        let caps = capabilities();
+
+        assert_ne!(
+            caps,
+            CapabilitySet::default(),
+            "the declaration must differ from the inert default"
+        );
+        assert_eq!(caps.stateful_session, Availability::Unsupported);
+        assert_eq!(caps.namespace_switch, NamespaceSwitch::Unsupported);
+        assert_eq!(caps.context_observation, ContextObservation::Unsupported);
+        assert_eq!(
+            caps.transaction_observation,
+            TransactionObservation::Unsupported
+        );
+        assert_eq!(
+            caps.session_scoped_handles,
+            SessionScopedHandleSupport::Unsupported
+        );
+        assert_eq!(caps.reset_for_reuse, ResetForReuse::Unsupported);
+        assert_eq!(caps.precise_cancel, PreciseCancelSupport::Unknown);
+        assert_eq!(caps.snapshots, SnapshotSupport::Unsupported);
+        assert!(
+            caps.transactions.isolation_levels.is_empty(),
+            "no level is honoured: the driver cannot open a transaction at all"
+        );
+        assert_eq!(caps.transactions.savepoints, Availability::Unsupported);
+        assert_eq!(caps.transactions.max_open_transactions, None);
+        assert!(
+            caps.ddl_atomicity.by_operation.is_empty(),
+            "`DatabaseDriver::ddl_atomicity` is not overridden, so every operation is \
+             `Unknown`; the map must stay empty to reproduce that"
+        );
+        assert_eq!(caps.data, DataSupport::StreamingReadWrite);
+        assert_eq!(caps.backup, BackupSupport::Unknown);
+    }
+
+    /// The one affirmative cell has to open the three features it claims, and the
+    /// negatives have to stay shut.
+    ///
+    /// `StreamingReadWrite` is the only variant that satisfies `enables_feature`, so
+    /// this is where a wrong answer to the `data` row would show up as a product
+    /// behaviour change rather than as a quiet mismatch.
+    #[test]
+    fn the_data_domain_opens_exactly_what_the_cursor_loop_can_deliver() {
+        let caps = capabilities();
+
+        assert!(caps.data.enables_row_read());
+        assert!(
+            caps.data.enables_row_write(),
+            "`execute` posts the statement and returns the server's row count"
+        );
+        assert!(
+            caps.data.enables_streaming_results(),
+            "`query_stream` pushes each batch before requesting the next cursor page"
+        );
+        assert!(caps.data.enables_feature());
     }
 
     #[test]
