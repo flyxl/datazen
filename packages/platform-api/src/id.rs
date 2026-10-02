@@ -392,6 +392,12 @@ opaque_id!(
     PolicyIsolationKey
 );
 opaque_id!(
+    /// 驱动资源键。`describeResource` 对 CanonicalTarget / 初始化基线规范化后的产物，
+    /// 是 PoolKey 的组件（CM §9.6）。**禁止**用连接串、主机名或任何凭据散列充当它——
+    /// 数据库绑定资源按 database 分 key，同一连接的不同 database 因此天然落到不同池。
+    DriverResourceKey
+);
+opaque_id!(
     /// attachment 令牌原文。只在创建/替换时返回给原 owner，存储侧只留哈希。
     AttachmentToken
 );

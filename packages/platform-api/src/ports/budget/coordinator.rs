@@ -178,7 +178,7 @@ mod tests {
             ..request()
         };
         assert_eq!(tuned.acquire_timeout_ms, Some(2500));
-        let source = include_str!("budget.rs")
+        let source = include_str!("coordinator.rs")
             .split("#[cfg(test)]")
             .next()
             .unwrap_or_default();
