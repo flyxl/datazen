@@ -15,6 +15,8 @@ use datazen_driver_api::capabilities::{
     DdlAtomicitySupport, NamespaceSwitch, PreciseCancelSupport, ResetForReuse,
     SessionScopedHandleSupport, SnapshotSupport, TransactionObservation, TransactionSupport,
 };
+// `capabilities` only re-imports the domain enums privately; they live here.
+use datazen_driver_api::capability_domains::DataSupport;
 use datazen_driver_api::namespace::{
     CanonicalIdRules, CaseFolding, CaseRules, NamespaceLevel, NamespaceLevelKind,
     NamespacePathSegment, NamespaceShape,
@@ -110,6 +112,8 @@ pub(crate) fn postgres_connection_cost(config: &ConnectionConfig) -> ConnectionC
 /// | `precise_cancel` | `Supported` | `pg_cancel_backend(<pid of that execution only>)` on a separate control pool (`execution.rs:369-437`). |
 /// | `snapshots` | `Unsupported` | `begin_read_snapshot_impl` exists but a per-table/per-database/coordinated guarantee is unverified. |
 /// | `transactions.isolation_levels` | empty | `begin_transaction_impl` sends a bare `BEGIN`, so it cannot honour a named level. |
+/// | `data` | `BufferedReadWrite` | `query` and `execute` both reach the sink carrying real rows, but every row is materialized before the first one is handed over, so `streamingResults` is not declared. Citations are on the field. |
+/// | `backup` | empty | the provider contract carries no backup surface at all; the driver's real dump/restore live on the legacy `ConnectionHandle` path. Citations are on the field. |
 pub(crate) fn postgres_capability_set() -> CapabilitySet {
     CapabilitySet {
         stateful_session: Availability::Unsupported,
@@ -136,15 +140,76 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
         // `DdlAtomicitySupport::atomicity_for` returns `Unknown` for an
         // absent key — the caller then asks, instead of assuming.
         ddl_atomicity: DdlAtomicitySupport::default(),
-        // `data` and `backup` arrived after this table was written, so nothing
-        // here has been *declared* for them. `Unknown` is the honest and
-        // fail-closed answer — the same one `ddl_atomicity` above already leans
-        // on: the caller asks instead of assuming the driver can do row
-        // read/write, streaming results, or produce/consume an artifact.
-        // Claiming a `DataSupport`/`BackupSupport` variant here would assert
-        // evidence nobody gathered; omitting the field outright would not
-        // compile, which is the point — every capability has to say something.
-        data: Default::default(),
+        // `BufferedReadWrite` is a *deliberate under-claim*, and each half of
+        // it is cited so the next reader does not have to re-derive it.
+        //
+        // `rowRead` holds. `ResourceProvider::execute_on_resource` →
+        // `resource/provider.rs:414-437` (`run_command`) awaits the whole
+        // `CommandResult` and only then calls `decode_command_result`
+        // (`resource/payload.rs:41`), which walks the statements of the
+        // `MultiQueryResult` the `query` command produced and writes one
+        // `ResultChunk` per statement to the `ResultSink`. `query` itself
+        // dispatches to `driver-api/src/traits.rs:1127` `query_multi_at`,
+        // so the rows that reach the sink are rows the server actually sent.
+        //
+        // `rowWrite` holds. The sibling arm at `traits.rs:1139` calls
+        // `execute_at` and returns its `rowsAffected`, and
+        // `payload.rs:27-33` refuses any payload that is not exactly
+        // `{"rowsAffected": n}` — so the number cannot be invented locally.
+        //
+        // `streamingResults` does NOT hold, which is why this is not
+        // `StreamingReadWrite`. `traits.rs:1133` serializes the finished
+        // `MultiQueryResult`, whose `StatementResult.rows` is a fully
+        // materialized `Vec<Vec<Option<Value>>>` (`driver-api/src/types.rs:301`),
+        // so the first byte can only be handed to the sink after the last
+        // row has been read. `run_command` says so itself when it sets
+        // `protocol_drained: true` with the comment "Every row was buffered
+        // and handed to the sink; the connection will not be read again for
+        // this execution."
+        //
+        // The driver does have a real streaming path — `query_stream_impl`
+        // in `execution.rs:693`, reached through `DatabaseDriver`'s
+        // `query_stream_with_execution` — but that is the legacy
+        // `ConnectionHandle` API, not this contract, so it is not evidence
+        // for anything `execute_on_resource` can do. Declaring
+        // `StreamingReadWrite` on the strength of it would be a lie about
+        // the provider; leaving this at `Unknown` would be a lie in the
+        // other direction, since two of the three axes are proven. Under-
+        // claiming is the safe error here: `Default` is fail-closed, so an
+        // undeclared axis rejects instead of pretending.
+        data: DataSupport::BufferedReadWrite,
+        // Left empty on purpose, and for a different reason than `data` above:
+        // PostgreSQL can genuinely be dumped and restored, but not through
+        // this provider.
+        //
+        // `ResourceProvider` has 14 methods (`provider_id` / `capabilities` /
+        // `namespace_shape` plus 11 `async` ones) and not one of them is a
+        // backup, restore or dump surface. Nor can one be smuggled through
+        // `execute_on_resource`: `run_command` accepts whatever
+        // `execute_command` returned, but `decode_command_result`
+        // (`resource/payload.rs:41-83`) recognizes exactly two payload shapes
+        // — a `MultiQueryResult` from `query`, and `{"rowsAffected": n}` from
+        // `execute`. Everything else, including any dump artifact, becomes
+        // `ResourceError::OperationNotSupported` at `payload.rs:73`, whose
+        // reason names only the payload *shape* and never its contents.
+        //
+        // The capability really does exist on the driver: `postgres.rs:556`
+        // `dump_database_with_progress` → `catalog.rs:352`
+        // `dump_database_with_progress_impl` produces the artifact, and
+        // restore rides the shared `sql_dump::restore_sql_statements_with_progress`
+        // default (this crate overrides neither `restore_sql` nor
+        // `recover_restore_statement`). Both run against a `ConnectionHandle`.
+        //
+        // So neither filling variant would be honest. `ArtifactAndRestore`
+        // would advertise a surface the provider does not have, and a host
+        // that trusted it would clear `require_backup_artifact()` and then hit
+        // the dead end above. `Unsupported` would be the opposite lie: it
+        // would tell the host PostgreSQL cannot be backed up, hiding a
+        // feature that demonstrably works. "This contract cannot express the
+        // backup capability" and "this database cannot be backed up" are two
+        // different statements, and conflating them would bury a real feature
+        // for whoever wires the backup window up later. So the caller asks,
+        // and the question is answered honestly instead of wrongly.
         backup: Default::default(),
     }
 }
@@ -152,8 +217,9 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
 /// Bumped whenever [`postgres_capability_set`] changes meaning, so a cached
 /// snapshot can be told apart from the current declaration. `1` is the first
 /// set that was actually checked against the code below; a snapshot taken
-/// before this module existed carried `0`.
-pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 1;
+/// before this module existed carried `0`. `2` declared `data` (rowRead and
+/// rowWrite proven, streamingResults not) — `backup` stayed empty across both.
+pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 2;
 
 /// The full registry: identity, version, protocol and the declared set.
 pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
@@ -221,6 +287,28 @@ fn postgres_capability_evidence() -> Vec<(&'static str, String)> {
         (
             "connectionCostPolicy",
             "effective_max_pool_size() data connections + 1 control connection".to_string(),
+        ),
+        (
+            "data",
+            "rowRead: src/resource/provider.rs run_command -> payload.rs:41 \
+             decode_command_result replays the MultiQueryResult from \
+             driver-api/src/traits.rs:1127 query_multi_at; rowWrite: traits.rs:1139 \
+             execute_at, whose rowsAffected is the only shape payload.rs:27 accepts; \
+             streamingResults withheld because traits.rs:1133 serializes a fully \
+             materialized Vec<Vec<Option<Value>>> (driver-api/src/types.rs:301) before \
+             any chunk reaches the sink, as run_command's protocol_drained comment \
+             ('Every row was buffered') states"
+                .to_string(),
+        ),
+        (
+            "backup",
+            "declined: ResourceProvider's 14 methods expose no backup/restore/dump, and \
+             payload.rs:73 turns anything but MultiQueryResult or {rowsAffected} into \
+             OperationNotSupported — while the real dump (catalog.rs:352 \
+             dump_database_with_progress_impl) and the shared restore default both run \
+             on a legacy ConnectionHandle, so this contract can neither prove nor deny \
+             the capability"
+                .to_string(),
         ),
     ]
 }

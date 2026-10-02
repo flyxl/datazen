@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use datazen_driver_api::capabilities::{CapabilityError, SessionContinuity};
+use datazen_driver_api::capability_domains::{BackupSupport, DataSupport};
 use datazen_driver_api::namespace::{NamespaceLevelKind, NamespaceTarget};
 use datazen_driver_api::resource::{
     AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, ConnectionCostPolicy,
@@ -361,6 +362,74 @@ async fn declared_supported_capabilities_are_the_ones_the_code_actually_has() {
     );
 }
 
+/// `data` is claimed on two axes and withheld on the third; `backup` is not
+/// claimed at all. Both halves of that asymmetry are load-bearing — the first
+/// keeps a real, working driver from being gated out of row read/write, the
+/// second stops a host from being told PostgreSQL cannot be backed up when it
+/// can. `streamingResults` is the one that has to keep failing: it is the axis
+/// the provider genuinely cannot serve, because `run_command` materializes
+/// every row before handing the first one to the sink.
+#[tokio::test]
+async fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
+    let (_driver, provider) = provider_with_driver();
+    let registry = provider.capabilities();
+    let set = postgres_capability_set();
+
+    assert_eq!(
+        set.data,
+        DataSupport::BufferedReadWrite,
+        "row read/write are proven by traits.rs:1127/:1139; the downgrade from nominal \
+         is the withheld streaming axis and must not drift silently"
+    );
+    assert!(
+        set.data.enables_row_read(),
+        "query reaches the sink with rows the server sent"
+    );
+    assert!(
+        set.data.enables_row_write(),
+        "execute returns a rowsAffected that payload.rs only accepts verbatim"
+    );
+    assert!(
+        !set.data.enables_streaming_results(),
+        "rows are fully buffered before the sink sees any of them, so streaming \
+         must stay undeclared"
+    );
+    assert!(
+        !set.data.enables_feature(),
+        "only StreamingReadWrite is nominal; a degraded set must not open the \
+         feature as a whole"
+    );
+    assert!(set.data.is_weaker_than_nominal());
+
+    // The declaration and the guards that read it must not drift.
+    assert!(registry.require_row_read().is_ok());
+    assert!(registry.require_row_write().is_ok());
+    let streaming = registry.require_streaming_results();
+    assert!(
+        streaming.is_err(),
+        "the guard must reject even though row read/write are declared"
+    );
+    assert!(
+        streaming
+            .unwrap_err()
+            .to_string()
+            .contains("data.streamingResults"),
+        "the refusal has to name the axis, so a caller knows what to stop asking for"
+    );
+
+    assert_eq!(
+        set.backup,
+        BackupSupport::Unknown,
+        "the provider contract has no backup surface; claiming one would send a \
+         host down a dead end, and refusing one would hide the driver's real dump"
+    );
+    assert!(set.backup.is_undeclared());
+    assert!(!set.backup.enables_artifact());
+    assert!(!set.backup.enables_restore());
+    assert!(registry.require_backup_artifact().is_err());
+    assert!(registry.require_restore_from_artifact().is_err());
+}
+
 #[tokio::test]
 async fn the_capability_snapshot_pins_identity_protocol_and_evidence() {
     let registry = postgres_capability_registry();
@@ -383,6 +452,8 @@ async fn the_capability_snapshot_pins_identity_protocol_and_evidence() {
         "statefulSession",
         "snapshots",
         "connectionCostPolicy",
+        "data",
+        "backup",
     ] {
         assert!(
             snapshot.confirmed.contains_key(capability),
