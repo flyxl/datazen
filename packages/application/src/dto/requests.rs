@@ -40,15 +40,15 @@ use crate::error::{ApiError, ApiErrorCode};
 pub fn validate_namespace_target(target: &NamespaceTarget) -> Result<(), ApiError> {
     for (layer, value) in [
         (
-            datazen_platform_api::target::NamespaceLayer::Database,
+            datazen_platform_api::target::TargetNamespaceLayer::Database,
             target.database.as_ref(),
         ),
         (
-            datazen_platform_api::target::NamespaceLayer::Catalog,
+            datazen_platform_api::target::TargetNamespaceLayer::Catalog,
             target.catalog.as_ref(),
         ),
         (
-            datazen_platform_api::target::NamespaceLayer::Schema,
+            datazen_platform_api::target::TargetNamespaceLayer::Schema,
             target.schema.as_ref(),
         ),
     ] {
@@ -418,7 +418,7 @@ mod tests {
         AuthenticationSessionId, ClientInstanceId, DbSessionId, DelegationId, EditorSessionId,
         OrganizationId, PrincipalId, RequestId,
     };
-    use datazen_platform_api::target::NamespaceLayer;
+    use datazen_platform_api::target::TargetNamespaceLayer;
     use std::collections::BTreeMap;
 
     fn code_only(source: &str) -> String {
@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn namespace_validation_rejects_empty_strings() {
         let mut target = NamespaceTarget::default();
-        target.set(NamespaceLayer::Database, Some(String::new()));
+        target.set(TargetNamespaceLayer::Database, Some(String::new()));
         let error = validate_namespace_target(&target).expect_err("empty database");
         assert_eq!(error.code, ApiErrorCode::InvalidArgument);
 
