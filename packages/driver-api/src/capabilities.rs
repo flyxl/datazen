@@ -320,6 +320,25 @@ pub struct CapabilitySnapshot {
     pub confirmed: BTreeMap<String, String>,
 }
 
+/// Evidence was attached to a snapshot that declares revision `0`.
+///
+/// `0` is reserved for "this provider had no capability module yet" — the
+/// sentinel postgres's own revision comment names. A snapshot that carries
+/// evidence at revision `0` says two contradictory things at once: the
+/// evidence exists, and the declaration that would produce it does not. A
+/// cached snapshot could then not be told apart from a current one, which is
+/// the single thing `capability_revision` exists to prevent.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "provider `{provider_id}` recorded evidence at capability revision {capability_revision}: \
+     revision 0 means no capability module existed yet, so the evidence cannot be \
+     attributed to any declaration"
+)]
+pub struct EvidenceRevisionError {
+    pub provider_id: String,
+    pub capability_revision: u64,
+}
+
 impl CapabilitySnapshot {
     pub fn new(
         driver_id: impl Into<String>,
@@ -334,6 +353,99 @@ impl CapabilitySnapshot {
             capability_revision,
             confirmed: BTreeMap::new(),
         }
+    }
+
+    /// Attach recorded evidence. `new` keeps its four-argument shape so every
+    /// existing construction site is untouched; the evidence channel is
+    /// opt-in through this builder.
+    ///
+    /// Evidence keys are the cell names of [`CapabilitySet`] in its serialized
+    /// (`camelCase`) spelling, which is what [`Self::evidence_gaps`] matches
+    /// on. Keys outside the twelve are kept as-is.
+    ///
+    /// # Errors
+    ///
+    /// [`EvidenceRevisionError`] when evidence is supplied and
+    /// `capability_revision` is `0`. The rejection is deliberate: without it
+    /// a driver could record evidence under a revision that claims no
+    /// capability module exists, and nothing would catch the contradiction.
+    pub fn with_evidence<K, V, I>(self, evidence: I) -> Result<Self, EvidenceRevisionError>
+    where
+        K: Into<String>,
+        V: Into<String>,
+        I: IntoIterator<Item = (K, V)>,
+    {
+        let incoming: BTreeMap<String, String> = evidence
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into()))
+            .collect();
+        if self.capability_revision == 0 && !incoming.is_empty() {
+            return Err(EvidenceRevisionError {
+                provider_id: self.driver_id.clone(),
+                capability_revision: self.capability_revision,
+            });
+        }
+        Ok(self.merge_evidence(incoming))
+    }
+
+    /// Merge evidence without consulting the revision invariant.
+    ///
+    /// `pub(crate)` because it is only sound for a caller that has already
+    /// established a non-zero revision — `LegacyResourceAdapter` fixes its own
+    /// revision and then merges through here. The public gate that a driver
+    /// has to pass is [`Self::with_evidence`].
+    pub(crate) fn merge_evidence<K, V, I>(self, evidence: I) -> Self
+    where
+        K: Into<String>,
+        V: Into<String>,
+        I: IntoIterator<Item = (K, V)>,
+    {
+        let mut confirmed = self.confirmed;
+        confirmed.extend(
+            evidence
+                .into_iter()
+                .map(|(key, value)| (key.into(), value.into())),
+        );
+        Self { confirmed, ..self }
+    }
+
+    /// The declared cells that carry no evidence, in declaration order.
+    ///
+    /// This is deliberately computed from `self.confirmed` rather than from
+    /// anything the driver passes in, so a driver cannot answer on its own
+    /// behalf: recording nothing is observable as "all twelve are missing"
+    /// without the driver's cooperation, which is what separates *declares
+    /// nothing here* from *declares nothing there*.
+    ///
+    /// The twelve names below are the **only** copy of the cell list in the
+    /// codebase. Adding a field to [`CapabilitySet`] means adding it here; a
+    /// second list would be free to drift from this one, and a drifted list
+    /// reports either a phantom gap or a silent miss.
+    ///
+    /// Keys in `confirmed` that are not cells are left alone and are not
+    /// reported: `confirmed` is an evidence table, not a cell table, so
+    /// evidence beyond the twelve is strictly more information rather than an
+    /// error.
+    pub fn evidence_gaps(&self) -> Vec<&'static str> {
+        const CAPABILITY_CELLS: [&str; 12] = [
+            "statefulSession",
+            "namespaceSwitch",
+            "contextObservation",
+            "transactionObservation",
+            "sessionScopedHandles",
+            "resetForReuse",
+            "preciseCancel",
+            "snapshots",
+            "transactions",
+            "ddlAtomicity",
+            "data",
+            "backup",
+        ];
+        CAPABILITY_CELLS
+            .iter()
+            .copied()
+            .filter(|cell| !self.confirmed.contains_key(*cell))
+            .collect()
     }
 }
 
@@ -375,6 +487,12 @@ impl CapabilityRegistry {
             capability,
             provider_id: self.provider_id.clone(),
         }
+    }
+
+    /// Delegate to [`CapabilitySnapshot::evidence_gaps`], which owns the cell
+    /// list. Callers usually hold a registry rather than a bare snapshot.
+    pub fn evidence_gaps(&self) -> Vec<&'static str> {
+        self.snapshot.evidence_gaps()
     }
 
     /// Require one session-scoped physical connection for the resource.
@@ -772,5 +890,64 @@ mod tests {
         let snapshot = CapabilitySnapshot::new("driver", "1.2.3", PROTOCOL_VERSION, 7);
         assert!(snapshot.confirmed.is_empty());
         assert_eq!(snapshot.capability_revision, 7);
+    }
+
+    #[test]
+    fn evidence_gaps_covers_exactly_the_declared_cells() {
+        // Drift guard. The gap list is the only copy of the cell names in the
+        // codebase, and a `CapabilitySet` that grows a field would otherwise
+        // leave that field permanently un-reachable: not missing enough to
+        // report, not present enough to check. Comparing against the
+        // serialized shape catches that here rather than in a driver's review.
+        let snapshot = CapabilitySnapshot::new("driver", "1.2.3", PROTOCOL_VERSION, 7);
+        let declared: Vec<String> = serde_json::to_value(CapabilitySet::default())
+            .expect("CapabilitySet is a plain data struct")
+            .as_object()
+            .expect("CapabilitySet serializes to a JSON object")
+            .keys()
+            .cloned()
+            .collect();
+
+        // Nothing recorded -> every declared field must show up as a gap.
+        // Compared as a set: the gap list is in declaration order, while
+        // `serde_json::Value`'s object is key-sorted, so the two orders are
+        // independent and only membership is the invariant.
+        let mut gaps = snapshot.evidence_gaps();
+        let mut declared_sorted = declared.clone();
+        gaps.sort_unstable();
+        declared_sorted.sort();
+        assert_eq!(gaps, declared_sorted);
+        assert_eq!(gaps.len(), 12);
+
+        // Record every cell under its serialized name -> no gaps left.
+        let filled = snapshot
+            .with_evidence(
+                declared
+                    .iter()
+                    .map(|cell| (cell.clone(), "synthetic rationale".to_string())),
+            )
+            .expect("revision 7 is allowed to carry evidence");
+        assert!(filled.evidence_gaps().is_empty());
+    }
+
+    #[test]
+    fn extra_evidence_keys_are_neither_gaps_nor_errors() {
+        // `confirmed` is an evidence table, not a cell table. A driver that
+        // records more than the twelve is not wrong, and the extra key must not
+        // leak into the gap list as a phantom cell.
+        let snapshot = CapabilitySnapshot::new("driver", "1.2.3", PROTOCOL_VERSION, 7)
+            .with_evidence([
+                (
+                    "connectionCostPolicy",
+                    "pool sizing is charged per namespace",
+                ),
+                ("ddlAtomicity", "PostgreSQL runs DDL in a transaction"),
+            ])
+            .expect("revision 7 is allowed to carry evidence");
+
+        let gaps = snapshot.evidence_gaps();
+        assert!(!gaps.contains(&"connectionCostPolicy"));
+        assert!(!gaps.contains(&"ddlAtomicity"));
+        assert_eq!(gaps.len(), 11);
     }
 }
