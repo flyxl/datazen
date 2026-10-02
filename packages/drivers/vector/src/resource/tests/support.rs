@@ -196,8 +196,17 @@ impl ResultSink for RecordingSink {
 ///
 /// Hand-rolled rather than pulled in as a dev-dependency: the whole point of
 /// this provider is the *one* request per command, so a socket that reads a
-/// request head and replies once is enough — and it leaves the crate's
-/// dependency list untouched.
+/// request and replies once is enough — and it leaves the crate's dependency
+/// list untouched.
+///
+/// The request body is drained before replying. That is not politeness, it is
+/// correctness: closing a socket that still holds unread bytes makes the kernel
+/// send RST instead of FIN, which discards the reply the peer has not read yet.
+/// A client that talks to this stub directly survives it; a client whose traffic
+/// is relayed through an HTTP proxy (macOS system proxy settings are honoured
+/// by the HTTP stack) does not — the proxy loses the upstream response and
+/// answers `503` of its own, which surfaces as a driver error with a status no
+/// test ever asked for.
 pub(super) async fn stub_qdrant(status: u16, body: &'static str) -> u16 {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -216,13 +225,15 @@ pub(super) async fn stub_qdrant(status: u16, body: &'static str) -> u16 {
             };
             let mut head = Vec::new();
             let mut byte = [0_u8; 1];
-            // The head only: this stub never reads the request body, and the
-            // client does not care that its payload was ignored.
             while !head.ends_with(b"\r\n\r\n") {
                 match socket.read(&mut byte).await {
                     Ok(0) | Err(_) => break,
                     Ok(_) => head.push(byte[0]),
                 }
+            }
+            let mut payload = vec![0_u8; content_length_of(&head)];
+            if !payload.is_empty() {
+                let _ = socket.read_exact(&mut payload).await;
             }
             let response = format!(
                 "HTTP/1.1 {status} Stub\r\nContent-Type: application/json\r\nContent-Length: \
@@ -236,6 +247,20 @@ pub(super) async fn stub_qdrant(status: u16, body: &'static str) -> u16 {
     });
 
     port
+}
+
+/// The `Content-Length` a request head announces, or 0 when it announces none.
+///
+/// A stub that guesses here would either hang waiting for a body that is not
+/// coming or leave one unread, and the first mistake is a test timeout while
+/// the second is the reset described above.
+fn content_length_of(head: &[u8]) -> usize {
+    String::from_utf8_lossy(head)
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
+        .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+        .unwrap_or(0)
 }
 
 /// One point returned by the stub, so the row assertions have a real payload

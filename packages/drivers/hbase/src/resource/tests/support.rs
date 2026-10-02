@@ -202,13 +202,16 @@ const SCANNER_PATH: &str = "/books/scanner/1";
 
 /// A Stargate that answers the liveness probe and reads one table.
 ///
-/// Every mock is mounted for the life of the returned server, and a scan costs
-/// three requests (open, read, delete) — all three are answered, so a test that
-/// expects rows is exercising the real request sequence and not a shortcut.
+/// Every mock is mounted for the life of the returned server, and a successful
+/// scan costs three requests (open, read, delete) — all three are answered, so a
+/// test that expects rows is exercising the real request sequence rather than a
+/// shortcut. The open has to answer `201` with a `Location`, because that is
+/// how Stargate hands back the scanner; anything else is the failure path, which
+/// is a different fixture ([`stargate_failing_scans`]).
 pub(super) async fn stargate_answering() -> MockServer {
     let server = MockServer::start().await;
     mount_probe(&server, 200).await;
-    mount_scan(&server, "books", 200).await;
+    mount_scan_answering(&server, "books").await;
     server
 }
 
@@ -216,7 +219,7 @@ pub(super) async fn stargate_answering() -> MockServer {
 pub(super) async fn stargate_failing_scans() -> MockServer {
     let server = MockServer::start().await;
     mount_probe(&server, 200).await;
-    mount_scan(&server, "books", 500).await;
+    mount_scan_failing(&server, "books", 500).await;
     server
 }
 
@@ -234,41 +237,47 @@ async fn mount_probe(server: &MockServer, status: u16) {
     Mock::given(method("GET"))
         .and(path("/"))
         .respond_with(
-            ResponseTemplate::new(status)
-                .set_body_json(serde_json::json!({ "status": "ok" })),
+            ResponseTemplate::new(status).set_body_json(serde_json::json!({ "status": "ok" })),
         )
         .mount(server)
         .await;
 }
 
-/// One scan of `table`: open the scanner, read the rows, delete the scanner.
-async fn mount_scan(server: &MockServer, table: &str, status: u16) {
-    let open = format!("/{table}/scanner");
-    if status != 201 {
-        Mock::given(method("POST"))
-            .and(path(open.as_str()))
-            .respond_with(
-                ResponseTemplate::new(status)
-                    .set_body_string(r#"{"error":"the table is not available"}"#),
-            )
-            .mount(server)
-            .await;
-        return;
-    }
-
+/// One scan that works: open the scanner, read the rows, delete the scanner.
+///
+/// The three steps are separate mounts on purpose. The read is mounted without
+/// a method matcher because the driver reads the scanner once and then deletes
+/// it, and both requests have to land on the same answer — and a mock mounted
+/// only for the open would let a test pass with zero rows read.
+async fn mount_scan_answering(server: &MockServer, table: &str) {
+    // Stargate answers an opened scanner with `201` and an absolute `Location`.
+    // The driver follows an absolute URL verbatim (`HBaseDriver::scan`), so the
+    // mounted read path has to be the very path the header names, table-scoped
+    // exactly as Stargate scopes it.
     Mock::given(method("POST"))
-        .and(path(open.as_str()))
+        .and(path(format!("/{table}/scanner").as_str()))
         .respond_with(ResponseTemplate::new(201).insert_header(
             "Location",
-            format!("{}/scanner/1", server.uri()).as_str(),
+            format!("{}{SCANNER_PATH}", server.uri()).as_str(),
         ))
         .mount(server)
         .await;
 
-    // No method matcher: the driver reads the scanner once and then deletes it,
-    // and both requests have to land on the same answer.
     Mock::given(path(SCANNER_PATH))
         .respond_with(ResponseTemplate::new(200).set_body_string(SCAN_ROWS))
+        .mount(server)
+        .await;
+}
+
+/// One scan that cannot be opened: the open itself answers `status`, and no
+/// scanner is ever handed back.
+async fn mount_scan_failing(server: &MockServer, table: &str, status: u16) {
+    Mock::given(method("POST"))
+        .and(path(format!("/{table}/scanner").as_str()))
+        .respond_with(
+            ResponseTemplate::new(status)
+                .set_body_string(r#"{"error":"the table is not available"}"#),
+        )
         .mount(server)
         .await;
 }

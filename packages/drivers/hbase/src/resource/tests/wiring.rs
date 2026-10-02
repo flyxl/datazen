@@ -40,10 +40,7 @@ fn the_factory_resolves_a_real_provider_through_the_fail_closed_accessor() {
     let again = datazen_driver_api::require_resource_provider(&HBaseFactory)
         .expect("a second resolution must find the same provider");
     assert!(Arc::ptr_eq(&provider, &again));
-    assert!(Arc::ptr_eq(
-        &HBaseFactory.driver(),
-        &HBaseFactory.driver()
-    ));
+    assert!(Arc::ptr_eq(&HBaseFactory.driver(), &HBaseFactory.driver()));
 }
 
 #[test]
@@ -116,7 +113,10 @@ fn the_capability_set_declares_a_shape_and_is_not_the_inert_default() {
     );
     assert_eq!(flat.reset_for_reuse, ResetForReuse::Unsupported);
     assert_eq!(flat.precise_cancel, PreciseCancelSupport::Unsupported);
-    assert_eq!(flat.transaction_observation, TransactionObservation::Unsupported);
+    assert_eq!(
+        flat.transaction_observation,
+        TransactionObservation::Unsupported
+    );
 
     // `transactions` is the one cell that is a shape rather than a flag, so it
     // gets compared whole.
@@ -159,10 +159,43 @@ fn the_cells_without_evidence_stay_closed_and_say_why() {
             "the evidence for {cell} must say something"
         );
     }
-    for required in ["declined:", "unknown:", "confirmed:"] {
+}
+
+/// A reason that is merely non-empty is not a receipt: every entry has to say
+/// which kind of claim it is — declined, unknown, or confirmed — and where the
+/// claim came from, so a reviewer can check the cell against the source line.
+#[test]
+fn every_declared_capability_carries_a_written_reason() {
+    let evidence = hbase_capability_evidence();
+    for (name, reason) in &evidence {
         assert!(
-            evidence.iter().any(|(_, reason)| reason.contains(required)),
-            "the evidence must classify its cells with `{required}`"
+            reason.trim().len() > 20,
+            "capability {name} is asserted without a reason a reviewer could check"
+        );
+        assert!(
+            reason.trim_start().starts_with("declined:")
+                || reason.trim_start().starts_with("unknown:")
+                || reason.trim_start().starts_with("confirmed:"),
+            "capability {name} must say which kind of claim it is"
+        );
+    }
+    for cell in [
+        "stateful_session",
+        "namespace_switch",
+        "context_observation",
+        "transaction_observation",
+        "session_scoped_handles",
+        "reset_for_reuse",
+        "precise_cancel",
+        "snapshots",
+        "transactions",
+        "ddl_atomicity",
+        "data",
+        "backup",
+    ] {
+        assert!(
+            evidence.iter().any(|(name, _)| *name == cell),
+            "no evidence recorded for {cell}"
         );
     }
 }
@@ -175,6 +208,19 @@ fn the_registry_is_overwritten_rather_than_inherited() {
     assert_eq!(registry.provider_id, HBASE_PROVIDER_ID);
     assert_ne!(registry.capabilities, CapabilitySet::default());
     assert_eq!(registry.capabilities, hbase_capability_set());
+}
+
+/// The snapshot is what the declared set rests on. A registry that carries a
+/// set but an empty snapshot would let the host quote "confirmed" for cells
+/// nothing ever confirmed.
+#[test]
+fn the_capability_registry_carries_the_snapshot_that_backed_it() {
+    let snapshot = hbase_capability_registry().snapshot();
+    assert_eq!(snapshot.driver_id, HBASE_PROVIDER_ID);
+    assert!(
+        !snapshot.confirmed.is_empty(),
+        "a snapshot with nothing confirmed cannot justify the declared set"
+    );
 }
 
 /// Stargate is addressed by one cluster URL: there is no level to name.

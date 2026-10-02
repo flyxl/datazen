@@ -103,7 +103,7 @@ async fn acquiring_charges_one_connection_and_registers_exactly_one_resource() {
 
     // The key is derived from the connection config, so two acquires of the same
     // connection are the same resource and one acquires is one charge.
-    assert_eq!(handle.resource_key, "hbase_resource:hbase-cfg");
+    assert_eq!(handle.resource_key(), "hbase_resource:hbase-cfg");
     assert_eq!(budget.requested(), vec![1]);
     assert_eq!(budget.granted(), vec![1]);
     assert!(
@@ -534,13 +534,13 @@ async fn closing_releases_the_charge_exactly_once_and_is_idempotent() {
 
 #[tokio::test]
 async fn a_handle_from_another_epoch_is_refused_everywhere() {
-    let provider = provider();
-    let other = provider();
-    let handle = unacquired_handle(&other, "hbase_resource:hbase-cfg");
+    let mine = provider();
+    let theirs = provider();
+    let handle = unacquired_handle(&theirs, "hbase_resource:hbase-cfg");
 
     // Minted by another instance of the same provider, so the key is right and
     // the shape is right; only the epoch differs.
-    let error = provider
+    let error = mine
         .close_resource(&handle)
         .await
         .expect_err("a handle from another instance is not ours to close");
@@ -549,6 +549,30 @@ async fn a_handle_from_another_epoch_is_refused_everywhere() {
         "a right-shaped handle from another instance is a stale epoch, not a \
          missing resource: {error:?}"
     );
+}
+
+#[tokio::test]
+async fn a_handle_from_another_driver_is_an_ownership_mismatch() {
+    let provider = provider();
+    // Minted under another driver's id: the key shape is plausible and the
+    // epoch is current, so only the ownership check can catch it.
+    let other = ResourceHandle::issue(
+        "mysql",
+        "hbase_resource:hbase-cfg",
+        provider.runtime_epoch(),
+    );
+    let sink = RecordingSink::default();
+
+    let error = provider
+        .execute_on_resource(&other, &execution_id(), &scan_call(), &sink)
+        .await
+        .expect_err("a handle minted by another driver is never this provider's");
+    assert!(
+        matches!(error, ResourceError::ResourceOwnershipMismatch { .. }),
+        "another driver's handle is an ownership mismatch, not a stale epoch or a \
+         missing resource: {error:?}"
+    );
+    assert!(sink.chunks().is_empty(), "a foreign handle reaches no wire");
 }
 
 #[tokio::test]
@@ -578,18 +602,35 @@ async fn a_key_this_provider_never_opened_is_refused_rather_than_created() {
     assert!(matches!(error, ResourceError::InvalidResourceState { .. }));
 }
 
-/// The purpose a scope carries is echoed into nothing here, but the fixture
-/// keeps the default explicit so a future change to `ResourceScope` fails loudly
-/// rather than quietly defaulting.
+/// The fixtures guard themselves. `scope()` and `baseline()` are used by the
+/// acquires above that are *expected to succeed*, so a fixture that quietly
+/// started asking for an open transaction or a pinned handle would turn every
+/// happy-path test into a refusal — silently, and for the wrong reason.
 #[test]
-fn the_scope_fixture_asks_for_an_interactive_query() {
-    assert_eq!(scope().purpose, ResourcePurpose::InteractiveQuery);
+fn the_succeeding_fixtures_ask_for_nothing_this_driver_refuses() {
+    let scope = scope();
+    assert_eq!(scope.purpose, ResourcePurpose::InteractiveQuery);
+    assert!(
+        !scope.holds_open_transaction,
+        "this driver has no transaction to hold, so a fixture that asked for one \
+         would make every acquire above a refusal test"
+    );
+    assert!(
+        !scope.pin_for_streaming,
+        "this driver issues no pinnable handle, so a fixture that asked for one \
+         would make every acquire above a refusal test"
+    );
+    assert!(
+        scope.max_physical_connections >= 1,
+        "the declared cost is one connection, so a scope below one is refused"
+    );
 }
 
-/// The baseline the acquire fixtures carry is the empty one — the same value
-/// `validate_acquisition` refuses to accept anything in.
 #[test]
-fn the_placeholder_baseline_is_the_empty_one() {
-    assert!(baseline().initialization_requirements.is_empty());
+fn the_succeeding_fixtures_carry_the_empty_baseline() {
+    // A non-empty baseline is refused by `validate_acquisition`, so a fixture
+    // that smuggled one in would make the acquires above fail for a reason the
+    // test never mentions.
     assert_eq!(baseline(), Baseline::default());
+    assert!(baseline().initialization_requirements.is_empty());
 }

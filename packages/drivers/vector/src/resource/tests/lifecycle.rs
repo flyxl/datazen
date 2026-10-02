@@ -254,7 +254,7 @@ async fn executing_streams_the_rows_and_reports_only_what_it_proved() {
     let completion = provider
         .execute_on_resource(&handle, &execution_id(), &search_call(), &sink)
         .await
-        .expect("the search succeeds against the stub");
+        .unwrap_or_else(|e| panic!("the search succeeds against the stub on port {port}: {e:?}"));
 
     assert_eq!(completion.statement_results.len(), 1);
     assert_eq!(
@@ -332,7 +332,11 @@ async fn a_sink_that_refuses_rows_is_reported_as_a_delivery_failure() {
         .execute_on_resource(&handle, &execution_id(), &search_call(), &sink)
         .await
         .expect_err("rows nobody accepted are not a successful execution");
-    assert!(matches!(error, ResourceError::SinkRejected { .. }));
+    assert!(
+        matches!(&error, ResourceError::SinkRejected { .. }),
+        "a sink that refused the rows must be reported as the refusal it is: \
+         {error:?}"
+    );
     assert!(sink.chunks().is_empty());
 }
 
