@@ -202,10 +202,13 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// `ResourceError::CapabilityNotDeclared` instead of a silent empty success.
 pub(crate) fn capabilities() -> CapabilitySet {
     CapabilitySet {
-        // Filled — the driver reads session state off the server: the session's
-        // isolation level via `DBCC USEROPTIONS` and its open-transaction count via
-        // `SELECT @@TRANCOUNT`. Independent of the adapter's `SessionContinuity`.
-        stateful_session: Availability::Supported,
+        // Blank — the driver can read session state off the server (isolation
+        // level via `DBCC USEROPTIONS`, open-transaction count via
+        // `SELECT @@TRANCOUNT`), but §6.1 forbids reading that alone as a fixed
+        // session: there is no baseline validation and no exclusive declaration,
+        // so a later consumer inheriting the handle would inherit unverified
+        // state. Reading state is not owning it.
+        stateful_session: Availability::Unsupported,
         namespace_switch: NamespaceSwitch::Unsupported,
         // Blank — `observe_session` is unconditionally unobservable in the adapter.
         context_observation: ContextObservation::Unsupported,
@@ -304,9 +307,15 @@ mod tests {
         assert!(registry.require_precise_cancel().is_err());
         assert_eq!(
             factory().resource_capabilities().stateful_session,
-            datazen_driver_api::capabilities::Availability::Supported,
-            "the driver reads the session's isolation level and open-transaction count \
-             back off the server, so the session is measured rather than assumed"
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "§6.1: DBCC USEROPTIONS and SELECT @@TRANCOUNT prove the driver can READ \
+             session state, not that this handle owns it. Without baseline validation \
+             or an exclusive declaration the next consumer inherits unverified state"
+        );
+        assert!(
+            registry.require_stateful_session().is_err(),
+            "the gate must refuse while the declaration is Unsupported — a refusal the \
+             declaration contradicts would be a lie, not a policy"
         );
     }
 
@@ -324,9 +333,10 @@ mod tests {
         // The claims that are backed by code that runs.
         assert_eq!(
             declared.stateful_session,
-            datazen_driver_api::capabilities::Availability::Supported,
-            "DBCC USEROPTIONS and SELECT @@TRANCOUNT both read session-scoped state \
-             back off the server, so this is measured rather than assumed"
+            datazen_driver_api::capabilities::Availability::Unsupported,
+            "§6.1 withholds this cell from every driver on this path until §6.5 gives \
+             sessions a registration and baseline check; reading @@TRANCOUNT is not \
+             ownership, so the blank is the honest answer today"
         );
         assert_eq!(
             declared.data,

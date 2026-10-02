@@ -319,7 +319,7 @@ pub(super) fn foreign_handle() -> ResourceHandle {
 /// once so the declaration test, the receipt test and the gate table cannot
 /// drift apart — the count in `declares_exactly_the_three_provable_cells` is
 /// this array's length, not a number typed twice.
-const FLIPPED_CELLS: [&str; 3] = ["statefulSession", "namespaceSwitch", "contextObservation"];
+const FLIPPED_CELLS: [&str; 2] = ["namespaceSwitch", "contextObservation"];
 
 #[test]
 fn provider_id_is_redis() {
@@ -345,12 +345,14 @@ fn declares_exactly_the_three_provable_cells() {
 
     assert_eq!(
         FLIPPED_CELLS.len(),
-        3,
+        2,
         "the count in the test name is the count here"
     );
-    assert_eq!(set.stateful_session, Availability::Supported);
     assert_eq!(set.namespace_switch, NamespaceSwitch::InPlace);
     assert_eq!(set.context_observation, ContextObservation::Partial);
+    // `stateful_session` sits with the blanks above: §6.1 does not let a
+    // 常驻 connection alone carry a fixed session.
+    assert_eq!(set.stateful_session, Availability::Unsupported);
     // `data` and `backup` stay at their defaults: the contract has no axis that
     // proves them, and the fail-closed answer is the true one.
     assert_eq!(set.data, DataSupport::default());
@@ -476,10 +478,14 @@ fn every_receipt_is_keyed_by_a_real_capability_name() {
 fn exactly_two_of_the_thirteen_capability_gates_open() {
     let registry = redis_capability_registry();
 
-    assert!(registry.require_stateful_session().is_ok());
     assert!(registry.require_in_place_namespace_switch().is_ok());
 
     for (method, expected, outcome) in [
+        (
+            "require_stateful_session",
+            "statefulSession",
+            registry.require_stateful_session(),
+        ),
         (
             "require_context_observation",
             "contextObservation",

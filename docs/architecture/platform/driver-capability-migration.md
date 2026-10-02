@@ -515,6 +515,8 @@ Err(DriverError::NotSupported(
 **必须永不开放**：
 
 - **不得因为「池大小为 1」或「每个 `pool_id` 只有一条连接」就声明 `statefulSession: supported`。** 具体到本文的三个驱动：sqlite 的 `max_connections(1)` 是 sqlx pool；duckdb 的 `Arc<Mutex<Connection>>` 是互斥访问而非基线校验；redis 的常驻 `live` 连接承载了大多数操作，但同样没有基线校验、没有独占声明。§5.2 的反例原话就是这一条。
+- **不得因为「能读到服务端会话状态」就声明 `statefulSession: supported`。** sqlserver 能通过 `DBCC USEROPTIONS` 读隔离级别、通过 `SELECT @@TRANCOUNT` 读未提交事务数，这些**是**真实的服务端状态，读取本身也没有错。错的只是把「读得到」当成「独占拥有」：没有基线校验、没有独占声明时，下一个 consumer 继承句柄就会连同未经验证的状态一起继承。要让这一格转成 `supported`，缺的是登记与校验机制（§6.5），不是再多读几个字段。**读状态不等于拥有状态。**
+- 这两条判据是同一个判据：**物理连接在 handle 生命周期内不变 ≠ 这个 handle 拥有它。** 前者是事实，后者才是 `statefulSession` 要承诺的东西。redis 与 sqlserver 已按此回落到 `Unsupported`，redis 的能力修订号随之从 1 升到 2。
 - **不得因为「驱动没实现」就把 `Unsupported` 翻译成成功。** trait 默认体已经是 fail-closed 的（`discard_connection`、`begin_read_snapshot`、`cancel_query_with_execution` 都返回 `Unsupported`），adapter 若把它们捕获后返回 `Ok(())`，等于抹掉默认体的保护。
 - **不得让 adapter 跨 consumer 复用会话级句柄。** §6.5 的句柄登记机制还不存在，adapter 若在没有登记的情况下交出句柄，宿主将无法对句柄终态负责。
 

@@ -105,7 +105,7 @@ pub(crate) fn redis_connection_cost() -> ConnectionCostPolicy {
 ///
 /// | Capability | Declared | Why |
 /// |---|---|---|
-/// | `stateful_session` | `Supported` | one `RedisConn` per handle holds one `RedisLiveConn` (`driver/mod.rs:21-24`); every operation reaches it through the single keyed lookup `RedisDriver::get_conn` (`driver/mod.rs:127-134`). The session's current database is therefore real, stable state, not a per-statement artifact. |
+/// | `stateful_session` | `Unsupported` | one `RedisConn` per handle holds one `RedisLiveConn` and every operation reaches it through a single keyed lookup, so the session's current database really is stable state. §6.1 still forbids calling that a fixed session: there is no baseline validation and no exclusive declaration, so the next consumer inheriting the handle inherits state nobody verified. Reading state is not owning it. |
 /// | `namespace_switch` | `InPlace` | `select_db_on` (`driver/session.rs:9-18`) issues `SELECT <index>` **on that same live connection**. No new socket, no replacement. |
 /// | `context_observation` | `Partial` | `observe_session` does a real `INFO server` round trip, so liveness, health and protocol drain are observed facts. The current database index is *not* read back from the server, so the reported context carries an empty namespace and `Partial` confidence instead of a namespace the server never confirmed. |
 /// | `transaction_observation` | `Unsupported` | Redis has no SQL transaction. A `MULTI` block is a queued-command buffer, not an all-or-nothing unit. |
@@ -122,14 +122,18 @@ pub(crate) fn redis_capability_set() -> CapabilitySet {
     // here instead of silently inheriting a value nobody chose.
     let mut set = CapabilitySet::default();
 
-    set.stateful_session = Availability::Supported;
+    set.stateful_session = Availability::Unsupported;
     set.namespace_switch = NamespaceSwitch::InPlace;
     set.context_observation = ContextObservation::Partial;
 
-    // `transaction_observation`, `session_scoped_handles`, `reset_for_reuse`,
-    // `precise_cancel`, `snapshots`, `transactions` and `ddl_atomicity` stay
-    // at their fail-closed defaults, and each of those defaults is the true
-    // answer for this driver rather than a shrug:
+    // `stateful_session`, `transaction_observation`, `session_scoped_handles`,
+    // `reset_for_reuse`, `precise_cancel`, `snapshots`, `transactions` and
+    // `ddl_atomicity` stay at their fail-closed defaults, and each of those
+    // defaults is the true answer for this driver rather than a shrug:
+    //
+    //   * `stateful_session` defaults to `Unsupported`, which is §6.1's verdict
+    //     on a常驻 connection: the state is real, but nothing here proves this
+    //     handle owns it for its whole life.
     //
     //   * `precise_cancel` defaults to `Unknown`, and `Unknown` is treated as
     //     "not in the cancel set" — never as "the cancel worked".
@@ -188,7 +192,7 @@ pub(crate) fn redis_capability_set() -> CapabilitySet {
 /// Bumped whenever [`redis_capability_set`] changes meaning, so a cached
 /// snapshot can be told apart from the current declaration. `1` is the first
 /// set that was actually checked against the code cited above.
-pub(crate) const REDIS_CAPABILITY_REVISION: u64 = 1;
+pub(crate) const REDIS_CAPABILITY_REVISION: u64 = 2;
 
 /// The full registry: identity, version, protocol and the declared set.
 pub(crate) fn redis_capability_registry() -> CapabilityRegistry {
@@ -212,9 +216,12 @@ fn redis_capability_evidence() -> Vec<(&'static str, String)> {
     vec![
         (
             "statefulSession",
-            "driver/mod.rs:21-24 RedisConn holds exactly one RedisLiveConn, and \
-             driver/mod.rs:127-134 RedisDriver::get_conn is the single keyed \
-             access point every operation in the crate uses"
+            "declined: driver/mod.rs:21-24 does hold exactly one RedisLiveConn per \
+             handle and driver/mod.rs:127-134 is the single keyed access point, so \
+             the current database is real stable state. §6.1 still forbids calling \
+             that a fixed session: there is no baseline validation and no exclusive \
+             declaration, so the next consumer inheriting the handle inherits state \
+             nobody verified. Reading state is not owning it"
                 .to_string(),
         ),
         (
