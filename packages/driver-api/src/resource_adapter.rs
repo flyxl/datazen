@@ -99,6 +99,15 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Capability revision the adapter stamps on a snapshot that carries evidence.
+///
+/// [`LegacyResourceAdapter::new`] starts at `0`, the sentinel meaning "this
+/// provider had no capability module yet". A provider that opts into
+/// [`LegacyResourceAdapter::with_evidence`] moves to `1`: recording evidence
+/// is itself a change in what the snapshot means, and a cached revision-`0`
+/// snapshot must not be mistaken for one carrying evidence.
+pub const ADAPTER_EVIDENCE_REVISION: u64 = 1;
+
 impl LegacyResourceAdapter {
     /// Wrap a driver. `runtime_epoch` is the host's current epoch; every handle
     /// this adapter issues is bound to it, and a handle minted under an older
@@ -149,6 +158,56 @@ impl LegacyResourceAdapter {
             capabilities: registry,
             live: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// Record the evidence behind this adapter's declaration.
+    ///
+    /// [`Self::new`] builds its snapshot at revision `0` — "no capability
+    /// module yet" — so this builder moves the snapshot to
+    /// [`ADAPTER_EVIDENCE_REVISION`] and merges the evidence in the same step.
+    /// Fixing the revision up here rather than leaving it to the caller is
+    /// what lets the method be infallible: the check in
+    /// [`CapabilitySnapshot::with_evidence`] that rejects evidence at revision
+    /// `0` cannot be reached from here, because the revision was just
+    /// corrected.
+    ///
+    /// `new` keeps its six-argument shape, so this is purely additive: a
+    /// driver that calls nothing keeps revision `0` and an empty evidence
+    /// table, and [`Self::evidence_gaps`] reports all twelve cells missing.
+    pub fn with_evidence<K, V, I>(self, evidence: I) -> Self
+    where
+        K: Into<String>,
+        V: Into<String>,
+        I: IntoIterator<Item = (K, V)>,
+    {
+        let LegacyResourceAdapter {
+            driver,
+            driver_id,
+            runtime_epoch,
+            namespace_shape,
+            mut capabilities,
+            live,
+        } = self;
+        if capabilities.snapshot.capability_revision == 0 {
+            capabilities.snapshot.capability_revision = ADAPTER_EVIDENCE_REVISION;
+        }
+        capabilities.snapshot = capabilities.snapshot.merge_evidence(evidence);
+        Self {
+            driver,
+            driver_id,
+            runtime_epoch,
+            namespace_shape,
+            capabilities,
+            live,
+        }
+    }
+
+    /// The declared cells this adapter carries no evidence for.
+    ///
+    /// Delegated to [`CapabilityRegistry::evidence_gaps`], which does not need
+    /// the adapter's cooperation to answer.
+    pub fn evidence_gaps(&self) -> Vec<&'static str> {
+        self.capabilities.evidence_gaps()
     }
 
     /// The wrapped driver, for callers that still need the legacy API.

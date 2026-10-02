@@ -2,6 +2,7 @@
 //! Loaded via `#[path]` from `resource_adapter.rs` under `#[cfg(test)]`.
 
 use super::*;
+use crate::capabilities::Availability;
 use crate::namespace::{NamespaceLevel, NamespaceLevelKind};
 use crate::resource::{IdentityScope, ResourcePurpose, ResourceScope, ResultChunk};
 use crate::session::SessionState;
@@ -684,4 +685,142 @@ fn the_adapter_refuses_a_context_observation_it_never_performed() {
     let unobserved = SessionContext::unobserved();
     assert!(!unobserved.matches_target(&target("app")));
     assert!(!unobserved.matches_target(&NamespaceTarget::empty()));
+}
+
+/// The twelve declared cells, in declaration order.
+///
+/// Spelled out here rather than derived from production code: a test that
+/// asked the implementation what it expects proves nothing. If a cell is added
+/// to `CapabilitySet`, this list has to be updated deliberately — that is the
+/// point of writing it out.
+const ALL_CELLS: [&str; 12] = [
+    "statefulSession",
+    "namespaceSwitch",
+    "contextObservation",
+    "transactionObservation",
+    "sessionScopedHandles",
+    "resetForReuse",
+    "preciseCancel",
+    "snapshots",
+    "transactions",
+    "ddlAtomicity",
+    "data",
+    "backup",
+];
+
+#[test]
+fn adapter_without_evidence_reports_every_cell_missing() {
+    // The discriminator: a driver on the adapter path that recorded nothing is
+    // observable as "all twelve missing" without the driver's cooperation.
+    //
+    // Note what this test does NOT assert: `gaps.is_empty()`. Asserting that
+    // would turn "nobody has filled in the evidence yet" into "the evidence
+    // situation is fine", which is the opposite of what the empty table means.
+    let provider = adapter(LegacyFake::new());
+
+    assert_eq!(provider.evidence_gaps(), ALL_CELLS);
+    // Position taken explicitly: the adapter's own `confirmed` table carries
+    // no rationale today, and that is a known gap, not a passing grade.
+    assert!(provider.capabilities().snapshot.confirmed.is_empty());
+    assert_eq!(provider.capabilities().snapshot.capability_revision, 0);
+}
+
+#[test]
+fn adapter_evidence_is_recorded_and_the_gap_list_shrinks_to_the_rest() {
+    let provider = adapter(LegacyFake::new()).with_evidence([
+        (
+            "preciseCancel",
+            "the fake driver's legacy `cancel_query` returns Ok(()) unconditionally",
+        ),
+        (
+            "statefulSession",
+            "SessionContinuity is the non-supporting default: never verified",
+        ),
+        ("connectionCostPolicy", "not one of the twelve cells"),
+    ]);
+
+    // The two cells above dropped off; the third key is not a cell, so it can
+    // never appear in a gap list, and it is not an error either.
+    assert_eq!(
+        provider.evidence_gaps(),
+        [
+            "namespaceSwitch",
+            "contextObservation",
+            "transactionObservation",
+            "sessionScopedHandles",
+            "resetForReuse",
+            "snapshots",
+            "transactions",
+            "ddlAtomicity",
+            "data",
+            "backup",
+        ]
+    );
+
+    let snapshot = &provider.capabilities().snapshot;
+    assert_eq!(snapshot.capability_revision, ADAPTER_EVIDENCE_REVISION);
+    assert_ne!(snapshot.capability_revision, 0);
+    assert_eq!(snapshot.confirmed.len(), 3);
+    assert_eq!(
+        snapshot.confirmed.get("preciseCancel").map(String::as_str),
+        Some("the fake driver's legacy `cancel_query` returns Ok(()) unconditionally")
+    );
+}
+
+#[test]
+fn adapter_evidence_over_a_declared_capability_cell_is_visible_to_a_reviewer() {
+    // The point of the whole channel: the rationale for a claim that is
+    // actually switched on has to be attached to the snapshot, so a reader of
+    // the registry sees the claim and its reason in the same place.
+    let mut capabilities = CapabilitySet::default();
+    capabilities.stateful_session = Availability::Supported;
+    let provider = LegacyResourceAdapter::new(
+        Arc::new(LegacyFake::new()),
+        "legacy-fake",
+        "0.0.1",
+        7,
+        shape(),
+        capabilities,
+    );
+
+    assert!(provider.capabilities().require_stateful_session().is_ok());
+    // `with_evidence` not called: the claim is on, the evidence is missing, and
+    // the gap list says which cell that is.
+    assert_eq!(provider.evidence_gaps(), ALL_CELLS);
+}
+
+#[test]
+fn evidence_at_revision_zero_is_refused() {
+    // Revision 0 is the "no capability module existed yet" sentinel. Evidence
+    // recorded against it would be unattributable, so the constructor refuses.
+    let snapshot = CapabilitySnapshot::new("legacy-fake", "0.0.1", crate::PROTOCOL_VERSION, 0);
+    let error = snapshot
+        .with_evidence([("backup", "restores land on a separate connection")])
+        .expect_err("revision 0 must not accept evidence");
+
+    assert_eq!(error.provider_id, "legacy-fake");
+    assert_eq!(error.capability_revision, 0);
+
+    // The refusal is about the evidence, not about revision 0 itself: an empty
+    // table at revision 0 is still the normal starting point.
+    assert!(
+        CapabilitySnapshot::new("legacy-fake", "0.0.1", crate::PROTOCOL_VERSION, 0)
+            .with_evidence(std::iter::empty::<(String, String)>())
+            .is_ok()
+    );
+}
+
+#[test]
+fn evidence_gaps_answers_from_the_confirmed_table_alone() {
+    // Proves the gap list is not asking the driver anything: it is a function
+    // of `confirmed` minus the cell list, so a driver cannot report itself as
+    // complete by declining to answer.
+    let snapshot = CapabilitySnapshot::new("legacy-fake", "0.0.1", crate::PROTOCOL_VERSION, 2)
+        .with_evidence(ALL_CELLS.map(|cell| (cell, "synthetic rationale")))
+        .expect("revision 2 is allowed to carry evidence")
+        .with_evidence([("connectionCostPolicy", "extra, not a cell")])
+        .expect("still allowed");
+
+    assert_eq!(snapshot.evidence_gaps(), Vec::<&'static str>::new());
+    assert_eq!(snapshot.confirmed.len(), 13);
 }
