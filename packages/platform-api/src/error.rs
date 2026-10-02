@@ -425,19 +425,53 @@ mod tests {
         // 跨边界的错误类型是 `ApiError`（application 层）。如果哪天有人给 `PortError`
         // 加了 serde，这里会失败并提醒：要么删掉，要么连同 host 的映射一起改。
         //
-        // 检查范围**必须**只覆盖 `PortError` 自己的定义：同一模块里现在还有
+        // 检查范围**必须**只覆盖 `PortError` 自己的代码面：同一模块里现在还有
         // `ApiErrorCode` / `RetryDisposition`，它们是跨边界 wire 词汇、**必须**带 serde。
         // 早先这里的写法是「取 `#[cfg(test)]` 之前的全文」，它当时成立只是因为本文件里
         // 恰好还没有 serde 类型；一旦按 §4:234 把 `ApiErrorCode` 收进来，那条写法会
         // 恒失败，或被人为了「让它变绿」而放宽 marker 列表——守卫就此失效。
+        //
+        // 但收窄过头同样是失效，而且是**静默**的：只要取样范围比 `PortError` 的代码面小，
+        // 三条 `marker` 断言就会拿着一个查不到东西的 `definition` 永远绿。
+        // 人最自然的写法恰恰是「往 derive 列表里追加 `Serialize, Deserialize`」，
+        // 而 derive 在 `pub enum` 的**上方一行**——只锚 `pub enum` 会整条漏掉。
+        // 所以两端都贴住完整代码面：上端从 `#[derive` 起，下端到 `impl PortError` 止
+        // （在 impl 里调 `serde_json` 同样是给端口层私定 wire 形态）。
         let source = include_str!("error.rs");
-        let start = source
+        let enum_at = source
             .find("pub enum PortError {")
             .expect("PortError 必须仍然定义在本模块");
-        let end = source[start..]
+        let attributes_at = source[..enum_at]
+            .rfind("#[derive")
+            .expect("PortError 的 derive 属性必须仍然在枚举上方");
+        let after_enum = source[enum_at..]
             .find("\n}\n")
+            .map(|at| enum_at + at + "\n}\n".len())
             .expect("PortError 枚举必须仍以列 0 的收尾大括号结束");
-        let definition = &source[start..start + end];
+        let impl_at = after_enum
+            + source[after_enum..]
+                .find("impl PortError {")
+                .expect("PortError 之后必须仍有 impl PortError 块");
+        let end = source[impl_at..]
+            .find("\n}\n")
+            .map(|at| impl_at + at)
+            .expect("PortError 的 impl 块必须仍以列 0 的收尾大括号结束");
+        let definition = &source[attributes_at..end];
+
+        // 范围自检：锚点漂移必须变成一次**显式**失败，而不是又一次没人发现的静默失效。
+        for anchor in ["#[derive", "pub enum PortError {", "impl PortError {"] {
+            assert!(
+                definition.contains(anchor),
+                "守卫取样范围已失效，缺 `{anchor}`；范围必须覆盖 PortError 的 derive、枚举体与 impl 块"
+            );
+        }
+        // 反向自检：范围不能越界碰到隔壁的 wire 词汇，否则这条守卫会变成恒失败，
+        // 而恒失败会被人用「放宽 marker 列表」的方式抹掉——正是上面注释里最坏的那种结局。
+        assert!(
+            !definition.contains("pub enum ApiErrorCode"),
+            "守卫取样范围串进了 `ApiErrorCode`；本测试只应针对 PortError"
+        );
+
         for marker in ["Serialize", "Deserialize", "serde_json"] {
             assert!(
                 !definition.contains(marker),
