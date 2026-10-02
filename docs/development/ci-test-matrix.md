@@ -79,7 +79,7 @@
 是同一个契约的两端：只改 workflow 就直接造出一个红 CI。
 
 **这个契约的两端都不在 `ci.yml` 里。** 在 `ci.yml` 里搜 `testTimeout` 只会搜到**注释**，
-搜不到任何配置——`testTimeout: 10_000` 实际写在 `vitest.config.ts:63` 的根级 `test` 块里。
+搜不到任何配置——`testTimeout: 10_000` 实际写在 `vitest.config.ts` 根级 `test` 块的 `testTimeout` 上。
 两个 `continue-on-error` 的一半在 workflow，另一半（断言它不存在的那条）也在
 `scripts/__tests__/` 下。**只改 workflow 永远不够，只改守卫也永远不够。**
 
@@ -174,7 +174,7 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 **并且本节内部有一个未对齐的差值，记在这里而不是抹平。** 全文出现两个用例总数：
 
 - `5677 passed`——`7559759b7` 那次全绿运行的套件通过数（555 文件），被守卫钉在 `ci.yml`；
-- `5714`——`testTimeout` 预算的测量基数（`ci.yml:127` 原文："all 5714 tests,
+- `5714`——`testTimeout` 预算的测量基数（`ci.yml` 的 frontend job 注释 "Timeout budget, measured not guessed" 原文："all 5714 tests,
   `--reporter=json`"），**不被任何守卫断言**。
 
 两者相差 **37**，且 `5714` 的来源（哪次运行、哪个驱动集）本文没有记录。**在补测之前，
@@ -270,7 +270,7 @@ advisory，见 §2.3.1。`@tauri-apps/api` / `fetch(` / `XMLHttpRequest` 这类�
 ### 2.3.1 F-01 的 `tauri*` 何时能变成阻断门禁
 
 §2.4 的 F-01 禁止列已经写了 `tauri*`，但**门禁侧看不见**：`F-01` 的 `forbiddenCrates`
-仍是 `[]`（`scripts/check-platform-crate-boundaries.mjs:111`）。而 `checkSpecConsistency`
+仍是 `[]`（`scripts/check-platform-crate-boundaries.mjs` 的 F-01 规则 `forbiddenCrates`）。而 `checkSpecConsistency`
 的 crate 双向比对**只在 `forbiddenCrates === 'spec'` 时才跑**，F-01 不是，所以文档写多少，
 门禁都不会有反应。这一段记的是"怎么把它变成阻断门禁"，不是"已经变了"。
 
@@ -289,7 +289,7 @@ ADVISORY F-01?  datazen-driver-redis (packages/drivers/redis/Cargo.toml) declare
 
 | # | 前置条件 | 位置 | 归属 |
 |---|---------|------|------|
-| 1 | redis 去掉 `tauri` 声明（`Cargo.toml:27`）与 `[build-dependencies] tauri-plugin`（`:31`） | `packages/drivers/**` | 驱动轨 |
+| 1 | redis 去掉 `tauri` 声明（`packages/drivers/redis/Cargo.toml` 的 `[dependencies] tauri`）与 `[build-dependencies] tauri-plugin` | `packages/drivers/**` | 驱动轨 |
 | 2 | manifest 读取失败路径由 advisory 改为 error（§2.3.2） | `scripts/**` | 门禁脚本轨 |
 | 3 | `F-01` 的 `forbiddenCrates` 由 `[]` 改为 `['tauri']` | `scripts/**` | 门禁脚本轨 |
 
@@ -307,7 +307,7 @@ tauri 声明（宿主本来就该依赖 tauri）不在该规则主体内。
 
 ### 2.3.2 manifest 读不出来为何是 advisory 而不是 error
 
-`scripts/check-platform-crate-boundaries.mjs:575-583`：声明边扫描逐成员
+`scripts/check-platform-crate-boundaries.mjs` 的声明边扫描（逐 member 读 manifest）：
 `readFileSync(member.manifestPath)`，抛错时压一条 `read?` advisory 然后 `continue`。
 这是整套门禁里唯一一处非 fail-closed 的不对称。
 
@@ -432,13 +432,13 @@ ci-docs / version / driver-protocol / boundaries / i18n keys）、`pnpm test:uni
 | 项 | 数值 | 依据 |
 |----|------|------|
 | `e2e/specs/**` spec 文件总数 | 144 | `find e2e/specs -name '*.ts'` |
-| 默认排除（截图/录屏类） | 10 | `wdio.conf.ts:221-228` 的 `exclude`，仅在 `E2E_CAPTURE` 时放开 |
+| 默认排除（截图/录屏类） | 10 | `wdio.conf.ts` 根级 `exclude`（`E2E_CAPTURE` 时放开为空数组） |
 | **默认实际运行** | **约 134** | 144 − 7 个 `*screenshot*` − `zz-screenshots` / `demo-recording` / `zz-diag` |
 
 跳过条件分三层：
 
 1. **截图类**：`--capture` 未开启时统一排除（`pnpm e2e:shots` 才跑）。
-2. **数据库类**：`e2e/run.mjs:49-58` 启动前跑 `e2e/setup-e2e-env.sh`，**失败只告警不中断**
+2. **数据库类**：`e2e/run.mjs` 的 `runEnvSetup()` 启动前跑 `e2e/setup-e2e-env.sh`，**失败只告警不中断**
    （"DB specs may fail; UI-only specs can still run"）。约 40 个 spec 读
    `E2E_PG_*` / `E2E_MYSQL_*`；预置库缺失时这些 spec 失败，UI 类仍可跑完。
 3. **spec 级**：`E2E_SKIP_WORKER_DATABASE=1`（`e2e:schema-tree-objects`）、`E2E_SKIP_SQLSERVER=1`、
@@ -458,17 +458,17 @@ e2e/run.mjs:50-54          → bash e2e/setup-e2e-env.sh
 
 | 数据库 | 脚本位置 | 用途 |
 |--------|----------|------|
-| `datazen_sync_src` / `datazen_sync_tgt` | `:51`、`:69`（PG，`CREATE DATABASE` 于 `:55`） | Data Sync 同族双库 |
-| `datazen_sync_mysql_src` / `datazen_sync_mysql_tgt` | `:98-99`（MySQL） | Data Sync 跨方言 |
-| `$MYSQL_DB`（契约 fixture 库） | `:100`，表结构在 `setup-e2e-env.sh:100-108` | 契约矩阵 + 截图 |
+| `datazen_sync_src` / `datazen_sync_tgt` | `setup-sync-dbs.sh`「PostgreSQL setup」段：`for db in datazen_sync_src datazen_sync_tgt` 建库循环（其 `CREATE DATABASE $db` 分支），同段第二个同名循环负责重置 fixture 表并授权 | Data Sync 同族双库 |
+| `datazen_sync_mysql_src` / `datazen_sync_mysql_tgt` | `setup-sync-dbs.sh`「MySQL setup」段三条 `CREATE DATABASE IF NOT EXISTS` 中的前两条 | Data Sync 跨方言 |
+| `$MYSQL_DB`（契约 fixture 库） | `setup-sync-dbs.sh`「MySQL setup」段第三条 `CREATE DATABASE IF NOT EXISTS`；表结构由 `setup-e2e-env.sh` 的 `e2e_contract_conn` 建表语句创建 | 契约矩阵 + 截图 |
 
-`datazen_sync_tgt` 另在 `:88` 授只读给 `$PG_READONLY`，用于权限用例。
+`datazen_sync_tgt` 另在 `setup-sync-dbs.sh`「PostgreSQL setup」段末尾的只读授权块（`GRANT CONNECT ON DATABASE datazen_sync_tgt TO ${PG_READONLY}` 起）授只读给 `$PG_READONLY`，用于权限用例。
 
 ### 5.4 契约矩阵（`pnpm e2e:contract:matrix`）覆盖什么
 
 `--suite contract` → `e2e/specs/host-contract-matrix.ts` → 对 `DEFAULT_MATRIX_DRIVERS`
-（**postgres / mysql / sqlite**，`fixtures.ts:192-196`）逐个驱动套用
-`planJourneys()`，journey 集合取 `ALL_CONTRACT_JOURNEYS`（`plan.ts:12-23`，**10 条全跑**，
+（**postgres / mysql / sqlite**，`fixtures.ts` 的 `DEFAULT_MATRIX_DRIVERS`）逐个驱动套用
+`planJourneys()`，journey 集合取 `ALL_CONTRACT_JOURNEYS`（`journeys/plan.ts`，**10 条全跑**，
 不是 core 3 条；core 3 条 `HC-DATA`/`HC-FILTER`/`HC-QUERY` 只是 F2 历史子集）。
 
 | Journey | 所需能力 | PG | MySQL | SQLite |
@@ -479,7 +479,7 @@ e2e/run.mjs:50-54          → bash e2e/setup-e2e-env.sh
 | HC-STRUCT | `hasStructure` | ✅ | ✅ | ✅ |
 | HC-INDEX | `hasIndexes` | ✅ | ✅ | ✅ |
 | HC-EXPORT | `hasExport` + `hasTableData` | ✅ | ✅ | ✅ |
-| HC-OBJ | `hasObjects` | ✅ | ✅ | ❌（`fixtures.ts:69` 置 false） |
+| HC-OBJ | `hasObjects` | ✅ | ✅ | ❌（`fixtures.ts` 的 `SQLITE_CAPABILITIES` 置 false） |
 | HC-EXPLAIN | `hasExplain` + `hasSqlEditor` | ✅ | ✅ | ✅ |
 
 即 **3 × 10 = 30 格，29 跑 / 1 跳过**（SQLite 的 HC-OBJ）。
@@ -496,8 +496,8 @@ e2e/run.mjs:50-54          → bash e2e/setup-e2e-env.sh
 
 | 驱动 | 接线位置 | 覆盖 spec |
 |------|----------|-----------|
-| redis | `wdio.conf.ts:325`（glob `../packages/drivers/redis/e2e/*.ts`） | 2 / 2 |
-| mysql + postgres | `wdio.conf.ts:328-331`（`schema-tree-objects` suite） | 各 1 / 7、1 / 6 |
+| redis | `wdio.conf.ts` 的 `redis` suite（glob `../packages/drivers/redis/e2e/*.ts`） | 2 / 2 |
+| mysql + postgres | `wdio.conf.ts` 的 `schema-tree-objects` suite | 各 1 / 7、1 / 6 |
 
 **完全没有任何接线**（未进 `wdio.conf.ts` 任何 suite、CI 也不引用，需手动
 `pnpm e2e:skip-build -- --spec <path>`）：

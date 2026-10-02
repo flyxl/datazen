@@ -3,10 +3,10 @@
  * @file Driver protocol / crate compatibility gate for `packages/driver-api`.
  *
  * A driver compiled against an older `datazen-driver-api` is not wrong; it is
- * simply speaking a different contract. `platform-development-plan.md:97`
- * requires that changing a public contract be reconciled against three
- * separate numbers — the crate SemVer, `PROTOCOL_VERSION` and
- * `MIN_PROTOCOL_VERSION` — and the same document rules that
+ * simply speaking a different contract. `platform-development-plan.md` §6
+ * 「P2：Driver 固定资源与可选能力契约」 requires that changing a public
+ * contract be reconciled against three separate numbers — the crate SemVer,
+ * `PROTOCOL_VERSION` and `MIN_PROTOCOL_VERSION` — and the same document rules that
  * "协议升级与驱动发布是原子兼容门槛，不允许用下调最低版本掩盖 breaking change"
  * (a protocol upgrade and the driver release are an atomic compatibility
  * threshold; a breaking change must never be disguised by lowering the minimum
@@ -216,9 +216,9 @@ export const CLASS_REQUIRES = Object.freeze(
  * Invariants that hold regardless of the diff.
  *
  * - `min-protocol-never-lowered` is the plan's explicit prohibition
- *   (`platform-development-plan.md:97`): lowering the minimum widens the set of
- *   drivers the host claims to serve, which is how a breaking change gets
- *   disguised as a compat fix.
+ *   (`platform-development-plan.md` §6「P2：Driver 固定资源与可选能力契约」):
+ *   lowering the minimum widens the set of drivers the host claims to serve,
+ *   which is how a breaking change gets disguised as a compat fix.
  * - `protocol-window-non-empty` catches the other way of breaking drivers by
  *   accident — raising `PROTOCOL_VERSION` past `MIN_PROTOCOL_VERSION` closes
  *   the degraded window and refuses every currently-shipping driver.
@@ -231,7 +231,7 @@ export const STATIC_INVARIANTS = Object.freeze([
     id: 'min-protocol-never-lowered',
     statement: 'MIN_PROTOCOL_VERSION must never decrease.',
     because:
-      'Lowering the minimum widens the range of driver protocols this host claims to serve, which is exactly how a breaking change gets hidden behind a compat fix (platform-development-plan.md:97).',
+      'Lowering the minimum widens the range of driver protocols this host claims to serve, which is exactly how a breaking change gets hidden behind a compat fix (platform-development-plan.md §6「P2：Driver 固定资源与可选能力契约」: when a public contract changes, reconcile crate SemVer, PROTOCOL_VERSION and minimum compatible).',
   }),
   Object.freeze({
     id: 'protocol-window-non-empty',
@@ -659,7 +659,7 @@ export function evaluate(options = {}) {
   ) {
     violations.push({
       code: 'min-protocol-never-lowered',
-      message: `${LOG_PREFIX} MIN_PROTOCOL_VERSION was lowered ${before.minProtocol} -> ${after.minProtocol}. Lowering the minimum widens the range of driver protocols this host claims to serve; a breaking change must never be disguised by lowering the minimum (platform-development-plan.md:97).`,
+      message: `${LOG_PREFIX} MIN_PROTOCOL_VERSION was lowered ${before.minProtocol} -> ${after.minProtocol}. Lowering the minimum widens the range of driver protocols this host claims to serve; a breaking change must never be disguised by lowering the minimum (platform-development-plan.md §6「P2：Driver 固定资源与可选能力契约」: when a public contract changes, reconcile crate SemVer, PROTOCOL_VERSION and minimum compatible).`,
     });
   }
   if (after.minProtocol > after.protocol) {
