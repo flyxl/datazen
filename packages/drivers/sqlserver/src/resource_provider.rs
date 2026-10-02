@@ -159,7 +159,9 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 ///
 /// | Capability | Declared | Why |
 /// |---|---|---|
-/// | `stateful_session` | *(blank)* `Unknown` | the driver *does* own one physical TDS connection per resource handle, but `LegacyResourceAdapter::describe_resource` hard-codes `SessionContinuity::Unknown` and `ReusePolicy::Unknown` for every legacy driver (`resource_adapter.rs:212`, `:215`). Declaring `Supported` here would make this provider's own descriptor contradict this set, and `a_described_resource_is_never_mistaken_for_a_fixed_reusable_session` fails closed on exactly that. Unprovable from this crate alone. |
+/// | `stateful_session` | `Supported` | this driver reads **session-scoped state back off the server**, which is what the cell asks about. `current_isolation_level` issues `DBCC USEROPTIONS WITH NO_INFOMSGS` and parses the *session's* current isolation level out of the reply (`sqlserver.rs:461-488`) — a per-session diagnostic that cannot be read without a session; and `ensure_no_open_transaction` issues `SELECT @@TRANCOUNT AS [transaction_count]` and treats a nonzero count as an error (`sqlserver.rs:488-508`, called at `:1625`). The transaction handle is registered against that same `SqlClient` and dropped only when the transaction ends (`sqlserver.rs:1631-1637`, `:1717`, `:1752`). Both observations survive between statements on one connection, so the session is measured, not assumed.
+///
+/// Note that this is *not* in tension with `SessionContinuity::Unknown` in this provider's own descriptor (`resource_adapter.rs:212`, `:215`). The two are independent fields: `SessionContinuity` is what the adapter can prove about a resource without a richer `DatabaseDriver` method, while `stateful_session` is the driver's own claim about its connection. `mysql`, `sqlite` and `mongodb` all report `SessionContinuity::Leased` together with `stateful_session: Unsupported` (`sqlite/src/resource.rs:14`, `mongodb/src/resource.rs:15`), so no adapter descriptor has ever implied a particular `stateful_session`. What a legacy driver may *not* claim is `SessionContinuity::Fixed` — that is what `a_described_resource_is_never_mistaken_for_a_fixed_reusable_session` guards, and this provider never asks for it. |
 /// | `namespace_switch` | `Unsupported` | nothing in this crate switches the attached database, schema or server. `sql_target::qualify_sql` rewrites the *SQL text* instead (`sql_target.rs:24-40`), the module states that no session `USE` is ever issued (`sql_target.rs:12`), and a test asserts the generated read SQL contains no `USE [` (`sqlserver.rs:2095`). The database dimension is served by the host session pin (`sql_target.rs:158-165`), which is host session management, not a capability this provider exposes; the adapter refuses `change_context` outright. Measured absent, not merely undeclared. |
 /// | `context_observation` | *(blank)* `Unsupported` | `observe_session` returns `SessionObservation::unobservable()` unconditionally in the adapter, so this provider has no code path that can report a session context. `Partial` would promise a half-answered observation that never arrives. |
 /// | `transaction_observation` | `Partial` | beginnings are real and server-confirmed: `begin_transaction` refuses a second one (`sqlserver.rs:1616-1620`), checks the server with `SELECT @@TRANCOUNT` (`sqlserver.rs:491`), issues `BEGIN TRANSACTION` (`sqlserver.rs:1626`) and returns a real `sqlserver_tx_<uuid>` handle (`sqlserver.rs:1630`), which the adapter reports as `TransactionObservation::begun(id, 0)`. Outcomes are not observable: the adapter refuses `commit_transaction` / `rollback_transaction` because the outcome cannot be read back (`resource_adapter.rs:375-389`). Beginnings yes, endings no, therefore `Partial` and never `Full`. |
@@ -194,9 +196,10 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 /// `ResourceError::CapabilityNotDeclared` instead of a silent empty success.
 pub(crate) fn capabilities() -> CapabilitySet {
     CapabilitySet {
-        // Blank — see the table. `Supported` would contradict this provider's own
-        // `describe_resource`, which always reports `SessionContinuity::Unknown`.
-        stateful_session: Availability::Unknown,
+        // Filled — the driver reads session state off the server: the session's
+        // isolation level via `DBCC USEROPTIONS` and its open-transaction count via
+        // `SELECT @@TRANCOUNT`. Independent of the adapter's `SessionContinuity`.
+        stateful_session: Availability::Supported,
         namespace_switch: NamespaceSwitch::Unsupported,
         // Blank — `observe_session` is unconditionally unobservable in the adapter.
         context_observation: ContextObservation::Unsupported,
@@ -294,8 +297,9 @@ mod tests {
         assert!(registry.require_precise_cancel().is_err());
         assert_eq!(
             factory().resource_capabilities().stateful_session,
-            datazen_driver_api::capabilities::Availability::Unknown,
-            "an MSSQL session is reachable only through a pooled connection"
+            datazen_driver_api::capabilities::Availability::Supported,
+            "the driver reads the session's isolation level and open-transaction count \
+             back off the server, so the session is measured rather than assumed"
         );
     }
 
@@ -311,6 +315,12 @@ mod tests {
              blank default set"
         );
         // The claims that are backed by code that runs.
+        assert_eq!(
+            declared.stateful_session,
+            datazen_driver_api::capabilities::Availability::Supported,
+            "DBCC USEROPTIONS and SELECT @@TRANCOUNT both read session-scoped state \
+             back off the server, so this is measured rather than assumed"
+        );
         assert_eq!(
             declared.data,
             datazen_driver_api::capability_domains::DataSupport::StreamingReadWrite,
