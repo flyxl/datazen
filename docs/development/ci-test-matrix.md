@@ -78,6 +78,24 @@
 与守卫 `scripts/__tests__/run-unit-driver-set.test.ts` 中断言其**不存在**的那条，
 是同一个契约的两端：只改 workflow 就直接造出一个红 CI。
 
+**这个契约的两端都不在 `ci.yml` 里。** 在 `ci.yml` 里搜 `testTimeout` 只会搜到**注释**，
+搜不到任何配置——`testTimeout: 10_000` 实际写在 `vitest.config.ts:63` 的根级 `test` 块里。
+两个 `continue-on-error` 的一半在 workflow，另一半（断言它不存在的那条）也在
+`scripts/__tests__/` 下。**只改 workflow 永远不够，只改守卫也永远不够。**
+
+**⚠️ 不要做"把 `ci.yml` 里所有 `continue-on-error` 都清掉"的清扫。** 仓库四个 workflow
+里现存**恰好一处** `continue-on-error: true`，它**不属于**这个硬门禁：
+
+```yaml
+- name: Guard i18n sync (warning only)
+  run: node scripts/i18n-sync-check.mjs
+  continue-on-error: true
+```
+
+那是 i18n 翻译完整性检查，步名里的 "(warning only)" 就是它的语义：翻译缺漏不该卡住
+一个功能 PR。`pnpm test:unit:driver-set` 步**必须没有** `continue-on-error`；上面这步
+**必须有**。全仓 grep 的"一处命中"是事实，不是待清理的残留。
+
 **`testTimeout` 取值依据（实测，非拍脑袋）。** 对全部 5714 个 Host 用例逐条统计
 墙钟耗时（驱动集 `all`，8 核 macOS，`--reporter=json`），三个竞争档位：
 
@@ -128,8 +146,18 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 守卫见 `scripts/__tests__/run-unit-driver-set.test.ts`：它钉住 `testTimeout: 10_000`
 这个值，并要求上述实测数据仍留在 `vitest.config.ts` 里（改值或删依据都会红）。
 
-**守卫的边界：防删依据，不防错依据。** 该守卫断言的是"这些实测数字串**仍然存在**"
-（`1745ms` / `4392ms` / `11629ms` / `testTimeout: 10_000` / `5677 passed`），**不是**它们是否属实。实测确认：把 `4392ms` 改成 `4400ms` 会红（串
+**守卫的依据分布跨两个文件，不要记混。** 实测归属如下：
+
+| 断言的串 | 被断言的文件 |
+|---------|------------|
+| `testTimeout` 存在且 `= 10_000` | `vitest.config.ts` |
+| `1745ms` / `4392ms` / `11629ms` | `vitest.config.ts`（`// Vitest's 5s default` 与 `testTimeout:` 之间）**和** `ci.yml` |
+| `5677 passed` | **只有 `ci.yml`**（不在 `vitest.config.ts` 里） |
+
+删 `vitest.config.ts` 的依据会红，删 `ci.yml` 的 `5677 passed` 同样会红——但这是两条
+独立的断言，不是一条断言扫两个文件。
+
+**守卫的边界：防删依据，不防错依据。** 该守卫断言的是"这些实测数字串**仍然存在**"，**不是**它们是否属实。实测确认：把 `4392ms` 改成 `4400ms` 会红（串
 不匹配），但改成某个**仍然存在、只是不再真实**的数不会红。所以"守卫全绿"**不等于**
 "文档里的数字或说法是对的"。数字的正确性只能靠重测确认。
 
@@ -139,7 +167,19 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 （not、never、不推断、假定……），就会红；但写成文字（"four cores"）、或把免责标记留在
 同一段而不是同一句，都可能漏过。它拦的是最常见的复发形态，不是语义判定。
 
-用例总数是本节唯一**不靠字符串存在性**的数字，另有独立机器测量，见 §2.1.3。
+**用例总数：本文没有独立机器测量，不要假装有。** 此前此处写着"另有独立机器测量，见
+§2.1.3"，而**本节没有 §2.1.3**——是一个从未写出来的指针，已删除，改为直说：本文记的
+用例数全部是**当时那次运行的转述**，没有第二处机器测量可以交叉验证。
+
+**并且本节内部有一个未对齐的差值，记在这里而不是抹平。** 全文出现两个用例总数：
+
+- `5677 passed`——`7559759b7` 那次全绿运行的套件通过数（555 文件），被守卫钉在 `ci.yml`；
+- `5714`——`testTimeout` 预算的测量基数（`ci.yml:127` 原文："all 5714 tests,
+  `--reporter=json`"），**不被任何守卫断言**。
+
+两者相差 **37**，且 `5714` 的来源（哪次运行、哪个驱动集）本文没有记录。**在补测之前，
+这两个数只能各自当作"某次运行的记录"看，不能相减、不能互相印证。** 重测时应当重新
+统计一次套件总数并统一两个数字，而不是挑一个信。
 
 ### 2.1.2 `check-ci-docs-consistency.mjs` 覆盖什么、不覆盖什么
 
@@ -221,9 +261,93 @@ Rust 单测，而 CI 里没有任何一步执行它们。`--require-layers=<ids>
 `git status --porcelain` 为空。它放在 job 的**最后一步**，因为它会动工作树——放在这里，
 被强杀也不会污染任何后续步骤。8 个变异约 5s；它失败说明门禁本身失去了鉴别力，比门禁变红更早报警。
 
-**已知未覆盖**：门禁只读 crate 依赖闭包。`@tauri-apps/api` / `fetch(` / `XMLHttpRequest`
-这类前端字面量由 §7 的源码扫描负责，不在本门禁内；`packages/backend-client` 的 pnpm 接线
-（tsconfig paths / include / vite alias）见 §2.5，同样不在本门禁内。
+**已知未覆盖**：门禁的**判定**只读 crate 依赖闭包；声明边（manifest 里写了什么）只产
+advisory，见 §2.3.1。`@tauri-apps/api` / `fetch(` / `XMLHttpRequest` 这类前端字面量由
+`shared-boundaries-and-ports.md` §7 记的源码扫描（F-07）负责，不在本门禁内；
+`packages/backend-client` 的 pnpm 接线（tsconfig paths / include / vite alias）见
+`shared-boundaries-and-ports.md` §2.5，同样不在本门禁内。
+
+### 2.3.1 F-01 的 `tauri*` 何时能变成阻断门禁
+
+§2.4 的 F-01 禁止列已经写了 `tauri*`，但**门禁侧看不见**：`F-01` 的 `forbiddenCrates`
+仍是 `[]`（`scripts/check-platform-crate-boundaries.mjs:111`）。而 `checkSpecConsistency`
+的 crate 双向比对**只在 `forbiddenCrates === 'spec'` 时才跑**，F-01 不是，所以文档写多少，
+门禁都不会有反应。这一段记的是"怎么把它变成阻断门禁"，不是"已经变了"。
+
+当前实测产出 3 条 advisory（`ce1c32bc3`，退出码 0）：
+
+```
+ADVISORY F-01?  datazen-driver-redis (packages/drivers/redis/Cargo.toml) reaches tauri-plugin,
+                tauri-utils in its normal+build closure. Not blocking: no F-row forbids tauri*.
+ADVISORY F-01?  datazen (src-tauri/Cargo.toml) declares tauri-plugin-webdriver in
+                [dependencies], which the resolved graph does not contain.
+ADVISORY F-01?  datazen-driver-redis (packages/drivers/redis/Cargo.toml) declares tauri in
+                [dependencies], which the resolved graph does not contain.
+```
+
+**武装的前置条件共三条，归属分属两个我不拥有的写范围：**
+
+| # | 前置条件 | 位置 | 归属 |
+|---|---------|------|------|
+| 1 | redis 去掉 `tauri` 声明（`Cargo.toml:27`）与 `[build-dependencies] tauri-plugin`（`:31`） | `packages/drivers/**` | 驱动轨 |
+| 2 | manifest 读取失败路径由 advisory 改为 error（§2.3.2） | `scripts/**` | 门禁脚本轨 |
+| 3 | `F-01` 的 `forbiddenCrates` 由 `[]` 改为 `['tauri']` | `scripts/**` | 门禁脚本轨 |
+
+**没有"不动驱动 manifest 就能先武装"的中间态**，这一点要写死，因为它看起来像个可以
+先走一步的捷径：redis 今天**不只是声明**了 tauri，它**真的解析到** `tauri-plugin` 与
+`tauri-utils`（上面第一条 advisory 就是证据）。所以无论把检查挂在声明边还是解析边上，
+任何阻断式的 tauri 检查**今天都是红的**。"先武装、以后再修 redis"不是中间态，是当场
+把 CI 转红。
+
+把声明边降级成 advisory（也就是现在的形态）已经是当前树上能上线的最强形态——它既报了
+闭包侧，也报了声明侧，缺的只是"阻断"两个字。
+
+**武装后不会误伤宿主**：`F-01` 的 `subjects` 是 `['driver']`，`src-tauri` 那 9 条
+tauri 声明（宿主本来就该依赖 tauri）不在该规则主体内。
+
+### 2.3.2 manifest 读不出来为何是 advisory 而不是 error
+
+`scripts/check-platform-crate-boundaries.mjs:575-583`：声明边扫描逐成员
+`readFileSync(member.manifestPath)`，抛错时压一条 `read?` advisory 然后 `continue`。
+这是整套门禁里唯一一处非 fail-closed 的不对称。
+
+**结论：今天可接受，但武装 F-01 时必须一起改掉。** 理由三条：
+
+1. **它大声 fail-open。** 打印的是 `read? <crate> (<dir>/Cargo.toml) could not be read for
+   declared dependencies (<err.code>)`——点名了成员和错误码，不是静默跳过。
+2. **触发面窄。** `member.manifestPath` 来自 `cargo metadata` 刚成功读过的同一批路径，
+   同进程、同用户、微秒级。要它失败需要 TOCTOU 竞态，不是配置能造出来的。
+3. **损失有界。** 解析边那一路读的是已经在内存里的 metadata，全程不碰文件，该成员照样被
+   覆盖；丢的只是声明边那一路，而声明边今天不阻断任何东西。
+
+**但它与 F-01 武装是耦合的**：这条路径是"声明扫描整体被跳过"的唯一入口。今天它只导致
+少一条 advisory；F-01 武装之后，同一个口子会导致**漏掉一条真 violation**。所以上表
+前置条件 2 不是洁癖，是武装的组成部分——**两者必须同一次落地**，不能只武装第 3 条。
+
+### 2.3.3 声明边扫描器的已知边界
+
+`scripts/lib/cargoWorkspace.mjs` 的 `declaredDependencies` 是手写行扫描器，不是 TOML
+解析器。理论盲点有两个，实测（22 个 manifest / 254 条依赖声明）：
+
+| 盲点 | 实测命中 | 当前能否藏住 tauri 声明 |
+|------|---------|----------------------|
+| 多行 inline table（`tauri = {` 换行才闭合） | **0** | 否 |
+| `workspace = true` 继承 | **4**，全在非 tauri crate | 否 |
+| 根 `[workspace.dependencies]` 含 tauri | **0**（只有 3 条内部 path crate） | 否 |
+
+结论：**两个盲点在当前树上都是空的**，且各自还有一层独立理由兜住：
+
+- 多行 inline table 计数为 0，不存在这种写法；
+- `workspace = true` 影响的是版本/feature 的**归因**，而 `D∖R` 判据只用 crate 的**名**，
+  名是行扫描器一定拿得到的。所以即使某个 crate 写成 `tauri = { workspace = true }`，
+  这条 dormant 边照样会被报出来。
+
+**什么时候会失效**：有人往根 `[workspace.dependencies]` 加 tauri 并在成员里写
+`tauri = { workspace = true }`，或把 tauri 写成多行 inline table。两者都会让声明扫描
+静默漏掉一条 dormant 边。
+
+**处置：不排期修，改为记录触发条件。** 理由是修它需要引入 TOML 解析依赖，而门禁当前是
+零依赖的；为一个实测命中数为 0 的盲点换掉零依赖不划算。等触发条件真的出现时再改。
 
 ## 3. 驱动预设与 SKU
 
