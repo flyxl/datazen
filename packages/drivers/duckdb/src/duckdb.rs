@@ -567,8 +567,14 @@ impl DatabaseDriver for DuckDbDriver {
         ))
     }
 
+    /// DuckDB has no cancellation this call could honestly perform: the bundled handle exposes no interrupt from this driver's call sites.
+    /// It used to answer `Ok(())`, which reported a cancellation that had
+    /// never happened; Track O turns it into an explicit refusal.
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-        Ok(())
+        Err(DriverError::Unsupported(
+            "DuckDB has no per-execution cancellation; the legacy session-wide cancel does nothing"
+                .into(),
+        ))
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {

@@ -1756,8 +1756,17 @@ impl DatabaseDriver for SqlServerDriver {
         result
     }
 
+    /// SQL Server has no cancellation this call could honestly perform: the
+    /// `ATTENTION` packet needs a second, concurrent session that this driver
+    /// never opens, so one call cannot prove the query stopped.
+    ///
+    /// This used to answer `Ok(())`, which reported a cancellation that had
+    /// never happened; Track O turns it into an explicit refusal.
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-        Ok(())
+        Err(DriverError::Unsupported(
+            "SQL Server has no per-execution cancellation; the legacy session-wide cancel does nothing"
+                .into(),
+        ))
     }
 
     fn supports_explain(&self) -> bool {
