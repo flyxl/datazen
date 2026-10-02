@@ -79,6 +79,12 @@ async fn drop_existing_restore_targets(
     );
 
     let target = SqlTarget::new(Some(database), None);
+    // `SET FOREIGN_KEY_CHECKS` is MySQL-family syntax. This function runs for
+    // every dialect, so on PostgreSQL / SQLite / … the statement is *expected*
+    // to fail. Swallowing it is therefore not "losing a user-visible failure":
+    // the failure being discarded is the dialect saying "I do not have this
+    // switch", and there is nothing for the user to act on. Dropping the
+    // existing objects is guarded by the `CASCADE` variants below instead.
     let _ = driver
         .execute_at(handle, "SET FOREIGN_KEY_CHECKS=0", target)
         .await;
@@ -93,6 +99,21 @@ async fn drop_existing_restore_targets(
                 phase: DumpPhase::Object,
             },
         );
+        // The five forms are an **alternatives set, not five required
+        // statements**. `get_tables` (line 48) reported this object as a view,
+        // a materialized view or a table, and a database rejects the `DROP`
+        // written for the other two. At most one of the five can apply, so
+        // propagating any single error would fail every restore on every
+        // dialect — this is the tolerable swallow, not a masked defect.
+        //
+        // What is *not* tolerable is the all-five-failed case: the objects
+        // came from the target database, so at least one form must succeed
+        // unless the statement is being rejected for a reason the user does
+        // need to see (no DROP privilege, broken connection, wrong target
+        // schema). Previously that restore continued silently against a table
+        // it never dropped. Counting the successes converts a blind tolerance
+        // into one warning.
+        let mut dropped = 0usize;
         for sql in [
             format!("DROP VIEW IF EXISTS {ident} CASCADE"),
             format!("DROP MATERIALIZED VIEW IF EXISTS {ident} CASCADE"),
@@ -100,9 +121,25 @@ async fn drop_existing_restore_targets(
             format!("DROP VIEW IF EXISTS {ident}"),
             format!("DROP TABLE IF EXISTS {ident}"),
         ] {
-            let _ = driver.execute_at(handle, &sql, target).await;
+            if driver.execute_at(handle, &sql, target).await.is_ok() {
+                dropped += 1;
+            }
+        }
+        if dropped == 0 {
+            tracing::warn!(
+                cmd = "restore_database",
+                object = %ident,
+                database = %database,
+                "No DROP variant applied to an object that get_tables reported; \
+                 the restore is about to write into a target that was not cleared",
+            );
         }
     }
+    // Re-enabling is best effort for the same dialect reason as the disable
+    // above, and the residual is harmless here: `restore_handle` is a
+    // short-lived connection created for this restore and disconnected right
+    // after, so a session-scoped setting that failed to switch back dies with
+    // it. The restore result itself is returned separately below.
     let _ = driver
         .execute_at(handle, "SET FOREIGN_KEY_CHECKS=1", target)
         .await;
@@ -204,7 +241,22 @@ async fn restore_database_from_path(
     }
     .await;
 
-    let _ = driver.disconnect(restore_handle).await;
+    // `restore_handle` is a short-lived connection opened only for this
+    // restore (line 152), and it is closed **before** `restore_result` is
+    // returned below. A teardown failure is therefore a second, subordinate
+    // error on a connection the restore has already finished with; returning
+    // it would let "could not close the restore connection" mask the actual
+    // restore failure that `restore_result` is holding. Logged, never
+    // propagated — and, as in `backup_database_to_path`, not retryable once
+    // consumed, which is acceptable for a handle whose whole lifetime was
+    // this one call.
+    if let Err(e) = driver.disconnect(restore_handle).await {
+        tracing::warn!(
+            cmd = "restore_database",
+            error = %e,
+            "The independent restore connection could not be closed",
+        );
+    }
 
     restore_result?;
 
