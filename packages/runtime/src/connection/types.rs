@@ -11,185 +11,57 @@ use serde::{Deserialize, Serialize};
 
 use crate::connection::error::{ApiError, ApiErrorCode};
 
-/// 声明一个字符串 ID newtype。不同 ID 类型之间不可互换，编译期即拒绝混用。
-macro_rules! string_id {
-    ($(#[$doc:meta])* $name:ident) => {
-        $(#[$doc])*
-        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-        #[serde(transparent)]
-        pub struct $name(String);
+// ---------------------------------------------------------------------------
+// ID newtype 与计数器：全项目唯一定义处在 `datazen-platform-api::id`。
+// ---------------------------------------------------------------------------
+//
+// 本文件**不再**重复定义 `string_id!` 与 `Counter`。同一批 newtype 在
+// `packages/platform-api/src/id.rs` 里已有一套等价实现；两处并存会让
+// `ConnectionId` / `DbSessionId` 各自拥有两个互不相干的类型，
+// AGENTS.md「ID 术语规范」要求的编译期保障也就落空了。
+//
+// 两套实现是**超集关系**，因此 re-export 不改变任何既有调用点与线上字面量：
+//
+// | 能力 | 本文件原实现 | `platform-api::id` |
+// |---|---|---|
+// | `new` / `as_str` / `is_empty` | ✓ | ✓ |
+// | `Display`、`From<String>`、`From<&str>`、`AsRef<str>` | ✓ | ✓ |
+// | `Borrow<str>`（可直接查 `HashMap<String, _>`） | — | ✓ |
+// | `Counter` 十进制字符串序列化（CM-01） | ✓ | ✓（同样接受 str/u64/i64） |
+// | 计数器自增 | `increment(&mut self)` | `saturating_increment(self)` |
+//
+// 序列化形状逐项相同：ID newtype 是 `#[serde(transparent)]`，`Counter` 走
+// `serialize_str(十进制)`，因此 re-export 前后 JSON 完全一致。
+//
+// ID 术语纪律依然成立：`ConnectionId`（持久化配置 id，落盘）与
+// `DbSessionId`（内存态运行时会话 id，永不落盘）是 platform-api 里**两个独立类型**，
+// 既无跨类型 `From`，也无共用底层类型的隐式转换，混用在编译期即被拒绝。
 
-        impl $name {
-            pub fn new(value: impl Into<String>) -> Self {
-                Self(value.into())
-            }
+pub use datazen_platform_api::id::{
+    ArtifactId, BlockId, ClientInstanceId, ConnectionId, Counter, DbSessionId, EditorSessionId,
+    ExecutionId, HandleId, JobId, LeaseId, OrganizationId, PrincipalId, ResourceId, RunId,
+    StreamId, Timestamp, WorkerId,
+};
 
-            pub fn as_str(&self) -> &str {
-                &self.0
-            }
-
-            pub fn is_empty(&self) -> bool {
-                self.0.is_empty()
-            }
-        }
-
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str(&self.0)
-            }
-        }
-
-        impl From<&str> for $name {
-            fn from(value: &str) -> Self {
-                Self(value.to_owned())
-            }
-        }
-
-        impl From<String> for $name {
-            fn from(value: String) -> Self {
-                Self(value)
-            }
-        }
-
-        impl AsRef<str> for $name {
-            fn as_ref(&self) -> &str {
-                &self.0
-            }
-        }
-    };
-}
-
-string_id!(
-    /// 持久化连接配置 id，落盘持久化。
-    ConnectionId
-);
-string_id!(
-    /// 运行时数据库会话 id（内存态，**永不落盘**）。
-    DbSessionId
-);
-string_id!(
-    /// 不透明资源 id；只有 provider 校验，宿主不得解析其内容。
-    ResourceId
-);
-string_id!(
-    /// 租约 id；actor 承担与 Lease 同等的句柄责任。
-    LeaseId
-);
-string_id!(
-    /// 执行 id。
-    ExecutionId
-);
-string_id!(
-    /// 会话级句柄 id（事务 / 游标 / 服务端预处理对象）。
-    HandleId
-);
-string_id!(
-    /// 事件流 id。
-    StreamId
-);
-string_id!(
-    /// Job id。
-    JobId
-);
-string_id!(
-    /// 产物 id。
-    ArtifactId
-);
-string_id!(
-    /// 组织 id。
-    OrganizationId
-);
-string_id!(
-    /// 主体（用户）id。
-    PrincipalId
-);
-string_id!(
-    /// 客户端实例 id。
-    ClientInstanceId
-);
-string_id!(
-    /// 编辑器会话 id。
-    EditorSessionId
-);
-string_id!(
-    /// worker id；夹具 ID 生成式里的 `<workerId>`。
-    WorkerId
-);
-string_id!(
-    /// workflow run id。
-    RunId
-);
-string_id!(
-    /// workflow block id。
-    BlockId
-);
-string_id!(
-    /// 对外 UTC 时间投影（ISO-8601）。只用于 `expiresAt` 一类投影，**不用于期限判定**。
-    Timestamp
-);
-
-/// 64 位计数器。
-///
-/// 线上形状是**十进制字符串**而不是 JSON number：JavaScript 的 `number` 在 `2^53` 以上丢精度，
-/// CM-01 要求计数往返序列化后不丢精度，因此序列化侧固定走字符串。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct Counter(pub u64);
-
-impl Counter {
-    pub const ZERO: Counter = Counter(0);
-
-    pub const fn new(value: u64) -> Self {
-        Self(value)
-    }
-
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-
-    /// 递增并返回新值。
-    pub fn increment(&mut self) -> Counter {
-        self.0 = self.0.saturating_add(1);
-        *self
-    }
-}
-
-impl std::fmt::Display for Counter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Serialize for Counter {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.0.to_string())
-    }
-}
-
-impl<'de> Deserialize<'de> for Counter {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct V;
-        impl serde::de::Visitor<'_> for V {
-            type Value = Counter;
-            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("十进制计数字符串或无符号整数")
-            }
-            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Counter, E> {
-                v.parse::<u64>()
-                    .map(Counter)
-                    .map_err(serde::de::Error::custom)
-            }
-            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Counter, E> {
-                Ok(Counter(v))
-            }
-            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Counter, E> {
-                u64::try_from(v)
-                    .map(Counter)
-                    .map_err(serde::de::Error::custom)
-            }
-        }
-        deserializer.deserialize_any(V)
-    }
-}
+// ---------------------------------------------------------------------------
+// 以下类型与 `platform-api` 存在同名物，但**形状或语义确实不同**，因此刻意不去重。
+// 合并它们会改动序列化后的线上字面量，属于行为变更，不在类型去重范围内。
+//
+// | 类型 | 本文件 | `platform-api` | 不能合并的原因 |
+// |---|---|---|---|
+// | `NamespaceTarget` | 4 个 `String` | 3 个 `Option<String>` + `path: Vec<String>` | JSON 不同：`path` 是标量还是数组；platform-api 的单测显式断言必须是数组 |
+// | `ObjectTarget` | `{schema?, name, signature}` | `{kind, name, signature?}` | 字段集合不同，`signature` 可选性与有无 `kind` 都相反 |
+// | `ExecutionTarget` | 包装上面两个 | 同上 | 随 `NamespaceTarget` / `ObjectTarget` 传递性不可合并 |
+// | `NamespaceShape` | `database_and_schema()` 里 database 与 schema **都必填** | database 必填、schema **可选** | 两者语义相反；按 platform-api 合入会让原本被拒的调用静默放行 |
+// | `NamespaceLayer` | 4 变体 + `ALL` + `as_str()` | 4 变体 + `ALL`，**无 `as_str()`** | 唯一缺口在 platform-api 侧，而该 crate 不在本任务可写范围 |
+// | `ConfigRevision` | `pub u64` | `version_id!` → `pub Counter` | 线上字面量相同（十进制字符串），但元组字段类型不同，不能直接别名替换 |
+// | `OwnerRef` | `WorkflowBlock{run_id, block_id}`、`Job` 带 `organization_id` | 多一个 `Editor` 变体，字段经 `rename_all_fields` 重命名 | 变体载荷与 JSON tag 都不同 |
+//
+// 另有两处同名物不在本文件、也不适合跨 crate 合并：
+// `ApiError` / `ApiErrorCode` 的规范定义在 `packages/application/src/error.rs`
+// （4 字段结构体），`CapabilitySnapshot` 两边是**不同概念**——本 crate 的
+// `connection/capability.rs` 描述驱动能力矩阵（`confirmed: bool` + 10 个能力枚举），
+// `platform-api/src/dto/execution.rs` 描述执行审计记录（`confirmed: BTreeMap<_, _>`）。
 
 /// 配置版本号。`PROFILE_P` = 7、`PROFILE_P_V2` = 8 时必须换 `poolKeyFingerprint`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]

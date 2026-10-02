@@ -386,7 +386,7 @@ impl FakeResourceProvider {
                 ProviderError::SessionLost(format!("资源 {key} 在切换上下文时消失"))
             })?;
             slot.context = after.clone();
-            slot.context_revision.increment()
+            slot.context_revision.saturating_increment()
         };
         Ok(ChangeContextOutcome::Confirmed {
             context: after,
