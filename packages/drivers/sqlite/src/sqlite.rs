@@ -694,8 +694,15 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-        tracing::debug!("sqlite: cancel_query is a no-op (single-connection, in-process)");
-        Ok(())
+        // There is no session-wide statement to interrupt here: the pool holds a
+        // single in-process connection and no execution is registered against
+        // it, so claiming success would invent a cancellation that never
+        // happened. Say so instead — see docs/architecture/platform/
+        // driver-capability-migration.md §7.1.
+        Err(DriverError::Unsupported(
+            "sqlite has no session-wide query cancellation; cancel the statement from the caller that owns it"
+                .into(),
+        ))
     }
 
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
