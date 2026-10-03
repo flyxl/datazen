@@ -2037,6 +2037,7 @@ dependencies = [
 name = "datazen-runtime"
 version = "0.0.1"
 dependencies = [
+ "async-trait",
  "chrono",
  "datazen-driver-api",
  "datazen-platform-api",
@@ -2044,6 +2045,8 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

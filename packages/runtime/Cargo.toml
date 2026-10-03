@@ -27,3 +27,12 @@ indexmap = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
+# P3 基础设施三件套。版本与 workspace 内既有 crate（driver-api / ai-api / src-tauri）保持一致。
+# - async-trait：`#[async_trait]` 让端口 trait 在 `Arc<dyn Trait>` 下仍然对象安全。
+# - tokio：每会话一个 actor + 独立 cancel 通道（connection-management.md §6.3）。
+#   **只开下面四个 feature**，刻意不给 "full"：本包是传输中立的业务核心而不是宿主进程，
+#   F-03 也明令禁止在这里拉 HTTP/transport 框架，一个全功能运行时与之无关且会成为逃逸口。
+# - tracing：拒绝/降级等非常规路径的观测点（见 connection::error::RuntimeError::rejected）。
+async-trait = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tracing = "0.1"
