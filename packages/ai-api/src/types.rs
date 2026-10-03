@@ -167,20 +167,11 @@ impl From<&AiProviderConfig> for AiModelProfile {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsConfig {
     pub active_profile_id: String,
     pub profiles: Vec<AiModelProfile>,
-}
-
-impl Default for AiSettingsConfig {
-    fn default() -> Self {
-        Self {
-            active_profile_id: String::new(),
-            profiles: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -365,7 +356,7 @@ pub enum AiError {
 
 // ─── Feature-specific types ───
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlGenerationContext {
     pub database_type: String,
@@ -373,18 +364,6 @@ pub struct SqlGenerationContext {
     pub schema_ddl: String,
     pub current_table: Option<String>,
     pub recent_queries: Vec<String>,
-}
-
-impl Default for SqlGenerationContext {
-    fn default() -> Self {
-        Self {
-            database_type: String::new(),
-            database_version: None,
-            schema_ddl: String::new(),
-            current_table: None,
-            recent_queries: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

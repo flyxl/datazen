@@ -86,7 +86,7 @@ impl ResourceHandle {
         let material = format!("{}|{}|{}", owner.hash(), epoch.get(), resource_id);
         Self {
             resource_id: resource_id.clone(),
-            runtime_epoch: epoch.clone(),
+            runtime_epoch: *epoch,
             owner_token: fnv1a64_hex(material.as_bytes()),
         }
     }

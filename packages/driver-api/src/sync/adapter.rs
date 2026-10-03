@@ -218,6 +218,10 @@ pub trait SyncTargetAdapter: Send + Sync {
     /// data-only compatibility with an existing table.
     ///
     /// The default is a no-op so this does not alter Data Sync or Schema Diff.
+    // 8 个参数是刻意设计：这是 `DatabaseDriver` 上的默认 trait 方法，每个驱动 crate 都
+    // 可能覆写它，签名属于 Wave 1 已冻结的驱动契约。改成参数结构体会让所有驱动实现
+    // 与所有 Host 调用点同时失效。
+    #[allow(clippy::too_many_arguments)]
     fn validate_transfer_column_type(
         &self,
         source_column: &ColumnSchema,

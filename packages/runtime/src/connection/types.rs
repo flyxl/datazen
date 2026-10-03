@@ -255,7 +255,7 @@ mod double_option {
         T: Deserialize<'de>,
     {
         // 字段出现了：内层 `None`（JSON null）也必须表达成 `Some(None)`。
-        Option::<T>::deserialize(deserializer).map(|inner| Some(inner))
+        Option::<T>::deserialize(deserializer).map(Some)
     }
 }
 
