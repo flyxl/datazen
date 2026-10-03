@@ -423,6 +423,9 @@ impl Fixture {
 // Live session
 // ---------------------------------------------------------------------------
 
+#[path = "live_gate.rs"]
+mod live_gate;
+
 pub struct Live<D: DatabaseDriver> {
     pub driver: D,
     pub handle: ConnectionHandle,
@@ -433,10 +436,7 @@ pub struct Live<D: DatabaseDriver> {
 /// Prints the honest skip line: which dimension is therefore **unverified** and
 /// why. No fake stands in for a real-protocol conclusion.
 pub fn report_unverified(dimension: &str, reason: &str) {
-    eprintln!(
-        "⏭  {dimension} 未验证（{}）：{reason} — 该维度需要真实数据库，本次运行不产生任何真实协议结论。",
-        crate::CONTRACT.label
-    );
+    live_gate::report_unverified(crate::CONTRACT.label, dimension, reason);
 }
 
 /// The pure decision behind strict mode, split out so it can be tested without
@@ -446,12 +446,17 @@ pub fn report_unverified(dimension: &str, reason: &str) {
 /// Only the exact string `1` arms it, so an accidentally-present variable — an
 /// empty value, a path, someone's `DATAZEN_CONTRACT_REQUIRE_LIVE=/opt/thing` —
 /// cannot quietly turn every skipped dimension into a failure.
+///
+/// The decision itself lives in `live_gate`, shared with the migration and
+/// resource-budget suites that cannot see `CONTRACT`. It is defined once
+/// because a second copy of "what counts as asking" is a second rule, and the
+/// two copies drift.
 pub fn strict_live_requested(value: Option<String>) -> bool {
-    value.map(|raw| raw.trim() == "1").unwrap_or(false)
+    live_gate::strict_live_requested(value)
 }
 
 fn strict_live() -> bool {
-    strict_live_requested(std::env::var("DATAZEN_CONTRACT_REQUIRE_LIVE").ok())
+    live_gate::strict_live()
 }
 
 /// Report one dimension as unverified, and — when this run was explicitly asked
@@ -470,14 +475,7 @@ fn strict_live() -> bool {
 /// failure, which is the only way to make "green" mean "verified" rather than
 /// "nothing objected".
 pub fn unverified_or_fail(dimension: &str, reason: &str, strict: bool) {
-    report_unverified(dimension, reason);
-    if strict {
-        panic!(
-            "DATAZEN_CONTRACT_REQUIRE_LIVE=1: {dimension} is unverified ({reason}). \
-             This run was asked to prove the live tier, so an unverifiable dimension is a \
-             failure rather than a skip. Unset the variable to go back to skipping."
-        );
-    }
+    live_gate::unverified_or_fail(crate::CONTRACT.label, dimension, reason, strict);
 }
 
 pub async fn open_live<D: DatabaseDriver>(driver: D, dimension: &'static str) -> Option<Live<D>> {

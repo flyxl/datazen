@@ -30,11 +30,35 @@
 //! are rejected by that contract, so point the keys at your own prefixed
 //! databases rather than at a working copy.
 //!
-//! Fixture: discovered at runtime — any `public` relation present in
-//! database_a and absent from database_b. The test skips when there is none.
+//! Fixture: **seeded by this test** — a `public` table unique to database_a,
+//! dropped again on the way out. It used to discover an existing table instead,
+//! which made the verdict a function of whatever the developer's server happened
+//! to hold: on an empty fixture database nothing matched, the test returned, and
+//! cargo reported `ok`. The name carries a fresh UUID, so a table left behind by
+//! an interrupted run can never be mistaken for this run's probe.
+//!
+//! Every environment-shaped exit routes through `unverified`, so
+//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1` turns each one into a failure instead of a
+//! silent pass. Without that variable the test still skips — CI has no fixtures.
 
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, Value};
 use datazen_driver_postgres::PostgresDriver;
+
+#[path = "../../http-support/tests/support/live_gate.rs"]
+mod live_gate;
+
+/// One dimension name, used for both the skip line and the strict-mode failure.
+const DIMENSION: &str = "cross-database";
+const LABEL: &str = "postgresql";
+
+/// The only way this test gives up.
+///
+/// Routing all of these through one choke point is the point: `test result: ok`
+/// cannot distinguish a passed check from a check that never ran, so every exit
+/// that means "this run proves nothing" has to be able to become red.
+fn unverified(reason: &str) {
+    live_gate::unverified_or_fail(LABEL, DIMENSION, reason, live_gate::strict_live());
+}
 
 #[derive(Clone, Debug)]
 struct PgTestConfig {
@@ -179,14 +203,15 @@ async fn assert_handle_session_untouched(
 #[tokio::test]
 async fn cross_database_reads_never_move_the_session() {
     let Some(cfg) = load_pg_config() else {
+        unverified("TEST_PG_* is not in the process environment");
         return;
     };
 
     if cfg.database_a == cfg.database_b {
-        eprintln!(
-            "⏭  Skipping: TEST_PG_DATABASE and TEST_PG_DATABASE_B must differ (got {})",
+        unverified(&format!(
+            "TEST_PG_DATABASE and TEST_PG_DATABASE_B must differ (both are {})",
             cfg.database_a
-        );
+        ));
         return;
     }
 
@@ -194,12 +219,12 @@ async fn cross_database_reads_never_move_the_session() {
     let handle = match driver.connect(&connection_config(&cfg)).await {
         Ok(h) => h,
         Err(e) => {
-            eprintln!(
-                "⏭  Skipping: cannot connect to PostgreSQL at {}:{} ({})",
+            unverified(&format!(
+                "cannot connect to PostgreSQL at {}:{} ({})",
                 cfg.host,
                 cfg.port,
                 err_label(&e)
-            );
+            ));
             return;
         }
     };
@@ -208,17 +233,17 @@ async fn cross_database_reads_never_move_the_session() {
         Ok(d) => d,
         Err(e) => {
             let _ = driver.disconnect(handle).await;
-            eprintln!("⏭  Skipping: list databases failed ({})", err_label(&e));
+            unverified(&format!("list databases failed ({})", err_label(&e)));
             return;
         }
     };
     for needed in [&cfg.database_a, &cfg.database_b] {
         if !dbs.iter().any(|d| d == needed) {
             let _ = driver.disconnect(handle).await;
-            eprintln!(
-                "⏭  Skipping: database `{needed}` not found (have: {})",
+            unverified(&format!(
+                "database `{needed}` not found (have: {})",
                 dbs.join(", ")
-            );
+            ));
             return;
         }
     }
@@ -236,42 +261,55 @@ async fn cross_database_reads_never_move_the_session() {
         probe.database = Some((*database).clone());
         if let Err(e) = driver.test_connection(&probe).await {
             let _ = driver.disconnect(handle).await;
-            eprintln!(
-                "⏭  Skipping: catalog `{database}` is advertised but not openable with these \
-                 credentials ({}). Cross-database reads are therefore UNVERIFIED for this run.",
+            unverified(&format!(
+                "catalog `{database}` is advertised but not openable with these credentials ({})",
                 err_label(&e)
-            );
+            ));
             return;
         }
     }
 
-    // Listing targets the named catalog without touching the handle's pool.
-    let a_tables = driver
-        .get_tables(&handle, &cfg.database_a, None)
+    // Seed the fixture this test asserts on, rather than discovering one in
+    // whatever state the developer's server happens to be in.
+    //
+    // Discovery made the verdict a function of ambient data. On an empty
+    // fixture database there was nothing to find, the test returned early, and
+    // cargo reported `ok` — a green result that had verified nothing at all.
+    // `test result: ok` cannot distinguish "the check passed" from "the check
+    // never ran", so the fixture is produced here to make that difference
+    // visible. The name carries a fresh UUID, so a table left behind by an
+    // interrupted run can never be mistaken for this run's probe.
+    let probe = format!("dz_cross_db_probe_{}", uuid::Uuid::new_v4().simple());
+    // The probe belongs in `database_a` while the handle under test sits on
+    // `database_b` — that separation is the entire point. Seeding through the
+    // bare handle would have created it in B, where the cross-database reads
+    // would never have had to cross, and every assertion below would have passed
+    // without testing anything. A dedicated seed connection also keeps the setup
+    // from exercising the cross-database routing it is meant to set up for.
+    //
+    // With the table only in A, the later "same statement, no target, must
+    // still fail" assertion is meaningful: the session cannot see it at all.
+    let mut seed_config = connection_config(&cfg);
+    seed_config.id = "pg-cross-database-seed".into();
+    seed_config.database = Some(cfg.database_a.clone());
+    let seed = driver
+        .connect(&seed_config)
         .await
-        .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_a));
-    let b_tables = driver
-        .get_tables(&handle, &cfg.database_b, None)
+        .unwrap_or_else(|e| panic!("seed connection to {}: {e}", cfg.database_a));
+    driver
+        .query(
+            &seed,
+            &format!("CREATE TABLE {probe} (id INT PRIMARY KEY, marker TEXT NOT NULL)"),
+        )
         .await
-        .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_b));
-
-    // Discover the fixture instead of demanding a specific table name: any
-    // `public` relation that exists in A and not in B proves both directions
-    // (a targeted read reaches A, an untargeted read cannot).
-    let in_b: Vec<&str> = b_tables.iter().map(|t| t.name.as_str()).collect();
-    let probe = a_tables
-        .iter()
-        .find(|t| t.schema.as_deref() == Some("public") && !in_b.contains(&t.name.as_str()))
-        .map(|t| t.name.clone());
-    let Some(probe) = probe else {
-        let _ = driver.disconnect(handle).await;
-        eprintln!(
-            "⏭  Skipping: {} has no `public` table missing from {} (need one for the \
-             cross-database check)",
-            cfg.database_a, cfg.database_b
-        );
-        return;
-    };
+        .unwrap_or_else(|e| panic!("seed probe table {probe} in {}: {e}", cfg.database_a));
+    driver
+        .query(
+            &seed,
+            &format!("INSERT INTO {probe} (id, marker) VALUES (1, '{probe}')"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("seed probe row into {probe}: {e}"));
 
     println!(
         "▶  cross-database live: handle on {}, reading {} on {}:{}",
@@ -463,6 +501,19 @@ async fn cross_database_reads_never_move_the_session() {
         .await
         .expect("reopening the foreign pool on demand");
     assert!(!schema_after_close.columns.is_empty());
+
+    // Drop the probe on the way out so a green run leaves the fixture database
+    // exactly as it found it. The name is UUID-unique, so a leak from a crashed
+    // run cannot break the next one — but leaking on every *successful* run
+    // would make "not deleted" indistinguishable from "not reused".
+    driver
+        .query(&seed, &format!("DROP TABLE IF EXISTS {probe}"))
+        .await
+        .unwrap_or_else(|e| panic!("drop probe table {probe}: {e}"));
+    driver
+        .disconnect(seed)
+        .await
+        .expect("disconnect the seed connection");
 
     driver.disconnect(handle).await.expect("disconnect");
     println!("✅  PostgreSQL cross-database live checks passed");

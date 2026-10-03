@@ -9,6 +9,7 @@
 #
 #   scripts/run-live-contract.sh                 # postgres + mysql, strict
 #   scripts/run-live-contract.sh --dry-run       # resolve + report only
+#   scripts/run-live-contract.sh --no-provision  # assume fixture DBs exist
 #   scripts/run-live-contract.sh --crate datazen-driver-postgres
 #
 # AGENTS.md rules this script exists to satisfy without breaking:
@@ -37,12 +38,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ALIAS_FILE="$ROOT/scripts/.live-contract.aliases"
 CRATES=("-p" "datazen-driver-postgres" "-p" "datazen-driver-mysql")
 DRY_RUN=0
+PROVISION=1
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
+    --no-provision) PROVISION=0; shift ;;
     --crate) shift; CRATES=("-p" "$1"); shift ;;
-    -h|--help) sed -n '4,6p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '4,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -54,6 +57,16 @@ done
 # from `.env` then `.env.test`. Blank lines and `#` comments are ignored;
 # `export KEY=` is accepted; matching surrounding quotes are stripped.
 # Anything that is not `KEY=VALUE` is skipped rather than guessed at.
+#
+# An already-set, non-empty process variable is **not** overwritten. That rule
+# exists because of a failure this script actually had: `.env.test` carried an
+# empty `MIGRATION_TEST_DATABASE=`, so a shell invocation of
+# `MIGRATION_TEST_DATABASE=production_db scripts/run-live-contract.sh` had its
+# value silently replaced by the file's empty one and fell back to the default
+# name. The refusal guard never saw the name it was supposed to refuse, so a
+# test meant to prove the guard goes red instead proved nothing at all. A value
+# typed into the shell is the more specific statement of intent and wins; an
+# empty one counts as "not stated" and is fillable from the file.
 load_dotenv() {
   local file="$1" line key value
   [ -f "$file" ] || return 0
@@ -73,6 +86,7 @@ load_dotenv() {
       \'*\') value="${value#\'}"; value="${value%\'}" ;;
     esac
     case "$key" in *[!A-Za-z0-9_]*) continue ;; esac   # not a shell identifier
+    [ -n "${!key-}" ] && continue                     # shell already stated it
     export "$key=$value"
   done < "$file"
   return 0
@@ -255,6 +269,176 @@ echo
 check_prefix TEST_PG_ "$PG_STRATEGY"
 check_prefix TEST_MYSQL_ "$MY_STRATEGY"
 
+# --------------------------------------------------------------------------
+# Fixture provisioning.
+# --------------------------------------------------------------------------
+# The live cases create and drop real objects, so both fixture databases have to
+# exist before cargo runs. Provisioning refuses any name that is not a fixture
+# name, and that gate is a second, independent copy of the rule in check_prefix
+# rather than a call into it: this path has the ability to CREATE, so it must
+# not be widenable by an edit to the reporting path. Because the accepted
+# charset is [A-Za-z0-9_] only, a name that passes the gate cannot carry a
+# quote, backtick or semicolon into the statements below.
+fixture_name_ok() {
+  printf '%s' "$1" | grep -Eq '^dz_fixture_[A-Za-z0-9_]+$'
+}
+
+# The migration tier gets a *separate* gate rather than a second case in the one
+# above. Those suites CREATE and DROP schemas inside the target database, so the
+# rule is deliberately narrower than the Rust side, which lets an individual
+# suite also accept a name it was historically written against (`datazen_test`
+# and friends). Here there is no escape hatch at all: only a name this script
+# itself minted can be created.
+migration_name_ok() {
+  printf '%s' "$1" | grep -Eq '^dz_mig_[A-Za-z0-9_]+$'
+}
+
+# A pre-existing MIGRATION_TEST_DATABASE / MYSQL_MIGRATION_TEST_DATABASE in an
+# env file wins, so a developer who already provisioned a migration database is
+# not forced to create a second one. Otherwise the runner mints the name itself:
+# the migration tier needs a database distinct from the cross-database tier,
+# because those suites drop schemas and the two would otherwise share one.
+MIG_PG_DB="${MIGRATION_TEST_DATABASE:-dz_mig_contract_pg}"
+MIG_MY_DB="${MYSQL_MIGRATION_TEST_DATABASE:-dz_mig_contract_mysql}"
+
+# Client diagnostics land in a temp file the agent is not expected to read:
+# psql and mysql both echo host, user and sometimes the DSN on failure, and a
+# redacted one-line hint is no more useful than the path to the real thing.
+PROVISION_LOG="$(mktemp -t datazen-live-provision).log"
+PROVISION_FAIL=0
+
+ensure_pg() {
+  local db="$1" gate="${2:-fixture_name_ok}" h p u pw
+  h="${TEST_PG_HOST:-127.0.0.1}"
+  p="${TEST_PG_PORT:-5432}"
+  u="${TEST_PG_USER:-postgres}"
+  pw="${TEST_PG_PASSWORD-}"
+  if ! "$gate" "$db"; then
+    printf '  %-26s REFUSED (not an accepted fixture name; nothing created)\n' "$db"
+    PROVISION_FAIL=1
+    return 1
+  fi
+  if PGPASSWORD="$pw" psql -X -q -tA -h "$h" -p "$p" -U "$u" -d postgres \
+       -c "SELECT 1 FROM pg_database WHERE datname = '$db'" 2>>"$PROVISION_LOG" | grep -q 1; then
+    printf '  %-26s present\n' "$db"
+    return 0
+  fi
+  if PGPASSWORD="$pw" createdb -h "$h" -p "$p" -U "$u" "$db" 2>>"$PROVISION_LOG"; then
+    printf '  %-26s created\n' "$db"
+  else
+    printf '  %-26s CREATE FAILED\n' "$db"
+    PROVISION_FAIL=1
+  fi
+}
+
+ensure_my() {
+  local db="$1" gate="${2:-fixture_name_ok}" h p u pw
+  h="${TEST_MYSQL_HOST:-127.0.0.1}"
+  p="${TEST_MYSQL_PORT:-3306}"
+  u="${TEST_MYSQL_USER:-root}"
+  pw="${TEST_MYSQL_PASSWORD-}"
+  if ! "$gate" "$db"; then
+    printf '  %-26s REFUSED (not an accepted fixture name; nothing created)\n' "$db"
+    PROVISION_FAIL=1
+    return 1
+  fi
+  if MYSQL_PWD="$pw" mysql -h "$h" -P "$p" -u "$u" -N -B \
+       -e "SELECT 1 FROM information_schema.schemata WHERE schema_name = '$db'" \
+       2>>"$PROVISION_LOG" | grep -q 1; then
+    printf '  %-26s present\n' "$db"
+    return 0
+  fi
+  # MYSQL_PWD, not --password: argv is world-readable through ps, and an
+  # ini-file escaping bug would be a far worse outcome than a brief window in
+  # the child process's own environment.
+  if MYSQL_PWD="$pw" mysql -h "$h" -P "$p" -u "$u" \
+       -e "CREATE DATABASE \`$db\` CHARACTER SET utf8mb4" 2>>"$PROVISION_LOG"; then
+    printf '  %-26s created\n' "$db"
+  else
+    printf '  %-26s CREATE FAILED\n' "$db"
+    PROVISION_FAIL=1
+  fi
+}
+
+if [ "$DRY_RUN" = 1 ] || [ "$PROVISION" = 0 ]; then
+  if [ "$DRY_RUN" = 1 ] && [ "$PROVISION" = 1 ]; then
+    echo
+    echo "--- fixture databases (dry run: nothing connected, nothing created) ---"
+    for d in "${TEST_PG_DATABASE-}" "${TEST_PG_DATABASE_B-}" "${TEST_MYSQL_DATABASE-}" "${TEST_MYSQL_DATABASE_B-}"; do
+      [ -z "$d" ] && continue
+      if fixture_name_ok "$d"; then
+        printf '  %-26s would check / create\n' "$d"
+      else
+        printf '  %-26s REFUSED (not a fixture name)\n' "$d"
+      fi
+    done
+    echo
+    echo "--- migration databases (dry run) ---"
+    printf '  %-26s %s\n' "$MIG_PG_DB" \
+      "$(migration_name_ok "$MIG_PG_DB" && echo 'would check / create' || echo 'REFUSED (not a dz_mig_* name)')"
+    printf '  %-26s %s\n' "$MIG_MY_DB" \
+      "$(migration_name_ok "$MIG_MY_DB" && echo 'would check / create' || echo 'REFUSED (not a dz_mig_* name)')"
+  fi
+elif [ "$PROVISION" = 1 ]; then
+  echo
+  echo "--- fixture databases ---"
+  ensure_pg "${TEST_PG_DATABASE-}"
+  ensure_pg "${TEST_PG_DATABASE_B-}"
+  ensure_my "${TEST_MYSQL_DATABASE-}"
+  ensure_my "${TEST_MYSQL_DATABASE_B-}"
+  echo
+  echo "--- migration databases ---"
+  ensure_pg "$MIG_PG_DB" migration_name_ok
+  ensure_my "$MIG_MY_DB" migration_name_ok
+  if [ "$PROVISION_FAIL" != 0 ]; then
+    printf '\nRefusing to run: a fixture database is missing and could not be created.\n'
+    printf 'Client diagnostics (may name the server) were written to:\n  %s\n' "$PROVISION_LOG"
+    exit 1
+  fi
+fi
+
+# --------------------------------------------------------------------------
+# Migration-tier environment.
+# --------------------------------------------------------------------------
+# The suites behind migration_gate read a *different* variable family from the
+# cross-database tier, and each family gets its own prefix — one `cargo test -p
+# pg -p mysql` shares a single environment across both crates, so one shared
+# name would point the MySQL suites at the PostgreSQL server. The values are
+# copied from the TEST_* variables that were already resolved above, so this
+# asks the developer for nothing they have not already supplied.
+#
+# Only exported for a family that is actually configured: `--crate
+# datazen-driver-postgres` legitimately runs with no MySQL settings at all, and
+# exporting a default there would make the gate try to reach 127.0.0.1:3306 and
+# fail a suite that should simply have been skipped.
+MIG_TIER=0
+if [ -n "${TEST_PG_HOST-}${TEST_PG_USER-}${TEST_PG_PASSWORD-}${MIGRATION_TEST_HOST-}${MIGRATION_TEST_USER-}${MIGRATION_TEST_PASSWORD-}" ]; then
+  # An already-set MIGRATION_TEST_* value wins over the TEST_PG_* one it was
+  # derived from. A developer pointing the migration tier at a different server
+  # is a real setup, and silently redirecting it at the cross-database fixture
+  # server would run destructive suites against the wrong host. `-` rather than
+  # `:-` on the password: a deliberately blank credential must not be replaced.
+  export MIGRATION_TEST_HOST="${MIGRATION_TEST_HOST:-${TEST_PG_HOST:-127.0.0.1}}"
+  export MIGRATION_TEST_PORT="${MIGRATION_TEST_PORT:-${TEST_PG_PORT:-5432}}"
+  export MIGRATION_TEST_USER="${MIGRATION_TEST_USER:-${TEST_PG_USER:-postgres}}"
+  export MIGRATION_TEST_PASSWORD="${MIGRATION_TEST_PASSWORD-${TEST_PG_PASSWORD-}}"
+  export MIGRATION_TEST_DATABASE="$MIG_PG_DB"
+  MIG_TIER=$((MIG_TIER + 1))
+fi
+if [ -n "${TEST_MYSQL_HOST-}${TEST_MYSQL_USER-}${TEST_MYSQL_PASSWORD-}${MYSQL_MIGRATION_TEST_HOST-}${MYSQL_MIGRATION_TEST_USER-}${MYSQL_MIGRATION_TEST_PASSWORD-}" ]; then
+  export MYSQL_MIGRATION_TEST_HOST="${MYSQL_MIGRATION_TEST_HOST:-${TEST_MYSQL_HOST:-127.0.0.1}}"
+  export MYSQL_MIGRATION_TEST_PORT="${MYSQL_MIGRATION_TEST_PORT:-${TEST_MYSQL_PORT:-3306}}"
+  export MYSQL_MIGRATION_TEST_USER="${MYSQL_MIGRATION_TEST_USER:-${TEST_MYSQL_USER:-root}}"
+  export MYSQL_MIGRATION_TEST_PASSWORD="${MYSQL_MIGRATION_TEST_PASSWORD-${TEST_MYSQL_PASSWORD-}}"
+  export MYSQL_MIGRATION_TEST_DATABASE="$MIG_MY_DB"
+  MIG_TIER=$((MIG_TIER + 1))
+fi
+echo
+echo "migration tier: $MIG_TIER of 2 families configured (their databases were reported above)"
+
+# A dry run has now reported everything it can without touching a server. The
+# missing-key verdict still has to be the exit code, because that is the whole
+# point of asking for one.
 if [ "$DRY_RUN" = 1 ]; then
   printf '\nDRY_RUN=1 nothing executed\n'
   exit "$MISSING"

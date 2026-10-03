@@ -10,10 +10,24 @@ pub(crate) fn parse_pg_table_ref(table: &str) -> (Option<&str>, &str) {
     }
 }
 
+/// Qualified relation name, ready to bind into a `$1::regclass` cast.
+///
+/// Both components are quoted. An unquoted `schema.table` handed to `regclass`
+/// is parsed as a SQL identifier path, so PostgreSQL folds it to lower case:
+/// binding `Reporting.orders` failed with `schema "reporting" does not exist`
+/// for every schema or table that was not already all lower case. Quoting makes
+/// the value mean exactly the name it spells, and is a no-op for names that are
+/// lower case anyway.
+///
+/// Every caller binds this into `$1::regclass` — it is never interpolated into
+/// SQL text — so quoting here cannot double-quote at a use site.
 pub(crate) fn pg_regclass_name(schema: Option<&str>, table: &str) -> String {
+    fn quote(name: &str) -> String {
+        format!("\"{}\"", name.replace('"', "\"\""))
+    }
     match schema {
-        Some(s) => format!("{s}.{table}"),
-        None => table.to_string(),
+        Some(s) => format!("{}.{}", quote(s), quote(table)),
+        None => quote(table),
     }
 }
 
@@ -203,4 +217,60 @@ pub(crate) fn has_top_level_limit(sql: &str) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regclass_name_quotes_both_components() {
+        // Lower case: the shape the driver has always produced, unchanged in
+        // meaning. Quoting is invisible to PostgreSQL here.
+        assert_eq!(
+            pg_regclass_name(Some("public"), "orders"),
+            "\"public\".\"orders\""
+        );
+    }
+
+    #[test]
+    fn regclass_name_preserves_case() {
+        // The bug: an unquoted path is case-folded, so this used to reach
+        // PostgreSQL as `reporting.orders` and resolve to the wrong schema — or
+        // fail outright with `schema "reporting" does not exist`.
+        assert_eq!(
+            pg_regclass_name(Some("Reporting"), "Orders"),
+            "\"Reporting\".\"Orders\""
+        );
+    }
+
+    #[test]
+    fn regclass_name_without_schema_still_quotes() {
+        assert_eq!(pg_regclass_name(None, "MixedCase"), "\"MixedCase\"");
+    }
+
+    #[test]
+    fn regclass_name_doubles_embedded_quote() {
+        // A literal double quote would otherwise terminate the identifier early.
+        assert_eq!(
+            pg_regclass_name(Some("we\"ird"), "ta\"ble"),
+            "\"we\"\"ird\".\"ta\"\"ble\""
+        );
+    }
+
+    #[test]
+    fn explicit_schema_beats_one_embedded_in_the_table_name() {
+        assert_eq!(
+            resolve_pg_table_schema("other.orders", Some("public")),
+            (Some("public"), "orders")
+        );
+    }
+
+    #[test]
+    fn a_blank_explicit_schema_never_means_whatever_the_session_resolves() {
+        assert_eq!(
+            resolve_pg_table_schema("orders", Some("   ")),
+            (None, "orders")
+        );
+    }
 }

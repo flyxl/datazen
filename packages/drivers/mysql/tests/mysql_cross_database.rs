@@ -25,6 +25,18 @@
 //! session's own catalog and the foreign catalog differ. Names without the prefix
 //! are rejected by that contract, so point the keys at your own prefixed
 //! databases rather than at a working copy.
+//!
+//! Fixture: the tests that assert on catalog contents **seed** their own table —
+//! pid plus nanosecond nonce, so a leftover from an interrupted run can never be
+//! mistaken for this run's probe — and drop it again on the way out. Discovering
+//! an existing table instead made the verdict a function of whatever the
+//! developer's server happened to hold: on an empty fixture database nothing
+//! matched, the test returned, and cargo reported `ok. 4 passed` for a run that
+//! had proven nothing.
+//!
+//! Every environment-shaped exit routes through `unverified`, so
+//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1` turns each one into a failure instead of a
+//! silent pass. Without that variable the suite still skips — CI has no fixtures.
 
 use datazen_driver_api::{
     ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, TransactionHandle, Value,
@@ -32,6 +44,37 @@ use datazen_driver_api::{
 use std::collections::HashMap;
 
 use datazen_driver_mysql::MysqlDriver;
+
+#[path = "../../http-support/tests/support/live_gate.rs"]
+mod live_gate;
+
+/// Dimension names, used for both the skip line and the strict-mode failure.
+/// They are separate because a run can lack a server (all four) while still
+/// having both fixture databases present (only the cross-database pair).
+const DIMENSION: &str = "cross-database";
+const NO_DEFAULT_DATABASE: &str = "no-default-database";
+const NUMERIC_DEFAULTS: &str = "numeric-string-and-tinyint-defaults";
+const SNAPSHOT_ISOLATION: &str = "snapshot-repeatable-read-only";
+
+/// The single choke point for "this run proves nothing".
+///
+/// `test result: ok` cannot distinguish a passed check from a check that never
+/// ran, so every such exit has to be able to become red.
+fn unverified(dimension: &str, reason: &str) {
+    live_gate::unverified_or_fail("mysql", dimension, reason, live_gate::strict_live());
+}
+
+/// A name unique to this process and this instant.
+///
+/// pid alone is not enough: two runs of the same suite can overlap, and one
+/// run's `DROP TABLE` would then delete the other's probe mid-test.
+fn fresh_probe_name() -> String {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock should be after UNIX epoch")
+        .as_nanos();
+    format!("dz_cross_db_probe_{}_{}", std::process::id(), nonce)
+}
 
 #[derive(Clone, Debug)]
 struct MysqlTestConfig {
@@ -66,11 +109,14 @@ fn env_var(key: &str) -> Option<String> {
 
 /// Gate on `TEST_MYSQL_*` in the process environment. Password may be
 /// intentionally empty, so it is read without the empty filter.
+///
+/// Returns `None` only when no `TEST_MYSQL_*` key is present at all; it stays
+/// silent so the caller reports once, through the gate, instead of printing a
+/// skip line that a strict run would then contradict.
 fn load_mysql_config() -> Option<MysqlTestConfig> {
     let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_MYSQL_"));
 
     if !has_marker {
-        eprintln!("⏭  Skipping mysql_use_database: no TEST_MYSQL_* in process env");
         return None;
     }
 
@@ -139,13 +185,17 @@ fn cell_as_i64(value: &Option<Value>) -> Option<i64> {
 #[tokio::test]
 async fn cross_database_reads_use_qualified_names_not_use() {
     let Some(cfg) = load_mysql_config() else {
+        unverified(DIMENSION, "no TEST_MYSQL_* in the process environment");
         return;
     };
 
     if cfg.database_a == cfg.database_b {
-        eprintln!(
-            "⏭  Skipping: TEST_MYSQL_DATABASE and TEST_MYSQL_DATABASE_B must differ (got {})",
-            cfg.database_a
+        unverified(
+            DIMENSION,
+            &format!(
+                "TEST_MYSQL_DATABASE and TEST_MYSQL_DATABASE_B must differ (both are {})",
+                cfg.database_a
+            ),
         );
         return;
     }
@@ -154,9 +204,9 @@ async fn cross_database_reads_use_qualified_names_not_use() {
     let handle = match driver.connect(&connection_config(&cfg)).await {
         Ok(h) => h,
         Err(e) => {
-            eprintln!(
-                "⏭  Skipping: cannot connect to MySQL at {}:{}: {e}",
-                cfg.host, cfg.port
+            unverified(
+                DIMENSION,
+                &format!("cannot connect to MySQL at {}:{}: {e}", cfg.host, cfg.port),
             );
             return;
         }
@@ -166,46 +216,51 @@ async fn cross_database_reads_use_qualified_names_not_use() {
         Ok(d) => d,
         Err(e) => {
             let _ = driver.disconnect(handle).await;
-            eprintln!("⏭  Skipping: SHOW DATABASES failed: {e}");
+            unverified(DIMENSION, &format!("SHOW DATABASES failed: {e}"));
             return;
         }
     };
     for needed in [&cfg.database_a, &cfg.database_b] {
         if !dbs.iter().any(|d| d == needed) {
             let _ = driver.disconnect(handle).await;
-            eprintln!(
-                "⏭  Skipping: database `{needed}` not found (have: {})",
-                dbs.join(", ")
+            unverified(
+                DIMENSION,
+                &format!("database `{needed}` not found (have: {})", dbs.join(", ")),
             );
             return;
         }
     }
 
-    // Discover the fixture instead of demanding a specific table name: any
-    // table present in A and absent from B proves both directions (a targeted
-    // read reaches A, an untargeted read cannot).
-    let a_tables = driver
-        .get_tables(&handle, &cfg.database_a, None)
+    // Seed the fixture this test asserts on, rather than discovering one in
+    // whatever state the developer's server happens to be in. Discovery made
+    // the verdict a function of ambient data: on an empty fixture database
+    // nothing matched, the test returned early, and cargo reported `ok` — a
+    // green result that had verified nothing at all.
+    let probe = fresh_probe_name();
+
+    // The handle under test stays on B; seeding A gets its own connection, so
+    // the setup does not itself exercise the cross-database read being tested.
+    let mut seed_config = connection_config(&cfg);
+    seed_config.id = "mysql-cross-database-seed".into();
+    seed_config.database = Some(cfg.database_a.clone());
+    let seed = driver
+        .connect(&seed_config)
         .await
-        .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_a));
-    let b_tables = driver
-        .get_tables(&handle, &cfg.database_b, None)
+        .unwrap_or_else(|e| panic!("seed connection to {}: {e}", cfg.database_a));
+    driver
+        .query(
+            &seed,
+            &format!("CREATE TABLE `{probe}` (id INT PRIMARY KEY, marker VARCHAR(64) NOT NULL)"),
+        )
         .await
-        .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_b));
-    let in_b: Vec<&str> = b_tables.iter().map(|t| t.name.as_str()).collect();
-    let Some(probe) = a_tables
-        .iter()
-        .find(|t| !in_b.contains(&t.name.as_str()))
-        .map(|t| t.name.clone())
-    else {
-        let _ = driver.disconnect(handle).await;
-        eprintln!(
-            "⏭  Skipping: {} has no table missing from {} (need one for the \
-             cross-database check)",
-            cfg.database_a, cfg.database_b
-        );
-        return;
-    };
+        .unwrap_or_else(|e| panic!("seed probe table {probe}: {e}"));
+    driver
+        .query(
+            &seed,
+            &format!("INSERT INTO `{probe}` (id, marker) VALUES (1, '{probe}')"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("seed probe row into {probe}: {e}"));
 
     println!(
         "▶  cross-database live: handle on {}, reading {} on {}:{}",
@@ -322,6 +377,18 @@ async fn cross_database_reads_use_qualified_names_not_use() {
         "expected QueryFailed for unknown database, got: {err:?}"
     );
 
+    // Drop the probe on the way out so a green run leaves the fixture database
+    // exactly as it found it; the pid+nonce name means a leak from a crashed run
+    // cannot break the next one.
+    driver
+        .query(&seed, &format!("DROP TABLE IF EXISTS `{probe}`"))
+        .await
+        .unwrap_or_else(|e| panic!("drop probe table {probe}: {e}"));
+    driver
+        .disconnect(seed)
+        .await
+        .expect("disconnect seed connection");
+
     driver.disconnect(handle).await.expect("disconnect");
     println!("✅  MySQL cross-database live checks passed");
 }
@@ -338,6 +405,10 @@ async fn cross_database_reads_use_qualified_names_not_use() {
 #[tokio::test]
 async fn connection_without_a_default_database_needs_an_explicit_target() {
     let Some(cfg) = load_mysql_config() else {
+        unverified(
+            NO_DEFAULT_DATABASE,
+            "no TEST_MYSQL_* in the process environment",
+        );
         return;
     };
     let driver = MysqlDriver::new(false);
@@ -347,26 +418,47 @@ async fn connection_without_a_default_database_needs_an_explicit_target() {
     let handle = match driver.connect(&config).await {
         Ok(h) => h,
         Err(e) => {
-            eprintln!(
-                "⏭  Skipping: cannot connect to MySQL at {}:{}: {e}",
-                cfg.host, cfg.port
+            unverified(
+                NO_DEFAULT_DATABASE,
+                &format!("cannot connect to MySQL at {}:{}: {e}", cfg.host, cfg.port),
             );
             return;
         }
     };
 
-    let tables = driver
-        .get_tables(&handle, &cfg.database_a, None)
+    // Seed the table this test counts rows from.
+    //
+    // It used to take whichever table `get_tables` happened to report first, and
+    // skip when the fixture catalog was empty — so on a fresh fixture database
+    // the test returned before asserting either half of its claim (unqualified
+    // fails, targeted works) and still counted as passed. The handle under test
+    // has no default database, so it cannot seed; a second connection opens A
+    // instead, keeping the connection being tested exactly as the user has it.
+    let probe = fresh_probe_name();
+    let mut seed_config = connection_config(&cfg);
+    seed_config.id = "mysql-no-default-database-seed".into();
+    seed_config.database = Some(cfg.database_a.clone());
+    let seed = driver
+        .connect(&seed_config)
         .await
-        .unwrap_or_else(|e| panic!("get_tables({}): {e}", cfg.database_a));
-    let Some(probe) = tables.first().map(|t| t.name.clone()) else {
-        let _ = driver.disconnect(handle).await;
-        eprintln!(
-            "⏭  Skipping: `{}` has no tables to probe with",
-            cfg.database_a
-        );
-        return;
-    };
+        .unwrap_or_else(|e| panic!("seed connection to {}: {e}", cfg.database_a));
+    driver
+        .query(
+            &seed,
+            &format!(
+                "CREATE TABLE `{probe}` (id INT PRIMARY KEY, marker VARCHAR(64) NOT NULL) \
+                 ENGINE=InnoDB"
+            ),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("seed probe table {probe}: {e}"));
+    driver
+        .query(
+            &seed,
+            &format!("INSERT INTO `{probe}` (id, marker) VALUES (1, '{probe}')"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("seed probe row into {probe}: {e}"));
 
     println!(
         "▶  no-default-database live: unqualified statement must fail, targeted must work ({}:{})",
@@ -398,8 +490,24 @@ async fn connection_without_a_default_database_needs_an_explicit_target() {
         .and_then(|row| row.first())
         .and_then(cell_as_i64)
         .expect("COUNT(*) must come back as a number");
-    assert!(counted >= 0, "unexpected negative count {counted}");
+    // Exactly the row seeded above, not merely "some non-negative number": a
+    // `counted >= 0` assertion passes for zero rows too, so it would have
+    // reported success for a targeted read that resolved against the wrong
+    // database — the very thing this test exists to catch.
+    assert_eq!(
+        counted, 1,
+        "targeted read must resolve against {} and see the one seeded row in {probe}",
+        cfg.database_a
+    );
 
+    driver
+        .query(&seed, &format!("DROP TABLE IF EXISTS `{probe}`"))
+        .await
+        .unwrap_or_else(|e| panic!("drop probe table {probe}: {e}"));
+    driver
+        .disconnect(seed)
+        .await
+        .expect("disconnect seed connection");
     driver.disconnect(handle).await.expect("disconnect");
     println!("✅  MySQL no-default-database live checks passed");
 }
@@ -407,25 +515,25 @@ async fn connection_without_a_default_database_needs_an_explicit_target() {
 #[tokio::test]
 async fn get_table_schema_preserves_numeric_string_and_tinyint_defaults() {
     let Some(cfg) = load_mysql_config() else {
+        unverified(
+            NUMERIC_DEFAULTS,
+            "no TEST_MYSQL_* in the process environment",
+        );
         return;
     };
     let driver = MysqlDriver::new(false);
     let handle = match driver.connect(&connection_config(&cfg)).await {
         Ok(handle) => handle,
         Err(e) => {
-            eprintln!(
-                "⏭  Skipping: cannot connect to MySQL at {}:{}: {e}",
-                cfg.host, cfg.port
+            unverified(
+                NUMERIC_DEFAULTS,
+                &format!("cannot connect to MySQL at {}:{}: {e}", cfg.host, cfg.port),
             );
             return;
         }
     };
 
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after UNIX epoch")
-        .as_nanos();
-    let table = format!("codex_mysql_default_meta_{}_{}", std::process::id(), nonce);
+    let table = fresh_probe_name().replace("dz_cross_db_probe", "codex_mysql_default_meta");
     driver
         .query(
             &handle,
@@ -493,15 +601,19 @@ async fn get_table_schema_preserves_numeric_string_and_tinyint_defaults() {
 #[tokio::test]
 async fn read_snapshot_is_repeatable_read_only_and_releases_after_commit() {
     let Some(cfg) = load_mysql_config() else {
+        unverified(
+            SNAPSHOT_ISOLATION,
+            "no TEST_MYSQL_* in the process environment",
+        );
         return;
     };
     let driver = MysqlDriver::new(false);
     let reader = match driver.connect(&connection_config(&cfg)).await {
         Ok(handle) => handle,
         Err(e) => {
-            eprintln!(
-                "⏭  Skipping: cannot connect to MySQL at {}:{}: {e}",
-                cfg.host, cfg.port
+            unverified(
+                SNAPSHOT_ISOLATION,
+                &format!("cannot connect to MySQL at {}:{}: {e}", cfg.host, cfg.port),
             );
             return;
         }
@@ -510,16 +622,15 @@ async fn read_snapshot_is_repeatable_read_only_and_releases_after_commit() {
         Ok(handle) => handle,
         Err(e) => {
             let _ = driver.disconnect(reader).await;
-            eprintln!("⏭  Skipping: cannot open a second MySQL connection: {e}");
+            unverified(
+                SNAPSHOT_ISOLATION,
+                &format!("cannot open a second MySQL connection: {e}"),
+            );
             return;
         }
     };
 
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after UNIX epoch")
-        .as_nanos();
-    let table = format!("codex_mysql_snapshot_{}_{}", std::process::id(), nonce);
+    let table = fresh_probe_name().replace("dz_cross_db_probe", "codex_mysql_snapshot");
     driver
         .execute(
             &writer,

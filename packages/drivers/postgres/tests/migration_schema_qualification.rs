@@ -2,58 +2,53 @@
 
 use datazen_driver_api::*;
 use datazen_driver_postgres::{PgSyncAdapter, PostgresDriver};
-
-fn config(database: String, schema: String) -> ConnectionConfig {
-    ConnectionConfig {
-        id: format!("migration-schema-{}", uuid::Uuid::new_v4()),
-        name: "migration schema qualification".into(),
-        database_type: "postgresql".into(),
-        host: Some(std::env::var("MIGRATION_TEST_HOST").unwrap()),
-        port: Some(
-            std::env::var("MIGRATION_TEST_PORT")
-                .unwrap()
-                .parse()
-                .unwrap(),
-        ),
-        database: Some(database),
-        schema: Some(schema),
-        username: Some(std::env::var("MIGRATION_TEST_USER").unwrap()),
-        password: Some(std::env::var("MIGRATION_TEST_PASSWORD").unwrap_or_default()),
-        ssl_mode: Default::default(),
-        connection_timeout: 5,
-        max_pool_size: 2,
-        ssh_tunnel: None,
-        tunnel_kind: None,
-        tunnel_id: None,
-        http_proxy_tunnel: None,
-        websocket_tunnel: None,
-        color_tag: None,
-        group: None,
-        last_connected_at: None,
-        server_version: None,
-        options: None,
-        read_only: false,
-        pinned: false,
-    }
-}
+#[path = "../../http-support/tests/support/migration_gate.rs"]
+mod migration_gate;
 
 #[tokio::test]
-#[ignore = "requires isolated MIGRATION_TEST_DATABASE and explicit credentials"]
 async fn test_transfer_qualified_metadata_isolates_selected_schema() {
-    let database = std::env::var("MIGRATION_TEST_DATABASE").expect("isolated database required");
-    assert!(
-        database.starts_with("dz_mig_"),
-        "refuse shared fixture database"
-    );
+    // `None` means the gate already reported this dimension unverified — or, under
+    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    let Some(mut config) = migration_gate::require_config(
+        "postgresql",
+        "transfer-qualified-metadata",
+        "postgresql",
+        "migration-qualification",
+        &[],
+    ) else {
+        return;
+    };
+    // Kept as a local so the assertions below stay byte-identical to the version
+    // that used to run only under `--ignored`.
+    let database = config
+        .database
+        .clone()
+        .expect("the gate always sets the database it just validated");
+
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let selected_schema = format!("DtSelected_{suffix}");
+    // The suite pins metadata to one schema; the gate leaves `schema` unset.
+    config.schema = Some(selected_schema.clone());
     let other_schema = format!("dt_other_{suffix}");
-    let table = format!("same_name_{suffix}.part");
+    // Deliberately dot-free. `resolve_pg_table_schema` splits a table reference
+    // on the first `.` and treats what precedes it as the schema, so a name that
+    // genuinely contains a dot is not addressable through `get_table_schema` —
+    // the suffix used to end in `.part`, which made this test unrunnable. The
+    // point under test is that ONE name exists in TWO schemas and the selected
+    // one wins; a unique plain name carries that just as well.
+    let table = format!("same_name_{suffix}");
     let driver = PostgresDriver::new();
-    let handle = driver
-        .connect(&config(database.clone(), selected_schema.clone()))
-        .await
-        .unwrap();
+    let handle = match driver.connect(&config).await {
+        Ok(handle) => handle,
+        Err(e) => {
+            migration_gate::unverified(
+                "postgresql",
+                "transfer-qualified-metadata",
+                &format!("the configured migration database did not accept a connection: {e}"),
+            );
+            return;
+        }
+    };
 
     let selected_sql = driver.quote_ident(&selected_schema);
     let other_sql = driver.quote_ident(&other_schema);

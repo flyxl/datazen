@@ -24,7 +24,9 @@
 //! crate split out to stay under the 800-line ceiling.
 //!
 //! Everything above the live section is offline: it needs no server. The
-//! live section at the bottom is `#[ignore]`d and reads credentials from the
+//! live section at the bottom runs by default but reports itself unverified
+//! when no server is configured (and fails outright under
+//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1`). It reads credentials from the
 //! **process environment only** (`TEST_PG_*`), matching
 //! `tests/postgres_cross_database.rs` — no file fallback, see AGENTS.md
 //! 「本地环境变量文件保护」.
@@ -47,6 +49,15 @@ use datazen_driver_api::{
 // `inventory::submit!` in `lib.rs` that makes any factory findable at all —
 // when something below actually names it.
 use datazen_driver_postgres::{PostgresDriver, PostgresResourceProvider};
+
+// Declared here, not inside `mod live {}`. A `#[path]` inside an inline module
+// is resolved against a directory rustc *synthesises* for that module
+// (`tests/live/`), and that directory does not exist on disk — so any `..` that
+// climbs out of it fails at the syscall level even though the path normalises
+// to a file that is really there. Declaring it at file scope keeps the
+// relative path anchored to a directory that exists.
+#[path = "../../http-support/tests/support/live_gate.rs"]
+mod live_gate;
 
 /// The provider id postgres declares in its capability snapshot.
 const POSTGRES_PROVIDER_ID: &str = "postgresql";
@@ -231,6 +242,53 @@ impl ResultSink for UnreachableSink {
         Err(ResourceError::SinkRejected {
             reason: "this sink exists to prove nothing wrote through it".into(),
         })
+    }
+
+    async fn fail(&self, _reason: &str) -> Result<(), ResourceError> {
+        Ok(())
+    }
+}
+
+/// A sink that accepts everything and records how much arrived.
+///
+/// `UnreachableSink` is deliberately hostile — it rejects `complete` so that any
+/// test expecting an execution to succeed fails loudly if it reaches it. That
+/// makes it the wrong instrument for the happy path: a provider completes a
+/// successful run by calling `complete`, so the live test could never pass with
+/// it. This one also lets the test count chunks, so "the query ran" is a
+/// measurement rather than an inference from a success status alone.
+#[derive(Default)]
+struct RecordingSink {
+    chunks: Mutex<u32>,
+    completed: Mutex<bool>,
+}
+
+impl RecordingSink {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn chunks(&self) -> u32 {
+        *self.chunks.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn was_completed(&self) -> bool {
+        *self.completed.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
+#[async_trait::async_trait]
+impl ResultSink for RecordingSink {
+    async fn write(&self, _chunk: ResultChunk) -> Result<(), ResourceError> {
+        let mut chunks = self.chunks.lock().unwrap_or_else(|p| p.into_inner());
+        *chunks += 1;
+        Ok(())
+    }
+
+    async fn complete(&self) -> Result<(), ResourceError> {
+        let mut completed = self.completed.lock().unwrap_or_else(|p| p.into_inner());
+        *completed = true;
+        Ok(())
     }
 
     async fn fail(&self, _reason: &str) -> Result<(), ResourceError> {
@@ -637,9 +695,18 @@ async fn a_cancel_is_never_accepted_for_an_execution_that_is_not_registered() {
     assert!(!CancelDisposition::AlreadyFinished.is_accepted());
 }
 
-/// The live section below needs a real server and is `#[ignore]`d.
+/// The live section below needs a real server.
+///
+/// It is not `#[ignore]`d. A static `#[ignore]` is neither a pass nor a failure:
+/// cargo reports it in the `ignored` count and exits 0, so a suite pinned
+/// behind one is indistinguishable from a suite that passed — which is how this
+/// section spent its whole life while the budget-ledger round-trip it covers
+/// went unexercised. Instead it runs by default and *reports itself
+/// unverified*, failing only under `DATAZEN_CONTRACT_REQUIRE_LIVE=1`.
 mod live {
     use super::*;
+
+    const DIMENSION: &str = "resource-budget-live";
 
     fn env_var(key: &str) -> Option<String> {
         std::env::var(key).ok().filter(|value| !value.is_empty())
@@ -665,16 +732,32 @@ mod live {
     }
 
     #[tokio::test]
-    #[ignore = "needs a live PostgreSQL from TEST_PG_* process env"]
     async fn an_acquired_resource_runs_a_query_and_gives_the_budget_back() {
-        let config = live_config().expect("TEST_PG_HOST is required for the live run");
+        let strict = live_gate::strict_live();
+        let Some(config) = live_config() else {
+            live_gate::unverified_or_fail(
+                "postgresql",
+                DIMENSION,
+                "TEST_PG_HOST is not in the process environment",
+                strict,
+            );
+            return;
+        };
         let driver = postgres().create();
         let provider = require_resource_provider(postgres()).expect("postgres has a provider");
 
-        let connection = driver
-            .connect(&config)
-            .await
-            .expect("the live server must accept a connection");
+        let connection = match driver.connect(&config).await {
+            Ok(handle) => handle,
+            Err(e) => {
+                live_gate::unverified_or_fail(
+                    "postgresql",
+                    DIMENSION,
+                    &format!("the live server did not accept a connection: {e}"),
+                    strict,
+                );
+                return;
+            }
+        };
 
         let ledger = Arc::new(BudgetLedger::default());
         let budget: Arc<dyn BudgetPort> = Arc::clone(&ledger) as Arc<dyn BudgetPort>;
@@ -686,7 +769,7 @@ mod live {
         assert_eq!(ledger.acquired().len(), 1, "exactly one charge per acquire");
 
         let execution = datazen_driver_api::QueryExecutionId::new("live-1");
-        let sink = UnreachableSink::new();
+        let sink = RecordingSink::new();
         let completion = provider
             .execute_on_resource(
                 &handle,
@@ -701,6 +784,18 @@ mod live {
             completion.completion_status.is_success(),
             "a plain SELECT completes: {:?}",
             completion.completion_status
+        );
+        // A success status alone does not prove the statement reached PostgreSQL.
+        // `SELECT 1` always produces a row, so a run that returned success without
+        // emitting one chunk never executed anything.
+        assert!(
+            sink.chunks() > 0,
+            "the live query must stream at least one chunk, got {}",
+            sink.chunks()
+        );
+        assert!(
+            sink.was_completed(),
+            "a successful execution must complete its sink"
         );
 
         let close = provider

@@ -1,57 +1,43 @@
 //! Live regression for MySQL structured view dependencies.
 //!
 //! Run against an existing test database with unique fixtures:
-//! MIGRATION_TEST_DATABASE=datazen_test MIGRATION_TEST_USER=root MIGRATION_TEST_PASSWORD= cargo test -p datazen-driver-mysql --test schema_dependency_catalog -- --ignored --nocapture
+//! MYSQL_MIGRATION_TEST_DATABASE=datazen_test MYSQL_MIGRATION_TEST_USER=root MYSQL_MIGRATION_TEST_PASSWORD= cargo test -p datazen-driver-mysql --test schema_dependency_catalog
+//!
+//! The prefix is `MYSQL_MIGRATION_TEST_`, not the bare `MIGRATION_TEST_` the
+//! PostgreSQL suites use. One `cargo test -p <pg> -p <mysql>` puts every test
+//! binary in a single environment, so a shared name would point these suites at
+//! the PostgreSQL server. See `http-support/tests/support/migration_gate.rs`.
+//!
+//! This suite is no longer `#[ignore]`d. With `MYSQL_MIGRATION_TEST_DATABASE` unset it reports
+//! `view-dependency-catalog` unverified and skips; with
+//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1` that report is a failure.
 
-use datazen_driver_api::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, QueryResult, Value as DriverValue,
-};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, QueryResult, Value as DriverValue};
 use datazen_driver_mysql::MysqlDriver;
 use serde_json::{json, Value};
-
-fn config(database: String) -> ConnectionConfig {
-    ConnectionConfig {
-        id: format!("schema-dependency-{}", uuid::Uuid::new_v4()),
-        name: "schema dependency catalog regression".into(),
-        database_type: "mysql".into(),
-        host: Some(std::env::var("MIGRATION_TEST_HOST").expect("MIGRATION_TEST_HOST")),
-        port: Some(
-            std::env::var("MIGRATION_TEST_PORT")
-                .expect("MIGRATION_TEST_PORT")
-                .parse()
-                .expect("valid MIGRATION_TEST_PORT"),
-        ),
-        database: Some(database),
-        schema: None,
-        username: Some(std::env::var("MIGRATION_TEST_USER").expect("MIGRATION_TEST_USER")),
-        password: Some(std::env::var("MIGRATION_TEST_PASSWORD").unwrap_or_default()),
-        ssl_mode: Default::default(),
-        connection_timeout: 5,
-        max_pool_size: 2,
-        ssh_tunnel: None,
-        tunnel_kind: None,
-        tunnel_id: None,
-        http_proxy_tunnel: None,
-        websocket_tunnel: None,
-        color_tag: None,
-        group: None,
-        last_connected_at: None,
-        server_version: None,
-        options: None,
-        read_only: false,
-        pinned: false,
-    }
-}
+#[path = "../../http-support/tests/support/migration_gate.rs"]
+mod migration_gate;
 
 #[tokio::test]
-#[ignore = "requires an isolated MIGRATION_TEST_DATABASE and explicit credentials"]
 async fn view_dependency_catalog_returns_exact_table_and_routine_edges_when_visible() {
-    let database = std::env::var("MIGRATION_TEST_DATABASE")
-        .expect("MIGRATION_TEST_DATABASE must name a test database");
-    assert!(
-        database == "datazen_test" || database.starts_with("dz_mig_"),
-        "refuse non-test database"
-    );
+    // `None` means the gate already reported this dimension unverified — or, under
+    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    let Some(config) = migration_gate::require_config(
+        "mysql",
+        "view-dependency-catalog",
+        "mysql",
+        "migration-view-dep",
+        &["datazen_test"],
+    ) else {
+        return;
+    };
+    // Kept as a local so the assertions below stay byte-identical to the version
+    // that used to run only under `--ignored`.
+    let database = config
+        .database
+        .clone()
+        .expect("the gate always sets the database it just validated");
+
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let table_name = format!("dz_mig_dep_base_{suffix}");
     let view_name = format!("dz_mig_dep_view_{suffix}");
@@ -59,7 +45,7 @@ async fn view_dependency_catalog_returns_exact_table_and_routine_edges_when_visi
 
     let driver = MysqlDriver::new(false);
     let handle = driver
-        .connect(&config(database.clone()))
+        .connect(&config)
         .await
         .expect("connect to isolated MySQL test database");
 
@@ -173,14 +159,25 @@ async fn view_dependency_catalog_returns_exact_table_and_routine_edges_when_visi
 }
 
 #[tokio::test]
-#[ignore = "requires an isolated MIGRATION_TEST_DATABASE and explicit credentials"]
 async fn table_dependency_catalog_proves_empty_and_exact_composite_fk_edges() {
-    let database = std::env::var("MIGRATION_TEST_DATABASE")
-        .expect("MIGRATION_TEST_DATABASE must name a test database");
-    assert!(
-        database == "datazen_test" || database.starts_with("dz_mig_"),
-        "refuse non-test database"
-    );
+    // `None` means the gate already reported this dimension unverified — or, under
+    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    let Some(config) = migration_gate::require_config(
+        "mysql",
+        "view-dependency-catalog",
+        "mysql",
+        "migration-view-dep",
+        &["datazen_test"],
+    ) else {
+        return;
+    };
+    // Kept as a local so the assertions below stay byte-identical to the version
+    // that used to run only under `--ignored`.
+    let database = config
+        .database
+        .clone()
+        .expect("the gate always sets the database it just validated");
+
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let no_fk = format!("dz_mig_no_fk_{suffix}");
     let parent = format!("dz_mig_parent_{suffix}");
@@ -193,7 +190,7 @@ async fn table_dependency_catalog_proves_empty_and_exact_composite_fk_edges() {
 
     let driver = MysqlDriver::new(false);
     let handle = driver
-        .connect(&config(database.clone()))
+        .connect(&config)
         .await
         .expect("connect to isolated MySQL test database");
     let mut cross_schema_created = false;

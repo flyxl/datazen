@@ -1,42 +1,10 @@
 //! Live Data Transfer sequence regression. The fixture is isolated in one
 //! uniquely named schema and is removed by the test after each run.
 
-use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DatabaseDriver, Value};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value};
 use datazen_driver_postgres::PostgresDriver;
-
-fn config(database: String) -> ConnectionConfig {
-    ConnectionConfig {
-        id: format!("transfer-identity-{}", uuid::Uuid::new_v4()),
-        name: "Data Transfer identity sequence regression".into(),
-        database_type: "postgresql".into(),
-        host: Some(std::env::var("MIGRATION_TEST_HOST").expect("MIGRATION_TEST_HOST")),
-        port: Some(
-            std::env::var("MIGRATION_TEST_PORT")
-                .expect("MIGRATION_TEST_PORT")
-                .parse()
-                .expect("valid MIGRATION_TEST_PORT"),
-        ),
-        database: Some(database),
-        schema: None,
-        username: Some(std::env::var("MIGRATION_TEST_USER").expect("MIGRATION_TEST_USER")),
-        password: Some(std::env::var("MIGRATION_TEST_PASSWORD").unwrap_or_default()),
-        ssl_mode: Default::default(),
-        connection_timeout: 5,
-        max_pool_size: 2,
-        ssh_tunnel: None,
-        tunnel_kind: None,
-        tunnel_id: None,
-        http_proxy_tunnel: None,
-        websocket_tunnel: None,
-        color_tag: None,
-        group: None,
-        last_connected_at: None,
-        server_version: None,
-        options: None,
-        read_only: false,
-        pinned: false,
-    }
-}
+#[path = "../../http-support/tests/support/migration_gate.rs"]
+mod migration_gate;
 
 fn quote_ident(identifier: &str) -> String {
     format!("\"{}\"", identifier.replace('"', "\"\""))
@@ -151,10 +119,25 @@ async fn insert_default_and_read(
 }
 
 #[tokio::test]
-#[ignore = "requires isolated MIGRATION_TEST_DATABASE and explicit credentials"]
 async fn explicit_id_import_advances_identity_and_owned_serial_sequences_safely() {
-    let database = std::env::var("MIGRATION_TEST_DATABASE").expect("isolated database required");
-    assert!(database.starts_with("dz_mig_"), "refuse non-test database");
+    // `None` means the gate already reported this dimension unverified — or, under
+    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    let Some(config) = migration_gate::require_config(
+        "postgresql",
+        "identity-sequence-import",
+        "postgresql",
+        "migration-identity",
+        &[],
+    ) else {
+        return;
+    };
+    // Kept as a local so the assertions below stay byte-identical to the version
+    // that used to run only under `--ignored`.
+    let database = config
+        .database
+        .clone()
+        .expect("the gate always sets the database it just validated");
+
     let schema = format!("dz_transfer_seq_{}", uuid::Uuid::new_v4().simple());
     let high_table = "identity.high\"water";
     let fresh_table = "identity_fresh";
@@ -167,7 +150,7 @@ async fn explicit_id_import_advances_identity_and_owned_serial_sequences_safely(
     let id_column = "id.\"quoted";
     let driver = PostgresDriver::new();
     let handle = driver
-        .connect(&config(database))
+        .connect(&config)
         .await
         .expect("connect to isolated PostgreSQL database");
     let q_schema = quote_ident(&schema);
