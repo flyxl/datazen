@@ -157,6 +157,11 @@ pub struct ResultChunkEvent {
 }
 
 /// 事件载荷。
+// `ExecutionView` 比 `SessionView` 大（864 vs 544 字节），装箱可以压掉差值，但
+// `ConnectionEvent` 是响应/事件信封而不是热路径栈值：每条事件都会跨进程序列化，
+// 装箱只会把这一次分配加到每条事件上，而枚举大小的收益在信封生命周期里兑现不了。
+// 这里的形状是刻意设计，改成参数结构体或加间接层都会动到 Wave 1/Wave 2 已依赖的契约。
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",

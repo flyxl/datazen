@@ -8,6 +8,9 @@ use crate::schema_dependencies::{
 use crate::schema_objects::DatabaseObject;
 use crate::types::{DriverError, QueryResult};
 
+// 返回类型是刻意设计：七元组按位置对应依赖目录查询的选列计数、对象列表、类型依赖、类型依赖支持标志、
+// 序列依赖与序列依赖支持标志，是 schema 依赖命令的既有形状。收成命名结构体属于契约变更。
+#[allow(clippy::type_complexity)]
 pub(super) fn parse_object_dependency_catalog(
     result: &QueryResult,
     require_type_usage: bool,

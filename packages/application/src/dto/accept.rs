@@ -64,6 +64,10 @@ pub struct IdempotencyAcceptRecord {
 
 impl IdempotencyAcceptRecord {
     /// 构造接受记录。`digest` 必须是规范化请求的稳定指纹，不允许塞入原始请求体。
+    // 10 个参数是刻意设计：`new` 是幂等接受记录的公共构造器，每个参数对应记录上的一个
+    // 具名字段，且 `request_digest` 取 `impl Into<String>` 让调用点直接传 `&str` 或 `String`。
+    // 收成参数结构体属于契约变更，会同时失效所有既有的位置调用点。
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         idempotency_key: IdempotencyKey,
         operation: IdempotentOperation,

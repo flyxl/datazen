@@ -74,6 +74,10 @@ pub fn append_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u3
 
 /// Emit already-decoded rows through [`QueryRowBatcher`] without holding a
 /// second full `MultiQueryResult` copy.
+// 8 个参数是刻意设计：这是驱动侧流式回调的公共入口，每个参数对应回调信封上的一个
+// 独立字段（`onEvent`/`index`/`sql`/`columns`/`rows`/`limit`/`executionTimeMs`/`rowsAffected`）。
+// 收成参数结构体会改掉所有驱动 crate 已经在依赖的调用点形状，代价远大于收益。
+#[allow(clippy::too_many_arguments)]
 pub fn stream_decoded_rows(
     on_event: &QueryStreamCallback,
     index: usize,

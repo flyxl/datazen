@@ -155,6 +155,10 @@ pub fn quote_sequence_ident(name: &str) -> String {
         .join(".")
 }
 
+// 9 个参数是刻意设计：`dump_one_object` 是全库 dump 的逐对象分派点，参数与
+// `get_tables` 返回的 `TableInfo` 字段、以及进度上报所需的 `current`/`total`/`out`/`on_progress`
+// 一一对应。收成结构体会让 dump 路径的每一步都多一层构造与解构。
+#[allow(clippy::too_many_arguments)]
 async fn dump_one_object<D, F>(
     driver: &D,
     handle: &ConnectionHandle,
