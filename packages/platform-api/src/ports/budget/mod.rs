@@ -3,7 +3,9 @@
 //! 对应 `connection-management.md` §9「预算与连接上限」。P2 阶段交付的是
 //! **类型与 trait 本身**（`platform-development-plan.md:94`
 //! 「所有实际建连的预算 port，包括 driver pool、集群节点和控制资源」），
-//! 实际的记账、调度与队列由 P3（`:111`）实现。**本模块不含任何实现体。**
+//! 实际的跨进程记账、共享额度轮转与排队调度由 P3（`:111`）实现。
+//! 本模块内唯一的实现体是 [`pool_ledger`]：driver pool 端口的**进程内**参考账本，
+//! 用来把 §9.3 的记账规则钉在可测的代码上；它不是调度器，也还不是任何调用方的依赖。
 //!
 //! ## 四个 trait 的分工
 //!
@@ -48,6 +50,7 @@ pub mod coordinator;
 pub mod dimension;
 pub mod node;
 pub mod pool;
+pub mod pool_ledger;
 
 pub use control::{
     ControlBudgetHeadroom, ControlResourceKind, ControlResourceLease, ControlResourcePort,
@@ -67,3 +70,4 @@ pub use pool::{
     PoolReturnVerdict, PoolStats, QuarantineReason, ReleaseDisposition, ReleaseReceipt,
     ReleaseSource,
 };
+pub use pool_ledger::{InMemoryDriverPoolBudget, PoolBudgetConfig};
