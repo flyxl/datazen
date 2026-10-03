@@ -536,7 +536,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 - 能力 `Unsupported` 的用例断言「**正确拒绝**」，不能静默 `skip`；若因环境缺失无法运行，必须在报告中写明未验证范围。
 - 真实测试环境不可用时，**不得用 fake 代替真实协议结论**：fake 只能证明网关/运行时行为，不能证明驱动语义。
-- 现有可运行示例：`cargo test -p datazen-driver-postgres --test postgres_cross_database`（该测试在无 Postgres 时干净跳过）。它是本文模板的起点，但**它通过自带的 `load_dotenv_file()` 读取 `packages/drivers/.env` 获取 `TEST_PG_*` 凭据**（路径由 `CARGO_MANIFEST_DIR` 的父目录拼出，不是仓库根），该程序读取本身符合 AGENTS.md，不得因而禁止运行；Agent 不查看文件内容。新 fake 不依赖真实配置，真实驱动契约按程序/CI 注入并保证输出脱敏。
+- 现有可运行示例：`cargo test -p datazen-driver-postgres --test postgres_cross_database`（该测试在无 Postgres 时干净跳过）。它是本文模板的起点，凭据**只从进程环境取**（`TEST_PG_*`），无文件回退：该测试曾回退去解析 `packages/drivers/.env`，与 AGENTS.md「本地环境变量文件保护」冲突，已移除——静默解析凭据文件的测试无法证明它的 secret 从何而来。注入由 CI secret、开发者 shell，或 `scripts/run-live-contract.sh` 承担（后者解析 `.env` / `.env.test` 后 `export`，不 `source`，因为 `source` 会执行文件内容）；运行器读文件本身符合 AGENTS.md，不得因而禁止运行；Agent 不查看文件内容。新 fake 不依赖真实配置，真实驱动契约按程序/CI 注入并保证输出脱敏。
 
 ## 11. 基准 harness（CM-60）
 
@@ -635,7 +635,7 @@ cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 fea
 | 禁止读取受保护 env 文件 | 任何 Agent（含子代理）不得打开、读取、解析、`source` 或打印仓库及 worktree 中 `.env` / `.env.test` 的内容；只允许检查文件是否存在与 Git 忽略状态。**测试程序运行时读 `.env` 是合法的**——集成测试本就需要其中的 `DATABASE_URL`，`load_dotenv` 类调用因此不因「读文件」本身被禁；被禁的是「把内容读进上下文」，而不是「程序读文件」 |
 | 输出保护与 fake 隔离 | 不得执行会把上述文件的**内容带进上下文或报告**的命令；真实测试程序读取合法，fake 不读取真实配置且不出站 |
 | 真实凭据注入方式 | 由 CI secret 或已获授权的进程环境变量注入；不写入提示、日志、报告或测试输出 |
-| 既有实现不作为范本 | `packages/drivers/postgres/tests/postgres_cross_database.rs` 现有 `load_dotenv_file()` 读取 `packages/drivers/.env`（由 `CARGO_MANIFEST_DIR` 父目录拼出）；新夹具**不复制**该写法，改造时改为只认进程环境 |
+| 测试只认进程环境 | `packages/drivers/postgres/tests/postgres_cross_database.rs` 解析 `TEST_PG_*` 只走 `std::env::var`，无文件回退，源码注释写明理由：静默解析凭据文件的测试无法证明其 secret 来源。旧的 `packages/drivers/.env` 回退已移除，注入改由 CI secret 或 `scripts/run-live-contract.sh` 承担；新夹具沿用「只认进程环境」这一写法 |
 | 启动器检查 | 开发前检查测试启动器不回显受保护文件内容；Host E2E 必须经 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 触发，不得裸 `cargo build」。**P0 检查结论：11 个 shell 脚本会 `source` 受保护 env 文件**（`scripts/setup-workflow-testdata.sh:10`、`scripts/run-full-automation-test.sh:49`、`scripts/run-e2e-minimal.sh:234` 经 `--env-file`/`E2E_ENV_FILE`、`packages/drivers/postgres/e2e/install-manual-schema-tree.sh:13`、`packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh:11`、`e2e/setup-e2e-env.sh:12`、`e2e/teardown-e2e-env.sh:12`、`e2e/setup-sync-dbs.sh:12`、`e2e/setup-demo-data.sh:13`、`e2e/setup-schema-diff-e2e.sh:10`、`e2e/setup-data-transfer-e2e.sh:10`）。全部是**本地操作者手动执行的 E2E 准备脚本**，不进 CI、不是夹具、也不由任何测试断言调用；`run-e2e-minimal.sh:226` 只打印变量**名**不打印值。已确认的合规样例是同目录的 `.mjs` 版本，只读 `process.env.E2E_MYSQL_*`。本阶段按「检查」交付，不改造这些脚本——改造会改变本地开发流程，属独立决策；复扫命令见下 |
 | 日志脱敏 | 夹具的 journal 不得记录凭据、附件令牌与幂等令牌 nonce；故障注入的脚本 id 可记录，字面量不可记录 |
 | 夹具不产生真实外部连接 | fake provider 禁止任何出站 socket；真实驱动测试的连接目标必须是已证明的专用测试环境 |
