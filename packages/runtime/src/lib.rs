@@ -19,6 +19,9 @@ pub mod directory;
 pub mod latency;
 /// 会话登记表接缝：`SessionPort` 的**唯一**契约面，Wave 2 的 registry 实现它、gateway 消费它。
 pub mod registry;
+/// 宿主资源台账与生命周期裁决（§3.2 模块表第 4 行）：物理连接表、`PoolKey` 索引、
+/// 租约状态机、归池前的宿主侧检查、候选替换提交闸门。不做驱动 `Clean` 判定，不导出物理句柄。
+pub mod resource;
 
 /// 夹具门控开关的单一事实源。
 ///
