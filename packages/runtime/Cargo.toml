@@ -39,3 +39,11 @@ thiserror = "1"
 async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "test-util"] }
 tracing = "0.1"
+
+# 集成测试要复用**唯一那份**共享夹具时钟（`connection::testing::clock::FakeClock`），
+# 而不是在本 crate 里另写一个只有 advance 的简化版。夹具模块由
+# `#[cfg(any(test, feature = "test-harness"))]` 门控，集成测试是**外部** crate，
+# 所以只能靠这条自引用的 dev-dependency 把 feature 打开。
+# 依赖自身不构成环：dev 依赖不参与本 crate 的编译图，crate 仍然只编译一次。
+[dev-dependencies]
+datazen-runtime = { path = ".", features = ["test-harness"] }
