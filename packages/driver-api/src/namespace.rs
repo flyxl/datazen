@@ -135,6 +135,13 @@ impl Default for CanonicalIdRules {
     }
 }
 
+/// The identifier inside `value`'s surrounding quotes, or `None` when `value` is
+/// not quoted. A doubled quote is the escape for a literal quote inside the
+/// identifier and is removed separately, after this pair is stripped.
+fn unquote(value: &str) -> Option<&str> {
+    value.strip_prefix('"')?.strip_suffix('"')
+}
+
 /// Everything the driver needs to validate and canonicalize a namespace
 /// target, registered on every [`ResourceDescriptor`]
 /// (`connection-management.md` §4.3).
@@ -174,8 +181,72 @@ impl NamespaceShape {
         })
     }
 
+    /// The folding rule `value` selects by its own quoting.
+    fn case_rule(&self, value: &str) -> CaseFolding {
+        match unquote(value) {
+            Some(_) => self.case_rules.quoted,
+            None => self.case_rules.unquoted,
+        }
+    }
+
+    /// The identifier `value` denotes with its quoting removed, under `rule`.
+    ///
+    /// Quoting is detected the way drivers already report it — the quotes are
+    /// part of the string, not a separate marker on the DTO (`"Sales"` rather
+    /// than a `quoted: true` flag), the same convention
+    /// `datazen_driver_postgres::resource::observation` uses when it records a
+    /// name as it arrived. Detecting it here is what lets a single field carry
+    /// both of `CaseRules`' variants, and it keeps `CanonicalTarget::path` a
+    /// bare identifier that the driver re-quotes when it builds SQL.
+    ///
+    /// The rule is a parameter rather than re-derived from `value`, because the
+    /// caller strips the quoting once and then needs to keep applying *that*
+    /// rule to whatever the alias resolves to. A doubled quote is the escape
+    /// for a literal quote inside the identifier.
+    ///
+    /// `Unknown` deliberately folds nothing. It means the driver has not
+    /// declared its rule, so applying one would invent an identity the driver
+    /// may not agree with; the caller's spelling is kept instead, which is a
+    /// recorded answer rather than a guessed one.
+    fn fold_with(&self, value: &str, rule: CaseFolding) -> String {
+        let bare = unquote(value).unwrap_or(value).replace("\"\"", "\"");
+        match rule {
+            CaseFolding::Lowercases => bare.to_lowercase(),
+            CaseFolding::Preserved | CaseFolding::Unknown => bare,
+        }
+    }
+
+    /// Whether `value` denotes nothing: empty, or an empty identifier wrapped
+    /// in quotes. Both would otherwise collapse into an empty canonical segment.
+    fn is_empty_identifier(&self, value: &str) -> bool {
+        value.is_empty() || unquote(value).is_some_and(|bare| bare.is_empty())
+    }
+
+    /// Steps 3-4: merge aliases, then fold — at both ends.
+    ///
+    /// The rule is derived **once**, from the caller's spelling, and applied to
+    /// both the identifier and the value the alias resolves to. Folding puts
+    /// alias lookup in folded space, so `Sales` and `sales` reach the same
+    /// entry; applying the rule afterwards normalizes an alias target written
+    /// in a different case.
+    ///
+    /// Deriving the rule a second time instead would be wrong rather than
+    /// merely redundant: the first fold has already consumed the quotes, so
+    /// re-deriving from the alias result would classify a quoted name as
+    /// unquoted and fold it by the unquoted rule — `"Sales"` on PostgreSQL came
+    /// out as `sales` that way.
+    fn canonical_identifier(&self, raw: &str) -> Result<String, ResourceError> {
+        let rule = self.case_rule(raw);
+        let aliased = self.resolve_alias(&self.fold_with(raw, rule))?;
+        Ok(self.fold_with(&aliased, rule))
+    }
+
     /// Steps 1-3 of the validation order: DTO fields present, non-null values
     /// for non-existent levels rejected, aliases merged and conflicts refused.
+    ///
+    /// Step 4 — the driver's own case folding — is applied by the internal
+    /// `canonical_identifier` to every identifier that reaches the canonical
+    /// path.
     ///
     /// The same canonical identifier may legitimately appear at two levels —
     /// PostgreSQL's catalog *is* the database — so repetition is not a
@@ -187,6 +258,35 @@ impl NamespaceShape {
     /// that forgot to declare its shape (or declared an empty one) appear to
     /// honour an arbitrary target.
     pub fn canonicalize(&self, target: &NamespaceTarget) -> Result<CanonicalTarget, ResourceError> {
+        // Step 1 of the validation order: a field is either absent or a non-empty
+        // identifier. `Some("")` is a *value*, not an absence — skipping it would
+        // leave an empty segment in `resolved`, where it is indistinguishable from
+        // a real identifier once the driver quotes it. This runs before the
+        // level checks so an empty field is rejected as itself rather than as a
+        // non-existent or missing level, and it mirrors
+        // `datazen_application::dto::requests::validate_namespace_target`, which
+        // applies the same rule to the same fields.
+        for (kind, value) in [
+            (NamespaceLevelKind::Database, target.database.as_deref()),
+            (NamespaceLevelKind::Catalog, target.catalog.as_deref()),
+            (NamespaceLevelKind::Schema, target.schema.as_deref()),
+        ] {
+            if value.is_some_and(|value| self.is_empty_identifier(value)) {
+                return Err(ResourceError::invalid_namespace(format!(
+                    "namespace field must not be an empty string: {kind:?}"
+                )));
+            }
+        }
+        if let Some(index) = target
+            .path
+            .iter()
+            .position(|segment| self.is_empty_identifier(segment))
+        {
+            return Err(ResourceError::invalid_namespace(format!(
+                "namespace path segment {index} must not be empty"
+            )));
+        }
+
         let mut resolved: Vec<String> = Vec::new();
 
         for (kind, value) in [
@@ -203,7 +303,7 @@ impl NamespaceShape {
                 Some(level) if !level.exists => {
                     return Err(ResourceError::NonexistentNamespaceLevel { kind });
                 }
-                Some(_) => resolved.push(self.resolve_alias(value)?),
+                Some(_) => resolved.push(self.canonical_identifier(value)?),
             }
         }
 
@@ -219,7 +319,7 @@ impl NamespaceShape {
         }
 
         for segment in &target.path {
-            resolved.push(self.resolve_alias(segment)?);
+            resolved.push(self.canonical_identifier(segment)?);
         }
 
         Ok(CanonicalTarget {

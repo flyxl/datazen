@@ -26,6 +26,124 @@ fn flat_shape() -> NamespaceShape {
     }
 }
 
+/// A shape that folds unquoted identifiers, e.g. PostgreSQL.
+///
+/// The two inner levels are declared *optional* so that a database-only target
+/// canonicalizes; these tests are about case folding, not about which levels a
+/// shape requires.
+fn lowercasing_shape() -> NamespaceShape {
+    NamespaceShape {
+        levels: vec![
+            NamespaceLevel::present(NamespaceLevelKind::Database, true),
+            NamespaceLevel::present(NamespaceLevelKind::Catalog, false),
+            NamespaceLevel::present(NamespaceLevelKind::Schema, false),
+        ],
+        case_rules: CaseRules {
+            unquoted: CaseFolding::Lowercases,
+            quoted: CaseFolding::Preserved,
+        },
+        canonical_id_rules: CanonicalIdRules::default(),
+        aliases: BTreeMap::new(),
+        path_segments: Vec::new(),
+    }
+}
+
+#[test]
+fn an_unquoted_identifier_is_folded_by_the_drivers_case_rule() {
+    let shape = lowercasing_shape();
+    let canonical = shape
+        .canonicalize(&NamespaceTarget::default().with_database("Sales"))
+        .expect("a mixed-case unquoted name is valid input");
+
+    // The assertion is on a *changed* value. Had folding been left out, this
+    // would still have produced "Sales" and this test would have passed while
+    // the rule did nothing.
+    assert_eq!(canonical.path, vec!["sales".to_string()]);
+}
+
+#[test]
+fn spellings_differing_only_in_case_reach_one_canonical_identity() {
+    let shape = lowercasing_shape();
+    let identities: Vec<Vec<String>> = ["Sales", "SALES", "sAlEs", "sales"]
+        .iter()
+        .map(|spelling| {
+            shape
+                .canonicalize(&NamespaceTarget::default().with_database(*spelling))
+                .expect("each spelling names a database")
+                .path
+        })
+        .collect();
+
+    for (spelling, identity) in ["Sales", "SALES", "sAlEs", "sales"].iter().zip(&identities) {
+        assert_eq!(
+            identity,
+            &vec!["sales".to_string()],
+            "{spelling} must land on the same identity as every other spelling"
+        );
+    }
+}
+
+#[test]
+fn a_quoted_identifier_keeps_its_case_and_loses_its_quotes() {
+    let shape = lowercasing_shape();
+
+    let quoted = shape
+        .canonicalize(&NamespaceTarget::default().with_database("\"Sales\""))
+        .expect("a quoted name is valid input");
+
+    // Two things are asserted at once: the case survived (the *quoted* rule
+    // applies), and the quotes did not (the canonical path is bare, so a
+    // driver re-quotes when it builds SQL). An implementation that ignored the
+    // quoted rule would produce "sales" here and fail.
+    assert_eq!(quoted.path, vec!["Sales".to_string()]);
+
+    // A quoted identifier is a different object from the unquoted spelling of
+    // the same letters, and canonicalization must not merge them.
+    let unquoted = shape
+        .canonicalize(&NamespaceTarget::default().with_database("Sales"))
+        .expect("the unquoted spelling is valid input");
+    assert_ne!(quoted.path, unquoted.path);
+}
+
+#[test]
+fn a_doubled_quote_inside_an_identifier_is_unescaped() {
+    let shape = lowercasing_shape();
+    let canonical = shape
+        .canonicalize(&NamespaceTarget::default().with_database("\"Odd\"\"Name\""))
+        .expect("an escaped quote is valid input");
+
+    assert_eq!(canonical.path, vec!["Odd\"Name".to_string()]);
+}
+
+#[test]
+fn an_alias_is_reached_through_a_differently_cased_spelling() {
+    let mut shape = lowercasing_shape();
+    shape
+        .aliases
+        .insert("sales".to_string(), "sales_main".to_string());
+
+    let canonical = shape
+        .canonicalize(&NamespaceTarget::default().with_database("SALES"))
+        .expect("the spelling folds onto the alias key");
+
+    // Folding has to happen *before* the alias lookup: looking up "SALES" would
+    // miss the "sales" entry and the alias would silently not apply.
+    assert_eq!(canonical.path, vec!["sales_main".to_string()]);
+}
+
+#[test]
+fn an_unknown_case_rule_folds_nothing_rather_than_guessing() {
+    let shape = flat_shape();
+    let canonical = shape
+        .canonicalize(&NamespaceTarget::default().with_database("Sales"))
+        .expect("a driver that declared no rule still canonicalizes");
+
+    // `Unknown` is the driver's admission that it has not declared its rule.
+    // Folding anyway would invent an identity, so the caller's spelling is
+    // kept — recorded here as a decision, not left as an untested default.
+    assert_eq!(canonical.path, vec!["Sales".to_string()]);
+}
+
 #[test]
 fn canonicalize_keeps_every_present_level() {
     let shape = three_level_shape();
@@ -45,6 +163,104 @@ fn canonicalize_keeps_every_present_level() {
         vec!["sales".to_string(), "sales".to_string(), "dbo".to_string()]
     );
     assert_eq!(canonical.requested, target);
+}
+
+#[test]
+fn canonicalize_rejects_an_empty_field_value() {
+    for kind in [
+        NamespaceLevelKind::Database,
+        NamespaceLevelKind::Catalog,
+        NamespaceLevelKind::Schema,
+    ] {
+        let shape = three_level_shape();
+        let target = NamespaceTarget {
+            database: Some("sales".to_string()),
+            catalog: Some("sales".to_string()),
+            schema: Some("dbo".to_string()),
+            path: Vec::new(),
+        };
+        let target = match kind {
+            NamespaceLevelKind::Database => NamespaceTarget {
+                database: Some(String::new()),
+                ..target
+            },
+            NamespaceLevelKind::Catalog => NamespaceTarget {
+                catalog: Some(String::new()),
+                ..target
+            },
+            NamespaceLevelKind::Schema => NamespaceTarget {
+                schema: Some(String::new()),
+                ..target
+            },
+        };
+
+        let error = shape
+            .canonicalize(&target)
+            .expect_err("an empty string is a value, not an absence");
+
+        // The reason must name the offending level, otherwise a caller cannot
+        // tell which field to fix.
+        let ResourceError::NamespaceTargetRejected { reason } = error else {
+            panic!("empty field must be rejected as itself, got {error:?}");
+        };
+        assert!(
+            reason.contains("empty string") && reason.contains(&format!("{kind:?}")),
+            "reason must name the level and the rule, got {reason:?}"
+        );
+    }
+}
+
+#[test]
+fn canonicalize_rejects_an_empty_field_before_the_level_check() {
+    // `flat_shape` has no catalog level, so `catalog: Some("public")` is rejected
+    // as a non-existent level. The empty string must be rejected for the
+    // different, more specific reason — otherwise this test would still pass if
+    // the empty check were deleted, and the defect would come back unobserved.
+    let shape = flat_shape();
+
+    let non_empty = shape
+        .canonicalize(
+            &NamespaceTarget::default()
+                .with_database("main")
+                .with_schema("public"),
+        )
+        .expect_err("flat_shape has no schema level");
+    assert!(matches!(
+        non_empty,
+        ResourceError::NonexistentNamespaceLevel {
+            kind: NamespaceLevelKind::Schema
+        }
+    ));
+
+    let empty = shape
+        .canonicalize(&NamespaceTarget {
+            database: Some("main".to_string()),
+            catalog: Some(String::new()),
+            ..NamespaceTarget::default()
+        })
+        .expect_err("an empty catalog is rejected");
+    assert!(
+        matches!(empty, ResourceError::NamespaceTargetRejected { .. }),
+        "an empty value must be rejected as an empty value, not as a missing level: {empty:?}"
+    );
+}
+
+#[test]
+fn canonicalize_rejects_an_empty_path_segment() {
+    let shape = three_level_shape();
+    let error = shape
+        .canonicalize(&NamespaceTarget {
+            database: Some("sales".to_string()),
+            catalog: Some("sales".to_string()),
+            schema: Some("dbo".to_string()),
+            path: vec!["tables".to_string(), String::new()],
+        })
+        .expect_err("an empty segment would become an empty canonical identifier");
+
+    let ResourceError::NamespaceTargetRejected { reason } = error else {
+        panic!("empty path segment must be rejected, got {error:?}");
+    };
+    assert_eq!(reason, "namespace path segment 1 must not be empty");
 }
 
 #[test]
