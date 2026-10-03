@@ -14,6 +14,8 @@
 pub mod connection;
 /// CM-60 门禁开销的测量口径（分位数算法 + 逐请求求和）。
 pub mod latency;
+/// 会话登记表接缝：`SessionPort` 的**唯一**契约面，Wave 2 的 registry 实现它、gateway 消费它。
+pub mod registry;
 
 /// 夹具门控开关的单一事实源。
 ///
