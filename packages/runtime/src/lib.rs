@@ -12,6 +12,9 @@
 //! 生产构建默认不含夹具代码；`src-tauri` 的 `datazen` crate 也不依赖它。
 
 pub mod connection;
+/// 会话目录端口（`SessionDirectory`）的单进程实现：owner / runtimeEpoch / TTL 路由。
+/// 只存路由信息，不存连接、不存凭据、不落盘。
+pub mod directory;
 /// CM-60 门禁开销的测量口径（分位数算法 + 逐请求求和）。
 pub mod latency;
 /// 会话登记表接缝：`SessionPort` 的**唯一**契约面，Wave 2 的 registry 实现它、gateway 消费它。
