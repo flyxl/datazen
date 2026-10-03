@@ -6,16 +6,21 @@
 //! 1. **源码扫描**：`src/directory/**` 里不出现任何落盘 API（文件、路径、数据库、
 //!    序列化写回），只 `include_str!` 编译期读入源码文本，不执行任何写盘调用。
 //! 2. **文件系统对照**：跑完一整轮登记 → 挂载 → 替换 → 过期 → 清扫 → 作废之后，
-//!    临时目录与 crate 目录的文件集合**没有多出任何与本次会话相关的东西**。
+//!    一个**私有的、空的**临时目录与 crate 目录**没有多出任何条目**。判据是
+//!    「跑完之后这里仍然是空的」，**与文件名无关**——任何落盘产物都不需要自报家门。
 //! 3. **可观测投影**：令牌原文与 `dbSessionId` 不出现在 owner / 快照 / 作废记录
 //!    任何一处 `Debug` 输出里——所以它们也进不了日志与事件。
+//!
+//! 门禁本身也要能证明自己有效，所以另有一条用例**故意栽一个泄漏**并断言探测器会响。
 //!
 //! 全程不读、也不打印任何 `.env` / `.env.test`。
 
 mod common;
 
 use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use common::{client, cycling_directory, editor_draft, principal, T0_UTC_MILLIS};
@@ -128,8 +133,7 @@ fn snapshot_of(root: PathBuf) -> BTreeSet<String> {
     out
 }
 
-/// 只看顶层条目名。临时目录下面挂着系统自己的深层树，递归扫要几十秒，
-/// 而任何落盘产物（快照文件、WAL、缓存目录）都会先落在顶层。
+/// 只看顶层条目名（不 stat、不递归）。
 fn snapshot_top_level(root: &Path) -> BTreeSet<String> {
     std::fs::read_dir(root)
         .unwrap_or_else(|err| panic!("读不到 {}：{err}", root.display()))
@@ -142,12 +146,88 @@ fn added_since(before: &BTreeSet<String>, after: &BTreeSet<String>) -> Vec<Strin
     after.difference(before).cloned().collect()
 }
 
+/// 落盘门禁的观测点：一个**空的、私有的**临时目录。
+///
+/// 不用系统临时目录本身，有两个硬理由：
+///
+/// - `$TMPDIR` 是**全机共享**的。这台机器上它有十万量级的顶层条目、十七万个目录；
+///   递归扫一遍要 30 秒，而 `rustc` 还在随时往里丢临时文件——同一个断言既慢，
+///   又会被同机其他编译误判成失败。
+/// - 私有空目录把基线钉死成「**什么都没有**」，于是门禁退化成「跑完之后这里仍然是
+///   空的」，**与文件名无关**。
+///
+/// 盯的仍然是同一个 API：生产代码一旦调用 `std::env::temp_dir()`，拿到的就是这个
+/// 私有目录，落盘照样现形。名字无关还顺带堵住了「别名导入绕过源码扫描」这条路
+/// （`use std::fs as f;` 躲得过 `FORBIDDEN` 字面量，躲不过目录里多出条目）。
+///
+/// `$TMPDIR` 是进程级全局量，因此所有用它的用例都持同一把锁排队；`Drop` 保证
+/// panic 路径也会把环境变量与临时目录还原掉，不留残留。
+static TEMP_ROOT_LOCK: Mutex<()> = Mutex::new(());
+
+struct PrivateTempRoot {
+    path: PathBuf,
+    previous: Option<OsString>,
+    _serial: MutexGuard<'static, ()>,
+}
+
+impl PrivateTempRoot {
+    fn new(tag: &str) -> Self {
+        // 锁中毒也要能继续跑：这里保护的是「临时目录归属」，不是不变量。
+        let serial = TEMP_ROOT_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = std::env::var_os("TMPDIR");
+        let path = std::env::temp_dir().join(format!("dz-no-disk-{tag}"));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).expect("私有临时目录应能建立");
+        std::env::set_var("TMPDIR", &path);
+        assert!(
+            snapshot_top_level(&path).is_empty(),
+            "私有临时目录的基线必须是空的，否则「结束后仍为空」证明不了任何事"
+        );
+        Self {
+            path,
+            previous,
+            _serial: serial,
+        }
+    }
+}
+
+impl Drop for PrivateTempRoot {
+    fn drop(&mut self) {
+        match self.previous.take() {
+            Some(value) => std::env::set_var("TMPDIR", value),
+            None => std::env::remove_var("TMPDIR"),
+        }
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+/// 私有临时目录里出现的所有产物路径。
+///
+/// **顶层多出任何条目就是泄漏，不看名字**——这一行是本门禁的全部要害。
+/// 这里曾经有一张「名字里带 `dbs_` / `session` / `datazen` 才算可疑」的名单，
+/// 于是 `dzcache/state.bin` 这种一个可疑词都不含的产物可以大摇大摆走过去。
+/// 递归展开只是为了让断言消息能指出到底写了哪个文件。
+fn leaked_paths(root: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    for name in snapshot_top_level(root) {
+        let path = root.join(&name);
+        out.push(name.clone());
+        if path.is_dir() {
+            let mut children = BTreeSet::new();
+            list_files(&path, &mut children, 1);
+            out.extend(children.into_iter().map(|child| format!("{name}/{child}")));
+        }
+    }
+    out
+}
+
 #[tokio::test]
 async fn a_full_session_lifecycle_writes_nothing_to_the_temp_dir() {
-    let (clock, dir) = cycling_directory(64);
-    let temp = std::env::temp_dir();
-    let temp_before = snapshot_top_level(&temp);
+    let temp = PrivateTempRoot::new("lifecycle");
     let crate_before = snapshot_of(crate_dir());
+    let (clock, dir) = cycling_directory(64);
 
     let (handle, token) = open_and_attach(&dir, &clock).await;
     exercise_replacement(&dir, &handle).await;
@@ -164,14 +244,11 @@ async fn a_full_session_lifecycle_writes_nothing_to_the_temp_dir() {
         "令牌必须真的被签发出来（带前缀、足够长），否则「没有落盘」证明不了什么"
     );
 
-    let temp_new = added_since(&temp_before, &snapshot_top_level(&temp));
-    let leaked: Vec<&String> = temp_new
-        .iter()
-        .filter(|name| looks_like_session_junk(name))
-        .collect();
+    let leaked = leaked_paths(&temp.path);
     assert!(
         leaked.is_empty(),
-        "会话目录在临时目录里留下了文件：{leaked:?}——dbSessionId 与令牌只在内存里"
+        "会话目录在临时目录里留下了东西：{leaked:?}——dbSessionId 与令牌只在内存里。\
+         这里不按文件名筛选，多出一个顶层条目就是泄漏"
     );
 
     let crate_new = added_since(&crate_before, &snapshot_of(crate_dir()));
@@ -181,24 +258,30 @@ async fn a_full_session_lifecycle_writes_nothing_to_the_temp_dir() {
     );
 }
 
-/// 文件名里出现这些片段，才算「疑似会话状态外泄」。
+/// 门禁自身的灵敏度自检。
 ///
-/// 之所以带 `session` 这种宽片段再按名字筛，是因为产物名可能不带 `dbs_`：
-/// 比如叫 `session-snapshot.bin` 也一样是泄漏。
-fn looks_like_session_junk(name: &str) -> bool {
-    let lowered = name.to_ascii_lowercase();
-    [
-        "dbs_",
-        "dbs-",
-        "datazen",
-        "db_session",
-        "dbsession",
-        "session",
-        "rte_",
-        "atk_",
-    ]
-    .iter()
-    .any(|marker| lowered.contains(marker))
+/// 在生产代码干净的时候，上面那条用例**永远是绿的**——一个什么都抓不住的门禁和一个
+/// 抓得住的门禁，在这条用例上表现一模一样。所以这里先**故意栽一个泄漏**，证明探测器
+/// 确实会响，再由 `Drop` 清理干净。
+///
+/// 栽的形态刻意毫无特征：`plain-name/state.bin` 不含任何可疑词，
+/// 这正是旧名单漏掉的那一类产物。
+#[test]
+fn the_leak_detector_reports_a_planted_entry_however_it_is_named() {
+    let temp = PrivateTempRoot::new("detector");
+    assert!(
+        leaked_paths(&temp.path).is_empty(),
+        "基线必须为空，否则这个自检什么也证明不了"
+    );
+
+    std::fs::create_dir_all(temp.path.join("plain-name")).expect("应能造出目录");
+    std::fs::write(temp.path.join("plain-name/state.bin"), b"leak").expect("应能写出文件");
+
+    assert_eq!(
+        leaked_paths(&temp.path),
+        vec!["plain-name".to_owned(), "plain-name/state.bin".to_owned()],
+        "探测器必须把不带任何可疑词的顶层条目、以及它下面的文件一并点出来"
+    );
 }
 
 fn crate_dir() -> PathBuf {
@@ -208,7 +291,7 @@ fn crate_dir() -> PathBuf {
 
 async fn open_and_attach(
     dir: &InMemorySessionDirectory,
-    clock: &std::sync::Arc<common::FakeClock>,
+    clock: &std::sync::Arc<common::TestClock>,
 ) -> (SessionHandle, AttachmentToken) {
     let (handle, token) = dir
         .open_session(
@@ -262,7 +345,7 @@ async fn exercise_replacement(dir: &InMemorySessionDirectory, old: &SessionHandl
 
 async fn exercise_expiry(
     dir: &InMemorySessionDirectory,
-    clock: &std::sync::Arc<common::FakeClock>,
+    clock: &std::sync::Arc<common::TestClock>,
 ) {
     clock.advance(Duration::from_secs(61));
     let swept = dir

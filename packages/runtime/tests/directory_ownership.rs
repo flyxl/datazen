@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use common::{
-    client, cycling_directory, directory, editor_draft, CyclicEntropy, FakeClock, FixedEntropy,
+    client, cycling_directory, directory, editor_draft, CyclicEntropy, FixedEntropy, TestClock,
 };
 use datazen_platform_api::context::OwnerRef;
 use datazen_platform_api::error::PortError;
@@ -118,7 +118,7 @@ async fn concurrent_registration_of_one_id_has_exactly_one_winner() {
 /// 若实现把失败吞成 Ok，`Ok(_)` 分支直接 panic。
 #[tokio::test]
 async fn registration_failure_never_reports_success() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let dir = directory(&clock, Arc::new(FixedEntropy::new(0x5a)));
     let epoch = RuntimeEpoch::new(EPOCH);
 
@@ -242,11 +242,11 @@ async fn concurrent_open_gives_each_registered_id_exactly_one_owner() {
 #[tokio::test]
 async fn session_ids_come_from_entropy_not_from_a_central_allocator() {
     let dir_a = directory(
-        &Arc::new(FakeClock::new()),
+        &Arc::new(TestClock::new()),
         Arc::new(CyclicEntropy::new(1_000)),
     );
     let dir_b = directory(
-        &Arc::new(FakeClock::new()),
+        &Arc::new(TestClock::new()),
         Arc::new(CyclicEntropy::new(1_000)),
     );
     let epoch = RuntimeEpoch::new(EPOCH);

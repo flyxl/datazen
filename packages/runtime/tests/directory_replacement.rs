@@ -7,6 +7,7 @@
 //! - `RolledBack` 之后候选销毁、旧条目原样恢复；
 //! - 没 `Prepared` 就 `Committed`：直接报错，状态一个字都不改；
 //! - 结果未知：**两边都不可路由**，按 operation key 查清之后只落定一边；
+//! - 同一个替换操作键**只接受一次** `Prepared`，重复投递被拒且不改动第一次的状态；
 //! - 旧会话的挂载令牌在新会话上一律不作数。
 //!
 //! 断言全部非空：把「候选先放行」「提交时旧条目先留着」「未知结果按『多半成功』处理」
@@ -158,6 +159,77 @@ async fn prepared_candidate_is_invisible_and_reserves_its_id() {
     assert!(dir
         .commit_status(&ReplacementOperationKey::for_handle(&old.handle))
         .is_pending());
+}
+
+/// 同一个替换操作键**只允许被 `Prepared` 一次**。
+///
+/// 风险在于操作键由旧句柄唯一决定（`rep_{db_session_id}@{runtime_epoch}`），
+/// 于是「重投一次 prepare」看起来总是无害的——反正最终要提交的也是同一个旧会话。
+/// 实际上它会静默覆盖操作记录，把**第一个**候选永久孤立在屏障态里：
+/// 那个候选再也不会被提交、也不会被回滚，却一直占着 `dbSessionId` 不放。
+/// 所以重复投递必须在入口就被拒，且**不得**改动第一次 prepare 的任何状态。
+#[tokio::test]
+async fn a_second_prepared_for_the_same_operation_key_is_rejected() {
+    let (_clock, dir) = cycling_directory(64);
+    let old = open(&dir).await;
+    let key = ReplacementOperationKey::for_handle(&old.handle);
+    let first = candidate_owner("dbs_candidate_0001", NEXT_EPOCH, "2026-01-01T00:00:00.000Z");
+    let first_handle = first.to_handle();
+    // 第二个候选刻意用**不同的 dbSessionId**：「同一个候选重投」被候选 ID 占位挡住，
+    // 真正没被挡住的正是「换了个候选重投」这条路。
+    let second = candidate_owner("dbs_candidate_0002", NEXT_EPOCH, "2026-01-01T00:00:00.000Z");
+    let second_handle = second.to_handle();
+
+    dir.commit_replacement(commit_for(
+        &old.handle,
+        &first,
+        ReplacementOperation::Prepared,
+    ))
+    .await
+    .expect("第一次 prepare 应成功");
+    let entries_after_first = dir.len();
+
+    let err = dir
+        .commit_replacement(commit_for(
+            &old.handle,
+            &second,
+            ReplacementOperation::Prepared,
+        ))
+        .await
+        .expect_err("同一操作键的第二次 prepare 必须被拒");
+    assert!(
+        matches!(&err, PortError::CasConflict { entity, .. } if &**entity == "replacement"),
+        "重复 prepare 应当报替换语义上的 CAS 冲突，实际是：{err}"
+    );
+
+    // 第二次 prepare 什么也不许留下：不建第二个条目，也不动第一个。
+    assert_eq!(
+        dir.len(),
+        entries_after_first,
+        "被拒的重复 prepare 不得新增任何条目"
+    );
+    assert!(
+        !dir.contains(&second_handle.db_session_id),
+        "第二个候选根本不该进入目录，它的 ID 也不该被占住"
+    );
+    assert!(
+        dir.commit_status(&key).is_pending(),
+        "第一次 prepare 的屏障状态必须原封不动"
+    );
+
+    // 屏障照常结算：被提交的是**第一个**候选，第二个永远不会有可路由的一天。
+    dir.commit_replacement(commit_for(
+        &old.handle,
+        &first,
+        ReplacementOperation::Committed,
+    ))
+    .await
+    .expect("commit 应成功");
+    assert!(
+        dir.is_routable(&first_handle) && !dir.is_routable(&second_handle),
+        "结算的必须是第一次 prepare 登记的候选"
+    );
+    assert!(!dir.is_routable(&old.handle), "提交之后旧条目必须关闭路由");
 }
 
 #[tokio::test]

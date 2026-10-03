@@ -11,14 +11,14 @@
 //! - 判定到期只认服务端单调时钟，调用方给的墙钟不能提前收会话；
 //! - 事务 TTL 与挂载 / 关闭并发推进时，裁定只发生一次，结果唯一。
 //!
-//! **所有时间都来自 [`common::FakeClock`]，全程没有一次 `sleep`。**
+//! **所有时间都来自 [`common::TestClock`]，全程没有一次 `sleep`。**
 
 mod common;
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use common::{client, principal, CyclicEntropy, FakeClock};
+use common::{arm_timer, client, principal, CyclicEntropy, TestClock};
 use datazen_platform_api::context::OwnerRef;
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
@@ -32,6 +32,7 @@ use datazen_runtime::directory::{
     Adjudication, AttachmentOutcome, AttachmentRejection, AttachmentRequest, DeadlineKind,
     InMemorySessionDirectory, MonoInstant, RouteRejection, SessionHandle,
 };
+use datazen_runtime::testing::clock::FiredTimer;
 
 const EPOCH: &str = "rte-ttl-0001";
 const TTL: Duration = Duration::from_secs(60);
@@ -42,7 +43,7 @@ struct Opened {
     token: AttachmentToken,
 }
 
-fn open(clock: &Arc<FakeClock>) -> Opened {
+fn open(clock: &Arc<TestClock>) -> Opened {
     let dir =
         InMemorySessionDirectory::with_sources(clock.shared(), Arc::new(CyclicEntropy::new(64)));
     let (handle, token) = dir
@@ -88,7 +89,7 @@ fn unauthenticated_owner(db_session_id: &str) -> SessionOwner {
 /// 重复 detach 不改期限：不 detach 一次、detach 四次，到期点必须完全一样。
 #[test]
 fn duplicate_detach_does_not_extend_the_deadline() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
     opened
         .dir
@@ -146,7 +147,7 @@ fn duplicate_detach_does_not_extend_the_deadline() {
 /// 无凭据挂载必须被拒：只有句柄没有令牌 = 任何人都能抢别人的会话。
 #[test]
 fn credential_less_attach_is_rejected() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
 
     let rejection = opened
@@ -173,7 +174,7 @@ fn credential_less_attach_is_rejected() {
 /// 令牌对了还得身份对得上；四类错配逐条可区分。
 #[test]
 fn attachment_requires_token_principal_and_owner_to_match() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
 
     let first = opened
@@ -276,7 +277,7 @@ fn attachment_requires_token_principal_and_owner_to_match() {
 /// 目录里没发过令牌的会话（走 `register` 直接登记），任何令牌都换不来挂载权。
 #[tokio::test]
 async fn attach_requires_a_token_the_session_actually_issued() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let dir =
         InMemorySessionDirectory::with_sources(clock.shared(), Arc::new(CyclicEntropy::new(64)));
     let handle = dir
@@ -302,7 +303,7 @@ async fn attach_requires_a_token_the_session_actually_issued() {
 /// 合法挂载不刷新事务空闲期限：挂载时点是 t0+30s，期限仍停在 t0+60s。
 #[test]
 fn attach_does_not_refresh_transaction_idle() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
     opened
         .dir
@@ -342,7 +343,7 @@ fn attach_does_not_refresh_transaction_idle() {
 /// 多个期限并存时最早者说了算；摘掉最早的才轮到下一个。
 #[test]
 fn earliest_deadline_wins_and_next_one_promotes() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
 
     opened
@@ -436,7 +437,7 @@ fn earliest_deadline_wins_and_next_one_promotes() {
 /// 心跳只记业务活动时间，一个字的期限都不动。
 #[test]
 fn heartbeat_does_not_move_the_deadline() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
     opened
         .dir
@@ -467,7 +468,7 @@ fn heartbeat_does_not_move_the_deadline() {
 /// 到期、关闭中、已关闭：三种状态都不得再挂载。
 #[tokio::test]
 async fn closing_closed_and_expired_sessions_are_not_attachable() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
     opened
         .dir
@@ -567,7 +568,7 @@ async fn closing_closed_and_expired_sessions_are_not_attachable() {
 /// 判定到期只看服务端单调时钟；调用方递过来的墙钟再晚也不能提前收会话。
 #[tokio::test]
 async fn sweeper_trusts_the_server_clock_not_the_caller_argument() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
     opened
         .dir
@@ -595,7 +596,7 @@ async fn sweeper_trusts_the_server_clock_not_the_caller_argument() {
 /// 执行中、又没有适用期限时，`expiresAt` 就是 null。
 #[test]
 fn expiration_projection_is_null_while_executing_without_a_deadline() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
     assert_eq!(
         opened
@@ -653,7 +654,7 @@ fn expiration_projection_is_null_while_executing_without_a_deadline() {
 /// 事务 TTL 推着走的同时，挂载 / 关闭 / 清扫并发发生：终态唯一，且清扫幂等。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn transaction_ttl_racing_attach_and_close_adjudicates_once() {
-    let clock = Arc::new(FakeClock::new());
+    let clock = Arc::new(TestClock::new());
     let opened = open(&clock);
     opened
         .dir
@@ -746,5 +747,51 @@ async fn transaction_ttl_racing_attach_and_close_adjudicates_once() {
     assert!(
         repeat.is_empty(),
         "清扫必须幂等：第二次没有东西可收，说明这条会话没有被重复收走"
+    );
+}
+
+fn fired_labels(fired: &[FiredTimer]) -> Vec<&str> {
+    fired.iter().map(|timer| timer.label.as_str()).collect()
+}
+
+/// 只有共享夹具时钟能写出来的交叉断言：**最早到期的那个期限先响，被撤销的始终沉默。**
+/// 统一之前，`tests/common` 里那 63 行自制时钟只有一个 `AtomicU64` 递增：无先后、无撤销、无历史。
+#[test]
+fn the_cleared_deadline_stays_silent_while_earlier_armed_ones_fire() {
+    let clock = Arc::new(TestClock::new());
+    let opened = open(&clock);
+    let dir = &opened.dir;
+    dir.arm_transaction_idle(&opened.handle, TTL, MonoInstant::ZERO)
+        .expect("装期限应成功");
+    dir.clear_transaction_idle(&opened.handle)
+        .expect("清期限应成功");
+
+    // 目录侧的期限已经撤销；同一根时钟上还挂着另外三个期限，其中一个先挂后撤。
+    let revoked = arm_timer(&clock, "revoked-transaction-idle", TTL);
+    arm_timer(&clock, "disconnect-grace", Duration::from_secs(30));
+    arm_timer(&clock, "session-idle", Duration::from_secs(90));
+    assert!(
+        clock.fake().disarm(revoked),
+        "刚挂上的期限应当摘得掉，摘不掉这条断言就证明不了任何事"
+    );
+
+    assert_eq!(
+        fired_labels(&clock.advance(Duration::from_secs(45))),
+        vec!["disconnect-grace"],
+        "推进到 45s：只有 30s 那个期限到期；被撤销的 60s 期限不出声"
+    );
+    assert_eq!(
+        fired_labels(&clock.advance(Duration::from_secs(60))),
+        vec!["session-idle"],
+        "再推进到 105s：轮到 90s 那个期限"
+    );
+    assert_eq!(
+        fired_labels(&clock.fake().fired_history()),
+        vec!["disconnect-grace", "session-idle"],
+        "触发历史里不得出现被撤销的期限：撤销之后就当它不存在"
+    );
+    assert!(
+        dir.is_routable(&opened.handle),
+        "事务空闲期限已撤销：单调时间推过 105s 也不该把会话收走"
     );
 }

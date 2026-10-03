@@ -2041,6 +2041,7 @@ dependencies = [
  "chrono",
  "datazen-driver-api",
  "datazen-platform-api",
+ "datazen-runtime",
  "indexmap 2.14.0",
  "serde",
  "serde_json",

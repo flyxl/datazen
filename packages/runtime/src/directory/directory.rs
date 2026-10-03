@@ -200,6 +200,15 @@ impl InMemorySessionDirectory {
         match commit.operation {
             ReplacementOperation::Prepared => {
                 let new_handle = commit.new_owner.to_handle();
+                // 一个替换操作键**只允许被 prepare 一次**。同一个旧句柄再来一次
+                // `Prepared`（无论候选是不是同一个）都是调用方的重复投递：接受它会让
+                // 第二次静默覆盖操作记录，把第一个候选永久孤立在屏障态里再也结算不了。
+                if inner.operations.contains_key(&key) {
+                    return Err(PortError::cas_conflict(
+                        "replacement",
+                        "operation key already prepared",
+                    ));
+                }
                 if new_handle.db_session_id == commit.old.db_session_id {
                     return Err(PortError::cas_conflict(
                         "replacement",

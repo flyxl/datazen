@@ -24,6 +24,13 @@
 //!
 //! 时间一律走 [`DirectoryClock`]，生产用 [`SystemDirectoryClock`]，测试注入假时钟；
 //! 任何路径都**不做真实等待**。
+//!
+//! **调用方的清扫义务**：未定期调用 `SessionDirectory::sweep_expired` 的会话
+//! **不会自动过期**。期限到期只写进条目状态，路由闸与挂载闸都**不**做惰性 TTL 判定——
+//! `route()` 在期限已过时照样放行。TTL 判定由调用方显式触发（`sweep_expired`），
+//! 或经同一 actor 串行仲裁（`InMemorySessionDirectory::adjudicate`）后才生效。
+//! 因此把清扫做成周期性任务、放进同一个 actor 的串行循环，是**调用方的义务**，
+//! 而不是本模块可以替你兜底的实现细节。
 
 pub mod attachment;
 pub mod commit;
