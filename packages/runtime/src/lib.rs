@@ -11,6 +11,7 @@
 //! 夹具（`connection::testing`）由 `#[cfg(any(test, feature = "test-harness"))]` 门控，
 //! 生产构建默认不含夹具代码；`src-tauri` 的 `datazen` crate 也不依赖它。
 
+pub mod budget;
 pub mod connection;
 /// 会话目录端口（`SessionDirectory`）的单进程实现：owner / runtimeEpoch / TTL 路由。
 /// 只存路由信息，不存连接、不存凭据、不落盘。
