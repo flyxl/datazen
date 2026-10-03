@@ -44,6 +44,88 @@ pub struct ArtifactSummary {
     pub expires_at: Option<Timestamp>,
 }
 
+/// 产物生命周期。写入期与两个不可读终态（[共享边界 §4.6](../shared-boundaries-and-ports.md#46-结果与事件端口)）。
+///
+/// `Writing` 的产物**已发布块可读**：读取权随发布走，不随终结走。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ArtifactLifecycle {
+    /// 写入中。`totalChunks` 尚不确定，但仍可读已发布块。
+    Writing,
+    /// 正常终结。
+    Complete,
+    /// 显式中止或进程异常后由恢复扫描标记；已发布块保留。
+    Truncated,
+    /// 吊销，不可读。
+    Revoked,
+    /// TTL 到期，不可读。
+    Expired,
+}
+
+impl ArtifactLifecycle {
+    /// 不可读终态。`revoked` 与 `expired` 都不可读，但二者语义分开以便审计。
+    pub fn is_unreadable(self) -> bool {
+        matches!(self, Self::Revoked | Self::Expired)
+    }
+
+    /// 是否已终结：终结后不再接受 `append_chunk`。
+    pub fn is_finalized(self) -> bool {
+        !matches!(self, Self::Writing)
+    }
+
+    /// 常规受控导出是否放行。`truncated` 不在此列——
+    /// 它需要用户明确确认（§4.6），由 host 决定，不进端口默认路径。
+    pub fn allows_plain_export(self) -> bool {
+        matches!(self, Self::Complete)
+    }
+}
+
+/// 截断/中止原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AbortReason {
+    /// 进程异常退出，由恢复扫描标记；**不得**据此宣称结果完整。
+    WriterLost,
+    /// 所属执行失败。
+    ExecutionFailed,
+    /// 执行被取消。
+    Cancelled,
+    /// 消费超限。
+    ConsumerLimitExceeded,
+}
+
+/// 产物元数据。客户端每次查询都先授权（§4.6）。
+///
+/// 这是 **P3 目标契约**，当前无任何实现；不得当作已实现行为。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactMetadata {
+    pub artifact_id: ArtifactId,
+    pub lifecycle: ArtifactLifecycle,
+    /// 已发布（提交后）的块数。写入期只增不减。
+    pub published_chunk_count: Counter,
+    /// 已发布字节数。写入期只增不减。
+    pub published_byte_size: Counter,
+    /// 总量未知时为 `null`；`null` **只**表示尚未终结，不禁止读取已发布块。
+    pub total_chunks: Option<Counter>,
+    pub result_completeness: ResultCompleteness,
+    /// 仅 `truncated` 时有值。
+    pub truncation_reason: Option<AbortReason>,
+}
+
+impl ArtifactMetadata {
+    /// 已发布块数——`writing` 期间这就是可读块的上界。
+    pub fn published_chunk_count(&self) -> Counter {
+        self.published_chunk_count
+    }
+
+    /// `chunk_index` 是否已发布。越界与未发布**都必须**由调用方当参数错误处理，
+    /// 不能当作空块（§4.6）。
+    pub fn is_published(&self, chunk_index: Counter) -> bool {
+        chunk_index.get() < self.published_chunk_count.get()
+    }
+}
+
 /// 产物与其来源的绑定：客户端据此把结果块还原到正确的语句/上下文上。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

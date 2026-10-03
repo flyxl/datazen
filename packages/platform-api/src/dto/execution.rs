@@ -46,6 +46,43 @@ impl ExecutionState {
     pub fn is_terminal(self) -> bool {
         matches!(self, Self::Succeeded | Self::Failed | Self::Cancelled)
     }
+
+    /// 用取消结局解析终态。
+    ///
+    /// **P3 目标契约**（[开发计划 §7](../../development/platform-development-plan.md#7-p3统一-session--lease--budget--executiongateway)
+    /// /[夹具 §6.3](../../architecture/platform/fake-runtime-fixtures.md#63-竞态用例编排) CM-22）。
+    /// 要点：**取消请求不得覆盖实际执行终态**。取消本身不是终态，
+    /// 只有驱动**确认**回滚后才是。
+    pub fn resolve_cancel(self, outcome: CancelOutcome) -> Self {
+        // 已经终态的执行不被取消改写：先到的证据有效，但它必须是真的。
+        if self.is_terminal() {
+            return self;
+        }
+        match outcome {
+            CancelOutcome::ConfirmedRolledBack => Self::Cancelled,
+            // 不支持取消：状态原样继续跑，不得顺手标成 cancelled。
+            CancelOutcome::Unsupported => self,
+            // 取消生效前已完成。
+            CancelOutcome::CompletedFirst => Self::Succeeded,
+            // 结局未知**不是**「已取消」。它停在非终态，侧效应用
+            // `EffectOutcome::Unknown` 表达——不能伪称已回滚。
+            CancelOutcome::OutcomeUnknown => Self::CancelRequested,
+        }
+    }
+}
+
+/// 取消请求的四种结局。CM-22 的四种竞态编排各对应一个取值。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CancelOutcome {
+    /// 驱动确认写入已回滚 → 终态 `cancelled`。
+    ConfirmedRolledBack,
+    /// 取消不被该驱动/协议支持 → **不改变状态**。
+    Unsupported,
+    /// 执行在取消生效前已正常完成 → 终态 `succeeded`。
+    CompletedFirst,
+    /// 生效范围无法判定 → 不给终态；侧效应必须记 `EffectOutcome::Unknown`。
+    OutcomeUnknown,
 }
 
 /// 版本化的执行终态错误码，与 `ApiError.code` 是**两个独立命名空间**：
@@ -359,6 +396,69 @@ mod tests {
         let value = serde_json::to_value(&failed).expect("serialize");
         assert_eq!(value["errorCode"], json!("sqlError"));
         assert_eq!(value["effectOutcome"], json!("rolledBack"));
+    }
+
+    #[test]
+    fn a_cancel_request_can_never_overwrite_a_terminal_state() {
+        // 竞态里唯一不可协商的规则：终态一旦确定，取消不改写它。
+        for terminal in [
+            ExecutionState::Succeeded,
+            ExecutionState::Failed,
+            ExecutionState::Cancelled,
+        ] {
+            for outcome in [
+                CancelOutcome::ConfirmedRolledBack,
+                CancelOutcome::Unsupported,
+                CancelOutcome::CompletedFirst,
+                CancelOutcome::OutcomeUnknown,
+            ] {
+                assert_eq!(
+                    terminal.resolve_cancel(outcome),
+                    terminal,
+                    "{terminal:?} must survive a cancel resolved as {outcome:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn only_a_confirmed_rollback_produces_the_cancelled_terminal_state() {
+        let running = ExecutionState::Running;
+        assert_eq!(
+            running.resolve_cancel(CancelOutcome::ConfirmedRolledBack),
+            ExecutionState::Cancelled
+        );
+        // 「不支持取消」必须原样返回，不得顺手标成 cancelled。
+        assert_eq!(
+            running.resolve_cancel(CancelOutcome::Unsupported),
+            ExecutionState::Running
+        );
+        assert_eq!(
+            running.resolve_cancel(CancelOutcome::CompletedFirst),
+            ExecutionState::Succeeded
+        );
+    }
+
+    #[test]
+    fn an_unknown_cancel_outcome_is_never_reported_as_cancelled() {
+        let resolved =
+            ExecutionState::CancelRequested.resolve_cancel(CancelOutcome::OutcomeUnknown);
+        assert_eq!(resolved, ExecutionState::CancelRequested);
+        assert!(
+            !resolved.is_terminal(),
+            "未知结局不得产生终态：否则等于宣称已回滚"
+        );
+        assert_ne!(resolved, ExecutionState::Cancelled);
+        // 侧效应必须另记 Unknown，与状态是两个独立字段。
+        let view = ExecutionView {
+            state: resolved,
+            effect_outcome: EffectOutcome::Unknown,
+            error_code: None,
+            ..execution_view()
+        };
+        let value = serde_json::to_value(&view).expect("serialize");
+        assert_eq!(value["state"], json!("cancelRequested"));
+        assert_eq!(value["effectOutcome"], json!("unknown"));
     }
 
     #[test]

@@ -12,6 +12,8 @@
 //! 生产构建默认不含夹具代码；`src-tauri` 的 `datazen` crate 也不依赖它。
 
 pub mod connection;
+/// CM-60 门禁开销的测量口径（分位数算法 + 逐请求求和）。
+pub mod latency;
 
 /// 夹具门控开关的单一事实源。
 ///

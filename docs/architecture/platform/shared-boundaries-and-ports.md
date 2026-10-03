@@ -450,7 +450,7 @@ pub trait ArtifactStore: Send + Sync + 'static {
         -> Result<ArtifactMetadata, PortError>;
     /// finalize 固化完整性与总块数；abort 保留已发布块并标记 truncated。
     async fn finalize(&self, writer: ArtifactWriter) -> Result<ArtifactId, PortError>;
-    async fn abort(&self, writer: ArtifactWriter, reason: TruncationReason)
+    async fn abort(&self, writer: ArtifactWriter, reason: AbortReason)
         -> Result<ArtifactId, PortError>;
     async fn read_chunk(&self, ctx: &RequestContext, artifact_id: ArtifactId, chunk_index: ChunkIndex)
         -> Result<ArtifactChunk, PortError>;
@@ -480,6 +480,8 @@ P3 目标修订：Artifact 生命周期为 `writing → complete | truncated`，
 finalize 固化块数、完整性和截断原因；正常完成记 complete，取消/失败/消费超限走显式 abort/截断终结并清理未发布字节。受控导出仅允许 complete，truncated 需用户明确确认并保留截断标记。进程异常退出的 writer 由恢复扫描标记 truncated，不宣称完整；无人引用且未发布的上传按 TTL 清理。目标端口补 describe/abort，现有实现签名在 P3 同步修订。ArtifactMetadata 含 artifactId、lifecycle、publishedChunkCount、publishedByteSize、totalChunks、resultCompleteness、truncationReason；Counter 使用十进制字符串，writing 时 totalChunks 为 null。BackendClient 增加 getArtifactMetadata，HTTP 使用 GET artifacts/{id}?metadata=1，与 chunkIndex/offset 参数互斥；每次查询先授权。上传重传是单独协议：相同 index 只允许相同摘要，不同字节拒绝，不能覆盖已发布查询结果。
 
 `PortError::ArtifactExpired` 是端口层取值，**HTTP 状态码映射由 server host 决定**，不构成端口契约：team-server 出于防 ID 枚举把 `ArtifactExpired` 与 `NotFound` 统一映射为 404（不返回 410，见[团队服务 §9.2](team-server-and-auth.md#92-apierror--http-映射表)）。
+
+`abort` 的原因类型命名为 `AbortReason` 而**不是** `TruncationReason`：`connection::TruncationReason` 是**执行事件流**的截断原因（drain 期限、单订阅/单执行上限、生产者写失败），`AbortReason` 是**产物落盘**的中止原因（writer 丢失、执行失败、执行取消、消费超限）。二者语义层次不同——前者是「流被切短的额度原因」，后者是「产物为何没能走到 complete 的直接原因」，取值存在交集但不可互换；用同一名称会让调用方误以为可以直接互传。
 
 ### 4.7 三种交付形态的适配差异
 

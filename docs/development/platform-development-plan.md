@@ -125,7 +125,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 回退：新 runtime 仅给已迁移 consumer 使用；不同时维护一条资源的旧 refs 和新 lease。服务暂停/重启前关闭新 session，不能将活事务移回旧 manager。
 
-P3 开始前同步修订已落地 DTO/port 的目标契约：Artifact 写入期已发布块可读且不可覆盖、abort/截断终结与恢复元数据；取消请求不覆盖实际执行终态；CM-60 对每请求两段耗时求和后计算 p95。旧契约修订不得标为现有行为。退出门槛增加流式块读取/重连、writer 异常终结、取消四种竞态与基准口径断言，详见共享边界 §4.6、夹具 §6.3/§11。
+P3 开始前的 DTO/port 目标契约同步修订已落地，**只有契约与口径，没有任何运行时实现**（`ArtifactStore` 至今零实现方、零调用方）：Artifact 写入期已发布块可读且不可覆盖、abort/截断终结与恢复元数据（`ArtifactLifecycle`、`AbortReason`、`ArtifactMetadata`，端口补 `describe`/`abort`）；取消请求不覆盖实际执行终态（`ExecutionState::resolve_cancel` + `CancelOutcome`，对应 CM-22 四种竞态）；CM-60 对每请求两段耗时求和后计算 p95（`runtime::latency` 的 nearest-rank 口径，禁止两段 p95 相加代替逐请求求和、禁止剔除失败样本）。旧契约修订不得标为现有行为。退出门槛增加流式块读取/重连、writer 异常终结、取消四种竞态与基准口径断言，详见共享边界 §4.6、夹具 §6.3/§11。
 
 ## 8. P4：桌面 QueryPanel、TablePanel、元数据迁移
 
