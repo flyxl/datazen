@@ -11,6 +11,7 @@
 //! 夹具（`connection::testing`）由 `#[cfg(any(test, feature = "test-harness"))]` 门控，
 //! 生产构建默认不含夹具代码；`src-tauri` 的 `datazen` crate 也不依赖它。
 
+pub mod budget;
 pub mod connection;
 /// CM-60 门禁开销的测量口径（分位数算法 + 逐请求求和）。
 pub mod latency;
