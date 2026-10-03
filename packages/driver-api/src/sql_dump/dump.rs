@@ -155,11 +155,20 @@ pub fn quote_sequence_ident(name: &str) -> String {
         .join(".")
 }
 
-/// `dump_one_object` 的进度游标与输出缓冲。
+/// `dump_one_object` 的参数包：进度 `current`/`total`、输出缓冲 `out`、进度回调 `on_progress`。
+///
+/// **它不是游标，不持有任何跨调用的进度状态。** 调用方在每次循环迭代里按序号
+/// （`enumerate()` 的下标 + 1）新建一个本结构体，并把 `current` 直接填入；
+/// `dump_one_object` 全程只读 `current`/`total`，从不写回。所以读到的 `current`
+/// 永远是本次调用传入的那个值，不存在"已经推进到第几个"这种语义。
+///
+/// **`&mut` 只服务于 `out` 与 `on_progress`** 这两个输出端——进度回调与输出字符串
+/// 需要穿过 `dump_one_object` 写回调用方。`current`/`total` 在结构体内部是只读的，
+/// 整体取 `&mut` 只是因为 Rust 无法对单个字段分别标注可变性。
 ///
 /// **刻意保持模块私有**：这是消除 `too_many_arguments` 的内部重构，
 /// 给它加 `pub` 可见性会把一次内部改动变成契约扩张，比原来的 allow 更糟。
-struct ObjectDumpCursor<'a, F> {
+struct ObjectDumpArgs<'a, F> {
     current: u32,
     total: u32,
     out: &'a mut String,
@@ -172,18 +181,18 @@ async fn dump_one_object<D, F>(
     table: &TableInfo,
     database: &str,
     opts: &BackupDumpOptions,
-    cursor: &mut ObjectDumpCursor<'_, F>,
+    args: &mut ObjectDumpArgs<'_, F>,
 ) -> Result<(), DriverError>
 where
     D: DatabaseDriver + ?Sized,
     F: FnMut(DumpProgress),
 {
-    let ObjectDumpCursor {
+    let ObjectDumpArgs {
         current,
         total,
         out,
         on_progress,
-    } = &mut *cursor;
+    } = &mut *args;
     let tname = &table.name;
     // The object's own namespace, as reported by `get_tables`. A database-wide
     // dump spans every schema, so the schema is per-object, never global.
@@ -413,7 +422,7 @@ where
             table,
             database,
             opts,
-            &mut ObjectDumpCursor {
+            &mut ObjectDumpArgs {
                 current,
                 total,
                 out: &mut out,
