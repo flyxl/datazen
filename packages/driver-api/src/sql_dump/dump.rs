@@ -155,32 +155,42 @@ pub fn quote_sequence_ident(name: &str) -> String {
         .join(".")
 }
 
-// 9 个参数是刻意设计：`dump_one_object` 是全库 dump 的逐对象分派点，参数与
-// `get_tables` 返回的 `TableInfo` 字段、以及进度上报所需的 `current`/`total`/`out`/`on_progress`
-// 一一对应。收成结构体会让 dump 路径的每一步都多一层构造与解构。
-#[allow(clippy::too_many_arguments)]
+/// `dump_one_object` 的进度游标与输出缓冲。
+///
+/// **刻意保持模块私有**：这是消除 `too_many_arguments` 的内部重构，
+/// 给它加 `pub` 可见性会把一次内部改动变成契约扩张，比原来的 allow 更糟。
+struct ObjectDumpCursor<'a, F> {
+    current: u32,
+    total: u32,
+    out: &'a mut String,
+    on_progress: &'a mut F,
+}
+
 async fn dump_one_object<D, F>(
     driver: &D,
     handle: &ConnectionHandle,
     table: &TableInfo,
     database: &str,
     opts: &BackupDumpOptions,
-    current: u32,
-    total: u32,
-    out: &mut String,
-    on_progress: &mut F,
+    cursor: &mut ObjectDumpCursor<'_, F>,
 ) -> Result<(), DriverError>
 where
     D: DatabaseDriver + ?Sized,
     F: FnMut(DumpProgress),
 {
+    let ObjectDumpCursor {
+        current,
+        total,
+        out,
+        on_progress,
+    } = &mut *cursor;
     let tname = &table.name;
     // The object's own namespace, as reported by `get_tables`. A database-wide
     // dump spans every schema, so the schema is per-object, never global.
     let object_schema = table.schema.as_deref();
     on_progress(DumpProgress {
-        current,
-        total,
+        current: *current,
+        total: *total,
         object_name: tname.clone(),
         phase: DumpPhase::Object,
     });
@@ -395,19 +405,20 @@ where
     }
 
     let total = (base_tables.len() + views.len()) as u32;
-    let mut current = 0u32;
-    for table in base_tables.iter().chain(views.iter()) {
-        current += 1;
+    for (idx, table) in base_tables.iter().chain(views.iter()).enumerate() {
+        let current = idx as u32 + 1;
         dump_one_object(
             driver,
             handle,
             table,
             database,
             opts,
-            current,
-            total,
-            &mut out,
-            &mut on_progress,
+            &mut ObjectDumpCursor {
+                current,
+                total,
+                out: &mut out,
+                on_progress: &mut on_progress,
+            },
         )
         .await?;
     }

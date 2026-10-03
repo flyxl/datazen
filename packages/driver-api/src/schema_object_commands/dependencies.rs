@@ -8,25 +8,26 @@ use crate::schema_dependencies::{
 use crate::schema_objects::DatabaseObject;
 use crate::types::{DriverError, QueryResult};
 
-// 返回类型是刻意设计：七元组按位置对应依赖目录查询的选列计数、对象列表、类型依赖、类型依赖支持标志、
-// 序列依赖与序列依赖支持标志，是 schema 依赖命令的既有形状。收成命名结构体属于契约变更。
-#[allow(clippy::type_complexity)]
+/// 依赖目录查询结果，按位置对应「已选对象计数 / 不支持对象计数 / 依赖对象列表 /
+/// 类型依赖 / 类型依赖支持标志 / 序列依赖 / 序列依赖支持标志」。
+///
+/// 具名只为给这七元组一个可读名字，展开后类型与原始签名逐位相同，
+/// 因此调用点的按位置解构（含 `#[cfg(test)]` 里的十处）无需任何改动。
+pub(super) type ObjectDependencyCatalog = (
+    Option<i64>,
+    Option<i64>,
+    Vec<DatabaseObject>,
+    Vec<TypeDependencyUsage>,
+    bool,
+    Vec<SequenceDependencyUsage>,
+    bool,
+);
+
 pub(super) fn parse_object_dependency_catalog(
     result: &QueryResult,
     require_type_usage: bool,
     required_sequence_usage: Option<SequenceDependencyUsageKind>,
-) -> Result<
-    (
-        Option<i64>,
-        Option<i64>,
-        Vec<DatabaseObject>,
-        Vec<TypeDependencyUsage>,
-        bool,
-        Vec<SequenceDependencyUsage>,
-        bool,
-    ),
-    DriverError,
-> {
+) -> Result<ObjectDependencyCatalog, DriverError> {
     let selected_idx = column_index(&result.columns, &["selected_count"]).ok_or_else(|| {
         DriverError::QueryFailed("Dependency catalog query missing selected_count".into())
     })?;
