@@ -439,15 +439,57 @@ pub fn report_unverified(dimension: &str, reason: &str) {
     );
 }
 
+/// The pure decision behind strict mode, split out so it can be tested without
+/// mutating the process environment (which is process-global and racy against
+/// every other test in this binary running on its own thread).
+///
+/// Only the exact string `1` arms it, so an accidentally-present variable — an
+/// empty value, a path, someone's `DATAZEN_CONTRACT_REQUIRE_LIVE=/opt/thing` —
+/// cannot quietly turn every skipped dimension into a failure.
+pub fn strict_live_requested(value: Option<String>) -> bool {
+    value.map(|raw| raw.trim() == "1").unwrap_or(false)
+}
+
+fn strict_live() -> bool {
+    strict_live_requested(std::env::var("DATAZEN_CONTRACT_REQUIRE_LIVE").ok())
+}
+
+/// Report one dimension as unverified, and — when this run was explicitly asked
+/// to prove the live tier — fail instead of returning early.
+///
+/// The default has to stay lenient: CI has no fixtures at all, and a suite that
+/// failed there would only teach everyone to ignore it. The problem with lenient
+/// is not the early return, it is that `open_live` returning `None` looks
+/// *exactly* like the dimension having passed, and `test result: ok` cannot tell
+/// the two apart. That is why the reporting exists — but a line on stderr that
+/// nobody reads is not the same as a result, so whoever has fixtures needs a way
+/// to demand the difference.
+///
+/// This is not a different suite. Same tests, same dimensions, same fixtures —
+/// run with `DATAZEN_CONTRACT_REQUIRE_LIVE=1` the absence of a server becomes a
+/// failure, which is the only way to make "green" mean "verified" rather than
+/// "nothing objected".
+pub fn unverified_or_fail(dimension: &str, reason: &str, strict: bool) {
+    report_unverified(dimension, reason);
+    if strict {
+        panic!(
+            "DATAZEN_CONTRACT_REQUIRE_LIVE=1: {dimension} is unverified ({reason}). \
+             This run was asked to prove the live tier, so an unverifiable dimension is a \
+             failure rather than a skip. Unset the variable to go back to skipping."
+        );
+    }
+}
+
 pub async fn open_live<D: DatabaseDriver>(driver: D, dimension: &'static str) -> Option<Live<D>> {
+    let strict = strict_live();
     if let Err(reason) = crate::CONTRACT.availability() {
-        report_unverified(dimension, &reason);
+        unverified_or_fail(dimension, &reason, strict);
         return None;
     }
     let profile = match profile() {
         Ok(profile) => profile,
         Err(reason) => {
-            report_unverified(dimension, &reason);
+            unverified_or_fail(dimension, &reason, strict);
             return None;
         }
     };
@@ -455,9 +497,10 @@ pub async fn open_live<D: DatabaseDriver>(driver: D, dimension: &'static str) ->
     let handle = match driver.connect(&config).await {
         Ok(handle) => handle,
         Err(error) => {
-            report_unverified(
+            unverified_or_fail(
                 dimension,
                 &format!("cannot reach the fixture target: {}", err_kind(&error)),
+                strict,
             );
             return None;
         }

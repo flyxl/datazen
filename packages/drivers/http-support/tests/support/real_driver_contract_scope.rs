@@ -721,3 +721,114 @@ fn check_report_claims(availability: &Result<(), String>, report: String) {
          and passed — false for every row in PARTIAL_OBLIGATIONS"
     );
 }
+
+/// Strict mode is armed by exactly one string, and by nothing else.
+///
+/// The failure this guards against is a variable that is merely *present* — an
+/// empty value, a path, someone's `DATAZEN_CONTRACT_REQUIRE_LIVE=/opt/fixtures` —
+/// silently arming a mode whose whole job is to turn skips into failures. That
+/// would make CI flaky in a way nobody could reproduce, which is worse than the
+/// leniency it replaced.
+#[test]
+fn strict_mode_is_armed_by_exactly_one_string() {
+    for lenient in [
+        None,
+        Some(String::new()),
+        Some("   ".to_string()),
+        Some("0".to_string()),
+        Some("true".to_string()),
+        Some("yes".to_string()),
+        Some("01".to_string()),
+        Some("/opt/fixtures".to_string()),
+        Some("11".to_string()),
+    ] {
+        assert!(
+            !strict_live_requested(lenient.clone()),
+            "{lenient:?} must not arm strict mode — only the exact value \"1\" does"
+        );
+    }
+    for armed in ["1", " 1 ", "\t1\n"] {
+        assert!(
+            strict_live_requested(Some(armed.to_string())),
+            "{armed:?} is the documented way to demand the live tier and must arm it"
+        );
+    }
+}
+
+/// The default is lenient, and the opt-in is not — proven by *running* both paths
+/// rather than by reading them.
+///
+/// `catch_unwind` is used instead of setting the variable because the env is
+/// process-global: mutating it would race every other test in this binary that
+/// runs on its own thread, and the resulting flake would be indistinguishable
+/// from a real failure.
+#[test]
+fn an_unverifiable_dimension_skips_by_default_and_fails_only_when_asked() {
+    let lenient = std::panic::catch_unwind(|| unverified_or_fail("CM-08", "no fixture", false));
+    assert!(
+        lenient.is_ok(),
+        "the default must stay lenient or every machine without fixtures fails the whole suite"
+    );
+
+    let strict = std::panic::catch_unwind(|| unverified_or_fail("CM-08", "no fixture", true));
+    let panic = strict.expect_err(
+        "asking to prove the live tier must make an unverifiable dimension a failure, otherwise \
+         the request is another thing that gets ignored and green keeps meaning 'nothing \
+         objected'",
+    );
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("");
+    assert!(
+        message.contains("CM-08") && message.contains("no fixture"),
+        "the failure must name the dimension and the reason, or it is not actionable: {message}"
+    );
+}
+
+/// The strict path is only reachable if `open_live` actually passes the real
+/// value through — this pins the wiring, not just the helper.
+///
+/// Without this, flipping the default to lenient inside `open_live` (or dropping
+/// the argument at one of its three skip sites) would leave every test above
+/// still green, because they all call `unverified_or_fail` directly.
+#[test]
+fn every_skip_site_in_open_live_goes_through_the_strict_aware_choke_point() {
+    let source = template_sources()
+        .into_iter()
+        .find(|path| path.ends_with("real_driver_contract_plumbing.rs"))
+        .unwrap_or_else(|| {
+            panic!(
+                "the template scan did not yield real_driver_contract_plumbing.rs, so this test \
+                 cannot check the wiring it is here to check"
+            )
+        })
+        .canonicalize()
+        .and_then(std::fs::read_to_string)
+        .expect("the template source must be readable");
+
+    let body = source
+        .split("pub async fn open_live")
+        .nth(1)
+        .expect("open_live must exist in the plumbing template")
+        .split("\n}")
+        .next()
+        .unwrap_or_default();
+
+    assert!(
+        !body.contains("report_unverified("),
+        "open_live calls report_unverified directly, so a skip bypasses strict mode: {body}"
+    );
+    assert_eq!(
+        body.matches("unverified_or_fail(").count(),
+        3,
+        "open_live has three ways to be unable to verify a dimension (unavailable driver, \
+         no profile, unreachable target) and each must route through the strict-aware \
+         choke point, or one of them keeps skipping silently"
+    );
+    assert!(
+        body.contains("let strict = strict_live();"),
+        "open_live must read the flag once per call, otherwise the three sites can disagree"
+    );
+}

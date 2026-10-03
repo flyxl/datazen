@@ -17,6 +17,7 @@
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
 | 平台 crate 架构门禁（F-01..F-07） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
 | Basic path 驱动 lib | ✅ 四 crate 并行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
+| D 层 real-driver contract（postgres / mysql） | ✅ 编译 + free 层实跑 | 同上 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql --test real_driver_contract`；`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 要求 live 层 |
 | 可选 path 驱动 lib | ❌ | **All SKU** 构建时编译链接 | 改驱动 crate 时本地必跑 |
 | Git 驱动（kiwi/superset） | ❌ | **Akulaku SKU**（需 Deploy Key） | 见 [ci-private-drivers.md](./ci-private-drivers.md) |
 | Host E2E | ❌ | ❌（发版后手工 / R 阶段） | `pnpm e2e` / `pnpm e2e:minimal` |
@@ -223,6 +224,8 @@ Rust 测试顺序（与 `ci.yml` 一致）：
 ```bash
 # driver-api 与四个 path 驱动合为一次 cargo 调用（不依赖 --features）
 cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
+# D 层 real-driver contract：--lib 不编译 tests/，所以这条独立成步
+cargo test -p datazen-driver-postgres -p datazen-driver-mysql --test real_driver_contract
 # datazen 需要 features 选择注入的驱动
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen --lib --features "$FEATURES"

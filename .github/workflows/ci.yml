@@ -249,6 +249,19 @@ jobs:
       - name: Rust unit tests (driver API + basic path drivers)
         run: cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
 
+      # ── D 层 real-driver contract ──
+      #
+      # 上一条是 `--lib`，它不会编译 `tests/` 目录。也就是说整个
+      # real_driver_contract 模板（postgres 与 mysql 绑定的那两个 target）从来没被
+      # CI 编译过：模板是共享的、在持续改的，而它坏掉时门禁不会响。今天它能编译
+      # 是运气，不是门禁。
+      #
+      # 这里不加 `|| true`、不加 continue-on-error：跑它同时做两件事——编译模板，
+      # 以及在无 fixture 的机器上跑 free 层（free 层不连服务端，本来就该全过）。
+      # live 层在这里仍然是 unverified，由模板自己逐维度报告。
+      - name: Real-driver contract (D layer template)
+        run: cargo test -p datazen-driver-postgres -p datazen-driver-mysql --test real_driver_contract
+
       - name: Rust unit tests (datazen)
         run: |
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
