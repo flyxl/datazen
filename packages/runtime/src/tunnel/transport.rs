@@ -27,7 +27,7 @@
 //!    自己记着的账；`TunnelHandle(Arc<()>)` 是刻意不透明的单值。
 //! 2. 释放决策的唯一输入是 `TunnelEntry::refs`（见 `ledger.rs`）；
 //!    `TunnelBinding` 只在 `acquire` 处被快照出去，此后不再回流。
-//! 3. 代数不变量（`close` 次数 == ensure 次数 − release 次数）由
+//! 3. 代数不变量（`close` 次数 == acquire 次数 − release 次数）由
 //!    `tunnel::journey_single_counter::single_counter_algebra_holds` 钉住。
 //!
 //! **已知名洞（登记于 CM-32 repair round 1，修复留待跟进轨）**：约束 (1) 当前

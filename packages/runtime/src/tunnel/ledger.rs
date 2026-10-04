@@ -13,10 +13,14 @@
 //! 全系统**只能有一个**引用计数器，就是 [`TunnelLedger`] 的 `refs`。
 //! [`TunnelTransport`] **不带**任何计数字段 —— 它只负责开/关真实隧道。
 //! 双重记账会让 CM-28「隧道不多减引用」与 CM-27「许可归零」同时失效，
-//! 而且两边各自看起来都对，极难排查。所以这里用类型系统把第二份账**在编译期消灭**：
-//! 物理接缝 [`TunnelTransport`] 的方法全部 `&self`（可放进 `Arc<dyn TunnelTransport>`），
-//! 因此它**不可能**持有需要 `&mut self` 的内部计数。
-//! 代数不变量由 `tunnel::harness` 的 `single_counter_algebra_holds` 钉住。
+//! 而且两边各自看起来都对，极难排查。
+//!
+//! 但这条纪律**不由类型系统保证**：`&self` 只排除 `&mut self`，而 `Mutex` / `Cell`
+//! 是**内部可变性**，本就不需要 `&mut self`；`TunnelTransport: Send + Sync` 之下放一个
+//! `Mutex<usize>` 完全合法 —— `RecordingTunnelTransport` 的
+//! `journal: Mutex<Vec<TunnelEvent>>` 就是活证据。真实约束是「释放决策只读本文件的
+//! `refs`」，靠字段审计与评审维持，详见 `transport.rs` 模块头。
+//! 代数不变量由 `tunnel::journey_single_counter` 的 `single_counter_algebra_holds` 钉住。
 //!
 //! # 失败传播（CM-32 第三条断言）
 //!
