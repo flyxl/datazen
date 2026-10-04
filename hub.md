@@ -1190,3 +1190,108 @@ Coder 自报 `--lib` 405 / 全量 592 / 21 个二进制 —— **系对过期基
 ### 留给 seam 轨的裁定项
 
 `TunnelError::rejected()` 与 `as_runtime_error()` 在 `error.rs` 外**零调用方**（实测 `count_outside_error_rs=0`）⇒ 整个 error→`RuntimeError` 面未被行使。且 **`AlreadyHeld`（调用方 bug）当前映射到 `SessionQuarantined`** —— 一旦 `rejected()` 拿到第一个调用方，**双重 acquire 就会把健康会话隔离掉**。必须在 seam 阶段裁定。
+
+---
+
+## `p3-harness-split`：Coder 连续死 3 次在 0 提交，换人后一次交付
+
+**前置实例 `0fd9e750` 三轮全部死在 0 提交**：R1 静默、R2 静默（`mod.rs` 已 361 行）、R3 吐出损坏的工具调用片段（`<]minimax[>[…`）。⇒ 判为**模型损坏而非偷懒**，设计抢救到 `/tmp/dz-harness-split-handoff.md`（复核为正确），换新 Coder `048ce930`。该实例中途在「Let me start a background build…」处截断，用「先跑一个测试再提交」的窄路径唤醒，**一次性交付全部三个测试**。
+
+★ **这一条印证了技能里的死线规则，但要按现象而非次数判**：损坏/截断的收尾消息 = 「无进展」，应唤醒一次，换人与否再定。
+
+目标：`harness/tests.rs` 当时 **800 行整、零余量**（CM-74 从 676 推到 800），任何 CM-74 后续用例落地前必须先拆（故 L5 被硬阻塞）。交付 `bf5060cea`，3 文件 / **+267 / −234**，`tests.rs` **800 → 573**（新 `cm74_release_order.rs` 207，`mod.rs` 361）。门禁全绿：根 `cargo fmt` EXIT=1 **仍是那个 gitignore codegen 缺件**（`src-tauri/src/driver_init.rs`，`.gitignore:69`），定向 `cargo fmt -p datazen-runtime -- --check` EXIT=0 —— **不要为此花一轮**。`--lib` 384 / TOTAL 564 / 20 目标 三数与基线**逐字相同**（只搬不增）。
+
+### 搬迁纯度：协调者与 Coder 两侧都用机械证据，不是「看着像」
+
+Coder 侧：快照 800 行原件，把原件 **532–719** 与新文件 20+ 逐行 diff ⇒ **188 行字节相同**（分段头 528–531 单独 diff 亦同）。Tester 侧用两套独立方法互证（括号感知提取器 + SHA-256；`sed` 行区间 + `diff -q`）⇒ **14 个函数体逐字节 IDENTICAL，FAIL=0**，函数名并集完全相同（丢失 0 / 新增 0），搬出的**恰好 3 个** CM-74 用例、留 11 个，`vec![…]` 4 处 / `panic!`·`expect` 消息 50 处 / 续行 `\` 3 处**一条不差**。
+
+★ **这是纯重构轨唯一的成败判据**：编译过 + 门禁绿只证明语法活下来了；有人「顺手」改断言、改期望值、改 panic 文案，**任何门禁都不会红**。逐字节对拍才堵得住。
+
+### Tester 抓出的自述不完整（如实登记）
+
+Coder 报了 1 条断裂内链，Tester 实测**共 3 条**：
+
+| 位置 | 链接 | 基线 | 归属 |
+|---|---|---|---|
+| `cm74_release_order.rs:27` | `` [`FakeHarness::close`] `` | 不断 | 本轨新引入，**Coder 已报** |
+| `tests.rs:1` | `` [`FakeHarness`] `` | 不断 | **本轨新引入，Coder 未报**（搬走辅助函数后 `use super::{…}` 不再含它） |
+| `tests.rs:7` | `` [`Barrier`] `` | **基线即断** | **既有，不归本轨** |
+
+Tester 用一对变异证明了「沉默来源」：坏链接挂在新 `cfg(test)` 模块 ⇒ rustdoc warning **38 → 38，零命中**；同一坏链接挂到确实渲染的 `pub trait SessionPort` ⇒ **38 → 39** 且逐字报出。⇒ 沉默源于 **`#[cfg(test)]` 排除**，不是 rustdoc 宽松。**Coder「零构建信号」的理由成立**，严重度低，不阻塞合并；`[Barrier]` 单独排期。
+
+★ **Tester 主动记录了自己一度造出的假证据**：DOC-link 阴性对照首轮用 `grep … | head -6` 当判据，`head` 的退出码掩盖了 grep 空结果，打印了一句并不存在的「对照成立」，且该轮变异根本没落盘。两条缺陷叠加差点产出假证据，已重做并改用 `if grep -q`。**这与本项目「逃逸码掩盖上游失败」的既有教训同源。**
+
+提交描述「纯搬 3 个测试」未提三个辅助函数同时 `tests.rs → mod.rs`（函数体字节相同、仍在 3 文件内、行为无害），描述该更正。
+
+---
+
+## CM-32 repair round 1（`566cccd00`）与 round-2 判决：CONDITIONAL PASS
+
+### repair round 1：两处必修，Coder 找到了我漏掉的两份副本
+
+打回原 Coder `bffa94ba`。**他改对了我点的那一处，又自查出第二份我完全没提的副本**（`tunnel/mod.rs:47`）—— 同一假话在**一个提交内有两份**。契约二进制里 `tunnel_refcount_contract.rs:435-455` 也存在**同一种空转**，而我那一轮根本没提。⇒ **「同一 commit 内多副本」必须整目录扫，不能只按简报点改。**
+
+- 必修 1：删假话，替换为「类型系统**挡不住**这件事（不要把纪律说成保证）」。全仓 grep「结构上就无法维护」「结构上装不下」= **0**。
+- 必修 2：两份都加第三次 acquire（lib `journey_single_counter.rs:274`/`:308` 用 `assert_ne!`；契约二进制 `:435-455`）。杀点证明：M4 lib `402 passed; 3 failed`、M4 契约 `4 passed; 3 failed`、负控 `405 passed`。
+- 门禁：`--lib` 405 / 契约 7 / 二进制 21 / TOTAL 592 / 定向 fmt 0。12 文件 / +2695 / −0。
+
+### round-2 判决：行为缺陷 0，**合并阻断 1 项（纯注释）**
+
+必修 2 判为**真修好且证明了判别力**，且 Tester 做了我没想到的一步：
+
+- M-4a 换掉新断言的数据源 ⇒ `EXIT=101`、`FAILED. 0 passed; 1 failed`、panic 在 `:285` `left: Some(1) / right: Some(2)` ⇒ **真杀**。
+- **负控：同一条变异打在修复前的 `2836d346d` 上 ⇒ `EXIT=0`、`ok. 1 passed`** ⇒ 旧断言扛住了它本该禁掉的那件事。**第一轮的空转被复现并关闭。**
+- M-4b 三处权威读全换成快照 ⇒ panic 在 `:274` `left: Some(1) / right: Some(1)` ⇒ `assert_ne!` 是**活守卫不是空转**，且 RHS 是测试本地的，生产代码改不动。
+- 契约二进制那份**不是盲抄**：用三次 return 把 refs 打到 0（lib 那份只 return 一次），另加 seam 级 `transport.closed()` 证据。
+
+★ **我要求它设计的那条变异落地了，而且打在我预判的缝上**：M-NEW-1（给 `TunnelEntry` 加 `handed_out: u32`，只在 acquire 写、release 不写，再让 drain 的存活判据从 `entry.refs > 0` 改成 `entry.handed_out > 1`）—— 套件级**真杀，9 处失败**。但 **lib 那份必修 2 用例在它下面 `EXIT=0` 通过了**（它只 release 一次，refs 到不了 0），**`assert_ne!` 根本没触发**（2 ≠ 1）。⇒ **`assert_ne!` 自证的是「两个来源不同」，不是「决策读的是权威那个」。** 靠 `single_counter_algebra_holds` 与契约二进制兜住。根因是 lib 副本只放一次 return。登记为**低级文档注记，不阻塞** —— 套件整体是可靠的。
+
+M2 复核**确认 Coder 自报为真**：加 `close_tally: Mutex<usize>` 且 `close_calls()` 改读它 ⇒ 编译通过、21/21 二进制全绿、`--lib` 405。Tester 的负控（让第二个计数器重复计数）**杀掉 10 个测试** ⇒ 是真洞，不是「没人读这个字段」。**精确形状：测试钉死了观测值的数值，没钉死它从哪个字段来。**
+
+`progress.md:288` 的零调用方声明用**墓碑法**验证而非 grep（`rejected` / `as_runtime_error` 在别的类型上也有，grep 不可靠）：单墓碑编译零错；双墓碑唯一 E0599 在 `error.rs:91` **自身内部** ⇒ 外部确实零调用。**登记准确。**
+
+### ★ 必修 1 被判「改对了但没改全」—— 这就是唯一阻断项
+
+`transport.rs:12-21` 与 `mod.rs:48-52` 改写正确（引了两个真实反例，措辞是「靠字段审计与评审维持」，**没把纪律说成保证**）。**但第三处漏网**：`tunnel/ledger.rs:16-18` 把那句假话**逐字保留**（「所以这里用类型系统把第二份账**在编译期消灭**」「因此它**不可能**持有需要 `&mut self` 的内部计数」），**与同目录两个文件里的反驳直接打架**；`:19` 还把 `single_counter_algebra_holds` 指到了错的模块（实际 `tunnel::journey_single_counter`，不在 `tunnel::harness`）。
+
+**协调者已实测复现并确认阻断**（`grep -rn "编译期消灭\|不可能持有\|类型系统.*消灭" packages/runtime/src/tunnel/` **只剩这一处** ⇒ 是漏扫不是扩散）。公平地说 `ledger.rs` 本轮没碰它，属既存假话，但上一轮必修项写的是「模块头」**复数**，只改两处不算做完。已派回原 Coder 做注释清扫（零可执行代码改动）。
+
+★ **两轮下来这个模式已经很清楚：我的「点名式」复核天然漏副本。** 第一轮我点了 1 处（实际 2 处），第二轮我判「已改全」（实际还剩 1 处）。**注释里的断言必须按目录整扫，不能按简报点改** —— 已写进 CM-32 的收尾简报。
+
+### 分支拓扑：合并会从 main 侧动到冻结文件（Tester 主动提的）
+
+`merge-base(main, 566cccd00)` = `21e27e4eb`，main **不是**祖先 ⇒ 分支落后 main **12 个提交**（Tester 按旧 main 算成 9，不影响结论）。⇒ 合并后要按 **`git diff <merge-base> <merged-head>`** 判冻结面，**不能用 `git diff 07c77d406..566cccd00`**（会产出假违规报告）；且合并后的测试数增减是**拓扑产物**，不得据此重开 CM-32。
+
+---
+
+## CM-70 Tester 判决：门禁全绿但**不判 PASS**，两个 HIGH
+
+Coder `9fb5b438`，验收点 `c6597b803`，20 文件 / **+4210 / −4**。四门禁全绿（`BUILD/BUILD_TH/TEST/DOC` 均 EXIT=0），**22 个测试目标逐个单跑全 EXIT=0**，TOTAL passed **638**，`--lib` 410（跑两遍首过全绿），定向 fmt 0。基线自洽：`main=890ace653` / `merge-base=7fa6630f0`，638−48−26=**564**。
+
+**这是第三次「门禁全绿 ≠ 判据转绿」**（前两次：CM-32、CM-74）。
+
+### 🔴 H-1：签名令牌明文整条落进审计投影（协调者独立复核成立）
+
+链条逐环实测：`token.rs:336` 拼的是 `format!("{TOKEN_PREFIX}.{version}.{payload_hex}.{mac_hex}")` —— 含 nonce 与 MAC 的**完整签名令牌串**；`IdempotencyScope::key()`（`idempotency.rs:54`）原样返回它；`gateway/mod.rs:363` 塞进 `GatewayError::IdempotencyConflict { key: scope.key().to_owned(), .. }`；`request.rs:310-312` 的 `json!` 把它写进 `to_persistable_json()`，`thiserror` 的 `Display` 也原样带出。**普通客户端输入即可触发。**
+
+★ **这直接证伪了本次新增 `SubmissionTokenRejected` 的设计理由**：同一个提交里 `SubmissionTokenRejected { reason: &'static str }` 只带静态原因串、干净；而**另一个变体把完整凭据整条铺在同一条审计通道上**。拒绝对拒绝原因写摘要的理由，在隔壁变体上被绕过。**CM-54 冻结保护的是冲突检测的语义，不含「可以往外泄凭据」的许可** —— 已签字授权修改。
+
+已核实 `key` 字段**下游只有 `request.rs:312` 的 JSON 投影自己**，无外部消费者 ⇒ 删除成本低。
+
+### 🔴 H-2：A6 围栏不覆盖「驱动中途丢」（协调者独立复核成立）
+
+`grep -rn "unverified.insert" packages/runtime/src/` **全仓唯一**（`mod.rs:372`），且**只挂 `IdempotencyLookup::Unreadable` 分支**；而 `mod.rs:509` 是 `let receipt = self.port.execute_in_session(port_request).await?;` —— 驱动报错被 `?` 直接吞掉，**这里根本没有抬围栏的地方**。Tester 探针 5（「先真发 SQL 再返回 `RuntimeError::SessionLost`」）：`PROBE5_FENCE_COUNT=0`、`PROBE5_NEW_TOKEN_ACCEPTED=exe_db_session_contract_1`、`PROBE5_IS_REPLAY=false`、**`PROBE5_SQL_ISSUED_FINAL=2`** —— 同一条 SQL 真发了两遍。判据措辞无条件 ⇒ **未闭合**。已签字授权把围栏从「账本读不出来」扩到「已下发但结果未知」，并明确 `IdempotencyPersistFailed` **不得**动（探针 4 已证明该分支正确）。
+
+### 🟡 M-1：未申报的 CM-54 公共面新增 —— 已签字通过
+
+`IdempotencyStore::delete`（带默认实现）、`InMemoryIdempotencyStore::delete`、`IdempotencyLedger::forget()`、`RequestFingerprint: Hash`。纯新增、源码级向后兼容，`IdempotencyRecord` 恰好 3 字段逐字节未动。**M-2 `progress.md` 合并时删除。**
+
+### Tester 推翻了我 3 条、确认了 6 处（逐条传下去）
+
+**推翻**：① `#![allow(dead_code)]` 掩盖死码 —— **删掉后爆 29 条真实 `never used`**，allow 有实据合法（**判定依据是告警内容不是退出码：编译 `EXIT=0` 不代表没死码**）；② 我点名的变异配对 `a_grant_..._is_never_deleted` —— **作废**，它用 `with_retained_until_for_test` 自造违规数据、走不到生产推导式；真正被杀的是另外三个，**不变量本身确实成立**，但我给的因果链是错的；③ `reserve` 失败未抬围栏 —— 探针 4 证明设计正确，已撤回。
+
+**确认**：`cm70_no_disk.rs:357` 真的格式化 `{keyring:?}`（比简报要求的更严）、`:134` 真的用活的 `read_dir`；`TokenKeyring` 原先派生 `Debug`（**会泄出原始签名密钥**）→ 改成手写脱敏实现；`invariants.rs` 是**加强**（断言体一字未改、`800` 字面量原样）；冻结面零 diff，`harness/tests.rs` sha256 两端相同。
+
+### ★ 简报里的过期数字（口径更正，非缺陷）
+
+测试目标 **22 非 21**（20 个集成二进制清单与简报完全一致，多出的是 `lib` 本身）；`07c77d406` 非本 HEAD 祖先；我说的「4 个生产文件」实为 **2 生产 + 2 仅测试**。
