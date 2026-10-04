@@ -2,7 +2,7 @@
  * 键头行「复制插入语句」纯函数单测（本轨 E-4，PRD §3.3 键头行 / 裁定 8-4）。
  *
  * `buildRedisInsertStatement` 把 `get_key` 返回的各类 value 形状
- * （`key_value_json`，packages/drivers/redis/src/redis_driver_on.rs 只读镜像）
+ * （`key_value_json`，packages/drivers/redis/src/driver/session.rs 只读镜像）
  * 转成一条 redis-cli 兼容的重建命令；stream/未知形状返回 null（宁可不给，
  * 也不给一条会撒谎的语句）。载荷是服务器数据，永不翻译。
  */

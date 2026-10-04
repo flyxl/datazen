@@ -17,7 +17,7 @@
 //!
 //! Behaviour (budget ledger, exact-key short circuit, per-page batches, slot
 //! addressing) is covered by the scripted connection double in
-//! `src/ops_tree_scan/tests.rs`.
+//! `src/ops/tree/scan/tests.rs`.
 
 use datazen_driver_api::{
     required_access_level, validate_command_input, CommandAccessLevel, CommandCategory,

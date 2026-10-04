@@ -399,8 +399,9 @@ describe('[tester] KeyPropsSidebar stale payload — sidebar half of redis-kvbar
 describe('[tester] PTTL sentinels reach the renderer (BUG-004)', () => {
   // redis-kvbar-ui-BUG-004 (fixed, was `it.skip`): `key_object_info` can answer
   // `missing:false` together with `ttlMs:-2` — `TYPE` succeeds and `PTTL` reports
-  // the key gone inside the same pipeline (`ops_workbench.rs:425` takes `ttl_ms`
-  // straight from the reply while `:439` hard-codes `missing:false`).
+  // the key gone inside the same pipeline (`ops/workbench/shapes.rs`'s
+  // `parse_key_info` takes `ttl_ms` straight from the reply while
+  // `unreadable_key_state` hard-codes `missing:false`).
   // `describeTtl` separates that as `kind:'missing'`, but no renderer consumed
   // the distinction, so the ttl row printed `redis.noExpiry` — the one thing
   // certainly not true of a key the server just reported as absent. Measured
