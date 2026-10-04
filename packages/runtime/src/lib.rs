@@ -24,6 +24,11 @@ pub mod registry;
 /// 宿主资源台账与生命周期裁决（§3.2 模块表第 4 行）：物理连接表、`PoolKey` 索引、
 /// 租约状态机、归池前的宿主侧检查、候选替换提交闸门。不做驱动 `Clean` 判定，不导出物理句柄。
 pub mod resource;
+/// 隧道共享与引用计数（CM-32）：把 platform-api **已冻结**的
+/// `NetworkProvider::{ensure_tunnel, release_tunnel}` 契约落成实现方。
+/// 共享身份是 `TunnelSpec` 全等值（全系统**唯一**一份引用计数就在 `TunnelLedger`）；
+/// 物理开法是注入式接缝 —— 本模块不认识 SSH / 代理 / WebSocket 任何一种。
+pub mod tunnel;
 
 /// 夹具门控开关的单一事实源。
 ///
