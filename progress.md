@@ -6,7 +6,8 @@ CM-04 / CM-05 的 H 层。验收标准出处：
 
 - 分支：`feature/p3-gateway-owner-binding`
 - 基线：`f1d843271510eb7b64f5a3a435e1cc4ea6603206`
-- 交付 HEAD：`790c323af7a30fbc75df4a09ff55122514a4b30d`
+- 交付 HEAD（代码，已过全部门禁）：`bf7c35b7c4d7fa53c5957dccd6a2833865e85833`
+  （本文件自身的提交在其后，故本行的 sha 恒比分支 HEAD 少一个）
 - 工作树：`.worktrees/datazen-p3-gateway-owner-binding`
   （派单里写的 `datazen-gateway-owner-binding` 不存在，见「派单事实勘误」）
 
@@ -36,18 +37,36 @@ CM-04 / CM-05 的 H 层。验收标准出处：
 
 ## 门禁（自验，逐字结论行）
 
-复跑时 HEAD 前后一致、`git status --porcelain` 为空，两次均记录。
+★ 每轮复跑**首尾各记一次** HEAD 与工作区（`git status --porcelain`），
+证明运行期间没有别人动过树。本轮（修复轮）逐字记录：
 
-| 门禁 | 结论行 |
+```
+HEAD_START = bf7c35b7c4d7fa53c5957dccd6a2833865e85833
+PORCELAIN_START = [ M progress.md]        ← 唯一的改动就是这份台账本身
+merge-base main HEAD = f1d843271510eb7b64f5a3a435e1cc4ea6603206
+HEAD_END   = bf7c35b7c4d7fa53c5957dccd6a2833865e85833   ← 与 HEAD_START 相同
+PORCELAIN_END = [ M progress.md]
+```
+
+| 门禁 | 结论行（本轮实测，每条**只跑一次**，未重跑到绿） |
 | --- | --- |
-| `cargo fmt -p datazen-runtime -- --check` | 无 diff，`EXIT=0` |
-| `cargo test -p datazen-runtime --no-fail-fast`（全量） | `EXIT=0`；23 个目标合计 **710 passed / 0 failed**，其中 `unittests src/lib.rs` = `ok. 441 passed`、**`tests/owner_binding.rs` = `ok. 14 passed`**、**`Doc-tests datazen_runtime` = `ok. 7 passed`** |
-| `pnpm typecheck` | `EXIT=0`，`tsc --noEmit` 无输出；末行 `$ tsc -p tsconfig.pack-ep.json --noEmit` |
-| `cargo test -p datazen-runtime --test cm70_no_disk` | `running 13 tests` / `test result: ok. 13 passed; … 0 filtered out` |
-| `cargo test -p datazen-runtime --test gateway_contract` | `running 51 tests` / `test result: ok. 51 passed; … 0 filtered out` |
-| `cargo test -p datazen-runtime --test owner_binding`（本轨新增） | `running 14 tests` / `test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s` |
+| `cargo fmt -p datazen-runtime -- --check` | `EXIT=0`，日志 0 字节（无 diff） |
+| `cargo test -p datazen-runtime --no-fail-fast`（全量） | `EXIT=0`；**24** 个目标合计 **715 passed / 0 failed**（基线 710，+5 = `production_wiring` 的 5 条门禁） |
+| `cargo test -p datazen-runtime --lib` | `EXIT=0`，`test result: ok. 441 passed; 0 failed; … 0 filtered out` |
+| `cargo test -p datazen-runtime --test owner_binding`（本轨） | `running 19 tests` / `EXIT=0` / `test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
+| `cargo test -p datazen-runtime --test cm70_no_disk` | `running 13 tests` / `EXIT=0` / `test result: ok. 13 passed; …` |
+| `cargo test -p datazen-runtime --test gateway_contract` | `running 51 tests` / `EXIT=0` / `test result: ok. 51 passed; …` |
+| `cargo test -p datazen-runtime --doc` | `running 7 tests` / `EXIT=0` / `test result: ok. 7 passed; …` |
+| `pnpm --config.verify-deps-before-run=false typecheck` | `EXIT=0`，`error TS` 命中 **0**，末行 `$ tsc -p tsconfig.pack-ep.json --noEmit` |
 
-判绿按 `passed` 计数，不按退出码；并确认 `running N` 且 N>0。
+判绿按 `passed` 计数，不按退出码；并确认 `running N` 且 N>0（本轮每一条的 `running N` 都> 0，
+不是 `0 passed` 的空转绿）。仓库有约 12.5% 的偶发失败率，**本轮没有为了变绿而重跑过任何一条**；
+若验收方复跑遇到零星失败，那是仓库 flake，不是本轨回归——重跑一次确认即可。
+
+本轮门禁与上一轮唯一的差异是 `progress.md` 这份台账本身。实测
+`git grep -n progress.md -- packages/runtime/tests` **零命中**：`cm70_no_disk` 的
+`SOURCES` 登记表与 `gateway_contract/invariants.rs` 的 `production_lines` 名单
+**都不含它**，它也不参与编译与 typecheck，所以改动它不可能移动任何门禁。
 
 注：`pnpm typecheck` 直接跑会因工作树 `node_modules` 是指向主仓的符号链接而报
 `workspace hoist directory is not a real directory`；用
@@ -56,19 +75,79 @@ CM-04 / CM-05 的 H 层。验收标准出处：
 
 ## 变异证明（每条都带负对照；全部已还原，工作树干净）
 
-基线：`cargo test -p datazen-runtime --test owner_binding` = `ok. 14 passed`，
-`cargo test -p datazen-runtime --doc` = `ok. 7 passed`。
+基线（HEAD `bf7c35b7`，2026-08 的修复轮实测）：
+`cargo test -p datazen-runtime --test owner_binding` = `test result: ok. 19 passed; 0 failed`，
+`cargo test -p datazen-runtime --doc` = `test result: ok. 7 passed; 0 failed`。
+
+> ★ **本节整表已在修复轮重测并重写。** 上一版的三条 Authorizer 变异结论里有两条被实测
+> 推翻（下面「被推翻的旧结论」一节逐条列出），**数字与失败集合以本表为准**。
 
 ### Authorizer 比较（`owner_binding.rs`）
 
+变异位点实测在 `packages/runtime/src/gateway/owner_binding.rs`：
+`:171` `check_organization(...)?;`、`:172` `check_principal(...)`、
+`:190` `if owner != principal.organization_id() {`、`:204` `if owner != principal.principal_id() {`。
+
+| 变异 | 结果（`--test owner_binding`） |
+| --- | --- |
+| A 删掉 `:171-172` 两个调用点（两个 `fn` 体变死代码，`Job` 分支仍走组织比较） | `EXIT=101`，`FAILED. 12 passed; 7 failed` |
+| B 只反转组织比较（`:190` `!=` → `==`） | `EXIT=101`，`FAILED. 11 passed; 8 failed` |
+| C 只反转主体比较（`:204` `!=` → `==`） | `EXIT=101`，`FAILED. 11 passed; 8 failed` |
+
+**失败集合逐条列出（不是凭印象，是从日志里 grep 出来的）：**
+
+| 测试名 | A | B | C |
+| --- | :-: | :-: | :-: |
+| `cm04_a_profile_id_passed_as_a_session_handle_is_not_found` | | ✗ | ✗ |
+| `cm05_a_cross_organization_owner_looks_identical_to_an_absent_session` | ✗ | | |
+| `cm05_absent_and_foreign_handles_are_byte_identical` | ✗ | ✗ | ✗ |
+| `cm05_cancelling_a_foreign_execution_never_reaches_the_driver` | ✗ | ✗ | ✗ |
+| `cm06_a_forged_identity_in_the_body_cannot_override_the_principal` | ✗ | ✗ | ✗ |
+| `cm06_a_job_owned_by_another_organization_is_refused` | | ✗ | |
+| `cm06_a_job_owner_carries_no_principal_so_same_organization_peers_pass_the_gate` | | ✗ | |
+| `cm06_a_peer_principal_in_the_same_organization_is_denied` | ✗ | | ✗ |
+| `cm06_an_editor_owned_by_another_organization_is_refused` | ✗ | ✗ | ✗ |
+| `cm06_naming_another_users_editor_is_refused` | ✗ | | ✗ |
+| `cm06_the_real_owner_is_still_accepted` | | ✗ | ✗ |
+
+三条集合**两两不同**：B 与 C 的差集正好是「job 两例 vs peer/命名两例」，
+即组织比较只由 `OwnerRef::Job` 那一路独立承重、主体比较只由 `Editor` 那一路独立承重。
+⇒ 上一版「失败集合相同 ⇒ 各自独立被覆盖」的推论**是错的**：集合相同根本不能推出独立，
+集合不同才能。
+
+**一个必须说清的副作用**：`cm04_...` 之所以在 B/C 下红，是因为它 `:484-490` 有个
+「真句柄必须放行」的对照体，作者器一反转，对照体就红。它不是 CM-04 的语义被破坏，
+而是**跨议题的交叉敏感**——所以「哪些测试红了」不能当「哪个议题被破坏」的判据，
+只能当「这处代码有人依赖」的存在性证据。
+
+#### 被推翻的旧结论（保留原文以便追溯，判定以本节为准）
+
+1. 旧「变异2b 只反转主体比较 = `5 passed; 9 failed`」⇒ **实测 `11 passed; 8 failed`**。
+   旧数字取自 14 例的旧套件，换套件后失效；**同一句话里的 9/5 本身也曾与旧套件的
+   实测不符**，已作废。
+2. 旧「变异3 只反转组织比较 ⇒ 失败集合与变异2 不同 ⇒ 各自独立被覆盖」
+   ⇒ **推论方向错了**。当时的实测里变异 2 / 2b / 3 的失败集合**逐字相同**，
+   「相同 ⇒ 独立」不成立（相同也可能是同一处代码同时驱动三者）。
+   修复轮补了真正的跨组织 `Editor` 负例与独立命名后，B 与 C 才真的分家。
+3. 旧「变异1 两处 `if` → `if false` = `5 passed; 9 failed`」⇒ **作废**，不再单独跑。
+   变异 A（删调用点）比 `if false` 更能说明承重面，且失败集合更大。
+
+### 接线守卫（`owner_binding/production_wiring.rs`，本轮新增）
+
 | 变异 | 结果 |
 | --- | --- |
-| 变异1 两处 `if owner != … {` → `if false {`（always-allow） | `EXIT=101`，`FAILED. 5 passed; 9 failed` |
-| 变异2 两处 `!=` → `==`（双向反转） | `EXIT=101`，`FAILED. 7 passed; 7 failed`；**含 `cm06_the_real_owner_is_still_accepted` 失败** ⇒ 该检查双向承重 |
-| 变异2b 只反转主体比较 | `EXIT=101`，`FAILED. 5 passed; 9 failed` |
-| 变异3 只反转组织比较（**负对照**） | `EXIT=101`，`FAILED. 7 passed; 7 failed`，**失败集合与变异2 不同** ⇒ 组织比较与主体比较各自独立被覆盖 |
+| 往**生产**文件 `src/gateway/request.rs` 栽一处 `AlwaysAllow` | `EXIT=101`，`the_wiring_guard_catches_a_planted_production_wiring` 红，报 `packages/runtime/src/gateway/request.rs:603` |
+| 只在注释 / 字符串字面量 / `#[cfg(test)]` 块 / `use` 里写 `AlwaysAllow` | `EXIT=0`，`the_wiring_guard_ignores_prose_and_test_only_mentions` 绿 |
+
+真实反例的行号 `:603` 与 `grep -n` 实测一致 ⇒ **守卫报告的行号等于真实文件行**，
+这是「剥注释/字符串/测试块时不丢换行」这条不变式的活证（曾先做出丢换行的版本，
+报的是 `:397`，已修）。
 
 ### 编译期负例（`request_cm06_negatives.rs` / `request.rs`）
+
+> 本表**上一轮实测，本修复轮未重跑**（本轮没动 `request.rs` / `request_cm06_negatives.rs`，
+> `--doc` 的 `7 passed; 0 failed` 在 `bf7c35b7` 上重新跑过）。表里的 `line 29 / 116 / 196`
+> 是 rustdoc 报的 doctest 行号，不是文件行号。
 
 | 变异 | 结果 |
 | --- | --- |
@@ -108,7 +187,7 @@ CM-04 / CM-05 的 H 层。验收标准出处：
 | 登记 | 负对照（逐字） |
 | --- | --- |
 | `cm70_no_disk.rs` 的 `SOURCES` 加两条 `include_str!` | 往 `owner_binding.rs` 栽 `std::fs::File::open` ⇒ `EXIT=101`，`src/gateway/owner_binding.rs 里出现了std 文件系统（\`std::fs\`）：令牌与回执只在内存里，不得落盘` |
-| `invariants.rs` 的 `expected` 按文件性质分流：`owner_binding.rs` 进**生产文件**组（它 `pub mod` 进生产二进制，本就该受生产路径禁用词扫描），`request_cm06_negatives.rs` 进**测试专用**组并同列 `test_only`（它只编进 `#[cfg(doctest)]`，与该列表注释「测试专用」同类） | 往 `owner_binding.rs` 生产段栽 `panic!` ⇒ `EXIT=101`，`owner_binding.rs:235 生产路径出现 panic!(：fn _planted() { panic!("x"); }` |
+| `invariants.rs` 的 `expected` 按文件性质分流：`owner_binding.rs` 进**生产文件**组（它 `pub mod` 进生产二进制，本就该受生产路径禁用词扫描），`request_cm06_negatives.rs` 进**测试专用**组并同列 `test_only`（它只编进 `#[cfg(doctest)]`，与该列表注释「测试专用」同类） | 往 `owner_binding.rs` 生产段栽 `panic!` ⇒ `EXIT=101`，守卫报 `owner_binding.rs:508 生产路径出现 panic!(：    panic!("x");`。★ **本轮重新实测过**：栽在第 508 行、报第 508 行，**行号保真**；上一版记的 `:235` 是旧版文件（19282 字节那版）上的行号，文件长到 505 行后它就失效了 |
 
 ## 本轨未修、归属已登记
 
@@ -123,42 +202,86 @@ CM-04 / CM-05 的 H 层。验收标准出处：
   （同组织 peer **确实被受理**）+ `cm06_the_job_owner_variant_field_list_is_pinned`
   （字段表结构守卫，字段一变就红）。跨组织那一半已闭合：
   `cm06_a_job_owned_by_another_organization_is_refused`。
-- 真正闭合它的实现在上一层：`packages/application/src/identity_policy.rs:147-153`
-  的 `check_owner(ctx, owner, authorized_job)` 用调用方显式声明的 `authorized_job` 与
-  `owner.job_id` 比对。**归属：application 层（§5.1(3)）。本轨不改该文件。**
+- ★ **「上一层已经挡住」是错的，本轨不再这么写。** `identity_policy.rs` 的
+  `check_owner`（**定义在 `:137`**，`ctx: &RequestContext, owner: &OwnerRef,
+  authorized_job: Option<&JobId>`）实测**全仓没有任何生产调用点**：
+  `git grep -in check_owner -- .` 的 16 处命中里，8 处是它自己文件内的单测
+  （`:270`、`:276`、`:283`、`:284`、`:285`、`:292`、`:297`、`:307`），
+  1 处是 `dto/requests.rs:183` 的文档链接，其余 7 处都是本轨自己写的**文档说明**
+  （`owner_binding.rs` 3 处、`tests/owner_binding.rs` 2 处、本文件 1 处）。
+  `src-tauri` 全树零命中。⇒ 「上层兜底」不存在。
+- 而且就算它被调用也**补不上这个洞**：它比的是调用方**显式传入**的 `authorized_job`
+  与 `owner.job_id`（`identity_policy.rs:165-171` 的 `OwnerRef::Job` 分支），
+  那是「这个 job 有没有获授权」，不是「这是不是同一个人」；而它的 `OwnerRef`
+  是 `datazen_platform_api::context::OwnerRef`（`packages/platform-api/src/context.rs:65`），
+  **`Editor` / `Job` 两个变体里都没有 `organization_id` 与 `principal_id`**，
+  结构上就看不到组织与主体。⇒ CM-06 的 job 半边在本层与在应用层都**合不上**，
+  正确处置是记 **`PARTIAL`**，不是「已覆盖」。
+- **归属：需要 `OwnerRef::Job` 增加 `principal_id`（或让 `Authorizer` 入参带被授权 job），
+  属 connection 类型轨 / 网关契约轨。本轨不改。**
+- 已把这条登记放进**合并后仍在**的地方：`src/gateway/owner_binding.rs` 模块头
+  「未闭合项登记」（标题在 `:74`，其中「上层没有兜底」一段 `:82-88`）与 `identity_policy.rs` `check_owner` 上的
+  `# 契约债（不要把本函数当成网关归属闸门的兜底）` 文档段（`:120`）。
 
-### 2. 取消路径残留存在性预言机
+### 2. 取消路径残留存在性预言机（**本轨判定为 WARN，登记不修**）
 
-- 事实：`gateway/mod.rs:641-644` 的执行记录查表发生在 `:655` 的 `verify_binding`
+- 事实：`gateway/mod.rs:641-644` 的执行记录查表发生在 `:654` 的 `verify_binding`
   与 `:657` 的 `owned_view` **之前**。故「`executionId` 根本不存在」得
   `CancelFailed("unknownExecution")`（`api_code()` 为 `None`），「存在但不归我」得
   `sessionNotFound` —— 两个对外码可区分，攻击者据此判定该 `executionId` 是否存在。
-- 为何本轨不修：修它要改 `CancelFailed` 的对外语义，而
-  `tests/registry_audit.rs:103`、`tests/registry_cancel.rs:140,289,311`、
-  `tests/p3_session_port_contract.rs:428,472`、`tests/gateway_contract/cancel.rs:74,118`
-  逐条钉死了当前语义；且与 `datazen-p3-cm60-pressure-drain` @ `eb607ad88`、
+- ★ **上一版这里列的五处引用，实测四处是错的**（照抄会让人去改钉死的门禁）：
+  | 旧引用 | 实测 | 说明 |
+  | --- | --- | --- |
+  | `tests/registry_audit.rs:103` | `tests/registry_audit.rs:131` | 断言 `matches!(projection, ExitProjection::NotOnTheWire { .. })` |
+  | `tests/registry_cancel.rs:140,289,311` | **该文件零命中** | `api_code()` / `NotOnTheWire` / `UNKNOWN_EXECUTION` 在该文件里一次都不出现，**整条删掉** |
+  | `tests/p3_session_port_contract.rs:428,472` | `tests/p3_session_port_contract.rs:326,336` | 两处都断言 `assert_eq!(err.api_code(), None)` |
+  | `tests/gateway_contract/cancel.rs:74,118` | `tests/gateway_contract/cancel.rs:127` | 断言 `assert_eq!(*reason, binding::UNKNOWN_EXECUTION)` |
+  | `gateway/mod.rs:655`（`verify_binding`） | `gateway/mod.rs:654` | |
+- 为何本轨不修：**门禁从三处独立钉死了当前语义**（上表），动它就要同时改这三处契约测试，
+  而这三处属于别的轨；且与 `datazen-p3-cm60-pressure-drain` @ `eb607ad88`、
   `datazen-p3-cm70-fu2-token-leak` @ `f1d843271`、`ta-cm60` @ `eb607ad88` 共享。
 - 本轨做到哪一步：拒绝时**驱动 `cancel` 调用次数 = 0** 已由
-  `cm05_cancelling_a_foreign_execution_never_reaches_the_driver` 钉死。
+  `cm05_cancelling_a_foreign_execution_never_reaches_the_driver`（`tests/owner_binding.rs:558`）
+  钉死——它**不是** `#[should_panic]`，而是同一个测试里正反对照：先断言 U1 取消 U2 的
+  执行得到 `SessionNotFound` 且 `port.cancel_calls() == 0`（`:576-582`），
+  再让**真 owner U2** 取消同一条执行，断言它撞到的是端口替身的 `InvariantBroken`
+  而不是归属比较、且 `port.cancel_calls() == 1`（`:584-597`）。
+  排除「因为根本没调用所以是 0」的空转绿。
+- 严重度：上一版记为**未闭合缺陷**；本轮复核认为在「取消」这个动作面上，
+  宿主侧语义由 `registry/port.rs` 契约与上述门禁共同固定，**改它属契约变更而非本轨修复**，
+  故降为 **WARN** 并登记到 `tests/owner_binding.rs:55-61`（合并后随文件留存）。
 - **归属：cancel 语义所属轨（建议 P7 或独立的 cancel 闸门轨）。**
 
 ### 3. CM-04 的 `executeAtTarget` 半边
 
-- 事实：`executeAtTarget` 是 **application 层契约，仓库内零实现**
-  （`packages/application/src/sessions.rs:104-107` 声明，
-  `impl ConnectionUseCases` 全仓不出现）。runtime 侧的
-  `ExecuteAtTargetRequest`（`connection/session.rs:184-190`）是
-  `{target, call, idempotency_key}`，其 application DTO 另需
+- 事实：`execute_at_target` 是 **application 层契约，仓库内零实现**
+  （`pub trait ConnectionUseCases` 声明在 `packages/application/src/sessions.rs:49`，
+  方法声明在 `:102-106`；`impl ConnectionUseCases` 全仓**零实现**——
+  `git grep -n "impl ConnectionUseCases"` 唯一的命中是
+  `src-tauri/src/platform/adapter.rs:432`，而那一行是
+  `no_shell_implementation_of_the_thirteen_use_cases_exists`（`:428`）里
+  **断言它不存在**的 `assert!(!production.contains("impl ConnectionUseCases"))`，
+  注释写明「实现就得编造 revision / epoch / 幂等值」。⇒ **这不是「没人查过」，
+  是仓库自己有一条会红的门禁钉着它**，本轨直接引用该结论即可。
+- runtime 侧的 `ExecuteAtTargetRequest`（`connection/session.rs:186-189`）是
+  `{target, call, idempotency_key}`；其 application DTO 另需
   `expected_config_revision: Counter`（CAS，无 serde 默认值）。
 - 故「向 `executeAtTarget` 传未知 profile ⇒ 不可见配置错误」在 H 层**没有可注入的
-  调用点**，不编造。CM-04 的 `executeInSession` 半边已闭合并有门禁。
+  调用点**，不编造。CM-04 的 `executeInSession` 半边已闭合并有门禁
+  （`cm04_a_profile_id_passed_as_a_session_handle_is_not_found`）。
 - **归属：application / 组装层。**
 
-### 4. `registry/actor.rs` 的第二处未文档化 `SessionClosed`
+### 4. `registry/actor.rs` 的两处未文档化 `SessionClosed`
 
-- 事实：`registry/actor.rs:176-189` 的 `fn exec<T>`，channel 发送失败返回
-  `UnknownSession`（有文档），而 `rx.await.unwrap_or(Err(SessionClosed(..)))`
-  是**第二处、未在 `registry/port.rs:42-45` 失败集合里声明的** `SessionClosed`。
+- 事实：`registry/actor.rs` 的 `exec<T>`（`:177`）与 `control<T>`（`:190`）都是同一副
+  骨架：channel 发送失败返回 `UnknownSession`（有文档），而
+  `rx.await.unwrap_or(Err(RuntimeError::SessionClosed(..)))` 出现在
+  **`:185`（`exec`）与 `:198`（`control`）**。
+  `registry/port.rs:56-59` 只对 `execute_in_session` 声明了 `SessionClosed`
+  属于失败集合，**`exec` / `control` 这两条路径不在任何 trait 的失败集合里**。
+- ★ 上一版写「**第二处**」，实测是**两处**（`:185` 与 `:198`，此前漏了 `control`），
+  且旧引用 `port.rs:42-45` 是错的（实际：失败条件清单那段文档 `:56-58`，其中
+     `SessionQuarantined` 出现在 `:58`；`execute_in_session` 的声明在 `:59`）。
 - 本轨处理：`resolve_owned_session` 已把它一并归一到 `UnknownSession`（两者载荷都
   来自调用方给的 id，哨兵逐字节相同）。是否补进 trait 的失败集合，属于 registry
   契约本身。**归属：registry 契约轨。**
@@ -177,14 +300,15 @@ CM-04 / CM-05 的 H 层。验收标准出处：
 2. **`gateway/mod.rs` 行数**：派单说 799，实测 **798**（`wc -l`，改前 807，压到 798）。
 3. **`OwnerRef` 定义位置**：派单只给了用法 `connection/session.rs:151-163`。
    定义处在 **`packages/runtime/src/connection/types.rs:382`**（`pub enum OwnerRef`），
-   doc 注释起于 `:376`；经 `src/connection/mod.rs:35` 的 `pub use types::{...}`
+   doc 注释起于 `:379`；经 `src/connection/mod.rs:33` 的 `pub use types::{...}`
    再导出；作为字段使用在 `src/connection/session.rs:155` 的 `pub owner: OwnerRef`。
-   四个变体字段见 `types.rs:383-401`。**另有一个同名不同类型的 `OwnerRef`** 在
-   `packages/platform-api/src/context.rs:180`，与本轨无关，勿混。
+   四个变体字段见 `types.rs:383-401`（`Job` 变体在 `:390-394`）。
+   ★ **上一版这里写的 `packages/platform-api/src/context.rs:180` 是错的，
+   实测 `:65`**（`pub enum OwnerRef`，4 个变体 `:66-86`）——`context.rs` 全文远不到 180 行。
+   那个同名不同类型的 `OwnerRef` 正是 CM-06 job 半边合不上的根因，见上文第 1 节。
 4. **CM-01「编译期负例」是先例**：核实为**散文级**——仓库里没有 compile-fail
    fixture，只有 `connection-management.md:867-871` 的文字。本轨按 CM-01 的**意图**
-   实现（`compile_fail` doctest + 反序列化负例 + 源码结构守卫），不援引一个不存在
-   的先例。
+   实现（`compile_fail` doctest + 反序列化负例 + 源码结构守卫），不援引一个不存在的先例。
 5. **「本轮零产出」不成立**：核查当时 `git status --porcelain` 为
    ` M packages/runtime/src/gateway/mod.rs`、` M packages/runtime/src/gateway/provenance.rs`、
    `?? packages/runtime/src/gateway/owner_binding.rs`（19282 字节）；单测结论行
@@ -192,9 +316,45 @@ CM-04 / CM-05 的 H 层。验收标准出处：
 6. **`ApiErrorCode` 未从 `datazen_runtime::connection` 再导出**：`connection/mod.rs:22`
    只有 `pub use error::{ApiError, ProviderError, RuntimeError};`。集成测试须写
    `use datazen_platform_api::error::ApiErrorCode;`。
-7. **网关无生产组装根**：`ExecutionGateway::(new|with_submission_tokens)` 全仓 10 处命中
-   **全在测试/夹具**，`src-tauri` 里 **0 处**。故本轨的 `Authorizer` 尚无生产注入点，
-   下游接线时必须显式传 `OwnerMatchAuthorizer::shared()`。
+7. ★★ **「网关无生产组装根」——这条曾只活在台账里，合并即失效；现已落成两处可执行事实。**
+   - 复核后的实测（全仓 `git grep`，`src-tauri` 逐条查过）：
+     `OwnerMatchAuthorizer` 的 9 处命中全在 `src/gateway/owner_binding.rs`（定义与单测）、
+     5 处在 `tests/owner_binding/production_wiring.rs`（守卫自身）、
+     2 处在 `tests/owner_binding/support.rs`（夹具）——**生产目录零命中**；
+     `ExecutionGateway::(new|with_submission_tokens)` 全仓 12 处命中，拆开是
+     **8 处真实构造点**（`facade_support.rs:337`、`facade_tests.rs:121`、
+     `gateway_fixtures/mod.rs:610,634,679,692,711`、`owner_binding/support.rs:316`）
+     + 4 处散文/守卫夹具（`owner_binding.rs:53` 的模块头、`cm70_idempotency_replay.rs:17`、
+     `production_wiring.rs:5`、`:466` 那段 `r#"…"#` 里的**合成反例**）。
+     8 处真实构造点全在 `#[cfg(test)]` 模块（`gateway/mod.rs:74-77`）或 `tests/` 下，
+     **`src-tauri` 零命中**。
+     ⇒ 结论成立：**归属闸门在任何运行中的应用里都未生效**。
+   - 落点一（要求随代码走）：`src/gateway/owner_binding.rs` 模块头
+     「接线要求：生产组装必须显式传 `OwnerMatchAuthorizer::shared()`」（标题在 `:50`；
+     模块头整体为 `:1-113`，`:115` 起是代码）。
+   - 落点二（不靠自觉）：`tests/owner_binding/production_wiring.rs` 新增 5 条门禁，
+     扫全仓 Rust 源码（剥注释/字符串/`#[cfg(test)]` 块/import），任何**生产**文件里
+     出现 `AlwaysAllow` / `AlwaysDeny` 即红并指名文件与行号；带合成反例与
+     「注释/字面量/测试块不算」的负对照，两者都实测过。
+   - 今天扫描为空（空绿），**第一个生产接线者**就是触发它的人——这是有意的：
+     门禁在缺陷发生的那一次才有话可说。
+   - 缓解要说准：`authorizer` 是**必填位置参数且无 `Default`**，所以漏传是编译错误；
+     唯一静默形态是「传了个恒放行的替身」，守卫对的正是后者。
+
+## 本轮（修复轮）新增：合并后仍读得到的结论
+
+上一版的勘误只写在台账里，合并删掉 `progress.md` 就全没了。本轮把每条
+**结论**都改写进了代码或测试的文档注释，台账只留推导过程：
+
+| 结论 | 合并后仍在的位置 |
+| --- | --- |
+| 生产接线必须显式传 `OwnerMatchAuthorizer::shared()` | `src/gateway/owner_binding.rs` 模块头标题 `:50`（整段 `:50-73`）+ `production_wiring.rs` 5 条门禁 |
+| CM-06 的 job 半边 = **`PARTIAL`**（不是「上层挡住」） | `src/gateway/owner_binding.rs` 模块头 `:74`（其中「上层没有兜底」一段 `:82-88`）；`tests/owner_binding.rs:163-185` |
+| 应用层 `check_owner` 无生产调用点、结构上也看不到 org/principal | `identity_policy.rs:120` 的 `# 契约债` 段 + `owner_binding.rs:82-88` |
+| CM-05 六个接口的处置（执行 CLOSED / 取消 PARTIAL / 读取·关闭 N/A / 订阅·下载 P7） | `tests/owner_binding.rs:36` 的表（表体 `:38-52`） + `cm05_the_gateway_action_surface_is_exactly_execute_and_cancel` |
+| 取消路径存在性预言机 = **WARN**，本轨不修 | `tests/owner_binding.rs:55-61` |
+| 仓库里有**两个同名** `OwnerRef`，无交叉校验 | `src/gateway/owner_binding.rs` 模块头 `:95`（整段 `:95-113`）+ `identity_policy.rs:120` |
+| 变异 A/B/C 的实测失败集合（承重面） | `tests/owner_binding.rs` 各测试的文档注释（本文件「变异证明」一节是原始记录） |
 
 ## 已知环境问题（非本轨）
 
