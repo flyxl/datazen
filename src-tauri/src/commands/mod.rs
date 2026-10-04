@@ -320,8 +320,9 @@ mod tunnel_summary_tests;
 #[path = "cm73_baseline_tests.rs"]
 mod cm73_baseline_tests;
 
-// Companion sweep invariants for the same spec case (`:1279-1285`): reference
-// counting, `release` ordering, and the observable physical-resource chain.
+// Companion sweep invariants for the same spec case (CM-73's `- 断言` and
+// `- 基线说明` bullets): reference counting, `release` ordering, and the
+// observable physical-resource chain.
 // Same placement rationale as `cm73_baseline_tests` above.
 #[cfg(test)]
 #[path = "cm73_idle_eviction_tests.rs"]

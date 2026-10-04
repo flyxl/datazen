@@ -672,8 +672,9 @@ async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused(
     let obs = observe_journey().await;
     eprintln!("[CM-73 target] calls={:#?}", obs.calls);
 
-    // T1 — `:1283` does not forbid the sweep from closing a physical resource; it
-    // forbids the *conjunction* of a closed physical resource and a handle that
+    // T1 — the CM-73 `- 断言` bullet does not forbid the sweep from closing a
+    // physical resource; it forbids the *conjunction* of a closed physical
+    // resource and a handle that
     // is still offered for finishing. Both compliant shapes make the conjunction
     // false: one keeps the resource up for the life of the transaction (nothing
     // is closed, so the first half is false), the other terminates the
@@ -702,7 +703,7 @@ async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused(
 
     // T3 — Transaction status must track the physical session's liveness: it may
     // not keep reporting Active once the resource is gone, and it may not stop
-    // reporting Active while the resource is still up (`:1283` "事务状态不得在
+    // reporting Active while the resource is still up (CM-73 `- 断言` "事务状态不得在
     // 物理 session 丢失后继续报告 Active"). Exactly one of the two must hold, so
     // status is the *negation* of "the physical resource was closed" — under the
     // two compliant shapes respectively: kept up → Active, torn down first →
@@ -723,7 +724,7 @@ async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused(
 
     // T5 — Failing closed is conditional: the outcome is unknowable only once the
     // resource the transaction lives on is actually gone. While it is still up,
-    // unwinding must succeed (`:1283` — only an unknown outcome becomes
+    // unwinding must succeed (CM-73 `- 断言` — only an unknown outcome becomes
     // OutcomeUnknown/SessionLost, so a *known* outcome may never be reported as
     // unknown); after the loss it must fail, never report success.
     if obs.physical_disconnect_observed {
