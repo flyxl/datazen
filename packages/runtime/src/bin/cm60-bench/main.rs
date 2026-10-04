@@ -162,13 +162,23 @@ fn execute(cli: &Cli) -> Result<u8, String> {
     let written = report::write(&run, cli.out.as_deref())
         .map_err(|error| format!("产物落盘失败: {error}"))?;
 
-    let verdict = run.verdict();
     print_report(&run, &written);
 
+    Ok(exit_code(&run))
+}
+
+/// 退出码就是判定的对外投影，方向不能反。
+///
+/// - `0`：判定式成立（且计划逐字等于 §11.1），CI 判绿。
+/// - `1`：判定式不成立。
+/// - `3`：跑完了但计划不是 §11.1 的规格计划，数字不能与判据对话。
+///
+/// 非规格计划的 3 排在门禁之前：缩小计划去「跑得快一点」不是失败，是不可比。
+fn exit_code(run: &BenchRun) -> u8 {
     if !run.conforms_to_spec {
-        return Ok(3);
+        return 3;
     }
-    Ok(u8::from(verdict.gate_passed))
+    u8::from(!run.verdict().gate_passed)
 }
 
 fn print_report(run: &BenchRun, written: &report::WriteOutcome) {
@@ -387,6 +397,58 @@ mod tests {
         let cli = parse(&args(&["--rounds", "1", "--per-round", "10"])).expect("应可解析");
         assert_eq!(cli.plan.rounds, 1);
         assert!(!cli.plan.is_spec_plan());
+    }
+
+    /// 退出码方向是 CI 的唯一输入，反了就是「跑通了报失败」。
+    /// 三个方向都要钉死：跑通 0、越线 1、不可比 3。
+    // `run_bench_on` 自己建运行时并 `block_on`，在 `#[tokio::test]` 里调用会 panic
+    // （不能从运行时内再起运行时），所以这条必须是同步的 `#[test]`。
+    #[test]
+    fn the_exit_code_is_not_inverted() {
+        use crate::outcome::Percentiles;
+
+        let run = crate::runner::run_bench_on(quick(2, 8), 4, 8 * 1024 * 1024 * 1024)
+            .expect("基准应可运行");
+
+        // 方向一：规格计划 + 门禁成立 → 0。
+        let passing = BenchRun {
+            conforms_to_spec: true,
+            ..run.clone()
+        };
+        assert!(
+            passing.verdict().gate_passed,
+            "小计划在 debug 下也该逐轮过 10 ms"
+        );
+        assert_eq!(exit_code(&passing), 0, "跑通必须是退出码 0");
+
+        // 方向二：把每条样本的登记段改成 20 毫秒（> 10 毫秒门禁），逐轮 p95 必然越线。
+        // 样本一个不删、不加——§11.3 不允许靠筛样本过门禁。
+        let mut failing = BenchRun {
+            conforms_to_spec: true,
+            ..run
+        };
+        for round in &mut failing.rounds {
+            for sample in &mut round.samples {
+                sample.registration_nanos = 20_000_000;
+                sample.gateway_nanos = 0;
+            }
+            let mut totals: Vec<u64> = round
+                .samples
+                .iter()
+                .map(crate::outcome::total_nanos)
+                .collect();
+            totals.sort_unstable();
+            round.percentiles = Percentiles::of(&totals);
+        }
+        assert!(!failing.verdict().gate_passed, "越线必须判不成立");
+        assert_eq!(exit_code(&failing), 1, "门禁不成立必须报 1");
+
+        // 方向三：计划不可比时固定 3，排在门禁之前——缩小计划不是失败，是不可比。
+        let incomparable = BenchRun {
+            conforms_to_spec: false,
+            ..passing
+        };
+        assert_eq!(exit_code(&incomparable), 3, "不可比的计划必须报 3");
     }
 
     #[test]
