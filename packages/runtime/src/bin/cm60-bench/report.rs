@@ -539,6 +539,40 @@ mod tests {
         assert!(!round.sample_count_mismatch());
     }
 
+    /// F-02：按原因的拒绝/失败分类必须**落进产物**。
+    ///
+    /// 之前 `RoundOutcome` 在内存里汇了一份 `rejections`，summary 却只写 `failures`
+    /// 一个总数——分布从头到尾没有任何一列落过盘（已核对冻结产物
+    /// `cm60-summary-1791128233852.json`：`rounds[0]` 里确实没有 `rejections`）。
+    /// 「拒绝有界」是本判据的一半，而读产物的人只拿得到一个和，猜不出是哪一类在涨。
+    #[test]
+    fn rejections_by_reason_reach_the_artifact() {
+        let mut run = run_bench(quick(1, 2)).expect("最小计划应可跑");
+        run.rounds[0]
+            .rejections
+            .insert("runtime:invariantBroken".to_string(), 3);
+        run.rounds[0]
+            .rejections
+            .insert("permission:command".to_string(), 1);
+        let dir = tempdir();
+        let outcome = write(&run, Some(std::path::Path::new(&dir))).expect("应可落盘");
+        let paths = outcome.paths();
+        let summary = paths[1];
+        let text = std::fs::read_to_string(&summary).expect("summary 应可读");
+        let json: serde_json::Value = serde_json::from_str(&text).expect("summary 应是 JSON");
+        let rejections = json["rounds"][0]["rejections"]
+            .as_object()
+            .expect("每轮必须带 rejections 列");
+        assert_eq!(rejections["runtime:invariantBroken"], 3);
+        assert_eq!(rejections["permission:command"], 1);
+        // 分位数的输入条数也得在产物里：不然读产物的人无从判断 p95 吃的是哪几个数。
+        assert_eq!(
+            json["rounds"][0]["percentile_input"], json["rounds"][0]["measured"],
+            "p95 的输入条数与样本条数必须在产物里并排可见"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// F-09 的漂移守卫：`build()` 里硬写了 feature 名，`Cargo.toml` 加了新 feature 而这里
     /// 没登记时，产物就会少记一半构建输入——而这种缺失从产物本身看不出来。
     #[test]
