@@ -65,7 +65,7 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 | D-03 | 低 | 同一 crate 两个同名 `CancelDisposition`，变体与 `as_str()` 完全重复 |
 | D-04 | 低 | `SourceKind::is_background()` 生产不可达，文档却声称描述网关处置规则 |
 | D-05 | 低 | `EventStore::apply` 全程不读 `event.execution_id`，归属全靠门面路由（已由 G5 钉住当前契约） |
-| D-07 | 低 | 根 `progress.md` 进入 23 路径 diff，与 AGENTS.md「不写进度台账」冲突 |
+| D-07 | 撤销 | 根 `progress.md` 进入 23 路径 diff —— 原判「与 AGENTS.md 冲突」系误判，AGENTS.md 已改口径明文允许；详见「操作纪律要点」 |
 
 **D-01 的落地代价已被核实为小**：`ExecutionState → CancelDisposition` 映射全仓只有 `gateway::cancel::disposition_from_port_state` 一处，`CancelOutcome` 只有 2 个构造点且都走它 ⇒ 换成 registry 的 `CancelReceipt` 只改一个函数 + 6 处调用点用例，**不构成大返工**。且 `connection::port::CancelDisposition` 不跨 `SessionPort` 边界，生产路径无真实 transport 产出它。
 
@@ -139,5 +139,5 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 - 长输出（测试命令）落系统临时目录再取结论行，退出码单独打印。
 - 绝不读取或打印 `.env` / `.env.test` 内容（程序读文件合法，内容回显进上下文才违法）。
 - 编译产物放各自 worktree 内 `target/`，合并后随 worktree 清理。
-- **每轨分支根目录的 `progress.md` 与集成分支的 `hub.md` 属进度台账，与 AGENTS.md「不写进度台账」冲突。本项目以用户指令为准：允许、提交入库，P3 验收后统一删除。**
+- **每轨分支根目录的 `progress.md` 与集成分支的 `hub.md` 已获 AGENTS.md 明文授权**（见 AGENTS.md「进度台账：开发期间允许，交付即销毁」）：开发期间允许、可提交入库，**验收合并时必须删除，不得存活在 `main`**。gateway 验收方把它列为 D-07 一节，属误判，现予撤销。
 - 断言一旦红，先怀疑实现而不是改断言——「自己把用例写红」的自纠记录是这一轮最有价值的产出之一。
