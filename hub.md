@@ -310,7 +310,7 @@ git ls-files -u | wc -l                                           0（零冲突�
 2. **`ExecutionState::as_str()` 不存在**（`connection/execution.rs` 只有 `ExecutionErrorCode::as_str`/`EffectOutcome::as_str`/`TruncationReason::as_str`）。`connection/**` 禁改，故 `registry/audit.rs` 私有映射了一份，用 `state_literals_match_the_serde_wire_casing` 钉在 serde 输出上防漂移。**若解冻 `connection/**`，这份映射应上提。**
 3. **`RegistryAuditEntry` 只能序列化、不能反序列化**（存 `&'static str`，线上字面量必须与调用方逐字同源，不能退化成可随手写错的 `String`）。**代价**：gateway 若要从线上 JSON **重建**审计条目，需裁定解冻方向——允许 registry 提供 `String` 侧 DTO，或给 `connection/**` 加字面量常量。**这是 D-03 的隐藏前置。**
 4. `hostRejected` 不在 `ApiErrorCode`、两处 `fold_exit` 刻意分歧 —— 已裁定接受，无需再议。
-5. **D-03 仍 OPEN**（gateway 侧）：`gateway/cancel.rs:185` `disposition_from_port_state` + 调用点含 `gateway/mod.rs:441/446/447`。**新出现的架构问题**：trait 已回正为 `ExecutionState`，gateway 要拿三字段回执就须依赖 registry 的具名入口，这会**新增 gateway → registry 的依赖方向**，需先定方向再动。
+5. **D-03 仍 OPEN**（gateway 侧）—— **⚠️ 上面第 5 条的架构顾虑已被证伪，见下方「D-03 定案」一节**。
 
 ### ✅ registry 轨已合并并清理（main `7fb290394`）
 
@@ -445,3 +445,21 @@ gateway 第 2 轮整改中，coder 主动披露 lib 门禁两次红在**同一�
 - **「同一棵工作树不得同时被提交方与验证方使用」会让 Coder 主动上交变异任务，这是正确行为不是偷懒**（2026-10-05 确认）。Coder 发现自己既是提交方又被指派变异，两份指示冲突，选择**上交裁定而非绕过**——须在简报里明确把该轨的 CM/条款变异整体划给 Tester，否则会僵持。
 - **改共享 trait 的方法签名，必须当场预演它的编译后果**（2026-10-05 新增，代价是 2 个 blocker）。registry 改了 `SessionPort::cancel_execution` 的返回类型，**冻结契约测试与已合并的 gateway 轨同时编译不过**，而 `git merge` **零冲突、EXIT=0**、`lib.rs` 两个 `pub mod` 都干净在位 ⇒ **语义破坏对 `git merge` 完全不可见**。两个后果：① 门禁清单**必须含全部冻结基线**，"本轨全绿"不等于能编译；② 预估冲突面不可靠，**合并试跑是唯一可靠手段**，且要跑**每一个**二进制而不是抽查。
 - **冻结测试是仲裁者，实现必须向它让步**（2026-10-05 新增）。发现冻结测试挡住实现时，正确顺序是**回退实现**，不是改测试迎合——后者会摧毁它作为独立仲裁者的全部价值。判定冻结性的硬证据：`git diff <base>..<HEAD> -- <冻结测试路径>` 输出为空（未被改动）＋ 基线实测计数绿。
+### D-03 定案（合并后复核：我上一条裁定是错的，已推翻）
+
+我在上文两处写的结论**均不成立**，事实如下（全部可复跑）：
+
+**① 「会新增 gateway → registry 的依赖方向」—— 证伪。** `gateway/mod.rs:52` 早就是 `use crate::registry::SessionPort;`（`:191` `port: Arc<dyn SessionPort>`），`gateway → registry` **本已存在**；反向 `grep -rn "crate::gateway" packages/runtime/src/registry/` **无输出** ⇒ 依赖严格单向。D-03 不需要任何新的解冻或依赖决策。
+
+**② 「删掉 `connection::port::CancelDisposition`、复用 registry 的」—— 方向反了。** 规范所有者是 **`connection/port.rs:248`**，registry 只是转出（`registry/mod.rs:61-64` 与 `receipt.rs:35` 两处 `pub use`，注释写明「已在 `connection::port` 定型（三态 + 线上字面量）」）。它被 `registry/actor.rs:693`、`registry/backend.rs:128`、`resource/cleanup.rs:14`、`resource/harness.rs:19`、`resource/journey_rotation.rs:11`、`connection/testing/fake_resource/ops.rs:26` **六处生产/夹具代码**依赖。**真正重复的是 gateway 那一份**（`gateway/cancel.rs:86-110`：三变体 + `as_str()` 三字面量与 `connection/port.rs:257-259` **逐字相同**）。D-03 该删的是 gateway 的副本。
+
+**③ 顺带订正一个容易踩的坑：`CancelOutcome` ≠ `CancelReceipt`，不要合并。**
+
+| | 字段 |
+| --- | --- |
+| `gateway/cancel.rs:118-121` `CancelOutcome` | `execution_id` + `disposition` + `state` + **`observed_at_nanos`** |
+| `registry/receipt.rs:52-62` `CancelReceipt` | `execution_id` + `disposition` + `state` |
+
+gateway 的 `CancelOutcome` 是 registry 回执的**严格超集**，§7.6 要求的三个字段它本来就全有（`execution_id` 是入参、`disposition` 来自 `disposition_from_port_state`、`state` 是端口返回值）。**D-01 的 gateway 侧消费在语义上已被满足**，不需要为它新增对 registry 具名入口的调用，也不该把 `CancelOutcome` 改成 `CancelReceipt` —— 那会丢掉网关自己的观测时刻。
+
+**D-03 的实际修法（已定案，随下轨执行）**：删 `gateway/cancel::CancelDisposition`，改 `use crate::connection::port::CancelDisposition;`（与 gateway 取 `ExecutionState`/`ExecutionId` 的来源一致，**不新增任何依赖方向**），同步 `gateway/mod.rs:78` 与 `facade_support.rs:16` 的转出与 gateway 侧全部引用。风险只剩一个真实项：**两份 `as_str()` 是逐字相同的字面量拷贝，未来任一侧改动会造成线上字面量漂移**，消除重复即消除该风险。
