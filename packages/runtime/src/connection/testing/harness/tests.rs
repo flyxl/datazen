@@ -13,52 +13,18 @@
 
 use serde_json::json;
 
-use super::{EvictionRaceOutcome, EvictionRaceReport, FakeHarness, GatewayError};
+use super::{
+    first_handle_id, harness_for, owner, EvictionRaceOutcome, EvictionRaceReport, GatewayError,
+};
 use crate::connection::error::ProviderError;
 use crate::connection::execution::{EffectOutcome, ExecutionErrorCode, SessionCommand};
-use crate::connection::port::{BudgetClass, CloseResourceRequest};
+use crate::connection::port::BudgetClass;
 use crate::connection::session::HandleKind;
-use crate::connection::testing::fake_resource::{FakeResourceProvider, FaultKind, ResourceOp};
-use crate::connection::testing::fixtures::{self, NS_A_KEY, NS_B_KEY};
+use crate::connection::testing::fake_resource::{FaultKind, ResourceOp};
+use crate::connection::testing::fixtures::{NS_A_KEY, NS_B_KEY};
 use crate::connection::testing::harness::fixture_target;
 use crate::connection::testing::journal::{HandleAction, JournalEntry, ResourceEvent};
-use crate::connection::types::{HandleId, JobId, OrganizationId, OwnerRef, WorkerId};
-use datazen_driver_api::command::CommandResult;
-
-/// §8.1：夹具目标取自 `fixtures`，用例里不写硬编码命名空间字面量。
-fn harness_for(namespace_key: &str) -> FakeHarness {
-    FakeHarness::from_provider(
-        FakeResourceProvider::new(WorkerId::new("w1"), fixture_target(namespace_key))
-            .with_execution_identity(fixtures::IDENTITY_SHARED),
-    )
-}
-
-/// §8.1 `PROFILE_P` 归属：一个 job owner。
-fn owner() -> OwnerRef {
-    OwnerRef::Job {
-        organization_id: OrganizationId::new(fixtures::ORG_A),
-        job_id: JobId::new("job_org-alpha_0001"),
-        stage_id: "job:job_org-alpha_0001/stage:1".to_owned(),
-    }
-}
-
-/// 从 `CommandResult.data` 里取第一条会话句柄的 id。
-///
-/// §9.1 的 output schema 已经声明了 `sessionHandles[].handleId`，所以这里
-/// 只做形状检查；形状漂移用 `expect` 报出来是刻意的 —— 它意味着命令表变了。
-fn first_handle_id(result: &CommandResult) -> String {
-    result
-        .data
-        .pointer("/sessionHandles/0/handleId")
-        .and_then(|value| value.as_str())
-        .unwrap_or_else(|| {
-            panic!(
-                "命令输出里没有 sessionHandles[0].handleId，实际是 {}",
-                result.data
-            )
-        })
-        .to_owned()
-}
+use crate::connection::types::HandleId;
 
 // ---------------------------------------------------------------------------
 // §9.1 正例：会话句柄命令走命令定义 + 入参校验的同一条路径
@@ -523,199 +489,6 @@ fn a_host_that_re_registers_the_old_handle_on_the_recovery_resource_is_caught() 
         rejection.contains("不得复用旧句柄"),
         "判负信息必须说清是复用了旧句柄，实际是：{rejection}"
     );
-}
-
-// ---------------------------------------------------------------------------
-// §6.3 CM-74：释放顺序（竞态用例编排表；淘汰是宿主行为）
-// ---------------------------------------------------------------------------
-
-/// §6.3 CM-74「淘汰 + 句柄登记并存」：journal 顺序必须是
-/// `handle closed` → `resource Closed` → `permit -1`。
-///
-/// 这里钉的是**次序**而不是「三件事都发生过」：三件都发生但次序错了，宿主就会在
-/// 句柄还挂着的时候先释放预算占用，I1（permit 收支）与 I5（登记册收口）一起破，
-/// 而任何「都发生过」式的断言都照样是绿的。
-///
-/// 钉的是**宿主关闭路径**（[`FakeHarness::close`]）。驱动直连路径的句柄注销曾被
-/// `reclaim_registered_handles_on_close` 兜在归池判定**之后**——那样挪过来会让 §4.2 F10
-/// 「句柄非空 → 关闭而非归池」被一个已经注销干净的 `registered_handles == 0` 骗过去，
-/// 所以那条路径一度退化成 `resource Closed → permit -1 → handle closed`。
-///
-/// **该理由随 CM-74 统一裁定更新**：`close_resource` 现在在**同一个临界区**里先取
-/// 注销前快照、再注销、最后判归池，两条路径产出**同一条**顺序。
-/// 本用例的函数名与 `vec![...]` 断言一字未动，另由
-/// `the_driver_direct_close_releases_in_the_same_cm74_order` 钉住直连路径。
-#[test]
-fn closing_a_resource_that_still_holds_a_handle_releases_in_the_cm74_order() {
-    let harness = harness_for(NS_A_KEY);
-    let acquired = harness
-        .acquire(owner(), "pol-3", BudgetClass::Session)
-        .expect("acquire 必须成功");
-    // 故意**不**回滚：句柄仍登记在册，资源带着它进关闭路径（这才是 CM-74 的形状）。
-    let begun = harness
-        .invoke(
-            SessionCommand::BeginSessionTransaction,
-            &acquired.handle,
-            json!({}),
-        )
-        .expect("begin 必须成功");
-    let handle_id = first_handle_id(&begun);
-    let resource_id = acquired.handle.resource_id.clone();
-
-    harness
-        .close(&acquired.handle)
-        .expect("close 必须成功：带着登记句柄关闭是合法路径");
-
-    // 按台账顺序把这三步摘出来（journal entries 是按 seq 追加的，遍历序即发生序）。
-    let mut steps: Vec<&str> = Vec::new();
-    for entry in harness.journal().entries() {
-        match entry {
-            JournalEntry::Handle {
-                handle_id: owner_id,
-                action: HandleAction::Closed,
-                ..
-            } if *owner_id == handle_id => steps.push("handle closed"),
-            JournalEntry::Resource {
-                resource_id: rid,
-                event: ResourceEvent::Closed,
-                ..
-            } if rid.as_ref() == resource_id.as_ref() => steps.push("resource Closed"),
-            JournalEntry::Permit { delta: -1, .. } => steps.push("permit -1"),
-            _ => {}
-        }
-    }
-    assert_eq!(
-        steps,
-        vec!["handle closed", "resource Closed", "permit -1"],
-        "§9.3 CM-74 要求的释放顺序是 `handle closed` → `resource Closed` → `permit -1`；\
-         句柄还挂着就归还预算占用，I1 与 I5 一起破。实际次序是 {steps:?}"
-    );
-
-    harness
-        .assert_no_leak()
-        .unwrap_or_else(|violations| panic!("CM-74 顺序成立也不许留下泄漏：{violations}"));
-}
-
-/// CM-74 统一后的**驱动直连**路径（不经宿主网关，直接 `close_resource`），顺序必须与上面那条宿主路径
-/// **逐字相同**。统一之前它退化成 `resource Closed → permit -1 → handle closed`：句柄注销当时被
-/// `reclaim_registered_handles_on_close` 兜到了 permit 归还之后。
-#[test]
-fn the_driver_direct_close_releases_in_the_same_cm74_order() {
-    let harness = harness_for(NS_A_KEY);
-    let acquired = harness
-        .acquire(owner(), "pol-4", BudgetClass::Session)
-        .expect("acquire 必须成功");
-    // 故意**不**回滚、不走宿主：句柄仍登记在册，资源带着它进 close_resource。
-    let begun = harness
-        .invoke(
-            SessionCommand::BeginSessionTransaction,
-            &acquired.handle,
-            json!({}),
-        )
-        .expect("begin 必须成功");
-    let handle_id = first_handle_id(&begun);
-    let resource_id = acquired.handle.resource_id.clone();
-    harness
-        .provider()
-        .close_resource(&CloseResourceRequest {
-            handle: acquired.handle.clone(),
-            registered_handles: harness.provider().registered_handles(&acquired.resource_id),
-            protocol_drained: true,
-        })
-        .expect("带着登记句柄直接 close_resource 必须成功");
-
-    // journal entries 按 seq 追加，遍历序即发生序。
-    let mut steps: Vec<&str> = Vec::new();
-    for entry in harness.journal().entries() {
-        match entry {
-            JournalEntry::Handle {
-                handle_id: owner_id,
-                action: HandleAction::Closed,
-                ..
-            } if *owner_id == handle_id => steps.push("handle closed"),
-            JournalEntry::Resource {
-                resource_id: rid,
-                event: ResourceEvent::Closed,
-                ..
-            } if rid.as_ref() == resource_id.as_ref() => steps.push("resource Closed"),
-            JournalEntry::Permit { delta: -1, .. } => steps.push("permit -1"),
-            _ => {}
-        }
-    }
-    assert_eq!(
-        steps,
-        vec!["handle closed", "resource Closed", "permit -1"],
-        "CM-74 要求两条关闭路径产出**同一条**顺序；句柄还挂着就归还预算占用，\
-         I1 与 I5 一起破。直连路径实际次序是 {steps:?}"
-    );
-
-    harness
-        .assert_no_leak()
-        .unwrap_or_else(|violations| panic!("直连路径顺序成立也不许留下泄漏：{violations}"));
-}
-
-/// §4.2 F10 的定点钉子（直连路径）：驱动报 `Clean`（`protocol_drained = true`）而资源关闭前仍挂着
-/// 登记句柄 —— 此时**必须关闭，不得归池**。
-///
-/// 钉的是 `ReturnedToPool` 的**出现次数**，不是「落了 `Closed`」：一个既记 `Closed` 又记
-/// `ReturnedToPool` 的坏实现照样能过后者。计数 0 也把 F10 的注入版
-/// （`fake_resource/tests.rs::f10_a_clean_reset_...`）钉在机制层：判据读注销**前**的快照，
-/// 一旦改成读注销之后的余量，这里立刻变成 1。
-#[test]
-fn a_resource_still_holding_a_handle_is_never_returned_to_the_pool() {
-    let harness = harness_for(NS_A_KEY);
-    let acquired = harness
-        .acquire(owner(), "pol-5", BudgetClass::Session)
-        .expect("acquire 必须成功");
-    harness
-        .invoke(
-            SessionCommand::BeginSessionTransaction,
-            &acquired.handle,
-            json!({}),
-        )
-        .expect("begin 必须成功");
-    let resource_id = acquired.handle.resource_id.clone();
-    let declared = harness.provider().registered_handles(&acquired.resource_id);
-    assert!(
-        declared > 0,
-        "本用例的前提就是关闭前挂着登记句柄，实际 declared={declared}"
-    );
-    harness
-        .provider()
-        .close_resource(&CloseResourceRequest {
-            handle: acquired.handle.clone(),
-            registered_handles: declared,
-            protocol_drained: true,
-        })
-        .expect("直连关闭必须成功");
-
-    let (mut pooled, mut closed) = (0usize, 0usize);
-    for entry in harness.journal().entries() {
-        if let JournalEntry::Resource {
-            resource_id: rid,
-            event,
-            ..
-        } = entry
-        {
-            if rid.as_ref() != resource_id.as_ref() {
-                continue;
-            }
-            match event {
-                ResourceEvent::ReturnedToPool { .. } => pooled += 1,
-                ResourceEvent::Closed => closed += 1,
-                _ => {}
-            }
-        }
-    }
-    assert_eq!(
-        pooled, 0,
-        "§4.2 F10：驱动报 Clean 但宿主仍有已登记句柄时必须**关闭而非归池**；\
-         归池判据必须读关闭**前**的句柄快照，不能读注销之后的余量"
-    );
-    assert_eq!(closed, 1, "资源必须恰好记一次 Closed");
-    harness
-        .assert_no_leak()
-        .unwrap_or_else(|violations| panic!("F10 不许留下泄漏：{violations}"));
 }
 
 // ---------------------------------------------------------------------------
