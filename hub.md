@@ -160,9 +160,40 @@ POST HEAD=de4d45749… STATUSLINES=0
 
 1. `connection::port::CancelReceipt`（2 字段，缺 `state`）与 registry 的 `CancelReceipt`（3 字段，§7.6）同名不同形 → **两处都保留，不解冻 `connection/**`，registry 也不转出前者**。registry 现有做法（不转出，避免同名物同时进 prelude）正确。记入文档批次遗留。
 2. `ExecutionState::as_str()` 不存在、registry 私有映射并用 `state_literals_match_the_serde_wire_casing` 钉住 → **接受现状**，解冻后再上提。
-3. `hostRejected` 不在 `ApiErrorCode` 里，`fold_exit` 返回 `ExitProjection::NotOnTheWire` → **接受**。不许给 `ApiErrorCode` 加取值（`platform-api` 冻结面）；不许把宿主缺陷伪装成调用方可修正的派发前拒绝。
-4. `HostRejected -> InvalidArgument` 与 `RuntimeEpochMismatch -> SessionNotFound` 的刻意分歧 → 已标注有用例，无动作。
+3. ~~`hostRejected` 不在 `ApiErrorCode` 里，`fold_exit` 返回 `ExitProjection::NotOnTheWire`~~ → **⚠️ 本条裁定有误，2026-10-05 由 registry Coder 当面纠正，协调者认领。** 冻结的 `packages/runtime/src/connection/error.rs:136` 写死 `ProviderError::HostRejected(_) => ApiErrorCode::InvalidArgument`，故 `fold_exit(Provider(HostRejected))` 实际返回 **`Code(InvalidArgument)`，是上线路**，`NotOnTheWire` 只留给 `CancelFailed` / `InvariantBroken` / `ProtocolError` / `SqlError` / `Timeout` / `ResourceLost`（`epoch.rs:129/132/144/149`）。教训见文末「冻结面事实必须当场读码核实」。Coder 按「不改行为」保留生产代码、只把**真正成立**的性质（`"hostRejected"` 这个 ExecutionErrorCode 写法不是任何 ApiErrorCode 的线格式字面量）钉成断言——**处理正确**。
+4. `HostRejected -> InvalidArgument`（上线）与 `RuntimeEpochMismatch -> SessionNotFound`（经 `fold_exit` 归一）的刻意分歧 → 已标注有用例，无动作。
 5. `RegistryAuditEntry` 只能序列化不能反序列化（存 `&'static str`） → **本轮不动**，gateway 今天无消费者。将来若需要，方向是 registry 另提供 `String` 侧 DTO，**不是**解冻 `connection/**`。
+
+### registry 轨第 1 轮交付 → 协调者对 7 条待裁定逐条已答（2026-10-05）
+
+Coder `cc6b4cab` 交付 3 提交 `6f5027eee` / `b51b03622` / `b57efab2e`，HEAD `b57efab2e`（基点 `060053afb`），工作区干净。自报 lib `272 passed`（= 223 + 49）、build 0 warning、fmt 0 字节、边界门禁 0 violation、集成 7+6+9+10+11 = 43 例全绿。Coder **7 条全部不自行裁定、上交协调者**——纪律正确。
+
+**规模**：19 个 Rust 文件共 7231 行，`actor.rs` 734 行为最大，**全部 ≤ 800 行**。actor 内单测 1581 + 集成 1204 + 夹具 579。
+
+| # | 事项 | 裁定 |
+| --- | --- | --- |
+| 1 | 协调者原裁定 #4 与实现不符 | **协调者认领错误**，见上节已订正。Coder 处理正确，不追责 |
+| 2 | `emit` 给每种审计条目都填 `capability_versions` | **接受**。统一从 `state.physical` 快照填是自洽的，无需改行为 |
+| **3** | `release()` 不可判定时登记表行 + 额度双泄漏 | **判为缺陷 R-01，必须修**（详见下） |
+| 4 | `invalidate_worker` 成功分支发两条 `SessionInvalidated` | **交 Tester 取证后定**：两条逐字 dump，若除自增 id 外全等 ⇒ R-02（低）；若承载不同事实 ⇒ 保留但改名。协调者不预判 |
+| 5 | 重复登记只在 `write_table().insert` 处被拒（物理 open 已发生） | **接受现行为**。额度确实退回，open 后随即关闭，是 TOCTOU 的诚实代价，优于 check-then-act。**但必须钉住「刚 open 的物理资源确实被关闭」**，用后端 open/close 计数对账 |
+| 6 | 简报与仓库实况不符（23 条非 14 条；`mod.rs` 已声明；`cancel.rs` 文档表格写了一条从未存在的分支顺序） | **按实况处理正确**。Coder 选择改文档而非改行为，且只重写表格匹配代码、零行为变更——已要求 Tester 独立验证「确实零行为变更」 |
+| 7 | 工作树 `AGENTS.md` 仍是旧版「不写进度台账」 | **按新版执行**。`progress.md` **由协调者在合并时删除**，Coder 不删（Tester 需读它作线索） |
+| 8 | 首轮门禁指纹不可用 | **教训成立，已收录文末** |
+
+**变异归属**：Coder 因根 `AGENTS.md`「同一棵工作树不得同时被提交方与验证方使用」把 CM-72 / CM-24 / D-02 三项变异上交，**判断正确**。变异归验证方，已并入第 1 轮 Tester 简报。Coder 无需补做。
+
+**R-01 判为缺陷的依据**（协调者读码得出，已要求 Tester 独立复核）：
+
+- `registry.rs:563-564` 注释自述：「关闭无论走到 `Closed` 还是 `Lost`，会话都已从登记表注销，额度都该归还——`Lost` 丢的是物理资源，不是额度账」。
+- 但 `close_registered` 的 `Err` 臂（`:570`）只正确覆盖了 `CloseRejected`（关闭**未发生** ⇒ 留行留额度，正确），却把 `release()` 在跑完 §9.4 四步**之后**返回的 `SessionLost`（关闭**已发生**）一并吞掉 ⇒ 不调 `forget()`。
+- 此时 actor 侧已彻底拆解：`release.rs:112-123` 令绑定失效、`physical = None`、`deferred.clear()`、状态 `Lost`。
+- 证据**已经**由 `release.rs:130-140` 的 `Outcome::Undecided` 审计条目留住 ⇒ 留行不留任何额外证据，只漏一行 + 一个额度位，而调用方**无任何回收路径**。
+- **代码与自己声明的意图相悖 ⇒ 缺陷，不是「刻意留证据」。** 修复方向：区分两类错误，`CloseRejected` 保留行与额度，后置 `SessionLost` 必须仍 `forget()`；**返回给调用方的错误不得改变**（调用方依赖 `SessionLost`）。
+
+R-01 若经 Tester 复核成立且未修，本轮判 `FAIL`。
+
+**registry 分支基线缺口**：其基点 `060053afb` **不含 gateway**，故 `gateway_contract` 在该树上不存在（不是 0）。合并后应为 lib **377**（main 328 + registry 49）、`gateway_contract` **51**。已要求 Tester 在自建 `--detach` 树里做 `git merge --no-ff main` 试跑，预期冲突面只有 `packages/runtime/src/lib.rs`（gateway 加了 `pub mod gateway;`）。
 
 ### 协调者已裁定（各轨不得重新讨论）
 
@@ -269,3 +300,6 @@ gateway 第 2 轮整改中，coder 主动披露 lib 门禁两次红在**同一�
 - **「跑一次门禁就绿」对任何轨都不足以作为证据**（2026-10-05 新增）。barrier 夹具竞态使 `cargo test -p datazen-runtime --lib` 存在约 **12.5%** 的偶发红概率。Tester 三点实测：基线 `060053afb` 5/40 = 12.5%、`19545268d` 2/15 = 13.3%、`de4d45749` 2/15 = 13.3%，三次失败逐字同形。按 13% 概率连过 6 次的自然概率约 **43%** ⇒ 任何「我连跑 N 次全绿」的自报都不构成证据，需要连跑到统计上说得过去，或用变异实验/非空洞性证明代替。
 - **变异脚本不得写死工作树路径。** 第 2 轮 Tester 的脚本第一版写死路径，导致一次「在旧提交上跑变异」的读数无效；须参数化并在多棵树上各跑一次，收尾核验 `POST DIRTY=0`。
 - **「纯搬家 / 一字未改」这类描述要逐函数核对。** coder 报 15 个函数一字未改，实测 1 个被刻意加强、另加 5 个。方向虽是加强，但下次台账须区分「未改动 / 新增 / 修改」三类。
+- **冻结面事实必须当场读码核实，不能凭记忆下发裁定**（2026-10-05 新增，代价真实）。协调者裁定 #4 断言 `HostRejected` 不上线、`fold_exit` 返回 `NotOnTheWire`；registry Coder 读 `connection/error.rs:136` 后发现冻结写死 `HostRejected -> InvalidArgument`，该错误**确实上线**，裁定与实现相反。Coder 未自行改动生产代码，只把**真正成立**的性质钉成断言并上交——这是正确处置。**教训**：凡裁定涉及冻结面的具体映射/取值/返回路径，下发前必须 `grep` 一次原文并在裁定里附上文件:行号；错裁定已就地划改并保留原文，不静默删除。
+- **未提交状态不存在可靠的工作区内容指纹**（2026-10-05 新增）。registry Coder 首轮门禁指纹失效：`git write-tree` 写的是**索引**，未 `git add` 的新文件不在其中；`git diff` 只覆盖已跟踪文件。拿任一者与 `HEAD^{tree}` 比必然对不上（当日 21 个新文件未入库）。**结论**：门禁证据一律取「**已提交 + 干净树 + 重跑**」那一轮——工作区干净时，跑的内容按构造就是提交进去的内容。
+- **「同一棵工作树不得同时被提交方与验证方使用」会让 Coder 主动上交变异任务，这是正确行为不是偷懒**（2026-10-05 确认）。Coder 发现自己既是提交方又被指派变异，两份指示冲突，选择**上交裁定而非绕过**——须在简报里明确把该轨的 CM/条款变异整体划给 Tester，否则会僵持。
