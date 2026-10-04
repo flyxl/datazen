@@ -96,6 +96,18 @@ export const TESTED_LAYERS = Object.freeze(['runtime', 'application', 'platform-
  * in the worst way: the green `cargo test --lib` line is exactly the line a
  * reader skims.
  *
+ * ## Why the integration binaries also do not need to be listed here
+ *
+ * Everything above reaches **two** of the 21 test-bearing targets in
+ * `datazen-runtime`. The other 19 are plain `tests/*.rs` integration binaries
+ * that `--lib` cannot select and that nobody needs to name: a no-selector
+ * invocation runs all of them, and it is unconditional in `buildCargoArgv` for
+ * exactly the reason the `--lib` one is. Had this table been the place to close
+ * that gap, every future `tests/*.rs` would have to be added here too — and the
+ * day someone forgets, the test still "exists", it just never compiles in CI,
+ * which is the failure mode this section exists to prevent. Cargo already knows
+ * the target list; this file must not keep a second copy of it.
+ *
  * ## Why `release` is per-entry instead of a global `--release`
  *
  * `--release` is a profile flag for the **whole invocation**, not for the target
@@ -131,10 +143,11 @@ export const EXTRA_TARGETS = Object.freeze({
 /**
  * Build the full list of `cargo` invocations for a discovered crate set.
  *
- * Pure and exported so the argv can be asserted on directly. Two invocations
- * at most: everything shareable goes into the debug one, and every `release`
- * entry goes into a single `--release` one. Returns an empty list only when
- * there is nothing at all to run, which `runCli` already guards against.
+ * Pure and exported so the argv can be asserted on directly. Up to three
+ * invocations: the `--lib` run, a no-selector run that reaches every
+ * integration binary, and a single `--release` one for the release extras.
+ * Returns an empty list only when there is nothing at all to run, which
+ * `runCli` already guards against.
  *
  * @param {ReadonlyArray<{ name: string }>} crates
  * @returns {string[][]}
@@ -155,6 +168,45 @@ export function buildCargoArgv(crates) {
     // exist. It must not become conditional on the extras table being non-empty
     // — that coupling is what makes a table edit able to delete the gate.
     ['test', '--lib', ...names.flatMap((n) => ['-p', n]), ...shared],
+    // Unconditional, and for the same reason. `--lib` selects the library's own
+    // unit-test target **only**: every `tests/*.rs` integration binary is a
+    // separate target that `--lib` silently skips. Measured on datazen-runtime
+    // (`cargo metadata`, targets whose `kind` contains `test`): 19 integration
+    // binaries, of which `--lib` runs 0 and `--test cm60_pressure_drain` runs 1.
+    // The lib run is 383 tests, the 18 untouched binaries hold 180 more — the
+    // largest single group being `gateway_contract` at 51. A script that reads
+    // as "tests the platform core crates" while running 3 of 21 test-bearing
+    // targets is the same overstatement this file already guards against twice
+    // elsewhere ("PASS — N core crate(s) tested" over an incomplete set), so the
+    // full target set runs too.
+    //
+    // The exact argv matters, and the rejected alternatives are recorded here
+    // because each one is defensible-looking and wrong:
+    //   * **Replacing** the `--lib` invocation with `['test','--tests',…]` would
+    //     trade 383 lib tests for 180 integration ones. `--tests` is fine as an
+    //     *addition*; as a substitution it opens a hole bigger than the one this
+    //     closes. The `--lib` call above stays exactly as it was.
+    //   * **Replacing** it with a bare no-selector call (i.e. dropping `--lib`
+    //     entirely) would cover everything — but it would also delete the
+    //     invariant the `--lib` branch is there to hold, and make the debug gate
+    //     depend on the extras table staying shaped the way it is today.
+    //   * Naming one `--test <name>` per binary would avoid the re-run, but it
+    //     puts a target list in this file that `Cargo.toml` owns: a new
+    //     `tests/*.rs` would join the crate silently and stay untested. Cargo
+    //     already knows the list; the gate should not keep a second one.
+    // So: keep `--lib`, keep the extras, **add** a no-selector call. What it
+    // repeats from the first (lib, `--test cm60_pressure_drain`, the doctests)
+    // is paid for deliberately — the redundancy is bounded and compile-shared,
+    // while a drifting duplicate target list is not.
+    //
+    // It also picks up `cm60-bench`'s own unit tests in **debug**, which the
+    // `--release` call below runs properly and which is the run that counts —
+    // `cm60-bench/main.rs` exits 2 under `debug_assertions` by design. Measured
+    // green in debug (26 targets / 944 passed / 0 failed on this tree), so it is
+    // recorded rather than worked around: suppressing it would mean putting a
+    // `--bin` exclusion into the one call whose whole property is "names no
+    // target", and a debug-profile unit test failing later is a real signal.
+    ['test', ...names.flatMap((n) => ['-p', n])],
     ...(releaseEntries.length > 0
       ? [
           [
