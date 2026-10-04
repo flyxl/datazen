@@ -347,7 +347,7 @@ fn test_tester_the_camel_case_spelling_wins_when_both_are_present() {
     );
 }
 
-/// `[tester]` BUG-004 复现载体（今日为红，故 `#[ignore]`）。
+/// `[tester]` `redis-codec-write-BUG-004` 复现载体（今日为红，故 `#[ignore]`）。
 ///
 /// 契约 C-4（同 crate `ops/write.rs` 的 `is_keepttl_keyword_rejection`，与
 /// `decode` 侧另一套 C-1/C-2/C-3 编号无关）：回退的前提是
@@ -378,7 +378,7 @@ async fn test_tester_a_non_keepttl_rejection_must_not_reissue_the_write() {
     );
 }
 
-/// BUG-004 绿色孪生体：非 KEEPTTL 的 SET 失败原样抛出、绝不补发第二条写入。
+/// `redis-codec-write-BUG-004` 绿色孪生体：非 KEEPTTL 的 SET 失败原样抛出、绝不补发第二条写入。
 /// 不 push PTTL 回复 —— 回退一旦发生，`take_reply` 会直接 panic，回归无处可藏。
 #[tokio::test]
 async fn a_non_keyword_set_failure_is_thrown_without_rescue() {
@@ -397,7 +397,7 @@ async fn a_non_keyword_set_failure_is_thrown_without_rescue() {
     );
 }
 
-/// BUG-004 分类器的第二种受理形态：关键词没被回显、而是被报成 SET 的未知选项。
+/// `redis-codec-write-BUG-004` 分类器的第二种受理形态：关键词没被回显、而是被报成 SET 的未知选项。
 #[tokio::test]
 async fn an_unknown_option_shape_is_also_a_keyword_refusal() {
     let mut conn = Scripted::new();
