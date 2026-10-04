@@ -366,6 +366,25 @@ HEAD_END  =7fb2903949fe…  STATUS_END  =0
 
 > 教训：**基线数字必须带产生它的命令 + 逐字结论行**。写成「目录 + 四个数」会被下一个接手的人读成另一种顺序，而 `rev-parse` / `is-ancestor` 全部放过。
 
+### 当前权威基线（2026-10-05，`cargo test -p datazen-runtime`，20 个二进制）
+
+**作废一个流传中的错数：`552`。** 该数是某轮 Coder 的**心算错误，不是任何工具的读数**，从未进过本文件，却已口头传给多轨。**以 `TOTAL=562` 为基线。**
+
+| 二进制 | 基线 | CM-74 后 |
+| --- | --- | --- |
+| `src/lib.rs` | **382** | **384** |
+| `budget_cm65_lifecycle` / `reservation` / `scheduling` | 8 / 2 / 6 | 8 / 2 / 6 |
+| `budget_cm66` | 7 | 7 |
+| `directory_attachment_ttl` / `no_disk` / `ownership` / `replacement` | 12 / 6 / 7 / 10 | 12 / 6 / 7 / 10 |
+| `gateway_contract` | **51** | 51 |
+| `p3_session_port_contract`（冻结） | **10** | 10 |
+| `registry_audit` / `cancel` / `execution` / `lifecycle` / `release` | 11 / 9 / 6 / 7 / 11 | 11 / 9 / 6 / 7 / 11 |
+| `resource_replacement` / `return_to_pool` / `rotation_and_disable` | 4 / 7 / 6 | 4 / 7 / 6 |
+| Doc-tests | 0 | 0 |
+| **TOTAL** | **562** | **564** |
+
+差 `+2` 恰为 CM-74 的两条新测试，其余 19 支逐项一致 ⇒ CM-74 轨未删改任何其他测试。**注意 registry 五支的顺序是 `audit/cancel/execution/lifecycle/release`，不是 `cancel/audit/…`** —— 顺序写错会让下一个接手的人套错基线。
+
 ## 待办与遗留
 
 | 项 | 状态 |
@@ -513,6 +532,24 @@ COVERED = 19   PARTIAL = 20   MISSING = 1   （求和 = 40）
 - (c) **物理资源与 session ID 同步失效** —— `harness/tests.rs:446` 断言恢复资源的 resource_id 与 db_session_id **双双不同**；`:490` 是负控（宿主若在恢复资源上重登记旧句柄，测试必须响）。
 
 **② CM-60 基准 harness 存在吗？—— 不存在，两处文档说法均属实。** `src/connection/testing/bench.rs` `test -f` = NOT EXISTS；`src/bin/` 不存在；全仓 `bench` 只有两处注释。`fake-runtime-fixtures.md:71` 与 `platform-development-plan.md:128` 的「未实现」都是真的。已有的是**口径实现**不是 harness：`latency.rs` 的 nearest-rank p95 五例自测 + `gateway/timing.rs` 验证「两段按请求求和后再取 p95、不得相加两个 p95、不得剔除失败样本」。判据 `:1236` 要的 release build / 4 vCPU 8 GiB / 并发 8 / 预热 1000 / 5 轮×10000 / p95≤10ms 阈值判定 —— **一次可运行的基准都没有**。
+
+### 基准 harness 的权威规格在 §15.3 `:857`，不在 CM-60 正文 `:1236`
+
+`:1236` 只有一句压缩表述；**逐字可执行的规格在 `connection-management.md:857`（§15.3 测试范围与基准 harness）**：
+
+> CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固定 fake command 10 ms，以**并发 8** 预热 **1000 请求**；每轮采集 **10000 个获准且未排队的请求**，运行 **5 轮**。附加耗时从 gateway 完成鉴权/参数校验开始到派发 driver，以及 driver completion 到 receipt/event 状态登记完成的两段单调时间之和，不包含 fake SQL、预算/actor 排队、网络传输。采用 nearest-rank p95（排序后第 **ceil(0.95*N)** 项），**每轮均须 ≤10 ms**；排队请求另报等待分位数，**不删失败样本，失败数单列**。
+
+配套 `:859`：**journal 在每次建连/关闭/permit 变化时断言额度，无随机采样盲区**；注入连接持有、慢 consumer 和 drain 的压力部分**另运行，不混入非排队延迟样本**；保存环境、构建参数、原始计时与 journal 作为 CI artifact，**不新增仓库评审记录**。
+
+四条易漏点：**① release 构建**（debug 下 p95 无意义）；**② 每一轮都须 ≤10 ms**，不是五轮取平均或最差；**③ nearest-rank 取下标 `ceil(0.95*N)-1`**，N=10000 即 9499，不用插值分位数；**④ 不删失败样本**，失败数单列。预热/轮次/样本是**规格不是可调参数**，慢也不许砍。
+
+### 「为什么要 4 vCPU」—— 仓库没给理由，它也不是容量要求
+
+全文搜索：4 vCPU/8 GiB 仅两处，**均为裸规格，零出处、零论证** —— `:857` 与 `fake-runtime-fixtures.md:548`。
+
+它作用来自 `:859` 那句「**无随机采样盲区**」：既然要求逐次断言每一次额度变化，p95 也必须能从噪声里分辨真实回归。**没钉住环境跑出的 p95，报告的是机器忙不忙，不是代码退没退。** 所以「4」这个数字本身不重要，重要的是**可复现**。
+
+⇒ 本机 `hw.ncpu=8` / `hw.memsize=16.0 GiB`，约 2× 于判据环境。**更强机器测出更小的数，不构成「在判据环境达标」的证据。** 报告必须同写两句：「8 vCPU / 16.0 GiB 下实测 p95 = X ms」**和**「未在判据指定的 4 vCPU / 8 GiB 复测」，**不得写「达标」**。macOS 无 `taskset`，核数钉不住 ⇒ 运行基准期间只许基准在跑（不同时重编译 runtime、不与其他轨抢核）。
 
 **③ 哪些判据靠 sleep 猜顺序？—— 一个都没有。** `packages/runtime/src` 与 `packages/runtime/tests` 全树 grep `sleep|Duration::from_millis|Duration::from_secs|yield_now|interval(` **零命中**。所有时间推进走 `FakeClock::advance`，所有顺序由 `Barrier` 或 journal 单原子 `seq` 表达。两处「擦边」（`barrier/tests.rs:103-110`、`:413-418` 的 200 ms 轮询）**不违规** —— `:102` 已就地引用 §6.4，它们证明的是「状态位无变化」即**无进展**，不参与顺序推导。其余真实时间用法都只是失败兜底超时；`settle()`/`wait_until()` 的上界（512 次 yield）是**失败时的诊断信息**，不是兜底 sleep。
 
