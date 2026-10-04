@@ -195,6 +195,59 @@ R-01 若经 Tester 复核成立且未修，本轮判 `FAIL`。
 
 **registry 分支基线缺口**：其基点 `060053afb` **不含 gateway**，故 `gateway_contract` 在该树上不存在（不是 0）。合并后应为 lib **377**（main 328 + registry 49）、`gateway_contract` **51**。已要求 Tester 在自建 `--detach` 树里做 `git merge --no-ff main` 试跑，预期冲突面只有 `packages/runtime/src/lib.rs`（gateway 加了 `pub mod gateway;`）。
 
+### registry 轨第 1 轮验收 → FAIL（Tester `a92775f2`）
+
+**2 blocker + 1 确认缺陷 + 1 确认低缺陷。** Coder 树首尾指纹一致（`b57efab2e` / 0 / `da39a3ee`），变异全在自建 detach 树、收尾 3 棵全清 EXIT=0。**Coder 全绿自报不可信，但也未欺瞒**——它确实跑了清单内的全部命令，问题出在清单。
+
+**BLOCKER-1 —— 分支改爆自己的冻结契约套件**
+
+```
+cargo test -p datazen-runtime --test p3_session_port_contract   → EXIT=101
+error[E0053]: method `cancel_execution` has an incompatible type for trait
+  --> packages/runtime/tests/p3_session_port_contract.rs:75:1
+     expected `CancelReceipt`, found `ExecutionState`
+```
+
+基线 `060053afb` 实测 `test result: ok. 10 passed` EXIT=0。**10/10 绿 → 编译不过。**
+
+**BLOCKER-2 —— 合并 main 产出整棵编译不过的树，且零冲突**
+
+`git merge --no-ff main` MERGE_EXIT=0、`--diff-filter=U` 为空、`lib.rs:19/23` 两个 `pub mod` 都在，但**每个二进制 EXIT=101**：
+
+```
+error[E0308]: mismatched types
+   --> packages/runtime/src/gateway/mod.rs:441:37
+441 |  record.last_state = state_after;
+    | expected `ExecutionState`, found `CancelReceipt`
+   （另有 :446:41、:447:13；disposition_from_port_state 在 gateway/cancel.rs:185）
+```
+
+**协调者预判的冲突面（`src/lib.rs` 的 `pub mod gateway;`）是错的。真正的冲突面是语义破坏，`git merge` 看不见。** 合并后 377 / 51 因此是**不可达**，不是数字错。
+
+**同一根因**：分支改了共享接缝 `SessionPort::cancel_execution` 的返回类型 `ExecutionState → CancelReceipt`（`registry/port.rs:96`），**冻结基线测试与 gateway 轨两个消费者都没跟着改**。已核实：`SessionPort` 5 个方法里**只有它改了签名**，其余 4 个未动。
+
+**协调者裁定（本轮唯一设计决定）**：
+
+- `SessionPort::cancel_execution` **回退为 `Result<ExecutionState, RuntimeError>`**。冻结测试写死了签名（`:104-113`）与返回态（`:318-323` 断言 `CancelRequested | Cancelled`），**冻结契约是仲裁者**。实测 `git diff --name-only 060053afb..b57efab2e -- .../p3_session_port_contract.rs` 输出为空 ⇒ **Coder 没有把契约改成迎合实现，这是对的，不得回改冻结测试。**
+- `CancelReceipt` **不消失**：`registry.rs:609` 的 facade 方法本就返回 `Result<CancelReceipt, RuntimeError>`，保持不变；trait 实现内部调 facade 再投影 `Ok(receipt.state)`。D-01 由此**真关**（真 DTO、真逻辑、导出、facade 可达）；trait 是**内部接缝**，不是 §4 的 11 个跨边界端口，内部接缝可以保持窄。
+- D-01 的 **gateway 侧消费 = D-03，仍 OPEN**，是 gateway 的活（`cancel.rs:185` 1 函数 + `mod.rs:441/446/447` 3 处）。**registry 禁碰 `gateway/**`**，D-03 排在 registry 合并后另派。
+
+**缺陷清单**：
+
+| 编号 | 位置 | 结论 |
+| --- | --- | --- |
+| B-1 / B-2 | `registry/port.rs:96` | 签名回退；facade 不动 |
+| **R-01** | `registry.rs:567-569` | **Tester 独立复核确认成立**。链路：`registry.rs:567-569`（sink）← `actor.rs:472` 原样转发 ← `release.rs:127-133` 已 `invalidate_bindings()`/`physical=None`/`state=Lost` ← `release.rs:141` 返回 `Err(SessionLost)`。`registry.rs:562-564` 注释自述相反意图。留行不留证据（`release.rs:134` 的 `Outcome::Undecided` 已留），只漏一行 + 一个额度位，调用方无回收路径。**修法**：`CloseRejected` 保留行与额度，后置 `SessionLost` 仍 `forget()`；**调用方可见错误不得改变** |
+| R-02 | `release.rs:182-187` + `actor.rs:621-628` | Tester 取证：两条 `AuditFacts` **逐字段全等**（`AuditFacts::none()` 在 `actor.rs:700-710` 已置 `handle_count: 0`），仅 `emit()` 自增 `id` 不同 ⇒ 确认为重复，删其一 |
+
+**本轮全绿的部分（同样要记在台账里）**：§3 门禁全部复现；`+49` 对账**精确**（`223 → 272`，`registry::` 命名 lib 测试 `3 → 52`）；§5 静态 6 项全过（禁改区 0 命中、最大文件 `actor.rs` 734 ≤ 800、全仓 0 个 U+FFFD）；**4 条指定变异全杀、10/10 阴性对照绿**（CM-72 / CM-24 / D-02 / D-01）；§8 审计 drain 为**读而不消费**，且**有鉴别力**（改成消费式会让 7 条测试变红）⇒ 非空洞。
+
+**Tester 主动标记的诚实空白**（未确认，不得当结论用）：R-02 是**源码结构比对**非运行时 dump；裁定 5 的**后端 open/close 计数未测**（重复登记的物理连接是否真被关闭，仍无连接泄漏证明）；裁定 2 未穷举；裁定 6 的零行为变更未独立验证；配额守恒只验**串行**未验并发。
+
+**Tester 的一条覆盖提醒**：CM-24（伪造绑定）与 D-02（epoch 不一致）**只被 `--lib` 单测杀掉**，对应集成二进制全程绿。看着像重复、实际不是，**不得删除**。
+
+**协调者认领的流程错误**：给 Coder 的门禁清单**只有 `--lib` + 5 个本轨二进制 + build/fmt/边界，漏了 12 条冻结基线**，所以 BLOCKER-1 从未进入 Coder 视野。Coder 如实跑了清单内全部命令、如实上报，**责任在清单不在执行**。本轮起门禁清单全文下发，12 条基线一条不落。
+
 ### 协调者已裁定（各轨不得重新讨论）
 
 1. §3.2 #5 registry **重导出** `SessionView`/`SessionHandle`，绝不重新定义。
@@ -303,3 +356,5 @@ gateway 第 2 轮整改中，coder 主动披露 lib 门禁两次红在**同一�
 - **冻结面事实必须当场读码核实，不能凭记忆下发裁定**（2026-10-05 新增，代价真实）。协调者裁定 #4 断言 `HostRejected` 不上线、`fold_exit` 返回 `NotOnTheWire`；registry Coder 读 `connection/error.rs:136` 后发现冻结写死 `HostRejected -> InvalidArgument`，该错误**确实上线**，裁定与实现相反。Coder 未自行改动生产代码，只把**真正成立**的性质钉成断言并上交——这是正确处置。**教训**：凡裁定涉及冻结面的具体映射/取值/返回路径，下发前必须 `grep` 一次原文并在裁定里附上文件:行号；错裁定已就地划改并保留原文，不静默删除。
 - **未提交状态不存在可靠的工作区内容指纹**（2026-10-05 新增）。registry Coder 首轮门禁指纹失效：`git write-tree` 写的是**索引**，未 `git add` 的新文件不在其中；`git diff` 只覆盖已跟踪文件。拿任一者与 `HEAD^{tree}` 比必然对不上（当日 21 个新文件未入库）。**结论**：门禁证据一律取「**已提交 + 干净树 + 重跑**」那一轮——工作区干净时，跑的内容按构造就是提交进去的内容。
 - **「同一棵工作树不得同时被提交方与验证方使用」会让 Coder 主动上交变异任务，这是正确行为不是偷懒**（2026-10-05 确认）。Coder 发现自己既是提交方又被指派变异，两份指示冲突，选择**上交裁定而非绕过**——须在简报里明确把该轨的 CM/条款变异整体划给 Tester，否则会僵持。
+- **改共享 trait 的方法签名，必须当场预演它的编译后果**（2026-10-05 新增，代价是 2 个 blocker）。registry 改了 `SessionPort::cancel_execution` 的返回类型，**冻结契约测试与已合并的 gateway 轨同时编译不过**，而 `git merge` **零冲突、EXIT=0**、`lib.rs` 两个 `pub mod` 都干净在位 ⇒ **语义破坏对 `git merge` 完全不可见**。两个后果：① 门禁清单**必须含全部冻结基线**，"本轨全绿"不等于能编译；② 预估冲突面不可靠，**合并试跑是唯一可靠手段**，且要跑**每一个**二进制而不是抽查。
+- **冻结测试是仲裁者，实现必须向它让步**（2026-10-05 新增）。发现冻结测试挡住实现时，正确顺序是**回退实现**，不是改测试迎合——后者会摧毁它作为独立仲裁者的全部价值。判定冻结性的硬证据：`git diff <base>..<HEAD> -- <冻结测试路径>` 输出为空（未被改动）＋ 基线实测计数绿。
