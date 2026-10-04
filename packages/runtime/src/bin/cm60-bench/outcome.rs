@@ -8,9 +8,10 @@
 //!
 //! ## N 是「获准且未排队」的请求数，不是样本条数
 //!
-//! §11.3（`fake-runtime-fixtures.md:569`）的口径是「**不删除失败样本**：失败、超时、
+//! §11.3（`fake-runtime-fixtures.md:570`）的口径是「**不删除失败样本**：失败、超时、
 //! 被取消的样本数与占比必须与分位数一起输出，**禁止只统计成功样本**」，唯一的豁免在
-//! `:568`：「被 `QueueFull` 拒绝或排队等待的请求」。
+//! `:569`：「被 `QueueFull` 拒绝或排队等待的请求」不进入 p95 样本（`:568` 是 `ceil(0.95*M)`
+//! 与「无缺口时 `M = N`」那一条）。
 //!
 //! 所以本文件把三个数**分开**记，谁也不顶替谁：
 //!
@@ -40,10 +41,37 @@ use serde::Serialize;
 use crate::driver::{DriverRoundTrip, ProjectionReport};
 use crate::plan::{BenchPlan, GATE_P95_NANOS};
 
-/// 一组分位数（纳秒）。
+/// 一组分位数（纳秒）**和算出它的那次求值吃进去的条数**。
 ///
 /// 全部是 `Option`：**空样本集是 `None`，不是 0。** 「没测到」和「0 纳秒」是两件事，
 /// 写成 0 就会让判定式在一轮完全失败（所有请求都被拒）的情况下给出「通过」。
+///
+/// ## 为什么条数必须长在这个结构里，而不是在它旁边另立一列
+///
+/// §11.3（`fake-runtime-fixtures.md:572`）要求产物与校验都记录「喂给 p95 的样本条数」，
+/// 理由写在那里：「把最大值丢掉后重算的近序位分位数可能一模一样，值看不出、条数看得出」。
+/// 但**另立一列并不足以做到那件事**，上一轮就是这么写的，仍然失守，失守分两层：
+///
+/// 1. **那一列与分位数是同一个变量的两次求值**（`totals.len()` 与 `Percentiles::of(&totals)`）。
+///    「输入条数 == 实测条数」这条断言比的还是 `totals`，所以切片一旦被做短，两边**一起**短，
+///    断言照样成立。在 §11.1 的真实样本量（每轮 10000）上它必然失守：nearest-rank 取第
+///    `ceil(0.95*M)` 项，`ceil(0.95*10000) = 9500`，掉一条既不改名次也不改值——**值比和条数比
+///    同时看不见**。小样本（4 条）上值比之所以能红，是因为 `ceil(0.95*4) = 4` 恰好落在最大值上，
+///    那是巧合，不是守卫。
+/// 2. 就算改成「从分位数里取条数」，只要条数仍可被单独赋值（`round.percentile_input = 1` 与
+///    `round.percentiles = Percentiles::of(&[100])` 各写各的），错配依然写得出来。
+///
+/// 所以条数是**私有字段**，唯一的非零构造路径是 [`Percentiles::of`]：它在求 p50/p90/p95/
+/// p99/max 的**同一次调用**上从**同一个切片**取 `samples.len()`。在本模块之外
+/// **连 `struct` 字面量都写不出来**——实测两种写法都被编译器拦下（不是靠约定）：
+/// 写全五个字段报 `cannot construct Percentiles with struct literal syntax due to
+/// private fields`，写 `..Percentiles::default()` 报 `field input_len of struct
+/// Percentiles is private`（E0451，函数式更新语法不许跳过私有字段）。
+/// 于是「记下来的条数」与「算出来的分位数」**结构上不可能不同源**——
+/// 不是多写一列去盯，而是没有那种写法可写。
+///
+/// 代价：想造一组分位数只能过 `of`（或 [`Percentiles::default`]，它等于 `of(&[])`：全 `None`、
+/// 0 条，语义自洽）。这个代价由本文件承担，是自觉的。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 pub struct Percentiles {
     pub p50_nanos: Option<u64>,
@@ -51,6 +79,13 @@ pub struct Percentiles {
     pub p95_nanos: Option<u64>,
     pub p99_nanos: Option<u64>,
     pub max_nanos: Option<u64>,
+    /// 这组分位数**真正吃进去的条数**，由 [`Percentiles::of`] 在同一次求值上记下。
+    ///
+    /// 私有：非 0 的值只能来自 `of`，理由见上面的结构说明。不进产物序列化——轮级的
+    /// `percentile_input` 已经序列化了它的**同一个**来源，再抄一份只会多出一处能漂移的地方，
+    /// 那恰好是要消灭的病。
+    #[serde(skip_serializing)]
+    input_len: usize,
 }
 
 impl Percentiles {
@@ -65,7 +100,17 @@ impl Percentiles {
             p95_nanos: nearest_rank_percentile(samples, 0.95),
             p99_nanos: nearest_rank_percentile(samples, 0.99),
             max_nanos: samples.iter().copied().max(),
+            // 与上面五个数取自同一次调用、同一个切片：条数不可能与分位数分属两个来源。
+            input_len: samples.len(),
         }
+    }
+
+    /// 这组分位数真正吃进去的条数（`of` 的入参长度）。
+    ///
+    /// 它**不是**分位数值的反推、也不是样本数的抄写，所以「输入条数 != 实测条数」这类
+    /// 记账错位一定读得出来。
+    pub fn input_len(&self) -> usize {
+        self.input_len
     }
 
     /// 样本为空（没测到）。
@@ -96,7 +141,7 @@ pub fn total_nanos(sample: &RawSample) -> u64 {
 /// 一轮的计数账。
 ///
 /// 每一列都**互不顶替**：N（`admitted`）、分位数的输入条数（不在本结构里，见
-/// [`RoundOutcome::measured`]）、失败分类、以及「获准却没测出时长」的缺口。
+/// [`RoundOutcome::percentile_input`]）、失败分类、以及「获准却没测出时长」的缺口。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 pub struct SampleOutcome {
     /// 本轮发出的请求数。失败占比的分母。
@@ -105,7 +150,7 @@ pub struct SampleOutcome {
     /// 恒等式：`admitted == completed + dispatch_failed + replays`。
     pub admitted: usize,
     /// 走完「受理 → 派发 → 登记」全流程、**两段计时都打上了终点**的请求数。
-    /// 分位数的输入条数应当等于它（见 [`RoundOutcome::measured`]）。
+    /// 分位数的输入条数应当等于它（见 [`RoundOutcome::percentile_input`]）。
     pub completed: usize,
     /// 受理被拒（含队列已满）。**从未获准**，因此不进入 N —— 不是被豁免，是不在口径里。
     pub rejected: usize,
@@ -164,15 +209,9 @@ pub struct RoundOutcome {
     pub rejections: BTreeMap<String, usize>,
     /// 排队等待时长的分位数。空集合 → 全 `None`。
     pub queued_wait: Percentiles,
-    /// 本轮样本的分位数（输入条数见 [`Self::percentile_input`]；N 是 [`Self::n`]，
-    /// 三者**不是**同一个数）。
+    /// 本轮样本的分位数。**输入条数与它同源**——读那个数请用 [`Self::percentile_input`]，
+    /// 它不是 [`Self::n`]（含随后失败的），也不是 [`Self::measured`] 的另一份抄写。
     pub percentiles: Percentiles,
-    /// 分位数输入的**真实条数**：传进 [`Percentiles::of`] 的那个向量有多长。
-    ///
-    /// 它必须等于 [`Self::measured`]，而且是**独立记下来的**：`measured` 数的是
-    /// 样本仓库，而这里数的是分位数真正吃进去的东西。两者分开记，才谈得上「有人
-    /// 把分位数的输入悄悄做短了」能被测出来——两列相等是恒等式，不相等是缺陷。
-    pub percentile_input: usize,
     /// 本轮真实墙钟耗时（纳秒）。**不参与门禁**：它含 fake 命令的虚拟 10 毫秒与
     /// 事件投影，只用来解释量级，不是被测的「网关附加耗时」。
     pub wall_time_nanos: u64,
@@ -183,14 +222,33 @@ pub struct RoundOutcome {
 impl RoundOutcome {
     /// §11.3 要求输出的 N：**获准且未排队**的请求数，**含随后失败的**。
     ///
-    /// 它**不是** `samples.len()`。失败样本不删除（`:569`），它们仍留在 N 里，只是分位数
+    /// 它**不是** `samples.len()`。失败样本不删除（`:570`），它们仍留在 N 里，只是分位数
     /// 算不到它们——那一批的去处是 [`Self::unmeasured_failures`]。拿 `samples.len()` 当 N
     /// 就是「只统计成功样本」，正是 §11.3 明文禁止的那件事。
     pub fn n(&self) -> usize {
         self.outcome.admitted
     }
 
-    /// 分位数的真实输入条数 = `n() - unmeasured_failures()`，也就是 `samples.len()`。
+    /// 分位数的真实输入条数 = 喂进 [`Percentiles::of`] 的那个向量有多长。
+    ///
+    /// 它**不是** [`Self::measured`] 的另一份抄写。上一轮正是这么写的（字段
+    /// `percentile_input: totals.len()`），而 `totals.len()` 与 `Percentiles::of(&totals)`
+    /// 是**同一个变量的两次求值**：切片一旦被做短，两边一起短，「输入条数 == 实测条数」
+    /// 这条断言照样绿。在 §11.1 的真实样本量上这必然失守——每轮 10000 条时掉一条既不改变
+    /// `ceil(0.95*M) = 9500` 这个名次，也不改变落在名次上的那个值。
+    ///
+    /// 所以它现在是**从 [`Self::percentiles`] 里读出来的派生值**，不是可单独赋值的字段：
+    /// 条数与分位数同源，外部写不出「条数照旧、切片被做短」这种状态。
+    /// 「两列相等是恒等式，不相等是缺陷」这条判据本身没变，变的是它终于建在了能读出
+    /// 差值的两个来源上。
+    pub fn percentile_input(&self) -> usize {
+        self.percentiles.input_len()
+    }
+
+    /// 真正打完两段计时的条数 = `samples.len()`（= `n() - unmeasured_failures()`）。
+    ///
+    /// 它是分位数输入条数的**对照项**：见 [`Self::percentile_input`]。两者必须相等，
+    /// 但它们来自不同来源——这里数的是样本仓库，那里数的是分位数真正吃进去的向量。
     pub fn measured(&self) -> usize {
         self.samples.len()
     }
@@ -243,8 +301,11 @@ impl RoundOutcome {
     /// 第 4 条把它拦下。两条都过不了的账，才允许拿去算 p95。
     ///
     /// 第 6 条是**同类缺陷的另一个长相**：`samples` 一个没少，但喂给分位数的切片短了。
-    /// 它不需要任何计数错账就能发生（这是它难被发现的原因），所以只能靠把「输入条数」
-    /// 单独记一列来守——不记这一列，光看产物根本看不出 p95 吃的是哪几个数。
+    /// 它不需要任何计数错账就能发生（这是它难被发现的原因），而它之所以最终能被拦下，
+    /// 是因为分位数的输入条数与分位数值**长在同一个结构里**、由 [`Percentiles::of`] 在
+    /// 同一次求值上取自同一个切片——两边不同源的状态根本写不出来。**不需要**额外一列
+    /// 去盯，也不**能**靠盯一条断言守住：上一轮正是把条数另记一列并配一条
+    /// `percentile_input == measured` 断言，在 §11.1 的真实样本量（每轮 10000）上两条同时放行。
     pub fn sample_count_mismatch(&self) -> bool {
         let measured = self.measured();
         let unmeasurable = self.outcome.dispatch_failed + self.outcome.replays;
@@ -253,7 +314,7 @@ impl RoundOutcome {
             || self.n() != measured + self.unmeasured_failures()
             || self.unmeasured_failures() != unmeasurable
             || self.outcome.replays != 0
-            || self.percentile_input != measured
+            || self.percentile_input() != measured
     }
 }
 

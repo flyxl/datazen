@@ -388,9 +388,12 @@ async fn assemble(
         // 也没有预算台账，所以排队数**结构上恒为 0**。这不是「没测到」，是「不存在」，
         // 但等待分位数仍按 §11.3 输出为 `None`，让读产物的人看见这一栏存在且为空。
         queued_wait: Percentiles::of(&[]),
-        // 输入条数从**真正传进去的那个向量**上取，不是从 `samples.len()` 反推：
-        // 反推出来的数字永远等于样本数，也就永远抓不到「切片被做短」。
-        percentile_input: totals.len(),
+        // 分位数与它吃进去的条数**只有一个来源**：这一行。
+        // 上一轮在这里另起一列 `percentile_input: totals.len()`，那是同一个变量的第二次求值——
+        // 切片一旦被做短，两列一起短，第 6 条照样绿（§11.1 每轮 10000 条时
+        // `ceil(0.95*M) = 9500` 不受掉一条影响，值比同时也看不出）。
+        // 现在条数由 `Percentiles::of` 在同一次求值里记下，外部写不出错配；要失守只能改这一行，
+        // 而这一行正对着 `RoundOutcome::percentile_input()` 与门禁第 6 条。
         percentiles: Percentiles::of(&totals),
         wall_time_nanos,
         event_projection: acc.projection,

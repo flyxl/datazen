@@ -116,16 +116,17 @@ pub struct RoundRecord<'a> {
     /// §11.3 要求失败样本不得从统计里消失，所以这两个数必须并排写出来：
     /// 只写 `n` 会让人以为 N 条请求全都测到了。
     pub measured: usize,
-    /// 分位数**真正吃进去**的条数。它与 `measured` 恒等，却单独出列：只写
-    /// `measured` 的话，「样本齐全但切片被做短」在产物里完全看不出来（p95 会跟着
-    /// 变小，而且没有任何一列会矛盾）。
+    /// 分位数**真正吃进去**的条数（§11.3「分位数的输入条数是独立一列」）。它与
+    /// `measured` 恒等；一旦不等，说明算 p95 的向量被做短了，而只写 `measured` 的话
+    /// 产物里没有任何一列会矛盾（`measured` 数的是样本仓库，这一列数的是分位数真正
+    /// 吃进去的向量，两者是不同来源）。
     pub percentile_input: usize,
     /// 计入 `n` 却打不出第二段真实时长的请求数。**非 0 即门禁不成立**；
     /// 这些请求**没有**被补一个构造值进分位数。
     pub unmeasured_failures: usize,
     pub p95_nanos: Option<u64>,
     pub percentiles: &'a crate::outcome::Percentiles,
-    /// 失败数。§11.3 `:569` 要求它**与占比**一起输出。
+    /// 失败数。§11.3 `:570` 要求它**与占比**一起输出。
     pub failures: usize,
     /// 失败占比（失败 / 提交）。分母为 0 时是 `None`（未知），不是 `0.0`——
     /// `0.0` 会被读成「测过，失败率 0」。
@@ -287,7 +288,7 @@ fn round_record(round: &RoundOutcome) -> RoundRecord<'_> {
         concurrency: round.concurrency,
         n: round.n(),
         measured: round.measured(),
-        percentile_input: round.percentile_input,
+        percentile_input: round.percentile_input(),
         unmeasured_failures: round.unmeasured_failures(),
         p95_nanos: round.p95_nanos(),
         percentiles: &round.percentiles,
@@ -499,9 +500,13 @@ mod tests {
 
     #[test]
     fn the_summary_and_the_raw_artifact_are_a_matched_pair() {
+        // 取一次、存下来：清理必须针对**同一个**目录。早先这里调了两次
+        // `tempdir()`，只有当它按毫秒复用名字时两次才相等；改成每次唯一之后
+        // 第二次会指向一个从没写过的空目录，于是清理静默失效、目录留在 temp 里。
+        let dir = tempdir();
         let outcome = write(
             &run_bench(quick(1, 2)).expect("最小计划应可跑"),
-            Some(std::path::Path::new(&tempdir())),
+            Some(std::path::Path::new(&dir)),
         )
         .expect("应可落盘");
         let [raw, summary] = outcome.paths();
@@ -519,7 +524,7 @@ mod tests {
             "两个产物必须共用同一个时间戳，否则一对产物会错配"
         );
         assert!(outcome.raw_bytes > 0 && outcome.summary_bytes > 0);
-        let _ = std::fs::remove_dir_all(&tempdir());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 样本集为空时，分位数必须是 `None` 而不是 0；计数走另一条路。
@@ -627,9 +632,23 @@ mod tests {
         assert!(!DEFAULT_ARTIFACT_DIR.starts_with("/tmp"));
     }
 
+    /// 每次调用必须拿到**独占**目录。
+    ///
+    /// 原来只用 `timestamp()`（毫秒）命名，于是同一毫秒里跑的两个测试拿到同一个
+    /// 目录，而 `write()` 写进去的文件名又只由时间戳决定——两个测试互相覆盖对方
+    /// 的 summary，读到的就是别人的产物，断言报的是 `no entry found for key`。
+    /// 这是继承来的竞态：HEAD `fdeff46f` 6/6 并行不红，本轮只因多两个用例把并发
+    /// 密度推上去，就 3 次里红 1 次（`--test-threads=1` 6/6 不红）。所以此处按
+    /// 「进程内唯一」修：`pid` 挡住跨进程，`seq` 挡住同进程内的并发线程。
     fn tempdir() -> String {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         std::env::temp_dir()
-            .join(format!("cm60-bench-report-{}", crate::report::timestamp()))
+            .join(format!(
+                "cm60-bench-report-{}-{seq}-{}",
+                std::process::id(),
+                crate::report::timestamp()
+            ))
             .to_string_lossy()
             .into_owned()
     }

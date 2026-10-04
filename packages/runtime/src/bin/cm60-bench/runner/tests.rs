@@ -119,10 +119,15 @@ async fn the_recorded_p95_is_the_percentile_of_the_samples_this_run_measured() {
             nearest_rank_percentile(&totals, 0.95),
             "记录值与本次真测到的样本不符：要么有样本没进来，要么有值不是测出来的"
         );
-        // 光比值不够：小样本下相邻次序位可能相等，「切片被做短」会**蒙混过关**
-        // （已实测：把最大的一条剔掉，这条断言当时仍然是绿的）。所以必须比条数。
+        // 光比值不够：这个 plan 每轮只测到 4 条，而 nearest-rank 取第 `ceil(0.95*M)` 项，
+        // `ceil(0.95*4) = 4` **恰好**落在最大值上，所以「把最大的一条剔掉」在这里会让
+        // 上一行直接变红——**那是巧合，不是守卫**。实测反例：同样的藏法搬到 §11.1 的真实
+        // 样本量（每轮 10000）上，`ceil(0.95*10000) = 9500` 不受掉一条影响，**值比和条数比
+        // 同时是绿的**。真实样本量上的结论见
+        // `outcome::tests::the_input_count_gate_holds_at_the_spec_sample_size`：
+        // 守住它的是「条数与分位数同源」，不是任何一条在这里绿的断言。
         assert_eq!(
-            round.percentile_input,
+            round.percentile_input(),
             totals.len(),
             "分位数输入的条数必须就是本次真测到的样本数"
         );
