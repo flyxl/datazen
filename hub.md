@@ -642,3 +642,57 @@ M-C 只改 `connection/port.rs:257` 规范侧的字面量 `"requested"` → `"re
 ### Tester 明列的未验证项（无一条按「通过」记）
 
 ① `Ok(false)`/`Err` 在生产中的可达性（未构造异常终止）；② `state.physical == None`（`release.rs:113`）且表项仍在时这条 `Ok(false)` 路径（未构造）；③ flakiness；④ `packages/runtime` 之外的 scope（未构建 `src-tauri`、drivers、整 workspace）；⑤ 非默认 cargo profile / feature；⑥ Coder 自报门禁日志的产生环境（未审计，改为全部自行重跑）；⑦ 除冻结契约外的跨轨交互。
+
+---
+
+## 三个待答问题的分析（**协调者分析，尚未经用户裁定**）
+
+以下三题由我在交付记录成文时提出，答案取自仓库证据。**用户尚未就 CM-74 顺序口径与 P3 豁免范围作裁定**，故本节只记分析与证据，不记裁定；相关问题仍开放。
+
+### Q1：CM-74 为何要求句柄**先于物理关闭**回滚并注销
+
+判据 `connection-management.md:1324` 要求句柄在**原 resource 上**回滚/关闭并从 actor 注销，**且发生在物理资源关闭之前**；commit 必须落在旧 resource 上或明确失败，绝不落到新 resource 上。
+
+**理由**：句柄是对「某个物理 resource 上事务状态」的引用。CM-73 的基线缺陷（`:1316-1318`）就是这件事的具体形态——`cleanup_idle_connections` 保留了 owner map，而 `session_transactions` 另行管理，于是 `get_session` 会**经由该 map 以同一个 dbSessionId 重连**，驱逐途中的一次 commit 就静默落到了新资源上；反过来，旧句柄则指向已死的资源却仍在报 `Active`，这正是 `:1316` 明令禁止的。**先注销**把这段歧义窗口关掉：此后任何迟到的 commit 都走「未登记句柄被拒绝」这条**已明确定义**的路。
+
+**次序之所以要单独钉**：因为**集合式断言对次序完全失明**。`resource/harness/tests.rs:535-537` 自己写着——三件事都发生但次序错了，宿主就会在句柄还挂着的时候先释放预算占用，I1（permit 收支）与 I5（登记册收口）一起破，**而任何「都发生过」式的断言都照样是绿的**。故 journal 必须严格为 `["handle closed","resource Closed","permit -1"]`。
+
+**我自己的更正（撤回原措辞）**：早先把本条冲突表述成「必须二选一」**不准确**。`permit -1` 排在最后是 harness 测试额外施加的 I1/I5 约束，**并非 `:1324` 所要求**；且 `:1323` 列的三条路径里含**归池**，归池根本不物理关闭 resource，所以 `:1324` 落在该路径上真正断言的是「句柄不得带着资源进池」，**与 `FakeHarness::close` 那条不是同一个断言**。
+
+**硬冲突仍然存在**：在归池路径上提前回收，会让 §4.2 F10「句柄非空 → 关闭而非归池」失去输入（`registered_handles` 已被清零），F10 会被骗过。**这需要一次明确裁定，不能靠改写措辞消解。**
+
+### Q2：`setSessionContext` 是干什么的，有实现吗
+
+**用途**：在不拆掉会话的前提下切换会话的活动上下文/命名空间（等价于 `USE otherdb`，见 §7.4 `:554-566`）。三种模式（`:425`）：`inPlace`（驱动原地切换并被观测，再发布已确认的上下文）；`requiresReplacement`（无法原地切换——保留旧会话，另建一个**仅内部可见**的候选 resource 与候选记录，该候选**不登记进** SessionRegistry/SessionDirectory 也**不接**任何 execution/subscription，随后经 §12 内存目录提交协议原子发布，把旧会话标记 Closing、旧 resource 交给清理；**发布失败不得返回成功**，提交后的失败只能恢复同一张回执）；`unsupported`/`unknown` ⇒ 明确报错，**不许假成功**。返回 `ContextChangeReceipt { session, replacedSessionId, attachmentToken }`（`:564`）；带 `idempotencyKey` 重试返回**原回执**（`:566`）。
+
+**分层状态**（纠正「没有实现」这种粗糙说法）：
+
+| 层 | 状态 | 证据 |
+|---|---|---|
+| application 契约 | **齐备** | `application/src/sessions.rs:110` trait 方法；`dto/requests.rs:279` `SetSessionContextRequest { target, expected_context_revision }`；`ContextChangeReceipt`；`platform-api/src/dto/idempotency.rs:25` `IdempotentOperation::SetSessionContext` |
+| 传输层 | **齐备** | `backend-client/src/client.ts:80`，HTTP `PUT /api/v1/sessions/{id}/context`（`system-overview.md:229`） |
+| 驱动层 | **已建模** | 每个驱动必须申报 `namespace_switch`；`driver-api/capabilities.rs:843`、`session.rs:672` 测 inPlace vs requiresReplacement；elasticsearch/vector 申报 `Unsupported` 并附表列理由；victoriametrics 证明「**Measured absent, not merely undeclared**」；sqlite 记录了为何 `requiresReplacement` 会承诺一个做不到的切换 |
+| **runtime 核心** | **缺** | `packages/runtime/src/registry` 对 `setSessionContext` **零命中**；唯一的上下文变更建模是测试夹具的 `ResourceOp::ChangeContext`（`fake_resource/script.rs:44`） |
+| runtime 前置闸 | **已是活的** | `context_revision` 闸在 `gateway/mod.rs:250/336-341`，三个测试在 `facade_tests.rs:55/130/375` |
+
+**精确说法**：*runtime 已经有 `setSessionContext` 的守门部件，但没有这个操作本身*。缺的恰是 `requiresReplacement` 的**候选 resource + 原子发布**协议，即 §7.4 第 6 条，也是最重的一块。`sessions.rs:5-6` 说明了 application 为什么不能编排它（依赖图里没有 `APP → RT`），实现属于组装层。
+
+**对 P3 的后果**：CM-74 被判 PARTIAL 的**唯一原因**就是这条替换路径缺句柄终止/注销次序断言，而证据表明它需要的是**新实现，不是新断言**。
+
+### Q3：`ArtifactStore` 是干什么的
+
+**用途**：大批量结果的**有界落盘端口**，让结果字节不必全驻内存、也不必全靠事件流推送。它解决的具体问题在 `:588-590`：内存 ResultSink 是有上限的（每订阅事件队列 256 条 / 1 MiB，首版每 execution 未消费缓冲上限 8 MiB，无消费者等待 30 秒），溢出必须落盘。
+
+**三条安全/正确性红线**（`platform-api/src/ports/artifact.rs:8-12`）：`create` 处绑定组织/属主 ACL；`export` 的 sink 是**受控目标**（对话框句柄 / 服务端授权路径），**拒绝任意服务端绝对路径**；TTL 过期 ⇒ `PortError::ArtifactExpired`，且**不得继续用缓存副本供应**。
+
+**生命周期不变量**（`:18-27`）：序号有序分配；已发布块不可变；**写入中即可读**（`read_chunk` 只读已发布索引，`read_range` 只读已发布连续前缀，**绝不等待未来的字节**）；未知/待定索引或越界 ⇒ **参数错误，绝不返回「空块」**；`abort` 保留已发布块并标记 truncated；**写入方异常退出 ⇒ 恢复扫描标 truncated，绝不声称 complete**；正常导出只允许从 `complete` 出；`truncated` 需用户显式确认且保留截断标记。
+
+**归属按目标而非按会话**（`artifact.rs:46-47`「结果归属按目标而非按会话,切会话不改变归属」，`ArtifactSpec.target_fingerprint`）——与 Q2 直接耦合：切库换了会话，产物仍属原目标。
+
+**配额**（`:590`）：per-execution 上限必填，桌面默认 256 MiB、团队默认 1 GiB，仍受组织总产物额度限制。**这就是 CM-64 的 256 MiB**——写进了规范，却无任何东西执行。
+
+**状态：零实现方、零调用方**（`artifact.rs:16`「本节描述尚未实现的目标行为,当前无任何 `ArtifactStore` 实现」；`platform-development-plan.md:128`「`ArtifactStore` 至今**零实现方、零调用方**」）。
+
+**决定性一点**：这不只是「P3 还没做」。该端口在 `:76`（P1）就已定义，而**服务端实现 + schema 迁移被排期在 P7（`:204`）**。
+
+⇒ **审计员留下的开放问题（「这些 H 断言该归 P4 还是更晚」）已有答案：`ArtifactStore` 本身属于 P7**，因此 CM-61（落盘白名单含 artifact / 临时结果恢复）与 CM-64（配额与 256 MiB）中依赖 ArtifactStore 的 H 断言**在 P3 结构上不可能具备**，应记为**显式 P3 退出门禁豁免**，而不是记作「覆盖不足」。
