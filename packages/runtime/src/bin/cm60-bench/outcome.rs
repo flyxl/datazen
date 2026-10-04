@@ -256,10 +256,7 @@ impl BenchRun {
 
     /// 最差一轮的 p95（不是平均、不是最好的一轮——§11.3 逐轮判定的理由）。
     pub fn worst_round_p95_nanos(&self) -> Option<u64> {
-        self.rounds
-            .iter()
-            .filter_map(RoundOutcome::p95_nanos)
-            .max()
+        self.rounds.iter().filter_map(RoundOutcome::p95_nanos).max()
     }
 
     pub fn failures_total(&self) -> usize {
@@ -280,10 +277,7 @@ impl BenchRun {
             && self.failures_total() == 0
             && self.journal.projection.is_clean()
             && self.journal.permit_reconciliation.gateway_ledger_balanced
-            && !self
-                .rounds
-                .iter()
-                .any(RoundOutcome::sample_count_mismatch);
+            && !self.rounds.iter().any(RoundOutcome::sample_count_mismatch);
         let worst = self.worst_round_p95_nanos();
         let mut conclusions = Vec::new();
         for round in &self.rounds {
@@ -326,7 +320,8 @@ impl BenchRun {
                 self.rounds.len(),
             )
         } else {
-            "门禁判定式不成立：存在未通过的轮次、失败请求、事件重复/丢失或样本数不一致。".to_string()
+            "门禁判定式不成立：存在未通过的轮次、失败请求、事件重复/丢失或样本数不一致。"
+                .to_string()
         });
         Verdict {
             conforms_to_spec: self.conforms_to_spec,
@@ -386,15 +381,27 @@ mod tests {
 
     #[test]
     fn total_is_summed_per_request_not_percentiles_added() {
-        let samples: Vec<RawSample> = (1..=100u64).map(|n| sample(1, n as usize, n)).collect();
+        // 两段反向互补：逐请求求和恒为 101，而两个 p95 各自 95、合计 190。
+        // 这组数据让「先逐请求求和再取分位数」与「先取两个分位数再相加」
+        // 产生可观测差异，因此本测试钉住的是实现路径本身，不是巧合相等。
+        let samples: Vec<RawSample> = (1..=100u64)
+            .map(|n| RawSample {
+                round: 1,
+                ordinal: n as usize,
+                gateway_nanos: n,
+                registration_nanos: 101 - n,
+            })
+            .collect();
         let totals: Vec<u64> = samples.iter().map(total_nanos).collect();
-        let per_request = Percentiles::of(&totals);
+        assert!(totals.iter().all(|total| *total == 101));
         let gateway: Vec<u64> = samples.iter().map(|s| s.gateway_nanos).collect();
         let registration: Vec<u64> = samples.iter().map(|s| s.registration_nanos).collect();
-        // 两个口径在单调样本上恰好一致，但它们是不同的问题：
-        // 这里钉住的是「逐请求先求和」这条实现路径，而不是巧合。
-        assert_eq!(per_request.p95_nanos, Percentiles::of(&gateway).p95_nanos
-            .saturating_add(Percentiles::of(&registration).p95_nanos));
+        let sum_of_percentiles = Percentiles::of(&gateway)
+            .p95_nanos
+            .zip(Percentiles::of(&registration).p95_nanos)
+            .map(|(g, r)| g.saturating_add(r));
+        assert_eq!(Percentiles::of(&totals).p95_nanos, Some(101));
+        assert_eq!(sum_of_percentiles, Some(190));
     }
 
     #[test]

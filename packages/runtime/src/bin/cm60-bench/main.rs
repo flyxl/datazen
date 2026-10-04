@@ -114,7 +114,9 @@ impl std::fmt::Display for CliError {
         match self {
             Self::Unknown(flag) => write!(f, "未知选项 `{flag}`"),
             Self::Missing(flag) => write!(f, "选项 `{flag}` 缺少取值"),
-            Self::Invalid { flag, value } => write!(f, "选项 `{flag}` 的取值 `{value}` 不是合法数字"),
+            Self::Invalid { flag, value } => {
+                write!(f, "选项 `{flag}` 的取值 `{value}` 不是合法数字")
+            }
         }
     }
 }
@@ -188,10 +190,7 @@ fn print_report(run: &BenchRun, written: &report::WriteOutcome) {
         "环境：实测 {} vCPU / {} 字节（判据锚点 4 vCPU / 8589934592 字节）",
         run.measured_vcpus, run.measured_memory_bytes
     );
-    println!(
-        "预热：{} 个样本（不进任何分位数）",
-        run.warmup.n()
-    );
+    println!("预热：{} 个样本（不进任何分位数）", run.warmup.n());
     println!("逐轮结果（§11.3：每轮输出 N、p50、p90、p95、p99、最大值、失败数、排队数）：");
 
     for round in std::iter::once(&run.warmup).chain(run.rounds.iter()) {
@@ -340,6 +339,15 @@ mod tests {
         list.iter().map(|s| (*s).to_owned()).collect()
     }
 
+    /// 打印路径的单测要真跑一遍基准，但规格计划（5×10000）属于 `--release` 的职责。
+    /// 预热保持非零，这样「预热样本不计入实测轮」这条路径仍然被走到。
+    fn quick(rounds: usize, per_round: usize) -> BenchPlan {
+        DEFAULT_PLAN
+            .with_warmup(4)
+            .with_rounds(rounds)
+            .with_per_round(per_round)
+    }
+
     /// 不带任何参数必须逐字等于 §11.1 的规格计划：默认值不允许「更保守」。
     #[test]
     fn no_arguments_means_the_spec_plan() {
@@ -354,7 +362,15 @@ mod tests {
     #[test]
     fn every_plan_flag_is_accepted_and_lands_on_the_plan() {
         let cli = parse(&args(&[
-            "--warmup", "1", "--rounds", "2", "--per-round", "3", "--concurrency", "4", "--fake-ms",
+            "--warmup",
+            "1",
+            "--rounds",
+            "2",
+            "--per-round",
+            "3",
+            "--concurrency",
+            "4",
+            "--fake-ms",
             "5",
         ]))
         .expect("应可解析");
@@ -375,8 +391,7 @@ mod tests {
 
     #[test]
     fn the_environment_is_explicit_never_guessed() {
-        let cli = parse(&args(&["--vcpus", "8", "--mem-bytes", "17179869184"]))
-            .expect("应可解析");
+        let cli = parse(&args(&["--vcpus", "8", "--mem-bytes", "17179869184"])).expect("应可解析");
         assert_eq!(cli.measured_vcpus, 8);
         assert_eq!(cli.measured_memory_bytes, 17_179_869_184);
     }
@@ -397,7 +412,10 @@ mod tests {
 
     #[test]
     fn a_trailing_bare_value_is_an_error_not_a_silent_drop() {
-        assert!(matches!(parse(&args(&["--rounds", "5", "--warmup"])), Err(CliError::Missing(_))));
+        assert!(matches!(
+            parse(&args(&["--rounds", "5", "--warmup"])),
+            Err(CliError::Missing(_))
+        ));
     }
 
     #[test]
@@ -432,8 +450,7 @@ mod tests {
     fn the_per_round_line_carries_every_section_11_3_field() {
         let usage = USAGE;
         assert!(usage.contains("cm60-bench"));
-        let run = runner::run_bench(DEFAULT_PLAN.with_rounds(1).with_per_round(4))
-            .expect("最小计划应可跑");
+        let run = runner::run_bench(quick(1, 4)).expect("最小计划应可跑");
         let round = run.rounds.first().expect("应有一轮");
         assert_eq!(round.n(), 4);
         assert!(round.percentiles.p50_nanos.is_some());
@@ -448,13 +465,14 @@ mod tests {
     /// 退出码的形状：规格运行 0/1，非规格运行 3，错误 2。三者不能混。
     #[test]
     fn a_non_spec_run_is_reported_as_incomparable_not_as_a_pass() {
-        let run = runner::run_bench(DEFAULT_PLAN.with_rounds(1).with_per_round(4))
-            .expect("最小计划应可跑");
+        let run = runner::run_bench(quick(1, 4)).expect("最小计划应可跑");
         assert!(!run.conforms_to_spec);
         assert!(!run.comparable_to_criterion());
         let conclusions = run.verdict().conclusions;
         assert!(
-            conclusions.iter().any(|line| line.contains("不是 §11.1 的规格计划")),
+            conclusions
+                .iter()
+                .any(|line| line.contains("不是 §11.1 的规格计划")),
             "非规格运行必须自己说不能下达标结论：{conclusions:?}"
         );
     }

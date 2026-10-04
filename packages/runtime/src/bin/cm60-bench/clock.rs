@@ -64,6 +64,9 @@ mod tests {
     fn origin_is_construction_time_not_unix_epoch() {
         // 原点若误用 unix epoch，值会落在 1e18 量级；差值口径要求它是进程内相对量。
         let clock = InstantClock::new();
-        assert!(clock.now_nanos() < 1_000_000_000_000, "时钟原点不是构造时刻");
+        assert!(
+            clock.now_nanos() < 1_000_000_000_000,
+            "时钟原点不是构造时刻"
+        );
     }
 }

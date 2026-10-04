@@ -136,7 +136,11 @@ impl WriteOutcome {
 pub fn timestamp() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| u128::try_from(d.as_millis()).unwrap_or(u128::MAX).to_string())
+        .map(|d| {
+            u128::try_from(d.as_millis())
+                .unwrap_or(u128::MAX)
+                .to_string()
+        })
         .unwrap_or_else(|_| TIMESTAMP_FALLBACK.to_owned())
 }
 
@@ -159,14 +163,19 @@ pub fn environment(measured_vcpus: u32, measured_memory_bytes: u64) -> Environme
 
 pub fn build() -> BuildRecord {
     BuildRecord {
-        profile: if cfg!(debug_assertions) { "debug" } else { "release" },
+        profile: if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
         debug_assertions: cfg!(debug_assertions),
         fake_command_millis: u64::try_from(SPEC_FAKE_COMMAND.as_millis()).unwrap_or(u64::MAX),
         gate_p95_nanos: GATE_P95_NANOS,
         rustc_version: rustc_version().unwrap_or_else(|| "unknown".to_owned()),
         pressure_harness: "cargo test -p datazen-runtime --test cm60_pressure_drain",
         benchmark_entry: "cargo run --release -p datazen-runtime --bin cm60-bench",
-        criterion_source: "docs/architecture/platform/connection-management.md:1235-1239 (CM-60); \
+        criterion_source:
+            "docs/architecture/platform/connection-management.md:1235-1239 (CM-60); \
                            bench spec docs/architecture/platform/fake-runtime-fixtures.md 11.1-11.6",
     }
 }
@@ -205,10 +214,11 @@ fn round_record(round: &RoundOutcome) -> RoundRecord<'_> {
 /// 落盘。`out` 为 `Some` 时当作**产物根目录**（不是文件名），保证 raw 与
 /// summary 仍然成对、同时间戳。
 pub fn write(run: &BenchRun, out: Option<&Path>) -> Result<WriteOutcome, BenchError> {
-    let dir = out.map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from(DEFAULT_ARTIFACT_DIR));
-    std::fs::create_dir_all(&dir).map_err(|error| {
-        BenchError::Io(format!("无法创建产物目录 {}: {error}", dir.display()))
-    })?;
+    let dir = out
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_ARTIFACT_DIR));
+    std::fs::create_dir_all(&dir)
+        .map_err(|error| BenchError::Io(format!("无法创建产物目录 {}: {error}", dir.display())))?;
 
     let stamp = timestamp();
     let raw_path = dir.join(format!("{RAW_PREFIX}{stamp}.json"));
@@ -293,17 +303,17 @@ impl std::error::Error for BenchError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::outcome::{ExecutionJournal, Percentiles, RawSample, SampleOutcome};
+    use crate::outcome::{ExecutionJournal, Percentiles, SampleOutcome};
     use crate::plan::DEFAULT_PLAN;
     use crate::runner::run_bench;
 
-    fn sample(round: usize, ordinal: usize, gateway: u64) -> RawSample {
-        RawSample {
-            round,
-            ordinal,
-            gateway_nanos: gateway,
-            registration_nanos: gateway.saturating_mul(2),
-        }
+    /// 单测不跑完整判据计划：预热保持非零（这样「预热样本被切出去」仍然被覆盖），
+    /// 但规模缩到能当单测跑的量级。
+    fn quick(rounds: usize, per_round: usize) -> crate::plan::BenchPlan {
+        DEFAULT_PLAN
+            .with_warmup(4)
+            .with_rounds(rounds)
+            .with_per_round(per_round)
     }
 
     #[test]
@@ -325,7 +335,7 @@ mod tests {
 
     #[test]
     fn raw_artifact_carries_all_three_reproducibility_sections() {
-        let run = run_bench(DEFAULT_PLAN.with_rounds(1).with_per_round(2)).expect("最小计划应可跑");
+        let run = run_bench(quick(1, 2)).expect("最小计划应可跑");
         let env = environment(8, 17_179_869_184);
         let build = build();
         let artifact = RawArtifact {
@@ -343,12 +353,15 @@ mod tests {
         assert!(text.contains("\"environment\""));
         assert!(text.contains("\"build\""));
         assert!(text.contains("\"raw\""));
-        assert_eq!(artifact.raw.len(), run.rounds.iter().map(RoundOutcome::n).sum::<usize>());
+        assert_eq!(
+            artifact.raw.len(),
+            run.rounds.iter().map(RoundOutcome::n).sum::<usize>()
+        );
     }
 
     #[test]
     fn the_raw_block_stores_two_segments_not_a_precomputed_sum() {
-        let run = run_bench(DEFAULT_PLAN.with_rounds(1).with_per_round(3)).expect("最小计划应可跑");
+        let run = run_bench(quick(1, 3)).expect("最小计划应可跑");
         let first = run.raw.first().expect("应至少有一个样本");
         assert_eq!(
             first.gateway_nanos.saturating_add(first.registration_nanos),
@@ -358,10 +371,13 @@ mod tests {
 
     #[test]
     fn every_written_sample_carries_its_own_round_and_ordinal() {
-        let run = run_bench(DEFAULT_PLAN.with_rounds(2).with_per_round(3)).expect("最小计划应可跑");
+        let run = run_bench(quick(2, 3)).expect("最小计划应可跑");
         let mut seen = std::collections::BTreeSet::new();
         for entry in &run.raw {
-            assert!(seen.insert((entry.round, entry.ordinal)), "轮次/序号必须唯一");
+            assert!(
+                seen.insert((entry.round, entry.ordinal)),
+                "轮次/序号必须唯一"
+            );
             assert!((1..=3).contains(&entry.ordinal));
             assert!((1..=2).contains(&entry.round));
         }
@@ -377,7 +393,7 @@ mod tests {
     #[test]
     fn the_summary_and_the_raw_artifact_are_a_matched_pair() {
         let outcome = write(
-            &run_bench(DEFAULT_PLAN.with_rounds(1).with_per_round(2)).expect("最小计划应可跑"),
+            &run_bench(quick(1, 2)).expect("最小计划应可跑"),
             Some(std::path::Path::new(&tempdir())),
         )
         .expect("应可落盘");

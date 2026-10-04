@@ -122,7 +122,8 @@ pub struct DriverRoundTrip {
 }
 
 impl DriverRoundTrip {
-    fn empty() -> Self {
+    /// 没有采到往返样本时的取值：两个分位数都是 `None`（不是 0）。
+    pub fn empty() -> Self {
         Self {
             samples: 0,
             p95_nanos: None,
@@ -244,7 +245,9 @@ impl FakeDriverPort {
 #[async_trait]
 impl SessionPort for FakeDriverPort {
     async fn session_view(&self, handle: &SessionHandle) -> Result<SessionView, RuntimeError> {
-        self.journal.session_view_calls.fetch_add(1, Ordering::Relaxed);
+        self.journal
+            .session_view_calls
+            .fetch_add(1, Ordering::Relaxed);
         let state = self.lock()?;
         if state.view.handle != *handle {
             return RuntimeError::UnknownSession(handle.db_session_id.as_str().to_owned())
@@ -383,10 +386,7 @@ mod tests {
                 duplicate_chunks: 1,
                 ..clean
             },
-            ProjectionReport {
-                lost: 1,
-                ..clean
-            },
+            ProjectionReport { lost: 1, ..clean },
             ProjectionReport {
                 unbound: 1,
                 ..clean

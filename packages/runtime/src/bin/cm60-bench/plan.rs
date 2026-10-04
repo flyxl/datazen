@@ -82,11 +82,17 @@ impl BenchPlan {
     }
 
     pub fn with_concurrency(self, concurrency: usize) -> Self {
-        Self { concurrency, ..self }
+        Self {
+            concurrency,
+            ..self
+        }
     }
 
     pub fn with_fake_command(self, fake_command: Duration) -> Self {
-        Self { fake_command, ..self }
+        Self {
+            fake_command,
+            ..self
+        }
     }
 }
 

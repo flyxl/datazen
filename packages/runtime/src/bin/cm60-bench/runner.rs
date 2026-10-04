@@ -27,9 +27,9 @@ use std::time::Instant;
 
 use datazen_platform_api::id::{ClientInstanceId, EditorSessionId};
 use datazen_runtime::connection::{
-    AttachmentState, CommandCall, ConfigRevision, ConnectionId, Counter, DbSessionId,
-    ExecutionId, NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, SessionContext,
-    SessionHandle, SessionState, SessionView, Timestamp,
+    AttachmentState, CommandCall, ConfigRevision, ConnectionId, Counter, DbSessionId, ExecutionId,
+    NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, SessionContext, SessionHandle,
+    SessionState, SessionView, Timestamp,
 };
 use datazen_runtime::gateway::{
     AlwaysAllow, ExecutionEvent, ExecutionGateway, ExecutionRequest, ExecutionSource, GatewayError,
@@ -39,7 +39,7 @@ use datazen_runtime::gateway::{
 use crate::clock::InstantClock;
 use crate::driver::{event_kind, event_sequence, FakeDriverPort, ProjectionReport};
 use crate::outcome::{
-    BenchError, BenchRun, ExecutionJournal, PermitReconciliation, Percentiles, RawSample,
+    BenchError, BenchRun, ExecutionJournal, Percentiles, PermitReconciliation, RawSample,
     RoundOutcome, SampleOutcome,
 };
 use crate::plan::{BenchPlan, SPEC_MEMORY_BYTES, SPEC_VCPUS};
@@ -266,20 +266,28 @@ async fn project(
 ///
 /// 并发度是「同时在飞的请求数上限」：用一张全局工位表分发序号，
 /// 总数因此**精确等于** `total`，不依赖 `total / concurrency` 的整除。
+///
+/// `keys` 是**整次运行**（预热 + 全部轮次）共用的幂等键序号源，不能每轮从 0 重开：
+/// 幂等存储的生命周期与网关一致，键一旦重复，第二次请求就退化成幂等重发，
+/// 既不产生新执行也不产生两段计时——那会让每一轮悄悄少掉样本，
+/// 而 §11.3 要求的是「已获准且未排队」的请求，一个都不能少。
 async fn drive(
     gateway: Arc<ExecutionGateway>,
     port: Arc<FakeDriverPort>,
     total: usize,
     concurrency: usize,
+    keys: &Arc<AtomicUsize>,
 ) -> Result<(WorkerAcc, u64), BenchError> {
     let started = Instant::now();
     let next = Arc::new(AtomicUsize::new(0));
+    let keys = Arc::clone(keys);
     let who = Arc::new(principal());
     let mut tasks = Vec::with_capacity(concurrency);
     for _ in 0..concurrency {
         let gateway = Arc::clone(&gateway);
         let port = Arc::clone(&port);
         let next = Arc::clone(&next);
+        let keys = Arc::clone(&keys);
         let who = Arc::clone(&who);
         tasks.push(tokio::spawn(async move {
             let mut acc = WorkerAcc::default();
@@ -288,7 +296,14 @@ async fn drive(
                 if index >= total {
                     break;
                 }
-                one(&gateway, &port, &who, index, &mut acc).await;
+                one(
+                    &gateway,
+                    &port,
+                    &who,
+                    keys.fetch_add(1, Ordering::Relaxed),
+                    &mut acc,
+                )
+                .await;
             }
             acc
         }));
@@ -514,10 +529,7 @@ pub fn run_bench_on(
         .enable_time()
         .build()
         .map_err(|error| BenchError::RuntimeSetup(error.to_string()))?;
-    runtime.block_on(async {
-        tokio::time::pause();
-        drive_all(plan, measured_vcpus, measured_memory_bytes).await
-    })
+    runtime.block_on(async { drive_all(plan, measured_vcpus, measured_memory_bytes).await })
 }
 
 async fn drive_all(
@@ -534,6 +546,9 @@ async fn drive_all(
         Arc::new(InstantClock::new()),
     ));
 
+    // 幂等键序号源：整次运行共用，预热也算在内。
+    let keys = Arc::new(AtomicUsize::new(0));
+
     // 预热：样本照采，但**不进任何分位数**，也不进 raw 产物。
     let warmup_before = gateway.overhead_samples().await.len();
     let (warmup_acc, warmup_wall) = drive(
@@ -541,6 +556,7 @@ async fn drive_all(
         Arc::clone(&port),
         plan.warmup,
         plan.concurrency,
+        &keys,
     )
     .await?;
     let warmup = assemble(
@@ -562,6 +578,7 @@ async fn drive_all(
             Arc::clone(&port),
             plan.per_round,
             plan.concurrency,
+            &keys,
         )
         .await?;
         let outcome = assemble(&gateway, acc, round, plan.concurrency, before, wall).await;
@@ -623,9 +640,10 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn every_request_produces_exactly_one_sample() {
-        tokio::time::pause();
         let plan = tiny();
-        let run = drive_all(plan, 8, 17_179_869_184).await.unwrap_or_else(|error| panic!("bench failed: {error}"));
+        let run = drive_all(plan, 8, 17_179_869_184)
+            .await
+            .unwrap_or_else(|error| panic!("bench failed: {error}"));
         let round = &run.rounds[0];
         assert_eq!(round.outcome.requested, plan.per_round);
         assert_eq!(round.n(), plan.per_round, "完成的请求必须各有一次两段计时");
@@ -635,7 +653,6 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn event_stream_is_lossless_across_the_round() {
-        tokio::time::pause();
         let run = drive_all(tiny(), 8, 17_179_869_184).await.unwrap();
         assert!(run.journal.projection.is_clean(), "事件重复/丢失必须为 0");
         assert_eq!(run.journal.outstanding_at_end, 0, "在途执行必须归零");
@@ -643,7 +660,6 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn warmup_samples_stay_out_of_the_measured_rounds() {
-        tokio::time::pause();
         let plan = tiny();
         let run = drive_all(plan, 8, 17_179_869_184).await.unwrap();
         assert_eq!(run.warmup.outcome.requested, plan.warmup);
@@ -652,18 +668,20 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn idempotency_keys_are_unique_per_request() {
-        tokio::time::pause();
         let run = drive_all(tiny(), 8, 17_179_869_184).await.unwrap();
         let total_replays: usize = std::iter::once(&run.warmup)
             .chain(run.rounds.iter())
             .map(|round| round.outcome.replays)
             .sum();
-        assert_eq!(total_replays, 0, "键重复会让两次请求落在同一个 executionId 上");
+        assert_eq!(
+            total_replays, 0,
+            "键重复会让两次请求落在同一个 executionId 上"
+        );
     }
 
     #[test]
     fn the_default_plan_is_the_criterion_plan() {
         assert!(DEFAULT_PLAN.is_spec_plan());
-        assert!(run_bench(DEFAULT_PLAN).is_ok());
+        // 这里只钉常量；跑完整判据计划（5×10000）是 `--release` 基准的职责，不属于单测。
     }
 }
