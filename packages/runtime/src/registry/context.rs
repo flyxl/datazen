@@ -41,9 +41,26 @@
 //! 幂等短路排在**所有**旧会话检查**之前**，这是它必须待的位置：替换一旦提交，旧会话
 //! 就注销了，先定位就会先撞上 `UnknownSession`，重放永远走不到短路。
 //!
-//! 恢复的是**同一份回执的语义**，不是同一枚令牌：目录只留摘要，上一次那枚令牌早已
-//! 不在任何人手里，重签会把摘要换掉、旧令牌即刻作废。承重的部分是同一个新会话句柄——
-//! 不重开候选、不重复提交。§7.4 本就写明旧令牌不授予新 session 附着权，重签落的安全那一侧。
+//! 恢复的是**同一份回执的同一枚令牌**。这不是取舍，是规格写死的：§7.4 `:566` 要求
+//! 「网络丢失后**同键重试返回原 receipt**」，§13.1 `:800` 把它拆开说——回执里的
+//! SessionView / attachmentToken / receipt「只在 owner 内存保存至令牌过期或 runtime 终止」，
+//! 于是「响应丢失时，在原 runtime 内**同键返回同 session/token/候选提交结果**」。
+//!
+//! 「只在 owner 内存」是**留在内存里**的意思，不是「不留」。所以 `ContextReplacer` 自带
+//! 一张 `operation key → 已签发令牌` 的表：首次签发时记下，重试时原样发回。目录侧仍只
+//! 留摘要（`:799`：durable 记录只存请求摘要与 receipt 的 durable 投影）——**目录不需要
+//! 留令牌原文，owner 需要**，这两件事不矛盾。
+//!
+//! 为什么必须这样，而不是每次重签一枚：重签会把目录里的摘要**换掉**，上一枚令牌随即
+//! 作废。若响应是在网络层丢的，调用方手上**没有**那一枚新令牌，它只有最初那枚——于是
+//! 一次纯粹的超时会把「替换已提交」变成「调用方永远附着不上新会话」，而重试本身还是
+//! 唯一的出路。这正是 `:800` 把「同键返回同 token」写进来的原因：幂等的对象是**回执**，
+//! 不是回执里某个可以被随时换新的字段。
+//!
+//! （上一版本这里写的是「重签是设计选择，不是缺陷」，理由是「目录只留摘要」。那句话把
+//! 一处可修的开口提升成了永久断言，且前提读错了：`:799` 限制的是 **durable 记录**，
+//! `:800` 紧接着就把这些对象安置在 owner 内存里。目录存不存原文，与 owner 能不能把
+//! 同一枚令牌再发一次，是两回事。）
 //!
 //! ## 两种句柄
 //!
@@ -71,16 +88,21 @@
 //! 2. **上述失败态不是静默的。** 幂等短路会核对候选在注册表里在不在：不在就报
 //!    `InvariantBroken("committedWithoutHostEntry")`，**不发**回执。发出去就等于把一枚
 //!    没有宿主入口的句柄交给调用方去附着，失败点会被推迟到很远的地方。
-//! 3. **重试的回执要按「重签」理解。** 同一旧句柄的重试返回**同一个** `session` 句柄，
-//!    但 `attachment_token` 是新签的一枚，上一枚即刻失效。调用方必须拿最新那枚去附着，
-//!    缓存旧令牌会在校验处被拒——这是设计选择，不是缺陷。
+//! 3. **重试的回执可以整份缓存。** 同一旧句柄的重试返回**同一个** `session` 句柄、
+//!    **同一枚** `attachment_token`、同一份被替换关系（§7.4 `:566` + §13.1 `:800`）。
+//!    调用方缓存任意一次响应都是安全的；**不要**去比 `attachment_token` 是否变了再决定
+//!    用哪一枚——真要比，先确认自己没把「重签」当成规格。
+//!    这枚令牌在 `ContextReplacer` 的 owner 内存里，与 `ContextReplacer` 同生共死；
+//!    它不会随 `ContextReplacer` 一起持久化，所以跨进程、跨 runtime 的重放必须重新发起
+//!    一次 `setSessionContext`（`:800` 的留存期限就是「令牌过期或 runtime 终止」）。
 //! 4. **`expected_context_revision` 是乐观并发闸门，不是提示。** 传错一律
 //!    `ContextRevisionMismatch`，且**旧会话一点不动**（额度不变、目录不提交）。
 //!    §4.4 `:392`「`configRevision/contextRevision` 用于版本与上下文冲突」、§7.1 `:526`
 //!    「后续排队请求仍要重新校验 `contextRevision`」就落在这一个比较上，不能改成
 //!    「差得不多就算了」。
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
 use datazen_platform_api::error::PortError;
@@ -217,6 +239,16 @@ pub struct ContextChangeReceipt {
 pub struct ContextReplacer {
     registry: Arc<SessionRegistry>,
     directory: Arc<dyn ReplacementDirectory>,
+    /// §13.1 `:800` 要求 owner 内存留存的回执产物：**operation key → 已签发的令牌**。
+    ///
+    /// 为什么这张表必须存在，而不能每次重签：`:799` 限制的是 **durable 记录**（只存请求
+    /// 摘要与 receipt 的 durable 投影，不存 `SessionHandle` 原文）；`:800` 紧接着把
+    /// SessionView / attachmentToken / receipt 安置在 **owner 内存**里，并要求「响应丢失时，
+    /// 在原 runtime 内同键返回同 session/token/候选提交结果」。目录只留摘要，所以令牌原文
+    /// 不可能从目录侧取回；能取回它的地方就是 owner，也就是这里。
+    ///
+    /// 生命周期与 `:800` 一致：随 `ContextReplacer` 生灭，不落盘、不跨进程。
+    issued_tokens: Mutex<HashMap<String, AttachmentToken>>,
 }
 
 impl ContextReplacer {
@@ -224,7 +256,17 @@ impl ContextReplacer {
         Self {
             registry,
             directory,
+            issued_tokens: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// 取回这张 owner 内存表。中毒不传播：表里存的是纯数据，中毒只能来自**持锁时的
+    /// panic**，而本模块持锁期间不做任何可失败或可 panic 的事，因此取回内部值继续用，
+    /// 不用 `unwrap`/`expect` 把一个死锁风险换成一次 panic。
+    fn issued_tokens(&self) -> MutexGuard<'_, HashMap<String, AttachmentToken>> {
+        self.issued_tokens
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// §7.4-6 全流程。
@@ -267,15 +309,21 @@ impl ContextReplacer {
                         return Err(RuntimeError::InvariantBroken("committedWithoutHostEntry"));
                     }
                 }
-                // 重签而不是复用旧令牌：目录只留摘要，上一次那枚早已不在任何人手里。
-                // 幂等的承重部分是**同一个新会话句柄**（不会重开候选、不会重复提交），
-                // 而 §7.4 明说旧令牌不授予新 session 附着权——重签只会换掉摘要，
-                // 旧令牌立刻作废，是安全的那一侧。
+                // §13.1 `:800`：「响应丢失时，在原 runtime 内**同键返回同 session/token/
+                // 候选提交结果**」。所以这里是**回放同一枚令牌**，不是重签一枚。
+                //
+                // 上一版本在这里重签，理由写的是「目录只留摘要」——那句话只说明令牌原文
+                // 不在**目录**里，不说明它不在 **owner** 里（`:800` 把 SessionView /
+                // attachmentToken / receipt 明确安置在 owner 内存）。按重签处理还有一个
+                // 实害：网络层丢响应时调用方手上只有**最初**那枚，而重签会换掉目录里的摘要
+                // 让它立刻作废，于是「替换已提交」变成「调用方永远附着不上」，而重试又是
+                // 唯一的出路——幂等键在这种情况下等于没有。
                 let token = self
-                    .directory
-                    .issue_attachment_token(&handle)
-                    .await
-                    .map_err(attachment_error)?;
+                    .replayed_token(
+                        &ReplacementOperationKey::for_handle(&old_directory_handle),
+                        &handle,
+                    )
+                    .await?;
                 return Ok(ContextChangeReceipt {
                     session: handle,
                     replaced_session_id: old_id,
@@ -420,11 +468,70 @@ impl ContextReplacer {
             .await
             .map_err(attachment_error)?;
 
+        // §13.1 `:800` 的 owner 内存留存就在这一笔：**签发成功后**才登记，登记的是
+        // **即将发进回执的那一枚**。写在这里而不是 `attach_client` 之前，是因为挂载失败
+        // 会把这次替换整体退成错误——那种情况下不该有一枚「回执里的」令牌留在表里。
+        // key 取旧句柄派生的那一个：幂等判的是「同一个被替换的旧会话」，不是新会话。
+        self.issued_tokens().insert(
+            ReplacementOperationKey::for_handle(&old_directory_handle)
+                .as_str()
+                .to_owned(),
+            token.clone(),
+        );
+
         Ok(ContextChangeReceipt {
             session: candidate_directory_handle,
             replaced_session_id: old_id,
             attachment_token: token,
         })
+    }
+
+    /// 幂等短路上的令牌来源：优先回放 owner 内存里那一枚实在的令牌（§13.1 `:800`），
+    /// 没有才签发并登记。
+    ///
+    /// 「有缓存」不等于「可以发」。`:800` 说的留存期限是「令牌过期或 runtime 终止」，
+    /// 而令牌的死活由目录侧那条摘要是权威；缓存只证明「我们曾经发过这一枚」，不证明
+    /// 「它现在还能用」。所以命中缓存后先确认该新会话**在目录里仍可路由**：
+    ///
+    /// - 仍可路由 ⇒ 直接发回同一枚。这条路上目录里的摘要没有被动过（动过就会换摘要、
+    ///   换掉之后旧令牌当场作废），所以调用方手上那枚仍然作数。
+    /// - 不可路由 ⇒ 这枚令牌已经死了。把死令牌当成功发出去，等于把失败推迟到附着处；
+    ///   于是丢掉缓存条目，退回签发，让 `issue_attachment_token` 给出**它自己的**拒绝
+    ///   （`NotRoutable`）——和首次走到这里时的错误完全同型。
+    ///
+    /// 用 `owner_of` 而不是 `contains`：被替换的旧条目按 §12 仍留在表里，`contains`
+    /// 对一个已关闭的条目同样为真，按它判会把「还在」说成「还在」而什么也没验。
+    async fn replayed_token(
+        &self,
+        key: &ReplacementOperationKey,
+        committed: &DirectoryHandle,
+    ) -> Result<AttachmentToken, RuntimeError> {
+        let cache_key = key.as_str().to_owned();
+        let remembered = self.issued_tokens().get(&cache_key).cloned();
+        if let Some(token) = remembered {
+            if self
+                .directory
+                .owner_of(&committed.db_session_id)
+                .await
+                .map_err(port_error)?
+                .is_some()
+            {
+                return Ok(token);
+            }
+            warn!(
+                candidate = %committed.db_session_id,
+                "§13.1 幂等重放：owner 内存里留存的令牌已不在目录中（会话过期或已关闭），\
+                 丢弃该条目并按拒绝处理，不把死令牌当成功回执发回"
+            );
+            self.issued_tokens().remove(&cache_key);
+        }
+        let token = self
+            .directory
+            .issue_attachment_token(committed)
+            .await
+            .map_err(attachment_error)?;
+        self.issued_tokens().insert(cache_key, token.clone());
+        Ok(token)
     }
 
     /// §7.4-6 第 10 项：提交前失败 ⇒ 销毁候选。

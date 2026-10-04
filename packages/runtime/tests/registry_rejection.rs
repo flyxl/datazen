@@ -1,8 +1,8 @@
 //! CM-74 替换路径的**拒绝侧**断言：被拒的替换一点痕迹都不许留。
 //!
 //! 这一组是从 `registry_context.rs` 里分出来的，单文件 800 行上限所致——但分出来的理由
-//! 不是「装不下」，而是这两条用例盯的东西与其余六条**不同类**：
-//! 其余六条证明替换**成功**时四步的顺序与令牌的作数范围；这两条证明替换**没发生**时
+//! 不是「装不下」，而是这两条用例盯的东西与其余七条**不同类**：
+//! 其余七条证明替换**成功**时四步的顺序与令牌的作数范围；这两条证明替换**没发生**时
 //! 系统既没有偷偷换掉旧会话，也没有偷偷吃掉一格额度。把两类断言混在一个文件里，
 //! 「拒绝路径没人测」这件事会被「成功路径测得很全」掩盖过去。
 //!
@@ -17,11 +17,14 @@
 //!
 //! ## 这些断言靠什么活着（变异清单，勿删）
 //!
-//! 台账合并时会被删掉，所以「哪几个变异会让本组变红」必须写在文件里。两条都实测过：
+//! 台账合并时会被删掉，所以「哪几个变异会让本组变红」必须写在文件里。W-06 说的就是
+//! 这件事：缺陷清单可以只活在台账里，「哪几个变异会让本组变红」不行。三条都实测过：
 //!
 //! - **删掉上下文修订闸门**（`context.rs` 里那个 `if` 整个拿掉）：**只有「修订号不符」
 //!   那条红**，返回一枚指向新会话的回执。本组其余断言全绿——因为 `registry_context.rs`
-//!   的六条既有用例一律传权威修订号。闸门正是靠这条反证才不是「绿着的断言」。
+//!   的既有用例一律传权威修订号（当时六条，现七条，含 T5b）。**这就是 W-04 本身**：
+//!   §7.4 的并发安全承诺曾被六条全绿的用例「覆盖」，而它们从不肯传错修订号——把闸门整个删掉，整套 CM-74 用例依旧
+//!   全绿。承诺没被证明过，只被数过。反证只有这一条，所以这一条不能删。
 //! - **去掉 `publish_candidate` 失败分支里的 `refund_candidate`**：**只有「候选发布失败」
 //!   那条红**，`remaining_quota` 少一格（`left: 2 / right: 3`）。
 //! - **把孤儿态判据从「世代相等」弱化成「id 在册」**：只有「候选发布失败」那条红，
@@ -29,6 +32,10 @@
 //!   （`dbs_2`）——比不发回执更糟：等于把别人的会话连同新签的令牌发了出去。
 //!
 //! 第二、三条尤其值得留着：它们钉的不是「有个判断」，而是「判断的**粒度**对」。
+//!
+//! ★ 这两条是 CM-74 闸门用例，且它们**在更早的一轮里是新建文件**：只 diff
+//! `registry_context.rs`（那次是纯文档改动、零代码、零删除用例）会安静地漏掉本文件，
+//! 看上去「一条用例都没丢」。判断 CM-74 覆盖有没有回退，本文件必须一起看。
 
 #![allow(dead_code)]
 mod common;
@@ -45,13 +52,13 @@ use datazen_platform_api::ports::session_directory::SessionDirectory;
 use datazen_runtime::connection::{
     ConnectionId, Counter, ExecutionTarget, ObjectTarget, RuntimeError, SessionHandle,
 };
-use datazen_runtime::directory::SessionHandle as DirectoryHandle;
 use datazen_runtime::registry::{
     ContextChangeRequest, ContextReplacer, SessionPort, SessionRegistry,
 };
 use registry_fixtures::{
-    as_backend, db_session_id, execute_request, handle_of, handle_ref, namespace, register_ready,
-    BackendPlan, ScriptedBackend, SESSION_LIMIT,
+    as_backend, db_session_id, directory_handle_of, epoch_string, execute_request, handle_of,
+    handle_ref, namespace, register_ready, BackendPlan, ScriptedBackend, FIRST_SESSION_EPOCH,
+    SESSION_LIMIT,
 };
 
 /// 旧会话在**目录**侧的条目。身份必须与 `registry_fixtures::open_request` 的 owner 对齐
@@ -69,18 +76,10 @@ fn old_owner() -> datazen_platform_api::ports::session_directory::SessionOwner {
         worker_id: WorkerId::new("w_1"),
         // 与 `ContextReplacer::directory_handle` 的派生式严格对齐：登记表第一个会话拿
         // `Counter(1)`，于是 `rte-{:08}` 落在 `rte-00000001`。
-        runtime_epoch: RuntimeEpoch::new("rte-00000001"),
+        runtime_epoch: RuntimeEpoch::new(epoch_string(FIRST_SESSION_EPOCH)),
         resource_epoch: 0,
         last_business_activity: Timestamp::new("2026-01-01T00:00:00Z"),
     }
-}
-
-/// 与 `ContextReplacer` 里那份推导**逐字一致**。
-fn directory_handle_of(handle: &SessionHandle) -> DirectoryHandle {
-    DirectoryHandle::new(
-        handle.db_session_id.clone(),
-        RuntimeEpoch::new(format!("rte-{:08}", handle.runtime_epoch.get())),
-    )
 }
 
 /// 换一个库表作为期望上下文——`setSessionContext` 的意义就在这里。
