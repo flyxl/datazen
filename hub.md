@@ -850,3 +850,35 @@ Coder 方案称「删除记录之所以安全，是因为拒绝由令牌驱动�
 ### 新依赖
 
 `packages/runtime/Cargo.toml` **未声明** `hmac`/`sha2`/`subtle`，需新增 `[dependencies]`。要求：锁文件一致；若 `cargo build --workspace` warning 数变化，**如实记录增减**，不得报成「清零」或「无变化」而不查。
+
+---
+
+## 用户裁定（2026-10-05，三项）
+
+| 议题 | 裁定 |
+| --- | --- |
+| ① CM-74 释放顺序 | **统一** |
+| ② CM-32 隧道引用计数建在哪一层 | **runtime** |
+| ③ CM-61 / CM-64 的 ArtifactStore H 断言 | **豁免** |
+
+### ① 「统一」的实证障碍：两条判据无法靠挪位置同时满足
+
+用户裁定「统一」。派活前协调者实测发现，**直接按 `:1324` 挪位置会让行为反**，必须说清楚：
+
+- `:1324` 要求句柄「在物理资源关闭**前**已在原 resource 上回滚/关闭并从 actor 注销」。
+- 但 §4.2 **F10**「句柄非空 → 关闭而非归池」把 `registered_handles` 的空/非空当作**归池判定的输入**。
+- 现状 `close_resource`（`fake_resource/ops.rs:503`）把 `reclaim_registered_handles_on_close`（`:629`）排在归池判定**之后**，正是为了不违反 F10——若挪到判定之前，判定看到已注销干净的 `registered_handles == 0`，会把带句柄的资源**归池**而非关闭。
+
+⇒ `:1324` 与 F10 不是「挪一下」能同时成立的。**唯一能真正统一的构造是让归池判定读注销前的快照**：先快照句柄登记册 → 注销句柄 → 关闭资源 → 释放许可。这样 F10 读到的是旧快照，仍判「关闭」；CM-74 的 `handle closed → resource Closed → permit -1` 顺序同时成立。
+
+现状记录：宿主编排路径**已符合** `:1324`（`harness/tests.rs:588` 明写 `handle closed → resource Closed → permit -1`），**仅驱动直连路径不符合**。原「两条路径本就不必共享顺序」的协调者建议已被用户否决。
+
+> 台账更正：本节此前把该测试文件记作 `packages/runtime/src/resource/harness/tests.rs`——**已失效**，合并后实际位于 `packages/runtime/src/connection/testing/harness/tests.rs`。以实测路径为准。
+
+### ② 隧道建在 runtime
+
+CM-32（及 CM-27 / CM-28 的隧道子项）的引用计数**建在 `packages/runtime`**，不是宿主 `src-tauri`。这意味着 runtime 要**新长出一个目前为零的隧道概念**。此前实测：宿主已有 `src-tauri/src/tunnel/` 3 文件 + `ssh_tunnel.rs`，`src-tauri/src` 内 927 处命中，但 `packages/runtime` 内**隧道命中 0**、两层**引用计数均为 0**。
+
+### ③ CM-61 / CM-64 显式豁免
+
+`ArtifactStore` 在 `platform-development-plan.md` 中零实现方、零调用方，服务端实现 + schema migration 在 **P7**。CM-61 / CM-64 的 H 断言记为 **P3 出口门禁显式豁免，理由指向 P7**，不得记为「覆盖不足」。此口径与 CM-70 一致：**要求的能力本阶段不存在时，要么建，要么显式豁免并指名由谁何时建。**
