@@ -116,3 +116,130 @@ resource_replacement 4、resource_return_to_pool 7、resource_rotation_and_disab
 4. **排队数为 0 是「当前实现如此」，不是「结构上永久不可能」**：`QueueFull` 只存在于 `budget/*` 与
    `connection/error.rs`，`ExecutionGateway` 当前没有预算台账字段，`SessionPort` 也没有入队参数，
    故该路径当前类型上不可达。若日后把台账接进网关，这一支会被真正触发，届时等待分位数不再是空样本。
+
+---
+
+# 第二轮（ROUND 2）：Tester 判 FAIL 后的修复
+
+Tester 报告：`/tmp/p3_cm60/TA_R1_REPORT_cm60.md`（F-01 阻塞、F-05 阻塞，其余 F-02/03/04/06/07/08/09/10）。
+本轮 HEAD = `48d194300`。**下面第一节的门禁表是 ROUND 1 的实测，`--lib 382` / `--bin 46`
+这两个数已被本轮取代**，以本节为准。
+
+## 第二轮提交台账（一条 F 一个提交，粒度宁细勿粗）
+
+| # | 提交 | 对应 | 内容 |
+|---|------|------|------|
+| 6 | `1289231aa` | F-01 | N 取获准且未排队的请求（含随后失败/超时/取消）；打不出两段真实时长的请求计入显式 `unmeasured_failures`，不为 0 则该轮判红。根因在 `gateway/mod.rs:364`：驱动失败时 `:376` 的 `samples.push` 根本没执行，量出来的网关段被丢弃 |
+| 7 | `05ca8c3a9` | F-05 | CI 门禁接入两个入口：`run-platform-crate-tests.mjs` 的 `EXTRA_TARGETS` 带 release 标记并拆成多次 cargo 调用；`ci.yml` 增 `CM-60 latency benchmark (release)` 与 `if: always()` 的产物上传 |
+| 8 | `192545745` | F-04 | 分位数的**真实 harness** 守门测试；输入条数单列为 `percentile_input`，`sample_count_mismatch()` 第 6 条交叉核对 |
+| 9 | `07f30c583` | F-02 | 按原因的拒绝/失败分类必须落进产物（序列化早有，测试没有；冻结产物证明旧树从没落过盘） |
+| 10 | `c4b1f9a2b` | F-07 | §11 两半都已落地的状态行改回事实（三处） |
+| 11 | `2143a8d95` | F-08 | 夹具单测用例数按实测改成 383 |
+| 12 | `48d194300` | F-03 | §11.3 口径写明「N 的定义」与「分位数输入条数」是两回事，两条独立记账 |
+
+`git log -1 --format=%B | grep -cE '^(APPEND_EOF|EOF|MSG)$'` 每个提交均为 **0**（零 heredoc）。
+
+## §3.2 复算证明：冻结 raw 喂进修好后的判定逻辑
+
+**没有重跑基准。** 冻结产物 `target/bench/cm60-raw-1791128233852.json` +
+`cm60-summary-1791128233852.json`（树 `04a55fa72`，`BENCH_EXIT=0`，96942.849 ms）未被改动，
+产物目录里也没多出任何文件。做法：一次性临时模块（**跑完即删，未入库**）把 raw 的 50000 条
+样本按 `round` 分组 → `total_nanos` → `Percentiles::of` → `RoundOutcome` → `BenchRun::verdict()`。
+
+```
+REPLAY gate_passed=true rounds_passing=5/5
+REPLAY worst_round_p95_nanos=Some(11459) failures_total=0
+REPLAY admitted_total=50000 measured_total=50000 unmeasured_failures_total=0
+REPLAY sample_counts_match=true event_projection_clean=true
+REPLAY round=1 N=10000 实测=10000 未测出=0 分位数输入=10000 p95=Some(10500)
+REPLAY round=2 N=10000 实测=10000 未测出=0 分位数输入=10000 p95=Some(10959)
+REPLAY round=3 N=10000 实测=10000 未测出=0 分位数输入=10000 p95=Some(11041)
+REPLAY round=4 N=10000 实测=10000 未测出=0 分位数输入=10000 p95=Some(11458)
+REPLAY round=5 N=10000 实测=10000 未测出=0 分位数输入=10000 p95=Some(11459)
+REPLAY_EXIT=0   (3 passed; 0 failed; 56 filtered out)
+```
+
+逐轮复算的 p95 与冻结 summary 里当时写下的 10500/10959/11041/11458/11459 **逐个相等**，
+新加的第 6 条恒等式（`percentile_input == measured`）在每轮都成立，缺口计数为 0。
+**结论：新口径不改变这份数据的原判定。**
+
+反向对照（证明上面那句话不是恒真）：同一份 raw，只把每轮改成「N 里有一个获准请求打不出
+两段时长」，判定立刻翻红 `NEG rounds_passing=0/5 unmeasured_failures_total=5`。
+
+复算里除 raw 外的每一个数都是冻结 summary 的**照抄**（journal、warmup 墙钟、逐轮 wall_time），
+无一处推断或构造；预热样本不进 raw，所以预热分位数复算不出来，就留空并在代码里注明
+预热不参与任何 p95——这是诚实缺口，不是编数。
+
+## F-01 自证（注入失败臂，不写进产物）
+
+`/tmp/p3_cm60/selftest.sh`，`BUILD_EXIT=0`：
+
+- 正向 `--vcpus 4 --mem-bytes 8589934592 --inject-failure-every 100`：`POS_EXIT=1`
+  （103 s）。每轮 `N=10000 测到=9900 未测出=100 失败=100 占比=0.0100 排队=0`；
+  `gate_passed=false`、`rounds_passing=0`、`failures_total=510`、`admitted_total=50000`、
+  `measured_total=49500`、`unmeasured_failures_total=500`、`worst_round_p95_nanos=20209`；
+  `rounds[0].rejections = {runtime:invariantBroken: 100}`。**失败的请求留在样本集里，
+  缺口单列，没有任何一条被用构造值补齐。**
+- 反向对照（不注入）：`NEG_EXIT=0`（100 s），`gate_passed=true`、`failures_total=0`、
+  `admitted_total=measured_total=50000`、`unmeasured_failures_total=0`。
+  即失败注入一开一关两臂都能区分，不是「恒红」也不是「恒绿」。
+
+## 第二轮门禁实测（HEAD `48d194300`，运行前后 HEAD 与工作区均未变）
+
+| 门禁 | 退出码 | 逐字结论行 |
+|---|---|---|
+| `cargo fmt --check -p datazen-runtime` | 0 | 无输出 |
+| `cargo test -p datazen-runtime`（全 crate：lib + bin + 22 个 tests/ + doc） | 0 | lib `ok. 383 passed`；bin `ok. 57 passed`；其余逐个见下 |
+| `cargo test --release -p datazen-runtime --bin cm60-bench`（CI 用的那一次） | 0 | `test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` |
+| `tsc -p tsconfig.scripts.json --noEmit` | 0 | 无输出 |
+| `vitest run scripts/__tests__/run-platform-crate-tests.test.ts` | 0 | `Test Files 1 passed (1)` / `Tests 18 passed (18)` |
+| `vitest run scripts/__tests__`（全量） | 0 | `Test Files 40 passed (40)` / `Tests 679 passed (679)` |
+| `node scripts/run-platform-crate-tests.mjs --dry-run` | 0 | `cargo test --lib -p datazen-runtime -p datazen-application -p datazen-platform-api --test cm60_pressure_drain` + `cargo test --release -p datazen-runtime --bin cm60-bench`（2 次调用） |
+
+tests/ 逐个二进制：cm60_pressure_drain 6、gateway_contract 51、directory_attachment_ttl 12、
+registry_lifecycle 7、registry_release 11、registry_audit 11、registry_execution 6、registry_cancel 9、
+budget_cm65_lifecycle 8、budget_cm65_reservation 2、budget_cm65_scheduling 6、budget_cm66 7、
+directory_no_disk 6、directory_ownership 7、directory_replacement 10、p3_session_port_contract 10、
+resource_replacement 4、resource_return_to_pool 7、resource_rotation_and_disable 6、doc-tests 0。
+
+## 本轮新见（不是 Tester 给的清单，是扫出来的）
+
+1. **诚实记账的缺口不是「样本数错乱」。** 反向对照第一次写成 `assert!(sample_count_mismatch())`
+   直接失败：`dispatch_failed` 与 `unmeasured_failures` 同时记 1 时六条恒等式全部成立。
+   缺口的正确归宿是「这一轮判红」，不是「账本不自洽」。把两者混为一谈，反向对照就证不出东西。
+2. **`sample_count_mismatch()` 与 `passes_gate()` 判的不是一回事**：前者抓说谎，后者抓真失败。
+   文档与测试断言必须分清，否则会把一个正确的失败判成记账 bug。
+3. **`connection/testing/barrier/tests.rs:236` 有自发的 30 s 竞态**（`await_drain_wakes_when_the_clock_crosses_the_deadline`）：
+   首次全量 `--lib` 实测 `382 passed; 1 failed`（该例 30.02 s 超时后失败），紧接着第二次全量
+   `383 passed; 0 failed`，单独跑 5 次全过。机制：`spawn` 与 `clock.advance` 之间没有握手，
+   线程还没登记期限，advance 就过去了；失败信息自己写着「FakeClock 的单调时刻没有推进」。
+   **该目录本轨禁碰，未修**（见「未触碰」），登记给它的属主。
+4. ROUND 1 记录的 `check-platform-crate-boundaries.test.ts` 红灯**现已不存在**：
+   本轮全量 `679 passed`，该文件 53 例全过，`node scripts/check-platform-crate-boundaries.mjs`
+   报 0 violation / 3 advisory。**不是本轨修的**（本轮对该脚本 `git diff` 为空）。
+
+## §5 队列等待分位数：本轨未修，归属已登记
+
+Tester F-10 要求修「排队请求的等待分位数」。协调者裁定：**本轨不做**。理由与现状：
+
+- `ExecutionGateway` 当前**类型上不可达**排队：`QueueFull` 只存在于 `budget/*` 与
+  `connection/error.rs`，网关没有预算台账字段，`SessionPort` 也没有入队参数，
+  `AcceptanceDisposition` 只有 `Accepted | Replayed`，故网关路径的 queued 恒为 0。
+- 现在去实现「排队等待分位数」等于为一个不可达分支造口径，属于凭空加接口。
+- 归属已登记给拥有网关预算台账的那条轨（台账：见 `hub.md` 的跨轨登记）。
+- 因此 `queued_wait` 这一列现在只在结构上存在（空样本），**不是已实现的功能**。
+
+## 未触碰
+
+`connection/port.rs`（冻结）、`hub.md`、`connection/testing/barrier/`（`mod.rs:41` 的
+`BLOCK_REAL_TIME_BUDGET` = 30 s）、`scripts/check-platform-crate-boundaries.mjs`、
+`target/bench/cm60-*.json`（冻结产物未被新增、修改或删除）。
+
+## 遗留与待裁定（第二轮）
+
+1. **§5 队列等待分位数** —— 本轨未修，归属见上。合并前需确认该轨已登记。
+2. **未在判据指定的 4 vCPU / 8 GiB 复测**（实测机 8 vCPU / 17179869184 字节，单线程运行时）。
+   协调者已撤回以硬件复测为本轨的交付条件；本轨因此**不得作任何性能达标结论**。
+3. `barrier/tests.rs:236` 的自发竞态 —— 属主待裁定（见上「本轮新见」第 3 条）。
+4. CI 的 CM-60 基准步会在每次 rust job 真跑一次 `--release` 基准（约 97 s 量级）并上传
+   `target/bench/cm60-*.json`；本轨**本地没有重跑**它，那一步的首次真跑由 CI 负责。
