@@ -15,8 +15,21 @@
 //! * 本模块**不认识** SSH / HTTP 代理 / WebSocket 任何一种隧道。宿主枚举
 //!   （`driver-api::tunnel_types::TunnelKind` 与 `src-tauri::tunnel::Tunnel`）是
 //!   **宿主实现细节**，决定「用哪种开法」，**不参与共享判定**，也不泄漏进来。
-//! * 桌面 `NetworkProvider` 实现按 `shared-boundaries-and-ports.md:590` 属**接缝期**，
-//!   不在本轨范围内（见 `progress.md` 的剩余项清单）。
+//! * 桌面 `NetworkProvider` 实现**不在**本轨范围：`shared-boundaries-and-ports.md:590`
+//!   把 `tunnels.rs` 列在 §6.3「保持不动的现有服务与窄适配」（同文件 `:585`）下，
+//!   「隧道生命周期通过 `NetworkProvider::ensure_tunnel` 的桌面实现承接」；
+//!   同表首行（同文件 `:589`）注明这类「过渡实现」是「逐 consumer 迁移后删除旧路径」。
+//! * CM-27 / CM-28 只**部分**覆盖，**不得**标记为已覆盖（判据
+//!   `connection-management.md:1027-1037`）。`tunnel/` 关掉的只是隧道那两格：
+//!   CM-27 的「隧道引用正确」（建隧道失败不落账、隧道开成后回滚释放），与
+//!   CM-28 的「隧道不多减引用」（重复释放幂等、`refs` 不低于 0、`close` 至多一次）。
+//!   **未闭合的仍挂在 CM-27 / CM-28，且全是非隧道部分**：permit / socket /
+//!   handshake / init / register 全阶段失败矩阵下的隧道引用回滚；
+//!   「可确认关闭的资源许可归零」（`CleanupDisposition::Closed` 的物理预算释放
+//!   与隧道引用核销配对，见 `resource/cleanup.rs:278`）；「未确认关闭进入隔离」
+//!   （`CleanupDisposition::Quarantined` 下隧道引用与物理预算的归属规则，见
+//!   `resource/cleanup.rs:280`）；20 次并发归还下的 driver close 至多一次有效关闭；
+//!   并发归还下预算不负数、重复响应一致。
 //!
 //! # 「同版本隧道」= `TunnelSpec` 全等值
 //!
