@@ -20,16 +20,27 @@
 //! - **不改** `registry/port.rs`（§1 禁止修改 `registry/**`）；
 //! - **不**在本模块定义任何名为 `CancelReceipt` 的类型——同名会与未来 registry 的
 //!   正式类型撞车，让协调者合并时出现两个「官方的」取消回执；
-//! - 网关侧类型一律以 `Gateway`/`Cancel` 前缀命名（[`CancelDisposition`]、
-//!   [`CancelOutcome`]），与 registry 的正式类型在名字上就可区分；
 //! - 三态映射收敛在唯一一处 [`disposition_from_port_state`]，
 //!   registry 落地 `CancelReceipt` 后，只需把这里换成对返回值的透传，
 //!   上层 [`CancelOutcome`] 的形状不用动。
 //!
-//! 名字里带上 `Gateway` 前缀不是洁癖：两条轨道合并后，
-//! 谁能一眼分清「谁定义的类型」比省三个字符重要得多。
+//! ## D-03：处置三态只有一个定义处
+//!
+//! 本模块此前自带一份 `CancelDisposition` 枚举，靠 `Gateway`/`Cancel` 前缀与 registry
+//! 正式类型区分。它已经**不成立**：三态的字面量与变体在冻结的
+//! [`crate::connection::port::CancelDisposition`] 里已有权威定义，registry 的回执与
+//! 审计、connection 侧的测试替身也都在用它。两份同义枚举可以各自漂移，而
+//! `unsupported` 一旦只在其中一份里改掉字面量，网关就会对着另一份说出两种话。
+//!
+//! 因此这里**直接引用**权威定义，不再复写。留在网关侧的只有一条判据函数
+//! [`is_requested`]：「`unsupported` 绝不能被读成已下发取消」是网关的**业务**判断
+//! （它决定要不要向用户承诺取消已登记），不属于冻结面的契约，因此既不写进
+//! `connection::port`，也不作为方法挂在那个类型上。
 
 use crate::connection::capability::PreciseCancel;
+// D-03：取消处置三态的唯一权威定义。冻结面 `connection::port` 里那一份是**本模块
+// 直接引用的那个**，不是拷贝——拷贝会让两个定义处各自漂移。
+pub use crate::connection::port::CancelDisposition;
 use crate::connection::{ExecutionId, ExecutionState, ResourceId, RuntimeError, SessionHandle};
 use crate::gateway::provenance::{ExecutionSource, RequestPrincipal};
 
@@ -81,32 +92,15 @@ impl CancelRequest {
     }
 }
 
-/// 取消处置三态（与 registry 的 `disposition` 语义一一对应）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CancelDisposition {
-    /// 已下发取消请求。
-    Requested,
-    /// 驱动不支持精确取消。
-    ///
-    /// **绝不**降级成「会话级取消」——那会停掉同一会话里所有无关的执行。
-    Unsupported,
-    /// 该执行已是终态，运行时没有再做任何事。
-    AlreadyFinished,
-}
-
-impl CancelDisposition {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CancelDisposition::Requested => "requested",
-            CancelDisposition::Unsupported => "unsupported",
-            CancelDisposition::AlreadyFinished => "alreadyFinished",
-        }
-    }
-
-    /// 是否真的下发了取消。
-    pub fn is_requested(self) -> bool {
-        matches!(self, CancelDisposition::Requested)
-    }
+/// 是否真的下发了取消。
+///
+/// 这条判据是**网关侧的**业务规则，不是冻结面的契约，因此它住在网关而不是
+/// `CancelDisposition` 上：处置类型只描述「这一次取消落到了哪一格」，而
+/// 「`unsupported` 绝不能被读成已下发取消」是网关对调用方的承诺边界。
+///
+/// 判据本身就是枚举形状的直接推论，改字面量或加变体时它要么继续正确、要么编译失败。
+pub fn is_requested(disposition: CancelDisposition) -> bool {
+    matches!(disposition, CancelDisposition::Requested)
 }
 
 /// 取消结果。
@@ -382,7 +376,7 @@ mod tests {
         let outcome =
             unsupported_outcome(&ExecutionId::new("exe_a_1"), ExecutionState::Running, 77);
         assert_eq!(outcome.disposition, CancelDisposition::Unsupported);
-        assert!(!outcome.disposition.is_requested());
+        assert!(!is_requested(outcome.disposition));
         assert_eq!(outcome.state, ExecutionState::Running);
         assert_eq!(outcome.observed_at_nanos, 77);
     }

@@ -74,9 +74,13 @@ mod facade_tests;
 
 pub use cancel::binding as cancel_binding_reason;
 pub use cancel::{
-    cancel_failed, disposition_from_port_state, state_literal, unsupported_outcome, verify_binding,
-    CancelBinding, CancelDisposition, CancelOutcome, CancelRequest, UNKNOWN_EXECUTION_REASON,
+    cancel_failed, disposition_from_port_state, is_requested, state_literal, unsupported_outcome,
+    verify_binding, CancelBinding, CancelOutcome, CancelRequest, UNKNOWN_EXECUTION_REASON,
 };
+// D-03：取消处置三态只有一处定义——冻结的 `connection::port::CancelDisposition`。
+// 网关此前自带一份同名副本并从这里转出，那份副本已被删除；这里转出的是**同一个类型**，
+// 因此 `gateway::CancelDisposition` 这条路径仍然可用，且不再存在两个可各自漂移的定义处。
+pub use crate::connection::port::CancelDisposition;
 pub use events::{EventDisposition, EventStore, ExecutionEvent, ExecutionEventKind};
 pub use idempotency::{
     IdempotencyLedger, IdempotencyLookup, IdempotencyRecord, IdempotencyScope, IdempotencyStore,

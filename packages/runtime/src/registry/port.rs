@@ -73,6 +73,12 @@ pub trait SessionPort: Send + Sync + 'static {
     /// 本方法照它实现。冻结契约是仲裁方：端口改宽不要紧，窄了会让冻结基线**编译不过**，
     /// 而 `git merge` 看不见这种破坏（两边都是合法 Rust，签名才是不兼容的那一半）。
     ///
+    /// 仓库内对这条形状有两道钉子，覆盖的档位不同（D-R2-1）：
+    /// [`frozen_port_cancel_shape`] 是**编译期**钉子，住在 `#[cfg(test)]` 之外，
+    /// 因此 `cargo build` 与 `cargo test` 都拦得住；冻结契约 `p3_session_port_contract`
+    /// 是跨轨仲裁方，只在跑测试时编译。该钉子此前住在 `#[cfg(test)]` 里，
+    /// 于是「机械保证」只在测试档位成立——发布用的 `cargo build` 是从那份代码里出来的。
+    ///
     /// **D-01 仍然关闭，但关闭在正确的层**：§7.6 的三层情形——`requested` / `unsupported` /
     /// `alreadyFinished`——由 [`crate::registry::CancelReceipt`]（`{ executionId, disposition,
     /// state }`，定义在 [`crate::registry::receipt`]）承载，它由登记表自身的具名入口
@@ -133,7 +139,20 @@ fn assert_object_safe(port: Arc<dyn SessionPort>) -> Arc<dyn SessionPort> {
 /// 冻结契约的形状钉子：只要 `cancel_execution` 的返回类型被改宽或改窄，
 /// 这个函数就**编译不过**。它是「端口形状以冻结基线为准」这条规则的机械保证，
 /// 不依赖任何运行时断言，也不会被一次无关的重构顺手删掉。
-#[cfg(test)]
+///
+/// **它覆盖的是哪个构建档位（D-R2-1）**：这个钉子必须住在 `#[cfg(test)]` **之外**。
+/// 住在里面时它只在 `cargo test` 生效——把本函数的返回类型改成 `Result<(), _>`
+/// 之后实测 `cargo build -p datazen-runtime` 仍然 `EXIT=0`，只有 `cargo test --lib`
+/// 以 `E0308` 失败。也就是说「机械保证」这句话此前只在测试档位成立，
+/// 而发布出去的二进制是 `cargo build` 产物。
+///
+/// 钉子本身是零成本的：`impl Future<Output = ...>` 只是要求返回值能推出这一个类型，
+/// 不产生任何运行期开销，也**不会**因为编译通过而被链接出去——它没有调用点。
+/// `dead_code` 因此是有意 `allow` 的，理由与 [`assert_object_safe`] 相同。
+///
+/// 真正能在**任何**档位下挡住改签的是冻结契约本身
+/// `tests/p3_session_port_contract.rs`；它是本轨道之外的、跨轨的仲裁方。
+#[allow(dead_code)]
 fn frozen_port_cancel_shape<'a>(
     port: &'a dyn SessionPort,
     handle: &'a SessionHandle,
@@ -625,5 +644,40 @@ mod tests {
             )
             .disposition
         );
+    }
+
+    /// D-R2-1 的钉子测试：`frozen_port_cancel_shape` 必须对**具体实现**也成立。
+    ///
+    /// 这条测试存在的理由不是「再测一遍取消」，而是把两件此前只有注释在说的话
+    /// 变成可执行的事实：
+    ///
+    /// 1. 钉子的 `Output` 就是冻结基线要求的 `Result<ExecutionState, RuntimeError>`——
+    ///    写成显式类型标注，返回类型一改宽或改窄，这里立刻编译不过。
+    /// 2. 钉子对**具体的 `impl SessionPort`** 与对 `dyn SessionPort` 同样成立。
+    ///    只在替身上成立的那种「形状」不是形状。
+    ///
+    /// 档位那一半（D-R2-1 的实质）由 `cargo build -p datazen-runtime` 把关：
+    /// 钉子已移出 `#[cfg(test)]`，改签会让 dev 档位直接编译失败，而不是等到跑测试才发现。
+    #[tokio::test]
+    async fn the_cancel_shape_pin_holds_for_the_concrete_port_implementation() {
+        let view = ready_view(TransactionState::None);
+        let handle = view.handle.clone();
+        let concrete = FakeSessionPort::new(view);
+        let execution_id = ExecutionId::new("exe_shape_pin_1");
+
+        // 1) 显式标注：这一行本身就是形状断言。
+        let observed: Result<ExecutionState, RuntimeError> =
+            super::frozen_port_cancel_shape(&concrete, &handle, &execution_id).await;
+        assert_eq!(
+            observed,
+            Err(RuntimeError::CancelFailed("unboundExecution")),
+            "未登记执行的取消必须以 `Err` 走错误路径；这里被断言的是形状，不是错误码的措辞"
+        );
+
+        // 2) 同一枚钉子也必须对 trait 对象成立——两条路径的返回类型只能有一个。
+        let object: Arc<dyn SessionPort> = Arc::new(concrete);
+        let through_object: Result<ExecutionState, RuntimeError> =
+            super::frozen_port_cancel_shape(&*object, &handle, &execution_id).await;
+        assert_eq!(through_object, observed);
     }
 }
