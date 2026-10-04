@@ -1901,4 +1901,75 @@ fn 归池前检查有登记句柄一律不放行() {
 
 **口径冲突不收窄、改为修代码**：`hub.md:592` 记录的 `harness/tests.rs:539-545` 注释（声明驱动直连路径顺序「故意不同」且不得为 CM-74 断言）随 CM-60 的 harness 拆分已随文件迁移，该文件在当前树上已不存在，注释需在新位置重新定位。若该「故意不同」的说法仍成立，本轨须**用证据推翻它**；不成立则统一顺序。**不得**以「缩小 `:1324` 适用面」的方式消解冲突。
 
----
+------
+
+## 追加 003 — 2026 第 3 轮 · CM-70-FU2 合并 · doc-drift 验收 FAIL · CM-28 缺口切分
+
+上一条追加见 §002（actor-termination 判定 / 归池 helper-only / CM-74 判据行号更正 / `setSessionContext` 缺失定性 / 口径冲突不收窄）。
+
+### 一、CM-70-FU2 已合并（`c048dd37c`）— P3 第 13 轨
+
+合并前 `git ls-tree --name-only feature/p3-cm70-fu2-token-leak | grep -cx progress.md` = **0** ⇒ 该轨无台账，合并时无需删除。
+后合并门禁在 main `@ c048dd37c` 实测：**`pnpm typecheck` `error TS` = 0；`cargo test -p datazen-runtime` 24 个 `test result: ok` 目标、running 合计 688 passed / 0 failed、`test result: FAILED` 0 行；`npx vitest run` 565 个文件 / 5920 用例全过；`packages/runtime/tests` 内 `progress.md` 命中 0；`HEAD_POST` 未变、`DIRTY_POST` = 0。**
+与验收方在分支上的独立实测逐位一致 ⇒ 合并未引入回归。
+收尾已执行：`git worktree remove` 两棵、分支 `feature/p3-cm70-fu2-token-leak` 删除、worktree prune、`/tmp` 三个 target 目录清除。
+
+### 二、`p3-doc-drift-ledger` 验收 **FAIL** — 不得合并
+
+验收方结论：**3 BLOCKER + 3 FAIL + 2 WARN**。规模核对无异议（41 文件 / +140 / −57，与 Coder 自报一致），拓扑、三条门禁、`bugs.md` 从未存在（删除正确）、`:344` 改写无过度断言、5 处误报排除成立、**合并冲突模拟 CLEAN**。
+
+**BLOCKER（锚点回归 = 倒退）**
+- **A**：`packages/runtime/tests/cm70_no_disk.rs:3` 与 `packages/runtime/tests/cm70_idempotency_replay.rs:3` 把 CM-70 的位置写成 `connection-management.md` 的 `§16.6`，**但 CM-70 实际在 `:1294`，落在 §16.7（`### 16.7 补充契约与边界用例`，起 1238）内；`§16.6` 结构上只到 1237，装不下 1294。** 这两个文件是行数中性（`2 1`），说明旧行号本来是对的，本次改动是倒退。**本文件 §822 独立记录 CM-70 在 `:1294`，构成第二来源。**
+- **B**：`src-tauri/src/commands/cm73_baseline_tests.rs:19` 与 `:23` 两处 `:1284` / `:1285` 未随迁 —— 这两行是 **CM-68 的** `- 前置` / `- 步骤`，而该测试用例是 CM-73 的，CM-73 的 `- 基线说明` 在 `:1317`。同一模块第 3 行已随迁 ⇒ 三个互相冲突的锚点并存于一个文件。
+
+**我的裁定（BLOCKER C）**
+- 验收方把 2 处 `#[ignore]` reason 字符串改写判为 **WARN**（两侧都带 `#[ignore]`、忽略数不变、字符串只进 libtest 输出文本、门禁实测 `0 ignored / 436 passed`），同时指出 Coder 自述「零运行时代码改动」**字面为假** —— `git diff -U0` 全 6 类分类后，实有 **2 行非注释改动，且都是 `#[ignore]` reason 字符串**。
+- **裁定：保留这两处字符串改写**（它们修的是真实错误锚点 —— `:1284/:1285/:1307` 都是 CM-68 的行，回退更糟），**但在新的提交信息里更正记录**，明写上一条 commit message 的措辞不准确、本次为 2 行 `#[ignore]` reason 字符串、行为零变化。**追加提交更正，禁止 amend。**
+
+**FAIL**
+- **1** 三处机械删除留下的断句：`packages/drivers/redis/src/ops/tree/scan/count.rs:171`（句号前多空格）、`packages/drivers/redis/ui/__tests__/stringEditorTesterGaps.test.tsx:11`（「判定属真连/防御性单语句」，「判定」丢了宾语）、`packages/drivers/redis/ui/__tests__/keyTreeTesterCoverage.test.tsx:6-8`（「…which this track accepts as out of its acceptance surface. What is」悬空词，且把「已核对」非法升格为「本轨**接受**」）。
+- **2** `docs/architecture/platform/connection-management.md:857` 追加句里有一处**不存在的引文**：「性能门禁在单实例形态下测量」出现在 `（开发计划 §11：…）` 的括号内，而 `platform-development-plan.md` 中并无此语（`grep '性能门禁|单实例形态'` 仅命中 `:128` 的基准口径）。归属引用本身（`:124/:211/:330/:335`）已核实为真 ⇒ 删掉该从句。
+- **3** 台账清理覆盖 4 类，漏了 3 类：`留待 R 回归` 6 处（`packages/drivers/redis/tests/tree_contract_tester.rs:8,252,296,340,383,439`，其中 5 处在 `#[ignore]` 字符串里）、`契约 C-4` 1 处（`packages/drivers/redis/src/ops/write/tests.rs:352`）、`R 项` 5 处（`.../cluster_topology/census.rs:167`、`routing.rs:77`、`.../tests/fix_round1.rs:24`、`.../tests/fix_round1_retest.rs:157,202`）。三个文件本轨都已改过。
+
+**WARN 与裁定**
+- `PRD §` 计数：Coder 自报 **192 处 / 124 文件**，验收方实测 **195 处 / 126 文件**；`git ls-files | grep -ic prd` = 0 ⇒ 195 处全部悬空，其中 8 处是 `packages/drivers/redis/locales/*.ts` 的注释（i18n source of truth）。**裁定：按 195/126 更正 `progress.md` 并附可复算口径，仅登记；`AGENTS.md:212` 禁止为此新建 PRD 文档。**
+- `hub.md`：存在于分叉点 `f1d84327…`、不在本轨 diffstat 内 ⇒ **不是本轨的债**；但 `AGENTS.md:204` 禁止它存活在 `main`，**由我在收口时删除**。本轨全程未改它。
+
+**验收方框外发现（本轮返修已并入范围）**
+- **★ 删除悬空指针会把无害引用变成错靶引用**：清掉 `bugs.md` 指针后留下的裸 `BUG-004/005/007/008`，与**在用**的 `F1-BUG-005` 命名空间（`docs/development/driver-api-dependency-boundary.md`、`scripts/run-regression.sh`、`src/windows/connection/**`）撞号；`cluster_topology/mod.rs` 里剩下的裸 `BUG-007 排除项` 现在会被读成指向活跃命名空间。**每一个存活的裸 `BUG-00x` 都必须就地写明它指的是哪套编号。**
+- `packages/drivers/redis/tests/tree_contract_tester.rs:4` → `src/ops_tree_scan/tests.rs`（实际 `src/ops/tree/scan/tests/`）、`:7` → `commands_exec_dispatch.rs`（实际 `commands/exec/exec_dispatch.rs`），而**本轨自己改的就是 `redis/src/commands/exec/exec_dispatch.rs`**。
+- `e2e/specs/dialog-injection.ts:19` 引用不存在的 `docs/development/ipc-refactor-progress.md`。**教训：派单用的检索口径 `packages src src-tauri scripts .github` 在结构上排除了 `e2e/`、`docs/`、`locales/` 与仓库根** —— 全域大小写不敏感检索是唯一可靠口径。
+- `docs/architecture/testing.md:213` 的目录树列了 `BUG-001.md ~ BUG-008.md`，`git ls-files | grep -E 'BUG-00[0-9]\.md'` = 0。
+- `packages/runtime/src/tunnel/transport.rs:86` 仍写「由台账在引用归零时且仅此时调用」且无锚点。
+
+**本轮返修已派回原 Coder**（修复顺序：BLOCKER A → B → 我的 C 裁定 → FAIL-1 → FAIL-2 → FAIL-3 → 上述框外项），并要求：类别穷举 + **全域检索（含 `e2e/`、`docs/`、`locales/`、`packages/drivers/*/ui/`、仓库根）**、边写边提交、零 heredoc、禁止 amend、**禁止碰 `hub.md`**、不得收窄 `connection-management.md:568` 与 `:1324`。
+
+**仅剩 3 处 `connection-management.md:<line>` 锚点，全域复核为真、无需改动**：`tunnel/transport.rs:90` → `:676`；`tunnel/mod.rs:23` → `:1027-1037`；`tunnel/journey_sharing.rs:2` → `:1057-1061`。
+
+### 三、复审 §5 结论：`tunnel/mod.rs:22-32` 残留清单有一项被推翻
+
+复审判定该块**总体诚实**（未虚报已闭格、未虚报成果），但把一条**已闭合**的格让渡成了未闭：
+- 被推翻的是「可确认关闭的资源许可归零」。判据主语是**资源许可**，隧道不在该格字面里。已闭合证据：`packages/runtime/tests/resource_return_to_pool.rs:406`（`Closed` 时 `assert!(report.disposition.releases_physical_budget())`）、`:220`（`ReturnedToPool` 时 `assert!(!…)`）两向钉住，`packages/runtime/src/resource/journey.rs:343/:360` 的 `assert_eq!(manager.occupied_slots(), 1)` 钉住「2 开 1 关后许可归零」。
+- 对 `packages/runtime/src/resource/cleanup.rs:274/:276/:278/:280` 的引用复审**逐字核实为真**（`CleanupDisposition::{ReturnedToPool, Closed, Quarantined}`，`releases_physical_budget()` 只对 `Closed` 为真）。
+- 由此 **§5 真实缺口从 5 项降为 4 项**，但 CM-27 / CM-28 两行仍维持 PARTIAL。
+
+### 四、CM-27 / CM-28 四项缺口的归属切分（新轨 `p3-cm28-concurrent-return`）
+
+| # | 残留项 | 性质 | 归属 |
+|---|---|---|---|
+| 3 | 20 次并发归还下 driver close 至多一次有效关闭 | 断言缺失，**且实现侧零并发原语** | **本轮开轨** |
+| 4 | 并发归还下预算不负数、重复响应一致 | 断言缺失，**且实现侧零并发原语** | **本轮开轨** |
+| 1 | permit / socket / handshake / init / register 全阶段失败矩阵下的隧道引用回滚 | **实现缺失** | 编号登记，待另立轨 |
+| 2(原3) | 未确认关闭进入隔离下隧道引用与物理预算的归属配对 | **实现缺失**：`TunnelLedger` 在 `src/tunnel/` 外**零生产调用方**，`ResourceManager` 不知道隧道存在 | 编号登记（与已登记的 `CM-32-FU1` 同源）|
+
+**缺口 3 的否证要点（决定了新轨的形状）**：`packages/runtime/src/tunnel/` 子树内 `thread::spawn|tokio::spawn|Barrier|join!` **零命中**，整棵子树纯顺序；`src/tunnel/journey_single_counter.rs:22` 是嵌套 for 的**纯代数**，不是并发；`packages/runtime/tests/tunnel_refcount_contract.rs:352` 的 `one_return_releases_exactly_once` 是顺序 for，且**计数对象是隧道 transport 的 `close_calls` 而非 driver close** ⇒ 它在结构上顶不上这一格。
+**缺口 4 的否证要点**：`packages/runtime/tests/release.rs:48/:55/:62/:104` 是墓碑读写，`registry_release.rs:246` 是宿主/后端不对账 —— 都不是重复查询一致性。
+
+新轨基线 main @ `c048dd37c`，与在飞四轨的文件面**零重叠**（`tunnel/` `resource/` `budget/` 均未被 `registry/`(CM-74)、`gateway/`(CM-06)、`redis/`+`e2e/`(doc-drift)、`scripts/`+`.github/`(CM-60) 占用）。已禁止它改 `docs/**`、`registry/**`、`gateway/**`、`packages/drivers/**`、`e2e/**`、`src-tauri/**`、`connection/port.rs`、barrier/commands，并要求把上表第 1、2 项**按编号登记**而非实现、更不得升格为永久架构断言。
+
+### 五、方法论记要（本轮第三次同因复发，规则已入派单模板）
+
+- **★ 我框定的风险清单本身在制造漏检**：doc-drift 的 Coder 按我给的 4 类报「全部归零」并自述「纯文档、零运行时代码改动」—— 两个数字**对所选清单为真、对全仓为假**；验收方在被迫承接同一框定下，仍从**我给的文件清单之外**挖出 2 条真缺陷，另在框外节挖出 6 条。CM-60 一轮我框 2 条、挖出 8 条。**现在每份派单都强制：类别穷举 + 含顶层目录的全域检索 + 每个数字附可复算口径 + 「你没有点名的缺陷」专节。**
+- **★ 移除悬空指针会把无害引用变成错靶引用**（见 §二）。删除动作必须连带审计「删完之后剩下的裸编号现在指向哪里」。
+- **★ 语义正确的散文陈述也会是字面假陈述**：判定应按后果分级 —— 无行为影响的改动（WARN + 更正记录）与锚点回归（BLOCKER）分开，但**记录必须更正**，且只追加、不 amend。
+- **★ 已死 Coder 的第二形态：不是零产出，而是成果全押在会话末尾。** gateway 轨第一次死亡被记为「零交付」，第二次死亡留下 1 个提交 + **1 个未跟踪测试文件**（一个字节都没进版本库）。同批另有 2 轨返修全部靠「边写边提交」存活（CM-60 `eb607ad8`→`1289231a`、doc-drift `21e1ae1`→`e4fd4d1`）。**死亡计数只记次数，不记产出；恢复时先落盘再说话。**
