@@ -854,7 +854,7 @@ WDIO 使用 `pnpm tauri:build:webdriver` 或经检查的 E2E wrapper，不能裸
 
 H 是部署无关 runtime 契约，F 是前端契约，D 是真实驱动协议；W 再分 W1（单实例 HTTP/SSE）与 WN（多 worker）。CM-57/58 的故障路由和 CM-60 多 worker 部分属于 WN/P9；CM-54/55/56 的 H/F 部分在 P3/P4 必须验收，不能推迟到 Web。单进程 SessionDirectory 实现同一 port，P9 替换路由基础设施。
 
-CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固定 fake command 10 ms，以并发 8 预热 1000 请求；每轮采集 10000 个获准且未排队的请求，运行 5 轮。附加耗时从 gateway 完成鉴权/参数校验开始到派发 driver，以及 driver completion 到 receipt/event 状态登记完成的两段单调时间之和，不包含 fake SQL、预算/actor 排队、网络传输。采用 nearest-rank p95（排序后第 ceil(0.95*N) 项），每轮均须 ≤10 ms；排队请求另报等待分位数，不删失败样本，失败数单列。阶段归属：按开发计划各阶段退出门槛的原文，CM-60 的 H 断言属 P3（§7 含「60 单机部分」）、W1 断言属 P7（§11 含「60 单实例部分」）、WN 部分属 P9（§9 含「CM-57～60 的 WN 部分」）；本节只定义三处共用的测量口径与 harness，不替代任何一处阶段的达标判定。
+CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固定 fake command 10 ms，以并发 8 预热 1000 请求；每轮采集 10000 个获准且未排队的请求，运行 5 轮。附加耗时从 gateway 完成鉴权/参数校验开始到派发 driver，以及 driver completion 到 receipt/event 状态登记完成的两段单调时间之和，不包含 fake SQL、预算/actor 排队、网络传输。采用 nearest-rank p95（排序后第 ceil(0.95*N) 项），每轮均须 ≤10 ms；排队请求另报等待分位数，不删失败样本，失败数单列。阶段归属：按开发计划各阶段退出门槛的原文，CM-60 的 H 断言属 P3（§7 含「60 单机部分」）、W1 断言属 P7（§11 含「60 单实例部分」）、WN 部分属 P9（§13 含「CM-57～60 的 WN 部分」）；本节只定义三处共用的测量口径与 harness，不替代任何一处阶段的达标判定。服务端侧另有一张阶段映射表（`team-server-and-auth.md` §16.1 的 CM-60 行，按「单实例部分 / 跨节点部分归 P9」分列），与本处一致；两处均以开发计划退出门槛原文为准。
 
 事件断言限单次存活订阅、缓冲未溢出的 sequence 连续性；重连允许重放重复原始事件，但投影后无重复行/状态遗漏。journal 在每次建连/关闭/permit 变化时断言额度，无随机采样盲区。注入连接持有、慢 consumer 和 drain 的压力部分另运行，不混入非排队延迟样本；保存环境、构建参数、原始计时与 journal 作为 CI artifact，不新增仓库评审记录。
 
