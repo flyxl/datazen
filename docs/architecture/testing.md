@@ -13,7 +13,7 @@
 | 驱动 UI 单测 | Vitest | `packages/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`） |
 | Host E2E | WebdriverIO | `e2e/specs/` |
 | 驱动 E2E | WebdriverIO | `packages/drivers/<id>/e2e/`（显式脚本，不进默认 `pnpm e2e`） |
-| 手工黑盒测试 | computer-use-mcp | `test/` |
+| 手工黑盒测试 | computer-use-mcp | `test/`（**当前仓库无此目录**，见 §6） |
 
 ### 1.1 驱动测试必须写在驱动 crate 内
 
@@ -200,7 +200,11 @@ pnpm test:unit:drivers  # Path 驱动 UI 单测
 
 ## 6. 手工黑盒测试
 
-`test/` 目录下维护手工黑盒测试文档，使用 `computer-use-mcp` 桌面自动化辅助执行：
+> **当前状态：仓库内没有 `test/` 目录。** 辅助工具 `computer-use-mcp` 仍配置在
+> `.cursor/mcp.json`，但已无配套文档。下文是 2026-08 以「obsolete / outdate」为由删除
+> **之前**的结构（`33860f548`、`a18d45c6c`），`git ls-files test/` 现为 0；6.1 的用例数与
+> 6.2 的报告格式同属删除当时的历史计划，**不描述当前仓库的测试存量**。要恢复手工黑盒层时，
+> 从本节起步即可。
 
 ```
 test/
@@ -213,6 +217,10 @@ test/
 │   ├── BUG-001.md ~ BUG-008.md
 └── screenshots/            # Bug 截图证据
 ```
+
+> 上面 `bugs/BUG-001.md ~ BUG-008.md` 是一套**已随删除消失**的编号。仓库现存形如
+> `F1-BUG-00x` 的编号属于**另一套**活跃系列（连接导航 / schema 树），两者无关，
+> 不可按同一个 `BUG-00x` 理解。
 
 ### 6.1 测试模块覆盖
 
