@@ -454,19 +454,74 @@ impl SessionRegistry {
     ///
     /// 作废**不归还额度**：这些连接还在别处活着，隔离确认之前这份额度不能发出去。
     /// 归还由 [`SessionRegistry::confirm_worker_quarantined`] 完成。
+    ///
+    /// ## 三种结果，三种动作（D-R2-2）
+    ///
+    /// 控制旁路的答复分三种，它们对「要不要摘表项」的影响完全不同：
+    ///
+    /// | `control()` 返回 | 含义 | 摘表项？ |
+    /// | --- | --- | --- |
+    /// | `Ok(true)` | 送达，且本会话确属该 worker，会话已在 actor 里回滚关闭 | 是 |
+    /// | `Ok(false)` | **同样送达了**，但答复是「这不归这个 worker 管 / 已无物理资源」 | 是 |
+    /// | `Err(_)` | **没送达**：控制通道已断，或投递之后回执丢失 | **否** |
+    ///
+    /// `Ok(false)` 是**被确认的否定答复**，不是投递失败，所以它照常摘行。
+    /// 登记表这条路径上它近乎不可达：`owned_by` 已经按 worker 筛过一遍，走进来的
+    /// 行 worker 必然对得上；actor 侧再判一次 `physical.is_none()` 是第二道防线。
+    /// 正因为它近乎不可达，才更不能把它塞进失败分支——把否定答复当成投递失败，
+    /// 代价是这条会话永远留在表里、额度永远挂在 stale 上等一个不会来的隔离确认。
+    ///
+    /// 此前这里是 `let _ = ...` 然后**无条件**摘行，等于把第三种也当成第二种处理。
+    /// 后果是具体的：控制通道已经断了，物理资源却还在别处活着，登记表却已经把这条
+    /// 记成「已作废」，额度随后被 `quota.hold_stale` 挂住等人来隔离确认——
+    /// 而一个已经没有控制通道的会话不会被隔离，那份额度就永久挂住。
+    ///
+    /// ## 为什么 `Err` 分支仍然必须存在
+    ///
+    /// 在**正常退出路径**上 `Err` 不可达，理由是结构性的：
+    /// [`SessionActor`] 自己持有 `UnboundedSender`，`run_actor` 只有在
+    /// `exec_rx.recv()` 读到 `None` 时才会把 `exec_open` 置否（见 `actor.rs`），
+    /// 而 `None` 要求**所有** `ExecCommand` 发送端都被 drop。`owned_by` 是按值克隆出
+    /// `SessionRecord` 的，克隆里的 `actor` 在 `.await` 期间就是一个活着的发送端，
+    /// 因此**摘表项不可能造成 `Err`**——摘行只会多丢一份克隆，丢的是表里那份。
+    ///
+    /// 能造出 `Err` 的只剩 actor 任务异常终止（panic / abort 把 `exec_rx` 一起丢掉）。
+    /// 类型系统挡不住这件事，注释也挡不住。所以这里选择把「正常路径不可能」
+    /// 写成**分支**而不是注释：`Err` 时保留表项并留下可查的痕迹。
+    /// 代价是那条会话仍然显示为「已登记」——这个取舍与本模块「宁可留一条会诱发
+    /// 重投的可见记录，也不要在物理资源仍活着时把它静默记成已作废」同源。
     pub async fn invalidate_worker(&self, worker_id: &WorkerId) -> Vec<DbSessionId> {
         self.audit.pump();
         let targets = self.read_table().owned_by(worker_id);
         let mut lost = Vec::new();
         for record in targets {
             // 控制旁路（§6.3）：即使此刻有执行在飞行，租约失效也必须立刻送达。
-            let _ = record
+            let delivered = match record
                 .actor
                 .control(|reply| ControlCommand::InvalidateWorker {
                     worker_id: worker_id.clone(),
                     reply,
                 })
-                .await;
+                .await
+            {
+                // `Ok(_)` 一律算送达：`false` 是被确认的否定答复（见上表），
+                // 它说明控制旁路工作正常，只是这条不归该 worker 管。
+                Ok(_) => true,
+                Err(error) => {
+                    // 没送达：保留表项，且**不要**把它算进 `lost`——
+                    // `lost` 会驱动 `quota.hold_stale`，把额度挂给一个不会到来的隔离确认。
+                    tracing::warn!(
+                        db_session_id = record.db_session_id.as_str(),
+                        worker_id = worker_id.as_str(),
+                        reason = error.reason(),
+                        "租约失效的控制命令没有送达；保留表项等待重投，其物理资源可能仍在别处活着，隔离确认前不得归还额度"
+                    );
+                    false
+                }
+            };
+            if !delivered {
+                continue;
+            }
             let dropped = self.write_table().remove(&record.db_session_id).is_some();
             if dropped {
                 lost.push(record.db_session_id);
@@ -665,3 +720,8 @@ impl SessionPort for SessionRegistry {
         self.close_registered(handle, mode).await
     }
 }
+
+// D-R2-2 的钉子测试放在独立文件里，与 `actor.rs` → `actor/tests.rs` 同一套分工：
+// `registry.rs` 已经贴着单文件规模上限，用例再往里塞只会挤掉注释。
+#[cfg(test)]
+mod tests;
