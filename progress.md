@@ -61,7 +61,7 @@ WT_SHA_BEFORE = WT_SHA_AFTER = ae85404ce088139f1a43ed7f35878f0408e22714
 
 ## 三、遗留与待裁定项（本轨未擅自改写）
 
-1. **`PRD §` 共 195 处、跨 126 文件，全仓无任何 PRD 文件**（tracked / untracked / ignored 皆无）。计数方法可复现：`git grep -o 'PRD §' | wc -l` = 195；`git grep -l 'PRD §' | wc -l` = 126；`git ls-files | grep -ic prd` = 0。占 tracked 文件 3490 个中的 3.6%。规模远超单点引用，且每处的「§」所指内容已无法复原，**无据可写**；须由各轨文档 owner 决定是就地改写为已实现事实还是删节。（第一轮此处记为 192/124，第二轮按上述方法重新计数修正。）
+1. **`PRD §` 共 193 处、跨 125 文件（全仓无任何 PRD 文件）**（tracked / untracked / ignored 皆无）。计数方法可复现（**入库口径，排除两个台账自身**——否则本台账里写下的字面量会把自己算进去）：`git grep -o 'PRD §' -- . ':!progress.md' ':!hub.md' | wc -l` = **193**；`git grep -l 'PRD §' -- . ':!progress.md' ':!hub.md' | wc -l` = **125**；`git ls-files | grep -ic prd` = 0。**不排除台账的原始数是 197 / 126**，差额 4 处全部来自本台账自身文本。**台账计数规则：凡统计「入库内容」必须同时排除 `progress.md` 与 `hub.md`。**占 tracked 文件 3490 个中的 3.6%。规模远超单点引用，且每处的「§」所指内容已无法复原，**无据可写**；须由各轨文档 owner 决定是就地改写为已实现事实还是删节。（第一轮 192/124，第二轮 195/126——第二轮把台账自己算进去了，R2 纠正；本轮 193/125 为准。）
 2. **`connection/adapters.rs`（`shared-boundaries-and-ports.md:589`）**：该行是「过渡实现、逐 consumer 迁移后删除旧路径」的**迁移状态声明**。文件不存在，但本轨无证据判断迁移是已完成还是计划有误——**改写它等于替 owner 下结论**，故保留原状待裁定。
 3. **已删除的测试文件引用 3 处**：`e2e/helpers/ops-process-server.ts`（`e2e-coverage.md:189`）、`ConnectionNavigatorTree.test.tsx`（2 处）、`extensionThemes.test.ts`（`packages/wapps/README.md:99`）、`ui/plugin-meta.test.ts`（`docs/architecture/testing.md:178`）。均为删除测试后的悬空引用，替换目标不存在，需 owner 确认删除意图。
 4. **`docs/blogs/diagrams/*.html|json` 共 12 处旧路径**：属已生成的推广物料产物，重写收益低且易与生成器脱节，未纳入本轨。
@@ -99,19 +99,59 @@ WT_SHA_BEFORE = WT_SHA_AFTER = 76ab30513e876e222a569f4bfa4540f193e6ad6f
 
 第三项是第二轮新增的：本轮改到了 redis 驱动 crate 的 Rust 测试文件（`census.rs`/`mod.rs`/`routing.rs`/`fix_round1.rs`/`fix_round1_retest.rs`/`write/tests.rs`/`tree_contract_tester.rs`），第一轮的三项门禁覆盖不到它们。
 
-### 5.2 「零运行时代码改动」这句本身是假的（BLOCKER C）
+### 5.2 「零运行时代码改动」这句本身是假的（BLOCKER C）——已按验证方实测整节重写
 
-第一轮提交信息写「纯文档，零运行时代码改动」。**那句话字面为假**，纠正已写入第二轮提交信息本身，而不是靠本台账补记。精确账目（可复现：对 `f1d843271..HEAD` 的 `*.rs`/`*.ts`/`*.tsx` 取 `-U0`，过滤 `+` 行再去掉以 `//`、`///`、`//!`、`*`、`#[ignore]` 开头的行，得 **5 行**；逐行看，**实际非注释改动是 3 处**）：
+第一轮提交信息写「纯文档，零运行时代码改动」。**那句话字面为假**，纠正已写入第二轮提交信息本身，而不是靠本台账补记。
 
-| # | 位置 | 性质 |
+R2 验证方查出本节原先的账目**三处全错**，本节整体重写。复算命令（基线 `f1d843271`，可复现）：
+
+```
+git diff -U0 f1d843271..HEAD -- '*.rs' '*.ts' '*.tsx' \
+  | grep -E '^\+' | grep -vE '^\+\+\+' \
+  | grep -vE '^\+[[:space:]]*(//|/\*|\*)' | wc -l          # -> 11
+```
+
+**11 行 / 9 处 / 5 文件**——不是本节原先写的 3 处。
+
+| 位置 | 行数 | 性质 |
 | --- | --- | --- |
-| 1 | `packages/runtime/tests/cm70_no_disk.rs:3` | `#[ignore = "…"]` 理由串 |
-| 2 | `packages/runtime/tests/cm70_idempotency_replay.rs:3` | 同上 |
-| 3 | `e2e/specs/dialog-injection.ts` DI-004 | **纯格式重排**：`await expect(invokeBackend('test_inject_dialog_result', { result: {} })).rejects.toThrow(/canceled/)` 表达式逐字不变，只是换行位置不同，语义完全等价 |
+| `packages/drivers/redis/tests/tree_contract_tester.rs` | 5 | `#[ignore = "…"]` **理由串**改写，删掉 `; see ## 留待 R 回归` 尾巴 |
+| `e2e/specs/dialog-injection.ts` DI-004 | 3 | **纯格式重排**，表达式逐字不变 |
+| `src-tauri/src/commands/cm73_baseline_tests.rs` | 1 | `#[ignore = "…"]` 理由串改写 |
+| `src-tauri/src/commands/cm73_idle_eviction_tests.rs` | 1 | 同上 |
+| `packages/drivers/redis/src/ops/workbench/tests/fix_round1.rs` | 1 | `assert_eq!` 的**多行自定义消息串**（`\` 续行的第二行） |
 
-过滤后剩下的 2 行经逐行核对**是注释**，只是不以注释前缀开头，属于过滤器的已知盲区：`fix_round1.rs:24` 是 `///` 块的折行续行（小写 `connection's` 起首），`treeUiBug002CountMatching.test.tsx:49` 是 `/** … */` JSDoc。
+原先的三处具体错误，均为**我自己的账目错**，一并记在这里：
 
-**更正**：我最初报给属主的是「恰好 2 处非注释改动」，**少数了一处**——漏了 DI-004 的格式重排。已主动补正，不必等验证方发现。经裁定：3 处**全部保留**（前两处只改测试元数据、不改变任何测试是否执行；第三处语义等价），但「零运行时代码改动」这句必须作废。
+1. 原写 `packages/runtime/tests/cm70_no_disk.rs:3` 与 `cm70_idempotency_replay.rs:3` 是
+   `#[ignore = "…"]` 理由串——**假的**，这两个文件是纯 `//!` 改写，**根本没有 `#[ignore]`**。
+   真正的 `#[ignore]` 改动在 `tree_contract_tester.rs`(5) / `cm73_baseline_tests.rs`(1) /
+   `cm73_idle_eviction_tests.rs`(1)。
+2. 原写 `fix_round1.rs:24` 是「`///` 块的折行续行」——**假的**，它是活代码里
+   `assert_eq!` 多行消息串的续行。
+3. 原计数 **3**，实际 **11**（少数 8 行）。
+
+**「行为变化 0」是可复现的实测，不是断言**：
+
+```
+for f in packages/drivers/redis/tests/tree_contract_tester.rs \
+         src-tauri/src/commands/cm73_baseline_tests.rs \
+         src-tauri/src/commands/cm73_idle_eviction_tests.rs; do
+  git show f1d843271:$f | grep -cE '^[[:space:]]*#\[ignore'   # base
+  grep -cE '^[[:space:]]*#\[ignore' $f                          # HEAD
+done
+# tree_contract_tester.rs 5 -> 5 ; cm73_baseline_tests.rs 1 -> 1 ; cm73_idle_eviction_tests.rs 1 -> 1
+```
+
+即**没有任何 `#[ignore]` 与「运行」的开关翻转**，也没有断言表达式被改。被改的只有
+`#[ignore = "…"]` / `assert_eq!` 的**字符串字面量内容**，外加 1 处纯缩进重排。
+
+> 计数陷阱：`grep -c '#\[ignore'` 会把 `//!` **散文行**也算进去
+> （本文件 `tree_contract_tester.rs` HEAD 新增了一行提到 `#[ignore]` 的模块文档），
+> 于是 base 6 / HEAD 7，凭空多出 **delta=+1** 的假开关。必须锚行首。
+
+**对称性记录**：验证方在我这三条错误上先自行复算并全部更正后才出报告，并指出
+**我犯的是同一类错误**（拿工作清单的数当仓库的数）。这三条错误由我自己在本轮查实并写入。
 
 ### 5.3 锚点必须成对验证（BLOCKER A 的教训）
 
@@ -141,7 +181,7 @@ WT_SHA_BEFORE = WT_SHA_AFTER = 76ab30513e876e222a569f4bfa4540f193e6ad6f
 
 | 类 | 第一轮计数 | 实际 | 处置 |
 | --- | --- | --- | --- |
-| `## 留待 R 回归` | 6 | **8** | 删指针，`#[ignore]` 理由串保留其自身语义；另 2 处在 `e2e/`（派单视野外） |
+| `## 留待 R 回归` | 6 | **8** | 删指针，`#[ignore]` 理由串保留其自身语义；`e2e/` 实为 **1** 处（R2 更正） |
 | `契约 C-4`（裸编号） | 1 | 1 | 锚到真实符号 `ops/write.rs` 的 `is_keepttl_keyword_rejection`；同处裸 `C-3` 一并标明属另一套编号 |
 | `R 项 Nx` | 未列 | **5** | 5 处全部改述实质，不换编号 |
 | `BUG-007 修法 3` / `BUG-007 排除项` | 未列 | 2 | 见下 |
@@ -182,3 +222,138 @@ WT_SHA_BEFORE = WT_SHA_AFTER = 76ab30513e876e222a569f4bfa4540f193e6ad6f
 **保留历史记录而非抹除**，是为了不替 owner 决定「手工黑盒层是否恢复」；但要让读者一眼看出这些数字描述的是已删除的存量、而非当前存量。
 
 **登记不改**：`AGENTS.md:13` 与 `:60` 同样声称 `test/` 存在，但 AGENTS.md 是跨轨工作约定、其目录树属全局事实，属主裁断范围，本轨不擅改。
+
+---
+
+## 六、第三轮（R2 返修）
+
+### 6.0 本轮的根因：我是按文件清理的，不是按模式清理的
+
+R2 FAIL-3 的指控不是「漏改」，是**方法错**：我拿到报告里的 5 处，就按文件逐个撞。
+
+按模式枚举全族：
+
+```
+git grep -n 'ops_tree_scan/\|ops_workbench/\|ops_exec\.rs\|redis_driver_on\.rs' -- packages/drivers/redis/
+```
+
+**实枚举 8 处，不是报告的 5 处。** 多出的 3 处只有枚举才会暴露：
+
+| # | 位置 | 原引用 | 现引用 |
+| --- | --- | --- | --- |
+| 1 | `tests/tree_scan_budget.rs:20` | `src/ops_tree_scan/tests.rs` | `src/ops/tree/scan/tests.rs` |
+| 2 | `tests/workbench_commands.rs:16` | `src/ops_workbench/tests.rs` | `src/ops/workbench/tests.rs` |
+| 3 | `ui/console/consoleCommandBatch.ts:6` | `src/ops_exec.rs::split_redis_commands` | `src/ops/exec.rs::split_redis_commands` |
+| 4 | `ui/value-editors/redisInsertStatement.ts:6` | `redis_driver_on.rs` | `driver/session.rs` |
+| 5 | `ui/__tests__/redisInsertStatement.test.ts:5` | `redis_driver_on.rs` | `driver/session.rs` |
+| 6 | `src/ops/workbench/tests.rs:1` | 「declared by `ops_workbench.rs`」 | 「declared by `ops/workbench/mod.rs` (`mod tests;`) under `#[cfg(test)]`」 |
+| 7 | `ui/__tests__/kvBarSlotTesterGaps.test.tsx:402` | `` `ops_workbench.rs:425` `` / `` `:439` `` | `` `ops/workbench/shapes.rs` `` 的 `parse_key_info` / `unreadable_key_state`（函数名锚，去掉行号） |
+| 8 | `src/ops/tree/scan/tests.rs:5` | `` `ops_workbench/tests.rs` `` | `` `ops/workbench/tests.rs` `` |
+
+**残余 1 处，不是 0——我在 `516ead304` 的提交信息里写的「8 -> 0」是错的，本轮查实更正。**
+
+基线 8 处的真实构成是 **7 处漂移 + 1 处合法溯源**：
+
+```
+git grep -n 'ops_tree_scan/\|ops_workbench/\|ops_exec\.rs\|redis_driver_on\.rs' -- packages/drivers/redis/
+# f1d843271 -> 8 ; 1117fd868 -> 7 ; 516ead304 -> 1 ; HEAD -> 1
+```
+
+唯一幸存者 `packages/drivers/redis/src/ops/tree/scan/budget.rs:108`
+是 `/// (\`8981d3078\` 的 \`redis_driver_on.rs:138\` 把 DBSIZE 读作 \`unwrap_or(0)\`)` 的**历史溯源引文**，
+已核对该 commit 的 `:138` 逐字存在（`let db_size: i64 = redis::cmd("DBSIZE").query_async(conn).await.unwrap_or(0);`），
+**属可解析的自锚点，不改**。所以本轮实际是 **8 -> 1**，那 1 处本就不该改。
+
+**这正是 FAIL-3 指控的同一形态在我自己身上的复发**：我在修复 FAIL-3 的那个提交里
+写了一个没有复算的 0。同一条命令、同一个形状，只要我先跑一遍就会看到 1。
+
+
+**为什么这 8 处是漂移、另有 11 处裸模块名不是**——两类的区别是**形状**不是**前缀**：
+
+- Rust 里裸写的 `ops_workbench` / `ops_tree_scan` / `ops_exec` 是**模块标识符**，
+  经模块系统解析即成立，**合法**，不算死引用；
+- 只有**长得像文件**的记法（`ops_workbench.rs`、`src/ops_exec.rs`、`redis_driver_on.rs`）
+  才是漂移候选。上面的命令按**形状**匹配（带 `/`、带 `.rs` 后缀或带 `src/` 前缀），
+  所以只命中这 8 处。
+
+`redis_driver_on.rs` 的替换目标 `driver/session.rs` **不是猜的**：提交 `80fadb848`
+把它做了 `packages/drivers/redis/src/{redis_driver_on.rs => driver/session.rs}` 的改名，
+`key_value_json` 在改名前后**都在 :228**，属同一文件改名而非另找。
+
+**注入证伪**：往 tracked 文件 `ops/workbench/tests.rs` 注入一行同形状引用
+（``// mutation probe: see `src/ops_exec.rs` ``），命中数 **1 -> 2**（落在 `:302`），
+`git checkout` 复原后回到 1。命令确实在工作——这正是它没能被信任的原因：
+同样的命令、同样的形状，一次报 0、一次报 1，差别只在**跑之前有没有复算**。
+
+### 6.1 FAIL-4：`BUG-00x` 不是一套全局编号（14 套并存）
+
+我上一轮写的 `docs/architecture/testing.md` blockquote 说了假话：它只承认两套编号空间
+（已删的 `bugs/BUG-001..008` + `F1-BUG-00x`），等于暗示裸写 `BUG-00x` 就是那套已删的。
+
+```
+git grep -ohE '[A-Za-z0-9_.-]+-BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' \
+  | sed -E 's/-[0-9]+$//' | sort -u | wc -l          # -> 14 套活跃系列
+git grep -ohE '(^|[^A-Za-z0-9_.-])BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' | wc -l   # -> 367 处裸写
+```
+
+14 套：`F1-` `F3-` `R2-` `cap-bridge-` `e2e-ops-menu-` `ep-hooks-settings-` `pre-`
+`redis-codec-write-` `redis-detail-ui-` `redis-kvbar-ui-` `redis-tree-backend-`
+`redis-tree-ui-` `tunnel-backend-` `tunnel-form-`（共 124 处带前缀）。
+其中 `pre-BUG` 的 2 处是子串产物，不是独立系列，登记不改。
+
+新表述：**裸写 `BUG-00x` 不可被假定为已删除那套**，引用必须连前缀写全。
+`BUG-007` 单是横跨 **9 个文件**、涉及至少 3 套系列，裸编号根本不足以定位。
+
+**零值证伪**：注入 `redis-mutation-series-BUG-900` 后系列数 **14 -> 15**，复原回 14。
+
+同时按族修掉 `ops/write/tests.rs` 全部 4 处 `BUG-004`（**不止报告的 1 处**）：
+`:350` 裸写、`:360` 已有前缀、`:381` 裸写、`:400` 裸写——3 处是裸写。
+系列名取自 `:360` 既有的 `#[ignore]` 理由串本身，不另起命名。现在该文件裸写残留 0。
+
+### 6.2 本轮新增的两条纪律
+
+**(1) 坏命令会伪造出一个 0。** 第一次跑 14 的复算命令时我把它塞进 shell 变量，
+嵌套引号写坏后输出 `0`。那个 0 来自**坏管道**，不是仓库事实。差点把「命令坏了」
+当成「仓库没有」记进台账——这正是「我 grep 出来的结论 ≠ 仓库的结论」的又一种形态。
+**规则：任何计数为 0 时，先跑裸命令确认命令本身能出非零，再采信这个 0。**
+
+**(2) 我自己造了一个假缺陷。** 复核 `tunnel/mod.rs:21` 的 `:589` 锚点时，我在
+**错误的工作目录**下用**漏掉 `platform/` 的路径**测 `[ -e ... ]`，得到 `ABSENT`，
+差点把 `shared-boundaries-and-ports.md` 报成死引用。在正确路径下实测：
+`:585` 是 `### 6.3 保持不动的现有服务与窄适配`、`:589` 确含「过渡实现，逐 consumer 迁移后删除旧路径」、
+`:590` 确含「隧道生命周期通过 `NetworkProvider::ensure_tunnel` 的桌面实现承接」——**三处锚点全对，是活的**。
+**规则：报告缺陷前必须同时确认「工作目录」和「路径」两项。**
+
+### 6.3 登记不改（本轮新发现，均不在派单的 6 项内）
+
+- `packages/drivers/redis/src/commands/cm73_baseline_tests.rs` 现在**并存三套互斥锚点体系**
+  （`:19 :23 :590 :661 :665 :670` 行号锚 / `CM-73 `- 断言`` 条目锚 / `§16.7` 节号锚）。
+  本轮只迁移了 FAIL-1/FAIL-2 点名的那一批，**故意不做统一**：统一属结构性重构，
+  会一次性改动大量断言注释，超出「纯文档」范围。
+- `.superpowers/sdd/task-7-report.md:53` 的路径清单已过期，登记待 owner 处理。
+- `docs/architecture/platform/shared-boundaries-and-ports.md:589` 的 `connection/adapters.rs`
+  一行（原「三、2」）：复核确认为**迁移状态声明**且锚点正确，文件不存在是事实陈述，
+  迁移是否完成属 owner 判断，本轨不改写。
+
+### 6.4 R3 门禁（逐字结论行）
+
+```
+HEAD_BEFORE=516ead304e9251dadc04ee9a97c039b3b0382551
+REDIS_TEST_EXIT=0 ; test result: ok. 396 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out
+本次 Rust 改动非注释 diff 行 = 0
+本次 diff 新增 .md 文件 = 0
+COMMIT_EXIT=0 ; leak check grep -cE '^(APPEND_EOF|EOF|MSG)$' = 0
+porcelain=0
+```
+
+`tsc` 走 `./node_modules/.bin/tsc --noEmit -p tsconfig.json`（EXIT=0，error TS 计数 0）。
+**不用 `pnpm typecheck`**：本 worktree 的 pnpm wrapper 会因 hoist 目录是符号链接而无法落盘、恒退出 1，
+属**工作树构造产物而非代码缺陷**（属主已裁定）；直调 `tsc` 覆盖 `src` + `packages`，
+**含 `__tests__/` 与 `*.test.tsx`**，与 `pnpm typecheck` 的 tsconfig 一致。
+
+### 6.5 「零」这份清单的适用边界（必须随台账一起被读）
+
+本轮每一个 0 都配了「可复算命令 + 注入后计数会动」的证伪。但**证伪只在同一
+枚举命令的同一形状内成立**：验证方把同形状引用注入**我清单之外的**文件，我照样归零。
+所以准确表述是：**「四类别归零」对我自选清单成立，对本仓库不成立。**
+仓库级的 115 处死路径 / 12 个类别属**另轨登记**，本轮不掩盖、不代改。
