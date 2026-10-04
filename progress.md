@@ -202,6 +202,21 @@ budget_cm65_lifecycle 8、budget_cm65_reservation 2、budget_cm65_scheduling 6�
 directory_no_disk 6、directory_ownership 7、directory_replacement 10、p3_session_port_contract 10、
 resource_replacement 4、resource_return_to_pool 7、resource_rotation_and_disable 6、doc-tests 0。
 
+## 交付前最后一次确认（HEAD `3ed3ad0db`，运行前后 HEAD 与工作区均未变）
+
+| 门禁 | 退出码 | 逐字结论行 |
+|---|---|---|
+| `cargo test -p datazen-runtime`（全 crate） | 0 | 22 行 `test result: ok`，`TOTAL_PASSED=626`，0 failed |
+| `cargo test --release -p datazen-runtime --bin cm60-bench`（CI 的那一次） | 0 | `test result: ok. 57 passed; 0 failed` |
+| `cargo fmt --check -p datazen-runtime` | 0 | 无输出 |
+| `tsc -p tsconfig.scripts.json --noEmit` | 0 | 无输出 |
+| `node scripts/run-platform-crate-tests.mjs --dry-run` | 0 | `3 crate(s) selected, 2 cargo invocation(s)`，两条 argv 见上表 |
+| `./node_modules/.bin/vitest run scripts/__tests__`（全量） | **1** | `Test Files 1 failed \| 39 passed (40)` / `Tests 4 failed \| 675 passed (679)` —— 4 例全在 `check-platform-crate-boundaries.test.ts`，原因已定位，见下「本轮新见」第 4 条 |
+| `node scripts/check-platform-crate-boundaries.mjs`（单跑） | 0 | `PASS — 22 workspace member(s) classified, … 0 violation(s), 0 error(s), 3 advisory(ies)` |
+| `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps -p datazen-runtime` | 101 | 38 行既有错误，`CM60_DOC_ERRORS=0`（本轨的 bin 一条没有；该命令在本仓不是可用门禁，见「本轮新见」） |
+
+工作区在最后一次全量运行之后仍是 `DIRTY=0`，`HEAD_AFTER=3ed3ad0db…`、`TREE_AFTER=cdf28cd55ecb…`。
+
 ## 本轮新见（不是 Tester 给的清单，是扫出来的）
 
 1. **诚实记账的缺口不是「样本数错乱」。** 反向对照第一次写成 `assert!(sample_count_mismatch())`
@@ -214,9 +229,43 @@ resource_replacement 4、resource_return_to_pool 7、resource_rotation_and_disab
    `383 passed; 0 failed`，单独跑 5 次全过。机制：`spawn` 与 `clock.advance` 之间没有握手，
    线程还没登记期限，advance 就过去了；失败信息自己写着「FakeClock 的单调时刻没有推进」。
    **该目录本轨禁碰，未修**（见「未触碰」），登记给它的属主。
-4. ROUND 1 记录的 `check-platform-crate-boundaries.test.ts` 红灯**现已不存在**：
-   本轮全量 `679 passed`，该文件 53 例全过，`node scripts/check-platform-crate-boundaries.mjs`
-   报 0 violation / 3 advisory。**不是本轨修的**（本轮对该脚本 `git diff` 为空）。
+4. **`check-platform-crate-boundaries.test.ts` 的红灯不是「外部修好了」，是脚本测试自己共享真实树造成的竞态。
+   此处更正上一版的结论**：上一版写的是「本轮全量 `679 passed`，该文件 53 例全过，红灯现已不存在、
+   不是本轨修的」。HEAD `3ed3ad0db` 又回到 `Test Files 1 failed | 39 passed (40)`、
+   `Tests 4 failed | 675 passed (679)`，四次失败全在该文件。**一次全绿不是门禁，机制已定位且可确定性复现：**
+   - `scripts/__tests__/check-module-layers.test.ts:347` 把探针种在**真实仓库树**里：
+     `CLIENT_PROBE = 'packages/backend-client/src/__boundaryProbe__.ts'`，由 `clientVerdict()`（`:390`）
+     经 `withTempSourceFile` 写入；`git check-ignore` 对该路径返回 0，所以它**对 `git status` 不可见**，
+     事后从工作区状态看不出它存在过。`packages/ui/src/__boundaryProbe__.ts`（同文件 `:252`）同理。
+   - `scripts/__tests__/check-platform-crate-boundaries.test.ts:30` 与 `:98-100` 把真实仓库根
+     `REPO_ROOT` 传进 `checkPlatformCrateBoundaries({ root: REPO_ROOT, metadata, specText })`，
+     而 F-07 的规则（`scripts/check-platform-crate-boundaries.mjs:172-177`）读的正是
+     `<root>/packages/backend-client/src` 下的**真实源码**。于是两个 vitest worker 文件共享同一份
+     可变文件系统状态：一个种探针的窗口内，另一个文件里所有「真实仓库是干净的」断言都不成立。
+
+   确定性复现（HEAD `3ed3ad0db`；除临时探针外工作区全程未动）：
+
+   ```bash
+   printf 'import { invoke } from "@tauri-apps/api/core";\nexport const go = () => invoke("x");\n' \
+     > packages/backend-client/src/__boundaryProbe__.ts
+   node scripts/check-platform-crate-boundaries.mjs;   # EXIT=1
+   #   VIOLATION F-07  packages/backend-client/src:1 contains `@tauri-apps/`
+   #   FAIL — … 1 violation(s), 0 error(s), 3 advisory(ies)
+   ./node_modules/.bin/vitest run scripts/__tests__/check-platform-crate-boundaries.test.ts
+   #   EXIT=1   Tests  6 failed | 47 passed (53)
+   rm packages/backend-client/src/__boundaryProbe__.ts;  # DIRTY=0
+   ```
+
+   撤掉探针后同两条命令分别 `EXIT=0`（53/53）与 `PASS — 22 workspace member(s) … 0 violation(s),
+   0 error(s), 3 advisory(ies)`；两个文件同时跑（96 例）也是全过——全量并行时只红 4 例，因为种探针的
+   时间窗只覆盖到该文件的一部分用例，所以现象看着像随机。**本轨未修**：`scripts/check-platform-crate-boundaries.mjs`
+   与这两个测试文件都在本轨禁碰清单里；修法（探针改到临时树，或让两个文件共用一把跨文件锁 / 串行）
+   属该脚本属主。
+5. **同一共享树的第二处更危险**：`scripts/platform-arch-selfcheck.mjs:397-410`（M7）**覆写被跟踪的
+   `packages/backend-client/src/index.ts`**，只靠 snapshot 在 revert 时写回。探针那种写法被 `.gitignore`
+   兜住了（`git add` 取不到），这一处不是：进程被中断就会把一个**受版本控制的源文件**留在变异态，
+   而 `git status` 只会在事后显示它「被修改过」。本轨没跑过该脚本（`pnpm` 在本 worktree 不可用），
+   未修，登记给属主。
 
 ## §5 队列等待分位数：本轨未修，归属已登记
 
@@ -233,6 +282,8 @@ Tester F-10 要求修「排队请求的等待分位数」。协调者裁定：**
 
 `connection/port.rs`（冻结）、`hub.md`、`connection/testing/barrier/`（`mod.rs:41` 的
 `BLOCK_REAL_TIME_BUDGET` = 30 s）、`scripts/check-platform-crate-boundaries.mjs`、
+`scripts/__tests__/check-platform-crate-boundaries.test.ts`、`scripts/__tests__/check-module-layers.test.ts`、
+`scripts/platform-arch-selfcheck.mjs`、
 `target/bench/cm60-*.json`（冻结产物未被新增、修改或删除）。
 
 ## 遗留与待裁定（第二轮）
@@ -243,3 +294,8 @@ Tester F-10 要求修「排队请求的等待分位数」。协调者裁定：**
 3. `barrier/tests.rs:236` 的自发竞态 —— 属主待裁定（见上「本轮新见」第 3 条）。
 4. CI 的 CM-60 基准步会在每次 rust job 真跑一次 `--release` 基准（约 97 s 量级）并上传
    `target/bench/cm60-*.json`；本轨**本地没有重跑**它，那一步的首次真跑由 CI 负责。
+5. **脚本测试共享真实工作树造成的门禁竞态**（见「本轮新见」第 4 条）：`pnpm test:scripts`
+   在两个 worker 并行时可能因另一个文件的临时探针而红，且 `git status` 看不出原因。
+   本轨未修，属 `scripts/check-platform-crate-boundaries.*` 与 `check-module-layers.test.ts` 的属主。
+6. **`scripts/platform-arch-selfcheck.mjs`（M7）覆写受跟踪的 `packages/backend-client/src/index.ts`**
+   （见「本轮新见」第 5 条）：中断即留变异态，且 `git add` 取得到。本轨未跑该脚本、未修。
