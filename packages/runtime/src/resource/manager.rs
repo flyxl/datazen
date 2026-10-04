@@ -329,24 +329,36 @@ impl ResourceManager {
                     .push_idle(record.lease_id.clone(), record.pool_key.clone(), now_nanos);
             }
             CleanupDisposition::Closed => {
-                // FIXME(cross-track, CM-28 登记项 E)：这里的 `?` 与三处已定事实冲突。
-                // **本轨不改** —— 改动会外溢到 CM-73 的交接面，只登记，不修：
+                // 登记项 E（CM-28 轨 `p3-cm28-concurrent-return` 发现，**本轨不改**，只留事实）：
+                // 这一行的 `?` 把 `PhysicalTransport::close` 的 `Err` 原样抛给调用方，
+                // 于是本次归还的租约**停在 `Closing`**：不隔离、不核销物理预算，
+                // 关闭义务就此丢失。同一类错误在 `force_close` 里被映成 `Quarantined`，
+                // 两条路径对同一件事给出互斥结果。
                 //
-                // * `resource/cleanup.rs:482` 的 `PhysicalTransport::close` 文档：
-                //   「关闭物理连接。返回 `Err` 表示关闭握手没确认，调用方必须转隔离而不是放行。」
-                // * `resource/transition.rs` 给 `InUse→Closing` 写的 `exits_when`：
+                // 三处逐字事实（`docs/architecture/platform/connection-management.md`
+                // 与本 crate 内）：
+                // * `:640`（§9.2「可调初始值」表 `cancel/cleanup deadline` 行的「行为」列）
+                //   「不能确认则隔离并核验」；
+                // * `resource/cleanup.rs:482`，`PhysicalTransport::close` 的文档
+                //   「关闭物理连接。返回 `Err` 表示关闭握手没确认，调用方必须转隔离而不是放行。」；
+                // * `resource/transition.rs:61`，`InUse→Closing` 的 `exits_when`
                 //   「关闭确认 ⇒ Closed；若关闭过程本身状态不明 ⇒ Quarantined」。
-                // * `docs/architecture/platform/connection-management.md:640`（§9.2
-                //   「可调初始值」表 `cancel/cleanup deadline` 行的「行为」列）：
-                //   「不能确认则隔离并核验」。
                 //
-                // 三处一致要求「不能确认就隔离」，而 `:657`（§9.4 归池前检查）
-                // 「任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。」要求
-                // 失败之后**仍然**必须关闭。合起来，这条 `?` 把租约卡在 `Closing`
-                // 是不自洽的：关闭义务被丢弃，既不隔离也不核销预算，并且与
-                // `force_close` 把同一错误映成 `Quarantined` 的做法互相矛盾。
+                // 三处一致要求「不能确认就隔离」；而 `:657`（§9.4 归池前检查）
+                // 「任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。reset 不支持、
+                // 失败或超时直接关闭。」又要求失败之后**仍然**必须关闭。两条并列才自洽：
+                // 先隔离保住租约，关闭义务另行再执行一次——那正是 `force_close` 的形状。
+                // 只留这条 `?`，两侧各丢一半。
                 //
-                // 登记号 **E**，待跨轨裁定。见 `progress.md` 与 `hub.md`（协调者侧）。
+                // **怎么复现**：让 `PhysicalTransport::close` 返回一个 `Err`，再走归还
+                // 路径落进本分支 —— 租约行仍在、状态是 `Closing`；同一资源的
+                // `force_close` 则会把它移进 `Quarantined`。本轨两个测试**不覆盖**本分支：
+                // CM-28 断言的是「至多一次**被确认的**关闭」（口径见 `force_close` 错误分支
+                // 注释），关闭**失败**按 `:657` 属「必须再关一次」，不在本轨断言面内。
+                //
+                // **为什么本轨不改**：把它换成「先 `move_to(Quarantined)` 再返回错误」
+                // 会改变归还路径的返回语义，并外溢到 CM-73 的交接面；跨轨改动不该由
+                // 单轨夹带。是否立项、归口哪一轨属协调侧裁定，本轨只保证结论随代码存活。
                 self.transport.close(&record.resource_id)?;
                 if let Some(entry) = self.table.lease_mut(lease_id) {
                     entry.move_to(LeaseState::Closed)?;
@@ -429,7 +441,7 @@ impl ResourceManager {
                 // （§9.4 归池前检查）「归池条件是宿主检查全部通过 AND driver 返回 Clean。
                 // ……任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。reset 不支持、
                 // 失败或超时直接关闭。」⇒ 关闭失败**不**终止关闭义务。
-                // 同文 `:713`（§10.1 恢复决策表，`cleanup 未确认` 行）「保留预算占用/隔离资源；
+                // 同文 `:713`（§10.1.1 恢复决策表，`cleanup 未确认` 行）「保留预算占用/隔离资源；
                 // 确认关闭或节点隔离后才核销」⇒ 未确认的关闭必须留一个可核验的去处，隔离就是它。
                 //
                 // **「有效关闭」的口径就定在这里。** CM-28（判据 `:1037`）只写「driver close

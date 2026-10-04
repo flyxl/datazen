@@ -3,7 +3,7 @@
 Track: `p3-cm28-concurrent-return` · branch `feature/p3-cm28-concurrent-return` · baseline main `c048dd37c`
 Worktree: `.worktrees/datazen-p3-cm28-concurrent-return`（禁止改主检出与其他 worktree）
 
-判据（只读）：`docs/architecture/platform/connection-management.md` §16
+判据（只读）：`docs/architecture/platform/connection-management.md` §16.3（「并发、预算、资源清理与取消」，标题在 `:983`；`## 16. 详细测试用例` 起 `:861`）
 - CM-27 = **1027–1031**
 - CM-28 = **1033–1037**，逐字：
 
@@ -147,6 +147,9 @@ PRE_STATUS = POST_STATUS = 5 files modified:
 3. 结论必须落进**代码 / 测试 / 冻结文档**，只落在本台账里等于没做完 —— 台账合并时会被删除。
 4. 门禁首尾各记一次 `git rev-parse HEAD` 与 `git status --porcelain`，证明运行期间无人动过这棵树。
 5. 数字必须注明树与计数命令（见第 5 条）。
+6. **行号与符号名并写**（R3 新增）。行号只能证明「当时那行是这句」，符号名才能证明「现在这句还在」；
+   两者都写，任一漂移都不至于让整条结论失效。**凭空写出的符号名必须 `grep` 一次** —— R3 的 FAIL-A
+   就是把不存在的 `PoolLedger` 当证据写进了注释。
 
 ---
 
@@ -157,7 +160,7 @@ PRE_STATUS = POST_STATUS = 5 files modified:
 | # | 旧残留项 | 处置 |
 | --- | --- | --- |
 | 1 | permit / socket / handshake / init / register **全阶段失败矩阵**下的隧道引用回滚（CM-27 断言） | **登记，不实现**。缺的是**接线**不是断言：`TunnelLedger` 在 `src/tunnel/` 之外零生产调用方 |
-| 2 | 「可确认关闭的资源许可归零」 | **从残留列表删除**。该格主语是**资源许可**，隧道不在这一格；已由三处闭合：`pool_ledger.rs:353` `PoolLedger::release`（摘行 + `uncharge`）、`budget/ledger.rs:397` permit 幂等核销 INV-10、`budget/coordinator.rs:428` 端口级核销 |
+| 2 | 「可确认关闭的资源许可归零」 | **从残留列表删除**。该格主语是**资源许可**，隧道不在这一格；已由三处闭合：`pool_ledger.rs` 里 `impl Ledger` 的 **`release`**（`:374` 定位并摘行、`:376` 调 `uncharge`、`:387` 出 `ReleaseDisposition::Closed`；`:385` 注释自述「本端口只有『真的 close 了』这一条释放路径」）、`budget/ledger.rs:397` permit 幂等核销 INV-10、`budget/coordinator.rs:428` 端口级核销。**符号名可重定位优先于行号**（见下） |
 | 3 | `CleanupDisposition::Quarantined` 下隧道引用与物理预算的**归属配对** | **登记，不实现**。同 #1：`resource/cleanup.rs:285` 的处置语义只管物理预算那一半 |
 | 4 | 20 次并发归还下 driver close 至多一次有效关闭 | **本轨闭合** |
 | 5 | 并发归还下预算不负数、重复响应一致 | **本轨闭合** |
@@ -172,8 +175,8 @@ PRE_STATUS = POST_STATUS = 5 files modified:
 
 | 类别 | 事实 | 位置 |
 | --- | --- | --- |
-| 静默钳位（D） | `*used = Counter::new(used.get().saturating_sub(u64::from(count)))` —— 物理配额**超额核销被静默夹到 0**，既不报错也不记日志。同样的 `saturating_sub` 模式还在 `budget/ledger.rs` 的 `shared_used`。**R2 起这条结论已写进 `pool_ledger.rs` 的 `uncharge` 函数体**（注释，非行为变更）：饱和减法**保证**了 CM-28 断言 2「预算不负数」，代价是过量核销被静默钳位——若某条 release 路径的 `count` 大于实际 charge（非对称 `held.physical_count`，或同一条 charge 链被 `uncharge` 两次），台账只会少记，不会有任何错误或日志。是否加 metric/warn 属 platform-api 轨，不在 CM-28 范围内 | `packages/platform-api/src/ports/budget/pool_ledger.rs` `uncharge`（**本轨改的是注释**）；`uncharge` 的唯一调用方是 `PoolLedger::release`，在 `locate` + `leases.remove(index)` 之后 |
-| **违反判据的条款（E）** | `release` 的 `Closed` 分支用 `self.transport.close(...)?`，传输层报错时租约**卡在 `Closing`** 而非转 `Quarantined`。按 R1 反馈升级定级：它**违反 `connection-management.md` 三处**——① `:657`「**任一失败都关闭**，即使 driver 返回 Clean 也不能绕过宿主检查。**reset 不支持、失败或超时直接关闭。**」（关闭失败必须落到终态，不能停在中间态）；② `:640`「cancel/cleanup deadline \| 10 秒 \| **不能确认则隔离并核验**」（关闭未确认时的规定动作是**隔离**，`Closing` 不是隔离态）；③ `:713`「cleanup 未确认 \| 保留预算占用/隔离资源；**确认关闭**或节点隔离后才核销」（未确认时必须走隔离，否则预算核销无依据）。代码侧三处自证：`resource/transition.rs` 给 `InUse→Closing` 写的 `exits_when`「若关闭过程本身状态不明 ⇒ Quarantined」、`resource/cleanup.rs:482`「返回 `Err` 表示关闭握手没确认，调用方必须转隔离而不是放行」、以及 `force_close` 把**同一错误**映成 `Quarantined` | `resource/manager.rs` `release` 的 `CleanupDisposition::Closed` 分支（**已写进函数体的 FIXME(cross-track, CM-28 登记项 E)**，不在本台账）；`resource/transition.rs`；`resource/cleanup.rs:482` |
+| 静默钳位（D） | `*used = Counter::new(used.get().saturating_sub(u64::from(count)))` —— 物理配额**超额核销被静默夹到 0**，既不报错也不记日志。同样的 `saturating_sub` 模式还在 `budget/ledger.rs` 的 `shared_used`。**R2 起这条结论已写进 `pool_ledger.rs` 的 `uncharge` 函数体**（注释，非行为变更）：饱和减法**保证**了 CM-28 断言 2「预算不负数」，代价是过量核销被静默钳位——若某条 release 路径的 `count` 大于实际 charge（非对称 `held.physical_count`，或同一条 charge 链被 `uncharge` 两次），台账只会少记，不会有任何错误或日志。是否加 metric/warn 属 platform-api 轨，不在 CM-28 范围内 | `packages/platform-api/src/ports/budget/pool_ledger.rs` `uncharge`（**本轨改的是注释**）；`uncharge` 的唯一调用方是**同一个 `impl Ledger` 里的 `release`**（**不是 `PoolLedger`** —— `PoolLedger` 这个类型名在 `packages/platform-api/src` 全树出现 **0** 次；对外宿主类型是 `InMemoryDriverPoolBudget`），调用点在 `locate` + `leases.remove(index)` 之后 |
+| **违反判据的条款（E）** | `release` 的 `Closed` 分支用 `self.transport.close(...)?`，传输层报错时租约**卡在 `Closing`** 而非转 `Quarantined`。按 R1 反馈升级定级：它**违反 `connection-management.md` 三处**——① `:657`「**任一失败都关闭**，即使 driver 返回 Clean 也不能绕过宿主检查。**reset 不支持、失败或超时直接关闭。**」（关闭失败必须落到终态，不能停在中间态）；② `:640`「cancel/cleanup deadline \| 10 秒 \| **不能确认则隔离并核验**」（关闭未确认时的规定动作是**隔离**，`Closing` 不是隔离态）；③ `:713`「cleanup 未确认 \| 保留预算占用/隔离资源；**确认关闭**或节点隔离后才核销」（未确认时必须走隔离，否则预算核销无依据）。代码侧三处自证：`resource/transition.rs` 给 `InUse→Closing` 写的 `exits_when`「若关闭过程本身状态不明 ⇒ Quarantined」、`resource/cleanup.rs:482`「返回 `Err` 表示关闭握手没确认，调用方必须转隔离而不是放行」、以及 `force_close` 把**同一错误**映成 `Quarantined` | `resource/manager.rs` `release` 的 `CleanupDisposition::Closed` 分支（**已写进函数体**，作为「登记项 E」块，与缺陷 D 的 `pool_ledger.rs` 注释块同构：**结论 / 三处逐字事实 / 怎么复现 / 为什么本轨不改**四项俱全，且**不引用任何台账**）；`resource/transition.rs`；`resource/cleanup.rs:482` |
 | 重试语义 | `force_close` 只要租约行还在就**无条件**调 `transport.close`（含 `Closing`/`Quarantined`/`Closed` 行）。**R1 时我在这里写下的「未确认关闭的重试是设计意图（§9.4），不是缺陷」已撤回** —— §9.4 全文没有这句话，`git diff <fork-point> <R1> -- packages/runtime/src/resource/manager.rs` 为**空**，证明那句假出处是**基线既有代码**，不是我这两轮引入的；但**把这句话抄进台账是我的错**，R1 验收把它判成 BLOCKER。R2 已按 `connection-management.md:657`「任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查」+ `:713`「确认关闭或节点隔离后才核销」重写推导：租约行还在 ⇒ 未被确认关闭 ⇒ 按 `:657` 必须**再关一次**。据此，「至多一次」只能修饰「**确认**」，不能修饰「尝试」——多次关闭尝试是 `:657` 要求的 | `resource/manager.rs` `force_close`（推导写在函数体内，不在本台账） |
 | CI 缺口（**跨轨，owner = p3-cm60-pressure-drain**） | **没有任何 CI 链路跑 `datazen-runtime` 的集成测试二进制。** 链路只有一条：`.github/workflows/ci.yml:302` `pnpm test:platform-crates` → `package.json:111` → `scripts/run-platform-crate-tests.mjs:165` 硬编码 `argvList = ['test', '--lib', …]`，**只有 `--lib`**。基线与本轨 `EXTRA_TARGETS` 命中均为 **0**。`ci.yml:265` 的 `--tests` 只作用于 4 个 driver crate，**不含** `datazen-runtime`；`git grep -nE 'cargo (nextest\|test)' -- scripts .github package.json` 共 **31** 行，其中点名 `datazen-runtime` 的 **0** 行。**这是继承缺口不是本轨引入**：基线 `ci.yml:299` 的注释原文就写着「计划 :269 的 datazen-runtime CI 空缺」，基线用 `--lib` 绕过了它；本轨从 0 拉到 2 个新增二进制，而这两个**同样不被 CI 覆盖** | 计数口径见下表；**本轨禁改 `scripts/**` 与 `.github/**`** |
 | 命名碰撞 | `src-tauri/src/tunnel.rs` / `ssh_tunnel` 是**另一套** SSH/HTTP-proxy 隧道，与 `datazen_runtime::tunnel` 无关。全仓 grep `tunnel::` 极易把两者混为一谈 | `src-tauri/src/**` |
@@ -187,6 +190,19 @@ PRE_STATUS = POST_STATUS = 5 files modified:
 | 未被 CI 覆盖的差集 | **24 / 24，即 100%** | 由 `run-platform-crate-tests.mjs:165` 只有 `--lib` 推出 |
 | cm60 树自己的实测 | 18 个二进制 / 180 条测试，整 crate 626 条，最大一组 `gateway_contract` 51 条 | **转述自 cm60 轨，本轨未复核**（不同 fork-point，本轨 fork-point 的顶层 `tests/*.rs` 已是 22，不是 18） |
 
+★ **cm60 轨的 CI 修复是否已并入本轨（本轮实测，非推断）**：
+
+```
+$ git merge-base --is-ancestor 05ca8c3a9 HEAD            # cm60 的 CI 修复提交
+EXIT=1                                                  # ⇒ 不是本轨 HEAD 的祖先 ⇒ 未并入
+$ git merge-base --is-ancestor c048dd37c 05ca8c3a9       # 本轨 fork-point 是否先于它
+EXIT=1                                                  # ⇒ DAG 上并列，不是「先后」
+```
+
+⇒ **登记项 F 仍未闭合**，`05ca8c3a9` 与 `c048dd37c` 在 DAG 上只相隔提交时间先后，**不构成祖先关系**，
+不能拿「cm60 修过」当「本轨已覆盖」。任何一处都**不得**把 F-5 / F-6 记作「已闭合」，owner 保持
+`p3-cm28-pressure-drain`，直到「本轨 HEAD 的 CI 作用域内点名 `datazen-runtime` 且含集成二进制」这条差集被证为 0。
+
 ★ 「全仓 `cargo test`/`nextest` 调用点 18 处，其中 2 处点名 `datazen-runtime`」这个数**不是本轨的口径**，本轨不引用它；
 上面 31 行 / 0 行的数才是本轨 `scripts/** + .github/** + package.json` 范围内可复现的口径。
 
@@ -195,7 +211,9 @@ PRE_STATUS = POST_STATUS = 5 files modified:
 - **登记项 E**：上面「违反判据的条款（E）」一行**不再是「真缺陷还是有意为之」的问题** —— 它违反
   `connection-management.md:657` / `:640` / `:713` 三处，事实层面已定级。剩下的是**谁来改**：
   `release` 的 `?` 与 `force_close` 的 `Quarantined` 映射必须统一，改动会外溢到 CM-73 轨的交接面，
-  故本轨**只登记不改**（`FIXME(cross-track, CM-28 登记项 E)` 已落在函数体里，台账消失后结论仍在代码里）。
+  故本轨**只登记不改**。★ R3 起登记项 E 的**结论块完全自包含**在 `release` 的函数体里
+  （结论 / 三处逐字事实 / 怎么复现 / 为什么本轨不改），**不再指向本台账，也不指向 `hub.md`** ——
+  台账合并时删除、`hub.md` 本就不在本轨分支上，两者都是**死路由**（详见「R3 处置」第 2 行）。
 - **登记项 D**：`pool_ledger.rs` `uncharge` 的 `saturating_sub` 静默钳位是否要改成「可观测的过量核销」，属 platform-api 轨。
 - **登记项 F（CI 缺口）**：owner = `p3-cm60-pressure-drain`（该轨同时持有 `scripts/**` 与 `.github/**`）。
   ★ 该轨**当前仍在 FAIL**，所以这条依赖**未闭合** —— 不得写成「已修复」或「已闭合」。
@@ -223,6 +241,65 @@ R1 判定 FAIL：1 BLOCKER + 3 FAIL + 3 WARN。逐条处置如下。**行为变�
 单字「有效」另有 10 处无关用法（`:412`、`:1286` 等）。改用 `:713`「确认关闭」与 CM-26 `:1025`
 「确认关闭后只核销一次」这两个**文档已有**的词。定义写在**两处**（`manager.rs::force_close`
 与 `tests/cm28_concurrent_release.rs` 文件头），任一处被删都不影响结论。
+
+---
+
+## R3（第三轮，同一 coder）验收反馈处置
+
+R2 判定 FAIL：0 BLOCKER / 2 FAIL / 4 WARN。R1 的两个真缺陷 TA 已确认修复，10/10 强制检查全 PASS。
+**本轮处置严格限定在「2 个 FAIL + 4 个 WARN」，不夹带任何行为变更** —— 6 个改动点**全部是注释**。
+两个「有效关闭」口径定义（`manager.rs::force_close` 与 `tests/cm28_concurrent_release.rs` 文件头）、
+`force_close` 的无条件重试行为、以及 D / E 两条的**行为**修复口径，TA 已实证其互相独立，本轮**一律不动**。
+
+| # | 反馈 | 处置 | 落点（**必须合并后仍存活**） |
+| --- | --- | --- | --- |
+| **FAIL-A** | `src/tunnel/mod.rs` 把 `pool_ledger.rs:353` 当作 CM-27「资源许可归零」的**唯一**闭合证据。实测 `:353` 落在 **`fn reuse_idle`** 体内，与 `release` 无关 | 重写为 `impl Ledger` 的 **`release`** 的真实推导（`:374` 定位并摘行 / `:376` 调 `uncharge` / `:387` 出 `ReleaseDisposition::Closed` / `:385` 注释自述）。★ 顺带修掉一个**未被报告**的同物种缺陷：注释里的 `PoolLedger` **是个不存在的类型名**（`grep -r PoolLedger packages/platform-api/src` = **0**），真实对外类型是 `InMemoryDriverPoolBudget`，内部账本类型叫 `Ledger` —— 现已在注释里**显式声明这一点**，防止再被抄错 | `src/tunnel/mod.rs` 模块头 |
+| **FAIL-B** | `manager.rs` 登记项 E 指向 `progress.md` 与 `hub.md`，**两个都在合并时消失**（台账必须删；`hub.md` 是集成分支文件，本轨分支根本没有）⇒ **死路由**，与 R1 的假出处同物种 | 按缺陷 D 的既有范式（`pool_ledger.rs` `uncharge` 函数体注释）重写成**完全自包含**的登记块：① 结论（`?` 使租约停在 `Closing`，与 `force_close` 的 `Quarantined` 互斥）② 三处**逐字**事实（`:640` §9.2 / `cleanup.rs:482` trait 文档 / `transition.rs:61` `exits_when`）③ **怎么复现**（注入 `Err` 走归还路径）④ **为什么本轨不改**（外溢 CM-73，跨轨改动不夹带）。**删掉全部台账路由**；`self.transport.close(&record.resource_id)?;` 一字未动 | `src/resource/manager.rs` `release` 的 `CleanupDisposition::Closed` 分支 |
+| WARN-1 | 文件头变异表的 `:480` / `:594` / `:632` **三个行号统一 +7 失效** | 改为 `:487` / `:601` / `:639`，并**当场用 `awk` 逐行核对**（`:487`/`:639` 是多行 `assert_eq!(` 的首行，`:601` 是单行式 —— 已把「行号指向断言行本身」这点写进注释，避免下轮再漂） | `tests/cm28_concurrent_release.rs:92` |
+| WARN-2 | `:713` 被标成「§10.1」，实际在 **§10.1.1**（`:694`）下 | 两处（`manager.rs`、`cm28_concurrent_release.rs:52`）改标 §10.1.1。★ 顺带核实：基线里另两处 `§10.1`（`dimension.rs:45`、`pool.rs:701`）指的是 `:690`，**确在 §10.1 内，是对的** —— 同一个「§10.1」字样同时存在对错两种，不逐一核对就会连坐 | `manager.rs::force_close` + `cm28_concurrent_release.rs:52` |
+| WARN-3 | 判据被标成「§16」，实际是 **§16.3**（`:983`） | 三个位置改标 §16.3（两个测试文件头 + 本台账 `:6`） | 两个 `cm28_*.rs` 文件头 + 本台账 |
+| WARN-4 | 登记项 F（CI 缺口）只活在台账里，**台账一删就没了** | 把整段事实登记**下沉进 `src/tunnel/mod.rs` 模块头**：`:165` 的 `['test','--lib',…]` 硬编码、`EXTRA_TARGETS` 全仓 0 调用方、CI 作用域 31 行 / 点名 0 行、24 个 `tests/*.rs` 全部不进 CI、owner `p3-cm28-pressure-drain`，并明写「该修复未并入本树之前，此处不得记作已覆盖」 | `src/tunnel/mod.rs` 模块头 |
+
+### R3 新增的失败模式（独立于已有的「行号漂移」）
+
+本轨前两轮的失败模式是**行号漂移**（`awk` 一查即穿）。R3 的两个 FAIL 里出现了**第二个同物种**：
+
+> **凭空写出的符号名** —— 行号可以机械核对，**符号名不能**。`PoolLedger::release` 里的
+> `PoolLedger` 在全树不存在，而它是被写进注释当证据的。任何以符号名背书的引用都必须
+> `grep` 一次，**代价极低**。
+
+**根治办法（本轮起写进纪律第 6 条）：行号与符号名并写**，任一漂移都不至于让整条结论失效。
+
+### 门禁（R3）
+
+**本轮行为变更 = 零**，且不是自述，是机械证明：对 4 个改动文件各跑
+`grep -vE '^\s*(//|//!)' <file> | shasum` 并与 `git show HEAD:<file>` 的同样管道比对，**4/4 完全相同**。
+
+```
+PRE_HEAD =3e2075f9807c3a11e670d8b1445cf25b132c2745
+POST_HEAD=3e2075f9807c3a11e670d8b1445cf25b132c2745    # 一致
+PRE_SHA  =37a243269142   POST_SHA=37a243269142          # 一致 ⇒ 跑门禁期间无人动过这棵树
+PRE_STATUS = POST_STATUS = 5 files modified:
+  packages/runtime/src/resource/manager.rs
+  packages/runtime/src/tunnel/mod.rs
+  packages/runtime/tests/cm28_concurrent_release.rs
+  packages/runtime/tests/cm28_concurrent_tunnel.rs
+  progress.md
+```
+
+| 门禁 | EXIT | 逐字结论行 |
+| --- | --- | --- |
+| `cargo fmt -p datazen-runtime -- --check` | 0 | 输出 **0 行**（无 `rustfmt.toml` ⇒ 默认配置不重排注释，本轮全是注释改写，这条不是白跑） |
+| `cargo fmt -p datazen-platform-api -- --check` | 0 | 输出 **0 行** |
+| `cargo test -p datazen-runtime --lib` | 0 | `test result: ok. 436 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` —— 与 R1、R2、基线**同数**，零净减 |
+| `cargo test -p datazen-runtime` | 0 | **26** 个 `test result:` 行，合计 **passed=698 / failed=0**，`FAILED`/`panicked` 行 **0** |
+| `cargo test -p datazen-platform-api --lib` | 0 | `test result: ok. 215 passed; 0 failed` |
+| `cargo test -p datazen-runtime --test cm28_concurrent_release` | 0 | `running 7 tests` / `test result: ok. 7 passed; 0 failed` |
+| `cargo test -p datazen-runtime --test cm28_concurrent_tunnel` | 0 | `running 3 tests` / `test result: ok. 3 passed; 0 failed` |
+| `pnpm typecheck` | — | **未跑**：本轨零 TS 改动 |
+
+R3 的 698 / 436 / 215 / 7 / 3 与 R2 的 698 / 436 / 215 / 7 / 3 **逐项同数**。
+TA 独立测得的门禁值（fmt 0 / lib 436 / total 698 / release 7 / tunnel 3）与本表一致。
 
 ---
 

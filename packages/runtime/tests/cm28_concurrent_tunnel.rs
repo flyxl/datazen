@@ -1,6 +1,6 @@
 //! CM-28（重复 release/close，高）第三格：**隧道**层的真实并发契约。
 //!
-//! 判据原文（`docs/architecture/platform/connection-management.md` §16，CM-28，行 1033-1037）：
+//! 判据原文（`docs/architecture/platform/connection-management.md` §16.3，CM-28，行 1033-1037）：
 //!
 //! ```text
 //! - 断言：driver close 至多一次有效关闭；预算不负数；隧道不多减引用；重复响应一致。
