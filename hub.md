@@ -265,6 +265,53 @@ error[E0308]: mismatched types
 
 **Coder 自报门禁（第 2 轮必须独立复现，不采信）**：冻结基线 12 支全 EXIT=0；`--lib` 272；build 0 warning；fmt 0；边界 0；5 集成二进制 7/6/9/**11**/11；合并演练（对 main `158e058e0`）EXIT=0 零冲突、合并树 `--lib` **377**、`gateway_contract` **51**、19 支二进制逐支 EXIT=0。
 
+### registry 轨第 2 轮验收 → PASS（Tester `7758907f`）+ 协调者独立复现
+
+Tester 判 **PASS**，8 项条件全满足。**协调者未采信自报，自建 detached 树复跑了核心门禁**（第 1 轮翻车恰在此项）：
+
+```
+git worktree add --detach /tmp/dz-verify-registry cd7aa906e7   ADD_EXIT=0
+git merge --no-ff main（main=448e073f1）                          MERGE_EXIT=0
+git ls-files -u | wc -l                                           0（零冲突）
+--lib              test result: ok. 377 passed; 0 failed; … finished in 0.21s   EXIT=0
+18 支集成二进制    NONZERO_EXIT_COUNT=0
+  gateway_contract          51    p3_session_port_contract     10
+  registry_lifecycle 7  registry_execution 6  registry_cancel 9  registry_release 11  registry_audit 11
+  budget_cm65_* 8/2/6  budget_cm66 7  directory_* 12/6/7/10  resource_* 4/7/6
+```
+
+**「19 支」的口径差异已查清，不是漏跑**：合并树 `tests/*.rs` 确为 **18** 个，`Cargo.toml` 无显式 `[[test]]` 段即目标全量；Tester 的 19 = 18 集成 + `--lib`。**第 1 轮那类「零冲突 + 整树 EXIT=101」的语义破坏已消失。**
+
+**四条缺陷均已真修且反向验证变红**：
+
+| | 修法（Tester 复核） | 钉住它的测试 |
+| --- | --- | --- |
+| B-1 | `port.rs:94-98` 签名回正 `Result<ExecutionState, RuntimeError>` | `registry_cancel.rs:156-175` 经 `Arc<dyn SessionPort>` 驱动 |
+| B-2 | 合并树 19/19 全 EXIT=0 | 见上表 |
+| R-01 | `close_registered` 的 `Err` 臂按失败形状分流：`if matches!(error, RuntimeError::SessionLost(_)) { self.forget(&record.db_session_id); }`，错误原样返回未改写 | `registry_release.rs:303-348`，**重新登记一次并观测额度落到 `SESSION_LIMIT-1`**——证明额度真被归还，而非仅行消失 |
+| R-02 | 单点发出确认，`invalidate_worker` 无 `SessionInvalidated`、只有 `QuotaHeldStale` | `registry_release.rs:435-445` 断言 `len == 1` + `runtime_epoch` |
+
+**CM-73 覆盖迁移 —— Tester 裁定「平移，未稀释」**，判据是可复核的硬证据：`git diff 6f5027eee..HEAD -- actor/tests/release.rs` **输出为空** ⇒ :49-60 是**逐字节未改动的既有代码**，不是被改弱的重写；它同时断言 `state == Lost` **与** `transaction_state == Unknown` 两半，且对 M4 变异（把状态压平成 `SessionState::Closed`）**变红**（`--lib` `FAILED. 270 passed; 2 failed`）。覆盖现按两个属主各守一半：actor 保墓碑可读，登记表断行已摘（`registry_release.rs:271` 改断 `session_view(...).is_err()`）。**Coder 的论据在实质上成立。**
+
+**Coder 上交的「actor 消失后行与额度泄漏」—— Tester 判 LATENT，非当前缺陷，并订正了我自己的初步看法**（我先前倾向「可达 ⇒ 当前缺陷」）。依据是类型结构而非运行时观察：`SessionRecord:74-80` 按值持有 `actor: SessionActor`，而 `SessionActor` 持有 `exec_tx` 的 `UnboundedSender`；run loop 只在 `exec_rx.recv()` 返回 `None` 时退出，即**所有 sender 全被 drop**。行在表里 ⇒ registry 自己就是活着的 sender ⇒ actor 不可能退出 ⇒ `finish()`/`ActorGone` 对已登记会话**结构上不可达**。另：「行被摘 ⇒ 额度已结」在**全部 2 处**摘除点成立（`forget():446`→`release():448`；`invalidate_worker:470`→`hold_stale():476`），`evict_idle_at:435` 转调 `forget()`，陈旧侧有公开出口 `confirm_worker_quarantined`。
+
+### 第 2 轮遗留（不阻塞合并，随合并带走）
+
+**两个 low，Tester 只报未修**：
+
+- **D-R2-1（low，文档失真）** `registry/port.rs:70-74` / `:136-143` —— 编译期钉子 `frozen_port_cancel_shape` 的文档**夸大覆盖范围**。Tester 实测：只动钉子时 `cargo build -p datazen-runtime` = **EXIT=0** `Finished dev profile in 2.50s`，而 `cargo test --lib` = EXIT=101（E0599 + E0308）。**准确表述：该钉子只闸住 test-profile 构建，闸不住 `cargo build`/check/release。** 修法：把形状钉子提到 `#[cfg(test)]` 之外（它只需要生产 trait），或改正文档。
+- **D-R2-2（low，潜在）** `registry/registry.rs:463-473` —— `invalidate_worker` 用 `let _ = actor.control(…)` 丢弃投递结果，随后 :470 **无条件**摘行。若 actor 任务已死，物理资源永不回滚且无重试句柄存活。窄（registry 生产代码无 panic 族），且可经 `QuotaHeldStale`/`Undecided` 观察。修法方向：摘行前先接住投递结果。**注**：Tester 对 actor 不可退出的结构性论证同样适用于此处，此项大概率与 D-R2-2 的可达性判断同源，**合并后可一并复核**。
+
+**Tester 明确标注未确认的项（不得当结论用）**：`--lib` 连绿 6 次在 12.5% 偶发率下自然概率仅约 **46%**，**既不能证明偶发已消失、也不能证明其存在**，第 1 轮那条 `finished in 30.01s` 超时特征始终未复现；CM-24 伪造绑定**仅由 `handles.rs` 单测杀掉**，`--test registry_cancel` 返回 0 红，**集成面无对应用例**（冻结端口测试按构造无 cancelHandle，读作分层正确，但确实缺集成覆盖）；CM-72 本轮变异得 3 红、第 1 轮报 7 红，**变异强度不同、两者都能杀，未对账**；**只跑了 `-p datazen-runtime`**，未跑其他 crate 测试，**未跑 clippy**。
+
+**Coder 台账中须随 `progress.md` 一并转出的活口裁定项**（该文件按 AGENTS.md 于合并时删除）：
+
+1. **冻结面同名物**：`connection::port::CancelReceipt`（2 字段，缺 `state`）与 `registry::CancelReceipt`（3 字段）同名不同形。registry 未把前者转进 `registry` 命名空间，避免同名物同时进入一个 prelude。**待裁定**：Wave 2 收敛前者（需解冻 `connection/**`），还是两处并存并在调用点显式区分。
+2. **`ExecutionState::as_str()` 不存在**（`connection/execution.rs` 只有 `ExecutionErrorCode::as_str`/`EffectOutcome::as_str`/`TruncationReason::as_str`）。`connection/**` 禁改，故 `registry/audit.rs` 私有映射了一份，用 `state_literals_match_the_serde_wire_casing` 钉在 serde 输出上防漂移。**若解冻 `connection/**`，这份映射应上提。**
+3. **`RegistryAuditEntry` 只能序列化、不能反序列化**（存 `&'static str`，线上字面量必须与调用方逐字同源，不能退化成可随手写错的 `String`）。**代价**：gateway 若要从线上 JSON **重建**审计条目，需裁定解冻方向——允许 registry 提供 `String` 侧 DTO，或给 `connection/**` 加字面量常量。**这是 D-03 的隐藏前置。**
+4. `hostRejected` 不在 `ApiErrorCode`、两处 `fold_exit` 刻意分歧 —— 已裁定接受，无需再议。
+5. **D-03 仍 OPEN**（gateway 侧）：`gateway/cancel.rs:185` `disposition_from_port_state` + 调用点含 `gateway/mod.rs:441/446/447`。**新出现的架构问题**：trait 已回正为 `ExecutionState`，gateway 要拿三字段回执就须依赖 registry 的具名入口，这会**新增 gateway → registry 的依赖方向**，需先定方向再动。
+
 ### 协调者已裁定（各轨不得重新讨论）
 
 1. §3.2 #5 registry **重导出** `SessionView`/`SessionHandle`，绝不重新定义。
