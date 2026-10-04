@@ -95,6 +95,10 @@ async fn the_same_key_with_a_different_call_is_a_conflict() {
     }
     assert_eq!(json["kind"], "idempotencyConflict");
     assert_eq!(json["existing"], first.as_str());
+    // `{surface}` 保留：`surface` 是上面两条投影**渲染后的字符串**，不是凭据本身——
+    // 这一条断言的立意恰恰是「出口里不该有幂等键」，失败时说不出是哪一条出口带出去的
+    // 等于白跑。反过来，键本身（`fx::IDEMPOTENCY_KEY`，装了令牌层之后它就是签名提交令牌）
+    // 绝不进 panic 文本，只做 `contains` 的探针，不做 `{fx::IDEMPOTENCY_KEY}` 插值。
     for surface in [rendered, json.to_string()] {
         assert!(
             !surface.contains(fx::IDEMPOTENCY_KEY),

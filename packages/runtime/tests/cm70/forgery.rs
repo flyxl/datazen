@@ -7,6 +7,20 @@
 //! 令牌结构：`cm70.<keyVersion>.<hex(payload)>.<hex(MAC)>`，
 //! MAC 覆盖 `cm70.<keyVersion>.<hex(payload)>`——前缀与版本号都在签名覆盖范围内，
 //! 所以改版本号、改签发时刻、改到期时刻都会让 MAC 对不上。
+//!
+//! ## 本文件 panic 文本的裁定
+//!
+//! 本文件比 `cm70_no_disk.rs` 更靠前地**持有**真令牌：它要逐段改写它，所以
+//! `segments` / `from_hex` / `with_segment` 里的 `parts`、`hex` 就是凭据本身。
+//! 凡是这些值所在位置的失败文案一律静态化——理由与判据见
+//! `tests/cm70_no_disk.rs` 的文件头，这里不重复。
+//!
+//! 保留的插值，逐个理由：
+//! - `{field}` / `{fields.len()}`（本文件 `with_payload_field`）：`usize` 下标。
+//! - `{candidate:?}`：五个写死的非凭据字面量，是本测试的**输入**。
+//! - `{error:?}` / `{empty:?}`：`GatewayError`，字段已在构造点核过。
+//! - `forged`（`a_relabelled_prefix_is_refused`）：它带着真尾段，是本文件最危险的值；
+//!   保留的前提是**从不进 panic 文本**，只作请求载荷交给令牌层。
 
 use crate::gateway_fixtures as fx;
 use crate::{err, token_reason, write_once};
@@ -22,14 +36,26 @@ fn segments(token: &str) -> Vec<&str> {
 /// 只换第 `index` 段，其余原样拼回。
 fn with_segment(token: &str, index: usize, value: &str) -> String {
     let mut parts = segments(token);
-    assert_eq!(parts.len(), 4, "令牌必须是四段，实际是 {parts:?}");
+    // 段数不对时**只**报静态文案：`parts` 就是那枚真令牌的四个片段（含真实 MAC 与
+    // 真实随机 nonce），插进 panic 文本等于让这个助手任意一次失败都把凭据写进 CI 日志。
+    // 而且这一行在任何泄漏检查之前触发，所以它是最致命的一处。段数错说明夹具坏了，
+    // 静态文案已足够定位。
+    assert_eq!(
+        parts.len(),
+        4,
+        "令牌必须是四段（段数错说明夹具坏了，不回显以免带出凭据）"
+    );
     parts[index] = value;
     parts.join(".")
 }
 
 /// payload 段是 `|` 分隔字段的 **hex**——先解回文本再动它。
 fn from_hex(hex: &str) -> String {
-    assert!(hex.len() % 2 == 0, "hex 长度必须是偶数：{hex:?}");
+    // 同理：`hex` 就是 payload 段的真实十六进制，它的头一个字段是随机 nonce。
+    assert!(
+        hex.len() % 2 == 0,
+        "hex 长度必须是偶数（不回显 hex 以免带出凭据）"
+    );
     let bytes: Vec<u8> = (0..hex.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex 解码失败"))
@@ -55,6 +81,8 @@ fn payload_fields(token: &str) -> Vec<String> {
 /// 所以字段一改签名就对不上，测试要看的正是这一点。
 fn with_payload_field(token: &str, field: usize, value: &str) -> String {
     let mut fields = payload_fields(token);
+    // `{field}` 与 `fields.len()` 都是 `usize` 下标，插进 panic 文本不承载任何凭据——
+    // 越界时报「下标越界」比报整份载荷有用得多，且没有泄漏代价。
     assert!(
         field < fields.len(),
         "payload 字段越界：{field} ≥ {}",
@@ -230,6 +258,9 @@ async fn a_relabelled_prefix_is_refused() {
     let h = fx::token_harness();
     let genuine = fx::issue_token(&h.tokens, 1_000);
     let forged = format!("cm69{}", &genuine[genuine.find('.').unwrap()..]);
+    // `forged` 确实**带着**真尾段（真实 MAC 与随机 nonce），所以它是本文件里最危险的值。
+    // 保留的前提是它**从不进任何 panic 文本**——它只作为请求载荷交给令牌层，
+    // 下面那条断言失败时打印的是 `GatewayError`，不是它。
 
     let error = err(h
         .harness
@@ -283,6 +314,9 @@ async fn a_plain_string_is_not_accepted_as_a_token() {
             .await);
         assert!(
             matches!(error, GatewayError::SubmissionTokenRejected { .. }),
+            // `{candidate:?}` 保留：它是上面五个**写死**的非凭据字面量（本测试的输入，
+            // 不是真令牌）；`{error:?}` 是 `GatewayError`，其字段已在构造点核过
+            // （指纹 / `ExecutionId` / `&'static str` / 网关自建消息）。
             "候选 {candidate:?} 本该被令牌层拒绝，实际是 {error:?}"
         );
     }
@@ -297,6 +331,8 @@ async fn a_plain_string_is_not_accepted_as_a_token() {
         .await);
     assert!(
         matches!(empty, GatewayError::InvalidRequest { .. }),
+        // 同样保留：`{empty:?}` 是 `GatewayError::InvalidRequest { reason: &'static str }`，
+        // 它的字段是编译期定死的静态文案，不承载调用方数据。
         "空键应在请求校验就被拒，实际是 {empty:?}"
     );
     assert_eq!(h.harness.port.execute_calls(), 0);
@@ -379,7 +415,9 @@ async fn every_forgery_reason_is_machine_readable_and_leak_free() {
     // 可持久化形态里同样不得出现令牌原文。
     for error in [&expired, &unknown_version, &malformed] {
         let json = error.to_persistable_json().to_string();
-        assert!(!json.contains(&genuine), "拒绝理由里混进了令牌原文：{json}");
+        // 失败文案不回显 `json`：它**正是**被怀疑混进了令牌原文的那段文本，把被查对象
+        // 打进日志等于在「检查是否泄漏」的断言上开一个泄漏口。`genuine` 同样不回显。
+        assert!(!json.contains(&genuine), "拒绝理由里混进了令牌原文");
         assert!(json.contains("submissionTokenRejected"));
     }
 }
