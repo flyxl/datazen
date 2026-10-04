@@ -192,19 +192,56 @@ F3 是 CM-28「隧道不多减引用」的前置条件：refs 必须是无符号
 ## 门禁实测
 
 工作树：`/Users/wuxiaolong/code/rust-projects/datazen/.worktrees/datazen-p3-cm32-tunnel-refcount`
-分支：`feature/p3-cm32-tunnel-refcount` · HEAD `21e27e4ebc6c05c21c69b14e30fe3248891c2c5b`
-`CARGO_TARGET_DIR=/tmp/dz-target-p3-cm32-tunnel-refcount`（每条命令都带）
+分支 `feature/p3-cm32-tunnel-refcount` · **交付提交 `b111b026149a08f12442f3cf99131318fd4b1186`**（`2836d346d` 实现 + `b111b0261` 台账）
+基线 `21e27e4ebc6c05c21c69b14e30fe3248891c2c5b` · `CARGO_TARGET_DIR=/tmp/dz-target-p3-cm32-tunnel-refcount`
+
+### 基线口径（不要把旧的 382/405 搬过来）
+
+本轨开发期间 `main` 合入了 CM-74，`packages/runtime` 的基线数字已经变了。四组数字口径不同，必须分清：
+
+| 口径 | 树 | `--lib` | 全量 | 二进制 |
+| --- | --- | --- | --- | --- |
+| ① 本轨开发基线（**已过期**） | `21e27e4e` | 382 | 562 | 20 |
+| ② 交付树（旧基线 + 本轨） | `b111b026` | **405** = 382+23 | **592** = 562+30 | 21 |
+| ③ 当前 `main`（含 CM-74，无本轨） | `07c77d40` | **384** | **564** | 20 |
+| ④ **`main` + 本轨（交付后真实形态）** | 演练树 `af5baa65` | **407** = 384+23 | **594** = 564+30 | 21 |
+
+④ 是在一次性 detached 工作树里 `git merge main` 演练得到：**0 冲突**，我的分支未被改写，演练树已删除。**验收应以 ④ 为准**——两侧基线都从 384/564 起算，新增 23 条 `--lib` 测试 + 1 个 7 条测试二进制。
+
+### 逐字结论行
+
+交付树 `b111b026`（口径 ②）：
 
 | 命令 | 退出码 | 逐字结论行 |
 | --- | --- | --- |
 | `cargo test -p datazen-runtime --lib` | `0` | `test result: ok. 405 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s` |
 | `cargo test -p datazen-runtime --test tunnel_refcount_contract` | `0` | `test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s` |
-| `cargo test -p datazen-runtime`（全部 21 个二进制） | `0` | 21 条 `test result: ok.`，合计 `passed=592 failed=0`，无 `FAILED`、无 `error` |
+| `cargo test -p datazen-runtime`（21 个二进制） | `0` | 21 × `test result: ok.`，`passed=592 failed=0`，告警 0 条 |
 | `cargo fmt -p datazen-runtime -- --check` | `0` | 无输出 |
 
-- **基线未被打破**：`--lib` 405 = 382 条既有基线 + 23 条隧道测试；20 个既有测试二进制全部保持绿（`gateway_contract` 51、`p3_session_port_contract` 10 不变），新增第 21 个二进制。
-- **告警 0 条**：每次 `--lib` 与整包运行都核对过 `^warning` 计数为 0。
-- **文件规模**：最大 `tests/tunnel_refcount_contract.rs` 439 行，全部 < 800 行上限。
+`main` 基线树 `07c77d40`（口径 ③）：
+
+```
+cargo test -p datazen-runtime   EXIT=0
+test result: ok. 384 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+20 个二进制，passed_total=564，failed=0，告警 0 条，日志内 'tunnel' 出现 0 次
+```
+
+合并演练树 `af5baa65`（口径 ④）：
+
+```
+cargo test -p datazen-runtime   EXIT=0
+test result: ok. 407 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+21 个二进制，passed_total=594，failed=0，告警 0 条
+cargo fmt -p datazen-runtime -- --check   FMT_EXIT=0
+```
+
+### 两个提交各自独立绿
+
+- **`2836d346d`（实现）单独检出跑门禁**：`EXIT=0`，`--lib` `405 passed; 0 failed`，全量 `passed_total=592`，21 个二进制，告警 0 条。该提交**不含** `progress.md`（`git ls-files progress.md` = 0）。
+- **`b111b0261`（台账）**只新增根目录 `progress.md`，不经过 Rust 工具链，门禁结果与上一提交逐字一致。
+- 20 个既有测试二进制在两种口径下都保持绿（`gateway_contract` 51、`p3_session_port_contract` 10 不变），新增第 21 个。
+- 最大文件 `tests/tunnel_refcount_contract.rs` 439 行，全部 < 800 行上限。
 
 ### 运行次数如实记账
 
@@ -214,6 +251,8 @@ F3 是 CM-28「隧道不多减引用」的前置条件：refs 必须是无符号
 - 第 11 次 `404 passed; 1 failed` —— 上次改动自身的断言写错（把「递减后的剩余数」写成了恒等于 0），改为按 spec 分别维护期望剩余值。
 
 没有出现「跑到绿为止」的循环：第 12 次绿之后只复跑确认（第 13、14 次），结论一致。整包门禁共执行 2 次，两次结论一致（`EXIT=0`，`passed=592 failed=0`，告警 0 条）。
+
+基线重测阶段（本轨交付前）**另加 3 棵一次性 detached 工作树**，各跑 1 次整包门禁（`07c77d40` 基线、`af5baa65` 合并演练、`2836d346` 单提交核验），`--lib` 各隐含 1 次。合并演练在 scratch 树里 `git merge main`，**我的分支未被 rebase、未被 amend**，演练树与三棵工作树事后全部 `git worktree remove --force` 清理。
 
 ### 树未被并发改动
 
@@ -227,3 +266,5 @@ AFTER   git status --porcelain | sha256sum = b8af2d81a404b64c33e4ea6554fd9fc573f
 ```
 
 未触碰的文件（逐一核对）：`packages/platform-api/src/ports/network.rs`、`packages/runtime/src/connection/port.rs`、`hub.md`、`src-tauri/**`、`docs/**`。
+
+提交后本轨工作树 `git status --porcelain -uall` 为 **0 条**，验证方可直接在 detached 树上开作业面。
