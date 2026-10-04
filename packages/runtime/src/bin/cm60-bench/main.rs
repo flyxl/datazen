@@ -24,7 +24,8 @@
 //!
 //! ## 三个不可协商的口径（改任何一条都要先改判据）
 //!
-//! 1. **release 构建**：debug 档位的 p95 没有任何意义，见 [`reject_debug_build`]。
+//! 1. **release 构建**：debug 档位的 p95 没有任何意义。见 `main()` 里 `cfg!(debug_assertions)`
+//!    的拒绝分支——那里直接 `ExitCode::from(2)` 返回，不进入基准。
 //! 2. **每一轮都要 ≤ 10 ms**，不是五轮取平均、也不是取最好的那一轮。
 //! 3. **nearest-rank 第 `ceil(0.95*N)` 项（1-based）**，不插值。分位数实现只有一份：
 //!    `datazen_runtime::latency::nearest_rank_percentile`，唯一调用点在
@@ -32,10 +33,18 @@
 //!
 //! ## 失败样本为什么不删
 //!
-//! `OverheadProbe` 只在**登记段闭合**时才产出一条样本（两段打点都齐全才有）。
-//! 所以「删除失败样本」在这里不是「从分位数集合里剔掉失败项」——失败请求压根不会进集合。
-//! harness 的做法是**把失败数单列**（[`outcome::RoundOutcome::failures`]）并让判定式要求
-//! 它为 0，同时把失败率与排队数一并输出。**空样本集返回 `None`，绝不按 0 毫秒通过。**
+//! `fake-runtime-fixtures.md` §11.3 `:569`：「**不删除失败样本**：失败、超时、被取消的样本数
+//! 与占比必须与分位数一起输出，**禁止只统计成功样本**。」唯一的豁免是 `:568` 的
+//! 「被 `QueueFull` 拒绝或排队等待的请求」。
+//!
+//! 这件事在代码里不是靠「小心地不要删」，而是靠三个数同时存在：N（获准且未排队的请求数，
+//! 含随后失败的）、测到（分位数的真实输入条数）、未测出（计入 N 却打不出第二段真实时长的
+//! 请求数）。恒等式 `N = 测到 + 未测出` 由 [`outcome::RoundOutcome::sample_count_mismatch`]
+//! 盯着，未测出非 0 即门禁不成立。
+//!
+//! **打不出第二段终点时，不允许用 0、用超时值、用上一段值或任何构造值把它补进分位数。**
+//! 那样做等于把失败藏进 p95，而且从产物里看不出来——比原来的缺陷更坏。
+//! 参见 [`outcome::RoundOutcome::unmeasured_failures`]。
 //!
 //! ## fake 命令的 10 毫秒怎么消费
 //!
@@ -46,12 +55,17 @@
 //! 真实 `std::time::Instant` 仍在两段窗口里正常走动，所以量出来的就是真实开销。
 //! **仓库里没有一个 `sleep` 是真的在等**——见 [`driver::FakeDriverPort`]。
 //!
-//! ## 环境是外部注入的
+//! ## 环境是外部声明的，不是探测来的
 //!
-//! 基准进程读不到 CPU 拓扑（runtime crate 不依赖 `libc`，也不允许为了读一个数字去开
-//! 子进程——那会破坏 §11.1「禁止任何出站 socket」的整体交代）。所以实测 vCPU 数与内存字节数
-//! 由 `--vcpus` / `--mem-bytes` 显式传入，缺省就是 0 并在产物里如实写 0：
+//! 基准进程不去读 `/proc`、不起子进程（runtime crate 不依赖 `libc`，而为了读一个数字去开
+//! 子进程会破坏 §11.1「禁止任何出站 socket」的整体交代）。所以 vCPU 数与内存字节数由
+//! `--vcpus` / `--mem-bytes` 显式**声明**，缺省就是 0 并在产物里如实写 0：
 //! **宁可留白，也不填一个猜出来的数。**
+//!
+//! 字段名因此是 `declared_*` 而不是 `measured_*`：产物里写着一个数，不等于这个数被测量过。
+//! 同一段里另有唯一真正探测出来的数 `detected_parallelism`
+//! （[`std::thread::available_parallelism`]），探不到就是 `None`，不是 0。
+//! 内存没有进程内探针，只能保持声明形态——这一点由 [`report::Environment`] 的文档钉住。
 
 pub mod clock;
 pub mod driver;
@@ -82,13 +96,16 @@ cm60-bench —— CM-60 性能半（B 半）基准入口
   --concurrency <N>   并发任务数（默认 8）
   --fake-ms <N>       fake 命令虚拟耗时毫秒（默认 10）
   --out <DIR>         产物目录（默认 target/bench）
-  --vcpus <N>         实测 vCPU 数，写入产物 environment 段（缺省 0＝未采集）
-  --mem-bytes <N>     实测内存字节数，写入产物 environment 段（缺省 0＝未采集）
+  --vcpus <N>         声明的 vCPU 数，写入产物 environment 段（缺省 0＝未声明）
+  --mem-bytes <N>     声明的内存字节数，写入产物 environment 段（缺省 0＝未声明）
+  --inject-failure-every <N>
+                      诊断自证专用：每第 N 次驱动执行失败一次（0＝关闭，默认关闭）。
+                      开着它跑出来的产物不是判据证据，它只用来证明「失败不会被统计吞掉」。
   --help              打印本帮助
 
 退出码：
-  0  规格 release 运行，且每轮 p95 ≤ 10 毫秒、失败数 0、事件重复/丢失 0
-  1  门禁未通过（有轮超标、有失败、或事件流不干净）
+  0  规格 release 运行，且每轮 p95 ≤ 10 毫秒、失败数 0、未测出 0、事件重复/丢失 0
+  1  门禁未通过（有轮超标、有失败、有未测出、或事件流不干净）
   2  用法、运行或落盘错误
   3  运行完成，但不是 §11.1 的规格计划（不构成「按判据达标」的结论）
 ";
@@ -98,8 +115,12 @@ cm60-bench —— CM-60 性能半（B 半）基准入口
 struct Cli {
     plan: BenchPlan,
     out: Option<PathBuf>,
-    measured_vcpus: u32,
-    measured_memory_bytes: u64,
+    /// 声明值，不是测量值。见文件头「环境是外部声明的，不是探测来的」。
+    declared_vcpus: u32,
+    declared_memory_bytes: u64,
+    /// 故障注入间隔，0 = 关闭。刻意**不进** [`BenchPlan`]：
+    /// 计划形状不变才谈得上「同一批样本口径下判定会变红」，否则会被误判成不可比（退出码 3）。
+    inject_failure_every: u64,
 }
 
 #[derive(Debug)]
@@ -157,8 +178,13 @@ fn main() -> ExitCode {
 }
 
 fn execute(cli: &Cli) -> Result<u8, String> {
-    let run = runner::run_bench_on(cli.plan, cli.measured_vcpus, cli.measured_memory_bytes)
-        .map_err(|error| format!("基准运行失败: {error}"))?;
+    let run = runner::run_bench_on(
+        cli.plan,
+        cli.declared_vcpus,
+        cli.declared_memory_bytes,
+        cli.inject_failure_every,
+    )
+    .map_err(|error| format!("基准运行失败: {error}"))?;
     let written = report::write(&run, cli.out.as_deref())
         .map_err(|error| format!("产物落盘失败: {error}"))?;
 
@@ -197,11 +223,20 @@ fn print_report(run: &BenchRun, written: &report::WriteOutcome) {
         }
     );
     println!(
-        "环境：实测 {} vCPU / {} 字节（判据锚点 4 vCPU / 8589934592 字节）",
-        run.measured_vcpus, run.measured_memory_bytes
+        "环境：声明 {} vCPU / {} 字节（判据锚点 4 vCPU / 8589934592 字节；这两个数是\n\
+         命令行声明的，不是探测来的——产物 environment 段里另有真正探测出的 detected_parallelism）",
+        run.declared_vcpus, run.declared_memory_bytes
     );
+    if run.inject_failure_every > 0 {
+        println!(
+            "**故障注入已开启（每第 {} 次驱动执行失败一次）：本次运行不是判据证据，只作口径自证**",
+            run.inject_failure_every
+        );
+    }
     println!("预热：{} 个样本（不进任何分位数）", run.warmup.n());
-    println!("逐轮结果（§11.3：每轮输出 N、p50、p90、p95、p99、最大值、失败数、排队数）：");
+    println!(
+        "逐轮结果（§11.3：每轮输出 N、测到、未测出、p50、p90、p95、p99、最大值、失败数与占比、排队数）："
+    );
 
     for round in std::iter::once(&run.warmup).chain(run.rounds.iter()) {
         print_round(round, round.round == 0);
@@ -265,17 +300,29 @@ fn print_round(round: &RoundOutcome, is_warmup: bool) {
         format!("第 {} 轮", round.round)
     };
     println!(
-        "  {tag}: N={} p50={} p90={} p95={} p99={} max={} 失败={} 排队={} 墙钟={}",
+        "  {tag}: N={} 测到={} 未测出={} p50={} p90={} p95={} p99={} max={} 失败={} 占比={} 排队={} 墙钟={}",
         round.n(),
+        round.measured(),
+        round.unmeasured_failures(),
         ms(round.percentiles.p50_nanos),
         ms(round.percentiles.p90_nanos),
         ms(round.percentiles.p95_nanos),
         ms(round.percentiles.p99_nanos),
         ms(round.percentiles.max_nanos),
         round.failures(),
+        ratio(round.failure_ratio()),
         round.outcome.queued,
         ms(Some(round.wall_time_nanos))
     );
+}
+
+/// 占比的可读写法。`None` 渲染成 `-` 而不是 `0.0`：分母为 0 时「占比」是未知，
+/// 不是「测过、占比 0」。
+fn ratio(value: Option<f64>) -> String {
+    match value {
+        Some(value) => format!("{:.4}", value),
+        None => "-".to_owned(),
+    }
 }
 
 /// 纳秒 → 毫秒的可读写法。`None` 渲染成 `-` 而不是 `0`：没测到和 0 毫秒不是一回事。
@@ -289,8 +336,9 @@ fn ms(nanos: Option<u64>) -> String {
 fn parse(args: &[String]) -> Result<Cli, CliError> {
     let mut plan = DEFAULT_PLAN;
     let mut out = None;
-    let mut measured_vcpus = 0u32;
-    let mut measured_memory_bytes = 0u64;
+    let mut declared_vcpus = 0u32;
+    let mut declared_memory_bytes = 0u64;
+    let mut inject_failure_every = 0u64;
 
     let mut index = 0usize;
     while index < args.len() {
@@ -314,8 +362,9 @@ fn parse(args: &[String]) -> Result<Cli, CliError> {
                 plan = plan.with_fake_command(Duration::from_millis(millis));
             }
             "--out" => out = Some(PathBuf::from(value)),
-            "--vcpus" => measured_vcpus = parse_u32(value, &invalid)?,
-            "--mem-bytes" => measured_memory_bytes = parse_u64(value, &invalid)?,
+            "--vcpus" => declared_vcpus = parse_u32(value, &invalid)?,
+            "--mem-bytes" => declared_memory_bytes = parse_u64(value, &invalid)?,
+            "--inject-failure-every" => inject_failure_every = parse_u64(value, &invalid)?,
             other => return Err(CliError::Unknown(other.to_owned())),
         }
         index += 2;
@@ -324,8 +373,9 @@ fn parse(args: &[String]) -> Result<Cli, CliError> {
     Ok(Cli {
         plan,
         out,
-        measured_vcpus,
-        measured_memory_bytes,
+        declared_vcpus,
+        declared_memory_bytes,
+        inject_failure_every,
     })
 }
 
@@ -365,8 +415,9 @@ mod tests {
         assert_eq!(cli.plan, DEFAULT_PLAN);
         assert!(cli.plan.is_spec_plan());
         assert_eq!(cli.out, None);
-        assert_eq!(cli.measured_vcpus, 0);
-        assert_eq!(cli.measured_memory_bytes, 0);
+        assert_eq!(cli.declared_vcpus, 0);
+        assert_eq!(cli.declared_memory_bytes, 0);
+        assert_eq!(cli.inject_failure_every, 0, "故障注入默认必须关闭");
     }
 
     #[test]
@@ -407,7 +458,7 @@ mod tests {
     fn the_exit_code_is_not_inverted() {
         use crate::outcome::Percentiles;
 
-        let run = crate::runner::run_bench_on(quick(2, 8), 4, 8 * 1024 * 1024 * 1024)
+        let run = crate::runner::run_bench_on(quick(2, 8), 4, 8 * 1024 * 1024 * 1024, 0)
             .expect("基准应可运行");
 
         // 方向一：规格计划 + 门禁成立 → 0。
@@ -452,10 +503,28 @@ mod tests {
     }
 
     #[test]
-    fn the_environment_is_explicit_never_guessed() {
+    fn the_environment_is_declared_never_guessed() {
         let cli = parse(&args(&["--vcpus", "8", "--mem-bytes", "17179869184"])).expect("应可解析");
-        assert_eq!(cli.measured_vcpus, 8);
-        assert_eq!(cli.measured_memory_bytes, 17_179_869_184);
+        assert_eq!(cli.declared_vcpus, 8);
+        assert_eq!(cli.declared_memory_bytes, 17_179_869_184);
+    }
+
+    /// 注入开关必须能单独打开，且**不碰计划形状**：形状不变，判定才谈得上「由绿转红」。
+    #[test]
+    fn fault_injection_is_a_knob_not_a_plan_change() {
+        let plain = parse(&[]).expect("应可解析");
+        let injected = parse(&args(&["--inject-failure-every", "100"])).expect("应可解析");
+        assert_eq!(injected.inject_failure_every, 100);
+        assert_eq!(injected.plan, plain.plan, "注入不得改变计划形状");
+        assert!(injected.plan.is_spec_plan());
+    }
+
+    /// `None` 占比渲染成 `-`：分母为 0 是「未知」，不是「0%」。
+    #[test]
+    fn an_unknown_ratio_renders_as_a_dash_never_as_zero() {
+        assert_eq!(ratio(None), "-");
+        assert_eq!(ratio(Some(0.0)), "0.0000");
+        assert_eq!(ratio(Some(1.0)), "1.0000");
     }
 
     #[test]

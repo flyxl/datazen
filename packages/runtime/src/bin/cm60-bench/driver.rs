@@ -186,6 +186,13 @@ pub struct FakeDriverPort {
     fake_command: Duration,
     next_execution: AtomicU64,
     prefix: String,
+    /// **诊断用故障注入**：每第 N 次 `execute_in_session` 直接返回错误，0 = 关闭。
+    ///
+    /// 它存在的唯一理由是自证 §11.3「禁止只统计成功样本」这条口径真的被守着：
+    /// 打开它，第二段计时就永远打不上终点，样本数必然小于 N，如果实现仍在
+    /// `n()` 里填 `samples.len()`，门禁就会变绿——那正是缺陷本身。跑出来的产物因此
+    /// **不是**判据证据，只是自证；`inject_failure_every` 会写进产物，谁都能一眼看出它是被注入过的。
+    inject_failure_every: u64,
 }
 
 struct DriverState {
@@ -196,10 +203,14 @@ struct DriverState {
 
 impl FakeDriverPort {
     /// 造一个端口，`fake_command` 是**虚拟**耗时。
+    ///
+    /// `inject_failure_every` 是诊断旋钮：0 = 正常；N > 0 = 每第 N 次执行在拿到
+    /// executionId **之前**失败，见 [`FakeDriverPort::inject_failure_every`]。
     pub fn new(
         view: SessionView,
         fake_command: Duration,
         prefix: &str,
+        inject_failure_every: u64,
     ) -> (Arc<Self>, Arc<DriverJournal>) {
         let journal = Arc::new(DriverJournal::default());
         (
@@ -212,6 +223,7 @@ impl FakeDriverPort {
                 fake_command,
                 next_execution: AtomicU64::new(1),
                 prefix: prefix.to_owned(),
+                inject_failure_every,
             }),
             journal,
         )
@@ -232,6 +244,11 @@ impl FakeDriverPort {
             return;
         };
         state.outstanding = state.outstanding.saturating_sub(1);
+    }
+
+    /// 本次调用是否命中故障注入。计数的是**进入端口的调用数**，不是成功数。
+    fn injected_failure(&self, calls: u64) -> bool {
+        self.inject_failure_every > 0 && calls % self.inject_failure_every == 0
     }
 
     /// 锁只保护计数与视图；取不到锁时返回错误而不是 panic。
@@ -262,7 +279,15 @@ impl SessionPort for FakeDriverPort {
         request: ExecuteInSessionRequest,
     ) -> Result<ExecutionReceipt, RuntimeError> {
         let started = Instant::now();
-        self.journal.execute_calls.fetch_add(1, Ordering::Relaxed);
+        let calls = self.journal.execute_calls.fetch_add(1, Ordering::Relaxed) + 1;
+
+        // 注入点：必须在**发放 executionId 与 `outstanding += 1` 之前**返回错误。
+        // 否则这一趟会留下一个永远收不到终态事件的执行，在途计数与事件对账会被污染——
+        // 那样测的就不是「样本缺了一条」，而是「夹具坏了」。
+        if self.injected_failure(calls) {
+            return RuntimeError::InvariantBroken("cm60BenchInjectedFailure")
+                .rejected("cm60BenchExecute");
+        }
 
         let execution_id = {
             let mut state = self.lock()?;

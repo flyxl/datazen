@@ -7,8 +7,12 @@
 //! - **§11.2**：附加耗时 = 段①（网关完成鉴权/参数校验 → 派发 driver）+ 段②（driver completion →
 //!   回执/事件状态登记完成）两段**单调时间之和**；fake SQL 的 10 毫秒由 `tokio::time::pause()` 的
 //!   自动推进消费，**真实等待为零**，两段窗口用的是 `std::time::Instant`，不受虚拟时间影响。
-//! - **§11.3**：逐请求先求和再取分位数（nearest-rank，第 `ceil(0.95*N)` 项，1-based）；
-//!   排队与被拒的请求**不进 p95 样本**；失败样本不删除、失败数单列。
+//! - **§11.3**：逐请求先求和再取分位数（nearest-rank，第 `ceil(0.95*N)` 项，1-based）。
+//!   `N` 是**获准且未排队**的请求数（含随后失败的），不是样本条数：两者的差就是
+//!   `unmeasured_failures`，必须与分位数一起报出来。唯一的豁免是被 `QueueFull` 拒绝或
+//!   排队等待的请求；被别的理由拒掉的请求**不是被豁免，而是从未获准**，压根不在 `N` 里。
+//!   落在 `N` 上却打不出两段真实时长的请求**只进 `unmeasured_failures`，绝不用 0、超时值、
+//!   上一段的值或任何构造值补进去填满**——编出来的样本会把失败藏进分位数里。
 //! - **§11.4**：压力半另跑，不与延迟半共用入口。
 //! - **§11.6**：基准与功能测试**分开二进制入口**，CI 才能区分超时原因。
 //!
@@ -197,23 +201,35 @@ async fn one(
     let acceptance = match gateway.accept(who, request(index)).await {
         Ok(acceptance) => acceptance,
         Err(error) => {
-            // 被拒：不进 p95 样本，原因单列（§11.3）。
+            // 被拒：**从未获准**，因此不在 N 里——不是被豁免，是压根没进过 N 的口径。
+            // 原因单列（§11.3）：被 `QueueFull` 拒绝或排队等待的那一小类才是豁免，
+            // 而网关的受理错误还有鉴权、幂等、参数几类，它们只是没拿到受理而已。
             acc.outcome.rejected += 1;
             *acc.rejections.entry(rejection_label(&error)).or_insert(0) += 1;
             return;
         }
     };
+    // 受理成功 ⇒ 已获准，计入 N，无论它随后是重发、成功还是失败。N 在这里定型。
+    acc.outcome.admitted += 1;
     if acceptance.is_replay() {
         // 幂等重发不产生新执行，因此**不派发**：否则同一 executionId 会收到两遍事件。
+        // 它已经在 N 里，但没有新的执行 ⇒ 第二段终点根本不存在 ⇒ 计入
+        // unmeasured_failures，不能拿上一次的值或 0 顶上去。
+        // 这和「派发失败」是同一个形状：N 里有一条真实请求，分位数输入里却没有。
         acc.outcome.replays += 1;
+        acc.outcome.unmeasured_failures += 1;
         return;
     }
     let execution_id: ExecutionId = acceptance.execution_id().clone();
     match gateway.dispatch(who, &execution_id).await {
         Ok(_receipt) => acc.outcome.completed += 1,
         Err(error) => {
-            // 派发失败：失败数单列，且它**不占用**样本（样本只来自成功的两段计时）。
+            // 派发失败：已计入 N，但网关在 `port.execute_in_session` 之后就不往下走了
+            // （`gateway/mod.rs:364` 的 `?` 早于 `:376` 的 `state.samples.push`），
+            // 第二段终点打不出来，**真实时长就是不存在**。所以它进 unmeasured_failures，
+            // 绝不能编一个数补进分位数——那样失败会被分位数藏起来。
             acc.outcome.dispatch_failed += 1;
+            acc.outcome.unmeasured_failures += 1;
             *acc.rejections.entry(rejection_label(&error)).or_insert(0) += 1;
             return;
         }
@@ -393,8 +409,9 @@ fn check_plan(plan: BenchPlan) -> Result<(), BenchError> {
 fn notes(
     plan: BenchPlan,
     conforms: bool,
-    measured_vcpus: u32,
-    measured_memory_bytes: u64,
+    inject_failure_every: u64,
+    declared_vcpus: u32,
+    declared_memory_bytes: u64,
 ) -> Vec<String> {
     let mut notes = vec![
         format!(
@@ -423,13 +440,24 @@ fn notes(
     ];
     notes.push(format!(
         "判据环境锚点为 {SPEC_VCPUS} vCPU / {SPEC_MEMORY_BYTES} 字节（可复现性锚点，非容量要求）；\
-         本次运行实际环境为 {measured_vcpus} vCPU / {measured_memory_bytes} 字节，见 environment 段。"
+         本次运行**声明**的环境为 {declared_vcpus} vCPU / {declared_memory_bytes} 字节，见 \
+         environment 段——这两个数是命令行传进来的**声明值**，不是本进程探测出来的，\
+         所以字段名就叫 declared_*；进程自己能探的只有 available_parallelism，\
+         内存没有进程内探针。实测机以调用者填的为准，没填就是 0（未声明）。"
     ));
-    if measured_vcpus != SPEC_VCPUS || measured_memory_bytes != SPEC_MEMORY_BYTES {
+    if declared_vcpus != SPEC_VCPUS || declared_memory_bytes != SPEC_MEMORY_BYTES {
         notes.push(format!(
-            "本次运行未在判据指定的 {SPEC_VCPUS} vCPU / {SPEC_MEMORY_BYTES} 字节环境复测，\
-             因此不得作「按判据达标」的结论（实测机更快的部分只会让 p95 偏乐观，\
+            "本次运行未声明在判据指定的 {SPEC_VCPUS} vCPU / {SPEC_MEMORY_BYTES} 字节环境复测，\
+             因此不得作「按判据达标」的结论（更快的机器只会让 p95 偏乐观，\
              偏保守方向并不对称）。"
+        ));
+    }
+    if inject_failure_every > 0 {
+        notes.push(format!(
+            "**本次运行开启了故障注入**（每第 {inject_failure_every} 次执行失败一次），\
+             由 `--inject-failure-every` 显式打开。这是口径自证旋钮，**不是**判据证据：\
+             它的存在就是为了让「获准却打不出时长的请求」真实发生，从而证明它们没有从 \
+             N 里被悄悄删掉。"
         ));
     }
     notes.push(if conforms {
@@ -461,14 +489,11 @@ fn journal(
     let mut completed = 0usize;
     let mut projection = ProjectionReport::default();
     for round in std::iter::once(warmup).chain(rounds.iter()) {
-        // 受理 = 进入 dispatch 的 + 派发失败的 + 幂等重发的；被拒的从未获准。
-        admitted = admitted.saturating_add(
-            round
-                .outcome
-                .completed
-                .saturating_add(round.outcome.dispatch_failed)
-                .saturating_add(round.outcome.replays),
-        );
+        // 受理 = 获准且未排队的请求数（含随后失败的），就是 `RoundOutcome::n()` 的那一个数。
+        // 恒等式 `admitted == completed + dispatch_failed + replays` 由
+        // `SampleOutcome` 的记账保证，并由 `sample_count_mismatch` 的第二条在门禁上兜底，
+        // 所以这里不再另算一份——两处各算一份，早晚会有人只改一处。
+        admitted = admitted.saturating_add(round.outcome.admitted);
         dispatched = dispatched.saturating_add(
             round
                 .outcome
@@ -505,12 +530,12 @@ fn journal(
     }
 }
 
-/// 跑一次基准（环境留空：给自测用）。
+/// 跑一次基准（环境留空、不注入故障：给自测用）。
 ///
-/// 正式入口请用 [`run_bench_on`]，把实测 CPU/内存写进产物的 `environment` 段——
+/// 正式入口请用 [`run_bench_on`]，把**声明**的 CPU/内存写进产物的 `environment` 段——
 /// §11.6 要求照着产物就能重跑，环境留空就等于还得回头猜。
 pub fn run_bench(plan: BenchPlan) -> Result<BenchRun, BenchError> {
-    run_bench_on(plan, 0, 0)
+    run_bench_on(plan, 0, 0, 0)
 }
 
 /// 跑一次基准并记下实测环境。
@@ -519,26 +544,42 @@ pub fn run_bench(plan: BenchPlan) -> Result<BenchRun, BenchError> {
 /// 由虚拟时间消费，`pause()` 在多线程运行时上会 panic，所以这里不能开多线程（已披露）。
 /// 副作用也要说清楚：8 个并发任务因此共享一个线程，实测 p95 是**单核下界**，
 /// 不含跨核竞争。
+#[allow(clippy::too_many_arguments)]
 pub fn run_bench_on(
     plan: BenchPlan,
-    measured_vcpus: u32,
-    measured_memory_bytes: u64,
+    declared_vcpus: u32,
+    declared_memory_bytes: u64,
+    inject_failure_every: u64,
 ) -> Result<BenchRun, BenchError> {
     check_plan(plan)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()
         .map_err(|error| BenchError::RuntimeSetup(error.to_string()))?;
-    runtime.block_on(async { drive_all(plan, measured_vcpus, measured_memory_bytes).await })
+    runtime.block_on(async {
+        drive_all(
+            plan,
+            declared_vcpus,
+            declared_memory_bytes,
+            inject_failure_every,
+        )
+        .await
+    })
 }
 
 async fn drive_all(
     plan: BenchPlan,
-    measured_vcpus: u32,
-    measured_memory_bytes: u64,
+    declared_vcpus: u32,
+    declared_memory_bytes: u64,
+    inject_failure_every: u64,
 ) -> Result<BenchRun, BenchError> {
     let started = Instant::now();
-    let (port, driver_journal) = FakeDriverPort::new(ready_view(), plan.fake_command, EXEC_PREFIX);
+    let (port, driver_journal) = FakeDriverPort::new(
+        ready_view(),
+        plan.fake_command,
+        EXEC_PREFIX,
+        inject_failure_every,
+    );
     let gateway = Arc::new(ExecutionGateway::new(
         Arc::clone(&port) as Arc<dyn datazen_runtime::registry::SessionPort>,
         AlwaysAllow::shared(),
@@ -597,8 +638,9 @@ async fn drive_all(
     let run = BenchRun {
         plan,
         conforms_to_spec: true,
-        measured_vcpus,
-        measured_memory_bytes,
+        inject_failure_every,
+        declared_vcpus,
+        declared_memory_bytes,
         warmup,
         rounds,
         raw,
@@ -609,7 +651,13 @@ async fn drive_all(
     let conforms = run.plan.is_spec_plan();
     Ok(BenchRun {
         conforms_to_spec: conforms,
-        notes: notes(run.plan, conforms, measured_vcpus, measured_memory_bytes),
+        notes: notes(
+            run.plan,
+            conforms,
+            inject_failure_every,
+            declared_vcpus,
+            declared_memory_bytes,
+        ),
         ..run
     })
 }
@@ -641,7 +689,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn every_request_produces_exactly_one_sample() {
         let plan = tiny();
-        let run = drive_all(plan, 8, 17_179_869_184)
+        let run = drive_all(plan, 8, 17_179_869_184, 0)
             .await
             .unwrap_or_else(|error| panic!("bench failed: {error}"));
         let round = &run.rounds[0];
@@ -649,11 +697,68 @@ mod tests {
         assert_eq!(round.n(), plan.per_round, "完成的请求必须各有一次两段计时");
         assert_eq!(round.failures(), 0);
         assert_eq!(round.outcome.queued, 0, "网关没有排队受理态");
+        // N = 测到的 + 没测到的。这条恒等式一旦被打破，说明有人把失败样本删掉了。
+        assert_eq!(round.n(), round.measured() + round.unmeasured_failures());
+        assert!(!round.sample_count_mismatch());
+    }
+
+    /// F-01 的**真实 harness 守门测试**：开着故障注入跑整个 harness，断言
+    /// （1）N 仍然是每一条获准请求，**不因失败而缩水**；（2）打不出时长的那些**只**
+    /// 落在 `unmeasured_failures` 上，绝不被补成一个数；（3）门禁因此变红。
+    ///
+    /// 之前只有 `latency.rs` 里一个纯函数级的用例（拿手工过滤好的向量喂给分位数），
+    /// 证明不了 harness 的记账——缺陷正是记账把失败样本吞了而那个用例照样绿。
+    #[tokio::test(start_paused = true)]
+    async fn injected_failures_stay_inside_n_and_turn_the_gate_red() {
+        let plan = tiny();
+        let run = drive_all(plan, 8, 17_179_869_184, 1)
+            .await
+            .unwrap_or_else(|error| panic!("bench failed: {error}"));
+        let round = &run.rounds[0];
+        assert_eq!(
+            round.n(),
+            plan.per_round,
+            "每次执行都失败 ⇒ 每个请求都获准 ⇒ N 必须还是 per_round，样本不许缩水"
+        );
+        assert_eq!(
+            round.measured(),
+            0,
+            "一次都测不出来：第二段终点根本不存在，不是「测出来是 0」"
+        );
+        assert_eq!(round.unmeasured_failures(), plan.per_round);
+        assert!(round.failures() > 0, "失败数必须与分位数一起报出来");
+        assert_eq!(
+            round.failure_ratio(),
+            Some(1.0),
+            "占比也要报：全部失败就是 100%"
+        );
+        assert!(!round.sample_count_mismatch(), "记账本身仍须自洽");
+        assert!(
+            !round.passes_gate(),
+            "有获准请求掉出分位数输入集合就不能判过"
+        );
+        assert!(!run.verdict().gate_passed);
+        assert!(
+            run.raw.is_empty(),
+            "没有任何真实时长就一个样本都不许有，raw 里不能出现编出来的条目"
+        );
+    }
+
+    /// 负向对照：不注入时恒等式照样成立，且门禁不受影响。
+    #[tokio::test(start_paused = true)]
+    async fn without_injection_every_admitted_request_is_measured() {
+        let plan = tiny();
+        let run = drive_all(plan, 8, 17_179_869_184, 0).await.unwrap();
+        for round in std::iter::once(&run.warmup).chain(run.rounds.iter()) {
+            assert_eq!(round.unmeasured_failures(), 0);
+            assert_eq!(round.n(), round.measured());
+            assert!(round.passes_gate());
+        }
     }
 
     #[tokio::test(start_paused = true)]
     async fn event_stream_is_lossless_across_the_round() {
-        let run = drive_all(tiny(), 8, 17_179_869_184).await.unwrap();
+        let run = drive_all(tiny(), 8, 17_179_869_184, 0).await.unwrap();
         assert!(run.journal.projection.is_clean(), "事件重复/丢失必须为 0");
         assert_eq!(run.journal.outstanding_at_end, 0, "在途执行必须归零");
     }
@@ -661,14 +766,14 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn warmup_samples_stay_out_of_the_measured_rounds() {
         let plan = tiny();
-        let run = drive_all(plan, 8, 17_179_869_184).await.unwrap();
+        let run = drive_all(plan, 8, 17_179_869_184, 0).await.unwrap();
         assert_eq!(run.warmup.outcome.requested, plan.warmup);
         assert_eq!(run.raw.len(), plan.per_round * plan.rounds);
     }
 
     #[tokio::test(start_paused = true)]
     async fn idempotency_keys_are_unique_per_request() {
-        let run = drive_all(tiny(), 8, 17_179_869_184).await.unwrap();
+        let run = drive_all(tiny(), 8, 17_179_869_184, 0).await.unwrap();
         let total_replays: usize = std::iter::once(&run.warmup)
             .chain(run.rounds.iter())
             .map(|round| round.outcome.replays)

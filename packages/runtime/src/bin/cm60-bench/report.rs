@@ -35,9 +35,15 @@ pub struct Environment {
     /// 判据指定的可复现性锚点（4 vCPU / 8 GiB）。
     pub criterion_vcpus: u32,
     pub criterion_memory_bytes: u64,
-    /// 实测值。基准自己拿不到 CPU 数，只能由入口从外部注入。
-    pub measured_vcpus: u32,
-    pub measured_memory_bytes: u64,
+    /// **声明值**（命令行注入），不是探测值——所以字段名就叫 declared：
+    /// 产物里写着一个数，不等于这个数被测量过。调用方不填就是 0（未声明）。
+    pub declared_vcpus: u32,
+    pub declared_memory_bytes: u64,
+    /// 唯一真正探测出来的数：`std::thread::available_parallelism()` 的结果，
+    /// 探不到时为 `None`（而不是 0，0 会被误读成「探测到 0 核」）。
+    /// 内存**没有**进程内探针（§11.1 禁止起子进程/开 socket 读 `/proc` 之类），
+    /// 所以内存那一栏只能保持声明值形态，并由 `notes` 明说这一点。
+    pub detected_parallelism: Option<u32>,
     pub os: String,
     pub arch: String,
     /// 虚拟时间驱动(fake 10 毫秒)意味着 8 并发共享一个线程，实测值是单核下界。
@@ -59,6 +65,17 @@ pub struct BuildRecord {
     pub pressure_harness: &'static str,
     pub benchmark_entry: &'static str,
     pub criterion_source: &'static str,
+    /// crate 声明的 feature 与本次是否启用。同一份代码在不同 feature 下不是同一份代码，
+    /// 缺了它，「照着产物重跑」就漏了一半输入。
+    pub features: String,
+    /// 依赖锁文件的字节数与摘要。`Cargo.lock` 不入库比对，但产物得留一个指纹，
+    /// 否则换一次依赖解析，重跑出来的数就没人认了。
+    ///
+    /// 摘要用 **FNV-1a-64**：它不是加密哈希，只用于「同一份锁文件 vs 换过的锁文件」这一档
+    /// 区分，不承担任何抗碰撞职责，写在这里是为了不让读产物的人误以为它是密码学摘要。
+    pub lock_bytes: usize,
+    pub lock_digest_fnv1a64: String,
+    pub lock_digest_algorithm: &'static str,
 }
 
 /// 原始产物。三段齐备，不允许缺一。
@@ -85,17 +102,35 @@ pub struct PlanRecord {
     pub concurrency: usize,
     pub fake_command_millis: u64,
     pub conforms_to_spec: bool,
+    /// 非 0 表示这次运行开了故障注入：产物**不是**判据证据，只是口径自证。
+    pub inject_failure_every: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RoundRecord<'a> {
     pub round: usize,
     pub concurrency: usize,
+    /// N = 获准且未排队的请求数（含随后失败的）。
     pub n: usize,
+    /// 分位数的真实输入条数。**它和 `n` 不是同一个数**，差值就是 `unmeasured_failures`。
+    /// §11.3 要求失败样本不得从统计里消失，所以这两个数必须并排写出来：
+    /// 只写 `n` 会让人以为 N 条请求全都测到了。
+    pub measured: usize,
+    /// 计入 `n` 却打不出第二段真实时长的请求数。**非 0 即门禁不成立**；
+    /// 这些请求**没有**被补一个构造值进分位数。
+    pub unmeasured_failures: usize,
     pub p95_nanos: Option<u64>,
     pub percentiles: &'a crate::outcome::Percentiles,
+    /// 失败数。§11.3 `:569` 要求它**与占比**一起输出。
     pub failures: usize,
+    /// 失败占比（失败 / 提交）。分母为 0 时是 `None`（未知），不是 `0.0`——
+    /// `0.0` 会被读成「测过，失败率 0」。
+    pub failure_ratio: Option<f64>,
     pub queued: usize,
+    /// 按原因的拒绝/失败计数。键来自 `runner::rejection_label`
+    /// （`runtime:{reason}` / `permission:{action}` / `idempotency:{kind}` / `invalid:{reason}`）。
+    /// 之前这些数只在内存里汇过，**从不写进产物**——边界的死数据，等于没统计。
+    pub rejections: &'a std::collections::BTreeMap<String, usize>,
     pub wall_time_nanos: u64,
     pub event_projection: &'a crate::driver::ProjectionReport,
 }
@@ -144,13 +179,21 @@ pub fn timestamp() -> String {
         .unwrap_or_else(|_| TIMESTAMP_FALLBACK.to_owned())
 }
 
-/// 组装两段环境/构建记录。`measured_*` 由入口注入：基准进程读不到 CPU 拓扑。
-pub fn environment(measured_vcpus: u32, measured_memory_bytes: u64) -> Environment {
+/// 组装环境记录。
+///
+/// `declared_*` 由入口注入，是**声明**不是测量：基准进程不去读 `/proc`、不起子进程
+/// （§11.1 禁止出站 socket，且没有额外依赖），所以 CPU 数与内存只能由调用方声明。
+/// 这里额外探一个 `available_parallelism()`，好让读产物的人至少有一个真数可以对照；
+/// 内存没有进程内探针，只能保持声明形态，并在 `notes` 里说明。
+pub fn environment(declared_vcpus: u32, declared_memory_bytes: u64) -> Environment {
     Environment {
         criterion_vcpus: SPEC_VCPUS,
         criterion_memory_bytes: SPEC_MEMORY_BYTES,
-        measured_vcpus,
-        measured_memory_bytes,
+        declared_vcpus,
+        declared_memory_bytes,
+        detected_parallelism: std::thread::available_parallelism()
+            .ok()
+            .and_then(|n| u32::try_from(n.get()).ok()),
         os: std::env::consts::OS.to_owned(),
         arch: std::env::consts::ARCH.to_owned(),
         runtime_threads: "single-threaded (tokio current_thread + time::pause)",
@@ -177,7 +220,43 @@ pub fn build() -> BuildRecord {
         criterion_source:
             "docs/architecture/platform/connection-management.md:1235-1239 (CM-60); \
                            bench spec docs/architecture/platform/fake-runtime-fixtures.md 11.1-11.6",
+        features: features(),
+        lock_bytes: WORKSPACE_LOCK.len(),
+        lock_digest_fnv1a64: fnv1a64_hex(WORKSPACE_LOCK.as_bytes()),
+        lock_digest_algorithm: "FNV-1a 64-bit (non-cryptographic; change fingerprint only)",
     }
+}
+
+/// 工作区 `Cargo.lock` 在编译期固化：运行期去读文件系统路径，才是真的「照着产物重跑」吗？
+/// 不——是产物自己得带走它依赖的那一份，否则产物和仓库之间没有任何可核对的绑定。
+const WORKSPACE_LOCK: &str = include_str!("../../../../../Cargo.lock");
+
+/// crate 声明的 feature 及本次启用情况。
+///
+/// Cargo 把启用的 feature 以 `CARGO_FEATURE_<名字>` 注入编译期环境，未启用则变量不存在。
+/// 这里列出的名字与 `packages/runtime/Cargo.toml` 的 `[features]` 段一一对应，
+/// 由 `every_declared_feature_appears_in_the_build_record` 盯着，新增 feature 忘了登记就红。
+fn features() -> String {
+    format!(
+        "default=on (declared as []); test-harness={}",
+        if option_env!("CARGO_FEATURE_TEST_HARNESS").is_some() {
+            "on"
+        } else {
+            "off"
+        }
+    )
+}
+
+/// FNV-1a-64 的十六进制摘要。非加密用途，只用来区分「同一份锁文件 / 换过的锁文件」。
+fn fnv1a64_hex(bytes: &[u8]) -> String {
+    const OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = OFFSET_BASIS;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(PRIME);
+    }
+    format!("{hash:016x}")
 }
 
 /// `option_env!` 在构建期固化，`std::process::Command` 在生产路径上 spawn 子进程
@@ -186,7 +265,7 @@ fn rustc_version() -> Option<String> {
     option_env!("DZ_CM60_RUSTC_VERSION").map(str::to_owned)
 }
 
-fn plan_record(plan: BenchPlan, conforms: bool) -> PlanRecord {
+fn plan_record(plan: BenchPlan, conforms: bool, inject_failure_every: u64) -> PlanRecord {
     PlanRecord {
         warmup: plan.warmup,
         per_round: plan.per_round,
@@ -194,6 +273,7 @@ fn plan_record(plan: BenchPlan, conforms: bool) -> PlanRecord {
         concurrency: plan.concurrency,
         fake_command_millis: u64::try_from(plan.fake_command.as_millis()).unwrap_or(u64::MAX),
         conforms_to_spec: conforms,
+        inject_failure_every,
     }
 }
 
@@ -202,10 +282,14 @@ fn round_record(round: &RoundOutcome) -> RoundRecord<'_> {
         round: round.round,
         concurrency: round.concurrency,
         n: round.n(),
+        measured: round.measured(),
+        unmeasured_failures: round.unmeasured_failures(),
         p95_nanos: round.p95_nanos(),
         percentiles: &round.percentiles,
         failures: round.failures(),
+        failure_ratio: round.failure_ratio(),
         queued: round.outcome.queued,
+        rejections: &round.rejections,
         wall_time_nanos: round.wall_time_nanos,
         event_projection: &round.event_projection,
     }
@@ -224,13 +308,13 @@ pub fn write(run: &BenchRun, out: Option<&Path>) -> Result<WriteOutcome, BenchEr
     let raw_path = dir.join(format!("{RAW_PREFIX}{stamp}.json"));
     let summary_path = dir.join(format!("{SUMMARY_PREFIX}{stamp}.json"));
 
-    let env = environment(run.measured_vcpus, run.measured_memory_bytes);
+    let env = environment(run.declared_vcpus, run.declared_memory_bytes);
     let build = build();
     let stamp_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
         .unwrap_or(0);
-    let plan = plan_record(run.plan, run.conforms_to_spec);
+    let plan = plan_record(run.plan, run.conforms_to_spec, run.inject_failure_every);
     let rounds: Vec<RoundRecord<'_>> = run.rounds.iter().map(round_record).collect();
 
     let raw_artifact = RawArtifact {
@@ -303,7 +387,7 @@ impl std::error::Error for BenchError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::outcome::{ExecutionJournal, Percentiles, SampleOutcome};
+    use crate::outcome::{Percentiles, SampleOutcome};
     use crate::plan::DEFAULT_PLAN;
     use crate::runner::run_bench;
 
@@ -321,15 +405,20 @@ mod tests {
         let env = environment(8, 17_179_869_184);
         assert_eq!(env.criterion_vcpus, 4);
         assert_eq!(env.criterion_memory_bytes, 8 * 1024 * 1024 * 1024);
-        assert_eq!(env.measured_vcpus, 8);
-        assert_eq!(env.measured_memory_bytes, 17_179_869_184);
+        assert_eq!(env.declared_vcpus, 8);
+        assert_eq!(env.declared_memory_bytes, 17_179_869_184);
+        // 唯一真正探测出来的那个数：探不到时是 None，绝不是 0（0 会被读成「探测到 0 核」）。
+        assert!(
+            env.detected_parallelism.map_or(true, |n| n > 0),
+            "探测到的并行度要么是 None，要么是正数"
+        );
     }
 
     #[test]
     fn a_faster_box_is_still_recorded_as_a_deviation() {
         let env = environment(8, 17_179_869_184);
-        let deviates = env.measured_vcpus != env.criterion_vcpus
-            || env.measured_memory_bytes != env.criterion_memory_bytes;
+        let deviates = env.declared_vcpus != env.criterion_vcpus
+            || env.declared_memory_bytes != env.criterion_memory_bytes;
         assert!(deviates, "8 vCPU / 16 GiB 必须被判为偏离 4 vCPU / 8 GiB");
     }
 
@@ -343,7 +432,7 @@ mod tests {
             captured_at_unix_nanos: 0,
             environment: &env,
             build: &build,
-            plan: plan_record(run.plan, run.conforms_to_spec),
+            plan: plan_record(run.plan, run.conforms_to_spec, run.inject_failure_every),
             journal: &run.journal,
             rounds: run.rounds.iter().map(round_record).collect(),
             raw: &run.raw,
@@ -353,10 +442,23 @@ mod tests {
         assert!(text.contains("\"environment\""));
         assert!(text.contains("\"build\""));
         assert!(text.contains("\"raw\""));
+        // §11.5 的三段齐备是类型强制的（Environment/Build 都非 Option），这里额外钉住
+        // F-09 补的两样确实出现在序列化结果里，而不是被 `skip_serializing` 之类的手段抹掉。
+        assert!(text.contains("\"features\""));
+        assert!(text.contains("\"lock_digest_fnv1a64\""));
+        // raw 条数必须等于**分位数的真实输入条数**。写 N 会在存在未测出样本时虚报：
+        // N 里含打不出第二段终点的那批，它们根本没有样本。
         assert_eq!(
             artifact.raw.len(),
-            run.rounds.iter().map(RoundOutcome::n).sum::<usize>()
+            run.rounds.iter().map(RoundOutcome::measured).sum::<usize>()
         );
+        for round in &run.rounds {
+            assert_eq!(
+                round.measured() + round.unmeasured_failures(),
+                round.n(),
+                "N = 测到 + 未测出 必须恒等，否则产物的三个数对不上"
+            );
+        }
     }
 
     #[test]
@@ -415,36 +517,69 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tempdir());
     }
 
+    /// 样本集为空时，分位数必须是 `None` 而不是 0；计数走另一条路。
+    /// 顺手钉住：分位数为空**不能**被当成「这一轮没失败」。
     #[test]
     fn percentiles_and_counts_are_reported_independently() {
-        // 样本集为空时，分位数必须是 None 而不是 0；计数走另一条路。
         let empty = Percentiles::of(&[]);
         assert!(empty.is_empty());
         assert_eq!(empty.p95_nanos, None);
         let outcome = SampleOutcome::default();
         assert_eq!(outcome.failures(), 0);
-        let _ = ExecutionJournal {
-            admitted: 0,
-            dispatched: 0,
-            completed: 0,
-            outstanding_at_end: 0,
-            session_view_calls: 0,
-            execute_calls: 0,
-            cancel_calls: 0,
-            close_calls: 0,
-            events_emitted: 0,
-            events_projected: 0,
-            execution_records_retained: 0,
-            projection: crate::driver::ProjectionReport::default(),
-            driver_round_trip: crate::driver::DriverRoundTrip::empty(),
-            driver_round_trip_median_nanos: None,
-            dropped_round_trips: 0,
-            permit_reconciliation: crate::outcome::PermitReconciliation {
-                gateway_ledger_balanced: true,
-                budget_permit_ledger_carrier: String::new(),
-                budget_permit_ledger_command: String::new(),
-            },
-        };
+        // 空样本 + 没有失败是一条自洽的组合；空样本 + 有失败就必须靠 unmeasured_failures 暴露。
+        let run = run_bench(quick(1, 4)).expect("最小计划应可跑");
+        let round = run.rounds.first().expect("应有一轮");
+        assert!(round.measured() > 0, "无注入时每条获准请求都该测到");
+        assert_eq!(round.unmeasured_failures(), 0);
+        assert!(!round.sample_count_mismatch());
+    }
+
+    /// F-09 的漂移守卫：`build()` 里硬写了 feature 名，`Cargo.toml` 加了新 feature 而这里
+    /// 没登记时，产物就会少记一半构建输入——而这种缺失从产物本身看不出来。
+    #[test]
+    fn every_declared_feature_appears_in_the_build_record() {
+        let manifest = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
+            .expect("应能读到本 crate 的 Cargo.toml");
+        let declared: Vec<&str> = manifest
+            .lines()
+            .skip_while(|line| !line.trim_start().starts_with("[features]"))
+            .skip(1)
+            .take_while(|line| !line.trim_start().starts_with('['))
+            .filter_map(|line| {
+                let line = line.split('#').next().unwrap_or_default().trim();
+                line.split_once('=').map(|(name, _)| name.trim())
+            })
+            .filter(|name| !name.is_empty())
+            .collect();
+        assert!(
+            !declared.is_empty(),
+            "解析不到 [features] 段——守卫本身失效了，那比缺登记更危险"
+        );
+        let recorded = build().features;
+        for name in &declared {
+            assert!(
+                recorded.contains(name),
+                "Cargo.toml 声明了 feature `{name}`，但产物 build.features 没记它：{recorded}"
+            );
+        }
+    }
+
+    /// 锁文件摘要是非加密的：算法名必须写在产物里，免得有人拿它当完整性凭据。
+    #[test]
+    fn the_lock_digest_is_labelled_as_non_cryptographic() {
+        let build = build();
+        assert!(build.lock_bytes > 0);
+        assert_eq!(
+            build.lock_digest_fnv1a64.len(),
+            16,
+            "16 位十六进制 = 64 bit"
+        );
+        assert!(build.lock_digest_algorithm.contains("non-cryptographic"));
+        // 同一份锁文件，同一个摘要。
+        assert_eq!(
+            build.lock_digest_fnv1a64,
+            fnv1a64_hex(WORKSPACE_LOCK.as_bytes())
+        );
     }
 
     #[test]
