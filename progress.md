@@ -61,7 +61,7 @@ WT_SHA_BEFORE = WT_SHA_AFTER = ae85404ce088139f1a43ed7f35878f0408e22714
 
 ## 三、遗留与待裁定项（本轨未擅自改写）
 
-1. **`PRD §` 共 193 处、跨 125 文件（全仓无任何 PRD 文件）**（tracked / untracked / ignored 皆无）。计数方法可复现（**入库口径，排除两个台账自身**——否则本台账里写下的字面量会把自己算进去）：`git grep -o 'PRD §' -- . ':!progress.md' ':!hub.md' | wc -l` = **193**；`git grep -l 'PRD §' -- . ':!progress.md' ':!hub.md' | wc -l` = **125**；`git ls-files | grep -ic prd` = 0。**不排除台账的原始数是 197 / 126**，差额 4 处全部来自本台账自身文本。**台账计数规则：凡统计「入库内容」必须同时排除 `progress.md` 与 `hub.md`。**占 tracked 文件 3490 个中的 3.6%。规模远超单点引用，且每处的「§」所指内容已无法复原，**无据可写**；须由各轨文档 owner 决定是就地改写为已实现事实还是删节。（第一轮 192/124，第二轮 195/126——第二轮把台账自己算进去了，R2 纠正；本轮 193/125 为准。）
+1. **`PRD §` 共 193 处、跨 125 文件**——**无任何 _tracked_ PRD 文件**；见 6.6，原「untracked / ignored 皆无」属过度断言。计数方法可复现（**入库口径，排除两个台账自身**——否则本台账里写下的字面量会把自己算进去）：`git grep -o 'PRD §' -- . ':!progress.md' ':!hub.md' | wc -l` = **193**；`git grep -l 'PRD §' -- . ':!progress.md' ':!hub.md' | wc -l` = **125**；`git ls-files | grep -ic prd` = 0。**不排除台账的原始数是 197 / 126**，差额 4 处全部来自本台账自身文本。**台账计数规则：凡统计「入库内容」必须同时排除 `progress.md` 与 `hub.md`。**占 tracked 文件 3490 个中的 3.6%。规模远超单点引用，且每处的「§」所指内容已无法复原，**无据可写**；须由各轨文档 owner 决定是就地改写为已实现事实还是删节。（第一轮 192/124，第二轮 195/126——第二轮把台账自己算进去了，R2 纠正；本轮 193/125 为准。）
 2. **`connection/adapters.rs`（`shared-boundaries-and-ports.md:589`）**：该行是「过渡实现、逐 consumer 迁移后删除旧路径」的**迁移状态声明**。文件不存在，但本轨无证据判断迁移是已完成还是计划有误——**改写它等于替 owner 下结论**，故保留原状待裁定。
 3. **已删除的测试文件引用 3 处**：`e2e/helpers/ops-process-server.ts`（`e2e-coverage.md:189`）、`ConnectionNavigatorTree.test.tsx`（2 处）、`extensionThemes.test.ts`（`packages/wapps/README.md:99`）、`ui/plugin-meta.test.ts`（`docs/architecture/testing.md:178`）。均为删除测试后的悬空引用，替换目标不存在，需 owner 确认删除意图。
 4. **`docs/blogs/diagrams/*.html|json` 共 12 处旧路径**：属已生成的推广物料产物，重写收益低且易与生成器脱节，未纳入本轨。
@@ -357,3 +357,29 @@ porcelain=0
 枚举命令的同一形状内成立**：验证方把同形状引用注入**我清单之外的**文件，我照样归零。
 所以准确表述是：**「四类别归零」对我自选清单成立，对本仓库不成立。**
 仓库级的 115 处死路径 / 12 个类别属**另轨登记**，本轮不掩盖、不代改。
+
+### 6.6 本轮每个「零」的注入证伪结果（含一个被证伪的**过度断言**）
+
+| 断言 | 命令 | 注入 | 计数变化 |
+| --- | --- | --- | --- |
+| FAIL-3 漂移族已清 | `git grep -n 'ops_tree_scan/\|ops_workbench/\|ops_exec\.rs\|redis_driver_on\.rs' -- packages/drivers/redis/` | 往 tracked `ops/workbench/tests.rs` 注入一行同形状引用 | `1 -> 2`，复原回 1 |
+| `BUG-00x` 活跃系列 14 套 | `git grep -ohE '[A-Za-z0-9_.-]+-BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' \| sed -E 's/-[0-9]+$//' \| sort -u \| wc -l` | 注入 `redis-mutation-series-BUG-900` | `14 -> 15`，复原回 14 |
+| `write/tests.rs` 裸写 `BUG-004` 已清 | 同上裸写族（限该文件） | 该文件内加一处裸写 | 会重新出现 |
+| `test/` 树已整体删除 | `git ls-files test/ \| wc -l` | `git add -N test/BUG-999-mutation-probe.ts` | `0 -> 1`，复原回 0 |
+| 无 PRD 文件 | `git ls-files \| grep -ic prd` | `git add -N PRD-mutation-probe.md` | `0 -> 1`，复原回 0 |
+
+**最后一行同时证伪了我自己那句过度断言。** 台账原文写「全仓无任何 PRD 文件
+（tracked / untracked / ignored 皆无）」。实测：注入一个**未 staged** 的
+`PRD-mutation-probe.md`，`git ls-files \| grep -ic prd` **仍然报 0**——
+`git ls-files` 只看索引，**看不见 untracked / ignored 文件**，所以这条命令
+在结构上就无法支撑「皆无」。它只能支撑「无 **tracked** PRD 文件」。
+
+这是**第七次**同一根因：把「我的命令没查到」写成「仓库没有」。
+
+**规则固化**：
+- 负向断言（没有 X）必须先证明**命令有能力发现 X**，再引用它的 0；
+  能力证明 = 注入一个同类 X，看计数是否动。
+- 「untracked / ignored 皆无」这类断言，`git ls-files` 系列命令**永远无法给出**；
+  要覆盖只能换成 `find`（但本轨无权遍历忽略目录）——**故此类断言一律降级为
+  「无 tracked X」，不写更强的说法。**
+- 本轮所有 0 已按此重验：能力不足者已改写措辞，未降级者必须有注入证据。
