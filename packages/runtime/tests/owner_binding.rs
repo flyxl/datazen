@@ -65,10 +65,10 @@
 //! `api_code()` 返回 `None`、`NotOnTheWire`、`UNKNOWN_EXECUTION` 三处），单轨改动会
 //! 同时打穿它们。**归属裁定留给集成时统一裁决**，本轨只登记、不声称闭合。
 
-#[path = "owner_binding/support.rs"]
-mod support;
 #[path = "owner_binding/production_wiring.rs"]
 mod production_wiring;
+#[path = "owner_binding/support.rs"]
+mod support;
 
 use datazen_platform_api::error::ApiErrorCode;
 use datazen_runtime::connection::RuntimeError;
@@ -319,7 +319,11 @@ async fn cm06_an_editor_owned_by_another_organization_is_refused() {
         .await
         .expect("O2 的真 owner 必须被受理");
     assert!(!acceptance.execution_id().as_str().is_empty());
-    assert_eq!(gw.execution_count().await, 1, "真 owner 应当留下一条执行记录");
+    assert_eq!(
+        gw.execution_count().await,
+        1,
+        "真 owner 应当留下一条执行记录"
+    );
     assert_eq!(store.writes(), 1, "真 owner 应当写入一条幂等账本");
     assert_eq!(port.execute_calls(), 0);
 }

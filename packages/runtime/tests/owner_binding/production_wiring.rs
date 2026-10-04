@@ -334,7 +334,9 @@ fn strip_use_statements(src: &str) -> String {
 
 /// 判定用的「真正被执行的代码」：去注释 → 去 `#[cfg(test)]` 内联块 → 去导入。
 fn executable_code(src: &str) -> String {
-    strip_use_statements(&strip_inline_test_modules(&strip_comments_and_literals(src)))
+    strip_use_statements(&strip_inline_test_modules(&strip_comments_and_literals(
+        src,
+    )))
 }
 
 /// 在一段源码里找出「真的在用」这些名字的行号（剥除之后）。
@@ -343,9 +345,10 @@ fn wired_names(src: &str) -> Vec<(usize, String)> {
         .lines()
         .enumerate()
         .filter(|(_, line)| {
-            NEVER_WIRE_THESE
-                .iter()
-                .any(|name| line.split(|c: char| !is_ident_byte(c as u8)).any(|w| w == *name))
+            NEVER_WIRE_THESE.iter().any(|name| {
+                line.split(|c: char| !is_ident_byte(c as u8))
+                    .any(|w| w == *name)
+            })
         })
         .map(|(idx, line)| (idx + 1, line.trim().to_string()))
         .collect()
@@ -408,7 +411,12 @@ fn the_wiring_scan_actually_covers_the_gateway_and_the_host() {
     collect_rs(&root, &mut files);
     let visited: Vec<String> = files
         .iter()
-        .map(|path| path.strip_prefix(&root).unwrap().to_string_lossy().into_owned())
+        .map(|path| {
+            path.strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
 
     for required in MUST_VISIT {
@@ -438,8 +446,7 @@ fn the_wiring_scan_actually_covers_the_gateway_and_the_host() {
 /// 豁免不能腐化：被豁免的那个文件必须**真的还在定义**这两个类型。
 #[test]
 fn the_definition_site_exemption_is_still_a_real_definition() {
-    let src = fs::read_to_string(repo_root().join(DEFINITION_SITE))
-        .expect("定义点文件必须存在");
+    let src = fs::read_to_string(repo_root().join(DEFINITION_SITE)).expect("定义点文件必须存在");
     let code = executable_code(&src);
     for name in NEVER_WIRE_THESE {
         assert!(
