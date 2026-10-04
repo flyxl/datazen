@@ -30,6 +30,8 @@
 mod cm73;
 #[cfg(test)]
 mod cm73_threads;
+#[cfg(test)]
+mod cm74_release_order;
 mod session_cmds;
 #[cfg(test)]
 mod tests;
@@ -48,11 +50,15 @@ use crate::connection::testing::commands::session_handle_command_definition;
 use crate::connection::testing::fake_resource::{
     AcquiredResource, FakeResourceProvider, FakeScript,
 };
+#[cfg(test)]
+use crate::connection::testing::fixtures;
 use crate::connection::testing::ids::FakeIds;
 use crate::connection::testing::journal::CommandJournal;
 use crate::connection::types::{
     ExecutionTarget, HandleId, OwnerRef, PoolKeyFingerprint, PoolKeyInputs, WorkerId,
 };
+#[cfg(test)]
+use crate::connection::types::{JobId, OrganizationId};
 
 pub use cm73::{EvictionRaceOutcome, EvictionRaceReport};
 pub use session_cmds::GatewayError;
@@ -295,6 +301,53 @@ pub fn fixture_target(namespace_key: &str) -> ExecutionTarget {
         },
         object: None,
     }
+}
+
+// ---------------------------------------------------------------------------
+// 跨用例模块共享的私有帮助函数
+// ---------------------------------------------------------------------------
+//
+// 这三个帮助函数被 `tests.rs` 与 `cm74_release_order.rs` **同时**调用。
+// 放这里而不是留在其中一边，是因为留在一边就得让另一边 `use super::tests::…`，
+// 或者把同一个函数抄两份 —— 两者都把「同一个夹具世界」的事实写成了巧合。
+// 这与 [`fixture_target`] 是同一条理由：只被用例调用、但用例分居多个模块的帮助函数归本文件。
+
+/// §8.1：夹具目标取自 `fixtures`，用例里不写硬编码命名空间字面量。
+#[cfg(test)]
+pub fn harness_for(namespace_key: &str) -> FakeHarness {
+    FakeHarness::from_provider(
+        FakeResourceProvider::new(WorkerId::new("w1"), fixture_target(namespace_key))
+            .with_execution_identity(fixtures::IDENTITY_SHARED),
+    )
+}
+
+/// §8.1 `PROFILE_P` 归属：一个 job owner。
+#[cfg(test)]
+pub fn owner() -> OwnerRef {
+    OwnerRef::Job {
+        organization_id: OrganizationId::new(fixtures::ORG_A),
+        job_id: JobId::new("job_org-alpha_0001"),
+        stage_id: "job:job_org-alpha_0001/stage:1".to_owned(),
+    }
+}
+
+/// 从 `CommandResult.data` 里取第一条会话句柄的 id。
+///
+/// §9.1 的 output schema 已经声明了 `sessionHandles[].handleId`，所以这里
+/// 只做形状检查；形状漂移用 `expect` 报出来是刻意的 —— 它意味着命令表变了。
+#[cfg(test)]
+pub fn first_handle_id(result: &CommandResult) -> String {
+    result
+        .data
+        .pointer("/sessionHandles/0/handleId")
+        .and_then(|value| value.as_str())
+        .unwrap_or_else(|| {
+            panic!(
+                "命令输出里没有 sessionHandles[0].handleId，实际是 {}",
+                result.data
+            )
+        })
+        .to_owned()
 }
 
 /// 供 `session_cmds` 组装输出用的最小 json 帮助函数。
