@@ -1,6 +1,6 @@
 //! CM-70 的端到端重放用例。
 //!
-//! `connection-management.md` §16.6 中 `**CM-70 过期幂等键与记录删除（H/W1）**`
+//! `connection-management.md` §16.7 中 `**CM-70 过期幂等键与记录删除（H/W1）**`
 //! 整条的原文：
 //!
 //! ```text

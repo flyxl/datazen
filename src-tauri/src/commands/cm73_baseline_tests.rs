@@ -16,11 +16,11 @@
 //!
 //! Two tests share one journey:
 //! - `cm73_baseline_idle_eviction_reproduces_the_defect` is **green** and pins
-//!   the *observed* sequence — that is the `:1284` baseline evidence. When the
+//!   the *observed* sequence — that is the `- 基线说明` baseline evidence. When the
 //!   P3 connection-runtime track turns CM-73 green, this test is **deleted, not
 //!   updated**: the defect it pins no longer exists.
 //! - `cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused`
-//!   is `#[ignore]`d and asserts the **target behavior only**. Per the `:1285`
+//!   is `#[ignore]`d and asserts the **target behavior only**. Per the `- 保留声明`
 //!   retention clause its assertions must survive the removal of the legacy
 //!   `ConnectionManager`, so they are written as behavior ("the runtime must not
 //!   leave a live handle behind a closed physical resource, and must not rebuild
@@ -587,7 +587,7 @@ async fn observe_journey() -> Observation {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-/// CM-73 baseline evidence (`:1284`). Green, and pins the *observed* sequence.
+/// CM-73 baseline evidence (`- 基线说明`). Green, and pins the *observed* sequence.
 ///
 /// **Delete this test when CM-73 goes green in the P3 connection-runtime
 /// track** — do not relax it. Every assertion below describes the defect.
@@ -658,10 +658,11 @@ async fn cm73_baseline_idle_eviction_reproduces_the_defect() {
     );
 }
 
-/// CM-73 target behavior. **Known failure** for the whole of P0 (`:1284` permits
-/// it); `:1307` requires it to be green in the P3 connection-runtime track.
+/// CM-73 target behavior. **Known failure** for the whole of P0 (the `- 基线说明`
+/// bullet permits it as a known failure); it must turn green in the P3
+/// connection-runtime track.
 ///
-/// The assertions are behavioral on purpose (`:1285` retention clause): they
+/// The assertions are behavioral on purpose (the `- 保留声明` retention clause): they
 /// must keep holding after the legacy `ConnectionManager` is deleted, so they
 /// never name a legacy function, a legacy struct field, or a map shape.
 /// Deleting or weakening any of them to reach green is forbidden.
