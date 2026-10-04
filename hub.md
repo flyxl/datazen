@@ -1663,3 +1663,173 @@ CM-32 合并前先在 main 上建立基线，再合并后再扫，归属才诚�
 
 - **CM-60 压力排空**：Tester `725ac4df` 在跑，结论未到。我已给它两处缺口的倾向（`fake-runtime-fixtures.md:3` 页眉失效引用判**合并阻塞**；§12 CI 门禁未加判为待裁定）与「不要只查这两处」。
 - **P3 退出门禁 CM 重审**：`dffce491` 在跑，已自行拆出 4 个子审计并行。目标 main `b98ddba89`（已过时，main 现为 `0802c4d49`）——它对 CM-32/CM-70/CM-60 三轨的贡献必须**自己核对 worktree**，不采信我的「已知贡献」。
+
+---
+
+# 出口门重审收口 —— 判据集不改，覆盖表按合并后重算
+
+重审报告 `/tmp/p3_logs/EXIT_GATE_REAUDIT.md`（454 行），审计单元是**整份判据文档 / 整条判据**，不是我点名的几行。
+
+## 审计目标完整性 —— 第 4 次断裂
+
+派单钉 `b98ddba893d6`，写作时 main 已是 `f1d843271`。期间 main 走了 4 次：`dc7113649` → `d46cc54bb`（CM-32 合并）→ `dd8e01d16` / `0802c4d49`（CM-70 合并 + 台账销毁）→ `f1d843271`。其中 `d46cc54bb`、`dd8e01d16` 动了运行时代码。
+
+**教训（长期有效）**：钉审计目标时必须给显式 sha、让代理在**读的时候**用 `git rev-parse` 解析、并明确告诉它 main 会继续走、且把自钉点以来动过运行时代码的提交**逐个列出来**让它自查。只说「目标是 main」必然断裂。
+
+## 判据集：无需推翻
+
+`platform-development-plan.md:124` 的 P3 退出门槛自推导出 6+13+3+3+1+14 = **40** 条，与重审独立数出的 40 条一致。§16 全部 74 个标题逐条核对，34 条排除并给出理由。**判据集保持原样。**
+
+## 表 A（`b98ddba`）vs 表 B（合并后）
+
+| | COVERED | PARTIAL | MISSING |
+|---|---|---|---|
+| 表 A | 15 | 22 | 3（CM-06 / CM-28 / CM-32）|
+| 表 B | **17** | **22** | **1（CM-06）** |
+
+只有 4 行变动：**CM-32 MISSING → COVERED**、**CM-70 PARTIAL → COVERED**、**CM-28 MISSING → PARTIAL**、CM-27 单元数变动但行判定不变。转移守恒已核。
+
+## 三条被推翻的前提
+
+1. **CM-70 是 COVERED，不是 PARTIAL。** 七个单元全部有断言（`expiry.rs:13/51/76`、`retention.rs:13/46/92/148/148`、`forgery.rs:69-177`、`retries.rs:53/84/201/274/300`、`owner_restart.rs:28/133`、`no_disk.rs:128/140/292/326`）。**子代理的判定被我推翻**，以重审为准。
+2. **`platform-development-plan.md:344` 陈旧。** 它断言 `ResourceManager` / `LeaseManager` / `SessionRegistry` / `PoolManager` / `ConnectionPool` 「连类型都不存在」；实测 `ResourceManager`（`packages/runtime/src/resource/manager.rs:29`）与 `SessionRegistry`（`packages/runtime/src/registry/registry.rs:240`）**存在**，且正是 CM-68/69/73/74 的断言对象。⇒ 交 `p3-doc-drift-ledger` 改写。
+3. **隧道模块头少报了一个已关闭单元。** 「可确认关闭的资源许可归零」（判据 `connection-management.md:1031`）确由 `resource_return_to_pool.rs:406`/`:220`、`journey.rs:343`/`:360` 关闭 ⇒ §5 真实缺口 **5 → 4**。
+
+## §5 隧道残留：反证
+
+- **`tunnel/` 内零并发原语**：`thread::spawn|tokio::spawn|Barrier|join!` 命中 **0**；最接近的只是顺序的 `1..=6` 循环。`tunnel_refcount_contract.rs:352` 数的是 tunnel 的 `close_calls` 而非 driver close，且顺序执行。
+- ⇒ 那 5 个残留缺口在**已合并的 main 上同样缺失**，不是 CM-32 的漏项，也不是任何在飞轨的欠账。
+- **`TunnelLedger` 在 `src/tunnel/` 之外零生产调用者**；`lib.rs:28-29` 自述为实现上游 `NetworkProvider` 契约。⇒ **CM-32 的覆盖是模块级的，没有接进 `ResourceManager`。** 这一条已登记（CM-32-FU1，`hub.md` 合并后段），**不是**新的可修缺陷。
+
+## §4 裁定
+
+- **D-03 已被证伪**（依据 `hub.md:486`）。HEAD 重扫：`enum CancelDisposition` 只在 `connection/port.rs:248`，已由 `dd386c3aa` 关闭。
+- **CM-73**：删掉 `connection/testing/**` 之后仍通过，保持通过。
+- **CM-74 差一个单元**：没有终止 registry actor 的测试，且归池与 `setSessionContext` 未端到端 ⇒ 尚未满足 `connection-management.md:1317` 的硬门槛。
+- **CM-06 是唯一 MISSING，且是实现缺口**（根因见下节）。
+
+---
+
+# CM-06 根因的亲自核实 —— 比重审报告更精确
+
+重审判 CM-06 是「实现缺失」。派轨前我自己查了一遍，结论更硬：
+
+- **全仓 `impl Authorizer` 只有 4 处，无一是生产实现**：`gateway/provenance.rs:241` `AlwaysAllow`（注释自陈「任何把它接到生产路径上的代码审查都应该停下来问一句」）、`:275` `AlwaysDeny`、`gateway/facade_support.rs:206` `DenyCancel`、`:226` `FlippingAuthorizer`（后两个是单测夹具）。
+- **输入侧齐全**：`connection/session.rs:155` `SessionView` 带 `pub owner: OwnerRef`；`gateway/mod.rs:411`/`:539`/`:645` 三处已在调 `authorize`。
+- **同仓有可照抄的先例**：`directory/attachment.rs:191-234` 的 `authorize_attachment`，三步检查序（路由闸 → 凭据 → 身份），身份步产出 `PrincipalMismatch` / `OwnerMismatch`，每一步为什么排这个位置都写在代码旁。
+- **请求 DTO 无法承载伪造身份**：`gateway/request.rs` 对 `owner` / `principal` / `organization` **零命中**；`RequestPrincipal`（`provenance.rs:155-180`）只经 `accept(principal, …)` 这类**位置参数**传入，不走请求体。⇒ 这一半结构性满足，但**没有可执行证据**，派单时要求编译期/反序列化期负例。
+
+**⇒ CM-06 不是缺信息，是没人做比对。** 这也说明它是一轨能真正转正的活，不是补注释。
+
+## 我自己发现的、被忽略的一半：不能观察资源存在性
+
+CM-05 判据要求「不能观察资源存在性」。现状 `gateway/mod.rs:408` 先 `session_view(&handle)`、`:411` 才 `authorize`：
+
+- 传**不存在**的 ID ⇒ `session_view` 报错
+- 传**别人的** ID ⇒ `session_view` 成功、`authorize` 拒绝
+
+**两条路径的可观测结局不同 ⇒ 跨用户调用者能据此判断某个 ID 是否存在。** 已写进 `p3-gateway-owner-binding` 的硬要求，并明确告诉它：论证「H 层做不到」需要代码证据，光写一句做不到会被打回。
+
+---
+
+# 新开两轨
+
+## `p3-gateway-owner-binding`（CM-06 + CM-05 + CM-04）
+
+出口门唯一 MISSING，重审判定最高杠杆。交付真实 `Authorizer` 实现 + CM-06 的可执行负例 + CM-04 的 driver 调用次数为 0 + CM-05「不可观察存在性」。worktree `.worktrees/datazen-p3-gateway-owner-binding`，基点 `f1d843271`。
+
+**800 行上限是活的**：`gateway/mod.rs` 已 **799**，加法不得落在它上面，授权实现放 `provenance.rs`（352）或新模块。
+
+**非目标**：W 半归 P7；ArtifactStore 订阅/下载归 CM-61/CM-64（P7 豁免），不许「顺便实现」；不许为凑 6 个接口发明不存在的接口。
+
+## `p3-doc-drift-ledger`（纯文档 + 失效引用扫除）
+
+四处漂移，我已逐字核对：
+
+1. **P3 性能豁免只活在本文件里**。`connection-management.md:1236` 与 `:857` 仍写着 p95 ≤ 10 ms 的完整门槛。本文件 P3 收口时销毁后，文档上将留下「P3 到底判没判这个门槛」的空白。要求就地补阶段归属、**不得出现 `hub.md` 字样**、**不得删改门槛本身**（它是 P7 的判据，豁免的是判定不是判据）。`:857` 所在段落的口径部分（nearest-rank / 每轮 10000 / 不删失败样本）**全部继续有效，不许动**。
+2. `platform-development-plan.md:344` 陈旧断言（见上）。
+3. `src-tauri/src/services/connection_manager/tests/cm04_baseline.rs:13` 引用 `connection-management.md:852`，CM-04 判据实际在 `:885`。（重审报的行号是 `:2`，实际 `:13` —— 实质无误，行号小瑕。）
+4. **9 处指向已不存在的 `progress.md` 的失效引用**（8 处 redis + `cancel.rs:22`），就是上一节建立的归属基线。处置判据是「删掉这行之后这段注释还说得通吗」，**绝不允许只把 `progress.md` 换个文件名了事**。
+
+**合并冲突预警**：`p3-cm60-pressure-drain` 也在改 `connection-management.md`（§15.1 命令表附近），故该轨要求**按文字定位、不按行号写死锚点**。
+
+---
+
+# CM-60 返修轮（第 2 轮 / 上限 5）
+
+Round-1 Tester 判 **FAIL**，返修单已交回**同一个** Coder `1208099a-39bc-4353-acea-5427bce21086`。
+
+## 两个 BLOCKING
+
+- **F-01 失败样本被剔出 p95 样本集**。`runner.rs:197-205`（rejected）与 `:212-220`（dispatch_failed）直接 `return`；而 `gateway/mod.rs:364` `execute_in_session` 在 `:376 state.samples.push(sample)` 之前返回 ⇒ **已测量的网关耗时被丢弃**。违反 `fake-runtime-fixtures.md:569`「**不删除失败样本**：失败、超时、被取消的样本数与占比必须与分位数一起输出，**禁止只统计成功样本**」。对照组：`runner.rs:371-373` 正确排除了 `queued`。
+- **F-05 CI 覆盖为零**。`scripts/run-platform-crate-tests.mjs:165` 硬编码 `const argvList = ['test', '--lib', ...crates.flatMap((c) => ['-p', c.name])]` ⇒ 46 个 `cm60-bench` 单测、6 个 `cm60_pressure_drain` 测试、release 门禁、§11.5 上传**从不运行**。且 `main.rs:141-147` 在 `debug_assertions` 下 `exit 2` ⇒ debug 构建永远无法满足 §11.1。
+
+## 我追加的硬约束（Tester 报告里没有）
+
+**保留的失败样本必须带真实实测时长；无法标记的段尾（execute 失败）必须进显式的 `unmeasured_failures` 计数器 —— 绝不零填充、不拿超时顶替、不编造。** 派生：**N 的口径改为「获准且未排队」**，`outcome.rs:158-160` 的 `sample_count_mismatch()` 与 `:274-280` 的 `verdict()`（六项合取）必须重新定义。
+
+## §11.3:568 排队分位数 —— 规格口径缺口，不是不合格的实现
+
+`fake-runtime-fixtures.md:567-568` 要求排队请求单独报等待分位数，但**基准这一半的排队数结构上恒为 0**。裁定：
+
+1. **不许收窄 `:568`**（那是把可修的洞写成永久事实）。
+2. **不许把队列接进基准这一半**。
+3. **登记为编号跟进项，归属既有的队列/压力责任方，不新开轨号。**
+
+这条**不是**合并阻塞项，且豁免范围只是 P3 的**性能判定**——规格符合性与 §11.3 排队/样本语义**全部仍在范围内**。
+
+## 基准证据的归属（★ 不要再搞错）
+
+- 权威本地对：`cm60-raw-1791128233852.json`（5,710,920 B）+ `cm60-summary-1791128233852.json`（8,455 B），Oct 4 23:37，由 **`04a55fa72`** 产出（日志 `SHA_PRE`）。**我先前误记为 `4bd5a55c5`，已在 `dc7113649` 更正。**
+- **不许重跑基准**（用户明确要求，且机器现状与可复现性都不支持）。返修后的产物由 **F-05 的 CI job** 产出。证明方式是**把既有 raw JSON 灌进返修后的判定路径**。
+- 基准产物**不进版本库**（`git check-ignore -v` → `.gitignore:16 /target`）。
+
+## 其余待办
+
+F-03 注释与代码矛盾（`outcome.rs:83-84`）、F-02 失败**占比** + `rejections` 未序列化、F-04 守卫测试只测纯函数、F-09 BuildRecord 缺 features 与 lockfile 摘要、F-07 / F-08 文档、F-06 内联链接、F-10 `measured_*` 是 CLI 注入的应改名 `declared_*`。
+
+Tester 已独立复核通过的项：`plan.rs:11-35` 常量逐字对齐、`latency.rs:41-55` nearest-rank `ceil(q*N)` 1-based、四个退出码方向（0/1/2/3，3 先于门禁）、tokio `net` feature 计数 0、§11.6 入口分离结构性成立。**并撤回了它自己的一条怀疑**（`report.rs:178` 指向 `connection-management.md:1235-1239` 是**对的**）。
+
+---
+
+# CM-70-FU2 在飞
+
+令牌泄漏收口，Coder `5357b5fa-d068-44e3-9e4f-19070f01e7eb`，worktree `.worktrees/datazen-p3-cm70-fu2-token-leak`，基点 `f1d843271`。
+
+泄漏点：`packages/runtime/tests/cm70_no_disk.rs:494` 的 `assert_eq!(parts.len(), 4, "令牌必须是四段，实际 {parts:?}")` 在**每次调用**内部都会触发 ⇒ 任何断言失败都会把完整令牌分四段打进 panic 输出。违反 `connection/port.rs:443-445`「不得写入 journal / 报告 / **测试输出**」、`:462`「不得…**拼进断言**」。
+
+**800 行上限逼着守卫测试单独成文件**（`cm70_no_disk.rs` 已 799），且守卫测试**不得匹配自己**，只报行号、**永不打印匹配内容**。
+
+---
+
+# 当前在飞
+
+| 轨 | 状态 | worktree | 基点 |
+|---|---|---|---|
+| `p3-cm60-pressure-drain` | 返修轮 2/5 | `.worktrees/datazen-p3-cm60-pressure-drain` | `7fa6630f0` 系 |
+| `p3-cm70-fu2-token-leak` | 实现中 | `.worktrees/datazen-p3-cm70-fu2-token-leak` | `f1d843271` |
+| `p3-gateway-owner-binding` | 实现中 | `.worktrees/datazen-p3-gateway-owner-binding` | `f1d843271` |
+| `p3-doc-drift-ledger` | 实现中 | `.worktrees/datazen-p3-doc-drift-ledger` | `f1d843271` |
+
+四轨并行。**每轨返回 `READY_FOR_TEST` 即刻派全新的 Tester，不等其它轨**（用户明确要求过不要攒批）。**未经 Tester 通过绝不合并。**
+
+## P3 合并计数：12 条
+
+`p3-foundation`、`baseline-gates`、`directory`、`resource`、`budget`、`gateway`、`registry`、`cancel-cleanup`、`harness-split`、`cm74`、`p3-cm32-tunnel-refcount`、`p3-cm70-idempotency-replay`。
+
+## 后续轨（待开）
+
+- `p3-concurrent-release-close`（CM-28：设计在 `tunnel/mod.rs:22-32`，只缺 barrier/原子断言）
+- `p3-assertion-sweep`（CM-73/74 门槛行 + 6 处散落单元）
+
+## 已登记未开的编号跟进项
+
+- 9 处 `progress.md` 失效引用 → **已交 `p3-doc-drift-ledger`**
+- CM-60 §11.3:568 排队分位数规格缺口 → 归属既有队列/压力责任方
+- CM-32-FU1（`transport.rs:38-42`，含 `close_tally: Mutex<usize>`）→ 合并后
+- `TunnelLedger` 未接进 `ResourceManager` → 随 CM-32-FU1
+- CM-74 终止 registry actor 的单元 + 归池/`setSessionContext` 端到端 → `p3-assertion-sweep`
+
+## 不开的轨（明确排除）
+
+仓库根 `cargo fmt` 的环境缺口、heredoc 教训、39 处既有 `cargo doc` 链接错误、CM-60 §11.3 排队规格缺口、`cancel.rs:22` 与 redis 的 `progress.md` 引用（已交给文档轨）、**D 层全部**、**P7 的 CM-61/CM-64 与 CM-05/CM-06 的 W 半**。
