@@ -121,6 +121,41 @@ POST HEAD=de4d45749… STATUSLINES=0
 
 **D-06 确认不存在**：hub.md 缺陷表只有 D-01/02/03/04/05/07，全仓亦无此条目，Tester 未编造裁定。D-03 按协调者裁决推迟到合并时统一切 `CancelReceipt`（必须动 `connection/**`，属本轨禁改区）。D-07 维持撤销。D-01 / D-04 / D-05 判真关。
 
+### gateway 轨第 3 轮验收 → `PASS`（2026-10-05）→ **已合并**
+
+被测提交 `9872a8c5a`（父 `de4d4574`），本轮是**纯测试轮**：`git diff de4d4574..9872a8c5a -- packages/runtime/src/` = **0 行**。协调者独立复核与 Tester 一致（HEAD / 父 / 工作树 0 行脏 / `src/` 0 行 / `lib.rs` 1 行 / 两条新用例就位 / 契约 `51 passed` EXIT=0）。
+
+**5 条门禁全绿**：lib `328 passed`、契约 `51 passed`、build 0 warning、fmt 0 字节、边界 `0 violation(s), 0 error(s)`。**14 个回归基线逐个对应二进制名，零回退。**
+
+**4 条变异全部被杀（本轮唯一实质内容就是这 2 条新用例）**：
+
+| 变异 | EXIT | 失败用例 | 逐字断言 |
+| --- | --- | --- | --- |
+| **M7** | 101 | `idempotency::a_replay_receipt_reports_the_source_frozen_at_first_acceptance` | `left: ExecutionSource { kind: Editor, source_id: "edt_tampered", organization_id: None, principal_id: None }` / `right: … source_id: "edt-contract", organization_id: Some(OrganizationId("org-contract")), principal_id: Some(PrincipalId("principal-contract"))` |
+| **M7-变种**（`SourceKind::Job`，kind 与原值**不同**） | 101 | 同上 | `left: kind: Job, source_id: "job_tampered"` / `right: kind: Editor, source_id: "edt-contract"` |
+| **M2-A**（守卫 → 无条件赋值） | 101 | `events::a_stale_snapshot_never_lowers_the_observed_context_revision` | `left: Counter(11)` / `right: Counter(30)` |
+| **M2-B**（整条守卫语句**删除**） | 101 | 同上 | `left: Counter(30)` / `right: Counter(40)` |
+
+**两条关键的交叉验证（Tester 自行追加，非 Coder 自证）：**
+
+1. **M7 对全部既有用例隐形。** M7 变异下跑 `--lib` = `328 passed` EXIT=0 —— 该变异对 328 条 lib 与 51 条契约中的其余 50 条**完全不可见**。上一轮 M7 存活的原因由此被独立确证：缺的就是这条新用例。
+2. **M2-B 的归属判定成立。** 定向跑两个同名用例：`--lib` 那条受保护用例在 M2-B 下 **EXIT=0 变绿**，只有新用例第 (3) 段（更新快照 40 恢复后必须是 40）杀掉形态 B，红在 `events.rs:175` `Counter(30)` vs `Counter(40)`。形态 A 红在 `events.rs:164`（第 (2) 段）。
+
+**Coder 的 M2-B 主张经限定后成立，未夸大**：M2-B 并非只被新用例捕获，`--lib` 整体跑另有 2 条变红（`event_store_tests.rs:273` `left: Counter(2)` / `right: Counter(42)`、`cancel_event_tests.rs:406` `left: Counter(1)` / `right: Counter(11)`）。Coder 原话是「受保护的 `--lib` 用例 `event_store_tests.rs:296` 在形态 B 下会绿」，对**那一条**准确。新用例的增量价值是把「陈旧快照不得拉低」与「新快照仍须抬升」绑进**同一条**用例，使形态 B 无处藏身。
+
+**非空洞性实验的正确读法**：把新用例覆盖到父提交 `de4d4574` 的生产代码上，51 条**全绿**——因为本轮 `src/` diff 为 0，两提交生产代码完全相同，新用例在父提交上必然绿。这不是空洞，而是证明「覆盖操作良构 + 唯一的价值来源就是变异杀伤力」，§4 即其直接证据。
+
+**静态审查 8 项全部成立**，其中两项值得记档：
+
+- **既有 49 条未被削弱，且是逐字节证明**：父提交 `idempotency.rs` 正文 143 行在新文件中构成完整且逐字节相同的 143 行前缀；`events.rs` 父提交正文 250 行尾部逐字节连续出现（offset 172），唯一增量是插入的 47 行新用例块。本轮仅 3 条 `-` 且**全为 `use` 改写**（原名字全部保留），Rust 中改写既有行必同时产生 `-` 与 `+`，函数改名必产生 `-` 行 ⇒ 无改名、无删除、无削弱。计数印证 49 → 51。
+- **新增 2 处 `.expect()`**：沿用该套件既有约定（父提交契约套件已有 23 处 `.expect(`、10 处 `panic!`、2 处 `unsafe`、1 处 `sleep(`），`AGENTS.md` panic 政策明确豁免 `#[cfg(test)]`。判为**沿用约定，非缺陷**；若要契约层零 `expect()`，应作全套件统一整改，不宜单挑本轮。
+
+**Coder 自报两处披露均核验为合理不予追责**：(b) 首次 lib 红在既有 barrier 竞态（`connection/` 本轮 0 命中，夹具一行未动，不可能由本轮引入）；(c) 首次 fmt 1467 字节已改正，复跑 EXIT=0 / 0 字节。历史那次运行的失败清单本身已不可复放，Tester 明确标注「未能独立证实」——**这类不可复现项不计入结论，但也不隐瞒**。
+
+**变异工具阴性对照**：每次 `restore + touch` 后复跑必回到 `51 passed` EXIT=0，仓库内 `tampered` 残留 0 ⇒ 证明确实重编译，未复用变异二进制。若未 `touch`，还原后应仍为红——该对照使 `touch` 纪律从「口头要求」变成**有证据的规则**。
+
+**Tester 纪律**：Coder 树全程只读（首尾 HEAD 与 STATUSLINES 一致），变异全在自建 `--detach` 树、脚本经 `WT` 环境变量传入（无写死路径），收尾 `git worktree remove` 2 棵并 `prune`。**缺陷清单：无。**
+
 ### registry 轨待裁定 5 条 → 协调者已答（2026-10-04）
 
 1. `connection::port::CancelReceipt`（2 字段，缺 `state`）与 registry 的 `CancelReceipt`（3 字段，§7.6）同名不同形 → **两处都保留，不解冻 `connection/**`，registry 也不转出前者**。registry 现有做法（不转出，避免同名物同时进 prelude）正确。记入文档批次遗留。
