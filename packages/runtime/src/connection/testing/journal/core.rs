@@ -429,7 +429,10 @@ impl CommandJournal {
     /// §9.3 的真实线程竞态就落在这条上：驱逐线程在持有线程还挂着句柄时把资源关掉，
     /// 台账不能因此永久留一条登记（否则 I5 永远收不口）。
     ///
-    /// 正常路径（先回滚注销再关闭）走不到这里，所以它不会掩盖宿主自己的句柄泄漏 ——
+    /// 正常路径（先注销句柄再关闭资源，CM-74）走不到这里 —— 那些句柄在
+    /// `close_resource` 里就带 `closed` 记进来了，本方法只兜住 journal 侧登记册里
+    /// 有、slot 上却查不到的残留（runtime 登记过、但本进程没有对应 slot 条目）。
+    /// 所以它依然不会掩盖宿主自己的句柄泄漏 ——
     /// 那条泄漏由 `leak_invariant_violations()` 在**未关闭**时就报出来。
     pub fn reclaim_registered_handles_on_close(&self, resource_id: &ResourceId, reason: &str) {
         let handles: Vec<HandleRecord> = self

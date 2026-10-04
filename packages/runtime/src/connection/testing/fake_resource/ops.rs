@@ -498,8 +498,8 @@ impl FakeResourceProvider {
 
     /// §5.3 规则 2/3/6：只有 `Closed` 归还 permit；`CloseUnconfirmed` 不归还。
     ///
-    /// §9.3 竞态：脚本要求「先回滚注销、再归还资源」时，本方法先把所有句柄按
-    /// `closed` 注销（journal 里句柄事件排在资源终态之前），**然后**才释放资源。
+    /// CM-74：句柄注销**无条件**发生，且排在 `Closed` 与 permit 归还**之前**
+    /// （journal 里句柄事件排在资源终态之前）。§9.3 竞态脚本要求回滚时，额外清掉事务态。
     pub fn close_resource(
         &self,
         request: &CloseResourceRequest,
@@ -535,59 +535,65 @@ impl FakeResourceProvider {
             });
         }
 
-        // §9.3：先回滚 + 注销句柄（journal 先出现句柄 `closed`），**然后**才释放资源。
+        // CM-74：句柄注销与归池前置判定合并进**同一个临界区**，次序固定为
+        // 「取注销前快照 → 注销句柄 → 判归池」。
+        //
+        // 判归池读的是**注销前**的快照，这是判据的字面要求而非取巧：CM-74 对同一条断言
+        // 既要求句柄先于物理关闭注销，又要求「driver 报 `Clean` 而宿主仍有已登记句柄时
+        // 宿主检查必须失败（§9.4）」。后者问的是「关闭开始前资源上挂没挂着句柄」，
+        // 不是「注销之后还剩几个」。两个判据都是关闭**之前**的事实，
+        // 所以快照与注销同处一把锁 —— 中间没有观察者，也就没有 TOCTOU。
         let rolled_back = self.script.rollback_before_release();
-        if rolled_back {
-            let closed = {
-                let mut resources = self.lock();
-                match resources.get_mut(&key) {
-                    Some(slot) => {
-                        slot.transaction_state = TransactionState::None;
-                        let handles: Vec<_> = slot
-                            .handles
-                            .values_mut()
-                            .map(|handle| {
-                                handle.closed = true;
-                                handle.clone()
-                            })
-                            .collect();
-                        slot.handles.clear();
-                        handles
-                    }
-                    None => Vec::new(),
-                }
-            };
-            for open in &closed {
-                self.journal.record_handle(
-                    open,
-                    HandleAction::Closed,
-                    "驱逐前先回滚并注销（§9.3）",
-                );
-            }
-        }
-
-        // 归池前置条件在**回滚注销之后**重新取，否则会把刚注销掉的句柄算成未归池。
-        let (drained, registered) = {
+        let (drained, handles_before_close, closed) = {
             let mut resources = self.lock();
             match resources.get_mut(&key) {
                 Some(slot) => {
                     slot.protocol_drained = request.protocol_drained && slot.protocol_drained;
                     let drained = slot.protocol_drained;
-                    let registered = slot.registered_handles();
+                    // 归池判定的输入：注销**之前**这张资源上还挂着几个句柄。
+                    let handles_before_close = slot.registered_handles();
+                    // CM-74：句柄随资源一起死，必须在物理关闭前注销（journal 先记 `closed`）。
+                    // 这一步**无条件** —— 它是关闭语义，不是回滚语义。
+                    let closed: Vec<_> = slot
+                        .handles
+                        .values_mut()
+                        .map(|handle| {
+                            handle.closed = true;
+                            handle.clone()
+                        })
+                        .collect();
+                    slot.handles.clear();
+                    // 回滚语义仍以脚本标志为门：真的回滚过才清事务态。
+                    if rolled_back {
+                        slot.transaction_state = TransactionState::None;
+                    }
                     slot.state = FakeResourceState::Closed;
-                    (drained, registered)
+                    (drained, handles_before_close, closed)
                 }
-                None => (request.protocol_drained, resource.registered_handles()),
+                None => (
+                    request.protocol_drained,
+                    resource.registered_handles(),
+                    Vec::new(),
+                ),
             }
         };
+        for open in &closed {
+            self.journal.record_handle(
+                open,
+                HandleAction::Closed,
+                "物理关闭前注销句柄（CM-74 / §9.3）",
+            );
+        }
         if let Some(owner) = resource.owner.clone() {
             // §5.3 规则 2 前置：归池必须有「协议已排空 + 无登记句柄」的证据。
-            if drained && registered == 0 {
+            // 「无登记句柄」按 CM-74 §9.4 读**关闭前**的快照 `handles_before_close`，
+            // 而不是刚注销完的 `registered_handles()` —— 后者恒为 0，读它等于没判。
+            if drained && handles_before_close == 0 {
                 self.journal.record_resource_event(
                     &request.handle.resource_id,
                     ResourceEvent::ReturnedToPool {
                         protocol_drained: true,
-                        registered_handles: 0,
+                        registered_handles: handles_before_close,
                     },
                     &owner,
                     resource.pool_key.clone(),
@@ -625,6 +631,8 @@ impl FakeResourceProvider {
         self.journal
             .recover_orphans_on_close(&request.handle.resource_id, "closeResource");
         // 还挂着句柄就被关掉的资源（§9.3 真实线程竞态）：句柄随会话一起死，必须一起收回（I5）。
+        // slot 里的句柄上面已经在关闭前注销过了，这里是 journal 侧登记册的兜底：
+        // 覆盖 runtime 登记了句柄、但本进程没有对应 slot 条目的那部分。
         self.journal
             .reclaim_registered_handles_on_close(&request.handle.resource_id, "closeResource");
         self.journal.close_active_session(&resource.db_session_id);
