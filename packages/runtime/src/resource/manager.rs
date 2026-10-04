@@ -329,6 +329,24 @@ impl ResourceManager {
                     .push_idle(record.lease_id.clone(), record.pool_key.clone(), now_nanos);
             }
             CleanupDisposition::Closed => {
+                // FIXME(cross-track, CM-28 登记项 E)：这里的 `?` 与三处已定事实冲突。
+                // **本轨不改** —— 改动会外溢到 CM-73 的交接面，只登记，不修：
+                //
+                // * `resource/cleanup.rs:482` 的 `PhysicalTransport::close` 文档：
+                //   「关闭物理连接。返回 `Err` 表示关闭握手没确认，调用方必须转隔离而不是放行。」
+                // * `resource/transition.rs` 给 `InUse→Closing` 写的 `exits_when`：
+                //   「关闭确认 ⇒ Closed；若关闭过程本身状态不明 ⇒ Quarantined」。
+                // * `docs/architecture/platform/connection-management.md:640`（§9.2
+                //   「可调初始值」表 `cancel/cleanup deadline` 行的「行为」列）：
+                //   「不能确认则隔离并核验」。
+                //
+                // 三处一致要求「不能确认就隔离」，而 `:657`（§9.4 归池前检查）
+                // 「任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。」要求
+                // 失败之后**仍然**必须关闭。合起来，这条 `?` 把租约卡在 `Closing`
+                // 是不自洽的：关闭义务被丢弃，既不隔离也不核销预算，并且与
+                // `force_close` 把同一错误映成 `Quarantined` 的做法互相矛盾。
+                //
+                // 登记号 **E**，待跨轨裁定。见 `progress.md` 与 `hub.md`（协调者侧）。
                 self.transport.close(&record.resource_id)?;
                 if let Some(entry) = self.table.lease_mut(lease_id) {
                     entry.move_to(LeaseState::Closed)?;
@@ -390,6 +408,9 @@ impl ResourceManager {
                 LeaseState::Acquired | LeaseState::InUse => {
                     entry.move_to(LeaseState::Closing)?;
                 }
+                // 已有租约行 ⇒ 未被确认关闭 ⇒ 按 §9.4（`:657`「任一失败都关闭」）必须**再关一次**。
+                // 因此关闭**尝试**的次数天然不受 CM-28「至多一次」约束，被约束的是
+                // **被确认的**关闭 —— 口径见下方错误分支与 `tests/cm28_concurrent_release.rs`。
                 LeaseState::Closing | LeaseState::Quarantined | LeaseState::Closed => {}
             }
         }
@@ -402,7 +423,27 @@ impl ResourceManager {
                 Ok(())
             }
             Err(error) => {
-                // 关闭结果不明：留在隔离，等运维裁决，绝不静默丢弃（§9.4）。
+                // 关闭结果不明 ⇒ 转 `Quarantined`，等运维核验，绝不静默丢弃。
+                //
+                // 出处，逐字：`docs/architecture/platform/connection-management.md:657`
+                // （§9.4 归池前检查）「归池条件是宿主检查全部通过 AND driver 返回 Clean。
+                // ……任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。reset 不支持、
+                // 失败或超时直接关闭。」⇒ 关闭失败**不**终止关闭义务。
+                // 同文 `:713`（§10.1 恢复决策表，`cleanup 未确认` 行）「保留预算占用/隔离资源；
+                // 确认关闭或节点隔离后才核销」⇒ 未确认的关闭必须留一个可核验的去处，隔离就是它。
+                //
+                // **「有效关闭」的口径就定在这里。** CM-28（判据 `:1037`）只写「driver close
+                // 至多一次**有效**关闭」，全文没有定义「有效」二字。取同一文档的既有词汇：
+                // `:713` 的「确认关闭」、CM-26（`:1025`）的「close 未确认继续占预算；确认关闭后
+                // 只核销一次」。故「有效关闭」≡ **被确认的关闭**。
+                //
+                // **为什么「至多一次」只能修饰「确认」而不能修饰「尝试」**：§9.4 `:657` 明写失败
+                // 之后仍须关闭 —— 关闭尝试本就允许多次；若「至多一次」约束的是尝试次数，它与
+                // `:657` 直接冲突。两条并列，唯一自洽的读法是「至多一次**被确认的**关闭」：
+                // 20 个并发关闭请求里，第一个把关闭确认下来，其余请求只能看到墓碑并被拒绝。
+                //
+                // 契约测试（数的是物理端口上的 close 尝试数与确认数）：
+                // `packages/runtime/tests/cm28_concurrent_release.rs`。
                 if let Some(entry) = self.table.lease_mut(lease_id) {
                     let _ = entry.move_to(LeaseState::Quarantined);
                 }

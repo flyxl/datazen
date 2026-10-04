@@ -24,6 +24,15 @@
 //! 被测的性质正是「这份串行化让权威计数恰好逐份递减」。
 //! 20 个任务用 [`tokio::sync::Barrier`] 同时放行，锁绝不跨 `.await`。
 //!
+//! **不要把 `flavor = "multi_thread"` 简化掉。** 实测：两个 CM-28 文件合计 8 处
+//! `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`（本文件 3 处）
+//! 全部降级成默认 `#[tokio::test]`，**10 条测试仍然全绿** —— 因为 `&mut self` 的
+//! 串行化保证了结论与线程数无关（这是断言稳健的标志，不是假并发：把
+//! `cm28_concurrent_release.rs` 里两处 `Barrier::new(N)` 塌成 `Barrier::new(1)`
+//! 立刻 `EXIT=101`，3 条变红）。
+//! 保留 `multi_thread` 的唯一理由是：让 20 份引用读数与端口计数在**真实跨线程争用**下被压到。
+//! Rust 无法内省 flavor，没有任何测试能钉住它，所以这条注释是它唯一的存活形式。
+//!
 //! 断言策略不是「归零了」，而是**权威计数的完整取值谱**：
 //! 20 次并发归还不许重复任何中间值、不许跳过任何中间值。
 
@@ -106,11 +115,12 @@ fn ledger(shared: &SharedLedger) -> MutexGuard<'_, TunnelLedger> {
 }
 
 fn tunnel_spec() -> TunnelSpec {
-    TunnelSpec::new(
-        NetworkRouteRef::new("route://bastion/cm28"),
-        "jump.internal".to_owned(),
-        22,
-    )
+    tunnel_spec_on("route://bastion/cm28")
+}
+
+/// 同一份 `TunnelSpec` 在台账里**只对应一条**隧道；想造两条**独立**隧道必须换路由。
+fn tunnel_spec_on(route: &str) -> TunnelSpec {
+    TunnelSpec::new(NetworkRouteRef::new(route), "jump.internal".to_owned(), 22)
 }
 
 fn holders(prefix: &str, count: usize) -> Vec<LeaseId> {
@@ -242,24 +252,46 @@ async fn twenty_concurrent_repeats_of_one_tunnel_holder_decrement_exactly_once()
     assert_eq!(port.closed(), 0);
 }
 
-/// 负向对照：隧道端口的关闭计数**不是**天生等于 1。
+/// 负向对照：**同一个台账**上的关闭计数必须能走到 2 —— 证明上面那些
+/// `close_calls() == 1` 断言的是一个**计数**，不是常量 1。
+///
+/// 上一版这条负控写成 `for round in 0..2` 但**每轮都 `TunnelLedger::new()`**，
+/// 只共享 `port`。于是台账每轮从零起算，`close_calls()` 恒为 1，负控自带**零证明力**：
+/// 把 `src/tunnel/ledger.rs` 归零分支里的 `self.close_calls += 1` 改成 `self.close_calls = 1`，
+/// 全仓 698 条测试仍然全绿 —— 一条抓不住回归的负控比没有负控更糟，它给出虚假保证。
+///
+/// 现在两条**独立**隧道（不同路由 ⇒ 不同 entry）跑在**同一个**台账上，`close_calls()`
+/// 必须走到 2：`= 1` 的突变体立刻变红。实跑证据见报告 F-2 节。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn negative_control_the_tunnel_port_counter_reaches_more_than_one_close() {
+async fn negative_control_the_tunnel_ledger_counter_reaches_two_on_one_ledger() {
     let port = RecordingTunnelPort::new();
+    let shared: SharedLedger = Arc::new(Mutex::new(TunnelLedger::new(port.clone())));
+
     for round in 0..2u32 {
-        let spec = tunnel_spec();
-        let mut built = TunnelLedger::new(port.clone());
+        // 不同路由 ⇒ 台账里两条独立 entry，不是「同一条隧道的两份引用」。
+        let spec = tunnel_spec_on(&format!("route://bastion/cm28-ctrl-{round}"));
         let dependent = LeaseId::new(format!("holder-solo-{round}"));
-        built
+        ledger(&shared)
             .acquire(Some(&spec), &dependent)
             .expect("a healthy port never refuses to establish a tunnel")
             .expect("this spec needs a tunnel");
-        assert!(built.return_resource(&dependent).expect("held").closed);
-        assert_eq!(built.close_calls(), 1);
+        let release = ledger(&shared)
+            .return_resource(&dependent)
+            .expect("the holder is on the ledger");
+        assert!(release.closed, "第 {round} 条隧道归零后必须被确认关闭");
     }
+
+    let guard = ledger(&shared);
+    assert_eq!(
+        guard.close_calls(),
+        2,
+        "**同一个**台账上关掉两条独立隧道 ⇒ 台账自报的关闭数必须走到 2"
+    );
+    assert_eq!(guard.live_tunnels(), 0);
+    drop(guard);
     assert_eq!(
         port.closed(),
         2,
-        "端口计数器必须能走到 2，证明上面那些「只拆一次」不是在断言一个常量"
+        "物理端口同样必须能走到 2：那两条「只拆一次」不是在断言一个常量"
     );
 }
