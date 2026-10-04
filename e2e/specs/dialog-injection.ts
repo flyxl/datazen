@@ -16,8 +16,8 @@ import path from 'node:path';
  * cancel feedback end-to-end.
  *
  * These cases are the executable template for the remaining dialog-cancel
- * cases registered in docs/development/ipc-refactor-progress.md (their rewrite
- * is handled uniformly by the R regression agent).
+ * cases: each one is a pre-queued answer plus a trigger that deliberately
+ * goes through the real dialog branch.
  */
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -139,9 +139,9 @@ describe('对话框注入基建 (DIALOG-INJECTION)', () => {
   });
 
   it('DI-004: malformed injection payload is rejected loudly instead of silently queuing', async () => {
-    await expect(
-      invokeBackend('test_inject_dialog_result', { result: {} }),
-    ).rejects.toThrow(/canceled/);
+    await expect(invokeBackend('test_inject_dialog_result', { result: {} })).rejects.toThrow(
+      /canceled/,
+    );
     await expect(
       invokeBackend('test_inject_dialog_result', { result: { canceled: false } }),
     ).rejects.toThrow(/canceled/);

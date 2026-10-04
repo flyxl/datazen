@@ -21,7 +21,7 @@ fn scan_budgets_are_the_numbers_the_docs_quoted() {
     assert_eq!(
         MAX_SCAN_ROUNDS, 64,
         "raising this widens the worst-case time `type_distribution` holds the \
-         connection's write lock, and R 项 13's MONITOR bound is written as 64"
+         connection's write lock, and the MONITOR bound is written as 64"
     );
     assert_eq!(
         MAX_STALLED_SCAN_ROUNDS, 16,

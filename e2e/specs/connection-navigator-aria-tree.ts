@@ -17,7 +17,7 @@
  * 的窗口切片**，并用「滚动前后重叠行的 aria-level 完全一致」来证明
  * `aria-level` 属于行本身而不是它被画在窗口的哪个位置。
  *
- * 【留待 R 回归】本文件随 tree-cleanup 一起合入，尚未实际执行
+ * 本文件随 tree-cleanup 一起合入，尚未实际执行
  * （需要 `pnpm tauri:build:webdriver` 产出 webdriver binary）。
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
