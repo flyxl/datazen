@@ -217,6 +217,12 @@ resource_replacement 4、resource_return_to_pool 7、resource_rotation_and_disab
 
 工作区在最后一次全量运行之后仍是 `DIRTY=0`，`HEAD_AFTER=3ed3ad0db…`、`TREE_AFTER=cdf28cd55ecb…`。
 
+同一份代码在 `f00cfb3ba` 上把全量 vitest 又跑了一遍：`VITEST_EXIT=0`、
+`Test Files 40 passed (40)` / `Tests 679 passed (679)`、失败用例数 0，
+`HEAD_BEFORE=HEAD_AFTER=f00cfb3ba…`、`DIRTY_AFTER=0`。与 `3ed3ad0db` 那次红相比，两次之间唯一的
+提交是 `progress.md`，而没有任何门禁读它——**同一份代码一次绿一次红**。这既是「单次全绿不是门禁」的
+实例，也是上面那条共享树竞态的第二个独立佐证。
+
 ## 本轮新见（不是 Tester 给的清单，是扫出来的）
 
 1. **诚实记账的缺口不是「样本数错乱」。** 反向对照第一次写成 `assert!(sample_count_mismatch())`
