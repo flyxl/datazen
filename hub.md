@@ -33,9 +33,22 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 | 轨 | 分支 | 工作树 | 状态 |
 | --- | --- | --- | --- |
 | `p3-registry` | `feature/p3-registry` | `.worktrees/datazen-p3-registry` | 🔄 Coder 进行中 |
-| `p3-gateway` | `feature/p3-gateway` | `.worktrees/datazen-p3-gateway` | 🔄 Coder 进行中 |
+| `p3-gateway` | `feature/p3-gateway` | `.worktrees/datazen-p3-gateway` | ✅ Coder 已 `READY_FOR_TEST`（`19545268d`）→ 🔄 Tester 验收中 |
 
 各轨细节见对应分支的 `progress.md`。
+
+### gateway 轨交付快照（2026-10-04）
+
+- HEAD `19545268d`，基线 `060053afb`，工作区 0 行；提交链 `e36228175` → `2a1ba7ada` → `19545268d`
+- 23 个改动路径全在允许范围；`lib.rs` 恰好一行 `pub mod gateway;`
+- 自报：lib `323 passed`（= 223 + 100）、build 0 warning、fmt 0 字节、边界 PASS、`--test gateway_contract` `44 passed`
+- **以上均为 coder 自报，未经复核。** Tester 须独立复跑并自行设计新变异，不得采信。
+
+### gateway 轨三条待裁定 → 协调者已答
+
+1. **D-01 归属**：早已裁定——`CancelReceipt` 由 **registry 轨**定义并从 `datazen_runtime::registry::` 导出（放 `registry/receipt.rs`，因 `connection/**` 在 registry 的禁改区），gateway 轨只消费、**禁碰 `registry/**`**。gateway 现用 `CancelDisposition` / `CancelOutcome` 前缀类型 + `cancel::disposition_from_port_state` 单点收敛，属**合并前的临时形态**；registry 落地后该函数改为透传，`CancelOutcome` 形状不变。Tester 需验证「收敛点确实只有一个出口」，否则合并时会长出第二份三态语义。
+2. `GatewayError` 归属：确认为 gateway 轨自有错误枚举（`RuntimeError` 是冻结 DTO，§4 禁止加变体，且缺 `PermissionDenied` / 幂等核验变体）。`GatewayError::Runtime` 为透明变体，**绝不降级**。
+3. `registry::SessionView` / `SessionHandle` 缺失：确认 registry 轨只做**再导出**（§3.2 #5）。gateway 现从定义处 `datazen_runtime::connection::…` 取用，registry 补上再导出后 import 机械换路径，语义不变。**这不是缺陷**，但若合并时需要大改则是阻塞项。
 
 ### 协调者已裁定（各轨不得重新讨论）
 
