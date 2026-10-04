@@ -613,7 +613,7 @@ pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 **已落地、可立即运行**（runtime crate 已创建，核对自 `packages/runtime/Cargo.toml`）：
 
 ```bash
-cargo test -p datazen-runtime --lib                      # 夹具单测（130 个用例，crate 只有一个 lib target）
+cargo test -p datazen-runtime --lib                      # 夹具单测（383 个用例，crate 的 lib target）
 cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
 cargo test -p datazen-runtime --test cm60_pressure_drain   # CM-60 压力半（§11.4，另跑）
 cargo run --release -p datazen-runtime --bin cm60-bench     # CM-60 延迟半基准（§11，独立的 bin target）
