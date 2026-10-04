@@ -8,6 +8,7 @@
 ## 状态
 
 **第二轮整改完成（验收结论 `TEST_FAILED` 的 4 条缺陷全部处置），门禁全绿，已提交。**
+本轮提交 `53bcaeeff`（父提交 `19545268d`）。
 - in-lib 单元测试 **全绿**：**328** passed（= 223 基线 + 105 新增），EXIT=0。
 - 集成测试二进制 `gateway_contract` **全绿**：**49** passed，EXIT=0。
 - `cargo build` 0 warning；`cargo fmt --check` 退出 0 且输出 0 字节；边界检查 0 violation / 0 error。
@@ -177,16 +178,42 @@
 `328 = 223 + 105`（第一轮 100 + 本轮净增 5：6 条里 1 条是**改写**既有单测、5 条净增）。
 `49 = 44 + 5`（G1~G5）。两个数都等于裁定目标，不是「调到目标」调出来的。
 
-**必须披露的一次门禁外红**：整改过程中 `cargo test -p datazen-runtime --lib` 出现过一次
-`EXIT=101`，`327 passed; 1 failed`，失败用例是
+**必须披露的两次门禁外红（如实自报，不藏）**：整改过程中 `cargo test -p datazen-runtime --lib`
+出现过**两次** `EXIT=101`（`327 passed; 1 failed; 0 filtered out; finished in 30.02s`），
+失败用例同一条：
 `connection::testing::barrier::tests::await_drain_wakes_when_the_clock_crosses_the_deadline`
-（`packages/runtime/src/connection/testing/barrier/tests.rs:246`、`:249`，
-`finished in 30.01s`）。该文件属于 `packages/runtime/src/connection/**`，在 §1 禁改清单内，
-本轨自始至终没碰过它；它是**真实线程 + 等待超时**的用例，与本轮改动无因果关系。
-判定为 flake，证据：同一条命令原地重跑 `EXIT=0`、`328 passed; 0 failed`、`finished in 0.20s`；
-`--lib barrier` 过滤单独跑 `21 passed; 0 failed`；它在第一轮的 `/tmp/dz-gw-baseline.log`
-（223 ok）与 `/tmp/dz-gw-gate-final.log`（323 ok）里都是绿的。
-**留一句自曝**：如果验收方在自己那棵树上复现到这条红，请先重跑一次再判它是回归。
+（`packages/runtime/src/connection/testing/barrier/tests.rs:246`、`:249`）。
+一次发生在提交前，一次发生在提交后那一轮门禁。**不是「重跑一次就绿」就算完的那种说法**，根因查清了：
+
+- 该文件属于 `packages/runtime/src/connection/**`，在 §1 禁改清单内，本轨自始至终没碰过它。
+- 该用例是**真线程 + 假时钟**：`tests.rs:243-248` 先 `std::thread::spawn` 出一个等待线程，
+  主线程紧接着 `clock.advance(10s)`，**两者之间没有任何同步**。
+- `FakeClock::arm`（`connection/testing/clock.rs:169-182`）用 `armed_at_nanos = state.nanos`
+  记装填时刻，只有 `advance` 发生在**装填之后**该 timer 才会进 `fired_history`。
+  若 `advance` 抢先于等待线程走到 `arm_drain_and_check`（`barrier/drain.rs:178-196`），
+  timer 的起点就是 10s，永远等不到再推进，线程只能挂到
+  `wait_until` 的真实时间预算 `BLOCK_REAL_TIME_BUDGET = 30s`（`barrier/mod.rs:41`）耗尽 → `Err` → panic。
+  `finished in 30.02s` 正好对上这个 30 秒。
+- **与网关零耦合**：对 `src/gateway/**`、`tests/gateway_contract.rs`、`tests/gateway_fixtures/`、
+  `tests/gateway_contract/` 全量 grep `DrainBarrier|FakeClock|testing::barrier|testing::clock` = **0 命中**。
+- 旁证：单独跑该用例 12 次 `12/12` 全绿；全量 `--lib` 连跑 6 次 `6/6` 全绿（`328 passed; finished in 0.20s`）；
+  第一轮的 `223 ok` 与 `323 ok` 两次基线里它也都是绿的。
+- 结论：判定为 **connection 轨既有的用例竞态**，不是本轮改动引入的回归。
+  本轨无权改那个文件（§1 禁改），**建议协调者把它派回 connection 轨**：修法是让等待线程
+  先装填再推进时钟（例如用例侧加一个 `Barrier`，或 `arm` 改为按「已流逝的假时间」结算），
+  不要用「多跑几次」或调大 30 秒预算来盖。
+
+**提交后最终一轮（§5 要求「提交后再跑一遍」）**：
+`HEAD=53bcaeeffd70bdc5420c3b44142a1da492bfdb50`，运行前后工作区 `git status --porcelain -uall`
+**0 行**、工作区指纹 `d3f8bc92c0e502f6f00b0aacf4172ece593b725a` **逐字相同**（证明运行期间无人动过这棵树）：
+
+| 命令 | EXIT | 结论行（逐字） |
+| --- | --- | --- |
+| `cargo test -p datazen-runtime --lib` | 0 | `test result: ok. 328 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s` |
+| `cargo test -p datazen-runtime --test gateway_contract` | 0 | `test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s` |
+| `cargo build -p datazen-runtime` | 0 | 无输出（`warning` 行数 = 0） |
+| `cargo fmt -p datazen-runtime --check` | 0 | 输出 0 字节 |
+| `node scripts/check-platform-crate-boundaries.mjs` | 0 | `[check-platform-arch] PASS — 22 workspace member(s) classified, 6 rule(s) evaluated over 26 crate(s), 1 rule×subject combo(s) vacuous: 0 violation(s), 0 error(s), 3 advisory(ies)` |
 
 §4 不变量静态自查（脚本按 `#[cfg(test)] mod … {…}` 花括号配平剥掉测试块后统计，
 11 个文件逐个核对）：
@@ -299,9 +326,13 @@ CM-54/CM-56 两行的行号是在 `cargo fmt` 重排 `tests/` 之后**重跑变�
 4. **本轮新增的 6 条 in-lib 单测 + 5 条 G 集成用例没有本轨自测的变异证据。**
    本轮裁定禁止变异实验，所以它们的非空洞性只能靠「验收方在旧提交上跑出红」加断言本身可读。
    若要补齐，请在**本轮提交之后**另开一轮变异复核（必须另开工作树）。
-5. **`connection` 侧那条 barrier 用例曾出现一次真实线程下的红**（详见「门禁实测」一节）。
-   文件在 §1 禁改清单内，本轨无权修；现象判定为 flake 并留了重跑证据。
-   若验收方能稳定复现，请把它派回 connection 轨，本轨不接手。
+5. **`connection::testing::barrier::tests::await_drain_wakes_when_the_clock_crosses_the_deadline`
+   是竞态用例，本轮实测命中率约 1/4，根因已定位（详见「门禁实测」里的两段）。**
+   竞态在用例自身：`spawn` 之后不等等待线程装填 timer 就 `clock.advance`，抢跑则该 timer
+   永远等不到推进，线程挂到 30 秒真实预算耗尽。
+   文件在 §1 禁改清单内，本轨**无权修、也不接手**；请协调者派回 connection 轨。
+   在它修好之前，`cargo test -p datazen-runtime --lib` 偶发红一条属于**已知**问题，
+   判回归前请先重跑并比对失败用例名。
 6. **`SourceKind::is_background()` 至今没有生产调用点**（D-04 只改了注释，没造调用）。
    它是 `pub` API，属于来源分类的一部分，保留合理；但**不要**把它当成「网关已经按来源分流」的证据——
    网关没有分流。真要分流，是另一个需求，得先有裁定。
