@@ -116,6 +116,10 @@ pub struct RoundRecord<'a> {
     /// §11.3 要求失败样本不得从统计里消失，所以这两个数必须并排写出来：
     /// 只写 `n` 会让人以为 N 条请求全都测到了。
     pub measured: usize,
+    /// 分位数**真正吃进去**的条数。它与 `measured` 恒等，却单独出列：只写
+    /// `measured` 的话，「样本齐全但切片被做短」在产物里完全看不出来（p95 会跟着
+    /// 变小，而且没有任何一列会矛盾）。
+    pub percentile_input: usize,
     /// 计入 `n` 却打不出第二段真实时长的请求数。**非 0 即门禁不成立**；
     /// 这些请求**没有**被补一个构造值进分位数。
     pub unmeasured_failures: usize,
@@ -283,6 +287,7 @@ fn round_record(round: &RoundOutcome) -> RoundRecord<'_> {
         concurrency: round.concurrency,
         n: round.n(),
         measured: round.measured(),
+        percentile_input: round.percentile_input,
         unmeasured_failures: round.unmeasured_failures(),
         p95_nanos: round.p95_nanos(),
         percentiles: &round.percentiles,

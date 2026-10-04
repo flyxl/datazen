@@ -164,9 +164,15 @@ pub struct RoundOutcome {
     pub rejections: BTreeMap<String, usize>,
     /// 排队等待时长的分位数。空集合 → 全 `None`。
     pub queued_wait: Percentiles,
-    /// 本轮样本的分位数（输入 = `samples.len()`，即 [`Self::measured`]；
-    /// N 是 [`Self::n`]，两者**不是**同一个数）。
+    /// 本轮样本的分位数（输入条数见 [`Self::percentile_input`]；N 是 [`Self::n`]，
+    /// 三者**不是**同一个数）。
     pub percentiles: Percentiles,
+    /// 分位数输入的**真实条数**：传进 [`Percentiles::of`] 的那个向量有多长。
+    ///
+    /// 它必须等于 [`Self::measured`]，而且是**独立记下来的**：`measured` 数的是
+    /// 样本仓库，而这里数的是分位数真正吃进去的东西。两者分开记，才谈得上「有人
+    /// 把分位数的输入悄悄做短了」能被测出来——两列相等是恒等式，不相等是缺陷。
+    pub percentile_input: usize,
     /// 本轮真实墙钟耗时（纳秒）。**不参与门禁**：它含 fake 命令的虚拟 10 毫秒与
     /// 事件投影，只用来解释量级，不是被测的「网关附加耗时」。
     pub wall_time_nanos: u64,
@@ -228,12 +234,17 @@ impl RoundOutcome {
     /// 2. **N ≠ 完成 + 派发失败 + 重发**（N 被悄悄缩成了成功样本数）；
     /// 3. **N ≠ 测到 + 未测出**（获准却没打点的请求在账上凭空消失）；
     /// 4. **未测出 ≠ 派发失败 + 重发**（缺口只报一部分，等于把失败藏起来）；
-    /// 5. 出现幂等重发（同一 executionId 会收两遍事件，整轮数据不可用）。
+    /// 5. 出现幂等重发（同一 executionId 会收两遍事件，整轮数据不可用）；
+    /// 6. **分位数输入条数 ≠ 样本条数**（算 p95 的那个向量被悄悄做短了）。
     ///
     /// 第 2、4 条是**承重**的那两条。R1 缺陷的形状正是「`completed == samples.len()`
     /// 依然成立（第 1 条放行），但 N 只剩下成功样本数」——第 2 条把它拦下；
     /// 而「知道有失败打不出终点，却干脆不记这个缺口」这种更省事的写法，
     /// 第 4 条把它拦下。两条都过不了的账，才允许拿去算 p95。
+    ///
+    /// 第 6 条是**同类缺陷的另一个长相**：`samples` 一个没少，但喂给分位数的切片短了。
+    /// 它不需要任何计数错账就能发生（这是它难被发现的原因），所以只能靠把「输入条数」
+    /// 单独记一列来守——不记这一列，光看产物根本看不出 p95 吃的是哪几个数。
     pub fn sample_count_mismatch(&self) -> bool {
         let measured = self.measured();
         let unmeasurable = self.outcome.dispatch_failed + self.outcome.replays;
@@ -242,6 +253,7 @@ impl RoundOutcome {
             || self.n() != measured + self.unmeasured_failures()
             || self.unmeasured_failures() != unmeasurable
             || self.outcome.replays != 0
+            || self.percentile_input != measured
     }
 }
 
@@ -524,232 +536,4 @@ impl std::fmt::Display for BenchError {
 impl std::error::Error for BenchError {}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample(round: usize, ordinal: usize, total: u64) -> RawSample {
-        RawSample {
-            round,
-            ordinal,
-            gateway_nanos: total / 2,
-            registration_nanos: total - total / 2,
-        }
-    }
-
-    #[test]
-    fn total_is_summed_per_request_not_percentiles_added() {
-        // 两段反向互补：逐请求求和恒为 101，而两个 p95 各自 95、合计 190。
-        // 这组数据让「先逐请求求和再取分位数」与「先取两个分位数再相加」
-        // 产生可观测差异，因此本测试钉住的是实现路径本身，不是巧合相等。
-        let samples: Vec<RawSample> = (1..=100u64)
-            .map(|n| RawSample {
-                round: 1,
-                ordinal: n as usize,
-                gateway_nanos: n,
-                registration_nanos: 101 - n,
-            })
-            .collect();
-        let totals: Vec<u64> = samples.iter().map(total_nanos).collect();
-        assert!(totals.iter().all(|total| *total == 101));
-        let gateway: Vec<u64> = samples.iter().map(|s| s.gateway_nanos).collect();
-        let registration: Vec<u64> = samples.iter().map(|s| s.registration_nanos).collect();
-        let sum_of_percentiles = Percentiles::of(&gateway)
-            .p95_nanos
-            .zip(Percentiles::of(&registration).p95_nanos)
-            .map(|(g, r)| g.saturating_add(r));
-        assert_eq!(Percentiles::of(&totals).p95_nanos, Some(101));
-        assert_eq!(sum_of_percentiles, Some(190));
-    }
-
-    #[test]
-    fn empty_samples_yield_none_not_zero() {
-        let percentiles = Percentiles::of(&[]);
-        assert!(percentiles.is_empty());
-        assert_eq!(percentiles.p95_nanos, None);
-        assert_eq!(percentiles.max_nanos, None);
-    }
-
-    #[test]
-    fn an_empty_round_never_passes_the_gate() {
-        let round = RoundOutcome {
-            round: 1,
-            concurrency: 8,
-            samples: Vec::new(),
-            outcome: SampleOutcome {
-                requested: 10,
-                ..SampleOutcome::default()
-            },
-            rejections: BTreeMap::new(),
-            queued_wait: Percentiles::of(&[]),
-            percentiles: Percentiles::of(&[]),
-            wall_time_nanos: 1,
-            event_projection: ProjectionReport::default(),
-        };
-        assert!(!round.passes_gate(), "没测到 ≠ 0 毫秒通过");
-    }
-
-    #[test]
-    fn failures_are_counted_not_deleted_and_n_does_not_shrink() {
-        // 三个请求：两个完成（其中一个很慢），一个派发失败。
-        let round = RoundOutcome {
-            round: 1,
-            concurrency: 2,
-            samples: vec![sample(1, 1, 100), sample(1, 2, 1_000_000)],
-            outcome: SampleOutcome {
-                requested: 3,
-                admitted: 3,
-                completed: 2,
-                dispatch_failed: 1,
-                unmeasured_failures: 1,
-                ..SampleOutcome::default()
-            },
-            rejections: BTreeMap::new(),
-            queued_wait: Percentiles::of(&[]),
-            percentiles: Percentiles::of(&[100, 1_000_000]),
-            wall_time_nanos: 1,
-            event_projection: ProjectionReport::default(),
-        };
-        assert_eq!(round.n(), 3, "N 是获准数，失败的请求仍留在 N 里");
-        assert_eq!(round.measured(), 2, "分位数的输入条数只到测到的那两条");
-        assert_eq!(round.unmeasured_failures(), 1, "缺口必须被显式计数");
-        assert_eq!(round.n(), round.measured() + round.unmeasured_failures());
-        assert_eq!(round.failures(), 1, "失败数单列");
-        assert_eq!(
-            round.failure_ratio(),
-            Some(1.0 / 3.0),
-            "占比与分位数一起输出"
-        );
-        assert!(!round.passes_gate(), "失败数非 0 时门禁不成立");
-        assert!(!round.sample_count_mismatch(), "缺口被记账后账是自洽的");
-    }
-
-    #[test]
-    fn a_gap_that_is_not_even_counted_is_caught() {
-        // 比「N 缩水」更省事、也更危险的一种写法：N 不缩水了，缺口却干脆不记——
-        // 于是分位数看起来完美，p95 漂亮，失败被彻底藏进黑洞。
-        // 这正是「不许用 0 / 超时值 / 上一段值把样本补齐」这种做法的账目形状：
-        // 编造出来的时长会让 ①②③ 三条全部自洽，只有第 4 条能看见它。
-        let round = RoundOutcome {
-            round: 1,
-            concurrency: 2,
-            samples: vec![sample(1, 1, 100), sample(1, 2, 200)],
-            outcome: SampleOutcome {
-                requested: 3,
-                admitted: 3,
-                completed: 2,
-                dispatch_failed: 1,
-                unmeasured_failures: 0,
-                ..SampleOutcome::default()
-            },
-            rejections: BTreeMap::new(),
-            queued_wait: Percentiles::of(&[]),
-            percentiles: Percentiles::of(&[100, 200]),
-            wall_time_nanos: 1,
-            event_projection: ProjectionReport::default(),
-        };
-        assert!(round.p95_nanos().is_some(), "这条账的伪装正是 p95 很好看");
-        assert!(
-            round.sample_count_mismatch(),
-            "派发失败了却没记缺口 ⇒ 账不平，不管分位数多漂亮"
-        );
-        assert!(!round.passes_gate(), "未记账的缺口不能通过门禁");
-        // 对照组：同样的三次请求，缺口被如实记成 1 之后，账是平的——
-        // 但门禁照样是红的。这正是「让门禁对未测出这个事实可见」的那一步：
-        // 把账记对了不等于放过它。
-        let mut honest = round.clone();
-        honest.outcome.dispatch_failed = 1;
-        honest.outcome.unmeasured_failures = 1;
-        assert!(!honest.sample_count_mismatch(), "如实记账后账是平的");
-        assert_eq!(honest.n(), 3);
-        assert_eq!(honest.measured() + honest.unmeasured_failures(), honest.n());
-        assert!(
-            !honest.passes_gate(),
-            "账平了，但仍有获准请求掉出分位数输入集合 ⇒ 门禁不成立"
-        );
-        assert_eq!(honest.failures(), 1, "失败数也必须仍然单列");
-    }
-
-    #[test]
-    fn a_sample_accounting_that_shrinks_n_is_caught() {
-        // 这一轮模拟 R1 的缺陷形状：「N 被悄悄改成只统计成功样本」。
-        // 样本仍是两条，completed 也是 2，所以第 1 条（completed == measured）放行；
-        // 但 admitted 被填成 2、那次派发失败没人记账，
-        // 第 2 条（N == 完成 + 派发失败 + 重发）必须把它拦下来。
-        let round = RoundOutcome {
-            round: 1,
-            concurrency: 2,
-            samples: vec![sample(1, 1, 100), sample(1, 2, 1_000_000)],
-            outcome: SampleOutcome {
-                requested: 3,
-                admitted: 2,
-                completed: 2,
-                dispatch_failed: 1,
-                unmeasured_failures: 0,
-                ..SampleOutcome::default()
-            },
-            rejections: BTreeMap::new(),
-            queued_wait: Percentiles::of(&[]),
-            percentiles: Percentiles::of(&[100, 1_000_000]),
-            wall_time_nanos: 1,
-            event_projection: ProjectionReport::default(),
-        };
-        assert!(
-            round.sample_count_mismatch(),
-            "N 缩水必须被当成账不平，而不是当成「样本集合原样保留」"
-        );
-        assert!(
-            !round.passes_gate(),
-            "样本账不平的一轮不允许通过门禁，哪怕 p95 看起来很漂亮"
-        );
-    }
-
-    #[test]
-    fn rejected_requests_never_enter_n_and_queued_is_reported_separately() {
-        // 被拒不是「被豁免」，是「从未获准」：N 不含它，也不靠豁免规则把它排除。
-        let outcome = SampleOutcome {
-            requested: 5,
-            admitted: 2,
-            completed: 2,
-            rejected: 1,
-            queued: 2,
-            ..SampleOutcome::default()
-        };
-        assert_eq!(outcome.failures(), 1);
-        assert_eq!(outcome.queued, 2);
-        assert_eq!(outcome.failure_ratio(), Some(0.2));
-        let none_denominator = SampleOutcome::default();
-        assert_eq!(
-            none_denominator.failure_ratio(),
-            None,
-            "分母为 0 时没有占比，不是 0%"
-        );
-        let mut merged = SampleOutcome::default();
-        merged.merge(&outcome);
-        assert_eq!(merged.queued, 2);
-        assert_eq!(merged.completed, 2);
-        assert_eq!(merged.admitted, 2);
-    }
-
-    #[test]
-    fn replay_marks_the_round_unusable() {
-        let round = RoundOutcome {
-            round: 1,
-            concurrency: 2,
-            samples: vec![sample(1, 1, 100)],
-            outcome: SampleOutcome {
-                requested: 2,
-                admitted: 2,
-                completed: 1,
-                replays: 1,
-                unmeasured_failures: 1,
-                ..SampleOutcome::default()
-            },
-            rejections: BTreeMap::new(),
-            queued_wait: Percentiles::of(&[]),
-            percentiles: Percentiles::of(&[100]),
-            wall_time_nanos: 1,
-            event_projection: ProjectionReport::default(),
-        };
-        assert!(round.sample_count_mismatch());
-    }
-}
+mod tests;

@@ -388,6 +388,9 @@ async fn assemble(
         // 也没有预算台账，所以排队数**结构上恒为 0**。这不是「没测到」，是「不存在」，
         // 但等待分位数仍按 §11.3 输出为 `None`，让读产物的人看见这一栏存在且为空。
         queued_wait: Percentiles::of(&[]),
+        // 输入条数从**真正传进去的那个向量**上取，不是从 `samples.len()` 反推：
+        // 反推出来的数字永远等于样本数，也就永远抓不到「切片被做短」。
+        percentile_input: totals.len(),
         percentiles: Percentiles::of(&totals),
         wall_time_nanos,
         event_projection: acc.projection,
@@ -663,130 +666,4 @@ async fn drive_all(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::plan::DEFAULT_PLAN;
-
-    fn tiny() -> BenchPlan {
-        BenchPlan {
-            warmup: 4,
-            per_round: 8,
-            rounds: 2,
-            concurrency: 2,
-            fake_command: std::time::Duration::from_millis(10),
-        }
-    }
-
-    #[test]
-    fn a_plan_with_no_samples_is_refused() {
-        let error = run_bench(BenchPlan {
-            per_round: 0,
-            ..tiny()
-        });
-        assert!(error.is_err(), "零样本轮次不能被判定为通过");
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn every_request_produces_exactly_one_sample() {
-        let plan = tiny();
-        let run = drive_all(plan, 8, 17_179_869_184, 0)
-            .await
-            .unwrap_or_else(|error| panic!("bench failed: {error}"));
-        let round = &run.rounds[0];
-        assert_eq!(round.outcome.requested, plan.per_round);
-        assert_eq!(round.n(), plan.per_round, "完成的请求必须各有一次两段计时");
-        assert_eq!(round.failures(), 0);
-        assert_eq!(round.outcome.queued, 0, "网关没有排队受理态");
-        // N = 测到的 + 没测到的。这条恒等式一旦被打破，说明有人把失败样本删掉了。
-        assert_eq!(round.n(), round.measured() + round.unmeasured_failures());
-        assert!(!round.sample_count_mismatch());
-    }
-
-    /// F-01 的**真实 harness 守门测试**：开着故障注入跑整个 harness，断言
-    /// （1）N 仍然是每一条获准请求，**不因失败而缩水**；（2）打不出时长的那些**只**
-    /// 落在 `unmeasured_failures` 上，绝不被补成一个数；（3）门禁因此变红。
-    ///
-    /// 之前只有 `latency.rs` 里一个纯函数级的用例（拿手工过滤好的向量喂给分位数），
-    /// 证明不了 harness 的记账——缺陷正是记账把失败样本吞了而那个用例照样绿。
-    #[tokio::test(start_paused = true)]
-    async fn injected_failures_stay_inside_n_and_turn_the_gate_red() {
-        let plan = tiny();
-        let run = drive_all(plan, 8, 17_179_869_184, 1)
-            .await
-            .unwrap_or_else(|error| panic!("bench failed: {error}"));
-        let round = &run.rounds[0];
-        assert_eq!(
-            round.n(),
-            plan.per_round,
-            "每次执行都失败 ⇒ 每个请求都获准 ⇒ N 必须还是 per_round，样本不许缩水"
-        );
-        assert_eq!(
-            round.measured(),
-            0,
-            "一次都测不出来：第二段终点根本不存在，不是「测出来是 0」"
-        );
-        assert_eq!(round.unmeasured_failures(), plan.per_round);
-        assert!(round.failures() > 0, "失败数必须与分位数一起报出来");
-        assert_eq!(
-            round.failure_ratio(),
-            Some(1.0),
-            "占比也要报：全部失败就是 100%"
-        );
-        assert!(!round.sample_count_mismatch(), "记账本身仍须自洽");
-        assert!(
-            !round.passes_gate(),
-            "有获准请求掉出分位数输入集合就不能判过"
-        );
-        assert!(!run.verdict().gate_passed);
-        assert!(
-            run.raw.is_empty(),
-            "没有任何真实时长就一个样本都不许有，raw 里不能出现编出来的条目"
-        );
-    }
-
-    /// 负向对照：不注入时恒等式照样成立，且门禁不受影响。
-    #[tokio::test(start_paused = true)]
-    async fn without_injection_every_admitted_request_is_measured() {
-        let plan = tiny();
-        let run = drive_all(plan, 8, 17_179_869_184, 0).await.unwrap();
-        for round in std::iter::once(&run.warmup).chain(run.rounds.iter()) {
-            assert_eq!(round.unmeasured_failures(), 0);
-            assert_eq!(round.n(), round.measured());
-            assert!(round.passes_gate());
-        }
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn event_stream_is_lossless_across_the_round() {
-        let run = drive_all(tiny(), 8, 17_179_869_184, 0).await.unwrap();
-        assert!(run.journal.projection.is_clean(), "事件重复/丢失必须为 0");
-        assert_eq!(run.journal.outstanding_at_end, 0, "在途执行必须归零");
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn warmup_samples_stay_out_of_the_measured_rounds() {
-        let plan = tiny();
-        let run = drive_all(plan, 8, 17_179_869_184, 0).await.unwrap();
-        assert_eq!(run.warmup.outcome.requested, plan.warmup);
-        assert_eq!(run.raw.len(), plan.per_round * plan.rounds);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn idempotency_keys_are_unique_per_request() {
-        let run = drive_all(tiny(), 8, 17_179_869_184, 0).await.unwrap();
-        let total_replays: usize = std::iter::once(&run.warmup)
-            .chain(run.rounds.iter())
-            .map(|round| round.outcome.replays)
-            .sum();
-        assert_eq!(
-            total_replays, 0,
-            "键重复会让两次请求落在同一个 executionId 上"
-        );
-    }
-
-    #[test]
-    fn the_default_plan_is_the_criterion_plan() {
-        assert!(DEFAULT_PLAN.is_spec_plan());
-        // 这里只钉常量；跑完整判据计划（5×10000）是 `--release` 基准的职责，不属于单测。
-    }
-}
+mod tests;
