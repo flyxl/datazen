@@ -33,35 +33,42 @@
 //!
 //! 这不是「隐藏一下」的口头承诺，而是测试里的一次 `assert_eq!`。
 //!
-//! ## CM-05 六个接口的归属台账（不编接口凑数）
+//! ## CM-05 六个接口的处置（不编接口凑数）
 //!
 //! CM-05 的步骤列了「读取 / 执行 / 关闭 / 取消 / 订阅 / 下载」六个接口。本层
 //! 网关 [`GatewayAction`] 只有 `Execute` 与 `Cancel` 两个取值——下面
 //! `cm05_the_gateway_action_surface_is_exactly_execute_and_cancel` 用一个**穷尽
 //! `match`** 把这一点做成编译期事实（少一个变体编不过，多一个变体也编不过）。
-//! 六个接口里真正落在这层的只有两个，其余必须如实归属，不得凭空捏造：
+//! 六个接口里真正落在这层的只有两个，其余必须如实归属，不得凭空捏造。
+//! 处置词只有四个：**`CLOSED`（闭合）/ `PARTIAL`（部分闭合，登记剩余缺口）/
+//! `N/A`（H 层根本没有这个承接口，不是「漏测」）/ `P7`（归 P7 轨，CM-61 / CM-64）**。
 //!
-//! | CM-05 接口 | 归属层 | 本文件覆盖情况 |
-//! | --- | --- | --- |
-//! | 执行 | 网关 `accept` / `dispatch` | **已覆盖**：`cm05_*`、`cm06_*`，驱动执行次数 0 |
-//! | 取消 | 网关 `cancel` | **已覆盖驱动次数**：归属不符时 `cancel_calls() == 0` |
-//! | 读取 | 无网关接口；`session_view` 是端口读路径，只被授权器读，不对外暴露 | **不适用**，见 `cm05_the_gateway_action_surface_is_exactly_execute_and_cancel` |
-//! | 关闭 | 无网关接口（`SessionPort::close_session` 由注册表演给生命周期管理方，不经网关鉴权） | **不适用**，同上；CM-05 的「关闭」在 H 层没有承接口 |
-//! | 订阅 | 不存在（订阅属 `ArtifactStore`，CM-61 / CM-64，已豁免到 P7） | **未覆盖**，归属 P7 |
-//! | 下载 | 同上 | **未覆盖**，归属 P7 |
+//! | CM-05 接口 | 归属层 | 处置 | 依据 |
+//! | --- | --- | --- | --- |
+//! | 执行 | 网关 `accept` / `dispatch` | **`CLOSED`** | `cm05_*`、`cm06_*`：归属不符时 `execute_calls() == 0`，投影与不存在逐字节相同 |
+//! | 取消 | 网关 `cancel` | **`PARTIAL`** | 驱动次数已钉（`cancel_calls() == 0`，且有真 owner 的正向对照 `== 1`）；但**存在性预言机未闭合**，见下方 ⚠️ |
+//! | 读取 | 无网关接口；`session_view` 是端口读路径，只被授权器读，不对外暴露 | **`N/A`** | `cm05_the_gateway_action_surface_is_exactly_execute_and_cancel` 编译期钉死动作面 |
+//! | 关闭 | 无网关接口（`SessionPort::close_session` 由注册表演给生命周期管理方，**不经网关鉴权**） | **`N/A`** | 同上；CM-05 的「关闭」在 H 层没有承接口，**不得记作已覆盖** |
+//! | 订阅 | 不存在（订阅属 `ArtifactStore`） | **`P7`** | 验收文档 CM-61（`connection-management.md`）已豁免 |
+//! | 下载 | 同上 | **`P7`** | 验收文档 CM-64 同上 |
 //!
-//! ⚠️ **取消接口残留一条已知未闭合的存在性预言机**（不在本派单点名清单内，
-//! 如实登记见 `progress.md`）：`gateway/mod.rs:641-644` 的执行记录查表发生在
-//! 授权**之前**，所以「`executionId` 根本不存在」得到
-//! `CancelFailed("unknownExecution")`（`api_code()` 故意返回 `None`），而
-//! 「`executionId` 存在但会话不归我」得到 `UnknownSession`（`sessionNotFound`）。
-//! 两个变体、两个对外码，攻击者据此可判定该 `executionId` 是否存在。修它要动
-//! `CancelFailed` 的对外语义，而 `registry_audit.rs` / `registry_cancel.rs` /
-//! `p3_session_port_contract.rs` 三份**别的轨**的门禁正逐条钉死该语义，因此本轨
-//! 不动它，只把驱动取消次数钉为 0 并在此登记归属。
+//! ⚠️ **`PARTIAL` 的剩余缺口：取消接口残留一条存在性预言机。**
+//! `gateway/mod.rs` 的 `cancel()` 里，执行记录查表发生在授权**之前**：所以
+//! 「`executionId` 根本不存在」得到 `CancelFailed("unknownExecution")`
+//! （`api_code()` 故意返回 `None`），而「`executionId` 存在但会话不归我」得到
+//! `UnknownSession`（`sessionNotFound`）。两个变体、两个对外码，攻击者据此可判定该
+//! `executionId` 是否存在。
+//!
+//! **本轨不改，理由是它有主人**：修它要动 `CancelFailed` 的对外语义，而
+//! `tests/gateway_contract/cancel.rs`、`registry_audit.rs`、`registry_cancel.rs`、
+//! `p3_session_port_contract.rs` 四份**别的轨**的门禁正逐条钉死该语义（含
+//! `api_code()` 返回 `None`、`NotOnTheWire`、`UNKNOWN_EXECUTION` 三处），单轨改动会
+//! 同时打穿它们。**归属裁定留给集成时统一裁决**，本轨只登记、不声称闭合。
 
 #[path = "owner_binding/support.rs"]
 mod support;
+#[path = "owner_binding/production_wiring.rs"]
+mod production_wiring;
 
 use datazen_platform_api::error::ApiErrorCode;
 use datazen_runtime::connection::RuntimeError;
@@ -127,7 +134,11 @@ async fn cm06_a_peer_principal_in_the_same_organization_is_denied() {
     assert_eq!(port.execute_calls(), 0);
 }
 
-/// CM-06：U1 指向 U2 的 editor 会话 —— 拒绝，且一个会话都不该被创建。
+/// CM-06：U2 指向 U1 的 editor 会话 —— 拒绝，且一个会话都不该被创建。
+///
+/// **这条以前和上一条逐字节相同**（都是 U1 指向 U2），等于把一个用例数了两遍。
+/// 现在改成**镜像方向**：真 owner 是 U1，来路是 U2。「谁是被指的」与「谁是攻击者」
+/// 换了位置，所以它测的是另一次真实请求，而不只是把 `14 passed` 的计数撑大一个。
 #[tokio::test]
 async fn cm06_naming_another_users_editor_is_refused() {
     let (port, store) = world();
@@ -135,8 +146,8 @@ async fn cm06_naming_another_users_editor_is_refused() {
 
     let error = gw
         .accept(
-            &u1(),
-            request_for(U2_EDITOR_SESSION, editor_source(PRINCIPAL_U1, ORG_O1)),
+            &u2(),
+            request_for(U1_SESSION, editor_source(PRINCIPAL_U2, ORG_O1)),
         )
         .await
         .expect_err("指向他人 editor 的请求必须被拒");
@@ -158,11 +169,20 @@ async fn cm06_naming_another_users_editor_is_refused() {
 /// 这里把实际行为钉住，而不是假装它被拒了：同组织不同主体的请求**确实会穿过归属
 /// 闸门抵达端口**（`execute_calls()` 从 0 变 1，且被替身端口以内部错顶出来）。一旦
 /// 有人日后在 `OwnerRef::Job` 上补上主体并接上比较，这条会变红，提醒他把
-/// `cm06_a_job_owner_carries_no_principal` 的对偶断言补齐。
+/// `cm06_a_job_owner_carries_no_principal_so_same_organization_peers_pass_the_gate`
+/// 的对偶断言补齐。
 ///
-/// 真正闭合这一半的实现在上一层：`packages/application/src/identity_policy.rs:147-153`
-/// 的 `check_owner(ctx, owner, authorized_job)` 用调用方**显式声明**的 `authorized_job`
-/// 与 `owner.job_id` 比对，不相等即 `PermissionDenied`。本轨不修改该文件。
+/// **上层没有兜底。** 仓库里唯一看起来能补这个缺口的
+/// `packages/application/src/identity_policy.rs` 的
+/// `check_owner(ctx, owner, authorized_job)`，实测**全仓没有任何生产调用点**——只有定义
+/// 本身、几处文档引用、以及它自己文件内的单测，`src-tauri` 不调用它。所以它**不是**
+/// 覆盖，CM-06 的 job 半边按 **`PARTIAL`** 登记，不是「上层已经挡住」。
+/// 即便接上调用方也不对题：它比的是调用方**显式传入**的 `authorized_job` 与
+/// `owner.job_id` 是否相等，那是「这个 job 有没有被授权」，不是「这是不是同一个人」，
+/// 与 CM-06「U1 指向 U2 的 job」的跨用户语义不是同一件事。
+/// 闭合条件是唯一的：给 `OwnerRef::Job` 补上主体字段并接上比较——那是契约层的改动，
+/// 本轨**不单方面给 `OwnerRef` 加字段**，只把债登记在
+/// `src/gateway/owner_binding.rs` 的模块头与 `identity_policy.rs` 的 `check_owner` 上。
 #[tokio::test]
 async fn cm06_a_job_owner_carries_no_principal_so_same_organization_peers_pass_the_gate() {
     let (port, store) = world();
@@ -258,21 +278,49 @@ async fn cm06_a_job_owned_by_another_organization_is_refused() {
     assert_eq!(port.execute_calls(), 0);
 }
 
-/// CM-06：跨组织的 editor 归属同样被拒（`OwnerRef::Editor` 的组织维度）。
+/// CM-06：**跨组织**的 editor 归属被拒（`OwnerRef::Editor` 的组织维度）。
+///
+/// **这条以前是假的。** 它名叫「跨组织」，实测传进来的却是 `u1_of_o2()`——那个主体
+/// **本身就属于 `ORG_O2`**，与 `O2_EDITOR_SESSION` 的归属组织**相同**。所以它真正测到的
+/// 是「同组织不同主体」，和 `cm06_a_peer_principal_in_the_same_organization_is_denied`
+/// 重复，而 `check_organization` 在 `Editor` 这条路上**一次都没被触发过**。
+/// 全文件里当时没有任何一条跨组织 `Editor` 负例。
+///
+/// 现在拆成两条腿，把组织比较单独钉住：
+///
+/// 1. **同主体、跨组织**：`principal(PRINCIPAL_U2, ORG_O1)` 顶着 U2 的身份去要 `ORG_O2`
+///    的会话——`check_principal` 会**通过**，只有 `check_organization` 能拒它。
+///    这是本文件唯一一条「删掉组织检查就变红、删掉主体检查仍然红不了」的隔离用例。
+/// 2. **真 owner 正向对照**：`u2_of_o2()` 必须受理。否则腿 1 可能只是
+///    「`ORG_O2` 的会话全被拒」这种空绿。
 #[tokio::test]
 async fn cm06_an_editor_owned_by_another_organization_is_refused() {
     let (port, store) = world();
     let gw = gateway(Arc::clone(&port), Arc::clone(&store));
 
+    // 腿 1：主体对、组织错 → 只可能栽在组织比较上。
     let error = gw
         .accept(
-            &u1_of_o2(),
-            request_for(O2_EDITOR_SESSION, editor_source(PRINCIPAL_U1, ORG_O2)),
+            &principal(PRINCIPAL_U2, ORG_O1),
+            request_for(O2_EDITOR_SESSION, editor_source(PRINCIPAL_U2, ORG_O1)),
         )
         .await
         .expect_err("跨组织的 editor 归属必须被拒");
-
     assert_eq!(api_code(&error), Some(ApiErrorCode::SessionNotFound));
+    assert_eq!(port.execute_calls(), 0);
+
+    // 腿 2：O2 自己的会话对 O2 自己的主体必须通行（排除空绿）。
+    // `accept()` 只入队不下发，所以驱动次数仍是 0；证据在执行记录与幂等账本上。
+    let acceptance = gw
+        .accept(
+            &u2_of_o2(),
+            request_for(O2_EDITOR_SESSION, editor_source(PRINCIPAL_U2, ORG_O2)),
+        )
+        .await
+        .expect("O2 的真 owner 必须被受理");
+    assert!(!acceptance.execution_id().as_str().is_empty());
+    assert_eq!(gw.execution_count().await, 1, "真 owner 应当留下一条执行记录");
+    assert_eq!(store.writes(), 1, "真 owner 应当写入一条幂等账本");
     assert_eq!(port.execute_calls(), 0);
 }
 
@@ -545,7 +593,12 @@ async fn cm05_cancelling_a_foreign_execution_never_reaches_the_driver() {
     assert_eq!(port.cancel_calls(), 1);
 }
 
-/// CM-05：跨组织的归属与同组织的归属一样被折叠成同一个投影。
+/// CM-05：**跨组织**归属与不存在被折叠成同一个投影。
+///
+/// 同样**修过名**：以前这条也传 `u1_of_o2()`（本身属于 `ORG_O2`），所以它是
+/// 「同组织不同主体」不是「跨组织」。现在两个请求都换成 `&u1()`（属于 `ORG_O1`）
+/// 打 `ORG_O2` 的会话，对象才是真的跨组织；「不存在」那一腿用同一个主体，
+/// 于是两腿之间**只有归属这一项不同**，投影相等才是有意义的断言。
 #[tokio::test]
 async fn cm05_a_cross_organization_owner_looks_identical_to_an_absent_session() {
     let (port, store) = world();
@@ -553,18 +606,18 @@ async fn cm05_a_cross_organization_owner_looks_identical_to_an_absent_session() 
 
     let absent = gw
         .accept(
-            &u1_of_o2(),
-            request_for(ABSENT_SESSION, editor_source(PRINCIPAL_U1, ORG_O2)),
+            &u1(),
+            request_for(ABSENT_SESSION, editor_source(PRINCIPAL_U1, ORG_O1)),
         )
         .await
         .expect_err("未知句柄必须被拒");
     let foreign = gw
         .accept(
-            &u1_of_o2(),
-            request_for(O2_EDITOR_SESSION, editor_source(PRINCIPAL_U1, ORG_O2)),
+            &u1(),
+            request_for(O2_EDITOR_SESSION, editor_source(PRINCIPAL_U1, ORG_O1)),
         )
         .await
-        .expect_err("他人会话必须被拒");
+        .expect_err("跨组织的会话必须被拒");
 
     assert_eq!(projection(&absent), projection(&foreign));
     assert_eq!(port.execute_calls(), 0);

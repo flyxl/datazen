@@ -46,6 +46,71 @@
 //! 对这两种 owner，本模块**一律拒绝**（fail-closed）：把「无法归属」当成「已归属」放行，
 //! 等于让任何持有句柄的人执行别人的工作流块。要让它们可用，必须先在 `OwnerRef` 上补齐组织
 //! 与主体字段——那是契约层的改动，不在网关内单方面决定。
+//!
+//! ## 接线要求：生产组装必须显式传 `OwnerMatchAuthorizer::shared()`
+//!
+//! 本模块是 CM-05 / CM-06 的 H 层，但**它自己不会被自动用上**：网关的作者器是构造参数，
+//! 不是默认实现（`gateway/mod.rs` 的 `ExecutionGateway::new(port, authorizer, store, clock)`
+//! 里 `authorizer: Arc<dyn Authorizer>` 是**必填的位置参数，没有 `Default`**）。
+//! 第一个把网关接进生产路径的人如果随手传了恒定放行的替身（`provenance.rs` 的
+//! `AlwaysAllow`，它经 `gateway/mod.rs` 的 `pub use` 对外可达，**任何 crate 都拿得到**），
+//! 编译**照过**、行为**静默失效**：归属闸门对所有人放行，CM-05 / CM-06 在运行期形同虚设，
+//! 而 `tests/owner_binding.rs` 仍然全绿（它自己传的就是对的作者器）。
+//!
+//! 因此本轨把接线要求写成两条**可执行**的事实，而不只是一句提醒：
+//!
+//! 1. **本模块头就是要求**：生产接线必须显式传 `OwnerMatchAuthorizer::shared()`；
+//!    不得传 `AlwaysAllow` / `AlwaysDeny` 家族。
+//! 2. **守卫**：`tests/owner_binding.rs` 的 `production_wiring` 子模块扫描**全仓** Rust
+//!    源码，剥掉注释与字符串内容、`#[cfg(test)]` 块与 import 后，只要任何**生产**文件里
+//!    还出现 `AlwaysAllow` / `AlwaysDeny`，门禁立刻变红，并指名那个文件和那一行
+//!    （行号经实测对齐原文件）。今天扫描是空的（全仓命中全在测试与定义点），
+//!    **第一个生产接线者**就是触发它的人。守卫自证不成立的方式见该文件的模块头
+//!    「反证」一节（合成反例 + `request.rs:603` 上的真实反例，都实测过红）。
+//!
+//! 缓解程度要说准：`authorizer` 无默认值 ⇒ 漏传是**编译错误**（不会静默降级），
+//! 唯一的静默形态是「传了个恒放行的替身」——也就是上面这条守卫要对住的那一种。
+//!
+//! ## 未闭合项登记（随本轨一起合并，删除本文件也不消失）
+//!
+//! **CM-06 的 job 半边 = PARTIAL。** `docs/architecture/platform/connection-management.md`
+//! 的 CM-06 步骤要求「U1 请求 owner 指向 U2 的 editor **或 job**」。editor 半边本模块闭合；
+//! job 半边**本层合不上**：`OwnerRef::Job` 只有 `organization_id` / `job_id` / `stage_id`，
+//! **不含 `principal_id`**（`connection/types.rs`），同组织的 U1 与 U2 在该变体上**完全同形**，
+//! `Authorizer` 的入参里也没有「本次请求被授权操作哪个 job」。
+//!
+//! **上层没有兜底。** `packages/application/src/identity_policy.rs` 的 `check_owner`
+//! 常被当成这个缺口的补法，但实测它**全仓没有任何生产调用点**（只有定义本身、几处文档
+//! 引用、以及它自己文件内的单测），`src-tauri/src/platform/identity.rs` 也不调用它；
+//! 而且它比的是调用方**显式传入**的 `authorized_job` 与 `owner.job_id`，那是「这个 job 有没有
+//! 被授权」而不是「这是不是同一个人」，与 CM-06 的跨用户语义**不是同一件事**。本轨不修改
+//! 该文件，也不把它算作覆盖。行为已由 `tests/owner_binding.rs` 的
+//! `cm06_a_job_owner_carries_no_principal_so_same_organization_peers_pass_the_gate` 钉死。
+//!
+//! **CM-05 六个接口的处置**（结论落在 `tests/owner_binding.rs` 文件头的表里）：
+//! 执行 **CLOSED**；取消 **PARTIAL**；读取 / 关闭 **N/A**（网关动作面恰好只有
+//! `Execute` 与 `Cancel`，由 `cm05_the_gateway_action_surface_is_exactly_execute_and_cancel`
+//! 在编译期钉住）；订阅 / 下载 **不属于本轨**，归 P7（见验收文档 CM-61 / CM-64）。
+//!
+//! ## 契约债：仓库里有**两个同名** `OwnerRef`
+//!
+//! `crate::connection::OwnerRef`（`packages/runtime/src/connection/types.rs`）与
+//! `datazen_platform_api::context::OwnerRef`（`packages/platform-api/src/context.rs`）
+//! **变体名一模一样，字段类型不一样，且没有任何一侧校验另一侧**：
+//!
+//! | | 网关侧（本模块） | 应用层 |
+//! |---|---|---|
+//! | `Editor` | `organization_id` + `principal_id` + … | 只有 `client_instance_id` |
+//! | `Job` | `stage_id: String` | `stage_id: crate::id::StageId` |
+//! | `ClientSession` | 只有 `client_instance_id` | 多一个 `purpose: String` |
+//!
+//! 后果：应用层的 `check_owner` 在**结构上看不到组织与主体**（那两层的 `Editor`/`Job`
+//! 都没有这两个字段），于是本模块的归属语义与它的语义可以**各改各的、互不报警**。
+//! 本轨**不统一这两个类型**（跨 crate，会把契约改动混进网关改动），只把这条债登记在此，
+//! 并在 `identity_policy.rs` 的 `check_owner` 旁留同样的标记。
+//!
+//! 另外 [`OwnerRef`] 本身在本轨是**冻结**的：给 `OwnerRef::Job` 补 `principal_id` 会同时
+//! 改变契约层语义，必须由有权限的人显式决定，不能由网关单方面加字段。
 
 use std::sync::Arc;
 
