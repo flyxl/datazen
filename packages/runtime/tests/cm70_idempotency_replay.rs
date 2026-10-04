@@ -21,7 +21,12 @@
 //! - `expiry.rs` A3 有效期内重发 / 过期重发
 //! - `retention.rs` A4 超保留期删记录后重放（含协调方点名的反面用例）
 //! - `forgery.rs` A5 伪造 issuedAt / keyVersion
+//! - `retries.rs` A6 客户端不能用新键自动重试结局未知的写入
 //! - `owner_restart.rs` A7 owner 重启后旧令牌 SessionLost
+//!
+//! A8「运行时 receipt/token 不落盘」不在这里：它是跨切面的反面证据
+//! （源码扫描 + 文件系统对照 + `Debug` 投影），单独一个测试二进制
+//! `tests/cm70_no_disk.rs`。
 //!
 //! 时间一律走 `FixedClock::advance`，不 sleep。
 
@@ -35,6 +40,8 @@ mod forgery;
 mod owner_restart;
 #[path = "cm70/retention.rs"]
 mod retention;
+#[path = "cm70/retries.rs"]
+mod retries;
 
 use datazen_runtime::gateway::{ExecutionRequest, GatewayError};
 use gateway_fixtures as fx;

@@ -62,7 +62,11 @@ impl IdempotencyScope {
 }
 
 /// 请求指纹。用来区分「同一个 key 的同一次重发」与「同一个 key 的另一个请求」。
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Hash` 是 CM-70 未知结局围栏要用的：围栏按 `(dbSessionId, 指纹)` 存集合，
+/// 刻意**不含** `idempotencyKey`——否则换个新键就能绕过围栏，而换个新键
+/// 正是这条断言要禁止的事。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RequestFingerprint(String);
 
 impl RequestFingerprint {

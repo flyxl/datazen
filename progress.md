@@ -232,8 +232,75 @@ CM-54 的 `IdempotencyLookup::Unreadable` 已经在 `gateway/mod.rs:249-252` 挡
 
 ## 门禁实测
 
-（待填）
+两次提交各自独立跑完整门禁。`CARGO_TARGET_DIR=/tmp/dz-target-p3-cm70-idempotency-replay`，
+每轮门禁**首尾各记一次** HEAD 与工作区 sha（`TREE_SHA` 取 `git stash create`），
+证明跑门禁期间没人动过这棵树。日志一律落 `/tmp/p3cm70-*.log`。
+
+### commit 1（`f18bf25fc0f022de62624fbeb38bed04c831b122`，令牌层 + 保留期 + 闸门接线 + A3/A4/A5/A7）
+
+- `cargo fmt -p datazen-runtime --check` → `FMT_CHECK_EXIT=0`
+- `cargo build -p datazen-runtime` → `BUILD_EXIT=0`
+- `cargo build --workspace` → `WS_BUILD_EXIT=0`
+- `cargo test -p datazen-runtime --lib` ×2 → 各 `410 passed; 0 failed`
+- 逐二进制 `cargo test -p datazen-runtime --test <name>` → 19/19 全 `EXIT=0`
+  （含 `cm70_idempotency_replay` 34 passed、`gateway_contract` 51 passed）
+- 告警增量：把 `warning:` 头行排序去重后与基线 `/tmp/p3cm70-baseline-ws-build.log` 对比，
+  **58 → 58，multiset diff 为空**（新增的 `hmac` / `sha2` 没带来任何新告警）
+- `git diff Cargo.lock` 只有两行新增、零删除：`+ "hmac 0.12.1",` / `+ "sha2 0.10.9",`，
+  列在 `datazen-runtime` 名下（`Cargo.lock:2037-2045`）
+
+### commit 2（A6 重试围栏 + A8 不落盘钉子）
+
+- `cargo fmt -p datazen-runtime && cargo fmt -p datazen-runtime --check` → `FMT_CHECK_EXIT=0`
+- `cargo build -p datazen-runtime` → `BUILD_EXIT=0`，该 crate 自身 `warning` 计数 0
+- `cargo test -p datazen-runtime --test cm70_no_disk` → `NODISK_EXIT=0`，
+  `test result: ok. 7 passed; 0 failed; 0 ignored`
+- `cargo test -p datazen-runtime --lib` ×2 →
+  `LIB1_EXIT=0` / `LIB2_EXIT=0`，两次都是 `test result: ok. 410 passed; 0 failed`
+- 逐二进制 `cargo test -p datazen-runtime --test <name>` → **20/20 全 `EXIT=0`**
+  （19 个既有二进制逐字结论行 + 新增 `cm70_no_disk 7 passed`；
+  `cm70_idempotency_replay` 41 passed、`gateway_contract` 51 passed）
+- `cargo build --workspace` → `WS_BUILD_EXIT=0`；
+  `warning:` 头行 **58 → 58**，与基线 multiset diff **IDENTICAL**
+- HEAD 前后一致：`HEAD_BEFORE=f18bf25fc…` == 门禁后的 `HEAD`（`git status` 只有本轨
+  那 4 个改动 + 2 个新文件，没有外来改动）
+
+### 逐项对照 A1–A8
+
+| 断言 | 落点 |
+| --- | --- |
+| A1 有效期内同输入重发 → 同一张回执 | `tests/cm70/expiry.rs`、`retries.rs` |
+| A1' 有效期内**不同**输入重发 → `IdempotencyConflict` | `tests/cm70/forgery.rs` |
+| A3 过期重发 → 拒、且不再执行 | `tests/cm70/expiry.rs`、`token_tests.rs` |
+| A4 正例：留存期内重发仍可取回回执；负例：记录已删后重放 → 拒、且不再执行 | `tests/cm70/retention.rs`、`retention_tests.rs` |
+| A5 伪造 `issuedAt` / `keyVersion` / 签名 → 拒 | `tests/cm70/forgery.rs`、`token_tests.rs` |
+| A6 结局未知时客户端换新键自动重试 → 仍拒（围栏锁在 `(dbSessionId, RequestFingerprint)`） | `tests/cm70/retries.rs` |
+| A7 owner 重启后旧令牌 → `SessionLost` | `tests/cm70/owner_restart.rs`、`token_tests.rs` |
+| A8 receipt / token 不落盘 | `tests/cm70_no_disk.rs`（7 条用例，三条独立反面证据） |
 
 ## 未验证项
 
-（待填）
+- **未跑全 workspace 的 `cargo test`**：本轨的门禁口径是 `datazen-runtime` 的 `--lib` +
+  逐二进制；workspace 其余 crate 本轮未触碰、未重跑（`cargo build --workspace` 通过，
+  编译面无回归）。合并前的全量回归由集成侧统一跑。
+- **跨平台**：只在 macOS 上跑过。`cm70_no_disk.rs` 用到 `TMPDIR` 与 `std::fs::read_dir`，
+  都是跨平台的，但 Windows / Linux 上的实际行为未实测。
+- **`Subtle` 常量时间比较**：`hmac` 的 `verify_slice` 已是常量时间，仓库未直接依赖
+  `subtle`；自定义比较路径的抗时序侧信道性质未做基准测量。
+- **并发压力下的围栏**：`GatewayState.unverified` 的围栏只在单测的串行场景里验证过；
+  多任务同时对同一 `(dbSessionId, fingerprint)` 重试的竞态未做压力验证。
+- **真实 SQLite 驱动端到端**：CM-70 的执行侧证据全部落在 `RecordingPort` 上，
+  没有连真实数据库跑一遍「响应丢失 → 重放」。
+
+## 已知要上报的改动（对冻结件）
+
+1. `packages/runtime/tests/gateway_contract/invariants.rs`：把 `retention.rs` / `token.rs`
+   加进 `src/gateway` 生产文件白名单，把 `retention_tests.rs` / `token_tests.rs` 加进
+   test-only 白名单与 `#[cfg(test)] mod` 声明名单，并把 `tests/cm70_idempotency_replay.rs`
+   与 `tests/cm70/*.rs` 加进 800 行上限名单。这是**清单式断言**，新增文件必须登记，
+   否则门禁会以「文件集不匹配」失败；没有放宽任何阈值。
+2. `packages/runtime/src/gateway/request.rs::every_gateway_error_has_a_machine_readable_kind`：
+   补了 `SubmissionTokenRejected` 这一行枚举映射。新增错误变体本来就必须同步这条表。
+3. `packages/runtime/src/gateway/token.rs`：`TokenKeyring` 原来 `#[derive(Debug)]`，
+   会把**签名密钥原文**打进 `Debug` 输出。本轨改成了手写脱敏实现
+   （只打 `current` 与版本号列表）。这是本轨顺手修掉的一个真实缺陷。

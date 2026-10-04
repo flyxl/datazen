@@ -257,11 +257,24 @@ pub fn token_digest(token: &str) -> String {
 }
 
 /// 签名密钥环。
-#[derive(Debug)]
+///
+/// `Debug` 是**手写**的，这是有代价的选择：派生版会把 `secrets` 原样打印出来，而这里装
+/// 的正是用来签发与验签的密钥。`Debug` 的输出会进 `tracing`、日志文件与第三方采集器，
+/// 一旦流出去，任何人都能拿它签出网关肯收的令牌——那不再是调试信息，那是**签发能力**
+/// 的泄漏。所以这里只打版本结构：一个调试输出不该改变攻击者的能力。
 pub struct TokenKeyring {
     current: KeyVersion,
     secrets: BTreeMap<KeyVersion, Vec<u8>>,
     sequence: AtomicU64,
+}
+
+impl std::fmt::Debug for TokenKeyring {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenKeyring")
+            .field("current", &self.current)
+            .field("versions", &self.secrets.keys().collect::<Vec<_>>())
+            .finish_non_exhaustive()
+    }
 }
 
 impl TokenKeyring {

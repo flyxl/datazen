@@ -39,7 +39,7 @@
 //! 步骤 5 的两个记号点包住的是**驱动往返**，因此「假 SQL 执行」「预算/角色排队」
 //! 「网络传输」天然落在区间外或区间内由驱动侧决定，网关不再额外计时（§3.5）。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
@@ -194,11 +194,23 @@ impl ExecutionRecord {
     }
 }
 
+/// 一次**结局未知**的写入：账本读不出来，于是谁也不知道那次写到底落没落。
+///
+/// 键里**刻意没有** `idempotencyKey` 与令牌指纹——留一个空子就等于让围栏失效，
+/// 因为「换个新键自动重试未知写入」正是围栏要挡的那件事（CM-70）。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct UnknownOutcome {
+    db_session_id: String,
+    fingerprint: RequestFingerprint,
+}
+
 #[derive(Debug, Default)]
 struct GatewayState {
     records: HashMap<ExecutionId, ExecutionRecord>,
     samples: OverheadSamples,
     next_sequence: u64,
+    /// CM-70：结局未知的写入。命中它的新提交一律要求核验，不受理。
+    unverified: HashSet<UnknownOutcome>,
 }
 
 /// 统一执行网关。
@@ -355,9 +367,29 @@ impl ExecutionGateway {
             }
             IdempotencyLookup::Unreadable { message } => {
                 // 绝不降级成 Miss 后另写一条——那会真的把同一个语义请求再跑一遍。
+                // 这次读不出来本身就是「结局未知」，把它记进围栏：下次换个新键
+                // 回来（哪怕账本这会儿读得动了）也一样要核验，不许自动重试。
+                state.unverified.insert(UnknownOutcome {
+                    db_session_id: handle.db_session_id.as_str().to_owned(),
+                    fingerprint: fingerprint.clone(),
+                });
                 Err(GatewayError::IdempotencyVerificationRequired { message })
             }
             IdempotencyLookup::Miss => {
+                // 围栏：同一个会话、同一个语义写入已经有一次结局未知的尝试。
+                // 走到这里说明账本读得动、也确实没有这条记录——但「读得动」不等于
+                //「上一次没写进去」，所以仍不接受，等显式核验。
+                if state.unverified.contains(&UnknownOutcome {
+                    db_session_id: handle.db_session_id.as_str().to_owned(),
+                    fingerprint: fingerprint.clone(),
+                }) {
+                    return Err(GatewayError::IdempotencyVerificationRequired {
+                        message: format!(
+                            "同一写入存在结局未知的尝试（指纹 {}），自动重试已被拒绝；                             核验后请显式调用 resolve_unknown_outcome",
+                            fingerprint.as_str()
+                        ),
+                    });
+                }
                 request.check_context_revision(view.context_revision)?;
 
                 let execution_id = ExecutionId::new(format!(
@@ -602,6 +634,44 @@ impl ExecutionGateway {
             }
             None => false,
         }
+    }
+
+    /// 核验过那次结局未知的写入之后，解除围栏（CM-70）。
+    ///
+    /// 这是围栏**唯一**的出口。调用方必须先确认那次写到底落没落（查库、
+    /// 看业务唯一键），然后才轮到改本地状态；让受理路径自己「过一会儿就忘」，
+    /// 等于把重复写入又放回来。返回是否真的解除了——对不存在的围栏调用不算数，
+    /// 调用方据此知道核验是否针对了正确的写入。
+    pub async fn resolve_unknown_outcome(
+        &self,
+        db_session_id: &str,
+        fingerprint: &RequestFingerprint,
+    ) -> bool {
+        let mut state = self.state.lock().await;
+        state.unverified.remove(&UnknownOutcome {
+            db_session_id: db_session_id.to_owned(),
+            fingerprint: fingerprint.clone(),
+        })
+    }
+
+    /// 是否仍有结局未知的写入。围栏状态必须可观测，否则调用方无法报告
+    /// 「这次请求被挡是因为上一次结局未知」，只能看到一个笼统的核验要求。
+    pub async fn has_unverified_outcome(
+        &self,
+        db_session_id: &str,
+        fingerprint: &RequestFingerprint,
+    ) -> bool {
+        let state = self.state.lock().await;
+        state.unverified.contains(&UnknownOutcome {
+            db_session_id: db_session_id.to_owned(),
+            fingerprint: fingerprint.clone(),
+        })
+    }
+
+    /// 结局未知的写入条数。
+    pub async fn unverified_outcome_count(&self) -> usize {
+        let state = self.state.lock().await;
+        state.unverified.len()
     }
 
     pub async fn execution(&self, execution_id: &ExecutionId) -> Option<ExecutionRecord> {
