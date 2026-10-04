@@ -15,11 +15,10 @@
 //!
 //! 1. 同步参数校验（命令非空、幂等键可用、来源可持久化）；
 //! 2. 算幂等作用域与请求指纹；
-//! 3. `session_view`（**无锁 await**）；
-//! 4. 终态会话拒绝（`Closed`/`Lost`/`Closing`）——端口对终态会话**返回 `Ok`**，
-//!    不在这里判就会把已关闭会话的执行判成「已受理」；
-//! 5. 入口授权；
-//! 6. 临界区内：幂等查重 →（`Hit` 直接回放，不再走乐观闸门）→ 乐观并发闸门 →
+//! 3. [`Self::owned_view`]（**无锁 await**）：重读 `session_view` → **归属授权** → 终态拒绝
+//!    （`Closed`/`Closing`/`Lost`——端口对终态会话**返回 `Ok`**，不判就会把已关闭会话的
+//!    执行判成「已受理」）。三者次序不可调换，理由见 [`owner_binding`] 模块头（CM-05）。
+//! 4. 临界区内：幂等查重 →（`Hit` 直接回放，不再走乐观闸门）→ 乐观并发闸门 →
 //!    分配 `executionId` → 登记幂等记录 → 入队。
 //!
 //! 查重**必须**排在乐观闸门前面：重发的语义是「上次那次」，而上次那次受理时的
@@ -29,14 +28,13 @@
 //! # 下发顺序（§3.4 / CM-62）
 //!
 //! 1. 找执行记录，找不到即拒绝（绝不新建一次「碰巧的」执行）；
-//! 2. 重读 `session_view` + 终态会话拒绝；
-//! 3. **重校验权限**——受理时授权过一次，不代表下发时仍然有权；
-//! 4. 重比 `expected_context_revision`（§3.1 要求「真正执行前再比一次」），
+//! 2. [`Self::owned_view`]：重读 `session_view` → **重校验权限**（受理时授权过一次，
+//!    不代表下发时仍然有权）→ 终态拒绝；
+//! 3. 重比 `expected_context_revision`（§3.1 要求「真正执行前再比一次」），
 //!    不一致返回 [`RuntimeError::ContextRevisionMismatch`] 并携带服务端实际值；
-//! 5. 记 CM-60 第一段起点 → 下发驱动 → 记第二段起点；
-//! 6. 登记回执/事件状态 → 记第二段终点 → 落样本。
+//! 4. 记 CM-60 第一段起点 → 下发驱动 → 记第二段起点 → 登记回执/事件状态 → 落样本。
 //!
-//! 步骤 5 的两个记号点包住的是**驱动往返**，因此「假 SQL 执行」「预算/角色排队」
+//! 步骤 4 的两个记号点包住的是**驱动往返**，因此「假 SQL 执行」「预算/角色排队」
 //! 「网络传输」天然落在区间外或区间内由驱动侧决定，网关不再额外计时（§3.5）。
 
 use std::collections::{HashMap, HashSet};
@@ -47,14 +45,17 @@ use tokio::sync::Mutex;
 use crate::connection::capability::PreciseCancel;
 use crate::connection::{
     Counter, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState, ResourceId,
-    RuntimeError, SessionHandle, SessionState, SessionView,
+    RuntimeError, SessionHandle, SessionView,
 };
+use crate::gateway::owner_binding::resolve_owned_session;
 use crate::gateway::request::RedactedExecuteRequest;
 use crate::registry::SessionPort;
+use GatewayAction::{Cancel, Execute};
 
 pub mod cancel;
 pub mod events;
 pub mod idempotency;
+pub mod owner_binding;
 pub mod provenance;
 pub mod request;
 pub mod retention;
@@ -304,6 +305,28 @@ impl ExecutionGateway {
         }
     }
 
+    /// 「这条句柄在本主体名下是否存在且可用」的**唯一**判定入口（CM-04 / CM-05 / CM-06）。
+    /// 受理、下发、取消三个调用点都必须走它。`expected_revision` 只在下发闸门给值（CAS 期望值）。
+    async fn owned_view(
+        &self,
+        principal: &RequestPrincipal,
+        action: GatewayAction,
+        handle: &SessionHandle,
+        source: &ExecutionSource,
+        expected_revision: Option<Counter>,
+    ) -> Result<SessionView, GatewayError> {
+        resolve_owned_session(
+            &*self.port,
+            &*self.authorizer,
+            principal,
+            action,
+            handle,
+            source,
+            expected_revision,
+        )
+        .await
+    }
+
     /// 装配签名令牌层（CM-70）。受理路径的**第 0 步**变为令牌闸门：
     /// 验签 → 墓碑 → 过期 → owner 代次，任一不过即拒绝，**不分配 `executionId`、
     /// 不写账本、不下发**。
@@ -405,10 +428,9 @@ impl ExecutionGateway {
             ),
         };
 
-        let view = self.port.session_view(&handle).await?;
-        reject_terminal_session(&view)?;
-        self.authorizer
-            .authorize(principal, GatewayAction::Execute, &view, &request.source)?;
+        let view = self
+            .owned_view(principal, Execute, &handle, &request.source, None)
+            .await?;
 
         let mut state = self.state.lock().await;
         match self.ledger.lookup(&scope, &fingerprint) {
@@ -530,26 +552,18 @@ impl ExecutionGateway {
             )
         };
 
-        let view = self.port.session_view(&handle).await?;
         // 闸门在**碰驱动之前**重过一遍：会话还在、权限还在、修订号没动。
         // 任一道没过，请求就还没出网关——此时必须把「已下发」占位还回去，
         // 否则一条从没下发过的执行会自称已下发，调用方再也重试不了。
-        let gate = reject_terminal_session(&view).and_then(|()| {
-            self.authorizer
-                .authorize(principal, GatewayAction::Execute, &view, &source)
-                .map_err(GatewayError::from)
-        });
-        let gate = gate.and_then(|()| {
-            if expected_revision == view.context_revision {
-                Ok(())
-            } else {
-                Err(RuntimeError::ContextRevisionMismatch {
-                    expected: expected_revision.get(),
-                    actual: view.context_revision.get(),
-                }
-                .into())
-            }
-        });
+        let gate = self
+            .owned_view(
+                principal,
+                Execute,
+                &handle,
+                &source,
+                Some(expected_revision),
+            )
+            .await;
         if let Err(error) = gate {
             self.release_dispatch_reservation(execution_id).await;
             return Err(error);
@@ -640,9 +654,8 @@ impl ExecutionGateway {
         verify_binding(&request, &handle, resource_binding_id.as_ref())
             .map_err(|reason| GatewayError::Runtime(cancel_failed(reason)))?;
 
-        let view = self.port.session_view(&handle).await?;
-        self.authorizer
-            .authorize(principal, GatewayAction::Cancel, &view, &source)?;
+        self.owned_view(principal, Cancel, &handle, &source, None)
+            .await?;
 
         if request.precise_cancel == PreciseCancel::Unsupported {
             // 驱动不支持精确取消：绝不下发一次「取消整个会话」来假装精确取消成功。
@@ -781,19 +794,5 @@ impl std::fmt::Debug for ExecutionGateway {
     /// 这里只打印**结构**，不打印依赖——打印依赖等于把端口内部的会话句柄写进日志。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExecutionGateway").finish_non_exhaustive()
-    }
-}
-
-/// 终态会话不是「已受理」。端口对 `Closed`/`Lost` 会话**返回 `Ok`**，
-/// 漏掉这一步等于把一个已经关闭的会话的执行判成功。
-fn reject_terminal_session(view: &SessionView) -> Result<(), GatewayError> {
-    match view.state {
-        SessionState::Closed | SessionState::Closing => {
-            Err(RuntimeError::SessionClosed(view.handle.db_session_id.as_str().to_owned()).into())
-        }
-        SessionState::Lost => {
-            Err(RuntimeError::SessionLost(view.handle.db_session_id.as_str().to_owned()).into())
-        }
-        _ => Ok(()),
     }
 }
