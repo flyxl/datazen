@@ -463,3 +463,78 @@ gateway 第 2 轮整改中，coder 主动披露 lib 门禁两次红在**同一�
 gateway 的 `CancelOutcome` 是 registry 回执的**严格超集**，§7.6 要求的三个字段它本来就全有（`execution_id` 是入参、`disposition` 来自 `disposition_from_port_state`、`state` 是端口返回值）。**D-01 的 gateway 侧消费在语义上已被满足**，不需要为它新增对 registry 具名入口的调用，也不该把 `CancelOutcome` 改成 `CancelReceipt` —— 那会丢掉网关自己的观测时刻。
 
 **D-03 的实际修法（已定案，随下轨执行）**：删 `gateway/cancel::CancelDisposition`，改 `use crate::connection::port::CancelDisposition;`（与 gateway 取 `ExecutionState`/`ExecutionId` 的来源一致，**不新增任何依赖方向**），同步 `gateway/mod.rs:78` 与 `facade_support.rs:16` 的转出与 gateway 侧全部引用。风险只剩一个真实项：**两份 `as_str()` 是逐字相同的字面量拷贝，未来任一侧改动会造成线上字面量漂移**，消除重复即消除该风险。
+
+---
+
+## P3 退出门禁 CM 对账（只读静态审计）
+
+派一个**不编译、不跑测试**的只读审计代理（同机有 Coder 在占 CPU），逐条核对退出门槛集合的判据与实际断言。
+
+### 这份审计能证明什么、不能证明什么
+
+**只能证明「断言存在 / 不存在」，不能证明任何断言是绿的。** 全程未执行 `cargo test/build/clippy/fmt`、`vitest`、`typecheck`。
+
+因此：`COVERED` = 判据要求的行为在测试代码里能读到对应断言，**不等于该断言当前通过**；`PARTIAL`/`MISSING` = 可信的**否定**结论（断言确实不存在），这一类结论反而比 `COVERED` 更硬。
+
+另记两条**证据卫生**：
+- `platform-development-plan.md:345-349` 里的 `--lib` 139 passed 是提交 `5b7c5b49c` 的历史数据，**已过期**，不得再被引用为 CM-73/CM-74 转绿依据。
+- `connection-management.md:1340` 要求：拿不到真实测试环境时必须报告为「未验证」。
+
+### 判据集合口径更正（两处）
+
+1. 我下简报时写的「41 行」是错的。实际 = CM-02～07（6）+ CM-20～32（13）+ CM-37～39（3）+ CM-54～56（3）+ CM-60（1）+ CM-61～74（14）= **40 行**。
+2. **审计代理自己的收尾摘要计数 20/18/2 也是错的。** 我按它的明细表逐行重数，得到 **19 / 20 / 1**，合计 40：
+
+```
+COVERED = 19   PARTIAL = 20   MISSING = 1   （求和 = 40）
+```
+
+它错在哪：收尾摘要的 PARTIAL 清单**漏了 CM-64、CM-70**，COVERED 清单**漏了 CM-21**，并把 CM-22 按 H 半 / D 半**重复计成两行**，同时把 CM-27/28 的隧道子项另算成第二个 MISSING。**明细表可信，摘要计数不可信** —— 这是本轮第二次「汇总与明细不一致，以后者为准」。
+
+### 严格计数（以明细表为准）
+
+| 状态 | 条数 | 编号 |
+| --- | --- | --- |
+| COVERED | **19** | 20, 21, 23, 24, 25, 26, 29, 30, 38, 55, 62, 63, 65, 66, 67, 68, 69, 72, 73 |
+| PARTIAL | **20** | 02, 03, 04, 05, 06, 07, 22, 27, 28, 31, 37, 39, 54, 56, 60, 61, 64, 70, 71, 74 |
+| MISSING | **1** | 32 |
+
+审计代理首轮把 CM-74 判成 COVERED，随后**自查降为 PARTIAL** —— 这个自我修正本身是可信度信号，保留；但它没同步修正自己的汇总数字。
+
+`CM-22` 记 PARTIAL：H 半（精确取消控制路径不排队）有断言，**D 半（真实驱动精确取消）本轮不判**，属 D 层。
+
+### 四个必答问题的结论
+
+**① CM-73 / CM-74 是否转绿？—— 不能声称转绿。** 判据 `:1317` 自陈「重构完成后必须转绿，**断言不得删除**」，审计确认断言**仍在仓库里、未被删、未被 `#[ignore]`**。这是必要条件不是充分条件。转绿判定只能由一个**允许跑测试**的代理在干净工作树上给出，并按工作树纪律**首尾各记录一次 HEAD 与工作区 sha**。
+
+三点本体全部有断言：
+- (a) **句柄在物理释放前注销** —— `harness/tests.rs:547` journal 严格等于 `["handle closed", "resource Closed", "permit -1"]`；`registry_release.rs:71` 句柄在**登记时的那个资源**上终结，才关当前物理资源。
+- (b) **事务状态** —— `registry/actor/tests/release.rs:19` 同时断言 `state == Lost` **且** `transaction_state == Unknown`，绝不报 Active。
+- (c) **物理资源与 session ID 同步失效** —— `harness/tests.rs:446` 断言恢复资源的 resource_id 与 db_session_id **双双不同**；`:490` 是负控（宿主若在恢复资源上重登记旧句柄，测试必须响）。
+
+**② CM-60 基准 harness 存在吗？—— 不存在，两处文档说法均属实。** `src/connection/testing/bench.rs` `test -f` = NOT EXISTS；`src/bin/` 不存在；全仓 `bench` 只有两处注释。`fake-runtime-fixtures.md:71` 与 `platform-development-plan.md:128` 的「未实现」都是真的。已有的是**口径实现**不是 harness：`latency.rs` 的 nearest-rank p95 五例自测 + `gateway/timing.rs` 验证「两段按请求求和后再取 p95、不得相加两个 p95、不得剔除失败样本」。判据 `:1236` 要的 release build / 4 vCPU 8 GiB / 并发 8 / 预热 1000 / 5 轮×10000 / p95≤10ms 阈值判定 —— **一次可运行的基准都没有**。
+
+**③ 哪些判据靠 sleep 猜顺序？—— 一个都没有。** `packages/runtime/src` 与 `packages/runtime/tests` 全树 grep `sleep|Duration::from_millis|Duration::from_secs|yield_now|interval(` **零命中**。所有时间推进走 `FakeClock::advance`，所有顺序由 `Barrier` 或 journal 单原子 `seq` 表达。两处「擦边」（`barrier/tests.rs:103-110`、`:413-418` 的 200 ms 轮询）**不违规** —— `:102` 已就地引用 §6.4，它们证明的是「状态位无变化」即**无进展**，不参与顺序推导。其余真实时间用法都只是失败兜底超时；`settle()`/`wait_until()` 的上界（512 次 yield）是**失败时的诊断信息**，不是兜底 sleep。
+
+⇒ **`platform-development-plan.md:124` 的「race 测试使用 barrier/fake clock，不靠任意 sleep 猜顺序」这一条，在 `packages/runtime` 范围内成立。** 可直接引作门槛证据：`harness/tests.rs:1-12`、`cm73.rs:1-18`、`registry/actor/tests.rs:5`「没有基于时间推进的并发窗口」。
+
+**④ 哪些推迟到 P9、不得计入本轮不完整？** 依据 `platform-development-plan.md:335/:337` 与 `connection-management.md:855`：
+
+| 判据 | 推迟部分 | 本轮 |
+| --- | --- | --- |
+| CM-57 / CM-58 | 全条（W） | **不在门槛集合内** |
+| CM-60 / CM-68 / CM-71 | WN 半 | 只判 H/W1 半，**WN 半不构成缺陷** |
+
+⇒ **40 行门槛集合里没有任何一条可以整体推迟到 P9。** 被推迟的只有 CM-60/68/71 三条的 WN 半。CM-59（全 W）不在集合内。
+
+### 三个阻塞性缺口
+
+**① CM-32 的「隧道」概念在 `packages/runtime` 完全不存在。** `grep -rn "tunnel|Tunnel" packages/runtime/src packages/runtime/tests --include=*.rs` → **零命中**；`src/resource/` 下无任何隧道引用计数字段。判据 `:1323` 要求「两个 session/Job 共用同版本隧道；关第一个不影响第二个」。需裁定：**这是设计已演进掉的历史术语（功能已被 CM-67 的 PoolKey / 空闲池模型覆盖），还是仍是活的要求？** 前者则应改文档，后者则要新增实现。
+
+**② `ArtifactStore` 全仓零实现。** `packages/platform-api/src/ports/artifact.rs:16` 明写「本节描述尚未实现的目标行为，当前**无任何 ArtifactStore 实现**」；`grep -rn "whitelist|白名单"` 与 `grep -rn "checkpoint|Checkpoint"` 在 `packages/runtime` 全树**零命中**。CM-61（落盘白名单含 artifact / 临时结果恢复）与 CM-64（产物配额与 256 MiB 上限）各有一半断言**根本写不出来** —— 这不是覆盖不足，是结构缺失。而 `platform-development-plan.md:337` 把 CM-61～64 的 **F** 断言划给 P4、**H** 断言划给 P3。需确认这部分 H 断言是否本应在 P4 或更后。
+
+**③ CM-74 顺序口径冲突。** `harness/tests.rs:539-545` 的注释把「句柄先于物理关闭」**明确限定在宿主关闭路径**（`FakeHarness::close`），并声明驱动直连路径（`close_resource` / `reclaim_registered_handles_on_close`）顺序**故意不同**（`resource Closed → permit -1 → handle closed`），且不得为 CM-74 断言该路径。但判据 `:1324` 要求**三条路径**（归池 / setSessionContext 替换 / closeSession）统一。二者必须二选一：把顺序统一到所有路径，或把判据适用面收窄到宿主关闭路径。**这是 CM-74 判 PARTIAL 的唯一原因。**
+
+附带：`setSessionContext` 替换路径在 registry 层 `grep` **零命中**，只有 `ResourceOp::ChangeContext`（`fake_resource/script.rs:44`）。若该路径根本没建模，CM-74 第三条路径要**新增实现**而非新增断言。最接近的替代证据 `registry_lifecycle.rs:248`（世代推进使旧请求失效）与 `resource/handles.rs` 的 `resource_replacement_invalidates_bindings` 单测，**都不等价**于判据要求的「替换路径上句柄在物理关闭前被终结并注销」。
+
+另记一条口径提醒：CM-62 的规范化契约实际落在 **`driver-api` crate**（`packages/driver-api/src/namespace_tests.rs`）而非 `packages/runtime`。它算覆盖，但覆盖点在 runtime 之外，评审时别在 runtime 里找不到就误判成缺失。
