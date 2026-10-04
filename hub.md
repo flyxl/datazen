@@ -71,6 +71,56 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 
 修复轮裁决：本轮 gateway **不做变异**（验证归 Tester）、**不碰 `CancelReceipt`**（等两轨都过验收后在合并时统一切换）、G1–G5 五条用例**按语义就地落位**而非新开 `gap_probe` 文件，若 `invariants.rs` 枚举了测试文件集则同步更新该断言。目标门禁 lib **328**、`gateway_contract` **49**。
 
+### gateway 轨第 2 轮验收 → `PASS（有条件）`（2026-10-05，已派第 2 轮修复）
+
+被测提交 `de4d45749`（代码 `53bcaeeff` + 纯台账 `de4d45749`）。Tester 全程在自建的 `git worktree add --detach` 树里做变异，收尾核验 coder 树 `HEAD=de4d45749 DIRTY=0`，未执行任何 `git add`，三棵验证树已 `git worktree remove` 清理。
+
+**五条门禁（收尾在干净树重跑，首尾各打一次印）：**
+
+```
+PRE  HEAD=de4d45749… STATUSLINES=0
+G1 EXIT=0 | test result: ok. 328 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+G2 EXIT=0 | test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+G3 EXIT=0 | WARNING_COUNT=0
+G4 EXIT=0 | FMT_BYTES=0
+G5 EXIT=0 | [check-platform-arch] PASS — 22 workspace member(s) classified, 6 rule(s) evaluated over 26 crate(s), 1 rule×subject combo(s) vacuous: 0 violation(s), 0 error(s), 3 advisory(ies)
+POST HEAD=de4d45749… STATUSLINES=0
+```
+
+14 个回归基线逐个对应到二进制名精确匹配，无一回退（详见「基线不变量」）。
+
+**非空洞性成立**：把 3 个新测试文件覆盖到 `19545268d` 的旧生产代码上 ⇒ `45 passed; 4 failed`。G1 红 `left: Queued / right: Succeeded`、G2 红 `left: 0 / right: 12`、G3 红 `left: Applied / right: IgnoredDuplicate { sequence: Counter(1) }`。`invariants` 那条红经 Tester 明确定性为 11 文件 vs 12 文件的机械差，**打折不计**；G4、G5 在旧码上绿符合预期（分别是覆盖缺口与非本轮缺陷），其效力由 M6/M4 证明。
+
+**变异 7 条，6 条被杀，1 条存活。**
+
+| 编号 | 变异点 | 结果 |
+| --- | --- | --- |
+| **M6**（上轮遗留） | `RequestFingerprint::of` 删掉 `source` 段 | **被杀** 契约 `48 passed; 1 failed`，红在 `idempotency::g4_…`，逐字「期望失败，实际成功」；lib 仍 328 绿 |
+| M1 | `recover_from_snapshot` 退回「重建空水位」 | **被杀** lib `323 passed; 5 failed` + 契约 `46 passed; 3 failed` |
+| M2 | 去掉 `context_revision` 单调守卫 | **被杀** 但**仅**由 1 条 `--lib` 用例杀，契约 49 全绿 ⇒ 契约层零覆盖 |
+| M3 | `Conflict` 并进 `Hit` 分支 | **被杀** lib 1 红 + 契约 `47 passed; 2 failed` |
+| M4 | `apply_event` 不看 `event.execution_id`，路由到首条记录 | **被杀** 契约红 `left: Gap{expected:Counter(3),received:Counter(7)} / right: Unbound` ⇒ G5 有真牙齿 |
+| M5 | 幂等账本 `lookup` 的 `Err` 降级成 `Miss` | **被杀** lib `326 passed; 2 failed` + 契约 `48 passed; 1 failed`，三层全红 |
+| **M7** | `accept` 的 Hit 分支回填伪造来源 | **存活** ⚠️ |
+
+**M7 存活项（中危，纯覆盖缺口，当前无行为缺陷）—— 协调者已独立复核属实：**
+
+- 代码事实：`mod.rs:233-237` 的 `IdempotencyLookup::Hit` 分支把 `&request.source` 传给 `GatewayAcceptance::replayed(...)`（定义在 `request.rs:192`）。
+- 契约层对 source 的断言只有 `idempotency.rs:141`（构造冲突入参）与 `:151`（断言的是**账本里存的记录** `record(&h,&id).source()`）——**没有任何一条断言重发回执上的 source**。
+- 当前为何不是活缺陷：`ExecutionSource` 只含可持久化字段，指纹覆盖 `serde(source.to_persistable_json())`，故「指纹相等 ⇒ 来源全等 ⇒ `&request.source` 与当初冻结的来源逐字节相同」；该前提已被 M6/G4 钉住。
+- 为何仍须补：G4 钉的是**冲突规则**，不是**回执字段**。一旦将来有人既去掉指纹里的 `source`、又改掉 G4，回执会静默报出新来源而**一条用例都不会红**。
+
+**第 2 轮修复范围（已派发，纯测试轮，`src/gateway/**` 生产代码一行不许改）**：M7 必做（补「重发回执 source 等于首次受理冻结来源」，并顺带钉住回执 execution_id）+ M2 副产物建议做（契约层补 revision 单调性用例，**不得改动已有的那条 `--lib` 用例**）。目标门禁 lib ≥ **328**、契约 ≥ **50**。
+
+**静态审查结论**：生产代码 2270 行禁用构造 0 命中；U+FFFD 全仓 0；最大文件 543 行；`lib.rs` diff 恰一行；`060053afb..de4d45749` 全部在轨内，`connection/**`、`registry/**`、`Cargo.toml`、`docs/**` 各 0 命中；`GatewayError::Runtime` 真透明，5 类错误零重映射，契约层 6 条按变体精确等值断言；gateway ↔ barrier/FakeClock 零耦合（退出码 1）。
+
+**两处如实记录的失准（非缺陷）**：
+
+1. coder 称 `event_store_tests.rs` 是「纯搬家、一字未改」，实测 15 个原函数中 14 个逐字节相同、**1 个被刻意加强**（`a_snapshot_clears_the_gap_and_realigns_the_context_revision` 原断言的是缺陷行为 `Queued`，现改为断言 `Running` + `last_sequence()` + `row_count()` + 重复 chunk）、另新增 5 个。偏差方向是**加强**，且正好解释 323 + 5 = 328。判为措辞失准，**但后续台账必须区分「未改动 / 新增 / 修改」三类**，已写进第 2 轮 Coder 简报。
+2. Tester 自己的变异脚本第一版写死了工作树路径，导致第一次「在 `19545268d` 上跑 M7」实际打到 `de4d45749` 那棵树，**该次读数无效**。发现残留 diff 后已 `git checkout --` 复原、改为环境变量传入，并在两棵树上各重跑一次；随后又在**干净树**上完整重跑五条门禁，确保头条证据未被污染。**验证方自纠入库留档。**
+
+**D-06 确认不存在**：hub.md 缺陷表只有 D-01/02/03/04/05/07，全仓亦无此条目，Tester 未编造裁定。D-03 按协调者裁决推迟到合并时统一切 `CancelReceipt`（必须动 `connection/**`，属本轨禁改区）。D-07 维持撤销。D-01 / D-04 / D-05 判真关。
+
 ### registry 轨待裁定 5 条 → 协调者已答（2026-10-04）
 
 1. `connection::port::CancelReceipt`（2 字段，缺 `state`）与 registry 的 `CancelReceipt`（3 字段，§7.6）同名不同形 → **两处都保留，不解冻 `connection/**`，registry 也不转出前者**。registry 现有做法（不转出，避免同名物同时进 prelude）正确。记入文档批次遗留。
@@ -122,6 +172,8 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 | CM-72 是唯一零引用条目 | Wave 2 registry 轨负责 |
 | 每驱动 `case_rules` 对 `Unknown` 的真值研究（sqlite 大小写不敏感导致 `Users`/`users` 两种缓存身份） | 用户裁定记为 P2 遗留 |
 | `connection::testing::barrier` 夹具竞态（见下「夹具竞态裁定」） | 已定性为 Wave 1 既有缺陷；**不阻塞** Wave 2 合并，待独立小修 |
+| M7：`GatewayAcceptance` 重发回执的 `source` 字段无用例钉住（M7 变异存活） | 已派第 2 轮修复补断言；属 D-02 的后半段 |
+| M2 副产物：`context_revision` 单调性仅由 1 条 `--lib` 用例钉住，契约层零覆盖 | 同批在第 2 轮补契约用例 |
 
 ## 夹具竞态裁定（2026-10-05，协调者）
 
@@ -179,3 +231,6 @@ gateway 第 2 轮整改中，coder 主动披露 lib 门禁两次红在**同一�
 - 编译产物放各自 worktree 内 `target/`，合并后随 worktree 清理。
 - **每轨分支根目录的 `progress.md` 与集成分支的 `hub.md` 已获 AGENTS.md 明文授权**（见 AGENTS.md「进度台账：开发期间允许，交付即销毁」）：开发期间允许、可提交入库，**验收合并时必须删除，不得存活在 `main`**。gateway 验收方把它列为 D-07 一节，属误判，现予撤销。
 - 断言一旦红，先怀疑实现而不是改断言——「自己把用例写红」的自纠记录是这一轮最有价值的产出之一。
+- **「跑一次门禁就绿」对任何轨都不足以作为证据**（2026-10-05 新增）。barrier 夹具竞态使 `cargo test -p datazen-runtime --lib` 存在约 **12.5%** 的偶发红概率。Tester 三点实测：基线 `060053afb` 5/40 = 12.5%、`19545268d` 2/15 = 13.3%、`de4d45749` 2/15 = 13.3%，三次失败逐字同形。按 13% 概率连过 6 次的自然概率约 **43%** ⇒ 任何「我连跑 N 次全绿」的自报都不构成证据，需要连跑到统计上说得过去，或用变异实验/非空洞性证明代替。
+- **变异脚本不得写死工作树路径。** 第 2 轮 Tester 的脚本第一版写死路径，导致一次「在旧提交上跑变异」的读数无效；须参数化并在多棵树上各跑一次，收尾核验 `POST DIRTY=0`。
+- **「纯搬家 / 一字未改」这类描述要逐函数核对。** coder 报 15 个函数一字未改，实测 1 个被刻意加强、另加 5 个。方向虽是加强，但下次台账须区分「未改动 / 新增 / 修改」三类。
