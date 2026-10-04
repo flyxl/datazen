@@ -846,7 +846,7 @@ Agent 不打开、读取、解析、source 或打印 `.env` / `.env.test` 内容
 | driver E2E | `packages/drivers/<id>/e2e/` | 方言场景 |
 | Web 服务集成 | 拟新增 server crate 内 | HTTP、认证、CSRF、SSE、worker 路由 |
 
-现有可用命令：`pnpm typecheck`、`pnpm test:unit`、`pnpm test:unit:drivers`、`cargo test -p datazen --lib`、`cargo test -p datazen-driver-api`、`cargo test -p datazen-driver-postgres`、`pnpm test:layers`、`pnpm test:boundaries`。新 crate 测试命令待其 Cargo package 创建后添加，不能现在声称可运行。
+现有可用命令：`pnpm typecheck`、`pnpm test:unit`、`pnpm test:unit:drivers`、`cargo test -p datazen --lib`、`cargo test -p datazen-driver-api`、`cargo test -p datazen-driver-postgres`、`pnpm test:layers`、`pnpm test:boundaries`。runtime crate 的命令：`cargo test -p datazen-runtime`（单测与全部 `tests/` 二进制）、`cargo test -p datazen-runtime --test cm60_pressure_drain`（CM-60 压力半）、`cargo run --release -p datazen-runtime --bin cm60-bench`（CM-60 延迟半基准，独立的 bin target，参数见 fake-runtime-fixtures §11.1）。其他新 crate 测试命令待其 Cargo package 创建后添加，不能现在声称可运行。
 
 WDIO 使用 `pnpm tauri:build:webdriver` 或经检查的 E2E wrapper，不能裸 cargo build。测试文件参加 typecheck，不用 any。三件套已生成可运行 app 后仅 DMG 打包失败，不阻塞其 WDIO 功能验收。
 
@@ -856,7 +856,7 @@ H 是部署无关 runtime 契约，F 是前端契约，D 是真实驱动协议�
 
 CM-60 使用 release 构建，4 vCPU/8 GiB、无数据库网络、单进程固定 fake command 10 ms，以并发 8 预热 1000 请求；每轮采集 10000 个获准且未排队的请求，运行 5 轮。附加耗时从 gateway 完成鉴权/参数校验开始到派发 driver，以及 driver completion 到 receipt/event 状态登记完成的两段单调时间之和，不包含 fake SQL、预算/actor 排队、网络传输。采用 nearest-rank p95（排序后第 ceil(0.95*N) 项），每轮均须 ≤10 ms；排队请求另报等待分位数，不删失败样本，失败数单列。
 
-事件断言限单次存活订阅、缓冲未溢出的 sequence 连续性；重连允许重放重复原始事件，但投影后无重复行/状态遗漏。journal 在每次建连/关闭/permit 变化时断言额度，无随机采样盲区。注入连接持有、慢 consumer 和 drain 的压力部分另运行，不混入非排队延迟样本；保存环境、构建参数、原始计时与 journal 作为 CI artifact，不新增仓库评审记录。
+事件断言限单次存活订阅、缓冲未溢出的 sequence 连续性；重连允许重放重复原始事件，但投影后无重复行/状态遗漏。journal 在每次建连/关闭/permit 变化时断言额度，无随机采样盲区。注入连接持有、慢 consumer 和 drain 的压力部分另运行（`cargo test -p datazen-runtime --test cm60_pressure_drain`），不混入非排队延迟样本；保存环境、构建参数、原始计时与 journal 作为 CI artifact（落到 `target/bench/cm60-raw-<ts>.json` 与 `cm60-summary-<ts>.json`，格式与判定式见 fake-runtime-fixtures §11.5–§11.6），不新增仓库评审记录。
 
 ## 16. 详细测试用例
 

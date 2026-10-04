@@ -68,7 +68,7 @@
 | `.../testing/ids.rs` | 可预测 ID 生成与强制碰撞 | `FakeIds`、`FakeIdScope` |
 | `.../testing/fixtures.rs` | 固定实体（组织/用户/profile/命名空间 A、B） | `fixtures()` 常量与 `install_fixtures` |
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
-| `.../testing/bench.rs` | CM-60 基准 harness | **未实现**：§11 仍是目标设计，本 crate 内无此文件 |
+| `src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
 
 `cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`packages/runtime/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
@@ -577,7 +577,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 | 产物 | 内容 | 落点 |
 | --- | --- | --- |
-| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `bench.rs` 输出） |
+| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `src/bin/cm60-bench` 输出） |
 | 环境记录 | CPU 核数、内存、OS、编译器版本 | 同上文件 `environment` 段 |
 | 构建参数 | profile、features、依赖锁文件摘要 | 同上文件 `build` 段 |
 | journal | 资源/permit/句柄全量 journal 摘要 | 同上文件 `journal` 段 |
@@ -615,6 +615,8 @@ pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 ```bash
 cargo test -p datazen-runtime --lib                      # 夹具单测（130 个用例，crate 只有一个 lib target）
 cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
+cargo test -p datazen-runtime --test cm60_pressure_drain   # CM-60 压力半（§11.4，另跑）
+cargo run --release -p datazen-runtime --bin cm60-bench     # CM-60 延迟半基准（§11，独立的 bin target）
 ```
 
 **仍未创建、当前**不可**运行，不得在文档或 CI 中当作现有脚本**：
@@ -622,7 +624,6 @@ cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 fea
 | 预期命令 | 前置条件 |
 | --- | --- |
 | `cargo test -p datazen-runtime --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
-| `cargo run --release -p datazen-runtime --bin cm60-bench` | 基准入口创建（§11） |
 
 创建后必须同步更新平台开发计划 §15.1 的命令表与 CI 门禁，不把未创建命令列为现有脚本。
 

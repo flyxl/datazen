@@ -10,8 +10,8 @@
 //!
 //! **与 §2 模块表的两处差异**（均为有意为之，理由见 `harness/mod.rs` 模块说明）：
 //! 1. §2 表里列了 `bench.rs`（CM-60 压测入口），但 §11.6 明确要求基准**不得**与功能测试
-//!    共用二进制入口，且 §12 要求它落在独立的 `src/bin/cm60-bench`。两者都不是 P0 交付物，
-//!    在 P0 阶段保留一个空壳 `bench.rs` 只会制造「已实现」的错觉，因此本阶段**不建该文件**。
+//!    共用二进制入口。该基准已按 §11.6 落在独立的 `src/bin/cm60-bench/`（bin target，
+//!    不在本子树内），因此 `testing/` 下**永远不建** `bench.rs`。
 //! 2. §2 的 DAG 把 `FakeHarness` 放在 `harness` 节点但模块表未列文件名；本实现按
 //!    `harness/{mod,cm73,session_cmds,tests}.rs` 目录形态落点，与 `journal/`、`fake_resource/`
 //!    的拆法一致。
