@@ -815,3 +815,38 @@ VITEST_EXIT=0   Test Files 565 passed (565)   Tests 5920 passed (5920)   Duratio
 ### 工具更正
 
 本仓**存在 `.codegraph/`**，AGENTS.md 要求查询前先走 `codegraph explore`。本节调查用的是 grep——结论有效（给的是具体计数），但方法不合规，后续调查改用 CodeGraph 优先。
+
+---
+
+## CM-70 施工方案裁定（协调者复核后批准，附一条硬要求）
+
+Coder 交回方案、协调者**逐条实测其五条事实断言**（自报不算验证），结果全部属实：
+
+| 断言 | 实测 |
+| --- | --- |
+| 分层先例 | `trait SessionDirectory` 在 `platform-api/src/ports/session_directory.rs:96`；`impl … for InMemorySessionDirectory` 在 `runtime/src/directory/directory.rs:612` ⇒ **端口在上游、实现落 runtime 确为既有惯例** |
+| `IdempotencyRecord` | 确为 **3 字段**：`execution_id` / `fingerprint` / `first_accepted_at_nanos` |
+| `IdempotencyStore` | 确只有 `read` / `write`，**无删除语义** |
+| `ExecutionGateway::new` | runtime **5** / src-tauri **0** / 其他 crate **0** ⇒ 改 `new` 签名的回归面判断属实 |
+| `SubmissionToken` | 确只有 `{idempotency_key, expires_at}`，**无签名字段** ⇒ 签名须落在不透明串内部、无需 DTO 改造属实 |
+| 加密依赖可离线 | `hmac 0.12.1` / `sha2 0.10.8` / `subtle 2.6.1` 确在 `Cargo.lock` **且** 本地 registry 有 `.crate` ⇒ **降级方案不触发**，走真 MAC |
+
+批准：端口留 `platform-api` 不改、实现在 `packages/runtime`；`IdempotencyStore` 加**带默认方法体的 `delete`**（替身继承「拒绝」比假装删成功诚实，5 处既有实现零改动）；`IdempotencyRecord` **冻结不动**；**不拆多轨、只拆 commit**。
+
+### 拆分理由（值得留档）
+
+Coder 主动拒绝拆分，理由成立：「有 `token.rs` 单测全绿、但网关压根没调它」能过自己的测试而 CM-70 行为一点没变——这正是半成品形态。commit 1 = 令牌层 + 保留期/删除 + 接入闸门 + A3/A4/A5/A7；commit 2 = A6 围栏 + A8 不落盘钉子。A6 不能与 commit 1 并行（两者都改 `gateway/mod.rs` 的 `accept` 同一段，必冲突）。
+
+### 裁定附加的硬要求：`retained_until ≥ expires_at`
+
+Coder 方案称「删除记录之所以安全，是因为拒绝由令牌驱动」。**该推理不完整；缺了它 A4 不是没防住，而是删除动作本身制造漏洞。**
+
+推演：删 grant 后重放 → 闸门验签 ✅ / 未过期 ✅ / epoch ✅（令牌自身签名字段完好）⇒ **放行** → 账本查重 `Miss` → **真的执行一遍**，正是 CM-70 禁止的。
+
+不变量 **`retained_until ≥ expires_at`**（令牌先按自身签名字段过期，之后才允许删 grant）才使该推理成立。判据原文「超过记录保留期删除记录，再重放令牌」的步骤顺序蕴含此点，但方案**未将其断言化**——未断言的不变量等于不存在。
+
+⇒ 追加要求：(a) 该不变量落成**代码**，非注释约定，保留期清理须先确认 `expires_at` 已过；(b) 补**否定用例**——令牌仍有效但 grant 已删除 → 重放必须拒绝执行，作为防止 `delete` 被提前调用的护栏；(c) 与 A4 正向用例同列 CM-70 断言面。
+
+### 新依赖
+
+`packages/runtime/Cargo.toml` **未声明** `hmac`/`sha2`/`subtle`，需新增 `[dependencies]`。要求：锁文件一致；若 `cargo build --workspace` warning 数变化，**如实记录增减**，不得报成「清零」或「无变化」而不查。
