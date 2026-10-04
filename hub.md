@@ -248,6 +248,23 @@ error[E0308]: mismatched types
 
 **协调者认领的流程错误**：给 Coder 的门禁清单**只有 `--lib` + 5 个本轨二进制 + build/fmt/边界，漏了 12 条冻结基线**，所以 BLOCKER-1 从未进入 Coder 视野。Coder 如实跑了清单内全部命令、如实上报，**责任在清单不在执行**。本轮起门禁清单全文下发，12 条基线一条不落。
 
+### registry 轨修复轮 1 → READY_FOR_TEST，Tester 第 2 轮已派
+
+新 HEAD **`cd7aa906e7`**（修复在 `23bf4a46d`，台账在 `cd7aa906e`）。协调者已独立核实：STATUS=0、`git diff HEAD | shasum` = `da39a3ee`（空树）；`git diff --name-only 060053afb..HEAD -- p3_session_port_contract.rs connection/ gateway/` **输出为空** ⇒ 冻结测试与禁改区未被迎合；trait 签名确已回正为 `Result<ExecutionState, RuntimeError>`（`port.rs:96`）。
+
+**四条缺陷的声称修法（Coder 自报，第 2 轮 Tester 待验）**：
+
+- **B-1/B-2** —— trait 签名回正；`CancelReceipt` 三字段落到 `SessionRegistry::cancel_registered` 具名入口，`cancel_execution` 只做 `receipt.state` 投影。`port.rs:145` 加**编译期钉子** `frozen_port_cancel_shape`。**须验钉子是真闸门还是装饰**（改回签名是否真编译不过）。
+- **R-01** —— `close_registered` 按失败形状分流：`CloseRejected`（派发前拒绝、物理资源未动）留行留额度；`SessionLost`（§9.4 四步跑完、物理已关）**必须 `forget()`**；错误原样传调用方。
+- **R-02** —— 删 `invalidate_worker` 里的重复 emit，改由 `release` 单点发出；称守卫已排除 `physical.is_none()` 提前返回、`RollbackAndClose` 也不给 `CloseRejected`，故无审计空洞。
+- **D-01** —— 三字段回执保留在 `registry/receipt.rs`，`mod.rs:73` 导出，经 `cancel_registered` / `cancel_execution_bound` 可达。gateway 侧投影仍是 **D-03**。
+
+**Coder 主动报告的「覆盖迁移」（第 2 轮重点核查）**：CM-73 `宿主登记数与后端确认数对不上时墓碑不得报已关闭` 原经 `registry.session_view` 读登记表墓碑，R-01 修好后行被摘除、集成面读不到（与成功关闭后同形），**断言被移到** `actor/tests/release.rs:49-60`。**须独立判定：覆盖是平移了，还是被稀释成了更容易通过的东西。**
+
+**Coder 主动上交的未关闭项**：actor 消失（`finish()`/`ActorGone`）后登记表会永久保留其行与额度，`close_registered` 够不到 `SessionClosed`。**与 R-01 同族（额度泄漏），须判公开 API 可达性**——不可达=潜在缺陷，可达=当前缺陷。
+
+**Coder 自报门禁（第 2 轮必须独立复现，不采信）**：冻结基线 12 支全 EXIT=0；`--lib` 272；build 0 warning；fmt 0；边界 0；5 集成二进制 7/6/9/**11**/11；合并演练（对 main `158e058e0`）EXIT=0 零冲突、合并树 `--lib` **377**、`gateway_contract` **51**、19 支二进制逐支 EXIT=0。
+
 ### 协调者已裁定（各轨不得重新讨论）
 
 1. §3.2 #5 registry **重导出** `SessionView`/`SessionHandle`，绝不重新定义。
