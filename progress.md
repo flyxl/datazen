@@ -210,8 +210,11 @@ CM-74 三条：`closing_..._cm74_order` ok、`the_driver_direct_close_releases_i
    下一个要往里加用例的轨道会立刻撞线——需要一次按职责拆分的清理，建议单开一轨。
 3. **F11 provider 侧无直测**：`ops.rs:512-536` 的 `CloseUnconfirmed` 提前返回没有任何用例直接注入
    `FaultKind::CloseUnconfirmed` 打到 `close_resource`（全仓只有 `script.rs` 的接线自测和
-   `journal/tests.rs` 的账目层用例）。该缺口是既有的、非本轨引入；补测需动 790 行的
-   `fake_resource/tests.rs` 或另起文件，故并入第 2 项同批处理。
+   `journal/tests.rs` 的账目层用例）。该缺口是既有的、非本轨引入。
+   **另开窄轨补测，不并入第 2 项**：容量清理轨的 blast radius 是 790 行的共享测试文件加一次拆分
+   重构，而 F11 直测要改 F11 注入路径；两件都真、都该做，但不是同一件事，塞进同一次改动会让失败面
+   不可归因。
+   （本条只登记缺口事实，**不预判**缺口是否成立 —— Tester `f39235cc` 被派去独立核实，不采信本条说法。）
 4. **`connection-management.md` §7.4 第 6 项**（`setSessionContext` 的 `requiresReplacement`
    候选资源 + 原子发布协议）**不在本轨**，需另开轨。此处记录以免遗漏。
 
