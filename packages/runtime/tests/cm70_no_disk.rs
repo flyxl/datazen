@@ -21,6 +21,37 @@
 //! 「只在内存」这句话由第 2 条兜底，不靠 `Debug` 形状来断言——那是另一种性质的主张。
 //!
 //! 全程不读、也不打印任何 `.env` / `.env.test`。
+//!
+//! ## panic 文本里能出现什么
+//!
+//! 本文件每条断言都在检查「凭据别漏进输出面」，所以它自己的 panic 文本**也是**输出面：
+//! 一次失败的断言会把 panic 文本写进 CI 日志，等于把凭据原样交给任何有日志读取权的人。
+//! 判定只有一条标准：**插进去的值是否可能承载凭据**。
+//!
+//! 允许出现的四类：
+//! 1. 编译期常量（字面量，或只由 `SOURCES` / `FORBIDDEN` 这类登记表派生出来的值）；
+//! 2. 逐字段在**构造点**核过、确认不含凭据的类型——本文件只用到 `GatewayError`，它的字段
+//!    全是语义指纹（`gateway/mod.rs` 里的 `incoming.as_str()`）、`ExecutionId`、`&'static str`
+//!    与网关自建消息，没有一处是签名后的令牌原文；
+//! 3. 计数、下标、文件名这类定长或非敏感标量；
+//! 4. 本文件自造的合成字面量（如 `DRIVER_TEXT`）。
+//!
+//! 被排除的，逐处理由：
+//! - `token` / `rendered` / `segment` / `parts`：前两个一个是被查的凭据本身，一个是**正被
+//!   怀疑装了凭据**的那段渲染文本；插进 panic 文本就是把一次失败变成一次泄漏。`credential_segments`
+//!   的段数断言尤其致命：它在**任何泄漏检查之前**触发，所以该助手任何一次失败都会把四段真凭据
+//!   打进日志。
+//! - 目录条目清单（`temp.entries()` / `added`）：被插进去的值来自**被怀疑的那份状态本身**，
+//!   没有任何上游断言为它背书。真落盘了靠「条目数不为零」发现，而不是靠把名字打出来。
+//! - `incoming`：它同样是那条 JSON 投影里的被查值，只是长度另有断言兜着；长度断言挡不住
+//!   「长到不像指纹的凭据」，所以改成回显长度。
+//!
+//! `{error:?}` / `{err:?}` / `{other:?}` / `{message}` / `{unreadable:?}` / `{fenced:?}` /
+//! `{conflict:?}` / `{forged:?}` 一律**保留**：它们是上面第 2 类（`GatewayError`），或本仓测试夹具
+//! 自造的驱动文本——`tests/` 下每个 `RuntimeError` 载荷都是测试自有的字面量，不来自真实驱动。
+//! `{want}`（`refused`）同理，每个调用点传的都是字面量标签。
+//!
+//! 跨目录的同一轮裁定与机器闸门见 `tests/cm70_panic_redaction_guard.rs`。
 
 // 本二进制只用到夹具的一部分（`tests/gateway_fixtures` 同时服务 `gateway_contract`
 // 与 CM-70 主二进制），按 `registry_*` 那组测试二进制同样的做法把整份夹具静音，
@@ -36,8 +67,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use datazen_runtime::connection::{ExecutionId, RuntimeError};
 use datazen_runtime::gateway::{
-    ExecutionRequest, GatewayAction, GatewayError, MonotonicClock, TokenKeyring,
-    RETENTION_AFTER_EXPIRY_NANOS,
+    GatewayAction, GatewayError, MonotonicClock, TokenKeyring, RETENTION_AFTER_EXPIRY_NANOS,
 };
 use gateway_fixtures as fx;
 
@@ -303,8 +333,7 @@ async fn a_full_cm70_cycle_leaves_nothing_on_disk() {
 
     assert!(
         temp.entries().is_empty(),
-        "令牌/回执落盘了：临时根里多出 {:?}",
-        temp.entries()
+        "令牌/回执落盘了：临时根多出了非预期条目"
     );
     let mut crate_entries_after = BTreeSet::new();
     list_entries(
@@ -317,7 +346,7 @@ async fn a_full_cm70_cycle_leaves_nothing_on_disk() {
         .collect();
     assert!(
         added.is_empty(),
-        "crate 目录多出条目 {added:?}：运行时令牌不许留在工作区里"
+        "crate 目录多出条目：运行时令牌不许留在工作区里"
     );
 }
 
@@ -363,11 +392,7 @@ async fn two_cycles_and_a_retention_sweep_still_leave_nothing_on_disk() {
     );
     assert_eq!(h.harness.gateway.unverified_outcome_count().await, 1);
 
-    assert!(
-        temp.entries().is_empty(),
-        "两轮之后临时根里多出 {:?}",
-        temp.entries()
-    );
+    assert!(temp.entries().is_empty(), "两轮之后临时根多出了非预期条目");
 }
 
 /// 断言 3：签名密钥与令牌原文不进任何 `Debug` 输出。
@@ -383,15 +408,15 @@ fn the_signing_secret_and_the_token_stay_out_of_debug_output() {
     let rendered = format!("{keyring:?}");
     assert!(
         !rendered.contains(std::str::from_utf8(fx::SIGNING_KEY).expect("夹具密钥是 ASCII")),
-        "TokenKeyring 的 Debug 泄出了密钥原文：{rendered}"
+        "TokenKeyring 的 Debug 泄出了密钥原文"
     );
     assert!(
         !rendered.contains(&decimal),
-        "TokenKeyring 的 Debug 泄出了密钥字节：{rendered}"
+        "TokenKeyring 的 Debug 泄出了密钥字节"
     );
     assert!(
         rendered.contains("TokenKeyring") && rendered.contains("current"),
-        "脱敏不该把调试价值也删光：{rendered}"
+        "脱敏不该把调试价值也删光"
     );
 
     let token = TokenKeyring::single(fx::SIGNING_KEY.to_vec())
@@ -419,18 +444,15 @@ fn the_signing_secret_and_the_token_stay_out_of_debug_output() {
     ] {
         assert!(
             !rendered.contains(&token),
-            "{label} 的 Debug 泄出了令牌原文：{rendered}"
+            "{label} 的 Debug 泄出了令牌原文"
         );
         assert!(
             !rendered.contains(std::str::from_utf8(fx::SIGNING_KEY).expect("夹具密钥是 ASCII")),
-            "{label} 的 Debug 泄出了密钥原文：{rendered}"
+            "{label} 的 Debug 泄出了密钥原文"
         );
         // MAC 段是「凭它就能原样复现令牌」的那一段，脱敏输出里同样不许出现。
         let mac = token.rsplit('.').next().unwrap_or_default();
-        assert!(
-            !rendered.contains(mac),
-            "{label} 的 Debug 泄出了 MAC 段：{rendered}"
-        );
+        assert!(!rendered.contains(mac), "{label} 的 Debug 泄出了 MAC 段");
     }
 }
 
@@ -446,13 +468,10 @@ async fn the_receipt_and_the_acceptance_stay_free_of_the_token() {
         .await
         .unwrap_or_else(|err| panic!("受理应成功：{err:?}"));
     let rendered = format!("{acceptance:?}");
-    assert!(
-        !rendered.contains(&token),
-        "受理结果里出现了令牌原文：{rendered}"
-    );
+    assert!(!rendered.contains(&token), "受理结果里出现了令牌原文");
     assert!(
         rendered.contains(&acceptance.execution_id().as_str()),
-        "受理结果里本来就有回执：{rendered}"
+        "受理结果里本来就有回执"
     );
 }
 
@@ -489,22 +508,31 @@ fn the_detector_catches_a_planted_leak() {
 // 而是**整串与两段各自都不得出现**——只挡整串的话，把 MAC 段截掉再打一遍就漏了。
 
 /// 一枚令牌里两段凭据的十六进制文本。
+///
+/// 段数不对时**只**报静态文案：这一行的失败发生在任何泄漏检查**之前**，此刻 `parts`
+/// 就是那枚真令牌的四个片段，插进 panic 文本等于让该助手的任意一次失败都把四段真凭据
+/// 打进 CI 日志。段数不对说明夹具坏了，不是运行期可观测的行为，静态文案已足够定位。
 fn credential_segments(token: &str) -> Vec<String> {
     let parts: Vec<&str> = token.split('.').collect();
-    assert_eq!(parts.len(), 4, "令牌必须是四段，实际 {parts:?}");
+    assert_eq!(
+        parts.len(),
+        4,
+        "令牌必须是四段（段数错说明夹具坏了，不回显以免带出凭据）"
+    );
     vec![parts[2].to_owned(), parts[3].to_owned()]
 }
 
 /// 断言一段渲染文本里既没有整串令牌，也没有它两段凭据。
+///
+/// `rendered` 正是**被怀疑**装了凭据的那段文本，`token` 本身就是凭据——两者都绝不进
+/// panic 文本。失败文案只说「哪个出口、哪一类凭据、第几段序号」，不说「长什么样」，
+/// 否则这条断言自己就成了泄漏路径。
 fn assert_no_token_material(what: &str, rendered: &str, token: &str) {
-    assert!(
-        !rendered.contains(token),
-        "{what} 里出现了令牌原文：{rendered}"
-    );
-    for segment in credential_segments(token) {
+    assert!(!rendered.contains(token), "{what} 里出现了令牌原文");
+    for (index, segment) in credential_segments(token).into_iter().enumerate() {
         assert!(
             !rendered.contains(&segment),
-            "{what} 里出现了令牌的一段凭据（{segment}）：{rendered}"
+            "{what} 里出现了令牌的一段凭据（段序号 {index}）"
         );
     }
 }
@@ -539,185 +567,11 @@ fn variant_is_covered(error: &GatewayError) -> bool {
     }
 }
 
-/// A4：同键、不同输入的冲突错误，两条投影里都没有令牌材料。
-///
-/// 这是 H-1 的核心用例。冲突错误**必然**是在持有调用方那枚令牌时产生的，
-/// 看起来像是最容易顺手把 `key` 回显出去的地方；而回显出去等于把凭据写进 IPC 载荷。
-/// 账本按 `(dbSessionId, runtimeEpoch, key)` 查，冲突只可能出在调用方自己的作用域里，
-/// 所以回显回来的 `key` 恒等于调用方自己刚递进来的东西——零信息量、纯泄漏。
-/// 因此错误里只留**标识符**：`existing`（已存在的那次执行）与
-/// `incoming`（指纹十六进制），二者都不含令牌材料。
-#[tokio::test]
-async fn a_conflict_error_carries_identifiers_but_no_token_material() {
-    let h = fx::token_harness();
-    let token = fx::issue_token(&h.tokens, fx::TOKEN_ISSUED_AT_NANOS);
-
-    let first = fx::accept(&h.harness, fx::request_with_key(fx::REVISION, &token)).await;
-    // 同一枚令牌、换一个输入 ⇒ 判据里那条「同 receipt、不同输入冲突」。
-    let mut other = fx::request_with_key(fx::REVISION, &token);
-    other.call.input = serde_json::json!({ "sql": "delete from t where 1=0" });
-    let error = refused(
-        h.harness.gateway.accept(&fx::principal(), other).await,
-        "同键不同输入必须是冲突",
-    );
-    assert!(
-        matches!(error, GatewayError::IdempotencyConflict { .. }),
-        "{error:?}"
-    );
-
-    assert_both_projections_are_clean("冲突错误", &error, &token);
-
-    // 干净不等于没信息：该给排障的人看的标识符必须还在。
-    let json = error.to_persistable_json();
-    assert_eq!(json["kind"], "idempotencyConflict");
-    assert_eq!(json["existing"], first.as_str(), "必须指出冲的是哪一次执行");
-    let incoming = json["incoming"].as_str().unwrap_or_default();
-    assert_eq!(
-        incoming.len(),
-        16,
-        "`incoming` 必须是指纹十六进制，实际 {incoming:?}"
-    );
-    assert!(!incoming.is_empty());
-}
-
-/// 把「每条真实拒绝路径」的错误挨个查一遍。
-///
-/// 只造一个错误去查，等于只查了构造出来的那个形状；真正的风险是**某条具体路径**
-/// 顺手把请求里的东西拼进了消息文本。所以这里把真实令牌真的送过每一条拒绝路径，
-/// 再检查它返回的那个错误——令牌材料要真的一路活到投影里才会被抓到。
-#[tokio::test]
-async fn no_rejection_path_ever_carries_token_material() {
-    let h = fx::token_harness();
-    let token = fx::issue_token(&h.tokens, fx::TOKEN_ISSUED_AT_NANOS);
-    let harness = &h.harness;
-    let accept = |request: ExecutionRequest| async move {
-        harness.gateway.accept(&fx::principal(), request).await
-    };
-
-    // ① 伪造 MAC：改掉 MAC 段的一位（不重算签名）。
-    let parts: Vec<&str> = token.split('.').collect();
-    let mut tampered = parts[3].to_owned();
-    let last = tampered.pop().expect("MAC 段非空");
-    tampered.push(if last == '0' { '1' } else { '0' });
-    let forged_mac = format!("{}.{}.{}.{}", parts[0], parts[1], parts[2], tampered);
-    let forged = refused(
-        accept(fx::request_with_key(fx::REVISION, &forged_mac)).await,
-        "伪造 MAC 必须被拒",
-    );
-    assert!(
-        matches!(forged, GatewayError::SubmissionTokenRejected { .. }),
-        "{forged:?}"
-    );
-    assert_both_projections_are_clean("伪造 MAC 的拒绝", &forged, &token);
-
-    // ② 未知 keyVersion：版本号在签名覆盖范围内，所以改它同样对不上签名。
-    let unknown_version = parts[..3].join(".") + ".99." + parts[3];
-    let error = refused(
-        accept(fx::request_with_key(fx::REVISION, &unknown_version)).await,
-        "未知 keyVersion 必须被拒",
-    );
-    assert!(
-        matches!(error, GatewayError::SubmissionTokenRejected { .. }),
-        "{error:?}"
-    );
-    assert_both_projections_are_clean("未知 keyVersion 的拒绝", &error, &token);
-
-    // 先把这条写入**真的下发一次**：下面两条拒绝路径都以「已经下发」为前提，
-    // 没下发过就没有记录，既撞不出冲突，也立不起围栏。
-    fx::accept_and_dispatch(&h.harness, fx::request_with_key(fx::REVISION, &token)).await;
-    assert_eq!(h.harness.port.execute_calls(), 1, "确有一次真正下发");
-
-    // ③ 同键不同输入。
-    let mut different = fx::request_with_key(fx::REVISION, &token);
-    different.call.input = serde_json::json!({ "sql": "update t set a=1" });
-    let conflict = refused(accept(different).await, "同键不同输入必须是冲突");
-    assert!(
-        matches!(conflict, GatewayError::IdempotencyConflict { .. }),
-        "{conflict:?}"
-    );
-    assert_both_projections_are_clean("冲突", &conflict, &token);
-
-    // ④ 围栏：换新键把同一条写入再发一次。这是另一枚令牌，所以它自己的两段凭据
-    //    也要一起查——最可能顺手当回显的就是它。
-    let retry = fx::issue_token(&h.tokens, h.harness.clock.now_nanos());
-    let error = refused(
-        accept(fx::request_with_key(fx::REVISION, &retry)).await,
-        "结局未知的写入换新键重试必须先核验",
-    );
-    assert!(
-        matches!(error, GatewayError::IdempotencyVerificationRequired { .. }),
-        "{error:?}"
-    );
-    assert_both_projections_are_clean("围栏", &error, &retry);
-    assert_both_projections_are_clean("围栏", &error, &token);
-
-    // ⑤ 过期。单独一只夹具：把时钟推过 TTL 会顺手搅到上面几条。
-    let late = fx::token_harness();
-    let expired = fx::issue_token(&late.tokens, 1_000);
-    // 推进 TTL 再多 1_000（签发点是 1_000），让「现在」确实越过 expiresAt。
-    late.harness.clock.advance(fx::TOKEN_TTL_NANOS + 2_000);
-    let error = refused(
-        late.harness
-            .gateway
-            .accept(
-                &fx::principal(),
-                fx::request_with_key(fx::REVISION, &expired),
-            )
-            .await,
-        "过期令牌必须被拒",
-    );
-    assert!(
-        matches!(error, GatewayError::SubmissionTokenRejected { .. }),
-        "{error:?}"
-    );
-    assert_both_projections_are_clean("过期令牌的拒绝", &error, &expired);
-}
-
-/// 账本读不出来那条拒绝路径：`Unreadable` 不是「没这条记录」，而是「说不准」。
-#[tokio::test]
-async fn the_unreadable_ledger_rejection_carries_no_token_material() {
-    let h = fx::unreadable_token_harness();
-    let token = fx::issue_token(&h.tokens, fx::TOKEN_ISSUED_AT_NANOS);
-    let error = refused(
-        h.harness
-            .gateway
-            .accept(&fx::principal(), fx::request_with_key(fx::REVISION, &token))
-            .await,
-        "账本读不出来必须要求核验，而不是当成没这条记录",
-    );
-    assert!(
-        matches!(error, GatewayError::IdempotencyVerificationRequired { .. }),
-        "{error:?}"
-    );
-    assert_both_projections_are_clean("账本读不出来", &error, &token);
-}
-
-/// 执行记录的手写 `Debug` 是公开面（`ExecutionGateway::execution` 返回记录本身），
-/// 所以令牌字段必须在里面被抹掉，而不是「恰好没人打印它」。
-#[tokio::test]
-async fn the_execution_record_debug_does_not_print_the_token() {
-    let h = fx::token_harness();
-    let token = fx::issue_token(&h.tokens, fx::TOKEN_ISSUED_AT_NANOS);
-    let id = fx::accept(&h.harness, fx::request_with_key(fx::REVISION, &token)).await;
-
-    let record = h
-        .harness
-        .gateway
-        .execution(&id)
-        .await
-        .expect("受理过就查得到记录");
-    let rendered = format!("{record:?}");
-    assert_no_token_material("执行记录的 Debug", &rendered, &token);
-    assert!(
-        rendered.contains("<redacted>"),
-        "令牌字段应当被显式抹掉而不是悄悄消失：{rendered}"
-    );
-    // 记录里剩下的东西是排障要用的，不该被一起抹掉。
-    assert!(
-        rendered.contains(id.as_str()),
-        "记录里本来就有 executionId：{rendered}"
-    );
-}
+// 「网关错误投影面」这一组测试拆到这里，拆分理由见子模块文件头。
+// 集成测试的 crate 根不按文件名开子目录（只有 `lib.rs` / `main.rs` / `mod.rs` 才开），
+// 所以这里必须显式写 `#[path]`。
+#[path = "cm70_no_disk/error_projection.rs"]
+mod error_projection;
 
 /// 变体表逐个表态：`variant_is_covered` 缺哪个变体就编译不过，这里再把
 /// 「已表态」这件事在运行期复述一遍——两道闸的失效方式不同，值这道。

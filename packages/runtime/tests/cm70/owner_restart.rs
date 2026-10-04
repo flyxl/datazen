@@ -49,6 +49,8 @@ async fn an_old_token_after_the_owner_restarts_is_session_lost() {
         .await);
     match &error {
         GatewayError::Runtime(RuntimeError::SessionLost(message)) => {
+            // `{message}` 保留：`message` 是**夹具自造**的会话 id（`fx::SESSION`），
+            // 断言恰恰靠它指认是哪个会话；它不是令牌，也不从驱动或外部输入来。
             assert!(
                 message.contains(fx::SESSION),
                 "SessionLost 要指明是哪个会话：{message}"

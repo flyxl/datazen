@@ -59,6 +59,10 @@ async fn a_replay_after_the_record_was_deleted_never_executes() {
     assert_eq!(second.ledger_deleted, 0, "记录已经没了，不该再删");
     assert!(
         second.tombstones_pruned == 1 && second.refused.is_empty(),
+        // `{second:?}` 保留。`refused` 的每个元素是 `guard.grants` 的 **键**，也就是账本
+        // 摘要（`retention.rs:290` 直接 `.map(|(digest, _)| digest.clone())`），与
+        // `IdempotencyConflict.incoming` 同一个 16 位十六进制指纹，不是令牌原文；其余字段
+        // 是计数与 `ExecutionId`。所以这里回显不会带出凭据，真出了事靠指纹定位即可。
         "令牌自身到期后墓碑必须被剪掉：{second:?}"
     );
 
