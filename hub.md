@@ -1833,3 +1833,72 @@ Tester 已独立复核通过的项：`plan.rs:11-35` 常量逐字对齐、`laten
 ## 不开的轨（明确排除）
 
 仓库根 `cargo fmt` 的环境缺口、heredoc 教训、39 处既有 `cargo doc` 链接错误、CM-60 §11.3 排队规格缺口、`cancel.rs:22` 与 redis 的 `progress.md` 引用（已交给文档轨）、**D 层全部**、**P7 的 CM-61/CM-64 与 CM-05/CM-06 的 W 半**。
+---
+
+## 追加 002：CM-74 判 PARTIAL 的理由被重新核对（两条前提被推翻，缺口收窄）
+
+出口门重审在 `hub.md:1708` 写下的 CM-74 结论是：「没有终止 registry actor 的测试，且归池与 `setSessionContext` 未端到端」。收口前逐条核对原文与代码，**其中一条被推翻，另一条被证成但性质不同，另有一条引用指错行**。
+
+### 一、被推翻：actor 终止单元**已经存在**
+
+`packages/runtime/src/registry/actor/tests/flow.rs:262-301` 就是该单元，标题即结论：
+
+- `:262` 文档行「T16 / §4.1：actor 终止后不得重建任何句柄」
+- `:266-267` `#[tokio::test(start_paused = true)] async fn actor_终止后收掉物理资源不再重建句柄`
+- `:285` `drop(actor)` —— 丢掉**最后一个** `SessionActor` 克隆，两个通道随之关闭
+- `:287` 等到 `backend.close_calls() == 1`
+- `:290-294` 断言 `finalized[0].disposition == HandleDisposition::Rollback`，消息「actor 收尾也必须先回滚再关资源」
+- `:295-299` 断言 `finalized[0].handles.len() == 1`，消息「收尾时宿主登记的句柄必须被带上，不能随 actor 一起蒸发」
+- `:300` 断言物理关闭时 `registered_handles == 0`
+
+对照 `connection-management.md:1324` 第 5 条断言「actor 终止后不重建任何句柄，恢复只能以新 dbSessionId 显式重建」：**已覆盖**。重审「没有终止 registry actor 的测试」不成立。
+
+### 二、被证成但性质不同：归池不是「缺断言」，是**断言只在 helper 层**
+
+`packages/runtime/tests/registry_release.rs:467-472`：
+
+```rust
+#[test]
+fn 归池前检查有登记句柄一律不放行() {
+    assert!(ready_to_return_to_pool(0), "账上空了才谈得上归池");
+    assert!(!ready_to_return_to_pool(1));
+    assert!(!ready_to_return_to_pool(usize::MAX));
+}
+```
+
+三条断言全打在 helper `ready_to_return_to_pool` 的真值上。它证明**判定函数的取值正确**，不证明**归池路径被走通时这个判定确实生效**。`:1324` 第 3 条要的是「driver 返回 Clean 时若宿主仍有已登记句架，宿主检查必须失败」——这是**路径行为**，需要在真实归池流程里驱动一次。`:1323` 的步骤明写「分别走归池、setSessionContext 替换、closeSession 三条路径」。归池路径至今**没有端到端走通**。
+
+### 三、被推翻：`hub.md:1708` 引错行
+
+该行称「尚未满足 `connection-management.md:1317` 的硬门槛」。实测：`:1312` 是 **CM-73** 的标题，`:1317` 是 **CM-73 的基线说明**（记录旧实现复现证据）。CM-74 的标题在 `:1320`，断言在 `:1324`。CM-73/CM-74 对 P3 真正生效的硬门槛是另外两处：
+
+- `:1337` 门槛表「事务失效回收 | CM-73、74 | idle cleanup、句柄登记与释放顺序、物理 resource 与后续显式重连」
+- `:1340`「最终验收覆盖全部适用用例，包括 CM-73、CM-74；基线阶段可暂时记录该遗留缺陷，**P3 连接运行时阶段必须转绿**」
+
+结论方向不变（CM-74 未转绿），但依据的行号必须更正，否则后续任何按 `:1317` 执行的修复都会修错用例。
+
+### 四、`setSessionContext` 的真实性质：**操作本身不存在，不是测试不存在**
+
+`hub.md:592`/`:594` 早已记录过这一点，本轮复核确认仍然成立，并补齐了 §7.4 的实际内容：
+
+- `connection-management.md:554-566` = §7.4，`:561` 第 6 条 `requiresReplacement`：「保留旧 session，建立仅内部可见的候选资源与候选记录。候选不登记到公共 SessionRegistry/SessionDir…」
+- driver 侧**已经建模**：`connection/port.rs:208` `pub enum ChangeContextOutcome`、`:409` `pub struct ChangeContextRequest`；fake 实现在 `connection/testing/fake_resource/ops.rs:353-391`，`:360` 已会返回 `ChangeContextOutcome::RequiresReplacement { reason }`、`:391` 返回 `Confirmed`
+- 契约层**齐备**：`application/src/sessions.rs:113`、`application/src/dto/requests.rs:279`、`platform-api/src/dto/idempotency.rs:25`、`backend-client/src/client.ts:80`
+- **runtime registry 层零命中**：`packages/runtime/src/registry/` 对 `set_session_context` / `setSessionContext` **零匹配**
+
+缺的不是断言，是 §7.4 第 6 条那段编排本身——候选资源 + 原子发布。与 `hub.md:1020` 的既有裁定（「不在本轨，需另开轨」）一致。
+
+### 五、收窄后的 CM-74 剩余缺口（两条，均属 H 层）
+
+| # | 缺口 | 性质 |
+| --- | --- | --- |
+| A | `setSessionContext` 替换路径在 runtime 层不存在 | **缺实现**（§7.4 第 6 条编排） |
+| B | 归池路径的 §9.4 宿主检查只有 helper 级断言 | **缺端到端断言** |
+
+**已覆盖、不再追**：closeSession 路径（`registry_release.rs:180`）、actor 终止路径（`actor/tests/flow.rs:266`）、未登记句柄拒绝（`registry_lifecycle.rs:187`）、句柄先于物理关闭的四步顺序（`registry_release.rs:71`/`:119`/`:157`）。
+
+**新开轨** `p3-cm74-release-paths` 收 A+B 两项。
+
+**口径冲突不收窄、改为修代码**：`hub.md:592` 记录的 `harness/tests.rs:539-545` 注释（声明驱动直连路径顺序「故意不同」且不得为 CM-74 断言）随 CM-60 的 harness 拆分已随文件迁移，该文件在当前树上已不存在，注释需在新位置重新定位。若该「故意不同」的说法仍成立，本轨须**用证据推翻它**；不成立则统一顺序。**不得**以「缩小 `:1324` 适用面」的方式消解冲突。
+
+---
