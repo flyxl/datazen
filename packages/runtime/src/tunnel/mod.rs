@@ -47,8 +47,11 @@
 //!
 //! 这条铁律**不由类型系统保证**，而由字段审计保证：`&self` 方法并不排除
 //! `Mutex`/`Cell` 内部可变性（两个夹具本身就在用 `Mutex`），编译器挡不住
-//! 第二份账。真正的约束是「释放决策只读 `refs`，[`TunnelTransport`] 的返回
-//! 值不携带计数」。反证与已知名洞见 [`transport`] 模块头。
+//! 第二份账。真正的约束是「释放决策读的字段里**只有一份账**」：归零路径 `drain()`
+//! 确实读两个字段 —— `refs`（计数）与 `state`（终态守卫，只保证 `Closing` /
+//! `Unconfirmed` 不再发第二次 close；它**不是**第二本账，不参与计数、不增减）；
+//! 计数来源仍**只有一份**，即 `refs`，[`TunnelTransport`] 的返回值也不携带计数。
+//! 反证与已知名洞见 [`transport`] 模块头。
 //!
 //! [`PoolKeyGeneration`]: crate::resource::PoolKeyGeneration
 

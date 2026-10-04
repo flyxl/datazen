@@ -30,14 +30,16 @@
 //!    不再发第二次 close —— 它**不是**第二本账，不参与计数、不增减）。计数来源
 //!    仍**只有一个**，即 `refs`；`TunnelBinding` 只在 `acquire` 处被快照出去，
 //!    此后不再回流。
-//! 3. 代数不变量（`close` 次数 == acquire 次数 − release 次数）由
-//!    `tunnel::journey_single_counter::single_counter_algebra_holds` 钉住。
+//! 3. 代数不变量由 `tunnel::journey_single_counter::single_counter_algebra_holds`
+//!    钉住，三条各自独立：`open` 次数恒为 **1**（一条 spec 只开一条物理隧道，
+//!    与 acquire 次数无关）；剩余计数 == acquire 次数 − release 次数；
+//!    `close` 次数 ∈ {0, 1} —— 归零那一次为 1，重复释放不再增加。
 //!
 //! **已知名洞（登记于 CM-32 repair round 1，修复留待跟进轨）**：约束 (1) 当前
 //! 由审计保证，编译器不保证它。已实证 —— 给 `RecordingTunnelTransport` 加一个
 //! `close_tally: Mutex<usize>` 并让 `close_calls()` 改读它，**编译通过且全轨
-//! 测试全绿**。两个候选修法（断言释放路径只读一个计数 / 让 `drain` 按值从
-//! 单个私有方法取计数而非直读结构体字段）本轮不裁决。
+//! 测试全绿**。两个候选修法（断言释放路径涉及的计数字段仅 `refs` 一个 /
+//! 让 `drain` 按值从单个私有方法取计数而非直读结构体字段）本轮不裁决。
 
 use std::sync::Arc;
 
