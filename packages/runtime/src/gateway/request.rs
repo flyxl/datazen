@@ -34,7 +34,19 @@ use crate::gateway::idempotency::{IdempotencyScope, RequestFingerprint};
 use crate::gateway::provenance::{ExecutionSource, GatewayAction};
 
 /// 一次执行请求。
-#[derive(Debug, Clone, PartialEq)]
+///
+/// ## `Debug` 是手写的：只脱敏凭据字段
+///
+/// 装了令牌层（CM-70）之后 `idempotency_key` 就是那把**可重放**的签名提交令牌，
+/// 而 [`ExecutionRequest`] 是公开构造、公开持有的输入 DTO——派生 `Debug` 一路走到
+/// 这里就把一份凭据抄进了日志、`panic` 文本与 `assert_eq!` 的失败输出。
+/// 因此下面**不派生** `Debug`，改为手写一份只把 `idempotency_key` 打成 `<redacted>`
+/// 的实现（紧随本结构其后）。
+///
+/// **脱敏范围只限凭据字段**：`call` 原样输出。它是负载，而排查幂等问题**恰恰要看
+/// payload**（同一个键配了哪条 SQL、参数差在哪），把它抹掉会让这条诊断日志失去意义。
+/// ⚠️ 将来若某条驱动命令把凭据放进了 `call` 的参数里，此处的脱敏口径需要重新评估。
+#[derive(Clone, PartialEq)]
 pub struct ExecutionRequest {
     pub handle: SessionHandle,
     pub expected_context_revision: Counter,
@@ -47,6 +59,22 @@ pub struct ExecutionRequest {
     /// 取消必须核验 `executionId` / `runtimeEpoch` / `resourceBindingId` 三者一致，
     /// 少了第三个就会出现「用 A 执行的句柄去取消 B」这种跨资源取消。
     pub resource_binding_id: Option<ResourceId>,
+}
+
+/// CM-70：输入侧同一把令牌同样走派生 `Debug` 就是明文泄漏——`format!("{req:?}")`
+/// 会连 MAC 段一起逐字打印。这层与 [`super::ExecutionRecord`] 的输出侧脱敏是**两个
+/// 独立缺口**，必须各自堵：只挡最外层，派生 `Debug` 照样会一路走到叶子字段。
+impl std::fmt::Debug for ExecutionRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutionRequest")
+            .field("handle", &self.handle)
+            .field("expected_context_revision", &self.expected_context_revision)
+            .field("call", &self.call)
+            .field("idempotency_key", &"<redacted>")
+            .field("source", &self.source)
+            .field("resource_binding_id", &self.resource_binding_id)
+            .finish()
+    }
 }
 
 impl ExecutionRequest {
@@ -339,6 +367,11 @@ impl GatewayError {
 /// 是公开可取的（`ExecutionGateway::execution` 直接把记录交给调用方），派生 `Debug`
 /// 一路走到这里就把一份**可重放**的凭据抄进了日志与审计。只在网关这一侧拦一道：
 /// `connection/session.rs` 是 CM-54 的冻结面，那边一个字节都不动。
+///
+/// **脱敏范围只限凭据字段**：`call` 原样输出。令牌是凭据、`call` 是负载，而排查幂等
+/// 问题**恰恰要看 payload**（同一个键配了哪条 SQL、参数差在哪），抹掉它会让这条
+/// 诊断日志失去意义——这是裁定，不是疏漏。
+/// ⚠️ 将来若某条驱动命令把凭据放进了 `call` 的参数里，此处的脱敏口径需要重新评估。
 pub(crate) struct RedactedExecuteRequest<'a>(pub &'a ExecuteInSessionRequest);
 
 impl std::fmt::Debug for RedactedExecuteRequest<'_> {

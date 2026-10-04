@@ -353,3 +353,106 @@ CM-54 的 `IdempotencyLookup::Unreadable` 已经在 `gateway/mod.rs:249-252` 挡
   这与 `GatewayState.records` 这个**既有**无界 map 是同一性质，网关整体本来就是进程内
   生命周期、没有淘汰口径。给它加清扫会直接破坏「结局未知」这个保证本身（清掉等于宣布
   「这条写没生效」），所以不做，留给网关生命周期层面的统一决策。
+
+---
+
+## CM-70 修复轮 2（commit 4）：3 项强制 + 2 项小项
+
+上一轮判定 **CONDITIONAL PASS**，本轮是收口：补 M1、补 D1、落 M2 裁定、Q1 注释澄清。
+
+### D1（强制）：`cm70_no_disk` 的进程级 `TMPDIR` 竞争
+
+- **现象**：验证方在 HEAD `0a9a8f6e3` 上连跑 25 次，**7 绿 / 18 红**（基线 24 绿 / 1 红）。
+  `git diff c6597b803 0a9a8f6e3 -- tests/cm70_no_disk.rs` 里 `set_var` 命中为 0 ⇒
+  机制是既有的：`PrivateTempRoot` 改的是**进程全局** `TMPDIR`，同一二进制内两个
+  `#[tokio::test]` 并行跑时各自写进对方的根。case 数从 7 涨到 13 把窗口拉宽了。
+- **修法**：照搬 `tests/directory_no_disk.rs` 的房规（`TEMP_ROOT_LOCK` 持有为结构体
+  字段，绕过在结构上不可能）。`static TEMP_ROOT_LOCK: Mutex<()>` + `new()` 里
+  poison 容忍地取锁，**先取锁再算 `std::env::temp_dir()`**；`_serial: MutexGuard`
+  字段声明在最后 ⇒ `Drop` 先跑（还原环境变量 + 删目录）之后才释放锁。
+  取锁点 203 行、`temp_dir()` 206 行、`_serial` 字段 197 行。
+- **没选注入式 temp root**：生产 `src/**` 对 `temp_dir`/`TMPDIR` 命中为 0，no-disk
+  扫描正是它的探测器；注入要动冻结面 + 799 行的 `mod.rs`，代价与风险都更大。
+- **验收**：`cargo test -p datazen-runtime --test cm70_no_disk` 连跑 **25 次全部
+  `test result: ok. 13 passed; 0 failed`**。
+- **反证（锁是承重的）**：把锁拆成按 label 各一把（`TEMP_ROOT_LOCK` / `TEMP_ROOT_LOCK2`，
+  即复刻修复前的「互不排斥」）后连跑 25 次 → **18 绿 / 7 红**（`FAILED. 12 passed; 1 failed`）。
+  竞争原样回归，随后已还原（`TEMP_ROOT_LOCK2` 命中数 0）。
+- `tests/directory_no_disk.rs` 也有同名机制，但在**另一个二进制/另一个进程**里，与本文件互不影响。
+
+### M1（强制）：输入侧 `ExecutionRequest` 的 `Debug` 泄漏令牌
+
+- **现象**：`TA_R1_EXECUTION_REQUEST_DEBUG LEAKED=true HAS_MAC_SEGMENT=true LEN=232`。
+  上一轮只堵了输出侧 `ExecutionRecord`（经 `RedactedExecuteRequest`），输入侧
+  `ExecutionRequest` 仍是 `#[derive(Debug)]`，`format!("{req:?}")` 会把令牌连 MAC 段
+  逐字打印。
+- **修法**：`src/gateway/request.rs` 手写 `impl Debug`，只把 `idempotency_key`
+  打成 `<redacted>`，其余字段（`handle`/`expected_context_revision`/`call`/`source`/
+  `resource_binding_id`）原样。`#[derive(Clone, PartialEq)]` 保留。
+- **教训（要保留在代码里）**：派生 `Debug` 必须防到**叶子**。只挡最外层结构体，
+  派生实现照样一路走到叶子字段——上一轮的错误就是同一个文件里只堵了一半。
+- **新测试** `packages/runtime/tests/cm70/redaction.rs`（2 例）。放这里而不是
+  `cm70_no_disk.rs`：后者只剩 1 行额度；且 `tests/gateway_contract/invariants.rs`
+  用 `read_dir` 枚举 `tests/cm70/*.rs`，新文件自动进 800 行门禁，不用改枚举表。
+  两例都带前提守卫（4 段、末段 ≥32 位），保证测的是令牌而不是空壳。
+- **变异证明**（两份日志都留档）：
+  - 把 `idempotency_key` 改回明文 → `EXIT=101`，
+    `test result: FAILED. 0 passed; 2 failed; ... 46 filtered out`，
+    两条都 panic 在 `redaction.rs:33:5`（`!rendered.contains(token)`）。
+  - 把 `call` 也脱敏（过度脱敏）→ `EXIT=101`，
+    `test result: FAILED. 1 passed; 1 failed; ...`，panic 在 `redaction.rs:52:5`。
+  - 还原后 `test result: ok. 2 passed; 0 failed; ... 46 filtered out`。
+
+### M2（裁定，已落代码）：脱敏范围只限凭据字段，`call` 原样
+
+- 令牌是凭据，`call` 是负载。排查幂等冲突恰恰要看 payload（指纹里就有
+  `serde_json(input)`），把 `call` 一起打码会让脱敏把排障信息也毁掉。
+- 代码：`ExecutionRequest` 与 `RedactedExecuteRequest` 都只脱敏凭据字段；
+  `redaction.rs:52` 的断言把这条裁定**变成可执行的**（过度脱敏即失败）。
+- ⚠️ 遗留：将来若有驱动命令把凭据放进 `call` 的参数里，这条口径要重新评估。
+  已写进 `RedactedExecuteRequest` 的文档注释。
+
+### Q1：围栏处注释澄清（`mod.rs`，净增 0 行）
+
+- 原注释只解释了「为什么不等驱动返回再抬」。补上：判据是一条**禁令**（不得拿新键
+  自动重试一条**结局未知**的写入），**并不要求放行什么**；对驱动语义上判定「本次没生效」
+  的那类失败同样抬栏是符合判据的保守实现——网关看不到驱动内部的落库顺序，替它断言
+  「这次确定没生效」只会造出一个无从核实的乐观前提。逃生舱 `resolve_unknown_outcome`
+  有专条用例（`tests/cm70/retries.rs`）。
+- **行数**：`src/gateway/mod.rs` 改前 799 行、改后仍 **799 行**——压缩重排既有注释
+  段落实现，`wc -l` 前后都是 799。
+
+### 方法论留痕
+
+- SQL 是 `dispatch` 发出的，不是 `accept`。验证方第一次的探针只走了 `accept`，
+  量到的 `=1` 差点被误读成「没拦住」。任何回归用例都必须经 `dispatch` 重试，
+  且要断言 SQL 次数而不只是错误变体。
+
+### commit 4 门禁实测
+
+- 首尾各记一次：`HEAD_BEFORE=HEAD_AFTER=0a9a8f6e321ca94c8250244246c8237309aeda12`，
+  `STATUS_SHA_BEFORE=STATUS_SHA_AFTER=1229f548…`（sha256 of `git status --porcelain`）
+- `cargo fmt -p datazen-runtime -- --check` → `FMT_CHECK_EXIT=0`
+- `cargo build -p datazen-runtime --tests` → `BUILD_EXIT=0`
+- `cargo test -p datazen-runtime` → `TEST_ALL_EXIT=0`，**652 passed / 0 failed**。
+  与 commit 3 的 650 逐目标对齐后**只有** `cm70_idempotency_replay` 46→48（+2，
+  即 `redaction.rs` 两例），其余 20 个目标逐个不变（含 unittests 411、
+  `cm70_no_disk` 13、`gateway_contract` 51）。
+- `warning:` 归因：`packages/runtime/src/**` **0 条**、`cm70_no_disk` **0 条**；
+  `cm70_idempotency_replay` 16 条、`gateway_contract` 16 条（1 条重复），
+  全是共享夹具的 dead_code，与 commit 3 同量。
+- 行数预算：`src/gateway/mod.rs` 799、`src/gateway/request.rs` 590、
+  `tests/cm70_no_disk.rs` 799、`tests/cm70/redaction.rs` 86（上限 800）
+
+### 遗留（结构债，不在本轨范围）
+
+- 后续轨道要把 `effect_outcome` 接进 `ExecutionReceipt`，那会动 `mod.rs` 的结构，
+  **必须先拆模块**（现在 799/800，没有余量）。
+
+### `request.rs` 凭据字段扫描（结论）
+
+带派生 `Debug` 且**含凭据**的类型：`ExecutionRequest`——唯一一个，已手写脱敏。
+其余派生类型均无凭据：`AcceptanceDisposition`（只有时间戳）、
+`GatewayAcceptance`（回执/来源/时刻）、`GatewayError`（CM-54/CM-70 各变体**刻意**
+不带令牌与键，`IdempotencyConflict.incoming` 是语义指纹不是键）。
+`RedactedExecuteRequest` 是手写 `Debug`，已脱敏。

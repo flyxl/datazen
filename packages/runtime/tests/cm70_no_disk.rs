@@ -32,6 +32,7 @@ mod gateway_fixtures;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use datazen_runtime::connection::{ExecutionId, RuntimeError};
 use datazen_runtime::gateway::{
@@ -177,21 +178,42 @@ fn list_entries(root: &Path, out: &mut BTreeSet<String>, depth: usize) {
     }
 }
 
+/// `TMPDIR` 是**进程级全局**量：本二进制内的两个用例并行跑，就会各自把对方的私有根
+/// 当成自己的——后建的那个还会把自己的目录建在别人的根**里面**，于是两条断言一起炸在
+/// 「起点必须是空的」（实测 HEAD 连跑 25 次只有 7 绿 18 红；基线 13 条里只用到两个根，
+/// 竞态窗口小得多）。
+///
+/// 因此这里给整份私有根加一把**进程内**串行锁，锁在 [`PrivateTempRoot::new`] 内部取得
+/// ——「建了根却没持锁」因此在**结构上**不可能发生，用例里没有旁路可走（`Drop` 顺带把锁
+/// 还回去，panic 路径也不例外）。与 `tests/directory_no_disk.rs` 的 `TEMP_ROOT_LOCK` 是
+/// 同一套写法。
+static TEMP_ROOT_LOCK: Mutex<()> = Mutex::new(());
+
 /// 私有空临时根：`TMPDIR` 在本测试期间指向它，之后它必须仍然是空的。
 struct PrivateTempRoot {
     path: PathBuf,
     saved: Option<OsString>,
+    /// 持锁即独占这个私有根；字段声明在最后，保证它活得比 `path` / `saved` 久。
+    _serial: MutexGuard<'static, ()>,
 }
 
 impl PrivateTempRoot {
     fn new(label: &str) -> Self {
+        // 锁中毒也要能继续跑：它保护的是「临时根归属」，不是任何不变量。
+        let serial = TEMP_ROOT_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let path = std::env::temp_dir().join(format!("dz-cm70-nodisk-{label}"));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path)
             .unwrap_or_else(|err| panic!("建不出私有临时根 {}：{err}", path.display()));
         let saved = std::env::var_os("TMPDIR");
         std::env::set_var("TMPDIR", &path);
-        Self { path, saved }
+        Self {
+            path,
+            saved,
+            _serial: serial,
+        }
     }
 
     fn entries(&self) -> BTreeSet<String> {

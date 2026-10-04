@@ -23,6 +23,7 @@
 //! - `forgery.rs` A5 伪造 issuedAt / keyVersion
 //! - `retries.rs` A6 客户端不能用新键自动重试结局未知的写入
 //! - `owner_restart.rs` A7 owner 重启后旧令牌 SessionLost
+//! - `redaction.rs` A8 输入侧 DTO 的 `Debug` 脱敏（输出侧那条在 `cm70_no_disk.rs`）
 //!
 //! A8「运行时 receipt/token 不落盘」不在这里：它是跨切面的反面证据
 //! （源码扫描 + 文件系统对照 + `Debug` 投影），单独一个测试二进制
@@ -38,6 +39,8 @@ mod expiry;
 mod forgery;
 #[path = "cm70/owner_restart.rs"]
 mod owner_restart;
+#[path = "cm70/redaction.rs"]
+mod redaction;
 #[path = "cm70/retention.rs"]
 mod retention;
 #[path = "cm70/retries.rs"]
