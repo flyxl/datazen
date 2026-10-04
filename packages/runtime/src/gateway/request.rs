@@ -27,8 +27,8 @@ use serde_json::json;
 
 use crate::connection::RuntimeError;
 use crate::connection::{
-    CommandCall, Counter, ExecutionId, ExecutionReceipt, ExecutionState, ResourceId, SessionHandle,
-    StreamId,
+    CommandCall, Counter, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState,
+    ResourceId, SessionHandle, StreamId,
 };
 use crate::gateway::idempotency::{IdempotencyScope, RequestFingerprint};
 use crate::gateway::provenance::{ExecutionSource, GatewayAction};
@@ -245,9 +245,18 @@ pub enum GatewayError {
     IdempotencyVerificationRequired { message: String },
 
     /// CM-54：同一个键被复用于另一个语义请求。
-    #[error("idempotency key {key} already bound to execution {existing}, incoming fingerprint {incoming}")]
+    ///
+    /// **刻意没有键本身**（CM-70 高危缺陷 1 的修复）：装了令牌层之后键就是那把
+    /// 签名提交令牌，回显它等于把一份可重放的凭据抄进错误消息和审计落盘。
+    /// 而且冲突**只可能**发生在与本次受理完全相同的作用域上——账本按
+    /// `(dbSessionId, runtimeEpoch, 键)` 查记录，读到记录才是冲突——
+    /// 所以这里的键恒等于调用方刚递上来的那把，回显给提交者恒为零信息。
+    /// `existing` 已经指明账本里那条记录（它的作用域就是这把键），
+    /// `incoming` 是语义指纹，两者合起来足以定位冲突，不需要凭据。
+    #[error(
+        "idempotency key already bound to execution {existing}, incoming fingerprint {incoming}"
+    )]
     IdempotencyConflict {
-        key: String,
         existing: ExecutionId,
         incoming: String,
     },
@@ -303,13 +312,8 @@ impl GatewayError {
                 "kind": "idempotencyVerificationRequired",
                 "message": message,
             }),
-            GatewayError::IdempotencyConflict {
-                key,
-                existing,
-                incoming,
-            } => json!({
+            GatewayError::IdempotencyConflict { existing, incoming } => json!({
                 "kind": "idempotencyConflict",
-                "key": key,
                 "existing": existing.as_str(),
                 "incoming": incoming,
             }),
@@ -326,6 +330,28 @@ impl GatewayError {
                 "reason": reason,
             }),
         }
+    }
+}
+
+/// `ExecuteInSessionRequest` 的**脱敏** `Debug` 视图（只在这里用）。
+///
+/// 装了令牌层之后 `idempotency_key` 就是那把签名提交令牌，而 [`super::ExecutionRecord`]
+/// 是公开可取的（`ExecutionGateway::execution` 直接把记录交给调用方），派生 `Debug`
+/// 一路走到这里就把一份**可重放**的凭据抄进了日志与审计。只在网关这一侧拦一道：
+/// `connection/session.rs` 是 CM-54 的冻结面，那边一个字节都不动。
+pub(crate) struct RedactedExecuteRequest<'a>(pub &'a ExecuteInSessionRequest);
+
+impl std::fmt::Debug for RedactedExecuteRequest<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecuteInSessionRequest")
+            .field("handle", &self.0.handle)
+            .field(
+                "expected_context_revision",
+                &self.0.expected_context_revision,
+            )
+            .field("call", &self.0.call)
+            .field("idempotency_key", &"<redacted>")
+            .finish()
     }
 }
 
@@ -465,7 +491,6 @@ mod tests {
                 message: "reset".to_owned(),
             },
             GatewayError::IdempotencyConflict {
-                key: "k".to_owned(),
                 existing: ExecutionId::new("e"),
                 incoming: "f".to_owned(),
             },
@@ -486,6 +511,35 @@ mod tests {
                 "每种错误都必须有 kind"
             );
         }
+    }
+
+    /// 冲突记录只许有标识符，**不许**多出一个字段。
+    ///
+    /// 曾经有一版把幂等键原样写回落盘（CM-70 高危缺陷 1）：键在装了令牌层之后
+    /// 就是那把签名提交令牌，落盘一份就等于给伪造者一份可重放的凭据。
+    /// 这里用「字段全集相等」而不是逐个检查缺失，把这个口子钉死在映射表上——
+    /// 往回加 `key` 会立刻转红。
+    #[test]
+    fn the_conflict_record_carries_only_identifiers() {
+        let err = GatewayError::IdempotencyConflict {
+            existing: ExecutionId::new("exe_conflict_1"),
+            incoming: "fingerprint".to_owned(),
+        };
+        let json = err.to_persistable_json();
+        let fields = json
+            .as_object()
+            .expect("错误记录必须是对象")
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            fields,
+            ["existing", "incoming", "kind"]
+                .iter()
+                .map(|f| (*f).to_owned())
+                .collect::<std::collections::BTreeSet<_>>(),
+            "冲突记录里不得出现凭据或任何附加字段：{json}"
+        );
     }
 
     #[test]

@@ -73,7 +73,7 @@ async fn a_resend_survives_a_context_revision_that_moved_on() {
 #[tokio::test]
 async fn the_same_key_with_a_different_request_is_a_conflict() {
     let h = ready_harness();
-    let _ = accept(&h, request(REVISION)).await;
+    let first = accept(&h, request(REVISION)).await;
     let other = ExecutionRequest::new(
         session_handle(),
         Counter::new(REVISION),
@@ -88,9 +88,26 @@ async fn the_same_key_with_a_different_request_is_a_conflict() {
         Ok(_) => panic!("同一个 key 复用到另一个命令必须报冲突"),
         Err(error) => error,
     };
+    // CM-70：冲突指明**是谁**占了这个键，不回显键本身——装了令牌层之后键就是
+    // 那把签名提交令牌，回显等于给审计通道塞一份可重放凭据。
+    let rendered = error.to_string();
+    let json = error.to_persistable_json();
     match error {
-        GatewayError::IdempotencyConflict { key, .. } => assert_eq!(key, IDEMPOTENCY_KEY),
+        GatewayError::IdempotencyConflict {
+            existing, incoming, ..
+        } => {
+            assert_eq!(existing.as_str(), first.as_str());
+            assert!(!incoming.is_empty(), "冲突必须带上进来的语义指纹");
+        }
         other => panic!("期望 IdempotencyConflict，实际 {other:?}"),
+    }
+    assert_eq!(json["kind"], "idempotencyConflict");
+    assert!(json.get("key").is_none(), "冲突记录不得带键");
+    for surface in [rendered, json.to_string()] {
+        assert!(
+            !surface.contains(IDEMPOTENCY_KEY),
+            "冲突的两条出口都不得带幂等键：{surface}"
+        );
     }
     assert_eq!(h.gateway.execution_count().await, 1);
 }

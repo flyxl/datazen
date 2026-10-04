@@ -265,6 +265,30 @@ CM-54 的 `IdempotencyLookup::Unreadable` 已经在 `gateway/mod.rs:249-252` 挡
 - HEAD 前后一致：`HEAD_BEFORE=f18bf25fc…` == 门禁后的 `HEAD`（`git status` 只有本轨
   那 4 个改动 + 2 个新文件，没有外来改动）
 
+### commit 3（第 4 轮整改：独立 Tester 判 NOT-PASS 的 H-1 / H-2 两条 HIGH）
+
+两个 HIGH 都是协调者签字授权改 CM-54 冻结面之后才动的手。
+
+- **H-1（争议项，按裁定改）**：`IdempotencyConflict` 原来带 `key: String`，把调用方
+  自己的令牌原文回显进错误投影。账本按 `(dbSessionId, runtimeEpoch, key)` 查，冲突只可能
+  出现在调用方自己的作用域里，所以这个 `key` 是**把它自己的凭据原样念回去**，零信息量、
+  却是可重放凭据的泄漏面。现在字段只剩 `{ existing: ExecutionId, incoming: String }`，
+  `incoming` 是 16 位十六进制的 `RequestFingerprint`——定位要的信息一点不少，凭据一份不留。
+  连带修掉两处派生 `Debug` 的**嵌套**泄漏：`ExecutionRecord` 手写 `Debug` 只挡了顶层
+  `idempotency_key`，`port_request: ExecuteInSessionRequest` 里还嵌着同一个令牌，
+  `{:?}` 照样打印出来；现在内层走 `request::RedactedExecuteRequest` 脱敏视图，
+  `connection/session.rs` 那条冻结面一个字节不动。
+- **H-2（未闭合项）**：围栏原来只在 `accept` 读账本时抬（`Unreadable` 那一条），
+  于是「受理成功但压根没下发」的写入不会立围栏，客户端换新键照样自动重试。
+  实测证据（改前）：`FENCE_COUNT=0 / NEW_TOKEN_ACCEPTED=… / SQL_ISSUED_FINAL=2`。
+  现在在 `dispatch` 里 **`mark_dispatch_issued` 之后、`self.port.execute_in_session(…)`
+  之前**抬起，键是 `(db_session_id, fingerprint)`，**绝不绑令牌**（绑了等于没围）。
+  刻意不看驱动的返回值：闸门失败会先 `release_dispatch_reservation` 原路退回，
+  可证明根本没碰到驱动，所以不会误抬围栏。
+- 附带修正一处被 H-2 打红的既有断言：`tests/gateway_contract/timing.rs` 的 p95 用例
+  原本每轮只换 `idempotency_key`（同一条写入 ⇒ 同一指纹），第 2 轮起必然撞上围栏。
+  改为每轮换 `call.input`，仍然是 20 次真实派发，测的还是派发开销。
+
 ### 逐项对照 A1–A8
 
 | 断言 | 落点 |
@@ -304,3 +328,28 @@ CM-54 的 `IdempotencyLookup::Unreadable` 已经在 `gateway/mod.rs:249-252` 挡
 3. `packages/runtime/src/gateway/token.rs`：`TokenKeyring` 原来 `#[derive(Debug)]`，
    会把**签名密钥原文**打进 `Debug` 输出。本轨改成了手写脱敏实现
    （只打 `current` 与版本号列表）。这是本轨顺手修掉的一个真实缺陷。
+
+### commit 3 门禁实测
+
+- `cargo fmt -p datazen-runtime && cargo fmt -p datazen-runtime -- --check` → `FMT_CHECK_EXIT=0`
+- `cargo build -p datazen-runtime` → `BUILD_EXIT=0`
+- `cargo test -p datazen-runtime`（整 crate，22 个测试目标）→ `TEST_ALL_EXIT=0`，
+  合计 **650 passed / 0 failed**：unittests **411**、`cm70_idempotency_replay` **46**、
+  `cm70_no_disk` **13**、`gateway_contract` **51**，`budget_cm65_*` 8/2/6、`budget_cm66` 7、
+  `directory_*` 12/6/7/10、`registry_*` 10/11/9/6/7、`resource_*` 11/4/7/6、
+  `p3_session_port_contract` 7、`registry_audit` 6
+- `warning:` 归因：`packages/runtime/src/**` **0 条**；`cm70_no_disk` **0 条**；
+  `cm70_idempotency_replay` 16 条、`gateway_contract` 16 条，全部是共享夹具
+  `tests/gateway_fixtures/mod.rs` 里「这个二进制没用到」的 dead_code（每个集成二进制
+  只用夹具的一部分，属预期）
+- 行数预算：`src/gateway/mod.rs` 799、`src/gateway/request.rs` 557、
+  `tests/cm70_no_disk.rs` 777、`tests/gateway_fixtures/mod.rs` 760、
+  `tests/cm70/retries.rs` 363、`tests/cm70/expiry.rs` 286、`tests/gateway_contract/timing.rs` 62
+  （上限 800）
+
+## 本轮新增的已知代价
+
+- **围栏 `HashSet` 只增不减**：每条已下发的语义写入留一条 `(db_session_id, fingerprint)`。
+  这与 `GatewayState.records` 这个**既有**无界 map 是同一性质，网关整体本来就是进程内
+  生命周期、没有淘汰口径。给它加清扫会直接破坏「结局未知」这个保证本身（清掉等于宣布
+  「这条写没生效」），所以不做，留给网关生命周期层面的统一决策。

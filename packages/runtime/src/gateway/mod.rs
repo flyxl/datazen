@@ -49,6 +49,7 @@ use crate::connection::{
     Counter, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState, ResourceId,
     RuntimeError, SessionHandle, SessionState, SessionView,
 };
+use crate::gateway::request::RedactedExecuteRequest;
 use crate::registry::SessionPort;
 
 pub mod cancel;
@@ -111,7 +112,7 @@ pub use token::{
 ///
 /// **每个执行自带事件水位线与计时探针**，不是全局一份：水位线绑定在
 /// `(dbSessionId, runtimeEpoch)` 上，两个会话并发交错的事件不能共用一个水位线。
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExecutionRecord {
     execution_id: ExecutionId,
     handle: SessionHandle,
@@ -122,10 +123,39 @@ pub struct ExecutionRecord {
     /// 受理时构造一次并冻结。下发只改句柄，不改 `call` / `idempotencyKey`：
     /// 受理与下发之间命令被改写，等于下发的东西和回执对不上。
     port_request: ExecuteInSessionRequest,
+    /// 受理时冻结的语义指纹。下发时它就是围栏键（CM-70）：请求一旦真的
+    /// 交给了驱动，这个指纹上的任何自动重试都必须先核验。它和 `port_request`
+    /// 一样受理定型，下发只读。
+    fingerprint: RequestFingerprint,
     probe: OverheadProbe,
     events: EventStore,
     dispatched: bool,
     last_state: ExecutionState,
+}
+// `Debug` 手写不派生：`idempotency_key` 与内嵌的 `port_request` 里都是签名令牌。
+
+/// `Debug` **手写、不派生**：装了令牌层之后 `idempotency_key` 就是那把签名提交令牌，
+/// 而 [`ExecutionGateway::execution`] 是公开 API，返回值直接 `{:?}` 就把一份可重放的
+/// 凭据抄进日志/审计。`port_request` 里还嵌着同一个令牌，所以那一层走
+/// [`RedactedExecuteRequest`]，否则派生 `Debug` 会从字段深处把令牌带出来。
+/// 要拿键就调 [`Self::idempotency_key`]，那是有意的出口。
+impl std::fmt::Debug for ExecutionRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutionRecord")
+            .field("execution_id", &self.execution_id)
+            .field("handle", &self.handle)
+            .field("expected_context_revision", &self.expected_context_revision)
+            .field("resource_binding_id", &self.resource_binding_id)
+            .field("source", &self.source)
+            .field("idempotency_key", &"<redacted>")
+            .field("port_request", &RedactedExecuteRequest(&self.port_request))
+            .field("fingerprint", &self.fingerprint)
+            .field("probe", &self.probe)
+            .field("events", &self.events)
+            .field("dispatched", &self.dispatched)
+            .field("last_state", &self.last_state)
+            .finish()
+    }
 }
 
 impl ExecutionRecord {
@@ -204,6 +234,15 @@ struct UnknownOutcome {
     fingerprint: RequestFingerprint,
 }
 
+impl UnknownOutcome {
+    fn of(handle: &SessionHandle, fingerprint: &RequestFingerprint) -> Self {
+        Self {
+            db_session_id: handle.db_session_id.as_str().to_owned(),
+            fingerprint: fingerprint.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct GatewayState {
     records: HashMap<ExecutionId, ExecutionRecord>,
@@ -211,6 +250,26 @@ struct GatewayState {
     next_sequence: u64,
     /// CM-70：结局未知的写入。命中它的新提交一律要求核验，不受理。
     unverified: HashSet<UnknownOutcome>,
+}
+
+/// 围栏只有两个动作，都以 `(dbSessionId, 语义指纹)` 为键。
+///
+/// 键里**不能**有令牌或幂等键：围栏要挡的正是「换个新键自动重试」，
+/// 键绑在令牌上等于没围（CM-70）。
+impl GatewayState {
+    fn is_unverified(&self, handle: &SessionHandle, fingerprint: &RequestFingerprint) -> bool {
+        self.unverified
+            .contains(&UnknownOutcome::of(handle, fingerprint))
+    }
+
+    /// 记一次「结局未知」。CM-70 有**两个**抬围栏的点，理由不同但键相同：
+    /// 账本读不出来（受理时）与请求已经交给驱动（下发时，见
+    /// [`ExecutionGateway::dispatch`]）。两者都满足「这条语义写入可能已经
+    /// 生效，只是没人知道」。
+    fn raise_unknown_outcome(&mut self, handle: &SessionHandle, fingerprint: &RequestFingerprint) {
+        self.unverified
+            .insert(UnknownOutcome::of(handle, fingerprint));
+    }
 }
 
 /// 统一执行网关。
@@ -359,8 +418,10 @@ impl ExecutionGateway {
                 existing.first_accepted_at_nanos,
             )),
             IdempotencyLookup::Conflict { existing, incoming } => {
+                // 刻意不回显键：它恒等于调用方刚递上来的那把令牌（作用域相同
+                // 才可能冲突），回显是零信息 + 一份凭据泄漏。理由见
+                // `GatewayError::IdempotencyConflict`。
                 Err(GatewayError::IdempotencyConflict {
-                    key: scope.key().to_owned(),
                     existing: existing.execution_id,
                     incoming: incoming.as_str().to_owned(),
                 })
@@ -369,20 +430,14 @@ impl ExecutionGateway {
                 // 绝不降级成 Miss 后另写一条——那会真的把同一个语义请求再跑一遍。
                 // 这次读不出来本身就是「结局未知」，把它记进围栏：下次换个新键
                 // 回来（哪怕账本这会儿读得动了）也一样要核验，不许自动重试。
-                state.unverified.insert(UnknownOutcome {
-                    db_session_id: handle.db_session_id.as_str().to_owned(),
-                    fingerprint: fingerprint.clone(),
-                });
+                state.raise_unknown_outcome(&handle, &fingerprint);
                 Err(GatewayError::IdempotencyVerificationRequired { message })
             }
             IdempotencyLookup::Miss => {
                 // 围栏：同一个会话、同一个语义写入已经有一次结局未知的尝试。
                 // 走到这里说明账本读得动、也确实没有这条记录——但「读得动」不等于
                 //「上一次没写进去」，所以仍不接受，等显式核验。
-                if state.unverified.contains(&UnknownOutcome {
-                    db_session_id: handle.db_session_id.as_str().to_owned(),
-                    fingerprint: fingerprint.clone(),
-                }) {
+                if state.is_unverified(&handle, &fingerprint) {
                     return Err(GatewayError::IdempotencyVerificationRequired {
                         message: format!(
                             "同一写入存在结局未知的尝试（指纹 {}），自动重试已被拒绝；                             核验后请显式调用 resolve_unknown_outcome",
@@ -403,7 +458,8 @@ impl ExecutionGateway {
                         &scope,
                         IdempotencyRecord {
                             execution_id: execution_id.clone(),
-                            fingerprint,
+                            // 账本留一份，执行记录再留一份给围栏用；两处不可分叉。
+                            fingerprint: fingerprint.clone(),
                             first_accepted_at_nanos: accepted_at,
                         },
                     )
@@ -428,6 +484,7 @@ impl ExecutionGateway {
                     source: request.source.clone(),
                     idempotency_key: scope.key().to_owned(),
                     port_request: request.to_port_request(),
+                    fingerprint,
                     probe: OverheadProbe::accepted(self.clock.as_ref()),
                     events,
                     dispatched: false,
@@ -449,7 +506,7 @@ impl ExecutionGateway {
         principal: &RequestPrincipal,
         execution_id: &ExecutionId,
     ) -> Result<ExecutionReceipt, GatewayError> {
-        let (handle, expected_revision, source, port_request) = {
+        let (handle, expected_revision, source, port_request, fingerprint) = {
             let mut state = self.state.lock().await;
             let record =
                 state
@@ -469,6 +526,7 @@ impl ExecutionGateway {
                 record.expected_context_revision,
                 record.source.clone(),
                 record.port_request.clone(),
+                record.fingerprint.clone(),
             )
         };
 
@@ -506,6 +564,27 @@ impl ExecutionGateway {
             }
         }
 
+        // CM-70：围栏在**把请求交给驱动的那一刻**抬起，刻意不看返回。
+        //
+        // 触发条件是「已下发」，不是「驱动报错了」：SQL 可能已经落库，而结果没
+        // 回来。判据写的「响应丢失」有两种丢法——驱动报错（SQL 落没落库没人
+        // 知道）和驱动成功但回执在路上丢了（落库了，只是提交者不知道）。后者
+        // 在网关这一侧根本不可观测，驱动报错只是它的可观测替身。所以要把
+        // 抬围栏绑在错误分支上，就等于给第二条丢法留了自动重试的口子。
+        //
+        // 抬高围栏的代价是「同一条语义写入在这个会话里不能自动重跑第二遍」。
+        // 这正是指纹制重的本意：真要再跑一次（比如确认上次没生效），走
+        // `resolve_unknown_outcome` 显式核验放行。判据要求的正是这个取舍。
+        //
+        // 与受理时那处抬栏（账本读不出来）共用 `GatewayState::raise_unknown_outcome`，
+        // 同一个键、同一个集合。
+        {
+            let mut state = self.state.lock().await;
+            state.raise_unknown_outcome(&handle, &fingerprint);
+        }
+
+        // 闸门没过时上面的 `release_dispatch_reservation` 已经把请求挡在驱动之外，
+        // 所以这里抬围栏不误伤：请求一旦走到这行，就真的出网关了。
         let receipt = self.port.execute_in_session(port_request).await?;
 
         // 段②起点：驱动刚返回，登记还没开始。

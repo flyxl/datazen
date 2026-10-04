@@ -264,6 +264,15 @@ impl RecordingPort {
         self.write(|inner| inner.cancel = state);
     }
 
+    /// 换掉下发结果：模拟「SQL 已经交给驱动，驱动却报错」。
+    ///
+    /// 注意语义：请求**先**被记进 `executed_requests`、计数先加，返回值才取这里的
+    /// 编排值。所以编排成 `Err` 时，`executed_requests().len()` 就是「已经发出去过
+    /// 的 SQL 条数」——CM-70 判定「自动重试有没有把同一条 SQL 发第二遍」用的正是它。
+    pub fn set_execute(&self, receipt: Result<ExecutionReceipt, RuntimeError>) {
+        self.write(|inner| inner.execute = receipt);
+    }
+
     pub fn session_view_calls(&self) -> u64 {
         self.read(|inner| inner.session_view_calls)
     }

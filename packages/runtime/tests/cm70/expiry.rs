@@ -5,7 +5,7 @@
 
 use crate::gateway_fixtures as fx;
 use crate::{err, token_reason, write_once};
-use datazen_runtime::connection::{CommandCall, RuntimeError};
+use datazen_runtime::connection::{CommandCall, Counter, RuntimeError};
 use datazen_runtime::gateway::{ExecutionRequest, GatewayError};
 
 /// 前置：写入已接受且响应丢失——即客户端没拿到回执就重发。
@@ -162,37 +162,97 @@ async fn a_gateway_without_the_token_layer_does_not_check_expiry() {
         .expect("未接令牌层时不存在过期判定");
 }
 
-/// 令牌被换掉但键没变 ⇒ 换的是真令牌，等价于另一条写入。
+/// 换令牌 ⇒ 换键 ⇒ 换账本作用域（键域语义本身没变）。
 ///
-/// 用来把「令牌字符串本身就是幂等键」这条设计钉住：键变了，账本作用域就变了，
-/// 于是这是一次全新的受理，而不是重发。
+/// **此处原为 CM-54 键域语义延续，经协调者裁定按判据 §CM-70 更新。**
+/// 原用例叫 `a_different_token_is_a_different_write_not_a_replay`，断言「新令牌
+/// 必被受理、驱动收到第二条写入」。该断言在同一条语义写入上**正是在肯定旧行为**：
+/// 换个新键把同一条写入再跑一遍，正是判据禁止的「用新键自动重试」。所以断言的
+/// 作用域被收窄到「**不同**的写入」——键域语义（键不同即作用域不同、账本不去重跨键
+/// 的无关写入）原样保留，被 CM-70 改写的只有「同一条写入换个键」那半边，它现在归
+/// `cm70/retries.rs` 的围栏用例管。
 #[tokio::test]
-async fn a_different_token_is_a_different_write_not_a_replay() {
+async fn a_different_token_on_a_different_write_is_still_a_fresh_write() {
     let h = fx::token_harness();
     let first_token = fx::issue_token(&h.tokens, 1_000);
     write_once(&h, fx::request_with_key(fx::REVISION, &first_token)).await;
 
+    // 换令牌、**并且**换写入内容：与上一条毫不相干，必须真受理、真下发。
     let second_token = fx::issue_token(&h.tokens, 2_000);
+    let other = ExecutionRequest::new(
+        fx::session_handle(),
+        Counter::new(fx::REVISION),
+        CommandCall {
+            command: "query".to_owned(),
+            input: serde_json::json!({ "sql": "select 2" }),
+        },
+        &second_token,
+        fx::source(),
+    );
     let replay = h
+        .harness
+        .gateway
+        .accept(&fx::principal(), other)
+        .await
+        .expect("另一条令牌上的另一条写入，应当受理");
+    assert!(
+        !replay.is_replay(),
+        "不相干的写入不该被账本当成重发，否则换个键就能骗过账本"
+    );
+    h.harness
+        .gateway
+        .dispatch(&fx::principal(), replay.execution_id())
+        .await
+        .expect("第二条写入应当派发得出去");
+    assert_eq!(h.harness.port.executed_requests().len(), 2);
+}
+
+/// 同一个测试里被收窄掉的那半边，单独钉在这里，钉在判据的那句话上。
+///
+/// 同一条写入换新键 ⇒ 第一次已经真发过 SQL ⇒ 第二遍必须先核验；
+/// 核验放行之后才发第二遍。这两条合起来才是完整语义：围栏不是永久禁令。
+#[tokio::test]
+async fn the_same_write_under_a_new_key_waits_for_verification_and_then_runs() {
+    let h = fx::token_harness();
+    let first_token = fx::issue_token(&h.tokens, 1_000);
+    let fingerprint = fx::request_with_key(fx::REVISION, &first_token).fingerprint();
+    write_once(&h, fx::request_with_key(fx::REVISION, &first_token)).await;
+    assert_eq!(h.harness.port.executed_requests().len(), 1);
+
+    let second_token = fx::issue_token(&h.tokens, 2_000);
+    let error = err(h
         .harness
         .gateway
         .accept(
             &fx::principal(),
             fx::request_with_key(fx::REVISION, &second_token),
         )
-        .await
-        .expect("另一条令牌是另一条写入，应当受理");
+        .await);
     assert!(
-        !replay.is_replay(),
-        "新令牌必须真受理，否则客户端换个键就能骗过账本"
+        matches!(error, GatewayError::IdempotencyVerificationRequired { .. }),
+        "同一条写入换新键就是自动重试，必须先核验，实际 {error:?}"
     );
-    // 受理只是入队；再派发一次，驱动那边必须真的收到第二条写入。
-    h.harness
-        .gateway
-        .dispatch(&fx::principal(), replay.execution_id())
-        .await
-        .expect("第二条写入应当派发得出去");
-    assert_eq!(h.harness.port.execute_calls(), 2);
+    assert_eq!(
+        h.harness.port.executed_requests().len(),
+        1,
+        "核验之前一条 SQL 都不许再发"
+    );
+
+    // 核验后确认上次确实没生效，才放行第二遍。
+    assert!(
+        h.harness
+            .gateway
+            .resolve_unknown_outcome(fx::SESSION, &fingerprint)
+            .await,
+        "指纹对得上就应当解除了围栏"
+    );
+    let id = write_once(&h, fx::request_with_key(fx::REVISION, &second_token)).await;
+    assert!(!id.is_empty());
+    assert_eq!(
+        h.harness.port.executed_requests().len(),
+        2,
+        "显式核验之后这次写入才真的该被执行"
+    );
 }
 
 /// 令牌层自己不会把 RuntimeError 降级成静默受理。
