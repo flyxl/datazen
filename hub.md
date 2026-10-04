@@ -1121,3 +1121,15 @@ CM-74 把该文件从 676 推到 **800**，正好撞上限。**任何 CM-74 后�
 Coder 自报 `--lib` 405 / 全量 592 / 21 个二进制 —— **系对过期基线 `21e27e4eb` 测得**；CM-74 合入后 main 已是 `--lib` 384 / TOTAL 564。Tester 须自行实测真实数字，对不上就报告对不上。
 
 预通知 Tester 的三处疑点：① `TunnelBinding.ref_count`「惰性」用例是否**可被杀**（判据改回读快照须变红）；② `close_calls() == 0` 是否在空实现下恒真（须有真会关闭的 spec 做负控）；③ `N < M` 与 `ref_count` 下探为负是否被钉死。
+
+### Coder 交付后协调者独立复核（登记语气；最终裁决归 Tester）
+
+冻结哈希实测未动：`2836d346de129f84bfcd184eb32f77dbfab44f46`。Coder 在 Tester 开树**之后**追加的两个 `progress.md` 提交都是纯文档，11 个 `.rs` 一字未碰。演练树 `af5baa65` 确认**未回流到分支**，分支 `main..HEAD=3` 且工作区干净。
+
+**已实测成立的部分**：`ledger.rs` 释放决策（`:295-335`）为 `refs = refs.saturating_sub(1)` → `if refs > 0 { return }` → 归零才 `transport.close` 且恰好一次。`close_calls` 的出现位置**只有四处**（字段 `:143` / 初始化 `:151` / 自增 `:316` / 只读访问器 `:372-373`），**从不作为任何条件式的操作数** ⇒ 不参与释放判断。四个改引用的方法 `acquire(:174)` / `release(:245)` / `return_resource(:270)` / `report_failure(:340)` 全部 `&mut self`，只读访问器全部 `&self`。此层收窄是对的。
+
+**已实测不成立的部分（「结构上装不下第二个计数」应降级）**：Coder 主张 `TunnelTransport` 方法全 `&self` ⇒ 包在 `Arc<dyn TunnelTransport>` 里的实现**在结构上装不下第二个计数器**。**该论证无效，且它自己的字段清单就是反证** —— `RecordingTunnelTransport` 已有 `journal: Mutex<Vec<TunnelEvent>>`，`HostTunnelTransport` 已有 `events: Mutex<Vec<&'static str>>`，两者都已在用内部可变性；再加一个 `count: Mutex<u32>` 完全编译通过且不违反 `&self` 契约。trait object 只保证拿不到 `&mut self`，而 `Mutex`/`Cell` 不需要 `&mut self`。
+
+⇒ 「结构保证（改不动）」必须降级为「**经字段审计，当前不存在**（改得动，只是现在没人这么写）」。这两句在验收结论里含义完全不同。**待 Tester 裁决的关键问题：把两个 fake 各藏一个 `Mutex<u32>` 独立计数，现有测试会不会红？** 会红 ⇒ 铁律可证伪但只能靠测试钉；不会红 ⇒ 铁律根本没被钉住，是真缺口。
+
+**这条与 CM-74 轨 Coder 对 `registered_handles` 的自述是同一类夸大**（那次复核结论同为「实测必然为 0」被写成「填真实数字」）。**同一 Coder 连续两轨在同一处放宽论证强度** —— 说明是表达习惯而非本轨偶发，后续各轨 Tester 一律不得采信「结构上/类型上保证 X」这类断言，必须要求可对质的代码依据。
