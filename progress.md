@@ -200,22 +200,84 @@ HEAD 未变、工作区行数未变 ⇒ 跑门禁期间没有人动过这棵工�
 | --- | --- |
 | D-03 | `gateway::cancel::tests::disposition_literals_match_the_architecture_map`、`the_port_mapping_can_never_produce_unsupported`、`a_live_state_maps_to_requested_and_a_terminal_one_to_already_finished`；`gateway::cancel_event_tests::a_driver_without_precise_cancel_is_unsupported_and_never_touches_the_port`、`a_live_execution_reports_requested_without_claiming_a_terminal_state`、`an_execution_already_in_a_terminal_state_reports_already_finished` |
 | D-R2-1 | `registry::port::tests::the_cancel_shape_pin_holds_for_the_concrete_port_implementation`（新增） |
-| D-R2-2 | `registry::registry::tests::摘表项不会让控制投递变成未送达_因为表项自己就是发送端`（新增）、`registry::registry::tests::否定答复仍算送达_不归该worker管的会话照常摘行`（新增） |
+| D-R2-2 | `registry::registry::tests::送达即作废_摘行并把额度挂成stale`（第一格）、`registry::registry::tests::否定答复仍算送达_已无物理资源的会话照常摘行`（第二格）、`registry::registry::tests::投递失败保留表项_额度不挂stale等重投`（第三格）、`registry::registry::tests::摘行丢不掉活着的发送端`（结构前提） |
 
 既有行为不回归：`registry_release:403-465`（租约失效立即作废、额度扣住不外发、隔离确认后才归还）
 与 `registry_audit:498-529`（额度只由登记表账本回答）两条既有集成用例原样通过，`lost`、
 stale、隔离确认计数均未变。
 
-## 六、遗留与待裁定项
+## 六、遗留与待裁定项（第二轮复审后更新）
 
-- **`Ok(false)` 的可达性在本轨里没有被证伪**：我找遍了 `SessionRegistry` 的公开路径，
-  没找到能让 actor 回 `Ok(false)` 的调用序列。`owned_by` 已按 worker 筛过一遍，
-  actor 侧再判 worker 必然对得上；剩下的判据是 `physical.is_none()`，而所有清空
-  `physical` 的路径（`close_registered`、`evict_idle_at`）都同时摘了表项。
-  所以三态表里的第二格在登记表这条路径上**近乎不可达**——但代码与测试都按「可达且必须正确分类」
-  来写，因为它一旦因将来新增的路径变得可达，分类必须已经是对的。
+- **~~`Ok(false)` 的可达性没被证伪~~（已解决，见第七节）**：第一轮我判断「近乎不可达」，
+  判断是**错的**。`evict_idle_at` 在 `SessionLost` 上跳过摘行，只留下「物理资源已清空、
+  行还在表里」的记录——这正是第二格的入口。`registry.rs` 的注释与第二格用例都已改成这一事实。
 - **反向不变量（最后一个克隆 drop 后 actor 是否收尾）结构上不可断言**，钉子只钉正向。
   这不是遗漏，是 tokio 无界通道 + 「调用 `is_closed()` 需要握着发送端」共同决定的。
-- 本轨**没有做变异实验**（按分工不做）；三个修复各自配了钉子测试，但钉子本身没有被
-  「故意破坏实现再跑一遍」验证过。如果需要更强的证据，应由独立工作树的验证方补做。
+- 本轨**没有做变异实验**（按分工不做）；第一轮 D-R2-2 的用例就是这么漏下了 M-D/M-E/M-F，
+  验证方在独立工作树注入三个变异后 20 套件 0 失败。第三节用例按「每一格各杀一个变异」重写，
+  但**钉子本身仍未被变异验证**，如需更强的证据应由验证方再补一次。
 - `progress.md` 必须在验收合并时删除，不得存活到 `main`。
+
+## 七、第二轮复审（Tester 判 FAIL：D-R2-2 零回归保护无效）
+
+### 7.1 D1（medium，合并阻塞）三个变异全部存活，根因与改法
+
+上一版用例只测了「表项还在不在」这一栏，而且第二格是**绕过 `invalidate_worker` 直接问
+actor** 造出来的，测的其实是 actor 而不是登记表。于是三种把三态并成两态的改法全都活着：
+
+| ID | 变异 | 上一版为何没杀掉 | 本轮由谁杀 |
+| --- | --- | --- | --- |
+| M-D | `if !delivered { continue; }` 同时 `lost.push(..)` | 没有任何用例断言「没送达就不进 `lost`」 | 第三格 `{counted_in_lost: false}` |
+| M-E | 区分 `Ok(true)/Ok(false)`，把 `Ok(false)` 塞进失败分支 | 第二格没走 `invalidate_worker`，分类表根本没参与 | 第二格整条 `Classification` |
+| M-F | 整块回滚成 `let _ = ..` + 无条件摘行 | 上一版没有 `Err` 格用例，而 M-F 在 `Ok` 两格上的行为与修好后**完全一致** | 第三格 `{row_kept: true, quota_held_stale: false}` |
+
+改法是三格各一条用例，且每格用**一条 `assert_eq!` 打整个 `Classification` 结构**
+（表项 / `lost` / stale 额度 / stale 审计四栏一起断言）——这样任一栏坏掉时，失败信息直接
+点名坏的是哪一栏，而不是「行还在」这种单栏信号。
+
+### 7.2 D2（medium）用例名与断言相反
+
+`否定答复仍算送达_不归该worker管的会话照常摘行` 的 187-195 行断言行**没被摘**（与名字相反）：
+`owned_by` 已按 `record.worker_id` 筛过，别 worker 的行根本不会走到 `control()`；
+202-207 行则是直接调 `actor.control(..)` 造 `Ok(false)`，绕过了被测函数。
+已删除该用例，改为真正走 `invalidate_worker` 的第二格（见 7.4）。
+
+### 7.3 D3（low）钉子注释吹过了头
+
+`row_owns_the_sender` 只能钉住「`SessionRecord` 有一个名为 `actor`、类型为 `SessionActor`、
+按值存放的字段」；`SessionActor` 内部的发送端字段对 `registry::actor` 私有，本模块（测试住在
+`registry::registry::tests`）按 Rust 可见性**够不着**。注释已改成如实陈述，并把
+「表项 ⇒ 活着的发送端」这份功劳归给行为断言 `摘行丢不掉活着的发送端`。
+
+### 7.4 三格的构造（均不改生产代码，已实测）
+
+| `control()` | 构造 | 实测 |
+| --- | --- | --- |
+| `Ok(true)` | 登记后直接 `invalidate_worker`（`ConfirmedCloseBackend::close` ⇒ `Closed`） | 绿 |
+| `Ok(false)` | `UndecidableCloseBackend`（`close` ⇒ `Undecidable`）：先 `evict_idle_at(IDLE_DEADLINE_MS)`，`release` 写过 `physical = None` 才返回 `SessionLost`，`evict_idle_at` 收不到成功视图就跳过摘行；再 `invalidate_worker`，actor 判 `physical.is_none()` ⇒ `Ok(false)` | 绿 |
+| `Err(_)` | `CrashingCloseBackend`（`close` ⇒ `panic!`）：§9.4 在 actor 任务**内部**直接 `await backend.close(..)`，回调一崩就穿过 `release` → `handle_control` → `run_actor`，在 `reply.send(..)` 之前丢掉回执，`control()` 拿到 `Err`。tokio 捕获任务 panic，`spawn_actor` 又丢弃了 `JoinHandle`，所以测试进程不受影响 | 绿 |
+
+第三格额外做了一次**重投**：第二次 `invalidate_worker` 返回空且行仍在（若 actor 还活着，
+它会回 `Ok(true)` 把行摘掉），随后才断言 `is_closed()`——`ctrl_rx` 已丢 ⇒ 同一个 future 里的
+`exec_rx` 必然一起丢，所以这一步不依赖任何调度时序，是无竞态的。
+**没有**用 `std::panic::set_hook` 去消音（进程级遮蔽）。
+
+### 7.5 本轮门禁（首尾 HEAD 一致，未被验证方触碰）
+
+```
+HEAD=e1cf457677942e0dc667b7e34a4e1de1d8260647（跑门禁前）→ 同上（跑门禁后）
+cargo fmt --check -p datazen-runtime                          EXIT=0，输出 0 行
+cargo build -p datazen-runtime                                EXIT=0，warning 计数 0
+cargo test -p datazen-runtime --lib   （第 1 次）             EXIT=0，382 passed
+cargo test -p datazen-runtime --lib   （第 2 次）             EXIT=0，382 passed
+node scripts/check-platform-crate-boundaries.mjs              EXIT=0，0 violation(s), 0 error(s), 3 advisory(ies)
+```
+
+18 个冻结套件逐个跑，`EXIT=0`，计数与第一轮逐字一致：
+`p3_session_port_contract`=10、`gateway_contract`=51、`registry_{cancel,release,audit,lifecycle,execution}`=9/11/11/7/6、
+`budget_cm65_{lifecycle,reservation,scheduling}`=8/2/6、`budget_cm66`=7、
+`directory_{attachment_ttl,no_disk,ownership,replacement}`=12/6/7/10、
+`resource_{replacement,return_to_pool,rotation_and_disable}`=4/7/6。
+
+冻结面 `git diff 25771de51..HEAD -- packages/runtime/src/connection packages/runtime/tests | wc -c` = **0**。
+本轮只改两个文件：`registry/registry.rs`（**仅注释**，733 行）、`registry/registry/tests.rs`（347 行）。
