@@ -69,6 +69,10 @@
 mod production_wiring;
 #[path = "owner_binding/support.rs"]
 mod support;
+// 剥除器的「模块形状」不变式，与 production_wiring 分文件放：后者查「有没有接线」，
+// 这里查「量到的是不是完整那一段」。BLOCKER D 正落在这条分界上。
+#[path = "owner_binding/wiring_shape.rs"]
+mod wiring_shape;
 
 use datazen_platform_api::error::ApiErrorCode;
 use datazen_runtime::connection::RuntimeError;

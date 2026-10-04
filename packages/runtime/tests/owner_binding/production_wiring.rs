@@ -3,57 +3,61 @@
 //! # 为什么需要它
 //!
 //! 网关的作者器是**构造参数**（`ExecutionGateway::new(port, authorizer, store, clock)`），
-//! 漏传是编译错误；但传错——传 `AlwaysAllow`——**编译照过、行为静默失效**：归属闸门对
-//! 所有人放行，CM-05 / CM-06 在运行期形同虚设，而 `owner_binding.rs` 里的行为测试**依然
-//! 全绿**（它自己传的就是对的作者器）。散文警告对不住这种失效，本文件把它变成一条会红的门禁。
+//! 漏传是编译错误；但传错——传 `AlwaysAllow`——**编译照过、行为静默失效**：归属闸门对所有人
+//! 放行，CM-05 / CM-06 在运行期形同虚设，而 `owner_binding.rs` 里的行为测试**依然全绿**
+//! （它自己传的就是对的作者器）。散文警告对不住这种失效，本文件把它变成一条会红的门禁。
 //!
 //! 今天全仓 `AlwaysAllow` / `AlwaysDeny` 只出现在：定义点、`pub use` 重导出、以及测试代码里。
-//! 所以这条守卫**现在是空绿**——它的作用是让**第一个把网关接进生产路径的人**必须显式
-//! 选择作者器时，红一次。
+//! 所以这条守卫**现在是空绿**：它证明的是「第一个把网关接进生产路径的人会红」，
+//! **不是**「今天的接线是对的」——后者靠的是上面那些行为测试，不是这条扫描。
 //!
 //! # 为什么能判「生产」
 //!
 //! 判定按**路径与模块声明**，不做任何「文件名里含不含 test」的子串匹配
 //! （`"latest".contains("test")` 是这类实现的经典假阳性）：
 //!
-//! * 路径里有 `tests` 目录段 ⇒ 测试；
-//! * 文件名以 `_test` / `_tests` 结尾 ⇒ 测试；
-//! * 父目录的 `mod.rs` / `lib.rs` / `main.rs` 用 `#[cfg(test)]` 或 `#[cfg(doctest)]`
-//!   声明了 `mod <文件名去扩展名>` ⇒ 测试（这正是 `src/gateway/` 下 `facade_support.rs`、
-//!   `facade_tests.rs` 这类「住在生产目录里、实为单测」文件的判据）；
-//! * 其余 ⇒ 生产。
+//! * 路径里有 `tests` 目录段、或文件名以 `_test` / `_tests` 结尾 ⇒ 测试；
+//! * 父目录的 `mod.rs` / `lib.rs` / `main.rs` 用 `#[cfg(test)]` 或 `#[cfg(doctest)]` 声明了
+//!   `mod <文件名去扩展名>` ⇒ 测试（`src/gateway/` 下 `facade_support.rs` 这类「住在生产
+//!   目录里、实为单测」文件的判据）；其余 ⇒ 生产。
 //!
 //! 对生产文件，判定前先剥掉三层**不是接线**的东西：注释与字符串字面量的内容、
-//! `#[cfg(test)]` 内联模块、以及 `use` / `pub use` 导入语句（重导出不算使用）。
-//! 剥完还出现目标名字，才是真正的接线。
+//! `#[cfg(test)]` 内联模块、以及 `use` / `pub use` 导入（重导出不算使用）。剥完还出现
+//! 目标名字，才是真正的接线。
 //!
 //! # 已知边界（比能力弱，不比要求弱）
 //!
 //! 真正的语义接线（经 trait 对象、宏、反射到达 `AlwaysAllow`）不在扫描能力内——
-//! 那需要 lint 级的数据流分析，超出本轨范围。原始字符串（`r#"…"#`）内部的提及
-//! 也识别不了，它被当普通字符串处理；只影响「是否漏报」，不影响「是否误报」。
-//!
+//! 那需要 lint 级数据流分析，超出本轨范围；原始字符串（`r#"…"#`）内部的提及也识别不了，
+//! 只影响「是否漏报」，不影响「是否误报」。
 //! 剥除过程用等量换行补回被吞掉的字符，所以**报出来的行号就是原文件的真实行号**
-//! （实测： planted 到 `request.rs:603` 的一行，报告里就是 `:603`）。这条是硬要求——
-//! 守卫红了却指着错行，等于让人去改一个没问题的地方。
+//! （实测：探针插到 `gateway/mod.rs` 的第 67 行，报告里就是 `mod.rs:67`；插到文件末尾
+//! 则是 `mod.rs:800`）。这条是硬要求——守卫红了却指着错行，等于让人去改一个没问题的地方。
 //!
 //! # 反证（这个守卫怎么被证伪过）
 //!
-//! 三条断言是这份文件自己的失败证据，都留在这里：
+//! 三条断言是这份文件自己的失败证据：
 //!
 //! 1. `the_wiring_guard_catches_a_planted_production_wiring` —— 合成接线被抓住，
 //!    诚实的 `OwnerMatchAuthorizer::shared()` 不被误报。
 //! 2. `the_wiring_guard_ignores_prose_and_test_only_mentions` —— 行注释、文档注释、
 //!    字符串字面量、`#[cfg(test)]` 内联模块里的提及都不算。
-//! 3. `the_definition_site_exemption_is_still_a_real_definition` —— 豁免的那一个文件里
-//!    必须**还真的是定义处**；哪天 `AlwaysAllow` 被改名/搬走，这里先红，不会让豁免
-//!    悄悄变成「漏检」。
+//! 3. `the_definition_site_exemption_is_still_a_real_definition` —— 豁免的那个文件必须
+//!    **还真的是定义处**；哪天 `AlwaysAllow` 被改名/搬走，这里先红，豁免不会变成「漏检」。
 //!
-//! 另外，真实文件上的反证是单独跑过一次的：在
-//! `packages/runtime/src/gateway/request.rs` 追加
-//! `Arc::new(crate::gateway::AlwaysAllow)` 的生产接线，`EXIT=101`、`4 passed; 1 failed`、
-//! 失败信息指到 `packages/runtime/src/gateway/request.rs:603`；随后 `git checkout --` 还原，
-//! `git status --porcelain` 回到本次改动前的四个条目。
+//! # 真实文件上的反证
+//!
+//! 这里原先写着「在 `request.rs:603` 上跑过真实反例」。**那是错的**：`request.rs`
+//! 实测 599 行、`AlwaysAllow`/`AlwaysDeny` 零命中，603 行不存在，那次运行从未发生。
+//! 下面是真正在磁盘上跑过、可复现的探针（同一个守卫、同一个探针内容，两个位置只差
+//! 插入点；每次 `git checkout --` 还原后 `touch`）：
+//!
+//! 1. 插到 `gateway/mod.rs` 里那个过去会被整段吞掉的窗口（`pub(crate) mod
+//!    testing_support;` 之后）⇒ 报 `mod.rs:67`，`EXIT=101`；
+//! 2. 阳性对照：同一探针插到该文件末尾 ⇒ 报 `mod.rs:800`，`EXIT=101`。
+//!
+//! 两处行号都等于插入位置，这才是「守卫能报红、且指的是真行」的证据；常驻版本是
+//! `the_wiring_guard_reads_the_real_gateway_module_past_its_test_declarations`。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -89,7 +93,7 @@ const MUST_VISIT: &[&str] = &[
     "src-tauri/src/platform/identity.rs",
 ];
 
-fn repo_root() -> PathBuf {
+pub(super) fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
@@ -97,7 +101,7 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(super) fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(_) => return,
@@ -157,7 +161,7 @@ fn declares_cfg_test_module(src: &str, stem: &str) -> bool {
     false
 }
 
-fn is_test_only(rel: &Path, root: &Path) -> bool {
+pub(super) fn is_test_only(rel: &Path, root: &Path) -> bool {
     if rel
         .components()
         .any(|part| part.as_os_str() == std::ffi::OsStr::new("tests"))
@@ -187,7 +191,7 @@ fn is_test_only(rel: &Path, root: &Path) -> bool {
 ///
 /// 被剥掉的字符用等量换行补回去，这样**报出来的行号就是原文件的真实行号**——
 /// 否则守卫红了，人拿着一个对不上的行号去改，改的是别的地方。
-fn strip_comments_and_literals(src: &str) -> String {
+pub(super) fn strip_comments_and_literals(src: &str) -> String {
     let chars: Vec<char> = src.chars().collect();
     let mut out = String::with_capacity(src.len());
     let mut i = 0usize;
@@ -235,7 +239,7 @@ fn push_newlines(out: &mut String, skipped: &[char]) {
     }
 }
 
-fn matching_brace(src: &str, open: usize) -> Option<usize> {
+pub(super) fn matching_brace(src: &str, open: usize) -> Option<usize> {
     let mut depth = 0i32;
     for (off, ch) in src[open..].char_indices() {
         match ch {
@@ -252,18 +256,80 @@ fn matching_brace(src: &str, open: usize) -> Option<usize> {
     None
 }
 
+/// `#[cfg(test…)]` 之后、**模块声明自己**的左花括号位置；不是内联块则返回 `None`。
+///
+/// 只认声明自身的形状：`mod x { … }` 是内联块；`mod x;` 是外部声明（模块体在别的文件里），
+/// 它后面**根本没有花括号**。曾经的做法是「找到 `mod ` 之后，在剩余全文里找下一个 `{`」，
+/// 于是 `#[cfg(test)] pub(crate) mod testing_support;` 会跟后面某个毫不相干的
+/// `impl Foo {` 配对，把两者之间的整段**生产代码**当成测试块吞掉（实测
+/// `packages/runtime/src/gateway/mod.rs` 7 处测试模块声明**全是**外部声明，
+/// 起点 `mod.rs:65`，旧实现吞掉的区间在剥注释与字符串后的文本上是 **64..87**、
+/// 520 字节）。守卫对那个窗口内的一切接线彻底失明，
+/// 而守卫恰好就靠这个文件判定网关有没有被接上替身。
+///
+/// 因此：**先遇到 `;` 就是外部声明，直接放弃**；必须先遇到 `{` 才算内联块。
+///
+/// 这个盲区的范围已用「新旧判别器逐文件比对」量过：全仓 **54 个文件**被旧实现误吞过
+/// （55 处区间，最大的是 `src-tauri/src/commands/sync/exec.rs` 的 7..1018，本轨的
+/// `gateway/mod.rs` 只有 520 字节），而这些区间里真正含 `AlwaysAllow`/`AlwaysDeny` 的
+/// **一处都没有**。所以它是**潜伏的绕过通道，不是眼下正在生效的漏洞**——但仍必须修：
+/// 被破坏的是「剥除不得吞掉生产代码」这条**不变量**，与今天恰好有没有人违规无关。
+pub(super) fn inline_module_brace(src: &str, after_attr: usize) -> Option<usize> {
+    let bytes = src.as_bytes();
+    let mut i = after_attr;
+    // 属性与 `mod` 之间还可能有空白和别的属性（`#[cfg(test)] #[derive(..)] mod x {`）。
+    loop {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if src[i..].starts_with("#[") {
+            i += src[i..].find(']')? + 1;
+            continue;
+        }
+        break;
+    }
+    // 可选的可见性修饰：`pub mod x;` / `pub(crate) mod x {` / `pub(in a::b) mod x {`。
+    // 没有修饰的 `mod x {`（内联块最常见的写法）同样合法。
+    if src[i..].starts_with("pub(") {
+        i += src[i..].find(')')? + 1;
+    } else if src[i..].starts_with("pub") {
+        i += 3;
+    }
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if !src[i..].starts_with("mod") {
+        return None;
+    }
+    let after_mod = i + 3;
+    if after_mod < bytes.len() && is_ident_byte(bytes[after_mod]) {
+        return None; // `module` 之类，不是 `mod` 关键字
+    }
+    for (off, byte) in src[after_mod..].as_bytes().iter().enumerate() {
+        match byte {
+            b';' => return None, // `mod x;`：外部声明，不是内联块
+            b'{' => return Some(after_mod + off),
+            _ => {}
+        }
+    }
+    None
+}
+
 /// 下一个「`#[cfg(test…)] mod … { … }`」内联模块的 (属性起点, 左花括号位置)。
-fn next_inline_test_block(src: &str, from: usize) -> Option<(usize, usize)> {
+pub(super) fn next_inline_test_block(src: &str, from: usize) -> Option<(usize, usize)> {
     let mut cursor = from;
     while let Some(rel) = src[cursor..].find("#[cfg(") {
         let attr_at = cursor + rel;
         let close = attr_at + src[attr_at..].find(']')?;
         let attr = &src[attr_at..=close];
-        let cfg_test = attr.contains("test)") || attr.contains("test,") || attr.contains("doctest");
+        // `#[cfg(not(test))]` 是「非测试」，绝不能按测试块处理。
+        let cfg_test = !attr.contains("not(")
+            && (attr.contains("test)") || attr.contains("test,") || attr.contains("doctest"));
         if cfg_test {
-            let tail = &src[close + 1..];
-            let brace = tail[tail.find("mod ")?..].find('{')?;
-            return Some((attr_at, close + 1 + tail.find("mod ").unwrap_or(0) + brace));
+            // 声明自己没有花括号（`mod x;`）时**不得**往后借一个 —— 见 inline_module_brace。
+            if let Some(brace_at) = inline_module_brace(src, close + 1) {
+                return Some((attr_at, brace_at));
+            }
         }
         cursor = close + 1;
     }
@@ -272,7 +338,7 @@ fn next_inline_test_block(src: &str, from: usize) -> Option<(usize, usize)> {
 
 /// 剥掉 `#[cfg(test…)] mod … { … }` 内联模块。花括号配不上时**不吞**：
 /// 宁可把内容留下来报一次假阳性，也不能整段吃掉生产代码。
-fn strip_inline_test_modules(src: &str) -> String {
+pub(super) fn strip_inline_test_modules(src: &str) -> String {
     let mut out = String::new();
     let mut cursor = 0usize;
     while let Some((attr_at, brace_at)) = next_inline_test_block(src, cursor) {
@@ -340,7 +406,7 @@ fn executable_code(src: &str) -> String {
 }
 
 /// 在一段源码里找出「真的在用」这些名字的行号（剥除之后）。
-fn wired_names(src: &str) -> Vec<(usize, String)> {
+pub(super) fn wired_names(src: &str) -> Vec<(usize, String)> {
     executable_code(src)
         .lines()
         .enumerate()

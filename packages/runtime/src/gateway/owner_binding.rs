@@ -65,8 +65,15 @@
 //!    源码，剥掉注释与字符串内容、`#[cfg(test)]` 块与 import 后，只要任何**生产**文件里
 //!    还出现 `AlwaysAllow` / `AlwaysDeny`，门禁立刻变红，并指名那个文件和那一行
 //!    （行号经实测对齐原文件）。今天扫描是空的（全仓命中全在测试与定义点），
-//!    **第一个生产接线者**就是触发它的人。守卫自证不成立的方式见该文件的模块头
-//!    「反证」一节（合成反例 + `request.rs:603` 上的真实反例，都实测过红）。
+//!    **第一个生产接线者**就是触发它的人。
+//!    守卫自证不成立的方式有两处，都实测过红：
+//!    (a) 合成反例——内存夹具，见 `production_wiring.rs` 模块头的「反证」一节；
+//!    (b) **落在真实文件上的探针**——往 `packages/runtime/src/gateway/mod.rs` 的
+//!        `pub(crate) mod testing_support;` 之后插入一行 `pub fn
+//!        planted_authorizer_for_guard_bypass() -> … { …AlwaysAllow) }`，
+//!        跑 `cargo test -p datazen-runtime --test owner_binding`，
+//!        报 `packages/runtime/src/gateway/mod.rs:67`，退出码 101。
+//!    （`request.rs` **不是**反例：实测它 599 行，`AlwaysAllow`/`AlwaysDeny` 零命中。）
 //!
 //! 缓解程度要说准：`authorizer` 无默认值 ⇒ 漏传是**编译错误**（不会静默降级），
 //! 唯一的静默形态是「传了个恒放行的替身」——也就是上面这条守卫要对住的那一种。

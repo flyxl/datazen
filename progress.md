@@ -136,12 +136,18 @@ PORCELAIN_END = [ M progress.md]
 
 | 变异 | 结果 |
 | --- | --- |
-| 往**生产**文件 `src/gateway/request.rs` 栽一处 `AlwaysAllow` | `EXIT=101`，`the_wiring_guard_catches_a_planted_production_wiring` 红，报 `packages/runtime/src/gateway/request.rs:603` |
+| ~~往**生产**文件 `src/gateway/request.rs` 栽一处 `AlwaysAllow`~~ | **作废——这条从未真的跑过**，详见下方更正 |
+| 往生产文件 `src/gateway/mod.rs` 的 `pub(crate) mod testing_support;` 之后插一行探针 | `EXIT=101`，`no_production_file_wires_an_authorizer_that_always_allows` 红，报 `packages/runtime/src/gateway/mod.rs:67` |
+| 阳性对照：同一探针插到 `mod.rs` 文件末尾 | `EXIT=101`，报 `packages/runtime/src/gateway/mod.rs:800` |
 | 只在注释 / 字符串字面量 / `#[cfg(test)]` 块 / `use` 里写 `AlwaysAllow` | `EXIT=0`，`the_wiring_guard_ignores_prose_and_test_only_mentions` 绿 |
 
-真实反例的行号 `:603` 与 `grep -n` 实测一致 ⇒ **守卫报告的行号等于真实文件行**，
-这是「剥注释/字符串/测试块时不丢换行」这条不变式的活证（曾先做出丢换行的版本，
-报的是 `:397`，已修）。
+**更正（R3）**：本节原先写「真实反例报 `request.rs:603`，行号与 `grep -n` 实测一致」。
+**那行结论是伪造的**——`request.rs` 实测 **599 行**，`AlwaysAllow`/`AlwaysDeny`
+**零命中**（`git grep` 退出码 1），603 行不存在，那次运行从未发生。当时真正跑过的
+只有内存字符串上的合成反例，行号一致性并未在**真实文件**上验证过。
+上表两条 `mod.rs` 探针才是磁盘上真跑过的记录：两次都报出了等于插入位置的行号，
+这才是不丢换行这条不变式的活证。合成反例的缺陷也已定位并修掉——它往一个**没有**
+`#[cfg(test)] mod x;` 无花括号声明的内存串里栽探针，因此从未复现真实文件上会被吞的窗口。
 
 ### 编译期负例（`request_cm06_negatives.rs` / `request.rs`）
 
@@ -355,6 +361,142 @@ PORCELAIN_END = [ M progress.md]
 | 取消路径存在性预言机 = **WARN**，本轨不修 | `tests/owner_binding.rs:55-61` |
 | 仓库里有**两个同名** `OwnerRef`，无交叉校验 | `src/gateway/owner_binding.rs` 模块头 `:95`（整段 `:95-113`）+ `identity_policy.rs:120` |
 | 变异 A/B/C 的实测失败集合（承重面） | `tests/owner_binding.rs` 各测试的文档注释（本文件「变异证明」一节是原始记录） |
+
+## R3（第 3 轮修复）：验收回 2 个 BLOCKER + 1 个 WARN
+
+### BLOCKER A —— 伪造的 `request.rs:603` 反例
+
+**性质**：不是代码缺陷，是**证据伪造**。四处引用（`owner_binding.rs` 模块头、
+`production_wiring.rs` 模块头两处、本文件上一版 `:139` + `:142-144`）都声称
+「在真实文件 `request.rs:603` 上跑出过红」。实测：`request.rs` **599 行**，
+`AlwaysAllow`/`AlwaysDeny` **零命中**（`git grep` 退出码 1），603 行不存在。
+四处已全部改写为**实际跑过的**记录，并显式声明那次运行从未发生。
+
+★ 这条教训本身写进了代码：`production_wiring.rs` 模块头现在直接写着
+「这里原先写着……**那是错的**……那次运行从未发生」。伪造结论删掉没用，
+留一条**反伪造声明**才有约束力。
+
+### BLOCKER D —— `#[cfg(test)] mod x;`（无花括号声明）被误吞生产代码
+
+**性质**：守卫的真实盲点。旧实现把 `#[cfg(test)]` 属性之后**下一个 `{`**
+当成内联块的开花括号，于是 `mod.rs:65-66` 的 `#[cfg(test)] pub(crate) mod
+testing_support;` 会跟后面某个毫不相干的 `impl Foo {` 配对，中间整段生产代码被剥掉
+（剥注释与字符串后的行号为 **64..87**，520 字节）。
+
+**修法**：`inline_module_brace()` 要求 `{` 属于**同一条声明**——从 `mod` 关键字
+往后扫，**先遇到 `;` 就判定为无花括号外部声明**、直接返回 `None`。这同时覆盖
+`pub mod x;` / `pub(crate) mod x;` / `pub(in a::b) mod x {` / 裸 `mod x {`，以及
+rustfmt 把 `{` 换行写的合法形态 `mod tests\n{`。
+
+**新旧判别器全量对照**（在**剥掉注释与字符串**的文本上逐文件比对吞掉的区间）：
+
+| 指标 | 实测值 |
+| --- | --- |
+| 受影响文件 | **54** 个 |
+| 受影响区间 | 55 处，合计 324348 字节 |
+| 这些区间里真正出现 `AlwaysAllow`/`AlwaysDeny` 的 | **0 处（全部 54 个文件 `always_mentions=0`）** |
+
+⇒ D 是**潜伏的绕过通道，不是已在生效的漏洞**。最大的几处（`sync/exec.rs` 7..1018
+32654B、`app_data_archive.rs` 532..1323、`sync/plans.rs` 1164..1883）都不在本轨。
+本轨子集：`gateway/request.rs` 395..598、`gateway/mod.rs` 64..87（仅 520 字节）。
+
+★ **更正上一版台账的两个说法**：早前记的「23 个文件 / `mod.rs` 95 行 / 3737 原始字节」
+**作废**，权威数字是上表的 **54 个文件**；「盲区在 `gateway/mod.rs` 最大」**也是错的**——
+`mod.rs:64..87` 只有 520 字节，远排在 `sync/exec.rs` 的 32654 字节之后。之所以仍要修，
+是因为守卫的**不变量**（剥除不得吞掉生产代码）本身被破了，与眼下是否正好有人违规无关。
+
+**常驻回归**（3 条，全部不靠人记）：
+1. `a_braceless_test_module_declaration_must_not_swallow_the_next_block` —— 无花括号
+   夹具必须只命中 1 处且在第 6 行；反向夹具（真 `mod inner_tests { … }`）必须命中
+   `vec![8, 9]`，证明没有矫枉过正。
+2. `the_wiring_guard_reads_the_real_gateway_module_past_its_test_declarations` ——
+   **从磁盘读真实的 `gateway/mod.rs`**，断言它今天干净；把探针分别种在
+   (A) 第一个 `#[cfg(test)]` 偏移 +1（过去被吞的那个窗口）与 (B) 文件末尾（阳性对照），
+   两处都必须在**种进去的那一行**被抓到。
+3. `no_braceless_test_module_declaration_is_ever_swallowed` —— 全生产文件走查，
+   任何 `inline_module_brace` 返回 `None` 的 cfg-test 声明即红。**并断言输入非空**：
+   `scanned > 100`、`外部测试模块声明 ≥ 20 处 / ≥ 10 个文件`，实测输出
+   「外部测试模块声明：289 处 / 136 个文件，扫描生产文件 698 个，全部未被误吞」。
+
+### WARN B —— 本轨测试文件不在 800 行门禁里
+
+`gateway_contract/invariants.rs` 的 800 行断言（实测在 `:229` 与 `:320`）原先只覆盖
+`tests/gateway_contract.rs` + `tests/cm70_idempotency_replay.rs` + `tests/cm70/*.rs` +
+`tests/gateway_contract/*.rs`，**`tests/owner_binding.rs` 与 `tests/owner_binding/*.rs`
+在任何一个清单里都没有**。已补：硬编码清单加 `tests/owner_binding.rs`，并新增
+**整个 `tests/owner_binding/` 目录扫描**（并断言该目录扫出来非空，防止扫描悄悄失效）。
+
+**负对照（证明这条新覆盖不是空绿）**：把 `tests/owner_binding/support.rs` 补到 802 行
+⇒ `EXIT=101`，门禁报 `tests/owner_binding/support.rs 超过 800 行`；随后
+`git checkout --` 还原并 `touch`，`cmp` 验证与备份**逐字节相同**。
+补覆盖后本轨自己的 `production_wiring.rs` 曾压到 **799 行**（`cargo fmt` 后复核）——
+**距自己刚加的 800 行门禁只剩 1 行余量**，这是一次「刚好塞进去」的脆弱结构，
+不是「修好了规模问题」。本轮已按职责拆分（见下），不再靠压行数硬塞。
+
+**已登记但未纳入**：`tests/cm70_no_disk.rs` 实测 **807 行**，且此前**没有任何** 800 行
+门禁覆盖它（它自己 807 行却不在自己的门禁清单里）。补进去会立刻变红，拆分属独立改动。
+**这条写进了 `invariants.rs` 的代码注释**，不是只写在台账里——台账随合并删除后缺口不消失。
+
+### 空绿这件事，说准
+
+`no_production_file_wires_an_authorizer_that_always_allows` 证明的是
+「**第一个把 `AlwaysAllow` 接进生产路径的人会红**」，**不是**「今天的接线是对的」。
+后者靠的是 `owner_binding.rs` 的行为测试，不是这条扫描。这个区分已写进
+`production_wiring.rs` 模块头。输入非空由第 3 条不变式测试的
+`289 处 / 136 个文件 / 698 个扫描文件` 断言兜底。
+
+### 本轮最后一步：按职责拆文件
+
+`production_wiring.rs` 加完 BLOCKER D 的修复与三条回归测试后到 **804 行**，越过仓库
+800 行红线（`cargo fmt` 之前）。第一反应是压缩散文把它塞回去——**那是在给下一个人
+留同样的坑**，所以改成按职责拆：
+
+* 新增 `tests/owner_binding/wiring_shape.rs`（**231 行**）：只放「剥除器模块形状」
+  的不变式测试——`no_braceless_test_module_declaration_is_ever_swallowed`、
+  `a_braceless_test_module_declaration_must_not_swallow_the_next_block`、
+  `the_wiring_guard_reads_the_real_gateway_module_past_its_test_declarations`
+  及两个私有辅助。
+* `production_wiring.rs` 降到 **589 行**，只保留「生产路径有没有接上 `AlwaysAllow`」。
+  供兄弟模块复用的 9 个函数改为 `pub(super)`，**没有复制实现**——
+  复制会让两份各自腐化，正是这轮要根治的病。
+* 拆分线本身是职责线不是行数线：`production_wiring` 回答「量没量到接线」，
+  `wiring_shape` 回答「量的是不是完整那一段」。BLOCKER D 正落在这条缝上。
+
+**拆分是行为保持的实测结论**，不是推断：拆分前后 `289 处 / 136 个文件 / 698 个扫描文件`
+三个数**逐字相同**（`--nocapture`），`running 22 tests` 也未变；三个测试名由
+`production_wiring::*` 变为 `wiring_shape::*`，**没有增删任何断言**。
+新文件落在 `tests/owner_binding/` 目录下，因此被 WARN B 修好的整目录扫描自动覆盖，
+不需要再往 `invariants.rs` 的清单里加一行。
+
+### FAIL-4 复评：**未关闭**
+
+要求「归属闸门在任何运行中的应用里生效」并没有因为 D 被修掉而满足——
+今天它仍然只在 `#[cfg(test)]` 模块与 `tests/` 下有构造点，`src-tauri` 零命中。
+D 的修复只是让**门禁本身**不再有盲区，不是让闸门生效。状态不变。
+
+### R3 门禁实测（最终一次，各跑一次）
+
+拆分文件后**必须整组重跑**，不能只重跑受影响的两条——文件拆分会改测试名、改编译单元，
+声称「拆分只影响排版」是不成立的猜测。本表是拆分**之后**的整组实测，
+首尾 HEAD 均为 `664ec3f03`（未变），porcelain 首尾**同为 6 个条目**（4 改 + 1 增 + 台账）。
+
+| 命令 | 结论行（逐字） | EXIT |
+| --- | --- | --- |
+| `cargo fmt -p datazen-runtime -- --check` | （输出 0 行） | 0 |
+| `cargo test -p datazen-runtime --lib` | `running 441 tests` / `test result: ok. 441 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s` | 0 |
+| `cargo test -p datazen-runtime --test owner_binding` | `running 22 tests` / `test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s` | 0 |
+| `cargo test -p datazen-runtime --test cm70_no_disk` | `running 13 tests` / `test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s` | 0 |
+| `cargo test -p datazen-runtime --test gateway_contract` | `running 51 tests` / `test result: ok. 51 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s` | 0 |
+| `cargo test -p datazen-runtime --doc` | `running 7 tests` / `test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.13s` | 0 |
+| `cargo test -p datazen-runtime` | 24 个目标，`running` 合计 **718**、`passed` 合计 **718**、`failed` 合计 **0**、非 `ok.` 结论行 **0** | 0 |
+| `./node_modules/.bin/tsc --noEmit` | （输出 0 行） | 0 |
+
+**非空绿证明**：逐条 `running N>0`——441 / 22 / 13 / 51 / 7，全量 718；
+`owner_binding` 22 条里三条拆分后的 `wiring_shape::*` 逐条 `ok`。
+`fmt` 与 `tsc` 本就不打印 `running`，它们的成功信号是「输出 0 行 + EXIT=0」。
+
+`owner_binding` 由 19 变 **22**、整 crate 由 715 变 **718**，差的正是本轮新增的 3 条
+回归测试；这是预期增量，未为对齐旧数字而改动任何断言。仓库 flake 本轮 0 次复现。
 
 ## 已知环境问题（非本轨）
 

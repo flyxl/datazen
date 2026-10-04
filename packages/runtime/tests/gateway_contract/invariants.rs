@@ -272,10 +272,14 @@ fn gateway_sources_obey_the_locked_invariants() {
     }
 
     // 本轨自己的测试文件同样受 800 行约束。
+    // ⚠ 已登记、未纳入：`tests/cm70_no_disk.rs` 实测 807 行，且此前**没有任何** 800 行
+    //   门禁覆盖它。它是 CM-70 的分节注册表，补进下面的清单会立刻变红；拆分它属独立
+    //   改动，本轮不擅自做。写在这里而不是只写进台账，是为了台账随合并删除后该缺口不消失。
     let mut test_files = vec![
         "tests/gateway_contract.rs".to_string(),
         "tests/gateway_fixtures/mod.rs".to_string(),
         "tests/cm70_idempotency_replay.rs".to_string(),
+        "tests/owner_binding.rs".to_string(),
     ];
     for entry in std::fs::read_dir(root.join("tests/cm70")).expect("CM-70 分节用例目录可读")
     {
@@ -296,6 +300,21 @@ fn gateway_sources_obey_the_locked_invariants() {
             test_files.push(format!("tests/gateway_contract/{name}"));
         }
     }
+    // 本轨新增的测试目录同理：整目录纳入，不逐个硬编码文件名。
+    let owner_binding =
+        std::fs::read_dir(root.join("tests/owner_binding")).expect("owner_binding 用例目录可读");
+    let mut owner_files: Vec<String> = owner_binding
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .filter(|name| name.ends_with(".rs"))
+        .map(|name| format!("tests/owner_binding/{name}"))
+        .collect();
+    owner_files.sort();
+    assert!(
+        !owner_files.is_empty(),
+        "tests/owner_binding/ 目录为空：这条扫描若悄悄失效，800 行门禁会漏掉本轨的测试文件"
+    );
+    test_files.extend(owner_files);
     for test in &test_files {
         let source = std::fs::read_to_string(root.join(test)).expect("测试源码可读");
         assert!(source.lines().count() <= 800, "{test} 超过 800 行");
