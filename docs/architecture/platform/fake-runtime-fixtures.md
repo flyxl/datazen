@@ -1,6 +1,6 @@
 # DataZen P0 transport-neutral fake resource 夹具与基准 harness 详细设计
 
-> 状态：**夹具已落地**，实现位于 `datazen-runtime`（`packages/runtime/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§10 真实驱动契约夹具与 §11 CM-60 基准 harness 仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
+> 状态：**夹具已落地**，实现位于 `datazen-runtime`（`packages/runtime/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `packages/runtime/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `packages/runtime/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
 > 读者：负责 [连接管理详细设计](connection-management.md) §14 开发步骤第 2 项（`testing/fake_resource`）、§6.5 句柄登记与 §15.3 基准 harness 的实现者。
 > 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
 
@@ -45,7 +45,7 @@
 
 | 维度 | 现有 `MockDriver` | 本文 fake resource provider |
 | --- | --- | --- |
-| 落点 | `src-tauri/src/testing/mock_driver.rs`（已存在） | 拟 `packages/runtime/src/connection/testing/`（crate 尚未创建） |
+| 落点 | `src-tauri/src/testing/mock_driver.rs`（已存在） | `packages/runtime/src/connection/testing/`（已落地） |
 | 抽象层 | `datazen_driver_api::DatabaseDriver` | connection-management.md §5.1 资源级端口 |
 | 典型调用 | 测试直接 `driver.query(&handle, ...)` | runtime actor / 执行网关 |
 | 能表达的句柄 | `ConnectionHandle` / `TransactionHandle`（`packages/driver-api/src/types.rs`） | `ResourceHandle` + §6.5 `SessionHandleRef` |
@@ -56,7 +56,7 @@
 
 ## 2. 落点与模块划分
 
-实际目录（runtime crate `datazen-runtime` 已创建，位于 `packages/runtime/`，只有一个 lib target）：
+实际目录（runtime crate `datazen-runtime` 已创建，位于 `packages/runtime/`；两个 target：`lib` 与 `cm60-bench` 这个 bin——§11.6 要求基准不得与功能测试共用入口）：
 
 | 路径 | 职责 | 关键导出 |
 | --- | --- | --- |
