@@ -49,6 +49,8 @@
 pub mod actor;
 pub mod audit;
 pub mod backend;
+pub(crate) mod candidate;
+pub mod context;
 pub mod epoch;
 pub mod handles;
 pub mod port;
@@ -71,6 +73,9 @@ pub use crate::connection::{SessionHandle, SessionView};
 
 pub use audit::{AuditKind, AuditLog, CapabilityVersions, Outcome, RegistryAuditEntry};
 pub use backend::SessionBackend;
+pub use context::{
+    ContextChangeReceipt, ContextChangeRequest, ContextReplacer, ReplacementDirectory,
+};
 pub use epoch::{fold_exit, ExitFact, ExitProjection, RuntimeEpoch};
 pub use handles::{ExecutionBinding, HandleRegistry};
 pub use port::SessionPort;

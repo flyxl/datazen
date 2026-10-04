@@ -470,3 +470,113 @@ fn 归池前检查有登记句柄一律不放行() {
     assert!(!ready_to_return_to_pool(1));
     assert!(!ready_to_return_to_pool(usize::MAX));
 }
+
+/// CM-74 归池路径上的宿主检查：driver 报 Clean 但宿主仍有登记句柄时，**不得**算归池成功。
+///
+/// 这条比上面那个 helper 级断言强一档，也不重复 `宿主登记数与后端确认数对不上时墓碑不得报已关闭`
+/// （那条走的是 `close_registered`）。区别在于**出口的形状**：
+///
+/// * `close_registered` 拿到 `Err` 就自己兜底，R-01 明确要求它注销行、归还额度；
+/// * `evict_idle_at` 拿到 `Err` 是 `else { continue }`——**吞掉**，不 `forget`、不归还额度、
+///   也不进返回值。可 §9.4 四步此时**已经跑完**：句柄终结了、物理资源关掉了、绑定作废了。
+///
+/// 于是留下的是一个「物理资源已死、行还在表里、额度还扣着」的僵尸会话。
+/// 这是当前实现的真实行为，本用例**刻画**它而不是替它修——修不修是另一条轨的事，
+/// 但要让改动的人先看见它长什么样。CM-74 :1323 把归池排在第一步，这份刻画是它唯一的
+/// 端到端覆盖。
+#[tokio::test(start_paused = true)]
+async fn 归池时driver报Clean但宿主仍有登记句柄不得算归池成功() {
+    // 宿主登记 2 个句柄，driver 只确认终结 1 个——它对已交出的句柄没有可见性，
+    // 所以这个 Clean 是**空口**的：§9.4「driver 对已交出的句柄没有可见性，
+    // 其 Clean 不构成事务终结的证据」。
+    let backend = ScriptedBackend::new(
+        BackendPlan::default()
+            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_a")])
+            .finalizes(1, 0),
+    )
+    .await;
+    let registry = registry_with(&backend);
+    let handle = session_with_handles(&registry).await;
+    let quota_before = registry.remaining_quota();
+
+    // 注入时钟推到空闲期限之后，逼出驱逐。
+    let evicted = registry.evict_idle_at(IDLE_DEADLINE_MS).await;
+
+    assert!(
+        evicted.is_empty(),
+        "宿主检查失败 ⇒ 不得出现在归池结果里；实际带回了 {} 项",
+        evicted.len()
+    );
+
+    // §9.4「任一失败都关闭」：不可判定也必须真的关掉物理资源。
+    assert_eq!(
+        backend.close_calls(),
+        1,
+        "归池路径同样必须关闭物理资源——宿主检查否决的是「算成功」，不是「去关掉」"
+    );
+
+    // 审计写的是不可判定，不是成功。
+    let entries = entries_of(&registry, AuditKind::SessionEvicted);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].outcome,
+        Outcome::Undecided,
+        "登记数与 driver 确认数对不上 ⇒ 审计不得写 Succeeded"
+    );
+
+    // ↓↓↓ 以下三条刻画的是**当前实现的漏洞**，不是 §9.4 要求的正确行为。
+    assert!(
+        registry.is_registered(&db_session_id()),
+        "【现状】`evict_idle_at` 的 `else {{ continue }}` 吞掉 Err：不 forget，行留表里。"
+    );
+    assert_eq!(
+        registry.remaining_quota(),
+        quota_before,
+        "【现状】额度也没归还——物理资源已经关了，这格额度等于永久卡死（R-01 同样的病）"
+    );
+    assert!(
+        registry.session_view(&handle).await.is_ok(),
+        "【现状】甚至还能查到 view：一个已经关了物理资源的会话仍对外可查、可发执行"
+    );
+}
+
+/// 归池路径的对照组：driver 如实终结全部句柄 ⇒ 正常归池。
+///
+/// 没有这条，上面那条就只是「归池总是失败」也能变绿。对照组把差异钉在
+/// **登记数与 driver 确认数是否一致**这一个变量上。
+#[tokio::test(start_paused = true)]
+async fn 归池时driver如实终结全部句柄则正常归还额度() {
+    let backend = ScriptedBackend::new(
+        BackendPlan::default()
+            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_a")])
+            .finalizes(2, 0),
+    )
+    .await;
+    let registry = registry_with(&backend);
+    let handle = session_with_handles(&registry).await;
+    assert_eq!(registry.remaining_quota(), SESSION_LIMIT - 1);
+
+    let evicted = registry.evict_idle_at(IDLE_DEADLINE_MS).await;
+
+    assert_eq!(evicted.len(), 1, "如实终结 ⇒ 归池成功");
+    assert_eq!(
+        evicted[0].state,
+        SessionState::Closed,
+        "终态必须是 Closed，不是 Lost——lost 是上一条那条 driver 少报时的判定"
+    );
+    assert_eq!(backend.close_calls(), 1);
+    assert!(
+        !registry.is_registered(&db_session_id()),
+        "归池成功 ⇒ 行必须摘除"
+    );
+    assert_eq!(
+        registry.remaining_quota(),
+        SESSION_LIMIT,
+        "归池成功 ⇒ 额度必须归还"
+    );
+    assert!(registry.session_view(&handle).await.is_err());
+
+    let entries = entries_of(&registry, AuditKind::SessionEvicted);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].outcome, Outcome::Succeeded);
+}

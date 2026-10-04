@@ -69,6 +69,7 @@ use crate::registry::receipt::CancelReceipt;
 // 取消、执行、释放各自成文件：三者都是**独立判定 + 独立审计**的长流程，
 // 混进 actor 主体会让主循环的信噪比塌掉。
 mod cancel;
+mod context;
 mod exec;
 mod release;
 
@@ -130,6 +131,16 @@ pub enum ExecCommand {
         handle: SessionHandle,
         mode: CloseMode,
         reply: Reply<SessionState>,
+    },
+    /// §7.4-6 第 4 步：举发放闸门，停止旧会话发放新执行（资源与句柄原封不动）。
+    HoldForReplacement {
+        handle: SessionHandle,
+        reply: Reply<()>,
+    },
+    /// §7.4-6 第 10 项：提交前失败，放下闸门，旧会话**原样**恢复发放。
+    ResumeAfterReplacement {
+        handle: SessionHandle,
+        reply: Reply<()>,
     },
     /// 空闲驱逐。`Ok(None)` 表示**未到期限**，这是一次正常的空操作，不是失败。
     Evict {
@@ -238,6 +249,10 @@ struct ActorState {
     idle_deadline_ms: Option<u64>,
     physical: Option<Physical>,
     handles: HandleRegistry,
+    /// §7.4-6 的发放闸门。`Some(举起前的状态)` = 闸门举着，替换期间旧会话
+    /// 停止发放新执行；`None` = 没在替换里。存**原状态**而不是布尔，是为了
+    /// 提交前失败时能原样恢复，而不是写死一个状态凭空抬回去。
+    replacement_hold: Option<SessionState>,
     /// 飞行中的执行。其余时候为 `None`。
     in_flight: Option<InFlight>,
     /// 飞行中的执行要等的两个 await 点，由主循环 `take()` 到局部变量去 `select!`，
@@ -294,6 +309,7 @@ pub fn spawn_actor(
         idle_deadline_ms: request.idle_deadline_ms,
         physical: None,
         handles: HandleRegistry::new(),
+        replacement_hold: None,
         in_flight: None,
         bind_rx: None,
         join: None,
@@ -442,6 +458,12 @@ async fn await_join(
 }
 
 async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
+    // §7.4-6 发放闸门：唯一的判定与拒绝执行点，放在所有命令的共同入口，
+    // 这样「哪条发放路径忘了查闸门」在结构上就不可能发生。
+    let msg = match context::gate(state, msg) {
+        Ok(msg) => msg,
+        Err(()) => return,
+    };
     match msg {
         ExecCommand::Open { request, reply } => {
             let _ = reply.send(open(state, request).await);
@@ -473,6 +495,12 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
         }
         ExecCommand::Evict { at_ms, reply } => {
             let _ = reply.send(evict_idle(state, at_ms).await);
+        }
+        ExecCommand::HoldForReplacement { handle, reply } => {
+            let _ = reply.send(context::hold(state, &handle));
+        }
+        ExecCommand::ResumeAfterReplacement { handle, reply } => {
+            let _ = reply.send(context::resume(state, &handle));
         }
     }
 }

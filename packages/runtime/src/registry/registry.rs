@@ -71,12 +71,12 @@ fn guard<T>(result: std::sync::LockResult<T>) -> T {
 
 /// 登记表里的一项。
 #[derive(Clone)]
-struct SessionRecord {
-    db_session_id: DbSessionId,
+pub(super) struct SessionRecord {
+    pub(super) db_session_id: DbSessionId,
     /// §12 / §4.4：epoch 是旧请求的**唯一**归属依据，也是 D-02 折叠的输入。
     runtime_epoch: RuntimeEpoch,
     worker_id: WorkerId,
-    actor: SessionActor,
+    pub(super) actor: SessionActor,
 }
 
 #[derive(Default)]
@@ -126,7 +126,7 @@ impl Table {
 /// `outstanding` **包含**尚未确认隔离的陈旧占用。这是 CM-58 的全部要害：
 /// worker 崩溃不等于它的连接已经关掉，账上留着这份额度直到隔离确认，
 /// 才不会在网络分区期间把同一批物理连接超额发出去。
-struct QuotaLedger {
+pub(super) struct QuotaLedger {
     outstanding: AtomicUsize,
     limit: usize,
     /// 被扣住但尚未确认隔离的 worker → 被扣住会话的 id（连带审计用）。
@@ -144,7 +144,7 @@ impl QuotaLedger {
 
     /// 预留一份额度。用 `fetch_add` 的返回值判定而不是「先读再加」：
     /// 两个并发登记不会同时读到旧的 `outstanding` 而双双通过检查。
-    fn try_reserve(&self) -> Result<(), RuntimeError> {
+    pub(super) fn try_reserve(&self) -> Result<(), RuntimeError> {
         let previous = self.outstanding.fetch_add(1, Ordering::SeqCst);
         if previous >= self.limit {
             self.outstanding.fetch_sub(1, Ordering::SeqCst);
@@ -153,7 +153,7 @@ impl QuotaLedger {
         Ok(())
     }
 
-    fn release(&self) {
+    pub(super) fn release(&self) {
         self.outstanding.fetch_sub(1, Ordering::SeqCst);
     }
 
@@ -240,11 +240,11 @@ impl AuditSink {
 pub struct SessionRegistry {
     table: RwLock<Table>,
     opening: Mutex<Vec<DbSessionId>>,
-    quota: QuotaLedger,
+    pub(super) quota: QuotaLedger,
     audit: AuditSink,
-    outbox: AuditOutbox,
-    backend: Arc<dyn SessionBackend>,
-    epoch_seq: AtomicU64,
+    pub(super) outbox: AuditOutbox,
+    pub(super) backend: Arc<dyn SessionBackend>,
+    pub(super) epoch_seq: AtomicU64,
     session_limit: usize,
 }
 
@@ -323,7 +323,10 @@ impl SessionRegistry {
     }
 
     /// 按 id 定位 actor。**锁在这里就结束了**，返回的是可自由 await 的克隆。
-    fn locate(&self, db_session_id: &DbSessionId) -> Result<SessionRecord, RuntimeError> {
+    pub(super) fn locate(
+        &self,
+        db_session_id: &DbSessionId,
+    ) -> Result<SessionRecord, RuntimeError> {
         self.read_table()
             .locate(db_session_id)
             .ok_or_else(|| RuntimeError::UnknownSession(db_session_id.to_string()))
@@ -414,6 +417,31 @@ impl SessionRegistry {
     fn release_opening(&self, db_session_id: &DbSessionId) {
         let mut opening = guard(self.opening.lock());
         opening.retain(|held| held != db_session_id);
+    }
+
+    /// §7.4-6：§12 原子切换**之后**才把候选放进可见表。
+    ///
+    /// 与 [`open_and_publish`](Self::open_and_publish) 的差别全在这一句：候选在
+    /// §12 切换之前对宿主**不可见**，切换之后才插表，于是没有任何入口能在切换前
+    /// 定位到它。表项形状是 `registry` 的私有事实，所以这条留在本文件，
+    /// 与 [`crate::registry::candidate`] 里的四条原语配套。
+    pub(super) fn publish_candidate(
+        &self,
+        worker_id: WorkerId,
+        runtime_epoch: RuntimeEpoch,
+        view: SessionView,
+        actor: SessionActor,
+    ) -> Result<SessionView, RuntimeError> {
+        let record = SessionRecord {
+            db_session_id: view.handle.db_session_id.clone(),
+            runtime_epoch,
+            worker_id,
+            actor,
+        };
+        if self.write_table().insert(record).is_err() {
+            return Err(RuntimeError::InvariantBroken("duplicateDbSessionId"));
+        }
+        Ok(view)
     }
 
     /// §6.4：按注入的绝对毫秒驱逐到期的空闲会话。
