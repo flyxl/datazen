@@ -767,6 +767,26 @@ VITEST_EXIT=0   Test Files 565 passed (565)   Tests 5920 passed (5920)   Duratio
 
 实测本轨**不是零基础**：`packages/runtime` 幂等命中 **294** 处，且 `connection/testing/clock.rs:417` 已有 `idempotency_token_expiry_is_24h_of_virtual_time`；`resource/journey_ledger.rs:124` 已有「同键恢复候选而非二次开资源」；`connection/testing/ids.rs:254` 有 `idempotency_nonce()`。缺的是过期后不执行、删记录后不执行、伪造 `issuedAt`/`keyVersion` 拒绝、owner 重启后旧令牌 SessionLost、receipt/token 不落盘这**五条窄面**。
 
+**↑ 上一行末的「五条窄面」是协调者派活时的错误估计，已被该轨 Coder 的机械查询推翻，见下方「更正三」。**
+
+### 更正三：CM-70 的实际范围远大于「补断言」
+
+派活时协调者按「只补窄面」估算。`p3-cm70-idempotency-replay` 的 Coder 在工作树内做了机械对照表后回传，结论相反——**runtime 侧根本没有签名设施**：
+
+| 机械查询 | 结果 |
+| --- | --- |
+| `issued_at` / `issuedAt` in `packages/runtime` | **0** |
+| `key_version` / `keyVersion` in `packages/runtime` | **0** |
+| `retained_until` / `retainedUntil` in `packages/runtime` | **0** |
+| `impl SubmissionTokenIssuer` 全工作区 | **0**（`platform-api/src/ports/token.rs:63` 是**只有 trait、没有实现**的端口） |
+| `IdempotencyStore`（`gateway/idempotency.rs:161-174`） | 只有 `read` / `write`，**无删除语义** |
+
+⇒ 7 条断言实测：**已有 2（A1 同输入重发同 receipt、A2 不同输入冲突，均由 CM-54 账本 `gateway/mod.rs:236-248` 做实）、部分 1（A6 机制在 `IdempotencyLookup::Unreadable` 但断言缺）、缺 4（A3 过期不执行、A4 删记录后不执行、A5 伪造拒绝、A7 owner 重启 SessionLost）、缺且需新增钉子 1（A8 receipt/token 不落盘；先例 `tests/directory_no_disk.rs` 只覆盖 `src/directory/**`）**。
+
+附带更正一条此前的误读：`connection/testing/clock.rs:417` 的 `idempotency_token_expiry_is_24h_of_virtual_time` **不是**已有的过期能力——它只测 `FakeClock` 计时器本身，**没有任何消费者**，是一条孤立的时间算术断言。
+
+⇒ **实际工作量是「新建一层 runtime 签名提交令牌 + 保留期/删除 + owner epoch 绑定」**，属新增能力而非补断言。已要求该 Coder **先出施工方案（分层落点、既有 4 处 `IdempotencyRecord` 构造点的边界、是否该拆多轨、可独立验收的最小闭环），暂不写实现**。CM-70 的排期须按新增能力重估，不能按「补断言」估。
+
 ### 更正二：CM-32 不是「历史术语」，是「**哪儿都没有**」
 
 之前把 CM-32 的开放问题写成「历史术语 vs 活要求」二选一。实测推翻了这个框架：
