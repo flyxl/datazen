@@ -89,3 +89,17 @@ pub fn handle(db_session_id: &str, runtime_epoch: u64) -> SessionHandle {
 pub fn execution_id(value: &str) -> ExecutionId {
     ExecutionId::new(value)
 }
+
+/// 故意在**持有锁**的情况下 panic，把互斥量弄成中毒态。
+///
+/// 存在的唯一理由是让「锁中毒后某个闸门是否 fail-closed」可被测试。
+/// `poison!(` 是生产路径禁用词（`tests/gateway_contract/invariants.rs`），
+/// 所以这一行只许写在 `#[cfg(test)]` 的本模块里，不许搬回生产文件。
+#[cfg(test)]
+pub(crate) fn poison_lock<T>(lock: &std::sync::Mutex<T>) {
+    let _held = match lock.lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+    panic!("intentional lock poisoning for the fail-closed test");
+}

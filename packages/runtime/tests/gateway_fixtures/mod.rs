@@ -26,8 +26,9 @@ use datazen_runtime::gateway::idempotency::IdempotencyStoreError;
 use datazen_runtime::gateway::{
     AlwaysAllow, AuthorizationDenial, Authorizer, CancelBinding, CancelRequest, ExecutionEvent,
     ExecutionEventKind, ExecutionGateway, ExecutionRequest, ExecutionSource, FixedClock,
-    GatewayAction, IdempotencyRecord, IdempotencyScope, IdempotencyStore, InMemoryIdempotencyStore,
-    RequestPrincipal, SourceKind,
+    GatewayAction, GrantRegistry, IdempotencyRecord, IdempotencyScope, IdempotencyStore,
+    InMemoryIdempotencyStore, RequestPrincipal, SourceKind, SubmissionOperation,
+    SubmissionTokenGuard, TokenKeyring,
 };
 use datazen_runtime::registry::SessionPort;
 
@@ -144,6 +145,38 @@ pub fn request(expected_revision: u64) -> ExecutionRequest {
         Counter::new(expected_revision),
         call(),
         IDEMPOTENCY_KEY,
+        source(),
+    )
+}
+
+/// 带自定义幂等键的受理请求。CM-70 的幂等键就是签名令牌字符串本身，
+/// 所以这条就是「拿令牌当键提交」。
+pub fn request_with_key(expected_revision: u64, idempotency_key: &str) -> ExecutionRequest {
+    ExecutionRequest::new(
+        session_handle(),
+        Counter::new(expected_revision),
+        call(),
+        idempotency_key,
+        source(),
+    )
+}
+
+/// 带自定义上下文修订的受理请求：用来造「同一令牌、不同输入」。
+pub fn request_at(expected_revision: u64, idempotency_key: &str) -> ExecutionRequest {
+    request_with_key(expected_revision, idempotency_key)
+}
+
+/// 归属到指定 `runtimeEpoch` 的受理请求：用来造「owner 重启后拿旧令牌重发」。
+pub fn request_for_epoch(
+    expected_revision: u64,
+    idempotency_key: &str,
+    runtime_epoch: u64,
+) -> ExecutionRequest {
+    ExecutionRequest::new(
+        handle(SESSION, runtime_epoch),
+        Counter::new(expected_revision),
+        call(),
+        idempotency_key,
         source(),
     )
 }
@@ -457,10 +490,173 @@ impl IdempotencyStore for WriteFailingStore {
     }
 }
 
+/// 计数存储：在内存存储外包一层，把三个动作的调用次数记下来。
+///
+/// CM-70 要断言的是「拒得**够早**」——过期重放不得查询账本、保留期清扫真的删掉了
+/// 记录。这些没法从「返回了什么错误」推出来，只能数动作。
+#[derive(Debug, Default)]
+pub struct CountingStore {
+    inner: InMemoryIdempotencyStore,
+    reads: AtomicU64,
+    writes: AtomicU64,
+    deletes: AtomicU64,
+    read_failures: AtomicU64,
+}
+
+impl CountingStore {
+    pub fn shared() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    pub fn read_calls(&self) -> u64 {
+        self.reads.load(Ordering::SeqCst)
+    }
+
+    pub fn write_calls(&self) -> u64 {
+        self.writes.load(Ordering::SeqCst)
+    }
+
+    /// 删除调用次数。保留期清扫跑过一次的判据。
+    pub fn delete_calls(&self) -> u64 {
+        self.deletes.load(Ordering::SeqCst)
+    }
+
+    /// 让之后**每一次**读都失败，用来模拟账本读不出来（§3.3 的 `Unreadable`）。
+    pub fn fail_reads(&self) {
+        self.read_failures.store(1, Ordering::SeqCst);
+    }
+
+    pub fn recover_reads(&self) {
+        self.read_failures.store(0, Ordering::SeqCst);
+    }
+
+    /// 直接查一条记录在不在。
+    pub fn peek(&self, scope: &IdempotencyScope) -> Option<IdempotencyRecord> {
+        self.inner.read(scope).ok().flatten()
+    }
+}
+
+impl IdempotencyStore for CountingStore {
+    fn read(
+        &self,
+        scope: &IdempotencyScope,
+    ) -> Result<Option<IdempotencyRecord>, IdempotencyStoreError> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        if self.read_failures.load(Ordering::SeqCst) == 1 {
+            return Err(IdempotencyStoreError::read("夹具：账本读不出来"));
+        }
+        self.inner.read(scope)
+    }
+
+    fn write(
+        &self,
+        scope: &IdempotencyScope,
+        record: IdempotencyRecord,
+    ) -> Result<(), IdempotencyStoreError> {
+        self.writes.fetch_add(1, Ordering::SeqCst);
+        self.inner.write(scope, record)
+    }
+
+    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyStoreError> {
+        self.deletes.fetch_add(1, Ordering::SeqCst);
+        self.inner.delete(scope)
+    }
+}
+
 pub struct Harness {
     pub gateway: ExecutionGateway,
     pub port: Arc<RecordingPort>,
     pub clock: Arc<FixedClock>,
+}
+
+/// CM-70 夹具：网关接上令牌闸门。
+///
+/// 刻意**独立于** `ready_harness`：那样才能单独断言「接了令牌层」和
+/// 「没接令牌层」两条路径的差别。
+pub struct TokenHarness {
+    pub harness: Harness,
+    pub store: Arc<CountingStore>,
+    pub tokens: Arc<SubmissionTokenGuard>,
+}
+
+/// 夹具用的签名密钥。
+pub const SIGNING_KEY: &[u8] = b"cm70-integration-signing-key";
+/// 夹具令牌的存活期：一天零一秒，保证「刚过期」与「未过期」都能落在刻度上。
+pub const TOKEN_TTL_NANOS: u64 = 24 * 60 * 60 * 1_000_000_000 + 1;
+/// 夹具一律用这个签发时刻，别在用例里散落裸数字。
+pub const TOKEN_ISSUED_AT_NANOS: u64 = 1_000;
+/// 「过期」判据是 `now >= expires_at`，所以**恰好**到这个点就已经过期了。
+pub const TOKEN_EXPIRES_AT_NANOS: u64 = TOKEN_ISSUED_AT_NANOS + TOKEN_TTL_NANOS;
+
+/// 就绪夹具 + 令牌闸门。
+pub fn token_harness() -> TokenHarness {
+    let store = CountingStore::shared();
+    let clock = FixedClock::shared();
+    let port = Arc::new(RecordingPort::new(ready_view()));
+    port.attach_clock(clock.clone());
+    let tokens = SubmissionTokenGuard::shared(
+        TokenKeyring::single(SIGNING_KEY.to_vec()).shared(),
+        GrantRegistry::shared(),
+    );
+    let gateway = ExecutionGateway::with_submission_tokens(
+        port.clone(),
+        Arc::new(AlwaysAllow),
+        store.clone(),
+        clock.clone(),
+        tokens.clone(),
+    );
+    TokenHarness {
+        harness: Harness {
+            gateway,
+            port,
+            clock,
+        },
+        store,
+        tokens,
+    }
+}
+
+/// 同 `token_harness`，但用调用方自带的令牌闸门（密钥环、登记表现场构造）。
+pub fn token_harness_with(tokens: Arc<SubmissionTokenGuard>) -> TokenHarness {
+    let store = CountingStore::shared();
+    let clock = FixedClock::shared();
+    let port = Arc::new(RecordingPort::new(ready_view()));
+    port.attach_clock(clock.clone());
+    let gateway = ExecutionGateway::with_submission_tokens(
+        port.clone(),
+        Arc::new(AlwaysAllow),
+        store.clone(),
+        clock.clone(),
+        tokens.clone(),
+    );
+    TokenHarness {
+        harness: Harness {
+            gateway,
+            port,
+            clock,
+        },
+        store,
+        tokens,
+    }
+}
+
+/// 同 `token_harness`，但幂等存储换成读不出来的替身：用于「未知写入不许自动重试」。
+pub fn unreadable_token_harness() -> TokenHarness {
+    let h = token_harness();
+    h.store.fail_reads();
+    h
+}
+
+/// 用当前时钟刻度签一条执行令牌。
+pub fn issue_token(tokens: &SubmissionTokenGuard, now_nanos: u64) -> String {
+    tokens
+        .issue(
+            SubmissionOperation::ExecuteInSession,
+            Some(Counter::new(1)),
+            now_nanos,
+            TOKEN_TTL_NANOS,
+        )
+        .unwrap_or_else(|err| panic!("夹具期望签发成功，实际失败：{err:?}"))
 }
 
 /// 用自定义幂等存储搭夹具（存储留在外面，由测试自己断言写入次数）。
@@ -525,6 +721,20 @@ pub async fn accept(h: &Harness, req: ExecutionRequest) -> ExecutionId {
         Ok(acceptance) => acceptance.execution_id().clone(),
         Err(err) => panic!("夹具期望受理成功，实际被拒：{err:?}"),
     }
+}
+
+/// 受理并**真的派发**一次，返回回执里的 `executionId`。
+///
+/// CM-70 的前置「写入已接受且响应丢失」说的正是这一段：写落下去了，回执没回来。
+/// 网关的 `accept` 只入队、`dispatch` 才下发给驱动，所以「不再执行」必须盯
+/// `RecordingPort::execute_calls()`，盯 `accept` 是盯不出来的。
+pub async fn accept_and_dispatch(h: &Harness, req: ExecutionRequest) -> ExecutionId {
+    let id = accept(h, req).await;
+    h.gateway
+        .dispatch(&principal(), &id)
+        .await
+        .unwrap_or_else(|err| panic!("夹具期望派发成功，实际被拒：{err:?}"));
+    id
 }
 
 /// 按当前会话句柄发起一次取消。

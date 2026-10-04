@@ -56,7 +56,9 @@ pub mod events;
 pub mod idempotency;
 pub mod provenance;
 pub mod request;
+pub mod retention;
 pub mod timing;
+pub mod token;
 
 #[cfg(test)]
 pub(crate) mod testing_support;
@@ -71,6 +73,11 @@ mod event_store_tests;
 pub(crate) mod facade_support;
 #[cfg(test)]
 mod facade_tests;
+// CM-70：令牌层与保留期各自单列一块，否则两个源文件都会顶破 800 行上限。
+#[cfg(test)]
+mod retention_tests;
+#[cfg(test)]
+mod token_tests;
 
 pub use cancel::binding as cancel_binding_reason;
 pub use cancel::{
@@ -91,7 +98,14 @@ pub use provenance::{
     RequestPrincipal, SourceKind,
 };
 pub use request::{AcceptanceDisposition, ExecutionRequest, GatewayAcceptance, GatewayError};
+pub use retention::{
+    Grant, GrantRegistry, RetentionSweep, RetiredGrant, SweepReport, RETENTION_AFTER_EXPIRY_NANOS,
+};
 pub use timing::{FixedClock, MonotonicClock, OverheadProbe, OverheadSamples};
+pub use token::{
+    token_digest, KeyVersion, SubmissionOperation, SubmissionTokenGuard, TokenAdmission,
+    TokenIssueError, TokenKeyring, TokenPayload, TokenRejection, DEFAULT_TTL_NANOS,
+};
 
 /// 网关内部记账的一条执行。
 ///
@@ -196,6 +210,9 @@ pub struct ExecutionGateway {
     authorizer: Arc<dyn Authorizer>,
     ledger: IdempotencyLedger,
     clock: Arc<dyn MonotonicClock>,
+    /// 令牌闸门（CM-70）。`None` 表示调用方没装签名令牌层——此时受理退回
+    /// 「键即不透明字符串」的旧行为，由 [`Self::with_submission_tokens`] 显式装配。
+    tokens: Option<Arc<SubmissionTokenGuard>>,
     state: Mutex<GatewayState>,
 }
 
@@ -211,8 +228,68 @@ impl ExecutionGateway {
             authorizer,
             ledger: IdempotencyLedger::new(store),
             clock,
+            tokens: None,
             state: Mutex::new(GatewayState::default()),
         }
+    }
+
+    /// 装配签名令牌层（CM-70）。受理路径的**第 0 步**变为令牌闸门：
+    /// 验签 → 墓碑 → 过期 → owner 代次，任一不过即拒绝，**不分配 `executionId`、
+    /// 不写账本、不下发**。
+    pub fn with_submission_tokens(
+        port: Arc<dyn SessionPort>,
+        authorizer: Arc<dyn Authorizer>,
+        store: Arc<dyn IdempotencyStore>,
+        clock: Arc<dyn MonotonicClock>,
+        tokens: Arc<SubmissionTokenGuard>,
+    ) -> Self {
+        Self {
+            port,
+            authorizer,
+            ledger: IdempotencyLedger::new(store),
+            clock,
+            tokens: Some(tokens),
+            state: Mutex::new(GatewayState::default()),
+        }
+    }
+
+    /// 已装配的令牌闸门。`None` 即未装配。
+    pub fn submission_tokens(&self) -> Option<&Arc<SubmissionTokenGuard>> {
+        self.tokens.as_ref()
+    }
+
+    /// 保留期清扫（CM-70 §3.5）：授予与账本记录**一并**删。
+    ///
+    /// 两边必须同时删，只删一边会各自留个洞：只删授予，重放仍命中账本返回原回执
+    /// （还算安全，但掩盖了「记录已过期」这件事）；只删账本，令牌没过期时会
+    /// **真的再执行一遍**——CM-70 禁止的就是这个。
+    ///
+    /// 顺序固定为先 `GrantRegistry::sweep`（那里已经判过 `expires_at` 与
+    /// `retained_until`）再按返回的作用域删账本，所以「未过期不得删」这道闸
+    /// 只存在一处，不会在两个地方各判一次而判出不同结果。
+    pub fn sweep_idempotency_retention(&self, now_nanos: u64) -> RetentionSweep {
+        let Some(guard) = &self.tokens else {
+            return RetentionSweep::default();
+        };
+        let report = guard.sweep(now_nanos);
+        let mut outcome = RetentionSweep {
+            retired: report.deleted.len(),
+            refused: report.refused.clone(),
+            ledger_deleted: 0,
+            tombstones_pruned: report.tombstones_pruned,
+        };
+        for retired in &report.deleted {
+            match self.ledger.forget(&retired.scope) {
+                Ok(true) => outcome.ledger_deleted += 1,
+                Ok(false) => {}
+                Err(err) => tracing::warn!(
+                    digest = %retired.digest,
+                    error = %err,
+                    "保留期清扫：账本记录删除失败，授予已退役，重放仍被墓碑拒绝"
+                ),
+            }
+        }
+        outcome
     }
 
     /// 受理一次执行。返回的是**受理回执**（`Queued`），不是执行结果。
@@ -226,6 +303,36 @@ impl ExecutionGateway {
         let scope = request.scope();
         let fingerprint = request.fingerprint();
         let handle = request.handle.clone();
+
+        // ── CM-70 第 0 步：令牌闸门 ────────────────────────────────────────
+        // 位置是**语义要求**，不是代码风格：闸门必须在账本查重之前。
+        // 若排在之后，一条「已被保留期清扫删除账本记录、但自身尚未过期」的令牌
+        // 会一路走到第 4 步查重得到 `Miss`，然后被真的再执行一遍——
+        // 正是 CM-70 断言禁止的行为。闸门在前，请求在第 4 步之前就死了。
+        let admission = match &self.tokens {
+            None => None,
+            Some(guard) => Some(
+                guard
+                    .admit(
+                        &request.idempotency_key,
+                        self.clock.now_nanos(),
+                        Some(handle.runtime_epoch),
+                    )
+                    .map_err(|rejection| match rejection {
+                        // owner 重启后的旧令牌：与 `session_view` 发现会话已丢失
+                        // 是**同一种可观测结局**（`SessionLost`），但触发路径不同。
+                        TokenRejection::OwnerEpochMismatch => {
+                            GatewayError::Runtime(RuntimeError::SessionLost(format!(
+                                "submission token owner epoch mismatch on {}",
+                                handle.db_session_id.as_str()
+                            )))
+                        }
+                        other => GatewayError::SubmissionTokenRejected {
+                            reason: other.reason(),
+                        },
+                    })?,
+            ),
+        };
 
         let view = self.port.session_view(&handle).await?;
         reject_terminal_session(&view)?;
@@ -271,6 +378,12 @@ impl ExecutionGateway {
                     .map_err(|err| GatewayError::IdempotencyPersistFailed {
                         message: err.message,
                     })?;
+
+                // 账本写成功才算受理。授予与账本记录**同时**登记，两者都由同一张
+                // 令牌的到期时刻推导，所以清扫要么两个都删、要么两个都不删。
+                if let (Some(guard), Some(admission)) = (&self.tokens, &admission) {
+                    guard.register(admission, &execution_id, &scope);
+                }
 
                 state.next_sequence = state.next_sequence.saturating_add(1);
                 let mut events = EventStore::new();

@@ -256,6 +256,13 @@ pub enum GatewayError {
     #[error("idempotency record could not be persisted: {message}")]
     IdempotencyPersistFailed { message: String },
 
+    /// CM-70：提交令牌在第 0 步被拒（验签 / 版本 / 过期 / 退役）。
+    ///
+    /// 刻意**不带**令牌本身，也不带 key：审计落盘里留一份令牌摘要就等于
+    /// 给伪造者一个 oracle 去试。只留机器可读的 `reason`。
+    #[error("submission token rejected: {reason}")]
+    SubmissionTokenRejected { reason: &'static str },
+
     #[error("invalid request: {reason}")]
     InvalidRequest { reason: &'static str },
 }
@@ -309,6 +316,10 @@ impl GatewayError {
             GatewayError::IdempotencyPersistFailed { message } => json!({
                 "kind": "idempotencyPersistFailed",
                 "message": message,
+            }),
+            GatewayError::SubmissionTokenRejected { reason } => json!({
+                "kind": "submissionTokenRejected",
+                "reason": reason,
             }),
             GatewayError::InvalidRequest { reason } => json!({
                 "kind": "invalidRequest",
@@ -460,6 +471,9 @@ mod tests {
             },
             GatewayError::IdempotencyPersistFailed {
                 message: "disk".to_owned(),
+            },
+            GatewayError::SubmissionTokenRejected {
+                reason: "submissionTokenSignatureInvalid",
             },
             GatewayError::InvalidRequest {
                 reason: "commandRequired",

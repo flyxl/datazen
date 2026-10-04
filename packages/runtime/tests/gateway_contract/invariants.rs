@@ -186,7 +186,9 @@ fn gateway_sources_obey_the_locked_invariants() {
         "event_store_tests.rs",
         "facade_support.rs",
         "facade_tests.rs",
+        "retention_tests.rs",
         "testing_support.rs",
+        "token_tests.rs",
         // 生产文件。
         "cancel.rs",
         "events.rs",
@@ -194,7 +196,9 @@ fn gateway_sources_obey_the_locked_invariants() {
         "mod.rs",
         "provenance.rs",
         "request.rs",
+        "retention.rs",
         "timing.rs",
+        "token.rs",
     ]
     .iter()
     .map(|name| name.to_string())
@@ -210,7 +214,9 @@ fn gateway_sources_obey_the_locked_invariants() {
         "event_store_tests.rs",
         "facade_support.rs",
         "facade_tests.rs",
+        "retention_tests.rs",
         "testing_support.rs",
+        "token_tests.rs",
     ];
     for name in &names {
         let source = std::fs::read_to_string(dir.join(name)).expect("源码可读");
@@ -242,6 +248,8 @@ fn gateway_sources_obey_the_locked_invariants() {
         ("facade_tests", ""),
         ("cancel_event_tests", ""),
         ("event_store_tests", ""),
+        ("retention_tests", ""),
+        ("token_tests", ""),
     ] {
         let needle = format!("{public}mod {module};");
         let declared = mod_rs
@@ -263,7 +271,19 @@ fn gateway_sources_obey_the_locked_invariants() {
     let mut test_files = vec![
         "tests/gateway_contract.rs".to_string(),
         "tests/gateway_fixtures/mod.rs".to_string(),
+        "tests/cm70_idempotency_replay.rs".to_string(),
     ];
+    for entry in std::fs::read_dir(root.join("tests/cm70")).expect("CM-70 分节用例目录可读")
+    {
+        let name = entry
+            .expect("目录项可读")
+            .file_name()
+            .to_string_lossy()
+            .to_string();
+        if name.ends_with(".rs") {
+            test_files.push(format!("tests/cm70/{name}"));
+        }
+    }
     let sections =
         std::fs::read_dir(root.join("tests/gateway_contract")).expect("分节用例目录可读");
     for entry in sections.filter_map(|entry| entry.ok()) {
