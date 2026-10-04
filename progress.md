@@ -114,6 +114,19 @@
 | `node scripts/check-platform-crate-boundaries.mjs` | 0 | `[check-platform-arch] PASS — 22 workspace member(s) classified, 6 rule(s) evaluated over 26 crate(s), 1 rule×subject combo(s) vacuous: 0 violation(s), 0 error(s), 3 advisory(ies)` |
 | `cargo test -p datazen-runtime --test gateway_contract`（逐个二进制，未用 `--tests`） | 0 | `test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s` |
 
+**提交后最终一轮（§5 要求「提交后再跑一遍」）**：
+运行前 `HEAD=2a1ba7ada`、工作区 `git status --porcelain -uall` **0 行**、
+工作区指纹 `2af41c4d26d5433339e24c0118216d9ee45f405806b1344259b768ee112210eb`，
+运行后 HEAD 与指纹**逐字相同**：
+
+| 命令 | EXIT | 结论行（逐字） |
+| --- | --- | --- |
+| `cargo test -p datazen-runtime --lib` | 0 | `test result: ok. 323 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s` |
+| `cargo build -p datazen-runtime` | 0 | 无输出（`warning` 行数 = 0） |
+| `cargo fmt -p datazen-runtime --check` | 0 | 输出 0 字节 |
+| `node scripts/check-platform-crate-boundaries.mjs` | 0 | `[check-platform-arch] PASS — 22 workspace member(s) classified, 6 rule(s) evaluated over 26 crate(s), 1 rule×subject combo(s) vacuous: 0 violation(s), 0 error(s), 3 advisory(ies)` |
+| `cargo test -p datazen-runtime --test gateway_contract` | 0 | `test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s` |
+
 §4 不变量静态自查（脚本按 `#[cfg(test)] mod … {…}` 花括号配平剥掉测试块后统计，
 11 个文件逐个核对）：
 
