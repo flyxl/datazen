@@ -404,6 +404,10 @@ fn one_return_releases_exactly_once_however_many_times_it_is_repeated() {
 ///
 /// 端口文档 `network.rs:63` 写死了这一点（「仅供观测，不用于判断能否释放」）。
 /// 若哪天有人按快照值决定能否释放，多一次或少一次 acquire 就会把账永久带歪。
+///
+/// **判别性要求（CM-32 repair round 1）**：断言点上「台账读到的数」必须与
+/// 「快照里的数」**不相等**（`assert_ne!` 自证），否则本用例杀不掉
+/// 「把权威读换成冻结快照」这个变异。
 #[test]
 fn the_binding_snapshot_never_decides_whether_to_release() {
     let transport = Arc::new(HostTunnelTransport::new());
@@ -412,8 +416,9 @@ fn the_binding_snapshot_never_decides_whether_to_release() {
     let spec = spec_for(&route, "jump.internal", 22);
     let first = LeaseId::new("session-first");
     let second = LeaseId::new("session-second");
+    let third = LeaseId::new("session-third");
 
-    let _first_binding: TunnelBinding = ledger
+    let first_binding: TunnelBinding = ledger
         .acquire(Some(&spec), &first)
         .expect("first")
         .expect("tunnel")
@@ -423,6 +428,15 @@ fn the_binding_snapshot_never_decides_whether_to_release() {
         .expect("second")
         .expect("tunnel")
         .binding;
+    // 第三次 acquire 是判别性设计：台账走到 3，而 `first_binding` 冻结在 1。
+    // 只有两者不相等，下面的 `ref_count` 断言才能区分读的是哪一份 ——
+    // 两个来源都是 1 时，换成冻结快照同样全绿（CM-32 repair round 1）。
+    let _third_binding: TunnelBinding = ledger
+        .acquire(Some(&spec), &third)
+        .expect("third")
+        .expect("tunnel")
+        .binding;
+    assert_eq!(first_binding.ref_count, 1);
     assert_eq!(second_lease.ref_count, 2);
 
     // 快照值停在 2，调用方随便保留它；归还按**台账**走，与快照无关。
@@ -432,8 +446,26 @@ fn the_binding_snapshot_never_decides_whether_to_release() {
         second_lease.ref_count, 2,
         "a snapshot never moves by itself"
     );
-    assert_eq!(ledger.ref_count(&spec), Some(1));
+    assert_ne!(
+        ledger.ref_count(&spec),
+        Some(first_binding.ref_count),
+        "the ledger and the frozen snapshot must DISAGREE here, \
+         otherwise this assertion cannot tell the two sources apart"
+    );
+    assert_eq!(ledger.ref_count(&spec), Some(2));
+    assert_eq!(ledger.ref_count(&spec), Some(first_binding.ref_count + 1));
 
-    assert!(ledger.return_resource(&second).expect("held").closed);
-    assert_eq!(transport.closed(), 1);
+    assert!(!ledger.return_resource(&second).expect("held").closed);
+    assert_eq!(
+        transport.closed(),
+        0,
+        "two references still hold the tunnel"
+    );
+
+    assert!(ledger.return_resource(&third).expect("held").closed);
+    assert_eq!(
+        transport.closed(),
+        1,
+        "the last reference closes exactly once"
+    );
 }

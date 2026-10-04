@@ -9,11 +9,32 @@
 //! 若本 trait 的实现体再放一个 `refs`，两份账各自都「对」，
 //! 但 CM-28「隧道不多减引用」和 CM-27「许可归零」会同时失效，且极难排查。
 //!
-//! 用类型系统把第二份账消灭在编译期：**所有方法都取 `&self`**，
-//! 因此 `dyn TunnelTransport` 可放进 `Arc` 而拿不到 `&mut self`，
-//! 结构上就**无法**维护任何内部引用计数。
-//! 代数不变量（`close` 次数 == ensure 次数 − release 次数）由
-//! `tunnel::harness::single_counter_algebra_holds` 钉住。
+//! ## 类型系统**挡不住**这件事（不要把纪律说成保证）
+//!
+//! 本 trait 的方法全部取 `&self`。这**不等于**「实现方无法维护计数」：
+//! `&self` 只排除 `&mut self`，而 `Mutex` / `Cell` 是**内部可变性**，
+//! 根本不需要 `&mut self`；`TunnelTransport: Send + Sync` 之下，
+//! 放一个 `Mutex<usize>` 完全合法，能通过全部编译与测试。
+//! 本模块的两个夹具就是活证据：`RecordingTunnelTransport` 有
+//! `journal: Mutex<Vec<TunnelEvent>>`，crate 外宿主侧的
+//! `HostTunnelTransport` 有 `events: Mutex<Vec<&'static str>>` ——
+//! 「全 `&self` 所以装不下第二个计数」这句话按这两行即可证伪。
+//!
+//! 真实约束因此**不是**类型系统的，而是下面三条，靠字段审计与评审维持：
+//!
+//! 1. 经字段审计，本 trait 的三个返回值（`Option<TunnelHandle>`、`()`、
+//!    `NetworkRouteRevision`）**都不携带任何计数** —— 宿主拿不到一份可以
+//!    自己记着的账；`TunnelHandle(Arc<()>)` 是刻意不透明的单值。
+//! 2. 释放决策的唯一输入是 `TunnelEntry::refs`（见 `ledger.rs`）；
+//!    `TunnelBinding` 只在 `acquire` 处被快照出去，此后不再回流。
+//! 3. 代数不变量（`close` 次数 == ensure 次数 − release 次数）由
+//!    `tunnel::journey_single_counter::single_counter_algebra_holds` 钉住。
+//!
+//! **已知名洞（登记于 CM-32 repair round 1，修复留待跟进轨）**：约束 (1) 当前
+//! 由审计保证，编译器不保证它。已实证 —— 给 `RecordingTunnelTransport` 加一个
+//! `close_tally: Mutex<usize>` 并让 `close_calls()` 改读它，**编译通过且全轨
+//! 测试全绿**。两个候选修法（断言释放路径只读一个计数 / 让 `drain` 按值从
+//! 单个私有方法取计数而非直读结构体字段）本轮不裁决。
 
 use std::sync::Arc;
 
@@ -35,7 +56,7 @@ impl TunnelHandle {
     /// 住在本 crate 之外，所以构造权必须是 `pub`。
     ///
     /// 句柄本身不含任何共享语义：它**不参与**判定两条隧道是否同一条，
-    /// 也不携带引用计数（见模块头的「唯一计数铁律」）。
+    /// 也不携带引用计数（见本文件模块头的「类型系统挡不住这件事」）。
     pub fn new() -> Self {
         Self(Arc::new(()))
     }
@@ -50,7 +71,8 @@ impl std::fmt::Debug for TunnelHandle {
 
 /// 隧道物理接缝。
 ///
-/// 方法全部 `&self` —— 见模块头「这里为什么一个计数字段都没有」。
+/// 方法全部 `&self` 是为了让实现能放进 `Arc`，**不是**为了禁止内部计数 ——
+/// `Mutex`/`Cell` 不需要 `&mut self`。不变量靠字段审计维持，见模块头。
 pub trait TunnelTransport: Send + Sync + 'static {
     /// 建立一条隧道。返回 `None` 表示「这条 `spec` 其实不需要隧道」（等价于宿主
     /// `TunnelKind::None` 直连），此时**不产生**任何引用计数。

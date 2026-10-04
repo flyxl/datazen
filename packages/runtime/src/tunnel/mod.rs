@@ -43,8 +43,12 @@
 //! # 唯一计数铁律
 //!
 //! 全系统**只有一份**隧道引用计数：`TunnelLedger` 的 `refs`。
-//! `TunnelBinding.ref_count` 是观测快照，**任何**释放判断都不得读它；
-//! [`TunnelTransport`] 结构上无法持有第二份账（方法全 `&self`）。
+//! `TunnelBinding.ref_count` 是观测快照，**任何**释放判断都不得读它。
+//!
+//! 这条铁律**不由类型系统保证**，而由字段审计保证：`&self` 方法并不排除
+//! `Mutex`/`Cell` 内部可变性（两个夹具本身就在用 `Mutex`），编译器挡不住
+//! 第二份账。真正的约束是「释放决策只读 `refs`，[`TunnelTransport`] 的返回
+//! 值不携带计数」。反证与已知名洞见 [`transport`] 模块头。
 //!
 //! [`PoolKeyGeneration`]: crate::resource::PoolKeyGeneration
 

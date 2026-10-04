@@ -210,12 +210,18 @@ fn independent_specs_never_share_a_count() {
 /// 把观测值当成权威计数，正是 CM-28「隧道不多减引用」会悄悄失效的那一步：
 /// 一旦有人按 `binding.ref_count` 判定能否释放，多一次或少一次 acquire
 /// 就会永久性地把账带歪。
+///
+/// **判别性要求（CM-32 repair round 1）**：断言点上必须让「台账读到的数」与
+/// 「快照里的数」**不相等**，否则本用例杀不掉「把权威读换成冻结快照」这个变异
+/// —— 两个来源都等于 1 时，任何 `assert_eq!(…, Some(1))` 都同时接受两者。
+/// 因此这里做三次 acquire，并把这一条写成 `assert_ne!` 自证。
 #[test]
 fn the_binding_snapshot_never_decides_whether_to_release() {
     let mut harness = TunnelHarness::new();
     let spec = harness.same_spec();
     let first = harness.lease_id("session-first");
     let second = harness.lease_id("session-second");
+    let third = harness.lease_id("session-third");
 
     let first_lease = harness
         .ledger
@@ -234,19 +240,52 @@ fn the_binding_snapshot_never_decides_whether_to_release() {
 
     // …按快照值决定释放是错的：拿着**第一份**句柄（ref_count=1）的那一方
     // 仍然只是一次引用，把它当成「这是最后一份」会立刻拆掉别人的隧道。
+    //
+    // 第三次 acquire 是**判别性设计**，不是凑数：它把台账的权威计数推到 3，
+    // 而 `first_lease.binding.ref_count` 永远冻结在 1。若只做两次 acquire，
+    // 释放一次后两个来源恰好都等于 1，下面的断言无法区分读的是哪一份 ——
+    // 把权威读换成冻结快照照样全绿，这条用例就什么都没钉住。
+    let third_lease = harness
+        .ledger
+        .acquire(Some(&spec), &third)
+        .expect("third acquire")
+        .expect("tunnel lease");
+    assert!(
+        !third_lease.opened,
+        "the third session joins the open tunnel"
+    );
+    assert_eq!(third_lease.binding.ref_count, 3);
+
     let released = harness.ledger.release(&spec);
     assert!(
         !released.closed,
         "a stale snapshot must not close the tunnel"
     );
     assert_eq!(
+        released.refs, 2,
+        "one reference left two, so the tunnel must stay up"
+    );
+    assert_eq!(
         second_lease.binding.ref_count, 2,
         "the snapshot handed to a holder is frozen at acquire time"
     );
+
+    // 先钉住两个来源在这一点上**确实不同**——否则后面的断言无判别力。
+    assert_ne!(
+        harness.ledger.ref_count(&spec),
+        Some(first_lease.binding.ref_count),
+        "the ledger must read a DIFFERENT number than the frozen snapshot here, \
+         otherwise this test cannot tell the two sources apart"
+    );
     assert_eq!(
         harness.ledger.ref_count(&spec),
-        Some(1),
+        Some(2),
         "the AUTHORITATIVE count, not the snapshot, decides"
+    );
+    assert_eq!(
+        harness.ledger.ref_count(&spec),
+        Some(first_lease.binding.ref_count + 1),
+        "the ledger counts every holder; the snapshot counts only what its owner saw"
     );
 }
 

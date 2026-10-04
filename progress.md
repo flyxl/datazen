@@ -268,3 +268,30 @@ AFTER   git status --porcelain | sha256sum = b8af2d81a404b64c33e4ea6554fd9fc573f
 未触碰的文件（逐一核对）：`packages/platform-api/src/ports/network.rs`、`packages/runtime/src/connection/port.rs`、`hub.md`、`src-tauri/**`、`docs/**`。
 
 提交后本轨工作树 `git status --porcelain -uall` 为 **0 条**，验证方可直接在 detached 树上开作业面。
+
+## 独立验收结论（Tester `ee7b59f0`）
+
+Tester 在 detached `2836d346d` 上验收：**ACCEPT，可合并**。diff 纯增量（11 文件 / +2301 / **−0**），冻结面全空，四个门禁全绿。**但点名两处合并前必须修，故不是干净 PASS**，本轨据此进入 repair round 1（见下）。
+
+### repair round 1 修的两处
+
+1. **`transport.rs` 模块头的「结构上无法维护计数」是假话，已改写。**
+   Tester 反证：`&self` 只排除 `&mut self`，而 `Mutex`/`Cell` 是内部可变性，本就不需要 `&mut self`；`TunnelTransport: Send + Sync` 下放 `Mutex<usize>` 完全合法。反例就在本轨夹具里 —— `RecordingTunnelTransport.journal: Mutex<...>` 与 crate 外宿主 `HostTunnelTransport.events: Mutex<...>`。
+   改后口径：约束**不由类型系统保证**，由字段审计保证；真实约束是「释放决策只读 `TunnelEntry.refs`」与「`TunnelTransport` 的三个返回值都不携带计数」。同口径的错误表述在 `mod.rs:47` 一并改正（原先是同一句假话的第二个落点）。测试数不变。
+2. **`the_binding_snapshot_never_decides_whether_to_release` 判别力不足，已补。**
+   原用例末句 `assert_eq!(ledger.ref_count(&spec), Some(1))` 杀不掉「把权威读换成冻结快照」（M4）：该断言点上两个来源**恰好都等于 1**，Tester 确认 M4 下仍 `1 passed; 0 failed`，且全轨找不到它的独占杀手。
+   修法（采纳 Tester 意见）：**第三次 acquire** 把台账推到 3、`first_lease.binding.ref_count` 冻结在 1，释放一次后台账读 `Some(2)`；并加 `assert_ne!` **自证两来源在断言点上不相等**，防止同类空过再次悄悄回来。同样的空过也存在于契约二进制 `tests/tunnel_refcount_contract.rs:435`，一并按同一手法修好。原有的 `!released.closed` 与「快照冻结性」断言保留不动。
+
+### 已知名洞（登记，本轮**不修**，留给跟进轨）
+
+- **唯一计数铁律被 M2 证伪。** 变异：给 `RecordingTunnelTransport` 加 `close_tally: Mutex<usize>` 并让 `close_calls()` 改读它 —— **编译通过，405 + 7 全绿**。即不变式「全系统只有一份计数」当前**由审计保证，不由编译器保证**。两个候选修法（断言释放路径只读一个计数 / 让 `drain` 按值从单个私有方法取计数而非直读结构体字段）留待跟进轨裁决。该事实已写进 `transport.rs` 模块头，不只活在台账里。
+- **`AlreadyHeld`（调用方 bug）当前映射到 `SessionQuarantined`**；`TunnelError::rejected()` 与 `as_runtime_error()` 在 `error.rs` 外**零调用方**（Tester 实测 `count_outside_error_rs=0`）。一旦 `rejected()` 拿到第一个调用方，双重 acquire 就会**把健康会话隔离掉**。属 seam 阶段裁定项，本轮不动，已登记。
+
+### Tester 纠正的两条前提（记下来，别再沿用旧说法）
+
+1. 「不带 `test-harness` 的构建不覆盖被改文件」——**对 CM-32 是反的**。`test-harness = []` 是空 flag，只闸住 `connection::testing`；`pub mod tunnel;` 在 `lib.rs:31` **无条件**，`tunnel/mod.rs` 的 `error`/`ledger`/`transport` 均未加 gate。裸 `cargo build -p datazen-runtime` **确实覆盖全部被改生产文件**。（该规则对 CM-74 的 `connection/testing/**` 仍然成立，别推广。）
+2. 两个 close 计数器「语义不一致、关闭失败路径上 `close_calls == N−M` 会失配」——**该结论已由 Tester 自行撤回**。实际是假件在 journal 之前就 `Err`，两者按构造一致，且 M11 证明这份一致性被断言钉住。**这是优点，不要去「修」一个不存在的问题。**
+
+### CM-27 / CM-28 覆盖声明经复核为诚实
+
+Tester 逐条复核：标「已覆盖」的为真；标「剩余」的**确实仍未闭合**，包括 `TunnelFault` 只有 `{Open, Close}` 故握手中途失败无法表达、CM-27 ② `CleanupDisposition::Closed` 在 `src/tunnel/*.rs` 中 `grep -c` 为 **0**、`Quarantined` 归属缺失、CM-28 ④ 20 并发归还与 CM-28 ⑤ 并发预算。**无夸大。**
