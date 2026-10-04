@@ -101,7 +101,17 @@ WT_SHA_BEFORE = WT_SHA_AFTER = 76ab30513e876e222a569f4bfa4540f193e6ad6f
 
 ### 5.2 「零运行时代码改动」这句本身是假的（BLOCKER C）
 
-第一轮提交信息写「纯文档，零运行时代码改动」。逐行复核：**实际有 2 处非注释改动**，各是一个 `#[ignore = "…"]` 理由串（`packages/runtime/tests/cm70_no_disk.rs:3`、`cm70_idempotency_replay.rs:3`）。经裁定**保留这两处字符串**（它们只改测试元数据，不改变任何测试是否执行），但那句话字面为假——纠正已写入第二轮提交信息本身，而不是靠本台账补记。
+第一轮提交信息写「纯文档，零运行时代码改动」。**那句话字面为假**，纠正已写入第二轮提交信息本身，而不是靠本台账补记。精确账目（可复现：对 `f1d843271..HEAD` 的 `*.rs`/`*.ts`/`*.tsx` 取 `-U0`，过滤 `+` 行再去掉以 `//`、`///`、`//!`、`*`、`#[ignore]` 开头的行，得 **5 行**；逐行看，**实际非注释改动是 3 处**）：
+
+| # | 位置 | 性质 |
+| --- | --- | --- |
+| 1 | `packages/runtime/tests/cm70_no_disk.rs:3` | `#[ignore = "…"]` 理由串 |
+| 2 | `packages/runtime/tests/cm70_idempotency_replay.rs:3` | 同上 |
+| 3 | `e2e/specs/dialog-injection.ts` DI-004 | **纯格式重排**：`await expect(invokeBackend('test_inject_dialog_result', { result: {} })).rejects.toThrow(/canceled/)` 表达式逐字不变，只是换行位置不同，语义完全等价 |
+
+过滤后剩下的 2 行经逐行核对**是注释**，只是不以注释前缀开头，属于过滤器的已知盲区：`fix_round1.rs:24` 是 `///` 块的折行续行（小写 `connection's` 起首），`treeUiBug002CountMatching.test.tsx:49` 是 `/** … */` JSDoc。
+
+**更正**：我最初报给属主的是「恰好 2 处非注释改动」，**少数了一处**——漏了 DI-004 的格式重排。已主动补正，不必等验证方发现。经裁定：3 处**全部保留**（前两处只改测试元数据、不改变任何测试是否执行；第三处语义等价），但「零运行时代码改动」这句必须作废。
 
 ### 5.3 锚点必须成对验证（BLOCKER A 的教训）
 
