@@ -569,9 +569,26 @@ node <main>/node_modules/typescript/bin/tsc --noEmit -p tsconfig.scripts.json
 
 ★ 脚本门禁的基线是**在本工作树现测**的，不是引别处：HEAD（stash 掉 `scripts/` 改动）
 = 40 files / **679 passed** / EXIT=0，本轮 = 684 passed（+5 个 `it`，
-该文件 18 → 23）。全量并行下 `check-platform-crate-boundaries.test.ts` 出现过一次
-3 failed（**已知探针撞名 flake**，见「第二轮·本轮新见」第 4 条）；单跑该文件 53/53 绿，
-本文件我未改动，且随后两次全量复跑均 684 全绿。按纪律如实记录运行次数，不追绿。
+该文件 18 → 23）。
+
+**本轮 `vitest run scripts/__tests__` 共跑了 5 次全量并行：红 2 / 绿 3**（按时间顺序，如实记录，不追绿）：
+
+| 次 | EXIT | Test Files | Tests |
+| --- | --- | --- | --- |
+| 1 | 1 | 1 failed / 39 passed | 3 failed / 681 passed |
+| 2 | 0 | 40 passed | 684 passed |
+| 3 | 0 | 40 passed | 684 passed |
+| 4 | 1 | 1 failed / 39 passed | 4 failed / 680 passed |
+| 5 | 0 | 40 passed | 684 passed |
+
+两次红**全部**落在 `check-platform-crate-boundaries.test.ts`（一次 3 条、一次 4 条，
+且每次红的用例名不同：`passes a workspace that respects every rule`、F-01、F-02、
+`a declared host edge the resolve graph drops`）。该文件
+`git diff 7fa6630f0..HEAD --stat -- <该文件>` **为空**（自 fork 起零改动），
+单跑 **53/53 绿**，紧邻的重跑即 684 全绿 ⇒ 属**已知探针撞名 flake**，
+根因见「第二轮·本轮新见」第 4 条（`.gitignore:199` 的 `__boundaryProbe__*`
+让探针对 `git status` 不可见 ⇒ 探针撞名）。归该守卫属主，本轨未修。
+★ 「EXIT=0 且 684 passed」才叫绿；「EXIT=0 且 0 passed」是空绿，本轮没有出现。
 
 ★ **不要用 `pnpm`**：`pnpm vitest` 会退出 1 且跑 0 个测试（`node_modules` 是符号链接造成的
 假红，不是代码缺陷）；`npx` 在本环境 EPERM。判定看 `passed` 计数，`0 passed` 的
