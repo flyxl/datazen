@@ -240,3 +240,58 @@ lib 基线 **223**（硬下限，只许升）。当前 **272 = 223 + 49**。
    - 简报把 CM 变异实验列在本轨，根 `AGENTS.md` 把变异划给验证方（见「未做」）。
    - 本工作树里的 `AGENTS.md` 仍写着「不写进度台账」，而集成分支（`637fb5824`）的新版
      `AGENTS.md` 与协调者都要求写。本文件按新版执行，请在合并时与新版一并处置。
+
+## 第 1 轮返修（Tester 判 FAIL：2 阻塞 + 2 确认缺陷）
+
+修复提交 `23bf4a46d`，分支 `feature/p3-registry`。
+
+### 逐条修法与钉住它的测试
+
+| 缺陷 | 根因 | 修法 | 钉住它的测试 |
+| --- | --- | --- | --- |
+| **B-1 / B-2** 冻结基线 `p3_session_port_contract` 编译不过（E0053），且 `gateway/cancel.rs` 的 `disposition_from_port_state` 跟着断 | 上一轮把 `SessionPort::cancel_execution` 的返回类型改成了 `CancelReceipt`，冻结基线的 `ScriptedPort` 仍是 `ExecutionState` | trait 形状**回正**为 `Result<ExecutionState, RuntimeError>`；§7.6 的三字段回执落到 `SessionRegistry::cancel_registered` / `cancel_execution_bound` 具名入口，`cancel_execution` 只做 `receipt.state` 投影；`port.rs` 加编译期钉子 `frozen_port_cancel_shape` | `冻结端口自带空绑定也走同一条校验`（registry_cancel.rs）：同一个 registry 经冻结 trait 对象只交 `ExecutionState`，经门面仍交三字段回执，`receipt.state == state` |
+| **R-01** 不可判定的关闭既不摘行也不退额度，额度**永久**卡死 | `close_registered` 只在 `Ok` 时 `forget()` | `Err` 分支按失败形状分流：`CloseRejected` 是派发前的拒绝（物理资源原封不动）→ 行与额度都留着；`SessionLost` 是 §9.4 四步**跑完**之后才写出来的（物理资源已关闭）→ `forget()`。错误原样传给调用方 | `不可判定的关闭仍必须注销并归还额度`（registry_release.rs）：行必须摘除、`remaining_quota()` 回到 `SESSION_LIMIT`，并且**归还的额度要真的能再发一次登记**；`宿主登记数与后端确认数对不上时墓碑不得报已关闭` 改为断行已摘除 |
+| **R-02** `invalidate_worker` 成功分支发两条 `SessionInvalidated` | 释放例程和 `invalidate_worker` 各发一条，`AuditFacts::none()` 把可选字段清零，于是两条字段逐字相同、只有自增 `id` 不同 | 删掉 `invalidate_worker` 里的重复 emit，改由 `release` 单点发出；不产生审计空洞（`physical.is_none()` 的提前返回已被调用前的守卫排除，`RollbackAndClose` 也不会给出 `CloseRejected`） | `租约失效立即作废_额度扣住不外发_隔离确认后才归还`（registry_release.rs）：断言 `SessionInvalidated` **恰好一条**，且世代挂在被作废的那个会话上 |
+
+**墓碑断言的处置**：`宿主登记数与后端确认数对不上时墓碑不得报已关闭` 原先经
+`registry.session_view` 读墓碑（`Lost` + `TransactionState::Unknown`）。R-01 修复后
+四步已跑完的行会被摘除，集成面读不到它——这和**成功**关闭之后一样，登记表只管活会话，
+墓碑归 actor。CM-73 的断言因此移到它本来的位置
+`src/registry/actor/tests/release.rs` 的 T10（`不可判定的关闭在 actor 侧仍写墓碑`），
+那里经 `actor.exec(View)` 直接读得到，覆盖没有丢失。
+
+### 门禁实测（分支自身，HEAD `23bf4a46d`，干净树）
+
+首轮记录 `HEAD_START=b57efab2e4`、`STATUS_START=7`；收尾 `HEAD_END=23bf4a46d`、
+`STATUS_END=0`（仅 progress.md 一处待提交）。
+
+冻结基线 12 支全绿：`p3_session_port_contract` 10、`budget_cm65_lifecycle` 8、
+`budget_cm65_reservation` 2、`budget_cm65_scheduling` 6、`budget_cm66` 7、
+`directory_attachment_ttl` 12、`directory_no_disk` 6、`directory_ownership` 7、
+`directory_replacement` 10、`resource_replacement` 4、`resource_return_to_pool` 7、
+`resource_rotation_and_disable` 6，`EXIT=0`。
+
+本轨：`--lib` **272 passed**、`cargo build` EXIT=0、`cargo fmt --check` EXIT=0、
+`node scripts/check-platform-crate-boundaries.mjs` EXIT=0；
+`registry_lifecycle` 7、`registry_execution` 6、`registry_cancel` 9、
+`registry_release` **11**（+1 = R-01 用例）、`registry_audit` 11，全部 `EXIT=0`。
+
+### 合并演练（独立 detached worktree，已清理）
+
+`git worktree add --detach /tmp/dz-reg-r1-merge 23bf4a46d` → `git merge --no-ff main`
+（main = `158e058e0`）→ `MERGE_EXIT=0`，零冲突。合并树内：
+`--lib` = **377**（main 328 + registry 49）、`gateway_contract` = **51**，
+与本轮验收数字逐字相符；19 支测试二进制逐支跑，`EXIT` 全 0，
+`cargo build` / `cargo fmt --check` / 边界脚本全 0。
+收尾 `git worktree remove --force /tmp/dz-reg-r1-merge` EXIT=0、`git worktree prune` EXIT=0。
+
+### 仍未关闭 / 待裁定
+
+1. **D-01 门面侧消费（= D-03）仍开**：gateway 轨道要把
+   `Result<ExecutionState, RuntimeError>` 投影回三字段回执时，需要在 gateway 一侧
+   补上 `execution_id` + `disposition` 的来源。`gateway/**` 本轨禁改。
+2. **第 5 条疑似泄漏（只报不修）**：actor 消失（`finish()` / `ActorGone`）之后
+   登记表会永久保留它的行和额度，今天 `close_registered` 够不到 `SessionClosed`。
+   裁定 #1 只按 `SessionLost` 分流，本轨遵办未扩大范围。
+3. 其余待裁定项见上文「待裁定」，其中 #4（`HostRejected -> InvalidArgument` 是线上值）
+   与 hub 的订正一致，无需再议。
