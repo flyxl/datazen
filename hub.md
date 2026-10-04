@@ -312,6 +312,29 @@ git ls-files -u | wc -l                                           0（零冲突�
 4. `hostRejected` 不在 `ApiErrorCode`、两处 `fold_exit` 刻意分歧 —— 已裁定接受，无需再议。
 5. **D-03 仍 OPEN**（gateway 侧）：`gateway/cancel.rs:185` `disposition_from_port_state` + 调用点含 `gateway/mod.rs:441/446/447`。**新出现的架构问题**：trait 已回正为 `ExecutionState`，gateway 要拿三字段回执就须依赖 registry 的具名入口，这会**新增 gateway → registry 的依赖方向**，需先定方向再动。
 
+### ✅ registry 轨已合并并清理（main `7fb290394`）
+
+```
+git merge --no-ff feature/p3-registry   MERGE_EXIT=0   UNMERGED=0
+合并规模（不含 hub.md）  22 files changed, 8284 insertions(+), 56 deletions(-)
+git rm progress.md → 7fb290394  「交付即销毁，结论已转入 hub.md」
+```
+
+**台账已销毁**：`git ls-files | grep -E '^(progress|hub)\.md$'` 只剩 `hub.md`（P3 退出时删）。历史仍可追溯（台账本就允许提交入库）。
+
+**main 上的合并门禁，首尾指纹证明期间无人动过**：
+
+```
+HEAD_START=7fb2903949fe…  STATUS_START=0
+pnpm typecheck        TYPECHECK_EXIT=0
+pnpm vitest run       VITEST_EXIT=0    Test Files  565 passed (565) / Tests  5920 passed (5920)
+HEAD_END  =7fb2903949fe…  STATUS_END  =0
+```
+
+**清理**：`git worktree remove` ×2（registry 交付树 + 我的验证树）EXIT=0、`prune` EXIT=0、`git branch -d feature/p3-registry` EXIT=0、`/tmp/dz-target-p3-p3-registry` **909M** 已删、`git worktree list` 只剩 main、`git branch --list 'feature/*'` 为空。
+
+**至此 P3 已合并 2 轨**：`p3-gateway`（`c8daaf7c0`）+ `p3-registry`（`8751f0fb4`）。
+
 ### 协调者已裁定（各轨不得重新讨论）
 
 1. §3.2 #5 registry **重导出** `SessionView`/`SessionHandle`，绝不重新定义。
