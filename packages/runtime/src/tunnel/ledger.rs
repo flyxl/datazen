@@ -18,8 +18,12 @@
 //! 但这条纪律**不由类型系统保证**：`&self` 只排除 `&mut self`，而 `Mutex` / `Cell`
 //! 是**内部可变性**，本就不需要 `&mut self`；`TunnelTransport: Send + Sync` 之下放一个
 //! `Mutex<usize>` 完全合法 —— `RecordingTunnelTransport` 的
-//! `journal: Mutex<Vec<TunnelEvent>>` 就是活证据。真实约束是「释放决策只读本文件的
-//! `refs`」，靠字段审计与评审维持，详见 `transport.rs` 模块头。
+//! `journal: Mutex<Vec<TunnelEvent>>` 就是活证据。真实约束是「释放决策读的字段里
+//! **只有一份账**」：归零路径 `drain()` 确实读两个字段 —— `refs`（计数）与
+//! `state`（终态守卫，只保证 `Closing` / `Unconfirmed` 不再发第二次 close；
+//! 它**不是**第二本账，不参与计数、不增减）。而计数来源全系统**只有一个**，
+//! 就是本文件的 `refs` —— 唯一计数铁律就落在这里，也正因如此它才只能靠字段
+//! 审计与评审维持，详见 `transport.rs` 模块头。
 //! 代数不变量由 `tunnel::journey_single_counter` 的 `single_counter_algebra_holds` 钉住。
 //!
 //! # 失败传播（CM-32 第三条断言）

@@ -25,8 +25,11 @@
 //! 1. 经字段审计，本 trait 的三个返回值（`Option<TunnelHandle>`、`()`、
 //!    `NetworkRouteRevision`）**都不携带任何计数** —— 宿主拿不到一份可以
 //!    自己记着的账；`TunnelHandle(Arc<()>)` 是刻意不透明的单值。
-//! 2. 释放决策的唯一输入是 `TunnelEntry::refs`（见 `ledger.rs`）；
-//!    `TunnelBinding` 只在 `acquire` 处被快照出去，此后不再回流。
+//! 2. 释放决策（`ledger.rs` 的 `drain()`）读**两个**字段：`TunnelEntry::refs`
+//!    （计数）与 `TunnelEntry::state`（终态守卫，只保证 `Closing` / `Unconfirmed`
+//!    不再发第二次 close —— 它**不是**第二本账，不参与计数、不增减）。计数来源
+//!    仍**只有一个**，即 `refs`；`TunnelBinding` 只在 `acquire` 处被快照出去，
+//!    此后不再回流。
 //! 3. 代数不变量（`close` 次数 == acquire 次数 − release 次数）由
 //!    `tunnel::journey_single_counter::single_counter_algebra_holds` 钉住。
 //!
