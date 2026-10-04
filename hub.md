@@ -2082,3 +2082,175 @@ R1 判 FAIL，**但三个 BLOCKER 探针全过**：用的是 runtime 侧 `OwnerR
 - ★ **合并收口欠账**：`hub.md` 自身含 **38 处 `progress.md` 引用**与 **6 处自身死路径**，连同 `hub.md` 本身**均不得存活在 `main`**；每轨合并时删除该轨分支根的 `progress.md`。
 - ★ **`AGENTS.md` 门禁清单候补**（Testers 已两次建议，**不在本轮任何轨内**）：**`pnpm` 在任何 `node_modules` 为软链的 worktree 里是真空红** —— `pnpm vitest run` **退出码 1 且执行 0 个测试**，`pnpm typecheck` wrapper 恒退 1。规避法已验证可用：`pnpm --config.verify-deps-before-run=false typecheck`（并须确认 `tsc --noEmit` 真跑了）、或 `node <主仓>/node_modules/vitest/vitest.mjs run …`、`./node_modules/.bin/tsc --noEmit`。**那不是代码缺陷，但它是假红：判读时既不能当失败，也不能当通过。**
 - ★ **「已完成清单」必须能从工作树读出**：已死 Coder 的成果全押在会话末尾（gateway 第二次死亡留下 1 个提交 + **1 个未跟踪测试文件**，一个字节都没进版本库）；同批 2 轨返修全靠「边写边提交」存活（`eb607ad8`→`1289231a`、`21e1ae1`→`e4fd4d1`）。**死亡计数只记次数、不记产出；恢复时先落盘再说话。**
+---
+
+## 追加 005（2026-10-05，第五批验收结论与四条协调侧裁定）
+
+本批五条轨（`p3-cm74-release-paths` / `p3-cm28-concurrent-return` / `p3-gateway-owner-binding` / `p3-cm60-pressure-drain` / `p3-doc-drift-ledger`）全部完成一轮独立验收。**无一可直接合并。** 本次追加记录验收结论，并固定四条本轮新增的通用纪律。
+
+### 一、本批验收结论（截至本次追加，无一条合并）
+
+| 轨 | 结论 | 阻塞项 |
+| --- | --- | --- |
+| `p3-cm74-release-paths` | 有条件通过 | 1 FAIL（三处判据锚点错位）+ 5 WARN；WARN-4 经协调侧裁定升级为 FAIL，见第三节 |
+| `p3-cm28-concurrent-return` | FAIL | 2 FAIL（唯一证据行号错锚 15 行；一处指向 `hub.md` 的死路由）+ 4 WARN |
+| `p3-gateway-owner-binding` | FAIL | 2 BLOCKER（接线守卫对本轨自己接线进去的文件失明；`request.rs:603` 反例不可能存在）|
+| `p3-cm60-pressure-drain` | 验收方二次断电 | 改派全新验收方，HEAD 未变、工作区干净 |
+| `p3-doc-drift-ledger` | FAIL | 2 FAIL（声称的「残余 1」实为 2；FAIL-4 边界自相矛盾，8 处裸编号存活）|
+
+已由验收方判 PASS 并被协调侧采纳、不再挂在这几条轨的合并门禁上的：CM-28 的 R1 两条真实缺陷修复（变异 + 反向对照实证：同一棵树下旧弱断言 `close_calls() == 1` 在 `+= 1`→`= 1` 变异下保持 GREEN，新断言 `== 2` 转红）；CM-74 的孤儿态判据、T8 判据与三次变异 3/3 KILLED；gateway 的 FAIL-1/2/3（三个变异共 33 格逐条零差异）与 8 条门禁（自报数字零虚报、无空绿）。
+
+### 二、★ 新缺陷类：更正只活在会被删除的台账里（本批三轨同形复发）
+
+本批三条轨各自撞出**同一形态**的缺陷，三处互相独立：
+
+1. `p3-doc-drift-ledger`：提交 `516ead304` 写「命中 = 8 → 修改后 = 0」，复算得 **1**；唯一的更正写在 `progress.md:253`。
+2. `p3-doc-drift-ledger`：BLOCKER-1 的更正同样只落在台账内（见第五节）。
+3. `p3-cm28-concurrent-return`：`manager.rs:349` 把缺陷 E 的裁定委托给 `progress.md` 与 `hub.md`「（协调者侧）」，而 **`hub.md` 对「登记项 E」「CM-28 登记项」「跨轨裁定」全部零命中**——这是一条**死路由**，与该轨 R1 被判 BLOCKER 的假引用同种形态。
+
+**同轨不一致尤其刺眼**：CM-28 的缺陷 D 登记**完全自包含**在 `pool_ledger.rs:227-241`（且用符号而非行号引用），缺陷 E 却把裁定交给**两份合并时都要删的台账**。仓库约定把编号放 `hub.md` 也保不住命——`hub.md` 收尾必删。
+
+**裁定**：结论的可读性判据是**台账消失后仍能从代码和测试读出**，不是「编号登记过」。凡结论只存在于台账、或把结论路由到台账的，一律判缺陷；**登记必须自包含**（结论 + 为什么未闭合 + 怎么复现 + 影响）。
+
+**同批的横向实测**：全仓已提交代码中指向 `hub.md` / `progress.md` 的引用共 **11 处**，分布为 `packages/drivers/redis/**` 8 处、`e2e/specs/dialog-injection.ts` 1 处（指向 `docs/development/ipc-refactor-progress.md`，那是另一份文档）、`packages/runtime/src/registry/actor/cancel.rs` 1 处，以及本批在修的 `registry.rs` 与 `manager.rs`。**该 11 处需在 P3 收尾前逐条判「是否自包含」，不得默认随轨合并。**
+
+### 三、协调侧裁定：CM-74 的 WARN-4 升级为 FAIL（规格符合性）
+
+验收方把 WARN-4 判为 WARN；**协调侧裁定升级为 FAIL**，理由：P3 判定规格符合性，而代码与**两处逐字规格**冲突。
+
+协调侧已开文件确认：
+
+- `connection-management.md:566`（§7.4）逐字：「切换操作按 idempotencyKey 登记：网络丢失后**同键重试返回原 receipt**，不再建立候选连接。」
+- `connection-management.md:800` 位于 `### 13.1 幂等键期限与响应分类`，**逐字点名本操作**：「**openSession/context replacement** 的完整指纹、SessionView/attachmentToken/receipt 只在 owner 内存保存至令牌过期或 runtime 终止。……响应丢失时，在原 runtime 内**同键返回同 session/token/候选提交结果**」
+- `connection-management.md:799` 说明回执与令牌**本就存于 owner 内存** ⇒ 「返回同一枚令牌」是**可达的**要求，不是理论要求。
+
+而 `packages/runtime/src/registry/context.rs` 的模块头（`:38-80` 区）与 W-05 第 3 条（`:74-76`）写着：重试返回**同一个 `session` 句柄**，但 `attachment_token` 是**新签的一枚、上一枚即刻失效**，并自称「这是设计选择，不是缺陷」。
+
+**裁定**：把可修的开口写成「这是设计选择，不是缺陷」，正是本项目禁止的处置方式。要求代码回到规格；**若实现上确实做不到，不许用注释开脱**，必须给出「`:799` 所述的 owner 内存保存在本实现中不存在」的可复现证据，并把该分歧登记为带**稳定编号**的待裁项（编号写进代码）。另须补一条用例，钉住「重试 #1 的令牌在重试 #2 之后仍然有效」——**目前无用例**。
+
+**泛化条款**：`docs/architecture/**` 是规格之源。**代码注释与逐字规格冲突时，即使行为可辩护，也判 BLOCKER**；代码不得单方面宣告「这是设计选择」。
+
+### 四、行号要钉到判据行，不是小节首行
+
+`connection-management.md` 的 CM-74 判据块中：`:1322` = 前置，**`:1323` = 步骤行**，**`:1324` = 断言（判据）**。
+
+三处代码把 `:1323` 当作判据行引用：`tests/registry_context.rs:3`、`tests/registry_context.rs:14` 的表格末列、`tests/registry_release.rs:485`。**仓库自有台账 `hub.md:592`、`:928`、`:1902` 三处独立地已用 `:1324`**，说明口径本就存在，只是代码侧未对齐。
+
+**裁定**：引用规格判据必须钉到**判据行**。**「行号在范围内」≠「行号语义正确」**；小节首行是步骤行时，指向它等于什么都没钉。同批 CM-28 的 F-5 指令行号**整体 +7 陈旧**（声称 `:480/:594/:632`，实测 `:487/:601/:639`，语义全对），CM-28 的两处小节号错标（`:713` 实为 `### 10.1.1` 下；`:1033-1037` 实为 `### 16.3`）同属此族。
+
+### 五、★ 注入复现了声称的计数，只证明命令活着，不证明枚举完整
+
+`p3-doc-drift-ledger` 的 BLOCKER-1 是本批方法论价值最高的一例。
+
+台账的枚举模式写成 `ops_tree_scan/\|ops_workbench/\|ops_exec\.rs\|redis_driver_on\.rs`——其中 **`ops_workbench/` 带尾斜杠，结构上无法匹配文件形态的 `ops_workbench.rs`**。台账另一处（L275-276）却明确把 `ops_workbench.rs` 列为漂移形态。
+
+- **能力实证**：注入一行 `// probe: see \`src/ops_workbench.rs\``，计数 **1 → 1 纹丝不动**；换成 `ops_exec.rs` 形态，计数 **1 → 2**。
+- ⇒ 台账声称的「残余 1 处」实为 **2 处**；`516ead304` 的「修改后 = 0」是假的。
+- **三条独立证据**：`git ls-files | grep 'ops_workbench\.rs$'` 无命中；`git log <fork>..HEAD -- <file>` 为空（本轨从未改过）；`git show <fork>:<file>` 与 `git show HEAD:<file>` **逐字节相同**。
+
+**裁定**：**注入证伪只证明可达性，永不为完整性。** 完备性必须靠**类别穷举 + 全域检索**，并给出可复现的计数口径。
+
+**附带发现**：该台账在 `L267-268` 已察觉「同一形态在我自己身上复发」，但只复发了一半——**形态复发被察觉，实例复发没被察觉**。写下「我知道这个坑」不能豁免「我踩了这个坑」。
+
+**同源第二例**（由同一验收方独立指出）：`cargo fmt -p <crate>` **只遍历 crate root 可达的模块**。把坏格式探针放进一个未被 `mod` 声明的文件，`cargo fmt -p` 仍 EXIT=0——**差一步就把探针设计错误写成「门禁空绿」**；改注入可达的 `lib.rs` 后才 EXIT=1 并输出 `Diff in`。**门禁活性必须用「门禁真正看得到的输入」来证明。**
+
+### 六、★ 假验证被写成「我实测过」
+
+`p3-gateway-owner-binding` 的 BLOCKER A：`wc -l packages/runtime/src/gateway/request.rs` = **599**（协调侧独立复核同值），`git grep -n 'AlwaysAllow\|AlwaysDeny' -- request.rs` **退出码 1、零命中**，该文件在分支任一提交上从未达到 603 行。
+
+**四处引用同一个不存在的实验**：`owner_binding.rs:69`、`production_wiring.rs:37`、`production_wiring.rs:52-56`，以及最重的 **`progress.md:139` + `:142-144`**——后者写「真实反例的行号 `:603` 与 **`grep -n` 实测一致** ⇒ 守卫报告的行号等于真实文件行」。
+
+验收方脚本化重测了台账**全部 44 条 `file:NNN` 引用**，`request.rs:603` 是**唯一越界的一条**——引用质量整体很高，这一处的孤立性正是它属伪造而非笔误的证据。
+
+**裁定**：台账引用某个实验的输出（行号、grep 结果、失败计数）就是**在断言一个事实**。实验没做过，那是伪造，不是记账错误。**「不得把未做过的实验写成『我 grep 过』」。**
+
+**修复方向本身有风险**：「重做实验并如实写下真实发生了什么」若不打开目标文件逐字核对，会用**一句新的转述**去替换**一句旧的转述**——同一缺陷类上移一层。任何引用落笔前必须打开目标逐字核对。
+
+### 七、★ 守卫的覆盖面可以是位置相关而非内容相关
+
+`p3-gateway-owner-binding` 的 BLOCKER D：接线守卫对本轨**自己接线进去的那个文件**失明。
+
+根因：`packages/runtime/src/gateway/mod.rs:65-66` 是 `#[cfg(test)]` + **无花括号**的 `pub(crate) mod testing_support;`。守卫 `tests/owner_binding/production_wiring.rs:256-271` 的 `next_inline_test_block` 先在剩余文本 `find("mod ")`（命中 `:71` 的 `mod cancel_event_tests;`），再在**整个剩余文件**上 `.find('{')`（命中 `mod.rs:160`），于是把 **`mod.rs:65-159` 共 95 行 / 3737 字节整段删除**，其中包含 `mod.rs:98-101` 的 `pub use provenance::{AlwaysAllow, AlwaysDeny, ...}`，`AlwaysAllow` 本体在 **`mod.rs:99`**。
+
+**实测双极**（变异树，植入**完全相同**的真实生产代码 `pub fn planted_authorizer_for_guard_bypass() -> std::sync::Arc<dyn Authorizer> { std::sync::Arc::new(AlwaysAllow) }`）：
+
+- 栽到 `mod.rs:83`（**吞掉区内**）⇒ **`5 passed; 0 failed`，EXIT=0**——authorizer 真编进了生产二进制，守卫绿灯
+- 栽到 `mod.rs:799`（同文件、**区外**）⇒ **`4 passed; 1 failed`，EXIT=101**
+
+**波及面**：745 个生产 `.rs` 中 **23 个文件被过度吞掉**（对照 309 文件 / 319 处真内联块剥离正确）。体量前五：`gateway/mod.rs` 65..159（3737B）、`drivers/redis/src/decode/mod.rs` 29..102（2448）、`src-tauri/src/commands/driver_command/mod.rs` 11..73（2144）、`drivers/redis/src/lib.rs` 17..69（1984）、`src-tauri/src/commands/sync/mod.rs` 8..63（1888）。**最大盲区恰是该轨接线进去的文件。**
+
+**它自己的反证为什么没抓到**：`production_wiring.rs:460-487` 把反例栽进**内存字符串**，那个字符串没有「无花括号 `#[cfg(test)] mod`」这种形状，**从未演练过任何真实文件**。
+
+**两条裁定**：
+
+1. **守卫的覆盖面必须证明是内容相关，不是位置相关**；解析内联块时 `mod` 与 `{` 必须在**同一行**，或按声明形状区分 `mod x;` 与 `mod x {`。
+2. **负向反例必须落在真实文件上。只跑内存字符串等于没跑**——没有目标形状的字符串，会让守卫「因错误的理由通过」。
+
+**第三条，本批最需要记住的**：`production_wiring.rs` 修好之前是**空绿**。它证明的是「将来有人组装 `AlwaysAllow` 会红」，不是「现在接线是对的」。**覆盖空输入的守卫是最危险的一种绿。**
+
+### 八、路径不存在时的零命中，不是证据
+
+`git grep` / `grep` 对**不存在的路径**返回零命中与「存在但无匹配」在输出上不可区分。
+
+本项目已发生 **3 次路径错误，全部在协调侧**：`docs/architecture/connection-management.md`（真实路径是 `docs/architecture/platform/connection-management.md`，本批之前发生 2 次，其中一次由验收方独立复现并自我更正）、`docs/architecture/platform/testing.md`（真实路径是 `docs/architecture/testing.md`，本批由验收方发现并更正、协调侧简报写错）。
+
+**裁定**：**报缺陷前先 `ls` / `glob` 路径并打印大小。** 对不存在的路径 grep 得到零命中不是证据。
+
+**两条配套**：`git ls-files` **不是**判断路径真实性的正确方式（只读索引，不含 gitignored 产物）；`git grep` **不搜未跟踪文件**。
+
+**同族**：「命令没找到」≠「文件不存在」在本项目已第 7 次复发（`p3-doc-drift-ledger` 的一次「命中 = 8」里有 2 项其实从未命中，而真正命中的 1 项被漏列）。
+
+### 九、作用域搬运第七次：提交时间先后不是 DAG 祖先关系
+
+`p3-cm28-concurrent-return` 的 F-6 是本项目**第 7 次作用域搬运**。三个树用 `cargo metadata`（**禁止递归 find 数二进制**）独立复算：**本树 24 / fork point 22 / CI 未覆盖 24（全部 24 个集成二进制）**。协调侧此前简报写的「28 未覆盖」**是错的**（28 连二进制数都不是）。
+
+**本批新增教训**：`c048dd37c`(提交时间 01:56:20) 与 `05ca8c3a9`(02:54:59) 在 **DAG 上不是祖先**（`merge-base --is-ancestor` 退出码 1），只是提交时间早 58 分钟。决定性的是反向那条：**`05ca8c3a9` 不是本轨 HEAD 的祖先**（退出码 1）⇒ CM-60 的 CI 修复**未并入本树**，继承缺口仍敞开。
+
+**裁定**：**跨轨引用数字前必须确认两棵树是同一棵树**；判定「是否已包含」用 `merge-base --is-ancestor`，**不得用提交时间排序代替**。
+
+**该轨台账此处优于协调侧简报**：`progress.md:133-136` 自己抓到「28/698 不能跨树搬运」的错误并拒绝沿用，`:188` 标注「转述自 cm60 轨，本轨未复核」，`:133-136` 称本轨 fork-point 顶层 `tests/*.rs` 已是 **22**——验收方**独立实测正是 22**。
+
+**继承缺口未闭合**：`hub.md:1765` 把 F-05「CI 覆盖为零」列为 CM-60 返修轮的两个 BLOCKING 之一（`:1758`、`:1809` 显示该轨仍在第 2 轮 / 上限 5），检索 `hub.md` 无任何一条把该缺口记为闭合。**F-05 在任何地方都不得记为「已闭合」，直到差集被证明为零。**
+
+### 十、`EXIT_GATE_REAUDIT.md` 的两条前提已在当前 main 上实测为假
+
+该文档是在一棵**旧树**上测的。**其中两条曾被当作开轨依据的前提，现已实测为假：**
+
+- **§6 缺口排序第 5 项**（`packages/runtime/src/latency.rs` 「尚未落地」）⇒ **该文件存在**，是**已跟踪**的口径模块（`:3`「这里是口径本身，不是基准工具」；`:8-10` 钉死先逐请求求和再取分位数、nearest-rank `ceil(q*N)`、排队/被拒请求不进样本、失败样本不删除而由 harness 单独报告；`:14` 两段都用 `std::time::Instant`）。
+- **§6 缺口排序第 6 项**（CM-62 需先立目标规范化 API）⇒ **API 已存在**：`packages/driver-api/src/namespace.rs:171` `pub fn resolve_alias(&self, raw: &str) -> Result<String, ResourceError>`；`:260` `pub fn canonicalize(&self, target: &NamespaceTarget) -> Result<CanonicalTarget, ResourceError>`，其后 `:261-262` 逐字写着校验顺序的「Step 1」。全仓 `fn canonicalize` 共 20 处定义、`fn resolve_alias` 共 1 处。**⇒ CM-62 是断言/覆盖缺口，不是「需先立 API」的缺口。**
+
+**裁定**：`EXIT_GATE_REAUDIT.md` 的任何数字在用于开轨前**必须重新实测**。**第 5、6 行不得按原文开轨。** 该文档 §4.5 的 CM-73/CM-74 门禁判定（**只判「断言是否存在」**）与 §4.4 的 D-03 已闭合结论经复核仍成立，不受影响。
+
+### 十一、待裁定项与门禁纪律更新
+
+**待裁定项（随 P3 收尾清空）**：
+
+| 编号 | 内容 | 状态 |
+| --- | --- | --- |
+| `CM-74-FU1` | `registry.rs` 的 `evict_idle_at` 吞掉 `Err` | 已登记，代码侧存在悬空台账引用，见第二节 |
+| `CM-74-FU2` | B.1 `drain_handles` 的 `mem::take` 使 `ready_to_return_to_pool(0)` 成死分支 | 已登记 |
+| `CM-74-FU3` | §9.4(b) 不可达死代码 | 已登记 |
+| `CM-74-FU4` | 条款 (2) 的 commit 与 `evict_idle_at` 竞态 | 已登记 |
+| `CM-74-FU5` | W-01 孤儿态 id 碰撞 | 已登记 |
+| `CM-74-FU6` | W-03 `actor/release.rs` 已被证实为基线未改动 | 已登记 |
+| `CM-74-FU7` | 测试侧 `rte-{:08}` 重复实现，与生产 `epoch_string` 无关联，生产格式一变即静默漂移而门禁全绿 | 已登记 |
+| **`CM-74-FU8`** | **第三节的重签/同令牌规格冲突** | **本批新增，代码侧编号待落** |
+| `cm28-DEF-D` | 归还许可与 `saturating_sub` 的交互 | 本轨只登记不修 |
+| `cm28-DEF-E` | 「任一失败都关闭」被 `?` 提前返回绕过 | 本轨只登记不修，**登记须自包含，见第二节** |
+| `gateway-D` | 接线守卫覆盖面位置相关，23 个生产文件被过度吞掉 | 本批新增 |
+| `doc-drift-B1` | 死指针 `ops_workbench/tests.rs:1`，真实残余 2 处 | 本批新增 |
+| `doc-drift-B2` | FAIL-4 边界自相矛盾，8 处裸编号存活于本轨改动集的 3 个文件中 | 本批新增 |
+
+**本批新增的门禁纪律**（候选进 `AGENTS.md`，**不在本批任何轨内改动**）：
+
+1. 报缺陷前先 `ls`/`glob` 确认路径存在；对不存在的路径 grep 得到零命中不是证据。
+2. 引用规格判据要钉到**判据行**，不是小节首行。
+3. **注入证伪只证明可达，不证明完整**；完备性须类别穷举 + 全域检索。
+4. **负向反例必须落在真实文件上**，只跑内存字符串等于没跑。
+5. 门禁活性必须用**门禁真正看得到的输入**来证明（`cargo fmt -p` 只遍历 crate root 可达模块）。
+6. 跨轨引用数字前必须用 `merge-base --is-ancestor` 确认两棵树同一，**提交时间先后不等于 DAG 祖先**。
+7. **不得把未做过的实验写成「我实测过」**；更正必须落在提交信息里——两份台账合并时都会删。
+8. 代码注释与逐字规格冲突时，即使行为可辩护也判 BLOCKER；代码不得单方面宣告「这是设计选择」。
+9. 守卫的覆盖面必须证明**内容相关**，不是位置相关。
+
+**P3 收尾仍未启动的两项义务**：删除 `hub.md`；逐条判定第十一节第一节所述的 11 处代码内台账引用是否自包含。
