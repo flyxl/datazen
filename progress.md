@@ -166,9 +166,13 @@ REPLAY_EXIT=0   (3 passed; 0 failed; 56 filtered out)
 反向对照（证明上面那句话不是恒真）：同一份 raw，只把每轮改成「N 里有一个获准请求打不出
 两段时长」，判定立刻翻红 `NEG rounds_passing=0/5 unmeasured_failures_total=5`。
 
-复算里除 raw 外的每一个数都是冻结 summary 的**照抄**（journal、warmup 墙钟、逐轮 wall_time），
-无一处推断或构造；预热样本不进 raw，所以预热分位数复算不出来，就留空并在代码里注明
-预热不参与任何 p95——这是诚实缺口，不是编数。
+复算里除 raw 外的数分两类，都不是推断或构造，但来源不同，不能一概称「照抄」：
+journal、warmup 墙钟、逐轮 wall_time 确实逐个照抄冻结 summary；而
+`unmeasured_failures_total=0` 与 `percentile_input=10000` 这两列**在 commit `04a55fa72`
+冻结的那份 summary 里根本不存在**（第 7、9 个提交才加进产物），它们的值是从 `raw[]`
+按当轮定义直接算出来的——结论相同，但「照抄」这个说法对这两列是假的，现予收窄。
+预热样本不进 raw，所以预热分位数复算不出来，就留空并在代码里注明预热不参与任何 p95
+——这是诚实缺口，不是编数。
 
 ## F-01 自证（注入失败臂，不写进产物）
 
@@ -305,3 +309,295 @@ Tester F-10 要求修「排队请求的等待分位数」。协调者裁定：**
    本轨未修，属 `scripts/check-platform-crate-boundaries.*` 与 `check-module-layers.test.ts` 的属主。
 6. **`scripts/platform-arch-selfcheck.mjs`（M7）覆写受跟踪的 `packages/backend-client/src/index.ts`**
    （见「本轮新见」第 5 条）：中断即留变异态，且 `git add` 取得到。本轨未跑该脚本、未修。
+
+# 第三轮（ROUND 2 修复轮）：BLOCKER F04-1 + 同批项 + 新增 F05-3 / N12
+
+- 基线 HEAD `fdeff46f4be0437873291cfb91148f9a77ae785d`，fork point `7fa6630f041fa8fef127be7df3b8da2bd3420f4d`
+  （`git rev-list --count --first-parent $(git merge-base main HEAD)..HEAD` = **16**，本轮之前 `HEAD` 计数 4982）。
+- 本轮**没有重跑基准**：`target/bench/` 下 `cm60-raw-1791128233852.json` 与
+  `cm60-summary-1791128233852.json`（commit `04a55fa72`）原样未动。本轮**不作任何性能结论**。
+- 未触碰：`hub.md`、`docs/.../connection-management.md`、任何 `ci.yml`。
+
+## F04-1（BLOCKER）：p95 的输入条数曾与 p95 实际吃进去的样本集脱钩
+
+**缺陷本体。** `percentile_input`（`runner.rs:393`）与 `Percentiles::of(&totals)`（`runner.rs:394`）
+是同一个变量的**两次独立求值**。MUT-B 只改后者，于是「输入条数」这一列仍在报 `totals.len()`，
+而 p95 已经吃了少一个样本的集合——两列看起来是「各自算的」，其实源头是同一个 `totals`。
+上一轮 implementer 把「长度单独成一列」当成了「长度已经独立」，两者不是一回事。
+
+**为什么 `tiny()` 抓住了、N=10000 抓不住。** p95 用最近秩 `ceil(0.95·N)`（`nearest_rank_percentile`）：
+
+- `N=4`（`tiny()`）：`ceil(0.95·4)=4`，秩恰好落在最大值上，砍掉最大值 ⇒ `p95` 变。
+- `N=10000`（§11.1 的真实样本量）：`ceil(0.95·10000)=9500`，砍掉一个元素既不改秩也不改
+  第 9500 名的值 ⇒ `p95_full == p95_cut`，**值断言恒绿**；`percentile_input == measured`
+  也恒绿（那一列压根没被改）。两条断言同时失效。
+
+★ **`tiny()` 能抓住是巧合，不是判据。** 巧合来自 `ceil(0.95·4)=4` 正好取到最大那条；
+`N` 一换、`p95` 的秩一落进样本中段，值断言立刻变盲。本轮已把这条事实连同
+「N=4 上的值断言本身还受数据影响」一起写进 `outcome/tests.rs`：
+`catching_the_shortened_input_on_four_samples_is_coincidence` 把它钉成一条用例。
+
+**实测到的第二层事实（比 F04-1 说的还糟）。** 在真实 `tiny()` 数据上做 MUT-B，探针打出
+`round=1 n=4 p95_full=Some(19583) p95_cut=Some(19583)` —— **值断言在 N=4 上也没红**，
+因为四条样本里有时值相等；而条数断言稳定红 `left: 3 / right: 4`。
+即：**条数门与 N 无关且确定触发，值门既随 N 变、又随数据变。**
+（另一组实测里值断言在 `:117` 红 `left: Some(5292) / right: Some(5666)`，两次都是真测量，
+差异恰好说明值门的触发是数据依赖的。）
+
+**修法：把独立性交给编译器，而不是交给测试。** 「靠一条测试盯着两列别脱钩」本身就是
+F04-1 判 FAIL 的原因（那条测试压根测不到）。所以：
+
+1. `Percentiles` 新增私有字段 `#[serde(skip_serializing)] input_len: usize`，
+   由 `of()` 在**同一次求值**上记 `samples.len()`，对外只暴露 `Percentiles::input_len()`。
+   私有 + 无 setter ⇒ 别的模块**写不进去**。
+2. 删掉 `RoundOutcome` 上那个可单独赋值的 `percentile_input` **字段**，改成派生访问器
+   `RoundOutcome::percentile_input()`，其值转自 `self.percentiles.input_len`。
+   字段被删 ⇒ 不存在「只改其中一处」的写法。
+
+实测两条越权路径都被编译器挡住（不是靠我加的测试）：
+
+- 五字段全填的字面量 ⇒ `error: cannot construct Percentiles with struct literal syntax due to private fields`
+- `..Percentiles::default()` 的 FRU ⇒ `error[E0451]: field input_len of struct Percentiles is private`
+  （FRU 也钻不过私有字段的空子）
+
+`assemble()` 里那行 `percentile_input: totals.len(),` 随之删除，`runner.rs:397`
+的 MUT-B 位点现在只剩 `percentiles: Percentiles::of(&totals)` 一处求值。
+
+**诚实的缺口（不掩盖）。** 没有真的搭一个 10000 请求的 harness 轮次；N=10000 这一层是用
+生产 `Percentiles::of` + 生产 `RoundOutcome`/`sample_count_mismatch()` 直接证明的
+（`the_input_count_gate_holds_at_the_spec_sample_size`：先证明 `full.p95_nanos == cut.p95_nanos`
+即值门确实瞎，再证明 `input_len()` 是 10000 vs 9999），而 `assemble()` 的**调用点**本身
+仍只由 `runner/tests.rs` 的 N=4 用例覆盖。
+
+## F04-2 / F04-3：注释与实测相反
+
+`runner/tests.rs` 旧注释称「砍掉最大值这条断言仍然是绿的」——实测正相反（MUT-B 下红）。
+注释已按实测结论改写，**追加提交，不 amend**。
+
+## N9：`fake-runtime-fixtures.md` §11.3 行号 off-by-one（5 处）
+
+`outcome.rs` 模块文档 `:11/:12/:186`、`main.rs:36`、`report.rs:128` 五处对 §11.3 子句的行号引用
+整体差一行，已逐一核对改正。现在引用的映射（已复核）：QueueFull 豁免 `:569`、
+失败字段 `:570`、`ceil(0.95·M)`/`M=N` `:568`、独立一列 `:572`、§11.3 抬头 `:565`。
+
+## 变异自证（MUT-A / MUT-B，本轮实测重跑）
+
+此前 `progress.md` **通篇没有出现过 `MUT` 字样**，变异证据等于没记。本轮重跑并把
+**变异定义和红点数一起记下来**——脱离定义的「红点数」没有意义。
+
+**MUT-A（条数说谎）** — `outcome.rs:104` `input_len: samples.len(),` → `input_len: samples.len() + 1,`：
+
+```
+MUTA_EXIT=101   test result: FAILED. 48 passed; 11 failed
+```
+
+11 个红点：`outcome::tests` 4（`a_gap_that_is_not_even_counted_is_caught`、
+`a_shortened_percentile_input_is_caught`、`failures_are_counted_not_deleted_and_n_does_not_shrink`、
+`the_input_count_gate_holds_at_the_spec_sample_size`）、`report::tests` 2
+（`percentiles_and_counts_are_reported_independently`、`rejections_by_reason_reach_the_artifact`）、
+`runner::tests` 4（`every_request_produces_exactly_one_sample`、
+`injected_failures_stay_inside_n_and_turn_the_gate_red`、
+`the_recorded_p95_is_the_percentile_of_the_samples_this_run_measured`、
+`without_injection_every_admitted_request_is_measured`）、`tests::the_exit_code_is_not_inverted` 1。
+
+★ 口径更正：协调者转述的「MUT-A 红点数 = 6」**在本轮复算下不成立**，实测为 **11**。
+台账里从未留下 MUT-A 的变异定义，那个 6 无法从本文件复现；此处以「定义 + 实测」成对给出，
+以本条为准。
+
+**MUT-B（值集被砍）** — `runner.rs:397` `Percentiles::of(&totals)` →
+`Percentiles::of(&totals[..totals.len() - 1])`：
+
+```
+MUTB_EXIT=101   test result: FAILED. 52 passed; 7 failed
+```
+
+7 个红点：`report::tests::percentiles_and_counts_are_reported_independently`、
+`report::tests::rejections_by_reason_reach_the_artifact`（红在产物层 `report.rs:570`
+`left: Number(1) / right: Number(2)`）、`runner::tests::every_request_produces_exactly_one_sample`、
+`runner::tests::injected_failures_stay_inside_n_and_turn_the_gate_red`、
+`runner::tests::the_recorded_p95_is_the_percentile_of_the_samples_this_run_measured`、
+`runner::tests::without_injection_every_admitted_request_is_measured`（红在 `:164`，
+`assertion failed: round.passes_gate()`——**生产门本身**开始拒绝这一轮）、
+`tests::the_exit_code_is_not_inverted`（红在 `main.rs:469`）。
+
+`runner.rs:397` 的 `attempt to subtract with overflow` 只在 MUT-B 下出现（变异对空 `totals`
+做 `[..len-1]`），属变异落点本身，不是缺陷。
+
+**方法论坑（本轮真踩了）。** 用 `sed -i.bak` 变异、再 `mv` 回来回滚时，`mv` 保留 mtime，
+cargo 的新鲜度检查判定「无需重建」，于是**回滚后仍跑出变异的红**（`52 passed; 7 failed`），
+差点被误判成「回滚失败、缺陷还在」。回滚后必须 `touch` 一下再跑。
+凡「`Finished in 0.0x s` + 结论与源码矛盾」，先怀疑构建缓存，再怀疑代码。
+
+## F05-3：datazen-runtime 的测试覆盖差集（**F-05 至今未真正闭合**）
+
+全仓 `git grep -inE "cargo[ '\"]*(test|nextest)" -- .` = 18 处 `cargo test`/`nextest` 调用点，
+其中只有 2 处点名 `datazen-runtime`，都在 `scripts/run-platform-crate-tests.mjs:157-160`，
+唯一链路 `ci.yml:302` → `package.json:111`。
+
+以 `cargo metadata` 的 `kind==['test']` 为准（**不是 `find` 递归数**）：`datazen-runtime` 有
+**19** 个集成二进制，`datazen-application` 0，`datazen-platform-api` 0；`Cargo.toml` 无 `[[test]]`。
+`cargo test -p datazen-runtime` 实测 **22 条 `test result:` / 626 passed / 0 failed**
+（HEAD 基线，含 21 个 `Running` 目标 + 1 个 Doc-tests）。
+
+CI 真实跑的两条：`--lib … --test cm60_pressure_drain` ⇒ 恰好 2 个目标（lib **383** + cm60 **6**）；
+`--release … --bin cm60-bench` ⇒ 恰好 1 个（**57**）。故 CI 覆盖 21 个带测目标中的 3 个、
+626 个测试中的 446 个，**差集 = 18 个集成二进制 / 180 个测试**，最大一组 `gateway_contract`（51）。
+（本轮 +2 用例后同一口径为 182 / 628。）
+
+★ **性质：继承来的窟窿，不是本轨捅的。** 基线 `7fa6630f0` 的
+`run-platform-crate-tests.mjs:165` 只有 `['test','--lib',…]`、根本没有 `EXTRA_TARGETS`；
+基线 `tests/*.rs` 是 18 个，本轨 +1 = 19。基线 `ci.yml:299` 的注释白纸黑字写着
+「计划 :269 的 datazen-runtime CI 空缺」——**基线知道这个洞，用 `--lib` 绕过去了**。
+
+**修法：共存，不是替换。** 在 `scripts/run-platform-crate-tests.mjs` 追加一条
+**不带任何 target selector** 的调用 `['test', ...names.flatMap((n) => ['-p', n])]`（`:201`），
+`--lib` 那条与两条 `--test` 原样保留。理由写死在 `mjs:196-208`：
+
+★ **明确否决 `--tests` 作为替代**：它是**再换一个大洞**，不是补洞。`--tests` 只选集成二进制、
+不选 lib——等于拿掉 383 个换回 180 个，净亏。故 `--lib` 一条都不能动。
+
+被否掉的另两条：丢掉 `--lib`（同上的洞，只是方向相反）；把每个集成二进制逐个登记成
+`--test` 条目（19 条 `EXTRA_TARGETS` + 19 条 `toEqual`，测试会随每加一个 `tests/*.rs` 而腐坏，
+且仍漏掉 lib 之外将来新增的目标）。
+
+**新增调用的实测增量**：`cargo test -p datazen-runtime -p datazen-application -p datazen-platform-api`
+真跑（不 dry-run）⇒ `EXIT=0`、**26 条 `test result:`、944 passed / 0 failed**。
+26 = runtime 的 19 个集成二进制 + 3 个 lib/bin unittests + 3 个 Doc-tests，加
+application/platform-api 各自的 lib 与 Doc-tests（这俩各 0 个 `kind==['test']` 目标，
+所以新增价值全部来自 runtime；另两个 crate 只是把各自 lib 套件重跑一遍，
+编译产物共享，代价有界）。
+
+副作用已登记：该调用会把 `cm60-bench` 的单元测试以 **debug** 跑一遍。
+要压掉它就得给「唯一一条不带 target 的调用」加 `--bin` 排除项，那会让这条调用的性质
+自相矛盾；实测 debug 下这 26 个目标全绿，故保留。
+
+## N12（WARN）：既有守卫可被两种手法绕过
+
+`cargoTestInvocations` 的过滤条件是 `startsWith('test ')`。实测两条绕过（均已回滚）：
+
+- **插无关参数** `['test','--offline','--lib',…]` ⇒ `EXIT=1`，3 failed / 15 passed。
+  日志行仍是 `test --offline --lib …`，`startsWith` 看得见，正向 `toEqual` 因内容不符而红
+  ⇒ **守卫有效**。
+- **调换顺序** `['--offline','test','--lib',…]` ⇒ `EXIT=1`，3 failed / 15 passed，
+  但**红的原因不同**：日志行变成 `--offline test --lib …`，`cargoTestInvocations` 的
+  `startsWith('test ')` **根本看不见这次调用**（失败信息里只剩 `expected [ Array(1) ]`，
+  只剩那条 release 调用还在），于是中止侧的 `toEqual([])`（`:308`/`:340`）**退化成「断言 true」**——
+  与第一轮同一个失效模式，只是换了一扇门。整体拦住它的是**同一个测试里的正向精确 `toEqual`**，
+  不是中止守卫本身。cargo 要求子命令在前，真实调用侧调换不了顺序，故判 **WARN 不阻塞**。
+
+已在正向精确断言旁留注释，**禁止把它降级成 `toContain`**；并新增
+`cargoTestInvocationsSeesReorderedArgv` 辅助函数与一条真实临时日志的负控用例钉住这个盲区。
+★ 写这条负控时自己先踩了一次「断言空过」：最初用 `cargoTestInvocationsSeesReorderedArgv({ cargoLog: '' })`，
+而 `existsSync('')` 为假 ⇒ 返回 `[]` ⇒ 断言为**错误的原因**而通过——正是本条要记录的失效模式。
+改成写真实的临时日志文件（`mkdtempSync` + `writeFileSync`）后才算数。
+
+## 本轮新见（协调者没有点名的缺陷）
+
+### N13（已修）：`report.rs` 测试的临时目录按**毫秒**命名 ⇒ 并行下互相覆盖产物
+
+**这是本轮门禁真红的那一条。** 症状：`cargo test --release -p datazen-runtime --bin cm60-bench`
+出现 `EXIT=101`、`test result: FAILED. 58 passed; 1 failed`，
+`report::tests::rejections_by_reason_reach_the_artifact` panic 在 `report.rs:567`、
+`no entry found for key`。
+
+定位过程（都是实测，不是推断）：
+
+- 单跑该用例 3/3 绿 ⇒ 不是该用例自身的问题。
+- 全量并行跑 3 次：2 绿 1 红 ⇒ 是**并发**相关。
+- 加 `--test-threads=1` 跑 6 次：6/6 绿 ⇒ 确认并发依赖。
+- `git stash` 掉本轮改动回到 HEAD 跑 6 次：6/6 绿（57 passed）。
+
+**根因。** `report.rs:631` 的测试辅助
+`tempdir()` 返回 `temp_dir()/cm60-bench-report-{timestamp()}`，而 `timestamp()`（`report.rs:176-182`）
+是**毫秒**。同一毫秒里跑的两个测试拿到**同一个目录**；`write()` 落盘的文件名又只由时间戳决定
+⇒ 两个测试把各自的 summary 写到同一对文件名上，互相覆盖，谁先读谁读到对方的产物，
+于是报的是「key 不存在」这种完全指错方向的错。全仓只有这一个 `temp_dir` 辅助函数，
+3 处调用全在 `report.rs` 测试里。
+
+★ **为什么这仍算本轮的账**：缺陷本身是继承的（HEAD 不红），但**是本轮多加的 2 个用例把并发密度
+推上去、把它从「测不出来」变成「3 次里红 1 次」**。按「误伤合法同类」这一维自查，
+把这样的门禁交出去就是本轨的责任，不能一句「不是我的」了事。
+
+**修法**：按「进程内唯一」改——目录名加 `std::process::id()`（挡跨进程）与一个
+`AtomicU64` 序号（挡同进程内并发线程）。修后全量并行跑 **8/8 绿**，且 `/tmp/cm60-bench-report-*`
+**0 个残留**。
+
+★ **顺带挖出修法自身的一个坑**：清理侧 `the_summary_and_the_raw_artifact_are_a_matched_pair`
+原本**调了两次 `tempdir()`**（先写后清），只有当它按毫秒复用名字时两次才相等。
+改成每次唯一之后，第二次会指向一个**从没写过的空目录** ⇒ 清理静默失效、目录永久留在
+temp 里。已改为取一次存下来（`let dir = tempdir();`），并在注释里写明原因。
+这也说明：把「靠时间巧合成立的隐式契约」改成显式契约时，必须逐个回查调用点。
+
+## F-05 的旧结论必须收窄（本轮不写「已闭合」）
+
+第一轮写的「F-05 已闭合」**不成立**，差集非零。合并前若有人读到旧措辞会得到错误的安全感，
+故本节只陈述上面实测的差集与修法，不复用「已闭合」这个说法。
+
+### `ci.yml:299` 注释的处置（已裁定，本轮**不动** `ci.yml`）
+
+那句「计划 :269 的 datazen-runtime CI 空缺」在 F05-3 之后**已经过时但不假**：
+它描述的是修 F-05 当时的状态（那时确实只跑 `--lib` + 1 个 `--test` + 1 个 `--bin`）。
+F05-3 落地后，`datazen-runtime` 的 21 个 `Running` 目标与 3 个 Doc-tests **全部**进了 CI，
+所以这条注释是**低报**而非报错。属文档漂移，归 `ci.yml` 属主，本轨不擅自改 CI 文件。
+
+★ 协调者已裁定 `ci.yml:317-320` **不是阻塞、不得动**：它是
+`cargo run --release -p datazen-runtime --bin cm60-bench -- …`，不是 `cargo test`；
+`--lib` 对 `cargo run` 无效；纯 `run:` 步、无 `continue-on-error`、无 `if:`
+（全仓 `continue-on-error: true` 只在 `:74` 一处）。验收已确认，保持原样。
+
+## 本轮门禁实测（HEAD `fdeff46f4be0437873291cfb91148f9a77ae785d` + 本轮工作区）
+
+长输出全部落 `/tmp`，退出码单独打印。运行前后各记录一次 HEAD 与 `git status --porcelain`，
+两者一致（8 个 modified 文件，未变）。`CARGO_TARGET_DIR=/tmp/dz-target-r2-f04`（独立目录）。
+
+```
+cargo fmt -p datazen-runtime -- --check                    FMT_EXIT=0
+cargo test -p datazen-runtime                               CRATE_EXIT=0
+                                                         22 条 test result: / 628 passed / 0 failed
+                                                         （HEAD 基线 626 passed / 0 failed，本轮 +2）
+cargo test --release -p datazen-runtime --bin cm60-bench    EXIT=0   59 passed / 0 failed
+                                                         （HEAD 基线 57，本轮 +2；并行复跑 8/8 绿）
+node scripts/run-platform-crate-tests.mjs --dry-run         DRY_EXIT=0   恰好 3 条 cargo 调用
+  cargo test --lib -p datazen-runtime -p datazen-application -p datazen-platform-api --test cm60_pressure_drain
+  cargo test -p datazen-runtime -p datazen-application -p datazen-platform-api
+  cargo test --release -p datazen-runtime --bin cm60-bench
+node <main>/node_modules/vitest/vitest.mjs run scripts/__tests__
+                                                         EXIT=0   40 files / 684 passed
+node <main>/node_modules/typescript/bin/tsc --noEmit -p tsconfig.scripts.json
+                                                         TSC_EXIT=0
+```
+
+★ 脚本门禁的基线是**在本工作树现测**的，不是引别处：HEAD（stash 掉 `scripts/` 改动）
+= 40 files / **679 passed** / EXIT=0，本轮 = 684 passed（+5 个 `it`，
+该文件 18 → 23）。全量并行下 `check-platform-crate-boundaries.test.ts` 出现过一次
+3 failed（**已知探针撞名 flake**，见「第二轮·本轮新见」第 4 条）；单跑该文件 53/53 绿，
+本文件我未改动，且随后两次全量复跑均 684 全绿。按纪律如实记录运行次数，不追绿。
+
+★ **不要用 `pnpm`**：`pnpm vitest` 会退出 1 且跑 0 个测试（`node_modules` 是符号链接造成的
+假红，不是代码缺陷）；`npx` 在本环境 EPERM。判定看 `passed` 计数，`0 passed` 的
+`EXIT=0` 是空绿。
+
+## 遗留与待裁定（修复轮）
+
+1. **§5 队列等待分位数** —— 本轨仍未修，归属见「第二轮」对应条目，合并前需确认该轨已登记。
+2. **未在判据指定的 4 vCPU / 8 GiB 复测**（实测机 8 vCPU / 17179869184 字节）。
+   协调者已撤回以硬件复测为本轨的交付条件；本轨**不得作任何性能达标结论**，本轮亦同。
+3. **`ci.yml:329` `if-no-files-found: warn`** —— 产物缺失**不会**让 CI 红。这是 WARN，
+   本轮只登记不修（属 `ci.yml` 属主）。
+4. **N6：`DZ_CM60_RUSTC_VERSION` 运行时注入 vs `option_env!` 编译期取值**，撞上 rust-cache
+   命中时该字段可能整个消失。WARN，本轮只登记不修。
+5. **N12 的 `startsWith('test ')` 盲区** —— WARN，已加负控钉住，禁止把正向断言降级为 `toContain`。
+6. **`ci.yml:299` 注释过时（低报覆盖）** —— 归 `ci.yml` 属主，本轨未动。
+7. **`check-platform-crate-boundaries.test.ts` 的探针撞名 flake** —— 属该守卫属主，本轨未修。
+8. **`.gitignore:199` 的 `__boundaryProbe__*`** 让探针对 `git status`/`git add` 不可见，
+   污染面波及所有 boundary 守卫。属主待裁定，本轨未动。
+9. **`barrier/tests.rs:236`** 的 30 s 竞态、`scripts/platform-arch-selfcheck.mjs:397-410`（M7）
+   覆写受跟踪的 `packages/backend-client/src/index.ts` —— 同「第二轮」条目，本轨未动。
+10. **N=10000 的证明没走 `assemble()`**（见 F04-1「诚实的缺口」）。若要求端到端覆盖，
+    需要一个 10000 请求的 harness 轮次，代价远超本轮范围；请协调者裁定是否必须。
+
+## 交付状态
+
+**READY_FOR_TEST** —— F04-1（BLOCKER）已修且经编译器级强制 + N=10000 实证；
+F04-2/F04-3、N9、MUT 证据、`:169` 归因收窄、F05-3、N12、N13 均已落；
+门禁全绿（见上）。未修项均为登记在案的 WARN 或他轨归属。
