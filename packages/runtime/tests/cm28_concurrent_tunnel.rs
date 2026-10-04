@@ -33,7 +33,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use datazen_platform_api::id::{NetworkRouteRef, NetworkRouteRevision};
 use datazen_platform_api::ports::network::TunnelSpec;
 use datazen_runtime::connection::types::LeaseId;
-use datazen_runtime::tunnel::{TunnelError, TunnelHandle, TunnelLedger, TunnelRelease, TunnelTransport};
+use datazen_runtime::tunnel::{
+    TunnelError, TunnelHandle, TunnelLedger, TunnelRelease, TunnelTransport,
+};
 
 /// CM-28 步骤：「并发释放 **20** 次」。
 const CONCURRENCY: usize = 20;
@@ -65,11 +67,17 @@ impl RecordingTunnelPort {
     }
 
     fn opened(&self) -> usize {
-        self.lock().iter().filter(|e| **e == TunnelEvent::Open).count()
+        self.lock()
+            .iter()
+            .filter(|e| **e == TunnelEvent::Open)
+            .count()
     }
 
     fn closed(&self) -> usize {
-        self.lock().iter().filter(|e| **e == TunnelEvent::Close).count()
+        self.lock()
+            .iter()
+            .filter(|e| **e == TunnelEvent::Close)
+            .count()
     }
 }
 
@@ -125,11 +133,7 @@ fn ledger_with_refs(
             .expect("this spec needs a tunnel");
     }
     assert_eq!(built.ref_count(spec), Some(dependents.len() as u32));
-    (
-        Arc::new(Mutex::new(built)),
-        port,
-        dependents.len(),
-    )
+    (Arc::new(Mutex::new(built)), port, dependents.len())
 }
 
 /// 启动 `dependents.len()` 个任务，同时抵达 `return_resource`。
@@ -169,12 +173,7 @@ async fn twenty_concurrent_tunnel_returns_never_over_decrement_the_reference_cou
 
     let observed: Vec<u32> = releases
         .iter()
-        .map(|release| {
-            release
-                .as_ref()
-                .expect("每个持有者都持有过这条隧道")
-                .refs
-        })
+        .map(|release| release.as_ref().expect("每个持有者都持有过这条隧道").refs)
         .collect();
     let distinct: BTreeSet<u32> = observed.iter().copied().collect();
     let expected: BTreeSet<u32> = (0..CONCURRENCY as u32).collect();
@@ -199,11 +198,7 @@ async fn twenty_concurrent_tunnel_returns_never_over_decrement_the_reference_cou
         "台账只允许对同一条 spec 发一次 close"
     );
     assert_eq!(guard.live_tunnels(), 0);
-    assert_eq!(
-        guard.ref_count(&spec),
-        None,
-        "归零且关闭确认 ⇒ 条目消失"
-    );
+    assert_eq!(guard.ref_count(&spec), None, "归零且关闭确认 ⇒ 条目消失");
     drop(guard);
     assert_eq!(port.closed(), 1, "隧道端口只允许被拆一次");
 }
@@ -231,8 +226,7 @@ async fn twenty_concurrent_repeats_of_one_tunnel_holder_decrement_exactly_once()
         "20 次归还同一个持有者，只有第一次被受理，其余必须是「没持有过」的答复"
     );
     assert_eq!(
-        accepted[0].refs,
-        refs as u32,
+        accepted[0].refs, refs as u32,
         "重复归还只许减掉**那一份**引用：{refs} - 1"
     );
     assert!(!accepted[0].closed, "引用没归零就不许拆隧道");

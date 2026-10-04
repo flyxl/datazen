@@ -19,17 +19,30 @@
 //!   把 `tunnels.rs` 列在 §6.3「保持不动的现有服务与窄适配」（同文件 `:585`）下，
 //!   「隧道生命周期通过 `NetworkProvider::ensure_tunnel` 的桌面实现承接」；
 //!   同表首行（同文件 `:589`）注明这类「过渡实现」是「逐 consumer 迁移后删除旧路径」。
-//! * CM-27 / CM-28 只**部分**覆盖，**不得**标记为已覆盖（判据
-//!   `connection-management.md:1027-1037`）。`tunnel/` 关掉的只是隧道那两格：
-//!   CM-27 的「隧道引用正确」（建隧道失败不落账、隧道开成后回滚释放），与
-//!   CM-28 的「隧道不多减引用」（重复释放幂等、`refs` 不低于 0、`close` 至多一次）。
-//!   **未闭合的仍挂在 CM-27 / CM-28，且全是非隧道部分**：permit / socket /
-//!   handshake / init / register 全阶段失败矩阵下的隧道引用回滚；
-//!   「可确认关闭的资源许可归零」（`CleanupDisposition::Closed` 的物理预算释放
-//!   与隧道引用核销配对，见 `resource/cleanup.rs:278`）；「未确认关闭进入隔离」
-//!   （`CleanupDisposition::Quarantined` 下隧道引用与物理预算的归属规则，见
-//!   `resource/cleanup.rs:280`）；20 次并发归还下的 driver close 至多一次有效关闭；
-//!   并发归还下预算不负数、重复响应一致。
+//! * CM-27（`connection-management.md:1027-1031`）/ CM-28（同文件 `:1033-1037`）
+//!   只**部分**覆盖，**不得**标记为已覆盖。`tunnel/` 关掉的只是隧道那几格：
+//!   CM-27 的「隧道引用正确」（建隧道失败不落账、隧道开成后回滚释放）与 CM-28 的
+//!   「隧道不多减引用」（重复释放幂等、`refs` 不低于 0、`close` 至多一次）。
+//!   CM-28 四条断言里，**并发**维度由 `tests/cm28_concurrent_tunnel.rs`（真实
+//!   `Barrier` + `tokio::spawn`，20 路并发）钉住，`tests/cm28_concurrent_release.rs`
+//!   钉住另外三条里属资源层的两条（driver close 至多一次、预算不负数、
+//!   重复响应一致）。
+//! * **不在本模块、且此前被误记在这里**的一格：CM-27 的「可确认关闭的资源许可
+//!   归零」。该格的主语是**资源许可**，不是隧道引用，已由三处闭合并各自带测试：
+//!   `platform-api/src/ports/budget/pool_ledger.rs:353`（`PoolLedger::release`
+//!   摘行 + `uncharge`，注释自述「本端口只有『真的 close 了』这一条释放路径」）、
+//!   `runtime/src/budget/ledger.rs:397`（permit 幂等核销 INV-10，名额按原槽退回）、
+//!   `runtime/src/budget/coordinator.rs:428`（端口级幂等核销，把 `Unknown` 报成
+//!   `NotFound`）。三处都不知道隧道存在，隧道也不该进这一格。
+//! * **仍未闭合，且是「实现缺失」而不是「断言缺失」的两格**，登记在案、本轨不做：
+//!   (1) permit / socket / handshake / init / register **全阶段失败矩阵**下的隧道
+//!   引用回滚；(3) `CleanupDisposition::Quarantined`（未确认关闭进入隔离）下隧道
+//!   引用与物理预算的**归属配对**（`runtime/src/resource/cleanup.rs:285` 起的
+//!   处置语义只管物理预算那一半）。两格缺的都是同一根线：全仓 `TunnelLedger`
+//!   在 `src/tunnel/` 之外**零生产调用方**，而 `runtime/src/resource/**` 里
+//!   `tunnel` 一词出现 **0 次** —— `ResourceManager` 根本不知道隧道存在，
+//!   「隧道引用与物理预算配对」没有任何生产接线可断言。要闭合必须先接线，
+//!   那是架构工作，不在本轨范围。
 //!
 //! # 「同版本隧道」= `TunnelSpec` 全等值
 //!

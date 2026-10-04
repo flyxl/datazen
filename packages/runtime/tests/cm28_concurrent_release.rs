@@ -212,9 +212,7 @@ impl PhysicalTransport for BudgetPort {
                 resource_id.as_str()
             )),
         }
-        inner
-            .events
-            .push(PhysicalEvent::Close(resource_id.clone()));
+        inner.events.push(PhysicalEvent::Close(resource_id.clone()));
         Self::sample(inner.outstanding - 1, &mut inner);
         Ok(())
     }
@@ -280,10 +278,7 @@ fn manager(shared: &SharedManager) -> MutexGuard<'_, ResourceManager> {
 fn new_manager() -> (SharedManager, Arc<BudgetPort>) {
     let transport = BudgetPort::new();
     let clock = TestClock::new();
-    let manager = Arc::new(Mutex::new(ResourceManager::new(
-        transport.clone(),
-        clock,
-    )));
+    let manager = Arc::new(Mutex::new(ResourceManager::new(transport.clone(), clock)));
     (manager, transport)
 }
 
@@ -475,7 +470,13 @@ async fn repeated_tombstone_queries_answer_identically_after_a_concurrent_storm(
     let connection_id = connection("conn-cm28-tombstone");
     let lease_id = acquire_one(&shared, &connection_id, "appdb");
 
-    let results = release_storm(&shared, &transport, vec![lease_id.clone(); CONCURRENCY], false).await;
+    let results = release_storm(
+        &shared,
+        &transport,
+        vec![lease_id.clone(); CONCURRENCY],
+        false,
+    )
+    .await;
     let (winners, losers) = split_outcomes(&results);
     assert_eq!(winners.len(), 1);
     assert_every_loser_is_identical(&losers, CONCURRENCY - 1);
@@ -589,10 +590,7 @@ async fn twenty_leases_returned_concurrently_never_drive_the_physical_budget_neg
     }
 
     let (winners, losers) = split_outcomes(&results);
-    assert!(
-        losers.is_empty(),
-        "20 条**互不相同**的租约各自都该归还成功"
-    );
+    assert!(losers.is_empty(), "20 条**互不相同**的租约各自都该归还成功");
     assert_eq!(winners.len(), CONCURRENCY);
     for report in winners {
         assert_eq!(report.disposition, CleanupDisposition::Closed);
