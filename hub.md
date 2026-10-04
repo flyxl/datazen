@@ -1295,3 +1295,67 @@ Coder `9fb5b438`，验收点 `c6597b803`，20 文件 / **+4210 / −4**。四门
 ### ★ 简报里的过期数字（口径更正，非缺陷）
 
 测试目标 **22 非 21**（20 个集成二进制清单与简报完全一致，多出的是 `lib` 本身）；`07c77d406` 非本 HEAD 祖先；我说的「4 个生产文件」实为 **2 生产 + 2 仅测试**。
+
+## CM-70 repair round 1 交付（`0a9a8f6e3`），待 Tester
+
+HEAD `c6597b803` → `0a9a8f6e3`（append-only，`merge-base --is-ancestor` 校验通过），DIRTY=0，冻结面 6 处零 diff（含 `connection/session.rs`）。
+
+**H-1 修法**：`IdempotencyConflict` 去掉 `key`，改 `{ existing: ExecutionId, incoming: String }`，`incoming` 换成 16 位十六进制 `RequestFingerprint`。Coder 给的因果链值得记：**账本按 `(dbSessionId, runtimeEpoch, key)` 查找，冲突只可能发生在调用方自己的作用域内，所以回显的 `key` 是把自己的凭据原样递回来 —— 既零信息量又可重放**。
+
+**★ 第一轮测试看不见的第二层泄漏**：`ExecutionRecord` 手写的 `Debug` 脱敏了顶层 `idempotency_key`，但内层 `port_request: ExecuteInSessionRequest` 携带同一个令牌，而**它自己派生的 `Debug` 会完整打印**。测量点 `cm70_no_disk.rs:478`。加 `RedactedExecuteRequest` 在内层脱敏。教训固化：**脱敏只看最外层字段是不够的，必须逐层走到派生 `Debug` 的叶子**。
+
+**H-2 修法**：围栏抬到 `dispatch` 里，`mark_dispatch_issued` 之后、`execute_in_session(...)` 之前，键为 `(db_session_id, fingerprint)`。**绝不以令牌为键** —— 以令牌为键的围栏什么也围不住（新键就是新令牌）。刻意不看驱动的返回值。
+
+**旁支修复**：`gateway_contract/timing.rs` 的 p95 用例原先每轮只变 `idempotency_key`（同一条写、同一个指纹），正确的新围栏从第 2 轮起就拒绝它。改为变 `call.input`，保住 20 次真实派发。**这是正确修复不是削弱**，但它说明旧用例本来就在用「换令牌重发同一条写」来造负载。
+
+Coder 自报门禁：`FMT_CHECK_EXIT=0 / BUILD_EXIT=0 / TEST_ALL_EXIT=0 / TARGETS=22 / TOTAL_PASSED=650 / TOTAL_FAILED=0`，`unittests 411`、`cm70_idempotency_replay 46`、`cm70_no_disk 13`。
+
+**★ 但计数清单不可信**：收尾消息把 `registry_*` 写成 `10/11/9/6/7`、`p3_session_port_contract` 写成 `7`（基线 10）、`resource_*` 写成 4 个（基线 3 个）还把 `registry_audit 6` 单列。算术上 `410+1 + 41+5 + 7+6 = 650` 恰好闭合 ⇒ 是**列表错序而非测试减少**，但这必须由带目标名的表证实，已写进 Tester 简报。**又一次印证：子代理的汇总计数不是证据，明细行集才是。**
+
+**★ 我自己也没有答案、已交给 Tester 的两个问题**：① 判据限定词是「**未知**写入」不能换新键重试，但围栏不看驱动返回值 —— 驱动真执行 SQL 后返回**明确**业务错误时结局已知未生效，围栏却已抬起、新键被永久拒。这是保守合规还是反向过度围栏？② 围栏 `HashSet` 永不清空，Coder 理由是「清空等于断言这次写没生效」—— 但明确的语法错误恰是一个可确定未生效的时点，「永不清」未必是唯一选项。
+
+## CM-32 注释清扫 `7db1188c0` 与合并彩排（协调者已独立验完）
+
+### 注释清扫
+
+`git show --stat` = `ledger.rs` 12 行 / `transport.rs` 2 行，**9 插入 5 删除**。纯注释证明：`git diff 7db1188c0~1 7db1188c0 -U0 | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vE '^[+-]\s*(//|$)'` → **完全为空**。`packages/runtime/src/tunnel/` 按目录整扫四类谎言措辞（「编译期消灭」「不可能持有」「类型系统.*消灭」「ensure 次数」）→ **全 0**。三处副本（`ledger.rs` / `transport.rs` / `mod.rs`）口径一致。
+
+改写后的 `ledger.rs:12-23` 逐条对锚点核过、非谎：:13「全系统只能有一个引用计数器」；:14「`[`TunnelTransport`]` **不带**任何计数字段」；:15-16 双重记账会同时失效 CM-28/CM-27；:18「但这条纪律**不由类型系统保证**……`RecordingTunnelTransport` 的 `journal: Mutex<Vec<TunnelEvent>>` 就是活证据」（该字段确实存在）；:23「代数不变量由 `tunnel::journey_single_counter` 的 `single_counter_algebra_holds` 钉住」（该测试确实存在）。
+
+### ★ 两次都栽在同一处：注释里的断言必须按目录整扫
+
+那句谎在 `tunnel/ledger.rs:16-18` **活过了 CM-32 的 repair round 1 和 round 2 两轮**才被我发现 —— 因为我给 Coder 的文件清单里没有它。**第二次仍是我的清单问题**。固化：注释清扫的输入必须是**目录**，不能是任何人的文件清单。
+
+### 合并彩排（detached，`5e6ed8a14`）
+
+`merge-base(main=6c6f9f240, 7db1188c0)` = **`21e27e4eb`**，分支落后 main **15** 个提交、领先 **5** 个。`MERGE_EXIT=0`、**无 CONFLICT**。逐二进制：**21 个目标、0 failed、TOTAL 594、`--lib` 407**，无 `error[]`、无 `panicked at`，运行期间 HEAD 与工作区 sha 前后一致。
+
+### ★ 三项拓扑证明（都实测，不推断）
+
+1. **那 2 处「冻结面 diff」不是 CM-32 造成的。** 相对 `21e27e4eb` 看到 `connection/testing/journal` 与 `fake_resource` 各 1 处。分支侧在**这两个路径上的改动为空**；main 侧改动是 `fake_resource/ops.rs` 与 `journal/core.rs`。**误报源是拿 `main..branch-head` 比，而不是 `<merge-base> <merged-head>`。**
+2. **合并引入的内容 == CM-32 分支自身内容。** `git diff 21e27e4eb 7db1188c0` 与 `git diff 6c6f9f240 5e6ed8a14` 的文件清单**逐条一致**，各 12 文件 / +2699 / −0。合并零额外。
+3. **`--lib` 407−405 的 +2 是拓扑产物，不是回归。** main 自身 `--lib` 实测 **384**；CM-32 净贡献 = 407 − 384 = **23**；分支自测的 405 建立在 main 侧 lib=382 的旧树上。**合并后 `--lib` 无任何目标减少** —— 21 个目标逐条比对，只有第 1 项 `unittests` 407 与分支侧 405 不同，其余 20 项完全一致。
+
+教训固化：**测试计数的变化必须先用「合并树计数 − 各侧计数」对账，再讨论是不是回归。** 直接把差值当回归，是把拓扑成本误记成代码缺陷。
+
+### 合并后仍然存在的已知洞（不改代码，但必须入台账）
+
+`transport.rs` 那句「释放决策只读本文件的 `refs`」**今天是真的**，但测试钉的是**观测值的数值、不是它从哪个字段读来**：给 `TunnelTransport` 加一个冗余 `close_tally: Mutex<usize>` 计数器，21 个二进制全绿、`--lib` 仍 405（负控制才有 10 处失败）。`journey_single_counter.rs:274` 的 `assert_ne!` 同理 —— 它证明「两个来源不同」，不证明「决策读了权威来源」。另有两处接缝风险：`TunnelError::rejected()` / `as_runtime_error()` **全仓零调用方**（墓碑验证），以及 `AlreadyHeld → SessionQuarantined` 的归属未定。**合并后 CM-32 判据仍记 PARTIAL，不是 COVERED。**
+
+## `p3-harness-split` 合并全绿，但 CM-74 判据 `connection-management.md:1324` 仍是 PARTIAL
+
+**第三次同形事件**：CM-74 合并时 `MERGE_EXIT=0`、20 个目标 0 失败、`--lib` 384、main 门禁全绿 —— 判据 `:1324` 一条都没转绿。**这是「PASS ≠ 判据转绿」的第三例，与 CM-74 Tester 当初的拒绝、CM-32 Tester 点名两处必修同源。**
+
+`:1324` 五条款的落地证据（全仓实测，非读报告）：
+
+| 条款 | 状态 | 证据 |
+| --- | --- | --- |
+| a 句柄在物理关闭前已回滚/关闭并从 actor 注销 | ✅ | `cm74_release_order.rs` 三个测试：`closing_a_resource_that_still_holds_a_handle_releases_in_the_cm74_order`、`the_driver_direct_close_releases_in_the_same_cm74_order`（宿主路径与驱动直连路径**对拍**）、`a_resource_still_holding_a_handle_is_never_returned_to_the_pool`（断言 `closed == 1`，恰好一次） |
+| b commit 落在旧 resource 或明确失败 | ✅ | 同上，`assert_no_leak()` |
+| c driver 返回 Clean 但宿主仍有登记句柄时检查必须失败 | 🟡 | `CleanButPreconditionUnmet` 在 `src/` 有 6 处，但**无独立 CM-74 用例** |
+| d 未登记句柄被拒绝返回 | 🟡 | `AlreadyHeld` 6 处，未见 CM-74 专属用例 |
+| e actor 终止后不重建句柄、恢复只能新 dbSessionId | ❌ | `harness/` 下 `actor.*terminat` **0 命中** |
+
+**外加一个至今 0 次执行的代码路径**：`fake_resource/ops.rs:513` 的 F11 分支（`FaultKind::CloseUnconfirmed` 穿过 `close_resource`）。`FaultKind::CloseUnconfirmed` 只在 `script.rs:343` 定义、`ops.rs:513` 被消费，**全仓没有任何测试构造它并走 `close_resource`** ⇒ 这段早返回代码**在全部 384 个 `--lib` 测试里执行 0 次**。它是未被测试覆盖的真实分支，不是死代码，**不得当作冗余删除**。
+
+**这正是 CM-32 那次同一个病根的第三次发作**：合并门禁证明「改动没弄坏已有的东西」，判据要求「补上还不存在的东西」。二者是不同的命题。固化：**每条轨的合并结论必须逐条回填判据原句，而不是回填门禁退出码。**
