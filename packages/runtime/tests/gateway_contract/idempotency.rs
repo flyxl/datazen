@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use super::{err, record};
 use crate::gateway_fixtures as fx;
-use datazen_runtime::connection::SessionState;
-use datazen_runtime::gateway::{AcceptanceDisposition, AlwaysAllow, GatewayError};
+use datazen_runtime::connection::{OrganizationId, PrincipalId, SessionState};
+use datazen_runtime::gateway::{AcceptanceDisposition, AlwaysAllow, GatewayError, SourceKind};
 // ───────────────── B §3.3 幂等 ─────────────────
 
 #[tokio::test(start_paused = true)]
@@ -149,4 +149,54 @@ async fn g4_the_same_key_with_a_different_source_is_a_conflict_not_a_replay() {
     assert_eq!(h.gateway.execution_count().await, 1);
     assert_eq!(h.port.execute_calls(), 0);
     assert_eq!(record(&h, &id).await.source(), &fx::source());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_replay_receipt_reports_the_source_frozen_at_first_acceptance() {
+    // CM-61 的落盘面是**受理回执上的 source**，不是账本里的记录：调用方拿回执就知道
+    // 「这条执行是哪条链路发起的」。所以重发回执必须同样带上来源，且这个来源只能是
+    // 首次受理时冻结的那一个——重发方可以是一个完全不同的调用点。
+    let h = fx::ready_harness();
+    // 同一幂等键 + 同一命令 + 同一来源 ⇒ 第二次是重发。
+    let first = h
+        .gateway
+        .accept(&fx::principal(), fx::request(fx::REVISION))
+        .await
+        .expect("应当受理");
+    let replay = h
+        .gateway
+        .accept(&fx::principal(), fx::request(fx::REVISION))
+        .await
+        .expect("应当重发");
+
+    // 处置面：必须是 `Replayed`，且带的是**首次**受理时刻。
+    assert_eq!(
+        replay.disposition,
+        AcceptanceDisposition::Replayed {
+            first_seen_at_nanos: 0
+        }
+    );
+
+    // ── 下面每条断言都直接读**回执**上的 `source` 字段，不经账本记录中转。
+    // 整体相等（`ExecutionSource` 是 PartialEq 的完整值，四字段一起比）。
+    assert_eq!(replay.source, fx::source());
+    // 与首次受理回执上冻结的来源逐字段相等：两次受理是同一请求，来源必须一致。
+    assert_eq!(replay.source, first.source);
+    // 逐字段钉到字面量：伪造一个 `kind` 相同的来源骗不过 `source_id` 与两个 id。
+    assert_eq!(replay.source.kind(), SourceKind::Editor);
+    assert_eq!(replay.source.source_id(), "edt-contract");
+    assert_eq!(
+        replay.source.organization_id(),
+        Some(&OrganizationId::new("org-contract"))
+    );
+    assert_eq!(
+        replay.source.principal_id(),
+        Some(&PrincipalId::new("principal-contract"))
+    );
+
+    // 回执的 executionId 必须是首次那一个（不是重发时新生成的）。
+    assert_eq!(replay.execution_id(), first.execution_id());
+    // 重发不新建执行、不下发驱动。
+    assert_eq!(h.gateway.execution_count().await, 1);
+    assert_eq!(h.port.execute_calls(), 0);
 }

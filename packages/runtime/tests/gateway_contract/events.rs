@@ -3,7 +3,9 @@
 
 use super::{other_request, record};
 use crate::gateway_fixtures as fx;
-use datazen_runtime::connection::{Counter, DbSessionId, ExecutionId, ExecutionState};
+use datazen_runtime::connection::{
+    ContextConfidence, Counter, DbSessionId, ExecutionId, ExecutionState, SessionState,
+};
 use datazen_runtime::gateway::{EventDisposition, ExecutionEventKind};
 // ───────────────── F §3.3 事件投递 ─────────────────
 
@@ -126,6 +128,53 @@ async fn a_snapshot_realigns_the_watermark_after_a_gap() {
     assert_eq!(
         record(&h, &id).await.last_state(),
         ExecutionState::Succeeded
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stale_snapshot_never_lowers_the_observed_context_revision() {
+    let h = fx::ready_harness();
+    let id = fx::accept(&h, fx::request(fx::REVISION)).await;
+
+    // 事件流把已观测到的 contextRevision 推到 30（受理时的 7 只过乐观闸，不进水位线）。
+    let mut advanced = fx::event(
+        &id,
+        1,
+        ExecutionEventKind::ContextObserved {
+            confidence: ContextConfidence::Confirmed,
+        },
+    );
+    advanced.context_revision = Counter::new(30);
+    assert_eq!(
+        h.gateway.apply_event(advanced).await,
+        EventDisposition::Applied
+    );
+    assert_eq!(
+        record(&h, &id).await.observed_context_revision(),
+        Counter::new(30)
+    );
+
+    // 一份**陈旧**快照（11 < 30）：恢复只对齐空洞，不得把已观测到的修订号拉回去。
+    // 无条件写入的话这里会变成 11，于是回执方按旧版本号重算，凭空再跑一遍。
+    assert!(
+        h.gateway
+            .recover_from_snapshot(&id, &fx::view(fx::SESSION, 1, 11, SessionState::Ready))
+            .await
+    );
+    assert_eq!(
+        record(&h, &id).await.observed_context_revision(),
+        Counter::new(30)
+    );
+
+    // 反向：新快照仍要能把水位抬上去——单调不等于冻结。
+    assert!(
+        h.gateway
+            .recover_from_snapshot(&id, &fx::view(fx::SESSION, 1, 40, SessionState::Ready))
+            .await
+    );
+    assert_eq!(
+        record(&h, &id).await.observed_context_revision(),
+        Counter::new(40)
     );
 }
 

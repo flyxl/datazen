@@ -336,3 +336,116 @@ CM-54/CM-56 两行的行号是在 `cargo fmt` 重排 `tests/` 之后**重跑变�
 6. **`SourceKind::is_background()` 至今没有生产调用点**（D-04 只改了注释，没造调用）。
    它是 `pub` API，属于来源分类的一部分，保留合理；但**不要**把它当成「网关已经按来源分流」的证据——
    网关没有分流。真要分流，是另一个需求，得先有裁定。
+
+---
+
+# 第三轮（纯测试轮：M7 补覆盖 + 契约层修订号单调性）
+
+## 状态
+
+**纯测试轮完成**：`src/gateway/**` **一行未改**（§1 硬纪律），只在契约层加了两条集成用例。
+起点/终点 HEAD 均为 `de4d4574954772fa5af5ba2acff953eb8ee659d3`（`feature/p3-gateway`）。
+- in-lib 单元测试：**328** passed，EXIT=0（与第二轮同数，**未增未减**，无既有用例被删或改弱）。
+- 集成测试二进制 `gateway_contract`：**51** passed（= 49 + 本轮 2 条新增），EXIT=0。
+- `cargo build` 0 warning；`cargo fmt --all --check` 退出 0 且输出 0 字节；边界检查 0 violation / 0 error。
+
+## 本轮改了什么（逐文件标明 new / modified，严格区分）
+
+本轮**没有**任何 `new` 测试文件，也**没有**任何「纯移动」。两个文件都是 **modified**，
+且都只做**加法**：既有用例的函数体、断言、名字**一字未改**，只在文件头补了 `use`、
+在文件尾追加了新用例。
+
+| 文件 | 类别 | 改了什么 |
+| --- | --- | --- |
+| `packages/runtime/tests/gateway_contract/idempotency.rs` | **modified**（只加） | `use` 行补 `OrganizationId, PrincipalId` 与 `SourceKind`（既有 7 条用例未动）；**追加** `a_replay_receipt_reports_the_source_frozen_at_first_acceptance`（+50 行）。152 → 202 行。 |
+| `packages/runtime/tests/gateway_contract/events.rs` | **modified**（只加） | `use` 行补 `ContextConfidence, SessionState`（既有用例未动）；**追加** `a_stale_snapshot_never_lowers_the_observed_context_revision`（+47 行）。382 → 431 行。 |
+| `progress.md` | **modified** | 本节台账。 |
+| `packages/runtime/src/gateway/**` | **未改** | 0 行 diff。`src/lib.rs` 相对基线 `060053afb` 仍**只有 1 行** `pub mod gateway;`。 |
+
+## M7：重发回执的 `source` 此前零覆盖（验收方 7 变异中唯一存活的一条）
+
+**缺口事实**：变异把 `gateway/mod.rs` `accept` 的 `IdempotencyLookup::Hit` 分支里
+`GatewayAcceptance::replayed(&existing.execution_id, &request.source, …)` 的第二个实参
+换成伪造来源（如 `ExecutionSource::Editor("edt_tampered")`）后 EXIT=0、lib 与契约层全绿。
+原因很直接：契约层对来源的**唯二**断言（`idempotency.rs:141` 构造冲突、`:151` 断言）
+打的是**账本记录** `record(&h,&id).source()`，而账本记的是首次受理时冻结的那个值——
+换掉回执上的 `source` 完全碰不到它。回执上的 `source` **一处断言都没有**。
+
+**新用例**（`idempotency::a_replay_receipt_reports_the_source_frozen_at_first_acceptance`）：
+同幂等键 + 同命令 + **同来源**连发两次 `accept`（第二次必走 `Hit` 分支），
+断言第二次返回的 `GatewayAcceptance`：
+1. `disposition == Replayed { first_seen_at_nanos: 0 }`；
+2. **`replay.source == fx::source()`**——直接读**回执字段**，不经账本；
+3. `replay.source == first.source`（与首次受理回执上冻结的来源整体相等）；
+4. 逐字段钉字面量：`kind() == SourceKind::Editor`、`source_id() == "edt-contract"`、
+   `organization_id() == Some(OrganizationId::new("org-contract"))`、
+   `principal_id() == Some(PrincipalId::new("principal-contract"))`；
+5. `replay.execution_id() == first.execution_id()`；`execution_count() == 1`、`execute_calls() == 0`。
+
+**非空洞论证（结构性，未在本树做变异实验）**：M7 只改 `replayed(...)` 的第二个实参，
+而 `replayed` 把该实参**原样**搬进 `GatewayAcceptance.source`（`request.rs:192-209`），
+所以 `replay.source` 就是被替换的那个值本身。`assert_eq!(replay.source, fx::source())`
+直接比较该字段：`ExecutionSource` 是四字段整体 `PartialEq`，伪造值必然不等，
+失败文本会逐字打出 `source_id: "edt_tampered"` vs `"edt-contract"`。
+**为什么第 4 组逐字段断言不能省**：如果只断 `kind()`，M7 伪造的 `Editor("edt_tampered")`
+`kind` 相同 → 仍然绿，那才是空心断言；钉到 `source_id` 与两个 id 的字面量后，
+伪造来源无路可通。
+
+**「回执 executionId == 首次受理 executionId」是否被隐式钉住**：是**隐式**的
+（`a_resend_returns_the_same_execution_id_and_writes_once` 早已在两次**回执**之间比过），
+但不是显式、也不在本用例语境里。第 5 条已把它**显式**补进新用例（零成本）。
+
+## 推荐项：契约层的 contextRevision 单调性
+
+**缺口事实**：第二轮变异 M2 去掉 `recover_from_snapshot` 里
+`if view.context_revision > watermark.context_revision { … }` 的守卫后，
+49 条契约用例**全绿**，只有 `--lib` 的
+`a_stale_snapshot_never_lowers_the_observed_context_revision`
+（`event_store_tests.rs:296`）变红——契约层零覆盖。
+
+**新用例**（`events::a_stale_snapshot_never_lowers_the_observed_context_revision`）：
+事件流把已观测修订号推到 30 → 陈旧快照（11）恢复后**仍必须是 30** →
+更新快照（40）恢复后**必须是 40**。
+
+**为什么带第三条（40）**：`event_store_tests.rs:296` 那条受保护的 `--lib` 用例**只**能杀掉
+「把守卫换成无条件赋值」这一种变异形态。若把整条语句删掉（水位永远停在 30），
+它反而是绿的、EXIT=0。加了「40 必须被抬上去」这一步之后，删语句的形态也会红
+（观测值停在 30 ≠ 40），两种变异形态都被覆盖。
+**`event_store_tests.rs` 一行未动**（§1 + 协调者约束：契约层只做加法）。
+
+## 第三轮门禁实测
+
+`HEAD=de4d4574954772fa5af5ba2acff953eb8ee659d3`，运行前后一致；工作区在本轮开始时
+恰好 2 行脏（就是本轮这两个待提交的测试文件），提交后 0 行。
+（本轮门禁在格式修正后**整套重跑**过一遍，下面是那次重跑的结果。）
+
+| 命令 | EXIT | 结论行（逐字） |
+| --- | --- | --- |
+| `cargo test -p datazen-runtime --lib` | 0 | `test result: ok. 328 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s` |
+| `cargo test -p datazen-runtime --test gateway_contract` | 0 | `test result: ok. 51 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s` |
+| `cargo build -p datazen-runtime` | 0 | 无输出（`warning` 行数 = 0） |
+| `cargo fmt --all --check` | 0 | 输出 0 字节 |
+| `node scripts/check-platform-crate-boundaries.mjs` | 0 | `[check-platform-arch] PASS — 22 workspace member(s) classified, 6 rule(s) evaluated over 26 crate(s), 1 rule×subject combo(s) vacuous: 0 violation(s), 0 error(s), 3 advisory(ies)` |
+
+**一条假红（如实自报）**：本轮第一次跑 `--lib` 门禁 EXIT=101，
+`327 passed; 1 failed`，失败用例是
+`connection::testing::barrier::tests::await_drain_wakes_when_the_clock_crosses_the_deadline`
+（挂满 30 秒真实预算）——即上文遗留第 5 条那条既有用例竞态，与本轮改动无关（本轮只加测试）。
+原样重跑一次即 EXIT=0 / 328 passed。判回归前请先比对失败用例名再下结论。
+
+**格式门禁一处自查改正**：第一次跑 `cargo fmt --check` EXIT=1、1467 字节 diff，
+两处全在**本轮新增**的 `events.rs` 用例（`assert!(h.gateway….await)` 的换行形状），
+已按 rustfmt 的形状改正；其余文件 0 diff。重跑 0 字节。
+
+## 遗留 / 待裁定（第三轮新增）
+
+7. **本轮两条新用例同样没有本轨自测的变异证据**（本轮继续禁止在本树做变异实验）。
+   非空洞性依据是上面「非空洞论证」的字段路径推导 + 断言可读性，
+   **请验收方在 `git worktree add --detach` 的独立树上跑 M7 与 M2 复核**。
+   预期：M7 被 `idempotency::a_replay_receipt_reports_the_source_frozen_at_first_acceptance`
+   杀掉；M2 被 `events::a_stale_snapshot_never_lowers_the_observed_context_revision` 杀掉
+   （「无条件赋值」形态红在 30≠11，「删语句」形态红在 30≠40）。
+8. **契约层用例名的重名风险（如实提示）**：`events.rs` 的新用例与 `event_store_tests.rs:296`
+   的 `--lib` 用例**同名**（`a_stale_snapshot_never_lowers_the_observed_context_revision`）。
+   两者在不同测试二进制里，不冲突，cargo 不会报重名；但排查失败日志时按
+   `events::` 前缀 / `gateway::event_store_tests::` 前缀区分，不要看成同一条。
