@@ -64,3 +64,68 @@
 - 幂等走 §12 的 `ReplacementOperationKey`，不碰 `gateway/idempotency.rs`（CM-70 在飞）。
 - 重试时**重签**令牌而非复用旧串：目录只留摘要，旧串早已不在任何人手里；
   承重的是「同一个新会话句柄 + 不重建候选」，重签换掉摘要、旧令牌立刻作废，是安全的一侧。
+## 第二轮（小修窗）
+
+上一轮 PASS（无 BLOCKER / FAIL，6 WARN）。本轮只处理队长点名的那几条，**新提交，不 amend**。
+
+### 已修
+
+| 编号 | 内容 | 落点 |
+| --- | --- | --- |
+| W-01 | `publish_candidate` 失败（提交**后**）不退还额度，撞号一次永久吃掉一格 | `registry/context.rs:394` 显式 `refund_candidate()` |
+| W-01 | 孤儿态不可判定：目录已提交、注册表没有这一代，重试仍可能发出回执 | `registry/context.rs:255` 世代相等判据 |
+| W-04 | 修订闸门逻辑对，但 6 条用例全传权威修订号 ⇒ 删掉闸门仍全绿 | 新增 `tests/registry_rejection.rs` |
+| W-02 | B.2 诊断只活在台账里 | `registry/registry.rs:451` `evict_idle_at` 文档头 `【未闭合】` |
+| W-05 | 零调用方 `ContextReplacer::replace` 的调用方契约无处可读 | `registry/context.rs` 模块文档 4 条 |
+| W-06 | 「哪几个变异会让这组变红」只活在台账里 | 两个测试文件头各一份变异清单 |
+
+W-01 的孤儿判据**不能只看 id 在册**：候选 id 撞上的正是别人的那一行，那行确实在册。
+MW-2 实证——弱化成 `is_registered` 后重试直接返回
+`Ok(ContextChangeReceipt{ session: dbs_2, .. })`，把别人的会话连同新签的令牌发了出去。
+判据必须是「在册的这一行是不是我提交的那一代」，即 epoch 相等。
+
+### 变异实测（本轮全部在最终状态上重跑）
+
+| 变异 | 结果 |
+| --- | --- |
+| 删 `publish_candidate` 失败分支的 `refund_candidate()` | `6 passed` + `1 passed; 1 failed`，仅 T8 红，额度 `left: 2 / right: 3` |
+| 孤儿判据弱化成「id 在册」 | `6 passed` + `1 failed`，仅 T8 红，回执 `session: dbs_2` |
+| 删上下文修订闸门（W-04 自证） | `6 passed` + `1 failed`，**仅 T7 红**，返回新会话回执 |
+
+W-04 的自证条款达成：补的反证用例**确实会红**，不是又一条绿着的断言。
+
+### 门禁（HEAD 首尾各记一次）
+
+```
+cargo fmt --check                EXIT=0
+cargo test -p datazen-runtime --lib        436 passed; 0 failed
+cargo test -p datazen-runtime             25 targets | TOTAL_passed=694 | TOTAL_failed=0
+  （sum(running)=694，非空跑）
+  registry_release  13 passed | registry_context 6 passed | registry_rejection 2 passed
+```
+
+### 800 行上限
+
+`tests/registry_context.rs` 加完 T7/T8 到 856 行 ⇒ 拆分，不是删断言。
+新建 `tests/registry_rejection.rs`（拒绝侧：修订号不符、提交后退款），
+`registry_context.rs` 回到 686。拆分理由写在新文件头里，不在台账。
+现 `context.rs` 508 / `registry.rs` 780 / `registry_rejection.rs` 302。
+
+### 本轮我自己的错
+
+1. **引用不实**：`§7.4「绝不基于大概没变去替换」`——文档里**没有这句**。真权威是
+   §4.4 `:392`「`configRevision/contextRevision` 用于版本与上下文冲突，不能证明物理资源连续性」
+   与 §7.1 `:526`「后续排队请求仍要重新校验 `contextRevision`」。已全部改正。
+2. **变异没写进去却当成通过了**：MW-1 的 python 锚点被 `cargo fmt` 重排后失效，
+   `assert` 抛异常，但同一段脚本里 cargo 照跑 ⇒ 得到一个「全绿」的空证据。
+   这是第 13 条教训的翻版：**跑完必须确认变异真的落在文件里**（本轮靠 `refund_candidate();`
+   的计数从 2 变 1 才认）。
+3. T8 最初断言「额度回到调用前快照」是错的：旧会话走完 §9.4 由 `forget` 合法归还自己那格，
+   判据必须是 `SESSION_LIMIT - 在册行数`，不是快照差值。
+4. 孤儿判据第一版我自己写成 `is_registered`，正是它要防的撞号场景下**照样通过**（MW-2）。
+5. T7/T8 追加时用过一次 bash heredoc 写仓库文件；哨兵已验证不在文件里（`grep -c` = 0），未再犯。
+
+### 不在本轮合并闸门内
+
+B.1（`actor/release.rs:91-95` 死代码）、B.2 `evict_idle_at` 僵尸行修复、W-03。
+W-02 只落了「未闭合 + 原因」，**责任轨编号由协调者在 `hub.md` 追加**，本轨不写编号。
