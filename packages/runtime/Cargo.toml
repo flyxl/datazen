@@ -39,6 +39,13 @@ thiserror = "1"
 async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "test-util"] }
 tracing = "0.1"
+# CM-70：提交令牌的 HMAC-SHA256。「过期幂等键 / 伪造 issuedAt·keyVersion 拒绝」这条判据
+# 要求令牌**不可伪造**，所以这里必须是真 MAC，不能拿 FNV 之类的摘要凑——摘要可被碰撞构造，
+# 测试也就跟着失去意义。二者都已在 Cargo.lock 内解析好（本 workspace 的 host 侧已在用），
+# 本包只是第一次显式直接依赖它们，不引入新的版本。
+# 刻意**不**用 `ring`/`aes-gcm` 那类带完整密码学栈的依赖：令牌只需要一处 HMAC。
+hmac = "0.12"
+sha2 = "0.10"
 
 # 集成测试要复用**唯一那份**共享夹具时钟（`connection::testing::clock::FakeClock`），
 # 而不是在本 crate 里另写一个只有 advance 的简化版。夹具模块由

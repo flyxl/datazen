@@ -62,7 +62,11 @@ impl IdempotencyScope {
 }
 
 /// 请求指纹。用来区分「同一个 key 的同一次重发」与「同一个 key 的另一个请求」。
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `Hash` 是 CM-70 未知结局围栏要用的：围栏按 `(dbSessionId, 指纹)` 存集合，
+/// 刻意**不含** `idempotencyKey`——否则换个新键就能绕过围栏，而换个新键
+/// 正是这条断言要禁止的事。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RequestFingerprint(String);
 
 impl RequestFingerprint {
@@ -171,6 +175,16 @@ pub trait IdempotencyStore: Send + Sync + 'static {
         scope: &IdempotencyScope,
         record: IdempotencyRecord,
     ) -> Result<(), IdempotencyStoreError>;
+
+    /// 保留期清扫删除一条记录（CM-70）。返回该记录此前是否还在。
+    ///
+    /// **只允许在令牌已过期之后调用。** 账本层看不到签名，也就无法证明这一点，
+    /// 所以默认实现直接拒绝——不装这个能力的 store 会让清扫失败而不是静默
+    /// 删掉一个还在被需要的记录。要支持就得显式实现。
+    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyStoreError> {
+        let _ = scope;
+        Err(IdempotencyStoreError::read("deleteUnsupported"))
+    }
 }
 
 /// 查重结果。
@@ -263,6 +277,15 @@ impl IdempotencyStore for InMemoryIdempotencyStore {
         }
         Ok(())
     }
+
+    /// 保留期清扫。**调用方**（[`crate::gateway::retention::GrantRegistry::sweep`]）
+    /// 必须已经确认令牌过期——这里看不到签名，只信任上游那道闸。
+    fn delete(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyStoreError> {
+        match self.inner.lock() {
+            Ok(mut guard) => Ok(guard.remove(scope).is_some()),
+            Err(_) => Err(IdempotencyStoreError::read("store lock poisoned")),
+        }
+    }
 }
 
 /// 幂等账本。
@@ -313,6 +336,12 @@ impl IdempotencyLedger {
         record: IdempotencyRecord,
     ) -> Result<(), IdempotencyStoreError> {
         self.store.write(scope, record)
+    }
+
+    /// 保留期清扫删除一条记录。**只在令牌已过期之后调用**——
+    /// 调用方（[`crate::gateway::retention`]）那道闸才是真正的防线，这里只是执行。
+    pub fn forget(&self, scope: &IdempotencyScope) -> Result<bool, IdempotencyStoreError> {
+        self.store.delete(scope)
     }
 }
 

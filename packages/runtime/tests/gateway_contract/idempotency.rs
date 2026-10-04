@@ -75,14 +75,31 @@ async fn a_resend_survives_a_moved_context_revision() {
 #[tokio::test(start_paused = true)]
 async fn the_same_key_with_a_different_call_is_a_conflict() {
     let h = fx::ready_harness();
-    fx::accept(&h, fx::request(fx::REVISION)).await;
+    let first = fx::accept(&h, fx::request(fx::REVISION)).await;
 
     let mut second = fx::request(fx::REVISION);
     second.call.input = serde_json::json!({ "sql": "select 2" });
     let error = err(h.gateway.accept(&fx::principal(), second).await);
+    // CM-70：冲突必须指明**是谁**占了这个键（账本里那条执行），但**不得**回显键
+    // 本身——装了令牌层之后键就是那把签名提交令牌，落盘一份就是一份可重放凭据。
+    let rendered = error.to_string();
+    let json = error.to_persistable_json();
     match error {
-        GatewayError::IdempotencyConflict { key, .. } => assert_eq!(key, fx::IDEMPOTENCY_KEY),
+        GatewayError::IdempotencyConflict {
+            existing, incoming, ..
+        } => {
+            assert_eq!(existing.as_str(), first.as_str());
+            assert!(!incoming.is_empty(), "冲突必须带上进来的语义指纹");
+        }
         other => panic!("期望幂等冲突，实际 {other:?}"),
+    }
+    assert_eq!(json["kind"], "idempotencyConflict");
+    assert_eq!(json["existing"], first.as_str());
+    for surface in [rendered, json.to_string()] {
+        assert!(
+            !surface.contains(fx::IDEMPOTENCY_KEY),
+            "冲突的两条出口都不得带幂等键：{surface}"
+        );
     }
     assert_eq!(h.gateway.execution_count().await, 1);
 }
@@ -141,7 +158,9 @@ async fn g4_the_same_key_with_a_different_source_is_a_conflict_not_a_replay() {
     second.source = fx::background_source();
     let error = err(h.gateway.accept(&fx::principal(), second).await);
     match error {
-        GatewayError::IdempotencyConflict { key, .. } => assert_eq!(key, fx::IDEMPOTENCY_KEY),
+        GatewayError::IdempotencyConflict { existing, .. } => {
+            assert_eq!(existing.as_str(), id.as_str());
+        }
         other => panic!("期望幂等冲突，实际 {other:?}"),
     }
 

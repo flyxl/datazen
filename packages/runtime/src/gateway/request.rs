@@ -27,14 +27,26 @@ use serde_json::json;
 
 use crate::connection::RuntimeError;
 use crate::connection::{
-    CommandCall, Counter, ExecutionId, ExecutionReceipt, ExecutionState, ResourceId, SessionHandle,
-    StreamId,
+    CommandCall, Counter, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState,
+    ResourceId, SessionHandle, StreamId,
 };
 use crate::gateway::idempotency::{IdempotencyScope, RequestFingerprint};
 use crate::gateway::provenance::{ExecutionSource, GatewayAction};
 
 /// 一次执行请求。
-#[derive(Debug, Clone, PartialEq)]
+///
+/// ## `Debug` 是手写的：只脱敏凭据字段
+///
+/// 装了令牌层（CM-70）之后 `idempotency_key` 就是那把**可重放**的签名提交令牌，
+/// 而 [`ExecutionRequest`] 是公开构造、公开持有的输入 DTO——派生 `Debug` 一路走到
+/// 这里就把一份凭据抄进了日志、`panic` 文本与 `assert_eq!` 的失败输出。
+/// 因此下面**不派生** `Debug`，改为手写一份只把 `idempotency_key` 打成 `<redacted>`
+/// 的实现（紧随本结构其后）。
+///
+/// **脱敏范围只限凭据字段**：`call` 原样输出。它是负载，而排查幂等问题**恰恰要看
+/// payload**（同一个键配了哪条 SQL、参数差在哪），把它抹掉会让这条诊断日志失去意义。
+/// ⚠️ 将来若某条驱动命令把凭据放进了 `call` 的参数里，此处的脱敏口径需要重新评估。
+#[derive(Clone, PartialEq)]
 pub struct ExecutionRequest {
     pub handle: SessionHandle,
     pub expected_context_revision: Counter,
@@ -47,6 +59,22 @@ pub struct ExecutionRequest {
     /// 取消必须核验 `executionId` / `runtimeEpoch` / `resourceBindingId` 三者一致，
     /// 少了第三个就会出现「用 A 执行的句柄去取消 B」这种跨资源取消。
     pub resource_binding_id: Option<ResourceId>,
+}
+
+/// CM-70：输入侧同一把令牌同样走派生 `Debug` 就是明文泄漏——`format!("{req:?}")`
+/// 会连 MAC 段一起逐字打印。这层与 [`super::ExecutionRecord`] 的输出侧脱敏是**两个
+/// 独立缺口**，必须各自堵：只挡最外层，派生 `Debug` 照样会一路走到叶子字段。
+impl std::fmt::Debug for ExecutionRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecutionRequest")
+            .field("handle", &self.handle)
+            .field("expected_context_revision", &self.expected_context_revision)
+            .field("call", &self.call)
+            .field("idempotency_key", &"<redacted>")
+            .field("source", &self.source)
+            .field("resource_binding_id", &self.resource_binding_id)
+            .finish()
+    }
 }
 
 impl ExecutionRequest {
@@ -245,9 +273,18 @@ pub enum GatewayError {
     IdempotencyVerificationRequired { message: String },
 
     /// CM-54：同一个键被复用于另一个语义请求。
-    #[error("idempotency key {key} already bound to execution {existing}, incoming fingerprint {incoming}")]
+    ///
+    /// **刻意没有键本身**（CM-70 高危缺陷 1 的修复）：装了令牌层之后键就是那把
+    /// 签名提交令牌，回显它等于把一份可重放的凭据抄进错误消息和审计落盘。
+    /// 而且冲突**只可能**发生在与本次受理完全相同的作用域上——账本按
+    /// `(dbSessionId, runtimeEpoch, 键)` 查记录，读到记录才是冲突——
+    /// 所以这里的键恒等于调用方刚递上来的那把，回显给提交者恒为零信息。
+    /// `existing` 已经指明账本里那条记录（它的作用域就是这把键），
+    /// `incoming` 是语义指纹，两者合起来足以定位冲突，不需要凭据。
+    #[error(
+        "idempotency key already bound to execution {existing}, incoming fingerprint {incoming}"
+    )]
     IdempotencyConflict {
-        key: String,
         existing: ExecutionId,
         incoming: String,
     },
@@ -255,6 +292,13 @@ pub enum GatewayError {
     /// 幂等记录写不下去：请求**没有**被受理，可以原样重试。
     #[error("idempotency record could not be persisted: {message}")]
     IdempotencyPersistFailed { message: String },
+
+    /// CM-70：提交令牌在第 0 步被拒（验签 / 版本 / 过期 / 退役）。
+    ///
+    /// 刻意**不带**令牌本身，也不带 key：审计落盘里留一份令牌摘要就等于
+    /// 给伪造者一个 oracle 去试。只留机器可读的 `reason`。
+    #[error("submission token rejected: {reason}")]
+    SubmissionTokenRejected { reason: &'static str },
 
     #[error("invalid request: {reason}")]
     InvalidRequest { reason: &'static str },
@@ -296,13 +340,8 @@ impl GatewayError {
                 "kind": "idempotencyVerificationRequired",
                 "message": message,
             }),
-            GatewayError::IdempotencyConflict {
-                key,
-                existing,
-                incoming,
-            } => json!({
+            GatewayError::IdempotencyConflict { existing, incoming } => json!({
                 "kind": "idempotencyConflict",
-                "key": key,
                 "existing": existing.as_str(),
                 "incoming": incoming,
             }),
@@ -310,11 +349,42 @@ impl GatewayError {
                 "kind": "idempotencyPersistFailed",
                 "message": message,
             }),
+            GatewayError::SubmissionTokenRejected { reason } => json!({
+                "kind": "submissionTokenRejected",
+                "reason": reason,
+            }),
             GatewayError::InvalidRequest { reason } => json!({
                 "kind": "invalidRequest",
                 "reason": reason,
             }),
         }
+    }
+}
+
+/// `ExecuteInSessionRequest` 的**脱敏** `Debug` 视图（只在这里用）。
+///
+/// 装了令牌层之后 `idempotency_key` 就是那把签名提交令牌，而 [`super::ExecutionRecord`]
+/// 是公开可取的（`ExecutionGateway::execution` 直接把记录交给调用方），派生 `Debug`
+/// 一路走到这里就把一份**可重放**的凭据抄进了日志与审计。只在网关这一侧拦一道：
+/// `connection/session.rs` 是 CM-54 的冻结面，那边一个字节都不动。
+///
+/// **脱敏范围只限凭据字段**：`call` 原样输出。令牌是凭据、`call` 是负载，而排查幂等
+/// 问题**恰恰要看 payload**（同一个键配了哪条 SQL、参数差在哪），抹掉它会让这条
+/// 诊断日志失去意义——这是裁定，不是疏漏。
+/// ⚠️ 将来若某条驱动命令把凭据放进了 `call` 的参数里，此处的脱敏口径需要重新评估。
+pub(crate) struct RedactedExecuteRequest<'a>(pub &'a ExecuteInSessionRequest);
+
+impl std::fmt::Debug for RedactedExecuteRequest<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExecuteInSessionRequest")
+            .field("handle", &self.0.handle)
+            .field(
+                "expected_context_revision",
+                &self.0.expected_context_revision,
+            )
+            .field("call", &self.0.call)
+            .field("idempotency_key", &"<redacted>")
+            .finish()
     }
 }
 
@@ -454,12 +524,14 @@ mod tests {
                 message: "reset".to_owned(),
             },
             GatewayError::IdempotencyConflict {
-                key: "k".to_owned(),
                 existing: ExecutionId::new("e"),
                 incoming: "f".to_owned(),
             },
             GatewayError::IdempotencyPersistFailed {
                 message: "disk".to_owned(),
+            },
+            GatewayError::SubmissionTokenRejected {
+                reason: "submissionTokenSignatureInvalid",
             },
             GatewayError::InvalidRequest {
                 reason: "commandRequired",
@@ -472,6 +544,35 @@ mod tests {
                 "每种错误都必须有 kind"
             );
         }
+    }
+
+    /// 冲突记录只许有标识符，**不许**多出一个字段。
+    ///
+    /// 曾经有一版把幂等键原样写回落盘（CM-70 高危缺陷 1）：键在装了令牌层之后
+    /// 就是那把签名提交令牌，落盘一份就等于给伪造者一份可重放的凭据。
+    /// 这里用「字段全集相等」而不是逐个检查缺失，把这个口子钉死在映射表上——
+    /// 往回加 `key` 会立刻转红。
+    #[test]
+    fn the_conflict_record_carries_only_identifiers() {
+        let err = GatewayError::IdempotencyConflict {
+            existing: ExecutionId::new("exe_conflict_1"),
+            incoming: "fingerprint".to_owned(),
+        };
+        let json = err.to_persistable_json();
+        let fields = json
+            .as_object()
+            .expect("错误记录必须是对象")
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            fields,
+            ["existing", "incoming", "kind"]
+                .iter()
+                .map(|f| (*f).to_owned())
+                .collect::<std::collections::BTreeSet<_>>(),
+            "冲突记录里不得出现凭据或任何附加字段：{json}"
+        );
     }
 
     #[test]
