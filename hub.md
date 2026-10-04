@@ -569,3 +569,76 @@ COVERED = 19   PARTIAL = 20   MISSING = 1   （求和 = 40）
 ### Coder 依分工未做变异实验
 
 三个修复各配了钉子，但钉子本身**没被「故意破坏实现再跑一遍」验证过**。已要求 Tester 在独立 detached 树补做 6 组变异（M-A～M-F），其中 **M-A 是本轮最关键的一条**：改 `registry/port.rs` 的 `cancel_execution` 签名后，`cargo build -p datazen-runtime` 必须失败。修复前实测该命令是 **EXIT=0 `Finished dev profile in 2.50s`**（钉子只对 test profile 生效）；**若这次 dev 档位仍是 0，说明钉子根本没移出 `#[cfg(test)]`，D-R2-1 未真正修复。**
+
+---
+
+## Tester 第 1 轮结论：**FAIL（窄，但真实）**
+
+Tester `73b5a60e`，对 `feature/p3-cancel-cleanup`（`25771de51` → `e1cf4576`）。**判定 D-03 = PASS、D-R2-1 = PASS、D-R2-2 = FAIL**。失败面被压缩到 D-R2-2 的**零回归保护**加一个名实不符的测试，生产逻辑本身被判定为**正确、不需重写**。
+
+### 交付树完整性：前后完全一致
+
+| 时点 | HEAD | `git status --porcelain -uall \| wc -l` | `git diff HEAD \| shasum` |
+|---|---|---|---|
+| 跑门禁前 | `e1cf457677942e0dc667b7e34a4e1de1d8260647` | `0` | `da39a3ee5e6b4b0d3255bfef95601890afd80709  -` |
+| 跑完所有变异后 | 同上 | `0` | 同上 |
+
+等于空树哈希 ⇒ **变异全程没有污染交付树**。`git diff --name-status 25771de51..HEAD` = 8 文件 / 595 增 / 44 删，**全部在 `packages/runtime/src/` 之下加 `progress.md`，无 `Cargo.toml`、无 `Cargo.lock`、无其它 crate**。
+
+### 门禁：7 项全部 EXIT=0，与 Coder 自报**零差异**
+
+12 项冻结基线逐项吻合（8/2/6/7/12/6/7/10/**10**/4/7/6）；`--lib` 两次均 `test result: ok. 380 passed; 0 failed; …`（基线 377，Coder 自报 380，实测 380）；`gateway_contract` 51；registry 五套 9/11/11/7/6；`cargo build -p datazen-runtime` **0 warnings**，`Finished \`dev\` profile [unoptimized + debuginfo] target(s) in 14.59s`；`cargo fmt --check` 0 行；边界检查 `PASS — 22 workspace member(s) classified, 6 rule(s) evaluated over 26 crate(s), … 0 violation(s), 0 error(s), 3 advisory(ies)`。
+
+**冻结面**：`git diff 25771de51..HEAD -- packages/runtime/src/connection packages/runtime/tests | wc -c` = **0 字节**。`connection/port.rs` 在两端同为 577 行。
+
+**行数**：最高 `registry/actor.rs` 734 / 上限 800。**生产路径新增裸 `unwrap()/expect()/panic!()/unsafe` = 0**；新增的 4 处 `expect()` 全在 `#[cfg(test)] mod tests;` 文件内。
+
+**Flakiness 诚实声明**：两次 `--lib` 都绿，未重跑、未放宽超时。按该 fixture 约 12.5% 的自发红概率，**连续两次绿只相当于约 77% 置信，不等于确定**；再跑更多次属于禁止的掩蔽。
+
+### 一个被推翻的历史结论
+
+任务书里那条「dev 档位会开始编译测试专用项」的前提**部分错误**：`#[cfg(test)] mod tests` 块在 dev profile 下**仍然不编译**，真正被编进 dev 的只有自由函数 `frozen_port_cancel_shape`，其 `#[allow(dead_code)]` 干净地压住了告警。**但 M-A 的实测结论是决定性的**——改 `registry/port.rs:104` 的 `cancel_execution` 返回类型后：
+
+- 修复前：`cargo build -p datazen-runtime` → **EXIT=0 `Finished dev profile in 2.50s`**（钉子只对 test profile 生效）
+- 修复后：**EXIT=101**，`error[E0271]: expected \`Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send>>\` … but it resolves to \`Result<ExecutionState, RuntimeError>\``，错误锚在 `registry/port.rs:160:6` —— 即 `frozen_port_cancel_shape` 返回类型的精确位置
+
+⇒ **钉子确实走出了 `#[cfg(test)]` 并在门禁 dev 档位生效**，D-R2-1 的核心主张是**实证**的，不是声称的。
+
+### D-03 的真实价值被量化出来了
+
+M-C 只改 `connection/port.rs:257` 规范侧的字面量 `"requested"` → `"requestedMUT"`，`--lib` 红 6 个，其中**两个是 gateway 侧的**：`gateway::cancel::tests::disposition_literals_match_the_architecture_map` 与 `gateway::cancel_event_tests::a_live_execution_reports_requested_without_claiming_a_terminal_state`。**修复前 gateway 手里有一份逐字 `as_str()` 副本，这个改动不会跟着走，那两条 gateway 断言会照样绿着，而 gateway 的字面量已经悄悄漂离规范值。** 修复后全工作区只有一处真相 ⇒ 这是实测收益，不是化妆品级改动。
+
+### D-R2-2：三个变异全部存活
+
+负控 `/tmp/dz-mut-NC2` 在 `e1cf4576` 干净树上跑完整套件 **20 个二进制全 ok、0 FAILED**。在此对照下：
+
+| ID | 注入 | 结论 |
+|---|---|---|
+| M-D | `registry.rs:522` `if !delivered { continue; }` → 也 `lost.push(record.db_session_id.clone())` | **SURVIVOR** |
+| M-E | `registry.rs:509` `Ok(_) => true` → `Ok(true) => true,` + `Ok(false) => false,` | **SURVIVOR** |
+| M-F | **整段回退**到修复前 `25771de51:461-473`（已核对与基线**字节一致**） | **SURVIVOR** |
+
+**M-F 能完整撤销 D-R2-2 而 20 个二进制无一察觉** ⇒ 该修复当前**零回归保护**。（另有一处自我更正记录在案：M-D 第一次注入 anchor 计数为 0、`INJECTED` 从未打印，其后三次绿测跑在**未变异**的树上 —— 该次尝试作废，不计入杀/存活。计数更正：**实际注入 4 组变异，不是 6 组**，M-A 与 M-C 各跑两次属同树重跑。）
+
+### 缺陷清单
+
+- **D1（medium，合并阻塞）** D-R2-2 零回归保护。要求：一条**真的驱动 `invalidate_worker` 到非 `Ok(true)` 结果**的测试，同时断言三件事——行仍在登记表、返回 `lost` **不含**该 id、**未**发出 `QuotaHeldStale` 审计事件。
+- **D2（medium）** `registry/registry/tests.rs:172-217` 名实不符：`:187-195` 断言的恰是**与测试名相反**的「行不被摘」（被 `owned_by` 的 `record.worker_id` 过滤短路，`control()` 压根不会被调），`:202-207` 的 `Ok(false)` 是**直接调 `actor.control(...)`** 造的、绕过 `invalidate_worker`。M-E 已实测证明它保护的那一格是裸的。
+- **D3（low）** `row_owns_the_sender`（`tests.rs:119-122`）**在 Rust 可见性上不可能**钉住「`SessionActor` 按值持发送端」——其字段私有于 `registry::actor`（`actor.rs:161-165` 无 `pub`），而本文件在 `registry::registry::tests`，够不着 `ctrl_tx`。真正有分量的是 `:165-169` 的**行为**断言（摘行后按值克隆仍 `!is_closed()`）。需改文档，把功劳记给行为断言。
+- **D4（合并义务）** `progress.md`（221 行）随合并必须删除。
+
+### 对 Coder 三处自陈的独立判定（E 组）
+
+- **E1「`Ok(false)` 的测试是人工造的」——成立。** Coder 的怀疑是对的，该测试并不支撑它名义上的保护。
+- **E2「`Err` 是结构性不可达」——方向成立，四步结构证据逐条复核全部成立**，故裁定为**潜在（latent）而非活缺陷**。但 Tester 明确**没有**在运行期构造出 actor 的异常终止，**因此不能断言 `Err` 在生产中到底可达不可达**。
+- **E3「形状钉子证明了 actor 按值持有发送端」——不成立，措辞被夸大。** 不是错，但会诱导后来维护者高估一个类型注解的分量。
+
+### 本轮暴露出的一个结构性问题（需协调者裁定）
+
+**M-F 只有 `Err` 格的测试能杀死。** 修复前的「无条件摘行」在 `Ok(true)` 与 `Ok(false)` 上的行为与修复后**完全一致**，所以把 `Ok(false)` 那格钉得再死，M-F 照样存活。⇒ **不解决「`Err` 能否在测试里真实造出来」，D1 就无法闭合。**
+
+若结论是造不出来且必须改生产代码，则要在三者之间选一个：① 在 `registry/actor.rs` 加 `#[cfg(test)]` 构造器或把 actor 的 JoinHandle 暴露给测试；② 反过来证明 `Err` 是活路径（actor 内部 panic → `ctrl_rx` 被 drop → 表项还在 → `control()` 返回 `Err`）并据此写测试；③ 承认这一格只能靠文档承担，D-R2-2 降级。**已连同证据要求一并交回原 Coder 查证**，未擅自替其下结论。
+
+### Tester 明列的未验证项（无一条按「通过」记）
+
+① `Ok(false)`/`Err` 在生产中的可达性（未构造异常终止）；② `state.physical == None`（`release.rs:113`）且表项仍在时这条 `Ok(false)` 路径（未构造）；③ flakiness；④ `packages/runtime` 之外的 scope（未构建 `src-tauri`、drivers、整 workspace）；⑤ 非默认 cargo profile / feature；⑥ Coder 自报门禁日志的产生环境（未审计，改为全部自行重跑）；⑦ 除冻结契约外的跨轨交互。
