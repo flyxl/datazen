@@ -1426,3 +1426,62 @@ Tester 提出的合并前最后一项行动：M-2 只登记在 `progress.md:287`
 - **不写进 `docs/`** —— 那正是 Tester 驳回我「该加」那条问题时用的同一个理由：会把可修的洞写成永久架构事实。
 - `transport.rs:33-37` 是**代码**且完整陈述了洞与实证 ⇒ AGENTS.md「台账消失后结论必须仍然能从代码和测试读出来」**已满足**。缺的只是**排期责任人**，由 FU1 提供。
 - FU1 内容（Tester 已列两个候选，本轮不裁决）：为「释放路径只经由唯一计数」补断言 / 让 `drain` 按值从单个私有方法取计数而非直读结构体字段。
+
+---
+
+## CM-32 注释清扫第四轮：审计单位换成整个模块头，第一次抓到了没人指的洞
+
+Coder `bffa94ba` 交付 `92bddb5d167bbc28ef301c51958ecabbc4252817`（追加在 `c96252426` 上），DIRTY=0，纯注释，非注释改动行数 0。
+
+- **必修 1**：`mod.rs:50-51` 第三份副本 → 改为「释放决策读的字段里**只有一份账**」，并点明 `drain()` 同时读 `refs` 与 `state`、后者「不是第二本账，不参与计数、不增减」，与 `ledger.rs` / `transport.rs` 同口径。
+- **必修 2**：`transport.rs` 的「断言释放路径**只读一个计数**」→「断言释放路径涉及的计数字段**仅 refs 一个**」。`:36-40` 含 `close_tally: Mutex<usize>` 实证的整段未动。
+- **自查发现的第三个洞（不在我的派单里）**：`transport.rs` 原 `:33-34` 的「代数不变量（`close` 次数 == acquire 次数 − release 次数）」**被它自己引用的测试证伪**：`journey_single_counter.rs:60`（acquires=1/releases=1 ⇒ `close_calls()==1`）、`:83`（3/1 ⇒ `==0`）、`:111`（N/M<N ⇒ `ref_count == acquires − releases`）。`acquires − releases` 是**剩余 `ref_count`** 的公式，不是 close 次数。已替换为三条各自独立的不变式（`open` ≡ 1；剩余计数 == acquire − release；`close ∈ {0,1}` 且在归零那次为 1）。
+
+自证：剔注释后父子 sha256 全等——`ledger.rs 431dfaa4…4e57`、`transport.rs c094055e…8484d2`、`mod.rs 23c6e96f…0965`；目录 sweep `只读|唯一输入|唯一来源` over `packages/runtime/src/tunnel/` = 0，仓库级交集 sweep = 0；`FMT_CHECK_EXIT=0`、`--lib` **405**、全量 **21 targets / TOTAL 592 / 0 failed / WARN=0**。与第三轮逐项相同——纯注释轮本就该相同，若不同反而说明混进了非注释改动。
+
+### 派单缺口是我的措辞，不是执行
+
+`mod.rs` 头还有两条，Coder **报告了但按我的禁令没动**：`:18`「属接缝期」（`shared-boundaries-and-ports.md` 全文 **0** 次出现「接缝」）与 `:19`「见 `progress.md` 的剩余项清单」。
+
+我下的禁令是「`mod.rs:43-51` 已处理完、别再动」，**本意是冻结一个带，不是禁止文件里其余部分**；Coder 读成了后者。**审计单位换成整个模块头之后，超出派单范围的发现必须报告而不是等下一轮才发现——这一条执行对了；缺口在我的范围划分。**
+
+**裁定：本轮内一并修掉，不拆轮**（Tester 尚未 detach，一次验完省一整轮）：
+- `:19` 是**合并阻塞项**，不是低危。AGENTS.md「交付即销毁」规定 `progress.md` 合并时必删 ⇒ 这一行在合并那一刻必然悬空，而不同步改引用正是同一条纪律里「删除或重构代码时同步删除失效引用」所禁止的。改法要求：`progress.md` 被删后剩余项仍能仅凭仓库内代码读出。
+- `:18` 是**引用措辞无出处**，与 Finding A 同形（只是对象从代码换成了文档词）；`:590` 的实质成立，故不换文档，只换措辞或换锚点。**不许为求句子通顺而保留一个查无出处的术语。**
+
+### 顺带校正一处行号指针（非缺陷）
+
+上文 CM-32 repair round 1/2 段落里的 `transport.rs:33-37` 是**针对 `7db1188c0` 写的**，那段 M-2 已知洞当时就在 `:33-37`。第四轮在其上方插了 3 行不变式，该段现位于 **`transport.rs:38-42`**。旧数字作为「该 commit 的事实」保持不动，此处只补当前位置指引。
+
+## CM-60：三个红色警报是我算错了，已作废；基准数字是真的，但门禁可能比的不是同一个量
+
+**作废声明。** 我先前报的 `M hub.md`、`D harness/cm74_release_order.rs`、`M .../fake_resource/ops.rs`、`M .../journal/core.rs` 四项**全部作废**，根因是我的测量口径：我在仓库根跑 `git merge-base main HEAD`，那里 `HEAD == main`，于是它返回 `main` 自身，把 fork 之后 main 侧的全部提交都算成了本轨的差异。
+
+正确口径 `git merge-base main feature/<branch>`；正确 fork 点 `7fa6630f041fa8fef127be7df3b8da2bd3420f4d`；真实差异 **15 文件 / +3919 / −8**。`hub.md` 未被本轨触碰；`cm74_release_order.rs` 在本轨分支上**从未存在**（它是 main 在 fork 之后才建的），**所以不是删除**；`harness/tests.rs` 不在那 15 个文件里 ⇒ 合并时 main 的 573 行版本直接胜出，**不存在重复计测试的可能**。
+
+> **可复用的判别式**：`git merge-base main <branch>`，并确认返回的 sha **不是当前 main tip**；「文件不在分支上」用 `git cat-file -e <fork>:<path>` 区分「从未存在」与「被删」；**分支没改过的文件不可能在合并时造成重复**——main 的重构版本直接胜出。
+
+**基准产物已读，数据为真。** `target/bench/cm60-summary-1791122968954.json`：`gate_passed: true`、`conforms_to_spec: true`、`rounds_passing: 5/5`、`failures_total: 0`、`event_projection_clean: true`、`sample_counts_match: true`；最差轮 p95 **12416 ns**（0.012 ms）对门禁 10 ms；warmup round 0，n=1000，p95 11375 ns；每轮 failures 0、queued 0、N=10000、并发 8。实测机 `hw.ncpu=8` / `hw.memsize=17179869184`（16.0 GiB）**不满足 §11.1 的 4 vCPU / 8 GiB**；`notes` 段已逐字写明「不得作『按判据达标』的结论」，**保留**。
+
+**未决疑点（已列为本轮第一优先）：余量三个数量级，通常意味着测的不是判据要量的东西。** §11.1 的 fake 命令是 10 ms **虚拟**时间，tokio `pause()` 自动推进、真实等待为零 ⇒ 若采样窗**不含**那 10 ms，就是拿纯开销去比端到端门禁，**在比两种不同量纲**；判定式字面全真，但那个「通过」没有它看上去的分量。已要求 Coder 给出采样窗的 `file:line` 起止并明确作答。**这正是「filter 匹配为空 → `EXIT=0` 且 `0 passed`」的同形陷阱：退出码和布尔值都不是证据。** 不得为了让数字好看而改采样窗；若重测后 p95 逼近或超过 10 ms，那是真实结论。
+
+另：Coder 收尾消息损坏（`<]minimax[>[ `），但 4 个提交与两份产物都在 ⇒ **不作废成果，只补报告**。`main.rs` 的 DIRTY=1 是连贯半成品（`exit_code()` 抽取 + `the_exit_code_is_not_inverted`），**未编译验证**，须完成或明确丢弃，不许留解释不清的脏树。腐败死亡计数 = 1，**只准复活这一次**。
+
+## CM-70 repair round 2：交付 `bacc7de2e`，D1/M1 各带反证
+
+Coder `9fb5b438` 交付 fix，自证 HEAD 首尾一致、工作区空。逐目标对齐后全量 **22 result 行 / 652 passed / 0 failed**（较上一提交 650 增 2，全部来自新测试）。两处修复都带**反证**，这正是我要的：
+
+- **D1（阻塞项，测试隔离）**：`PrivateTempRoot` 改进程全局 `TMPDIR`，同二进制内并行 `#[tokio::test]` 互串根；round 1 实测 25 跑 **7 绿 / 18 红**。修法为单锁 `TEMP_ROOT_LOCK` 以 `MutexGuard` **字段**持有（先取锁再算 `temp_dir()`；字段声明在最后以保证 `Drop` 先跑再放锁）。**锁失效反证**：按 label 拆成两把锁（复刻修复前互不排斥）后连跑 25 次 → **18 绿 / 7 红**，随后已还原。**锁是承重的，这一点被证明了，不是被声称的。** 未选注入式 temp root 的理由已核（`src/**` 对 `temp_dir`/`TMPDIR` 命中为 0，no-disk 扫描正是它的探测器，注入要动冻结面）。
+- **M1（输入侧 Debug 泄漏）**：`ExecutionRequest` 原为派生 `Debug` 且含签名令牌，`format!("{req:?}")` 逐字打印。改为手写 `Debug` 只脱敏 `idempotency_key`；新增 `tests/cm70/redaction.rs`（81 行 2 例）。**两条变异都红**：还原脱敏 → `0 passed; 2 failed`；**过度脱敏 `call` → `1 passed; 1 failed`**——后者把我的 M2 裁定变成了可执行断言。
+- **M2 裁定已落代码**（非台账）：只脱敏 `idempotency_key`、不脱敏 `call`，理由（指纹含 `serde_json(input)`，排障要看 payload）与遗留风险（将来驱动若把凭据塞进 `call` 参数则该口径要重评）均写在文档注释里。AGENTS.md「台账消失后结论必须仍能从代码读出」**满足**。
+- **Q1 围栏注释**已澄清（判据是禁令而非放行要求；属「符合判据的保守实现」而非缺陷），净增 0 行，`gateway/mod.rs` 仍 **799/800**。
+
+### 一次授权：允许 amend 提交说明（仅此一次）
+
+第 4 个提交的 message 末尾混进了三行命令输出（heredoc 结束标记未被识别）。**裁定：授权 amend，且仅此一次。** 纪律的目的是保护**已被量过、已被 detach 过、已进过台账的锚点**；该提交尚未交付、无人验证，**其上不挂任何证据**，故改写说明不触及锚点，而父提交 `0a9a8f6e3` 一个字节未动。
+
+授权的三条**充分条件**（以**树对象不变**为硬证据——内容若动过 tree sha 必变）已逐条兑现：`PARENT` 前后均 `0a9a8f321ca94c8250244246c8237309aeda12`；`TREE` 前后均 `4ff673ab63be6c7bbab483fa1b4daea8972d409c`；subject 原样，只删三行垃圾。落定 `bacc7de2ea94cca4c5723aa00a33e034b0c4a323`。
+
+附带留痕一条工程纪律：**凡用 heredoc 写提交信息，必须在同一轮 `git log -1 --format=%B` 回读一遍**——零成本自检。本次 amend 即按此执行（改用 `-F 文件`，全程零 heredoc）。
+
+> 该事故教训按 Coder 判断写进了**提交说明**而未写 `progress.md`——写台账会改变 tree 对象、使「内容未变」的证明失效。此判断**正确**；代价是这条工程纪律没有进仓库文档层，作为协调者级待办登记，不单开文档。
