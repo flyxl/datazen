@@ -245,7 +245,7 @@ async fn ask(
     }
 }
 
-/// Every field `## 契约冻结` promises for `scan_keys`, on the real payload —
+/// Every field the frozen budget contract promises for `scan_keys`, on the real payload —
 /// including that the legacy `dbSize` spelling and the appended `dbsize` carry
 /// the same number (one DBSIZE read, two names, append-only contract).
 #[tokio::test]

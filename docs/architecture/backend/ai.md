@@ -188,7 +188,7 @@ groups:
 1. **DB tools** — `list_tables`、`search_tables`、`query_db` 等，经 `ConnectionManager` / Driver Command API 执行。
 2. **MCP Client tools** — 来自 Settings 中已连接的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`。
 
-实现要点（`commands/ai.rs`）：
+实现要点（`commands/ai/mod.rs`）：
 
 - `collect_mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`。
 - `run_streaming_tool_loop` 识别 `mcp/` 前缀并调用 `mcp_client_call_tool`；DB tool 与 MCP tool 可在同一轮对话中交替执行。

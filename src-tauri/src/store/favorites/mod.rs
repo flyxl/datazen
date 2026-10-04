@@ -1,9 +1,9 @@
 //! File-first storage for SQL favorites.
 //!
 //! Favorites live as one self-describing `.sql` file each, under a configurable
-//! root (see `AppSettings::favorites_root`). The design rationale is in
-//! `docs/development/editor-pro-productivity-plan.zh-CN.md` §2.6: the unit a
-//! user exchanges between devices must be readable, diffable, and mergeable,
+//! root (see `AppSettings::favorites_root`). The rationale, restated as the
+//! implemented fact: the unit a user exchanges between devices must be
+//! readable, diffable, and mergeable,
 //! and a directory tree of text files is the only storage shape where all three
 //! hold without writing a single line of sync code.
 //!

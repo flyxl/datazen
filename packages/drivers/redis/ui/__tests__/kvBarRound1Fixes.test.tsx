@@ -496,7 +496,7 @@ describe('[fix:BUG-004] the two PTTL sentinels, told apart on screen', () => {
   // the renderers consuming it. `kvBarSlotTesterGaps.test.tsx` pins each word for
   // one slot; what is pinned here is the part a single-slot test cannot see — that
   // the two surfaces of the *same* selection never tell opposite stories about the
-  // same reply (bugs.md 建议修法: "需与侧栏口径一致").
+  // same reply (the fix: "需与侧栏口径一致").
   function goneReads() {
     commandInvoke.mockImplementation((_plugin: string, command: string) =>
       Promise.resolve(

@@ -1,7 +1,7 @@
 /**
  * redis-kvbar-ui — round-2 fix regression battery (`redis-kvbar-ui-BUG-005`).
  *
- * `bugs.md` registers BUG-005 as the session-dimension leftover of BUG-001: the
+ * BUG-005 is the session-dimension leftover of BUG-001: the
  * eviction-policy row is read through `invokeMaxmemoryPolicy(dbSessionId)`, so the
  * value belongs to a *session*, but the row's state used to be a bare string that
  * only a new reply could overwrite. After a session swap the sidebar therefore

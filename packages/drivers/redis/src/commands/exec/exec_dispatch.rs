@@ -141,7 +141,7 @@ pub(super) async fn dispatch(
             // `dbSize` is the established spelling and must keep working as-is;
             // `dbsize` is additionally appended so all three key-tree commands
             // (scan_keys / list_children / count_matching) carry the same
-            // `consumed`/`truncated`/`dbsize` budget trio (PRD §3.2, 契约冻结).
+            // `consumed`/`truncated`/`dbsize` budget trio (PRD §3.2).
             json_ok(serde_json::json!({
                 "cursor": page.next_cursor,
                 "keys": page.entries,

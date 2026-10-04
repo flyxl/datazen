@@ -3,8 +3,9 @@
  *
  * Written against the branches the coder's own suite leaves unexercised **inside
  * this track's acceptance surface** (D-1..D-8). The sub-80 files the coder named
- * in `## 自验记录` are mostly D-0 extraction layers (split drag, dialogs,
- * context-menu plumbing); those judgements are checked in `progress.md`. What is
+ * surveyed are mostly D-0 extraction layers (split drag, dialogs,
+ * context-menu plumbing), which this track accepts as out of its acceptance
+ * surface. What is
  * *not* deferrable is a branch that belongs to a delivered requirement, and
  * exactly six of those were still cold on `ef0d62d94`:
  *

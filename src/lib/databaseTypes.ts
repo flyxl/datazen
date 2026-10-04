@@ -1,7 +1,7 @@
 /**
  * Unified database type registry.
  *
- * Driver metadata is injected at build/dev time into src/plugins/generated.ts
+ * Driver metadata is injected at build/dev time into src/extensions/generated.ts
  * (path + git drivers selected via --drivers / DATAZEN_DRIVERS).
  */
 

@@ -90,7 +90,7 @@ pub fn is_exact_key_pattern(pattern: &str) -> bool {
 /// a missing answer can never produce a zero budget.
 ///
 /// **`Some(0)` means "no request"**, exactly like `None` (审查发现 R-1, closed in
-/// favour of `## 契约冻结`: "`budget` 缺失或 `0` ⇒ 派生档"). A zero never reaches the
+/// favour of the frozen rule "`budget` 缺失或 `0` ⇒ 派生档"). A zero never reaches the
 /// clamp, so this function cannot hand out a 1-round budget someone did not ask
 /// for; the dispatch arm folds `0` into `None` for the same reason, and the two
 /// layers now agree instead of holding opposite readings of the same input.
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn a_zero_request_is_the_derived_tier_not_a_one_round_budget() {
-        // 审查发现 R-1, closed in favour of `## 契约冻结`: "budget 缺失或 0 ⇒ 派生档".
+        // 审查发现 R-1, closed in favour of the frozen rule "budget 缺失或 0 ⇒ 派生档".
         // The old reading (Some(0) == "did you mean 1") contradicted the freeze and
         // only stayed invisible because the dispatch arm filtered 0 into None.
         assert_eq!(tree_scan_budget(Some(0), 0), tree_scan_budget(None, 0));

@@ -1,6 +1,7 @@
 //! CM-73 baseline evidence — 空闲淘汰与活动事务句柄连续旅程（P0 / `p0-cm73-baseline`）。
 //!
-//! Spec: `docs/architecture/platform/connection-management.md:1279-1285` (CM-73, H).
+//! Spec: `docs/architecture/platform/connection-management.md` §16.7 的
+//! `**CM-73 空闲淘汰与活动事务句柄连续旅程（H）**` (CM-73, H).
 //!
 //! The journey driven here is the one the spec asks for, end to end on a single
 //! `dbSessionId`:
@@ -665,7 +666,7 @@ async fn cm73_baseline_idle_eviction_reproduces_the_defect() {
 /// never name a legacy function, a legacy struct field, or a map shape.
 /// Deleting or weakening any of them to reach green is forbidden.
 #[tokio::test]
-#[ignore = "CM-73 known failure: the current runtime evicts a resource that still has a registered live transaction handle and silently rebuilds it under the same dbSessionId. connection-management.md:1284 allows this as a known failure; :1307 requires green in the P3 connection-runtime track."]
+#[ignore = "CM-73 known failure: the current runtime evicts a resource that still has a registered live transaction handle and silently rebuilds it under the same dbSessionId. connection-management.md CM-73's `- 基线说明` bullet allows this as a known failure and requires it to turn green in the P3 connection-runtime track."]
 async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused() {
     let obs = observe_journey().await;
     eprintln!("[CM-73 target] calls={:#?}", obs.calls);

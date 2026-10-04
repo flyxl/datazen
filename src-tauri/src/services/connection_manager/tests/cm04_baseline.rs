@@ -10,7 +10,8 @@ use std::sync::Mutex;
 // ===========================================================================
 // CM-04 baseline — 配置 ID 不得回退成会话 ID。
 //
-// Spec: `docs/architecture/platform/connection-management.md:852`（CM-04，H/W）
+// Spec: `docs/architecture/platform/connection-management.md` §16.1 的
+//   `**CM-04 禁止配置 ID 回退（H/W）**`（CM-04，H/W）
 //   前置：存在 profileId，不存在同字符串 session。
 //   步骤：向 executeInSession 传 profileId；向 executeAtTarget 传未知 profile。
 //   断言：分别 SessionNotFound、不可见配置错误；driver execute 次数为 0。

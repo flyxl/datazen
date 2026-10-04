@@ -8,7 +8,7 @@
  *     （PRD §3.3「JSON 三态继续走 JsonModeBar」，属"必须保留"项，本轨把它
  *     搬进新 `StringEditor` 后没有任何用例走过）。
  * 其余未覆盖点（解压成功回包、悬起期保存的防御支路、`unwrapRaw` 的对象形状）
- * 判定见 progress.md T-11：属真连/防御性单语句，非本轨缺口。
+ * 判定属真连/防御性单语句，非本轨缺口。
  *
  * 断言口径：`data-testid` + `data-*` + `data-i18n-key`；`useI18n` 被 stub 成
  * identity `t`，故文本恰为 i18n key（断 key 不断译文）。

@@ -151,7 +151,7 @@ fn test_tester_cluster_routing_ignores_the_key_for_two_word_probes() {
     // 的"键"是**子命令 token**（USAGE / ENCODING / …），而不是那个键。
     // 后果：Cluster 上这 4 条探测命令必然先被投到错误的分片、吃一次 `-MOVED`、
     // 再重定向重试（并触发一次 slots 重建）。⇒ "Cluster 侧栏恰 6 次单命令往返 /
-    // 命令级 7 次"这一硬口径不成立（见 bugs.md redis-cmds-p0-BUG-007）。
+    // 命令级 7 次"这一硬口径不成立。
     //
     // 本用例是**绊线**：若将来 redis 修正了路由（或我们改成显式按地址路由），
     // 这两条 assert_eq 会失败，提醒我们同时回收口径与 R 项 9a 的 MONITOR 核对表。

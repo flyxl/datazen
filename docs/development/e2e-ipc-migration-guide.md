@@ -92,7 +92,7 @@ Once confident, exclude the spec from the default `wdio.conf.ts` glob or the smo
 
 **Rust equivalent:** `src-tauri/tests/driver_command_ipc.rs` — two `#[tokio::test]` functions mirroring the two `it()` blocks.
 
-Existing unit tests in `src-tauri/src/commands/driver_command.rs` (`#[cfg(test)]`) cover many more edge cases (safe mode, read-only, streaming, F7 targeting). The integration test file documents the **E2E replacement pattern**; lib tests remain the deep regression net.
+Existing unit tests in `src-tauri/src/commands/driver_command/tests.rs` (`#[cfg(test)]`) cover many more edge cases (safe mode, read-only, streaming, F7 targeting). The integration test file documents the **E2E replacement pattern**; lib tests remain the deep regression net.
 
 ## Expected Savings
 

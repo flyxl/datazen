@@ -347,10 +347,10 @@ fn test_tester_the_camel_case_spelling_wins_when_both_are_present() {
     );
 }
 
-/// `[tester]` BUG-004 复现载体（今日为红，故 `#[ignore]`，见 bugs.md）。
+/// `[tester]` BUG-004 复现载体（今日为红，故 `#[ignore]`）。
 ///
-/// 契约 C-4（progress.md:159）：回退的前提是「**被服务端拒绝**（旧版本 Redis / 代理）」，
-/// `keepTtlFallback` 就是这一事件的可断言位（progress.md:160）。当前实现的分诊口径是
+/// 契约 C-4：回退的前提是「**被服务端拒绝**（旧版本 Redis / 代理）」，
+/// `keepTtlFallback` 就是这一事件的可断言位。当前实现的分诊口径是
 /// 「SET 报错了」而非「SET 因 KEEPTTL 报错」，于是 `WRONGTYPE` / `READONLY` /
 /// 连接类失败也会走二次写入，并把「本服务器不支持 KEEPTTL」这个结论报给 UI（W3-E 已
 /// 按此位决定是否提示）。C-3 末段明确「传输/权限类失败仍按通用 IPC 错误抛出」。

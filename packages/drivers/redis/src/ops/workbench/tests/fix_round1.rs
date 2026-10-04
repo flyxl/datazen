@@ -8,8 +8,9 @@
 
 use super::*;
 
-/// BUG-008: the two budget numbers are quoted outside this crate — `MAX_SCAN_ROUNDS`
-/// is the literal judgement in `progress.md` R 项 13 ("`SCAN` 条数 ≤ 64") and both
+/// BUG-008: the two budget numbers are load-bearing outside this crate —
+/// `MAX_SCAN_ROUNDS` is the 64-round `SCAN` budget one key-tree scan may spend
+/// ("`SCAN` 条数 ≤ 64") and both
 /// size the worst case the context bar holds the connection — so each is pinned by
 /// its **value**, not by the constant (an assertion written as
 /// `count == MAX_SCAN_ROUNDS` drifts with any edit to it and answers nothing). The
