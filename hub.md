@@ -1972,4 +1972,113 @@ fn 归池前检查有登记句柄一律不放行() {
 - **★ 我框定的风险清单本身在制造漏检**：doc-drift 的 Coder 按我给的 4 类报「全部归零」并自述「纯文档、零运行时代码改动」—— 两个数字**对所选清单为真、对全仓为假**；验收方在被迫承接同一框定下，仍从**我给的文件清单之外**挖出 2 条真缺陷，另在框外节挖出 6 条。CM-60 一轮我框 2 条、挖出 8 条。**现在每份派单都强制：类别穷举 + 含顶层目录的全域检索 + 每个数字附可复算口径 + 「你没有点名的缺陷」专节。**
 - **★ 移除悬空指针会把无害引用变成错靶引用**（见 §二）。删除动作必须连带审计「删完之后剩下的裸编号现在指向哪里」。
 - **★ 语义正确的散文陈述也会是字面假陈述**：判定应按后果分级 —— 无行为影响的改动（WARN + 更正记录）与锚点回归（BLOCKER）分开，但**记录必须更正**，且只追加、不 amend。
-- **★ 已死 Coder 的第二形态：不是零产出，而是成果全押在会话末尾。** gateway 轨第一次死亡被记为「零交付」，第二次死亡留下 1 个提交 + **1 个未跟踪测试文件**（一个字节都没进版本库）。同批另有 2 轨返修全部靠「边写边提交」存活（CM-60 `eb607ad8`→`1289231a`、doc-drift `21e1ae1`→`e4fd4d1`）。**死亡计数只记次数，不记产出；恢复时先落盘再说话。**
+- **★ 已死 Coder 的第二形态：不是零产出，而是成果全押在会话末尾。** gateway 轨第一次死亡被记为「零交付」，第二次死亡留下 1 个提交 + **1 个未跟踪测试文件**（一个字节都没进版本库）。同批另有 2 轨返修全部靠「边写边提交」存活（CM-60 `eb607ad8`→`1289231a`、doc-drift `21e1ae1`→`e4fd4d1`）。**死亡计数只记次数，不记产出；恢复时先落盘再说话。**## 追加 004（第四批更正与新方法论，2026 年 P3 收口轮）
+
+### 一、更正本文件自身的错误断言：`:1931` 的「不存在的引文」是错的
+
+`:1931` 记的是「`team-server-and-auth.md:780` 引用的是不存在的原文」。**该断言撤回。**
+
+- 那句「性能门禁在单实例形态下测量」**逐字存在于 `team-server-and-auth.md:780`**。
+- R1 之所以报零命中，是因为**它用了一个只覆盖单文件的 scoped 口径**（见本节第四条），不是内容不存在。
+- 该句的**阶段归属是被净新增的**（原先缺失，补上后是增不是损），这一点 R2 已裁定，不回退。
+- ★ 由此固化一条：**本文件的更正也必须可复现** —— 「不存在」只对被检索集合成立，见第四条。
+
+### 二、`p3-doc-drift-ledger`：R2 的 1 BLOCKER + 5 FAIL，以及「修复提交引入新缺陷」
+
+- **BLOCKER-1**：`connection-management.md:857` 新句把 P9 部分归给「§9 含 CM-57～60 的 WN 部分」，**实为 §13**（`platform-development-plan.md:256` 位于 `## 13. P9`）。★ 根因是**把阶段号 P9 当成了章节号 §9**。
+- ★ **这条 BLOCKER 是由 `756f2e6f2` 那个本意是修复 stage 归属的提交引入的，提交信息里自带证据。⇒ 固化规则：审计每一个修复提交，看它有没有引入自己那一类的缺陷。**
+- FAIL-1/2：`cm73_baseline_tests.rs` 与 `commands/mod.rs` 的裸 `:NNNN` 锚点指向错误行。
+- FAIL-3：**按模式而非按文件**才暴露 —— redis 的 `tests/tree_scan_budget.rs:20`、`tests/workbench_commands.rs:16`、`ui/console/consoleCommandBatch.ts:6`、`ui/value-editors/redisInsertStatement.ts:6`、`ui/__tests__/redisInsertStatement.test.ts:5`。★ 「点名文件逐个修」与「按模式全族修」是两种不同的收敛，前者必然留下同族残余。
+- FAIL-4：裸 `BUG-00x` 全仓 **476 处 / 149 文件 / ≥14 套编号体系**；该轨自写的消歧说明只承认 2 套，是错的。
+- FAIL-5（方法论）：「非注释改动 3 处」不可复现，可复现口径给出 **11 行 / 9 处 / 5 文件**。同批两句事实陈述也为假（把 `cm70_*` 的 `//!` 模块文档改写说成 `#[ignore]` 理由串；把多行 `assert_eq!` 消息字符串说成 `///` 折行续行）。
+
+### 三、`p3-cm28-concurrent-return` R1：假出处的源头是我，以及一条不可能失败的负控
+
+- **F-1（BLOCKER）**：`manager.rs:406` 的注释引 §9.4，但 §9.4（`connection-management.md:653-657`，标题「9.4 归池前检查」）**不含**被引内容。★ **那个出处是我给的**：我曾判「`force_close` 无条件 close 是设计意图（§9.4）」而未逐字核对该节，并把该判断写进了修复派单。
+- ★ **真相比「出处错」更重要**：判据 `:1037`「driver close 至多一次**有效**关闭」＋ §9.4 `:657`「归池条件是宿主检查全部通过 AND driver 返回 Clean…**任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。** reset 不支持、失败或超时直接关闭。」两句合看，**「有效」只能读作「被确认成功的」**，否则 §9.4 要求失败后重试重关，与「至多一次」直接冲突。⇒ 修法是**写出推导**，不是删行为。
+- ★ **「有效关闭」全仓仅 3 处命中**（判据 `:1037`、本文件 `:1960`、`tunnel/mod.rs:31`），**无一定义**。⇒ 编号登记：补书面定义。
+- ★ **由上一条升级 defect E**：`manager.rs:332` 的 `transport.close(...)?` 把租约卡在 `Closing`，原判「与 `transition.rs:61` 自相矛盾」，依据其实更硬 —— **直接违反 `connection-management.md:657` 的「任一失败都关闭」**。
+- **F-2**：`TunnelLedger::close_calls` 是**一条永不可能失败的断言** —— `ledger.rs:324` 的 `+= 1` 改成 `= 1`，全仓 **698 个测试一个都没红**。根因：`cm28_concurrent_tunnel.rs:249-264` 的 `for round in 0..2` 循环体里每轮 `:251` 都 `TunnelLedger::new()` 新建账本，只有 `port` 跨轮共享。★ **审计负控时要问：跨迭代共享的状态是什么？**
+- **F-3**：D（`pool_ledger.rs:227` `saturating_sub` 静默夹到 0）、E、重试语义、以及「至多一次有效关闭不能靠单点变异转红来验收」这四条结论**只活在台账**，合并即删。★ 第四条是本轨最有价值的结论（验收方独立复现：M1/M2 红在错误形状 `:445`，第一格 panic 次数为 0）。
+- **F-6 的数字我给错了**，见第六条。
+
+### 四、★ 第四次复发：**scoped 检索口径**制造假零
+
+R2 验收方独立复核后确认：**「全仓零命中」只要用了排除 `e2e/`、`docs/`、`locales/`、仓库根的口径，就不是关于仓库的结论。** `packages src src-tauri scripts .github` 这一类口径**结构上**排除了上述位置。
+
+★ **第五次复发，且这次是验收方自己犯的**：gateway R1 验收方先判「没有测试钉住 `CancelFailed::api_code()==None`」，随后自查出那是它自己 `git grep … | head -20` **输出截断**造成的假阳性，重跑后推翻了自己的判定（`p3_session_port_contract.rs:326`/`:336` 正是断言 `api_code()==None`、`registry_audit.rs:131` 断言 `NotOnTheWire`、`gateway_contract/cancel.rs:127-128` 钉 `UNKNOWN_EXECUTION`），并明确警告协调员不要采信截断形式。
+
+★ **两条固化规则**：
+1. **「不存在」只对被检索集合成立。** 任何零命中结论必须附完整路径清单或全仓 `-- .` 口径。
+2. **★ `| head -N` 出现在「零调用方」「零命中」类论证里即失效。** 此前只禁用于实现方派单，**现扩展到验收方派单**。
+3. ★ **验收方有权推翻自己**，且推翻记录本身是资产 —— 读报告的自我更正节，不要只读结论。
+
+### 五、`p3-cm74-release-paths`：验收 PASS，但合并前仍有本轨自产的缺陷
+
+- 三条 BLOCKER 探针全过、两条变异与预测逐字吻合（MB1 红在 `registry_release.rs:364`/`:400`；MA6 红在 `registry_context.rs:490`，`left: ["UNEXPECTED_OK"] / right: ["CloseRejected(\"replacementInProgress\")"]`，行号/签名/唯一红点全对）。★ **验收方独立判定协调员给的四条前提全错**（Gap A 并非不可实现；Gap B 半边 (a) 已由 `registry_release.rs:246` 覆盖；§9.4 顺序冲突基线已裁定；CM-74 项 5 基线 `actor/tests/flow.rs:262-301` 已覆盖）。
+- **W-01（合并前必修，本轨新代码的永久泄漏）**：`registry/context.rs:342-347` 的 `refund_candidate` **全仓只有一个调用点** —— `context.rs:386` 的 `abort_candidate`，属提交**前**路径；而 `publish_candidate` 失败走 `map_err(...)?`，属提交**后**，**无任何额度归还** ⇒ 一枚额度槽永久泄漏。加重情节：该路径上目录已 `Committed`、旧会话已关，**新会话却没有宿主入口**。
+- **W-04（合并前必修，「零的反证」）**：`expected_context_revision` 乐观并发闸门（`context.rs:244-248`）逻辑正确，但 **6 个用例全部传入正确 revision**（`:160/:268/:464/:562/:571/:648`），**无一个传错值** ⇒ 闸门若被误删，6 例全绿，而「绝不基于『大概没变』去替换」是 §7.4 的硬安全承诺。**PASS ≠ 判据转绿。**
+- ★ **通用形态**：**乐观并发闸门必须有反向用例**；**提交后错误路径必须有补偿动作，且补偿 helper 的每个调用点都要被测到**（本例的成因正是「helper 存在、调用点只有一个且在另一条路径上」）。
+- ★ B.1 / B.2 判为**基线存量**，**不得挂在 CM-74 的合并门禁上** —— 挂上去等于让新轨为存量历史负责。
+
+### 六、★ 第五次复发：**作用域搬运** —— 计数只对被测量的那棵树成立
+
+我给 cm28 的修复派单里写了「F-6 爆炸半径 = 28 个二进制 / 698 条」。**那组数是在 cm28 分支上量的**（该分支整 crate 698 条）；**cm60 分支整 crate 只有 626 条**。我把 A 分支的测量搬去描述 B 分支，两个数各自局部正确，**搬运不成立**。已分别向两轨发出更正。
+
+★ **由此加一条计数口径规则**：**「二进制数」有两个都对不上的口径** —— `cargo metadata` 的 `kind==['test']`（权威，cm60 树为 **19**）与 `find tests -name '*.rs'` 递归（把 6 个共享 `mod` 目录、顶层 shim 一并算进去，cm60 树为 **34**）。**引用计数必须注明用的是哪个口径**，否则两个都对不上「二进制」这个词。
+
+### 七、`p3-cm60-pressure-drain` R2：一个 BLOCKER 的机理，以及 F-05 从未闭合
+
+- **F04-1（BLOCKER）**：在 §11.1 的**真实样本量**下，「剔除最大值」这一类缺陷**两条守门同时失效**。验收方写一次性探针直调 `datazen_runtime::latency::nearest_rank_percentile`：
+  - `N=4`（`runner/tests.rs:9-17` `tiny()` 的实测样本量）：`p95_full=1003` vs `p95_cut=1002` ⇒ 看得见；
+  - `N=10000`（规格口径、真正产出产物的那个 N）：`rank_full=9500 rank_cut=9500`、`p95_full == p95_cut` ⇒ **两条守门同时失效**。
+  - 机理：nearest-rank 取 `ceil(0.95N)`，`N=10000` 时剔一条后**秩不变、值不变**；条数守门读的仍是未截短的 `totals.len()`。单元测试能抓住它**纯属巧合**（`ceil(0.95·4)=4` 恰好落在最大值上）。
+  - 精确漏洞边界：`runner.rs:393`（`percentile_input`）与 `runner.rs:394`（`Percentiles::of(&totals)`）是**同一个变量的两次独立求值**，构造处绑定、使用处可分叉。
+  - ★ **固化规则一：记录一个量与消费一个量，若是两次独立求值，则二者可以分叉。** 结构性修法是让被调方记录它实际算的那个输入，而不是在调用方另记一份。
+  - ★ **固化规则二：在守门的盲区样本量上做值比对是恒真的，不能当修法。** 验收方已明确警告这一点。
+  - ★ **固化规则三：守门的强度依赖被测样本量。** 任何指标守门都需要在**真实样本量**下、由原始输入独立重算的断言。
+- **F04-2（FAIL）**：`runner/tests.rs:122-123` 的注释声称「把最大的一条剔掉，这条断言当时仍然是绿的」，**MUT-B 实测相反**：`EXIT=101` / 55 passed / 2 failed，`runner/tests.rs:117` 转红（`left: Some(5292) / right: Some(5666)`）。**追加提交更正，不 amend。**
+- ★ **溯源收窄**：`progress.md:169` 的「除 raw 外每一个数都是冻结 summary 的照抄」字面上对 `unmeasured_failures_total=0` 与 `percentile_input=10000` 不成立 —— 这两个字段**在冻结 summary 里根本不存在**（产物出自 `04a55fa72`，两字段晚于其后的提交才引入）。验收方确认数值是从 `raw[]` **正确推导**的、无编造字段，但溯源标注必须收窄。
+- ★ **我曾给该轨错的出处溯源**（数字取自 `4bd5a55c5`，而日志 `SHA_PRE` 写的是 `04a55fa72`），**实现者拒绝照抄我给的溯源** —— 这是对的。**协调员给出的事实与协调员派发的裁决单同样需要被实现者核对。**
+- **F05-3 / N11：★ F-05 从未闭合，R2 判 PASS 是口径太窄。** 穷举（`git grep -inE "cargo[ '\"]*(test|nextest)" -- .`）：全仓 `cargo test`/`nextest` 调用点 **18 处**，其中**点名 `datazen-runtime` 的只有 2 处**，都在 `scripts/run-platform-crate-tests.mjs:157-160`（唯一链路 `ci.yml:302` → `package.json:111`）。实测覆盖面：`--lib … --test cm60_pressure_drain` → **恰好 2** 条 result（lib 383 + cm60 6）；`--release … --bin cm60-bench` → **恰好 1** 条。
+  - > **CI 覆盖 21 个含测 target 中的 3 个、626 条中的 446 条。差集 = 18 个集成二进制 / 180 条测试**，最大一组 `gateway_contract` **51 条**（全 crate 最大的集成测试组）。
+  - **定性：继承缺口，不是本轨引入。** 基线 `7fa6630f0` 的 `run-platform-crate-tests.mjs:165` **只有一条 `['test','--lib',…]`，完全没有 `EXTRA_TARGETS`**；而基线 `ci.yml:299` 的注释原文就写着「计划 :269 的 **datazen-runtime CI 空缺**」—— **基线自己知道这个洞，然后用 `--lib` 绕过去了。**
+  - ★ **修法坑**：**不要用 `cargo test -p datazen-runtime --tests` 顶替** —— `--tests` 只选集成二进制、**不含 lib**，会把现有 **383 条单测挤出**门禁，用 180 条的洞换 383 条的洞。必须**并存**。
+  - ★ **N12**：argv 重排（`['--offline','test','--lib',…]`）会让 `cargoTestInvocations` 的 `startsWith('test ')` **看不见这条调用**，于是 abort 侧的 `toEqual([])`（`:308`/`:340`）**退化为「断言真」**，与第一轮同一失效模式换了个入口；整体没逃逸靠的是同一测试里的正向精确 `toEqual`。**离「完全静默」只差「有人把正向 `toEqual` 改成 `toContain`」一步 —— 而那正是第一轮崩掉的写法。**
+  - ★ **已裁定不是 BLOCKER**：`ci.yml:317-320` 是 `cargo run` 不是 `cargo test`，而 `--lib` 是 `cargo test` 的 target 选择器、对 `cargo run` 无效 ⇒ 不在口径内、不被遮蔽；纯 `run:` 步骤、无 `continue-on-error`、无 `if:` ⇒ 退出码被强制执行。
+- ★ **本阶段不下性能判定**（不关心性能、不纠结 p95、不管 CPU 数），但**规格符合性与 §11.3 语义全在范围内**。
+
+### 八、`p3-gateway-owner-binding`：代码合格、台账与接线不合格
+
+R1 判 FAIL，**但三个 BLOCKER 探针全过**：用的是 runtime 侧 `OwnerRef`（`owner_binding.rs:52-56` 从 `crate::connection` 导入，**不是** `platform_api::context`）；**共享 `types.rs` 一字未动**（不在 10 文件 diff 清单里）；已登记缺口活过了合并。★ **「拒绝扩宽共享类型、改为 fail-closed（`owner_binding.rs:113-114`）并把缺口登记进代码」是结构性缺口的合规答案** —— 该轨的登记落在 `owner_binding.rs:41-48` + `tests/owner_binding.rs:150-166`，合并后仍可读。
+
+- **FAIL-4（最重）**：`progress.md:195-197` 的「下游接线时必须显式传 `OwnerMatchAuthorizer::shared()`」**只活在被要求删除的台账里**。实测：`OwnerMatchAuthorizer` **只在本文件单测与 `tests/owner_binding/support.rs:318` 构造，`src-tauri` 0 处**；`ExecutionGateway::new` 仅 `facade_support.rs:337` + `facade_tests.rs:121` 构造，**两者都是 `#[cfg(test)]`** ⇒ **归属闸门在任何运行中的应用里都不生效**，而 `owner_binding.rs:15-48` 模块头没写这条。
+  - ★ **固化规则：一条接线要求若只存在于台账，等于闸门在所有运行中的应用里失效。** 缓解事实：`authorizer` 是必填参数、无危险默认值（`mod.rs:292-295`），所以是**静默通过**而非静默降级。**注册缺口不够，登记必须落在代码里。**
+- **FAIL-1**：`progress.md:69`「失败集合与变异2 不同 ⇒ 各自独立被覆盖」被证伪 —— 变异 2 / 2b / 3 三份失败名单 **md5 全为 `94d5dbf985dfc3ae0fbf25b2e285b1fe`**，两两 diff IDENTICAL。★ 但验收方补做**死代码反例**（删 `owner_binding.rs:106-107` 两处调用）⇒ `EXIT=101` / 7 failed，含 `cm06_a_peer_principal_in_the_same_organization_is_denied` ⇒ **两个检查都真承载**，故判台账断言失败而非覆盖缺失。根因：所有 Editor 负例都用 `ORG_O1` 打 `U2_EDITOR_SESSION`，主体错时组织也错，被完好的组织检查掩盖。
+  - ★ **固化规则：「失败集合不同 ⇒ 独立覆盖」必须由 md5 比对支撑，不能靠眼看。**
+- **FAIL-2**：变异 2b 声称 5/9，实测 7/7。**FAIL-3**：`progress.md:183` 引 `context.rs:180`，实测在 `:65`。★ 协调员给的三个门禁行号 `:411/:539/:645` **全部实测为 `:432/:559/:657`** —— **协调员派单里的行号同样是未核对输入。**
+- **FAIL-5**：**`identity_policy.rs:119 check_owner` 全仓无生产调用方**（只有定义、文档引用、自身单测；`src-tauri/src/platform/identity.rs:295` 不调它）。
+- ★ **CM-06 裁定为 PARTIAL，且不得声称「已由上层覆盖」**：判据 `connection-management.md:897-901` 明写「U1 请求 owner 指向 U2 **editor 或 job**」⇒ 要求**跨用户**而非仅跨组织；而 `OwnerRef::Job` 只有 org/job/stage、**无主体** ⇒ 同组织 U1/U2 同构 ⇒ **H 层不可闭合**。「不可闭合」的结论已落在 `owner_binding.rs:109-111` + `:41-48` + `:113-114` 与 `tests/owner_binding.rs:150-166`/`:167`/`:211` ⇒ **披露满足**。**但因 `check_owner` 无生产调用方，上层兜底不可采信，CM-06 维持 PARTIAL。**
+- ★ **验收方未点名/协调员未点名的两条，已登记**：
+  - **U1**：应用层 `check_owner` 与网关**用的是两个不同的 `OwnerRef` 类型**，且应用层在结构上**看不到 org/principal**（platform-api 的 `Editor`/`Job` 均无该字段）⇒ 两侧语义可无声漂移、无任何交叉校验；**U6**：两个 `OwnerRef` 的同名字段**类型都不同**（`String` vs `StageId`）。
+  - **U2**：**首个生产接线者传 `AlwaysAllow` 时没有任何门禁转红** —— 710 条测试全绿而归属闸门从未生效；`provenance.rs:272-275` 只有散文警告。**散文警告不算守卫。**
+- ★ **CM-05 六接口处置**（落进会存活的地方）：执行 **CLOSED** / 取消 **PARTIAL** / 读取·关闭 **N/A** / 订阅·下载 **归属 P7**（豁免已核实真实：`connection-management.md:1240` CM-61、`:1258` CM-64 存在）。拒绝路径确实没动手且有正向对照：`execute_calls()==0`（`:127/:147/:570`）、`cancel_calls()==0`（`:529`）、正向对照 `:534-545` ⇒ `cancel_calls()==1`，排除空绿。
+- ★ **取消路径存在性预言机不修**：验收方推翻了自己先前的判定（见第四条），确认 `mod.rs:641-644` 的存在性预言**是正确的**，且已有三处测试钉住；本轨不修是对的（修则撞三份别轨门禁），已登记在 `tests/owner_binding.rs:53-61`，合并后仍可读。
+
+### 九、★ 三条新的通用计数/断言纪律
+
+1. **★ 属性计数必须锚定行首**：`grep -c '#\[ignore'` 会把 `//!` 散文行算进去，读成 `6→7` 而凭空造出 `delta=+1` 的假开关（doc-drift R3 实测）。正确锚：`^[[:space:]]*#\[ignore`。「行为变化 0」这类结论应由**属性计数**支撑，不由 `+/-` 行数支撑。
+2. **★ 「untracked / ignored 皆无」不能用索引命令断言**：`git ls-files` **只读索引**，结构上就看不见 untracked 与 ignored；注入一个未 staged 的 `PRD-mutation-probe.md` 后 `git ls-files | grep -ic prd` 仍报 0。doc-drift R3 因此把「全仓无任何 PRD 文件」降级为「无任何 **tracked** PRD 文件」。
+3. **★ 负向断言必须先证明命令有能力发现 X；能力证明 = 注入同类看计数是否动。** doc-drift R3 对四个零逐个注入并复原（`FAIL-3 1→2`、`BUG 系列 14→15`、`test/ 树 0→1`、`PRD 0→1`）。
+   - ★ 该轨实现者**自查出第七个同根因的假零并主动撤回**：`516ead304` 里写了「8 → 0」，逐版复算得 `f1d843271 → 8 ; 1117fd868 → 7 ; 516ead304 → 1 ; HEAD → 1`，基线 8 处 = **7 处漂移 + 1 处合法溯源**，真实位移 **8 → 1**。★ **「我自查出的」是自证，不是证据 —— 仍需独立复算。**
+4. ★ **台账会改自己的数**：`PRD §` 计数 `195→193`、`126→125`，差额全部来自台账自身文本。⇒ **入库口径必须同时排除 `progress.md` 与 `hub.md`**，否则计数在自证时即失效。
+
+### 十、撤销与遗留
+
+- ★ **撤销 `transport.rs:86` 的指控**：其中的「台账」是领域术语（隧道账本），R1 的指控是假阳性。
+- ★ **`docs/` 分类纪律违反**：一级子目录实为 6 个（`blogs` 57 / `architecture` 34 / `development` 22 / `features` 11 / `todos` 1 / `bugs` 1），超 `AGENTS.md` 允许的三个。★ **裁定：编号登记，P3 内不删内容型文档** —— `docs/bugs/**`、`docs/todos/` 各 1 个真实子目录（其中 `SE-PROD-011-column-drag-drop-unreachable.md` 与「不新增 Bug List 类文档」相撞），删除不是 P3 的活。
+- ★ **`PRD §` 引用的处置**：全仓（排除两个台账）**193 处 / 125 文件**。★ **禁止新建 PRD 文件吸收它们**（`AGENTS.md` 明令不新增 PRD 类文档）—— 只能逐处改写或登记。
+- ★ **测试不得写真实仓树**（登记）：`.gitignore:199` 的 `__boundaryProbe__*` 使种进扫描目录的探针对 `git status` **完全不可见**；`check-platform-crate-boundaries.test.ts` 把**真实仓根**喂进 checker ⇒ 污染面是**全部边界守卫**（主仓 + 所有 worktree），且对 `git status` 和 `git add` 都不可见，可一路存活到合并；`scripts/platform-arch-selfcheck.mjs:397-410`（M7）覆写**受 git 跟踪**的 `packages/backend-client/src/index.ts`，仅靠回退兜底。★ **★「工作树干净」≠「扫描输入干净」。** 本轮实测主树探针残留 = 0、`backend-client/src/index.ts` 干净。
+- ★ **合并收口欠账**：`hub.md` 自身含 **38 处 `progress.md` 引用**与 **6 处自身死路径**，连同 `hub.md` 本身**均不得存活在 `main`**；每轨合并时删除该轨分支根的 `progress.md`。
+- ★ **`AGENTS.md` 门禁清单候补**（Testers 已两次建议，**不在本轮任何轨内**）：**`pnpm` 在任何 `node_modules` 为软链的 worktree 里是真空红** —— `pnpm vitest run` **退出码 1 且执行 0 个测试**，`pnpm typecheck` wrapper 恒退 1。规避法已验证可用：`pnpm --config.verify-deps-before-run=false typecheck`（并须确认 `tsc --noEmit` 真跑了）、或 `node <主仓>/node_modules/vitest/vitest.mjs run …`、`./node_modules/.bin/tsc --noEmit`。**那不是代码缺陷，但它是假红：判读时既不能当失败，也不能当通过。**
+- ★ **「已完成清单」必须能从工作树读出**：已死 Coder 的成果全押在会话末尾（gateway 第二次死亡留下 1 个提交 + **1 个未跟踪测试文件**，一个字节都没进版本库）；同批 2 轨返修全靠「边写边提交」存活（`eb607ad8`→`1289231a`、`21e1ae1`→`e4fd4d1`）。**死亡计数只记次数、不记产出；恢复时先落盘再说话。**
