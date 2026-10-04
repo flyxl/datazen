@@ -62,7 +62,13 @@ import { fileURLToPath } from 'url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { LAYERS, layerById } from '../lib/cargoWorkspace.mjs';
-import { TESTED_LAYERS, discoverCoreCrates, runCli } from '../run-platform-crate-tests.mjs';
+import {
+  EXTRA_TARGETS,
+  TESTED_LAYERS,
+  buildCargoArgv,
+  discoverCoreCrates,
+  runCli,
+} from '../run-platform-crate-tests.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -198,6 +204,30 @@ function cargoInvocations(ws: StubWorkspace): string[] {
   return readFileSync(ws.cargoLog, 'utf8').split('\n').filter(Boolean);
 }
 
+/**
+ * Only the `cargo test` invocations; the `metadata` call is discovery.
+ *
+ * Assertions on this rather than on `cargoInvocations` are what keep the
+ * abort-path tests meaningful: an exact-string `not.toContain` silently turns
+ * into "assert true" the day the argv grows a flag, and the abort it was
+ * guarding stops being tested at all.
+ */
+function cargoTestInvocations(ws: StubWorkspace): string[] {
+  return cargoInvocations(ws).filter((line) => line.startsWith('test '));
+}
+
+/**
+ * What a clean one-crate workspace must produce, verbatim and in order.
+ *
+ * Exact rather than `toContain`, on purpose: a third invocation or a reordered
+ * flag is a change to what CI compiles, and it should cost a deliberate edit
+ * here rather than pass unnoticed.
+ */
+const EXPECTED_CLEAN_INVOCATIONS = [
+  'test --lib -p datazen-runtime --test cm60_pressure_drain',
+  'test --release -p datazen-runtime --bin cm60-bench',
+];
+
 function envFor(ws: StubWorkspace, cargoTestExit = 0): NodeJS.ProcessEnv {
   return {
     ...process.env,
@@ -275,7 +305,7 @@ describe('run-platform-crate-tests exit codes', () => {
     expect(run.code).not.toBe(0);
     // A dry run must not print the pass line it is refusing to earn.
     expect(run.stdout).not.toContain('PASS');
-    expect(cargoInvocations(unclassified)).not.toContain('test --lib -p datazen-runtime');
+    expect(cargoTestInvocations(unclassified)).toEqual([]);
   });
 
   it('still exits 0 on a workspace every member classifies', () => {
@@ -284,7 +314,7 @@ describe('run-platform-crate-tests exit codes', () => {
     expect(run.code).toBe(0);
     // The same stub answers 0 for the same command here, which is what makes
     // the non-zero codes above attributable to classification and not to cargo.
-    expect(cargoInvocations(clean)).toContain('test --lib -p datazen-runtime');
+    expect(cargoTestInvocations(clean)).toEqual(EXPECTED_CLEAN_INVOCATIONS);
   });
 
   it('still exits 0 on --dry-run for a clean workspace', () => {
@@ -307,14 +337,14 @@ describe('run-platform-crate-tests exit codes', () => {
     const run = runIn(clean, ['--require-layers=server']);
 
     expect(run.code).not.toBe(0);
-    expect(cargoInvocations(clean)).not.toContain('test --lib -p datazen-runtime');
+    expect(cargoTestInvocations(clean)).toEqual([]);
   });
 
   it('accepts a required layer that does have a crate', () => {
     const run = runIn(clean, ['--require-layers=runtime']);
 
     expect(run.code).toBe(0);
-    expect(cargoInvocations(clean)).toContain('test --lib -p datazen-runtime');
+    expect(cargoTestInvocations(clean)).toEqual(EXPECTED_CLEAN_INVOCATIONS);
   });
 
   it('requires a layer from the tested set, not one that merely exists', () => {
@@ -382,5 +412,69 @@ describe('discoverCoreCrates stays pure about policy', () => {
     // workspace under the sandbox, but a bad REPO_ROOT would mean the module
     // under test was resolved from somewhere unexpected.
     expect(existsSync(join(REPO_ROOT, 'scripts/run-platform-crate-tests.mjs'))).toBe(true);
+  });
+});
+
+/**
+ * `EXTRA_TARGETS` decides what CI compiles besides `--lib`. Both CM-60 entry
+ * points are structurally invisible to `--lib` — one is an integration test
+ * target, the other a binary target — so an entry that goes missing from this
+ * table removes the gate without turning anything red. These assertions are on
+ * the argv itself, because that argv is the whole mechanism.
+ */
+describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
+  const crates = [{ name: RUNTIME.name }, { name: DRIVER.name }];
+  const [debugArgv, releaseArgv] = buildCargoArgv(crates);
+
+  it('keeps the whole-crate --lib run and adds the integration test to it', () => {
+    // `--lib` alone cannot reach packages/runtime/tests/cm60_pressure_drain.rs,
+    // so the §11.4 pressure half was never compiled in CI before this.
+    expect(debugArgv).toEqual(
+      expect.arrayContaining(['--lib', '--test', 'cm60_pressure_drain']),
+    );
+    for (const { name } of crates) expect(debugArgv).toContain(name);
+  });
+
+  it('builds the bin unit tests in their own --release invocation', () => {
+    // cm60-bench refuses to run under debug_assertions (exit 2), so its unit
+    // tests are only meaningful in release.
+    expect(releaseArgv).toEqual(expect.arrayContaining(['--release', '--bin', 'cm60-bench']));
+  });
+
+  it('never lets --release leak onto the whole-crate run', () => {
+    // `--release` is a profile flag for the entire invocation. If it reached the
+    // first argv, every core crate's test suite would silently rebuild in
+    // release — invisible in the diff, expensive in CI minutes.
+    expect(debugArgv).not.toContain('--release');
+    expect(releaseArgv).not.toContain('--lib');
+  });
+
+  it('leaves a crate with no entry untouched, and never invents a crate', () => {
+    // The table is keyed by crate name. A crate that was not discovered has no
+    // target to add, and a crate with no entry contributes nothing.
+    expect(buildCargoArgv([{ name: DRIVER.name }])).toEqual([
+      ['test', '--lib', '-p', DRIVER.name],
+    ]);
+    expect(buildCargoArgv([])).toEqual([]);
+  });
+
+  it('names targets that exist, so the table cannot rot into a no-op', () => {
+    // A renamed or deleted target makes cargo fail, but only *after* CI has
+    // spent its minutes; asserting on disk here turns the rot into a local red.
+    for (const [crate, entries] of Object.entries(EXTRA_TARGETS)) {
+      for (const { args } of entries) {
+        const flag = args[0];
+        const name = args[1];
+        const path =
+          flag === '--test'
+            ? join(REPO_ROOT, 'packages', 'runtime', 'tests', `${name}.rs`)
+            : join(REPO_ROOT, 'packages', 'runtime', 'src', 'bin', name, 'main.rs');
+        expect([flag, crate, existsSync(path)], `${crate} ${flag} ${name}`).toEqual([
+          flag,
+          crate,
+          true,
+        ]);
+      }
+    }
   });
 });

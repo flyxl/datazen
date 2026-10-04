@@ -74,6 +74,100 @@ export const PREFIX = '[platform-crate-tests]';
 export const TESTED_LAYERS = Object.freeze(['runtime', 'application', 'platform-api', 'server']);
 
 /**
+ * Cargo target selectors that must also be tested, per crate, **on top of `--lib`**.
+ *
+ * ## Why this table exists
+ *
+ * `cargo test --lib` cannot reach either CM-60 entry point, and that is a
+ * structural fact about cargo rather than an oversight anyone can spot by
+ * reading a CI log:
+ *
+ * - `packages/runtime/tests/cm60_pressure_drain.rs` is an **integration** test
+ *   target. `--lib` selects the library's unit-test binary and nothing else, so
+ *   the whole §11.4 pressure half — the resource-pressure and drain assertions
+ *   CM-60 is written as — was never compiled in CI at all.
+ * - `packages/runtime/src/bin/cm60-bench/` is a **binary** target. Its unit
+ *   tests live in the bin's own test binary, again outside `--lib`, and they
+ *   additionally **have to** be built `--release`: `cm60-bench/main.rs` refuses
+ *   to run under `debug_assertions` and exits 2, which is a deliberate guard
+ *   against a debug-profile benchmark quietly becoming the measurement.
+ *
+ * A test that CI never compiles is not a test, and the failure mode is silent
+ * in the worst way: the green `cargo test --lib` line is exactly the line a
+ * reader skims.
+ *
+ * ## Why `release` is per-entry instead of a global `--release`
+ *
+ * `--release` is a profile flag for the **whole invocation**, not for the target
+ * it happens to sit next to. Folding `['--bin','cm60-bench','--release']` into
+ * the shared argv would silently rebuild every core crate's test suite in
+ * release, roughly doubling the compile time of the gate this script exists to
+ * keep cheap — and the cost would be invisible in the diff, because the flag
+ * looks like it belongs to the bin target. Release extras therefore get their
+ * own invocation, built by {@link buildCargoArgv}.
+ *
+ * The actual benchmark **run** (as opposed to its unit tests) is not here:
+ * running it is a separate CI step in `.github/workflows/ci.yml`, because it
+ * needs `--out target/bench` and a `rustc --version` captured into
+ * `DZ_CM60_RUSTC_VERSION`, and because a benchmark that takes ~100 s should be
+ * visible in the CI UI as its own step rather than hidden inside a test script.
+ *
+ * ## Adding an entry
+ *
+ * A target named here but absent from the workspace makes cargo fail with a
+ * target-not-found error, which is the behaviour we want: the table cannot rot
+ * into a no-op without turning the gate red. Entries for a crate that was not
+ * discovered are skipped instead — no crate, no target.
+ */
+export const EXTRA_TARGETS = Object.freeze({
+  'datazen-runtime': Object.freeze([
+    // §11.4 pressure half: resource pressure + drain, deterministic, no timing.
+    Object.freeze({ release: false, args: Object.freeze(['--test', 'cm60_pressure_drain']) }),
+    // §11.3 latency half: the bench binary's own unit tests, release only.
+    Object.freeze({ release: true, args: Object.freeze(['--bin', 'cm60-bench']) }),
+  ]),
+});
+
+/**
+ * Build the full list of `cargo` invocations for a discovered crate set.
+ *
+ * Pure and exported so the argv can be asserted on directly. Two invocations
+ * at most: everything shareable goes into the debug one, and every `release`
+ * entry goes into a single `--release` one. Returns an empty list only when
+ * there is nothing at all to run, which `runCli` already guards against.
+ *
+ * @param {ReadonlyArray<{ name: string }>} crates
+ * @returns {string[][]}
+ */
+export function buildCargoArgv(crates) {
+  if (crates.length === 0) return [];
+  const names = crates.map((c) => c.name);
+  const shared = [];
+  const releaseEntries = [];
+  for (const name of names) {
+    for (const entry of EXTRA_TARGETS[name] ?? []) {
+      if (entry.release) releaseEntries.push([name, entry.args]);
+      else shared.push(...entry.args);
+    }
+  }
+  return [
+    // Unconditional: the whole-crate `--lib` run is this script's reason to
+    // exist. It must not become conditional on the extras table being non-empty
+    // — that coupling is what makes a table edit able to delete the gate.
+    ['test', '--lib', ...names.flatMap((n) => ['-p', n]), ...shared],
+    ...(releaseEntries.length > 0
+      ? [
+          [
+            'test',
+            '--release',
+            ...releaseEntries.flatMap(([name, args]) => ['-p', name, ...args]),
+          ],
+        ]
+      : []),
+  ];
+}
+
+/**
  * Pure with respect to policy: it reports what the shared classifier found and
  * makes no decision about it. `unclassified` is returned, not thrown and not
  * swallowed, because this function is exported — callers that read it must keep
@@ -162,21 +256,29 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
     return 1;
   }
 
-  const argvList = ['test', '--lib', ...crates.flatMap((c) => ['-p', c.name])];
-  out(`${PREFIX} cargo ${argvList.join(' ')}`);
+  const invocations = buildCargoArgv(crates);
+  for (const argvList of invocations) out(`${PREFIX} cargo ${argvList.join(' ')}`);
   if (args.dryRun) {
-    out(`${PREFIX} DRY RUN — ${crates.length} crate(s) selected`);
+    out(
+      `${PREFIX} DRY RUN — ${crates.length} crate(s) selected, ` +
+        `${invocations.length} cargo invocation(s)`,
+    );
     return 0;
   }
 
-  const result = spawnSync('cargo', argvList, { cwd: args.root, stdio: 'inherit', env });
-  if (result.error) {
-    err(`${PREFIX} could not run cargo: ${result.error.message}`);
-    return 2;
+  for (const argvList of invocations) {
+    const result = spawnSync('cargo', argvList, { cwd: args.root, stdio: 'inherit', env });
+    if (result.error) {
+      err(`${PREFIX} could not run cargo: ${result.error.message}`);
+      return 2;
+    }
+    const code = result.status ?? 1;
+    out(`${PREFIX} ${code === 0 ? 'PASS' : 'FAIL'} — cargo ${argvList.join(' ')}`);
+    // Fail fast: a later invocation passing says nothing about an earlier one.
+    if (code !== 0) return code;
   }
-  const code = result.status ?? 1;
-  out(`${PREFIX} ${code === 0 ? 'PASS' : 'FAIL'} — ${crates.length} core crate(s) tested`);
-  return code;
+  out(`${PREFIX} PASS — ${crates.length} core crate(s) tested`);
+  return 0;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
