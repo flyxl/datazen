@@ -1,14 +1,17 @@
 # p3-gateway 进度
 
 > 本文件由协调者要求落盘（会话重启导致上下文丢失 + `/tmp` brief 被清空）。
-> P3 验收通过后由协调者统一删除。
+> P3 验收通过后由协调者统一删除（main 上的 AGENTS.md 已改为「进度台账：开发期间允许，
+> 交付即销毁」；验收方曾把本文件列成缺陷 D-07，协调者判其误判并撤销 D-07）。
+> **本轮（第二轮，按 `TEST_FAILED` 整改）继续维护本文件，不删、不丢内容。**
 
 ## 状态
 
-**实现完成，门禁全绿，已提交（见文末提交记录）。**
-- in-lib 单元测试 **全绿**：323 passed（= 223 基线 + 100 新增），EXIT=0。
-- 集成测试二进制 `gateway_contract` **全绿**：44 passed，EXIT=0。
-- `cargo build` 0 warning；`cargo fmt --check` 退出 0 且输出为空；边界检查 0 violation / 0 error。
+**第二轮整改完成（验收结论 `TEST_FAILED` 的 4 条缺陷全部处置），门禁全绿，已提交。**
+- in-lib 单元测试 **全绿**：**328** passed（= 223 基线 + 105 新增），EXIT=0。
+- 集成测试二进制 `gateway_contract` **全绿**：**49** passed，EXIT=0。
+- `cargo build` 0 warning；`cargo fmt --check` 退出 0 且输出 0 字节；边界检查 0 violation / 0 error。
+- 第一轮门禁（323 / 44）记录在下文，本节已被本轮实测取代，历史数据仍逐字保留。
 
 ## 已完成
 
@@ -78,9 +81,37 @@
       `preserve_order`），比的是键集合；`Job + 非空 id` 的来源**是可落盘的**，
       真正不可落盘的是空 `source_id`（补一条正面用例锁住前者）。
 
+### 第二轮（D-01 / D-02 / D-04 + G1~G5 落位）
+
+- [x] **D-01 真缺陷修复**：`EventStore::recover_from_snapshot` 原先在有水位时**不作任何保留**，
+      改为「只更新绑定与 `context_revision`、保留既有 `last_sequence` / `observed_chunks` /
+      `row_count` / `state` / `declared_source_events_ignored`」；快照里没有行数，
+      清零等于把已经上报的结果从 CM-55 的账上抹掉，终态 `Succeeded` 被打回 `Queued`
+      也会让上游重连后重新看到一条还在排队的执行。修复方向取验收方裁定原文。
+- [x] 为此新增/改写 **6 个 in-lib 单测**（`event_store_tests.rs`）：
+      `a_snapshot_keeps_a_terminal_state`、`a_snapshot_keeps_the_observed_row_count`、
+      `a_snapshot_keeps_the_chunk_dedupe_set`、`a_stale_snapshot_never_lowers_the_observed_context_revision`、
+      `a_snapshot_never_rebinds_the_store`，以及**改写** `a_snapshot_clears_the_gap_and_realigns_the_context_revision`
+      （旧版断言 `execution_state() == Queued`，等于把缺陷写进了期望，必须改期望而不是改代码）。
+- [x] **800 行上限拆分**：`events.rs` 随修复长到 900 行，超限。把它内联的 `#[cfg(test)] mod tests`
+      整体搬成同目录单文件 `event_store_tests.rs`（540 行，`#[cfg(test)]`，`mod.rs` 里紧跟
+      `#[cfg(test)]` 声明），`events.rs` 回到 **370** 行。纯搬家：测试内容一字未改，
+      只做「去 4 空格缩进 + 删 `use super::*` + 写显式 import」。
+- [x] **D-02 补集成覆盖**：验收方变异 M6（从 `RequestFingerprint::of` 删掉 `source` 段）存活
+      （EXIT=0），说明「来源参与指纹」只有 in-lib 单测、没有门面级覆盖。
+      按裁定就地落位 G4 → `tests/gateway_contract/idempotency.rs`。
+- [x] **G1 / G2 / G3 / G5** → `tests/gateway_contract/events.rs`（均为门面级、只经公开 API）。
+- [x] **不变量断言同步更新而非删测试**：`invariants.rs` 的文件集枚举新增 `event_store_tests.rs`
+      （进 `expected` + 进 `test_only` + 进 `mod.rs` 声明白名单）。没有任何一条断言被删或放宽。
+- [x] **D-04**：`SourceKind::is_background()` 生产路径不可达，原注释却声称「网关对这两类来源
+      的处置只有两种：受理并登记，或明确拒绝」——网关并没有按来源分流的代码。
+      裁定给的两个方向里选「改注释」：现在写明它是**纯分类**，只描述来源本身，
+      来源只在 CM-61 的执行来源冻结与幂等指纹两处参与判定，不改变放行闸与回执形状。
+      没有为「看起来有用」而给它造一条调用点。
+
 ## 进行中
 
-无。实现、变异实验、门禁实测均已跑完。
+无。整改、门禁实测、提交均已完成。
 
 ## 未开始
 
@@ -127,22 +158,59 @@
 | `node scripts/check-platform-crate-boundaries.mjs` | 0 | `[check-platform-arch] PASS — 22 workspace member(s) classified, 6 rule(s) evaluated over 26 crate(s), 1 rule×subject combo(s) vacuous: 0 violation(s), 0 error(s), 3 advisory(ies)` |
 | `cargo test -p datazen-runtime --test gateway_contract` | 0 | `test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s` |
 
+### 第二轮门禁实测（整改后，提交前）
+
+裁定要求首尾各记一次 HEAD 与工作区指纹。运行前：`HEAD=19545268d25e47cd28e59cc8f8d86beb6f2a12a9`，
+`git status --porcelain -uall` = **7 行**（本轮 6 改 1 增），工作区指纹
+`c534d62507f0bfaa62be8a8a8cc066bc13a78dcd`（= 本轨 12 个源码/测试文件 + `src/lib.rs` 的 `shasum` 汇总）。
+
+| 命令 | EXIT | 结论行（逐字） |
+| --- | --- | --- |
+| `cargo fmt -p datazen-runtime` | 0 | 无输出 |
+| `cargo fmt -p datazen-runtime --check` | 0 | 输出 0 字节 |
+| `cargo build -p datazen-runtime` | 0 | 无输出（`warning` 行数 = 0） |
+| `cargo test -p datazen-runtime --lib` | 0 | `test result: ok. 328 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s` |
+| `cargo test -p datazen-runtime --test gateway_contract`（逐个二进制，未用 `--tests`） | 0 | `test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s` |
+| `node scripts/check-platform-crate-boundaries.mjs` | 0 | `[check-platform-arch] PASS — 22 workspace member(s) classified, 6 rule(s) evaluated over 26 crate(s), 1 rule×subject combo(s) vacuous: 0 violation(s), 0 error(s), 3 advisory(ies)` |
+| U+FFFD 全文件扫描（12 个网关文件） | 0 | `U+FFFD total = 0` |
+
+`328 = 223 + 105`（第一轮 100 + 本轮净增 5：6 条里 1 条是**改写**既有单测、5 条净增）。
+`49 = 44 + 5`（G1~G5）。两个数都等于裁定目标，不是「调到目标」调出来的。
+
+**必须披露的一次门禁外红**：整改过程中 `cargo test -p datazen-runtime --lib` 出现过一次
+`EXIT=101`，`327 passed; 1 failed`，失败用例是
+`connection::testing::barrier::tests::await_drain_wakes_when_the_clock_crosses_the_deadline`
+（`packages/runtime/src/connection/testing/barrier/tests.rs:246`、`:249`，
+`finished in 30.01s`）。该文件属于 `packages/runtime/src/connection/**`，在 §1 禁改清单内，
+本轨自始至终没碰过它；它是**真实线程 + 等待超时**的用例，与本轮改动无因果关系。
+判定为 flake，证据：同一条命令原地重跑 `EXIT=0`、`328 passed; 0 failed`、`finished in 0.20s`；
+`--lib barrier` 过滤单独跑 `21 passed; 0 failed`；它在第一轮的 `/tmp/dz-gw-baseline.log`
+（223 ok）与 `/tmp/dz-gw-gate-final.log`（323 ok）里都是绿的。
+**留一句自曝**：如果验收方在自己那棵树上复现到这条红，请先重跑一次再判它是回归。
+
 §4 不变量静态自查（脚本按 `#[cfg(test)] mod … {…}` 花括号配平剥掉测试块后统计，
 11 个文件逐个核对）：
 
 | 文件 | 行数 | `.unwrap(` | `.expect(` | `panic!(` | `unsafe ` | `#[allow` | `sleep(` | U+FFFD |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `cancel.rs` | 444 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `events.rs` | 737 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `events.rs` | 370（本轮由 737 拆出测试块后） | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `idempotency.rs` | 543 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `mod.rs` | 530 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `provenance.rs` | 350 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `mod.rs` | 533 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `provenance.rs` | 352 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `request.rs` | 489 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `timing.rs` | 305 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-`testing_support.rs`(91) / `facade_support.rs`(399) / `facade_tests.rs`(521) / `cancel_event_tests.rs`(528)
-整体就是 `#[cfg(test)]` 代码，其中的 `panic!` 属测试断言，不在「生产路径」口径内。
-集成测试分节最大 276 行，夹具 541 行，全部 ≤800。
+`testing_support.rs`(91) / `facade_support.rs`(399) / `facade_tests.rs`(521) /
+`cancel_event_tests.rs`(528) / `event_store_tests.rs`(540，本轮新增) 整体就是 `#[cfg(test)]` 代码，
+其中的 `panic!` 属测试断言，不在「生产路径」口径内。
+集成测试分节最大 `events.rs` 382 行，夹具 541 行，全部 ≤800。
+
+**扫描器的已知边界（如实自报）**：`production_lines()` 只剥离**行内** `#[cfg(test)] mod … {…}`
+块，对「整文件都是 `#[cfg(test)]`」的模块不生效——所以这 5 个测试专用文件靠的是
+`invariants.rs` 里显式的 `test_only` 白名单跳过，而不是扫描器自动识别。
+新增测试专用文件时**必须**同时改那三处枚举（`expected` / `test_only` / `mod.rs` 声明白名单），
+否则门禁会以「文件集变了」而不是「违规」的形式报错。
 
 过程中 4 条**我自己写错**的断言已改正（改的是测试，不是生产代码）：
 缺口补订阅起点契约是「缺口前最后一个已应用序号」；
@@ -157,6 +225,12 @@
 `EventDisposition::mutated_state` 是 `self`（消耗值），不能在 `if` 里判断后再返回。
 
 ## 变异证据
+
+**本轮（第二轮）不做变异实验**：协调者裁定「NO mutation experiments，只跑门禁」，
+且「不得在同一棵工作树上又变异又提交」。因此下表 9 条有效变异全部来自**第一轮**，
+本轮新增的 6 条 in-lib 单测 + 5 条 G 集成用例**没有**本轨自测的变异证据——
+它们的非空洞性依据是验收方在 `19545268d` 上跑出的红（见下方「验收方复现」一段）。
+如需本轨自测的变异证据，请在本轮提交之后再指派一轮。
 
 同一棵工作树里既做变异又做提交（AGENTS.md 要求变异与提交分树）。这是我做不到的
 前提限制下的折中，**逐条披露如下**：每次变异都先备份目标文件到系统 temp、跑完立刻还原，
@@ -180,7 +254,15 @@
 结果 EXIT=0、0 例变红 —— 这次变异根本没碰到语义，不算证据。换锚点（函数开头直接
 `return Ok(())`）后才有上表第 9 行那条结果。
 
-**一次假红（如实自报，且比假绿更危险）**：补跑 CM-54/CM-56 两条变异时，我的还原脚本
+### 验收方在本轨提交上的复现（第二轮输入）
+
+验收方独立复核了第一轮 9 条变异 + 4 条自选（N1~N4）：14 例变红、**1 例存活**。
+存活的那条即 **D-02**：变异 M6 从 `RequestFingerprint::of` 删掉 `source` 段后 EXIT=0，
+说明「来源参与指纹」只有 in-lib 单测、没有门面级集成覆盖。
+同轮报出的 **D-01**（快照恢复把终态打回 `Queued`、行数清零、已 Applied 序号被重复 Apply）
+是真缺陷，已按上文修掉；**D-04**（`is_background()` 注释与实现不符）已改注释处置。
+
+**一条假红（如实自报，且比假绿更危险）**：补跑 CM-54/CM-56 两条变异时，我的还原脚本
 用 `shutil.copy2`，它**连 mtime 一起还原**到变异前的时间戳；cargo 按 mtime 判新鲜度，
 于是源码看起来比变异时编出来的产物还旧，**不重编、直接复用了带变异的测试二进制**。
 表现是门禁复跑时 `gateway_contract` 43 passed / 1 failed，失败行与 CM-56 变异逐字相同 ——
@@ -194,6 +276,8 @@ CM-54/CM-56 两行的行号是在 `cargo fmt` 重排 `tests/` 之后**重跑变�
 与交付树当前行号一致（CM-54 仍为 `idempotency.rs:26:5`，CM-56 因格式化后移为 `:105:18`）。
 
 ## 遗留 / 待裁定
+
+> 本轮新增的遗留都在下面第 4~6 条；第 1~3 条是第一轮的原文，逐字保留。
 
 1. **D-01 我需要 registry 的 `CancelReceipt`，协调者需裁定。**
    `registry/port.rs` 的 `cancel_execution` 目前返回 `ExecutionState`，不是架构文档 §7.6 规定的
@@ -212,3 +296,12 @@ CM-54/CM-56 两行的行号是在 `cargo fmt` 重排 `tests/` 之后**重跑变�
    当前处理方式：不 import 任何他轨内部类型，也**不私造同名类型**，统一从冻结 DTO 的
    **定义处** `datazen_runtime::connection::…` 取用。registry 补上再导出后，
    测试里的 import 需要改路径（纯机械替换，语义不变）——请协调者知悉这条改名成本。
+4. **本轮新增的 6 条 in-lib 单测 + 5 条 G 集成用例没有本轨自测的变异证据。**
+   本轮裁定禁止变异实验，所以它们的非空洞性只能靠「验收方在旧提交上跑出红」加断言本身可读。
+   若要补齐，请在**本轮提交之后**另开一轮变异复核（必须另开工作树）。
+5. **`connection` 侧那条 barrier 用例曾出现一次真实线程下的红**（详见「门禁实测」一节）。
+   文件在 §1 禁改清单内，本轨无权修；现象判定为 flake 并留了重跑证据。
+   若验收方能稳定复现，请把它派回 connection 轨，本轨不接手。
+6. **`SourceKind::is_background()` 至今没有生产调用点**（D-04 只改了注释，没造调用）。
+   它是 `pub` API，属于来源分类的一部分，保留合理；但**不要**把它当成「网关已经按来源分流」的证据——
+   网关没有分流。真要分流，是另一个需求，得先有裁定。

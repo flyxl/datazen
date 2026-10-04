@@ -62,8 +62,11 @@ pub mod timing;
 pub(crate) mod testing_support;
 
 // 门面测试按 800 行上限拆成三块：共用替身 + 受理下发 + 取消事件。
+// 事件水位的单元测试同样单列一块，否则 `events.rs` 会顶破上限。
 #[cfg(test)]
 mod cancel_event_tests;
+#[cfg(test)]
+mod event_store_tests;
 #[cfg(test)]
 pub(crate) mod facade_support;
 #[cfg(test)]

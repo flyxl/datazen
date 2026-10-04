@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use super::err;
+use super::{err, record};
 use crate::gateway_fixtures as fx;
 use datazen_runtime::connection::SessionState;
 use datazen_runtime::gateway::{AcceptanceDisposition, AlwaysAllow, GatewayError};
@@ -128,4 +128,25 @@ async fn a_failed_persistence_leaves_no_execution_record() {
     }
     assert_eq!(store.write_calls(), 1);
     assert_eq!(h.gateway.execution_count().await, 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn g4_the_same_key_with_a_different_source_is_a_conflict_not_a_replay() {
+    let h = fx::ready_harness();
+    let id = fx::accept(&h, fx::request(fx::REVISION)).await;
+
+    // CM-61：来源参与指纹。同一幂等键、同一命令，只换来源 ⇒ 冲突而不是重发，
+    // 否则后台任务的来源会被静默记成首次那条（编辑器）的来源。
+    let mut second = fx::request(fx::REVISION);
+    second.source = fx::background_source();
+    let error = err(h.gateway.accept(&fx::principal(), second).await);
+    match error {
+        GatewayError::IdempotencyConflict { key, .. } => assert_eq!(key, fx::IDEMPOTENCY_KEY),
+        other => panic!("期望幂等冲突，实际 {other:?}"),
+    }
+
+    // 冲突不新建执行、不下发驱动，也不得改写首条记录里已冻结的来源。
+    assert_eq!(h.gateway.execution_count().await, 1);
+    assert_eq!(h.port.execute_calls(), 0);
+    assert_eq!(record(&h, &id).await.source(), &fx::source());
 }
