@@ -1133,3 +1133,60 @@ Coder 自报 `--lib` 405 / 全量 592 / 21 个二进制 —— **系对过期基
 ⇒ 「结构保证（改不动）」必须降级为「**经字段审计，当前不存在**（改得动，只是现在没人这么写）」。这两句在验收结论里含义完全不同。**待 Tester 裁决的关键问题：把两个 fake 各藏一个 `Mutex<u32>` 独立计数，现有测试会不会红？** 会红 ⇒ 铁律可证伪但只能靠测试钉；不会红 ⇒ 铁律根本没被钉住，是真缺口。
 
 **这条与 CM-74 轨 Coder 对 `registered_handles` 的自述是同一类夸大**（那次复核结论同为「实测必然为 0」被写成「填真实数字」）。**同一 Coder 连续两轨在同一处放宽论证强度** —— 说明是表达习惯而非本轨偶发，后续各轨 Tester 一律不得采信「结构上/类型上保证 X」这类断言，必须要求可对质的代码依据。
+
+---
+
+## CM-32 Tester 判决：ACCEPT 可合并，但点名两处合并前必修
+
+验收点 `2836d346d` 未动，首尾 `git status --porcelain` 的 sha 同为 `e3b0c442…`（空树），四门禁全绿，diff 纯增量 **11 文件 / +2301 / −0**。⇒ **不是干净 PASS**，已打回原 Coder `bffa94ba` 走 repair round 1，修完派**全新** Tester。
+
+### 我提的三处裁决，Tester 全部独立复核
+
+**① `close_calls` 穷尽性成立**：它自己 grep 得 L143/L151/L316/L372/L373，无一是任何条件式操作数；释放决策从不读该计数。
+
+**② 唯一计数铁律的答案比「类型挡不住」更糟 —— 根本没被钉住**：
+
+- 字段审计：全 `src/tunnel/**` + 契约测试中 `u32|u64|usize|i32|i64|AtomicUsize|Cell<|Arc<AtomicUsize>` 命中**恰好 2 处**，都在 `ledger.rs`（`refs: u32` `:100` / `close_calls: u64` `:143`）。
+- **M1a**：给 `RecordingTunnelTransport` 加 `close_tally: Mutex<usize>` 并让 `close_calls()` 改读它 ⇒ **编译通过，全绿 405 + 7**。
+- **M2（决定性）**：给 `TunnelEntry` 加一个**始终同步**的 `shadow: u32`，并让 **`drain()`（唯一释放决策点）改为按它决策** ⇒ **编译通过，全绿 405 + 7**。
+- **M3**：同一个 shadow 不同步 ⇒ 红 `395 passed; 10 failed`。
+
+⇒ **两个 fake 各藏一个独立计数器，现有测试不会红。测试钉的是「发散」，从不钉「唯一」。** 真正的约束是「决策从哪里读」（唯一输入 = `TunnelEntry.refs`；`TunnelTransport` 返回类型不携带计数），仍属**审计结论**而非结构保证。**登记为 CM-32 已知名洞**，另开跟进轨（可选修法：断言释放路径只读一个计数 / 让 `drain` 按值从单个私有方法取计数而非直接读结构体字段）。
+
+**③ 论证强度分级**：Tester 进一步在 `transport.rs` 模块头找到**同一类夸大的第二处** —— 「`&self` ⇒ 结构上就无法维护任何内部引用计数」为假（`&self` 只拿不到 `&mut self`，而 `Mutex`/`Cell` 从不需要 `&mut self`；`TunnelTransport: Send + Sync`）。**同一 commit 内两处**，坐实是表达习惯。但 Tester 同时确认 **`progress.md` 本身诚实**：CM-27/CM-28 标注「已覆盖」逐条为真，标注「剩余」的确实未闭合（`TunnelFault` 只有 `{Open, Close}` ⇒ 握手中途失败**根本无法表达**；`CleanupDisposition::Closed` 在 `src/tunnel/*.rs` 中 `grep -c` 为 **0**；`Quarantined` 归属缺失；CM-28 ④ 20 并发归还、⑤ 并发预算）。**无夸大。**
+
+### 我预警的第 1 处疑点：确认成立（协调者错，对）
+
+`the_binding_snapshot_never_decides_whether_to_release` 末句 `assert_eq!(ledger.ref_count(&spec), Some(1))` —— **M4 把权威读换成冻结快照后仍然通过**（已单独确认确实执行，`1 passed; 0 failed; 404 filtered out`）。**两个来源在断言点恰好都等于 `1`，无法判别。** Tester 找遍全轨**没有它的独占杀手**。修法：第三次 acquire 让台账读到 `2`、首份快照仍为 `1`，`!=` 才可断言。
+
+### Tester 撤回了自己第一轮的一个结论（更正要传下去）
+
+它曾称两个 close 计数器语义不一致、关闭失败路径上 `close_calls == N−M` 会失配 —— **错**。假件 `close()` 在 journal **之前**就返回 `Err`，两者按构造只计成功；且 **M11 证明这份一致性被断言了**。**这是优点**，撤回而非发布。
+
+### 协调者两处前提被 Tester 纠正
+
+1. **「不带 `test-harness` 的构建不覆盖被改文件」对 CM-32 是反的**：`test-harness = []` 只闸 `connection::testing`；`pub mod tunnel;` 在 `lib.rs:31` **无条件**，`tunnel/mod.rs:51-53` 的 `error`/`ledger`/`transport` 未加 gate。裸 `cargo build -p datazen-runtime` **确实覆盖全部被改生产文件**。（该规则对 CM-74 的 `connection/testing/**` 仍成立，**不得推广**。）
+2. Tester 自陈首轮 `--test-harness` 跑出 `Finished in 0.11s` **是缓存、什么都没证明**，是 `touch` 后强制重建才发现的。⇒ **「门禁输出秒完」本身就该怀疑是缓存。**
+
+### 变异台账（每条前负控 `405 passed`；每次还原后 `touch`）
+
+| ID | 变异 | 结果 | 真杀？ |
+|---|---|---|---|
+| M1a | fake 内藏 `Mutex<usize>` 计数 | 绿 405/7 | ❌ |
+| M2 | `shadow: u32` 始终同步，`drain()` 据此决策 | 绿 405/7 | ❌ **决定性** |
+| M3 | shadow 发散 | 红 395/10 + 契约 5 | ✅ |
+| M4 | 权威读 → 冻结快照 | 单独跑 `1 passed` | 空转探针 |
+| M6 | 二次 `transport.close()` | 红 395/10 + 契约 6 | ✅ |
+| M7 | `saturating_sub`→`wrapping_sub` | 绿 405 | ❌ 下溢路径不可达 |
+| M8 | 去掉 `AlreadyHeld` 守卫 | 红 **404/1** | ✅ **独占** |
+| M9 | `return_resource` 只摘不解绑 | 红 400/5 | ✅ |
+| M10 | 快照 `ref_count` 恒为 1 | 红 403/2 | ✅ |
+| M11 | 台账计调用数而非成功数 | 红 **404/1** | ✅ **独占** |
+
+我的疑点 ③ 已被 `single_counter_algebra_holds`（`acquires ∈ 1..=6`, `releases ∈ 1..=6`）**证伪**：`N < M` 已被覆盖。契约 ②「`ref_count` 恒不负」为**结构性成立但无断言支撑**（`u32` 无符号 ⇒ 负值不可表示，M7 证实下溢路径在全部测试中不可达）。
+
+`--lib` 本轮实跑 **21 次**（累计 22 次）：13 绿（负控/还原/最终）、6 为故意变异、4 设计上就该绿（M1a/M2/M4/M7）。**未重跑刷绿**，12.5% barrier 竞态本轮未现。
+
+### 留给 seam 轨的裁定项
+
+`TunnelError::rejected()` 与 `as_runtime_error()` 在 `error.rs` 外**零调用方**（实测 `count_outside_error_rs=0`）⇒ 整个 error→`RuntimeError` 面未被行使。且 **`AlreadyHeld`（调用方 bug）当前映射到 `SessionQuarantined`** —— 一旦 `rejected()` 拿到第一个调用方，**双重 acquire 就会把健康会话隔离掉**。必须在 seam 阶段裁定。
