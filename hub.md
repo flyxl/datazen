@@ -121,6 +121,44 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 | 候选门禁 `cargo clippy -p datazen-platform-api -p datazen-driver-api -p datazen-application -p datazen-ai-api --lib -- -D warnings`（已验证安全）可关闭一度藏过真实 lint 的范围缺口 | 未执行 |
 | CM-72 是唯一零引用条目 | Wave 2 registry 轨负责 |
 | 每驱动 `case_rules` 对 `Unknown` 的真值研究（sqlite 大小写不敏感导致 `Users`/`users` 两种缓存身份） | 用户裁定记为 P2 遗留 |
+| `connection::testing::barrier` 夹具竞态（见下「夹具竞态裁定」） | 已定性为 Wave 1 既有缺陷；**不阻塞** Wave 2 合并，待独立小修 |
+
+## 夹具竞态裁定（2026-10-05，协调者）
+
+gateway 第 2 轮整改中，coder 主动披露 lib 门禁两次红在**同一处既有用例**：
+`connection::testing::barrier::tests::await_drain_wakes_when_the_clock_crosses_the_deadline`
+（`tests.rs:246` / `:249`），两次结论行均为 `327 passed; 1 failed; finished in 30.02s`。
+该文件属 gateway 轨禁改区，coder 拒绝越界修，交回协调者。协调者独立复核如下。
+
+**定性：Wave 1 既有缺陷，非 gateway 引入，不构成 gateway 合并阻塞项。**
+
+| 证据 | 命令 | 逐字结果 |
+| --- | --- | --- |
+| 用例在 Wave 1 基线上已存在且**逐字相同** | `git show 060053afb:packages/runtime/src/connection/testing/barrier/tests.rs` | 与当前工作树同一段文本 |
+| gateway 轨从未碰过该目录 | `git log 060053afb..feature/p3-gateway -- packages/runtime/src/connection/testing/` | **0 行** |
+| gateway 侧零引用 | `grep -rn "DrainBarrier\|FakeClock\|testing::barrier\|testing::clock" src/gateway tests/gateway_contract tests/gateway_fixtures` | **0** |
+| 引入者 | `git log --diff-filter=A -- …/barrier/tests.rs` | `2334b7d3a fix(fake-runtime): F 编号对齐文档、barrier 拆分、真实竞态与 CM-74 顺序钉住` |
+
+**根因（可从代码直接读出，coder 的分析与此一致）：**
+
+1. `FakeClock::arm`（`clock.rs:169-182`）以 `armed_at_nanos = state.nanos`（**当前假时间**）记起点。
+2. `arm_drain_and_check` 在 `drain.rs:312` 被调用，位于 `await_drain` 内部，而 `await_drain`
+   由 `tests.rs:246` 的 `std::thread::spawn` 在**另一个线程**执行。
+3. `tests.rs:246` spawn 之后，`tests.rs:248` **不等等待线程装填 timer** 就 `clock.advance(10s)`。
+4. 线程若未跑到 `drain.rs:312`，`armed_at` 被记成已被推进后的 10s，期限在本次 `advance` 中被跳过，
+   此后不再有推进 ⇒ 等待线程永久阻塞。
+5. 兜底是 `barrier/mod.rs:41` 的 `BLOCK_REAL_TIME_BUDGET = Duration::from_secs(30)`（真实单调时刻，
+   与 `FakeClock` 无关）。耗尽后 `wait_until` 交还 `Err(guard)`，调用点带 `file:line` panic
+   ⇒ 失败耗时 **30.02s**，与实测精确吻合。
+
+**修法方向（留档，待独立小修时执行；两处择一或并用）：**
+
+- 让等待线程先装填再推进时钟（在 spawn 后加装填握手，而不是靠线程调度碰运气）；
+- 或让 `arm` 按**已流逝假时间**结算起点，而不是拿当前假时间当起点。
+
+**纪律：** 不得用「多跑几次」或调大 30 秒预算掩盖。`30s` 预算的价值正在于此条文档
+（`barrier/mod.rs:34-46`）明写的「把挂死变成指名道姓的失败」；调大它等于把这条兜底拆掉。
+
 
 ## Wave 1 遗留建议（不阻塞，记录备查）
 
