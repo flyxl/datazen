@@ -696,3 +696,61 @@ M-C 只改 `connection/port.rs:257` 规范侧的字面量 `"requested"` → `"re
 **决定性一点**：这不只是「P3 还没做」。该端口在 `:76`（P1）就已定义，而**服务端实现 + schema 迁移被排期在 P7（`:204`）**。
 
 ⇒ **审计员留下的开放问题（「这些 H 断言该归 P4 还是更晚」）已有答案：`ArtifactStore` 本身属于 P7**，因此 CM-61（落盘白名单含 artifact / 临时结果恢复）与 CM-64（配额与 256 MiB）中依赖 ArtifactStore 的 H 断言**在 P3 结构上不可能具备**，应记为**显式 P3 退出门禁豁免**，而不是记作「覆盖不足」。
+
+---
+
+## 轨 p3-cancel-cleanup 合并记录（Tester 第 2 轮 **PASS**）
+
+合并提交 `32c17bf5a`，收尾提交 `9a356cec8`（删除 `progress.md`）。
+
+### 第 1 轮 FAIL 的根因与第 2 轮的闭合
+
+| ID | 缺陷 | 第 2 轮闭合情况 |
+|---|---|---|
+| D1 | D-R2-2 零回归保护：M-D/M-E/M-F 全存活，M-F 是把该段整块回退到 `25771de51:461-473`，20 个二进制一个都不红 | **已闭合**，三个变异全死 |
+| D2 | 用例 `否定答复仍算送达_不归该worker管的会话照常摘行` 名实相反，且用直接调 `actor.control(..)` 造 `Ok(false)`，绕过被测函数 | **已改正**，旧名全仓命中 0 |
+| D3 | `row_owns_the_sender` 注释声称能钉住「`SessionActor` 按值持发送端」，但那些字段私有于 `registry::actor`，测试住在 `registry::registry::tests`，**Rust 可见性上够不着** | **已改正**，注释如实降级为「只能靠行为断言钉」 |
+
+**D1 之前打不死的结构原因**：回滚后的实现与修好后实现在 `Ok(true)`/`Ok(false)` 上**逐字不可区分**，只有走 `Err` 分支的用例能杀 M-F。因此钉 `Ok(false)` 再硬也**关不掉** D1——必须补 `Err` 格。
+
+### 三态表三格的造法（均不改生产代码）
+
+| `control()` | 造法 | 杀掉 |
+|---|---|---|
+| `Ok(true)` | 假后端 `close ⇒ Closed`，登记后直接 `invalidate_worker` | — |
+| `Ok(false)` | 假后端 `close ⇒ Undecidable`：`actor/release.rs:113` **先**把 `physical` 清空再于 `:141` 返回 `SessionLost`；`actor.rs:668-679` 的 `evict_idle` 用 `?` 抛掉、拿不到成功视图，于是 `registry.rs:423` 的 `evict_idle_at` **跳过摘行**，留下「资源已清空、行还在表里」；下次租约失效命中 `actor.rs:610` 的 `physical.is_none()` 早返回 | **M-E** |
+| `Err(_)` | 假后端 `close ⇒ panic!`：§9.4 在 actor 任务内部 `await backend.close(..)`，`actor.rs:600` 是 `let _ = reply.send(invalidate_worker(state,&id).await);`——`.await` 在 `send` **之前**，展开必然把回执一起丢掉，`control()` 拿到 `Err` | **M-F**、**M-D** |
+
+⇒ **Coder 第一轮「`Ok(false)` 近乎不可达」的断言是错的**，已连同 `registry.rs` 注释就地更正。这条路径是真实生产路径，不是夹具假象。
+
+### 变异实测（Tester 独立 detached 树，负控先行）
+
+负控：`cargo test -p datazen-runtime` **20 个二进制全 ok、0 failed、EXIT=0**（`--lib` 382）。
+
+| 变异 | BUILD | 结论行 | TEST | 死于 |
+|---|---|---|---|---|
+| M-D | EXIT=0 | `FAILED. 381 passed; 1 failed` | **101** | Err 格 `tests.rs:321` |
+| M-E | EXIT=0 | `FAILED. 381 passed; 1 failed` | **101** | **`Ok(false)` 格 `tests.rs:293`** |
+| M-F | EXIT=0 | `FAILED. 381 passed; 1 failed` | **101** | Err 格 `tests.rs:321` |
+
+M-F 插入片段经脚本核对与 `git show 25771de51:` **byte-identical（len=1008）**。M-E 死在 `Ok(false)` 格这一条最有价值：它排除了「该格其实走的是 `Ok(true)`、与 `Ok(true)` 格不可区分」这个疑虑。
+
+### 合并安全性
+
+`main` 自分支点 `25771de51` 只动过 `hub.md`，`.rs` 改动数 **0**；分支动 7 个 `.rs` + `progress.md`。**交集 0**，`MERGE_EXIT=0`，`unmerged=0`。合并树 `packages/runtime/src` 与被验收分支差异 **0 行**——即 Tester 的 20 个二进制全绿**恒等覆盖**合并树，无需重跑。冻结面 `git diff 25771de51..HEAD -- packages/runtime/src/connection packages/runtime/tests | wc -c` = **0**。
+
+前端门禁（合并树实跑，首尾 HEAD/`diff HEAD` 逐字相同、DIRTY 首尾皆 0）：
+```
+TYPECHECK_EXIT=0
+VITEST_EXIT=0   Test Files 565 passed (565)   Tests 5920 passed (5920)   Duration 96.18s
+```
+
+### Tester 自列的未验证项（不按「通过」记）
+
+`--lib` 只跑 3 次全绿（12.5%/次 ⇒ ≈98% 置信，非确定，无重跑到绿）；变异树用独立 `CARGO_TARGET_DIR` 冷编译，未验证交付树自带 `target/` 产物；未复核 D-03/D-R2-1 语义；未审计 `audit.rs` 本身；未跑 clippy / host crate / e2e；`.env`/`.env.test` 本树内不存在，只查存在性与忽略状态，**从未打开内容**。
+
+### 本轨遗留（未随合并消失）
+
+- **CM-74 顺序语义未裁定**（见上文 Q1）。
+- `Err` 格用例会在 stderr 留一行 `panicked at … driverCloseCallbackCrashedTheActorTask`，**是被测事件本身**；不得用 `std::panic::set_hook` 消音。
+- `connection::port::CancelReceipt`（2 字段）vs `registry::CancelReceipt`（3 字段）同名异构，待 Wave 2 裁定。
