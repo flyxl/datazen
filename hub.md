@@ -50,6 +50,35 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 2. `GatewayError` 归属：确认为 gateway 轨自有错误枚举（`RuntimeError` 是冻结 DTO，§4 禁止加变体，且缺 `PermissionDenied` / 幂等核验变体）。`GatewayError::Runtime` 为透明变体，**绝不降级**。
 3. `registry::SessionView` / `SessionHandle` 缺失：确认 registry 轨只做**再导出**（§3.2 #5）。gateway 现从定义处 `datazen_runtime::connection::…` 取用，registry 补上再导出后 import 机械换路径，语义不变。**这不是缺陷**，但若合并时需要大改则是阻塞项。
 
+### gateway 轨第 1 轮验收 → `TEST_FAILED`（2026-10-04，已派第 1 轮修复）
+
+**门禁自报全部被独立复现、逐字一致**：lib `323 passed`、build 0 warning、fmt 0 字节、边界 PASS、`gateway_contract` 44 passed。静态审查同样成立：7 个生产文件禁用构造 0 违规、最大 737 行、`invariants.rs` 是真结构闸门（`read_dir` 断言文件集恰为 11 个名字）、`lib.rs` diff 恰一行、`GatewayError::Runtime` 真透明透传、`ContextRevisionMismatch` 确带服务端 actual、`source` 无 setter、23 路径零越界。
+
+**变异：15 个，14 红 1 存活。** coder 自报 9 条全部独立复现，Tester 另设计 N1–N4 四条新变异也全部被杀。
+
+阻断缺陷：
+
+| ID | 严重度 | 摘要 |
+| --- | --- | --- |
+| D-01 | 高 | `recover_from_snapshot` 用 `SessionWatermark::new` **重建**水位线 → 终态倒回 `Queued`、已观测行数清零、已应用序号重投会重复累加（CM-55 被恢复路径重新打开）。现有用例只断言 `needs_recovery`/`resubscribe_from`/`context_revision`，无一条断言 `last_state`/`observed_row_count` 被保留 |
+| D-02 | 中高 | CM-61「来源计入指纹」**零测试覆盖**：`source` 整段删掉后 367 条全绿（M6 EXIT=0）。两条冲突用例都只改 `call.input`。而 `accept` 的 Hit 分支把**重发方** `request.source` 写进受理回执，规则一旦被重构掉，同 key 换来源重发会静默变 Replay：回执是新来源、执行是旧那条 |
+| D-03 | 低 | 同一 crate 两个同名 `CancelDisposition`，变体与 `as_str()` 完全重复 |
+| D-04 | 低 | `SourceKind::is_background()` 生产不可达，文档却声称描述网关处置规则 |
+| D-05 | 低 | `EventStore::apply` 全程不读 `event.execution_id`，归属全靠门面路由（已由 G5 钉住当前契约） |
+| D-07 | 低 | 根 `progress.md` 进入 23 路径 diff，与 AGENTS.md「不写进度台账」冲突 |
+
+**D-01 的落地代价已被核实为小**：`ExecutionState → CancelDisposition` 映射全仓只有 `gateway::cancel::disposition_from_port_state` 一处，`CancelOutcome` 只有 2 个构造点且都走它 ⇒ 换成 registry 的 `CancelReceipt` 只改一个函数 + 6 处调用点用例，**不构成大返工**。且 `connection::port::CancelDisposition` 不跨 `SessionPort` 边界，生产路径无真实 transport 产出它。
+
+修复轮裁决：本轮 gateway **不做变异**（验证归 Tester）、**不碰 `CancelReceipt`**（等两轨都过验收后在合并时统一切换）、G1–G5 五条用例**按语义就地落位**而非新开 `gap_probe` 文件，若 `invariants.rs` 枚举了测试文件集则同步更新该断言。目标门禁 lib **328**、`gateway_contract` **49**。
+
+### registry 轨待裁定 5 条 → 协调者已答（2026-10-04）
+
+1. `connection::port::CancelReceipt`（2 字段，缺 `state`）与 registry 的 `CancelReceipt`（3 字段，§7.6）同名不同形 → **两处都保留，不解冻 `connection/**`，registry 也不转出前者**。registry 现有做法（不转出，避免同名物同时进 prelude）正确。记入文档批次遗留。
+2. `ExecutionState::as_str()` 不存在、registry 私有映射并用 `state_literals_match_the_serde_wire_casing` 钉住 → **接受现状**，解冻后再上提。
+3. `hostRejected` 不在 `ApiErrorCode` 里，`fold_exit` 返回 `ExitProjection::NotOnTheWire` → **接受**。不许给 `ApiErrorCode` 加取值（`platform-api` 冻结面）；不许把宿主缺陷伪装成调用方可修正的派发前拒绝。
+4. `HostRejected -> InvalidArgument` 与 `RuntimeEpochMismatch -> SessionNotFound` 的刻意分歧 → 已标注有用例，无动作。
+5. `RegistryAuditEntry` 只能序列化不能反序列化（存 `&'static str`） → **本轮不动**，gateway 今天无消费者。将来若需要，方向是 registry 另提供 `String` 侧 DTO，**不是**解冻 `connection/**`。
+
 ### 协调者已裁定（各轨不得重新讨论）
 
 1. §3.2 #5 registry **重导出** `SessionView`/`SessionHandle`，绝不重新定义。
@@ -71,8 +100,15 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 
 ## 基线不变量（只许涨不许跌）
 
+**以下数字以 gateway 验收方在 `060053afb` 基线上的独立复跑为准**（原记录 `12/7/10/6`、`7/4/6` 是转写错误，已作废）。逐条对应到二进制名，不再用「目录名 + 顺序」这种会串位的写法。
+
 - main lib：**223**（硬地板）
-- 集成测试：directory 12/7/10/6、resource 7/4/6、budget 8/2/6/7、`p3_session_port_contract` 10
+- `budget_cm65_lifecycle` **8**、`budget_cm65_reservation` **2**、`budget_cm65_scheduling` **6**、`budget_cm66` **7**
+- `directory_attachment_ttl` **12**、`directory_no_disk` **6**、`directory_ownership` **7**、`directory_replacement` **10**
+- `resource_replacement` **4**、`resource_return_to_pool` **7**、`resource_rotation_and_disable` **6**
+- `p3_session_port_contract` **10**
+
+> 教训：**基线数字必须带产生它的命令 + 逐字结论行**。写成「目录 + 四个数」会被下一个接手的人读成另一种顺序，而 `rev-parse` / `is-ancestor` 全部放过。
 
 ## 待办与遗留
 
@@ -97,7 +133,11 @@ main 合并后门禁：lib **223 passed / 0 failed**（=148+24+37+14）、build 
 ## 操作纪律要点
 
 - 同一棵工作树不得同时被提交方和验证方使用；Tester 的变异必须在 `git worktree add --detach` 的独立工作树里做。
+- **还原变异必须验 mtime，不能只验内容哈希。** `shutil.copy2` 会连带还原 mtime，cargo 判定源文件「新鲜」、**不重编译、直接复用被变异的测试二进制** → 门禁复跑出现与变异毫不相干的假红/假绿。还原后用 `os.utime` 强制 touch 全部 `src/**/*.rs` 再跑。
+- **提交方不得在同一棵树上做变异**（coder 上轮违反过，只靠临时备份 + sha256 + HEAD 指纹兜底）。验证证据的可信度不能靠提交方的自报。
 - 门禁重跑首尾各记录一次 HEAD 与工作区 sha。
 - 长输出（测试命令）落系统临时目录再取结论行，退出码单独打印。
 - 绝不读取或打印 `.env` / `.env.test` 内容（程序读文件合法，内容回显进上下文才违法）。
 - 编译产物放各自 worktree 内 `target/`，合并后随 worktree 清理。
+- **每轨分支根目录的 `progress.md` 与集成分支的 `hub.md` 属进度台账，与 AGENTS.md「不写进度台账」冲突。本项目以用户指令为准：允许、提交入库，P3 验收后统一删除。**
+- 断言一旦红，先怀疑实现而不是改断言——「自己把用例写红」的自纠记录是这一轮最有价值的产出之一。
