@@ -881,4 +881,84 @@ CM-32（及 CM-27 / CM-28 的隧道子项）的引用计数**建在 `packages/ru
 
 ### ③ CM-61 / CM-64 显式豁免
 
-`ArtifactStore` 在 `platform-development-plan.md` 中零实现方、零调用方，服务端实现 + schema migration 在 **P7**。CM-61 / CM-64 的 H 断言记为 **P3 出口门禁显式豁免，理由指向 P7**，不得记为「覆盖不足」。此口径与 CM-70 一致：**要求的能力本阶段不存在时，要么建，要么显式豁免并指名由谁何时建。**
+`ArtifactStore` 在 `platform-development-plan.md` 中零实现方、零调用方，服务端实现 + schema migration 在 **P7**。CM-61 / CM-64 的 H 断言记为 **P3 出口门禁显例豁免，理由指向 P7**，不得记为「覆盖不足」。此口径与 CM-70 一致：**要求的能力本阶段不存在时，要么建，要么显式豁免并指名由谁何时建。**
+
+---
+
+## CM-32 方案裁定（协调者复核后批准）
+
+### 更正：协调者派活前提错误
+
+派活时写「runtime 要新长出一个目前为零的隧道概念」——**错**。Coder 的机械查证推翻，协调者已逐条复验属实：
+
+| 事实 | 实测 |
+| --- | --- |
+| `trait NetworkProvider` | `packages/platform-api/src/ports/network.rs:68`，冻结上游 |
+| `TunnelSpec { route_ref, via_host, via_port }` | 已在端口，`derive(PartialEq, Eq)` |
+| `ensure_tunnel` / `release_tunnel` | `:80` / `:87`，**均为 async** |
+| 语义注释 | `:7`「共享隧道引用计数在端口内维护」；`:58`「同一 `TunnelSpec` 共享引用计数」；`:86`「归零才真正拆除；重复释放是幂等的」 |
+| 端口自带锁定测试 | `:99` `tunnel_sharing_is_keyed_by_the_whole_spec_not_just_the_route` |
+| `impl NetworkProvider for` | **0 处** |
+| `.ensure_tunnel()` / `.release_tunnel()` 调用方 | **0 / 0** |
+| `TunnelSpec` / `TunnelBinding` 使用 | **0** |
+| runtime → platform-api | `packages/runtime/Cargo.toml:24`，F-04 合规 |
+| 跨代隔离 | `resource/manager.rs:163` `ResourceError::PoolKeyRotated` |
+
+⇒ **准确定位是「契约早已写死，缺实现方与调用方」，不是发明概念。** 原风险等级判断作废。
+
+### 批准项
+
+- **落点**：新建兄弟模块 `packages/runtime/src/tunnel/`，**不塞 `resource/`**（隧道寿命长于单条 `Lease`，塞进去会破坏 `ResourceError` 单一拒绝出口纪律）。宿主 `TunnelKind` / `Tunnel` 枚举**都不进 runtime**——镜像宿主枚举等于把部署侧传输形态漏进传输中立内核。
+- **「同版本」= `TunnelSpec` 全等值**，与 `PoolKeyGeneration`（管物理连接复用资格）、`CacheRevision`（管慢结果回填）不同源。共享键比 PoolKey **更细**：同一 `networkRouteRevision` 内两条不同 `TunnelSpec` 仍各开隧道。
+- **不碰 `src-tauri`**。理由：三条断言全是台账算术；`shared-boundaries-and-ports.md:590` 已写死隧道生命周期由桌面 `NetworkProvider` 实现承接（接缝期活）；本仓先例 `ResourceManager` / `ExecutionGateway::new` 在 `src-tauri` 均 **0 处**接线。桌面实现**另立轨**，P3 出口门禁不依赖（CM-32 是 H 层）。
+- **CM-27 / CM-28 按「部分覆盖」处理，不许顺手标成已覆盖**。剩余项须写成可被后续轨直接接手的清单。
+
+### 追加硬要求：唯一计数铁律
+
+`TunnelBinding.ref_count` 字段注释明文「**仅供观测，不用于判断能否释放（释放以 `release_tunnel` 的调用为准）**」，而 `:7` 说计数「在端口内维护」。
+
+⇒ **全系统只能有一个引用计数器**，归 `NetworkProvider` 实现（即 `TunnelLedger` 本身），**不得 ledger 数一套、transport 再数一套**。双重记账会让 CM-28「不多减引用」与 CM-27「许可归零」同时失效，且极难排查（两边各自都"对"）。
+
+必测代数不变量：N 次 `ensure`（同 spec）+ M 次 `release` ⇒ `transport.close` **恰好 N−M 次**、计数**任何时刻 ≥0**、重复 `release` **不二次 close**。
+
+### 追加：「集成」不许留成"可选"
+
+`shared-boundaries-and-ports.md:216` 的「ResourceManager 归还时释放一次」二选一：**(a)** 接上并测「一次归还 = 恰好一次 release」；**(b)** 不接但在 `progress.md` 明确记为剩余项并指名后续轨。**二选一可以，「可选/看情况」不行。**
+
+---
+
+## CM-74 顺序统一方案裁定（批准）
+
+### 更正：协调者的「两判据冲突」框架错误
+
+上一节把 CM-74 表述成「`:1324` 与 F10 两条判据打架，必须二选一或找折中」——**错**。实测 `connection-management.md:1324` 的断言子句表**本身就同时写着两句**：
+
+- 「句柄在物理资源关闭**前**已在原 resource 上回滚/关闭并从 actor 注销」
+- 「driver 返回 `Clean` 时若宿主仍有已登记句柄，宿主检查**必须失败**（§9.4）」
+
+F10（`fake-runtime-fixtures.md:221`）对第二句只是**回指 CM-69 / CM-73 / CM-74**。
+
+⇒ 不存在文档冲突。**注销前快照不是绕过判据的折中，是 CM-74 这条断言的字面要求**——§9.4 问的是「关闭开始前资源上挂没挂着句柄」，不是「注销之后还剩几个」。上一节的「无法靠挪位置同时满足」框架作废。
+
+### Coder 驳回协调者两个提案，驳得对（均已撤回）
+
+- **显式布尔标志**：会造第二个真相源，与 `slot.handles` 漂移并需额外维护不变量。快照不新增状态、不漂移、无新不变量。
+- **把快照喂给 `CloseResourceRequest.registered_handles`**：该字段今天**惰性**（`ops.rs:576` 读 `slot.registered_handles()`），`harness/mod.rs:173` 传的是注销后的值，`cm73.rs:155-156` doc 明说那只是「调用方的声明」。接线会把负担推给调用方，且与宿主路径形状冲突。**快照必须取在 `close_resource` 内部。**
+
+技术前提已复验：`close_resource` 是同步 `pub fn`（`ops.rs:503`），快照+注销+判归池可放进**同一把 `Mutex` 的一个临界区** ⇒ 无观察窗口、无需等锁、无 TOCTOU。
+
+### 批准的实施要点
+
+合并临界区（快照 → 注销 → 判归池）；句柄注销改无条件，但 `slot.transaction_state = None` **仍以 `rolled_back` 为门**（关闭语义 ≠ 回滚语义）；归池读快照，`ReturnedToPool { registered_handles }` 填实数不再写死 `0`；F11 与 `Closed`/`permit -1` 记录原样不动。
+
+### 批准改写 `:539` doc 注释
+
+该注释记的正是已被撤回的建议，留着会误导后续实例。**只许改理由散文，断言一字不动**：保留前两句机制描述（仍正确），改动处留注释说明「该理由随 CM-74 统一裁定更新」，测试函数名与 `vec![...]` 断言不得动。
+
+### 仓库隐患（另立清理项）
+
+`fake_resource/tests.rs` 已 **790/800 行**，仅剩 10 行余量，且是全仓共享测试基础设施。后续任何轨往里加测试都会撞墙。本轨不动它。
+
+### 附录：本轨不覆盖
+
+CM-74 **§7.4 第 6 项**（`setSessionContext` 的 `requiresReplacement` 候选资源 + 原子发布协议）**不在本轨，需另开轨**。
