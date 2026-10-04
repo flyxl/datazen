@@ -1009,3 +1009,115 @@ F10（`fake-runtime-fixtures.md:221`）对第二句只是**回指 CM-69 / CM-73 
 ### 附录：本轨不覆盖
 
 CM-74 **§7.4 第 6 项**（`setSessionContext` 的 `requiresReplacement` 候选资源 + 原子发布协议）**不在本轨，需另开轨**。
+
+---
+
+## 轨 p3-cm74-release-order 合并记录（Tester `f39235cc` **PASS**）
+
+合并于 main `07c77d406`（`--no-ff`），代码提交 `712b43012`，Tester 验收点同为该哈希。`progress.md` 已按纪律销毁并单独提交。三棵工作树（轨 / Tester / 演练）与 `/tmp/dz-target-{ta-cm74,mg-cm74}` 已清理，feature 分支已删。
+
+### 合并演练（detached 树，跑满全部目标）
+
+```
+MERGE_EXIT=0   冲突文件 0 个
+引入 4 个文件：ops.rs / harness/tests.rs / journal/core.rs / progress.md
+TEST_EXIT=0    20 个目标全 ok    TOTAL passed = 564    FAILED 目标数 = 0
+HEAD_BEFORE=HEAD_AFTER=29edb02c3    DIRTY=0
+主分支门禁：typecheck EXIT=0；vitest EXIT=0
+  Test Files  565 passed (565)
+  Tests  5920 passed (5920)
+```
+
+### Tester 变异结论（M1/M2 真击杀，M3 非真变异）
+
+| | 变异 | 结论 | 证据 |
+| --- | --- | --- | --- |
+| 负控 | — | 绿 | `EXIT=0 \| ok. 1 passed; 0 failed; 383 filtered out` |
+| M1 | `ops.rs` 回退到 `712b43012^` | **KILLED** | `EXIT=101`；`the_driver_direct_close_releases_in_the_same_cm74_order` 失败，panic 逐字：`harness/tests.rs:645:5` `CM-74 要求两条关闭路径产出**同一条**顺序；句柄还挂着就归还预算占用，I1 与 I5 一起破`；right: `["handle closed","resource Closed","permit -1"]`，实际 `["resource Closed","permit -1","handle closed"]` |
+| M2 | 快照挪到 `slot.handles.clear()` 之后 | **KILLED** | `EXIT=101 \| test result: FAILED. 381 passed; 3 failed; … finished in 30.02s`。三条同时中：`fake_resource::tests::f10_…` panic `fake_resource/tests.rs:530:5`「句柄未清空时禁止归池 —— 只能关闭。实际事件序列：["Created","OpeningReady","ReturnedToPool","Closed"]」；`a_resource_still_holding_a_handle_is_never_returned_to_the_pool` panic `harness/tests.rs:710:5` `left: 1   right: 0`；`cm73_threads::a_real_eviction_thread_meets_a_real_thread_holding_a_transaction` panic `cm73_threads.rs:257:9`。恢复后 `EXIT=0 \| ok. 384 passed` |
+| M3 | 判据改读 `resource.registered_handles()` | **NOT KILLED — 非真变异，如实登记** | `M3_EXIT=0 \| ok. 384 passed` |
+
+M3 的无反应原因（Tester 独立给出，比 Coder 的说法更强）：`ops.rs:573` 的 `None` 分支**是可证明的死代码** —— 顶层 `resources` IndexMap 只在 `ops.rs:191` 插入、从不删除，故 `:549` 的 `get_mut` 恒为 `Some`；且 `resolve()`（`handles.rs:200-208`）在同一把锁下 `.cloned()`，而 `slot.handles` 在 `:508`→`:554` 之间无任何写入 ⇒ 两个表达式**可证明同值**。
+
+M1 与 M2 的杀手**正交**：M1 只杀前者，M2 杀后者并连带另外两条。二者互不替代 —— 这是判两条用例非空跑的依据（前者虽无显式 `assert!(declared > 0)`，但其精确序列断言严格更强，要求句柄条目存在**且**排第一；后者有显式前置并数 `ReturnedToPool` 出现次数）。
+
+### ★★ 假绿陷阱：`cargo test` 匹配不到任何测试时退出码是 **0**（本轮最重要的一条）
+
+**错在我自己的简报里。** 协调者给 Tester 的守卫清单中把 `fake_resource/tests.rs:440` 的真名 `f10_a_clean_reset_does_not_license_returning_the_resource_to_pool` 写成了漏掉 `_the_` 的 `f10_a_clean_reset_does_not_license_returning_the_resource_to_pool`。Tester 发现后用真名重跑了全部九次。
+
+协调者**自行复现**（第一次用错语法，见下）：
+
+```
+EXIT=0   an_idle_resource_with_no_transaction_still_returns_to_the_pool   ok. 1 passed; 0 failed   ← 真名
+EXIT=0   f10_a_clean_reset_does_not_license_returning_the_resource_to_pool   ok. 0 passed; 0 failed   ← 错名，假绿
+EXIT=0   this_test_name_does_not_exist_at_all_xyz                          ok. 0 passed; 0 failed   ← 乱写，也假绿
+```
+
+**由此成为常设纪律：任何过滤运行一律以 `passed` 计数判定，绝不以退出码判定。** 简报给出的测试名**不可直接采信**，必须先用 `-- --list` 取全限定名再跑。
+
+附带一条语法事实：`cargo test -p X --lib --filter NAME` **不是合法 cargo 参数**，报 `error: unexpected argument '--filter' found` / `tip: to pass '--filter' as a value, use '-- --filter'`，**EXIT=1 且完全没有 `test result:` 行**。合法形式是位置参数 `cargo test -p X --lib NAME` 或 `cargo test -p X --lib -- --filter NAME`。协调者第一次验证时正是踩了这个坑，三个探针全返回 EXIT=1 —— 那是命令行报错，不是测试结果。
+
+### ★ F11 `CloseUnconfirmed` 分支当前执行 **0 次**（缺口比原记录更严重）
+
+`ops.rs:512-536` 的 F11 提前返回，在全部 384 条 `--lib` 用例中**一次都没执行过**。
+
+- 全树唯一构造 `FaultKind::CloseUnconfirmed` 的地方是 `script.rs:343`，位于 `a_fault_only_fires_on_its_own_operation`（`script.rs:339`）内；该用例只 `FakeScript::new()`，**从不构造 provider、从不调 `close_resource`**。`script.rs:183` 只是 `label()` 映射。
+- 那条名字极像保护的 `close_unconfirmed_keeps_the_permit_occupied_forever`（`journal/tests.rs:131-162`）**直接构造 `CommandJournal::default()`** 并调 `record_permit`/`record_resource_event`，**对 `ops.rs:512-536` 零保护**。
+
+⇒ **「既有缺口可顺带覆盖」的说法作废**；台账口径应为「该分支当前 0 次执行」。这是既有缺口，非本轨引入；危险在于一个同名守卫**读起来像**覆盖。F11 维持独立窄轨（L4），**不得与拆分轨捆绑**。
+
+### CM-74 判据 `connection-management.md:1324` 仍为 **PARTIAL**（合并 ≠ 转绿）
+
+| 断言 | 覆盖 | 证据 |
+| --- | --- | --- |
+| 句柄在物理资源关闭前已在原 resource 上回滚/关闭并注销 | ✅ | 两条新用例 + M1/M2 击杀 |
+| **前置条件（须含游标句柄）** | ❌ | 两条新用例都只用**事务句柄**，`handles.rs` 的**游标句柄从未出现** |
+| **b** 提交落在旧 resource 或显式失败，绝不落新 resource | ⚠️ 部分 | 驱逐用例只断言「不得归池」，未断言提交落点；`setSessionContext` 未动 |
+| **c** §9.4 driver 报 `Clean` 而宿主仍有句柄 ⇒ 宿主检查必须失败 | ⚠️ 未覆盖 | `FaultKind::CleanButPreconditionUnmet` 仅在 `fake_resource/tests.rs:461` 经 `ResourceOp::Reset` 注入、由 `ops.rs:478` `reset_resource` 处理；**`close_resource` 对它引用 0 次** ⇒ 关闭路径的故障注入变体未覆盖 |
+| 「未登记句柄在归还时被拒」 | ✅（别处） | `harness/tests.rs:403`/`:357`/`f12_…`，但不在 CM-74 旅程内 |
+| **e** actor 终止后不重建句柄，只能以新 `dbSessionId` 恢复 | ❌ | 全树无用例；`close_active_session` 仅出现在 `journal/tests.rs:474` |
+
+### 更正：本轨对 `registered_handles` 的自述夸大（L1，协调者复核）
+
+Coder 自述「`ReturnedToPool` 现在填真实数字而非硬编码 `0`」——**夸大**。协调者复核合并后的 `ops.rs`：该字段位于 `if drained && handles_before_close == 0`（`:592`）之内，故 `registered_handles: handles_before_close`（`:596`）在**每个发射点必然为 0**，与旧的硬编码 `0` **可观察等价**。
+
+真实行为变更在**别处**：(a) 句柄注销由 `if rolled_back { … }` 改为**无条件**；(b) 归池判据由「注销**之后**重取」改为读**注销前**快照。**代码无需改动，但合并信息与任何复述都不得沿用「填真实数字」的措辞。**
+
+### 未被冻结的推理（非缺陷，但当前不可证伪）
+
+`ops.rs:545-551` 的注释断言「快照与注销同处一把锁 —— 中间没有观察者，也就没有 TOCTOU」。现有用例钉的是**取值**，不是**取点**：把快照挪出临界区**不产生任何测试反应**。安全性另有可证分析（同一把 `Mutex` + `slot.handles` 在 `:508`→`:554` 间无写入），但**该结论目前只存在于注释里**。
+
+### 口径更正：测试目标数
+
+此前记作「20 个二进制」，实测为 **19 个 `Running` + 1 个 `Doc-tests` = 20 个测试目标**。
+
+### 偶发红如实记录
+
+Tester 跑 `--lib` **8 次，8/8 全绿**；历史约 12.5% 的 barrier 偶发红在本轨**未复现**。原因是这两条新用例**单线程、无 barrier**，不属于那一类。**未做任何「重跑到绿」。**
+
+### 新基线（main `07c77d406`，与 Coder 自报独立测量一致）
+
+| | 基线 | CM-74 后 |
+| --- | --- | --- |
+| `src/lib.rs` | 382 | **384** |
+| `gateway_contract` | 51 | 51 |
+| `p3_session_port_contract`（冻结） | 10 | 10 |
+| **TOTAL** | **562** | **564** |
+
+delta `+2/+2` 精确。冻结面实测：`connection/port.rs` 空 diff、`fake_resource/tests.rs` 空 diff（790 未动）、`hub.md` 空 diff。`--features test-harness` 的 `cargo build` EXIT=0 且 warning 0 —— **不带该 feature 的 build 不覆盖被改文件**（改动在 `test-harness` 之后），别把前者的 0 warning 当成被改代码的 0 warning。
+
+### ★ L3 硬阻塞：`harness/tests.rs` 已 **800/800**，零余量
+
+CM-74 把该文件从 676 推到 **800**，正好撞上限。**任何 CM-74 后续用例落地前必须先拆分**（建议新开 `harness/cm74_release_order.rs`，照既有 `cm73_threads.rs` 的样子）。L5（判据补齐轨）因此被硬阻塞。
+
+其余逼近上限：`fake_resource/tests.rs` 790/800（余 10）、`fake_resource/ops.rs` 750/800（余 50）。
+
+---
+
+## CM-32 验收点冻结，Tester 已派出
+
+代码提交 `2836d346d`（11 个文件全 `.rs`，最大 439 行，`lib.rs` 38 行），diff 与宣称的完全一致。Tester `ee7b59f0` 在 `.worktrees/ta-cm32` 以 detached HEAD `2836d346d` 作业，**该哈希冻结：不得 amend / rebase / force-push**。
+
+Coder 自报 `--lib` 405 / 全量 592 / 21 个二进制 —— **系对过期基线 `21e27e4eb` 测得**；CM-74 合入后 main 已是 `--lib` 384 / TOTAL 564。Tester 须自行实测真实数字，对不上就报告对不上。
+
+预通知 Tester 的三处疑点：① `TunnelBinding.ref_count`「惰性」用例是否**可被杀**（判据改回读快照须变红）；② `close_calls() == 0` 是否在空实现下恒真（须有真会关闭的 spec 做负控）；③ `N < M` 与 `ref_count` 下探为负是否被钉死。
