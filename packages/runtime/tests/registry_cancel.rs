@@ -158,16 +158,33 @@ async fn 冻结端口自带空绑定也走同一条校验() {
     let (backend, gate, registry, view, execution) =
         published_execution(BackendPlan::default()).await;
     let handle = handle_of(&view);
+    // 走**冻结的那个 trait 对象**，而不是具体类型的方法解析：
+    // 端口形状（返回 `ExecutionState`）本身就是本用例要钉的东西。
+    let port: Arc<dyn SessionPort> = registry.clone();
 
     // 冻结的 `SessionPort::cancel_execution` 没有 `cancelHandle` 字段，
     // 自带 `None` 不是「免检票」：它仍然要用 actor 登记的绑定去核对绑定表。
-    let receipt = registry
+    let state = port
         .cancel_execution(&handle, &execution)
         .await
         .expect("端口路径同样校验通过");
+    assert_eq!(
+        state,
+        ExecutionState::CancelRequested,
+        "冻结端口形状固定为 Result<ExecutionState, RuntimeError>"
+    );
+    assert_eq!(backend.cancel_calls(), 1, "端口路径同样要真的下发");
+
+    // D-01 的落点：同一个 registry 的具名入口仍然交出 §7.6 的三字段回执。
+    // 端口投影不是另算一遍，两条路径对同一次取消必须说同一件事。
+    let receipt = registry
+        .cancel_registered(&handle, &execution)
+        .await
+        .expect("门面路径同样校验通过");
     assert_eq!(receipt.disposition, CancelDisposition::Requested);
     assert_eq!(receipt.execution_id, execution);
-    assert_eq!(backend.cancel_calls(), 1, "端口路径同样要真的下发");
+    assert_eq!(receipt.state, state, "端口投影与门面回执必须描述同一次取消");
+    assert_eq!(backend.cancel_calls(), 2, "门面路径同样要真的下发");
 
     release(&gate, 1);
     settle().await;

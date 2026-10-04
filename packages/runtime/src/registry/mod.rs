@@ -8,7 +8,7 @@
 //!
 //! | 文件 | 职责 | 关键约束 |
 //! | --- | --- | --- |
-//! | [`port`] | 冻结契约面 [`SessionPort`] | 除 D-01 外一字不改 |
+//! | [`port`] | 冻结契约面 [`SessionPort`] | 一字不改，返回类型以冻结基线为准 |
 //! | [`receipt`] | §7.6 [`CancelReceipt`] | `disposition` 是**控制请求处置**，不是异常 |
 //! | [`actor`] | 每会话 actor + 双邮箱 | 串行靠队列，不靠全局锁；控制路径旁路执行队列 |
 //! | [`registry`] | 登记表、配额账、审计账 | 表锁只用来定位/插入，取出 `Arc` 后立即释放 |
@@ -36,7 +36,11 @@
 //!
 //! ## 已知冻结面偏差
 //!
-//! - **D-01 已补齐**：[`SessionPort::cancel_execution`] 现返回 [`CancelReceipt`]。
+//! - **D-01 已在正确的层关闭**：§7.6 的三字段 DTO [`CancelReceipt`] 由登记表的具名入口
+//!   `SessionRegistry::cancel_registered` / `cancel_execution_bound` 返回；冻结的
+//!   [`SessionPort::cancel_execution`] **保持冻结形状** `Result<ExecutionState, RuntimeError>`，
+//!   只交回状态一列。端口形状以冻结契约 `tests/p3_session_port_contract.rs` 为仲裁方：
+//!   端口改宽不要紧，窄了会让冻结基线**编译不过**，而 `git merge` 看不见签名不兼容。
 //! - **D-02 折叠**：[`epoch::fold_exit`] 对 `ProviderError::RuntimeEpochMismatch` 返回
 //!   `SessionNotFound`，刻意不同于 `ProviderError::api_code()`。
 //! - `connection::port` 里另有一个**同名但 2 字段**的 `CancelReceipt`（缺 `state`）。

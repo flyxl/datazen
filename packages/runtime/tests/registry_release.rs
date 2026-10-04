@@ -23,9 +23,7 @@ mod registry_fixtures;
 
 use std::sync::Arc;
 
-use datazen_runtime::connection::{
-    CloseMode, RuntimeError, SessionHandle, SessionState, TransactionState, WorkerId,
-};
+use datazen_runtime::connection::{CloseMode, RuntimeError, SessionHandle, SessionState, WorkerId};
 use datazen_runtime::registry::backend::{ready_to_return_to_pool, HandleDisposition};
 use datazen_runtime::registry::{
     AuditKind, Outcome, RegistryAuditEntry, SessionPort, SessionRegistry,
@@ -273,16 +271,13 @@ async fn 宿主登记数与后端确认数对不上时墓碑不得报已关闭()
         "§9.4「任一失败都关闭」：不可判定也必须真的关掉物理资源"
     );
 
-    let view = registry.session_view(&handle).await.expect("墓碑仍可投影");
-    assert_eq!(
-        view.state,
-        SessionState::Lost,
-        "有一步不可判定，墓碑就不得写成 Closed——那等于替一条不可知的链背书"
-    );
-    assert_eq!(
-        view.observed_context.transaction_state,
-        TransactionState::Unknown,
-        "不可判定时必须停止报 Active（CM-73）"
+    // 墓碑本身（`Lost` + `TransactionState::Unknown`）在 actor 内部断言，见
+    // `src/registry/actor/tests/release.rs` 的 T10。集成面读不到它，因为
+    // §9.4 四步跑完之后登记表已经把这一行摘掉了——和**成功**关闭之后一样：
+    // 登记表只管活会话，墓碑归 actor。
+    assert!(
+        registry.session_view(&handle).await.is_err(),
+        "四步已跑完 ⇒ 行必须摘除，否则额度永久卡死（R-01）"
     );
 
     let undecided = entries_of(&registry, AuditKind::SessionClosed);
@@ -290,6 +285,66 @@ async fn 宿主登记数与后端确认数对不上时墓碑不得报已关闭()
     assert_eq!(undecided[0].outcome, Outcome::Undecided);
     assert_eq!(undecided[0].error_code, Some("resourceLost"));
     assert_eq!(undecided[0].effect_outcome, Some("unknown"));
+}
+
+/// R-01：不可判定的关闭**已经关掉了**，登记表必须照样注销并归还额度。
+///
+/// 两种 `Err` 不是一回事：
+///
+/// * `CloseRejected` 是**派发前**的拒绝，物理资源原封不动 → 行与额度都留着
+///   （见 `有活句柄要求无事务关闭当场拒绝且零后端动作`）；
+/// * `SessionLost` 是 §9.4 四步**跑完**之后写出来的：句柄已终结、物理资源已关闭、
+///   绑定已作废。不可判定的是某个句柄的命运，不是「有没有关掉」。
+///
+/// 这里要钉的正是「同一种失败形状」下的**两半账**：修复前额度被永久扣死
+/// （`SESSION_LIMIT` 再也回不到满），修复过头又会凭空造额度。前者表现为额度再也回不来，
+/// 所以本用例把「还能再登记一个会话」也一起断掉——只查 `remaining_quota` 的数字
+/// 未必够，**证明这个额度真的能发出去**才算。
+#[tokio::test(start_paused = true)]
+async fn 不可判定的关闭仍必须注销并归还额度() {
+    let backend = ScriptedBackend::new(
+        BackendPlan::default()
+            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_a")])
+            .finalizes(1, 0),
+    )
+    .await;
+    let registry = registry_with(&backend);
+    let handle = session_with_handles(&registry).await;
+
+    let error = registry
+        .close_registered(&handle, close_any())
+        .await
+        .expect_err("对不上的账不得报关闭成功");
+    assert!(
+        matches!(error, RuntimeError::SessionLost(_)),
+        "只有不可判定才走注销这条路，实际 {error:?}"
+    );
+
+    assert!(
+        registry.registered_ids().is_empty(),
+        "已关闭的会话不得继续留在登记表里"
+    );
+    assert!(
+        !registry.is_registered(&db_session_id()),
+        "在册判定必须同步失效，否则重连会撞上死行"
+    );
+    assert_eq!(
+        registry.remaining_quota(),
+        SESSION_LIMIT,
+        "§9.4 已经把物理资源关掉了，额度必须原样归还"
+    );
+
+    // 额度不只是数字：它得真的能再发一次登记。
+    let reused = registry
+        .register_session(open_request(other_db_session_id()))
+        .await
+        .expect("归还的额度必须能立刻发出去");
+    assert_eq!(
+        registry.remaining_quota(),
+        SESSION_LIMIT - 1,
+        "归还的额度只能被下一次真实登记消耗一次"
+    );
+    let _ = reused;
 }
 
 #[tokio::test(start_paused = true)]
@@ -356,7 +411,6 @@ async fn 租约失效立即作废_额度扣住不外发_隔离确认后才归还
         .register_session(bystander_request)
         .await
         .expect("别的 worker 的登记必须成功");
-    let _ = doomed;
 
     assert_eq!(registry.remaining_quota(), SESSION_LIMIT - 2);
 
@@ -374,6 +428,21 @@ async fn 租约失效立即作废_额度扣住不外发_隔离确认后才归还
     );
     assert_eq!(registry.stale_quota_for(&worker_id()), 1);
     assert_eq!(registry.stale_quota_for(&WorkerId::new("w_2")), 0);
+
+    // R-02：一次作废 = **一条** `SessionInvalidated`。修复前释放例程和
+    // `invalidate_worker` 各发一条，字段逐字相同、只有自增 `id` 不同——
+    // 按条数统计作废次数的调用方会把 1 次作废读成 2 次。
+    let invalidated = entries_of(&registry, AuditKind::SessionInvalidated);
+    assert_eq!(
+        invalidated.len(),
+        1,
+        "同一次作废不得留下两条字段相同的审计，实际 {invalidated:#?}"
+    );
+    assert_eq!(
+        invalidated[0].runtime_epoch,
+        doomed.handle.runtime_epoch.get(),
+        "作废条目必须挂在被作废的那个会话世代上"
+    );
 
     let held = entries_of(&registry, AuditKind::QuotaHeldStale);
     assert_eq!(held.len(), 1, "扣住陈旧额度必须留痕");

@@ -47,8 +47,8 @@ use indexmap::IndexMap;
 use tokio::sync::mpsc;
 
 use crate::connection::{
-    CloseMode, DbSessionId, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, RuntimeError,
-    SessionHandle, SessionView, WorkerId,
+    CloseMode, DbSessionId, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState,
+    RuntimeError, SessionHandle, SessionView, WorkerId,
 };
 
 use crate::registry::actor::{
@@ -513,6 +513,31 @@ impl SessionRegistry {
         });
     }
 
+    /// §7.6 取消（登记表侧）—— **D-01 的正式落点**：返回三字段
+    /// [`CancelReceipt`]（`{ executionId, disposition, state }`），
+    /// 让「不支持取消」与「已是终态」这两种**正常返回**能和真正的取消受理区分开。
+    ///
+    /// 冻结的 [`SessionPort::cancel_execution`] 里没有 `cancelHandle`，
+    /// 它只交回状态一列；端口形状以冻结契约为准，处置语义在这里。两条路径
+    /// 最终都走同一个 actor 命令、同一次绑定校验，端口不构成绕过。
+    pub async fn cancel_registered(
+        &self,
+        handle: &SessionHandle,
+        execution_id: &ExecutionId,
+    ) -> Result<CancelReceipt, RuntimeError> {
+        self.audit.pump();
+        let record = self.locate(&handle.db_session_id)?;
+        record
+            .actor
+            .control(|reply| ControlCommand::Cancel {
+                handle: handle.clone(),
+                execution_id: execution_id.clone(),
+                cancel_handle: None,
+                reply,
+            })
+            .await
+    }
+
     /// §7.6 带调用方自带 cancelHandle 的取消入口（CM-24 的伪造面）。
     ///
     /// 冻结的 [`SessionPort::cancel_execution`] 形状里没有 `cancelHandle`，
@@ -566,8 +591,22 @@ impl SessionRegistry {
                 let _ = state;
                 Ok(())
             }
-            // `CloseRejected` 时会话**没有**被关闭，额度必须留着。
-            Err(error) => Err(error),
+            // R-01：`Err` 不是一个语义，**两种**返回对应两种事实：
+            //
+            // * `CloseRejected` 是派发前的拒绝，物理资源原封不动——行与额度必须留着，
+            //   否则一次被拒的关闭就凭空造出一个额度（账松了）。
+            // * `SessionLost` 是 §9.4 四步**全部跑完**之后才写出来的：句柄已终结、
+            //   物理资源已关闭、绑定已作废、墓碑已落 `Lost`。不可判定的是某个句柄的
+            //   命运，不是「有没有关掉」。此时若照 `Err` 就把行留下，额度会**永久**卡死：
+            //   上层看到的是「关不掉」，实际上它已经关掉了，重试多少次都是同一个答案。
+            //
+            // 无论哪种，返回给调用方的错误都**原样**传递——改写错误等于替不可判定背书。
+            Err(error) => {
+                if matches!(error, RuntimeError::SessionLost(_)) {
+                    self.forget(&record.db_session_id);
+                }
+                Err(error)
+            }
         }
     }
 
@@ -606,22 +645,16 @@ impl SessionPort for SessionRegistry {
         self.submit_execution(request).await
     }
 
+    /// 冻结端口形状：只交回状态。处置在 [`SessionRegistry::cancel_registered`]——
+    /// 投影而不是重算，两条路径因此不可能对同一次取消给出两种说法。
     async fn cancel_execution(
         &self,
         handle: &SessionHandle,
         execution_id: &ExecutionId,
-    ) -> Result<CancelReceipt, RuntimeError> {
-        self.audit.pump();
-        let record = self.locate(&handle.db_session_id)?;
-        record
-            .actor
-            .control(|reply| ControlCommand::Cancel {
-                handle: handle.clone(),
-                execution_id: execution_id.clone(),
-                cancel_handle: None,
-                reply,
-            })
+    ) -> Result<ExecutionState, RuntimeError> {
+        self.cancel_registered(handle, execution_id)
             .await
+            .map(|receipt| receipt.state)
     }
 
     async fn close_session(

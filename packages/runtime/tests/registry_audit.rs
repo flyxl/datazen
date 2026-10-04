@@ -34,7 +34,7 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::registry::{
     fold_exit, AuditKind, CancelDisposition, CancelReceipt, CapabilityVersions, ExitFact,
-    ExitProjection, Outcome, RegistryAuditEntry, SessionPort, SessionRegistry,
+    ExitProjection, Outcome, RegistryAuditEntry, SessionRegistry,
 };
 
 use registry_fixtures::{
@@ -427,11 +427,14 @@ async fn 取消成功不改写数据效果只留处置() {
         "两道闸门之间必须已完成 cancelHandle 公布"
     );
 
+    // 走门面拿三字段回执：这一支要断的是「取消被受理时审计写了什么」，
+    // 用哪个入口不改变审计内容，但回执顺带证明受理结果确实落成了 `Requested`。
     let receipt = registry
-        .cancel_execution(&handle, &in_flight)
+        .cancel_registered(&handle, &in_flight)
         .await
         .expect("取消必须被受理");
     assert_eq!(receipt.disposition, CancelDisposition::Requested);
+    assert_eq!(receipt.state, ExecutionState::CancelRequested);
 
     let cancels: Vec<RegistryAuditEntry> = registry
         .audit_log()

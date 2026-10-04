@@ -611,22 +611,22 @@ async fn invalidate_worker(
         return Ok(false);
     }
     // 释放失败本身就是「转 Lost」的证据，不能因为失败就反过来报「未失效」。
-    let released = release::release(
+    //
+    // R-02：`SessionInvalidated` 这条审计**只由 `release::release` 发**（走
+    // `release_kind(InvalidateWorker)`）。这里再补一条，会产出两条字段逐字相同的条目
+    // ——只有自增 `id` 不同——那不是「两条证据」，是同一条事实被数了两遍：
+    // 按条数统计作废次数的调用方会把 1 次作废读成 2 次。
+    //
+    // 能走到这里的路径 `release` 必定发审计，所以删掉这里不会留下空洞：
+    // `physical.is_none()` 的早返回（不发审计）已被上面的守卫排除，而
+    // `RollbackAndClose` 不可能产生 `CloseRejected`（只有 `RequireNoTransaction` 才会），
+    // 于是每条可达路径要么走成功分支、要么走 `undecidable` 分支，两者都发。
+    let _ = release::release(
         state,
         CloseMode::RollbackAndClose,
         ReleaseReason::InvalidateWorker,
     )
     .await;
-    if released.is_ok() {
-        emit(
-            state,
-            AuditFacts {
-                kind: AuditKind::SessionInvalidated,
-                outcome: Outcome::Succeeded,
-                ..AuditFacts::none()
-            },
-        );
-    }
     Ok(true)
 }
 

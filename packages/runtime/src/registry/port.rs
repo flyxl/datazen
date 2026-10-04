@@ -22,11 +22,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::connection::{
-    CloseMode, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, RuntimeError, SessionHandle,
-    SessionView,
+    CloseMode, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState,
+    RuntimeError, SessionHandle, SessionView,
 };
-
-use crate::registry::receipt::CancelReceipt;
 
 /// 会话登记表的会话面 —— Wave 2 实现它，gateway 消费它。
 ///
@@ -63,9 +61,24 @@ pub trait SessionPort: Send + Sync + 'static {
         request: ExecuteInSessionRequest,
     ) -> Result<ExecutionReceipt, RuntimeError>;
 
-    /// 请求取消一次执行（§7.6），返回**取消请求的处置 + 落地后的执行状态快照**。
+    /// 请求取消一次执行（§7.6），返回**本次取消落地后的执行状态快照**。
     ///
-    /// 返回值分三层，缺一层就说不清这次取消到底发生了什么：
+    /// 失败条件：`UnknownSession`；`CancelFailed`（取消绑定与
+    /// `executionId`/`runtimeEpoch`/`resourceBindingId` 对不上，或 driver 独立控制路径不可达）。
+    /// 取消失败**不得**降级成「已取消」——返回值只可能是调用前已经成立的状态，
+    /// 或本次登记出来的 `CancelRequested`，任何路径都不会凭空写出 `Cancelled`。
+    ///
+    /// **为什么返回的是 `ExecutionState` 而不是三字段回执**：端口形状由冻结契约
+    /// `tests/p3_session_port_contract.rs` 钉死为 `Result<ExecutionState, RuntimeError>`，
+    /// 本方法照它实现。冻结契约是仲裁方：端口改宽不要紧，窄了会让冻结基线**编译不过**，
+    /// 而 `git merge` 看不见这种破坏（两边都是合法 Rust，签名才是不兼容的那一半）。
+    ///
+    /// **D-01 仍然关闭，但关闭在正确的层**：§7.6 的三层情形——`requested` / `unsupported` /
+    /// `alreadyFinished`——由 [`crate::registry::CancelReceipt`]（`{ executionId, disposition,
+    /// state }`，定义在 [`crate::registry::receipt`]）承载，它由登记表自身的具名入口
+    /// `SessionRegistry::cancel_registered` / `SessionRegistry::cancel_execution_bound`
+    /// 返回；本方法只是把它投影成 `state` 一列。类型刻意**不**取
+    /// `connection::port` 里那个缺 `state` 的 2 字段同名 `CancelReceipt`。
     ///
     /// | 情形 | `disposition` | `state` | 是否是错误 |
     /// | --- | --- | --- | --- |
@@ -78,22 +91,11 @@ pub trait SessionPort: Send + Sync + 'static {
     ///
     /// `disposition = requested` 只表示「取消已被登记」，不表示执行已取消——
     /// 终态只能由终态事件或 `getExecution` 给出（§7.6 末段）。
-    ///
-    /// **D-01（Wave 1 遗留偏差的正式关闭）**：本方法原先退回 `ExecutionState`，
-    /// 无法区分 `unsupported` 与 `alreadyFinished`。现在返回 [`CancelReceipt`]，
-    /// 形状与 §7.6 一致：`{ executionId, disposition, state }`。
-    /// 类型定义在 [`crate::registry::receipt`] 而不是 `connection`——
-    /// `connection::port` 里那个**同名 2 字段**的 `CancelReceipt` 缺 `state`，
-    /// 两者不是同一件事，本端口以 §7.6 的三字段形状为准。
-    ///
-    /// 失败条件：`UnknownSession`；`CancelFailed`（取消绑定与
-    /// `executionId`/`runtimeEpoch`/`resourceBindingId` 对不上，或 driver 独立控制路径不可达）。
-    /// 取消失败**不得**降级成「已取消」。
     async fn cancel_execution(
         &self,
         handle: &SessionHandle,
         execution_id: &ExecutionId,
-    ) -> Result<CancelReceipt, RuntimeError>;
+    ) -> Result<ExecutionState, RuntimeError>;
 
     /// 关闭会话（§7.5 全部 7 步）。
     ///
@@ -128,6 +130,18 @@ fn assert_object_safe(port: Arc<dyn SessionPort>) -> Arc<dyn SessionPort> {
     port
 }
 
+/// 冻结契约的形状钉子：只要 `cancel_execution` 的返回类型被改宽或改窄，
+/// 这个函数就**编译不过**。它是「端口形状以冻结基线为准」这条规则的机械保证，
+/// 不依赖任何运行时断言，也不会被一次无关的重构顺手删掉。
+#[cfg(test)]
+fn frozen_port_cancel_shape<'a>(
+    port: &'a dyn SessionPort,
+    handle: &'a SessionHandle,
+    execution_id: &'a ExecutionId,
+) -> impl std::future::Future<Output = Result<ExecutionState, RuntimeError>> + 'a {
+    port.cancel_execution(handle, execution_id)
+}
+
 #[cfg(test)]
 mod tests {
     use tokio::sync::Mutex;
@@ -140,6 +154,7 @@ mod tests {
         ExecutionState, ExecutionTarget, NamespaceTarget, OrganizationId, OwnerRef, PrincipalId,
         SessionContext, SessionState, StreamId, Timestamp, TransactionState,
     };
+    use crate::registry::receipt::CancelReceipt;
 
     /// 最小 fake：只实现本 trait 的四个方法，不建连、不碰 driver、不排 actor 队列。
     ///
@@ -186,6 +201,46 @@ mod tests {
                 SessionState::Closed => Some(RuntimeError::SessionClosed(id)),
                 _ => None,
             }
+        }
+
+        /// §7.6 的完整三字段回执。trait 上只暴露 `state`，处置语义靠本入口才能验证——
+        /// 这与生产侧 `SessionRegistry::cancel_execution` / `cancel_registered`
+        /// 的分工完全一致，避免 fake 比真实实现多知道一层。
+        async fn cancel_receipt(
+            &self,
+            handle: &SessionHandle,
+            execution_id: &ExecutionId,
+        ) -> Result<CancelReceipt, RuntimeError> {
+            let mut state = self.inner.lock().await;
+            locate(&state.view, handle)?;
+            let supports_cancel = state.driver_supports_cancel;
+            let slot = state
+                .executions
+                .iter_mut()
+                .find(|(id, _)| id == execution_id)
+                .ok_or(RuntimeError::CancelFailed("unboundExecution"))?;
+            // §7.6：终态优先。已终结的执行再取消不得被改写成 CancelRequested。
+            let is_terminal = matches!(
+                slot.1,
+                ExecutionState::Succeeded | ExecutionState::Failed | ExecutionState::Cancelled
+            );
+            let observed = if is_terminal {
+                slot.1
+            } else {
+                slot.1 = ExecutionState::CancelRequested;
+                // driver 不支持取消时状态**保持原样**：写成 CancelRequested 会让
+                // 调用方以为「正在取消中」（CM-22）。
+                if supports_cancel {
+                    ExecutionState::CancelRequested
+                } else {
+                    ExecutionState::Running
+                }
+            };
+            Ok(CancelReceipt::normalize(
+                execution_id.clone(),
+                observed,
+                supports_cancel,
+            ))
         }
     }
 
@@ -293,37 +348,10 @@ mod tests {
             &self,
             handle: &SessionHandle,
             execution_id: &ExecutionId,
-        ) -> Result<CancelReceipt, RuntimeError> {
-            let mut state = self.inner.lock().await;
-            locate(&state.view, handle)?;
-            let supports_cancel = state.driver_supports_cancel;
-            let slot = state
-                .executions
-                .iter_mut()
-                .find(|(id, _)| id == execution_id)
-                .ok_or(RuntimeError::CancelFailed("unboundExecution"))?;
-            // §7.6：终态优先。已终结的执行再取消不得被改写成 CancelRequested。
-            let is_terminal = matches!(
-                slot.1,
-                ExecutionState::Succeeded | ExecutionState::Failed | ExecutionState::Cancelled
-            );
-            let observed = if is_terminal {
-                slot.1
-            } else {
-                slot.1 = ExecutionState::CancelRequested;
-                // driver 不支持取消时状态**保持原样**：写成 CancelRequested 会让
-                // 调用方以为「正在取消中」（CM-22）。
-                if supports_cancel {
-                    ExecutionState::CancelRequested
-                } else {
-                    ExecutionState::Running
-                }
-            };
-            Ok(CancelReceipt::normalize(
-                execution_id.clone(),
-                observed,
-                supports_cancel,
-            ))
+        ) -> Result<ExecutionState, RuntimeError> {
+            self.cancel_receipt(handle, execution_id)
+                .await
+                .map(|receipt| receipt.state)
         }
 
         async fn close_session(
@@ -355,7 +383,9 @@ mod tests {
     async fn session_port_dispatches_through_the_trait_object_and_rejects_by_contract() {
         // 1) 对象安全 + 构造：下游两条轨道只能以 trait 对象形态持有 registry。
         let fake = Arc::new(FakeSessionPort::new(ready_view(TransactionState::None)));
-        let port: Arc<dyn SessionPort> = fake;
+        // 同一次取消的两种看法必须来自**同一个** fake：冻结端口上看到状态，
+        // 具名入口上看到三字段回执，两者的 `state` 逐字相等。
+        let port: Arc<dyn SessionPort> = fake.clone();
         let handle = handle_of("db_session_1", 3);
 
         // 2) 读路径：句柄原样回投影，调用方据此判断能不能执行。
@@ -410,21 +440,23 @@ mod tests {
         );
 
         // 6) 取消只登记意图，终态仍由终态事件给出（§7.6 末段）。
+        //    冻结端口只交状态，处置仍在回执里——两者指向同一次取消。
         assert_eq!(
             port.cancel_execution(&handle, &receipt.execution_id).await,
-            Ok(CancelReceipt {
-                execution_id: receipt.execution_id.clone(),
-                disposition: CancelDisposition::Requested,
-                state: ExecutionState::CancelRequested,
-            })
+            Ok(ExecutionState::CancelRequested)
         );
         assert_eq!(
-            port.cancel_execution(&handle, &receipt.execution_id).await,
+            fake.cancel_receipt(&handle, &receipt.execution_id).await,
             Ok(CancelReceipt {
                 execution_id: receipt.execution_id.clone(),
                 disposition: CancelDisposition::Requested,
                 state: ExecutionState::CancelRequested,
             }),
+            "回执与端口投影必须描述同一次取消"
+        );
+        assert_eq!(
+            port.cancel_execution(&handle, &receipt.execution_id).await,
+            Ok(ExecutionState::CancelRequested),
             "重复取消必须幂等，不得改写已有状态"
         );
 
@@ -518,8 +550,8 @@ mod tests {
         let handle = view.handle.clone();
 
         // 1) driver 不支持取消 → `unsupported`，状态**保持 Running**（不是 CancelRequested）。
-        let without_cancel: Arc<dyn SessionPort> =
-            Arc::new(FakeSessionPort::with_cancel_support(view.clone(), false));
+        let unsupported_fake = Arc::new(FakeSessionPort::with_cancel_support(view.clone(), false));
+        let without_cancel: Arc<dyn SessionPort> = unsupported_fake.clone();
         let receipt = without_cancel
             .execute_in_session(request(12))
             .await
@@ -527,6 +559,13 @@ mod tests {
         assert_eq!(
             without_cancel
                 .cancel_execution(&handle, &receipt.execution_id)
+                .await,
+            Ok(ExecutionState::Running),
+            "冻结端口形状下，unsupported 只表现为「状态不被改写」"
+        );
+        assert_eq!(
+            unsupported_fake
+                .cancel_receipt(&handle, &receipt.execution_id)
                 .await,
             Ok(CancelReceipt {
                 execution_id: receipt.execution_id.clone(),
@@ -545,7 +584,7 @@ mod tests {
         supports
             .cancel_execution(&handle, &finished.execution_id)
             .await
-            .expect("取消应返回回执");
+            .expect("取消应正常返回状态");
         // fake 里 cancel 只登记意图，终态由 close/结算给出；
         // 这里直接把终态断言落在 `normalize` 的规则上：终态优先且原样回填。
         assert_eq!(
