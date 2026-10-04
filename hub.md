@@ -541,7 +541,7 @@ COVERED = 19   PARTIAL = 20   MISSING = 1   （求和 = 40）
 
 ---
 
-## 轨 p3-cancel-cleanup（D-03 / D-R2-1 / D-R2-2）—— 已交付，待独立验收
+## 轨 p3-cancel-cleanup（D-03 / D-R2-1 / D-R2-2）—— **已合并**（详见文末「合并记录」）
 
 `READY_FOR_TEST`，已派 fresh Tester（**非 Coder**）。分支 `feature/p3-cancel-cleanup`，`25771de51 → e1cf4576`。
 
