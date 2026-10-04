@@ -18,7 +18,7 @@ async fn a_driver_without_precise_cancel_is_unsupported_and_never_touches_the_po
     assert_eq!(outcome.disposition, CancelDisposition::Unsupported);
     assert_eq!(outcome.disposition.as_str(), "unsupported");
     assert!(
-        !outcome.disposition.is_requested(),
+        !is_requested(outcome.disposition),
         "unsupported 绝不能对外呈现成「已下发取消」"
     );
     assert_eq!(
@@ -83,7 +83,7 @@ async fn a_live_execution_reports_requested_without_claiming_a_terminal_state() 
     };
     assert_eq!(outcome.disposition, CancelDisposition::Requested);
     assert_eq!(outcome.disposition.as_str(), "requested");
-    assert!(outcome.disposition.is_requested());
+    assert!(is_requested(outcome.disposition));
     assert_eq!(outcome.state, ExecutionState::CancelRequested);
     assert_eq!(outcome.execution_id, id);
     assert_eq!(port.cancel_calls(), 1);
@@ -104,7 +104,7 @@ async fn an_execution_already_in_a_terminal_state_reports_already_finished() {
     };
     assert_eq!(outcome.disposition, CancelDisposition::AlreadyFinished);
     assert_eq!(outcome.disposition.as_str(), "alreadyFinished");
-    assert!(!outcome.disposition.is_requested());
+    assert!(!is_requested(outcome.disposition));
     assert_eq!(outcome.state, ExecutionState::Succeeded);
 }
 

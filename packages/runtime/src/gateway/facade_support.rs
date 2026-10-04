@@ -12,11 +12,12 @@ use async_trait::async_trait;
 
 pub(crate) use super::testing_support::{execution_id, handle, ready_view, view};
 pub(crate) use super::{
-    cancel_binding_reason, cancel_failed, AlwaysAllow, AlwaysDeny, AuthorizationDenial, Authorizer,
-    CancelBinding, CancelDisposition, CancelRequest, EventDisposition, ExecutionEvent,
-    ExecutionEventKind, ExecutionGateway, ExecutionRequest, ExecutionSource, FixedClock,
-    GatewayAction, GatewayError, IdempotencyRecord, IdempotencyScope, IdempotencyStore,
-    InMemoryIdempotencyStore, RequestPrincipal, SourceKind, UNKNOWN_EXECUTION_REASON,
+    cancel_binding_reason, cancel_failed, is_requested, AlwaysAllow, AlwaysDeny,
+    AuthorizationDenial, Authorizer, CancelBinding, CancelDisposition, CancelRequest,
+    EventDisposition, ExecutionEvent, ExecutionEventKind, ExecutionGateway, ExecutionRequest,
+    ExecutionSource, FixedClock, GatewayAction, GatewayError, IdempotencyRecord, IdempotencyScope,
+    IdempotencyStore, InMemoryIdempotencyStore, RequestPrincipal, SourceKind,
+    UNKNOWN_EXECUTION_REASON,
 };
 // `PreciseCancel` 在 `connection` 门面里是私有导入，直接回转发不出去，这里从定义处引。
 pub(crate) use crate::connection::capability::PreciseCancel;
