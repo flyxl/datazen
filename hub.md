@@ -538,3 +538,34 @@ COVERED = 19   PARTIAL = 20   MISSING = 1   （求和 = 40）
 附带：`setSessionContext` 替换路径在 registry 层 `grep` **零命中**，只有 `ResourceOp::ChangeContext`（`fake_resource/script.rs:44`）。若该路径根本没建模，CM-74 第三条路径要**新增实现**而非新增断言。最接近的替代证据 `registry_lifecycle.rs:248`（世代推进使旧请求失效）与 `resource/handles.rs` 的 `resource_replacement_invalidates_bindings` 单测，**都不等价**于判据要求的「替换路径上句柄在物理关闭前被终结并注销」。
 
 另记一条口径提醒：CM-62 的规范化契约实际落在 **`driver-api` crate**（`packages/driver-api/src/namespace_tests.rs`）而非 `packages/runtime`。它算覆盖，但覆盖点在 runtime 之外，评审时别在 runtime 里找不到就误判成缺失。
+
+---
+
+## 轨 p3-cancel-cleanup（D-03 / D-R2-1 / D-R2-2）—— 已交付，待独立验收
+
+`READY_FOR_TEST`，已派 fresh Tester（**非 Coder**）。分支 `feature/p3-cancel-cleanup`，`25771de51 → e1cf4576`。
+
+| 变更 | commit |
+| --- | --- |
+| D-03 删除网关侧重复 `CancelDisposition` | `dd386c3aa` |
+| D-R2-1 形状钉子提出 `#[cfg(test)]` | `afa22c7a6` |
+| D-R2-2 `invalidate_worker` 三态分支 + 结构测试 | `141c8abf9` |
+| `progress.md` 台账（**合并时必须删除**） | `e1cf4576` |
+
+### Coder 自报门禁（**待 Tester 独立复核，自报数不作为验证**）
+
+12 套冻结基线全 EXIT=0 且 `p3_session_port_contract` **10** 未动；`--lib` **380**（基线 377 + 新增 3）；`gateway_contract` **51** 未下调；registry 五件 9/11/11/7/6；`build` EXIT=0 且 warning 0；`fmt --check` EXIT=0；边界脚本 0 violation / 3 advisory。门禁首尾 HEAD 与 status 各记一次（未提交态 7→7、提交后态 0→0），冻结面 `git status` 输出为空。
+
+### Coder 自承的三处弱点 —— 已列为 Tester 必答项，不接受「已解决」的说法
+
+**① `Ok(false)` 分类测试可能是人工造的。** Coder 自陈「`Ok(false)` 在登记表路径上近乎不可达，**我没能证伪**」，却仍写了 `否定答复仍算送达_不归该worker管的会话照常摘行`。若该测试是**直接调 actor** 造出来的，它保护的是「三态表的第二格写对了」，**不是**「登记表真会走到第二格」。这两种保护力差一个量级，必须分开记账。
+
+**② `Err` 分支「结构性不可达」这条裁定方向上是加强而非削弱，但依据要独立核。** Coder 的四步证据链：`SessionRecord` **按值**持有 `actor: SessionActor`（自持 `UnboundedSender`）→ `run_actor` 仅在 `exec_rx.recv()` 得 `None` 时收尾 → `owned_by` 是**按值克隆**记录、克隆在 `.await` 期间就是活着的发送端 → 摘表项只会多丢一份克隆，**丢不掉发送端**，故摘行不可能造成 `Err`。
+
+这条如果成立，D-R2-2 的 `Err` 分支就是**纯防御**（只剩 actor 异常终止能触发），价值在于把「正常路径不可能」写成**分支**而不是注释：旧代码 `let _ = …` + 无条件摘行的真实代价是——控制通道已断、物理资源仍在别处活着，登记表却记成「已作废」，额度随后被 `quota.hold_stale` 挂住，而没有控制通道的会话**不会被隔离** ⇒ **额度永久挂住**。Coder 还诚实指出「不计入 `lost`」正是为此。**若这条裁定被推翻，`Err` 就是活缺陷而非潜在缺陷**，严重度要重估。
+
+**③ 「能编译即证明」的说法要打折。** `row_owns_the_sender(&SessionRecord) -> &SessionActor` 是类型层面的平凡转换，本身不构成不变量证明；真正有分量的是它**顺带**证明了 `actor` 按值持有。Coder 同时承认反向（最后一个克隆 drop 后 actor 是否收尾）**结构上不可观测**——因为调用 `is_closed()` 本身就需要握着一个发送端。这个自我限制是对的，不要给反向不变量发通行证。
+
+### Coder 依分工未做变异实验
+
+三个修复各配了钉子，但钉子本身**没被「故意破坏实现再跑一遍」验证过**。已要求 Tester 在独立 detached 树补做 6 组变异（M-A～M-F），其中 **M-A 是本轮最关键的一条**：改 `registry/port.rs` 的 `cancel_execution` 签名后，`cargo build -p datazen-runtime` 必须失败。修复前实测该命令是 **EXIT=0 `Finished dev profile in 2.50s`**（钉子只对 test profile 生效）；**若这次 dev 档位仍是 0，说明钉子根本没移出 `#[cfg(test)]`，D-R2-1 未真正修复。**
