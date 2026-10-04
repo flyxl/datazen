@@ -1560,3 +1560,106 @@ Coder 没有照抄。它改成：数字「产自 `04a55fa72` 的树，其采样�
 2. **🟡 CI 门禁未加**。`.github/` 零改动；`ci.yml` 里 runtime 侧只有 `pnpm test:platform-crates`，它覆盖 `cargo test -p datazen-runtime`，**不含** `cargo run --release --bin cm60-bench`，也不含产物上传。而 `fake-runtime-fixtures.md:627` 原文是**强制**的：「创建后**必须**同步更新平台开发计划 §15.1 的命令表与 CI 门禁」；§15.3 `:859` 另要求把环境、构建参数、原始计时与 journal **作为 CI artifact** 保存。§15.1 命令表那一半**已**做（`connection-management.md:849`），CI 那一半没做。
 
 **另记 coder 主动申报的第三项**（我没问，它自己列进「未验证清单」）：§11.3 的「排队分位数另报」在本轮**结构上无法触发**——`QueueFull` 只存在于 `budget/*` 与 `connection/error.rs`，网关未接台账、`SessionPort` 无入队参数，故 5 轮 `queued` 全 0。它明写这是「当前实现如此，不是结构上永久不可能」。**本项不是性能问题，不受「不关心性能」豁免**，已交 Tester 判可及性。
+
+
+---
+
+## CM-32 隧道引用计数 —— 合并（`d46cc54bb` / `eabe66c43b`）
+
+Tester round 4+4b 判决 **PASS**，合并 `:d46cc54bb`，台账销毁于 `:eabe66c43b`。第 11 轨。
+
+**合并后 main 门禁**（首尾各记一次 HEAD，均为 `eabe66c43b`，证明运行期间无人改动）：23 个 `test result` 行 / **594 passed / 0 failed / 0 warning**；`pnpm typecheck` 0 error。分支上 `lib` 是 405，合并后 407，差 2 来自分叉点之后的轨，属 fork-point 差异非回归。
+
+**结构核对**：分支 fork 点 `21e27e4ebc6c`，与 main tip 不同（未踩 `merge-base` 在 HEAD==main 时返回 main 的陷阱）。分支与 CM-70 唯一重叠路径是 `progress.md`，而 main 从不携带该文件 ⇒ 各轨台账都是单边新增，**跨轨合并恒不冲突**。这已可作为固定结论，不再逐轨重算。
+
+### Tester 顶翻我的四个前提（第三次整批采纳）
+
+1. **累计增量是 `+2724` 不是 `+2706`**。我给的数字是估的。
+2. **「以 `mod.rs` 为准」这条规则本身是错的**。我原想用它裁定「台账已迁进模块头」，但它是双向的「两边都有就赢」——**这种规则让每一条台账丢失都不可见**。已改为**单向损失判定**：`progress.md` 有、`mod.rs` 无 = FAIL；反向至多算台账漏记。实测 5 条一一对应，本轨合并零丢失。
+3. **`CM-32-FU1` 这个编号在仓库里根本不存在**（全仓 0 命中）。我把它当作既有标识写进了简报。Tester 判「登记在实质上合规」——本轨确实在两处（`progress.md:285-287` 与 `transport.rs:38-42`）登记了缺陷，只是**没有编号这件事无人负责**。**编号职责自此归 hub.md**。
+4. **合并演练提交 `5e6ed8a14` 是兄弟不是后代**：它与 `92bddb5d1` 和 `d03e8716` 的 merge-base 同为 `7db1188c0`，不在任何分支上，锚定它的是 `7db1188c0`。我的担心不成立。
+
+### 交接裁定（来自 Tester 对 (d) 的判定）——本节是本轨最有价值的产出
+
+Tester 问「这些未闭合项到底该放哪」，我的答案是「模块头镜像」。它判我错，并且给了理由，分三层：
+
+1. **不违反「缺陷清单不单独建文件」**。该条禁的是**独立文件**；本轮零新文件。而且该条规则的第二句恰恰要求结论落成代码/测试里的事实，模块头 + 测试正是这个形态。
+2. **但它会过期，而更新它的人还没有**。`mod.rs` 是镜像不是源头；镜像是靠人记得回写才准的。
+3. **因此权威归属是判据正文 `connection-management.md:1027-1037`**。收口 CM-27/CM-28 时的动作顺序被定死为：**先改判据正文，再删除或收缩 `mod.rs:26-32`**。
+
+**该更新路径目前无归属，本节即为其归属登记。**
+
+**一条自设的红线**：`hub.md` 铁律禁止把可修的未闭合项写成永久架构断言。本轮 5 项全部仍挂在 CM-27/CM-28 判据上，`mod.rs:26` 明写「未闭合的仍挂在 CM-27 / CM-28，且全是非隧道部分」。没有一项被就地升格成「这在设计上不可能」。
+
+**`CM-32-FU1` 编号登记**：本模块 `transport.rs:38-42` 的单计数器铁律目前**只靠字段审计**保证——`close_tally: Mutex<usize>` 可编译且保持绿，类型系统拦不住。不在 CM-27/CM-28 范围，本轨判 PASS 不因它。`mod.rs:67` 指向该处。**编号自此存在于此处。**
+
+---
+
+## CM-70 幂等重放 —— 合并（`dd8e01d16` / `0802c4d49`）
+
+Tester round 2 判决 **ACCEPT**，合并 `:dd8e01d16`，台账销毁于 `:0802c4d49`。第 12 轨。
+
+**合并后 main 门禁**（首尾 HEAD 均为 `0802c4d49`）：23 个 `test result` 行 / **684 passed / 0 failed**；`lib` 436。33 行 warning **全部来自共享夹具 `tests/gateway_fixtures/mod.rs:272`**，`packages/runtime/src/` 下 0 条。`pnpm typecheck` 0 error；`vitest` **565 files / 5920 tests** 全过。
+
+**结构核对**：fork 点 `7fa6630f0`；与 CM-60 唯一重叠仍是 `progress.md` ⇒ 冲突自由。**本轨自身新增 0 处悬空台账引用**（9 处全部继承自分叉点）。
+
+### Tester 顶翻我的三处前提 —— 同一模式第 4 次
+
+1. **我给的父提交 sha 少 2 个字符（39 位）**，无法解析。它先去查了真实父提交才继续——**如果它照我给的 sha 去 diff，量的就是一个从未存在过的锚点，然后如实报告「冻结面已核对」**。这是本会话最危险的一次：错的不是结论，是**核对的落点**。
+2. **我写的 `tokio::sync::Mutex` 形式无法作为 `static`**（`Mutex::new` 不是 `const`），代码用的是 `std::sync::Mutex`。我描述的是我没读过的代码。
+3. **我给的过滤建议会直接制造一次空绿**（见下）。
+
+三处全在同一份派单里。**`dc7113649` 立的那条规则要再加一句：简报里的 sha、代码形态、命令行，都要当作「去查，不要采信我」来交付。** 前一次我给的是错的**结论**（CM-60 的产物出处），这一次我给的是错的**入口**。后者更隐蔽——结论错会被查出来，入口错会让核查落到一个假的锚点上，然后安静地通过。
+
+### 新变体：过滤名写对也可能空绿
+
+`cargo test --filter NAME` 不是 cargo 标志（已知）。但**这一轮的自然写法会空绿**：
+
+```
+cargo test -p datazen-runtime -- cm70::redaction
+→ running 0 tests / 0 passed; 0 failed; 48 filtered out / EXIT=0
+```
+
+**libtest 会拍平模块路径**，`cm70::redaction` 匹配不到集成测试里的任何东西。正确形态是 `-- redaction`。
+
+⇒ **空绿判定再增一条：过滤串必须先确认真的跑到了目标条数（`running N` 中 N > 0），再判红绿。** 「0 passed; 48 filtered out」不是通过，是没跑。
+
+### 竞态比例不是常数
+
+Coder 报拆锁后 18 绿 / 7 红，Tester 独立拆锁得 17 绿 / 8 红。**同一形状，不同采样**。Tester 拒绝把 18/7 当作可复现常数引用是对的。⇒ **报告中给竞态率必须附运行次数与实测区间，不得写成定值。** 决定性证据是「拆锁会不会红」，不是红几次。
+
+25 次全绿本身**不是**证据；证据是主动拆锁后确实红了，且失败原因正确（每次恰好 1 个测试失败，panic 是失去互斥的直接后果）。
+
+### 本轨 Tester 顶出的三个遗留（登记编号，均非本轨阻塞）
+
+- **`CM-70-FU1`：`gateway/mod.rs` 799/800，`cm70_no_disk.rs` 799/800。** `effect_outcome` → `ExecutionReceipt` 的接线**必须先拆文件**，否则一开工就撞上限。已合并轨的遗留，不是本轨缺陷。
+- **`CM-70-FU2`（Low，既有）**：`cm70_no_disk.rs:502/507` 把含令牌的 `{rendered}` 与凭据十六进制 `{segment}` 拼进 panic 文本。违反 `port.rs:443-445`「不得写入 journal / 报告 / **测试输出**」、`port.rs:462`「**不得…拼进断言**」、`fake-runtime-fixtures.md:441`「不打印」、`:640`「字面量不可记录」。**恰好在护栏破掉那一刻把夹具令牌打进 CI 日志**。范围有限（仅测试内、仅护栏失败时、非本提交引入——该文件本轮只动了 7+/4− 的锁），修法照抄新建的 `tests/cm70/redaction.rs` 用静态断言文本即可。`port.rs` 冻结，所以修在测试辅助侧。**本轮登记为独立微轨。**
+- **`CM-70-FU3`**：`IdempotencyPersistFailed { message }`（`mod.rs:466`）是账本错误串的逐字透传。网关没有插值 key，但也没有约束存储层文本。扩展既有 `no_rejection_path_ever_carries_token_material`（它已归类该变体）即可覆盖。
+
+### Coder 把两条教训写进提交 message 而非 progress.md —— Tester 判对，且给的理由比 Coder 的更强
+
+Coder 给的理由是「保持树对象稳定，让 amend 的内容未变证明成立」。Tester 补了更硬的一条：**`progress.md` 在合并时必被销毁，而这两条是流程规则不是 CM-70 知识**。
+
+进一步：教训 2（派生 `Debug` 必须脱敏到叶子字段）**已经从代码和测试里读得出来**，所以它逃脱了台账的销毁；**教训 1（写完 heredoc 提交 message 要在同一轮回读 `git log -1 --format=%B`）没有这样的逃逸路径**，只存在于分支历史。Tester 明说这**不构成拒绝验收的理由**——判得对。可选项：若它要成为常设规则，入 `AGENTS.md` / `docs/development/`。**本轮不做，记此备查。**
+
+---
+
+## 全仓悬空台账引用 —— 建立归属基线
+
+CM-32 合并前先在 main 上建立基线，再合并后再扫，归属才诚实。
+
+`git grep -n 'progress\.md' main` 在 `packages docs src src-tauri scripts .github` 下 **9 处，全部为既有**：
+
+- **8 处在 `packages/drivers/redis/**`**：`ops/workbench/tests/fix_round1.rs:12`、`ops/workbench/transport.rs:243`、`ops/write.rs:107`、`ops/write/tests.rs:352` 与 `:353`、`tests/tree_scan_budget.rs:6`、`ui/__tests__/keyTreeTesterCoverage.test.tsx:7`、`ui/__tests__/stringEditorTesterGaps.test.tsx:11`、`ui/value-editors/redisBigValue.ts:7`
+- **1 处在 `packages/runtime/src/registry/actor/cancel.rs:22`**，由 `6f5027eee` 引入，`merge-base --is-ancestor` 确认**已在 main 上**，非 CM-32 造成
+
+⇒ **CM-32 合并新增 0 处，CM-70 合并新增 0 处。** 两轨的台账销毁后，仓库里指向已销毁台账的引用数与合并前**完全相同**。
+
+**顺带的发现**：这 8 处 redis 引用与 `cancel.rs:22` 是**同一类缺陷**（`AGENTS.md`「删除或重构代码时同步删除失效引用」），而 **CM-32 Tester 的全仓扫没有看见它们**——因为它把扫的范围限定在自己那 11 个文件里。**审计单位规则，第 5 次确证**：扫的审计单位必须是被扫对象本身，不是我已经怀疑的那几处。登记为 **P3 收口时的全仓扫除项**，不进 CM-32/CM-70 的冻结面。
+
+---
+
+## 当前在飞
+
+- **CM-60 压力排空**：Tester `725ac4df` 在跑，结论未到。我已给它两处缺口的倾向（`fake-runtime-fixtures.md:3` 页眉失效引用判**合并阻塞**；§12 CI 门禁未加判为待裁定）与「不要只查这两处」。
+- **P3 退出门禁 CM 重审**：`dffce491` 在跑，已自行拆出 4 个子审计并行。目标 main `b98ddba89`（已过时，main 现为 `0802c4d49`）——它对 CM-32/CM-70/CM-60 三轨的贡献必须**自己核对 worktree**，不采信我的「已知贡献」。
