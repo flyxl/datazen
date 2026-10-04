@@ -1368,3 +1368,61 @@ Coder 自报门禁：`FMT_CHECK_EXIT=0 / BUILD_EXIT=0 / TEST_ALL_EXIT=0 / TARGET
 **外加一个至今 0 次执行的代码路径**：`fake_resource/ops.rs:513` 的 F11 分支（`FaultKind::CloseUnconfirmed` 穿过 `close_resource`）。`FaultKind::CloseUnconfirmed` 只在 `script.rs:343` 定义、`ops.rs:513` 被消费，**全仓没有任何测试构造它并走 `close_resource`** ⇒ 这段早返回代码**在全部 384 个 `--lib` 测试里执行 0 次**。它是未被测试覆盖的真实分支，不是死代码，**不得当作冗余删除**。
 
 **这正是 CM-32 那次同一个病根的第三次发作**：合并门禁证明「改动没弄坏已有的东西」，判据要求「补上还不存在的东西」。二者是不同的命题。固化：**每条轨的合并结论必须逐条回填判据原句，而不是回填门禁退出码。**
+
+## CM-70 repair round 1 Tester 判决：CONDITIONAL PASS，一个阻塞 + 两个必修
+
+被测 `0a9a8f6e3` / 基线 `c6597b803`，独立 worktree `.worktrees/ta-cm70r1`，门禁首尾 HEAD 一致、工作区干净，全程未读 `.env` 内容。报告 `/tmp/cm70_logs/TA_R1_REPORT_cm70.md`。**阻塞项与两个必修项我逐条独立复核过，不是转述。**
+
+**D1（阻塞）— `TOTAL_FAILED=0` 作为稳定门禁被推翻。** Tester 连跑 25 次 `cm70_no_disk`：HEAD **7 绿 / 18 红（72%）**，基线 **24 绿 / 1 红（4%）**。机制在 `tests/cm70_no_disk.rs:181 struct PrivateTempRoot` / `:193 std::env::set_var("TMPDIR", …)` / `:204-208 impl Drop` 还原 —— **`TMPDIR` 是进程级全局**，同一二进制内两个用例并行互相踩，炸在 `:277 entries().is_empty()` 与 `:166 list_entries`。
+**归因我认**：`git diff c6597b803 0a9a8f6e3 -- tests/cm70_no_disk.rs` 里 `set_var` **零命中** ⇒ 机制存量、Coder 未引入；基线 7 用例 → HEAD 更多用例，**竞态窗口是被本提交放大的**。但门禁不能这么合：25 次里红 18 次的「全绿」不是证据。**又一次印证：单次全绿与可复现的全绿是两回事。**
+
+**M1（Medium）— H-1 只关了一半。** `packages/runtime/src/gateway/request.rs:36-37` `#[derive(Debug, Clone, PartialEq)] pub struct ExecutionRequest`，其 `pub idempotency_key: String` 就是那把令牌；`grep "impl.*Debug for ExecutionRequest"` **零命中** ⇒ `format!("{req:?}")` 逐字打印。Tester 实测 `LEAKED=true HAS_MAC_SEGMENT=true LEN=232`。
+**这是 `:1314` 那条教训的下一层**：那里是「`ExecutionRecord` 脱敏了顶层 `idempotency_key`，内层 `port_request` 派生 `Debug` 明文」；这次是 **`ExecutionRequest` 本身**（最外层、**输入侧**）仍是派生。derive 存量，但洞与本轨同源、同一文件、同一把令牌，而 `cm70_no_disk.rs:675` 只守护输出侧，**输入侧零测试覆盖**。固化：**脱敏要逐层走到最外层那个派生 `Debug`，且输入侧与输出侧各要一条对称断言。**
+
+**M2（Low）** `RedactedExecuteRequest` 只脱敏 `idempotency_key`，`call`（含 `serde_json::Value`）原样输出。
+
+**四项待裁全部 PASS / 非缺陷：**
+
+| 项 | 裁定 | 关键证据 |
+| --- | --- | --- |
+| (a) H-1 令牌回显 | **PASS** | `key` 从变体 / `Display` / `to_persistable_json` 三处全消失；`cm70_no_disk.rs:713` 无 `key` 字段仍编译（编译期佐证）。**令牌按构造不可从 16-hex 指纹反推**（FNV-1a 原像显式不含 `idempotencyKey`）。残余仅 payload oracle 与 64 位碰撞，**非凭据泄漏** |
+| (b) H-1 二层泄漏 | **PASS（带残余）** | 基线实证：`RedactedExecuteRequest` **ABSENT_AT_BASELINE**、基线 `ExecutionRecord` 为 `#[derive(Debug, Clone)]`、守护测试 **TEST_ABSENT_AT_BASELINE** ⇒ 泄漏在 `c6597b803` 确实开放且当时无守护，HEAD 修复有效。`src/` 286 个派生类型中 35 个带凭据字段，除 M1 外均在冻结面或无 `{:?}` 打印点 |
+| (c) H-2 围栏 | **PASS** | 位置逐字 `mod.rs:558-588`（`mark_dispatch_issued` 之后、`execute_in_session` 之前）、键为 `(dbSessionId, 指纹)`；**PROBE5 复测 `AFTER_DISPATCH SQL_ISSUED_FINAL=1 FENCE_COUNT=1`、`AFTER_RETRY 1/1`（2→1、0→1）**；`git diff … \| grep PersistFailed` 无命中；`expiry.rs` 已就地写明裁定理由；`retries.rs:290-294` 冻结为常驻回归 |
+| (d) Q1 | **符合判据的保守实现，Low 非缺陷** | 判据「不能用新键自动重试**未知**写入」是**禁止性**条款，放行不是它的要求；「已知」在网关侧不成立（网关只有 `RuntimeError`，拿不到驱动内部先后知识）；反向错误代价不对称；逃生舱 `resolve_unknown_outcome` 存在且有专测。**不改行为，仅补一句文档澄清** |
+| (d) Q2 | **Coder 理由属实，判为技术债** | `connection/execution.rs:97-118` 的 `EffectOutcome` 存在且文档明写与 `ExecutionErrorCode` 正交，但**没穿过网关端口**（`ExecutionReceipt` 无 `effect_outcome` 字段）；`ProviderError::SqlError(String)` 是扁平变体，把「计划期拒绝（确定未生效）」与「执行中途失败（可能部分生效）」压成同一形态 ⇒ **今天驱动返回值确实无法确定性证明未生效**。代价递增（`unverified` 只在 `resolve_unknown_outcome` 里 `remove`，会话越长累积越大），判为**可接受但属技术债**。解法：给 `ExecutionReceipt` 接上 `effect_outcome`，在 `NotStarted/RolledBack` 时撤围栏，而非永不清。**排跟进轨，不阻塞本轮** |
+
+**变异测试四方向全部按预期**（每次改完 `git diff --stat` 证明落地、判定用 `grep -q`、还原后 `touch` 全部 `src/**/*.rs` **和** `tests/**/*.rs`）：V1（围栏退回 `accept` 的 `Unreadable` 分支）🔴 `43 passed; 3 failed`，并**逐字复现原缺陷** `TA_V1_AFTER_RETRY SQL_ISSUED_FINAL=2 FENCE_COUNT=0`（对照 HEAD 的 `=1/=1`）⇒ 因果性双向证明；V2（围栏键 `fingerprint`→令牌）🔴 `43 passed; 3 failed`；NEG（只改注释空白）🟢 `46 passed; 0 failed` + `ONLY_COMMENT_LINES_CHANGED`；H-1（`incoming` → `scope.key()`）🔴 `cm70_no_disk 11 passed; 2 failed`，**正好打中两条专用泄漏断言**（11 条确实通过，已排除 0 命中假绿）。**这一组是本轮最硬的证据：每个修复都有真实 kill，且配了负控。**
+
+**计数**：22 目标 TOTAL 638 → 650，**无任何目标下降**，仅 `lib 410→411`、`cm70_idempotency_replay 41→46`、`cm70_no_disk 7→13` 三处按预期变化。`TARGETS=22 / TOTAL_PASSED=650` 属实；**但「`TOTAL_FAILED=0`」作为稳定门禁被推翻**。
+
+**两处交接勘误（照 Tester 的更正，我 `:1320`/`:1322` 的旧表述作废）**：
+1. `grep "unverified.insert"` 在 HEAD **零命中** —— 已重构进 `GatewayState::raise_unknown_outcome`（`mod.rs:269` 定义、`:433` 调用、`:579` 注释）。后续一律用 `raise_unknown_outcome`。
+2. **Q1 探针方法学**：Tester 的探针首版只 `accept` 不 `dispatch` 重试，量到 `=1` **差点误判「没被拦」**；**SQL 是 `dispatch` 才下发**。修正后 V1 侧才复现 `=2`。任何涉及围栏的回归测试，重试必须打在 `dispatch` 上。
+
+**结构债**：`gateway/mod.rs` 已 **799 行**（AGENTS.md 建议上限 800）。本轮只改 `request.rs` / `tests/`，不动它；但 **Q2 跟进轨动手前必须先拆模块**，否则必然超限。
+
+## CM-32 注释清扫第三轮：`mod.rs:50` 是第三份副本，而我下错了禁令
+
+Tester `a4c17d92` 对 `7db1188c0` 判 **PASS**（文档清扫的合并阻塞项解除），同时报了一条 LOW 不精确，我**独立复核为真**：`ledger.rs:293` 的 `if matches!(entry.state, TunnelState::Closing | TunnelState::Unconfirmed)` 在 `:294-298` 直接 `return`，而 `entry.refs` 要到 `:302`（`debug_assert`）/`:306`（`saturating_sub`）/`:308` 才读 ⇒ `drain()` 的决策**同时读 `state` 和 `refs`**，而 `ledger.rs:22` 说「释放决策只读本文件的 `refs`」、`transport.rs:28` 说「释放决策的唯一输入是 `TunnelEntry::refs`」，**字面上都被同一个 `drain()` 证伪**。这不是谎（`state` 是终态守卫、不是第二本账，唯一计数铁律完好），但字面不准确，且**同一句话住两个文件**。
+
+### 我的问题前提错了，被 Tester 推翻
+
+我问「要不要把『测试钉的是数值、不是字段来源』这个洞写进头注释」以补诚实度。Tester 判 **PASS，不要加**，四条理由：① 该事实已逐字写在 `transport.rs:33-37`（连 `close_tally: Mutex<usize>` 实证都点名了），`mod.rs:51` 与 `ledger.rs:22` 都指向它，三份头一跳可达；② 头注释从未声称编译器保证，写的是「靠字段审计与评审维持」，**M-2 正是那句话成真的预测**；③ 加它违反 AGENTS.md「缺陷结论…最终必须变成代码、测试和 `docs/` 正式文档里的事实」—— 会把一个**可修的洞冻成永久架构断言**；④ 复刻 Finding A 的四份漂移。**裁定采纳，不加。**
+★ 可推广：**裁决的不只是代码，一个 Coder/Tester 可以推翻协调者*问题*的前提。判问题的前提，和判它的答案同等重要。**
+
+### ★ 同一句话住三个文件、只清了两处 —— 第三次复发
+
+round 3 我指示改 `ledger.rs:22` + `transport.rs:28`，并**明确说「`mod.rs` 不动，`:48` 说的是另一句，没有此缺陷」**。Coder 扫目录后发现 `mod.rs:50-51`「真正的约束是「释放决策只读 `refs`，[`TunnelTransport`] 的返回值不携带计数」」**正是第三份副本**。我复核为真：`:48` 确实成立，但 `:50` 才是缺陷本身。**Coder 遵守禁令、只登记不改，是正确处置；错的是我的清单。**
+
+`:1336` 早就记过「注释清扫的输入必须是目录，不能是任何人的文件清单」，本文也早有「Tester 独立扫 `packages/` + `src-tauri/` + `docs/` ⇒ 0 命中」的先例 —— 但**四份视角、三种漏法**：我点名的清单漏（round 1、round 2、round 3 各一次）、Coder 的目录 grep 抓到、Tester 逐句读又漏。
+**固化（这条替换 `:1336` 的旧表述）**：审计单位不是「我怀疑的那一句话」，而是**整个模块头**。验收标准 = **把三份头逐行读完、枚举每一条事实性断言（含你觉得「当然成立因而没写出来」的隐含断言）、每条给出当场读到的 `文件:行号` 锚点**，**不是**「我说的那几句改对了」。round 4 据此派单。
+
+**round 3 交付 `c96252426`（协调者已独立验完）**：非注释改动 **0 行**（我复跑 `git diff -U0 | grep -vE '^(\+\+\+|---)' | grep -vE '^[+-][[:space:]]*(//|$)'` 得 0），改动仅 `ledger.rs` + `transport.rs`；剔除 `^\s*//!` 后父子**逐字节相同**（`431dfaa4…4e57` / `c094055e…8484d2` 两侧一致）；门禁 `--lib` **405**、**21 目标 / TOTAL 592 / 0 failed / 0 警告**，三数全不变；冻结面 diff **为空**。Coder 对 `transport.rs:39`「释放路径只读一个计数」的判断我**认** —— 那是**候选修法**的描述、且限定了「一个计数」，不假；但我授权它换词，让目录级 `只读|唯一输入|唯一来源` 扫描能回到 0，否则这条不变式就不可检查了。
+
+### M-2 洞的归属：立编号跟进轨 `CM-32-FU1`
+
+Tester 提出的合并前最后一项行动：M-2 只登记在 `progress.md:287` 与 `transport.rs:33-37`，而 **`progress.md` 合并时必删** ⇒ 轨消失后唯一记录是一条**无主**的代码注释。
+**裁定：立编号跟进轨 `CM-32-FU1`（负责人＝协调者，排期在 CM-32 合并之后），本轮不关闭。**
+- **不写进 `docs/`** —— 那正是 Tester 驳回我「该加」那条问题时用的同一个理由：会把可修的洞写成永久架构事实。
+- `transport.rs:33-37` 是**代码**且完整陈述了洞与实证 ⇒ AGENTS.md「台账消失后结论必须仍然能从代码和测试读出来」**已满足**。缺的只是**排期责任人**，由 FU1 提供。
+- FU1 内容（Tester 已列两个候选，本轮不裁决）：为「释放路径只经由唯一计数」补断言 / 让 `drain` 按值从单个私有方法取计数而非直读结构体字段。
