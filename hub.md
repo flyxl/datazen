@@ -754,3 +754,44 @@ VITEST_EXIT=0   Test Files 565 passed (565)   Tests 5920 passed (5920)   Duratio
 - **CM-74 顺序语义未裁定**（见上文 Q1）。
 - `Err` 格用例会在 stderr 留一行 `panicked at … driverCloseCallbackCrashedTheActorTask`，**是被测事件本身**；不得用 `std::panic::set_hook` 消音。
 - `connection::port::CancelReceipt`（2 字段）vs `registry::CancelReceipt`（3 字段）同名异构，待 Wave 2 裁定。
+
+---
+
+## 第二批开工前的现状复核（协调者实测，2026-10-05）
+
+派活前把五个缺口逐个挖到可施工级别，其中两条**推翻了之前的记述**。
+
+### 更正一：CM-70 不是「验签/重放」
+
+原文（`connection-management.md:1294`）是「**CM-70 过期幂等键与记录删除（H/W1）**」。之前记成「验签/重放 MISSING」是错误概括，据此派活会做错东西。
+
+实测本轨**不是零基础**：`packages/runtime` 幂等命中 **294** 处，且 `connection/testing/clock.rs:417` 已有 `idempotency_token_expiry_is_24h_of_virtual_time`；`resource/journey_ledger.rs:124` 已有「同键恢复候选而非二次开资源」；`connection/testing/ids.rs:254` 有 `idempotency_nonce()`。缺的是过期后不执行、删记录后不执行、伪造 `issuedAt`/`keyVersion` 拒绝、owner 重启后旧令牌 SessionLost、receipt/token 不落盘这**五条窄面**。
+
+### 更正二：CM-32 不是「历史术语」，是「**哪儿都没有**」
+
+之前把 CM-32 的开放问题写成「历史术语 vs 活要求」二选一。实测推翻了这个框架：
+
+| 位置 | 命中 |
+| --- | --- |
+| `connection-management.md` 内「隧道」 | **8 处**（`:25` `:575` `:676` `:817` `:1029` `:1031` `:1037` `:1057`） |
+| 全仓 `docs/`+`packages/`+`src/`+`src-tauri/` | **85 文件** |
+| `packages/runtime` | **0** |
+| `src-tauri/src/tunnel/` | 3 文件（`mod.rs` `http_proxy.rs` `websocket.rs`） |
+| **上述两处的 refcount/共享引用计数** | **0** |
+
+⇒ 隧道在宿主是**实打实实现了的**（`resolve_tunnel_kind` / `start_for_connection` / `Tunnel` 枚举），但**共享引用计数语义哪儿都不存在**。所以既不是文档漂移（措辞仍在用），也不是已实现（语义缺失）。
+
+⇒ **这是新出现的第三种可能，之前的二选一没覆盖：隧道引用计数该建在 `packages/runtime`（判据标 (H)，H = 部署无关 runtime 契约），还是建在 `src-tauri`（架构映射 `:25`/`:676` 把隧道归宿主）？** 前者要在 runtime 引入一个目前为零的隧道概念；后者要承认 CM-32 的 (H) 标签标错了层。**必须用户裁定，协调者不自行决定。**
+
+连带 **CM-27（`:1029`「隧道引用正确」）、CM-28（`:1037`「隧道不多减引用」）的隧道子项同此裁定**，一并等。
+
+### CM-60 拆两半
+
+- **A 半（行为）**：100 逻辑 session / 1000 次操作与取消 / 总额度 20 + 控制预留 2 / 队列上限 32 / 两 worker / drain 一个 / 关池。可完全实现，不依赖硬件。
+- **B 半（性能）**：release build 基准，`latency.rs` 的 nearest-rank p95 可复用（**全仓目前一次可运行的基准都没有**：`connection/testing/bench.rs` 与 `src/bin/` 均不存在）。
+
+**环境偏差已实测**：本机 `hw.ncpu=8`、`hw.memsize=16.0 GiB`；判据要求 **4 vCPU / 8 GiB**。本机**更强**约 2 倍。已向 Coder 追加裁定：在更快机器上通过 p95≤10 ms 比在目标机器上通过**更保守**，不是宽松放行，但**仍不得记为「已在判据指定环境验证通过」**；实测环境必须逐字记录。
+
+### 工具更正
+
+本仓**存在 `.codegraph/`**，AGENTS.md 要求查询前先走 `codegraph explore`。本节调查用的是 grep——结论有效（给的是具体计数），但方法不合规，后续调查改用 CodeGraph 优先。
