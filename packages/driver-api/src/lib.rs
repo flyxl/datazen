@@ -13,6 +13,7 @@ pub mod command;
 mod explain_plan;
 mod factory;
 pub mod filters;
+pub mod mock_driver;
 pub mod namespace;
 mod query_stream;
 pub mod resource;

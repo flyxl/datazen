@@ -551,12 +551,12 @@ fn chunk_test_drivers(
     query_error: Option<String>,
     source_rollback_error: bool,
 ) -> (
-    std::sync::Arc<crate::testing::mock_driver::MockDriver>,
-    std::sync::Arc<crate::testing::mock_driver::MockDriver>,
+    std::sync::Arc<datazen_driver_api::mock_driver::MockDriver>,
+    std::sync::Arc<datazen_driver_api::mock_driver::MockDriver>,
     TableSchema,
     TableSchema,
 ) {
-    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+    use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 
     let source_schema = source_schema(&["id"]);
     let mut target_schema = source_schema.clone();
@@ -594,8 +594,8 @@ async fn run_test_chunk(
     source_rollback_error: bool,
 ) -> (
     Result<ChunkedTableResult, TransferError>,
-    std::sync::Arc<crate::testing::mock_driver::MockDriver>,
-    std::sync::Arc<crate::testing::mock_driver::MockDriver>,
+    std::sync::Arc<datazen_driver_api::mock_driver::MockDriver>,
+    std::sync::Arc<datazen_driver_api::mock_driver::MockDriver>,
 ) {
     let _guard = crate::TEST_COMMIT_ACK_LOSS_TEST_LOCK
         .lock()
@@ -609,8 +609,8 @@ async fn run_test_chunk_without_ack_fault_lock(
     source_rollback_error: bool,
 ) -> (
     Result<ChunkedTableResult, TransferError>,
-    std::sync::Arc<crate::testing::mock_driver::MockDriver>,
-    std::sync::Arc<crate::testing::mock_driver::MockDriver>,
+    std::sync::Arc<datazen_driver_api::mock_driver::MockDriver>,
+    std::sync::Arc<datazen_driver_api::mock_driver::MockDriver>,
 ) {
     let (source, target, source_schema, target_schema) =
         chunk_test_drivers(query_error, source_rollback_error);

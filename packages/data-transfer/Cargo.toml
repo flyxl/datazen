@@ -25,6 +25,8 @@ tracing = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
+tempfile = "3.27.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 datazen-driver-postgres = { path = "../drivers/postgres" }
 datazen-driver-mysql = { path = "../drivers/mysql" }
+datazen-driver-sqlite = { path = "../drivers/sqlite" }

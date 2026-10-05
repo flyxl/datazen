@@ -56,3 +56,12 @@ mod sql_structure_fixtures;
 mod sql_structure_object_coverage_tests;
 #[cfg(test)]
 mod sql_structure_object_tests;
+
+// Force-link path drivers so their inventory registrations take effect when
+// running this crate's own tests.
+#[cfg(test)]
+extern crate datazen_driver_mysql;
+#[cfg(test)]
+extern crate datazen_driver_postgres;
+#[cfg(test)]
+extern crate datazen_driver_sqlite;

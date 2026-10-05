@@ -17,4 +17,7 @@ tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros"] }
 tracing = "0.1"
 
 [dev-dependencies]
+datazen-driver-postgres = { path = "../drivers/postgres" }
+datazen-driver-mysql = { path = "../drivers/mysql" }
+datazen-driver-sqlite = { path = "../drivers/sqlite" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -66,3 +66,12 @@ pub use sql::{
     postgres_typed_placeholder, quote_ident_sql, IdentityInsertTarget, SqlStatement,
 };
 pub use state::SyncPhase;
+
+// Force-link path drivers so their inventory registrations take effect when
+// running this crate's own tests.
+#[cfg(test)]
+extern crate datazen_driver_mysql;
+#[cfg(test)]
+extern crate datazen_driver_postgres;
+#[cfg(test)]
+extern crate datazen_driver_sqlite;

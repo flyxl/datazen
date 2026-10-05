@@ -1263,7 +1263,7 @@ pub async fn execute_with_target(
 mod tests {
     use super::*;
     use crate::model::TableMapping;
-    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+    use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
     use crate::transfer::adapter::SyncSourceAdapter;
     use datazen_driver_api::{ColumnSchema, TableSchema};
     use datazen_driver_mysql::MysqlSyncAdapter;

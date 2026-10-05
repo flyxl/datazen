@@ -1366,7 +1366,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_create_outcome_stops_following_structure_tables() {
-        use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+        use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
         use std::sync::atomic::AtomicBool;
 
         struct SourceAdapter;
@@ -1496,7 +1496,7 @@ mod tests {
 
     #[tokio::test]
     async fn structure_preflight_failures_are_not_started_and_success_can_continue() {
-        use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+        use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
         use crate::transfer::ir::IRColumn;
 
         struct SourceAdapter {

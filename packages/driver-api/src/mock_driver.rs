@@ -6,13 +6,13 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
-use crate::db::{
+use crate::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
     DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
     StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
     TransactionHandle, Value,
 };
-use datazen_driver_api::{
+use crate::{
     execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
     is_schema_object_command, query_command_definition, query_stream_command_definition,
     schema_catalog_command_definitions, schema_object_command_definitions,
@@ -683,7 +683,7 @@ impl DatabaseDriver for MockDriver {
     async fn cancel_query_with_execution(
         &self,
         _handle: &ConnectionHandle,
-        _execution_id: &datazen_driver_api::QueryExecutionId,
+        _execution_id: &crate::QueryExecutionId,
     ) -> Result<(), DriverError> {
         self.precise_cancel_query_calls
             .fetch_add(1, Ordering::Relaxed);

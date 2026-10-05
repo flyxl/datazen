@@ -28,3 +28,12 @@ pub use object_identity::SchemaObjectIdentity;
 pub use plan::{build_column_plan, build_schema_diff_plan, PlanOptions};
 pub use profile::SchemaDiffProfile;
 pub use types::*;
+
+// Force-link path drivers so their inventory registrations take effect when
+// running this crate's own tests.
+#[cfg(test)]
+extern crate datazen_driver_mysql;
+#[cfg(test)]
+extern crate datazen_driver_postgres;
+#[cfg(test)]
+extern crate datazen_driver_sqlite;

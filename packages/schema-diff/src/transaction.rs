@@ -107,7 +107,7 @@ impl Drop for TransactionScope<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+    use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 
     fn mock_handle() -> ConnectionHandle {
         ConnectionHandle {
