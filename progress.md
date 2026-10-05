@@ -169,8 +169,13 @@ REPLAY_EXIT=0   (3 passed; 0 failed; 56 filtered out)
 复算里除 raw 外的数分两类，都不是推断或构造，但来源不同，不能一概称「照抄」：
 journal、warmup 墙钟、逐轮 wall_time 确实逐个照抄冻结 summary；而
 `unmeasured_failures_total=0` 与 `percentile_input=10000` 这两列**在 commit `04a55fa72`
-冻结的那份 summary 里根本不存在**（第 7、9 个提交才加进产物），它们的值是从 `raw[]`
+冻结的那份 summary 里根本不存在**——在那一版上对 `packages/runtime/src/bin/cm60-bench/`
+整个目录 `git grep -c`，两个名字都是 0 命中。它们的值是从 `raw[]`
 按当轮定义直接算出来的——结论相同，但「照抄」这个说法对这两列是假的，现予收窄。
+（两者首次进入产物的提交已用 `git log -S` 逐个查得并记下哈希：`unmeasured_failures_total`
+在 `outcome.rs` 首次出现于 `1289231aa`，`percentile_input` 首次出现于 `192545745`。
+这里**只给哈希、不给「第几个提交」**——序号取决于和哪条线求 merge-base，换个基点结论就变，
+把序号写进台账等于把一个随基点漂移的数当成事实。）
 预热样本不进 raw，所以预热分位数复算不出来，就留空并在代码里注明预热不参与任何 p95
 ——这是诚实缺口，不是编数。
 

@@ -53,6 +53,57 @@
  * `--dry-run` must not be a bypass, and dry-run exists to show the plan, not to
  * skip the plan's own validity check.
  *
+ * ## D2 — `retry: 2` at vitest.config.ts:75 can report a first-run failure as PASS
+ *
+ * **Registered here, NOT fixed.** The number `D2` is stable: it names this
+ * finding wherever it is cited, including in ledger files that do not survive
+ * the merge.
+ *
+ * **Conclusion.** `vitest.config.ts:75` sets `retry: 2` at the Root level of
+ * the `test:` block opened at :28 — same indent as `testTimeout` at :63 — and
+ * the `include:` list at :76-86 covers, at any depth under
+ * `scripts/__tests__/`, every `*.test.{ts,mjs}` file, so this script's own test
+ * file is collected under it. (The glob is spelled out in words because writing
+ * it verbatim would end this block comment.)
+ * Both CI unit steps
+ * inherit that setting: `ci.yml:83` runs `pnpm test:unit`, whose script is
+ * literally `vitest run`, and `ci.yml:139` runs `pnpm test:unit:driver-set`,
+ * which spawns `node_modules/vitest/vitest.mjs run` at
+ * `scripts/run-unit-driver-set.mjs:113`; `vitest.config.ts` is the only
+ * **git-tracked** vitest config (`git ls-files` matches exactly one; a second
+ * one sits on disk at `packages/pro-extensions/sql-editor-pro/vitest.config.ts`
+ * but `.gitignore:71` excludes the whole directory and CI never builds it).
+ * A test that fails on its first attempt and passes on a
+ * retry is reported PASSED and the step exits 0. vitest.config.ts:70-73 states
+ * this cost in the config's own words: 「an all-green run is NOT evidence that
+ * no intermittent failure occurred… that inference is invalid by
+ * construction」.
+ *
+ * **Why it is not fixed in this change.** Two reasons, both deliberate.
+ * First, scope: `vitest.config.ts` is pre-existing and is not among the files
+ * this work touches — `scripts/run-platform-crate-tests.mjs` and
+ * `scripts/__tests__/run-platform-crate-tests.test.ts` are, and the fix would
+ * not be. Second, it is not a free win to remove: the value was chosen for the
+ * flake class measured at vitest.config.ts:64-69 — contention that spans a
+ * stretch of tests, where one immediate re-run need not land after the
+ * contention passes — and `ci.yml:124-125` already commits that number as the
+ * absorber for first-real-runner flakiness, explicitly 「neither is a licence to
+ * widen either number」. Retiring it needs its own measured decision covering
+ * both files, not a drive-by inside an unrelated change.
+ *
+ * **How to reproduce.** The static half is a read of `vitest.config.ts:75`
+ * together with the Root-level nesting described above. The behavioural
+ * recipe — give a test in this directory a first-run-only failure and confirm
+ * the process still exits 0 — was **not executed** in this change; it is
+ * offered as the check to run before acting, not as a measurement reported
+ * here.
+ *
+ * **Impact.** While D2 is open, any conclusion of the form 「the run was green,
+ * therefore the bypass is closed」 is unsupported on its own. The bypass proofs
+ * in this script's test suite stand as assertions; what D2 removes is the claim
+ * that a green exit code by itself certifies those assertions were evaluated
+ * and passed on the attempt a reader assumes.
+ *
  * @example
  * node scripts/run-platform-crate-tests.mjs --dry-run
  */
