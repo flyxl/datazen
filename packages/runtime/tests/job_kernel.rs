@@ -495,3 +495,80 @@ fn persisted_shapes_never_carry_runtime_handles() {
         assert!(!serialized.contains(forbidden), "持久化路径不得包含 {forbidden}");
     }
 }
+
+// ------------------------------------------------ 恢复故障旅程（§10.1.1 决策表）
+
+/// 旅程 A：commit 成功但 checkpoint 未写 —— 只能人工核验，不自动重放。
+#[tokio::test]
+async fn recovery_commit_succeeded_checkpoint_missing_requires_manual_review() {
+    let (repo, _clock) = repo_clock();
+    let c = ctx();
+    repo.accept(&c, definition("dataSyncApply", apply_payload("plan-a"), "job-a"), &IdempotencyKey::new("ja"))
+        .await
+        .expect("accept");
+    let claim = repo.claim(&c, JobId::new("job-a"), WorkerId::new("w1")).await.expect("claim");
+    let boundary = datazen_platform_api::dto::job::CommitBoundary {
+        stage_id: StageId::new("s1"),
+        stable_target_fingerprint: "sha256:abc".into(),
+        committed_at: Timestamp::new("2026-01-01T00:00:01Z"),
+        operation_id: None,
+        batch_id: Some("batch-1".into()),
+        payload_digest: Some("sha256:p".into()),
+        evidence: vec!["target-batch-record".into()],
+        verified_at: None,
+    };
+    repo.record_commit_boundary(&c, &claim, boundary).await.expect("boundary");
+    // 崩溃窗口：没有 checkpoint 落盘
+    assert!(repo.latest_checkpoint(&c, &JobId::new("job-a")).is_none(), "checkpoint 未写入");
+    let recoverable = repo.list_recoverable(&c, Default::default()).await.expect("recoverable");
+    assert!(recoverable.iter().any(|j| j.view.job_id == JobId::new("job-a")), "可恢复候选");
+    // 手动审查，不自动重跑 handler
+}
+
+/// 旅程 B：checkpoint 已写但终态未写 —— 复核后补终态或继续，不重放已确认范围。
+#[tokio::test]
+async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun() {
+    let (repo, _clock) = repo_clock();
+    let c = ctx();
+    repo.accept(&c, definition("dataSyncApply", apply_payload("plan-b"), "job-b"), &IdempotencyKey::new("jb"))
+        .await
+        .expect("accept");
+    let claim = repo.claim(&c, JobId::new("job-b"), WorkerId::new("w1")).await.expect("claim");
+    let boundary = datazen_platform_api::dto::job::CommitBoundary {
+        stage_id: StageId::new("s1"),
+        stable_target_fingerprint: "sha256:abc".into(),
+        committed_at: Timestamp::new("2026-01-01T00:00:01Z"),
+        operation_id: None,
+        batch_id: Some("batch-1".into()),
+        payload_digest: Some("sha256:p".into()),
+        evidence: vec!["target-batch-record".into()],
+        verified_at: None,
+    };
+    repo.record_commit_boundary(&c, &claim, boundary.clone()).await.expect("boundary");
+    let job = repo.get(&c, JobId::new("job-b")).await.expect("get");
+    let cp = datazen_platform_api::dto::job::Checkpoint {
+        job_id: JobId::new("job-b"),
+        state_version: job.state_version,
+        stable_target_fingerprint: "sha256:abc".into(),
+        committed: vec![boundary],
+        verification_evidence: vec!["target-batch-record".into()],
+        recovery_policy: "resumeAfterVerify".into(),
+    };
+    repo.save_checkpoint(&c, &claim, cp).await.expect("checkpoint");
+    // 终态未写：list_recoverable 仍包含；verify_recovery 裁决 ResumeAfterVerify
+    let recoverable = repo.list_recoverable(&c, Default::default()).await.expect("recoverable");
+    assert!(recoverable.iter().any(|j| j.view.job_id == JobId::new("job-b")));
+    let latest = repo.latest_checkpoint(&c, &JobId::new("job-b")).expect("cp");
+    assert_eq!(latest.committed.len(), 1);
+    // 重复写相同 checkpoint 版本 → 冲突
+    let cp2 = datazen_platform_api::dto::job::Checkpoint {
+        job_id: JobId::new("job-b"),
+        state_version: job.state_version,
+        stable_target_fingerprint: "sha256:abc".into(),
+        committed: vec![],
+        verification_evidence: vec![],
+        recovery_policy: "resumeAfterVerify".into(),
+    };
+    let err = repo.save_checkpoint(&c, &claim, cp2).await.expect_err("dup");
+    assert!(matches!(err, PortError::CasConflict { entity: "job_checkpoint", .. }), "{err:?}");
+}
