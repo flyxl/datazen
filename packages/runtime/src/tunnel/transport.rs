@@ -19,9 +19,9 @@
 //! `HostTunnelTransport` 有 `events: Mutex<Vec<&'static str>>` ——
 //! 「全 `&self` 所以装不下第二个计数」这句话按这两行即可证伪。
 //!
-//! 因此真正的约束是**结构**上的：「端口不许自存一份账，台账的计数只有一个读取面」。
-//! 它由 `tunnel::single_counter_audit` 落成机械闸门（随 `--lib` 跑，因而进 CI），
-//! 不是靠评审。下面三条是闸门各条规则的口径。
+//! 因此真正的约束是**结构**上的：「端口不许自存一份账，台账的计数只有一个读取面，
+//! 而且台账的声明里只许有一份计数」。它由 `tunnel::single_counter_audit` 落成机械闸门
+//! （随 `--lib` 跑，因而进 CI），不是靠评审。下面三条是闸门各条规则的口径。
 //!
 //! 1. **端口只有一份事实、一个折法。** 实现本 trait 的结构体**不允许**持有任何
 //!    整数标量字段（含 `Mutex<usize>` / `Cell<isize>` / `Atomic*` /
@@ -30,29 +30,37 @@
 //!    `&self` 观测方法都必须是这个折法的投影。今天三份端口的样子：
 //!    `RecordingTunnelTransport` 只有 `journal`，`HostTunnelTransport` 只有 `events`，
 //!    `RecordingTunnelPort` 只有 `events`；读数全部走各自的 `tallies` / `tally`。
-//! 2. **台账的计数只有一个读取面。** `TunnelEntry::refs` 只许被四个注册方法
-//!    （`established` / `refs` / `add_reference` / `take_reference`）点访问，
-//!    归零路径 `drain()` **按值**从 `take_reference` 取数。`drain()` 另外读的
-//!    `TunnelEntry::state` 是**终态守卫**，只保证 `Closing` / `Unconfirmed`
-//!    不再发第二次 close —— 它不参与计数、不增减，因此不是第二本账。
+//!    （落在闸门 R4 + R5。）
+//! 2. **台账的计数只有一个读取面，且声明里只有一份计数。** `TunnelEntry::refs` 只许被
+//!    四个注册方法（`established` / `refs` / `add_reference` / `take_reference`）点访问，
+//!    归零路径 `drain()` **按值**从 `take_reference` 取数，且释放结果里的数只许来自
+//!    那个返回值（R1 + R2 + R2+）。留着 `refs` 却在旁边挂一份逐笔相同的镜像账
+//!    （`shadow_refs: u32`）绕过的是**名字**而不是铁律，由 R7 按声明杀掉：
+//!    `TunnelEntry` 的整数字段必须**恰好一个**且名为 `refs`。
+//!    `drain()` 另外读的 `TunnelEntry::state` 是**终态守卫**，只保证 `Closing` /
+//!    `Unconfirmed` 不再发第二次 close —— 它不参与计数、不增减，因此不是第二本账。
 //!    `TunnelBinding` 只在 `acquire` 处被快照出去，此后不再回流。
 //! 3. **观测账不得参与判断，代数另有钉子。** 台账自己的 `teardown_calls`
-//!    （对外 `close_calls()`）是**观测**字段，闸门禁止它出现在任何比较 / 条件里。
+//!    （对外 `close_calls()`）是**观测**字段，闸门禁止它出现在任何比较 / 条件里（R3）。
 //!    代数不变量由 `tunnel::journey_single_counter::single_counter_algebra_holds`
 //!    钉住，三条各自独立：`open` 次数恒为 **1**（一条 spec 只开一条物理隧道，
 //!    与 acquire 次数无关）；剩余计数 == acquire 次数 − release 次数；
 //!    `close` 次数 ∈ {0, 1} —— 归零那一次为 1，重复释放不再增加。
+//!    另有两条值层面的不变量：`every_port_reading_is_the_projection_of_one_journal_fold`
+//!    沿整条旅程把端口每个读数与「现场从 journal 数出来的原始账」逐步对账；
+//!    `the_ledger_and_the_port_tallies_agree_only_because_both_count_the_same_drain`
+//!    绕过台账直接从接缝发一次 close，实证两本账的相等来自构造而非巧合。
 //!
 //! ## CM-32-FU1 的反例现在会怎样
 //!
 //! CM-32 repair round 1 实证过：给 `RecordingTunnelTransport` 加一个
 //! `close_tally: Mutex<usize>` 并把 `close_calls()` 改成读它，**当年编译通过、
 //! 全轨测试全绿** —— 第二本账就此伪装成第一本账。如今同一次改动被两条**独立**路径杀掉：
-//! 闸门 R4 按字段类型点名 `close_tally: Mutex<usize>`，R5 点名「`close_calls` 不再
-//! 调用唯一折函数」。台账那一侧的同类伪装（新写一个函数直读 `entry.refs`、或让
-//! `drain()` 自己做减法）由 R1 / R2 杀掉。上面三条口径分别落在 R4+R5、R1+R2、R3；
-//! 每条规则另带一条把**植入变异**喂给扫描器自己的 kill test，外加 R6 断言登记表与
-//! 模块表一致（把闸门裁小这件事本身就会转红）。
+//! R4 按字段类型点名 `close_tally: Mutex<usize>`，R5 点名「`close_calls` 不再调用唯一
+//! 折函数」。台账那一侧的同类伪装（新写一个函数直读 `entry.refs`、让 `drain()` 自己做
+//! 减法、另挂一份镜像账、或把观测账读进判断条件）由 R1 / R2 / R7 / R3 分别杀掉。
+//! 每条规则另带一条把**植入变异**（含上面那段原始反例逐字复现）喂给扫描器自己的
+//! kill test，外加 R6 断言登记表与模块表一致 —— 把闸门裁小这件事本身就会转红。
 //!
 //! 边界要说明白：这是**测试期的结构闸门**，不是类型系统保证。它挡得住自然写出来的
 //! 第二本账，挡不住蓄意对抗（`unsafe` 指针转义、跨 crate 静态、`proc-macro` 生成）；

@@ -12,8 +12,9 @@
 //!   方法（`established` / `refs` / `add_reference` / `take_reference`）里。
 //! * **R2（台账侧按值取数，= 候选 b）** 唯一归零路径 `drain()` 必须经
 //!   `take_reference()` 取数，不许直读字段、不许自己做对 `refs` 的减法。
-//! * **R3（观测账不得参与判断）** 台账的 `close_calls` 是观测字段，禁止出现在任何
-//!   条件 / 比较 / 逻辑表达式里 —— 「观测计数被当成释放依据」是第二本账的另一形态。
+//! * **R3（观测账不得参与判断）** 台账那份观测账（字段 `teardown_calls`、对外访问器
+//!   `close_calls()`）禁止出现在任何条件 / 比较 / 逻辑表达式里 ——
+//!   「观测计数被当成释放依据」是第二本账的另一形态。
 //! * **R4（端口不得自存账）** 每个实现 [`TunnelTransport`] 的结构体，其字段类型剥掉
 //!   `Mutex`/`RwLock`/`Arc`/`Box`/`Option`/`Cell`/`RefCell` 包装后**不得**是整数标量、
 //!   不得含 `Atomic*`；本地新类型（`struct X(…)` / `type X = …`）**递归展开**，
@@ -24,35 +25,50 @@
 //! * **R6（闸门自己不能被裁小）** `mod.rs` 声明的每个模块与两个隧道测试二进制都必须在
 //!   登记表内；`TunnelEntry` 必须保持私有；唯一归零路径必须**只有一条**且住在
 //!   [`TunnelLedger`] 的 impl 块里。
+//! * **R7（台账的声明里只许有一份计数）** `TunnelEntry` 的整数字段必须**恰好一个**且
+//!   名为 `refs`，`TunnelLedger` 的整数字段**至多一个**（那份观测账）。R1 只盯 `refs`
+//!   这个名字，因此「留着 `refs`、旁边挂一份逐笔相同的镜像账」能整条绕过 R1 / R2 ——
+//!   这条是补那个洞的，判据**与名字无关**。
+//! * **R2+（释放结果的取值来源）** `drain()` 交给调用方的那个数只许来自
+//!   `take_reference()` 的返回值、注册读方法或字面量 0；改从观测账取即转红。
 //!
-//! R1–R3 管台账那一半，R4–R5 管端口那一半。只有 R1 或只有 R4 都挡不住伪装：
-//! 反例走的是端口那半边，而「台账多开一个直读字数的口子」走的是台账那半边。
+//! R1–R3 + R7 + R2+ 管台账那一半，R4–R5 管端口那一半，R6 管闸门自己。只有其中任一条
+//! 都挡不住伪装：原始反例走端口那半边（R4 / R5 各抓一次），「台账多开一个直读字数的
+//! 口子」走 R1 / R2，「换名字挂一份镜像账」只有 R7 看得见，「把观测账读进条件」
+//! 只有 R3 / R2+ 看得见，「把闸门裁小」只有 R6 看得见。
 //!
 //! # 每条规则都自带 kill test
 //!
 //! 只做模式匹配而不证明「它抓得到东西」的闸门比没有闸门更危险 —— 它给出虚假保证
-//! （同 `tests/cm28_concurrent_tunnel.rs` 里那条负控的历史）。故 R1–R5 各有
-//! `…_catch_a_planted_…` 用例，把**原始反例本身**与**同类伪装**当字符串喂给同一套
-//! 扫描器并断言转红；同时断言合法形状不被误伤（误伤会把人逼向更隐蔽的写法）。
-//! `the_scan_primitives_see_the_shapes_they_claim` 再断言解析器真的看得见台账与夹具
-//! 里的形状 —— 否则「没发现违规」只意味着扫描器什么也没看见。
+//! （同 `tests/cm28_concurrent_tunnel.rs` 里那条负控的历史）。故每条规则在子模块
+//! [`kill_tests`] 里各有一条 `…_catch_a_planted_…` 用例，把**原始反例本身**与
+//! **同类伪装**当字符串喂给同一套扫描器并断言转红；同时断言合法形状不被误伤
+//! （误伤会把人逼向更隐蔽的写法）。`the_scan_primitives_see_the_shapes_they_claim`
+//! 再断言解析器真的看得见台账与夹具里的形状 —— 否则「没发现违规」只意味着
+//! 扫描器什么也没看见。
 //!
 //! # 为什么住在 `src/tunnel/` 而不是顶层 `tests/`
 //!
 //! 本模块是 `#[cfg(test)] mod single_counter_audit`，因此它随 `--lib` 跑。
 //! `mod.rs` 的登记项 F 记着：CI 只跑 `cargo test --lib`，本 crate 顶层那些 `tests/*.rs`
 //! 集成二进制**目前不进 CI**。闸门若放在那边，它就只是一份「本地才生效的承诺」，
-//! 与它要取代的「审计承诺」同样脆弱。放在 lib 作用域里，伪装每次构建都会被杀。
+//! 与它要取代的「审计承诺」同样脆弱。放在 lib 作用域里，伪装每次构建都会被杀 ——
+//! 这也意味着闸门能杀掉**写在集成测试里**的伪装（`include_str!` 把那两个文件也扫了），
+//! 尽管那些文件本身不进 CI。
 //!
 //! # 这条保证的边界（不留模糊措辞）
 //!
 //! 它是**测试期的结构闸门**，不是类型系统保证：挡得住自然写出来的第二本账
-//! （字段直读、自存计数、绕过折法、观测账参与判断，含 `Mutex<usize>` 与本地新类型壳），
-//! 挡不住蓄意对抗（`unsafe` 指针转义、跨 crate 静态、`proc-macro` 生成）。
-//! `&self` + 内部可变性在类型层面本来就装得下任意计数，这一点任何扫描都消不掉。
+//! （字段直读、自存计数、绕过折法、换名字挂镜像账、观测账参与判断，含 `Mutex<usize>`
+//! 与本地新类型壳），挡不住蓄意对抗（`unsafe` 指针转义、跨 crate 静态、
+//! `proc-macro` 生成）。`&self` + 内部可变性在类型层面本来就装得下任意计数，
+//! 这一点任何扫描都消不掉。
 //!
-//! **本模块自己也在登记表里**（连同 `source_scan.rs` 基元）：闸门不看自己，
-//! 「悄悄少扫一片」就没有反制手段（同 `tests/cm70_panic_redaction_guard.rs` 的自我登记先例）。
+//! **闸门自己也在登记表里**（`mod.rs` / `kill_tests.rs` / `source_scan.rs` 三份）：
+//! 闸门不看自己，「悄悄少扫一片」就没有反制手段
+//! （同 `tests/cm70_panic_redaction_guard.rs` 的自我登记先例）。
+
+mod kill_tests;
 
 use super::source_scan::{
     blank, char_literal_len, enclosing_impl, functions, impl_blocks, line_of, local_decl,
@@ -65,39 +81,46 @@ use super::{TunnelLedger, TunnelTransport};
 /// 少一个文件就得改这张表，而 `the_audit_registry_covers_every_tunnel_module` 会先把
 /// 「`tunnel/mod.rs` 新增了模块却没登记」这种裁小行为点红。
 const AUDITED: &[(&str, &str)] = &[
-    ("src/tunnel/mod.rs", include_str!("mod.rs")),
-    ("src/tunnel/ledger.rs", include_str!("ledger.rs")),
-    ("src/tunnel/transport.rs", include_str!("transport.rs")),
-    ("src/tunnel/error.rs", include_str!("error.rs")),
-    ("src/tunnel/harness.rs", include_str!("harness.rs")),
-    ("src/tunnel/source_scan.rs", include_str!("source_scan.rs")),
+    ("src/tunnel/mod.rs", include_str!("../mod.rs")),
+    ("src/tunnel/ledger.rs", include_str!("../ledger.rs")),
+    ("src/tunnel/transport.rs", include_str!("../transport.rs")),
+    ("src/tunnel/error.rs", include_str!("../error.rs")),
+    ("src/tunnel/harness.rs", include_str!("../harness.rs")),
     (
-        "src/tunnel/single_counter_audit.rs",
-        include_str!("single_counter_audit.rs"),
+        "src/tunnel/source_scan.rs",
+        include_str!("../source_scan.rs"),
+    ),
+    (
+        "src/tunnel/single_counter_audit/mod.rs",
+        include_str!("mod.rs"),
+    ),
+    (
+        "src/tunnel/single_counter_audit/kill_tests.rs",
+        include_str!("kill_tests.rs"),
     ),
     (
         "src/tunnel/journey_sharing.rs",
-        include_str!("journey_sharing.rs"),
+        include_str!("../journey_sharing.rs"),
     ),
     (
         "src/tunnel/journey_return.rs",
-        include_str!("journey_return.rs"),
+        include_str!("../journey_return.rs"),
     ),
     (
         "src/tunnel/journey_failure.rs",
-        include_str!("journey_failure.rs"),
+        include_str!("../journey_failure.rs"),
     ),
     (
         "src/tunnel/journey_single_counter.rs",
-        include_str!("journey_single_counter.rs"),
+        include_str!("../journey_single_counter.rs"),
     ),
     (
         "tests/tunnel_refcount_contract.rs",
-        include_str!("../../tests/tunnel_refcount_contract.rs"),
+        include_str!("../../../tests/tunnel_refcount_contract.rs"),
     ),
     (
         "tests/cm28_concurrent_tunnel.rs",
-        include_str!("../../tests/cm28_concurrent_tunnel.rs"),
+        include_str!("../../../tests/cm28_concurrent_tunnel.rs"),
     ),
 ];
 
@@ -109,12 +132,20 @@ const EXPECTED_TRANSPORT_FILES: usize = 3;
 
 const LEDGER: &str = "src/tunnel/ledger.rs";
 const HARNESS: &str = "src/tunnel/harness.rs";
+/// 台账那份**观测**账的字段名与对外访问器名（R3 的已知点名集合）。
+///
+/// 两者**刻意不同名**：字段是 `teardown_calls`，访问器是 `close_calls()`。同名会让
+/// 按行扫描分不清「声明字段」与「把它读进判断条件」，一个合法访问器就会被误判成违规。
+const LEDGER_TALLY_FIELD: &str = "teardown_calls";
+const LEDGER_TALLY_ACCESSOR: &str = "close_calls";
+/// 闸门本体（目录模块）在登记表里的标签。
+const GATE: &str = "src/tunnel/single_counter_audit/mod.rs";
 /// 端口 trait 的**类型名**。
 ///
-/// 它不许只是手打字符串：`the_trait_name_is_tied_to_the_real_type` 用
-/// `std::any::type_name::<dyn TunnelTransport>()` 与它对照 —— 那个路径拼错或 trait
-/// 改名会直接编译失败，而不是让 impl 过滤器静默失配（静默失配 = 闸门什么都不扫，
-/// 却报告「没发现违规」）。
+/// 它不许只是手打字符串：`the_gate_names_are_tied_to_the_real_symbols` 同时用
+/// `std::any::type_name` 对照并把夹具端口真的装进 `Arc<dyn TunnelTransport>` ——
+/// 名字与真实符号脱钩会**编译失败**或转红，而不是让 impl 过滤器静默失配
+/// （静默失配 = 闸门什么都不扫，却报告「没发现违规」）。
 const TRANSPORT_TRAIT: &str = "TunnelTransport";
 /// 夹具端口的类型名，同样与真实类型对照（见同一用例）。
 const HARNESS_PORT_TYPE: &str = "RecordingTunnelTransport";
@@ -173,6 +204,112 @@ fn transport_impls(text: &str) -> Vec<ImplBlock> {
         .into_iter()
         .filter(|blk| blk.trait_name == TRANSPORT_TRAIT)
         .collect()
+}
+
+// -------------------------------------------------------------------- R7 / R2+
+
+/// **R7**：台账的**声明**里只许有一份引用计数。
+///
+/// R1 只盯 `refs` 这个名字，于是「`refs` 老老实实留着、旁边再挂一个 `shadow_refs: u32`
+/// 并让注册窄口同步维护它」可以整条绕过 R1 / R2 —— 那本镜像账与真账逐笔相同，
+/// 任何**值**断言都看不出差别（实测：变异后 `cargo test --lib -- tunnel` 全绿，
+/// 见 progress.md 的漏洞探针）。所以这条从**声明**层面钉死，与名字无关：
+///
+/// * `TunnelEntry` 里「一份落地的计数」形状的字段**必须恰好一个**，且就是 `refs`；
+/// * `TunnelLedger` 里这样的字段**至多一个**（那份观测账，另有 R3 禁止它参与判断）。
+///
+/// 判据复用 R4 的 [`is_stored_count`]，因此 `Mutex<usize>` / `Cell<isize>` /
+/// 本地新类型壳（`struct Mirror(Mutex<usize>)`）同样在网里。
+fn ledger_declares_a_second_counter(text: &str) -> Vec<String> {
+    let code = blank(text);
+    let mut out = Vec::new();
+
+    let entry_counts: Vec<String> = struct_fields(&code, "TunnelEntry")
+        .into_iter()
+        .filter(|(_, ty)| is_stored_count(&code, ty, 0))
+        .map(|(name, _)| name)
+        .collect();
+    if entry_counts != ["refs".to_owned()] {
+        out.push(format!(
+            "`TunnelEntry` 里「一份落地的计数」形状的字段必须**恰好一个**且名为 `refs`，实得 {entry_counts:?}"
+        ));
+    }
+
+    let ledger_counts: Vec<String> = struct_fields(&code, "TunnelLedger")
+        .into_iter()
+        .filter(|(_, ty)| is_stored_count(&code, ty, 0))
+        .map(|(name, _)| name)
+        .collect();
+    if ledger_counts.len() > 1 {
+        out.push(format!(
+            "`TunnelLedger` 多出自存计数：{ledger_counts:?} —— 只许有一份**观测**账（R3 禁止它参与判断）"
+        ));
+    }
+    out
+}
+
+/// **R2 的补充**：`drain()` 交给调用方的那个数，来源只能是窄口返回值 / 注册读方法 / 字面量 0。
+///
+/// 堵的是「`refs` 字段照旧由窄口管，但**释放结果里的数**改从观测账取」这条路：
+/// 那条路上 `refs` 从未被第二本账写坏，R1 / R2 / R7 全都点不到它的名。
+fn drain_returns_a_count_from_the_wrong_bank(text: &str) -> Vec<String> {
+    let code = blank(text);
+    let Some(drain) = functions(&code).into_iter().find(|f| f.name == "drain") else {
+        return Vec::new();
+    };
+    let body = &code[drain.body.0..drain.body.1];
+    let mut out = Vec::new();
+    // 不要求「顶层」：`TunnelRelease { … refs: X … }` 这个结构体字面量本身就把深度抬到 1，
+    // 按顶层筛会把**全部**取值点筛掉，于是这条规则空转（kill test 正是抓在这里）。
+    for at in offsets_of(body, "refs:") {
+        let tail = body[at..].trim_start();
+        let value = tail.split(',').next().unwrap_or(tail).trim();
+        let legal = ["remaining", "0", "entry.refs()"];
+        if !legal.contains(&value) {
+            out.push(format!(
+                "drain() 把释放结果的 `refs` 取自 `{value}` —— 只能来自 take_reference() 的返回值、注册读方法或字面量 0"
+            ));
+        }
+    }
+    out
+}
+
+/// `needle` 在 `hay` 里每次出现之后紧跟的下标（左邻必须是词边界：
+/// 否则 `shadow_refs:` 会被当成 `refs:`）。
+fn offsets_of(hay: &str, needle: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    let b = hay.as_bytes();
+    let mut i = 0usize;
+    while let Some(rel) = hay[i..].find(needle) {
+        let at = i + rel;
+        if at == 0 || !is_word_char(b[at - 1]) {
+            out.push(at + needle.len());
+        }
+        i = at + needle.len();
+    }
+    out
+}
+
+/// **R7 正向**：台账的声明里只有一份引用计数，且释放结果里的数来自窄口。
+#[test]
+fn the_ledger_declares_exactly_one_reference_counter() {
+    require_clean(
+        "台账的声明里藏了第二份计数（换名字也逃不过）",
+        ledger_declares_a_second_counter(source(LEDGER)),
+    );
+    require_clean(
+        "释放决策返回的数取自第二本账",
+        drain_returns_a_count_from_the_wrong_bank(source(LEDGER)),
+    );
+    // 自证：判据在真实台账上**确实看得见** `refs`，不是靠「什么都匹配不到」通过的。
+    let entry_fields: Vec<String> = struct_fields(&blank(source(LEDGER)), "TunnelEntry")
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    assert!(
+        entry_fields.contains(&"refs".to_owned()),
+        "字段解析器在 TunnelEntry 里只读到 {entry_fields:?} —— R7 就是空转"
+    );
 }
 
 // ---------------------------------------------------------------- R1 / R2 / R3
@@ -243,7 +380,10 @@ fn drain_bypasses_the_single_accessor(text: &str) -> Vec<String> {
 ///
 /// 判据从「`TunnelLedger` 的整数字段清单」推出来，而不是写死一个名字 —— 台账将来
 /// 多长出一份 `Mutex<usize>` 之类的自存账时，它自动进入管辖范围（R4 只管端口那一半）。
-/// 访问器名 `close_calls` 也在表里：它是这份账对外露出的那张脸，条件里出现同样违规。
+/// 另加**已知点名集合**兜底：植入变异常常只给一个 `impl` 块、没有 `struct TunnelLedger`
+/// 声明，只靠字段清单会让 R3 对 `if self.teardown_calls == 2` 视而不见（kill test 正是
+/// 抓在这里）。已知集合的完整性由 R7 背书：R7 规定台账的整数字段**至多一个**。
+/// 访问器名也在集合里：它是这份账对外露出的那张脸，读进条件同样违规。
 fn observation_tallies_of_ledger(text: &str) -> Vec<String> {
     let code = blank(text);
     let mut names: Vec<String> = struct_fields(&code, "TunnelLedger")
@@ -251,7 +391,8 @@ fn observation_tallies_of_ledger(text: &str) -> Vec<String> {
         .filter(|(_, ty)| is_stored_count(&code, ty, 0))
         .map(|(name, _)| name)
         .collect();
-    names.push("close_calls".to_owned());
+    names.push(LEDGER_TALLY_FIELD.to_owned());
+    names.push(LEDGER_TALLY_ACCESSOR.to_owned());
     names.sort();
     names.dedup();
     names
@@ -543,7 +684,8 @@ fn the_audit_registry_covers_every_tunnel_module() {
     for required in [
         LEDGER,
         HARNESS,
-        "src/tunnel/single_counter_audit.rs",
+        GATE,
+        "src/tunnel/single_counter_audit/kill_tests.rs",
         "src/tunnel/source_scan.rs",
         "tests/tunnel_refcount_contract.rs",
         "tests/cm28_concurrent_tunnel.rs",
@@ -604,364 +746,16 @@ fn unregistered_modules<'a>(
     let registry: Vec<&str> = registry.collect();
     declared
         .iter()
-        .map(|name| format!("src/tunnel/{name}.rs"))
-        .filter(|label| !registry.iter().any(|path| *path == label))
+        .map(|name| {
+            let flat = format!("src/tunnel/{name}.rs");
+            let nested = format!("src/tunnel/{name}/mod.rs");
+            (flat, nested)
+        })
+        // 平铺与目录两种模块形态都承认，但**至少一个**必须在登记表里 ——
+        // 否则「把闸门拆成目录」这件事本身就成了绕过登记表检查的路。
+        .filter(|(flat, nested)| !registry.iter().any(|path| *path == flat || *path == nested))
+        .map(|(flat, _)| flat)
         .collect()
-}
-
-/// **kill test（R4，原始反例本体）**：当年「编译通过且全轨测试全绿」的那个伪装，
-/// 今天必须被闸门点名。
-#[test]
-fn the_field_audit_catches_the_planted_second_ledger() {
-    let planted = "\
-pub struct RecordingTunnelTransport {
-    journal: Mutex<Vec<TunnelEvent>>,
-    close_tally: Mutex<usize>,
-}
-";
-    let found = transport_stores_its_own_count(&with_impl(planted, "RecordingTunnelTransport"));
-    assert_eq!(
-        found.len(),
-        1,
-        "闸门漏抓原始反例：给端口加 `close_tally: Mutex<usize>` 必须转红，实得 {found:?}"
-    );
-    assert!(
-        found[0].contains("close_tally") && found[0].contains("Mutex<usize>"),
-        "反例要点到具体字段：{found:?}"
-    );
-
-    // 换个壳绕不过去：本地新类型 / 类型别名 / 原子 / 裸整数 / Cell 全部在网里。
-    let shapes = [
-        (
-            "struct CloseTally(Mutex<usize>);\nstruct P { tally: CloseTally }",
-            "tally",
-        ),
-        ("struct P { n: u64 }", "n"),
-        ("struct P { n: AtomicUsize }", "n"),
-        ("struct P { n: Cell<isize> }", "n"),
-        ("type Tally = usize;\nstruct P { n: Tally }", "n"),
-        (
-            "struct Inner { m: RefCell<u32> }\nstruct P { q: Inner }",
-            "q",
-        ),
-    ];
-    for (shape, expect_field) in shapes {
-        let found = transport_stores_its_own_count(&with_impl(shape, "P"));
-        assert_eq!(
-            found.len(),
-            1,
-            "形状 `{shape}` 漏网 —— 换个壳就绕过 R4 等于没有 R4"
-        );
-        assert!(
-            found[0].contains(expect_field),
-            "应点名 `{expect_field}`，实得 {found:?}"
-        );
-    }
-
-    // 误伤检查：合法形状必须放行，否则闸门只会逼人把账藏得更深。
-    for legal in [
-        "struct P { events: Mutex<Vec<TunnelEvent>> }",
-        "struct P { revisions: Mutex<BTreeMap<String, u64>> }",
-        "struct P { fail_open: bool, journal: Mutex<Vec<TunnelEvent>> }",
-        "struct P { inner: Mutex<Counter> }\nstruct Counter { seen: Vec<u8> }",
-    ] {
-        assert!(
-            transport_stores_its_own_count(&with_impl(legal, "P")).is_empty(),
-            "合法形状被误伤：{legal}"
-        );
-    }
-}
-
-/// **kill test（R5）**：账落地 / 绕过唯一折法 / 长出两份折法，都得转红。
-#[test]
-fn the_fold_gate_catches_a_count_that_is_no_longer_derived() {
-    let planted = "\
-pub struct RecordingTunnelTransport {
-    journal: Mutex<Vec<TunnelEvent>>,
-}
-fn tally(events: &[TunnelEvent]) -> usize {
-    let mut n = 0;
-    for event in events {
-        if matches!(event, TunnelEvent::Close(_)) {
-            n += 1;
-        }
-    }
-    n
-}
-impl RecordingTunnelTransport {
-    fn close_calls(&self) -> usize {
-        let mut n = 0;
-        for event in self.journal() {
-            n += 1;
-        }
-        n
-    }
-}
-";
-    let found =
-        counts_not_derived_from_the_single_fold(&with_impl(planted, "RecordingTunnelTransport"));
-    assert_eq!(
-        found.len(),
-        1,
-        "绕过唯一折法的计数函数必须被点名，实得 {found:?}"
-    );
-    assert!(
-        found[0].contains("close_calls"),
-        "应点名 `close_calls`，实得 {found:?}"
-    );
-
-    // 折函数自己不许持状态（写回字段 = 它就是第二本账）。
-    let stateful = "\
-fn tally(events: &[TunnelEvent]) -> usize {
-    let mut n = 0;
-    for event in events {
-        let _ = event;
-        self.seen += 1;
-        n += 1;
-    }
-    n
-}
-";
-    assert!(
-        fold_functions(stateful).is_empty(),
-        "碰 `self.` 的「折函数」不配当唯一折法"
-    );
-
-    // 两份折法 = 两本账。
-    let two_folds = "\
-fn tally_a(events: &[TunnelEvent]) -> usize {
-    let mut n = 0;
-    for e in events {
-        let _ = e;
-        n += 1;
-    }
-    n
-}
-fn tally_b(events: &[TunnelEvent]) -> usize {
-    let mut n = 0;
-    for e in events {
-        let _ = e;
-        n += 1;
-    }
-    n
-}
-";
-    assert!(
-        counts_not_derived_from_the_single_fold(&with_impl(two_folds, "RecordingTunnelTransport"))
-            .iter()
-            .any(|v| v.contains("恰好一个")),
-        "一个端口文件里长出两份折法 = 两本账，必须转红"
-    );
-
-    // 合格形状放行（R5 的正向自证）。
-    let legal = "\
-struct P { journal: Mutex<Vec<TunnelEvent>> }
-fn tally(events: &[TunnelEvent]) -> usize {
-    let mut n = 0;
-    for e in events {
-        let _ = e;
-        n += 1;
-    }
-    n
-}
-impl P {
-    fn close_calls(&self) -> usize {
-        tally(&self.journal())
-    }
-}
-";
-    let violations = counts_not_derived_from_the_single_fold(&with_impl(legal, "P"));
-    assert!(
-        violations.is_empty(),
-        "合格的投影写法被误伤：{violations:?}"
-    );
-}
-
-/// **kill test（R1 / R2）**：把台账的减数动作漏出窄口，闸门必须抓到。
-#[test]
-fn the_ledger_field_audit_catches_a_direct_refs_write() {
-    let planted = "\
-impl TunnelLedger {
-    fn drain(&mut self, index: usize) -> TunnelRelease {
-        let entry = &mut self.entries[index];
-        entry.refs = entry.refs.saturating_sub(1);
-        TunnelRelease { closed: false, refs: entry.refs, state: entry.state }
-    }
-}
-";
-    let leaks = refs_field_leaks(planted);
-    // 三处而不是两处：`entry.refs = ` 的左值、`entry.refs.saturating_sub` 的右值、
-    // 结构体字面量里的 `entry.refs` —— 左值赋数正是最危险的那一处，漏了它 R1 就是摆设。
-    assert_eq!(
-        leaks.len(),
-        3,
-        "`drain()` 里三处字段访问都必须点名（含赋值左值），实得 {leaks:?}"
-    );
-    assert!(
-        leaks.iter().all(|v| v.contains("drain")),
-        "点名要指到函数：{leaks:?}"
-    );
-    assert!(
-        leaks.iter().any(|v| v.contains("行 4")) && leaks.iter().any(|v| v.contains("行 5")),
-        "点名要指到行号，否则改的人会找不到现场：{leaks:?}"
-    );
-    let bypass = drain_bypasses_the_single_accessor(planted);
-    assert!(
-        bypass.iter().any(|v| v.contains("take_reference")),
-        "R2 必须单独抓到「归零路径绕过 take_reference」，实得 {bypass:?}"
-    );
-
-    // 注册窄口自己直读字段是**合法**的（窄口就住在那里），不得误伤。
-    let legit = "\
-impl TunnelEntry {
-    fn take_reference(&mut self) -> u32 {
-        self.refs = self.refs.saturating_sub(1);
-        self.refs
-    }
-}
-";
-    assert!(
-        refs_field_leaks(legit).is_empty(),
-        "注册窄口被 R1 误伤：闸门会把人逼向更隐蔽的写法"
-    );
-    assert!(
-        drain_bypasses_the_single_accessor(legit)
-            .iter()
-            .all(|v| v.contains("找不到")),
-        "注册窄口不该被 R2 判成绕过窄口"
-    );
-}
-
-/// **kill test（R3）**：观测账一旦参与判断就是第二本账。
-#[test]
-fn the_observation_audit_catches_a_tally_used_as_a_condition() {
-    let planted = "\
-impl TunnelLedger {
-    fn drain(&mut self, index: usize) -> TunnelRelease {
-        if self.close_calls == 2 {
-            return TunnelRelease { closed: false, refs: 0, state: TunnelState::Absent };
-        }
-        self.close_calls += 1;
-        TunnelRelease { closed: true, refs: 0, state: TunnelState::Absent }
-    }
-}
-";
-    let found = observation_tally_decides(planted);
-    assert!(
-        found.iter().any(|v| v.contains("==")),
-        "把观测账当判断依据必须转红，实得 {found:?}"
-    );
-
-    // 合法形状（声明 / 初始化 / 自增 / 访问器）不误伤。
-    let legit = "\
-struct TunnelLedger {
-    close_calls: u64,
-}
-impl TunnelLedger {
-    fn new() -> Self {
-        Self { close_calls: 0 }
-    }
-    fn bump(&mut self) {
-        self.close_calls += 1;
-    }
-    pub fn close_calls(&self) -> u64 {
-        self.close_calls
-    }
-}
-";
-    let found = observation_tally_decides(legit);
-    assert!(found.is_empty(), "观测账的合法形状被误伤：{found:?}");
-}
-
-/// **kill test（R6）**：登记表裁小、`TunnelEntry` 公开、`drain` 搬家，都得转红。
-#[test]
-fn shrinking_the_registry_is_itself_a_failure() {
-    // 模块声明解析基元自证：真实 mod.rs 必须解析出 10 个模块。
-    let declared = declared_modules(&blank(source("src/tunnel/mod.rs")));
-    assert_eq!(
-        declared,
-        vec![
-            "error",
-            "ledger",
-            "transport",
-            "harness",
-            "journey_failure",
-            "journey_return",
-            "journey_sharing",
-            "journey_single_counter",
-            "single_counter_audit",
-            "source_scan"
-        ],
-        "模块声明解析结果与 tunnel/mod.rs 的实际模块表不符"
-    );
-
-    // 裁掉登记表一项 ⇒ R6 的「漏了某文件」断言路径必须可达：用同一判据检查裁小的文本。
-    let truncated: Vec<&str> = declared
-        .iter()
-        .map(String::as_str)
-        .filter(|n| *n != "single_counter_audit")
-        .collect();
-    assert_eq!(
-        truncated.len(),
-        declared.len() - 1,
-        "基元自证失败：过滤没有真的裁掉一项"
-    );
-    for missing in &truncated {
-        let label = format!("src/tunnel/{missing}.rs");
-        if !AUDITED.iter().any(|(path, _)| *path == label) {
-            panic!("登记表漏了 {label}");
-        }
-    }
-}
-
-/// 基元自证：抹串只藏注释与字面量，代码形状必须仍然看得见；行号不能错位。
-#[test]
-fn the_blanker_hides_comments_and_literals_but_not_code() {
-    let sample = "// 注释里的 entry.refs 不算违规\n//! 文档里的 Mutex<usize> 也不算\n\
-                  let s = \"字符串里的 entry.refs\";\nlet raw = r\"裸串里的 Mutex<usize>\";\n\
-                  let c = b'\"';\nlet d = '\\'';\nlet e = '&';\nstruct P { n: Mutex<usize> }\n";
-    let code = blank(sample);
-    for hidden in ["注释里的", "文档里的", "字符串里的", "裸串里的"] {
-        assert!(
-            !code.contains(hidden),
-            "{hidden} 没被抹掉 —— 闸门会被自己的文档点红"
-        );
-    }
-    assert!(
-        code.contains("Mutex<usize>"),
-        "代码里的字段形状不能被抹掉，否则 R4 成了摆设"
-    );
-    assert_eq!(
-        code.lines().count(),
-        sample.lines().count(),
-        "抹串必须保留行数，否则报告的行号会把人带偏"
-    );
-    // 字节字符字面量 `b'"'` 里的那个引号**不能**被当成字符串起点。
-    assert!(
-        code.contains("struct P { n: Mutex<usize> }"),
-        "`b'\"'` 之后的代码被吞掉了 —— 闸门会安静地少扫后半片"
-    );
-
-    // 注释 / 字面量里的字段访问不该被 R1 点名，代码里的该被点名。
-    assert!(
-        refs_field_leaks("fn f() {\n    // entry.refs\n    \"entry.refs\";\n}").is_empty(),
-        "R1 误伤了注释与字面量"
-    );
-    assert_eq!(
-        refs_field_leaks("fn f() {\n    let x = entry.refs;\n}").len(),
-        1,
-        "R1 漏抓代码里的字段直读"
-    );
-    assert_eq!(
-        line_of("a\nb\nstruct P { n: Mutex<usize> }\n", "Mutex<usize>"),
-        Some(3),
-        "行号基元错位"
-    );
-    // 生命周期标注必须原样保留，否则 `&'static str` 会被抹成残骸。
-    assert_eq!(char_literal_len("&'static str".as_bytes(), 1), None);
-    assert_eq!(char_literal_len("'a".as_bytes(), 0), None);
-    assert_eq!(char_literal_len("b'x'".as_bytes(), 0), Some(4));
-    assert_eq!(char_literal_len("'x'".as_bytes(), 0), Some(3));
 }
 
 /// **闸门的名字常量不许只是手打字符串。**

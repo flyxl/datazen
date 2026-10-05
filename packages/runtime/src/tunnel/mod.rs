@@ -129,9 +129,10 @@ mod journey_sharing;
 /// 唯一计数铁律的代数不变量。
 #[cfg(test)]
 mod journey_single_counter;
-/// 唯一计数铁律（CM-32-FU1）的机械闸门：对台账与全部隧道端口做源码结构审计，
-/// 并把原始反例作为植入变异喂给闸门自己做 kill test。住在 `src/tunnel/` 而非顶层
-/// `tests/`，是因为它随 `--lib` 跑、因而真的进 CI（见上面登记项 F 记的 CI 现状）。
+/// 唯一计数铁律（CM-32-FU1）的机械闸门 R1–R7：对台账与全部三份隧道端口做源码
+/// 结构审计，并把原始反例与同类伪装（含「换名字挂一份镜像账」）作为植入变异喂给
+/// 闸门自己做 kill test。住在 `src/tunnel/` 而非顶层 `tests/`，是因为它随 `--lib` 跑、
+/// 因而真的进 CI（见上面登记项 F 记的 CI 现状）。
 #[cfg(test)]
 mod single_counter_audit;
 /// 上面那道闸门的通用词法 / 结构基元（抹串、`fn` / `impl` / 字段解析）。

@@ -17,7 +17,7 @@
 //!
 //! 本文件的 `HostTunnelTransport` 与 `src/tunnel/harness.rs` 的夹具端口同形：
 //! 只有事件日志这一份事实，所有读数由**唯一**的纯折函数 `tally` 现折。
-//! 「唯一计数铁律」如今由 `src/tunnel/single_counter_audit.rs` 机械保证
+//! 「唯一计数铁律」如今由 `src/tunnel/single_counter_audit/` 机械保证
 //! （随 `--lib` 跑，因此真的进 CI；见 `tunnel/mod.rs` 登记项 F 记的 CI 现状）：
 //! 那份闸门对本文件与 `cm28_concurrent_tunnel.rs` 的端口同样做字段审计 + 投影审计，
 //! 并把原始反例作为植入变异喂给它自己做 kill test。
