@@ -51,7 +51,7 @@ WT_SHA_BEFORE = WT_SHA_AFTER = ae85404ce088139f1a43ed7f35878f0408e22714
 | --- | --- | --- |
 | `pnpm typecheck` | `tsc --noEmit` / `tsc -p tsconfig.scripts.json --noEmit` / `tsc -p tsconfig.pack-ep.json --noEmit` 全部无输出通过；`error TS` 计数 **0** | `EXIT=0` |
 | `cargo test -p datazen-runtime --lib` | `test result: ok. 436 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s` | `EXIT=0` |
-| `git grep -n 'progress\.md' HEAD -- packages src src-tauri scripts .github` | 0 命中 | — |
+| `git grep -n 'progress\.md' HEAD -- packages src src-tauri scripts .github` | 该**作用域内** 0 命中（全仓复算为 **44** 处 @HEAD / 46 @`f1d843271`，含本台账自身与 `hub.md`） | — |
 
 **作用域自证**：对全部 `*.rs / *.ts / *.tsx / *.mjs` 改动行做过滤，剔注释前缀后**剩余 0 行**——即本轨每一处代码改动都是注释 / 文档注释 / `#[ignore]` 理由串，无测试逻辑、断言或运行时行为变更。
 
@@ -187,7 +187,7 @@ done
 | `BUG-007 修法 3` / `BUG-007 排除项` | 未列 | 2 | 见下 |
 
 - 计数差异（6 vs 8）本身就是「派单视野窄于仓库」的证据，**不是清单抄错**。
-- **`BUG-00x` 编号空间冲突**：全仓 `BUG-0` 共 472 处，分属 i18n-drivers / mysql / postgres / driver-api / driver-api-dependency-boundary / e2e 等**其他轨道的活跃编号**，且都早于 `f1d843271`；改写它们等于擅自改写他人轨道的编号体系。故义务边界限定为**本轨改动集内**的裸编号：`cluster_topology/mod.rs:74`、`:94` 两处已改为「…spelled out / recorded at the top of this file」，指向同文件 `:12-20` 的本轨 `BUG-001/002/007` 自有系列——**就地声明了指的是哪套编号**，而不是留一个裸 `BUG-007` 与 `F1-BUG-005` 系列撞车。
+- **`BUG-00x` 编号空间冲突**：`BUG-0` 全仓计数是一个**会漂移**的数，跨提交出现过 472 / 476 / 486 / 492 等互斥历史值。在两个互斥数字之间挑一个继续引用，等于把一次快照写成承诺——本轮已把该数字**整段删除**，不再作为论据；需要计数时现场复算（见 §7.4 的复算命令），且**必须写明测于哪个提交**。
 
 ### 5.7 穷举中排除的合法项（复核后确认无误，登记不改）
 
@@ -201,7 +201,7 @@ done
 
 唯一实质分歧是 gateway 段的**终点定义**：§15.3 写「到**派发 driver**」，`fake-runtime-fixtures.md` §11.2:560 写「**driver 收到调用并开始执行**的时刻」。
 
-**登记不改**：这是测量窗口的规格问题，归 CM-60 轨所有；且 `p3-cm60-pressure-drain` 正在并发编辑该文件 `:849`/`:859`，距我 `:857` 仅 2 行，此时改动会抬高冲突风险（该轨的合并安全性此前已实测：`MERGE_EXIT=0`、0 冲突标记、文件仍 1348 行）。
+**登记不改**：这是测量窗口的规格问题，归 CM-60 轨所有；且 `p3-cm60-pressure-drain` 正在并发编辑该文件 `:849`/`:859`，距我 `:857` 仅 2 行，此时改动会抬高冲突风险（该轨的合并安全性：`MERGE_EXIT=0`、0 冲突标记、文件仍 1348 行）。
 
 顺带核实：`platform-development-plan.md:128` 的「详见共享边界 §4.6、夹具 §6.3/§11」**交叉引用是活的、非失效**——共享边界 §4.6 在 `:438`，夹具 §11 就是「基准 harness（CM-60）」在 `:541`。不属本轨待修项。
 
@@ -231,11 +231,18 @@ done
 
 R2 FAIL-3 的指控不是「漏改」，是**方法错**：我拿到报告里的 5 处，就按文件逐个撞。
 
-按模式枚举全族：
+按模式枚举全族（**⚠ 本法已被本轨自己判定为不成立，勿再沿用，替代方案见 §7.1**）：
 
 ```
 git grep -n 'ops_tree_scan/\|ops_workbench/\|ops_exec\.rs\|redis_driver_on\.rs' -- packages/drivers/redis/
 ```
+
+> **为什么这法是错的（BLOCKER-1 的真正根因）**：它做的是**前缀枚举**——把 `ops_workbench/` 这种「目录尾部带斜杠的写法」当成模式。但引用是按**形态**出现的，不是按「是不是某个前缀」出现的。后果有二：
+>
+> 1. **只会命中我脑子里已有的写法**，写形态不同就漏；
+> 2. **更致命：它把 `ops/workbench/tests.rs` 这样的引用也一并扫进去，连带扫进不存在的 `workbench/tests.rs`**——同一张表里 `workbench/transport.rs`、`ops/write.rs` 确实存在，被混为一谈。**前缀匹配从不问「这条路径存不存在」**，所以它**天然漏掉「往后删除」的那一半**：条目被我自己删掉后，前缀仍在，或路径根本不再匹配任何真实文件，前缀枚举都不会报警。
+>
+> 枚举必须按形态穷举、并对**每一条**断言「它能解析到一个真实存在的已跟踪文件」。注入只能证明可达性，永远不能证明完备性。
 
 **实枚举 8 处，不是报告的 5 处。** 多出的 3 处只有枚举才会暴露：
 
@@ -246,7 +253,7 @@ git grep -n 'ops_tree_scan/\|ops_workbench/\|ops_exec\.rs\|redis_driver_on\.rs' 
 | 3 | `ui/console/consoleCommandBatch.ts:6` | `src/ops_exec.rs::split_redis_commands` | `src/ops/exec.rs::split_redis_commands` |
 | 4 | `ui/value-editors/redisInsertStatement.ts:6` | `redis_driver_on.rs` | `driver/session.rs` |
 | 5 | `ui/__tests__/redisInsertStatement.test.ts:5` | `redis_driver_on.rs` | `driver/session.rs` |
-| 6 | `src/ops/workbench/tests.rs:1` | 「declared by `ops_workbench.rs`」 | 「declared by `ops/workbench/mod.rs` (`mod tests;`) under `#[cfg(test)]`」 |
+| 6 | `src/ops/workbench/tests.rs:1` | 「declared by `ops_workbench.rs`」 | ~~「declared by `ops/workbench/mod.rs` (`mod tests;`) under `#[cfg(test)]`」~~ **← 本行右列在 `58d654f0e` 写下时是假的**：`git log f1d843271..58d654f0e -- .../ops/workbench/tests.rs` 返回 **0 条提交**，该文件从未进过我的改动集，首行在 `f1d843271` / `1117fd868` / `516ead304` / HEAD 上逐字节相同。真实落点是 **`1fc0399c0`**，见 §7.0 |
 | 7 | `ui/__tests__/kvBarSlotTesterGaps.test.tsx:402` | `` `ops_workbench.rs:425` `` / `` `:439` `` | `` `ops/workbench/shapes.rs` `` 的 `parse_key_info` / `unreadable_key_state`（函数名锚，去掉行号） |
 | 8 | `src/ops/tree/scan/tests.rs:5` | `` `ops_workbench/tests.rs` `` | `` `ops/workbench/tests.rs` `` |
 
@@ -298,7 +305,7 @@ git grep -ohE '(^|[^A-Za-z0-9_.-])BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' | 
 
 14 套：`F1-` `F3-` `R2-` `cap-bridge-` `e2e-ops-menu-` `ep-hooks-settings-` `pre-`
 `redis-codec-write-` `redis-detail-ui-` `redis-kvbar-ui-` `redis-tree-backend-`
-`redis-tree-ui-` `tunnel-backend-` `tunnel-form-`（共 124 处带前缀）。
+（**复算 15 套 / 141 处带前缀**，测于 `95a60bea5`；第 15 套是本轮新增的 `redis-workbench-`，另见 §7.3）
 其中 `pre-BUG` 的 2 处是子串产物，不是独立系列，登记不改。
 
 新表述：**裸写 `BUG-00x` 不可被假定为已删除那套**，引用必须连前缀写全。
@@ -326,8 +333,8 @@ git grep -ohE '(^|[^A-Za-z0-9_.-])BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' | 
 
 ### 6.3 登记不改（本轮新发现，均不在派单的 6 项内）
 
-- `packages/drivers/redis/src/commands/cm73_baseline_tests.rs` 现在**并存三套互斥锚点体系**
-  （`:19 :23 :590 :661 :665 :670` 行号锚 / `CM-73 `- 断言`` 条目锚 / `§16.7` 节号锚）。
+- `src-tauri/src/commands/cm73_baseline_tests.rs` 现在**并存两套互斥锚点体系**
+（`CM-73` 条目锚，15 处 / `§16.7` 节号锚，1 处；`:NNN` 形式的**行号锚为 0 处**——`grep -cE ':[0-9]{3,4}'` = 0，且 19/23/590/661/665/670 六数只出现在注释里，是条目锚不是行号锚）
   本轮只迁移了 FAIL-1/FAIL-2 点名的那一批，**故意不做统一**：统一属结构性重构，
   会一次性改动大量断言注释，超出「纯文档」范围。
 - `.superpowers/sdd/task-7-report.md:53` 的路径清单已过期，登记待 owner 处理。
@@ -338,7 +345,7 @@ git grep -ohE '(^|[^A-Za-z0-9_.-])BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' | 
 ### 6.4 R3 门禁（逐字结论行）
 
 ```
-HEAD_BEFORE=516ead304e9251dadc04ee9a97c039b3b0382551
+HEAD_BEFORE=516ead304e9251dadc04ee9a97c039b3b0382551   # R3 当时的工作点；该提交**不是**本节最终状态，后续还有 3 个提交（至 `9e161254e`）才落盘，见 §7.5
 REDIS_TEST_EXIT=0 ; test result: ok. 396 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out
 本次 Rust 改动非注释 diff 行 = 0
 本次 diff 新增 .md 文件 = 0
@@ -382,4 +389,246 @@ porcelain=0
 - 「untracked / ignored 皆无」这类断言，`git ls-files` 系列命令**永远无法给出**；
   要覆盖只能换成 `find`（但本轨无权遍历忽略目录）——**故此类断言一律降级为
   「无 tracked X」，不写更强的说法。**
-- 本轮所有 0 已按此重验：能力不足者已改写措辞，未降级者必须有注入证据。
+本轮逐个 0 已按此重验（**逐条**结论见 §6.6；不再用一句总括覆盖全部 0）
+
+## 七、第四轮（R3 返修）
+
+本节每条结论都注明**测于哪个提交**。凡是会漂移的计数，一律给复算命令而不给承诺值。
+
+### 7.0 BLOCKER-1：`tests.rs:1` 的悬空模块名（落点 `1fc0399c0`）
+
+`packages/drivers/redis/src/ops/workbench/tests.rs:1` 原写「declared by `ops_workbench.rs`」，
+而该文件不存在。实测（`git ls-files` 口径）：
+
+| 候选 | 存在 |
+| --- | --- |
+| `src/ops_workbench.rs` | ✗ |
+| `src/ops/workbench.rs` | ✗ |
+| `src/ops/workbench/mod.rs` | ✓，`:199-200` 持 `#[cfg(test)]` + `mod tests;` |
+
+`ops_workbench` 是**重组前的旧模块名**；`ops/mod.rs:28` 现声明 `pub mod workbench;`。
+首行已改为描述真实的声明方式，**只动注释，6 行改 6 行，行为变化 0**。
+
+#### 7.0.1 顺带查实的**第 10 类缺陷：台账声称已改、代码未改
+
+§6.0 那张表的第 6 行在 `58d654f0e` 里写下「已改为引用 `ops/workbench/mod.rs`」，但
+
+```
+git log f1d843271..HEAD -- packages/drivers/redis/src/ops/workbench/tests.rs
+```
+
+返回 **0 条提交**——该文件从未进过我的改动集，首行自 `f1d843271` 起逐字节未变。
+
+这与此前九次「我 grep 出来的结论 ≠ 仓库的结论」**不同类**：那九次错在**结论**，
+这一次错在**记录了一条从未发生的改动**。台账是缺陷结论的下游输入，
+一旦它声称的修复不存在，下游就会跳过这一项——缺陷就此从账上消失而代码仍然坏着。
+**故此类错误必须由真实提交纠正，不能靠把台账那行删掉了事。**
+
+### 7.1 BLOCKER-1b：新枚举形态——**按形态穷举 + 逐条存在性断言**
+
+父任务书问：「新枚举形态到底是什么，怎么保证删条目也能被抓」。回答如下。
+
+**旧法（§6.0）**：按「目录尾部带斜杠的写法」grep 模式。
+
+**新法**，两步：
+
+1. **按形态穷举**：从改动集里用正则抽出**每一个**形如
+   `path/like/this.{rs,tsx,ts,mjs,json,md}` 的 token（`TOKEN` 正则）。
+   枚举的是**形态**，不是我记忆里的写法——这一步保证「没有漏形态」。
+2. **逐条存在性断言**：每个 token 按**路径后缀**去 `git ls-files` 的已跟踪集合里解析，
+   断言它能落到一个**真实存在的已跟踪文件**上。
+
+**为什么这一形态能抓到「删除」**：断言的内容是「抽出的每个 token 都能解析到一个已跟踪路径」。
+一旦某个 token 指向的文件被改名或删除，解析立刻失败，计数就动。
+**前缀匹配从不问「这条路径存不存在」**，所以它对删除方向天然是瞎的——
+**一个只测「往后新增」而不测「往后删除」的守卫，会漏掉自己删掉的条目。**
+
+三处实现选择，都是被自己的错误逼出来的：
+
+| 选择 | 若不这么做会怎样 |
+| --- | --- |
+| 存在性口径 = **`git ls-files`（索引）**，不用 `os.path.exists` | `os.path.exists` 连 gitignored 产物（`src/extensions/generated.ts`）一起看见。热工作树里有、干净工作树里没有 ⇒ **计数依赖工作树状态**：同一工具两次跑出 **10 vs 11** |
+| 解析 = **后缀匹配**，`ROOTS = []`，不写根目录清单 | 我第一版手写根目录，**凭空造出 4 个假缺陷**（`protocol/*.rs` 实为 `src-tauri/src/ai/protocol/*.rs`；`barrier/tests.rs` 实为 `packages/runtime/src/connection/testing/barrier/tests.rs`）。**制造假缺陷，就是重复我自己历史上的错误** |
+| 过滤 URL 片段只认 `://`，不认 `//` | 我原按 `//` 过滤，误杀了前面是行注释的真引用，并且**静默丢了 `cluster_async/request.rs`、行号整体位移** |
+
+**基线（测于 `1fc0399c0`，可复现）**：
+
+```
+changed_files=55   unresolved_tokens=11   unresolved_distinct=7
+```
+
+同一命令在**两棵不同工作树**上跑出**逐字节相同**的输出——因为口径是索引，不是文件系统。
+
+11 个 token / 7 个去重值的归属（**必须逐条分类，否则一个 7 就是无意义的数**）：
+
+| 类别 | 处 | 说明 |
+| --- | --- | --- |
+| **真死引用** | 3（`cluster_topology/mod.rs:9/:10/:27` 的 `cluster_async/*`） | `f1d843271` 即已存在，在我碰过的文件里。登记见 §7.7 |
+| 已声明例外 | 1（`testing.md:221` 的 `bugs/BUG-001.md`） | 我**故意引用**那套已删除的编号来论证「裸编号不可假定」，带理由登记，保留这个 0 才有意义 |
+| 既有问题 | 1（`e2e-ipc-migration-guide.md:37` 的 `src-tauri/tests/my_ipc_migration.rs`） | 非本轨引入 |
+| 产物/非路径 | 2（`ulid.rs:231` 的 `ulid.io/data.json` 是注释里引 ULID 规范 URL；`generated.ts` 是 gitignored codegen） | 不是仓库路径 |
+
+#### 7.1.1 删除方向的注入探针（**在独立 detached 工作树里做**）
+
+`AGENTS.md`：「同一棵工作树不得同时被提交方和验证方使用」，故探针用
+`git worktree add --detach /tmp/dz_probe2 1fc0399c0`：
+
+| 步骤 | unresolved_distinct |
+| --- | --- |
+| 干净基线 | **7** |
+| `git mv .../ops/workbench/shapes.rs .../ops/workbench/shapes_renamed.rs` | **8** |
+
+新增的那一条正是 `packages/drivers/redis/ui/__tests__/kvBarSlotTesterGaps.test.tsx:402  ops/workbench/shapes.rs`。
+
+**探针证明的是「这条命令确实能因删除而报警」，不能证明「基线那 7 真的是 7 个真缺陷」。**
+两者是两件事，别混。探针跑完即 `git reset --hard` + `git worktree remove --force`。
+
+#### 7.1.2 本检查器**自身的盲区**（必须随结论一起被读）
+
+TOKEN 正则要求 token **带文件后缀**，因此**裸模块名对它是不可见的**。
+`ops_workbench` 正是这类：它没有后缀，是重组前的**模块名**，
+旧名字在散文里照样是死引用——而这条正则永远看不见它。
+
+实测 `ops_workbench` 在本仓 **7 个文件**中作为陈旧模块名出现，其中 **2 处在我的改动集内**
+（`ops/tree/scan/budget.rs:101`、`cluster_topology/mod.rs:1`），另 5 处不在。
+**因此本节不是一次干净的全仓清扫，不许这样引用。**
+
+### 7.2 BLOCKER-2：裸 `BUG-00x` 必须连前缀写全
+
+裁定口径（由协调方裁定）：**裸编号没有可分辨性 ⇒ 零指代力 ⇒ 必须带系统前缀。**
+证据不是推演：`BUG-004` 全仓 **19 处 / 10 个文件**，分属 **5 套**活跃系列；
+另有 `test/bugs/BUG-004.md`（已于 `6c0cd1ed0` 删除）是**第三个**互不相干的缺陷
+（AI NL2SQL「应用到编辑器」写入完整推理文本）。**裸编号连「指向哪一套」都答不出。**
+
+本轮**已在改动集内修掉 9 处**（5 处 kvBar + 4 处 workbench）：
+
+- `ui/__tests__/kvBarRound1Fixes.test.tsx` / `kvBarSlotTesterGaps.test.tsx` ⇒ **`redis-kvbar-ui-BUG-004`**。
+  该系列已被同目录另外 5 个 `kvBar*.test.ts*` 的前缀锁定；`redis-detail-ui-BUG-004` 可证是 TTL pill 行内编辑（另一个缺陷）。
+- `ops/workbench/tests/fix_round1.rs`（3 处）、`ops/workbench/tests.rs:277` ⇒ **`redis-workbench-BUG-004`**。
+  **⚠ 这套前缀是按仓库命名约定 `coordination/tracks/<track>/bugs/<series>-BUG-NNN.md` 补的，
+  不是从登记表查出来的——本系列目前没有已入库的 `bugs/` 登记表，`testing.md:224-226` 列出的 14 套也不覆盖 `ops/workbench/`。
+  这是本轮唯一的判断题，请复核时重点看它。**
+
+**清理范围与口径必须分开写死**：
+
+- **口径不变**：引用缺陷编号**必须连系统前缀写全**，这条对全仓成立，本轨不改。
+- **清理范围有限**：本轮只清理**本轨改动集内**被派单点名的 9 处。
+  范围写窄**不等于**口径放宽——范围是「这一轮动了哪些」，口径是「该怎么写」，
+  两者混成一句，就会让「没改到」被读成「不用改」。§7.7 逐项登记了范围外的余量。
+
+**披露：本轮我自己引入了一个新系列。** 前缀化使全仓带前缀处数 **141**、系列 **15**，
+`redis-workbench-` 是第 15 套；`testing.md` 里「14 套 / 367 处」随之失效，已按 §7.4 复算更新。
+
+**⚠ 其中 2 处是 `describe()` 标题，故 vitest 的用例 ID 变了**（用例名，非行为）。
+早先「行为变化 0」的表述对这两处不成立，特此更正。
+
+### 7.3 §6.1 的两处失效值：14 套 / 124 处
+
+已改为**复算值 15 套 / 141 处**，测于 `1fc0399c0`，并给出复算命令（§7.4）。
+计数漂移本身就是一个缺陷类别：**标时点，不承诺永久成立**。
+
+### 7.4 复算命令（复算值与文中不符时以复算为准）
+
+```bash
+# 系列数（期望 15）
+git grep -ohE '[A-Za-z0-9_.-]+-BUG-[0-9]+' -- ':!progress.md' ':!hub.md' \
+  | sed -E 's/-[0-9]+$//' | sort -u | wc -l
+# 带前缀处数（期望 141）
+git grep -ohE '[A-Za-z0-9_.-]+-BUG-[0-9]+' -- ':!progress.md' ':!hub.md' | wc -l
+# 裸编号处数（期望 354）
+git grep -ohE '(^|[^A-Za-z0-9_.-])BUG-[0-9]+' -- ':!progress.md' ':!hub.md' | wc -l
+```
+
+台账自身引用的正是这些命令会匹配到的字面量，故**这三条命令永远带 `:!progress.md` ':!hub.md'`**。
+
+### 7.5 WARN-6「性能门禁在单实例形态下测量」被误判为误删 —— **撤回该指控**
+
+评审要求把该句恢复到 `docs/architecture/platform/team-server-and-auth.md:780`。实测：
+
+```
+git log --oneline f1d843271..HEAD -- docs/architecture/platform/team-server-and-auth.md   # 0 条
+git diff f1d843271 HEAD --numstat -- .../team-server-and-auth.md                        # 空
+git show f1d843271:.../team-server-and-auth.md | grep -c '性能门禁在单实例形态下测量'    # 1
+git show HEAD:.../team-server-and-auth.md      | grep -c '性能门禁在单实例形态下测量'    # 1
+```
+
+**该文件根本不在我的改动集里**，该句在基线与 HEAD 上逐字相同、各 1 处——**从未被删，无需恢复**。
+若照单执行，反而会在一个我从未碰过的文件里制造一次无来由的改动。
+
+方向与前九次相反：那九次是**我的结论 ≠ 仓库**；这一次是**评审的结论 ≠ 仓库**。
+两者的共同教训不变：**结论必须先落成一条可复现的命令，再决定动不动手。**
+
+### 7.6 R4 门禁（逐字结论行）
+
+四条门禁**各只跑一次**，运行期间不编辑；首尾各记一次 HEAD 与工作区状态，运行期间两者均未变。
+
+```
+HEAD_BEFORE=6a0a32d7083d9caf9957a1bf908c13e41d5f08b6
+PORCELAIN_BEFORE= M progress.md          # 仅台账，无源码
+
+FMT_EXIT=0 ; FMT_BYTES=0
+TSC_EXIT=0 ; TSC_ERRORS=0
+
+CARGO_EXIT=0 ; 5 个 test result 行
+  test result: ok. 396 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out
+  test result: ok. 4 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+  => 合计 408 passed / 0 failed / 8 ignored
+
+VITEST_EXIT=1
+  Test Files  1 failed | 564 passed (565)
+  Tests  2 failed | 5918 passed (5920)
+
+HEAD_AFTER=6a0a32d7083d9caf9957a1bf908c13e41d5f08b6
+PORCELAIN_AFTER= M progress.md
+```
+
+**更正 R3 记录里的一处口径错误**：R3 只报了第一个二进制的 `396 passed; 0 failed; 3 ignored`，
+把它当成整个 crate 的结论。实际是 **5 个二进制合计 408 passed / 0 failed / 8 ignored**。
+二进制数不等于 `Running` 行数（前者 5，后者 4），所以别用 `Running` 计数代替结论。
+
+#### 7.6.1 vitest 是**真红**，不解释为通过
+
+失败文件：`scripts/__tests__/check-module-layers.test.ts`，2 个用例
+（`reports every file that imports Tauri, and none that does not` /
+`says out loud that its findings are non-blocking`），断言 `expect(run().code).toBe(0)` 实得 **1**。
+
+**该红与本轨无关**，判据如下（全部可复算，不依赖本轨的叙述）：
+
+| 证据 | 结果 |
+| --- | --- |
+| 本轨改动集里有没有 `scripts/` | **没有**（`git diff f1d843271 HEAD --name-only \| grep '^scripts/'` 空） |
+| 被点名的文件在本轨改动集里吗 | **没有** |
+| 那条 `@tauri-apps/api/core` import 何时落地 | `92a039383`，且 `git merge-base --is-ancestor 92a039383 f1d843271` 成立 ⇒ **早于本轨基线** |
+| 本轨新增文件是否进入该守卫的文件集 | 本轨只新增分支根台账 `progress.md`，守卫自报「84 files examined」，`progress.md` **不在其中** |
+
+守卫自报：`packages/driver-sdk/src/ipc/driverCommands.ts:1` 命中
+`driver-sdk-no-direct-tauri`（advisory）。
+
+**结论：这条红不是本轨造成的，但它是真实的红，本轨不改它、也不假装它是绿的。**
+不在派单范围内，登记待 `driver-sdk` owner 处理。
+
+#### 7.6.2 `pnpm` 在本工作树里是假红，不作判据
+
+`pnpm vitest run` 跑 0 个用例却退出 1，`pnpm typecheck` 恒退 1。二者既非通过也非失败，
+本轮的门禁一律用 `node <主仓>/node_modules/vitest/vitest.mjs run` 与
+`./node_modules/.bin/tsc --noEmit -p tsconfig.json`。
+
+#### 7.6.3 门禁的适用边界
+
+这四条只覆盖**本轨的改动面**。全仓的门禁结论不由本轨推出——包括上面那条 vitest 红：
+它既证明不了「其余 564 个文件没问题」，也证明不了「本轨的文档改动让它们过了」。
+**结论的范围由命令的读表面决定，不是由「我跑过了」决定。**
+
+### 7.7 登记不改（本轮新查出，均不在 R4 派单范围内）
+
+派单明确要求**不把 115 处死路径 / 12 个类别、或 `BUG-00x` 全量普查折进本轨**，故以下只登记：
+
+| 项 | 实测 | 处置 |
+| --- | --- | --- |
+| `cluster_topology/mod.rs:9/:10/:27` 引用 `cluster_async/{mod,routing,request}.rs` | 全仓无 `cluster_async/` 目录；但 `ClusterConnection`(23 命中) / `RebuildSlots`(6) / `for_routable`(14) / `keyed_probe_slot`(5) / `table_route`(11) 等标识符**均仍在** | **散文的行为描述很可能仍为真，死的只是路径**。修法不得拿另一个死文件名顶上；判据是「删掉这行之后这段注释还说得通吗」。`f1d843271` 即已存在，登记待 owner |
+| 陈旧模块名 `ops_workbench` 散落 7 个文件 | 2 处在改动集内（`ops/tree/scan/budget.rs:101`、`cluster_topology/mod.rs:1`）、5 处不在 | 本轮只改了与 BLOCKER-1 同族的那处（`cluster_topology/mod.rs:1` 的头部亦在 §7.7 登记范围内）。余下登记 |
+| 改动集内仍存 **50 处**裸 `BUG-0xx` | 分布在 `ops/workbench/**`、`ops/tree/scan/**`、4 个 kvBar 测试等 | 属「全量普查」范畴，**本轨不折入**；派单点名的 9 处已修（§7.2） |
+| `docs/architecture/platform/team-server-and-auth.md` | **不在改动集内** | 该文件的路径、句柄数等**一律不由本轨的结论推出**；引用它之前请先确认它是否在改动集里 |
