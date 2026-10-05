@@ -265,7 +265,6 @@ pub fn run() {
             crate::platform::session_commands::platform_create_profile,
             crate::platform::session_commands::platform_update_profile,
             crate::platform::session_commands::platform_disable_profile,
-
             // ── 连接、会话与库 ──
             crate::commands::close_database,
             crate::commands::connect,

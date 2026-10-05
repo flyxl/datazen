@@ -149,12 +149,29 @@ impl Store {
 
         {
             let mut cache = self.cache.write().await;
-            let previous = cache.connections.iter().find(|c| c.id == config.id).cloned();
-            let metadata = cache.platform_profiles.entry(config.id.clone()).or_default();
+            let previous = cache
+                .connections
+                .iter()
+                .find(|c| c.id == config.id)
+                .cloned();
+            let metadata = cache
+                .platform_profiles
+                .entry(config.id.clone())
+                .or_default();
             if let Some(previous) = previous {
-                metadata.config_revision = metadata.config_revision.checked_add(1).ok_or_else(|| StoreError::WriteError("revision exhausted".into()))?;
-                if previous.password != config.password || serde_json::to_value(&previous.ssh_tunnel).ok() != serde_json::to_value(&config.ssh_tunnel).ok() || previous.options != config.options {
-                    metadata.credential_revision = metadata.credential_revision.checked_add(1).ok_or_else(|| StoreError::WriteError("revision exhausted".into()))?;
+                metadata.config_revision = metadata
+                    .config_revision
+                    .checked_add(1)
+                    .ok_or_else(|| StoreError::WriteError("revision exhausted".into()))?;
+                if previous.password != config.password
+                    || serde_json::to_value(&previous.ssh_tunnel).ok()
+                        != serde_json::to_value(&config.ssh_tunnel).ok()
+                    || previous.options != config.options
+                {
+                    metadata.credential_revision = metadata
+                        .credential_revision
+                        .checked_add(1)
+                        .ok_or_else(|| StoreError::WriteError("revision exhausted".into()))?;
                 }
             }
             if let Some(pos) = cache.connections.iter().position(|c| c.id == config.id) {

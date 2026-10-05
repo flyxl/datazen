@@ -211,27 +211,86 @@ impl PlatformAdapter {
 }
 
 impl std::fmt::Debug for PlatformAdapter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.debug_struct("PlatformAdapter").field("identity", &self.identity).field("injected", &self.services.get().is_some()).finish() }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlatformAdapter")
+            .field("identity", &self.identity)
+            .field("injected", &self.services.get().is_some())
+            .finish()
+    }
 }
 impl PlatformAdapter {
-    pub fn inject(&self, store: Arc<crate::store::Store>, registry: Arc<crate::db::DriverRegistry>) -> Result<(), ApiError> {
-        if self.services.get().is_some() { return Ok(()); }
+    pub fn inject(
+        &self,
+        store: Arc<crate::store::Store>,
+        registry: Arc<crate::db::DriverRegistry>,
+    ) -> Result<(), ApiError> {
+        if self.services.get().is_some() {
+            return Ok(());
+        }
         let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
-        let backend = Arc::new(super::session_backend::DesktopSessionBackend::new(registry, store, 32));
-        let runtime = Arc::new(datazen_runtime::application::RuntimeConnectionUseCases::new(profiles.clone(), Arc::new(super::policy::DesktopPolicy), backend.clone()));
+        let backend = Arc::new(super::session_backend::DesktopSessionBackend::new(
+            registry, store, 32,
+        ));
+        let runtime = Arc::new(
+            datazen_runtime::application::RuntimeConnectionUseCases::new(
+                profiles.clone(),
+                Arc::new(super::policy::DesktopPolicy),
+                backend.clone(),
+            ),
+        );
         let sink = runtime.result_sink();
-        backend.set_publisher(Arc::new(move |id, output| sink.publish_output(id, output).map_err(|_| datazen_runtime::connection::ProviderError::ProtocolError("result publication rejected".into())))).map_err(|_| ApiError::new(ApiErrorCode::ServiceUnavailable,"result publisher unavailable"))?;
+        backend
+            .set_publisher(Arc::new(move |id, output| {
+                sink.publish_output(id, output).map_err(|_| {
+                    datazen_runtime::connection::ProviderError::ProtocolError(
+                        "result publication rejected".into(),
+                    )
+                })
+            }))
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "result publisher unavailable",
+                )
+            })?;
         // The shared runtime validates namespace using each real provider. The legacy
         // standalone resolver has no resource-scoped driver metadata and stays fail-closed.
-        let target = datazen_application::target::TargetResolver::new(Arc::new(|_| None), Arc::new(|_,_| None), Arc::new(|_| None), Arc::new(|_| None));
-        let services = Arc::new(ApplicationServices::new(target, datazen_application::identity_policy::IdentityPolicy::new(),runtime.clone()));
-        self.runtime.set(runtime).map_err(|_| ApiError::new(ApiErrorCode::ContextConflict,"runtime already injected"))?;
-        self.profiles.set(profiles).map_err(|_| ApiError::new(ApiErrorCode::ContextConflict,"profiles already injected"))?;
-        self.services.set(services).map_err(|_| ApiError::new(ApiErrorCode::ContextConflict,"services already injected"))?;
+        let target = datazen_application::target::TargetResolver::new(
+            Arc::new(|_| None),
+            Arc::new(|_, _| None),
+            Arc::new(|_| None),
+            Arc::new(|_| None),
+        );
+        let services = Arc::new(ApplicationServices::new(
+            target,
+            datazen_application::identity_policy::IdentityPolicy::new(),
+            runtime.clone(),
+        ));
+        self.runtime.set(runtime).map_err(|_| {
+            ApiError::new(ApiErrorCode::ContextConflict, "runtime already injected")
+        })?;
+        self.profiles.set(profiles).map_err(|_| {
+            ApiError::new(ApiErrorCode::ContextConflict, "profiles already injected")
+        })?;
+        self.services.set(services).map_err(|_| {
+            ApiError::new(ApiErrorCode::ContextConflict, "services already injected")
+        })?;
         Ok(())
     }
-    pub fn runtime(&self) -> Result<Arc<datazen_runtime::application::RuntimeConnectionUseCases>,ApiError> { self.runtime.get().cloned().ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable,"runtime not injected")) }
-    pub fn profiles(&self) -> Result<Arc<super::repositories::DesktopProfiles>,ApiError> { self.profiles.get().cloned().ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable,"profiles not injected")) }
+    pub fn runtime(
+        &self,
+    ) -> Result<Arc<datazen_runtime::application::RuntimeConnectionUseCases>, ApiError> {
+        self.runtime
+            .get()
+            .cloned()
+            .ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable, "runtime not injected"))
+    }
+    pub fn profiles(&self) -> Result<Arc<super::repositories::DesktopProfiles>, ApiError> {
+        self.profiles
+            .get()
+            .cloned()
+            .ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable, "profiles not injected"))
+    }
 }
 
 /// `PlatformAdapter` 在 `AppState` 里的落位（§6.2 第 8 步 → 第 9 步 `state.manage`）。
