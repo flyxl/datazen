@@ -224,6 +224,21 @@ impl Ledger {
     fn uncharge(&mut self, keys: &[QuotaKey], count: u32) {
         for key in keys {
             if let Some(used) = self.used.get_mut(key) {
+                // 登记项 D（CM-28 轨 `p3-cm28-concurrent-return` 发现，**本轨未改**，只留事实）：
+                // 饱和减法**保证**了 CM-28 断言「预算不负数」成立 —— `used` 永远夹在 0 以上，
+                // 任何路径都下溢不了。
+                //
+                // 代价是另一面：**超额核销同样被静默夹到 0，既不报错也不记日志**。若某条
+                // 释放路径的 `count` 大于当初 `charge` 的量（例如 `release` 里的
+                // `held.physical_count` 与 charge 链不对称，或同一条链被重复核销），
+                // 账本只会安静地少算一次占用，从账面上看不出释放侧出了 bug。
+                // 同样的写法见 `budget/ledger.rs` 的 `shared_used.saturating_sub(1)`。
+                //
+                // 是否要改成「可观测的过量核销」（夹位之外额外记一笔 metric / warn），
+                // 属本 crate 的裁定范围，不在 CM-28 轨内。CM-28 侧的「预算不负数」证据
+                // 见 `packages/runtime/tests/cm28_concurrent_release.rs`：
+                // 那里的探测器**允许** `outstanding` 变负并记录 `underflows`，
+                // 以免探测器与被测对象同源而把断言变成同义反复。
                 *used = Counter::new(used.get().saturating_sub(u64::from(count)));
             }
         }
