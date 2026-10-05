@@ -24,7 +24,8 @@
 
 ## 跨轨事实与遗留
 
-- **i18n 门禁盲区**：`scripts/i18n-sync-check.mjs` 的 `LOCALE_FILES` 硬编码 8 个 locale、**不含 zh-CN**，且 `getTranslation` 缺 key 静默回退 en，故 zh-CN 欠债两道门禁都不可见。**P5 各轨新增 en key 必须同时写 zh-CN**（中文 UI 会直接显示英文原文）；其余 8 locale 留给发布前 i18n-sync 收尾。
+- **i18n 门禁盲区（缺陷 D-I18N-1，中，归门禁维护轨）**：`scripts/i18n-sync-check.mjs` 的 `LOCALE_FILES` 硬编码 8 个 host locale、**不含 zh-CN**（Tester 实证：仅加 zh-CN 的补丁副本即报 117 missing EXIT=1，原门禁全绿）；且 vitest 用 `getTranslation` 缺 key 静默回退 en 使断言恒过。**P5 各轨新增 en key 必须同时写 zh-CN**（中文 UI 会直接显示英文原文）；其余 8 locale 留给发布前 i18n-sync 收尾。
+- **zh-CN 存量欠债**：baseline（集成分支）缺 117 key（sync 114 + settings 3），**main 现值缺 138**（另含 query 18 + schema 3）；全部可追溯到 v0.2.3 之前的迁移三件套/更新器提交，非 P5 引入。处置：另立**发布前 i18n 收尾轨**在 main 上统一补，不随 P5 各轨。
 - **lazy domain 测试 fixture**：测试若把 `useLocaleDomains` mock 成恒 true，lazy `sync` pack 永不注册，而 `@datazen/ui` 组件走包内**真 `t()`**，会刷 `Missing translation` 警告。修法为 test-only：`import '../../../locales'` + `beforeAll(() => ensureAllLazyDomains('en'))`。data-transfer 套件与 `MigrationRunHistoryDialog.test.tsx` 仍有同根因残留（非阻塞）。
 - 结构性观察（未修，属产品决策）：de/es/fr/ja/ko/pt-BR/ru/zh-TW 8 套字典完整但**运行时不可达**——`builtin-locales.json`、`lazyPacks.loaders`、`generated-locales.ts` 三处仅覆盖 en/zh-CN，实测 `setLocale('de')` 返回 en 文案。
 
@@ -32,5 +33,6 @@
 
 - `97885d6e0` domain-extract 合入（`867bd81a2` 删 progress.md）。
 - `bb2cc5606` job-core 合入（`d2282dcbd` 删 progress.md），3 轮验收：R1 FAIL(D1–D5) → 修复 → R2 FAIL(D6–D8) → 补测试/台账 → R3 TEST_PASSED。
-- `4ba769fc9` schema-diff 合入（`2486ac679` 删 progress.md），2 轮验收：R1 FAIL(D1–D4) → 修复 `edf2713a0` → R2 TEST_PASSED；合并后 sanity `cargo test -p datazen-schema-diff -p datazen-runtime` EXIT=0。R2 遗留（发布前处理）：`schemaDiff.limitations.*` 7 个 i18n key 待 i18n-sync；`read_only_verify` 仍保守返回 Indeterminate。
+- `0db23e6d0` i18n 合入（ledger 6e99a1701，TEST_PASSED，删 progress.md `b??`）：补齐 9 locale 的 migrationJob key + 修 3 个 schema-diff 测试 fixture（27→0 警告，生产代码零改动、断言未削弱）。合并后 sanity：i18n-sync-check EXIT=0、vitest schema-diff+locales 108 passed EXIT=0（本 worktree 需先补 codegen：generate-builtin-locales + resolve-drivers --codegen-only）。残留（既存、非本轨）：data-transfer 套件 9 行同类警告、MigrationRunHistoryDialog 1 行 → 用同 2 行 fixture 模板清或收敛进共享 setup。
+- `4ba769fc9` schema-diff 合入（`2486ac679` 删 progress.md），2 轮验收：R1 FAIL(D1–D4) → 修复 `edf2713a0` → R2 TEST_PASSED；合并后 sanity `cargo test -p datazen-schema-diff -p datazen-runtime` EXIT=0。R2 遗留：`read_only_verify` 仍保守返回 Indeterminate；`schemaDiff.limitations.*` 警告已由 i18n 轨修复。
 - `5f46a0262` client 合入（`1029e9fae` 删 progress.md）。
