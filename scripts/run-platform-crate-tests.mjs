@@ -149,15 +149,46 @@ export const TESTED_LAYERS = Object.freeze(['runtime', 'application', 'platform-
  *
  * ## Why the integration binaries also do not need to be listed here
  *
- * Everything above reaches **two** of the 21 test-bearing targets in
- * `datazen-runtime`. The other 19 are plain `tests/*.rs` integration binaries
- * that `--lib` cannot select and that nobody needs to name: a no-selector
- * invocation runs all of them, and it is unconditional in `buildCargoArgv` for
- * exactly the reason the `--lib` one is. Had this table been the place to close
- * that gap, every future `tests/*.rs` would have to be added here too — and the
- * day someone forgets, the test still "exists", it just never compiles in CI,
- * which is the failure mode this section exists to prevent. Cargo already knows
- * the target list; this file must not keep a second copy of it.
+ * Every count below is measured on `datazen-runtime` at this commit with
+ * `cargo metadata --no-deps --format-version 1`, classifying targets by their
+ * `kind` field. The `kind` split matters and a recursive file count does not:
+ * `packages/runtime/tests/` also holds shared-module directories, so counting
+ * `.rs` files there over-counts, and the lib target's `kind` is `["lib"]`,
+ * which does **not** contain `"test"` — so it has to be counted on its own.
+ *
+ * Measured, by kind:
+ *
+ * | kind | n | what it is |
+ * | --- | --- | --- |
+ * | `["lib"]` | 1 | `datazen_runtime` unit tests |
+ * | `["test"]` | 19 | the `tests/*.rs` integration binaries (`Cargo.toml` declares no `[[test]]`, so these are auto-discovered) |
+ * | `["bin"]` | 1 | `cm60-bench` |
+ *
+ * So "how many test-bearing targets" has no answer until the set is named.
+ * Counting `["lib"] + ["test"]` gives **20**; counting every kind gives **21**;
+ * the third kind is not a test target and must never be folded into either.
+ *
+ * Against the 19 integration binaries — that named set, not the crate total —
+ * the selectors above reach **0** and **1** of them. `--lib` selects the
+ * library's own unit-test target and cannot select any integration binary, and
+ * `--test cm60_pressure_drain` names exactly one. That leaves **18** integration
+ * binaries that no entry here names individually, and nobody needs to: a
+ * no-selector invocation runs all of them. It is unconditional in
+ * `buildCargoArgv` — a literal element of the returned array, not guarded by
+ * this table — which is the property that makes the 18 safe to leave unnamed.
+ *
+ * `--bin cm60-bench` is deliberately outside that arithmetic: it is a `["bin"]`
+ * target, not one of the 19 `["test"]` integration binaries, so it is in
+ * neither the 19 nor the 18. It stays in this table for an unrelated reason —
+ * the §11.3 latency half needs its unit tests compiled `--release`, and
+ * `--release` applies to a whole invocation rather than to the target beside
+ * it, so it needs its own call (see `buildCargoArgv`).
+ *
+ * Had this table been the place to close the integration-binary gap, every
+ * future `tests/*.rs` would have to be added here too — and the day someone
+ * forgets, the test still "exists", it just never compiles in CI, which is the
+ * failure mode this section exists to prevent. Cargo already knows the target
+ * list; this file must not keep a second copy of it.
  *
  * ## Why `release` is per-entry instead of a global `--release`
  *
@@ -226,17 +257,39 @@ export function buildCargoArgv(crates) {
     // binaries, of which `--lib` runs 0 and `--test cm60_pressure_drain` runs 1.
     // The lib run is 383 tests, the 18 untouched binaries hold 180 more — the
     // largest single group being `gateway_contract` at 51. A script that reads
-    // as "tests the platform core crates" while running 3 of 21 test-bearing
-    // targets is the same overstatement this file already guards against twice
-    // elsewhere ("PASS — N core crate(s) tested" over an incomplete set), so the
-    // full target set runs too.
+    // as "tests the platform core crates" while naming targets one at a time is
+    // the same overstatement this file already guards against twice elsewhere
+    // ("PASS — N core crate(s) tested" over an incomplete set), so the full
+    // target set runs too.
+    //
+    // Counted as **targets, not invocations**, this table names 3 of
+    // `datazen-runtime`'s 21 cargo targets: the lib target and the
+    // `cm60_pressure_drain` `["test"]` target (2 of the 20 test-bearing ones)
+    // plus the `cm60-bench` `["bin"]` target, which carries no test kind and so
+    // is not a test-bearing target at all. That "3" happens to equal the 3
+    // invocations `buildCargoArgv` emits, which is precisely why the two must
+    // never be quoted interchangeably: one counts what is selected, the other
+    // counts how many times cargo is spawned, and they coincide only because
+    // this crate contributes one target-selector per invocation. A bare ratio
+    // cannot carry that distinction, and "3 of 21 test-bearing targets" is
+    // wrong twice over — the numerator smuggles in a binary, and the
+    // denominator 21 is the all-kinds total (only 20 are test-bearing). So it is
+    // spelled out here rather than abbreviated.
     //
     // The exact argv matters, and the rejected alternatives are recorded here
     // because each one is defensible-looking and wrong:
-    //   * **Replacing** the `--lib` invocation with `['test','--tests',…]` would
-    //     trade 383 lib tests for 180 integration ones. `--tests` is fine as an
-    //     *addition*; as a substitution it opens a hole bigger than the one this
-    //     closes. The `--lib` call above stays exactly as it was.
+    //   * **Replacing** the `--lib` invocation with `['test','--tests',…]`.
+    //     Measured (`cargo test -p datazen-runtime --tests --no-fail-fast`,
+    //     cargo 1.90.0): it selects **21** targets — the lib unit-test target,
+    //     the `cm60-bench` bin unittests and all 19 integration binaries, 628
+    //     tests — so the commonly repeated claim that `--tests` drops the lib is
+    //     **false** here; that is `--test <name>`, which requires a name and
+    //     matches no target without one. What `--tests` really drops is the
+    //     **doc tests**: it emitted 0 Doc-tests blocks, where the no-selector
+    //     call below emits one per crate. So the swap would not open a hole in
+    //     the library, it would trade doc-test coverage for a re-run of targets
+    //     already covered — and `--tests` is fine as an *addition*. Either way
+    //     the `--lib` call above stays exactly as it was.
     //   * **Replacing** it with a bare no-selector call (i.e. dropping `--lib`
     //     entirely) would cover everything — but it would also delete the
     //     invariant the `--lib` branch is there to hold, and make the debug gate
@@ -246,14 +299,22 @@ export function buildCargoArgv(crates) {
     //     `tests/*.rs` would join the crate silently and stay untested. Cargo
     //     already knows the list; the gate should not keep a second one.
     // So: keep `--lib`, keep the extras, **add** a no-selector call. What it
-    // repeats from the first (lib, `--test cm60_pressure_drain`, the doctests)
-    // is paid for deliberately — the redundancy is bounded and compile-shared,
-    // while a drifting duplicate target list is not.
+    // repeats from the first is only the two targets that call names — the lib
+    // and `cm60_pressure_drain` — and measured that call emits exactly 2
+    // `test result:` lines with **no** Doc-tests block, because `--lib` selects
+    // the library's unit-test target and nothing else. The doctests are new
+    // coverage here, not a repeat of anything above. That redundancy is still
+    // paid for deliberately: it is bounded and compile-shared, while a drifting
+    // duplicate target list is not.
     //
     // It also picks up `cm60-bench`'s own unit tests in **debug**, which the
     // `--release` call below runs properly and which is the run that counts —
     // `cm60-bench/main.rs` exits 2 under `debug_assertions` by design. Measured
-    // green in debug (26 targets / 944 passed / 0 failed on this tree), so it is
+    // green in debug (944 passed / 0 failed on this tree, emitted as 26
+    // `test result:` lines — 23 `Running` targets plus 3 Doc-tests blocks, one per
+    // selected crate; a Doc-tests block prints a `test result:` line with no
+    // `Running` line above it, so "how many targets ran" is the `Running` count
+    // plus one per crate, not the `test result:` line count), so it is
     // recorded rather than worked around: suppressing it would mean putting a
     // `--bin` exclusion into the one call whose whole property is "names no
     // target", and a debug-profile unit test failing later is a real signal.

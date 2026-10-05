@@ -458,8 +458,14 @@ CI 真实跑的两条：`--lib … --test cm60_pressure_drain` ⇒ 恰好 2 个�
 **不带任何 target selector** 的调用 `['test', ...names.flatMap((n) => ['-p', n])]`（`:201`），
 `--lib` 那条与两条 `--test` 原样保留。理由写死在 `mjs:196-208`：
 
-★ **明确否决 `--tests` 作为替代**：它是**再换一个大洞**，不是补洞。`--tests` 只选集成二进制、
-不选 lib——等于拿掉 383 个换回 180 个，净亏。故 `--lib` 一条都不能动。
+★ **明确否决 `--tests` 作为替代**：结论不变（`--lib` 一条都不能动），但**机制原文写错了，本轮订正**。
+原文写「`--tests` 只选集成二进制、不选 lib——等于拿掉 383 个换回 180 个」。本轮（2026，`cargo 1.90.0`，
+HEAD `83930c07d`）实测 `cargo test -p datazen-runtime --tests --no-fail-fast` 选了 **21 个目标**：
+`datazen_runtime`（lib unittests）、`cm60_bench`（bin unittests）、19 个集成二进制，**628 个测试**。
+即 **`--tests` 是包含 lib 的**；不含 lib 的是 `--test <name>`（必须带名字，不带名字不匹配任何目标）。
+`--tests` 真正丢掉的是 **doc tests**（实测 0 个 Doc-tests block，而不带选择器的那条每个 crate 一个）。
+所以换成 `--tests` 的真实代价是拿 doc-test 覆盖去换一遍已经被覆盖的目标，不是丢掉 383 个 lib 测试。
+结论（不替换、不删除 `--lib`，只在旁边**追加**一条不带 selector 的调用）不受影响。
 
 被否掉的另两条：丢掉 `--lib`（同上的洞，只是方向相反）；把每个集成二进制逐个登记成
 `--test` 条目（19 条 `EXTRA_TARGETS` + 19 条 `toEqual`，测试会随每加一个 `tests/*.rs` 而腐坏，
@@ -467,8 +473,12 @@ CI 真实跑的两条：`--lib … --test cm60_pressure_drain` ⇒ 恰好 2 个�
 
 **新增调用的实测增量**：`cargo test -p datazen-runtime -p datazen-application -p datazen-platform-api`
 真跑（不 dry-run）⇒ `EXIT=0`、**26 条 `test result:`、944 passed / 0 failed**。
-26 = runtime 的 19 个集成二进制 + 3 个 lib/bin unittests + 3 个 Doc-tests，加
-application/platform-api 各自的 lib 与 Doc-tests（这俩各 0 个 `kind==['test']` 目标，
+26 = 19 个集成二进制（全部来自 runtime）+ **4** 个 lib/bin unittests
+（runtime 的 lib 与 `cm60-bench`，加 application / platform-api 各自的 lib）+ 3 个 Doc-tests
+（每个 crate 一个）。
+（★ 本轮订正：此处原文写的是「3 个 lib/bin unittests」，19+3+3=25，对不上 26；
+正确的拆法是 19+4+3=26。）
+（application/platform-api 各 0 个 `kind==['test']` 目标，
 所以新增价值全部来自 runtime；另两个 crate 只是把各自 lib 套件重跑一遍，
 编译产物共享，代价有界）。
 
@@ -542,7 +552,10 @@ temp 里。已改为取一次存下来（`let dir = tempdir();`），并在注�
 
 那句「计划 :269 的 datazen-runtime CI 空缺」在 F05-3 之后**已经过时但不假**：
 它描述的是修 F-05 当时的状态（那时确实只跑 `--lib` + 1 个 `--test` + 1 个 `--bin`）。
-F05-3 落地后，`datazen-runtime` 的 21 个 `Running` 目标与 3 个 Doc-tests **全部**进了 CI，
+F05-3 落地后，CI 里那条**不带 selector** 的调用把 **23 个 `Running` 目标与 3 个 Doc-tests**
+**全部**跑了（★ 本轮订正：原文写的是「`datazen-runtime` 的 21 个 `Running` 目标与 3 个 Doc-tests」，
+混了两个口径——21 是 `cargo test -p datazen-runtime` **单 crate** 的 `Running` 数，3 个 Doc-tests
+是**三 crate** 调用的数；同一个三 crate 调用实测是 23 个 `Running`，23 + 3 = 26 条 `test result:`），
 所以这条注释是**低报**而非报错。属文档漂移，归 `ci.yml` 属主，本轨不擅自改 CI 文件。
 
 ★ 协调者已裁定 `ci.yml:317-320` **不是阻塞、不得动**：它是
@@ -623,3 +636,54 @@ node <main>/node_modules/typescript/bin/tsc --noEmit -p tsconfig.scripts.json
 **READY_FOR_TEST** —— F04-1（BLOCKER）已修且经编译器级强制 + N=10000 实证；
 F04-2/F04-3、N9、MUT 证据、`:169` 归因收窄、F05-3、N12、N13 均已落；
 门禁全绿（见上）。未修项均为登记在案的 WARN 或他轨归属。
+
+## 口径返修轮（2026-10-05，HEAD `83930c07d168b67b0f2021f2b75ee9bb7ad91bc4`）
+
+只改注释与本台账，**未改 `buildCargoArgv` 的任何行为**；门禁计数必须一格不动。
+
+### 各数字的年份（不要拍平成一个值）
+
+| 数值 | 哪个 commit 上测的 | 口径 |
+|---|---|---|
+| lib **382** | `48d194300` / `3ed3ad0db`（早期轮） | `cargo test -p datazen-runtime --lib` |
+| lib **383** | `fdeff46f4b` 起，至本轮 `83930c07d` 复测一致 | 同上 |
+| bench **46 / 57** | 早期轮 / `48d194300`·`3ed3ad0db` | `--bin cm60-bench`（debug 与 release 一致） |
+| bench **59** | `fdeff46f4b` 起，本轮复测一致 | 同上 |
+| **626** | HEAD 基线（早于本轨 +2 用例） | `cargo test -p datazen-runtime` 整 crate |
+| **628** | `fdeff46f4b` 起，本轮复测一致 | 同上；22 条 `test result:` = 21 `Running` + 1 Doc-tests |
+| **944 / 26** | `fdeff46f4b` 起，本轮复测一致 | 三 crate 不带 selector；26 条 = **23 `Running` + 3 Doc-tests** |
+| 集成二进制 **19** | 本轨加入 `cm60_pressure_drain` 后至今 | `cargo metadata` 的 `kind==['test']` |
+| 集成二进制 **18** | 基线 `7fa6630f0` | 同上 |
+| 集成二进制 **22** | `ea97a94c9` | 同上（**不是 main 的 tip**） |
+| 集成二进制 **24** | main tip `42bf321a1`（本轮实测当时） | 同上 |
+
+★ 计数陷阱：数集成二进制**只能数深度 1 的 `tests/*.rs`**。本轮用 `git ls-tree -r` 递归数过一次，
+得到 34，和 `cargo metadata` 的 19 对不上——递归会钻进 `tests/` 下的共享模块目录。上面 `:442`
+那句「不是 `find` 递归数」就是这个坑，本轮又踩了一次，记下来。
+
+### 本轮口径（2026-10-05 实测，`cargo metadata --no-deps --format-version 1` 按 `kind` 分类）
+
+`datazen-runtime` 共 **21 个 cargo 目标** = `["lib"]` 1 + `["test"]` **19** + `["bin"]` 1。
+「带测目标」必须点名集合：按 `["lib"]+["test"]` 是 **20**，按全部 kind 是 **21**。
+`--lib` 命中集成二进制 **0** 个，`--test cm60_pressure_drain` 命中 **1** 个，**未被逐个点名的还剩 18 个**
+（占 180 个测试，最大一组 `gateway_contract` 51）。
+`--bin cm60-bench` 是 `["bin"]` 目标，**不在**那 19 个集成二进制里，所以既不属于 19 也不属于 18；
+它留在 `EXTRA_TARGETS` 是因为 §11.3 的单元测试必须 `--release` 编，而 `--release` 作用于整条调用、
+不是作用在 `--lib` 旁边，所以需要单独一条调用。
+
+★ **`scripts/run-platform-crate-tests.mjs` 里原先那句「reaches two of the 21 test-bearing targets.
+The other 19…」按 R4 意见改成 18 是错的**：它把三个集合混成一个——`EXTRA_TARGETS` 的 2 行
+（1 个 `test` 目标 + 1 个 `bin` 目标）不是「两个带测目标」；21 是全部 kind 的目标数，不是带测目标数。
+**在真值下「two of N」这种句式根本不成立**，所以本轮改成逐个点名集合，不再用比例句式。
+同文件 `:256` 那句（19 / 0 / 1 / 383 / 18 / 180 / 51）原本就是对的，保持原样。
+
+### 本轮另外三处（任务书没点名的）
+
+1. `:249` 把 doctests 记在 `--lib` 那条调用名下。实测该调用 2 条 `test result:`、**0 个 Doc-tests**
+   （`--lib` 只选库的单元测试目标）。doctests 是新增覆盖，不是重复。
+2. `:256` 的 `26 targets` 数字对、口径错：26 是 `test result:` 行数，= 23 `Running` 目标 + 3 个 Doc-tests
+   block，Doc-tests 不是 cargo 目标。已改口径。
+3. 本节开头记的 `--tests` 机制错误（详见 F05-3 的订正块）。
+
+★ `buildCargoArgv` 不带 selector 的那条**无条件**（是返回数组里的字面量，不受 `EXTRA_TARGETS` 保护）——
+已读实现确认，并由 `--dry-run` 打印出的 3 条 argv 佐证，不是抄注释。
