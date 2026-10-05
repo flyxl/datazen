@@ -1,5 +1,9 @@
 /** Auto-split domain: sync (ko) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    '이전 계획은 더 이상 유효하지 않습니다(만료되었거나, 대상이 변경되었거나, 권한이 바뀌었습니다). 적용하기 전에 계획을 다시 준비하세요.',
+  'migrationJob.pendingVerificationHint':
+    '이전 작업이 확인을 기다리고 있습니다. 새 변경 사항을 적용하기 전에 작업 센터를 열고 상태를 대조하세요.',
   // --- Data Sync ---
   'sync.source': '원천',
   'sync.target': '목표',

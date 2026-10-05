@@ -1,5 +1,9 @@
 /** Auto-split domain: sync (ru) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    'Предыдущий план больше не действителен: истёк срок его действия, структура цели изменилась или изменились права. Подготовьте новый план перед применением.',
+  'migrationJob.pendingVerificationHint':
+    'Предыдущее задание ожидает проверки. Откройте центр заданий и согласуйте состояние, прежде чем применять новые изменения.',
   // --- Data Sync ---
   'sync.source': 'Источник',
   'sync.target': 'Цель',

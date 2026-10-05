@@ -1,8 +1,16 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SchemaDiffWindow } from '../SchemaDiffWindow';
 import type { SchemaDiffObjectIdentity } from '../../../commands/schemaDiff';
 import type { DatabaseObject } from '../../../types';
+// Fixture, not production wiring: `useI18n` (key-echoing, so assertions may
+// target key strings) and `useLocaleDomains` (returns true) are mocked, so the
+// graph never registers the host dictionaries and @datazen/ui's own components
+// warn about perfectly registered keys. SchemaDiffWindow.test.tsx carries the
+// full root-cause note; this is the same test-only registration route
+// locales.test.ts uses.
+import '../../../locales';
+import { ensureAllLazyDomains } from '../../../locales/lazyPacks';
 
 const { endpointState, profile, schemaDiffCommands, databaseCommands } = vi.hoisted(() => {
   const state = {
@@ -189,6 +197,12 @@ vi.mock('../../../commands/schemaDiff', () => ({
 }));
 
 describe('SchemaDiffWindow profile loading', () => {
+  beforeAll(async () => {
+    // Eager packs register at import; the lazy `sync` pack needs an explicit
+    // await because the mocked `useLocaleDomains` never requests it.
+    await ensureAllLazyDomains('en');
+  });
+
   beforeEach(() => {
     endpointState.sourceId = 'initial-source';
     endpointState.targetId = 'initial-target';

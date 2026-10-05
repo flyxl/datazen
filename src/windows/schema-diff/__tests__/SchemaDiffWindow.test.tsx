@@ -1,6 +1,16 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { SchemaDiffWindow } from '../SchemaDiffWindow';
+// Fixture, not production wiring: this suite mocks the HOST i18n hooks (`useI18n`
+// echoes keys so assertions can target key strings, `useLocaleDomains` returns
+// true), so nothing in the graph ever registers the host dictionaries into the
+// shared @datazen/ui registry. `@datazen/ui`'s own components (Dialog's close
+// label, LimitationsDialog's bullets) still resolve through the real `t`, so
+// they warn "Missing translation" for keys that are perfectly well registered.
+// Importing the locales entry point registers the eager packs; the lazy `sync`
+// pack is warmed explicitly (the same test-only route locales.test.ts uses).
+import '../../../locales';
+import { ensureAllLazyDomains } from '../../../locales/lazyPacks';
 
 const { stableT } = vi.hoisted(() => ({
   stableT: (key: string) => key,
@@ -65,6 +75,12 @@ vi.mock('../../../commands/schemaDiff', () => ({
 }));
 
 describe('SchemaDiffWindow', () => {
+  beforeAll(async () => {
+    // Eager packs land at import above; the lazy `sync` pack needs an explicit
+    // await because the mocked `useLocaleDomains` never requests it.
+    await ensureAllLazyDomains('en');
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });

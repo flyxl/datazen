@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SchemaDiffWindow } from '../SchemaDiffWindow';
 import { schemaDiffCommands, type SchemaDiffPlan } from '../../../commands/schemaDiff';
@@ -6,6 +6,14 @@ import { databaseCommands } from '../../../commands/database';
 import { fileCommands } from '../../../commands/file';
 import type { SchemaDiffObjectIdentity } from '../../../commands/schemaDiff';
 import type { DatabaseObject } from '../../../types';
+// Fixture, not production wiring: `useI18n` (key-echoing, so the many
+// `getByText('schemaDiff.*')` locators keep working) and `useLocaleDomains`
+// (returns true) are mocked, so the graph never registers the host
+// dictionaries and @datazen/ui's own components warn about perfectly
+// registered keys. SchemaDiffWindow.test.tsx carries the full root-cause note;
+// this is the same test-only registration route locales.test.ts uses.
+import '../../../locales';
+import { ensureAllLazyDomains } from '../../../locales/lazyPacks';
 
 const state = vi.hoisted(() => ({
   t: (key: string) => key,
@@ -114,6 +122,12 @@ async function reachDeploy() {
   next();
   await screen.findByTestId('schema-diff-deploy');
 }
+
+beforeAll(async () => {
+  // Eager packs register at import; the lazy `sync` pack needs an explicit
+  // await because the mocked `useLocaleDomains` never requests it.
+  await ensureAllLazyDomains('en');
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
