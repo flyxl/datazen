@@ -13,6 +13,7 @@ import {
   rollbackCompletenessCounts,
   schemaDiffCommands,
   type SchemaDiffPlan,
+  type SchemaDiffPrepareEnvelope,
 } from '../schemaDiff';
 import type { TableSchemaDiff } from '../../types';
 
@@ -105,6 +106,17 @@ describe('schema diff pure helpers', () => {
   });
 });
 
+const prepareEnvelope = (plan: unknown): SchemaDiffPrepareEnvelope => ({
+  plan: plan as SchemaDiffPlan,
+  planId: (plan as { planId?: string }).planId ?? 'plan-1',
+  selectionRevision: 1,
+  planVersion: 1,
+  handlerVersion: 1,
+  checkpointVersion: 1,
+  expiresAt: '2999-01-01T00:00:00Z',
+  recoveryPolicy: 'readOnlyVerify',
+});
+
 describe('schemaDiffCommands wrappers', () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -164,7 +176,7 @@ describe('schemaDiffCommands wrappers', () => {
   });
 
   it('preparePlan normalizes IPC requirement tags into plan requirements', async () => {
-    invokeMock.mockResolvedValueOnce({
+    invokeMock.mockResolvedValueOnce(prepareEnvelope({
       ...samplePlan(),
       requirements: [
         {
@@ -181,7 +193,7 @@ describe('schemaDiffCommands wrappers', () => {
           },
         },
       ],
-    });
+    }));
     await expect(
       schemaDiffCommands.preparePlan({
         sourceDbSessionId: 'src-2',
@@ -190,6 +202,7 @@ describe('schemaDiffCommands wrappers', () => {
         allowDestructive: false,
       }),
     ).resolves.toMatchObject({
+      plan: {
       requirements: [
         {
           kind: 'Backfill',
@@ -204,11 +217,12 @@ describe('schemaDiffCommands wrappers', () => {
           reason: 'Operation is not supported',
         },
       ],
+      },
     });
   });
 
   it('preparePlan forwards plan options with optional includeIndexes omitted key intact', async () => {
-    invokeMock.mockResolvedValueOnce(samplePlan());
+    invokeMock.mockResolvedValueOnce(prepareEnvelope(samplePlan()));
     await expect(
       schemaDiffCommands.preparePlan({
         sourceDbSessionId: 'src-2',
@@ -217,7 +231,7 @@ describe('schemaDiffCommands wrappers', () => {
         allowDestructive: true,
         includeIndexes: true,
       }),
-    ).resolves.toMatchObject({ table: 'users' });
+    ).resolves.toMatchObject({ plan: { table: 'users' } });
     expect(invokeMock).toHaveBeenCalledWith('prepare_schema_diff_plan', {
       sourceDbSessionId: 'src-2',
       targetDbSessionId: 'tgt-2',
@@ -241,7 +255,7 @@ describe('schemaDiffCommands wrappers', () => {
         },
       ],
     });
-    invokeMock.mockResolvedValueOnce(planWithSug);
+    invokeMock.mockResolvedValueOnce(prepareEnvelope(planWithSug));
     const overrides = [{ table: 'demo_customers', column: 'region', targetType: 'VARCHAR(64)' }];
     const res = await schemaDiffCommands.preparePlan({
       sourceDbSessionId: 'src-1',
@@ -250,7 +264,7 @@ describe('schemaDiffCommands wrappers', () => {
       allowDestructive: false,
       typeOverrides: overrides,
     });
-    expect(res.typeSuggestions).toHaveLength(1);
+    expect(res.plan.typeSuggestions).toHaveLength(1);
     expect(invokeMock).toHaveBeenCalledWith('prepare_schema_diff_plan', {
       sourceDbSessionId: 'src-1',
       targetDbSessionId: 'tgt-1',
@@ -262,7 +276,7 @@ describe('schemaDiffCommands wrappers', () => {
   });
 
   it('prepareUnifiedPlan sends exact mixed object identities with the table scope', async () => {
-    invokeMock.mockResolvedValueOnce(samplePlan({ planId: 'unified-review-1' }));
+    invokeMock.mockResolvedValueOnce(prepareEnvelope(samplePlan({ planId: 'unified-review-1' })));
     const sourceObjects = [
       {
         kind: 'function' as const,
@@ -346,7 +360,7 @@ describe('schemaDiffCommands wrappers', () => {
   });
 
   it('forwards explicit target-only selectors without changing source selectors', async () => {
-    invokeMock.mockResolvedValueOnce(samplePlan({ tables: ['users', 'archive'] }));
+    invokeMock.mockResolvedValueOnce(prepareEnvelope(samplePlan({ tables: ['users', 'archive'] })));
     await schemaDiffCommands.preparePlan({
       sourceDbSessionId: 'src-target-picker',
       targetDbSessionId: 'tgt-target-picker',
@@ -540,19 +554,19 @@ it('round-trips all requirement tags without losing table or column identity', a
     { unsupported: { operation: 'users', reason: 'table unavailable' } },
     { unsupported: { operation: 'users.id', reason: 'column unavailable' } },
   ];
-  invokeMock.mockResolvedValueOnce({ ...samplePlan(), requirements });
+  invokeMock.mockResolvedValueOnce(prepareEnvelope({ ...samplePlan(), requirements }));
   const prepared = await schemaDiffCommands.preparePlan({
     sourceDbSessionId: 'src',
     targetDbSessionId: 'tgt',
     tableNames: ['users'],
     allowDestructive: false,
   });
-  expect(prepared.requirements).toEqual([
+  expect(prepared.plan.requirements).toEqual([
     { kind: 'Backfill', table: 'users', column: 'status', reason: 'populate first' },
     { kind: 'Unsupported', table: 'users', column: '', reason: 'table unavailable' },
     { kind: 'Unsupported', table: 'users', column: 'id', reason: 'column unavailable' },
   ]);
-  await schemaDiffCommands.executeDeploy({ targetDbSessionId: 'tgt', plan: prepared });
+  await schemaDiffCommands.executeDeploy({ targetDbSessionId: 'tgt', plan: prepared.plan });
   expect(invokeMock).toHaveBeenLastCalledWith(
     'execute_schema_diff_deploy',
     expect.objectContaining({ plan: expect.objectContaining({ requirements }) }),

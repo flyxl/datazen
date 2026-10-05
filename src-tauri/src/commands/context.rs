@@ -616,6 +616,7 @@ mod tests {
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
             cancel_registry: crate::ai::CancellationRegistry::default(),
+            schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             platform: crate::platform::PlatformEntry::launch(),
         };
 
@@ -683,6 +684,7 @@ mod tests {
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
             cancel_registry: crate::ai::CancellationRegistry::default(),
+            schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             platform: crate::platform::PlatformEntry::launch(),
         };
 

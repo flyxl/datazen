@@ -1,6 +1,7 @@
 //! Schema Diff Deploy IPC commands.
 
 pub mod unified_plan;
+pub mod job;
 
 use super::error::{CmdExt, CommandError};
 use super::sync::compare::diff_table_schemas_ir;
@@ -901,20 +902,22 @@ pub async fn prepare_schema_diff_plan(
     allow_destructive: bool,
     include_indexes: Option<bool>,
     type_overrides: Option<Vec<ColumnTypeOverride>>,
-) -> Result<SchemaDiffPlan, CommandError> {
+) -> Result<job::SchemaDiffPrepareEnvelope, CommandError> {
     let target_table_names = target_table_names.unwrap_or_else(|| table_names.clone());
-    prepare_schema_diff_plan_with_schemas_impl(
+    job::run_prepare_job(
         &state,
-        source_db_session_id,
-        target_db_session_id,
-        table_names,
-        target_table_names,
-        target_only_table_names.unwrap_or_default(),
-        allow_destructive,
-        include_indexes,
-        type_overrides,
-        source_schema,
-        target_schema,
+        crate::schema_diff::job::PrepareRequest::Table {
+            source_db_session_id,
+            target_db_session_id,
+            table_names,
+            target_table_names,
+            target_only_table_names: target_only_table_names.unwrap_or_default(),
+            source_schema,
+            target_schema,
+            allow_destructive,
+            include_indexes,
+            type_overrides: type_overrides.unwrap_or_default(),
+        },
     )
     .await
 }
@@ -952,7 +955,7 @@ pub(crate) async fn prepare_schema_diff_profile_plan_impl(
     .await
 }
 
-async fn prepare_schema_diff_plan_with_schemas_impl(
+pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
     state: &AppState,
     source_db_session_id: String,
     target_db_session_id: String,
@@ -1855,20 +1858,27 @@ pub async fn execute_schema_diff_deploy(
     target_database: Option<String>,
     target_schema: Option<String>,
     profile: Option<crate::store::MigrationProfileRef>,
+    plan_id: Option<String>,
+    selection_revision: Option<u64>,
 ) -> Result<SchemaDiffDeployResult, CommandError> {
-    execute_schema_diff_deploy_impl(
-        &state,
-        target_db_session_id,
-        plan,
-        use_transaction,
-        require_rollback,
+    let apply_request = crate::schema_diff::job::ApplyRequest {
+        target_db_session_id: target_db_session_id.clone(),
+        use_transaction: use_transaction.unwrap_or(true),
+        require_rollback: require_rollback.unwrap_or(false),
         confirm_destructive,
         job_id,
-        target_database,
-        target_schema,
-        profile,
-    )
-    .await
+        target_database: target_database.clone(),
+        target_schema: target_schema.clone(),
+        profile: profile.map(|p| (p.id, p.revision)),
+    };
+    let (effective_plan_id, effective_selection_revision) = match (plan_id, selection_revision) {
+        (Some(plan_id), Some(sel_rev)) => (plan_id, sel_rev),
+        _ => {
+            // 兼容路径：客户端直接携带计划正文 ⇒ 先注册进 PlanStore 再跑 apply Job。
+            job::register_plan_for_apply(&state, plan, &target_db_session_id)?
+        }
+    };
+    job::run_apply_job(&state, &effective_plan_id, effective_selection_revision, apply_request).await
 }
 
 pub(crate) async fn execute_schema_diff_deploy_impl(

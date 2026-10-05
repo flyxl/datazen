@@ -14,6 +14,7 @@ import {
   schemaDiffCommands,
   type ColumnTypeOverride,
   type SchemaDiffDeployResult,
+  type SchemaDiffPrepareEnvelope,
   type SchemaDiffObjectIdentity,
   type SchemaDiffPlan,
 } from '../../commands/schemaDiff';
@@ -83,6 +84,7 @@ export function SchemaDiffWindow() {
   const unifiedObjects = useSchemaDiffUnifiedObjects();
   const [diffs, setDiffs] = useState<TableSchemaDiff[]>([]);
   const [plan, setPlan] = useState<SchemaDiffPlan | null>(null);
+  const [planMeta, setPlanMeta] = useState<SchemaDiffPrepareEnvelope | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [allowDestructive, setAllowDestructive] = useState(false);
   const [includeIndexes, setIncludeIndexes] = useState(true);
@@ -155,6 +157,7 @@ export function SchemaDiffWindow() {
     unifiedObjects.clear();
     setDiffs([]);
     setPlan(null);
+    setPlanMeta(null);
     setDeployResult(null);
     setSelectedTable(null);
     setTypeOverrides([]);
@@ -255,6 +258,7 @@ export function SchemaDiffWindow() {
     setError('');
     setDiffs([]);
     setPlan(null);
+    setPlanMeta(null);
     setDeployResult(null);
     if (!endpoints.validateEndpoints()) return false;
 
@@ -366,8 +370,9 @@ export function SchemaDiffWindow() {
                 targetObjects,
               })
             : await schemaDiffCommands.preparePlan(tablePlanParams);
-        setPlan(next);
-        setUseTransaction(dialectSupportsTransactionalDdl(next.targetDialect));
+        setPlan(next.plan);
+        setPlanMeta(next);
+        setUseTransaction(dialectSupportsTransactionalDdl(next.plan.targetDialect));
         setConfirmText('');
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -440,6 +445,8 @@ export function SchemaDiffWindow() {
         profile: selectedSavedProfile
           ? { id: selectedSavedProfile.id, revision: selectedSavedProfile.updatedAt }
           : undefined,
+        planId: planMeta?.planId,
+        selectionRevision: planMeta?.selectionRevision,
       });
       setDeployResult(result);
     } catch (e) {

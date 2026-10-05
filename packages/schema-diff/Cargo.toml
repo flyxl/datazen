@@ -7,6 +7,8 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 datazen-driver-api = { workspace = true }
+datazen-platform-api = { path = "../platform-api" }
+datazen-runtime = { path = "../runtime" }
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }

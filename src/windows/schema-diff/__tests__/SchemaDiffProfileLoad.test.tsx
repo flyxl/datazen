@@ -50,6 +50,7 @@ const { endpointState, profile, schemaDiffCommands, databaseCommands } = vi.hois
         removed: [],
       }),
       preparePlan: vi.fn().mockResolvedValue({
+        plan: {
         table: 'public.users',
         tables: ['public.users'],
         sourceDialect: 'postgresql',
@@ -60,8 +61,17 @@ const { endpointState, profile, schemaDiffCommands, databaseCommands } = vi.hois
         requirements: [],
         rollbackCompleteness: { complete: true, missing: [] },
         typeSuggestions: [],
+        },
+        planId: 'plan-1',
+        selectionRevision: 1,
+        planVersion: 1,
+        handlerVersion: 1,
+        checkpointVersion: 1,
+        expiresAt: '2026-01-01T00:00:00Z',
+        recoveryPolicy: 'readOnlyVerify',
       }),
       prepareUnifiedPlan: vi.fn().mockResolvedValue({
+        plan: {
         table: 'schema objects',
         tables: [],
         sourceDialect: 'postgresql',
@@ -72,6 +82,14 @@ const { endpointState, profile, schemaDiffCommands, databaseCommands } = vi.hois
         requirements: [],
         rollbackCompleteness: { complete: true, missing: [] },
         typeSuggestions: [],
+        },
+        planId: 'plan-1',
+        selectionRevision: 1,
+        planVersion: 1,
+        handlerVersion: 1,
+        checkpointVersion: 1,
+        expiresAt: '2026-01-01T00:00:00Z',
+        recoveryPolicy: 'readOnlyVerify',
       }),
       executeDeploy: vi.fn(),
     },
@@ -193,6 +211,7 @@ describe('SchemaDiffWindow profile loading', () => {
       removed: [],
     });
     schemaDiffCommands.preparePlan.mockResolvedValue({
+      plan: {
       table: 'public.users',
       tables: ['public.users'],
       sourceDialect: 'postgresql',
@@ -203,8 +222,17 @@ describe('SchemaDiffWindow profile loading', () => {
       requirements: [],
       rollbackCompleteness: { complete: true, missing: [] },
       typeSuggestions: [],
+      },
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
     });
     schemaDiffCommands.prepareUnifiedPlan.mockResolvedValue({
+      plan: {
       table: 'schema objects',
       tables: [],
       sourceDialect: 'postgresql',
@@ -215,6 +243,14 @@ describe('SchemaDiffWindow profile loading', () => {
       requirements: [],
       rollbackCompleteness: { complete: true, missing: [] },
       typeSuggestions: [],
+      },
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
     });
     databaseCommands.listTables.mockResolvedValue([
       { name: 'users', schema: 'public', tableType: 'table' },

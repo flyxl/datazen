@@ -121,6 +121,7 @@ pub(crate) fn finish_app_state(
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
         cancel_registry: crate::ai::CancellationRegistry::default(),
+        schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state
