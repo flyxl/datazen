@@ -1,6 +1,6 @@
 # Schema Diff 架构
 
-> Source of truth: `src-tauri/src/schema_diff/`, `src-tauri/src/commands/schema_diff.rs`, `packages/driver-api/src/schema_migration.rs`。
+> Source of truth: `packages/schema-diff/`, `src-tauri/src/commands/schema_diff.rs`, `packages/driver-api/src/schema_migration.rs`。
 
 Schema Diff 的职责是把源库结构视为 **desired state**，比较目标结构，生成可审阅的迁移计划，并在目标库执行。
 
@@ -126,7 +126,7 @@ Schema Diff 的 IPC **全部**收成对的 `sourceDbSessionId` / `targetDbSessio
 
 ## 7. Tests
 
-- Rust unit tests：`src-tauri/src/schema_diff/**`
+- Rust unit tests：`packages/schema-diff/**`
 - Frontend：`src/windows/schema-diff/__tests__/`
 - E2E：`e2e/specs/schema-diff-*.ts` 与 journey tests
 

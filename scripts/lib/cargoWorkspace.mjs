@@ -72,6 +72,9 @@ export const LAYERS = Object.freeze([
   { id: 'driver-api', path: 'packages/driver-api', kind: 'rust' },
   { id: 'ai-api', path: 'packages/ai-api', kind: 'rust' },
   { id: 'driver', path: 'packages/drivers/*', kind: 'rust' },
+  { id: 'schema-diff', path: 'packages/schema-diff', kind: 'rust' },
+  { id: 'data-sync', path: 'packages/data-sync', kind: 'rust' },
+  { id: 'data-transfer', path: 'packages/data-transfer', kind: 'rust' },
   { id: 'backend-client', path: 'packages/backend-client', kind: 'ts' },
 ]);
 
