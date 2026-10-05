@@ -15,7 +15,6 @@ mod dialog;
 pub(crate) mod driver_command;
 mod encryption_key;
 mod error;
-mod events;
 mod export;
 mod file;
 mod history;
@@ -45,7 +44,6 @@ pub use dashboard::*;
 pub use data::*;
 pub use data_transfer::*;
 pub use encryption_key::*;
-pub use events::*;
 // The dialog module is private; its commands are only re-exported for webdriver.
 #[cfg(feature = "webdriver")]
 pub use dialog::*;
