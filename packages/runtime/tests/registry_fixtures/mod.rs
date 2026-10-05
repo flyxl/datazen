@@ -547,9 +547,9 @@ pub fn handle_of(view: &SessionView) -> SessionHandle {
 /// **逐字一致**：重放幂等靠的就是这个句柄派生的 operation key，两端一旦漂移，幂等短路
 /// 会安静地不命中。
 ///
-/// 全仓只有这一处 `rte-` 格式化。测试侧曾经各写一份 `format!("rte-{:08}", …)` 和几个
-/// 写死的 `"rte-0000000N"` 字面量：生产侧改一次派生式，这些地方会**静默**变成另一个值，
-/// 而症状只是「幂等测试莫名其妙红了」，很难回头找根因。改格式只改这里。
+/// 全仓一共两处 `rte-` 格式化：本函数与生产侧 `registry/context.rs` 里那个同名的
+/// `epoch_string`（两端必须逐字一致，不能只靠测试替身）。测试侧曾经还各写一份
+/// `format!("rte-{:08}", …)` 和几个写死的 `"rte-0000000N"` 字面量，那些已收拢到这里。
 pub fn epoch_string(epoch: u64) -> String {
     format!("rte-{:08}", epoch)
 }
