@@ -12,10 +12,7 @@ use datazen_driver_api::Value;
 
 use super::error::TransferError;
 use super::filter::SourceFilter;
-use super::model::{
-    TransferRecordset, TransferRecordsetBound, TransferRecordsetTupleBound,
-    TransferRecordsetTupleRange,
-};
+use super::model::{TransferRecordset, TransferRecordsetBound, TransferRecordsetTupleBound};
 use datazen_data_sync::recordset_bounds::{canonical_bound_value, compare_bound_keys, BoundKey};
 
 #[derive(Debug, Clone)]

@@ -131,7 +131,7 @@ fn is_float_type(data_type: &str) -> bool {
     matches!(base, "float" | "float4" | "float8" | "real" | "double") || base == "double precision"
 }
 
-pub(super) fn source_projection(columns: &[&ColumnMapping], keys: &[String]) -> Vec<String> {
+pub(crate) fn source_projection(columns: &[&ColumnMapping], keys: &[String]) -> Vec<String> {
     let mut projection: Vec<String> = columns
         .iter()
         .map(|column| column.source_column.clone())
@@ -144,7 +144,7 @@ pub(super) fn source_projection(columns: &[&ColumnMapping], keys: &[String]) -> 
     projection
 }
 
-pub(super) fn remaining_page_limit(
+pub(crate) fn remaining_page_limit(
     chunk_size: u32,
     rows_seen: u64,
     total_limit: Option<u64>,
@@ -158,7 +158,7 @@ pub(super) fn remaining_page_limit(
     Some(chunk_size.min(remaining.min(u32::MAX as u64) as u32))
 }
 
-pub(super) fn effective_chunk_size(
+pub(crate) fn effective_chunk_size(
     user_batch_size: u32,
     target_columns: usize,
     max_bound_parameters: usize,
@@ -177,7 +177,7 @@ pub(super) fn effective_chunk_size(
     Ok(user_batch_size.min(max_rows_by_parameters as u32))
 }
 
-pub(super) fn build_page_for_context(
+pub(crate) fn build_page_for_context(
     driver: &dyn DatabaseDriver,
     select_from: &str,
     scope: &SourceScope,
@@ -210,7 +210,7 @@ pub(super) fn build_page_for_context(
     )
 }
 
-pub(super) async fn fingerprint_source_rows(
+pub(crate) async fn fingerprint_source_rows(
     driver: &dyn DatabaseDriver,
     handle: &ConnectionHandle,
     select_from: &str,
@@ -288,7 +288,7 @@ pub(super) async fn fingerprint_source_rows(
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-pub(super) fn validate_page(
+pub(crate) fn validate_page(
     page: &datazen_driver_api::QueryResult,
     expected_columns: &[String],
     max_rows: usize,
@@ -326,7 +326,7 @@ pub(super) fn validate_page(
     Ok(())
 }
 
-pub(super) fn last_cursor(
+pub(crate) fn last_cursor(
     rows: &[Vec<Option<Value>>],
     indexes: &[usize],
 ) -> Result<Vec<Value>, TransferError> {
@@ -350,16 +350,16 @@ pub(super) fn last_cursor(
         .collect()
 }
 
-pub(super) fn cursor_value_supported(value: &Value) -> bool {
+pub(crate) fn cursor_value_supported(value: &Value) -> bool {
     matches!(value, Value::Integer(_) | Value::String(_) | Value::Bool(_))
 }
 
-pub(super) fn hash_bytes(hasher: &mut Sha256, bytes: &[u8]) {
+pub(crate) fn hash_bytes(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update((bytes.len() as u64).to_be_bytes());
     hasher.update(bytes);
 }
 
-pub(super) fn hash_value(hasher: &mut Sha256, value: Option<&Value>) {
+pub(crate) fn hash_value(hasher: &mut Sha256, value: Option<&Value>) {
     let Some(value) = value else {
         hasher.update([0]);
         return;

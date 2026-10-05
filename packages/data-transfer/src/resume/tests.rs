@@ -1,4 +1,4 @@
-use super::fingerprint::last_cursor;
+use super::fingerprint::{hash_value, last_cursor};
 use super::*;
 use datazen_driver_api::{ColumnInfo, ColumnSchema, IndexInfo, QueryResult, TableOptions};
 use sha2::{Digest, Sha256};

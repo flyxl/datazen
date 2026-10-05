@@ -11,6 +11,8 @@ webdriver = []
 [dependencies]
 datazen-driver-api = { workspace = true }
 datazen-data-sync = { path = "../data-sync" }
+datazen-runtime = { path = "../runtime" }
+datazen-platform-api = { workspace = true }
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }

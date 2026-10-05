@@ -3,6 +3,7 @@
 pub mod error;
 pub mod execute;
 pub mod filter;
+pub mod job;
 pub mod mapping;
 pub mod metadata;
 pub mod model;
@@ -18,7 +19,7 @@ pub mod sql_file;
 mod sql_structure;
 pub mod structure;
 mod table_order;
-mod writer;
+pub(crate) mod writer;
 
 pub use error::TransferError;
 pub use execute::execute_transfer_data_with_resume_checkpoint;

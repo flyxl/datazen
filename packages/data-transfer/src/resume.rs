@@ -748,12 +748,12 @@ async fn rollback_source_snapshot(
     }
 }
 
-mod fingerprint;
+pub(crate) mod fingerprint;
 #[cfg(test)]
 mod tests;
 
 pub use fingerprint::resumable_primary_key;
 use fingerprint::{
     build_page_for_context, cursor_value_supported, effective_chunk_size, fingerprint_source_rows,
-    hash_value, remaining_page_limit, source_projection, validate_page,
+    remaining_page_limit, source_projection, validate_page,
 };

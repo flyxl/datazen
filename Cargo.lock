@@ -1790,6 +1790,8 @@ dependencies = [
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
+ "datazen-platform-api",
+ "datazen-runtime",
  "flate2",
  "inventory",
  "serde",
