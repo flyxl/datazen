@@ -7,6 +7,9 @@ members = [
     "packages/platform-api",
     "packages/application",
     "packages/runtime",
+    "packages/schema-diff",
+    "packages/data-sync",
+    "packages/data-transfer",
     "packages/drivers/*",
 ]
 exclude = [
@@ -19,6 +22,9 @@ exclude = [
 datazen-driver-api = { path = "packages/driver-api" }
 datazen-platform-api = { path = "packages/platform-api" }
 datazen-application = { path = "packages/application" }
+datazen-schema-diff = { path = "packages/schema-diff" }
+datazen-data-sync = { path = "packages/data-sync" }
+datazen-data-transfer = { path = "packages/data-transfer" }
 
 [profile.dev]
 incremental = true
