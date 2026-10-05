@@ -9,11 +9,14 @@ use datazen_driver_api::*;
 use datazen_platform_api::dto::job::{Checkpoint, CommitBoundary};
 use datazen_platform_api::id::StageId;
 
+use crate::error::TransferError;
 use crate::execute::ValueFormatter;
 use crate::model::*;
 
 use super::handler::{DataTransferHandler, InMemoryTransferCheckpoint, TransferEndpoints};
-use super::pipeline::{execute_bounded_table, BoundedPipelineContext, PipelineBudget};
+use super::pipeline::{
+    execute_bounded_table, BoundedPipelineContext, PipelineBudget, PIPELINE_INITIAL_BYTES,
+};
 use super::plan::TransferFreezeBody;
 use super::recovery::verify_checkpoint;
 use datazen_runtime::job::JobHandler as _;
@@ -431,17 +434,6 @@ fn inspected_for(names: &[&str]) -> TableInspectResult {
         source_row_count: None,
         recordset: None,
     }
-}
-
-fn row_bytes_of(row: &[Option<Value>]) -> usize {
-    row.iter()
-        .map(|v| match v {
-            Some(Value::String(s)) => s.len(),
-            Some(Value::Bytes(b)) => b.len(),
-            Some(Value::Null) | None => 0,
-            Some(_) => 16,
-        })
-        .sum()
 }
 
 fn frozen_plan_for_apply() -> datazen_runtime::job::FrozenPlan {

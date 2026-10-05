@@ -12,6 +12,7 @@
 
 mod checkpoint;
 mod handler;
+mod outcome;
 mod pipeline;
 mod plan;
 mod recovery;
@@ -23,7 +24,7 @@ pub use pipeline::{PipelineBudget, PIPELINE_INITIAL_BYTES};
 pub use plan::{
     validate_frozen_plan, TransferFreezeBody, CHECKPOINT_VERSION, HANDLER_VERSION, PLAN_VERSION,
 };
-pub use recovery::verify_checkpoint;
+pub use recovery::{derive_evidence, verify_checkpoint, EVIDENCE_RESUME_FORBIDDEN};
 
 #[cfg(test)]
 mod tests;

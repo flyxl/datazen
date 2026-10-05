@@ -18,6 +18,7 @@
 
 mod admission;
 mod assembly;
+mod cancel;
 mod runtime;
 mod scope;
 
@@ -25,6 +26,8 @@ mod scope;
 mod tests;
 
 pub use scope::TransferBackendScope;
+
+pub(crate) use cancel::{cancel_data_transfer_job, job_cancel_requested};
 
 use std::sync::Arc;
 
@@ -115,6 +118,13 @@ pub struct TransferApplyJobView {
     pub partial: bool,
     pub replayed: bool,
     pub error: Option<String>,
+    /// §7 recovery verdict as decided by the handler over the recorded
+    /// checkpoint: `resumeAfterVerify` | `reject` | `requireManualReview`.
+    pub recovery_verdict: String,
+    /// Position of the last confirmed boundary a resume may pass through.
+    pub recovery_resume_through: Option<usize>,
+    /// Why the verdict came out the way it did, when it was not a resume.
+    pub recovery_reason: Option<String>,
 }
 
 /// Prepare: plan + freeze evidence, terminal, resources released afterwards.
@@ -123,15 +133,24 @@ pub async fn prepare_data_transfer_job(
     state: State<'_, AppState>,
     request: TransferPrepareJobRequest,
 ) -> Result<TransferPrepareJobView, CommandError> {
+    prepare_data_transfer_job_impl(&state, request).await
+}
+
+/// The prepare body, split from the Tauri wrapper so the admission contract can
+/// be exercised on the real path instead of through a private helper.
+pub(crate) async fn prepare_data_transfer_job_impl(
+    state: &AppState,
+    request: TransferPrepareJobRequest,
+) -> Result<TransferPrepareJobView, CommandError> {
     scope::enforce_same_backend_scope(&request.job, Some(&request.backend_scope))?;
-    let review = super::preview_data_transfer_impl(&state, request.job)
+    let review = super::preview_data_transfer_impl(state, request.job)
         .await
         .cmd_err("prepare_data_transfer")?;
     // Re-read the plan from the store: the review is served from the authoritative
     // record, never from anything the caller kept on the client side.
     let plan = plans::peek_plan(&review.plan_id)?;
     let digest = plan_digest(&plan)?;
-    let assembled = assembly::assemble(&state, &plan, &TransferRunSelection::default(), false)
+    let assembled = assembly::assemble(state, &plan, &TransferRunSelection::default(), false)
         .await
         .cmd_err("prepare_data_transfer")?;
     let handler = Arc::new(DataTransferHandler::prepare(
@@ -182,6 +201,15 @@ pub async fn apply_data_transfer_job(
     state: State<'_, AppState>,
     request: TransferApplyJobRequest,
 ) -> Result<TransferApplyJobView, CommandError> {
+    apply_data_transfer_job_impl(&state, request).await
+}
+
+/// The apply body, split from the Tauri wrapper so the plan lifecycle can be
+/// exercised on the real path.
+pub(crate) async fn apply_data_transfer_job_impl(
+    state: &AppState,
+    request: TransferApplyJobRequest,
+) -> Result<TransferApplyJobView, CommandError> {
     // `peek_plan_any` also returns claimed/consumed plans, so the refusal can name
     // the real reason ("already consumed") instead of a misleading "unknown plan".
     let plan = plans::peek_plan_any(&request.plan_id)?;
@@ -205,9 +233,17 @@ pub async fn apply_data_transfer_job(
             confirmed_destructive: request.confirmed_destructive,
         },
     )?;
-    let assembled: FreezeAssembly = assembly::assemble(&state, &plan, &request.selection, true)
+    let assembled: FreezeAssembly = assembly::assemble(state, &plan, &request.selection, true)
         .await
         .cmd_err("apply_data_transfer")?;
+    // §2.1 / §9: the plan is claimed *before* the write attempt, not after it.
+    // The claim is the plan registry's own atomic Available → Executing
+    // transition, so the legacy `execute_data_transfer` path — which claims the
+    // very same record — is refused from the moment this Job starts writing,
+    // including after a failed or unknown outcome. Peeking alone would have left
+    // two managers free to execute one planId. Everything above this line is
+    // read-only and repeatable, so a failure there leaves the review usable.
+    let plan = plans::claim_plan(&request.plan_id).map_err(CommandError::from)?;
     let sql_file_destination = sql_file_destination(&assembled.endpoints);
     let handler = Arc::new(DataTransferHandler::apply(
         assembled.freeze,
@@ -269,6 +305,9 @@ pub async fn apply_data_transfer_job(
         ),
         replayed: outcome.replayed,
         error: outcome.error,
+        recovery_verdict: outcome.recovery.verdict,
+        recovery_resume_through: outcome.recovery.resume_through,
+        recovery_reason: outcome.recovery.reason,
     })
 }
 

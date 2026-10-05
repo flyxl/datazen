@@ -93,8 +93,13 @@ pub fn enforce_same_backend_scope(
         )));
     }
     check_local_endpoint_reference("source", &job.source.db_session_id)?;
-    let target = job.database_target().map_err(CommandError::from)?;
-    check_local_endpoint_reference("target", &target.db_session_id)?;
+    // A SQL-file job has no database target (§6.1): it writes statements to a
+    // local file, so there is no second session to resolve. Requiring one would
+    // refuse every SQL-file migration before it starts.
+    if job.sql_file_target.is_none() {
+        let target = job.database_target().map_err(CommandError::from)?;
+        check_local_endpoint_reference("target", &target.db_session_id)?;
+    }
     Ok(())
 }
 

@@ -55,6 +55,7 @@ pub(crate) async fn assemble(
     } else {
         resolve_database(state, plan, &job, for_apply).await?
     };
+    hydrate_column_mappings(&mut job, &inspected);
     let enabled: Vec<_> = job.tables.iter().filter(|table| table.enabled).collect();
     let source_objects = enabled
         .iter()
@@ -74,6 +75,28 @@ pub(crate) async fn assemble(
         source_objects,
         target_objects,
     })
+}
+
+/// Freeze the *resolved* column mapping, not the request shape.
+///
+/// A review may hand back a table that only names its columns — the frontend
+/// builds one with `TableMapping::auto` and lets inspection pair the columns.
+/// The inspected rows carry the mapping preview already validated, so an empty
+/// mapping is filled from there instead of reaching the handler as "no active
+/// column mappings". An explicit mapping is never overwritten: what the user
+/// confirmed is what gets frozen.
+fn hydrate_column_mappings(job: &mut TransferJob, inspected: &[TableInspectResult]) {
+    for table in job.tables.iter_mut().filter(|table| table.enabled) {
+        if !table.column_mappings.is_empty() {
+            continue;
+        }
+        if let Some(row) = inspected
+            .iter()
+            .find(|row| row.source_table == table.source_table)
+        {
+            table.column_mappings = row.column_mappings.clone();
+        }
+    }
 }
 
 /// §6/§7 freeze evidence: mapping digest, per-table stable keys, snapshot proof.
@@ -350,14 +373,21 @@ async fn resolve_sql_file(
             .get_target(&declared.to_string())
             .ok_or_else(|| CommandError::Validation("missing target sync adapter".into()))?;
         adapters = Some((src_adapter, tgt_adapter));
+    } else if state.sync_adapters.ensure_type(&source_type).is_ok() {
+        // A source-dialect export declares no second dialect to look up, but the
+        // renderer still needs the target adapter of the *source* dialect —
+        // the same fallback the legacy SQL-file path uses (`preview.rs`).
+        // Without it the apply Job refused every source-dialect export with
+        // "SQL file target requires both source and target IR adapters".
+        adapters = match (
+            state.sync_adapters.get_source(&source_type),
+            state.sync_adapters.get_target(&source_type),
+        ) {
+            (Some(source), Some(target)) => Some((source, target)),
+            _ => None,
+        };
     }
-    let source_adapter = match &adapters {
-        Some((src, _)) => Some(src.clone()),
-        None if state.sync_adapters.ensure_type(&source_type).is_ok() => {
-            state.sync_adapters.get_source(&source_type)
-        }
-        None => None,
-    };
+    let source_adapter = adapters.as_ref().map(|(src, _)| src.clone());
     if let Some(adapter) = source_adapter.as_ref() {
         crate::data_transfer::structure::enrich_source_types(
             adapter.as_ref(),

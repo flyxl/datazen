@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+use datazen_platform_api::dto::job::JobState;
 use datazen_runtime::job::{project_frozen_plan, EndpointRole};
 
 use super::admission::{admit_apply_plan, ApplyPlanRequest, PlanAdmission, PlanAvailability};
@@ -16,12 +17,19 @@ use super::scope::{
     LOCAL_BACKEND_SCOPE,
 };
 use super::{
-    apply_payload, availability_of, file_artifact_id, format_expiry, fresh_key, plan_digest,
-    prepare_payload,
+    apply_data_transfer_job_impl, apply_payload, availability_of, file_artifact_id, format_expiry,
+    fresh_key, plan_digest, prepare_data_transfer_job_impl, prepare_payload,
+    TransferApplyJobRequest, TransferPrepareJobRequest, TransferPrepareJobView,
 };
 use crate::commands::data_transfer::plans::{self, PlanState};
-use crate::data_transfer::model::{Endpoint, TransferOptions, TransferRunSelection};
-use crate::data_transfer::{TableMapping, TransferJob, TransferMode, TransferPreview, WriteMode};
+use crate::commands::error::CommandError;
+use crate::data_transfer::model::{
+    Endpoint, SqlFileTarget, TransferOptions, TransferRunOptions, TransferRunSelection,
+};
+use crate::data_transfer::{
+    TableMapping, TransferJob, TransferMode, TransferPreview, TransferRunRequest, WriteMode,
+};
+use crate::testing::app_state::TestAppState;
 
 fn job(source_id: &str, target_id: &str) -> TransferJob {
     TransferJob {
@@ -450,3 +458,218 @@ fn expiry_is_published_as_an_instant_and_keys_are_per_call() {
     assert!(first.starts_with("plan-1-"), "{first}");
     assert_ne!(first, second, "a deliberate retry must be a new Job");
 }
+
+// ------------------------------------------------------- real command path (D1/D8)
+
+/// Options that let the mock driver answer a review, a data read and a write.
+fn mock_options() -> crate::testing::mock_driver::MockDriverOptions {
+    let mut options = crate::testing::app_state::rich_mock_options();
+    options.columns = crate::testing::mock_driver::MockDriver::default_table_schema("users")
+        .columns
+        .clone();
+    options.parameterized_writes = true;
+    options.execute_rows_affected = 1;
+    // The renamed target has to exist as a relation, otherwise inspection
+    // reports it with no columns and the review pairs nothing to migrate.
+    options.tables.push(datazen_driver_api::TableInfo {
+        name: "users_copy".to_string(),
+        schema: None,
+        table_type: datazen_driver_api::TableType::Table,
+        row_count: Some(0),
+    });
+    options
+}
+
+/// A SQL-file job: no target session at all, because the artifact is a local
+/// file (§6.1).
+fn sql_file_job(source_id: String, file_token: String) -> TransferJob {
+    TransferJob {
+        source: Endpoint {
+            db_session_id: source_id,
+            database: "app".to_string(),
+            schema: None,
+        },
+        target: None,
+        sql_file_target: Some(SqlFileTarget {
+            file_token,
+            database_type: None,
+            database: None,
+            schema: None,
+            encoding: None,
+            compression: None,
+        }),
+        mode: TransferMode::Data,
+        write_mode: WriteMode::Insert,
+        tables: vec![TableMapping::auto("users")],
+        options: TransferOptions::default(),
+    }
+}
+
+/// A direct source→target pair. The target table is renamed on purpose: both
+/// endpoints sit on one service key, so writing `users` into `users` would be a
+/// read/write overlap and be refused before it ever ran.
+fn direct_job(source: &str, target: &str) -> TransferJob {
+    let mut job = job(source, target);
+    job.tables = vec![TableMapping {
+        target_table: "users_copy".to_string(),
+        ..TableMapping::auto("users")
+    }];
+    job
+}
+
+fn prepare_request(job: TransferJob) -> TransferPrepareJobRequest {
+    TransferPrepareJobRequest {
+        job,
+        backend_scope: TransferBackendScope::local(),
+        idempotency_key: None,
+    }
+}
+
+fn apply_request_from(view: &TransferPrepareJobView) -> TransferApplyJobRequest {
+    TransferApplyJobRequest {
+        plan_id: view.plan_id.clone(),
+        plan_digest: view.plan_digest.clone(),
+        selection_revision: view.selection_revision,
+        selection: TransferRunSelection::default(),
+        confirmed_destructive: false,
+        backend_scope: TransferBackendScope::local(),
+        idempotency_key: None,
+    }
+}
+
+fn refusal(error: &CommandError) -> String {
+    format!("{error:?}")
+}
+
+/// §6.1 + §8: a SQL-file migration writes to a chosen local file, so it has no
+/// target session to resolve. The §8 gate used to refuse every such job with
+/// "transfer job does not have a database target" before it could even start.
+#[tokio::test]
+async fn a_sql_file_job_clears_the_same_backend_gate_on_both_job_paths() {
+    let test = TestAppState::with_options(mock_options()).await;
+    let (_config, source) = test.save_and_connect("p5dt-sql-file-job").await;
+    let dir = tempfile::tempdir().expect("temporary SQL output directory");
+    let token = crate::data_transfer::sql_file::register_path(dir.path().join("transfer.sql"))
+        .expect("register the SQL destination");
+
+    let prepared = prepare_data_transfer_job_impl(
+        &test.state,
+        prepare_request(sql_file_job(source, token.clone())),
+    )
+    .await
+    .expect("a SQL-file job must clear the same-backend gate");
+    assert_eq!(prepared.review.pairing_path, "sqlFile");
+    assert!(prepared.can_execute, "{:?}", prepared.block_reason);
+    assert!(
+        !prepared.plan_id.is_empty(),
+        "the review must publish a planId"
+    );
+
+    let applied = apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared))
+        .await
+        .expect("a SQL-file job must clear the gate on the apply path too");
+    assert_eq!(applied.state, JobState::Succeeded, "{:?}", applied.error);
+    assert!(
+        applied
+            .artifact_ids
+            .iter()
+            .any(|id| id.starts_with("transfer-sql-")),
+        "the emitted SQL file must be published as a content-addressed artifact: {:?}",
+        applied.artifact_ids
+    );
+}
+
+/// The D1 relaxation must not weaken §8: the local *source* is still checked,
+/// and a SQL-file job gets no exemption from that.
+#[tokio::test]
+async fn a_sql_file_job_from_a_foreign_backend_is_still_refused() {
+    let dir = tempfile::tempdir().expect("temporary SQL output directory");
+    let token = crate::data_transfer::sql_file::register_path(dir.path().join("transfer.sql"))
+        .expect("register the SQL destination");
+    let job = sql_file_job("postgres://user@remote-host:5432/app".to_string(), token);
+
+    let error =
+        prepare_data_transfer_job_impl(&TestAppState::new().await.state, prepare_request(job))
+            .await
+            .expect_err("a remote source must not pass the §8 gate");
+    assert!(
+        refusal(&error).contains("migration across backends is not available"),
+        "{error:?}"
+    );
+}
+
+/// §2.1 / §9: the apply Job claims the plan before it writes, so the legacy
+/// `execute_data_transfer` — which claims the very same record — is refused for
+/// the same planId even after the Job ended in a non-success state.
+#[tokio::test]
+async fn an_apply_job_claims_the_plan_and_refuses_the_legacy_manager() {
+    let test = TestAppState::with_options(mock_options()).await;
+    let (_source_config, source) = test.save_and_connect("p5dt-claim-source").await;
+    let (_target_config, target) = test.save_and_connect("p5dt-claim-target").await;
+    let prepared =
+        prepare_data_transfer_job_impl(&test.state, prepare_request(direct_job(&source, &target)))
+            .await
+            .expect("a direct-pair review should issue a plan");
+    let plan_id = prepared.plan_id.clone();
+
+    let applied = apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared)).await;
+    let state = plans::peek_plan_any(&plan_id)
+        .expect("the plan stays readable")
+        .state;
+    assert!(
+        !matches!(state, PlanState::Available),
+        "a plan that reached the write attempt must never look available again: {state:?} / {applied:?}"
+    );
+
+    let legacy = crate::commands::data_transfer::execute_data_transfer_impl(
+        &test.state,
+        TransferRunRequest {
+            plan_id: plan_id.clone(),
+            selection: TransferRunSelection::default(),
+            options: TransferRunOptions::default(),
+            job_id: None,
+            resume_token: None,
+        },
+    )
+    .await;
+    let legacy_error = legacy.expect_err("the legacy manager must not execute a claimed plan");
+    assert!(
+        refusal(&legacy_error).contains("already consumed"),
+        "{legacy_error:?}"
+    );
+}
+
+/// Two apply Jobs racing for one planId: the registry's claim decides the winner
+/// once, so exactly one Job writes and the other is refused by name.
+#[tokio::test]
+async fn two_concurrent_apply_jobs_share_exactly_one_plan_claim() {
+    let test = TestAppState::with_options(mock_options()).await;
+    let (_source_config, source) = test.save_and_connect("p5dt-race-source").await;
+    let (_target_config, target) = test.save_and_connect("p5dt-race-target").await;
+    let prepared =
+        prepare_data_transfer_job_impl(&test.state, prepare_request(direct_job(&source, &target)))
+            .await
+            .expect("a direct-pair review should issue a plan");
+
+    let (first, second) = tokio::join!(
+        apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared)),
+        apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared)),
+    );
+    let refusals = [&first, &second]
+        .into_iter()
+        .filter_map(|outcome| outcome.as_ref().err().map(refusal))
+        .collect::<Vec<String>>();
+    let accepted = 2 - refusals.len();
+    assert_eq!(
+        accepted, 1,
+        "one planId must serve one apply Job: {refusals:?}"
+    );
+    assert!(
+        refusals.iter().any(|error| {
+            error.contains("already consumed") || error.contains("one planId yields one Job")
+        }),
+        "the loser must be refused by the one-shot rule, at admission or at claim: {refusals:?}"
+    );
+}
+
+mod job_lifecycle;

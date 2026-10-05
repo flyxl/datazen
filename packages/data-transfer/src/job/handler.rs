@@ -7,15 +7,15 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use datazen_driver_api::{
     ConnectionHandle, DatabaseDriver, SyncSourceAdapter, SyncTargetAdapter, TableSchema, Value,
 };
-use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
+use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{Checkpoint, JobProgress};
-use datazen_platform_api::id::{ArtifactId, Counter, StageId};
+use datazen_platform_api::id::{ArtifactId, StageId};
 
 use async_trait::async_trait;
 
@@ -30,6 +30,7 @@ use crate::resume::{ResumeTableProgress, TransferResumeCheckpoint};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 
 use crate::job::checkpoint::commit_boundary;
+use crate::job::outcome::{absorb_progress, cancelled_stage, failed_stage, unbounded_stage};
 use crate::job::pipeline::{execute_bounded_table, BoundedPipelineContext, PIPELINE_INITIAL_BYTES};
 use crate::job::plan::{validate_frozen_plan, TransferFreezeBody};
 use crate::job::recovery::verify_checkpoint;
@@ -156,6 +157,9 @@ pub struct DataTransferHandler {
     pub(super) endpoints: TransferEndpoints,
     registry: SyncAdapterRegistry,
     database_structure: Option<Vec<DdlPreviewItem>>,
+    /// 阶段内取消位（§7）。runtime 的 `CancelToken` 只在阶段边界翻转，管道要在
+    /// 批次边界看到取消请求，就必须由宿主把仓库里的取消事实送进这一位。
+    cancel: Arc<AtomicBool>,
 }
 
 impl DataTransferHandler {
@@ -174,6 +178,7 @@ impl DataTransferHandler {
             endpoints,
             registry: SyncAdapterRegistry::new(),
             database_structure: None,
+            cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -194,7 +199,29 @@ impl DataTransferHandler {
             endpoints,
             registry: SyncAdapterRegistry::new(),
             database_structure,
+            cancel: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// 取消位的共享句柄：宿主拿到副本后只负责翻转，管道在批次边界读取。
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        self.cancel.clone()
+    }
+
+    /// 冻结体裁定的恢复政策（§7）。runtime 落 checkpoint 时写死的是它自己的默认值，
+    /// 真正生效的裁决必须来自这份冻结体，所以核验前先把政策对齐回来。
+    pub fn recovery_policy(&self) -> &str {
+        &self.freeze.recovery_policy
+    }
+
+    /// 准备期是否证明了源端一致性快照。
+    pub fn snapshot_proven(&self) -> bool {
+        self.freeze.snapshot_proven
+    }
+
+    /// 取消事实 = runtime 的阶段边界取消位 或 宿主送进来的阶段内取消位。
+    fn cancel_requested(&self, cancel: &CancelToken) -> bool {
+        cancel.is_cancelled() || self.cancel.load(Ordering::SeqCst)
     }
 
     fn is_apply(&self) -> bool {
@@ -213,24 +240,6 @@ impl DataTransferHandler {
         Ok(())
     }
 
-    fn failed_stage(&self, spec: &StageSpec, message: String) -> StageOutcome {
-        // StageOutcome 不带失败正文（§10.1.1），细节只能落日志。
-        tracing::error!(
-            stage = spec.stage_id.as_str(),
-            reason = message.as_str(),
-            "transfer stage failed"
-        );
-        StageOutcome {
-            stage_id: spec.stage_id.clone(),
-            terminal: StageTerminal::Failed,
-            progress: JobProgress::default(),
-            commit_boundaries: Vec::new(),
-            execution_ids: Vec::new(),
-            artifact_ids: Vec::new(),
-            effect_outcome: EffectOutcome::RolledBack,
-            error_code: Some(ExecutionErrorCode::SqlError),
-        }
-    }
 }
 
 #[async_trait]
@@ -313,7 +322,11 @@ impl JobHandler for DataTransferHandler {
     }
 
     fn verify_recovery(&self, checkpoint: &Checkpoint) -> RecoveryVerdict {
-        verify_checkpoint(checkpoint)
+        // 冻结体的政策优先：runtime 落 checkpoint 时把 `recovery_policy` 写死成
+        // `resumeAfterVerify`，若照抄它就能绕过准备期「不许自动续写」的裁决。
+        let mut aligned = checkpoint.clone();
+        aligned.recovery_policy = self.freeze.recovery_policy.clone();
+        verify_checkpoint(&aligned)
     }
 }
 
@@ -321,7 +334,7 @@ impl DataTransferHandler {
     async fn run_prepare(&self, cancel: &CancelToken) -> Result<StageOutcome, JobError> {
         let mut evidence: Vec<String> = Vec::new();
         for table in self.freeze.job.tables.iter().filter(|t| t.enabled) {
-            if cancel.is_cancelled() {
+            if self.cancel_requested(cancel) {
                 return Ok(StageOutcome {
                     stage_id: StageId::new("prepare"),
                     terminal: StageTerminal::Cancelled,
@@ -548,12 +561,12 @@ impl DataTransferHandler {
                 target_type,
             } => {
                 if let Err(err) = self.registry.ensure_pair(source_type, target_type) {
-                    return Ok(self.failed_stage(spec, err));
+                    return Ok(failed_stage(spec, err));
                 }
                 let pairing =
                     match crate::pairing::enforce_transfer_pairing(source_type, target_type) {
                         Ok(pairing) => pairing,
-                        Err(err) => return Ok(self.failed_stage(spec, err.to_string())),
+                        Err(err) => return Ok(failed_stage(spec, err.to_string())),
                     };
                 let mut table_ir_types: HashMap<
                     String,
@@ -581,9 +594,9 @@ impl DataTransferHandler {
                             }
                         }
                         _ => {
-                            return Ok(self.failed_stage(
+                            return Ok(failed_stage(
                                 spec,
-                                "cross-family execute requires IR sync adapters".into(),
+                                "cross-family execute requires IR sync adapters",
                             ))
                         }
                     }
@@ -591,13 +604,15 @@ impl DataTransferHandler {
                 let mut all_boundaries = Vec::new();
                 let mut progress = JobProgress::default();
                 let mut any_failed = false;
+                let mut any_cancelled = false;
                 let mut checkpoint = InMemoryTransferCheckpoint::new();
                 for table in self
                     .inspected
                     .iter()
                     .filter(|t| crate::structure::table_eligible_for_data(t, &self.freeze.job))
                 {
-                    if cancel.is_cancelled() {
+                    if self.cancel_requested(cancel) {
+                        any_cancelled = true;
                         break;
                     }
                     let Some(src_schema) = self.source_schemas.get(&table.source_table).cloned()
@@ -657,7 +672,7 @@ impl DataTransferHandler {
                         },
                     ) {
                         Ok(scope) => scope,
-                        Err(error) => return Ok(self.failed_stage(spec, error.to_string())),
+                        Err(error) => return Ok(failed_stage(spec, error.to_string())),
                     };
                     let formatter = if is_ir {
                         match adapters_tgt.as_deref() {
@@ -666,9 +681,9 @@ impl DataTransferHandler {
                                 source_column_ir_types: &table_ir_types,
                             },
                             None => {
-                                return Ok(self.failed_stage(
+                                return Ok(failed_stage(
                                     spec,
-                                    "missing target adapter for IR formatter".into(),
+                                    "missing target adapter for IR formatter",
                                 ))
                             }
                         }
@@ -692,53 +707,21 @@ impl DataTransferHandler {
                         target_type,
                         columns: &columns,
                         formatter: formatter_ref,
-                        cancelled: None,
+                        cancelled: Some(self.cancel.clone()),
                         write_started: None,
                         checkpoint: &mut checkpoint,
                     };
                     match execute_bounded_table(&mut context).await {
                         Ok(o) => {
                             all_boundaries.extend(o.boundaries);
-                            progress.read = Counter::new(
-                                progress.read.get().saturating_add(o.progress.read.get()),
-                            );
-                            progress.converted = Counter::new(
-                                progress
-                                    .converted
-                                    .get()
-                                    .saturating_add(o.progress.converted.get()),
-                            );
-                            progress.attempted = Counter::new(
-                                progress
-                                    .attempted
-                                    .get()
-                                    .saturating_add(o.progress.attempted.get()),
-                            );
-                            progress.committed = Counter::new(
-                                progress
-                                    .committed
-                                    .get()
-                                    .saturating_add(o.progress.committed.get()),
-                            );
-                            progress.unknown = Counter::new(
-                                progress
-                                    .unknown
-                                    .get()
-                                    .saturating_add(o.progress.unknown.get()),
-                            );
-                            // §6.2：管道缓冲不得越过 8 MiB 预算；越界说明字节账失真，
-                            // 必须显式失败而不是继续写目标。
+                            absorb_progress(&mut progress, &o.progress);
+                            // §6.2：缓冲不得越过 8 MiB 预算；越界说明字节账失真，
+                            // 必须显式失败，但已确认的提交边界按 §7 保留。
                             if o.max_buffer_bytes > PIPELINE_INITIAL_BYTES {
-                                tracing::error!(
-                                    stage = spec.stage_id.as_str(),
-                                    source_table = table.source_table.as_str(),
-                                    peak_bytes = o.max_buffer_bytes,
-                                    budget_bytes = PIPELINE_INITIAL_BYTES,
-                                    "pipeline buffer accounting exceeded its bound"
-                                );
-                                return Ok(self.failed_stage(
+                                return Ok(unbounded_stage(
                                     spec,
-                                    "pipeline buffer accounting exceeded the 8 MiB bound".into(),
+                                    &all_boundaries,
+                                    o.max_buffer_bytes,
                                 ));
                             }
                             tracing::debug!(
@@ -749,16 +732,32 @@ impl DataTransferHandler {
                             if !o.result.result.success {
                                 any_failed = true;
                             }
+                            if o.result.cancelled {
+                                any_cancelled = true;
+                            }
                         }
                         Err(error) => {
+                            // 取消是既成事实：管道用 Cancelled 错误上抛时，不能降级成失败
+                            // 态——§7 要求已确认的那部分保留在边界里。
+                            if matches!(error, TransferError::Cancelled(_)) {
+                                return Ok(cancelled_stage(
+                                    spec,
+                                    &all_boundaries,
+                                    error.to_string(),
+                                ));
+                            }
                             // 阶段级错误直接给出失败态，无需再累加 any_failed。
-                            return Ok(self.failed_stage(spec, error.to_string()));
+                            return Ok(failed_stage(spec, error.to_string()));
                         }
                     }
                 }
                 Ok(StageOutcome {
                     stage_id: spec.stage_id.clone(),
-                    terminal: if any_failed {
+                    // 取消优先于失败：取消是用户事实，§7 要求保留已确认的那部分，
+                    // 运行时按「cancelled + 有边界」判成 PartiallyApplied。
+                    terminal: if any_cancelled {
+                        StageTerminal::Cancelled
+                    } else if any_failed {
                         StageTerminal::Failed
                     } else {
                         StageTerminal::Succeeded
@@ -767,7 +766,7 @@ impl DataTransferHandler {
                     commit_boundaries: all_boundaries,
                     execution_ids: Vec::new(),
                     artifact_ids: Vec::new(),
-                    effect_outcome: if any_failed {
+                    effect_outcome: if any_failed || any_cancelled {
                         EffectOutcome::PartiallyApplied
                     } else {
                         EffectOutcome::Completed

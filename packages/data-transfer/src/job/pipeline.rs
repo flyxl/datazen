@@ -16,7 +16,7 @@ use datazen_platform_api::id::Counter;
 use sha2::{Digest, Sha256};
 
 use crate::error::TransferError;
-use crate::execute::{map_row_values, ValueFormatter};
+use crate::execute::ValueFormatter;
 use crate::model::{
     ColumnMapping, TableExecutionOutcome, TableExecutionResult, TableInspectResult, TransferJob,
 };
@@ -25,62 +25,11 @@ use crate::resume::{ChunkedTableResult, TransferResumeCheckpoint};
 
 use crate::job::checkpoint::commit_boundary;
 
-/// 有界管道缓冲初值（§6.2）。
-pub const PIPELINE_INITIAL_BYTES: usize = 8 * 1024 * 1024;
+mod budget;
+mod page;
 
-/// 字节账：解码行 + 转换副本 + 待发送参数；容量 8 MiB 初值。
-#[derive(Debug, Clone)]
-pub struct PipelineBudget {
-    capacity: usize,
-    used: usize,
-    max_used: usize,
-}
-
-impl PipelineBudget {
-    pub fn new() -> Self {
-        Self {
-            capacity: PIPELINE_INITIAL_BYTES,
-            used: 0,
-            max_used: 0,
-        }
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.capacity
-    }
-
-    pub fn used(&self) -> usize {
-        self.used
-    }
-
-    pub fn max_used(&self) -> usize {
-        self.max_used
-    }
-
-    pub fn account(&mut self, bytes: usize) {
-        self.used = self.used.saturating_add(bytes);
-        self.max_used = self.max_used.max(self.used);
-    }
-
-    pub fn release(&mut self, bytes: usize) {
-        self.used = self.used.saturating_sub(bytes);
-    }
-}
-
-/// 单值字节估计（计入缓冲账）。
-pub fn value_bytes(value: Option<&Value>) -> usize {
-    match value {
-        Some(Value::String(s)) => s.len(),
-        Some(Value::Bytes(b)) => b.len(),
-        Some(Value::Null) | None => 0,
-        Some(_) => 16,
-    }
-}
-
-/// 一行的字节账。
-pub fn row_bytes(row: &[Option<Value>]) -> usize {
-    row.iter().map(|v| value_bytes(v.as_ref())).sum()
-}
+pub use budget::{row_bytes, value_bytes, PipelineBudget, PIPELINE_INITIAL_BYTES};
+pub(crate) use page::{read_page_within_budget, PageSource};
 
 /// 有界管道执行上下文（与 ChunkedTransferContext 对齐，但带字节账与逐批边界）。
 pub struct BoundedPipelineContext<'a> {
@@ -131,8 +80,7 @@ pub async fn execute_bounded_table(
     context: &mut BoundedPipelineContext<'_>,
 ) -> Result<BoundedTableOutcome, TransferError> {
     use crate::resume::fingerprint::{
-        build_page_for_context, effective_chunk_size, fingerprint_source_rows,
-        remaining_page_limit, source_projection, validate_page,
+        effective_chunk_size, fingerprint_source_rows, remaining_page_limit, source_projection,
     };
     use crate::resume::{resumable_primary_key, supports_chunk_driver};
 
@@ -348,58 +296,47 @@ pub async fn execute_bounded_table(
         let Some(limit) = remaining_page_limit(chunk_size, saved.rows_seen, row_limit) else {
             break;
         };
-        let query = match build_page_for_context(
-            context.source_driver,
+        // 读页在字节额度内完成：读之前按行数预留额度，额度不够就缩窗重读同一
+        // 游标位置，只有 1 行仍超限才明确失败。
+        let source = PageSource {
+            driver: context.source_driver,
+            handle: context.source_handle,
+            scope: context.source_scope,
+            quote: context.source_quote,
+            schema: context.source_schema,
+            columns: context.columns,
+        };
+        let mut prepared = match read_page_within_budget(
+            source,
+            &mut budget,
             &select_from,
-            context.source_scope,
+            &projection,
             &keys,
             saved.cursor.as_deref(),
             limit,
-            context.source_quote,
-            context.source_schema,
-        ) {
-            Ok(query) => query,
+        )
+        .await
+        {
+            Ok(Some(page)) => page,
+            Ok(None) => break,
             Err(error) => {
                 terminal_error = Some(error.to_string());
                 break;
             }
         };
-        let page = match context
-            .source_driver
-            .query_with_params(context.source_handle, &query.0, &query.1)
-            .await
-        {
-            Ok(page) => page,
-            Err(error) => {
-                terminal_error = Some(format!("bounded source page read failed: {error}"));
-                break;
-            }
-        };
-        if let Err(error) = validate_page(&page, &projection, limit as usize) {
-            terminal_error = Some(error.to_string());
-            break;
-        }
-        if page.rows.is_empty() {
-            break;
-        }
-        // 解码行计入缓冲账；单值超限明确失败。
-        let page_bytes: usize = page.rows.iter().map(|row| row_bytes(row)).sum();
-        if page.rows.iter().any(|row| {
-            row.iter()
-                .any(|v| value_bytes(v.as_ref()) > PIPELINE_INITIAL_BYTES)
-        }) {
-            terminal_error = Some(
-                "source row contains a single value exceeding the 8 MiB pipeline buffer bound"
-                    .into(),
-            );
-            break;
-        }
-        budget.account(page_bytes);
-        progress.read = Counter::new(progress.read.get().saturating_add(page.rows.len() as u64));
+        let page_len = prepared.rows.len();
+        let converted_bytes = prepared.converted_bytes;
+        progress.read = Counter::new(progress.read.get().saturating_add(page_len as u64));
+        progress.converted = Counter::new(
+            progress
+                .converted
+                .get()
+                .saturating_add(prepared.projected.len() as u64),
+        );
 
         let mut next_cursor = Vec::with_capacity(keys.len());
         for index in &cursor_indexes {
-            let value = page
+            let value = prepared
                 .rows
                 .last()
                 .and_then(|row| row.get(*index))
@@ -417,35 +354,13 @@ pub async fn execute_bounded_table(
             next_cursor.push(value);
         }
         if terminal_error.is_some() {
+            // 游标没取到，这一页不会写：解码行与转换副本一次性还账。
+            budget.release(prepared.page_bytes + converted_bytes);
             break;
         }
-        let projected = page
-            .rows
-            .iter()
-            .map(|row| {
-                map_row_values(
-                    &row[..context.columns.len()],
-                    context.source_schema,
-                    context.columns,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>();
-        let projected = match projected {
-            Ok(rows) => rows,
-            Err(error) => {
-                terminal_error = Some(error.to_string());
-                break;
-            }
-        };
-        // 转换副本计入缓冲账。
-        let converted_bytes: usize = projected.iter().map(|row| row_bytes(row)).sum();
-        budget.account(converted_bytes);
-        progress.converted = Counter::new(
-            progress
-                .converted
-                .get()
-                .saturating_add(projected.len() as u64),
-        );
+        // 游标已取走，解码行不再需要：只剩转换副本与待发送参数留在账上。
+        prepared.release_source_rows(&mut budget);
+        let projected = prepared.projected;
 
         if context
             .cancelled
@@ -479,9 +394,15 @@ pub async fn execute_bounded_table(
                 break;
             }
         };
-        // 待发送参数计入缓冲账。
+        // 待发送参数计入缓冲账；参数装不进剩余额度就明确失败，不扩张缓冲。
         let param_bytes: usize = params.iter().map(|p| value_bytes(Some(p))).sum();
-        budget.account(param_bytes);
+        if !budget.try_account(param_bytes) {
+            terminal_error = Some(format!(
+                "one batch needs {param_bytes} more bytes of pipeline buffer, over the {} byte bound; lower the batch size",
+                budget.capacity()
+            ));
+            break;
+        }
         progress.attempted = Counter::new(
             progress
                 .attempted
@@ -513,7 +434,7 @@ pub async fn execute_bounded_table(
                 terminal_error = Some(format!("target chunk write failed: {error}"));
                 if let Err(rollback_error) = context.target_driver.rollback(tx).await {
                     context.checkpoint.invalidate();
-                    budget.release(page_bytes + converted_bytes + param_bytes);
+                    budget.release(converted_bytes + param_bytes);
                     let source_close =
                         rollback_source_snapshot(context.source_driver, snapshot).await;
                     return Ok(BoundedTableOutcome {
@@ -541,7 +462,7 @@ pub async fn execute_bounded_table(
                         max_buffer_bytes: budget.max_used(),
                     });
                 }
-                budget.release(page_bytes + converted_bytes + param_bytes);
+                budget.release(converted_bytes + param_bytes);
                 break;
             }
             Ok(affected) => {
@@ -557,7 +478,7 @@ pub async fn execute_bounded_table(
                         .await;
                     if let Err(rollback_error) = context.target_driver.rollback(tx).await {
                         context.checkpoint.invalidate();
-                        budget.release(page_bytes + converted_bytes + param_bytes);
+                        budget.release(converted_bytes + param_bytes);
                         let source_close =
                             rollback_source_snapshot(context.source_driver, snapshot).await;
                         return Ok(BoundedTableOutcome {
@@ -578,12 +499,12 @@ pub async fn execute_bounded_table(
                             max_buffer_bytes: budget.max_used(),
                         });
                     }
-                    budget.release(page_bytes + converted_bytes + param_bytes);
+                    budget.release(converted_bytes + param_bytes);
                     break;
                 }
                 if let Err(error) = context.target_driver.commit(tx).await {
                     context.checkpoint.invalidate();
-                    budget.release(page_bytes + converted_bytes + param_bytes);
+                    budget.release(converted_bytes + param_bytes);
                     let source_close =
                         rollback_source_snapshot(context.source_driver, snapshot).await;
                     progress.unknown = Counter::new(progress.unknown.get().saturating_add(1));
@@ -609,18 +530,18 @@ pub async fn execute_bounded_table(
                 }
 
                 // 提交确认 → 版本化边界 + checkpoint advance。
-                let next_rows_seen = saved.rows_seen.saturating_add(page.rows.len() as u64);
+                let next_rows_seen = saved.rows_seen.saturating_add(page_len as u64);
                 if let Err(error) = context.checkpoint.advance_table(
                     &context.table.source_table,
                     next_cursor.clone(),
                     next_rows_seen,
                 ) {
                     context.checkpoint.invalidate();
-                    budget.release(page_bytes + converted_bytes + param_bytes);
+                    budget.release(converted_bytes + param_bytes);
                     let source_close =
                         rollback_source_snapshot(context.source_driver, snapshot).await;
                     let confirmed_rows = rows_inserted.saturating_add(affected);
-                    let scope_finished = page.rows.len() < limit as usize
+                    let scope_finished = page_len < limit as usize
                         || row_limit.is_some_and(|total_limit| next_rows_seen >= total_limit);
                     let outcome = if scope_finished {
                         TableExecutionOutcome::Committed
@@ -663,7 +584,7 @@ pub async fn execute_bounded_table(
                 ));
                 batch_index += 1;
                 // 提交后释放该批账；在途未提交批期间字节持续占用（背压）。
-                budget.release(page_bytes + converted_bytes + param_bytes);
+                budget.release(converted_bytes + param_bytes);
                 saved.cursor = Some(next_cursor);
                 saved.rows_seen = next_rows_seen;
             }

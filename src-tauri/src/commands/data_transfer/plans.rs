@@ -320,9 +320,8 @@ impl TransferPlanStore {
                 .revision_seq
                 .fetch_add(1, Ordering::Relaxed)
                 .saturating_add(1),
-            expires_at_millis: now_millis().saturating_add(
-                i64::try_from(ttl.as_millis()).unwrap_or(i64::MAX),
-            ),
+            expires_at_millis: now_millis()
+                .saturating_add(i64::try_from(ttl.as_millis()).unwrap_or(i64::MAX)),
             expires_at: Instant::now() + ttl,
             active_until: None,
             state: PlanState::Available,
