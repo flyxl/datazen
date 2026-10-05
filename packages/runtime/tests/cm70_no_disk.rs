@@ -76,6 +76,14 @@ const SOURCES: &[(&str, &str)] = &[
     ("mod.rs", include_str!("../src/gateway/mod.rs")),
     ("request.rs", include_str!("../src/gateway/request.rs")),
     (
+        "owner_binding.rs",
+        include_str!("../src/gateway/owner_binding.rs"),
+    ),
+    (
+        "request_cm06_negatives.rs",
+        include_str!("../src/gateway/request_cm06_negatives.rs"),
+    ),
+    (
         "idempotency.rs",
         include_str!("../src/gateway/idempotency.rs"),
     ),

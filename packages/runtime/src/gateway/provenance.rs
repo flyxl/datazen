@@ -203,16 +203,54 @@ impl GatewayAction {
     }
 }
 
+/// 拒绝**对调用方可见**的方式（CM-05）。
+///
+/// 网关把授权拒绝落成 `GatewayError` 时必须先问一个问题：这条拒绝会不会泄露
+/// 「这条资源存在」？如果拒绝原因本身就能区分「资源不存在」与「资源存在但不属于你」，
+/// 攻击者就能用错误码把别人的 session / execution / job 逐个探测出来——这正是
+/// CM-05「不能观察资源存在性」的破口。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DenialVisibility {
+    /// 拒绝原因直接面向调用方（`permissionDenied`）。适用于**不属于某主体**的判定：
+    /// 例如策略撤销、能力不支持、资源忙——这些事实在拒绝发生时对本请求者本来就是公开的。
+    Transparent,
+    /// 拒绝必须**与「资源不存在」逐字不可区分**。适用于任何依赖「该资源归属某个主体」
+    /// 这一私有事实的判定：归属不符说明资源存在，归属符合说明资源是你的。
+    /// 网关会把 [`AuthorizationDenial::hidden`] 统一投影成
+    /// `RuntimeError::UnknownSession`，与 `session_view` 找不到句柄时的投影**完全相同**。
+    Hidden,
+}
+
 /// 授权拒绝。`reason` 是稳定字面量，便于审计聚合。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorizationDenial {
     pub action: GatewayAction,
     pub reason: &'static str,
+    pub visibility: DenialVisibility,
 }
 
 impl AuthorizationDenial {
     pub fn new(action: GatewayAction, reason: &'static str) -> Self {
-        Self { action, reason }
+        Self {
+            action,
+            reason,
+            visibility: DenialVisibility::Transparent,
+        }
+    }
+
+    /// 归属类拒绝：对外投影成「不存在」（CM-05）。理由仍随拒绝对象留存供审计聚合，
+    /// 但调用方看到的是 `UnknownSession`，看不到 `reason`。
+    pub fn hidden(action: GatewayAction, reason: &'static str) -> Self {
+        Self {
+            action,
+            reason,
+            visibility: DenialVisibility::Hidden,
+        }
+    }
+
+    /// 本条拒绝是否必须对调用方隐藏存在性。
+    pub fn is_hidden(&self) -> bool {
+        self.visibility == DenialVisibility::Hidden
     }
 }
 

@@ -116,6 +116,24 @@ impl IdentityPolicy {
     /// * `Job` / `WorkflowBlock`：归属 Job 必须等于 `authorized_job`。
     ///
     /// 失败一律是 `PermissionDenied`——不给「是别人的」这种可用于探测的信息。
+    ///
+    /// # 契约债（不要把本函数当成网关归属闸门的兜底）
+    ///
+    /// 1. **本函数当前没有生产调用点。** 全仓只有定义本身、几处文档引用、以及本文件
+    ///    内的单测；`src-tauri` 不调用它。任何「上层已经挡住了」的结论都不成立。
+    /// 2. **这里的 `OwnerRef` 与 `packages/runtime` 里那个同名类型不是同一个东西。**
+    ///    本侧是 `datazen_platform_api::context::OwnerRef`：它的 `Editor` 只有
+    ///    `client_instance_id` / `editor_session_id`，`Job` 只有 `job_id` / `stage_id`
+    ///    （且 `stage_id` 是 `crate::id::StageId`，网关侧同名字段是 `String`）——**两侧都没有
+    ///    `organization_id` / `principal_id`**。因此本函数在结构上**看不到组织与主体**，
+    ///    也不可能校验网关那一侧。
+    /// 3. **两侧没有任何交叉校验**，同一个变体名、同一批字段名，但语义可以各改各的、互不报警。
+    /// 4. 即便接上调用方，这里比的是「调用方显式传入的 `authorized_job` 与 `owner.job_id`
+    ///    是否相等」，这是**这个 job 有没有被授权**，不是**这是不是同一个人**——与
+    ///    CM-06「U1 指向 U2 的 job」的跨用户语义不是同一件事，不能互相顶替。
+    ///
+    /// 两条同名类型由网关侧 `packages/runtime/src/gateway/owner_binding.rs` 的模块头
+    /// 同样登记在案。统一它们是跨 crate 的契约改动，不在网关轨内单方面做。
     pub fn check_owner(
         ctx: &RequestContext,
         owner: &OwnerRef,

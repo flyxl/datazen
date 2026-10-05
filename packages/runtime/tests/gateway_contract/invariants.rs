@@ -186,6 +186,8 @@ fn gateway_sources_obey_the_locked_invariants() {
         "event_store_tests.rs",
         "facade_support.rs",
         "facade_tests.rs",
+        // 负例文件只编进 `#[cfg(doctest)]`，同样不进任何生产二进制。
+        "request_cm06_negatives.rs",
         "retention_tests.rs",
         "testing_support.rs",
         "token_tests.rs",
@@ -194,6 +196,7 @@ fn gateway_sources_obey_the_locked_invariants() {
         "events.rs",
         "idempotency.rs",
         "mod.rs",
+        "owner_binding.rs",
         "provenance.rs",
         "request.rs",
         "retention.rs",
@@ -214,6 +217,7 @@ fn gateway_sources_obey_the_locked_invariants() {
         "event_store_tests.rs",
         "facade_support.rs",
         "facade_tests.rs",
+        "request_cm06_negatives.rs",
         "retention_tests.rs",
         "testing_support.rs",
         "token_tests.rs",
@@ -268,10 +272,12 @@ fn gateway_sources_obey_the_locked_invariants() {
     }
 
     // 本轨自己的测试文件同样受 800 行约束。
+    // ⚠ 有意未纳入 `tests/cm70_no_disk.rs`：它已经超限，纳入即红；拆分属独立改动。
     let mut test_files = vec![
         "tests/gateway_contract.rs".to_string(),
         "tests/gateway_fixtures/mod.rs".to_string(),
         "tests/cm70_idempotency_replay.rs".to_string(),
+        "tests/owner_binding.rs".to_string(),
     ];
     for entry in std::fs::read_dir(root.join("tests/cm70")).expect("CM-70 分节用例目录可读")
     {
@@ -292,6 +298,21 @@ fn gateway_sources_obey_the_locked_invariants() {
             test_files.push(format!("tests/gateway_contract/{name}"));
         }
     }
+    // 本轨新增的测试目录同理：整目录纳入，不逐个硬编码文件名。
+    let owner_binding =
+        std::fs::read_dir(root.join("tests/owner_binding")).expect("owner_binding 用例目录可读");
+    let mut owner_files: Vec<String> = owner_binding
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .filter(|name| name.ends_with(".rs"))
+        .map(|name| format!("tests/owner_binding/{name}"))
+        .collect();
+    owner_files.sort();
+    assert!(
+        !owner_files.is_empty(),
+        "tests/owner_binding/ 目录为空：这条扫描若悄悄失效，800 行门禁会漏掉本轨的测试文件"
+    );
+    test_files.extend(owner_files);
     for test in &test_files {
         let source = std::fs::read_to_string(root.join(test)).expect("测试源码可读");
         assert!(source.lines().count() <= 800, "{test} 超过 800 行");
