@@ -132,6 +132,21 @@ G4_errorTS=0
 WS_HASH_END=d3281b245361ff1c   ← 与 START 相同
 ```
 
+### 提交后在已提交树上复跑同一组门禁
+
+提交 `841149a3b`（父提交 = 基线 `16faad738`，非 amend；`codex/p5-integration` 仍为 `16faad738`，
+本轨领先 1 个提交）之后，用同一命令重跑，工作区首尾均 clean：
+
+```
+HEAD=841149a3b06e0128230be07dac1c52f9d9bdfff0  TREE=9a1dfd107b5344becc3c66582397e8d503e8f160  WS_LINES=0
+GATE1_EXIT=0   All locale files are in sync with en.ts.
+GATE2_EXIT=0    Test Files  1 passed (1) / Tests  21 passed (21)
+GATE3_EXIT=0    Test Files  10 passed (10) / Tests  87 passed (87)
+                GATE3_limitations_warn=0  GATE3_any_missing_warn=0
+GATE4_EXIT=0   GATE4_errorTS=0
+（复跑后 HEAD/TREE/WS_LINES 与复跑前一致）
+```
+
 ### 额外自证（非任务书门禁，均 EXIT=0）
 
 - `npx vitest run scripts/__tests__/i18n-sync-check.test.mjs` → `Tests 19 passed (19)`
