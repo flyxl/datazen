@@ -27,6 +27,10 @@ import {
   autoCompletePathHierarchyPath,
 } from '../../../lib/queryContextPath';
 import type { SqlNamespace } from '../../../lib/sqlNamespace';
+import type { EditorSessionController } from '../../../lib/session/EditorSessionController';
+import { switchDatabaseSession } from '../../../lib/session/QueryPanelSession';
+import { switchResultPromptKey, sessionErrorPromptKey } from '../../../lib/session/sessionPrompts';
+import type { SessionView } from '@datazen/backend-client';
 
 export interface UseQueryContextPathOptions {
   panelId: string;
@@ -38,6 +42,12 @@ export interface UseQueryContextPathOptions {
   pathAliases: Record<string, string>;
   databases: string[];
   currentDatabase: string | null;
+  /** Two-phase session switch for the QueryPanel editor owned by this pane. */
+  sessionController?: EditorSessionController | null;
+  /** Confirm switching away from an active transaction. Defaults to abort. */
+  confirmTransactionSwitch?: (session: SessionView) => Promise<boolean> | boolean;
+  /** Surfaces switch conflicts/failures via the mapped session prompt keys. */
+  onSessionPrompt?: (promptKey: string, message?: string) => void;
 }
 
 export function useQueryContextPath({
@@ -50,6 +60,9 @@ export function useQueryContextPath({
   pathAliases,
   databases,
   currentDatabase,
+  sessionController,
+  confirmTransactionSwitch,
+  onSessionPrompt,
 }: UseQueryContextPathOptions) {
   const updatePanel = usePanelStore((s) => s.updatePanel);
   const switchDatabase = useSchemaStore((s) => s.switchDatabase);
@@ -91,7 +104,47 @@ export function useQueryContextPath({
         // (= database ?? currentDatabase) reflects the switch even when the
         // panel already has a bound database from creation time.
         updatePanel(panelId, { database: db });
-        await switchDatabase(db, dbSessionId);
+        // Route the switch through the two-phase session switch: the
+        // transaction confirmation and revision-conflict handling live there,
+        // and the prompt keys come from the shared sessionPrompts mapping.
+        // The legacy session pointer only moves when the switch succeeds.
+        if (sessionController) {
+          try {
+            const result = await switchDatabaseSession({
+              controller: sessionController,
+              desired: {
+                database: db,
+                catalog: null,
+                schema: null,
+                path: [],
+              },
+              confirmTransaction: confirmTransactionSwitch,
+              onRevisionConflict: (session) => {
+                onSessionPrompt?.(
+                  'query.session.revisionConflict',
+                  session?.observedContext?.namespace?.database ?? undefined,
+                );
+              },
+            });
+            if (result.status === 'switched') {
+              await switchDatabase(db, dbSessionId);
+            } else {
+              const key = switchResultPromptKey(result);
+              if (key) {
+                onSessionPrompt?.(
+                  key,
+                  result.status === 'failed' && result.error instanceof Error
+                    ? result.error.message
+                    : undefined,
+                );
+              }
+            }
+          } catch (error) {
+            onSessionPrompt?.(sessionErrorPromptKey(error));
+          }
+        } else {
+          await switchDatabase(db, dbSessionId);
+        }
       }
     },
     [
@@ -103,6 +156,9 @@ export function useQueryContextPath({
       panelId,
       switchDatabase,
       updatePanel,
+      sessionController,
+      confirmTransactionSwitch,
+      onSessionPrompt,
     ],
   );
 

@@ -55,6 +55,14 @@ import {
 import { resolveResultWorkspaceView } from './result-workspace/resultWorkspaceHelpers';
 import { cn } from '../../lib/cn';
 import { sendQueryErrorChatDraft } from './query/queryErrorChatPrompt';
+import {
+  editorOwnerForPane,
+  getQueryPanelSessionRegistry,
+  queryPanelExecutionTarget,
+} from '../../lib/session/queryPanelSessionRoot';
+import type { EditorSessionController } from '../../lib/session/EditorSessionController';
+import { needsTransactionSwitchConfirm } from '../../lib/session/sessionPrompts';
+import type { SessionView } from '@datazen/backend-client';
 
 export type { QueryPanelProps } from './query/contracts';
 
@@ -263,6 +271,56 @@ export function QueryPanel({
     [columnMap, currentDatabase, currentSchema, tables, views],
   );
 
+  const tx = useQueryTransaction({ dbSessionId });
+
+  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success' = 'error') => {
+    setMessageDialogText(text);
+    setMessageDialogKind(kind);
+    setMessageDialogOpen(true);
+  }, []);
+
+  // Per-pane editor session controller, lazily resolved from the process-wide
+  // registry. Each pane gets its own owner ID, so a duplicated tab never
+  // copies a runtime session handle.
+  const [sessionController, setSessionController] = useState<EditorSessionController | null>(null);
+  const paneKeyValue = paneKey(panelId, paneId);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const owner = await editorOwnerForPane(paneKeyValue);
+        const target = queryPanelExecutionTarget(connectionId, selectedDatabase, selectedSchema);
+        const controller = getQueryPanelSessionRegistry().get(paneKeyValue, target, owner);
+        if (!cancelled) setSessionController(controller);
+      } catch {
+        if (!cancelled) setSessionController(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [paneKeyValue, connectionId, selectedDatabase, selectedSchema]);
+
+  const [confirmSwitchTx, confirmSwitchTxDialog] = useConfirmDialog();
+  const confirmTransactionSwitch = useCallback(
+    (session: SessionView) => {
+      if (!needsTransactionSwitchConfirm(session)) return true;
+      return confirmSwitchTx({
+        title: t('query.session.transactionSwitchConfirm'),
+        message: t('query.session.transactionSwitchConfirm'),
+        kind: 'warning',
+      });
+    },
+    [confirmSwitchTx, t],
+  );
+
+  const reportSessionPrompt = useCallback(
+    (promptKey: string, message?: string) => {
+      showMessageDialog(message ? t(promptKey, { message }) : t(promptKey), 'error');
+    },
+    [showMessageDialog, t],
+  );
+
   const contextPathState = useQueryContextPath({
     panelId,
     dbSessionId,
@@ -273,9 +331,10 @@ export function QueryPanel({
     pathAliases,
     databases,
     currentDatabase,
+    sessionController,
+    confirmTransactionSwitch,
+    onSessionPrompt: reportSessionPrompt,
   });
-
-  const tx = useQueryTransaction({ dbSessionId });
 
   const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
     useMemo(
@@ -365,12 +424,6 @@ export function QueryPanel({
     () => (sqlParams.length > 0 ? paramsToPayload(sqlParams, paramValues) : undefined),
     [sqlParams, paramValues],
   );
-
-  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success' = 'error') => {
-    setMessageDialogText(text);
-    setMessageDialogKind(kind);
-    setMessageDialogOpen(true);
-  }, []);
 
   const executionGate = useQueryExecutionGate({
     panelId,
@@ -804,6 +857,7 @@ export function QueryPanel({
       />
 
       {confirmRetryDialog}
+      {confirmSwitchTxDialog}
       {executionGate.confirmDangerousDialog}
       {executionGate.executionStrategyAskModal}
       <ResultMessageDialog

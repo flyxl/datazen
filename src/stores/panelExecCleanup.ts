@@ -1,5 +1,6 @@
 import { queryCommands } from '../commands/query';
 import { getCancelCapability } from '../lib/queryExecutionViewModel';
+import { getQueryPanelSessionRegistry } from '../lib/session/queryPanelSessionRoot';
 import { useActiveConnectionStore } from './activeConnectionStore';
 import { paneKey, paneKeysOfPanel } from './paneKeys';
 import type { QueryExecState } from './queryExecActions';
@@ -36,6 +37,8 @@ export function cancelAndCleanupPaneExec(
   const key = paneKey(panel.id, paneId);
   if (!currentExec.has(key)) return currentExec;
   cancelPaneExec(panel, currentExec.get(key));
+  // 关闭旅程：同一个 pane key 的编辑器会话随 pane 一并关闭（fire-and-forget）。
+  void getQueryPanelSessionRegistry().remove(key).catch(() => {});
   const nextExec = new Map(currentExec);
   nextExec.delete(key);
   return nextExec;
@@ -56,6 +59,7 @@ export function cancelAndCleanupExec(
     if (panel.type !== 'query') continue;
     for (const key of paneKeysOfPanel(currentExec, panel.id)) {
       cancelPaneExec(panel, currentExec.get(key));
+      void getQueryPanelSessionRegistry().remove(key).catch(() => {});
       nextExec.delete(key);
     }
   }

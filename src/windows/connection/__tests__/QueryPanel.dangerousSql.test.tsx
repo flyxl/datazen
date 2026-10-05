@@ -63,9 +63,12 @@ const schemaStoreState = vi.hoisted(() => ({
 }));
 
 const confirmMocks = vi.hoisted(() => ({
-  retry: vi.fn().mockResolvedValue(true),
-  dangerous: vi.fn().mockResolvedValue(true),
-  hookCall: 0,
+  /** Every confirm invocation with its options, in call order. */
+  calls: [] as Array<Record<string, unknown>>,
+  /** Answer for the next confirm invocation, then reset to null. */
+  nextResolve: null as boolean | null,
+  /** Answer for confirm invocations with no pending override. */
+  defaultResolve: true,
 }));
 
 const settingsState = vi.hoisted(() => ({
@@ -159,9 +162,17 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 vi.mock('../../../hooks/useConfirmDialog', () => ({
+  // One independent confirm pair per hook call site: a test that asserts on a
+  // specific dialog must not depend on how many other dialogs the panel
+  // renders, nor on the order in which those dialogs mount.
   useConfirmDialog: () => {
-    const n = confirmMocks.hookCall++ % 2;
-    return n === 0 ? [confirmMocks.retry, null] : [confirmMocks.dangerous, null];
+    const confirm = vi.fn(async (options: Record<string, unknown>) => {
+      confirmMocks.calls.push(options);
+      const answer = confirmMocks.nextResolve ?? confirmMocks.defaultResolve;
+      confirmMocks.nextResolve = null;
+      return answer;
+    });
+    return [confirm, null];
   },
 }));
 
@@ -181,9 +192,9 @@ afterEach(cleanup);
 describe('[tester] QueryPanel dangerous SQL confirmation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    confirmMocks.hookCall = 0;
-    confirmMocks.retry.mockResolvedValue(true);
-    confirmMocks.dangerous.mockResolvedValue(true);
+    confirmMocks.calls.length = 0;
+    confirmMocks.nextResolve = null;
+    confirmMocks.defaultResolve = true;
     settingsState.safeMode = false;
     schemaStoreState.tables = [];
     schemaStoreState.views = [];
@@ -239,13 +250,20 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
     );
   }
 
+  /** Dangerous-SQL confirmations only; other dialogs share the same hook. */
+  function dangerousCalls(): Array<Record<string, unknown>> {
+    return confirmMocks.calls.filter((call) =>
+      String(call.title ?? '').startsWith('query.editor.executionConfirm.'),
+    );
+  }
+
   it('prompts before executing DROP when Safe Mode is off', async () => {
     setSql('DROP TABLE t');
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
 
-    await waitFor(() => expect(confirmMocks.dangerous).toHaveBeenCalledTimes(1));
-    expect(confirmMocks.dangerous).toHaveBeenCalledWith(
+    await waitFor(() => expect(dangerousCalls()).toHaveLength(1));
+    expect(dangerousCalls()[0]).toEqual(
       expect.objectContaining({
         title: 'query.editor.executionConfirm.highRiskTitle',
         message: 'query.editor.executionConfirm.highRiskMessage',
@@ -256,22 +274,22 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
   });
 
   it('does not execute when dangerous SQL confirmation is cancelled', async () => {
-    confirmMocks.dangerous.mockResolvedValueOnce(false);
+    confirmMocks.nextResolve = false;
     setSql('DROP TABLE t');
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
 
-    await waitFor(() => expect(confirmMocks.dangerous).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(dangerousCalls()).toHaveLength(1));
     await waitFor(() => expect(executeQuery).not.toHaveBeenCalled());
   });
 
   it('executes when dangerous SQL confirmation is accepted', async () => {
-    confirmMocks.dangerous.mockResolvedValueOnce(true);
+    confirmMocks.nextResolve = true;
     setSql('TRUNCATE TABLE t');
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
 
-    await waitFor(() => expect(confirmMocks.dangerous).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(dangerousCalls()).toHaveLength(1));
     await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
   });
 
@@ -281,7 +299,7 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
 
     await waitFor(() => expect(executeQuery).toHaveBeenCalledTimes(1));
-    expect(confirmMocks.dangerous).not.toHaveBeenCalled();
+    expect(dangerousCalls()).toHaveLength(0);
   });
 
   it('blocks execution of dangerous SQL when Safe Mode is on', async () => {
@@ -291,7 +309,7 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
 
     await waitFor(() => expect(executeQuery).not.toHaveBeenCalled());
-    expect(confirmMocks.dangerous).not.toHaveBeenCalled();
+    expect(dangerousCalls()).toHaveLength(0);
   });
 
   it('prompts on unclosed-transaction confirm path for DROP', async () => {
@@ -304,11 +322,11 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'query.txUnclosedConfirm' }));
 
-    await waitFor(() => expect(confirmMocks.dangerous).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(dangerousCalls()).toHaveLength(1));
   });
 
   it('does not execute on unclosed-transaction path when dangerous confirm is cancelled', async () => {
-    confirmMocks.dangerous.mockResolvedValueOnce(false);
+    confirmMocks.nextResolve = false;
     setSql('BEGIN; DROP TABLE t');
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: 'query.execute' }));
@@ -320,7 +338,7 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
       fireEvent.click(screen.getByRole('button', { name: 'query.txUnclosedConfirm' }));
     });
 
-    await waitFor(() => expect(confirmMocks.dangerous).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(dangerousCalls()).toHaveLength(1));
     expect(executeQuery).not.toHaveBeenCalled();
   });
 });
