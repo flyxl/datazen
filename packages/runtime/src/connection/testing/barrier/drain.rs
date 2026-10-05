@@ -313,9 +313,7 @@ impl DrainBarrier {
     #[track_caller]
     pub fn wait_for_drain_waiters(&self, count: usize) {
         let locked = self.inner.lock();
-        let waited = super::wait_until(&self.inner.condvar, locked, |s| {
-            s.drain_waiters >= count
-        });
+        let waited = super::wait_until(&self.inner.condvar, locked, |s| s.drain_waiters >= count);
         // 同 `Barrier::wait_for_count`：先读、先放锁、再 panic，否则 panic 里会自死锁。
         if let Err(state) = waited {
             let actual = state.drain_waiters;
@@ -362,14 +360,15 @@ impl DrainBarrier {
             let exhausted = {
                 state.drain_waiters = state.drain_waiters.saturating_add(1);
                 self.inner.condvar.notify_all();
-                let (mut next, exhausted) = match super::wait_until(&self.inner.condvar, state, |s| {
-                    !s.no_consumer
-                        || s.truncation_for(execution_id).is_some()
-                        || self.drain_deadline_elapsed_in(s)
-                }) {
-                    Ok(next) => (next, false),
-                    Err(next) => (next, true),
-                };
+                let (mut next, exhausted) =
+                    match super::wait_until(&self.inner.condvar, state, |s| {
+                        !s.no_consumer
+                            || s.truncation_for(execution_id).is_some()
+                            || self.drain_deadline_elapsed_in(s)
+                    }) {
+                        Ok(next) => (next, false),
+                        Err(next) => (next, true),
+                    };
                 next.drain_waiters = next.drain_waiters.saturating_sub(1);
                 state = next;
                 self.inner.condvar.notify_all();
