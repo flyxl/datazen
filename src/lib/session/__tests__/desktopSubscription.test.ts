@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createBackendClient } from '@datazen/backend-client';
+import { ExecutionProjection } from '../ExecutionProjection';
 import type { EventEnvelope, ConnectionEvent, Id } from '@datazen/backend-client';
 const mock = vi.hoisted(() => ({ invoke: vi.fn(), channels: [] as { onmessage: (message: unknown) => void }[] }));
 vi.mock('@tauri-apps/api/core', () => ({
@@ -28,6 +30,19 @@ describe('desktop subscription adapter', () => {
     expect(mock.invoke.mock.calls.map(([command]) => command)).toEqual(['subscribe_events', 'stop_event_subscription']);
     await iterator.return?.();
     expect(mock.invoke).toHaveBeenCalledTimes(2);
+  });
+  it('disposes a facade projection while its generator is waiting, without cancelling SQL', async () => {
+    mock.invoke.mockResolvedValue(undefined);
+    const client = createBackendClient('desktop', createDesktopBackendTransport());
+    const projection = new ExecutionProjection(client, {
+      executionId: 'e' as Id, streamId: 'stream' as Id, state: 'running',
+    }, null);
+    const consuming = projection.consume();
+    await Promise.resolve();
+    await Promise.resolve();
+    await projection.dispose();
+    await consuming;
+    expect(mock.invoke.mock.calls.map(([command]) => command)).toEqual(['subscribe_events', 'stop_event_subscription']);
   });
   it('projects stream errors and normalizes artifact bytes while preserving counters', async () => {
     mock.invoke.mockResolvedValue({ bytes: [1, 2], chunkIndex: '9007199254740993' });

@@ -7,6 +7,7 @@ import { counterValue, sameHandle, wireCounter } from './counters';
 export interface PublishedResultChunk {
   chunk: ArtifactChunk;
   source: StatementResultSource | null;
+  payload: unknown;
 }
 
 /** Result state survives editor context changes; consumption has its own lifetime. */
@@ -55,6 +56,20 @@ export class ExecutionProjection {
     if (this.view) this.view = { ...this.view, runtimeBinding: null };
     this.publish();
   }
+  private published(chunk: ArtifactChunk, source: StatementResultSource | null): PublishedResultChunk {
+    let payload: unknown = null;
+    try { payload = JSON.parse(new TextDecoder().decode(chunk.bytes)); } catch { /* Binary artifacts stay opaque. */ }
+    if (!source && payload && typeof payload === 'object' && 'source' in payload) {
+      const candidate = (payload as { source: unknown }).source;
+      if (candidate && typeof candidate === 'object' && 'executionId' in candidate &&
+          candidate.executionId === this.receipt.executionId && 'statementIndex' in candidate &&
+          typeof candidate.statementIndex === 'number' && 'writableMapping' in candidate &&
+          ['verified', 'readOnly'].includes(String(candidate.writableMapping))) {
+        source = candidate as StatementResultSource;
+      }
+    }
+    return { chunk, source, payload };
+  }
   private async read(artifactId: string, index: bigint, source: StatementResultSource | null): Promise<void> {
     const key = this.key(artifactId, index);
     if (this.chunksByKey.has(key)) return;
@@ -65,7 +80,7 @@ export class ExecutionProjection {
       if (chunk.artifactId !== artifactId || counterValue(chunk.chunkIndex) !== index) {
         throw new Error('Artifact read returned a different chunk');
       }
-      this.chunksByKey.set(key, { chunk, source });
+      this.chunksByKey.set(key, this.published(chunk, source));
       this.publish();
     })().finally(() => { this.reads.delete(key); });
     this.reads.set(key, read);
@@ -86,7 +101,7 @@ export class ExecutionProjection {
       if (count === undefined || count === null) throw new Error('Artifact publication metadata unavailable');
       if (counterValue(count) > 0n) {
         const key = this.key(artifactId, 0n);
-        if (!this.chunksByKey.has(key)) this.chunksByKey.set(key, { chunk: first, source: null });
+        if (!this.chunksByKey.has(key)) this.chunksByKey.set(key, this.published(first, null));
       }
       for (let index = 1n; index < counterValue(count); index++) await this.read(artifactId, index, null);
     }
@@ -145,6 +160,11 @@ export class ExecutionProjection {
       await iterator.return?.();
     }
     if (resetRequested && generation === this.generation) await this.consume();
+  }
+  async reconnect(): Promise<void> {
+    await this.unsubscribe();
+    await this.recover();
+    await this.consume();
   }
   async unsubscribe(): Promise<void> {
     ++this.generation;

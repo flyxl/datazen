@@ -34,6 +34,7 @@ describe('editor session journey', () => {
     await Promise.all([editor.ensureSession(), editor.ensureSession()]);
     expect(client.openSession).toHaveBeenCalledTimes(1);
     expect(clone.snapshot).toBeNull();
+    expect(() => editor.clone(owner)).toThrow('distinct owner');
     await editor.execute({ command: 'query', input: { sql: 'BEGIN' } });
     editor.acceptSession({ ...session('s1', '2'), observedContext: { ...session().observedContext, transactionState: 'unknown' } });
     expect(editor.snapshot?.observedContext.transactionState).toBe('unknown');
@@ -82,6 +83,8 @@ describe('result recovery journey', () => {
     expect(projection.view?.provenance?.requestedTarget.namespace.database).toBe('A');
     expect(projection.writableBinding(session('new').handle)).toBeNull();
     projection.invalidateRuntimeBinding();
+    expect(projection.writableBinding(session().handle)).toBeNull();
+    await projection.recover();
     expect(projection.writableBinding(session().handle)).toBeNull();
     await projection.dispose();
     expect(cancelExecution).not.toHaveBeenCalled();
