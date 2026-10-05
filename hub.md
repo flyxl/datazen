@@ -8,7 +8,7 @@
 
 | Wave | Track | Branch | Worktree | Status |
 | --- | --- | --- | --- | --- |
-| 0 | `p5-job-core` JobRuntime/契约/持久化/预算/多端预留 | feature/p5-job-core | .worktrees/datazen-p5-job-core | FIX-ROUND（D1 BLOCKER + D2/D3 派回 Coder） |
+| 0 | `p5-job-core` JobRuntime/契约/持久化/预算/多端预留 | feature/p5-job-core | — | MERGED `bb2cc5606`，3 轮 Tester 后 TEST_PASSED，worktree/分支已清理 |
 | 0 | `p5-domain-extract` 三件套抽 packages/*（纯机械，旧 IPC 保持可用） | feature/p5-domain-extract | — | MERGED `97885d6e0`，TEST_PASSED，worktree/分支已清理 |
 | 1 | `p5-schema-diff` handler（Wave0 合入后开） | — | — | NOT_STARTED |
 | 1 | `p5-data-sync` handler | — | — | NOT_STARTED |
@@ -24,4 +24,4 @@
 
 ## 记录（追加式）
 
-- `97885d6e0` domain-extract 合入（`867bd81a2` 删 progress.md）；job-core Tester FAIL：D1/D2/D3 派回原 Coder
+- `97885d6e0` domain-extract 合入（`867bd81a2` 删台账）；`bb2cc5606` job-core 合入（`d2282dcbd` 删台账），3 轮验收：R1 FAIL(D1–D5) → 修复 → R2 FAIL(D6–D8) → 补测试/台账 → R3 TEST_PASSED。job-core 集成后 `cargo test -p datazen-runtime` EXIT=0，32 个 ok 块。
