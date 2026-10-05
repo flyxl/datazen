@@ -1,6 +1,6 @@
 // Regression surface added by the first bug-fix round —
 // redis-workbench-BUG-003 / redis-workbench-BUG-004 /
-// BUG-005. Declared from `tests.rs`, so it reuses `ScriptedConn`,
+// redis-workbench-BUG-005. Declared from `tests.rs`, so it reuses `ScriptedConn`,
 // `ShortReplyConn`, `full_key_info_replies()` and the journal helpers there.
 //
 // The topology-dependent half of the same round (`Topology::Cluster`) lives in

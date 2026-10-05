@@ -221,7 +221,7 @@ test/
 > 上面 `bugs/BUG-001.md ~ BUG-008.md` 是一套**已随删除消失**的编号。`BUG-00x` 在本仓库
 > **不是一套全局编号**，因此**不可假定裸写 `BUG-00x` 指的就是上面这套**：现存 **15 套**
 > 带前缀的活跃系列（`F1-BUG-00x` 连接导航 / schema 树、`redis-codec-write-BUG-00x` 等，
-> 另有 `redis-tree-ui-` / `redis-kvbar-ui-` / `tunnel-form-` 等域前缀；其中 `redis-workbench-` 对应 `packages/drivers/redis/src/ops/workbench/` 下的一组测试，**它尚无已入库的 `bugs/` 登记表**，前缀是按仓库命名约定 `docs/development/coordination/tracks/<track>/bugs/<series>-BUG-NNN.md` 补的），此外还有 **354 处**裸写
+> 另有 `redis-tree-ui-` / `redis-kvbar-ui-` / `tunnel-form-` 等域前缀；其中 `redis-workbench-` 对应 `packages/drivers/redis/src/ops/workbench/` 下的一组测试，**它尚无已入库的 `bugs/` 登记表**，前缀按仓库既有的命名式样补的），此外还有 **354 处**裸写
 > `BUG-00x`——它既可能是某个活跃系列的简写，也可能属于另一套已删除编号。引用缺陷编号时
 > **必须连前缀一起写全**，读者才能定位到唯一一套。
 >
