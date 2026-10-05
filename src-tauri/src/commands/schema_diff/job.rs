@@ -195,6 +195,7 @@ pub struct AppStateBackend {
     state: Arc<AppState>,
     plans: Arc<PlanStore>,
     last_prepared: Arc<Mutex<Option<(String, SchemaDiffFrozenPlan)>>>,
+    last_deploy: Arc<Mutex<Option<SchemaDiffDeployResult>>>,
 }
 
 impl AppStateBackend {
@@ -203,6 +204,7 @@ impl AppStateBackend {
             state,
             plans,
             last_prepared: Arc::new(Mutex::new(None)),
+            last_deploy: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -211,6 +213,10 @@ impl AppStateBackend {
             .lock()
             .ok()
             .and_then(|g| g.clone())
+    }
+
+    pub fn last_deploy(&self) -> Option<SchemaDiffDeployResult> {
+        self.last_deploy.lock().ok().and_then(|g| g.clone())
     }
 }
 
@@ -249,7 +255,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
                 )
                 .await
                 .map_err(|e| SchemaDiffPlanError::PlanNotFound(e.to_string()))?;
-                (plan, target_db_session_id.clone(), None, target_schema.clone())
+                (plan, target_db_session_id.clone(), target_database_from_config(&self.state, &target_db_session_id).await, target_schema.clone())
             }
             PrepareRequest::Unified {
                 source_db_session_id,
@@ -282,7 +288,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
                 )
                 .await
                 .map_err(|e| SchemaDiffPlanError::PlanNotFound(e.to_string()))?;
-                (plan, target_db_session_id.clone(), None, target_schema.clone())
+                (plan, target_db_session_id.clone(), target_database_from_config(&self.state, &target_db_session_id).await, target_schema.clone())
             }
         };
         let plan_id = plan
@@ -387,6 +393,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
 
     async fn read_target_fingerprint(
         &self,
+        plan: &SchemaDiffPlan,
         plan_meta: &SchemaDiffFrozenPlan,
     ) -> Result<String, SchemaDiffPlanError> {
         let target_session = plan_meta
@@ -406,7 +413,11 @@ impl SchemaDiffJobBackend for AppStateBackend {
             plan_meta.target_database.as_deref(),
             plan_meta.target_schema.as_deref(),
             &tables,
-            &[],
+            &plan
+                .statements
+                .iter()
+                .map(|stmt| stmt.sql.clone())
+                .collect::<Vec<_>>(),
         )
         .await
         .map_err(|e| SchemaDiffPlanError::PlanStale(e.to_string()))
@@ -437,7 +448,12 @@ impl SchemaDiffJobBackend for AppStateBackend {
         )
         .await;
         match result {
-            Ok(r) => Ok(r),
+            Ok(r) => {
+                if let Ok(mut slot) = self.last_deploy.lock() {
+                    *slot = Some(r.clone());
+                }
+                Ok(r)
+            }
             Err(e) => Err(SchemaDiffPlanError::PlanStale(e.to_string())),
         }
     }
@@ -483,6 +499,24 @@ fn prepare_payload() -> serde_json::Value {
         "handlerVersion": 1,
         "checkpointVersion": 1,
     })
+}
+
+async fn target_database_from_config(state: &AppState, session: &str) -> Option<String> {
+    state
+        .connection_manager
+        .get_session_config(session)
+        .await
+        .ok()
+        .and_then(|c| c.database)
+}
+
+async fn target_schema_from_config(state: &AppState, session: &str) -> Option<String> {
+    state
+        .connection_manager
+        .get_session_config(session)
+        .await
+        .ok()
+        .and_then(|c| c.schema)
 }
 
 fn owner_ref(state_unused: &AppState) -> datazen_platform_api::OwnerRef {
@@ -742,18 +776,36 @@ pub async fn run_apply_job(
         (JobState::Cancelled, _) => datazen_schema_diff::types::DeployStatus::Cancelled,
         _ => datazen_schema_diff::types::DeployStatus::Failed,
     };
+    // D3：JobResult.error 恒 None（runtime 会返回效果结局，不带原因）；
+    // deploy 的逐条错误与 statement 结果必须从 backend 的最后部署留档取回。
+    let last_deploy = backend.last_deploy();
     Ok(SchemaDiffDeployResult {
         status,
-        executed_count: result.progress.attempted.get() as usize,
-        statement_count: result.progress.converted.get() as usize,
-        errors: result.error.into_iter().collect(),
-        statement_results: Vec::new(),
+        executed_count: last_deploy
+            .as_ref()
+            .map(|d| d.executed_count)
+            .unwrap_or_else(|| result.progress.attempted.get() as usize),
+        statement_count: last_deploy
+            .as_ref()
+            .map(|d| d.statement_count)
+            .unwrap_or_else(|| result.progress.converted.get() as usize),
+        errors: last_deploy
+            .as_ref()
+            .map(|d| d.errors.clone())
+            .unwrap_or_else(|| result.error.into_iter().collect()),
+        statement_results: last_deploy
+            .as_ref()
+            .map(|d| d.statement_results.clone())
+            .unwrap_or_default(),
     })
 }
 
 /// 旧 IPC 兼容路径：客户端直接携带计划正文时，先注册进 PlanStore 再走 apply Job。
 /// 两种受理（prepare 产物 / 直接携带正文）都满足「只经 JobRuntime」。
-pub fn register_plan_for_apply(
+/// D1：登记的 meta 与 verify_authorization/read_target_fingerprint 使用
+/// **相同**的哈希计算方式（current_capability_hash / compute_target_fingerprint），
+/// 保证兼容路径调用能跑通。
+pub async fn register_plan_for_apply(
     state: &AppState,
     plan: SchemaDiffPlan,
     target_db_session_id: &str,
@@ -779,17 +831,33 @@ pub fn register_plan_for_apply(
         source_connection_id: String::new(),
         target_connection_id: target_db_session_id.to_string(),
         source_database: None,
-        target_database: None,
+        target_database: target_database_from_config(state, target_db_session_id).await,
         source_schema: None,
-        target_schema: None,
+        target_schema: target_schema_from_config(state, target_db_session_id).await,
         endpoint_evidence: vec![
             format!("target:{target_db_session_id}"),
             format!("planTables:{}", plan.tables.join(",")),
         ],
-        capability_snapshot_hash: String::new(),
-        schema_fingerprint: datazen_schema_diff::job::fnv1a64_hex(
-            &serde_json::to_vec(&plan.expected_target_schemas).unwrap_or_default(),
-        ),
+        capability_snapshot_hash: current_capability_hash(state, target_db_session_id)
+            .await
+            .map_err(|e| e)?,
+        schema_fingerprint: compute_target_fingerprint(
+            state,
+            target_db_session_id,
+            target_database_from_config(state, target_db_session_id)
+                .await
+                .as_deref(),
+            target_schema_from_config(state, target_db_session_id)
+                .await
+                .as_deref(),
+            &plan.tables,
+            &plan
+                .statements
+                .iter()
+                .map(|stmt| stmt.sql.clone())
+                .collect::<Vec<_>>(),
+        )
+        .await?,
         mapping_fingerprint: datazen_schema_diff::job::fnv1a64_hex(
             &serde_json::to_vec(&plan.tables).unwrap_or_default(),
         ),

@@ -132,10 +132,24 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
                 stage_id: StageId::new("apply"),
                 stable_target_fingerprint: fingerprint.to_string(),
                 committed_at: Self::now(),
-                operation_id: Some(format!("stmt-{}", r.index)),
+                // §4.1 稳定 operation ID：取语句文本的 fnv 前 16 位（deploy 不提供
+                // operation 字段时的稳定推导，顺序无关、可重放核验）。
+                operation_id: Some(format!(
+                    "op-{}",
+                    fnv1a64_hex(r.sql.as_bytes())
+                        .chars()
+                        .take(16)
+                        .collect::<String>()
+                )),
                 batch_id: None,
                 payload_digest: Some(fnv1a64_hex(r.sql.as_bytes())),
-                evidence: vec!["stmtOk".into()],
+                evidence: if deploy.status == DeployStatus::Unknown {
+                    // D2：未知提交必须落「响应丢失」证据，使 verify_recovery 强制
+                    // 走只读核验，不得误判 ResumeAfterVerify（§7 故障窗口表）。
+                    vec!["stmtOk".into(), "ddlResponseLost".into()]
+                } else {
+                    vec!["stmtOk".into()]
+                },
                 verified_at: None,
             })
             .collect();
@@ -183,12 +197,27 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
                 0
             }),
         };
+        // D4：deploy 不提供执行 ID，按稳定映射推导（每条被执行语句一条）。
+        let execution_ids: Vec<datazen_platform_api::id::ExecutionId> = deploy
+            .statement_results
+            .iter()
+            .map(|r| {
+                let id = format!(
+                    "exec-{}",
+                    fnv1a64_hex(format!("{}-{}", r.index, r.sql).as_bytes())
+                        .chars()
+                        .take(8)
+                        .collect::<String>()
+                );
+                datazen_platform_api::id::ExecutionId::new(id)
+            })
+            .collect();
         StageOutcome {
             stage_id: StageId::new("apply"),
             terminal,
             progress,
             commit_boundaries: ok_boundaries,
-            execution_ids: Vec::new(),
+            execution_ids,
             artifact_ids: Vec::new(),
             effect_outcome: effect,
             error_code,
@@ -260,7 +289,11 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
             return Ok(self.failed_outcome("apply", &e));
         }
         // 执行前重读目标结构比对 before fingerprint → PlanStale（§4.2）。
-        let before = match self.backend.read_target_fingerprint(&stored.meta).await {
+        let before = match self
+            .backend
+            .read_target_fingerprint(&stored.plan, &stored.meta)
+            .await
+        {
             Ok(fp) => fp,
             Err(e) => return Ok(self.failed_outcome("apply", &e)),
         };

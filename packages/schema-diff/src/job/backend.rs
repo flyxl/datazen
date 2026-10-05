@@ -96,6 +96,7 @@ pub trait SchemaDiffJobBackend: Send + Sync {
     /// 执行前：重读目标结构并与 before fingerprint 比对（§4.2 PlanStale）。
     async fn read_target_fingerprint(
         &self,
+        plan: &crate::types::SchemaDiffPlan,
         plan_meta: &SchemaDiffFrozenPlan,
     ) -> Result<String, SchemaDiffPlanError>;
 

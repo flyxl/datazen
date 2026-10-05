@@ -39,6 +39,22 @@
 | `npx vitest run src/commands/__tests__/schemaDiff.test.ts` | EXIT=0；21 passed |
 | `npx vitest run src/windows/schema-diff` | EXIT=0；9 文件 66 passed |
 
+## 第 1 轮 Tester 修复（D1–D4）
+
+- D1：`register_plan_for_apply` 改为 async，`capability_snapshot_hash`/`schema_fingerprint` 分别以 `verify_authorization`/`read_target_fingerprint` 相同的 `current_capability_hash`/`compute_target_fingerprint` 计算；新增真实测试 `d1_legacy_full_plan_path_runs_through_job_runtime`（TestAppState + MockDriver）验证兼容路径跑通。
+- D2：`handler.deploy_outcome` 在 `DeployStatus::Unknown` 分支为所有已确认边界写出 `ddlResponseLost` evidence，使 `decide_recovery` 必走 `RequireManualReview`；测试断言 boundary evidence 与递推恢复判定。
+- D3：`AppStateBackend` 增 `last_deploy` 通道，`run_apply_job` 用 deploy 真实 `errors`/`statement_results` 填充响应；`JobResult.error` 恒 None。
+- D4：`StageOutcome.execution_ids` 改用稳定推导（`exec-<fnv8>`）；`operation_id` 改为 `op-<fnv16>` 稳定映射替代 `stmt-{index}`。
+
+## 门禁（第 1 轮修复后实测）
+
+| 命令 | 结论 |
+| --- | --- |
+| `CARGO_TARGET_DIR=/tmp/p5-sd-target cargo test -p datazen-schema-diff` | EXIT=0；225 + 10(job_handler) + 0 通过 |
+| `CARGO_TARGET_DIR=/tmp/p5-sd-target cargo test -p datazen-runtime` | EXIT=0；32 个 ok 块，0 失败 |
+| `CARGO_TARGET_DIR=/tmp/p5-sd-target cargo test -p datazen --lib` | EXIT=0；1711 passed, 0 failed, 6 ignored |
+| `pnpm --config.verify-deps-before-run=false typecheck` | EXIT=0 |
+
 ## 遗留 / 待裁定
 
 1. `prepare_schema_view_plan`/`prepare_schema_routine_trigger_plan`/`prepare_schema_sequence_plan`/`prepare_schema_type_plan` 仍走旧直接管理器路径（未进 JobRuntime）；窗口不调用这四个命令，本轨未改。

@@ -181,6 +181,7 @@ impl SchemaDiffJobBackend for FakeBackend {
 
     async fn read_target_fingerprint(
         &self,
+        _plan: &SchemaDiffPlan,
         _plan_meta: &SchemaDiffFrozenPlan,
     ) -> Result<String, SchemaDiffPlanError> {
         Ok(self.target_fingerprint.clone())
@@ -415,7 +416,7 @@ async fn cm42_non_transactional_partial_success_keeps_confirmed_boundaries() {
     assert!(out
         .commit_boundaries
         .iter()
-        .all(|b| b.operation_id.as_deref().map(|s| s.starts_with("stmt-")).unwrap_or(false)));
+        .all(|b| b.operation_id.as_deref().map(|s| s.starts_with("op-")).unwrap_or(false)));
 }
 
 #[tokio::test]
@@ -439,6 +440,15 @@ async fn cm42_unknown_operation_needs_read_only_verification() {
         .expect("stage");
     assert_eq!(out.terminal, StageTerminal::Unknown);
     assert_eq!(out.effect_outcome, EffectOutcome::Unknown);
+    // D2：Unknown 分支的边界证据必须写入 ddlResponseLost，使 decide_recovery 必走人工核验。
+    assert!(out
+        .commit_boundaries
+        .iter()
+        .all(|b| b.evidence.iter().any(|e| e == "ddlResponseLost")));
+    assert!(out
+        .execution_ids
+        .iter()
+        .all(|id| id.as_str().starts_with("exec-")));
     // §7：未知 operation 必须走只读核验，不能直接当 notStarted/重放。
     let checkpoint = Checkpoint {
         job_id: JobId::new("job-u"),
