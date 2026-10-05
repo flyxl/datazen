@@ -10,7 +10,7 @@
 | --- | --- | --- | --- | --- |
 | 0 | `p5-job-core` JobRuntime/契约/持久化/预算/多端预留 | feature/p5-job-core | — | MERGED `bb2cc5606`，3 轮 Tester 后 TEST_PASSED，worktree/分支已清理 |
 | 0 | `p5-domain-extract` 三件套抽 packages/*（纯机械，旧 IPC 保持可用） | feature/p5-domain-extract | — | MERGED `97885d6e0`，TEST_PASSED，worktree/分支已清理 |
-| 1 | `p5-schema-diff` handler | feature/p5-schema-diff | .worktrees/datazen-p5-schema-diff | FIX-ROUND（D1–D4 派回 Coder） |
+| 1 | `p5-schema-diff` handler | feature/p5-schema-diff | — | MERGED `4ba769fc9`，R1 FAIL(D1–D4)→修复→R2 TEST_PASSED（225+10 / runtime 32 块 / host 1711+0+6 / typecheck / vitest 87），worktree/分支已清理 |
 | 1 | `p5-data-sync` handler | feature/p5-data-sync | .worktrees/datazen-p5-data-sync | CODING |
 | 1 | `p5-data-transfer` handler | feature/p5-data-transfer | .worktrees/datazen-p5-data-transfer | CODING |
 | 1 | `p5-client` 任务中心/订阅/幂等回执 UI 适配 | feature/p5-client | — | MERGED `5f46a0262`，TEST_PASSED（D1–D5 遗留：D2 hydration onUpdate 空实现、D5 schema-diff 窗口 step 未回退，记后续） |
@@ -26,4 +26,5 @@
 
 - `97885d6e0` domain-extract 合入（`867bd81a2` 删 progress.md）。
 - `bb2cc5606` job-core 合入（`d2282dcbd` 删 progress.md），3 轮验收：R1 FAIL(D1–D5) → 修复 → R2 FAIL(D6–D8) → 补测试/台账 → R3 TEST_PASSED。
+- `4ba769fc9` schema-diff 合入（`2486ac679` 删 progress.md），2 轮验收：R1 FAIL(D1–D4) → 修复 `edf2713a0` → R2 TEST_PASSED；合并后 sanity `cargo test -p datazen-schema-diff -p datazen-runtime` EXIT=0。R2 遗留（发布前处理）：`schemaDiff.limitations.*` 7 个 i18n key 待 i18n-sync；`read_only_verify` 仍保守返回 Indeterminate。
 - `5f46a0262` client 合入（`1029e9fae` 删 progress.md）。
