@@ -21,6 +21,7 @@ datazen-ai-api = { path = "../packages/ai-api" }
 # 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
 datazen-platform-api = { path = "../packages/platform-api" }
+datazen-runtime = { path = "../packages/runtime" }
 datazen-application = { path = "../packages/application" }
 datazen-schema-diff = { path = "../packages/schema-diff" }
 datazen-data-sync = { path = "../packages/data-sync" }

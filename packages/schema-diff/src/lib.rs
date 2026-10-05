@@ -5,6 +5,7 @@ pub mod dependencies;
 pub mod dependency_graph;
 pub mod deploy;
 pub mod ir;
+pub mod job;
 pub mod object_identity;
 pub mod objects;
 pub mod transaction;

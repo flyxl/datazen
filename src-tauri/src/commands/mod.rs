@@ -169,6 +169,8 @@ pub struct AppState {
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
     pub cancel_registry: crate::ai::CancellationRegistry,
+    /// P5 Wave-1：Schema Diff 的 JobRuntime 基础设施（仓储/预算/计划库）。
+    pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
     ///
     /// 与 `session_transactions` **并存但互不读写**：后者是旧共享槽（键只有

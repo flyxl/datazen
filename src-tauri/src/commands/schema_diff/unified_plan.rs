@@ -69,6 +69,42 @@ pub async fn prepare_schema_unified_plan(
     allow_destructive: bool,
     include_indexes: Option<bool>,
     type_overrides: Option<Vec<ColumnTypeOverride>>,
+) -> Result<super::job::SchemaDiffPrepareEnvelope, CommandError> {
+    let target_table_names = target_table_names.unwrap_or_else(|| table_names.clone());
+    super::job::run_prepare_job(
+        &state,
+        crate::schema_diff::job::PrepareRequest::Unified {
+            source_db_session_id,
+            target_db_session_id,
+            table_names,
+            target_table_names,
+            target_only_table_names: target_only_table_names.unwrap_or_default(),
+            source_objects: source_objects.unwrap_or_default(),
+            target_objects: target_objects.unwrap_or_default(),
+            source_schema,
+            target_schema,
+            allow_destructive,
+            include_indexes,
+            type_overrides: type_overrides.unwrap_or_default(),
+        },
+    )
+    .await
+}
+
+pub(crate) async fn prepare_schema_unified_plan_impl(
+    state: &AppState,
+    source_db_session_id: String,
+    target_db_session_id: String,
+    table_names: Vec<String>,
+    target_table_names: Option<Vec<String>>,
+    target_only_table_names: Option<Vec<String>>,
+    source_objects: Option<Vec<DatabaseObject>>,
+    target_objects: Option<Vec<DatabaseObject>>,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+    allow_destructive: bool,
+    include_indexes: Option<bool>,
+    type_overrides: Option<Vec<ColumnTypeOverride>>,
 ) -> Result<SchemaDiffPlan, CommandError> {
     let target_table_names = target_table_names.unwrap_or_else(|| table_names.clone());
     let target_only_table_names = target_only_table_names.unwrap_or_default();

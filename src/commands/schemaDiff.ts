@@ -93,6 +93,14 @@ function normalizeRequirement(raw: PlanRequirementIpc): PlanRequirement {
   return { kind: 'Unsupported', table: operation, column: '', reason };
 }
 
+type SchemaDiffPrepareEnvelopeIpc = Omit<SchemaDiffPrepareEnvelope, 'plan'> & {
+  plan: SchemaDiffPlanIpc;
+};
+
+function normalizePrepareEnvelope(raw: SchemaDiffPrepareEnvelopeIpc): SchemaDiffPrepareEnvelope {
+  return { ...raw, plan: normalizePlan(raw.plan) };
+}
+
 function normalizePlan(plan: SchemaDiffPlanIpc): SchemaDiffPlan {
   return {
     ...plan,
@@ -135,6 +143,18 @@ export interface SchemaDiffPlan {
   typeSuggestions?: TypeSuggestion[];
   /** Target catalog snapshots used to reject stale SQLite rebuild reviews. */
   expectedTargetSchemas?: TableSchema[];
+}
+
+/** Result of a prepare Job: reviewed plan artifact plus its frozen metadata (§2.2). */
+export interface SchemaDiffPrepareEnvelope {
+  plan: SchemaDiffPlan;
+  planId: string;
+  selectionRevision: number;
+  planVersion: number;
+  handlerVersion: number;
+  checkpointVersion: number;
+  expiresAt: string;
+  recoveryPolicy: string;
 }
 
 export interface StatementExecResult {
@@ -268,7 +288,7 @@ export const schemaDiffCommands = {
         ? { targetOnlyTableNames: params.targetOnlyTableNames }
         : {}),
     };
-    return invoke<SchemaDiffPlanIpc>('prepare_schema_diff_plan', request).then(normalizePlan);
+    return invoke<SchemaDiffPrepareEnvelopeIpc>('prepare_schema_diff_plan', request).then(normalizePrepareEnvelope);
   },
 
   prepareUnifiedPlan: (params: {
@@ -307,7 +327,7 @@ export const schemaDiffCommands = {
       sourceObjects: params.sourceObjects.map(exactIdentity),
       targetObjects: params.targetObjects.map(exactIdentity),
     };
-    return invoke<SchemaDiffPlanIpc>('prepare_schema_unified_plan', request).then(normalizePlan);
+    return invoke<SchemaDiffPrepareEnvelopeIpc>('prepare_schema_unified_plan', request).then(normalizePrepareEnvelope);
   },
 
   prepareViewPlan: (params: {
@@ -374,6 +394,10 @@ export const schemaDiffCommands = {
     targetDatabase?: string | null;
     targetSchema?: string | null;
     profile?: { id: string; revision: string };
+    /** P5: apply Job 消费的 planId（来自 prepare envelope）。 */
+    planId?: string;
+    /** P5: 审阅版本（来自 prepare envelope）。 */
+    selectionRevision?: number;
   }) =>
     invoke<SchemaDiffDeployResult>('execute_schema_diff_deploy', {
       targetDbSessionId: params.targetDbSessionId,
@@ -385,6 +409,8 @@ export const schemaDiffCommands = {
       targetDatabase: params.targetDatabase,
       targetSchema: params.targetSchema,
       ...(params.profile ? { profile: params.profile } : {}),
+      ...(params.planId ? { planId: params.planId } : {}),
+      ...(params.selectionRevision != null ? { selectionRevision: params.selectionRevision } : {}),
     }),
 
   cancelDeploy: (jobId: string) => cancelSchemaDiffDeploy(jobId),

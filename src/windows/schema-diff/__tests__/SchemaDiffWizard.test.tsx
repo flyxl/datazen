@@ -132,8 +132,8 @@ beforeEach(() => {
     removed: [],
     changed: [],
   });
-  vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue(plan());
-  vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue(plan());
+  vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({ plan: plan(), planId: 'plan-1', selectionRevision: 1, planVersion: 1, handlerVersion: 1, checkpointVersion: 1, expiresAt: '2026-01-01T00:00:00Z', recoveryPolicy: 'readOnlyVerify' });
+  vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue({ plan: plan(), planId: 'plan-1', selectionRevision: 1, planVersion: 1, handlerVersion: 1, checkpointVersion: 1, expiresAt: '2026-01-01T00:00:00Z', recoveryPolicy: 'readOnlyVerify' });
   vi.mocked(schemaDiffCommands.executeDeploy).mockResolvedValue({
     status: 'committed',
     executedCount: 1,
@@ -180,12 +180,19 @@ describe('complete schema migration wizard journeys', () => {
       const rows = sessionId === 'source-session' ? sourceObjects : targetObjects;
       return rows.filter((object) => object.kind === kind);
     });
-    vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue(
-      plan({
+    vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue({
+      plan: plan({
         planId: 'mixed-plan-1',
         tables: ['users', 'view:public:orders_view', 'function:public:calculate_total'],
       }),
-    );
+      planId: 'mixed-plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
+    });
 
     render(<SchemaDiffWindow />);
     next();
@@ -376,6 +383,8 @@ describe('complete schema migration wizard journeys', () => {
       targetDatabase: 'target',
       targetSchema: null,
       profile: undefined,
+      planId: 'plan-1',
+      selectionRevision: 1,
     });
     expect(screen.getByTestId('schema-diff-deploy-status')).toHaveTextContent('committed');
     expect(deploy).toBeDisabled();
@@ -433,7 +442,7 @@ describe('complete schema migration wizard journeys', () => {
 
   it('updates table-local overrides and regenerates exact options, exports SQL and config', async () => {
     vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue(
-      plan({
+      { plan: plan({
         typeSuggestions: [
           {
             table: 'users',
@@ -445,7 +454,7 @@ describe('complete schema migration wizard journeys', () => {
             isKeyOrIndexed: true,
           },
         ],
-      }),
+      }), planId: 'plan-1', selectionRevision: 1, planVersion: 1, handlerVersion: 1, checkpointVersion: 1, expiresAt: '2026-01-01T00:00:00Z', recoveryPolicy: 'readOnlyVerify' },
     );
     vi.mocked(fileCommands.saveTextWithDialog).mockResolvedValue(true);
     render(<SchemaDiffWindow />);
@@ -831,7 +840,7 @@ describe('complete schema migration wizard journeys', () => {
       ],
     },
   ])('refuses footer deploy when rollback or requirements are unmet: %j', async (overrides) => {
-    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue(plan(overrides));
+    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({ plan: plan(overrides), planId: 'plan-1', selectionRevision: 1, planVersion: 1, handlerVersion: 1, checkpointVersion: 1, expiresAt: '2026-01-01T00:00:00Z', recoveryPolicy: 'readOnlyVerify' });
     render(<SchemaDiffWindow />);
     await reachDeploy();
     fireEvent.change(screen.getByPlaceholderText('DEPLOY'), { target: { value: 'DEPLOY' } });
