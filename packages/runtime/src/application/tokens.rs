@@ -18,6 +18,13 @@ fn operation(value: IdempotentOperation) -> SubmissionOperation {
     }
 }
 impl RuntimeConnectionUseCases {
+    pub fn validate_profile_submission(
+        &self,
+        ctx: &RequestContext,
+        key: &IdempotencyKey,
+    ) -> Result<(), ApiError> {
+        self.validate_token(ctx, key, IdempotentOperation::CreateProfile, None)
+    }
     pub(super) async fn issue(
         &self,
         ctx: &RequestContext,

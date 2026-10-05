@@ -43,6 +43,7 @@ struct Inner {
     replacer: ContextReplacer,
     gateway: Arc<ExecutionGateway>,
     sink: RuntimeResultSink,
+    physical: backend::PhysicalLedger,
     sessions: Mutex<HashMap<DbSessionId, SessionEntry>>,
     tokens: Mutex<HashMap<String, tokens::IssuedToken>>,
     keyring: TokenKeyring,
@@ -99,10 +100,12 @@ impl RuntimeConnectionUseCases {
         backend: Arc<dyn SessionBackend>,
     ) -> Self {
         let sink = RuntimeResultSink::default();
+        let physical = Arc::new(Mutex::new(HashMap::new()));
         let registry = Arc::new(SessionRegistry::new(
             Arc::new(backend::ObservedBackend {
                 inner: backend,
                 sink: sink.clone(),
+                physical: physical.clone(),
             }),
             128,
         ));
@@ -128,6 +131,7 @@ impl RuntimeConnectionUseCases {
                 directory,
                 gateway,
                 sink,
+                physical,
                 sessions: Mutex::new(HashMap::new()),
                 tokens: Mutex::new(HashMap::new()),
                 keyring: TokenKeyring::single(secret),

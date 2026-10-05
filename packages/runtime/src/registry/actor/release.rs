@@ -46,7 +46,12 @@ pub(super) async fn release(
     };
 
     // §7.4：`RequireNoTransaction` 下有活事务就**直接拒绝关闭**，不做任何半途动作。
-    if mode == CloseMode::RequireNoTransaction && !state.handles.is_empty() {
+    // `Unknown` 不算「无事务」——只查句柄账本会被「执行从未交还事务状态」骗过：
+    // 一次 `begin` 但从未登记句柄的会话会在 RequireNoTransaction 下被静默放行。
+    if mode == CloseMode::RequireNoTransaction
+        && (!state.handles.is_empty()
+            || state.view.observed_context.transaction_state != TransactionState::None)
+    {
         return Err(RuntimeError::CloseRejected("transactionInProgress"));
     }
 

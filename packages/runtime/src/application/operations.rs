@@ -70,7 +70,10 @@ impl RuntimeConnectionUseCases {
                         capability_snapshot: CapabilitySnapshot::new(profile.driver_id, "", 0),
                         executed_at: Timestamp::new(utc_now()),
                     }),
-                    artifact_ids: Vec::new(),
+                    artifact_ids: vec![ArtifactId::new(format!(
+                        "artifact-{}",
+                        receipt.execution_id.as_str()
+                    ))],
                     result_completeness: ResultCompleteness::Pending,
                     truncation_reason: None,
                     error_code: None,
@@ -447,7 +450,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
                 },
             )
             .await;
-        let receipt = match result {
+        let mut receipt = match result {
             Ok(()) => CloseReceipt {
                 db_session_id: request.handle.db_session_id.clone(),
                 state: SessionState::Closed,
@@ -462,6 +465,20 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             },
             Err(error) => return Err(convert::runtime(error)),
         };
+        if let Some(physical) =
+            lock(&self.inner.physical).get(&convert::handle(&request.handle)?.runtime_epoch.get())
+        {
+            receipt.resource_release = match physical.release {
+                Some(crate::registry::backend::CloseResourceOutcome::Closed) => {
+                    ResourceRelease::Confirmed
+                }
+                Some(crate::registry::backend::CloseResourceOutcome::Undecidable { .. }) => {
+                    ResourceRelease::Quarantined
+                }
+                None => ResourceRelease::Pending,
+            };
+            receipt.effect_outcome = convert::json_convert(physical.effect)?;
+        }
         let _ = self
             .inner
             .directory

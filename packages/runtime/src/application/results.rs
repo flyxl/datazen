@@ -24,6 +24,7 @@ pub(super) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 pub struct RuntimeArtifactChunk {
     pub artifact_id: ArtifactId,
     pub chunk_index: Counter,
+    pub byte_offset: Counter,
     pub columns: serde_json::Value,
     pub rows: Vec<serde_json::Value>,
     pub output: Option<serde_json::Value>,
@@ -42,6 +43,7 @@ pub(super) struct ExecutionEntry {
     pub chunks: Vec<RuntimeArtifactChunk>,
     pub bytes: u64,
     pub outcome: Option<ResourceExecution>,
+    pub created: std::time::Instant,
     pub subscribers: Vec<std::sync::mpsc::Sender<ConnectionEventEnvelope>>,
 }
 impl ExecutionEntry {
@@ -92,6 +94,20 @@ impl RuntimeResultSink {
     ) -> Result<(), ApiError> {
         self.publish(id, columns, rows, None, Some(source))
     }
+    pub fn publish_statement_output(
+        &self,
+        id: &ExecutionId,
+        output: serde_json::Value,
+        source: StatementResultSource,
+    ) -> Result<(), ApiError> {
+        self.publish(
+            id,
+            serde_json::json!([]),
+            Vec::new(),
+            Some(output),
+            Some(source),
+        )
+    }
     fn publish(
         &self,
         id: &ExecutionId,
@@ -101,6 +117,9 @@ impl RuntimeResultSink {
         source: Option<StatementResultSource>,
     ) -> Result<(), ApiError> {
         let mut entries = lock(&self.0);
+        let total_bytes = entries
+            .values()
+            .fold(0u64, |sum, e| sum.saturating_add(e.bytes));
         let entry = entries
             .get_mut(id)
             .ok_or_else(|| ApiError::new(ApiErrorCode::NotFound, "execution was not admitted"))?;
@@ -117,42 +136,30 @@ impl RuntimeResultSink {
                     "statement source execution mismatch",
                 ))
             }
-            None => StatementResultSource {
-                execution_id: id.clone(),
-                statement_index: 0,
-                context: entry
-                    .view
-                    .provenance
-                    .as_ref()
-                    .ok_or_else(|| {
-                        ApiError::new(
-                            ApiErrorCode::OutcomeUnknown,
-                            "execution provenance unavailable",
-                        )
-                    })?
-                    .context_before
-                    .clone(),
-                relation: None,
-                writable_mapping: WritableMapping::ReadOnly,
-            },
+            None => unknown_source(id),
         };
         let artifact_id = ArtifactId::new(format!("artifact-{}", id.as_str()));
         let size = serde_json::to_vec(
-            &serde_json::json!({"columns":&columns,"rows":&rows,"output":&output}),
+            &serde_json::json!({"columns":&columns,"rows":&rows,"output":&output,"source":&source}),
         )
         .map_err(|_| ApiError::invalid_argument("invalid result block"))?
         .len() as u64;
-        if size > 32 * 1024 * 1024 || entry.bytes.saturating_add(size) > 256 * 1024 * 1024 {
+        if size > 32 * 1024 * 1024
+            || total_bytes.saturating_add(size) > 256 * 1024 * 1024
+            || entry.chunks.len() >= 65536
+        {
             return Err(ApiError::new(
                 ApiErrorCode::PayloadTooLarge,
                 "result artifact budget exceeded",
             ));
         }
+        let byte_offset = Counter::new(entry.bytes);
         entry.bytes += size;
         let index = Counter::new(entry.chunks.len() as u64);
         entry.chunks.push(RuntimeArtifactChunk {
             artifact_id: artifact_id.clone(),
             chunk_index: index,
+            byte_offset,
             columns,
             rows,
             output,
@@ -188,6 +195,7 @@ impl RuntimeResultSink {
             bytes: 0,
             outcome: None,
             subscribers: Vec::new(),
+            created: std::time::Instant::now(),
         };
         entry.event(ConnectionEvent::ExecutionChanged {
             execution: entry.view.clone(),
@@ -329,6 +337,26 @@ impl RuntimeResultSink {
             .values()
             .find(|e| e.view.artifact_ids.contains(artifact) && e.visible_to(ctx))
             .ok_or_else(|| ApiError::new(ApiErrorCode::NotFound, "artifact unavailable"))?;
+        if entry.created.elapsed() > std::time::Duration::from_secs(86400) {
+            return Err(ApiError::new(
+                ApiErrorCode::NotFound,
+                "result artifact expired",
+            ));
+        }
+        if entry.chunks.is_empty() && index.get() == 0 {
+            return Ok(RuntimeArtifactChunk {
+                artifact_id: artifact.clone(),
+                chunk_index: index,
+                byte_offset: Counter::new(0),
+                columns: serde_json::json!([]),
+                rows: Vec::new(),
+                output: None,
+                source: unknown_source(&entry.view.execution_id),
+                published_chunk_count: Counter::new(0),
+                published_byte_length: Counter::new(0),
+                complete: entry.view.result_completeness == ResultCompleteness::Complete,
+            });
+        }
         let mut chunk = entry
             .chunks
             .get(index.get() as usize)
@@ -371,5 +399,22 @@ impl Iterator for LiveSubscription {
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return None,
             }
         }
+    }
+}
+
+fn unknown_source(id: &ExecutionId) -> StatementResultSource {
+    StatementResultSource {
+        execution_id: id.clone(),
+        statement_index: 0,
+        context: datazen_platform_api::dto::session::SessionContext {
+            namespace: datazen_platform_api::target::NamespaceTarget::default(),
+            search_path: None,
+            effective_identity: None,
+            transaction_state: datazen_platform_api::dto::session::TransactionState::Unknown,
+            autocommit: None,
+            confidence: datazen_platform_api::dto::session::ContextConfidence::Unknown,
+        },
+        relation: None,
+        writable_mapping: WritableMapping::ReadOnly,
     }
 }
