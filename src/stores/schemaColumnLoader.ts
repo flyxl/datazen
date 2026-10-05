@@ -1,7 +1,8 @@
-import { relationKey, type RelationRef, type RelationColumns } from '@datazen/driver-sdk';
+import type { RelationRef, RelationColumns } from '@datazen/driver-sdk';
 import { schemaClient } from '@datazen/driver-sdk';
 import { capabilitiesForDbSession, relationSchemaFor } from '../lib/driverCapabilities';
 import { knownTableNames } from './schemaStoreHelpers';
+import { relationColumnsCacheKey, type SessionMetadataIdentity } from './schemaMetadataKeys';
 import type { ConnectionSchemaState } from './schemaStoreState';
 
 /** Legacy name requests resolve only when their catalog identity is unique. */
@@ -30,7 +31,7 @@ export function resolveColumnRelations(
       const schema = relationSchemaFor(capabilities, item.schema);
       if (schemaFilter !== undefined && schema !== schemaFilter) continue;
       const ref = { database, schema, name: item.name };
-      candidates.set(relationKey({ ...ref, dbSessionId }), ref);
+      candidates.set(relationColumnsCacheKey(state, dbSessionId, ref), ref);
     }
     if (candidates.size === 1) refs.push([...candidates.values()][0]);
     // Path trees may expose names before publishing their metadata rows.
@@ -51,16 +52,22 @@ export function resolveColumnRelations(
 
 /** One typed read path; transport batching is bounded independently of drivers. */
 export async function loadRelationColumns(
+  session: SessionMetadataIdentity,
   dbSessionId: string,
   relations: readonly RelationRef[],
 ): Promise<RelationColumns[]> {
   const values: RelationColumns[] = [];
   for (let offset = 0; offset < relations.length; offset += 256) {
     const batch = relations.slice(offset, offset + 256);
-    const expected = new Set(batch.map((ref) => relationKey({ ...ref, dbSessionId })));
+    const expected = new Set(
+      batch.map((ref) => relationColumnsCacheKey(session, dbSessionId, ref)),
+    );
     const response = await schemaClient.readColumns(dbSessionId, batch);
     for (const row of response.results) {
-      if (row.status === 'ok' && expected.has(relationKey({ ...row.value.ref, dbSessionId }))) {
+      if (
+        row.status === 'ok' &&
+        expected.has(relationColumnsCacheKey(session, dbSessionId, row.value.ref))
+      ) {
         values.push(row.value);
       }
     }
@@ -80,7 +87,7 @@ export function projectRelationColumns(
   const columnMap: Record<string, string[]> = {};
   const typedColumnMap: Record<string, Record<string, string>> = {};
   for (const ref of refs) {
-    const value = state.relationColumns[relationKey({ ...ref, dbSessionId })];
+    const value = state.relationColumns[relationColumnsCacheKey(state, dbSessionId, ref)];
     if (!value) continue;
     columnMap[ref.name] = value.columns.map((column) => column.name);
     typedColumnMap[ref.name] = Object.fromEntries(

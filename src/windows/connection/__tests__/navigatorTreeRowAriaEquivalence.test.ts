@@ -429,6 +429,8 @@ const connection = (id: string): ConnectionConfig => ({
 
 function schemaState(): ConnectionSchemaState {
   return {
+    connectionId: 'cfg-aria',
+    metadataRevision: 1,
     currentDatabase: null,
     currentSchema: null,
     databases: ['db1'],

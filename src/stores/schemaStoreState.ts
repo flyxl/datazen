@@ -3,6 +3,12 @@ import type { TableInfo, RelationColumns } from '@datazen/driver-sdk';
 
 /** Per-session schema cache entry (map key = runtime DB session id). */
 export interface ConnectionSchemaState {
+  /** Persistent config id this session's schema belongs to. Metadata
+   *  identity/provenance keys are validated against it. */
+  connectionId: string;
+  /** Bumped when the session's connection identity (config revision) changes;
+   *  invalidates older per-relation provenance. */
+  metadataRevision: number;
   currentDatabase: string | null;
   /** F7: PG-family current schema — sent as the `schema` envelope field. */
   currentSchema: string | null;
@@ -34,6 +40,8 @@ export const EMPTY_NAMESPACE: SqlNamespace = {};
 
 export function createEmptyConnectionSchema(): ConnectionSchemaState {
   return {
+    connectionId: '',
+    metadataRevision: 0,
     currentDatabase: null,
     currentSchema: null,
     databases: [],

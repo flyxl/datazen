@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { connectionCommands } from '../commands/connection';
+import { bindSessionMetadataIdentity } from './metadataIdentityBinding';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { t } from '../locales/t';
 import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
@@ -40,6 +41,16 @@ interface ActiveConnectionStore {
   removeByDbSessionId: (dbSessionId: string) => void;
   reset: () => void;
 }
+
+/**
+ * Announce that a runtime session now belongs to a persistent connection config.
+ *
+ * Relation columns are cached under identity + config revision + target, so the
+ * schema store must drop anything the session cached under a previous binding.
+ * The hand-off goes through `metadataIdentityBinding`: the schema store already
+ * depends on this module transitively (column loading reads driver
+ * capabilities), so a direct import back would close a module cycle.
+ */
 
 export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get) => ({
   connections: {},
@@ -101,6 +112,7 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
           },
         },
       }));
+      bindSessionMetadataIdentity(dbSessionId, connectionId);
       if (import.meta.env.DEV) {
         console.log('[connect] success', dbSessionId);
       }
@@ -173,6 +185,8 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
         },
       },
     }));
+
+    bindSessionMetadataIdentity(dbSessionId, connectionId);
 
     void Promise.resolve(connectionCommands.getConnectionInfo(dbSessionId))
       .then((info) => {
