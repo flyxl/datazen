@@ -337,6 +337,9 @@ pub fn run() {
             crate::commands::execute_driver_command_stream,
             crate::commands::get_connection_commands,
             crate::commands::get_driver_commands,
+            // ── 事件流订阅（当前阶段：显式未实现，失败关闭） ──
+            crate::commands::subscribe_events,
+            crate::commands::stop_event_subscription,
             // ── 导出 ──
             crate::commands::export_tables_stream,
             // ── 备份 ──
