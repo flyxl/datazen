@@ -348,6 +348,7 @@ enum Mode {
     Success,
     Unknown,
     CancelStage,
+    TwoBoundaries,
 }
 
 #[async_trait::async_trait]
@@ -376,6 +377,7 @@ impl JobHandler for CountingHandler {
             Mode::Success => StageTerminal::Succeeded,
             Mode::Unknown => StageTerminal::Unknown,
             Mode::CancelStage => StageTerminal::Cancelled,
+            Mode::TwoBoundaries => StageTerminal::Succeeded,
         };
         Ok(StageOutcome {
             stage_id: spec.stage_id.clone(),
@@ -388,7 +390,7 @@ impl JobHandler for CountingHandler {
                 unknown: datazen_platform_api::id::Counter::new(if terminal == StageTerminal::Unknown { 2 } else { 0 }),
             },
             commit_boundaries: if terminal == StageTerminal::Succeeded {
-                vec![datazen_platform_api::dto::job::CommitBoundary {
+                let mut boundaries = vec![datazen_platform_api::dto::job::CommitBoundary {
                     stage_id: spec.stage_id.clone(),
                     stable_target_fingerprint: "sha256:abc".into(),
                     committed_at: datazen_platform_api::id::Timestamp::new("2026-01-01T00:00:01Z"),
@@ -397,7 +399,20 @@ impl JobHandler for CountingHandler {
                     payload_digest: Some("sha256:payload".into()),
                     evidence: vec!["target-batch-record".into()],
                     verified_at: None,
-                }]
+                }];
+                if matches!(self.mode, Mode::TwoBoundaries) {
+                    boundaries.push(datazen_platform_api::dto::job::CommitBoundary {
+                        stage_id: spec.stage_id.clone(),
+                        stable_target_fingerprint: "sha256:abc".into(),
+                        committed_at: datazen_platform_api::id::Timestamp::new("2026-01-01T00:00:02Z"),
+                        operation_id: None,
+                        batch_id: Some("batch-2".into()),
+                        payload_digest: Some("sha256:payload2".into()),
+                        evidence: vec!["target-batch-record-2".into()],
+                        verified_at: None,
+                    });
+                }
+                boundaries
             } else {
                 vec![]
             },
@@ -459,6 +474,92 @@ async fn runtime_success_path_records_boundaries_checkpoints_and_progress() {
     assert_eq!(result.effect_outcome, EffectOutcome::Completed);
     assert_eq!(result.progress.committed.get(), 10);
     assert_eq!(calls.load(Ordering::SeqCst), 1, "handler 只执行一次");
+}
+
+/// 失败型 handler：run_stage 直接 Err。
+struct ErrHandler;
+
+#[async_trait::async_trait]
+impl JobHandler for ErrHandler {
+    fn kind(&self) -> &str {
+        "schemaDiffApply"
+    }
+    fn handler_version(&self) -> u64 {
+        1
+    }
+    fn validate_plan(&self, _plan: &FrozenPlan) -> Result<Vec<StageSpec>, datazen_runtime::job::JobError> {
+        Ok(vec![StageSpec {
+            stage_id: StageId::new("s1"),
+            kind: "apply".into(),
+            depends_on: vec![],
+        }])
+    }
+    async fn run_stage(
+        &self,
+        _spec: &StageSpec,
+        _cancel: &CancelToken,
+    ) -> Result<StageOutcome, datazen_runtime::job::JobError> {
+        Err(datazen_runtime::job::JobError::BudgetDenied("boom".into()))
+    }
+    fn verify_recovery(&self, _checkpoint: &datazen_platform_api::dto::job::Checkpoint) -> RecoveryVerdict {
+        RecoveryVerdict::ResumeAfterVerify { resume_through: 0 }
+    }
+}
+
+/// D1 反向：run_stage 直接 Err → run 透传 Err，且 BudgetLedger 许可数为 0。
+#[tokio::test]
+async fn run_stage_error_propagates_and_releases_all_permits() {
+    let (repo, clock) = repo_clock();
+    let c = ctx();
+    repo.accept(&c, definition("schemaDiffApply", apply_payload("plan-e1"), "job-e1"), &IdempotencyKey::new("e1"))
+        .await
+        .expect("accept");
+    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
+    ledger.lock().expect("lock").ensure_service(&conn());
+    let repo = Arc::new(repo);
+    let runtime = runtime_with(repo, Arc::new(ErrHandler), ledger.clone(), clock);
+    let err = runtime
+        .run(
+            &c,
+            &JobId::new("job-e1"),
+            &WorkerId::new("w1"),
+            &[EndpointRef { connection_id: conn(), service_key: "svc".into(), objects: vec!["users".into()], role: EndpointRole::SourceReader }],
+        )
+        .await
+        .expect_err("must propagate");
+    assert!(matches!(err, PortError::BackendUnavailable(_)), "{err:?}");
+    assert_eq!(ledger.lock().expect("lock").permits().count(), 0, "失败路径不得残留许可");
+}
+
+/// D1/D2：成功路径许可应已核销（count==0）；单 stage 两条边界 → committed_boundaries 读出 2 条。
+#[tokio::test]
+async fn success_path_releases_permits_and_persists_both_boundaries() {
+    let (repo, clock) = repo_clock();
+    let c = ctx();
+    repo.accept(&c, definition("schemaDiffApply", apply_payload("plan-e2"), "job-e2"), &IdempotencyKey::new("e2"))
+        .await
+        .expect("accept");
+    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
+    ledger.lock().expect("lock").ensure_service(&conn());
+    let calls = Arc::new(AtomicUsize::new(0));
+    let repo = Arc::new(repo);
+    let repo_for_read = repo.clone();
+    let runtime = runtime_with(repo, Arc::new(CountingHandler { kind: "schemaDiffApply", calls, mode: Mode::TwoBoundaries }), ledger.clone(), clock);
+    let result = runtime
+        .run(
+            &c,
+            &JobId::new("job-e2"),
+            &WorkerId::new("w1"),
+            &[EndpointRef { connection_id: conn(), service_key: "svc".into(), objects: vec!["users".into()], role: EndpointRole::SourceReader }],
+        )
+        .await
+        .expect("run");
+    assert_eq!(result.state, JobState::Succeeded);
+    assert_eq!(ledger.lock().expect("lock").permits().count(), 0, "成功路径许可已核销");
+    let persisted = repo_for_read.committed_boundaries(&JobId::new("job-e2"));
+    assert_eq!(persisted.len(), 2, "单 stage 两条边界必须全部落库: {persisted:?}");
+    assert_eq!(persisted[0].batch_id.as_deref(), Some("batch-1"));
+    assert_eq!(persisted[1].batch_id.as_deref(), Some("batch-2"));
 }
 
 #[tokio::test]

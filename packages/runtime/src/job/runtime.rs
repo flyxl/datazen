@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{Checkpoint, JobProgress, JobState, StageRecord};
-use datazen_platform_api::id::JobStateVersion;
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{JobId, WorkerId};
 
