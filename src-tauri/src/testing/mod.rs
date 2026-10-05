@@ -1,4 +1,4 @@
-pub mod mock_driver;
+pub use datazen_driver_api::mock_driver;
 
 #[cfg(any(test, feature = "test-harness"))]
 pub mod app_state;

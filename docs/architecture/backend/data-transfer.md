@@ -1,6 +1,6 @@
 # Data Transfer 架构
 
-> 当前实现说明；核对基线：2026-10-02，`d329539b9`。Source of truth：`src-tauri/src/data_transfer/`、`src-tauri/src/transfer/`、`src-tauri/src/commands/data_transfer/`。统一 JobRuntime 的目标设计另见 [迁移任务详细设计](../platform/data-migration-jobs.md)。
+> 当前实现说明；核对基线：2026-10-02，`d329539b9`。Source of truth：`packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`。统一 JobRuntime 的目标设计另见 [迁移任务详细设计](../platform/data-migration-jobs.md)。
 
 ## 1. 职责与执行边界
 
@@ -11,8 +11,8 @@ Data Transfer 搬运结构和数据，支持异构数据库、表列映射，以
 | 层 | 目录 | 职责 |
 | --- | --- | --- |
 | IPC 与计划管理 | `commands/data_transfer/` | inspect、preview、执行、取消、计划认领与恢复请求核验 |
-| 迁移执行 | `data_transfer/` | 参数检查、映射、筛选、读取、分批写入、文件输出与 checkpoint |
-| 方言与类型转换 | `transfer/` + Driver API | adapter 注册、IR 类型、源值读取、目标类型与 DDL 渲染 |
+| 迁移执行 | `packages/data-transfer/src/` | 参数检查、映射、筛选、读取、分批写入、文件输出与 checkpoint |
+| 方言与类型转换 | `packages/data-transfer/src/transfer/` + Driver API | adapter 注册、IR 类型、源值读取、目标类型与 DDL 渲染 |
 
 `transfer/mod.rs` 复用 Driver API 的 `IRColumn`、`IRDefault`、`IRTable`、`IRType`、`SyncSourceAdapter`、`SyncTargetAdapter`；Host 编排迁移，不复制驱动专属 DDL。
 

@@ -7,30 +7,7 @@ use crate::db::{
 use datazen_driver_api::PaginationSyntax;
 use std::sync::Arc;
 
-/// Single filter for table data APIs.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FilterCondition {
-    pub column: String,
-    pub operator: FilterOperator,
-    #[serde(default)]
-    pub value: Value,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum FilterOperator {
-    Eq,
-    Ne,
-    Gt,
-    Lt,
-    Gte,
-    Lte,
-    Like,
-    In,
-    IsNull,
-    IsNotNull,
-}
+pub use datazen_driver_api::filters::{FilterCondition, FilterOperator};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

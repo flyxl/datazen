@@ -1676,11 +1676,14 @@ dependencies = [
  "chrono",
  "datazen-ai-api",
  "datazen-application",
+ "datazen-data-sync",
+ "datazen-data-transfer",
  "datazen-driver-api",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-platform-api",
+ "datazen-schema-diff",
  "dirs",
  "flate2",
  "futures-util",
@@ -1755,6 +1758,48 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "datazen-data-sync"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "datazen-driver-api",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-sqlite",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "datazen-data-transfer"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "datazen-data-sync",
+ "datazen-driver-api",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-sqlite",
+ "flate2",
+ "inventory",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2050,6 +2095,24 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "datazen-schema-diff"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen-driver-api",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-sqlite",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

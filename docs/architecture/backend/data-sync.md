@@ -1,6 +1,6 @@
 # Data Sync 架构
 
-> Source of truth: `src-tauri/src/data_sync/`、`src-tauri/src/commands/sync/` 和 `src/windows/data-sync/`。
+> Source of truth: `packages/data-sync/`、`src-tauri/src/commands/sync/` 和 `src/windows/data-sync/`。
 
 Data Sync 用于**同族数据库的行级差异同步**。它与 Schema Diff、Data Transfer 是三个独立执行模型。
 
@@ -125,7 +125,7 @@ Compare / Preview / Execute 的状态都在当前窗口流程中维护；取消�
 
 ## 8. Tests
 
-- Rust：`src-tauri/src/data_sync/**`、`src-tauri/src/commands/sync/tests.rs`
+- Rust：`packages/data-sync/**`、`src-tauri/src/commands/sync/tests.rs`
 - Frontend：`src/windows/data-sync/__tests__/`
 - E2E：`e2e/specs/data-sync-*.ts`
 

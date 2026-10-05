@@ -4,7 +4,6 @@ pub mod job_registry;
 pub mod query_executor;
 pub mod schema_metadata;
 pub mod schema_scope;
-pub mod transaction;
 
 pub use connection_manager::ConnectionManager;
 pub use query_executor::{FilterCondition, OrderBy, QueryExecutor, SortCondition};

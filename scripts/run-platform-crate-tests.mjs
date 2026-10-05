@@ -122,7 +122,7 @@ export const PREFIX = '[platform-crate-tests]';
  * Layers whose crates must be unit-tested in CI. A crate appears here by
  * virtue of the directory it lives in, not by its name.
  */
-export const TESTED_LAYERS = Object.freeze(['runtime', 'application', 'platform-api', 'server']);
+export const TESTED_LAYERS = Object.freeze(['runtime', 'application', 'platform-api', 'server', 'schema-diff', 'data-sync', 'data-transfer']);
 
 /**
  * Cargo target selectors that must also be tested, per crate, **on top of `--lib`**.
