@@ -58,6 +58,8 @@ struct DrainState {
     no_consumer: bool,
     /// 已开始写入但尚未被消费的执行 → drain 期限。
     drain_timer: Option<TimerId>,
+    /// 停在 `await_drain` 的条件变量上、正等唤醒的线程数。
+    drain_waiters: usize,
     /// 每个订阅累计的事件数 / 字节数。
     subscription: SubscriptionCounters,
     /// **每个执行**累计字节数。§6.2 的 8 MiB 是「每执行」上限，不是全局标量：
@@ -117,6 +119,7 @@ impl DrainBarrier {
                 state: Mutex::new(DrainState {
                     no_consumer: false,
                     drain_timer: None,
+                    drain_waiters: 0,
                     subscription: SubscriptionCounters::default(),
                     per_execution_bytes: Vec::new(),
                     truncated: Vec::new(),
@@ -279,6 +282,15 @@ impl DrainBarrier {
     /// 是否已越过 drain 期限（无消费者等待被 FakeClock 判定为到期）。
     pub fn drain_deadline_elapsed(&self) -> bool {
         let state = self.inner.lock();
+        self.drain_deadline_elapsed_in(&state)
+    }
+
+    /// 期限是否**此刻**已到期。挂在单调状态上而不是挂在一次 `notify` 上：
+    /// 条件变量醒来后重判谓词、走回循环再判一次，两处必须问同一个问题。
+    ///
+    /// 只能问累计的 `fired_history`：`advance` 会把到期项从待触发队列里取走，
+    /// `expired()` 在推进之后反而是空的。
+    fn drain_deadline_elapsed_in(&self, state: &DrainState) -> bool {
         let Some(timer) = state.drain_timer else {
             return false;
         };
@@ -287,6 +299,36 @@ impl DrainBarrier {
             .fired_history()
             .iter()
             .any(|fired| fired.id == timer)
+    }
+
+    /// 此刻真的停在 `await_drain` 条件变量上的线程数。
+    pub fn drain_waiter_count(&self) -> usize {
+        self.inner.lock().drain_waiters
+    }
+
+    /// 阻塞到至少 `count` 个线程停在 [`Self::await_drain`] 里。
+    ///
+    /// 编排侧的 `FakeClock::advance` 只有在这之后才有意义：`advance` 先于期限装载发生，
+    /// 期限的到期时刻就挂在推进之后的 `now` 上，此后没有任何一次推进会再让它到期。
+    #[track_caller]
+    pub fn wait_for_drain_waiters(&self, count: usize) {
+        let locked = self.inner.lock();
+        let waited = super::wait_until(&self.inner.condvar, locked, |s| s.drain_waiters >= count);
+        // 同 `Barrier::wait_for_count`：先读、先放锁、再 panic，否则 panic 里会自死锁。
+        if let Err(state) = waited {
+            let actual = state.drain_waiters;
+            let armed = state.drain_timer.is_some();
+            drop(state);
+            let here = std::panic::Location::caller();
+            panic!(
+                "`DrainBarrier::wait_for_drain_waiters({count})` 在真实时间 {:?} 内等不到：\
+                 实际停在 `await_drain` 里的是 {actual} 个线程、drain 期限已装载={armed} —— \
+                 被等的那个没有真的阻塞，编排顺序就没有被钉住。调用方 {}:{}",
+                super::BLOCK_REAL_TIME_BUDGET,
+                here.file(),
+                here.line()
+            );
+        }
     }
 
     /// 阻塞到「有消费者」或「drain 期限到期」。返回是否因期限到期而截断。
@@ -313,20 +355,24 @@ impl DrainBarrier {
                 Self::remember_truncation(&mut state, execution_id, reason);
                 return Some(reason);
             }
+            // 谓词挂在**单调状态**上，不挂在「有人 notify 过我」上：唤醒若在挂上之前
+            // 送达就会被丢掉，而期限是否已到期是随时可重问的事实。
             let exhausted = {
-                let locked = state;
-                match super::wait_until(&self.inner.condvar, locked, |s| {
-                    !s.no_consumer || s.truncation_for(execution_id).is_some()
-                }) {
-                    Ok(next) => {
-                        state = next;
-                        false
-                    }
-                    Err(next) => {
-                        state = next;
-                        true
-                    }
-                }
+                state.drain_waiters = state.drain_waiters.saturating_add(1);
+                self.inner.condvar.notify_all();
+                let (mut next, exhausted) =
+                    match super::wait_until(&self.inner.condvar, state, |s| {
+                        !s.no_consumer
+                            || s.truncation_for(execution_id).is_some()
+                            || self.drain_deadline_elapsed_in(s)
+                    }) {
+                        Ok(next) => (next, false),
+                        Err(next) => (next, true),
+                    };
+                next.drain_waiters = next.drain_waiters.saturating_sub(1);
+                state = next;
+                self.inner.condvar.notify_all();
+                exhausted
             };
             if exhausted {
                 let no_consumer = state.no_consumer;

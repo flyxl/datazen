@@ -1,6 +1,6 @@
 # DataZen P0 transport-neutral fake resource 夹具与基准 harness 详细设计
 
-> 状态：**夹具已落地**，实现位于 `datazen-runtime`（`packages/runtime/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§10 真实驱动契约夹具与 §11 CM-60 基准 harness 仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
+> 状态：**夹具已落地**，实现位于 `datazen-runtime`（`packages/runtime/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `packages/runtime/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `packages/runtime/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
 > 读者：负责 [连接管理详细设计](connection-management.md) §14 开发步骤第 2 项（`testing/fake_resource`）、§6.5 句柄登记与 §15.3 基准 harness 的实现者。
 > 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
 
@@ -45,7 +45,7 @@
 
 | 维度 | 现有 `MockDriver` | 本文 fake resource provider |
 | --- | --- | --- |
-| 落点 | `src-tauri/src/testing/mock_driver.rs`（已存在） | 拟 `packages/runtime/src/connection/testing/`（crate 尚未创建） |
+| 落点 | `src-tauri/src/testing/mock_driver.rs`（已存在） | `packages/runtime/src/connection/testing/`（已落地） |
 | 抽象层 | `datazen_driver_api::DatabaseDriver` | connection-management.md §5.1 资源级端口 |
 | 典型调用 | 测试直接 `driver.query(&handle, ...)` | runtime actor / 执行网关 |
 | 能表达的句柄 | `ConnectionHandle` / `TransactionHandle`（`packages/driver-api/src/types.rs`） | `ResourceHandle` + §6.5 `SessionHandleRef` |
@@ -56,7 +56,7 @@
 
 ## 2. 落点与模块划分
 
-实际目录（runtime crate `datazen-runtime` 已创建，位于 `packages/runtime/`，只有一个 lib target）：
+实际目录（runtime crate `datazen-runtime` 已创建，位于 `packages/runtime/`；两个 target：`lib` 与 `cm60-bench` 这个 bin——§11.6 要求基准不得与功能测试共用入口）：
 
 | 路径 | 职责 | 关键导出 |
 | --- | --- | --- |
@@ -68,7 +68,7 @@
 | `.../testing/ids.rs` | 可预测 ID 生成与强制碰撞 | `FakeIds`、`FakeIdScope` |
 | `.../testing/fixtures.rs` | 固定实体（组织/用户/profile/命名空间 A、B） | `fixtures()` 常量与 `install_fixtures` |
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
-| `.../testing/bench.rs` | CM-60 基准 harness | **未实现**：§11 仍是目标设计，本 crate 内无此文件 |
+| `src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
 
 `cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`packages/runtime/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
@@ -564,10 +564,13 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 ### 11.3 统计口径
 
-- 对每个请求先计算 `overhead = gateway_duration + registration_duration`，再把该轮 overhead 样本升序排序，取第 `ceil(0.95 * N)` 项（1-based）作为门禁 p95；要求**每一轮**都 ≤ 10 毫秒。两段单独的分位数仅用于诊断，不能分别达标就判整体通过，也不能把两段 p95 相加代替逐请求求和。
+- **N 的定义**：N 是**获准（accepted）且未排队**的请求数，包含随后失败、超时或被取消的那些。N 不得缩成成功数——那是「N 只统计成功样本」，正是下一条禁止的事。
+- 对每个**真测到两段**的请求先计算 `overhead = gateway_duration + registration_duration`，再把该轮 overhead 样本升序排序，取第 `ceil(0.95 * M)` 项（1-based，`M` = 实测条数）作为门禁 p95；要求**每一轮**都 ≤ 10 毫秒。两段单独的分位数仅用于诊断，不能分别达标就判整体通过，也不能把两段 p95 相加代替逐请求求和。无缺口时 `M = N`，排名基数与上位契约 §15.3 一致；`M < N` 的那一轮已经因 `unmeasured_failures` 判红，它的 p95 不构成任何通过结论。
 - **排队请求单独报告**：被 `QueueFull` 拒绝或排队等待的请求不进入 p95 样本，单独给出其等待时长分位数与计数。
 - **不删除失败样本**：失败、超时、被取消的样本数与占比必须与分位数一起输出，禁止只统计成功样本。
-- 每轮输出：`N`、p50、p90、p95、p99、最大值、失败数、排队数。
+- **打不出两段真实时长的请求不许编一个数**：计入显式的 `unmeasured_failures`，它不为 0 时该轮门禁必为红。禁止用 0、用超时值、用上一段的值或任何构造值把它补进分位数，也禁止只塞网关段那半段时长——编出来的样本会把失败藏进 p95 里。
+- **分位数的输入条数是独立一列**：产物与校验都必须记录「喂给 p95 的样本条数」，且它必须等于实测条数。只比一个重算出来的 p95 值不够——把最大值丢掉后重算的近序位分位数可能一模一样，值看不出、条数看得出。
+- 每轮输出：`N`、分位数输入条数、p50、p90、p95、p99、最大值、失败数、`unmeasured_failures`、排队数。
 
 ### 11.4 压力部分另跑
 
@@ -577,7 +580,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 | 产物 | 内容 | 落点 |
 | --- | --- | --- |
-| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `bench.rs` 输出） |
+| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `src/bin/cm60-bench` 输出） |
 | 环境记录 | CPU 核数、内存、OS、编译器版本 | 同上文件 `environment` 段 |
 | 构建参数 | profile、features、依赖锁文件摘要 | 同上文件 `build` 段 |
 | journal | 资源/permit/句柄全量 journal 摘要 | 同上文件 `journal` 段 |
@@ -613,8 +616,10 @@ pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 **已落地、可立即运行**（runtime crate 已创建，核对自 `packages/runtime/Cargo.toml`）：
 
 ```bash
-cargo test -p datazen-runtime --lib                      # 夹具单测（130 个用例，crate 只有一个 lib target）
+cargo test -p datazen-runtime --lib                      # 夹具单测（383 个用例，crate 的 lib target）
 cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
+cargo test -p datazen-runtime --test cm60_pressure_drain   # CM-60 压力半（§11.4，另跑）
+cargo run --release -p datazen-runtime --bin cm60-bench     # CM-60 延迟半基准（§11，独立的 bin target）
 ```
 
 **仍未创建、当前**不可**运行，不得在文档或 CI 中当作现有脚本**：
@@ -622,7 +627,6 @@ cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 fea
 | 预期命令 | 前置条件 |
 | --- | --- |
 | `cargo test -p datazen-runtime --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
-| `cargo run --release -p datazen-runtime --bin cm60-bench` | 基准入口创建（§11） |
 
 创建后必须同步更新平台开发计划 §15.1 的命令表与 CI 门禁，不把未创建命令列为现有脚本。
 
