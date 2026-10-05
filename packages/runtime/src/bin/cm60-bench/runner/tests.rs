@@ -14,6 +14,45 @@ fn submission_token_rejections_preserve_the_machine_readable_reason() {
     );
 }
 
+#[tokio::test(start_paused = true)]
+async fn harness_checks_owner_and_preserves_unknown_outcome_fencing() {
+    let (port, journal) = FakeDriverPort::new(ready_view(), tiny().fake_command, EXEC_PREFIX, 0);
+    let gateway = ExecutionGateway::new(
+        port,
+        OwnerMatchAuthorizer::shared(),
+        InMemoryIdempotencyStore::shared(),
+        Arc::new(InstantClock::new()),
+    );
+    let peer = RequestPrincipal::new(
+        PrincipalId::new("principal-peer"),
+        OrganizationId::new("org-cm60-bench"),
+        DbSessionId::new(SESSION_ID),
+    );
+    assert!(matches!(
+        gateway.accept(&peer, request(0)).await,
+        Err(GatewayError::Runtime(
+            datazen_runtime::connection::RuntimeError::UnknownSession(_)
+        ))
+    ));
+    assert_eq!(journal.execute_calls(), 0);
+
+    let accepted = gateway.accept(&principal(), request(0)).await.unwrap();
+    gateway
+        .dispatch(&principal(), accepted.execution_id())
+        .await
+        .unwrap();
+    assert_eq!(journal.execute_calls(), 1);
+
+    let mut retry = request(0);
+    retry.idempotency_key = "fresh-key-same-query".to_owned();
+    assert!(matches!(
+        gateway.accept(&principal(), retry).await,
+        Err(GatewayError::IdempotencyVerificationRequired { .. })
+    ));
+    assert_eq!(journal.execute_calls(), 1);
+    assert!(gateway.accept(&principal(), request(1)).await.is_ok());
+}
+
 fn tiny() -> BenchPlan {
     BenchPlan {
         warmup: 4,

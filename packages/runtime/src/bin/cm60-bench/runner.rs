@@ -35,8 +35,9 @@ use datazen_runtime::connection::{
     NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, SessionContext, SessionHandle,
     SessionState, SessionView, Timestamp,
 };
+use datazen_runtime::gateway::owner_binding::OwnerMatchAuthorizer;
 use datazen_runtime::gateway::{
-    AlwaysAllow, ExecutionEvent, ExecutionGateway, ExecutionRequest, ExecutionSource, GatewayError,
+    ExecutionEvent, ExecutionGateway, ExecutionRequest, ExecutionSource, GatewayError,
     InMemoryIdempotencyStore, RequestPrincipal, SourceKind,
 };
 
@@ -123,10 +124,10 @@ fn source() -> ExecutionSource {
     )
 }
 
-fn call() -> CommandCall {
+fn call(index: usize) -> CommandCall {
     CommandCall {
         command: "query".to_owned(),
-        input: serde_json::json!({ "sql": "select 1" }),
+        input: serde_json::json!({ "sql": format!("select {index}") }),
     }
 }
 
@@ -136,7 +137,7 @@ fn request(index: usize) -> ExecutionRequest {
     ExecutionRequest::new(
         handle(),
         Counter::new(REVISION),
-        call(),
+        call(index),
         format!("{IDEMPOTENCY_PREFIX}-{index:08}"),
         source(),
     )
@@ -589,7 +590,7 @@ async fn drive_all(
     );
     let gateway = Arc::new(ExecutionGateway::new(
         Arc::clone(&port) as Arc<dyn datazen_runtime::registry::SessionPort>,
-        AlwaysAllow::shared(),
+        OwnerMatchAuthorizer::shared(),
         InMemoryIdempotencyStore::shared(),
         Arc::new(InstantClock::new()),
     ));
