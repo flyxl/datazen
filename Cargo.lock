@@ -1681,6 +1681,7 @@ dependencies = [
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-platform-api",
+ "datazen-runtime",
  "dirs",
  "flate2",
  "futures-util",
