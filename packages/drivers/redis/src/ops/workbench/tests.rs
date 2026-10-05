@@ -1,9 +1,9 @@
-// Unit tests for `ops_workbench` — declared by `ops_workbench.rs` under
-// `#[cfg(test)]`. Kept in its own file so the implementation module stays
-// readable; `ScriptedConn` is a scripted `ConnectionLike` that journals every
-// request, which is what lets these tests assert the round-trip shape
-// (one pipeline per key, one TYPE pipeline per 500 keys, no KEYS) without a
-// live Redis.
+// Unit tests for `ops::workbench` — declared by `ops/workbench/mod.rs`, which
+// holds `#[cfg(test)] mod tests;`. Kept in its own file so the implementation
+// module stays readable; `ScriptedConn` is a scripted `ConnectionLike` that
+// journals every request, which is what lets these tests assert the round-trip
+// shape (one pipeline per key, one TYPE pipeline per 500 keys, no KEYS) without
+// a live Redis.
 
 use super::*;
 
