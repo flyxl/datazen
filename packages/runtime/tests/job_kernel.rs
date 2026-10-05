@@ -297,6 +297,45 @@ fn cm65_multi_endpoint_reserve_is_all_or_nothing() {
     let _ = permits.release(true);
 }
 
+/// 反向：预算不足/服务未注册时 try_admit_many 整组回滚，一个许可都不持有。
+#[test]
+fn cm65_insufficient_budget_admits_no_permits_at_all() {
+    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
+    {
+        let mut guard = ledger.lock().expect("lock");
+        guard.ensure_service(&conn());
+        // conn-2 故意不注册：该组里任何一个端点不可准入都必须整组回滚
+    }
+    let endpoints = vec![
+        EndpointRef {
+            connection_id: conn(),
+            service_key: "svc-a".into(),
+            objects: vec!["users".into()],
+            role: EndpointRole::SourceReader,
+        },
+        EndpointRef {
+            connection_id: ConnectionId::new("conn-2"),
+            service_key: "svc-b".into(),
+            objects: vec!["orders".into()],
+            role: EndpointRole::TargetWriter,
+        },
+    ];
+    let result = datazen_runtime::job::MultiEndpointPermits::reserve(
+        ledger.clone(),
+        &endpoints,
+        ResourceClass::Job,
+        &org(),
+        &PrincipalId::new("user-a"),
+        0,
+    );
+    assert!(matches!(
+        result,
+        Err(datazen_runtime::job::JobError::BudgetDenied(_))
+    ));
+    let held = ledger.lock().expect("lock").permits_of(&PrincipalId::new("user-a"));
+    assert_eq!(held, 0, "整组回滚后不得持有任何许可");
+}
+
 // ------------------------------------------------ handler 夹具与 runtime 旅程
 
 struct CountingHandler {
@@ -522,7 +561,20 @@ async fn recovery_commit_succeeded_checkpoint_missing_requires_manual_review() {
     assert!(repo.latest_checkpoint(&c, &JobId::new("job-a")).is_none(), "checkpoint 未写入");
     let recoverable = repo.list_recoverable(&c, Default::default()).await.expect("recoverable");
     assert!(recoverable.iter().any(|j| j.view.job_id == JobId::new("job-a")), "可恢复候选");
-    // 手动审查，不自动重跑 handler
+    // 落库边界可见（D2）
+    assert_eq!(repo.committed_boundaries(&JobId::new("job-a")).len(), 1, "边界必须落库");
+    // 人工审查：标记待核验，并声明 handler 未被二次派发
+    repo.mark_pending_verification(&c, &JobId::new("job-a"), "commitSucceededCheckpointMissing")
+        .expect("mark");
+    let job = repo.get(&c, JobId::new("job-a")).await.expect("get");
+    assert!(job.view.pending_verification_reason.is_some(), "必须记录待核验原因");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let _handler = CountingHandler {
+        kind: "dataSyncApply",
+        calls: calls.clone(),
+        mode: Mode::Success,
+    };
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "recoverable 旅程不得静默重跑副作用阶段");
 }
 
 /// 旅程 B：checkpoint 已写但终态未写 —— 复核后补终态或继续，不重放已确认范围。
@@ -560,6 +612,19 @@ async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun()
     assert!(recoverable.iter().any(|j| j.view.job_id == JobId::new("job-b")));
     let latest = repo.latest_checkpoint(&c, &JobId::new("job-b")).expect("cp");
     assert_eq!(latest.committed.len(), 1);
+    // 恢复决策断言：checkpoint 带边界证据 → ResumeAfterVerify，不自动重跑已确认范围
+    let calls = Arc::new(AtomicUsize::new(0));
+    let handler = CountingHandler {
+        kind: "dataSyncApply",
+        calls: calls.clone(),
+        mode: Mode::Success,
+    };
+    let verdict = handler.verify_recovery(&latest);
+    assert!(
+        matches!(verdict, RecoveryVerdict::ResumeAfterVerify { .. }),
+        "{verdict:?}"
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "resumeAfterVerify 仍不允许自动重跑副作用阶段");
     // 重复写相同 checkpoint 版本 → 冲突
     let cp2 = datazen_platform_api::dto::job::Checkpoint {
         job_id: JobId::new("job-b"),

@@ -99,9 +99,13 @@ impl MultiEndpointPermits {
         now_ms: u64,
     ) -> Result<Self, JobError> {
         detect_endpoint_overlap(endpoints)?;
-        // 按 service_key 稳定排序，避免 AB/BA 的许可获取顺序差异（§3）。
+        // 按 service_key（物理服务身份）为键、connection_id 次键稳定排序，避免 AB/BA 的许可获取顺序差异（§3）。
         let mut endpoints: Vec<&EndpointRef> = endpoints.iter().collect();
-        endpoints.sort_by(|a, b| a.connection_id.as_str().cmp(b.connection_id.as_str()));
+        endpoints.sort_by(|a, b| {
+            a.service_key
+                .cmp(&b.service_key)
+                .then_with(|| a.connection_id.as_str().cmp(b.connection_id.as_str()))
+        });
         let claims: Vec<BudgetClaim> = endpoints
             .iter()
             .map(|ep| BudgetClaim {

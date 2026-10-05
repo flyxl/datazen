@@ -53,6 +53,8 @@ struct Inner {
     idempotency: HashMap<String, IdemReceipt>, // key
     consumed_plans: HashMap<String, JobId>,     // planId
     checkpoints: HashMap<(JobId, u64), Checkpoint>,
+    /// 逐批已确认提交边界（§7）：record_commit_boundary 落库，按产生顺序递增。
+    boundaries: HashMap<JobId, Vec<CommitBoundary>>,
 }
 
 /// `JobRepository` 的内存实现。线程安全：单个 `Mutex` 保护全部索引（同一把锁即受理事务）。
@@ -206,6 +208,15 @@ impl InMemoryJobRepository {
         Ok(row.record.clone())
     }
 
+    /// 已落库的提交边界（按产生顺序）。
+    pub fn committed_boundaries(&self, job_id: &JobId) -> Vec<CommitBoundary> {
+        let inner = match self.inner.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        inner.boundaries.get(job_id).cloned().unwrap_or_default()
+    }
+
     /// checkpoint 读取（恢复核验用）。
     pub fn latest_checkpoint(&self, ctx: &RequestContext, job_id: &JobId) -> Option<Checkpoint> {
         let _ = ctx;
@@ -356,12 +367,19 @@ impl JobRepository for InMemoryJobRepository {
         let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
         Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        if !inner.jobs.contains_key(&claim.job_id) {
+            return Err(PortError::NotFound(claim.job_id.as_str().into()));
+        }
+        // 边界的 durable 投影：落库后不再只由 checkpoint 兜底。
+        inner
+            .boundaries
+            .entry(claim.job_id.clone())
+            .or_default()
+            .push(boundary);
         let row = inner
             .jobs
             .get_mut(&claim.job_id)
             .ok_or_else(|| PortError::NotFound(claim.job_id.as_str().into()))?;
-        // 边界的 durable 投影随 checkpoint 持久化（§7）；此处只回填视图时间戳。
-        let _ = boundary;
         row.record.view.updated_at = self.clock.now();
         Ok(())
     }

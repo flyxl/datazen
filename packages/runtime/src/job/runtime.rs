@@ -129,6 +129,29 @@ impl JobRuntime {
             Ok(p) => p,
             Err(e) => return Err(PortError::from(e)),
         };
+        // D1：派发/收尾任一路径失败，必须释放全部许可；成功路径才按 consumed 核销。
+        let dispatched = self.dispatch(ctx, job_id, worker, handler, &stages).await;
+        match dispatched {
+            Ok(result) => {
+                permits.release(true);
+                Ok(result)
+            }
+            Err(err) => {
+                permits.release(false);
+                Err(err)
+            }
+        }
+    }
+
+    /// claim 之后的派发与收尾。错误会向上抛给 [`Self::run`]，由其统一释放预算许可。
+    async fn dispatch(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        worker: &WorkerId,
+        handler: Arc<dyn crate::job::handler::JobHandler>,
+        stages: &[crate::job::handler::StageSpec],
+    ) -> Result<JobResult, PortError> {
         let claim = self.repo.claim(ctx, job_id.clone(), worker.clone()).await?;
         let cancel = CancelToken::new();
         let mut progress = JobProgress::default();
@@ -136,7 +159,8 @@ impl JobRuntime {
         let mut saw_unknown = false;
         let mut saw_failed = false;
         let mut saw_cancelled = false;
-        for spec in &stages {
+        let mut committed_all = Vec::new();
+        for spec in stages {
             let latest = self.repo.get(ctx, job_id.clone()).await?;
             if latest.view.cancel_requested {
                 cancel.cancel();
@@ -165,25 +189,32 @@ impl JobRuntime {
                 self.repo
                     .record_commit_boundary(ctx, &claim, b.clone())
                     .await?;
-                let checkpoint = Checkpoint {
-                    job_id: job_id.clone(),
-                    state_version: JobStateVersion::new(
-                        self.repo
-                            .get(ctx, job_id.clone())
-                            .await?
-                            .state_version
-                            .get(),
-                    ),
-                    stable_target_fingerprint: b.stable_target_fingerprint.clone(),
-                    committed: vec![b.clone()],
-                    verification_evidence: b.evidence.clone(),
-                    recovery_policy: "resumeAfterVerify".to_string(),
-                };
-                let _ = self.repo.save_checkpoint(ctx, &claim, checkpoint).await;
+                committed_all.push(b.clone());
             }
             if outcome.terminal != StageTerminal::Succeeded {
                 break;
             }
+        }
+        // D2：边界逐条已落库；checkpoint 聚合一次性写入且错误不被吞。
+        if !committed_all.is_empty() {
+            let latest_job = self.repo.get(ctx, job_id.clone()).await?;
+            let fingerprint = committed_all
+                .first()
+                .map(|b| b.stable_target_fingerprint.clone())
+                .unwrap_or_default();
+            let evidence: Vec<String> = committed_all
+                .iter()
+                .flat_map(|b| b.evidence.iter().cloned())
+                .collect();
+            let checkpoint = Checkpoint {
+                job_id: job_id.clone(),
+                state_version: latest_job.state_version,
+                stable_target_fingerprint: fingerprint,
+                committed: committed_all,
+                verification_evidence: evidence,
+                recovery_policy: "resumeAfterVerify".to_string(),
+            };
+            self.repo.save_checkpoint(ctx, &claim, checkpoint).await?;
         }
         let (state, effect) = match (saw_unknown, saw_failed, saw_cancelled, any_boundary) {
             (true, ..) => (JobState::Failed, EffectOutcome::Unknown),
@@ -204,7 +235,6 @@ impl JobRuntime {
                 .repo
                 .mark_pending_verification(ctx, job_id, "unknownCommitBoundary");
         }
-        permits.release(true);
         Ok(JobResult {
             state,
             effect_outcome: effect,
