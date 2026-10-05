@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 mod exec;
 mod inspect;
+mod job_api;
 mod jobs;
 mod plans;
 mod preview;
@@ -27,6 +28,7 @@ pub(crate) use exec::execute_data_transfer_impl_with_write_observer;
 pub(crate) use inspect::{inspect_data_transfer_impl, inspect_sql_file_transfer_impl};
 pub(crate) use jobs::cancel_job;
 pub(crate) use preview::preview_data_transfer_impl;
+pub use job_api::*;
 use tauri::{AppHandle, State};
 
 #[tauri::command]

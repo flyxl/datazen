@@ -22,7 +22,7 @@ use crate::data_transfer::{
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use datazen_driver_api::TableType;
 
-async fn load_sql_source_snapshot(
+pub(super) async fn load_sql_source_snapshot(
     state: &AppState,
     job: &TransferJob,
 ) -> Result<
@@ -363,12 +363,12 @@ async fn execute_sql_file_target(
     result
 }
 
-struct TransferAdapters {
-    src_source: Arc<dyn SyncSourceAdapter>,
-    tgt_target: Arc<dyn SyncTargetAdapter>,
+pub(super) struct TransferAdapters {
+    pub(super) src_source: Arc<dyn SyncSourceAdapter>,
+    pub(super) tgt_target: Arc<dyn SyncTargetAdapter>,
 }
 
-async fn resolve_transfer_adapters(
+pub(super) async fn resolve_transfer_adapters(
     state: &AppState,
     src_db_type: &str,
     tgt_db_type: &str,
@@ -391,13 +391,13 @@ async fn resolve_transfer_adapters(
     })
 }
 
-struct ValidatedTransferContext {
-    src_config: crate::db::ConnectionConfig,
-    tgt_config: crate::db::ConnectionConfig,
-    src_driver: Arc<dyn crate::db::DatabaseDriver>,
-    src_handle: crate::db::ConnectionHandle,
-    tgt_driver: Arc<dyn crate::db::DatabaseDriver>,
-    tgt_handle: crate::db::ConnectionHandle,
+pub(super) struct ValidatedTransferContext {
+    pub(super) src_config: crate::db::ConnectionConfig,
+    pub(super) tgt_config: crate::db::ConnectionConfig,
+    pub(super) src_driver: Arc<dyn crate::db::DatabaseDriver>,
+    pub(super) src_handle: crate::db::ConnectionHandle,
+    pub(super) tgt_driver: Arc<dyn crate::db::DatabaseDriver>,
+    pub(super) tgt_handle: crate::db::ConnectionHandle,
 }
 
 async fn schema_fingerprint_for_side(
@@ -439,7 +439,7 @@ async fn schema_fingerprint_for_side(
     plans::fingerprint_schemas(entries).map_err(CommandError::from)
 }
 
-async fn validate_plan_context(
+pub(super) async fn validate_plan_context(
     state: &AppState,
     plan: &StoredTransferPlan,
 ) -> Result<ValidatedTransferContext, CommandError> {
@@ -536,7 +536,7 @@ async fn validate_plan_context(
     })
 }
 
-fn validate_selection(
+pub(super) fn validate_selection(
     job: &TransferJob,
     selection: &TransferRunSelection,
 ) -> Result<(), CommandError> {
@@ -572,7 +572,7 @@ fn validate_selection(
     Ok(())
 }
 
-fn apply_selection(job: &mut TransferJob, selection: &TransferRunSelection) {
+pub(super) fn apply_selection(job: &mut TransferJob, selection: &TransferRunSelection) {
     let Some(source_tables) = &selection.source_tables else {
         return;
     };
