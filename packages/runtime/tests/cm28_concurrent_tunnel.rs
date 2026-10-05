@@ -57,9 +57,31 @@ enum TunnelEvent {
     Close,
 }
 
-/// 隧道端口：**只**记物理开合，不带任何引用计数（唯一计数在台账里）。
+/// 隧道端口：**只**记物理开合，不带任何引用计数，也不带自存的开合计数
+/// （唯一计数在台账里；CM-32-FU1 登记的反例正是「端口自己再存一份账并让观测方法改读它」）。
 struct RecordingTunnelPort {
     events: Mutex<Vec<TunnelEvent>>,
+}
+
+/// 端口账：物理开合读数，**只**由 [`tally`] 这一个纯折函数算出。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct PortTally {
+    opened: usize,
+    closed: usize,
+}
+
+/// 「事件 → 账」的唯一折法。同 `src/tunnel/harness.rs` 的 `tallies` 一个形状；
+/// 本文件是外部 crate，看不见那个 `#[cfg(test)]` 私有模块，所以照同一规则就地写一份
+/// —— 审计按「每份实现各自只有一个折函数」检查，不跨文件共享。
+fn tally(events: &[TunnelEvent]) -> PortTally {
+    let mut out = PortTally::default();
+    for event in events {
+        match event {
+            TunnelEvent::Open => out.opened += 1,
+            TunnelEvent::Close => out.closed += 1,
+        }
+    }
+    out
 }
 
 impl RecordingTunnelPort {
@@ -69,24 +91,20 @@ impl RecordingTunnelPort {
         })
     }
 
+    /// 唯一事实源：事件日志本身（取锁 + 反毒）。
     fn lock(&self) -> MutexGuard<'_, Vec<TunnelEvent>> {
         self.events
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// 读数一律从 `lock()` 现折 —— 端口里没有任何计数**字段**。
     fn opened(&self) -> usize {
-        self.lock()
-            .iter()
-            .filter(|e| **e == TunnelEvent::Open)
-            .count()
+        tally(&self.lock()).opened
     }
 
     fn closed(&self) -> usize {
-        self.lock()
-            .iter()
-            .filter(|e| **e == TunnelEvent::Close)
-            .count()
+        tally(&self.lock()).closed
     }
 }
 

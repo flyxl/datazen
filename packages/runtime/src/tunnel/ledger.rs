@@ -8,22 +8,34 @@
 //!   （释放以 `release_tunnel` 的调用为准）」；
 //! * `release_tunnel` 明文「引用计数归零才真正拆除；**重复释放是幂等的**」。
 //!
-//! # 唯一计数铁律
+//! # 唯一计数铁律（CM-32-FU1：机械保证，不再是审计承诺）
 //!
 //! 全系统**只能有一个**引用计数器，就是 [`TunnelLedger`] 的 `refs`。
 //! [`TunnelTransport`] **不带**任何计数字段 —— 它只负责开/关真实隧道。
 //! 双重记账会让 CM-28「隧道不多减引用」与 CM-27「许可归零」同时失效，
 //! 而且两边各自看起来都对，极难排查。
 //!
-//! 但这条纪律**不由类型系统保证**：`&self` 只排除 `&mut self`，而 `Mutex` / `Cell`
-//! 是**内部可变性**，本就不需要 `&mut self`；`TunnelTransport: Send + Sync` 之下放一个
-//! `Mutex<usize>` 完全合法 —— `RecordingTunnelTransport` 的
-//! `journal: Mutex<Vec<TunnelEvent>>` 就是活证据。真实约束是「释放决策读的字段里
-//! **只有一份账**」：归零路径 `drain()` 确实读两个字段 —— `refs`（计数）与
-//! `state`（终态守卫，只保证 `Closing` / `Unconfirmed` 不再发第二次 close；
-//! 它**不是**第二本账，不参与计数、不增减）。而计数来源全系统**只有一个**，
-//! 就是本文件的 `refs` —— 唯一计数铁律就落在这里，也正因如此它才只能靠字段
-//! 审计与评审维持，详见 `transport.rs` 模块头。
+//! 类型系统本身**挡不住**第二本账：`&self` 只排除 `&mut self`，而 `Mutex` / `Cell`
+//! 是**内部可变性**，本就不需要 `&mut self`，往任何结构体里再塞一个 `Mutex<usize>`
+//! 完全合法。因此这条铁律落成下面三层机械保证，**由测试杀，不靠评审**：
+//!
+//! 1. **台账侧单点取数**：`refs` 字段只能被 [`TunnelEntry`] 的四个注册方法
+//!    （`established` / `refs` / `add_reference` / `take_reference`）直读或直写；
+//!    归零路径 `drain()` **按值**从 `take_reference` 取数，不碰字段。想给台账加第二本
+//!    计数，就得再开一个直写 `refs` 的函数，闸门立刻转红。
+//!    （`drain()` 另外读的 `state` 是**终态守卫**，只保证 `Closing` / `Unconfirmed`
+//!    不再发第二次 close；它不参与计数、不增减，因此不是第二本账。）
+//! 2. **端口侧单一派生**：录写端口的物理开合数只有一个来源 —— 纯函数
+//!    `tallies(events)` 把 journal 折成 `TunnelPortTally`。端口结构体里**不允许**出现
+//!    任何整数标量字段（含 `Mutex<usize>` 与本地新类型壳），任何观测方法都必须是那个
+//!    唯一折法的投影 —— 两项同时检查，缺一个都挡不住伪装。
+//!    台账自己的 `teardown_calls`（对外 `close_calls()`）是**观测**字段，
+//!    禁止出现在任何判断条件里。
+//! 3. **闸门会自证**：上述两条由 `tunnel::single_counter_audit` 对源码结构做审计
+//!    （`include_str!`，随 `--lib` 跑故而在 CI 作用域内），每条规则各带一条把**植入变异**
+//!    喂给自己的 kill test，另有一条断言「登记表不许被裁小」—— 闸门失效时
+//!    kill test 先转红，而不是安静地少扫一片。
+//!
 //! 代数不变量由 `tunnel::journey_single_counter` 的 `single_counter_algebra_holds` 钉住。
 //!
 //! # 失败传播（CM-32 第三条断言）
@@ -105,9 +117,59 @@ struct TunnelEntry {
     spec: TunnelSpec,
     state: TunnelState,
     /// 权威引用计数。归零即触发且仅触发一次 `close`。
+    ///
+    /// **唯一计数铁律（CM-32-FU1）**：这个字段只允许被下面三个注册方法
+    /// （[`Self::refs`] / [`Self::add_reference`] / [`Self::take_reference`]）
+    /// 直读或直写，其余任何函数体里出现 `entry.refs` 都是第二本账的形状 ——
+    /// 由 `tunnel::single_counter_audit` 的字段审计杀掉（含一条植入变异的
+    /// kill test）。归零路径 `drain()` 因此**按值**从 `take_reference` 取数。
     refs: u32,
     /// 依赖这条隧道的租约。隧道失败时**全量**枚举（共享资源的传播面就是它）。
     dependents: IndexSet<LeaseId>,
+}
+
+/// `TunnelEntry` 的计数**只有一条窄口**：三个注册方法，全部按值进出。
+///
+/// 之所以不是「把 `refs` 设成 pub 然后靠注释」：CM-32 repair round 1 实测过，
+/// 反例（给观测端口加一份自存的 `close_tally: Mutex<usize>` 并让 `close_calls()`
+/// 改读它）在纯注释纪律下**编译通过且全轨测试全绿**。按值进出把「读计数」变成
+/// 一个可被源码审计唯一点名的调用面，第二本账必须新开一条直写 `refs` 的路，
+/// 而那条路会被审计立刻发现。
+impl TunnelEntry {
+    /// 新建一条**已建立**的隧道：第一个持有者带来一份引用。
+    ///
+    /// 这是全模块里唯一允许把 `refs` 写成非零字面量的地方 —— 「一条刚开成的隧道
+    /// 有一份引用」是台账的出生条件，不是第二本账。
+    fn established(spec: TunnelSpec, dependent: LeaseId) -> Self {
+        Self {
+            spec,
+            state: TunnelState::Live,
+            refs: 1,
+            dependents: IndexSet::from([dependent]),
+        }
+    }
+
+    /// 当前计数的只读快照（按值交出，不外泄字段引用）。
+    fn refs(&self) -> u32 {
+        self.refs
+    }
+
+    /// 加一份引用，返回加完之后的值。
+    fn add_reference(&mut self) -> u32 {
+        self.refs += 1;
+        self.refs
+    }
+
+    /// 释放一份引用，返回减完之后的值。**减不到负**（饱和减法）。
+    fn take_reference(&mut self) -> u32 {
+        // 与旧写法等价的先判零再减，只是把「不越过 0」收进唯一出口。
+        debug_assert!(
+            self.refs > 0,
+            "a live tunnel entry must hold at least one reference"
+        );
+        self.refs = self.refs.saturating_sub(1);
+        self.refs
+    }
 }
 
 /// 一次 `acquire` 的结果。
@@ -148,7 +210,12 @@ pub struct TunnelLedger {
     entries: Vec<TunnelEntry>,
     /// 已发出的 `close` 次数。**只是观测计数器，不是引用计数** ——
     /// 它不参与任何释放判断，只供测试读出代数不变量。
-    close_calls: u64,
+    ///
+    /// CM-32-FU1 的闸门同时看两边：台账侧这条账是**观测**，所以它禁止出现在任何
+    /// 判断条件里（R3 禁止它进入 `if` / `matches!` / 比较表达式；字段与访问器**刻意
+    /// 不同名**，正是为了让扫描器能区分两者）；端口侧则**不允许**再长出一份自存的
+    /// 同类账 —— 见 `transport.rs` 模块头与 `tunnel::single_counter_audit`。
+    teardown_calls: u64,
 }
 
 impl TunnelLedger {
@@ -156,7 +223,7 @@ impl TunnelLedger {
         Self {
             transport,
             entries: Vec::new(),
-            close_calls: 0,
+            teardown_calls: 0,
         }
     }
 
@@ -205,8 +272,8 @@ impl TunnelLedger {
             if entry.dependents.contains(dependent) {
                 return Err(TunnelError::AlreadyHeld { spec: spec.clone() });
             }
-            entry.refs += 1;
-            let snapshot = entry.refs;
+            // 计数只经唯一窄口进出（见 `TunnelEntry::take_reference` 的注释）。
+            let snapshot = entry.add_reference();
             entry.dependents.insert(dependent.clone());
             return Ok(Some(TunnelLease {
                 binding: TunnelBinding {
@@ -224,15 +291,10 @@ impl TunnelLedger {
             // 物理接缝自报「这条 spec 不需要隧道」：同直连，不留任何账。
             return Ok(None);
         };
-        let entry = TunnelEntry {
-            spec: spec.clone(),
-            state: TunnelState::Live,
-            refs: 1,
-            dependents: IndexSet::from([dependent.clone()]),
-        };
+        let entry = TunnelEntry::established(spec.clone(), dependent.clone());
         let binding = TunnelBinding {
             spec: spec.clone(),
-            ref_count: entry.refs,
+            ref_count: entry.refs(),
         };
         self.entries.push(entry);
         Ok(Some(TunnelLease {
@@ -287,6 +349,11 @@ impl TunnelLedger {
 
     /// 归零路径：减一份引用；**归零才关闭**，且恰好一次。`release` 与
     /// `return_resource` 共用它，两条归还入口不可能有第二种语义。
+    ///
+    /// CM-32-FU1：本函数**不直读 `refs` 字段**，而是按值从 `TunnelEntry::refs()` /
+    /// `take_reference()` 取数。台账里参与这条路径的字段因此只有两个：计数（`refs`，
+    /// 唯一来源）与 `state`（终态守卫，不参与计数）。这条形状由
+    /// `tunnel::single_counter_audit` 的源码审计（R1 / R2）钉住。
     fn drain(&mut self, index: usize) -> TunnelRelease {
         let spec = self.entries[index].spec.clone();
         let entry = &mut self.entries[index];
@@ -297,22 +364,18 @@ impl TunnelLedger {
         if matches!(entry.state, TunnelState::Closing | TunnelState::Unconfirmed) {
             return TunnelRelease {
                 closed: false,
-                refs: entry.refs,
+                refs: entry.refs(),
                 state: entry.state,
             };
         }
 
-        debug_assert!(
-            entry.refs > 0,
-            "a live tunnel entry must hold at least one reference"
-        );
-        // 饱和减法：refs 是 u32，先判零再减，保证任何路径都减不到 0 以下。
-        entry.refs = entry.refs.saturating_sub(1);
+        // 唯一计数出口：饱和减法在 `take_reference` 里，减不到 0 以下。
+        let remaining = entry.take_reference();
 
-        if entry.refs > 0 {
+        if remaining > 0 {
             return TunnelRelease {
                 closed: false,
-                refs: entry.refs,
+                refs: remaining,
                 state: entry.state,
             };
         }
@@ -321,7 +384,7 @@ impl TunnelLedger {
         entry.state = TunnelState::Closing;
         match self.transport.close(&spec) {
             Ok(()) => {
-                self.close_calls += 1;
+                self.teardown_calls += 1;
                 self.entries.remove(index);
                 TunnelRelease {
                     closed: true,
@@ -362,7 +425,7 @@ impl TunnelLedger {
 
     /// 权威计数快照。仅供观测，**不得**用于判断能否释放。
     pub fn ref_count(&self, spec: &TunnelSpec) -> Option<u32> {
-        self.position(spec).map(|index| self.entries[index].refs)
+        self.position(spec).map(|index| self.entries[index].refs())
     }
 
     /// 当前状态快照。
@@ -376,8 +439,12 @@ impl TunnelLedger {
         self.entries.len()
     }
 
-    /// 累计 `close` 调用次数。**观测用**，不参与任何释放判断。
+    /// 累计 `close` 调用次数。**纯观测**，不参与任何释放判断。
+    ///
+    /// 字段与访问器**刻意不同名**（`teardown_calls` / `close_calls`）：R3 的判据是
+    /// 「这份账不许出现在判断条件里」，同名会让扫描器在字段与访问器之间分不清，
+    /// 一个合法的访问器就会被误判成违规 —— 误伤会把人逼向更隐蔽的写法。
     pub fn close_calls(&self) -> u64 {
-        self.close_calls
+        self.teardown_calls
     }
 }
