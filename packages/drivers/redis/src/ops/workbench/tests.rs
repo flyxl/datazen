@@ -274,7 +274,7 @@ impl SlotRoutedConnection for ShortReplyConn {}
 // ==========================================================================
 // [coder] 修复回合（Bug 第 1 轮）— 回归面按主题拆成两个子模块，避免本文件
 // 继续超出单文件规模：
-//   * `fix_round1`       — BUG-003 / BUG-004 / BUG-005（拓扑无关）
+//   * `fix_round1`       — redis-workbench-BUG-003 / redis-workbench-BUG-004 / redis-workbench-BUG-005（拓扑无关）
 //   * `cluster_topology` — BUG-001 / BUG-002，直接仿真 redis 的 cluster 分发层
 //                          （逐项错误折叠 + 单 slot 路由），而不是把它 mock 掉。
 // ==========================================================================

@@ -1,5 +1,5 @@
 /**
- * redis-kvbar-ui — round-1 bug-fix regressions (BUG-001 … BUG-004).
+ * redis-kvbar-ui — round-1 bug-fix regressions (redis-kvbar-ui-BUG-001 … redis-kvbar-ui-BUG-004).
  *
  * The two suites this complements already pin the happy path
  * (`kvBarSlots.test.tsx`) and the branch gaps the first test round found
@@ -491,7 +491,7 @@ describe('[fix:BUG-003] the refresh action covers the policy row', () => {
   });
 });
 
-describe('[fix:BUG-004] the two PTTL sentinels, told apart on screen', () => {
+describe('[fix:redis-kvbar-ui-BUG-004] the two PTTL sentinels, told apart on screen', () => {
   // `describeTtl` already split `-2` (gone) from `-1` (never expires); the fix is
   // the renderers consuming it. `kvBarSlotTesterGaps.test.tsx` pins each word for
   // one slot; what is pinned here is the part a single-slot test cannot see — that

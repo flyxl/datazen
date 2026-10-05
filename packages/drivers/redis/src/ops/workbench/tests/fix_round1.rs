@@ -1,4 +1,5 @@
-// Regression surface added by the first bug-fix round — BUG-003 / BUG-004 /
+// Regression surface added by the first bug-fix round —
+// redis-workbench-BUG-003 / redis-workbench-BUG-004 /
 // BUG-005. Declared from `tests.rs`, so it reuses `ScriptedConn`,
 // `ShortReplyConn`, `full_key_info_replies()` and the journal helpers there.
 //
@@ -100,7 +101,7 @@ fn the_ui_descriptions_still_promise_those_same_numbers() {
 
 #[test]
 fn only_an_explicit_none_answers_that_the_key_is_absent() {
-    // BUG-004: "cannot parse a type" and "the server says the key is gone" are
+    // redis-workbench-BUG-004: "cannot parse a type" and "the server says the key is gone" are
     // different facts, and only the second may be rendered as 键已过期.
     assert!(type_reply_says_absent(&bulk("none")));
     assert!(type_reply_says_absent(&RValue::SimpleString("none".into())));
@@ -116,7 +117,7 @@ fn only_an_explicit_none_answers_that_the_key_is_absent() {
 
 #[test]
 fn unrecognised_type_reply_is_unknown_state_and_not_an_expired_key() {
-    // BUG-004: these shapes are neither "unusable" nor a type name. Before the
+    // redis-workbench-BUG-004: these shapes are neither "unusable" nor a type name. Before the
     // fix they fell through `parse_type_token() == None` and were reported as
     // `missing: true`, i.e. the sidebar claimed a live key had expired.
     for shape in [RValue::Okay, RValue::Double(1.5), RValue::Boolean(true)] {

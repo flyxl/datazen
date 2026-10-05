@@ -12,12 +12,12 @@
  *  - an INFO reply whose section list carries no `maxmemory_policy` at all, and
  *    a policy reply that lands after `dbSessionId` has moved on;
  *  - both `PTTL` sentinel arms at the render side: `-2` (gone inside the pipeline
- *    while `missing` stayed false) vs `-1` (genuinely never expires) — BUG-004.
+ *    while `missing` stayed false) vs `-1` (genuinely never expires) — redis-kvbar-ui-BUG-004.
  *
  * No case here is skipped any more. Three of them were registered as
  * `FIXME(redis-kvbar-ui-BUG-00N)` in round 1 and are un-skipped by the fix
  * commit that closes each one; the measured pre-fix failure is quoted next to
- * the case as the proof it was never vacuous. The BUG-004 pair used to pin
+ * the case as the proof it was never vacuous. The redis-kvbar-ui-BUG-004 pair used to pin
  * today's wrong label in a green case so the skipped twin could not pass by
  * accident — once the fix landed that would have been a second, redundant
  * assertion of the same arm, so it now asserts the *other* arm (`PTTL -1`, a
@@ -396,7 +396,7 @@ describe('[tester] KeyPropsSidebar stale payload — sidebar half of redis-kvbar
   });
 });
 
-describe('[tester] PTTL sentinels reach the renderer (BUG-004)', () => {
+describe('[tester] PTTL sentinels reach the renderer (redis-kvbar-ui-BUG-004)', () => {
   // redis-kvbar-ui-BUG-004 (fixed, was `it.skip`): `key_object_info` can answer
   // `missing:false` together with `ttlMs:-2` — `TYPE` succeeds and `PTTL` reports
   // the key gone inside the same pipeline (`ops/workbench/shapes.rs`'s
