@@ -1,12 +1,15 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, cleanup, screen, act, waitFor } from '@testing-library/react';
-import { relationKey } from '@datazen/driver-sdk';
+import { relationColumnsCacheKey } from '../../../stores/schemaMetadataKeys';
 import { QueryPanel } from '../QueryPanel';
 import { usePanelStore, type QueryPanel as QueryPanelState } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
 import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 import type { SqlEditorEnhancedOptions } from '@datazen/extension-points';
-import type { ConnectionSchemaState } from '../../../stores/schemaStoreState';
+import {
+  createEmptyConnectionSchema,
+  type ConnectionSchemaState,
+} from '../../../stores/schemaStoreState';
 import { seedConnectionSchema } from '../../../test/mocks/schemaStore';
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -245,11 +248,11 @@ function seedSchema(patch: Partial<ConnectionSchemaState>): void {
  */
 function seedColumns(name: string, columns: string[]): void {
   const ref = { database: DATABASE, schema: 'public', name };
-  const existing = schemaStoreState.schemas.get(DB_SESSION)?.relationColumns ?? {};
+  const entry = schemaStoreState.schemas.get(DB_SESSION) ?? createEmptyConnectionSchema();
   seedSchema({
     relationColumns: {
-      ...existing,
-      [relationKey({ ...ref, dbSessionId: DB_SESSION })]: {
+      ...entry.relationColumns,
+      [relationColumnsCacheKey(entry, DB_SESSION, ref)]: {
         ref,
         columns: columns.map((column) => ({ name: column, dataType: 'text', nullable: true })),
         primaryKeys: [],

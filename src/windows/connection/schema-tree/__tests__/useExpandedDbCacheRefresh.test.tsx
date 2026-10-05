@@ -10,6 +10,8 @@ import type { ConnectionSchemaState } from '../../../../stores/schemaStoreState'
 /** Shape stored per connection inside schemaStore.schemas. */
 function schemaEntry(databases: string[], epoch: number): ConnectionSchemaState {
   return {
+    connectionId: 'cfg-expand',
+    metadataRevision: 1,
     currentDatabase: databases[0] ?? null,
     currentSchema: null,
     databases,

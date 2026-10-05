@@ -1,6 +1,6 @@
 import { createEmptyConnectionSchema, type ConnectionSchemaState } from '../schemaStoreState';
 import { projectRelationColumns } from '../schemaColumnLoader';
-import { relationKey } from '@datazen/driver-sdk';
+import { relationColumnsCacheKey } from '../schemaMetadataKeys';
 import type { SchemaStore } from '../schemaStore';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type { TableInfo } from '../../types';
@@ -28,10 +28,17 @@ function schemaSnapshot(store: TestSchemaStore, session: string) {
     ),
   };
 }
-function cachedRelation(session: string, database: string, name: string, names: string[]) {
+function cachedRelation(
+  store: TestSchemaStore,
+  session: string,
+  database: string,
+  name: string,
+  names: string[],
+) {
   const ref = { database, schema: null, name };
+  const entry = store.getState().schemas.get(session) ?? createEmptyConnectionSchema();
   return {
-    [relationKey({ ...ref, dbSessionId: session })]: {
+    [relationColumnsCacheKey(entry, session, ref)]: {
       ref,
       primaryKeys: [],
       columns: names.map((name) => ({ name, dataType: 'text', nullable: true })),
@@ -350,7 +357,7 @@ describe('schemaStore.loadTables', () => {
 
   it('setLoadedTables partitions views and clears columnMap', async () => {
     seedSchema(useSchemaStore, 'test-conn', {
-      relationColumns: cachedRelation('test-conn', 'db1', 'old', ['a']),
+      relationColumns: cachedRelation(useSchemaStore, 'test-conn', 'db1', 'old', ['a']),
       currentDatabase: 'other',
     });
     useSchemaStore.getState().setLoadedTables(

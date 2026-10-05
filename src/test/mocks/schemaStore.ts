@@ -49,6 +49,7 @@ export function createSchemaStoreMock(): SchemaStoreMock {
     ensureNamespacePath: vi.fn(async () => {}),
     ensureColumns: vi.fn(async () => {}),
     ensureDatabaseColumns: vi.fn(async () => {}),
+    bindMetadataIdentity: vi.fn(),
     toggleExpand: vi.fn(),
     setSelected: vi.fn(),
     reset: vi.fn(),
@@ -61,7 +62,11 @@ export function createSchemaStoreMock(): SchemaStoreMock {
       if (!entry) return null;
       const target = name.trim();
       if (!target) return null;
-      const candidates = [...entry.tables, ...entry.views, ...Object.values(entry.pathItems).flat()];
+      const candidates = [
+        ...entry.tables,
+        ...entry.views,
+        ...Object.values(entry.pathItems).flat(),
+      ];
       const owners = new Set(
         candidates.filter((item) => item.name === target).map((item) => item.schema ?? null),
       );
@@ -85,10 +90,9 @@ export function seedConnectionSchema(
 export function schemaStoreMockModule(state: SchemaStoreCache) {
   const emptyConnectionSchema = createEmptyConnectionSchema();
   return {
-    useSchemaStore: Object.assign(
-      (selector: (s: typeof state) => unknown) => selector(state),
-      { getState: () => state },
-    ),
+    useSchemaStore: Object.assign((selector: (s: typeof state) => unknown) => selector(state), {
+      getState: () => state,
+    }),
     /** Hit → that session's field; miss → the empty snapshot. Never another session's data. */
     useConnectionSchemaField: <K extends keyof ConnectionSchemaState>(
       dbSessionId: string,
