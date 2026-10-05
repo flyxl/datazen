@@ -230,9 +230,9 @@ export function buildCargoArgv(crates) {
     // The exact argv matters, and the rejected alternatives are recorded here
     // because each one is defensible-looking and wrong:
     //   * **Replacing** the `--lib` invocation with `['test','--tests',…]`.
-    //     Measured on this tree, `--tests` is strictly stronger than `--lib`:
-    //     same targets, same tests, except that `--tests` also drops the doc
-    //     tests. So the swap would not open a hole in the library, it would
+    //     `--tests` is strictly stronger than `--lib`: same targets, same
+    //     tests, except that `--tests` also drops the doc tests. So the swap
+    //     would not open a hole in the library, it would
     //     trade doc-test coverage for a re-run of targets already covered — and
     //     `--tests` is fine as an *addition*. Either way the `--lib` call above
     //     stays exactly as it was.
@@ -245,11 +245,10 @@ export function buildCargoArgv(crates) {
     //     `tests/*.rs` would join the crate silently and stay untested. Cargo
     //     already knows the list; the gate should not keep a second one.
     // So: keep `--lib`, keep the extras, **add** a no-selector call. What it
-    // repeats from the first is only the two targets that call names, and it
-    // emits no Doc-tests block, because `--lib` selects the library's unit-test
-    // target and nothing else. The doctests are new coverage here, not a repeat
-    // of anything above. That redundancy is still paid for deliberately: it is
-    // bounded and compile-shared, while a drifting duplicate target list is not.
+    // repeats from the first is only the two targets that call names; the doc
+    // tests are new coverage here, not a repeat of anything above. That
+    // redundancy is still paid for deliberately: it is bounded and
+    // compile-shared, while a drifting duplicate target list is not.
     //
     // It also picks up `cm60-bench`'s own unit tests in **debug**, which the
     // `--release` call below runs properly and which is the run that counts —
