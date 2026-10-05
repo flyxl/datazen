@@ -122,6 +122,11 @@ pub(crate) fn finish_app_state(
         wapps: wapp_manager,
         cancel_registry: crate::ai::CancellationRegistry::default(),
     };
+    if let Ok(adapter) = state.platform.require() {
+        if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {
+            tracing::error!(code = ?error.code, "desktop platform injection failed");
+        }
+    }
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state
 }

@@ -479,7 +479,20 @@ export function usePanelHandlers({
       // tab's database dropdown) so re-execution and tab restoration use that
       // bound database rather than the session-wide, shared `currentDatabase`,
       // which other tabs or a Settings round-trip can change out from under it.
-      const rawDatabase = target?.database?.trim() || currentDatabase || undefined;
+      // The `currentDatabase` prop mirrors the ACTIVE panel only: from the
+      // workspace home there is no active panel, so it reads null even when
+      // the session entry already carries the user's last picked database
+      // (navigator toggleDb pins it). Fall back to the per-session entry so a
+      // tab opened from the home quick action inherits the session pointer
+      // instead of binding '' (which then shadows the pointer in the tab's
+      // QueryPanel — `database ?? currentDatabase` keeps the empty string).
+      const sessionCurrentDatabase =
+        useSchemaStore
+          .getState()
+          .schemas.get(sidebarConnCtx.dbSessionId)
+          ?.currentDatabase?.trim() || null;
+      const rawDatabase =
+        target?.database?.trim() || currentDatabase?.trim() || sessionCurrentDatabase || undefined;
       let boundDatabase = rawDatabase;
       let namespacePath: string[] | undefined;
       if (isPathHierarchy && rawDatabase) {

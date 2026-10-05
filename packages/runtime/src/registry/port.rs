@@ -61,6 +61,15 @@ pub trait SessionPort: Send + Sync + 'static {
         request: ExecuteInSessionRequest,
     ) -> Result<ExecutionReceipt, RuntimeError>;
 
+    async fn execute_bound(
+        &self,
+        execution_id: ExecutionId,
+        request: ExecuteInSessionRequest,
+    ) -> Result<ExecutionReceipt, RuntimeError> {
+        let _ = execution_id;
+        self.execute_in_session(request).await
+    }
+
     /// 请求取消一次执行（§7.6），返回**本次取消落地后的执行状态快照**。
     ///
     /// 失败条件：`UnknownSession`；`CancelFailed`（取消绑定与

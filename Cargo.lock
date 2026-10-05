@@ -1681,6 +1681,7 @@ dependencies = [
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-platform-api",
+ "datazen-runtime",
  "dirs",
  "flate2",
  "futures-util",
@@ -2039,6 +2040,7 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "chrono",
+ "datazen-application",
  "datazen-driver-api",
  "datazen-platform-api",
  "datazen-runtime",

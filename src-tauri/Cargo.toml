@@ -22,6 +22,7 @@ datazen-ai-api = { path = "../packages/ai-api" }
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
 datazen-platform-api = { path = "../packages/platform-api" }
 datazen-application = { path = "../packages/application" }
+datazen-runtime = { path = "../packages/runtime" }
 inventory = "0.3"
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon", "devtools"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process"] }

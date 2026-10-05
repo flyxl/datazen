@@ -18,6 +18,7 @@ default = []
 test-harness = []
 
 [dependencies]
+datazen-application = { workspace = true }
 datazen-driver-api = { workspace = true }
 # ID newtype（ConnectionId / DbSessionId / Counter …）的唯一定义处。
 # 方向是 runtime → platform-api，符合 platform-api F-04（本包不得依赖 runtime/application/领域包）。

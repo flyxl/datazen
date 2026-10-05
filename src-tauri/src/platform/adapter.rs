@@ -117,10 +117,12 @@ impl CallScope {
 }
 
 /// Tauri 侧的 platform 适配根。
-#[derive(Debug)]
 pub struct PlatformAdapter {
     identity: DesktopIdentity,
     handles: Arc<SessionHandleRegistry>,
+    services: std::sync::OnceLock<Arc<ApplicationServices>>,
+    runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
+    profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
 }
 
 impl PlatformAdapter {
@@ -129,6 +131,9 @@ impl PlatformAdapter {
         Ok(Self {
             identity: DesktopIdentity::from_desktop_user(client_instance_id)?,
             handles: Arc::new(SessionHandleRegistry::new()),
+            services: std::sync::OnceLock::new(),
+            runtime: std::sync::OnceLock::new(),
+            profiles: std::sync::OnceLock::new(),
         })
     }
 
@@ -137,6 +142,9 @@ impl PlatformAdapter {
         Self {
             identity,
             handles: Arc::new(SessionHandleRegistry::new()),
+            services: std::sync::OnceLock::new(),
+            runtime: std::sync::OnceLock::new(),
+            profiles: std::sync::OnceLock::new(),
         }
     }
 
@@ -185,7 +193,7 @@ impl PlatformAdapter {
     /// 保留这个方法而不是删掉，是为了让调用点写出的 `None` 指向一个已知原因，
     /// 而不是"忘了注入"。
     pub fn application_services(&self) -> Option<Arc<ApplicationServices>> {
-        None
+        self.services.get().cloned()
     }
 
     /// 需要应用服务时调用；未接线 ⇒ 明确报错，不回落旧路径。
@@ -199,6 +207,89 @@ impl PlatformAdapter {
                  因此此处不做回落，也不得改走旧共享 session",
             )
         })
+    }
+}
+
+impl std::fmt::Debug for PlatformAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlatformAdapter")
+            .field("identity", &self.identity)
+            .field("injected", &self.services.get().is_some())
+            .finish()
+    }
+}
+impl PlatformAdapter {
+    pub fn inject(
+        &self,
+        store: Arc<crate::store::Store>,
+        registry: Arc<crate::db::DriverRegistry>,
+    ) -> Result<(), ApiError> {
+        if self.services.get().is_some() {
+            return Ok(());
+        }
+        let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
+        let backend = Arc::new(super::session_backend::DesktopSessionBackend::new(
+            registry, store, 32,
+        ));
+        let runtime = Arc::new(
+            datazen_runtime::application::RuntimeConnectionUseCases::new(
+                profiles.clone(),
+                Arc::new(super::policy::DesktopPolicy),
+                backend.clone(),
+            ),
+        );
+        let sink = runtime.result_sink();
+        backend
+            .set_publisher(Arc::new(move |id, output| {
+                sink.publish_output(id, output).map_err(|_| {
+                    datazen_runtime::connection::ProviderError::ProtocolError(
+                        "result publication rejected".into(),
+                    )
+                })
+            }))
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "result publisher unavailable",
+                )
+            })?;
+        // The shared runtime validates namespace using each real provider. The legacy
+        // standalone resolver has no resource-scoped driver metadata and stays fail-closed.
+        let target = datazen_application::target::TargetResolver::new(
+            Arc::new(|_| None),
+            Arc::new(|_, _| None),
+            Arc::new(|_| None),
+            Arc::new(|_| None),
+        );
+        let services = Arc::new(ApplicationServices::new(
+            target,
+            datazen_application::identity_policy::IdentityPolicy::new(),
+            runtime.clone(),
+        ));
+        self.runtime.set(runtime).map_err(|_| {
+            ApiError::new(ApiErrorCode::ContextConflict, "runtime already injected")
+        })?;
+        self.profiles.set(profiles).map_err(|_| {
+            ApiError::new(ApiErrorCode::ContextConflict, "profiles already injected")
+        })?;
+        self.services.set(services).map_err(|_| {
+            ApiError::new(ApiErrorCode::ContextConflict, "services already injected")
+        })?;
+        Ok(())
+    }
+    pub fn runtime(
+        &self,
+    ) -> Result<Arc<datazen_runtime::application::RuntimeConnectionUseCases>, ApiError> {
+        self.runtime
+            .get()
+            .cloned()
+            .ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable, "runtime not injected"))
+    }
+    pub fn profiles(&self) -> Result<Arc<super::repositories::DesktopProfiles>, ApiError> {
+        self.profiles
+            .get()
+            .cloned()
+            .ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable, "profiles not injected"))
     }
 }
 

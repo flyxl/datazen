@@ -40,11 +40,13 @@ import type {
   SetSessionContextRequest,
   SubmissionToken,
   SubscribeEventsRequest,
+  OwnerRef,
 } from './types';
 
 export interface BackendClient {
   /** Which backend this facade is bound to. Never a business-method argument. */
   readonly backendId: string;
+  getPlatformIdentity(): Promise<{ clientInstanceId: string; organizationId: string; principalId: string }>;
 
   /**
    * The binding this facade delegates to.
@@ -107,7 +109,7 @@ export interface BackendClient {
   cancelJob(jobId: Id, token: SubmissionToken): Promise<CancelReceipt>;
 
   readArtifact(request: ArtifactReadRequest): Promise<ArtifactChunk>;
-  issueSubmissionToken(operation: string, handle: SessionHandle | null): Promise<SubmissionToken>;
+  issueSubmissionToken(operation: string, handle: SessionHandle | null, scope?: { connectionId: string; owner: OwnerRef }): Promise<SubmissionToken>;
 }
 
 /**
@@ -129,6 +131,7 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
 
   return {
     backendId,
+    getPlatformIdentity: () => guard('getPlatformIdentity', () => transport.call('getPlatformIdentity', undefined)),
     transport,
 
     listConnections: () =>
@@ -218,9 +221,9 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
 
     readArtifact: (request) => guard('readArtifact', () => transport.call('readArtifact', request)),
 
-    issueSubmissionToken: (operation, handle) =>
+    issueSubmissionToken: (operation, handle, scope) =>
       guard('issueSubmissionToken', () =>
-        transport.call('issueSubmissionToken', { operation, handle }),
+        transport.call('issueSubmissionToken', { operation, handle, ...scope }),
       ),
   };
 }

@@ -181,6 +181,8 @@ impl SyncTask {
 #[derive(Default)]
 pub(crate) struct StoreCache {
     pub(super) connections: Vec<ConnectionConfig>,
+    pub(super) platform_profiles:
+        std::collections::BTreeMap<String, super::platform_profiles::ProfileMetadata>,
     /// Independently stored tunnel definitions (`tunnels.json`).
     pub(super) tunnels: Vec<SavedTunnel>,
     pub(super) groups: Vec<String>,
