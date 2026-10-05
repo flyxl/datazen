@@ -1,5 +1,9 @@
 /** Auto-split domain: sync (fr) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    'Le plan précédent n’est plus valide (il a expiré, la cible a dérivé ou les autorisations ont changé). Préparez à nouveau un plan à jour avant d’appliquer quoi que ce soit.',
+  'migrationJob.pendingVerificationHint':
+    'Une tâche précédente attend une vérification. Consultez le centre des tâches et effectuez le rapprochement avant d’appliquer de nouvelles modifications.',
   // --- Data Sync ---
   'sync.source': 'Source',
   'sync.target': 'Cible',

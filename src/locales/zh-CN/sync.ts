@@ -1,5 +1,9 @@
 /** Auto-split domain: sync (zh-CN) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    '先前的计划已失效（已过期、目标结构发生变化或权限变更）。应用任何内容前，请重新生成一份新的计划。',
+  'migrationJob.pendingVerificationHint':
+    '先前的任务正等待验证。请先打开任务中心核对状态，再应用任何新变更。',
   'migrationHistory.open': '运行历史',
   'migrationHistory.title': '数据迁移运行历史',
   'migrationHistory.empty': '暂无运行记录。',

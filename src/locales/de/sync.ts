@@ -1,5 +1,9 @@
 /** Auto-split domain: sync (de) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    'Der vorherige Plan ist nicht mehr gültig (er ist abgelaufen, das Ziel ist abgewichen oder die Berechtigungen haben sich geändert). Erstellen Sie vor der Anwendung erneut einen aktuellen Plan.',
+  'migrationJob.pendingVerificationHint':
+    'Ein früherer Auftrag wartet auf eine Überprüfung. Öffnen Sie die Auftragsübersicht und gleichen Sie den Stand ab, bevor Sie neue Änderungen anwenden.',
   // --- Data Sync ---
   'sync.source': 'Quelle',
   'sync.target': 'Ziel',
