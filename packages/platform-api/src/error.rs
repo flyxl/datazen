@@ -57,6 +57,22 @@ pub enum PortError {
     /// 超出配额。
     #[error("quota exceeded: {0}")]
     QuotaExceeded(String),
+
+    /// P5：同键不同 payload 的幂等重放。
+    #[error("idempotency conflict: same key, different request payload")]
+    IdempotencyConflict,
+
+    /// P5：旧 claim/过期 claim 的写入一律拒绝（§4.3 fence）。
+    #[error("stale or expired claim: write rejected")]
+    StaleClaim,
+
+    /// P5：planId 已被其他 apply Job 消费（§2.1 唯一约束）。
+    #[error("plan already consumed by an apply job: {0}")]
+    PlanAlreadyConsumed(String),
+
+    /// P5：未知 major 版本的计划 / 检查点拒绝。
+    #[error("unsupported version: {0}")]
+    UnsupportedVersion(String),
 }
 
 impl PortError {

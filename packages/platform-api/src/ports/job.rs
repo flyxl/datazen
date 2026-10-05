@@ -42,25 +42,27 @@ pub trait JobRepository: Send + Sync + 'static {
         filter: JobFilter,
     ) -> Result<Vec<JobRecord>, PortError>;
 
+    /// P5：stage 登记必须携带当前 claim，仓储校验 generation/worker/租约未过期（§4.3 修订）。
     async fn record_stage(
         &self,
         ctx: &RequestContext,
-        job_id: JobId,
+        claim: &JobClaim,
         stage: StageRecord,
     ) -> Result<(), PortError>;
 
     async fn record_commit_boundary(
         &self,
         ctx: &RequestContext,
-        job_id: JobId,
+        claim: &JobClaim,
         boundary: CommitBoundary,
     ) -> Result<(), PortError>;
 
     /// 状态 CAS；并发推进同一 Job 时由版本不匹配拒绝，不做覆盖写。
+    /// P5：同样携带当前 claim 做防护性校验。
     async fn compare_and_set_state(
         &self,
         ctx: &RequestContext,
-        job_id: JobId,
+        claim: &JobClaim,
         expected: JobStateVersion,
         next: JobState,
     ) -> Result<JobRecord, PortError>;
@@ -79,7 +81,7 @@ pub trait JobRepository: Send + Sync + 'static {
     async fn save_checkpoint(
         &self,
         ctx: &RequestContext,
-        job_id: JobId,
+        claim: &JobClaim,
         cp: Checkpoint,
     ) -> Result<(), PortError>;
 
@@ -226,6 +228,10 @@ mod tests {
                 artifact_ids: vec![ArtifactId::new("art-1")],
                 created_at: Timestamp::new("2026-01-01T00:00:00Z"),
                 updated_at: Timestamp::new("2026-01-01T00:00:01Z"),
+                effect_outcome: None,
+                cancel_requested: false,
+                pending_verification_reason: None,
+                progress: Default::default(),
             },
             definition: JobDefinition {
                 job_id: JId::new("job-1"),
@@ -251,6 +257,11 @@ mod tests {
             stage_id: StageId::new("stage-1"),
             stable_target_fingerprint: "sha256:abc".into(),
             committed_at: Timestamp::new("2026-01-01T00:00:00Z"),
+            operation_id: None,
+            batch_id: None,
+            payload_digest: None,
+            evidence: Vec::new(),
+            verified_at: None,
         };
         let checkpoint = Checkpoint {
             job_id: JId::new("job-1"),
@@ -279,6 +290,8 @@ mod tests {
             stage_id: StageId::new("stage-1"),
             worker_id: WorkerId::new("w-1"),
             claimed_at: Timestamp::new("2026-01-01T00:00:00Z"),
+            claim_generation: Counter::new(1),
+            expires_at: Timestamp::new("2026-01-01T00:01:00Z"),
         };
         let renewed = JobClaim {
             claimed_at: Timestamp::new("2026-01-01T00:00:30Z"),

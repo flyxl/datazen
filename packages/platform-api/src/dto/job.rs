@@ -6,7 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::id::{ArtifactId, BlockId, ExecutionId, JobId, StageId, Timestamp, WorkerId};
+use crate::dto::execution::EffectOutcome;
+use crate::id::{ArtifactId, BlockId, Counter, ExecutionId, JobId, StageId, Timestamp, WorkerId};
 use crate::OwnerRef;
 
 /// 任务状态。与 `ExecutionState` 是**不同**的状态机：任务状态不含 `cancelRequested`。
@@ -26,6 +27,17 @@ impl JobState {
     }
 }
 
+/// P5 阶段进度：五类计数彼此独立，未确认 commit 的行不得计入 `committed`（§2.3）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobProgress {
+    pub read: Counter,
+    pub converted: Counter,
+    pub attempted: Counter,
+    pub committed: Counter,
+    pub unknown: Counter,
+}
+
 /// 任务视图。`executionIds` 只收**已建立**的执行记录；接受记录提交失败时不应出现在这里。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +50,18 @@ pub struct JobView {
     pub artifact_ids: Vec<ArtifactId>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+    /// P5 派生效果结局（§10.1.1）。与 `state` 独立：失败/取消不抹掉已提交范围。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_outcome: Option<EffectOutcome>,
+    /// 取消请求是独立事实，不把 `state` 提前改成 cancelled（§10.1.1）。
+    #[serde(default)]
+    pub cancel_requested: bool,
+    /// 进入待核验时的原因（如 `outcomeUnknown` / `cleanupNotConfirmed`）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_verification_reason: Option<String>,
+    /// P5 五类进度计数；缺省为全零。
+    #[serde(default)]
+    pub progress: JobProgress,
 }
 
 /// 任务定义：一次提交要做什么。**不含**任何运行时会话信息。
@@ -85,6 +109,21 @@ pub struct CommitBoundary {
     /// 已提交内容的稳定目标指纹（规范化目标 + 版本 + 映射指纹）。
     pub stable_target_fingerprint: String,
     pub committed_at: Timestamp,
+    /// P5：Operation 粒度。Schema Diff 以 operationId 标记（§7）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    /// P5：批次粒度。Data Sync/Transfer 以 batchId 标记（§7）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_id: Option<String>,
+    /// P5：冻结载荷摘要；恢复核验用它区分「重放了新载荷」与「原批已提交」。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload_digest: Option<String>,
+    /// P5：真实提交 evidence（目标批次记录 / 只读核验结果摘要）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence: Vec<String>,
+    /// P5：证据被核验确认的时间。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_at: Option<Timestamp>,
 }
 
 /// 任务 checkpoint。**禁止**包含 live session、lease、cursor（§4.2）。
@@ -103,7 +142,8 @@ pub struct Checkpoint {
     pub recovery_policy: String,
 }
 
-/// worker 认领请求的认领结果。`None` 表示被别人先认领。
+/// worker 认领。P5：`claim_generation` 是持久化单调计数（由仓储单调发放），
+/// 初次认领与每次接管 +1，续约不变；`expires_at` 到期即失租，旧 claim 的写入一律拒绝。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobClaim {
@@ -111,6 +151,8 @@ pub struct JobClaim {
     pub stage_id: StageId,
     pub worker_id: WorkerId,
     pub claimed_at: Timestamp,
+    pub claim_generation: Counter,
+    pub expires_at: Timestamp,
 }
 
 /// 任务查询过滤条件。分页游标**不落盘、不跨重启**，因此用 `Counter` 而非持久化游标。
@@ -153,6 +195,10 @@ mod tests {
             artifact_ids: vec![ArtifactId::new("art-1")],
             created_at: Timestamp::new("2026-01-01T00:00:00Z"),
             updated_at: Timestamp::new("2026-01-01T00:00:05Z"),
+            effect_outcome: Some(EffectOutcome::Completed),
+            cancel_requested: false,
+            pending_verification_reason: None,
+            progress: JobProgress::default(),
         }
     }
 
@@ -178,6 +224,11 @@ mod tests {
                 stage_id: StageId::new("stage-1"),
                 stable_target_fingerprint: "sha256:abc".into(),
                 committed_at: Timestamp::new("2026-01-01T00:00:00Z"),
+                operation_id: None,
+                batch_id: None,
+                payload_digest: None,
+                evidence: Vec::new(),
+                verified_at: None,
             }],
             verification_evidence: vec!["pk-verified".into()],
             recovery_policy: "reauthorize-then-rewrite".into(),
@@ -247,6 +298,8 @@ mod tests {
             stage_id: StageId::new("stage-1"),
             worker_id: WorkerId::new("w-1"),
             claimed_at: Timestamp::new("2026-01-01T00:00:00Z"),
+            claim_generation: Counter::new(1),
+            expires_at: Timestamp::new("2026-01-01T00:01:00Z"),
         };
         let value = serde_json::to_value(&claim).expect("serialize");
         assert_eq!(
