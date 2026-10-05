@@ -33,6 +33,6 @@
 
 - `97885d6e0` domain-extract 合入（`867bd81a2` 删 progress.md）。
 - `bb2cc5606` job-core 合入（`d2282dcbd` 删 progress.md），3 轮验收：R1 FAIL(D1–D5) → 修复 → R2 FAIL(D6–D8) → 补测试/台账 → R3 TEST_PASSED。
-- `0db23e6d0` i18n 合入（ledger 6e99a1701，TEST_PASSED，删 progress.md `b??`）：补齐 9 locale 的 migrationJob key + 修 3 个 schema-diff 测试 fixture（27→0 警告，生产代码零改动、断言未削弱）。合并后 sanity：i18n-sync-check EXIT=0、vitest schema-diff+locales 108 passed EXIT=0（本 worktree 需先补 codegen：generate-builtin-locales + resolve-drivers --codegen-only）。残留（既存、非本轨）：data-transfer 套件 9 行同类警告、MigrationRunHistoryDialog 1 行 → 用同 2 行 fixture 模板清或收敛进共享 setup。
+- `0db23e6d0` i18n 合入（ledger 6e99a1701，TEST_PASSED，删 progress.md `1edcead4c`）：补齐 9 locale 的 migrationJob key + 修 3 个 schema-diff 测试 fixture（27→0 警告，生产代码零改动、断言未削弱）。合并后 sanity：i18n-sync-check EXIT=0、vitest schema-diff+locales 108 passed EXIT=0（本 worktree 需先补 codegen：generate-builtin-locales + resolve-drivers --codegen-only）。残留（既存、非本轨）：data-transfer 套件 9 行同类警告、MigrationRunHistoryDialog 1 行 → 用同 2 行 fixture 模板清或收敛进共享 setup。
 - `4ba769fc9` schema-diff 合入（`2486ac679` 删 progress.md），2 轮验收：R1 FAIL(D1–D4) → 修复 `edf2713a0` → R2 TEST_PASSED；合并后 sanity `cargo test -p datazen-schema-diff -p datazen-runtime` EXIT=0。R2 遗留：`read_only_verify` 仍保守返回 Indeterminate；`schemaDiff.limitations.*` 警告已由 i18n 轨修复。
 - `5f46a0262` client 合入（`1029e9fae` 删 progress.md）。
