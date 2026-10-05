@@ -81,6 +81,8 @@ export interface ArtifactChunk {
   artifactId: Id;
   chunkIndex: Counter;
   totalChunks: Counter | null;
+  publishedChunkCount?: Counter;
+  publishedByteLength?: Counter;
   offset: Counter;
   bytes: Uint8Array;
   resultCompleteness: ResultCompleteness;
