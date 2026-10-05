@@ -22,6 +22,12 @@
 - Wave 1 各 handler 轨在 Wave 0 合入 `codex/p5-integration` 后新开 worktree，各自只改自己的 `packages/<domain>` + `src-tauri/src/commands/<domain>` + 对应窗口最小接线。
 - `progress.md` 仅存在于各轨分支；本文件与之合并时一律删除，不得带进 main。
 
+## 跨轨事实与遗留
+
+- **i18n 门禁盲区**：`scripts/i18n-sync-check.mjs` 的 `LOCALE_FILES` 硬编码 8 个 locale、**不含 zh-CN**，且 `getTranslation` 缺 key 静默回退 en，故 zh-CN 欠债两道门禁都不可见。**P5 各轨新增 en key 必须同时写 zh-CN**（中文 UI 会直接显示英文原文）；其余 8 locale 留给发布前 i18n-sync 收尾。
+- **lazy domain 测试 fixture**：测试若把 `useLocaleDomains` mock 成恒 true，lazy `sync` pack 永不注册，而 `@datazen/ui` 组件走包内**真 `t()`**，会刷 `Missing translation` 警告。修法为 test-only：`import '../../../locales'` + `beforeAll(() => ensureAllLazyDomains('en'))`。data-transfer 套件与 `MigrationRunHistoryDialog.test.tsx` 仍有同根因残留（非阻塞）。
+- 结构性观察（未修，属产品决策）：de/es/fr/ja/ko/pt-BR/ru/zh-TW 8 套字典完整但**运行时不可达**——`builtin-locales.json`、`lazyPacks.loaders`、`generated-locales.ts` 三处仅覆盖 en/zh-CN，实测 `setLocale('de')` 返回 en 文案。
+
 ## 记录（追加式）
 
 - `97885d6e0` domain-extract 合入（`867bd81a2` 删 progress.md）。
