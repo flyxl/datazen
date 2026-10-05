@@ -1,5 +1,16 @@
-import { ApiError } from '@datazen/backend-client';
+import { ApiError, type SessionView } from '@datazen/backend-client';
 import type { DatabaseSwitchResult } from './QueryPanelSession';
+
+/**
+ * Whether a database switch must ask the user before it moves the runtime
+ * context away from an open transaction.
+ *
+ * A session that is already `closed` or `lost` has no transaction left to lose:
+ * the switch opens a fresh editor session, so there is nothing to confirm.
+ */
+export function needsTransactionSwitchConfirm(session: SessionView): boolean {
+  return session.state !== 'closed' && session.state !== 'lost';
+}
 
 /** Deterministic mapping from session lifecycle outcomes to user-facing copy keys. */
 export function switchResultPromptKey(result: DatabaseSwitchResult): string | null {
