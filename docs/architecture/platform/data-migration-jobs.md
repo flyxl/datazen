@@ -1,6 +1,7 @@
 # 迁移三件套与 JobRuntime 平台化详细设计
 
-> 状态：P5 目标设计，尚不代表当前行为。代码基线：2026-10-02，`d329539b9`。
+> 状态：P5 目标设计，部分能力已在 Wave 0 落地实现；未实现部分仍为目标设计。代码基线：2026-10-02，`d329539b9`。
+> **Wave 0 已实现**：`packages/runtime/src/job/` 的 JobRuntime 内核——JobHandler 协议（validatePlan/runStage/verifyRecovery）、plan/checkpoint 版本守卫、取消意图、effectOutcome 聚合、claim fencing（`claim_generation`）、幂等 receipt、planId 唯一消费、多端原子预算（含 EndpointOverlap 拒绝）、持久化路径禁运行时句柄与事件载荷白名单；`JobRepository` 端口签名已改为携带 claim。三件套领域物抽取属于 Wave 1。
 > 本文按用户要求补齐平台演进设计。连接、错误与 CM 用例以 [连接管理](connection-management.md) 为权威，阶段门槛以 [开发计划](../../development/platform-development-plan.md) 为权威；持久化字段以 [持久化模型](persistence-model.md) 为权威。
 
 ## 1. 范围与代码迁移边界

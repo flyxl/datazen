@@ -314,7 +314,7 @@ pub trait JobRepository: Send + Sync + 'static {
 
 ```
 
-P5 目标修订：上述 worker 写入端口必须携带 `JobClaim`；现有代码签名尚未包含该条件，不属于已实现事实。claim 含 `jobId`、`stageId`、`workerId`、`claimGeneration`、`claimedAt`、`expiresAt`；generation 是持久化单调 Counter。claim、renew、阶段/提交边界/checkpoint 写入与状态 CAS 都在仓储事务中校验当前 generation、worker 与租约未过期；租约时间由仓储权威时钟判断。初次认领和每次接管增加 generation，续约不增加。旧 claim 返回明确失租错误且不写任何内容。未认领 queued Job 的取消使用独立请求标记，不能伪造 worker claim；恢复扫描只产生核验候选。该契约在 P5 落地，P9 才增加跨 worker 协调。
+P5 落地：上述 worker 写入端口已携带 `JobClaim`（`record_stage` / `record_commit_boundary` / `compare_and_set_state` / `save_checkpoint` 均收 `&JobClaim`）。claim 含 `jobId`、`stageId`、`workerId`、`claimGeneration`、`claimedAt`、`expiresAt`；generation 是持久化单调计数。claim、renew、阶段/提交边界/checkpoint 写入与状态 CAS 都在仓储事务中校验当前 generation、worker 与租约未过期；租约时间由仓储权威时钟判断（`packages/runtime/src/job/time.rs` 的注入 `JobClock`）。初次认领和每次接管增加 generation，续约不增加。旧 claim 返回明确失租错误（`PortError::StaleClaim`）且不写任何内容。未认领 queued Job 的取消使用独立请求标记（`request_cancel`），不能伪造 worker claim；恢复扫描只产生核验候选。该契约已在 P5 Wave 0 落地（`packages/runtime/src/job/repository.rs` 的 `InMemoryJobRepository`）；P9 才增加跨 worker 协调。
 
 ```rust
 #[async_trait]
