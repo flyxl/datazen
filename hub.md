@@ -12,7 +12,7 @@
 | 0 | `p5-domain-extract` 三件套抽 packages/*（纯机械，旧 IPC 保持可用） | feature/p5-domain-extract | — | MERGED `97885d6e0`，TEST_PASSED，worktree/分支已清理 |
 | 1 | `p5-schema-diff` handler | feature/p5-schema-diff | — | MERGED `4ba769fc9`，R1 FAIL(D1–D4)→修复→R2 TEST_PASSED（225+10 / runtime 32 块 / host 1711+0+6 / typecheck / vitest 87），worktree/分支已清理 |
 | 1 | `p5-data-sync` handler | feature/p5-data-sync | .worktrees/datazen-p5-data-sync | CODING |
-| 1 | `p5-data-transfer` handler | feature/p5-data-transfer | .worktrees/datazen-p5-data-transfer | CODING |
+| 1 | `p5-data-transfer` handler | feature/p5-data-transfer | .worktrees/datazen-p5-data-transfer | FIX-ROUND（R1 **TEST_FAILED**：4 门禁全绿但 D1 blocker + D2–D4 high，详见下方记录；已派回原 coder） |
 | 1 | `p5-client` 任务中心/订阅/幂等回执 UI 适配 | feature/p5-client | — | MERGED `5f46a0262`，TEST_PASSED（D1–D5 遗留：D2 hydration onUpdate 空实现、D5 schema-diff 窗口 step 未回退，记后续） |
 | R | 全量回归 + 故障旅程 + 平台门禁 | — | — | NOT_STARTED |
 
@@ -27,6 +27,8 @@
 - **i18n 门禁盲区（缺陷 D-I18N-1，中，归门禁维护轨）**：`scripts/i18n-sync-check.mjs` 的 `LOCALE_FILES` 硬编码 8 个 host locale、**不含 zh-CN**（Tester 实证：仅加 zh-CN 的补丁副本即报 117 missing EXIT=1，原门禁全绿）；且 vitest 用 `getTranslation` 缺 key 静默回退 en 使断言恒过。**P5 各轨新增 en key 必须同时写 zh-CN**（中文 UI 会直接显示英文原文）；其余 8 locale 留给发布前 i18n-sync 收尾。
 - **zh-CN 存量欠债**：baseline（集成分支）缺 117 key（sync 114 + settings 3），**main 现值缺 138**（另含 query 18 + schema 3）；全部可追溯到 v0.2.3 之前的迁移三件套/更新器提交，非 P5 引入。处置：另立**发布前 i18n 收尾轨**在 main 上统一补，不随 P5 各轨。
 - **lazy domain 测试 fixture**：测试若把 `useLocaleDomains` mock 成恒 true，lazy `sync` pack 永不注册，而 `@datazen/ui` 组件走包内**真 `t()`**，会刷 `Missing translation` 警告。修法为 test-only：`import '../../../locales'` + `beforeAll(() => ensureAllLazyDomains('en'))`。data-transfer 套件与 `MigrationRunHistoryDialog.test.tsx` 仍有同根因残留（非阻塞）。
+- **禁止 `cargo fmt --all`**：P5 各轨 worktree 同仓共存，`--all` 会顺手格式化**其他轨/禁区**的文件。Tester 实测入场时 `p5-data-transfer` 树里有 45 个文件的 `cargo fmt --all` 未提交漂移（含 `packages/data-sync/**`），后被外部还原。各轨一律 `cargo fmt -p <自己的 crate>`。
+- **绿门禁 ≠ 功能接上**：`p5-data-transfer` R1 四门禁全绿、禁区 diff=0、台账数字真实，但审查出 D1 SQL 文件迁移被 §8 门禁判死（CM-49 测试**直驱 handler 绕过门禁**才没暴露）、D2 字节账只记不拦、D4 取消路径是死码（`cancelled: None`，全仓无 `Some`）。后续轨 Tester brief 必须包含「测试是否走生产门禁/接线路径」这一问；派单时也须要求 coder 的契约测试经 IPC/命令层而非直驱内部函数。
 - 结构性观察（未修，属产品决策）：de/es/fr/ja/ko/pt-BR/ru/zh-TW 8 套字典完整但**运行时不可达**——`builtin-locales.json`、`lazyPacks.loaders`、`generated-locales.ts` 三处仅覆盖 en/zh-CN，实测 `setLocale('de')` 返回 en 文案。
 
 ## 记录（追加式）
