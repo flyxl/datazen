@@ -112,6 +112,7 @@ export class EditorSessionController {
   }
   close(mode: CloseMode = 'requireNoTransaction'): Promise<CloseReceipt | null> {
     return this.serial(async () => {
+      if (this.opening) await this.opening;
       if (!this.session) return null;
       const receipt = await this.client.closeSession({ handle: this.session.handle, mode });
       this.session = { ...this.session, state: receipt.state };
@@ -136,6 +137,7 @@ export class EditorSessionController {
   }
   openNewSession(): Promise<SessionView> {
     return this.serial(async () => {
+      if (this.opening) await this.opening;
       if (this.session && !['lost', 'closed'].includes(this.session.state)) {
         throw new Error('Close the current session before opening its replacement.');
       }
@@ -146,6 +148,22 @@ export class EditorSessionController {
     });
   }
   clone(owner: OwnerRef): EditorSessionController {
+    if (owner.kind === 'editor' && this.owner.kind === 'editor' &&
+        owner.editorSessionId === this.owner.editorSessionId) {
+      throw new Error('Cloned editors require a distinct owner ID');
+    }
     return new EditorSessionController(this.client, this.initialTarget, owner);
   }
+}
+
+/** Uses the host-issued client identity; editorSessionId is the pane's stable local owner ID. */
+export async function createEditorSessionController(
+  client: BackendClient, initialTarget: ExecutionTarget, editorSessionId: string,
+): Promise<EditorSessionController> {
+  const identity = await client.getPlatformIdentity();
+  if (!identity.clientInstanceId || !editorSessionId) throw new Error('Missing editor owner identity');
+  return new EditorSessionController(client, initialTarget, {
+    kind: 'editor', clientInstanceId: identity.clientInstanceId as import('@datazen/backend-client').Id,
+    editorSessionId: editorSessionId as import('@datazen/backend-client').Id,
+  });
 }

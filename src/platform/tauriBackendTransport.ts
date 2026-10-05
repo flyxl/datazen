@@ -76,7 +76,7 @@ export function createDesktopBackendTransport(): BackendTransport {
       payload: MethodMap[K]['request'],
     ): Promise<MethodMap[K]['response']> {
       const command = toCommandName(method);
-      const args = method.includes("_") ? payload : { request: payload ?? {} };
+      const args = method === "getPlatformIdentity" ? {} : method.includes("_") ? payload : { request: payload ?? {} };
       // The request's own fields are the command's named arguments, so this
       // cast is a widening to Tauri's argument bag, not a shape change: the
       // object handed to `invoke` is the same object `call` received.
@@ -101,7 +101,12 @@ export function createDesktopBackendTransport(): BackendTransport {
           const signal = () => { wake?.(); wake = null; };
           channel.onmessage = (message) => {
             if (finished) return;
-            if (message.kind === 'event') queue.push(message.event);
+            if (message.kind === 'event') {
+              if (queue.length >= 2048) {
+                failure = new Error('Event buffer overflow; restore execution and reconnect.');
+                finished = true;
+              } else queue.push(message.event);
+            }
             else {
               finished = true;
               if (message.kind === 'error') failure = deserializeApiError(message.error);
@@ -110,6 +115,7 @@ export function createDesktopBackendTransport(): BackendTransport {
           };
           const started = invoke<void>('subscribe_events', { request, subscriptionId, onEvent: channel })
             .catch((error: unknown) => { failure = error; finished = true; signal(); });
+          let stopped = false;
           return {
             async next(): Promise<IteratorResult<EventEnvelope<ConnectionEvent>>> {
               while (!queue.length && !finished) await new Promise<void>((resolve) => { wake = resolve; });
@@ -121,6 +127,8 @@ export function createDesktopBackendTransport(): BackendTransport {
               finished = true;
               queue.length = 0;
               signal();
+              if (stopped) return { value: undefined, done: true };
+              stopped = true;
               await started;
               await invoke<void>('stop_event_subscription', { subscriptionId });
               return { value: undefined, done: true };

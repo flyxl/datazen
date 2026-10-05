@@ -12,8 +12,10 @@ export interface PublishedResultChunk {
 /** Result state survives editor context changes; consumption has its own lifetime. */
 export class ExecutionProjection {
   private sequence: bigint | null = null;
+  private runtimeInvalidated = false;
   private iterator: AsyncIterator<EventEnvelope<ConnectionEvent>> | null = null;
   private generation = 0;
+  private stopStream: (() => Promise<void>) | null = null;
   private reads = new Map<string, Promise<void>>();
   private chunksByKey = new Map<string, PublishedResultChunk>();
   private listeners = new Set<() => void>();
@@ -49,6 +51,7 @@ export class ExecutionProjection {
       ? binding : null;
   }
   invalidateRuntimeBinding(): void {
+    this.runtimeInvalidated = true;
     if (this.view) this.view = { ...this.view, runtimeBinding: null };
     this.publish();
   }
@@ -72,7 +75,7 @@ export class ExecutionProjection {
   async recover(): Promise<void> {
     const view = await this.client.getExecution(this.receipt.executionId);
     if (view.executionId !== this.receipt.executionId) throw new Error('Execution identity mismatch');
-    this.view = view;
+    this.view = this.runtimeInvalidated ? { ...view, runtimeBinding: null } : view;
     this.publish();
     for (const artifactId of view.artifactIds) {
       // Publication grows while writing: fetch fresh metadata even when chunk
@@ -108,7 +111,7 @@ export class ExecutionProjection {
           sameHandle(event.sessionHandle, this.originalHandle)) this.onSession?.(payload);
     } else if (payload.kind === 'executionChanged') {
       if (payload.execution.executionId !== this.receipt.executionId) return;
-      this.view = payload.execution;
+      this.view = this.runtimeInvalidated ? { ...payload.execution, runtimeBinding: null } : payload.execution;
       this.publish();
     } else if (payload.kind === 'resultChunk') {
       if (payload.source.executionId !== this.receipt.executionId) return;
@@ -126,23 +129,30 @@ export class ExecutionProjection {
     });
     const iterator = stream[Symbol.asyncIterator]();
     this.iterator = iterator;
+    this.stopStream = () => stream.close();
+    let resetRequested = false;
     try {
       while (generation === this.generation) {
         const item = await iterator.next();
         if (item.done || generation !== this.generation) break;
         await this.accept(item.value);
+        if (item.value.payload.kind === 'streamResetRequired') { resetRequested = true; break; }
       }
     } catch (error) {
       if (generation === this.generation) { this.error = error; this.publish(); }
     } finally {
-      if (this.iterator === iterator) this.iterator = null;
+      if (this.iterator === iterator) { this.iterator = null; this.stopStream = null; }
       await iterator.return?.();
     }
+    if (resetRequested && generation === this.generation) await this.consume();
   }
   async unsubscribe(): Promise<void> {
     ++this.generation;
     const iterator = this.iterator;
+    const stop = this.stopStream;
     this.iterator = null;
+    this.stopStream = null;
+    await stop?.();
     await iterator?.return?.();
   }
   dispose(): Promise<void> {

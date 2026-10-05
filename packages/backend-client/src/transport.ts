@@ -65,6 +65,7 @@ export interface CommandResult {
  *   and they go away when the kernel implements those methods.
  */
 export interface MethodMap {
+  getPlatformIdentity: { request: undefined; response: { clientInstanceId: string; organizationId: string; principalId: string } };
   // ---- Kernel surface (§6.2) ---------------------------------------------
   listConnections: { request: undefined; response: readonly ProfileView[] };
   createConnection: { request: ProfileDraft & SubmitRequest; response: ProfileView };

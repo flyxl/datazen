@@ -3,7 +3,7 @@ import type { BackendClient, SessionView, ExecutionReceipt, ExecutionView, Event
 import { EditorSessionController } from '../EditorSessionController';
 import { ExecutionProjection } from '../ExecutionProjection';
 
-const target = { connectionId: 'c', namespace: { database: 'A', catalog: null, schema: null, path: [] }, object: null } as ExecutionTarget;
+const target = { connectionId: 'c', namespace: { database: 'A', catalog: null, schema: null, path: [] }, object: null } as unknown as ExecutionTarget;
 const owner = { kind: 'editor', clientInstanceId: 'client', editorSessionId: 'editor' } as OwnerRef;
 function session(id = 's', revision = '1'): SessionView {
   return { handle: { dbSessionId: id, runtimeEpoch: 'epoch' }, connectionId: 'c', configRevision: '1', owner,

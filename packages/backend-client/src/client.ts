@@ -46,6 +46,7 @@ import type {
 export interface BackendClient {
   /** Which backend this facade is bound to. Never a business-method argument. */
   readonly backendId: string;
+  getPlatformIdentity(): Promise<{ clientInstanceId: string; organizationId: string; principalId: string }>;
 
   /**
    * The binding this facade delegates to.
@@ -130,6 +131,7 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
 
   return {
     backendId,
+    getPlatformIdentity: () => guard('getPlatformIdentity', () => transport.call('getPlatformIdentity', undefined)),
     transport,
 
     listConnections: () =>
