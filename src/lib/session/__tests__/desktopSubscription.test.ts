@@ -38,11 +38,21 @@ describe('desktop subscription adapter', () => {
       executionId: 'e' as Id, streamId: 'stream' as Id, state: 'running',
     }, null);
     const consuming = projection.consume();
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(mock.channels).toHaveLength(1));
     await projection.dispose();
     await consuming;
     expect(mock.invoke.mock.calls.map(([command]) => command)).toEqual(['subscribe_events', 'stop_event_subscription']);
+  });
+  it('does not start a subscription after immediate disposal during startup', async () => {
+    mock.invoke.mockResolvedValue(undefined);
+    const client = createBackendClient('desktop', createDesktopBackendTransport());
+    const projection = new ExecutionProjection(client, {
+      executionId: 'e' as Id, streamId: 'stream' as Id, state: 'running',
+    }, null);
+    const consuming = projection.consume();
+    await projection.dispose();
+    await consuming;
+    expect(mock.invoke).not.toHaveBeenCalled();
   });
   it('projects stream errors and normalizes artifact bytes while preserving counters', async () => {
     mock.invoke.mockResolvedValue({ bytes: [1, 2], chunkIndex: '9007199254740993' });

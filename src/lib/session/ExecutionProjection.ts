@@ -137,8 +137,10 @@ export class ExecutionProjection {
   }
 
   async consume(): Promise<void> {
-    await this.unsubscribe();
-    const generation = ++this.generation;
+    const stopping = this.unsubscribe();
+    const generation = this.generation;
+    await stopping;
+    if (generation !== this.generation) return;
     const stream = this.client.subscribeEvents({
       streamId: this.receipt.streamId, afterSequence: this.sequence === null ? null : wireCounter(this.sequence),
     });
