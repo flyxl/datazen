@@ -244,37 +244,6 @@ fn gateway_sources_obey_the_locked_invariants() {
         }
     }
 
-    // ⚠ 已登记、未修：**全仓**的 800 行红线只覆盖 `src/gateway` 与本文件下面的 `tests/`。
-    //   * 结论：在**本轨 HEAD `c257ef7cd`** 这棵树上，全仓 `git ls-files '*.rs'` 出的
-    //     966 个 `.rs` 文件里有 **80 个** ≥ 800 行（`$2!="total"` 这个过滤不能省，
-    //     少了它会多出一个假的 `total` 行），最大的
-    //     `src-tauri/src/commands/schema_diff.rs` 有 3250 行。没有任何门禁盯着它们。
-    //     ★ 这里的数**只对 `c257ef7cd` 这棵树成立**，别把它当成会自己保持不变的常数：
-    //     任何一次无关的合并都可能改它。所以下面给的是**命令**，不是结论——
-    //     真要引用这个缺口，先跑一遍命令看当前树上是多少，再把数写进结论里。
-    //   * 怎么复现（在**当前这棵工作树**里跑，两条互为对照）：
-    //       git ls-files '*.rs' | xargs wc -l | awk '$1>=800 && $2!="total"' | wc -l
-    //       git ls-files '*.rs' | xargs python3 -c 'import sys;print(sum(1 for f in sys.argv[1:] if open(f).read().count("\n")>=800))' | awk '{s+=$1}END{print s}'
-    //     要看它相对别的树漂了多少，就在**那棵树的 checkout/worktree 里**跑第一条。
-    //     R5 实测：本轨 `c257ef7cd` = 80，同期 main = 79，差的正是本轨新加的
-    //     `packages/runtime/tests/cm70_no_disk.rs`。必须先 `git ls-files`：
-    //     直接 `find` / `read_dir` 会把 gitignored 的 `src-tauri/src/driver_init.rs`
-    //     和 `target/` 下的构建产物一并数进来，得到的不是同一个问题。
-    //   * 为什么未修：把这 80 个补进下面的清单会**当场变红**（它们现在就在违反），
-    //     把阈值改成「只对新文件生效」又等于给存量开口子——那是放宽规则，不是修规则。
-    //     真修只能逐个按职责拆分，是独立的大范围改动，不该搭在本轨道上顺手做。
-    //   * ★ **本段是登记，不是承诺**：它不排期、不派人、不设门禁，也**不承诺在合并前修掉**。
-    //     「已登记」三个字唯一担保的是——台账随合并删除后，这个缺口仍然能从代码里读出来；
-    //     谁想修，跑到上面的命令看当前树上是多少，再按那棵树的事实写结论。
-    //   * 影响范围：这 80 个文件现在只受「评审时看一眼」约束，规模继续膨胀不会让任何
-    //     测试变红。`AGENTS.md:256` 的原文是「**推荐**单文件不超过 800 行，严禁出现
-    //     超大单文件」——「推荐」是建议性措辞。真正硬的只有本文件里两处
-    //     `assert!(… <= 800 …)`：生产那处在本段上方（`:228`），测试那处在本段下方
-    //     ——**下方那处故意不给行号**：这段注释就插在它前面，本段每增删一行都会把它顶下去，
-    //     给它写死行号等于给自己埋一个必然过期的数字（连着栽了两次：320 → 336 → 338）。
-    //     要定位就跑 `grep -n '<= 800' packages/runtime/tests/gateway_contract/invariants.rs`。
-    //     写在这里是为了台账随合并删除后，这个缺口不会跟着消失。
-
     // 测试专用模块必须显式标 #[cfg(test)]，否则它们会进生产二进制。
     let mod_rs = std::fs::read_to_string(dir.join("mod.rs")).expect("mod.rs 可读");
     for (module, public) in [
@@ -303,9 +272,7 @@ fn gateway_sources_obey_the_locked_invariants() {
     }
 
     // 本轨自己的测试文件同样受 800 行约束。
-    // ⚠ 已登记、未纳入：`tests/cm70_no_disk.rs` 实测 807 行，且此前**没有任何** 800 行
-    //   门禁覆盖它。它是 CM-70 的分节注册表，补进下面的清单会立刻变红；拆分它属独立
-    //   改动，本轮不擅自做。写在这里而不是只写进台账，是为了台账随合并删除后该缺口不消失。
+    // ⚠ 有意未纳入 `tests/cm70_no_disk.rs`：它已经超限，纳入即红；拆分属独立改动。
     let mut test_files = vec![
         "tests/gateway_contract.rs".to_string(),
         "tests/gateway_fixtures/mod.rs".to_string(),

@@ -52,7 +52,7 @@ fn inline_block_starts(src: &str) -> Vec<usize> {
 ///
 /// 这条不变式就是 BLOCKER D 的形状本身，而且它覆盖全仓库——不只是本轨碰过的那几个文件。
 /// 旧实现里，`mod x;` 会跟后面第一个不相关的 `{` 配对，于是从该属性一路吞到那个块的结尾，
-/// 守卫对这一整段生产代码彻底失明；仓库里共有几十个文件带这种外部声明。
+/// 守卫对这一整段生产代码彻底失明。
 #[test]
 fn no_braceless_test_module_declaration_is_ever_swallowed() {
     let root = repo_root();
@@ -120,7 +120,7 @@ fn no_braceless_test_module_declaration_is_ever_swallowed() {
 
 /// `mod x;`（模块体在别的文件里）后面**没有花括号**，不许拿后面不相关的 `{` 来配对。
 ///
-/// 这条形状在本仓库极其常见：`packages/runtime/src/gateway/mod.rs` 的 7 处
+/// 这条形状在本仓库极其常见：`packages/runtime/src/gateway/mod.rs` 的
 /// `#[cfg(test)]` 模块声明**全部**是外部声明。旧实现会把 `#[cfg(test)]` 与后面某个
 /// `impl Foo {` 配成一对，把两者之间的生产代码整段吞掉，守卫于是对那个窗口失明。
 #[test]
@@ -161,7 +161,7 @@ pub fn production_body() -> Arc<AlwaysAllow> {
 }
 "#;
     let hits = wired_names(inline);
-    // 内联块里的两处 `AlwaysDeny`（第 4、5 行）必须一条都不剩；`production_body` 的两行都留下。
+    // 内联块里的 `AlwaysDeny` 必须一条都不剩；`production_body` 的两行都留下。
     let seen: Vec<usize> = hits.iter().map(|(line, _)| *line).collect();
     assert_eq!(
         seen,
