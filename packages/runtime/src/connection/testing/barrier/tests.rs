@@ -245,6 +245,7 @@ fn await_drain_wakes_when_the_clock_crosses_the_deadline() {
         let execution = execution.clone();
         std::thread::spawn(move || drain.await_drain(&execution))
     };
+    drain.wait_for_drain_waiters(1);
     clock.advance(Duration::from_secs(10));
     let reason = waiter.join().expect("线程必须正常结束");
     assert_eq!(reason, Some(TruncationReason::NoConsumerDrainDeadline));
@@ -407,6 +408,7 @@ fn await_drain_returns_when_a_consumer_arrives_before_the_deadline() {
     started_rx
         .recv_timeout(Duration::from_secs(10))
         .expect("等待线程没有启动");
+    drain.wait_for_drain_waiters(1);
 
     // 负向断言：消费者接管之前 `await_drain` **不得**返回，否则下面 `None` 是空转的。
     let window = Instant::now();
