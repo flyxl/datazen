@@ -54,6 +54,12 @@ pub struct TableMeta {
     pub relation: RelationIdentity,
     pub columns: Vec<ColumnMeta>,
     pub pk_columns: Vec<String>,
+    /// prepare 观察到但无需写入的相同行数（review 面板的基线）。
+    #[serde(default)]
+    pub unchanged_count: usize,
+    /// 该表读取时使用的源侧过滤（重验/预览必须复用同一过滤）。
+    #[serde(default)]
+    pub source_filter: Option<crate::filter::SyncSourceFilter>,
 }
 
 /// ChangeSet 的不可变产物。`digest` 冻结块内容，apply 前必须与目标侧重验一致。

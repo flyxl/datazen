@@ -1,8 +1,8 @@
 //! Lossless conversion between the JSON filter contract and driver values.
 
 use crate::DataSyncError;
-use datazen_driver_api::Value;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use datazen_driver_api::Value;
 
 pub(super) fn scalar_value(value: &serde_json::Value) -> Result<Value, DataSyncError> {
     if value.is_array() {

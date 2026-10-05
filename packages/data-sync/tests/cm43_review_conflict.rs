@@ -228,6 +228,10 @@ async fn cm43_recompare_after_conflict_can_continue() {
         2,
         "key=2 is now identical on both sides"
     );
+    // 产物元数据冻结 review 基线：key=2 两侧一致 ⇒ unchanged_count=1；无过滤 ⇒ None。
+    assert_eq!(artifact.table_meta.len(), 1);
+    assert_eq!(artifact.table_meta[0].unchanged_count, 1);
+    assert!(artifact.table_meta[0].source_filter.is_none());
     host.selection(PLAN_ID, REVISION, artifact.blocks.clone());
 
     let outcome = run_apply(Arc::clone(&dyn_host), 10).await;

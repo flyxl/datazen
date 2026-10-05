@@ -13,8 +13,8 @@ use super::recordset::{
 pub use super::recordset::{SyncRecordset, SyncRecordsetBound};
 use crate::sql::quote_ident_sql;
 use crate::DataSyncError;
-use datazen_driver_api::{TableSchema, Value};
 use datazen_driver_api::filters::{FilterCondition, FilterOperator};
+use datazen_driver_api::{TableSchema, Value};
 use serde::{Deserialize, Serialize};
 
 const MAX_CONDITIONS: usize = 32;

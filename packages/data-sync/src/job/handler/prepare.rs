@@ -277,12 +277,9 @@ impl DataSyncHandler {
             }
             let column_names: Vec<String> =
                 pair.source.columns.iter().map(|c| c.name.clone()).collect();
+            let source_filter = spec.filters.get(&pair.source_table).cloned();
             let src_reader = host
-                .table_reader(
-                    source,
-                    &pair.source_table,
-                    spec.filters.get(&pair.source_table),
-                )
+                .table_reader(source, &pair.source_table, source_filter.as_ref())
                 .await
                 .map_err(|e| {
                     (
@@ -357,6 +354,8 @@ impl DataSyncHandler {
                     })
                     .collect(),
                 pk_columns: pair.source.primary_keys.clone(),
+                unchanged_count: table_result.unchanged_row_count(),
+                source_filter,
             });
         }
         // plan_id：host 显式指定则优先；缺省 handler 确定性生成（endpoint+mappings+时间）
