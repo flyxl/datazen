@@ -19,8 +19,10 @@ import {
   parseFilterForApply,
   type FilterExpression,
 } from '../../lib/filterExpression';
+import { extractErrorMessage } from '../../stores/tableData/connectionState';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
+import { queryCommands } from '../../commands/query';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
 import { Spinner } from '../../components/ui/Spinner';
@@ -128,6 +130,59 @@ export function TableView({
   const [quickFilterError, setQuickFilterError] = useState<string | null>(null);
   const [readOnlyTipVisible, setReadOnlyTipVisible] = useState(false);
   const readOnlyTipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Manual transaction toggle: when on, ChangeSet commits join this open
+  // transaction; otherwise each commit runs as its own short transaction.
+  const [inTx, setInTx] = useState(false);
+  const [txBusy, setTxBusy] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
+  const refreshTxStatus = useCallback(async () => {
+    try {
+      setInTx(await queryCommands.sessionTransactionStatus(dbSessionId));
+    } catch {
+      setInTx(false);
+    }
+  }, [dbSessionId]);
+  useEffect(() => {
+    void refreshTxStatus();
+  }, [refreshTxStatus]);
+  const handleBeginTx = useCallback(async () => {
+    setTxBusy(true);
+    setTxError(null);
+    try {
+      await queryCommands.beginSessionTransaction(dbSessionId);
+      await refreshTxStatus();
+    } catch (e) {
+      setTxError(extractErrorMessage(e, t('tableData.txBeginFailed')));
+    } finally {
+      setTxBusy(false);
+    }
+  }, [dbSessionId, refreshTxStatus, t]);
+  const handleCommitTx = useCallback(async () => {
+    setTxBusy(true);
+    setTxError(null);
+    try {
+      await queryCommands.commitSessionTransaction(dbSessionId);
+      await refreshTxStatus();
+    } catch (e) {
+      setTxError(extractErrorMessage(e, t('tableData.txCommitFailed')));
+    } finally {
+      setTxBusy(false);
+    }
+  }, [dbSessionId, refreshTxStatus, t]);
+  const handleRollbackTx = useCallback(async () => {
+    setTxBusy(true);
+    setTxError(null);
+    try {
+      await queryCommands.rollbackSessionTransaction(dbSessionId);
+      await refreshTxStatus();
+      actions.reload();
+    } catch (e) {
+      setTxError(extractErrorMessage(e, t('tableData.txRollbackFailed')));
+    } finally {
+      setTxBusy(false);
+    }
+  }, [actions, dbSessionId, refreshTxStatus, t]);
 
   useEffect(() => {
     return () => {
@@ -386,6 +441,11 @@ export function TableView({
           </button>
         </div>
       )}
+      {error && pendingChanges.size > 0 && (
+        <div className="border-b border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-warning">
+          {t('tableData.errorPendingHint')}
+        </div>
+      )}
       <div className="flex shrink-0 items-start gap-0.5 border-b border-edge px-2 py-0.5">
         <button
           type="button"
@@ -460,6 +520,56 @@ export function TableView({
         >
           <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
           {t('tableData.readOnlyEditDisabled')}
+        </div>
+      )}
+      {txError && (
+        <ErrorBanner variant="strip" className="border-danger/30 py-1">
+          {txError}
+        </ErrorBanner>
+      )}
+      {isEditable && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-1 text-xs text-fg-muted"
+          data-testid="table-tx-controls"
+        >
+          <span className={cn(inTx ? 'text-accent' : 'text-fg-muted')}>
+            {inTx ? t('tableData.inManualTx') : t('tableData.shortTxDefault')}
+          </span>
+          {!inTx ? (
+            <button
+              type="button"
+              className="text-accent hover:underline disabled:opacity-50"
+              onClick={() => void handleBeginTx()}
+              disabled={txBusy || loading}
+              data-testid="table-tx-begin"
+            >
+              {t('tableData.beginTx')}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="text-accent hover:underline disabled:opacity-50"
+                onClick={() => void handleCommitTx()}
+                disabled={txBusy || loading}
+                data-testid="table-tx-commit"
+              >
+                {t('tableData.commitTx')}
+              </button>
+              <button
+                type="button"
+                className="text-accent hover:underline disabled:opacity-50"
+                onClick={() => void handleRollbackTx()}
+                disabled={txBusy || loading}
+                data-testid="table-tx-rollback"
+              >
+                {t('tableData.rollbackTx')}
+              </button>
+            </>
+          )}
+          {inTx && (
+            <span className="ml-auto text-warning">{t('tableData.txManualHint')}</span>
+          )}
         </div>
       )}
       {pendingChanges.size > 0 && (
