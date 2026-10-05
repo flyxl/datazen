@@ -599,7 +599,10 @@ impl ExecutionGateway {
 
         // 闸门没过时上面的 `release_dispatch_reservation` 已经把请求挡在驱动之外，
         // 所以这里抬围栏不误伤：请求一旦走到这行，就真的出网关了。
-        let receipt = self.port.execute_in_session(port_request).await?;
+        let receipt = self
+            .port
+            .execute_bound(execution_id.clone(), port_request)
+            .await?;
 
         // 段②起点：驱动刚返回，登记还没开始。
         let mut state = self.state.lock().await;

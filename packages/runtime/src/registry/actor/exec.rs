@@ -39,6 +39,7 @@ pub(super) fn start_execution(
     state: &mut ActorState,
     request: ExecuteInSessionRequest,
     reply: Reply<ExecutionReceipt>,
+    accepted_id: Option<ExecutionId>,
 ) {
     if let Err(failure) = admit_execution(state, &request) {
         let _ = reply.send(Err(failure));
@@ -53,11 +54,13 @@ pub(super) fn start_execution(
     };
 
     state.execution_seq += 1;
-    let execution_id = ExecutionId::new(format!(
-        "exec_{}_{}",
-        state.runtime_epoch.get(),
-        state.execution_seq
-    ));
+    let execution_id = accepted_id.unwrap_or_else(|| {
+        ExecutionId::new(format!(
+            "exec_{}_{}",
+            state.runtime_epoch.get(),
+            state.execution_seq
+        ))
+    });
 
     let (bind_tx, bind_rx) = mpsc::unbounded_channel();
     let sink = CancelHandleSink::new(bind_tx);

@@ -117,6 +117,11 @@ pub enum ExecCommand {
         request: ExecuteInSessionRequest,
         reply: Reply<ExecutionReceipt>,
     },
+    ExecuteBound {
+        execution_id: ExecutionId,
+        request: ExecuteInSessionRequest,
+        reply: Reply<ExecutionReceipt>,
+    },
     RegisterHandles {
         handle: SessionHandle,
         handles: Vec<SessionHandleRef>,
@@ -471,7 +476,14 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
         ExecCommand::View { handle, reply } => {
             let _ = reply.send(read_view(state, &handle));
         }
-        ExecCommand::Execute { request, reply } => exec::start_execution(state, request, reply),
+        ExecCommand::ExecuteBound {
+            execution_id,
+            request,
+            reply,
+        } => exec::start_execution(state, request, reply, Some(execution_id)),
+        ExecCommand::Execute { request, reply } => {
+            exec::start_execution(state, request, reply, None)
+        }
         ExecCommand::RegisterHandles {
             handle,
             handles,
