@@ -241,7 +241,8 @@ async fn catalog_preserves_driver_owned_list_tables_command_results() {
 // ===========================================================================
 // CM-01 baseline — 空 namespace 字符串 / 缺字段请求必须返回参数错误。
 //
-// Spec: `docs/architecture/platform/connection-management.md:834-838`（CM-01，H/F）
+// Spec: `docs/architecture/platform/connection-management.md` §16.1 的
+//   `**CM-01 ID 类型与序列化（H/F）**`（CM-01，H/F）
 //   前置：所有 DTO 已定义；Counter 使用大于 `2^53` 的十进制值。
 //   步骤：Rust/TS 往返序列化；编译时把 connectionId newtype 传入 session API
 //         的负例；传空 namespace 字符串。

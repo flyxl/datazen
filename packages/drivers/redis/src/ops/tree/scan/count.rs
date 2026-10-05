@@ -47,7 +47,7 @@ where
     C: ConnectionLike + SlotRoutedConnection + Send,
 {
     let dbsize = read_dbsize(conn).await;
-    // Both spellings of "everything" answer from DBSIZE (see `## 契约冻结`).
+    // Both spellings of "everything" answer from DBSIZE.
     let matches_all = pattern.is_empty() || pattern == "*";
     if matches_all && dbsize > 0 {
         return Ok(CountOutcome {

@@ -90,7 +90,7 @@ Settings → **External MCP Servers** 管理已保存配置与运行时连接态
 |----|------|
 | `McpClientManager` | stdio 子进程生命周期、工具发现、`call_tool` |
 | `commands/mcp.rs` | IPC：`mcp_client_connect` / `disconnect` / `list` / `tools` / `call_tool` |
-| `commands/ai.rs` | `collect_mcp_tool_definitions()` 合并 DB tools + MCP tools；`run_streaming_tool_loop` 路由 `mcp/*` 前缀 |
+| `commands/ai/mod.rs` | `collect_mcp_tool_definitions()` 合并 DB tools + MCP tools；`run_streaming_tool_loop` 路由 `mcp/*` 前缀 |
 | 前端 `McpClientSection` | 配置 CRUD、env 编辑、连接/重试、运行时工具列表 |
 
 AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider；模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程。详见 [`ai.md` — AI Chat MCP 工具](./ai.md#111-ai-chat-mcp-工具)。

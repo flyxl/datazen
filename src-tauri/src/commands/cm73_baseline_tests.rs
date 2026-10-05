@@ -1,6 +1,7 @@
 //! CM-73 baseline evidence — 空闲淘汰与活动事务句柄连续旅程（P0 / `p0-cm73-baseline`）。
 //!
-//! Spec: `docs/architecture/platform/connection-management.md:1279-1285` (CM-73, H).
+//! Spec: `docs/architecture/platform/connection-management.md` §16.7 的
+//! `**CM-73 空闲淘汰与活动事务句柄连续旅程（H）**` (CM-73, H).
 //!
 //! The journey driven here is the one the spec asks for, end to end on a single
 //! `dbSessionId`:
@@ -15,11 +16,11 @@
 //!
 //! Two tests share one journey:
 //! - `cm73_baseline_idle_eviction_reproduces_the_defect` is **green** and pins
-//!   the *observed* sequence — that is the `:1284` baseline evidence. When the
+//!   the *observed* sequence — that is the `- 基线说明` baseline evidence. When the
 //!   P3 connection-runtime track turns CM-73 green, this test is **deleted, not
 //!   updated**: the defect it pins no longer exists.
 //! - `cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused`
-//!   is `#[ignore]`d and asserts the **target behavior only**. Per the `:1285`
+//!   is `#[ignore]`d and asserts the **target behavior only**. Per the `- 保留声明`
 //!   retention clause its assertions must survive the removal of the legacy
 //!   `ConnectionManager`, so they are written as behavior ("the runtime must not
 //!   leave a live handle behind a closed physical resource, and must not rebuild
@@ -586,7 +587,7 @@ async fn observe_journey() -> Observation {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-/// CM-73 baseline evidence (`:1284`). Green, and pins the *observed* sequence.
+/// CM-73 baseline evidence (`- 基线说明`). Green, and pins the *observed* sequence.
 ///
 /// **Delete this test when CM-73 goes green in the P3 connection-runtime
 /// track** — do not relax it. Every assertion below describes the defect.
@@ -657,21 +658,23 @@ async fn cm73_baseline_idle_eviction_reproduces_the_defect() {
     );
 }
 
-/// CM-73 target behavior. **Known failure** for the whole of P0 (`:1284` permits
-/// it); `:1307` requires it to be green in the P3 connection-runtime track.
+/// CM-73 target behavior. **Known failure** for the whole of P0 (the `- 基线说明`
+/// bullet permits it as a known failure); it must turn green in the P3
+/// connection-runtime track.
 ///
-/// The assertions are behavioral on purpose (`:1285` retention clause): they
+/// The assertions are behavioral on purpose (the `- 保留声明` retention clause): they
 /// must keep holding after the legacy `ConnectionManager` is deleted, so they
 /// never name a legacy function, a legacy struct field, or a map shape.
 /// Deleting or weakening any of them to reach green is forbidden.
 #[tokio::test]
-#[ignore = "CM-73 known failure: the current runtime evicts a resource that still has a registered live transaction handle and silently rebuilds it under the same dbSessionId. connection-management.md:1284 allows this as a known failure; :1307 requires green in the P3 connection-runtime track."]
+#[ignore = "CM-73 known failure: the current runtime evicts a resource that still has a registered live transaction handle and silently rebuilds it under the same dbSessionId. connection-management.md CM-73's `- 基线说明` bullet allows this as a known failure and requires it to turn green in the P3 connection-runtime track."]
 async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused() {
     let obs = observe_journey().await;
     eprintln!("[CM-73 target] calls={:#?}", obs.calls);
 
-    // T1 — `:1283` does not forbid the sweep from closing a physical resource; it
-    // forbids the *conjunction* of a closed physical resource and a handle that
+    // T1 — the CM-73 `- 断言` bullet does not forbid the sweep from closing a
+    // physical resource; it forbids the *conjunction* of a closed physical
+    // resource and a handle that
     // is still offered for finishing. Both compliant shapes make the conjunction
     // false: one keeps the resource up for the life of the transaction (nothing
     // is closed, so the first half is false), the other terminates the
@@ -700,7 +703,7 @@ async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused(
 
     // T3 — Transaction status must track the physical session's liveness: it may
     // not keep reporting Active once the resource is gone, and it may not stop
-    // reporting Active while the resource is still up (`:1283` "事务状态不得在
+    // reporting Active while the resource is still up (CM-73 `- 断言` "事务状态不得在
     // 物理 session 丢失后继续报告 Active"). Exactly one of the two must hold, so
     // status is the *negation* of "the physical resource was closed" — under the
     // two compliant shapes respectively: kept up → Active, torn down first →
@@ -721,7 +724,7 @@ async fn cm73_registered_live_handle_survives_idle_eviction_and_is_never_reused(
 
     // T5 — Failing closed is conditional: the outcome is unknowable only once the
     // resource the transaction lives on is actually gone. While it is still up,
-    // unwinding must succeed (`:1283` — only an unknown outcome becomes
+    // unwinding must succeed (CM-73 `- 断言` — only an unknown outcome becomes
     // OutcomeUnknown/SessionLost, so a *known* outcome may never be reported as
     // unknown); after the loss it must fail, never report success.
     if obs.physical_disconnect_observed {

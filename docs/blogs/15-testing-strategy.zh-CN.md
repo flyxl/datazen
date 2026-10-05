@@ -11,7 +11,7 @@
 | Driver Rust | `packages/drivers/<id>` | 方言、连接、Command、类型映射 |
 | Driver UI/E2E | 驱动自己的 `ui/__tests__`、`e2e/` | 专属 UI 和真实数据库路径 |
 | Host E2E | `e2e/specs/` | 通用连接、查询、导航和 IPC journey |
-| 手工黑盒 | `test/` | 平台和复杂交互补充 |
+| 手工黑盒 | 已删除（原 `test/`，见 `docs/architecture/testing.md` §6） | 平台和复杂交互补充 |
 
 规则很简单：只验证某个 Driver 的 SQL/KV 方言、专属 Command 或 UI，就写在该 Driver crate 内，不能把它塞进 Host。
 

@@ -3,9 +3,7 @@
 //! `count_matching`.
 //!
 //! Wave 4's tree UI reads these names straight from `command_definitions()`,
-//! and `docs/.../redis-tree-backend/progress.md` freezes the same shapes in
-//! `## 契约冻结`, so the registration surface is asserted here — no live
-//! server needed:
+//! so the registration surface is asserted here — no live server needed:
 //!
 //! * all four commands appear in `command_definitions()` with an input schema
 //!   that matches the parameters the dispatch arm actually parses (`budget`
@@ -19,7 +17,7 @@
 //!
 //! Behaviour (budget ledger, exact-key short circuit, per-page batches, slot
 //! addressing) is covered by the scripted connection double in
-//! `src/ops_tree_scan/tests.rs`.
+//! `src/ops/tree/scan/tests.rs`.
 
 use datazen_driver_api::{
     required_access_level, validate_command_input, CommandAccessLevel, CommandCategory,

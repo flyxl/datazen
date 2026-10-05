@@ -1,6 +1,7 @@
 //! CM-73 idle-sweep invariants that the baseline journey does not pin.
 //!
-//! Spec: `docs/architecture/platform/connection-management.md:1279-1285` (CM-73,
+//! Spec: `docs/architecture/platform/connection-management.md` §16.7 的
+//! `**CM-73 空闲淘汰与活动事务句柄连续旅程（H）**` (CM-73,
 //! H) — the sweep must never act behind a referenced session, must not churn
 //! owner bookkeeping, and must not race the `release` path into a double close.
 //!
@@ -666,7 +667,7 @@ async fn two_consecutive_eviction_cycles_of_one_session_id_are_fully_observable(
 }
 
 /// CM-73 target evidence, known failure until the P3 connection-runtime track
-/// (`connection-management.md:1283`, `:1284`, `:1307`).
+/// (`connection-management.md` §16.7 的 `**CM-73 空闲淘汰与活动事务句柄连续旅程（H）**`)。
 ///
 /// After the physical session is lost, the runtime must not reconnect and then
 /// hand the caller back the *same* `dbSessionId` for a brand-new physical
@@ -676,7 +677,7 @@ async fn two_consecutive_eviction_cycles_of_one_session_id_are_fully_observable(
 /// rebuild the spec forbids. The assertion reads the id the host *presented to
 /// the driver*, so it holds no matter how the recovery is implemented.
 #[tokio::test]
-#[ignore = "CM-73 known failure: the rebuilt session is advertised under the old dbSessionId, so a caller cannot distinguish it from the session that was lost. connection-management.md:1283 forbids same-id reuse; :1284 allows the known failure; :1307 requires green in the P3 connection-runtime track."]
+#[ignore = "CM-73 known failure: the rebuilt session is advertised under the old dbSessionId, so a caller cannot distinguish it from the session that was lost. connection-management.md CM-73's `- 断言` bullet forbids silently keeping the same id, and its `- 基线说明` bullet allows the known failure and requires green in the P3 connection-runtime track."]
 async fn a_rebuilt_session_is_never_advertised_under_the_pre_loss_session_id() {
     let f = fixture(&["cm73-same-id"]).await;
     let mgr = &f.state.connection_manager;

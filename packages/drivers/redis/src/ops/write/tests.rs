@@ -347,13 +347,16 @@ fn test_tester_the_camel_case_spelling_wins_when_both_are_present() {
     );
 }
 
-/// `[tester]` BUG-004 复现载体（今日为红，故 `#[ignore]`，见 bugs.md）。
+/// `[tester]` `redis-codec-write-BUG-004` 复现载体（今日为红，故 `#[ignore]`）。
 ///
-/// 契约 C-4（progress.md:159）：回退的前提是「**被服务端拒绝**（旧版本 Redis / 代理）」，
-/// `keepTtlFallback` 就是这一事件的可断言位（progress.md:160）。当前实现的分诊口径是
+/// 契约 C-4（同 crate `ops/write.rs` 的 `is_keepttl_keyword_rejection`，与
+/// `decode` 侧另一套 C-1/C-2/C-3 编号无关）：回退的前提是
+/// 「**被服务端拒绝**（旧版本 Redis / 代理）」，
+/// `keepTtlFallback` 就是这一事件的可断言位。当前实现的分诊口径是
 /// 「SET 报错了」而非「SET 因 KEEPTTL 报错」，于是 `WRONGTYPE` / `READONLY` /
 /// 连接类失败也会走二次写入，并把「本服务器不支持 KEEPTTL」这个结论报给 UI（W3-E 已
-/// 按此位决定是否提示）。C-3 末段明确「传输/权限类失败仍按通用 IPC 错误抛出」。
+/// 按此位决定是否提示）。`ops/write.rs` 的 C-3 分支（非 KEEPTTL 拒绝即透传）
+/// 明确「传输/权限类失败仍按通用 IPC 错误抛出」。
 #[ignore = "redis-codec-write-BUG-004: any SET error is classified as a KEEPTTL rejection"]
 #[tokio::test]
 async fn test_tester_a_non_keepttl_rejection_must_not_reissue_the_write() {
@@ -375,7 +378,7 @@ async fn test_tester_a_non_keepttl_rejection_must_not_reissue_the_write() {
     );
 }
 
-/// BUG-004 绿色孪生体：非 KEEPTTL 的 SET 失败原样抛出、绝不补发第二条写入。
+/// `redis-codec-write-BUG-004` 绿色孪生体：非 KEEPTTL 的 SET 失败原样抛出、绝不补发第二条写入。
 /// 不 push PTTL 回复 —— 回退一旦发生，`take_reply` 会直接 panic，回归无处可藏。
 #[tokio::test]
 async fn a_non_keyword_set_failure_is_thrown_without_rescue() {
@@ -394,7 +397,7 @@ async fn a_non_keyword_set_failure_is_thrown_without_rescue() {
     );
 }
 
-/// BUG-004 分类器的第二种受理形态：关键词没被回显、而是被报成 SET 的未知选项。
+/// `redis-codec-write-BUG-004` 分类器的第二种受理形态：关键词没被回显、而是被报成 SET 的未知选项。
 #[tokio::test]
 async fn an_unknown_option_shape_is_also_a_keyword_refusal() {
     let mut conn = Scripted::new();

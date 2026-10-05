@@ -67,7 +67,7 @@ Command 的参数名携带语义，不是随意的命名。`connection_id` 是�
 
 ## 5. Driver Command
 
-`commands/driver_command.rs` 是通用 Driver Command IPC 入口。它把 connection/session 上下文交给 Driver Registry，再通过 `DriverCommandDefinition` 做 command discovery 和执行。
+`commands/driver_command/mod.rs` 是通用 Driver Command IPC 入口。它把 connection/session 上下文交给 Driver Registry，再通过 `DriverCommandDefinition` 做 command discovery 和执行。
 
 Workflow 同样复用 Driver Command Runtime，而不是绕过 Driver API 建立另一套 Driver-specific IPC。
 

@@ -1,8 +1,8 @@
 //! ULID — lexicographically sortable 128-bit identifiers.
 //!
 //! Favorites are stored as one `.sql` file per entry, and the file name is the
-//! entry's identity (see `docs/development/editor-pro-productivity-plan.zh-CN.md`
-//! §2.6.2). The name must therefore be short, stable, and — because a sync
+//! entry's identity. The name must therefore be short, stable, and — because a
+//! sync
 //! folder is watched by other tools and by `git` — free of characters that
 //! would need escaping on any platform. A ULID gives all of that: 26
 //! Crockford base32 characters, `0-9A-HJKMNP-TV-Z` only, with the 48-bit

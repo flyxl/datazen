@@ -4,7 +4,7 @@
 //! 别把它整个塞进编辑器"。该探针的目的从来不是多一次往返，而是**先量长度再决定
 //! 要不要传整包**；`get_key_raw` 已经在同一次 pipeline 里回了 `STRLEN`
 //! （`ValueFrame.logicalLen`），也就是同一个判定位，所以这里直接读它：
-//! **零额外命令**，语义与 GETRANGE 探针等价（详见 `docs/…/redis-detail-ui/progress.md`）。
+//! **零额外命令**，语义与 GETRANGE 探针等价。
 //!
 //! 只有 string 键的 `logicalLen` 是字节数：集合类（hash/list/set/zset/stream）它是
 //! HLEN/LLEN/SCARD/ZCARD/XLEN 的**元素个数**，拿元素个数和 64 KiB 比会把一个

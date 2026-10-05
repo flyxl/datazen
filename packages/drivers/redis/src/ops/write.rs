@@ -103,8 +103,7 @@ where
 /// the `PTTL` + `PX` rescue. The two accepted shapes are what a server emits
 /// when *this* command's argument list is refused: it echoes `KEEPTTL` back,
 /// or reports an unknown option for `SET`. Anything else — `WRONGTYPE`,
-/// `READONLY`, ACL, transport — is thrown verbatim with no fallback claimed
-/// (progress.md C-3 final paragraph).
+/// `READONLY`, ACL, transport — is thrown verbatim with no fallback claimed.
 fn is_keepttl_keyword_rejection(message: &str) -> bool {
     let m = message.to_ascii_lowercase();
     m.contains("keepttl") || (m.contains("unknown option") && m.contains("'set'"))

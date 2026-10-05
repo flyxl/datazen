@@ -29,7 +29,7 @@ async fn read_dbsize_never_fails_and_reports_zero_when_refused() {
     assert_eq!(read_dbsize(&mut garbled).await, 0);
 
     // 0 is what makes `tree_scan_budget` fall back to the default tier, which is
-    // the "DBSIZE 不可得 ⇒ 默认档" sentence in `## 契约冻结`.
+    // the frozen rule "DBSIZE 不可得 ⇒ 默认档".
     assert_eq!(tree_scan_budget(None, 0), DEFAULT_TREE_BUDGET);
 }
 

@@ -71,7 +71,8 @@ enum TableRoute {
 
 /// `RoutingInfo::for_routable`, i.e. redis' answer to "where would the client put
 /// this command if we did not say". Public API, so the double's routing model is
-/// no longer a free variable (BUG-007 修法 3).
+/// no longer a free variable — this is the `BUG-007` concern spelled out at the
+/// top of this file.
 fn table_route(cmd: &redis::Cmd) -> TableRoute {
     match RoutingInfo::for_routable(cmd) {
         Some(RoutingInfo::SingleNode(SingleNodeRoutingInfo::SpecificNode(route))) => {
@@ -91,8 +92,8 @@ fn table_route(cmd: &redis::Cmd) -> TableRoute {
 /// answer comes from equality against the only two routes `get_route` can build
 /// for that key: `is_readonly_cmd` selects `Master` or `ReplicaOptional`, and
 /// this driver never enables `read_from_replicas` (`connect.rs` builds a plain
-/// `ClusterClient`), so both resolve to the primary — checked in `bugs.md`'s
-/// BUG-007 排除项.
+/// `ClusterClient`), so both resolve to the primary — this is the `BUG-007` exclusion
+/// recorded at the top of this file.
 fn table_names_the_key_shard(cmd: &redis::Cmd, route: &Route) -> bool {
     keyed_probe_slot(cmd).is_some_and(|slot| {
         *route == Route::new(slot, SlotAddr::Master)
