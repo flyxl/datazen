@@ -717,6 +717,22 @@ impl SessionRegistry {
         }
     }
 
+    pub async fn submit_execution_bound(
+        &self,
+        execution_id: ExecutionId,
+        request: ExecuteInSessionRequest,
+    ) -> Result<ExecutionReceipt, RuntimeError> {
+        let record = self.locate(&request.handle.db_session_id)?;
+        record
+            .actor
+            .exec(|reply| ExecCommand::ExecuteBound {
+                execution_id,
+                request,
+                reply,
+            })
+            .await
+    }
+
     /// §7.2 提交一次执行。冻结端口方法之外的具名入口，便于集成测试直连。
     pub async fn submit_execution(
         &self,
@@ -750,6 +766,14 @@ impl SessionPort for SessionRegistry {
         request: ExecuteInSessionRequest,
     ) -> Result<ExecutionReceipt, RuntimeError> {
         self.submit_execution(request).await
+    }
+
+    async fn execute_bound(
+        &self,
+        execution_id: ExecutionId,
+        request: ExecuteInSessionRequest,
+    ) -> Result<ExecutionReceipt, RuntimeError> {
+        self.submit_execution_bound(execution_id, request).await
     }
 
     /// 冻结端口形状：只交回状态。处置在 [`SessionRegistry::cancel_registered`]——
