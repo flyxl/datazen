@@ -185,6 +185,7 @@ fn rejection_label(error: &GatewayError) -> String {
         GatewayError::IdempotencyVerificationRequired { .. } => "idempotency:unreadable".to_owned(),
         GatewayError::IdempotencyConflict { .. } => "idempotency:conflict".to_owned(),
         GatewayError::IdempotencyPersistFailed { .. } => "idempotency:persist".to_owned(),
+        GatewayError::SubmissionTokenRejected { reason } => format!("submission-token:{reason}"),
         GatewayError::InvalidRequest { reason } => format!("invalid:{reason}"),
     }
 }

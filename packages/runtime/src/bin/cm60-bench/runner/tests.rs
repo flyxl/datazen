@@ -6,6 +6,14 @@ use crate::outcome::total_nanos;
 use crate::plan::DEFAULT_PLAN;
 use datazen_runtime::latency::nearest_rank_percentile;
 
+#[test]
+fn submission_token_rejections_preserve_the_machine_readable_reason() {
+    assert_eq!(
+        rejection_label(&GatewayError::SubmissionTokenRejected { reason: "expired" }),
+        "submission-token:expired"
+    );
+}
+
 fn tiny() -> BenchPlan {
     BenchPlan {
         warmup: 4,
