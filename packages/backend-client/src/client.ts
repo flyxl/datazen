@@ -40,6 +40,7 @@ import type {
   SetSessionContextRequest,
   SubmissionToken,
   SubscribeEventsRequest,
+  OwnerRef,
 } from './types';
 
 export interface BackendClient {
@@ -107,7 +108,7 @@ export interface BackendClient {
   cancelJob(jobId: Id, token: SubmissionToken): Promise<CancelReceipt>;
 
   readArtifact(request: ArtifactReadRequest): Promise<ArtifactChunk>;
-  issueSubmissionToken(operation: string, handle: SessionHandle | null): Promise<SubmissionToken>;
+  issueSubmissionToken(operation: string, handle: SessionHandle | null, scope?: { connectionId: string; owner: OwnerRef }): Promise<SubmissionToken>;
 }
 
 /**
@@ -218,9 +219,9 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
 
     readArtifact: (request) => guard('readArtifact', () => transport.call('readArtifact', request)),
 
-    issueSubmissionToken: (operation, handle) =>
+    issueSubmissionToken: (operation, handle, scope) =>
       guard('issueSubmissionToken', () =>
-        transport.call('issueSubmissionToken', { operation, handle }),
+        transport.call('issueSubmissionToken', { operation, handle, ...scope }),
       ),
   };
 }
