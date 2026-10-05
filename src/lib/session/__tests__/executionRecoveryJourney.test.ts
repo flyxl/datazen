@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ArtifactChunk, BackendClient, EventEnvelope, ConnectionEvent, ExecutionReceipt, ExecutionView, Id, OwnerRef, ExecutionTarget, SessionView, SessionHandle } from '@datazen/backend-client';
+
 import { EditorSessionController } from '../EditorSessionController';
 import { ExecutionProjection } from '../ExecutionProjection';
 import { switchDatabaseSession } from '../QueryPanelSession';
@@ -33,8 +34,8 @@ describe('execute → cancel → recover → re-execute journey', () => {
       issueSubmissionToken: vi.fn(async () => ({ idempotencyKey: 'token', expiresAt: 999 })),
       openSession: vi.fn(async () => ({ session: session(), attachmentToken: 'attach' })),
       executeInSession: vi.fn(async () => ({ executionId: `e${++nextExec}`, streamId: 'stream', state: 'queued' }) as ExecutionReceipt),
-      setSessionContext: vi.fn(async () => ({ session: session('s2', '2', { dbSessionId: 's2', runtimeEpoch: 'epoch' }), replacedSessionId: 's1', attachmentToken: 'new' })),
-      getSession: vi.fn(async () => session('s2', '2', { dbSessionId: 's2', runtimeEpoch: 'epoch' })),
+      setSessionContext: vi.fn(async () => ({ session: session('s2', '2', { dbSessionId: 's2' as unknown as Id, runtimeEpoch: 'epoch' as unknown as Id }), replacedSessionId: 's1', attachmentToken: 'new' })),
+      getSession: vi.fn(async () => session('s2', '2', { dbSessionId: 's2' as unknown as Id, runtimeEpoch: 'epoch' as unknown as Id })),
       getExecution: vi.fn(async () => ({ executionId: 'e1', state: 'cancelled', effectOutcome: 'unknown', provenance: { requestedTarget: target }, artifactIds: ['a'], resultCompleteness: 'truncated', truncationReason: 'cancelled', errorCode: 'cancelled', runtimeBinding: null }) as unknown as ExecutionView),
       readArtifact,
       cancelExecution: vi.fn(async () => ({ executionId: 'e1', disposition: 'requested', state: 'cancelRequested' })),

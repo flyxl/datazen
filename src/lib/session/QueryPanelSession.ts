@@ -1,5 +1,5 @@
 import { ApiError, type BackendClient, type ExecutionTarget, type NamespaceTarget, type OwnerRef, type SessionView } from '@datazen/backend-client';
-import { EditorSessionController, createEditorSessionController } from './EditorSessionController';
+import { EditorSessionController } from './EditorSessionController';
 
 /**
  * Per-editor lazy session registry. Each editor/pane owns an independent
@@ -27,7 +27,7 @@ export class QueryPanelSessionRegistry {
   }
 
   /** Copy semantics: a new owner ID, a new controller — never the runtime handle. */
-  duplicate(sourceKey: string, targetKey: string, target: ExecutionTarget, owner: OwnerRef): EditorSessionController {
+  duplicate(_sourceKey: string, targetKey: string, target: ExecutionTarget, owner: OwnerRef): EditorSessionController {
     const fresh = new EditorSessionController(this.client, target, owner);
     this.controllers.set(targetKey, fresh);
     return fresh;

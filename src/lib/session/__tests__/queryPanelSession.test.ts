@@ -41,7 +41,9 @@ describe('QueryPanelSessionRegistry', () => {
     await a1.ensureSession();
     await dup.ensureSession();
     expect(client.openSession).toHaveBeenCalledTimes(2);
-    const sessions = client.openSession.mock.calls.map((c) => (c[0] as { owner: OwnerRef }).owner.editorSessionId);
+    const sessions = (client.openSession.mock.calls as unknown as Array<[{ owner: OwnerRef }]>).map(
+      (c) => (c[0].owner as { kind: 'editor'; editorSessionId: string }).editorSessionId,
+    );
     expect(sessions).toEqual(['a', 'b']);
   });
 });
