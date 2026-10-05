@@ -246,6 +246,26 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            crate::platform::session_commands::get_platform_identity,
+            crate::platform::session_commands::issue_submission_token,
+            crate::platform::session_commands::open_session,
+            crate::platform::session_commands::get_session,
+            crate::platform::session_commands::execute_in_session,
+            crate::platform::session_commands::execute_at_target,
+            crate::platform::session_commands::set_session_context,
+            crate::platform::session_commands::close_session,
+            crate::platform::session_commands::attach_session,
+            crate::platform::session_commands::detach_session,
+            crate::platform::session_commands::get_execution,
+            crate::platform::session_commands::cancel_execution,
+            crate::platform::session_commands::subscribe_events,
+            crate::platform::session_commands::stop_event_subscription,
+            crate::platform::session_commands::read_artifact_chunk,
+            crate::platform::session_commands::platform_list_profiles,
+            crate::platform::session_commands::platform_create_profile,
+            crate::platform::session_commands::platform_update_profile,
+            crate::platform::session_commands::platform_disable_profile,
+
             // ── 连接、会话与库 ──
             crate::commands::close_database,
             crate::commands::connect,

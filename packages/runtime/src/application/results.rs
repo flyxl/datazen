@@ -136,7 +136,16 @@ impl RuntimeResultSink {
                     "statement source execution mismatch",
                 ))
             }
-            None => unknown_source(id),
+            None => match entry.view.provenance.as_ref() {
+                Some(provenance) => StatementResultSource {
+                    execution_id: id.clone(),
+                    statement_index: 0,
+                    context: provenance.context_before.clone(),
+                    relation: None,
+                    writable_mapping: WritableMapping::ReadOnly,
+                },
+                None => unknown_source(id),
+            },
         };
         let artifact_id = ArtifactId::new(format!("artifact-{}", id.as_str()));
         let size = serde_json::to_vec(

@@ -49,6 +49,12 @@ pub mod error;
 pub mod handles;
 pub mod identity;
 pub mod ipc;
+pub mod repositories;
+pub mod policy;
+pub mod resource_budget;
+pub mod resource_mapping;
+pub mod session_backend;
+pub mod session_commands;
 
 pub use adapter::{PlatformAdapter, PlatformEntry, ASSEMBLY_STATE};
 pub use bridge::{BridgeInjection, FrontendBridge};
