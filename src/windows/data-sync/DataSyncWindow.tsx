@@ -75,6 +75,8 @@ import {
   tablesForCompare,
 } from './mappingView';
 import { buildCompareReportText } from './compareReport';
+import { useMigrationJobHydration } from '../../hooks/useMigrationJobHydration';
+import { isStalePlanError } from '../../lib/migrationJobHydration';
 
 import {
   useDataSyncWizardState,
@@ -122,6 +124,7 @@ export function DataSyncWindow() {
   const loadAiConfig = useAiStore((s) => s.loadConfig);
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
+  const migrationJobs = useMigrationJobHydration('dataSync');
   const [sourceSession, setSourceSession] = useState<DedicatedSideSession | null>(null);
   const [targetSession, setTargetSession] = useState<DedicatedSideSession | null>(null);
   const [sourceId, setSourceId] = useState('');
@@ -1610,6 +1613,14 @@ export function DataSyncWindow() {
       setExecuteProgress('');
       setStatusMsg('');
     } catch (e) {
+      if (isStalePlanError(e)) {
+        setErrorMsg(t('migrationJob.reprepareOnStalePlan'));
+        setErrorOpen(true);
+        setSyncState('compared');
+        setLastExecutionResult(null);
+        setExecuteProgress('');
+        return;
+      }
       setErrorMsg(
         `${writeStarted ? t('sync.executionUnknown') + ' ' : ''}${e instanceof Error ? e.message : String(e)}`,
       );
@@ -2040,6 +2051,17 @@ export function DataSyncWindow() {
           <MigrationRunHistoryDialog operation="dataSync" onReconcile={reconcileUnknownRun} />
         }
       />
+
+      {migrationJobs.hydration?.verificationJobs.length ? (
+        <div className="border-b border-edge px-6 py-2 text-xs text-amber-400">
+          {t('migrationJob.pendingVerificationHint')}
+        </div>
+      ) : null}
+      {migrationJobs.hydrationError ? (
+        <div className="border-b border-edge px-6 py-2 text-xs text-amber-400">
+          {migrationJobs.hydrationError}
+        </div>
+      ) : null}
 
       <div className="border-b border-edge px-6 py-3">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-1">
