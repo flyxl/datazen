@@ -17,7 +17,7 @@ pub mod repository;
 pub mod runtime;
 pub mod time;
 
-pub use budget::{EndpointRef, EndpointRole, MultiEndpointPermits};
+pub use budget::{detect_endpoint_overlap, EndpointRef, EndpointRole, MultiEndpointPermits};
 pub use error::JobError;
 pub use handler::{
     CancelToken, HandlerRegistry, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,

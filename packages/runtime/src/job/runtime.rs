@@ -194,10 +194,11 @@ impl JobRuntime {
             _ => (JobState::Succeeded, EffectOutcome::Completed),
         };
         let latest = self.repo.get(ctx, job_id.clone()).await?;
+        // 终态 CAS 会清 claim，因此先在仍有效的 claim 下写效果结局，再落终态。
+        self.repo.set_effect_outcome(ctx, &claim, effect)?;
         self.repo
             .compare_and_set_state(ctx, &claim, latest.state_version, state)
             .await?;
-        self.repo.set_effect_outcome(ctx, &claim, effect)?;
         if saw_unknown {
             let _ = self
                 .repo
