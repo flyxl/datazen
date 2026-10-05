@@ -30,17 +30,18 @@
 //!
 //!   ★ 登记项 F（**事实登记，本轨不修**）：上面那两个文件**目前 CI 不会跑**。
 //!   `scripts/run-platform-crate-tests.mjs` 在其 `:165` 把调用固定成
-//!   `['test', '--lib', …]`（同文件里的 `EXTRA_TARGETS` 开关全仓 **0** 个调用方，
-//!   没有任何脚本能借它追加集成二进制）；而在 CI 作用域
+//!   `['test', '--lib', …]`。`argvList` 在该脚本里**只被赋值这一次**（`:165`），
+//!   随后的 `spawnSync('cargo', argvList, …)`（`:172`）是它唯一的 cargo 调用入口；
+//!   该文件全文不含 `--tests`，也没有任何能追加 target 的开关。而在 CI 作用域
 //!   （`git grep 'cargo (nextest|test)' -- scripts .github package.json`）的
 //!   **31** 行调用里，点名 `datazen-runtime` 的是 **0** 行。所以本 crate 顶层
 //!   **24** 个 `tests/*.rs` 集成二进制（含上述两个）**全部不进 CI**，
-//!   这里的「钉住」目前只由本地门禁背书。归口 `p3-cm28-pressure-drain` 轨的
+//!   这里的「钉住」目前只由本地门禁背书。归口 `p3-cm60-pressure-drain` 轨的
 //!   CI 修复；该修复未并入本树之前，此处不得记作已覆盖。
 //! * **不在本模块、且此前被误记在这里**的一格：CM-27 的「可确认关闭的资源许可
 //!   归零」。该格的主语是**资源许可**，不是隧道引用，已由三处闭合并各自带测试：
 //!   `platform-api/src/ports/budget/pool_ledger.rs` 里 `impl Ledger` 的 **`release`**
-//!   ——`:374` 定位并摘行、`:376` 调 `uncharge` 归还占用、`:387` 出
+//!   ——`:374` 定位、`:375` 摘行、`:376` 调 `uncharge` 归还占用、`:387` 出
 //!   `ReleaseDisposition::Closed`，而 `:385` 的注释自述「本端口只有『真的 close 了』
 //!   这一条释放路径」。行号只供人读，**按 `Ledger::release` 符号即可重定位**。
 //!   （对外的宿主类型是 `InMemoryDriverPoolBudget`，内部账本类型才叫 `Ledger`；
