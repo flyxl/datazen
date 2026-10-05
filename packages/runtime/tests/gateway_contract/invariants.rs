@@ -244,6 +244,25 @@ fn gateway_sources_obey_the_locked_invariants() {
         }
     }
 
+    // ⚠ 已登记、未修：**全仓**的 800 行红线只覆盖 `src/gateway` 与本文件下面的 `tests/`。
+    //   * 结论：全仓有 **80 个** `.rs` 文件 ≥ 800 行，最大的
+    //     `src-tauri/src/commands/schema_diff.rs` 有 3250 行。没有任何门禁盯着它们。
+    //   * 为什么未修：把这 80 个补进下面的清单会**当场变红**（它们现在就在违反），
+    //     把阈值改成「只对新文件生效」又等于给存量开口子——那是放宽规则，不是修规则。
+    //     真修只能逐个按职责拆分，是独立的大范围改动，不该搭在本轨道上顺手做。
+    //   * 怎么复现：`git ls-files '*.rs' | xargs wc -l | awk '$1>=800 && $2!="total"' | wc -l`
+    //     换一个口径（`python3` 按 `splitlines()` 数）得到同一个数。必须先 `git ls-files`：
+    //     直接 `find` / `read_dir` 会把 gitignored 的 `src-tauri/src/driver_init.rs`
+    //     和 `target/` 下的构建产物一并数进来，得到的不是同一个问题。
+    //   * 影响范围：这 80 个文件现在只受「评审时看一眼」约束，规模继续膨胀不会让任何
+    //     测试变红。`AGENTS.md:256` 的原文是「**推荐**单文件不超过 800 行，严禁出现
+    //     超大单文件」——「推荐」是建议性措辞。真正硬的只有本文件里两处
+    //     `assert!(… <= 800 …)`：生产那处在本段上方（`:228`），测试那处在本段下方
+    //     ——**下方那处故意不给行号**：这段注释就插在它前面，本段每增删一行都会把它顶下去，
+    //     给它写死行号等于给自己埋一个必然过期的数字（连着栽了两次：320 → 336 → 338）。
+    //     要定位就跑 `grep -n '<= 800' packages/runtime/tests/gateway_contract/invariants.rs`。
+    //     写在这里是为了台账随合并删除后，这个缺口不会跟着消失。
+
     // 测试专用模块必须显式标 #[cfg(test)]，否则它们会进生产二进制。
     let mod_rs = std::fs::read_to_string(dir.join("mod.rs")).expect("mod.rs 可读");
     for (module, public) in [
