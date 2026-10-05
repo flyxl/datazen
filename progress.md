@@ -75,28 +75,35 @@ PORCELAIN_END = [ M progress.md]
 
 ## 变异证明（每条都带负对照；全部已还原，工作树干净）
 
-基线（HEAD `bf7c35b7`，2026-08 的修复轮实测）：
-`cargo test -p datazen-runtime --test owner_binding` = `test result: ok. 19 passed; 0 failed`，
+基线（本轨 HEAD `e45609f32`）：
+`cargo test -p datazen-runtime --test owner_binding` = `test result: ok. 22 passed; 0 failed`，
 `cargo test -p datazen-runtime --doc` = `test result: ok. 7 passed; 0 failed`。
-
-> ★ **本节整表已在修复轮重测并重写。** 上一版的三条 Authorizer 变异结论里有两条被实测
-> 推翻（下面「被推翻的旧结论」一节逐条列出），**数字与失败集合以本表为准**。
 
 ### Authorizer 比较（`owner_binding.rs`）
 
-变异位点实测在 `packages/runtime/src/gateway/owner_binding.rs`：
-`:171` `check_organization(...)?;`、`:172` `check_principal(...)`、
-`:190` `if owner != principal.organization_id() {`、`:204` `if owner != principal.principal_id() {`。
+变异位点在本轨 HEAD 的 `packages/runtime/src/gateway/owner_binding.rs`（512 行，blob `06473a4a`）：
+`:178` `check_organization(...)?;`、`:179` `check_principal(...)`、
+`:197` `if owner != principal.organization_id() {`、`:211` `if owner != principal.principal_id() {`。
+
+★ **A 行曾经是假的，而且错法很典型。** 旧表把它写成「删掉两个调用点 ⇒ `12 passed; 7 failed`」，
+可这一行**从来没能跑起来**：照坐标删掉 `:178-179`，`cargo` 停在
+`error[E0308]: mismatched types`，一个测试都没执行，`EXIT=101` 是**编译失败**的退出码，
+不是「测试红」的退出码。从一棵没编译的树上读结论等于没读——这条失败集合是编出来的。
+所以下面两件事必须分开记：**编译红 ≠ 测试红**，只有日志里出现 `running N tests` 才算测试结论。
 
 | 变异 | 结果（`--test owner_binding`） |
 | --- | --- |
-| A 删掉 `:171-172` 两个调用点（两个 `fn` 体变死代码，`Job` 分支仍走组织比较） | `EXIT=101`，`FAILED. 12 passed; 7 failed` |
-| B 只反转组织比较（`:190` `!=` → `==`） | `EXIT=101`，`FAILED. 11 passed; 8 failed` |
-| C 只反转主体比较（`:204` `!=` → `==`） | `EXIT=101`，`FAILED. 11 passed; 8 failed` |
+| A 删掉 `:178-179` 两个调用点 | **编不过**：`error[E0308]: mismatched types`，0 个测试被执行，无失败集合 |
+| A′ 删 `:179`、`:178` 换成 `Ok(())`（A 的可编译等价形） | `EXIT=101`，`FAILED. 15 passed; 7 failed` |
+| B 只反转组织比较（`:197` `!=` → `==`） | `EXIT=101`，`FAILED. 14 passed; 8 failed` |
+| C 只反转主体比较（`:211` `!=` → `==`） | `EXIT=101`，`FAILED. 14 passed; 8 failed` |
+
+`A′` 才是本轮实际执行的 A 变异。旧表那个「两个 `fn` 体变死代码」的括注也是错的：
+`check_organization` 在 `:183` 的 `OwnerRef::Job` 分支仍被调用，只有 `check_principal` 会变成死代码。
 
 **失败集合逐条列出（不是凭印象，是从日志里 grep 出来的）：**
 
-| 测试名 | A | B | C |
+| 测试名 | A′ | B | C |
 | --- | :-: | :-: | :-: |
 | `cm04_a_profile_id_passed_as_a_session_handle_is_not_found` | | ✗ | ✗ |
 | `cm05_a_cross_organization_owner_looks_identical_to_an_absent_session` | ✗ | | |
@@ -110,10 +117,16 @@ PORCELAIN_END = [ M progress.md]
 | `cm06_naming_another_users_editor_is_refused` | ✗ | | ✗ |
 | `cm06_the_real_owner_is_still_accepted` | | ✗ | ✗ |
 
-三条集合**两两不同**：B 与 C 的差集正好是「job 两例 vs peer/命名两例」，
+三条集合**两两不同**：`|A′∩B|=4`、`|A′∩C|=6`、`|B∩C|=6`、并集 11 例，共同失败的 4 例是
+cm05 两条 + cm06 的 forged-identity 与跨组织 Editor。B 与 C 的差集正好是「job 两例 vs peer/命名两例」，
 即组织比较只由 `OwnerRef::Job` 那一路独立承重、主体比较只由 `Editor` 那一路独立承重。
 ⇒ 上一版「失败集合相同 ⇒ 各自独立被覆盖」的推论**是错的**：集合相同根本不能推出独立，
 集合不同才能。
+
+> 这张表本身是**上一版唯一没被带坏**的部分：逐条 ✗ 标记与本轮 HEAD 上跑出来的失败集合
+> 逐行一致。坏掉的是上面那张汇总表的三个计数（`12/7`、`11/8`、`11/8` 都是 19 例时代的数），
+> 以及基线那一行写着的 `19 passed`。**同一个文件里，集合是对的、计数是错的**——这正是
+> 「凭印象补计数」的典型后果，也是本表不再写任何未跑数字的理由。
 
 **一个必须说清的副作用**：`cm04_...` 之所以在 B/C 下红，是因为它 `:484-490` 有个
 「真句柄必须放行」的对照体，作者器一反转，对照体就红。它不是 CM-04 的语义被破坏，
@@ -138,7 +151,8 @@ PORCELAIN_END = [ M progress.md]
 | --- | --- |
 | ~~往**生产**文件 `src/gateway/request.rs` 栽一处 `AlwaysAllow`~~ | **作废——这条从未真的跑过**，详见下方更正 |
 | 往生产文件 `src/gateway/mod.rs` 的 `pub(crate) mod testing_support;` 之后插一行探针 | `EXIT=101`，`no_production_file_wires_an_authorizer_that_always_allows` 红，报 `packages/runtime/src/gateway/mod.rs:67` |
-| 阳性对照：同一探针插到 `mod.rs` 文件末尾 | `EXIT=101`，报 `packages/runtime/src/gateway/mod.rs:800` |
+| 阳性对照：同一探针在 `mod.rs` 文件末尾**单行**追加 | `EXIT=101`，报 `packages/runtime/src/gateway/mod.rs:799` |
+| 更正（R4） | 上一轮这一格写的是 `mod.rs:800`，**多了一行**：`mod.rs` 末行是 798，**单行**追加落 799，`:800` 要**追加两行**才有。行号必须跟着「追加了几行」走，写死就一定会错。代码侧同一处错误在 `production_wiring.rs` 模块头，已一并改掉 |
 | 只在注释 / 字符串字面量 / `#[cfg(test)]` 块 / `use` 里写 `AlwaysAllow` | `EXIT=0`，`the_wiring_guard_ignores_prose_and_test_only_mentions` 绿 |
 
 **更正（R3）**：本节原先写「真实反例报 `request.rs:603`，行号与 `grep -n` 实测一致」。
@@ -210,12 +224,15 @@ PORCELAIN_END = [ M progress.md]
   `cm06_a_job_owned_by_another_organization_is_refused`。
 - ★ **「上一层已经挡住」是错的，本轨不再这么写。** `identity_policy.rs` 的
   `check_owner`（**定义在 `:137`**，`ctx: &RequestContext, owner: &OwnerRef,
-  authorized_job: Option<&JobId>`）实测**全仓没有任何生产调用点**：
-  `git grep -in check_owner -- .` 的 16 处命中里，8 处是它自己文件内的单测
-  （`:270`、`:276`、`:283`、`:284`、`:285`、`:292`、`:297`、`:307`），
-  1 处是 `dto/requests.rs:183` 的文档链接，其余 7 处都是本轨自己写的**文档说明**
-  （`owner_binding.rs` 3 处、`tests/owner_binding.rs` 2 处、本文件 1 处）。
-  `src-tauri` 全树零命中。⇒ 「上层兜底」不存在。
+  authorized_job: Option<&JobId>`）**全仓没有任何生产调用点**。
+  计数口径固定为 `git grep -in check_owner -- . ':!progress.md'`，共 **15 处**：
+  `identity_policy.rs` **9 处**（1 处定义 + **8 处**该文件内单测 `:270`、`:276`、`:283`、
+  `:284`、`:285`、`:292`、`:297`、`:307`）、`dto/requests.rs:183` 文档链接 1 处、
+  其余 **5 处**是本轨自己写的文档说明（`owner_binding.rs` 3 处、
+  `tests/owner_binding.rs` 2 处）。`src-tauri` 全树 **0** 处。⇒ 「上层兜底」不存在。
+  > 口径里排除本文件是故意的：本文件提到 `check_owner` 的条数会随台账改写而变，
+  > 把一个自己会推动它变化的数字当证据，等于把证据挂在刀刃上。旧账写的是 16 处，
+  > 且「其余 7 处」只列得出 6 条（3 + 2 + 1），自身就差 1。
 - 而且就算它被调用也**补不上这个洞**：它比的是调用方**显式传入**的 `authorized_job`
   与 `owner.job_id`（`identity_policy.rs:165-171` 的 `OwnerRef::Job` 分支），
   那是「这个 job 有没有获授权」，不是「这是不是同一个人」；而它的 `OwnerRef`
@@ -297,7 +314,32 @@ PORCELAIN_END = [ M progress.md]
 上面「被门禁挡下的两处登记」本是**既有设计**：漏登记会让「令牌不落盘」与
 「生产路径禁用词」两条证据对新文件**悄悄失效**。但它们只在**本地全量跑**时
 触发——单跑 `--test owner_binding` 或 `--doc` 不会碰到。**归属：CI 接线
-（P3 出口闸门跑全量时补 `cm70_no_disk` / `gateway_contract` 两条目标）。**
+（P3 出口闸门跑全量时补 `cm70_no_disk` / `gateway_contract` 两条目标）。
+
+### 6. 全仓 ≥800 行的 `.rs` 文件没有任何门禁覆盖
+
+- 事实：`gateway_contract/invariants.rs` 里两处 `assert!(… <= 800 …)`**只覆盖
+  `src/gateway` 与 `tests/`**。全仓跟踪的 966 个 `.rs` 文件里，
+  有 **80 个** ≥ 800 行，最大 `src-tauri/src/commands/schema_diff.rs` **3250 行**。
+- 为什么本轨不修：把这 80 个补进清单会**当场变红**（它们就在违反）；把阈值改成
+  「只对新文件生效」是给存量开口子，属于放宽规则而不是修规则。真修只能逐个按职责拆分。
+  **明确不扩 `invariants.rs` 的覆盖面**——那是别的轨的尺度问题，本轨无权替他定标。
+- 复现命令（口径必须是 `git ls-files`；直接 `find` / `read_dir` 会把 gitignored 的
+  `src-tauri/src/driver_init.rs` 和 `target/` 下的构建产物数进来，那是另一个问题）：
+  ```sh
+  git ls-files '*.rs' | xargs wc -l | awk '$1>=800 && $2!="total"' | wc -l
+  ```
+- ★ **数字分歧，如实记下不调和**：评审侧给的是 **78**，我按上式数是 **80**，
+  另用 `python3` 按 `splitlines()` 复算仍是 **80**（两种口径互为交叉验证）。
+  差 2 个文件的原因未查明，可能是评审侧的取样时点或过滤条件不同。
+  **我把 80 写进代码注释并附上复现命令**，让下一个接手的人能自己判，而不是采信任何一方。
+  登记（结论 / 为什么未修 / 怎么复现 / 影响范围四段）已写进 `invariants.rs` 的
+  **代码注释**，台账随合并删除后缺口不消失。
+- ★ 这条登记本身踩了本轮的同一个坑，值得留个印：注释插在 `invariants.rs` 那两处
+  `assert!` **之间**，于是注释里给下面那处写的行号**必然失效**——连栽两次，
+  `:320` → `:336` → `:338`，每改一次注释就再偏一次。最终**不写行号**，改写
+  `grep -n '<= 800' …` 让读者自己定位。**一条注释无法稳定引用它自己下方的东西**，
+  这跟「移位量只能由 `git diff --numstat` 算」是同一条纪律的两面。**
 
 ## 派单事实勘误（逐条）
 
@@ -388,6 +430,17 @@ testing_support;` 会跟后面某个毫不相干的 `impl Foo {` 配对，中间
 `pub mod x;` / `pub(crate) mod x;` / `pub(in a::b) mod x {` / 裸 `mod x {`，以及
 rustfmt 把 `{` 换行写的合法形态 `mod tests\n{`。
 
+**同一个函数里还有第二个逻辑增量，上一轮记账时漏了它**：
+`next_inline_test_block()` 里的 `let cfg_test = !attr.contains("not(") && (...)`
+（`production_wiring.rs:328`）。少了 `!attr.contains("not(")` 这一段，
+`#[cfg(not(test))]` 会被当成测试块整段剥掉。全仓 `git grep -n 'cfg(not(' -- '*.rs'`
+共 **19 处**命中，其中 **1 处是本文件 `:327` 的说明注释**、其余 **18 处是代码**；
+这 18 处逐个看其后两行，**0 处**挂在 `mod` 声明上（都是 `use`／函数／常量这类条件编译项）。
+⇒ 所以它目前是**防御性**的：拿掉它今天不会红。
+但它必须留着，而且这条比「今天有没有用」更要紧：这条不验算是
+「剥除不得吞掉任何东西，不只是测试块」，一旦被破坏，后果是**静默少报**——
+没有任何一条测试会红，守卫只会安安静静地漏掉真违规。
+
 **新旧判别器全量对照**（在**剥掉注释与字符串**的文本上逐文件比对吞掉的区间）：
 
 | 指标 | 实测值 |
@@ -416,11 +469,39 @@ rustfmt 把 `{` 换行写的合法形态 `mod tests\n{`。
 3. `no_braceless_test_module_declaration_is_ever_swallowed` —— 全生产文件走查，
    任何 `inline_module_brace` 返回 `None` 的 cfg-test 声明即红。**并断言输入非空**：
    `scanned > 100`、`外部测试模块声明 ≥ 20 处 / ≥ 10 个文件`，实测输出
-   「外部测试模块声明：289 处 / 136 个文件，扫描生产文件 698 个，全部未被误吞」。
+   「外部测试模块声明：289 处 / 136 个文件，扫描生产文件 697 个，全部未被误吞」
+    （扫描文件数随工作树里有没有生成物浮动，见下方「扫描文件数为什么可能不是 697」）。
+
+### 扫描文件数为什么可能不是 697
+
+`collect_rs` 走的是**文件系统目录遍历**，不是 `git ls-files`。所以「扫描生产文件 N 个」
+这个 N 是**环境相关**的：凡是工作树里存在、但没被 `PRUNED_DIRS` 剪掉的 `.rs`，都会被算进去，
+包括被 gitignore 的生成物。
+
+- **干净检出**（任何 fresh `git worktree`）⇒ **697**。
+- 跑过 `pnpm install` / `resolve-drivers` 的工作树 ⇒ **698**，多的正是 gitignored 的
+  `src-tauri/src/driver_init.rs`（`git check-ignore` 指向 `.gitignore:69`；
+  `git ls-files --error-unmatch` 明确未跟踪）。`target/` 下的构建产物（如
+  `serde-*/out/private.rs`）被 `PRUNED_DIRS` 剪掉，不影响这个数。
+- 断言里的 `289 处 / 136 个文件` 在两种环境下**都是同一个数**，不受影响。
+
+⇒ 台账统一写 **697**，因为那是干净检出会跑出来的数，也是合并后 CI 会看到的数。
+旧台账的 698 不是笔误，是**在会生成代码的工作树里跑出来的真数**，但它绑死了一个别的
+工作树的状态，换棵树就复现不出来——把这种数写进「未变的证明」里，本身就是把环境当成了
+不变量。
+
+**这是个已登记未修的缺陷**：打印出来的扫描口径应当只认 Git 跟踪的 `.rs`，否则
+「扫了多少个文件」这个自检量会随构建历史漂移。它不影响判定结论（剥除器只可能**少**报，
+不会多报），但它让「文件数」这个兜底不变量的意义打折。本轮不改它——改口径会移动门禁数字，
+而本轮的改动范围限定为注释与台账。
+
+补充：主守卫 `no_production_file_wires_an_authorizer_that_always_allows` 内部另有一个
+不打印的 `scanned`，它在 `:443` 额外跳过 `DEFINITION_SITE`，所以是 **696**；那个数只用来
+过 `scanned > 100` 的非空断言，不对外报。
 
 ### WARN B —— 本轨测试文件不在 800 行门禁里
 
-`gateway_contract/invariants.rs` 的 800 行断言（实测在 `:229` 与 `:320`）原先只覆盖
+`gateway_contract/invariants.rs` 的 800 行断言原先只覆盖
 `tests/gateway_contract.rs` + `tests/cm70_idempotency_replay.rs` + `tests/cm70/*.rs` +
 `tests/gateway_contract/*.rs`，**`tests/owner_binding.rs` 与 `tests/owner_binding/*.rs`
 在任何一个清单里都没有**。已补：硬编码清单加 `tests/owner_binding.rs`，并新增
@@ -443,7 +524,7 @@ rustfmt 把 `{` 换行写的合法形态 `mod tests\n{`。
 「**第一个把 `AlwaysAllow` 接进生产路径的人会红**」，**不是**「今天的接线是对的」。
 后者靠的是 `owner_binding.rs` 的行为测试，不是这条扫描。这个区分已写进
 `production_wiring.rs` 模块头。输入非空由第 3 条不变式测试的
-`289 处 / 136 个文件 / 698 个扫描文件` 断言兜底。
+`289 处 / 136 个文件 / 697 个扫描文件` 断言兜底。
 
 ### 本轮最后一步：按职责拆文件
 
@@ -462,11 +543,21 @@ rustfmt 把 `{` 换行写的合法形态 `mod tests\n{`。
 * 拆分线本身是职责线不是行数线：`production_wiring` 回答「量没量到接线」，
   `wiring_shape` 回答「量的是不是完整那一段」。BLOCKER D 正落在这条缝上。
 
-**拆分是行为保持的实测结论**，不是推断：拆分前后 `289 处 / 136 个文件 / 698 个扫描文件`
-三个数**逐字相同**（`--nocapture`），`running 22 tests` 也未变；三个测试名由
-`production_wiring::*` 变为 `wiring_shape::*`，**没有增删任何断言**。
-新文件落在 `tests/owner_binding/` 目录下，因此被 WARN B 修好的整目录扫描自动覆盖，
-不需要再往 `invariants.rs` 的清单里加一行。
+**拆分是纯搬移。** 9 个函数改为 `pub(super)` 供 `wiring_shape` 复用，**没有复制实现**——
+复制会让两份各自腐化，正是这轮要根治的病。
+
+> ★ 旧台账在这里写过一句「拆分前后 `289 处 / 136 个文件 / 698 个扫描文件` 三个数**逐字相同**
+> （`--nocapture`），`running 22 tests` 也未变」，**这句撤下**：它比的是同一棵工作树里
+> 两个**未提交的中间状态**，没有任何一对提交能复现它；而且扫描文件数随工作树里有没有
+> 生成物浮动（见下节），拿它当「行为未变」的锚点是脆的。
+>
+> 能钉到提交上、且能复核的锚点只有这些：`664ec3f03`（父提交）上 `production_wiring.rs`
+> 单文件 523 行、`--test owner_binding` 跑 19 例；本轨 HEAD 上 589 + 231 行、22 例。
+> 差的 3 例正是同一次提交里为 BLOCKER D 补的回归测试
+> （`no_braceless_test_module_declaration_is_ever_swallowed`、
+> `a_braceless_test_module_declaration_must_not_swallow_the_next_block`、
+> `the_wiring_guard_reads_the_real_gateway_module_past_its_test_declarations`），
+> 按测试名 diff 可复核；**删除的测试为 0**——拆分没有增删任何断言。
 
 ### FAIL-4 复评：**未关闭**
 
