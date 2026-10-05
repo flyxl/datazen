@@ -151,8 +151,9 @@ cm05 两条 + cm06 的 forged-identity 与跨组织 Editor。B 与 C 的差集�
 | --- | --- |
 | ~~往**生产**文件 `src/gateway/request.rs` 栽一处 `AlwaysAllow`~~ | **作废——这条从未真的跑过**，详见下方更正 |
 | 往生产文件 `src/gateway/mod.rs` 的 `pub(crate) mod testing_support;` 之后插一行探针 | `EXIT=101`，`no_production_file_wires_an_authorizer_that_always_allows` 红，报 `packages/runtime/src/gateway/mod.rs:67` |
-| 阳性对照：同一探针在 `mod.rs` 文件末尾**单行**追加 | `EXIT=101`，报 `packages/runtime/src/gateway/mod.rs:799` |
-| 更正（R4） | 上一轮这一格写的是 `mod.rs:800`，**多了一行**：`mod.rs` 末行是 798，**单行**追加落 799，`:800` 要**追加两行**才有。行号必须跟着「追加了几行」走，写死就一定会错。代码侧同一处错误在 `production_wiring.rs` 模块头，已一并改掉 |
+| 阳性对照：同一探针在 `mod.rs` 文件末尾**单行**追加 | `EXIT=101`，报 `packages/runtime/src/gateway/mod.rs:799`。★ **这是 `c257ef7cd` 这棵树上某一次运行的结果，不是常驻结论**——规则永远是「末行行号 + 1」，这个 799 只在那棵树上成立（`mod.rs` 在 main `42bf321a1` 上是 799 行，单行追加就落 800：同一个数在两棵树上就是两个答案） |
+| 更正（R4） | 上一轮这一格写的是 `mod.rs:800`，**多了一行**：`mod.rs` 末行是 798，**单行**追加落 799，`:800` 要**追加两行**才有。行号必须跟着「追加了几行」走，写死就一定会错 |
+| 更正（R5） | 上一行「代码侧同一处错误在 `production_wiring.rs` 模块头，**已一并改掉**」是**假的完成声明**——R4 根本没改那儿，`production_wiring.rs` 模块头那个阳性对照到 R5 开工时仍写着 `mod.rs:800`。R5 才真的把它改成与同文件模块头一致的写法：**末行行号 + 1，不写死任何数**。为什么必须这样：一条注释给**它下面**的内容标行号，只要上方加一行，那个数就必然过期——而「不写死」的唯一替代不是再算一遍，是让行号不进入注释 |
 | 只在注释 / 字符串字面量 / `#[cfg(test)]` 块 / `use` 里写 `AlwaysAllow` | `EXIT=0`，`the_wiring_guard_ignores_prose_and_test_only_mentions` 绿 |
 
 **更正（R3）**：本节原先写「真实反例报 `request.rs:603`，行号与 `grep -n` 实测一致」。
@@ -373,7 +374,10 @@ cm05 两条 + cm06 的 forged-identity 与跨组织 Editor。B 与 C 的差集�
      **8 处真实构造点**（`facade_support.rs:337`、`facade_tests.rs:121`、
      `gateway_fixtures/mod.rs:610,634,679,692,711`、`owner_binding/support.rs:316`）
      + 4 处散文/守卫夹具（`owner_binding.rs:53` 的模块头、`cm70_idempotency_replay.rs:17`、
-     `production_wiring.rs:5`、`:466` 那段 `r#"…"#` 里的**合成反例**）。
+     `production_wiring.rs` 模块头，以及
+     `the_wiring_guard_catches_a_planted_production_wiring` 里那段 `r#"…"#` 的**合成反例**
+     ——定位方式 `grep -n 'ExecutionGateway::' packages/runtime/tests/owner_binding/production_wiring.rs`；
+     ★ 这一格原先写死 `production_wiring.rs:466`，是**过期的行号**，R5 改成了函数名定位）。
      8 处真实构造点全在 `#[cfg(test)]` 模块（`gateway/mod.rs:74-77`）或 `tests/` 下，
      **`src-tauri` 零命中**。
      ⇒ 结论成立：**归属闸门在任何运行中的应用里都未生效**。
@@ -423,7 +427,9 @@ cm05 两条 + cm06 的 forged-identity 与跨组织 Editor。B 与 C 的差集�
 **性质**：守卫的真实盲点。旧实现把 `#[cfg(test)]` 属性之后**下一个 `{`**
 当成内联块的开花括号，于是 `mod.rs:65-66` 的 `#[cfg(test)] pub(crate) mod
 testing_support;` 会跟后面某个毫不相干的 `impl Foo {` 配对，中间整段生产代码被剥掉
-（剥注释与字符串后的行号为 **64..87**，520 字节）。
+（剥注释与字符串后的行号为 1 基 `65..88`、即 0 基 **64..87**；吞掉的那段**剥除文本**
+**520 字节**——口径是剥除后的字节，同区间**原始**文件字节 805。R5 在 HEAD `c257ef7cd`、
+`mod.rs` blob `af2b403b` 上重量的，520 与 805 都复现）。
 
 **修法**：`inline_module_brace()` 要求 `{` 属于**同一条声明**——从 `mod` 关键字
 往后扫，**先遇到 `;` 就判定为无花括号外部声明**、直接返回 `None`。这同时覆盖
@@ -432,31 +438,48 @@ rustfmt 把 `{` 换行写的合法形态 `mod tests\n{`。
 
 **同一个函数里还有第二个逻辑增量，上一轮记账时漏了它**：
 `next_inline_test_block()` 里的 `let cfg_test = !attr.contains("not(") && (...)`
-（`production_wiring.rs:328`）。少了 `!attr.contains("not(")` 这一段，
+（定位方式，别记行号：`grep -n 'attr.contains("not(")' packages/runtime/tests/owner_binding/production_wiring.rs`
+——上一版这里写死了行号，文件一改就漂，正是 `production_wiring.rs` 模块头栽过的那一刀）。
+少了 `!attr.contains("not(")` 这一段，
 `#[cfg(not(test))]` 会被当成测试块整段剥掉。全仓 `git grep -n 'cfg(not(' -- '*.rs'`
-共 **19 处**命中，其中 **1 处是本文件 `:327` 的说明注释**、其余 **18 处是代码**；
+共 **19 处**命中，其中 **1 处是 `production_wiring.rs` 自己的说明注释**、其余 **18 处是代码**；
 这 18 处逐个看其后两行，**0 处**挂在 `mod` 声明上（都是 `use`／函数／常量这类条件编译项）。
 ⇒ 所以它目前是**防御性**的：拿掉它今天不会红。
 但它必须留着，而且这条比「今天有没有用」更要紧：这条不验算是
 「剥除不得吞掉任何东西，不只是测试块」，一旦被破坏，后果是**静默少报**——
 没有任何一条测试会红，守卫只会安安静静地漏掉真违规。
 
-**新旧判别器全量对照**（在**剥掉注释与字符串**的文本上逐文件比对吞掉的区间）：
+**新旧判别器全量对照**（**R5 这一轮在 HEAD `c257ef7cd` 上逐文件重跑**的；行号与字节
+默认记**原始文件**的，被吞的那**一段剥除文本**的字节另记并标出）：
 
-| 指标 | 实测值 |
+| 指标 | R5 实测值 |
 | --- | --- |
-| 受影响文件 | **54** 个 |
-| 受影响区间 | 55 处，合计 324348 字节 |
-| 这些区间里真正出现 `AlwaysAllow`/`AlwaysDeny` 的 | **0 处（全部 54 个文件 `always_mentions=0`）** |
+| 扫描到的生产文件 | **698** 个（与下方常驻回归独立打出的 698 对得上） |
+| 受影响文件 | **341** 个 |
+| 受影响区间 | **374 处** |
+| 这些区间里真正出现 `AlwaysAllow`/`AlwaysDeny` 的 | **0 处** |
 
-⇒ D 是**潜伏的绕过通道，不是已在生效的漏洞**。最大的几处（`sync/exec.rs` 7..1018
-32654B、`app_data_archive.rs` 532..1323、`sync/plans.rs` 1164..1883）都不在本轨。
-本轨子集：`gateway/request.rs` 395..598、`gateway/mod.rs` 64..87（仅 520 字节）。
+⇒ D 是**潜伏的绕过通道，不是已在生效的漏洞**。最大的几处（**原始**字节）：
+`src-tauri/src/data_transfer/sql_file.rs` 1262..2366（43743）、
+`src-tauri/src/data_sync/execute.rs` 702..1842（39289）、
+`src-tauri/src/commands/schema_diff.rs` 2401..3250（31697），都不在本轨。本轨
+`gateway/mod.rs`（blob `af2b403b`）被吞的是剥除文本 1 基 `65..88`、即 0 基 `64..87`，
+那段**剥除文本 520 字节**，排不进前五。
 
-★ **更正上一版台账的两个说法**：早前记的「23 个文件 / `mod.rs` 95 行 / 3737 原始字节」
-**作废**，权威数字是上表的 **54 个文件**；「盲区在 `gateway/mod.rs` 最大」**也是错的**——
-`mod.rs:64..87` 只有 520 字节，远排在 `sync/exec.rs` 的 32654 字节之后。之所以仍要修，
-是因为守卫的**不变量**（剥除不得吞掉生产代码）本身被破了，与眼下是否正好有人违规无关。
+★ **更正（R5）**：上一版这张表写的是「**54** 个文件 / **55** 处 / 合计 324348 字节 /
+最大是 `sync/exec.rs` 的 7..1018 共 32654B」。R5 在本树逐文件重跑，**复现不出来**：
+`src-tauri/src/commands/sync/exec.rs`（blob `7562eb52`）被旧实现吞掉的只有**一处**，
+在**剥除文本**上是 1 基 `603..1019`（即 0 基 `602..1018`），**原始** 15573 字节 /
+剥除后 14566 字节——起点不是 7，字节不是 32654。更早的「23 个文件 / `mod.rs` 95 行 /
+3737 原始字节」同样作废。之所以仍要修，是因为守卫的**不变量**（剥除不得吞掉生产代码）
+本身被破了，与眼下是否正好有人违规无关。
+
+★ **把口径写在这儿，免得下一个数再被抄错**：380 处区间**彼此会重叠**（同一文件里多个
+`#[cfg(test)]` 各吞一段，越靠后的吞得越宽），所以「按区间加总的字节总数」是个无意义量
+——本轮加出来是 2190920，比这些文件本身加起来还大。因此本表**只给文件数与区间数**，
+字节只在有名字的那几处给出，并标明是**原始**还是**剥除**。教训：**任何数都得连着
+「哪棵树 / 哪个 blob / 哪个口径 / 哪一段」一起写**，一个光秃秃的数，下一轮就分不清
+它是量出来的还是抄来的。
 
 **常驻回归**（3 条，全部不靠人记）：
 1. `a_braceless_test_module_declaration_must_not_swallow_the_next_block` —— 无花括号
