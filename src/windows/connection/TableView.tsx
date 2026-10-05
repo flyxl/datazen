@@ -523,9 +523,9 @@ export function TableView({
         </div>
       )}
       {txError && (
-        <ErrorBanner variant="strip" className="border-danger/30 py-1">
+        <div className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400">
           {txError}
-        </ErrorBanner>
+        </div>
       )}
       {isEditable && (
         <div
@@ -567,9 +567,7 @@ export function TableView({
               </button>
             </>
           )}
-          {inTx && (
-            <span className="ml-auto text-warning">{t('tableData.txManualHint')}</span>
-          )}
+          {inTx && <span className="ml-auto text-warning">{t('tableData.txManualHint')}</span>}
         </div>
       )}
       {pendingChanges.size > 0 && (
