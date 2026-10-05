@@ -4,17 +4,17 @@
 
 # P4 development (2026-10-05)
 
-Integration branch: `codex/p4-integration`; baseline: `b0d574589`.
+Integration branch: `codex/p4-integration`; baseline: `fd2d1ef04`.
 User scope: develop P4 desktop query/table/metadata migration. Skip performance benchmarks and documentation/comment accuracy audits.
 
 | Wave | Track | Branch | Status |
 | --- | --- | --- | --- |
-| 0 | Shared runtime application use cases + result/event bridge | codex/p4-usecases | CODING |
-| 0 | Desktop profile/policy/resource backend + IPC assembly | codex/p4-desktop | CODING |
-| 0 | Session controller + execution projection + Channel transport | codex/p4-session-client | CODING |
-| 1 | Query session/context/transaction + execution/results consumer | pending | NOT_STARTED |
-| 1 | Table fixed-target/short transaction consumer | pending | NOT_STARTED |
-| 1 | Metadata scoped resources/cache identity | pending | NOT_STARTED |
+| 0 | Shared runtime application use cases + result/event bridge | codex/p4-usecases | ✅ MERGED `446207524` |
+| 0 | Desktop profile/policy/resource backend + IPC assembly | codex/p4-desktop | ✅ MERGED `194aaea3` |
+| 0 | Session controller + execution projection + Channel transport | codex/p4-session-client | ✅ MERGED `db2edfa1` |
+| 1 | Query session/context/transaction + execution/results consumer | codex/p4-w1-query | 🔄 CODING |
+| 1 | Table fixed-target/short transaction consumer | codex/p4-w1-table | 🔄 CODING |
+| 1 | Metadata scoped resources/cache identity | codex/p4-w1-metadata | 🔄 CODING |
 | R | Community/Pro, continuous journeys, host and driver E2E | pending | NOT_STARTED |
 
 Contract seams: RuntimeConnectionUseCases constructor accepts profile/policy/backend ports; result sink is shared with desktop driver adapter. Frontend controller is transport neutral.
