@@ -247,9 +247,13 @@ export function QueryPanel({
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const isPathHierarchy = dbMeta?.namespaceEnsure === 'path-hierarchy';
+  // A panel created before the session pointer was known binds `database: ''`.
+  // `'' ?? x` never falls through, so the empty string would shadow the live
+  // session pointer forever — treat it as unset.
+  const boundDatabase = database?.trim() ? database : null;
   const selectedDatabase = isPathHierarchy
-    ? (currentDatabase ?? database)
-    : (database ?? currentDatabase);
+    ? (currentDatabase ?? boundDatabase)
+    : (boundDatabase ?? currentDatabase);
   const selectedSchema = schema ?? currentSchema;
   const supportsExplain = dbMeta?.supportsExplain === true;
   const hasContextSelectors = isPathHierarchy || (isMultiDb && databases.length > 0);
