@@ -35,13 +35,15 @@ export {
   setPlatformServices,
 } from './transport';
 
-export type { BackendClient } from './client';
+export type { BackendClient, JobWatchHandle, JobWatchOptions, SubmitJobOptions } from './client';
 export {
   clearBackendClients,
   createBackendClient,
   getBackendClient,
   getSelectedBackendId,
   isBackendClientBound,
+  parseCancelReceipt,
+  parseJobView,
   selectBackend,
   setBackendClient,
   useBackendClient,

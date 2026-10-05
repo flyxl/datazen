@@ -8,8 +8,9 @@
  * `ArtifactStore`) and carry no connection authorization of their own.
  */
 
+import { toCounter } from './identity';
 import type { Counter, Id, Timestamp } from './identity';
-import type { NamespaceTarget } from './session';
+import type { EffectOutcome, NamespaceTarget } from './session';
 
 /**
  * Credentials are write-only: they go to the secret provider and never come
@@ -54,6 +55,37 @@ export interface ProfileView {
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 /**
+ * P5 five-bucket progress counters (§2.3).
+ *
+ * The buckets are independent on purpose: a row whose commit has not been
+ * confirmed must never be counted inside `committed`.
+ */
+export interface JobProgress {
+  read: Counter;
+  converted: Counter;
+  attempted: Counter;
+  committed: Counter;
+  unknown: Counter;
+}
+
+const zeroCounter = (): Counter => {
+  const value = toCounter(0);
+  if (value === undefined) throw new Error('toCounter rejected 0');
+  return value;
+};
+
+/** Zero-ed progress; the DTO decoder materializes the same shape for a missing field. */
+export function emptyJobProgress(): JobProgress {
+  return {
+    read: zeroCounter(),
+    converted: zeroCounter(),
+    attempted: zeroCounter(),
+    committed: zeroCounter(),
+    unknown: zeroCounter(),
+  };
+}
+
+/**
  * Job lifecycle is independent of any window: a job survives the window that
  * started it, which is why `JobView` carries ids rather than handles.
  */
@@ -66,6 +98,36 @@ export interface JobView {
   artifactIds: readonly Id[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /**
+   * P5 derived effect outcome (§10.1.1). Independent of `state`: a failed or
+   * cancelled job still reports its confirmed committed scope. `null` when the
+   * backend has not derived one yet.
+   */
+  effectOutcome: EffectOutcome | null;
+  /** Cancellation is a separate fact; it never rewrites `state` to cancelled. */
+  cancelRequested: boolean;
+  /** Why the job is pending verification (e.g. `outcomeUnknown`), else null. */
+  pendingVerificationReason: string | null;
+  /** P5 five-bucket progress; zero when nothing has been reported yet. */
+  progress: JobProgress;
+}
+
+/**
+ * Committed boundary recorded in a checkpoint (§7).
+ *
+ * The only fact about "how far the write actually got"; a fingerprint, not a
+ * live lease. Restart recovery is driven by this plus the payload digest, not
+ * by re-running the old session.
+ */
+export interface CommitBoundary {
+  stageId: Id;
+  stableTargetFingerprint: string;
+  committedAt: Timestamp;
+  operationId: Id | null;
+  batchId: Id | null;
+  payloadDigest: string | null;
+  evidence: readonly string[];
+  verifiedAt: Timestamp | null;
 }
 
 export type ResultCompleteness = 'pending' | 'complete' | 'truncated';

@@ -1,5 +1,9 @@
 /** Auto-split domain: sync (en) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    'The previous plan is no longer valid (it expired, the target drifted, or permissions changed). Re-prepare a fresh plan before applying anything.',
+  'migrationJob.pendingVerificationHint':
+    'A previous job is waiting for verification. Check the job center and reconcile before applying anything new.',
   'migrationHistory.open': 'Run history',
   'migrationHistory.title': 'Migration run history',
   'migrationHistory.empty': 'No recorded runs yet.',

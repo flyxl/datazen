@@ -52,6 +52,8 @@ export type {
 export type {
   ArtifactChunk,
   ArtifactReadRequest,
+  CommitBoundary,
+  JobProgress,
   JobState,
   JobView,
   ProfileDraft,
@@ -59,3 +61,4 @@ export type {
   ProfileView,
   ResultCompleteness,
 } from './jobs';
+export { emptyJobProgress } from './jobs';

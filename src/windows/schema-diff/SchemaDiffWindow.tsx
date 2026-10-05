@@ -47,6 +47,8 @@ import {
 import { useSchemaDiffUnifiedObjects } from './useSchemaDiffUnifiedObjects';
 import { useSchemaDiffEndpoints } from './useSchemaDiffEndpoints';
 import { useSchemaDiffSavedSetups } from './useSchemaDiffSavedSetups';
+import { useMigrationJobHydration } from '../../hooks/useMigrationJobHydration';
+import { isStalePlanError } from '../../lib/migrationJobHydration';
 import {
   enabledTableNames,
   enabledSourceTableNames,
@@ -106,6 +108,7 @@ export function SchemaDiffWindow() {
   });
 
   const endpoints = useSchemaDiffEndpoints({ onError: setError });
+  const migrationJobs = useMigrationJobHydration('schemaDiff');
 
   const selectedTables = useMemo(() => enabledTableNames(tablePicks), [tablePicks]);
 
@@ -443,6 +446,12 @@ export function SchemaDiffWindow() {
       });
       setDeployResult(result);
     } catch (e) {
+      if (isStalePlanError(e)) {
+        setError(t('migrationJob.reprepareOnStalePlan'));
+        setPlan(null);
+        setDeployResult(null);
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
@@ -454,6 +463,7 @@ export function SchemaDiffWindow() {
     plan,
     requireRollback,
     selectedSavedProfile,
+    t,
     transactionEnabled,
     useTransaction,
   ]);
@@ -676,6 +686,17 @@ export function SchemaDiffWindow() {
       />
 
       <SchemaDiffWizardProgress step={step} />
+
+      {migrationJobs.hydration?.verificationJobs.length ? (
+        <div className="border-b border-edge px-6 py-2 text-xs text-amber-400">
+          {t('migrationJob.pendingVerificationHint')}
+        </div>
+      ) : null}
+      {migrationJobs.hydrationError ? (
+        <div className="border-b border-edge px-6 py-2 text-xs text-amber-400">
+          {migrationJobs.hydrationError}
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
