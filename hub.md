@@ -12,9 +12,9 @@ User scope: develop P4 desktop query/table/metadata migration. Skip performance 
 | 0 | Shared runtime application use cases + result/event bridge | codex/p4-usecases | ✅ MERGED `446207524` |
 | 0 | Desktop profile/policy/resource backend + IPC assembly | codex/p4-desktop | ✅ MERGED `194aaea3` |
 | 0 | Session controller + execution projection + Channel transport | codex/p4-session-client | ✅ MERGED `db2edfa1` |
-| 1 | Query session/context/transaction + execution/results consumer | codex/p4-w1-query | 🔄 CODING |
-| 1 | Table fixed-target/short transaction consumer | codex/p4-w1-table | 🔄 CODING |
-| 1 | Metadata scoped resources/cache identity | codex/p4-w1-metadata | 🔄 CODING |
+| 1 | Query session/context/transaction + execution/results consumer | codex/p4-w1-query | ✅ MERGED `56c755799` |
+| 1 | Table fixed-target/short transaction consumer | codex/p4-w1-table | ✅ MERGED `3551d57a6` |
+| 1 | Metadata scoped resources/cache identity | codex/p4-w1-metadata | ✅ MERGED `7f43d4aaa` |
 | R | Community/Pro, continuous journeys, host and driver E2E | pending | NOT_STARTED |
 
 Contract seams: RuntimeConnectionUseCases constructor accepts profile/policy/backend ports; result sink is shared with desktop driver adapter. Frontend controller is transport neutral.
