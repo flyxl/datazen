@@ -29,6 +29,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
+use datazen_platform_api::id::RuntimeEpoch as PlatformRuntimeEpoch;
+
 use datazen_runtime::connection::types::{ClientInstanceId, EditorSessionId};
 use datazen_runtime::connection::ProviderError;
 use datazen_runtime::connection::{
@@ -37,6 +39,7 @@ use datazen_runtime::connection::{
     NamespaceTarget, ObjectTarget, OrganizationId, OwnerRef, PrincipalId, ResourceId,
     SessionContext, SessionHandle, SessionHandleRef, SessionView, StreamId, Timestamp, WorkerId,
 };
+use datazen_runtime::directory::SessionHandle as DirectoryHandle;
 use datazen_runtime::registry::actor::OpenRequest;
 use datazen_runtime::registry::backend::{
     CancelOnResource, CloseResource, CloseResourceOutcome, ExecuteOnResource, FinalizeHandles,
@@ -538,6 +541,30 @@ pub fn handle_ref(handle_id: &str, resource_id: &str) -> SessionHandleRef {
 
 pub fn handle_of(view: &SessionView) -> SessionHandle {
     view.handle.clone()
+}
+
+/// 目录侧的 runtime epoch 字符串。与 `ContextReplacer::directory_handle` 的派生式
+/// **逐字一致**：重放幂等靠的就是这个句柄派生的 operation key，两端一旦漂移，幂等短路
+/// 会安静地不命中。
+///
+/// 全仓一共两处 `rte-` 格式化：本函数与生产侧 `registry/context.rs` 里那个同名的
+/// `epoch_string`（两端必须逐字一致，不能只靠测试替身）。测试侧曾经还各写一份
+/// `format!("rte-{:08}", …)` 和几个写死的 `"rte-0000000N"` 字面量，那些已收拢到这里。
+pub fn epoch_string(epoch: u64) -> String {
+    format!("rte-{:08}", epoch)
+}
+
+/// 登记表**第一个**会话拿 `Counter(1)`，`epoch_string(1)` 落在 `rte-00000001`。
+pub const FIRST_SESSION_EPOCH: u64 = 1;
+/// 登记表**第二个**会话（替换路径上的候选）拿 `Counter(2)`。
+pub const SECOND_SESSION_EPOCH: u64 = 2;
+
+/// 由 runtime 句柄推目录句柄。测试侧一律走这里，不要就地拼字符串。
+pub fn directory_handle_of(handle: &SessionHandle) -> DirectoryHandle {
+    DirectoryHandle::new(
+        handle.db_session_id.clone(),
+        PlatformRuntimeEpoch::new(epoch_string(handle.runtime_epoch.get())),
+    )
 }
 
 /// 旧世代的句柄（`runtime_epoch` 对不上）。

@@ -145,6 +145,47 @@ impl InMemorySessionDirectory {
         Ok((handle, token))
     }
 
+    /// 给一个**已存在**的条目补签 attachment 令牌。
+    ///
+    /// # 为什么 `open_session` 之外还要这条路
+    ///
+    /// §7.4-6 的替换里，新会话是**候选**：它在屏障上被创建、被发布的那一刻，
+    /// 还没有任何人持有它的令牌，所以走不了 `open_session`（那条路会自己发号，
+    /// 并且在登记的同一刻把令牌交出去）。提交协议也**不会**顺带签发：
+    /// `Prepared` 不写摘要，`Committed` 只发布条目。没有这一下，
+    /// §7.4 回执里的 `attachmentToken` 就是个谁也用不了的字段。
+    ///
+    /// 规则与 `open_session` 完全一致：原文只在这里出现一次，目录侧只留摘要。
+    /// 重复签发会**换掉**旧摘要——旧令牌随即作废，不存在两枚令牌同时有效的窗口。
+    /// 条目没发布（仍在屏障上）或 epoch 对不上时一律拒签，
+    /// 免得「还没提交就拿到了新会话的令牌」。
+    pub fn issue_attachment_token(
+        &self,
+        handle: &SessionHandle,
+    ) -> Result<AttachmentToken, AttachmentRejection> {
+        if let Some(rejection) = self.dead_epoch(handle) {
+            return Err(AttachmentRejection::NotRoutable(rejection));
+        }
+        let mut inner = self.lock_inner();
+        let entry = inner
+            .entries
+            .get(&handle.db_session_id)
+            .ok_or(AttachmentRejection::NotRoutable(RouteRejection::Unknown))?;
+        entry
+            .route(handle)
+            .map_err(AttachmentRejection::NotRoutable)?;
+
+        let token = super::attachment::new_attachment_token(&self.entropy);
+        let digest = super::attachment::digest_token(&token);
+        inner.digests.insert(handle.db_session_id.clone(), digest);
+        tracing::info!(
+            db_session_id = %handle.db_session_id,
+            runtime_epoch = %handle.runtime_epoch,
+            "attachment token issued for an existing entry; directory keeps only the digest"
+        );
+        Ok(token)
+    }
+
     /// 解析句柄：拿到当前 owner。epoch 不对就是显式失败，**绝不**退回配置去找一个替代会话。
     pub fn resolve(&self, handle: &SessionHandle) -> Result<SessionOwner, PortError> {
         self.alive(handle)?;

@@ -71,12 +71,12 @@ fn guard<T>(result: std::sync::LockResult<T>) -> T {
 
 /// 登记表里的一项。
 #[derive(Clone)]
-struct SessionRecord {
-    db_session_id: DbSessionId,
+pub(super) struct SessionRecord {
+    pub(super) db_session_id: DbSessionId,
     /// §12 / §4.4：epoch 是旧请求的**唯一**归属依据，也是 D-02 折叠的输入。
     runtime_epoch: RuntimeEpoch,
     worker_id: WorkerId,
-    actor: SessionActor,
+    pub(super) actor: SessionActor,
 }
 
 #[derive(Default)]
@@ -126,7 +126,7 @@ impl Table {
 /// `outstanding` **包含**尚未确认隔离的陈旧占用。这是 CM-58 的全部要害：
 /// worker 崩溃不等于它的连接已经关掉，账上留着这份额度直到隔离确认，
 /// 才不会在网络分区期间把同一批物理连接超额发出去。
-struct QuotaLedger {
+pub(super) struct QuotaLedger {
     outstanding: AtomicUsize,
     limit: usize,
     /// 被扣住但尚未确认隔离的 worker → 被扣住会话的 id（连带审计用）。
@@ -144,7 +144,7 @@ impl QuotaLedger {
 
     /// 预留一份额度。用 `fetch_add` 的返回值判定而不是「先读再加」：
     /// 两个并发登记不会同时读到旧的 `outstanding` 而双双通过检查。
-    fn try_reserve(&self) -> Result<(), RuntimeError> {
+    pub(super) fn try_reserve(&self) -> Result<(), RuntimeError> {
         let previous = self.outstanding.fetch_add(1, Ordering::SeqCst);
         if previous >= self.limit {
             self.outstanding.fetch_sub(1, Ordering::SeqCst);
@@ -153,7 +153,7 @@ impl QuotaLedger {
         Ok(())
     }
 
-    fn release(&self) {
+    pub(super) fn release(&self) {
         self.outstanding.fetch_sub(1, Ordering::SeqCst);
     }
 
@@ -240,11 +240,11 @@ impl AuditSink {
 pub struct SessionRegistry {
     table: RwLock<Table>,
     opening: Mutex<Vec<DbSessionId>>,
-    quota: QuotaLedger,
+    pub(super) quota: QuotaLedger,
     audit: AuditSink,
-    outbox: AuditOutbox,
-    backend: Arc<dyn SessionBackend>,
-    epoch_seq: AtomicU64,
+    pub(super) outbox: AuditOutbox,
+    pub(super) backend: Arc<dyn SessionBackend>,
+    pub(super) epoch_seq: AtomicU64,
     session_limit: usize,
 }
 
@@ -323,7 +323,10 @@ impl SessionRegistry {
     }
 
     /// 按 id 定位 actor。**锁在这里就结束了**，返回的是可自由 await 的克隆。
-    fn locate(&self, db_session_id: &DbSessionId) -> Result<SessionRecord, RuntimeError> {
+    pub(super) fn locate(
+        &self,
+        db_session_id: &DbSessionId,
+    ) -> Result<SessionRecord, RuntimeError> {
         self.read_table()
             .locate(db_session_id)
             .ok_or_else(|| RuntimeError::UnknownSession(db_session_id.to_string()))
@@ -416,10 +419,53 @@ impl SessionRegistry {
         opening.retain(|held| held != db_session_id);
     }
 
+    /// §7.4-6：§12 原子切换**之后**才把候选放进可见表。
+    ///
+    /// 与 [`open_and_publish`](Self::open_and_publish) 的差别全在这一句：候选在
+    /// §12 切换之前对宿主**不可见**，切换之后才插表，于是没有任何入口能在切换前
+    /// 定位到它。表项形状是 `registry` 的私有事实，所以这条留在本文件，
+    /// 与 [`crate::registry::candidate`] 里的四条原语配套。
+    pub(super) fn publish_candidate(
+        &self,
+        worker_id: WorkerId,
+        runtime_epoch: RuntimeEpoch,
+        view: SessionView,
+        actor: SessionActor,
+    ) -> Result<SessionView, RuntimeError> {
+        let record = SessionRecord {
+            db_session_id: view.handle.db_session_id.clone(),
+            runtime_epoch,
+            worker_id,
+            actor,
+        };
+        if self.write_table().insert(record).is_err() {
+            return Err(RuntimeError::InvariantBroken("duplicateDbSessionId"));
+        }
+        Ok(view)
+    }
+
     /// §6.4：按注入的绝对毫秒驱逐到期的空闲会话。
     ///
     /// 时间由调用方注入：本模块**不读** `Instant::now()`，到期判定因此在测试里
     /// 完全确定，不依赖真实时钟。
+    ///
+    /// # 【未闭合】W-02：`evict_idle_at` 把「actor 回绝」和「actor 报错」压成同一件事
+    ///
+    /// 下面这个 `let … else` 在两种非成功情形下都不摘表、不归还额度：过期会话留在表里
+    /// 占着一格额度，`session_view` 仍查得到它，而物理资源可能已经关了。
+    ///
+    /// 怎么复现：给一个到期会话配一个拒绝 `Close` 的 actor，调用 `evict_idle_at`——它
+    /// 不在返回值里，却仍在登记表里占额度；把 actor 换成让 `exec` 返回 `Err`，同样如此。
+    ///
+    /// 为什么不能只把 `continue` 换成 `?`：未到期也是 `Err` 的一种。正确的修法是三向
+    /// 判别——`Ok(None)` 未到期不动它；`Err(CloseRejected)` 是闸门在**下发之前**就拦下，
+    /// 什么都没发生；其余 `Err` 已过 §9.4、资源已关，只能按「已丢失」摘表。只补后两路
+    /// 会把「未到期」也当成已关——这正是 CM-74 验收实测 MB1 变异时连带点红两条**既有**
+    /// 用例（`未设空闲期限的会话永不被驱逐`、`空闲到期才驱逐_未到期一律不动手`）的原因。
+    ///
+    /// 影响限于存量行为，**本轨不修**（不在 CM-74 范围内，且修法会改动既有语义）。
+    /// 结论、复现步骤与不修的代价都写在这里，而不是留在台账里：台账随合并删除之后，
+    /// 这些就再也读不到了。
     pub async fn evict_idle_at(&self, at_ms: u64) -> Vec<SessionView> {
         self.audit.pump();
         let targets = self.read_table().records();
