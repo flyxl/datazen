@@ -194,6 +194,10 @@ fn gateway_sources_obey_the_locked_invariants() {
         // 生产文件。
         "cancel.rs",
         "events.rs",
+        // `ExecutionGateway` 的固有方法原本与类型声明同处 mod.rs，合计 801 行、
+        // 触犯下面 800 行的硬上限。纯搬迁到同名子模块后必须登记进本表：
+        // 断言的用意就是让「文件集变了」必须同步扫描范围，而不是悄悄漏扫。
+        "execution.rs",
         "idempotency.rs",
         "mod.rs",
         "owner_binding.rs",
