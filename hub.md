@@ -169,3 +169,38 @@ R1 被否的根因是**测试断言在共享 `Arc<AtomicBool>` 这个对象上**
 - 我在两份任务书里都写了括号「若看护者已退出，计数会是 0」——**这句是错的**，硬化轨实例 `7c83fa5b` 指出后已逐行核实成立：`packages/runtime/src/job/runtime.rs:318` `spawn` 做 `live.fetch_add(1)`，**只有** `impl Drop for CancelWatch`（`:335`、`:342`）才 `fetch_sub(1)`；而 `run_stage_watched`（`:280`）在 `:288` 以 `let watch = CancelWatch::spawn(...)` **把句柄留在 dispatch 栈上，并未 move 进 tokio 任务**。故 `active_cancel_watchers() == 1` 只表示 **dispatch 仍持有句柄**，轮询循环自行 `terminal => return` 退出时计数**仍是 1**。
 - 唯一正确的判据是**组合式**：在阶段仍被 hold 的同一窗口内，`active_cancel_watchers() >= 1` 证明句柄未被 Drop ⇒ **不是 abort 回收**（`runtime.rs:275` 注释亦确认 Drop 正是「只 abort 不 await」那条回收路径）；同时 `get_calls()` **冻结** ⇒ 轮询**自己停了**。二者缺一即为空洞断言。
 - **教训**：计数器的语义必须由**谁持有、在哪一步增减**反推，不能由名字猜。`active_*_watchers` 命名上像在数"活着的任务"，实际数的是"未 Drop 的句柄"。
+
+### 🔍 Tester `5324a984` 复验 ds-r2 中途进度（已独立裁定部分，尚未给最终判定）
+
+**🔶 勘误一：warning 基线是 34，不是 31，更不是任务书写的 30。**
+Tester 在 `--drivers=all` 下自拉基线 `25d336ece` 实测 **34 → HEAD 32**，且做的是 **warning 集合 diff 而非计数**：基线确有、HEAD 确已消失的两条为 `fields target_driver and target_handle are never read`、`function is_cancelled is never used`，**引入集合为空**。
+**我引用的 31 与写的 30 均错，同一坑根**：都是 `--drivers=basic` 下的旧测量。**再次印证 `--drivers=basic` 与 `--drivers=all` 的宿主 `DB_REGISTRY` 不是同一注册表。**
+⚠️ 方法论：只报「计数 34→32」**不足以**支撑「增 0 减 2」——计数相同而集合不同是可能的。Tester 主动做集合 diff 是对的，以后此类基线争议一律要求给集合。
+
+**🔶 勘误二：新增测试数与测试数增量精确相等，顺带解掉 842 vs 843 之谜。**
+host `--lib` 1741 → **1745**（+4 = `select.rs` 3 条 + `jobs_cancel_contract.rs` 2 条 − 删除的 `jobs_contract` 1 条）；data-sync 200 → **201**（+1 = `cm44_batch_cancel.rs` 1 条）；runtime **842 → 842（+0）**，且 diff 确实不含 `packages/runtime/**`。
+⇒ 集成侧 843 与 ds-r2 侧 842 的差，不是回归也不是丢测试，**是 hardening 轨 D-B 恰好多出的那 1 条**。合并时以集成分支自身重新基线化。
+
+**✅ 最高风险项关闭：`Option<Arc<AtomicBool>>` → `Option<String>` 不是 IPC 可见变更。**
+`submit_prepare`（`jobs.rs:85`）与 `submit_apply`（`:125`）是 `pub(crate) async fn`，**无** `#[tauri::command]`；`commands/sync/` 下 17 处 `tauri::command` 全在 `mod.rs`，真正对外的取消命令是 `mod.rs:279`。diff 不含任何 `.ts/.tsx`。
+Tester 另做了我要求的**替代核查**（是否有别的生产调用方在传已删的 `Arc<AtomicBool>`）：生产侧唯一存活的 `AtomicBool` 是 `services/job_registry.rs:9` 的**accept 之前**的信箱，不是被 stage 轮询的桥；`host/state.rs` 零 `AtomicBool`，`host/recording.rs` 只按引用透传。
+
+**✅ R4「钉 20s 上界」的裁定：断言了等待物确实发生，不是「不再等」。**
+`jobs_cancel_contract.rs:398-402` 的超时被转成 `assert!(in_flight, "… nothing reached the gate within {PATIENCE:?}")`——是**会失败**的断言，不是静默吞掉。且第二个用例开头即 `gate.open()`，是把挂死**设计掉**而不只是设上界。
+精度补充：文件里有两个 duration 常量，但绿色路径上**只有 500ms 的 `SETTLE` 必然消耗**（= 内核 50ms `CANCEL_POLL_INTERVAL` × 10），`PATIENCE` 只在失败路径上耗时 ⇒ CI 成本约 500ms 而非 20s。
+
+**已复现变异（每个全新空 `CARGO_TARGET_DIR`、一次一个、用完即删，日志均含 563 条 `Compiling`）**：M1 / M2 / M3b / M4 **全部 KILLED**，影响面均 1。R4、R1/R2/R3 的持续被杀确认、以及 M3 在 `c56b2e17` 的存活臂，尚未跑完。
+
+**⚠️ G5 的偏离待消解**：Tester 把 `node_modules` 做成 symlink，致 pnpm 运行器以 EXIT=1 `workspace hoist directory is not a real directory` 失败，遂改跑脚本展开的 4 条等价命令（全 EXIT=0，`error TS`=0）。**已要求用 `pnpm --config.verify-deps-before-run=false typecheck` 重试**，以取得字面绿灯。类型检查不受驱动集影响，故此处不涉及 basic/all 之争。
+
+**❌ 一条被推翻的"流程缺陷"指控（登记以免二次误采）**：硬化轨实例报「D-A/D-B/D-E 提交作者是 `probe`（验证方身份），违反提交方/验证方不得混同，建议改流程」。**实测为误判**：`git log --format='%an <%ae>'` 显示**本仓库所有提交**（含 main 的 `adb0fd045`、`eeb78e591`）作者均为 `probe <probe@local>`，那是本机全局 git config，与提交者身份无关。**不采纳该建议。**
+
+**⚠️ 8 条 E2E 缺口只活在台账里——本轮新增的 Wave-R 硬任务。**
+硬化轨任务书要求「只列不建」，故这 8 条未变成代码/测试事实；`hub.md` 不在 main、验收时按纪律**必须销毁**。AGENTS.md 要求缺陷结论最终必须能从代码与测试读出，否则即视为没做完。
+⇒ **决定**：Wave-R 收口时，必须把「当前尚未被证明的行为」改写为 `docs/architecture/platform/data-migration-jobs.md` 中一节**验证边界**（陈述"已实现"与"尚未证明"的边界），而不是留成 Bug List——后者是文档纪律明令禁止的新增文档类型。清单原文：UI 真实取消延迟、50ms 常量实测、`StructureAndData` 三阶段**阶段间**取消、真实驱动往返、取消后续跑不重复提交、重复点取消、端到端读故障注入、看门狗在真实阶段内 panic 下的存活性。
+
+**⚠️ 台账缺口状态未变**：D-F、D-G 的原始描述仍无法提供（两次网络中断丢失）。**不臆造**，Tester 如实回报即可。
+
+**📌 我的失误（登记）**：Tester 汇报与我的孤儿清理动作同时发生，我误把它仍在使用的 4 棵 `/tmp/p5ds-vfy-*` 临时 worktree 当作残留 `worktree remove --force` 删掉。target 目录本已自行销毁、冷编译成本照付、日志未受影响，代价可控，但**在子代理仍在报活时清理其工作区是不该发生的**。教训：清理前先确认该实例已终止。
+
+**📌 `main` 再次推进**：`ec0444e8c` → **`adb0fd045`**，走在另一批「注释规格引用清理」提交上。Wave-R 基线需再次重取。
