@@ -19,85 +19,19 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use super::{AcquiredResource, FakeResourceProvider, FaultKind, ResourceOp};
+use super::{
+    acquire, close_and_release, owner, pool_key, provider, AcquiredResource, FakeResourceProvider,
+    FaultKind, ResourceOp,
+};
 use crate::connection::error::ProviderError;
 use crate::connection::execution::{EffectOutcome, ExecutionErrorCode};
 use crate::connection::port::{
-    AcquireResourceRequest, BudgetClass, CloseResourceRequest, ExecuteOnResourceRequest,
-    ResetDiscardReason, ResetOutcome, ResetResourceRequest, TransactionOperation,
+    AcquireResourceRequest, BudgetClass, ExecuteOnResourceRequest, ResetDiscardReason,
+    ResetOutcome, ResetResourceRequest, TransactionOperation,
 };
 use crate::connection::testing::clock::FakeClock;
-use crate::connection::testing::fixtures::{self, NS_A_KEY, PROFILE_P};
-use crate::connection::testing::harness::fixture_target;
 use crate::connection::testing::journal::{JournalEntry, ResourceEvent};
-use crate::connection::types::{
-    ConnectionId, Counter, DbSessionId, ExecutionId, HandleId, JobId, NamespaceTarget,
-    OrganizationId, OwnerRef, PoolKeyFingerprint, PoolKeyInputs, WorkerId,
-};
-
-/// §8.1：夹具目标一律取自 `fixtures`，用例里不写硬编码字面量。
-fn target() -> crate::connection::types::ExecutionTarget {
-    fixture_target(NS_A_KEY)
-}
-
-/// §8.1 的 `PROFILE_P` 归属：一个 job owner。`owner` 是 `OwnerRef`，不是裸 id。
-fn owner() -> OwnerRef {
-    OwnerRef::Job {
-        organization_id: OrganizationId::new(fixtures::ORG_A),
-        job_id: JobId::new("job_org-alpha_0001"),
-        stage_id: "job:job_org-alpha_0001/stage:1".to_owned(),
-    }
-}
-
-/// §8.1 `PoolKeyInputs` 派生。夹具走和
-/// [`FakeHarness::pool_key`](crate::connection::testing::harness::FakeHarness::pool_key)
-/// 完全一样的算法，
-/// 否则「同池复用」的正例根本不成立（CM-05 / CM-67 的换 key 判据会失效）。
-fn pool_key(provider: &FakeResourceProvider, policy_isolation_key: &str) -> PoolKeyFingerprint {
-    PoolKeyFingerprint::derive(&PoolKeyInputs {
-        connection_id: ConnectionId::new(PROFILE_P),
-        config_revision: provider.config_revision(),
-        driver_id: super::PROVIDER_ID.to_owned(),
-        namespace: NamespaceTarget {
-            database: provider.target().namespace.database.clone(),
-            catalog: String::new(),
-            schema: String::new(),
-            path: String::new(),
-        },
-        execution_identity_key: provider.execution_identity().to_owned(),
-        policy_isolation_key: policy_isolation_key.to_owned(),
-    })
-}
-
-/// 默认假提供方：假时钟与 journal 共享同一个 `FakeClock`。
-fn provider() -> FakeResourceProvider {
-    FakeResourceProvider::new(WorkerId::new("w1"), target())
-        .with_execution_identity(fixtures::IDENTITY_SHARED)
-}
-
-/// 走一次 `acquire`。
-fn acquire(provider: &FakeResourceProvider) -> Result<AcquiredResource, ProviderError> {
-    provider.acquire(&AcquireResourceRequest {
-        descriptor: provider.descriptor(),
-        pool_key: pool_key(provider, "pol-1"),
-        budget_class: BudgetClass::Session,
-        owner: owner(),
-        db_session_id: provider.ids().next_db_session_id(),
-    })
-}
-
-/// 按 §5.3 的归池前置条件关掉一张资源。
-fn close(
-    provider: &FakeResourceProvider,
-    acquired: &AcquiredResource,
-) -> Result<(), ProviderError> {
-    provider.close_resource(&CloseResourceRequest {
-        handle: acquired.handle.clone(),
-        registered_handles: provider.registered_handles(&acquired.resource_id),
-        protocol_drained: true,
-    })?;
-    Ok(())
-}
+use crate::connection::types::{Counter, DbSessionId, ExecutionId, HandleId};
 
 // ---------------------------------------------------------------------------
 // §5.3 规则 1 / §4.3 I1、I2、I6：创建与归池必须记账
@@ -121,7 +55,7 @@ fn creating_a_resource_takes_one_permit_and_closing_it_gives_it_back() {
         vec![acquired.resource_id.clone()]
     );
 
-    close(&provider, &acquired).expect("归池必须成功");
+    close_and_release(&provider, &acquired).expect("归池必须成功");
 
     // §4.3 I2：没有残留占用预算的资源。
     assert!(
@@ -279,7 +213,7 @@ fn an_orphan_handle_is_visible_to_the_leak_invariant() {
     // 收口路径是**关闭资源**而不是 `close_handle`：孤立句柄从没进过登记册，
     // `close_handle` 只能报 `SessionNotFound`（§5.1「造句柄 ≠ 登记句柄」）。
     // `close_resource` 末尾会 `recover_orphans_on_close`，I7 由此收口（I1/I2/I6 一并收口）。
-    close(&provider, &acquired).expect("关闭资源必须成功");
+    close_and_release(&provider, &acquired).expect("关闭资源必须成功");
     assert_eq!(
         provider.journal().assert().leak_invariant_violations(),
         Vec::<String>::new(),
@@ -319,7 +253,7 @@ fn journal_sequence_is_strictly_increasing_across_writes() {
 
     // 关掉第一张，验证「创建 → 归池」这一对事件按顺序落在台账上。
     let first = acquired.expect("第一步必须拿到资源");
-    close(&provider, &first).expect("归池必须成功");
+    close_and_release(&provider, &first).expect("归池必须成功");
     let order: Vec<&str> = provider
         .journal()
         .entries()
@@ -511,7 +445,7 @@ fn f10_a_clean_reset_does_not_license_returning_the_resource_to_the_pool() {
         "前置不满足时一次归池都不许发生（§9.4），实际记了 {returned} 次"
     );
 
-    close(&provider, &acquired).expect("关闭必须成功");
+    close_and_release(&provider, &acquired).expect("关闭必须成功");
     let events: Vec<&'static str> = provider
         .journal()
         .entries()
@@ -651,7 +585,7 @@ fn f12_a_handle_the_runtime_refuses_to_return_never_reaches_the_host_registry() 
         "I7 必须因这条 orphaned 判负"
     );
 
-    close(&provider, &acquired).expect("关闭必须成功");
+    close_and_release(&provider, &acquired).expect("关闭必须成功");
     assert!(
         provider.journal().orphan_handles().is_empty(),
         "关闭回收后 I7 必须恢复成立（§4.3）"
