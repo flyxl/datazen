@@ -1,7 +1,7 @@
 //! FakeResourceProvider —— 假资源提供方（fake-runtime-fixtures.md §2、§3、§4.1、§5.1）。
 //!
 //! 本目录即 §2 模块表里 `P[FakeResourceProvider]` 与 `R[FakeResource state machine]` 两个
-//! 节点的落点，职责按 §3.1 拆到六个文件：
+//! 节点的落点，职责按 §3.1 拆到七个文件：
 //!
 //! | 文件 | 职责 |
 //! |---|---|
@@ -10,17 +10,26 @@
 //! | [`handles`] | 句柄铸造与「登记 vs 造句柄」（§5.1 L416、§9.1、§9.2） |
 //! | [`ops`] | 八个操作的实现（§3.1 `ResourceHandle` 逐操作校验） |
 //! | [`close`] | op 9 `closeResource`：§5.3 规则 2/3/6 的 permit 口径 + CM-74 释放顺序 + §9.4(b) 归池判据 |
+//! | [`transaction`] | op 6 `transactionOperation`：F8 回滚/提交对资源状态与 permit 的影响 |
 //! | `catalog_guard` | 只在 `#[cfg(test)]` 下编译：把 `script.rs` 的 F 编号与 §4.1 的表**对撞**（§4.1 F1–F12 不得错位） |
+//! | `close_cases` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的行为用例（F11/F12/F13/F14） |
 //!
 //! **依赖方向**：本目录向下依赖 `connection::{port, session, types, capability, execution}`，
 //! 向上只被 `journal` 的**测试**引用 —— §2 要求的「`journal.rs` 不依赖 `fake_resource`」
 //! 因此在任何方向上都成立（`state.rs` 连 `journal` 与 `script` 都不碰）。
 //!
 //! §13：假提供方**不开任何出站 socket**；本目录没有任何网络或凭据代码。
+//!
+//! **测试辅助函数的落点**：[`tests`] 与 [`close_cases`] 都从本文件底部那一组
+//! `#[cfg(test)]` 辅助函数取 `provider` / `acquire` / `close_and_release`，
+//! 而不是各自复制一份。复制会漂移：同一个 `pool_key` 派生算法写两遍，正例
+//! （同池复用）和反例（换 key）就会在两个文件里各自成立。
 
 #[cfg(test)]
 mod catalog_guard;
 mod close;
+#[cfg(test)]
+mod close_cases;
 mod handles;
 mod ops;
 mod script;
@@ -35,11 +44,20 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use indexmap::IndexMap;
 
 use crate::connection::capability::CapabilitySnapshot;
+#[cfg(test)]
+use crate::connection::error::ProviderError;
 use crate::connection::port::PermitId;
+#[cfg(test)]
+use crate::connection::port::{AcquireResourceRequest, BudgetClass, CloseResourceRequest};
 use crate::connection::testing::clock::FakeClock;
 use crate::connection::testing::ids::FakeIds;
 use crate::connection::testing::journal::CommandJournal;
 use crate::connection::types::{ConfigRevision, ExecutionTarget, LeaseId, ResourceId, WorkerId};
+#[cfg(test)]
+use crate::connection::types::{
+    ConnectionId, JobId, NamespaceTarget, OrganizationId, OwnerRef, PoolKeyFingerprint,
+    PoolKeyInputs,
+};
 
 pub use handles::AcquiredResource;
 pub use script::{EvictionRace, FakeScript, FaultKind, ResourceOp, ScriptStep};
@@ -243,4 +261,90 @@ impl FakeResourceProvider {
     pub(crate) fn now_nanos(&self) -> u64 {
         self.clock.monotonic().as_nanos()
     }
+}
+
+// ---------------------------------------------------------------------------
+// 测试脚手架 —— `tests.rs` 与 `close_cases.rs` 共用
+// ---------------------------------------------------------------------------
+
+/// §8.1：夹具目标一律取自 `fixtures`，用例里不写硬编码字面量。
+#[cfg(test)]
+pub(crate) fn target() -> ExecutionTarget {
+    crate::connection::testing::harness::fixture_target(
+        crate::connection::testing::fixtures::NS_A_KEY,
+    )
+}
+
+/// §8.1 的 `PROFILE_P` 归属：一个 job owner。`owner` 是 `OwnerRef`，不是裸 id。
+#[cfg(test)]
+pub(crate) fn owner() -> OwnerRef {
+    OwnerRef::Job {
+        organization_id: OrganizationId::new(crate::connection::testing::fixtures::ORG_A),
+        job_id: JobId::new("job_org-alpha_0001"),
+        stage_id: "job:job_org-alpha_0001/stage:1".to_owned(),
+    }
+}
+
+/// §8.1 `PoolKeyInputs` 派生。夹具走和
+/// [`FakeHarness::pool_key`](crate::connection::testing::harness::FakeHarness::pool_key)
+/// 完全一样的算法，
+/// 否则「同池复用」的正例根本不成立（CM-05 / CM-67 的换 key 判据会失效）。
+#[cfg(test)]
+pub(crate) fn pool_key(
+    provider: &FakeResourceProvider,
+    policy_isolation_key: &str,
+) -> PoolKeyFingerprint {
+    PoolKeyFingerprint::derive(&PoolKeyInputs {
+        connection_id: ConnectionId::new(crate::connection::testing::fixtures::PROFILE_P),
+        config_revision: provider.config_revision(),
+        driver_id: PROVIDER_ID.to_owned(),
+        namespace: NamespaceTarget {
+            database: provider.target().namespace.database.clone(),
+            catalog: String::new(),
+            schema: String::new(),
+            path: String::new(),
+        },
+        execution_identity_key: provider.execution_identity().to_owned(),
+        policy_isolation_key: policy_isolation_key.to_owned(),
+    })
+}
+
+/// 默认假提供方：假时钟与 journal 共享同一个 `FakeClock`。
+#[cfg(test)]
+pub(crate) fn provider() -> FakeResourceProvider {
+    FakeResourceProvider::new(WorkerId::new("w1"), target())
+        .with_execution_identity(crate::connection::testing::fixtures::IDENTITY_SHARED)
+}
+
+/// 走一次 `acquire`。
+#[cfg(test)]
+pub(crate) fn acquire(provider: &FakeResourceProvider) -> Result<AcquiredResource, ProviderError> {
+    provider.acquire(&AcquireResourceRequest {
+        descriptor: provider.descriptor(),
+        pool_key: pool_key(provider, "pol-1"),
+        budget_class: BudgetClass::Session,
+        owner: owner(),
+        db_session_id: provider.ids().next_db_session_id(),
+    })
+}
+
+/// 按 §9.4 的归池前置条件（协议已排空 + 无登记句柄）关掉一张资源。
+///
+/// 名字不叫 `close`：本目录有个 `close` 模块，`use super::close` 会与函数同名，
+/// 两个 import 撞在一起比难读的名字难查得多。
+///
+/// 需要与该前置条件**分道扬镳**的用例（`protocol_drained = false`、宿主自述句柄数
+/// 与实测不符）必须自己构造 [`CloseResourceRequest`] 调 [`close_resource`]，
+/// 绕开这个「合法路径」封装 —— 封装里把两个字段都填成最有利于归池的值。
+#[cfg(test)]
+pub(crate) fn close_and_release(
+    provider: &FakeResourceProvider,
+    acquired: &AcquiredResource,
+) -> Result<(), ProviderError> {
+    provider.close_resource(&CloseResourceRequest {
+        handle: acquired.handle.clone(),
+        registered_handles: provider.registered_handles(&acquired.resource_id),
+        protocol_drained: true,
+    })?;
+    Ok(())
 }
