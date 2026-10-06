@@ -96,6 +96,7 @@ impl DataSyncHandler {
             Ok(Some(a)) => a,
             Ok(None) => {
                 return Ok(stage_failed(
+                    host.as_ref(),
                     "apply",
                     EffectOutcome::NotStarted,
                     ExecutionErrorCode::HostRejected,
@@ -106,6 +107,7 @@ impl DataSyncHandler {
             }
             Err(e) => {
                 return Ok(stage_failed(
+                    host.as_ref(),
                     "apply",
                     EffectOutcome::NotStarted,
                     ExecutionErrorCode::HostRejected,
@@ -119,6 +121,7 @@ impl DataSyncHandler {
             Ok(s) => s,
             Err(e) => {
                 return Ok(stage_failed(
+                    host.as_ref(),
                     "apply",
                     EffectOutcome::NotStarted,
                     ExecutionErrorCode::HostRejected,
@@ -133,6 +136,7 @@ impl DataSyncHandler {
             Err(e) => {
                 host.close_endpoint(source).await;
                 return Ok(stage_failed(
+                    host.as_ref(),
                     "apply",
                     EffectOutcome::NotStarted,
                     ExecutionErrorCode::HostRejected,
@@ -166,7 +170,9 @@ impl DataSyncHandler {
                 boundaries,
                 progress,
             }) => {
-                let _ = err;
+                // The reason is evidence, not a log line: the host records it so
+                // the IPC message can name the rejection instead of guessing.
+                host.record_stage_failure("apply", err.to_string());
                 Ok(StageOutcome {
                     stage_id: StageId::new("apply"),
                     terminal,

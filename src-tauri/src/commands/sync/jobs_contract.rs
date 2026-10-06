@@ -1,0 +1,524 @@
+//! Contract tests for the Data Sync prepare/apply Job pair at the **command**
+//! layer (data-migration-jobs.md §2.1, §5, §10 CM-41/43/44/45).
+//!
+//! `packages/data-sync/tests/cm4*` drive `DataSyncHandler` against a `FakeHost`.
+//! That proves the handler's own refusals, but a handler that is never reached
+//! passes them too — so every test here enters through the production path
+//! (`compare_data_sync_impl`, `jobs::submit_prepare`, `jobs::submit_apply`,
+//! `exec::execute_data_sync_plan_impl`) and reaches real drivers through
+//! `ConnectionManager`. The gate chain, the budget reservation, the plan
+//! consumption and the effect-outcome projection are therefore part of what is
+//! asserted, not decoration around it.
+//!
+//! One fixture serves every case: two endpoints of **one** family served by two
+//! **distinct** mock driver instances. Distinct instances are not a detail —
+//! two sessions of one instance hand both sides identical rows, every compare
+//! reports no diff, and the apply path becomes unreachable.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use datazen_driver_api::mock_driver::MockDriver;
+use datazen_driver_api::{ColumnSchema, TableSchema};
+use datazen_platform_api::dto::execution::EffectOutcome;
+use datazen_platform_api::dto::job::JobState;
+
+use crate::data_sync::job::body::{ApplySpec, PrepareSpec};
+use crate::data_sync::Endpoint;
+use crate::data_sync::{ChangeOperation, SyncOptions, TableMapping};
+use crate::testing::app_state::{rich_mock_options, sample_postgres_config, TestAppState};
+use crate::testing::mock_driver::MockDriverOptions;
+
+use super::super::error::CommandError;
+use super::super::AppState;
+use super::exec::execute_data_sync_plan_impl;
+use super::host::state::{self, StoredSelection};
+use super::jobs::{submit_apply, submit_prepare, SyncJobOutcome};
+use super::plans::{
+    SyncComparisonPreview, SyncRunRequest, SyncRunSelection, SyncSelectionMode, SyncTableSelection,
+};
+
+/// Mock rows are `(id, name)` pairs against the default `id/name` schema.
+pub fn mock_options(rows: &[(i64, &str)]) -> MockDriverOptions {
+    MockDriverOptions {
+        // One page then end-of-stream on both sides. Without this the handler
+        // sees the same page twice and refuses the compare ("not strictly
+        // increasing") instead of freezing a change set.
+        empty_keyset_after_cursor: true,
+        parameterized_writes: true,
+        // The apply handler re-reads the reviewed row by key before writing it
+        // (§5.3). Without a keyed read the double answers every key with the
+        // first row, and a legitimate `Insert` would look like target drift.
+        filter_rows_by_key_equality: true,
+        execute_rows_affected: 1,
+        count_total: rows.len() as i64,
+        query_rows: rows
+            .iter()
+            .map(|(id, name)| {
+                vec![
+                    Some(crate::db::Value::Integer(*id)),
+                    Some(crate::db::Value::String((*name).to_string())),
+                ]
+            })
+            .collect(),
+        ..rich_mock_options()
+    }
+}
+
+/// Two connected endpoints of one family, backed by different mocks.
+pub struct Pair {
+    pub test: TestAppState,
+    pub target: Arc<MockDriver>,
+    pub source_session: String,
+    pub target_session: String,
+}
+
+impl Pair {
+    pub fn state(&self) -> &AppState {
+        &self.test.state
+    }
+}
+
+pub async fn pair(prefix: &str, source_rows: &[(i64, &str)], target_rows: &[(i64, &str)]) -> Pair {
+    let test = TestAppState::with_options(mock_options(source_rows)).await;
+    // The target is registered under a *different* db type spelling of the same
+    // family, which is what the pairing rule canonicalises (`family_of`).
+    let target = MockDriver::new("postgresql", mock_options(target_rows));
+    test.registry
+        .register_test_driver("postgresql", target.clone())
+        .await;
+    let mut target_config = sample_postgres_config(&format!("{prefix}-target"));
+    target_config.database_type = "postgresql".into();
+    test.store.save_connection(target_config).await.unwrap();
+    let (_, source_session) = test.save_and_connect(&format!("{prefix}-source")).await;
+    let target_session = test.connect_config(&format!("{prefix}-target")).await;
+    Pair {
+        test,
+        target,
+        source_session,
+        target_session,
+    }
+}
+
+/// Source holds one row the target lacks ⇒ exactly one `Insert` block.
+pub async fn diff_pair(prefix: &str) -> Pair {
+    pair(prefix, &[(1, "alice"), (2, "bob")], &[(1, "alice")]).await
+}
+
+/// Both sides hold the same row ⇒ the compare succeeds with an empty change set.
+pub async fn identical_pair(prefix: &str) -> Pair {
+    pair(prefix, &[(1, "alice")], &[(1, "alice")]).await
+}
+
+/// Run the production compare command: inspect → key contracts → prepare Job →
+/// planId + `ComparisonStore`.
+pub async fn compare(
+    pair: &Pair,
+    source_database: Option<String>,
+    target_database: Option<String>,
+) -> Result<SyncComparisonPreview, CommandError> {
+    super::apply::compare_data_sync_impl(
+        pair.state(),
+        pair.source_session.clone(),
+        pair.target_session.clone(),
+        Vec::new(),
+        None,
+        source_database,
+        target_database,
+        None,
+        None,
+        SyncOptions::default(),
+        &[],
+        &HashMap::new(),
+    )
+    .await
+}
+
+/// The reviewed selection a user confirms for a planId: every operation of the
+/// `users` table, at the revision the review panel displayed.
+pub fn insert_selection(revision: u64) -> SyncRunSelection {
+    SyncRunSelection {
+        revision,
+        rows: Vec::new(),
+        scopes: vec![SyncTableSelection {
+            source_table: "users".into(),
+            target_table: "users".into(),
+            selection_mode: SyncSelectionMode::All,
+            operations: vec![ChangeOperation::Insert],
+            excluded_rows: Vec::new(),
+        }],
+    }
+}
+
+/// Hand the apply Job its single-consumption selection, exactly as the IPC layer
+/// does after the user confirms.
+pub fn confirm(plan_id: &str, selection: SyncRunSelection) {
+    state::store_selection(
+        plan_id,
+        StoredSelection {
+            selection,
+            options: SyncOptions::default(),
+        },
+    );
+}
+
+/// A target schema that no longer matches the frozen fingerprint.
+fn drifted_schema() -> TableSchema {
+    let mut schema = MockDriver::default_table_schema("users");
+    schema.columns.push(ColumnSchema {
+        name: "nickname".into(),
+        data_type: "text".into(),
+        nullable: true,
+        default_value: None,
+        comment: None,
+        is_primary_key: false,
+        is_auto_increment: false,
+    });
+    schema
+}
+
+fn message(outcome: &SyncJobOutcome) -> String {
+    outcome.message.clone().unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// Prepare through the command layer
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn prepare_job_freezes_a_change_set_and_closes_both_snapshots() {
+    let pair = diff_pair("prepare-freeze").await;
+    let spec = PrepareSpec {
+        source: Endpoint {
+            connection_id: pair.source_session.clone(),
+            database: "app".into(),
+            schema: None,
+        },
+        target: Endpoint {
+            connection_id: pair.target_session.clone(),
+            database: "app".into(),
+            schema: None,
+        },
+        mappings: vec![TableMapping::auto("users")],
+        options: SyncOptions::default(),
+        filters: HashMap::new(),
+        plan_id: Some("prepare-freeze-plan".into()),
+    };
+
+    let outcome = submit_prepare(pair.state(), spec, None).await.unwrap();
+
+    assert_eq!(outcome.state, JobState::Succeeded);
+    assert_eq!(outcome.effect, EffectOutcome::Completed);
+    assert_eq!(message(&outcome), "", "a clean prepare reports no reason");
+    let artifact = state::load_artifact("prepare-freeze-plan")
+        .expect("the prepare Job freezes an artifact under the planId");
+    assert_eq!(artifact.blocks.len(), 1);
+    assert_eq!(artifact.blocks[0].operation, ChangeOperation::Insert);
+    assert_eq!(
+        pair.test.mock.open_transaction_count(),
+        0,
+        "the compare read snapshot must be closed by the prepare Job"
+    );
+    assert_eq!(pair.target.open_transaction_count(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Apply through the command layer
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn apply_job_commits_the_confirmed_selection_once() {
+    let pair = diff_pair("apply-once").await;
+    let preview = compare(&pair, None, None).await.unwrap();
+    assert_eq!(preview.selection_revision, 1);
+    // The preview is only trustworthy because the prepare Job froze it.
+    let artifact = state::load_artifact(&preview.plan_id).expect("frozen change set");
+    assert_eq!(artifact.blocks.len(), 1);
+    assert_eq!(artifact.blocks[0].operation, ChangeOperation::Insert);
+
+    confirm(
+        &preview.plan_id,
+        insert_selection(preview.selection_revision),
+    );
+    let outcome = submit_apply(
+        pair.state(),
+        ApplySpec {
+            plan_id: preview.plan_id.clone(),
+            selection_revision: preview.selection_revision,
+            options: SyncOptions::default(),
+        },
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        outcome.state,
+        JobState::Succeeded,
+        "the apply Job must commit the confirmed selection; host said: {}",
+        message(&outcome)
+    );
+    assert_eq!(outcome.effect, EffectOutcome::Completed);
+    assert_eq!(outcome.committed, 1);
+    assert_eq!(
+        pair.target.open_transaction_count(),
+        0,
+        "every batch lease must be released before the Job reports Succeeded"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rejections that must happen before (or instead of) any Job
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn compare_refuses_a_non_database_target_before_any_job_is_submitted() {
+    let pair = diff_pair("non-db-target").await;
+    let mut foreign_config = sample_postgres_config("non-db-target-foreign");
+    foreign_config.database_type = "redis".into();
+    pair.test
+        .store
+        .save_connection(foreign_config)
+        .await
+        .unwrap();
+    pair.test
+        .registry
+        .register_test_driver("redis", MockDriver::new("redis", mock_options(&[])))
+        .await;
+    let foreign = pair.test.connect_config("non-db-target-foreign").await;
+
+    // The pairing rule runs in the compare pre-flight (apply.rs), above
+    // `open_job`, so nothing is accepted and no planId is minted.
+    let error = super::apply::compare_data_sync_impl(
+        pair.state(),
+        pair.source_session.clone(),
+        foreign,
+        Vec::new(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        SyncOptions::default(),
+        &[],
+        &HashMap::new(),
+    )
+    .await
+    .unwrap_err();
+    let text = error.to_string();
+    assert!(
+        text.contains("not supported"),
+        "a non-database target must be refused by the pairing rule (pairing.rs \
+         `require_data_sync_family`), got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn an_empty_database_scope_resolves_to_the_connection_database() {
+    let pair = diff_pair("empty-scope").await;
+    // No explicit database on either side: `resolve_db_name` falls back to the
+    // persisted connection config and never errors, so the frozen artifact —
+    // not a rejection — is where the scope must become visible.
+    let preview = compare(&pair, None, None).await.unwrap();
+    let artifact = state::load_artifact(&preview.plan_id).unwrap();
+    assert_eq!(artifact.source.database, "app");
+    assert_eq!(artifact.target.database, "app");
+
+    let blank = compare(&pair, Some("   ".into()), Some("   ".into()))
+        .await
+        .unwrap();
+    let resolved = state::load_artifact(&blank.plan_id).unwrap();
+    assert_eq!(
+        resolved.source.database, "app",
+        "a blank scope is trimmed and falls back, never silently scoping nothing"
+    );
+}
+
+#[tokio::test]
+async fn the_budget_refuses_a_self_overlapping_pair_before_the_compare_reads_a_row() {
+    // One connection profile, two db sessions: same owner ⇒ the same
+    // `sync|<owner>` service key for both endpoints, same database object read
+    // and written.
+    let test = TestAppState::with_options(mock_options(&[(1, "alice")])).await;
+    test.save_connection("self-sync").await;
+    // `get_or_connect_session` shares one db session per profile, so the two
+    // endpoints of a self-sync are opened explicitly: two sessions of one
+    // profile still carry the same owner, and the owner is the service key.
+    let source = test
+        .state
+        .connection_manager
+        .connect("self-sync")
+        .await
+        .expect("open the source session of one profile");
+    let target = test
+        .state
+        .connection_manager
+        .connect("self-sync")
+        .await
+        .expect("open the target session of the same profile");
+    assert_ne!(source, target, "a self-sync needs two distinct db sessions");
+
+    let error = super::apply::compare_data_sync_impl(
+        &test.state,
+        source,
+        target,
+        Vec::new(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        SyncOptions::default(),
+        &[],
+        &HashMap::new(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("is both read and written"),
+        "the budget overlap detector must refuse the self-sync pair, got: {error}"
+    );
+    assert_eq!(
+        test.mock.open_transaction_count(),
+        0,
+        "the refusal must precede every driver round trip"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// CM-41: one planId, one consumption — even when the apply fails
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_failed_apply_still_consumes_the_plan_id_for_the_legacy_path() {
+    let pair = diff_pair("failed-consumes").await;
+    let preview = compare(&pair, None, None).await.unwrap();
+    confirm(
+        &preview.plan_id,
+        insert_selection(preview.selection_revision),
+    );
+    // The target drifts after the compare: the apply Job must re-verify the
+    // structure fingerprint and refuse before writing anything.
+    pair.target
+        .set_table_schema_for_test("app", "users", drifted_schema());
+
+    let outcome = submit_apply(
+        pair.state(),
+        ApplySpec {
+            plan_id: preview.plan_id.clone(),
+            selection_revision: preview.selection_revision,
+            options: SyncOptions::default(),
+        },
+        None,
+    )
+    .await
+    .expect("a stale plan is a reported Job outcome, not a submit error");
+
+    assert_eq!(outcome.state, JobState::Failed);
+    assert_eq!(
+        outcome.effect,
+        EffectOutcome::RolledBack,
+        "nothing was committed, so the effect must not claim progress"
+    );
+    assert!(
+        message(&outcome).contains("PlanStale"),
+        "the host-recorded reason must survive to the caller, got: {}",
+        message(&outcome)
+    );
+    assert_eq!(pair.target.open_transaction_count(), 0);
+
+    // CM-41: consumption happens at `accept`, so a *failed* apply still spends
+    // the planId. The drift is repaired first, otherwise the legacy
+    // pre-flight fingerprint guard (exec.rs `validate_plan_context`) would
+    // refuse for the wrong reason and never reach `accept` at all.
+    pair.target.set_table_schema_for_test(
+        "app",
+        "users",
+        MockDriver::default_table_schema("users"),
+    );
+    confirm(
+        &preview.plan_id,
+        insert_selection(preview.selection_revision),
+    );
+    let error = execute_data_sync_plan_impl(
+        pair.state(),
+        SyncRunRequest {
+            plan_id: preview.plan_id.clone(),
+            selection: insert_selection(preview.selection_revision),
+            options: SyncOptions::default(),
+            job_id: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("already submitted"),
+        "the legacy path must find the planId consumed, got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn two_concurrent_applies_of_one_plan_id_commit_once() {
+    let pair = diff_pair("concurrent-apply").await;
+    let preview = compare(&pair, None, None).await.unwrap();
+    confirm(
+        &preview.plan_id,
+        insert_selection(preview.selection_revision),
+    );
+    let spec = || ApplySpec {
+        plan_id: preview.plan_id.clone(),
+        selection_revision: preview.selection_revision,
+        options: SyncOptions::default(),
+    };
+
+    let (first, second) = tokio::join!(
+        submit_apply(pair.state(), spec(), None),
+        submit_apply(pair.state(), spec(), None),
+    );
+    let (winner, loser) = match (first, second) {
+        (Ok(winner), Err(loser)) | (Err(loser), Ok(winner)) => (winner, loser),
+        (Ok(_), Ok(_)) => panic!("two submits must not both own one planId"),
+        (Err(first), Err(second)) => panic!("the winner must not fail: {first} / {second}"),
+    };
+
+    assert!(
+        loser.to_string().contains("already submitted"),
+        "the loser replays the idempotency receipt instead of running, got: {loser}"
+    );
+    assert_eq!(
+        winner.state,
+        JobState::Succeeded,
+        "the winner commits; host said: {}",
+        message(&winner)
+    );
+    assert_eq!(
+        winner.committed, 1,
+        "the row is written exactly once, whatever the loser did"
+    );
+    assert_eq!(pair.target.open_transaction_count(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// CM-44: the cancel the window sends must reach the flag a running stage polls
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn cancel_job_reaches_the_flag_the_running_stage_polls() {
+    let job_id = format!("cancel-wiring-{}", uuid::Uuid::new_v4());
+    let flag = state::cancel_flag(&job_id, state::desktop_context());
+    assert!(!state::is_cancelled(&job_id));
+
+    assert!(super::cancel_job(&job_id).await);
+
+    // The handler polls *this* flag inside the stage (`compare_table_pages_to_sink`
+    // takes the same flag the Job registered), and the same call cancels the
+    // kernel token, so one window cancel reaches both ends. (The token is only
+    // observed at stage boundaries — runtime.rs:108 — which is the kernel gap
+    // recorded in progress.md, not a gap in this wiring.)
+    assert!(
+        flag.load(std::sync::atomic::Ordering::SeqCst),
+        "the host flag a running stage polls must observe the window cancel"
+    );
+    assert!(state::is_cancelled(&job_id));
+    state::forget(&job_id);
+}

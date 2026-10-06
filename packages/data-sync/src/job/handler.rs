@@ -188,7 +188,11 @@ impl JobHandler for DataSyncHandler {
     // ----- internal -----
 }
 /// 失败/取消/未知的阶段结果，边界列表只保留已确认提交的部分。
+///
+/// `host` 不是可选参数：runtime 不保留错误文本，所以每一次阶段失败都必须
+/// 经由 host 端口写下原因，否则上层只能回一句「未知失败」。
 fn stage_failed(
+    host: &dyn DataSyncHost,
     stage: &'static str,
     effect: EffectOutcome,
     code: ExecutionErrorCode,
@@ -197,6 +201,7 @@ fn stage_failed(
     progress: JobProgress,
 ) -> StageOutcome {
     tracing::warn!(stage, error = %err, "data-sync stage failed");
+    host.record_stage_failure(stage, err.to_string());
     StageOutcome {
         stage_id: StageId::new(stage),
         terminal: StageTerminal::Failed,

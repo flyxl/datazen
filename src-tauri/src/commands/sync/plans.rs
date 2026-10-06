@@ -699,8 +699,14 @@ pub(crate) fn issue_plan(
     )
 }
 
+/// Issue a plan under a caller-minted plan id.
+///
+/// §2.1: the compare command mints the id *before* the `dataSyncPrepare` Job
+/// exists, so the preview and the frozen ChangeSet Artifact name the same plan.
+/// The store still refuses to issue a second plan under one id.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn issue_plan_with_store(
+pub(crate) fn issue_plan_with_store_and_id(
+    id: String,
     source_db_session_id: String,
     target_db_session_id: String,
     source_database: String,
@@ -715,7 +721,6 @@ pub(crate) fn issue_plan_with_store(
     options: SyncOptions,
     target_read_only_at_preview: bool,
 ) -> Result<SyncComparisonPreview, String> {
-    let id = Uuid::new_v4().to_string();
     global_store().issue_with_store(
         id,
         1,

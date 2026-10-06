@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use crate::model::{ChangeOperation, Endpoint, Row};
 
 /// 一个参与同步的关系的稳定身份（database/schema/table）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelationIdentity {
     pub database: String,

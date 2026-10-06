@@ -18,6 +18,7 @@ use super::artifact::{ChangeBlock, ChangeSetArtifact, RelationIdentity};
 
 /// 一次端点会话：driver 句柄 + 物理会话。释放语义由 host 决定
 ///（dedicated 才真正释放；共享会话仅解除订阅，复用桌面约定）。
+#[derive(Clone)]
 pub struct EndpointSession {
     pub driver: Arc<dyn DatabaseDriver>,
     pub handle: ConnectionHandle,
@@ -128,6 +129,17 @@ pub trait DataSyncHost: Send + Sync {
     ) -> Result<Vec<SqlStatement>, DataSyncError>;
     /// ISO-8601 UTC 时间戳。
     fn now(&self) -> String;
+
+    /// 记录一次**由阶段自身判定**的失败原因（结构门闸、keyset 契约、冲突行数、
+    /// 快照能力……）。
+    ///
+    /// 这些拒绝发生在数据同步域内部，不经过上面任何端口方法，但用户必须看到
+    /// 真实原因而不是一句「未知失败」：runtime 不携带 handler 错误文本
+    /// （`JobResult::error` 恒为 `None`，`StageRecord` 也没有 error_code），
+    /// handler 又不得改写 Job 状态（§2.3），于是 host 端口是唯一一条可写的
+    /// 证据通道。生产实现必须把它落到该 Job 的失败记录上（§7 的恢复证据
+    /// 同样从这里产生）。
+    fn record_stage_failure(&self, stage: &str, reason: String);
 }
 
 /// 一条映射的两个结构快照。

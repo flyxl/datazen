@@ -89,6 +89,7 @@ impl DataSyncHandler {
             Ok(s) => s,
             Err(e) => {
                 return Ok(stage_failed(
+                    host.as_ref(),
                     "prepare",
                     EffectOutcome::NotStarted,
                     ExecutionErrorCode::HostRejected,
@@ -103,6 +104,7 @@ impl DataSyncHandler {
             Err(e) => {
                 host.close_endpoint(source).await;
                 return Ok(stage_failed(
+                    host.as_ref(),
                     "prepare",
                     EffectOutcome::NotStarted,
                     ExecutionErrorCode::HostRejected,
@@ -135,6 +137,7 @@ impl DataSyncHandler {
                 error_code: None,
             }),
             Err((effect, code, err)) => Ok(stage_failed(
+                host.as_ref(),
                 "prepare",
                 effect,
                 code,

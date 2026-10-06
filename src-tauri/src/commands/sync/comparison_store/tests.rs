@@ -743,11 +743,12 @@ fn comparison_owner_lease_child_process() {
     let root = ensure_private_store_root(Path::new(&root)).unwrap();
     let owner = acquire_owner_lease(&root).unwrap();
     let directory = create_store_directory(&root, &owner).unwrap();
-    fs::write(
-        root.join("child-store-path"),
-        directory.to_string_lossy().as_bytes(),
-    )
-    .unwrap();
+    // Publish through a rename: a reader that polls for the file's *existence*
+    // must never observe it half-written, or it parses an empty path.
+    let published = root.join("child-store-path");
+    let staging = root.join("child-store-path.staging");
+    fs::write(&staging, directory.to_string_lossy().as_bytes()).unwrap();
+    fs::rename(&staging, &published).unwrap();
     while !root.join("child-release").exists() {
         std::thread::sleep(Duration::from_millis(10));
     }

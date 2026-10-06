@@ -1,14 +1,18 @@
 //! Data sync IPC commands (task persistence, inspect/compare/apply/generate).
 
 mod apply;
+mod artifact_view;
 pub(crate) mod compare;
 mod comparison_store;
 mod exec;
 mod filter_validation;
 #[cfg(test)]
 mod filter_validation_tests;
+mod host;
 mod inspect;
 mod jobs;
+#[cfg(test)]
+mod jobs_contract;
 mod keyset_source;
 mod plans;
 mod tasks;
@@ -30,6 +34,9 @@ pub(crate) use apply::{apply_data_sync_impl, compare_data_sync_impl, revalidate_
 #[cfg(test)]
 pub(crate) use exec::execute_data_sync_impl;
 pub(crate) use exec::{execute_data_sync_plan_impl, generate_data_sync_sql_for_plan_impl};
+pub(crate) use filter_validation::{
+    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
+};
 pub(crate) use inspect::inspect_data_sync_impl;
 pub(crate) use jobs::cancel_job;
 use plans::{SyncRunRequest, SyncRunSelection};

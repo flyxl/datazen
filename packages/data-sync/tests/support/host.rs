@@ -68,6 +68,8 @@ struct HostState {
     hook: ExecHook,
     affected_override: Option<u64>,
     executor_leases: Vec<String>,
+    /// 阶段自身的拒绝理由：runtime 不携带错误文本，host 端口是唯一的证据通道。
+    stage_failures: Vec<(String, String)>,
 }
 
 impl Default for HostState {
@@ -91,6 +93,7 @@ impl Default for HostState {
             hook: ExecHook::default(),
             affected_override: None,
             executor_leases: Vec::new(),
+            stage_failures: Vec::new(),
         }
     }
 }
@@ -241,6 +244,16 @@ impl FakeHost {
 
     pub fn has_event(&self, needle: &str) -> bool {
         self.events().iter().any(|e| e.as_str() == needle)
+    }
+
+    /// 阶段自身写下的失败理由（`(stage, reason)`）。
+    pub fn stage_failures(&self) -> Vec<(String, String)> {
+        self.read(|s| s.stage_failures.clone())
+    }
+
+    /// 最近一条阶段失败理由；`has_stage_failure` 先确认真的写过。
+    pub fn last_stage_failure(&self) -> Option<String> {
+        self.read(|s| s.stage_failures.last().map(|(_, reason)| reason.clone()))
     }
 
     pub fn count_events(&self, needle: &str) -> usize {
@@ -495,6 +508,10 @@ impl DataSyncHost for FakeHost {
 
     fn now(&self) -> String {
         "2026-01-01T00:00:00Z".to_string()
+    }
+
+    fn record_stage_failure(&self, stage: &str, reason: String) {
+        self.write(|s| s.stage_failures.push((stage.to_string(), reason)));
     }
 }
 
