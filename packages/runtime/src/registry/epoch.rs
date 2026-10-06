@@ -182,6 +182,8 @@ pub fn fold_exit(fact: ExitFact<'_>) -> ExitProjection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::Path;
 
     /// 会话层事实 → 期望投影的**整表**（§4.4 表格驱动）。
     fn session_rows() -> Vec<(RuntimeError, ExitProjection)> {
@@ -445,15 +447,114 @@ mod tests {
         }
     }
 
-    /// `RuntimeEpoch::to_directory_string` 就是 [`epoch_string`]，不是第二份实现。
+    /// 方法与 [`epoch_string`] **当前给出同样的字符串**。
+    ///
+    /// 这条钉的是「两端今天一致」，**不是**「方法在源码上就是那一个函数体」：把
+    /// `to_directory_string` 内联成一份**逐字相同**的 `format!` 时，两边仍然相等，
+    /// 本条照样绿（实测过，见 [`epoch_formatter_has_one_implementation_in_track`]）。
+    /// 值的比较在原理上就抓不到「同一份实现被复制成两份」，所以「结构上只有一份」
+    /// 必须另有一条判据，不能由本条代劳。
     #[test]
-    fn epoch_method_delegates_to_the_single_formatter() {
+    fn epoch_method_agrees_with_the_single_formatter() {
         for epoch in [0u64, 1, 7, 99, 12345678] {
             assert_eq!(
                 RuntimeEpoch::new(epoch).to_directory_string(),
                 epoch_string(epoch),
-                "方法必须是那一份实现的调用，否则它就成了第二处可以独立漂移的格式化"
+                "两端必须逐字一致：幂等短路判据就是拿这个字符串跟回执里的比"
             );
+        }
+    }
+
+    /// 本轨道内，「目录侧世代字符串」**只有一份格式化实现**——用扫描源码钉住。
+    ///
+    /// 为什么必须是源码扫描而不是比值：把某个调用点改成内联一份**逐字相同**的
+    /// `format!`，所有比值断言仍然全绿（`epoch_method_agrees_with_the_single_formatter`
+    /// 就是这么活下来的），而 FU4 的真实缺陷**恰恰是这个形状**——`context.rs` 与
+    /// 测试夹具各写了一份 `format!("rte-{:08}", …)`，两端「必须逐字一致」当时只靠
+    /// 注释担保。所以防复发的判据必须看**字面量出现了几次**。
+    ///
+    /// - 扫描范围：`src/registry/**` 与 `tests/` 下名字以 `registry` 开头的文件/目录
+    ///   （后者是本轨道的测试面；`tests/` 下别的 crate 面不属于这里）。
+    /// - 排除本文件：那份实现就在 `epoch.rs` 里，且本文件的文档刻意引述这行字面量。
+    /// - 只看**非注释行**：文档与注释里为了说明「曾经有第二份」也会写出这行字面量，
+    ///   把注释算进来就会让本条在没有代码缺陷时红。
+    /// - 判据 = 非注释行里出现 `"rte-` + `{:08` 这个组合。**已知漏网**：第二份实现
+    ///   若换一种写法（例如 `{:08x}`）不会被本条抓到；那种改动会先被
+    ///   `epoch_string_keeps_the_wire_shape` 的字面量钉住，所以不是无声的。
+    ///
+    /// **边界之外的已知副本**：`src/application/convert.rs` 的 `public_handle` 仍自带
+    /// 一份 `format!("rte-{:08}", …)`（把 runtime 世代投影成平台 API 的线上值）。它不在
+    /// 本轨道的文件面内（`src/registry/**`），本轨道不修，已作为待裁定项交给集成方；
+    /// 收敛动作是把它改成调用 `registry::epoch::epoch_string`。本条按路径前缀把它排除在
+    /// 扫描外——**不是**把它列进白名单，所以它一旦被修好，本条不需要改。
+    #[test]
+    fn epoch_formatter_has_one_implementation_in_track() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let needle: String = ["\"rte-", "{:08"].concat();
+        let mut hits: Vec<String> = Vec::new();
+        let registry_root = root.join("src/registry");
+        collect_epoch_format_literals(&registry_root, &registry_root, &needle, false, &mut hits);
+        let tests_root = root.join("tests");
+        collect_epoch_format_literals(&tests_root, &tests_root, &needle, true, &mut hits);
+        assert!(
+            hits.is_empty(),
+            "世代字符串的格式字面量在本轨道内只能出现在 epoch.rs 一处，\
+             这些文件里又各自写了一份：{hits:?}。它们必须改成调用 \
+             registry::epoch::epoch_string，否则两端又会各自漂移"
+        );
+    }
+
+    /// 见 [`epoch_formatter_has_one_implementation_in_track`]。
+    ///
+    /// `root` 是本次扫描的根（递归时不变），`only_registry_named` = true 时只收「相对
+    /// **根**的第一段名字以 `registry` 开头」的文件——`tests/` 是整个 runtime crate 的
+    /// 测试面，本轨道只占其中一部分（`tests/registry_fixtures/` 这种二级目录按目录名算）。
+    fn collect_epoch_format_literals(
+        root: &Path,
+        dir: &Path,
+        needle: &str,
+        only_registry_named: bool,
+        hits: &mut Vec<String>,
+    ) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_epoch_format_literals(root, &path, needle, only_registry_named, hits);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs")
+                || path.file_name().and_then(|name| name.to_str()) == Some("epoch.rs")
+            {
+                continue;
+            }
+            let owned_scope = match path.strip_prefix(root) {
+                Ok(rel) => rel
+                    .components()
+                    .next()
+                    .map(|first| first.as_os_str().to_string_lossy().into_owned())
+                    .is_some_and(|first| first.starts_with("registry")),
+                Err(_) => false,
+            };
+            if only_registry_named && !owned_scope {
+                continue;
+            }
+            let Ok(text) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let hit = text
+                .lines()
+                .any(|line| !line.trim_start().starts_with("//") && line.contains(needle));
+            if hit {
+                hits.push(
+                    path.strip_prefix(Path::new(env!("CARGO_MANIFEST_DIR")))
+                        .unwrap_or(path.as_path())
+                        .display()
+                        .to_string(),
+                );
+            }
         }
     }
 }
