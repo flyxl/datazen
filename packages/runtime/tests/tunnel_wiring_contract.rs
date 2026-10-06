@@ -24,7 +24,7 @@ mod tunnel_arch_support;
 
 use tunnel_arch_support::{request, tunnel_spec, unwired, wired};
 
-use datazen_runtime::resource::{LeaseState, TunnelDisposition};
+use datazen_runtime::resource::LeaseState;
 
 // ============================================================ 接线面
 
@@ -214,18 +214,14 @@ fn stage_handshake_init_register_failure_releases_the_tunnel_reference_it_had_ta
     assert_eq!(manager.tunnel_refs(&spec), Some(1));
 
     // 握手 / 初始化 / 注册三个阶段任一失败，走的是同一个补偿入口。
-    let disposition = manager
+    manager
         .roll_back_unpublished(&lease.lease_id)
         .expect("rollback runs on a lease the table still holds");
 
-    assert!(
-        disposition.pairs_with_budget_release(),
-        "CM-27「隧道引用正确」的后半句：隧道开成后回滚释放，且与预算同拍"
-    );
     assert_eq!(
         manager.tunnel_refs(&spec),
         None,
-        "the reference taken during the tunnel stage is handed back"
+        "CM-27「隧道引用正确」的后半句：隧道开成后回滚释放，且与预算同拍"
     );
     assert_eq!(manager.live_tunnels(), 0);
     assert_eq!(
@@ -249,19 +245,14 @@ fn stage_handshake_init_register_failure_with_an_unconfirmed_close_keeps_the_tun
         .expect("the tunnel stage succeeded");
     transport.fail_close();
 
-    let disposition = manager
+    manager
         .roll_back_unpublished(&lease.lease_id)
         .expect("rollback still reports, it just quarantines");
 
     assert_eq!(
-        disposition,
-        TunnelDisposition::Retained,
-        "an unconfirmed close releases no budget, so it may release no reference either"
-    );
-    assert_eq!(
         manager.tunnel_refs(&spec),
         Some(1),
-        "the quarantined connection may still be using that tunnel"
+        "an unconfirmed close releases no budget, so it may release no reference either"
     );
     assert_eq!(tunnel.closed(), 0);
 }

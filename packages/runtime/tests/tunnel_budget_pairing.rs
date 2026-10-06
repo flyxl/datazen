@@ -29,7 +29,48 @@ use tunnel_arch_support::{request, tunnel_spec, wired};
 use datazen_runtime::connection::{
     Counter, ExecutionId, HandleId, HandleKind, ResourceId, SessionHandleRef,
 };
-use datazen_runtime::resource::{CleanupDisposition, DriverCleanVerdict, HostConditionSnapshot};
+use datazen_runtime::resource::{
+    CleanupDisposition, CleanupReport, DriverCleanVerdict, HostConditionSnapshot, TunnelDisposition,
+};
+
+/// **第三格的判据，压成一行**：报告自带的两半必须逐字相等。
+///
+/// 这一句是本文件的全部意义 —— `CleanupReport` 里同时有物理预算那半和隧道引用那半，
+/// 而它们来自同一个布尔 `releases_physical_budget()`。任何一侧单独漂移（例如有人
+/// 给 `Quarantined` 也归还引用）都会让这一行变红。
+fn assert_paired(report: &CleanupReport) {
+    assert_eq!(
+        report.tunnel.pairs_with_budget_release(),
+        report.physical_budget_released,
+        "隧道引用与物理预算必须同拍：预算不核销 ⇒ 引用保留；预算核销 ⇒ 引用归还"
+    );
+}
+
+/// 预算核销 ⇒ 引用必须落到 0，`Released` 那半不能是假话。
+fn assert_released(report: &CleanupReport) {
+    assert_paired(report);
+    assert!(
+        matches!(
+            report.tunnel,
+            TunnelDisposition::Released {
+                tunnel_closed: true
+            }
+        ),
+        "预算已经核销，隧道就必须真的关掉；报告却记着 {:?}",
+        report.tunnel
+    );
+}
+
+/// 预算未核销 ⇒ 引用必须还在占用，处置是 `Retained` 而不是 `NoReference`
+/// ——`NoReference` 说的是「这条连接本来就没走隧道」，那是直连租约的事。
+fn assert_still_held(report: &CleanupReport) {
+    assert_paired(report);
+    assert!(
+        matches!(report.tunnel, TunnelDisposition::Retained),
+        "预算还占着，隧道引用就还占着；报告却记着 {:?}",
+        report.tunnel
+    );
+}
 
 /// 四项宿主条件全清 + 驱动 Clean ⇒ 短操作租约回池，物理预算**不**释放。
 fn clean_host() -> HostConditionSnapshot {
@@ -67,6 +108,7 @@ fn returned_to_pool_keeps_the_budget_and_keeps_the_tunnel_reference() {
         .expect("a clean lease returns to the idle pool");
 
     assert_eq!(report.disposition, CleanupDisposition::ReturnedToPool);
+    assert_still_held(&report);
     assert!(
         !report.physical_budget_released,
         "a pooled connection still occupies its physical budget"
@@ -102,6 +144,7 @@ fn quarantined_keeps_the_budget_and_keeps_the_tunnel_reference() {
         .expect("a lease with an active execution is quarantined, not refused");
 
     assert_eq!(report.disposition, CleanupDisposition::Quarantined);
+    assert_still_held(&report);
     assert!(
         !report.physical_budget_released,
         "an unconfirmed close keeps the budget occupied (§9.3 / §10.1.1)"
@@ -142,9 +185,10 @@ fn quarantined_released_by_a_later_confirmed_close_gives_the_reference_back_exac
     assert_eq!(manager.tunnel_refs(&spec), Some(1));
 
     // 运维核验后强制关闭：这次关闭被确认。
-    manager
+    let report = manager
         .retire(&lease.lease_id)
         .expect("the confirmed close releases the budget");
+    assert_released(&report);
 
     assert_eq!(
         manager.tunnel_refs(&spec),
@@ -188,9 +232,10 @@ fn retire_with_an_unconfirmed_close_keeps_the_budget_and_keeps_the_tunnel_refere
 
     // 排障之后传输端口恢复，再关一次：这次确认 ⇒ 两侧一起释放。
     transport.succeed_close();
-    manager
+    let report = manager
         .retire(&lease.lease_id)
         .expect("the retry confirms the close");
+    assert_released(&report);
     assert_eq!(manager.tunnel_refs(&spec), None);
     assert_eq!(manager.tunnel_close_calls(), 1);
 }
@@ -227,6 +272,7 @@ fn a_failed_session_reset_escalates_to_quarantine_and_keeps_the_tunnel_reference
         "复位结果不明 ⇒ 处置从 Closed 升级成隔离"
     );
     assert!(!report.physical_budget_released, "预算不核销");
+    assert_still_held(&report);
     assert_eq!(
         manager.tunnel_refs(&spec),
         Some(1),
@@ -272,6 +318,7 @@ fn a_confirmed_reset_and_close_in_one_release_gives_the_reference_back_with_the_
         report.physical_budget_released,
         "确认关闭 ⇒ 物理预算此刻核销（cleanup.rs:285）"
     );
+    assert_released(&report);
     assert!(
         report.session_reset_performed,
         "CM-73：复位排在关闭之前，这是可审计的顺序证据"

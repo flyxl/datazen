@@ -20,6 +20,7 @@ use crate::resource::lease::{LeaseRecord, LeaseRequest, LeaseState, PoolKeyGener
 use crate::resource::publication::DirectoryPublisher;
 use crate::resource::replacement::ReplacementLedger;
 use crate::resource::table::{ConfigRevisionDrift, QueuedLease, ResourceTable};
+use crate::resource::tunnel_wiring::TunnelDisposition;
 use crate::resource::{MonotonicSource, ResourceError, IDLE_POOL_TTL_SECONDS};
 use crate::tunnel::TunnelLedger;
 
@@ -206,7 +207,8 @@ impl ResourceManager {
             .table
             .take_idle(&pool_key, now_nanos, self.idle_ttl_seconds);
         for lease_id in expired {
-            self.force_close(&lease_id)?;
+            // 过期空闲租约被换掉：引用随这次确认关闭一并归还。
+            let _tunnel = self.force_close(&lease_id)?;
         }
 
         if let Some(lease_id) = idle {
@@ -405,13 +407,13 @@ impl ResourceManager {
             }
         }
 
-        // CM-27 × 第二格：处置落定之后，隧道引用与物理预算**同拍**结算。
+        // 处置落定之后，隧道引用与物理预算**同拍**结算。
         //
         // 用的是 `plan.disposition`（复位失败已把它升级成 `Quarantined` 的**最终**值），
         // 所以隔离路径下预算没核销、隧道引用也就没归还 —— 不存在「预算还占着、
-        // 引用先还了」的错拍。这行是全模块**唯一**释放隧道引用的地方之一
-        // （另一个是 `force_close`），两处读同一个布尔 `releases_physical_budget()`。
-        let _tunnel = self.settle_tunnel_reference(lease_id, plan.disposition);
+        // 引用先还了」的错拍。全模块**只有两个**结算点：`release` 与 `force_close`，
+        // 两处读同一个布尔 `releases_physical_budget()`，都把结果填进报告的 `tunnel` 字段。
+        let tunnel = self.settle_tunnel_reference(lease_id, plan.disposition);
 
         Ok(CleanupReport::from_plan(
             &record,
@@ -419,6 +421,7 @@ impl ResourceManager {
             plan,
             now_nanos,
             session_reset_performed,
+            tunnel,
         ))
     }
 
@@ -430,7 +433,7 @@ impl ResourceManager {
             .lease(lease_id)
             .ok_or_else(|| ResourceError::UnknownResource(lease_id.as_str().to_owned()))?
             .clone();
-        self.force_close(lease_id)?;
+        let tunnel = self.force_close(lease_id)?;
         Ok(CleanupReport {
             resource_id: record.resource_id,
             lease_id: record.lease_id,
@@ -442,13 +445,18 @@ impl ResourceManager {
             outstanding_handles: Vec::new(),
             session_reset_performed: false,
             physical_budget_released: true,
+            tunnel,
             decided_at_nanos: now_nanos,
         })
     }
 
-    pub(super) fn force_close(&mut self, lease_id: &LeaseId) -> Result<(), ResourceError> {
+    pub(super) fn force_close(
+        &mut self,
+        lease_id: &LeaseId,
+    ) -> Result<TunnelDisposition, ResourceError> {
         let Some(record) = self.table.lease(lease_id).cloned() else {
-            return Ok(());
+            // 表里已经没有这一行 ⇒ 早就被确认关闭过了，也就没有任何隧道引用可归还。
+            return Ok(TunnelDisposition::NoReference);
         };
         self.table
             .drop_idle(lease_id, &record.pool_key, self.now_nanos());
@@ -473,8 +481,7 @@ impl ResourceManager {
                 }
                 self.table.forget(lease_id);
                 // 关闭**被确认** ⇒ 物理预算此刻核销 ⇒ 隧道引用同刻归还。
-                let _tunnel = self.settle_tunnel_reference(lease_id, CleanupDisposition::Closed);
-                Ok(())
+                Ok(self.settle_tunnel_reference(lease_id, CleanupDisposition::Closed))
             }
             Err(error) => {
                 // 关闭结果不明 ⇒ 转 `Quarantined`，等运维核验，绝不静默丢弃。

@@ -36,7 +36,7 @@
 //!   permit ──▶ socket ──▶ tunnel ──▶ handshake ──▶ init ──▶ register
 //!              │          │            │
 //!              │          ▼            ▼
-//!              │       建不成⇒不落账   roll_back_unpublished ⇒ close + 归还引用
+//!              │       建不成⇒不落账   roll_back_unpublished ⇒ force_close(close + 归还引用)
 //!              ▼
 //!           失败时什么都没拿，无需回滚
 //! ```
@@ -157,7 +157,8 @@ impl ResourceManager {
     /// 它为假（`ReturnedToPool` / `Quarantined`）⇒ 预算还占着，隧道引用**一并保留**，
     /// 连台账都不碰；它为真（`Closed`）⇒ 预算此刻核销，隧道引用在**同一刻**归还。
     ///
-    /// 全模块**没有第二条**释放隧道引用的路径，因此不存在两侧错拍的可能。
+    /// 全模块**只有两个**调用点：`release` 与 `force_close`（两个分支各一）。
+    /// 两条路径读的是同一个判据，所以不存在某条路径上两侧错拍的可能。
     pub(super) fn settle_tunnel_reference(
         &mut self,
         lease_id: &LeaseId,
@@ -188,19 +189,20 @@ impl ResourceManager {
     ///
     /// 关闭本身若未确认，`force_close` 会把租约留在 `Quarantined`，此时引用**保留** ——
     /// 隔离中的连接可能仍在用这条隧道，配对不许塌。
-    pub fn roll_back_unpublished(
-        &mut self,
-        lease_id: &LeaseId,
-    ) -> Result<TunnelDisposition, ResourceError> {
+    ///
+    /// 隧道引用由 `force_close` 内部的两个分支结算，本函数**不再重复结算**：
+    /// `TunnelLedger::return_resource` 虽然幂等，但「全模块只有两个释放点」这条纪律
+    /// 靠的是字面数得清，不是靠幂等兜底。变异实测（删掉 `force_close` 的结算）会直接
+    /// 让握手/初始化/注册回滚用例转红，证明回滚路径确实由 `force_close` 兜着。
+    pub fn roll_back_unpublished(&mut self, lease_id: &LeaseId) -> Result<(), ResourceError> {
         self.table.lease(lease_id).ok_or_else(|| {
             ResourceError::UnknownResource(lease_id.as_str().to_owned())
                 .logged("rollback targets a lease the resource table does not hold")
         })?;
-        match self.force_close(lease_id) {
-            Ok(()) => Ok(self.settle_tunnel_reference(lease_id, CleanupDisposition::Closed)),
-            // 关闭未确认 ⇒ 已由 `force_close` 记成 Quarantined，预算未释放，引用必须同留。
-            Err(_) => Ok(self.settle_tunnel_reference(lease_id, CleanupDisposition::Quarantined)),
-        }
+        // 关闭未确认时 `force_close` 记成 `Quarantined` 并 `Err`，但那是**处置**不是错误：
+        // 预算未核销、隧道引用由它一并保留，回滚义务已经落到那一行租约上了。
+        let _unconfirmed = self.force_close(lease_id);
+        Ok(())
     }
 
     /// 隧道阶段失败后的补偿：把刚开出来的 socket 关掉。
