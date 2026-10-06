@@ -235,3 +235,57 @@ fn a_failed_session_reset_escalates_to_quarantine_and_keeps_the_tunnel_reference
     assert_eq!(manager.live_tunnels(), 1);
     assert_eq!(tunnel.closed(), 0);
 }
+
+/// `release` 自身走 `Closed` 分支时的配对：会话复位与物理关闭**都**被确认 ⇒
+/// 预算核销、引用同拍归还。
+///
+/// 这一格是配对表的第三行在 `release` 路径上的**唯一**入口：`release` 要拿到
+/// `Closed`，宿主条件必须既挡复用（未释放句柄）又不触发隔离（无执行中、无禁用归属）。
+/// 没有它，上面两个隔离用例都只验「保留」这一侧，删除 `release` 路径上的结算
+/// 不会有任何用例转红 —— 这一格就是补这个洞的。
+#[test]
+fn a_confirmed_reset_and_close_in_one_release_gives_the_reference_back_with_the_budget() {
+    let (mut manager, transport, tunnel, connection_id) = wired();
+    let spec = tunnel_spec();
+    let lease = manager
+        .acquire(&request(&connection_id, "appdb").via_tunnel(spec.clone()))
+        .expect("the tunnel stage succeeded");
+    let handle = SessionHandleRef::new(
+        HandleId::new("handle-arch-2"),
+        HandleKind::Cursor,
+        ResourceId::new("res-handle-2"),
+        Counter::new(1),
+    );
+    // 复位与关闭都不注入失败 ⇒ 两个确认都拿得到。
+    let host = HostConditionSnapshot::default().with_unreleased_handle(handle);
+
+    let report = manager
+        .release(&lease.lease_id, host, DriverCleanVerdict::reported_clean())
+        .expect("a confirmed reset and confirmed close release the budget");
+
+    assert_eq!(
+        report.disposition,
+        CleanupDisposition::Closed,
+        "宿主条件挡复用、又不触发隔离 ⇒ 处置是关闭"
+    );
+    assert!(
+        report.physical_budget_released,
+        "确认关闭 ⇒ 物理预算此刻核销（cleanup.rs:285）"
+    );
+    assert!(
+        report.session_reset_performed,
+        "CM-73：复位排在关闭之前，这是可审计的顺序证据"
+    );
+    assert_eq!(
+        manager.tunnel_refs(&spec),
+        None,
+        "配对表第三行：预算核销了，引用就同刻归还"
+    );
+    assert_eq!(
+        (manager.tunnel_close_calls(), tunnel.closed()),
+        (1, 1),
+        "引用归零是关闭隧道的唯一事由，且只发生一次"
+    );
+    assert_eq!((transport.opened(), transport.closed()), (1, 1));
+    assert_eq!(manager.lease_count(), 0, "预算核销之后租约行才被抹掉");
+}
