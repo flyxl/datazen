@@ -1,9 +1,10 @@
 //! `ResourceManager` ⇄ `TunnelLedger` 的**接线面**与 **CM-27 全阶段失败矩阵**。
 //!
-//! 闭合 `packages/runtime/src/tunnel/mod.rs:52-60` 登记表里的第 **(1)** 格
+//! 闭合 `packages/runtime/src/tunnel/mod.rs:53-64` 登记表里的第 **(1)** 格
 //! 「实现缺失」：permit / socket / 隧道 / handshake / init / register
 //! **每一个阶段失败时，隧道引用都必须正确回滚**。CM-27 把它拆成两半
-//! （`src/tunnel/mod.rs:~24`）：**建隧道失败不落账** + **隧道开成后回滚释放**，
+//! （`src/tunnel/mod.rs:31-52` 的登记项 F 一并更正了「CI 不跑本轨测试」这处假事实）：
+//! **建隧道失败不落账** + **隧道开成后回滚释放**，
 //! 本文件两半各带用例。
 //!
 //! 另两格在别处：

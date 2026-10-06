@@ -1,5 +1,5 @@
 //! **CM-27 × 第二格**：`CleanupDisposition::Quarantined` 下隧道引用与物理预算的
-//! **归属配对**（`packages/runtime/src/tunnel/mod.rs:52-60` 登记表第 **(3)** 格）。
+//! **归属配对**（`packages/runtime/src/tunnel/mod.rs:53-64` 登记表第 **(3)** 格）。
 //!
 //! # 判据是哪一行
 //!

@@ -57,6 +57,11 @@ sha2 = "0.10"
 datazen-runtime = { path = ".", features = ["test-harness"] }
 # CM-32 单账铁律的可执行形状靠**语法树**判，而不是对源码做字面子串匹配。
 # 子串黑名单是开放世界的：`AtomicU64` / `cached_refs` 这类改个名的第二本账一条都命中不了。
-# syn 1.0.109 已在 Cargo.lock 内解析好（本 workspace 的派生宏链已在用），这里只补
-# `full` / `visit` / `extra-traits` 三个 feature，不引入新的版本或新的 crate。
-syn = { version = "1", features = ["full", "visit", "extra-traits"] }
+# 这里必须钉在 syn 2：syn 1.0.109 **压根不认 let-else**，会把
+# `let Some(ledger) = self.tunnels.as_mut() else { .. };` 整句塞进 `Expr::Verbatim`，
+# 于是 `self.tunnels` 这一处读取对审计器**完全不可见**——`settle_tunnel_reference`
+# 恰好就用 let-else 取台账，R4 会因此整个跳过该方法。syn 2 有
+# `LocalInit { expr, diverge }`，`visit_local` 会连 `else` 分支一起下钻。
+# syn 2.0.119 同样已在 Cargo.lock 内解析好（本 workspace 的派生宏链已在用），
+# 这里只补 `full` / `visit` / `extra-traits` 三个 feature，不引入新的版本或新的 crate。
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }

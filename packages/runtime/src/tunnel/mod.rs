@@ -34,10 +34,11 @@
 //!   **一个 argv 数组**（`:217-270`），不是一次调用；`:372-373` 逐条喂给
 //!   `spawnSync('cargo', argvList, …)`（`:373`，`spawnSync` 导出于 `:111`）。三条里
 //!   **`:260` 那条不带任何 target 选择器**（`['test', …names.flatMap(n => ['-p', n])]`），
-//!   cargo 因此跑选中 crate 的**全部** target —— `packages/runtime` 顶层**全部 31** 个
-//!   `tests/*.rs` 集成二进制（含 `cm28_concurrent_tunnel.rs` 与
-//!   `cm28_concurrent_release.rs`）都在其中。`:221` 那条 `--lib` 只跑库自身单测、
-//!   `:264-266` 那条 `--release` 由 `EXTRA_TARGETS` 决定；两条都**保留**，是叠加不是替代。
+//!   cargo 因此跑选中 crate 的**全部** target —— `packages/runtime` 顶层**全部 32** 个
+//!   `tests/*.rs` 集成二进制（含 `cm28_concurrent_tunnel.rs`、`cm28_concurrent_release.rs`）
+//!   再加上 `--lib` 那条产出的库单测二进制，合计 **33** 个测试二进制。`:221` 那条
+//!   `--lib` 只跑库自身单测、`:264-266` 那条 `--release` 由 `EXTRA_TARGETS` 决定；
+//!   两条都**保留**，是叠加不是替代。
 //!   本轮实测：`node scripts/run-platform-crate-tests.mjs --dry-run` → `EXIT=0`，输出
 //!   `discovered datazen-runtime (packages/runtime/)` 与
 //!   `cargo test -p datazen-runtime -p datazen-application -p datazen-platform-api`，
@@ -52,11 +53,12 @@
 //! * **不在本模块、且此前被误记在这里**的一格：CM-27 的「可确认关闭的资源许可
 //!   归零」。该格的主语是**资源许可**，不是隧道引用，已由三处闭合并各自带测试：
 //!   `platform-api/src/ports/budget/pool_ledger.rs` 里 `impl Ledger` 的 **`release`**
-//!   ——`:374` 定位、`:375` 摘行、`:376` 调 `uncharge` 归还占用、`:387` 出
+//!   ——`:368` 定位、`:375` 摘行、`:376` 调 `uncharge` 归还占用、`:387` 出
 //!   `ReleaseDisposition::Closed`，而 `:385` 的注释自述「本端口只有『真的 close 了』
 //!   这一条释放路径」。行号只供人读，**按 `Ledger::release` 符号即可重定位**。
 //!   （对外的宿主类型是 `InMemoryDriverPoolBudget`，内部账本类型才叫 `Ledger`；
-//!   本 crate 里**不存在** `PoolLedger` 这个类型名，写它的引用都是错的。）
+//!   本 crate 里**不存在** `PoolLedger` 这个类型名，写它的引用都是错的——
+//!   `grep -rn PoolLedger --include=*.rs packages | grep -v 'src/tunnel/mod.rs'` 为 0 行。）
 //!   另两处：`runtime/src/budget/ledger.rs:397`（permit 幂等核销 INV-10，名额按原槽
 //!   退回）、`runtime/src/budget/coordinator.rs:428`（端口级幂等核销，把 `Unknown`
 //!   报成 `NotFound`）。三处都不知道隧道存在，隧道也不该进这一格。
@@ -74,13 +76,18 @@
 //!   `tunnel_wiring.rs:172` 的 `settle_tunnel_reference`（预算不释放则隧道引用原样保留、
 //!   连台账都不碰），处置矩阵由 `tests/tunnel_budget_pairing.rs` 钉住。
 //!   两格现在都是「有生产接线可断言」，不再是「实现缺失」。
-//! * 两格当初缺的那根线早已接上，本轮实测：全仓 `TunnelLedger` 在 `src/tunnel/` 之外的
-//!   **生产**调用方有 **6** 处、分布在 **2** 个文件 —— `resource/manager.rs:25`（`use`）、
-//!   `:45`（字段 `Option<TunnelLedger>`）、`resource/tunnel_wiring.rs:57`（`use`）、`:103`
-//!   （`TunnelLedger::new`）、`:125`（`TunnelLedger::live_tunnels`）、`:130`
+//! * 两格当初缺的那根线早已接上。以下每个数都可复算，命令的工作目录是 `packages/runtime`：
+//!   `grep -rn TunnelLedger src --include=*.rs | grep -v '^src/tunnel/'`
+//!   `| grep -vE ':\s*(///|//!|//)'`。`src/tunnel/` 之外的
+//!   **生产**调用方有 **6** 行、分布在 **2** 个文件（另有 **11** 行 `TunnelLedger` 是纯
+//!   `///`／`//!` 文档注释，不算调用方）—— `resource/manager.rs:25`（`use`）、
+//!   `:45`（字段 `Option<TunnelLedger>`）、`resource/tunnel_wiring.rs:63`（`use`）、`:109`
+//!   （`TunnelLedger::new`）、`:131`（`TunnelLedger::live_tunnels`）、`:136`
 //!   （`TunnelLedger::close_calls`）。`runtime/src/resource/**` 里 `tunnel` 一词出现
-//!   **133** 次（`tunnel_wiring.rs` 73、`manager.rs` 27、`mod.rs` 15、`cleanup.rs` 10、
-//!   `lease.rs` 8，其余 10 个文件 0）。基线 `b096ffbb4` 上这两个数是**生产调用方 0**、
+//!   **133** 次（`grep -roi tunnel src/resource | wc -l`，**不区分大小写**；改用只数小写
+//!   `tunnel` 的 `grep -ro` 则是 **76**，两个数只差匹配规则，不矛盾）。按文件拆同样是
+//!   不区分大小写：`tunnel_wiring.rs` 73、`manager.rs` 27、`mod.rs` 15、`cleanup.rs` 10、
+//!   `lease.rs` 8，其余 **11** 个文件 0。基线 `b096ffbb4` 上这两个数是**生产调用方 0**、
 //!   **出现次数 0**（当时 `resource/` 15 个文件里一个 `tunnel` 都没有；`TunnelLedger` 在
 //!   `src/tunnel/` 之外只有 `lib.rs:30` 一处**文档注释**提到），即接线确实是本轨新增的。
 //!

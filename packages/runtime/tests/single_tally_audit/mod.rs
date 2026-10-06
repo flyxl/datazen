@@ -32,6 +32,19 @@
 //! R1 是**有意**设成复核闸：往 `ResourceManager` 加任何字段——哪怕是合法的新字段——都必须
 //! 先改这一行，于是「加字段」从一次无声的编辑变成一次显式的架构复核。把它写成类型黑名单
 //! （靠 `idle_ttl_seconds: u64` 在册而放行 `u64`）做不到这一点，也挡不住改名换型。
+//!
+//! # 本审计自己也踩过的两个坑（都是实测出来的，都已修）
+//!
+//! 1. **R5 曾被挂在 R4 的覆盖面闸门之后**。闸门的判据是「方法体有没有碰 `self.tunnels`」，
+//!    而 `tunnel_refs` 被改写成私账供给之后正好**不再碰** `self.tunnels` —— 闸门把方法跳过了，
+//!    R5 跟着一起空转。漏洞的形状和它要挡的变异完全同形。现在 R5 无条件先跑，
+//!    并且加了「`tunnel_refs` 必须存在」的反空洞闸。
+//! 2. **syn 1 看不见 let-else**。syn 1.0.109 根本不认这个语法，整句被塞进 `Expr::Verbatim`，
+//!    于是 `let Some(ledger) = self.tunnels.as_mut() else { .. };` 里的 `self.tunnels`
+//!    对审计器完全不存在。而 `settle_tunnel_reference` 正是用 let-else 取台账的 ——
+//!    R4 会因此整个跳过这个方法。改钉 syn 2：`LocalInit { expr, diverge }` 让
+//!    `visit_local` 连 `else` 分支一起下钻。**这一条是 `Cargo.toml` 里必须写 `version = "2"`
+//!    的唯一理由**，别为了「少动一次依赖」把它改回去。
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -187,11 +200,23 @@ fn audit_wiring(file: &SynFile, path: &Path, findings: &mut Vec<String>) {
     }
 
     let mut audited = 0usize;
+    let mut refs_seen = false;
     for item in impls {
         for entry in &item.items {
-            let ImplItem::Method(method) = entry else { continue };
+            // syn 2 把 syn 1 的 `ImplItem::Method` 改名叫 `ImplItem::Fn`（字段 `sig`/`block` 不变）。
+            let ImplItem::Fn(method) = entry else { continue };
             let name = method.sig.ident.to_string();
             let body = scan(&method.block);
+
+            // R5 先跑，且**刻意不受 R4 覆盖面闸门约束**。
+            // 上一版把它挂在闸门之后，恰好让「把 `tunnel_refs` 整个改写成私账供给」
+            // 这类变异绕开全部判据：改写后方法体不再碰 `self.tunnels`，R4 认定它
+            // 「不取用台账」而跳过，R5 也跟着一起跳过——漏洞的形状和被测的变异完全同形，
+            // 是实测出来的（见模块文档「两个真实漏洞」第 1 条）。
+            if name == "tunnel_refs" {
+                refs_seen = true;
+                audit_tunnel_refs(&body, path, findings);
+            }
 
             // R4 的覆盖面是「凡取用台账的方法」——不看名单，只看方法体有没有碰
             // `self.tunnels`。碰了台账却还去读别的字段，就是把计数分到了第二处。
@@ -217,10 +242,6 @@ fn audit_wiring(file: &SynFile, path: &Path, findings: &mut Vec<String>) {
                     body.bare_self
                 ));
             }
-
-            if name == "tunnel_refs" {
-                audit_tunnel_refs(&body, path, findings);
-            }
         }
     }
 
@@ -229,6 +250,14 @@ fn audit_wiring(file: &SynFile, path: &Path, findings: &mut Vec<String>) {
         findings.push(format!(
             "{}: 没有任何方法取用 `self.{TUNNEL_FIELD}`，单账审计变成空转（接线被拆了？\
              字段被改名了？）",
+            path.display()
+        ));
+    }
+    // R5 的反空洞闸：`tunnel_refs` 本身就是这个接线模块对外的投影面，它改名或被挪走，
+    // 意味着「引用计数快照」不再由这个模块直出——R5 会静默变成空转。
+    if !refs_seen {
+        findings.push(format!(
+            "{}: 找不到 `tunnel_refs`，R5 的审计面已经消失（改名了，或被挪出了接线模块？）",
             path.display()
         ));
     }
@@ -287,7 +316,10 @@ fn audit_tunnel_refs(body: &Body, path: &Path, findings: &mut Vec<String>) {
         })
         .collect();
     let allowed: BTreeSet<String> = std::iter::once(REFN_COUNT.to_owned()).collect();
-    if projected != allowed {
+    // `derived` 为空时本条无话可说：要么台账方法一个都没调（R5a 已经报了），
+    // 要么投影写成路径限定形式 `TunnelLedger::ref_count`——那种写法 `calls` 里
+    // 本来就没有记录，对它判红是**误报**。只有真拿到了台账绑定名才继续比。
+    if !derived.is_empty() && projected != allowed {
         findings.push(format!(
             "{}: `tunnel_refs` 从台账取值时调用的方法是 {projected:?}，只允许 [{REFN_COUNT:?}]。\
              `tunnel_refs` 是 `TunnelLedger::{REFN_COUNT}` 的直通投影，不该改投影别的量。",
@@ -359,7 +391,8 @@ fn scan(block: &syn::Block) -> Body {
     }
     // 建造者模式（`with_tunnel_transport`）的块尾巴上一个裸 `self` 是**返回值**
     // （`mut self → Self`），不是「把整份 `self` 递出去」，不计入逃逸。
-    if let Some(Stmt::Expr(Expr::Path(path))) = block.stmts.last() {
+    // syn 2 的 `Stmt::Expr` 带一个分号槽位，这里用 `_` 忽略。
+    if let Some(Stmt::Expr(Expr::Path(path), _)) = block.stmts.last() {
         if is_self_path(&path.path) {
             body.bare_self = body.bare_self.saturating_sub(1);
         }
