@@ -8,7 +8,6 @@ fn validation(msg: impl Into<String>) -> String {
     msg.into()
 }
 
-
 #[derive(Debug, Clone)]
 pub enum BoundKey {
     Signed(i128),
@@ -104,10 +103,7 @@ fn bound_kind(data_type: &str) -> BoundKind {
 
 /// Recordset comparison accepts only scalar types with an explicit canonical
 /// representation. Unknown/custom types must not inherit text semantics.
-pub fn ensure_supported_bound_type(
-    data_type: &str,
-    name: &str,
-) -> Result<(), String> {
+pub fn ensure_supported_bound_type(data_type: &str, name: &str) -> Result<(), String> {
     if matches!(bound_kind(data_type), BoundKind::Unsupported) {
         return Err(validation(format!(
             "recordset {name} source type '{data_type}' has no verified ordering contract"
@@ -203,9 +199,9 @@ pub fn canonical_bound_value(
             serde_json::Value::String(value) => {
                 Ok((Value::String(value.clone()), BoundKey::Text(value.clone())))
             }
-            serde_json::Value::Null => Err(validation(format!(
-                "recordset {name} bound cannot be NULL"
-            ))),
+            serde_json::Value::Null => {
+                Err(validation(format!("recordset {name} bound cannot be NULL")))
+            }
             _ => Err(validation(format!(
                 "recordset {name} bound must be a string for source type {data_type}"
             ))),
@@ -253,12 +249,11 @@ fn parse_decimal_key(text: &str, name: &str) -> Result<DecimalKey, String> {
         )));
     }
     let mut digits = format!("{whole}{fraction}");
-    let fraction_scale = i32::try_from(fraction.len()).map_err(|_| {
-        validation(format!("recordset {name} decimal bound is too precise"))
-    })?;
-    let mut scale = fraction_scale.checked_sub(exponent).ok_or_else(|| {
-        validation(format!("recordset {name} decimal bound is too large"))
-    })?;
+    let fraction_scale = i32::try_from(fraction.len())
+        .map_err(|_| validation(format!("recordset {name} decimal bound is too precise")))?;
+    let mut scale = fraction_scale
+        .checked_sub(exponent)
+        .ok_or_else(|| validation(format!("recordset {name} decimal bound is too large")))?;
     let first_nonzero = digits
         .bytes()
         .position(|byte| byte != b'0')
@@ -276,9 +271,8 @@ fn parse_decimal_key(text: &str, name: &str) -> Result<DecimalKey, String> {
         scale -= 1;
     }
     if scale < 0 {
-        let zeros = usize::try_from(scale.unsigned_abs()).map_err(|_| {
-            validation(format!("recordset {name} decimal bound is too large"))
-        })?;
+        let zeros = usize::try_from(scale.unsigned_abs())
+            .map_err(|_| validation(format!("recordset {name} decimal bound is too large")))?;
         if zeros > 1_000_000 {
             return Err(validation(format!(
                 "recordset {name} decimal bound is too large"
@@ -294,10 +288,7 @@ fn parse_decimal_key(text: &str, name: &str) -> Result<DecimalKey, String> {
     })
 }
 
-pub fn compare_bound_keys(
-    left: &BoundKey,
-    right: &BoundKey,
-) -> Result<std::cmp::Ordering, String> {
+pub fn compare_bound_keys(left: &BoundKey, right: &BoundKey) -> Result<std::cmp::Ordering, String> {
     match (left, right) {
         (BoundKey::Signed(left), BoundKey::Signed(right)) => Ok(left.cmp(right)),
         (BoundKey::Unsigned(left), BoundKey::Unsigned(right)) => Ok(left.cmp(right)),

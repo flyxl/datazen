@@ -87,7 +87,7 @@ fn validate_sqlserver_filter_collations(
     Ok(())
 }
 
-pub(super) fn validate_filter_schemas(
+pub(crate) fn validate_filter_schemas(
     filter: &SyncSourceFilter,
     source_schema: &TableSchema,
     target_schema: &TableSchema,
@@ -104,7 +104,7 @@ pub(super) fn validate_filter_schemas(
     })
 }
 
-pub(super) fn resolve_key_contracts(
+pub(crate) fn resolve_key_contracts(
     pk_columns: &[String],
     src_adapter: &dyn SyncSourceAdapter,
     tgt_adapter: &dyn SyncSourceAdapter,
@@ -153,7 +153,7 @@ pub(super) fn resolve_key_contracts(
 
 /// Ensure a bounded source filter has compatible key semantics, SQL ordering,
 /// and parameter representations on both endpoints before plan construction.
-pub(super) fn validate_filter_endpoints(
+pub(crate) fn validate_filter_endpoints(
     filter: &SyncSourceFilter,
     pk_columns: &[String],
     src_driver: &dyn DatabaseDriver,

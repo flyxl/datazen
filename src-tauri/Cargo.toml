@@ -21,9 +21,10 @@ datazen-ai-api = { path = "../packages/ai-api" }
 # 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
 datazen-platform-api = { path = "../packages/platform-api" }
+# P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
 datazen-runtime = { path = "../packages/runtime" }
 datazen-application = { path = "../packages/application" }
-# JobRuntime（P5）：迁移三件套的 prepare/apply 都以 Job 受理，host 只做 adapter。
+# 迁移三件套各自以 Job 受理 prepare/apply，host 只做 adapter。
 datazen-schema-diff = { path = "../packages/schema-diff" }
 datazen-data-sync = { path = "../packages/data-sync" }
 datazen-data-transfer = { path = "../packages/data-transfer" }

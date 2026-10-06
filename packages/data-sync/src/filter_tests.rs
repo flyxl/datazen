@@ -692,11 +692,7 @@ fn test_tester_recordset_builder_rejects_unverified_columns_order_and_binding() 
         Some((&valid_keys, &["tenant_expr".into(), "id_expr".into()])),
         |_, value| Ok(value.clone()),
         |_| Some("INTEGER".into()),
-        |_, _| {
-            Err(crate::DataSyncError::validation(
-                "placeholder failed",
-            ))
-        },
+        |_, _| Err(crate::DataSyncError::validation("placeholder failed")),
     );
     assert!(placeholder_error.is_err());
 

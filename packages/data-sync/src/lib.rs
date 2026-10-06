@@ -11,6 +11,7 @@ pub mod execute;
 pub mod filter;
 mod filter_values;
 pub mod gate;
+pub mod job;
 pub mod keyset;
 pub mod legacy;
 pub mod mapping;
@@ -21,8 +22,8 @@ mod recordset;
 pub mod recordset_bounds;
 pub mod session;
 pub mod sql;
-pub mod sync_pairing;
 pub mod state;
+pub mod sync_pairing;
 pub mod types_eq;
 
 pub use apply_loop::{apply_changeset_to_rows, remaining_mutating_changes};

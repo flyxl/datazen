@@ -120,6 +120,16 @@ pub struct MockDriverOptions {
     /// Databases reported as holding an open resource by `open_databases`.
     /// Empty models a driver with no per-database resource.
     pub open_databases: Vec<String>,
+    /// When true, `query_with_params` models a **keyed equality read**: the
+    /// leading cells of each configured row must equal the leading bound
+    /// params, so a read for key 2 never answers with the row for key 1.
+    ///
+    /// Opt-in because the default mock answers every query with
+    /// [`Self::query_rows`], and keyset pagination (`> ?1` seek predicates)
+    /// shares this method: filtering those would drop later pages. Only a
+    /// pure equality read (`… = ?1`, no `>` seek) is filtered, so a test opts
+    /// in exactly for the keyed-read shape it needs to prove.
+    pub filter_rows_by_key_equality: bool,
 }
 
 impl Default for MockDriverOptions {
@@ -166,6 +176,7 @@ impl Default for MockDriverOptions {
             has_schema_level: false,
             default_schema: None,
             open_databases: Vec::new(),
+            filter_rows_by_key_equality: false,
         }
     }
 }
@@ -621,6 +632,19 @@ impl DatabaseDriver for MockDriver {
         if self.opts.empty_keyset_after_cursor && sql.contains(" > ") && !params.is_empty() {
             result.rows.clear();
         }
+        if self.opts.filter_rows_by_key_equality
+            && !params.is_empty()
+            && sql.contains(" = ")
+            && !sql.contains(" > ")
+        {
+            result.rows.retain(|row| {
+                params.iter().enumerate().all(|(index, wanted)| {
+                    row.get(index)
+                        .and_then(Option::as_ref)
+                        .is_some_and(|cell| value_matches_param(cell, wanted))
+                })
+            });
+        }
         Ok(result)
     }
 
@@ -857,5 +881,22 @@ impl DatabaseDriver for MockDriver {
                 .await;
         }
         execute_standard_sql_command(self, handle, command, input).await
+    }
+}
+
+/// [`Value`] deliberately has no `PartialEq`, so binding a param in the mock is
+/// a variant-by-variant comparison. A cell of another variant is a mismatch:
+/// the fixture rows are literal values, not something to coerce.
+fn value_matches_param(cell: &Value, wanted: &Value) -> bool {
+    match (cell, wanted) {
+        (Value::Null, Value::Null) => true,
+        (Value::Bool(cell), Value::Bool(wanted)) => cell == wanted,
+        (Value::Integer(cell), Value::Integer(wanted)) => cell == wanted,
+        (Value::Float(cell), Value::Float(wanted)) => cell == wanted,
+        (Value::String(cell), Value::String(wanted)) => cell == wanted,
+        (Value::Bytes(cell), Value::Bytes(wanted)) => cell == wanted,
+        (Value::Timestamp(cell), Value::Timestamp(wanted)) => cell == wanted,
+        (Value::Json(cell), Value::Json(wanted)) => cell == wanted,
+        _ => false,
     }
 }
