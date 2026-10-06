@@ -107,18 +107,22 @@ fn install_warn_recorder() -> Arc<WarnRecorder> {
 
 /// C3 补强：把「读次数不再增长」的观测放在阶段执行期间：
 ///
-/// 1. 阶段执行期间 handler 打开读故障，看守者撞上第一次失败 → 一条 WARN；
+/// 0. **先证明前提**：故障注入之前，看护者的读次数跨过 `QUIET_WINDOW` 必须真的在长。
+///    没有这一步，下面第 2 步的「读次数零增长」是个空转断言——把 `repository.rs` 里
+///    `cancel_poll` 的 `get_calls.fetch_add` 删掉，它照样通过（`before == after` 恒成立）。
+/// 1. 阶段执行期间 handler（这里由测试侧）打开读故障，看守者撞上第一次失败 → 一条 WARN；
 /// 2. 阶段继续卡着不动（测试还没放行），跨过 `QUIET_WINDOW` 再采样：
 ///    读次数**零增长**、WARN **仍然只有一条**——即「告警后停止轮询」是真的停，
 ///    而不是每 50ms 失败一次刷一条告警；
 /// 3. 放行阶段 → 关故障 → 阶段正常 `Succeeded`（读失败不得 fail-closed）。
 ///
-/// 删掉 `runtime.rs` 里 `tracing::warn!` 之后那个 `return;`，第 2 步的两条断言都会红。
+/// 删掉 `runtime.rs` 里 `tracing::warn!` 之后那个 `return;`，第 2 步的两条断言都会红；
+/// 删掉 `repository.rs` 里 `cancel_poll` 的 `get_calls.fetch_add`，第 0 步就会红。
 #[tokio::test]
 async fn poll_failure_stops_polling_while_the_stage_is_still_running() {
     let job_id = "job-cw-8";
     let warns = install_warn_recorder();
-    let mut rig = rig(job_id, vec![("s1", Plan::PollFaultHeld)]).await;
+    let mut rig = rig(job_id, vec![("s1", Plan::Held)]).await;
     let run = rig.start();
 
     match rig.next().await {
@@ -126,14 +130,24 @@ async fn poll_failure_stops_polling_while_the_stage_is_still_running() {
             stage,
             cancel_at_entry,
             watchers_at_entry,
-            ..
+            get_calls_at_entry,
         } => {
             assert_eq!(stage, "s1");
             assert!(!cancel_at_entry);
             assert_eq!(watchers_at_entry, 1, "阶段执行期间必须有一个看守者在飞");
+            // 第 0 步：故障还没注入，先证明看护者真的在读。
+            tokio::time::sleep(QUIET_WINDOW).await;
+            assert!(
+                rig.repo.get_calls() > get_calls_at_entry,
+                "注入故障前看护者必须真的在轮询（跨过 {QUIET_WINDOW:?} 读次数必须增长），\
+                 否则下面『停止轮询』测的是一个从不轮询的计数器"
+            );
         }
         other => panic!("期望进入 s1，得到 {other:?}"),
     }
+
+    // 现在才注入读故障：注入时刻由测试决定，观测对象也就由测试决定。
+    rig.repo.fail_get(true);
 
     // 等看守者真的撞上故障：告警出现。不出现就说明这个用例连故障路径都没走到。
     let deadline = tokio::time::Instant::now() + PATIENCE;
@@ -165,7 +179,8 @@ async fn poll_failure_stops_polling_while_the_stage_is_still_running() {
         "停止的是轮询，不是任务：看守者要活到阶段返回才由 dispatch 回收"
     );
 
-    // 放行阶段：handler 关掉故障再返回，阶段语义不受读失败影响。
+    // 放行阶段：先关掉故障，否则 `dispatch` 自己的读也会失败。
+    rig.repo.fail_get(false);
     rig.release.notify_one();
     match rig.next().await {
         Msg::Finished {
