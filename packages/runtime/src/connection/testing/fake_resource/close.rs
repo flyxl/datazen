@@ -1,114 +1,189 @@
-//! op 9 `closeResource` 的实现（fake-runtime-fixtures.md §3.1、§5.3 规则 2/3/6、
-//! connection-management.md CM-74 / §9.4）。
+//! `closeResource` 的实现（fake-runtime-fixtures.md §3.1、§5.1、§5.3 规则 2/3/6、
+//! connection-management.md §6.5 / §9.4）。
 //!
-//! 从 `ops.rs` **整段**搬出来单独立文件：关闭是九个操作里唯一同时踩 permit 口径、
-//! 归池判据和释放顺序三项规范的操作，把它和「创建 / 执行 / 重置」那类操作摊在一个
-//! 文件里，评审 `§9.4(b)` 判据时会被另外八个操作的上下文淹没。
+//! 九个操作里关闭这一条最重：它同时承载 §5.3 的 permit 归还口径（只有 `Closed` 归还）、
+//! CM-74 的释放顺序（句柄注销排在 `Closed` 与 permit 归还之前）、§4.2 F11 的「关闭未确认」
+//! 与 §9.4(b) 的归池前置判据，所以从 `ops.rs` 单独成文件 —— 与
+//! [`transaction`](super::transaction) 承载 op 6（F8 事务）是同一处置。
 //!
-//! 依赖方向不变：只向下依赖 `connection::{port, session, types, execution, error}`
-//! 与同目录的 `handles` / `state` / `script`，仍然不写任何网络或凭据代码（§13）。
+//! 判定仍走 `FakeResource::prepare_close`（§3.1 的 `resourceId` + `runtimeEpoch` + owner
+//! 三校验 + 全部状态迁移），故障注入只改返回值、状态迁移与 journal 写入照常 ——
+//! 与 `ops.rs` 里其余操作同一条纪律（§5.3 的断言因此读的是同一本台账）。
 
 use crate::connection::error::ProviderError;
 use crate::connection::execution::EffectOutcome;
-use crate::connection::port::{
-    BudgetClass, CloseReceipt, CloseResourceRequest, PermitId, ResourceRelease,
-};
-use crate::connection::session::{SessionHandleRef, SessionState, TransactionState};
+use crate::connection::port::{CloseOutcome, CloseReceipt, CloseResourceRequest, ResourceRelease};
+use crate::connection::session::SessionState;
 use crate::connection::testing::journal::{HandleAction, ResourceEvent};
-use crate::connection::types::{DbSessionId, OwnerRef, PoolKeyFingerprint};
+use crate::connection::types::DbSessionId;
 
 use super::script::{FaultKind, ResourceOp};
-use super::state::{FakeResourceState, PermitEventPlan};
 use super::FakeResourceProvider;
 
 impl FakeResourceProvider {
+    // ---- 9. closeResource ----
+
     /// §5.3 规则 2/3/6：只有 `Closed` 归还 permit；`CloseUnconfirmed` 不归还。
     ///
     /// CM-74：句柄注销**无条件**发生，且排在 `Closed` 与 permit 归还**之前**
     /// （journal 里句柄事件排在资源终态之前）。§9.3 竞态脚本要求回滚时，额外清掉事务态。
+    ///
+    /// # §9.4(b)：判据的两个输入都来自**一次**求值，分叉永不放行归池
+    ///
+    /// [`ClosePrecondition`] 由 [`FakeResource::prepare_close`] 在**实际注销句柄的那一把锁里**
+    /// 一次算出，同时带出「被调方实测的登记数」与「宿主在 [`CloseResourceRequest`] 里声称的
+    /// 同一个量」。归池判据（[`ClosePrecondition::returns_to_pool`]）**两个都消费**：
+    /// 实测必须为 0，且两份账必须一致。§9.4 把前置写成 AND（「宿主检查全部通过 **AND**
+    /// driver 返回 Clean」「任一失败都关闭」），而 §6.5 规定句柄只能经登记/注销改变 ——
+    /// 所以账本分叉本身就说明前置不成立，绝不能归池。
+    ///
+    /// 关键方向是「宿主声称 0、资源上其实还挂着句柄」（§4.2 F10 的形状）：此时判据按**实测**
+    /// 拒绝归池。若判据改读**声明**，这一笔就会伪称「宿主检查全部通过」而把带句柄的资源放回池子。
+    /// 承重用例是
+    /// [`pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles`](crate::connection::testing::fake_resource::close_cases::pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles)、
+    /// 它的姊妹例
+    /// [`pooling_refuses_a_stale_host_ledger_that_overcounts_the_registered_handles`](crate::connection::testing::fake_resource::close_cases::pooling_refuses_a_stale_host_ledger_that_overcounts_the_registered_handles)
+    /// 与对照正例
+    /// [`a_clean_resource_with_matching_ledgers_returns_to_the_pool`](crate::connection::testing::fake_resource::close_cases::a_clean_resource_with_matching_ledgers_returns_to_the_pool)。
+    ///
+    /// 同一次锁里还消掉了另外几处「快照 vs 重读」的双源：`owner`、`pool_key`、
+    /// `budget_class`、`db_session_id`、`had_transaction` 现在都来自这**一个**临界区，
+    /// 不再是 `resolve()` 的克隆 + 后面的第二次 `get_mut` + 归还 permit 时的第三次 `get_mut`。
+    ///
+    /// # 曾经可证明的 `None` 分支现在是真实分支
+    ///
+    /// 旧实现的 `None` 分支不可达：顶层 `resources` 只在 `create_resource` 插入、从不删除，
+    /// 而 `resolve()` 已在前一步查过同一张表，所以后面的 `get_mut` 恒为 `Some`；
+    /// 两支产出**不同**的判据输入，正是「可分叉」的另一半。
+    /// 现在**没有第二次查表**：这一段 `ok_or_else` 是「未知 resourceId 的关闭」唯一真正的入口，
+    /// 并且有用例覆盖 ——
+    /// [`closing_an_unknown_resource_id_is_rejected_before_any_journal_write`](crate::connection::testing::fake_resource::close_cases::closing_an_unknown_resource_id_is_rejected_before_any_journal_write)。
+    /// 它返回 `ProviderError::SessionLost`（不 panic）：§3.1 要求每个操作都校验凭证，
+    /// 而「资源根本不在册」是**调用方**能造出来的输入，不是夹具内部的不变量，
+    /// 按 panic-policy 也不该用 `unwrap()/expect()` 把输入错误升级成 panic。
+    ///
+    /// 注意这**不是**新增的可达性：旧实现的 `resolve()` 在同一步就以同样的错误码拒绝了
+    /// 未知 `resourceId`。变的是**拒绝发生在哪一次查表上** —— 从「先 `resolve()` 拿快照、
+    /// 再 `get_mut` 拿第二次」变成「只有一次 `get_mut`」，于是那个 `None` 分支从
+    /// 恒不成立变成**唯一入口**。
+    ///
+    /// # F11 走的是同一个 `prepare_close`，只是 `unconfirmed = true`
+    ///
+    /// 资源**不**销毁：留在 `Closing`、`protocol_drained = false`、句柄保持登记、permit
+    /// **不**归还（§5.3 规则 3：余额不变）。注销之所以不做，是因为未确认的关闭不能伪称
+    /// 「句柄随资源一起死了」——那会让后续隔离/重试路径读到一张「句柄已清空、其实没关成」
+    /// 的资源。`close_unconfirmed_*` 那组用例钉的就是这一整套后果。
     pub fn close_resource(
         &self,
         request: &CloseResourceRequest,
     ) -> Result<CloseReceipt, ProviderError> {
-        // F11：关闭未确认 —— 资源留在预算占用里（§5.3 规则 3：余额不变）。
-        // 判定只取脚本，不碰资源表：注入额度在这里消耗一次。
+        // F11 的判定只取脚本，不碰资源表：注入额度在这里消耗一次。
         let unconfirmed = matches!(
             self.script.take(ResourceOp::Close),
             Some((_, FaultKind::CloseUnconfirmed { .. }))
         );
         let rolled_back = self.script.rollback_before_release();
+        let key = request.handle.resource_id.as_str().to_owned();
 
-        // **唯一一次**资源表求值：§3.1 凭证校验、注销前的句柄数、状态迁移、permit 归还计划
-        // 全在这一段临界区里完成，中间没有观察者，也就没有 TOCTOU。
-        let facts = self.evaluate_close(request, unconfirmed, rolled_back)?;
+        // 唯一一次资源表求值：校验凭证、测注销前的句柄数、迁移状态、决定 permit 归还，
+        // 全在同一段临界区里完成（顺序由 `prepare_close` 固定）。
+        // 资源不在表里 ⇒ `SessionLost`。这一支在旧实现里是**可证明的死代码**：
+        // 顶层 `resources` 只在 `create_resource`（`ops.rs` 的 `insert`）插入、从不删除，
+        // 而前面的 `resolve()` 已经查过一遍，所以后面的 `get_mut` 恒为 `Some`。
+        // 现在**没有第二次查表**，这一段是「未知 resourceId 的关闭」唯一真正的入口，
+        // 并且有用例覆盖（`closing_an_unknown_resource_id_is_rejected_before_any_journal_write`）。
+        let (attempt, owner, pool_key, budget_class, db_session_id) = {
+            let mut resources = self.lock();
+            let slot = resources.get_mut(&key).ok_or_else(|| {
+                ProviderError::SessionLost(format!(
+                    "资源 {key} 不存在，closeResource 无从判定归池前置（§9.4）"
+                ))
+            })?;
+            // 幂等关闭：资源可能已经是 `Closed`（fixtures §3 契约表「幂等：首次 Closed，
+            // 重复调用仍 Closed」/ 连接 §3 INV-10「关闭幂等，预算只释放一次」），
+            // 所以这里不设「已关闭即拒」
+            // 的门闸 —— 重复关闭仍然成功，只是 permit 不会二次归还。
+            let attempt = slot.prepare_close(
+                &request.handle,
+                request.protocol_drained,
+                request.registered_handles,
+                unconfirmed,
+                rolled_back,
+            )?;
+            (
+                attempt,
+                slot.owner.clone(),
+                slot.pool_key.clone(),
+                slot.budget_class(),
+                slot.db_session_id.clone(),
+            )
+        };
+        let precondition = attempt.precondition;
 
-        if unconfirmed {
+        if precondition.unconfirmed {
             // §4.2 F11 / §5.3 规则 3：资源留在预算占用里，只记 `CloseUnconfirmed`。
             // **不**记 `Closed`、**不**写 `ReturnedToPool`、**不**归还 permit、
             // **不**注销句柄、**不**收 lease/session 登记 —— 未确认的关闭没资格做这些。
-            if let Some(owner) = facts.owner.as_ref() {
+            // 无 owner 的资源（夹具里 `FakeResource.owner = None` 的异常形状）写不出
+            // `ResourceEvent`，此时宁可让台账缺这一笔也不伪造一个 owner。
+            if let Some(owner) = owner.as_ref() {
                 self.journal.record_resource_event(
                     &request.handle.resource_id,
                     ResourceEvent::CloseUnconfirmed,
                     owner,
-                    facts.pool_key,
-                    facts.budget_class,
+                    pool_key,
+                    budget_class,
                 );
             }
-            return Ok(CloseReceipt {
-                db_session_id: facts.db_session_id,
-                state: SessionState::Closing,
-                effect_outcome: EffectOutcome::Unknown,
-                resource_release: ResourceRelease::Pending,
-            });
+            return Ok(close_receipt(
+                db_session_id,
+                attempt.close_outcome,
+                EffectOutcome::Unknown,
+            ));
         }
 
         // CM-74 顺序：`handle closed` → `ReturnedToPool?` / `Closed` → `permit -1`。
-        for open in &facts.deregistered {
+        for open in &attempt.deregistered {
             self.journal.record_handle(
                 open,
                 HandleAction::Closed,
                 "物理关闭前注销句柄（CM-74 / §9.3）",
             );
         }
-        if let Some(owner) = facts.owner.as_ref() {
+        if let Some(owner) = owner.as_ref() {
             // §5.3 规则 2 前置：归池必须有「协议已排空 + 无登记句柄」的证据。
-            //
-            // 「无登记句柄」读**注销之前**的实测值，不是刚注销完的 `registered_handles()`
-            // （那恒为 0，读它等于没判），也不是宿主在请求里自述的 `registered_handles`
-            // —— §9.4(b) 对此有专门判据，见 `evaluate_close` 的注释。
-            //
-            // 读注销前快照是判据的字面要求而非取巧：CM-74 对同一条断言既要求句柄先于
-            // 物理关闭注销，又要求「driver 报 `Clean` 而宿主仍有已登记句柄时宿主检查必须
-            // 失败（§9.4）」。后者问的是「关闭开始前资源上挂没挂着句柄」，两个判据都是
-            // 关闭**之前**的事实，所以快照与注销同处一把锁。
-            if facts.drained && facts.handles_before_close == 0 {
+            // 判据读 `measured_handles`（注销**前**的实测值）—— 不是注销之后的余量（恒为 0，
+            // 读它等于没判），也不是宿主声明（可与实测分叉，见上面的 §9.4(b)）。
+            if precondition.returns_to_pool() {
                 self.journal.record_resource_event(
                     &request.handle.resource_id,
                     ResourceEvent::ReturnedToPool {
-                        protocol_drained: true,
-                        registered_handles: facts.handles_before_close,
+                        protocol_drained: precondition.protocol_drained,
+                        registered_handles: precondition.measured_handles,
                     },
                     owner,
-                    facts.pool_key.clone(),
-                    facts.budget_class.clone(),
+                    pool_key.clone(),
+                    budget_class.clone(),
                 );
             }
             self.journal.record_resource_event(
                 &request.handle.resource_id,
                 ResourceEvent::Closed,
                 owner,
-                facts.pool_key.clone(),
-                facts.budget_class.clone(),
+                pool_key,
+                budget_class.clone(),
             );
         }
 
-        // 归还 permit —— 只在 `Closed` 时；`Accounting::release()` 自己保证至多一次
-        // （已归还过则返回 `None`）。计划连同 permitId/budgetClass 都来自那一次持有，
-        // 没有第二个来源。
-        if let Some((permit_id, plan, budget_class)) = facts.permit {
-            self.journal
-                .record_permit(&permit_id, plan.delta, plan.reason, budget_class);
+        // 归还 permit —— 只在 `Closed` 时，且 `Accounting::release()` 保证至多一次。
+        // 计划连同 permitId/budgetClass 都来自刚才那一次 slot 求值，没有第二个来源。
+        if let Some(release) = attempt.permit {
+            self.journal.record_permit(
+                &release.permit_id,
+                release.plan.delta,
+                release.plan.reason,
+                release.budget_class,
+            );
         }
 
         // 关闭路径必须收回孤立句柄（I7）、会话登记（I4）与 lease（I3），台账才收得口。
@@ -119,138 +194,50 @@ impl FakeResourceProvider {
         // 覆盖 runtime 登记了句柄、但本进程没有对应 slot 条目的那部分。
         self.journal
             .reclaim_registered_handles_on_close(&request.handle.resource_id, "closeResource");
-        self.journal.close_active_session(&facts.db_session_id);
+        self.journal.close_active_session(&db_session_id);
         for lease in self.leases_of(&request.handle.resource_id) {
             self.journal.release_lease(&lease);
         }
 
-        Ok(CloseReceipt {
-            db_session_id: facts.db_session_id,
-            state: SessionState::Closed,
-            // 诚实：真的回滚过才报 `RolledBack`。
-            effect_outcome: if rolled_back || facts.had_transaction {
+        Ok(close_receipt(
+            db_session_id,
+            attempt.close_outcome,
+            // 诚实：真的回滚过才报 `RolledBack`。`had_transaction` 同样是那一次锁里测的，
+            // 不是从 `resolve()` 的克隆上读的第二份。
+            if rolled_back || attempt.had_transaction {
                 EffectOutcome::RolledBack
             } else {
                 EffectOutcome::Completed
             },
-            resource_release: ResourceRelease::Confirmed,
-        })
-    }
-
-    /// 在**一次**持有资源表期间，把一次关闭请求要记账的全部事实算出来。
-    ///
-    /// 旧实现是**三次**求值：`resolve()` 克隆一份、归池判定 `get_mut()` 第二份、归还
-    /// permit 再 `get_mut()` 第三份。顶层 `resources` 只在 `create_resource`（`ops.rs`
-    /// 的 `insert`）插入，全目录没有任何 `remove` / `retain` / `clear` 作用在它身上，
-    /// 所以后两次 `get_mut` **恒为 `Some`** —— 第二份的 `None` 分支是**可证明的死代码**，
-    /// 而它返回的恰恰是最危险的一组值：
-    /// `request.protocol_drained` + `resource.registered_handles()` + 空注销清单，
-    /// 即「拿请求里的自述值当实测值、且一条句柄都不注销」。这样的死分支不是无害冗余，
-    /// 它是「一旦可达就静默说谎」的形状，留着等于邀请下一个人把 `resources` 改成会
-    /// 删除资源的行为，而那一改动没人会连带复核这里的兜底值。
-    ///
-    /// 现在第二次查表没有了，`None` 变成「未知 resourceId 的关闭」唯一真正的入口：
-    /// 它报 `SessionLost`，且发生在**任何**台账写入之前（用例
-    /// `closing_an_unknown_resource_id_is_rejected_before_any_journal_write`）。
-    ///
-    /// §9.2 的 `handle_from_other_resource` 反例在这条路上依然被拒：`resolve()` 此前
-    /// 把 `request.handle.resource_id` 同时当作「声称的 id」和「实际查表的 key」，
-    /// 两个身份恒等，跨资源句柄用例会因查不到资源而先报 `SessionLost`；新路径不再依赖
-    /// 这一点 —— `verify()` 拿 `request.handle.resource_id` 与表项里的
-    /// `runtime_epoch` / `owner` 对照，伪造的外来句柄同样过不去。
-    fn evaluate_close(
-        &self,
-        request: &CloseResourceRequest,
-        unconfirmed: bool,
-        rolled_back: bool,
-    ) -> Result<CloseFacts, ProviderError> {
-        let key = request.handle.resource_id.as_str();
-        let mut resources = self.lock();
-        let slot = resources.get_mut(key).ok_or_else(|| {
-            ProviderError::SessionLost(format!(
-                "资源 {key} 不存在，closeResource 无从判定归池前置（§9.4）"
-            ))
-        })?;
-        // §3.1：`ResourceHandle` 只由提供方签发，每个操作都要校验三要素
-        // （resourceId / dbSessionId / runtimeEpoch）。
-        // 无 owner 的资源写不出参与校验的 owner，报 `SessionLost`（与 `resolve` 同口径）。
-        let owner_ref: &OwnerRef = slot.owner.as_ref().ok_or_else(|| {
-            ProviderError::SessionLost(format!("资源 {key} 没有 owner，无法验证句柄"))
-        })?;
-        request
-            .handle
-            .verify(&request.handle.resource_id, &slot.runtime_epoch, owner_ref)?;
-
-        let facts = CloseFacts {
-            owner: slot.owner.clone(),
-            pool_key: slot.pool_key.clone(),
-            budget_class: slot.budget_class(),
-            db_session_id: slot.db_session_id.clone(),
-            had_transaction: slot.has_open_transaction(),
-            drained: false,
-            handles_before_close: 0,
-            deregistered: Vec::new(),
-            permit: None,
-        };
-
-        if unconfirmed {
-            // §4.2 F11：资源留在预算占用里，只推进到 `Closing`，排空标志一律作废。
-            slot.state = FakeResourceState::Closing;
-            slot.protocol_drained = false;
-            return Ok(facts);
-        }
-
-        // 幂等关闭：资源可能已经是 `Closed`（fixtures §3 契约表「幂等：首次 `Closed`，
-        // 重复调用仍 `Closed`」/ 连接 §3 INV-10「关闭幂等，预算只释放一次」），
-        // 所以这里不设「已关闭即拒」的门闸 —— 重复关闭仍然成功，只是 permit 不会二次归还。
-        slot.protocol_drained = request.protocol_drained && slot.protocol_drained;
-        let mut facts = facts;
-        facts.drained = slot.protocol_drained;
-        // 归池判定的输入：注销**之前**这张资源上还挂着几个句柄。
-        facts.handles_before_close = slot.registered_handles();
-        // CM-74：句柄随资源一起死，必须在物理关闭前注销（journal 先记 `closed`）。
-        // 这一步**无条件** —— 它是关闭语义，不是回滚语义。
-        facts.deregistered = slot
-            .handles
-            .values_mut()
-            .map(|handle| {
-                handle.closed = true;
-                handle.clone()
-            })
-            .collect();
-        slot.handles.clear();
-        // 回滚语义仍以脚本标志为门：真的回滚过才清事务态。
-        if rolled_back {
-            slot.transaction_state = TransactionState::None;
-        }
-        slot.state = FakeResourceState::Closed;
-        facts.permit = slot.accounting.release().map(|plan| {
-            (
-                slot.accounting.permit_id.clone(),
-                plan,
-                slot.accounting.budget_class,
-            )
-        });
-        Ok(facts)
+        ))
     }
 }
 
-/// 一次关闭请求要落进台账的全部事实，每个字段都取自**同一次**资源表持有。
-struct CloseFacts {
-    /// 无 owner 的资源（夹具里的异常形状）写不出带 owner 的台账事件，
-    /// 调用方据此跳过记账而不是伪造一个 owner。
-    owner: Option<OwnerRef>,
-    pool_key: PoolKeyFingerprint,
-    budget_class: BudgetClass,
+/// 把状态机派生的 [`CloseOutcome`] 映射成对外回执的两个字段。
+///
+/// 这是 `state` / `resource_release` 的**唯一**产出口径：两条关闭路径（F11 的未确认提前
+/// 返回、CM-74 的确认关闭）都走这里，不再各写一份 `SessionState::Closing` +
+/// `ResourceRelease::Pending` 的字面量 —— 同一个结论的第二份弱判据正是 §9.4(b) 登记的
+/// 缺陷形状（「记录一个量、消费另一个量」）。
+///
+/// 映射在本夹具里是无损的：`prepare_close` 的 unconfirmed 分支显式把状态钉成
+/// `FakeResourceState::Closing`，所以 `CloseOutcome::CloseUnconfirmed` 从这里出来时
+/// 资源必然停在 `Closing`（不是 `Quarantined` / `Lost` —— 那两种形状由
+/// `transaction_operation` 的 F8 与 §4.2 F3 负责，不走 closeResource）。
+/// §5.3 规则 3 要求「未证实关闭不能伪称预算已回收」，因此 `Pending` 而不是 `Confirmed`。
+fn close_receipt(
     db_session_id: DbSessionId,
-    /// 关闭前是否还开着事务 —— 决定回执的 `effect_outcome`。
-    had_transaction: bool,
-    /// 排空标志取两个来源的合取：宿主声明 `true` **且** 资源上已经排空过。
-    drained: bool,
-    /// 注销前的实测句柄数，归池判据（§9.4「已登记句柄为空」）的唯一输入。
-    handles_before_close: usize,
-    /// 本次关闭注销掉的句柄，按注销顺序。
-    deregistered: Vec<SessionHandleRef>,
-    /// 待写入的 permit 归还事件；已归还过则为 `None`（`Accounting::release()` 保证）。
-    permit: Option<(PermitId, PermitEventPlan, BudgetClass)>,
+    outcome: CloseOutcome,
+    effect_outcome: EffectOutcome,
+) -> CloseReceipt {
+    let (state, resource_release) = match outcome {
+        CloseOutcome::Closed => (SessionState::Closed, ResourceRelease::Confirmed),
+        CloseOutcome::CloseUnconfirmed => (SessionState::Closing, ResourceRelease::Pending),
+    };
+    CloseReceipt {
+        db_session_id,
+        state,
+        effect_outcome,
+        resource_release,
+    }
 }

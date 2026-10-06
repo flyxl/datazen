@@ -1,40 +1,230 @@
 //! `closeResource` 的定点用例（fake-runtime-fixtures.md §4.1 F11、§5.3 规则 2/3/6、
 //! connection-management.md §6.5 / §9.4）。
 //!
-//! 从 `tests.rs` 拆出来的理由不是「凑文件数」，而是 §9.4(b) 与 F11 这两项缺陷的判据
-//! 要求**成对**的用例：每个「拒绝」都必须有同构造的「放行」对照，否则「夹具永远拒绝归池」
-//! 与「判据真的在判」在断言上长得一模一样（`cm73_threads.rs` 的对照用例是同一条纪律）。
-//! 这一来本主题的用例数量会超过 `tests.rs` 的规模红线，故独立成文件，共享的帮助函数在
+//! 从 `tests.rs` 拆出来的理由不是「凑文件数」，而是 §9.4(b) 这项缺陷的判据要求**成对**的
+//! 用例：每个「拒绝」都必须有同构造的「放行」对照，否则「夹具永远拒绝归池」与「判据真的
+//! 在判」在断言上长得一模一样（`cm73_threads.rs` 的对照用例是同一条纪律）。
+//! 这一来本主题的用例数量超过 `tests.rs` 的规模红线，故独立成文件，共享的帮助函数在
 //! [`super`]（归属理由见 `mod.rs` 末尾那段注释）。
 //!
 //! 与既有 CM-74 杀手用例的分工：
 //! - `harness::cm74_release_order` 钉**释放顺序**（`handle closed` → `Closed` → `permit -1`）
 //!   与「句柄非空时不得归池」；
-//! - 本文件钉**判据的输入来源**（实测 vs 宿主声明）与 **F11 的完整后果**。
+//! - 本文件钉**判据的输入来源**（实测 vs 宿主声明）与凭证校验的两个 `Err` 出口。
+//!   两组判负方向不同：句柄**多于**宿主声明 ⇒ 本文件的
+//!   [`pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles`]；
+//!   宿主账本没清、走的是 `harness::close` ⇒ 那三条 CM-74 用例。
 //!
 //! 全程**不 sleep**；断言一律打在台账与 `assert_no_leak` 的返回值上，不看内存布局。
 
-use super::{acquire, close_and_release, owner, provider};
+use super::{acquire, close_and_release, owner, provider, FakeResourceProvider, FakeResourceState};
 use crate::connection::error::ProviderError;
-use crate::connection::port::{CloseResourceRequest, ResourceHandle};
-use crate::connection::types::{Counter, ResourceId};
+use crate::connection::port::{CloseResourceRequest, ResourceHandle, ResourceRelease};
+use crate::connection::session::HandleKind;
+use crate::connection::testing::journal::{JournalEntry, ResourceEvent};
+use crate::connection::types::{Counter, HandleId, ResourceId};
 
 // ---------------------------------------------------------------------------
-// §9.4(b)：未知 resourceId 必须在写台账之前被拒 —— 那段 `None` 分支过去是死代码
+// §9.4(b)：归池判据必须**两份账都消费** —— 被调方实测的登记数与宿主声明，且两者一致
 // ---------------------------------------------------------------------------
+
+/// 对照**正例**：两份账一致（宿主按 §6.5 如实报 0）、协议已排空 ⇒ **必须**归池。
+///
+/// 这条用例存在的理由与 `cm73_threads::an_idle_resource_with_no_transaction_still_returns_to_the_pool`
+/// 相同：没有它，下面那条「拒绝归池」的判负就分不清是判据在判还是夹具永远拒绝。
+/// 它同时钉住 `ReturnedToPool` 记的是**实测**的那一个值（0）。
+#[test]
+fn a_clean_resource_with_matching_ledgers_returns_to_the_pool() {
+    let provider = provider();
+    let acquired = acquire(&provider).expect("acquire 必须成功");
+    let declared = provider.registered_handles(&acquired.resource_id);
+    assert_eq!(declared, 0, "本用例的前提就是干净的账");
+
+    let receipt = provider
+        .close_resource(&CloseResourceRequest {
+            handle: acquired.handle.clone(),
+            registered_handles: declared,
+            protocol_drained: true,
+        })
+        .expect("关闭必须成功");
+    assert_eq!(receipt.resource_release, ResourceRelease::Confirmed);
+
+    let pooled: Vec<(bool, usize)> = provider
+        .journal()
+        .entries()
+        .iter()
+        .filter_map(|entry| match entry {
+            JournalEntry::Resource {
+                resource_id,
+                event:
+                    ResourceEvent::ReturnedToPool {
+                        protocol_drained,
+                        registered_handles,
+                    },
+                ..
+            } if resource_id == &acquired.resource_id => {
+                Some((*protocol_drained, *registered_handles))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        pooled,
+        vec![(true, 0)],
+        "干净资源必须恰好归池一次，且台账记的是判据实际消费的那两个输入"
+    );
+    assert!(
+        provider
+            .journal()
+            .assert()
+            .leak_invariant_violations()
+            .is_empty(),
+        "对照正例收尾 I1–I8 必须收口"
+    );
+}
+
+/// §9.4(b) 的**核心判负**：宿主**少报**（声称 0，资源上其实还挂着登记句柄）⇒
+/// 判据必须按**实测**拒绝归池。
+///
+/// 这条就是杀死「判据改读 `request.registered_handles`」那个变形的用例：
+/// 变形之后这里会拿到宿主的 `0` 并伪称「宿主检查全部通过」而把带句柄的资源放回池子，
+/// 台账立刻多出一条 `ReturnedToPool`，本用例当场转红。
+///
+/// 这个形状不是假想的：§9.4 之所以要求宿主检查 AND driver 的 Clean，就是因为
+/// 「driver 说 Clean / 宿主账本说没事」而资源上仍有句柄是 §4.2 F10 的真实故障。
+/// 与 `cm74_release_order::a_resource_still_holding_a_handle_is_never_returned_to_the_pool`
+/// 的分工：那条钉的是**句柄多于声明**方向之外的「harness 先注销再关」形状并检查计数；
+/// 这条钉的是**判据读哪一个数**——所以它必须在**没有**预先注销句柄的情况下，
+/// 由调用方交出一份**偏低**的声明。
+#[test]
+fn pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles() {
+    let provider = provider();
+    let acquired = acquire(&provider).expect("acquire 必须成功");
+    provider
+        .register_handle(
+            &acquired.resource_id,
+            HandleKind::Transaction,
+            HandleId::new("hl_undercount"),
+            None,
+        )
+        .expect("登记必须成功");
+    assert_eq!(
+        provider.registered_handles(&acquired.resource_id),
+        1,
+        "本用例的前提就是资源上挂着登记句柄"
+    );
+
+    // 宿主交出一份**偏低**的账：声称 0，实测 1。
+    let receipt = provider
+        .close_resource(&CloseResourceRequest {
+            handle: acquired.handle.clone(),
+            registered_handles: 0,
+            protocol_drained: true,
+        })
+        .expect("带句柄关闭是合法路径（CM-74），只是不许归池");
+
+    assert_eq!(
+        pooled_count(&provider, &acquired.resource_id),
+        0,
+        "§9.4 / §4.2 F10：宿主账本少报时**不得**归池 —— 判据必须读被调方实测的那个值，\
+         不能读调用方声称的那个"
+    );
+    assert_eq!(
+        closed_count(&provider, &acquired.resource_id),
+        1,
+        "资源仍然必须被关掉（§9.4：任一失败都关闭）"
+    );
+    assert_eq!(
+        receipt.resource_release,
+        ResourceRelease::Confirmed,
+        "关闭本身是确认的；被拒的是**归池**，不是关闭"
+    );
+    // 句柄仍然随关闭注销（CM-74 语义与声明偏低无关），所以 I5 收得了口。
+    assert_eq!(provider.registered_handles(&acquired.resource_id), 0);
+    assert!(
+        provider
+            .journal()
+            .assert()
+            .leak_invariant_violations()
+            .is_empty(),
+        "拒绝归池不是泄漏：permit 已归还、句柄已注销"
+    );
+}
+
+/// §9.4(b) 的另一半：宿主**多报**（陈旧账本：声称 3，资源上根本没有句柄）时
+/// **也不许**归池 —— §9.4 把归池前置写成 AND（「宿主检查全部通过」），而 §6.5 规定
+/// 句柄只能经登记/注销改变，所以两份账分叉本身就说明前置不成立。
+///
+/// 这条用例把「两个输入都消费」钉成断言，因此判据被改成**只读实测**
+/// （`measured_handles == 0 && protocol_drained`）时会当场转红 —— 那正是
+/// 「记录一个量、消费另一个量」可以悄悄分叉的形状。
+/// 注意关闭本身仍然成功、permit 仍然归还：分叉拒绝的是**归池**这条额外出路。
+#[test]
+fn pooling_refuses_a_stale_host_ledger_that_overcounts_the_registered_handles() {
+    let provider = provider();
+    let acquired = acquire(&provider).expect("acquire 必须成功");
+    assert_eq!(provider.registered_handles(&acquired.resource_id), 0);
+
+    let receipt = provider
+        .close_resource(&CloseResourceRequest {
+            handle: acquired.handle.clone(),
+            registered_handles: 3,
+            protocol_drained: true,
+        })
+        .expect("关闭必须成功");
+
+    assert_eq!(
+        pooled_count(&provider, &acquired.resource_id),
+        0,
+        "§9.4 的 AND：宿主的账与被调方实测分叉时前置不成立，不得归池（只能关闭）"
+    );
+    assert_eq!(closed_count(&provider, &acquired.resource_id), 1);
+    assert_eq!(receipt.resource_release, ResourceRelease::Confirmed);
+    assert_eq!(
+        provider.journal().permit_balance(),
+        0,
+        "关闭仍然归还 permit"
+    );
+    assert!(
+        provider
+            .journal()
+            .assert()
+            .leak_invariant_violations()
+            .is_empty(),
+        "账本分叉的收尾不得泄漏"
+    );
+}
+
+/// §9.4(b)：**声明为 0 但协议未排空**时不得归池 —— 判据的两个合取项都得活。
+///
+/// 单独存在是为了排除「归池被拒只是因为账本分叉」这种解释：这里两份账一致（0 == 0），
+/// 被拒的原因只能是 `protocol_drained`。若把排空项从判据里删掉，本用例转红。
+#[test]
+fn pooling_refuses_an_undrained_protocol_even_when_both_ledgers_agree() {
+    let provider = provider();
+    let acquired = acquire(&provider).expect("acquire 必须成功");
+    provider
+        .close_resource(&CloseResourceRequest {
+            handle: acquired.handle.clone(),
+            registered_handles: 0,
+            protocol_drained: false,
+        })
+        .expect("未排空的关闭仍然合法");
+    assert_eq!(
+        pooled_count(&provider, &acquired.resource_id),
+        0,
+        "§5.3 规则 2 前置：protocolDrained=false 时不得归池"
+    );
+    assert_eq!(closed_count(&provider, &acquired.resource_id), 1);
+}
 
 /// §9.4(b)：那段 `None` 分支**过去是可证明的死代码**，现在是真实的、被覆盖的分支。
 ///
 /// 死代码的论证（自行核实过）：顶层 `resources` IndexMap 只在 `create_resource` 的
 /// `insert` 出现、全目录没有任何 `remove` / `retain` / `clear` 作用在它身上，
 /// 而旧实现在同一次调用里先用 `resolve()` 查过一遍这张表，所以后面的 `get_mut` 恒为 `Some`。
-/// 重构之后**没有第二次查表**：[`super::close`] 的 `evaluate_close` 就在 `get_mut`
-/// 拿到的那个 slot 上跑，于是 `None` 这一支变成「未知 resourceId 的关闭」的唯一入口，
-/// 本用例就是它的覆盖。
-///
-/// 它过去返回的那组值（`request.protocol_drained` + `resource.registered_handles()`
-/// + 空注销清单）是**静默说谎**的形状：一条来自不存在资源的 `Closed`、一条凭宿主自述
-/// 算出来的归池、以及一次 `-1` permit —— 而本用例钉住的是它必须先变成 `Err`。
+/// 重构之后**没有第二次查表**：`prepare_close` 就在 `get_mut` 拿到的那个 slot 上跑，
+/// 于是 `None` 这一支变成「未知 resourceId 的关闭」的唯一入口，本用例就是它的覆盖。
 ///
 /// 它必须**在写任何台账之前**失败：若判据先算了再说，就会留下一条来自不存在资源的
 /// `Closed` 或 `-1`，守恒式（规则 4）当场失真。
@@ -44,7 +234,7 @@ fn closing_an_unknown_resource_id_is_rejected_before_any_journal_write() {
     let known = acquire(&provider).expect("acquire 必须成功");
     let seq_before = provider.journal().entries().len();
 
-    // 造一个「从未签发过」的资源 id：§3.1 的 `ResourceHandle` 由提供方签发，
+    // 造一个「从未签发过」的资源 id：§3.1 的 ResourceHandle 由提供方签发，
     // 这里用同样的构造口径伪造一个 id，模拟宿主拿着一张不属于本 provider 的凭证。
     let ghost = ResourceId::new("res_w1_9999");
     let forged = ResourceHandle::issue(&ghost, &Counter::new(1), &owner());
@@ -75,4 +265,91 @@ fn closing_an_unknown_resource_id_is_rejected_before_any_journal_write() {
             .is_empty(),
         "收尾 I1–I8 必须收口"
     );
+}
+
+/// §9.4(b)：凭证本身无效（epoch 不符）时，关闭必须死在**校验**而不是死在查表之后 ——
+/// 并且不许留下任何台账。这条与上一条合起来覆盖 `prepare_close` 的两个 `Err` 出口。
+#[test]
+fn closing_with_a_stale_epoch_is_rejected_by_the_credential_gate_not_the_table() {
+    let provider = provider();
+    let acquired = acquire(&provider).expect("acquire 必须成功");
+    let seq_before = provider.journal().entries().len();
+    let stale = ResourceHandle {
+        resource_id: acquired.resource_id.clone(),
+        runtime_epoch: Counter::new(acquired.handle.runtime_epoch.get().saturating_add(7)),
+        owner_token: acquired.handle.owner_token.clone(),
+    };
+    let err = provider
+        .close_resource(&CloseResourceRequest {
+            handle: stale,
+            registered_handles: 0,
+            protocol_drained: true,
+        })
+        .expect_err("epoch 不符必须被拒");
+    assert!(
+        matches!(err, ProviderError::RuntimeEpochMismatch(_)),
+        "必须死在 epoch 门闸上（§3.1 三校验），实际 {err:?}"
+    );
+    assert_eq!(
+        provider.journal().entries().len(),
+        seq_before,
+        "凭证校验失败不得写台账"
+    );
+    // 资源没被动过：状态、句柄、permit 全部原样。快照在读到 Err 之后取，
+    // 所以「被拒的关闭推进了状态机」只能以**没有前进到 Closed** 判负，
+    // 而不是硬编码 acquire 之后的具体状态（那是夹具的构造细节，不是被测语义）。
+    let slot = provider
+        .resource(&acquired.resource_id)
+        .expect("资源必须还在");
+    assert_ne!(
+        slot.state,
+        FakeResourceState::Closed,
+        "被拒的关闭不得把资源推进到 Closed"
+    );
+    assert!(
+        slot.accounting.occupied,
+        "被拒的关闭不得归还 permit（记账锚点仍为占用）"
+    );
+    assert_eq!(provider.journal().permit_balance(), 1);
+    close_and_release(&provider, &acquired).expect("收尾关闭必须成功");
+}
+
+// ---------------------------------------------------------------------------
+// 本文件的私有帮助函数
+// ---------------------------------------------------------------------------
+
+fn pooled_count(provider: &FakeResourceProvider, id: &ResourceId) -> usize {
+    provider
+        .journal()
+        .entries()
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry,
+                JournalEntry::Resource {
+                    resource_id,
+                    event: ResourceEvent::ReturnedToPool { .. },
+                    ..
+                } if resource_id == id
+            )
+        })
+        .count()
+}
+
+fn closed_count(provider: &FakeResourceProvider, id: &ResourceId) -> usize {
+    provider
+        .journal()
+        .entries()
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry,
+                JournalEntry::Resource {
+                    resource_id,
+                    event: ResourceEvent::Closed,
+                    ..
+                } if resource_id == id
+            )
+        })
+        .count()
 }

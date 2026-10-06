@@ -47,6 +47,13 @@ pub enum ResourceEvent {
     /// 隔离：不归还，保留预算占用（§4.2 F8 rollback 失败）。
     Quarantined,
     /// 归池尝试。§9.4 前置检查全满足才允许发生，因此必须被单独记录以便断言它**未**发生。
+    ///
+    /// `registered_handles` 是归池判据**实际消费**的那一个值：被调方（`FakeResource::prepare_close`）
+    /// 在同一把锁里、注销句柄**之前**实测到的登记数，不是注销之后的余量（恒为 0，读它等于没判），
+    /// 也不是宿主在 `CloseResourceRequest` 里声称的那一份（`§9.4(b)`：判据的输入只有一处求值）。
+    /// 宿主账本与实测**不一致**时判据直接不归池（§9.4「任一失败都关闭」），所以这条记录里
+    /// 的值必然同时是两份账的共识；「声称 3 / 实测 0 却仍然归池」这种形状在结构上产不出来，
+    /// 它的可观察后果是台账里**只有** `Closed` 而没有 `ReturnedToPool`。
     ReturnedToPool {
         protocol_drained: bool,
         registered_handles: usize,
