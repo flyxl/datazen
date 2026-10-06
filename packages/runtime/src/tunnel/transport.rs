@@ -7,7 +7,7 @@
 //! 端口契约明写 `TunnelBinding.ref_count` 「仅供观测，不用于判断能否释放」。
 //! 全系统的隧道引用计数**只允许一份**，就是 `TunnelLedger` 的 `refs`。
 //! 若本 trait 的实现体再放一个 `refs`，两份账各自都「对」，
-//! 但 CM-28「隧道不多减引用」和 CM-27「许可归零」会同时失效，且极难排查。
+//! 但「隧道不多减引用」和「许可归零」会同时失效，且极难排查。
 //!
 //! ## 类型系统**挡不住**这件事（这条边界说清楚，不谎报成语言保证）
 //!
@@ -51,9 +51,9 @@
 //!    `the_ledger_and_the_port_tallies_agree_only_because_both_count_the_same_drain`
 //!    绕过台账直接从接缝发一次 close，实证两本账的相等来自构造而非巧合。
 //!
-//! ## CM-32-FU1 的反例现在会怎样
+//! ## 那个反例现在会怎样
 //!
-//! CM-32 repair round 1 实证过：给 `RecordingTunnelTransport` 加一个
+//! 实证过：给 `RecordingTunnelTransport` 加一个
 //! `close_tally: Mutex<usize>` 并把 `close_calls()` 改成读它，**当年编译通过、
 //! 全轨测试全绿** —— 第二本账就此伪装成第一本账。如今同一次改动被两条**独立**路径杀掉：
 //! R4 按字段类型点名 `close_tally: Mutex<usize>`，R5 点名「`close_calls` 不再调用唯一

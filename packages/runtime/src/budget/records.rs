@@ -5,7 +5,7 @@
 //! [`crate::budget::sessions`]（逻辑/物理会话）里完成。
 //!
 //! 把它们与账本主体分开放，是为了让「返回值长什么样」这件事可以被单独读懂：
-//! [`DenialReason`] 的每个变体都对应 §9.5 / §9.2 里一条可写进断言的约束，
+//! [`DenialReason`] 的每个变体都对应一条可写进断言的约束，
 //! [`PermitRecord::slot`] 则是「名额按槽退回」这条硬规则的唯一凭据。
 
 use std::collections::BTreeMap;
@@ -19,16 +19,16 @@ use crate::budget::classes::{ServiceClasses, SlotKind};
 use crate::budget::ledger::BudgetLedger;
 use crate::budget::queues::{ClassQueue, SharedRoundRobin, WaiterId};
 
-/// 队列满了。§9.5：「任一满即返回 `QueueFull`，不得静默阻塞」。
+/// 队列满了：「任一满即返回 `QueueFull`，不得静默阻塞」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueueScope {
-    /// 每类每服务的上限（§9.2：32）。
+    /// 每类每服务的上限（32）。
     ClassPerService,
-    /// 每用户的上限（§9.2：32）。§9.5「两个队列都要查」。
+    /// 每用户的上限（32）。两个队列都要查。
     PerUser,
 }
 
-/// 逻辑 session 超限（§9.2：单用户 100 / 单组织 1000，超限 `SessionQuotaExceeded`）。
+/// 逻辑 session 超限（单用户 100 / 单组织 1000，超限 `SessionQuotaExceeded`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionScope {
     PerUser,
@@ -44,7 +44,7 @@ pub enum DenialReason {
         cap: u32,
         depth: usize,
     },
-    /// 逻辑 session 超过上限（`New` 也计入，§9.2）。
+    /// 逻辑 session 超过上限（`New` 也计入）。
     SessionQuotaExceeded {
         scope: SessionScope,
         cap: u32,
@@ -56,18 +56,18 @@ pub enum DenialReason {
         class: datazen_platform_api::ports::budget::ResourceClass,
         capacity: u32,
     },
-    /// 服务正在排空：不接新 permit（§9.5 drain）。
+    /// 服务正在排空：不接新 permit（drain）。
     ServiceDraining { connection_id: ConnectionId },
     /// 物理连接达到上限。
     PhysicalExhausted {
         connection_id: ConnectionId,
         cap: u32,
     },
-    /// 单用户已连接编辑器数达到上限（§9.2：5）。
+    /// 单用户已连接编辑器数达到上限（5）。
     ConnectedEditorsExhausted { principal: PrincipalId, cap: u32 },
-    /// 节点失联：租约续期失败即按失联处理，调用方应停止发放新资源（§9.3）。
+    /// 节点失联：租约续期失败即按失联处理，调用方应停止发放新资源。
     NodeLost { worker_id: WorkerId },
-    /// 多名额申请不接受排队：要么一次性全拿到，要么失败（§9.5 Job 多端点）。
+    /// 多名额申请不接受排队：要么一次性全拿到，要么失败。
     BatchNotQueueable { requested: u32 },
     /// 连接服务未登记。
     UnknownConnection { connection_id: ConnectionId },
@@ -130,7 +130,7 @@ pub enum AdmitOutcome {
     Denied(DenialReason),
 }
 
-/// 账本里的一张 permit。`permit_id` 是幂等核销的唯一依据（端口契约 INV-10）。
+/// 账本里的一张 permit。`permit_id` 是幂等核销的唯一依据（端口契约的幂等核销条目）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PermitRecord {
     pub permit_id: LeaseId,
@@ -176,7 +176,7 @@ pub struct DrainReport {
     pub scope: DrainScope,
     /// 作用域内仍持有 permit 且**未被钉住**的数：随正常释放自然排空。
     pub outstanding: usize,
-    /// 被钉住的 permit 数（已建立的连接 / 活跃事务 / 游标）：§9.5 明令**不得抢占**。
+    /// 被钉住的 permit 数（已建立的连接 / 活跃事务 / 游标）：明令**不得抢占**。
     pub pinned: usize,
     pub draining: bool,
 }
@@ -205,7 +205,7 @@ pub struct ServiceState {
     pub shared_used: u32,
     pub queues: [ClassQueue; 4],
     pub rr: SharedRoundRobin,
-    /// 物理连接占用（§9.3 的 occupancy 集合）。
+    /// 物理连接占用（occupancy 集合）。
     pub physical: u32,
     pub user_connected: BTreeMap<PrincipalId, u32>,
     pub draining: bool,

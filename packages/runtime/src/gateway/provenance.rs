@@ -1,20 +1,20 @@
-//! CM-61 / CM-62：来源与权限重校验。
+//! 来源与权限重校验。
 //!
-//! ## 来源（CM-61）
+//! ## 来源
 //!
 //! 每次执行的 `source` 来自**请求**，在受理那一刻冻结进执行登记，
 //! 之后任何事件、任何状态变更都不得改写它（[`ExecutionSource`] 没有 setter，
 //! `ExecutionRegistry::record_source` 只接受 `Option` 之外的新登记而不接受覆盖）。
 //!
-//! CM-61 还要求落盘结构里**不能**出现 `dbSessionId` / `SessionHandle` /
+//! 落盘结构里还**不能**出现 `dbSessionId` / `SessionHandle` /
 //! `resourceBindingId` / lease / cancel 句柄——它们是内存态运行句柄，
 //! 落盘就会在会话重建后指向一个早已失效的绑定。本模块用
 //! [`ExecutionSource::forbidden_persistable_fields`] 把这条禁令写成可执行的清单，
 //! 由单测逐条比对序列化后的 JSON 键名。
 //!
-//! ## 权限（CM-62）
+//! ## 权限
 //!
-//! §7.2 把授权检查放在**两处**：第 1 步（进入网关时）与第 4 步
+//! 授权检查放在**两处**：第 1 步（进入网关时）与第 4 步
 //! （进入 actor、**真正执行前**）。两次之间隔着排队、可能还有用户交互，
 //! 权限可能在窗口期内被收回；只查一次等于让一条已撤销的授权跑完整个 SQL。
 //!
@@ -72,14 +72,14 @@ impl SourceKind {
     ///
     /// 这是一条**纯分类**，只描述来源本身，**不描述网关行为**。网关对四类来源
     /// 的受理路径完全一致：来源既不改变放行闸，也不改变回执形状，它只在两处
-    /// 参与判定——CM-61 的执行来源冻结，以及 CM-61 的幂等指纹（同一幂等键换
+    /// 参与判定——执行来源冻结，以及幂等指纹（同一幂等键换
     /// 来源是冲突，不是重发）。别把这读成「后台来源另有一套处置」。
     pub fn is_background(self) -> bool {
         matches!(self, SourceKind::Job | SourceKind::WorkflowBlock)
     }
 }
 
-/// 一次执行的来源（CM-61 的落盘形态）。
+/// 一次执行的来源（可落盘形态）。
 ///
 /// 只有**可持久化**的字段：`kind` / `source_id` / `organization_id` / `principal_id`。
 /// 没有 `db_session_id`、没有 `runtime_epoch`、没有任何 cancel 句柄。
@@ -128,7 +128,7 @@ impl ExecutionSource {
         !self.source_id.is_empty() && SourceKind::from_literal(self.kind.as_str()).is_some()
     }
 
-    /// CM-61 明令不得出现在落盘结构里的字段名。
+    /// 明令不得出现在落盘结构里的字段名。
     ///
     /// 写成清单而不是写成注释，是为了让「以后有人加了个 runtime 句柄字段」
     /// 在单测里立刻变红，而不是留到审计对账时才发现。
@@ -193,9 +193,9 @@ impl RequestPrincipal {
 /// 网关在两个检查点上要判定的动作。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GatewayAction {
-    /// §7.2 第 1 步 / 第 4 步：执行。
+    /// 第 1 步 / 第 4 步：执行。
     Execute,
-    /// §7.6：取消。
+    /// 取消。
     Cancel,
 }
 
@@ -208,12 +208,12 @@ impl GatewayAction {
     }
 }
 
-/// 拒绝**对调用方可见**的方式（CM-05）。
+/// 拒绝**对调用方可见**的方式。
 ///
 /// 网关把授权拒绝落成 `GatewayError` 时必须先问一个问题：这条拒绝会不会泄露
 /// 「这条资源存在」？如果拒绝原因本身就能区分「资源不存在」与「资源存在但不属于你」，
 /// 攻击者就能用错误码把别人的 session / execution / job 逐个探测出来——这正是
-/// CM-05「不能观察资源存在性」的破口。
+/// 「不能观察资源存在性」的破口。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DenialVisibility {
     /// 拒绝原因直接面向调用方（`permissionDenied`）。适用于**不属于某主体**的判定：
@@ -243,7 +243,7 @@ impl AuthorizationDenial {
         }
     }
 
-    /// 归属类拒绝：对外投影成「不存在」（CM-05）。理由仍随拒绝对象留存供审计聚合，
+    /// 归属类拒绝：对外投影成「不存在」。理由仍随拒绝对象留存供审计聚合，
     /// 但调用方看到的是 `UnknownSession`，看不到 `reason`。
     pub fn hidden(action: GatewayAction, reason: &'static str) -> Self {
         Self {
@@ -259,7 +259,7 @@ impl AuthorizationDenial {
     }
 }
 
-/// 授权器：网关的必需构造依赖（CM-62）。
+/// 授权器：网关的必需构造依赖。
 ///
 /// 实现方拿到的是「主体 + 动作 + 会话投影 + 来源」，足以判定组织归属、
 /// 连接归属与权限级别。注意签名里**没有** `RuntimeError`：授权拒绝不是运行时故障，
@@ -359,7 +359,7 @@ mod tests {
         for forbidden in ExecutionSource::forbidden_persistable_fields() {
             assert!(
                 json.get(*forbidden).is_none(),
-                "CM-61：落盘结构不得包含 {forbidden}"
+                "落盘结构不得包含 {forbidden}"
             );
         }
         assert_eq!(json.get("kind").and_then(Value::as_str), Some("editor"));

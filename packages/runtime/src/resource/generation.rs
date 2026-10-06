@@ -1,6 +1,6 @@
 //! 代际闸门：凭据 / 路由 / ACL 轮换后的「哪些东西还能用」判定。
 //!
-//! [`PoolKeyFingerprint`] 只覆盖 **database + policy**（CM-67 的分片键），
+//! [`PoolKeyFingerprint`] 只覆盖 **database + policy**（分片键），
 //! 凭据与路由代不在它的字段里。因此这里显式维护三层代际：
 //!
 //! ```text
@@ -47,7 +47,7 @@ pub enum CacheFillOutcome {
     Stored,
     /// **慢结果回填**：这条结果是在旧代上算出来的，写进去就是跨代污染。
     ///
-    /// CM-37 / CM-67 的核心断言：轮换之后，晚到的旧代结果**必须**被丢在门外，
+    /// 核心断言：轮换之后，晚到的旧代结果**必须**被丢在门外，
     /// 而不是「反正内容差不多，先存着」。
     RejectedStale { current: u64, offered: u64 },
 }
@@ -266,7 +266,7 @@ mod tests {
                 current: fresh.generation,
                 offered: slow.generation
             },
-            "CM-67：慢缓存结果不得回填新一代"
+            "慢缓存结果不得回填新一代"
         );
         assert_eq!(
             registry.admit_fill(&connection, &fresh),

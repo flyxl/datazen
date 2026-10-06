@@ -1,11 +1,11 @@
-//! 租约状态机：合法转移表与其三要素（AGENTS.md 状态机纪律：进入条件 / 状态内行为 / 退出条件）。
+//! 租约状态机：合法转移表与其三要素（状态机纪律：进入条件 / 状态内行为 / 退出条件）。
 //!
 //! 单独成文件是因为**表**才是契约：`LeaseState` 只是名字，转移表才写死了每一条边
 //! 允许在什么条件下发生、以及不离开这个状态会怎样。
 
 use crate::resource::lease::LeaseState;
 
-/// 一次转移的三要素（AGENTS.md 状态机纪律：进入条件 / 状态内行为 / 退出条件）。
+/// 一次转移的三要素（状态机纪律：进入条件 / 状态内行为 / 退出条件）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransitionRule {
     pub from: LeaseState,
@@ -49,7 +49,7 @@ pub const LEASE_TRANSITIONS: &[TransitionRule] = &[
     TransitionRule {
         from: LeaseState::InUse,
         to: LeaseState::Acquired,
-        enters_when: "归还裁决通过：驱动 Clean **且**宿主四项检查全清（§9.4 双条件）",
+        enters_when: "归还裁决通过：驱动 Clean **且**宿主四项检查全清（双条件）",
         behaves_as: "进入空闲池等待再次签发；TTL 从此刻起算",
         exits_when: "被再次签发 ⇒ InUse；空闲 TTL 到期或键轮换 ⇒ Closing",
     },
@@ -85,7 +85,7 @@ pub const LEASE_TRANSITIONS: &[TransitionRule] = &[
         from: LeaseState::Quarantined,
         to: LeaseState::Closed,
         enters_when: "排障流程或关闭流程完成后强制关闭并确认",
-        behaves_as: "在关闭期间仍占用预算（§9.2 回池不得释放物理预算，反之关闭必释放）",
+        behaves_as: "在关闭期间仍占用预算（回池不得释放物理预算，反之关闭必释放）",
         exits_when: "无出边：终态",
     },
 ];

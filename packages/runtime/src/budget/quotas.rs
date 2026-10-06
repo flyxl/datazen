@@ -1,10 +1,10 @@
-//! 预算口径的**配置**（connection-management.md §9.2「可调默认值」、§9.5「保留额与共享额度」）。
+//! 预算口径的**配置**。
 //!
 //! 这里的每个数字都是字段而不是散落在调度逻辑里的字面量：
 //!
-//! - §9.5：「额度低于保留总和则拒绝配置；所有保留都在总额度内」——由 [`BudgetConfig::validate`]
+//! - **额度低于保留总和则拒绝配置；所有保留都在总额度内**——由 [`BudgetConfig::validate`]
 //!   在**装配期**拒绝，不允许运行到一半才发现额度非法。
-//! - §9.5 的 acquire 等待上限必须是配置：端口测试
+//! - acquire 等待上限必须是配置：端口测试
 //!   `acquire_timeout_is_configuration_not_a_hardcoded_constant`
 //!   （`packages/platform-api/src/ports/budget/coordinator.rs`）守住端口侧，本模块在实现侧
 //!   用同一个字段名 [`BudgetConfig::acquire_timeout_ms`] 把它变成可注入的参数：
@@ -12,50 +12,48 @@
 
 use datazen_platform_api::ports::budget::{ResourceClass, ServiceQuota};
 
-/// §9.2 的可调默认值。集中成常量，让「配置」有唯一来源。
+/// 可调默认值。集中成常量，让「配置」有唯一来源。
 pub mod defaults {
-    /// 团队版：每个数据库服务的总额度（§9.5）。
+    /// 团队版：每个数据库服务的总额度。
     pub const TEAM_SERVICE_TOTAL: u32 = 20;
-    /// 团队版桌面端：每个数据库服务的总额度（§9.5）。
+    /// 团队版桌面端：每个数据库服务的总额度。
     pub const DESKTOP_SERVICE_TOTAL: u32 = 16;
     /// 团队版保留额，按 [`ResourceClass::index`] 定位：control 2 / interactive 2 / metadata 1。
     pub const TEAM_RESERVED: [u32; 4] = [2, 2, 1, 0];
     /// 桌面端保留额：control 1 / interactive 2 / metadata 1。
     pub const DESKTOP_RESERVED: [u32; 4] = [1, 2, 1, 0];
 
-    /// 单个用户的逻辑 session 上限（§9.2）。`New` 状态也算——它没有 socket。
+    /// 单个用户的逻辑 session 上限。`New` 状态也算——它没有 socket。
     pub const PER_USER_LOGICAL_SESSIONS: u32 = 100;
-    /// 单个组织（租户）的逻辑 session 上限（§9.2）。
+    /// 单个组织（租户）的逻辑 session 上限。
     pub const PER_ORG_LOGICAL_SESSIONS: u32 = 1000;
-    /// 单个用户同时已连接的编辑器数（§9.2）。§9.5 明确它**不替代**物理额度。
+    /// 单个用户同时已连接的编辑器数。它**不替代**物理额度。
     pub const PER_USER_CONNECTED_EDITORS: u32 = 5;
 
-    /// 每类每服务的等待队列上限（§9.5：32）。满了就是 `QueueFull`，绝不静默阻塞。
+    /// 每类每服务的等待队列上限（32）。满了就是 `QueueFull`，绝不静默阻塞。
     pub const QUEUE_CAP_PER_CLASS_PER_SERVICE: u32 = 32;
-    /// 单个用户的等待队列上限（§9.5：32）。
+    /// 单个用户的等待队列上限（32）。
     pub const QUEUE_CAP_PER_USER: u32 = 32;
 
-    /// acquire 等待上限的默认配置值（§9.2：10s，可取消）。
+    /// acquire 等待上限的默认配置值（10s，可取消）。
     ///
     /// 这是**默认值**不是硬编码：调用方可以用 [`BudgetConfig::with_acquire_timeout_ms`] 覆盖，
     /// 也可以由 [`BudgetRequest::acquire_timeout_ms`](datazen_platform_api::ports::budget::BudgetRequest)
     /// 逐次覆盖。
     pub const ACQUIRE_TIMEOUT_MS: u64 = 10_000;
 
-    /// 节点额度租约的默认租期（§9.3 要求「续期失败即视为失联」，租期长度本身是可调项）。
+    /// 节点额度租约的默认租期（「续期失败即视为失联」，租期长度本身是可调项）。
     pub const NODE_LEASE_TTL_MS: u64 = 30_000;
 
-    /// 单个 Job 的最大并发阶段数（§9.5）。
+    /// 单个 Job 的最大并发阶段数。
     pub const JOB_MAX_CONCURRENT_STAGES: u32 = 4;
 }
 
 /// 拒绝一份不合法的预算配置。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum BudgetConfigError {
-    /// 总额度低于保留之和。§9.5：「额度低于保留总和则拒绝配置」。
-    #[error(
-        "保留额度之和 {reserved_sum} 超过总额度 {total}（§9.5「额度低于保留总和则拒绝配置」）"
-    )]
+    /// 总额度低于保留之和：「额度低于保留总和则拒绝配置」。
+    #[error("保留额度之和 {reserved_sum} 超过总额度 {total}（额度低于保留总和则拒绝配置）")]
     ReservedExceedsTotal { total: u32, reserved_sum: u32 },
     /// 某个上限被配成了 0：那不是「不限制」，而是「谁都不许用」。
     #[error("{field} 必须为正，收到 {value}")]
@@ -67,13 +65,13 @@ pub enum BudgetConfigError {
 pub struct BudgetConfig {
     /// 总额度 / 保留额 / 共享额。`reserved` 已由 `ServiceQuota::new` 校验过。
     pub service_quota: ServiceQuota,
-    /// 该服务上同时存在的**物理**连接上限（§9.3 的 occupancy 集合算它）。
+    /// 该服务上同时存在的**物理**连接上限（occupancy 集合算它）。
     pub service_physical_connections: u32,
-    /// 单用户的逻辑 session 上限。`New` 也计入：§9.2「New 也计入」。
+    /// 单用户的逻辑 session 上限。`New` 也计入。
     pub per_user_logical_sessions: u32,
     /// 单组织的逻辑 session 上限。
     pub per_org_logical_sessions: u32,
-    /// 单用户同时已连接的编辑器数（§9.2；不替代物理额度）。
+    /// 单用户同时已连接的编辑器数（不替代物理额度）。
     pub per_user_connected_editors: u32,
     /// 每类每服务的队列上限。
     pub queue_cap_per_class_per_service: u32,
@@ -81,9 +79,9 @@ pub struct BudgetConfig {
     pub queue_cap_per_user: u32,
     /// acquire 等待上限（毫秒）。**配置项**。
     pub acquire_timeout_ms: u64,
-    /// 节点租约租期（毫秒）。§9.3 的失联判定依赖它。
+    /// 节点租约租期（毫秒）。失联判定依赖它。
     pub node_lease_ttl_ms: u64,
-    /// 单 Job 最大并发阶段数（§9.5）。
+    /// 单 Job 最大并发阶段数。
     pub job_max_concurrent_stages: u32,
 }
 
@@ -104,12 +102,12 @@ impl BudgetConfig {
         }
     }
 
-    /// §9.5 团队版口径：总额度 20，保留 control 2 / interactive 2 / metadata 1，共享 15。
+    /// 团队版口径：总额度 20，保留 control 2 / interactive 2 / metadata 1，共享 15。
     pub fn team_default() -> Self {
         Self::from_parts(defaults::TEAM_SERVICE_TOTAL, defaults::TEAM_RESERVED)
     }
 
-    /// §9.5 桌面端口径：总额度 16，保留 control 1 / interactive 2 / metadata 1，共享 12。
+    /// 桌面端口径：总额度 16，保留 control 1 / interactive 2 / metadata 1，共享 12。
     pub fn desktop_default() -> Self {
         Self::from_parts(defaults::DESKTOP_SERVICE_TOTAL, defaults::DESKTOP_RESERVED)
     }
@@ -246,7 +244,7 @@ impl BudgetConfig {
 
     /// 某类在**不借用他人保留**的前提下还能吃下的名额上界。
     ///
-    /// §9.5「首版保留不可被其他类借用」因此是这个值而不是 `total`：
+    /// 「首版保留不可被其他类借用」因此是这个值而不是 `total`：
     /// 共享部分按权重轮转，分到多少是调度结果，不是承诺。
     pub fn capacity_of(&self, class: ResourceClass) -> u32 {
         self.service_quota.capacity_of(class)

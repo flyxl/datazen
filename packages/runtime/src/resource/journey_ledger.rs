@@ -1,4 +1,4 @@
-//! 候选替换的连续旅程测试（CM-68）。
+//! 候选替换的连续旅程测试。
 //!
 //! 与 [`journey`](super::journey) 分开是因为这一组旅程要驱动**目录端口**，
 //! 断言的是「两份不同的最终状态」，而不是单点裁决：
@@ -7,7 +7,7 @@
 //! * 提交成功但目录写失败 ⇒ **绝不**报成功，且只能取回**同一份**回执。
 //!
 //! 两者的终态必须不同，否则「不许成功但无记录」这条约束就是空的。
-//! 跨代旅程（CM-67 / CM-38 / CM-39）在 [`journey_rotation`](super::journey_rotation)。
+//! 跨代旅程在 [`journey_rotation`](super::journey_rotation)。
 //!
 //! 场景台架 [`Stage`](super::harness::Stage) 与时钟替身共用，旅程里**从不** `sleep`。
 
@@ -17,7 +17,7 @@ use crate::resource::publication::DirectoryFault;
 use crate::resource::replacement::{BeginOutcome, CandidateState};
 
 // ---------------------------------------------------------------------------
-// CM-68：候选替换
+// 候选替换
 // ---------------------------------------------------------------------------
 
 #[test]

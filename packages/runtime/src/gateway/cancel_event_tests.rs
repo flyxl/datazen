@@ -1,11 +1,11 @@
-//! `ExecutionGateway` 的取消三态与事件交付单测（§3.2 / CM-55）。
+//! `ExecutionGateway` 的取消三态与事件交付单测。
 //!
 //! 与 `facade_tests.rs` 分开是因为单文件 800 行上限，不是语义上的分组理由。
 //! 替身与夹具在 `super::facade_support`。
 
 use super::facade_support::*;
 
-// ─────────────────────────── 取消三态（§3.2 / D-01） ───────────────────────────
+// ─────────────────────────── 取消三态 ───────────────────────────
 
 #[tokio::test]
 async fn a_driver_without_precise_cancel_is_unsupported_and_never_touches_the_port() {
@@ -193,7 +193,7 @@ async fn cancel_is_authorized_at_its_own_entry_point() {
     assert_eq!(port.cancel_calls(), 0, "取消授权失败时驱动绝不能被调用");
 }
 
-// ─────────────────────────── 事件交付（CM-55） ───────────────────────────
+// ─────────────────────────── 事件交付 ───────────────────────────
 
 #[tokio::test]
 async fn an_event_carrying_another_session_is_ignored_and_changes_nothing() {
@@ -288,7 +288,7 @@ async fn a_terminal_event_updates_the_recorded_state_but_never_the_source() {
             .await,
         EventDisposition::Applied
     );
-    // 事件自称来自后台作业：必须被丢弃，来源仍以受理请求为准（CM-61）。
+    // 事件自称来自后台作业：必须被丢弃，来源仍以受理请求为准。
     let mut rogue = event(
         &id,
         2,

@@ -71,7 +71,7 @@ impl MonotonicSource for TestClock {
 
 /// 物理端口上的动作，**按发生顺序**记账。
 ///
-/// 顺序本身就是断言对象：CM-73 要求 `Reset` 必须排在 `Close` **之前**。
+/// 顺序本身就是断言对象：`Reset` 必须排在 `Close` **之前**。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportEvent {
     Open(ResourceId),
@@ -318,7 +318,7 @@ impl DirectoryPublisher for FakeDirectory {
 // 池键输入
 // ---------------------------------------------------------------------------
 
-/// 一个带 database + policy 的池键输入（CM-67：按库与策略分片）。
+/// 一个带 database + policy 的池键输入（按库与策略分片）。
 pub fn pool_key_inputs(
     connection_id: &ConnectionId,
     database: &str,

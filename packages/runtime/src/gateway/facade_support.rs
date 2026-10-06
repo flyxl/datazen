@@ -33,7 +33,7 @@ pub(crate) use crate::registry::SessionPort;
 
 /// 端口替身：三个方法各自可编排返回值，并记录调用次数与实际入参。
 ///
-/// 锁只用来读写计数与返回值，**绝不跨越 `.await` 持有**（§8 的并发纪律）。
+/// 锁只用来读写计数与返回值，**绝不跨越 `.await` 持有**（并发纪律）。
 /// 取不到锁时返回 `InvariantBroken` 而不是 panic：生产路径的失败形态就是错误。
 pub(crate) struct FakePort {
     inner: Mutex<FakePortInner>,
@@ -48,7 +48,7 @@ pub(crate) struct FakePortInner {
     cancel_calls: u64,
     executed_requests: Vec<ExecuteInSessionRequest>,
     /// 驱动往返占用的时钟刻度：在 `execute_in_session` 内部推进，
-    /// 让「网关开销」和「驱动往返」在时间轴上真正分开（CM-60）。
+    /// 让「网关开销」和「驱动往返」在时间轴上真正分开。
     driver_nanos: u64,
     clock: Arc<FixedClock>,
 }
@@ -242,7 +242,7 @@ impl Authorizer for FlippingAuthorizer {
 
 // ─────────────────────────────── 幂等存储替身 ───────────────────────────────
 
-/// 读必失败的存储：验证「不可读 ≠ 没记录」（CM-54）。
+/// 读必失败的存储：验证「不可读 ≠ 没记录」。
 ///
 /// 自己数写次数。`write` 一旦被调用就直接 panic——这条路径下写库本身就是缺陷，
 /// 而 panic 会让红得比「返回了错误值」更醒目。

@@ -272,7 +272,7 @@ fn a_snapshot_clears_the_gap_and_realigns_the_context_revision() {
     assert!(!store.needs_recovery());
     assert_eq!(store.context_revision(), Counter::new(42));
     // 快照只补缺口：缺口之前积累的事实必须原样留下（这条断言曾经写的是
-    // `Queued`——那正是 D-01：重建水位会把已推进的状态机倒回去）。
+    // `Queued`——那正是重建水位会把已推进的状态机倒回去）。
     assert_eq!(store.execution_state(), ExecutionState::Running);
     assert_eq!(store.last_sequence().map(Counter::get), Some(2));
     assert_eq!(store.row_count(), 5);

@@ -8,7 +8,7 @@
 //! > * 权威计数在任何时刻**不低于 0**；
 //! > * 重复 `release` **不**触发第二次 `close`。
 //!
-//! 这条不变量是 CM-28「隧道不多减引用」与 CM-27「许可归零」的地基：
+//! 这条不变量是「隧道不多减引用」与「许可归零」的地基：
 //! 一旦出现第二份账，两边各自看起来都对，但两条会**同时**失效。
 //!
 //! 本模块只跑**代数**这一半。铁律本身的机械闸门（源码结构审计 + 植入变异 kill test）
@@ -48,7 +48,7 @@ fn single_counter_algebra_holds() {
             );
 
             // M ≤ N。释放 M 次时，只有 M == N（计数真的归零）的那一次才关隧道；
-            // M < N 时从头到尾一次都不能关 —— 这正是 CM-32 第一条断言的代数形式。
+            // M < N 时从头到尾一次都不能关 —— 这正是第一条断言的代数形式。
             for index in 0..releases {
                 let released = harness.ledger.release(&spec);
                 if index + 1 == acquires {
@@ -211,11 +211,11 @@ fn independent_specs_never_share_a_count() {
 
 /// `TunnelBinding.ref_count` 只是**观测快照**，绝不参与释放判断。
 ///
-/// 把观测值当成权威计数，正是 CM-28「隧道不多减引用」会悄悄失效的那一步：
+/// 把观测值当成权威计数，正是「隧道不多减引用」会悄悄失效的那一步：
 /// 一旦有人按 `binding.ref_count` 判定能否释放，多一次或少一次 acquire
 /// 就会永久性地把账带歪。
 ///
-/// **判别性要求（CM-32 repair round 1）**：断言点上必须让「台账读到的数」与
+/// **判别性要求**：断言点上必须让「台账读到的数」与
 /// 「快照里的数」**不相等**，否则本用例杀不掉「把权威读换成冻结快照」这个变异
 /// —— 两个来源都等于 1 时，任何 `assert_eq!(…, Some(1))` 都同时接受两者。
 /// 因此这里做三次 acquire，并把这一条写成 `assert_ne!` 自证。
@@ -316,7 +316,7 @@ fn the_sharing_identity_is_the_frozen_port_spec() {
     );
 }
 
-/// 端口读数**必须**是同一份折法的投影（CM-32-FU1 的运行时不变量那一半）。
+/// 端口读数**必须**是同一份折法的投影（运行时不变量那一半）。
 ///
 /// 源码审计（`tunnel::single_counter_audit`）管结构，本条管值：沿一整条旅程，每一步都
 /// 用**最原始**的事件计数（对 journal 现场 `filter`+`count`）与端口四个读数逐一对账。
@@ -447,7 +447,7 @@ fn every_port_reading_is_the_projection_of_one_journal_fold() {
     assert_eq!(harness.transport.close_calls(), 1);
 }
 
-/// 台账与端口是**两本职责不同的账**，本条把它们对到一起（CM-32-FU1）。
+/// 台账与端口是**两本职责不同的账**，本条把它们对到一起。
 ///
 /// * `transport` 那本记**物理事实**：journal 折出来的 `close` 次数。
 /// * `ledger.close_calls()` 那本记**台账自己发了多少次 close**（`teardown_calls` 字段）。

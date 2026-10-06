@@ -8,11 +8,11 @@
 //!   （释放以 `release_tunnel` 的调用为准）」；
 //! * `release_tunnel` 明文「引用计数归零才真正拆除；**重复释放是幂等的**」。
 //!
-//! # 唯一计数铁律（CM-32-FU1：机械保证，不再是审计承诺）
+//! # 唯一计数铁律（机械保证，不再是审计承诺）
 //!
 //! 全系统**只能有一个**引用计数器，就是 [`TunnelLedger`] 的 `refs`。
 //! [`TunnelTransport`] **不带**任何计数字段 —— 它只负责开/关真实隧道。
-//! 双重记账会让 CM-28「隧道不多减引用」与 CM-27「许可归零」同时失效，
+//! 双重记账会让「隧道不多减引用」与「许可归零」同时失效，
 //! 而且两边各自看起来都对，极难排查。
 //!
 //! 类型系统本身**挡不住**第二本账：`&self` 只排除 `&mut self`，而 `Mutex` / `Cell`
@@ -40,7 +40,7 @@
 //!
 //! 代数不变量由 `tunnel::journey_single_counter` 的 `single_counter_algebra_holds` 钉住。
 //!
-//! # 失败传播（CM-32 第三条断言）
+//! # 失败传播（第三条断言）
 //!
 //! 隧道是**共享**资源：它中途死亡时受影响的不是某一个持有者，而是**全部登记过的
 //! 依赖方**。所以每条 entry 带一份 `dependents` 清单，失败时全量枚举并交出。
@@ -56,7 +56,7 @@ use crate::connection::types::LeaseId;
 
 /// 一条隧道在其生命周期里的状态。
 ///
-/// 状态机（CM-32 只用到 `Establishing`/`Live`/`Closing`/`Unconfirmed`/`Failed`
+/// 状态机（只用到 `Establishing`/`Live`/`Closing`/`Unconfirmed`/`Failed`
 /// 这一条主干，其余变体是**完整性护栏**，防止任何路径把一条没人引用的隧道漏掉）：
 ///
 /// ```text
@@ -78,7 +78,7 @@ pub enum TunnelState {
     Live,
     /// 引用已归零、`close` 已发出，等待确认。**期间不得再次 `close`**。
     Closing,
-    /// `close` 失败，拆除结果不明（CM-73 的同类纪律：结果不明 ⇒ 不静默丢弃，
+    /// `close` 失败，拆除结果不明（同类纪律：结果不明 ⇒ 不静默丢弃，
     /// 也不允许换一个「新的」把旧的蒙混过去）。
     Unconfirmed,
     /// 隧道中途死亡（上游断等）。引用**不减**，等待各持有方自己走归还流程。
@@ -99,7 +99,7 @@ impl TunnelState {
     }
 
     /// 还能否接受新的引用。`Closing`/`Unconfirmed` 不可再发引用：
-    /// 这正是 CM-28「隧道不多减引用」必须防住的前置状态。
+    /// 这正是「隧道不多减引用」必须防住的前置状态。
     pub const fn accepts_reference(&self) -> bool {
         matches!(self, Self::Live)
     }
@@ -120,7 +120,7 @@ struct TunnelEntry {
     state: TunnelState,
     /// 权威引用计数。归零即触发且仅触发一次 `close`。
     ///
-    /// **唯一计数铁律（CM-32-FU1）**：这个字段只允许被 [`TunnelEntry`] 的四个注册方法
+    /// **唯一计数铁律**：这个字段只允许被 [`TunnelEntry`] 的四个注册方法
     /// （`established` 建账 + `refs` / `add_reference` / `take_reference` 逐笔增减）
     /// 直读或直写，其余任何函数体里出现 `entry.refs` 都是第二本账的形状 ——
     /// 由 `tunnel::single_counter_audit` 的字段审计（R1）杀掉，含一条植入变异的 kill test。
@@ -134,7 +134,7 @@ struct TunnelEntry {
 
 /// `TunnelEntry` 的计数**只有一条窄口**：四个注册方法，读写的都按值进出。
 ///
-/// 之所以不是「把 `refs` 设成 pub 然后靠注释」：CM-32 repair round 1 实测过，
+/// 之所以不是「把 `refs` 设成 pub 然后靠注释」：实测过，
 /// 反例（给观测端口加一份自存的 `close_tally: Mutex<usize>` 并让 `close_calls()`
 /// 改读它）在纯注释纪律下**编译通过且全轨测试全绿**。按值进出把「读计数」变成
 /// 一个可被源码审计唯一点名的调用面，第二本账必须新开一条直写 `refs` 的路，
@@ -183,7 +183,7 @@ pub struct TunnelLease {
     pub binding: TunnelBinding,
     /// 本次是否**新建**了隧道（false = 复用了一条已有的）。
     ///
-    /// CM-32 第一条断言「第一步不关闭隧道」就是靠它与
+    /// 第一条断言「第一步不关闭隧道」就是靠它与
     /// [`TunnelLedger::release`] 的 `closed` 一起钉的：第二个持有者拿到 `false`，
     /// 关掉它之后 `closed` 必须是 `false`。
     pub opened: bool,
@@ -215,7 +215,7 @@ pub struct TunnelLedger {
     /// 已发出的 `close` 次数。**只是观测计数器，不是引用计数** ——
     /// 它不参与任何释放判断，只供测试读出代数不变量。
     ///
-    /// CM-32-FU1 的闸门同时看两边：台账侧这条账是**观测**，所以它禁止出现在任何
+    /// 闸门同时看两边：台账侧这条账是**观测**，所以它禁止出现在任何
     /// 判断条件里（R3 禁止它进入 `if` / `matches!` / 比较表达式；字段与访问器**刻意
     /// 不同名**，正是为了让扫描器能区分两者）；端口侧则**不允许**再长出一份自存的
     /// 同类账 —— 见 `transport.rs` 模块头与 `tunnel::single_counter_audit`。
@@ -310,7 +310,7 @@ impl TunnelLedger {
 
     /// 释放一次引用。**引用归零才关闭；重复释放是幂等的。**
     ///
-    /// * 计数 0→1 时**不**关闭（CM-32 第一条断言）；
+    /// * 计数 0→1 时**不**关闭（第一条断言）；
     /// * 计数 1→0 时发起**恰好一次** `close`，成功即清 entry；
     /// * 已知 entry 的重复释放 ⇒ 幂等返回，**不二次 close**；
     /// * `Failed` 的 entry 仍走同一条归零路径（只是不再发新引用）；
@@ -330,7 +330,7 @@ impl TunnelLedger {
         self.drain(index)
     }
 
-    /// **一条资源归还 ⇒ 恰好一次释放。**（CM-32 与 CM-27 的接线点）
+    /// **一条资源归还 ⇒ 恰好一次释放。**
     ///
     /// 这是资源生命周期侧唯一该调用的归还入口：给定租约，摘掉它对隧道的那份引用，
     /// 并走与 [`Self::release`] **完全同一条**归零路径（同一个 `drain`），因此
@@ -354,7 +354,7 @@ impl TunnelLedger {
     /// 归零路径：减一份引用；**归零才关闭**，且恰好一次。`release` 与
     /// `return_resource` 共用它，两条归还入口不可能有第二种语义。
     ///
-    /// CM-32-FU1：本函数**不直读 `refs` 字段**，而是按值从 `TunnelEntry::refs()` /
+    /// 本函数**不直读 `refs` 字段**，而是按值从 `TunnelEntry::refs()` /
     /// `take_reference()` 取数。台账里参与这条路径的字段因此只有两个：计数（`refs`，
     /// 唯一来源）与 `state`（终态守卫，不参与计数）。这条形状由
     /// `tunnel::single_counter_audit` 的源码审计（R1 / R2）钉住。
@@ -411,7 +411,7 @@ impl TunnelLedger {
     /// 隧道中途死亡。返回**全部**依赖租约，供调用方逐个隔离。
     ///
     /// 引用计数**不减** —— 各持有方还没归还，账要等它们自己走归还流程；
-    /// 在这里减引用正是 CM-28「隧道不多减引用」要防的错误。
+    /// 在这里减引用正是「隧道不多减引用」要防的错误。
     pub fn report_failure(&mut self, spec: &TunnelSpec) -> Vec<LeaseId> {
         let Some(index) = self.position(spec) else {
             return Vec::new();

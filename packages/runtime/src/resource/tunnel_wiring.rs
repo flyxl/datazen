@@ -4,7 +4,7 @@
 //! [`ResourceManager::with_tunnel_transport`] 接进来的那份台账，加上
 //! [`LeaseRequest::via_tunnel`] 在申请上声明的隧道身份。本文件就是这两者之间那几根线。
 //!
-//! ## 唯一计数器铁律（CM-32）
+//! ## 唯一计数器铁律
 //!
 //! 本文件**不持有任何隧道引用计数**：没有 `AtomicU32`、没有 `Mutex<usize>`、
 //! 没有 `Cell<u32>`，也没有「顺手存一份」的 `u32` 字段。
@@ -27,9 +27,9 @@
 //! 这一点不靠自觉，靠 [`TunnelDisposition::pairs_with_budget_release`]：
 //! 任何一次处置后，该方法的结果**恒等于** `CleanupReport::physical_budget_released`。
 //!
-//! ## 建连阶段序（CM-27 六个注入点）
+//! ## 建连阶段序（六个注入点）
 //!
-//! CM-27 在 permit / 隧道 / socket / 握手 / 初始化 / 注册六个阶段分别注入失败。
+//! permit / 隧道 / socket / 握手 / 初始化 / 注册六个阶段分别注入失败。
 //! 本模块负责其中**隧道那一格及其之后的补偿**：
 //!
 //! ```text
@@ -71,7 +71,7 @@ pub enum TunnelDisposition {
     /// 引用已归还；`tunnel_closed` 表示隧道是否**被确认**拆除。
     ///
     /// `false` 不是「没还」，而是隧道侧的 `close` 结果不明：引用已经摘掉，
-    /// 但台账按 CM-28「结果不明不静默丢弃」把条目留在 `Unconfirmed` 态。
+    /// 但台账按「结果不明不静默丢弃」把条目留在 `Unconfirmed` 态。
     Released { tunnel_closed: bool },
 }
 
@@ -132,8 +132,8 @@ impl ResourceManager {
 
     /// 隧道阶段：给这条租约落一份隧道引用。
     ///
-    /// **失败不落账**：`TunnelLedger::acquire` 在 `open` 失败时既不建条目也不加计数
-    /// （CM-27「建隧道失败不落账」），本方法原样上抛，绝不「先记上回头再补」。
+    /// **失败不落账**：`TunnelLedger::acquire` 在 `open` 失败时既不建条目也不加计数，
+    /// 本方法原样上抛，绝不「先记上回头再补」。
     pub(super) fn acquire_tunnel_reference(
         &mut self,
         lease_id: &LeaseId,
@@ -183,12 +183,11 @@ impl ResourceManager {
         }
     }
 
-    /// CM-27 的握手 / 初始化 / 注册三个阶段失败时的补偿。
+    /// 握手 / 初始化 / 注册三个阶段失败时的补偿。
     ///
     /// 物理资源已经开出来了、隧道引用也已经落账了，但这三步任何一步没过，
     /// 连接就**从来没能对外可用**。此时要做的不是「留着等复位」，而是把已经建立的
-    /// 东西按建立顺序的逆序拆掉：关掉物理连接，再归还它那份隧道引用
-    /// （CM-27「隧道开成后回滚释放」）。
+    /// 东西按建立顺序的逆序拆掉：关掉物理连接，再归还它那份隧道引用。
     ///
     /// 关闭本身若未确认，`force_close` 会把租约留在 `Quarantined`，此时引用**保留** ——
     /// 隔离中的连接可能仍在用这条隧道，配对不许塌。
@@ -214,7 +213,7 @@ impl ResourceManager {
     /// 所以补偿里没有任何台账动作可做 —— 这正是「建隧道失败不落账」的可观察面。
     ///
     /// 关闭未确认时把租约**隔离留存**：预算占用与关闭义务都不能凭空消失
-    /// （connection-management.md §9.4「任一失败都关闭」、§10.1.1「确认关闭或节点隔离后才核销」），
+    /// （「任一失败都关闭」、「确认关闭或节点隔离后才核销」），
     /// 留一行 `Quarantined` 才能让后续 `retire` 重试这次关闭。
     pub(super) fn compensate_tunnel_stage_failure(
         &mut self,

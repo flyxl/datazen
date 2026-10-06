@@ -1,10 +1,10 @@
 //! [`ResourceManager`] 门面：签发、执行态、归还裁决、配置漂移。
 //!
-//! 这里是宿主台账对上层暴露的**唯一**写入口（A3.1/A1 的 `ResourceManager`）。
+//! 这里是宿主台账对上层暴露的**唯一**写入口（`ResourceManager`）。
 //! 轮换/禁用/排队在 `rotation`，候选替换在 `adoption`，数据结构在 `table`。
 //!
-//! 归还路径（`release`）是 §3.2 双条件裁决的落点：驱动结论与宿主条件**分别**进来，
-//! 本模块只判定宿主自己的条件，两者同时通过才允许复用（A3.3 / CM-69）。
+//! 归还路径（`release`）是双条件裁决的落点：驱动结论与宿主条件**分别**进来，
+//! 本模块只判定宿主自己的条件，两者同时通过才允许复用。
 
 use std::sync::Arc;
 
@@ -41,7 +41,7 @@ pub struct ResourceManager {
     ///
     /// 唯一权威是台账本身：本模块任何位置都**不**另存一份隧道引用计数，
     /// 引用归零只经由 [`crate::tunnel::TunnelLedger::return_resource`] 的私有 `drain`
-    /// （CM-32 单计数器铁律）。接线见 `resource::tunnel_wiring`。
+    /// （单计数器铁律）。接线见 `resource::tunnel_wiring`。
     pub(super) tunnels: Option<TunnelLedger>,
 }
 
@@ -60,7 +60,7 @@ impl ResourceManager {
         }
     }
 
-    /// 接上公开目录端口（CM-68 的发布侧）。
+    /// 接上公开目录端口（发布侧）。
     pub fn with_directory(mut self, publisher: Arc<dyn DirectoryPublisher>) -> Self {
         self.ledger.set_publisher(publisher);
         self
@@ -80,7 +80,7 @@ impl ResourceManager {
         self.table.occupied_slots()
     }
 
-    /// 空池元数据条数（§9.2 上限 32）。
+    /// 空池元数据条数（上限 32）。
     pub fn empty_pool_metadata_len(&self) -> usize {
         self.table.empty_pool_metadata_len()
     }
@@ -105,7 +105,7 @@ impl ResourceManager {
         self.disabled.contains(connection_id)
     }
 
-    // ---- 缓存代次闸门（CM-67） ----
+    // ---- 缓存代次闸门 ----
 
     /// 当前缓存代次；连接没登记过返回 `None`。
     pub fn cache_revision(&self, connection_id: &ConnectionId) -> Option<CacheRevision> {
@@ -134,7 +134,7 @@ impl ResourceManager {
 
     /// 回填闸门：慢结果回来时按代次判定。
     ///
-    /// 代次对不上 ⇒ `RejectedStale`，**没有任何「就地升级」的旁路**（A3.4 / CM-67）。
+    /// 代次对不上 ⇒ `RejectedStale`，**没有任何「就地升级」的旁路**。
     pub fn admit_cache_fill(
         &self,
         connection_id: &ConnectionId,
@@ -145,7 +145,7 @@ impl ResourceManager {
 
     // ---- 签发 ----
 
-    /// 一次租约申请**该挂哪个池键**（CM-67 / CM-38 的唯一裁决点，签发与候选替换共用）。
+    /// 一次租约申请**该挂哪个池键**（唯一裁决点，签发与候选替换共用）。
     ///
     /// * 申请没声明代号（`None`）⇒ 宿主采用当前代新材料，调用方不必知道代次；
     /// * 申请声明了代号 ⇒ 必须**正好**等于当前代。声明的是上一代材料时直接拒绝，
@@ -189,7 +189,7 @@ impl ResourceManager {
         }
         let pool_key = self.current_pool_key(request)?;
 
-        // CM-38：带 `expectedRevision` 的申请必须与当前代一致，否则冲突。
+        // 带 `expectedRevision` 的申请必须与当前代一致，否则冲突。
         let current_revision = self.generations.current_config_revision(&connection_id);
         if let Some(expected) = request.expected_config_revision {
             let actual = current_revision.unwrap_or(ConfigRevision::new(0));
@@ -202,7 +202,7 @@ impl ResourceManager {
             }
         }
 
-        // 淘汰本键下已过 TTL 的空闲（§9.2）。
+        // 淘汰本键下已过 TTL 的空闲。
         let (idle, expired) = self
             .table
             .take_idle(&pool_key, now_nanos, self.idle_ttl_seconds);
@@ -248,12 +248,12 @@ impl ResourceManager {
             idle_for_issue: false,
         };
 
-        // CM-27「隧道引用正确」：**隧道阶段**。
+        // 「隧道引用正确」：**隧道阶段**。
         //
         // 阶段序上隧道排在 socket 之后，是因为 `LeaseId` 由 `transport.open` 返回的
         // `ResourceId` 派生，而台账的依赖方身份正是 `LeaseId` —— 依赖方身份在 socket
         // 之前不存在，引用无从登记（见 `tunnel_wiring` 模块头）。回滚义务两向对称，
-        // CM-27 的六个注入点一个不漏。
+        // 六个注入点一个不漏。
         //
         // 建不成 ⇒ **不落账**（台账侧既不建条目也不加计数），资源侧只需把刚开的
         // socket 补偿掉；这段补偿里没有、也不该有任何台账动作。
@@ -264,7 +264,7 @@ impl ResourceManager {
         }
 
         // 握手 / 初始化 / 注册三个阶段失败 ⇒ 调 `roll_back_unpublished`，
-        // 把已经开出来的 socket 关掉并归还它那份隧道引用（CM-27「隧道开成后回滚释放」）。
+        // 把已经开出来的 socket 关掉并归还它那份隧道引用（「隧道开成后回滚释放」）。
         // 三段共用同一个补偿入口，不允许各自为政写出第二种回滚语义。
         self.table.insert(resource_id, lease.clone());
         let mut handed_out = lease;
@@ -306,7 +306,7 @@ impl ResourceManager {
         Ok(())
     }
 
-    // ---- 归还裁决（A3.3 / CM-69） ----
+    // ---- 归还裁决 ----
 
     /// 归还一条租约：驱动结论 + 宿主条件一起进来，本模块**只做宿主自己的检查**。
     pub fn release(
@@ -330,7 +330,7 @@ impl ResourceManager {
         }
         let mut plan = CleanupPlan::of(&record, &host, driver);
 
-        // CM-73：还有未释放的会话级句柄时，必须先在**原资源**上复位（回滚事务、
+        // 还有未释放的会话级句柄时，必须先在**原资源**上复位（回滚事务、
         // 解除映射），再关。复位结果不明 ⇒ 进隔离，绝不静默丢弃，也不允许换一个新
         // 资源把旧事务蒙混过去。
         let needs_reset = host.unreleased_handles.iter().any(|handle| !handle.closed);
@@ -362,7 +362,7 @@ impl ResourceManager {
                     .push_idle(record.lease_id.clone(), record.pool_key.clone(), now_nanos);
             }
             CleanupDisposition::Closed => {
-                // 登记项 E（CM-28 轨 `p3-cm28-concurrent-return` 发现，**本轨不改**，只留事实）：
+                // 登记项 E（并发归还轨发现，**本轨不改**，只留事实）：
                 // 这一行的 `?` 把 `PhysicalTransport::close` 的 `Err` 原样抛给调用方，
                 // 于是本次归还的租约**停在 `Closing`**：不隔离、不核销物理预算，
                 // 关闭义务就此丢失。同一类错误在 `force_close` 里被映成 `Quarantined`，
@@ -381,11 +381,11 @@ impl ResourceManager {
                 // **怎么复现**：让 `PhysicalTransport::close` 返回一个 `Err`，再走归还
                 // 路径落进本分支 —— 租约行仍在、状态是 `Closing`；同一资源的
                 // `force_close` 则会把它移进 `Quarantined`。本轨两个测试**不覆盖**本分支：
-                // CM-28 断言的是「至多一次**被确认的**关闭」（口径见 `force_close` 错误分支
+                // 本轨断言的是「至多一次**被确认的**关闭」（口径见 `force_close` 错误分支
                 // 注释），关闭**失败**属「必须再关一次」，不在本轨断言面内。
                 //
                 // **为什么本轨不改**：把它换成「先 `move_to(Quarantined)` 再返回错误」
-                // 会改变归还路径的返回语义，并外溢到 CM-73 的交接面；跨轨改动不该由
+                // 会改变归还路径的返回语义，并外溢到会话句柄的交接面；跨轨改动不该由
                 // 单轨夹带。是否立项、归口哪一轨属协调侧裁定，本轨只保证结论随代码存活。
                 self.transport.close(&record.resource_id)?;
                 if let Some(entry) = self.table.lease_mut(lease_id) {
@@ -463,8 +463,8 @@ impl ResourceManager {
                 LeaseState::Acquired | LeaseState::InUse => {
                     entry.move_to(LeaseState::Closing)?;
                 }
-                // 已有租约行 ⇒ 未被确认关闭 ⇒ 按 §9.4（`:657`「任一失败都关闭」）必须**再关一次**。
-                // 因此关闭**尝试**的次数天然不受 CM-28「至多一次」约束，被约束的是
+                // 已有租约行 ⇒ 未被确认关闭 ⇒ 按「任一失败都关闭」必须**再关一次**。
+                // 因此关闭**尝试**的次数天然不受「至多一次」约束，被约束的是
                 // **被确认的**关闭 —— 口径见下方错误分支与 `tests/cm28_concurrent_release.rs`。
                 LeaseState::Closing | LeaseState::Quarantined | LeaseState::Closed => {}
             }
@@ -486,9 +486,9 @@ impl ResourceManager {
                 // 可核验的去处（「保留预算占用/隔离资源；确认关闭或节点隔离后才核销」），
                 // 隔离就是它。
                 //
-                // **「有效关闭」的口径就定在这里。** CM-28 只写「driver close 至多一次
+                // **「有效关闭」的口径就定在这里。** 契约只写「driver close 至多一次
                 // **有效**关闭」，全文没有定义「有效」二字。取既有词汇：恢复决策表的
-                // 「确认关闭」、CM-26 的「close 未确认继续占预算；确认关闭后只核销一次」。
+                // 「确认关闭」，以及「close 未确认继续占预算；确认关闭后只核销一次」。
                 // 故「有效关闭」≡ **被确认的关闭**。
                 //
                 // **为什么「至多一次」只能修饰「确认」而不能修饰「尝试」**：既然失败之后
@@ -502,7 +502,7 @@ impl ResourceManager {
                 if let Some(entry) = self.table.lease_mut(lease_id) {
                     let _ = entry.move_to(LeaseState::Quarantined);
                 }
-                // 关闭未确认 ⇒ 预算**不**核销 ⇒ 隧道引用一并保留（`:713`「确认关闭或
+                // 关闭未确认 ⇒ 预算**不**核销 ⇒ 隧道引用一并保留（「确认关闭或
                 // 节点隔离后才核销」）。隔离中的连接仍可能走这条隧道，提前归还引用
                 // 会让隧道在还有活连接时被拆掉 —— 那是配对塌了，不是有序回收。
                 let _tunnel =

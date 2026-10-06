@@ -1,8 +1,8 @@
-//! CM-70：签名提交令牌（submission token）。
+//! 签名提交令牌（submission token）。
 //!
 //! # 这一层为什么存在
 //!
-//! CM-54 的账本按「幂等键」查重，而 CM-70 把那个键**升级成一张有签名、有有效期、
+//! 幂等账本按「幂等键」查重，而令牌层把那个键**升级成一张有签名、有有效期、
 //! 绑定 owner 代次的令牌**。差别都在「谁说了算」：键是客户端送上来的字符串，
 //! 服务端凭什么相信它的 `issuedAt`？凭什么相信它还没过期？凭什么相信它不是
 //! 从上一个 owner 代次偷来的？——只靠一个不透明字符串，一条都答不上来。
@@ -60,12 +60,12 @@ type HmacSha256 = Hmac<Sha256>;
 /// 令牌前缀。换前缀即换格式版本，与 `key_version` 互相独立。
 pub const TOKEN_PREFIX: &str = "cm70";
 
-/// 默认有效期：24 小时虚拟时间（§3.5）。
+/// 默认有效期：24 小时虚拟时间。
 pub const DEFAULT_TTL_NANOS: u64 = 24 * 60 * 60 * 1_000_000_000;
 
 /// 签名密钥版本。
 ///
-/// 「未知版本一律拒绝」是 CM-70 的硬要求：密钥轮换期间如果对未知版本**尝试**降级，
+/// 「未知版本一律拒绝」是硬要求：密钥轮换期间如果对未知版本**尝试**降级，
 /// 攻击者就能拿一个自己编造的版本号把令牌送进验签路径。所以这里只有两种结果——
 /// 命中本版本，或拒绝。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -470,7 +470,7 @@ impl TokenAdmission {
 /// 放在网关受理路径的**第 0 步**，先于一切。顺序不是风格问题：
 /// 「过期令牌重放不再执行」和「删除记录后重放不再执行」这两条，**只有在闸门排在
 /// 账本查重之前时才成立**。若闸门排在查重之后，记录被删干净的过期令牌会一路走到
-/// `IdempotencyLookup::Miss`，然后被真的执行一遍——正是 CM-70 明令禁止的那件事。
+/// `IdempotencyLookup::Miss`，然后被真的执行一遍——正是明令禁止的那件事。
 pub struct SubmissionTokenGuard {
     keyring: Arc<TokenKeyring>,
     registry: Arc<GrantRegistry>,
@@ -532,7 +532,7 @@ impl SubmissionTokenGuard {
         Ok(TokenAdmission { digest, payload })
     }
 
-    /// 首次受理成功后登记授予。`scope` 是这条幂等记录在 CM-54 账本里的键，
+    /// 首次受理成功后登记授予。`scope` 是这条幂等记录在账本里的键，
     /// 清扫时靠它把账本记录一并删掉。
     pub fn register(
         &self,

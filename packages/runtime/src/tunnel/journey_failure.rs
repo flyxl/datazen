@@ -1,4 +1,4 @@
-//! 隧道失败传播（CM-32 第三条断言）：
+//! 隧道失败传播（第三条断言）：
 //!
 //! > 断言：隧道失败传播给依赖资源。
 //!
@@ -71,7 +71,7 @@ fn one_failing_tunnel_does_not_take_a_healthy_one_down_with_it() {
 /// F2：隧道中途死亡 ⇒ **全部**依赖租约被点名，引用**不减**。
 ///
 /// 引用不减是刻意的：各持有方还没归还，账要等它们自己走归还流程。
-/// 在这里替它们减引用，正是 CM-28「隧道不多减引用」要防的错误。
+/// 在这里替它们减引用，正是「隧道不多减引用」要防的错误。
 #[test]
 fn a_mid_life_failure_names_every_dependent_and_does_not_decrement() {
     let mut harness = TunnelHarness::new();
@@ -93,7 +93,7 @@ fn a_mid_life_failure_names_every_dependent_and_does_not_decrement() {
     assert_eq!(
         affected.len(),
         3,
-        "CM-32 third assertion: EVERY dependent resource is told, not just the caller"
+        "third assertion: EVERY dependent resource is told, not just the caller"
     );
     assert_eq!(affected, vec![first.clone(), second.clone(), third.clone()]);
 
@@ -111,7 +111,7 @@ fn a_mid_life_failure_names_every_dependent_and_does_not_decrement() {
 
 /// F2 之后：这条隧道**不再发新引用**，但既有持有方仍能正常归还。
 ///
-/// 不发新引用是必须的 —— 那是 CM-28「隧道不多减引用」失效的前置状态。
+/// 不发新引用是必须的 —— 那是「隧道不多减引用」失效的前置状态。
 #[test]
 fn a_failed_tunnel_refuses_new_references_but_still_accepts_releases() {
     let mut harness = TunnelHarness::new();
@@ -171,7 +171,7 @@ fn a_failed_tunnel_never_hands_out_another_handle() {
 
 /// F3：`close` 失败 ⇒ 结果不明，entry **保留**，重复释放**不二次 close**。
 ///
-/// 这是端口 `:86`「重复释放是幂等的」在失败路径上的兑现：
+/// 这是端口契约「重复释放是幂等的」在失败路径上的兑现：
 /// 拆除失败后若允许再次 close，就会对同一条隧道发两次拆除命令。
 #[test]
 fn a_failed_close_is_never_retried_behind_the_callers_back() {

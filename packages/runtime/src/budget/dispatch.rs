@@ -1,4 +1,4 @@
-//! 轮转引擎：把排队中的等待者按 §9.5 的规则放行成 permit。
+//! 轮转引擎：把排队中的等待者按既定规则放行成 permit。
 //!
 //! [`BudgetLedger::pump`] 是唯一入口，顺序固定：
 //!
@@ -88,7 +88,7 @@ fn dispatch_service(
             break;
         }
     }
-    // 共享池：加权轮转，跳过空队列（§9.5）。
+    // 共享池：加权轮转，跳过空队列。
     while service.shared_used < config.service_quota.shared {
         let Some(class) = service.rr.pick(&service.queues) else {
             break;

@@ -1,16 +1,16 @@
-//! 资源类别与每类桶（connection-management.md §9.5「四类资源与调度」）。
+//! 资源类别与每类桶。
 //!
 //! 这一层只做**记账形状**的职责划分：谁在占、占的是保留还是共享、钉住没有。
 //! 放不放行是 [`crate::budget::ledger`] 的决定，轮转顺序是 [`crate::budget::queues`] 的决定。
 //!
-//! 两条 §9.5 硬规则落在本文件的数据形状上而不是注释里：
+//! 两条硬规则落在本文件的数据形状上而不是注释里：
 //!
 //! 1. **类别由服务端决定，调用方不能自报优先级**——`BudgetClaim` 只能由用例层构造。
 //!    端口的 `BudgetRequest` 结构里根本没有 `class` 字段，调用方能表达的只有 `purpose`；
 //!    `class` 的取值由 `crate::budget::coordinator::classify` 从 `purpose` 推导。
 //! 2. **首版保留不可被其他类借用**——名额被拆成 `Reserved` / `Shared` 两种槽位，
 //!    每张 permit 记下自己落在哪一槽；核销时必须退回**同一**槽。
-//!    如果核销永远退回共享，保留额度的空位就会凭空漂移到别人头上，这条会被 CM-65 抓到。
+//!    如果核销永远退回共享，保留额度的空位就会凭空漂移到别人头上，这条会被断言抓到。
 
 use datazen_platform_api::id::{ConnectionId, OrganizationId, PrincipalId, WorkerId};
 use datazen_platform_api::ports::budget::{ResourceClass, ServiceQuota};
@@ -23,14 +23,14 @@ use datazen_platform_api::ports::budget::{ResourceClass, ServiceQuota};
 pub struct BudgetClaim {
     pub organization_id: OrganizationId,
     pub connection_id: ConnectionId,
-    /// 排队与「同类内主体轮转」的归属主体（§9.5）。
+    /// 排队与「同类内主体轮转」的归属主体。
     pub principal: PrincipalId,
     pub class: ResourceClass,
-    /// 获批后即被钉住：已建立的连接、活跃事务、游标不得被 drain 或回收抢占（§9.5）。
+    /// 获批后即被钉住：已建立的连接、活跃事务、游标不得被 drain 或回收抢占。
     pub pinned: bool,
     /// 本次申请需要几个名额（`reserve_many` 的多端点申请会 > 1）。
     pub slots: u32,
-    /// 发放资源的 worker。多 worker 部署下由节点额度租约归属（§9.3），
+    /// 发放资源的 worker。多 worker 部署下由节点额度租约归属，
     /// 单 worker 部署为 `None`。`DrainScope::Node` 按它算在手 permit。
     pub worker: Option<WorkerId>,
 }
@@ -76,7 +76,7 @@ impl BudgetClaim {
 /// 名额落在哪一槽。核销必须退回同一槽，否则保留额度的空位会漂移。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotKind {
-    /// 本类**自己**的保留额（§9.5 首版不可借用：别的类拿不到）。
+    /// 本类**自己**的保留额（首版不可借用：别的类拿不到）。
     Reserved,
     /// 共享池里按 `4:2:1` 轮转分到的那一个。
     Shared,
@@ -154,7 +154,7 @@ impl ServiceClasses {
 
     /// 该类能否占一个共享槽。
     ///
-    /// §9.5：control 只用于取消与健康恢复，**不参与共享轮转**——
+    /// control 只用于取消与健康恢复，**不参与共享轮转**——
     /// 否则一次全服务的排空就能把控制通道饿死。`ResourceClass::may_join_shared` 是这条规则的
     /// 唯一事实源，这里只做转发，不重复实现一份。
     pub fn may_join_shared(class: ResourceClass) -> bool {

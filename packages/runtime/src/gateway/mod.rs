@@ -5,37 +5,37 @@
 //!
 //! # 为什么要拆成受理与下发两段
 //!
-//! §7.2 第 3 步要求「返回回执**早于** SQL 跑完」。所以 [`ExecutionGateway::accept`]
+//! 第 3 步要求「返回回执**早于** SQL 跑完」。所以 [`ExecutionGateway::accept`]
 //! 返回的 [`GatewayAcceptance`] 是**受理回执**，不是结果：它的 `state` 恒为
 //! [`ExecutionState::Queued`]。把受理回执当成执行结果，UI 就会在第一行数据回来之前
-//! 显示「执行成功」。两者在类型上是同一个冻结 DTO（§4 不允许我另造一个），
+//! 显示「执行成功」。两者在类型上是同一个冻结 DTO（不允许我另造一个），
 //! 所以区别只能由 [`GatewayAcceptance::is_queued_not_finished`] 显式断言。
 //!
-//! # 受理顺序（§3.1）
+//! # 受理顺序
 //!
 //! 1. 同步参数校验（命令非空、幂等键可用、来源可持久化）；
 //! 2. 算幂等作用域与请求指纹；
 //! 3. [`Self::owned_view`]（**无锁 await**）：重读 `session_view` → **归属授权** → 终态拒绝
 //!    （`Closed`/`Closing`/`Lost`——端口对终态会话**返回 `Ok`**，不判就会把已关闭会话的
-//!    执行判成「已受理」）。三者次序不可调换，理由见 [`owner_binding`] 模块头（CM-05）。
+//!    执行判成「已受理」）。三者次序不可调换，理由见 [`owner_binding`] 模块头。
 //! 4. 临界区内：幂等查重 →（`Hit` 直接回放，不再走乐观闸门）→ 乐观并发闸门 →
 //!    分配 `executionId` → 登记幂等记录 → 入队。
 //!
 //! 查重**必须**排在乐观闸门前面：重发的语义是「上次那次」，而上次那次受理时的
 //! `context_revision` 往往已经过期了。先校验 revision 会让重发永远失败，
-//! 调用方就会换一个 key 重试——那正是 CM-54 要禁止的重复写入。
+//! 调用方就会换一个 key 重试——那正是幂等账本要禁止的重复写入。
 //!
-//! # 下发顺序（§3.4 / CM-62）
+//! # 下发顺序
 //!
 //! 1. 找执行记录，找不到即拒绝（绝不新建一次「碰巧的」执行）；
 //! 2. [`Self::owned_view`]：重读 `session_view` → **重校验权限**（受理时授权过一次，
 //!    不代表下发时仍然有权）→ 终态拒绝；
-//! 3. 重比 `expected_context_revision`（§3.1 要求「真正执行前再比一次」），
+//! 3. 重比 `expected_context_revision`（要求「真正执行前再比一次」），
 //!    不一致返回 [`RuntimeError::ContextRevisionMismatch`] 并携带服务端实际值；
-//! 4. 记 CM-60 第一段起点 → 下发驱动 → 记第二段起点 → 登记回执/事件状态 → 落样本。
+//! 4. 记第一段计时起点 → 下发驱动 → 记第二段起点 → 登记回执/事件状态 → 落样本。
 //!
 //! 步骤 4 的两个记号点包住的是**驱动往返**，因此「假 SQL 执行」「预算/角色排队」
-//! 「网络传输」天然落在区间外或区间内由驱动侧决定，网关不再额外计时（§3.5）。
+//! 「网络传输」天然落在区间外或区间内由驱动侧决定，网关不再额外计时。
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -79,7 +79,7 @@ mod event_store_tests;
 pub(crate) mod facade_support;
 #[cfg(test)]
 mod facade_tests;
-// CM-70：令牌层与保留期各自单列一块，否则两个源文件都会顶破 800 行上限。
+// 令牌层与保留期各自单列一块，否则两个源文件都会顶破 800 行上限。
 #[cfg(test)]
 mod retention_tests;
 #[cfg(test)]
@@ -90,7 +90,7 @@ pub use cancel::{
     cancel_failed, disposition_from_port_state, is_requested, state_literal, unsupported_outcome,
     verify_binding, CancelBinding, CancelOutcome, CancelRequest, UNKNOWN_EXECUTION_REASON,
 };
-// D-03：取消处置三态只有一处定义——冻结的 `connection::port::CancelDisposition`。
+// 取消处置三态只有一处定义——冻结的 `connection::port::CancelDisposition`。
 // 网关此前自带一份同名副本并从这里转出，那份副本已被删除；这里转出的是**同一个类型**，
 // 因此 `gateway::CancelDisposition` 这条路径仍然可用，且不再存在两个可各自漂移的定义处。
 pub use crate::connection::port::CancelDisposition;
@@ -128,7 +128,7 @@ pub struct ExecutionRecord {
     /// 受理时构造一次并冻结。下发只改句柄，不改 `call` / `idempotencyKey`：
     /// 受理与下发之间命令被改写，等于下发的东西和回执对不上。
     port_request: ExecuteInSessionRequest,
-    /// 受理时冻结的语义指纹。下发时它就是围栏键（CM-70）：请求一旦真的
+    /// 受理时冻结的语义指纹。下发时它就是围栏键：请求一旦真的
     /// 交给了驱动，这个指纹上的任何自动重试都必须先核验。它和 `port_request`
     /// 一样受理定型，下发只读。
     fingerprint: RequestFingerprint,
@@ -180,7 +180,7 @@ impl ExecutionRecord {
         self.resource_binding_id.as_ref()
     }
 
-    /// 来源**只**来自受理请求，之后任何事件都不能改写它（CM-61）。
+    /// 来源**只**来自受理请求，之后任何事件都不能改写它。
     pub fn source(&self) -> &ExecutionSource {
         &self.source
     }
@@ -214,7 +214,7 @@ impl ExecutionRecord {
         self.events.last_sequence()
     }
 
-    /// 是否需要读快照或重新订阅（CM-55 序列空洞）。
+    /// 是否需要读快照或重新订阅（序列空洞）。
     pub fn needs_recovery(&self) -> bool {
         self.events.needs_recovery()
     }
@@ -223,7 +223,7 @@ impl ExecutionRecord {
         self.events.resubscribe_from()
     }
 
-    /// 被事件丢弃的「自带来源」帧数量。恒应大于 0 表示有人试图改写来源（CM-61）。
+    /// 被事件丢弃的「自带来源」帧数量。恒应大于 0 表示有人试图改写来源。
     pub fn declared_source_events_ignored(&self) -> u64 {
         self.events.declared_source_events_ignored()
     }
@@ -232,7 +232,7 @@ impl ExecutionRecord {
 /// 一次**结局未知**的写入：账本读不出来，于是谁也不知道那次写到底落没落。
 ///
 /// 键里**刻意没有** `idempotencyKey` 与令牌指纹——留一个空子就等于让围栏失效，
-/// 因为「换个新键自动重试未知写入」正是围栏要挡的那件事（CM-70）。
+/// 因为「换个新键自动重试未知写入」正是围栏要挡的那件事。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct UnknownOutcome {
     db_session_id: String,
@@ -253,21 +253,21 @@ struct GatewayState {
     records: HashMap<ExecutionId, ExecutionRecord>,
     samples: OverheadSamples,
     next_sequence: u64,
-    /// CM-70：结局未知的写入。命中它的新提交一律要求核验，不受理。
+    /// 结局未知的写入。命中它的新提交一律要求核验，不受理。
     unverified: HashSet<UnknownOutcome>,
 }
 
 /// 围栏只有两个动作，都以 `(dbSessionId, 语义指纹)` 为键。
 ///
 /// 键里**不能**有令牌或幂等键：围栏要挡的正是「换个新键自动重试」，
-/// 键绑在令牌上等于没围（CM-70）。
+/// 键绑在令牌上等于没围。
 impl GatewayState {
     fn is_unverified(&self, handle: &SessionHandle, fingerprint: &RequestFingerprint) -> bool {
         self.unverified
             .contains(&UnknownOutcome::of(handle, fingerprint))
     }
 
-    /// 记一次「结局未知」。CM-70 有**两个**抬围栏的点，理由不同但键相同：
+    /// 记一次「结局未知」。抬围栏的点有**两个**，理由不同但键相同：
     /// 账本读不出来（受理时）与请求已经交给驱动（下发时，见
     /// [`ExecutionGateway::dispatch`]）。两者都满足「这条语义写入可能已经
     /// 生效，只是没人知道」。
@@ -286,7 +286,7 @@ pub struct ExecutionGateway {
     authorizer: Arc<dyn Authorizer>,
     ledger: IdempotencyLedger,
     clock: Arc<dyn MonotonicClock>,
-    /// 令牌闸门（CM-70）。`None` 表示调用方没装签名令牌层——此时受理退回
+    /// 令牌闸门。`None` 表示调用方没装签名令牌层——此时受理退回
     /// 「键即不透明字符串」的旧行为，由 [`Self::with_submission_tokens`] 显式装配。
     tokens: Option<Arc<SubmissionTokenGuard>>,
     state: Mutex<GatewayState>,

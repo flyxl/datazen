@@ -27,7 +27,7 @@ impl ExecutionGateway {
         }
     }
 
-    /// 「这条句柄在本主体名下是否存在且可用」的**唯一**判定入口（CM-04 / CM-05 / CM-06）。
+    /// 「这条句柄在本主体名下是否存在且可用」的**唯一**判定入口。
     /// 受理、下发、取消三个调用点都必须走它。`expected_revision` 只在下发闸门给值（CAS 期望值）。
     async fn owned_view(
         &self,
@@ -49,7 +49,7 @@ impl ExecutionGateway {
         .await
     }
 
-    /// 装配签名令牌层（CM-70）。受理路径的**第 0 步**变为令牌闸门：
+    /// 装配签名令牌层。受理路径的**第 0 步**变为令牌闸门：
     /// 验签 → 墓碑 → 过期 → owner 代次，任一不过即拒绝，**不分配 `executionId`、
     /// 不写账本、不下发**。
     pub fn with_submission_tokens(
@@ -74,11 +74,11 @@ impl ExecutionGateway {
         self.tokens.as_ref()
     }
 
-    /// 保留期清扫（CM-70 §3.5）：授予与账本记录**一并**删。
+    /// 保留期清扫：授予与账本记录**一并**删。
     ///
     /// 两边必须同时删，只删一边会各自留个洞：只删授予，重放仍命中账本返回原回执
     /// （还算安全，但掩盖了「记录已过期」这件事）；只删账本，令牌没过期时会
-    /// **真的再执行一遍**——CM-70 禁止的就是这个。
+    /// **真的再执行一遍**——这正是要禁止的。
     ///
     /// 顺序固定为先 `GrantRegistry::sweep`（那里已经判过 `expires_at` 与
     /// `retained_until`）再按返回的作用域删账本，所以「未过期不得删」这道闸
@@ -120,11 +120,11 @@ impl ExecutionGateway {
         let fingerprint = request.fingerprint();
         let handle = request.handle.clone();
 
-        // ── CM-70 第 0 步：令牌闸门 ────────────────────────────────────────
+        // ── 第 0 步：令牌闸门 ────────────────────────────────────────
         // 位置是**语义要求**，不是代码风格：闸门必须在账本查重之前。
         // 若排在之后，一条「已被保留期清扫删除账本记录、但自身尚未过期」的令牌
         // 会一路走到第 4 步查重得到 `Miss`，然后被真的再执行一遍——
-        // 正是 CM-70 断言禁止的行为。闸门在前，请求在第 4 步之前就死了。
+        // 正是闸门要拦下的行为。闸门在前，请求在第 4 步之前就死了。
         let admission = match &self.tokens {
             None => None,
             Some(guard) => Some(
@@ -300,7 +300,7 @@ impl ExecutionGateway {
             }
         }
 
-        // CM-70：围栏在**把请求交给驱动的那一刻**抬起，刻意不看返回。
+        // 围栏在**把请求交给驱动的那一刻**抬起，刻意不看返回。
         //
         // 触发条件是「已下发」而非「驱动报错了」：SQL 可能已落库而结果没回来。判据的
         // 「响应丢失」有两种丢法——驱动报错（落没落库没人知道）与驱动成功但回执在路上
@@ -436,7 +436,7 @@ impl ExecutionGateway {
         disposition
     }
 
-    /// 用快照对齐水位线（CM-55 空洞恢复）。
+    /// 用快照对齐水位线（空洞恢复）。
     pub async fn recover_from_snapshot(
         &self,
         execution_id: &ExecutionId,
@@ -453,7 +453,7 @@ impl ExecutionGateway {
         }
     }
 
-    /// 核验过那次结局未知的写入之后，解除围栏（CM-70）。
+    /// 核验过那次结局未知的写入之后，解除围栏。
     ///
     /// 这是围栏**唯一**的出口。调用方必须先确认那次写到底落没落（查库、
     /// 看业务唯一键），然后才轮到改本地状态；让受理路径自己「过一会儿就忘」，
@@ -501,7 +501,7 @@ impl ExecutionGateway {
         state.records.len()
     }
 
-    /// CM-60 样本仓库快照。
+    /// 样本仓库快照。
     pub async fn overhead_samples(&self) -> OverheadSamples {
         let state = self.state.lock().await;
         state.samples.clone()

@@ -10,7 +10,7 @@ use datazen_platform_api::ports::network::TunnelSpec;
 use crate::connection::types::LeaseId;
 use crate::tunnel::{TunnelError, TunnelFault, TunnelHandle, TunnelLedger, TunnelTransport};
 
-/// 物理端口做过的每一件事。CM-32 的「不关闭 / 最后一个引用才关闭」断言
+/// 物理端口做过的每一件事。「不关闭 / 最后一个引用才关闭」断言
 /// **全靠读这个 journal 的计数**，而不是只看返回值。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TunnelEvent {
@@ -33,7 +33,7 @@ impl TunnelEvent {
 /// 它是「一条 spec 开过几次、关过几次」的**唯一**形状，且**全部**由
 /// [`tallies`] 这一个纯函数从 journal 现折、**不落地**：
 /// `RecordingTunnelTransport` 里没有任何计数**字段**，只有 `journal` 这一份事实。
-/// CM-32-FU1 登记的反例正是「往端口塞一份自存的 `Mutex<usize>` 并让观测方法改读它」——
+/// 反例正是「往端口塞一份自存的 `Mutex<usize>` 并让观测方法改读它」——
 /// 那份账会伪装成第一本账，于是第二本账永远查不出来。如今这条路被
 /// `tunnel::single_counter_audit` 的字段审计（R4）杀掉，kill test 是
 /// `the_field_audit_catches_the_planted_second_ledger`。
@@ -184,9 +184,9 @@ impl RecordingTunnelTransport {
             .clone()
     }
 
-    /// `close` 被调用的**次数** —— CM-32 第二条断言的主观测点。
+    /// `close` 被调用的**次数** —— 第二条断言的主观测点。
     ///
-    /// CM-32-FU1：这一行**只**是 [`tallies`] 的一个投影，不是另一份账。
+    /// 这一行**只**是 [`tallies`] 的一个投影，不是另一份账。
     /// 把它改读端口里某个自存的 `Mutex<usize>` 会让 `tunnel::single_counter_audit`
     /// 的字段审计（R4）与投影审计（R5）同时转红。
     pub fn close_calls(&self) -> usize {

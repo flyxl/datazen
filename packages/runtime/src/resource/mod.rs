@@ -1,4 +1,4 @@
-//! 宿主资源台账与生命周期裁决（shared-boundaries-and-ports.md §3.2 模块表第 4 行 `resource`）。
+//! 宿主资源台账与生命周期裁决。
 //!
 //! 一句话职责：**管账与裁决，不管驱动实现**。本模块持有物理连接表、`poolKey` 索引、
 //! 租约生命周期与替代提交闸门，回答「能不能复用 / 能不能再执行 / 能不能回池 / 能不能发布」。
@@ -9,7 +9,7 @@
 //! **边界一：不得在本模块内做驱动 `Clean` 判定。**
 //! `Clean` 由驱动以**结论**上报（[`cleanup::DriverCleanVerdict`]，刻意不携带任何判定依据），
 //! 宿主只做**自己的**检查（活动执行 / 未完成协议 / 未释放的会话级句柄 / 归属被禁用），
-//! 两边都通过才允许回池（connection-management.md §7.3 步骤 6、CM-69）。
+//! 两边都通过才允许回池。
 //! 换句话说：宿主**看不到** `Clean` 是怎么算出来的，也**不允许**在本模块里重算它。
 //!
 //! **边界二：不得把物理连接句柄放进任何公开类型或返回值。**
@@ -39,7 +39,7 @@
 //!
 //! * `connection/**` 是冻结的会话面：会话状态、句柄登记、`PoolKeyInputs`/`PoolKeyFingerprint`
 //!   都在那里，本模块**只用不重定义**。
-//! * `registry/**` 是 Wave 2 接缝，冻结；资源层的租约/句柄/预算许可**不得**浮到会话面，
+//! * `registry/**` 是尚未落地的会话层接缝，冻结；资源层的租约/句柄/预算许可**不得**浮到会话面，
 //!   会话面只会看到 `RuntimeError::BudgetExhausted`（见 `registry/mod.rs` 的边界声明）。
 //! * 物理端口 [`cleanup::PhysicalTransport`] 是本模块自己定义的**注入式**驱动侧接缝：
 //!   `connection/port.rs` 只冻结了 DTO 与 `BudgetPort`，并没有资源操作端口。
@@ -59,13 +59,13 @@ mod tunnel_wiring;
 /// 连续旅程测试的共享替身（`FakeClock` 适配、记录式物理端口、可注入故障的目录）。
 #[cfg(test)]
 mod harness;
-/// 归还裁决旅程（CM-69 / CM-73）。
+/// 归还裁决旅程。
 #[cfg(test)]
 mod journey;
-/// 候选替换旅程（CM-68）。
+/// 候选替换旅程。
 #[cfg(test)]
 mod journey_ledger;
-/// 轮换、配置版本与禁用旅程（CM-67 / CM-38 / CM-39）。
+/// 轮换、配置版本与禁用旅程。
 #[cfg(test)]
 mod journey_rotation;
 
@@ -92,8 +92,8 @@ use crate::connection::RuntimeError;
 
 /// 本模块全部拒绝的**唯一**出口。
 ///
-/// **为什么不是 `PortError`**：`PortError` 只有 7 个变体且刻意不实现 `Serialize`
-/// （`shared-boundaries-and-ports.md` §4），而 platform-api 是冻结上游、禁止加变体；
+/// **为什么不是 `PortError`**：`PortError` 只有 7 个变体且刻意不实现 `Serialize`，
+/// 而 platform-api 是冻结上游、禁止加变体；
 /// 会话面则已经有 `RuntimeError`（connection/error.rs）。所以本模块给出自己精确的原因集，
 /// 并用 [`ResourceError::as_runtime_error`] 把**每一个**变体映射到**既有的** `RuntimeError`
 /// 变体上 —— 线上不产生任何新的拒绝形状。
@@ -159,7 +159,7 @@ impl ResourceError {
             Self::IllegalTransition { .. } | Self::InvariantBroken(_) => {
                 RuntimeError::InvariantBroken(self.reason())
             }
-            // 候选未提交 ⇒ 对公开目录而言**根本不存在**这个会话（§7.4 步骤 6）。
+            // 候选未提交 ⇒ 对公开目录而言**根本不存在**这个会话。
             Self::UnknownResource(_) | Self::CandidateNotPublished => {
                 RuntimeError::UnknownSession(self.reason().to_string())
             }
@@ -180,7 +180,7 @@ impl ResourceError {
                 RuntimeError::BudgetExhausted(self.reason())
             }
             // 隧道建不成或压根没接隧道端口 ⇒ 宿主侧不满足，归零与核销都由隧道侧说了算，
-            // 这里不替它做「当作直连」的猜测（CM-27「隧道引用正确」）。
+            // 这里不替它做「当作直连」的猜测（「隧道引用正确」）。
             Self::TunnelPortNotWired | Self::TunnelRefused(_) => {
                 RuntimeError::SessionQuarantined(self.reason())
             }
@@ -222,11 +222,11 @@ pub trait MonotonicSource: Send + Sync + 'static {
     fn now_nanos(&self) -> u64;
 }
 
-/// §9.2 的空池元数据上限。池里**没有**资源时可以保留元数据条目（供后续命中同一 key），
+/// 空池元数据上限。池里**没有**资源时可以保留元数据条目（供后续命中同一 key），
 /// 但条目数必须被这个上限卡住，否则每个历史键都会留一条永不回收的影子记录。
 pub const EMPTY_POOL_METADATA_LRU_LIMIT: usize = 32;
 
-/// §9.2 的短操作池空闲 TTL（秒）。到期后池内资源不再被签发，转关闭。
+/// 短操作池空闲 TTL（秒）。到期后池内资源不再被签发，转关闭。
 pub const IDLE_POOL_TTL_SECONDS: u64 = 60;
 
 /// 把「纳秒 + 秒」换成毫秒级秒数常量，便于 `FakeClock` 推进时直接对表。
@@ -289,7 +289,7 @@ mod tests {
     }
 
     /// 边界二的另一半：`PhysicalHandle` 必须既不是 `pub`，也不在 `mod.rs` 的再导出名单里。
-    /// 两条一起才构成「不导出物理连接句柄」（shared-boundaries-and-ports.md §3.2 第 4 行）。
+    /// 两条一起才构成「不导出物理连接句柄」。
     #[test]
     fn physical_handle_is_not_exported() {
         let table = include_str!("table.rs");
@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn the_pool_metadata_bound_is_the_one_the_spec_names() {
-        // connection-management.md §9.2：空池元数据条目上限 32。
+        // 空池元数据条目上限 32。
         assert_eq!(EMPTY_POOL_METADATA_LRU_LIMIT, 32);
         assert_eq!(IDLE_POOL_TTL_SECONDS, 60);
         assert_eq!(NANOS_PER_SECOND, 1_000_000_000);

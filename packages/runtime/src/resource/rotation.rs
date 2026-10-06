@@ -1,9 +1,9 @@
-//! 轮换、禁用/删除、排队三类**生命周期编排**（A3.4 / A3.7）。
+//! 轮换、禁用/删除、排队三类**生命周期编排**。
 //!
-//! - 轮换（CM-67）：凭据 / 路由 / ACL 轮换后旧代空闲不再签发并立刻关闭；
+//! - 轮换：凭据 / 路由 / ACL 轮换后旧代空闲不再签发并立刻关闭；
 //!   缓存回填按代次比对，旧代慢结果**不得**回填新一代。
-//! - 禁用/删除（CM-39）：新申请与排队申请不再执行，已在跑的执行按**真实**取消处置记账。
-//! - 排队：§9.2 的获取超时（10s）到期后交还 `ResourceBusy` 的上游由网关决定。
+//! - 禁用/删除：新申请与排队申请不再执行，已在跑的执行按**真实**取消处置记账。
+//! - 排队：获取超时（10s）到期后交还 `ResourceBusy` 的上游由网关决定。
 //!
 //! 这些都是 `ResourceManager` 的方法，但关注的是「代次与归属」而不是「单条租约」，
 //! 因此独立成文件以保持单个职责清晰。
@@ -16,7 +16,7 @@ use crate::resource::table::{DisableOutcome, QueueDrain, QueuedLease, RotationRe
 use crate::resource::{ResourceError, NANOS_PER_SECOND};
 
 impl super::manager::ResourceManager {
-    // ---- 轮换（A3.4 / CM-67） ----
+    // ---- 轮换 ----
 
     /// 凭据 / 路由 / ACL 轮换：旧代空闲**不再签发**并立刻关闭，新材料才签发新资源。
     pub fn rotate(
@@ -75,7 +75,7 @@ impl super::manager::ResourceManager {
         })
     }
 
-    // ---- 禁用/删除（A3.7 / CM-39） ----
+    // ---- 禁用/删除 ----
 
     /// 禁用或删除一份连接配置：新申请与排队申请**不再执行**，
     /// 已经在跑的执行按**真实**取消处置记账。
@@ -113,7 +113,7 @@ impl super::manager::ResourceManager {
             }
         }
 
-        // 3) 已经在跑的执行：如实记录取消处置（CM-39）。
+        // 3) 已经在跑的执行：如实记录取消处置。
         let mut cancellations = Vec::new();
         let mut quarantined = Vec::new();
         let busy = self.table.all_leases().into_iter().filter(|record| {
@@ -156,7 +156,7 @@ impl super::manager::ResourceManager {
         self.disabled.shift_remove(connection_id);
     }
 
-    // ---- 排队（§9.2 获取超时） ----
+    // ---- 排队（获取超时） ----
 
     pub fn enqueue(&mut self, request: LeaseRequest) -> Result<QueuedLease, ResourceError> {
         let connection_id = request.pool_key_inputs.connection_id.clone();
