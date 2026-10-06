@@ -51,8 +51,9 @@ use std::path::{Path, PathBuf};
 
 use syn::visit::{self, Visit};
 use syn::{
-    Expr, ExprField, ExprLit, ExprMethodCall, ExprPath, File as SynFile, Fields, GenericArgument,
-    ImplItem, Item, ItemImpl, ItemStruct, Lit, Member, Pat, Path as SynPath, PathArguments, Stmt, Type,
+    Expr, ExprField, ExprLit, ExprMethodCall, ExprPath, Fields, File as SynFile, GenericArgument,
+    ImplItem, Item, ItemImpl, ItemStruct, Lit, Member, Pat, Path as SynPath, PathArguments, Stmt,
+    Type,
 };
 
 /// 被审计的类型名。
@@ -99,7 +100,11 @@ pub fn audit(resource_dir: &Path) -> Vec<String> {
 
 /// 单个测试用：把清单拼成一条可直接 `assert!(..., "{msg}")` 的消息。
 pub fn describe(findings: &[String]) -> String {
-    format!("单账铁律（CM-32）被破坏，共 {} 处：\n{}", findings.len(), findings.join("\n"))
+    format!(
+        "单账铁律（CM-32）被破坏，共 {} 处：\n{}",
+        findings.len(),
+        findings.join("\n")
+    )
 }
 
 // ---------------------------------------------------------------- 文件与解析
@@ -108,14 +113,20 @@ fn parse(path: &Path, findings: &mut Vec<String>) -> Option<SynFile> {
     let source = match std::fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) => {
-            findings.push(format!("{}: 读不到源文件（{error}），审计无法进行", path.display()));
+            findings.push(format!(
+                "{}: 读不到源文件（{error}），审计无法进行",
+                path.display()
+            ));
             return None;
         }
     };
     match syn::parse_file(&source) {
         Ok(file) => Some(file),
         Err(error) => {
-            findings.push(format!("{}: 解析失败（{error}），审计无法进行", path.display()));
+            findings.push(format!(
+                "{}: 解析失败（{error}），审计无法进行",
+                path.display()
+            ));
             None
         }
     }
@@ -150,9 +161,18 @@ fn audit_manager(file: &SynFile, path: &Path, findings: &mut Vec<String>) {
     let actual: BTreeSet<String> = named
         .named
         .iter()
-        .map(|field| field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_default())
+        .map(|field| {
+            field
+                .ident
+                .as_ref()
+                .map(|ident| ident.to_string())
+                .unwrap_or_default()
+        })
         .collect();
-    let expected: BTreeSet<String> = MANAGER_FIELDS.iter().map(|name| (*name).to_owned()).collect();
+    let expected: BTreeSet<String> = MANAGER_FIELDS
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect();
     let extra: Vec<&String> = actual.difference(&expected).collect();
     let missing: Vec<&String> = expected.difference(&actual).collect();
     if !extra.is_empty() || !missing.is_empty() {
@@ -204,7 +224,9 @@ fn audit_wiring(file: &SynFile, path: &Path, findings: &mut Vec<String>) {
     for item in impls {
         for entry in &item.items {
             // syn 2 把 syn 1 的 `ImplItem::Method` 改名叫 `ImplItem::Fn`（字段 `sig`/`block` 不变）。
-            let ImplItem::Fn(method) = entry else { continue };
+            let ImplItem::Fn(method) = entry else {
+                continue;
+            };
             let name = method.sig.ident.to_string();
             let body = scan(&method.block);
 
@@ -275,11 +297,7 @@ fn audit_tunnel_refs(body: &Body, path: &Path, findings: &mut Vec<String>) {
 
     // R5b：`self.tunnels` 只能作为方法接收者出现，不得被读取进局部变量 / 直接返回 /
     // 取地址 / 解引用 —— 一旦读出来，调用方就可能拿它当第二份快照。
-    let roots: BTreeSet<usize> = body
-        .ledger_calls
-        .iter()
-        .map(|(root, _, _)| *root)
-        .collect();
+    let roots: BTreeSet<usize> = body.ledger_calls.iter().map(|(root, _, _)| *root).collect();
     for (field, site) in &body.reads {
         if field == TUNNEL_FIELD && !roots.contains(site) {
             findings.push(format!(
@@ -352,7 +370,9 @@ fn audit_no_statics(resource_dir: &Path, findings: &mut Vec<String>) {
         return;
     }
     for file in files {
-        let Some(syntax) = parse(&file, findings) else { continue };
+        let Some(syntax) = parse(&file, findings) else {
+            continue;
+        };
         for item in &syntax.items {
             if let Item::Static(item) = item {
                 findings.push(format!(
@@ -433,9 +453,7 @@ impl<'ast> Visit<'ast> for Body {
     fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
         let method = node.method.to_string();
         let receiver = match node.receiver.as_ref() {
-            Expr::Path(path)
-                if path.qself.is_none() && path.path.get_ident().is_some() =>
-            {
+            Expr::Path(path) if path.qself.is_none() && path.path.get_ident().is_some() => {
                 path.path.get_ident().map(|ident| ident.to_string())
             }
             _ => None,
@@ -457,9 +475,7 @@ fn is_self_expr(expr: &Expr) -> bool {
 }
 
 fn is_self_path(path: &SynPath) -> bool {
-    path.leading_colon.is_none()
-        && path.segments.len() == 1
-        && path.segments[0].ident == "self"
+    path.leading_colon.is_none() && path.segments.len() == 1 && path.segments[0].ident == "self"
 }
 
 /// 沿接收者链往下找到 `self.<TUNNEL_FIELD>`，返回那个节点的地址。
@@ -508,7 +524,11 @@ pub fn render_type(ty: &Type) -> String {
     match ty {
         Type::Path(path) => render_path(&path.path),
         Type::Reference(reference) => {
-            let prefix = if reference.mutability.is_some() { "&mut " } else { "&" };
+            let prefix = if reference.mutability.is_some() {
+                "&mut "
+            } else {
+                "&"
+            };
             format!("{prefix}{}", render_type(&reference.elem))
         }
         Type::Paren(paren) => format!("({})", render_type(&paren.elem)),
