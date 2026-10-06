@@ -122,6 +122,18 @@
 - ⚠️ **对既有 P5 数字的追认**：集成分支合并门禁、各轨 Tester 的宿主单测数字，**都是在 basic 语义下取得的**，其结论只能限定在 basic 内，不能用来推断 CI 会不会红。上文「1741 = 1733 + 8」的算术**在同一驱动集内成立**（同集内前后比较），但该数字**不得跨驱动集引用**。Wave-R 最终回归必须统一按 `--drivers=all` 重铺后重跑。
 - 已广播给在飞的两轨（`7c83fa5b`、`fa475e95`），并要求在报告里标注所用驱动集、且**基线与该次变异必须同一驱动集**——否则「变红/存活」的判决同样失效。
 
+### 📦 交付待验：p5-data-sync R2 修复 → HEAD `f3f4ec3e0`（Tester `5324a984` 复验中，基线 `25d336ece`）
+
+R1 被否的根因是**测试断言在共享 `Arc<AtomicBool>` 这个对象上**，而不是断言可观测行为；且一个「切断内核→宿主取消管线」的变异存活。本轮的核心命题因此是 **删掉那座桥，而不是补一个覆盖它的测试**——这正是我此前定的「桥被架构性退役时就删，不要为它写测试」这条准则的首次实证。
+
+- **核心改动**：宿主侧 `CANCEL` / `CancelEntry` / `cancel_flag` / `ctx_of` / `request_cancel` / `is_cancelled` 整体删除，`seed_cancelled` 的窗口 flag 副本删除；三个 executor 检查点改轮询**内核** flag（`CancelToken` 按引用经端口 trait 穿到 `table_reader`/`target_executor`，`cancel.flag()` 恰好两处）。CM-44 由**给内核 Job 记录播种**保住（`cancel_job` 保留窗口注册表 **并** 调 `repository().request_cancel`，返回 `window || kernel`；`drive` 在 `accept` 之后、`runtime.run` 之前重播 `cancel_requested`，使 `run` 走 `confirm_cancelled_not_started(..., NotStarted)` 分支）。测试假件 `tests/support/{page_source,executor,host}.rs` 各自私铸 flag 的问题也一并修掉。
+- ⚠️ **本轮最高风险项：`submit_prepare` / `submit_apply` 的参数从 `Option<Arc<AtomicBool>>` 改成 `Option<String>`。** 这两个函数若带 `#[tauri::command]` 标注，就是 **IPC 可见的签名变更**，任何前端调用方漏改都会在运行期炸。已列为 Tester 第一顺位核查项，并要求在非命令的情况下给出证据改查「是否还有别的生产调用方在传已删除的 `Arc<AtomicBool>`」。
+- 🔶 **M3（CM-44 前置 Job 取消播种）第一轮存活，交付方如实上报并补测试后才杀死。** 这是本项目第一次出现「交付方主动把自己不干净的变异结果写进报告」。根因也讲得清楚：当时唯一的 CM-44 前置用例打在**遗留** `execute_data_sync_impl` 语句路径上，根本不进 `drive`，因而观察不到「窗口 id → 内核 Job 记录」这一跳。Tester 需在 `c56b2e17`（修前）与 `f3f4ec3e0`（修后）两端各跑一次以复现这个存活→被杀的弧线，并判定新用例是否非空转。
+- 🟡 **交付方与我给的基线数字对不上，三处**，已要求独立裁定而非采信：warning 数 **32 vs 我说的 30**（并主张 `--drivers=all` 下修前基线是 **34** 而非早前轮次引用的 31，且恰好减 2 增 0）；R3 影响面 **1 vs 我预测的 3**；R4 影响面 **6 vs 我预测的 3**。这三条都要求 Tester 自己在 `25d336ece` 拉基线实测。
+- 🟡 **R4 曾挂死整个套件**（摘掉 PK 谓词后 apply 在任何语句前就拒绝，nothing reached the gate，`tokio::join!` 永久 park）。交付方的处置是**改测试而非改变异**：把等待上界钉在 20 s 并对其做断言。这条必须裁决——「有界等待」既能把挂死变成红灯（好），也可能把「走错路径所以永远不来」一并吞掉（坏）。要求 Tester 判定它究竟是在断言「等待的东西确实在界内发生了」，还是仅仅「不等了」。
+- 交付方亦如实登记：本轮新契约用例走的是 gated mock 驱动，**不是真实数据库**，因此**未**关掉「§10 无真实 DB 验证」这一既有限制。
+- 门禁自报（`--drivers=all`）：host `--lib` 1745、data-sync 201、runtime **842**、`cargo check` EXIT=0、typecheck `error TS`=0。runtime 为 842 而非 843，原因是本分支不含 cancel-hardening 那次合并——已要求 Tester **验证**该解释而非默认接受。
+
 ### ✅ 已合并：p5-cancel-hardening `f440acf91` → 集成分支 `7ec0ca315`（Tester `aacf7430` TEST_PASSED，零缺陷）
 
 - Tester 判**四项全过、零存活变异、零缺陷**，并**自行加跑一条我没要求的对照 CTRL-2b**：在 `e16b43415` 上**只加 D-B 的 +32 行测试缝、不加新测试**，同一 `terminal` 变异**仍然存活**。这一条把归因锁死为「CTRL-2→MUT-2 的差异**只能**来自新增的 D-B 用例」，而非来自测试缝本身。三个存活变异因此是**对照臂，非逃逸**。
