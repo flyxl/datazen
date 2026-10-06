@@ -3,17 +3,18 @@
 //! One rule shapes the whole file: a Data Sync Job talks to drivers through
 //! exactly one `ConnectionManager` for its whole lifetime (§9), and the apply
 //! Job keeps exactly one target lease for every batch (§5.3). Everything else
-//! — budget permits, cancel flags, relation metadata — is bookkeeping around
-//! those two leases.
+//! — budget permits, relation metadata — is bookkeeping around those two
+//! leases. The cancel bit is not bookkeeping at all: it is not held here, only
+//! handed straight through from the stage's own `CancelToken`.
 
 mod executor;
 pub(crate) mod recording;
+pub(super) mod select;
 pub(crate) mod selection;
 pub(crate) mod state;
 mod statements;
 
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
@@ -23,7 +24,7 @@ use datazen_driver_api::{
 use datazen_platform_api::id::ConnectionId;
 use datazen_platform_api::ports::budget::{BudgetPermit, ResourceClass};
 use datazen_runtime::budget::{AdmitOutcome, BudgetClaim, BudgetLedger};
-use datazen_runtime::job::JobClock;
+use datazen_runtime::job::{CancelToken, JobClock};
 
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
 use crate::data_sync::job::host::{
@@ -32,8 +33,8 @@ use crate::data_sync::job::host::{
 };
 use crate::data_sync::pairing::family_of;
 use crate::data_sync::{
-    quote_ident_sql, require_data_sync_family, DataSyncError, Endpoint, RowChange, SqlStatement,
-    SyncOptions, SyncSourceFilter, TableMapping,
+    require_data_sync_family, DataSyncError, Endpoint, RowChange, SqlStatement, SyncOptions,
+    SyncSourceFilter, TableMapping,
 };
 use crate::services::{metadata_schema, ConnectionManager};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
@@ -76,7 +77,6 @@ struct Slot {
 pub(crate) struct HostDataSync {
     connections: Arc<ConnectionManager>,
     adapters: Arc<SyncAdapterRegistry>,
-    cancel: Arc<AtomicBool>,
     source: Endpoint,
     target: Endpoint,
     filters: HashMap<String, SyncSourceFilter>,
@@ -98,7 +98,6 @@ impl HostDataSync {
     pub(crate) fn new(
         connections: Arc<ConnectionManager>,
         adapters: Arc<SyncAdapterRegistry>,
-        cancel: Arc<AtomicBool>,
         source: Endpoint,
         target: Endpoint,
         filters: HashMap<String, SyncSourceFilter>,
@@ -106,7 +105,6 @@ impl HostDataSync {
         Self {
             connections,
             adapters,
-            cancel,
             source,
             target,
             filters,
@@ -548,7 +546,7 @@ impl DataSyncHost for HostDataSync {
                         pk_columns: side_pk.clone(),
                         key_contracts: contracts.clone(),
                         recordset_limit,
-                        select_by_key_sql: select_by_key_sql(
+                        select_by_key_sql: select::select_by_key_sql(
                             slot.session.driver.as_ref(),
                             &quote,
                             &slot.session.database,
@@ -578,6 +576,7 @@ impl DataSyncHost for HostDataSync {
         session: &EndpointSession,
         table: &str,
         filter: Option<&SyncSourceFilter>,
+        cancel: &CancelToken,
     ) -> Result<Box<dyn KeysetPageSource>, DataSyncError> {
         let slot = self.slot_of(session)?;
         let meta = self.relation_meta(slot.is_source, table)?;
@@ -618,7 +617,7 @@ impl DataSyncHost for HostDataSync {
             meta.column_types.clone(),
             recordset_limit,
         )?;
-        Ok(Box::new(HostKeysetSource::new(inner, self.cancel.clone())))
+        Ok(Box::new(HostKeysetSource::new(inner, cancel.flag())))
     }
 
     async fn store_artifact(
@@ -666,6 +665,7 @@ impl DataSyncHost for HostDataSync {
     async fn target_executor(
         &self,
         session: &EndpointSession,
+        cancel: &CancelToken,
     ) -> Result<Box<dyn TargetExecutor>, DataSyncError> {
         let slot = self.slot_of(session)?;
         if slot.is_source {
@@ -679,7 +679,7 @@ impl DataSyncHost for HostDataSync {
         Ok(Box::new(HostTargetExecutor::new(
             slot.session.driver.clone(),
             slot.session.handle.clone(),
-            self.cancel.clone(),
+            cancel.flag(),
             read_by_key_sql,
         )))
     }
@@ -718,63 +718,4 @@ pub(crate) fn scope_for(family: &str) -> TransactionScope {
         "mysql" | "postgresql" | "sqlserver" => TransactionScope::Batch,
         _ => TransactionScope::NonAtomic,
     }
-}
-
-/// `SELECT <all columns> … WHERE <pk> = <placeholder> …` used by the apply
-/// handler to verify one target row right before the batch writes it (§5.3).
-///
-/// The predicate must **bind the reviewed key**: `HostTargetExecutor::read_by_key`
-/// passes the key values to `query_with_params` in the same order, and the
-/// handler reads at most one row. A `pk IS NOT NULL` scan would instead answer
-/// with the first row of the table, which silently verifies — and can accept —
-/// a row the review never saw.
-fn select_by_key_sql(
-    driver: &dyn crate::db::DatabaseDriver,
-    quote: &char,
-    database: &str,
-    schema: Option<&str>,
-    table: &str,
-    columns: &[String],
-    pk_columns: &[String],
-    column_types: &HashMap<String, String>,
-) -> Result<String, DataSyncError> {
-    let mut parts = vec![database.to_string()];
-    if let Some(schema) = schema {
-        parts.push(schema.to_string());
-    }
-    parts.push(table.to_string());
-    let qualified = parts
-        .iter()
-        .map(|part| quote_ident_sql(part, *quote))
-        .collect::<Vec<_>>()
-        .join(".");
-    let projection = columns
-        .iter()
-        .map(|column| quote_ident_sql(column, *quote))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let predicate = pk_columns
-        .iter()
-        .enumerate()
-        .map(|(offset, pk)| {
-            // Placeholder indexes are 1-based and positional: the key values the
-            // executor binds land in exactly this order.
-            let placeholder = driver
-                .parameter_placeholder(offset + 1, column_types.get(pk).map(String::as_str))
-                .map_err(|error| invalid(error.to_string()))?;
-            Ok(format!("{} = {placeholder}", quote_ident_sql(pk, *quote)))
-        })
-        .collect::<Result<Vec<_>, DataSyncError>>()?
-        .join(" AND ");
-    let order = pk_columns
-        .iter()
-        .map(|pk| quote_ident_sql(pk, *quote))
-        .collect::<Vec<_>>()
-        .join(", ");
-    if order.is_empty() {
-        return Ok(format!("SELECT {projection} FROM {qualified}"));
-    }
-    Ok(format!(
-        "SELECT {projection} FROM {qualified} WHERE {predicate} ORDER BY {order}"
-    ))
 }

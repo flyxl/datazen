@@ -141,20 +141,23 @@ impl StatementExecutor for LiveExecutor {
     }
 }
 
-struct ValidatedSyncContext {
-    target_driver: Arc<dyn DatabaseDriver>,
-    target_handle: ConnectionHandle,
-}
-
 /// The IPC preview still returns a single JSON array, so keep that response
 /// explicitly bounded while the execution path consumes one generated page
 /// at a time.
 const SQL_PREVIEW_IPC_MAX_BYTES: usize = 16 * 1024 * 1024;
 
+/// Refuse an apply whose target can no longer be trusted, before the Job is
+/// submitted.
+///
+/// The target connection is opened and its schema fingerprint compared here so
+/// a plan reviewed against a different schema cannot be applied. The opened
+/// handle is not returned: the apply Job re-resolves its own session through the
+/// handler, so holding it would only pin a connection for the sake of a value
+/// nobody reads.
 async fn validate_plan_context(
     state: &AppState,
     plan: &StoredSyncPlan,
-) -> Result<ValidatedSyncContext, CommandError> {
+) -> Result<(), CommandError> {
     let comparison = plan
         .comparison
         .summaries()
@@ -248,10 +251,12 @@ async fn validate_plan_context(
             "target schema/key changed since comparison; return to comparison".into(),
         ));
     }
-    Ok(ValidatedSyncContext {
-        target_driver,
-        target_handle,
-    })
+    // The connection is dropped with this scope: the Job re-resolves it, and a
+    // handle kept only to be discarded would pin the session for the whole
+    // apply while adding nothing to the check above.
+    drop(target_driver);
+    drop(target_handle);
+    Ok(())
 }
 
 fn validate_active_database(
@@ -526,10 +531,6 @@ pub(crate) async fn execute_data_sync_plan_impl(
             options: request.options.clone(),
         },
     );
-    let window_cancel = match request.job_id.as_deref() {
-        Some(id) => Some(super::jobs::ensure_job(id).await),
-        None => None,
-    };
     let outcome = super::jobs::submit_apply(
         state,
         ApplySpec {
@@ -537,7 +538,7 @@ pub(crate) async fn execute_data_sync_plan_impl(
             selection_revision: plan.selection_revision,
             options: request.options,
         },
-        window_cancel,
+        request.job_id.clone(),
     )
     .await;
     if let Some(id) = request.job_id.as_deref() {

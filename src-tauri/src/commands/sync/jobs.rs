@@ -5,16 +5,24 @@
 //! [`submit_apply`] (planId + selectionRevision + confirmation). Both take the
 //! same four steps, in this order:
 //!
-//! 1. mint the Job id and register its cancel flag **before** anything can be
-//!    accepted, so a cancel that arrives while `accept` is in flight is already
-//!    observable by the runtime (runtime.rs:108) and by the host mid-stage;
+//! 1. adopt the Job id the caller already holds (the window mints it before the
+//!    request, so a cancel can name a Job that does not exist yet) and register
+//!    it in the pre-Job window registry, so a cancel that arrives before the Job
+//!    is accepted is still reachable;
 //! 2. `JobRepository::accept` — the one point that consumes a planId (CM-41)
 //!    and holds the idempotency receipt, so a replayed submit never produces a
-//!    second Job;
+//!    second Job; a cancel that landed during `accept` is carried into the fresh
+//!    record's `cancel_requested` (CM-44);
 //! 3. `JobRuntime::run` with one `EndpointRef` per endpoint, after
 //!    `BudgetLedger::ensure_service` registered both connections — without that
 //!    the ledger denies every claim as `UnknownConnection` before work starts;
 //! 4. project the terminal `JobResult` back to the caller.
+//!
+//! Cancel has exactly one owner: the Job record. [`cancel_job`] writes
+//! `cancel_requested` there (plus the pre-Job window registry for the window
+//! that has no Job yet), the runtime's per-stage watcher turns that into the
+//! stage's own `CancelToken`, and the handler polls that token between keyset
+//! pages and batch commits. The host keeps no second copy of the intent.
 //!
 //! The handler owns no Job state and the runtime carries no error text
 //! (`JobResult::error` is always `None`), so the user-facing message is rebuilt
@@ -24,7 +32,7 @@
 //! record itself proves nothing ran.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use datazen_platform_api::context::{OwnerRef, RequestContext};
@@ -69,18 +77,23 @@ pub(crate) struct SyncJobOutcome {
 /// command does, so its response carries the planId the apply Job will consume);
 /// otherwise the handler mints one and the caller reads it back from
 /// [`state::load_artifact`].
+///
+/// `window_job_id` is the id the caller already shows in the UI. It becomes the
+/// kernel [`JobId`] itself, so [`cancel_job`] can name this Job before it exists
+/// and after it is accepted, and it is registered in the pre-Job window
+/// registry first so a cancel that lands before `accept` is not lost.
 pub(crate) async fn submit_prepare(
     state: &AppState,
     spec: PrepareSpec,
-    window_cancel: Option<Arc<AtomicBool>>,
+    window_job_id: Option<String>,
 ) -> Result<SyncJobOutcome, CommandError> {
     let source = spec.source.clone();
     let target = spec.target.clone();
     let endpoints = endpoints_for(state, &source, &target).await?;
-    let (job_id, ctx, cancel) = open_job(PREPARE_KIND);
+    let cancelled_before_job = register_window_job(window_job_id.as_deref()).await;
+    let (job_id, ctx) = open_job(PREPARE_KIND, window_job_id.as_deref());
     let host = recording_host(
         state,
-        cancel.clone(),
         source,
         target,
         spec.filters.clone(),
@@ -92,7 +105,6 @@ pub(crate) async fn submit_prepare(
     } else {
         IdempotencyKey::new(format!("data-sync-prepare:{plan_id}"))
     };
-    seed_cancelled(&cancel, window_cancel.as_deref());
     drive(
         job_id,
         ctx,
@@ -101,6 +113,7 @@ pub(crate) async fn submit_prepare(
         idempotency,
         Arc::new(DataSyncHandler::for_prepare(spec, host)),
         endpoints,
+        cancelled_before_job,
     )
     .await
 }
@@ -112,10 +125,13 @@ pub(crate) async fn submit_prepare(
 /// (CM-41). Source/target come from the stored ChangeSet Artifact, which is the
 /// only reviewed input; source filters are not replayed because apply executes
 /// the reviewed blocks and never re-reads the source.
+///
+/// `window_job_id` is the id the caller already shows in the UI; see
+/// [`submit_prepare`] for what adopting it buys.
 pub(crate) async fn submit_apply(
     state: &AppState,
     spec: ApplySpec,
-    window_cancel: Option<Arc<AtomicBool>>,
+    window_job_id: Option<String>,
 ) -> Result<SyncJobOutcome, CommandError> {
     let artifact = state::load_artifact(&spec.plan_id).ok_or_else(|| {
         CommandError::Validation(format!(
@@ -135,16 +151,9 @@ pub(crate) async fn submit_apply(
     let source = artifact.source.clone();
     let target = artifact.target.clone();
     let endpoints = endpoints_for(state, &source, &target).await?;
-    let (job_id, ctx, cancel) = open_job(APPLY_KIND);
-    let host = recording_host(
-        state,
-        cancel.clone(),
-        source,
-        target,
-        HashMap::new(),
-        job_id.as_str(),
-    );
-    seed_cancelled(&cancel, window_cancel.as_deref());
+    let cancelled_before_job = register_window_job(window_job_id.as_deref()).await;
+    let (job_id, ctx) = open_job(APPLY_KIND, window_job_id.as_deref());
+    let host = recording_host(state, source, target, HashMap::new(), job_id.as_str());
     drive(
         job_id,
         ctx,
@@ -153,71 +162,77 @@ pub(crate) async fn submit_apply(
         IdempotencyKey::new(format!("data-sync-apply:{}", spec.plan_id)),
         Arc::new(DataSyncHandler::for_apply(spec, host)),
         endpoints,
+        cancelled_before_job,
     )
     .await
 }
 
-/// Record cancel intent for a Job id. Unknown ids still report success so the
-/// window never loses a click; the intent is registered before the Job exists
-/// and is observed by the host from the first batch on (CM-44).
+/// Record cancel intent for a Job id.
 ///
-/// Three stores are written, in this order:
+/// The Job record is the sole owner of cancel intent: `cancel_requested` here is
+/// what the runtime's per-stage watcher reads while the stage is running
+/// (`runtime.rs:362`), and what makes `JobRuntime::run` skip a Job cancelled
+/// before it started (CM-44). The pre-Job window registry is written too,
+/// because the window can cancel an id that has not been accepted yet —
+/// `submit_*` carries that intent into the record at accept time.
 ///
-/// 1. `state::CANCEL` — the flag the host reads between keyset pages and batch
-///    commits, which is the only place a running stage can observe a cancel
-///    today (the runtime's `CancelToken` is inspected at stage boundaries only,
-///    `runtime.rs:108` / `:164`);
-/// 2. the pre-Job window registry — ids the window minted itself live there, and
-///    `submit_*` reads it once at submission time;
-/// 3. the Job record's own `cancel_requested` intent — the kernel-visible
-///    channel. Once the runtime carries a cancel watcher for running stages, the
-///    host flag in (1) becomes redundant and can be dropped; until then (3)
-///    makes the intent visible to the kernel without touching the runtime.
+/// An unknown id still reports success, because the window registry accepted
+/// the click; the repository side simply has nothing left to mark.
 pub(crate) async fn cancel_job(job_id: &str) -> bool {
-    let registered = state::request_cancel(job_id, None);
     let window = crate::services::job_registry::cancel_job(job_id).await;
-    let ctx = state::ctx_of(job_id).unwrap_or_else(state::desktop_context);
+    let ctx = state::desktop_context();
     let kernel = match state::repository().request_cancel(&ctx, &JobId::new(job_id.to_string())) {
         Ok(record) => record.view.cancel_requested,
-        // A cancel that arrives before `accept` (or after the Job is terminal) has
-        // no record to mark. That is not a lost click: (1) already carries it, and
-        // `open_job` re-reads that same flag before the first batch.
         Err(error) => {
-            tracing::debug!(job_id, %error, "no job record to mark as cancelled");
+            tracing::debug!(job_id, %error, "no live job record to mark as cancelled");
             false
         }
     };
-    registered || window || kernel
+    window || kernel
 }
 
-/// Carry one already-registered window cancel into the Job flag, once, at
-/// submission time.
+/// Register the caller's id in the pre-Job window registry and report whether
+/// the user had already cancelled it by the time this submission arrived.
 ///
-/// A cancel that landed before the Job existed is already a `true` flag in the
-/// window registry; the Job flag has to start out matching it, otherwise the
-/// first keyset page would run against an intent the user already gave.
-fn seed_cancelled(job_flag: &AtomicBool, window_flag: Option<&AtomicBool>) {
-    if window_flag.is_some_and(|window| window.load(Ordering::SeqCst)) {
-        job_flag.store(true, Ordering::SeqCst);
+/// Reading the flag here — once, into a `bool` — is deliberate: the Job's cancel
+/// channel is the kernel record, so no flag handle travels any further into the
+/// submission path.
+async fn register_window_job(window_job_id: Option<&str>) -> bool {
+    match window_job_id {
+        Some(id) => crate::services::job_registry::ensure_job(id)
+            .await
+            .load(Ordering::SeqCst),
+        None => false,
     }
 }
 
-/// Register the Job id with its cancel flag and hand back the context the
+/// Adopt the Job id this submission runs under, and hand back the context the
 /// repository calls will be made under.
-fn open_job(kind: &'static str) -> (JobId, RequestContext, Arc<AtomicBool>) {
+///
+/// A caller-supplied id is the id the user (or the window) cancels by, so the
+/// Job has to *be* that id: minting a second one would leave the cancel and the
+/// Job in different address spaces. A caller with no id (the internal apply
+/// path) still gets a unique one.
+fn open_job(kind: &'static str, window_job_id: Option<&str>) -> (JobId, RequestContext) {
     let ctx = state::desktop_context();
-    let job_id = JobId::new(uuid::Uuid::new_v4().to_string());
-    let cancel = state::cancel_flag(job_id.as_str(), ctx.clone());
+    let job_id = match window_job_id {
+        Some(id) if !id.is_empty() => JobId::new(id.to_string()),
+        _ => JobId::new(uuid::Uuid::new_v4().to_string()),
+    };
     tracing::info!(%job_id, kind, "data sync job submitted");
-    (job_id, ctx, cancel)
+    (job_id, ctx)
 }
 
 /// The desktop host wrapped in the failure recorder. `RecordingHost` is the
 /// only production writer of `state::FAILURES`, which is what makes the IPC
 /// message evidence-based instead of a reconstruction.
+///
+/// The host is constructed without any cancel handle:
+/// `DataSyncHost::table_reader` and `::target_executor` take the running stage's
+/// `CancelToken`, so the bit the keyset walk and the batch executor poll is the
+/// kernel's own.
 fn recording_host(
     state: &AppState,
-    cancel: Arc<AtomicBool>,
     source: Endpoint,
     target: Endpoint,
     filters: HashMap<String, SyncSourceFilter>,
@@ -226,7 +241,6 @@ fn recording_host(
     let host = HostDataSync::new(
         state.connection_manager.clone(),
         state.sync_adapters.clone(),
-        cancel,
         source,
         target,
         filters,
@@ -282,6 +296,14 @@ async fn endpoints_for(
 }
 
 /// accept → run → project, shared by prepare and apply.
+///
+/// `cancelled_before_job` is the cancel the user gave before this Job existed.
+/// It is carried into the accepted record here — the only point where the
+/// window registry and the Job record can meet — so CM-44 keeps working after
+/// the host-side flag store is gone: the record starts out `cancel_requested`,
+/// and `JobRuntime::run` confirms `Cancelled` / `NotStarted` without entering
+/// budget or dispatch, so nothing runs at all (strictly stronger than the old
+/// flag copy, which could still let a first batch start).
 #[allow(clippy::too_many_arguments)]
 async fn drive(
     job_id: JobId,
@@ -291,6 +313,7 @@ async fn drive(
     idempotency: IdempotencyKey,
     handler: Arc<dyn JobHandler>,
     endpoints: Vec<EndpointRef>,
+    cancelled_before_job: bool,
 ) -> Result<SyncJobOutcome, CommandError> {
     let plan_id = payload
         .get("consumedPlanId")
@@ -350,6 +373,17 @@ async fn drive(
             }
             None => "this data sync job was already submitted; compare again".to_string(),
         }));
+    }
+
+    // CM-44: the window can cancel before `accept`, when there is still no
+    // record to mark. The accepted record is the first place that intent can
+    // live, so it is written before `run` reads it back. A failure here is not
+    // silently swallowed into a *running* Job: `run` re-reads the record, so
+    // the observable effect of a missed seed is exactly the old behaviour.
+    if cancelled_before_job
+        && let Err(error) = state::repository().request_cancel(&ctx, &job_id)
+    {
+        tracing::warn!(%job_id, %error, "could not carry a pre-job cancel into the job record");
     }
 
     {

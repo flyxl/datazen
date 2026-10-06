@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use datazen_runtime::job::CancelToken;
 
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
 use crate::data_sync::job::host::{
@@ -75,8 +76,9 @@ impl DataSyncHost for RecordingHost {
         session: &EndpointSession,
         table: &str,
         filter: Option<&SyncSourceFilter>,
+        cancel: &CancelToken,
     ) -> Result<Box<dyn KeysetPageSource>, DataSyncError> {
-        self.record(self.inner.table_reader(session, table, filter).await)
+        self.record(self.inner.table_reader(session, table, filter, cancel).await)
     }
 
     async fn store_artifact(
@@ -115,8 +117,9 @@ impl DataSyncHost for RecordingHost {
     async fn target_executor(
         &self,
         session: &EndpointSession,
+        cancel: &CancelToken,
     ) -> Result<Box<dyn TargetExecutor>, DataSyncError> {
-        self.record(self.inner.target_executor(session).await)
+        self.record(self.inner.target_executor(session, cancel).await)
     }
 
     async fn generate_statements(

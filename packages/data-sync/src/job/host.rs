@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, SyncKeyValue, TableSchema, Value};
+use datazen_runtime::job::CancelToken;
 
 use crate::error::DataSyncError;
 use crate::filter::SyncSourceFilter;
@@ -84,11 +85,17 @@ pub trait DataSyncHost: Send + Sync {
         mappings: &[TableMapping],
     ) -> Result<Vec<TableSchemaPair>, DataSyncError>;
     /// 每表一个 keyset 行读取器（源或目标侧）。
+    ///
+    /// `cancel` 是本次 stage 的**内核** CancelToken，host 实现必须让
+    /// `next_page` 观察同一份取消位（`CancelToken::flag()`），不得另铸
+    /// 一个快照：长 keyset 遍历只有直接看内核那一位，才能在 stage 运行
+    /// 期间被 cancel 打断（§5.3）。
     async fn table_reader(
         &self,
         session: &EndpointSession,
         table: &str,
         filter: Option<&SyncSourceFilter>,
+        cancel: &CancelToken,
     ) -> Result<Box<dyn KeysetPageSource>, DataSyncError>;
     /// 存储 prepare 产出的不可变 ChangeSet 工件。
     async fn store_artifact(
@@ -114,9 +121,14 @@ pub trait DataSyncHost: Send + Sync {
         session: &EndpointSession,
     ) -> Result<TransactionScope, DataSyncError>;
     /// 开一个固定目标 Lease 的批次执行器（贯穿整个 apply）。
+    ///
+    /// `cancel` 同样是内核那一位：begin/execute 之间的取消检查必须与
+    /// handler 自己的 `CancelToken` 判据同源，否则用户点下的取消会停在
+    /// host 边界之外（§5.3、§6.2）。
     async fn target_executor(
         &self,
         session: &EndpointSession,
+        cancel: &CancelToken,
     ) -> Result<Box<dyn TargetExecutor>, DataSyncError>;
     /// 生成参数化写入语句（方言特定，由 host 持有 sync adapters）。
     async fn generate_statements(

@@ -1,12 +1,18 @@
 //! Process-global, AppState-free kernel shared by every Data Sync Job.
 //!
 //! Only AppState-free items live here (artifact store, reviewed selection,
-//! cancel intent, JobRepository/BudgetLedger/Clock). `ConnectionManager` and
+//! JobRepository/BudgetLedger/Clock). `ConnectionManager` and
 //! `SyncAdapterRegistry` stay per-submission, because they are bound to a
 //! specific `AppState` instance.
+//!
+//! There is deliberately **no cancel store** here. Cancel intent belongs to
+//! the Job record: `JobRepository::request_cancel` records it and the runtime's
+//! per-stage watcher flips the stage's own `CancelToken`, which is the same bit
+//! the handler polls between pages and batches (§5.3). A host-owned flag would
+//! be a second, unverifiable copy of that intent.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 
 use datazen_platform_api::context::RequestContext;
@@ -52,11 +58,6 @@ static ARTIFACTS: LazyLock<Mutex<HashMap<String, ChangeSetArtifact>>> =
 static SELECTIONS: LazyLock<Mutex<HashMap<String, StoredSelection>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Host-owned cancel intent. The runtime `CancelToken` only fires at stage
-/// start, so batch granularity comes from this flag (§5.3).
-static CANCEL: LazyLock<Mutex<HashMap<String, CancelEntry>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
 /// Last host-observed failure per Job. The runtime does not carry handler
 /// error text, so the IPC message is reconstructed from this plus the Job
 /// state / effect outcome (see `jobs::message_for`).
@@ -67,12 +68,6 @@ static FAILURES: LazyLock<Mutex<HashMap<String, String>>> =
 pub(crate) struct StoredSelection {
     pub selection: SyncRunSelection,
     pub options: SyncOptions,
-}
-
-#[derive(Clone)]
-pub(crate) struct CancelEntry {
-    pub flag: Arc<AtomicBool>,
-    pub ctx: RequestContext,
 }
 
 /// Desktop Jobs are single-tenant and run in-process, so the context only
@@ -110,55 +105,8 @@ pub(crate) fn now_ms() -> u64 {
     CLOCK_MS.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Mint (or fetch) the cancel flag for a Job id. Insert-then-set so a cancel
-/// for an unknown id still reports success (the UI must not lose the click).
-pub(crate) fn cancel_flag(job_id: &str, ctx: RequestContext) -> Arc<AtomicBool> {
-    let mut entries = lock(&CANCEL);
-    let entry = entries
-        .entry(job_id.to_string())
-        .or_insert_with(|| CancelEntry {
-            flag: Arc::new(AtomicBool::new(false)),
-            ctx,
-        });
-    entry.flag.clone()
-}
-
-pub(crate) fn ctx_of(job_id: &str) -> Option<RequestContext> {
-    lock(&CANCEL).get(job_id).map(|entry| entry.ctx.clone())
-}
-
-/// Set cancel intent and return whether this call flipped a live intent.
-/// Unknown ids are reported as `true` so the caller keeps its UI contract.
-pub(crate) fn request_cancel(job_id: &str, ctx: Option<RequestContext>) -> bool {
-    let mut entries = lock(&CANCEL);
-    match entries.get_mut(job_id) {
-        Some(entry) => {
-            entry.flag.store(true, Ordering::SeqCst);
-            true
-        }
-        None => {
-            entries.insert(
-                job_id.to_string(),
-                CancelEntry {
-                    flag: Arc::new(AtomicBool::new(true)),
-                    ctx: ctx.unwrap_or_else(desktop_context),
-                },
-            );
-            true
-        }
-    }
-}
-
-pub(crate) fn is_cancelled(job_id: &str) -> bool {
-    lock(&CANCEL)
-        .get(job_id)
-        .map(|entry| entry.flag.load(Ordering::SeqCst))
-        .unwrap_or(false)
-}
-
 /// Drop the per-Job state once the Job reached a terminal state.
 pub(crate) fn forget(job_id: &str) {
-    lock(&CANCEL).remove(job_id);
     lock(&FAILURES).remove(job_id);
 }
 

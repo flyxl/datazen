@@ -41,8 +41,10 @@ pub(crate) async fn compare_data_sync_impl(
     source_filters: &HashMap<String, SyncSourceFilter>,
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
     let cancelled = match job_id.as_deref() {
-        Some(id) => Some(super::jobs::ensure_job(id).await),
-        None => None,
+        Some(id) => crate::services::job_registry::ensure_job(id)
+            .await
+            .load(std::sync::atomic::Ordering::SeqCst),
+        None => false,
     };
     let src_config = state
         .connection_manager
@@ -125,10 +127,7 @@ pub(crate) async fn compare_data_sync_impl(
     }
 
     options.validate().map_err(CommandError::from)?;
-    if cancelled
-        .as_ref()
-        .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst))
-    {
+    if cancelled {
         return Err(CommandError::from(
             crate::data_sync::DataSyncError::cancelled("compare cancelled"),
         ));
@@ -180,7 +179,7 @@ pub(crate) async fn compare_data_sync_impl(
             filters: source_filters.clone(),
             plan_id: Some(plan_id.clone()),
         },
-        cancelled.clone(),
+        job_id.clone(),
     )
     .await?;
     if prepare.state != JobState::Succeeded {

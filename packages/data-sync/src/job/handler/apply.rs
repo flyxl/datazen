@@ -253,7 +253,7 @@ impl DataSyncHandler {
         }
         // 5. 固定目标 Lease 开执行器
         let mut executor = host
-            .target_executor(target)
+            .target_executor(target, cancel)
             .await
             .map_err(|e| ApplyFailure::rejected(e))?;
         let batches = build_batches(&spec.plan_id, &selection, &spec.options);

@@ -1,5 +1,11 @@
 //! Driver-backed implementations of the two handler ports that own a live
 //! lease: the keyset reader and the batch target executor.
+//!
+//! Both hold the `Arc<AtomicBool>` handed down by
+//! [`CancelToken::flag`](datazen_runtime::job::CancelToken::flag) — that is the
+//! kernel's own bit, not a copy of it, so a cancel recorded by
+//! `JobRepository::request_cancel` reaches these checkpoints while the stage is
+//! still running (runtime.rs:362 `watch_cancel_request`).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -35,8 +41,8 @@ impl KeysetPageSource for HostKeysetSource {
         after_key: Option<&[Value]>,
         limit: u32,
     ) -> Result<Vec<Row>, DataSyncError> {
-        // The runtime `CancelToken` only fires at stage start, so a long
-        // keyset walk must observe the host flag between pages (§5.3).
+        // A long keyset walk has to stop between pages, so the page loop checks
+        // the same bit the runtime flips (§5.3).
         if self.cancel.load(Ordering::SeqCst) {
             return Err(cancelled("compare cancelled before page"));
         }
@@ -77,8 +83,8 @@ impl HostTargetExecutor {
 }
 
 /// A cancel observed before the commit point still rolls back only the
-/// current batch; the host flag is what gives cancel batch granularity,
-/// because the runtime `CancelToken` only fires at stage start.
+/// current batch: these checkpoints read the kernel's own bit, which the
+/// per-stage cancel watcher flips mid-run (§5.3).
 fn cancelled(what: &str) -> DataSyncError {
     DataSyncError::cancelled(format!("execute cancelled: {what}"))
 }

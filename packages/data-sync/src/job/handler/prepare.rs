@@ -282,7 +282,7 @@ impl DataSyncHandler {
                 pair.source.columns.iter().map(|c| c.name.clone()).collect();
             let source_filter = spec.filters.get(&pair.source_table).cloned();
             let src_reader = host
-                .table_reader(source, &pair.source_table, source_filter.as_ref())
+                .table_reader(source, &pair.source_table, source_filter.as_ref(), cancel)
                 .await
                 .map_err(|e| {
                     (
@@ -292,7 +292,7 @@ impl DataSyncHandler {
                     )
                 })?;
             let tgt_reader = host
-                .table_reader(target, &pair.target_table, None)
+                .table_reader(target, &pair.target_table, None, cancel)
                 .await
                 .map_err(|e| {
                     (
@@ -314,8 +314,10 @@ impl DataSyncHandler {
                 pk_columns: pair.source.primary_keys.clone(),
                 blocks: Vec::new(),
             };
-            // RowPageSource::next_page 的取消信号在调用时镜像 CancelToken
-            let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(cancel.is_cancelled()));
+            // compare_table_pages_to_sink 逐页检查的必须是**内核那一位**
+            // CancelToken，而不是在调用时刻拍一份快照：拍下来的副本在长比较里
+            // 永远不会翻转，取消因此无法打断 stage（§5.3）。
+            let cancel_flag = cancel.flag();
             let table_result = compare_table_pages_to_sink(
                 &pair.source_table,
                 &pair.target_table,
