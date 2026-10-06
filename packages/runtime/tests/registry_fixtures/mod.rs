@@ -99,7 +99,7 @@ pub struct Traces {
     pub cancel: usize,
     pub finalize: usize,
     pub close: usize,
-    /// 同一时刻并发的执行数峰值：跨会话并行（CM-20）的直接证据。
+    /// 同一时刻并发的执行数峰值：跨会话并行的直接证据。
     pub peak_live: usize,
     pub canceled: Vec<CancelOnResource>,
     pub finalized: Vec<FinalizeHandles>,
@@ -124,7 +124,7 @@ struct BackendState {
     close: CloseResourceOutcome,
 }
 
-/// §7.1 / §6.5 / §7.6 / §9.4 四个接缝的可控替身。
+/// 四处接缝（登记、取消、终结、释放）的可控替身。
 pub struct ScriptedBackend {
     state: Mutex<BackendState>,
     gate: Mutex<mpsc::UnboundedReceiver<()>>,
@@ -250,7 +250,7 @@ pub struct BackendPlan {
     cancel_fails: bool,
     cancel_handle: String,
     finalize: HandleFinalization,
-    /// 逐次回报：跨资源分批终结时每批的确认数必须不同，而 §9.4 比的是
+    /// 逐次回报：跨资源分批终结时每批的确认数必须不同，而比的是
     /// **累计**确认数与宿主登记数，一份固定回报表达不了这种形状。
     finalize_sequence: Vec<HandleFinalization>,
     close: CloseResourceOutcome,

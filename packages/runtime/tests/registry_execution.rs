@@ -1,19 +1,19 @@
-//! registry 集成测试：§6.3 actor 邮箱（串行执行队列 + 只读投影插空）、§7.2 执行登记、CM-72 执行终态审计。
+//! registry 集成测试：actor 邮箱（串行执行队列 + 只读投影插空）、执行登记、执行终态审计。
 //!
-//! # 用例 → 分支 → 权威
+//! # 用例 → 分支
 //!
-//! | 用例 | 分支 | 权威 |
-//! | --- | --- | --- |
-//! | `同一会话的执行串行_第二条排队不下发` | `handle_exec_while_flying` → `deferred` | §6.3「同一会话串行」 |
-//! | `跨会话执行并行_峰值并发为二` | 两个独立 actor 各自 `start_execution` | §6.3 串行是**会话内**性质 |
-//! | `执行飞行中只读投影插空回答` | `handle_exec_while_flying` 的 `View` 分支 | §6.3 控制通道旁路 |
-//! | `句柄先登记终态后交付` | `apply_completion` 中 register 先于 reply | §6.5 |
-//! | `执行失败不伪装成功且会话回到就绪` | `Ok(Err(cause))` → `Outcome::Undecided` | §13 + CM-72 |
-//! | `排队中的执行不得绕过世代校验` | `drain_deferred` → `admit_execution` | CM-20 切库竞态 |
+//! | 用例 | 分支 |
+//! | --- | --- |
+//! | `同一会话的执行串行_第二条排队不下发` | `handle_exec_while_flying` → `deferred` |
+//! | `跨会话执行并行_峰值并发为二` | 两个独立 actor 各自 `start_execution`；串行是**会话内**性质 |
+//! | `执行飞行中只读投影插空回答` | `handle_exec_while_flying` 的 `View` 分支（控制通道旁路） |
+//! | `句柄先登记终态后交付` | `apply_completion` 中 register 先于 reply |
+//! | `执行失败不伪装成功且会话回到就绪` | `Ok(Err(cause))` → `Outcome::Undecided` |
+//! | `排队中的执行不得绕过世代校验` | `drain_deferred` → `admit_execution`（切库竞态） |
 //!
 //! # 为什么必须在这一层测
 //!
-//! §6.3 的串行性不是「每个 actor 自己加锁」，而是**队列位置**的性质：
+//! 串行性不是「每个 actor 自己加锁」，而是**队列位置**的性质：
 //! 一条执行命令在飞行期间到达，不得被立即处理，也不得被拒绝，
 //! 只能排在后面按 FIFO 放出来。crate 内单测能看见这条，
 //! 但看不见「物理层同时在跑几条」的峰值——那只能从后端替身数出来。
@@ -88,7 +88,7 @@ async fn 同一会话的执行串行_第二条排队不下发() {
     assert_eq!(
         backend.execute_calls(),
         1,
-        "飞行中的会话不得并发下发第二条执行（§6.3）"
+        "飞行中的会话不得并发下发第二条执行"
     );
 
     release(&gate, 2);
@@ -113,7 +113,7 @@ async fn 同一会话的执行串行_第二条排队不下发() {
     assert_eq!(
         backend.peak_live(),
         1,
-        "同一会话在任何时刻只允许一条执行在飞（§6.3）"
+        "同一会话在任何时刻只允许一条执行在飞"
     );
 }
 
@@ -201,13 +201,13 @@ async fn 执行飞行中只读投影插空回答() {
     let inflight = ask_until(&mut view_rx).await;
     assert!(
         inflight.is_some(),
-        "执行飞行中只读投影必须插空回答（§6.3），否则队列会把控制面一起堵死"
+        "执行飞行中只读投影必须插空回答，否则队列会把控制面一起堵死"
     );
     let inflight = inflight.expect("已就绪").expect("在册会话的视图必须可读");
     assert_eq!(inflight.state, SessionState::Executing);
     assert!(
         inflight.active_execution_id.is_some(),
-        "飞行中的投影必须说得出当前执行 id，否则调用方无从发起取消（§7.6）"
+        "飞行中的投影必须说得出当前执行 id，否则调用方无从发起取消"
     );
 
     release(&gate, 2);
@@ -231,7 +231,7 @@ async fn 句柄先登记终态后交付() {
         .expect("执行必须成功");
     assert_eq!(receipt.state, ExecutionState::Succeeded);
 
-    // §9.4 的归池判定依据就写在这条终态条目上：句柄数必须在交付前就登记完。
+    // 归池判定依据就写在这条终态条目上：句柄数必须在交付前就登记完。
     let completed: Vec<_> = registry
         .audit_log()
         .into_iter()
@@ -243,7 +243,7 @@ async fn 句柄先登记终态后交付() {
     assert_eq!(completed[0].outcome, Outcome::Succeeded);
     assert_eq!(
         completed[0].handle_count, 2,
-        "终态条目必须带上该时刻 actor 内登记的句柄数，否则 §9.4 的归池判定没有依据"
+        "终态条目必须带上该时刻 actor 内登记的句柄数，否则归池判定没有依据"
     );
 }
 
@@ -309,7 +309,7 @@ async fn 排队中的执行不得绕过世代校验() {
     assert!(wait_until(|| backend.execute_calls() == 1).await);
 
     // 第二条带着**飞行前**读到的世代（1）入队。后端这一轮会把世代推进到 2，
-    // 于是轮到它时必须被世代校验拦下——排队不等于豁免 CM-20 的切库竞态。
+    // 于是轮到它时必须被世代校验拦下——排队不等于豁免切库竞态。
     let second = {
         let registry = Arc::clone(&registry);
         let handle = handle.clone();
@@ -319,7 +319,7 @@ async fn 排队中的执行不得绕过世代校验() {
     assert_eq!(
         backend.execute_calls(),
         1,
-        "飞行中的会话不得并发下发第二条执行（§6.3）"
+        "飞行中的会话不得并发下发第二条执行"
     );
 
     release(&gate, 2);

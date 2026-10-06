@@ -1,8 +1,8 @@
-//! §4.5 CM-72 审计条目 / D-02 出口折叠 / CM-58 额度查询 —— 登记表的可观测面。
+//! 审计条目 / 出口折叠 / 额度查询 —— 登记表的可观测面。
 //!
 //! 这一支只断言三件事，且都只从公开导出进入：
 //!
-//! 1. **审计条目不带凭据**（CM-72）：结构里没有敏感字段，能力位只记版本号；
+//! 1. **审计条目不带凭据**：结构里没有敏感字段，能力位只记版本号；
 //!    取消条目与额度条目都不许写 `effectOutcome`（取消被受理不等于数据已回滚）。
 //! 2. **对外错误码由唯一折叠函数产出**（D-02）：会话层与 provider 层两个事实空间
 //!    每一个变体都有确定结论；`hostRejected` 这类宿主缺陷**不上线路**；
@@ -10,18 +10,18 @@
 //! 3. **审计的两种读法语义不同**（`drain_audit` 增量 / `audit_log` 累积）：
 //!    只读投影会顺手把审计队列抽干，这一点必须钉住，否则所有「存在性」断言都会随机失败。
 //!
-//! | 用例 | 分支 | 权威 |
-//! | --- | --- | --- |
-//! | 会话层九个变体逐一有确定结论 | `fold_exit(ExitFact::Session)` | D-02 |
-//! | 陈旧世代改判成会话未找到 | `ExitFact::Provider` 特例 | D-02 |
-//! | 宿主拒绝对外不上线路 | `NotOnTheWire` | §13 出口投影 |
-//! | 取消回执线格式键集固定三项 | `CancelReceipt` serde | §7.6 / D-01 |
-//! | 审计条目只带版本不带连接串 | `CapabilityVersions::is_version_only` | CM-72 |
-//! | 登记成功只留一条带能力版本的条目 | `SessionRegistered` | §4.5 |
-//! | 执行终态是唯一带效果判定的条目 | `ExecutionCompleted` | CM-72 正交 |
-//! | 取消成功不改写数据效果 | `CancelResolved` 无 `effectOutcome` | CM-72 正交 |
-//! | 收干只给增量而累积账保留全部 | `drain_audit` vs `audit_log` | §4.5 |
-//! | 额度只由登记表账本回答 | `remaining_quota` / `stale_quota_for` | CM-58 |
+//! | 用例 | 分支 |
+//! | --- | --- |
+//! | 会话层九个变体逐一有确定结论 | `fold_exit(ExitFact::Session)` |
+//! | 陈旧世代改判成会话未找到 | `ExitFact::Provider` 特例 |
+//! | 宿主拒绝对外不上线路 | `NotOnTheWire` |
+//! | 取消回执线格式键集固定三项 | `CancelReceipt` serde |
+//! | 审计条目只带版本不带连接串 | `CapabilityVersions::is_version_only` |
+//! | 登记成功只留一条带能力版本的条目 | `SessionRegistered` |
+//! | 执行终态是唯一带效果判定的条目 | `ExecutionCompleted` |
+//! | 取消成功不改写数据效果 | `CancelResolved` 无 `effectOutcome` |
+//! | 收干只给增量而累积账保留全部 | `drain_audit` vs `audit_log` |
+//! | 额度只由登记表账本回答 | `remaining_quota` / `stale_quota_for` |
 
 #![allow(dead_code)]
 mod registry_fixtures;
@@ -154,7 +154,7 @@ fn 陈旧世代经_provider_面折叠成会话未找到() {
     assert_eq!(
         projection.code(),
         Some(ApiErrorCode::SessionNotFound),
-        "刻意偏差必须钉成字面量，改判回去会静默改变 §12.1 的语义"
+        "刻意偏差必须钉成字面量，改判回去会静默改变出口折叠的语义"
     );
 }
 
@@ -446,7 +446,7 @@ async fn 取消成功不改写数据效果只留处置() {
     assert_eq!(cancels[0].execution_state, Some("cancelRequested"));
     assert_eq!(
         cancels[0].effect_outcome, None,
-        "取消请求被受理不代表数据已回滚，写 effectOutcome 就是让宿主覆盖物理层判定（CM-72）"
+        "取消请求被受理不代表数据已回滚，写 effectOutcome 就是让宿主覆盖物理层判定"
     );
     assert_eq!(cancels[0].error_code, None);
 

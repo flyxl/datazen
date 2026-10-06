@@ -1,4 +1,4 @@
-//! 归还裁决的公开面集成测试（CM-69 的三组宿主条件、CM-73 的复位次序、CM-37 的空闲复用）。
+//! 归还裁决的公开面集成测试（三组宿主条件、复位次序、空闲复用）。
 //!
 //! 替身全部手写：`datazen_runtime::testing` 下的 fixture 由 `cfg(test)` 门控，
 //! 而 `tests/` 编译 lib 时并不带 `cfg(test)`，因此这里按本模块自己声明的公开接缝
@@ -148,7 +148,7 @@ fn owner() -> OwnerRef {
     }
 }
 
-/// 短操作租约：用途允许归还池，所以 CM-69 的双条件裁决对它真实成立。
+/// 短操作租约：用途允许归还池，所以双条件裁决对它真实成立。
 fn request(connection_id: &ConnectionId, database: &str) -> LeaseRequest {
     LeaseRequest::new(
         PoolKeyInputs {
@@ -190,7 +190,7 @@ fn first_blocker_code(report: &datazen_runtime::resource::CleanupReport) -> &'st
         .expect("a refused lease always names its first blocker")
 }
 
-// ---- CM-69：驱动结论与宿主条件是两道**互相独立**的门 ----
+// ---- 驱动结论与宿主条件是两道**互相独立**的门 ----
 
 #[test]
 fn a_clean_driver_report_with_clear_host_conditions_returns_the_lease_to_the_idle_pool() {
@@ -330,7 +330,7 @@ fn an_unreleased_session_handle_refuses_reuse_and_is_reset_before_the_close() {
         report.outstanding_handles.is_empty(),
         "a performed reset leaves no outstanding handle behind"
     );
-    // CM-73 的实质是**次序**：复位必须在关闭之前，否则旧事务会被一起丢掉。
+    // 复位裁决的实质是**次序**：复位必须在关闭之前，否则旧事务会被一起丢掉。
     assert_eq!(
         transport.events(),
         vec![
@@ -374,7 +374,7 @@ fn a_reset_that_fails_quarantines_the_resource_instead_of_closing_it() {
         Some(&PhysicalEvent::Reset(ResourceId::new("res-1"))),
         "no close may follow a failed reset"
     );
-    // 隔离保留物理预算（§9.4）：资源还占着槽位，绝不静默丢弃。
+    // 隔离保留物理预算：资源还占着槽位，绝不静默丢弃。
     assert_eq!(manager.occupied_slots(), 1);
     assert_eq!(
         manager
@@ -426,7 +426,7 @@ fn an_idle_lease_is_closed_once_the_idle_ttl_expires() {
         .expect("the clean lease returns to the idle pool");
     assert_eq!(manager.idle_lease_count(), 1);
 
-    // §9.2 的空闲 TTL 是 60s；推进 61s 后同键的空闲租约必须先被淘汰再新建。
+    // 空闲 TTL 是 60s；推进 61s 后同键的空闲租约必须先被淘汰再新建。
     clock.advance(Duration::from_secs(61));
     let fresh = manager
         .acquire(&request(&connection_id, "appdb"))

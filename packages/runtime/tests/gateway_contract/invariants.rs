@@ -1,4 +1,4 @@
-//! §4 锁定不变量：冻结 DTO 只消费不改写、端口错误一律是 `RuntimeError`、
+//! 锁定不变量：冻结 DTO 只消费不改写、端口错误一律是 `RuntimeError`、
 //! 模块路径固定、单文件 ≤800 行、生产路径无 `unwrap/expect/panic!/unsafe/#[allow]/sleep`。
 
 use super::{err, runtime_err};
@@ -9,11 +9,11 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::registry::SessionPort;
 
-// ───────────────── H §4 不变量 ─────────────────
+// ───────────────── H 不变量 ─────────────────
 
 /// 端口接缝上流动的必须是 `connection` 里那份冻结 DTO，网关不得自造同形类型。
 ///
-/// 特别地：`registry` 目前只转出了 `SessionPort`（§10 要求的 `registry::SessionView` /
+/// 特别地：`registry` 目前只转出了 `SessionPort`（要求的 `registry::SessionView` /
 /// `SessionHandle` 转出在基线 `060053afb` 里并不存在），因此这里按「消费定义处」锁定：
 /// `SessionPort` 的入参/出参、`ExecutionRecord` 的句柄，全部是同一个 `connection::SessionHandle`。
 #[tokio::test(start_paused = true)]
@@ -288,8 +288,7 @@ fn gateway_sources_obey_the_locked_invariants() {
         "tests/cm70_idempotency_replay.rs".to_string(),
         "tests/owner_binding.rs".to_string(),
     ];
-    for entry in std::fs::read_dir(root.join("tests/cm70")).expect("CM-70 分节用例目录可读")
-    {
+    for entry in std::fs::read_dir(root.join("tests/cm70")).expect("分节用例目录可读") {
         let name = entry
             .expect("目录项可读")
             .file_name()

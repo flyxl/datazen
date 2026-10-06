@@ -1,11 +1,11 @@
-//! §3.1 乐观并发闸：`expectedContextRevision` 在真实执行前必须重比，
+//! 乐观并发闸：`expectedContextRevision` 在真实执行前必须重比，
 //! 不匹配时回传服务端实际值。
 
 use super::{err, record, runtime_err};
 use crate::gateway_fixtures as fx;
 use datazen_runtime::connection::{ExecutionState, RuntimeError, SessionState};
 use datazen_runtime::gateway::GatewayError;
-// ───────────────── C §3.1 乐观并发闸 ─────────────────
+// ───────────────── C 乐观并发闸 ─────────────────
 
 #[tokio::test(start_paused = true)]
 async fn the_context_revision_gate_is_rechecked_before_the_driver_runs() {

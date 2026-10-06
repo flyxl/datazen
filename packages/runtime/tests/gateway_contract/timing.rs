@@ -1,11 +1,11 @@
-//! §3.5 / CM-60：两段单调耗时——①授权与校验完成→派发驱动，②驱动完成→回执/事件登记，
+//! 两段单调耗时——①授权与校验完成→派发驱动，②驱动完成→回执/事件登记，
 //! 均不计入驱动往返本身。
 
 use std::sync::Arc;
 
 use crate::gateway_fixtures as fx;
 use datazen_runtime::gateway::{AlwaysAllow, InMemoryIdempotencyStore, MonotonicClock};
-// ───────────────── G §3.5 CM-60 ─────────────────
+// ───────────────── G 两段单调耗时 ─────────────────
 
 #[tokio::test(start_paused = true)]
 async fn the_gateway_segment_excludes_the_driver_round_trip() {
@@ -41,7 +41,7 @@ async fn the_p95_is_a_nearest_rank_over_every_dispatch() {
     for k in 1..=20_u64 {
         let mut request = fx::request(fx::REVISION);
         request.idempotency_key = format!("idem-contract-p95-{k}");
-        // 20 条互不相同的写入。CM-70 之后**不能**只换键不换写：换新键重发同一条
+        // 20 条互不相同的写入。此处**不能**只换键不换写：换新键重发同一条
         // 写入正是「用新键自动重试」，第一次派发一落地就把这次写入围起来了，第二轮
         // 起会被要求显式核验。这条用例量的是派发开销，20 个样本才是它的立身之本，
         // 所以这里改换写入内容而不是改验收目标。

@@ -97,7 +97,7 @@ impl ScriptedTransport {
         self.lock().close_fails = false;
     }
 
-    /// 复位结果不明（CM-73）：处置必须从 `Closed` 升级成 `Quarantined`。
+    /// 复位结果不明时：处置必须从 `Closed` 升级成 `Quarantined`。
     pub fn fail_reset(&self) {
         self.lock().reset_fails = true;
     }
@@ -209,7 +209,7 @@ impl RecordingTunnelPort {
 ///
 /// [`RecordingTunnelPort::opened`] 与 [`RecordingTunnelPort::closed`] 本来各写一份
 /// `filter(...).count()` —— 那是**两处硬编码的「事件 → 计数」映射**，各改各的，
-/// 正是 R5（CM-32-FU1）要防住的形态：改了一处忘了另一处，账就分叉了。折成一个纯函数
+/// 正是单账审计要防住的形态：改了一处忘了另一处，账就分叉了。折成一个纯函数
 /// 之后「哪种事件算一次」只有一句话能说，端口只负责**取数**、不负责**定义账**。
 fn count_events(events: &[TunnelEvent], want: TunnelEvent) -> usize {
     let mut counted = 0;

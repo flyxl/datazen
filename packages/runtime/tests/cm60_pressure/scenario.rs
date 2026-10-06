@@ -1,4 +1,4 @@
-//! CM-60 的压力场景：1000 次提交与取消、两个 worker、中途 drain 掉一个、最后关池。
+//! 压力场景：1000 次提交与取消、两个 worker、中途 drain 掉一个、最后关池。
 //!
 //! 全部时间走 `now_ms`——账本每个入口都显式收这个参数，所以这条 1000 步的压力链
 //! **没有一次真实等待**，也没有定时器竞态：换台机器、换个负载，步序完全一致。
@@ -144,7 +144,7 @@ impl RunReport {
     }
 }
 
-/// 跑完一整轮 CM-60 场景。
+/// 跑完一整轮压力场景。
 pub fn run() -> RunReport {
     let budget_config = config(TOTAL, RESERVED);
     let service_quota = budget_config.service_quota;
@@ -192,7 +192,7 @@ pub fn run() -> RunReport {
                 journal.observe(&ledger, &connection, now_ms, Change::SessionOpened);
             }
             Err(reason) => panic!(
-                "CM-60 前置：第 {} 个逻辑 session 应当放行，却被拒：{reason:?}",
+                "前置：第 {} 个逻辑 session 应当放行，却被拒：{reason:?}",
                 tickets.len() + 1
             ),
         }
@@ -201,7 +201,7 @@ pub fn run() -> RunReport {
     // 第 101 个必须按「单用户 100」被拒——这条上界得是活的，不是恰好没人碰。
     let session_cap_rejected = match ledger.open_session(&organization, &session_owner, &connection)
     {
-        Ok(ticket) => panic!("CM-60 前置：第 101 个逻辑 session 不该放行，却拿到 {ticket:?}"),
+        Ok(ticket) => panic!("前置：第 101 个逻辑 session 不该放行，却拿到 {ticket:?}"),
         Err(reason) => {
             assert_eq!(
                 reason,
@@ -210,7 +210,7 @@ pub fn run() -> RunReport {
                     cap: SESSIONS_PER_USER,
                     used: SESSIONS_PER_USER,
                 },
-                "CM-60 前置：越界 session 应按单用户 100 被拒",
+                "前置：越界 session 应按单用户 100 被拒",
             );
             1
         }
@@ -273,13 +273,13 @@ pub fn run() -> RunReport {
                         },
                     );
                 }
-                other => panic!("CM-60：到期归还在手 permit 应当成功，却得到 {other:?}"),
+                other => panic!("压力场景：到期归还在手 permit 应当成功，却得到 {other:?}"),
             }
         }
         let pumped = ledger.pump(now_ms);
         assert!(
             pumped.timed_out.is_empty(),
-            "CM-60：虚拟时间只有 {} ms，短于等待期限，不该出现超时离队",
+            "压力场景：虚拟时间只有 {} ms，短于等待期限，不该出现超时离队",
             now_ms,
         );
         for record in pumped.granted {
@@ -353,7 +353,7 @@ pub fn run() -> RunReport {
                 counters.record(outcome, node_lost);
             }
 
-            // 排空节点：drain 之后不再接新资源（§9.5）。
+            // 排空节点：drain 之后不再接新资源。
             //
             // 判据只说「将一个 worker drain」。挑**当场手上真有活**的那个，否则
             // 「drain 不抢占」这条断言会空跑——pump 放行的 permit 不带 worker 绑定，
@@ -373,25 +373,25 @@ pub fn run() -> RunReport {
                 let before = held(&node);
                 assert!(
                     before > 0,
-                    "CM-60 断言四：被排空的节点手上没有在手 permit，「drain 不抢占」无从检验",
+                    "断言四：被排空的节点手上没有在手 permit，「drain 不抢占」无从检验",
                 );
                 let report = ledger.drain(DrainScope::Node(node.clone()));
                 let after = held(&node);
-                assert!(report.draining, "CM-60 断言四：drain 后节点应进入排空态");
+                assert!(report.draining, "断言四：drain 后节点应进入排空态");
                 assert_eq!(
                     before, after,
-                    "CM-60 断言四：drain 不得抢占被排空节点上已到手的 permit（{before} → {after}）",
+                    "断言四：drain 不得抢占被排空节点上已到手的 permit（{before} → {after}）",
                 );
                 assert_eq!(
-                before,
-                report.outstanding + report.pinned,
-                "CM-60 断言四：drain 报告应覆盖该节点全部在手 permit（{before} vs 报告 {} + {}）",
-                report.outstanding,
-                report.pinned,
-            );
+                    before,
+                    report.outstanding + report.pinned,
+                    "断言四：drain 报告应覆盖该节点全部在手 permit（{before} vs 报告 {} + {}）",
+                    report.outstanding,
+                    report.pinned,
+                );
                 assert!(
                     !ledger.node_is_draining(&peer_node),
-                    "CM-60 断言四：drain 是节点级的，另一个节点不该被牵连",
+                    "断言四：drain 是节点级的，另一个节点不该被牵连",
                 );
                 live_on_drained_at_drain = after;
                 drain_outstanding = report.outstanding;
@@ -417,7 +417,7 @@ pub fn run() -> RunReport {
                     },
                 );
             }
-            other => panic!("CM-60：关池时归还在手 permit 应当成功，却得到 {other:?}"),
+            other => panic!("压力场景：关池时归还在手 permit 应当成功，却得到 {other:?}"),
         }
     }
     // 取消所有等待句柄。
@@ -431,7 +431,7 @@ pub fn run() -> RunReport {
     for ticket in &tickets {
         match ledger.close_session(ticket) {
             Ok(()) => journal.observe(&ledger, &connection, now_ms, Change::SessionClosed),
-            Err(reason) => panic!("CM-60：关池时关闭逻辑 session 应当成功，却被拒：{reason:?}"),
+            Err(reason) => panic!("压力场景：关池时关闭逻辑 session 应当成功，却被拒：{reason:?}"),
         }
     }
     journal.observe(&ledger, &connection, now_ms, Change::PoolClosed);
@@ -447,13 +447,13 @@ pub fn run() -> RunReport {
                 match ledger.close_session(&ticket) {
                     Ok(()) => {}
                     Err(reason) => {
-                        panic!("CM-60 关池探针：回收重开的 session 应当成功，却被拒：{reason:?}")
+                        panic!("关池探针：回收重开的 session 应当成功，却被拒：{reason:?}")
                     }
                 }
             }
             Err(reason) => {
                 panic!(
-                    "CM-60 关池探针：第 {} 个 session 额度未随关池归还：{reason:?}",
+                    "关池探针：第 {} 个 session 额度未随关池归还：{reason:?}",
                     sessions_reclaimable + 1
                 )
             }
@@ -462,11 +462,11 @@ pub fn run() -> RunReport {
 
     assert!(
         ledger.node_is_draining(&workers[drain_index]),
-        "CM-60 断言四：被排空的节点应保持排空态",
+        "断言四：被排空的节点应保持排空态",
     );
     assert!(
         !ledger.node_is_draining(&workers[WORKERS - 1 - drain_index]),
-        "CM-60 断言四：只排空一个节点",
+        "断言四：只排空一个节点",
     );
 
     RunReport {

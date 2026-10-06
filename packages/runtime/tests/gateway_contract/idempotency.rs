@@ -1,4 +1,4 @@
-//! §3.3 / CM-54·55·56：同一幂等键重发必须回到同一个 `executionId`，落库恰好一次，
+//! 幂等：同一幂等键重发必须回到同一个 `executionId`，落库恰好一次，
 //! 读不到旧记录必须要求核验，绝不自动换键重试。
 
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use super::{err, record};
 use crate::gateway_fixtures as fx;
 use datazen_runtime::connection::{OrganizationId, PrincipalId, SessionState};
 use datazen_runtime::gateway::{AcceptanceDisposition, AlwaysAllow, GatewayError, SourceKind};
-// ───────────────── B §3.3 幂等 ─────────────────
+// ───────────────── B 幂等 ─────────────────
 
 #[tokio::test(start_paused = true)]
 async fn a_resend_returns_the_same_execution_id_and_writes_once() {
@@ -80,7 +80,7 @@ async fn the_same_key_with_a_different_call_is_a_conflict() {
     let mut second = fx::request(fx::REVISION);
     second.call.input = serde_json::json!({ "sql": "select 2" });
     let error = err(h.gateway.accept(&fx::principal(), second).await);
-    // CM-70：冲突必须指明**是谁**占了这个键（账本里那条执行），但**不得**回显键
+    // 冲突必须指明**是谁**占了这个键（账本里那条执行），但**不得**回显键
     // 本身——装了令牌层之后键就是那把签名提交令牌，落盘一份就是一份可重放凭据。
     let rendered = error.to_string();
     let json = error.to_persistable_json();
@@ -156,7 +156,7 @@ async fn g4_the_same_key_with_a_different_source_is_a_conflict_not_a_replay() {
     let h = fx::ready_harness();
     let id = fx::accept(&h, fx::request(fx::REVISION)).await;
 
-    // CM-61：来源参与指纹。同一幂等键、同一命令，只换来源 ⇒ 冲突而不是重发，
+    // 来源参与指纹。同一幂等键、同一命令，只换来源 ⇒ 冲突而不是重发，
     // 否则后台任务的来源会被静默记成首次那条（编辑器）的来源。
     let mut second = fx::request(fx::REVISION);
     second.source = fx::background_source();
@@ -176,7 +176,7 @@ async fn g4_the_same_key_with_a_different_source_is_a_conflict_not_a_replay() {
 
 #[tokio::test(start_paused = true)]
 async fn a_replay_receipt_reports_the_source_frozen_at_first_acceptance() {
-    // CM-61 的落盘面是**受理回执上的 source**，不是账本里的记录：调用方拿回执就知道
+    // 来源的落盘面是**受理回执上的 source**，不是账本里的记录：调用方拿回执就知道
     // 「这条执行是哪条链路发起的」。所以重发回执必须同样带上来源，且这个来源只能是
     // 首次受理时冻结的那一个——重发方可以是一个完全不同的调用点。
     let h = fx::ready_harness();

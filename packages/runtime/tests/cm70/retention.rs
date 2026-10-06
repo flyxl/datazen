@@ -1,8 +1,8 @@
-//! A4：超过记录保留期删除记录，再重放令牌——不得再执行。
+//! 超过记录保留期删除记录，再重放令牌——不得再执行。
 //!
 //! 这一条是协调方点名的**反面用例**所在：光说「删除后重放不执行」是不够的，
 //! 必须同时证明「令牌还没过期、但授予已经没了」这个窗口是**关着的**。
-//! 否则 `token_gate 通过 → 账本 Miss → 真的执行一次`，正好是 CM-70 禁止的那件事。
+//! 否则 `token_gate 通过 → 账本 Miss → 真的执行一次`，正好是判据禁止的那件事。
 
 use crate::gateway_fixtures as fx;
 use crate::{err, token_reason, write_once};
@@ -136,7 +136,7 @@ async fn a_live_token_whose_grant_is_already_gone_is_refused_not_executed() {
     assert_eq!(
         h.harness.port.execute_calls(),
         1,
-        "这一条是 CM-70 的核心：窗口开着就等于重复执行了一次写入"
+        "这一条是核心：窗口开着就等于重复执行了一次写入"
     );
     assert_eq!(
         h.store.read_calls(),

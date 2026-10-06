@@ -1,19 +1,19 @@
-//! registry 集成测试：§4.1 登记前置、§4.2 会话面投影、§4.5 世代、CM-58 额度账。
+//! registry 集成测试：登记前置、会话面投影、世代、额度账。
 //!
-//! # 用例 → 分支 → 权威
+//! # 用例 → 分支
 //!
-//! | 用例 | 分支 | 权威 |
-//! | --- | --- | --- |
-//! | `登记成功只投影会话面` | `open_and_publish` Ok | §4.1「登记不得早于打开成功」 |
-//! | `同一_id_二次登记当场拒绝且不留痕` | `write_table().insert` 冲突 | §4.1 失败不留痕 |
-//! | `打开失败不留痕不占额度` | `open_and_publish` Err → `quota.release()` | §4.1 |
-//! | `额度用尽拒绝新登记` | `QuotaLedger::try_reserve` | CM-58 |
-//! | `未登记句柄一律 UnknownSession` | `locate` 落空 | CM-71 精确匹配 |
-//! | `旧世代句柄立即失效` | `check_epoch` | §4.5 / INV-07 |
+//! | 用例 | 分支 |
+//! | --- | --- |
+//! | `登记成功只投影会话面` | `open_and_publish` Ok；登记不得早于打开成功 |
+//! | `同一_id_二次登记当场拒绝且不留痕` | `write_table().insert` 冲突；失败不留痕 |
+//! | `打开失败不留痕不占额度` | `open_and_publish` Err → `quota.release()` |
+//! | `额度用尽拒绝新登记` | `QuotaLedger::try_reserve` |
+//! | `未登记句柄一律 UnknownSession` | `locate` 落空（精确匹配） |
+//! | `旧世代句柄立即失效` | `check_epoch` |
 //!
 //! # 这些用例为什么值钱
 //!
-//! §4.1 那句「任何一步失败都**不留痕**」是纯负面断言：证它需要看额度账和表位，
+//! 「任何一步失败都**不留痕**」是纯负面断言：证它需要看额度账和表位，
 //! 而不是看返回值。crate 内的 actor 单测看不到登记表与额度账，
 //! 所以这层事实**只能**在集成层断言——本文件就是它的落点。
 
@@ -43,7 +43,7 @@ async fn 登记成功只投影会话面且表位额度同步可见() {
 
     assert!(
         !registry.is_registered(&db_session_id()),
-        "登记之前 is_registered 必须是 false（§4.1：登记不得先于打开成功）"
+        "登记之前 is_registered 必须是 false（登记不得先于打开成功）"
     );
 
     let view = register_ready(&registry, db_session_id()).await;
@@ -91,7 +91,7 @@ async fn 登记成功只投影会话面且表位额度同步可见() {
             .expect("登记成功的条目必须带能力版本")
             .contract,
         "1.0.0",
-        "CM-72：非敏感能力版本必须进审计"
+        "非敏感能力版本必须进审计"
     );
     assert_eq!(
         registered[0]
@@ -128,7 +128,7 @@ async fn 同一_id_二次登记当场拒绝且不留痕() {
     assert_eq!(
         registry.remaining_quota(),
         SESSION_LIMIT - 1,
-        "失败的那次不得留下已占用但无人持有的额度（§4.1 不留痕）"
+        "失败的那次不得留下已占用但无人持有的额度（不留痕）"
     );
 }
 
@@ -190,7 +190,7 @@ async fn 未登记句柄一律_unknown_session_不定位到替代会话() {
     let view = register_ready(&registry, db_session_id()).await;
 
     // 同一配置（connectionId / owner）下、但从未登记的 dbSessionId。
-    // CM-71：只有 dbSessionId + runtimeEpoch 精确匹配才算命中，配置侧字段不参与查找。
+    // 只有 dbSessionId + runtimeEpoch 精确匹配才算命中，配置侧字段不参与查找。
     let mut stranger = open_request(DbSessionId::new("dbs_stranger"));
     stranger.connection_id = view.connection_id.clone();
     stranger.owner = view.owner.clone();
@@ -233,7 +233,7 @@ async fn 旧世代句柄立即失效_登记表仍可定位() {
     let viewed = registry.session_view(&stale).await;
     assert!(
         matches!(viewed, Err(RuntimeError::UnknownSession(_))),
-        "资源替换后旧世代句柄必须立即失效（INV-07），得到 {viewed:?}"
+        "资源替换后旧世代句柄必须立即失效，得到 {viewed:?}"
     );
 
     // 失效只针对**句柄**，会话本身仍然在册且可读。
@@ -264,7 +264,7 @@ async fn 执行完推进上下文世代_旧世代请求拿到明确错() {
             .execution_id
             .as_str()
             .starts_with(&format!("exec_{epoch}_")),
-        "执行 id 由宿主铸造、并把该会话的 runtimeEpoch 嵌进去（§7.6 靠它发起取消），得到 {}",
+        "执行 id 由宿主铸造、并把该会话的 runtimeEpoch 嵌进去（取消靠它发起），得到 {}",
         receipt.execution_id.as_str()
     );
 

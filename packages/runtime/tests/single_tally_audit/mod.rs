@@ -1,4 +1,4 @@
-//! `src/resource/**` 的**结构性**单账审计（CM-32 `single_counter_audit`）。
+//! `src/resource/**` 的**结构性**单账审计（`single_counter_audit`）。
 //!
 //! # 为什么是语法树而不是子串
 //!
@@ -101,7 +101,7 @@ pub fn audit(resource_dir: &Path) -> Vec<String> {
 /// 单个测试用：把清单拼成一条可直接 `assert!(..., "{msg}")` 的消息。
 pub fn describe(findings: &[String]) -> String {
     format!(
-        "单账铁律（CM-32）被破坏，共 {} 处：\n{}",
+        "单账铁律被破坏，共 {} 处：\n{}",
         findings.len(),
         findings.join("\n")
     )
@@ -251,7 +251,7 @@ fn audit_wiring(file: &SynFile, path: &Path, findings: &mut Vec<String>) {
                     findings.push(format!(
                         "{}: `{name}` 读了 `self.{field}`。凡取用隧道台账的方法只准碰\
                          `self.{TUNNEL_FIELD}`：计数一旦落到别的字段/表里，台账就不再是唯一权威，\
-                         CM-32 的单账铁律随之失效。",
+                         单账铁律随之失效。",
                         path.display()
                     ));
                 }

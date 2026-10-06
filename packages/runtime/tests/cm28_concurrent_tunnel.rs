@@ -24,7 +24,7 @@
 //! 被测的性质正是「这份串行化让权威计数恰好逐份递减」。
 //! 20 个任务用 [`tokio::sync::Barrier`] 同时放行，锁绝不跨 `.await`。
 //!
-//! **不要把 `flavor = "multi_thread"` 简化掉。** 实测：两个 CM-28 文件合计 8 处
+//! **不要把 `flavor = "multi_thread"` 简化掉。** 实测：并发释放的两个文件合计 8 处
 //! `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`（本文件 3 处）
 //! 全部降级成默认 `#[tokio::test]`，**10 条测试仍然全绿** —— 因为 `&mut self` 的
 //! 串行化保证了结论与线程数无关（这是断言稳健的标志，不是假并发：把
@@ -46,7 +46,7 @@ use datazen_runtime::tunnel::{
     TunnelError, TunnelHandle, TunnelLedger, TunnelRelease, TunnelTransport,
 };
 
-/// CM-28 步骤：「并发释放 **20** 次」。
+/// 判据步骤：「并发释放 **20** 次」。
 const CONCURRENCY: usize = 20;
 
 // ------------------------------------------------------------ 隧道端口替身
@@ -58,7 +58,7 @@ enum TunnelEvent {
 }
 
 /// 隧道端口：**只**记物理开合，不带任何引用计数，也不带自存的开合计数
-/// （唯一计数在台账里；CM-32-FU1 登记的反例正是「端口自己再存一份账并让观测方法改读它」）。
+/// （唯一计数在台账里；登记的反例正是「端口自己再存一份账并让观测方法改读它」）。
 struct RecordingTunnelPort {
     events: Mutex<Vec<TunnelEvent>>,
 }

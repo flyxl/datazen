@@ -3,13 +3,13 @@
 //! 闭合 `packages/runtime/src/tunnel/mod.rs` 登记表里的第 **(1)** 格
 //! 「实现缺失」：permit / socket / 隧道 / handshake / init / register
 //! **每一个阶段失败时，隧道引用都必须正确回滚**。失败矩阵把它拆成两半
-//! （登记项 F 一并更正了「CI 不跑本轨测试」这处假事实）：
+//! （登记表里也一并更正了「CI 不跑本轨测试」这处假事实）：
 //! **建隧道失败不落账** + **隧道开成后回滚释放**，
 //! 本文件两半各带用例。
 //!
 //! 另两格在别处：
 //!
-//! * **第 (2)** 格（登记表里缺号的那一格）= CM-27「可确认关闭的资源许可归零」，
+//! * **第 (2)** 格（登记表里缺号的那一格）= 「可确认关闭的资源许可归零」，
 //!   主语是**资源许可**、不是隧道引用，已由三处闭合并各自带测试 —— 见
 //!   本文件末尾 `cell_two_is_a_resource_permit_cell_not_a_tunnel_cell`。
 //! * **第 (3)** 格（隧道引用与物理预算的**归属配对**）在同目录的
@@ -19,7 +19,7 @@
 //!
 //! 本文件**不**引入任何计数：断言一律读 `ResourceManager::tunnel_refs`，而它是
 //! `TunnelLedger::ref_count` 的直通投影。`last_cell_refuses_to_keep_a_second_tally`
-//! 把「不许有第二个计数器」钉成可执行的断言（CM-32 的 `single_counter_audit`）。
+//! 把「不许有第二个计数器」钉成可执行的断言（`single_counter_audit`）。
 //!
 //! 那条自证原先是对源码做**字面子串黑名单**，改个名就能把第二本账整套搬进来（实测
 //! `local_tunnels: AtomicU64` + `cached_refs: u32` 配 `fetch_add`/`fetch_sub` 全绿通过）。
@@ -125,7 +125,7 @@ fn stage_permit_failure_takes_no_tunnel_reference_at_all() {
     assert_eq!(
         manager.tunnel_refs(&spec),
         None,
-        "CM-27「建隧道失败不落账」：permit 阶段失败时压根没落过账"
+        "「建隧道失败不落账」：permit 阶段失败时压根没落过账"
     );
     assert_eq!(tunnel.opened(), 0);
 }
@@ -163,7 +163,7 @@ fn stage_tunnel_failure_lands_nothing_in_the_ledger_and_still_closes_the_socket(
     assert_eq!(
         manager.tunnel_refs(&spec),
         None,
-        "CM-27「隧道引用正确」的前半句：建隧道失败**不落账**"
+        "「隧道引用正确」的前半句：建隧道失败**不落账**"
     );
     assert_eq!(
         (transport.opened(), transport.closed()),
@@ -228,7 +228,7 @@ fn stage_handshake_init_register_failure_releases_the_tunnel_reference_it_had_ta
     assert_eq!(
         manager.tunnel_refs(&spec),
         None,
-        "CM-27「隧道引用正确」的后半句：隧道开成后回滚释放，且与预算同拍"
+        "「隧道引用正确」的后半句：隧道开成后回滚释放，且与预算同拍"
     );
     assert_eq!(manager.live_tunnels(), 0);
     assert_eq!(
@@ -266,12 +266,12 @@ fn stage_handshake_init_register_failure_with_an_unconfirmed_close_keeps_the_tun
 
 // ============================================================ 缺号的那一格
 
-/// 登记表只列了 (1) 与 (3)，缺 (2)。核对结论：**缺号的那一格是 CM-27 的
+/// 登记表只列了 (1) 与 (3)，缺 (2)。核对结论：**缺号的那一格是
 /// 「可确认关闭的资源许可归零」，主语是资源许可，不是隧道引用**，而且它**已经闭合**。
 ///
 /// 三处闭合点互不知情、也都不需要知道隧道存在 —— 这本身就是「隧道不该进这一格」的证据：
 ///
-/// * `src/budget/ledger.rs` —— INV-10 幂等核销，名额按原槽退回；
+/// * `src/budget/ledger.rs` —— 幂等核销，名额按原槽退回；
 /// * `src/budget/coordinator.rs` —— 端口级幂等核销，把 `Unknown` 报成 `NotFound`；
 /// * 宿主侧第三处（登记表自述）。
 ///
@@ -293,7 +293,7 @@ fn cell_two_is_a_resource_permit_cell_not_a_tunnel_cell() {
     assert_eq!(
         manager.idle_lease_count(),
         0,
-        "CM-27 的这一格判据是资源许可，不读隧道台账"
+        "这一格判据是资源许可，不读隧道台账"
     );
     assert_eq!(
         manager.tunnel_refs(&spec),
@@ -304,7 +304,7 @@ fn cell_two_is_a_resource_permit_cell_not_a_tunnel_cell() {
 
 // ============================================================ 唯一计数器自证
 
-/// 把「不许有第二个计数器」钉成可执行的断言（CM-32 的 `single_counter_audit`）。
+/// 把「不许有第二个计数器」钉成可执行的断言（`single_counter_audit`）。
 ///
 /// 判据不是字面黑名单而是**闭合集合**，理由与全部细则在 [`single_tally_audit`]：
 ///

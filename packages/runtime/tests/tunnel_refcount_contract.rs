@@ -1,4 +1,4 @@
-//! CM-32 接缝契约：`NetworkProvider` 的隧道部分在**进程外**如何成立。
+//! 接缝契约：`NetworkProvider` 的隧道部分在**进程外**如何成立。
 //!
 //! 这个二进制**不在 `packages/runtime` 内部**，因此它同时是两件事：
 //!
@@ -6,18 +6,18 @@
 //!    **另一个 crate** 里实现 `TunnelTransport`；这里用一份独立录写端口证明
 //!    公共 API 足够 —— 包括 `TunnelHandle` 可以由宿主侧铸造。
 //!    桌面实现被划到接缝期，所以这份可实现性结论必须先有测试兜住。
-//! 2. **CM-32 三条断言的接缝形状**：与 `src/tunnel/journey_*.rs` 的库内单测
+//! 2. **三条断言的接缝形状**：与 `src/tunnel/journey_*.rs` 的库内单测
 //!    对照——那边证明台账内部自洽，这里证明**同一套结论在公开 API 上成立**。
 //!
 //! 所有断言读的是录写端口的**事件计数**（`open_calls` / `close_calls` /
 //! `journal.len()`）与台账的权威计数快照，不依赖 `is_ok()` 之类的存在性判断。
 //!
-//! # 端口不许自带账（CM-32-FU1）
+//! # 端口不许自带账
 //!
 //! 本文件的 `HostTunnelTransport` 与 `src/tunnel/harness.rs` 的夹具端口同形：
 //! 只有事件日志这一份事实，所有读数由**唯一**的纯折函数 `tally` 现折。
 //! 「唯一计数铁律」如今由 `src/tunnel/single_counter_audit/` 机械保证
-//! （随 `--lib` 跑，因此真的进 CI；见 `tunnel/mod.rs` 登记项 F 记的 CI 现状）：
+//! （随 `--lib` 跑，因此真的进 CI）：
 //! 那份闸门对本文件与 `cm28_concurrent_tunnel.rs` 的端口同样做字段审计 + 投影审计，
 //! 并把原始反例作为植入变异喂给它自己做 kill test。
 
@@ -34,9 +34,9 @@ use datazen_runtime::tunnel::{
 /// 宿主侧录写隧道端口。**刻意不持有任何引用计数，也不持有自存的开合计数** ——
 /// 唯一计数在台账里，读数一律由 [`tally`] 从事件日志现折。
 ///
-/// CM-32-FU1：`transport.rs` 模块头登记过那个已实证的伪装（给端口加一份
+/// `transport.rs` 模块头登记过那个已实证的伪装（给端口加一份
 /// `close_tally: Mutex<usize>` 并让观测方法改读它）。现在这条路被
-/// `tunnel::single_counter_audit` 机械杀掉（字段审计 R4 + 投影审计 R5，各带 kill test）。
+/// `tunnel::single_counter_audit` 机械杀掉（字段审计 + 投影审计，各带 kill test）。
 struct HostTunnelTransport {
     events: Mutex<Vec<&'static str>>,
     revisions: Mutex<BTreeMap<String, u64>>,
@@ -192,7 +192,7 @@ fn the_seam_is_implementable_outside_the_runtime_crate() {
     assert_eq!(transport.closed(), 1);
 }
 
-/// CM-32 断言一：关掉第一个 session 时，**隧道不关**。
+/// 断言一：关掉第一个 session 时，**隧道不关**。
 #[test]
 fn closing_the_first_holder_leaves_the_tunnel_running_for_the_second() {
     let transport = Arc::new(HostTunnelTransport::new());
@@ -243,7 +243,7 @@ fn closing_the_first_holder_leaves_the_tunnel_running_for_the_second() {
     assert_eq!(ledger.live_tunnels(), 0);
 }
 
-/// CM-32 断言二：只有**最后一个**引用释放才关闭。
+/// 断言二：只有**最后一个**引用释放才关闭。
 #[test]
 fn only_the_last_reference_releases_the_tunnel() {
     let transport = Arc::new(HostTunnelTransport::new());
@@ -277,7 +277,7 @@ fn only_the_last_reference_releases_the_tunnel() {
     assert_eq!(ledger.live_tunnels(), 0);
 }
 
-/// CM-32 断言三：隧道失败传播给**依赖资源**，且**一条**都不误伤。
+/// 断言三：隧道失败传播给**依赖资源**，且**一条**都不误伤。
 #[test]
 fn a_tunnel_failure_reaches_every_dependent() {
     let transport = Arc::new(HostTunnelTransport::new());
@@ -436,7 +436,7 @@ fn one_return_releases_exactly_once_however_many_times_it_is_repeated() {
 /// 端口文档 `network.rs` 写死了这一点（「仅供观测，不用于判断能否释放」）。
 /// 若哪天有人按快照值决定能否释放，多一次或少一次 acquire 就会把账永久带歪。
 ///
-/// **判别性要求（CM-32 repair round 1）**：断言点上「台账读到的数」必须与
+/// **判别性要求**：断言点上「台账读到的数」必须与
 /// 「快照里的数」**不相等**（`assert_ne!` 自证），否则本用例杀不掉
 /// 「把权威读换成冻结快照」这个变异。
 #[test]
@@ -461,7 +461,7 @@ fn the_binding_snapshot_never_decides_whether_to_release() {
         .binding;
     // 第三次 acquire 是判别性设计：台账走到 3，而 `first_binding` 冻结在 1。
     // 只有两者不相等，下面的 `ref_count` 断言才能区分读的是哪一份 ——
-    // 两个来源都是 1 时，换成冻结快照同样全绿（CM-32 repair round 1）。
+    // 两个来源都是 1 时，换成冻结快照同样全绿。
     let _third_binding: TunnelBinding = ledger
         .acquire(Some(&spec), &third)
         .expect("third")

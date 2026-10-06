@@ -147,7 +147,7 @@ fn quarantined_keeps_the_budget_and_keeps_the_tunnel_reference() {
     assert_still_held(&report);
     assert!(
         !report.physical_budget_released,
-        "an unconfirmed close keeps the budget occupied (§9.3 / §10.1.1)"
+        "an unconfirmed close keeps the budget occupied"
     );
     assert_eq!(
         manager.tunnel_refs(&spec),
@@ -163,7 +163,7 @@ fn quarantined_keeps_the_budget_and_keeps_the_tunnel_reference() {
 }
 
 /// 隔离不是终点：运维核验后一次**被确认的**强制关闭，预算核销、引用同拍归还，
-/// 而且只归还一次（CM-28「重复响应一致」）。
+/// 而且只归还一次（「重复响应一致」）。
 #[test]
 fn quarantined_released_by_a_later_confirmed_close_gives_the_reference_back_exactly_once() {
     let (mut manager, _t, tunnel, connection_id) = wired();
@@ -201,7 +201,7 @@ fn quarantined_released_by_a_later_confirmed_close_gives_the_reference_back_exac
         "the reference reaching zero is the **only** thing that closes the tunnel"
     );
 
-    // 再关一次不重复释放（CM-28「重复响应一致」）。
+    // 再关一次不重复释放（「重复响应一致」）。
     assert!(
         manager.retire(&lease.lease_id).is_err(),
         "the lease is gone, so a second retire has nothing to close"
@@ -240,7 +240,7 @@ fn retire_with_an_unconfirmed_close_keeps_the_budget_and_keeps_the_tunnel_refere
     assert_eq!(manager.tunnel_close_calls(), 1);
 }
 
-/// CM-73 的复位失败把处置从 `Closed` 升级成 `Quarantined`；此时引用**必须**跟着留。
+/// 复位失败把处置从 `Closed` 升级成 `Quarantined`；此时引用**必须**跟着留。
 ///
 /// 这一格最容易错：判据取的是**升级之后**的 `plan.disposition`。若结算读的是
 /// `CleanupPlan::of` 的初值（`Closed`），就会出现「预算没核销、引用先还了」的错拍。
@@ -321,7 +321,7 @@ fn a_confirmed_reset_and_close_in_one_release_gives_the_reference_back_with_the_
     assert_released(&report);
     assert!(
         report.session_reset_performed,
-        "CM-73：复位排在关闭之前，这是可审计的顺序证据"
+        "复位排在关闭之前，这是可审计的顺序证据"
     );
     assert_eq!(
         manager.tunnel_refs(&spec),

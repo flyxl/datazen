@@ -4,7 +4,7 @@
 //!
 //! 网关的作者器是**构造参数**（`ExecutionGateway::new(port, authorizer, store, clock)`），
 //! 漏传是编译错误；但传错——传 `AlwaysAllow`——**编译照过、行为静默失效**：归属闸门对所有人
-//! 放行，CM-05 / CM-06 在运行期形同虚设，而 `owner_binding.rs` 里的行为测试**依然全绿**
+//! 放行，归属绑定在运行期形同虚设，而 `owner_binding.rs` 里的行为测试**依然全绿**
 //! （它自己传的就是对的作者器）。散文警告对不住这种失效，本文件把它变成一条会红的门禁。
 //!
 //! 今天全仓 `AlwaysAllow` / `AlwaysDeny` 只出现在：定义点、`pub use` 重导出、以及测试代码里。

@@ -362,7 +362,7 @@ async fn counter_boundaries_do_not_alias_on_the_seam() {
         assert_eq!(
             got.is_ok(),
             must_match,
-            "登记 epoch={registered} 与探测 epoch={probed} 的命中结果不符 §6.3"
+            "登记 epoch={registered} 与探测 epoch={probed} 的命中结果不符"
         );
         if let Err(e) = got {
             assert_eq!(
