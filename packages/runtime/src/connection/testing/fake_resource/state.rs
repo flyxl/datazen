@@ -125,15 +125,19 @@ pub struct PermitRelease {
 /// `closeResource` 的**归池前置**记录，由 [`FakeResource::prepare_close`] 在实际注销的那把锁里
 /// 算出来（§9.4(b)）。
 ///
-/// 三个字段的关系是这条记录存在的全部理由：
+/// 四个字段的关系是这条记录存在的全部理由：
 ///
 /// - `measured_handles` —— 被调方**实际测到**的「关闭前登记句柄数」，归池判据只消费它；
 /// - `declared_handles` —— 调用方（宿主）按 §6.5 在 `CloseResourceRequest` 里**声称**的同一个量；
 /// - `protocol_drained` —— 排空标志在 `prepare_close` 内合并后的值。判据读它，
-///   不再第二次读 slot。
+///   不再第二次读 slot；
+/// - `freshly_closed` —— 这次调用**是否真的把资源从非 `Closed` 关成了 `Closed`**（F14）。
+///   第二次关闭时它为假：资源早就是 `Closed`，本次调用没有产生任何新的关闭事实。
 ///
-/// 判据的输入**只有一个来源**（`measured_handles`），而 `declared_handles` 只是被**对照**的账：
-/// 两者分叉时台账里留得下证据、规则 9 判负 ——「记录一个量、消费另一个量」因此不可分叉。
+/// 对**句柄数**而言，判据的输入**只有一个来源**（`measured_handles`），而 `declared_handles`
+/// 只是被**对照**的账：两者分叉时台账里留得下证据、规则 9 判负 ——
+/// 「记录一个量、消费另一个量」因此不可分叉。`freshly_closed` 与之同类：它也是同锁实测，
+/// 不是从别处重读的。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClosePrecondition {
     pub protocol_drained: bool,
@@ -142,6 +146,10 @@ pub struct ClosePrecondition {
     /// F11：这次关闭**没有**得到确认。为真时归池判据不参与判定（资源根本没关成），
     /// 且 `ops.rs` 必须走 `CloseUnconfirmed` 那条记账分支。
     pub unconfirmed: bool,
+    /// F14：这次调用**真的关掉了一张此前未关闭的资源**（`!was_closed`）。
+    /// 重复关闭时为假 —— 资源早就是 `Closed`，本次调用没有产生任何新的关闭事实，
+    /// 台账上就不该再多出一条 `ReturnedToPool` / `Closed`。
+    pub freshly_closed: bool,
 }
 
 impl ClosePrecondition {
@@ -150,12 +158,14 @@ impl ClosePrecondition {
     /// §9.4 把归池前置写成 **AND**：「宿主检查执行终态、无活跃消费者/取消句柄、
     /// 已收到 protocolDrained、预算和 owner 合法、以及 **§6.5 已登记句柄为空**」，
     /// 并且「任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查」。因此这里
-    /// 四个合取项一个都不能少：
+    /// 五个合取项一个都不能少：
     ///
     /// 1. `!unconfirmed` —— F11 连「资源已销毁」都没证明，谈不上归池；
-    /// 2. `protocol_drained` —— 排空证据；
-    /// 3. `measured_handles == 0` —— **被调方**在同一把锁里、注销之前实测到的登记数；
-    /// 4. `declared_handles == measured_handles` —— **宿主**按 §6.5 的账。
+    /// 2. `freshly_closed` —— F14：资源本来就已经是 `Closed`，本次调用没有新的关闭事实，
+    ///    也就没有可归还给池子的事实（见下面 `freshly_closed` 那一段）；
+    /// 3. `protocol_drained` —— 排空证据；
+    /// 4. `measured_handles == 0` —— **被调方**在同一把锁里、注销之前实测到的登记数；
+    /// 5. `declared_handles == measured_handles` —— **宿主**按 §6.5 的账。
     ///    两份账不一致时不归池：§6.5 规定句柄只能经登记/注销改变，所以分叉就意味着
     ///    有人绕过登记册动了句柄，或宿主拿着一份陈旧账本在关资源 —— 两种都不能伪称
     ///    「宿主检查全部通过」。注意分叉**不影响** `Closed` 与 permit 归还：资源确实关掉了。
@@ -165,6 +175,7 @@ impl ClosePrecondition {
     /// 而门禁全绿 —— 这就是 §9.4(b) 登记的缺陷，`declared_handles` 现在被真正消费了。
     pub fn returns_to_pool(&self) -> bool {
         !self.unconfirmed
+            && self.freshly_closed
             && self.protocol_drained
             && self.measured_handles == 0
             && self.declared_handles == self.measured_handles
@@ -329,6 +340,8 @@ impl FakeResource {
         // 归池判定的输入：关闭开始前这张资源上还挂着几个句柄 / 是否已经关过。
         // 两者都必须在任何状态迁移**之前**测 —— 之后测到的是恒 0 / 恒 true，判据会退化。
         let measured_handles = self.registered_handles();
+        // F14：必须**在**任何状态迁移之前测 —— 之后测到的是恒 `Closed`，判据会失效。
+        let was_closed = self.state == FakeResourceState::Closed;
         let had_transaction = self.has_open_transaction();
 
         if unconfirmed {
@@ -341,6 +354,7 @@ impl FakeResource {
                     measured_handles,
                     declared_handles,
                     unconfirmed: true,
+                    freshly_closed: !was_closed,
                 },
                 close_outcome: self.close_outcome(),
                 deregistered: Vec::new(),
@@ -377,6 +391,7 @@ impl FakeResource {
                 measured_handles,
                 declared_handles,
                 unconfirmed: false,
+                freshly_closed: !was_closed,
             },
             close_outcome: self.close_outcome(),
             deregistered,

@@ -12,7 +12,8 @@
 //! | [`close`] | op 9 `closeResource`：§5.3 规则 2/3/6 的 permit 口径 + CM-74 释放顺序 + §9.4(b) 归池判据 |
 //! | [`transaction`] | op 6 `transactionOperation`：F8 回滚/提交对资源状态与 permit 的影响 |
 //! | `catalog_guard` | 只在 `#[cfg(test)]` 下编译：把 `script.rs` 的 F 编号与 §4.1 的表**对撞**（§4.1 F1–F12 不得错位） |
-//! | `close_cases` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的行为用例（F11/F12/F13/F14） |
+//! | `close_cases` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的归池判据 / 凭证出口用例（F12/F13/F14） |
+//! | `close_unconfirmed` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的 F11「关闭未确认」用例 |
 //!
 //! **依赖方向**：本目录向下依赖 `connection::{port, session, types, capability, execution}`，
 //! 向上只被 `journal` 的**测试**引用 —— §2 要求的「`journal.rs` 不依赖 `fake_resource`」
@@ -20,7 +21,7 @@
 //!
 //! §13：假提供方**不开任何出站 socket**；本目录没有任何网络或凭据代码。
 //!
-//! **测试辅助函数的落点**：[`tests`] 与 [`close_cases`] 都从本文件底部那一组
+//! **测试辅助函数的落点**：[`tests`]、[`close_cases`] 与 [`close_unconfirmed`] 都从本文件底部那一组
 //! `#[cfg(test)]` 辅助函数取 `provider` / `acquire` / `close_and_release`，
 //! 而不是各自复制一份。复制会漂移：同一个 `pool_key` 派生算法写两遍，正例
 //! （同池复用）和反例（换 key）就会在两个文件里各自成立。
@@ -30,6 +31,8 @@ mod catalog_guard;
 mod close;
 #[cfg(test)]
 mod close_cases;
+#[cfg(test)]
+mod close_unconfirmed;
 mod handles;
 mod ops;
 mod script;
@@ -52,6 +55,8 @@ use crate::connection::port::{AcquireResourceRequest, BudgetClass, CloseResource
 use crate::connection::testing::clock::FakeClock;
 use crate::connection::testing::ids::FakeIds;
 use crate::connection::testing::journal::CommandJournal;
+#[cfg(test)]
+use crate::connection::testing::journal::{JournalEntry, ResourceEvent};
 use crate::connection::types::{ConfigRevision, ExecutionTarget, LeaseId, ResourceId, WorkerId};
 #[cfg(test)]
 use crate::connection::types::{
@@ -264,7 +269,7 @@ impl FakeResourceProvider {
 }
 
 // ---------------------------------------------------------------------------
-// 测试脚手架 —— `tests.rs` 与 `close_cases.rs` 共用
+// 测试脚手架 —— `tests.rs` / `close_cases.rs` / `close_unconfirmed.rs` 共用
 // ---------------------------------------------------------------------------
 
 /// §8.1：夹具目标一律取自 `fixtures`，用例里不写硬编码字面量。
@@ -347,4 +352,83 @@ pub(crate) fn close_and_release(
         protocol_drained: true,
     })?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 台账读数工具 —— 归到本文件而不是各自复制：判据类用例的判负必须数**台账上真实
+// 出现过几次**（`ReturnedToPool` / `Closed` 的条数），复制计数逻辑等于把
+// 「幂等只记一次」这条判据交给每个文件各写一遍
+// ---------------------------------------------------------------------------
+
+/// 按 §6.5 如实填报宿主账本的关闭请求（正例口径）。
+///
+/// 刻意**不**复用 `close_and_release`：那个包装丢掉 `CloseReceipt`，而要断言回执的
+/// 用例（F11 那组）必须自己拿到它。
+#[cfg(test)]
+pub(crate) fn close_request(
+    provider: &FakeResourceProvider,
+    acquired: &AcquiredResource,
+) -> CloseResourceRequest {
+    CloseResourceRequest {
+        handle: acquired.handle.clone(),
+        registered_handles: provider.registered_handles(&acquired.resource_id),
+        protocol_drained: true,
+    }
+}
+
+/// 某张资源在台账上的事件名（按 `seq`）。
+#[cfg(test)]
+pub(crate) fn resource_event_names(
+    provider: &FakeResourceProvider,
+    id: &ResourceId,
+) -> Vec<&'static str> {
+    provider
+        .journal()
+        .entries()
+        .iter()
+        .filter_map(|entry| match entry {
+            JournalEntry::Resource {
+                resource_id, event, ..
+            } if resource_id == id => Some(event.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn pooled_count(provider: &FakeResourceProvider, id: &ResourceId) -> usize {
+    provider
+        .journal()
+        .entries()
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry,
+                JournalEntry::Resource {
+                    resource_id,
+                    event: ResourceEvent::ReturnedToPool { .. },
+                    ..
+                } if resource_id == id
+            )
+        })
+        .count()
+}
+
+#[cfg(test)]
+pub(crate) fn closed_count(provider: &FakeResourceProvider, id: &ResourceId) -> usize {
+    provider
+        .journal()
+        .entries()
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry,
+                JournalEntry::Resource {
+                    resource_id,
+                    event: ResourceEvent::Closed,
+                    ..
+                } if resource_id == id
+            )
+        })
+        .count()
 }

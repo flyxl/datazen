@@ -73,6 +73,20 @@ impl FakeResourceProvider {
     /// **不**归还（§5.3 规则 3：余额不变）。注销之所以不做，是因为未确认的关闭不能伪称
     /// 「句柄随资源一起死了」——那会让后续隔离/重试路径读到一张「句柄已清空、其实没关成」
     /// 的资源。`close_unconfirmed_*` 那组用例钉的就是这一整套后果。
+    ///
+    /// # F14：重复关闭只记账一次，回执照发
+    ///
+    /// 第二次 `closeResource` 打在已经 `Closed` 的资源上，旧实现**仍然**记 `ReturnedToPool`
+    /// 与 `Closed` 各一条。permit 之所以没被退两次，只是因为 `Accounting::release()`
+    /// 恰好是幂等的 —— 那是 budget 模块替关闭路径兜的底，不是关闭路径自己的判据。
+    /// 后果是台账里凭空多出一整轮关闭：两条 `Closed`、两条 `ReturnedToPool`、
+    /// 一次已经发生过第二次的物理归池。判负用例是
+    /// [`closing_twice_is_idempotent_and_never_pools_or_refunds_twice`](crate::connection::testing::fake_resource::close_cases::closing_twice_is_idempotent_and_never_pools_or_refunds_twice)。
+    ///
+    /// 门闸是 [`ClosePrecondition::freshly_closed`]（`!was_closed`，同锁实测），它同时管住
+    /// `ReturnedToPool`（经 [`ClosePrecondition::returns_to_pool`]）与 `Closed`。**回执不变**：
+    /// 第二次仍是 `Closed` / `Confirmed` / `Completed`，符合 fixtures §3 契约表与连接 §3 INV-10。
+    /// `Quarantined → close` 与 `CloseUnconfirmed → close` 的 `was_closed` 都是假，不受影响。
     pub fn close_resource(
         &self,
         request: &CloseResourceRequest,
@@ -150,10 +164,22 @@ impl FakeResourceProvider {
                 "物理关闭前注销句柄（CM-74 / §9.3）",
             );
         }
+        // F14（连接 §3 INV-10「关闭幂等，预算只释放一次」/ §7.5(6)、§7.5(7) 的 tombstone /
+        // §9.3「归还 idle pool 不释放物理连接预算」）：重复关闭**不产生新的记账事实**。
+        // `freshly_closed` 是「本次调用真的把一张未关闭的资源关掉了」的实测值，在
+        // `prepare_close` 的那把锁里、状态迁移之前测得。资源早就是 `Closed` 时它为假，
+        // 于是这一段整体跳过：既不再写 `ReturnedToPool`，也不再写第二条 `Closed`。
+        //
+        // 回执仍然照发（`close_receipt` 在这两道门闸之外）：fixtures §3 契约表「幂等：首次 Closed，
+        // 重复调用仍 Closed」与 `Confirmed` 管的是**响应**，`Closed` 事件管的是**台账**，
+        // 两者不是同一件事。重复调用记第二条 `Closed` 会让台账凭空多出一次状态迁移，
+        // 而台账是 §5.3 的判负依据 —— 幂等的要求正在于「台账只记一次」。
         if let Some(owner) = owner.as_ref() {
-            // §5.3 规则 2 前置：归池必须有「协议已排空 + 无登记句柄」的证据。
-            // 判据读 `measured_handles`（注销**前**的实测值）—— 不是注销之后的余量（恒为 0，
-            // 读它等于没判），也不是宿主声明（可与实测分叉，见上面的 §9.4(b)）。
+            // §5.3 规则 2 前置：归池必须有「协议已排空 + 无登记句柄 + 本次真的关掉一张新资源」
+            // 的证据。判据读 `measured_handles`（注销**前**的实测值）—— 不是注销之后的余量
+            // （恒为 0，读它等于没判），也不是宿主声明（可与实测分叉，见上面的 §9.4(b)）。
+            // `freshly_closed` 是这道判据**自己的**合取项（F14），所以这一层不再另包门闸：
+            // 包两层会让其中一层变成没人盯着的冗余项，删掉它也照样绿。
             if precondition.returns_to_pool() {
                 self.journal.record_resource_event(
                     &request.handle.resource_id,
@@ -166,13 +192,16 @@ impl FakeResourceProvider {
                     budget_class.clone(),
                 );
             }
-            self.journal.record_resource_event(
-                &request.handle.resource_id,
-                ResourceEvent::Closed,
-                owner,
-                pool_key,
-                budget_class.clone(),
-            );
+            // `Closed` 不受归池判据约束（§9.4：driver 不 Clean 也必须关闭），所以它自带门闸。
+            if precondition.freshly_closed {
+                self.journal.record_resource_event(
+                    &request.handle.resource_id,
+                    ResourceEvent::Closed,
+                    owner,
+                    pool_key,
+                    budget_class.clone(),
+                );
+            }
         }
 
         // 归还 permit —— 只在 `Closed` 时，且 `Accounting::release()` 保证至多一次。
