@@ -276,10 +276,15 @@ fn gateway_sources_obey_the_locked_invariants() {
     }
 
     // 本轨自己的测试文件同样受 800 行约束。
-    // ⚠ 有意未纳入 `tests/cm70_no_disk.rs`：它已经超限，纳入即红；拆分属独立改动。
+    //
+    // 硬编码的文件名必须在当日**确实合规**才能列在这里；一旦超限，正确做法是拆分，
+    // 不是加豁免。一条「它已经超限，纳入即红」式的豁免注释在这里不会被任何门禁检查，
+    // 却会让门禁在文件被拆回合规之后继续失效——`cm70_no_disk.rs` 正是这样从 807 行
+    // 拆到 665 行、而当时的豁免从未撤销的。
     let mut test_files = vec![
         "tests/gateway_contract.rs".to_string(),
         "tests/gateway_fixtures/mod.rs".to_string(),
+        "tests/cm70_no_disk.rs".to_string(),
         "tests/cm70_idempotency_replay.rs".to_string(),
         "tests/owner_binding.rs".to_string(),
     ];
