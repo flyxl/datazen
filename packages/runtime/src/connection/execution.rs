@@ -1,4 +1,4 @@
-//! 执行与结果投影类型（connection-management.md §4 的执行半部、§7 执行纪律、§13 错误命名空间）。
+//! 执行与结果投影类型。
 //!
 //! 依赖方向：本文件只向下依赖 `types`（标识）与 `session`（会话上下文），不被它们回指。
 
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::types::{Counter, ExecutionId, StreamId};
 
-/// 会话级 fake 命令清单（fake-runtime-fixtures.md §9.1）。
+/// 会话级 fake 命令清单。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionCommand {
@@ -61,13 +61,13 @@ impl SessionCommand {
         Self::ALL.into_iter().find(|command| command.id() == id)
     }
 
-    /// 是否写命令。读命令只声明 `Read` 权限，其余显式声明 `Write`（§9.1 L462）。
+    /// 是否写命令。读命令只声明 `Read` 权限，其余显式声明 `Write`。
     pub const fn is_write(self) -> bool {
         !matches!(self, SessionCommand::OpenSessionCursor)
     }
 }
 
-/// 执行终态错误码。**独立于** `ApiError.code`（§13 L772）。
+/// 执行终态错误码。**独立于** `ApiError.code`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ExecutionErrorCode {
@@ -94,7 +94,7 @@ impl ExecutionErrorCode {
     }
 }
 
-/// 副作用终态。与 [`ExecutionErrorCode`] **正交**：两者独立取值，不存在互推关系（§13 L774）。
+/// 副作用终态。与 [`ExecutionErrorCode`] **正交**：两者独立取值，不存在互推关系。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum EffectOutcome {
@@ -116,9 +116,9 @@ impl EffectOutcome {
         }
     }
 
-    /// 该 `errorCode` 本身是否属于「作用域不可判定」的一类（§13 L774）。
+    /// 该 `errorCode` 本身是否属于「作用域不可判定」的一类。
     ///
-    /// 与终态正交：判定只看 `errorCode`。§4.2 F4 要求 `errorCode` 与 `effectOutcome`
+    /// 与终态正交：判定只看 `errorCode`。判定要求 `errorCode` 与 `effectOutcome`
     /// 独立取值，所以夹具在**造出**终态时需要这条（本方法），在**校验**终态时需要
     /// [`EffectOutcome::requires_unknown_for_undecidable_error`]。
     pub const fn is_undecidable(code: Option<ExecutionErrorCode>) -> bool {
@@ -135,8 +135,8 @@ impl EffectOutcome {
 
     /// 该终态是否「作用域不可判定」。
     ///
-    /// §13 L774：超时 / 协议错误 / 取消 / 连接丢失且作用域不可判定时，
-    /// `effectOutcome` **必须**为 `unknown`；禁止仅因「看到取消请求」就写 `rolledBack`（CM-44、CM-47）。
+    /// 超时 / 协议错误 / 取消 / 连接丢失且作用域不可判定时，
+    /// `effectOutcome` **必须**为 `unknown`；禁止仅因「看到取消请求」就写 `rolledBack`。
     pub fn requires_unknown_for_undecidable_error(self, code: Option<ExecutionErrorCode>) -> bool {
         EffectOutcome::is_undecidable(code)
             && self != EffectOutcome::Unknown
@@ -156,7 +156,7 @@ pub enum ExecutionState {
     Cancelled,
 }
 
-/// 执行回执。**拿到回执 ≠ SQL 成功**（§13 L770）。
+/// 执行回执。**拿到回执 ≠ SQL 成功**。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionReceipt {
@@ -245,14 +245,14 @@ pub struct StatementResultSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SinkWrite {
     Accepted,
-    /// 写入等待 = 背压（connection-management.md §5.1 L419）。
+    /// 写入等待 = 背压。
     Blocked,
     Truncated(TruncationReason),
 }
 
 /// 结果 sink：带字节大小的写入 / 完成 / 失败。
 ///
-/// 实现约定：本 trait 是**同步**的。connection-management.md §5.1 只要求「带字节大小的
+/// 实现约定：本 trait 是**同步**的。端口契约只要求「带字节大小的
 /// 写入/完成/失败方法」与「写入等待表示背压」这两个可观测语义，并明确禁止暴露 Tokio channel 类型；
 /// 夹具保持同步签名即可完整表达背压、截断与 `protocolDrained` 三个可观测点，
 /// 也让 `packages/runtime` 不必引入异步运行时。真实异步 sink 由驱动契约 crate 提供。
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn effect_outcome_refuses_rolled_back_for_undecidable_errors() {
-        // §13 L774 / CM-47：作用域不可判定时写 `rolledBack` 属协议违规。
+        // 作用域不可判定时写 `rolledBack` 属协议违规。
         assert!(EffectOutcome::RolledBack
             .requires_unknown_for_undecidable_error(Some(ExecutionErrorCode::Timeout)));
         assert!(EffectOutcome::Completed
@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn error_code_literals_match_the_protocol_map() {
-        // §26–40：枚举变体与协议字面量一一对应，不允许出现同义两种写法。
+        // 枚举变体与协议字面量一一对应，不允许出现同义两种写法。
         assert_eq!(ExecutionErrorCode::SqlError.as_str(), "sqlError");
         assert_eq!(ExecutionErrorCode::ProtocolError.as_str(), "protocolError");
         assert_eq!(ExecutionErrorCode::Cancelled.as_str(), "cancelled");
@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn pipeline_aborted_is_never_complete() {
-        // §13 L775：pipelineAborted 至少是部分应用或未知，不存在「完整成功」。
+        // pipelineAborted 至少是部分应用或未知，不存在「完整成功」。
         // 协议映射只能落在 Partial / Truncated 上；`Complete` 是对照组，
         // 证明前两条不是因为 `is_complete` 恒假才通过的。
         assert!(ResultCompleteness::Complete.is_complete());
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn only_open_session_cursor_is_a_read_command() {
-        // §9.1：读命令只有 `open_session_cursor`，其余写类命令必须显式声明 Write。
+        // 读命令只有 `open_session_cursor`，其余写类命令必须显式声明 Write。
         for command in SessionCommand::ALL {
             let expected = command != SessionCommand::OpenSessionCursor;
             assert_eq!(
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn receipt_state_is_independent_from_sql_success() {
-        // §13 L770：拿到回执 ≠ 成功；Queued/Running 同样有回执。
+        // 拿到回执 ≠ 成功；Queued/Running 同样有回执。
         let receipt = ExecutionReceipt {
             execution_id: ExecutionId::new("exe_dbs_w1_0001_0001"),
             stream_id: StreamId::new("str_0001"),
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn sink_write_carries_the_truncation_reason_out() {
-        // §5.1 L419 / §6.2：背压是 Blocked，触顶后必须带上可断言的截断原因。
+        // 背压是 Blocked，触顶后必须带上可断言的截断原因。
         assert_ne!(SinkWrite::Blocked, SinkWrite::Accepted);
         match SinkWrite::Truncated(TruncationReason::PerExecutionByteLimit) {
             SinkWrite::Truncated(reason) => {

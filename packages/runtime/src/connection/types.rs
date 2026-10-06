@@ -1,9 +1,8 @@
 //! 连接运行时的传输中立类型：newtype、DTO、enum、schema 校验。
 //!
-//! 来源：connection-management.md §4（DTO）/ §5.1（资源端口返回形状）/ §6.5（句柄登记）。
-//! fake-runtime-fixtures.md §2 把本文件标为「`testing/` 之下唯一允许被夹具依赖的上游模块」。
+//! 夹具纪律把本文件标为「`testing/` 之下唯一允许被夹具依赖的上游模块」。
 //!
-//! ID 术语纪律（AGENTS.md「ID 术语规范」）：`connectionId` 是持久化配置 id，
+//! ID 术语纪律：`connectionId` 是持久化配置 id，
 //! `dbSessionId` 是内存态运行时会话 id（**永不落盘**）。两者是不同的 newtype，
 //! 互相赋值不可能通过编译，因此**结构上不存在双模回退**。
 
@@ -18,7 +17,7 @@ use crate::connection::error::{ApiError, ApiErrorCode};
 // 本文件**不再**重复定义 `string_id!` 与 `Counter`。同一批 newtype 在
 // `packages/platform-api/src/id.rs` 里已有一套等价实现；两处并存会让
 // `ConnectionId` / `DbSessionId` 各自拥有两个互不相干的类型，
-// AGENTS.md「ID 术语规范」要求的编译期保障也就落空了。
+// ID 术语规范要求的编译期保障也就落空了。
 //
 // 两套实现是**超集关系**，因此 re-export 不改变任何既有调用点与线上字面量：
 //
@@ -27,7 +26,7 @@ use crate::connection::error::{ApiError, ApiErrorCode};
 // | `new` / `as_str` / `is_empty` | ✓ | ✓ |
 // | `Display`、`From<String>`、`From<&str>`、`AsRef<str>` | ✓ | ✓ |
 // | `Borrow<str>`（可直接查 `HashMap<String, _>`） | — | ✓ |
-// | `Counter` 十进制字符串序列化（CM-01） | ✓ | ✓（同样接受 str/u64/i64） |
+// | `Counter` 十进制字符串序列化 | ✓ | ✓（同样接受 str/u64/i64） |
 // | 计数器自增 | `increment(&mut self)` | `saturating_increment(self)` |
 //
 // 序列化形状逐项相同：ID newtype 是 `#[serde(transparent)]`，`Counter` 走
@@ -57,7 +56,7 @@ pub use datazen_platform_api::target::{TargetNamespaceLayer, TargetNamespaceShap
 /// 本 crate 在**历史行为**上使用的形状：database 与 schema 都必填。
 ///
 /// 为什么不用 `TargetNamespaceShape::database_and_schema()`：那个构造器把 schema 列为**可选**，
-/// 而 CM-07 要求「省略必需层」判 `TargetRequired`。换成它，本文件
+/// 而「省略必需层」必须判 `TargetRequired`。换成它，本文件
 /// `absent_and_null_required_layers_are_distinct_but_both_rejected` 所断言的规格行为会被静默放行 ——
 /// 这正是本文件此前拒绝合并时写下的理由（「会让原本被拒的调用静默放行」）。
 ///
@@ -160,25 +159,25 @@ pub fn fnv1a64_hex(bytes: &[u8]) -> String {
 
 /// 「观测不可判定」时的**结构性占位**常量。
 ///
-/// §4.2 规定 `NamespaceTarget` 四层必填且**空串非法**，所以「观测为 unknown」
+/// `NamespaceTarget` 四层必填且**空串非法**，所以「观测为 unknown」
 /// 不能靠空串表达，只能靠一个显式的、绝不可能与真实命名空间相等的哨兵值。
 /// 任何持有该值的上下文必须同时带 `ContextConfidence::Unknown`，
-/// 因此它**永远不可能**被当成「已确认目标」使用（§3.2 L137 / §5.1 L417）。
+/// 因此它**永远不可能**被当成「已确认目标」使用。
 pub const UNKNOWN_SENTINEL: &str = "dz_unknown";
 
-/// 目标命名空间。四个字段全部必填，空串非法（connection-management.md §4.2）。
+/// 目标命名空间。四个字段全部必填，空串非法。
 ///
 /// `Default` 得到四个空串层，即「**未指定任何层**」的形状 —— 与 `from_shape` 里
 /// `String::new()` 的初始值同义。它**不是**一个合法目标：`from_shape` 仍会按
 /// `TargetNamespaceShape` 的必填层校验并对空串报 `TargetRequired`，因此 derive 只是
-/// 提供构造起点，不构成绕过 §4.2 校验的捷径。
+/// 提供构造起点，不构成绕过必填层校验的捷径。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamespaceTarget {
     pub database: String,
     pub catalog: String,
     pub schema: String,
-    /// driver 的命名空间 id，**不是文件系统路径**（§4.2）。
+    /// driver 的命名空间 id，**不是文件系统路径**。
     pub path: String,
 }
 
@@ -228,7 +227,7 @@ impl NamespaceTarget {
 /// 原始（未经规范化）的命名空间输入，用于表达「省略某层」与「显式传 null」两种不同的缺陷形态。
 ///
 /// `None` = 字段未出现；`Some(None)` = 字段出现但为 `null`。两者都判 `TargetRequired`，
-/// 但形态必须能被区分，否则 CM-07 的两个步骤会塌缩成一个。
+/// 但形态必须能被区分，否则「省略」与「显式 null」两个形态会塌缩成一个。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NamespaceInput {
@@ -243,7 +242,7 @@ pub struct NamespaceInput {
 }
 
 /// serde 默认把 JSON `null` 解成 `None`，于是「字段未出现」和「显式传 null」在
-/// `Option<Option<String>>` 上塌缩成同一个值，CM-07 的两个步骤就分不开。
+/// `Option<Option<String>>` 上塌缩成同一个值，「省略」与「显式 null」就分不开。
 /// `present` 只包一层：字段出现时一定是 `Some(内层)`，`null` ⇒ `Some(None)`；
 /// 字段未出现时走 `#[serde(default)]` ⇒ `None`。
 mod double_option {
@@ -281,7 +280,7 @@ impl NamespaceInput {
 
     /// 按驱动形状构造目标。
     ///
-    /// 必填层**未出现 / 显式 null** → `TargetRequired`（两种形态文案不同，CM-07 才能定位）；
+    /// 必填层**未出现 / 显式 null** → `TargetRequired`（两种形态文案不同，调用方才能定位）；
     /// 必填层**给了空串** → `InvalidArgument`：空串是参数本身不合法，不是目标缺失。
     pub fn resolve(&self, shape: &TargetNamespaceShape) -> Result<NamespaceTarget, ApiError> {
         let mut target = NamespaceTarget {
@@ -330,7 +329,7 @@ impl NamespaceInput {
 
     /// 解析后再与会话已记录的 `expected` 逐层比对：任一层两边都非空却不同 ⇒ `TargetConflict`。
     ///
-    /// CM-73 / §10 的跨目标护栏需要它：句柄来自 A 命名空间的会话，命令却点名 B 命名空间，
+    /// 跨目标护栏需要它：句柄来自 A 命名空间的会话，命令却点名 B 命名空间，
     /// 宿主**不得**悄悄改上下文去迁就句柄。
     pub fn resolve_against(
         &self,
@@ -402,7 +401,7 @@ pub enum OwnerRef {
 }
 
 impl OwnerRef {
-    /// 稳定指纹输入。`runtimeEpoch` 形如 `<ownerHash>.<counter>`，换 owner 必增（§8.2）。
+    /// 稳定指纹输入。`runtimeEpoch` 形如 `<ownerHash>.<counter>`，换 owner 必增。
     pub fn hash(&self) -> String {
         let mut buf = String::new();
         match self {
@@ -451,7 +450,7 @@ impl OwnerRef {
     }
 }
 
-/// 池键输入。`execution_identity_key` 由**后端生成且不可伪造**，不接受客户端提供的用户名（§4.3 L268）。
+/// 池键输入。`execution_identity_key` 由**后端生成且不可伪造**，不接受客户端提供的用户名。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolKeyInputs {
     pub connection_id: ConnectionId,
@@ -462,7 +461,7 @@ pub struct PoolKeyInputs {
     pub policy_isolation_key: String,
 }
 
-/// 池键指纹。共享 DB 账号但权限不同的用户必须落在不同指纹上（connection-management.md §9.6）。
+/// 池键指纹。共享 DB 账号但权限不同的用户必须落在不同指纹上。
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PoolKeyFingerprint(String);
@@ -507,7 +506,7 @@ mod tests {
 
     #[test]
     fn counters_survive_json_roundtrip_beyond_2_pow_53() {
-        // CM-01：Counter 使用大于 2^53 的十进制值，Rust/TS 往返不得丢精度。
+        // Counter 使用大于 2^53 的十进制值，Rust/TS 往返不得丢精度。
         let big = Counter(9_007_199_254_740_993);
         let json = serde_json::to_string(&big).expect("serialize");
         assert_eq!(
@@ -528,7 +527,7 @@ mod tests {
 
     #[test]
     fn absent_and_null_required_layers_are_distinct_but_both_rejected() {
-        // CM-07 步骤：省略必需层 / 传 schema=null。
+        // 步骤：省略必需层 / 传 schema=null。
         let shape = schema_required_shape();
         let absent: NamespaceInput =
             serde_json::from_str(r#"{"database":"dz_ns_a"}"#).expect("parse");
@@ -548,7 +547,7 @@ mod tests {
 
     #[test]
     fn two_different_databases_are_a_target_conflict() {
-        // CM-07 步骤：会话已绑 dz_ns_a，命令却点名 dz_ns_b。
+        // 步骤：会话已绑 dz_ns_a，命令却点名 dz_ns_b。
         let shape = schema_required_shape();
         let bound = NamespaceInput {
             database: Some(Some("dz_ns_a".to_owned())),
@@ -571,7 +570,7 @@ mod tests {
 
     #[test]
     fn empty_required_layer_is_rejected() {
-        // CM-01 断言：空值 / 缺字段请求返回参数错误。
+        // 断言：空值 / 缺字段请求返回参数错误。
         let shape = schema_required_shape();
         let input: NamespaceInput =
             serde_json::from_str(r#"{"database":"","schema":"public"}"#).expect("parse");
@@ -628,7 +627,7 @@ mod tests {
 
     #[test]
     fn owner_hash_changes_when_any_owner_field_changes() {
-        // §8.2：换 owner 必增 runtimeEpoch —— 先决条件是 ownerHash 真的变了。
+        // 换 owner 必增 runtimeEpoch —— 先决条件是 ownerHash 真的变了。
         let a = OwnerRef::Editor {
             organization_id: OrganizationId::new("org-alpha"),
             principal_id: PrincipalId::new("user-alpha-1"),

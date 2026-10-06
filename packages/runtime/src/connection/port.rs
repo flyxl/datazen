@@ -1,7 +1,7 @@
-//! 资源层端口 DTO —— connection-management.md §5.1 的九个操作及其返回值。
+//! 资源层端口 DTO —— 九个操作及其返回值。
 //!
 //! fake provider 走的是**资源层**而不是 driver 层：这里只有一般会话语义，
-//! 不含任何 MySQL/PostgreSQL 方言实现（§10.1）。
+//! 不含任何 MySQL/PostgreSQL 方言实现。
 
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ use crate::connection::types::{
     OwnerRef, PoolKeyFingerprint, ResourceId, TargetNamespaceShape, UNKNOWN_SENTINEL,
 };
 
-/// 会话连续性。fake 固定为 `fixed`（§3.2 describeResource）。
+/// 会话连续性。fake 固定为 `fixed`（`describeResource`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionContinuity {
@@ -33,7 +33,7 @@ impl SessionContinuity {
     }
 }
 
-/// 连接成本策略。一个 fake resource ≡ 一个物理连接（§3.2）。
+/// 连接成本策略。一个 fake resource ≡ 一个物理连接。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ConnectionCostPolicy {
@@ -44,12 +44,12 @@ pub enum ConnectionCostPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ReusePolicy {
-    /// 归池前必须通过 §9.4 全部前置检查。
+    /// 归池前必须通过全部前置检查。
     ResetBeforeReturn,
     CloseOnly,
 }
 
-/// 资源描述符。§5.1 L414 要求包含的七项齐全。
+/// 资源描述符。端口契约要求包含的七项齐全。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceDescriptor {
@@ -72,7 +72,7 @@ pub enum ResourceHealth {
     Lost,
 }
 
-/// API 定义的不透明句柄。只能由 provider 签发（§5.1 L414）。
+/// API 定义的不透明句柄。只能由 provider 签发。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceHandle {
     pub resource_id: ResourceId,
@@ -91,7 +91,7 @@ impl ResourceHandle {
         }
     }
 
-    /// provider 在**每个**操作上校验 `resourceId` + `runtimeEpoch` + owner（§3.1 L130）。
+    /// provider 在**每个**操作上校验 `resourceId` + `runtimeEpoch` + owner。
     pub fn verify(
         &self,
         resource_id: &ResourceId,
@@ -129,7 +129,7 @@ pub enum CompletionStatus {
     Error,
 }
 
-/// 事务观测。§3.4：None / InTransaction，提交后置 `Unknown`。
+/// 事务观测。`None` / `InTransaction`，提交后置 `Unknown`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TransactionObservation {
@@ -139,12 +139,12 @@ pub enum TransactionObservation {
     Unsupported,
 }
 
-/// `ExecutionCompletion`。§5.1 L416 要求九项齐全。
+/// `ExecutionCompletion`。端口契约要求九项齐全。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionCompletion {
     pub completion_status: CompletionStatus,
-    /// 派发**之后**的终态错误码。派发前拒绝不存在此字段（§4.2 F1）。
+    /// 派发**之后**的终态错误码。派发前拒绝不存在此字段。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_code: Option<ExecutionErrorCode>,
     pub effect_outcome: EffectOutcome,
@@ -152,7 +152,7 @@ pub struct ExecutionCompletion {
     pub context_before: Option<SessionContext>,
     pub context_after: Option<SessionContext>,
     pub transaction_observation: TransactionObservation,
-    /// 本次执行交给宿主的句柄。驱动必须如实报告，没有就是空数组（§5.1 L416）。
+    /// 本次执行交给宿主的句柄。驱动必须如实报告，没有就是空数组。
     pub session_handles: Vec<SessionHandleRef>,
     pub protocol_drained: bool,
     pub resource_health: ResourceHealth,
@@ -179,7 +179,7 @@ impl ExecutionCompletion {
     }
 }
 
-/// `observeSession` 的结果。`unknown` 字段**禁止**回填 `initialTarget`（§3.2 / §5.1 L417）。
+/// `observeSession` 的结果。`unknown` 字段**禁止**回填 `initialTarget`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionObservation {
@@ -216,7 +216,7 @@ pub enum ChangeContextOutcome {
     Unsupported,
 }
 
-/// `resetResource` 结果。**`Clean` 不等于事务终结**（§3.2 L146）。
+/// `resetResource` 结果。**`Clean` 不等于事务终结**。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ResetOutcome {
@@ -234,7 +234,7 @@ pub enum ResetDiscardReason {
     HealthDegraded,
 }
 
-/// `closeResource` 结果。幂等：重复调用仍然是 `Closed`（§3.2 L144）。
+/// `closeResource` 结果。幂等：重复调用仍然是 `Closed`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CloseOutcome {
@@ -242,7 +242,7 @@ pub enum CloseOutcome {
     CloseUnconfirmed,
 }
 
-/// 精确取消的处置。`unsupported` 是**正常返回值，不是异常**（§4.2 F9 / §13 L769）。
+/// 精确取消的处置。`unsupported` 是**正常返回值，不是异常**。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CancelDisposition {
@@ -261,7 +261,7 @@ impl CancelDisposition {
     }
 }
 
-/// 预算类别。§5 的 permit 台账按它分类。
+/// 预算类别。permit 台账按它分类。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BudgetClass {
@@ -289,7 +289,7 @@ impl BudgetClass {
     }
 }
 
-/// permit 归还原因。§5.1 允许四种。
+/// permit 归还原因。允许四种。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PermitReason {
@@ -333,7 +333,7 @@ pub struct PermitSet {
     pub permit_ids: Vec<PermitId>,
 }
 
-/// 预算端口。按**实际物理连接**申请与归还（§5.1 L418）。
+/// 预算端口。按**实际物理连接**申请与归还。
 pub trait BudgetPort: Send + Sync {
     fn request(&self, class: BudgetClass, permits: u32) -> Result<PermitSet, ProviderError>;
     fn release(&self, permit: &PermitId, reason: PermitReason) -> Result<(), ProviderError>;
@@ -423,7 +423,7 @@ pub enum TransactionOperation {
 pub struct RequestCancelRequest {
     pub handle: ResourceHandle,
     pub execution_id: ExecutionId,
-    /// 精确 cancelHandle。命中未完成执行才返回 `Requested`（§3.2 L143）。
+    /// 精确 cancelHandle。命中未完成执行才返回 `Requested`。
     pub cancel_handle: String,
 }
 
@@ -440,11 +440,11 @@ pub struct CloseResourceRequest {
     pub protocol_drained: bool,
 }
 
-/// 标记一个值**不得**写入 journal / 报告 / 测试输出（§13 日志脱敏）。
+/// 标记一个值**不得**写入 journal / 报告 / 测试输出（日志脱敏要求）。
 ///
 /// 用类型把「能不能脱敏」变成编译期问题：只有持有 `Secret` 的路径能拿到内部串，
 /// 而 `Debug` / `Display` 一律输出占位符。`attachmentToken` 与幂等令牌 nonce 是
-/// §8.2 L441 唯一允许走真实随机源的两类值，它们都必须经由本类型。
+/// 唯一允许走真实随机源的两类值，它们都必须经由本类型。
 #[derive(Clone, PartialEq, Eq)]
 pub struct Secret(String);
 
@@ -452,7 +452,7 @@ impl Secret {
     /// 构造一个受保护值。
     ///
     /// 唯一能拿到内部串的入口。调用点必须自己保证该值不会进入 journal、报告或
-    /// 断言字面量（§13 日志脱敏）；类型本身只保证 `Debug` / `Display` 不会泄漏。
+    /// 断言字面量（日志脱敏要求）；类型本身只保证 `Debug` / `Display` 不会泄漏。
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
@@ -475,7 +475,7 @@ impl std::fmt::Display for Secret {
     }
 }
 
-/// `openSession` 回执。`attachment_token` 走真实随机源（§8.2 L441）。
+/// `openSession` 回执。`attachment_token` 走真实随机源。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenSessionReceipt {
     pub session: SessionView,
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn resource_handle_rejects_a_foreign_epoch() {
-        // §3.1 L130：携带过期 runtimeEpoch 的句柄必须被拒绝。
+        // 携带过期 runtimeEpoch 的句柄必须被拒绝。
         let id = ResourceId::new("res_w1_0001");
         let stale = ResourceHandle::issue(&id, &Counter::new(1), &owner());
         let err = stale
@@ -512,7 +512,6 @@ mod tests {
 
     #[test]
     fn resource_handle_rejects_another_owners_handle() {
-        // §3.1 L130（CM-71、CM-74）。
         let id = ResourceId::new("res_w1_0001");
         let epoch = Counter::new(1);
         let handle = ResourceHandle::issue(&id, &epoch, &owner());
