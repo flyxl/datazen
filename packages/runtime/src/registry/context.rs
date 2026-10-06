@@ -75,7 +75,7 @@
 //!   提交前后是唯一的分界线——分界线之前什么都没变。
 //! - **提交后失败**：只允许恢复同一份回执。新会话已经是既成事实，替换不得倒退。
 //!
-//! ## 调用方契约（W-05：接线时必须知道的四件事）
+//! ## 调用方契约（接线时必须知道的四件事）
 //!
 //! `ContextReplacer::replace` 目前**没有生产调用方**，整条编排由测试驱动。接线时下面
 //! 四条是前提，代码里读不出别的默认值：
@@ -100,6 +100,50 @@
 //!    §4.4 `:392`「`configRevision/contextRevision` 用于版本与上下文冲突」、§7.1 `:526`
 //!    「后续排队请求仍要重新校验 `contextRevision`」就落在这一个比较上，不能改成
 //!    「差得不多就算了」。
+//!
+//! ## 「提交替换 × 并发空闲驱逐」这个交错的可达性
+//!
+//! 替换提交（`publish_candidate`）与并发驱逐之间的窗口，历来被读成一句话：
+//! 「旧会话的句柄会不会被一次并发驱逐终结到**新** resource 上，从而把旧事务提交进新会话」。
+//! 逐段核对之后，**这一半结构上不可达**，理由是三条各自独立、且都能从代码读出来的事实：
+//!
+//! 1. **终结与关闭的资源归属由 actor 自己决定，不由调用方决定。**
+//!    [`crate::registry::actor::release`] 的 `close` 用的是 `state.physical`（该 actor
+//!    自己那份），而 `finalize_handles` 用的是**每个句柄登记时**记的 `resource_id`。
+//!    候选是**另一个 actor**（`open_candidate` 起的），它的 `state.physical` 是新资源。
+//!    两个 actor 各有一本自己的句柄账。所以「把旧句柄发到新资源上」需要旧句柄出现在
+//!    候选的账上，而 [`crate::registry::handles::HandleRegistry::register`] 只被
+//!    `exec::apply_completion` 在**同一个 actor 内**调用——没有任何一条路径把 A 的句柄
+//!    搬进 B 的账本。驱逐按 `dbSessionId` 定位 actor，它连「哪一个 actor」都选不错。
+//! 2. **旧会话在候选进表之前就已经注销。** 编排顺序是
+//!    ⑥hold → ⑦Prepared/Committed → ⑧`close_registered(旧)` → ⑨`publish_candidate`。
+//!    第 ⑨ 步之前旧行已被 `forget` 摘掉，此后 `evict_idle_at` 遍历不到它；
+//!    第 ⑧ 步走的是**唯一**那条 §9.4 释放例程，终结与关闭都落在旧资源上——
+//!    即「落在旧 resource」这一支如实成立。
+//! 3. **候选自己没有空闲期限。** `open_request` 给候选的 `OpenRequest` 把
+//!    `idle_deadline_ms` 置成 `None`，于是 actor 侧 `evict_idle` 对它回 `Ok(None)`，
+//!    而 `Ok(None)` 在登记表侧是一次**不动任何东西**的空操作。候选发布之后就是普通
+//!    在册会话，这条是它不被并发驱逐的唯一支点，所以它有独立用例
+//!    （`tests/registry_evict_replacement.rs` 的
+//!    `发布后的候选没有空闲期限_驱逐对它是不动`）：把 `None` 改成 `Some(..)`，
+//!    那条用例立刻红，上面这句论断同时失效。
+//!
+//! **可达的那一半不是「终结到新资源」，而是驱逐的答复怎么记账。** 屏障期间
+//! （⑥ 之后、⑧ 之前）到达的 `Evict` 被发放闸门拒成
+//! `CloseRejected("replacementInProgress")`（见 [`crate::registry::actor::context::gate`]）。
+//! 这是一次**派发前**的拒绝：物理资源、已登记句柄、期限原封不动。登记表此时若把它
+//! 当成「§9.4 已跑完、资源已关」去摘行还额度，后果是具体的——第 ⑧ 步的
+//! `close_registered` 定位不到旧会话，于是**旧物理资源连同它的全部已登记句柄再也没有
+//! 人处置**：既不落在旧 resource，也不落在新 resource，而是悬空。这正是判据
+//! 「或明确失败」要排除的形状。该格由
+//! `tests/registry_evict_replacement.rs` 的
+//! `屏障期间到来的驱逐不得摘行_旧句柄仍由替换例程在原资源终结` 钉住（探针站在
+//! `Prepared` 提交那一刻，即屏障内部；不靠时间推进制造窗口）。
+//!
+//! 为什么这里写结论而不是留一个用例：可达的部分已有用例，不可达的部分**构造不出来**。
+//! 为一个构造不出来的交错写一个「它没发生」的用例，等于写一条无论实现对错都绿的断言——
+//! 那是位置相关的假覆盖。所以不可达的结论留在代码旁，且它的三个支点分别有出处：
+//! 支点 1 与 2 是本文件与 `release`/`handles` 里可直接读到的代码事实，支点 3 有反证用例。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -120,6 +164,7 @@ use crate::directory::{
     SessionHandle as DirectoryHandle,
 };
 use crate::registry::actor::OpenRequest;
+use crate::registry::epoch::epoch_string;
 use crate::registry::port::SessionPort;
 use crate::registry::{SessionActor, SessionRegistry};
 
@@ -583,12 +628,6 @@ fn directory_handle(handle: &SessionHandle) -> DirectoryHandle {
         handle.db_session_id.clone(),
         PlatformEpoch::new(epoch_string(handle.runtime_epoch.get())),
     )
-}
-
-/// 世代号 → 目录侧那一份字符串。与 [`directory_handle`] 必须是同一个格式化，
-/// 否则两边的 epoch 永远对不上，短路会误判成孤儿态。
-fn epoch_string(epoch: u64) -> String {
-    format!("rte-{:08}", epoch)
 }
 
 fn port_error(error: PortError) -> RuntimeError {

@@ -44,6 +44,31 @@ impl RuntimeEpoch {
     pub const fn matches(self, handle: &SessionHandle) -> bool {
         handle.runtime_epoch.get() == self.0.get()
     }
+
+    /// 本世代的**目录侧字符串**表示。走的是 [`epoch_string`] 那一份实现。
+    pub fn to_directory_string(self) -> String {
+        epoch_string(self.get())
+    }
+}
+
+/// 运行时世代号 → 目录/契约侧的字符串。**全仓唯一的格式化实现**。
+///
+/// ## 为什么这个函数必须存在于生产侧、而且是唯一的落点
+///
+/// 目录侧的 `RuntimeEpoch` 是**字符串**（`platform-api` 的 newtype），登记表侧是
+/// `Counter(u64)`。替换编排的幂等判据靠把 `Counter` 投影成字符串后与目录里那一份
+/// **逐字比对**（`registry/context.rs` 的 `epoch_of(..) == handle.runtime_epoch`）：
+/// 两边各写一份格式化，一旦其中一份改了字面量（前缀、补零宽度），比对就**永远不相等**，
+/// 幂等短路于是把「已提交且已发布」的正常重放误判成孤儿态并拒绝发回执——这不是假想的
+/// 洁癖，而是「两端必须逐字一致」这句话此前**只由注释担保**的状态。
+///
+/// 测试替身（`tests/registry_fixtures/mod.rs`）此前也自己写了一份 `format!("rte-{:08}", …)`。
+/// 现在它**调用本函数**：生产格式变了，夹具跟着变，两端不可能漂移；而格式本身是
+/// 协议可见事实（`application/convert.rs` 用 `strip_prefix("rte-")` 反向解析），
+/// 所以另有 `epoch_string_keeps_the_wire_shape` 一例把它的**取值**（前缀 + 补零宽度）
+/// 钉在字面量上。两条合起来才既消除重复、又不让格式变成任意值。
+pub fn epoch_string(epoch: u64) -> String {
+    format!("rte-{:08}", epoch)
 }
 
 /// 对外投影的两种可能结果。
@@ -386,5 +411,49 @@ mod tests {
         assert!(!epoch.matches(&handle), "陈旧世代不得命中当前登记");
         handle.runtime_epoch = Counter::new(4);
         assert!(!epoch.matches(&handle), "未来世代同样不命中");
+    }
+
+    /// FU7：目录侧字符串的**取值**必须钉在协议字面量上。
+    ///
+    /// 这条钉的不是「两端用了同一个函数」（那由 `epoch_string` 是唯一实现保证），
+    /// 而是**格式本身**：前缀 `rte-` + 8 位补零。为什么这是协议可见事实而不是内部细节：
+    /// `application/convert.rs` 的 `handle()` 用 `strip_prefix("rte-")` **反向解析**它，
+    /// 目录侧拿它当 `RuntimeEpoch` 的线上值。改成别的写法（换前缀、改补零宽度）会让
+    /// 反向解析静默失败，而生产侧与测试侧共用一份实现之后，**没有任何一条既有用例**
+    /// 会因为格式变了而变红——共用实现消除了漂移，却把「格式变了没人喊」这件事
+    /// 从「两处各测一次」变成「一处都不测」。所以这一条必须存在，且必须钉字面量。
+    #[test]
+    fn epoch_string_keeps_the_wire_shape() {
+        assert_eq!(epoch_string(0), "rte-00000000");
+        assert_eq!(epoch_string(1), "rte-00000001");
+        assert_eq!(epoch_string(7), "rte-00000007");
+        assert_eq!(epoch_string(12345678), "rte-12345678");
+        // 补零宽度是 8：超过 8 位时**不截断**（截断会让两个不同世代撞成同一个字符串，
+        // 而幂等判据比的正是这个字符串）。
+        assert_eq!(epoch_string(123456789), "rte-123456789");
+        // 反向解析那一侧的口径：`strip_prefix("rte-")` + `parse::<u64>()` 必须能回来。
+        for epoch in [0u64, 1, 7, 12345678, 123456789] {
+            let text = epoch_string(epoch);
+            let parsed = text
+                .strip_prefix("rte-")
+                .and_then(|rest| rest.parse::<u64>().ok());
+            assert_eq!(
+                parsed,
+                Some(epoch),
+                "{text} 必须能按 convert.rs 的口径解析回来"
+            );
+        }
+    }
+
+    /// `RuntimeEpoch::to_directory_string` 就是 [`epoch_string`]，不是第二份实现。
+    #[test]
+    fn epoch_method_delegates_to_the_single_formatter() {
+        for epoch in [0u64, 1, 7, 99, 12345678] {
+            assert_eq!(
+                RuntimeEpoch::new(epoch).to_directory_string(),
+                epoch_string(epoch),
+                "方法必须是那一份实现的调用，否则它就成了第二处可以独立漂移的格式化"
+            );
+        }
     }
 }
