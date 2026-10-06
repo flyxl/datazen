@@ -1,6 +1,8 @@
 //! `KeysetPageSource` 的内存实现（prepare 侧的源/目标行读取）。
 
 use std::cmp::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use datazen_data_sync::compare::{cmp_keys, extract_key};
@@ -13,16 +15,22 @@ use datazen_driver_api::{SyncKeyValue, Value};
 pub struct FakePageSource {
     rows: Vec<Row>,
     pk_indexes: Vec<usize>,
+    /// kernel `CancelToken` 的标志位（`CancelToken::flag()`）。
+    cancel: Arc<AtomicBool>,
 }
 
 impl FakePageSource {
-    pub fn new(mut rows: Vec<Row>, pk_indexes: Vec<usize>) -> Self {
+    pub fn new(mut rows: Vec<Row>, pk_indexes: Vec<usize>, cancel: Arc<AtomicBool>) -> Self {
         rows.sort_by(|a, b| {
             let ka = extract_key(a, &pk_indexes).unwrap_or_default();
             let kb = extract_key(b, &pk_indexes).unwrap_or_default();
             cmp_keys(&ka, &kb)
         });
-        Self { rows, pk_indexes }
+        Self {
+            rows,
+            pk_indexes,
+            cancel,
+        }
     }
 }
 
@@ -33,6 +41,9 @@ impl KeysetPageSource for FakePageSource {
         after_key: Option<&[Value]>,
         limit: u32,
     ) -> Result<Vec<Row>, DataSyncError> {
+        if self.cancel.load(AtomicOrdering::SeqCst) {
+            return Err(DataSyncError::cancelled("cancelled before next_page"));
+        }
         let limit = limit.max(1) as usize;
         let start = match after_key {
             None => 0,

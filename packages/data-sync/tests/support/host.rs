@@ -18,6 +18,7 @@ use datazen_data_sync::model::{ChangeOperation, Endpoint, Row, RowChange, SyncOp
 use datazen_data_sync::sql::SqlStatement;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableSchema, Value};
+use datazen_runtime::job::CancelToken;
 
 use super::executor::{ExecHook, FakeExecutor, SharedStore, StatementRows, TargetStore};
 use super::page_source::FakePageSource;
@@ -380,6 +381,7 @@ impl DataSyncHost for FakeHost {
         session: &EndpointSession,
         table: &str,
         _filter: Option<&SyncSourceFilter>,
+        cancel: &CancelToken,
     ) -> Result<Box<dyn KeysetPageSource>, DataSyncError> {
         self.call("table_reader");
         let is_source = session.handle.id.starts_with("src");
@@ -392,7 +394,7 @@ impl DataSyncHost for FakeHost {
                 }
             })
             .ok_or_else(|| DataSyncError::not_started(format!("no fixture rows for {table}")))?;
-        Ok(Box::new(FakePageSource::new(rows, vec![0])))
+        Ok(Box::new(FakePageSource::new(rows, vec![0], cancel.flag())))
     }
 
     async fn store_artifact(
@@ -446,6 +448,7 @@ impl DataSyncHost for FakeHost {
     async fn target_executor(
         &self,
         session: &EndpointSession,
+        cancel: &CancelToken,
     ) -> Result<Box<dyn TargetExecutor>, DataSyncError> {
         self.call("target_executor");
         let (hook, affected) = self.read(|s| (s.hook, s.affected_override));
@@ -457,6 +460,7 @@ impl DataSyncHost for FakeHost {
             Arc::clone(&self.events),
             hook,
             affected,
+            cancel.flag(),
         )))
     }
 

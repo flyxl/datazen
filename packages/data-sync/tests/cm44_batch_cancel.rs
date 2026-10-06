@@ -70,11 +70,15 @@ fn prepare_spec() -> PrepareSpec {
 }
 
 fn apply_spec() -> ApplySpec {
+    apply_spec_with(BATCH_SIZE)
+}
+
+fn apply_spec_with(batch_size: u32) -> ApplySpec {
     ApplySpec {
         plan_id: PLAN_ID.to_string(),
         selection_revision: REVISION,
         options: SyncOptions {
-            batch_size: BATCH_SIZE,
+            batch_size,
             ..SyncOptions::default()
         },
     }
@@ -100,9 +104,13 @@ async fn prepared_host(host: Arc<FakeHost>) -> Arc<dyn DataSyncHost> {
 }
 
 async fn run_apply(host: Arc<dyn DataSyncHost>) -> StageOutcome {
+    run_apply_with(host, CancelToken::new()).await
+}
+
+async fn run_apply_with(host: Arc<dyn DataSyncHost>, cancel: CancelToken) -> StageOutcome {
     let handler = DataSyncHandler::for_apply(apply_spec(), host);
     handler
-        .run_stage(&stage("apply"), &CancelToken::new())
+        .run_stage(&stage("apply"), &cancel)
         .await
         .expect("apply stage returns an outcome")
 }
@@ -240,4 +248,55 @@ async fn cm44_cancelled_token_stops_before_any_batch_is_executed() {
     for n in 1..=3 {
         assert_row_eq!(host.committed(&key(n)), Some(old_row(n)));
     }
+}
+
+/// 取消请求在 Job 运行途中抵达（而非 stage 开头就已取消）时，宿主执行器的
+/// 写前检查点必须读到 kernel `CancelToken` 并停手。
+///
+/// 这里用 `batch_size = 2` 让批次 0 持有两条语句：第 1 条写完之后立刻置位
+/// kernel 标志位，于是第 2 条写之前的那次检查就该拦下本次 apply。若检查点是
+/// 瞎的（宿主自己铸标志位、或检查点被删），批次 0 会照常提交 2 行、再由批次
+/// 循环顶部的检查拦下批次 1，终态退化成 `PartiallyApplied`。
+#[tokio::test]
+async fn cm44_a_cancel_arriving_mid_batch_stops_the_next_write_in_that_batch() {
+    let host = seeded_host(ExecHook {
+        cancel_token_after_statement: Some((0, 0)),
+        ..ExecHook::default()
+    });
+    let dyn_host = prepared_host(Arc::clone(&host)).await;
+
+    // 批次 0 = 前两行，批次 1 = 第三行。
+    let handler = DataSyncHandler::for_apply(apply_spec_with(2), dyn_host);
+    let outcome = handler
+        .run_stage(&stage("apply"), &CancelToken::new())
+        .await
+        .expect("apply stage returns an outcome");
+
+    assert_eq!(outcome.terminal, StageTerminal::Cancelled);
+    assert_eq!(outcome.error_code, Some(ExecutionErrorCode::Cancelled));
+    assert_eq!(
+        outcome.effect_outcome,
+        EffectOutcome::RolledBack,
+        "取消在批次 0 的两次写之间抵达 ⇒ 一个提交边界都不能留下"
+    );
+    assert!(outcome.commit_boundaries.is_empty());
+    assert_eq!(outcome.progress.committed.get(), 0);
+
+    // 批次 0 的两次写都只被「尝试」过：第二条写被执行器的检查点拒绝，
+    // 因此批次 0 既没有提交边界，批次 1 也从未开始。
+    let events = host.events();
+    assert!(host.has_event("begin#0"), "{events:?}");
+    assert!(!host.has_event("commit#0"), "{events:?}");
+    assert!(!host.has_event("begin#1"), "{events:?}");
+    assert_eq!(
+        events.last().map(String::as_str),
+        Some("rollback#0"),
+        "{events:?}"
+    );
+    for n in 1..=3 {
+        assert_row_eq!(host.committed(&key(n)), Some(old_row(n)));
+    }
+    assert_eq!(host.pending_writes(), 0);
+    assert!(host.live().is_empty(), "{:?}", host.opened());
+    assert!(host.leaked().is_empty());
 }
