@@ -486,18 +486,29 @@ mod tests {
         );
     }
 
-    /// 取 `needle` 之前**紧邻**的整块 `///` 文档注释。
+    /// 取 `needle` 之前**紧邻**的整块文档注释（`///` / `//!` 与 `/** … */` 都算）。
     ///
-    /// 逐行向前回溯，只认连续的 `///` 行（允许块内的空行），碰到任何其它行就停。
+    /// 逐行向前回溯，只认连续的文档行（允许块内空行），碰到任何其它行就停。
     /// 找不到返回 `None`，由调用方决定是否判为守卫空转。
+    ///
+    /// 返回值**剥掉行注释前缀、块注释续行标记和全部空白**，只留注释正文：调用方按
+    /// 标识符边界在正文里找 `RuntimeError::X`。三样都得剥——实测只做前两样不行：
+    /// `/** */` 的续行 `*` 会顶在标识符前面，`RuntimeError::` 的下一个字符变成 `*` 而
+    /// 不是字母，扫描出来是个空名字，守卫于是对着「排版调整」误报红。
+    /// 守卫守的是「失败集有没有变大」，不该被一次排版调整变成噪声，也同样不该空转。
     fn doc_comment_before(src: &str, needle: &str) -> Option<String> {
         let at = src.find(needle)?;
-        let before = &src[..at];
-        let lines: Vec<&str> = before.lines().collect();
+        let lines: Vec<&str> = src[..at].lines().collect();
         let mut start = lines.len();
         while start > 0 {
             let trimmed = lines[start - 1].trim();
-            if trimmed.is_empty() || trimmed.starts_with("///") {
+            let is_doc = trimmed.starts_with("///")
+                || trimmed.starts_with("//!")
+                || trimmed.starts_with("/*")
+                || trimmed.ends_with("*/")
+                || trimmed == "*"
+                || trimmed.starts_with("* ");
+            if trimmed.is_empty() || is_doc {
                 start -= 1;
             } else {
                 break;
@@ -507,6 +518,19 @@ mod tests {
         if start == 0 || lines[start..].iter().all(|line| line.trim().is_empty()) {
             return None;
         }
-        Some(lines[start..].join("\n"))
+        let body: String = lines[start..]
+            .iter()
+            .map(|line| {
+                let trimmed = line.trim();
+                let body = trimmed
+                    .strip_prefix("///")
+                    .or_else(|| trimmed.strip_prefix("//!"))
+                    .or_else(|| trimmed.strip_prefix("/**"))
+                    .or_else(|| trimmed.strip_prefix("*/"))
+                    .unwrap_or(trimmed);
+                body.strip_prefix('*').unwrap_or(body)
+            })
+            .collect();
+        Some(body.replace(char::is_whitespace, ""))
     }
 }

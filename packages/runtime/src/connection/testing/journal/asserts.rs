@@ -306,6 +306,11 @@ impl<'a> JournalAssert<'a> {
     }
 
     /// 预算收支：`permits_returned == permits_requested` 且台账平衡。
+    ///
+    /// 返回违规列表而不是当场 panic，是为了让一个用例能把多个检查点的结果收齐再断言。
+    /// 正因为返回值本身就是全部结论，丢弃它等于**静默取消检查**，所以标 `#[must_use]`：
+    /// 调用点漏写断言会在这里变成编译警告，而不是一次照样通过的门禁。
+    #[must_use]
     pub fn ledger_violations(&self) -> Vec<String> {
         let state = self.journal.inner.lock();
         let mut violations = Vec::new();
@@ -415,6 +420,10 @@ impl<'a> JournalAssert<'a> {
     }
 
     /// live 资源 / live lease / 活动会话 / 登记句柄 / 孤儿句柄 / 事件序号连续。
+    ///
+    /// 夹具自己漏干净会让「资源已释放」这类断言恒真，真实缺陷因此被掩盖 —— 泄漏检查的
+    /// 价值全在返回值上，丢弃它等于静默取消检查，故标 `#[must_use]`。
+    #[must_use]
     pub fn leak_invariant_violations(&self) -> Vec<String> {
         let mut violations = Vec::new();
         let live_resources = self.journal.live_resources();
