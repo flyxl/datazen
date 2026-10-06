@@ -64,3 +64,5 @@
 - **cutover 轨第一次死亡（网络）**：coder `1ea0f84f` 中途消失，无收尾消息，**零提交**。工作树现场：HEAD 仍 `7f56e59c4`，7 个文件未提交——新 `src/commands/transferJobs.ts`(182) / `src/hooks/useTransferJobRun.ts`(248) / `src/lib/migrationJobVerdict.ts`(303) / `src/components/migration/MigrationJobVerdictPanel.tsx`(255) / `MigrationJobFailureNotice.tsx`(121)，加 `src/locales/{en,zh-CN}/sync.ts`。**主切换（`transfer.ts:294` 仍调 `execute_data_transfer`）、`src/windows/data-transfer/**` 接线、`e2e/` 三块零改动**。已 `send_message` 恢复同一实例（保留其上下文中的未提交代码），并要求**先 commit 现有产出**再续做。
   - 待其自查：en +61 行 vs zh-CN +52 行**不等**，可能是嵌套结构也可能是漏译，须跑 key 集合 diff 证明一致（zh-CN 为主语言）。
   - **教训：长任务 coder 必须按阶段提交**，全押在一个最终 commit 上，一次网络抖动即损失整轮上下文。
+- **cutover 轨第二次死亡，实例已弃用**：恢复 `1ea0f84f` 后**它一个字都没写**（HEAD 仍 `7f56e59c4`、7 个文件原样未变、`transfer.ts:294` 未切、windows/e2e 零改动）便再次消失——该实例每次开口即死，非任务难度问题。已按规则换**全新实例 `fd466b08`**：brief 要求它先 read 那 5 个未提交文件并**接管复用**（明令不得从零重写，那正是上一轮的死因），并把「立刻 commit 现有产出、之后每完成 T1/T2/T3 一块就 commit 一次」列为**第一个硬性动作**。
+  - 现场未丢失：1100 行产出仍在树里，可由任何新实例接手。
