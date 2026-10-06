@@ -9,6 +9,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use datazen_platform_api::ports::network::TunnelSpec;
+
 use crate::connection::{
     ConfigRevision, ConnectionId, ExecutionId, LeaseId, OwnerRef, PoolKeyFingerprint,
     PoolKeyInputs, ResourceId,
@@ -105,6 +107,12 @@ pub struct LeaseRequest {
     pub acquire_timeout_ms: u64,
     /// `Some(key)` 表示本次申请建的是**候选资源**：未提交前不对外可见、不接受执行。
     pub candidate_for: Option<String>,
+    /// `Some(spec)` 表示这条连接**必须**经由这条隧道。`None` = 直连。
+    ///
+    /// 这里只承载**身份**（走哪条隧道），**不承载任何计数**。引用计数唯一权威在
+    /// `TunnelLedger`；本字段存在的意义只是让 `ResourceManager` 知道该去台账里
+    /// 落一份引用，而不是让它自己记一笔。
+    pub tunnel_spec: Option<TunnelSpec>,
 }
 
 impl LeaseRequest {
@@ -120,7 +128,14 @@ impl LeaseRequest {
             idempotency_key: None,
             acquire_timeout_ms: 10_000,
             candidate_for: None,
+            tunnel_spec: None,
         }
+    }
+
+    /// 声明本连接必须经由 [`spec`] 这条隧道。
+    pub fn via_tunnel(mut self, spec: TunnelSpec) -> Self {
+        self.tunnel_spec = Some(spec);
+        self
     }
 
     pub fn at_credential_revision(mut self, revision: u64) -> Self {

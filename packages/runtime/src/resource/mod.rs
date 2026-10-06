@@ -31,6 +31,8 @@
 //!              ↑
 //!     manager（ResourceManager 门面）→ rotation（轮换/禁用/排队）
 //!              └→ adoption（候选替换门面）
+//!              ↑
+//!    tunnel_wiring（隧道引用 ⇄ 物理预算的归属配对；只读台账，不自建计数）
 //! ```
 //!
 //! ## 与其它模块的分工
@@ -52,6 +54,7 @@ mod replacement;
 mod rotation;
 mod table;
 mod transition;
+mod tunnel_wiring;
 
 /// 连续旅程测试的共享替身（`FakeClock` 适配、记录式物理端口、可注入故障的目录）。
 #[cfg(test)]
@@ -83,6 +86,7 @@ pub use publication::{
 pub use replacement::{BeginOutcome, CandidateState, ReplacementCandidate, ReplacementLedger};
 pub use table::{ConfigRevisionDrift, DisableOutcome, QueueDrain, QueuedLease, RotationReport};
 pub use transition::{TransitionRule, LEASE_TRANSITIONS};
+pub use tunnel_wiring::TunnelDisposition;
 
 use crate::connection::RuntimeError;
 
@@ -121,6 +125,10 @@ pub enum ResourceError {
     TransportRefused(&'static str),
     #[error("resource invariant broken: {0}")]
     InvariantBroken(&'static str),
+    #[error("the lease declares a tunnel but this manager has no tunnel port wired")]
+    TunnelPortNotWired,
+    #[error("tunnel reference refused: {0}")]
+    TunnelRefused(String),
 }
 
 impl ResourceError {
@@ -139,6 +147,8 @@ impl ResourceError {
             Self::PoolMetadataOverflow { .. } => "resourcePoolMetadataOverflow",
             Self::StaleCacheRevision { .. } => "resourceStaleCacheRevision",
             Self::TransportRefused(_) => "resourceTransportRefused",
+            Self::TunnelPortNotWired => "resourceTunnelPortNotWired",
+            Self::TunnelRefused(_) => "resourceTunnelRefused",
             Self::InvariantBroken(_) => "resourceInvariantBroken",
         }
     }
@@ -168,6 +178,11 @@ impl ResourceError {
             }
             Self::PoolMetadataOverflow { .. } | Self::TransportRefused(_) => {
                 RuntimeError::BudgetExhausted(self.reason())
+            }
+            // 隧道建不成或压根没接隧道端口 ⇒ 宿主侧不满足，归零与核销都由隧道侧说了算，
+            // 这里不替它做「当作直连」的猜测（CM-27「隧道引用正确」）。
+            Self::TunnelPortNotWired | Self::TunnelRefused(_) => {
+                RuntimeError::SessionQuarantined(self.reason())
             }
             Self::StaleCacheRevision { current, offered } => {
                 RuntimeError::ContextRevisionMismatch {
