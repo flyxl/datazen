@@ -18,8 +18,8 @@
 | `p5-cancel-hardening` 取消硬化 | feature/p5-cancel-hardening | ✅ MERGED `f440acf91` |
 | `p5-data-sync` handler | feature/p5-data-sync | ✅ 已由 R2 取代 |
 | `p5-data-sync-r2` D1/D2/D5 修复 | feature/p5-data-sync-r2 | ✅ MERGED `31af2b8fb8`，Tester 独立复验 **TEST_PASSED**（10 变异零存活，含修前存活/修后被杀对照），worktree/分支已清理 |
-| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | 🧪 TESTING（`e57c4855e`，Tester `3cdb27ef`）；**coder 自曝 2 例本轨引入 E2E 回归** |
-| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | 🔨 CODING（`653f2347c`，新增 `job_api/endpoint_identity.rs`） |
+| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ❌ TEST_FAILED（`e57c4855e`，Tester `3cdb27ef`，11 项缺陷）；修复中 `70854e7b`（仅前端自有部分） |
+| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | 🧪 TESTING（`051a228a4`，Tester `10f3ae68`）；**D-1 的真实归属方** |
 | Wave-R 全量回归 | — | ⏸ NOT_STARTED |
 
 冲突面：cutover 只碰 `src/**`+`e2e/**`；endpoint-overlap 只碰 `packages/runtime/src/job/budget.rs`+`src-tauri/src/commands/data_transfer/**`。**两轨互为禁区**，与 data-sync R2 均零重叠。
@@ -29,13 +29,26 @@
 - **D9** 新 Job 命令零调用方、§2.3/§7 对用户不可见 → `p5-frontend-cutover` 轨收口。**「四门禁全绿」不得读作「已交付」。**
 - **stage 内取消信号不可达** → `p5-runtime-cancel-watcher` 轨收口（内核唯一实现，退役 host 侧重复 watcher），已合入。
 - **新 apply 路径必须 claim 存储侧 plan**（否则违反 §9 单管理器与 §2.1）——data-transfer 已修；**data-sync / schema-diff 迁移时必须同样检查**。
-- **CM-40 降级**：cancel 路径不可注入 `Unknown`（handler 无该终态、注入点在 legacy 路径），前端轨改以 admission 拒绝证明覆盖。**CM-40 未覆盖**，留作敞口。
+- **CM-40 降级**：cancel 路径不可注入 `Unknown`（handler 无该终态、注入点在 legacy 路径），前端轨改以 admission 拒绝证明覆盖。**CM-40 未覆盖**，留作敞口。后经 Tester 复验：不仅未覆盖，而且 **claim 先于回执查找 ⇒ 丢回执后重试永远拿不回原结果**（已升级为功能缺陷，见阻塞项 `p5-job-addressable` 第 3 条）。
+- **前端轨剩余缺陷（Tester `3cdb27ef` 判定，均已核实于生产调用点）**
+  - D-6 **§8.4 竞态（high）**：`DataTransferWindow.tsx:946-957` `goNext` 先 `await` 再切步；`TransferMappingStep` / `ColumnMappingEditor` 的 target `<Input>` 无 `disabled`；`:773/:924` 依赖的是**点击时刻捕获的 `endpointOverlaps` 快照**。prepare 在飞期间可改成同名绕过闸门。由 `70854e7b` 修。
+  - D-7 M3 存活是 D-6 的**同一根因**（守卫捕获的是快照），随 D-6 一并消除，不单列。
+  - D-8 CM-40 未覆盖（见上）。D-11 `DataTransferWindow.tsx` **1889 行**——本轮接受为存量债，但 **schema-diff / data-sync 前端切 Job 落地前必须先拆**，否则会在此文件上继续叠加。
+- **复用成本修正**：`migrationJobVerdict.ts`(336) + `MigrationJobVerdictPanel.tsx`(311) 可原样复用；`transferJobs.ts`(182) + `useTransferJobRun.ts`(341) + `MigrationJobFailureNotice.tsx`(121) 硬编码三个 transfer 命令名、需依赖注入后才能给另两套用 ⇒ **约 768 行可直接复用，约 644 行需返工**。"另两套几乎白拿"的说法偏差接近一半工作量，禁止据此排期。
 
 ## 敞口项
 
 **阻塞**
-- **端点身份伪造（缺陷 k）**：`TRANSFER_SERVICE_KEY` 被 reader/writer 共用，`endpoint_refs()` 的 `connection_id` 是硬编码常量且 `detect_endpoint_overlap` 根本不用它 ⇒ 同名跨库复制被误判重叠，**Job 路径出现对 legacy 的功能倒退**。修复轨 `p5-endpoint-overlap` 进行中。**修完必须回头重做前端 `transferEndpointOverlap.ts`**（它只比表名，`A库.users → B库.users` 仍会误判），不得在本轨抢跑改。
-- **缺口 (c)**：若 `apply` 阻塞到终态才返回，前端拿不到可寻址 jobId ⇒ 取消按钮无法寻址、无中间进度。已要求前端轨以**实测证据**回答，按阻塞级处理。
+- **端点身份伪造（缺陷 k / D-1）**：`TRANSFER_SERVICE_KEY` 被 reader/writer 共用，`endpoint_refs()` 的 `connection_id` 是硬编码常量且 `detect_endpoint_overlap` 根本不用它 ⇒ 同名跨库复制被误判重叠，**Job 路径出现对 legacy 的功能倒退**。
+  **这是本轮 2 例 WDIO 回归的真实根因，不是前端谓词。** Tester `3cdb27ef` 已证伪 coder 的归因：谓词只 gate `canNext`，若它触发则用户根本点不到 Execute（症状不同）；且 `inspect.rs:385` 给 target 传 `&[]`，谓词自身条件不成立。真实链路是后端拒绝 ⇒ `setStep(view ? 'result' : 'preview')` 落到 preview ⇒ `data-transfer-result` 永不挂载 ⇒ 15s 超时。
+  修复轨 `p5-endpoint-overlap` 交付 `051a228a4`（9 文件 +876/−46，`service_key = "data-transfer:"+sha256(物理位置摘要)` + `connection_id` 取自真实 `ConnectionConfig`，身份键**并集**），待独立验收 `10f3ae68`。**必须复验后再合**。
+- **前端 §6.2 谓词已裁定删除**：谓词要求 `enabled === true`，生产链路产不出这种行 ⇒ 运行时 no-op；其文档注释声称与后端键一致是**假的**；现有测试用人工造的 `enabled: true` 数据，等于给不可达接线写了保护。§6.2 真正执行点是后端 `budget.rs::detect_endpoint_overlap`。删除由 `70854e7b` 执行。**D-9（后端把 target 表填上）与端点身份落地后，前端谓词才可按「连接身份 + 库名」重写。**
+- **缺口 (c)（D-3/D-4，§10 阻塞级）**：`apply_data_transfer_job` 用**单次阻塞** `runtime::run` 直到终态才返回 ⇒ jobId 只在终态后可得；前端 `applyJobIdRef.current` 又在 `await` **之后**才写、applying 期间强制置 null ⇒ **取消按钮在 apply 中途结构性不可寻址，且无中间进度**。且 `packages/backend-client/src/client.ts` 声明的 `listJobs`/`getJob` **没有对应宿主命令**。已从"证据链不足的怀疑"升级为**从生产调用点证实的缺陷**。根因全在后端 ⇒ 需**单开一条后端轨**，与前端轨 `src/**`+`e2e/**` 范围边界无关。
+- **待开后端轨 `p5-job-addressable`**（排期在 `p5-endpoint-overlap` 合入之后，两者都碰 `commands/data_transfer/**`，**零重叠不可并行**）：
+  1. `apply_data_transfer_job` 准入即返回 jobId，运行转异步；补 `list_jobs` / `get_job` 宿主命令（§10 可寻址 + 进度）
+  2. `commands/data_transfer/**` 补 `info!`/`debug!` 进度事件（D-5：当前整目录零日志，线上无法定位卡在哪一步）
+  3. **回执顺序**：`job_api/mod.rs:246` `plans::claim_plan` **先于** `:259` 的 `runtime::run`，而回执查找 `runtime.rs:195` 在 run 内 ⇒ **回执丢失后重试只会拿到 "already consumed"，永远拿不回原结果**。这是 §10 恢复路径结构性不可达，属功能缺陷而非覆盖缺口，须把回执查找提到 claim 之前。
+  4. **D-9**：`inspect.rs:385` 传 `&[]` 并吞掉 `map_err(|_| ())` ⇒ 非法目标名静默回退，且 target 表在 data 模式下永不可寻址。
 
 **测试与验证边界（8 项 E2E 缺口，已登记）**：UI 真实取消延迟；`CANCEL_POLL_INTERVAL`(50ms) 从未被测量（新测试的 `SETTLE` 隐式依赖它，**属未检验假设**）；三阶段之间取消；`kernel_cancel.rs` 仅 fixture 无真实驱动往返；cancel-then-resume 不重复提交；端到端读故障注入；真实 in-stage panic 的看门狗活性；DMG 打包。另有 data-sync 12 项 E2E/WDIO 缺口。
 **⇒ 全部迁入 `docs/architecture/platform/data-migration-jobs.md` 的「验证边界」章节，不得写成本仓库的 Bug List 文档。**
