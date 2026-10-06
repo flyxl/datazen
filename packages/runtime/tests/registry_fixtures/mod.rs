@@ -543,15 +543,18 @@ pub fn handle_of(view: &SessionView) -> SessionHandle {
     view.handle.clone()
 }
 
-/// 目录侧的 runtime epoch 字符串。与 `ContextReplacer::directory_handle` 的派生式
-/// **逐字一致**：重放幂等靠的就是这个句柄派生的 operation key，两端一旦漂移，幂等短路
-/// 会安静地不命中。
+/// 目录侧的 runtime epoch 字符串——**直接复用生产实现**，不是测试替身。
 ///
-/// 全仓一共两处 `rte-` 格式化：本函数与生产侧 `registry/context.rs` 里那个同名的
-/// `epoch_string`（两端必须逐字一致，不能只靠测试替身）。测试侧曾经还各写一份
-/// `format!("rte-{:08}", …)` 和几个写死的 `"rte-0000000N"` 字面量，那些已收拢到这里。
+/// 生产侧那份是 [`datazen_runtime::registry::epoch::epoch_string`]。曾经这里自己写
+/// 一份 `format!("rte-{:08}", …)`，两端「必须逐字一致」只靠注释担保：生产格式改了而
+/// 门禁全绿是**可能**发生的，而幂等短路（`context.rs` 里 `epoch_of(..)` 与目录里那一代
+/// 的字符串比对）恰恰依赖两端逐字一致——漂移的后果是正常重放被误判成孤儿态。
+///
+/// 现在夹具调用生产函数，**结构上**不可能漂移：格式变了夹具跟着变，用例照旧绿，
+/// 而那正是我们想要的（夹具不该替一个协议可见的取值把关）。把关在别处：
+/// `epoch.rs` 的 `epoch_string_keeps_the_wire_shape` 把**取值**钉在字面量上。
 pub fn epoch_string(epoch: u64) -> String {
-    format!("rte-{:08}", epoch)
+    datazen_runtime::registry::epoch::epoch_string(epoch)
 }
 
 /// 登记表**第一个**会话拿 `Counter(1)`，`epoch_string(1)` 落在 `rte-00000001`。

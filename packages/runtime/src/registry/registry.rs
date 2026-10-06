@@ -60,6 +60,9 @@ use crate::registry::epoch::RuntimeEpoch;
 use crate::registry::port::SessionPort;
 use crate::registry::receipt::CancelReceipt;
 
+// §6.4 空闲驱逐的账目表见 evict.rs；留在 registry.rs 里只会淹没在 800 行上下。
+mod evict;
+
 /// 锁中毒不该把会话登记表带走：被毒化的锁里没有不一致状态，只有一个没写完的临界区，
 /// 而我们所有临界区都是「算完再写」的。取回内部值继续用，并把毒化本身留给 tracing。
 fn guard<T>(result: std::sync::LockResult<T>) -> T {
@@ -444,46 +447,6 @@ impl SessionRegistry {
         Ok(view)
     }
 
-    /// §6.4：按注入的绝对毫秒驱逐到期的空闲会话。
-    ///
-    /// 时间由调用方注入：本模块**不读** `Instant::now()`，到期判定因此在测试里
-    /// 完全确定，不依赖真实时钟。
-    ///
-    /// # 【未闭合】W-02：`evict_idle_at` 把「actor 回绝」和「actor 报错」压成同一件事
-    ///
-    /// 下面这个 `let … else` 在两种非成功情形下都不摘表、不归还额度：过期会话留在表里
-    /// 占着一格额度，`session_view` 仍查得到它，而物理资源可能已经关了。
-    ///
-    /// 怎么复现：给一个到期会话配一个拒绝 `Close` 的 actor，调用 `evict_idle_at`——它
-    /// 不在返回值里，却仍在登记表里占额度；把 actor 换成让 `exec` 返回 `Err`，同样如此。
-    ///
-    /// 为什么不能只把 `continue` 换成 `?`：未到期也是 `Err` 的一种。正确的修法是三向
-    /// 判别——`Ok(None)` 未到期不动它；`Err(CloseRejected)` 是闸门在**下发之前**就拦下，
-    /// 什么都没发生；其余 `Err` 已过 §9.4、资源已关，只能按「已丢失」摘表。只补后两路
-    /// 会把「未到期」也当成已关——这正是 CM-74 验收实测 MB1 变异时连带点红两条**既有**
-    /// 用例（`未设空闲期限的会话永不被驱逐`、`空闲到期才驱逐_未到期一律不动手`）的原因。
-    ///
-    /// 影响限于存量行为，**本轨不修**（不在 CM-74 范围内，且修法会改动既有语义）。
-    /// 结论、复现步骤与不修的代价都写在这里，而不是留在台账里：台账随合并删除之后，
-    /// 这些就再也读不到了。
-    pub async fn evict_idle_at(&self, at_ms: u64) -> Vec<SessionView> {
-        self.audit.pump();
-        let targets = self.read_table().records();
-        let mut evicted = Vec::new();
-        for record in targets {
-            let Ok(Some(view)) = record
-                .actor
-                .exec(|reply| ExecCommand::Evict { at_ms, reply })
-                .await
-            else {
-                continue;
-            };
-            self.forget(&record.db_session_id);
-            evicted.push(view);
-        }
-        evicted
-    }
-
     /// 关闭成功后从表里摘除并归还额度。
     ///
     /// 摘除只对**仍在表里的那一项**生效：actor 关闭期间可能已有别的路径把它摘掉，
@@ -512,12 +475,18 @@ impl SessionRegistry {
     /// | `Err(_)` | **没送达**：控制通道已断，或投递之后回执丢失 | **否** |
     ///
     /// `Ok(false)` 是**被确认的否定答复**，不是投递失败，所以它照常摘行。
-    /// 这一格在登记表这条路径上**确实可达**：`owned_by` 按 worker 筛一遍之后，
-    /// actor 侧的第二道防线 `state.physical.is_none()` 仍能把它筛出来——§9.4 释放
-    /// 例程在物理层关不掉（`Undecidable`）时**先**把 `physical` 清空再返回
-    /// `SessionLost`，而 [`SessionRegistry::evict_idle_at`] 收不到成功视图就跳过
-    /// 摘行，留下一条「资源已清空、行还在表里」的记录。下一次租约失效就走这一格。
-    /// 所以绝不能把它塞进失败分支——把否定答复当成投递失败，代价是这条会话永远
+    /// 这一格**仍然可达**，但入口不是驱逐：actor 的第二道防线是
+    /// `state.physical.is_none()`，而 `owned_by` 只按 worker 筛，所以任何一条
+    /// 「行在册、actor 活着、物理资源已经没了」的记录都会落到这一格。
+    /// 造它最干净的入口是候选原语：`open_candidate` → `destroy_candidate`（走
+    /// §9.4 把物理资源清掉）→ `publish_candidate`（把这条插进可见表）。
+    ///
+    /// ⚠ 此前这一格的构造靠的是**驱逐的一处缺陷**：§9.4 在物理层关不掉时**先**把
+    /// `physical` 清空再返回 `SessionLost`，而 `evict_idle_at` 当时收不到成功视图就
+    /// 跳过摘行，于是留下一条「资源已清空、行还在表里」的记录。那条缺陷已由
+    /// [`SessionRegistry::evict_idle_at`] 的逐向判别闭合（`SessionLost` ⇒ 摘表还额度），
+    /// 所以这一格改由候选原语构造——**判定的三态本身没变**，变的只是造法。
+    /// 绝不能把这一格塞进失败分支——把否定答复当成投递失败，代价是这条会话永远
     /// 留在表里、额度永远挂在 stale 上等一个不会来的隔离确认。
     ///
     /// 此前这里是 `let _ = ...` 然后**无条件**摘行，等于把第三种也当成第二种处理。

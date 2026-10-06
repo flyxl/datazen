@@ -75,6 +75,9 @@ use gateway_fixtures as fx;
 /// 网关层的源码全集。路径相对本文件（`packages/runtime/tests/`）。
 const SOURCES: &[(&str, &str)] = &[
     ("mod.rs", include_str!("../src/gateway/mod.rs")),
+    // 从 mod.rs 搬出来的 ExecutionGateway 固有方法。必须登记：漏登记不是「少测一个文件」，
+    // 而是 `gateway_source_never_touches_the_filesystem` 的反面证据在这半个网关上直接失效。
+    ("execution.rs", include_str!("../src/gateway/execution.rs")),
     ("request.rs", include_str!("../src/gateway/request.rs")),
     (
         "owner_binding.rs",

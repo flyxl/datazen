@@ -75,7 +75,7 @@
 //!   提交前后是唯一的分界线——分界线之前什么都没变。
 //! - **提交后失败**：只允许恢复同一份回执。新会话已经是既成事实，替换不得倒退。
 //!
-//! ## 调用方契约（W-05：接线时必须知道的四件事）
+//! ## 调用方契约（接线时必须知道的四件事）
 //!
 //! `ContextReplacer::replace` 目前**没有生产调用方**，整条编排由测试驱动。接线时下面
 //! 四条是前提，代码里读不出别的默认值：
@@ -100,6 +100,50 @@
 //!    §4.4 `:392`「`configRevision/contextRevision` 用于版本与上下文冲突」、§7.1 `:526`
 //!    「后续排队请求仍要重新校验 `contextRevision`」就落在这一个比较上，不能改成
 //!    「差得不多就算了」。
+//!
+//! ## 「提交替换 × 并发空闲驱逐」这个交错的可达性
+//!
+//! 替换提交（`publish_candidate`）与并发驱逐之间的窗口，历来被读成一句话：
+//! 「旧会话的句柄会不会被一次并发驱逐终结到**新** resource 上，从而把旧事务提交进新会话」。
+//! 逐段核对之后，**这一半结构上不可达**，理由是三条各自独立、且都能从代码读出来的事实：
+//!
+//! 1. **终结与关闭的资源归属由 actor 自己决定，不由调用方决定。**
+//!    [`crate::registry::actor::release`] 的 `close` 用的是 `state.physical`（该 actor
+//!    自己那份），而 `finalize_handles` 用的是**每个句柄登记时**记的 `resource_id`。
+//!    候选是**另一个 actor**（`open_candidate` 起的），它的 `state.physical` 是新资源。
+//!    两个 actor 各有一本自己的句柄账。所以「把旧句柄发到新资源上」需要旧句柄出现在
+//!    候选的账上，而 [`crate::registry::handles::HandleRegistry::register`] 只被
+//!    `exec::apply_completion` 在**同一个 actor 内**调用——没有任何一条路径把 A 的句柄
+//!    搬进 B 的账本。驱逐按 `dbSessionId` 定位 actor，它连「哪一个 actor」都选不错。
+//! 2. **旧会话在候选进表之前就已经注销。** 编排顺序是
+//!    ⑥hold → ⑦Prepared/Committed → ⑧`close_registered(旧)` → ⑨`publish_candidate`。
+//!    第 ⑨ 步之前旧行已被 `forget` 摘掉，此后 `evict_idle_at` 遍历不到它；
+//!    第 ⑧ 步走的是**唯一**那条 §9.4 释放例程，终结与关闭都落在旧资源上——
+//!    即「落在旧 resource」这一支如实成立。
+//! 3. **候选自己没有空闲期限。** `open_request` 给候选的 `OpenRequest` 把
+//!    `idle_deadline_ms` 置成 `None`，于是 actor 侧 `evict_idle` 对它回 `Ok(None)`，
+//!    而 `Ok(None)` 在登记表侧是一次**不动任何东西**的空操作。候选发布之后就是普通
+//!    在册会话，这条是它不被并发驱逐的唯一支点，所以它有独立用例
+//!    （`tests/registry_evict_replacement.rs` 的
+//!    `发布后的候选没有空闲期限_驱逐对它是不动`）：把 `None` 改成 `Some(..)`，
+//!    那条用例立刻红，上面这句论断同时失效。
+//!
+//! **可达的那一半不是「终结到新资源」，而是驱逐的答复怎么记账。** 屏障期间
+//! （⑥ 之后、⑧ 之前）到达的 `Evict` 被发放闸门拒成
+//! `CloseRejected("replacementInProgress")`（见 [`crate::registry::actor::context::gate`]）。
+//! 这是一次**派发前**的拒绝：物理资源、已登记句柄、期限原封不动。登记表此时若把它
+//! 当成「§9.4 已跑完、资源已关」去摘行还额度，后果是具体的——第 ⑧ 步的
+//! `close_registered` 定位不到旧会话，于是**旧物理资源连同它的全部已登记句柄再也没有
+//! 人处置**：既不落在旧 resource，也不落在新 resource，而是悬空。这正是判据
+//! 「或明确失败」要排除的形状。该格由
+//! `tests/registry_evict_replacement.rs` 的
+//! `屏障期间到来的驱逐不得摘行_旧句柄仍由替换例程在原资源终结` 钉住（探针站在
+//! `Prepared` 提交那一刻，即屏障内部；不靠时间推进制造窗口）。
+//!
+//! 为什么这里写结论而不是留一个用例：可达的部分已有用例，不可达的部分**构造不出来**。
+//! 为一个构造不出来的交错写一个「它没发生」的用例，等于写一条无论实现对错都绿的断言——
+//! 那是位置相关的假覆盖。所以不可达的结论留在代码旁，且它的三个支点分别有出处：
+//! 支点 1 与 2 是本文件与 `release`/`handles` 里可直接读到的代码事实，支点 3 有反证用例。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -120,6 +164,7 @@ use crate::directory::{
     SessionHandle as DirectoryHandle,
 };
 use crate::registry::actor::OpenRequest;
+use crate::registry::epoch::epoch_string;
 use crate::registry::port::SessionPort;
 use crate::registry::{SessionActor, SessionRegistry};
 
@@ -285,8 +330,8 @@ impl ContextReplacer {
             .commit_status(&ReplacementOperationKey::for_handle(&old_directory_handle))
         {
             CommitStatus::Committed { handle } => {
-                // 目录说提交了，注册表这边却**对不上** ⇒ 上一轮撞号发布失败的孤儿态
-                // （已提交、无宿主入口）。此时**不能**把目录的句柄当回执发出去。
+                // 目录说提交了，注册表这边却**对不上** ⇒ 已提交但无宿主入口的孤儿态。
+                // 此时**不能**把目录的句柄当回执发出去。
                 //
                 // 判据必须比 id 更严，只问「这个 id 在不在册」会被撞号本身骗过去：
                 // 候选 id 撞上的是**别人**那一行，那一行确实在册，`is_registered` 为真，
@@ -296,6 +341,34 @@ impl ContextReplacer {
                 //
                 // 宁可当场报错——目录已提交这件事记在那里，重试会再次落到这里并得到同样的
                 // 答案，不会退化成「按大概重开一次」，也不会退化成「换个人的会话发回去」。
+                //
+                // ## 为什么是 `InvariantBroken("committedWithoutHostEntry")`，不是别的错
+                //
+                // 这一格有两个可能的替代品，都比报错糟，所以「报错」本身不是待议项，
+                // 待议的只是**用哪个错**：
+                //
+                // * 发回执：回执里的 `session` 在登记表里不存在，调用方拿到 `Ok`，紧接着
+                //   `session_view` 撞 `UnknownSession`——看起来成功、实际用不了。§13.1 `:800`
+                //   的「同键返回同 session」承诺的前提是那一代会话**真的在**，前提没了还照发，
+                //   等于用一个可验证的失败换一个不可验证的失败。
+                // * 退化成「按大概重开一次」：把幂等键变成随机数，而且每重试一次白吃一格
+                //   额度，泄漏到顶之后这个连接再也开不出会话。
+                //
+                // 至于为什么落在 `InvariantBroken` 而不是 `UnknownSession`/`SessionLost`：
+                // `UnknownSession` 说的是「你给的句柄查不到」，会把责任指回调用方，而这里
+                // 调用方给的东西**是对的**；`SessionLost` 说的是「会话曾经存在、后来没了」，
+                // 而撞号那一格里那一行从头到尾活着。两者都会把排查引向错误的方向。
+                // `InvariantBroken` + 一个逐字稳定的码，是唯一能同时表达「这是宿主自己的
+                // 两份账脱节了」和「调用方可以据此判断再重试也没用」的形状。
+                //
+                // 代价要写明：这一格之后调用方**永远**拿不到回执，只能自己收敛（重新取号
+                // 发起一次全新的替换）。这是有意接受的——目录的 committed 记录不由宿主撤销，
+                // 宿主也无法证明「那一代会话本该还活着」，替它重开就是伪造。
+                //
+                // 覆盖：`tests/registry_rejection.rs` 的「候选发布失败时额度回到原值且撞号的
+                // 那一行不动」（在册但是别人的世代）与「目录记着已提交但注册表已无该行时同键
+                // 重放不得签发回执也不得凭空重开」（连在册都不在）。后者特意断言**额度不动**、
+                // **表项不变**：报错若带着副作用，「孤儿态」就会变成「额度泄漏源」。
                 match self.registry.epoch_of(&handle.db_session_id) {
                     Ok(epoch) if epoch_string(epoch.get()) == handle.runtime_epoch.as_str() => {}
                     other => {
@@ -583,12 +656,6 @@ fn directory_handle(handle: &SessionHandle) -> DirectoryHandle {
         handle.db_session_id.clone(),
         PlatformEpoch::new(epoch_string(handle.runtime_epoch.get())),
     )
-}
-
-/// 世代号 → 目录侧那一份字符串。与 [`directory_handle`] 必须是同一个格式化，
-/// 否则两边的 epoch 永远对不上，短路会误判成孤儿态。
-fn epoch_string(epoch: u64) -> String {
-    format!("rte-{:08}", epoch)
 }
 
 fn port_error(error: PortError) -> RuntimeError {
