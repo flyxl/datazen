@@ -89,9 +89,7 @@ impl BudgetLedger {
 
     /// 按需登记一个 DB 服务。
     pub fn ensure_service(&mut self, connection_id: &ConnectionId) {
-        self.services
-            .entry(connection_id.clone())
-            .or_insert_with(ServiceState::new);
+        self.services.entry(connection_id.clone()).or_default();
     }
 
     /// 服务是否在排空。
@@ -194,7 +192,6 @@ impl BudgetLedger {
 
     /// 立即准入**一个**名额；额度不够时返回 [`AdmitOutcome::Busy`] 而不是排队。
     ///
-
     /// 多名额申请走 [`BudgetLedger::try_admit_many`]：那条路径才做全有或全无的回滚。
     pub fn try_admit(&mut self, claim: &BudgetClaim, now_ms: u64) -> AdmitOutcome {
         if claim.slots != 1 {
@@ -209,7 +206,7 @@ impl BudgetLedger {
                 });
             }
         }
-        let quota = self.config.service_quota.clone();
+        let quota = self.config.service_quota;
         let capacity = self.config.capacity_of(claim.class);
         let Some(mut service) = self.services.remove(&claim.connection_id) else {
             return AdmitOutcome::Denied(DenialReason::UnknownConnection {

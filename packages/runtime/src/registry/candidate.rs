@@ -39,7 +39,7 @@ impl SessionRegistry {
         let open_input = request.clone();
         let actor = spawn_actor(
             request,
-            runtime_epoch.clone(),
+            runtime_epoch,
             Arc::clone(&self.backend),
             self.outbox.clone(),
         );

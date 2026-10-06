@@ -310,6 +310,26 @@ impl FakeScript {
     }
 }
 
+/// 把脚本里的 `&'static str` 错误码 id 映射到 [`ExecutionErrorCode`]。
+///
+/// `FaultKind` 的 `code` 存的是**稳定 id**（报告与断言里要出现稳定字符串），
+/// 而 `ExecutionErrorCode::as_str()` 给的是 camelCase，两种写法都收。
+pub(super) fn execution_error_code(id: &str) -> ExecutionErrorCode {
+    match id {
+        "SqlError" | "sqlError" => ExecutionErrorCode::SqlError,
+        "ProtocolError" | "protocolError" => ExecutionErrorCode::ProtocolError,
+        "Cancelled" | "cancelled" => ExecutionErrorCode::Cancelled,
+        "Timeout" | "timeout" => ExecutionErrorCode::Timeout,
+        "ResourceLost" | "resourceLost" => ExecutionErrorCode::ResourceLost,
+        "PipelineAborted" | "pipelineAborted" => ExecutionErrorCode::PipelineAborted,
+        "HostRejected" | "hostRejected" => ExecutionErrorCode::HostRejected,
+        // 夹具作者写错了 id。整棵 fake 模块都被
+        // `#[cfg(any(test, feature = "test-harness"))]` 门控，不是生产路径，
+        // 所以让错误在源头炸掉，而不是悄悄降级成一个错误的错误码。
+        other => panic!("FakeScript 注入的未知错误码 id：{other}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,25 +384,5 @@ mod tests {
         for op in ResourceOp::ALL {
             assert!(!op.as_str().is_empty());
         }
-    }
-}
-
-/// 把脚本里的 `&'static str` 错误码 id 映射到 [`ExecutionErrorCode`]。
-///
-/// `FaultKind` 的 `code` 存的是**稳定 id**（报告与断言里要出现稳定字符串），
-/// 而 `ExecutionErrorCode::as_str()` 给的是 camelCase，两种写法都收。
-pub(super) fn execution_error_code(id: &str) -> ExecutionErrorCode {
-    match id {
-        "SqlError" | "sqlError" => ExecutionErrorCode::SqlError,
-        "ProtocolError" | "protocolError" => ExecutionErrorCode::ProtocolError,
-        "Cancelled" | "cancelled" => ExecutionErrorCode::Cancelled,
-        "Timeout" | "timeout" => ExecutionErrorCode::Timeout,
-        "ResourceLost" | "resourceLost" => ExecutionErrorCode::ResourceLost,
-        "PipelineAborted" | "pipelineAborted" => ExecutionErrorCode::PipelineAborted,
-        "HostRejected" | "hostRejected" => ExecutionErrorCode::HostRejected,
-        // 夹具作者写错了 id。整棵 fake 模块都被
-        // `#[cfg(any(test, feature = "test-harness"))]` 门控，不是生产路径，
-        // 所以让错误在源头炸掉，而不是悄悄降级成一个错误的错误码。
-        other => panic!("FakeScript 注入的未知错误码 id：{other}"),
     }
 }

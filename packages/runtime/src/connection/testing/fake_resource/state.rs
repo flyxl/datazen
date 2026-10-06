@@ -233,6 +233,10 @@ pub struct FakeResource {
 }
 
 impl FakeResource {
+    /// 夹具构造器：一次把资源的**全部身份维度**摆出来，缺一项就会让某个测试
+    /// 退化成测不到那条维度。收成 builder 或参数结构体只是把同一组位置参数换个地方摆，
+    /// 十个参数是这个夹具的固有形状。
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         resource_id: ResourceId,
         resource_key: impl Into<String>,
@@ -272,12 +276,12 @@ impl FakeResource {
     }
 
     pub fn budget_class(&self) -> BudgetClass {
-        self.accounting.budget_class.clone()
+        self.accounting.budget_class
     }
 
     pub fn permit_set(&self) -> PermitSet {
         PermitSet {
-            class: self.accounting.budget_class.clone(),
+            class: self.accounting.budget_class,
             permit_ids: vec![self.accounting.permit_id.clone()],
         }
     }
@@ -383,7 +387,7 @@ impl FakeResource {
         let permit = self.accounting.release().map(|plan| PermitRelease {
             plan,
             permit_id: self.accounting.permit_id.clone(),
-            budget_class: self.accounting.budget_class.clone(),
+            budget_class: self.accounting.budget_class,
         });
         Ok(CloseAttempt {
             precondition: ClosePrecondition {

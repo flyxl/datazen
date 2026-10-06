@@ -88,15 +88,10 @@ impl IdState {
 
     fn remember_first(&mut self, scope: FakeIdScope, value: u64) {
         let key = scope as u8;
-        if !self.collisions.contains_key(&key) {
-            self.collisions.insert(
-                key,
-                Collision {
-                    remaining: 0,
-                    value,
-                },
-            );
-        }
+        self.collisions.entry(key).or_insert(Collision {
+            remaining: 0,
+            value,
+        });
     }
 }
 

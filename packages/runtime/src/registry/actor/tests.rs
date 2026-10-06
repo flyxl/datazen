@@ -539,10 +539,10 @@ pub(crate) fn entries_of(
 }
 
 /// 取某类条目；多于一条即视为断言失败。
-pub(crate) fn single_of_kind<'a>(
-    entries: &'a [RegistryAuditEntry],
+pub(crate) fn single_of_kind(
+    entries: &[RegistryAuditEntry],
     kind: AuditKind,
-) -> Option<&'a RegistryAuditEntry> {
+) -> Option<&RegistryAuditEntry> {
     let mut found = entries.iter().filter(|entry| entry.kind == kind);
     let first = found.next()?;
     assert!(found.next().is_none(), "kind {kind:?} 出现了多于一条");

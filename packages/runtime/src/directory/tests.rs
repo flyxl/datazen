@@ -92,7 +92,11 @@ struct AlternatingEntropy {
 
 impl SessionIdEntropy for AlternatingEntropy {
     fn fill(&self, out: &mut [u8]) {
-        let byte = if self.counter.fetch_add(1, Ordering::Relaxed) % 2 == 0 {
+        let byte = if self
+            .counter
+            .fetch_add(1, Ordering::Relaxed)
+            .is_multiple_of(2)
+        {
             0x00
         } else {
             0xff
@@ -476,7 +480,7 @@ fn second_execution_cannot_hijack_a_busy_session() {
         Err(ExecutionId::new("exec-1")),
         "已有执行在跑时必须报出占用者而不是顶掉它"
     );
-    assert!(entry.end_execution(&ExecutionId::new("exec-2")) == false);
+    assert!(!entry.end_execution(&ExecutionId::new("exec-2")));
     assert!(entry.end_execution(&ExecutionId::new("exec-1")));
     assert!(!entry.has_active_execution());
 }

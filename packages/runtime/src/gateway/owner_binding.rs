@@ -69,10 +69,10 @@
 //!    守卫自证不成立的方式有两处，都实测过红：
 //!    (a) 合成反例——内存夹具，见 `production_wiring.rs` 模块头的「反证」一节；
 //!    (b) **落在真实文件上的探针**——往 `packages/runtime/src/gateway/mod.rs` 的
-//!        `pub(crate) mod testing_support;` 之后插入一行 `pub fn
-//!        planted_authorizer_for_guard_bypass() -> … { …AlwaysAllow) }`，
-//!        跑 `cargo test -p datazen-runtime --test owner_binding`，
-//!        报 `packages/runtime/src/gateway/mod.rs:67`，退出码 101。
+//!    `pub(crate) mod testing_support;` 之后插入一行 `pub fn
+//!    planted_authorizer_for_guard_bypass() -> … { …AlwaysAllow) }`，
+//!    跑 `cargo test -p datazen-runtime --test owner_binding`，
+//!    报 `packages/runtime/src/gateway/mod.rs:71`，退出码 101。
 //!    （`request.rs` **不是**反例：实测它 599 行，`AlwaysAllow`/`AlwaysDeny` 零命中。）
 //!
 //! 缓解程度要说准：`authorizer` 无默认值 ⇒ 漏传是**编译错误**（不会静默降级），

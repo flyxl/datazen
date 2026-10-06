@@ -248,7 +248,7 @@ impl FakeDriverPort {
 
     /// 本次调用是否命中故障注入。计数的是**进入端口的调用数**，不是成功数。
     fn injected_failure(&self, calls: u64) -> bool {
-        self.inject_failure_every > 0 && calls % self.inject_failure_every == 0
+        self.inject_failure_every > 0 && calls.is_multiple_of(self.inject_failure_every)
     }
 
     /// 锁只保护计数与视图；取不到锁时返回错误而不是 panic。

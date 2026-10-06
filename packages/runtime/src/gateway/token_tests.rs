@@ -34,7 +34,7 @@ fn guard(keyring: Arc<TokenKeyring>) -> Arc<SubmissionTokenGuard> {
 /// 测试侧**独立实现**的十六进制编解码。不复用 `token` 模块里那一份——
 /// 用被测代码来解析被测数据，测试就在替实现背书了。
 fn hex_decode(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         return None;
     }
     text.as_bytes()
@@ -204,7 +204,7 @@ fn a_forged_expiry_that_outlives_the_real_one_is_rejected() {
         fields[1],
         fields[2],
         fields[3],
-        u64::MAX.to_string()
+        u64::MAX
     );
     let forged = set_segment(&token, 2, &hex_encode(forged_text.as_bytes()));
     assert_eq!(

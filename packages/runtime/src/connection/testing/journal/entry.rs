@@ -74,7 +74,7 @@ impl ResourceEvent {
     }
 
     /// 是否把资源移出 live 集合（`Closed` 才释放占用；`Quarantined` 亦不可再被 acquire）。
-
+    ///
     /// 刻意**不**在这里提供「是否归还 permit」的判据：permit 收支由
     /// `Accounting::occupied` 这个权威标志决定（见 `fake_resource::state`），
     /// 那是防重复 `-1`（§4.3 I1）的那一位。扫台账事件只能重算出「看起来对」，

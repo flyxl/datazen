@@ -65,7 +65,7 @@ fn one_failing_tunnel_does_not_take_a_healthy_one_down_with_it() {
         .acquire(Some(&healthy), &second)
         .expect("an unrelated spec is unaffected");
     assert_eq!(harness.ledger.live_tunnels(), 1);
-    assert_eq!(harness.transport.is_open(&healthy), true);
+    assert!(harness.transport.is_open(&healthy));
 }
 
 /// F2：隧道中途死亡 ⇒ **全部**依赖租约被点名，引用**不减**。

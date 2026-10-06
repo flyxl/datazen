@@ -52,8 +52,13 @@ impl SourceKind {
         }
     }
 
-    /// 反查。未知字面量返回 `None`，调用方自行决定是否拒绝。
-    pub fn from_str(value: &str) -> Option<Self> {
+    /// 按 [`SourceKind::as_str`] 的稳定字面量反查。未知字面量返回 `None`，
+    /// 调用方自行决定是否拒绝。
+    ///
+    /// 刻意**不**实现 [`std::str::FromStr`]：那个 trait 用 `Err` 表达失败，会把
+    /// 「字面量不认识」和「调用方决定要不要拒绝」揉进同一层。名字也不叫 `from_str`，
+    /// 免得读代码的人以为它就是标准 trait 的那个——`from_literal` 说清了它是**闭集查表**。
+    pub fn from_literal(value: &str) -> Option<Self> {
         match value {
             "editor" => Some(SourceKind::Editor),
             "job" => Some(SourceKind::Job),
@@ -120,7 +125,7 @@ impl ExecutionSource {
 
     /// 是否可以直接进入审计落盘。
     pub fn is_persistable(&self) -> bool {
-        !self.source_id.is_empty() && SourceKind::from_str(self.kind.as_str()).is_some()
+        !self.source_id.is_empty() && SourceKind::from_literal(self.kind.as_str()).is_some()
     }
 
     /// CM-61 明令不得出现在落盘结构里的字段名。
@@ -343,9 +348,9 @@ mod tests {
             SourceKind::WorkflowBlock,
             SourceKind::ClientSession,
         ] {
-            assert_eq!(SourceKind::from_str(kind.as_str()), Some(kind));
+            assert_eq!(SourceKind::from_literal(kind.as_str()), Some(kind));
         }
-        assert_eq!(SourceKind::from_str("nope"), None);
+        assert_eq!(SourceKind::from_literal("nope"), None);
     }
 
     #[test]

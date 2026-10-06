@@ -55,6 +55,9 @@ pub mod epoch;
 pub mod handles;
 pub mod port;
 pub mod receipt;
+// `registry::registry` 同理，是 `registry/registry/` 的直译。改名动 `use` 路径，
+// 属对外路径变更，不在 lint 清理范围内。
+#[allow(clippy::module_inception)]
 pub mod registry;
 
 pub use actor::{spawn_actor, AuditOutbox, ControlCommand, ExecCommand, OpenRequest, SessionActor};

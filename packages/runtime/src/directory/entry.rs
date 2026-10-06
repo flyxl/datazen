@@ -308,7 +308,7 @@ impl DirectoryEntry {
     /// 顺序是刻意的：**先查 epoch 再查状态**。旧 epoch 的句柄即使撞上一个正在关闭的
     /// 条目，也必须报 `StaleEpoch`——那是 worker 重启的结论，不是「会话没了」。
     pub fn route(&self, handle: &SessionHandle) -> Result<(), RouteRejection> {
-        if &self.owner.db_session_id != &handle.db_session_id {
+        if self.owner.db_session_id != handle.db_session_id {
             return Err(RouteRejection::Unknown);
         }
         if self.owner.runtime_epoch != handle.runtime_epoch {

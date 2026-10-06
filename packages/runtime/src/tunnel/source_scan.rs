@@ -96,7 +96,7 @@ pub(super) fn blank(text: &str) -> String {
             }
             if b.get(j) == Some(&b'"') {
                 let close: String = std::iter::once('"')
-                    .chain(std::iter::repeat('#').take(hashes))
+                    .chain(std::iter::repeat_n('#', hashes))
                     .collect();
                 // 同样把 `r"` 与收尾定界符一起抹成等长空白（理由见下面字符串分支的注释）。
                 out.push_str("  ");

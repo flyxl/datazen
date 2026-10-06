@@ -78,20 +78,11 @@ const PROVIDER_VERSION: &str = "0.0.0-fake";
 const DEFAULT_CONFIG_REVISION: u64 = 7;
 
 /// F2 注入的「预算占满」窗口。只由 `ops.rs` 的 `acquire_resource` 写与读。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct BudgetBusy {
     /// 以**假单调时钟**（`FakeClock`）的纳秒计，不是墙钟 —— 断言顺序只看 journal，不靠 sleep。
     until_nanos: u64,
     reason: &'static str,
-}
-
-impl Default for BudgetBusy {
-    fn default() -> Self {
-        Self {
-            until_nanos: 0,
-            reason: "",
-        }
-    }
 }
 
 /// §3.1 的 `FakeResourceProvider`。

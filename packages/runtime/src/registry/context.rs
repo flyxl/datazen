@@ -641,7 +641,7 @@ fn open_request(
         db_session_id: request.candidate_db_session_id.clone(),
         worker_id: old_owner.worker_id.clone(),
         connection_id: old_owner.connection_id.clone(),
-        config_revision: old_view.config_revision.clone(),
+        config_revision: old_view.config_revision,
         owner: old_view.owner.clone(),
         initial_target: request.desired.clone(),
         expires_at: old_view.expires_at.clone(),

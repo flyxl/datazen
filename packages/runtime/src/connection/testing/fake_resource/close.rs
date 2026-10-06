@@ -189,7 +189,7 @@ impl FakeResourceProvider {
                     },
                     owner,
                     pool_key.clone(),
-                    budget_class.clone(),
+                    budget_class,
                 );
             }
             // `Closed` 不受归池判据约束（§9.4：driver 不 Clean 也必须关闭），所以它自带门闸。
@@ -199,7 +199,7 @@ impl FakeResourceProvider {
                     ResourceEvent::Closed,
                     owner,
                     pool_key,
-                    budget_class.clone(),
+                    budget_class,
                 );
             }
         }

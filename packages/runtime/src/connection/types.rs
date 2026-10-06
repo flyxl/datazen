@@ -535,7 +535,7 @@ mod tests {
         let nulled: NamespaceInput =
             serde_json::from_str(r#"{"database":"dz_ns_a","schema":null}"#).expect("parse");
         assert_eq!(absent.layer(TargetNamespaceLayer::Schema), None);
-        assert_eq!(absent.layer(TargetNamespaceLayer::Schema).is_none(), true);
+        assert!(absent.layer(TargetNamespaceLayer::Schema).is_none());
         assert_eq!(nulled.layer(TargetNamespaceLayer::Schema), Some(None));
 
         let from_absent = absent.resolve(&shape).expect_err("缺 schema 必须被拒");

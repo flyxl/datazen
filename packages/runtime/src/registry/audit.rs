@@ -232,10 +232,17 @@ impl RegistryAuditEntry {
         }
     }
 
-    /// 取消处置条目。
+    /// 取消处置条目：`outcome` 是**宿主处理这次控制请求**的结论，不是执行结论。
     ///
-    /// 签名里**没有** `effect_outcome` 参数：取消成功不代表数据已落库或已回滚，
-    /// 让调用方能顺手写一个进去就等于允许覆盖物理层的判定（CM-72）。
+    /// 取消请求被正常受理 → `succeeded`；绑定对不上被拒 → 走 [`Self::failure`] 记 `rejected`。
+    /// 它与 `executionState`（执行被推到了哪个终态）分属两个键，
+    /// 因此 `outcome = "succeeded"` + `executionState = "cancelRequested"` 这组值是自洽的，
+    /// 不构成「执行成功了」的断言。
+    ///
+    /// 特别地：签名里**没有** `effect_outcome` 参数——取消请求成功绝不改写数据效果（CM-72）；
+    /// 让调用方能顺手写一个进去，就等于允许覆盖物理层的判定。
+    ///
+    /// [`Self::failure`]: Self::failure
     pub fn cancel_resolved(
         db_session_id: DbSessionId,
         runtime_epoch: u64,
@@ -250,18 +257,6 @@ impl RegistryAuditEntry {
             ..Self::base(AuditKind::CancelResolved, db_session_id, runtime_epoch)
         }
     }
-
-    /// 取消条目：`outcome` 是**宿主处理这次控制请求**的结论，不是执行结论。
-    ///
-    /// 取消请求被正常受理 → `succeeded`；绑定对不上被拒 → 走 [`Self::failure`] 记 `rejected`。
-    /// 它与 `executionState`（执行被推到了哪个终态）分属两个键，
-    /// 因此 `outcome = "succeeded"` + `executionState = "cancelRequested"` 这组值是自洽的，
-    /// 不构成「执行成功了」的断言。
-    ///
-    /// 特别地：本构造函数**不接收** `effectOutcome` 参数——取消请求成功
-    /// 绝不改写数据效果（CM-72）。
-    ///
-    /// [`Self::failure`]: Self::failure
 
     /// 句柄终结条目：`undecided` 对应 §9.4「回滚结果不可判定」。
     pub fn handles_finalized(

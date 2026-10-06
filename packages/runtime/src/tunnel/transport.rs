@@ -81,6 +81,12 @@ use super::error::TunnelError;
 #[derive(Clone, PartialEq, Eq)]
 pub struct TunnelHandle(Arc<()>);
 
+impl Default for TunnelHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TunnelHandle {
     /// 由 [`TunnelTransport`] 的实现方铸造 —— 桌面侧 `NetworkProvider` 实现
     /// 住在本 crate 之外，所以构造权必须是 `pub`。

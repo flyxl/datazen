@@ -49,7 +49,7 @@ const IDLE_DEADLINE_MS: u64 = 60_000;
 /// 三档后端只在 `close()` 上分岔——它就是三态分类表的那个旋钮。
 ///
 /// `execute` / `cancel` 在本文件的三条路径上永远不会被调用（租约失效走的是控制旁路
-/// + §9.4 释放例程），所以这两个方法**故意**返回 `Err`：真被调到时立刻失败，
+/// 与 §9.4 释放例程），所以这两个方法**故意**返回 `Err`：真被调到时立刻失败，
 /// 比伪造一个看起来能跑的返回值诚实。
 macro_rules! invalidation_only_backend {
     ($(#[$meta:meta])* $name:ident => $close:block) => {

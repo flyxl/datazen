@@ -359,25 +359,21 @@ impl FakeHarness {
             .map(|record| record.resource_id.as_str().to_owned());
         match claimed {
             Some(owner) if owner != other_resource_id => {
-                return Err(GatewayError::Provider(ProviderError::SessionLost(format!(
+                Err(GatewayError::Provider(ProviderError::SessionLost(format!(
                     "句柄 {} 登记在资源 {} 上，与入参声称的 {other_resource_id} 不符",
                     handle_id.as_str(),
                     owner
                 ))))
             }
-            Some(owner) => {
-                return Err(GatewayError::Provider(ProviderError::SessionLost(format!(
-                    "句柄 {} 属于资源 {owner}，不能在资源 {} 上复用",
-                    handle_id.as_str(),
-                    resource.resource_id.as_str()
-                ))))
-            }
-            None => {
-                return Err(GatewayError::Provider(ProviderError::SessionLost(format!(
-                    "句柄 {} 未登记，无法确认归属资源",
-                    handle_id.as_str()
-                ))))
-            }
+            Some(owner) => Err(GatewayError::Provider(ProviderError::SessionLost(format!(
+                "句柄 {} 属于资源 {owner}，不能在资源 {} 上复用",
+                handle_id.as_str(),
+                resource.resource_id.as_str()
+            )))),
+            None => Err(GatewayError::Provider(ProviderError::SessionLost(format!(
+                "句柄 {} 未登记，无法确认归属资源",
+                handle_id.as_str()
+            )))),
         }
     }
 }

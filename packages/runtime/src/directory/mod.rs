@@ -34,6 +34,9 @@
 
 pub mod attachment;
 pub mod commit;
+// `directory::directory` 是 `directory/` 目录下再开一个 `directory.rs` 的直译，不是笔误。
+// 改名会动到全仓 `use` 路径，属对外路径变更，不在 lint 清理范围内。
+#[allow(clippy::module_inception)]
 pub mod directory;
 pub mod entry;
 pub mod id;

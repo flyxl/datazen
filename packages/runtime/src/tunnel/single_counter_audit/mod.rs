@@ -184,8 +184,10 @@ const TEST_TRACK_PORT_TYPES: &[&str] = &["HostTunnelTransport", "RecordingTunnel
 
 /// 全模块里**唯一**被允许点访问 `TunnelEntry::refs` 字段的注册方法（R1 的红线）。
 ///
-/// 名单外的点访问 ⇒ 第二本账的形状。名单本身不许被悄悄掏空：正向用例逐名验证它们在
-/// 台账里真实存在，并断言名单非空。
+/// 名单外的点访问 ⇒ 第二本账的形状。名单本身不许被悄悄掏空——这一条**由 R1 自己
+/// 兜住**，不另设断言：名单一旦为空，窄口自己（`refs` / `add_reference` /
+/// `take_reference`）就落进「名单外」，`require_clean` 在正向用例开头就红，
+/// 且报的是这三条函数名，比一句「名单为空」有用得多。
 const REGISTERED_COUNT_ACCESSORS: &[&str] =
     &["established", "refs", "add_reference", "take_reference"];
 
@@ -348,7 +350,7 @@ fn refs_field_leaks(text: &str) -> Vec<String> {
             let abs = scan + rel + ".refs".len();
             let next = body.as_bytes().get(abs).copied();
             // `.refs()` 是按值取数的注册方法调用；后面紧跟标识符的是别的字段。
-            let is_field = next.map_or(true, |c| !matches!(c, b'(' | b'_') && !is_word_char(c));
+            let is_field = next.is_none_or(|c| !matches!(c, b'(' | b'_') && !is_word_char(c));
             if is_field {
                 out.push(format!(
                     "{}() 直读了 refs 字段（行 {}）",
@@ -483,10 +485,8 @@ fn the_authoritative_ref_count_is_read_only_through_registered_accessors() {
             "注册取数方法 {name} 不见了 —— R1 的名单与实现已经脱钩"
         );
     }
-    assert!(
-        !REGISTERED_COUNT_ACCESSORS.is_empty(),
-        "名单为空 ⇒ R1 会点所有函数（含窄口自己）的名"
-    );
+    // 名单为空不必另设断言，理由见 `REGISTERED_COUNT_ACCESSORS` 的文档。
+    //
     // 三个方法全部**按值**交出计数：不许返回引用。
     //
     // 判据是「不是引用类型」，**不是**「必须是 u32」：把计数包进新值类型

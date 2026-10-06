@@ -104,6 +104,10 @@ pub struct OpenRequest {
 }
 
 /// 执行队列（FIFO）。
+// `Open` 变体（`OpenRequest` + `Reply`）比其余变体大一个量级（≥440 B）。
+// 装箱能消掉此告警，但会给**每次开库**加一次堆分配，且要改 actor 的消息契约；
+// 这里只记录尺寸差事实，不在 lint 清理里改队列形状。
+#[allow(clippy::large_enum_variant)]
 pub enum ExecCommand {
     Open {
         request: OpenRequest,
@@ -290,7 +294,7 @@ pub fn spawn_actor(
             runtime_epoch: Counter(runtime_epoch.get()),
         },
         connection_id: request.connection_id.clone(),
-        config_revision: request.config_revision.clone(),
+        config_revision: request.config_revision,
         owner: request.owner.clone(),
         initial_target: request.initial_target.clone(),
         observed_context: SessionContext::new(
@@ -334,6 +338,9 @@ pub fn spawn_actor(
 }
 
 /// 循环里的一次推进。
+// `Joined` 变体（264 B）与 `Published`（24 B）尺寸悬殊。装箱会给状态机每一步加一次
+// 堆分配；此告警只作形状记录，不在 lint 清理里改编排器状态机。
+#[allow(clippy::large_enum_variant)]
 enum Step {
     /// cancelHandle 被后端公布。
     Published(Option<String>),
@@ -549,7 +556,7 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
         .backend
         .open(OpenResource {
             connection_id: request.connection_id.clone(),
-            config_revision: request.config_revision.clone(),
+            config_revision: request.config_revision,
             owner: request.owner.clone(),
             initial_target: request.initial_target.namespace.clone(),
             runtime_epoch: state.runtime_epoch.get(),

@@ -129,7 +129,7 @@ fn every_transport_implementing_file_on_disk_is_registered() {
     require_clean(
         "磁盘上实现了 TunnelTransport 却没进审计登记表 —— \
          这份端口不会被 R4 / R5 扫到，它完全可以私藏第二本账",
-        unregistered.iter().map(|p| format!("{p}")).collect(),
+        unregistered.iter().map(|p| p.to_string()).collect(),
     );
     assert!(
         on_disk.contains(&HARNESS.to_owned()),

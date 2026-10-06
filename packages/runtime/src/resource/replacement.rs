@@ -136,6 +136,10 @@ impl ReplacementLedger {
     /// **不**建立第二条物理连接（调用方据此跳过 `transport.open`）。
     /// 同一 key 却指向**另一个**旧会话则是缺陷，按 `DuplicateCandidate` 拒绝 ——
     /// 那意味着两次并发的替换撞了同一个幂等键。
+    // 八个参数里除 `self` 外全是替换这一次操作必须同时确定的身份量：幂等键 / 旧会话 /
+    // 旧资源 / 候选资源 / 新会话 / 新租约 / 配置修订。少任何一个，§7.4 的幂等判定都无从成立。
+    // 收成结构体只是把这组信息换到调用点的另一处摆，不改这个方法的语义形状。
+    #[allow(clippy::too_many_arguments)]
     pub fn begin(
         &mut self,
         idempotency_key: impl Into<String>,

@@ -176,11 +176,7 @@ impl WriteOutcome {
 pub fn timestamp() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| {
-            u128::try_from(d.as_millis())
-                .unwrap_or(u128::MAX)
-                .to_string()
-        })
+        .map(|d| d.as_millis().to_string())
         .unwrap_or_else(|_| TIMESTAMP_FALLBACK.to_owned())
 }
 
@@ -415,7 +411,7 @@ mod tests {
         assert_eq!(env.declared_memory_bytes, 17_179_869_184);
         // 唯一真正探测出来的那个数：探不到时是 None，绝不是 0（0 会被读成「探测到 0 核」）。
         assert!(
-            env.detected_parallelism.map_or(true, |n| n > 0),
+            env.detected_parallelism.is_none_or(|n| n > 0),
             "探测到的并行度要么是 None，要么是正数"
         );
     }
@@ -563,7 +559,7 @@ mod tests {
         let outcome = write(&run, Some(std::path::Path::new(&dir))).expect("应可落盘");
         let paths = outcome.paths();
         let summary = paths[1];
-        let text = std::fs::read_to_string(&summary).expect("summary 应可读");
+        let text = std::fs::read_to_string(summary).expect("summary 应可读");
         let json: serde_json::Value = serde_json::from_str(&text).expect("summary 应是 JSON");
         let rejections = json["rounds"][0]["rejections"]
             .as_object()
