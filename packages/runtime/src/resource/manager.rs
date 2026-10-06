@@ -20,7 +20,9 @@ use crate::resource::lease::{LeaseRecord, LeaseRequest, LeaseState, PoolKeyGener
 use crate::resource::publication::DirectoryPublisher;
 use crate::resource::replacement::ReplacementLedger;
 use crate::resource::table::{ConfigRevisionDrift, QueuedLease, ResourceTable};
+use crate::resource::tunnel_wiring::TunnelDisposition;
 use crate::resource::{MonotonicSource, ResourceError, IDLE_POOL_TTL_SECONDS};
+use crate::tunnel::TunnelLedger;
 
 /// 宿主资源台账的写入口。
 ///
@@ -35,6 +37,12 @@ pub struct ResourceManager {
     pub(super) disabled: IndexSet<ConnectionId>,
     pub(super) queue: Vec<QueuedLease>,
     pub(super) idle_ttl_seconds: u64,
+    /// 隧道台账。`None` = **没接隧道端口**（配置事实），不是「隧道计数为 0」。
+    ///
+    /// 唯一权威是台账本身：本模块任何位置都**不**另存一份隧道引用计数，
+    /// 引用归零只经由 [`crate::tunnel::TunnelLedger::return_resource`] 的私有 `drain`
+    /// （CM-32 单计数器铁律）。接线见 `resource::tunnel_wiring`。
+    pub(super) tunnels: Option<TunnelLedger>,
 }
 
 impl ResourceManager {
@@ -48,6 +56,7 @@ impl ResourceManager {
             disabled: IndexSet::new(),
             queue: Vec::new(),
             idle_ttl_seconds: IDLE_POOL_TTL_SECONDS,
+            tunnels: None,
         }
     }
 
@@ -198,12 +207,17 @@ impl ResourceManager {
             .table
             .take_idle(&pool_key, now_nanos, self.idle_ttl_seconds);
         for lease_id in expired {
-            self.force_close(&lease_id)?;
+            // 过期空闲租约被换掉：引用随这次确认关闭一并归还。
+            let _tunnel = self.force_close(&lease_id)?;
         }
 
         if let Some(lease_id) = idle {
             if let Some(record) = self.table.lease_mut(&lease_id) {
                 record.move_to(LeaseState::InUse)?;
+                // 空闲连接复用：这条连接**早就**占着它那份隧道引用（建它时就落过账了），
+                // 复用不改变占用，只把租约转成 InUse。隧道引用**不得**在这里再落一次 ——
+                // 重复落账会让账面上躺着 2 份引用，而归还只减 1 份，剩下的永远没人还
+                // （即 `TunnelError::AlreadyHeld` 在注释里点名要防的那种泄漏）。
                 return Ok(record.clone());
             }
         }
@@ -233,6 +247,25 @@ impl ResourceManager {
             active_execution: None,
             idle_for_issue: false,
         };
+
+        // CM-27「隧道引用正确」：**隧道阶段**。
+        //
+        // 阶段序上隧道排在 socket 之后，是因为 `LeaseId` 由 `transport.open` 返回的
+        // `ResourceId` 派生，而台账的依赖方身份正是 `LeaseId` —— 依赖方身份在 socket
+        // 之前不存在，引用无从登记（见 `tunnel_wiring` 模块头）。回滚义务两向对称，
+        // CM-27 的六个注入点一个不漏。
+        //
+        // 建不成 ⇒ **不落账**（台账侧既不建条目也不加计数），资源侧只需把刚开的
+        // socket 补偿掉；这段补偿里没有、也不该有任何台账动作。
+        if let Some(spec) = request.tunnel_spec.as_ref() {
+            if let Err(error) = self.acquire_tunnel_reference(&lease.lease_id, spec) {
+                return Err(self.compensate_tunnel_stage_failure(&lease, error));
+            }
+        }
+
+        // 握手 / 初始化 / 注册三个阶段失败 ⇒ 调 `roll_back_unpublished`，
+        // 把已经开出来的 socket 关掉并归还它那份隧道引用（CM-27「隧道开成后回滚释放」）。
+        // 三段共用同一个补偿入口，不允许各自为政写出第二种回滚语义。
         self.table.insert(resource_id, lease.clone());
         let mut handed_out = lease;
         handed_out.move_to(LeaseState::InUse)?;
@@ -373,12 +406,22 @@ impl ResourceManager {
                 );
             }
         }
+
+        // 处置落定之后，隧道引用与物理预算**同拍**结算。
+        //
+        // 用的是 `plan.disposition`（复位失败已把它升级成 `Quarantined` 的**最终**值），
+        // 所以隔离路径下预算没核销、隧道引用也就没归还 —— 不存在「预算还占着、
+        // 引用先还了」的错拍。全模块只有**两个调用方法**（`release` / `force_close`）、
+        // **三处调用表达式**，都读同一个布尔 `releases_physical_budget()`，都填 `tunnel` 字段。
+        let tunnel = self.settle_tunnel_reference(lease_id, plan.disposition);
+
         Ok(CleanupReport::from_plan(
             &record,
             &host,
             plan,
             now_nanos,
             session_reset_performed,
+            tunnel,
         ))
     }
 
@@ -390,7 +433,7 @@ impl ResourceManager {
             .lease(lease_id)
             .ok_or_else(|| ResourceError::UnknownResource(lease_id.as_str().to_owned()))?
             .clone();
-        self.force_close(lease_id)?;
+        let tunnel = self.force_close(lease_id)?;
         Ok(CleanupReport {
             resource_id: record.resource_id,
             lease_id: record.lease_id,
@@ -402,13 +445,18 @@ impl ResourceManager {
             outstanding_handles: Vec::new(),
             session_reset_performed: false,
             physical_budget_released: true,
+            tunnel,
             decided_at_nanos: now_nanos,
         })
     }
 
-    pub(super) fn force_close(&mut self, lease_id: &LeaseId) -> Result<(), ResourceError> {
+    pub(super) fn force_close(
+        &mut self,
+        lease_id: &LeaseId,
+    ) -> Result<TunnelDisposition, ResourceError> {
         let Some(record) = self.table.lease(lease_id).cloned() else {
-            return Ok(());
+            // 表里已经没有这一行 ⇒ 早就被确认关闭过了，也就没有任何隧道引用可归还。
+            return Ok(TunnelDisposition::NoReference);
         };
         self.table
             .drop_idle(lease_id, &record.pool_key, self.now_nanos());
@@ -432,7 +480,8 @@ impl ResourceManager {
                     entry.move_to(LeaseState::Closed)?;
                 }
                 self.table.forget(lease_id);
-                Ok(())
+                // 关闭**被确认** ⇒ 物理预算此刻核销 ⇒ 隧道引用同刻归还。
+                Ok(self.settle_tunnel_reference(lease_id, CleanupDisposition::Closed))
             }
             Err(error) => {
                 // 关闭结果不明 ⇒ 转 `Quarantined`，等运维核验，绝不静默丢弃。
@@ -459,6 +508,11 @@ impl ResourceManager {
                 if let Some(entry) = self.table.lease_mut(lease_id) {
                     let _ = entry.move_to(LeaseState::Quarantined);
                 }
+                // 关闭未确认 ⇒ 预算**不**核销 ⇒ 隧道引用一并保留（`:713`「确认关闭或
+                // 节点隔离后才核销」）。隔离中的连接仍可能走这条隧道，提前归还引用
+                // 会让隧道在还有活连接时被拆掉 —— 那是配对塌了，不是有序回收。
+                let _tunnel =
+                    self.settle_tunnel_reference(lease_id, CleanupDisposition::Quarantined);
                 Err(error.logged("force close a lease"))
             }
         }

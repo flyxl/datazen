@@ -15,6 +15,7 @@ use crate::connection::port::CancelDisposition;
 use crate::connection::{ExecutionId, HandleId, HandleKind, LeaseId, ResourceId, SessionHandleRef};
 
 use crate::resource::lease::{LeasePurpose, LeaseRecord, LeaseRequest, LeaseState};
+use crate::resource::tunnel_wiring::TunnelDisposition;
 use crate::resource::ResourceError;
 
 /// 驱动自报的 `Clean` 结论。
@@ -378,6 +379,13 @@ pub struct CleanupReport {
     /// 为真 ⇒ `Close` 事件排在 `Reset` 之后，这是可审计的行为证据。
     pub session_reset_performed: bool,
     pub physical_budget_released: bool,
+    /// CM-27 × 第三格：这次处置对**隧道引用**做了什么。
+    ///
+    /// 与 [`Self::physical_budget_released`] 是同一次判据的两半，放在一起才看得出配对：
+    /// 不变式是 `tunnel.pairs_with_budget_release() == physical_budget_released`。
+    /// 直连租约（没有 `tunnel_spec`）报 [`TunnelDisposition::NoReference`]，
+    /// 它与 `physical_budget_released` 并不冲突 —— 「从没占过隧道」也是一种配对。
+    pub tunnel: TunnelDisposition,
     pub decided_at_nanos: u64,
 }
 
@@ -388,6 +396,7 @@ impl CleanupReport {
         plan: CleanupPlan,
         now_nanos: u64,
         session_reset_performed: bool,
+        tunnel: TunnelDisposition,
     ) -> Self {
         let physical_budget_released = plan.disposition.releases_physical_budget();
         Self {
@@ -407,6 +416,7 @@ impl CleanupReport {
             },
             session_reset_performed,
             physical_budget_released,
+            tunnel,
             decided_at_nanos: now_nanos,
         }
     }

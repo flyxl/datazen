@@ -15,14 +15,12 @@
 //! * **R3（观测账不得参与判断）** 台账那份观测账（字段 `teardown_calls`、对外访问器
 //!   `close_calls()`）禁止出现在任何条件 / 比较 / 逻辑表达式里 ——
 //!   「观测计数被当成释放依据」是第二本账的另一形态。
-//! * **R4（端口不得自存账）** 每个实现 [`TunnelTransport`] 的结构体，其字段类型剥掉
-//!   `Mutex`/`RwLock`/`Arc`/`Box`/`Option`/`Cell`/`RefCell` 包装后**不得**是整数标量、
-//!   不得含 `Atomic*`；本地新类型（`struct X(…)` / `type X = …`）**递归展开**，
-//!   换个壳绕不过去。**这一条直接杀原始反例。**
-//! * **R5（读数只能是折法的投影）** 每个含端口实现的被测文件必须**恰好一个**
-//!   「事件 → 账」的**纯**折函数（形参含切片、函数体不碰 `self.`），且该文件里所有
-//!   返回整数的 `&self` 方法都必须调用它。账因此只能现折、不能落地。
-//! * **R6（闸门自己不能被裁小）** `mod.rs` 声明的每个模块与两个隧道测试二进制都必须在
+//! * **R4（端口不得自存账）/ R5（读数只能是折法的投影）** 端口那一半的两条：R4 禁止
+//!   实现 [`TunnelTransport`] 的结构体自带一份账（剥包装后是整数标量、或含 `Atomic*`；
+//!   本地新类型递归展开，换个壳绕不过去），R5 要求所有端口读数都只能是唯一**纯**折函数
+//!   的投影。**这一半连同它的判据、夹具与自证受 AGENTS.md 的单文件规模线约束，住在同目录
+//!   [`port_audit`]（`port_audit.rs`）** —— 契约说明与实现同处一份文件，读它不必回来翻这里。
+//! * **R6（闸门自己不能被裁小）** `mod.rs` 声明的每个模块与三份带端口的测试替身都必须在
 //!   登记表内；`TunnelEntry` 必须保持私有；唯一归零路径必须**只有一条**且住在
 //!   [`TunnelLedger`] 的 impl 块里。
 //! * **R7（台账的声明里只许有一份计数）** `TunnelEntry` 的整数字段必须**恰好一个**且
@@ -65,20 +63,30 @@
 //! 这一点任何扫描都消不掉。
 //!
 //! **闸门自己也在登记表里**（`mod.rs` / `kill_tests.rs` / `gate_self_audit.rs` /
-//! `source_scan.rs` 四份）：
+//! `port_audit.rs` / `source_scan.rs` 五份）：
 //! 闸门不看自己，「悄悄少扫一片」就没有反制手段
 //! （同 `tests/cm70_panic_redaction_guard.rs` 的自我登记先例）。
-//! 另有一份「R6 查闸门自己」的子模块按职责拆在 `gate_self_audit.rs`
-//! ——同 `AGENTS.md` 的单文件规模线，不是为了让那条规则少做。
+//! 另有两份子模块按职责拆开 —— `gate_self_audit.rs` 是「R6 查闸门自己」，
+//! `port_audit.rs` 是「R4 / R5 查端口那一半」：都同 AGENTS.md 的单文件规模线，
+//! 拆分是为了让每个文件各自好读，不是为了让哪条规则少做 —— 拆出来的那份照样进
+//! 登记表（少登记就会被 `the_audit_registry_covers_every_tunnel_module` 点红）。
 
 mod gate_self_audit;
 mod kill_tests;
+mod port_audit;
 
 use super::source_scan::{
     blank, char_literal_len, enclosing_impl, functions, impl_blocks, line_of, local_decl,
     split_top_level, strip_space, struct_fields, Func, ImplBlock,
 };
 use super::{TunnelLedger, TunnelTransport};
+// 端口那一半（`port_audit.rs`）与本文件的规则互为证词：R7 复用它的字段形状判据，
+// 而 `kill_tests` / `gate_self_audit` 要在真实夹具上断言「恰好一份折法」，
+// 所以这几个名字必须留在本文件的命名空间里 —— 判据搬家，证词不许跟着搬家。
+use port_audit::{
+    counts_not_derived_from_the_single_fold, fold_functions, is_stored_count,
+    transport_stores_its_own_count,
+};
 
 /// 被审计的源码：(给人看的路径, 编译期嵌进来的文本)。
 ///
@@ -101,6 +109,10 @@ const AUDITED: &[(&str, &str)] = &[
     (
         "src/tunnel/single_counter_audit/kill_tests.rs",
         include_str!("kill_tests.rs"),
+    ),
+    (
+        "src/tunnel/single_counter_audit/port_audit.rs",
+        include_str!("port_audit.rs"),
     ),
     (
         "src/tunnel/single_counter_audit/gate_self_audit.rs",
@@ -130,13 +142,22 @@ const AUDITED: &[(&str, &str)] = &[
         "tests/cm28_concurrent_tunnel.rs",
         include_str!("../../../tests/cm28_concurrent_tunnel.rs"),
     ),
+    (
+        "tests/tunnel_arch_support/mod.rs",
+        include_str!("../../../tests/tunnel_arch_support/mod.rs"),
+    ),
 ];
 
-/// 被登记的端口实现数与含端口实现的文件数：夹具端口 + 两个测试轨端口 = 3 / 3。
+/// 被登记的端口实现数与含端口实现的文件数：夹具端口 + 三个测试轨端口 = 4 / 4。
 ///
-/// 新增第 4 份端口必须同时进 `AUDITED`，否则第二本账可以在没人看的地方长出来。
-const EXPECTED_TRANSPORT_IMPLS: usize = 3;
-const EXPECTED_TRANSPORT_FILES: usize = 3;
+/// 三个测试轨端口 = `tunnel_refcount_contract.rs` 的 `HostTunnelTransport`、
+/// `cm28_concurrent_tunnel.rs` 的 `RecordingTunnelPort`、架构轨共用替身
+/// `tunnel_arch_support/mod.rs` 的 `RecordingTunnelPort`（后两个同名、不同文件，
+/// 所以「实现数」与「文件数」才都从 3 变成 4 —— 只看名字会把它们当成一份）。
+///
+/// 新增第 5 份端口必须同时进 `AUDITED`，否则第二本账可以在没人看的地方长出来。
+const EXPECTED_TRANSPORT_IMPLS: usize = 4;
+const EXPECTED_TRANSPORT_FILES: usize = 4;
 
 const LEDGER: &str = "src/tunnel/ledger.rs";
 const HARNESS: &str = "src/tunnel/harness.rs";
@@ -158,7 +179,7 @@ const TRANSPORT_TRAIT: &str = "TunnelTransport";
 /// 夹具端口的类型名，同样与真实类型对照（见同一用例）。
 const HARNESS_PORT_TYPE: &str = "RecordingTunnelTransport";
 /// 两条测试轨各自端口的类型名。它们住在本 crate 之外（集成测试是外部 crate），
-/// 只能按名字断言 —— 数量与名字的断言在 R4 / R5 正向用例里。
+/// 只能按名字断言 —— 数量与名字的断言在 [`port_audit`] 的 R4 / R5 正向用例里。
 const TEST_TRACK_PORT_TYPES: &[&str] = &["HostTunnelTransport", "RecordingTunnelPort"];
 
 /// 全模块里**唯一**被允许点访问 `TunnelEntry::refs` 字段的注册方法（R1 的红线）。
@@ -167,15 +188,6 @@ const TEST_TRACK_PORT_TYPES: &[&str] = &["HostTunnelTransport", "RecordingTunnel
 /// 台账里真实存在，并断言名单非空。
 const REGISTERED_COUNT_ACCESSORS: &[&str] =
     &["established", "refs", "add_reference", "take_reference"];
-
-/// 「一份自存的账」的字段类型形状：剥掉包装后是整数标量，或含原子类型。
-const INTEGER_TYPES: &[&str] = &[
-    "usize", "isize", "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128",
-];
-
-/// 内部可变性 / 智能指针包装。`Mutex<usize>` 与 `usize` 在「能不能藏一份账」上
-/// 没有区别 —— 这正是 CM-32-FU1 反例的立足点，所以先剥包装再判。
-const WRAPPERS: &[&str] = &["Mutex", "RwLock", "Arc", "Box", "Option", "Cell", "RefCell"];
 
 /// 把一段源码里所有 `impl TunnelTransport for X` 的 `X` 换成最小 impl 外壳，
 /// 供 kill test 喂进扫描器。
@@ -445,118 +457,6 @@ fn observation_tally_decides(text: &str) -> Vec<String> {
     out
 }
 
-// ------------------------------------------------------------------ R4 / R5
-
-/// R4：实现 [`TunnelTransport`] 的结构体不许存有「一份账」的字段。
-fn transport_stores_its_own_count(text: &str) -> Vec<String> {
-    let code = blank(text);
-    let mut out = Vec::new();
-    for blk in transport_impls(&code) {
-        for (field, ty) in struct_fields(&code, &blk.type_name) {
-            if is_stored_count(&code, &ty, 0) {
-                out.push(format!(
-                    "`{field}: {ty}` —— 端口 `{}` 里一份**自存的**计数（第二本账的形状）",
-                    blk.type_name
-                ));
-            }
-        }
-    }
-    out
-}
-
-/// 该类型串是否**就是一份落地的计数**（本地新类型递归展开）。
-fn is_stored_count(text: &str, ty: &str, depth: u8) -> bool {
-    let ty = strip_space(ty);
-    if ty.is_empty() {
-        return false;
-    }
-    if ty.contains("Atomic") {
-        return true;
-    }
-    // 剥掉内部可变性 / 智能指针包装：`Mutex<usize>` 与 `usize` 等价。
-    let mut inner = ty.clone();
-    loop {
-        let mut stripped = false;
-        for wrapper in WRAPPERS {
-            let prefix = format!("{wrapper}<");
-            if let Some(rest) = inner.strip_prefix(&prefix) {
-                if let Some(core) = rest.strip_suffix('>') {
-                    inner = core.to_owned();
-                    stripped = true;
-                    break;
-                }
-            }
-        }
-        if !stripped {
-            break;
-        }
-    }
-    if INTEGER_TYPES.contains(&inner.as_str()) {
-        return true;
-    }
-    // 容器（`Vec<_>`、`BTreeMap<_, _>`）不是账：只有「裸名字」才可能是本地新类型壳。
-    if depth >= 4 || inner.is_empty() || !inner.bytes().all(is_word_char) {
-        return false;
-    }
-    match local_decl(text, &inner) {
-        Some(body) => split_top_level(&body).iter().any(|field| {
-            // 命名字段写作 `name: Ty`，元组字段直接是 `Ty`；带默认值的先截掉。
-            let ty = match field.split_once(':') {
-                Some((_, tail)) => tail,
-                None => field,
-            };
-            let ty = ty.split('=').next().unwrap_or(ty);
-            is_stored_count(text, ty, depth + 1)
-        }),
-        None => false,
-    }
-}
-
-/// R5：读数只能是唯一折法的投影，且折法必须纯、必须只有一个。
-///
-/// 只适用于**含端口实现**的文件：账落地这件事是端口那一半的失败形态，台账与旅程文件
-/// 本来就不该有折函数（台账的计数在 `TunnelEntry` 里，由 R1/R2 管）。
-fn counts_not_derived_from_the_single_fold(text: &str) -> Vec<String> {
-    let code = blank(text);
-    if transport_impls(&code).is_empty() {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    let folds = fold_functions(&code);
-    if folds.len() != 1 {
-        out.push(format!(
-            "含 {TRANSPORT_TRAIT} 实现的文件里「事件 → 账」折函数必须**恰好一个**，实得 {} 个：{folds:?}",
-            folds.len()
-        ));
-    }
-    for f in functions(&code) {
-        let returns_count = INTEGER_TYPES.contains(&strip_space(&f.returns).as_str());
-        if !returns_count || !f.params.contains("self") {
-            continue;
-        }
-        let body = &code[f.body.0..f.body.1];
-        if !folds.iter().any(|fold| body.contains(fold)) {
-            out.push(format!(
-                "函数 `{}` 返回计数 `{}` 却没调用唯一折函数 {folds:?}",
-                f.name, f.returns
-            ));
-        }
-    }
-    out
-}
-
-/// 折函数的形参是不是「一段事件的借用」—— 共享切片 / 独占切片 / `Vec`，四种合理写法都认。
-///
-/// 只认 `&[` 会把完全合法的折法打成 `实得 0 个：[]`，随后 R5 反过来抱怨端口
-/// 「没调用唯一折函数 []」——**诊断与事实相反**：两个都指向一个根本没坏的签名。
-/// （`&[` 不匹配 `&mut [`，也不匹配 `&Vec<`，所以四种都要写出来。）
-fn is_fold_param(params: &str) -> bool {
-    ["&[", "&mut [", "&Vec<", "&mut Vec<"]
-        .iter()
-        .any(|p| params.contains(p))
-}
-
-/// 一个文件里的「事件流 → 账」折函数：形参收一段事件的借用、不接 `self`、体内做累加且不写 `self.`。
 /// R1 的返回形状判据：返回**引用**才算外泄账，按值（含新值类型）都不算。
 ///
 /// 判据刻意不是「必须是 u32」：把计数包进 `Refs(pub u32)` 才是更安全的写法，
@@ -564,18 +464,6 @@ fn is_fold_param(params: &str) -> bool {
 /// 与事实相反的诊断（实测 `Refs(u32)` 是按值返回，却被报成「返回字段引用等于把账外泄」）。
 pub(super) fn leaks_by_return_type(returns: &str) -> bool {
     strip_space(returns).starts_with('&')
-}
-
-fn fold_functions(text: &str) -> Vec<String> {
-    functions(text)
-        .into_iter()
-        .filter(|f| is_fold_param(&f.params) && !f.params.contains("self"))
-        .filter(|f| {
-            let body = &text[f.body.0..f.body.1];
-            body.contains("+= 1") && !body.contains("self.")
-        })
-        .map(|f| f.name)
-        .collect()
 }
 
 // ---------------------------------------------------------------------- 用例
@@ -637,63 +525,5 @@ fn the_ledger_observation_tally_never_decides_anything() {
         source(LEDGER).contains("close_calls"),
         "台账若删掉了观测计数 `close_calls`，本用例与 `single_counter_algebra_holds` \
          里那条「两本账必须对得上」的断言同时失去对象 —— 请连同它们一起改写"
-    );
-}
-
-/// **R4 正向**：本树里每一个 [`TunnelTransport`] 实现都不自带账。
-#[test]
-fn no_tunnel_transport_implementation_stores_its_own_tally() {
-    let mut audited_impls = 0usize;
-    let mut found = Vec::new();
-    let mut names: Vec<String> = Vec::new();
-    for (path, text) in AUDITED {
-        let impls = transport_impls(&blank(text));
-        names.extend(impls.iter().map(|blk| blk.type_name.clone()));
-        audited_impls += impls.len();
-        found.extend(
-            transport_stores_its_own_count(text)
-                .into_iter()
-                .map(|v| format!("{path}: {v}")),
-        );
-    }
-    require_clean("端口私自存了一份账 —— 它会伪装成第一本账", found);
-    assert_eq!(
-        audited_impls, EXPECTED_TRANSPORT_IMPLS,
-        "被登记的 {TRANSPORT_TRAIT} 实现数量变了（应恰好 {EXPECTED_TRANSPORT_IMPLS} 份：\
-         夹具 + 两条测试轨端口）。实得 {names:?}"
-    );
-    // 点名要指到**具体**类型，而不只是「数量对得上」：换名字也算新增端口。
-    for expected in [HARNESS_PORT_TYPE]
-        .iter()
-        .chain(TEST_TRACK_PORT_TYPES.iter())
-    {
-        assert!(
-            names.iter().any(|n| n == expected),
-            "登记表里找不到端口 `{expected}` —— 它可能被改名、搬走或悄悄删掉了；实得 {names:?}"
-        );
-    }
-}
-
-/// **R5 正向**：每个端口文件的读数只从唯一折函数投影。
-#[test]
-fn every_port_reading_is_a_projection_of_one_pure_fold() {
-    let mut transport_files = 0usize;
-    let mut found = Vec::new();
-    for (path, text) in AUDITED {
-        if transport_impls(&blank(text)).is_empty() {
-            continue;
-        }
-        transport_files += 1;
-        found.extend(
-            counts_not_derived_from_the_single_fold(text)
-                .into_iter()
-                .map(|v| format!("{path}: {v}")),
-        );
-    }
-    require_clean("端口计数不再只是唯一折法的投影", found);
-    assert_eq!(
-        transport_files, EXPECTED_TRANSPORT_FILES,
-        "含 {TRANSPORT_TRAIT} 实现的登记表文件应为 {EXPECTED_TRANSPORT_FILES} 个，\
-         实得 {transport_files} —— 登记表或端口实现被裁小了"
     );
 }

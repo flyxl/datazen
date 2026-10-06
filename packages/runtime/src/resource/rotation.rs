@@ -105,7 +105,7 @@ impl super::manager::ResourceManager {
             .filter(|record| &record.connection_id == connection_id && record.idle_for_issue);
         for record in idle {
             match self.force_close(&record.lease_id) {
-                Ok(()) => closed_idle.push(record.lease_id),
+                Ok(_) => closed_idle.push(record.lease_id),
                 Err(_) => tracing::warn!(
                     lease_id = record.lease_id.as_str(),
                     "idle close failed during disable; the lease stays quarantined"

@@ -32,6 +32,7 @@ fn the_audit_registry_covers_every_tunnel_module() {
         GATE,
         "src/tunnel/single_counter_audit/kill_tests.rs",
         "src/tunnel/single_counter_audit/gate_self_audit.rs",
+        "src/tunnel/single_counter_audit/port_audit.rs",
         "src/tunnel/source_scan.rs",
         "tests/tunnel_refcount_contract.rs",
         "tests/cm28_concurrent_tunnel.rs",
