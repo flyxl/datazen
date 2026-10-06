@@ -117,9 +117,7 @@ mod tests {
     use datazen_driver_api::Value;
 
     use super::*;
-    use crate::model::{
-        Endpoint, RowChange, SyncOptions, SyncTask, TableMapping, TableResult,
-    };
+    use crate::model::{Endpoint, RowChange, SyncOptions, SyncTask, TableMapping, TableResult};
 
     fn task() -> SyncTask {
         SyncTask::new(

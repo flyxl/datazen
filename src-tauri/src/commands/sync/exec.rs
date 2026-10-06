@@ -4,15 +4,21 @@ use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use super::apply::generate_data_sync_sql_impl;
 use super::comparison_store::{ComparisonStore, ComparisonTableMetadata};
+use super::host::state::StoredSelection;
 use super::plans::{self, SelectionMatcher, StoredSyncPlan, SyncRunRequest, SyncRunSelection};
 #[cfg(test)]
+use crate::data_sync::execute_statement_batches_with_policy;
+#[cfg(test)]
 use crate::data_sync::execute_statements;
+use crate::data_sync::job::ApplySpec;
 use crate::data_sync::{
-    execute_statement_batches_with_policy, DataSyncError, ExecutionResult, IdentityInsertTarget,
-    StatementBatchSource, StatementExecutor, SyncOptions,
+    DataSyncError, ExecutionResult, IdentityInsertTarget, StatementBatchSource, StatementExecutor,
+    SyncOptions,
 };
 use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use async_trait::async_trait;
+use datazen_platform_api::dto::execution::EffectOutcome;
+use datazen_platform_api::dto::job::JobState;
 #[cfg(feature = "webdriver")]
 use std::sync::atomic::AtomicU8;
 #[cfg(feature = "webdriver")]
@@ -135,20 +141,23 @@ impl StatementExecutor for LiveExecutor {
     }
 }
 
-struct ValidatedSyncContext {
-    target_driver: Arc<dyn DatabaseDriver>,
-    target_handle: ConnectionHandle,
-}
-
 /// The IPC preview still returns a single JSON array, so keep that response
 /// explicitly bounded while the execution path consumes one generated page
 /// at a time.
 const SQL_PREVIEW_IPC_MAX_BYTES: usize = 16 * 1024 * 1024;
 
+/// Refuse an apply whose target can no longer be trusted, before the Job is
+/// submitted.
+///
+/// The target connection is opened and its schema fingerprint compared here so
+/// a plan reviewed against a different schema cannot be applied. The opened
+/// handle is not returned: the apply Job re-resolves its own session through the
+/// handler, so holding it would only pin a connection for the sake of a value
+/// nobody reads.
 async fn validate_plan_context(
     state: &AppState,
     plan: &StoredSyncPlan,
-) -> Result<ValidatedSyncContext, CommandError> {
+) -> Result<(), CommandError> {
     let comparison = plan
         .comparison
         .summaries()
@@ -242,10 +251,12 @@ async fn validate_plan_context(
             "target schema/key changed since comparison; return to comparison".into(),
         ));
     }
-    Ok(ValidatedSyncContext {
-        target_driver,
-        target_handle,
-    })
+    // The connection is dropped with this scope: the Job re-resolves it, and a
+    // handle kept only to be discarded would pin the session for the whole
+    // apply while adding nothing to the check above.
+    drop(target_driver);
+    drop(target_handle);
+    Ok(())
 }
 
 fn validate_active_database(
@@ -504,60 +515,88 @@ pub(crate) async fn execute_data_sync_plan_impl(
         ));
     }
     validate_requested_options(&plan, &request.options)?;
-    let matcher =
+    let _matcher =
         plans::validate_selection_streaming(&plan.comparison, &request.selection, &request.options)
             .map_err(CommandError::Validation)?;
-    let context = validate_plan_context(state, &plan).await?;
-    let conflict_policy = request.options.conflict_policy;
-    let mut source = StoreSqlPageSource::new(
+    // The endpoint context is still proved here so a stale session fails before
+    // any Job exists: the apply Job reports its own effect outcome, and a
+    // preflight refusal must never be reported as "unknown" (§7).
+    validate_plan_context(state, &plan).await?;
+    // The reviewed selection is handed to the Job as the only mutable input it
+    // may act on, and the Job consumes it exactly once.
+    super::host::state::store_selection(
+        &request.plan_id,
+        StoredSelection {
+            selection: request.selection,
+            options: request.options.clone(),
+        },
+    );
+    let outcome = super::jobs::submit_apply(
         state,
-        &plan.target_db_session_id,
-        &plan.comparison,
-        &matcher,
-        &request.options,
-        Some(&plan.target_database),
-        plan.target_schema.as_deref(),
-    )?;
-    let first_batch = source.next_sql_batch().await?.ok_or_else(|| {
-        CommandError::Validation("change set is empty; nothing to execute".into())
-    })?;
-    if first_batch.is_empty() {
-        return Err(CommandError::Validation(
-            "change set is empty; nothing to execute".into(),
-        ));
-    }
-    // Claim immediately before the first transaction side effect. A failed
-    // preflight leaves a valid plan available for a corrected comparison;
-    // once claimed, an unknown result is never silently retried.
-    let _claimed = plans::claim_plan(&request.plan_id).map_err(CommandError::Validation)?;
-    let config = state
-        .connection_manager
-        .get_session_config(&plan.target_db_session_id)
-        .await
-        .cmd_err("execute_data_sync")?;
-    let mut executor = LiveExecutor {
-        driver: context.target_driver,
-        handle: context.target_handle,
-        read_only: config.read_only,
-        tx: None,
-    };
-    let cancelled = match request.job_id.as_deref() {
-        Some(id) => Some(super::jobs::ensure_job(id).await),
-        None => None,
-    };
-    let result = execute_statement_batches_with_policy(
-        first_batch,
-        &mut source,
-        &mut executor,
-        cancelled,
-        conflict_policy,
+        ApplySpec {
+            plan_id: request.plan_id,
+            selection_revision: plan.selection_revision,
+            options: request.options,
+        },
+        request.job_id.clone(),
     )
-    .await
-    .map_err(CommandError::from);
+    .await;
     if let Some(id) = request.job_id.as_deref() {
         super::jobs::remove_job(id).await;
     }
-    result
+    applied_outcome(outcome)
+}
+
+/// Map the Job's terminal projection onto the IPC contract.
+///
+/// §7 decides every branch: a Job whose recorded effect is `NotStarted` or
+/// `RolledBack` is a refusal, `Unknown` is a fence that must never be reported
+/// as "did not start", and `PartiallyApplied` is a success with a warning
+/// because rows already committed cannot be unwound by the caller.
+fn applied_outcome(
+    outcome: Result<super::jobs::SyncJobOutcome, CommandError>,
+) -> Result<ExecutionResult, CommandError> {
+    let applied = outcome?;
+    let committed = applied.committed as usize;
+    let message = applied.message.clone();
+    match applied.state {
+        JobState::Succeeded => Ok(ExecutionResult {
+            applied: committed,
+            affected_rows: applied.committed,
+            rolled_back: false,
+            rollback_reason: None,
+            skipped: 0,
+            conflicts: Vec::new(),
+        }),
+        JobState::Cancelled => Ok(ExecutionResult {
+            applied: committed,
+            affected_rows: applied.committed,
+            rolled_back: applied.effect == EffectOutcome::RolledBack,
+            rollback_reason: message,
+            skipped: 0,
+            conflicts: Vec::new(),
+        }),
+        JobState::Failed => Err(match applied.effect {
+            EffectOutcome::Unknown => CommandError::DataSyncOutcomeUnknown(
+                message.unwrap_or_else(|| {
+                    "commit or rollback could not be confirmed; compare current data before continuing"
+                        .to_string()
+                }),
+            ),
+            EffectOutcome::PartiallyApplied => CommandError::Validation(
+                message.unwrap_or_else(|| {
+                    "some rows committed before the failure; compare current data before continuing"
+                        .to_string()
+                }),
+            ),
+            _ => CommandError::DataSyncNotStarted(message.unwrap_or_else(|| {
+                "the apply job did not start; compare again".to_string()
+            })),
+        }),
+        JobState::Queued | JobState::Running => Err(CommandError::Internal(message.unwrap_or_else(
+            || "the apply job was still running when the request returned".to_string(),
+        ))),
+    }
 }
 
 // Kept only for the existing Rust command-path unit tests.  This helper is
@@ -602,6 +641,7 @@ pub(crate) async fn execute_data_sync_impl(
 
 #[cfg(test)]
 mod tests {
+    use super::super::jobs_contract;
     use super::*;
     use crate::commands::sync::plans::{SyncRunSelection, SyncSelectionMode, SyncTableSelection};
     use crate::data_sync::execute::RecordingExecutor;
@@ -864,84 +904,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_tester_plan_preview_and_execution_use_the_paged_path() {
-        use crate::testing::app_state::rich_mock_options;
-        use crate::testing::mock_driver::MockDriverOptions;
-
-        let test = TestAppState::with_options(MockDriverOptions {
-            parameterized_writes: true,
-            execute_rows_affected: 1,
-            ..rich_mock_options()
-        })
-        .await;
-        let (_, source_db_session_id) = test.save_and_connect("sync-plan-source").await;
-        let (_, target_db_session_id) = test.save_and_connect("sync-plan-target").await;
+        // A real pair of endpoints: the preview text and the execution must both
+        // come from the ChangeSet the prepare Job froze, not from a plan minted
+        // by hand (which carries no Artifact and is refused at submit time).
+        let pair = jobs_contract::diff_pair("paged-plan").await;
+        let preview = jobs_contract::compare(&pair, None, None).await.unwrap();
         let options = SyncOptions::default();
-        let mut table = TableResult::matched(
-            "users",
-            "users",
-            vec![RowChange::insert(
-                vec![Value::Integer(7)],
-                vec![
-                    Some(Value::Integer(7)),
-                    Some(Value::String("plan-row".into())),
-                ],
-                &options,
-            )],
-        );
-        table.columns = vec!["id".into(), "name".into()];
-        table.column_types = vec!["integer".into(), "text".into()];
-        table.primary_keys = vec!["id".into()];
-        let fingerprint = plans::fingerprint_relations_with_filters(
-            "app",
-            None,
-            vec![(
-                "users".into(),
-                Some(crate::testing::mock_driver::MockDriver::default_table_schema("users")),
-                None,
-            )],
-        )
-        .unwrap();
-        let plan = plans::issue_plan(
-            source_db_session_id,
-            target_db_session_id,
-            "app".into(),
-            "app".into(),
-            None,
-            None,
-            test.mock.as_ref(),
-            test.mock.as_ref(),
-            fingerprint.clone(),
-            fingerprint,
-            ComparisonResult::new(vec![table]),
-            options.clone(),
-            false,
-        )
-        .unwrap();
-        let selection = SyncRunSelection {
-            revision: plan.selection_revision,
-            rows: Vec::new(),
-            scopes: vec![SyncTableSelection {
-                source_table: "users".into(),
-                target_table: "users".into(),
-                selection_mode: SyncSelectionMode::All,
-                operations: vec![ChangeOperation::Insert],
-                excluded_rows: Vec::new(),
-            }],
-        };
+        let selection = jobs_contract::insert_selection(preview.selection_revision);
+
         let sql = generate_data_sync_sql_for_plan_impl(
-            &test.state,
-            plan.plan_id.clone(),
+            pair.state(),
+            preview.plan_id.clone(),
             selection.clone(),
             options.clone(),
         )
         .await
         .unwrap();
-        assert_eq!(sql.len(), 1);
+        assert_eq!(sql.len(), 1, "one pending row ⇒ one preview statement");
 
         let result = execute_data_sync_plan_impl(
-            &test.state,
+            pair.state(),
             SyncRunRequest {
-                plan_id: plan.plan_id,
+                plan_id: preview.plan_id,
                 selection,
                 options,
                 job_id: None,
@@ -952,68 +936,38 @@ mod tests {
 
         assert_eq!(result.applied, 1);
         assert!(!result.rolled_back);
-        assert_eq!(test.mock.open_transaction_count(), 0);
+        assert_eq!(pair.test.mock.open_transaction_count(), 0);
+        assert_eq!(pair.target.open_transaction_count(), 0);
     }
 
     #[tokio::test]
     async fn test_tester_empty_streamed_plan_is_rejected_without_consuming_the_plan() {
-        let test = TestAppState::with_tables().await;
-        let (_, source_db_session_id) = test.save_and_connect("sync-empty-source").await;
-        let (_, target_db_session_id) = test.save_and_connect("sync-empty-target").await;
-        let options = SyncOptions::default();
-        let mut table = TableResult::matched("users", "users", Vec::new());
-        table.columns = vec!["id".into(), "name".into()];
-        table.column_types = vec!["integer".into(), "text".into()];
-        table.primary_keys = vec!["id".into()];
-        let fingerprint = plans::fingerprint_relations_with_filters(
-            "app",
-            None,
-            vec![(
-                "users".into(),
-                Some(crate::testing::mock_driver::MockDriver::default_table_schema("users")),
-                None,
-            )],
-        )
-        .unwrap();
-        let preview = plans::issue_plan(
-            source_db_session_id,
-            target_db_session_id,
-            "app".into(),
-            "app".into(),
-            None,
-            None,
-            test.mock.as_ref(),
-            test.mock.as_ref(),
-            fingerprint.clone(),
-            fingerprint,
-            ComparisonResult::new(vec![table]),
-            options.clone(),
-            false,
-        )
-        .unwrap();
-        let request = SyncRunRequest {
+        // Both endpoints already agree ⇒ the change set is empty. The refusal
+        // happens before `accept`, so the planId stays unconsumed and the user
+        // can re-compare instead of being locked out by a spent plan.
+        let pair = jobs_contract::identical_pair("empty-plan").await;
+        let preview = jobs_contract::compare(&pair, None, None).await.unwrap();
+        let request = || SyncRunRequest {
             plan_id: preview.plan_id.clone(),
-            selection: SyncRunSelection {
-                revision: preview.selection_revision,
-                rows: Vec::new(),
-                scopes: vec![SyncTableSelection {
-                    source_table: "users".into(),
-                    target_table: "users".into(),
-                    selection_mode: SyncSelectionMode::All,
-                    operations: vec![ChangeOperation::Insert],
-                    excluded_rows: Vec::new(),
-                }],
-            },
-            options,
+            selection: jobs_contract::insert_selection(preview.selection_revision),
+            options: SyncOptions::default(),
             job_id: None,
         };
 
-        let error = execute_data_sync_plan_impl(&test.state, request)
+        let first = execute_data_sync_plan_impl(pair.state(), request())
             .await
             .unwrap_err();
+        assert!(first.to_string().contains("change set is empty"));
 
-        assert!(error.to_string().contains("change set is empty"));
+        // Same planId, same refusal: a spent planId would answer "already
+        // submitted" here instead.
+        let second = execute_data_sync_plan_impl(pair.state(), request())
+            .await
+            .unwrap_err();
+        assert!(second.to_string().contains("change set is empty"));
+
         assert!(plans::peek_plan(&preview.plan_id).is_ok());
-        assert_eq!(test.mock.open_transaction_count(), 0);
+        assert_eq!(pair.test.mock.open_transaction_count(), 0);
+        assert_eq!(pair.target.open_transaction_count(), 0);
     }
 }

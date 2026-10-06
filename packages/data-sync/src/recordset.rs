@@ -272,12 +272,9 @@ fn resolve_recordset_bound(
     let Some(bound) = bound else {
         return Ok(None);
     };
-    let (value, key) = crate::recordset_bounds::canonical_bound_value(
-        &bound.value,
-        data_type,
-        name,
-    )
-    .map_err(|error| DataSyncError::validation(error.to_string()))?;
+    let (value, key) =
+        crate::recordset_bounds::canonical_bound_value(&bound.value, data_type, name)
+            .map_err(|error| DataSyncError::validation(error.to_string()))?;
     Ok(Some(ResolvedSyncBound {
         values: vec![value],
         inclusive: bound.inclusive,
