@@ -18,8 +18,14 @@
 //!
 //! 本文件**不**引入任何计数：断言一律读 `ResourceManager::tunnel_refs`，而它是
 //! `TunnelLedger::ref_count` 的直通投影。`last_cell_refuses_to_keep_a_second_tally`
-//! 用源码审计把「不许有第二个计数器」钉成可执行的断言（CM-32 的 `single_counter_audit`）。
+//! 把「不许有第二个计数器」钉成可执行的断言（CM-32 的 `single_counter_audit`）。
+//!
+//! 那条自证原先是对源码做**字面子串黑名单**，改个名就能把第二本账整套搬进来（实测
+//! `local_tunnels: AtomicU64` + `cached_refs: u32` 配 `fetch_add`/`fetch_sub` 全绿通过）。
+//! 现在改由 `syn` 解析源码，判据一律取**闭合集合**，实现与判据说明见
+//! [`single_tally_audit`]。
 
+mod single_tally_audit;
 mod tunnel_arch_support;
 
 use tunnel_arch_support::{request, tunnel_spec, unwired, wired};
@@ -299,68 +305,25 @@ fn cell_two_is_a_resource_permit_cell_not_a_tunnel_cell() {
 
 /// 把「不许有第二个计数器」钉成可执行的断言（CM-32 的 `single_counter_audit`）。
 ///
-/// 判据：`packages/runtime/src/resource/**` 的**代码**（注释与文档不算）不得出现任何
-/// 「存储一个计数」的形状。`ref_count` / `refs` / `live_tunnels` 这些名字是允许的，
-/// 前提是它们只在调用瞬间从台账读出、不落到任何字段里 —— 而类型系统挡不住这件事
-/// （`&self` 一样能往 `Mutex<usize>` 里写），只能靠这里的字段审计。与
-/// `src/tunnel/transport.rs` 模块头登记的同一条纪律。
-fn strip_line_comments(text: &str) -> String {
-    text.lines()
-        .map(|line| {
-            // 逐字符扫描而不是 `split_once("//")`：字符串字面量里允许出现 `://`
-            // （例如 `"route://bastion/prod"`），按第一个 `//` 截会把后半行丢掉。
-            let bytes = line.as_bytes();
-            let mut in_string = false;
-            let mut index = 0;
-            while index < bytes.len() {
-                match bytes[index] {
-                    b'"' => in_string = !in_string,
-                    b'/' if !in_string && bytes.get(index + 1) == Some(&b'/') => break,
-                    _ => {}
-                }
-                index += 1;
-            }
-            &line[..index]
-        })
-        .collect::<Vec<&str>>()
-        .join("\n")
-}
-
+/// 判据不是字面黑名单而是**闭合集合**，理由与全部细则在 [`single_tally_audit`]：
+///
+/// 1. `ResourceManager` 的字段名集合必须**恰好**等于闭合名单 `MANAGER_FIELDS`，
+///    `tunnels` 的类型必须恰为 `Option<TunnelLedger>`；
+/// 2. `tunnel_wiring.rs` 里凡取用 `self.tunnels` 的方法只准碰 `self.tunnels`；
+/// 3. `tunnel_refs()` 把取数委托给台账、只经 `TunnelLedger::ref_count`、不碰别的
+///    `self` 字段、没有整数字面量；
+/// 4. `src/resource/*.rs` 里一个 `static` 都没有。
+///
+/// 只读结构、不读字符串：改名换型（`AtomicU64` → `u64`，`cached_refs` → `spare`）
+/// 一样会被判红，而 `idle_ttl_seconds: u64` 这类合法整数字段不受牵连。
 #[test]
 fn last_cell_refuses_to_keep_a_second_tally() {
-    let source_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src/resource");
-    let offenders = std::fs::read_dir(source_dir)
-        .expect("the resource module directory is readable")
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
-        .filter_map(|path| {
-            let text = std::fs::read_to_string(&path).ok()?;
-            let name = path.file_name()?.to_str()?.to_owned();
-            let code = strip_line_comments(&text);
-            // 「存储一个计数」的三种典型形状：原子计数、可变单元、带互斥锁的累加器。
-            let atomic = code.contains("AtomicU32")
-                || code.contains("AtomicUsize")
-                || code.contains("AtomicI32");
-            let cell = code.contains("Cell<u32") || code.contains("Cell<usize");
-            let mutexed = code.contains("Mutex<usize>") || code.contains("Mutex<u32>");
-            // 直接把台账的计数复制进本模块自己的字段。
-            let shadow = code.contains("tunnel_ref_count")
-                || code.contains("tunnel_refs_stored")
-                || code.contains("my_ref_count");
-            if atomic || cell || mutexed || shadow {
-                Some(format!(
-                    "{name}: atomic={atomic} cell={cell} mutex={mutexed} shadow={shadow}"
-                ))
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<String>>();
-
+    let resource_dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join("resource");
+    let findings = single_tally_audit::audit(&resource_dir);
     assert!(
-        offenders.is_empty(),
-        "the resource module must not keep its own tunnel tally; the only authority is \
-         TunnelLedger (CM-32). Offending files: {offenders:?}"
+        findings.is_empty(),
+        "{}",
+        single_tally_audit::describe(&findings)
     );
 }

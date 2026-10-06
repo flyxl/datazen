@@ -55,3 +55,8 @@ sha2 = "0.10"
 # 依赖自身不构成环：dev 依赖不参与本 crate 的编译图，crate 仍然只编译一次。
 [dev-dependencies]
 datazen-runtime = { path = ".", features = ["test-harness"] }
+# CM-32 单账铁律的可执行形状靠**语法树**判，而不是对源码做字面子串匹配。
+# 子串黑名单是开放世界的：`AtomicU64` / `cached_refs` 这类改个名的第二本账一条都命中不了。
+# syn 1.0.109 已在 Cargo.lock 内解析好（本 workspace 的派生宏链已在用），这里只补
+# `full` / `visit` / `extra-traits` 三个 feature，不引入新的版本或新的 crate。
+syn = { version = "1", features = ["full", "visit", "extra-traits"] }
