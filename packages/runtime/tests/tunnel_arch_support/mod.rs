@@ -197,18 +197,28 @@ impl RecordingTunnelPort {
     }
 
     pub fn opened(&self) -> usize {
-        self.lock()
-            .iter()
-            .filter(|e| **e == TunnelEvent::Open)
-            .count()
+        count_events(&self.lock(), TunnelEvent::Open)
     }
 
     pub fn closed(&self) -> usize {
-        self.lock()
-            .iter()
-            .filter(|e| **e == TunnelEvent::Close)
-            .count()
+        count_events(&self.lock(), TunnelEvent::Close)
     }
+}
+
+/// 「事件 → 账」的**唯一**折法：形参收一段事件的借用、不接 `self`、体内 `+= 1` 累加。
+///
+/// [`RecordingTunnelPort::opened`] 与 [`RecordingTunnelPort::closed`] 本来各写一份
+/// `filter(...).count()` —— 那是**两处硬编码的「事件 → 计数」映射**，各改各的，
+/// 正是 R5（CM-32-FU1）要防住的形态：改了一处忘了另一处，账就分叉了。折成一个纯函数
+/// 之后「哪种事件算一次」只有一句话能说，端口只负责**取数**、不负责**定义账**。
+fn count_events(events: &[TunnelEvent], want: TunnelEvent) -> usize {
+    let mut counted = 0;
+    for event in events {
+        if *event == want {
+            counted += 1;
+        }
+    }
+    counted
 }
 
 impl TunnelTransport for RecordingTunnelPort {

@@ -21,8 +21,12 @@
 //!   换个壳绕不过去。**这一条直接杀原始反例。**
 //! * **R5（读数只能是折法的投影）** 每个含端口实现的被测文件必须**恰好一个**
 //!   「事件 → 账」的**纯**折函数（形参含切片、函数体不碰 `self.`），且该文件里所有
-//!   返回整数的 `&self` 方法都必须调用它。账因此只能现折、不能落地。
-//! * **R6（闸门自己不能被裁小）** `mod.rs` 声明的每个模块与两个隧道测试二进制都必须在
+//!   **端口自己的整数读数**都必须调用它。账因此只能现折、不能落地。
+//!   「端口自己的读数」按**取数路径闭合**划定（见 [`port_readings`]）：返回整数还不够，
+//!   还必须挂在该端口类型上，并且（直接或经 `self.<method>()` 传递地）读到它自己的字段。
+//!   只按返回类型判会把 `TestClock::now_nanos` 这种时间戳、`ScriptedTransport` 这种
+//!   物理接缝替身的读数一并误判 —— 开放世界里类型只说明形状，不说明它是一份账。
+//! * **R6（闸门自己不能被裁小）** `mod.rs` 声明的每个模块与三份带端口的测试替身都必须在
 //!   登记表内；`TunnelEntry` 必须保持私有；唯一归零路径必须**只有一条**且住在
 //!   [`TunnelLedger`] 的 impl 块里。
 //! * **R7（台账的声明里只许有一份计数）** `TunnelEntry` 的整数字段必须**恰好一个**且
@@ -130,13 +134,22 @@ const AUDITED: &[(&str, &str)] = &[
         "tests/cm28_concurrent_tunnel.rs",
         include_str!("../../../tests/cm28_concurrent_tunnel.rs"),
     ),
+    (
+        "tests/tunnel_arch_support/mod.rs",
+        include_str!("../../../tests/tunnel_arch_support/mod.rs"),
+    ),
 ];
 
-/// 被登记的端口实现数与含端口实现的文件数：夹具端口 + 两个测试轨端口 = 3 / 3。
+/// 被登记的端口实现数与含端口实现的文件数：夹具端口 + 三个测试轨端口 = 4 / 4。
 ///
-/// 新增第 4 份端口必须同时进 `AUDITED`，否则第二本账可以在没人看的地方长出来。
-const EXPECTED_TRANSPORT_IMPLS: usize = 3;
-const EXPECTED_TRANSPORT_FILES: usize = 3;
+/// 三个测试轨端口 = `tunnel_refcount_contract.rs` 的 `HostTunnelTransport`、
+/// `cm28_concurrent_tunnel.rs` 的 `RecordingTunnelPort`、架构轨共用替身
+/// `tunnel_arch_support/mod.rs` 的 `RecordingTunnelPort`（后两个同名、不同文件，
+/// 所以「实现数」与「文件数」才都从 3 变成 4 —— 只看名字会把它们当成一份）。
+///
+/// 新增第 5 份端口必须同时进 `AUDITED`，否则第二本账可以在没人看的地方长出来。
+const EXPECTED_TRANSPORT_IMPLS: usize = 4;
+const EXPECTED_TRANSPORT_FILES: usize = 4;
 
 const LEDGER: &str = "src/tunnel/ledger.rs";
 const HARNESS: &str = "src/tunnel/harness.rs";
@@ -516,6 +529,8 @@ fn is_stored_count(text: &str, ty: &str, depth: u8) -> bool {
 ///
 /// 只适用于**含端口实现**的文件：账落地这件事是端口那一半的失败形态，台账与旅程文件
 /// 本来就不该有折函数（台账的计数在 `TunnelEntry` 里，由 R1/R2 管）。
+///
+/// 「读数」由 [`port_readings`] 划定管辖面 —— **取数路径闭合**，不是返回类型。
 fn counts_not_derived_from_the_single_fold(text: &str) -> Vec<String> {
     let code = blank(text);
     if transport_impls(&code).is_empty() {
@@ -529,20 +544,98 @@ fn counts_not_derived_from_the_single_fold(text: &str) -> Vec<String> {
             folds.len()
         ));
     }
-    for f in functions(&code) {
-        let returns_count = INTEGER_TYPES.contains(&strip_space(&f.returns).as_str());
-        if !returns_count || !f.params.contains("self") {
-            continue;
-        }
-        let body = &code[f.body.0..f.body.1];
-        if !folds.iter().any(|fold| body.contains(fold)) {
-            out.push(format!(
-                "函数 `{}` 返回计数 `{}` 却没调用唯一折函数 {folds:?}",
-                f.name, f.returns
-            ));
+    let impls = impl_blocks(&code);
+    for blk in transport_impls(&code) {
+        for f in port_readings(&code, &impls, &blk.type_name) {
+            let body = &code[f.body.0..f.body.1];
+            if !folds.iter().any(|fold| body.contains(fold)) {
+                out.push(format!(
+                    "端口 `{}` 的读数函数 `{}` 返回计数 `{}` 却没调用唯一折函数 {folds:?}",
+                    blk.type_name, f.name, f.returns
+                ));
+            }
         }
     }
     out
+}
+
+/// R5 的**管辖面**：一份文件里真正算「端口读数」的整数返回方法。
+///
+/// 判据是**取数路径闭合**，不是返回类型。开放世界里 `-> u64` 既可能是一份账
+/// （`opened()`），也可能只是个时间戳（`TestClock::now_nanos`）；只看返回类型就是把
+/// 这两者一视同仁 —— 这正是 R5 误报 `now_nanos` 的根因。同理 `ScriptedTransport`
+/// 是物理接缝替身（`impl PhysicalTransport`），它的 `opened/closed` 读的是物理事件，
+/// 不是隧道账，不归 R5 管。
+///
+/// 一个方法算「端口读数」，当且仅当两条同时成立：
+///
+/// 1. 它挂在**实现了 [`TunnelTransport`] 的那个类型**上（[`enclosing_impl`]，trait
+///    实现解析成 `{trait} for {type}` 后 `rsplit(" for ")` 取回类型名）；
+/// 2. 它**直接或经 `self.<method>()` 传递地**读到该类型**自己的字段**。
+///
+/// 第 2 条必须传递：合格写法就是 `fn opened(&self) -> usize { tally(&self.lock()).opened }`
+/// —— 字段只出现在 `lock()` 里。字面匹配 `self.<字段>` 会让 `cm28_concurrent_tunnel.rs`
+/// 与 `tunnel_refcount_contract.rs` 这两份**参考实现本身**掉出管辖面，R5 立刻变成
+/// 「什么都不扫却报告没发现违规」的摆设 —— 比误报更安静，也更糟。
+///
+/// 返回类型那一条不能省：`bool` 是整数条件之外的答案，`fn open_fails(&self) -> bool`
+/// 读端口自己的字段完全合法（见 `tunnel_arch_support/mod.rs`）。
+fn port_readings(code: &str, impls: &[ImplBlock], port: &str) -> Vec<Func> {
+    let fields: Vec<String> = struct_fields(code, port)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    let own: Vec<Func> = functions(code)
+        .into_iter()
+        .filter(|f| f.params.contains("self") && owner_type(f, impls) == port)
+        .collect();
+    // 种子：体内直接读自己字段的方法。
+    let mut on_path: Vec<String> = own
+        .iter()
+        .filter(|f| fields.iter().any(|field| touches(code, f, field)))
+        .map(|f| f.name.clone())
+        .collect();
+    // 闭包：经 `self.<method>` 走到种子上的方法，同样在这条取数路径上。
+    loop {
+        let before = on_path.len();
+        for f in &own {
+            if on_path.contains(&f.name) {
+                continue;
+            }
+            if on_path.iter().any(|name| touches(code, f, name)) {
+                on_path.push(f.name.clone());
+            }
+        }
+        if on_path.len() == before {
+            break;
+        }
+    }
+    own.into_iter()
+        .filter(|f| on_path.contains(&f.name))
+        .filter(|f| INTEGER_TYPES.contains(&strip_space(&f.returns).as_str()))
+        .collect()
+}
+
+/// 一个 `fn` 挂在哪个类型上（`impl Foo` → `Foo`，`impl Tr for Foo` → `Foo`）。
+///
+/// 没有外层 impl（自由函数）返回空串，于是永远不会被判成任何端口的读数。
+fn owner_type(f: &Func, impls: &[ImplBlock]) -> String {
+    enclosing_impl(f, impls)
+        .map(|owner| owner.rsplit(" for ").next().unwrap_or_default().to_owned())
+        .unwrap_or_default()
+}
+
+/// 函数体里有没有 `self.<member>` —— 字段访问与方法调用一视同仁（`self.events` 与
+/// `self.events()` 都算），且必须**完整**匹配成员名：`self.events` 不算命中
+/// `events_len`，否则相邻字段名会互相污染。
+fn touches(code: &str, f: &Func, member: &str) -> bool {
+    let body = &code[f.body.0..f.body.1];
+    let needle = format!("self.{member}");
+    body.match_indices(&needle)
+        .any(|(at, _)| match body.as_bytes().get(at + needle.len()) {
+            Some(next) => !(next.is_ascii_alphanumeric() || *next == b'_'),
+            None => true,
+        })
 }
 
 /// 折函数的形参是不是「一段事件的借用」—— 共享切片 / 独占切片 / `Vec`，四种合理写法都认。
@@ -660,7 +753,7 @@ fn no_tunnel_transport_implementation_stores_its_own_tally() {
     assert_eq!(
         audited_impls, EXPECTED_TRANSPORT_IMPLS,
         "被登记的 {TRANSPORT_TRAIT} 实现数量变了（应恰好 {EXPECTED_TRANSPORT_IMPLS} 份：\
-         夹具 + 两条测试轨端口）。实得 {names:?}"
+         夹具 + 三条测试轨端口）。实得 {names:?}"
     );
     // 点名要指到**具体**类型，而不只是「数量对得上」：换名字也算新增端口。
     for expected in [HARNESS_PORT_TYPE]
@@ -680,10 +773,24 @@ fn every_port_reading_is_a_projection_of_one_pure_fold() {
     let mut transport_files = 0usize;
     let mut found = Vec::new();
     for (path, text) in AUDITED {
-        if transport_impls(&blank(text)).is_empty() {
+        let code = blank(text);
+        let ports = transport_impls(&code);
+        if ports.is_empty() {
             continue;
         }
         transport_files += 1;
+        let impls = impl_blocks(&code);
+        for blk in &ports {
+            // 收窄判据不许把管辖面收成 0：收窄是为了**去掉误报**，不是为了放过真违规。
+            // 管辖面一旦为空，R5 就什么都不扫却报告「没发现违规」—— 那比误报危险得多。
+            let judged = port_readings(&code, &impls, &blk.type_name);
+            assert!(
+                !judged.is_empty(),
+                "{path}: 收窄后 R5 管辖面为空 —— 端口 `{}` 的整数读数一个都没被判到，\
+                 它完全可以绕过唯一折法私藏第二本账",
+                blk.type_name
+            );
+        }
         found.extend(
             counts_not_derived_from_the_single_fold(text)
                 .into_iter()
@@ -695,5 +802,64 @@ fn every_port_reading_is_a_projection_of_one_pure_fold() {
         transport_files, EXPECTED_TRANSPORT_FILES,
         "含 {TRANSPORT_TRAIT} 实现的登记表文件应为 {EXPECTED_TRANSPORT_FILES} 个，\
          实得 {transport_files} —— 登记表或端口实现被裁小了"
+    );
+
+    // ---- 收窄判据的两条自证（都种在扫描器输入里，不依赖外部变异） ----
+    //
+    // **有牙**：端口自己的字段里长出一份整数账、有方法直读它 ⇒ 必须被点名。
+    // 这正是「在 `RecordingTunnelPort` 上加 `local_tunnels: AtomicU64` + `fn cheat(&self)
+    // -> usize`」那个变异的形状，钉在树里，免得日后有人把收窄顺手当放宽。
+    let cheater = "\
+struct P { events: Mutex<Vec<TunnelEvent>>, local_tunnels: AtomicU64 }
+fn tally(events: &[TunnelEvent]) -> usize {
+    let mut n = 0;
+    for event in events {
+        let _ = event;
+        n += 1;
+    }
+    n
+}
+impl P {
+    fn opened(&self) -> usize { tally(&self.events) }
+    fn cheat(&self) -> usize { self.local_tunnels.load(Ordering::Relaxed) }
+}
+";
+    let caught = counts_not_derived_from_the_single_fold(&with_impl(cheater, "P"));
+    assert!(
+        caught.iter().any(|v| v.contains("cheat")),
+        "端口在自己字段里私藏一份计数，R5 却没点名 `cheat` —— 收窄把闸门的牙拔了：{caught:?}"
+    );
+
+    // **反面对照**：同一份文件里不属于这个端口的整数读数**不算**违规。
+    // `now_nanos` 是时间戳（挂在 `TestClock` 上）、`ScriptedTransport` 是物理接缝替身
+    // （挂在另一个类型上）—— 开放世界里 `-> u64` / `-> usize` 只说明类型，不说明它是一份账。
+    let neighbours = "\
+struct P { events: Mutex<Vec<TunnelEvent>> }
+struct TestClock { nanos: u64 }
+fn tally(events: &[TunnelEvent]) -> usize {
+    let mut n = 0;
+    for event in events {
+        let _ = event;
+        n += 1;
+    }
+    n
+}
+impl P {
+    fn opened(&self) -> usize { tally(&self.events) }
+}
+impl MonotonicSource for TestClock {
+    fn now_nanos(&self) -> u64 { self.nanos }
+}
+";
+    let clean = with_impl(neighbours, "P");
+    let scoped = port_readings(&clean, &impl_blocks(&clean), "P");
+    assert_eq!(
+        scoped.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+        ["opened"],
+        "R5 管辖面应只剩端口自己的读数；`now_nanos`（另一个类型）不在其中"
+    );
+    require_clean(
+        "收窄判据误伤了不属于该端口的整数读数",
+        counts_not_derived_from_the_single_fold(&clean),
     );
 }
