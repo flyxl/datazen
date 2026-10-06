@@ -149,7 +149,7 @@ fn a_gap_that_is_not_even_counted_is_caught() {
 
 #[test]
 fn a_sample_accounting_that_shrinks_n_is_caught() {
-    // 这一轮模拟 R1 的缺陷形状：「N 被悄悄改成只统计成功样本」。
+    // 这一轮模拟「记账把失败样本吞掉」的缺陷形状：「N 被悄悄改成只统计成功样本」。
     // 样本仍是两条，completed 也是 2，所以第 1 条（completed == measured）放行；
     // 但 admitted 被填成 2、那次派发失败没人记账，
     // 第 2 条（N == 完成 + 派发失败 + 重发）必须把它拦下来。
@@ -256,7 +256,7 @@ fn a_shortened_percentile_input_is_caught() {
     );
 }
 
-/// F-04-1 的**真实样本量**守门测试：§11.1 每轮 10000 条。
+/// **真实样本量**守门测试：每轮 10000 条。
 ///
 /// 上一轮只在 4 条的小样本上验证过那条「剔掉最大值」的藏法被抓住，于是判成已修。
 /// 在 10000 条上它**抓不住**，而且抓不住它的只有值比那一道：nearest-rank 取第
@@ -276,7 +276,7 @@ fn a_shortened_percentile_input_is_caught() {
 /// 于是失守只有一个入口（`Percentiles::of` 的入参），而那个入口正对着门禁第 6 条。
 #[test]
 fn the_input_count_gate_holds_at_the_spec_sample_size() {
-    const PER_ROUND: usize = 10_000; // §11.1 的真实每轮样本量，不是小样本近似。
+    const PER_ROUND: usize = 10_000; // 真实每轮样本量，不是小样本近似。
     let totals: Vec<u64> = (0..PER_ROUND as u64).map(|n| 1_000 + n * 37).collect();
 
     let full = Percentiles::of(&totals);
@@ -320,7 +320,7 @@ fn the_input_count_gate_holds_at_the_spec_sample_size() {
     assert_eq!(round.p95_nanos(), full.p95_nanos, "值仍然一模一样");
     assert!(
         round.sample_count_mismatch(),
-        "在 §11.1 的真实样本量上，值比瞎着而条数比必须看得见"
+        "在真实样本量上，值比瞎着而条数比必须看得见"
     );
     assert!(
         !round.passes_gate(),
@@ -330,7 +330,7 @@ fn the_input_count_gate_holds_at_the_spec_sample_size() {
 
 /// 4 条小样本上「剔掉最大值」**值比**也会红——这是 `ceil(0.95*4) = 4` 恰好落在最大值上，
 /// 属于**巧合**，不是守卫。钉住它是为了让下一个人知道：这条断言在小样本上通过，
-/// 并不能推出它在 §11.1 的每轮 10000 条上也成立（那里**只有值比瞎**：名次与值都不动，
+/// 并不能推出它在每轮 10000 条的真实样本量上也成立（那里**只有值比瞎**：名次与值都不动，
 /// 靠的是条数与分位数同源那一条把它拦下）。
 #[test]
 fn catching_the_shortened_input_on_four_samples_is_coincidence() {

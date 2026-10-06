@@ -1,24 +1,24 @@
 //! 基准的执行侧：夹具、并发驱动、事件投影、样本切分。
 //!
-//! ## 口径（全部来自 `fake-runtime-fixtures.md` §11）
+//! ## 口径
 //!
-//! - **§11.1**：release 构建、单进程、**无数据库网络**、固定 fake 命令 10 毫秒（虚拟时间驱动）、
+//! - **运行环境**：release 构建、单进程、**无数据库网络**、固定 fake 命令 10 毫秒（虚拟时间驱动）、
 //!   并发 8、预热 1000、每轮 10000 个已获准且未排队的请求、5 轮、逐轮 p95 ≤ 10 毫秒。
-//! - **§11.2**：附加耗时 = 段①（网关完成鉴权/参数校验 → 派发 driver）+ 段②（driver completion →
+//! - **计时口径**：附加耗时 = 段①（网关完成鉴权/参数校验 → 派发 driver）+ 段②（driver completion →
 //!   回执/事件状态登记完成）两段**单调时间之和**；fake SQL 的 10 毫秒由 `tokio::time::pause()` 的
 //!   自动推进消费，**真实等待为零**，两段窗口用的是 `std::time::Instant`，不受虚拟时间影响。
-//! - **§11.3**：逐请求先求和再取分位数（nearest-rank，第 `ceil(0.95*N)` 项，1-based）。
+//! - **分位数口径**：逐请求先求和再取分位数（nearest-rank，第 `ceil(0.95*N)` 项，1-based）。
 //!   `N` 是**获准且未排队**的请求数（含随后失败的），不是样本条数：两者的差就是
 //!   `unmeasured_failures`，必须与分位数一起报出来。唯一的豁免是被 `QueueFull` 拒绝或
 //!   排队等待的请求；被别的理由拒掉的请求**不是被豁免，而是从未获准**，压根不在 `N` 里。
 //!   落在 `N` 上却打不出两段真实时长的请求**只进 `unmeasured_failures`，绝不用 0、超时值、
 //!   上一段的值或任何构造值补进去填满**——编出来的样本会把失败藏进分位数里。
-//! - **§11.4**：压力半另跑，不与延迟半共用入口。
-//! - **§11.6**：基准与功能测试**分开二进制入口**，CI 才能区分超时原因。
+//! - **压力半另跑**，不与延迟半共用入口。
+//! - 基准与功能测试**分开二进制入口**，CI 才能区分超时原因。
 //!
 //! ## 必须原样披露的两处偏离
 //!
-//! 1. **单线程运行时**。§11.2 要求 `tokio::time::pause()`，而 `pause()` 在多线程运行时上会 panic，
+//! 1. **单线程运行时**。虚拟时间要求 `tokio::time::pause()`，而 `pause()` 在多线程运行时上会 panic，
 //!    因此这里用 `new_current_thread`。8 路并发共享一个线程：测到的 p95 是**单核下界**，
 //!    不含跨核竞争与跨核缓存争用。
 //! 2. **夹具是手抄的**。`tests/gateway_fixtures/` 只对集成测试可见，二进制入口够不到它；
@@ -49,7 +49,7 @@ use crate::outcome::{
 };
 use crate::plan::{BenchPlan, SPEC_MEMORY_BYTES, SPEC_VCPUS};
 
-/// 夹具会话 id。全基准只用一个逻辑会话（§11.1 只要求单进程固定 fake command）。
+/// 夹具会话 id。全基准只用一个逻辑会话（单进程固定 fake command 即可）。
 const SESSION_ID: &str = "db_session_cm60_bench";
 /// 夹具 `runtimeEpoch`。
 const RUNTIME_EPOCH: u64 = 1;
@@ -59,7 +59,7 @@ const REVISION: u64 = 7;
 const IDEMPOTENCY_PREFIX: &str = "idem-cm60-bench";
 /// 执行 id 前缀，避免与任何真实资源同名。
 const EXEC_PREFIX: &str = "cm60-bench";
-/// 压力半承担 permit 收支对账的测试二进制（§11.5 + §11.4）。
+/// 压力半承担 permit 收支对账的测试二进制。
 const PERMIT_CARRIER: &str = "cargo test -p datazen-runtime --test cm60_pressure_drain";
 
 // ─────────────────────────────── 夹具 ───────────────────────────────
@@ -204,7 +204,7 @@ async fn one(
         Ok(acceptance) => acceptance,
         Err(error) => {
             // 被拒：**从未获准**，因此不在 N 里——不是被豁免，是压根没进过 N 的口径。
-            // 原因单列（§11.3）：被 `QueueFull` 拒绝或排队等待的那一小类才是豁免，
+            // 原因单列：被 `QueueFull` 拒绝或排队等待的那一小类才是豁免，
             // 而网关的受理错误还有鉴权、幂等、参数几类，它们只是没拿到受理而已。
             acc.outcome.rejected += 1;
             *acc.rejections.entry(rejection_label(&error)).or_insert(0) += 1;
@@ -239,7 +239,7 @@ async fn one(
     project(gateway, port, &execution_id, acc).await;
 }
 
-/// 把一次执行的事件帧按序投给网关，统计重复 / 丢失（CM-60 性能门槛）。
+/// 把一次执行的事件帧按序投给网关，统计重复 / 丢失（性能门槛）。
 async fn project(
     gateway: &ExecutionGateway,
     port: &FakeDriverPort,
@@ -251,7 +251,7 @@ async fn project(
         match disposition {
             datazen_runtime::gateway::EventDisposition::Applied => {
                 acc.events_projected += 1;
-                // 终态到达，执行从「在途」里退出（§11.5 的泄漏对账）。
+                // 终态到达，执行从「在途」里退出（泄漏对账）。
                 if sequence == u64::from(crate::driver::EVENTS_PER_EXECUTION) {
                     port.mark_terminal();
                 }
@@ -288,7 +288,7 @@ async fn project(
 /// `keys` 是**整次运行**（预热 + 全部轮次）共用的幂等键序号源，不能每轮从 0 重开：
 /// 幂等存储的生命周期与网关一致，键一旦重复，第二次请求就退化成幂等重发，
 /// 既不产生新执行也不产生两段计时——那会让每一轮悄悄少掉样本，
-/// 而 §11.3 要求的是「已获准且未排队」的请求，一个都不能少。
+/// 而口径要求的是「已获准且未排队」的请求，一个都不能少。
 async fn drive(
     gateway: Arc<ExecutionGateway>,
     port: Arc<FakeDriverPort>,
@@ -388,11 +388,11 @@ async fn assemble(
         rejections: acc.rejections,
         // 网关没有排队受理态（`AcceptanceDisposition` 只有 Accepted / Replayed），
         // 也没有预算台账，所以排队数**结构上恒为 0**。这不是「没测到」，是「不存在」，
-        // 但等待分位数仍按 §11.3 输出为 `None`，让读产物的人看见这一栏存在且为空。
+        // 但等待分位数仍输出为 `None`，让读产物的人看见这一栏存在且为空。
         queued_wait: Percentiles::of(&[]),
         // 分位数与它吃进去的条数**只有一个来源**：这一行。
         // 上一轮在这里另起一列 `percentile_input: totals.len()`，那是同一个变量的第二次求值——
-        // 切片一旦被做短，两列一起短，第 6 条照样绿（§11.1 每轮 10000 条时
+        // 切片一旦被做短，两列一起短，第 6 条照样绿（每轮 10000 条时
         // `ceil(0.95*M) = 9500` 不受掉一条影响，值比同时也看不出）。
         // 现在条数由 `Percentiles::of` 在同一次求值里记下，外部写不出错配；要失守只能改这一行，
         // 而这一行正对着 `RoundOutcome::percentile_input()` 与门禁第 6 条。
@@ -430,7 +430,7 @@ fn notes(
         "单线程运行时：pause() 在多线程运行时上会 panic，故 8 路并发共享一个线程。\
          测得的 p95 是单核下界，不含跨核竞争与跨核缓存争用。"
             .to_owned(),
-        "禁止任何出站 socket（§11.1）：tokio 运行时只 enable_time()，未装 IO 驱动；\
+        "禁止任何出站 socket：tokio 运行时只 enable_time()，未装 IO 驱动；\
          fake 端口不碰文件、不碰网络。"
             .to_owned(),
         "夹具为手抄：tests/gateway_fixtures 只对集成测试可见，二进制入口够不到，\
@@ -440,9 +440,9 @@ fn notes(
          nearest-rank、第 ceil(0.95*N) 项、1-based、不插值。"
             .to_owned(),
         "排队数结构上恒为 0：网关的受理处置只有 Accepted/Replayed，且未接入预算台账，\
-         不存在队列等待路径；因此 §11.3 要求的等待分位数按空样本输出为 None。"
+         不存在队列等待路径；因此等待分位数按空样本输出为 None。"
             .to_owned(),
-        "permit 收支对账在压力半（§11.4 要求压力与延迟分开跑）：\
+        "permit 收支对账在压力半（压力与延迟分开跑）：\
          tests/cm60_pressure_drain.rs 的 ResourceJournal 在每一个 connect/close/permit 变化点断言。"
             .to_owned(),
     ];
@@ -469,10 +469,10 @@ fn notes(
         ));
     }
     notes.push(if conforms {
-        "本次运行逐字等于 §11.1 的规格计划。".to_owned()
+        "本次运行逐字等于规格计划。".to_owned()
     } else {
         format!(
-            "本次运行**不是** §11.1 的规格计划（预热 {} / 每轮 {} / {} 轮 / 并发 {} / fake {} 毫秒），\
+            "本次运行**不是**规格计划（预热 {} / 每轮 {} / {} 轮 / 并发 {} / fake {} 毫秒），\
              不作「按判据达标」的结论。",
             plan.warmup,
             plan.per_round,
@@ -541,14 +541,14 @@ fn journal(
 /// 跑一次基准（环境留空、不注入故障：给自测用）。
 ///
 /// 正式入口请用 [`run_bench_on`]，把**声明**的 CPU/内存写进产物的 `environment` 段——
-/// §11.6 要求照着产物就能重跑，环境留空就等于还得回头猜。
+/// 产物要能照着直接重跑，环境留空就等于还得回头猜。
 pub fn run_bench(plan: BenchPlan) -> Result<BenchRun, BenchError> {
     run_bench_on(plan, 0, 0, 0)
 }
 
 /// 跑一次基准并记下实测环境。
 ///
-/// 构造 current-thread + 启用时间的运行时并 `pause()`：§11.2 要求 fake 命令的 10 毫秒
+/// 构造 current-thread + 启用时间的运行时并 `pause()`：fake 命令的 10 毫秒
 /// 由虚拟时间消费，`pause()` 在多线程运行时上会 panic，所以这里不能开多线程（已披露）。
 /// 副作用也要说清楚：8 个并发任务因此共享一个线程，实测 p95 是**单核下界**，
 /// 不含跨核竞争。

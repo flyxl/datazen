@@ -1,19 +1,17 @@
-//! CM-60 性能半（B 半）的基准入口 —— `docs/architecture/platform/fake-runtime-fixtures.md` §11.1–§11.6。
+//! 性能半（B 半）的基准入口。
 //!
 //! **这一半只测「网关附加耗时」**：从鉴权/参数校验完成到派发 driver 的那一段，
 //! 加上从 driver completion 到回执/事件状态登记完成的那一段，两段**逐请求先求和**，
-//! 再对和取分位数。fake SQL 本身、预算/actor 排队、网络传输**都不在测量窗口里**
-//! （`fake-runtime-fixtures.md` §11.3）。
+//! 再对和取分位数。fake SQL 本身、预算/actor 排队、网络传输**都不在测量窗口里**。
 //!
 //! 运行：`cargo run --release -p datazen-runtime --bin cm60-bench`
-//! （§12 的命令表与 §11.6 的「单独入口，便于 CI 区分超时原因」指的是这一条。）
 //!
 //! ## 为什么落成 `src/bin/cm60-bench`，而不是 `connection/testing/bench.rs`
 //!
-//! §2 的模块表把基准列为 `connection/testing/bench.rs`，那行是**过期文本**：
-//! §11.6 要求基准不得与功能测试共用同一二进制入口，§12 给出的命令逐字是
-//! `cargo run --release -p datazen-runtime --bin cm60-bench`。两处 norm 冲突时以
-//! §11.6/§12 为准，所以入口必须是独立的 bin target。
+//! 模块表把基准列为 `connection/testing/bench.rs`，那行是**过期文本**：
+//! 基准不得与功能测试共用同一二进制入口，给出的命令逐字是
+//! `cargo run --release -p datazen-runtime --bin cm60-bench`。两处说法冲突时以后者为准，
+//! 所以入口必须是独立的 bin target。
 //!
 //! 它也**不能**是 `src/bench/` 之类的 lib 模块：那会把基准代码编译进随桌面应用发布的
 //! `datazen-runtime` 库里，成为产品二进制的一部分。Cargo 对 bin target 的处理正好相反——
@@ -33,8 +31,8 @@
 //!
 //! ## 失败样本为什么不删
 //!
-//! `fake-runtime-fixtures.md` §11.3 `:570`：「**不删除失败样本**：失败、超时、被取消的样本数
-//! 与占比必须与分位数一起输出，**禁止只统计成功样本**。」唯一的豁免是 `:568` 的
+//! **不删除失败样本**：失败、超时、被取消的样本数
+//! 与占比必须与分位数一起输出，**禁止只统计成功样本**。唯一的豁免是
 //! 「被 `QueueFull` 拒绝或排队等待的请求」。
 //!
 //! 这件事在代码里不是靠「小心地不要删」，而是靠三个数同时存在：N（获准且未排队的请求数，
@@ -48,7 +46,7 @@
 //!
 //! ## fake 命令的 10 毫秒怎么消费
 //!
-//! §11.2 写明：两段用 `std::time::Instant` 采样，fake 命令的 10 毫秒由
+//! 两段用 `std::time::Instant` 采样，fake 命令的 10 毫秒由
 //! `tokio::time::pause()` + auto-advance 的**虚拟时间**消费，因此不进入测量窗口，
 //! 但调度与分配开销仍然是真实的。driver 就按这句话实现（见 [`driver`]）：
 //! `tokio::time::sleep(10ms).await` 落在暂停的时钟上，消耗的是虚拟时间。
@@ -58,7 +56,7 @@
 //! ## 环境是外部声明的，不是探测来的
 //!
 //! 基准进程不去读 `/proc`、不起子进程（runtime crate 不依赖 `libc`，而为了读一个数字去开
-//! 子进程会破坏 §11.1「禁止任何出站 socket」的整体交代）。所以 vCPU 数与内存字节数由
+//! 子进程会破坏「禁止任何出站 socket」的整体交代）。所以 vCPU 数与内存字节数由
 //! `--vcpus` / `--mem-bytes` 显式**声明**，缺省就是 0 并在产物里如实写 0：
 //! **宁可留白，也不填一个猜出来的数。**
 //!
@@ -81,15 +79,15 @@ use std::time::Duration;
 use crate::outcome::{BenchRun, RoundOutcome};
 use crate::plan::{BenchPlan, DEFAULT_PLAN};
 
-/// §11.1 明确要求 release 构建。debug 档位下 debug_assertions 会让被测路径变样，
+/// 判据明确要求 release 构建。debug 档位下 debug_assertions 会让被测路径变样，
 /// 量出来的 p95 与判据讨论的不是同一个东西，所以在入口就拒绝。
 const USAGE: &str = "\
-cm60-bench —— CM-60 性能半（B 半）基准入口
+cm60-bench —— 性能半（B 半）基准入口
 
 用法：
   cargo run --release -p datazen-runtime --bin cm60-bench -- [选项]
 
-选项（默认值逐字取自 fake-runtime-fixtures.md §11.1）：
+选项（默认值逐字取自规格计划）：
   --warmup <N>        预热请求数（默认 1000；预热样本不进任何分位数）
   --rounds <N>        测量轮次（默认 5）
   --per-round <N>     每轮请求数（默认 10000）
@@ -107,7 +105,7 @@ cm60-bench —— CM-60 性能半（B 半）基准入口
   0  规格 release 运行，且每轮 p95 ≤ 10 毫秒、失败数 0、未测出 0、事件重复/丢失 0
   1  门禁未通过（有轮超标、有失败、有未测出、或事件流不干净）
   2  用法、运行或落盘错误
-  3  运行完成，但不是 §11.1 的规格计划（不构成「按判据达标」的结论）
+  3  运行完成，但不是规格计划（不构成「按判据达标」的结论）
 ";
 
 /// 解析后的命令行。解析失败不是 `Err` 之外的分支：一律走 [`CliError`]，退出码 2。
@@ -161,7 +159,7 @@ fn main() -> ExitCode {
     // debug 档位的数字与判据讨论的不是同一个东西。拒绝，而不是打条警告继续。
     if cfg!(debug_assertions) {
         eprintln!(
-            "cm60-bench: 这是 debug 构建。§11.1 要求 release 构建，debug 档位的 p95 不可用。\n\
+            "cm60-bench: 这是 debug 构建。判据要求 release 构建，debug 档位的 p95 不可用。\n\
              请改用：cargo run --release -p datazen-runtime --bin cm60-bench -- \\"
         );
         return ExitCode::from(2);
@@ -195,9 +193,9 @@ fn execute(cli: &Cli) -> Result<u8, String> {
 
 /// 退出码就是判定的对外投影，方向不能反。
 ///
-/// - `0`：判定式成立（且计划逐字等于 §11.1），CI 判绿。
+/// - `0`：判定式成立（且计划逐字等于规格计划），CI 判绿。
 /// - `1`：判定式不成立。
-/// - `3`：跑完了但计划不是 §11.1 的规格计划，数字不能与判据对话。
+/// - `3`：跑完了但计划不是规格计划，数字不能与判据对话。
 ///
 /// 非规格计划的 3 排在门禁之前：缩小计划去「跑得快一点」不是失败，是不可比。
 fn exit_code(run: &BenchRun) -> u8 {
@@ -208,7 +206,7 @@ fn exit_code(run: &BenchRun) -> u8 {
 }
 
 fn print_report(run: &BenchRun, written: &report::WriteOutcome) {
-    println!("cm60-bench —— CM-60 性能半（B 半）");
+    println!("cm60-bench —— 性能半（B 半）");
     println!(
         "计划：预热 {} / 每轮 {} / {} 轮 / 并发 {} / fake {} 毫秒（{}）",
         run.plan.warmup,
@@ -217,9 +215,9 @@ fn print_report(run: &BenchRun, written: &report::WriteOutcome) {
         run.plan.concurrency,
         run.plan.fake_command.as_millis(),
         if run.conforms_to_spec {
-            "逐字等于 §11.1 规格"
+            "逐字等于规格计划"
         } else {
-            "**非 §11.1 规格计划**"
+            "**非规格计划**"
         }
     );
     println!(
@@ -235,7 +233,7 @@ fn print_report(run: &BenchRun, written: &report::WriteOutcome) {
     }
     println!("预热：{} 个样本（不进任何分位数）", run.warmup.n());
     println!(
-        "逐轮结果（§11.3：每轮输出 N、测到、未测出、p50、p90、p95、p99、最大值、失败数与占比、排队数）："
+        "逐轮结果（每轮输出 N、测到、未测出、p50、p90、p95、p99、最大值、失败数与占比、排队数）："
     );
 
     for round in std::iter::once(&run.warmup).chain(run.rounds.iter()) {
@@ -269,7 +267,7 @@ fn print_report(run: &BenchRun, written: &report::WriteOutcome) {
         ms(journal.driver_round_trip_median_nanos)
     );
     println!(
-        "permit 收支对账：网关侧 {}；预算台账侧由 `{}` 承担（§11.4 压力与延迟分开跑）",
+        "permit 收支对账：网关侧 {}；预算台账侧由 `{}` 承担（压力与延迟分开跑）",
         if journal.permit_reconciliation.gateway_ledger_balanced {
             "平衡"
         } else {
@@ -408,7 +406,7 @@ mod tests {
             .with_per_round(per_round)
     }
 
-    /// 不带任何参数必须逐字等于 §11.1 的规格计划：默认值不允许「更保守」。
+    /// 不带任何参数必须逐字等于规格计划：默认值不允许「更保守」。
     #[test]
     fn no_arguments_means_the_spec_plan() {
         let cli = parse(&[]).expect("空参数应可解析");
@@ -473,7 +471,7 @@ mod tests {
         assert_eq!(exit_code(&passing), 0, "跑通必须是退出码 0");
 
         // 方向二：把每条样本的登记段改成 20 毫秒（> 10 毫秒门禁），逐轮 p95 必然越线。
-        // 样本一个不删、不加——§11.3 不允许靠筛样本过门禁。
+        // 样本一个不删、不加——不允许靠筛样本过门禁。
         let mut failing = BenchRun {
             conforms_to_spec: true,
             ..run
@@ -576,7 +574,7 @@ mod tests {
         assert_eq!(ms(Some(10_000_000)), "10.000 ms");
     }
 
-    /// 逐轮口径必须把 §11.3 点名的字段全打出来。
+    /// 逐轮口径必须把点名的字段全打出来。
     #[test]
     fn the_per_round_line_carries_every_section_11_3_field() {
         let usage = USAGE;
@@ -601,9 +599,7 @@ mod tests {
         assert!(!run.comparable_to_criterion());
         let conclusions = run.verdict().conclusions;
         assert!(
-            conclusions
-                .iter()
-                .any(|line| line.contains("不是 §11.1 的规格计划")),
+            conclusions.iter().any(|line| line.contains("不是规格计划")),
             "非规格运行必须自己说不能下达标结论：{conclusions:?}"
         );
     }

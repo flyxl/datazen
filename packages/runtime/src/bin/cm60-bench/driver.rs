@@ -2,9 +2,6 @@
 //!
 //! ## 为什么端口里那个 `sleep` 不是「真的在等」
 //!
-//! §11.2 把这件事写死了：「fake 命令的 10 毫秒由 `tokio::time::pause()` + auto-advance
-//! 的虚拟时间消费，因此不进入测量窗口，但调度与分配开销仍然是真实的。」
-//!
 //! 基准进程在 [`crate::runner::run_bench`] 里建的是 **current_thread** 运行时并立刻
 //! `tokio::time::pause()`。于是 [`FakeDriverPort::execute_in_session`] 里那句
 //! `tokio::time::sleep(10ms).await` 消耗的是**虚拟时间**：tokio 在所有任务都挂在定时器上时
@@ -42,7 +39,7 @@ use datazen_runtime::registry::SessionPort;
 
 /// 每次执行发出的事件条数。
 ///
-/// §11.3 的事件断言是「单次存活订阅、缓冲未溢出」下的 sequence 连续性。基准要能
+/// 事件断言是「单次存活订阅、缓冲未溢出」下的 sequence 连续性。基准要能
 /// 证明自己**采过**这条断言，发 0 条等于没采；发 1 条也证明不了「多片连续」。
 /// 两条（一片 `ResultChunk` + 一个 `Terminal`）是最小的连续性证据。
 pub const EVENTS_PER_EXECUTION: u32 = 2;
@@ -154,7 +151,7 @@ pub struct ProjectionReport {
 }
 
 impl ProjectionReport {
-    /// §11.1 的门禁位：**事件重复/丢失数为 0**。
+    /// 门禁位：**事件重复/丢失数为 0**。
     pub fn is_clean(&self) -> bool {
         self.duplicates == 0
             && self.out_of_order == 0
@@ -182,13 +179,13 @@ impl ProjectionReport {
 pub struct FakeDriverPort {
     inner: Mutex<DriverState>,
     journal: Arc<DriverJournal>,
-    /// 假命令的虚拟耗时（§11.1 固定 10 毫秒）。
+    /// 假命令的虚拟耗时（固定 10 毫秒）。
     fake_command: Duration,
     next_execution: AtomicU64,
     prefix: String,
     /// **诊断用故障注入**：每第 N 次 `execute_in_session` 直接返回错误，0 = 关闭。
     ///
-    /// 它存在的唯一理由是自证 §11.3「禁止只统计成功样本」这条口径真的被守着：
+    /// 它存在的唯一理由是自证「禁止只统计成功样本」这条口径真的被守着：
     /// 打开它，第二段计时就永远打不上终点，样本数必然小于 N，如果实现仍在
     /// `n()` 里填 `samples.len()`，门禁就会变绿——那正是缺陷本身。跑出来的产物因此
     /// **不是**判据证据，只是自证；`inject_failure_every` 会写进产物，谁都能一眼看出它是被注入过的。
@@ -238,7 +235,7 @@ impl FakeDriverPort {
         Arc::clone(&self.journal)
     }
 
-    /// 收到某条执行的终态事件后递减未完成计数（§11.5 的泄漏对账）。
+    /// 收到某条执行的终态事件后递减未完成计数（泄漏对账）。
     pub fn mark_terminal(&self) {
         let Ok(mut state) = self.inner.lock() else {
             return;

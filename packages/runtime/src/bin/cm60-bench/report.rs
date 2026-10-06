@@ -1,12 +1,12 @@
-//! §11.5 产物落盘与 §11.6 的「三段即可重跑」硬要求。
+//! 产物落盘与「三段即可重跑」的硬要求。
 //!
-//! `fake-runtime-fixtures.md` §11.5 `:576-586` 规定基准入口要写两个文件：
+//! 基准入口要写两个文件：
 //!
 //! - `target/bench/cm60-raw-<ts>.json` —— 原始计时（每请求两段纳秒值、轮次、并发度）
 //!   加上 `environment` / `build` / `journal` 三段摘要；
 //! - `target/bench/cm60-summary-<ts>.json` —— 分位数与判定结论。
 //!
-//! §11.6 `:591` 要求 `environment` + `build` + `raw` 三段**齐备**，否则照着产物
+//! `environment` + `build` + `raw` 三段必须**齐备**，否则照着产物
 //! 重跑的人还得回头猜环境。这里让三段的缺一在类型上就写不出来：raw 文件是
 //! [`RawArtifact`]，它的三个字段都不是 `Option`。
 //!
@@ -29,7 +29,7 @@ const SUMMARY_PREFIX: &str = "cm60-summary-";
 /// 时间戳文件名安全字符集之外的兜底：只允许 ASCII 数字与 `-`。
 const TIMESTAMP_FALLBACK: &str = "00000000";
 
-/// 机器与运行方式。**这是 §11.6 重跑三段之一**：不记环境，重跑就等于重猜。
+/// 机器与运行方式。**这是重跑三段之一**：不记环境，重跑就等于重猜。
 #[derive(Debug, Clone, Serialize)]
 pub struct Environment {
     /// 判据指定的可复现性锚点（4 vCPU / 8 GiB）。
@@ -41,19 +41,19 @@ pub struct Environment {
     pub declared_memory_bytes: u64,
     /// 唯一真正探测出来的数：`std::thread::available_parallelism()` 的结果，
     /// 探不到时为 `None`（而不是 0，0 会被误读成「探测到 0 核」）。
-    /// 内存**没有**进程内探针（§11.1 禁止起子进程/开 socket 读 `/proc` 之类），
+    /// 内存**没有**进程内探针（禁止起子进程/开 socket 读 `/proc` 之类），
     /// 所以内存那一栏只能保持声明值形态，并由 `notes` 明说这一点。
     pub detected_parallelism: Option<u32>,
     pub os: String,
     pub arch: String,
     /// 虚拟时间驱动(fake 10 毫秒)意味着 8 并发共享一个线程，实测值是单核下界。
     pub runtime_threads: &'static str,
-    /// §11.1 `:548` 禁止任何出站 socket；此处声明而不是靠「跑通了」来推定。
+    /// 禁止任何出站 socket；此处声明而不是靠「跑通了」来推定。
     pub outbound_socket_policy: &'static str,
     pub tokio_time_paused: bool,
 }
 
-/// 构建口径。**§11.6 重跑三段之二**：release 与否直接决定数字含义。
+/// 构建口径。**重跑三段之二**：release 与否直接决定数字含义。
 #[derive(Debug, Clone, Serialize)]
 pub struct BuildRecord {
     pub profile: &'static str,
@@ -88,7 +88,7 @@ pub struct RawArtifact<'a> {
     pub plan: PlanRecord,
     pub journal: &'a crate::outcome::ExecutionJournal,
     pub rounds: Vec<RoundRecord<'a>>,
-    /// 每请求两段原始纳秒值 + 轮次 + 轮内序号。§11.3 要求先按请求求和再取分位，
+    /// 每请求两段原始纳秒值 + 轮次 + 轮内序号。要求先按请求求和再取分位，
     /// 所以这里存的是两段的分段值，求和可复算，不存已聚合的分位数。
     pub raw: &'a [crate::outcome::RawSample],
     pub notes: &'a [String],
@@ -113,10 +113,10 @@ pub struct RoundRecord<'a> {
     /// N = 获准且未排队的请求数（含随后失败的）。
     pub n: usize,
     /// 分位数的真实输入条数。**它和 `n` 不是同一个数**，差值就是 `unmeasured_failures`。
-    /// §11.3 要求失败样本不得从统计里消失，所以这两个数必须并排写出来：
+    /// 失败样本不得从统计里消失，所以这两个数必须并排写出来：
     /// 只写 `n` 会让人以为 N 条请求全都测到了。
     pub measured: usize,
-    /// 分位数**真正吃进去**的条数（§11.3「分位数的输入条数是独立一列」）。它与
+    /// 分位数**真正吃进去**的条数（分位数的输入条数必须是独立一列）。它与
     /// `measured` 恒等；一旦不等，说明算 p95 的向量被做短了，而只写 `measured` 的话
     /// 产物里没有任何一列会矛盾（`measured` 数的是样本仓库，这一列数的是分位数真正
     /// 吃进去的向量，两者是不同来源）。
@@ -126,7 +126,7 @@ pub struct RoundRecord<'a> {
     pub unmeasured_failures: usize,
     pub p95_nanos: Option<u64>,
     pub percentiles: &'a crate::outcome::Percentiles,
-    /// 失败数。§11.3 `:570` 要求它**与占比**一起输出。
+    /// 失败数。要求它**与占比**一起输出。
     pub failures: usize,
     /// 失败占比（失败 / 提交）。分母为 0 时是 `None`（未知），不是 `0.0`——
     /// `0.0` 会被读成「测过，失败率 0」。
@@ -183,7 +183,7 @@ pub fn timestamp() -> String {
 /// 组装环境记录。
 ///
 /// `declared_*` 由入口注入，是**声明**不是测量：基准进程不去读 `/proc`、不起子进程
-/// （§11.1 禁止出站 socket，且没有额外依赖），所以 CPU 数与内存只能由调用方声明。
+/// （禁止出站 socket，且没有额外依赖），所以 CPU 数与内存只能由调用方声明。
 /// 这里额外探一个 `available_parallelism()`，好让读产物的人至少有一个真数可以对照；
 /// 内存没有进程内探针，只能保持声明形态，并在 `notes` 里说明。
 pub fn environment(declared_vcpus: u32, declared_memory_bytes: u64) -> Environment {
@@ -218,9 +218,7 @@ pub fn build() -> BuildRecord {
         rustc_version: rustc_version().unwrap_or_else(|| "unknown".to_owned()),
         pressure_harness: "cargo test -p datazen-runtime --test cm60_pressure_drain",
         benchmark_entry: "cargo run --release -p datazen-runtime --bin cm60-bench",
-        criterion_source:
-            "docs/architecture/platform/connection-management.md:1235-1239 (CM-60); \
-                           bench spec docs/architecture/platform/fake-runtime-fixtures.md 11.1-11.6",
+        criterion_source: "built-in bench criterion: per-round p95 <= 10ms, failures == 0",
         features: features(),
         lock_bytes: WORKSPACE_LOCK.len(),
         lock_digest_fnv1a64: fnv1a64_hex(WORKSPACE_LOCK.as_bytes()),
@@ -444,8 +442,9 @@ mod tests {
         assert!(text.contains("\"environment\""));
         assert!(text.contains("\"build\""));
         assert!(text.contains("\"raw\""));
-        // §11.5 的三段齐备是类型强制的（Environment/Build 都非 Option），这里额外钉住
-        // F-09 补的两样确实出现在序列化结果里，而不是被 `skip_serializing` 之类的手段抹掉。
+        // 三段齐备是类型强制的（Environment/Build 都非 Option），这里额外钉住
+        // `features` / `lock_digest_fnv1a64` 确实出现在序列化结果里，而不是被
+        // `skip_serializing` 之类的手段抹掉。
         assert!(text.contains("\"features\""));
         assert!(text.contains("\"lock_digest_fnv1a64\""));
         // raw 条数必须等于**分位数的真实输入条数**。写 N 会在存在未测出样本时虚报：
@@ -540,7 +539,7 @@ mod tests {
         assert!(!round.sample_count_mismatch());
     }
 
-    /// F-02：按原因的拒绝/失败分类必须**落进产物**。
+    /// 按原因的拒绝/失败分类必须**落进产物**。
     ///
     /// 之前 `RoundOutcome` 在内存里汇了一份 `rejections`，summary 却只写 `failures`
     /// 一个总数——分布从头到尾没有任何一列落过盘（已核对冻结产物
@@ -574,7 +573,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// F-09 的漂移守卫：`build()` 里硬写了 feature 名，`Cargo.toml` 加了新 feature 而这里
+    /// 漂移守卫：`build()` 里硬写了 feature 名，`Cargo.toml` 加了新 feature 而这里
     /// 没登记时，产物就会少记一半构建输入——而这种缺失从产物本身看不出来。
     #[test]
     fn every_declared_feature_appears_in_the_build_record() {

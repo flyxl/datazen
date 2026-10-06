@@ -1,4 +1,4 @@
-//! 基准计划与判据常量 —— 逐字对应 `fake-runtime-fixtures.md` §11.1。
+//! 基准计划与判据常量。
 //!
 //! 这些数字**没有一个是默认值**。判据把并发、预热、轮次、每轮样本数与 fake 命令
 //! 耗时都写死了，基准默认值就必须是它们本身；任何「更小的默认值」都会让
@@ -7,45 +7,45 @@
 
 use std::time::Duration;
 
-/// §11.3 的门禁：逐轮 p95 ≤ 10 毫秒。
+/// 门禁：逐轮 p95 ≤ 10 毫秒。
 pub const GATE_P95_NANOS: u64 = 10_000_000;
 
-/// §11.1 指定的环境：4 vCPU。
+/// 指定的环境：4 vCPU。
 ///
 /// **这是可复现性锚点，不是容量要求。** 文档没有为这两个数字给出任何理由；
-/// 它们的约束力来自 §11.3「不删失败样本 + 逐轮判定」——基准必须能把噪声和真实回归
+/// 它们的约束力来自「不删失败样本 + 逐轮判定」——基准必须能把噪声和真实回归
 /// 分开，而分不开的量测没有意义。因此本 harness **不**把环境写进判定式：
 /// 判定式里只有「逐轮 p95」与「失败数」两件。实测环境原样写进产物 `environment` 段，
 /// 在别的机器上跑出来的数字要能被读成「这台机器上跑出来的数字」，而不是「达标」。
 pub const SPEC_VCPUS: u32 = 4;
 
-/// §11.1 指定的环境：8 GiB（以字节为单位）。
+/// 指定的环境：8 GiB（以字节为单位）。
 pub const SPEC_MEMORY_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
-/// §11.1 固定的 fake 命令耗时（**虚拟时间**消费，见 [`crate::driver`]）。
+/// 固定的 fake 命令耗时（**虚拟时间**消费，见 [`crate::driver`]）。
 pub const SPEC_FAKE_COMMAND: Duration = Duration::from_millis(10);
 
-/// §11.1 的并发度。
+/// 并发度。
 pub const SPEC_CONCURRENCY: usize = 8;
-/// §11.1 的预热请求数。
+/// 预热请求数。
 pub const SPEC_WARMUP: usize = 1_000;
-/// §11.1 的每轮请求数（已获准且未排队）。
+/// 每轮请求数（已获准且未排队）。
 pub const SPEC_PER_ROUND: usize = 10_000;
-/// §11.1 的轮次。
+/// 轮次。
 pub const SPEC_ROUNDS: usize = 5;
 
 /// 一次基准的执行计划。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct BenchPlan {
-    /// 预热请求数（§11.1：1000）。预热样本**不进**分位数，也不进产物。
+    /// 预热请求数（1000）。预热样本**不进**分位数，也不进产物。
     pub warmup: usize,
-    /// 每轮请求数（§11.1：10000）。
+    /// 每轮请求数（10000）。
     pub per_round: usize,
-    /// 轮次（§11.1：5）。
+    /// 轮次（5）。
     pub rounds: usize,
-    /// 并发任务数（§11.1：并发 8）。
+    /// 并发任务数（并发 8）。
     pub concurrency: usize,
-    /// fake 命令耗时（§11.1：10 毫秒，虚拟时间）。
+    /// fake 命令耗时（10 毫秒，虚拟时间）。
     pub fake_command: Duration,
 }
 
@@ -56,7 +56,7 @@ impl BenchPlan {
             .saturating_add(self.per_round.saturating_mul(self.rounds))
     }
 
-    /// 逐字等于 §11.1 的规格吗？
+    /// 逐字等于规格计划吗？
     ///
     /// 不等就不许自称「按判据测的」——产物里的 `conformsToSpec`、stdout 的措辞、
     /// 以及退出码都挂在这个判定上。缩小计划能跑通，但会被如实标成「非规格运行」。
@@ -96,7 +96,7 @@ impl BenchPlan {
     }
 }
 
-/// 判据 §11.1 指定的计划，逐字。
+/// 判据指定的计划，逐字。
 pub const SPEC_PLAN: BenchPlan = BenchPlan {
     warmup: SPEC_WARMUP,
     per_round: SPEC_PER_ROUND,
