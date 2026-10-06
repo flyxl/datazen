@@ -1,14 +1,15 @@
 //! FakeResourceProvider —— 假资源提供方（fake-runtime-fixtures.md §2、§3、§4.1、§5.1）。
 //!
 //! 本目录即 §2 模块表里 `P[FakeResourceProvider]` 与 `R[FakeResource state machine]` 两个
-//! 节点的落点，职责按 §3.1 拆到五个文件：
+//! 节点的落点，职责按 §3.1 拆到六个文件：
 //!
 //! | 文件 | 职责 |
 //! |---|---|
 //! | [`script`] | `FakeScript`：`FakeResourceProvider` 的故障/延迟脚本字段（§4.1 F1–F12、§9.3 竞态） |
 //! | [`state`] | `FakeResource` 状态机 + permit 记账锚点（§3.1、§3.2） |
 //! | [`handles`] | 句柄铸造与「登记 vs 造句柄」（§5.1 L416、§9.1、§9.2） |
-//! | [`ops`] | 九个操作的实现（§3.1 `ResourceHandle` 逐操作校验） |
+//! | [`ops`] | 八个操作的实现（§3.1 `ResourceHandle` 逐操作校验） |
+//! | [`close`] | op 9 `closeResource`：§5.3 规则 2/3/6 的 permit 口径 + CM-74 释放顺序 + §9.4(b) 归池判据 |
 //! | `catalog_guard` | 只在 `#[cfg(test)]` 下编译：把 `script.rs` 的 F 编号与 §4.1 的表**对撞**（§4.1 F1–F12 不得错位） |
 //!
 //! **依赖方向**：本目录向下依赖 `connection::{port, session, types, capability, execution}`，
@@ -19,6 +20,7 @@
 
 #[cfg(test)]
 mod catalog_guard;
+mod close;
 mod handles;
 mod ops;
 mod script;
