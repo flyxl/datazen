@@ -8,6 +8,7 @@
 //! - C3 轮询失败按 `CANCEL_POLL_FAILED` 的刻意决策处理：告警后停止轮询、不打断阶段。
 //! - C4 取消不制造提交边界：取消前已确认的边界保留，取消本身一条都不新增。
 //! - C5 排队取消与阶段间取消语义不回归。
+//! - C6 Job 已终结时看守者自己退出轮询（`terminal => return` 早退分支，见 `terminal_exit.rs`）。
 //!
 //! 所有用例会真的**阻塞在阶段里**：阶段持续轮询内核那一个 `CancelToken`，直到翻转才返回，
 //! 因此不可能靠"取消恰好赶在开跑前"这种时序侥幸通过。
@@ -40,6 +41,10 @@ use support::{config, conn, org};
 // 集成测试的 crate 根就在 `tests/` 下，模块解析不走「同名子目录」惯例，用 `#[path]` 指过去。
 #[path = "job_cancel_watch/poll_fault.rs"]
 mod poll_fault;
+
+// 终态早退分支（Job 已终结时看守者自己退出）的观测独立成文件，同上。
+#[path = "job_cancel_watch/terminal_exit.rs"]
+mod terminal_exit;
 
 /// 阶段内等待内核令牌的耐心上限。CI 抖动也远达不到这个量级；到达上限就返回
 /// "没等到"，于是测试会以断言失败（而不是挂死）暴露看守器没工作。

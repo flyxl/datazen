@@ -110,6 +110,38 @@ impl InMemoryJobRepository {
         self.get_calls.load(std::sync::atomic::Ordering::SeqCst)
     }
 
+    /// 测试缝：把 Job 强制写成终态，用来复现「Job 已经收尾，但某个阶段还在跑」的窗口。
+    ///
+    /// 正常路径里终态只由 `confirm_cancelled_not_started` / `compare_and_set_state` 落，
+    /// 它们都在 `dispatch` 自己的收尾里，阶段执行期间不存在这样的窗口，所以
+    /// `watch_cancel_request` 的 `terminal => return` 分支（见 `runtime.rs`）没有别的
+    /// 触发方式。测试用它把窗口撑开：阶段仍在阻塞时强制终结 Job，好观察看守者是否
+    /// 自己停止轮询。
+    ///
+    /// 与真实收尾的差别要讲清楚：这里**保留 claim**、并单调推进 `state_version`，
+    /// 于是阶段返回后 `dispatch` 的收尾 CAS 仍能按它读到的最新版本正常收敛；真实路径
+    /// 会连 claim 一起清空。这正是它只能是测试缝、不能进生产代码的原因。
+    #[cfg(any(test, feature = "test-harness"))]
+    pub fn force_terminal_for_test(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        state: JobState,
+    ) -> Result<JobRecord, PortError> {
+        let _ = ctx;
+        debug_assert!(state.is_terminal(), "只允许强制成终态");
+        let mut inner = lock_inner(&self.inner)?;
+        let now = self.clock.now();
+        let row = inner
+            .jobs
+            .get_mut(job_id)
+            .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
+        row.record.view.state = state;
+        row.record.view.updated_at = now;
+        row.record.state_version = JobStateVersion::new(row.record.state_version.get() + 1);
+        Ok(row.record.clone())
+    }
+
     /// 取消看守者的轮询读：只取两个 bool，**不克隆 `JobRecord`**。
     ///
     /// 与 [`JobRepository::get`] 共用同一把全局 `Mutex`，所以它省掉的是锁内的深拷贝
