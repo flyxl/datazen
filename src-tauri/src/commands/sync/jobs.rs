@@ -496,5 +496,11 @@ fn port_error(error: PortError) -> CommandError {
     }
 }
 
-/// Re-exported for the frozen execute contract in `exec::tests`.
-pub(crate) use crate::services::job_registry::{ensure_job, remove_job};
+/// `remove_job` is on the production cleanup path of `execute_data_sync_impl`.
+pub(crate) use crate::services::job_registry::remove_job;
+
+/// The legacy statement path only survives for the cfg(test) command harness in
+/// `exec`, so this re-export is test-only; the production apply path reads the
+/// window flag through the kernel Job record instead.
+#[cfg(test)]
+pub(crate) use crate::services::job_registry::ensure_job;
