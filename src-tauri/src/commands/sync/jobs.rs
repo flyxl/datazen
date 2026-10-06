@@ -92,13 +92,7 @@ pub(crate) async fn submit_prepare(
     let endpoints = endpoints_for(state, &source, &target).await?;
     let cancelled_before_job = register_window_job(window_job_id.as_deref()).await;
     let (job_id, ctx) = open_job(PREPARE_KIND, window_job_id.as_deref());
-    let host = recording_host(
-        state,
-        source,
-        target,
-        spec.filters.clone(),
-        job_id.as_str(),
-    );
+    let host = recording_host(state, source, target, spec.filters.clone(), job_id.as_str());
     let plan_id = spec.plan_id.clone().unwrap_or_default();
     let idempotency = if plan_id.is_empty() {
         IdempotencyKey::new(format!("data-sync-prepare:{job_id}"))
@@ -380,10 +374,10 @@ async fn drive(
     // live, so it is written before `run` reads it back. A failure here is not
     // silently swallowed into a *running* Job: `run` re-reads the record, so
     // the observable effect of a missed seed is exactly the old behaviour.
-    if cancelled_before_job
-        && let Err(error) = state::repository().request_cancel(&ctx, &job_id)
-    {
-        tracing::warn!(%job_id, %error, "could not carry a pre-job cancel into the job record");
+    if cancelled_before_job {
+        if let Err(error) = state::repository().request_cancel(&ctx, &job_id) {
+            tracing::warn!(%job_id, %error, "could not carry a pre-job cancel into the job record");
+        }
     }
 
     {

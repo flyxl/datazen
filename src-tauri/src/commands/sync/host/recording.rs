@@ -78,7 +78,11 @@ impl DataSyncHost for RecordingHost {
         filter: Option<&SyncSourceFilter>,
         cancel: &CancelToken,
     ) -> Result<Box<dyn KeysetPageSource>, DataSyncError> {
-        self.record(self.inner.table_reader(session, table, filter, cancel).await)
+        self.record(
+            self.inner
+                .table_reader(session, table, filter, cancel)
+                .await,
+        )
     }
 
     async fn store_artifact(
