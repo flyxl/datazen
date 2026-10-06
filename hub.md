@@ -18,8 +18,9 @@
 | `p5-cancel-hardening` 取消硬化 | feature/p5-cancel-hardening | ✅ MERGED `f440acf91` |
 | `p5-data-sync` handler | feature/p5-data-sync | ✅ 已由 R2 取代 |
 | `p5-data-sync-r2` D1/D2/D5 修复 | feature/p5-data-sync-r2 | ✅ MERGED `31af2b8fb8`，Tester 独立复验 **TEST_PASSED**（10 变异零存活，含修前存活/修后被杀对照），worktree/分支已清理 |
-| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ✅ TEST_PASSED (`ca5204d04`, vitest 6028/6028, 6/6 mutations KILLED, TYPECHECK=0); **Task A / D-6 (§8.4 竞态) + Task B / D-10 (target 默认值) + Task C (§6.2 谓词删除) 均验收完成** ; 2 WDIO 回归未修复且非本轨职责 (后端 `service_key`) |
-| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | 🧪 TESTING（`051a228a4`，Tester `10f3ae68`）；**D-1 的真实归属方** |
+| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | 🧪 修复轨 READY_FOR_TEST（`787f0e6fe`：Task A/D-6 + Task B/D-10 + Task C/§6.2 谓词删除，vitest 6028/6028，coder 自测 6/6 变异 KILLED，TYPECHECK=0）；独立复验 Tester `0e5f9a54` 进行中 |
+| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ❌ **TEST_FAILED**（Tester `10f3ae68`）：交付 `051a228a4` 方向对但引入 D1/D2 两个阻塞缺陷；修复轨 `2cca952d` 进行中 |
+| `p5-schema-diff-endpoint-identity` schema-diff 侧端点身份 | — | ⏸ 待开（D3 裁定；排在 endpoint-overlap 合入后） |
 | Wave-R 全量回归 | — | ⏸ NOT_STARTED |
 
 冲突面：cutover 只碰 `src/**`+`e2e/**`；endpoint-overlap 只碰 `packages/runtime/src/job/budget.rs`+`src-tauri/src/commands/data_transfer/**`。**两轨互为禁区**，与 data-sync R2 均零重叠。
@@ -39,10 +40,15 @@
 ## 敞口项
 
 **阻塞**
-- **端点身份伪造（缺陷 k / D-1）**：`TRANSFER_SERVICE_KEY` 被 reader/writer 共用，`endpoint_refs()` 的 `connection_id` 是硬编码常量且 `detect_endpoint_overlap` 根本不用它 ⇒ 同名跨库复制被误判重叠，**Job 路径出现对 legacy 的功能倒退**。
-  **这是本轮 2 例 WDIO 回归的真实根因，不是前端谓词。** Tester `3cdb27ef` 已证伪 coder 的归因：谓词只 gate `canNext`，若它触发则用户根本点不到 Execute（症状不同）；且 `inspect.rs:385` 给 target 传 `&[]`，谓词自身条件不成立。真实链路是后端拒绝 ⇒ `setStep(view ? 'result' : 'preview')` 落到 preview ⇒ `data-transfer-result` 永不挂载 ⇒ 15s 超时。
-  修复轨 `p5-endpoint-overlap` 交付 `051a228a4`（9 文件 +876/−46，`service_key = "data-transfer:"+sha256(物理位置摘要)` + `connection_id` 取自真实 `ConnectionConfig`，身份键**并集**），待独立验收 `10f3ae68`。**必须复验后再合**。
-- **前端 §6.2 谓词已裁定删除**：谓词要求 `enabled === true`，生产链路产不出这种行 ⇒ 运行时 no-op；其文档注释声称与后端键一致是**假的**；现有测试用人工造的 `enabled: true` 数据，等于给不可达接线写了保护。§6.2 真正执行点是后端 `budget.rs::detect_endpoint_overlap`。删除由 `70854e7b` 执行。**D-9（后端把 target 表填上）与端点身份落地后，前端谓词才可按「连接身份 + 库名」重写。**
+
+- **端点身份（缺陷 k / D-1）— 修复轨回归，仍未闭口**。原始缺陷：`TRANSFER_SERVICE_KEY` 被 reader/writer 共用、`connection_id` 是硬编码常量，导致同名跨库复制被误判重叠。**这是本轮 2 例 WDIO 回归的真实根因，不是前端谓词**（Tester `3cdb27ef` 已证伪 coder 归因：谓词只 gate `canNext`，若它触发则用户根本点不到 Execute，症状不同；且 `inspect.rs:385` 给 target 传 `&[]`，谓词自身条件不成立）。
+  `051a228a4` 的修法（`service_key = "data-transfer:"+sha256(物理摘要)` + `connection_id` 取自真实 `ConnectionConfig`，身份键取**并集**）方向正确，但 Tester `10f3ae68` 判 **TEST_FAILED**，两个阻塞缺陷：
+  - **D1 误拒**：`budget.rs::identity_keys` 把 `Connection(connection_id)` 也当重叠键。同一已保存连接指向两个不同库（staging→prod）是 UI 一等状态（`ensureDedicatedSession` 即产出此形态），被判重叠且报错误文案「同一物理端点」。**根因是范畴错误**：`budget/ledger.rs:41/91-94` 的 `ensure_service` 按 `ConnectionId` 记账，全文件无 `service_key`/digest/物理服务概念——记账粒度 ≠ 身份粒度。该键只能把「接」变「拒」，不能反向，且它拒的全是物理不同的合法端点。
+  - **D2 漏判（数据销毁级）**：`endpoint_identity.rs:82-88` 摘要**原始** config，而驱动默认 host 在**连接时**才解析（`connections.rs:41`）⇒ 省略 host 与显式写默认 host 产生不同 digest ⇒ 同一物理端点漏判。**当前只有 Connection 键在拦它**，故只删 Connection 键会把 D2 从误拒恶化为漏判，两条必须同一次改动一起修。
+  修复要求：① 删检测侧 `Connection` 键；② 让 digest 吸收「省略 vs 显式 host」的不对称。**不得以削弱检测器的方式修 D1**，否则原始缺陷回归。
+- **schema-diff 侧端点身份（D3，非阻塞，待开轨）**：`commands/schema_diff/job.rs:562-567/574-579` 构造了第三种更薄的 `service_key`（`dialect|host|database`，无 port/schema/tunnel/方言归一），叠加 `owner_connection_id(..).unwrap_or_default()` 可静默产出空 id。因 `service_key` 被**逐字**使用，这份字符串的权威被放大：`host=localhost,port=5432,db=app` 与 `port=5433` 同键 ⇒ 误拒两台不同服务器（D2 镜像）；`postgres` 与 `PostgreSQL` 不同键 ⇒ 漏判。**既有缺陷，非本轨引入**；Tester 仅代码阅读、未端到端执行。排在 endpoint-overlap 合入后（需复用其已解析身份的产物）。
+  **已闭口的相近问题**：`service_key` 逐字使用（无前缀/形状检查），故 `packages/schema-diff/tests/job_handler.rs:360-371`（reader `conn-src`/writer `conn-tgt` 共享 `"svc-1"`）**仍正确拒绝，不是回归，无需开轨**——Tester 实测 `"svc-1"` 跑 `cm41_self_cover_endpoint_overlap_is_rejected` EXIT=0。
+- **前端 §6.2 谓词已裁定删除**：谓词要求 `enabled === true`，生产链路产不出这种行 ⇒ 运行时 no-op；其文档注释声称与后端键一致是**假的**；现有测试用人工造的 `enabled: true` 数据，等于给不可达接线写了保护。§6.2 真正执行点是后端 `budget.rs::detect_endpoint_overlap`。**D-9（后端把 target 表填上）与端点身份落地后，前端谓词才可按「连接身份 + 库名」重写。**
 - **缺口 (c)（D-3/D-4，§10 阻塞级）**：`apply_data_transfer_job` 用**单次阻塞** `runtime::run` 直到终态才返回 ⇒ jobId 只在终态后可得；前端 `applyJobIdRef.current` 又在 `await` **之后**才写、applying 期间强制置 null ⇒ **取消按钮在 apply 中途结构性不可寻址，且无中间进度**。且 `packages/backend-client/src/client.ts` 声明的 `listJobs`/`getJob` **没有对应宿主命令**。已从"证据链不足的怀疑"升级为**从生产调用点证实的缺陷**。根因全在后端 ⇒ 需**单开一条后端轨**，与前端轨 `src/**`+`e2e/**` 范围边界无关。
 - **待开后端轨 `p5-job-addressable`**（排期在 `p5-endpoint-overlap` 合入之后，两者都碰 `commands/data_transfer/**`，**零重叠不可并行**）：
   1. `apply_data_transfer_job` 准入即返回 jobId，运行转异步；补 `list_jobs` / `get_job` 宿主命令（§10 可寻址 + 进度）
@@ -65,7 +71,8 @@
 
 `bb2cc5606` `97885d6e0` `4ba769fc9` `5f46a0262` `0db23e6d0` `3e28d49b8` → merge `105494c14`；`7d6a0f68d` 同批；`f440acf91` → merge `7ec0ca315`；`feature/p5-data-sync-r2` → merge `31af2b8fb8`。
 
-合并后 sanity（`--drivers=all`）：host `--lib` 1745 / data-sync 201 / runtime 843，`cargo check` 32 warnings（引入集合为空），854 条从零 `Compiling` 证明非陈旧产物。
+合并后 sanity（`--drivers=all`，冷构建 854 条 `Compiling` 证明非陈旧产物）：runtime 843 / data-transfer 213、`cargo check` 32 warnings（引入集合为空）。
+⚠️ 同一次记录里的 host `--lib` 1745 与 data-sync 201 **已作废**——是协调者的计数/记录错误，非真实读数。Tester `10f3ae68` 在基线 `4b782750` 与 HEAD 上独立复测得 data-sync **176/176**、host `--lib` **1733→1757**，与 coder 声称一致；warnings 两侧各 44 行 / 16 个唯一 `-->` 位置，集合差为空，coder「基线 34」被证伪。**教训：门禁数字必须来自某一次实测运行，不能凭记忆落笔。**
 
 ## 操作纪律（会咬人的）
 
@@ -76,6 +83,8 @@
 - 验证方与提交方**不得共用一棵工作树**；清理 subagent 的工作树前**先确认它真的死了**。
 - 警告数之争按 **warning 集合 diff** 裁定，不比计数。
 - 「失败均为存量」需要**基线跑**，不能靠断言。
+- **对照变异的正确方向是修复前 RED、修复后 GREEN**，不是「修复前必须存活」。协调者给 Tester 的 brief 曾把对照变异写成「修前必须 SURVIVE（绿）」，语义写反；若照字面执行会反向奖励没锁住缺陷的测试。Tester 标出了这处措辞歧义并按正确方向执行——**brief 的判据本身也要能被反驳。**
+- **记账粒度 ≠ 身份粒度**：连接 id 是配额记账键，不是物理端点身份。把两者混用会让检测器只能「多拒」而不能「多接」，误拒全部落在合法端点上。
 
 ## 收尾义务
 
