@@ -12,6 +12,15 @@
 //!
 //! 所有断言读的是录写端口的**事件计数**（`open_calls` / `close_calls` /
 //! `journal.len()`）与台账的权威计数快照，不依赖 `is_ok()` 之类的存在性判断。
+//!
+//! # 端口不许自带账（CM-32-FU1）
+//!
+//! 本文件的 `HostTunnelTransport` 与 `src/tunnel/harness.rs` 的夹具端口同形：
+//! 只有事件日志这一份事实，所有读数由**唯一**的纯折函数 `tally` 现折。
+//! 「唯一计数铁律」如今由 `src/tunnel/single_counter_audit/` 机械保证
+//! （随 `--lib` 跑，因此真的进 CI；见 `tunnel/mod.rs` 登记项 F 记的 CI 现状）：
+//! 那份闸门对本文件与 `cm28_concurrent_tunnel.rs` 的端口同样做字段审计 + 投影审计，
+//! 并把原始反例作为植入变异喂给它自己做 kill test。
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -23,12 +32,39 @@ use datazen_runtime::tunnel::{
     TunnelError, TunnelFault, TunnelHandle, TunnelLedger, TunnelState, TunnelTransport,
 };
 
-/// 宿主侧录写隧道端口。**刻意不持有任何引用计数** —— 唯一计数在台账里。
+/// 宿主侧录写隧道端口。**刻意不持有任何引用计数，也不持有自存的开合计数** ——
+/// 唯一计数在台账里，读数一律由 [`tally`] 从事件日志现折。
+///
+/// CM-32-FU1：`transport.rs` 模块头登记过那个已实证的伪装（给端口加一份
+/// `close_tally: Mutex<usize>` 并让观测方法改读它）。现在这条路被
+/// `tunnel::single_counter_audit` 机械杀掉（字段审计 R4 + 投影审计 R5，各带 kill test）。
 struct HostTunnelTransport {
     events: Mutex<Vec<&'static str>>,
     revisions: Mutex<BTreeMap<String, u64>>,
     fail_open: bool,
     fail_close: bool,
+}
+
+/// 端口账：物理开合读数，**只**由这一个纯折函数从事件日志算出。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct PortTally {
+    opened: usize,
+    closed: usize,
+}
+
+/// 「事件 → 账」的唯一折法。同 `src/tunnel/harness.rs` 的 `tallies` 一个形状；
+/// 本文件是外部 crate，看不见那个 `#[cfg(test)]` 私有模块，所以照同一规则就地写一份
+/// —— 审计按「每份实现各自只有一个折函数」检查，不跨文件共享。
+fn tally(events: &[&'static str]) -> PortTally {
+    let mut out = PortTally::default();
+    for event in events {
+        match *event {
+            "open" => out.opened += 1,
+            "close" => out.closed += 1,
+            _ => {}
+        }
+    }
+    out
 }
 
 impl HostTunnelTransport {
@@ -55,31 +91,27 @@ impl HostTunnelTransport {
             .insert(route_ref.as_str().to_string(), value);
     }
 
-    /// 宿主记得的物理开合次数。**这是接缝上唯一的「有没有真的关掉」证据。**
+    /// 宿主记得的物理开合次数。**这是接缝上唯一的「有没有真的关掉」证据**，
+    /// 且它只是 [`tally`] 的投影。
     fn opened(&self) -> usize {
-        self.events
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .iter()
-            .filter(|event| **event == "open")
-            .count()
+        tally(&self.events()).opened
     }
 
     fn closed(&self) -> usize {
+        tally(&self.events()).closed
+    }
+
+    /// 唯一事实源：事件日志本身。
+    fn events(&self) -> Vec<&'static str> {
         self.events
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .iter()
-            .filter(|event| **event == "close")
-            .count()
+            .clone()
     }
 
     fn is_open(&self) -> bool {
-        let events = self.events.lock().unwrap_or_else(|p| p.into_inner());
-        events
-            .iter()
-            .rposition(|event| *event == "open")
-            .is_some_and(|open| !events[open + 1..].contains(&"close"))
+        let counts = tally(&self.events());
+        counts.opened > counts.closed
     }
 }
 
