@@ -67,6 +67,11 @@ const SETTLE: Duration = Duration::from_millis(500);
 /// never park a write that should have run (and turn a regression into a hang).
 const OPEN_PERMITS: usize = 64;
 
+/// Upper bound on "wait for the first write to arrive". Generous next to the
+/// 500 ms settle, so it only ever expires when the Job never wrote at all —
+/// which is a result to assert on, not a reason to block the suite.
+const PATIENCE: Duration = Duration::from_secs(20);
+
 // ---------------------------------------------------------------------------
 // Gate
 // ---------------------------------------------------------------------------
@@ -383,10 +388,18 @@ async fn cancelling_a_running_apply_stops_the_writes_the_executor_would_still_se
     let canceller = async {
         // Wait until a write is genuinely in flight before cancelling, so this
         // is a mid-stage cancel and not a pre-stage one.
-        reached
-            .recv()
-            .await
-            .expect("the apply Job must write to the target");
+        //
+        // Bounded on purpose. If a regression stops the apply from writing at
+        // all — a batch refused before any statement, say — then this must not
+        // park forever: a hung test times the whole suite out instead of
+        // reporting. Let the wait expire, still record the cancel, still open
+        // the gate, and let the assertions below fail on the count.
+        let in_flight = tokio::time::timeout(PATIENCE, reached.recv()).await.is_ok();
+        assert!(
+            in_flight,
+            "the apply Job must write to the target for this to be a mid-stage \
+             cancel; nothing reached the gate within {PATIENCE:?}"
+        );
         assert!(
             cancel_job(&job_id).await,
             "cancel_job must report the cancel it just recorded"
