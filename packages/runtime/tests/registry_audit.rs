@@ -195,7 +195,7 @@ fn 宿主原字不是任何对外码() {
             "宿主原字混进了对外码表，它就会被原样放上线"
         );
     }
-    // ……而 provider 面那一支（冻结层 connection/error.rs:136）**有意**把它归成
+    // ……而 provider 面那一支（冻结层 `connection/error.rs`）**有意**把它归成
     // invalidArgument：调用方据此重读参数后重发。这条刻意偏差不是缺陷，
     // 与 `RuntimeEpochMismatch → sessionNotFound` 是同一族刻意决定，见 epoch.rs 模块文档。
     let rejected = ProviderError::HostRejected("executeRejected".to_owned());

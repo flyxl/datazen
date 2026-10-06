@@ -1,4 +1,4 @@
-//! CM-74 判据 `connection-management.md:1324` **条款 (2)**（「commit 落在旧 resource
+//! 判据**条款 (2)**（「commit 落在旧 resource
 //! 或明确失败，不出现在新 resource」）在「替换提交 × 并发空闲驱逐」这条交错上的行为。
 //!
 //! 本组回答两件事，两件事的**结论不同**，所以分开写：

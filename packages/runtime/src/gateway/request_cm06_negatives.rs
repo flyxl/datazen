@@ -1,5 +1,5 @@
 //!
-//! `connection-management.md:897-901` 判据：*「或在 body 伪造 organizationId/
+//! 判据：*「或在 body 伪造 organizationId/
 //! principalId」⇒ 拒绝 owner；请求身份字段无法覆盖 RequestContext；不创建会话*。
 //!
 //! 判据要求的是**编译期 / 反序列化期的负例**，不是一句注释。本模块给的是三层：

@@ -19,15 +19,9 @@
 //!
 //! | 处置 | 物理预算 | 隧道引用 | 本文件的行为 |
 //! |------|---------|---------|-------------|
-//! | `ReturnedToPool` | 仍占用（`connection-management.md:647`） | **保留** | 不碰台账 |
-//! | `Quarantined` | 仍占用到强制关闭（`connection-management.md:647` / `:713`） | **保留** | 不碰台账 |
-//! | `Closed` | 此刻释放（`cleanup.rs:285-286`） | **归还** | `return_resource` |
-//!
-//! `connection-management.md` 指 `docs/architecture/platform/connection-management.md`：
-//! `:647` 在 §9.3「预算会计」（「归还到 idle pool 不释放物理连接预算，只有实际 close
-//! 才释放」），`:713` 在 §10.1.1 故障窗口表的「cleanup 未确认」行（「保留预算占用／
-//! 隔离资源；确认关闭或节点隔离后才核销」）。`cleanup.rs:285-286` 是
-//! `CleanupDisposition::releases_physical_budget` 的文档与定义行（只有 `Closed` 为真）。
+//! | `ReturnedToPool` | 仍占用 | **保留** | 不碰台账 |
+//! | `Quarantined` | 仍占用到强制关闭 | **保留** | 不碰台账 |
+//! | `Closed` | 此刻释放 | **归还** | `return_resource` |
 //!
 //! 两条腿由**同一个布尔**同时驱动，因此不存在「预算还占着但引用已还」或反之的状态。
 //! 这一点不靠自觉，靠 [`TunnelDisposition::pairs_with_budget_release`]：
@@ -164,9 +158,8 @@ impl ResourceManager {
     /// 连台账都不碰；它为真（`Closed`）⇒ 预算此刻核销，隧道引用在**同一刻**归还。
     ///
     /// 全模块只有**两个调用方法**：`release` 与 `force_close`。方法是两个，但
-    /// **调用表达式有三处**：`manager.rs:416`（`release` 内一处）、
-    /// `manager.rs:484`（`force_close` 的 `Closed` 分支）、`manager.rs:515`
-    /// （`force_close` 的 `Quarantined` 分支 —— 处置为 `Quarantined`，`settle` 首行
+    /// **调用表达式有三处**：`release` 内一处、`force_close` 的 `Closed` 分支一处、
+    /// `force_close` 的 `Quarantined` 分支一处 —— 处置为 `Quarantined`，`settle` 首行
     /// 就按 `releases_physical_budget()` 为假原样返回 `Retained`）。
     /// 三处读的是同一个判据，所以不存在某条路径上两侧错拍的可能。
     pub(super) fn settle_tunnel_reference(

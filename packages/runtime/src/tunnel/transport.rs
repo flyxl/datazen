@@ -118,8 +118,8 @@ pub trait TunnelTransport: Send + Sync + 'static {
     /// 关闭一条隧道。由台账在**引用归零时且仅此时**调用，且同一条 spec 最多一次。
     fn close(&self, spec: &TunnelSpec) -> Result<(), TunnelError>;
 
-    /// 当前路由/隧道配置版本 —— 即 `PoolKey` 的 `networkRouteRevision` 分量
-    /// （`connection-management.md:676`）。取不到就**不得**当它等于上一个已知值。
+    /// 当前路由/隧道配置版本 —— 即 `PoolKey` 的 `networkRouteRevision` 分量。
+    /// 取不到就**不得**当它等于上一个已知值。
     fn revision(&self, route_ref: &NetworkRouteRef) -> Result<NetworkRouteRevision, TunnelError>;
 }
 

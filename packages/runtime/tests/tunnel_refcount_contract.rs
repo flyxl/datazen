@@ -5,8 +5,7 @@
 //! 1. **接缝可实现性证明**：桌面 `NetworkProvider`（`src-tauri`）将来要在
 //!    **另一个 crate** 里实现 `TunnelTransport`；这里用一份独立录写端口证明
 //!    公共 API 足够 —— 包括 `TunnelHandle` 可以由宿主侧铸造。
-//!    端口文档 `shared-boundaries-and-ports.md:590` 把桌面实现划到接缝期，
-//!    所以这份可实现性结论必须先有测试兜住。
+//!    桌面实现被划到接缝期，所以这份可实现性结论必须先有测试兜住。
 //! 2. **CM-32 三条断言的接缝形状**：与 `src/tunnel/journey_*.rs` 的库内单测
 //!    对照——那边证明台账内部自洽，这里证明**同一套结论在公开 API 上成立**。
 //!
@@ -434,7 +433,7 @@ fn one_return_releases_exactly_once_however_many_times_it_is_repeated() {
 
 /// `TunnelBinding.ref_count` 是观测快照：它与台账一致，且**不**参与释放判断。
 ///
-/// 端口文档 `network.rs:63` 写死了这一点（「仅供观测，不用于判断能否释放」）。
+/// 端口文档 `network.rs` 写死了这一点（「仅供观测，不用于判断能否释放」）。
 /// 若哪天有人按快照值决定能否释放，多一次或少一次 acquire 就会把账永久带歪。
 ///
 /// **判别性要求（CM-32 repair round 1）**：断言点上「台账读到的数」必须与

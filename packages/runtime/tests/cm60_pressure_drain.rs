@@ -1,6 +1,6 @@
-//! **CM-60 资源压力与 drain（H/W）** —— 行为半的可执行判据。
+//! **资源压力与 drain（H/W）** —— 行为半的可执行判据。
 //!
-//! 判据原文（`docs/architecture/platform/connection-management.md:1235`）：
+//! 判据：
 //!
 //! - 前置：总额度 20、控制预留 2；100 用户逻辑 session、短请求 fake 固定耗时 10 ms、队列上限 32。
 //! - 步骤：提交 1000 次操作与取消，两个 worker 分配额度；将一个 worker drain；全部完成后关池。

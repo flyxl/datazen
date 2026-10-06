@@ -1,6 +1,6 @@
-//! CM-28（重复 release/close，高）第三格：**隧道**层的真实并发契约。
+//! 重复 release/close 的第三格：**隧道**层的真实并发契约。
 //!
-//! 判据原文（`docs/architecture/platform/connection-management.md` §16.3，CM-28，行 1033-1037）：
+//! 判据：
 //!
 //! ```text
 //! - 断言：driver close 至多一次有效关闭；预算不负数；隧道不多减引用；重复响应一致。
@@ -10,8 +10,8 @@
 //!
 //! # 为什么这一格也要新写
 //!
-//! `tests/tunnel_refcount_contract.rs:352`
-//! （`one_return_releases_exactly_once_however_many_times_it_is_repeated`）
+//! `tests/tunnel_refcount_contract.rs` 里的
+//! `one_return_releases_exactly_once_however_many_times_it_is_repeated`
 //! 用一个**顺序** `for returns in 1..=6` 循环重复归还，而且数的是隧道端口的
 //! `close`，不是权威计数。`src/tunnel/journey_single_counter.rs` 的
 //! `single_counter_algebra_holds` 则是嵌套 `for` 的纯代数，没有线程。

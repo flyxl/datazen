@@ -1,10 +1,9 @@
-//! CM-28（重复 release/close，高）第一、二格：**物理**层的真实并发契约。
+//! 重复 release/close 的第一、二格：**物理**层的真实并发契约。
 //!
-//! 判据原文（`docs/architecture/platform/connection-management.md` §16.3，CM-28，
-//! 行 1033-1037）：
+//! 判据：
 //!
 //! ```text
-//! **CM-28 重复 release/close（H）**
+//! **重复 release/close（H）**
 //!
 //! - 前置：同 Lease、多个关闭请求；cleanup 与 timeout 竞态。
 //! - 步骤：并发释放 20 次，再重复查询 tombstone。
@@ -16,8 +15,8 @@
 //!
 //! # 为什么必须新写，不能靠既有测试
 //!
-//! `tunnel_refcount_contract.rs:352`
-//! （`one_return_releases_exactly_once_however_many_times_it_is_repeated`）
+//! `tunnel_refcount_contract.rs` 里的
+//! `one_return_releases_exactly_once_however_many_times_it_is_repeated`
 //! 数的是**隧道**端口的 `close`，而且是**顺序** `for` 循环：它既数错了对象
 //! （判据第一格的主语是 **driver close**，即 [`PhysicalTransport::close`]），
 //! 也没有制造任何竞态。`src/tunnel/journey_single_counter.rs` 的

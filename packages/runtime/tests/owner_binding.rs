@@ -162,10 +162,10 @@ async fn cm06_naming_another_users_editor_is_refused() {
     assert_eq!(port.execute_calls(), 0, "被拒的请求一个驱动调用都不产生");
 }
 
-/// CM-06 的**未闭合半边**：U1 指向 U2 的 job 会话。
+/// **未闭合半边**：U1 指向 U2 的 job 会话。
 ///
 /// 本层判不了，原因是**类型里就没有可比的主体**：
-/// `OwnerRef::Job`（`packages/runtime/src/connection/types.rs:390-394`）的字段
+/// `OwnerRef::Job`（`packages/runtime/src/connection/types.rs`）的字段
 /// 只有 `organization_id` / `job_id` / `stage_id`，不含 `principal_id`。同一个组织
 /// 里的 U1 与 U2 在 `OwnerRef::Job` 上**完全同形**，`Authorizer` 拿到的入参里也没有
 /// 「本次请求被授权操作哪个 job」这一项，因此任何实现在本层都只能按组织放行。

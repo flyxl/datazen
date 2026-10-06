@@ -63,8 +63,8 @@
 //!    不得传 `AlwaysAllow` / `AlwaysDeny` 家族。
 //! 2. **守卫**：`tests/owner_binding.rs` 的 `production_wiring` 子模块扫描**全仓** Rust
 //!    源码，剥掉注释与字符串内容、`#[cfg(test)]` 块与 import 后，只要任何**生产**文件里
-//!    还出现 `AlwaysAllow` / `AlwaysDeny`，门禁立刻变红，并指名那个文件和那一行
-//!    （行号经实测对齐原文件）。今天扫描是空的（全仓命中全在测试与定义点），
+//!    还出现 `AlwaysAllow` / `AlwaysDeny`，门禁立刻变红，并指名那个文件和那一行。
+//!    今天扫描是空的（全仓命中全在测试与定义点），
 //!    **第一个生产接线者**就是触发它的人。
 //!    守卫自证不成立的方式有两处，都实测过红：
 //!    (a) 合成反例——内存夹具，见 `production_wiring.rs` 模块头的「反证」一节；
@@ -72,8 +72,8 @@
 //!    `pub(crate) mod testing_support;` 之后插入一行 `pub fn
 //!    planted_authorizer_for_guard_bypass() -> … { …AlwaysAllow) }`，
 //!    跑 `cargo test -p datazen-runtime --test owner_binding`，
-//!    报 `packages/runtime/src/gateway/mod.rs:71`，退出码 101。
-//!    （`request.rs` **不是**反例：实测它 599 行，`AlwaysAllow`/`AlwaysDeny` 零命中。）
+//!    报 `packages/runtime/src/gateway/mod.rs`，退出码 101。
+//!    （`request.rs` **不是**反例：实测它没有任何 `AlwaysAllow`/`AlwaysDeny` 命中。）
 //!
 //! 缓解程度要说准：`authorizer` 无默认值 ⇒ 漏传是**编译错误**（不会静默降级），
 //! 唯一的静默形态是「传了个恒放行的替身」——也就是上面这条守卫要对住的那一种。

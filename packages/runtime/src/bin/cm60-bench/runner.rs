@@ -227,8 +227,8 @@ async fn one(
         Ok(_receipt) => acc.outcome.completed += 1,
         Err(error) => {
             // 派发失败：已计入 N，但网关在 `port.execute_in_session` 之后就不往下走了
-            // （`gateway/mod.rs:364` 的 `?` 早于 `:376` 的 `state.samples.push`），
-            // 第二段终点打不出来，**真实时长就是不存在**。所以它进 unmeasured_failures，
+            // （`?` 早于 `state.samples.push`），第二段终点打不出来，
+            // **真实时长就是不存在**。所以它进 unmeasured_failures，
             // 绝不能编一个数补进分位数——那样失败会被分位数藏起来。
             acc.outcome.dispatch_failed += 1;
             acc.outcome.unmeasured_failures += 1;

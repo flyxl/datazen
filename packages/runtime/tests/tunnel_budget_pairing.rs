@@ -1,16 +1,16 @@
-//! **CM-27 × 第二格**：`CleanupDisposition::Quarantined` 下隧道引用与物理预算的
-//! **归属配对**（`packages/runtime/src/tunnel/mod.rs:53-64` 登记表第 **(3)** 格）。
+//! **第二格**：`CleanupDisposition::Quarantined` 下隧道引用与物理预算的
+//! **归属配对**（登记表第 **(3)** 格）。
 //!
-//! # 判据是哪一行
+//! # 判据是哪一个布尔
 //!
-//! 判据就是 `resource/cleanup.rs:285` 那一个布尔：
+//! 判据就是 `resource/cleanup.rs` 里那一个布尔：
 //!
 //! ```text
 //! CleanupDisposition::releases_physical_budget() == (disposition == Closed)
 //! ```
 //!
-//! 它在 CM-27 的失败矩阵里被反复要求（§9.3 `:647`「不能确认则隔离并核验」、
-//! §10.1.1 `:713`），而 `cleanup.rs:285-360` 只兑现了**物理预算那一半**：隔离时预算
+//! 它在失败矩阵里被反复要求（「不能确认则隔离并核验」、恢复决策表的 `cleanup 未确认`
+//! 行），而 `cleanup.rs` 只兑现了**物理预算那一半**：隔离时预算
 //! 继续占着，可隧道引用的归属没人管。本文件用**同一个布尔**驱动两侧，把配对钉死：
 //!
 //! | 处置          | 物理预算 | 隧道引用 |
@@ -79,7 +79,7 @@ fn clean_host() -> HostConditionSnapshot {
 
 /// 活动执行未结束 ⇒ 隔离。
 ///
-/// `cleanup.rs:340` 的判据是 `record.active_execution.is_some()`，不是快照字段本身：
+/// `cleanup.rs` 的判据是 `record.active_execution.is_some()`，不是快照字段本身：
 /// 快照的 `active_executions` 只负责**拒绝复用**，真正决定「不许静默关闭」的是租约
 /// 上挂着的那次执行。两者都要真，缺一个就退化成普通 `Closed`。
 fn quarantining_host(execution_id: &ExecutionId) -> HostConditionSnapshot {
@@ -316,7 +316,7 @@ fn a_confirmed_reset_and_close_in_one_release_gives_the_reference_back_with_the_
     );
     assert!(
         report.physical_budget_released,
-        "确认关闭 ⇒ 物理预算此刻核销（cleanup.rs:285）"
+        "确认关闭 ⇒ 物理预算此刻核销"
     );
     assert_released(&report);
     assert!(

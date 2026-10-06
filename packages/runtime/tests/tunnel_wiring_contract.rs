@@ -1,9 +1,9 @@
-//! `ResourceManager` ⇄ `TunnelLedger` 的**接线面**与 **CM-27 全阶段失败矩阵**。
+//! `ResourceManager` ⇄ `TunnelLedger` 的**接线面**与**全阶段失败矩阵**。
 //!
-//! 闭合 `packages/runtime/src/tunnel/mod.rs:53-64` 登记表里的第 **(1)** 格
+//! 闭合 `packages/runtime/src/tunnel/mod.rs` 登记表里的第 **(1)** 格
 //! 「实现缺失」：permit / socket / 隧道 / handshake / init / register
-//! **每一个阶段失败时，隧道引用都必须正确回滚**。CM-27 把它拆成两半
-//! （`src/tunnel/mod.rs:31-52` 的登记项 F 一并更正了「CI 不跑本轨测试」这处假事实）：
+//! **每一个阶段失败时，隧道引用都必须正确回滚**。失败矩阵把它拆成两半
+//! （登记项 F 一并更正了「CI 不跑本轨测试」这处假事实）：
 //! **建隧道失败不落账** + **隧道开成后回滚释放**，
 //! 本文件两半各带用例。
 //!
@@ -271,8 +271,8 @@ fn stage_handshake_init_register_failure_with_an_unconfirmed_close_keeps_the_tun
 ///
 /// 三处闭合点互不知情、也都不需要知道隧道存在 —— 这本身就是「隧道不该进这一格」的证据：
 ///
-/// * `src/budget/ledger.rs:397` —— INV-10 幂等核销，名额按原槽退回；
-/// * `src/budget/coordinator.rs:428` —— 端口级幂等核销，把 `Unknown` 报成 `NotFound`；
+/// * `src/budget/ledger.rs` —— INV-10 幂等核销，名额按原槽退回；
+/// * `src/budget/coordinator.rs` —— 端口级幂等核销，把 `Unknown` 报成 `NotFound`；
 /// * 宿主侧第三处（登记表自述）。
 ///
 /// 本用例把「隧道不进这一格」钉成断言：确认关闭后**资源许可**归零，

@@ -389,7 +389,6 @@ impl std::fmt::Debug for RedactedExecuteRequest<'_> {
 }
 
 // CM-06 的编译期 / 反序列化期负例：请求 DTO 上没有身份字段可伪造。
-// 判据原文见 `docs/architecture/platform/connection-management.md:897-901`。
 //
 // 放在独立文件是单文件 800 行惯例所迫；用 `#[path]` 而非 `mod` 内联，
 // 是为了让负例文件的模块级 `//!` 文档挂在正确的模块上。
