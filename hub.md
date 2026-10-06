@@ -222,4 +222,38 @@ Tester 另做了我要求的**替代核查**（是否有别的生产调用方在
 
 ⚠️ **后续必须项**：后端按真实端点区分后，coder 的前端谓词**只比表名**，`A库.users → B库.users` 仍会误报冲突 ⇒ **前端拦截在后端修好后仍然是错的**，需一次前端对齐（届时要比较连接身份，而非只比表名）。已要求 frontend coder 在报告里显式登记，**不得默默留着**。
 
+### ✅ Tester `5324a984` 终裁 data-sync R2：**TEST_PASSED**（独立复验，10 变异零存活）
+
+**溯源**：交付树开档/收档 HEAD=`f3f4ec3e0`、tree=`02346f346`、porcelain 空，**首尾一致**；Tester 全程未在交付树内改动，变异全在 detached 临时树内，收尾已全部清理。
+
+**变异表（10 有效 + 1 无效）**：M1 KILLED / M2 KILLED / M3b KILLED / M4 KILLED / R1 KILLED / R2 KILLED / **R3b KILLED** / R4 KILLED / **M3-pre SURVIVED @ `c56b2e17`** / **R3a 无效**。
+- **头条是 M3-pre 的「修前存活 / 修后被杀」对照**：同一处 pre-job cancel 结转被删，在 `c56b2e17` 上 EXIT=0、**1744 全绿**（无任何测试发现）；在 `f3f4ec3e0` 上 EXIT=101、被新用例 `a_cancel_that_arrives_before_the_job_exists_still_stops_the_apply` 杀死。⇒ **新用例非空转**，实证成立。
+- **Tester 自曝两处陷阱并作废其自身结果**：① R3 首个变异 `Ok(_) if false` **编译不过（E0004）**，Tester 明确判定「编译不过的变异不是被杀」，丢弃后重造语义等价版本；② 我清理临时树时它正在后台跑 R4，`cd` 失败导致**变异脚本从未执行**，cargo 却因 `&&`/`;` 断裂在主仓库跑了未变异代码报 2287 passed——该次 R4 **作废**，重建三棵临时树（registry 逐字节校验通过）后重跑。**该纪律正确，保持。**
+- 反陈旧证据：5 个 host 变异各 563 条从零 `Compiling`，3 个 data-sync 变异各 189 条；无一次出现「0.92s 绿」形状，绿色运行均在 12–25s。
+- 5 个 host 变异的 `--lib` 只产出**一条** `test result:` 行（单二进制）⇒ M1/M2/M3b/M4/R4 的失败清单**是完整的，不是下界**（此豁免仅对本次成立，不可推广）。
+
+**门禁 @ `f3f4ec3e0`，driver set `--drivers=all`**：host `--lib` EXIT=0 **1745 passed / 0 failed / 6 ignored**；data-sync EXIT=0 **201**；runtime EXIT=0 **842**；`cargo check -p datazen` EXIT=0 **32 warnings**；typecheck **EXIT=0 / `error TS` 0**（用我给的 `--config.verify-deps-before-run=false` 拿到**字面绿灯**，此前 4 条等价命令展开的偏离**已消除**；依据是脚本定义非记忆——pnpm 自回显 `$ pnpm check:restore-guards && tsc --noEmit && pnpm typecheck:scripts && pnpm typecheck:pack-ep`）。
+- Tester 诚实标注：G2/G3/G4 复用了 G1 的 target 目录（同 commit 同树，合法复用）。
+
+#### 🔴 Tester 推翻了我四处 —— 我的说法作废，以 Tester 为准
+
+| 我的说法 | 实测 | 裁定 |
+| --- | --- | --- |
+| warning **30** | 基线 **34** → HEAD **32** | **我错**。且 Tester 做的是 **warning 集合 diff 而非计数**，`base-check.log:763/:773` 两条在基线存在、HEAD 消失，**引入集合为空** |
+| R3 影响面 **3** | **1** | **我错**（R3b 只杀 `cm43_review_conflict_…`） |
+| R4 影响面 **3** | **6** | **我错**（6 个，含 `exec::tests::test_tester_plan_preview_and_execution_use_the_paged_path` 等） |
+| `cm46_pipeline.rs` / `execute_bounded_table` / `kernel_cancel.rs` 属 **data-sync**，且 `cm46_pipeline.rs` 单测用手写 `Arc<AtomicBool>` | 三者**全在 `packages/data-transfer/`**；`cm46_pipeline.rs:61` 传入的是 **`cancelled: None`**，根本没有手写 flag | **我错，crate 与细节都错** |
+
+**派生更正**：所谓「`cm46_pipeline.rs` 用手写 `Arc<AtomicBool>` 测 `execute_bounded_table`」这条「已接受限制」**整条撤销**。**D10（生产路径超预算测试）正确归属在 data-transfer 侧**，且 data-sync 的 `packages/data-sync/tests/` 下**根本不存在任何 budget/over-budget 测试文件** ⇒ D10 在两个 crate 中都仍敞开。
+**`cancel.flag()` 实际行号 `:620/:682`**（非 `:621/:683`）。**`host/recording.rs` 是生产文件非测试辅助**（零 `#[cfg(test)]`，由 `jobs.rs:242` `recording_host()` 构造，被 `submit_prepare`/`submit_apply` 两条生产路径调用）。
+**变异点 `host/mod.rs:731` 已失效**：HEAD 该文件 721 行，该点已被 `select.rs` 取代，后续按此点复现会得到「没有这一行」。
+**§8 裁定**：`PATIENCE` 超时被转成**会失败的断言**（`jobs_cancel_contract.rs:398-402`），是「断言等待物确实发生」而非「不再等」；绿色路径**只有 500ms `SETTLE` 必然消耗**（50ms `CANCEL_POLL_INTERVAL` × 10），`PATIENCE` 仅失败路径耗时。
+
+**⚠️ Tester 自己点明的未检验假设（必须入册）**：`CANCEL_POLL_INTERVAL`（`runtime.rs:41`，50ms）**始终只被注释引用、从未被测量**，`SETTLE` 只是隐式依赖它 ⇒ 本次绿灯依赖一个**未检验的常量**。且新测试的**取消路径**不可注入 `Unknown`（handler 无该终态）。
+**Tester 正确拒绝的两项**：① `GatedDriver` 是 mock，其契约测试**不构成**「无真实数据库验证」这一限制的关闭；② diff 触及 **0** 个 `e2e/` 文件 ⇒ 12 项注册 E2E/WDIO 缺口**无一关闭**，8 项项目级缺口亦全敞开。
+
+**MEDIUM（流程，非代码）**：`hub.md` 在 HEAD **被跟踪（35,858 字节）**而 `main` 没有 ⇒ 按现状合并会把 AGENTS.md 明令禁止的台账带入 main。**收口时必须删除**（本就是既定收尾步骤）。`progress.md` 确认在 HEAD **不存在**。
+
+**⇒ 已合并**：`feature/p5-data-sync-r2` → `codex/p5-integration`，merge `31af2b8fb8`，无冲突。合并后第一道 sanity `cargo metadata --no-deps` EXIT=0（25 packages / 17 `datazen-driver-*` / `victoriametrics` 存在）；`drivers-registry.json` sha256 与 main **逐字节相同**。
+
 **📌 另一条待澄清的阻塞级疑点**：frontend coder 自列缺口 (c)「apply 阻塞到终态故无可寻址 jobId」。若属实，则 `apply` 返回前前端拿不到 `jobId` ⇒ **取消按钮无法寻址**、无中间进度 ⇒ Job 路径 UX **实质劣于 legacy**。这比缺 `list_jobs` 更要紧，直接决定本次切主路径是否真的可用。已要求给出**实测证据**（非读码推断）并按阻塞级处理。
