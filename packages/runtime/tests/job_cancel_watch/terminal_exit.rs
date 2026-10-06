@@ -8,6 +8,12 @@
 //! 这不是正确性缺陷（`CancelWatch` 的 `Drop` 在两条路径上都归还在飞计数，计数仍然归零），
 //! 而是一条**清理路径分支没有断言**。回归后的表现是：一个已经结束的 Job，它的阶段还在跑，
 //! 看护者会一直轮询到阶段返回被 abort 为止。
+//!
+//! 上面那句「依旧全绿」有对照实验支撑，不是推断：在本文件落地之前的提交 `e16b43415`
+//! 上做同一个 `terminal: false` 变异，独立 detached worktree + 全新
+//! `CARGO_TARGET_DIR`，`cargo test -p datazen-runtime --test job_cancel_watch` 得
+//! `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s`，
+//! EXIT=0；加上本文件后同一变异变成 `1 failed`，红在下面 `get_calls()` 冻结那条 `assert_eq!` 上。
 
 use super::*;
 
