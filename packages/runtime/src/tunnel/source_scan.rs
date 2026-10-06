@@ -49,11 +49,21 @@ pub(super) fn blank(text: &str) -> String {
             continue;
         }
         // 普通字符串 / 字节串字面量
+        //
+        // **左右引号一起抹掉**，与上面 `char_literal_len` 的处理一致。
+        //
+        // 过去左引号被吃掉却不补位（只给 `b` 补了一格），右引号却留着：于是
+        // ① 每个字面量整体**短一个字节**，「保留下标」这句承诺当场失效；
+        // ② 输出里留下一个**孤立的闭引号**，再 blank 一趟时它被当成新字符串的开头，
+        //    一路吃到下一个引号 —— 把中间的**真代码**整片抹掉。实测把
+        //    `blank(blank(x))` 喂进 `impl_blocks` 会让 impl 块从 1 个变成 0 个：
+        //    不报错、不 panic，直接「什么都没扫到」。
+        //
+        // 引号对任何判据都没有用（规则只认 `Mutex<usize>` / `+= 1` / `self.` 这类记号），
+        // 抹干净还顺带让 blank **幂等**：输出里再没有引号，第二趟无事可做。
         if b[i] == b'"' || (b[i] == b'b' && b.get(i + 1) == Some(&b'"')) {
             let is_byte = b[i] == b'b';
-            if is_byte {
-                out.push(' ');
-            }
+            out.push_str(if is_byte { "  " } else { " " });
             i += usize::from(is_byte) + 1; // 吃掉 `b` 与左引号
             while i < b.len() {
                 if b[i] == b'\\' {
@@ -68,7 +78,7 @@ pub(super) fn blank(text: &str) -> String {
                 }
                 if b[i] == b'"' {
                     i += 1;
-                    out.push('"');
+                    out.push(' ');
                     break;
                 }
                 out.push(if b[i] == b'\n' { '\n' } else { ' ' });
@@ -88,12 +98,13 @@ pub(super) fn blank(text: &str) -> String {
                 let close: String = std::iter::once('"')
                     .chain(std::iter::repeat('#').take(hashes))
                     .collect();
-                out.push_str("r\"");
+                // 同样把 `r"` 与收尾定界符一起抹成等长空白（理由见下面字符串分支的注释）。
+                out.push_str("  ");
                 i = j + 1;
                 while i < b.len() {
                     if b[i] == b'"' && text[i..].starts_with(&close) {
                         i += close.len();
-                        out.push_str(&close);
+                        out.push_str(&" ".repeat(close.len()));
                         break;
                     }
                     out.push(if b[i] == b'\n' { '\n' } else { ' ' });
@@ -102,7 +113,15 @@ pub(super) fn blank(text: &str) -> String {
                 continue;
             }
         }
-        out.push(b[i] as char);
+        // 非 ASCII 字节一律落成空格（**一个字节 → 一个空格**，长度与行号守得住）。
+        //
+        // 这里曾是 `out.push(b[i] as char)`：把 UTF-8 的字节当 Latin-1 字符回推，长度是守住了，
+        // 可输出仍是多字节字符，于是下游每一个按字节推进、再做 `text[i..]` 切片的扫描器
+        // （`impl_blocks` / `functions` / …）都可能在字符中间切片而 panic
+        // （实测 `byte index 16669 is not a char boundary; inside 'ï'`）。
+        // 闸门里没有任何判据依赖非 ASCII 文本，Rust 关键字与类型名也全是 ASCII，
+        // 所以在**入口**抹成空格即可一次性让整条扫描链安全，而不是逐个函数打补丁。
+        out.push(if b[i] >= 0x80 { ' ' } else { b[i] as char });
         i += 1;
     }
     out

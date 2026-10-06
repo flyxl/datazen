@@ -545,11 +545,31 @@ fn counts_not_derived_from_the_single_fold(text: &str) -> Vec<String> {
     out
 }
 
-/// 一个文件里的「事件流 → 账」折函数：形参含切片、不接 `self`、体内做累加且不写 `self.`。
+/// 折函数的形参是不是「一段事件的借用」—— 共享切片 / 独占切片 / `Vec`，四种合理写法都认。
+///
+/// 只认 `&[` 会把完全合法的折法打成 `实得 0 个：[]`，随后 R5 反过来抱怨端口
+/// 「没调用唯一折函数 []」——**诊断与事实相反**：两个都指向一个根本没坏的签名。
+/// （`&[` 不匹配 `&mut [`，也不匹配 `&Vec<`，所以四种都要写出来。）
+fn is_fold_param(params: &str) -> bool {
+    ["&[", "&mut [", "&Vec<", "&mut Vec<"]
+        .iter()
+        .any(|p| params.contains(p))
+}
+
+/// 一个文件里的「事件流 → 账」折函数：形参收一段事件的借用、不接 `self`、体内做累加且不写 `self.`。
+/// R1 的返回形状判据：返回**引用**才算外泄账，按值（含新值类型）都不算。
+///
+/// 判据刻意不是「必须是 u32」：把计数包进 `Refs(pub u32)` 才是更安全的写法，
+/// 调用方拿不到可变引用。硬编码整数类型会把更安全的写法判成违规，还给出
+/// 与事实相反的诊断（实测 `Refs(u32)` 是按值返回，却被报成「返回字段引用等于把账外泄」）。
+pub(super) fn leaks_by_return_type(returns: &str) -> bool {
+    strip_space(returns).starts_with('&')
+}
+
 fn fold_functions(text: &str) -> Vec<String> {
     functions(text)
         .into_iter()
-        .filter(|f| f.params.contains("&[") && !f.params.contains("self"))
+        .filter(|f| is_fold_param(&f.params) && !f.params.contains("self"))
         .filter(|f| {
             let body = &text[f.body.0..f.body.1];
             body.contains("+= 1") && !body.contains("self.")
@@ -579,15 +599,19 @@ fn the_authoritative_ref_count_is_read_only_through_registered_accessors() {
         !REGISTERED_COUNT_ACCESSORS.is_empty(),
         "名单为空 ⇒ R1 会点所有函数（含窄口自己）的名"
     );
-    // 三个方法全部**按值**交出计数：返回类型必须是整数，不能是字段引用。
+    // 三个方法全部**按值**交出计数：不许返回引用。
+    //
+    // 判据是「不是引用类型」，**不是**「必须是 u32」：把计数包进新值类型
+    // `Refs(pub u32)` 才是更安全的写法（调用方无法顺手改里面的数），
+    // 硬编码整数类型会把更安全的写法判成违规，还给出与事实相反的诊断。
     for name in ["refs", "add_reference", "take_reference"] {
         let f = fns
             .iter()
             .find(|f| f.name == *name)
             .unwrap_or_else(|| panic!("台账缺少注册方法 {name}"));
         assert!(
-            INTEGER_TYPES.contains(&strip_space(&f.returns).as_str()),
-            "{name}() 必须按值返回计数，实得 `{}` —— 返回字段引用等于把账外泄",
+            !leaks_by_return_type(&f.returns),
+            "{name}() 必须按值交出计数，实得 `{}` —— 返回字段引用等于把账外泄",
             f.returns
         );
     }

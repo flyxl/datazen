@@ -18,19 +18,19 @@ kill test（植入变异当字符串喂同一套扫描器），并在原始反�
 
 ## 门禁实测（本轮重跑）
 
-首 `HEAD=68b92c99d` / 尾 `HEAD=85e5c55c1`；运行期间工作区 sha 首 `e90b53129648`、尾 `da39a3ee5e6b`
-（`da39a3ee5e6b` 是空输出的 sha，即**工作区干净**——拆分期间确实只有我在写这棵树）。
+首 `HEAD=874b85fb` / 尾 `HEAD=874b85fb`；运行期间工作区 sha 首 `9f374714c313`、尾 `9f374714c313`
+（首尾逐字相同 ⇒ 这一轮门禁运行期间没有第二方动过这棵树）。
 
 ```
 cargo fmt -- --check                    EXIT=0
-cargo test -p datazen-runtime --lib      EXIT=0   test result: ok. 461 passed; 0 failed
+cargo test -p datazen-runtime --lib      EXIT=0   test result: ok. 463 passed; 0 failed
 cargo test -p datazen-runtime \
-  --test tunnel_refcount_contract \
-  --test cm28_concurrent_tunnel \
-  --test p4_usecase_journeys             EXIT=0   3 passed / 7 passed / 7 passed
+  --test cm28_concurrent_tunnel           EXIT=0   test result: ok. 3 passed; 0 failed
+  --test p4_usecase_journeys              EXIT=0   test result: ok. 7 passed; 0 failed
+  --test tunnel_refcount_contract         EXIT=0   test result: ok. 7 passed; 0 failed
 ```
 
-基线是 `442 passed`（本轮实测，非旧台账数字），隧道轨改完 `461 passed`，净增 19。
+基线是 `442 passed`（本轮实测，非旧台账数字），隧道轨改完 `463 passed`，净增 21。
 
 ## 反例实测（主代理亲做，非转述）
 
@@ -53,6 +53,29 @@ tunnel::single_counter_audit::every_port_reading_is_a_projection_of_one_pure_fol
   `::the_audit_registry_covers_every_tunnel_module` ok、`::the_scan_primitives_see_the_shapes_they_claim` ok。
 - 新文件自己进 `AUDITED` 登记表，并加进 R6 的必备清单 ⇒ **扫描面比拆分前更宽**，不是等宽。
 - R4/R5 两条 kill 用例仍绿（`--lib` 里 `... ok`）。
+
+## 独立复测后的补正（主代理亲做）
+
+独立 Tester 出 `PASS`，但报了三处**误伤** + 一个漏网，逐条复核后落如下修正：
+
+| # | 现象 | 根因 | 修正 |
+|---|------|------|------|
+| M13 | 全新第三个测试文件自带 `close_tally` ⇒ **无一转红** | R6 的登记表是硬编的 `AUDITED`，新增文件不在表里就等于没扫 | 新增 `every_transport_implementing_file_on_disk_is_registered`：运行时递归枚举 `src/`、`tests/` 两棵子树的 `.rs`，逐个扫 `impl TunnelTransport`，断言「含实现的文件集合全部在 `AUDITED` 里」；并自证枚举本身没空转 |
+| 非 ASCII | 扫描器 panic 于 `byte index 16669 … inside 'ï'` | `blank()` 把 UTF-8 字节当 Latin-1 字符回推，输出仍是多字节字符，下游按字节切片全在字符边界上炸 | `blank()` 入口把 `>= 0x80` 的字节落成空格（一字节→一空格，长度与行号守恒） |
+| **新发现** | `blank()` **不幂等**、且每个字符串字面量**整体短一字节** | 左引号被吃掉时不补位（只给 `b` 补了一格），右引号却留着 ⇒ 输出里留下**孤立闭引号**，第二趟被当成新字符串开头一路吃到下一个引号，把中间真代码整片抹掉 | 字符串/裸字符串的左右定界符一律抹成等长空白，与 `char_literal_len` 分支一致。实测 `impl_blocks(&blank(&blank(x)))` 的 impl 块曾从 **1 变 0** —— 不报错、不 panic、直接**什么都没扫到**，闸门变成永远绿的空转 |
+| L2 | `&Vec<TunnelEvent>` 折法被打成「实得 0 个：[]」，随后 R5 反过来报「端口没调用唯一折函数」——**诊断与事实相反** | `fold_functions` 只认 `&[` 一个子串 | 抽 `is_fold_param`，认 `&[`/`&mut [`/`&Vec<`/`&mut Vec<` |
+| L4 | `refs()` 返回新值类型 `Refs(pub u32)`（比裸 `u32` **更安全**）被判成「返回字段引用等于把账外泄」 | R1 判据写成「返回类型必须是某个整数类型」 | 抽 `leaks_by_return_type`：判据回到「是不是引用类型」，`u32` / `Refs` 都放行，`&u32` 仍拦 |
+
+L1（端口新增 `revision_of(&self) -> u64` 这样的整数观测方法被 R5 抓）**判定为已披露的策略选择**，
+`transport.rs:49-52` 白纸黑字写着「所有返回整数的 `&self` 观测方法都必须是这个折法的投影」，本轮不动。
+
+顺带纠正 Tester 的一处误报：`transport.rs:49` 引用的 `every_port_reading_is_the_projection_of_one_journal_fold`
+**确实存在**（`journey_single_counter.rs:329`），上下文讲的是**值层面**沿整条旅程对账，与该 journey 用例吻合。
+
+**误伤比漏抓更危险**：三个误伤全落在同一个缺口上 —— R5/R7 从来只有「植入变异应当转红」，
+没有一条「合法形状应当放行」。误伤会把人逼向更隐蔽的写法，而受压的人改的往往不是闸门。
+已补 `legal_shapes_are_not_misjudged` 负控钉死：四种合法折法签名 / 按值返回放行而引用返回拦截 /
+非 ASCII 不 panic 且不漏扫 / `blank()` 等长且幂等。
 
 ## 未做 / 待裁定
 

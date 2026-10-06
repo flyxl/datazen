@@ -474,3 +474,111 @@ fn the_blanker_hides_comments_and_literals_but_not_code() {
     assert_eq!(char_literal_len("b'x'".as_bytes(), 0), Some(4));
     assert_eq!(char_literal_len("'x'".as_bytes(), 0), Some(3));
 }
+
+/// **负控（合法形状不被误伤）**。
+///
+/// 这一整轨的三个误伤 —— `&Vec<TunnelEvent>` 折法被报成「实得 0 个：[]」、新值类型
+/// 返回被报成「返回字段引用等于把账外泄」、以及扫描器在非 ASCII 文本上直接 panic ——
+///
+/// 全部落在同一个缺口上：**R5 / R7 从来只有「植入变异应当转红」，没有一条
+/// 「合法形状应当放行」**。误伤比漏抓更难发现：它把人逼向更隐蔽的写法，
+/// 而受压的人改的往往不是闸门。所以这里把三条合法形状钉成用例——
+/// 闸门变严、变回原来的样子、或换个文件继续 panic，都会让本条转红。
+#[test]
+fn legal_shapes_are_not_misjudged() {
+    // ① 四种同样合法的折函数签名都认。实测只认 `&[` 时，`&Vec<TunnelEvent>`
+    //    （调用点靠自动解引用照常编译，是完全合法的写法）会打成 `实得 0 个：[]`，
+    //    随后 R5 反过来报「端口没调用唯一折函数 []」——**诊断与事实相反**。
+    for (signature, why) in [
+        ("fn tally(events: &[TunnelEvent]) -> usize {", "共享切片"),
+        (
+            "fn tally(events: &mut [TunnelEvent]) -> usize {",
+            "独占切片",
+        ),
+        ("fn tally(events: &Vec<TunnelEvent>) -> usize {", "Vec 借用"),
+        (
+            "fn tally(events: &mut Vec<TunnelEvent>) -> usize {",
+            "Vec 可变借用",
+        ),
+    ] {
+        let text = format!(
+            "{signature}\n    let mut n = 0usize;\n    for _ in events {{\n        n += 1;\n    }}\n    n\n}}\n"
+        );
+        assert_eq!(
+            fold_functions(&blank(&text)),
+            vec!["tally".to_owned()],
+            "折函数识别漏掉合法签名「{signature}」（{why}）—— 它会被误报成「实得 0 个」"
+        );
+    }
+
+    // ② 按值交出就算合规，**返回引用**才算外泄。
+    //    `Refs(pub u32)` 是比裸 u32 更安全的写法：调用方拿不到可变引用去改账。
+    assert!(
+        !leaks_by_return_type("u32"),
+        "裸 u32 是按值返回，不该被判成外泄"
+    );
+    assert!(
+        !leaks_by_return_type("Refs"),
+        "`Refs` 新值类型同样是按值返回 —— 实测它曾被误报成「返回字段引用等于把账外泄」"
+    );
+    assert!(
+        leaks_by_return_type("&u32"),
+        "返回 `&u32` 才是真外泄，必须被抓"
+    );
+    assert!(
+        leaks_by_return_type("&self.entry.refs"),
+        "返回内部字段的引用必须被抓"
+    );
+
+    // ③ 非 ASCII 文本不许让扫描器 panic，也不许让它少扫。
+    //    实测：`blank()` 过去把 UTF-8 字节当 Latin-1 字符回推，长度守住了但输出仍是
+    //    多字节字符，于是按字节推进再 `text[i..]` 切片的扫描器在字符中间 panic
+    //    （`byte index 16669 is not a char boundary; inside 'ï'`）。
+    //    端口文件里一句中文错误串就能触发，且触发点与隧道台账毫无关系。
+    let chinese = with_impl(
+        "\
+pub struct RecordingTunnelTransport {
+    journal: Mutex<Vec<TunnelEvent>>,
+    close_tally: Mutex<usize>,
+}
+
+    fn close(&self) -> std::io::Result<()> {
+        let _ = \"关闭失败：会话已经不在了\";
+        Ok(())
+    }
+",
+        HARNESS_PORT_TYPE,
+    );
+    let found = transport_stores_its_own_count(&chinese);
+    assert_eq!(
+        found.len(),
+        1,
+        "非 ASCII 文本必须照样扫出第二本账，实得 {found:?}"
+    );
+
+    // ④ `blank()` 的两条契约：**等长**、**幂等**。
+    //
+    //    这两条过去都不成立，而且失效方式最坏：字面量的左引号被吃掉不补位、右引号留着，
+    //    于是每个字符串字面量整体短一字节（`保留下标` 是句空话），输出里还多出一个
+    //    **孤立的闭引号** —— 再 blank 一趟时它被当成新字符串开头，一路吃到下一个引号，
+    //    把中间的真代码整片抹掉。实测 `impl_blocks(&blank(&blank(x)))` 里
+    //    impl 块从 1 个变成 0 个：不报错、不 panic，直接**什么都没扫到**。
+    //
+    //    谁踩到这一脚，闸门就变成永远绿的空转 —— 所以钉死。
+    let code = blank(&chinese);
+    assert_eq!(
+        code.len(),
+        chinese.len(),
+        "blank() 必须逐字节等长（行号对得上，列才对得上）"
+    );
+    assert_eq!(
+        blank(&code),
+        code,
+        "blank() 必须幂等：喂已 blank 过的文本，第二趟不许再吃掉任何代码"
+    );
+    assert_eq!(
+        transport_impls(&blank(&code)).len(),
+        1,
+        "blank 幂等坏掉的实际后果 —— impl 块被静默抹成 0 个"
+    );
+}

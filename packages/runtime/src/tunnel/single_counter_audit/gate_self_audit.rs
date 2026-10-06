@@ -104,6 +104,81 @@ pub(super) fn unregistered_modules<'a>(
         .collect()
 }
 
+/// **R6 补**：磁盘上每一份实现 [`TunnelTransport`] 的文件都必须在登记表里。
+///
+/// 上一版只对测试轨硬编了两条 `include_str!`，而 `EXPECTED_TRANSPORT_IMPLS` /
+/// `EXPECTED_TRANSPORT_FILES` **正是对着这份硬编名单数出来的** —— 名单外的第 4 份
+/// 端口贡献 0、断言照样过。实测反例：新建 `tests/tunnel_new_probe.rs`，里面一个端口
+/// 自存 `close_tally: Mutex<usize>`，`--lib` 报 `461 passed; 0 failed` 无一转红。
+/// 那是 M11（新生产模块逃逸）那个洞平移了一层目录，而**历史假绿恰在测试轨**。
+///
+/// 因此这里不再信硬编名单，而是在**运行时**枚举 `src/` 与 `tests/` 两棵子树，
+/// 对每个文件跑与 R4 / R5 **同一个** [`transport_impls`] 判据（口径不许分叉）。
+///
+/// 枚举本身必须先自证有效，否则「`read_dir` 失败 ⇒ 列表为空 ⇒ 全部放行」就是一个
+/// 比原洞更安静的新洞：这里因此钉住两条 —— 列表非空、且必须含夹具文件。
+#[test]
+fn every_transport_implementing_file_on_disk_is_registered() {
+    let on_disk = port_files_on_disk();
+    let registered: Vec<&str> = AUDITED.iter().map(|(path, _)| *path).collect();
+    let unregistered: Vec<&String> = on_disk
+        .iter()
+        .filter(|path| !registered.contains(&path.as_str()))
+        .collect();
+    require_clean(
+        "磁盘上实现了 TunnelTransport 却没进审计登记表 —— \
+         这份端口不会被 R4 / R5 扫到，它完全可以私藏第二本账",
+        unregistered.iter().map(|p| format!("{p}")).collect(),
+    );
+    assert!(
+        on_disk.contains(&HARNESS.to_owned()),
+        "枚举结果里连夹具文件 {HARNESS} 都没有 —— 枚举本身已经失效，\
+         这条规则正在空转（实得 {on_disk:?}）"
+    );
+    assert!(
+        on_disk.len() >= 3,
+        "磁盘上只认出 {on_disk:?} —— 递归枚举没走到子目录（tests/ 下就有 common/、\
+         gateway_contract/ 之类的子目录）"
+    );
+}
+
+/// 磁盘上真实实现了 [`TunnelTransport`] 的文件（相对 crate 根，正斜杠分隔）。
+fn port_files_on_disk() -> Vec<String> {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut out = Vec::new();
+    for sub in ["src", "tests"] {
+        collect_port_files(&root.join(sub), root, &mut out);
+    }
+    out.sort();
+    out
+}
+
+/// 递归收集子树里含端口实现的 `.rs` 文件。读不动的文件**静默跳过**——但
+/// [`every_transport_implementing_file_on_disk_is_registered`] 的两条自证断言会先把它顶红。
+fn collect_port_files(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_port_files(&path, root, out);
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if !transport_impls(&blank(&text)).is_empty() {
+                out.push(
+                    path.strip_prefix(root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                );
+            }
+        }
+    }
+}
+
 /// **闸门的名字常量不许只是手打字符串。**
 ///
 /// 整套 impl 过滤器都拿字符串比对。名字若与真实符号脱钩（trait 改名、端口搬走、
