@@ -16,6 +16,7 @@ use super::super::exec;
 use super::super::inspect::inspect_data_transfer_impl;
 use super::super::plans::{self, StoredTransferPlan};
 use super::super::AppState;
+use super::endpoint_identity::{self, EndpointIdentity};
 use crate::commands::error::{CmdExt, CommandError};
 use crate::data_transfer::job::{TransferEndpoints, TransferFreezeBody};
 use crate::data_transfer::model::{Endpoint, TableInspectResult, TransferRunSelection};
@@ -38,6 +39,13 @@ pub(crate) struct FreezeAssembly {
     pub(crate) source_objects: Vec<String>,
     /// Target relations participating in this run.
     pub(crate) target_objects: Vec<String>,
+    /// Identity of the endpoint this run reads from — the real connection config
+    /// its session was opened on, never a placeholder.
+    pub(crate) source_identity: EndpointIdentity,
+    /// Identity of the endpoint this run writes to, or `None` when the run has no
+    /// writable database endpoint (a SQL-file destination). The single condition
+    /// deciding this also decides whether a writer endpoint is reserved at all.
+    pub(crate) target_identity: Option<EndpointIdentity>,
 }
 
 /// Resolve the plan into a frozen body and live endpoints.
@@ -50,11 +58,12 @@ pub(crate) async fn assemble(
     let mut job = plan.job.clone();
     exec::validate_selection(&job, selection)?;
     exec::apply_selection(&mut job, selection);
-    let (endpoints, inspected, source_schemas, target_schemas) = if job.sql_file_target.is_some() {
-        resolve_sql_file(state, plan, &job).await?
-    } else {
-        resolve_database(state, plan, &job, for_apply).await?
-    };
+    let (endpoints, inspected, source_schemas, target_schemas, source_identity, target_identity) =
+        if job.sql_file_target.is_some() {
+            resolve_sql_file(state, plan, &job).await?
+        } else {
+            resolve_database(state, plan, &job, for_apply).await?
+        };
     hydrate_column_mappings(&mut job, &inspected);
     let enabled: Vec<_> = job.tables.iter().filter(|table| table.enabled).collect();
     let source_objects = enabled
@@ -74,6 +83,8 @@ pub(crate) async fn assemble(
         target_schemas,
         source_objects,
         target_objects,
+        source_identity,
+        target_identity,
     })
 }
 
@@ -182,10 +193,16 @@ async fn resolve_database(
         Vec<TableInspectResult>,
         HashMap<String, TableSchema>,
         HashMap<String, TableSchema>,
+        EndpointIdentity,
+        Option<EndpointIdentity>,
     ),
     CommandError,
 > {
     let context = exec::validate_plan_context(state, plan).await?;
+    // Endpoint identity comes from the two configs this run actually connects
+    // over — the same ones `validate_plan_context` just proved connectable.
+    let source_identity = endpoint_identity::identify(&context.src_config);
+    let target_identity = endpoint_identity::identify(&context.tgt_config);
     let target = job.database_target().map_err(CommandError::from)?;
     let pairing = enforce_transfer_pairing(
         &context.src_config.database_type,
@@ -290,6 +307,8 @@ async fn resolve_database(
         inspected,
         source_schemas,
         target_schemas,
+        source_identity,
+        Some(target_identity),
     ))
 }
 
@@ -305,6 +324,8 @@ async fn resolve_sql_file(
         Vec<TableInspectResult>,
         HashMap<String, TableSchema>,
         HashMap<String, TableSchema>,
+        EndpointIdentity,
+        Option<EndpointIdentity>,
     ),
     CommandError,
 > {
@@ -356,6 +377,9 @@ async fn resolve_sql_file(
         .get_session_config(&job.source.db_session_id)
         .await
         .cmd_err("apply_data_transfer_job")?;
+    // A SQL-file destination has no connection config of its own, so there is no
+    // target identity to reserve against — and therefore no writer endpoint.
+    let source_identity = endpoint_identity::identify(&src_config);
     let source_type = src_config.database_type.clone();
     let target_type = target_driver.driver_type().to_string();
     let mut adapters = None;
@@ -440,7 +464,14 @@ async fn resolve_sql_file(
         source_adapter,
         target_adapter: adapters.map(|(_, target)| target),
     };
-    Ok((endpoints, inspected, schemas, HashMap::new()))
+    Ok((
+        endpoints,
+        inspected,
+        schemas,
+        HashMap::new(),
+        source_identity,
+        None,
+    ))
 }
 
 /// Load the live schema of every base table in one endpoint's scope.

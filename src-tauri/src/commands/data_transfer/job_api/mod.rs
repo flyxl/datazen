@@ -19,6 +19,7 @@
 mod admission;
 mod assembly;
 mod cancel;
+mod endpoint_identity;
 mod runtime;
 mod scope;
 
@@ -169,7 +170,8 @@ pub(crate) async fn prepare_data_transfer_job_impl(
         endpoints: runtime::endpoint_refs(
             assembled.source_objects,
             assembled.target_objects,
-            plan.job.sql_file_target.is_some(),
+            &assembled.source_identity,
+            assembled.target_identity.as_ref(),
         ),
         artifact_ids: Vec::new(),
         idempotency_key: &key,
@@ -269,7 +271,8 @@ pub(crate) async fn apply_data_transfer_job_impl(
         endpoints: runtime::endpoint_refs(
             assembled.source_objects,
             assembled.target_objects,
-            plan.job.sql_file_target.is_some(),
+            &assembled.source_identity,
+            assembled.target_identity.as_ref(),
         ),
         artifact_ids: Vec::new(),
         idempotency_key: &key,

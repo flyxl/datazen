@@ -8,9 +8,11 @@
 use std::collections::HashMap;
 
 use datazen_platform_api::dto::job::JobState;
+use datazen_platform_api::id::ConnectionId;
 use datazen_runtime::job::{project_frozen_plan, EndpointRole};
 
 use super::admission::{admit_apply_plan, ApplyPlanRequest, PlanAdmission, PlanAvailability};
+use super::endpoint_identity::EndpointIdentity;
 use super::runtime::{endpoint_refs, APPLY_KIND, PREPARE_KIND};
 use super::scope::{
     enforce_same_backend_scope, is_local_session_reference, TransferBackendScope,
@@ -30,6 +32,15 @@ use crate::data_transfer::{
     TableMapping, TransferJob, TransferMode, TransferPreview, TransferRunRequest, WriteMode,
 };
 use crate::testing::app_state::TestAppState;
+
+/// A stand-in endpoint identity, so wiring facts can be asserted without a live
+/// connection. Real identities are produced by `super::endpoint_identity::identify`.
+fn identity(connection_id: &str, service_key: &str) -> EndpointIdentity {
+    EndpointIdentity {
+        connection_id: ConnectionId::new(connection_id),
+        service_key: service_key.to_string(),
+    }
+}
 
 fn job(source_id: &str, target_id: &str) -> TransferJob {
     TransferJob {
@@ -395,21 +406,25 @@ fn a_plan_id_serves_at_most_one_apply_job() {
 // ------------------------------------------------------------- Job wiring facts
 
 #[test]
-fn both_endpoints_share_one_service_key_and_sql_file_has_no_writer() {
+fn endpoints_carry_their_own_identity_and_sql_file_has_no_writer() {
+    let source = identity("conn-source", "data-transfer:aaaa");
+    let target = identity("conn-target", "data-transfer:bbbb");
     let refs = endpoint_refs(
         vec!["users".to_string()],
-        vec!["users_copy".to_string()],
-        false,
+        vec!["users".to_string()],
+        &source,
+        Some(&target),
     );
     assert_eq!(refs.len(), 2);
     assert_eq!(refs[0].role, EndpointRole::SourceReader);
     assert_eq!(refs[1].role, EndpointRole::TargetWriter);
-    assert_eq!(
+    assert_ne!(
         refs[0].service_key, refs[1].service_key,
-        "one service key makes a self-overlap a hard refusal"
+        "two physical endpoints are two services, so a same-named table is not a self-overlap"
     );
+    assert_ne!(refs[0].connection_id, refs[1].connection_id);
 
-    let file_only = endpoint_refs(vec!["users".to_string()], Vec::new(), true);
+    let file_only = endpoint_refs(vec!["users".to_string()], Vec::new(), &source, None);
     assert_eq!(file_only.len(), 1, "a SQL file run has no target endpoint");
     assert_eq!(file_only[0].role, EndpointRole::SourceReader);
     assert_eq!(file_only[0].objects, vec!["users".to_string()]);
@@ -672,4 +687,5 @@ async fn two_concurrent_apply_jobs_share_exactly_one_plan_claim() {
     );
 }
 
+mod endpoint_identity;
 mod job_lifecycle;

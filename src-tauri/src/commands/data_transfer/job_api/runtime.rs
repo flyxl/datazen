@@ -17,8 +17,8 @@ use datazen_platform_api::context::OwnerRef;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{CommitBoundary, JobDefinition, JobProgress, JobState};
 use datazen_platform_api::id::{
-    ClientInstanceId, ConnectionId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId,
-    Timestamp, WorkerId,
+    ClientInstanceId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId, Timestamp,
+    WorkerId,
 };
 use datazen_platform_api::{JobRepository, PortError, RequestContext};
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
@@ -28,14 +28,12 @@ use datazen_runtime::job::{
 };
 
 use super::super::plans;
+use super::endpoint_identity::EndpointIdentity;
 use crate::commands::error::CommandError;
 use crate::data_transfer::job::{derive_evidence, DataTransferHandler};
 
 pub(crate) const PREPARE_KIND: &str = "dataTransferPrepare";
 pub(crate) const APPLY_KIND: &str = "dataTransferApply";
-/// One service key for both endpoints: a reader/writer object overlap under a
-/// single key is then a hard refusal instead of two independent budgets.
-const TRANSFER_SERVICE_KEY: &str = "data-transfer";
 const CLAIM_TTL_SECS: i64 = 300;
 const LOCAL_CLIENT_INSTANCE: &str = "datazen-local-client";
 pub(crate) const RECOVERY_RESUME_AFTER_VERIFY: &str = "resumeAfterVerify";
@@ -137,23 +135,31 @@ pub(super) fn request_context() -> RequestContext {
     )
 }
 
-/// Endpoint refs for a frozen run: one reader, one writer, one service key.
-/// A SQL-file target has no writable endpoint, so only the reader is reserved.
+/// Endpoint refs for a frozen run: one reader, and a writer only when the run
+/// actually writes a database. A SQL-file destination has no target connection
+/// to identify, so it contributes no writer and `target_identity` is `None` —
+/// one condition decides both, so the two can never drift apart.
+///
+/// Identity comes from the user's real connection configs (see
+/// [`super::endpoint_identity`]). Both endpoints used to be given the single
+/// constant `TRANSFER_SERVICE_KEY`, which made every transfer look like one
+/// service reading and writing `public.users` on itself.
 pub(crate) fn endpoint_refs(
     source_objects: Vec<String>,
     target_objects: Vec<String>,
-    sql_file: bool,
+    source_identity: &EndpointIdentity,
+    target_identity: Option<&EndpointIdentity>,
 ) -> Vec<EndpointRef> {
     let mut refs = vec![EndpointRef {
-        connection_id: ConnectionId::new("local-source"),
-        service_key: TRANSFER_SERVICE_KEY.to_string(),
+        connection_id: source_identity.connection_id.clone(),
+        service_key: source_identity.service_key.clone(),
         objects: source_objects,
         role: EndpointRole::SourceReader,
     }];
-    if !sql_file {
+    if let Some(target) = target_identity {
         refs.push(EndpointRef {
-            connection_id: ConnectionId::new("local-target"),
-            service_key: TRANSFER_SERVICE_KEY.to_string(),
+            connection_id: target.connection_id.clone(),
+            service_key: target.service_key.clone(),
             objects: target_objects,
             role: EndpointRole::TargetWriter,
         });
@@ -161,10 +167,16 @@ pub(crate) fn endpoint_refs(
     refs
 }
 
-/// The budget ledger only admits a claim for a service it already knows, so a
-/// local endpoint has to be registered before its first Job. The endpoints are
-/// this client's own database sessions (§8) — nothing remote is registered —
-/// and `ensure_service` is idempotent, so a later Job re-registers nothing.
+/// The budget ledger only admits a claim for a service it already knows, so an
+/// endpoint has to be registered before its first Job. Registration is keyed by
+/// the endpoint's own connection id — the same id the overlap detector compares —
+/// so a later Job over the same connection re-registers nothing (`ensure_service`
+/// is idempotent) while each genuinely distinct connection gets its own entry.
+///
+/// These are no longer a fixed pair of placeholder ids: every endpoint is
+/// registered under the user's own persisted `connectionId`, so the ledger
+/// tracks the connections this client actually transfers over, and the
+/// all-or-nothing reservation covers each of them separately.
 fn ensure_endpoint_services(
     host: &TransferJobHost,
     endpoints: &[EndpointRef],
