@@ -449,37 +449,80 @@ impl SessionRegistry {
     /// 时间由调用方注入：本模块**不读** `Instant::now()`，到期判定因此在测试里
     /// 完全确定，不依赖真实时钟。
     ///
-    /// # 【未闭合】W-02：`evict_idle_at` 把「actor 回绝」和「actor 报错」压成同一件事
+    /// # 一次驱逐答复的三种非成功情形是三件事，不是一件事
     ///
-    /// 下面这个 `let … else` 在两种非成功情形下都不摘表、不归还额度：过期会话留在表里
-    /// 占着一格额度，`session_view` 仍查得到它，而物理资源可能已经关了。
+    /// 这里曾经写作 `let Ok(Some(view)) = … else { continue }`：把所有非成功情形压成
+    /// 同一个「什么都不做」。它们对**账**的影响完全不同，所以逐向判别：
     ///
-    /// 怎么复现：给一个到期会话配一个拒绝 `Close` 的 actor，调用 `evict_idle_at`——它
-    /// 不在返回值里，却仍在登记表里占额度；把 actor 换成让 `exec` 返回 `Err`，同样如此。
+    /// | actor 答复 | 事实 | 摘表还额度？ | 进返回值？ |
+    /// | --- | --- | --- | --- |
+    /// | `Ok(Some(view))` | 到期，§9.4 四步干净跑完 | 是 | 是 |
+    /// | `Ok(None)` | 没有物理资源 / 未设期限 / 未到期限 | **否** | 否 |
+    /// | `Err(CloseRejected(_))` | 闸门在**下发之前**拦下（§7.4-6 替换屏障），什么都没发生 | **否** | 否 |
+    /// | `Err(SessionLost(_))` | §9.4 四步**跑完之后**才写出来的：关闭已发出、`physical` 已清空 | 是 | 否 |
+    /// | 其余 `Err(_)` | **没送达 / 送达不明**（发送失败，或 actor 任务在 §9.4 的某个 await 中途没了） | **否** | 否 |
     ///
-    /// 为什么不能只把 `continue` 换成 `?`：未到期也是 `Err` 的一种。正确的修法是三向
-    /// 判别——`Ok(None)` 未到期不动它；`Err(CloseRejected)` 是闸门在**下发之前**就拦下，
-    /// 什么都没发生；其余 `Err` 已过 §9.4、资源已关，只能按「已丢失」摘表。只补后两路
-    /// 会把「未到期」也当成已关——这正是 CM-74 验收实测 MB1 变异时连带点红两条**既有**
-    /// 用例（`未设空闲期限的会话永不被驱逐`、`空闲到期才驱逐_未到期一律不动手`）的原因。
+    /// 每一格的行为后果，缺任何一格都会踩到：
     ///
-    /// 影响限于存量行为，**本轨不修**（不在 CM-74 范围内，且修法会改动既有语义）。
-    /// 结论、复现步骤与不修的代价都写在这里，而不是留在台账里：台账随合并删除之后，
-    /// 这些就再也读不到了。
+    /// - 把 `Ok(None)` 并进「已丢失」⇒ 未到期的会话被当成已关而摘掉、额度白还一格，
+    ///   且 `session_view` 从此查不到一个还在服务的会话。这正是「只补后两路」会连带点红
+    ///   `未设空闲期限的会话永不被驱逐`、`空闲到期才驱逐_未到期一律不动手` 两条既有用例的成因。
+    /// - 把 `Err(CloseRejected(_))` 并进「已丢失」⇒ 一次**派发前**被拒的驱逐会凭空造出
+    ///   一格额度：物理资源与已登记句柄原封不动，表项却没了，随后替换编排第 ⑥ 步的
+    ///   `close_registered` 定位不到旧会话，**旧物理资源再也没人去关**。
+    /// - 把 `Err(SessionLost(_))` 并进「什么都没发生」⇒ 留下一个「物理资源已死、行还在表里、
+    ///   额度还扣着」的僵尸会话：`session_view` 仍查得到它、仍能向一个已经不存在的资源发执行，
+    ///   而那一格额度永久卡死，没有任何后续路径会想起它。这与
+    ///   [`SessionRegistry::close_registered`] 里 R-01 治的是同一种病，处置也必须一致：
+    ///   [`crate::registry::actor::release`] **只在四步全部跑完之后**才写出 `SessionLost`
+    ///   （句柄已按批次发过终结、`state.physical` 已清空、绑定已作废），所以这条答复证明的是
+    ///   「关闭已经发出过」，不可判定的只是某个句柄的命运，不是「有没有关掉」。
+    /// - 把「其余 `Err`」并进「已丢失」⇒ 反向的错：物理资源可能仍活着，登记表却把它静默记成
+    ///   已作废并把额度发了出去。这一格与 [`SessionRegistry::invalidate_worker`] 的三态表
+    ///   同源，处置也必须一致：保留表项、留下可查的痕迹，等显式处置。
+    ///
+    /// `Err(SessionLost(_))` 这一格**不**带回视图：actor 给出的 `SessionView` 写着
+    /// `Lost` / `Closing`，交回调用方等于替一个不可判定的会话报「已驱逐」。摘行与还额度走
+    /// 既有的 [`SessionRegistry::forget`]——它对**已经**被别的路径摘掉的行不会二次归还额度。
     pub async fn evict_idle_at(&self, at_ms: u64) -> Vec<SessionView> {
         self.audit.pump();
         let targets = self.read_table().records();
         let mut evicted = Vec::new();
         for record in targets {
-            let Ok(Some(view)) = record
+            match record
                 .actor
                 .exec(|reply| ExecCommand::Evict { at_ms, reply })
                 .await
-            else {
-                continue;
-            };
-            self.forget(&record.db_session_id);
-            evicted.push(view);
+            {
+                // 到期且干净跑完：摘行、还额度、把视图交回调用方。
+                Ok(Some(view)) => {
+                    self.forget(&record.db_session_id);
+                    evicted.push(view);
+                }
+                // 未到期 / 没有物理资源 / 未设期限：一次正常的空操作，不动任何东西。
+                Ok(None) => {}
+                // 闸门在下发前拦下（§7.4-6 替换屏障）：什么都没发生，表与额度都留着。
+                Err(RuntimeError::CloseRejected(_)) => {}
+                // §9.4 已跑完、关闭已发出：按「已丢失」摘表还额度，细节留在 actor 侧墓碑与审计。
+                Err(RuntimeError::SessionLost(reason)) => {
+                    tracing::warn!(
+                        db_session_id = record.db_session_id.as_str(),
+                        %reason,
+                        "空闲驱逐未得干净终态：§9.4 释放例程已跑完、物理资源已发出关闭，\
+                         摘表归还额度；不可判定细节留在 actor 侧的墓碑与审计里"
+                    );
+                    self.forget(&record.db_session_id);
+                }
+                // 没送达 / 送达不明：物理资源可能仍活着，不得把它静默记成已作废。
+                Err(error) => {
+                    tracing::warn!(
+                        db_session_id = record.db_session_id.as_str(),
+                        reason = error.reason(),
+                        "空闲驱逐的请求没有送达或送达不明（actor 任务可能在 §9.4 的 await 中途没了）：\
+                         物理资源可能仍活着，保留表项与额度，等待显式处置"
+                    );
+                }
+            }
         }
         evicted
     }
@@ -512,12 +555,18 @@ impl SessionRegistry {
     /// | `Err(_)` | **没送达**：控制通道已断，或投递之后回执丢失 | **否** |
     ///
     /// `Ok(false)` 是**被确认的否定答复**，不是投递失败，所以它照常摘行。
-    /// 这一格在登记表这条路径上**确实可达**：`owned_by` 按 worker 筛一遍之后，
-    /// actor 侧的第二道防线 `state.physical.is_none()` 仍能把它筛出来——§9.4 释放
-    /// 例程在物理层关不掉（`Undecidable`）时**先**把 `physical` 清空再返回
-    /// `SessionLost`，而 [`SessionRegistry::evict_idle_at`] 收不到成功视图就跳过
-    /// 摘行，留下一条「资源已清空、行还在表里」的记录。下一次租约失效就走这一格。
-    /// 所以绝不能把它塞进失败分支——把否定答复当成投递失败，代价是这条会话永远
+    /// 这一格**仍然可达**，但入口不是驱逐：actor 的第二道防线是
+    /// `state.physical.is_none()`，而 `owned_by` 只按 worker 筛，所以任何一条
+    /// 「行在册、actor 活着、物理资源已经没了」的记录都会落到这一格。
+    /// 造它最干净的入口是候选原语：`open_candidate` → `destroy_candidate`（走
+    /// §9.4 把物理资源清掉）→ `publish_candidate`（把这条插进可见表）。
+    ///
+    /// ⚠ 此前这一格的构造靠的是**驱逐的一处缺陷**：§9.4 在物理层关不掉时**先**把
+    /// `physical` 清空再返回 `SessionLost`，而 `evict_idle_at` 当时收不到成功视图就
+    /// 跳过摘行，于是留下一条「资源已清空、行还在表里」的记录。那条缺陷已由
+    /// [`SessionRegistry::evict_idle_at`] 的逐向判别闭合（`SessionLost` ⇒ 摘表还额度），
+    /// 所以这一格改由候选原语构造——**判定的三态本身没变**，变的只是造法。
+    /// 绝不能把这一格塞进失败分支——把否定答复当成投递失败，代价是这条会话永远
     /// 留在表里、额度永远挂在 stale 上等一个不会来的隔离确认。
     ///
     /// 此前这里是 `let _ = ...` 然后**无条件**摘行，等于把第三种也当成第二种处理。
