@@ -18,7 +18,7 @@
 | `p5-cancel-hardening` 取消硬化 | feature/p5-cancel-hardening | ✅ MERGED `f440acf91` |
 | `p5-data-sync` handler | feature/p5-data-sync | ✅ 已由 R2 取代 |
 | `p5-data-sync-r2` D1/D2/D5 修复 | feature/p5-data-sync-r2 | ✅ MERGED `31af2b8fb8`，Tester 独立复验 **TEST_PASSED**（10 变异零存活，含修前存活/修后被杀对照），worktree/分支已清理 |
-| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ❌ TEST_FAILED（`e57c4855e`，Tester `3cdb27ef`，11 项缺陷）；修复中 `70854e7b`（仅前端自有部分） |
+| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ✅ TEST_PASSED (`ca5204d04`, vitest 6028/6028, 6/6 mutations KILLED, TYPECHECK=0); **Task A / D-6 (§8.4 竞态) + Task B / D-10 (target 默认值) + Task C (§6.2 谓词删除) 均验收完成** ; 2 WDIO 回归未修复且非本轨职责 (后端 `service_key`) |
 | `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | 🧪 TESTING（`051a228a4`，Tester `10f3ae68`）；**D-1 的真实归属方** |
 | Wave-R 全量回归 | — | ⏸ NOT_STARTED |
 
