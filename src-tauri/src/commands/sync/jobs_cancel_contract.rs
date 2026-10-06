@@ -432,3 +432,82 @@ async fn cancelling_a_running_apply_stops_the_writes_the_executor_would_still_se
         message(&outcome)
     );
 }
+
+// ---------------------------------------------------------------------------
+// CM-44: a cancel that arrives before the Job record does still stops the run
+// ---------------------------------------------------------------------------
+
+/// The window can hit Cancel on an id the backend has never seen — the user
+/// closes the compare step and cancels while the apply Job is still being
+/// accepted. There is no Job record to write `cancel_requested` into yet, so
+/// the intent lives only in the pre-Job window registry, and `submit_apply` is
+/// the only thing that can carry it forward.
+///
+/// This is the production half of CM-44. The legacy statement path has its own
+/// CM-44 test (`commands::sync::tests::cancel_data_sync_stops_execute_before_start`),
+/// but that path reads the window flag directly and never enters `drive`, so it
+/// would stay green with the carry-forward deleted. Mutation testing is what
+/// caught that.
+#[tokio::test]
+async fn a_cancel_that_arrives_before_the_job_exists_still_stops_the_apply() {
+    let (pair, gate, _reached) = gated_pair("cancel-before-job").await;
+    let preview = compare(&pair, None, None).await.unwrap();
+    assert_eq!(preview.selection_revision, 1);
+
+    confirm(
+        &preview.plan_id,
+        insert_selection(preview.selection_revision),
+    );
+    let job_id = format!("cancel-before-job-{}", uuid::Uuid::new_v4());
+
+    // No Job record exists for this id yet, so the kernel half of cancel_job
+    // reports NotFound and only the window registry accepts the intent.
+    assert!(
+        cancel_job(&job_id).await,
+        "the window registry must accept a cancel for an id it has not seen"
+    );
+
+    let outcome = submit_apply(
+        pair.state(),
+        ApplySpec {
+            plan_id: preview.plan_id.clone(),
+            selection_revision: preview.selection_revision,
+            options: SyncOptions {
+                batch_size: 2,
+                ..SyncOptions::default()
+            },
+        },
+        Some(job_id),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        gate.writes(),
+        0,
+        "submit_apply must carry the pre-Job cancel into the Job record, so \
+         the stage never runs and no statement reaches the target; host said: {}",
+        message(&outcome)
+    );
+    assert_eq!(
+        outcome.state,
+        JobState::Cancelled,
+        "a cancel that beat the Job must end it Cancelled, not Succeeded"
+    );
+    assert_eq!(
+        outcome.effect,
+        EffectOutcome::NotStarted,
+        "nothing ran, so the effect is NotStarted, not a rollback"
+    );
+    assert_eq!(outcome.committed, 0);
+    assert_eq!(
+        pair.target.open_transaction_count(),
+        0,
+        "a Job that never started must never open a batch lease"
+    );
+    assert!(
+        message(&outcome).starts_with("execute cancelled"),
+        "the reason must name the cancel, got: {}",
+        message(&outcome)
+    );
+}
