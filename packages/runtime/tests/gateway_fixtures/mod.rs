@@ -10,6 +10,19 @@
 //!
 //! 这里造出来的 `SessionView` 是**合成**数据，不含任何凭据或真实连接信息。
 //! 所有 ID 都带 `-contract` 后缀，便于在失败信息里一眼认出是夹具。
+//!
+//! # 为什么整模块 `allow(dead_code)`
+//!
+//! 本文件被**编进多个测试二进制**：`gateway_contract` 一份，`cm70_no_disk`、
+//! `cm70_idempotency_replay` 各一份，而每个二进制只用到其中一部分。`TokenHarness`
+//! 只有 cm70 那几个用，`CancelDenyAuthorizer` 只有 `gateway_contract` 用。于是
+//! 在**任何一个**二进制看来，其余夹具都「从未构造」——但它们在别的二进制里
+//! 是活的，删掉任何一个都会打断另一个测试。
+//!
+//! `dead_code` 是**逐编译单元**判定的，在这里它只反映「本二进制用不到」，
+//! 不反映全局死代码。因此整模块放行：真正全局无人用的件，靠下面那条纪律发现。
+
+#![allow(dead_code)]
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -159,11 +172,6 @@ pub fn request_with_key(expected_revision: u64, idempotency_key: &str) -> Execut
         idempotency_key,
         source(),
     )
-}
-
-/// 带自定义上下文修订的受理请求：用来造「同一令牌、不同输入」。
-pub fn request_at(expected_revision: u64, idempotency_key: &str) -> ExecutionRequest {
-    request_with_key(expected_revision, idempotency_key)
 }
 
 /// 归属到指定 `runtimeEpoch` 的受理请求：用来造「owner 重启后拿旧令牌重发」。

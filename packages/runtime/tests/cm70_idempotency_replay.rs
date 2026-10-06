@@ -66,11 +66,6 @@ pub(crate) fn token_reason(error: &GatewayError) -> &'static str {
     }
 }
 
-/// 受理一次并返回回执里的 `executionId`（只入队，不下发）。
-pub(crate) async fn accept(h: &fx::TokenHarness, req: ExecutionRequest) -> String {
-    fx::accept(&h.harness, req).await.as_str().to_owned()
-}
-
 /// 受理并**真的下发**一次，返回 `executionId`。
 ///
 /// CM-70 的每条「不再执行」都拿它当前值当基线：先让一次写入真的落下去，
