@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use datazen_driver_api::mock_driver::MockDriver;
-use datazen_driver_api::{ColumnSchema, TableSchema};
+use datazen_driver_api::{ColumnSchema, DatabaseDriver, TableSchema};
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::JobState;
 
@@ -80,12 +80,27 @@ impl Pair {
 }
 
 pub async fn pair(prefix: &str, source_rows: &[(i64, &str)], target_rows: &[(i64, &str)]) -> Pair {
+    gated_pair(prefix, source_rows, target_rows, |target| target).await
+}
+
+/// The same fixture as [`pair`], but the target endpoint is served by whatever
+/// `wrap` returns instead of the bare mock.
+///
+/// The inner mock is still returned on [`Pair::target`], so a wrapper can hold
+/// back writes while the test keeps querying the mock's own counters through
+/// the registry.
+pub async fn gated_pair(
+    prefix: &str,
+    source_rows: &[(i64, &str)],
+    target_rows: &[(i64, &str)],
+    wrap: impl FnOnce(Arc<MockDriver>) -> Arc<dyn DatabaseDriver>,
+) -> Pair {
     let test = TestAppState::with_options(mock_options(source_rows)).await;
     // The target is registered under a *different* db type spelling of the same
     // family, which is what the pairing rule canonicalises (`family_of`).
     let target = MockDriver::new("postgresql", mock_options(target_rows));
     test.registry
-        .register_test_driver("postgresql", target.clone())
+        .register_test_driver("postgresql", wrap(target.clone()))
         .await;
     let mut target_config = sample_postgres_config(&format!("{prefix}-target"));
     target_config.database_type = "postgresql".into();
@@ -177,7 +192,7 @@ fn drifted_schema() -> TableSchema {
     schema
 }
 
-fn message(outcome: &SyncJobOutcome) -> String {
+pub fn message(outcome: &SyncJobOutcome) -> String {
     outcome.message.clone().unwrap_or_default()
 }
 
@@ -496,29 +511,4 @@ async fn two_concurrent_applies_of_one_plan_id_commit_once() {
         "the row is written exactly once, whatever the loser did"
     );
     assert_eq!(pair.target.open_transaction_count(), 0);
-}
-
-// ---------------------------------------------------------------------------
-// CM-44: the cancel the window sends must reach the flag a running stage polls
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn cancel_job_reaches_the_flag_the_running_stage_polls() {
-    let job_id = format!("cancel-wiring-{}", uuid::Uuid::new_v4());
-    let flag = state::cancel_flag(&job_id, state::desktop_context());
-    assert!(!state::is_cancelled(&job_id));
-
-    assert!(super::cancel_job(&job_id).await);
-
-    // The handler polls *this* flag inside the stage (`compare_table_pages_to_sink`
-    // takes the same flag the Job registered), and the same call cancels the
-    // kernel token, so one window cancel reaches both ends. (The token is only
-    // observed at stage boundaries — runtime.rs:108 — which is the kernel gap
-    // recorded in progress.md, not a gap in this wiring.)
-    assert!(
-        flag.load(std::sync::atomic::Ordering::SeqCst),
-        "the host flag a running stage polls must observe the window cancel"
-    );
-    assert!(state::is_cancelled(&job_id));
-    state::forget(&job_id);
 }

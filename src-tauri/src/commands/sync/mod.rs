@@ -12,6 +12,8 @@ mod host;
 mod inspect;
 mod jobs;
 #[cfg(test)]
+mod jobs_cancel_contract;
+#[cfg(test)]
 mod jobs_contract;
 mod keyset_source;
 mod plans;
