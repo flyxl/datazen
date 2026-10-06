@@ -194,7 +194,10 @@ mod tests {
         let mut other = config();
         other.id = "conn-c".into();
         other.host = Some("db-b.example.com".into());
-        assert_ne!(identify(&config()).service_key, identify(&other).service_key);
+        assert_ne!(
+            identify(&config()).service_key,
+            identify(&other).service_key
+        );
     }
 
     #[test]
@@ -202,15 +205,24 @@ mod tests {
         let mut other = config();
         other.id = "conn-d".into();
         other.schema = Some("archive".into());
-        assert_ne!(identify(&config()).service_key, identify(&other).service_key);
+        assert_ne!(
+            identify(&config()).service_key,
+            identify(&other).service_key
+        );
     }
 
     #[test]
     fn connection_id_alone_never_decides_the_service_key() {
         let mut moved = config();
         moved.database = Some("other".into());
-        assert_eq!(identify(&config()).connection_id, identify(&moved).connection_id);
-        assert_ne!(identify(&config()).service_key, identify(&moved).service_key);
+        assert_eq!(
+            identify(&config()).connection_id,
+            identify(&moved).connection_id
+        );
+        assert_ne!(
+            identify(&config()).service_key,
+            identify(&moved).service_key
+        );
     }
 
     #[test]
@@ -218,7 +230,10 @@ mod tests {
         let mut alias = config();
         alias.id = "conn-e".into();
         alias.database_type = "postgresql".into();
-        assert_eq!(identify(&config()).service_key, identify(&alias).service_key);
+        assert_eq!(
+            identify(&config()).service_key,
+            identify(&alias).service_key
+        );
     }
 
     #[test]
@@ -242,7 +257,10 @@ mod tests {
 
     #[test]
     fn service_key_is_stable_across_calls() {
-        assert_eq!(identify(&config()).service_key, identify(&config()).service_key);
+        assert_eq!(
+            identify(&config()).service_key,
+            identify(&config()).service_key
+        );
     }
 
     #[test]

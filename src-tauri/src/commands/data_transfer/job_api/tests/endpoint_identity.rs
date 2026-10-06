@@ -74,7 +74,11 @@ fn cross_database_pair() -> (ConnectionConfig, ConnectionConfig) {
     )
 }
 
-fn refs(source: &ConnectionConfig, target: &ConnectionConfig, objects: &[&str]) -> Vec<EndpointRef> {
+fn refs(
+    source: &ConnectionConfig,
+    target: &ConnectionConfig,
+    objects: &[&str],
+) -> Vec<EndpointRef> {
     let objects: Vec<String> = objects.iter().map(|name| (*name).to_string()).collect();
     let source_identity = identify(source);
     let target_identity = identify(target);
