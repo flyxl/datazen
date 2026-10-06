@@ -263,12 +263,20 @@ async fn 打开失败不返回成功也不留下半开记录() {
 ///
 /// 这里的做法是**丢掉最后一个** `SessionActor` 克隆，两个通道随之关闭，
 /// actor 必须走 `finish()` 把物理资源收掉，而不是让它泄漏。
+///
+/// 后端剧本给的是 `.finalizes(1, 0)`：如实确认那一个登记句柄已终结。**这是
+/// 本例后半段断言成立的前提**——`closed_with[0].registered_handles == 0` 现在
+/// 读的是「确认终结之后宿主账上剩多少」，只有真的注销掉了才是 0。曾经它恒为 0
+/// 是因为释放例程在发终结请求**之前**就把账 drain 空了（取样即注销），那条断言
+/// 因此在「driver 少报、句柄仍活着的」场景下也照样绿——那正是 CM-74 判据
+/// 「driver 报 Clean 而宿主仍有已登记句柄时宿主检查必须失败」从不被检验的原因。
 #[tokio::test(start_paused = true)]
 async fn actor_终止后收掉物理资源不再重建句柄() {
     let backend = FakeBackend::new(
         FakeOutcome::default()
             .with_script(Script::Immediate)
-            .handles(vec![handle_ref("h_1", "res_7")]),
+            .handles(vec![handle_ref("h_1", "res_7")])
+            .finalizes(1, 0),
     )
     .await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;

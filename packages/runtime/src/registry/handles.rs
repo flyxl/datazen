@@ -70,10 +70,31 @@ impl HandleRegistry {
 
     /// 取出并清空全部登记句柄，供在**原资源**上终结（§9.4 释放顺序的第一步）。
     ///
-    /// 取走即从宿主账上移除：这样后续的关闭请求里 `registered_handles` 必然为 0，
-    /// 而 `registered_handles` 是 §9.4 宿主侧归池前检查的唯一依据。
+    /// ⚠ **不要用这条去做归池前检查。** 它把「取走」和「注销」合成一个动作：账
+    /// 立刻空了，`handle_count()` 之后恒为 0，于是 §9.4「宿主账上还有已登记句柄 ⇒
+    /// 检查必须失败」在这条路径上**永远不可能**被触发——哪怕一个句柄都没被真正终结。
+    /// 唯一的释放例程因此改走 [`HandleRegistry::retire`]：只注销**确认终结**的那批。
+    /// 这里保留只读的 [`HandleRegistry::handles`] 供终结批次取样。
     pub fn drain_handles(&mut self) -> Vec<SessionHandleRef> {
         std::mem::take(&mut self.handles)
+    }
+
+    /// 把**已在原资源上确认终结**的那批句柄从宿主账上注销，其余留在账上。
+    ///
+    /// 为什么必须「确认了才注销」而不是「取走就算注销」：§9.4 的归池条件是
+    /// **宿主自己**判定已登记句柄为空（driver 对已交出的句柄没有可见性，它的
+    /// `Clean` 不构成事务终结的证据）。如果释放例程在发出终结请求之前就把账清空，
+    /// 这个判定就被取样动作本身满足了——一个恒真的检查不是检查。留下未确认的句柄，
+    /// [`HandleRegistry::handle_count`] 才会非零，`CloseResource.registered_handles`
+    /// 才会带着真实数字出去，墓碑与审计也才会落到 `Lost` / `Undecided`。
+    ///
+    /// 注销按 `handle_id` 精确匹配；不在账上的 id 直接忽略（重复注销不得二次生效）。
+    /// 返回注销之后账上剩余的句柄数。
+    pub fn retire(&mut self, finalized: &[SessionHandleRef]) -> usize {
+        let retired: Vec<&HandleId> = finalized.iter().map(|handle| &handle.handle_id).collect();
+        self.handles
+            .retain(|held| !retired.contains(&&held.handle_id));
+        self.handles.len()
     }
 
     /// 当前登记的句柄（只读视图；不给 `&mut`，防止调用方绕开注销顺序）。
