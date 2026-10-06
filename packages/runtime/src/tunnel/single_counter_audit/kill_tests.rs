@@ -16,6 +16,7 @@
 //! 需要另一棵工作树；作为字符串喂给同一套扫描器，判据与现场完全等价，而且**每次 CI
 //! 都会重跑**，不依赖谁记得去做实验。
 
+use super::gate_self_audit::{declared_modules, unregistered_modules};
 use super::*;
 
 /// **kill test（R4，原始反例本体）**：当年「编译通过且全轨测试全绿」的那个伪装，
