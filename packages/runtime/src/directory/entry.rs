@@ -427,6 +427,27 @@ impl DirectoryEntry {
         self.deadlines.clear();
     }
 
+    /// 补放行：只把**还卡在屏障里**的那一条放出来；已经落定的条目一律原样不动。
+    ///
+    /// 这是 [`DirectoryEntry::publish`] 的幂等版本，用在「提交已经落定、放行那一步却没跑到」
+    /// 的补齐路径上。三种入参态必须区别对待，所以它和 `publish` 不是同一个东西：
+    ///
+    /// * `CommitBarrier` —— 放行确实没发生，补上它正是这条路径存在的理由。
+    /// * 已终态（`Closing` / `Closed`）—— 调用方释放、期限判死、作废都落在这里。
+    ///   把它们拉回可路由就是**复活一个已经关掉的会话**：重试会拿到一枚看起来成功的
+    ///   回执，而那个 id 上什么都没有，调用方要到下一次操作才会发现。比当场拒绝更糟，
+    ///   因为它把「已经没了」伪装成「已经好了」。
+    /// * 已可路由 —— 什么都不用做。无条件重写一遍会顺手 `deadlines.clear()`，
+    ///   把一个**活着**的会话的期限悄悄 disarm 掉，于是它再也收不到 TTL 判定，
+    ///   变成只有显式关闭才会消失的泄漏。所以「已经就是想要的态」也必须原样返回。
+    pub fn publish_from_barrier(&mut self) -> bool {
+        if self.state != RoutingState::CommitBarrier {
+            return false;
+        }
+        self.publish();
+        true
+    }
+
     /// 从屏障还原（回滚）。旧条目用：**不动**已有期限，也不改挂载状态。
     pub fn restore(&mut self) -> bool {
         if self.state != RoutingState::CommitBarrier {

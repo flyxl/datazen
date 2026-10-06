@@ -1,4 +1,5 @@
 use crate::connection as rt;
+use crate::registry::epoch::epoch_string;
 use datazen_application::error::{ApiError, ApiErrorCode};
 use datazen_platform_api::{
     context::{OwnerRef, RequestContext},
@@ -62,10 +63,7 @@ pub(super) fn handle(value: &pa::SessionHandle) -> Result<rt::SessionHandle, Api
 pub(super) fn public_handle(value: &rt::SessionHandle) -> pa::SessionHandle {
     pa::SessionHandle::new(
         value.db_session_id.clone(),
-        datazen_platform_api::id::RuntimeEpoch::new(format!(
-            "rte-{:08}",
-            value.runtime_epoch.get()
-        )),
+        datazen_platform_api::id::RuntimeEpoch::new(epoch_string(value.runtime_epoch.get())),
     )
 }
 pub(super) fn context(value: &rt::SessionContext) -> pa::SessionContext {

@@ -8,10 +8,14 @@
 //! - 没 `Prepared` 就 `Committed`：直接报错，状态一个字都不改；
 //! - 结果未知：**两边都不可路由**，按 operation key 查清之后只落定一边；
 //! - 同一个替换操作键**只接受一次** `Prepared`，重复投递被拒且不改动第一次的状态；
-//! - 旧会话的挂载令牌在新会话上一律不作数。
+//! - 旧会话的挂载令牌在新会话上一律不作数；
+//! - 按 key 查状态给候选补的那次放行**只在候选还卡在屏障里时才动手**：已放行的不动它，
+//!   已关闭的更不许复活它。
 //!
 //! 断言全部非空：把「候选先放行」「提交时旧条目先留着」「未知结果按『多半成功』处理」
-//! 这些改法，都会让下面至少一条断言变红。
+//! 这些改法，都会让下面至少一条断言变红。末一条尤其反直觉——补放行在**多数**时候确实该
+//! 无条件执行，只有末两条把它钉死：把补放行换回无条件重写，本文件另外十条全绿，只有
+//! 「查状态不得复活已关闭的候选」与「查状态不得撤掉活着的候选的期限」两条变红（实测）。
 
 mod common;
 
@@ -25,11 +29,11 @@ use datazen_platform_api::id::{
     PrincipalId, RuntimeEpoch, Timestamp, WorkerId,
 };
 use datazen_platform_api::ports::session_directory::{
-    ReplacementCommit, ReplacementOperation, SessionDirectory, SessionOwner,
+    CloseDisposition, ReplacementCommit, ReplacementOperation, SessionDirectory, SessionOwner,
 };
 use datazen_runtime::directory::{
-    AttachmentRejection, CommitStatus, InMemorySessionDirectory, ReplacementOperationKey,
-    SessionHandle, UnknownCommitOutcome,
+    AttachmentRejection, CommitStatus, InMemorySessionDirectory, MonoInstant,
+    ReplacementOperationKey, SessionHandle, UnknownCommitOutcome,
 };
 
 const EPOCH: &str = "rte-replacement-0001";
@@ -607,5 +611,155 @@ async fn replacement_after_expiry_is_refused_and_never_resurrects_the_old_entry(
             .expect("查询不该报错")
             .is_none(),
         "候选自始至终都没有进过可路由名单"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// 补放行：只有「确实还卡在屏障里」时才该动手
+// ---------------------------------------------------------------------------------------------
+
+/// 候选放行之后被调用方关掉，此后每一次按 key 查状态**都不得把它放回来**。
+///
+/// 屏障挡着的时候，按 key 查状态是唯一的解法，所以「提交其实已经落定、只是确认没送到
+/// 调用方」这一格必然会走到「给候选补一次放行」。补放行存在的理由只有一条：放行那一步没跑到。
+/// 而候选在被问到时有三种可能——还卡在屏障里（补上正合适）、已经可路由（早跑过了，补了是
+/// 多余的）、已经被关闭或判死（补上去就是**复活**）。前两种补了没害处，第三种会让一个什么都
+/// 执行不了的 id 重新出现在可路由名单里，而重试方随后拿着一枚「替换已提交」的回执去附着一个
+/// 已经关掉的会话。所以补放行必须先问状态、自己决定动不动手，不能无条件重写。
+///
+/// 这个顺序不是构造出来刁难实现的：调用方关掉候选之后，重放会**再次**问同一个 key
+/// （提交记录一直留着，因为记录的是「提交落定过」而不是「候选还活着」），于是每一次重试
+/// 都会走进那一格。
+#[tokio::test]
+async fn 查状态不得复活已关闭的候选() {
+    let (_clock, dir) = cycling_directory(64);
+    let old = open(&dir).await;
+    let candidate = candidate_owner("dbs_candidate_0007", NEXT_EPOCH, "2026-01-01T00:00:00.000Z");
+    let candidate_handle = candidate.to_handle();
+    let key = ReplacementOperationKey::for_handle(&old.handle);
+
+    dir.commit_replacement(commit_for(
+        &old.handle,
+        &candidate,
+        ReplacementOperation::Prepared,
+    ))
+    .await
+    .expect("prepare 应成功");
+    // 服务端其实已提交，只是确认没送到调用方：这一格之后只能靠查状态落定。
+    dir.lose_next_commit_reply(Some(UnknownCommitOutcome::Committed));
+    dir.commit_replacement(commit_for(
+        &old.handle,
+        &candidate,
+        ReplacementOperation::Committed,
+    ))
+    .await
+    .expect_err("结果未知时不得回成功");
+
+    // 第一次查状态：提交落定，候选放行。此后它就是个正常活着的会话。
+    let settled = CommitStatus::Committed {
+        handle: candidate_handle.clone(),
+    };
+    assert_eq!(dir.commit_status(&key), settled);
+    assert!(
+        dir.is_routable(&candidate_handle),
+        "前置条件：落定之后可路由"
+    );
+
+    // 调用方把它关掉。关闭是终态，此后任何路径都不得把它拉回来。
+    dir.release(&candidate_handle, CloseDisposition::Closed)
+        .await
+        .expect("关闭候选必须成功");
+    assert!(
+        !dir.is_routable(&candidate_handle),
+        "前置条件：关闭之后不可路由"
+    );
+
+    // 答案本身不受影响：提交确实发生过，候选没了并不会让它变成「没提交」。
+    assert_eq!(
+        dir.commit_status(&key),
+        settled,
+        "提交确实落定过，查状态必须照实答已提交"
+    );
+    assert!(
+        !dir.is_routable(&candidate_handle),
+        "候选已被关闭，查状态不得把它放回可路由"
+    );
+    assert!(
+        !dir.is_routable(&old.handle),
+        "旧条目同样不得复活：它已经被换掉，关着就是终态"
+    );
+    // 幂等：现实里重试随时可能发生，再查多少次都不该有任何一边动。
+    for _ in 0..3 {
+        assert_eq!(dir.commit_status(&key), settled);
+        assert!(
+            !dir.is_routable(&candidate_handle) && !dir.is_routable(&old.handle),
+            "重复查询不得复活任何一边"
+        );
+    }
+}
+
+/// 已经放行过的候选被重复查状态时，不得顺手撤掉它的期限。
+///
+/// 补放行如果无条件重写整份条目状态，就会连期限一起清掉：候选明明活得好好的，空闲期限却
+/// 被撤了，于是它变成一个**只有显式关闭才会消失**的会话——扫不到、过期不了、还占着名额。
+/// 所以补放行只在「确实还卡在屏障里」时才动手，其余情况原样不碰。
+#[tokio::test]
+async fn 查状态不得撤掉活着的候选的期限() {
+    let (clock, dir) = cycling_directory(64);
+    let old = open(&dir).await;
+    let candidate = candidate_owner("dbs_candidate_0008", NEXT_EPOCH, "2026-01-01T00:00:00.000Z");
+    let candidate_handle = candidate.to_handle();
+    let key = ReplacementOperationKey::for_handle(&old.handle);
+
+    dir.commit_replacement(commit_for(
+        &old.handle,
+        &candidate,
+        ReplacementOperation::Prepared,
+    ))
+    .await
+    .expect("prepare 应成功");
+    dir.lose_next_commit_reply(Some(UnknownCommitOutcome::Committed));
+    dir.commit_replacement(commit_for(
+        &old.handle,
+        &candidate,
+        ReplacementOperation::Committed,
+    ))
+    .await
+    .expect_err("结果未知时不得回成功");
+    assert_eq!(
+        dir.commit_status(&key),
+        CommitStatus::Committed {
+            handle: candidate_handle.clone()
+        }
+    );
+
+    // 放行之后给候选装上空闲期限：此刻它是个正常活着的会话。
+    dir.arm_session_idle(
+        &candidate_handle,
+        Duration::from_secs(80),
+        MonoInstant::ZERO,
+    )
+    .expect("装期限必须成功");
+
+    // 再查一次。
+    assert_eq!(
+        dir.commit_status(&key),
+        CommitStatus::Committed {
+            handle: candidate_handle.clone()
+        }
+    );
+    assert!(
+        dir.is_routable(&candidate_handle),
+        "已放行的候选必须仍然可路由"
+    );
+
+    // 期限还在，才谈得上「到期能被扫掉」：期限被撤掉的话这条永远判不出到期，
+    // 会话于是占着名额又不再被回收。
+    clock.advance(Duration::from_secs(81));
+    assert!(
+        dir.adjudicate(&candidate_handle)
+            .expect("到期判定必须给出结论")
+            .is_expired(),
+        "空闲期限被查状态撤掉了：一个活着的会话从此不再被回收"
     );
 }

@@ -473,20 +473,20 @@ mod tests {
     /// 测试夹具各写了一份 `format!("rte-{:08}", …)`，两端「必须逐字一致」当时只靠
     /// 注释担保。所以防复发的判据必须看**字面量出现了几次**。
     ///
-    /// - 扫描范围：`src/registry/**` 与 `tests/` 下名字以 `registry` 开头的文件/目录
-    ///   （后者是本轨道的测试面；`tests/` 下别的 crate 面不属于这里）。
+    /// - 扫描范围：`src/registry/**`、`src/application/**` 与 `tests/` 下名字以 `registry`
+    ///   开头的文件/目录（后者是本轨道的测试面；`tests/` 下别的 crate 面不属于这里）。
+    ///   `src/application` 也在面内，是因为 `convert::public_handle` 曾经自带一份
+    ///   `format!("rte-{:08}", …)`——它不在 `src/registry/**` 下面，本条当初就抓不到它。
+    ///   本条判的是**这个格式字面量只能有一处**，不是「哪些目录归 registry 管」，所以凡是
+    ///   产出该字符串的地方都在面内；它现在调用 [`epoch_string`]，是这份名单里的一例，
+    ///   而不是名单的例外。
     /// - 排除本文件：那份实现就在 `epoch.rs` 里，且本文件的文档刻意引述这行字面量。
-    /// - 只看**非注释行**：文档与注释里为了说明「曾经有第二份」也会写出这行字面量，
-    ///   把注释算进来就会让本条在没有代码缺陷时红。
-    /// - 判据 = 非注释行里出现 `"rte-` + `{:08` 这个组合。**已知漏网**：第二份实现
+    /// - 只跳过**行注释行**：实现是「跳过 `trim` 之后以 `//` 开头的行」，所以 `/* */`
+    ///   块注释里若写出这行字面量，**会被算成命中**。这是有意偏严——块注释里引述实现
+    ///   本身就值得看一眼，代价是日后要在块注释里提这件事，得避开字面量形态。
+    /// - 判据 = 上面这些行里出现 `"rte-` + `{:08` 这个组合。**已知漏网**：第二份实现
     ///   若换一种写法（例如 `{:08x}`）不会被本条抓到；那种改动会先被
     ///   `epoch_string_keeps_the_wire_shape` 的字面量钉住，所以不是无声的。
-    ///
-    /// **边界之外的已知副本**：`src/application/convert.rs` 的 `public_handle` 仍自带
-    /// 一份 `format!("rte-{:08}", …)`（把 runtime 世代投影成平台 API 的线上值）。它不在
-    /// 本轨道的文件面内（`src/registry/**`），本轨道不修，已作为待裁定项交给集成方；
-    /// 收敛动作是把它改成调用 `registry::epoch::epoch_string`。本条按路径前缀把它排除在
-    /// 扫描外——**不是**把它列进白名单，所以它一旦被修好，本条不需要改。
     #[test]
     fn epoch_formatter_has_one_implementation_in_track() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -494,6 +494,14 @@ mod tests {
         let mut hits: Vec<String> = Vec::new();
         let registry_root = root.join("src/registry");
         collect_epoch_format_literals(&registry_root, &registry_root, &needle, false, &mut hits);
+        let application_root = root.join("src/application");
+        collect_epoch_format_literals(
+            &application_root,
+            &application_root,
+            &needle,
+            false,
+            &mut hits,
+        );
         let tests_root = root.join("tests");
         collect_epoch_format_literals(&tests_root, &tests_root, &needle, true, &mut hits);
         assert!(

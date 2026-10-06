@@ -423,8 +423,13 @@ impl InMemorySessionDirectory {
 
         match truth {
             RecordState::Committed => {
+                // 补放行必须是**幂等**的（`publish_from_barrier`），不能无条件 `publish`：
+                // 这一格会被每一次重试走一遍，而候选条目的当前态只有三种可能——
+                // 还在屏障里（放行没跑到，补上）、已经可路由（放行早跑过了）、
+                // 已经被调用方关闭或判死（终态）。第三种一旦被 `publish` 拉回可路由，
+                // 重试就会给一枚「替换已提交」的回执，而那个 id 上什么都没有。
                 if let Some(new_entry) = inner.entries.get_mut(&new_handle.db_session_id) {
-                    new_entry.publish();
+                    new_entry.publish_from_barrier();
                 }
                 if let Some(old_entry) = inner.entries.get_mut(&old.db_session_id) {
                     old_entry.close(super::entry::ClosureReason::ReplacedBy(new_handle.clone()));
