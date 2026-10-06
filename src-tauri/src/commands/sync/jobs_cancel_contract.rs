@@ -464,6 +464,10 @@ async fn cancelling_a_running_apply_stops_the_writes_the_executor_would_still_se
 #[tokio::test]
 async fn a_cancel_that_arrives_before_the_job_exists_still_stops_the_apply() {
     let (pair, gate, _reached) = gated_pair("cancel-before-job").await;
+    // Open the gate up front. This test is not racing a write, it is counting
+    // them, and a Job that wrongly runs would otherwise park forever on the
+    // first write instead of failing the count below.
+    gate.open();
     let preview = compare(&pair, None, None).await.unwrap();
     assert_eq!(preview.selection_revision, 1);
 
