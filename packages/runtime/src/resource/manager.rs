@@ -405,6 +405,14 @@ impl ResourceManager {
             }
         }
 
+        // CM-27 × 第二格：处置落定之后，隧道引用与物理预算**同拍**结算。
+        //
+        // 用的是 `plan.disposition`（复位失败已把它升级成 `Quarantined` 的**最终**值），
+        // 所以隔离路径下预算没核销、隧道引用也就没归还 —— 不存在「预算还占着、
+        // 引用先还了」的错拍。这行是全模块**唯一**释放隧道引用的地方之一
+        // （另一个是 `force_close`），两处读同一个布尔 `releases_physical_budget()`。
+        let _tunnel = self.settle_tunnel_reference(lease_id, plan.disposition);
+
         Ok(CleanupReport::from_plan(
             &record,
             &host,
@@ -493,6 +501,11 @@ impl ResourceManager {
                 if let Some(entry) = self.table.lease_mut(lease_id) {
                     let _ = entry.move_to(LeaseState::Quarantined);
                 }
+                // 关闭未确认 ⇒ 预算**不**核销 ⇒ 隧道引用一并保留（`:713`「确认关闭或
+                // 节点隔离后才核销」）。隔离中的连接仍可能走这条隧道，提前归还引用
+                // 会让隧道在还有活连接时被拆掉 —— 那是配对塌了，不是有序回收。
+                let _tunnel =
+                    self.settle_tunnel_reference(lease_id, CleanupDisposition::Quarantined);
                 Err(error.logged("force close a lease"))
             }
         }
