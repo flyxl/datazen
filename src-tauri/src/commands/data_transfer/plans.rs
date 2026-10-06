@@ -6,6 +6,7 @@
 //! remain private to this registry.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -26,8 +27,11 @@ pub(crate) const TRANSFER_PLAN_TTL: Duration = Duration::from_secs(15 * 60);
 pub(crate) const TRANSFER_CHECKPOINT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const TRANSFER_ACTIVE_LEASE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
+/// `Executing` is an in-flight apply; `Consumed` is a terminal single-use
+/// marker. A consumed plan is never claimable again, including after an unknown
+/// commit outcome (§2.1/§8: one planId is consumable by exactly one apply Job).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PlanState {
+pub(crate) enum PlanState {
     Available,
     Executing,
     Consumed,
@@ -69,9 +73,15 @@ pub(crate) struct StoredTransferPlan {
     /// by the target-schema fingerprint. They are applied only to the user's
     /// final table selection immediately before execution.
     pub(crate) target_table_dependencies: Vec<TargetTableDependency>,
+    /// Monotonic selection revision. The apply request must echo it, so a plan
+    /// re-minted after re-review cannot be applied with a stale review.
+    pub(crate) revision: u64,
+    /// Wall-clock expiry in epoch millis, published to the client so an apply
+    /// can be refused as expired without trusting the client clock.
+    pub(crate) expires_at_millis: i64,
     expires_at: Instant,
     active_until: Option<Instant>,
-    state: PlanState,
+    pub(crate) state: PlanState,
 }
 
 #[derive(Debug, Serialize)]
@@ -165,6 +175,8 @@ pub(crate) fn driver_protocol_version(driver: &dyn DatabaseDriver) -> u32 {
 pub(crate) struct TransferPlanStore {
     plans: Mutex<HashMap<String, StoredTransferPlan>>,
     checkpoints: Mutex<HashMap<String, TransferResumeCheckpoint>>,
+    /// Monotonic plan-revision source, so every issued plan is uniquely ordered.
+    revision_seq: AtomicU64,
 }
 
 impl TransferPlanStore {
@@ -172,6 +184,7 @@ impl TransferPlanStore {
         Self {
             plans: Mutex::new(HashMap::new()),
             checkpoints: Mutex::new(HashMap::new()),
+            revision_seq: AtomicU64::new(0),
         }
     }
 
@@ -303,6 +316,12 @@ impl TransferPlanStore {
             sql_file_structure,
             database_structure,
             target_table_dependencies,
+            revision: self
+                .revision_seq
+                .fetch_add(1, Ordering::Relaxed)
+                .saturating_add(1),
+            expires_at_millis: now_millis()
+                .saturating_add(i64::try_from(ttl.as_millis()).unwrap_or(i64::MAX)),
             expires_at: Instant::now() + ttl,
             active_until: None,
             state: PlanState::Available,
@@ -348,6 +367,44 @@ impl TransferPlanStore {
         Ok(plan.clone())
     }
 
+    /// Read a plan without requiring it to be claimable. The apply Job uses this
+    /// to report *why* a plan cannot run (claimed, consumed, expired) instead of
+    /// a generic refusal, while `peek` keeps its Available-only semantics.
+    pub(crate) fn peek_any(&self, id: &str) -> Result<StoredTransferPlan, TransferError> {
+        let mut plans = self
+            .plans
+            .lock()
+            .map_err(|_| TransferError::validation("transfer plan registry is unavailable"))?;
+        let Some(plan) = plans.get(id) else {
+            return Err(TransferError::validation(
+                "transfer plan is unknown or has expired; return to preview",
+            ));
+        };
+        if plan.expires_at <= Instant::now() {
+            plans.remove(id);
+            return Err(TransferError::validation(
+                "transfer plan has expired; return to preview",
+            ));
+        }
+        Ok(plan.clone())
+    }
+
+    /// Mark a plan consumed after its single apply Job reached a terminal success.
+    /// A failed apply leaves the lease in place so recovery can resume it under
+    /// the same planId instead of minting a second apply.
+    pub(crate) fn mark_consumed(&self, id: &str) -> Result<(), TransferError> {
+        let mut plans = self
+            .plans
+            .lock()
+            .map_err(|_| TransferError::validation("transfer plan registry is unavailable"))?;
+        let Some(plan) = plans.get_mut(id) else {
+            return Ok(());
+        };
+        plan.state = PlanState::Consumed;
+        plan.active_until = None;
+        Ok(())
+    }
+
     /// Atomically consume a plan. A consumed plan is never claimable again,
     /// including after an unknown commit/rollback outcome.
     pub(crate) fn claim(&self, id: &str) -> Result<StoredTransferPlan, TransferError> {
@@ -381,6 +438,12 @@ impl Default for TransferPlanStore {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Wall-clock millis used for plan expiry publication. Uses `unwrap_or` only:
+/// a clock before the epoch cannot panic the migration path.
+pub(crate) fn now_millis() -> i64 {
+    chrono::Utc::now().timestamp_millis()
 }
 
 fn global_store() -> &'static TransferPlanStore {
@@ -437,6 +500,16 @@ pub(crate) fn peek_plan(id: &str) -> Result<StoredTransferPlan, TransferError> {
 
 pub(crate) fn claim_plan(id: &str) -> Result<StoredTransferPlan, TransferError> {
     global_store().claim(id)
+}
+
+/// Read a plan regardless of its claim state; used by the apply Job admission.
+pub(crate) fn peek_plan_any(id: &str) -> Result<StoredTransferPlan, TransferError> {
+    global_store().peek_any(id)
+}
+
+/// Terminal single-use marker, written only after a successful apply Job.
+pub(crate) fn mark_plan_consumed(id: &str) -> Result<(), TransferError> {
+    global_store().mark_consumed(id)
 }
 
 pub(crate) fn source_boundary_fingerprint(

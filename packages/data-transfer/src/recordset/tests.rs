@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::TransferRecordsetTupleRange;
 use datazen_driver_api::ColumnSchema;
 
 fn schema(primary_keys: &[&str]) -> TableSchema {

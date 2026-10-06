@@ -82,16 +82,6 @@ impl ScanRows {
     }
 }
 
-pub async fn scan_rows(
-    driver: &dyn DatabaseDriver,
-    handle: &ConnectionHandle,
-    sql: &str,
-    expected_columns: Vec<String>,
-    cancelled: Option<Arc<AtomicBool>>,
-) -> Result<ScanRows, TransferError> {
-    scan_rows_with_params(driver, handle, sql, &[], expected_columns, cancelled).await
-}
-
 pub async fn scan_rows_with_params(
     driver: &dyn DatabaseDriver,
     handle: &ConnectionHandle,
