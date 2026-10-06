@@ -122,6 +122,23 @@
 - ⚠️ **对既有 P5 数字的追认**：集成分支合并门禁、各轨 Tester 的宿主单测数字，**都是在 basic 语义下取得的**，其结论只能限定在 basic 内，不能用来推断 CI 会不会红。上文「1741 = 1733 + 8」的算术**在同一驱动集内成立**（同集内前后比较），但该数字**不得跨驱动集引用**。Wave-R 最终回归必须统一按 `--drivers=all` 重铺后重跑。
 - 已广播给在飞的两轨（`7c83fa5b`、`fa475e95`），并要求在报告里标注所用驱动集、且**基线与该次变异必须同一驱动集**——否则「变红/存活」的判决同样失效。
 
+### ✅ 已合并：p5-cancel-hardening `f440acf91` → 集成分支 `7ec0ca315`（Tester `aacf7430` TEST_PASSED，零缺陷）
+
+- Tester 判**四项全过、零存活变异、零缺陷**，并**自行加跑一条我没要求的对照 CTRL-2b**：在 `e16b43415` 上**只加 D-B 的 +32 行测试缝、不加新测试**，同一 `terminal` 变异**仍然存活**。这一条把归因锁死为「CTRL-2→MUT-2 的差异**只能**来自新增的 D-B 用例」，而非来自测试缝本身。三个存活变异因此是**对照臂，非逃逸**。
+- Tester **独立复核了「0.93s 绿是真绿」这一辩解并判其成立**：`PATIENCE`（`job_cancel_watch.rs:51`）只作 deadline 上限，从无 ≥5s 等待；最大的**无条件** sleep 是 `QUIET_WINDOW=400ms`。算术精确复现：8 条 ≈0.92s；HEAD 多一条含 4×400ms 串行 sleep ⇒ 1.62s。
+- **rustfmt 漂移由 Tester 自行在基线 `105494c14` 复核**，非采信声明：基线 23 处、HEAD 23 处，**逐处一一对应**，位移量精确等于各提交插入行数（`kernel_cancel.rs` 全 `+27` = D-E；`repository.rs` 后三处全 `+32` = D-B）。两个**新增文件 0 漂移**。声明成立，非缺陷。
+- Tester 主动纠正了三处**它没能复现的**内容并明确标注为推断而非测量：① `right: 18` vs `17` 的调度抖动；② 交付表把 MUT-1 标为「post-D-A」不准确（实际在 `0627bdb0c`）；③ **它没有直接实测基线 host `--lib`=1733**，改用结构论证（本次 diff 零 `src-tauri/` 文件）并如实声明。乱码经实测为**仅在两条 commit 正文**、9 个文件内容 `U+FFFD` 计数 **0** ⇒ 判装饰性、非缺陷。
+- 合并后我**独立复跑**五门（driver set `all` = 17 个驱动 crate、含仅 all 才有的 `victoriametrics`；`drivers-registry.json` sha 与 main 逐字节一致）：`cargo metadata --no-deps` EXIT=0 / stderr 空（**无 Cargo 重复键**）；runtime 33 条结果行、**843 passed / 0 failed**；data-transfer **213 passed**；host `--lib` **1733 passed / 6 ignored**；`cargo check` EXIT=0；typecheck `error TS`=**0**。门禁前后 HEAD 与工作区均未变（`7ec0ca315`，`--porcelain` 空）。合并无冲突，`hub.md` 未被卷入合并 stat。
+- 收尾已执行：该分支**从未创建 `progress.md`**（feature 分支上的 `hub.md` 来自分支基点，非本轨交付物）；worktree `.worktrees/datazen-p5-cancel-hardening` 已移除，`git worktree prune` 已跑，`feature/p5-cancel-hardening` 已在**确认血缘后**删除。**`main` 未被触碰。**
+
+### ⚠️ Wave-R 预告：`main` 正在并发改 `packages/runtime`，但冲突面比想象小（已实测）
+
+- `main` 已推进到 `ec0444e8c`（`chore(runtime): 消掉 35 条 warning…`），**领先 P5 集成 79 个提交**，merge-base `ec857bdd26`。它改了 **60 个** P5 语义范围内的文件——但**全部落在** `packages/runtime/src/{application,connection,registry,resource,gateway}/`。
+- P5 的 runtime 改动全部在 `packages/runtime/src/job/` 与 `packages/runtime/tests/` ⇒ **与 main 那 60 个文件零重叠**。这是「按文件冲突面分波」这条分轨规则的实际收益。
+- **双向都改的文件只有 8 个**：`Cargo.lock`、`hub.md`、`src-tauri/Cargo.toml`（已知，注释级）、`packages/runtime/src/lib.rs`、`src-tauri/src/bootstrap/run.rs`、`src-tauri/src/bootstrap/app_state.rs`、`packages/backend-client/src/{client.ts,types/jobs.ts}`。
+- ⚠️ 值得盯的是 **`packages/backend-client/src/types/jobs.ts` 与 `client.ts`**：main 侧也在动 jobs 类型，若语义重叠则最终合并需人工裁定，而非机械取一侧。
+- 结论：Wave-R 全量回归必须**以当前 main 为新基线重跑**，不能沿用任何旧计数。
+
 ### 📦 交付待验：p5-cancel-hardening → HEAD `f440acf91`（Tester `aacf7430` 独立复验中）
 
 - 分支 `feature/p5-cancel-hardening`，基线 `105494c14`，tree `fe050cffaeb4c5a94a75926302d34dd2b121b807`，工作区 clean（门禁前后各记一次 HEAD/tree/status）。9 文件 +436/−17，**`.ts/.tsx` 改动 = 0**，未触任何禁区。
