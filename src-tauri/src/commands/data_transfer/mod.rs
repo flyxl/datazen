@@ -310,8 +310,10 @@ pub(crate) fn transfer_error_history_outcome(write_started: bool) -> &'static st
 #[tauri::command]
 pub async fn cancel_data_transfer(job_id: String) -> Result<bool, CommandError> {
     // P5 Jobs are cancelled through the Job repository: `request_cancel`
-    // records the request, the run watch flips the handler's flag and the
-    // runtime closes the Job as `Cancelled`. The legacy registry only knows
+    // records the intent, the runtime's per-stage cancel watcher flips the
+    // `CancelToken` the stage already holds (mid-stage), or the next stage
+    // boundary check does (between stages), and the runtime closes the Job as
+    // `Cancelled`. The legacy registry only knows
     // `services::job_registry` jobs, so it stays the fallback for an id this
     // client never accepted.
     if job_api::cancel_data_transfer_job(&job_id).await? {

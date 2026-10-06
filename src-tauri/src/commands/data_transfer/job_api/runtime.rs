@@ -11,9 +11,7 @@
 //!   second one, so an unknown commit never becomes a second write.
 
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
 
 use datazen_platform_api::context::OwnerRef;
 use datazen_platform_api::dto::execution::EffectOutcome;
@@ -40,12 +38,6 @@ pub(crate) const APPLY_KIND: &str = "dataTransferApply";
 const TRANSFER_SERVICE_KEY: &str = "data-transfer";
 const CLAIM_TTL_SECS: i64 = 300;
 const LOCAL_CLIENT_INSTANCE: &str = "datazen-local-client";
-/// Cancel polling: the repository is the only place a cancel request can land,
-/// and the runtime itself only re-reads its token at stage boundaries.
-const CANCEL_WATCH_INTERVAL: Duration = Duration::from_millis(50);
-/// Bounded watch: 6000 rounds ≈ 5 minutes, then the task gives up rather than
-/// leaking a task per Job.
-const CANCEL_WATCH_ROUNDS: usize = 6000;
 pub(crate) const RECOVERY_RESUME_AFTER_VERIFY: &str = "resumeAfterVerify";
 pub(crate) const RECOVERY_REJECT: &str = "reject";
 pub(crate) const RECOVERY_REQUIRE_MANUAL_REVIEW: &str = "requireManualReview";
@@ -231,12 +223,6 @@ pub(crate) async fn run(request: JobRunRequest<'_>) -> Result<JobOutcome, Comman
         .await
         .map_err(admit_error)?;
     remember_receipt(host, request.idempotency_key, &job_id)?;
-    spawn_cancel_watch(
-        host.repo.clone(),
-        ctx.clone(),
-        job_id.clone(),
-        request.handler.clone(),
-    );
     let runtime = JobRuntime::new(
         host.repo.clone(),
         handlers,
@@ -394,36 +380,6 @@ fn recovery_report(
             reason: Some(reason),
         },
     }
-}
-
-/// The runtime's `CancelToken` is created inside `dispatch` and only re-read at
-/// stage boundaries (`packages/runtime/src/job/runtime.rs:155-166`), and
-/// `CancelToken` is not reachable from a host handler. So the host watches the
-/// repository — where `request_cancel` lands — and flips the handler's own flag,
-/// which the bounded pipeline checks between pages, batches and tables.
-fn spawn_cancel_watch(
-    repo: Arc<InMemoryJobRepository>,
-    ctx: RequestContext,
-    job_id: JobId,
-    handler: Arc<DataTransferHandler>,
-) {
-    tokio::spawn(async move {
-        for _ in 0..CANCEL_WATCH_ROUNDS {
-            match repo.get(&ctx, job_id.clone()).await {
-                Ok(record) => {
-                    if record.view.cancel_requested {
-                        handler.cancel_flag().store(true, Ordering::SeqCst);
-                        return;
-                    }
-                    if record.view.state.is_terminal() {
-                        return;
-                    }
-                }
-                Err(_) => return,
-            }
-            tokio::time::sleep(CANCEL_WATCH_INTERVAL).await;
-        }
-    });
 }
 
 /// Map admission failures onto the command error surface. A consumed plan or a

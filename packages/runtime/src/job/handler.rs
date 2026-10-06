@@ -20,7 +20,9 @@ use datazen_platform_api::id::{ArtifactId, ExecutionId, StageId};
 use crate::job::error::JobError;
 use crate::job::plan::FrozenPlan;
 
-/// 取消信号。快照式轮询：runtime 与 handler 都在阶段边界/批次边界检查。
+/// 取消信号。内核那一位原子位的持有者：`dispatch` 创建它，阶段执行期间由并发看守者
+/// 在读到的取消意图为真时翻转，handler 只读它、不自建取消通道。阶段内取消的检查点由
+/// handler 自己决定（data-transfer 在每张表的开头与每批 execute 之后、commit 之前）。
 #[derive(Debug, Clone)]
 pub struct CancelToken(Arc<AtomicBool>);
 
@@ -35,6 +37,17 @@ impl CancelToken {
 
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::SeqCst)
+    }
+
+    /// 令牌背后的共享位：交给「只认 `Arc<AtomicBool>`」的既有取消探针去轮询。
+    ///
+    /// handler 侧的批处理管道按批次/页/表轮询一个裸 `Arc<AtomicBool>`。过去
+    /// handler 只能自己再存一份这样的位，于是内建了两条取消通道：内建的那份由宿主
+    /// 看守者翻转，内核这份在阶段边界才翻转，两条通道的可达性不一致。克隆这里的
+    /// `Arc` 就是让管道直接看内核那一位——阶段内取消因此对 handler 可见，且不新增
+    /// [`Self::cancel`] 之外的写入口。这是加法，不改 `JobHandler` 签名。
+    pub fn flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.0)
     }
 }
 

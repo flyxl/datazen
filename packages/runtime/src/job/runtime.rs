@@ -9,7 +9,9 @@
 //! * 效果结局聚合：未派发 notStarted；全部确认完成 completed；全部确认回滚 rolledBack；
 //!   存在已提交且未完成 partiallyApplied；任一不可核验 unknown（保留已确认部分）。
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
@@ -21,10 +23,22 @@ use datazen_platform_api::ports::job::JobRepository;
 
 use crate::budget::ledger::BudgetLedger;
 use crate::job::budget::{EndpointRef, MultiEndpointPermits};
-use crate::job::handler::{CancelToken, HandlerRegistry, StageTerminal};
+use crate::job::handler::{CancelToken, HandlerRegistry, StageOutcome, StageSpec, StageTerminal};
 use crate::job::plan::project_frozen_plan;
 use crate::job::repository::InMemoryJobRepository;
 use crate::job::time::JobClock;
+
+/// 阶段内取消看守者的轮询间隔。
+///
+/// 代价不是「进程内字典查找」：`InMemoryJobRepository` 的全部索引共用一把全局
+/// `Mutex`，而 `JobRepository::get` 在**持锁期间**深拷贝整条 `JobRecord`
+/// （`definition.payload` 是 `serde_json::Value`，另有 `Vec<StageRecord>`），
+/// 每个运行中的阶段每秒会因此拷贝 20 次，并与 `request_cancel`、`record_stage`
+/// 和进度写入争锁。所以看守者走 [`InMemoryJobRepository::cancel_poll`]：同一个锁，
+/// 只读两个 bool，锁内不做任何拷贝。
+///
+/// 50ms 是响应延迟与争锁次数之间的折中：取消是低频的用户动作，这个延迟用户感知不到。
+const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Job 执行的最终投影。`state` 是 JobState（successful/failed/cancelled），
 /// `effect_outcome` 独立表达提交边界，二者正交（§13.1 思想在 Job 上对齐）。
@@ -43,6 +57,9 @@ pub struct JobRuntime {
     ledger: Arc<Mutex<BudgetLedger>>,
     clock: Arc<dyn JobClock>,
     clock_ms: u64,
+    /// 当前在飞的阶段内取消看守者数量。每个阶段 +1，阶段收尾时 -1；
+    /// 恒为 0 是「没有游离任务」的运行时判据。
+    watchers: Arc<AtomicUsize>,
 }
 
 impl JobRuntime {
@@ -59,7 +76,14 @@ impl JobRuntime {
             ledger,
             clock,
             clock_ms,
+            watchers: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    /// 在飞的阶段内取消看守者数量。`dispatch` 收尾后必须为 0：每个阶段都会先把
+    /// 自己的看守者 abort + await 掉才进入下一个阶段。
+    pub fn active_cancel_watchers(&self) -> usize {
+        self.watchers.load(Ordering::SeqCst)
     }
 
     /// 执行一个 Job 直到终态或待核验。调用前 Job 必须已经被 accept（queued）。
@@ -174,10 +198,9 @@ impl JobRuntime {
                 finished_at: None,
             };
             self.repo.record_stage(ctx, &claim, stage_record).await?;
-            let outcome = handler
-                .run_stage(spec, &cancel)
-                .await
-                .map_err(|e| PortError::BackendUnavailable(e.to_string()))?;
+            let outcome = self
+                .run_stage_watched(ctx, job_id, handler.as_ref(), spec, &cancel)
+                .await?;
             progress = accumulate(progress, outcome.progress);
             any_boundary |= !outcome.commit_boundaries.is_empty();
             saw_unknown |= outcome.terminal == StageTerminal::Unknown
@@ -240,6 +263,136 @@ impl JobRuntime {
             progress,
             error: None,
         })
+    }
+
+    /// 跑一个阶段，同时挂一个阶段内取消看守者（CANCEL_WATCH）。
+    ///
+    /// 阶段内取消的可达性只由这一处保证：取消意图的落地点是仓储的
+    /// `cancel_requested`，而 `run_stage` 在阶段内不再接触仓储，因此在阶段执行
+    /// 期间必须有一个并发观察者把该标志翻译成本次派发共享的 [`CancelToken`]。
+    /// 看守者在阶段返回后立即被 abort + await 回收：**正常路径**下 `dispatch` 返回时
+    /// 不存在任何仍持有 `repo` / `ctx` 的游离任务（§2.3）。handler panic 展开走的是
+    /// [`CancelWatch`] 的 `Drop` 兜底，那条路径只 abort 不 await，任务真正结束的时机
+    /// 由调度器决定——因此这里承诺的只是「不会一直跑下去」，不是「返回时已结束」。
+    ///
+    /// 取消不制造提交边界：看守者只翻转令牌，什么也不写。阶段是否回滚在途批次、
+    /// 是否给出 `StageTerminal::Cancelled`，仍完全由 handler 决定。
+    async fn run_stage_watched(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        handler: &dyn crate::job::handler::JobHandler,
+        spec: &StageSpec,
+        cancel: &CancelToken,
+    ) -> Result<StageOutcome, PortError> {
+        let watch = CancelWatch::spawn(
+            self.repo.clone(),
+            ctx.clone(),
+            job_id.clone(),
+            cancel.clone(),
+            self.watchers.clone(),
+        );
+        let outcome = handler.run_stage(spec, cancel).await;
+        // 先 abort 再 await：await 返回之后这条任务确定已经结束，不会在
+        // dispatch 返回后继续读仓储、继续持有请求上下文。
+        watch.join().await;
+        outcome.map_err(|e| PortError::BackendUnavailable(e.to_string()))
+    }
+}
+
+/// 阶段内取消看守者的句柄：正常路径 `join`（abort + await），异常展开时 `Drop` 兜底
+/// abort，两者都不会留下游离任务。计数器在两条路径上都要减，所以放在 `Drop`。
+struct CancelWatch {
+    handle: Option<tokio::task::JoinHandle<()>>,
+    live: Arc<AtomicUsize>,
+}
+
+impl CancelWatch {
+    fn spawn(
+        repo: Arc<InMemoryJobRepository>,
+        ctx: RequestContext,
+        job_id: JobId,
+        cancel: CancelToken,
+        live: Arc<AtomicUsize>,
+    ) -> Self {
+        live.fetch_add(1, Ordering::SeqCst);
+        let handle = tokio::spawn(watch_cancel_request(repo, ctx, job_id, cancel));
+        Self {
+            handle: Some(handle),
+            live,
+        }
+    }
+
+    /// 终止并等待看守者结束。调用方必须 await 它，`dispatch` 才允许继续。
+    async fn join(mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+            let _ = handle.await;
+        }
+    }
+}
+
+impl Drop for CancelWatch {
+    fn drop(&mut self) {
+        // 阶段 panic 导致 `join` 没跑到时，这里仍然 abort；走到 `join` 时句柄已被取走。
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
+        // 计数只在 Drop 里归还，所以 `join`（正常路径）与展开（异常路径）两条路都不会漏减。
+        self.live.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// 阶段内取消看守者：与 `run_stage` 并发轮询仓储的取消意图。
+///
+/// 取消请求只能落在 `request_cancel`（§2.3：取消是意图，不改 state），而阶段执行
+/// 期间没有别的读点，所以阶段内要看到取消就必须有这么一个观察者。它读到
+/// `cancel_requested` 为真就翻转内核那一个 [`CancelToken`] 并立即退出——此后内核
+/// 的 `cancel()` 调用有且只有这一个来源，handler 不再需要自己那一条通道。
+async fn watch_cancel_request(
+    repo: Arc<InMemoryJobRepository>,
+    ctx: RequestContext,
+    job_id: JobId,
+    cancel: CancelToken,
+) {
+    loop {
+        match repo.cancel_poll(&ctx, &job_id) {
+            Ok(snapshot) => {
+                if snapshot.cancel_requested {
+                    cancel.cancel();
+                    return;
+                }
+                // Job 已终结：派发已经收尾，继续轮询没有意义。
+                if snapshot.terminal {
+                    return;
+                }
+            }
+            Err(error) => {
+                // CANCEL_POLL_FAILED：轮询失败时的**刻意决策**——记告警后停止轮询，
+                // 让当前阶段跑完，而不是把读失败升级成阶段失败。
+                //
+                // 理由：
+                // * 读失败不会造出取消，只会让我们错过取消；误取消则不可挽回——一个
+                //   健康的迁移 Job 被写成 Cancelled，用户没有任何手段改回来。宁可漏，
+                //   不可错。
+                // * 漏掉的取消不是被丢弃，而是**不再被本阶段感知**：如果这个 Job 还有
+                //   下一个阶段，`dispatch` 开跑前会重读到它，在那个边界收敛；但单阶段
+                //   Job（data-transfer 的 data / apply / prepare 就是单阶段）没有下一个
+                //   边界，本次运行可能在完全不感知取消的情况下走完。
+                // * fail-closed 代价更高：一次瞬时故障就打断一个已经提交了若干批、
+                //   带 checkpoint 可续跑的长任务，而故障通常与迁移本身无关。
+                // * 绝不允许静默吞掉：告警带上 jobId 与错误原文，排障时可定位。
+                tracing::warn!(
+                    job_id = job_id.as_str(),
+                    error = %error,
+                    "cancel watch stopped polling after a job repository read failure; \
+                     the running stage is left alone and the cancel intent is re-read at \
+                     the next stage boundary, if there is one"
+                );
+                return;
+            }
+        }
+        tokio::time::sleep(CANCEL_POLL_INTERVAL).await;
     }
 }
 

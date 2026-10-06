@@ -474,7 +474,8 @@ fn boundary(rows: u64) -> CommitBoundary {
     }
 }
 
-// 分文件承载 CM-46 / CM-47-48 / CM-49，单文件规模保持在 800 行以内。
+// 分文件承载 CM-46 / CM-47-48 / CM-49 / CANCEL_WATCH 集成，单文件规模保持在 800 行以内。
 mod cm46_pipeline;
 mod cm47_48_recovery;
 mod cm49_sql_file;
+mod kernel_cancel;
