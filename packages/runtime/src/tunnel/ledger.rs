@@ -120,17 +120,19 @@ struct TunnelEntry {
     state: TunnelState,
     /// 权威引用计数。归零即触发且仅触发一次 `close`。
     ///
-    /// **唯一计数铁律（CM-32-FU1）**：这个字段只允许被下面三个注册方法
-    /// （[`Self::refs`] / [`Self::add_reference`] / [`Self::take_reference`]）
+    /// **唯一计数铁律（CM-32-FU1）**：这个字段只允许被 [`TunnelEntry`] 的四个注册方法
+    /// （`established` 建账 + `refs` / `add_reference` / `take_reference` 逐笔增减）
     /// 直读或直写，其余任何函数体里出现 `entry.refs` 都是第二本账的形状 ——
-    /// 由 `tunnel::single_counter_audit` 的字段审计杀掉（含一条植入变异的
-    /// kill test）。归零路径 `drain()` 因此**按值**从 `take_reference` 取数。
+    /// 由 `tunnel::single_counter_audit` 的字段审计（R1）杀掉，含一条植入变异的 kill test。
+    /// 归零路径 `drain()` 因此**按值**从 `take_reference()` 取数（R2）。
+    /// 声明层面另有一条与名字无关的 R7：`TunnelEntry` 的整数字段必须**恰好一个**，
+    /// 就是本字段 —— 挡的是「留着 `refs`、在旁边挂一份逐笔相同的镜像账」。
     refs: u32,
     /// 依赖这条隧道的租约。隧道失败时**全量**枚举（共享资源的传播面就是它）。
     dependents: IndexSet<LeaseId>,
 }
 
-/// `TunnelEntry` 的计数**只有一条窄口**：三个注册方法，全部按值进出。
+/// `TunnelEntry` 的计数**只有一条窄口**：四个注册方法，读写的都按值进出。
 ///
 /// 之所以不是「把 `refs` 设成 pub 然后靠注释」：CM-32 repair round 1 实测过，
 /// 反例（给观测端口加一份自存的 `close_tally: Mutex<usize>` 并让 `close_calls()`
