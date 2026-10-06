@@ -77,6 +77,25 @@ L1（端口新增 `revision_of(&self) -> u64` 这样的整数观测方法被 R5 
 已补 `legal_shapes_are_not_misjudged` 负控钉死：四种合法折法签名 / 按值返回放行而引用返回拦截 /
 非 ASCII 不 panic 且不漏扫 / `blank()` 等长且幂等。
 
+## M13 反例复验（主代理亲做，提交后在 detached 树实测）
+
+在 `194ff75c7` 的 detached 工作树里新建 `packages/runtime/tests/tunnel_new_probe.rs`：
+一个此前不存在的第三个测试文件，`SneakyProbeTransport` 实现 `TunnelTransport`
+且自带 `close_tally: Mutex<usize>`，构造并 `drop` 以保证不触发 dead_code。
+
+```
+M13_EXIT=101
+test result: FAILED. 462 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+---- …::gate_self_audit::every_transport_implementing_file_on_disk_is_registered stdout ----
+panicked at packages/runtime/src/tunnel/single_counter_audit/mod.rs:202:5:
+磁盘上实现了 TunnelTransport 却没进审计登记表 —— 这份端口不会被 R4 / R5 扫到，
+它完全可以私藏第二本账（CM-32-FU1）
+tests/tunnel_new_probe.rs
+```
+
+旧口径（硬编 `AUDITED`）下这是 `461 passed` 全绿漏网；新规则转红，且**诊断点名了具体文件**。
+临时树与 target 目录已 `git worktree remove --force` 清理。
+
 ## 未做 / 待裁定
 
 1. **本轨被明令不得接线**：`src/tunnel/mod.rs:52-60` 登记的两格「实现缺失」——全阶段失败矩阵下的
