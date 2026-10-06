@@ -6,11 +6,23 @@
 //! | `control()` | 用例 | 造法 |
 //! | --- | --- | --- |
 //! | `Ok(true)` | `送达即作废_摘行并把额度挂成stale` | 登记后直接租约失效 |
-//! | `Ok(false)` | `否定答复仍算送达_已无物理资源的会话照常摘行` | 先用一次关不掉的空闲驱逐把物理资源清空、让表项留下（§9.4 的 `SessionLost` 出口） |
+//! | `Ok(false)` | `否定答复仍算送达_已无物理资源的会话照常摘行` | 候选走完 §9.4 销毁之后仍被发布进可见表（见该用例注释） |
 //! | `Err(_)` | `投递失败保留表项_额度不挂stale等重投` | 驱动回调在 `close()` 里 panic，把 actor 任务带走 |
 //!
-//! 后两格都不是「造出来的假象」：第二格由登记表自己的 `evict_idle_at` 造成，
-//! 第三格是驱动侧崩溃打穿 actor 任务的**生产事故形状**。两格都不需要改生产代码。
+//! 后两格都不是「造出来的假象」：第三格是驱动侧崩溃打穿 actor 任务的**生产事故形状**，
+//! 两格都不需要改生产代码。
+//!
+//! ★ 第二格的造法**变过**，理由必须写在这里而不是台账里：此前它靠的是先跑一次
+//! `evict_idle_at` 并配一个关不掉的驱动（`Undecidable`）——§9.4 在物理层关不掉时
+//! **先**清空 `state.physical` 才写出 `SessionLost`，而当时的 `evict_idle_at`
+//! 用 `let Ok(Some(..)) = .. else { continue }` 把这条答复当成「什么都没发生」，
+//! 于是留下「资源已清空、行还在表里」的残留格。那**就是缺陷本身**：物理资源已经
+//! 发出过关闭、行却留在表里、额度还扣着、`session_view` 仍能向一个不存在的资源发执行。
+//! 驱逐改为逐向判别（`SessionLost` ⇒ 摘表还额度）之后这条路不再产生该状态，所以本组
+//! 改用**候选原语**造它：销毁过的候选被发布进可见表，同样是「在册但已无物理资源」。
+//! **判定的三态一个字没改，改的只是造法**；驱逐那一格现在的正确行为由
+//! `不可判定的驱逐摘表还额度_不留僵尸行` 一例钉住——它钉的正是修好之后的形状，
+//! 与 `tests/registry_release.rs` 里同一形状的端到端断言互为正反。
 //!
 //! 另有一条**结构事实**决定第三格不是「摘表项」造成的：`SessionRecord` 按值持有
 //! `SessionActor`，`owned_by` 又是按值克隆，于是 `.await` 期间一定有一份活着的发送端；
@@ -266,27 +278,38 @@ async fn 摘行丢不掉活着的发送端() {
 
 /// 三态表第二格：`Ok(false)`——**送达了的否定答复**：actor 说「已无物理资源」。
 ///
-/// 造法不绕过 `invalidate_worker`：先走登记表自己的 `evict_idle_at`。§9.4 释放例程
-/// 在 `close` 不可判定时**先**写过 `state.physical = None` 才返回 `SessionLost`，
-/// 于是登记表收不到成功视图、跳过 `forget`，留下一个「物理资源已清空、行还在表里」
-/// 的状态——`owned_by` 与 actor 侧双重过滤都放行、而 actor 回 `Ok(false)` 的
-/// 就是这种行。
+/// 造法：候选原语走完 §9.4 销毁（`destroy_candidate` → 唯一的释放例程把
+/// `state.physical` 清空）**之后**才被发布进可见表。这一行于是同时满足
+/// 「在册」「actor 活着」「物理资源已没了」，正是 `owned_by` 放行而 actor 回
+/// `Ok(false)` 的形状。
+///
+/// 此前这一格靠 `evict_idle_at` + 关不掉的驱动（`CloseResourceOutcome::Undecidable`）
+/// 造成——那是驱逐侧的一处缺陷（收不到成功视图就跳过摘行）留下的残留格。缺陷已闭合，
+/// 所以造法改成候选原语；**判定的三态一个字没改**，见本文件头 ★ 段。
 #[tokio::test]
 async fn 否定答复仍算送达_已无物理资源的会话照常摘行() {
-    let registry = SessionRegistry::new(Arc::new(UndecidableCloseBackend), 4);
-    registry
-        .register_session(open_request())
+    let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
+    let (actor, view, runtime_epoch) = registry
+        .open_candidate(open_request())
         .await
-        .expect("登记必须成功：这是本用例的前提");
-
-    let evicted = registry.evict_idle_at(IDLE_DEADLINE_MS).await;
+        .expect("候选登记必须成功：这是本用例的前提");
+    let candidate_handle = view.handle.clone();
     assert!(
-        evicted.is_empty(),
-        "物理层关不掉就没有可交回的视图，驱逐必须空手而归"
+        !registry.is_registered(&db_session_id()),
+        "候选在 §12 切换之前对宿主不可见——否则本用例测的就不是销毁过的候选"
     );
+    // 唯一的 §9.4 释放例程跑完：物理资源清空、绑定作废，actor 仍活着（邮箱没关）。
+    actor
+        .destroy_candidate(&candidate_handle)
+        .await
+        .expect("候选销毁必须走 §9.4 并交出终态");
+    registry
+        .publish_candidate(worker_id(), runtime_epoch, view, actor)
+        .expect("发布销毁过的候选：造出「在册但已无物理资源」这一格");
+
     assert!(
         registry.is_registered(&db_session_id()),
-        "驱逐失败时行必须留着等重投：登记表不能先把它记成已经关掉"
+        "本用例的前提：这一行必须在册，否则租约失效根本不会遍历到它"
     );
 
     let lost = registry.invalidate_worker(&worker_id()).await;
@@ -300,6 +323,81 @@ async fn 否定答复仍算送达_已无物理资源的会话照常摘行() {
         },
         "否定答复也是答复：照常摘行、照常计入 lost、照常挂 stale。\
         把 Ok(false) 并进失败分支，这条会话就会永远留在表里，额度永远挂在 stale 上"
+    );
+}
+
+/// §6.4 / R-01：不可判定的驱逐（§9.4 四步跑完却写出 `SessionLost`）**必须**摘表还额度。
+///
+/// 这一例钉的是 `evict_idle_at` 逐向判别里「已丢失」那一格**修好之后**的形状。
+/// 判据与 [`SessionRegistry::close_registered`] 的 R-01 完全一致：不可判定的是某个
+/// 句柄的命运，不是「有没有关掉」——四步已经跑完，关闭请求已经发出，此时留着行
+/// 就等于留一个「物理资源已死、行还在表里、额度还扣着」的僵尸：`session_view`
+/// 仍查得到它、仍能向一个不存在的资源发执行，而那格额度永久卡死没人会想起。
+///
+/// 反向也钉：`Err` **不改写**给调用方的语义——这里驱逐如实回「没有干净视图」，
+/// 空手而归。把不可判定的会话混进 `evicted` 返回值，等于替它报「已驱逐」。
+#[tokio::test]
+async fn 不可判定的驱逐摘表还额度_不留僵尸行() {
+    let registry = SessionRegistry::new(Arc::new(UndecidableCloseBackend), 4);
+    registry
+        .register_session(open_request())
+        .await
+        .expect("登记必须成功：这是本用例的前提");
+    let before = registry.remaining_quota();
+    assert_eq!(before, 3, "登记占掉一格，剩 3 格");
+
+    let evicted = registry.evict_idle_at(IDLE_DEADLINE_MS).await;
+    assert!(
+        evicted.is_empty(),
+        "物理层关不掉就没有干净视图可交回，驱逐必须空手而归"
+    );
+    assert!(
+        !registry.is_registered(&db_session_id()),
+        "§9.4 已跑完 ⇒ 行必须摘除：留着就是一行查得到、能用、却指向已关资源的僵尸登记"
+    );
+    assert_eq!(
+        registry.remaining_quota(),
+        4,
+        "关闭已发出 ⇒ 额度必须归还，否则每驱逐失败一次就永久卡死一格（R-01 同一种病）"
+    );
+    assert!(
+        registry
+            .registered_ids()
+            .iter()
+            .all(|id| id != &db_session_id()),
+        "在册快照必须同步失效，否则重投会撞上死行"
+    );
+}
+
+/// §6.4：驱逐的请求**没送达**（驱动回调把 actor 任务带走）⇒ 保留表项与额度。
+///
+/// 这一格与三态表第三格同源，判据也必须一致：回执丢失只证明「没送达或送达不明」，
+/// 不证明「资源已关」。此时摘行还额度，等于把一格额度发给一个物理资源可能还活着的
+/// 连接，而那条会话从此既不在册也没人负责——比僵尸行更糟，因为它连重投的机会都没了。
+///
+/// 与 `不可判定的驱逐摘表还额度_不留僵尸行` 成对：两条合起来才说明分类不是
+/// 「凡是 Err 都摘」或「凡是 Err 都留」这种偷懒的两态。
+#[tokio::test]
+async fn 驱逐请求没送达时保留表项_不归还额度() {
+    let registry = SessionRegistry::new(Arc::new(CrashingCloseBackend), 4);
+    registry
+        .register_session(open_request())
+        .await
+        .expect("登记必须成功：这是本用例的前提");
+
+    let evicted = registry.evict_idle_at(IDLE_DEADLINE_MS).await;
+    assert!(
+        evicted.is_empty(),
+        "actor 任务被驱动回调带走 ⇒ 没有干净视图可交回；stderr 上那行 panic 是预期的"
+    );
+    assert!(
+        registry.is_registered(&db_session_id()),
+        "没送达就不能记成已关：行留着，让租约失效/显式关闭那条路去处置它"
+    );
+    assert_eq!(
+        registry.remaining_quota(),
+        3,
+        "物理资源可能仍活着 ⇒ 这格额度不许发给别人"
     );
 }
 

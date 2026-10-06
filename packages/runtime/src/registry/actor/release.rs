@@ -62,27 +62,39 @@ pub(super) async fn release(
     //
     // `registered_before` 是**宿主自己账上**的登记数：§9.4 里 driver 对已交出的句柄
     // 没有可见性，它的 Clean 不构成事务终结的证据，所以这个数只能由宿主自己留底。
+    //
+    // 取样走 `handles()`（只读）而不是 `drain_handles()`：**注销必须发生在确认之后**，
+    // 而不是发生在请求之前。先清账会让第 2 步的 (b) 变成恒真式——宿主「检查已登记
+    // 句柄为空」，检查的却是自己刚清空的那本账，driver 报 Clean 而宿主仍有活句柄时
+    // 判据 §9.4 要求的那个失败就永远不会发生。
     let registered_before = state.handles.handle_count();
-    let drained = state.handles.drain_handles();
+    let pending: Vec<SessionHandleRef> = state.handles.handles().to_vec();
     let disposition = match mode {
         CloseMode::RequireNoTransaction => HandleDisposition::Commit,
         CloseMode::RollbackAndClose => HandleDisposition::Rollback,
     };
     let mut undecidable: Option<&'static str> = None;
     let mut finalized_total = 0usize;
-    for (resource_id, batch) in group_by_resource(&drained) {
+    for (resource_id, batch) in group_by_resource(&pending) {
         match state
             .backend
             .finalize_handles(FinalizeHandles {
                 resource_id,
-                handles: batch,
+                handles: batch.clone(),
                 disposition,
             })
             .await
         {
             Ok(result) => {
                 finalized_total += result.finalized;
-                undecidable = undecidable.or(classify(result));
+                let cause = classify(result.clone());
+                // 只有后端**逐字确认了这一批**（确认数等于这批的登记数，且没有剩余）
+                // 才从宿主账上注销。少报、多报、`remaining > 0` 一律留着——留着才有
+                // 第 2 步 (b) 那个「宿主自己数一遍」的判据可执行。
+                if cause.is_none() && result.finalized == batch.len() {
+                    state.handles.retire(&batch);
+                }
+                undecidable = undecidable.or(cause);
             }
             Err(_) => undecidable = undecidable.or(Some("handleFinalizeFailed")),
         }
@@ -91,8 +103,11 @@ pub(super) async fn release(
     // 第 2 步：宿主侧归池前检查。两道都过才算数：
     //   a) 后端确认终结掉的句柄数 == 宿主登记的句柄数（没有句柄从账上漏掉）；
     //   b) 释放后宿主账上确实为空。
-    // 少了 (a)，driver 报 Clean 而宿主仍有登记句柄的场景就会静默通过——
-    // 那正是 §9.4 明令「即使 driver 返回 Clean 也不能绕过」的那一种。
+    // 少了 (a)，driver 少报的场景就会静默通过；少了 (b)，两道判据就都只读 driver 的
+    // 数字——而 §9.4 明令「driver 对已交出的句柄没有可见性，其 Clean 不构成事务终结的
+    // 证据」，宿主账必须**自己**数一遍。(a) 与 (b) 并非冗余：driver 一批多报、另一批
+    // 少报而总数正好对平时，(a) 过了，只有 (b) 会失败（见 `registry_release.rs` 的
+    // `driver两批确认数正好对平但宿主账未清空时仍判不可知`）。
     if finalized_total != registered_before
         || !ready_to_return_to_pool(state.handles.handle_count())
     {
@@ -100,7 +115,16 @@ pub(super) async fn release(
     }
 
     // 第 3 步：无论能不能确认终结，物理资源都必须**真正关掉**（§9.4「任一失败都关闭」）。
-    let (close_request, _extra) = close_request_for(
+    //
+    // 这里传的是**释放后**的宿主账：FU2 之前它恒为 0，因为取样用的是 `drain_handles`；
+    // 现在它如实反映「还有句柄没被确认终结」，`CloseResource.registered_handles`
+    // 因此成为这条判据在后端请求形状上的可观测面。
+    //
+    // `close_request_for` 的第二项（「先去补发一次终结」）在这里被显式丢弃：第 1 步已经
+    // 对**每个**登记句柄按批次发过一次终结请求，账上剩下的正是那批**没被确认**的句柄，
+    // 再发一遍只是把同一个不可判定的命运重掷一次骰子。§9.4 对「确认不了」的处置是
+    // **关闭 + 如实记 `Undecided`**，不是重试。丢弃的理由写在丢弃点上。
+    let (close_request, _retry_finalize) = close_request_for(
         physical.resource_id.clone(),
         state.handles.handle_count(),
         Vec::new(),

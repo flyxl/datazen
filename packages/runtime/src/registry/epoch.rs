@@ -44,6 +44,31 @@ impl RuntimeEpoch {
     pub const fn matches(self, handle: &SessionHandle) -> bool {
         handle.runtime_epoch.get() == self.0.get()
     }
+
+    /// 本世代的**目录侧字符串**表示。走的是 [`epoch_string`] 那一份实现。
+    pub fn to_directory_string(self) -> String {
+        epoch_string(self.get())
+    }
+}
+
+/// 运行时世代号 → 目录/契约侧的字符串。**全仓唯一的格式化实现**。
+///
+/// ## 为什么这个函数必须存在于生产侧、而且是唯一的落点
+///
+/// 目录侧的 `RuntimeEpoch` 是**字符串**（`platform-api` 的 newtype），登记表侧是
+/// `Counter(u64)`。替换编排的幂等判据靠把 `Counter` 投影成字符串后与目录里那一份
+/// **逐字比对**（`registry/context.rs` 的 `epoch_of(..) == handle.runtime_epoch`）：
+/// 两边各写一份格式化，一旦其中一份改了字面量（前缀、补零宽度），比对就**永远不相等**，
+/// 幂等短路于是把「已提交且已发布」的正常重放误判成孤儿态并拒绝发回执——这不是假想的
+/// 洁癖，而是「两端必须逐字一致」这句话此前**只由注释担保**的状态。
+///
+/// 测试替身（`tests/registry_fixtures/mod.rs`）此前也自己写了一份 `format!("rte-{:08}", …)`。
+/// 现在它**调用本函数**：生产格式变了，夹具跟着变，两端不可能漂移；而格式本身是
+/// 协议可见事实（`application/convert.rs` 用 `strip_prefix("rte-")` 反向解析），
+/// 所以另有 `epoch_string_keeps_the_wire_shape` 一例把它的**取值**（前缀 + 补零宽度）
+/// 钉在字面量上。两条合起来才既消除重复、又不让格式变成任意值。
+pub fn epoch_string(epoch: u64) -> String {
+    format!("rte-{:08}", epoch)
 }
 
 /// 对外投影的两种可能结果。
@@ -157,6 +182,8 @@ pub fn fold_exit(fact: ExitFact<'_>) -> ExitProjection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::Path;
 
     /// 会话层事实 → 期望投影的**整表**（§4.4 表格驱动）。
     fn session_rows() -> Vec<(RuntimeError, ExitProjection)> {
@@ -386,5 +413,148 @@ mod tests {
         assert!(!epoch.matches(&handle), "陈旧世代不得命中当前登记");
         handle.runtime_epoch = Counter::new(4);
         assert!(!epoch.matches(&handle), "未来世代同样不命中");
+    }
+
+    /// FU7：目录侧字符串的**取值**必须钉在协议字面量上。
+    ///
+    /// 这条钉的不是「两端用了同一个函数」（那由 `epoch_string` 是唯一实现保证），
+    /// 而是**格式本身**：前缀 `rte-` + 8 位补零。为什么这是协议可见事实而不是内部细节：
+    /// `application/convert.rs` 的 `handle()` 用 `strip_prefix("rte-")` **反向解析**它，
+    /// 目录侧拿它当 `RuntimeEpoch` 的线上值。改成别的写法（换前缀、改补零宽度）会让
+    /// 反向解析静默失败，而生产侧与测试侧共用一份实现之后，**没有任何一条既有用例**
+    /// 会因为格式变了而变红——共用实现消除了漂移，却把「格式变了没人喊」这件事
+    /// 从「两处各测一次」变成「一处都不测」。所以这一条必须存在，且必须钉字面量。
+    #[test]
+    fn epoch_string_keeps_the_wire_shape() {
+        assert_eq!(epoch_string(0), "rte-00000000");
+        assert_eq!(epoch_string(1), "rte-00000001");
+        assert_eq!(epoch_string(7), "rte-00000007");
+        assert_eq!(epoch_string(12345678), "rte-12345678");
+        // 补零宽度是 8：超过 8 位时**不截断**（截断会让两个不同世代撞成同一个字符串，
+        // 而幂等判据比的正是这个字符串）。
+        assert_eq!(epoch_string(123456789), "rte-123456789");
+        // 反向解析那一侧的口径：`strip_prefix("rte-")` + `parse::<u64>()` 必须能回来。
+        for epoch in [0u64, 1, 7, 12345678, 123456789] {
+            let text = epoch_string(epoch);
+            let parsed = text
+                .strip_prefix("rte-")
+                .and_then(|rest| rest.parse::<u64>().ok());
+            assert_eq!(
+                parsed,
+                Some(epoch),
+                "{text} 必须能按 convert.rs 的口径解析回来"
+            );
+        }
+    }
+
+    /// 方法与 [`epoch_string`] **当前给出同样的字符串**。
+    ///
+    /// 这条钉的是「两端今天一致」，**不是**「方法在源码上就是那一个函数体」：把
+    /// `to_directory_string` 内联成一份**逐字相同**的 `format!` 时，两边仍然相等，
+    /// 本条照样绿（实测过，见 [`epoch_formatter_has_one_implementation_in_track`]）。
+    /// 值的比较在原理上就抓不到「同一份实现被复制成两份」，所以「结构上只有一份」
+    /// 必须另有一条判据，不能由本条代劳。
+    #[test]
+    fn epoch_method_agrees_with_the_single_formatter() {
+        for epoch in [0u64, 1, 7, 99, 12345678] {
+            assert_eq!(
+                RuntimeEpoch::new(epoch).to_directory_string(),
+                epoch_string(epoch),
+                "两端必须逐字一致：幂等短路判据就是拿这个字符串跟回执里的比"
+            );
+        }
+    }
+
+    /// 本轨道内，「目录侧世代字符串」**只有一份格式化实现**——用扫描源码钉住。
+    ///
+    /// 为什么必须是源码扫描而不是比值：把某个调用点改成内联一份**逐字相同**的
+    /// `format!`，所有比值断言仍然全绿（`epoch_method_agrees_with_the_single_formatter`
+    /// 就是这么活下来的），而 FU4 的真实缺陷**恰恰是这个形状**——`context.rs` 与
+    /// 测试夹具各写了一份 `format!("rte-{:08}", …)`，两端「必须逐字一致」当时只靠
+    /// 注释担保。所以防复发的判据必须看**字面量出现了几次**。
+    ///
+    /// - 扫描范围：`src/registry/**` 与 `tests/` 下名字以 `registry` 开头的文件/目录
+    ///   （后者是本轨道的测试面；`tests/` 下别的 crate 面不属于这里）。
+    /// - 排除本文件：那份实现就在 `epoch.rs` 里，且本文件的文档刻意引述这行字面量。
+    /// - 只看**非注释行**：文档与注释里为了说明「曾经有第二份」也会写出这行字面量，
+    ///   把注释算进来就会让本条在没有代码缺陷时红。
+    /// - 判据 = 非注释行里出现 `"rte-` + `{:08` 这个组合。**已知漏网**：第二份实现
+    ///   若换一种写法（例如 `{:08x}`）不会被本条抓到；那种改动会先被
+    ///   `epoch_string_keeps_the_wire_shape` 的字面量钉住，所以不是无声的。
+    ///
+    /// **边界之外的已知副本**：`src/application/convert.rs` 的 `public_handle` 仍自带
+    /// 一份 `format!("rte-{:08}", …)`（把 runtime 世代投影成平台 API 的线上值）。它不在
+    /// 本轨道的文件面内（`src/registry/**`），本轨道不修，已作为待裁定项交给集成方；
+    /// 收敛动作是把它改成调用 `registry::epoch::epoch_string`。本条按路径前缀把它排除在
+    /// 扫描外——**不是**把它列进白名单，所以它一旦被修好，本条不需要改。
+    #[test]
+    fn epoch_formatter_has_one_implementation_in_track() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let needle: String = ["\"rte-", "{:08"].concat();
+        let mut hits: Vec<String> = Vec::new();
+        let registry_root = root.join("src/registry");
+        collect_epoch_format_literals(&registry_root, &registry_root, &needle, false, &mut hits);
+        let tests_root = root.join("tests");
+        collect_epoch_format_literals(&tests_root, &tests_root, &needle, true, &mut hits);
+        assert!(
+            hits.is_empty(),
+            "世代字符串的格式字面量在本轨道内只能出现在 epoch.rs 一处，\
+             这些文件里又各自写了一份：{hits:?}。它们必须改成调用 \
+             registry::epoch::epoch_string，否则两端又会各自漂移"
+        );
+    }
+
+    /// 见 [`epoch_formatter_has_one_implementation_in_track`]。
+    ///
+    /// `root` 是本次扫描的根（递归时不变），`only_registry_named` = true 时只收「相对
+    /// **根**的第一段名字以 `registry` 开头」的文件——`tests/` 是整个 runtime crate 的
+    /// 测试面，本轨道只占其中一部分（`tests/registry_fixtures/` 这种二级目录按目录名算）。
+    fn collect_epoch_format_literals(
+        root: &Path,
+        dir: &Path,
+        needle: &str,
+        only_registry_named: bool,
+        hits: &mut Vec<String>,
+    ) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_epoch_format_literals(root, &path, needle, only_registry_named, hits);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs")
+                || path.file_name().and_then(|name| name.to_str()) == Some("epoch.rs")
+            {
+                continue;
+            }
+            let owned_scope = match path.strip_prefix(root) {
+                Ok(rel) => rel
+                    .components()
+                    .next()
+                    .map(|first| first.as_os_str().to_string_lossy().into_owned())
+                    .is_some_and(|first| first.starts_with("registry")),
+                Err(_) => false,
+            };
+            if only_registry_named && !owned_scope {
+                continue;
+            }
+            let Ok(text) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let hit = text
+                .lines()
+                .any(|line| !line.trim_start().starts_with("//") && line.contains(needle));
+            if hit {
+                hits.push(
+                    path.strip_prefix(Path::new(env!("CARGO_MANIFEST_DIR")))
+                        .unwrap_or(path.as_path())
+                        .display()
+                        .to_string(),
+                );
+            }
+        }
     }
 }
