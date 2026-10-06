@@ -98,8 +98,18 @@ mod tests {
             .collect()
     }
 
+    // `parameterized_writes` is what makes the mock render a placeholder at
+    // all; the sigil itself comes from the driver (`?n` here, `$n` on
+    // postgres), so what these tests pin down is the *index order*, which is
+    // the part `select_by_key_sql` owns.
     fn postgres() -> Arc<MockDriver> {
-        MockDriver::new("postgresql", MockDriverOptions::default())
+        MockDriver::new(
+            "postgresql",
+            MockDriverOptions {
+                parameterized_writes: true,
+                ..MockDriverOptions::default()
+            },
+        )
     }
 
     #[test]
@@ -116,7 +126,7 @@ mod tests {
         )
         .expect("a relation with a primary key must produce a keyed read");
         assert_eq!(
-            sql, r#"SELECT "id", "name" FROM "app"."users" WHERE "id" = $1 ORDER BY "id""#,
+            sql, r#"SELECT "id", "name" FROM "app"."users" WHERE "id" = ?1 ORDER BY "id""#,
             "the predicate must bind the reviewed key and never widen to a scan"
         );
     }
@@ -136,7 +146,7 @@ mod tests {
         .expect("a composite key must produce a keyed read");
         assert_eq!(
             sql,
-            r#"SELECT "id", "name" FROM "app"."public"."users" WHERE "id" = $1 AND "name" = $2 ORDER BY "id", "name""#,
+            r#"SELECT "id", "name" FROM "app"."public"."users" WHERE "id" = ?1 AND "name" = ?2 ORDER BY "id", "name""#,
             "the executor binds key values positionally, so placeholder indexes must follow key order"
         );
     }
