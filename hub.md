@@ -112,3 +112,18 @@
 - 旧交付树 `.worktrees/datazen-p5-data-sync` 与分支 `feature/p5-data-sync` 已删除（`36d2682c6` 确为 `feature/p5-data-sync-r2` 的祖先，已完全吸收）；顺带清掉游离 worktree `/private/tmp/ta-p5ds-r1.FNG9`。
 - 修复轮已派 coder `fa475e95`（分支 `feature/p5-data-sync-r2`，`CARGO_TARGET_DIR=/tmp/p5-ds-r2-fix-target`），含 D1+收敛、D2、D5，并要求补 **4 个必杀变异**（原 M1 复现、删一个检查点、破 CM-44 播种、破空 PK 守卫）+ 复验 4 个仍被杀变异。
 - **方法论沉淀（本阶段最贵的一条）**：**当一条桥接在架构上已决定退役，就删掉它，而不是写测试去覆盖它。** 两次相反方向的验证（runtime M1 杀死了 209 条基线、数据-sync M1 存活于 1718 条全绿）指向同一条规律：门禁全绿不等于有覆盖，**变异才是判决书**。
+
+### 🔴 跨轨事实：`--drivers=basic` 与 `--drivers=all` **不是同一个 DB_REGISTRY**（所有门禁判读的前提）
+
+- 由硬化轨实例 `7c83fa5b` 报出、**已独立核实** `scripts/new-feature-worktree.sh:41-45` 与 `:512-519`：宿主 `src/lib/databaseTypes.ts:20-22` 直接合并 `generated.ts` 的 `DRIVER_DB_ENTRIES`，而 `generated.ts` 是 **gitignored 本地产物** ⇒ **驱动集一变，同一份宿主单测读到的注册表就变，绿/红与 CI 不可比**。basic = postgres/mysql/sqlite/redis；all 另加 sqlserver/mongodb/clickhouse 等全部 path 驱动。
+- 脚本自带**实测反例**：`tester_tunnelValidationMatrix.test.tsx` 在 basic 下 **29/29 全绿**，同一 worktree 换成 all 后 `:154` 的 `expect(covered).toEqual(registered)` **直接变红**。该脚本历史上把 `--drivers=basic` 写死且不告知调用方，正是「本地绿、CI 红」无从解释的成因；现由 `NEW_WT_DRIVERS` 环境变量显式化。
+- **同段明确：`pnpm typecheck` 不受驱动集影响**（basic 下实测干净）⇒ ① typecheck 通过**不能**反推驱动集已对齐；② typecheck 报「找不到模块 / TS7006 级联」是 **codegen 缺失**，不是驱动集不同，**两者必须分开归因**，否则会把环境问题误判成代码回归。
+- **铺法**（产物全 gitignored，补完 `git status --porcelain` 必须仍为空）：`resolve-drivers.mjs --codegen-only --drivers=all` + `generate-builtin-locales.mjs` + `generate-menu-labels.mjs` + `mkdir src-tauri/resources/builtin-ep`。
+- ⚠️ **对既有 P5 数字的追认**：集成分支合并门禁、各轨 Tester 的宿主单测数字，**都是在 basic 语义下取得的**，其结论只能限定在 basic 内，不能用来推断 CI 会不会红。上文「1741 = 1733 + 8」的算术**在同一驱动集内成立**（同集内前后比较），但该数字**不得跨驱动集引用**。Wave-R 最终回归必须统一按 `--drivers=all` 重铺后重跑。
+- 已广播给在飞的两轨（`7c83fa5b`、`fa475e95`），并要求在报告里标注所用驱动集、且**基线与该次变异必须同一驱动集**——否则「变红/存活」的判决同样失效。
+
+### ⚠️ 勘误：`active_cancel_watchers()` **不能**区分「自行 return」与「被 abort 回收」
+
+- 我在两份任务书里都写了括号「若看护者已退出，计数会是 0」——**这句是错的**，硬化轨实例 `7c83fa5b` 指出后已逐行核实成立：`packages/runtime/src/job/runtime.rs:318` `spawn` 做 `live.fetch_add(1)`，**只有** `impl Drop for CancelWatch`（`:335`、`:342`）才 `fetch_sub(1)`；而 `run_stage_watched`（`:280`）在 `:288` 以 `let watch = CancelWatch::spawn(...)` **把句柄留在 dispatch 栈上，并未 move 进 tokio 任务**。故 `active_cancel_watchers() == 1` 只表示 **dispatch 仍持有句柄**，轮询循环自行 `terminal => return` 退出时计数**仍是 1**。
+- 唯一正确的判据是**组合式**：在阶段仍被 hold 的同一窗口内，`active_cancel_watchers() >= 1` 证明句柄未被 Drop ⇒ **不是 abort 回收**（`runtime.rs:275` 注释亦确认 Drop 正是「只 abort 不 await」那条回收路径）；同时 `get_calls()` **冻结** ⇒ 轮询**自己停了**。二者缺一即为空洞断言。
+- **教训**：计数器的语义必须由**谁持有、在哪一步增减**反推，不能由名字猜。`active_*_watchers` 命名上像在数"活着的任务"，实际数的是"未 Drop 的句柄"。
