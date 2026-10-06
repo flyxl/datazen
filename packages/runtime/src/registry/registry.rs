@@ -1,4 +1,4 @@
-//! §4 / §7 会话登记表：进程内登记、仲裁与额度的**唯一持有者**。
+//! 会话登记表：进程内登记、仲裁与额度的**唯一持有者**。
 //!
 //! ## 登记表不是锁住整张表
 //!
@@ -13,20 +13,20 @@
 //! ```
 //!
 //! 换成「一把大锁串行整个登记表」会得到一个能跑但错误的实现：会话 A 的
-//! 慢查询会把会话 B 的取消请求一起锁住，而 §6.3 要求控制旁路在飞行中必须可服务。
+//! 慢查询会把会话 B 的取消请求一起锁住，而控制旁路在飞行中必须可服务。
 //!
 //! | 文件 | 职责 | 关键约束 |
 //! | --- | --- | --- |
 //! | `mod.rs` | 对外门面与转出 | 只转出，不重定义端口侧取值 |
 //! | `registry.rs` | 登记表 / 额度 / 审计泵 + `SessionPort` 实现 | 锁不跨 await |
 //! | `actor.rs` | 单会话仲裁器 | 会话内串行，跨会话并行 |
-//! | `handles.rs` | §6.5 句柄登记与取消绑定 | 两条独立的表 |
-//! | `epoch.rs` | runtimeEpoch 归属与 D-02 出口折叠 | 纯函数 |
-//! | `audit.rs` | CM-72 审计条目 | 只存线上字面量 |
+//! | `handles.rs` | 句柄登记与取消绑定 | 两条独立的表 |
+//! | `epoch.rs` | runtimeEpoch 归属与错误出口折叠 | 纯函数 |
+//! | `audit.rs` | 审计条目 | 只存线上字面量 |
 //! | `backend.rs` | 物理资源端口 | driver 对已交出的句柄没有可见性 |
-//! | `receipt.rs` | D-01 `CancelReceipt` | 三处置 |
+//! | `receipt.rs` | 取消回执 `CancelReceipt` | 三处置 |
 //!
-//! ## 登记的三个「不得」（CM-74 / §4.1）
+//! ## 登记的三个「不得」
 //!
 //! 1. 物理资源进入 Routable **之前**不得把会话放进可见表——否则「已登记」会被当成「可用」。
 //! 2. 登记失败**不得**留下表项：调用方拿不到成功，也查不到一个半成品会话。
@@ -60,7 +60,7 @@ use crate::registry::epoch::RuntimeEpoch;
 use crate::registry::port::SessionPort;
 use crate::registry::receipt::CancelReceipt;
 
-// §6.4 空闲驱逐的账目表见 evict.rs；留在 registry.rs 里只会淹没在 800 行上下。
+// 空闲驱逐的账目表见 evict.rs；留在 registry.rs 里只会淹没在 800 行上下。
 mod evict;
 
 /// 锁中毒不该把会话登记表带走：被毒化的锁里没有不一致状态，只有一个没写完的临界区，
@@ -76,7 +76,7 @@ fn guard<T>(result: std::sync::LockResult<T>) -> T {
 #[derive(Clone)]
 pub(super) struct SessionRecord {
     pub(super) db_session_id: DbSessionId,
-    /// §12 / §4.4：epoch 是旧请求的**唯一**归属依据，也是 D-02 折叠的输入。
+    /// epoch 是旧请求的**唯一**归属依据，也是错误出口折叠的输入。
     runtime_epoch: RuntimeEpoch,
     worker_id: WorkerId,
     pub(super) actor: SessionActor,
@@ -124,9 +124,9 @@ impl Table {
     }
 }
 
-/// §9.3 额度账。
+/// 额度账。
 ///
-/// `outstanding` **包含**尚未确认隔离的陈旧占用。这是 CM-58 的全部要害：
+/// `outstanding` **包含**尚未确认隔离的陈旧占用。这是额度账的全部要害：
 /// worker 崩溃不等于它的连接已经关掉，账上留着这份额度直到隔离确认，
 /// 才不会在网络分区期间把同一批物理连接超额发出去。
 pub(super) struct QuotaLedger {
@@ -252,7 +252,7 @@ pub struct SessionRegistry {
 }
 
 impl SessionRegistry {
-    /// 新建登记表。`session_limit` 是**会话数**上限，与 §9.3 的连接额度分开计。
+    /// 新建登记表。`session_limit` 是**会话数**上限，与连接额度分开计。
     pub fn new(backend: Arc<dyn SessionBackend>, session_limit: usize) -> Self {
         let (outbox, sink_rx) = mpsc::unbounded_channel();
         Self {
@@ -271,15 +271,15 @@ impl SessionRegistry {
         self.session_limit
     }
 
-    /// CM-58 的**查询端口**：剩余可登记会话数。
+    /// 额度账的**查询端口**：剩余可登记会话数。
     ///
-    /// 只提供查询，不实现 Job——Job 的受理、claim、恢复核验属于 §10 的另一条轨道，
+    /// 只提供查询，不实现 Job——Job 的受理、claim、恢复核验属于另一条轨道，
     /// 本轨道不越界造一个半成品 Job 出来。
     pub fn remaining_quota(&self) -> usize {
         self.quota.remaining()
     }
 
-    /// 某 worker 尚被扣住但未确认隔离的会话数（CM-58 的可观测面）。
+    /// 某 worker 尚被扣住但未确认隔离的会话数（额度账的可观测面）。
     pub fn stale_quota_for(&self, worker_id: &WorkerId) -> usize {
         self.quota.stale_held(worker_id)
     }
@@ -302,13 +302,13 @@ impl SessionRegistry {
     }
 
     /// 会话是否已登记。**只认已登记**，`opening` 里「正在打开」的不算——
-    /// 那正是 §4.1「登记不得先于 Routable」的可观测面。
+    /// 那正是「登记不得先于 Routable」的可观测面。
     pub fn is_registered(&self, db_session_id: &DbSessionId) -> bool {
         self.audit.pump();
         self.read_table().contains(db_session_id)
     }
 
-    /// §12 / D-02：登记表侧记录的世代号。
+    /// 登记表侧记录的世代号。
     ///
     /// 单会话的 epoch 权威归属在 actor 里；这里保留一份是给**登记表级**判定用的：
     /// worker 租约失效时需要按 epoch 区分「这个会话属于失效的那个世代」，
@@ -335,7 +335,7 @@ impl SessionRegistry {
             .ok_or_else(|| RuntimeError::UnknownSession(db_session_id.to_string()))
     }
 
-    /// §4.1 / CM-74：登记一个会话。
+    /// 登记一个会话。
     ///
     /// 顺序不可调换：先占 id、再占额度、再打开物理资源，只有拿到投影之后才放进
     /// 可见表。任何一步失败都**不留痕**——没有表项、没有半开额度、没有占位。
@@ -422,10 +422,10 @@ impl SessionRegistry {
         opening.retain(|held| held != db_session_id);
     }
 
-    /// §7.4-6：§12 原子切换**之后**才把候选放进可见表。
+    /// 原子切换**之后**才把候选放进可见表。
     ///
     /// 与 [`open_and_publish`](Self::open_and_publish) 的差别全在这一句：候选在
-    /// §12 切换之前对宿主**不可见**，切换之后才插表，于是没有任何入口能在切换前
+    /// 切换之前对宿主**不可见**，切换之后才插表，于是没有任何入口能在切换前
     /// 定位到它。表项形状是 `registry` 的私有事实，所以这条留在本文件，
     /// 与 [`crate::registry::candidate`] 里的四条原语配套。
     pub(super) fn publish_candidate(
@@ -459,12 +459,12 @@ impl SessionRegistry {
         removed
     }
 
-    /// §12 / CM-58：协调器租约失效后，把该 worker 名下的会话全部作废。
+    /// 协调器租约失效后，把该 worker 名下的会话全部作废。
     ///
     /// 作废**不归还额度**：这些连接还在别处活着，隔离确认之前这份额度不能发出去。
     /// 归还由 [`SessionRegistry::confirm_worker_quarantined`] 完成。
     ///
-    /// ## 三种结果，三种动作（D-R2-2）
+    /// ## 三种结果，三种动作
     ///
     /// 控制旁路的答复分三种，它们对「要不要摘表项」的影响完全不同：
     ///
@@ -479,9 +479,9 @@ impl SessionRegistry {
     /// `state.physical.is_none()`，而 `owned_by` 只按 worker 筛，所以任何一条
     /// 「行在册、actor 活着、物理资源已经没了」的记录都会落到这一格。
     /// 造它最干净的入口是候选原语：`open_candidate` → `destroy_candidate`（走
-    /// §9.4 把物理资源清掉）→ `publish_candidate`（把这条插进可见表）。
+    /// 释放例程把物理资源清掉）→ `publish_candidate`（把这条插进可见表）。
     ///
-    /// ⚠ 此前这一格的构造靠的是**驱逐的一处缺陷**：§9.4 在物理层关不掉时**先**把
+    /// ⚠ 此前这一格的构造靠的是**驱逐的一处缺陷**：释放例程在物理层关不掉时**先**把
     /// `physical` 清空再返回 `SessionLost`，而 `evict_idle_at` 当时收不到成功视图就
     /// 跳过摘行，于是留下一条「资源已清空、行还在表里」的记录。那条缺陷已由
     /// [`SessionRegistry::evict_idle_at`] 的逐向判别闭合（`SessionLost` ⇒ 摘表还额度），
@@ -504,7 +504,7 @@ impl SessionRegistry {
     /// 因此**摘表项不可能造成 `Err`**——摘行只会多丢一份克隆，丢的是表里那份。
     ///
     /// 能造出 `Err` 的只剩 actor 任务异常终止（panic / abort 把 `exec_rx` 一起丢掉）。
-    /// 现实里最常见的一种是**驱动回调把 actor 任务带走**：§9.4 在任务内部直接
+    /// 现实里最常见的一种是**驱动回调把 actor 任务带走**：释放例程在任务内部直接
     /// `await backend.close(..)`，回调一崩，展开就在回执发出去之前把它丢掉，
     /// `control()` 于是拿到 `Err`（这一格由 `投递失败保留表项_额度不挂stale等重投` 钉住）。
     /// 类型系统挡不住这件事，注释也挡不住。所以这里选择把「正常路径不可能」
@@ -516,7 +516,7 @@ impl SessionRegistry {
         let targets = self.read_table().owned_by(worker_id);
         let mut lost = Vec::new();
         for record in targets {
-            // 控制旁路（§6.3）：即使此刻有执行在飞行，租约失效也必须立刻送达。
+            // 控制旁路：即使此刻有执行在飞行，租约失效也必须立刻送达。
             let delivered = match record
                 .actor
                 .control(|reply| ControlCommand::InvalidateWorker {
@@ -558,7 +558,7 @@ impl SessionRegistry {
         lost
     }
 
-    /// CM-58：隔离确认后归还该 worker 的陈旧额度，返回归还的会话数。
+    /// 隔离确认后归还该 worker 的陈旧额度，返回归还的会话数。
     pub fn confirm_worker_quarantined(&self, worker_id: &WorkerId) -> usize {
         self.audit.pump();
         let released = self.quota.confirm_quarantined(worker_id);
@@ -589,7 +589,7 @@ impl SessionRegistry {
         });
     }
 
-    /// §7.6 取消（登记表侧）—— **D-01 的正式落点**：返回三字段
+    /// 取消（登记表侧）—— **取消回执形状缺口的正式落点**：返回三字段
     /// [`CancelReceipt`]（`{ executionId, disposition, state }`），
     /// 让「不支持取消」与「已是终态」这两种**正常返回**能和真正的取消受理区分开。
     ///
@@ -614,7 +614,7 @@ impl SessionRegistry {
             .await
     }
 
-    /// §7.6 带调用方自带 cancelHandle 的取消入口（CM-24 的伪造面）。
+    /// 带调用方自带 cancelHandle 的取消入口（伪造校验的可测入口）。
     ///
     /// 冻结的 [`SessionPort::cancel_execution`] 形状里没有 `cancelHandle`，
     /// 伪造校验因此**不可能**通过它被触发；本方法是把那条校验暴露成可测的入口。
@@ -639,7 +639,7 @@ impl SessionRegistry {
             .await
     }
 
-    /// §7.5 关闭会话（登记表侧）。
+    /// 关闭会话（登记表侧）。
     ///
     /// 释放顺序由 [`crate::registry::actor`] 负责：先在原资源上终结已登记句柄，
     /// 再关物理资源，最后才从登记表摘除并归还额度。
@@ -667,11 +667,11 @@ impl SessionRegistry {
                 let _ = state;
                 Ok(())
             }
-            // R-01：`Err` 不是一个语义，**两种**返回对应两种事实：
+            // `Err` 不是一个语义，**两种**返回对应两种事实：
             //
             // * `CloseRejected` 是派发前的拒绝，物理资源原封不动——行与额度必须留着，
             //   否则一次被拒的关闭就凭空造出一个额度（账松了）。
-            // * `SessionLost` 是 §9.4 四步**全部跑完**之后才写出来的：句柄已终结、
+            // * `SessionLost` 是释放例程四步**全部跑完**之后才写出来的：句柄已终结、
             //   物理资源已关闭、绑定已作废、墓碑已落 `Lost`。不可判定的是某个句柄的
             //   命运，不是「有没有关掉」。此时若照 `Err` 就把行留下，额度会**永久**卡死：
             //   上层看到的是「关不掉」，实际上它已经关掉了，重试多少次都是同一个答案。
@@ -702,7 +702,7 @@ impl SessionRegistry {
             .await
     }
 
-    /// §7.2 提交一次执行。冻结端口方法之外的具名入口，便于集成测试直连。
+    /// 提交一次执行。冻结端口方法之外的具名入口，便于集成测试直连。
     pub async fn submit_execution(
         &self,
         request: ExecuteInSessionRequest,
@@ -766,7 +766,7 @@ impl SessionPort for SessionRegistry {
     }
 }
 
-// D-R2-2 的钉子测试放在独立文件里，与 `actor.rs` → `actor/tests.rs` 同一套分工：
+// 钉子测试放在独立文件里，与 `actor.rs` → `actor/tests.rs` 同一套分工：
 // `registry.rs` 已经贴着单文件规模上限，用例再往里塞只会挤掉注释。
 #[cfg(test)]
 mod tests;

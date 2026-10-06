@@ -1,24 +1,24 @@
-//! §6.5 会话级资源句柄登记 + 取消绑定。
+//! 会话级资源句柄登记 + 取消绑定。
 //!
 //! ## 两条独立的表
 //!
 //! | 表 | 装什么 | 生命周期 |
 //! | --- | --- | --- |
-//! | `handles` | §6.5 的 `SessionHandleRef`（事务/游标/服务端预编译） | 直到在**原资源**上被终结 |
+//! | `handles` | `SessionHandleRef`（事务/游标/服务端预编译） | 直到在**原资源**上被终结 |
 //! | `bindings` | 每次执行 → 精确 `cancelHandle` 的绑定 | 直到该执行离开 in-flight |
 //!
 //! 合成一张表是错的：句柄要活到资源关闭，取消绑定只在执行 in-flight 期间有意义。
 //! 一旦合成，取消一个已完成的执行就会把仍然有效的句柄一起清掉，
-//! 宿主账上的「活句柄数」随即失真，§9.4 的归池前检查随之失效。
+//! 宿主账上的「活句柄数」随即失真，归池前检查随之失效。
 //!
 //! ## 登记是内存态，且随 actor 一起死
 //!
-//! §6.5 / §4.5：登记**不落盘**，actor 终止后**不得重建**句柄，
+//! 登记**不落盘**，actor 终止后**不得重建**句柄，
 //! 恢复只能靠显式新建一个 `dbSessionId`。因此本结构体没有任何持久化接口。
 //!
 //! ## 伪造绑定的处理
 //!
-//! 一个过期的 `cancelHandle` 打到**新**的执行上，是 §3.2 L143 明令拒绝的。
+//! 一个过期的 `cancelHandle` 打到**新**的执行上，是明令拒绝的。
 //! 正确处置是拒绝并**保持绑定表不变**——如果顺手把新执行的绑定替换成旧 handle，
 //! 这次取消就会真的打中新执行，而调用方以为自己在取消旧的那次。绑定校验因此是
 //! 纯查表（[`HandleRegistry::check_binding`]），它在**任何后端调用之前**执行。
@@ -31,14 +31,14 @@ use crate::connection::RuntimeError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionBinding {
     pub execution_id: ExecutionId,
-    /// §3.2 L143 的精确 handle。**不进审计**（它是驱动侧的控制凭据）。
+    /// 精确匹配的 handle。**不进审计**（它是驱动侧的控制凭据）。
     pub cancel_handle: String,
     /// 绑定建立时的资源标识。资源被替换后旧绑定自动失效。
     pub resource_id: String,
     pub context_revision: u64,
 }
 
-/// §6.5 句柄登记 + 取消绑定。
+/// 句柄登记 + 取消绑定。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HandleRegistry {
     handles: Vec<SessionHandleRef>,
@@ -50,7 +50,7 @@ impl HandleRegistry {
         Self::default()
     }
 
-    /// §6.5：登记一批句柄。**必须**在把执行终态返回给调用方之前调用。
+    /// 登记一批句柄。**必须**在把执行终态返回给调用方之前调用。
     ///
     /// 返回登记后的宿主账总数。重复的 `handle_id` 整批拒绝——
     /// 「一个 id 只能登记一次」是去重的前提；让重复项混进来，
@@ -68,10 +68,10 @@ impl HandleRegistry {
         Ok(self.handles.len())
     }
 
-    /// 取出并清空全部登记句柄，供在**原资源**上终结（§9.4 释放顺序的第一步）。
+    /// 取出并清空全部登记句柄，供在**原资源**上终结（释放顺序的第一步）。
     ///
     /// ⚠ **不要用这条去做归池前检查。** 它把「取走」和「注销」合成一个动作：账
-    /// 立刻空了，`handle_count()` 之后恒为 0，于是 §9.4「宿主账上还有已登记句柄 ⇒
+    /// 立刻空了，`handle_count()` 之后恒为 0，于是「宿主账上还有已登记句柄 ⇒
     /// 检查必须失败」在这条路径上**永远不可能**被触发——哪怕一个句柄都没被真正终结。
     /// 唯一的释放例程因此改走 [`HandleRegistry::retire`]：只注销**确认终结**的那批。
     /// 这里保留只读的 [`HandleRegistry::handles`] 供终结批次取样。
@@ -81,7 +81,7 @@ impl HandleRegistry {
 
     /// 把**已在原资源上确认终结**的那批句柄从宿主账上注销，其余留在账上。
     ///
-    /// 为什么必须「确认了才注销」而不是「取走就算注销」：§9.4 的归池条件是
+    /// 为什么必须「确认了才注销」而不是「取走就算注销」：归池条件是
     /// **宿主自己**判定已登记句柄为空（driver 对已交出的句柄没有可见性，它的
     /// `Clean` 不构成事务终结的证据）。如果释放例程在发出终结请求之前就把账清空，
     /// 这个判定就被取样动作本身满足了——一个恒真的检查不是检查。留下未确认的句柄，
@@ -122,7 +122,7 @@ impl HandleRegistry {
             .any(|binding| &binding.execution_id == execution_id)
     }
 
-    /// 取消前的绑定校验（§3.2 L143）。
+    /// 取消前的绑定校验。
     ///
     /// 三种拒绝，各自的原因码不同：
     ///
@@ -156,7 +156,7 @@ impl HandleRegistry {
 
     /// 执行离开 in-flight（拿到终态）后清掉它的绑定。
     ///
-    /// 注意：这里**只清绑定，不清句柄**——§6.5 明确执行终态不使句柄失效。
+    /// 注意：这里**只清绑定，不清句柄**——执行终态不使句柄失效。
     pub fn release_execution(&mut self, execution_id: &ExecutionId) {
         self.bindings
             .retain(|binding| &binding.execution_id != execution_id);
@@ -202,7 +202,7 @@ mod tests {
         }
     }
 
-    /// §6.5：执行终态**不使**句柄失效，只有在原资源上终结才清账。
+    /// 执行终态**不使**句柄失效，只有在原资源上终结才清账。
     #[test]
     fn terminal_execution_does_not_invalidate_registered_handles() {
         let mut registry = HandleRegistry::new();
@@ -214,7 +214,7 @@ mod tests {
         assert!(!registry.is_empty());
     }
 
-    /// CM-24：过期的 cancelHandle 打到新执行上必须被拒，且**不产生任何后端调用**。
+    /// 过期的 cancelHandle 打到新执行上必须被拒，且**不产生任何后端调用**。
     ///
     /// 关键在后半句：绑定表必须与请求前逐字相同。
     /// 如果实现顺手把新绑定的 handle 改成旧值，这次取消就会真的打中新执行，
@@ -269,7 +269,7 @@ mod tests {
         );
     }
 
-    /// 句柄取走即清账：`drain_handles` 之后宿主账必为 0（§9.4 放行条件）。
+    /// 句柄取走即清账：`drain_handles` 之后宿主账必为 0（放行条件）。
     #[test]
     fn draining_handles_clears_the_host_ledger() {
         let mut registry = HandleRegistry::new();

@@ -1,8 +1,8 @@
-//! §7.6 取消 —— 走**控制旁路**，绝不排队等执行槽位。
+//! 取消 —— 走**控制旁路**，绝不排队等执行槽位。
 //!
 //! | 顺序 | 判据 | 处置 | 为什么不能换序 |
 //! | --- | --- | --- | --- |
-//! | 1 | epoch 对不上 | `Err` | 旧世代请求不得碰新会话的执行（§12.1） |
+//! | 1 | epoch 对不上 | `Err` | 旧世代请求不得碰新会话的执行 |
 //! | 2 | 该执行正在本会话内飞行，但 driver 无独立控制路径 | `unsupported`（**正常返回**） | 「不支持」不是「失败」；把它变成 Err 会让调用方误以为要重试 |
 //! | 3 | 该执行正在飞行、但取消句柄尚未公布 | `requested` + 排队 | 排队期间状态置 `cancelRequested`，句柄一到就地下发——空头支票必须被兑现 |
 //! | 4 | 调用方自带 `cancelHandle` 与登记绑定不符 | `Err(CancelFailed)` | 伪造的绑定必须**一个后端调用都不产生** |
@@ -88,7 +88,7 @@ pub(super) async fn cancel(
         .is_some_and(|active| active.execution_id == execution_id);
 
     if in_flight_here {
-        // §7.6：driver 没有独立取消路径时回 `unsupported`——这是**正常返回**，不是 Err。
+        // driver 没有独立取消路径时回 `unsupported`——这是**正常返回**，不是 Err。
         // 把它变成 Err 会让调用方误以为取消失败、需要重试。
         if !physical.driver_supports_cancel {
             // state 报**真实**的飞行状态（Running），不是 CancelRequested：
@@ -126,7 +126,7 @@ pub(super) async fn cancel(
             ));
         };
 
-        // §3.2 L143：伪造的绑定必须被拒，且**不改动**绑定表、不产生任何后端调用。
+        // 伪造的绑定必须被拒，且**不改动**绑定表、不产生任何后端调用。
         // 调用方自带 handle 时逐字比对；自带 `None` 时用 actor 自己登记的绑定，
         // 两条路径都比对**同一个** `bound`——冻结端口形状不同，不等于校验可以更松。
         if claimed_cancel_handle

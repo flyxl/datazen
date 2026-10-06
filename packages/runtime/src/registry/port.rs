@@ -1,21 +1,19 @@
-//! `SessionPort` —— registry 接缝的契约本体（shared-boundaries-and-ports.md §4 的端口约定）。
+//! `SessionPort` —— registry 接缝的契约本体。
 //!
-//! **为什么是 trait 而不是具体类型**：P3 Wave 2 的 `p3-registry` 负责实现它，
-//! `p3-gateway` 负责消费它。两条轨道并行开发时唯一的共同前提就是这一个 trait 的签名，
+//! **为什么是 trait 而不是具体类型**：registry 侧负责实现它，gateway 侧负责消费它。
+//! 两条轨道并行开发时唯一的共同前提就是这一个 trait 的签名，
 //! 所以本文件里**不允许**出现任何实现体、任何结构体状态、任何 `tokio` 运行时对象。
 //!
 //! **四条纪律**（缺一条就是接缝失效，不要为了图省事放宽）：
 //!
 //! 1. **签名里只有冻结类型**：`crate::connection::*` 的 DTO 与 `datazen_platform_api` 的 ID
-//!    newtype。禁止裸 `String` 当 id（§4），禁止引用资源层租约/预算协调器的**实现**。
+//!    newtype。禁止裸 `String` 当 id，禁止引用资源层租约/预算协调器的**实现**。
 //! 2. **只报事实，不做判定**：本端口返回 `RuntimeError`，由更外层决定它是
 //!    `ApiError`/`ExecutionErrorCode` 还是根本不该上线路（见 `RuntimeError::api_code`）。
 //! 3. **不泄露内部结构**：不返回 actor 邮箱、不返回登记表的锁、不返回资源句柄。
 //! 4. **失败不留半状态**：任何 `Err` 都意味着这次调用对 registry 的可见状态**没有**改变，
 //!    或者改变已被本调用自己撤销。调用方据此可以直接重试而不必先查询。
 //!
-//! 拒绝语义的权威来源是 connection-management.md §6.1（状态机）、§6.3（锁与队列）、
-//! §7.2/§7.5/§7.6（三个方法的处理顺序）。
 
 use std::sync::Arc;
 
@@ -33,10 +31,10 @@ use crate::connection::{
 /// 因此**禁止**给本 trait 加泛型方法、返回 `Self` 的方法或 `Sized` 约束的方法。
 #[async_trait]
 pub trait SessionPort: Send + Sync + 'static {
-    /// 读取会话当前投影（§6.1 的状态、§6.4 的 attachment 与到期点、§6.3 的 `contextRevision`）。
+    /// 读取会话当前投影：状态、attachment 与到期点、`contextRevision`。
     ///
     /// 这是唯一的读路径：调用方判断「能不能执行」必须以本方法的返回为准，
-    /// 而不是从自己缓存的 `SessionView` 推。§12.1 要求旧 session 的事件不得更新新会话，
+    /// 而不是从自己缓存的 `SessionView` 推。旧 session 的事件不得更新新会话，
     /// 因此返回的 `handle` 必须与传入的句柄**逐字段相等**，实现方不得改写它。
     ///
     /// 失败条件：`RuntimeError::UnknownSession`（句柄不在表中，或 `runtime_epoch`
@@ -45,17 +43,17 @@ pub trait SessionPort: Send + Sync + 'static {
     /// 区分「重建会话」和「重试同一会话」，把它们变成 `Err` 会逼调用方盲猜。
     async fn session_view(&self, handle: &SessionHandle) -> Result<SessionView, RuntimeError>;
 
-    /// 在既有会话内提交一次执行（§7.2 全部 11 步）。
+    /// 在既有会话内提交一次执行。
     ///
     /// 返回的是**接受回执**，不是执行结果：`Ok(receipt)` 只表示请求已受理、
-    /// `executionId` 已生成（§7.2 第 3 步），`SQL` 是否成功要等终态事件或 `getExecution`。
+    /// `executionId` 已生成，`SQL` 是否成功要等终态事件或 `getExecution`。
     ///
-    /// `request.expected_context_revision` 是乐观并发闸门（§6.3 末段）：实现方必须在
+    /// `request.expected_context_revision` 是乐观并发闸门：实现方必须在
     /// **真正执行前**再比一次，不能只在入队时比一次。
     ///
-    /// 失败条件：`UnknownSession`；`SessionLost` / `SessionClosed`（§7.2 第 5 步的
-    /// 「明确失败」）；`ContextRevisionMismatch`（携带服务端实际值，供调用方重读后由用户重发，
-    /// 见 §13 `ContextConflict` 的调用者动作）；`BudgetExhausted`；`SessionQuarantined`。
+    /// 失败条件：`UnknownSession`；`SessionLost` / `SessionClosed`（**明确失败**）；
+    /// `ContextRevisionMismatch`（携带服务端实际值，供调用方重读后由用户重发）；
+    /// `BudgetExhausted`；`SessionQuarantined`。
     async fn execute_in_session(
         &self,
         request: ExecuteInSessionRequest,
@@ -70,7 +68,7 @@ pub trait SessionPort: Send + Sync + 'static {
         self.execute_in_session(request).await
     }
 
-    /// 请求取消一次执行（§7.6），返回**本次取消落地后的执行状态快照**。
+    /// 请求取消一次执行，返回**本次取消落地后的执行状态快照**。
     ///
     /// 失败条件：`UnknownSession`；`CancelFailed`（取消绑定与
     /// `executionId`/`runtimeEpoch`/`resourceBindingId` 对不上，或 driver 独立控制路径不可达）。
@@ -82,13 +80,13 @@ pub trait SessionPort: Send + Sync + 'static {
     /// 本方法照它实现。冻结契约是仲裁方：端口改宽不要紧，窄了会让冻结基线**编译不过**，
     /// 而 `git merge` 看不见这种破坏（两边都是合法 Rust，签名才是不兼容的那一半）。
     ///
-    /// 仓库内对这条形状有两道钉子，覆盖的档位不同（D-R2-1）：
+    /// 仓库内对这条形状有两道钉子，覆盖的档位不同：
     /// [`frozen_port_cancel_shape`] 是**编译期**钉子，住在 `#[cfg(test)]` 之外，
     /// 因此 `cargo build` 与 `cargo test` 都拦得住；冻结契约 `p3_session_port_contract`
     /// 是跨轨仲裁方，只在跑测试时编译。该钉子此前住在 `#[cfg(test)]` 里，
     /// 于是「机械保证」只在测试档位成立——发布用的 `cargo build` 是从那份代码里出来的。
     ///
-    /// **D-01 仍然关闭，但关闭在正确的层**：§7.6 的三层情形——`requested` / `unsupported` /
+    /// **取消回执的形状缺口已在正确的层关闭**：三层情形——`requested` / `unsupported` /
     /// `alreadyFinished`——由 [`crate::registry::CancelReceipt`]（`{ executionId, disposition,
     /// state }`，定义在 [`crate::registry::receipt`]）承载，它由登记表自身的具名入口
     /// `SessionRegistry::cancel_registered` / `SessionRegistry::cancel_execution_bound`
@@ -98,32 +96,31 @@ pub trait SessionPort: Send + Sync + 'static {
     /// | 情形 | `disposition` | `state` | 是否是错误 |
     /// | --- | --- | --- | --- |
     /// | 取消已登记，driver 受理 | `requested` | `cancelRequested` 或更晚的状态 | **不是** |
-    /// | driver 不支持取消 | `unsupported` | 原状态 | **不是**——§7.6 要求它是一次正常返回 |
+    /// | driver 不支持取消 | `unsupported` | 原状态 | **不是**——它是一次正常返回 |
     /// | 执行已是终态 | `alreadyFinished` | 该终态 | **不是** |
     ///
     /// 「不支持取消」用 `Err` 表达是错的：调用方无法把它和「控制通道不可达」区分开，
     /// 而这两件事的处置完全不同（前者照常执行，后者才需要换策略）。
     ///
     /// `disposition = requested` 只表示「取消已被登记」，不表示执行已取消——
-    /// 终态只能由终态事件或 `getExecution` 给出（§7.6 末段）。
+    /// 终态只能由终态事件或 `getExecution` 给出。
     async fn cancel_execution(
         &self,
         handle: &SessionHandle,
         execution_id: &ExecutionId,
     ) -> Result<ExecutionState, RuntimeError>;
 
-    /// 关闭会话（§7.5 全部 7 步）。
+    /// 关闭会话。
     ///
     /// **必须幂等**：对已经 `Closed`（或已 `Lost` 后完成清理）的会话重复调用返回 `Ok(())`，
-    /// 不返回错误也不重复执行回滚/关闭（§6.1「Lost → Closed 幂等」、§7.5 第 1 步
-    /// 「幂等查 tombstone」）。调用方在超时重试后无法区分这两种情况，
+    /// 不返回错误也不重复执行回滚/关闭（先幂等查 tombstone）。调用方在超时重试后无法区分这两种情况，
     /// 非幂等的 close 会让每一次网络重试都可能变成一次重复回滚。
     ///
     /// `mode` 的语义由调用方承担：`RequireNoTransaction` 表示「有活跃/中止/未知事务就拒绝，
     /// 不要替我决定」；`RollbackAndClose` 表示「先取消运行中执行、等停止、回滚、再关闭」。
     ///
     /// 失败条件：`UnknownSession`；`CloseRejected`（`RequireNoTransaction` 撞上
-    /// `Active`/`Aborted`/`Unknown` 事务，对应 §13 `TransactionResolutionRequired`，
+    /// `Active`/`Aborted`/`Unknown` 事务（`TransactionResolutionRequired`），
     /// **此时会话没有被关闭**，调用方可把它交给用户选择处理方式）。
     async fn close_session(
         &self,
@@ -149,7 +146,7 @@ fn assert_object_safe(port: Arc<dyn SessionPort>) -> Arc<dyn SessionPort> {
 /// 这个函数就**编译不过**。它是「端口形状以冻结基线为准」这条规则的机械保证，
 /// 不依赖任何运行时断言，也不会被一次无关的重构顺手删掉。
 ///
-/// **它覆盖的是哪个构建档位（D-R2-1）**：这个钉子必须住在 `#[cfg(test)]` **之外**。
+/// **它覆盖的是哪个构建档位**：这个钉子必须住在 `#[cfg(test)]` **之外**。
 /// 住在里面时它只在 `cargo test` 生效——把本函数的返回类型改成 `Result<(), _>`
 /// 之后实测 `cargo build -p datazen-runtime` 仍然 `EXIT=0`，只有 `cargo test --lib`
 /// 以 `E0308` 失败。也就是说「机械保证」这句话此前只在测试档位成立，
@@ -198,7 +195,7 @@ mod tests {
         view: SessionView,
         executions: Vec<(ExecutionId, ExecutionState)>,
         next_execution: u64,
-        /// fake driver 的独立控制路径是否可达（§7.6 `unsupported` 的来源）。
+        /// fake driver 的独立控制路径是否可达（`unsupported` 的来源）。
         driver_supports_cancel: bool,
     }
 
@@ -207,7 +204,7 @@ mod tests {
             Self::with_cancel_support(view, true)
         }
 
-        /// 造一个**不支持取消**的 fake。§7.6 要求这种情形是一次正常返回，
+        /// 造一个**不支持取消**的 fake。这种情形要求是一次正常返回，
         /// 所以它必须能被接缝层单独构造出来，否则 `unsupported` 分支无人验证。
         fn with_cancel_support(view: SessionView, driver_supports_cancel: bool) -> Self {
             Self {
@@ -220,7 +217,7 @@ mod tests {
             }
         }
 
-        /// §6.1：`Lost`/`Closed` 是两种判定依据不同的终态，必须分别报出，
+        /// `Lost`/`Closed` 是两种判定依据不同的终态，必须分别报出，
         /// 不能塌成一个「会话不可用」。塌了调用方就分不清「重建即可」和「先核验资源」。
         fn terminal_error(view: &SessionView) -> Option<RuntimeError> {
             let id = view.handle.db_session_id.as_str().to_owned();
@@ -231,7 +228,7 @@ mod tests {
             }
         }
 
-        /// §7.6 的完整三字段回执。trait 上只暴露 `state`，处置语义靠本入口才能验证——
+        /// 完整三字段回执。trait 上只暴露 `state`，处置语义靠本入口才能验证——
         /// 这与生产侧 `SessionRegistry::cancel_execution` / `cancel_registered`
         /// 的分工完全一致，避免 fake 比真实实现多知道一层。
         async fn cancel_receipt(
@@ -247,7 +244,7 @@ mod tests {
                 .iter_mut()
                 .find(|(id, _)| id == execution_id)
                 .ok_or(RuntimeError::CancelFailed("unboundExecution"))?;
-            // §7.6：终态优先。已终结的执行再取消不得被改写成 CancelRequested。
+            // 终态优先。已终结的执行再取消不得被改写成 CancelRequested。
             let is_terminal = matches!(
                 slot.1,
                 ExecutionState::Succeeded | ExecutionState::Failed | ExecutionState::Cancelled
@@ -257,7 +254,7 @@ mod tests {
             } else {
                 slot.1 = ExecutionState::CancelRequested;
                 // driver 不支持取消时状态**保持原样**：写成 CancelRequested 会让
-                // 调用方以为「正在取消中」（CM-22）。
+                // 调用方以为「正在取消中」。
                 if supports_cancel {
                     ExecutionState::CancelRequested
                 } else {
@@ -272,7 +269,7 @@ mod tests {
         }
     }
 
-    /// §6.3 末段：客户端 `dbSessionId` **与** `runtimeEpoch` 必须精确匹配。
+    /// 客户端 `dbSessionId` **与** `runtimeEpoch` 必须精确匹配。
     /// 陈旧 epoch 按未知句柄处理——不泄露「资源被换过一次」，也不给旧句柄留后门。
     fn locate(view: &SessionView, handle: &SessionHandle) -> Result<(), RuntimeError> {
         if view.handle != *handle {
@@ -349,7 +346,7 @@ mod tests {
             if let Some(terminal) = Self::terminal_error(&state.view) {
                 return terminal.rejected("executeInSession");
             }
-            // §7.2 第 4 步：真正执行前再比一次 revision，只在入队时比一次是不够的。
+            // 真正执行前再比一次 revision，只在入队时比一次是不够的。
             if request.expected_context_revision != state.view.context_revision {
                 return RuntimeError::ContextRevisionMismatch {
                     expected: request.expected_context_revision.get(),
@@ -359,7 +356,7 @@ mod tests {
             }
             let execution_id = ExecutionId::new(format!("exec_{}", state.next_execution));
             state.next_execution += 1;
-            // 接受即登记（§7.2 第 3 步）：交回回执时 active 标记已经落位。
+            // 接受即登记：交回回执时 active 标记已经落位。
             state.view.state = SessionState::Executing;
             state.view.active_execution_id = Some(execution_id.clone());
             state
@@ -389,11 +386,11 @@ mod tests {
         ) -> Result<(), RuntimeError> {
             let mut state = self.inner.lock().await;
             locate(&state.view, handle)?;
-            // §7.5 第 1 步：关闭态不再接受新请求，但 close 本身幂等。
+            // 关闭态不再接受新请求，但 close 本身幂等。
             if state.view.state == SessionState::Closed {
                 return Ok(());
             }
-            // §7.5 第 2 步：`Unknown` 事务同样挡住 requireNoTransaction。
+            // `Unknown` 事务同样挡住 requireNoTransaction。
             // 把 Unknown 当成「无事务」放行，等于拿一句「已回滚」的谎话换一次成功返回。
             if mode == CloseMode::RequireNoTransaction
                 && state.view.observed_context.transaction_state != TransactionState::None
@@ -405,8 +402,8 @@ mod tests {
         }
     }
 
-    /// A3 接缝的**非平凡**验收：既证明 `Arc<dyn SessionPort>` 这条唯一持有形态成立、
-    /// 四个方法都能穿过 trait 对象真的跑起来，也证明每条失败路径符合 §6/§7 的承诺。
+    /// 接缝的**非平凡**验收：既证明 `Arc<dyn SessionPort>` 这条唯一持有形态成立、
+    /// 四个方法都能穿过 trait 对象真的跑起来，也证明每条失败路径符合这个 trait 的承诺。
     #[tokio::test]
     async fn session_port_dispatches_through_the_trait_object_and_rejects_by_contract() {
         // 1) 对象安全 + 构造：下游两条轨道只能以 trait 对象形态持有 registry。
@@ -426,7 +423,7 @@ mod tests {
         assert_eq!(view.state, SessionState::Ready);
         assert_eq!(view.active_execution_id, None, "空闲会话不得有活动执行");
 
-        // 3) 陈旧 epoch 一律按未知句柄处理（§6.3 末段）。
+        // 3) 陈旧 epoch 一律按未知句柄处理。
         assert_eq!(
             port.session_view(&handle_of("db_session_1", 2)).await,
             Err(RuntimeError::UnknownSession("db_session_1".to_owned())),
@@ -434,7 +431,7 @@ mod tests {
         );
 
         // 4) 乐观闸门：revision 不符必须被拒，且**不留半状态**——
-        //    这是接缝纪律第 4 条，也是「失败后可安全重试」的前提。
+        //    这也是「失败后可安全重试」的前提。
         assert_eq!(
             port.execute_in_session(request(11)).await,
             Err(RuntimeError::ContextRevisionMismatch {
@@ -453,7 +450,7 @@ mod tests {
             "被拒的执行不得把会话推进到 Executing"
         );
 
-        // 5) revision 对齐才受理；回执只表示「已接受」（§7.2 第 3 步）。
+        // 5) revision 对齐才受理；回执只表示「已接受」。
         let receipt = port
             .execute_in_session(request(12))
             .await
@@ -467,7 +464,7 @@ mod tests {
             "交回回执时 active 执行必须已经登记"
         );
 
-        // 6) 取消只登记意图，终态仍由终态事件给出（§7.6 末段）。
+        // 6) 取消只登记意图，终态仍由终态事件给出。
         //    冻结端口只交状态，处置仍在回执里——两者指向同一次取消。
         assert_eq!(
             port.cancel_execution(&handle, &receipt.execution_id).await,
@@ -495,7 +492,7 @@ mod tests {
             Err(RuntimeError::CancelFailed("unboundExecution"))
         );
 
-        // 8) 关闭幂等（§6.1 / §7.5 第 1 步）：重复调用不重复执行回滚。
+        // 8) 关闭幂等：重复调用不重复执行回滚。
         port.close_session(&handle, CloseMode::RollbackAndClose)
             .await
             .expect("回滚关闭应成功");
@@ -508,7 +505,7 @@ mod tests {
         );
     }
 
-    /// §7.5 第 2 步：`requireNoTransaction` 撞上活跃/未知事务必须拒绝且**不关闭**，
+    /// `requireNoTransaction` 撞上活跃/未知事务必须拒绝且**不关闭**，
     /// 把处置权交还调用方；`rollbackAndClose` 才是「我决定，帮我回滚」。
     #[tokio::test]
     async fn close_hands_the_transaction_decision_back_to_the_caller() {
@@ -542,7 +539,7 @@ mod tests {
         }
     }
 
-    /// §7.2 第 5 步：`Lost` 与 `Closed` 都必须**明确失败**，且是两种不同的失败——
+    /// `Lost` 与 `Closed` 都必须**明确失败**，且是两种不同的失败——
     /// 调用方要靠这个区别决定「先核验资源再重建」还是「直接重建」。
     #[tokio::test]
     async fn terminal_sessions_fail_execution_with_distinct_reasons() {
@@ -567,10 +564,10 @@ mod tests {
         }
     }
 
-    /// §7.6 三态回执在接缝层的形状：不支持取消与已是终态都是**正常返回**，
+    /// 三态回执在接缝层的形状：不支持取消与已是终态都是**正常返回**，
     /// 且都必须原样回填 `executionId` 与当时的 `state`。
     ///
-    /// 这一条是 D-01 的回归锁：端口退回 `ExecutionState` 的年代里，
+    /// 这一条是取消回执缺口的回归锁：端口退回 `ExecutionState` 的年代里，
     /// 「driver 不支持取消」和「执行已结束」在返回值上完全一样。
     #[tokio::test]
     async fn cancel_receipt_distinguishes_unsupported_from_already_finished() {
@@ -655,7 +652,7 @@ mod tests {
         );
     }
 
-    /// D-R2-1 的钉子测试：`frozen_port_cancel_shape` 必须对**具体实现**也成立。
+    /// 这道钉子的测试：`frozen_port_cancel_shape` 必须对**具体实现**也成立。
     ///
     /// 这条测试存在的理由不是「再测一遍取消」，而是把两件此前只有注释在说的话
     /// 变成可执行的事实：
@@ -665,7 +662,7 @@ mod tests {
     /// 2. 钉子对**具体的 `impl SessionPort`** 与对 `dyn SessionPort` 同样成立。
     ///    只在替身上成立的那种「形状」不是形状。
     ///
-    /// 档位那一半（D-R2-1 的实质）由 `cargo build -p datazen-runtime` 把关：
+    /// 档位那一半由 `cargo build -p datazen-runtime` 把关：
     /// 钉子已移出 `#[cfg(test)]`，改签会让 dev 档位直接编译失败，而不是等到跑测试才发现。
     #[tokio::test]
     async fn the_cancel_shape_pin_holds_for_the_concrete_port_implementation() {

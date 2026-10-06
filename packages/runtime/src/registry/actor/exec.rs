@@ -1,4 +1,4 @@
-//! §6.3 执行的准入、飞行与收尾。
+//! 执行的准入、飞行与收尾。
 //!
 //! 三件事按顺序发生，缺一不可：
 //!
@@ -6,14 +6,14 @@
 //! | --- | --- | --- |
 //! | 准入 | [`admit_execution`] | epoch、并发度、物理资源、上下文修订，全部**同步**判定 |
 //! | 起飞 | [`start_execution`] | 登记 `in_flight` 与两个 await 点，再把执行体 spawn 出去 |
-//! | 收尾 | [`apply_completion`] | 先登记句柄，**再**把终态交给调用方（§6.5） |
+//! | 收尾 | [`apply_completion`] | 先登记句柄，**再**把终态交给调用方 |
 //!
 //! 执行本体永远**不**被搬出 [`ActorState`]：飞行期间控制旁路要读的正是这份状态，
 //! 一旦主循环把它 `take()` 到局部变量，取消就会落进一个 `in_flight == None` 的窗口里
 //! （见 [`super::InFlight`]）。
 //!
 //! 排队的执行在 [`drain_deferred`] 里出队，条件是「当前没有飞行中的执行」——这就是
-//! CM-20「同会话并发度 1」的全部实现。
+//! 「同会话并发度 1」的全部实现。
 
 use std::sync::Arc;
 
@@ -32,7 +32,7 @@ use crate::registry::backend::{CancelHandleSink, ExecuteOnResource, ResourceExec
 use super::{check_epoch, emit, handle_exec, ActorState, AuditFacts, InFlight, Reply};
 
 /// 保留多少条终态供 `alreadyFinished` 判定。再多只会让这张表变成内存负担：
-/// §7.6 要判定的是**近期刚结束**的执行，不是历史全量。
+/// 这里要判定的是**近期刚结束**的执行，不是历史全量。
 pub(super) const SETTLED_CAP: usize = 16;
 
 pub(super) fn start_execution(
@@ -108,7 +108,7 @@ fn admit_execution(
     if state.physical.is_none() {
         return Err(RuntimeError::SessionClosed(state.db_session_id.to_string()));
     }
-    // CM-20 的「切库竞态」：请求带着旧修订打过来，必须被拒，而不是在新目标上执行。
+    // 「切库竞态」：请求带着旧修订打过来，必须被拒，而不是在新目标上执行。
     if request.expected_context_revision.get() != state.context_revision {
         return Err(RuntimeError::ContextRevisionMismatch {
             expected: request.expected_context_revision.get(),
@@ -158,7 +158,7 @@ pub(super) async fn apply_completion(
         }
     };
 
-    // §6.5：句柄必须**先**登记，再把终态交给调用方。
+    // 句柄必须**先**登记，再把终态交给调用方。
     let register_error = state.handles.register(execution.handles.clone()).err();
     state.context_revision = execution.context_revision;
     state.view.context_revision = Counter(execution.context_revision);

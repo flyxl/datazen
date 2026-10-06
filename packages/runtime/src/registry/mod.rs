@@ -1,4 +1,4 @@
-//! 会话登记表（§6.3 / §6.5 / §7 / §9.4 / §12）。
+//! 会话登记表。
 //!
 //! 进程内、按会话串行 + 跨会话并行的注册与执行仲裁器。
 //! 本模块**拥有** [`SessionPort`] 的实现（`SessionRegistry` 即是那个实现），
@@ -9,13 +9,13 @@
 //! | 文件 | 职责 | 关键约束 |
 //! | --- | --- | --- |
 //! | [`port`] | 冻结契约面 [`SessionPort`] | 一字不改，返回类型以冻结基线为准 |
-//! | [`receipt`] | §7.6 [`CancelReceipt`] | `disposition` 是**控制请求处置**，不是异常 |
+//! | [`receipt`] | [`CancelReceipt`] | `disposition` 是**控制请求处置**，不是异常 |
 //! | [`actor`] | 每会话 actor + 双邮箱 | 串行靠队列，不靠全局锁；控制路径旁路执行队列 |
 //! | [`registry`] | 登记表、配额账、审计账 | 表锁只用来定位/插入，取出 `Arc` 后立即释放 |
 //! | [`backend`] | 物理资源接缝 | 五个方法的调用顺序由 actor 的释放例程保证 |
-//! | [`handles`] | §6.5 句柄登记 + CM-24 取消绑定 | 登记只在内存；伪造绑定零副作用拒绝 |
-//! | [`epoch`] | 世代与 D-02 出口折叠 | 折叠是纯函数且全覆盖 |
-//! | [`audit`] | CM-72 审计条目 | 只带非敏感能力版本；处置与执行终态正交 |
+//! | [`handles`] | 句柄登记 + 取消绑定 | 登记只在内存；伪造绑定零副作用拒绝 |
+//! | [`epoch`] | 世代与错误出口折叠 | 折叠是纯函数且全覆盖 |
+//! | [`audit`] | 审计条目 | 只带非敏感能力版本；处置与执行终态正交 |
 //!
 //! ## 硬约束落在哪
 //!
@@ -23,28 +23,28 @@
 //!   以 `JoinHandle` 携带状态按值离开 actor 循环）。
 //! - **同会话串行 / 跨会话并行**：见 [`actor`] 的两条邮箱——执行队列 FIFO 串行，
 //!   取消/作废走控制邮箱，不排队等 in-flight 结束。
-//! - **不靠配置找一个替代会话**（CM-71 / §6.5）：见 [`registry`] 的 `locate`——
+//! - **不靠配置找一个替代会话**：见 [`registry`] 的 `locate`——
 //!   只有 `dbSessionId` + `runtimeEpoch` **精确匹配**才算命中，配置侧字段不参与查找。
-//! - **端口层返回 `RuntimeError` 而非 `PortError`**（D-05 刻意的分层）：见 [`port`]。
+//! - **端口层返回 `RuntimeError` 而非 `PortError`**（刻意的分层）：见 [`port`。
 //!
 //! ## 本模块不导出
 //!
-//! - `dbSessionId` 的生成与归属校验（§12.1：归 `SessionDirectory`，registry 只消费）；
-//! - actor 邮箱、调度队列、登记表的读写锁（§6.3 的内部实现）；
+//! - `dbSessionId` 的生成与归属校验（归 `SessionDirectory`，registry 只消费）；
+//! - actor 邮箱、调度队列、登记表的读写锁（模块内部实现）；
 //! - 资源层句柄（`ResourceHandle`、Lease、预算许可）；
-//! - 任何 Job 实现（CM-58 只出「剩余配额」查询口，Job 归 gateway 轨道）。
+//! - 任何 Job 实现（本模块只出「剩余配额」查询口，Job 归 gateway 轨道）。
 //!
 //! ## 已知冻结面偏差
 //!
-//! - **D-01 已在正确的层关闭**：§7.6 的三字段 DTO [`CancelReceipt`] 由登记表的具名入口
+//! - **取消回执的形状缺口已在正确的层关闭**：三字段 DTO [`CancelReceipt`] 由登记表的具名入口
 //!   `SessionRegistry::cancel_registered` / `cancel_execution_bound` 返回；冻结的
 //!   [`SessionPort::cancel_execution`] **保持冻结形状** `Result<ExecutionState, RuntimeError>`，
 //!   只交回状态一列。端口形状以冻结契约 `tests/p3_session_port_contract.rs` 为仲裁方：
 //!   端口改宽不要紧，窄了会让冻结基线**编译不过**，而 `git merge` 看不见签名不兼容。
-//! - **D-02 折叠**：[`epoch::fold_exit`] 对 `ProviderError::RuntimeEpochMismatch` 返回
+//! - **出口折叠**：[`epoch::fold_exit`] 对 `ProviderError::RuntimeEpochMismatch` 返回
 //!   `SessionNotFound`，刻意不同于 `ProviderError::api_code()`。
 //! - `connection::port` 里另有一个**同名但 2 字段**的 `CancelReceipt`（缺 `state`）。
-//!   本模块**不**把它转出到 `registry` 命名空间；§7.6 形状以 [`receipt::CancelReceipt`] 为准。
+//!   本模块**不**把它转出到 `registry` 命名空间；形状以 [`receipt::CancelReceipt`] 为准。
 
 pub mod actor;
 pub mod audit;

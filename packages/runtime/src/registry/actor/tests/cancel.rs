@@ -1,4 +1,4 @@
-//! actor 的取消用例：§7.6 / CM-22 / CM-23 / CM-24 与 §4.5 CM-72 审计纪律。
+//! actor 的取消用例：取消判定顺序、取消结论的归属与审计纪律。
 //!
 //! 取消走的是**控制旁路**，所以这些用例里取消命令一律经 `ctrl_tx` 直接投递，
 //! 不经过 `exec_tx` 的执行队列——否则「取消不被执行排队挡住」这件事本身就是
@@ -9,7 +9,7 @@ use super::*;
 use crate::connection::ExecutionState;
 use crate::registry::CancelReceipt;
 
-/// T4 / CM-22：取消请求打在**句柄尚未发布**的窗口里。
+/// 取消请求打在**句柄尚未发布**的窗口里。
 ///
 /// 这是最容易做假的一格：此时根本没有 `cancelHandle` 可递给驱动，一个诚实的
 /// 实现只能先把意图记在 actor 上，等句柄真发布出来再补发——而**不能**谎称已经取消。
@@ -65,7 +65,7 @@ async fn 句柄未发布时的取消先记意图发布后补发一次() {
     assert_eq!(resolved.disposition, Some("requested"));
 }
 
-/// T5 / CM-22：句柄已发布时取消必须**立刻**下发，而且用的是登记绑定。
+/// 句柄已发布时取消必须**立刻**下发，而且用的是登记绑定。
 #[tokio::test(start_paused = true)]
 async fn 已发布句柄的取消立刻下发且用的是登记绑定() {
     let backend = FakeBackend::new(FakeOutcome::default().with_script(Script::TwoStage)).await;
@@ -99,7 +99,7 @@ async fn 已发布句柄的取消立刻下发且用的是登记绑定() {
     assert_eq!(canceled[0].resource_id, "res_7");
 }
 
-/// T6 / CM-24：驱动不支持取消时，宿主返回的是**正常结果**而不是错误，
+/// 驱动不支持取消时，宿主返回的是**正常结果**而不是错误，
 /// 而且执行状态**保持 Running**。
 ///
 /// 两条都是反直觉的，所以单独一格：把 `Unsupported` 塞进 `Err` 会让上层把
@@ -147,9 +147,9 @@ async fn 驱动不支持取消时正常返回不支持且状态不动() {
     assert_eq!(resolved.execution_state, Some("running"));
 }
 
-/// T7 / CM-24：伪造绑定必须被拒，而且**不得**顺手把新执行取消了。
+/// 伪造绑定必须被拒，而且**不得**顺手把新执行取消了。
 ///
-/// 上一次执行留下的 `cancelHandle` 拿着去取消新的执行，是这条 CM 的原型事故。
+/// 上一次执行留下的 `cancelHandle` 拿着去取消新的执行，是这类事故的原型。
 /// 断言两件事：回执是 `Err`，以及驱动的 cancel 调用数仍是 0。
 #[tokio::test(start_paused = true)]
 async fn 拿旧句柄取消新执行被拒且没有下发到驱动() {
@@ -202,7 +202,7 @@ async fn 拿旧句柄取消新执行被拒且没有下发到驱动() {
     assert_eq!(unknown, Err(RuntimeError::CancelFailed("unboundExecution")));
 }
 
-/// T8 / CM-23：执行已经终结后再取消，回执是 `alreadyFinished`，
+/// 执行已经终结后再取消，回执是 `alreadyFinished`，
 /// 并且**逐字**带回当时的终态，而不是笼统的 `cancelled`。
 #[tokio::test(start_paused = true)]
 async fn 已终结执行的取消回执是已完结并逐字带回终态() {
@@ -243,7 +243,7 @@ async fn 已终结执行的取消回执是已完结并逐字带回终态() {
     assert_eq!(resolved.execution_state, Some("succeeded"));
 }
 
-/// T9 / CM-22：取消本身失败**不得**降级成「已取消」。
+/// 取消本身失败**不得**降级成「已取消」。
 ///
 /// 这条最危险——把驱动的报错吞掉、改写成 `requested` 回执，上层就会对着一个
 /// 还在跑的语句显示「已取消」。所以既断言 `Err`，也断言审计结论是 `rejected`。
@@ -287,11 +287,11 @@ async fn 取消失败如实报错且审计结论是否决() {
     assert_eq!(resolved.error_code, Some("hostRejected"));
     assert_eq!(
         resolved.effect_outcome, None,
-        "取消结论不得被请求本身的成功覆盖掉（CM-72）"
+        "取消结论不得被请求本身的成功覆盖掉"
     );
 }
 
-/// T18 / CM-72：取消审计里只准出现**非敏感的能力版本**，不得出现句柄或凭据。
+/// 取消审计里只准出现**非敏感的能力版本**，不得出现句柄或凭据。
 ///
 /// 另外把三种 disposition 的线上字面量钉死：它们必须与执行终态那套字面量
 /// **不相交**，否则两套词汇混在一起就再也分不清「控制结论」和「执行结论」。

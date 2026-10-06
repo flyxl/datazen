@@ -1,9 +1,9 @@
-//! `RuntimeEpoch` 与**唯一**的对外错误码出口（D-02）。
+//! `RuntimeEpoch` 与**唯一**的对外错误码出口。
 //!
 //! ## 为什么折叠必须是纯函数
 //!
-//! §6.3 末段要求客户端的 `dbSessionId` **与** `runtimeEpoch` 精确匹配，
-//! §12 要求协调者租约失效后旧 epoch 的请求一律按失效处理。而「一个事实到底报哪个对外码」
+//! 要求客户端的 `dbSessionId` **与** `runtimeEpoch` 精确匹配，
+//! 协调者租约失效后旧 epoch 的请求一律按失效处理。而「一个事实到底报哪个对外码」
 //! 散落在各处时，同一件事会在不同入口报出两种码——调用方拿到 `sessionNotFound` 时
 //! 重连，拿到 `runtimeEpochMismatch` 时查资源，两条处置路径必然有一条是错的。
 //! 所以本模块把「事实 → 对外投影」收敛成 [`fold_exit`] 一个**纯函数**：
@@ -12,19 +12,19 @@
 //! ## `RuntimeEpochMismatch` 为什么塌成 `SessionNotFound`
 //!
 //! `ProviderError::api_code()` 把它映射成 `runtimeEpochMismatch`，而**本模块故意不照抄**：
-//! §6.3 末段明确「陈旧 epoch 一律按未知句柄处理——不泄露『资源被换过一次』」。
+//! 「陈旧 epoch 一律按未知句柄处理——不泄露『资源被换过一次』」。
 //! `runtimeEpochMismatch` 这个码字本身就是泄露：它告诉调用方「这个会话曾经存在、
-//! 后来被换掉了」。一旦透露，调用方就会尝试去恢复一个按 §4.5 已禁止透明重建的会话，
+//! 后来被换掉了」。一旦透露，调用方就会尝试去恢复一个已禁止透明重建的会话，
 //! 或者据此推断别的租户什么时候做过什么。两边都指向同一个对外动作（读终态、显式新建会话），
 //! 所以对外只给一个码：`sessionNotFound`。差异留在内部（`RuntimeError::reason()` 与审计条目）。
 //!
-//! 这条改写是 **D-02 的裁定**，与 `ProviderError::api_code()` 的差异是本 track 已知的
+//! 这条改写是刻意的裁定，与 `ProviderError::api_code()` 的差异是本 track 已知的
 //! 冻结面偏离之一。
 
 use crate::connection::error::ApiErrorCode;
 use crate::connection::{Counter, ProviderError, RuntimeError, SessionHandle};
 
-/// 运行时世代号。worker 每次启动重新生成；资源替换后旧世代一律失效（§12）。
+/// 运行时世代号。worker 每次启动重新生成；资源替换后旧世代一律失效。
 ///
 /// 新类型而不是裸 `u64`：句柄上同时存在 `dbSessionId` 和 `runtimeEpoch`，两者都参与
 /// 精确匹配；用裸 `u64` 传参时编译器无法阻止把 configRevision 当成 epoch 传进来。
@@ -40,7 +40,7 @@ impl RuntimeEpoch {
         self.0.get()
     }
 
-    /// 会话句柄的世代是否与本世代相同（§6.3 末段的精确匹配）。
+    /// 会话句柄的世代是否与本世代相同（精确匹配）。
     pub const fn matches(self, handle: &SessionHandle) -> bool {
         handle.runtime_epoch.get() == self.0.get()
     }
@@ -73,7 +73,7 @@ pub fn epoch_string(epoch: u64) -> String {
 
 /// 对外投影的两种可能结果。
 ///
-/// 之所以不是裸 `ApiErrorCode`：§13.1 明确取消类失败**不得**用 `ApiError` 表达，
+/// 之所以不是裸 `ApiErrorCode`：取消类失败**不得**用 `ApiError` 表达，
 /// 派发后的执行终态失败走 `ExecutionState = failed` + `ExecutionErrorCode`。
 /// 折叠函数如果强行对每一个事实都产出 `ApiErrorCode`，就得给
 /// `cancelFailed` / `invariantBroken` 编一个「调用者可以处置的拒绝码」，
@@ -84,7 +84,7 @@ pub fn epoch_string(epoch: u64) -> String {
 pub enum ExitProjection {
     /// 有对外拒绝码：填进 `ApiError.code`。
     Code(ApiErrorCode),
-    /// 不该用 `ApiError` 表达（§13.1）：由调用方转成
+    /// 不该用 `ApiError` 表达：由调用方转成
     /// `ExecutionErrorCode::HostRejected` 或事件流上的失败终态。
     /// `reason` 是 `RuntimeError::reason()` 的同一批稳定字面量。
     NotOnTheWire { reason: &'static str },
@@ -112,12 +112,12 @@ pub enum ExitFact<'a> {
     Provider(&'a ProviderError),
 }
 
-/// **唯一**的对外错误码出口（D-02）。
+/// **唯一**的对外错误码出口。
 ///
 /// 纯函数、无状态、无 IO：对同一组事实永远给出同一组码。因此
 /// 「陈旧 epoch 的旧请求从哪个入口出去」不影响调用方看到什么。
 ///
-/// 映射规则（§13 错误表 + §6.3 末段 + §13.1）：
+/// 映射规则：
 ///
 /// | 事实 | 对外投影 |
 /// | --- | --- |
@@ -128,7 +128,7 @@ pub enum ExitFact<'a> {
 /// | `RuntimeError::ContextRevisionMismatch` | `contextConflict` |
 /// | `RuntimeError::BudgetExhausted` | `resourceBusy` |
 /// | `RuntimeError::CloseRejected` | `transactionResolutionRequired` |
-/// | `RuntimeError::CancelFailed` | 不上线路（§13.1） |
+/// | `RuntimeError::CancelFailed` | 不上线路 |
 /// | `RuntimeError::InvariantBroken` | 不上线路（缺陷不得伪装成可处置拒绝） |
 /// | `ProviderError::RuntimeEpochMismatch` | **`sessionNotFound`**（见模块文档） |
 /// | 其余 `ProviderError` | 与 `ProviderError::api_code()` 一致 |
@@ -159,7 +159,7 @@ pub fn fold_exit(fact: ExitFact<'_>) -> ExitProjection {
             },
         },
         ExitFact::Provider(error) => match error {
-            // D-02：与 `ProviderError::api_code()` 的唯一分歧点，理由见模块文档。
+            // 与 `ProviderError::api_code()` 的唯一分歧点，理由见模块文档。
             ProviderError::RuntimeEpochMismatch(_) => {
                 ExitProjection::Code(ApiErrorCode::SessionNotFound)
             }
@@ -185,7 +185,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    /// 会话层事实 → 期望投影的**整表**（§4.4 表格驱动）。
+    /// 会话层事实 → 期望投影的**整表**（表格驱动）。
     fn session_rows() -> Vec<(RuntimeError, ExitProjection)> {
         vec![
             (
@@ -313,10 +313,10 @@ mod tests {
         rows
     }
 
-    /// D-02 的核心：**全笛卡尔积**表格驱动测试。
+    /// **全笛卡尔积**表格驱动测试。
     ///
     /// 每一对 (会话事实, provider 事实) 都各折叠一次并断言各自命中表里的期望投影。
-    /// 只测单一来源会漏掉「两条路径对同一事实给出不同码」这类漂移——而那正是 D-02 要消灭的。
+    /// 只测单一来源会漏掉「两条路径对同一事实给出不同码」这类漂移——而那正是要消灭的。
     #[test]
     fn fold_exit_is_total_and_pairwise_consistent_over_both_fact_spaces() {
         let session = session_rows();
@@ -342,10 +342,10 @@ mod tests {
         assert_eq!(pairs, 162, "9 × 18 必须全部两两折叠");
     }
 
-    /// D-02 关键裁定：陈旧 `runtimeEpoch` **不得**对外暴露「被替换过」。
+    /// 关键裁定：陈旧 `runtimeEpoch` **不得**对外暴露「被替换过」。
     ///
     /// 反例一旦成立，调用方就会拿到 `runtimeEpochMismatch` 并据此推断出资源曾经被换过，
-    /// 然后尝试恢复一个按 §4.5 禁止透明重建的会话。
+    /// 然后尝试恢复一个已禁止透明重建的会话。
     #[test]
     fn stale_runtime_epoch_exits_as_session_not_found_not_epoch_mismatch() {
         let fact = ProviderError::RuntimeEpochMismatch("db_1".to_owned());
@@ -399,7 +399,7 @@ mod tests {
         }
     }
 
-    /// `RuntimeEpoch` 与句柄的精确匹配（§6.3 末段）。
+    /// `RuntimeEpoch` 与句柄的精确匹配。
     #[test]
     fn epoch_matches_only_the_exact_generation() {
         let epoch = RuntimeEpoch::new(3);
@@ -415,7 +415,7 @@ mod tests {
         assert!(!epoch.matches(&handle), "未来世代同样不命中");
     }
 
-    /// FU7：目录侧字符串的**取值**必须钉在协议字面量上。
+    /// 目录侧字符串的**取值**必须钉在协议字面量上。
     ///
     /// 这条钉的不是「两端用了同一个函数」（那由 `epoch_string` 是唯一实现保证），
     /// 而是**格式本身**：前缀 `rte-` + 8 位补零。为什么这是协议可见事实而不是内部细节：
@@ -469,7 +469,7 @@ mod tests {
     ///
     /// 为什么必须是源码扫描而不是比值：把某个调用点改成内联一份**逐字相同**的
     /// `format!`，所有比值断言仍然全绿（`epoch_method_agrees_with_the_single_formatter`
-    /// 就是这么活下来的），而 FU4 的真实缺陷**恰恰是这个形状**——`context.rs` 与
+    /// 就是这么活下来的），而真实缺陷**恰恰是这个形状**——`context.rs` 与
     /// 测试夹具各写了一份 `format!("rte-{:08}", …)`，两端「必须逐字一致」当时只靠
     /// 注释担保。所以防复发的判据必须看**字面量出现了几次**。
     ///
