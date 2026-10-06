@@ -19,9 +19,15 @@
 //!
 //! | 处置 | 物理预算 | 隧道引用 | 本文件的行为 |
 //! |------|---------|---------|-------------|
-//! | `ReturnedToPool` | 仍占用（`:647`） | **保留** | 不碰台账 |
-//! | `Quarantined` | 仍占用到强制关闭（`:647` / `:713`） | **保留** | 不碰台账 |
-//! | `Closed` | 此刻释放（`cleanup.rs:285`） | **归还** | `return_resource` |
+//! | `ReturnedToPool` | 仍占用（`connection-management.md:647`） | **保留** | 不碰台账 |
+//! | `Quarantined` | 仍占用到强制关闭（`connection-management.md:647` / `:713`） | **保留** | 不碰台账 |
+//! | `Closed` | 此刻释放（`cleanup.rs:285-286`） | **归还** | `return_resource` |
+//!
+//! `connection-management.md` 指 `docs/architecture/platform/connection-management.md`：
+//! `:647` 在 §9.3「预算会计」（「归还到 idle pool 不释放物理连接预算，只有实际 close
+//! 才释放」），`:713` 在 §10.1.1 故障窗口表的「cleanup 未确认」行（「保留预算占用／
+//! 隔离资源；确认关闭或节点隔离后才核销」）。`cleanup.rs:285-286` 是
+//! `CleanupDisposition::releases_physical_budget` 的文档与定义行（只有 `Closed` 为真）。
 //!
 //! 两条腿由**同一个布尔**同时驱动，因此不存在「预算还占着但引用已还」或反之的状态。
 //! 这一点不靠自觉，靠 [`TunnelDisposition::pairs_with_budget_release`]：
@@ -157,8 +163,12 @@ impl ResourceManager {
     /// 它为假（`ReturnedToPool` / `Quarantined`）⇒ 预算还占着，隧道引用**一并保留**，
     /// 连台账都不碰；它为真（`Closed`）⇒ 预算此刻核销，隧道引用在**同一刻**归还。
     ///
-    /// 全模块**只有两个**调用点：`release` 与 `force_close`（两个分支各一）。
-    /// 两条路径读的是同一个判据，所以不存在某条路径上两侧错拍的可能。
+    /// 全模块只有**两个调用方法**：`release` 与 `force_close`。方法是两个，但
+    /// **调用表达式有三处**：`manager.rs:416`（`release` 内一处）、
+    /// `manager.rs:484`（`force_close` 的 `Closed` 分支）、`manager.rs:515`
+    /// （`force_close` 的 `Quarantined` 分支 —— 处置为 `Quarantined`，`settle` 首行
+    /// 就按 `releases_physical_budget()` 为假原样返回 `Retained`）。
+    /// 三处读的是同一个判据，所以不存在某条路径上两侧错拍的可能。
     pub(super) fn settle_tunnel_reference(
         &mut self,
         lease_id: &LeaseId,
@@ -191,8 +201,8 @@ impl ResourceManager {
     /// 隔离中的连接可能仍在用这条隧道，配对不许塌。
     ///
     /// 隧道引用由 `force_close` 内部的两个分支结算，本函数**不再重复结算**：
-    /// `TunnelLedger::return_resource` 虽然幂等，但「全模块只有两个释放点」这条纪律
-    /// 靠的是字面数得清，不是靠幂等兜底。变异实测（删掉 `force_close` 的结算）会直接
+    /// `TunnelLedger::return_resource` 虽然幂等，但「释放点字面数得清」这条纪律
+    /// 靠的是数得清（两个调用方法、三处调用表达式），不是靠幂等兜底。变异实测（删掉 `force_close` 的结算）会直接
     /// 让握手/初始化/注册回滚用例转红，证明回滚路径确实由 `force_close` 兜着。
     pub fn roll_back_unpublished(&mut self, lease_id: &LeaseId) -> Result<(), ResourceError> {
         self.table.lease(lease_id).ok_or_else(|| {

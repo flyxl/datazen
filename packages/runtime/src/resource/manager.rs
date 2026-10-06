@@ -411,8 +411,8 @@ impl ResourceManager {
         //
         // 用的是 `plan.disposition`（复位失败已把它升级成 `Quarantined` 的**最终**值），
         // 所以隔离路径下预算没核销、隧道引用也就没归还 —— 不存在「预算还占着、
-        // 引用先还了」的错拍。全模块**只有两个**结算点：`release` 与 `force_close`，
-        // 两处读同一个布尔 `releases_physical_budget()`，都把结果填进报告的 `tunnel` 字段。
+        // 引用先还了」的错拍。全模块只有**两个调用方法**（`release` / `force_close`）、
+        // **三处调用表达式**，都读同一个布尔 `releases_physical_budget()`，都填 `tunnel` 字段。
         let tunnel = self.settle_tunnel_reference(lease_id, plan.disposition);
 
         Ok(CleanupReport::from_plan(

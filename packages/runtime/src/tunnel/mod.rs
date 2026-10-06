@@ -28,16 +28,27 @@
 //!   钉住另外三条里属资源层的两条（driver close 至多一次、预算不负数、
 //!   重复响应一致）。
 //!
-//!   ★ 登记项 F（**事实登记，本轨不修**）：上面那两个文件**目前 CI 不会跑**。
-//!   `scripts/run-platform-crate-tests.mjs` 在其 `:165` 把调用固定成
-//!   `['test', '--lib', …]`。`argvList` 在该脚本里**只被赋值这一次**（`:165`），
-//!   随后的 `spawnSync('cargo', argvList, …)`（`:172`）是它唯一的 cargo 调用入口；
-//!   该文件全文不含 `--tests`，也没有任何能追加 target 的开关。而在 CI 作用域
-//!   （`git grep 'cargo (nextest|test)' -- scripts .github package.json`）的
-//!   **31** 行调用里，点名 `datazen-runtime` 的是 **0** 行。所以本 crate 顶层
-//!   **24** 个 `tests/*.rs` 集成二进制（含上述两个）**全部不进 CI**，
-//!   这里的「钉住」目前只由本地门禁背书。归口 `p3-cm60-pressure-drain` 轨的
-//!   CI 修复；该修复未并入本树之前，此处不得记作已覆盖。
+//!   ★ 登记项 F（本轨更正）：上面那两个文件**进 CI**。原先记在这里的
+//!   「CI 不会跑本轨新增测试」是**错的**，按脚本实际内容更正如下。
+//!   `scripts/run-platform-crate-tests.mjs` 的 `buildCargoArgv`（`:206`）返回的是
+//!   **一个 argv 数组**（`:217-270`），不是一次调用；`:372-373` 逐条喂给
+//!   `spawnSync('cargo', argvList, …)`（`:373`，`spawnSync` 导出于 `:111`）。三条里
+//!   **`:260` 那条不带任何 target 选择器**（`['test', …names.flatMap(n => ['-p', n])]`），
+//!   cargo 因此跑选中 crate 的**全部** target —— `packages/runtime` 顶层**全部 31** 个
+//!   `tests/*.rs` 集成二进制（含 `cm28_concurrent_tunnel.rs` 与
+//!   `cm28_concurrent_release.rs`）都在其中。`:221` 那条 `--lib` 只跑库自身单测、
+//!   `:264-266` 那条 `--release` 由 `EXTRA_TARGETS` 决定；两条都**保留**，是叠加不是替代。
+//!   本轮实测：`node scripts/run-platform-crate-tests.mjs --dry-run` → `EXIT=0`，输出
+//!   `discovered datazen-runtime (packages/runtime/)` 与
+//!   `cargo test -p datazen-runtime -p datazen-application -p datazen-platform-api`，
+//!   末行 `DRY RUN — 3 crate(s) selected, 3 cargo invocation(s)`。CI 入口是
+//!   `.github/workflows/ci.yml:302` 的 `pnpm test:platform-crates`
+//!   （`package.json:111` → 上面那个脚本）。
+//!   * 曾经被拿来当「没进 CI」证据的那条 `git grep 'cargo (nextest|test)' -- scripts
+//!     .github package.json`（本轮实测 34 行，其中点名 `datazen-runtime` 的 0 行）
+//!     **不成立**：脚本是按 `scripts/lib/cargoWorkspace.mjs:69` 的 layer 表
+//!     （`packages/runtime` → crate `datazen-runtime`）发现并选择 crate 的，
+//!     字面名字不出现在命令里是设计如此，不是漏跑。
 //! * **不在本模块、且此前被误记在这里**的一格：CM-27 的「可确认关闭的资源许可
 //!   归零」。该格的主语是**资源许可**，不是隧道引用，已由三处闭合并各自带测试：
 //!   `platform-api/src/ports/budget/pool_ledger.rs` 里 `impl Ledger` 的 **`release`**
@@ -49,15 +60,29 @@
 //!   另两处：`runtime/src/budget/ledger.rs:397`（permit 幂等核销 INV-10，名额按原槽
 //!   退回）、`runtime/src/budget/coordinator.rs:428`（端口级幂等核销，把 `Unknown`
 //!   报成 `NotFound`）。三处都不知道隧道存在，隧道也不该进这一格。
-//! * **仍未闭合，且是「实现缺失」而不是「断言缺失」的两格**，登记在案、本轨不做：
-//!   (1) permit / socket / handshake / init / register **全阶段失败矩阵**下的隧道
-//!   引用回滚；(3) `CleanupDisposition::Quarantined`（未确认关闭进入隔离）下隧道
-//!   引用与物理预算的**归属配对**（`runtime/src/resource/cleanup.rs:285` 起的
-//!   处置语义只管物理预算那一半）。两格缺的都是同一根线：全仓 `TunnelLedger`
-//!   在 `src/tunnel/` 之外**零生产调用方**，而 `runtime/src/resource/**` 里
-//!   `tunnel` 一词出现 **0 次** —— `ResourceManager` 根本不知道隧道存在，
-//!   「隧道引用与物理预算配对」没有任何生产接线可断言。要闭合必须先接线，
-//!   那是架构工作，不在本轨范围。
+//! * **本轨已闭合**的两格（原登记为「仍未闭合，且是实现缺失」，是**错的**，本轨更正）：
+//!   (1) permit / socket / tunnel / handshake / init / register **全阶段失败矩阵**下的
+//!   隧道引用回滚。生产接线在 `runtime/src/resource/tunnel_wiring.rs`：
+//!   `acquire_tunnel_reference`（`:143`）负责隧道阶段「失败不落账」（`TunnelLedger::acquire`
+//!   在 `open` 失败时既不建条目也不加计数），`roll_back_unpublished`（`:207`）负责
+//!   握手 / 初始化 / 注册三阶段失败后的逆序补偿，引用归零只经 `settle_tunnel_reference`
+//!   （`:172`）→ `TunnelLedger::return_resource` 这一条路；六个阶段的矩阵由
+//!   `tests/tunnel_wiring_contract.rs` 逐阶段钉住。
+//!   (3) `CleanupDisposition::Quarantined`（未确认关闭进入隔离）下隧道引用与物理预算的
+//!   **归属配对**。判据是 `runtime/src/resource/cleanup.rs:285-286` 的
+//!   `CleanupDisposition::releases_physical_budget`（只有 `Closed` 为真），执行点是
+//!   `tunnel_wiring.rs:172` 的 `settle_tunnel_reference`（预算不释放则隧道引用原样保留、
+//!   连台账都不碰），处置矩阵由 `tests/tunnel_budget_pairing.rs` 钉住。
+//!   两格现在都是「有生产接线可断言」，不再是「实现缺失」。
+//! * 两格当初缺的那根线早已接上，本轮实测：全仓 `TunnelLedger` 在 `src/tunnel/` 之外的
+//!   **生产**调用方有 **6** 处、分布在 **2** 个文件 —— `resource/manager.rs:25`（`use`）、
+//!   `:45`（字段 `Option<TunnelLedger>`）、`resource/tunnel_wiring.rs:57`（`use`）、`:103`
+//!   （`TunnelLedger::new`）、`:125`（`TunnelLedger::live_tunnels`）、`:130`
+//!   （`TunnelLedger::close_calls`）。`runtime/src/resource/**` 里 `tunnel` 一词出现
+//!   **133** 次（`tunnel_wiring.rs` 73、`manager.rs` 27、`mod.rs` 15、`cleanup.rs` 10、
+//!   `lease.rs` 8，其余 10 个文件 0）。基线 `b096ffbb4` 上这两个数是**生产调用方 0**、
+//!   **出现次数 0**（当时 `resource/` 15 个文件里一个 `tunnel` 都没有；`TunnelLedger` 在
+//!   `src/tunnel/` 之外只有 `lib.rs:30` 一处**文档注释**提到），即接线确实是本轨新增的。
 //!
 //! # 「同版本隧道」= `TunnelSpec` 全等值
 //!
