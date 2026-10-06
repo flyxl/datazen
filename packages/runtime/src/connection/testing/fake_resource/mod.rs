@@ -1,25 +1,25 @@
-//! FakeResourceProvider —— 假资源提供方（fake-runtime-fixtures.md §2、§3、§4.1、§5.1）。
+//! FakeResourceProvider —— 假资源提供方。
 //!
-//! 本目录即 §2 模块表里 `P[FakeResourceProvider]` 与 `R[FakeResource state machine]` 两个
-//! 节点的落点，职责按 §3.1 拆到七个文件：
+//! 本目录即模块表里 `P[FakeResourceProvider]` 与 `R[FakeResource state machine]` 两个
+//! 节点的落点，职责拆到七个文件：
 //!
 //! | 文件 | 职责 |
 //! |---|---|
-//! | [`script`] | `FakeScript`：`FakeResourceProvider` 的故障/延迟脚本字段（§4.1 F1–F12、§9.3 竞态） |
-//! | [`state`] | `FakeResource` 状态机 + permit 记账锚点（§3.1、§3.2） |
-//! | [`handles`] | 句柄铸造与「登记 vs 造句柄」（§5.1 L416、§9.1、§9.2） |
-//! | [`ops`] | 八个操作的实现（§3.1 `ResourceHandle` 逐操作校验） |
-//! | [`close`] | op 9 `closeResource`：§5.3 规则 2/3/6 的 permit 口径 + CM-74 释放顺序 + §9.4(b) 归池判据 |
-//! | [`transaction`] | op 6 `transactionOperation`：F8 回滚/提交对资源状态与 permit 的影响 |
-//! | `catalog_guard` | 只在 `#[cfg(test)]` 下编译：把 `script.rs` 的 F 编号与 §4.1 的表**对撞**（§4.1 F1–F12 不得错位） |
-//! | `close_cases` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的归池判据 / 凭证出口用例（F12/F13/F14） |
-//! | `close_unconfirmed` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的 F11「关闭未确认」用例 |
+//! | [`script`] | `FakeScript`：`FakeResourceProvider` 的故障/延迟脚本字段（故障种类与竞态） |
+//! | [`state`] | `FakeResource` 状态机 + permit 记账锚点 |
+//! | [`handles`] | 句柄铸造与「登记 vs 造句柄」 |
+//! | [`ops`] | 八个操作的实现（`ResourceHandle` 逐操作校验） |
+//! | [`close`] | op 9 `closeResource`：permit 归还口径 + 释放顺序 + 归池判据 |
+//! | [`transaction`] | op 6 `transactionOperation`：回滚/提交对资源状态与 permit 的影响 |
+//! | `catalog_guard` | 只在 `#[cfg(test)]` 下编译：把 `script.rs` 的 F 编号与文档表格**对撞**（编号不得错位） |
+//! | `close_cases` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的归池判据 / 凭证出口用例（句柄登记、驱动不支持重置、幂等关闭） |
+//! | `close_unconfirmed` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的「关闭未确认」用例 |
 //!
 //! **依赖方向**：本目录向下依赖 `connection::{port, session, types, capability, execution}`，
-//! 向上只被 `journal` 的**测试**引用 —— §2 要求的「`journal.rs` 不依赖 `fake_resource`」
+//! 向上只被 `journal` 的**测试**引用 —— 分层要求的「`journal.rs` 不依赖 `fake_resource`」
 //! 因此在任何方向上都成立（`state.rs` 连 `journal` 与 `script` 都不碰）。
 //!
-//! §13：假提供方**不开任何出站 socket**；本目录没有任何网络或凭据代码。
+//! 假提供方**不开任何出站 socket**；本目录没有任何网络或凭据代码。
 //!
 //! **测试辅助函数的落点**：[`tests`]、[`close_cases`] 与 [`close_unconfirmed`] 都从本文件底部那一组
 //! `#[cfg(test)]` 辅助函数取 `provider` / `acquire` / `close_and_release`，
@@ -74,10 +74,10 @@ pub const PROVIDER_ID: &str = "fake-sql";
 /// 假提供方自报的 `driverVersion`。
 const PROVIDER_VERSION: &str = "0.0.0-fake";
 
-/// §8.1 `PROFILE_P` 的 `configRevision`，作为假资源的默认值。
+/// `PROFILE_P` 的 `configRevision`，作为假资源的默认值。
 const DEFAULT_CONFIG_REVISION: u64 = 7;
 
-/// F2 注入的「预算占满」窗口。只由 `ops.rs` 的 `acquire_resource` 写与读。
+/// 注入的「预算占满」窗口。只由 `ops.rs` 的 `acquire_resource` 写与读。
 #[derive(Debug, Clone, Default)]
 pub(crate) struct BudgetBusy {
     /// 以**假单调时钟**（`FakeClock`）的纳秒计，不是墙钟 —— 断言顺序只看 journal，不靠 sleep。
@@ -85,17 +85,17 @@ pub(crate) struct BudgetBusy {
     reason: &'static str,
 }
 
-/// §3.1 的 `FakeResourceProvider`。
+/// `FakeResourceProvider`。
 ///
-/// 字段与 §3.1 的定义一一对应（`script, clock, ids, resources, journal, id_counter, worker_id`），
+/// 字段与提供方的定义一一对应（`script, clock, ids, resources, journal, id_counter, worker_id`），
 /// 另加三项由本实现的取值方式决定的字段：
 ///
 /// - `target`：`AcquireResourceRequest` **没有** target 字段（见 `port.rs`），所以
 ///   资源要绑定的目标由构造时传入，之后每次 acquire 打在同一个夹具目标上。
 /// - `execution_identity`：填进 `SessionContext::effective_identity`。做成 builder
-///   而不是读 `fixtures.rs`，是为了不给 §2 的 DAG 加一条 `P → F` 边。
+///   而不是读 `fixtures.rs`，是为了不给依赖图加一条 `P → F` 边。
 /// - `leases`：资源 → 钉在它上面的 Lease。`closeResource` 要据此归还 lease，
-///   否则 §4.3 的 I3（`live_leases.is_empty()`）在驱逐路径上无法收口。
+///   否则 lease 登记不变式（`live_leases.is_empty()`）在驱逐路径上无法收口。
 pub struct FakeResourceProvider {
     pub(crate) script: Arc<FakeScript>,
     pub(crate) clock: Arc<FakeClock>,
@@ -133,7 +133,7 @@ impl FakeResourceProvider {
         }
     }
 
-    /// §8.1：USER_A1 / USER_A2 共享 `IDENTITY_SHARED`，但 `policyIsolationKey` 不同。
+    /// USER_A1 / USER_A2 共享 `IDENTITY_SHARED`，但 `policyIsolationKey` 不同。
     /// 这里是夹具选择执行身份的唯一入口。
     pub fn with_execution_identity(mut self, identity: impl Into<String>) -> Self {
         self.execution_identity = identity.into();
@@ -178,18 +178,18 @@ impl FakeResourceProvider {
         &self.target
     }
 
-    /// §8.1 的 `configRevision`。`PoolKeyInputs` 派生指纹时必须用这里的值，
-    /// 否则 `PROFILE_P` / `PROFILE_P_V2` 的换 key 判据会失效（CM-05 / CM-67）。
+    /// `configRevision`。`PoolKeyInputs` 派生指纹时必须用这里的值，
+    /// 否则 `PROFILE_P` / `PROFILE_P_V2` 的换 key 判据会失效。
     pub fn config_revision(&self) -> ConfigRevision {
         self.config_revision
     }
 
-    /// §3.1 的 `execution_identity`，会进 `SessionContext::effective_identity`。
+    /// `execution_identity`，会进 `SessionContext::effective_identity`。
     pub fn execution_identity(&self) -> &str {
         self.execution_identity.as_str()
     }
 
-    /// §3.1 的 `worker_id: Option<WorkerId>`。`None` 表示该实例不声明归属。
+    /// `worker_id: Option<WorkerId>`。`None` 表示该实例不声明归属。
     pub fn worker_id(&self) -> Option<&WorkerId> {
         self.worker_id.as_ref()
     }
@@ -208,7 +208,7 @@ impl FakeResourceProvider {
         self.lock().values().cloned().collect()
     }
 
-    /// 仍在预算占用内的资源 id（§4.3 的 I2 判据）。
+    /// 仍在预算占用内的资源 id。
     pub fn live_resources(&self) -> Vec<ResourceId> {
         self.lock()
             .values()
@@ -247,7 +247,7 @@ impl FakeResourceProvider {
             .unwrap_or_default()
     }
 
-    /// §8.2：`permitId` 用与 `resourceId` 同构的序号，便于按前缀在台账里比对。
+    /// `permitId` 用与 `resourceId` 同构的序号，便于按前缀在台账里比对。
     pub(crate) fn next_permit_id(&self) -> PermitId {
         let seq = self.id_counter.fetch_add(1, Ordering::Relaxed) + 1;
         PermitId(format!("pmt_{}_{seq:04}", self.ids.worker_id()))
@@ -263,7 +263,7 @@ impl FakeResourceProvider {
 // 测试脚手架 —— `tests.rs` / `close_cases.rs` / `close_unconfirmed.rs` 共用
 // ---------------------------------------------------------------------------
 
-/// §8.1：夹具目标一律取自 `fixtures`，用例里不写硬编码字面量。
+/// 夹具目标一律取自 `fixtures`，用例里不写硬编码字面量。
 #[cfg(test)]
 pub(crate) fn target() -> ExecutionTarget {
     crate::connection::testing::harness::fixture_target(
@@ -271,7 +271,7 @@ pub(crate) fn target() -> ExecutionTarget {
     )
 }
 
-/// §8.1 的 `PROFILE_P` 归属：一个 job owner。`owner` 是 `OwnerRef`，不是裸 id。
+/// `PROFILE_P` 归属：一个 job owner。`owner` 是 `OwnerRef`，不是裸 id。
 #[cfg(test)]
 pub(crate) fn owner() -> OwnerRef {
     OwnerRef::Job {
@@ -281,10 +281,10 @@ pub(crate) fn owner() -> OwnerRef {
     }
 }
 
-/// §8.1 `PoolKeyInputs` 派生。夹具走和
+/// `PoolKeyInputs` 派生。夹具走和
 /// [`FakeHarness::pool_key`](crate::connection::testing::harness::FakeHarness::pool_key)
 /// 完全一样的算法，
-/// 否则「同池复用」的正例根本不成立（CM-05 / CM-67 的换 key 判据会失效）。
+/// 否则「同池复用」的正例根本不成立（换 key 判据会失效）。
 #[cfg(test)]
 pub(crate) fn pool_key(
     provider: &FakeResourceProvider,
@@ -324,7 +324,7 @@ pub(crate) fn acquire(provider: &FakeResourceProvider) -> Result<AcquiredResourc
     })
 }
 
-/// 按 §9.4 的归池前置条件（协议已排空 + 无登记句柄）关掉一张资源。
+/// 按归池前置条件（协议已排空 + 无登记句柄）关掉一张资源。
 ///
 /// 名字不叫 `close`：本目录有个 `close` 模块，`use super::close` 会与函数同名，
 /// 两个 import 撞在一起比难读的名字难查得多。
@@ -351,10 +351,10 @@ pub(crate) fn close_and_release(
 // 「幂等只记一次」这条判据交给每个文件各写一遍
 // ---------------------------------------------------------------------------
 
-/// 按 §6.5 如实填报宿主账本的关闭请求（正例口径）。
+/// 如实填报宿主账本的关闭请求（正例口径）。
 ///
 /// 刻意**不**复用 `close_and_release`：那个包装丢掉 `CloseReceipt`，而要断言回执的
-/// 用例（F11 那组）必须自己拿到它。
+/// 用例（关闭未确认那组）必须自己拿到它。
 #[cfg(test)]
 pub(crate) fn close_request(
     provider: &FakeResourceProvider,

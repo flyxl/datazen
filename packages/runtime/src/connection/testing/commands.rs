@@ -1,14 +1,14 @@
-//! 会话级句柄 fake 命令定义（fake-runtime-fixtures.md §9.1）。
+//! 会话级句柄 fake 命令定义。
 //!
-//! 服务 CM-73 / CM-74：淘汰、替换、隔离时必须先在**原 resource** 上回滚 / 关闭句柄并注销，
+//! 淘汰、替换、隔离时必须先在**原 resource** 上回滚 / 关闭句柄并注销，
 //! 确认后才允许释放资源。要让这条纪律可测，夹具侧必须真的提供一组「能返回会话级句柄」的
 //! 命令，并通过 driver-api 的 `command_definitions()` / `execute_command()` 通道暴露。
 //!
-//! 依赖方向：本模块**不依赖** `fake_resource`（§2）。它只向下依赖
+//! 依赖方向：本模块**不依赖** `fake_resource`。它只向下依赖
 //! `connection::execution::SessionCommand`（命令 id 的唯一真源）与 `driver-api` 的
 //! `DriverCommandDefinition`。执行侧由 provider 读这张表。
 //!
-//! §13 纪律：输入 schema 里不出现任何凭据字段 —— 连接密码由 driver 连接时消费，
+//! 纪律：输入 schema 里不出现任何凭据字段 —— 连接密码由 driver 连接时消费，
 //! 不作为命令入参，因此这里不存在可以被 journal 记录的敏感值。
 
 use datazen_driver_api::command::{
@@ -18,7 +18,7 @@ use serde_json::{json, Value as JsonValue};
 
 use crate::connection::execution::SessionCommand;
 
-/// `handleId` 入参。十个命令里六个都以它为第一入参（§9.1）。
+/// `handleId` 入参。十个命令里六个都以它为第一入参。
 fn handle_id_schema() -> JsonValue {
     json!({
         "type": "object",
@@ -30,7 +30,7 @@ fn handle_id_schema() -> JsonValue {
     })
 }
 
-/// 句柄随 completion 交出的那几条命令：输出统一带 `sessionHandles` 数组（§9.2）。
+/// 句柄随 completion 交出的那几条命令：输出统一带 `sessionHandles` 数组。
 fn handle_output_schema() -> Option<JsonValue> {
     Some(json!({
         "type": "object",
@@ -66,7 +66,7 @@ fn outcome_output_schema() -> Option<JsonValue> {
     }))
 }
 
-/// 命令的访问级别。§9.1 表里只有 `open_session_cursor` 是 Read，其余全是 Write。
+/// 命令的访问级别。只有 `open_session_cursor` 是 Read，其余全是 Write。
 fn access_level(command: SessionCommand) -> CommandAccessLevel {
     if command.is_write() {
         CommandAccessLevel::Write
@@ -81,7 +81,7 @@ fn metadata(command: SessionCommand) -> DriverCommandMetadata {
     } else {
         CommandCategory::Query
     };
-    // requires_connection 在 Default 里已经是 true（§9.1 L462），这里显式重述以免将来
+    // requires_connection 在 Default 里已经是 true，这里显式重述以免将来
     // Default 改动悄悄放宽门控。
     DriverCommandMetadata {
         category,
@@ -109,13 +109,13 @@ fn definition(
     }
 }
 
-/// §9.1 全部十条会话级句柄命令。顺序即 `SessionCommand::ALL` 的顺序。
+/// 全部十条会话级句柄命令。顺序即 `SessionCommand::ALL` 的顺序。
 pub fn session_handle_command_definitions() -> Vec<DriverCommandDefinition> {
     vec![
         definition(
             SessionCommand::BeginSessionTransaction,
             "begin_session_transaction",
-            "开启事务并把句柄随 completion 交出（CM-73/CM-74 句柄登记基线）。",
+            "开启事务并把句柄随 completion 交出。",
             json!({ "type": "object", "properties": {}, "additionalProperties": false }),
             handle_output_schema(),
         ),
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn the_table_has_exactly_ten_commands_and_matches_the_enum() {
         let definitions = session_handle_command_definitions();
-        assert_eq!(definitions.len(), 10, "§9.1 L451-460 是十条命令");
+        assert_eq!(definitions.len(), 10, "会话级句柄命令是十条");
         let ids: Vec<&str> = definitions.iter().map(|d| d.id.as_str()).collect();
         let expected: Vec<&str> = SessionCommand::ALL.iter().map(|c| c.id()).collect();
         assert_eq!(ids, expected, "命令表必须与 SessionCommand::ALL 一一对应");
@@ -262,7 +262,7 @@ mod tests {
         for definition in session_handle_command_definitions() {
             assert!(
                 definition.metadata.requires_connection,
-                "{} 必须声明 requires_connection = true（§9.1 L462）",
+                "{} 必须声明 requires_connection = true",
                 definition.id
             );
         }
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn no_input_schema_carries_a_credential_field() {
-        // §13：命令入参不得含凭据字段，否则 journal 会记录到它。
+        // 命令入参不得含凭据字段，否则 journal 会记录到它。
         for definition in session_handle_command_definitions() {
             let properties = definition
                 .input_schema

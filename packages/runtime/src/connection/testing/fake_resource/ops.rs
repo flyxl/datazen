@@ -1,22 +1,22 @@
-//! 八个操作的实现（fake-runtime-fixtures.md §3.1、§3.2、§4.1、§5.1）。
-//! 第九个操作 `closeResource` 住在同目录的 `close.rs`（§3.1 逐操作校验不变）。
+//! 八个操作的实现。
+//! 第九个操作 `closeResource` 住在同目录的 `close.rs`（逐操作校验不变）。
 //!
 //! 每个操作都遵守两条硬规则：
 //!
-//! 1. **§3.1**：`ResourceHandle` 只由提供方签发，且**每个操作**都要校验
+//! 1. **签发与校验**：`ResourceHandle` 只由提供方签发，且**每个操作**都要校验
 //!    `resourceId` + `runtimeEpoch` + owner —— 入口统一走
 //!    `FakeResourceProvider::resolve`（见 `handles` 子模块）。
-//! 2. **§3.2**：状态迁移必须诚实。`resetResource` 返回 `Clean` **不等于**事务已终结；
+//! 2. **状态迁移诚实**：`resetResource` 返回 `Clean` **不等于**事务已终结；
 //!    提交不可判定时 `effectOutcome` 必须是 `Unknown`，**永远不能**是 `Completed`。
 //!
 //! 故障注入由 `FakeScript` 驱动，且**只改返回值**：状态迁移与 journal 写入照常发生，
-//! 所以注入故障后的台账与基线台账走完全相同的 §5.3 断言路径 —— 这正是
+//! 所以注入故障后的台账与基线台账走完全相同的断言路径 —— 这正是
 //! `fake_resource::tests::the_change_point_rules_stay_expressible_under_injected_faults`
 //! 要证明的事情（R4：故障归 `fake_resource` 所有的依据）。
 //!
-//! 全程**没有任何 sleep**：超时窗口挂在假单调时钟上；顺序只由 journal 的 `seq` 判定（§5 L269）。
+//! 全程**没有任何 sleep**：超时窗口挂在假单调时钟上；顺序只由 journal 的 `seq` 判定。
 //!
-//! `ProviderError::UnsupportedPlan` 是**无载荷**变体（§3.1 的错误面刻意收敛），
+//! `ProviderError::UnsupportedPlan` 是**无载荷**变体（错误面刻意收敛），
 //! 所以「脚本把别的操作的故障排到了本操作上」这类内部错误只能报 `UnsupportedPlan`，
 //! 排错要打印脚本本身（`FaultKind::catalog_id()` + `ResourceOp::as_str()`），
 //! **不要**把故障细节拼进生产错误消息。
@@ -48,13 +48,13 @@ use super::{FakeResourceProvider, PROVIDER_ID};
 impl FakeResourceProvider {
     // ---- 1. describeResource ----
 
-    /// §3.1 L414：`describeResource` 返回七项齐全的资源描述符。
+    /// `describeResource` 返回七项齐全的资源描述符。
     /// fake 的 `sessionContinuity` 固定 `fixed`（一条物理连接 ≡ 一个会话）。
     pub fn describe_resource(
         &self,
         request: &DescribeResourceRequest,
     ) -> Result<ResourceDescriptor, ProviderError> {
-        // 这个 fake 提供方只服务构造时指定的那一个 `connectionId`（§3.1）。
+        // 这个 fake 提供方只服务构造时指定的那一个 `connectionId`。
         if request.target.connection_id.as_str() != self.target.connection_id.as_str() {
             return Err(ProviderError::TargetUnsupported(format!(
                 "假提供方只服务 {}，收到 {}",
@@ -64,7 +64,7 @@ impl FakeResourceProvider {
         }
         if let Some((_, kind)) = self.script.take(ResourceOp::Describe) {
             return match kind {
-                // F1：派发前拒绝。
+                // 派发前拒绝。
                 FaultKind::UnsupportedPlan => Err(ProviderError::UnsupportedPlan),
                 // 别把别的操作的故障排到 describe 上。
                 _ => Err(ProviderError::UnsupportedPlan),
@@ -90,9 +90,9 @@ impl FakeResourceProvider {
 
     // ---- 2. acquireResource ----
 
-    /// §3.1 L130：`acquireResource` 申请资源，**先记账**再建资源。
+    /// `acquireResource` 申请资源，**先记账**再建资源。
     ///
-    /// §5.3 规则 1：每次 `resourceId` 创建 → permit 余额 +1 且 `live_resources` 同步 +1。
+    /// 每次 `resourceId` 创建 → permit 余额 +1 且 `live_resources` 同步 +1。
     pub fn acquire_resource(
         &self,
         request: &AcquireResourceRequest,
@@ -102,7 +102,7 @@ impl FakeResourceProvider {
 
     /// 夹具侧的便捷包装：除了 `OpenSessionReceipt`，还要能继续操作的 `ResourceHandle`
     /// 与 `PermitSet`。`ResourceHandle` 只是只读校验凭证；真正的会话句柄必须经
-    /// `register_handle` 登记（§5.3 规则 5），否则就是孤立句柄（反例，§9.1）。
+    /// `register_handle` 登记，否则就是孤立句柄（反例）。
     pub fn acquire(
         &self,
         request: &AcquireResourceRequest,
@@ -122,11 +122,11 @@ impl FakeResourceProvider {
         &self,
         request: &AcquireResourceRequest,
     ) -> Result<(ResourceId, ResourceHandle, OpenSessionReceipt), ProviderError> {
-        // F12 要等资源真的建出来才能造句柄，所以先把注入记下来，建完再落。
+        // 句柄登记注入要等资源真的建出来才能造句柄，所以先把注入记下来，建完再落。
         let mut orphan_reason: Option<&'static str> = None;
         if let Some((_, kind)) = self.script.take(ResourceOp::Acquire) {
             match kind {
-                // F2：预算占满。窗口挂在假单调时钟上，**不 sleep**。
+                // 预算占满。窗口挂在假单调时钟上，**不 sleep**。
                 FaultKind::BudgetBusy { busy_for, reason } => {
                     let until_nanos = self.now_nanos().saturating_add(busy_for.as_nanos() as u64);
                     let mut busy = self
@@ -140,11 +140,11 @@ impl FakeResourceProvider {
                         reason
                     };
                 }
-                // F3：连接 + 初始化失败。
+                // 连接 + 初始化失败。
                 FaultKind::ConnectAndInit { code } => {
                     return Err(ProviderError::ProtocolError(code.to_owned()))
                 }
-                // F12：句柄登记反例 —— 见下方 `orphan_reason` 的落点。
+                // 句柄登记反例 —— 见下方 `orphan_reason` 的落点。
                 FaultKind::HandleNotReturned { reason } => orphan_reason = Some(reason),
                 _ => return Err(ProviderError::UnsupportedPlan),
             }
@@ -204,9 +204,9 @@ impl FakeResourceProvider {
         }
         self.journal.register_active_session(&request.db_session_id);
 
-        // F12：句柄造出来了，runtime **拒绝**把它交给宿主 —— `acquire` 照常成功
+        // 句柄造出来了，runtime **拒绝**把它交给宿主 —— `acquire` 照常成功
         // （句柄登记不是 acquire 的失败条件），但假侧只落一条 `orphaned`，
-        // 宿主登记册里永远不会有它。§4.2 F12 ⇒ I7 在关闭回收之前必然不成立。
+        // 宿主登记册里永远不会有它，孤立句柄不变式在关闭回收之前必然不成立。
         if let Some(reason) = orphan_reason {
             let execution_id = self.ids.next_execution_id(&request.db_session_id);
             let handle_id =
@@ -227,12 +227,12 @@ impl FakeResourceProvider {
 
     // ---- 3. executeOnResource ----
 
-    /// §5.1 L416：九项齐全，且**如实**报告本次执行的结论。
+    /// 九项齐全，且**如实**报告本次执行的结论。
     pub fn execute_on_resource(
         &self,
         request: &ExecuteOnResourceRequest,
     ) -> Result<ExecutionCompletion, ProviderError> {
-        // F12 必须**在 `resolve` 之前**取脚本并改写句柄：跨 epoch 复用要死在
+        // 句柄登记注入必须**在 `resolve` 之前**取脚本并改写句柄：跨 epoch 复用要死在
         // `verify` 的 epoch 门闸上。取晚了 / 改错了字段，失败会落到 resourceId
         // 或 owner 那一关，测到的就不再是 epoch 门闸。
         let fault = self.script.take(ResourceOp::Execute).map(|(_, kind)| kind);
@@ -249,7 +249,7 @@ impl FakeResourceProvider {
         };
         let resource = self.resolve(&presented.resource_id, &presented, false)?;
 
-        // F1：派发前拒绝 —— **不**写 execution 终态，因为根本没有派发过（§4.2 F1）。
+        // 派发前拒绝 —— **不**写 execution 终态，因为根本没有派发过。
         if let Some(FaultKind::UnsupportedPlan) = fault {
             return Err(ProviderError::UnsupportedPlan);
         }
@@ -268,15 +268,15 @@ impl FakeResourceProvider {
             }
         }
 
-        // F4 / F5：派发**之后**失败 → 必须有终态记录
-        // （§5.3「每次执行终态 protocolDrained 已记录或显式置 false」）。
+        // 语句派发后 / 结果传输失败 → 必须有终态记录
+        // （「每次执行终态 protocolDrained 已记录或显式置 false」）。
         //
-        // `errorCode` 与 `effectOutcome` 是两个独立命名空间（§4.2 F4），所以这里按**故障发生
+        // `errorCode` 与 `effectOutcome` 是两个独立命名空间，所以这里按**故障发生
         // 在哪一步**分别取值，而不是共用一个判定：
         //  - `StatementDispatch`：语句还没送出去，作用域**未开始** → `notStarted`；
         //  - `ResultTransport`：语句已在服务端执行、结果读不回来 → `unknown`；
         //  - 若 `errorCode` 本身属于不可判定类（超时 / 协议错误 / 取消 / 连接丢失），
-        //    一律压成 `unknown`，禁止回填 `completed` / `rolledBack`（CM-44、CM-47，§13 L774）。
+        //    一律压成 `unknown`，禁止回填 `completed` / `rolledBack`。
         let (completion_status, error_code, effect_outcome) = match &fault {
             Some(FaultKind::StatementDispatch { code }) => {
                 let code = execution_error_code(code);
@@ -325,14 +325,14 @@ impl FakeResourceProvider {
 
     // ---- 4. observeSession ----
 
-    /// §3.2：观测可以是 `unknown`，但**不得**回填 `initialTarget`（§5.1 L417）。
+    /// 观测可以是 `unknown`，但**不得**回填 `initialTarget`。
     pub fn observe_session(
         &self,
         request: &ObserveSessionRequest,
     ) -> Result<SessionObservation, ProviderError> {
         if let Some((_, kind)) = self.script.take(ResourceOp::Observe) {
             return match kind {
-                // F6：CM-14 / CM-18 的可注入 `unknown`。
+                // 可注入的 `unknown`。
                 FaultKind::ObserveUnknown => Ok(SessionObservation::all_unknown()),
                 _ => Err(ProviderError::UnsupportedPlan),
             };
@@ -347,7 +347,7 @@ impl FakeResourceProvider {
 
     // ---- 5. changeContext ----
 
-    /// §3.2 L138：`changeContext` 有三种结果 —— `Confirmed` / `RequiresReplacement` / `Unsupported`。
+    /// `changeContext` 有三种结果 —— `Confirmed` / `RequiresReplacement` / `Unsupported`。
     pub fn change_context(
         &self,
         request: &ChangeContextRequest,
@@ -355,11 +355,11 @@ impl FakeResourceProvider {
         let resource = self.resolve(&request.handle.resource_id, &request.handle, false)?;
         if let Some((_, kind)) = self.script.take(ResourceOp::ChangeContext) {
             match kind {
-                // F7：需要换宿主 —— 这是 `Ok` 值，不是错误。
+                // 需要换宿主 —— 这是 `Ok` 值，不是错误。
                 FaultKind::RequiresReplacement { reason } => {
                     return Ok(ChangeContextOutcome::RequiresReplacement { reason })
                 }
-                // F7：乐观并发冲突。
+                // 乐观并发冲突。
                 FaultKind::ContextConflict => {
                     return Err(ProviderError::ContextConflict(context_conflict(
                         request.expected_context_revision,
@@ -396,12 +396,12 @@ impl FakeResourceProvider {
 
     // ---- 7. requestCancel ----
 
-    /// §3.2 L143：只有命中未完成执行才返回 `Requested`。
+    /// 只有命中未完成执行才返回 `Requested`。
     pub fn request_cancel(
         &self,
         request: &RequestCancelRequest,
     ) -> Result<CancelReceipt, ProviderError> {
-        // F9：假提供方不支持精确取消 —— 返回 `Unsupported`，**不是**错误。
+        // 假提供方不支持精确取消 —— 返回 `Unsupported`，**不是**错误。
         if let Some((_, FaultKind::CancelRejected { code })) =
             self.script.take(ResourceOp::RequestCancel)
         {
@@ -434,10 +434,10 @@ impl FakeResourceProvider {
 
     // ---- 8. resetResource ----
 
-    /// §3.2 L146：`resetResource` 返回 `Clean` **不等于**事务已终结 ——
+    /// `resetResource` 返回 `Clean` **不等于**事务已终结 ——
     /// `FakeResource::reset_for_reuse` 一个字都不碰 `transaction_state`。
     ///
-    /// §4.1 的 F10 三个变体都落在这里。贯穿性硬规则：**注入只改返回值，
+    /// 「driver 报 Discard」的三个变体都落在这里。贯穿性硬规则：**注入只改返回值，
     /// 不碰资源状态机** —— 否则测到的就不是「驱动说 Clean、宿主说不能归池」，
     /// 而是我们自己把状态改脏了。`CleanButPreconditionUnmet` 尤其如此：
     /// 资源照样走一遍真实的 `reset_for_reuse()`，只是把结论按脚本报成 `Clean`。
@@ -448,7 +448,7 @@ impl FakeResourceProvider {
         let injected = self.script.take(ResourceOp::Reset).map(|(_, kind)| kind);
         let resource = self.resolve(&request.handle.resource_id, &request.handle, false)?;
         match injected {
-            // F10：reset 超时。基线在 reset 上**从不**报错，所以这里的 `Err`
+            // reset 超时。基线在 reset 上**从不**报错，所以这里的 `Err`
             // 必然来自脚本 —— 这本身就是注入生效的可观察证据。
             Some(FaultKind::ResetTimeout) => {
                 return Err(ProviderError::CleanupFailed(format!(
@@ -456,7 +456,7 @@ impl FakeResourceProvider {
                     request.handle.resource_id.as_str()
                 )))
             }
-            // F10：驱动自报 `Discard` 并给出用例指定的原因。基线只可能产出
+            // 驱动自报 `Discard` 并给出用例指定的原因。基线只可能产出
             // `SessionStillExecuting` / `HealthDegraded`，脚本能给
             // `TemporaryObjectsPresent` 这种基线**产不出来**的原因。
             Some(FaultKind::ResetDiscard { reason }) => {
@@ -476,11 +476,11 @@ impl FakeResourceProvider {
         };
         Ok(
             if matches!(injected, Some(FaultKind::CleanButPreconditionUnmet)) {
-                // F10 反例：驱动报了 `Clean`，但 `live`/`degraded` 说明宿主前置并不满足。
-                // 宿主必须自己去查 `can_return_to_pool()`，不能信驱动（§4.2 F10）。
+                // 反例：驱动报了 `Clean`，但 `live`/`degraded` 说明宿主前置并不满足。
+                // 宿主必须自己去查 `can_return_to_pool()`，不能信驱动。
                 ResetOutcome::Clean
             } else if live {
-                // 会话还在事务里 → 归池必须 `Discard`，绝不能报 `Clean`（§3.2 L146）。
+                // 会话还在事务里 → 归池必须 `Discard`，绝不能报 `Clean`。
                 ResetOutcome::Discard {
                     reason: ResetDiscardReason::SessionStillExecuting,
                 }
@@ -497,7 +497,7 @@ impl FakeResourceProvider {
     // ---- 9. closeResource ----
     // ---- 夹具辅助 ----
 
-    /// §9.3：给资源钉一个 lease（I3）。驱逐路径要据此归还。
+    /// 给资源钉一个 lease。驱逐路径要据此归还。
     pub fn pin_lease(&self, resource_id: &ResourceId) -> LeaseId {
         let lease_id = self.ids.next_lease_id(resource_id);
         self.leases
@@ -510,7 +510,7 @@ impl FakeResourceProvider {
         lease_id
     }
 
-    /// 记录一条流事件序号（§4.3 I8：序号必须连续）。
+    /// 记录一条流事件序号（序号必须连续）。
     pub fn record_stream_event(&self, stream_id: &StreamId, seq: u64) {
         self.journal.record_stream_event(stream_id, seq);
     }
@@ -546,7 +546,7 @@ impl FakeResourceProvider {
             state: SessionState::Ready,
             attachment_state: AttachmentState::Attached,
             active_execution_id: None,
-            // `expires_at` 取假 UTC 时钟，不读墙钟，也不含任何凭据（§13）。
+            // `expires_at` 取假 UTC 时钟，不读墙钟，也不含任何凭据。
             expires_at: Timestamp::new(self.clock.utc().as_rfc3339()),
         }
     }

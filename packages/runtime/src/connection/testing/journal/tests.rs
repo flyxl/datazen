@@ -1,4 +1,4 @@
-//! journal 自测（fake-runtime-fixtures.md §5.3/§5.4、§4.3）。
+//! journal 自测。
 //!
 //! 每个测试都构造一条具体的 journal 轨迹，再断言对应规则会或不会被报出来，
 //! 从而证明断言本身是有效的，而不是恒真。
@@ -100,7 +100,7 @@ fn permit_balance_moves_plus_one_on_create_and_minus_one_on_confirmed_close() {
         pool_key(),
         BudgetClass::Session,
     );
-    // §5.3 规则 1：创建 → permit 余额 +1、live_resources +1。
+    // 创建 → permit 余额 +1、live_resources +1。
     assert_eq!(journal.permit_balance(), 1);
     assert_eq!(journal.live_resources(), vec![res.clone()]);
     let change_points = journal.assert().change_point_violations();
@@ -119,7 +119,7 @@ fn permit_balance_moves_plus_one_on_create_and_minus_one_on_confirmed_close() {
         pool_key(),
         BudgetClass::Session,
     );
-    // §5.3 规则 2：只有 Closed 才归还 permit。
+    // 只有 Closed 才归还 permit。
     assert_eq!(journal.permit_balance(), 0);
     assert!(journal.live_resources().is_empty());
     let change_points = journal.assert().change_point_violations();
@@ -151,19 +151,19 @@ fn close_unconfirmed_keeps_the_permit_occupied_forever() {
         pool_key(),
         BudgetClass::Session,
     );
-    // §5.3 规则 3：CloseUnconfirmed 余额不变。
+    // CloseUnconfirmed 余额不变。
     assert_eq!(journal.permit_balance(), 1);
     assert_eq!(journal.live_resources(), vec![res]);
     let change_points = journal.assert().change_point_violations();
     assert!(change_points.is_empty(), "变更点违规: {change_points:?}");
-    // 但它不算「已归还」：I1 在未完成核验时必然不满足，这正是夹具要暴露的状态。
+    // 但它不算「已归还」：permit 收支在未完成核验时必然不满足，这正是夹具要暴露的状态。
     let ledger = journal.assert().ledger_violations();
     assert!(ledger.iter().any(|v| v.contains("I1")), "实际: {ledger:?}");
 }
 
-/// 隔离（F11）把资源踢出 live 集，但**不归还 permit** —— 隔离期间它仍然占着预算。
+/// 隔离（关闭未确认）把资源踢出 live 集，但**不归还 permit** —— 隔离期间它仍然占着预算。
 ///
-/// 这条用例正是 §5.3 规则 4 对账口径的判别式：如果规则 4 拿 live 集当分母，
+/// 这条用例正是 permit 对账口径的判别式：如果拿 live 集当分母，
 /// 「live 空 + 余额 1」会被误报成收支不平；正确口径是 permit 持有者，
 /// 于是这里必须是**干净的**，同时 live 集确实为空、余额确实仍为 1。
 #[test]
@@ -195,8 +195,8 @@ fn quarantined_keeps_the_permit_and_leaves_the_live_set_for_rule_four() {
         journal.live_resources().is_empty(),
         "隔离资源不可再被 acquire"
     );
-    // live 集合已清空，但 permit 的持有者正是这张被隔离的资源 ⇒ 规则 4 应当对得平。
-    // 这条断言就是判别式：若把规则 4 的分母换回 live 集，「live 空 + 余额 1」必报不平。
+    // live 集合已清空，但 permit 的持有者正是这张被隔离的资源 ⇒ 守恒式应当对得平。
+    // 这条断言就是判别式：若把守恒式的分母换回 live 集，「live 空 + 余额 1」必报不平。
     let violations = journal.assert().change_point_violations();
     assert!(
         violations.is_empty(),
@@ -273,7 +273,7 @@ fn registering_a_handle_keeps_its_resource_and_epoch_and_closing_removes_it() {
     assert!(change_points.is_empty(), "变更点违规: {change_points:?}");
 
     journal.record_handle(&h, HandleAction::Closed, "commit_session_transaction");
-    // §5.3 规则 6：closed 后必须移出登记册。
+    // closed 后必须移出登记册。
     assert!(journal.handle_registry().is_empty());
     let change_points = journal.assert().change_point_violations();
     assert!(change_points.is_empty(), "变更点违规: {change_points:?}");
@@ -289,7 +289,7 @@ fn an_epoch_that_does_not_match_the_registry_entry_is_reported_with_its_seq() {
         HandleAction::Registered,
         "begin",
     );
-    // 复用同一个 handleId 但 epoch 不同 —— CM-71 的确定性制造方式。
+    // 复用同一个 handleId 但 epoch 不同 —— 确定性制造方式。
     journal.record_handle(
         &handle("hnd-t1", &res, 2),
         HandleAction::Registered,
@@ -413,7 +413,7 @@ fn returning_to_pool_with_open_handles_is_rejected_by_the_pre_pool_return_checks
         violations.iter().any(|v| v.contains("登记句柄非空")),
         "实际: {violations:?}"
     );
-    // 同一场景由 §5.4 的专用入口再拦一次。
+    // 同一场景由专用入口再拦一次。
     let check = CommandJournal::default();
     let res2 = resource("0002");
     check.record_resource_event(

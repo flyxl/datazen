@@ -1,16 +1,16 @@
-//! `FakeResourceProvider` 的自测（fake-runtime-fixtures.md §3、§4、§5.3、§8、§13）。
+//! `FakeResourceProvider` 的自测。
 //!
 //! 这些测试刻意**不看内存布局**：断言一律打在 journal 台账、permit 台账与
 //! `assert_no_leak` 的返回值上。所以将来把假提供方换成任何别的实现，只要台账
 //! 语义不变，断言就仍然成立。
 //!
-//! 全程**不 sleep**：顺序由 `seq` 表达，时间由 [`FakeClock`] 推进（§6 L357 禁止用
+//! 全程**不 sleep**：顺序由 `seq` 表达，时间由 [`FakeClock`] 推进（禁止用
 //! sleep 猜顺序）。
 //!
 //! 本文件由 `mod.rs` 以 `#[cfg(test)] mod tests;` 声明 —— 因此本文件的 `super`
-//! 就是 `fake_resource` 本身，`use super::*` 直接拿到 §3.1 的类型。
+//! 就是 `fake_resource` 本身，`use super::*` 直接拿到本模块的类型。
 //!
-//! **panic 约定**（docs/development/panic-policy.md）：本文件每个 `expect` / `panic!`
+//! **panic 约定**：本文件每个 `expect` / `panic!`
 //! 的消息都写明「哪条不变量被打破才算失败」，而不是「出错了」。夹具自带的基线路径
 //! 不允许 panic；只有**夹具没按设计造出目标状态**（例如注入的故障没生效、句柄没造出来）
 //! 才 panic，那种情况继续断言下去只会得到一个由假状态推出的假结论。
@@ -34,17 +34,17 @@ use crate::connection::testing::journal::{JournalEntry, ResourceEvent};
 use crate::connection::types::{Counter, DbSessionId, ExecutionId, HandleId};
 
 // ---------------------------------------------------------------------------
-// §5.3 规则 1 / §4.3 I1、I2、I6：创建与归池必须记账
+// 创建与归池必须记账
 // ---------------------------------------------------------------------------
 
-/// §5.3 规则 1：每次 `resourceId` 创建 → permit 余额 +1 **且** `live_resources` 同步 +1；
-/// §5.3 规则 2：归池前置条件满足才允许归还。两条都在同一条台账轨迹上验。
+/// 每次 `resourceId` 创建 → permit 余额 +1 **且** `live_resources` 同步 +1；
+/// 归池前置条件满足才允许归还。两条都在同一条台账轨迹上验。
 #[test]
 fn creating_a_resource_takes_one_permit_and_closing_it_gives_it_back() {
     let provider = provider();
     let acquired = acquire(&provider).expect("假提供方自带的 acquire 必须成功");
 
-    // 规则 1：permit 台账 +1，live_resources 同步 +1。
+    // 创建时：permit 台账 +1，live_resources 同步 +1。
     assert_eq!(
         provider.journal().permits_issued(),
         1,
@@ -57,12 +57,12 @@ fn creating_a_resource_takes_one_permit_and_closing_it_gives_it_back() {
 
     close_and_release(&provider, &acquired).expect("归池必须成功");
 
-    // §4.3 I2：没有残留占用预算的资源。
+    // 没有残留占用预算的资源。
     assert!(
         provider.live_resources().is_empty(),
         "归池后不得仍有资源占用预算（I2）"
     );
-    // §4.3 I6：发放与归还是配平的。
+    // 发放与归还是配平的。
     assert_eq!(
         provider.journal().assert().ledger_violations(),
         Vec::<String>::new(),
@@ -71,16 +71,16 @@ fn creating_a_resource_takes_one_permit_and_closing_it_gives_it_back() {
 }
 
 // ---------------------------------------------------------------------------
-// §5.3 变化点断言在注入故障下仍然可表达（ops.rs 的模块级引用点名了本用例）
+// 变化点断言在注入故障下仍然可表达（ops.rs 的模块级引用点名了本用例）
 // ---------------------------------------------------------------------------
 
 /// `ops.rs` 的模块注释点名了本用例：变化点断言在**注入故障**的轨迹上仍然成立。
 ///
-/// 覆盖 §4.1 F4/F5 的两个注入点，并顺带证明 §13 L774 的强制关系：
+/// 覆盖「错误码与效果结论独立」两个注入点，并顺带证明超时与不可判定的强制关系：
 /// 不可判定的 `errorCode` ⇒ `effectOutcome` 必须是 `unknown`。
 #[test]
 fn the_change_point_rules_stay_expressible_under_injected_faults() {
-    // --- F4：语句派发就失败，且失败**可判定**（SqlError）→ 作用域未开始 ---
+    // --- 语句派发就失败，且失败**可判定**（SqlError）→ 作用域未开始 ---
     {
         let provider = provider();
         provider.script().once(
@@ -96,15 +96,15 @@ fn the_change_point_rules_stay_expressible_under_injected_faults() {
                 command_id: "query".to_owned(),
                 input: json!({ "sql": "SELECT 1" }),
             })
-            .expect("注入了失败但仍然必须交出终态记录（§5.3 规则 8）");
+            .expect("注入了失败但仍然必须交出终态记录");
 
-        // §4.2 F4：`errorCode` 与 `effectOutcome` 独立取值。
+        // `errorCode` 与 `effectOutcome` 独立取值。
         assert_eq!(completion.error_code, Some(ExecutionErrorCode::SqlError));
         // 语句没送出去 ⇒ 作用域未开始，**不是** unknown。
         assert_eq!(completion.effect_outcome, EffectOutcome::NotStarted);
     }
 
-    // --- F5：结果传输失败，且不可判定（Timeout）⇒ 必须 unknown ---
+    // --- 结果传输失败，且不可判定（Timeout）⇒ 必须 unknown ---
     {
         let provider = provider();
         provider.script().once(
@@ -120,10 +120,10 @@ fn the_change_point_rules_stay_expressible_under_injected_faults() {
                 command_id: "query".to_owned(),
                 input: json!({ "sql": "SELECT 1" }),
             })
-            .expect("注入了失败但仍然必须交出终态记录（§5.3 规则 8）");
+            .expect("注入了失败但仍然必须交出终态记录");
 
         assert_eq!(completion.error_code, Some(ExecutionErrorCode::Timeout));
-        // CM-44 / CM-47：超时 ⇒ 作用域不可判定 ⇒ 只能是 unknown，
+        // 超时 ⇒ 作用域不可判定 ⇒ 只能是 unknown，
         // 禁止因为「看到超时」就回填 completed / rolledBack。
         assert_eq!(completion.effect_outcome, EffectOutcome::Unknown);
     }
@@ -150,10 +150,10 @@ fn the_change_point_rules_stay_expressible_under_injected_faults() {
 }
 
 // ---------------------------------------------------------------------------
-// §4.1 F2：预算占满窗口挂在假时钟上，不 sleep
+// 预算占满窗口挂在假时钟上，不 sleep
 // ---------------------------------------------------------------------------
 
-/// F2：注入的预算占满窗口挂在**假单调时钟**上。窗口内申请必须被拒，
+/// 注入的预算占满窗口挂在**假单调时钟**上。窗口内申请必须被拒，
 /// 推进假时钟越过窗口后同一申请必须成功 —— 全程没有一次 sleep。
 #[test]
 fn the_budget_busy_window_expires_on_the_fake_clock_not_on_sleep() {
@@ -180,12 +180,12 @@ fn the_budget_busy_window_expires_on_the_fake_clock_not_on_sleep() {
 }
 
 // ---------------------------------------------------------------------------
-// §5.1 L416 / §5.3 规则 5：句柄必须登记，孤立句柄要被台账抓到
+// 句柄必须登记，孤立句柄要被台账抓到
 // ---------------------------------------------------------------------------
 
-/// §5.1 L416：造出来的句柄必须经 `register_handle` 登记，否则台账抓不到它的归属。
+/// 造出来的句柄必须经 `register_handle` 登记，否则台账抓不到它的归属。
 /// `orphan_handle` 故意造一个「只登记了 orphaned 事件、没进登记册」的句柄
-/// ⇒ §4.3 的 **I7** 不成立（这里是**故意**制造泄漏，验的是断言能抓到它，
+/// ⇒ 孤立句柄不变式 **不成立**（这里是**故意**制造泄漏，验的是断言能抓到它，
 /// 不是期望它通过）。
 #[test]
 fn an_orphan_handle_is_visible_to_the_leak_invariant() {
@@ -201,7 +201,7 @@ fn an_orphan_handle_is_visible_to_the_leak_invariant() {
         )
         .expect("孤立句柄必须造得出来");
 
-    // I7：orphan_handles 必须为空 —— 这里**不成立**，否则断言就是恒真的。
+    // 孤立句柄必须为空 —— 这里**不成立**，否则断言就是恒真的。
     let violations = provider.journal().assert().leak_invariant_violations();
     assert!(
         violations
@@ -211,8 +211,8 @@ fn an_orphan_handle_is_visible_to_the_leak_invariant() {
     );
 
     // 收口路径是**关闭资源**而不是 `close_handle`：孤立句柄从没进过登记册，
-    // `close_handle` 只能报 `SessionNotFound`（§5.1「造句柄 ≠ 登记句柄」）。
-    // `close_resource` 末尾会 `recover_orphans_on_close`，I7 由此收口（I1/I2/I6 一并收口）。
+    // `close_handle` 只能报 `SessionNotFound`（造句柄 ≠ 登记句柄）。
+    // `close_resource` 末尾会 `recover_orphans_on_close`，孤立句柄由此收口（预算收支一并收口）。
     close_and_release(&provider, &acquired).expect("关闭资源必须成功");
     assert_eq!(
         provider.journal().assert().leak_invariant_violations(),
@@ -222,10 +222,10 @@ fn an_orphan_handle_is_visible_to_the_leak_invariant() {
 }
 
 // ---------------------------------------------------------------------------
-// §3.1 / §5.3：epoch 与 journal seq 单调
+// epoch 与 journal seq 单调
 // ---------------------------------------------------------------------------
 
-/// §5.2：单调 `seq` 来自单个原子计数器，因此台账顺序**不依赖时钟**。
+/// 单调 `seq` 来自单个原子计数器，因此台账顺序**不依赖时钟**。
 /// 连续写入不得出现重复或倒退的 `seq`。
 #[test]
 fn journal_sequence_is_strictly_increasing_across_writes() {
@@ -279,10 +279,10 @@ fn journal_sequence_is_strictly_increasing_across_writes() {
 }
 
 // ---------------------------------------------------------------------------
-// §8.2：id 形态可预测
+// id 形态可预测
 // ---------------------------------------------------------------------------
 
-/// §8.2：`dbSessionId` 形如 `dbs_<workerId>_<seq:04>`，`resourceId` 形如
+/// `dbSessionId` 形如 `dbs_<workerId>_<seq:04>`，`resourceId` 形如
 /// `res_<workerId>_<seq:04>`。夹具里不用随机源，所以这两者可被直接断言。
 #[test]
 fn generated_ids_carry_the_worker_id_and_a_zero_padded_sequence() {
@@ -310,7 +310,7 @@ fn generated_ids_carry_the_worker_id_and_a_zero_padded_sequence() {
 // FakeClock 单独一档：假时钟是唯一的「时间」
 // ---------------------------------------------------------------------------
 
-/// §7：`FakeClock` 只前进不后退，且与真实墙钟无关 —— 这是整套夹具
+/// `FakeClock` 只前进不后退，且与真实墙钟无关 —— 这是整套夹具
 /// 不用 sleep 的前提。
 #[test]
 fn the_fake_clock_only_moves_when_told_to() {
@@ -327,20 +327,17 @@ fn the_fake_clock_only_moves_when_told_to() {
 }
 
 // ---------------------------------------------------------------------------
-// 池键隔离（§8.1，CM-05 / CM-67）
+// 池键隔离（共享执行身份、不同隔离键）
 // ---------------------------------------------------------------------------
 
-/// §8.1：执行身份相同、`policyIsolationKey` 不同 ⇒ 池键必须不同，
+/// 执行身份相同、`policyIsolationKey` 不同 ⇒ 池键必须不同，
 /// 于是「同池复用」的正例在夹具里根本不成立。
 #[test]
 fn a_different_policy_isolation_key_derives_a_different_pool_key() {
     let provider = provider();
     let first = pool_key(&provider, "pol-alpha");
     let second = pool_key(&provider, "pol-beta");
-    assert_ne!(
-        first, second,
-        "policyIsolationKey 不同 ⇒ 池键必须不同（CM-05 / CM-67）"
-    );
+    assert_ne!(first, second, "policyIsolationKey 不同 ⇒ 池键必须不同");
     assert_eq!(
         first,
         pool_key(&provider, "pol-alpha"),
@@ -361,10 +358,10 @@ fn counter_is_monotonic() {
 }
 
 // ---------------------------------------------------------------------------
-// §4.1 F10 重置归池：driver 报 `Clean` **不等于**宿主可以把资源放回池子
+// 重置归池：driver 报 `Clean` **不等于**宿主可以把资源放回池子
 // ---------------------------------------------------------------------------
 
-/// §4.2 F10：driver 报 `Clean` 但句柄非空 ⇒ 宿主判定事务未终结 ⇒ **关闭**而非归池。
+/// driver 报 `Clean` 但句柄非空 ⇒ 宿主判定事务未终结 ⇒ **关闭**而非归池。
 ///
 /// 这条用例把「驱动说 Clean」和「宿主能归池」拆成两个独立判据，并要求二者在
 /// 注入下**必然相反**：注入只改 `resetResource` 的返回值，资源状态机一个字节都不动。
@@ -416,7 +413,7 @@ fn f10_a_clean_reset_does_not_license_returning_the_resource_to_the_pool() {
         .expect("资源必须还在");
     assert!(
         slot.has_open_transaction(),
-        "resetForReuse 不许终结事务（§3.2），断言不成立说明注入污染了状态机"
+        "resetForReuse 不许终结事务，断言不成立说明注入污染了状态机"
     );
     assert_eq!(slot.registered_handles(), 1, "句柄必须仍在登记册里");
     assert!(
@@ -442,7 +439,7 @@ fn f10_a_clean_reset_does_not_license_returning_the_resource_to_the_pool() {
         .count();
     assert_eq!(
         returned, 0,
-        "前置不满足时一次归池都不许发生（§9.4），实际记了 {returned} 次"
+        "前置不满足时一次归池都不许发生，实际记了 {returned} 次"
     );
 
     close_and_release(&provider, &acquired).expect("关闭必须成功");
@@ -465,14 +462,14 @@ fn f10_a_clean_reset_does_not_license_returning_the_resource_to_the_pool() {
         !events.contains(&"ReturnedToPool"),
         "句柄未清空时禁止归池 —— 只能关闭。实际事件序列：{events:?}"
     );
-    // 关闭 ≠ 泄漏：permit 仍然要还回去（§4.3 I2/I6）。
+    // 关闭 ≠ 泄漏：permit 仍然要还回去。
     assert!(
         provider.live_resources().is_empty(),
         "关闭后不得残留预算占用（I2）"
     );
 }
 
-/// §4.2 F10：`Discard` 的原因由用例指定。基线**产不出** `TemporaryObjectsPresent`
+/// `Discard` 的原因由用例指定。基线**产不出** `TemporaryObjectsPresent`
 /// —— 没有临时对象这件事，假侧无从观测。所以拿到这个原因本身就证明脚本生效。
 #[test]
 fn f10_a_scripted_discard_reason_is_carried_through_verbatim() {
@@ -499,7 +496,7 @@ fn f10_a_scripted_discard_reason_is_carried_through_verbatim() {
     );
 }
 
-/// §4.2 F10：`resetForReuse=unsupported` ⇒ 直接关闭。此时宿主拿到的是**错误**，
+/// `resetForReuse=unsupported` ⇒ 直接关闭。此时宿主拿到的是**错误**，
 /// 绝不能把「reset 没在期限内返回」当成 `Clean`（那会把未终结的事务放回池子）。
 #[test]
 fn f10_a_timed_out_reset_is_an_error_and_never_a_clean_outcome() {
@@ -532,7 +529,7 @@ fn f10_a_timed_out_reset_is_an_error_and_never_a_clean_outcome() {
 }
 
 /// 造一张「reset 前置条件不满足」的资源：开了事务 + 登了一个句柄。
-/// 两个 F10 用例共用它，避免同一段构造抄三遍。
+/// 两个「driver 报 `Clean` 但句柄非空」的用例共用它，避免同一段构造抄三遍。
 fn dirty_resource(provider: &FakeResourceProvider) -> Result<AcquiredResource, ProviderError> {
     let acquired = acquire(provider)?;
     provider.transaction_operation(&acquired.handle, TransactionOperation::Begin)?;
@@ -546,13 +543,13 @@ fn dirty_resource(provider: &FakeResourceProvider) -> Result<AcquiredResource, P
 }
 
 // ---------------------------------------------------------------------------
-// §4.1 F12 句柄登记：造出来 ≠ 交出去；跨 epoch 复用必须死在 epoch 门闸上
+// 句柄登记：造出来 ≠ 交出去；跨 epoch 复用必须死在 epoch 门闸上
 // ---------------------------------------------------------------------------
 
-/// §4.2 F12：runtime **拒绝**把句柄交给宿主，句柄只在 fake 侧标记 `orphaned`。
+/// runtime **拒绝**把句柄交给宿主，句柄只在 fake 侧标记 `orphaned`。
 ///
 /// 可观察差异有三处，且都必须与基线相反：`acquire` 仍然成功、宿主登记册里
-/// **没有**这个句柄、I7 不成立。关闭之后 I7 必须恢复成立。
+/// **没有**这个句柄、孤立句柄不变式不成立。关闭之后必须恢复成立。
 #[test]
 fn f12_a_handle_the_runtime_refuses_to_return_never_reaches_the_host_registry() {
     let provider = provider();
@@ -588,11 +585,11 @@ fn f12_a_handle_the_runtime_refuses_to_return_never_reaches_the_host_registry() 
     close_and_release(&provider, &acquired).expect("关闭必须成功");
     assert!(
         provider.journal().orphan_handles().is_empty(),
-        "关闭回收后 I7 必须恢复成立（§4.3）"
+        "关闭回收后孤立句柄不变式必须恢复成立"
     );
 }
 
-/// §4.2 F12 第二行：跨 epoch 复用句柄。
+/// 第二行：跨 epoch 复用句柄。
 ///
 /// 注入把句柄的 `runtimeEpoch` 改成陈旧值再送进 `executeOnResource`。`verify`
 /// 的次序是 resourceId → epoch → owner，所以必须**死在 epoch 这一关**
@@ -635,7 +632,7 @@ fn f12_a_cross_epoch_handle_dies_on_the_epoch_gate_not_the_id_gate() {
 }
 
 // ---------------------------------------------------------------------------
-// §8.2 CM-71：`force_collision` 让两个资源共用一个 epoch ⇒ epoch 门闸被击穿
+// `force_collision` 让两个资源共用一个 epoch ⇒ epoch 门闸被击穿
 // ---------------------------------------------------------------------------
 
 /// `FakeIds::force_collision(RuntimeEpoch, k)` 把后续 `k` 次 epoch 发放改成**重复值**。
@@ -667,7 +664,7 @@ fn cm71_a_collided_epoch_lets_a_foreign_handle_through_the_epoch_gate() {
         "同一会话里两张资源的 epoch 必须不同，否则这一条断言毫无意义"
     );
 
-    // 把第一张的句柄改写成「指向第二张资源」—— 模拟 §9.2 的 `handle_from_other_resource`。
+    // 把第一张的句柄改写成「指向第二张资源」—— 模拟 `handle_from_other_resource`。
     let mut crossed = first.handle.clone();
     crossed.resource_id = second.resource_id.clone();
     match baseline.resolve(&second.resource_id, &crossed, false) {
@@ -703,7 +700,7 @@ fn cm71_a_collided_epoch_lets_a_foreign_handle_through_the_epoch_gate() {
         }
         other => panic!(
             "epoch 撞车后应改由 ownerToken 拒绝，实际是 {other:?} \
-             —— 若这里放行，说明 ownerToken 也不再绑定 epoch，§3.1 的三校验已名存实亡"
+             —— 若这里放行，说明 ownerToken 也不再绑定 epoch，三校验已名存实亡"
         ),
     }
 }

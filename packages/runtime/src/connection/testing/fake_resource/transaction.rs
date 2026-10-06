@@ -1,11 +1,11 @@
-//! `transactionOperation` 的实现（fake-runtime-fixtures.md §3.1、§3.2、§4.1 F8、§9.2）。
+//! `transactionOperation` 的实现。
 //!
-//! 九个操作里事务这一条最重：它同时承载 §3.2 的三条硬规则
+//! 九个操作里事务这一条最重：它同时承载三条硬规则
 //! （不可判定 ⇒ `effectOutcome = Unknown`、永不 `Completed`；回滚失败 ⇒ 隔离），
-//! 以及 §9.2 要求的「隔离**保留预算占用**」形状，所以单独成文件，不和
+//! 以及「隔离**保留预算占用**」形状，所以单独成文件，不和
 //! `ops.rs` 里其余八个操作挤在一起。
 //!
-//! 判定仍走 `FakeResourceProvider::resolve`（§3.1 的 `resourceId` + `runtimeEpoch` + owner 三校验），
+//! 判定仍走 `FakeResourceProvider::resolve`（`resourceId` + `runtimeEpoch` + owner 三校验），
 //! 故障注入只改返回值、状态迁移与 journal 写入照常 —— 与 `ops.rs` 的其余操作同一条纪律。
 
 use crate::connection::error::ProviderError;
@@ -25,8 +25,8 @@ impl FakeResourceProvider {
 
     /// `begin` / `commit` / `rollback`。
     ///
-    /// §3.2 L141：提交不可判定时 `effectOutcome` 必须是 `Unknown`；
-    /// §9.2：回滚注入 `RollbackFailed` 时资源进 `Quarantined` 且**保留预算占用**。
+    /// 提交不可判定时 `effectOutcome` 必须是 `Unknown`；
+    /// 回滚注入 `RollbackFailed` 时资源进 `Quarantined` 且**保留预算占用**。
     pub fn transaction_operation(
         &self,
         handle: &ResourceHandle,
@@ -41,7 +41,7 @@ impl FakeResourceProvider {
             }
         };
 
-        // F8：回滚失败 → 资源隔离，**不归还 permit**，§5.3 规则 3 的余额保持不变。
+        // 回滚失败 → 资源隔离，**不归还 permit**，余额保持不变。
         if let TransactionOperation::Rollback(_) = &operation {
             if let Some((_, FaultKind::RollbackFailed { reason })) =
                 self.script.take(ResourceOp::Transaction)
@@ -74,12 +74,12 @@ impl FakeResourceProvider {
             match &operation {
                 TransactionOperation::Begin => slot.transaction_state = TransactionState::Active,
                 TransactionOperation::Commit(_) => {
-                    // F8：提交结果不可判定。
+                    // 提交结果不可判定。
                     if let Some((_, FaultKind::CommitUnknown { code })) =
                         self.script.take(ResourceOp::Transaction)
                     {
                         let code = execution_error_code(code);
-                        // §3.2 硬规则：`Unknown` ⟹ `effectOutcome == unknown`，**永不** `completed`。
+                        // 硬规则：`Unknown` ⟹ `effectOutcome == unknown`，**永不** `completed`。
                         slot.transaction_state = TransactionState::Unknown;
                         slot.last_error_code = Some(code);
                         committed_unknown = Some(code);
@@ -93,7 +93,7 @@ impl FakeResourceProvider {
             }
         }
 
-        // §5.3 规则 6：提交 / 回滚之后注销事务句柄（移出登记册并写 `closed` 事件）。
+        // 提交 / 回滚之后注销事务句柄（移出登记册并写 `closed` 事件）。
         // 提交不可判定时**保留**句柄登记 —— 句柄的最终归属未知，不能假装已经注销。
         if let (Some(handle_id), None) = (&handle_id, committed_unknown) {
             let deregistered = {

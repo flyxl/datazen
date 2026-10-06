@@ -1,4 +1,4 @@
-//! 协议 drain barrier：sink 写入在无消费者时**等待**，期限到了就截断（fake-runtime-fixtures.md §6.2）。
+//! 协议 drain barrier：sink 写入在无消费者时**等待**，期限到了就截断。
 //!
 //! 依赖方向同父模块：只向下依赖 `clock` 与非夹具的 `connection::{execution, types}`。
 
@@ -14,7 +14,7 @@ use super::super::clock::{FakeClock, MonoTime, TimerId};
 // DrainBarrier —— 协议 drain barrier
 // ---------------------------------------------------------------------------
 
-/// drain 上限。设计值来自 §7.2 / §11.2，`lowered_for_tests()` 用 §7.2 允许下调的那几个值。
+/// drain 上限。`lowered_for_tests()` 用的是允许下调的那几个值。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DrainLimits {
     pub events_per_subscription: u64,
@@ -27,7 +27,7 @@ pub struct DrainLimits {
 }
 
 impl DrainLimits {
-    /// §7.2 设计值。
+    /// 设计值。
     pub const fn design() -> Self {
         Self {
             events_per_subscription: 256,
@@ -38,7 +38,7 @@ impl DrainLimits {
         }
     }
 
-    /// §7.2：数据缓冲 8 MiB → 测试下调到 64 KiB；其余数值不动。
+    /// 数据缓冲 8 MiB → 测试下调到 64 KiB；其余数值不动。
     pub const fn lowered_for_tests() -> Self {
         Self {
             bytes_per_execution: 64 * 1024,
@@ -62,7 +62,7 @@ struct DrainState {
     drain_waiters: usize,
     /// 每个订阅累计的事件数 / 字节数。
     subscription: SubscriptionCounters,
-    /// **每个执行**累计字节数。§6.2 的 8 MiB 是「每执行」上限，不是全局标量：
+    /// **每个执行**累计字节数。8 MiB 是「每执行」上限，不是全局标量：
     /// 两个并发执行必须各自计量，否则先跑的会把后跑的额度吃光。
     per_execution_bytes: Vec<(ExecutionId, u64)>,
     /// 已被截断的执行及其原因。
@@ -101,10 +101,10 @@ impl DrainShared {
     }
 }
 
-/// 协议 drain barrier（CM-64）。
+/// 协议 drain barrier。
 ///
 /// 无消费者时 `ResultSink` 写入必须**等待**（`SinkWrite::Blocked`）；推进 FakeClock 到 drain
-/// 期限后截断，并记下 `truncated` 与 `truncationReason`（§6.2）。
+/// 期限后截断，并记下 `truncated` 与 `truncationReason`。
 #[derive(Clone)]
 pub struct DrainBarrier {
     inner: Arc<DrainShared>,
@@ -164,7 +164,7 @@ impl DrainBarrier {
         self.inner.lock().truncation_for(execution_id)
     }
 
-    /// 已产出字节计数。§6.2：桌面 256 MiB 产物上限以它断言，不以内存占用断言。
+    /// 已产出字节计数。桌面 256 MiB 产物上限以它断言，不以内存占用断言。
     pub fn produced_bytes(&self) -> u64 {
         let state = self.inner.lock();
         state.subscription.bytes
@@ -176,7 +176,7 @@ impl DrainBarrier {
 
     /// 无消费者分支共用的判定：装载 drain 期限（只装一次），再用 FakeClock 判定是否已到期。
     ///
-    /// 期限**只由 FakeClock 决定**，不读挂钟也不 `sleep`（§6.4）。返回 `Some(reason)`
+    /// 期限**只由 FakeClock 决定**，不读挂钟也不 `sleep`。返回 `Some(reason)`
     /// 表示期限已过，调用方应记截断并返回 `Truncated`。
     fn arm_drain_and_check(&self, state: &mut DrainState) -> Option<TruncationReason> {
         let timer = match state.drain_timer {
@@ -269,7 +269,7 @@ impl DrainBarrier {
     /// 执行结束：丢弃该执行的字节计数**和**它的截断记录（订阅级计数继续累计）。
     ///
     /// 必须带 `execution_id`：截断是**按执行**的粘性结论，不清掉的话同一个 id 重跑
-    /// 会永远读到上一次的 `Truncated`，§6.2 的「每执行 8 MiB」也就无法复测。
+    /// 会永远读到上一次的 `Truncated`，「每执行 8 MiB」也就无法复测。
     pub fn finish_execution(&self, execution_id: &ExecutionId) {
         let mut state = self.inner.lock();
         state
@@ -334,7 +334,7 @@ impl DrainBarrier {
     /// 阻塞到「有消费者」或「drain 期限到期」。返回是否因期限到期而截断。
     ///
     /// 这是唯一会真正阻塞的路径，仅用于证明 drain barrier 与 FakeClock 之间确实是唤醒关系；
-    /// 顺序断言仍不依赖它（§6.4）。
+    /// 顺序断言仍不依赖它。
     ///
     /// 等待带**真实时间**预算（见 [`super::wait_until`]）：`FakeClock::advance`
     /// 被掏空时不会有任何唤醒，原先这里是永久挂住；现在预算耗尽就 panic，
@@ -350,7 +350,7 @@ impl DrainBarrier {
                 return None;
             }
             // 期限必须在 `wait` **之前**判一次。若时钟在本线程走到这里之前就已推进，
-            // `condvar` 再也等不到一次唤醒，线程会永久挂住——这正是 CM-64 之前会死锁的原因。
+            // `condvar` 再也等不到一次唤醒，线程会永久挂住——这正是此前会死锁的原因。
             if let Some(reason) = self.arm_drain_and_check(&mut state) {
                 Self::remember_truncation(&mut state, execution_id, reason);
                 return Some(reason);

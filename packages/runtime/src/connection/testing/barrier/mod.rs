@@ -1,9 +1,9 @@
-//! 命令级 barrier 与协议 drain barrier（fake-runtime-fixtures.md §6）。
+//! 命令级 barrier 与协议 drain barrier。
 //!
 //! 依赖方向：本模块只向下依赖 `clock`（FakeClock）与非夹具的 `connection::execution`，
 //! 不依赖 `fake_resource`，也不被 `journal` 依赖。
 //!
-//! §6.4 的纪律：顺序断言**只能**基于 journal `seq` 或本模块的 `Barrier`；
+//! 顺序断言的纪律：**只能**基于 journal `seq` 或本模块的 `Barrier`；
 //! 「裸 `sleep(...)` 后直接断言顺序」在本模块不存在，也不应被引入。
 //!
 //! 按职责拆成四个文件，避免单文件超过 800 行：
@@ -75,7 +75,7 @@ where
 // Barrier —— 命令级同步点
 // ---------------------------------------------------------------------------
 
-/// 到达凭证。`seq` 来自单一原子计数器，因此并发写入的**相对顺序是确定的**（§5 L269）。
+/// 到达凭证。`seq` 来自单一原子计数器，因此并发写入的**相对顺序是确定的**。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BarrierToken {
     pub seq: u64,

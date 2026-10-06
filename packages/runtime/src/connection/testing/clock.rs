@@ -1,4 +1,4 @@
-//! FakeClock：夹具唯一的时间源（fake-runtime-fixtures.md §7）。
+//! FakeClock：夹具唯一的时间源。
 //!
 //! **单调时间（`MonoTime`）与 UTC 时间（`FixedUtc`）必须分离**：
 //!
@@ -7,7 +7,7 @@
 //! - UTC 只用于生成 `expiresAt` 一类对外投影。
 //!
 //! 基准固定为常量 `T0`，**不读系统时钟**。`advance(Duration)` 是同步的：推进之后
-//! 所有已注册该期限的 timer 立即到期，同一线程内即可断言（§7.3）。
+//! 所有已注册该期限的 timer 立即到期，同一线程内即可断言。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -18,7 +18,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 /// 虚拟基准时刻（单调纳秒）。任何夹具的起点都必须是这一个常量，保证跨运行一致。
 pub const T0_NANOS: u64 = 0;
 
-/// 虚拟基准时刻（UTC）。`2026-01-01T00:00:00Z`，与 §7.1「基准固定为常量 T0」一致。
+/// 虚拟基准时刻（UTC）。`2026-01-01T00:00:00Z`，基准固定为常量 T0。
 pub const T0_UTC: &str = "2026-01-01T00:00:00Z";
 
 /// 单调时间点（自 `T0` 起的纳秒数）。
@@ -192,7 +192,7 @@ impl FakeClock {
     /// 推进虚拟时间，并返回本次推进内到期的全部期限。
     ///
     /// 同步语义：函数返回后所有 `deadline <= now` 的 timer 都已进入 `fired`，
-    /// 调用方在同一线程内直接断言即可（§7.3）。
+    /// 调用方在同一线程内直接断言即可。
     pub fn advance(&self, delta: Duration) -> Vec<FiredTimer> {
         let nanos = u64::try_from(delta.as_nanos()).unwrap_or(u64::MAX);
         let fired = {
@@ -243,7 +243,7 @@ impl FakeClock {
         self.inner.lock().timers.clone()
     }
 
-    /// 跨期限选择：返回**最早**到期的那个（§7.2 / §7.3「断言实际选用的是最早者」）。
+    /// 跨期限选择：返回**最早**到期的那个。
     pub fn earliest_deadline(deadlines: &[Deadline]) -> Option<Deadline> {
         deadlines
             .iter()
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn armed_timers_fire_inside_the_same_thread_after_advance() {
-        // §7.3：`advance` 同步生效，推进后立即断言，不需要 sleep、不需要别的线程。
+        // `advance` 同步生效，推进后立即断言，不需要 sleep、不需要别的线程。
         let clock = FakeClock::new();
         let idle_no_txn = clock.arm("idle-no-transaction", secs(30 * 60));
         let idle_txn = clock.arm("idle-transaction", secs(5 * 60));
@@ -376,7 +376,7 @@ mod tests {
 
     #[test]
     fn earliest_deadline_wins_and_only_one_fires() {
-        // §7.2 / §7.3：掉线保留 60s 与 idle 取最早者 —— 推进后必须只有最早者触发。
+        // 掉线保留 60s 与 idle 取最早者 —— 推进后必须只有最早者触发。
         let clock = FakeClock::new();
         let base = clock.monotonic();
         let deadlines = [
@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn idempotency_token_expiry_is_24h_of_virtual_time() {
-        // §7.2：幂等提交令牌 24 小时。
+        // 幂等提交令牌 24 小时。
         let clock = FakeClock::new();
         let token = clock.arm("idempotency-token", secs(24 * 3600));
         assert!(clock.advance(secs(24 * 3600 - 1)).is_empty());
