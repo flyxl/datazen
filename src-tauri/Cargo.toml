@@ -24,7 +24,6 @@ datazen-platform-api = { path = "../packages/platform-api" }
 datazen-runtime = { path = "../packages/runtime" }
 datazen-application = { path = "../packages/application" }
 # JobRuntime（P5）：迁移三件套的 prepare/apply 都以 Job 受理，host 只做 adapter。
-datazen-runtime = { path = "../packages/runtime" }
 datazen-schema-diff = { path = "../packages/schema-diff" }
 datazen-data-sync = { path = "../packages/data-sync" }
 datazen-data-transfer = { path = "../packages/data-transfer" }
