@@ -8,6 +8,7 @@
 //! - C3 轮询失败按 `CANCEL_POLL_FAILED` 的刻意决策处理：告警后停止轮询、不打断阶段。
 //! - C4 取消不制造提交边界：取消前已确认的边界保留，取消本身一条都不新增。
 //! - C5 排队取消与阶段间取消语义不回归。
+//! - C6 Job 已终结时看守者自己退出轮询（`terminal => return` 早退分支，见 `terminal_exit.rs`）。
 //!
 //! 所有用例会真的**阻塞在阶段里**：阶段持续轮询内核那一个 `CancelToken`，直到翻转才返回，
 //! 因此不可能靠"取消恰好赶在开跑前"这种时序侥幸通过。
@@ -40,6 +41,10 @@ use support::{config, conn, org};
 // 集成测试的 crate 根就在 `tests/` 下，模块解析不走「同名子目录」惯例，用 `#[path]` 指过去。
 #[path = "job_cancel_watch/poll_fault.rs"]
 mod poll_fault;
+
+// 终态早退分支（Job 已终结时看守者自己退出）的观测独立成文件，同上。
+#[path = "job_cancel_watch/terminal_exit.rs"]
+mod terminal_exit;
 
 /// 阶段内等待内核令牌的耐心上限。CI 抖动也远达不到这个量级；到达上限就返回
 /// "没等到"，于是测试会以断言失败（而不是挂死）暴露看守器没工作。
@@ -106,12 +111,17 @@ enum Plan {
     CancelAfterSelf,
     /// 打开仓储读故障跑一段时间，再关掉，返回 `Succeeded`。
     PollFault,
-    /// 打开仓储读故障后**一直阻塞**，直到测试侧放行；放行后关掉故障再返回。
+    /// **阻塞在阶段里**，直到测试侧放行；放行后直接返回 `Succeeded`。
     ///
-    /// 与 `PollFault` 的区别只有时序控制：阶段必须停在故障窗口里不动，测试才能在
-    /// 「阶段仍在执行」的窗口里采样读次数与告警条数——阶段一返回，看守者就被
+    /// 阶段本身不碰仓储故障开关：故障（`fail_get`）与终态（`force_terminal_for_test`）
+    /// 都由测试在**自己选定的时刻**注入，否则「注入之前看护者到底有没有在轮询」这件事
+    /// 无法观测——故障窗口随阶段开跑一起打开的话，entry 时刻的读次数已经处在故障里，
+    /// "读次数不再增长"这条断言可以空转通过（它只证明计数被冻结，不证明看护者曾在轮询）。
+    ///
+    /// 与 `PollFault` 的区别只有时序控制：阶段必须停在窗口里不动，测试才能在
+    /// 「阶段仍在执行」的窗口里采样读次数与告警条数——阶段一返回，看护者就被
     /// abort + await 掉，采样到的就不是同一件事了。
-    PollFaultHeld,
+    Held,
 }
 
 /// handler → 测试的消息通道，避免任何"通知早于等待"的丢信号问题。
@@ -279,13 +289,11 @@ impl JobHandler for ProbeHandler {
                 self.repo.fail_get(false);
                 cancel.is_cancelled()
             }
-            Plan::PollFaultHeld => {
-                self.repo.fail_get(true);
+            Plan::Held => {
                 // 阻塞在这里等测试放行：整个观察窗口里阶段都还在跑。
+                // 故障/终态由测试自己注入，注入时刻才是被观测的那件事。
                 let release = self.release.clone();
                 release.notified().await;
-                // 关掉故障后再返回，否则 `dispatch` 自己的读也会失败。
-                self.repo.fail_get(false);
                 cancel.is_cancelled()
             }
         };

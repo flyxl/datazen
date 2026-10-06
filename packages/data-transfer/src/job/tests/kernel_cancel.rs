@@ -11,6 +11,33 @@
 //!    而不是阶段入口处的一份快照。
 //!
 //! 两条都必须在「`flag()` 退回入口快照」时变红——那是本组测试的存在理由。
+//!
+//! ## 与 runtime 侧 C1 的分工（两半缺一不可）
+//!
+//! 这一组证明的是**后半段**：`CancelToken` 上的那一位，在阶段阻塞运行途中被内核
+//! 翻成 true 之后，data-transfer 的管道真的会**停下来**，而且停在第一次 commit 之前。
+//! 它证明不了前半段——「这一位究竟有没有被翻」。
+//!
+//! 前半段在 `packages/runtime/tests/job_cancel_watch.rs` 的
+//! `mid_stage_cancel_without_prior_boundary_rolls_back`（runtime 侧 C1），那里读得到
+//! 内存仓储的 `get_calls()`，能够断言轮询次数真的在涨。
+//!
+//! 为什么这里读不到：`get_calls()` / `fail_get()` 是
+//! `#[cfg(any(test, feature = "test-harness"))]` 缝，而 `datazen-data-transfer` 的
+//! `[features]` 只有 `webdriver = []`——**没有 `test-harness`**（runtime 是靠一条
+//! 自引用的 dev-dependency 才拿到的：`datazen-runtime = { path = ".", features =
+//! ["test-harness"] }`）。给它补一个 feature 意味着动本 crate 的 feature 面，
+//! 远超本组测试的职责，所以此处只能用 `WATCHER_SLACK` 那样的一段有界等待，
+//! 让断言落在**终态**上。
+//!
+//! 结论是一个**成对**的结论，拆开任何一半都会静默塌陷：
+//! - 删掉本文件：`flag()` 哪天退回入口快照，本组照常绿——因为测试侧自己翻令牌，
+//!   内核有没有真的把取消送到，测不到。
+//! - 删掉 runtime 侧 C1：内核哪天不再翻转那一位，本组照常绿——因为等待到期后
+//!   状态/边界断言失败这句话永远轮不到说，用例靠"闸门松开后仍提交"间接报错，
+//!   而那是一个**依赖时序**的间接证据。
+//!
+//! 所以：**这两半要一起改、一起留。** 要动其中一半，先确认另一半还在。
 
 use std::time::Duration;
 

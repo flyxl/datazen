@@ -376,9 +376,11 @@ async fn watch_cancel_request(
                 //   健康的迁移 Job 被写成 Cancelled，用户没有任何手段改回来。宁可漏，
                 //   不可错。
                 // * 漏掉的取消不是被丢弃，而是**不再被本阶段感知**：如果这个 Job 还有
-                //   下一个阶段，`dispatch` 开跑前会重读到它，在那个边界收敛；但单阶段
-                //   Job（data-transfer 的 data / apply / prepare 就是单阶段）没有下一个
-                //   边界，本次运行可能在完全不感知取消的情况下走完。
+                //   下一个阶段，`dispatch` 开跑前会重读到它，在那个边界收敛。data-transfer
+                //   侧真正的单阶段 Job 是 `prepare`、SQL 文件目标的 `apply`，以及
+                //   `structure` / `data` 模式的 `apply`；`structureAndData` 模式的 `apply`
+                //   展开为 structure → data → foreignKeys 三个阶段，因此**有**下一个边界，
+                //   取消会在这些阶段边界被重新读到，不会在完全不感知取消的情况下走完。
                 // * fail-closed 代价更高：一次瞬时故障就打断一个已经提交了若干批、
                 //   带 checkpoint 可续跑的长任务，而故障通常与迁移本身无关。
                 // * 绝不允许静默吞掉：告警带上 jobId 与错误原文，排障时可定位。
