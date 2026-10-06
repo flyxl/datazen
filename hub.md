@@ -122,7 +122,20 @@
 - ⚠️ **对既有 P5 数字的追认**：集成分支合并门禁、各轨 Tester 的宿主单测数字，**都是在 basic 语义下取得的**，其结论只能限定在 basic 内，不能用来推断 CI 会不会红。上文「1741 = 1733 + 8」的算术**在同一驱动集内成立**（同集内前后比较），但该数字**不得跨驱动集引用**。Wave-R 最终回归必须统一按 `--drivers=all` 重铺后重跑。
 - 已广播给在飞的两轨（`7c83fa5b`、`fa475e95`），并要求在报告里标注所用驱动集、且**基线与该次变异必须同一驱动集**——否则「变红/存活」的判决同样失效。
 
-### ⚠️ 勘误：`active_cancel_watchers()` **不能**区分「自行 return」与「被 abort 回收」
+### 📦 交付待验：p5-cancel-hardening → HEAD `f440acf91`（Tester `aacf7430` 独立复验中）
+
+- 分支 `feature/p5-cancel-hardening`，基线 `105494c14`，tree `fe050cffaeb4c5a94a75926302d34dd2b121b807`，工作区 clean（门禁前后各记一次 HEAD/tree/status）。9 文件 +436/−17，**`.ts/.tsx` 改动 = 0**，未触任何禁区。
+- 提交（每项一提交，未使用 `--amend`）：`c3a509ad0` D-C → `e16b43415` D-A → `0627bdb0c` D-B → `ea53469be` D-E → `d4ebea68d` 补 EOF 换行 → `f440acf91` 补 CTRL-2 实测出处。
+- **交付方采用「对照变异」取证，本阶段首次**：同一变异分别在**修复前**与**修复后**的提交上各跑一次。
+  - **CTRL-1** @`c3a509ad0` 删 `get_calls.fetch_add` → `ok. 8 passed; 0 failed` EXIT=0 **存活**；**MUT-1** @修复后同一变异 → `7 passed; 2 failed` EXIT=101 **被杀**（`poll_fault.rs:140`、`terminal_exit.rs:43`，正是 D-A 加的两处活性前置）。
+  - **CTRL-2** @`e16b43415` 把 `terminal:` 改 `false` → `ok. 8 passed; 0 failed` EXIT=0 **存活**；**MUT-2** @修复后同一变异 → `8 passed; 1 failed` EXIT=101 **被杀**，且**只** `terminal_exit.rs:75` 失败（`left: 25, right: 18`，即冻结计数断言）。同一变异下 CTRL-2 与 MUT-2 的差异**只能**归因于新增的 D-B 用例。
+  - CTRL-2 同时**废掉了 `terminal_exit.rs` 文档注释里那句原本无凭据的「全部用例依旧全绿」**，其出处已由 `f440acf91` 写进代码。
+  - ⚠️ CTRL-1 的 `0.93s` 绿是**可疑时长**（同族用例的静止基线约 1.64s），coder 的辩解是「绿色 0.93s ≠ 陈旧产物，因为观察到从零 `Compiling datazen-runtime`」。**Tester 须自行判断该辩解是否成立，不得凭声明采信。**
+- 门禁（driver set = `all`）：runtime 843（842 + D-B 1 条）/ data-transfer 213（211 + D-C 2 条）/ `datazen --lib` **恰好 1733**（= 基线，说明未越界改动宿主）/ `cargo check` EXIT=0 / typecheck EXIT=0 且 `error TS` = 0。
+- **D-B 判据已按上文勘误改正**：coder 未迁就我写反的括号，断言改为**合取式**——`active_cancel_watchers() >= 1`（句柄未 Drop ⇒ 非 abort 回收）+ 同窗口 `get_calls()` 冻结（轮询自行停止）。缺任一半即为空洞断言，Tester 须逐半核。
+- 交付方主动声明且经我裁定**均不构成缺陷**：① 两条 commit **正文**乱码（`e16b43415`、`ea53469be` 含 U+FFFD，diff 内容正确；修复需 `--amend`，故不修）——纯装饰；② 既存 rustfmt 漂移（`poll_fault.rs:68`、`repository.rs:26/33/61/348`、`runtime.rs:123/130`、`kernel_cancel.rs:45/53` 等），coder 已用基线 `105494c14` 逐文件 `rustfmt --edition 2021 --check` 比对证明**非本轨引入**，且基线本就不是 `cargo fmt --check` 干净。
+- 两条**环境陷阱**已入册（会伪装成代码缺陷）：worktree 未铺 gitignored codegen ⇒ `datazen --lib`/`check` 以 EXIT=101 `resource path 'resources/builtin-ep' doesn't exist` 死、typecheck 报约 27 个 `error TS`；`/tmp` 磁盘耗尽（926 GiB 卷上只剩 985 MiB）⇒ `rustc-LLVM ERROR: IO failure on output stream: No space left on device`。均**不是**回归。coder 只清理了本轨自己的陈旧 target 目录，未动他轨；`/tmp` 现 22 GiB 空闲。
+- ⚠️ **台账缺口（如实登记，不臆造）**：D-D、D-F、D-G 三者的描述在本轨分支的 `hub.md` 中不存在，且原始任务书文本在两次网络中断中丢失——**协调者手上有 D-D 与 8 条 E2E 缺口的原文（已随 Tester 任务书下发），但 D-F、D-G 的原文确实无法提供**，Tester 应如实回报该缺口，**不得编造描述**。
 
 - 我在两份任务书里都写了括号「若看护者已退出，计数会是 0」——**这句是错的**，硬化轨实例 `7c83fa5b` 指出后已逐行核实成立：`packages/runtime/src/job/runtime.rs:318` `spawn` 做 `live.fetch_add(1)`，**只有** `impl Drop for CancelWatch`（`:335`、`:342`）才 `fetch_sub(1)`；而 `run_stage_watched`（`:280`）在 `:288` 以 `let watch = CancelWatch::spawn(...)` **把句柄留在 dispatch 栈上，并未 move 进 tokio 任务**。故 `active_cancel_watchers() == 1` 只表示 **dispatch 仍持有句柄**，轮询循环自行 `terminal => return` 退出时计数**仍是 1**。
 - 唯一正确的判据是**组合式**：在阶段仍被 hold 的同一窗口内，`active_cancel_watchers() >= 1` 证明句柄未被 Drop ⇒ **不是 abort 回收**（`runtime.rs:275` 注释亦确认 Drop 正是「只 abort 不 await」那条回收路径）；同时 `get_calls()` **冻结** ⇒ 轮询**自己停了**。二者缺一即为空洞断言。
