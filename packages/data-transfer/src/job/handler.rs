@@ -7,7 +7,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use datazen_driver_api::{
@@ -157,9 +156,6 @@ pub struct DataTransferHandler {
     pub(super) endpoints: TransferEndpoints,
     registry: SyncAdapterRegistry,
     database_structure: Option<Vec<DdlPreviewItem>>,
-    /// 阶段内取消位（§7）。runtime 的 `CancelToken` 只在阶段边界翻转，管道要在
-    /// 批次边界看到取消请求，就必须由宿主把仓库里的取消事实送进这一位。
-    cancel: Arc<AtomicBool>,
 }
 
 impl DataTransferHandler {
@@ -178,7 +174,6 @@ impl DataTransferHandler {
             endpoints,
             registry: SyncAdapterRegistry::new(),
             database_structure: None,
-            cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -199,13 +194,7 @@ impl DataTransferHandler {
             endpoints,
             registry: SyncAdapterRegistry::new(),
             database_structure,
-            cancel: Arc::new(AtomicBool::new(false)),
         }
-    }
-
-    /// 取消位的共享句柄：宿主拿到副本后只负责翻转，管道在批次边界读取。
-    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
-        self.cancel.clone()
     }
 
     /// 冻结体裁定的恢复政策（§7）。runtime 落 checkpoint 时写死的是它自己的默认值，
@@ -219,9 +208,11 @@ impl DataTransferHandler {
         self.freeze.snapshot_proven
     }
 
-    /// 取消事实 = runtime 的阶段边界取消位 或 宿主送进来的阶段内取消位。
+    /// 取消事实只有一个来源：runtime 交给 `run_stage` 的那个 `CancelToken`。
+    /// 阶段内取消由内核的阶段看守者持续把仓储里的 `cancel_requested` 翻译进这一位，
+    /// 所以管道在批次边界读到的和阶段边界读到的是同一份事实，不再需要自建标志位。
     fn cancel_requested(&self, cancel: &CancelToken) -> bool {
-        cancel.is_cancelled() || self.cancel.load(Ordering::SeqCst)
+        cancel.is_cancelled()
     }
 
     fn is_apply(&self) -> bool {
@@ -239,7 +230,6 @@ impl DataTransferHandler {
         }
         Ok(())
     }
-
 }
 
 #[async_trait]
@@ -407,7 +397,8 @@ impl DataTransferHandler {
                     .map(|t| t.source_table.clone())
                     .collect();
                 let plan = self.database_structure.as_deref().unwrap_or(&[]);
-                let atomic_cancel = Arc::new(AtomicBool::new(cancel.is_cancelled()));
+                // 共享内核那一位：阶段内取消由内核看守者翻转，结构阶段在每个 DDL 之前读的就是它。
+                let atomic_cancel = cancel.flag();
                 let results = crate::structure::execute_database_structure_plan(
                     target_driver.as_ref(),
                     target_handle,
@@ -707,7 +698,7 @@ impl DataTransferHandler {
                         target_type,
                         columns: &columns,
                         formatter: formatter_ref,
-                        cancelled: Some(self.cancel.clone()),
+                        cancelled: Some(cancel.flag()),
                         write_started: None,
                         checkpoint: &mut checkpoint,
                     };

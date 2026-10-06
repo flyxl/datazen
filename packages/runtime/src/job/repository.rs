@@ -62,6 +62,11 @@ pub struct InMemoryJobRepository {
     inner: Mutex<Inner>,
     clock: Arc<dyn JobClock>,
     claim_ttl: i64,
+    /// 测试缝：`get` 故障注入与调用计数。生产构建不保留这两个字段。
+    #[cfg(any(test, feature = "test-harness"))]
+    get_fault: std::sync::atomic::AtomicBool,
+    #[cfg(any(test, feature = "test-harness"))]
+    get_calls: std::sync::atomic::AtomicUsize,
 }
 
 impl InMemoryJobRepository {
@@ -70,7 +75,29 @@ impl InMemoryJobRepository {
             inner: Mutex::new(Inner::default()),
             clock,
             claim_ttl: claim_ttl_secs,
+            #[cfg(any(test, feature = "test-harness"))]
+            get_fault: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(any(test, feature = "test-harness"))]
+            get_calls: std::sync::atomic::AtomicUsize::new(0),
         }
+    }
+
+    /// 测试缝：让此后每次 [`JobRepository::get`] 返回 `BackendUnavailable`。
+    ///
+    /// 内存实现正常只会以 `NotFound` 失败，没有删除 Job 的路径，所以「轮询期间读失败」
+    /// 这条分支只能靠注入触发。取消看守者对它的处置是被决策过的（见 `runtime.rs`
+    /// 的 `CANCEL_POLL_FAILED` 注释），必须能被独立复现，因此这里是公开开关。
+    #[cfg(any(test, feature = "test-harness"))]
+    pub fn fail_get(&self, failing: bool) {
+        self.get_fault
+            .store(failing, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// 测试缝：累计 `get` 调用次数。用来证明看守者在读失败后**停止轮询**，
+    /// 而不是把错误吞掉后继续空转。
+    #[cfg(any(test, feature = "test-harness"))]
+    pub fn get_calls(&self) -> usize {
+        self.get_calls.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// claim fencing：generation/worker 必须匹配当前持有值，且租约未过期。
@@ -313,6 +340,16 @@ impl JobRepository for InMemoryJobRepository {
 
     async fn get(&self, ctx: &RequestContext, job_id: JobId) -> Result<JobRecord, PortError> {
         let _ = ctx;
+        #[cfg(any(test, feature = "test-harness"))]
+        {
+            use std::sync::atomic::Ordering;
+            self.get_calls.fetch_add(1, Ordering::SeqCst);
+            if self.get_fault.load(Ordering::SeqCst) {
+                return Err(PortError::BackendUnavailable(
+                    "injected get failure (test seam)".into(),
+                ));
+            }
+        }
         let inner = lock_inner(&self.inner)?;
         inner
             .jobs

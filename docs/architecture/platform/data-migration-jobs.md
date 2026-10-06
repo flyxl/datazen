@@ -73,6 +73,10 @@ sequenceDiagram
 
 Handler 以 kind + handlerVersion 注册，接口语义是 `validatePlan`、`runStage`、`verifyRecovery`。runStage 由 runtime 提供当前 claim、冻结输入、取消信号与受控资源访问；返回阶段结果、executionIds、已确认提交边界及 Artifact 引用。handler 不直接修改 Job 状态，不自行续租或在未知效果后自动重试。
 
+取消信号由 runtime 单独送达，handler 只读它、不自建取消通道。`dispatch` 为一次派发创建一个 `CancelToken`：进入每个阶段前重读 `cancel_requested`，并在阶段执行期间由一个并发看守者持续重读同一事实，看守者把结果翻译成这一个令牌的翻转，阶段拿到的是同一个 `CancelToken`（`CancelToken::flag()` 可取出其底层原子位交给批次/分页循环）。阶段返回后看守者立即被终止并等待，因此 `dispatch` 返回时不存在仍持有仓储或请求上下文的游离任务。轮询读失败时的取舍写在 `packages/runtime/src/job/runtime.rs`：记录告警并停止轮询，阶段不受影响，取消意图在下一个阶段边界或下一次运行重新读到——读不出一致事实时不得把取消悄悄丢弃，也不得据此伪造失败。
+
+取消不制造提交边界。看守者只翻转令牌，不写入任何东西；阶段是否回滚在途批次、是否给出 `Cancelled`，仍完全由 handler 决定（data-transfer 在 execute 之后、commit 之前检查并回滚在途批次，该批次因此不产生提交边界）。
+
 JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p5-jobhandler-与阶段协议目标设计) 聚合。进度分别报告已读取、已转换、已尝试、已确认提交及未知范围；未确认 commit 的行不能计入 committed。一个对象失败后继续其他独立对象时，总 Job 为 failed，已生效部分保留 partiallyApplied；任何无法核验的副作用令总体 unknown，同时保留确认部分。
 
 ## 3. 多端预算、重叠与授权

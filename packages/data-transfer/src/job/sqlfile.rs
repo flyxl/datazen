@@ -3,9 +3,6 @@
 //! 产物规格（§6.3）：同一份映射与同一份源元数据必须落成同一份 SQL 文件，
 //! 因此成功终态必须携带一条 artifact 提交边界（内容 sha256 + 行数 + 写入口）。
 
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
-
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::dto::job::JobProgress;
 use datazen_platform_api::id::ArtifactId;
@@ -32,7 +29,8 @@ impl DataTransferHandler {
                 ..
             } => {
                 // SQL 文件目标没有目标连接；产物完整性由 writer finalize 计算。
-                let atomic_cancel = Arc::new(AtomicBool::new(cancel.is_cancelled()));
+                // 直接共享内核那一位：阶段内取消由内核看守者翻转，写入循环读的就是同一份事实。
+                let atomic_cancel = cancel.flag();
                 let result = crate::sql_file::execute_with_target(
                     source_driver.as_ref(),
                     source_driver.as_ref(),
