@@ -28,8 +28,16 @@ use crate::job::plan::project_frozen_plan;
 use crate::job::repository::InMemoryJobRepository;
 use crate::job::time::JobClock;
 
-/// 阶段内取消看守者的轮询间隔。取消是低频的用户动作，50ms 的响应延迟可以忽略，
-/// 而仓储读是进程内的字典查找，代价同样可以忽略。
+/// 阶段内取消看守者的轮询间隔。
+///
+/// 代价不是「进程内字典查找」：`InMemoryJobRepository` 的全部索引共用一把全局
+/// `Mutex`，而 `JobRepository::get` 在**持锁期间**深拷贝整条 `JobRecord`
+/// （`definition.payload` 是 `serde_json::Value`，另有 `Vec<StageRecord>`），
+/// 每个运行中的阶段每秒会因此拷贝 20 次，并与 `request_cancel`、`record_stage`
+/// 和进度写入争锁。所以看守者走 [`InMemoryJobRepository::cancel_poll`]：同一个锁，
+/// 只读两个 bool，锁内不做任何拷贝。
+///
+/// 50ms 是响应延迟与争锁次数之间的折中：取消是低频的用户动作，这个延迟用户感知不到。
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Job 执行的最终投影。`state` 是 JobState（successful/failed/cancelled），
@@ -262,8 +270,10 @@ impl JobRuntime {
     /// 阶段内取消的可达性只由这一处保证：取消意图的落地点是仓储的
     /// `cancel_requested`，而 `run_stage` 在阶段内不再接触仓储，因此在阶段执行
     /// 期间必须有一个并发观察者把该标志翻译成本次派发共享的 [`CancelToken`]。
-    /// 看守者在阶段返回后立即被 abort + await 回收，`dispatch` 返回时不存在任何
-    /// 仍持有 `repo` / `ctx` 的游离任务（§2.3）。
+    /// 看守者在阶段返回后立即被 abort + await 回收：**正常路径**下 `dispatch` 返回时
+    /// 不存在任何仍持有 `repo` / `ctx` 的游离任务（§2.3）。handler panic 展开走的是
+    /// [`CancelWatch`] 的 `Drop` 兜底，那条路径只 abort 不 await，任务真正结束的时机
+    /// 由调度器决定——因此这里承诺的只是「不会一直跑下去」，不是「返回时已结束」。
     ///
     /// 取消不制造提交边界：看守者只翻转令牌，什么也不写。阶段是否回滚在途批次、
     /// 是否给出 `StageTerminal::Cancelled`，仍完全由 handler 决定。
@@ -346,14 +356,14 @@ async fn watch_cancel_request(
     cancel: CancelToken,
 ) {
     loop {
-        match repo.get(&ctx, job_id.clone()).await {
-            Ok(record) => {
-                if record.view.cancel_requested {
+        match repo.cancel_poll(&ctx, &job_id) {
+            Ok(snapshot) => {
+                if snapshot.cancel_requested {
                     cancel.cancel();
                     return;
                 }
                 // Job 已终结：派发已经收尾，继续轮询没有意义。
-                if record.view.state.is_terminal() {
+                if snapshot.terminal {
                     return;
                 }
             }
@@ -365,9 +375,10 @@ async fn watch_cancel_request(
                 // * 读失败不会造出取消，只会让我们错过取消；误取消则不可挽回——一个
                 //   健康的迁移 Job 被写成 Cancelled，用户没有任何手段改回来。宁可漏，
                 //   不可错。
-                // * 漏掉的取消不会被丢掉：每个阶段开跑前 `dispatch` 都会重读一次
-                //   `cancel_requested`，最坏结果是这次迁移在下一个阶段边界收敛，
-                //   而不是一个跑到底的 Job。
+                // * 漏掉的取消不是被丢弃，而是**不再被本阶段感知**：如果这个 Job 还有
+                //   下一个阶段，`dispatch` 开跑前会重读到它，在那个边界收敛；但单阶段
+                //   Job（data-transfer 的 data / apply / prepare 就是单阶段）没有下一个
+                //   边界，本次运行可能在完全不感知取消的情况下走完。
                 // * fail-closed 代价更高：一次瞬时故障就打断一个已经提交了若干批、
                 //   带 checkpoint 可续跑的长任务，而故障通常与迁移本身无关。
                 // * 绝不允许静默吞掉：告警带上 jobId 与错误原文，排障时可定位。
@@ -376,7 +387,7 @@ async fn watch_cancel_request(
                     error = %error,
                     "cancel watch stopped polling after a job repository read failure; \
                      the running stage is left alone and the cancel intent is re-read at \
-                     the next stage boundary"
+                     the next stage boundary, if there is one"
                 );
                 return;
             }

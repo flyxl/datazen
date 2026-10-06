@@ -45,6 +45,16 @@ struct IdemReceipt {
     accept_fingerprint: String,
 }
 
+/// 取消看守者每轮只需要两个 bool。这是 [`JobRepository::get`] 的**廉价替身**：
+/// `get` 会持锁深拷贝整条 `JobRecord`（含 `payload: serde_json::Value` 与
+/// `Vec<StageRecord>`），阶段执行期间每秒被读 20 次并与 `request_cancel` /
+/// `record_stage` / 进度写入争同一把全局锁；而看守者只判断「取消了吗」「终结了吗」。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CancelPollSnapshot {
+    pub cancel_requested: bool,
+    pub terminal: bool,
+}
+
 #[derive(Default)]
 struct Inner {
     /// 以 job_id 为键（RequestContext 的组织维度由 ctx 校验：内存实现单组织作用域演示，
@@ -98,6 +108,38 @@ impl InMemoryJobRepository {
     #[cfg(any(test, feature = "test-harness"))]
     pub fn get_calls(&self) -> usize {
         self.get_calls.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// 取消看守者的轮询读：只取两个 bool，**不克隆 `JobRecord`**。
+    ///
+    /// 与 [`JobRepository::get`] 共用同一把全局 `Mutex`，所以它省掉的是锁内的深拷贝
+    /// （`definition.payload` 的 `serde_json::Value` + `Vec<StageRecord>`），锁本身省不掉。
+    /// 测试缝与 `get` 共用计数与故障开关，看守者的行为断言因此只有一个口径。
+    pub fn cancel_poll(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+    ) -> Result<CancelPollSnapshot, PortError> {
+        let _ = ctx;
+        #[cfg(any(test, feature = "test-harness"))]
+        {
+            use std::sync::atomic::Ordering;
+            self.get_calls.fetch_add(1, Ordering::SeqCst);
+            if self.get_fault.load(Ordering::SeqCst) {
+                return Err(PortError::BackendUnavailable(
+                    "injected get failure (test seam)".into(),
+                ));
+            }
+        }
+        let inner = lock_inner(&self.inner)?;
+        let row = inner
+            .jobs
+            .get(job_id)
+            .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
+        Ok(CancelPollSnapshot {
+            cancel_requested: row.record.view.cancel_requested,
+            terminal: row.record.view.state.is_terminal(),
+        })
     }
 
     /// claim fencing：generation/worker 必须匹配当前持有值，且租约未过期。

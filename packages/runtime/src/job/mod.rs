@@ -24,6 +24,6 @@ pub use handler::{
     StageTerminal,
 };
 pub use plan::{project_frozen_plan, FrozenPlan, APPLY_KINDS, SUPPORTED_PLAN_MAJOR};
-pub use repository::InMemoryJobRepository;
+pub use repository::{CancelPollSnapshot, InMemoryJobRepository};
 pub use runtime::{JobResult, JobRuntime};
 pub use time::{JobClock, SharedClock};

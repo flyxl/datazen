@@ -290,6 +290,7 @@ impl JobHandler for DataTransferHandler {
             ],
             _ => vec![],
         };
+
         Ok(stages)
     }
 

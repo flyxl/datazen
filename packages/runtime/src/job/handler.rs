@@ -20,7 +20,9 @@ use datazen_platform_api::id::{ArtifactId, ExecutionId, StageId};
 use crate::job::error::JobError;
 use crate::job::plan::FrozenPlan;
 
-/// 取消信号。快照式轮询：runtime 与 handler 都在阶段边界/批次边界检查。
+/// 取消信号。内核那一位原子位的持有者：`dispatch` 创建它，阶段执行期间由并发看守者
+/// 在读到的取消意图为真时翻转，handler 只读它、不自建取消通道。阶段内取消的检查点由
+/// handler 自己决定（data-transfer 在每张表的开头与每批 execute 之后、commit 之前）。
 #[derive(Debug, Clone)]
 pub struct CancelToken(Arc<AtomicBool>);
 

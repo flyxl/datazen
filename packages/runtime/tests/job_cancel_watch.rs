@@ -34,8 +34,12 @@ use datazen_runtime::job::{
     JobError, JobHandler, JobRuntime, RecoveryVerdict, SharedClock, StageOutcome, StageSpec,
     StageTerminal,
 };
-
 use support::{config, conn, org};
+
+// 阶段执行期的轮询故障观测独立成文件，守住单文件 800 行规模。
+// 集成测试的 crate 根就在 `tests/` 下，模块解析不走「同名子目录」惯例，用 `#[path]` 指过去。
+#[path = "job_cancel_watch/poll_fault.rs"]
+mod poll_fault;
 
 /// 阶段内等待内核令牌的耐心上限。CI 抖动也远达不到这个量级；到达上限就返回
 /// "没等到"，于是测试会以断言失败（而不是挂死）暴露看守器没工作。
@@ -102,6 +106,12 @@ enum Plan {
     CancelAfterSelf,
     /// 打开仓储读故障跑一段时间，再关掉，返回 `Succeeded`。
     PollFault,
+    /// 打开仓储读故障后**一直阻塞**，直到测试侧放行；放行后关掉故障再返回。
+    ///
+    /// 与 `PollFault` 的区别只有时序控制：阶段必须停在故障窗口里不动，测试才能在
+    /// 「阶段仍在执行」的窗口里采样读次数与告警条数——阶段一返回，看守者就被
+    /// abort + await 掉，采样到的就不是同一件事了。
+    PollFaultHeld,
 }
 
 /// handler → 测试的消息通道，避免任何"通知早于等待"的丢信号问题。
@@ -129,6 +139,8 @@ struct ProbeHandler {
     job_id: JobId,
     /// 回指 runtime，用来在阶段入口读取在飞的看守者数。
     runtime_slot: Arc<Mutex<Option<Arc<JobRuntime>>>>,
+    /// `PollFaultHeld` 的放行信号：测试侧决定故障窗口持续多久。
+    release: Arc<tokio::sync::Notify>,
     tx: tokio::sync::mpsc::UnboundedSender<Msg>,
     plans: Vec<(&'static str, Plan)>,
 }
@@ -267,6 +279,15 @@ impl JobHandler for ProbeHandler {
                 self.repo.fail_get(false);
                 cancel.is_cancelled()
             }
+            Plan::PollFaultHeld => {
+                self.repo.fail_get(true);
+                // 阻塞在这里等测试放行：整个观察窗口里阶段都还在跑。
+                let release = self.release.clone();
+                release.notified().await;
+                // 关掉故障后再返回，否则 `dispatch` 自己的读也会失败。
+                self.repo.fail_get(false);
+                cancel.is_cancelled()
+            }
         };
         let _ = self.tx.send(Msg::Finished {
             stage: spec.stage_id.as_str().to_string(),
@@ -290,6 +311,8 @@ struct Rig {
     rx: tokio::sync::mpsc::UnboundedReceiver<Msg>,
     repo: Arc<InMemoryJobRepository>,
     job_id: JobId,
+    /// 放行 `PollFaultHeld` 的阶段。
+    release: Arc<tokio::sync::Notify>,
 }
 
 async fn rig(job_id: &str, plans: Vec<(&'static str, Plan)>) -> Rig {
@@ -304,11 +327,13 @@ async fn rig(job_id: &str, plans: Vec<(&'static str, Plan)>) -> Rig {
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let slot: Arc<Mutex<Option<Arc<JobRuntime>>>> = Arc::new(Mutex::new(None));
+    let release = Arc::new(tokio::sync::Notify::new());
     let handler = Arc::new(ProbeHandler {
         repo: repo.clone(),
         ctx: ctx(),
         job_id: JobId::new(job_id),
         runtime_slot: slot.clone(),
+        release: release.clone(),
         tx,
         plans,
     });
@@ -327,6 +352,7 @@ async fn rig(job_id: &str, plans: Vec<(&'static str, Plan)>) -> Rig {
         rx,
         repo,
         job_id: JobId::new(job_id),
+        release,
     }
 }
 
