@@ -204,3 +204,22 @@ Tester 另做了我要求的**替代核查**（是否有别的生产调用方在
 **📌 我的失误（登记）**：Tester 汇报与我的孤儿清理动作同时发生，我误把它仍在使用的 4 棵 `/tmp/p5ds-vfy-*` 临时 worktree 当作残留 `worktree remove --force` 删掉。target 目录本已自行销毁、冷编译成本照付、日志未受影响，代价可控，但**在子代理仍在报活时清理其工作区是不该发生的**。教训：清理前先确认该实例已终止。
 
 **📌 `main` 再次推进**：`ec0444e8c` → **`adb0fd045`**，走在另一批「注释规格引用清理」提交上。Wave-R 基线需再次重取。
+
+### 🔴 新增阻塞缺陷：端点重叠把两个不同物理库当成同一个端点（缺口 k，已开修复轨）
+
+**来源**：frontend-cutover coder `fd466b08` 报出，我**独立逐行复核属实**。
+
+- `packages/runtime/src/job/budget.rs` 的 `detect_endpoint_overlap` 以 **`(service_key, object)`** 为键：先收集 `SourceReader` 的 `objects` 进 `reads`，再逐个查 `TargetWriter` 是否命中，命中即 `Err(EndpointOverlap)`；另有 `any_unprovable && has_writer` 的 fail-closed 分支。
+- `src-tauri/src/commands/data_transfer/job_api/runtime.rs:40` `const TRANSFER_SERVICE_KEY: &str = "data-transfer";`，且 `endpoint_refs()`（`:150-170`）给 **reader 与 writer 共用该常量**。
+- ⇒ 源表 `public.users` → 目标表 `public.users`，**即便发生在两个不同物理库**，也必然命中 `("data-transfer","public.users")` 而被判"既读又写"。
+
+**🔴 更深一层（协调者顺带查出，coder 未发现）**：同一 `endpoint_refs()` 里 `connection_id` 被硬编码为 `ConnectionId::new("local-source")` / `ConnectionId::new("local-target")`，**与用户实际选择的连接毫无关系**。而 `EndpointRef` **带有** `connection_id` 字段，`detect_endpoint_overlap` **根本未使用它**，只看 `service_key`。⇒ **端点身份整个是伪造的**，探测器在结构上就没有能力区分两个物理端点。仅改 `service_key` 等于把假身份换成另一个假身份。
+
+**判定**：这是**新路径对 legacy 的功能性倒退**——同名前缀跨库复制是最常见的迁移操作之一，legacy `execute_data_transfer` 照跑，Job 路径被拒。coder 在前端加的 fail-closed 拦截是**止血，不是修复**，且**UX 代价真实存在**：合法操作在前端被挡死。
+
+**⇒ 已开修复轨 `p5-endpoint-overlap`**：分支 `feature/p5-endpoint-overlap`，基线 `4b782750dd`，coder `71d90884`。与 frontend-cutover **文件零重叠**（`packages/runtime/**` + `src-tauri/src/commands/data_transfer/**` vs `src/**` + `e2e/**`），并行跑。
+规格（总纲优先于细节）：① **不得比 legacy 更严**——legacy 能接受的计划 Job 路径必须接受；② 不同物理端点 + 相同对象名 → 放行；③ 同一物理端点既读又写同一对象 → **继续拒绝**（保留安全属性）；④ 端点身份必须由**真实连接身份派生**，且已明确排除"把常量拆成 `data-transfer:source`/`:target`"这种假修法（会让不同 Job 的不同物理端点共用键，原子预留误冲突或漏冲突）；⑤ 保留 §6.2 全有或全无预算预留；⑥ SQL-file 无 writer 端点路径不变；⑦ fail-closed 只保留在真正无法证明身份处。
+
+⚠️ **后续必须项**：后端按真实端点区分后，coder 的前端谓词**只比表名**，`A库.users → B库.users` 仍会误报冲突 ⇒ **前端拦截在后端修好后仍然是错的**，需一次前端对齐（届时要比较连接身份，而非只比表名）。已要求 frontend coder 在报告里显式登记，**不得默默留着**。
+
+**📌 另一条待澄清的阻塞级疑点**：frontend coder 自列缺口 (c)「apply 阻塞到终态故无可寻址 jobId」。若属实，则 `apply` 返回前前端拿不到 `jobId` ⇒ **取消按钮无法寻址**、无中间进度 ⇒ Job 路径 UX **实质劣于 legacy**。这比缺 `list_jobs` 更要紧，直接决定本次切主路径是否真的可用。已要求给出**实测证据**（非读码推断）并按阻塞级处理。
