@@ -479,4 +479,5 @@ mod cm46_pipeline;
 mod cm47_48_recovery;
 mod cm49_sql_file;
 mod kernel_cancel;
+mod real_sqlite;
 mod stage_shape;

@@ -33,9 +33,17 @@ use datazen_runtime::budget::BudgetLedger;
 use datazen_runtime::job::{
     CancelToken, EndpointRef, EndpointRole, FrozenPlan, HandlerRegistry, InMemoryJobRepository,
     JobError, JobHandler, JobRuntime, RecoveryVerdict, SharedClock, StageOutcome, StageSpec,
-    StageTerminal,
+    StageTerminal, CANCEL_POLL_INTERVAL,
 };
 use support::{config, conn, org};
+
+// 轮询间隔本身的可核查性独立成文件，同上。
+#[path = "job_cancel_watch/poll_interval.rs"]
+mod poll_interval;
+
+// 阶段内 panic 的展开路径独立成文件，同上。
+#[path = "job_cancel_watch/in_stage_panic.rs"]
+mod in_stage_panic;
 
 // 阶段执行期的轮询故障观测独立成文件，守住单文件 800 行规模。
 // 集成测试的 crate 根就在 `tests/` 下，模块解析不走「同名子目录」惯例，用 `#[path]` 指过去。
@@ -50,8 +58,27 @@ mod terminal_exit;
 /// "没等到"，于是测试会以断言失败（而不是挂死）暴露看守器没工作。
 const PATIENCE: Duration = Duration::from_secs(5);
 
-/// 观察窗口：跨过它之后"读次数不再增长"才有意义（看守者 50ms 一跳）。
-const QUIET_WINDOW: Duration = Duration::from_millis(400);
+/// `n` 个轮询周期。
+///
+/// `Duration * u32` 不是 const（stable 上 `Mul` 的 impl 没标 const），所以在 const
+/// 上下文里只能自己按 secs / nanos 展开——这也是让"窗口"保持真源可推导的前提。
+const fn periods(n: u64) -> Duration {
+    let total_nanos = CANCEL_POLL_INTERVAL.subsec_nanos() as u64 * n;
+    Duration::new(
+        CANCEL_POLL_INTERVAL.as_secs() * n + total_nanos / 1_000_000_000,
+        (total_nanos % 1_000_000_000) as u32,
+    )
+}
+
+/// 观察窗口：跨过它之后"读次数不再增长"才有意义。
+///
+/// **从 [`CANCEL_POLL_INTERVAL`] 推导，不写死毫秒数。** 这一组里十处断言
+/// （C2/C3/C6）全是同一个句式："跨过窗口，读次数必须增长 / 必须不增长"。
+/// 窗口一旦比一个轮询周期还短，这个句式就恒成立——看门狗是死是活都测得出来是绿的：
+/// 窗口 400ms、间隔被调到 5s 时，窗口里连一次轮询都落不下，"不增长"自动为真，
+/// 于是一个**根本没在跑的看门狗**和一个正常工作的看门狗给出同一个结论。
+/// 写成 8 个周期之后，间隔无论往哪边调，"至少跨过两个周期"都由真源保证。
+const QUIET_WINDOW: Duration = periods(8);
 
 // ---------------------------------------------------------------- 共用夹具
 
@@ -122,6 +149,13 @@ enum Plan {
     /// 「阶段仍在执行」的窗口里采样读次数与告警条数——阶段一返回，看护者就被
     /// abort + await 掉，采样到的就不是同一件事了。
     Held,
+    /// 进入阶段之后立刻 **panic 展开**，用来命中 `run_stage_watched` 的展开路径：
+    /// `run_stage` 的 `.await` 处抛出，`watch.join()` 那行永远跑不到，
+    /// 看守者只剩 `CancelWatch` 的 `Drop` 兜底（见 `in_stage_panic.rs`）。
+    ///
+    /// 入口的 `Entered` 消息照发，所以测试能确认"阶段真的开跑了"，
+    /// 从而排除"panic 发生在阶段开跑之前"这种时序侥幸。
+    PanicInStage,
 }
 
 /// handler → 测试的消息通道，避免任何"通知早于等待"的丢信号问题。
@@ -295,6 +329,10 @@ impl JobHandler for ProbeHandler {
                 let release = self.release.clone();
                 release.notified().await;
                 cancel.is_cancelled()
+            }
+            Plan::PanicInStage => {
+                // 这里 panic 的消息是固定字面量，不含任何连接串或凭据。
+                panic!("阶段内 panic：用于观测取消看守者在展开路径上的存活");
             }
         };
         let _ = self.tx.send(Msg::Finished {

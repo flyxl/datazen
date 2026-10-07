@@ -38,7 +38,14 @@ use crate::job::time::JobClock;
 /// 只读两个 bool，锁内不做任何拷贝。
 ///
 /// 50ms 是响应延迟与争锁次数之间的折中：取消是低频的用户动作，这个延迟用户感知不到。
-const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+///
+/// **这是该间隔的唯一真源（single source of truth）。** 它是 `pub` 的，因为
+/// 两侧测试的观察窗口必须从它推导，而不是各自写死一个「大概差不多」的毫秒数：
+/// 写死的观察窗口在间隔被调大后会**静默失效**——窗口比一个轮询周期还短时，
+/// 「读次数不再增长」这句话恒成立，看门狗是死是活都测不出来。
+/// 改这里之前先看 `packages/runtime/tests/job_cancel_watch/poll_interval.rs`
+/// 里的两条需求边界断言。
+pub const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Job 执行的最终投影。`state` 是 JobState（successful/failed/cancelled），
 /// `effect_outcome` 独立表达提交边界，二者正交（§13.1 思想在 Job 上对齐）。

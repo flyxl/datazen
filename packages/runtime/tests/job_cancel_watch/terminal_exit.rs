@@ -1,7 +1,7 @@
 //! D-B：`watch_cancel_request` 的 `terminal => return` 早退分支。
 //!
 //! 这条分支的意思是：Job 已经终结，还挂在它上面的轮询**没有任何东西可等**（取消意图
-//! 永远不会被翻转），继续读仓储只是白白持有锁、每 50ms 撞一次全局 `Mutex`。
+//! 永远不会被翻转），继续读仓储只是白白持有锁、每个 `CANCEL_POLL_INTERVAL` 撞一次全局 `Mutex`。
 //!
 //! 它此前没有任何断言覆盖：把 `repository.rs` 的 `cancel_poll` 里
 //! `terminal: row.record.view.state.is_terminal()` 改成 `false`，全部用例依旧全绿。
@@ -61,7 +61,8 @@ async fn watcher_stops_polling_on_its_own_when_the_job_is_already_terminal() {
     // 终态并退出，于是「强制之后还读到过」这条断言变成与调度时序赛跑的 flake——
     // 它要证明的是「读到终态才停」，不是「强制那一刻正好没被读到」。
     // 放在强制之前采样则无竞态：无论那一次轮询落在强制之前还是之后，
-    // 跨过一个 QUIET_WINDOW 至少会有一次 +1（轮询间隔 50ms，窗口 400ms）。
+    // 跨过一个 QUIET_WINDOW 至少会有一次 +1（窗口由 `CANCEL_POLL_INTERVAL` 推导，
+    // 恒等于 8 个周期，所以"至少一次"与间隔调没调无关）。
     let before_force = rig.repo.get_calls();
     // 把 Job 强制写进终态（测试缝，见 repository.rs 的 force_terminal_for_test），
     // 阶段继续 hold 不动。
