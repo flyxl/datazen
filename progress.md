@@ -613,3 +613,134 @@ mod.rs / runtime.rs / scope.rs / tests`。请集成轨以本轨实际文件为�
   4. `.env` 内容全程未读；临时日志只落系统 temp，仓库内无残留。
   5. M6 的宿主侧行为**不由宿主测试钉死**（这是设计使然：宿主不该硬编码驱动行为），
      它的证据是驱动 crate 内那条响亮失败的 `.expect`。
+
+---
+
+# 修复轮次 R1：验收方指出的 2 条本轨新增 clippy 告警
+
+本轨已通过独立验收，验收方随后指出**本轨新引入** 2 条 clippy 告警。本轮只修这 2 处，
+不碰别的。协调方已亲自读码复核，确认为真（非传闻）。
+
+## 改了什么
+
+| 文件 | lint | 改法 |
+| --- | --- | --- |
+| `packages/drivers/redis/src/connect/live.rs:191` | `unused_imports` | `use datazen_driver_api::{DatabaseDriver, SslMode};` → `use datazen_driver_api::DatabaseDriver;`（`SslMode` 全文件再无引用；`DatabaseDriver` 必须保留——`default_host()` / `default_port()` 是 trait 方法调用，按名字 grep 不到 trait 名） |
+| `src-tauri/.../job_api/endpoint_identity.rs:21` | `doc_lazy_continuation` | 仅把第 21 行由 `//!` + **1** 空格补成 `//!` + **3** 空格，与相邻续行对齐 |
+
+`de75c10be..HEAD` 的完整改动就这 2 行（2 文件 / 2 insertions / 2 deletions）。
+
+**关于第二个修复的一处自我修正（如实记录）**：最初按「把两个列表项的续行整体重排到
+列表体起始列」理解 `doc_lazy_continuation`，把 19–25 行统一改成 `//!` + 2 空格。
+这是**错的**——clippy 实测把告警从 1 条涨到 **6 条**（19/20/21/22/23/25 行全报）。
+真值是：`//!` 后的列表体起始列在**剥掉 `//!` 与其后的一个空格后为第 2 列**，
+基线里其余续行的 **3 空格本已正确**，只有第 21 行是 1 空格的异类。
+故最终只补第 21 行。`f7226e4ab`（错误缩进）与 `94a3aaa23`（修正）**两个提交都保留，
+未 `--amend`**。
+
+`endpoint_identity.rs` 的改动是**纯空白**：`git diff -w de75c10be -- <file>` 输出为空。
+两个文件 `rustfmt --edition 2021 --check` 均 EXIT=0（**未使用 `cargo fmt`**）。
+
+## 门禁（干净树重跑，在最终 HEAD `94a3aaa23` 上）
+
+取证首尾（逐字，必须相等）：
+
+```
+HEAD=94a3aaa239e029f5a715e9dbddeee18b9dc27115
+WORKTREE_SHA=aaab099d46ba10089602f4a61d0e41189f0e36d3c2796f7be3d250a772985690
+CODE_SHA=777310bd3215bdf5fdf443b4417ae57f09521c44fe8a8c20080a2a9d989b325f
+```
+
+首尾三项**逐字相等**（`diff` EXIT=0）。`CODE_SHA` 沿用本轨既有约定
+（`git ls-tree` blob sha 去掉 `progress.md` / `src-tauri/Cargo.toml` / `Cargo.lock`），
+因此下面的门禁结论同样覆盖本文件这次纯台账提交之后的 HEAD。还原后 `POST_RESTORE_DIRTY=0`。
+
+### 告警门禁：只用 JSON，不用 `grep -->`
+
+**方法**（验收方指定，且指出了本轨旧做法为什么不可信）：
+`--message-format=json` → 取 `reason=="compiler-message"` 且 `message.level=="warning"`
+且 `span.is_primary` → 收集 `file_name` → 去重排序 → `comm -13`。
+
+**为什么不能 `grep -->`**：并行编译时同一 crate 的 lib / lib-test 告警会被 cargo 去重，
+先打印的那条才带 `-->`，于是 grep 出的是**编译顺序的产物**而不是真实告警集合，
+做差会得到假的集合差。
+
+### 实测（本轮亲测的绝对数字，仅供对照，判定一律看集合）
+
+```
+BASE   distinct_primary_warning_paths=182  primary_spans_total=634
+FINAL  distinct_primary_warning_paths=180  primary_spans_total=631
+```
+
+```
+comm -13 BASE FINAL   → 0 条（修复后没有任何文件新增 primary 告警）
+comm -23 BASE FINAL   → 2 条：
+    packages/drivers/redis/src/connect/live.rs
+    src-tauri/src/commands/data_transfer/job_api/endpoint_identity.rs
+```
+
+两个目标路径的 `span.is_primary` 告警逐条计数：
+
+```
+BASE   live.rs            : 1  ['unused_imports' line=191]
+BASE   endpoint_identity.rs: 1 ['clippy::doc_lazy_continuation' line=21]
+FINAL  live.rs            : 0
+FINAL  endpoint_identity.rs: 0
+```
+
+### 测试门禁
+
+| 命令 | 退出码 |
+| --- | --- |
+| `cargo test -p datazen-driver-redis` | 0 |
+| `cargo test -p datazen --lib` | 0 |
+
+逐字 `test result:`（每个测试二进制一行）：
+
+```
+cargo test -p datazen-driver-redis:
+test result: ok. 397 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 7.53s
+test result: ok. 4 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+cargo test -p datazen --lib:
+test result: ok. 1762 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 16.28s
+```
+
+宿主 lib 的 `1762 passed / 6 ignored` 与本轨此前门禁记录**逐字相同**。
+
+### 门禁退出码 101 的成因：基线既有，与本轮无关（如实记录，不掩饰）
+
+`cargo clippy -p datazen-driver-redis -p datazen --all-targets` 退出码为 **101**，
+成因是 `datazen-driver-redis` 的 **lib-test 目标**里 2 条 `clippy::approx_constant`
+**error**：
+
+```
+packages/drivers/redis/src/ops/exec.rs:260  code=clippy::approx_constant
+packages/drivers/redis/src/ops/mod.rs:235   code=clippy::approx_constant
+```
+
+- BASE 与 FINAL 的这 2 条 error **逐字相同**（同一行号、同一 lint），即本轮**未改变**它们；
+- 两个文件**都不在** `de75c10be..HEAD` 的改动清单里（改动只有 live.rs 与 endpoint_identity.rs）；
+- 根因是 `3.14` 被写死在 redis 测试里（`exec.rs:260` 的 `Double(3.14)`、
+  `ops/mod.rs:235` 的 `test_tester_value_to_string_double_format`）；
+  全仓无 `deny(approx_constant)`、无 `RUSTFLAGS`、无 `.cargo/config.toml`、无 `clippy.toml`、
+  无 `[lints]`，此为基线既有的 clippy 0.1.90 行为。
+- 本轨此前门禁用的是 `cargo check -p datazen`（**不是** `cargo clippy --all-targets`），
+  所以这两条一直没暴露。**本轮明确不修**（超出「只修这 2 处」的范围，且属 redis 驱动另一事项），
+  作为遗留项交给协调方裁定。
+- 该 101 **不影响**本轮结论：`datazen` lib 与 `datazen-driver-redis` 两个单元
+  在 BASE / FINAL 两次运行中都被**真实重新检查**（stderr 逐字出现
+  `Checking datazen v0.2.3` 与 `Checking datazen-driver-redis v0.0.8`），
+  两个目标文件的 primary 告警读数因此不是缓存出来的空读。
+
+## 本轮纪律自检
+
+- `cargo fmt` 未使用；格式化检查一律 `rustfmt --edition 2021 --check <file>`。
+- 未 `--amend` 任何既有提交（`f7226e4ab` / `94a3aaa23` 均为新增提交）。
+- `pnpm install` 未使用；无前端 / TS 改动。
+- `.env` / `.env.test` 内容全程未读。
+- 长输出全部落系统 temp（`/tmp/dz-p5fix-*`），仓库内无残留。
+- `src-tauri/Cargo.toml` 与 `Cargo.lock` 的 codegen 注入副作用已 `git checkout --` 还原。
