@@ -257,9 +257,38 @@ export function isRequiredTraitItemAddition(raw) {
 }
 
 /**
+ * Does `line` declare `anchor`, as opposed to merely containing it?
+ *
+ * `includes` alone answers the wrong question. Rust identifiers are matched as
+ * plain substrings, so the anchor `pub trait KeyValueDriver` is found inside
+ * `pub trait KeyValueDriverV2` — which is exactly what happens when a governed
+ * trait gets renamed. The span then lands on the *new* declaration, the base
+ * side has no anchor left to compare against, and a rename that breaks every
+ * out-of-tree `impl` is reported as an ordinary additive change. Requiring both
+ * sides of the match to be identifier boundaries makes the anchor match the
+ * declaration it names and nothing that merely starts with it.
+ *
+ * @param {string} line
+ * @param {string} anchor
+ * @returns {boolean}
+ */
+function matchesAnchor(line, anchor) {
+  const isIdentifierChar = (ch) => ch !== undefined && /[A-Za-z0-9_]/.test(ch);
+  let from = 0;
+  for (;;) {
+    const at = line.indexOf(anchor, from);
+    if (at === -1) return false;
+    if (!isIdentifierChar(line[at + anchor.length]) && !isIdentifierChar(line[at - 1])) {
+      return true;
+    }
+    from = at + 1;
+  }
+}
+
+/**
  * Resolve the line span of a governed item.
  *
- * Finds the line containing `anchor`, then walks brace depth from that line to
+ * Finds the line declaring `anchor`, then walks brace depth from that line to
  * the matching close. For a single-line item (a `const`) the span is that one
  * line.
  *
@@ -269,7 +298,7 @@ export function isRequiredTraitItemAddition(raw) {
  */
 export function findItemSpan(source, anchor) {
   const lines = source.split('\n');
-  const start = lines.findIndex((line) => line.includes(anchor));
+  const start = lines.findIndex((line) => matchesAnchor(line, anchor));
   if (start === -1) return null;
 
   let depth = 0;
@@ -307,7 +336,7 @@ export function findItemSpan(source, anchor) {
  *   positioned in *new* coordinates (the line it used to occupy).
  */
 export function parseDiffByFile(diff) {
-  /** @type {Map<string, Map<number, { added?: string, removed?: string }>>} */
+  /** @type {Map<string, Map<number, { added?: string, removed?: string[] }>>} */
   const out = new Map();
   let file = null;
   let newLine = 0;
@@ -338,7 +367,7 @@ export function parseDiffByFile(diff) {
       pushRecord(out, file, newLine, { added: line.slice(1) });
       newLine += 1;
     } else if (line.startsWith('-')) {
-      pushRecord(out, file, newLine, { removed: line.slice(1) });
+      pushRecord(out, file, newLine, { removed: [line.slice(1)] });
     } else if (line.startsWith(' ') || line === '') {
       newLine += 1;
     }
@@ -350,14 +379,25 @@ export function parseDiffByFile(diff) {
  * Record a change at a new-side line, merging rather than overwriting.
  *
  * A removal and the addition that replaces it occupy the *same* new-side line
- * position. Storing one record per line and letting the later write win drops
- * the old text — which is precisely the text that says whether a deleted line
- * was a signature or a comment, and therefore whether the change was breaking.
+ * position, so the two must share one record or the old text is lost — and the
+ * old text is precisely what says whether a deleted line was a signature or a
+ * comment, and therefore whether the change was breaking.
+ *
+ * Several *removals* share that position too, and not as a curiosity: in a
+ * pure-deletion hunk `newLine` never advances, so deleting ten lines emits
+ * `@@ -a,10 +b,0 @@` followed by ten `-` lines that all land on key `b`. The
+ * map is keyed by new-side line, so these are one key and something has to
+ * merge them. Letting the last write win meant a deletion of
+ * `fn driver_type(&self) -> DatabaseType;` plus the blank line after it — the
+ * shape of every ordinary deletion — kept only the blank, classified the whole
+ * removal as cosmetic, and let a required trait method disappear with the gate
+ * reporting `ok`. Removals therefore accumulate; an addition never does,
+ * because every `+` line advances `newLine` and so gets its own key.
  *
  * @param {Map<string, Map<number, unknown>>} out
  * @param {string} file
  * @param {number} line
- * @param {{ added?: string, removed?: string }} record
+ * @param {{ added?: string, removed?: string[] }} record
  */
 function pushRecord(out, file, line, record) {
   let records = out.get(file);
@@ -366,7 +406,16 @@ function pushRecord(out, file, line, record) {
     out.set(file, records);
   }
   const existing = records.get(line);
-  records.set(line, existing ? { ...existing, ...record } : record);
+  if (!existing) {
+    records.set(line, record);
+    return;
+  }
+  const merged = { ...existing };
+  if (record.added !== undefined) merged.added = record.added;
+  if (record.removed !== undefined) {
+    merged.removed = [...(existing.removed ?? []), ...record.removed];
+  }
+  records.set(line, merged);
 }
 
 /**
@@ -436,8 +485,14 @@ export function classifyContractChange(baseSource, newSource, rule, records) {
     if (!inScope) continue;
 
     if (record.removed !== undefined) {
-      if (!isCosmeticLine(record.removed)) {
-        removed += 1;
+      // Every line the hunk removed at this key counts on its own. Counting the
+      // record once instead made a multi-line deletion look like a single line,
+      // which is harmless for the verdict (still non-zero) but wrong in the
+      // report, and — see `pushRecord` — losing the key entirely is not.
+      for (const removedText of record.removed) {
+        if (!isCosmeticLine(removedText)) {
+          removed += 1;
+        }
       }
       continue;
     }
@@ -682,9 +737,32 @@ export function evaluate(options = {}) {
 
   for (const rule of CONTRACT_RULES) {
     const records = byFile.get(rule.file);
+    const rulePath = join(cwd, rule.file);
+    // A rule whose file is not in the tree cannot be judged, and that fact has
+    // to be a verdict rather than silence. Two ways to get here, and both used
+    // to exit 0 while claiming `ok`:
+    //   * the path was renamed or deleted, so git still reports records for the
+    //     old path — `readFileSync` then threw ENOENT out of `evaluate` and CI
+    //     saw an unhandled exception rather than a compatibility verdict;
+    //   * the path was wrong to begin with, or the file moved, so there are no
+    //     records at all and `records.size === 0` skipped the rule entirely.
+    //     A rule that silently stops covering its contract reports nothing when
+    //     that contract is edited, which is the one outcome a compatibility
+    //     gate must never produce. Both are violations, and the first is also a
+    //     breaking change to a governed contract in its own right.
+    if (!existsSync(rulePath)) {
+      const deletedByThisChange = records !== undefined && records.size > 0;
+      violations.push({
+        code: 'contract-rule-file-missing',
+        message: deletedByThisChange
+          ? `${LOG_PREFIX} rule '${rule.id}' governs ${rule.file}, and this change removed or renamed it (${records.size} diff record(s)). A governed contract cannot disappear without ${COMPAT_MATRIX.protocol} being raised.`
+          : `${LOG_PREFIX} rule '${rule.id}' governs ${rule.file}, which does not exist in the working tree. The gate therefore reads nothing for this contract and reports nothing when it changes; point the rule at the file that holds the contract.`,
+      });
+      continue;
+    }
     if (!records || records.size === 0) continue;
 
-    const newSource = readFileSync(join(cwd, rule.file), 'utf8');
+    const newSource = readFileSync(rulePath, 'utf8');
     // A contract relocated into its own module has no blob at the base ref. Its
     // base side is then `previousFile`, so a pure move reconciles against the
     // signature set it had rather than reading as a contract deleted outright.
