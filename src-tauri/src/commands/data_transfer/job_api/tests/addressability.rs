@@ -3,30 +3,51 @@
 //! A cross-database migration can take minutes. When `apply_data_transfer_job`
 //! awaited the write to a terminal state, the only thing the caller ever received
 //! was a view of a Job that had already finished — so there was no handle to poll,
-//! to watch progress with, or to cancel with, and a stuck migration could only be
-//! waited out. The contract these tests pin down is therefore about *when* the id
-//! appears, not about what it contains: the command hands back a `queued` Job
-//! before anything is written, the id reads back through the Job read side, and a
-//! cancel that lands in that window reaches the Job.
+//! or to cancel with, and a stuck migration could only be waited out.
+//!
+//! Splitting a run into "admit" and "drive" is what makes an id addressable, and
+//! the two halves have to be pinned separately, because neither can stand in for
+//! the other:
+//!
+//! * [`an_apply_job_publishes_its_id_before_anything_is_written`] and its cancel
+//!   sibling drive [`admit_apply`] directly, so they hold the returned view still
+//!   while nothing has run. They prove the id is complete, readable and
+//!   cancellable at the moment it is handed over.
+//! * [`an_apply_command_returns_while_the_write_it_owes_is_still_blocked`] goes
+//!   through [`apply_detached`] — the body the IPC command actually calls — and
+//!   proves the *timing*: that the command answers while its write is still
+//!   blocked. Only that test can tell a detached command from an awaited one.
+//!
+//! The second point is not pedantry. Both versions of `apply_detached` return the
+//! same `queued` view, because `admit_apply` computes that view before any write
+//! and awaiting a future does not change a value already in hand. A test that only
+//! asserts on the returned state, or that polls with nothing but an upper bound,
+//! therefore still passes against an apply that blocks its caller on the whole
+//! migration.
+
+use std::time::Duration;
 
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{JobProgress, JobState};
 
 use super::super::cancel::{cancel_data_transfer_job, job_cancel_requested};
 use super::super::queries::read_job;
-use super::super::runtime::APPLY_KIND;
+use super::super::runtime::{hold_write_closed, APPLY_KIND};
 use super::super::{
     admit_apply, apply_detached, prepare_data_transfer_job_impl, TransferApplyJobRequest,
 };
 use super::{apply_request_from, direct_job, mock_options, prepare_request, TestAppState};
 
-/// The apply command must hand back the id before the write starts.
+/// Admission hands over a complete, readable, cancellable handle — nothing more.
 ///
-/// Every assertion here is about observable state, and all of it is decided at
-/// admission: nothing has run yet, so `queued`, zero progress and an empty
-/// boundary list are facts rather than races. A command that awaited the write
-/// first would answer `succeeded` with real progress and real boundaries, and this
-/// test would fail on the very first assertion.
+/// What this test deliberately does *not* claim, because admission makes it
+/// impossible to claim: that the caller learns the id before the write starts.
+/// `admit_apply` splits the run by construction — it returns the continuation
+/// instead of running it — so the view it hands back is `queued` whether or not
+/// whoever calls it spawns the write. A command that awaited the write inline is
+/// not a different version of *this* function, and this test would pass against
+/// one. That question is what
+/// `an_apply_command_returns_while_the_write_it_owes_is_still_blocked` exists for.
 #[tokio::test]
 async fn an_apply_job_publishes_its_id_before_anything_is_written() {
     let test = TestAppState::with_options(mock_options()).await;
@@ -171,13 +192,17 @@ async fn an_apply_job_can_be_cancelled_through_the_id_it_already_published() {
     );
 }
 
-/// The command wrapper really does detach: it must not block on the write, and
-/// the write it left behind still has to finish on its own.
+/// The continuation the command left behind finishes on its own, and the Job it
+/// lands on is readable by the id the caller was already handed.
 ///
-/// `apply_detached` is the body the IPC command calls, so a version that awaited
-/// the write inline would return a terminal view here, and a version that dropped
-/// the continuation instead of spawning it would leave the Job `queued` forever —
-/// which is exactly the failure this poll detects.
+/// What this test does **not** establish is that the command did not block on the
+/// write. It cannot: `apply_detached` returns the view `admit_apply` computed
+/// before dispatching, so an `apply_detached` that awaited the write inline would
+/// hand back the same `queued` view and pass every assertion below. The only thing
+/// this test can fail on is a version that *dropped* the continuation instead of
+/// spawning it, which would leave the Job `queued` forever — which is what the
+/// bounded poll detects. The blocking half of the contract belongs to
+/// `an_apply_command_returns_while_the_write_it_owes_is_still_blocked`.
 #[tokio::test]
 async fn a_detached_apply_finishes_on_its_own_and_becomes_readable() {
     let test = TestAppState::with_options(mock_options()).await;
@@ -191,11 +216,9 @@ async fn a_detached_apply_finishes_on_its_own_and_becomes_readable() {
     let view = apply_detached(&test.state, apply_request_from(&prepared))
         .await
         .expect("a detached apply returns at admission");
-    assert_eq!(
-        view.state,
-        JobState::Queued,
-        "the command must not wait for the write: a cross-database migration \
-         takes minutes and the caller has to hold an id for all of it"
+    assert!(
+        !view.state.is_terminal(),
+        "the id has to be usable before the write ends, not only after: {view:?}"
     );
     assert!(!view.job_id.is_empty(), "an empty id is not a handle");
 
@@ -213,13 +236,125 @@ async fn a_detached_apply_finishes_on_its_own_and_becomes_readable() {
     );
 }
 
+/// The command must hand back the Job id while the write it owes is still blocked.
+///
+/// This is the test the split exists for, and the only one in the repository that
+/// can tell a detached apply from an awaited one.
+///
+/// The reason it needs a gate rather than a state assertion is that the returned
+/// view is *identical* either way. `admit_apply` computes it before dispatching,
+/// so `Ok(admitted.view)` is what the command returns whether the write goes to a
+/// detached task or is awaited inline — awaiting a future does not retroactively
+/// change a value already in hand. Asserting `state == Queued` therefore proves
+/// nothing about detaching, and `poll_until_terminal`'s bound is an upper bound
+/// only: a command that blocked on the write would still settle in time and pass.
+///
+/// Holding the write closed separates them by *timing instead*: an awaited apply
+/// cannot answer at all while its write is blocked, while a detached one answers
+/// at admission. So the gate here is held on the release of the write itself, one
+/// line above `JobRuntime::run` in `runtime::drive` — the only step in the host
+/// that writes. It is armed before the command is called and keyed by this
+/// test's own plan id, so no other Job in the process is parked by it.
+#[tokio::test]
+async fn an_apply_command_returns_while_the_write_it_owes_is_still_blocked() {
+    // Generous next to the work in front of it (plan lookup, plan claim, endpoint
+    // services, handler registry) and far below the 30s a real cross-database
+    // migration can take. The claim being tested is that the command returns
+    // without the write at all, not that it returns quickly.
+    const RETURN_DEADLINE: Duration = Duration::from_secs(10);
+    // The write is unblocked immediately after the check below, so this only has
+    // to outlast one task hop. It exists to turn "the continuation was never
+    // spawned" into a failure instead of an indefinite hang.
+    const BLOCKED_DEADLINE: Duration = Duration::from_secs(10);
+
+    let test = TestAppState::with_options(mock_options()).await;
+    let (_source_config, source) = test.save_and_connect("p5ja-detach-gate-source").await;
+    let (_target_config, target) = test.save_and_connect("p5ja-detach-gate-target").await;
+    let prepared =
+        prepare_data_transfer_job_impl(&test.state, prepare_request(direct_job(&source, &target)))
+            .await
+            .expect("a direct-pair review should issue a plan");
+    assert!(
+        !prepared.plan_id.is_empty(),
+        "the gate is keyed by plan id, so the review must publish one"
+    );
+
+    let gate = hold_write_closed(&prepared.plan_id);
+
+    // With the write shut, this can only complete if the command answered without
+    // running it. Under an inline `await` it parks on the gate and this times out.
+    let view = tokio::time::timeout(
+        RETURN_DEADLINE,
+        apply_detached(&test.state, apply_request_from(&prepared)),
+    )
+    .await
+    .expect("apply_data_transfer_job must answer without waiting for the write")
+    .expect("a detached apply returns at admission");
+    assert!(
+        !view.job_id.is_empty(),
+        "the caller must get a handle it can use, not an empty id"
+    );
+
+    // "Returned before the write" has to mean the write is actually parked, not
+    // merely that it had not been scheduled yet.
+    tokio::time::timeout(BLOCKED_DEADLINE, gate.wait_until_write_is_blocked())
+        .await
+        .expect("the detached continuation must reach the write on its own task");
+
+    let blocked = read_job(&view.job_id)
+        .await
+        .expect("an admitted Job stays readable while its write is blocked");
+    assert_eq!(
+        blocked.job_id.as_str(),
+        view.job_id,
+        "the read side must answer for the very id the caller was handed"
+    );
+    assert_eq!(
+        blocked.state,
+        JobState::Queued,
+        "the write is still shut, so the Job cannot have started"
+    );
+    assert_eq!(
+        blocked.effect_outcome, None,
+        "no effect outcome is derived until a run finishes, and the run cannot \
+         have finished — the gate is still holding the write: {blocked:?}"
+    );
+    assert_eq!(
+        blocked.progress,
+        JobProgress::default(),
+        "no rows have moved yet, so every counter is still zero"
+    );
+    assert!(
+        blocked.artifact_ids.is_empty(),
+        "a write that has not run cannot have produced an artifact: {:?}",
+        blocked.artifact_ids
+    );
+
+    gate.release();
+
+    let terminal = poll_until_terminal(&view.job_id).await;
+    assert_eq!(
+        terminal.job_id.as_str(),
+        view.job_id,
+        "the released write must land on the Job the caller was already told about"
+    );
+    assert_eq!(
+        terminal.state,
+        JobState::Succeeded,
+        "detaching must not change the verdict, only when the caller learns it: {terminal:?}"
+    );
+    assert_ne!(
+        terminal.progress,
+        JobProgress::default(),
+        "a Job that succeeded after moving rows cannot still report zero progress"
+    );
+}
+
 /// Poll the read side until the Job settles.
 ///
 /// Bounded on purpose: a Job that never leaves `queued` — because the write was
 /// dropped instead of spawned — has to surface as a failure rather than hang.
 async fn poll_until_terminal(job_id: &str) -> datazen_platform_api::dto::job::JobView {
-    use std::time::Duration;
-
     let deadline = Duration::from_secs(30);
     let poll = Duration::from_millis(20);
     let started = std::time::Instant::now();

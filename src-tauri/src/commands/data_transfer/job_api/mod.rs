@@ -17,10 +17,18 @@
 //! the caller to prepare again rather than silently reusing a stale plan.
 //!
 //! Apply returns as soon as its Job is admitted, not when it finishes: the Job id
-//! is the handle the UI polls, watches and cancels with, so publishing it only
-//! after a terminal run left a long migration both unobservable and structurally
+//! is the handle the UI polls and cancels with, so publishing it only after a
+//! terminal run left a long migration both unobservable and structurally
 //! uncancellable. `list_jobs` / `get_job` (in `queries`) are the read side of
 //! that handle.
+//!
+//! What the read side does **not** offer today is a live progress feed: the
+//! counters in `JobProgress` are written once, when the run reaches a terminal
+//! state (`runtime::drive` is the only writer), so a poll during the write sees
+//! `JobState::Running` with all-zero progress, not a partial count. Incremental
+//! counts would need `JobRuntime` to report progress mid-run, which is a change
+//! to the shared runtime contract rather than to this module — so the honest
+//! thing here is to say so, not to imply a watch that does not exist.
 
 mod admission;
 mod assembly;

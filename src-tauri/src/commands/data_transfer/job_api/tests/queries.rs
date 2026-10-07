@@ -120,7 +120,39 @@ async fn get_job_returns_a_payload_the_client_parser_accepts() {
             progress.contains_key(key),
             "the client reads progress.{key} and defaults it to zero when absent: {progress:?}"
         );
+        // Presence is not the contract; the *type* is. `platform-api`'s `Counter`
+        // is a `u64` serialized with `collect_str` (CM-01: a JSON number would
+        // lose precision above 2^53), so each counter travels as a decimal
+        // string. Asserting only `contains_key` is what let this drift: the key
+        // was always there, so the test stayed green while every counter the
+        // client read was silently rejected by `toCounter` and defaulted to 0.
+        assert!(
+            progress[key].is_string(),
+            "`{key}` must travel as a decimal string, not {:?} — a bare number \
+             loses u64 precision, and a client that only accepts numbers reads \
+             every counter as 0: {progress:?}",
+            progress[key],
+        );
+        let raw = progress[key].as_str().expect("checked above");
+        assert!(
+            !raw.is_empty() && raw.bytes().all(|b| b.is_ascii_digit()),
+            "`{key}` must be a plain decimal integer, not `{raw}`: {progress:?}"
+        );
+        assert!(
+            raw.parse::<u64>().is_ok(),
+            "`{key}` must fit the u64 the kernel counts in: `{raw}`"
+        );
     }
+    // Type is necessary but not sufficient: a wire form the client cannot read
+    // and a wire form that always says "0" look the same to a shape-only test.
+    // This run read rows through to the target, so at least one counter has to
+    // have actually moved — prove the values travel, not just their spelling.
+    let committed = progress["committed"].as_str().expect("checked above");
+    assert_ne!(
+        committed, "0",
+        "the apply committed rows, so `committed` cannot travel as 0 — if it does, \
+         the payload has lost the value and only its shape survives: {progress:?}"
+    );
 }
 
 /// `listJobs` must narrow by state and by kind, because the repository cannot.

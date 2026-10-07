@@ -388,6 +388,120 @@ pub(crate) async fn admit(request: &JobRunRequest<'_>) -> Result<Admission, Comm
     }))
 }
 
+/// Closed writes, keyed by plan id. See [`hold_write_closed`].
+#[cfg(test)]
+fn write_gates() -> &'static Mutex<HashMap<String, Arc<WriteGate>>> {
+    static GATES: OnceLock<Mutex<HashMap<String, Arc<WriteGate>>>> = OnceLock::new();
+    GATES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Hold one plan's write closed, so a test can stand on the far side of it.
+///
+/// [`drive`] parks on this gate immediately before it dispatches the handler, and
+/// that is the only place a gate can answer the question the Job split exists for:
+/// *when* does the command hand back the id. Everything above the gate is
+/// admission bookkeeping and has written nothing; everything below it has already
+/// dispatched the handler. So a caller that answers while this is held is
+/// answering before its write started, and a caller that cannot answer while this
+/// is held is blocking its IPC on the write — regardless of what view it eventually
+/// hands back, which is the part an assertion on the returned state cannot see:
+/// `admit_apply` computes that view before the write, and awaiting does not change
+/// a value already in hand.
+///
+/// Keyed by plan id rather than global on purpose. The Job host is process-wide and
+/// shared by every test in the binary, and a gate that held *all* writes would park
+/// the unrelated writes of whichever tests happened to run concurrently.
+#[cfg(test)]
+pub(crate) fn hold_write_closed(plan_id: &str) -> WriteGateGuard {
+    let gate = Arc::new(WriteGate::default());
+    write_gates()
+        .lock()
+        .expect("the write-gate registry only ever holds short, panic-free locks")
+        .insert(plan_id.to_string(), Arc::clone(&gate));
+    WriteGateGuard {
+        plan_id: plan_id.to_string(),
+        gate,
+    }
+}
+
+/// Park until this plan's write is released, if a test is holding it closed.
+#[cfg(test)]
+async fn park_on_write_gate(plan_id: Option<&str>) {
+    let Some(plan_id) = plan_id else {
+        return;
+    };
+    let Some(gate) = write_gates()
+        .lock()
+        .ok()
+        .and_then(|gates| gates.get(plan_id).cloned())
+    else {
+        return;
+    };
+    // Announced before the park, so a test can wait on this instead of assuming
+    // the write has not started yet. `Notify` holds a permit for a waiter that
+    // has not arrived, so the two cannot miss each other in either order.
+    gate.reached.notify_one();
+    // Never closed, so this cannot fail; the permit is dropped at once — what is
+    // awaited is the permit being handed over, not any count of them.
+    if gate.release.acquire().await.is_ok() {}
+}
+
+/// One plan's closed write: the writer announces itself, then waits to be let in.
+///
+/// Hand-written rather than derived: a `Semaphore` has no `Default`, because a
+/// closed-write gate that defaulted to an open write would let the write it is
+/// supposed to hold escape.
+#[cfg(test)]
+struct WriteGate {
+    reached: tokio::sync::Notify,
+    release: tokio::sync::Semaphore,
+}
+
+#[cfg(test)]
+impl Default for WriteGate {
+    fn default() -> Self {
+        Self {
+            reached: tokio::sync::Notify::new(),
+            release: tokio::sync::Semaphore::new(0),
+        }
+    }
+}
+
+/// Owns one closed write.
+///
+/// Dropping the guard opens the write. A failing assertion therefore cannot leave a
+/// detached task parked on a gate nobody holds any more, still holding the plan
+/// claim the gate was blocking.
+#[cfg(test)]
+pub(crate) struct WriteGateGuard {
+    plan_id: String,
+    gate: Arc<WriteGate>,
+}
+
+#[cfg(test)]
+impl WriteGateGuard {
+    /// Wait until a Job is really sitting on the gate, so that "the write has not
+    /// started" is an observation the test made rather than one it assumed.
+    pub(crate) async fn wait_until_write_is_blocked(&self) {
+        self.gate.reached.notified().await;
+    }
+
+    /// Let the blocked write proceed.
+    pub(crate) fn release(&self) {
+        self.gate.release.add_permits(1);
+    }
+}
+
+#[cfg(test)]
+impl Drop for WriteGateGuard {
+    fn drop(&mut self) {
+        if let Ok(mut gates) = write_gates().lock() {
+            gates.remove(&self.plan_id);
+        }
+        self.gate.release.add_permits(1);
+    }
+}
+
 /// Drive an admitted Job to a terminal state.
 ///
 /// This is the only step that writes. It runs on its own task when the caller
@@ -410,6 +524,10 @@ pub(crate) async fn drive(
         now_millis(),
     );
     let worker = WorkerId::new(format!("transfer-{kind}"));
+    // The release of the write, and the only seam a test has on it: below this
+    // line the handler runs, above it nothing has been written yet.
+    #[cfg(test)]
+    park_on_write_gate(plan.plan_id.as_deref()).await;
     let result = runtime
         .run(&ctx, &job_id, &worker, &plan.endpoints)
         .await
