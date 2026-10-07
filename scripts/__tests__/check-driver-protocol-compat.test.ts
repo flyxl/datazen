@@ -67,7 +67,7 @@ const BASE_TRAIT = `pub trait Demo: Send {
  * that attributes the change to a different line than git would — which would
  * make these cases assert the parser's behaviour instead of the real one.
  */
-const diffOf = (before: string, after: string): string => {
+const diffOf = (before: string, after: string, file = 'x.rs'): string => {
   const a = before.split('\n');
   const b = after.split('\n');
   const lcs: number[][] = Array.from({ length: a.length + 1 }, () =>
@@ -102,7 +102,7 @@ const diffOf = (before: string, after: string): string => {
   // removal and the addition that replaces it belong to the same hunk; splitting
   // them would move one of the two to the wrong new-side line number and make
   // these cases assert against a diff git never produces.
-  const header = `diff --git a/x.rs b/x.rs\n--- a/x.rs\n+++ b/x.rs\n`;
+  const header = `diff --git a/${file} b/${file}\n--- a/${file}\n+++ b/${file}\n`;
   const hunks: string[] = [];
   let oldNo = 1;
   let newNo = 1;
@@ -335,6 +335,101 @@ describe('classification — an additive change is additive, not breaking', () =
     const before = 'pub struct Demo {\n    pub a: u32,\n}\n';
     const after = 'pub struct Demo {\n    pub a: u32,\n    pub fn helper(&self);\n}\n';
     expect(classifyViaDiff(STRUCT_RULE, before, after).cls).toBe('additive');
+  });
+});
+
+describe('classification — a trait relocated to its own module', () => {
+  // `traits.rs` was split into `traits/*.rs`. A declaration that moved keeps
+  // its public path (`pub use`), but the old file now holds only a re-export,
+  // which no `pub trait` anchor matches. So the anchor resolves on the head side
+  // and on the base side *read from `previousFile`* — which is what makes the
+  // two signature sets comparable at all.
+  const RELOCATED_RULE = {
+    id: 'demo',
+    file: 'traits/demo.rs',
+    previousFile: 'traits.rs',
+    anchor: 'pub trait Demo',
+    kind: 'trait',
+  } as const;
+
+  const BASE_IN_OLD_FILE =
+    'mod other;\n\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n}\n';
+  const HEAD_IN_NEW_FILE =
+    'use super::Other;\n\n#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n}\n';
+
+  const classifyRelocated = (after: string) => {
+    const records = parseDiffByFile(
+      diffOf(BASE_IN_OLD_FILE, after, RELOCATED_RULE.file),
+    ).get(RELOCATED_RULE.file);
+    expect(records, 'the synthetic diff must produce records').toBeDefined();
+    return classifyContractChange(BASE_IN_OLD_FILE, after, RELOCATED_RULE, records!);
+  };
+
+  it('reads a verbatim move as churn, not as a contract that stopped resolving', () => {
+    // Every head line is an addition and no base line was removed, so a
+    // line-counting classifier calls this 11 lines added and 0 removed. The
+    // signature set is what decides, and it is identical.
+    const finding = classifyRelocated(HEAD_IN_NEW_FILE);
+    expect(finding.cls).not.toBe('breaking');
+    expect(finding.reason).toContain('kept all 2 item signature(s) unchanged');
+  });
+
+  it('still reports a method dropped while the trait moved', () => {
+    // The relocation path must not become a hole: reconciling against
+    // `previousFile` is only sound because the signature set is compared, so a
+    // signature that vanished during the move has to fire.
+    const finding = classifyRelocated(
+      '#[async_trait]\npub trait Demo: Send {\n    fn with_default(&self) -> u32 { 0 }\n}\n',
+    );
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('existing');
+  });
+
+  it('still reports a signature altered while the trait moved', () => {
+    const finding = classifyRelocated(
+      '#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> DriverType;\n    fn with_default(&self) -> u32 { 0 }\n}\n',
+    );
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('removed');
+  });
+
+  it('reports a required item gained while the trait moved', () => {
+    // Every line is new, so a line-based "was this added without a body?" test
+    // would read the moved `existing` as a freshly added requirement. Required
+    // -ness has to come from the signature set for a trait, not from the diff.
+    const finding = classifyRelocated(
+      '#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n    fn added_required(&self) -> u32;\n}\n',
+    );
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('added_required');
+  });
+
+  it('does not report a relocated trait whose only change is a defaulted item', () => {
+    const finding = classifyRelocated(
+      '#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n    fn added_defaulted(&self) -> u32 { 1 }\n}\n',
+    );
+    expect(finding.cls).toBe('additive');
+    expect(finding.reason).toContain('added_defaulted');
+  });
+
+  it('keeps every relocation rule pointed at a file the anchor has left', () => {
+    // `previousFile` is read only when `file` has no blob at the base ref, so
+    // it is a relocation record, not a second source of truth. If the anchor is
+    // still in `previousFile` at HEAD, the repoint is stale and the record can
+    // never be reached — which is also what makes it expire on its own once the
+    // base ref moves past the move.
+    const relocated = CONTRACT_RULES.filter((rule) => rule.previousFile !== undefined);
+    expect(relocated.length, 'at least one rule must record a relocation').toBeGreaterThan(0);
+    for (const rule of relocated) {
+      expect(rule.previousFile, `${rule.id} must not point at its own file`).not.toBe(
+        rule.file,
+      );
+      const oldFile = read(rule.previousFile!);
+      expect(
+        findItemSpan(oldFile, rule.anchor),
+        `${rule.previousFile} still contains "${rule.anchor}" at HEAD, so ${rule.file} is the stale one`,
+      ).toBeNull();
+    }
   });
 });
 

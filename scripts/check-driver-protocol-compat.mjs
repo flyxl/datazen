@@ -457,10 +457,60 @@ export function classifyContractChange(baseSource, newSource, rule, records) {
   // it, and for an enum that is the whole question — a variant addition diffs
   // as one added line, the same shape as a doc comment, so it would otherwise
   // fall through to `additive` here. `rule.kind` decides what is compared: a
-  // struct's public field names (for the report only, never the verdict) or an
+  // struct's public field names (for the report only, never the verdict), an
   // enum's variants, where a gained variant really can break every downstream
-  // `match`.
+  // `match`, or a trait's item signatures.
   const members = inspectMemberDiff(rule, baseSource, newSource, oldSpan, newSpan);
+
+  // A trait is the one governed kind whose line range and whose contract are
+  // genuinely different things. An implementor writes signatures and inherits
+  // every default body, so the two facts that can force it to be edited are a
+  // signature that disappeared or changed shape and a new item with no default
+  // body. Everything else inside the span — bodies moving to sibling functions,
+  // delegating lines replacing them, the closing brace shifting because 900
+  // lines were extracted above it — leaves the signature set untouched and
+  // leaves every out-of-tree implementor compiling. Reading those as removed
+  // lines made a pure refactor demand a PROTOCOL_VERSION bump, which is the one
+  // obligation no version window can honestly express here, so for a trait the
+  // signature delta decides and the line counts are reported as evidence.
+  if (rule.kind === 'trait' && members.trait !== null && (removed > 0 || addedMeaningful > 0)) {
+    const { removed: gone, addedRequired, addedDefaulted, baseTotal, total } = members.trait;
+    if (gone.length > 0) {
+      return {
+        id: rule.id,
+        cls: 'breaking',
+        reason: `${rule.id}: ${gone.length} trait item signature(s) removed or altered in ${rule.anchor} — an out-of-tree driver implementing them no longer compiles: ${gone.join(' | ')}`,
+      };
+    }
+    if (addedRequired.length > 0) {
+      return {
+        id: rule.id,
+        cls: 'breaking',
+        reason: `${rule.id}: required trait item(s) added to ${rule.anchor} with no default body: ${addedRequired.join(' | ')}`,
+      };
+    }
+    const sourceBreak = detectSourceBreak(meaningfulAdditions, rule);
+    if (sourceBreak) {
+      return {
+        id: rule.id,
+        cls: 'source-breaking',
+        reason: `${rule.id}: ${sourceBreak.attributes.join(', ')} added to ${rule.anchor} — ${sourceBreak.effect}`,
+        sourceBreak,
+      };
+    }
+    // Still additive, never cosmetic: something the crate serves moved, so the
+    // crate version is owed, but no implementor has to declare anything new.
+    const gained =
+      addedDefaulted.length > 0
+        ? ` gained ${addedDefaulted.length} defaulted trait item(s) (${addedDefaulted.join(', ')}) and lost none of its ${total} item signature(s) (${baseTotal} before)`
+        : ` kept all ${total} item signature(s) unchanged`;
+    const moved = removed > 0 ? `, with ${removed} line(s) moved or edited inside the span` : '';
+    return {
+      id: rule.id,
+      cls: 'additive',
+      reason: `${rule.id}: ${rule.anchor}${gained}${moved} (${addedMeaningful} line(s) added, ${tolerated} cosmetic ignored), e.g. ${sample(meaningfulAdditions)}`,
+    };
+  }
 
   if (removed > 0) {
     return {
@@ -635,7 +685,14 @@ export function evaluate(options = {}) {
     if (!records || records.size === 0) continue;
 
     const newSource = readFileSync(join(cwd, rule.file), 'utf8');
-    const baseSource = readBlobAtRef(cwd, rule.file, base);
+    // A contract relocated into its own module has no blob at the base ref. Its
+    // base side is then `previousFile`, so a pure move reconciles against the
+    // signature set it had rather than reading as a contract deleted outright.
+    // Only consulted when `file` itself is absent at the base ref, which is what
+    // makes the record expire on its own once the base ref moves past the move.
+    const baseSource =
+      readBlobAtRef(cwd, rule.file, base) ??
+      (rule.previousFile === undefined ? null : readBlobAtRef(cwd, rule.previousFile, base));
     const finding = classifyContractChange(baseSource ?? '', newSource, rule, records);
     if (finding.cls === 'cosmetic') continue;
 
