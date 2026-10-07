@@ -257,7 +257,13 @@ mod tests {
         assert_eq!(result_type_of(&redis::Value::Nil), "nil");
         assert_eq!(result_type_of(&redis::Value::Okay), "ok");
         assert_eq!(result_type_of(&redis::Value::Int(42)), "scalar");
-        assert_eq!(result_type_of(&redis::Value::Double(3.14)), "scalar");
+        // RESP3 carries `Double` in the replies of the float-counter commands
+        // (INCRBYFLOAT / ZINCRBY / HINCRBYFLOAT), so `10.5` stands in for an
+        // ordinary counter result. `result_type_of` discriminates on the variant
+        // alone and binds the payload to `_`: no payload can change the category,
+        // which is what makes this a variant-to-category case rather than a
+        // numeric one.
+        assert_eq!(result_type_of(&redis::Value::Double(10.5)), "scalar");
         assert_eq!(
             result_type_of(&redis::Value::BulkString(b"hello".to_vec())),
             "scalar"

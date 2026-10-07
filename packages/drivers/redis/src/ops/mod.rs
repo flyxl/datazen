@@ -231,10 +231,19 @@ mod tests {
 
     #[test]
     fn test_tester_value_to_string_double_format() {
-        // Double is the "other" catch-all => format!("{other:?}")
-        let v = redis::Value::Double(3.14);
+        // `value_to_string` has no `Double` arm, so a Double lands in the
+        // `other => format!("{other:?}")` catch-all and the caller receives the
+        // Debug rendering of the whole `redis::Value`, payload included. That is
+        // why the payload is load-bearing here: the assertion checks that the
+        // number survives the conversion, so the expectation is derived from the
+        // same value that was constructed instead of being re-typed, which makes
+        // the two unable to drift apart. `10.5` is a plain float counter of the
+        // kind INCRBYFLOAT produces, deliberately not an approximation of any
+        // named mathematical constant.
+        let payload = 10.5;
+        let v = redis::Value::Double(payload);
         let s = value_to_string(&v);
-        assert!(s.contains("3.14"), "got: {s}");
+        assert!(s.contains(&format!("{payload:?}")), "got: {s}");
     }
 
     // -- parse_cursor_from_value --
