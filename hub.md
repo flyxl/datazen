@@ -18,8 +18,8 @@
 | `p5-cancel-hardening` 取消硬化 | feature/p5-cancel-hardening | ✅ MERGED `f440acf91` |
 | `p5-data-sync` handler | feature/p5-data-sync | ✅ 已由 R2 取代 |
 | `p5-data-sync-r2` D1/D2/D5 修复 | feature/p5-data-sync-r2 | ✅ MERGED `31af2b8fb8`，Tester 独立复验 **TEST_PASSED**（10 变异零存活，含修前存活/修后被杀对照），worktree/分支已清理 |
-| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ❌ **TEST_FAILED**（Tester `0e5f9a54` @ `787f0e6fe`，9 变异 2 存活）：**D2** 门闸不校验目标表名、**D3** D-10 修复落在零调用方函数、**D4** disabled 守卫不收口；D1 经复核**不成立**（见裁定）。修复轨 `63d27428` 进行中 |
-| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ❌ **TEST_FAILED**（Tester `10f3ae68`）：交付 `051a228a4` 方向对但引入 D1/D2 两个阻塞缺陷；修复轨 `2cca952d` 进行中 |
+| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ❌ TEST_FAILED（Tester `0e5f9a54` @ `787f0e6fe`）→ 修复轨 `63d27428` 进行中，tip `f19c49fc5` 全绿。D2 门闸收口、D3 退役桥删除已闭环；**D4 判为不可达缺陷**（N3 存活）；**D1 已确认成立**，裁定后端停止预填，范围扩展至 `packages/data-transfer/src/mapping.rs`。待**新鲜** Tester 复验（`0e5f9a54` 已用） |
+| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ❌ TEST_FAILED（Tester `10f3ae68`）→ 修复轨 `2cca952d` 进行中，tip `2940e2530`；**首轮门禁证据已作废**（非干净态采集），须以 `HEAD`/`TREE`/`SOURCE_SHA` 首尾配对重采。`job_kernel.rs` 1023 行拆分是**合并前置条件**；回退常量 `"data-transfer"` 的控制变异仍欠 |
 | `p5-schema-diff-endpoint-identity` schema-diff 侧端点身份 | — | ⏸ 待开（D3 裁定；排在 endpoint-overlap 合入后） |
 | Wave-R 全量回归 | — | ⏸ NOT_STARTED |
 
@@ -35,7 +35,9 @@
   - D-6 **§8.4 竞态（high）**：`DataTransferWindow.tsx:946-957` `goNext` 先 `await` 再切步；`TransferMappingStep` / `ColumnMappingEditor` 的 target `<Input>` 无 `disabled`；`:773/:924` 依赖的是**点击时刻捕获的 `endpointOverlaps` 快照**。prepare 在飞期间可改成同名绕过闸门。由 `70854e7b` 修。
   - D-7 M3 存活是 D-6 的**同一根因**（守卫捕获的是快照），随 D-6 一并消除，不单列。
   - D-8 CM-40 未覆盖（见上）。D-11 `DataTransferWindow.tsx` **1889 行**——本轮接受为存量债，但 **schema-diff / data-sync 前端切 Job 落地前必须先拆**，否则会在此文件上继续叠加。
-- **变异存活 ≠ 存在缺陷**：Tester `0e5f9a54` 报 D1（high）「D-10 在生产路径失效」，依据是 M7（真清空源表名）/ M8（装回源表名）在 `DataTransferWindow.tsx:687` 都存活。存活只证明该路径**无覆盖**，不证明原代码有错；且所引链条接不起来——`model.rs:311-323` `TableMapping::auto` 置 `create_new: false`，`mapping.rs` 非 create-new 分支两个出口 `:277`/`:304` **也**置 false，三分支一律 `target_table: mapping.target_table.clone()` 只回显请求值；`:229` 那条分支前提是请求已带 `create_new: true`。首次 inspect 的 `savedMappings` 为 `[]`（新会话），刷新走 `refreshTableMapping` 并在 `:1013-1014` 显式保留本地 `createNew`/`targetTable`。**后端产不出 `createNew:true + targetTable===sourceTable`。⇒ D1 判不成立，`:687` 不改。** 覆盖缺口仍为真（无人喂真实响应形状），改为**只补测试、不加加固**，并要求执行证据而非读码推理来复核本裁定。
+- **D-1（新建表目标名）— 协调者原裁定「不成立」已撤回，缺陷成立。** 原判据是四条"独立代码事实"（`model.rs:311-323`、`mapping.rs:229/277/304`），**读漏了路径**：实读 `packages/data-transfer/src/mapping.rs:81-99`，Structure / StructureAndData 模式目标表不存在时预填 `target_table = 源表名` + `create_new: true`，`:141-154` 将其**原样**搬进 inspect 结果；Data 模式 `:100-111` 才给空串。⇒ 后端**产得出** `createNew:true + targetTable===sourceTable`，`:687` 不改的指令已随裁定一并作废（该行至今未动）。
+- **裁定：后端停止预填**（`mapping.rs:81-99` 的 `target_table` 改空串，`create_new` 保持 `true`）。四条理由按强度：① `:89-93` 注释自称"创建不存在的目标是用户的明确选择"，同一个 struct literal 却预填了名字——**代码自相矛盾**，名字既属用户，后端就无权代起；② 同函数同情形两模式两种结果，让 Structure 对齐 Data 是统一线上契约的最小改动；③ 线上格式**无"建议名 / 已确认名"标志位**，预填名与用户输入名不可区分，因而必然自动满足 D-2 门闸——**D-2 刚建的闸门会被这条预填静默废掉**；④ 反过来在前端修就得擦掉后端发来的值，正是 D-10 已踩过的歧义。已批准 `p5-frontend-cutover` 扩范围至该文件（与 endpoint-overlap 零文件冲突）。
+- **D-4 未成立为可达缺陷**：`63d27428` 变异 N3（删 `SourceFilterEditor.apply` 的 guard）**存活**，62 测试全绿 ⇒ 该 guard 今天杀不了任何东西；N4（删 `ColumnMappingEditor.commit` 的 guard）被存量 §8.4 测试杀掉，链条本已闭合。可达性以**实测**判定而非推理：`DISABLED_INPUT_ONCHANGE_CALLS=1` / `DISABLED_BUTTON_ONCALLS=0`。guard 保留为纵深防御，但注释须写明**不是修复**，否则下一个人会再报一次。
 - **复用成本修正**：`migrationJobVerdict.ts`(336) + `MigrationJobVerdictPanel.tsx`(311) 可原样复用；`transferJobs.ts`(182) + `useTransferJobRun.ts`(341) + `MigrationJobFailureNotice.tsx`(121) 硬编码三个 transfer 命令名、需依赖注入后才能给另两套用 ⇒ **约 768 行可直接复用，约 644 行需返工**。"另两套几乎白拿"的说法偏差接近一半工作量，禁止据此排期。
 
 ## 敞口项
@@ -86,6 +88,8 @@
 - 「失败均为存量」需要**基线跑**，不能靠断言。
 - **对照变异的正确方向是修复前 RED、修复后 GREEN**，不是「修复前必须存活」。协调者给 Tester 的 brief 曾把对照变异写成「修前必须 SURVIVE（绿）」，语义写反；若照字面执行会反向奖励没锁住缺陷的测试。Tester 标出了这处措辞歧义并按正确方向执行——**brief 的判据本身也要能被反驳。**
 - **记账粒度 ≠ 身份粒度**：连接 id 是配额记账键，不是物理端点身份。把两者混用会让检测器只能「多拒」而不能「多接」，误拒全部落在合法端点上。
+- **裁定缺陷前必须亲自读被引用的代码路径,不能只核对引用是否自洽。** 协调者据四条"独立代码事实"判 D1 不成立,实际漏读 `mapping.rs:65-97` 的 auto-build 与 `:141-146` 的 `!enabled` 传播,被变异执行推翻。**变异执行/杀死的证据强度高于读码推理**;两条裁定同源同错,说明这不是偶发。
+- **门禁数字必须命名来源状态**(`@commit` / `@<worktree sha>`),并首尾各采一次 `HEAD`/`TREE`/`SOURCE_SHA`(仅受跟踪文件,排除两个构建期注入产物)且要求相等。`WORKTREE_SHA` 无法对应可提交状态:`resolve-drivers --drivers=all` 会往**受跟踪**的 `src-tauri/Cargo.toml` 注入 31 行并让 cargo 重写 `Cargo.lock`,二者靠 `git checkout --` 还原(20→18)。协调者曾据 `WORKTREE_SHA` 漂移误判"有人边跑边改",已认错。
 
 ## 收尾义务
 
