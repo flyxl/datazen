@@ -19,7 +19,9 @@
 | `p5-data-sync` handler | feature/p5-data-sync | ✅ 已由 R2 取代 |
 | `p5-data-sync-r2` D1/D2/D5 修复 | feature/p5-data-sync-r2 | ✅ MERGED `31af2b8fb8`，Tester 独立复验 **TEST_PASSED**（10 变异零存活，含修前存活/修后被杀对照），worktree/分支已清理 |
 | `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ✅ MERGED `7edfbd2e6`，Tester `10b025d7` 独立复验 **TEST_PASSED**（3 位 Tester、前 2 位 TEST_FAILED）。基线 typecheck 0 / vitest 572 文件 6031 用例全绿 / data-transfer 209 / host `--lib` 1733。**M1 控制变异（恢复预填）KILLED**；M2/M3/M4/M5 全 KILLED —— **M5 只在前端单侧恢复预填仍杀 2 条**，证明 D-2 门闸前后端两侧都受保护，不单靠后端。zh-CN blob 与 merge-base 逐字节相同，只改 `en.ts`。**A2 预警的"合并会撞 zh-CN"经实测不成立**：集成分支上该文件 blob 就是 `21d210d0…`，那些 key 从未在集成侧存在，合并零冲突。worktree/分支已清理 |
-| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ⏳ Tester `08a136ed` **TEST_PASSED**：M1 控制变异 KILL、D1/D2 双向钉死、A/B/D 三组期望互不矛盾（`database` 进 digest）、`CODE_SHA` 我已独立复核、17 驱动逐 id 枚举、范围收敛（`commands/schema_diff/**` 零改动）。**postgres 红门禁我改用等价性证明结案**（见纪律区），不依赖实机复现。**但 Tester 发现本轨新引入 2 条 clippy 告警**（redis 未用 import + 新文件 doc 缩进）—— 已派 `b88b1d95` 修复，修完才合 |
+| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ✅ MERGED `7909c7cd3`，worktree/分支待清理。Tester `08a136ed` **TEST_PASSED**：M1 控制变异 KILL、D1/D2 双向钉死、`database` 进 digest、17 驱动逐 id 枚举、范围收敛。postgres 红门禁用**等价性证明**结案（见纪律区），不依赖实机复现。其发现的两条 clippy 告警由 `b88b1d95` 修复（redis 未用 import + 新文件 doc 缩进列）。**合并提交独立复验**：独立 detached 树、`--drivers=all`、首尾 HEAD 一致且 DIRTY=0 ⇒ clippy 两目标文件 `is_primary` 告警 **0 / 0**（非空洞：JSON 内 `src-tauri/` 主 span 460 个）、redis `397 passed; 0 failed; 3 ignored`、runtime 34 个 `test result:` 全 ok、host `--lib` **`1774 passed; 0 failed; 6 ignored`** EXIT=0。`CODE_SHA`=`e545e46198e19459c4b5edb6c8bbccbe2cdaaa6acff4def2b42e3d09ae4bb4d3`。`hub.md` blob 与父提交逐字节相同 ⇒ 轨道未篡改台账；`progress.md` 不存在于 HEAD |
+| `p5-comment-docrefs` 清注释里的文档引用 | — | ⏸ 待开（低，改动面广但无语义风险）。**P5 自己带进来 246 行注释含章节号**（既有文件同类密度 26–33 行/个，说明是沿用旧惯例）。须重写为自足理由，**不是删 `§` 了事**，注释里的判断依据要留下。全仓既有约 2100 行属存量，**明确排除在 P5 外**，不顺手刷 |
+| `p5-clippy-approx-constant` | — | ⏸ 存量。redis lib-test 目标 2 条 `clippy::approx_constant` **error** 使 `cargo clippy --all-targets` EXIT=101（`ops/exec.rs` 的 `Double(3.14)`、`ops/mod.rs` 的同名测试）。基线即有、且不在任何 P5 轨的改动集内 ⇒ 每次 clippy 门禁都要用 `--keep-going` 且 EXIT=101 属预期。无 workspace `deny`、无 `RUSTFLAGS`、无 `clippy.toml`、CI 无 clippy job |
 | `p5-datasync-test-flakiness` data-sync 套件可靠性 | — | ⏸ 待开（2026-10-07 开）。`DiffDetail.test.tsx` 跨页反选用例 20s 超时。**已证与前端切轨无关**：归属 `src/windows/data-sync/`、本轨零改动、该文件自 `358a17fdf`(09-30) 未变，且同树 A/B 两次逐字节相同却一次过一次挂 ⇒ 内容不是判别变量。**P5 收口前必须落地**，否则套件不可靠后无法区分后续回归 |
 | `p5-schema-diff-endpoint-identity` schema-diff 侧端点身份 | — | ⏸ 待开（D3 裁定；排在 endpoint-overlap 合入后） |
 | `p5-redis-rustls-flake` redis 套件 flaky | — | ⏸ 待开（低）。`connect::tests::live_prefer_falls_back_to_plaintext_and_require_refuses` 在 endpoint-overlap HEAD 上观察到失败 2 次、随后连跑 5 次全绿，panic 落在第三方 `rustls-0.23.43/src/crypto/mod.rs:249`（进程级 CryptoProvider 未自动确定）。**是否由本轨新增 redis 测试改变调度时序而提高触发概率，Tester 明示不确定**；不得据此断言因果 |
@@ -57,11 +59,11 @@
   **已闭口的相近问题**：`service_key` 逐字使用（无前缀/形状检查），故 `packages/schema-diff/tests/job_handler.rs:360-371`（reader `conn-src`/writer `conn-tgt` 共享 `"svc-1"`）**仍正确拒绝，不是回归，无需开轨**——Tester 实测 `"svc-1"` 跑 `cm41_self_cover_endpoint_overlap_is_rejected` EXIT=0。
 - **前端 §6.2 谓词已裁定删除**：谓词要求 `enabled === true`，生产链路产不出这种行 ⇒ 运行时 no-op；其文档注释声称与后端键一致是**假的**；现有测试用人工造的 `enabled: true` 数据，等于给不可达接线写了保护。§6.2 真正执行点是后端 `budget.rs::detect_endpoint_overlap`。**D-9（后端把 target 表填上）与端点身份落地后，前端谓词才可按「连接身份 + 库名」重写。**
 - **缺口 (c)（D-3/D-4，§10 阻塞级）**：`apply_data_transfer_job` 用**单次阻塞** `runtime::run` 直到终态才返回 ⇒ jobId 只在终态后可得；前端 `applyJobIdRef.current` 又在 `await` **之后**才写、applying 期间强制置 null ⇒ **取消按钮在 apply 中途结构性不可寻址，且无中间进度**。且 `packages/backend-client/src/client.ts` 声明的 `listJobs`/`getJob` **没有对应宿主命令**。已从"证据链不足的怀疑"升级为**从生产调用点证实的缺陷**。根因全在后端 ⇒ 需**单开一条后端轨**，与前端轨 `src/**`+`e2e/**` 范围边界无关。
-- **待开后端轨 `p5-job-addressable`**（排期在 `p5-endpoint-overlap` 合入之后，两者都碰 `commands/data_transfer/**`，**零重叠不可并行**）：
-  1. `apply_data_transfer_job` 准入即返回 jobId，运行转异步；补 `list_jobs` / `get_job` 宿主命令（§10 可寻址 + 进度）
-  2. `commands/data_transfer/**` 补 `info!`/`debug!` 进度事件（D-5：当前整目录零日志，线上无法定位卡在哪一步）
-  3. **回执顺序**：`job_api/mod.rs:246` `plans::claim_plan` **先于** `:259` 的 `runtime::run`，而回执查找 `runtime.rs:195` 在 run 内 ⇒ **回执丢失后重试只会拿到 "already consumed"，永远拿不回原结果**。这是 §10 恢复路径结构性不可达，属功能缺陷而非覆盖缺口，须把回执查找提到 claim 之前。
-  4. **D-9**：`inspect.rs:385` 传 `&[]` 并吞掉 `map_err(|_| ())` ⇒ 非法目标名静默回退，且 target 表在 data 模式下永不可寻址。
+- **待开后端轨 `p5-job-addressable`**（endpoint-overlap 已于 `7909c7cd3` 合入，冲突面已释放，本轨现在可开）：
+  1. `apply_data_transfer_job` 准入即返回 jobId，运行转异步；补 `list_jobs` / `get_job` 宿主命令——客户端 `backend-client` 已声明 `listJobs`/`getJob`，宿主侧**全仓零匹配**，故可寻址与中间进度都不成立
+  2. `commands/data_transfer/**` 补 `info!`/`debug!` 进度事件。**口径**：整目录 `info!`/`debug!`/`trace!` 均为 0，但 `commands/schema_diff/**` **同样 0/0** ⇒ 这是**整个 commands 层的日志缺口**，不是 data-transfer 独有，修的时候别只改一处
+  3. **回执顺序**：`apply_data_transfer_job` 里 `plans::claim_plan` 先于 `runtime::run`，而回执查找在 run 之内 ⇒ **回执丢失后重试只会拿到 "already consumed"，永远拿不回原结果**，恢复路径结构性不可达。属功能缺陷而非覆盖缺口，须把回执查找提到 claim 之前
+  4. **D-9（更正，我先前 brief 的说法已撤回）**：真实缺陷是 **`inspect_tables` 的 target tables 参数永远是空的**——**三个生产调用方全都传空切片**（`inspect.rs` 与 `exec.rs` 传 `&[]`、`preview.rs` 传一个命名空 `Vec`）。**不是"吞掉错误"**：`inspect.rs` 里根本不存在 `map_err(|_| ())`，它正常返回 `Ok(results)`；data_transfer 命令层里的 `map_err(|_| ...)` 全在 `plans/checkpoint.rs`，映射成一条正经校验错误，与本条无关。当初按参数名 grep 零命中的原因也已查明：**该参数按位置传递**，按名字找不到。附带待裁定：`inspect.rs` 在调用前对每个 mapping 强制 `create_new = true`，是否属于同一缺陷的一部分
 
 **测试与验证边界（8 项 E2E 缺口，已登记）**：UI 真实取消延迟；`CANCEL_POLL_INTERVAL`(50ms) 从未被测量（新测试的 `SETTLE` 隐式依赖它，**属未检验假设**）；三阶段之间取消；`kernel_cancel.rs` 仅 fixture 无真实驱动往返；cancel-then-resume 不重复提交；端到端读故障注入；真实 in-stage panic 的看门狗活性；DMG 打包。另有 data-sync 12 项 E2E/WDIO 缺口。
 **⇒ 全部迁入 `docs/architecture/platform/data-migration-jobs.md` 的「验证边界」章节，不得写成本仓库的 Bug List 文档。**
@@ -101,6 +103,12 @@
 
 - **警告集合必须用 JSON 流判定，不能 grep human 格式的 `-->`。** cargo 对同 crate 的 lib / lib-test 告警去重，谁先编译谁打印 `-->`，于是 human 格式的差集是**编译顺序产物**：本轮实测会凭空报出 3 个"BASELINE 独有文件"（`vector/.../lifecycle.rs`、`victoriametrics/.../{resource_provider,victoriametrics}.rs`），而 JSON 流里 `comm -23` 是空集、两侧 per-crate 计数完全相同。唯一可靠法：`cargo clippy --workspace --all-targets --keep-going --message-format=json`，取 `level=="warning"` 且 `span.is_primary` 的 `file_name`，去重排序后 `comm -13` / `comm -23`。**推论：绝对告警条数在本仓库不可复现**（实测 985 / 987 条、246 / 248 路径；限定改动文件则是 24 / 26 条、7 / 9 路径），任何"17 条 vs 16 条"之争都无法用数字裁定，只认集合。**今后代理自报告警数一律要求它同时报口径**。
 - **存量红门禁无法复现时，用等价性证明结案，不要停在"证据不足"。** 本轮 postgres `postgres_cross_database.rs:305` 红门禁在 Tester 的新工作树上不出现（无 `.env` ⇒ live 用例静默 SKIP，**"复现不出"不等于"已修复"**，也不是矛盾）。改证：生产 diff 只有两处 `unwrap_or("localhost")→unwrap_or(DEFAULT_HOST)` / `unwrap_or(5432)→unwrap_or(DEFAULT_PORT)`，两个常量**逐字节等于**被替换的字面量，测试目录 diff **0 个文件** ⇒ 新旧编译产物行为可证等价，该红门禁不可能由本轨引入（PG15+ 对非属主角色只给 public schema USAGE 无 CREATE，42501 于 `CREATE TABLE` 处，与本轨无关）。**此证明不依赖任何实机环境，比复现和结构论证都强。**
+
+- **注释里不得引用文档内容**（章节号、`§x.y`、`CM-xx`、PRD 段落指针一律不行）。文档纪律要求方案落地后被改写为「已实现」事实并入架构文档，**章节号会随改写整体失效**，于是代码注释里的引用变成悬空指针，而注释是唯一不会随文档一起被审阅的地方。正确写法：把**理由本身**写进注释，让它脱离文档独立成立。实测 P5 带进来 **246 行**这类注释，而既有文件同类密度是 26–33 行/个 ⇒ 是**沿用旧惯例**而非凭空发明，所以这条必须显式写进每个 brief，靠默认约定不管用。全仓既有约 2100 行是存量，**不在 P5 偿还范围**。
+- **行号是易失事实，不要在 brief / 注释 / 台账的**论断**里依赖它**（作为「现读现用」的定位当然可以）。行号一合并就漂移，协调者已因此两次把错行号写进 brief。**锚点用「文件 + 函数名 / 符号名」表述**，让接手的人自己重新定位。
+- **「0 告警」这类否定读数必须先证明它非空洞。** 本轮我写了 `Checking datazen v` 出现次数 ≥1 当护栏，它报了 0，差点据此把 `endpoint_identity.rs` 的零告警当成通过——**cargo 会重放缓存单元的诊断**，`Checking` 行没打印不代表没分析。正确护栏是看 JSON 流里**主 span 的路径分布**（实测 `src-tauri/` 主 span 460 个 ⇒ 宿主确实被分析了）。和纪律区「不可复现的告警数」是同一类错误的镜像：一个假阴性、一个假阳性。
+- **`/tmp` 下的 detached 验证树必须软链 `node_modules` 到主仓**，否则 `resolve-drivers` 直接 `ERR_MODULE_NOT_FOUND: fflate`，codegen EXIT=1，后续所有门禁跑在**残缺 codegen** 上却照样报绿。已踩一次：门禁跑到 clippy 才被我发现，**整轮作废重来**。symlink 进 gitignored 路径，不污染 `git status`。
+- **`//!` 文档列表的续行必须落在第 2 列**（先剥掉 `//! ` 前缀再数空格，`* item` 从第 0 列起）。落在第 1 列是错位，落在第 3 列会触发 `doc_lazy_continuation`。**数空格前必须先剥前缀**：直接对 `//!` 开头行跑 `sed 's/[^\ ].*$//'` 会因为首字符是 `/` 而**每行都得 0**。本轨曾把全部续行改到 1 列，`doc_lazy_continuation` 从 1 条涨到 6 条。
 
 ## 收尾义务
 
