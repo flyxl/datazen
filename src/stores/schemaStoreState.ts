@@ -10,7 +10,7 @@ export interface ConnectionSchemaState {
    *  invalidates older per-relation provenance. */
   metadataRevision: number;
   currentDatabase: string | null;
-  /** F7: PG-family current schema — sent as the `schema` envelope field. */
+  /** PG-family current schema — sent as the `schema` envelope field. */
   currentSchema: string | null;
   databases: string[];
   databaseType: string | null;

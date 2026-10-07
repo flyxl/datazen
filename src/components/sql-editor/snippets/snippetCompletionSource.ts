@@ -1,5 +1,5 @@
 /**
- * Snippet completion source (§4.1).
+ * Snippet completion source.
  *
  * Coexists with the keyword / schema / function sources rather than replacing
  * them: relevance is expressed through `boost` (soft ordering) so snippets never

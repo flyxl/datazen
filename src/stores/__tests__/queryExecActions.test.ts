@@ -189,7 +189,7 @@ describe('queryExecActions schema refresh', () => {
   });
 });
 
-describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
+describe('queryExecActions carries the panel database', () => {
   beforeEach(() => {
     mockExecuteQuery.mockReset();
     mockExecuteQueryStream.mockReset();
@@ -278,7 +278,7 @@ describe('queryExecActions carries the panel database (F1 BUG-001)', () => {
     );
   });
 
-  it('runStreamingQuery forwards the F7 schema target via stream options', async () => {
+  it('runStreamingQuery forwards the schema target via stream options', async () => {
     mockExecuteQueryStream.mockImplementationOnce(
       async (_connId: string, _sql: string, onEvent: (event: unknown) => void) => {
         onEvent({ type: 'done', totalTimeMs: 5 });

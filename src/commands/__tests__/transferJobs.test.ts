@@ -46,7 +46,7 @@ describe('transferJobCommands', () => {
     delete e2eGlobal.__dataTransferJobCalls;
   });
 
-  it('prepares through prepare_data_transfer_job with the declared §8 scope', async () => {
+  it('prepares through prepare_data_transfer_job with the declared backend scope', async () => {
     const { transferJobCommands } = await import('../transferJobs');
     const request = { job, backendScope: localBackendScope(), idempotencyKey: 'k-prepare-1' };
 
@@ -97,7 +97,7 @@ describe('transferJobCommands', () => {
     expect(invokeMock).toHaveBeenCalledWith('cancel_data_transfer', { jobId: 'job-1' });
   });
 
-  it('never reaches the legacy execute_data_transfer command (§9 cutover)', async () => {
+  it('never reaches the legacy execute_data_transfer command after the cutover', async () => {
     const { transferJobCommands } = await import('../transferJobs');
 
     await transferJobCommands.prepare({ job, backendScope: localBackendScope() });

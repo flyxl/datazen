@@ -47,7 +47,7 @@ export function WorkspaceView({ onOpenExtensions }: WorkspaceViewProps) {
     if (!useWappStore.getState().loaded) void useWappStore.getState().fetch();
   }, []);
 
-  // BUG-F4-01: a `wapps:changed` refresh triggered outside this window
+  // A `wapps:changed` refresh triggered outside this window
   // (another window disabling/uninstalling a wapp) must also close that
   // wapp's workspace tabs — the management page only covers its own actions.
   // The diff only runs once the store has loaded, so the initial (possibly

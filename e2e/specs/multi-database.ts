@@ -1,5 +1,5 @@
 /**
- * Multi-database session UI (F2/F4).
+ * Multi-database session UI.
  *
  * Parameterized test covering both MySQL and PostgreSQL:
  *   - Connect without database → schema tree lists multiple DB nodes
@@ -134,7 +134,7 @@ async function clickSidebarDb(dbName: string) {
 // ── Parameterized test suites ─────────────────────────────────────
 
 for (const drv of drivers) {
-  const TEST_ID = drv.label === 'MySQL' ? 'F2-E2E' : 'F4-E2E';
+  const TEST_ID = drv.label === 'MySQL' ? 'MySQL-E2E' : 'PostgreSQL-E2E';
 
   describe(`${drv.label} 多库会话 UI (${TEST_ID})`, () => {
     let mainWindow: string;

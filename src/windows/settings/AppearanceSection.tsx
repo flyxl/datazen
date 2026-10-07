@@ -62,7 +62,7 @@ export function AppearanceSection({
     void useWappStore.getState().fetch();
   }, []);
 
-  // PRD §4.5: only themes contributed by *enabled* extensions are switchable here.
+  // Only themes contributed by *enabled* extensions are switchable here.
   const themeOptions = useMemo(() => collectThemeOptions(wapps), [wapps]);
 
   const activePackId = settings.theme.packId;

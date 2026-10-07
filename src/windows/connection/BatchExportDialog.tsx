@@ -26,7 +26,7 @@ export interface BatchExportDialogProps {
   tables: string[];
   /** optional pre-selected table names */
   initialSelected?: string[];
-  /** Required loader used by the export job (mock in tests; F3 wires real fetch). */
+  /** Required loader used by the export job (mock in tests; the caller supplies the real fetch). */
   loadTableExportData: (tableName: string) => Promise<BatchExportTableInput>;
   /**
    * Optional full override of the export action (e.g. custom wiring).

@@ -2544,7 +2544,7 @@ export async function emitCrossWindowEvent(event: string, payload?: Record<strin
   await browser.pause(300);
 }
 
-/** Open SettingsPage inside the main window (F1; replaces legacy settings sub-window URL). */
+/** Open SettingsPage inside the main window (replaces legacy settings sub-window URL). */
 export async function openSettingsInMainWindow(section?: string) {
   await browser.url('tauri://localhost');
   await browser.waitUntil(

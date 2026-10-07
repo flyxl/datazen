@@ -8,7 +8,7 @@ import {
 } from '../helpers.js';
 import { t } from '../i18n.js';
 
-describe('主窗口 / 统一工作区 (CM-001)', () => {
+describe('主窗口 / 统一工作区', () => {
   let mainWindow: string;
 
   before(async () => {

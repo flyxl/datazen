@@ -1,15 +1,15 @@
 /**
  * Shared types for statement frame, gutter, and execution state extensions.
  *
- * These extensions consume the unified active statement range from S2-A
- * (statementRanges.ts) and expose the same SqlExecutionTarget contract.
+ * These extensions consume the unified active statement range from
+ * statementRanges.ts and expose the same SqlExecutionTarget contract.
  */
 import type { SqlStatementRange, SqlTextRange, SqlExecutionTarget } from '../semantic/types';
 
 // Re-export consumers need
 export type { SqlStatementRange, SqlTextRange, SqlExecutionTarget };
 
-/** Execution status of the editor (mirrors §4.5 SqlEditorExecutionState). */
+/** Execution status of the editor. */
 export type ExecutionStatus = 'idle' | 'running' | 'cancelling';
 
 /** Immutable snapshot of the running execution state. */
@@ -23,7 +23,7 @@ export type EditorExecutionState = {
  * Pure function: determines whether a document should degrade the frame.
  *
  * Extracted for testability — no DOM / CodeMirror dependency.
- * Default threshold is 500 lines (per §Track S4-A step 2).
+ * Default threshold is 500 lines.
  */
 export function isDocumentDegraded(lineCount: number, maxLineCount = 500): boolean {
   return lineCount > maxLineCount;

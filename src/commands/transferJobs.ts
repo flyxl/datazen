@@ -1,16 +1,16 @@
 /**
- * P5 Job command layer for Data Transfer — the caller for the
+ * Job command layer for Data Transfer — the caller for the
  * prepare/apply split introduced by the backend Job chain.
  *
  * This file is the **seam** the other two migration tools copy rather than
  * reinvent: `prepare` admits and freezes a plan, `apply` spends it exactly
- * once, and the reply is a Job verdict (§7 `CommitBoundary` + derived
+ * once, and the reply is a Job verdict (`CommitBoundary` + derived
  * `EffectOutcome`) instead of the old flat success/failure boolean. Schema
  * Diff and Data Sync only need their own `*Jobs.ts` with the same four
  * members — `backendScope`, `prepare`, `apply`, `cancel` — to adopt the shared
  * presentation engine in `src/lib/migrationJobVerdict.ts`.
  *
- * §9: every request here goes through exactly one P5 manager end to end. The
+ * Every request here goes through exactly one manager end to end. The
  * legacy `transferCommands.execute` is still exported for the rollback path
  * but is no longer called by the window.
  */
@@ -26,7 +26,7 @@ import type {
 import type { TransferJob, TransferPreview } from './transfer';
 
 /**
- * §8: the scope string the local desktop backend declares. Both endpoints must
+ * The scope string the local desktop backend declares. Both endpoints must
  * present it; there is no default, because "I forgot to declare a scope" is
  * precisely the input the rule exists to reject. Mirrors
  * `LOCAL_BACKEND_SCOPE` in `src-tauri/src/commands/data_transfer/job_api/scope.rs`.
@@ -44,12 +44,13 @@ export interface TransferBackendScope {
 }
 
 /**
- * §6.1 / §8: the scope every migration tool in this window declares.
+ * The scope every migration tool in this window declares.
  *
  * A SQL-file run carries no target connection, and the backend skips the
  * target check for it — but the field is mandatory on the wire, so the window
  * sends the same object on both branches instead of building a variant. One
- * code path means the §6.1 branch cannot drift into an under-specified request.
+ * code path means the SQL-file branch cannot drift into an under-specified
+ * request.
  */
 export function localBackendScope(): TransferBackendScope {
   return {
@@ -102,11 +103,11 @@ export interface TransferApplyJobView {
   planId: string;
   planDigest: string;
   selectionRevision: number;
-  /** §7 durable write markers; the only trustworthy record of what landed. */
+  /** Durable write markers; the only trustworthy record of what landed. */
   commitBoundaries: CommitBoundary[];
-  /** §6.1 SQL-file runs return `transfer-sql-<sha256hex>` here. */
+  /** SQL-file runs return `transfer-sql-<sha256hex>` here. */
   artifactIds: string[];
-  /** §2.3 cancel intent. Never equivalent to "cancelled". */
+  /** Cancel intent. Never equivalent to "cancelled". */
   cancelled: boolean;
   partial: boolean;
   /** True when this reply came from the idempotent receipt, not a fresh write. */
@@ -171,7 +172,7 @@ export const transferJobCommands = {
     ),
 
   /**
-   * §2.3 cancel **request**. The same command the legacy path used — the Job
+   * Cancel **request**. The same command the legacy path used — the Job
    * chain routes it to the Job repository first, so no second cancel command
    * is introduced here. `false` means "no such Job", which the caller must
    * surface rather than treat as a successful cancel.

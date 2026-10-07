@@ -2,10 +2,10 @@
  * Host side of the `fold` Pro compartment.
  *
  * Why this lives in its own file rather than in `editorExtensions.ts`: that
- * module is already over the 800-line ceiling in AGENTS.md, and the compartment
- * registry in `proCompartments.ts` is the sanctioned place to add slots. A
- * dedicated module keeps the fold wiring — one factory, one memo dependency —
- * readable without growing anything that is already at its limit.
+ * module is already over the 800-line ceiling, and the compartment registry in
+ * `proCompartments.ts` is the sanctioned place to add slots. A dedicated module
+ * keeps the fold wiring — one factory, one memo dependency — readable without
+ * growing anything that is already at its limit.
  *
  * What the host owns vs. what the extension owns
  * ----------------------------------------------

@@ -11,7 +11,7 @@ import {
   clickNewConnectionSave,
 } from '../helpers.js';
 
-describe('新建连接 (CM-002, CM-005)', () => {
+describe('新建连接', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -49,13 +49,13 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await browser.pause(300);
   });
 
-  it('点击新建连接按钮应打开弹窗 (CM-002)', async () => {
+  it('点击新建连接按钮应打开弹窗', async () => {
     await openNewConnectionDialogFromUi();
     await expect(await $('[data-testid="new-connection-dialog"]')).toBeDisplayed();
     await captureJourneyStep('dialog-open', 0, true);
   });
 
-  it('新建连接弹窗应显示完整表单 (CM-002)', async () => {
+  it('新建连接弹窗应显示完整表单', async () => {
     await openNewConnectionDialogFromUi();
     await expect(await $('div*=选择数据库类型')).toBeDisplayed();
     await expect(await $('div*=连接配置')).toBeDisplayed();
@@ -65,7 +65,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await expect(await $('[data-testid="new-conn-save"]')).toBeDisplayed();
   });
 
-  it('应默认选中 PostgreSQL 并显示对应字段 (CM-002)', async () => {
+  it('应默认选中 PostgreSQL 并显示对应字段', async () => {
     await openNewConnectionDialogFromUi();
     const hostInput = await $('input[placeholder="prod-db.example.com"]');
     await expect(hostInput).toBeDisplayed();
@@ -84,7 +84,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await captureJourneyStep('pg-default-fields', 0, true);
   });
 
-  it('切换数据库类型为 SQLite 应显示文件路径输入框 (CM-002)', async () => {
+  it('切换数据库类型为 SQLite 应显示文件路径输入框', async () => {
     await openNewConnectionDialogFromUi();
     await selectNewConnectionDriver('sqlite');
     const fileInput = await $('input[placeholder="/path/to/db.sqlite"]');
@@ -94,7 +94,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await captureJourneyStep('sqlite-fields', 0, true);
   });
 
-  it('切换数据库类型后切回应保留各类型的连接名 (CM-002)', async () => {
+  it('切换数据库类型后切回应保留各类型的连接名', async () => {
     await openNewConnectionDialogFromUi();
     const nameInput = await $('input[placeholder="例如：主数据库"]');
     await nameInput.setValue('E2E-PG-快照');
@@ -109,7 +109,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     expect(await nameInput.getValue()).toBe('E2E-MySQL-快照');
   });
 
-  it('切换数据库类型为 MySQL 应更新默认端口 (CM-002)', async () => {
+  it('切换数据库类型为 MySQL 应更新默认端口', async () => {
     await openNewConnectionDialogFromUi();
     await selectNewConnectionDriver('mysql');
     await browser.pause(200);
@@ -125,7 +125,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await captureJourneyStep('mysql-port-3306', 0, true);
   });
 
-  it('切换数据库类型为 MariaDB 应更新默认端口 (CM-002)', async () => {
+  it('切换数据库类型为 MariaDB 应更新默认端口', async () => {
     await openNewConnectionDialogFromUi();
     const mariaBtn = await $('[data-testid="new-conn-driver-mariadb"]');
     if (await mariaBtn.isExisting()) {
@@ -144,7 +144,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     }
   });
 
-  it('应能填写连接表单 (CM-002)', async () => {
+  it('应能填写连接表单', async () => {
     await openNewConnectionDialogFromUi();
     const nameInput = await $('input[placeholder="例如：主数据库"]');
     await nameInput.setValue('E2E-测试连接');
@@ -155,7 +155,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await captureJourneyStep('form-filled', 0, true);
   });
 
-  it('展开高级设置应显示 SSL、分组和 SSH 选项 (CM-002)', async () => {
+  it('展开高级设置应显示 SSL、分组和 SSH 选项', async () => {
     await openNewConnectionDialogFromUi();
     const advBtn = await $('button*=高级设置');
     await advBtn.click();
@@ -195,14 +195,14 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await captureJourneyStep('advanced-settings-expanded', 0, true);
   });
 
-  it('点击取消按钮应关闭弹窗 (CM-005)', async () => {
+  it('点击取消按钮应关闭弹窗', async () => {
     await openNewConnectionDialogFromUi();
     await closeNewConnectionDialogFromUi();
     await expect(await $('[data-testid="new-connection-dialog"]')).not.toBeExisting();
     await captureJourneyStep('dialog-closed', 0, true);
   });
 
-  it('保存连接后弹窗应关闭且主窗口显示新连接 (CM-002)', async () => {
+  it('保存连接后弹窗应关闭且主窗口显示新连接', async () => {
     await browser.switchToWindow(mainWindow);
     await openNewConnectionDialogFromUi();
     const nameInput = await $('input[placeholder="例如：主数据库"]');

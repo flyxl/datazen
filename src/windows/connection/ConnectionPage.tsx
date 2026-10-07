@@ -77,7 +77,7 @@ export function ConnectionPage() {
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('connections');
   const [mainView, setMainView] = useState<MainView>('workspace');
   const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
-  /** Preserved for F3 sidebar Settings entry — restore workspace mode on back. */
+  /** Preserved for the sidebar Settings entry — restore workspace mode on back. */
   const settingsReturnModeRef = useRef<WorkspaceMode>('connections');
   const [embeddedDashboardId, setEmbeddedDashboardId] = useState<string | undefined>(undefined);
   const [dashboardTitle, setDashboardTitle] = useState('');

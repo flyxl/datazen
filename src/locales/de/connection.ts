@@ -260,7 +260,7 @@ const pack = {
   'connWin.home.connectNow': 'Verbinden',
   'connWin.home.viewAll': 'Alle anzeigen',
   'connection.dashboard.title': 'Übersicht',
-  // KV workspace slot actions handled by the host (W3-A §1.2). Namespace
+  // KV workspace slot actions handled by the host. Namespace
   // `redis.kvSlot.*` is host-owned copy for the KV panel; the driver keeps its
   // own `redis.*` pack in packages/drivers/redis/locales.
   'redis.kvSlot.flushTitle': 'Aktuelle Datenbank leeren',
@@ -268,7 +268,7 @@ const pack = {
     'Alle Schlüssel in der Datenbank, an die dieses Panel gebunden ist, werden gelöscht. Dies kann nicht rückgängig gemacht werden.',
   'redis.kvSlot.flushBlocked':
     'Der Sichere Modus verhindert das Leeren einer Datenbank. Deaktivieren Sie den Sicheren Modus in den Einstellungen, um fortzufahren.',
-  // KV context facts injected into an AI request (W3-A §1.3).
+  // KV context facts injected into an AI request.
   'redis.ai.context.tooltip': 'Fragen Sie den Assistenten zum ausgewählten Schlüssel',
   'redis.ai.context.attached': 'Frage zum Schlüssel',
   // --- Host DocumentConnectionView (Dokumenten-Browser) ---

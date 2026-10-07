@@ -183,7 +183,7 @@ describe('WorkspaceView', () => {
     expect(openMock).not.toHaveBeenCalled();
   });
 
-  it('closes tabs of plugins that were disabled or removed by an external refresh (BUG-F4-01)', async () => {
+  it('closes tabs of plugins that were disabled or removed by an external refresh', async () => {
     tabsState.tabs = [
       {
         key: 'acme.bill-audit:quota-check',

@@ -33,7 +33,7 @@ vi.mock('../../../components/DataTable/DetailPanelToggle', () => ({
 /**
  * Fixture standing in for a driver's KV context bar: it renders the props the host
  * hands over as data attributes, subscribes to the shared selection atom and calls
- * `request` for a host action, which is exactly the contract Wave 2/3 implements
+ * `request` for a host action, which is exactly the contract the host implements
  * against.
  */
 function FixtureContextBar({
@@ -155,10 +155,10 @@ describe('ContentToolbar KV context bar slot', () => {
     expect(fixture.getAttribute('data-database')).toBe('db7');
     // The toolbar owns `compact`; the driver never has to observe the width itself.
     expect(fixture.getAttribute('data-compact')).toBe('false');
-    // P-1: the driver cluster takes the free space instead of an empty band.
+    // The driver cluster takes the free space instead of an empty band.
     expect(bar.className).toContain('flex-1');
     expect(toolbar.querySelector(':scope > div[class="flex-1"]')).toBeNull();
-    // §1.2: the reverse action channel reaches the slot through its props.
+    // The reverse action channel reaches the slot through its props.
     expect(fixture.getAttribute('data-request')).toBe('wired');
     fireEvent.click(screen.getByTestId('fixture-request-flush'));
     expect(request).toHaveBeenCalledTimes(1);
@@ -181,13 +181,13 @@ describe('ContentToolbar KV context bar slot', () => {
 });
 
 /**
- * W3-A §1.3 / PRD §3.4: an AI button that opens a chat carrying no Redis fact is
- * the half-broken state this track removes. The three cases below are the full
- * state machine of that affordance on a KV panel — hidden while nothing is in
- * scope, shown for a key, and hidden again once the selection is cleared (an
- * entry condition with no exit would be a one-way deadlock).
+ * An AI button that opens a chat carrying no Redis fact is the half-broken state
+ * this removes. The three cases below are the full state machine of that
+ * affordance on a KV panel — hidden while nothing is in scope, shown for a key,
+ * and hidden again once the selection is cleared (an entry condition with no exit
+ * would be a one-way deadlock).
  */
-describe('ContentToolbar AI button on a KV panel (W3-A §1.3)', () => {
+describe('ContentToolbar AI button on a KV panel', () => {
   function renderKvToolbar() {
     const state = createKvSlotState();
     renderToolbar(binding(state), state);
@@ -231,10 +231,10 @@ describe('ContentToolbar AI button on a KV panel (W3-A §1.3)', () => {
     expect(button.getAttribute('title')).not.toBe('redis.ai.context.tooltip');
   });
 
-  // [tester] Panel switching is a rerender, not a fresh mount (keep-alive tabs,
-  // PRD §3.0). An entry condition without its exit transitions would be a
-  // one-way deadlock, so the §1.3 state machine is driven live here: KV panel
-  // with a key → another KV panel without one → a relational panel.
+  // [tester] Panel switching is a rerender, not a fresh mount (keep-alive tabs).
+  // An entry condition without its exit transitions would be a one-way deadlock,
+  // so the AI-button state machine is driven live here: KV panel with a key →
+  // another KV panel without one → a relational panel.
   it('[tester] follows a live panel switch: keyed KV → empty KV → relational', () => {
     const kvA = createKvSlotState();
     kvA.selectKey('user:42');

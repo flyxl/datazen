@@ -4,8 +4,6 @@
  * Parses clipboard text containing delimited values (comma, tab, newline, CRLF)
  * into an array of trimmed string values. Supports quoted delimiters and
  * configurable empty-item strategy.
- *
- * §Track S5-A step 1 + §6.6
  */
 
 /** Maximum source text size in bytes (1 MiB). */

@@ -4,9 +4,9 @@ const pack = {
     'The previous plan is no longer valid (it expired, the target drifted, or permissions changed). Re-prepare a fresh plan before applying anything.',
   'migrationJob.pendingVerificationHint':
     'A previous job is waiting for verification. Check the job center and reconcile before applying anything new.',
-  // --- Shared Job verdict surface (§2.3 / §6.2 / §7) ---
+  // --- Shared Job verdict surface ---
   // Used by Data Transfer, Schema Diff and Data Sync alike. "Uncertain" is a
-  // first-class verdict here on purpose: §7 forbids presenting it as success.
+  // first-class verdict here on purpose: presenting it as success is forbidden.
   'migration.verdict.ok': 'Completed',
   'migration.verdict.partial': 'Partially applied',
   'migration.verdict.uncertain': 'Outcome uncertain',
@@ -22,7 +22,7 @@ const pack = {
   'migration.verdict.resumeThrough':
     'Recovery may resume through boundary #',
   'migration.verdict.rereview': 'Review a new plan',
-  // §10 / CM-42: an unreconciled run must be verified read-only first. A fresh
+  // An unreconciled run must be verified read-only first. A fresh
   // review mints a new planId, so one click here would be a second write over a
   // range whose first outcome is still unknown.
   'migration.verdict.rereviewBlocked':
@@ -30,7 +30,7 @@ const pack = {
   'migration.boundary.verified': 'Committed with evidence',
   'migration.boundary.unverified': 'Committed without evidence — unverified',
   'migration.progress.counts': 'Read / converted / attempted / committed / unknown',
-  // §2.3: intent is not outcome. Each disposition names where the run stopped.
+  // Intent is not outcome. Each disposition names where the run stopped.
   'migration.cancel.none': 'No cancel was requested.',
   'migration.cancel.notStarted':
     'Cancel was requested before the run started; nothing was written.',

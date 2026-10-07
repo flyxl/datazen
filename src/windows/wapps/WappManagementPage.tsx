@@ -120,7 +120,7 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
   const storeError = useWappStore((s) => s.error);
   const savedSnapshot = useWorkspacePanelStateStore((s) => s.extension);
   const [search, setSearch] = useState(() => savedSnapshot?.search ?? '');
-  // PRD §4.3: the content body defaults to the Workspace filter.
+  // The content body defaults to the Workspace filter.
   const [filter, setFilter] = useState<PluginFilter>(() => savedSnapshot?.filter ?? 'workspace');
   const [installOpen, setInstallOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -163,7 +163,7 @@ export function WappManagementPage({ onOpenInWorkspace }: WappManagementPageProp
     [wapps],
   );
 
-  // PRD §4.3: the "all" view mixes both kinds, grouped under small headers.
+  // The "all" view mixes both kinds, grouped under small headers.
   const allGroups = useMemo(() => {
     if (filter !== 'all') return null;
     return [

@@ -1,5 +1,5 @@
 /**
- * Built-in high-frequency SQL snippet library (§4.1).
+ * Built-in high-frequency SQL snippet library.
  *
  * Dialect-neutral on purpose: anything dialect-specific belongs in a driver
  * package, not here.

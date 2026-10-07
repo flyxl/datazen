@@ -2,8 +2,7 @@ import en from '../locales/en';
 import type { TranslationKey } from '../locales/zh-CN';
 
 /**
- * 原则六 第 3 类锚点（字典回读）的唯一合法入口
- * (docs/development/interaction-and-testing-principles.md).
+ * 字典回读（expected wording read back out of the en dictionary）的唯一合法入口。
  *
  * Reading the expected wording out of the dictionary is what keeps a test green
  * across a copy change — but a *bare* `en[key]` miss yields `undefined`, and
@@ -11,7 +10,7 @@ import type { TranslationKey } from '../locales/zh-CN';
  * constraint at all". The locator then degrades into an always-matching query:
  * the assertion stays green while the contract it used to check is gone, and
  * whether it happens to fail depends on how many sibling elements the page
- * renders, not on the behaviour under test (redis-assert-policy BUG-002).
+ * renders, not on the behaviour under test.
  *
  * Neither TypeScript nor the test runner catches the miss: `tsconfig.json`
  * excludes every `__tests__` directory from `npx tsc --noEmit`, and vitest never

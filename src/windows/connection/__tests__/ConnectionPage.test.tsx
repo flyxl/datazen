@@ -618,7 +618,7 @@ describe('ConnectionPage', () => {
     expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
   });
 
-  it('TC-window: sidebar Settings button has no unreachable active highlight (F3-BUG-001)', () => {
+  it('TC-window: sidebar Settings button has no unreachable active highlight', () => {
     render(<ConnectionPage />);
 
     const connectionsNav = screen.getByTestId('workspace-nav-databases');

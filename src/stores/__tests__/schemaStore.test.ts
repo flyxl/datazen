@@ -341,7 +341,7 @@ describe('schemaStore.loadTables', () => {
     expect(mockReadColumns).not.toHaveBeenCalled();
   });
 
-  it('loads tables for the pinned database without a use_database IPC (F1)', async () => {
+  it('loads tables for the pinned database without a use_database IPC', async () => {
     await useSchemaStore.getState().loadTables('testdb', 'test-conn');
 
     expect(databaseCommands.listTables).toHaveBeenCalledWith('test-conn', 'testdb');

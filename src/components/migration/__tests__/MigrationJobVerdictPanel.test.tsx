@@ -1,10 +1,10 @@
 /**
- * Rendering contract for the shared verdict surface (A7 / T4).
+ * Rendering contract for the shared verdict surface.
  *
  * The panel is what all three migration tools show, so the rules pinned here
- * are the §7 rendering rules: uncertainty is stated as uncertainty, a boundary
+ * are the rendering rules: uncertainty is stated as uncertainty, a boundary
  * with no `EVIDENCE_*` marker is shown as unverified, an empty boundary list
- * over committed rows is announced as an evidence gap, and a §6.1 artifact id
+ * over committed rows is announced as an evidence gap, and an artifact id
  * is displayed rather than swallowed.
  *
  * These tests deliberately run against the *real* locale packs: a verdict panel
@@ -126,7 +126,7 @@ describe('MigrationJobVerdictPanel', () => {
   });
 
   it('honours a backend that refuses recovery even when the outcome says completed', () => {
-    // The outcome flag is the backend's progress signal; §7 says the recovery
+    // The outcome flag is the backend's progress signal; the recovery
     // adjudication decides whether the write may be certified.
     renderVerdict(
       {
@@ -151,7 +151,7 @@ describe('MigrationJobVerdictPanel', () => {
 
   it('explains a missing evidence gap instead of showing an empty list', () => {
     // The real data-transfer shape: rows were committed, and the handler never
-    // recorded a §7 boundary for them.
+    // recorded a boundary for them.
     renderVerdict(
       { state: 'succeeded', effectOutcome: 'completed', cancelRequested: false, committedRows: 30 },
       { progress: progress({ read: 30, attempted: 30, committed: 30 }) },
@@ -182,7 +182,7 @@ describe('MigrationJobVerdictPanel', () => {
     expect(screen.queryByTestId('migration-job-reconcile')).toBeNull();
   });
 
-  it('shows the §7 recovery verdict, reason and resume boundary', () => {
+  it('shows the recovery verdict, reason and resume boundary', () => {
     renderVerdict(
       {
         state: 'succeeded',
@@ -261,7 +261,7 @@ describe('MigrationJobVerdictPanel', () => {
     );
   });
 
-  it('keeps a cancel request apart from where the run stopped (§2.3)', () => {
+  it('keeps a cancel request apart from where the run stopped', () => {
     renderVerdict(
       { state: 'running', effectOutcome: null, cancelRequested: true },
       { cancelRequested: true },
@@ -290,7 +290,7 @@ describe('MigrationJobVerdictPanel', () => {
     );
   });
 
-  it('shows a replayed receipt instead of implying a second write (§10)', () => {
+  it('shows a replayed receipt instead of implying a second write', () => {
     renderVerdict(
       {
         state: 'succeeded',
@@ -307,7 +307,7 @@ describe('MigrationJobVerdictPanel', () => {
     );
   });
 
-  it('surfaces a §6.1 SQL-file artifact id, the only proof that run produced', () => {
+  it('surfaces a SQL-file artifact id, the only proof that run produced', () => {
     renderVerdict(
       { state: 'succeeded', effectOutcome: 'completed', cancelRequested: false, committedRows: 0 },
       { progress: progress(), artifactIds: ['transfer-sql-a1b2c3d4'] },
@@ -322,9 +322,9 @@ describe('MigrationJobVerdictPanel', () => {
     );
   });
 
-  it('exposes the §9 plan identity as data-* so a spec can name the spent plan', () => {
-    // DTJ-002 replays exactly these three values over IPC; if they were only
-    // rendered as prose the spec could not assert "this plan, refused".
+  it('exposes the plan identity as data-* so a spec can name the spent plan', () => {
+    // The replayed reply carries exactly these three values over IPC; if they
+    // were only rendered as prose the spec could not assert "this plan, refused".
     renderVerdict(
       {
         state: 'succeeded',
@@ -344,7 +344,7 @@ describe('MigrationJobVerdictPanel', () => {
   });
 
   it('omits the plan attributes when the backend sent no plan identity', () => {
-    // A §8 / §6.2 refusal reaches this panel without an admitted plan. Emitting
+    // A refusal reaches this panel without an admitted plan. Emitting
     // `data-plan-id=""` would let a spec pass on a plan that never existed.
     renderVerdict(
       { state: 'failed', effectOutcome: 'notStarted', cancelRequested: false, committedRows: 0 },

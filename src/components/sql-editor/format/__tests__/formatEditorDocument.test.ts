@@ -1,5 +1,5 @@
 /**
- * §4.2 Configurable beautify + selection-scoped formatting.
+ * Configurable beautify + selection-scoped formatting.
  */
 import { describe, expect, it } from 'vitest';
 import { EditorState, EditorSelection } from '@codemirror/state';
@@ -36,7 +36,7 @@ function createHarness(doc: string, selection?: { anchor: number; head: number }
 describe('formatSql — configurable options', () => {
   const sql = 'select id, name from users where a = 1 and b = 2';
 
-  it('defaults reproduce the pre-§4.2 uppercase behaviour', () => {
+  it('defaults reproduce the pre-change uppercase keyword behaviour', () => {
     expect(formatSql(sql, 'postgresql')).toContain('SELECT');
   });
 

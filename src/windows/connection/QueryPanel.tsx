@@ -93,7 +93,7 @@ export function QueryPanel({
   const exec = useQueryExec(panelId, paneId);
   const { openPanelId } = useQueryBuilderContribution();
   // While the visual builder is up it replaces the whole query content area,
-  // so the result pane yields its height to the canvas (PRD §6.4 / G2).
+  // so the result pane yields its height to the canvas.
   const qbOpenHere = openPanelId === panelId;
   // NOTE: the builder is torn down when the panel *tab* closes, not when this
   // component unmounts — switching tabs unmounts the inactive panel too, and

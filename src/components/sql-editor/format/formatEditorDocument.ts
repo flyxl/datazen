@@ -1,5 +1,5 @@
 /**
- * Selection-aware SQL beautifier command (§4.2).
+ * Selection-aware SQL beautifier command.
  *
  * Lives next to the editor rather than in `src/lib/` because it depends on
  * `EditorView`; `src/lib/sqlFormat.ts` stays free of CodeMirror so non-editor

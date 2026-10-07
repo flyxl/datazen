@@ -1,5 +1,5 @@
 /**
- * E2E: 进程列表 + 服务器状态面板（ops §5.4）
+ * E2E: 进程列表 + 服务器状态面板
  *
  * 完整链路：连接 PG → 右键连接「Process List…」→ 面板展示进程行 → 选中可 Kill 的行 →
  * 点 Kill → 确认 → 断言该 pid 从真实 pg_stat_activity 消失（落库断言）。
@@ -49,7 +49,7 @@ async function dropLeakedSeededSession() {
 
 /**
  * 关闭可能残留的右键菜单并等待其真正消失（无菜单时立即成功）。
- * 关闭失败不再被 .catch 静默吞掉——会带 timeoutMsg 抛错（e2e-ops-menu-BUG-001）。
+ * 关闭失败不再被 .catch 静默吞掉——会带 timeoutMsg 抛错。
  */
 async function closeAnyMenu() {
   await browser.execute(() => {
@@ -57,7 +57,7 @@ async function closeAnyMenu() {
     // 判断点按是否落在菜单外。派发目标必须是 Node：
     //  - 向 document 派发不冒泡的事件 → 到不了 window 监听器（原始缺陷）；
     //  - 向 window 派发 → e.target === window（非 Node），contains() 按 WebIDL
-    //    抛 TypeError → hide() 永不执行（BUG-001 实测）；
+    //    抛 TypeError → hide() 永不执行（实测）；
     //  - document.body 既是 Node、又位于菜单 portal root 之外（body 是其祖先）
     //    → 冒泡到 window，contains(body) 为 false → hide() 正常关闭。
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -206,7 +206,7 @@ async function clickRowByPid(pid: number): Promise<boolean> {
   }, String(pid));
 }
 
-describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
+describe('运维: 进程列表与服务器状态', () => {
   let mainWindow: string;
   let procDbSessionId: string;
 
@@ -261,7 +261,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     await closeExtraWindows(mainWindow);
   });
 
-  it('OPS-PROC-001: 右键连接菜单含「进程列表 / 服务器状态」', async () => {
+  it('右键连接菜单含「进程列表 / 服务器状态」', async () => {
     await rightClickConn();
     await hoverServerSubmenu();
     expect(await hasMenuItemId('process-list')).toBe(true);
@@ -269,24 +269,24 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     await dismissMenu();
   });
 
-  // [tester] RC-3 关闭路径回归断言（e2e-ops-menu-BUG-001 复现用例）：
+  // [tester] 关闭路径回归断言（复现用例）：
   // closeAnyMenu/dismissMenu 内部的 waitUntil 失败被 .catch 吞掉，"菜单已关闭"
   // 此前无任何硬断言验证。这里显式要求 dismissMenu 后菜单必须真正从 DOM 消失，
   // 防止关闭派发再次静默失效（window 派发 mousedown 时 onDown 的
   // rootRef.contains(window) 抛 TypeError → hide() 不执行）。
-  it('[tester] OPS-PROC-T001: dismissMenu 后右键菜单必须真正关闭', async () => {
+  it('[tester] dismissMenu 后右键菜单必须真正关闭', async () => {
     await rightClickConn();
     const menu = await $('[data-testid="web-context-menu"]');
     expect(await menu.isExisting()).toBe(true);
     await dismissMenu();
     await browser.waitUntil(async () => !(await menu.isExisting()), {
       timeout: 3000,
-      timeoutMsg: 'dismissMenu 后右键菜单仍未从 DOM 消失（RC-3 关闭派发失效）',
+      timeoutMsg: 'dismissMenu 后右键菜单仍未从 DOM 消失（关闭派发失效）',
     });
     expect(await menu.isExisting()).toBe(false);
   });
 
-  it('OPS-PROC-002: 打开进程列表面板并出现至少一行', async () => {
+  it('打开进程列表面板并出现至少一行', async () => {
     await rightClickConn();
     await hoverServerSubmenu();
     await clickMenuItemById('process-list');
@@ -297,7 +297,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     expect(await anyTableRows()).toBe(true);
   });
 
-  it('OPS-PROC-003: 服务器仪表盘子标签（仪表盘 ⇄ 状态变量 ⇄ 服务器详情）展示关键内容与连接标识', async () => {
+  it('服务器仪表盘子标签（仪表盘 ⇄ 状态变量 ⇄ 服务器详情）展示关键内容与连接标识', async () => {
     await rightClickConn();
     await hoverServerSubmenu();
     await clickMenuItemById('server-status');
@@ -334,7 +334,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     expect(await anyTableRows()).toBe(true);
   });
 
-  it('OPS-PROC-004: Kill 独立连接并断言 pid 从进程列表消失', async () => {
+  it('Kill 独立连接并断言 pid 从进程列表消失', async () => {
     // 目标 pid
     const raw = await invokeBackend<QueryResultPayload>('execute_query', {
       dbSessionId: procDbSessionId,
@@ -415,7 +415,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
 
   // ── Lightweight UI rendering tests (from ops-server-status-processes.ts) ──
 
-  it('OPS-SS-002: refresh keeps panel healthy', async () => {
+  it('refresh keeps panel healthy', async () => {
     // Open server status panel via context menu on main connection
     await rightClickConn();
     await hoverServerSubmenu();
@@ -423,7 +423,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     // The default dashboard tab renders the server STATUS VALUE (e.g. the PG
     // version string) and metric cards; the literal '版本' LABEL only exists on
     // the "details" sub-tab. Wait on the dashboard title that is actually shown
-    // on the default tab instead (OPS-PROC-003 asserts it passes the same way).
+    // on the default tab instead (the server-dashboard case asserts it passes the same way).
     await browser.waitUntil(
       async () => (await $('body').getText()).includes(t('serverStatus.dashboardTitle')),
       { timeout: 10000, timeoutMsg: 'Server status panel did not render' },
@@ -441,7 +441,7 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     expect(body).toContain(t('serverStatus.dashboardTitle'));
   });
 
-  it('OPS-PL-001: process list table headers render specific columns', async () => {
+  it('process list table headers render specific columns', async () => {
     // Open process list on the main connection
     await rightClickConn();
     await hoverServerSubmenu();
@@ -468,13 +468,13 @@ describe('运维 §5.4: 进程列表与服务器状态 (OPS-PROC)', () => {
     expect(body).toContain(t('processList.colState'));
   });
 
-  it('OPS-PL-002: kill shows confirm then cancel (non-destructive)', async () => {
+  it('kill shows confirm then cancel (non-destructive)', async () => {
     const killBtn = await $(`button[title="${t('processList.kill')}"]`);
     if (!(await killBtn.isExisting())) return;
     // Kill 按钮在无高亮行时恒 disabled；先等进程行真正加载出来再选中。
     expect(await anyTableRows()).toBe(true);
     // The Kill button/confirmation requires a highlighted row; select a PID row
-    // (mirrors clickRowByPid in OPS-PROC-004) so the dialog actually opens,
+    // (mirrors clickRowByPid in the kill test) so the dialog actually opens,
     // otherwise the button stays disabled and no confirm dialog appears.
     await browser.execute(() => {
       const pidCells = Array.from(document.querySelectorAll('[data-dt-col]')).filter(

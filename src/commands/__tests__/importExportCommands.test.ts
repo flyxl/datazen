@@ -9,12 +9,12 @@ import { backupCommands } from '../backup';
 import { connectionCommands } from '../connection';
 
 /**
- * Decision 3 (F4): connections/app-data import-export path/dialog pairs are
- * merged into single IPCs taking a webdriver-gated `override_path`. The
- * wrapper layer is production surface: it must pass dialog-era params
- * verbatim and never send `overridePath`.
+ * The connections/app-data import-export path/dialog pairs are merged into
+ * single IPCs taking a webdriver-gated `override_path`. The wrapper layer is
+ * production surface: it must pass dialog-era params verbatim and never send
+ * `overridePath`.
  */
-describe('merged import/export wrappers (decision 3, f4)', () => {
+describe('merged import/export wrappers', () => {
   beforeEach(() => {
     invokeMock.mockReset();
   });

@@ -137,7 +137,7 @@ describe('workspaceTabsStore', () => {
     expect(useWorkspaceTabsStore.getState().activeKey).toBe(C().key);
   });
 
-  // --- F3 supplementary (test agent): key format, close-first, anchor edge ---
+  // --- Supplementary (test agent): key format, close-first, anchor edge ---
 
   it('workspaceTabKey joins wappId and pageId with ":"', () => {
     expect(workspaceTabKey('acme.demo', 'main')).toBe('acme.demo:main');

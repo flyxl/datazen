@@ -218,7 +218,7 @@ describe('multipleSelections', () => {
   });
 
   /* ====================================================================== */
-  /*  JOURNEY (AGENTS.md "连续旅程测试"): the full state machine.           */
+  /*  JOURNEY (continuous-journey rule): the full state machine.            */
   /*                                                                      */
   /*  enter  : Shift-Alt-ArrowUp on a middle line                           */
   /*  inside : press it again -> 3 cursors; backspace deletes at every      */
@@ -270,7 +270,7 @@ describe('multipleSelections', () => {
   });
 
   /* ====================================================================== */
-  /*  copy line survived the takeover (AGENTS.md "三维影响度自查" #2).      */
+  /*  copy line survived the takeover (blast-radius self-check #2).         */
   /*  On Windows/Linux Ctrl+Shift+Up/Down was free, so copyLineUp/Down     */
   /*  moves there. It is registered at NORMAL precedence on purpose: the   */
   /*  macOS branch of that chord is `Cmd+Shift+Up` = select to document    */

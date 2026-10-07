@@ -1,14 +1,14 @@
 import type { DriverFixtureDefinition, HostContractJourneyId } from '../fixtures';
 import { journeyAllowed, skipReason } from '../fixtures';
 
-/** Core journeys delivered in F2. */
+/** The core Host contract journeys. */
 export const F2_CORE_JOURNEYS: readonly HostContractJourneyId[] = [
   'HC-DATA',
   'HC-FILTER',
   'HC-QUERY',
 ] as const;
 
-/** Full Host connection contract (F3). */
+/** Full Host connection contract. */
 export const ALL_CONTRACT_JOURNEYS: readonly HostContractJourneyId[] = [
   'HC-CONN',
   'HC-QUERY',

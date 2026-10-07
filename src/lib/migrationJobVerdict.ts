@@ -3,20 +3,20 @@
  *
  * Data Transfer, Schema Diff and Data Sync all end in the same question: "did
  * my write land, and how much of it?". The backend already answers it in the
- * only terms that can survive a lost response (§7): durable `CommitBoundary`
+ * only terms that can survive a lost response: durable `CommitBoundary`
  * records plus a derived `EffectOutcome`, never a boolean. This module turns
  * that raw verdict into the small number of states a user can be *shown*, and
  * it is the seam the other two tools reuse instead of re-deriving their own.
  *
  * Two rules are load-bearing and must not be relaxed:
  *
- * 1. "Cancel requested" is not "cancelled". §2.3 makes cancellation a request
- *    that races four ways against the write; only the boundary list and the
- *    effect outcome say where the work actually stopped. `deriveCancelDisposition`
- *    keeps those two facts separate so a UI can never render a cancel click as
- *    a completed rollback.
- * 2. An uncertain verdict stays uncertain. §7 fails closed: when no checkpoint
- *    was recorded, or evidence is missing, recovery returns
+ * 1. "Cancel requested" is not "cancelled". Cancellation is a request that races
+ *    four ways against the write; only the boundary list and the effect outcome
+ *    say where the work actually stopped. `deriveCancelDisposition` keeps those
+ *    two facts separate so a UI can never render a cancel click as a completed
+ *    rollback.
+ * 2. An uncertain verdict stays uncertain. Recovery fails closed: when no
+ *    checkpoint was recorded, or evidence is missing, it returns
  *    `requireManualReview` / `reject`. Those map to `severity: 'uncertain'`
  *    and never to `'ok'` — beautifying "we don't know" into "success" is the
  *    defect this type exists to prevent.
@@ -24,7 +24,7 @@
 
 import type { CommitBoundary, Counter, EffectOutcome, JobState } from '@datazen/backend-client';
 
-/** The §2.3 cancel races, as the *user* must see them. */
+/** The cancel races, as the *user* must see them. */
 export type CancelDisposition =
   /** No cancel was ever requested. */
   | 'none'
@@ -64,18 +64,18 @@ export type UncertaintyReason =
 export interface MigrationJobVerdictInput {
   state: JobState | string;
   effectOutcome: EffectOutcome | string | null;
-  /** §2.3 cancel intent, as reported by the Job view / cancel receipt. */
+  /** Cancel intent, as reported by the Job view / cancel receipt. */
   cancelRequested: boolean;
-  /** §7 durable write markers. Empty means "provably wrote nothing". */
+  /** Durable write markers. Empty means "provably wrote nothing". */
   commitBoundaries?: readonly Pick<CommitBoundary, 'evidence'>[] | null;
   recoveryVerdict?: string | null;
   recoveryReason?: string | null;
   /** Terminal error text, when the Job failed rather than completed. */
   error?: string | null;
   /**
-   * §2.3 `progress.committed` + `progress.unknown`.
+   * The committed / unknown progress counters.
    *
-   * Needed because §7 boundaries alone cannot tell "wrote nothing" from
+   * Needed because commit boundaries alone cannot tell "wrote nothing" from
    * "wrote something nobody recorded". The data-transfer handler never calls
    * `record_commit_boundary`, so its boundary list is structurally empty while
    * `committed` still counts real rows; without this the UI would show a clean
@@ -91,7 +91,7 @@ export interface MigrationJobVerdict {
   cancelDisposition: CancelDisposition;
   /** True only when the write finished and nothing is left to verify. */
   completed: boolean;
-  /** §7 boundaries carrying `EVIDENCE_*` markers. */
+  /** Boundaries carrying `EVIDENCE_*` markers. */
   verifiedBoundaries: number;
   /** Boundaries present but unverified — fail-closed evidence gap. */
   unverifiedBoundaries: number;
@@ -105,7 +105,7 @@ export interface MigrationJobVerdict {
 }
 
 /**
- * Read a §2.3 progress counter.
+ * Read a progress counter.
  *
  * The Rust `Counter` serializes as a **decimal string** (`visit_str` /
  * `visit_u64` / `visit_i64` in `platform-api/src/id.rs`), while
@@ -130,7 +130,7 @@ export function readJobCounter(
   return null;
 }
 
-/** Sum §2.3 progress buckets, or `null` when any bucket is unreadable. */
+/** Sum progress buckets, or `null` when any bucket is unreadable. */
 export function sumJobCounters(
   ...values: readonly (Counter | number | string | null | undefined)[]
 ): number | null {
@@ -149,7 +149,7 @@ export function isMigrationJobInFlight(state: JobState | string): boolean {
 }
 
 /**
- * Derive the §2.3 cancel disposition.
+ * Derive the cancel disposition.
  *
  * The `cancelled` / `partial` booleans the old command returned are not inputs
  * on purpose: they cannot distinguish "cancelled before writing" from
@@ -167,7 +167,7 @@ export function deriveCancelDisposition(
   switch (effectOutcome) {
     case 'completed':
       // The write finished before the cancel landed; reporting this as
-      // "cancelled" would be the exact lie §2.3 forbids.
+      // "cancelled" would be the exact lie the cancel model forbids.
       return 'settledCompleted';
     case 'rolledBack':
       return 'settledRolledBack';
@@ -183,7 +183,7 @@ export function deriveCancelDisposition(
 }
 
 /**
- * §7 recovery adjudication. Anything other than `resumeAfterVerify` means the
+ * Recovery adjudication. Anything other than `resumeAfterVerify` means the
  * backend refuses to certify the write, so the caller must not call it success.
  */
 export function deriveUncertainty(
@@ -193,7 +193,7 @@ export function deriveUncertainty(
   unverifiedBoundaries: number,
   /**
    * True when the backend reported committed or unknown rows but attached no
-   * §7 boundary to prove them.
+   * boundary to prove them.
    */
   hasUnbackedCommit = false,
 ): UncertaintyReason {
@@ -201,7 +201,7 @@ export function deriveUncertainty(
   if (recoveryVerdict === 'requireManualReview') return 'manualReviewRequired';
   if (recoveryVerdict === 'reject') return 'recoveryRejected';
   if (recoveryVerdict && recoveryVerdict !== 'resumeAfterVerify') return 'recoveryRejected';
-  // A recorded reason is the §7 fail-closed evidence even when the verdict
+  // A recorded reason is the fail-closed evidence even when the verdict
   // itself stays optimistic; "no checkpoint was recorded" is the canonical one.
   if (recoveryReason && /no checkpoint/i.test(recoveryReason)) return 'noCheckpoint';
   // Rows without a boundary behind them are an evidence gap, checked before the
@@ -233,7 +233,7 @@ export function deriveMigrationJobVerdict(
     input.recoveryVerdict ?? null,
     input.recoveryReason ?? null,
     unverifiedBoundaries,
-    // §7 says a commit is only trustworthy when a boundary backs it. Rows with
+    // A commit is only trustworthy when a boundary backs it. Rows with
     // no boundary at all are strictly worse than a boundary missing its
     // `EVIDENCE_*` markers, and both must fail closed.
     boundaries.length === 0 &&
@@ -278,7 +278,7 @@ function pickSeverity(input: {
   cancelDisposition: CancelDisposition;
   hasError: boolean;
 }): VerdictSeverity {
-  // Uncertainty outranks everything: §7 says an undecided verdict must never
+  // Uncertainty outranks everything: an undecided verdict must never
   // be presented as a clean one.
   if (input.uncertainty !== 'none') return 'uncertain';
   if (input.completed) return 'ok';
@@ -304,17 +304,17 @@ function pickSeverity(input: {
   }
 }
 
-/** §6.2: the 8 MiB pipeline budget is a deliberate fail-closed interception. */
+/** The 8 MiB pipeline budget is a deliberate fail-closed interception. */
 export const PIPELINE_BUDGET_BYTES = 8 * 1024 * 1024;
 
-/** `true` for the backend's §6.2 `PipelineBudget` interception message. */
+/** `true` for the backend's `PipelineBudget` interception message. */
 export function isPipelineBudgetInterception(message: string | null | undefined): boolean {
   if (!message) return false;
   return /pipeline\s*budget|pipelinebudget|budget\s*exceed|8\s*MiB|8388608/i.test(message);
 }
 
 /**
- * §10 planId single-consumption. A second apply of the same plan is refused by
+ * planId single-consumption. A second apply of the same plan is refused by
  * the backend; the UI must surface that refusal instead of offering a retry
  * that looks safe but is not.
  */
@@ -326,7 +326,7 @@ export function isPlanConsumedRejection(message: string | null | undefined): boo
 }
 
 /**
- * §8 backendScope fail-closed. When the endpoints cannot prove they are the
+ * backendScope fail-closed. When the endpoints cannot prove they are the
  * local desktop backend, the backend refuses with a `Validation` error; the UI
  * has to say so rather than degrade into a soft failure.
  */

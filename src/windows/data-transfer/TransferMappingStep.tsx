@@ -12,9 +12,9 @@ interface TransferMappingStepProps {
   onUpdateTable: (sourceTable: string, patch: Partial<TransferTableResult>) => void;
   onTargetTableCommit: (sourceTable: string) => void;
   /**
-   * §8.4: forwarded to the editor, not used to dim this component. The table
-   * list stays selectable — picking a different table is a read-only act and
-   * must not be blocked while a prepare is in flight.
+   * Forwarded to the editor, not used to dim this component. The table list
+   * stays selectable — picking a different table is a read-only act and must
+   * not be blocked while a prepare is in flight.
    */
   disabled?: boolean;
 }

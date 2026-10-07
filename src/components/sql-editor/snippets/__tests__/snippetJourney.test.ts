@@ -1,5 +1,5 @@
 /**
- * §4.1 Snippet journey tests.
+ * Snippet journey tests.
  *
  * Covers the whole keystroke lifecycle rather than one static string: expand →
  * tabstop forward → tabstop back → deactivate, plus the context transitions
@@ -38,7 +38,7 @@ function completeAt(doc: string, explicit = false) {
 
 /**
  * Minimal EditorView stand-in: `snippet()` only needs `state` + `dispatch`, and
- * jsdom geometry is unreliable for anything more (see interaction rules §4).
+ * jsdom geometry is unreliable for anything more.
  */
 function createHarness(doc = '') {
   let state = EditorState.create({ doc });
@@ -259,7 +259,7 @@ describe('user custom snippets', () => {
 });
 
 describe('builtin snippet library integrity', () => {
-  it('exposes every PRD-mandated prefix', () => {
+  it('exposes every required prefix', () => {
     expect(BUILTIN_SQL_SNIPPETS.map((s) => s.prefix)).toEqual([
       'sel*',
       'selc',
@@ -289,7 +289,7 @@ describe('builtin snippet library integrity', () => {
 
   it('ends every template with a terminal tabstop', () => {
     // Without it, reaching the last real placeholder would end the session and
-    // break the Shift-Tab back-navigation the PRD requires.
+    // break the Shift-Tab back-navigation the UI requires.
     for (const item of BUILTIN_SQL_SNIPPETS) {
       expect(item.template).toMatch(/\$\{\d+\}$/);
     }

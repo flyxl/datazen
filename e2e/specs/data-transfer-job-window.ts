@@ -15,7 +15,7 @@ import {
  * Data Transfer P5 Job chain, end to end (DTJ-001~DTJ-003).
  *
  * Every spec here drives the real `prepare_data_transfer_job` →
- * `apply_data_transfer_job` path against a live PG→PG pair and asserts the §7
+ * `apply_data_transfer_job` path against a live PG→PG pair and asserts the
  * verdict the Job replies with — not a mocked one.
  *
  * Requires `e2e/setup-sync-dbs.sh` to have created `datazen_sync_src` /
@@ -36,13 +36,14 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
    */
   const JOB_SRC = `xfer_job_src_${STAMP}`;
   const JOB_TGT = `xfer_job_tgt_${STAMP}`;
-  /** Bulk fixture: keeps the apply in flight long enough to observe §2.3. */
+  /** Bulk fixture: keeps the apply in flight long enough to observe a cancel
+   *  while the apply is still in flight. */
   const BULK_SRC = `xfer_bulk_src_${STAMP}`;
   const BULK_TGT = `xfer_bulk_tgt_${STAMP}`;
   const BULK_ROWS = 30000;
   const ROWS_SELECTOR = '[data-testid="data-transfer-table-row"]';
 
-  /** §9 plan identity of the Job DTJ-001 spent, handed to DTJ-002. */
+  /** Plan identity of the Job DTJ-001 spent, handed to DTJ-002. */
   let spentPlan: { planId: string; planDigest: string; selectionRevision: number } | null = null;
 
   const pgConfig = (id: string, name: string, database: string) => ({
@@ -266,8 +267,9 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     }
     await captureJourneyStep(`${scenario}-mapping-ready`);
 
-    // This click is what runs `prepare`. It may legitimately refuse (§8 / §6.2,
-    // or a source/target object-name collision); the refusal has to be named
+    // This click is what runs `prepare`. It may legitimately refuse (out of
+    // backend scope, over the 8 MiB pipeline budget, or a source/target
+    // object-name collision); the refusal has to be named
     // instead of showing up later as "execute never enabled".
     const next = await $('[data-testid="data-transfer-next"]');
     const prepareDeadline = Date.now() + 60000;
@@ -336,8 +338,8 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
           sql: `CREATE TABLE ${JOB_TGT} (id int PRIMARY KEY, name text NOT NULL, qty int)`,
         });
 
-        // Narrow payload on purpose: §6.2 refuses a pipeline over 8 MiB, and this
-        // fixture only needs to be big enough to keep the Job in flight.
+        // Narrow payload on purpose: the backend refuses a pipeline over 8 MiB,
+        // and this fixture only needs to be big enough to keep the Job in flight.
         await invokeBackend('execute_query', {
           dbSessionId: srcSession,
           sql: `CREATE TABLE ${BULK_SRC} (id int PRIMARY KEY, qty int)`,
@@ -386,7 +388,7 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     await closeExtraWindows(mainWindow);
   });
 
-  it('DTJ-001: Job 成功后落库=3，关闭重开窗口不重复执行 (§10 CM-40)', async () => {
+  it('DTJ-001: Job 成功后落库=3，关闭重开窗口不重复执行', async () => {
     await openDataTransferWindow();
     await driveToPreview(JOB_SRC, JOB_TGT, 'dtj1');
 
@@ -408,8 +410,8 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
 
     const verdict = await $('[data-testid="data-transfer-job-verdict"]');
     await expect(verdict).toBeDisplayed();
-    // PG→PG with a PK on both sides is snapshot-proven, so §7 has evidence to
-    // verify and the verdict may be a plain `ok`.
+    // PG→PG with a PK on both sides is snapshot-proven, so the verdict has
+    // evidence to verify and may be a plain `ok`.
     expect(await verdict.getAttribute('data-uncertainty')).toBe('none');
     expect(await verdict.getAttribute('data-cancel-disposition')).toBe('none');
     expect(Number(await verdict.getAttribute('data-unverified-boundaries'))).toBe(0);
@@ -431,7 +433,7 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
 
     expect(await targetRowCount(JOB_TGT)).toBe(3);
 
-    // CM-40: a reopened window must not re-drive the Job that already settled.
+    // A reopened window must not re-drive the Job that already settled.
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
     await openDataTransferWindow();
@@ -450,7 +452,7 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     await browser.switchToWindow(mainWindow);
   });
 
-  it('DTJ-002: 同一个 planId 不可二次 apply，重试不会重复落库 (§10 CM-54)', async () => {
+  it('DTJ-002: 同一个 planId 不可二次 apply，重试不会重复落库', async () => {
     if (!spentPlan) {
       throw new Error('DTJ-001 must settle a Job before DTJ-002 can retry its plan');
     }
@@ -462,7 +464,7 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     expect(await cancel.getAttribute('data-cancel-addressable')).toBe('true');
     expect(await cancel.isEnabled()).toBe(true);
 
-    // §9/§10: replay the spent plan with its own idempotency key. The backend
+    // Replay the spent plan with its own idempotency key. The backend
     // refuses at admission/claim, before it can look up the receipt — so this
     // cannot double-write even with the original key.
     let refusal = '';
@@ -496,7 +498,7 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     await browser.switchToWindow(mainWindow);
   });
 
-  it('DTJ-003: apply 进行中取消不可寻址，落库仍为全量 (§2.3)', async () => {
+  it('DTJ-003: apply 进行中取消不可寻址，落库仍为全量', async () => {
     await openDataTransferWindow();
     await driveToPreview(BULK_SRC, BULK_TGT, 'dtj3');
 
@@ -527,7 +529,7 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     expect(Number(await verdict.getAttribute('data-verified-boundaries'))).toBeGreaterThanOrEqual(1);
 
     // Once settled the step moves on: the cancel affordance is gone and the
-    // only legal next action is a fresh review (§9: no resume token).
+    // only legal next action is a fresh review (there is no resume token).
     expect(await exists('[data-testid="data-transfer-cancel"]')).toBe(false);
     expect(await exists('[data-testid="data-transfer-cancel-pending-id"]')).toBe(false);
     const rereview = await $('[data-testid="data-transfer-rereview"]');

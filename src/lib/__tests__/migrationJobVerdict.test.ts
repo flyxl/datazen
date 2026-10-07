@@ -1,9 +1,9 @@
 /**
  * State-machine tests for the shared P5 verdict engine (T4).
  *
- * The four §2.3 cancel races, the §7 uncertainty ladder and the §9 refusal
- * matchers are the rules the other two migration tools will inherit, so they
- * are pinned here as pure functions rather than through any one window.
+ * The four cancel races, the uncertainty ladder and the refusal matchers are
+ * the rules the other two migration tools will inherit, so they are pinned here
+ * as pure functions rather than through any one window.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -21,9 +21,9 @@ import {
   type MigrationJobVerdictInput,
 } from '../migrationJobVerdict';
 
-/** A §7 boundary that carries its `EVIDENCE_*` markers. */
+/** A commit boundary that carries its `EVIDENCE_*` markers. */
 const verifiedBoundary = { evidence: ['EVIDENCE_ROWS_COMMITTED'] };
-/** A §7 boundary that committed but recorded no evidence. */
+/** A commit boundary that committed but recorded no evidence. */
 const unverifiedBoundary = { evidence: [] };
 
 function input(overrides: Partial<MigrationJobVerdictInput> = {}): MigrationJobVerdictInput {
@@ -81,7 +81,7 @@ describe('isMigrationJobInFlight', () => {
   });
 });
 
-describe('deriveCancelDisposition — the four §2.3 races', () => {
+describe('deriveCancelDisposition — the four cancel races', () => {
   it('reports no cancel at all as an intent-free run', () => {
     expect(deriveCancelDisposition('completed', false, [verifiedBoundary], false)).toBe('none');
   });
@@ -121,7 +121,7 @@ describe('deriveCancelDisposition — the four §2.3 races', () => {
   });
 });
 
-describe('deriveUncertainty — the §7 fail-closed ladder', () => {
+describe('deriveUncertainty — the fail-closed ladder', () => {
   it('calls an undecided outcome uncertain first of all', () => {
     expect(deriveUncertainty('unknown', 'resumeAfterVerify', null, 0)).toBe('effectOutcomeUnknown');
   });
@@ -166,7 +166,7 @@ describe('deriveMigrationJobVerdict', () => {
 
   it('refuses "completed" when rows were written with no boundary behind them', () => {
     // The real data-transfer shape: `committed` counts rows while the handler
-    // never records a §7 boundary.
+    // never records a commit boundary.
     const verdict = deriveMigrationJobVerdict(input({ commitBoundaries: [], committedRows: 30 }));
     expect(verdict.completed).toBe(false);
     expect(verdict.severity).toBe('uncertain');
@@ -292,7 +292,7 @@ describe('deriveMigrationJobVerdict', () => {
 });
 
 describe('refusal matchers', () => {
-  it('names the §6.2 budget cap as 8 MiB', () => {
+  it('names the budget cap as 8 MiB', () => {
     expect(PIPELINE_BUDGET_BYTES).toBe(8388608);
     expect(isPipelineBudgetInterception('pipeline budget exceeded for stage users')).toBe(true);
     expect(isPipelineBudgetInterception('PipelineBudget: refusing 12 MiB payload')).toBe(true);
@@ -309,7 +309,7 @@ describe('refusal matchers', () => {
     expect(isPlanConsumedRejection(undefined)).toBe(false);
   });
 
-  it('recognises a §8 scope refusal', () => {
+  it('recognises a backend scope refusal', () => {
     expect(isBackendScopeRejection('backend scope mismatch')).toBe(true);
     expect(isBackendScopeRejection('expected local-desktop-backend')).toBe(true);
     expect(isBackendScopeRejection('nothing to see')).toBe(false);

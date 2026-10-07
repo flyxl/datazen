@@ -64,7 +64,7 @@ export function resolveExecutionTarget({
   const validRanges = getValidStatementRanges(allRanges);
   const allStatements = validRanges.map((r) => toStatementTargetInfo(doc, r));
 
-  // 1. Selection takes absolute precedence (§5.1)
+  // 1. Selection takes absolute precedence
   if (trimmedSelection.length > 0) {
     return {
       sql: trimmedSelection,
@@ -103,7 +103,7 @@ export function resolveExecutionTarget({
     };
   }
 
-  // 3. Ask strategy (§5.1)
+  // 3. Ask strategy
   if (strategy === 'ask') {
     if (validRanges.length > 1) {
       return {

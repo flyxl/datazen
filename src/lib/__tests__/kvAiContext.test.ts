@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildKvAiContext, composeKvAiMessage, hasKvAiFacts, type KvAiFacts } from '../kvAiContext';
 
 /**
- * W3-A §1.3: the host may only inject facts it really owns, and the affordance
- * must disappear together with the facts. These cases pin the binary rule
+ * The host may only inject facts it really owns, and the affordance must
+ * disappear together with the facts. These cases pin the binary rule
  * ("no key in scope ⇒ no context ⇒ no AI button") in one place; the component
  * tests below it then only check that the two call sites act on it.
  */
@@ -14,7 +14,7 @@ const FACTS: KvAiFacts = {
   selectedKey: 'user:42',
 };
 
-describe('hasKvAiFacts (W3-A §1.3 empty-state rule)', () => {
+describe('hasKvAiFacts (empty-state rule)', () => {
   it('reports no facts while no key is in scope', () => {
     expect(hasKvAiFacts({ selectedKey: null })).toBe(false);
   });
@@ -33,7 +33,7 @@ describe('hasKvAiFacts (W3-A §1.3 empty-state rule)', () => {
 
 describe('buildKvAiContext (host-owned facts only)', () => {
   it('returns null instead of an empty block', () => {
-    // PRD §3.4 bans the half-broken state: this is the branch that hides the button.
+    // The half-broken state is banned: this is the branch that hides the button.
     expect(buildKvAiContext({ ...FACTS, selectedKey: null })).toBeNull();
     expect(buildKvAiContext({ ...FACTS, selectedKey: '  ' })).toBeNull();
   });
@@ -57,8 +57,9 @@ describe('buildKvAiContext (host-owned facts only)', () => {
   });
 
   it('never mentions the driver console buffer', () => {
-    // §1.3 explicitly forbids injecting it, and this track may not start a cache
-    // to obtain it: whatever is not in `KvAiFacts` cannot reach the prompt.
+    // The console buffer is deliberately not injected, and this track may not
+    // start a cache to obtain it: whatever is not in `KvAiFacts` cannot reach the
+    // prompt.
     const ctx = buildKvAiContext(FACTS);
     expect(ctx?.block).not.toMatch(/console|history|buffer/i);
   });

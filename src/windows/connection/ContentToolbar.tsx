@@ -75,9 +75,9 @@ export interface ContentToolbarProps {
   /**
    * State relay of the active KV panel; `undefined` unless the active panel belongs
    * to a key-value driver (`isKeyValue` metadata, so no driver id is named here).
-   * The toolbar needs it for the AI button (§1.3): while no key is in scope the
-   * assistant would be handed nothing about a KV panel, so the button is not
-   * rendered at all instead of opening a chat with no context.
+   * The toolbar needs it for the AI button: while no key is in scope the assistant
+   * would be handed nothing about a KV panel, so the button is not rendered at
+   * all instead of opening a chat with no context.
    */
   kvPanelState?: KvSlotState;
   onNewQuery: () => void;
@@ -122,7 +122,7 @@ export function ContentToolbar({
   const { ref: toolbarRef, compact } = useCompactToolbar(expandedMinWidth);
   const ContextBar = contextBarSlot?.Component;
 
-  // PRD §3.4 / W3-A §1.3: on a KV panel the assistant has exactly one host-owned
+  // On a KV panel the assistant has exactly one host-owned
   // fact to be told about — the selected key — so without one the button is not
   // rendered. Relational panels keep their existing behaviour (`contextTables`).
   const kvSelectedKey = useKvSlotSelectedKey(kvPanelState);

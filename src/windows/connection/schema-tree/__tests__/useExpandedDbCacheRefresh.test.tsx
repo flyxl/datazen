@@ -112,7 +112,7 @@ describe('useExpandedDbCacheRefresh', () => {
     expect(handlers.clearCaches).not.toHaveBeenCalled();
   });
 
-  it('F1-BUG-005: clears caches then schedules object-category reloads in the same pass', async () => {
+  it('clears caches then schedules object-category reloads in the same pass', async () => {
     useSchemaStore.setState((s) => ({
       schemas: new Map(s.schemas).set('conn-sql', schemaEntry(['/data/app.db'], 0)),
     }));
@@ -174,7 +174,7 @@ describe('useExpandedDbCacheRefresh', () => {
 
     // Ordering guarantee: the invalidation strictly precedes every recovery
     // reload scheduled by the same wave — a clear can never land after the
-    // reloads it was supposed to precede (the F1-BUG-005 race).
+    // reloads it was supposed to precede.
     const clearOrder = handlers.clearCaches.mock.invocationCallOrder[0];
     expect(handlers.clearCaches).toHaveBeenCalledWith('conn-sql', 'cfg-sql');
     for (const order of handlers.loadObjectsForCat.mock.invocationCallOrder) {

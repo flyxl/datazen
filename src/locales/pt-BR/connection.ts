@@ -279,7 +279,7 @@ const pack = {
   'connWin.home.connectNow': 'Conectar',
   'connWin.home.viewAll': 'Ver tudo',
   'connection.dashboard.title': 'Painel',
-  // Ações do slot de workspace KV tratadas pelo host (W3-A §1.2). O namespace
+  // Ações do slot de workspace KV tratadas pelo host. O namespace
   // `redis.kvSlot.*` é texto do host para o painel KV; o driver mantém seu
   // próprio pack `redis.*` em packages/drivers/redis/locales.
   'redis.kvSlot.flushTitle': 'Limpar o banco de dados atual',
@@ -287,7 +287,7 @@ const pack = {
     'Todas as chaves do banco de dados ao qual este painel está vinculado serão excluídas. Isso não pode ser desfeito.',
   'redis.kvSlot.flushBlocked':
     'O Modo seguro impede a limpeza de um banco de dados. Desative o Modo seguro nas Configurações para continuar.',
-  // Contexto KV injetado em uma solicitação à IA (W3-A §1.3).
+  // Contexto KV injetado em uma solicitação à IA.
   'redis.ai.context.tooltip': 'Perguntar ao assistente sobre a chave selecionada',
   'redis.ai.context.attached': 'Perguntando sobre a chave',
   // --- Host DocumentConnectionView (navegador de documentos) ---

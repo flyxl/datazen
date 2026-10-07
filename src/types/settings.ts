@@ -11,7 +11,7 @@ import type { Value } from './connection';
 
 export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
 
-/** §4.2 Configurable SQL beautifier options. */
+/** Configurable SQL beautifier options. */
 export interface SqlFormatOptions {
   keywordCase: 'upper' | 'lower' | 'preserve';
   indentStyle: '2spaces' | '4spaces' | 'tab';
@@ -22,7 +22,7 @@ export interface SqlFormatOptions {
 }
 
 /**
- * §5.1 Which SQL the Execute action submits when there is no explicit selection.
+ * Which SQL the Execute action submits when there is no explicit selection.
  * `ask` prompts whenever the script holds more than one statement.
  */
 export type SqlExecutionStrategy =

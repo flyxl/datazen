@@ -1,11 +1,11 @@
 /**
- * Data Transfer — the Job execution state machine (§2.3 / §6.1 / §6.2 / §7 / §8 / §10).
+ * Data Transfer — the Job execution state machine.
  *
  * The window used to own a single `execute` call and a `cancelled` boolean.
  * That shape cannot say *where* a run stopped, so this hook owns the whole
  * prepare → apply → verdict lifecycle and exposes exactly two truths:
  *
- * - `cancelRequested` — §2.3 *intent*. Latched the instant the user clicks.
+ * - `cancelRequested` — *intent*. Latched the instant the user clicks.
  * - `verdict` — what actually happened, folded from the Job's
  *   `effectOutcome` + `commitBoundaries` by the shared engine in
  *   `src/lib/migrationJobVerdict.ts`. Schema Diff and Data Sync reuse that
@@ -22,7 +22,7 @@
  *   id from the prepare id would report a cancellation that never happened.
  * - Prepare and apply never share an `idempotencyKey`. The backend receipt map
  *   is keyed by it, so one shared key would make the apply *replay the prepare
- *   Job* instead of writing anything (§10).
+ *   Job* instead of writing anything.
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -49,7 +49,7 @@ export type TransferRunPhase =
   | 'idle'
   | 'preparing'
   | 'prepared'
-  /** §8 / prepare-time refusal: the plan was not admitted for execution. */
+  /** Backend-scope / prepare-time refusal: the plan was not admitted for execution. */
   | 'blocked'
   | 'applying'
   /** Terminal verdict available — render it, do not offer a blind retry. */
@@ -57,15 +57,15 @@ export type TransferRunPhase =
 
 /**
  * How a command refusal must be phrased. Each arm is fail-closed on purpose:
- * §8 and §6.2 are *refusals*, not warnings, and degrading them into a soft
- * failure would hide a rule the backend enforced.
+ * backend-scope and pipeline-budget are *refusals*, not warnings, and degrading
+ * them into a soft failure would hide a rule the backend enforced.
  */
 export type TransferRunFailureKind =
-  /** §8: endpoints could not prove they are the local desktop backend. */
+  /** Backend scope: endpoints could not prove they are the local desktop backend. */
   | 'backendScope'
-  /** §6.2: the 8 MiB pipeline budget refused the write on purpose. */
+  /** The 8 MiB pipeline budget refused the write on purpose. */
   | 'pipelineBudget'
-  /** §10: this planId was already spent by an earlier apply Job. */
+  /** This planId was already spent by an earlier apply Job. */
   | 'planConsumed'
   /** Plan expired / source drifted / permission changed — re-prepare. */
   | 'stalePlan'
@@ -77,11 +77,11 @@ export interface TransferRunFailure {
 }
 
 export interface TransferApplyInput {
-  /** §6.1: empty / absent for a SQL-file run with no explicit table list. */
+  /** Empty / absent for a SQL-file run with no explicit table list. */
   sourceTables?: string[];
   confirmedDestructive: boolean;
   /**
-   * §10: stable across a retry of *this* apply so the backend replays the
+   * Stable across a retry of *this* apply so the backend replays the
    * recorded receipt instead of committing a second time. Never share it with
    * the prepare call. Omit to let the backend mint a fresh key.
    */
@@ -93,7 +93,7 @@ export interface TransferJobRun {
   prepareView: TransferPrepareJobView | null;
   applyView: TransferApplyJobView | null;
   failure: TransferRunFailure | null;
-  /** §2.3: the click happened. Never rendered as "cancelled". */
+  /** The click happened. Never rendered as "cancelled". */
   cancelRequested: boolean;
   /** The backend recognised the Job id and recorded the intent. */
   cancelAcknowledged: boolean;
@@ -107,7 +107,7 @@ export interface TransferJobRun {
   /**
    * The backend-minted Job id this window may address a cancel to, or `null`
    * while an apply is in flight (the backend mints that id internally and only
-   * returns it once the run is terminal — see report gap G2).
+   * returns it once the run is terminal).
    */
   cancelTargetJobId: string | null;
   /** True while the apply Job is queued/running — disables "apply" but not "cancel". */
@@ -120,9 +120,9 @@ export interface TransferJobRun {
    * or the backend has no such Job — and the caller must not treat it as one.
    */
   requestCancel: () => Promise<boolean>;
-  /** Return to `idle` for a fresh run; keeps nothing a §10 recovery needs. */
+  /** Return to `idle` for a fresh run; keeps nothing a recovery needs. */
   reset: () => void;
-  /** §10: re-review after a consumed plan. Mints a new plan, never re-applies. */
+  /** Re-review after a consumed plan. Mints a new plan, never re-applies. */
   reprepare: () => void;
   /**
    * The most recent classified failure, readable synchronously. `prepare` and
@@ -212,7 +212,7 @@ export function useTransferJobRun(): TransferJobRun {
         fail({ kind: 'other', message: 'apply requires an admitted plan' });
         return null;
       }
-      // §9: the planId was already spent. The backend would refuse this, but a
+      // The planId was already spent. The backend would refuse this, but a
       // local refusal keeps the window from offering an action that cannot
       // succeed, and keeps `planConsumed` a first-class outcome.
       if (phase === 'settled' && applyView && !applyView.replayed) {
@@ -228,7 +228,7 @@ export function useTransferJobRun(): TransferJobRun {
         planId: prepareView.planId,
         planDigest: prepareView.planDigest,
         selectionRevision: prepareView.selectionRevision,
-        // §6.1: an absent list means "every table the plan frozen", which is
+        // An absent list means "every table the plan frozen", which is
         // what a SQL-file run with no explicit selection means.
         selection: { sourceTables: input.sourceTables ?? null },
         confirmedDestructive: input.confirmedDestructive,
@@ -307,7 +307,7 @@ export function useTransferJobRun(): TransferJobRun {
       recoveryVerdict: applyView.recoveryVerdict,
       recoveryReason: applyView.recoveryReason,
       error: applyView.error,
-      // §7 says a commit is only trustworthy when a boundary backs it. The
+      // A commit is only trustworthy when a boundary backs it. The
       // data-transfer handler records no boundaries, so these two counters are
       // the only way the verdict can tell "wrote nothing" from "wrote
       // something nobody recorded" — without them every such run would render

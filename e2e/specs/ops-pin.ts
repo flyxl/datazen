@@ -1,5 +1,5 @@
 /**
- * E2E: 连接 Pin 置顶（ops §5.4）
+ * E2E: 连接 Pin 置顶
  *
  * 走通完整链路：右键连接 → 点击「Pin Connection」→ 连接置顶 &
  * 菜单标签翻转为「Unpin Connection」→ 清除 Pin 后恢复原顺序。
@@ -128,7 +128,7 @@ async function connPinned(nameOrId: string): Promise<boolean> {
   return c?.pinned === true;
 }
 
-describe('运维 §5.4: 连接 Pin 置顶 (OPS-PIN)', () => {
+describe('连接 Pin 置顶 (OPS-PIN)', () => {
   let mainWindow: string;
 
   before(async () => {

@@ -278,7 +278,7 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe('ConnectionPage extension nav integration (F4)', () => {
+describe('ConnectionPage extension nav integration', () => {
   it('renders the two new aside buttons between dashboard and settings', () => {
     render(<ConnectionPage />);
 

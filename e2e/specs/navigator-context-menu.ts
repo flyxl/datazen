@@ -374,7 +374,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
   // ── Connection Context Menu ──────────────────────────────────────
 
   describe('连接节点上下文菜单', () => {
-    it('NCM-001: 右键连接显示菜单含必要项', async () => {
+    it('右键连接显示菜单含必要项', async () => {
       // The seeded connection is OPEN here, so the primary action presents as
       // `disconnect` (label 断开连接), not `open-connection` (打开连接).
       await rightClick('[data-conn-item]');
@@ -389,7 +389,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await dismissMenu();
     });
 
-    it('NCM-002: 复制名称应复制到剪贴板', async () => {
+    it('复制名称应复制到剪贴板', async () => {
       await rightClick('[data-conn-item]');
       await hoverSubmenuTrigger('web-context-submenu-trigger-connection-submenu');
       await clickSubmenuItem('copy-name');
@@ -399,7 +399,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(clip.length).toBeGreaterThan(0);
     });
 
-    it('NCM-003: 右键连接不应展开连接', async () => {
+    it('右键连接不应展开连接', async () => {
       const beforeCount = await browser.execute(() => {
         return document.querySelectorAll('[data-tree-node="db"]').length;
       });
@@ -423,7 +423,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       }
     });
 
-    it('NCM-010: 右键数据库显示菜单含必要项', async () => {
+    it('右键数据库显示菜单含必要项', async () => {
       await rightClick('[data-tree-node="db"]');
       const text = await getMenuText();
       expect(text).toContain(t('connWin.refresh'));
@@ -433,7 +433,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await dismissMenu();
     });
 
-    it('NCM-011: 数据库复制名称应复制数据库名', async () => {
+    it('数据库复制名称应复制数据库名', async () => {
       await rightClick('[data-tree-node="db"]');
       await clickMenuItem(t('schemaTree.copyDatabaseName'));
       await browser.pause(300);
@@ -442,7 +442,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(clip.length).toBeGreaterThan(0);
     });
 
-    it('NCM-012: 新建查询应打开新的查询标签页', async () => {
+    it('新建查询应打开新的查询标签页', async () => {
       await rightClick('[data-tree-node="db"]');
       await clickMenuItemById('new-query');
       // `new-query` on a db node activates the query editor (it may reuse an already-open
@@ -451,7 +451,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await expect($('[data-testid="editor-execute-button"]')).toBeDisplayed({ wait: 10000 });
     });
 
-    it('NCM-013: 刷新应不报错', async () => {
+    it('刷新应不报错', async () => {
       await rightClick('[data-tree-node="db"]');
       await clickMenuItem(t('connWin.refresh'));
       await browser.pause(2000);
@@ -475,10 +475,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       }
     });
 
-    it('NCM-020: 右键 schema 显示菜单含必要项', async () => {
+    it('右键 schema 显示菜单含必要项', async () => {
       const schemaNodes = await $$('[data-tree-node="schema"]');
       if (schemaNodes.length === 0) {
-        console.log('No schema nodes found, skipping NCM-020');
+        console.log('No schema nodes found, skipping');
         return;
       }
       await rightClick('[data-tree-node="schema"]');
@@ -489,10 +489,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await dismissMenu();
     });
 
-    it('NCM-021: schema 复制名称应复制 schema 名', async () => {
+    it('schema 复制名称应复制 schema 名', async () => {
       const schemaNodes = await $$('[data-tree-node="schema"]');
       if (schemaNodes.length === 0) {
-        console.log('No schema nodes found, skipping NCM-021');
+        console.log('No schema nodes found, skipping');
         return;
       }
       // Target the `public` schema node explicitly — the first schema node in the
@@ -506,10 +506,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(clip).toContain('public');
     });
 
-    it('NCM-022: schema 菜单应包含删除 Schema 项', async () => {
+    it('schema 菜单应包含删除 Schema 项', async () => {
       const schemaNodes = await $$('[data-tree-node="schema"]');
       if (schemaNodes.length === 0) {
-        console.log('No schema nodes found, skipping NCM-022');
+        console.log('No schema nodes found, skipping');
         return;
       }
       await rightClick('[data-tree-node="schema"]', 'public');
@@ -518,7 +518,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await dismissMenu();
     });
 
-    it('NCM-023: 删除 schema 确认后应从导航树与数据库消失', async () => {
+    it('删除 schema 确认后应从导航树与数据库消失', async () => {
       await executeSQL(`CREATE SCHEMA IF NOT EXISTS ${DROP_SCHEMA}`);
       await browser.pause(800);
       expect(await pgSchemaExists(pgDbSessionId, DROP_SCHEMA)).toBe(true);
@@ -535,7 +535,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         );
       }, DROP_SCHEMA);
       if (!schemaNode) {
-        console.log('NCM-023: drop schema node not visible, skipping');
+        console.log('Drop schema node not visible, skipping');
         return;
       }
       expect(await pgSchemaExists(pgDbSessionId, DROP_SCHEMA)).toBe(true);
@@ -554,7 +554,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(await pgSchemaExists(pgDbSessionId, DROP_SCHEMA)).toBe(false);
     });
 
-    it('NCM-024: 浏览 postgres 后删除另一库 schema 应成功', async function () {
+    it('浏览 postgres 后删除另一库 schema 应成功', async function () {
       // SKIPPED — premise incompatible with this E2E environment.
       // The seeded PG connection is deliberately database-locked
       // (E2E_PG_DB=datazen_e2e → single-db StandardSchemaTree), so the navigator
@@ -591,7 +591,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await clickMenuItem(t('connWin.refresh'));
       await browser.pause(2000);
 
-      // F1: browse another catalog so the live session is not on CROSS_DB.
+      // Browse another catalog so the live session is not on CROSS_DB.
       await expandDb('postgres');
       await browser.pause(1000);
 
@@ -617,7 +617,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       });
     });
 
-    it('NCM-025: 浏览 postgres 后删除另一库 database 应成功', async function () {
+    it('浏览 postgres 后删除另一库 database 应成功', async function () {
       const UNIQUE = Date.now();
       const CROSS_DB = `e2e_nav_dropdb_${UNIQUE}`;
 
@@ -643,7 +643,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
         );
       }, CROSS_DB);
       if (!crossDbVisible) {
-        console.log('NCM-025: cross db node not visible, skipping');
+        console.log('Cross db node not visible, skipping');
         await invokeBackend('execute_driver_command', {
           request: {
             dbSessionId: pgDbSessionId,
@@ -683,10 +683,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       }
     });
 
-    it('NCM-030: 右键分类节点显示菜单含刷新', async () => {
+    it('右键分类节点显示菜单含刷新', async () => {
       const catNodes = await $$('[data-tree-node="category"]');
       if (catNodes.length === 0) {
-        console.log('No category nodes, skipping NCM-030');
+        console.log('No category nodes, skipping');
         return;
       }
       await rightClick('[data-tree-node="category"]');
@@ -695,11 +695,11 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await dismissMenu();
     });
 
-    it('NCM-031: Tables 分类右键应包含新建表', async () => {
+    it('Tables 分类右键应包含新建表', async () => {
       await rightClick('[data-tree-node="category"][data-cat-id="tables"]');
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
-        console.log('Tables category not visible, skipping NCM-031');
+        console.log('Tables category not visible, skipping');
         return;
       }
       const text = await getMenuText();
@@ -724,7 +724,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await setSafeMode(true);
     });
 
-    it('NCM-040: 右键表显示菜单含必要项', async () => {
+    it('右键表显示菜单含必要项', async () => {
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
@@ -741,7 +741,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await dismissMenu();
     });
 
-    it('NCM-041: 表-复制名称应将表名复制到剪贴板', async () => {
+    it('表-复制名称应将表名复制到剪贴板', async () => {
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
@@ -754,7 +754,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(clip.length).toBeGreaterThan(0);
     });
 
-    it('NCM-042: 表-复制 DDL 应执行并复制到剪贴板', async () => {
+    it('表-复制 DDL 应执行并复制到剪贴板', async () => {
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
@@ -770,7 +770,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       });
     });
 
-    it('NCM-043: 表-打开应显示表数据', async () => {
+    it('表-打开应显示表数据', async () => {
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
@@ -783,7 +783,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(bodyText).toContain('test_ctx_row');
     });
 
-    it('NCM-044: 表菜单应包含 truncate 和 drop 项', async () => {
+    it('表菜单应包含 truncate 和 drop 项', async () => {
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
@@ -795,7 +795,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       await dismissMenu();
     });
 
-    it('NCM-045: 表-ER 聚焦应打开 ER 图面板', async () => {
+    it('表-ER 聚焦应打开 ER 图面板', async () => {
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
       const menuVisible = await isMenuDisplayed();
       if (!menuVisible) {
@@ -804,7 +804,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       const text = await getMenuText();
       if (!text.includes(t('erDiagram.focusTable'))) {
         await dismissMenu();
-        console.log('No ER focus item, skipping NCM-045');
+        console.log('No ER focus item, skipping');
         return;
       }
       await clickMenuItem(t('erDiagram.focusTable'));
@@ -814,7 +814,7 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
       expect(bodyText.toLowerCase()).toContain('er');
     });
 
-    it('NCM-046: 删除表确认后应从导航树与数据库消失', async () => {
+    it('删除表确认后应从导航树与数据库消失', async () => {
       expect(await pgTableExists(pgDbSessionId, TEST_TABLE)).toBe(true);
 
       await rightClick(`[data-tree-node="table"][data-item-name="${TEST_TABLE}"]`);
@@ -841,10 +841,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
   // ── View Context Menu ────────────────────────────────────────────
 
   describe('视图节点上下文菜单', () => {
-    it('NCM-050: 右键视图显示菜单含必要项', async () => {
+    it('右键视图显示菜单含必要项', async () => {
       const viewNodes = await $$('[data-tree-node="view"]');
       if (viewNodes.length === 0) {
-        console.log('No views found, skipping NCM-050');
+        console.log('No views found, skipping');
         return;
       }
       await rightClick('[data-tree-node="view"]');
@@ -859,10 +859,10 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
   // ── Group Context Menu ───────────────────────────────────────────
 
   describe('分组节点上下文菜单', () => {
-    it('NCM-060: 右键分组显示菜单含重命名/删除', async () => {
+    it('右键分组显示菜单含重命名/删除', async () => {
       const groupHeaders = await $$('[data-group-header]');
       if (groupHeaders.length === 0) {
-        console.log('No group headers, skipping NCM-060');
+        console.log('No group headers, skipping');
         return;
       }
       await rightClick('[data-group-header]');

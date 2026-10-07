@@ -73,7 +73,7 @@ function rowClearsGate(row: TransferTableResult): boolean {
 }
 
 /**
- * §8.4: the one definition of "the mapping step may be left".
+ * The one definition of "the mapping step may be left".
  *
  * The Next gate and the post-prepare re-check both call this on the *rows they
  * hold at the moment they run*, so a rule written twice cannot drift into two

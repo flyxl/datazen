@@ -1,9 +1,8 @@
 /**
  * KV workspace slot resolution.
  *
- * The host may never import a concrete driver component (see
- * docs/development/driver-api-dependency-boundary.md §2.1.2 and guard rule R3);
- * driver components reach the host only through the codegen registry written by
+ * The host may never import a concrete driver component; driver components reach
+ * the host only through the codegen registry written by
  * `scripts/resolve-drivers.mjs`. This module is the single place that combines
  * the two gates the host requires before it renders a KV slot:
  *

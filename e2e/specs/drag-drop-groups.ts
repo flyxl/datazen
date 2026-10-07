@@ -4,7 +4,7 @@
  * The navigator uses `draggable` plus dragstart/dragover/drop/dragend handlers;
  * These tests dispatch synthetic DOM events, bypassing the macOS dragging
  * destination. They verify handlers and persistence, but cannot detect native
- * WKWebView interception. See the native drag exception in e2e-coverage.md.
+ * WKWebView interception.
  */
 import { expect, browser, $ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';

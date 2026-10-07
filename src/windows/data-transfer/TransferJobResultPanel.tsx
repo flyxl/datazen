@@ -4,7 +4,7 @@ import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import type { TransferJobRun } from '../../hooks/useTransferJobRun';
 
 /**
- * §2.3 / §6.1 / §7 / §10 result surface for Data Transfer.
+ * Result surface for Data Transfer.
  *
  * The rendering is shared; only the plumbing is transfer-specific. Everything
  * displayed comes from {@link MigrationJobVerdictPanel} and the verdict engine,
@@ -13,7 +13,7 @@ import type { TransferJobRun } from '../../hooks/useTransferJobRun';
  */
 export interface TransferJobResultPanelProps {
   run: TransferJobRun;
-  /** §9: the plan was spent, so the only legal way forward is a fresh review. */
+  /** The plan was spent, so the only legal way forward is a fresh review. */
   onReReview: () => void;
   testIdPrefix?: string;
 }
@@ -26,7 +26,7 @@ export function TransferJobResultPanel({
   // The verdict keys live in the lazily-loaded `sync` domain pack.
   useLocaleDomains(['sync']);
   const { applyView, failure, verdict } = run;
-  // §9: the plan identity travels with the verdict so the panel can name the
+  // The plan identity travels with the verdict so the panel can name the
   // exact plan that was spent. Same three fields for all three tools.
   const plan = {
     planId: applyView?.planId ?? null,
@@ -57,8 +57,8 @@ export function TransferJobResultPanel({
 
       {/*
         No verdict means the backend never admitted a Job to report on — the
-        §8 / §6.2 refusals land here. Drawing the panel anyway would imply a
-        run happened, so the refusal is shown on its own.
+        backend-scope and pipeline-budget refusals land here. Drawing the panel
+        anyway would imply a run happened, so the refusal is shown on its own.
       */}
       {verdict ? (
         <MigrationJobVerdictPanel

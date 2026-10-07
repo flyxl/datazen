@@ -113,7 +113,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
   });
 
   it('PIH-003: export_connections + import_connections_preview round-trip', async () => {
-    // Decision 3 (F4): both commands are merged path/dialog IPCs; raw paths go
+    // Both commands are merged path/dialog IPCs; raw paths go
     // through `overridePath`, which only webdriver builds accept.
     const count = await invokeBackend<number | null>('export_connections', {
       password: 'e2e-pih-password',

@@ -164,7 +164,7 @@ describe('ExtensionManagementPage', () => {
 
     render(<ExtensionManagementPage />);
 
-    // PRD §4.3: default filter is Workspace — theme-only plugins start hidden.
+    // Default filter is Workspace — theme-only plugins start hidden.
     expect(screen.getAllByTestId('extension-card')).toHaveLength(1);
     expect(screen.getByText('Bill Audit')).toBeInTheDocument();
     const workspaceChip = screen.getByTestId('extension-filter-workspace');

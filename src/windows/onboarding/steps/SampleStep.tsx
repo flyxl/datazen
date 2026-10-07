@@ -8,7 +8,7 @@ import { newId } from '../../../components/connection/shared';
 import { useConnectionStore } from '../../../stores/connectionStore';
 import { StepTag } from './WelcomeStep';
 
-/** Fixed identity of the seeded playground connection (see the journey proposal §4.3). */
+/** Fixed identity of the seeded playground connection. */
 export const SAMPLE_CONNECTION_NAME = 'Sample Playground';
 export const SAMPLE_CONNECTION_GROUP = 'Sample';
 

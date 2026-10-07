@@ -1,8 +1,7 @@
 /**
- * [tester] Validation / error-path coverage for the "save as tunnel" dialog
- * (see docs/architecture/backend/tunnel.md, "Saved tunnel entity"). The happy path
- * is covered elsewhere; these tests pin the empty-name, whitespace, retry and
- * overlong-name behaviour plus the rollback guarantee on failure.
+ * [tester] Validation / error-path coverage for the "save as tunnel" dialog. The
+ * happy path is covered elsewhere; these tests pin the empty-name, whitespace,
+ * retry and overlong-name behaviour plus the rollback guarantee on failure.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';

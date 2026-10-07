@@ -263,17 +263,17 @@ describe('Settings (SS-001~SS-006)', () => {
     await expect(await $('[data-testid="data-cleanup-run"]')).toBeDisplayed();
   });
 
-  // ── F1: SettingsPage in main window ──
+  // ── SettingsPage in main window ──
 
-  describe('F1 SettingsPage navigation (F1-E2E)', () => {
-    it('F1-E2E-001: menu:open-settings opens SettingsPage in main window', async () => {
+  describe('SettingsPage navigation', () => {
+    it('menu:open-settings opens SettingsPage in main window', async () => {
       await openSettingsInMainWindow();
       await expect(await $('[data-testid="settings-page"]')).toBeDisplayed();
       await expect(await $('[data-testid="settings-back"]')).toBeDisplayed();
       await expect(await $('[data-testid="workspace-nav-databases"]')).not.toBeDisplayed();
     });
 
-    it('F1-E2E-002: back button returns to main workspace shell', async () => {
+    it('back button returns to main workspace shell', async () => {
       await openSettingsInMainWindow();
       await backFromSettingsInMainWindow();
       await expect(await $('[data-testid="workspace-nav-databases"]')).toBeDisplayed();
@@ -281,7 +281,7 @@ describe('Settings (SS-001~SS-006)', () => {
       await expect(await $('[data-testid="settings-page"]')).not.toBeExisting();
     });
 
-    it('F1-E2E-003: menu:open-settings with section opens target nav', async () => {
+    it('menu:open-settings with section opens target nav', async () => {
       await openSettingsInMainWindow('ai');
       const aiNav = await $("[data-testid='settings-nav-ai']");
       await aiNav.waitForDisplayed({ timeout: 8000 });

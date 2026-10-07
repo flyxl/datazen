@@ -83,7 +83,7 @@ export type SchemaTreeContextMenuHandlers = {
   onTruncate?: () => void;
   onDrop?: () => void;
   onDropDatabase?: () => void;
-  /** F5: release this database's backend resources without closing the session. */
+  /** Release this database's backend resources without closing the session. */
   onCloseDatabase?: () => void;
   onViewErDiagram?: () => void;
   onNewSchema?: () => void;

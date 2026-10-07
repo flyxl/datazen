@@ -75,7 +75,7 @@ async function closeGlobalObjectSearch() {
  * Database browsing & data viewing tests.
  * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
-describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
+describe('数据库浏览模块', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -140,31 +140,31 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 工具栏 ──────────────────────────────────────────────────────
 
-  it('连接窗口应显示工具栏 (DB-001)', async () => {
+  it('连接窗口应显示工具栏', async () => {
     await expect(await $('[data-testid="navigator-refresh"]')).toBeDisplayed();
     await expect(await waitForNewQueryButton()).toBeDisplayed();
   });
 
-  it('工具栏应显示新建表按钮 (DB-001)', async () => {
+  it('工具栏应显示新建表按钮', async () => {
     await expect($("[data-testid='content-toolbar-new-table']")).toExist();
   });
 
-  it('应暂时隐藏全局对象搜索入口 (DB-008)', async () => {
+  it('应暂时隐藏全局对象搜索入口', async () => {
     expect(await $(`[data-testid='global-object-search-toggle']`).isExisting()).toBe(false);
   });
 
-  it('连接窗口状态栏应显示已连接和 PostgreSQL (DB-001)', async () => {
+  it('连接窗口状态栏应显示已连接和 PostgreSQL', async () => {
     await expect(await $(`span*=${t('connWin.connected')}`)).toBeDisplayed();
     expect(await $('body').getText()).toContain('PostgreSQL');
   });
 
   // ── 模式/表列表 ────────────────────────────────────────────────
 
-  it('左侧应显示数据库和表列表 (DB-001, DB-002)', async () => {
+  it('左侧应显示数据库和表列表', async () => {
     await waitForSchemaTreeLoaded();
   });
 
-  it('点击表名应打开数据标签页 (DB-002, DB-007)', async () => {
+  it('点击表名应打开数据标签页', async () => {
     const tableName = TEST_CHILD;
     await clickTableInSidebar(tableName);
     const dataTab = await $("[data-testid='sub-tab-data']");
@@ -172,7 +172,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await expect(dataTab).toBeDisplayed();
   });
 
-  it('应显示结构/数据/索引/外键/DDL 子标签 (DB-003~DB-005, DB-010)', async () => {
+  it('应显示结构/数据/索引/外键/DDL 子标签', async () => {
     for (const label of ['数据', '结构', '索引', '外键', 'DDL']) {
       await expect(await $(`button*=${label}`)).toBeDisplayed();
     }
@@ -180,7 +180,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 结构 tab ────────────────────────────────────────────────────
 
-  it('点击结构标签应显示字段信息 (DB-003)', async () => {
+  it('点击结构标签应显示字段信息', async () => {
     const structTab = await $("[data-testid='sub-tab-structure']");
     await structTab.click();
     await browser.pause(2000);
@@ -197,7 +197,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(hasStructure).toBe(true);
   });
 
-  it('结构标签应显示列名和数据类型 (DB-003)', async () => {
+  it('结构标签应显示列名和数据类型', async () => {
     const body = await $('body').getText();
     // Any real table will have at least one recognizable type
     const hasColumns =
@@ -213,7 +213,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 索引 tab（使用带索引的测试表）─────────────────────────────────
 
-  it('索引标签应显示索引列表 (DB-004)', async () => {
+  it('索引标签应显示索引列表', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await browser.pause(1500);
     await switchSubTab('indexes');
@@ -224,37 +224,37 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain('个索引');
   });
 
-  it('索引标签应显示主键索引 (DB-004)', async () => {
+  it('索引标签应显示主键索引', async () => {
     const body = await $('body').getText();
     expect(body).toContain('pkey');
     expect(body).toContain('id');
   });
 
-  it('索引标签应显示自定义索引 (DB-004)', async () => {
+  it('索引标签应显示自定义索引', async () => {
     const body = await $('body').getText();
     expect(body).toContain('idx_child_name');
     expect(body).toContain('name');
   });
 
-  it('索引标签应显示唯一索引 (DB-004)', async () => {
+  it('索引标签应显示唯一索引', async () => {
     const body = await $('body').getText();
     expect(body).toContain('idx_child_email');
     expect(body).toContain('email');
     expect(body).toContain('YES');
   });
 
-  it('索引标签应显示复合索引的多列 (DB-004)', async () => {
+  it('索引标签应显示复合索引的多列', async () => {
     const body = await $('body').getText();
     expect(body).toContain('idx_child_name_score');
     expect(body).toContain('score');
   });
 
-  it('索引标签应显示在表结构中编辑按钮 (DB-004)', async () => {
+  it('索引标签应显示在表结构中编辑按钮', async () => {
     const editBtn = await $("[data-testid='idx-edit-in-structure']");
     await expect(editBtn).toBeDisplayed();
   });
 
-  it('点击在表结构中编辑应切换到结构子标签 (DB-004a)', async () => {
+  it('点击在表结构中编辑应切换到结构子标签', async () => {
     const editBtn = await $("[data-testid='idx-edit-in-structure']");
     await editBtn.click();
     await browser.pause(800);
@@ -267,7 +267,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 外键 tab ────────────────────────────────────────────────────
 
-  it('外键标签应显示外键列表 (DB-005)', async () => {
+  it('外键标签应显示外键列表', async () => {
     await switchSubTab('foreignKeys');
     await browser.pause(2000);
 
@@ -276,7 +276,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain('1 个外键');
   });
 
-  it('外键标签应显示外键详情 (DB-005)', async () => {
+  it('外键标签应显示外键详情', async () => {
     const body = await $('body').getText();
     expect(body).toContain('fk_parent');
     expect(body).toContain('parent_id');
@@ -286,7 +286,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── DDL tab ─────────────────────────────────────────────────────
 
-  it('点击 DDL 标签应显示建表语句 (DB-010)', async () => {
+  it('点击 DDL 标签应显示建表语句', async () => {
     const ddlTab = await $('button*=DDL');
     await ddlTab.click();
     await browser.pause(2000);
@@ -294,12 +294,12 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain('CREATE');
   });
 
-  it('DDL 标签应有复制按钮 (DB-010)', async () => {
+  it('DDL 标签应有复制按钮', async () => {
     const copyBtn = await $(`button*=${t('common.copy')}`);
     await expect(copyBtn).toBeDisplayed();
   });
 
-  it('点击复制按钮后应显示已复制 (DB-010)', async () => {
+  it('点击复制按钮后应显示已复制', async () => {
     const copyBtn = await $(`button*=${t('common.copy')}`);
     await copyBtn.click();
     await browser.pause(500);
@@ -312,7 +312,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 数据 tab ────────────────────────────────────────────────────
 
-  it('切回数据标签应正常显示 (DE-001)', async () => {
+  it('切回数据标签应正常显示', async () => {
     const dataTab = await $("[data-testid='sub-tab-data']");
     await dataTab.click();
 
@@ -329,7 +329,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 右键菜单 ──────────────────────────────────────────────────
 
-  it('数据标签右键菜单应包含复制单元格 (CTX-001)', async () => {
+  it('数据标签右键菜单应包含复制单元格', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await browser.pause(1500);
     await switchSubTab('data');
@@ -349,7 +349,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeWebContextMenu();
   });
 
-  it('结构标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-002)', async () => {
+  it('结构标签对应的表节点右键菜单应包含打开和 SQL 入口', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('structure');
     await browser.pause(1000);
@@ -371,7 +371,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeWebContextMenu();
   });
 
-  it('索引标签对应的表节点右键菜单应包含打开和 SQL 入口 (CTX-003)', async () => {
+  it('索引标签对应的表节点右键菜单应包含打开和 SQL 入口', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('indexes');
     await browser.pause(1000);
@@ -393,7 +393,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeWebContextMenu();
   });
 
-  it('外键标签对应的表节点右键菜单不应包含数据专属项 (CTX-004)', async () => {
+  it('外键标签对应的表节点右键菜单不应包含数据专属项', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('foreignKeys');
     await browser.pause(1000);
@@ -410,7 +410,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeWebContextMenu();
   });
 
-  it('DDL 标签右键菜单应包含复制 DDL (CTX-005)', async () => {
+  it('DDL 标签右键菜单应包含复制 DDL', async () => {
     await switchSubTab('ddl');
     await browser.pause(2000);
 
@@ -425,7 +425,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeWebContextMenu();
   });
 
-  it('索引标签右键菜单打开表应回到数据子标签 (CTX-006)', async () => {
+  it('索引标签右键菜单打开表应回到数据子标签', async () => {
     await clickTableInSidebar(TEST_CHILD);
     await switchSubTab('indexes');
     await browser.pause(1000);
@@ -452,8 +452,8 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 搜索表 ─────────────────────────────────────────────────────
 
-  // Global object search dialog is not exposed in the navigator toolbar yet (CM-009).
-  it.skip('全局对象搜索应能输入文字并定位测试表 (DB-008)', async () => {
+  // Global object search dialog is not exposed in the navigator toolbar yet.
+  it.skip('全局对象搜索应能输入文字并定位测试表', async () => {
     await $(`[data-testid='global-object-search-toggle']`).click();
     const search = await $(`[data-testid='global-object-search-input']`);
     await search.setValue(TEST_CHILD);
@@ -465,7 +465,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await closeGlobalObjectSearch();
   });
 
-  it.skip('全局对象搜索结果应提供生成 SQL 的快捷动作 (DB-008)', async () => {
+  it.skip('全局对象搜索结果应提供生成 SQL 的快捷动作', async () => {
     await $(`[data-testid='global-object-search-toggle']`).click();
     const search = await $(`[data-testid='global-object-search-input']`);
     await search.setValue(TEST_CHILD);
@@ -490,7 +490,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     );
   });
 
-  it.skip('全局对象搜索清空后应恢复结果列表 (DB-008)', async () => {
+  it.skip('全局对象搜索清空后应恢复结果列表', async () => {
     await $(`[data-testid='global-object-search-toggle']`).click();
     const search = await $(`[data-testid='global-object-search-input']`);
     await search.setValue('nonexistent_xyz_table_12345');
@@ -509,7 +509,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   // ── 新建查询 ───────────────────────────────────────────────────
 
-  it('应能打开新建查询标签 (SQ-003)', async () => {
+  it('应能打开新建查询标签', async () => {
     const newQueryBtn = await waitForNewQueryButton();
     await newQueryBtn.click();
     // 运行按钮是图标式工具栏按钮（无「执行」文字），按 data-testid 定位；
@@ -519,7 +519,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
   });
 
-  it('新建查询不应弹出对象加载补全框 (SQ-AC-001)', async () => {
+  it('新建查询不应弹出对象加载补全框', async () => {
     const newQueryBtn = await waitForNewQueryButton();
     await newQueryBtn.click();
     let loadingHint = false;

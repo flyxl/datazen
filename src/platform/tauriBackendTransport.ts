@@ -169,7 +169,7 @@ export function createDesktopPlatformServices(): PlatformServices {
     },
 
     openDirectoryWithDialog(_input: OpenDirectoryInput): Promise<OpenedDirectory | null> {
-      // §7.1 declares this capability, but no `open_directory_with_dialog`
+      // The capability is declared here, but no `open_directory_with_dialog`
       // command is registered on the Rust side yet. It is declared and not
       // implemented rather than quietly omitted, because the contract is what
       // future backends bind against; and it throws rather than invoking a
@@ -195,7 +195,7 @@ export function createDesktopPlatformServices(): PlatformServices {
 /**
  * Bind the desktop backend and select it.
  *
- * Called by the app entry before first paint (§7.3), and lazily by the
+ * Called by the app entry before first paint, and lazily by the
  * transitional driver-sdk path. Idempotent by construction: a second call
  * replaces the binding, so tests can rebind freely.
  */

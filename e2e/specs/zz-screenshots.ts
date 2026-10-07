@@ -779,8 +779,8 @@ async function selectQueryPanelDatabase(dbName: string) {
 
 /**
  * Verify the primary demo database is reachable so SQL / DataTable panels
- * query demo_sales (F1: list_catalog pins the database explicitly — the session
- * is switched lazily by query/stream/explain carrying `database`).
+ * query demo_sales (`list_catalog` pins the database explicitly — the session is
+ * switched lazily by query/stream/explain carrying `database`).
  */
 async function pinDemoPgDatabase() {
   const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });

@@ -1,5 +1,5 @@
 /**
- * Host-side postMessage bridge for sandboxed UI wapp iframes (PRD §3).
+ * Host-side postMessage bridge for sandboxed UI wapp iframes.
  *
  * Envelope (both directions):
  *   { ch:'datazen-wapp', type, reqId?, target:'host', payload? }
@@ -145,7 +145,7 @@ const API_ROUTES: Record<string, WappPermission | null> = {
 };
 
 /**
- * Own-property route lookup (BUG-F6-01): prototype members like
+ * Own-property route lookup: prototype members like
  * `constructor`/`toString` must be treated as unknown APIs (E_NOT_FOUND),
  * never resolve through the record's prototype chain to E_PERMISSION.
  */

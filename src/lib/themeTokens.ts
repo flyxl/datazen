@@ -1,5 +1,5 @@
 /**
- * Theme token contract shared with UI extensions (PRD §4.4).
+ * Theme token contract shared with UI extensions.
  *
  * `THEME_TOKENS` lists the CSS custom property names an extension may consume:
  * the full `--c-*` semantic color set (styles/themes.css) and the full

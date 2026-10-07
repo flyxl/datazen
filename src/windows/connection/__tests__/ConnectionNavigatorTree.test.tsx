@@ -688,7 +688,7 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
     fireEvent.click((await findByText('users')).closest('button')!);
 
     await waitFor(() => {
-      // F1: no use_database IPC — activation only moves the local context.
+      // No use_database IPC at all — activation only moves the local context.
       expect(activeSchema()?.currentDatabase).toBe('db_a');
     });
     expect(onSelectTable).toHaveBeenCalledWith('users', null, 'db_a');
@@ -2023,7 +2023,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     });
   });
 
-  it('F1-BUG-005: connection refresh restores expanded object categories', async () => {
+  it('connection refresh restores expanded object categories', async () => {
     const { container, findByText } = await renderWithSqlite(
       [{ name: 'settings', tableType: 'table', schema: undefined }],
       {},
@@ -2054,7 +2054,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
   });
 
-  it('F1-BUG-005: single-db database-node refresh restores expanded categories', async () => {
+  it('single-db database-node refresh restores expanded categories', async () => {
     const { container, findByText } = await renderWithSqlite(
       [{ name: 'settings', tableType: 'table', schema: undefined }],
       {},

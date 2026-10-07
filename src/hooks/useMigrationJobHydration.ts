@@ -1,10 +1,10 @@
 /**
  * Per-window job hydration for the three migration windows.
  *
- * Mounts with a job-center-first read (§8): listJobs → getJob. Re-subscribing
+ * Mounts with a job-center-first read: listJobs → getJob. Re-subscribing
  * to an active job happens through `watchJob` if the window opts in.
  *
- * Unmount rule (§8): the cleanup only flags the loop as cancelled and stops
+ * Unmount rule: the cleanup only flags the loop as cancelled and stops
  * the watch. No `cancelJob`, `removeJob` or session `release` call may be
  * made here — a window closing is an unsubscribe, never a resource release.
  */

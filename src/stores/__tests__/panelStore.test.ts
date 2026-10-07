@@ -128,7 +128,7 @@ describe('panelStore', () => {
     useSchemaStore.setState({ activeDbSessionId: dbSessionId, schemas });
   }
 
-  // ── Query execution carries the panel's database (F1 BUG-001) ──
+  // ── Query execution carries the panel's database ──
 
   it('executeQuery forwards schemaStore currentDatabase of the panel session', async () => {
     seedCurrentDatabase('sess-1', 'db_b');
@@ -202,7 +202,7 @@ describe('panelStore', () => {
     );
   });
 
-  it('executeQuery forwards the F7 currentSchema of the panel session (PG)', async () => {
+  it('executeQuery forwards the currentSchema of the panel session (PG)', async () => {
     seedCurrentDatabase('sess-1', 'db_b', 'sales');
     const panel: Panel = {
       ...base,

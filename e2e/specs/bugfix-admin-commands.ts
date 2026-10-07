@@ -140,8 +140,8 @@ describe('MySQL admin commands (IPC)', () => {
   it('should show new DB after simulated loadForConnection refresh', async function () {
     if (!connId) return this.skip();
 
-    // Simulate the frontend refresh flow: list_databases is session-neutral
-    // (F1 removed use_database) → must include the new DB.
+    // Simulate the frontend refresh flow: list_databases carries no
+    // use_database step at all → must include the new DB.
     const dbs = await listDatabases({ dbSessionId: connId });
     expect(dbs).toContain(MYSQL_TEST_DB);
     expect(dbs.length).toBeGreaterThanOrEqual(2);
@@ -158,7 +158,7 @@ describe('MySQL admin commands (IPC)', () => {
   it('should list tables for a specific database via explicit param', async function () {
     if (!connId) return this.skip();
 
-    // F1: list_catalog takes the database explicitly — no use_database needed.
+    // list_catalog takes the database explicitly — no use_database needed.
     const tables = await readCatalog({
       dbSessionId: connId,
       database: MYSQL_TEST_DB,
@@ -273,7 +273,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    // Simulate frontend loadTables flow: list_catalog with explicit database (F1)
+    // Simulate frontend loadTables flow: list_catalog with explicit database
     const tablesResult = await readCatalog({ dbSessionId: connId, database: PG_DB });
 
     // Verify empty schemas are returned independently from relations.
@@ -482,7 +482,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    // Pin a query command to another catalog (F1 database pin).
+    // Pin a query command to another catalog (explicit database pin).
     await invokeBackend('execute_driver_command', {
       request: {
         dbSessionId: connId,

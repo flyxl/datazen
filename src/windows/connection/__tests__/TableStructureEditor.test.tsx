@@ -222,17 +222,17 @@ const ALTER_SCHEMA = {
   indexes: [],
 };
 
-describe('TableStructureEditor mount (F1: no use_database IPC)', () => {
+describe('TableStructureEditor mount (no use_database IPC)', () => {
   it('renders without a session database switch when database prop is set', async () => {
     await mountAndLoad({});
 
-    // F1 removed the useDatabase-on-mount behavior; the editor must come up
+    // The useDatabase-on-mount behavior was removed; the editor must come up
     // directly (queries pin the database explicitly instead).
     expect(screen.getByTestId('column-table')).toBeInTheDocument();
   });
 });
 
-describe('TableStructureEditor targets the panel database (F1 BUG-003)', () => {
+describe('TableStructureEditor targets the panel database', () => {
   it('previews DDL against the target database', async () => {
     await mountAndLoad({});
     fillTableName('t_f1');

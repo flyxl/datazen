@@ -1,26 +1,26 @@
 /**
- * Host-owned AI context for a KV panel (W3-A §1.3, PRD §3.4).
+ * Host-owned AI context for a KV panel.
  *
  * Until now a KV panel rendered the toolbar's AI button exactly like a SQL panel,
  * while the assistant only ever received `contextTables` — an entry point that
- * opens but carries no Redis fact is the half-broken state PRD §3.4 bans, so this
- * module owns both halves of the fix: the one rule that decides whether the
- * assistant has anything host-owned to say, and the block it says.
+ * opens but carries no Redis fact is the half-broken state, so this module owns
+ * both halves of the fix: the one rule that decides whether the assistant has
+ * anything host-owned to say, and the block it says.
  *
  * **Facts only, and only facts the host really owns**: the connection label, the
  * session id, the database the panel is bound to and the key the panel's relay
- * reports as selected. PRD §3.4 also names a type / TTL / size / value digest, but
- * those come from `key_object_info`, which the driver's own key-props sidebar
+ * reports as selected. A type / TTL / size / value digest is equally a Redis fact,
+ * but those come from `key_object_info`, which the driver's own key-props sidebar
  * fetches inside `packages/drivers/redis/**`; the frozen `KvSlotState` shape carries
  * the scalars the status bar renders, not a key snapshot. Reaching them
  * from here would mean either duplicating a driver command or building a cache in
- * front of the relay, and both are ruled out (BUG-005: state belongs to the UI
- * segment that owns it). The driver Console buffer is equally off-limits, so it is
+ * front of the relay, and both are ruled out — that state belongs to the UI
+ * segment that owns it. The driver Console buffer is equally off-limits, so it is
  * never injected.
  *
  * The block is a token list (`selected_key=…`), not prose: it is prompt payload,
  * not UI copy, so it must not bend with the interface language and no test may
- * assert English literals through it (PRD §7-6). The user-facing label lives in
+ * assert English literals through it. The user-facing label lives in
  * i18n (`redis.ai.context.*`) and the value shown next to it is data.
  *
  * The companion subscription lives in `src/hooks/useKvSlotSelectedKey.ts`, which
@@ -52,7 +52,7 @@ function selectedKeyNameOf(facts: Pick<KvAiFacts, 'selectedKey'>): string | null
 }
 
 /**
- * The §1.3 binary rule in one place: a KV panel has host-owned AI context only
+ * The binary rule in one place: a KV panel has host-owned AI context only
  * while a key is in scope. Callers must either act on it or hide the affordance —
  * injecting an empty block is the half-broken state this exists to remove.
  */

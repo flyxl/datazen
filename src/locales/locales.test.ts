@@ -133,8 +133,7 @@ describe('locales', () => {
     // driver UI meta. The host never aggregates driver keys itself.
     await import('../../packages/drivers/redis/locales');
     // Resolution contract only: which copy a driver key maps to belongs to the
-    // driver's own en.ts, so no English value is pinned here (see
-    // docs/development/interaction-and-testing-principles.md).
+    // driver's own en.ts, so no English value is pinned here.
     for (const key of ['redis.batchDelete', 'redis.console'] as const) {
       const fromSnapshot = getAllTranslations('en')[key];
       expect(fromSnapshot?.length, key).toBeGreaterThan(0);
