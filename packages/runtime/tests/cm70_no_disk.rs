@@ -1,7 +1,6 @@
-//! 令牌与回执**不落盘**的反面证据（CM-70 / A8）。
+//! 令牌与回执**不落盘**的反面证据。
 //!
-//! `connection-management.md` §16.7 中 `**CM-70 过期幂等键与记录删除（H/W1）**`
-//! 的「- 断言」一条是「运行时 receipt/token 不落盘」。
+//! 判据「- 断言」一条是「运行时 receipt/token 不落盘」。
 //! 这句话光靠读代码不算证据，所以本文件给出三条互相独立的反面证据：
 //!
 //! 1. **源码扫描**：`src/gateway/**` 里不出现任何落盘手段（文件系统、路径、SQLite、
@@ -9,7 +8,7 @@
 //!    任何写盘 API。另有 `every_gateway_source_file_is_scanned`：新增文件忘了登记进
 //!    `SOURCES`，证据会**悄悄失效**——这一条专门防这个。
 //! 2. **文件系统对照**：先把 `TMPDIR` 指向一个**私有的、启动时为空**的目录，跑完整整一轮
-//!    CM-70（签发 → 受理 → 下发 → 重放 → 过期 → 保留期清扫 → 过期后重放 → 结局未知围栏），
+//!    整轮过期重放（签发 → 受理 → 下发 → 重放 → 过期 → 保留期清扫 → 过期后重放 → 结局未知围栏），
 //!    之后断言该目录**仍然是空的**，并且 crate 目录的条目集合**一个都没多**。
 //!    判据是「跑完之后这里仍然是空的」，**与文件名无关**——落盘产物不需要自报家门。
 //! 3. **可观测投影**：签名密钥与令牌原文不出现在令牌层任何一处 `Debug` 输出里，
@@ -17,7 +16,7 @@
 //!
 //! 门禁本身也要能证明自己有效，所以另有一条用例**故意栽一个泄漏**并断言探测器会响。
 //!
-//! 第 3 条**不**声称「任何 `Debug` 都不含令牌」：CM-54 那条冻结的账本作用域
+//! 第 3 条**不**声称「任何 `Debug` 都不含令牌」：冻结的账本作用域
 //! （`IdempotencyScope`）按设计就带着 `idempotencyKey`，也就是令牌本身，它在内存里。
 //! 「只在内存」这句话由第 2 条兜底，不靠 `Debug` 形状来断言——那是另一种性质的主张。
 //!
@@ -55,7 +54,7 @@
 //! 跨目录的同一轮裁定与机器闸门见 `tests/cm70_panic_redaction_guard.rs`。
 
 // 本二进制只用到夹具的一部分（`tests/gateway_fixtures` 同时服务 `gateway_contract`
-// 与 CM-70 主二进制），按 `registry_*` 那组测试二进制同样的做法把整份夹具静音，
+// 与主二进制），按 `registry_*` 那组测试二进制同样的做法把整份夹具静音，
 // 免得凭空多出几十条「夹具没被用到」的编译告警——那种告警只会训练人忽略告警。
 #![allow(dead_code)]
 
@@ -75,6 +74,9 @@ use gateway_fixtures as fx;
 /// 网关层的源码全集。路径相对本文件（`packages/runtime/tests/`）。
 const SOURCES: &[(&str, &str)] = &[
     ("mod.rs", include_str!("../src/gateway/mod.rs")),
+    // 从 mod.rs 搬出来的 ExecutionGateway 固有方法。必须登记：漏登记不是「少测一个文件」，
+    // 而是 `gateway_source_never_touches_the_filesystem` 的反面证据在这半个网关上直接失效。
+    ("execution.rs", include_str!("../src/gateway/execution.rs")),
     ("request.rs", include_str!("../src/gateway/request.rs")),
     (
         "owner_binding.rs",
@@ -272,7 +274,7 @@ impl Drop for PrivateTempRoot {
     }
 }
 
-/// 跑完整整一轮 CM-70，返回这一轮用过的令牌原文（供投影那条证据检查）。
+/// 跑完整整一轮过期重放，返回这一轮用过的令牌原文（供投影那条证据检查）。
 async fn full_cm70_cycle(h: &fx::TokenHarness) -> String {
     let token = fx::issue_token(&h.tokens, fx::TOKEN_ISSUED_AT_NANOS);
     let request = fx::request_with_key(fx::REVISION, &token);
@@ -326,7 +328,7 @@ async fn full_cm70_cycle(h: &fx::TokenHarness) -> String {
     token
 }
 
-/// 断言 2：跑完整轮 CM-70 之后，私有临时根与 crate 目录都没有多出任何东西。
+/// 断言 2：跑完整轮过期重放之后，私有临时根与 crate 目录都没有多出任何东西。
 #[tokio::test]
 async fn a_full_cm70_cycle_leaves_nothing_on_disk() {
     let temp = PrivateTempRoot::new("cycle");

@@ -2,16 +2,15 @@
 //!
 //! ## 为什么这些字段是「少的几个」不行
 //!
-//! `fake-runtime-fixtures.md` §11.3 把每轮必须输出的东西列全了：N、p50、p90、p95、p99、
-//! 最大值、失败数、排队数。少输出任何一项，读者就没法判断这一轮是不是在同一个实验里。
-//! 同一节还钉死了两条口径，结构上体现为字段的分离：
+//! 每轮必须输出的东西列全了：N、p50、p90、p95、p99、最大值、失败数、排队数。
+//! 少输出任何一项，读者就没法判断这一轮是不是在同一个实验里。口径上钉死了两条，
+//! 结构上体现为字段的分离：
 //!
 //! ## N 是「获准且未排队」的请求数，不是样本条数
 //!
-//! §11.3（`fake-runtime-fixtures.md:570`）的口径是「**不删除失败样本**：失败、超时、
-//! 被取消的样本数与占比必须与分位数一起输出，**禁止只统计成功样本**」，唯一的豁免在
-//! `:569`：「被 `QueueFull` 拒绝或排队等待的请求」不进入 p95 样本（`:568` 是 `ceil(0.95*M)`
-//! 与「无缺口时 `M = N`」那一条）。
+//! 口径是「**不删除失败样本**：失败、超时、被取消的样本数与占比必须与分位数一起输出，
+//! **禁止只统计成功样本**」，唯一的豁免是「被 `QueueFull` 拒绝或排队等待的请求」不进入
+//! p95 样本（p95 取 `ceil(0.95*M)`，且「无缺口时 `M = N`」）。
 //!
 //! 所以本文件把三个数**分开**记，谁也不顶替谁：
 //!
@@ -48,13 +47,13 @@ use crate::plan::{BenchPlan, GATE_P95_NANOS};
 ///
 /// ## 为什么条数必须长在这个结构里，而不是在它旁边另立一列
 ///
-/// §11.3（`fake-runtime-fixtures.md:572`）要求产物与校验都记录「喂给 p95 的样本条数」，
-/// 理由写在那里：「把最大值丢掉后重算的近序位分位数可能一模一样，值看不出、条数看得出」。
+/// 产物与校验都必须记录「喂给 p95 的样本条数」，理由是：「把最大值丢掉后重算的近序位
+/// 分位数可能一模一样，值看不出、条数看得出」。
 /// 但**另立一列并不足以做到那件事**，上一轮就是这么写的，仍然失守，失守分两层：
 ///
 /// 1. **那一列与分位数是同一个变量的两次求值**（`totals.len()` 与 `Percentiles::of(&totals)`）。
 ///    「输入条数 == 实测条数」这条断言比的还是 `totals`，所以切片一旦被做短，两边**一起**短，
-///    断言照样成立。在 §11.1 的真实样本量（每轮 10000）上它必然失守：nearest-rank 取第
+///    断言照样成立。在真实样本量（每轮 10000）上它必然失守：nearest-rank 取第
 ///    `ceil(0.95*M)` 项，`ceil(0.95*10000) = 9500`，掉一条既不改名次也不改值——**值比和条数比
 ///    同时看不见**。小样本（4 条）上值比之所以能红，是因为 `ceil(0.95*4) = 4` 恰好落在最大值上，
 ///    那是巧合，不是守卫。
@@ -119,7 +118,7 @@ impl Percentiles {
     }
 }
 
-/// 逐请求原始计时：两段纳秒值 + 轮次 + 并发度（§11.5 要求的 `raw` 段）。
+/// 逐请求原始计时：两段纳秒值 + 轮次 + 并发度（产物里的 `raw` 段）。
 ///
 /// 这是产物里唯一能复算分位数的材料。汇总报告可以丢，`raw` 丢了就只能重跑整个基准。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -131,7 +130,7 @@ pub struct RawSample {
     pub registration_nanos: u64,
 }
 
-/// 两段之和。**逐请求先求和，再对和取分位数**——不是两个分位数相加（§11.3）。
+/// 两段之和。**逐请求先求和，再对和取分位数**——不是两个分位数相加。
 pub fn total_nanos(sample: &RawSample) -> u64 {
     sample
         .gateway_nanos
@@ -146,7 +145,7 @@ pub fn total_nanos(sample: &RawSample) -> u64 {
 pub struct SampleOutcome {
     /// 本轮发出的请求数。失败占比的分母。
     pub requested: usize,
-    /// **获准（受理成功）且未排队**的请求数 —— §11.3 的 N，**含随后失败的**。
+    /// **获准（受理成功）且未排队**的请求数 —— N，**含随后失败的**。
     /// 恒等式：`admitted == completed + dispatch_failed + replays`。
     pub admitted: usize,
     /// 走完「受理 → 派发 → 登记」全流程、**两段计时都打上了终点**的请求数。
@@ -157,7 +156,7 @@ pub struct SampleOutcome {
     /// 获准但派发失败。已计入 N（`admitted`），但驱动一失败第二段终点就打不出来，
     /// 因此**没有样本**，只进 [`Self::unmeasured_failures`]；绝不编一个时长补进去。
     pub dispatch_failed: usize,
-    /// 进入排队等待的请求数。等待时长另报分位数（§11.3）。
+    /// 进入排队等待的请求数。等待时长另报分位数。
     pub queued: usize,
     /// 幂等重发数。规格基准里恒为 0：非 0 说明幂等键构造有问题，
     /// 两次请求会落在同一个 executionId 上，事件流随即被判重复，整轮数据不可用。
@@ -169,12 +168,12 @@ pub struct SampleOutcome {
 }
 
 impl SampleOutcome {
-    /// 失败数（§11.3「失败数单列」）。判定式要求它为 0。
+    /// 失败数（必须是单独一列）。判定式要求它为 0。
     pub fn failures(&self) -> usize {
         self.rejected + self.dispatch_failed
     }
 
-    /// 失败占比（§11.3 要求「样本数**与占比**」与分位数一起输出）。
+    /// 失败占比（失败数**与占比**必须与分位数一起输出）。
     /// 分母是本轮发出的请求数；`requested == 0` 时无占比（`None`），不是 0%。
     pub fn failure_ratio(&self) -> Option<f64> {
         if self.requested == 0 {
@@ -215,16 +214,16 @@ pub struct RoundOutcome {
     /// 本轮真实墙钟耗时（纳秒）。**不参与门禁**：它含 fake 命令的虚拟 10 毫秒与
     /// 事件投影，只用来解释量级，不是被测的「网关附加耗时」。
     pub wall_time_nanos: u64,
-    /// 本轮事件投影（重复/丢失必须为 0，§11.1 性能门槛）。
+    /// 本轮事件投影（重复/丢失必须为 0，这是性能门槛）。
     pub event_projection: ProjectionReport,
 }
 
 impl RoundOutcome {
-    /// §11.3 要求输出的 N：**获准且未排队**的请求数，**含随后失败的**。
+    /// 必须输出的 N：**获准且未排队**的请求数，**含随后失败的**。
     ///
-    /// 它**不是** `samples.len()`。失败样本不删除（`:570`），它们仍留在 N 里，只是分位数
+    /// 它**不是** `samples.len()`。失败样本不删除，它们仍留在 N 里，只是分位数
     /// 算不到它们——那一批的去处是 [`Self::unmeasured_failures`]。拿 `samples.len()` 当 N
-    /// 就是「只统计成功样本」，正是 §11.3 明文禁止的那件事。
+    /// 就是「只统计成功样本」，正是明文禁止的那件事。
     pub fn n(&self) -> usize {
         self.outcome.admitted
     }
@@ -234,7 +233,7 @@ impl RoundOutcome {
     /// 它**不是** [`Self::measured`] 的另一份抄写。上一轮正是这么写的（字段
     /// `percentile_input: totals.len()`），而 `totals.len()` 与 `Percentiles::of(&totals)`
     /// 是**同一个变量的两次求值**：切片一旦被做短，两边一起短，「输入条数 == 实测条数」
-    /// 这条断言照样绿。在 §11.1 的真实样本量上这必然失守——每轮 10000 条时掉一条既不改变
+    /// 这条断言照样绿。在真实样本量上这必然失守——每轮 10000 条时掉一条既不改变
     /// `ceil(0.95*M) = 9500` 这个名次，也不改变落在名次上的那个值。
     ///
     /// 所以它现在是**从 [`Self::percentiles`] 里读出来的派生值**，不是可单独赋值的字段：
@@ -270,7 +269,7 @@ impl RoundOutcome {
         self.outcome.failure_ratio()
     }
 
-    /// 逐轮门禁：p95 ≤ 10 毫秒（§11.3），**且**失败数为 0（§11.6），
+    /// 逐轮门禁：p95 ≤ 10 毫秒，**且**失败数为 0，
     /// **且**没有任何获准请求掉出分位数输入集合。
     ///
     /// 「没测到」返回 false：空样本集的 p95 是 `None`，不是 0，不会被当成通过。
@@ -295,7 +294,7 @@ impl RoundOutcome {
     /// 5. 出现幂等重发（同一 executionId 会收两遍事件，整轮数据不可用）；
     /// 6. **分位数输入条数 ≠ 样本条数**（算 p95 的那个向量被悄悄做短了）。
     ///
-    /// 第 2、4 条是**承重**的那两条。R1 缺陷的形状正是「`completed == samples.len()`
+    /// 第 2、4 条是**承重**的那两条。「`completed == samples.len()`
     /// 依然成立（第 1 条放行），但 N 只剩下成功样本数」——第 2 条把它拦下；
     /// 而「知道有失败打不出终点，却干脆不记这个缺口」这种更省事的写法，
     /// 第 4 条把它拦下。两条都过不了的账，才允许拿去算 p95。
@@ -305,7 +304,7 @@ impl RoundOutcome {
     /// 是因为分位数的输入条数与分位数值**长在同一个结构里**、由 [`Percentiles::of`] 在
     /// 同一次求值上取自同一个切片——两边不同源的状态根本写不出来。**不需要**额外一列
     /// 去盯，也不**能**靠盯一条断言守住：上一轮正是把条数另记一列并配一条
-    /// `percentile_input == measured` 断言，在 §11.1 的真实样本量（每轮 10000）上两条同时放行。
+    /// `percentile_input == measured` 断言，在真实样本量（每轮 10000）上两条同时放行。
     pub fn sample_count_mismatch(&self) -> bool {
         let measured = self.measured();
         let unmeasurable = self.outcome.dispatch_failed + self.outcome.replays;
@@ -320,22 +319,22 @@ impl RoundOutcome {
 
 /// 网关侧的执行台账对账（`applied == admitted − completed`）。
 ///
-/// §11.5 要求 journal 摘要包含 permit 收支对账（§5.3）使基准兼作泄漏检测。
+/// journal 摘要必须包含 permit 收支对账，使基准兼作泄漏检测。
 /// **诚实的边界**：网关路径上没有预算台账（`ExecutionGateway` 不持有 `BudgetLedger`），
 /// 因此基准自己算不了 permit 收支；它能算的是执行台账的收支。
 /// 真正的 permit 对账在压力半（`tests/cm60_pressure_drain.rs` 的 `ResourceJournal`，
-/// 在**每一个** connect/close/permit 变化点断言），§11.4 要求压力与延迟分开跑。
+/// 在**每一个** connect/close/permit 变化点断言），压力与延迟要求分开跑。
 /// 这一块把那个位置原样记进产物，让读产物的人不必再回去搜。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PermitReconciliation {
     /// 网关执行台账的收支是否平（终态 outstanding 必须为 0）。
     pub gateway_ledger_balanced: bool,
-    /// 压力半的 permit 对账由谁承担、怎么复现（§11.4 + §5.3）。
+    /// 压力半的 permit 对账由谁承担、怎么复现。
     pub budget_permit_ledger_carrier: String,
     pub budget_permit_ledger_command: String,
 }
 
-/// 事件与执行台账的摘要（§11.5 的 `journal` 段）。
+/// 事件与执行台账的摘要（产物里的 `journal` 段）。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ExecutionJournal {
     pub admitted: usize,
@@ -374,7 +373,7 @@ fn ratio_text(ratio: Option<f64>) -> String {
 /// 一次基准跑完的结论。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Verdict {
-    /// 计划是否逐字等于 §11.1。非 false 时**不得**输出「达标」。
+    /// 计划是否逐字等于规格计划。为 false 时**不得**输出「达标」。
     pub conforms_to_spec: bool,
     pub gate_p95_nanos: u64,
     pub rounds_evaluated: usize,
@@ -391,7 +390,7 @@ pub struct Verdict {
     pub unmeasured_failures_total: usize,
     pub event_projection_clean: bool,
     pub sample_counts_match: bool,
-    /// 门禁本身是否成立（§11.6 的判定式）。
+    /// 门禁本身是否成立（判定式）。
     pub gate_passed: bool,
     /// 逐字结论行，供 stdout 与产物共用同一句措辞。
     pub conclusions: Vec<String>,
@@ -401,7 +400,7 @@ pub struct Verdict {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct BenchRun {
     pub plan: BenchPlan,
-    /// 计划**形状**是否逐字等于 §11.1 的规格计划。它只看 [`BenchPlan`]，不看是否开了
+    /// 计划**形状**是否逐字等于规格计划。它只看 [`BenchPlan`]，不看是否开了
     /// 故障注入——注入不改变计划的形状，它让**判定变红**（`gate_passed=false`）。
     /// 两者是不同的问题：前者是「这次跑的规模是不是判据那个规模」，后者是「结果是否成立」。
     pub conforms_to_spec: bool,
@@ -410,7 +409,7 @@ pub struct BenchRun {
     pub inject_failure_every: u64,
     /// **声明值**（命令行注入），不是探测值。字段名因此叫 `declared_*`：
     /// 产物里写着一个数，不等于这个数被测量过。
-    /// §11.6 要求 `environment` 段足以让照着产物的人不必回头猜环境——同一段里另有
+    /// `environment` 段必须足以让照着产物的人不必回头猜环境——同一段里另有
     /// 真正探测出来的 `detected_parallelism`（`report::Environment`）。
     pub declared_vcpus: u32,
     pub declared_memory_bytes: u64,
@@ -435,7 +434,7 @@ impl BenchRun {
         self.rounds.iter().filter(|r| r.passes_gate()).count()
     }
 
-    /// 最差一轮的 p95（不是平均、不是最好的一轮——§11.3 逐轮判定的理由）。
+    /// 最差一轮的 p95（不是平均、不是最好的一轮——逐轮判定的理由）。
     pub fn worst_round_p95_nanos(&self) -> Option<u64> {
         self.rounds.iter().filter_map(RoundOutcome::p95_nanos).max()
     }
@@ -468,9 +467,9 @@ impl BenchRun {
             .sum()
     }
 
-    /// §11.6 的判定式：`all(round.p95 <= 10ms)` 且 `failures == 0`。
+    /// 判定式：`all(round.p95 <= 10ms)` 且 `failures == 0`。
     ///
-    /// 附加两条同样属于判据字面的门槛：事件重复/丢失为 0（CM-60 性能门槛），
+    /// 附加两条同样属于判据字面的门槛：事件重复/丢失为 0（性能门槛），
     /// 以及样本账自洽（否则分位数是拿一个来路不明的 N 算的）。
     /// 「有获准请求掉出分位数」由 [`RoundOutcome::passes_gate`] 里的
     /// `unmeasured_failures() == 0` 承担，因此已被 `rounds_passing()` 蕴含，
@@ -516,7 +515,7 @@ impl BenchRun {
         }
         if !self.conforms_to_spec {
             conclusions.push(format!(
-                "本次运行不是 §11.1 的规格计划（并发 {} / 预热 {} / 每轮 {} / {} 轮 / fake {} ms），\
+                "本次运行不是规格计划（并发 {} / 预热 {} / 每轮 {} / {} 轮 / fake {} ms），\
                  因此不作「按判据达标」的结论。",
                 self.plan.concurrency,
                 self.plan.warmup,
@@ -567,7 +566,7 @@ impl BenchRun {
         }
     }
 
-    /// 判定式成立**且**计划逐字等于 §11.1 时，才允许说「按判据达标」。
+    /// 判定式成立**且**计划逐字等于规格计划时，才允许说「按判据达标」。
     pub fn comparable_to_criterion(&self) -> bool {
         self.verdict().gate_passed && self.conforms_to_spec
     }

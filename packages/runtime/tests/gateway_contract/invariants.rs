@@ -1,4 +1,4 @@
-//! §4 锁定不变量：冻结 DTO 只消费不改写、端口错误一律是 `RuntimeError`、
+//! 锁定不变量：冻结 DTO 只消费不改写、端口错误一律是 `RuntimeError`、
 //! 模块路径固定、单文件 ≤800 行、生产路径无 `unwrap/expect/panic!/unsafe/#[allow]/sleep`。
 
 use super::{err, runtime_err};
@@ -9,11 +9,11 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::registry::SessionPort;
 
-// ───────────────── H §4 不变量 ─────────────────
+// ───────────────── H 不变量 ─────────────────
 
 /// 端口接缝上流动的必须是 `connection` 里那份冻结 DTO，网关不得自造同形类型。
 ///
-/// 特别地：`registry` 目前只转出了 `SessionPort`（§10 要求的 `registry::SessionView` /
+/// 特别地：`registry` 目前只转出了 `SessionPort`（要求的 `registry::SessionView` /
 /// `SessionHandle` 转出在基线 `060053afb` 里并不存在），因此这里按「消费定义处」锁定：
 /// `SessionPort` 的入参/出参、`ExecutionRecord` 的句柄，全部是同一个 `connection::SessionHandle`。
 #[tokio::test(start_paused = true)]
@@ -194,6 +194,10 @@ fn gateway_sources_obey_the_locked_invariants() {
         // 生产文件。
         "cancel.rs",
         "events.rs",
+        // `ExecutionGateway` 的固有方法原本与类型声明同处 mod.rs，合计 801 行、
+        // 触犯下面 800 行的硬上限。纯搬迁到同名子模块后必须登记进本表：
+        // 断言的用意就是让「文件集变了」必须同步扫描范围，而不是悄悄漏扫。
+        "execution.rs",
         "idempotency.rs",
         "mod.rs",
         "owner_binding.rs",
@@ -272,15 +276,19 @@ fn gateway_sources_obey_the_locked_invariants() {
     }
 
     // 本轨自己的测试文件同样受 800 行约束。
-    // ⚠ 有意未纳入 `tests/cm70_no_disk.rs`：它已经超限，纳入即红；拆分属独立改动。
+    //
+    // 硬编码的文件名必须在当日**确实合规**才能列在这里；一旦超限，正确做法是拆分，
+    // 不是加豁免。一条「它已经超限，纳入即红」式的豁免注释在这里不会被任何门禁检查，
+    // 却会让门禁在文件被拆回合规之后继续失效——`cm70_no_disk.rs` 正是这样从 807 行
+    // 拆到 665 行、而当时的豁免从未撤销的。
     let mut test_files = vec![
         "tests/gateway_contract.rs".to_string(),
         "tests/gateway_fixtures/mod.rs".to_string(),
+        "tests/cm70_no_disk.rs".to_string(),
         "tests/cm70_idempotency_replay.rs".to_string(),
         "tests/owner_binding.rs".to_string(),
     ];
-    for entry in std::fs::read_dir(root.join("tests/cm70")).expect("CM-70 分节用例目录可读")
-    {
+    for entry in std::fs::read_dir(root.join("tests/cm70")).expect("分节用例目录可读") {
         let name = entry
             .expect("目录项可读")
             .file_name()

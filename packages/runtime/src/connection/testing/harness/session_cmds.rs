@@ -1,4 +1,4 @@
-//! §9.1 十条会话级句柄命令的**分发实现**。
+//! 十条会话级句柄命令的**分发实现**。
 //!
 //! [FakeHarness::invoke](super::FakeHarness::invoke) 负责「查表 + 校验入参」，
 //! 本文件负责把校验过的 `input` 落到 [`FakeResourceProvider`] 的九个操作上，
@@ -6,7 +6,7 @@
 //!
 //! # 为什么不是 `DatabaseDriver`
 //!
-//! §9.1 说这些命令「通过 driver-api 的 `command_definitions()` / `execute_command()`
+//! 这些命令「通过 driver-api 的 `command_definitions()` / `execute_command()`
 //! 通道暴露」。P0 阶段没有承载 `datazen-runtime` 夹具的 driver crate，硬造一个会
 //! 越过「只加夹具与测试、不改生产执行路径、不得让 driver crate 依赖新 crate」的铁律。
 //! 详见 `super` 的模块文档。这里能复用的部分（命令定义、入参校验、结果包装）
@@ -25,7 +25,7 @@ use super::{handle_payload, FakeHarness};
 
 /// 命令网关的三类失败：命令不认识 / 入参不合法 / 提供方拒绝。
 ///
-/// `Provider` 变体原样透传 [`ProviderError`]，所以 §9.2 要求的
+/// `Provider` 变体原样透传 [`ProviderError`]，所以要求的
 /// `RuntimeEpochMismatch`、`SessionLost`、`RollbackFailed` 在断言里
 /// 可以直接 `matches!(err, GatewayError::Provider(ProviderError::SessionLost(_)))`。
 #[derive(Debug)]
@@ -47,8 +47,8 @@ impl fmt::Display for GatewayError {
 
 impl std::error::Error for GatewayError {}
 
-/// §9.2 要求断言能直接 `matches!(err, GatewayError::Provider(ProviderError::SessionLost(_)))`，
-/// 所以提供方错误**原样**透传：`?` 不改写错误种类（§13：请求拒绝面与 provider 面是两个
+/// 要求断言能直接 `matches!(err, GatewayError::Provider(ProviderError::SessionLost(_)))`，
+/// 所以提供方错误**原样**透传：`?` 不改写错误种类（请求拒绝面与 provider 面是两个
 /// 独立命名空间，不得在此处混同）。`Provider` 变体已经在枚举里，这里只补 `?` 所需转换。
 impl From<ProviderError> for GatewayError {
     fn from(error: ProviderError) -> Self {
@@ -57,7 +57,7 @@ impl From<ProviderError> for GatewayError {
 }
 
 impl GatewayError {
-    /// §9.2 断言要读错误码，所以给一条直达通道。
+    /// 断言要读错误码，所以给一条直达通道。
     pub fn api_code(&self) -> Option<crate::connection::error::ApiErrorCode> {
         match self {
             GatewayError::Provider(error) => error.api_code(),
@@ -97,7 +97,7 @@ pub(super) fn handle_id_field(input: &JsonValue) -> Result<HandleId, GatewayErro
 
 impl FakeHarness {
     /// 句柄 id 一律从该资源的 `dbSessionId` 派生的 `executionId` 派生
-    /// （§8.2：`exe_<dbSessionId>_<seq:04>`），再挂 `hdl_` 前缀，
+    /// （形如 `exe_<dbSessionId>_<seq:04>`），再挂 `hdl_` 前缀，
     /// 保证**跨资源不可能撞号**，也就不会出现「句柄跨资源/epoch 登记」。
     pub(crate) fn next_handle_id(
         &self,
@@ -141,7 +141,7 @@ impl FakeHarness {
         }
     }
 
-    /// §9.1 `begin_session_transaction` / `begin_session_transaction_hold`（入参 `{}`）。
+    /// `begin_session_transaction` / `begin_session_transaction_hold`（入参 `{}`）。
     ///
     /// 两条命令走同一段实现 —— `hold` 版本已经在 [`FakeHarness::invoke`] 里推进过假时钟，
     /// 且**不自动终结事务**。
@@ -171,10 +171,10 @@ impl FakeHarness {
         }))
     }
 
-    /// §9.1 `open_session_cursor`（入参 `{ rows }`）。
+    /// `open_session_cursor`（入参 `{ rows }`）。
     ///
-    /// 游标句柄**必须显式关闭**：没有 `rows` 支撑就不回收，§9.1 的 5 分钟空闲事务规则由此可测。
-    /// 这里把 `rows` 记进输出，好让用例断言「游标开了但没关 → I5 不成立」。
+    /// 游标句柄**必须显式关闭**：没有 `rows` 支撑就不回收，5 分钟空闲事务规则由此可测。
+    /// 这里把 `rows` 记进输出，好让用例断言「游标开了但没关 → 登记册不收口」。
     pub(crate) fn open_cursor(
         &self,
         resource: &ResourceHandle,
@@ -195,7 +195,7 @@ impl FakeHarness {
         }))
     }
 
-    /// §9.1 `prepare_server_statement`（入参 `{ name }`）。
+    /// `prepare_server_statement`（入参 `{ name }`）。
     pub(crate) fn prepare_server_statement(
         &self,
         resource: &ResourceHandle,
@@ -221,11 +221,11 @@ impl FakeHarness {
         }))
     }
 
-    /// §9.1 `commit_session_transaction`（入参 `{ handleId }`）。
+    /// `commit_session_transaction`（入参 `{ handleId }`）。
     ///
-    /// §9.2：注入 F8 时 `effectOutcome` 必须是 `unknown`、`errorCode` 必须是**实际原因**
+    /// 注入不可判定故障时 `effectOutcome` 必须是 `unknown`、`errorCode` 必须是**实际原因**
     /// （`protocolError` / `timeout`），不得自动重放、不得抛 `TransactionResolutionRequired`。
-    /// 句柄登记**保留**：提交不可判定时句柄最终归属未知（§5.3 规则 6）。
+    /// 句柄登记**保留**：提交不可判定时句柄最终归属未知。
     pub(crate) fn commit_transaction(
         &self,
         resource: &ResourceHandle,
@@ -242,9 +242,9 @@ impl FakeHarness {
         Ok(terminal_payload(&completion, handle_id, self))
     }
 
-    /// §9.1 `rollback_session_transaction`（入参 `{ handleId }`）。
+    /// `rollback_session_transaction`（入参 `{ handleId }`）。
     ///
-    /// §9.2：注入 F8 时资源进 `Quarantined`、**预算占用保留** —— 错误以
+    /// 注入不可判定故障时资源进 `Quarantined`、**预算占用保留** —— 错误以
     /// [`ProviderError::RollbackFailed`] 返回，`Quarantined` 事件已写进台账。
     pub(crate) fn rollback_transaction(
         &self,
@@ -262,7 +262,7 @@ impl FakeHarness {
         Ok(terminal_payload(&completion, handle_id, self))
     }
 
-    /// §9.1 `close_session_cursor`（入参 `{ handleId }`）。
+    /// `close_session_cursor`（入参 `{ handleId }`）。
     pub(crate) fn close_cursor(
         &self,
         resource: &ResourceHandle,
@@ -276,7 +276,7 @@ impl FakeHarness {
             .close_handle(
                 &resource.resource_id,
                 handle_id,
-                "§9.1 close_session_cursor：显式关闭游标",
+                "close_session_cursor：显式关闭游标",
             )
             .map_err(GatewayError::Provider)?;
         Ok(json!({
@@ -285,10 +285,10 @@ impl FakeHarness {
         }))
     }
 
-    /// §9.1 `begin_session_transaction_unregistered`（入参 `{}`，**反例**）。
+    /// `begin_session_transaction_unregistered`（入参 `{}`，**反例**）。
     ///
     /// 造出一个事务句柄却**不**写 `sessionHandles` 登记册；台账里只留一条 `orphaned`。
-    /// I7 断言关资源时孤儿句柄被回收。
+    /// 断言关资源时孤儿句柄被回收。
     pub(crate) fn begin_transaction_unregistered(
         &self,
         resource: &ResourceHandle,
@@ -306,7 +306,7 @@ impl FakeHarness {
                 &resource.resource_id,
                 HandleKind::Transaction,
                 handle_id,
-                "§9.2 反例命令：begin 之后不登记句柄",
+                "反例命令：begin 之后不登记句柄",
             )
             .map_err(GatewayError::Provider)?;
         Ok(json!({
@@ -315,9 +315,9 @@ impl FakeHarness {
         }))
     }
 
-    /// §9.1 `commit_with_stale_handle`（入参 `{ handleId, runtimeEpoch }`，**反例**）。
+    /// `commit_with_stale_handle`（入参 `{ handleId, runtimeEpoch }`，**反例**）。
     ///
-    /// §9.2：拿**过期 epoch** 的凭证提交 → 判负 `RuntimeEpochMismatch`，
+    /// 拿**过期 epoch** 的凭证提交 → 判负 `RuntimeEpochMismatch`，
     /// 且**原句柄状态不变**（不进事务台账、不注销登记）。
     pub(crate) fn commit_with_stale_epoch(
         &self,
@@ -339,9 +339,9 @@ impl FakeHarness {
         }))
     }
 
-    /// §9.1 `handle_from_other_resource`（入参 `{ handleId, resourceId }`，**反例**）。
+    /// `handle_from_other_resource`（入参 `{ handleId, resourceId }`，**反例**）。
     ///
-    /// §9.2：拿别的资源上的句柄在当前资源上提交 → 判负 `SessionLost`。
+    /// 拿别的资源上的句柄在当前资源上提交 → 判负 `SessionLost`。
     /// 判定放在网关：台账里 `handleId` 的归属资源与出示凭证的资源不是同一个。
     pub(crate) fn handle_from_other_resource(
         &self,
@@ -359,32 +359,28 @@ impl FakeHarness {
             .map(|record| record.resource_id.as_str().to_owned());
         match claimed {
             Some(owner) if owner != other_resource_id => {
-                return Err(GatewayError::Provider(ProviderError::SessionLost(format!(
+                Err(GatewayError::Provider(ProviderError::SessionLost(format!(
                     "句柄 {} 登记在资源 {} 上，与入参声称的 {other_resource_id} 不符",
                     handle_id.as_str(),
                     owner
                 ))))
             }
-            Some(owner) => {
-                return Err(GatewayError::Provider(ProviderError::SessionLost(format!(
-                    "句柄 {} 属于资源 {owner}，不能在资源 {} 上复用",
-                    handle_id.as_str(),
-                    resource.resource_id.as_str()
-                ))))
-            }
-            None => {
-                return Err(GatewayError::Provider(ProviderError::SessionLost(format!(
-                    "句柄 {} 未登记，无法确认归属资源",
-                    handle_id.as_str()
-                ))))
-            }
+            Some(owner) => Err(GatewayError::Provider(ProviderError::SessionLost(format!(
+                "句柄 {} 属于资源 {owner}，不能在资源 {} 上复用",
+                handle_id.as_str(),
+                resource.resource_id.as_str()
+            )))),
+            None => Err(GatewayError::Provider(ProviderError::SessionLost(format!(
+                "句柄 {} 未登记，无法确认归属资源",
+                handle_id.as_str()
+            )))),
         }
     }
 }
 
 /// 终态命令（提交 / 回滚）的输出形状：`effectOutcome` + 可选 `errorCode`。
 ///
-/// 保留句柄时一并回带 `sessionHandles` —— F8 之后句柄**仍在**登记册里（§5.3 规则 6），
+/// 保留句柄时一并回带 `sessionHandles` —— 注入不可判定故障后句柄**仍在**登记册里，
 /// 用例需要能直接看到这个事实，而不是去翻台账。
 fn terminal_payload(
     completion: &crate::connection::port::ExecutionCompletion,

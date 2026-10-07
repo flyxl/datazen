@@ -1,4 +1,4 @@
-//! A3：有效期内重发同/不同输入；过期重发不再执行。
+//! 有效期内重发同/不同输入；过期重发不再执行。
 //!
 //! 「不再执行」的判据是**端口下发给驱动的次数**没涨，不是「没报错」——
 //! 后者会把「拒了但还是跑了」放过去。
@@ -92,7 +92,7 @@ async fn an_expired_token_is_refused_and_never_dispatched() {
     assert_eq!(
         h.harness.port.execute_calls(),
         1,
-        "过期重放绝不能落到驱动：这是 CM-70 的主断言之一"
+        "过期重放绝不能落到驱动：这是主断言之一"
     );
     assert_eq!(
         h.harness.port.session_view_calls(),
@@ -164,12 +164,12 @@ async fn a_gateway_without_the_token_layer_does_not_check_expiry() {
 
 /// 换令牌 ⇒ 换键 ⇒ 换账本作用域（键域语义本身没变）。
 ///
-/// **此处原为 CM-54 键域语义延续，经协调者裁定按判据 §CM-70 更新。**
+/// **此处原为旧键域语义延续，经协调者裁定按过期幂等键判据更新。**
 /// 原用例叫 `a_different_token_is_a_different_write_not_a_replay`，断言「新令牌
 /// 必被受理、驱动收到第二条写入」。该断言在同一条语义写入上**正是在肯定旧行为**：
 /// 换个新键把同一条写入再跑一遍，正是判据禁止的「用新键自动重试」。所以断言的
 /// 作用域被收窄到「**不同**的写入」——键域语义（键不同即作用域不同、账本不去重跨键
-/// 的无关写入）原样保留，被 CM-70 改写的只有「同一条写入换个键」那半边，它现在归
+/// 的无关写入）原样保留，被改写的只有「同一条写入换个键」那半边，它现在归
 /// `cm70/retries.rs` 的围栏用例管。
 #[tokio::test]
 async fn a_different_token_on_a_different_write_is_still_a_fresh_write() {
@@ -277,7 +277,7 @@ async fn a_runtime_error_on_the_far_side_is_still_transparent() {
 
 /// 令牌层没有接上时，请求构造依然合法。
 ///
-/// 这条不是废话：`ExecutionRequest::new` 的第五个参数在 CM-70 里从「随便一个键」
+/// 这条不是废话：`ExecutionRequest::new` 的第五个参数在过期幂等键判据里从「随便一个键」
 /// 变成了「签名令牌串」，凡是还在塞普通字符串的地方都不该被本次改动打断。
 #[test]
 fn the_idempotency_key_field_still_takes_a_plain_string() {

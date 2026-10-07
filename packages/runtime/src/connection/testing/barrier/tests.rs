@@ -1,6 +1,6 @@
 //! `Barrier` / `DrainBarrier` / sink 的单测。
 //!
-//! 依赖方向同父模块。§6.4：这里允许用「观察某个状态位没有变化」来断言**阻塞**语义
+//! 依赖方向同父模块。这里允许用「观察某个状态位没有变化」来断言**阻塞**语义
 //! （负向断言），不允许用裸 `sleep` 推导顺序。
 
 use std::sync::mpsc;
@@ -99,7 +99,7 @@ fn wait_released_really_blocks_instead_of_racing_the_releaser() {
     barrier.wait_for("hold-point");
 
     // 负向断言：`release` 之前 `wait_released` **不得**返回。
-    // §6.4 允许的是「观察状态位没有变化」，这里正是如此；不依赖 sleep 推导顺序。
+    // 「观察状态位没有变化」是这里允许的写法，正用于此；不依赖 sleep 推导顺序。
     let window = Instant::now();
     while window.elapsed() < Duration::from_millis(200) {
         assert!(
@@ -120,7 +120,7 @@ fn wait_released_really_blocks_instead_of_racing_the_releaser() {
 
 #[test]
 fn a_blocked_path_only_continues_after_release() {
-    // §9.3：淘汰在关闭前置检查处挂起；此时发起 begin，落点必须在同一资源上。
+    // 淘汰在关闭前置检查处挂起；此时发起 begin，落点必须在同一资源上。
     let barrier = Barrier::new();
     barrier.arrive("eviction-close-precheck");
     assert!(!barrier.is_released("eviction-close-precheck"));
@@ -133,7 +133,7 @@ fn a_blocked_path_only_continues_after_release() {
 
 #[test]
 fn write_without_consumer_blocks_then_truncates_after_the_drain_deadline() {
-    // §6.2 竞态表 CM-64：无消费者 → 写入等待 → FakeClock 推进 10s → 截断。
+    // 无消费者 → 写入等待 → FakeClock 推进 10s → 截断。
     let clock = FakeClock::new();
     let drain = DrainBarrier::new(clock.clone(), DrainLimits::lowered_for_tests());
     drain.set_no_consumer(true);
@@ -181,7 +181,7 @@ fn a_consumer_restores_acceptance_without_truncation() {
 
 #[test]
 fn per_execution_byte_limit_truncates_with_its_own_reason() {
-    // §6.2：每执行 8 MiB → 测试下调到 64 KiB；触顶后必须截断或按字节背压。
+    // 每执行 8 MiB → 测试下调到 64 KiB；触顶后必须截断或按字节背压。
     let clock = FakeClock::new();
     let drain = DrainBarrier::new(clock, DrainLimits::lowered_for_tests());
     let execution = ExecutionId::new("exe_dbs_w1_0001_0002");
@@ -253,7 +253,7 @@ fn await_drain_wakes_when_the_clock_crosses_the_deadline() {
 
 #[test]
 fn a_subscription_byte_limit_truncates_with_its_own_reason() {
-    // CM-64 §6.2 的「订阅级字节上限」。`PerSubscriptionByteLimit` 在本仓库此前**没有任何
+    // 「订阅级字节上限」。`PerSubscriptionByteLimit` 在本仓库此前**没有任何
     // 用例**触发过（`drain.rs` 只有一处分支，全仓无测试引用），因此这条上限从未被守过。
     let clock = FakeClock::new();
     let limits = DrainLimits {
@@ -288,7 +288,7 @@ fn a_subscription_byte_limit_truncates_with_its_own_reason() {
 
 #[test]
 fn the_execution_limit_is_attributed_before_the_subscription_limit() {
-    // CM-64「截断可见」：同一次写入同时越过「每执行」与「每订阅」两个上限时，报出的原因
+    // 「截断可见」：同一次写入同时越过「每执行」与「每订阅」两个上限时，报出的原因
     // 必须是**先判定**的那个。顺序反了，宿主会把执行级超限当成订阅级超限上报给前端。
     let clock = FakeClock::new();
     let limits = DrainLimits {
@@ -311,7 +311,7 @@ fn the_execution_limit_is_attributed_before_the_subscription_limit() {
 
 #[test]
 fn a_truncation_sticks_until_that_execution_is_finished() {
-    // CM-64「截断可见」：截断是**按执行**的粘性结论。一旦截断，后续写入一律继续报同一
+    // 「截断可见」：截断是**按执行**的粘性结论。一旦截断，后续写入一律继续报同一
     // 原因 —— 包括一个字节都不写的那次。丢掉粘性，宿主就会在截断后继续往缓冲里塞数据。
     let clock = FakeClock::new();
     let limits = DrainLimits {
@@ -343,7 +343,7 @@ fn a_truncation_sticks_until_that_execution_is_finished() {
     // 别的执行不受牵连：截断按执行记账。
     assert_eq!(drain.write(&b, 0, 1), SinkWrite::Accepted);
     assert_eq!(drain.truncation_of(&b), None);
-    // 同一 id 重跑必须重新计量，否则 §6.2 的「每执行 8 MiB」无法复测。
+    // 同一 id 重跑必须重新计量，否则「每执行 8 MiB」无法复测。
     drain.finish_execution(&a);
     assert_eq!(drain.truncation_of(&a), None);
     assert_eq!(drain.write(&a, 4, 1), SinkWrite::Accepted);
@@ -386,7 +386,7 @@ fn a_restored_consumer_rearms_the_drain_deadline_for_the_next_episode() {
 
 #[test]
 fn await_drain_returns_when_a_consumer_arrives_before_the_deadline() {
-    // CM-64 §6.2 的另一半：`await_drain` 不只能等期限到期 —— 消费者到场也必须唤醒它并
+    // 「订阅级字节上限」的另一半：`await_drain` 不只能等期限到期 —— 消费者到场也必须唤醒它并
     // 解除截断。原有用例只覆盖了期限分支，这里补消费者分支。
     let clock = FakeClock::new();
     let drain = DrainBarrier::new(clock.clone(), DrainLimits::design());
@@ -458,7 +458,7 @@ fn subscription_counters_survive_the_end_of_one_execution() {
 
 #[test]
 fn truncation_reasons_carry_the_documented_wire_literals() {
-    // CM-64「截断可见」：原因必须以协议约定的字面量到达前端。前端按字面量分支，
+    // 「截断可见」：原因必须以协议约定的字面量到达前端。前端按字面量分支，
     // 改一个字面量就会静默丢掉一类截断（本仓库此前无任何用例断言这五个字面量）。
     assert_eq!(
         TruncationReason::NoConsumerDrainDeadline.as_str(),
@@ -503,7 +503,7 @@ fn collecting_sink_counts_produced_bytes_and_terminal_state() {
 
 #[test]
 fn failing_sink_reports_producer_write_failed() {
-    // F5：`ResultSink` 写入失败必须带 `producerWriteFailed`，不得静默成功。
+    // `ResultSink` 写入失败必须带 `producerWriteFailed`，不得静默成功。
     let mut sink = FailingSink::default();
     let execution = ExecutionId::new("exe_dbs_w1_0001_0001");
     assert_eq!(

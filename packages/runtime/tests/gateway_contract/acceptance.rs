@@ -1,4 +1,4 @@
-//! §3.1 受理入口：校验顺序、受理回执≠结果、拒绝不得静默降级为「已受理」。
+//! 受理入口：校验顺序、受理回执≠结果、拒绝不得静默降级为「已受理」。
 
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ use datazen_runtime::gateway::idempotency::RequestFingerprint;
 use datazen_runtime::gateway::{
     GatewayAction, GatewayError, IdempotencyRecord, IdempotencyScope, InMemoryIdempotencyStore,
 };
-// ───────────────── A §3.1 受理入口 ─────────────────
+// ───────────────── A 受理入口 ─────────────────
 
 #[tokio::test(start_paused = true)]
 async fn an_acceptance_is_a_receipt_not_a_result() {

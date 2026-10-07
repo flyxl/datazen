@@ -1,10 +1,9 @@
-//! CM-28（重复 release/close，高）第一、二格：**物理**层的真实并发契约。
+//! 重复 release/close 的第一、二格：**物理**层的真实并发契约。
 //!
-//! 判据原文（`docs/architecture/platform/connection-management.md` §16.3，CM-28，
-//! 行 1033-1037）：
+//! 判据：
 //!
 //! ```text
-//! **CM-28 重复 release/close（H）**
+//! **重复 release/close（H）**
 //!
 //! - 前置：同 Lease、多个关闭请求；cleanup 与 timeout 竞态。
 //! - 步骤：并发释放 20 次，再重复查询 tombstone。
@@ -16,8 +15,8 @@
 //!
 //! # 为什么必须新写，不能靠既有测试
 //!
-//! `tunnel_refcount_contract.rs:352`
-//! （`one_return_releases_exactly_once_however_many_times_it_is_repeated`）
+//! `tunnel_refcount_contract.rs` 里的
+//! `one_return_releases_exactly_once_however_many_times_it_is_repeated`
 //! 数的是**隧道**端口的 `close`，而且是**顺序** `for` 循环：它既数错了对象
 //! （判据第一格的主语是 **driver close**，即 [`PhysicalTransport::close`]），
 //! 也没有制造任何竞态。`src/tunnel/journey_single_counter.rs` 的
@@ -41,24 +40,22 @@
 //! 其**全程最小值**。全程最小值是「预算不负数」的证据 —— 它在端口的**每一个**
 //! 出入口上就地采样，因此覆盖风暴**中间**，而不是只看终态。
 //!
-//! # 「有效关闭」的口径（判据 `:1037` 的自证定义）
+//! # 「有效关闭」的口径（判据的自证定义）
 //!
-//! CM-28 原文只写「driver close 至多一次**有效**关闭」。全文逐字核对
-//! （`grep -n '有效关闭' docs/architecture/platform/connection-management.md`）：
-//! 复合词「有效关闭」**全文仅 `:1037` 一处出现，且从未被定义**（单字「有效」另有 10 处
-//! 无关用法，如 `:412` 「仅在对应 provider/worker 有效」、`:1286` 「旧 session 有效」）。
-//! 本轨采用的落字口径取自同一文档已经用过的词：
+//! 判据原文只写「driver close 至多一次**有效**关闭」，而复合词「有效关闭」全文仅此一处
+//! 出现，且从未被定义（单字「有效」另有 10 处无关用法，如「仅在对应 provider/worker 有效」、
+//! 「旧 session 有效」）。本轨采用的落字口径取自同族文档已经用过的词：
 //!
-//! * `:713`（§10.1.1 恢复决策表，`cleanup 未确认` 行）「保留预算占用/隔离资源；**确认关闭**
+//! * 恢复决策表的 `cleanup 未确认` 行：「保留预算占用/隔离资源；**确认关闭**
 //!   或节点隔离后才核销」；
-//! * `:1025`（CM-26）「close 未确认继续占预算；**确认关闭**后只核销一次」。
+//! * 「close 未确认继续占预算；**确认关闭**后只核销一次」。
 //!
 //! 故 **「有效关闭」≡ 被确认的关闭**。
 //!
-//! **推导（为什么「至多一次」只能修饰「确认」）**：`:657`（§9.4 归池前检查，逐字）
+//! **推导（为什么「至多一次」只能修饰「确认」）**：归池前检查逐字写着
 //! 「任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主检查。reset 不支持、失败或
 //! 超时直接关闭。」—— 关闭失败**不**终止关闭义务，所以关闭**尝试**本就允许多次。
-//! 若「至多一次」约束的是尝试次数，它与 `:657` 直接冲突；两条并列，唯一自洽的读法是
+//! 若「至多一次」约束的是尝试次数，它与那条归池前检查直接冲突；两条并列，唯一自洽的读法是
 //! 「至多一次**被确认的**关闭」：20 个并发关闭请求里，第一个把关闭确认下来，其余请求
 //! 只能看到墓碑并被拒绝。
 //!
@@ -84,7 +81,7 @@
 //! 同理，反向对照必须真能把计数推离期望值：**每轮重建探测器的负控是无效负控**，
 //! 隧道那一侧的教训见 `cm28_concurrent_tunnel.rs` 末尾负控的注释。
 //!
-//! **不要把 `flavor = "multi_thread"` 简化掉。** 实测：两个 CM-28 文件合计 **8 处**
+//! **不要把 `flavor = "multi_thread"` 简化掉。** 实测：并发释放的两个文件合计 **8 处**
 //! `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`（本文件 5 处、
 //! `cm28_concurrent_tunnel.rs` 3 处）全部降级成默认 `#[tokio::test]`，**10 条测试仍然
 //! 全绿**（`EXIT=0`）—— 因为 `&mut self` 的串行化保证结论与线程数无关。这是断言稳健，
@@ -94,15 +91,15 @@
 //!
 //! | 类别 | 含义 | 取值方式（可复现命令） | 本文件当前值 |
 //! | --- | --- | --- | --- |
-//! | **变异落点** | 你**动手改**的那两行 `Barrier::new(N)` | `grep -n 'Barrier::new'`（排除本注释块） | `:386`（公用 helper `release_storm`，`:380`，其上无 `#[tokio::test]`）、`:557`（测试 `repeated_tombstone_queries_…` 体内，`:540`） |
-//! | **panic 行** | rustc **报错打印**的断言行，改完去看哪儿。3 个 FAIL **全部**由 `:386` 经 helper 透传而来，`:557` 所在的测试**仍通过** | 跑一次变异，读 `panicked at` | `:502`、`:616`、`:654` |
+//! | **变异落点** | 你**动手改**的那两行 `Barrier::new(N)` | `grep -n 'Barrier::new'`（排除本注释块） | 公用 helper `release_storm` 内（其上无 `#[tokio::test]`）、测试 `repeated_tombstone_queries_…` 体内 |
+//! | **panic 行** | rustc **报错打印**的断言行，改完去看哪儿。3 个 FAIL **全部**由 helper 那一处透传而来，`repeated_tombstone_queries_…` 体内的断言**仍通过** | 跑一次变异，读 `panicked at` | helper 体内那条断言、以及测试体内靠前的两条断言 |
 //!
-//! ★ **左值不是常数。** 「panic 行」列的 `:502`、`:616` 恒为 `left: 0 / right: 1`（本树 5/5 次）。
-//! `:654` 是 `left: N / right: 20`，**N 随机器负载变化**：本树空闲负载下连跑 5 次全为
+//! ★ **左值不是常数。** 「panic 行」列里 helper 体内那条与测试体内靠前的那条恒为 `left: 0 / right: 1`（本树 5/5 次）。
+//! 靠后的那条是 `left: N / right: 20`，**N 随机器负载变化**：本树空闲负载下连跑 5 次全为
 //! `19`；改头前在 R3 内容上连跑 5 次却得 8 / 10 / 14 / 18 / 19，两组唯一差别是负载。
 //! **故 `19` 不得当定值**（R3 与 TA 记下的 `19` 只是各自那次负载下的抽样），**只可断言 `N < 20`**。
 //! 闸门塌成 1 后第 1 份读数通过即开跑，其余 19 份有多少赶在归还完成前读完并不确定。
-//! ★ 上面两列行号对本文件**当前内容**成立。改动本文件任意一行都会让它们失效，
+//! ★ 上面两列的具体取值对本文件**当前内容**成立。改动本文件任意一行都会让它们失效，
 //! 届时按「取值方式」两列重测；**不要用「失效了多少行」倒推位移**，位移只能由
 //! `git diff --numstat` 算，且核对时必须打印本文件 blob 以免核到旧副本。
 //!
@@ -127,7 +124,7 @@ use datazen_runtime::resource::{
     LeaseRequest, MonotonicSource, PhysicalTransport, ResourceError, ResourceManager,
 };
 
-/// CM-28 步骤：「并发释放 **20** 次」。
+/// 判据步骤：「并发释放 **20** 次」。
 const CONCURRENCY: usize = 20;
 /// 「再重复查询 tombstone」的重放轮数（每个查询者重复这么多次）。
 const TOMBSTONE_REPLAYS: usize = 8;
@@ -158,7 +155,7 @@ impl MonotonicSource for TestClock {
     }
 }
 
-// ------------------------------------------------- 物理端口（CM-28 的被测对象）
+// ------------------------------------------------- 物理端口（被测对象）
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PhysicalEvent {
@@ -194,7 +191,7 @@ struct BudgetInner {
     unmatched_closes: Vec<String>,
 }
 
-/// CM-28 第一格与第二格唯一被数的对象。
+/// 第一格与第二格唯一被数的对象。
 ///
 /// 刻意**不**复用 `src/resource/harness.rs` 的替身：那种替身只记事件序列，
 /// 计次要靠调用方回扫，既容易数错对象，也看不出「预算有没有真的被还回去」。
@@ -485,7 +482,7 @@ fn assert_driver_closed_exactly_once(transport: &BudgetPort, expected: u64) {
     );
 }
 
-// ------------------------------------------------ CM-28 断言一 / 前置一：同 Lease
+// ------------------------------------------------ 断言一 / 前置一：同 Lease
 
 /// 前置「同 Lease、多个关闭请求」+ 断言「driver close 至多一次有效关闭」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -533,7 +530,7 @@ async fn twenty_concurrent_returns_of_one_lease_close_the_driver_exactly_once() 
     );
 }
 
-// -------------------------------------------- CM-28 步骤：再重复查询 tombstone
+// -------------------------------------------- 步骤：再重复查询 tombstone
 
 /// 步骤「并发释放 20 次，**再重复查询 tombstone**」+ 断言「重复响应一致」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

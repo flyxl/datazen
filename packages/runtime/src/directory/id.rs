@@ -7,7 +7,7 @@
 //! * **熵不少于 128 位。** [`DB_SESSION_ID_ENTROPY_BITS`] 既是生成常量也是可断言的事实；
 //!   碰撞不是「不可能」，而是「检测到就重生成」，重试耗尽必须**失败**而不是返回成功。
 //!
-//! 熵来源抽成 [`SessionIdEntropy`]，唯一的目的是让 CM-71 能在测试里**强制碰撞**：
+//! 熵来源抽成 [`SessionIdEntropy`]，唯一的目的是让测试能**强制碰撞**：
 //! 生产用 [`OsEntropy`]，测试注入会重复返回同一串字节的脚本源。
 
 use std::collections::hash_map::RandomState;

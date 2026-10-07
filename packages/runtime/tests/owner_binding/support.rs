@@ -51,7 +51,7 @@ pub const U2_JOB_SESSION: &str = "db_session-ob-u2-job";
 pub const O2_EDITOR_SESSION: &str = "db_session-ob-o2-editor";
 /// 一个从来不存在过的会话 id。
 pub const ABSENT_SESSION: &str = "db_session-ob-absent";
-/// 一个长得像 `connectionId` 的配置 id —— CM-04 拿它冒充会话句柄。
+/// 一个长得像 `connectionId` 的配置 id —— 拿它冒充会话句柄。
 pub const PROFILE_ID: &str = "cnx-ob-profile-0000";
 
 /// 夹具里的 `contextRevision`。
@@ -256,7 +256,7 @@ impl SessionPort for ScriptedPort {
     }
 }
 
-/// 会数账本读写次数的幂等存储：CM-06 要证明「不创建会话」时，不能只看内存里
+/// 会数账本读写次数的幂等存储：证明「不创建会话」时，不能只看内存里
 /// 少了一条记录——还得证明连账本都没写过一行。
 pub struct CountingStore {
     pub inner: Arc<InMemoryIdempotencyStore>,
@@ -321,12 +321,12 @@ pub fn gateway(port: Arc<ScriptedPort>, store: Arc<CountingStore>) -> ExecutionG
     )
 }
 
-/// 把网关错误投影成审计落盘形态。CM-05 的「无法观察存在性」断言就是在比这两个值。
+/// 把网关错误投影成审计落盘形态。「无法观察存在性」断言就是在比这两个值。
 pub fn projection(error: &GatewayError) -> serde_json::Value {
     error.to_persistable_json()
 }
 
-/// 对外错误码。CM-04 断言的是 §13 的 `sessionNotFound`。
+/// 对外错误码。断言的是 `sessionNotFound`。
 pub fn api_code(error: &GatewayError) -> Option<ApiErrorCode> {
     match error {
         GatewayError::Runtime(err) => err.api_code(),

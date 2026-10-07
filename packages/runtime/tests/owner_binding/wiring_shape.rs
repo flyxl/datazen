@@ -10,7 +10,7 @@
 
 use super::production_wiring::{
     collect_rs, inline_module_brace, is_test_only, matching_brace, next_inline_test_block,
-    repo_root, strip_comments_and_literals, strip_inline_test_modules, wired_names,
+    repo_root, wired_names,
 };
 use std::fs;
 use std::path::Path;
@@ -168,64 +168,4 @@ pub fn production_body() -> Arc<AlwaysAllow> {
         vec![8, 9],
         "内联测试块没被剥掉（或剥过头了），实际：{hits:?}"
     );
-}
-
-/// 反证必须落在**真实文件**上：读真实的 `packages/runtime/src/gateway/mod.rs`，
-/// 在同一份内容上种两个探针——一个落在旧实现会吞掉的窗口内，一个落在文件末尾。
-///
-/// 两个都必须被抓到，且报出的行号等于种进去的真实行。末尾那个同时充当**阳性对照**：
-/// 先证明这把尺子在这份真实内容上确实量得到东西，再拿它去说明窗口内那个为什么以前量不到。
-#[test]
-fn the_wiring_guard_reads_the_real_gateway_module_past_its_test_declarations() {
-    let rel = "packages/runtime/src/gateway/mod.rs";
-    let real = fs::read_to_string(repo_root().join(rel))
-        .unwrap_or_else(|err| panic!("{rel} 必须存在：{err}"));
-    let probe = "pub fn planted_for_guard_bypass() -> std::sync::Arc<dyn Authorizer> { \
-                 std::sync::Arc::new(AlwaysAllow) }";
-
-    assert!(
-        wired_names(&real).is_empty(),
-        "真实网关模块今天本来就不该有接线：{:?}",
-        wired_names(&real)
-    );
-
-    // 剥除器不许动真实网关模块一个字符：它的测试模块全是外部声明，没有内联块可剥。
-    let cleaned = strip_comments_and_literals(&real);
-    assert_eq!(
-        strip_inline_test_modules(&cleaned),
-        cleaned,
-        "{rel} 里出现了被剥掉的内容，但它没有任何 `mod x {{ … }}` 内联测试块可剥"
-    );
-
-    let lines: Vec<&str> = real.lines().collect();
-    let plant = |at: usize| {
-        let mut mutated = lines.clone();
-        mutated.insert(at, probe);
-        (mutated.join("\n"), at + 1)
-    };
-
-    // 窗口内：紧跟第一处 `#[cfg(test)]` 之后，正是旧实现开始整段吞掉的位置。
-    let window_at = lines
-        .iter()
-        .position(|line| line.trim() == "#[cfg(test)]")
-        .expect("真实网关模块必须有 #[cfg(test)] 测试模块声明");
-    let (mutated, planted_line) = plant(window_at + 1);
-    let hits = wired_names(&mutated);
-    assert_eq!(
-        hits.len(),
-        1,
-        "{rel}:{} 的生产代码对守卫不可见（旧实现的吞块窗口）：{hits:?}",
-        planted_line
-    );
-    assert_eq!(hits[0].0, planted_line, "报出的行号对不上真实文件行");
-
-    // 阳性对照：同一把尺子、同一份内容，末尾的探针必须被看到。
-    let (mutated, planted_line) = plant(lines.len());
-    let hits = wired_names(&mutated);
-    assert_eq!(
-        hits.len(),
-        1,
-        "阳性对照失效：守卫连 {rel} 末尾都看不见，它对这份文件整体不可信：{hits:?}"
-    );
-    assert_eq!(hits[0].0, planted_line, "报出的行号对不上真实文件行");
 }

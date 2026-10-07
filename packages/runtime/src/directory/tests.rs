@@ -1,6 +1,6 @@
 //! 模块内单元测试：只测**纯逻辑**（投影、期限、ID 生成、条目状态机）。
 //!
-//! 端到端的场景测试（CM-63 / CM-71 / 原子替换 / 无落盘）在 `tests/` 下，
+//! 端到端的场景测试（原子替换 / 无落盘等场景）在 `tests/` 下，
 //! 那里注入的是同一套 [`DirectoryClock`]，但走的是完整目录。
 //!
 //! 断言原则：每一条都必须在「实现被删掉」之后**失败**。因此这里不写
@@ -92,7 +92,11 @@ struct AlternatingEntropy {
 
 impl SessionIdEntropy for AlternatingEntropy {
     fn fill(&self, out: &mut [u8]) {
-        let byte = if self.counter.fetch_add(1, Ordering::Relaxed) % 2 == 0 {
+        let byte = if self
+            .counter
+            .fetch_add(1, Ordering::Relaxed)
+            .is_multiple_of(2)
+        {
             0x00
         } else {
             0xff
@@ -476,7 +480,7 @@ fn second_execution_cannot_hijack_a_busy_session() {
         Err(ExecutionId::new("exec-1")),
         "已有执行在跑时必须报出占用者而不是顶掉它"
     );
-    assert!(entry.end_execution(&ExecutionId::new("exec-2")) == false);
+    assert!(!entry.end_execution(&ExecutionId::new("exec-2")));
     assert!(entry.end_execution(&ExecutionId::new("exec-1")));
     assert!(!entry.has_active_execution());
 }

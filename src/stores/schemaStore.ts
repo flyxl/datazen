@@ -18,7 +18,7 @@ import {
 } from '../lib/sqlNamespace';
 import { t } from '../locales/t';
 import type { DatabaseType, TableInfo } from '../types';
-import { bindSchemaStore, relationKey } from '@datazen/driver-sdk';
+import { bindSchemaStore } from '@datazen/driver-sdk';
 import {
   computeIsMultiDatabase,
   knownTableNames,
@@ -33,6 +33,13 @@ import {
   patchConnectionSchema,
   type ConnectionSchemaState,
 } from './schemaStoreState';
+import { relationColumnsCacheKey, type SessionMetadataIdentity } from './schemaMetadataKeys';
+import { registerMetadataIdentityBinder } from './metadataIdentityBinding';
+
+/** The identity dimensions a schema entry contributes to its cache keys. */
+function latestIdentity(entry: ConnectionSchemaState): SessionMetadataIdentity {
+  return { connectionId: entry.connectionId, metadataRevision: entry.metadataRevision };
+}
 
 export {
   computeIsMultiDatabase,
@@ -91,6 +98,15 @@ export interface SchemaStore {
     options?: { schema?: string | null },
   ) => Promise<void>;
   ensureDatabaseColumns: (dbSessionId: string, database: string) => Promise<void>;
+  /**
+   * Bind a runtime session's schema entry to its persistent connection config.
+   *
+   * Relation columns are cached under identity + config revision + target, so
+   * rebinding a session to a different connection config (or observing a new
+   * config revision) must invalidate everything read under the old identity:
+   * the revision is bumped and the per-relation cache is dropped.
+   */
+  bindMetadataIdentity: (dbSessionId: string, connectionId: string) => void;
   toggleExpand: (id: string, dbSessionId: string) => void;
   setSelected: (id: string | null, dbSessionId: string) => void;
   reset: () => void;
@@ -495,24 +511,33 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
         database,
         options?.schema,
       ).filter((ref) => {
-        const key = relationKey({ ...ref, dbSessionId });
+        const key = relationColumnsCacheKey(schema, dbSessionId, ref);
         return !schema.columnInflight.has(key) && !(key in schema.relationColumns);
       });
       if (refs.length === 0) return;
       commitConnectionPatch(dbSessionId, {
         columnInflight: new Set([
           ...schema.columnInflight,
-          ...refs.map((ref) => relationKey({ ...ref, dbSessionId })),
+          ...refs.map((ref) => relationColumnsCacheKey(schema, dbSessionId, ref)),
         ]),
       });
       try {
-        const values = await loadRelationColumns(dbSessionId, refs);
+        const requested = latestIdentity(schema);
+        const values = await loadRelationColumns(requested, dbSessionId, refs);
         if (!isCurrent()) return;
         const latest = get().schemas.get(dbSessionId);
         if (!latest) return;
+        // A rebind during flight changed the identity the request was issued
+        // under; its columns belong to a config the session no longer has.
+        if (
+          latest.connectionId !== requested.connectionId ||
+          latest.metadataRevision !== requested.metadataRevision
+        ) {
+          return;
+        }
         const relationColumns = { ...latest.relationColumns };
         for (const value of values) {
-          relationColumns[relationKey({ ...value.ref, dbSessionId })] = value;
+          relationColumns[relationColumnsCacheKey(requested, dbSessionId, value.ref)] = value;
         }
         commitConnectionPatch(dbSessionId, { relationColumns });
       } catch {
@@ -520,14 +545,19 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       } finally {
         if (isCurrent()) {
           const latest = get().schemas.get(dbSessionId);
-          if (latest)
+          if (latest) {
+            const requested = latestIdentity(schema);
             commitConnectionPatch(dbSessionId, {
               columnInflight: new Set(
                 [...latest.columnInflight].filter(
-                  (key) => !refs.some((ref) => relationKey({ ...ref, dbSessionId }) === key),
+                  (key) =>
+                    !refs.some(
+                      (ref) => relationColumnsCacheKey(requested, dbSessionId, ref) === key,
+                    ),
                 ),
               ),
             });
+          }
         }
       }
     },
@@ -541,6 +571,20 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
         ...knownTableNames(schema.namespaceTree, schema.tables, schema.views, schema.pathItems),
       ];
       await get().ensureColumns(allNames, dbSessionId, database);
+    },
+
+    bindMetadataIdentity: (dbSessionId, connectionId) => {
+      if (!dbSessionId || !connectionId) return;
+      const schema = get().schemas.get(dbSessionId) ?? createEmptyConnectionSchema();
+      if (schema.connectionId === connectionId && schema.metadataRevision > 0) return;
+      commitConnectionPatch(dbSessionId, {
+        connectionId,
+        // Anything cached so far was read under the previous identity (or, for
+        // a first bind, under an unbound one) and must not survive it.
+        metadataRevision: schema.metadataRevision + 1,
+        relationColumns: {},
+        columnInflight: new Set<string>(),
+      });
     },
 
     toggleExpand: (id, dbSessionId) => {
@@ -602,3 +646,11 @@ if (import.meta.env.DEV) {
 }
 
 bindSchemaStore(useSchemaStore);
+
+// `activeConnectionStore` cannot import this module (column loading already
+// depends on it), so it announces new (session, config) bindings through this
+// seam instead. Suites that mock the whole schema store leave it unbound, which
+// makes the announcement inert rather than failing.
+registerMetadataIdentityBinder((dbSessionId, connectionId) => {
+  useSchemaStore.getState().bindMetadataIdentity(dbSessionId, connectionId);
+});

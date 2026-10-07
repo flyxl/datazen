@@ -1,4 +1,4 @@
-//! CM-04 / CM-05 / CM-06 的 H 层门禁：归属绑定必须在**公开 API** 这一层就成立。
+//! 归属绑定的 H 层门禁：归属绑定必须在**公开 API** 这一层就成立。
 //!
 //! 刻意不复用 `tests/gateway_fixtures/mod.rs`，也刻意不复用
 //! `src/gateway/testing_support.rs`：这里只用
@@ -11,7 +11,7 @@
 //! ## 为什么端口是「按句柄脚本化」的
 //!
 //! `gateway_fixtures::RecordingPort` 的 `set_view` 是**全局**的：整个端口只有
-//! 一个视图，换句柄只能连视图一起换。这做不了 CM-05 —— CM-05 要的恰恰是
+//! 一个视图，换句柄只能连视图一起换。这做不了「同一时刻并存」这条断言——它要的恰恰是
 //! **同一时刻并存**「U1 的会话」「U2 的会话」「不存在的句柄」三种世界，让网关
 //! 依次撞上去。所以这里自己写一个按 `db_session_id` 查表的端口：查得到就返回
 //! 那个会话，查不到就返回 `UnknownSession`，**与
@@ -20,7 +20,7 @@
 //!
 //! ## 「不存在」与「不归我」必须完全无法区分
 //!
-//! CM-05 的核心断言是「不能观察资源存在性」。在本层，这条断言可以被钉成
+//! 核心断言是「不能观察资源存在性」。在本层，这条断言可以被钉成
 //! **可执行**的字节级事实，因为 [`GatewayError::to_persistable_json`] 是审计落盘
 //! 形态，**刻意不包含任何句柄**（`request.rs` 原话），而
 //! [`RuntimeError::reason`] 对 `UnknownSession` 返回稳定字面量 `"unknownSession"`、
@@ -33,24 +33,24 @@
 //!
 //! 这不是「隐藏一下」的口头承诺，而是测试里的一次 `assert_eq!`。
 //!
-//! ## CM-05 六个接口的处置（不编接口凑数）
+//! ## 六个接口的处置（不编接口凑数）
 //!
-//! CM-05 的步骤列了「读取 / 执行 / 关闭 / 取消 / 订阅 / 下载」六个接口。本层
+//! 「读取 / 执行 / 关闭 / 取消 / 订阅 / 下载」六个接口里，本层
 //! 网关 [`GatewayAction`] 只有 `Execute` 与 `Cancel` 两个取值——下面
 //! `cm05_the_gateway_action_surface_is_exactly_execute_and_cancel` 用一个**穷尽
 //! `match`** 把这一点做成编译期事实（少一个变体编不过，多一个变体也编不过）。
 //! 六个接口里真正落在这层的只有两个，其余必须如实归属，不得凭空捏造。
 //! 处置词只有四个：**`CLOSED`（闭合）/ `PARTIAL`（部分闭合，登记剩余缺口）/
-//! `N/A`（H 层根本没有这个承接口，不是「漏测」）/ `P7`（归 P7 轨，CM-61 / CM-64）**。
+//! `N/A`（H 层根本没有这个承接口，不是「漏测」）/ `P7`（归 P7 轨，已豁免）**。
 //!
-//! | CM-05 接口 | 归属层 | 处置 | 依据 |
+//! | 接口 | 归属层 | 处置 | 依据 |
 //! | --- | --- | --- | --- |
 //! | 执行 | 网关 `accept` / `dispatch` | **`CLOSED`** | `cm05_*`、`cm06_*`：归属不符时 `execute_calls() == 0`，投影与不存在逐字节相同 |
 //! | 取消 | 网关 `cancel` | **`PARTIAL`** | 驱动次数已钉（`cancel_calls() == 0`，且有真 owner 的正向对照 `== 1`）；但**存在性预言机未闭合**，见下方 ⚠️ |
 //! | 读取 | 无网关接口；`session_view` 是端口读路径，只被授权器读，不对外暴露 | **`N/A`** | `cm05_the_gateway_action_surface_is_exactly_execute_and_cancel` 编译期钉死动作面 |
-//! | 关闭 | 无网关接口（`SessionPort::close_session` 由注册表演给生命周期管理方，**不经网关鉴权**） | **`N/A`** | 同上；CM-05 的「关闭」在 H 层没有承接口，**不得记作已覆盖** |
-//! | 订阅 | 不存在（订阅属 `ArtifactStore`） | **`P7`** | 验收文档 CM-61（`connection-management.md`）已豁免 |
-//! | 下载 | 同上 | **`P7`** | 验收文档 CM-64 同上 |
+//! | 关闭 | 无网关接口（`SessionPort::close_session` 由注册表演给生命周期管理方，**不经网关鉴权**） | **`N/A`** | 同上；「关闭」在 H 层没有承接口，**不得记作已覆盖** |
+//! | 订阅 | 不存在（订阅属 `ArtifactStore`） | **`P7`** | 验收已豁免 |
+//! | 下载 | 同上 | **`P7`** | 同上 |
 //!
 //! ⚠️ **`PARTIAL` 的剩余缺口：取消接口残留一条存在性预言机。**
 //! `gateway/mod.rs` 的 `cancel()` 里，执行记录查表发生在授权**之前**：所以
@@ -82,10 +82,10 @@ use std::sync::Arc;
 use support::*;
 
 // ---------------------------------------------------------------------------
-// CM-06 的对照与护栏
+// 跨主体拒绝的对照与护栏
 // ---------------------------------------------------------------------------
 
-/// CM-06 的对照实验：真 owner 仍然能受理。
+/// 对照实验：真 owner 仍然能受理。
 ///
 /// 没有这一条，前面所有「拒绝」的断言都可以靠「网关什么都不许干」来蒙混过关。
 #[tokio::test]
@@ -115,7 +115,7 @@ async fn cm06_the_real_owner_is_still_accepted() {
     assert!(!acceptance.execution_id().as_str().is_empty());
 }
 
-/// CM-06 的对照实验：同组织、不同主体照样被拒。
+/// 对照实验：同组织、不同主体照样被拒。
 ///
 /// `ORG_O1` 里同时住着 U1 和 U2，所以这一条证明的是**主体**比较真的在跑，
 /// 而不是碰巧把整个组织都拒了。
@@ -138,7 +138,7 @@ async fn cm06_a_peer_principal_in_the_same_organization_is_denied() {
     assert_eq!(port.execute_calls(), 0);
 }
 
-/// CM-06：U2 指向 U1 的 editor 会话 —— 拒绝，且一个会话都不该被创建。
+/// U2 指向 U1 的 editor 会话 —— 拒绝，且一个会话都不该被创建。
 ///
 /// **这条以前和上一条逐字节相同**（都是 U1 指向 U2），等于把一个用例数了两遍。
 /// 现在改成**镜像方向**：真 owner 是 U1，来路是 U2。「谁是被指的」与「谁是攻击者」
@@ -162,10 +162,10 @@ async fn cm06_naming_another_users_editor_is_refused() {
     assert_eq!(port.execute_calls(), 0, "被拒的请求一个驱动调用都不产生");
 }
 
-/// CM-06 的**未闭合半边**：U1 指向 U2 的 job 会话。
+/// **未闭合半边**：U1 指向 U2 的 job 会话。
 ///
 /// 本层判不了，原因是**类型里就没有可比的主体**：
-/// `OwnerRef::Job`（`packages/runtime/src/connection/types.rs:390-394`）的字段
+/// `OwnerRef::Job`（`packages/runtime/src/connection/types.rs`）的字段
 /// 只有 `organization_id` / `job_id` / `stage_id`，不含 `principal_id`。同一个组织
 /// 里的 U1 与 U2 在 `OwnerRef::Job` 上**完全同形**，`Authorizer` 拿到的入参里也没有
 /// 「本次请求被授权操作哪个 job」这一项，因此任何实现在本层都只能按组织放行。
@@ -180,10 +180,10 @@ async fn cm06_naming_another_users_editor_is_refused() {
 /// `packages/application/src/identity_policy.rs` 的
 /// `check_owner(ctx, owner, authorized_job)`，实测**全仓没有任何生产调用点**——只有定义
 /// 本身、几处文档引用、以及它自己文件内的单测，`src-tauri` 不调用它。所以它**不是**
-/// 覆盖，CM-06 的 job 半边按 **`PARTIAL`** 登记，不是「上层已经挡住」。
+/// 覆盖，job 半边按 **`PARTIAL`** 登记，不是「上层已经挡住」。
 /// 即便接上调用方也不对题：它比的是调用方**显式传入**的 `authorized_job` 与
 /// `owner.job_id` 是否相等，那是「这个 job 有没有被授权」，不是「这是不是同一个人」，
-/// 与 CM-06「U1 指向 U2 的 job」的跨用户语义不是同一件事。
+/// 与「U1 指向 U2 的 job」的跨用户语义不是同一件事。
 /// 闭合条件是唯一的：给 `OwnerRef::Job` 补上主体字段并接上比较——那是契约层的改动，
 /// 本轨**不单方面给 `OwnerRef` 加字段**，只把债登记在
 /// `src/gateway/owner_binding.rs` 的模块头与 `identity_policy.rs` 的 `check_owner` 上。
@@ -227,7 +227,7 @@ async fn cm06_a_job_owner_carries_no_principal_so_same_organization_peers_pass_t
     );
 }
 
-/// CM-06 未闭合半边的**结构守卫**：钉住 `OwnerRef::Job` 的字段表。
+/// 未闭合半边的**结构守卫**：钉住 `OwnerRef::Job` 的字段表。
 ///
 /// 这条不是注释——有人给 `OwnerRef::Job` 加上 `principal_id` 时本测试立刻变红，
 /// 变红信息即要求把上面的对偶断言补齐。字段表从 `types.rs` 原文抠出，不靠记忆。
@@ -264,7 +264,7 @@ fn cm06_the_job_owner_variant_field_list_is_pinned() {
     );
 }
 
-/// CM-06：跨组织的 job 归属同样被拒（`OwnerRef::Job` 的组织维度）。
+/// 跨组织的 job 归属同样被拒（`OwnerRef::Job` 的组织维度）。
 #[tokio::test]
 async fn cm06_a_job_owned_by_another_organization_is_refused() {
     let (port, store) = world();
@@ -282,7 +282,7 @@ async fn cm06_a_job_owned_by_another_organization_is_refused() {
     assert_eq!(port.execute_calls(), 0);
 }
 
-/// CM-06：**跨组织**的 editor 归属被拒（`OwnerRef::Editor` 的组织维度）。
+/// **跨组织**的 editor 归属被拒（`OwnerRef::Editor` 的组织维度）。
 ///
 /// **这条以前是假的。** 它名叫「跨组织」，实测传进来的却是 `u1_of_o2()`——那个主体
 /// **本身就属于 `ORG_O2`**，与 `O2_EDITOR_SESSION` 的归属组织**相同**。所以它真正测到的
@@ -332,7 +332,7 @@ async fn cm06_an_editor_owned_by_another_organization_is_refused() {
     assert_eq!(port.execute_calls(), 0);
 }
 
-/// CM-06 的运行期一半：**请求体里伪造的身份字段无法覆盖 `RequestContext`**。
+/// 运行期一半：**请求体里伪造的身份字段无法覆盖 `RequestContext`**。
 ///
 /// 这里把 `ExecutionSource` 里可声明的组织/主体写成 U2 的值，而
 /// `RequestPrincipal` 仍然是 U1。若实现信任请求体，U1 就能用一句 source 顶掉
@@ -361,7 +361,7 @@ async fn cm06_a_forged_identity_in_the_body_cannot_override_the_principal() {
         .expect("伪造 source 不会污染 U1 自己的会话");
 }
 
-/// CM-06 的编译期一半：请求 DTO 上根本没有身份字段可伪造。
+/// 编译期一半：请求 DTO 上根本没有身份字段可伪造。
 ///
 /// 这条是**源码结构**断言，不是注释。`ExecutionRequest` 的字段表由
 /// [`execution_request_fields`] 从 `request.rs` 里原样抠出来，因此有人日后加上
@@ -434,11 +434,11 @@ fn execution_request_fields() -> Vec<String> {
     fields
 }
 
-/// CM-05 六个接口的归属台账：网关这一层的动作面**恰好**是 `Execute` 与 `Cancel`。
+/// 六个接口的归属台账：网关这一层的动作面**恰好**是 `Execute` 与 `Cancel`。
 ///
 /// 穷尽 `match` 是编译期事实：少一个变体编不过，多一个变体也编不过。于是
 /// 「读取 / 关闭 / 订阅 / 下载」不是本层漏测，而是本层根本没有对应闸门；
-/// 其中订阅与下载属 `ArtifactStore`（CM-61 / CM-64，已豁免到 P7）。
+/// 其中订阅与下载属 `ArtifactStore`（已豁免到 P7）。
 #[test]
 fn cm05_the_gateway_action_surface_is_exactly_execute_and_cancel() {
     fn label(action: GatewayAction) -> &'static str {
@@ -453,10 +453,10 @@ fn cm05_the_gateway_action_surface_is_exactly_execute_and_cancel() {
 }
 
 // ---------------------------------------------------------------------------
-// CM-04
+// 配置 id 冒充会话句柄
 // ---------------------------------------------------------------------------
 
-/// CM-04：`executeInSession` 拿到一个 `profileId`（配置 id）当会话句柄用。
+/// `executeInSession` 拿到一个 `profileId`（配置 id）当会话句柄用。
 ///
 /// `SessionHandle` 是个结构体，装的是 `dbSessionId` + `runtimeEpoch`，
 /// 「配置 id 回退成会话 id」在类型上就没有通路；即便有人拿字符串硬凑过来，
@@ -477,7 +477,7 @@ async fn cm04_a_profile_id_passed_as_a_session_handle_is_not_found() {
     assert_eq!(
         api_code(&error),
         Some(ApiErrorCode::SessionNotFound),
-        "CM-04 要求的不可见配置错误，就是 §13 的 sessionNotFound"
+        "不可见的配置错误，就是 sessionNotFound"
     );
     assert_eq!(port.execute_calls(), 0, "driver execute 次数必须为 0");
     assert_eq!(gw.execution_count().await, 0);
@@ -496,10 +496,10 @@ async fn cm04_a_profile_id_passed_as_a_session_handle_is_not_found() {
 }
 
 // ---------------------------------------------------------------------------
-// CM-05
+// 「不存在」与「不归我」
 // ---------------------------------------------------------------------------
 
-/// CM-05 的核心断言：**「不存在」与「不归我」逐字节无法区分**。
+/// 核心断言：**「不存在」与「不归我」逐字节无法区分**。
 ///
 /// 两条请求分别用**同一个未知句柄**（`ABSENT_SESSION`）和 U2 的会话句柄发给 U1。
 /// 两条的对外投影必须完全一样，且驱动执行次数都必须是 0。
@@ -554,7 +554,7 @@ async fn cm05_absent_and_foreign_handles_are_byte_identical() {
     assert_eq!(api_code(&conflict), Some(ApiErrorCode::ContextConflict));
 }
 
-/// CM-05：取消一个属于他人的执行 —— 归属不符，驱动取消次数必须是 0。
+/// 取消一个属于他人的执行 —— 归属不符，驱动取消次数必须是 0。
 ///
 /// 先由真 owner U2 受理一次（产生一条真实的执行记录），再让 U1 拿着这个
 /// `executionId` 去取消：记录存在、绑定也对得上，唯一的拦截点是归属比较。
@@ -601,7 +601,7 @@ async fn cm05_cancelling_a_foreign_execution_never_reaches_the_driver() {
     assert_eq!(port.cancel_calls(), 1);
 }
 
-/// CM-05：**跨组织**归属与不存在被折叠成同一个投影。
+/// **跨组织**归属与不存在被折叠成同一个投影。
 ///
 /// 同样**修过名**：以前这条也传 `u1_of_o2()`（本身属于 `ORG_O2`），所以它是
 /// 「同组织不同主体」不是「跨组织」。现在两个请求都换成 `&u1()`（属于 `ORG_O1`）

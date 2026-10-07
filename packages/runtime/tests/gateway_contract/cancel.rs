@@ -1,4 +1,4 @@
-//! §3.2 / D-01：取消三态透传、绑定校验、取消失败不得降级为「已取消」。
+//! 取消三态透传、绑定校验、取消失败不得降级为「已取消」。
 
 use std::sync::Arc;
 
@@ -10,7 +10,7 @@ use datazen_runtime::gateway::cancel::binding;
 use datazen_runtime::gateway::{
     CancelDisposition, GatewayAction, GatewayError, InMemoryIdempotencyStore,
 };
-// ───────────────── E §3.2 取消 ─────────────────
+// ───────────────── E 取消 ─────────────────
 
 #[tokio::test(start_paused = true)]
 async fn a_supported_cancel_is_requested_through_the_port() {

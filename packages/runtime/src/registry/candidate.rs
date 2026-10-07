@@ -1,4 +1,4 @@
-//! §7.4-6 替换编排用的登记表原语。
+//! 替换编排用的登记表原语。
 //!
 //! 四条方法只有一处用途：[`crate::registry::context`] 的 `setSessionContext` 路径，
 //! 所以它们全是 `pub(super)`——可见范围就是 `registry` 模块本身，对外仍然只有
@@ -7,7 +7,7 @@
 //! 其中 [`SessionRegistry::open_candidate`] 承担全部意义：
 //!
 //! ```text
-//!   open_candidate            §12 原子切换            publish_candidate
+//!   open_candidate            原子切换              publish_candidate
 //!   ─────────────            ────────────            ────────────────
 //!   起 actor、占额度          Prepared / Committed      插进可见表
 //!   **不进表**                ——间隙——                此刻宿主才找得到它
@@ -26,9 +26,9 @@ use super::{SessionActor, SessionRegistry};
 use crate::connection::{RuntimeError, SessionHandle, SessionView};
 
 impl SessionRegistry {
-    /// §7.4-6：开一个候选物理资源并起 actor，**不进可见表**。
+    /// 开一个候选物理资源并起 actor，**不进可见表**。
     ///
-    /// 与 `open_and_publish` 只差最后一步：候选在 §12 原子切换之前对宿主
+    /// 与 `open_and_publish` 只差最后一步：候选在原子切换之前对宿主
     /// **不可见**，因此没有第二个入口能定位到它。
     pub(super) async fn open_candidate(
         &self,
@@ -39,7 +39,7 @@ impl SessionRegistry {
         let open_input = request.clone();
         let actor = spawn_actor(
             request,
-            runtime_epoch.clone(),
+            runtime_epoch,
             Arc::clone(&self.backend),
             self.outbox.clone(),
         );
@@ -58,12 +58,12 @@ impl SessionRegistry {
         }
     }
 
-    /// §7.4-6：候选销毁后把占掉的额度退回去。
+    /// 候选销毁后把占掉的额度退回去。
     pub(super) fn refund_candidate(&self) {
         self.quota.release();
     }
 
-    /// §7.4-6：旧 actor 举发放闸门（物理资源与已登记句柄原封不动）。
+    /// 旧 actor 举发放闸门（物理资源与已登记句柄原封不动）。
     pub(super) async fn hold_for_replacement(
         &self,
         handle: &SessionHandle,
@@ -77,7 +77,7 @@ impl SessionRegistry {
             .await
     }
 
-    /// §7.4-6：提交前失败 ⇒ 旧会话原样恢复发放。
+    /// 提交前失败 ⇒ 旧会话原样恢复发放。
     pub(super) async fn resume_after_replacement(
         &self,
         handle: &SessionHandle,

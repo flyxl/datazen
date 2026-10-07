@@ -1,7 +1,7 @@
-//! 门禁开销的**测量口径**（CM-60，[夹具 §11.3](../../architecture/platform/fake-runtime-fixtures.md#113-统计口径)）。
+//! 门禁开销的**测量口径**。
 //!
 //! 这里是口径本身，不是基准工具：它只回答「一组样本怎么变成一个门禁数」。
-//! 跑基准的是 `src/bin/cm60-bench`，§11.5 的产物输出也在那个入口里。
+//! 跑基准的是 `src/bin/cm60-bench`，产物输出也在那个入口里。
 //!
 //! ## 口径（不可协商）
 //!
@@ -19,7 +19,7 @@
 //! 验，见 `src/bin/cm60-bench/runner/tests.rs`。把后者交给本模块证明，等于用一条恒真的
 //! 测试给记账开绿灯。
 //!
-//! 两段都用 `std::time::Instant` 采样（§11.2），不受 FakeClock 虚拟时间影响，
+//! 两段都用 `std::time::Instant` 采样，不受 FakeClock 虚拟时间影响，
 //! 因此本模块只处理纳秒整数，不引入任何时钟。
 
 /// 单个请求的两段单调耗时。`u64` 纳秒，和 `std::time::Instant` 的差值同量纲。
@@ -37,7 +37,7 @@ impl RequestOverhead {
         }
     }
 
-    /// 该请求的门禁开销。**逐请求求和发生在取分位数之前**（§11.3）。
+    /// 该请求的门禁开销。**逐请求求和发生在取分位数之前**。
     pub const fn total_nanos(self) -> u64 {
         self.gateway_nanos + self.registration_nanos
     }
@@ -62,7 +62,7 @@ pub fn nearest_rank_percentile(samples: &[u64], quantile: f64) -> Option<u64> {
     sorted.get(rank - 1).copied()
 }
 
-/// 按 §11.3 口径求门禁 p95：先逐请求求和，再取 p95。
+/// 求门禁 p95：先逐请求求和，再取 p95。
 pub fn overhead_p95(samples: &[RequestOverhead]) -> Option<u64> {
     let totals: Vec<u64> = samples.iter().map(|sample| sample.total_nanos()).collect();
     nearest_rank_percentile(&totals, 0.95)

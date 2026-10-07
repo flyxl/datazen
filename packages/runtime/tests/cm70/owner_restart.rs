@@ -1,9 +1,9 @@
-//! A7：open/context 的 owner 重启后，旧令牌一律 `SessionLost`。
+//! open/context 的 owner 重启后，旧令牌一律 `SessionLost`。
 //!
 //! 令牌里绑着签发时的 `owner_runtime_epoch`。owner 重启会把会话的 epoch 推进一格，
 //! 于是「上一次运行期签的令牌」在新运行期里指向一个已经不存在的 owner。
 //! 这类令牌**不能**退回成一次全新写入——那正是「响应丢了之后客户端拿新键重试」
-//! 想干的事，也是 CM-70 点名要禁的。因此这里收敛到 `RuntimeError::SessionLost`，
+//! 想干的事，也是过期幂等键判据点名要禁的。因此这里收敛到 `RuntimeError::SessionLost`，
 //! 和驱动侧「会话没了」的既有语义走同一条路，调用方不必再认第三种错误。
 
 use crate::gateway_fixtures as fx;

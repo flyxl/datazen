@@ -123,6 +123,11 @@ pub(crate) fn finish_app_state(
         cancel_registry: crate::ai::CancellationRegistry::default(),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
     };
+    if let Ok(adapter) = state.platform.require() {
+        if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {
+            tracing::error!(code = ?error.code, "desktop platform injection failed");
+        }
+    }
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state
 }

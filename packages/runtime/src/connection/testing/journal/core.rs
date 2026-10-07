@@ -1,9 +1,9 @@
-//! CommandJournal 状态容器与写入/读取（fake-runtime-fixtures.md §5.2）。
+//! CommandJournal 状态容器与写入/读取。
 //!
 //! 单调 `seq` 由一个原子计数器分配，journal 因此成为「按顺序断言」的唯一依据，
 //! 测试不需要 sleep 去猜时序。写入侧在本模块，断言侧在 `asserts.rs`，条目类型在 `entry.rs`。
 //!
-//! §13 日志脱敏：`record_*` 系列的入参里没有任何可以接收 `Secret` 的位置。
+//! 日志脱敏：`record_*` 系列的入参里没有任何可以接收 `Secret` 的位置。
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -37,15 +37,15 @@ pub(crate) struct JournalState {
     pub(crate) handles: BTreeMap<String, HandleRecord>,
     pub(crate) orphan_handles: Vec<HandleRecord>,
     pub(crate) ledger: LedgerState,
-    /// 事件流序号登记（§4.3 I8）。
+    /// 事件流序号登记。
     pub(crate) stream_sequences: BTreeMap<String, Vec<u64>>,
-    /// I3：live leases。
+    /// live leases。
     pub(crate) live_leases: BTreeMap<String, ResourceId>,
-    /// I4：session registry 的活动会话。
+    /// session registry 的活动会话。
     pub(crate) active_sessions: BTreeSet<String>,
-    /// 不占用物理连接的空闲池数量。参与 §5.3 规则 4 的等式。
+    /// 不占用物理连接的空闲池数量。参与 permit 守恒式。
     pub(crate) idle_pools: usize,
-    /// 控制 socket / 预留连接数。参与 §5.3 规则 4 的等式。
+    /// 控制 socket / 预留连接数。参与 permit 守恒式。
     pub(crate) control_sockets: usize,
     pub(crate) live_executions: BTreeSet<ExecutionId>,
 }
@@ -72,7 +72,7 @@ impl JournalShared {
 // CommandJournal
 // ---------------------------------------------------------------------------
 
-/// 记录所有可观察的资源与执行变化（§5 L247）。
+/// 记录所有可观察的资源与执行变化。
 #[derive(Clone)]
 pub struct CommandJournal {
     pub(crate) inner: Arc<JournalShared>,
@@ -122,7 +122,7 @@ impl CommandJournal {
             .collect()
     }
 
-    /// 当前仍然登记在会话 actor 上的句柄（I5）。
+    /// 当前仍然登记在会话 actor 上的句柄（登记册口径）。
     pub fn handle_registry(&self) -> BTreeMap<String, HandleRecord> {
         self.inner.lock().handles.clone()
     }
@@ -137,12 +137,12 @@ impl CommandJournal {
             .collect()
     }
 
-    /// 孤儿句柄（I7）：fake 侧建了句柄但没交给宿主。
+    /// 孤儿句柄：fake 侧建了句柄但没交给宿主。
     pub fn orphan_handles(&self) -> Vec<HandleRecord> {
         self.inner.lock().orphan_handles.clone()
     }
 
-    /// 预算仍然被占用的资源（I2 的 live 集合）。
+    /// 预算仍然被占用的资源（live 集合）。
     pub fn live_resources(&self) -> Vec<ResourceId> {
         live_resources_in(&self.entries())
     }
@@ -248,7 +248,7 @@ impl CommandJournal {
         seq
     }
 
-    /// 终结一次执行。`protocol_drained` 必须显式给出 —— §5.3 规则 7 要求
+    /// 终结一次执行。`protocol_drained` 必须显式给出 —— 要求
     /// 「已记录或显式为 false」，不允许「没写」。
     pub fn record_execution_terminal(
         &self,
@@ -290,7 +290,7 @@ impl CommandJournal {
         }
     }
 
-    /// 登记一个事件流序号（I8）。
+    /// 登记一个事件流序号。
     pub fn record_stream_event(&self, stream_id: &StreamId, stream_seq: u64) {
         self.inner
             .lock()
@@ -300,7 +300,7 @@ impl CommandJournal {
             .push(stream_seq);
     }
 
-    /// I8：`events.stream_sequence.is_contiguous()`。
+    /// `events.stream_sequence.is_contiguous()`。
     pub fn stream_sequence_is_contiguous(&self) -> bool {
         self.inner.lock().stream_sequences.values().all(|seqs| {
             let mut sorted = seqs.clone();
@@ -328,7 +328,7 @@ impl CommandJournal {
                 state.ledger.returned.insert(permit_id.as_str().to_string());
             }
             other => {
-                // delta 只能是 ±1（§5 L253）。这是调用方契约违约，无法恢复，因此直接 panic 并说明原因。
+                // delta 只能是 ±1。这是调用方契约违约，无法恢复，因此直接 panic 并说明原因。
                 panic!("permit delta 只能是 +1 或 -1，实际收到 {other}（seq={seq}）");
             }
         }
@@ -401,7 +401,7 @@ impl CommandJournal {
         seq
     }
 
-    /// 关闭路径回收孤儿句柄：fake 侧的 `orphaned` 在资源确认关闭时一并回收（I7）。
+    /// 关闭路径回收孤儿句柄：fake 侧的 `orphaned` 在资源确认关闭时一并回收。
     pub fn recover_orphans_on_close(&self, resource_id: &ResourceId, reason: &str) {
         let orphans: Vec<HandleRecord> = self
             .inner
@@ -422,14 +422,14 @@ impl CommandJournal {
         }
     }
 
-    /// 关闭路径回收**已交给宿主、仍登记在册**的句柄（I5）。
+    /// 关闭路径回收**已交给宿主、仍登记在册**的句柄。
     ///
     /// 与 [`Self::recover_orphans_on_close`] 是两件事：那一个收的是「fake 侧建了、
-    /// 拒绝交给宿主」的孤儿（I7）；这一个收的是宿主**已经拿到**、但随资源一起死的句柄。
-    /// §9.3 的真实线程竞态就落在这条上：驱逐线程在持有线程还挂着句柄时把资源关掉，
-    /// 台账不能因此永久留一条登记（否则 I5 永远收不口）。
+    /// 拒绝交给宿主」的孤儿；这一个收的是宿主**已经拿到**、但随资源一起死的句柄。
+    /// 真实线程竞态就落在这条上：驱逐线程在持有线程还挂着句柄时把资源关掉，
+    /// 台账不能因此永久留一条登记（否则登记册永远收不口）。
     ///
-    /// 正常路径（先注销句柄再关闭资源，CM-74）走不到这里 —— 那些句柄在
+    /// 正常路径（先注销句柄再关闭资源）走不到这里 —— 那些句柄在
     /// `close_resource` 里就带 `closed` 记进来了，本方法只兜住 journal 侧登记册里
     /// 有、slot 上却查不到的残留（runtime 登记过、但本进程没有对应 slot 条目）。
     /// 所以它依然不会掩盖宿主自己的句柄泄漏 ——
@@ -454,7 +454,7 @@ impl CommandJournal {
         }
     }
 
-    // -- I3 / I4 登记簿 ---------------------------------------------------
+    // -- 登记簿 ----------------------------------------------------------
 
     pub fn register_lease(&self, lease_id: &LeaseId, resource_id: &ResourceId) {
         self.inner
@@ -481,7 +481,7 @@ impl CommandJournal {
             .remove(db_session_id.as_str());
     }
 
-    // -- 断言入口（§5.4）-------------------------------------------------
+    // -- 断言入口-------------------------------------------------
 
     pub fn assert(&self) -> JournalAssert<'_> {
         JournalAssert::new(self)
@@ -499,18 +499,18 @@ impl CommandJournal {
         JournalAssert::new(self).assert_no_return_to_pool_without_drain();
     }
 
-    /// I5 直达断言。与 `assert().assert_no_open_handles()` 等价，单独暴露是为了让
-    /// 故障用例在收尾处一行调用（§4.3）。
+    /// 登记册为空这件事的直达断言。与 `assert().assert_no_open_handles()` 等价，单独暴露是为了让
+    /// 故障用例在收尾处一行调用。
     pub fn assert_no_open_handles(&self) {
         JournalAssert::new(self).assert_no_open_handles();
     }
 
-    /// I7 直达断言（§4.3）。
+    /// 孤立句柄直达断言。
     pub fn assert_no_orphan_handles(&self) {
         JournalAssert::new(self).assert_no_orphan_handles();
     }
 
-    /// I8 直达断言（§4.3）。
+    /// 事件流序号直达断言。
     pub fn assert_stream_sequence_contiguous(&self) {
         JournalAssert::new(self).assert_stream_sequence_contiguous();
     }

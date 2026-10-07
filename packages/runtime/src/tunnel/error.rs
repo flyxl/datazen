@@ -1,4 +1,4 @@
-//! `tunnel` 模块的唯一拒绝出口 —— 与 `resource/mod.rs:89-124` 同一纪律：
+//! `tunnel` 模块的唯一拒绝出口 —— 与 `resource/mod.rs` 同一纪律：
 //! 一个模块一套错误、一个稳定字面码集，且全部映射到**既有**的 [`RuntimeError`]，
 //! 不新增线路可见的拒绝形状。
 //!
@@ -25,7 +25,7 @@ pub enum TunnelError {
 
     /// 这条隧道当前不接受新的引用（正在拆除 / 拆除结果不明 / 已失败）。
     ///
-    /// 绝不把调用方塞进一条正在拆除或已失败的隧道 —— 那是 CM-28
+    /// 绝不把调用方塞进一条正在拆除或已失败的隧道 —— 那是
     /// 「隧道不多减引用」失效的前置状态。
     #[error("tunnel is not shareable in state {}", state.as_str())]
     NotShareable {

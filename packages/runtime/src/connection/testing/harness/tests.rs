@@ -1,14 +1,14 @@
-//! [`FakeHarness`] 的自测（fake-runtime-fixtures.md §4.3、§9.1、§9.2、§9.3）。
+//! [`FakeHarness`] 的自测。
 //!
 //! `cm73.rs` 的模块注释点名了本文件：「反例由 `tests.rs` 里显式造出来，
 //! 不靠『相信正例不会出错』」。所以本文件的一半内容是**判负**用例：
-//! §9.2 的三条反例命令、以及 §9.3「宿主把旧句柄搬到恢复资源上复用」。
+//! 三条反例命令、以及「宿主把旧句柄搬到恢复资源上复用」。
 //!
-//! 全程**不 sleep**：CM-73 的先后关系由 [`Barrier`] + journal `seq` 表达（§6 L357）。
+//! 全程**不 sleep**：先后关系由 [`Barrier`] + journal `seq` 表达。
 //!
-//! **panic 约定**（docs/development/panic-policy.md）：本文件每个 `expect` / `panic!`
+//! **panic 约定**：本文件每个 `expect` / `panic!`
 //! 的消息都写明「哪条不变量被打破才算失败」。命令网关返回 `Err` 属于**被测语义**
-//! 时用 `match` + `panic!` 显式失败（例如 §9.2 的判负命令）；夹具基线路径本身
+//! 时用 `match` + `panic!` 显式失败（例如用错资源/过期 epoch 的判负命令）；夹具基线路径本身
 //! 不允许失败，此时才用 `expect`。
 
 use serde_json::json;
@@ -27,11 +27,11 @@ use crate::connection::testing::journal::{HandleAction, JournalEntry, ResourceEv
 use crate::connection::types::HandleId;
 
 // ---------------------------------------------------------------------------
-// §9.1 正例：会话句柄命令走命令定义 + 入参校验的同一条路径
+// 正例：会话句柄命令走命令定义 + 入参校验的同一条路径
 // ---------------------------------------------------------------------------
 
-/// §9.1：`begin → prepare → open cursor → commit → close` 全程登记与注销成对，
-/// 收尾后 §4.3 的 I1–I8 与 §5.3 的变化点断言必须全部收口。
+/// `begin → prepare → open cursor → commit → close` 全程登记与注销成对，
+/// 收尾后泄漏不变量与变化点断言必须全部收口。
 #[test]
 fn a_normal_session_journey_leaves_no_leak_and_balanced_change_points() {
     let harness = harness_for(NS_A_KEY);
@@ -67,7 +67,7 @@ fn a_normal_session_journey_leaves_no_leak_and_balanced_change_points() {
         .expect("open_session_cursor 必须成功");
     let cursor_handle_id = first_handle_id(&opened);
 
-    // 提交 / 关闭都要**带上句柄 id** —— §9.1 要求它们走同一条 `handleId` 入参。
+    // 提交 / 关闭都要**带上句柄 id** —— 它们走同一条 `handleId` 入参。
     harness
         .invoke(
             SessionCommand::CommitSessionTransaction,
@@ -84,18 +84,18 @@ fn a_normal_session_journey_leaves_no_leak_and_balanced_change_points() {
         .expect("close_session_cursor 必须成功");
 
     // 旅程终点是**关闭资源**：归还 permit、注销残留的 prepared statement 句柄、
-    // 摘掉 active session，I1/I2/I4/I5/I6 才能全部收口。
+    // 摘掉 active session，台账各口才能全部收口。
     harness
         .close(&acquired.handle)
         .expect("close_resource 必须成功");
 
-    // §4.3 I1–I8 + §5.3 变化点全收口。
+    // 泄漏不变量 + 变化点全收口。
     if let Err(violations) = harness.assert_no_leak() {
         panic!("正常会话旅程不应留下泄漏：{violations}");
     }
 }
 
-/// §9.1 的入参校验确实生效：`rows` 标了 `required`，漏掉必须被
+/// 入参校验确实生效：`rows` 标了 `required`，漏掉必须被
 /// `validate_command_input` 拒在网关层，而不是流到驱动。
 #[test]
 fn a_command_missing_a_required_field_is_rejected_at_the_gateway() {
@@ -117,14 +117,14 @@ fn a_command_missing_a_required_field_is_rejected_at_the_gateway() {
 }
 
 // ---------------------------------------------------------------------------
-// §9.2 反例：三条命令的存在意义就是被判负
+// 反例：三条命令的存在意义就是被判负
 // ---------------------------------------------------------------------------
 
-/// §9.2 登记与注销的**正例半**：`begin` 之后登记册必须能看到句柄。
+/// 登记与注销的**正例半**：`begin` 之后登记册必须能看到句柄。
 ///
-/// 反例半（句柄造了但**不进**登记册 ⇒ 台账只有 `orphaned` ⇒ I7）在
-/// `fake_resource/tests.rs::an_orphaned_handle_...` 里，判据是 I7 而不是本文件，
-/// 两半分开放，避免「用 I5 判 I7 的错」。
+/// 反例半（句柄造了但**不进**登记册 ⇒ 台账只有 `orphaned` ⇒ 孤立句柄不变式不成立）在
+/// `fake_resource/tests.rs::an_orphaned_handle_...` 里，判据是登记册而不是本文件，
+/// 两半分开放，避免「用登记册判孤立句柄的错」。
 #[test]
 fn a_registered_handle_is_visible_in_the_registry() {
     let harness = harness_for(NS_A_KEY);
@@ -146,7 +146,7 @@ fn a_registered_handle_is_visible_in_the_registry() {
         "登记册里必须能看到这个句柄"
     );
 
-    // 未关闭前 I5 必然不成立 —— 这条断言防止下面的 I5 收口恒真。
+    // 未关闭前登记册必然不收口 —— 这条断言防止下面的收口断言恒真。
     assert!(
         !harness.journal().handle_registry().is_empty(),
         "句柄还开着，登记册就不该是空的"
@@ -160,14 +160,14 @@ fn a_registered_handle_is_visible_in_the_registry() {
     );
 }
 
-/// §9.2 `commit_session_transaction` 注入 F8：结果**不可判定**。
+/// `commit_session_transaction` 注入不可判定故障：结果必须**不可判定**。
 ///
-/// 硬规则有三条（doc :472、:774）：
+/// 硬规则有三条：
 /// 1. `effectOutcome` 必须是 `unknown`，绝不能是 `completed`；
 /// 2. `errorCode` 取**实际成因**（这里是 `protocolError`），不是笼统的 `unknown`；
 /// 3. **不自动再执行**，也**不返回** `TransactionResolutionRequired`。
 ///
-/// 第 3 条的判据是台账：`transactionOperation` 上只排了一个 F8，脚本额度用尽后
+/// 第 3 条的判据是台账：`transactionOperation` 上只排了一个回滚失败，脚本额度用尽后
 /// 第二次提交就是基线路径，所以「有没有被自动重放」由 `script.pending` 与
 /// 事务状态机共同表达 —— 这里断言 `pending == 0`（不重放、额度已被这一次用掉）。
 #[test]
@@ -204,12 +204,12 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
             .pointer("/effectOutcome")
             .and_then(|v| v.as_str()),
         Some(EffectOutcome::Unknown.as_str()),
-        "F8 之后 effectOutcome 必须是 unknown（§3.2）"
+        "注入不可判定故障后 effectOutcome 必须是 unknown"
     );
     assert_eq!(
         injected.data.pointer("/errorCode").and_then(|v| v.as_str()),
         Some(ExecutionErrorCode::ProtocolError.as_str()),
-        "errorCode 必须取实际成因 protocolError，而不是笼统值（§9.2）"
+        "errorCode 必须取实际成因 protocolError，而不是笼统值"
     );
     assert_eq!(
         harness.script().pending(ResourceOp::Transaction),
@@ -235,11 +235,11 @@ fn a_commit_injected_with_commit_unknown_is_never_completed_and_is_not_replayed(
         .expect("收尾 close_resource 必须成功");
 }
 
-/// §9.2 `rollback_session_transaction` 注入 F8：回滚失败。
+/// `rollback_session_transaction` 遇到注入的回滚失败。
 ///
-/// 断言形状（doc :473）：资源进 `Quarantined`、**预算占用保留**、错误是
+/// 断言形状：资源进 `Quarantined`、**预算占用保留**、错误是
 /// `ProviderError::RollbackFailed`。台账上必须能看到那条 `Quarantined` 事件，
-/// 且 `permit_balance` 仍然是 1（§5.3 规则 3）。
+/// 且 `permit_balance` 仍然是 1。
 #[test]
 fn a_rollback_injected_with_rollback_failed_quarantines_and_keeps_the_budget() {
     let harness = harness_for(NS_A_KEY);
@@ -292,7 +292,7 @@ fn a_rollback_injected_with_rollback_failed_quarantines_and_keeps_the_budget() {
     assert_eq!(
         harness.journal().permit_balance(),
         1,
-        "隔离后预算占用必须保留（§9.2 / §5.3 规则 3）"
+        "隔离后预算占用必须保留"
     );
     assert!(
         harness.journal().live_resources().is_empty(),
@@ -313,12 +313,12 @@ fn a_rollback_injected_with_rollback_failed_quarantines_and_keeps_the_budget() {
     }
 }
 
-/// §9.2 反例二：提交时携带**陈旧**的 `runtimeEpoch`。
+/// 反例二：提交时携带**陈旧**的 `runtimeEpoch`。
 ///
-/// 判负靠 `ApiError::code`：`ProviderError::RuntimeEpochMismatch` —— §3.1 规定
+/// 判负靠 `ApiError::code`：`ProviderError::RuntimeEpochMismatch` —— 规定
 /// 「每次操作都要校验 `resourceId` + `runtimeEpoch` + owner」，epoch 对不上就是
 /// `RuntimeEpochMismatch`（不是更泛的 `SessionLost`：后者留给「资源/会话根本不在了」，
-/// 两者在 §9.2 的两条反例里必须能区分开）。
+/// 两者在两条反例里必须能区分开）。
 #[test]
 fn a_commit_carrying_a_stale_runtime_epoch_is_rejected() {
     let harness = harness_for(NS_A_KEY);
@@ -345,7 +345,7 @@ fn a_commit_carrying_a_stale_runtime_epoch_is_rejected() {
 
     match result {
         Err(error @ GatewayError::Provider(ProviderError::RuntimeEpochMismatch(_))) => {
-            // §9.2：判负要落在 `ApiError.code` 上，不能只看是不是 Err。
+            // 判负要落在 `ApiError.code` 上，不能只看是不是 Err。
             assert_eq!(
                 error.api_code(),
                 Some(crate::connection::error::ApiErrorCode::RuntimeEpochMismatch),
@@ -355,13 +355,13 @@ fn a_commit_carrying_a_stale_runtime_epoch_is_rejected() {
         other => panic!("陈旧 epoch 的提交必须被拒，实际是 {other:?}"),
     }
 
-    // 判负**不改变账本**：事务句柄仍在登记册里，归池前置不成立（§9.2）。
+    // 判负**不改变账本**：事务句柄仍在登记册里，归池前置不成立。
     harness
         .close(&acquired.handle)
         .expect("收尾 close_resource 必须成功");
 }
 
-/// §9.2 反例三：拿 A 资源的句柄去动 B 资源。
+/// 反例三：拿 A 资源的句柄去动 B 资源。
 ///
 /// 判负靠 `FakeResourceProvider::resolve` 的资源归属检查 —— 句柄里带了
 /// `resourceId`，跨资源使用时对不上。
@@ -403,17 +403,17 @@ fn a_handle_from_another_resource_is_rejected() {
 }
 
 // ---------------------------------------------------------------------------
-// §9.3 CM-73：空闲驱逐 vs 会话事务
+// 空闲驱逐 vs 会话事务
 // ---------------------------------------------------------------------------
 
-/// §9.3 正例：五步竞态跑完，R2 上**不得**出现任何句柄登记，
-/// 恢复用的 `dbSessionId` 必须是**新的**，收尾后 I1–I8 全成立。
+/// 正例：五步竞态跑完，R2 上**不得**出现任何句柄登记，
+/// 恢复用的 `dbSessionId` 必须是**新的**，收尾后全部不变式都成立。
 #[test]
 fn the_eviction_race_recovers_on_a_fresh_resource_without_reusing_handles() {
     let harness = harness_for(NS_A_KEY);
     let report: EvictionRaceReport = harness
         .script_hold_for_eviction_then_begin_commit(owner(), "pol-1", 5)
-        .expect("§9.3 编排必须跑通");
+        .expect("五步编排必须跑通");
 
     // 停住那一刻开的事务必须落在 R1 上（不是新资源）。
     let race_handles = harness.registered_handle_ids_on(&report.pre_close_resource_id);
@@ -424,7 +424,7 @@ fn the_eviction_race_recovers_on_a_fresh_resource_without_reusing_handles() {
     );
     assert_ne!(report.recovery_resource_id, report.pre_close_resource_id);
 
-    // §9.3 第 5 步：恢复出来的 dbSessionId 必须是新的。
+    // 第 5 步：恢复出来的 dbSessionId 必须是新的。
     assert_ne!(
         report.recovery_db_session_id, report.pre_close_db_session_id,
         "恢复路径必须换一个新的 dbSessionId，不得复用旧会话 id"
@@ -435,20 +435,20 @@ fn the_eviction_race_recovers_on_a_fresh_resource_without_reusing_handles() {
     assert_eq!(report.registered_on_recovery, 0);
     harness
         .assert_no_handle_reuse(&report.recovery_resource_id)
-        .unwrap_or_else(|reason| panic!("§9.3 判负（正例不该触发）：{reason}"));
+        .unwrap_or_else(|reason| panic!("判负（正例不该触发）：{reason}"));
 
-    // 收尾：R2 是**仍然开着**的恢复资源，不关它 I2（live 资源）/ I4（active session）/
-    // I1+I6（permit 收支）就不可能收口 —— R1 已在第 4 步归还 permit，差的正好是 R2 那一张。
+    // 收尾：R2 是**仍然开着**的恢复资源，不关它 live 资源 / active session /
+    // permit 收支就不可能收口 —— R1 已在第 4 步归还 permit，差的正好是 R2 那一张。
     harness
         .close(&report.recovery_handle)
         .expect("收尾必须把恢复资源 R2 也走一遍正常关闭");
 
     if let Err(violations) = harness.assert_no_leak() {
-        panic!("§9.3 收尾不得留下泄漏：{violations}");
+        panic!("收尾不得留下泄漏：{violations}");
     }
 }
 
-/// §9.3 反例：宿主作弊 —— 把旧句柄在恢复资源 R2 上补登记一次。
+/// 反例：宿主作弊 —— 把旧句柄在恢复资源 R2 上补登记一次。
 ///
 /// 这条用例的**唯一**目的是让 `assert_no_handle_reuse` 判负：只验正例
 /// 的话，「没有登记」和「断言根本没跑」是分不开的。
@@ -457,7 +457,7 @@ fn a_host_that_re_registers_the_old_handle_on_the_recovery_resource_is_caught() 
     let harness = harness_for(NS_A_KEY);
     let report = harness
         .script_hold_for_eviction_then_begin_commit(owner(), "pol-1", 5)
-        .expect("§9.3 编排必须跑通");
+        .expect("五步编排必须跑通");
 
     // 作弊：把 R1 的旧句柄在 R2 上再登记一次（`register_handle` 是公开的）。
     let cheater = harness
@@ -484,7 +484,7 @@ fn a_host_that_re_registers_the_old_handle_on_the_recovery_resource_is_caught() 
     );
     let rejection = harness
         .assert_no_handle_reuse(&report.recovery_resource_id)
-        .expect_err("§9.3 判负：复用旧句柄必须被抓出来");
+        .expect_err("判负：复用旧句柄必须被抓出来");
     assert!(
         rejection.contains("不得复用旧句柄"),
         "判负信息必须说清是复用了旧句柄，实际是：{rejection}"
@@ -492,10 +492,10 @@ fn a_host_that_re_registers_the_old_handle_on_the_recovery_resource_is_caught() 
 }
 
 // ---------------------------------------------------------------------------
-// §4.3：未登记句柄的显式收口
+// 未登记句柄的显式收口
 // ---------------------------------------------------------------------------
 
-/// §4.3 I5/I7：`Close` 之后登记册必须空，孤立句柄必须空。
+/// `Close` 之后登记册必须空，孤立句柄必须空。
 /// 用命令级路径跑一遍，验的是「关句柄」这条写路径真的回写登记册。
 #[test]
 fn closing_a_session_handle_empties_the_registry() {
@@ -553,10 +553,10 @@ fn closing_a_session_handle_empties_the_registry() {
 }
 
 // ---------------------------------------------------------------------------
-// §8.1：命名空间隔离（NS_A / NS_B 是两个独立夹具世界）
+// 命名空间隔离（NS_A / NS_B 是两个独立夹具世界）
 // ---------------------------------------------------------------------------
 
-/// §8.1：两个命名空间是两个独立夹具资源，互不串台。
+/// 两个命名空间是两个独立夹具资源，互不串台。
 /// 夹具世界本身要能分别造出目标不同的两个 `FakeHarness`。
 #[test]
 fn the_two_fixture_namespaces_derive_distinct_targets() {

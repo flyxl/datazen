@@ -5,7 +5,7 @@
 //! 驱动的 `Clean` 以 [`DriverCleanVerdict`] 进入本文件，它是一个**结论**（`bool`），
 //! 刻意不携带任何判定依据：宿主看不到 `Clean` 是怎么算出来的，也没有在本模块重算它的入口。
 //! 宿主只做**自己的**检查（[`HostConditionSnapshot`]）。两侧**都**通过才允许回池 ——
-//! 形状对齐 `platform-api` 的 `PoolReturnVerdict::decide`（CM-69）。
+//! 形状对齐 `platform-api` 的 `PoolReturnVerdict::decide`。
 
 use std::sync::Arc;
 
@@ -15,6 +15,7 @@ use crate::connection::port::CancelDisposition;
 use crate::connection::{ExecutionId, HandleId, HandleKind, LeaseId, ResourceId, SessionHandleRef};
 
 use crate::resource::lease::{LeasePurpose, LeaseRecord, LeaseRequest, LeaseState};
+use crate::resource::tunnel_wiring::TunnelDisposition;
 use crate::resource::ResourceError;
 
 /// 驱动自报的 `Clean` 结论。
@@ -43,9 +44,9 @@ impl DriverCleanVerdict {
     }
 }
 
-/// 未完成的协议负债（§7.5 步骤 5 / §13 放弃消费策略）。
+/// 未完成的协议负债。
 ///
-/// 「协议未排空」是 CM-69 的三个独立阻断项之一：驱动报 `Clean` 也**不代表**宿主的
+/// 「协议未排空」是三个独立阻断项之一：驱动报 `Clean` 也**不代表**宿主的
 /// 协议已经排空，这两件事由不同的人负责。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProtocolDebt {
@@ -65,12 +66,12 @@ impl ProtocolDebt {
 
 /// 宿主侧的复用前置条件快照。
 ///
-/// 四个字段正是 CM-69 点名的三个独立场景加一个归属禁用：
+/// 四个字段正是三个独立场景加一个归属禁用：
 /// (a) `active_executions` 非空；(b) `outstanding_protocol` 非空；
 /// (c) `unreleased_handles` 非空；(d) `owner_disabled`。
 /// **任意一项非空即拒绝复用**，三者互不替代 —— 驱动报 `Clean` 不会让其中任何一项消失。
 ///
-/// 第五个字段 `fixed_session` 不是「故障」，而是**用途**声明：§7.5 步骤 5 规定用户自开的
+/// 第五个字段 `fixed_session` 不是「故障」，而是**用途**声明：用户自开的
 /// 任意 SQL 会话关闭时直接关物理资源。这类会话即使四项检查全清也不进空闲池。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostConditionSnapshot {
@@ -78,12 +79,12 @@ pub struct HostConditionSnapshot {
     pub outstanding_protocol: Vec<ProtocolDebt>,
     pub unreleased_handles: Vec<SessionHandleRef>,
     pub owner_disabled: Option<String>,
-    /// 固定会话：不参与归还池（§7.5 步骤 5）。
+    /// 固定会话：不参与归还池。
     pub fixed_session: bool,
 }
 
 impl HostConditionSnapshot {
-    /// CM-69 的四项宿主条件全满足（注意：这**不代表**可以回池，驱动那一侧还没看，
+    /// 四项宿主条件全满足（注意：这**不代表**可以回池，驱动那一侧还没看，
     /// 用途也可能根本不允许归还）。
     pub const fn is_clear(&self) -> bool {
         self.active_executions.is_empty()
@@ -185,7 +186,7 @@ impl HostConditionSnapshot {
         self
     }
 
-    /// 标记为固定会话（§7.5 步骤 5：用户自开的会话关闭时直接关物理资源）。
+    /// 标记为固定会话（用户自开的会话关闭时直接关物理资源）。
     pub const fn as_fixed_session(mut self) -> Self {
         self.fixed_session = true;
         self
@@ -214,7 +215,7 @@ pub enum ReturnReason {
     OwnerDisabled {
         owner_key: String,
     },
-    /// 固定会话不参与归还（§7.5 步骤 5）。这不是故障，是用途。
+    /// 固定会话不参与归还。这不是故障，是用途。
     FixedSessionNotPoolable,
 }
 
@@ -281,7 +282,7 @@ pub enum CleanupDisposition {
 }
 
 impl CleanupDisposition {
-    /// 只有真正关闭才释放物理预算（§9.2：回池不释放）。
+    /// 只有真正关闭才释放物理预算（回池不释放）。
     pub const fn releases_physical_budget(self) -> bool {
         matches!(self, Self::Closed)
     }
@@ -303,7 +304,7 @@ impl CleanupPlan {
         host: &HostConditionSnapshot,
         driver: DriverCleanVerdict,
     ) -> Self {
-        // 固定会话**结构上**就不归池（§7.5）：这条不变量来自租约自身的用途，
+        // 固定会话**结构上**就不归池：这条不变量来自租约自身的用途，
         // 不能依赖调用方记得把快照里的 `fixed_session` 打开 —— 否则一次忘记就等于
         // 把仍然持有着用户会话的连接塞回共享空闲池。
         let mut effective = host.clone();
@@ -335,7 +336,7 @@ impl CleanupPlan {
         // 正在执行的连接、或归属已被禁用的连接，一律**不许静默关闭**：前者随时可能被
         // 驱动写回，后者连裁决权都没有，都留在隔离里等运维处置。
         //
-        // 还挂着未释放会话级句柄（事务/游标/服务端预备对象）**不在此列**：CM-73 的目标
+        // 还挂着未释放会话级句柄（事务/游标/服务端预备对象）**不在此列**：目标
         // 行为恰恰是先在原资源上回滚并解除映射再关闭，回滚由 `ResourceManager::release`
         // 在 `CleanupDisposition::Closed` 分支上做；**回滚结果不明**才由它把处置改成
         // 隔离，不允许换个新资源把旧事务蒙混过去。
@@ -374,10 +375,17 @@ pub struct CleanupReport {
     ///
     /// 复位成功后这里为空：映射已在原资源上解除，没有任何句柄还能提交。
     pub outstanding_handles: Vec<HandleId>,
-    /// CM-73：回收时是否已在**原资源**上执行过复位（回滚事务并解除映射）。
+    /// 回收时是否已在**原资源**上执行过复位（回滚事务并解除映射）。
     /// 为真 ⇒ `Close` 事件排在 `Reset` 之后，这是可审计的行为证据。
     pub session_reset_performed: bool,
     pub physical_budget_released: bool,
+    /// 这次处置对**隧道引用**做了什么。
+    ///
+    /// 与 [`Self::physical_budget_released`] 是同一次判据的两半，放在一起才看得出配对：
+    /// 不变式是 `tunnel.pairs_with_budget_release() == physical_budget_released`。
+    /// 直连租约（没有 `tunnel_spec`）报 [`TunnelDisposition::NoReference`]，
+    /// 它与 `physical_budget_released` 并不冲突 —— 「从没占过隧道」也是一种配对。
+    pub tunnel: TunnelDisposition,
     pub decided_at_nanos: u64,
 }
 
@@ -388,6 +396,7 @@ impl CleanupReport {
         plan: CleanupPlan,
         now_nanos: u64,
         session_reset_performed: bool,
+        tunnel: TunnelDisposition,
     ) -> Self {
         let physical_budget_released = plan.disposition.releases_physical_budget();
         Self {
@@ -407,6 +416,7 @@ impl CleanupReport {
             },
             session_reset_performed,
             physical_budget_released,
+            tunnel,
             decided_at_nanos: now_nanos,
         }
     }
@@ -420,7 +430,7 @@ impl CleanupReport {
     }
 }
 
-/// CM-39：禁用/删除时对**已经在跑**的执行，记录它的**真实**取消处置。
+/// 禁用/删除时对**已经在跑**的执行，记录它的**真实**取消处置。
 ///
 /// 把「取消失败」或「驱动不支持精确取消」谎报成「已取消」，会让审计与 Job 历史失真：
 /// 调用者会以为结果集是完整的，实际可能是一个半截的结果。
@@ -475,13 +485,13 @@ impl CancellationOutcome {
 ///
 /// 为什么自己定义而不是复用 `connection/port.rs`：`connection/port.rs` 冻结的是 DTO
 /// 与 `BudgetPort`，**并没有**资源操作端口；而本模块不得反向依赖尚未存在的
-/// `registry/**`（Wave 2 接缝，冻结）。所有方法只收发**账目标识**，不收发句柄。
+/// `registry/**`（尚未落地的会话层接缝，冻结）。所有方法只收发**账目标识**，不收发句柄。
 pub trait PhysicalTransport: Send + Sync + 'static {
     /// 建立一条新的物理连接，返回**账目标识**。
     fn open(&self, request: &LeaseRequest) -> Result<ResourceId, ResourceError>;
     /// 关闭物理连接。返回 `Err` 表示关闭握手没确认，调用方必须转隔离而不是放行。
     fn close(&self, resource: &ResourceId) -> Result<(), ResourceError>;
-    /// 复位（§9.4）。短租约归池前必跑；驱动判定 `Clean` 时已经包含它。
+    /// 复位。短租约归池前必跑；驱动判定 `Clean` 时已经包含它。
     fn reset(&self, resource: &ResourceId) -> Result<(), ResourceError>;
     /// 请求精确取消一次运行中的执行，返回**真实处置**。
     fn cancel(

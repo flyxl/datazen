@@ -1,4 +1,4 @@
-//! CM-70：记录保留期与令牌授予登记。
+//! 记录保留期与令牌授予登记。
 //!
 //! # 保留期存在的理由
 //!
@@ -12,7 +12,7 @@
 //! 账本——「删除后仍被拒绝」成立。
 //!
 //! 但若 `t < E`，令牌签名完好、尚未过期，会一路放行到账本；记录已经删干净，
-//! 查重得到 `Miss`，于是**真的再执行一遍**。CM-70 明令禁止这件事。
+//! 查重得到 `Miss`，于是**真的再执行一遍**。这件事被明令禁止。
 //!
 //! 所以不变量是：**`retained_until >= expires_at`**。只有「令牌先按自己的签名过期，
 //! 之后才允许删授予」成立，上面第 3 步才落在 `t >= E` 那一侧。
@@ -46,14 +46,14 @@ use std::sync::{Arc, Mutex};
 use crate::connection::ExecutionId;
 use crate::gateway::idempotency::IdempotencyScope;
 
-/// 到期之后仍须保留的时长（24 小时虚拟时间，§3.5）。
+/// 到期之后仍须保留的时长（24 小时虚拟时间）。
 pub const RETENTION_AFTER_EXPIRY_NANOS: u64 = 24 * 60 * 60 * 1_000_000_000;
 
-/// 一条授予：令牌第一次被受理时登记，与 CM-54 的幂等记录通过 `executionId` 关联。
+/// 一条授予：令牌第一次被受理时登记，与幂等账本里的记录通过 `executionId` 关联。
 ///
 /// 之所以与 [`crate::gateway::idempotency::IdempotencyRecord`] **分开存**：
 /// 那条记录是被既有契约测试逐字段构造的冻结结构，加字段必破它。保留期信息属于令牌层，
-/// 塞进 CM-54 的结构等于让一张别人的表替令牌层保存状态。
+/// 塞进幂等记录的结构等于让一张别人的表替令牌层保存状态。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grant {
     execution_id: ExecutionId,
@@ -175,7 +175,7 @@ struct RegistryInner {
 
 /// 授予登记表（进程内）。
 ///
-/// 单进程网关（§2 的范围界定）用它就够了，与 [`crate::gateway::idempotency::InMemoryIdempotencyStore`]
+/// 单进程网关用它就够了，与 [`crate::gateway::idempotency::InMemoryIdempotencyStore`]
 /// 同一条生命周期。需要跨进程共享的部署形态应替换实现，而不是在本类型上叠锁。
 #[derive(Debug, Default)]
 pub struct GrantRegistry {
@@ -191,19 +191,15 @@ impl GrantRegistry {
         Arc::new(Self::new())
     }
 
-    /// 登记一条授予。同一摘要重复登记取后一次——与 CM-54「重复写是调用方 bug」
+    /// 登记一条授予。同一摘要重复登记取后一次——与「重复写是调用方 bug」
     /// 不同，这里允许重登记是因为签发方可能在重试中重新登记同一张令牌。
     pub fn record(&self, digest: impl Into<String>, grant: Grant) {
         let digest = digest.into();
-        match self.inner.lock() {
-            Ok(mut guard) => {
-                guard.grants.insert(digest.clone(), grant);
-                guard.retirements.remove(&digest);
-            }
-            // 锁中毒意味着已经有别的线程在 panic。如实放行：
-            // 登记失败的后果是这道令牌少了条授予，重放路径会退化成查不到记录而拒绝，
-            // 方向仍然是 fail-closed。
-            Err(_) => {}
+        // 锁中毒意味着已经有别的线程在 panic。如实放行：登记失败的后果是这道令牌
+        // 少了条授予，重放路径会退化成查不到记录而拒绝，方向仍然是 fail-closed。
+        if let Ok(mut guard) = self.inner.lock() {
+            guard.grants.insert(digest.clone(), grant);
+            guard.retirements.remove(&digest);
         }
     }
 
@@ -249,56 +245,53 @@ impl GrantRegistry {
     /// 正是「授予已不在、令牌还可能没过期」那段窗口，先删后剪等于把窗口关死。
     pub fn sweep(&self, now_nanos: u64) -> SweepReport {
         let mut report = SweepReport::default();
-        match self.inner.lock() {
-            Ok(mut guard) => {
-                let before = guard.retirements.len();
-                guard
-                    .retirements
-                    .retain(|_, retirement| now_nanos < retirement.expires_at_nanos);
-                report.tombstones_pruned = before - guard.retirements.len();
+        if let Ok(mut guard) = self.inner.lock() {
+            let before = guard.retirements.len();
+            guard
+                .retirements
+                .retain(|_, retirement| now_nanos < retirement.expires_at_nanos);
+            report.tombstones_pruned = before - guard.retirements.len();
 
-                let expired: Vec<String> = guard
-                    .grants
-                    .iter()
-                    .filter(|(_, grant)| {
-                        grant.is_expired_at(now_nanos) && now_nanos >= grant.retained_until_nanos
-                    })
-                    .map(|(digest, _)| digest.clone())
-                    .collect();
-                for digest in expired {
-                    if let Some(grant) = guard.grants.remove(&digest) {
-                        // 删授予的同时留墓碑：即便删除被提前调用，重放也仍被拒。
-                        guard.retirements.insert(
-                            digest.clone(),
-                            Retirement {
-                                expires_at_nanos: grant.expires_at_nanos,
-                            },
-                        );
-                        report.deleted.push(RetiredGrant {
-                            digest,
-                            scope: grant.scope.clone(),
-                            execution_id: grant.execution_id,
-                        });
-                    }
-                }
-                let refused: Vec<String> = guard
-                    .grants
-                    .iter()
-                    .filter(|(_, grant)| {
-                        now_nanos >= grant.retained_until_nanos && !grant.is_expired_at(now_nanos)
-                    })
-                    .map(|(digest, _)| digest.clone())
-                    .collect();
-                for digest in &refused {
-                    tracing::warn!(
-                        digest = %digest,
-                        now_nanos,
-                        "retained_until 已到而 expires_at 未到：违反 retained_until >= expires_at，拒绝删除"
+            let expired: Vec<String> = guard
+                .grants
+                .iter()
+                .filter(|(_, grant)| {
+                    grant.is_expired_at(now_nanos) && now_nanos >= grant.retained_until_nanos
+                })
+                .map(|(digest, _)| digest.clone())
+                .collect();
+            for digest in expired {
+                if let Some(grant) = guard.grants.remove(&digest) {
+                    // 删授予的同时留墓碑：即便删除被提前调用，重放也仍被拒。
+                    guard.retirements.insert(
+                        digest.clone(),
+                        Retirement {
+                            expires_at_nanos: grant.expires_at_nanos,
+                        },
                     );
+                    report.deleted.push(RetiredGrant {
+                        digest,
+                        scope: grant.scope.clone(),
+                        execution_id: grant.execution_id,
+                    });
                 }
-                report.refused = refused;
             }
-            Err(_) => {}
+            let refused: Vec<String> = guard
+                .grants
+                .iter()
+                .filter(|(_, grant)| {
+                    now_nanos >= grant.retained_until_nanos && !grant.is_expired_at(now_nanos)
+                })
+                .map(|(digest, _)| digest.clone())
+                .collect();
+            for digest in &refused {
+                tracing::warn!(
+                    digest = %digest,
+                    now_nanos,
+                    "retained_until 已到而 expires_at 未到：违反 retained_until >= expires_at，拒绝删除"
+                );
+            }
+            report.refused = refused;
         }
         report
     }

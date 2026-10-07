@@ -10,6 +10,19 @@
 //!
 //! 这里造出来的 `SessionView` 是**合成**数据，不含任何凭据或真实连接信息。
 //! 所有 ID 都带 `-contract` 后缀，便于在失败信息里一眼认出是夹具。
+//!
+//! # 为什么整模块 `allow(dead_code)`
+//!
+//! 本文件被**编进多个测试二进制**：`gateway_contract` 一份，`cm70_no_disk`、
+//! `cm70_idempotency_replay` 各一份，而每个二进制只用到其中一部分。`TokenHarness`
+//! 只有 cm70 那几个用，`CancelDenyAuthorizer` 只有 `gateway_contract` 用。于是
+//! 在**任何一个**二进制看来，其余夹具都「从未构造」——但它们在别的二进制里
+//! 是活的，删掉任何一个都会打断另一个测试。
+//!
+//! `dead_code` 是**逐编译单元**判定的，在这里它只反映「本二进制用不到」，
+//! 不反映全局死代码。因此整模块放行：真正全局无人用的件，靠下面那条纪律发现。
+
+#![allow(dead_code)]
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -149,7 +162,7 @@ pub fn request(expected_revision: u64) -> ExecutionRequest {
     )
 }
 
-/// 带自定义幂等键的受理请求。CM-70 的幂等键就是签名令牌字符串本身，
+/// 带自定义幂等键的受理请求。幂等键就是签名令牌字符串本身，
 /// 所以这条就是「拿令牌当键提交」。
 pub fn request_with_key(expected_revision: u64, idempotency_key: &str) -> ExecutionRequest {
     ExecutionRequest::new(
@@ -159,11 +172,6 @@ pub fn request_with_key(expected_revision: u64, idempotency_key: &str) -> Execut
         idempotency_key,
         source(),
     )
-}
-
-/// 带自定义上下文修订的受理请求：用来造「同一令牌、不同输入」。
-pub fn request_at(expected_revision: u64, idempotency_key: &str) -> ExecutionRequest {
-    request_with_key(expected_revision, idempotency_key)
 }
 
 /// 归属到指定 `runtimeEpoch` 的受理请求：用来造「owner 重启后拿旧令牌重发」。
@@ -226,7 +234,7 @@ struct RecordingInner {
     cancel_calls: u64,
     executed_requests: Vec<ExecuteInSessionRequest>,
     /// 驱动往返占用的时钟刻度：在 `execute_in_session` 内部推进，
-    /// 让「网关开销」与「驱动往返」在时间轴上真正分开（CM-60）。
+    /// 让「网关开销」与「驱动往返」在时间轴上真正分开。
     driver_nanos: u64,
     clock: Arc<FixedClock>,
 }
@@ -268,7 +276,7 @@ impl RecordingPort {
     ///
     /// 注意语义：请求**先**被记进 `executed_requests`、计数先加，返回值才取这里的
     /// 编排值。所以编排成 `Err` 时，`executed_requests().len()` 就是「已经发出去过
-    /// 的 SQL 条数」——CM-70 判定「自动重试有没有把同一条 SQL 发第二遍」用的正是它。
+    /// 的 SQL 条数」——判定「自动重试有没有把同一条 SQL 发第二遍」用的正是它。
     pub fn set_execute(&self, receipt: Result<ExecutionReceipt, RuntimeError>) {
         self.write(|inner| inner.execute = receipt);
     }
@@ -290,7 +298,7 @@ impl RecordingPort {
         self.read(|inner| inner.executed_requests.clone())
     }
 
-    /// 把端口的时钟刻度接到夹具的注入时钟上（CM-60 的时间轴必须在同一把尺子上）。
+    /// 把端口的时钟刻度接到夹具的注入时钟上（时间轴必须在同一把尺子上）。
     pub fn attach_clock(&self, clock: Arc<FixedClock>) {
         self.write(|inner| inner.clock = clock);
     }
@@ -373,7 +381,7 @@ impl SessionPort for RecordingPort {
 
 // ─────────────────────────────── 幂等存储替身 ───────────────────────────────
 
-/// 读不出来的幂等存储：§3.3 要求此时**要求核验**，而不是当作没记录重新受理。
+/// 读不出来的幂等存储：此时**要求核验**，而不是当作没记录重新受理。
 pub struct UnreadableStore {
     pub write_calls: AtomicU64,
 }
@@ -410,7 +418,7 @@ impl IdempotencyStore for UnreadableStore {
 
 // ─────────────────────────────── 授权器替身 ───────────────────────────────
 
-/// 受理时放行、下发时拒绝：证明授权在下发驱动前**再查一次**（CM-62）。
+/// 受理时放行、下发时拒绝：证明授权在下发驱动前**再查一次**。
 pub struct FlippingAuthorizer {
     pub allow_execute: AtomicU64,
 }
@@ -501,7 +509,7 @@ impl IdempotencyStore for WriteFailingStore {
 
 /// 计数存储：在内存存储外包一层，把三个动作的调用次数记下来。
 ///
-/// CM-70 要断言的是「拒得**够早**」——过期重放不得查询账本、保留期清扫真的删掉了
+/// 要断言的是「拒得**够早**」——过期重放不得查询账本、保留期清扫真的删掉了
 /// 记录。这些没法从「返回了什么错误」推出来，只能数动作。
 #[derive(Debug, Default)]
 pub struct CountingStore {
@@ -530,7 +538,7 @@ impl CountingStore {
         self.deletes.load(Ordering::SeqCst)
     }
 
-    /// 让之后**每一次**读都失败，用来模拟账本读不出来（§3.3 的 `Unreadable`）。
+    /// 让之后**每一次**读都失败，用来模拟账本读不出来（`Unreadable`）。
     pub fn fail_reads(&self) {
         self.read_failures.store(1, Ordering::SeqCst);
     }
@@ -578,7 +586,7 @@ pub struct Harness {
     pub clock: Arc<FixedClock>,
 }
 
-/// CM-70 夹具：网关接上令牌闸门。
+/// 夹具：网关接上令牌闸门。
 ///
 /// 刻意**独立于** `ready_harness`：那样才能单独断言「接了令牌层」和
 /// 「没接令牌层」两条路径的差别。
@@ -734,7 +742,7 @@ pub async fn accept(h: &Harness, req: ExecutionRequest) -> ExecutionId {
 
 /// 受理并**真的派发**一次，返回回执里的 `executionId`。
 ///
-/// CM-70 的前置「写入已接受且响应丢失」说的正是这一段：写落下去了，回执没回来。
+/// 前置「写入已接受且响应丢失」说的正是这一段：写落下去了，回执没回来。
 /// 网关的 `accept` 只入队、`dispatch` 才下发给驱动，所以「不再执行」必须盯
 /// `RecordingPort::execute_calls()`，盯 `accept` 是盯不出来的。
 pub async fn accept_and_dispatch(h: &Harness, req: ExecutionRequest) -> ExecutionId {

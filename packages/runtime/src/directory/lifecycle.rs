@@ -149,11 +149,11 @@ impl InMemorySessionDirectory {
     ///
     /// # 为什么 `open_session` 之外还要这条路
     ///
-    /// §7.4-6 的替换里，新会话是**候选**：它在屏障上被创建、被发布的那一刻，
+    /// 原子替换里，新会话是**候选**：它在屏障上被创建、被发布的那一刻，
     /// 还没有任何人持有它的令牌，所以走不了 `open_session`（那条路会自己发号，
     /// 并且在登记的同一刻把令牌交出去）。提交协议也**不会**顺带签发：
     /// `Prepared` 不写摘要，`Committed` 只发布条目。没有这一下，
-    /// §7.4 回执里的 `attachmentToken` 就是个谁也用不了的字段。
+    /// 回执里的 `attachmentToken` 就是个谁也用不了的字段。
     ///
     /// 规则与 `open_session` 完全一致：原文只在这里出现一次，目录侧只留摘要。
     /// 重复签发会**换掉**旧摘要——旧令牌随即作废，不存在两枚令牌同时有效的窗口。
@@ -423,8 +423,13 @@ impl InMemorySessionDirectory {
 
         match truth {
             RecordState::Committed => {
+                // 补放行必须是**幂等**的（`publish_from_barrier`），不能无条件 `publish`：
+                // 这一格会被每一次重试走一遍，而候选条目的当前态只有三种可能——
+                // 还在屏障里（放行没跑到，补上）、已经可路由（放行早跑过了）、
+                // 已经被调用方关闭或判死（终态）。第三种一旦被 `publish` 拉回可路由，
+                // 重试就会给一枚「替换已提交」的回执，而那个 id 上什么都没有。
                 if let Some(new_entry) = inner.entries.get_mut(&new_handle.db_session_id) {
-                    new_entry.publish();
+                    new_entry.publish_from_barrier();
                 }
                 if let Some(old_entry) = inner.entries.get_mut(&old.db_session_id) {
                     old_entry.close(super::entry::ClosureReason::ReplacedBy(new_handle.clone()));

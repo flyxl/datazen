@@ -1,10 +1,10 @@
-//! CM-60 的资源 journal：单一原子 `seq` 定序的「变化点」台账。
+//! 资源 journal：单一原子 `seq` 定序的「变化点」台账。
 //!
 //! 判据要的是**每一个变化点**上的不变量，不是收尾时看一眼总数。所以水位由账本
 //! 现场读出（permit 台账 + 四类队列深度），不变量在 [`ResourceJournal::observe`]
 //! 内部当场断言——夹具没法被绕过，也漏不掉中间某一步。
 //!
-//! 另外按 fake-runtime-fixtures §5.3 的口径做台账自洽：permit 的槽位只有
+//! 另外按夹具文档的口径做台账自洽：permit 的槽位只有
 //! 保留 / 共享两种且是穷尽的，所以 `在手 = 共享 + 保留` 必须恒成立。
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -195,16 +195,16 @@ impl ResourceJournal {
         // 判据断言一：每个变化点的真实资源都不超过总额度。
         assert!(
             after.live <= self.quota.total,
-            "CM-60 断言一：在手 permit {} 超过总额度 {}（变化 {:?}）",
+            "断言一：在手 permit {} 超过总额度 {}（变化 {:?}）",
             after.live,
             self.quota.total,
             change,
         );
-        // 台账自洽（§5.3）：保留 / 共享是 permit 槽位的穷尽划分，不允许有第三种。
+        // 台账自洽：保留 / 共享是 permit 槽位的穷尽划分，不允许有第三种。
         assert_eq!(
             after.live,
             after.shared + after.reserved_live,
-            "CM-60 断言一：permit 台账不自洽，在手 {} ≠ 共享 {} + 保留 {}",
+            "断言一：permit 台账不自洽，在手 {} ≠ 共享 {} + 保留 {}",
             after.live,
             after.shared,
             after.reserved_live,
@@ -212,7 +212,7 @@ impl ResourceJournal {
         // 判据断言二（上）：普通资源只吃共享，共享水位不得越过 total − 保留。
         assert!(
             after.shared <= self.quota.shared,
-            "CM-60 断言二：共享水位 {} 侵占保留，共享上限只有 {}（变化 {:?}）",
+            "断言二：共享水位 {} 侵占保留，共享上限只有 {}（变化 {:?}）",
             after.shared,
             self.quota.shared,
             change,
@@ -220,7 +220,7 @@ impl ResourceJournal {
         // 判据断言二（下）：保留额只被保留类动，普通资源不得侵占控制预留。
         assert!(
             after.control_reserved_live <= self.control_baseline(),
-            "CM-60 断言二：Control 保留 {} 超过配置额度 {}",
+            "断言二：Control 保留 {} 超过配置额度 {}",
             after.control_reserved_live,
             self.control_baseline(),
         );
@@ -233,7 +233,7 @@ impl ResourceJournal {
             let before = previous.map_or(0, |point| point.control_reserved_live);
             assert_eq!(
                 after.control_reserved_live, before,
-                "CM-60 断言二：变化 {:?} 动到了控制预留（在手 {} → {}）",
+                "断言二：变化 {:?} 动到了控制预留（在手 {} → {}）",
                 change, before, after.control_reserved_live,
             );
         }
@@ -241,7 +241,7 @@ impl ResourceJournal {
         for (class, depth) in ResourceClass::ALL.iter().zip(after.queued_by_class) {
             assert!(
                 depth <= self.queue_cap,
-                "CM-60 断言三：{class:?} 等待深度 {depth} 超过队列上限 {}",
+                "断言三：{class:?} 等待深度 {depth} 超过队列上限 {}",
                 self.queue_cap,
             );
         }

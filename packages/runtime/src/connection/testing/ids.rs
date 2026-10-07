@@ -1,7 +1,7 @@
-//! 可预测 ID 生成与强制碰撞（fake-runtime-fixtures.md §8.2）。
+//! 可预测 ID 生成与强制碰撞。
 //!
-//! 生成式逐条对齐 §8.2 的表；**唯一不可预测的例外**是 `attachmentToken` 与幂等令牌 nonce，
-//! 它们走真实随机源（§8.2 L441），因此本模块明确提供 `never_journalize()` 标记，
+//! 生成式逐条成表；**唯一不可预测的例外**是 `attachmentToken` 与幂等令牌 nonce，
+//! 它们走真实随机源，因此本模块明确提供 `never_journalize()` 标记，
 //! 调用方把它写进 journal 会被 clippy/测试拦下，字面量也不得出现在断言里。
 //!
 //! `dbSessionId` 是内存态 ID，**永不落盘**；本模块没有任何写盘路径。
@@ -15,7 +15,7 @@ use crate::connection::types::{
     Counter, DbSessionId, ExecutionId, JobId, LeaseId, OwnerRef, ResourceId, StreamId, WorkerId,
 };
 
-/// 可以被**确定性**制造碰撞的范围。CM-71 靠它复现冲突。
+/// 可以被**确定性**制造碰撞的范围，用来复现冲突。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FakeIdScope {
     /// `dbSessionId` —— 复用同一个会话 id。
@@ -35,7 +35,7 @@ impl FakeIdScope {
 
 /// runtime epoch token。
 ///
-/// 线上字段 `runtimeEpoch` 是十进制计数器（§6.5），而 §8.2 的生成式是 `<ownerHash>.<counter>`。
+/// 线上字段 `runtimeEpoch` 是十进制计数器，而本夹具的生成式是 `<ownerHash>.<counter>`。
 /// 两者不是矛盾：`text` 是 provider 内部用于绑定 owner 的不透明 token，
 /// `counter` 才是被比较、被放进 `SessionHandle.runtimeEpoch` 的那个值。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,21 +88,16 @@ impl IdState {
 
     fn remember_first(&mut self, scope: FakeIdScope, value: u64) {
         let key = scope as u8;
-        if !self.collisions.contains_key(&key) {
-            self.collisions.insert(
-                key,
-                Collision {
-                    remaining: 0,
-                    value,
-                },
-            );
-        }
+        self.collisions.entry(key).or_insert(Collision {
+            remaining: 0,
+            value,
+        });
     }
 }
 
 /// 真实随机源（不读系统时钟、不产生可从其他 id 推导的关系）。
 ///
-/// 用 `RandomState` 的 OS 随机种子，不引入 `rand` 依赖 —— 这是 §8.2 L441 唯一允许的真实随机源。
+/// 用 `RandomState` 的 OS 随机种子，不引入 `rand` 依赖 —— 这是本模块唯一允许的真实随机源。
 fn random_u64() -> u64 {
     std::collections::hash_map::RandomState::new()
         .build_hasher()
@@ -222,7 +217,7 @@ impl FakeIds {
 
     /// 让接下来 `k` 次取值在 `scope` 内**重新发出该范围第一次发过的值**。
     ///
-    /// 计数器不推进：结果是确定性的，CM-71 可以靠它稳定复现「两个不同会话拿到同一个
+    /// 计数器不推进：结果是确定性的，可以靠它稳定复现「两个不同会话拿到同一个
     /// `dbSessionId`」或「新句柄拿到与旧句柄相同的 `runtimeEpoch`」。
     pub fn force_collision(&self, scope: FakeIdScope, k: u64) {
         let mut state = self.lock();
@@ -243,7 +238,7 @@ impl FakeIds {
         );
     }
 
-    /// `attachmentToken`。**§8.2 L441 例外**：真实随机源，不写 journal、不打印。
+    /// `attachmentToken`。**例外**：真实随机源，不写 journal、不打印。
     pub fn attachment_token(&self) -> Secret {
         let mut state = self.lock();
         state.token_seq += 1;
@@ -323,10 +318,7 @@ mod tests {
         let a1 = ids.next_runtime_epoch(&session, &owner("user-alpha-1", "ed-1"));
         assert_eq!(a1.counter.get(), 1);
         assert_eq!(a1.text, format!("{}.1", a1.owner_hash));
-        assert!(
-            a1.text.contains('.'),
-            "§8.2 生成式是 `<ownerHash>.<counter>`"
-        );
+        assert!(a1.text.contains('.'), "生成式是 `<ownerHash>.<counter>`");
 
         let again = ids.next_runtime_epoch(&session, &owner("user-alpha-1", "ed-1"));
         assert_eq!(again.counter.get(), 2, "同一 owner 再次取 epoch 也必须递增");
@@ -341,7 +333,7 @@ mod tests {
 
     #[test]
     fn forced_runtime_epoch_collision_is_deterministic() {
-        // CM-71：新句柄拿到与旧句柄相同的 runtimeEpoch，宿主必须仍能拒绝它。
+        // 新句柄拿到与旧句柄相同的 runtimeEpoch，宿主必须仍能拒绝它。
         let ids = ids();
         let session = ids.next_db_session_id();
         let first = ids.next_runtime_epoch(&session, &owner("user-alpha-1", "ed-1"));
@@ -381,7 +373,7 @@ mod tests {
 
     #[test]
     fn secrets_are_redacted_in_debug_and_display() {
-        // §8.2 L441 + §13 日志脱敏：令牌字面量不得出现在任何输出里。
+        // 日志脱敏：令牌字面量不得出现在任何输出里。
         let ids = ids();
         let token = ids.attachment_token();
         assert_eq!(format!("{token:?}"), "Secret(<redacted>)");

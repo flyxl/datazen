@@ -1,18 +1,18 @@
-//! FakeScript —— 故障与延迟注入（fake-runtime-fixtures.md §4.1 F1–F12）。
+//! FakeScript —— 故障与延迟注入。
 //!
-//! **归属说明（R4）**：`fake-runtime-fixtures.md` §2 的模块表里**没有** `faults.rs` 这一行，
-//! 而 §3.1 把 `FakeScript` 定义为 `FakeResourceProvider` 的一个**字段**
+//! **归属说明**：模块表里**没有** `faults.rs` 这一行，
+//! 而设计文档把 `FakeScript` 定义为 `FakeResourceProvider` 的一个**字段**
 //! （`FakeResourceProvider { script, clock, ids, resources, journal, id_counter, worker_id }`），
-//! §2 的 DAG 边也只有 `H → P` 与 `P → S[FakeScript faults & delays]`。
+//! 依赖图里也只有 `H → P` 与 `P → S[FakeScript faults & delays]`。
 //! 因此故障注入**结构性地归属于 `fake_resource`**，不存在需要另行归并的 `faults.rs`。
 //! 本文件就是那张目录里 `S` 节点的落点：`ops.rs` 的九个操作每次都先问 `FakeScript` 要不要故障。
 //!
-//! §5.3 / §6 的断言之所以仍然可表达，是因为脚本只影响**操作的返回值**，
-//! 而 §5.3 的变化点断言与 §4.3 的 I1–I8 全部读 journal —— journal 由 `ops.rs`
+//! 变化点与记账断言之所以仍然可表达，是因为脚本只影响**操作的返回值**，
+//! 而变化点断言与泄漏不变式全部读 journal —— journal 由 `ops.rs`
 //! 在**注入故障的同时**照常写入，于是「故障下的台账」和「基线下的台账」走同一条断言路径。
 //! `#[test] the_change_point_rules_stay_expressible_under_injected_faults` 正是这条性质的守门测试。
 //!
-//! §13 日志脱敏：脚本里只有**脚本 id**（`&'static str`，如 `F9/commitUnknown`），
+//! 日志脱敏：脚本里只有**脚本 id**（`&'static str`，如 `F9/commitUnknown`），
 //! 没有任何字面量凭据入口；`attachmentToken` / 幂等 nonce 不经过本模块。
 
 use std::sync::Mutex;
@@ -21,7 +21,7 @@ use std::time::Duration;
 use crate::connection::execution::ExecutionErrorCode;
 use crate::connection::port::ResetDiscardReason;
 
-/// 九个资源层操作中可被脚本命中的一种（fake-runtime-fixtures.md §3.1）。
+/// 九个资源层操作中可被脚本命中的一种。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceOp {
     Describe,
@@ -63,14 +63,14 @@ impl ResourceOp {
     }
 }
 
-/// 故障种类，**按 `docs/architecture/platform/fake-runtime-fixtures.md` §4.1 的 F1–F12 归位**。
+/// 故障种类，**按文档里的 F1–F12 归位**。
 ///
 /// 每个变体带两行机器可读的属性，缺一不可：
-/// - 首行 `/// F<n>：…` 给出 §4.1 的编号；
-/// - 另起一行 `/// 目录归属：<阶段>` 给出 §4.1 表格「阶段」单元格的原文
+/// - 首行 `/// F<n>：…` 给出该行的编号；
+/// - 另起一行 `/// 目录归属：<阶段>` 给出表格「阶段」单元格的原文
 ///   （在第一个全角 `（` 处截断：F1「描述（`describeResource`）」→「描述」）。
 ///
-/// §4.1 是唯一真源，编号与阶段都由
+/// 文档表格是唯一真源，编号与阶段都由
 /// `fake_resource::catalog_guard` 在测试运行时**解析文档表格**逐条对撞，
 /// 任何一侧单独改动都会打红。
 #[derive(Debug, Clone, PartialEq)]
@@ -102,15 +102,15 @@ pub enum FaultKind {
     ///
     /// 目录归属：观察
     ObserveUnknown,
-    /// F7：上下文切换冲突 —— 期望重读后由用户重发（§4.2 F7）。
+    /// F7：上下文切换冲突 —— 期望重读后由用户重发。
     ///
     /// 目录归属：上下文切换
     ContextConflict,
-    /// F7：上下文切换要求替换资源。这是 `Ok` 值，不是错误（§3.2 L138）。
+    /// F7：上下文切换要求替换资源。这是 `Ok` 值，不是错误。
     ///
     /// 目录归属：上下文切换
     RequiresReplacement { reason: String },
-    /// F8：提交结果未知。§3.2：此时 `effectOutcome` **必须**是 `unknown`。
+    /// F8：提交结果未知：此时 `effectOutcome` **必须**是 `unknown`。
     ///
     /// 目录归属：事务
     CommitUnknown { code: &'static str },
@@ -118,7 +118,7 @@ pub enum FaultKind {
     ///
     /// 目录归属：事务
     RollbackFailed { reason: String },
-    /// F9：取消被拒。`CancelReceipt.disposition=unsupported` 是**正常返回值**（§4.2 F9）。
+    /// F9：取消被拒。`CancelReceipt.disposition=unsupported` 是**正常返回值**。
     ///
     /// 目录归属：取消
     CancelRejected { code: &'static str },
@@ -126,7 +126,7 @@ pub enum FaultKind {
     ///
     /// 目录归属：重置归池
     CleanButPreconditionUnmet,
-    /// F10：driver 报 `Discard`，`reason` 由用例指定（§4.2：归池前置不满足只能丢，不能报 `Clean`）。
+    /// F10：driver 报 `Discard`，`reason` 由用例指定（归池前置不满足只能丢，不能报 `Clean`）。
     ///
     /// 目录归属：重置归池
     ResetDiscard { reason: ResetDiscardReason },
@@ -143,7 +143,7 @@ pub enum FaultKind {
     /// 目录归属：关闭
     LostDuringClose { reason: &'static str },
     /// F12：句柄造出来了，runtime **拒绝**把它交给宿主；fake 侧标记 `orphaned`。
-    /// §4.3 的 I7 在关闭回收之前必然不成立（§4.2 F12）。
+    /// 孤立句柄不变式在关闭回收之前必然不成立。
     ///
     /// 目录归属：句柄登记
     HandleNotReturned { reason: &'static str },
@@ -155,9 +155,9 @@ pub enum FaultKind {
 }
 
 impl FaultKind {
-    /// §4.1 的编号，供测试与报告直接引用。
+    /// 文档表格里的编号，供测试与报告直接引用。
     ///
-    /// 取值以 `catalog_guard` 解析出来的 §4.1 表格为准：这里只放编号，
+    /// 取值以 `catalog_guard` 解析出来的表格为准：这里只放编号，
     /// 编号与阶段由测试逐条对撞文档。
     pub const fn catalog_id(&self) -> &'static str {
         match self {
@@ -189,7 +189,7 @@ impl FaultKind {
     }
 }
 
-/// 一条已排队的注入步骤。`id` 是**脚本 id**（允许进 journal），不是字面量凭据（§13）。
+/// 一条已排队的注入步骤。`id` 是**脚本 id**（允许进 journal），不是字面量凭据。
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScriptStep {
     pub id: String,
@@ -198,7 +198,7 @@ pub struct ScriptStep {
     pub remaining: usize,
 }
 
-/// §9.3 CM-73「先挂起被驱逐的资源、再在其上开事务」竞态脚本。
+/// 「先挂起被驱逐的资源、再在其上开事务」竞态脚本。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvictionRace {
     /// 驱逐流程在**预关闭检查点**停住时到达的 barrier tag。
@@ -206,12 +206,12 @@ pub struct EvictionRace {
     /// 放行关闭的 barrier tag。
     pub release_close: String,
     /// 为 `true` 时，`closeResource` 必须**先**在 R1 上回滚并注销会话句柄，然后才释放 R1。
-    /// 这就是 §9.3 第 (4) 步要求的正确行为。
+    /// 这就是该竞态路径要求的正确行为。
     pub rollback_before_release: bool,
 }
 
 impl EvictionRace {
-    /// CM-73 固定使用的两个 barrier tag。写死成常量，避免测试与实现各写一份字符串。
+    /// 该竞态脚本固定使用的两个 barrier tag。写死成常量，避免测试与实现各写一份字符串。
     pub const PRE_CLOSE: &'static str = "cm73/pre-close";
     pub const RELEASE_CLOSE: &'static str = "cm73/release-close";
 }
@@ -220,7 +220,7 @@ impl EvictionRace {
 #[derive(Debug, Default)]
 pub struct FakeScript {
     steps: Mutex<Vec<ScriptStep>>,
-    /// 关闭路径是否必须先回滚 + 注销句柄（§9.3 第 (4) 步）。
+    /// 关闭路径是否必须先回滚 + 注销句柄。
     rollback_before_release: Mutex<bool>,
 }
 
@@ -261,7 +261,7 @@ impl FakeScript {
         self.push(op, kind, id, 1);
     }
 
-    /// 是否要求关闭前先回滚 + 注销（§9.3）。
+    /// 是否要求关闭前先回滚 + 注销。
     pub fn rollback_before_release(&self) -> bool {
         *self.flag()
     }
@@ -296,7 +296,7 @@ impl FakeScript {
         self.lock().clear();
     }
 
-    // ---- §9.3 CM-73 ----
+    // ---- 竞态脚本 ----
 
     /// `script_hold_for_eviction_then_begin_commit()` 的脚本侧：置位「关闭前先回滚注销」，
     /// 并返回驱动整个竞态的两个 barrier tag。
@@ -307,6 +307,26 @@ impl FakeScript {
             release_close: EvictionRace::RELEASE_CLOSE.to_owned(),
             rollback_before_release: true,
         }
+    }
+}
+
+/// 把脚本里的 `&'static str` 错误码 id 映射到 [`ExecutionErrorCode`]。
+///
+/// `FaultKind` 的 `code` 存的是**稳定 id**（报告与断言里要出现稳定字符串），
+/// 而 `ExecutionErrorCode::as_str()` 给的是 camelCase，两种写法都收。
+pub(super) fn execution_error_code(id: &str) -> ExecutionErrorCode {
+    match id {
+        "SqlError" | "sqlError" => ExecutionErrorCode::SqlError,
+        "ProtocolError" | "protocolError" => ExecutionErrorCode::ProtocolError,
+        "Cancelled" | "cancelled" => ExecutionErrorCode::Cancelled,
+        "Timeout" | "timeout" => ExecutionErrorCode::Timeout,
+        "ResourceLost" | "resourceLost" => ExecutionErrorCode::ResourceLost,
+        "PipelineAborted" | "pipelineAborted" => ExecutionErrorCode::PipelineAborted,
+        "HostRejected" | "hostRejected" => ExecutionErrorCode::HostRejected,
+        // 夹具作者写错了 id。整棵 fake 模块都被
+        // `#[cfg(any(test, feature = "test-harness"))]` 门控，不是生产路径，
+        // 所以让错误在源头炸掉，而不是悄悄降级成一个错误的错误码。
+        other => panic!("FakeScript 注入的未知错误码 id：{other}"),
     }
 }
 
@@ -364,25 +384,5 @@ mod tests {
         for op in ResourceOp::ALL {
             assert!(!op.as_str().is_empty());
         }
-    }
-}
-
-/// 把脚本里的 `&'static str` 错误码 id 映射到 [`ExecutionErrorCode`]。
-///
-/// `FaultKind` 的 `code` 存的是**稳定 id**（报告与断言里要出现稳定字符串），
-/// 而 `ExecutionErrorCode::as_str()` 给的是 camelCase，两种写法都收。
-pub(super) fn execution_error_code(id: &str) -> ExecutionErrorCode {
-    match id {
-        "SqlError" | "sqlError" => ExecutionErrorCode::SqlError,
-        "ProtocolError" | "protocolError" => ExecutionErrorCode::ProtocolError,
-        "Cancelled" | "cancelled" => ExecutionErrorCode::Cancelled,
-        "Timeout" | "timeout" => ExecutionErrorCode::Timeout,
-        "ResourceLost" | "resourceLost" => ExecutionErrorCode::ResourceLost,
-        "PipelineAborted" | "pipelineAborted" => ExecutionErrorCode::PipelineAborted,
-        "HostRejected" | "hostRejected" => ExecutionErrorCode::HostRejected,
-        // 夹具作者写错了 id。整棵 fake 模块都被
-        // `#[cfg(any(test, feature = "test-harness"))]` 门控，不是生产路径，
-        // 所以让错误在源头炸掉，而不是悄悄降级成一个错误的错误码。
-        other => panic!("FakeScript 注入的未知错误码 id：{other}"),
     }
 }

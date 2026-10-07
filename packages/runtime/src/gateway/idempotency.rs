@@ -1,6 +1,6 @@
-//! CM-54：幂等账本。
+//! 幂等账本。
 //!
-//! §7.2 第 3 步「原子登记幂等请求与 executionId」，第 3 步同时是
+//! 第 3 步「原子登记幂等请求与 executionId」同时也是
 //! 「返回回执**早于** SQL 跑完」的那一步。因此网关必须做到：
 //!
 //! - 同一个 `idempotencyKey` 重发 → **同一个 `executionId`**，不是新的一次执行；
@@ -63,7 +63,7 @@ impl IdempotencyScope {
 
 /// 请求指纹。用来区分「同一个 key 的同一次重发」与「同一个 key 的另一个请求」。
 ///
-/// `Hash` 是 CM-70 未知结局围栏要用的：围栏按 `(dbSessionId, 指纹)` 存集合，
+/// `Hash` 是未知结局围栏要用的：围栏按 `(dbSessionId, 指纹)` 存集合，
 /// 刻意**不含** `idempotencyKey`——否则换个新键就能绕过围栏，而换个新键
 /// 正是这条断言要禁止的事。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -74,7 +74,7 @@ impl RequestFingerprint {
     ///
     /// 刻意**不含** `dbSessionId`（已在作用域里）与 `idempotencyKey` 本身。
     ///
-    /// 计入 `source`（CM-61）是有代价的：同一个 key 换来源发起，会被判成
+    /// 计入 `source` 是有代价的：同一个 key 换来源发起，会被判成
     /// [`IdempotencyLookup::Conflict`] 而不是重发。这是对的——受理回执里的来源
     /// 是**这次执行**的来源，而执行是重发时并没有新建的那个。
     /// 若不计入来源，重发就能用同一个 key 把来源悄悄换成另一个。
@@ -176,7 +176,7 @@ pub trait IdempotencyStore: Send + Sync + 'static {
         record: IdempotencyRecord,
     ) -> Result<(), IdempotencyStoreError>;
 
-    /// 保留期清扫删除一条记录（CM-70）。返回该记录此前是否还在。
+    /// 保留期清扫删除一条记录。返回该记录此前是否还在。
     ///
     /// **只允许在令牌已过期之后调用。** 账本层看不到签名，也就无法证明这一点，
     /// 所以默认实现直接拒绝——不装这个能力的 store 会让清扫失败而不是静默
@@ -205,7 +205,7 @@ pub enum IdempotencyLookup {
 
 /// 进程内幂等存储。
 ///
-/// 单进程网关（§2 的范围界定）用它就够了：记录的生命周期与网关进程一致。
+/// 单进程网关用它就够了：记录的生命周期与网关进程一致。
 /// 需要跨进程共享的部署形态应替换实现，而不是在本类型上叠锁。
 #[derive(Debug, Default)]
 pub struct InMemoryIdempotencyStore {
@@ -222,7 +222,7 @@ impl InMemoryIdempotencyStore {
         Arc::new(Self::new())
     }
 
-    /// 累计写入次数。CM-54「只写一次」的判据。
+    /// 累计写入次数。「只写一次」的判据。
     pub fn write_count(&self) -> u64 {
         match self.write_count.lock() {
             Ok(guard) => *guard,
@@ -469,7 +469,7 @@ mod tests {
             }
             other => panic!("重发应当命中原记录，实际 {other:?}"),
         }
-        assert_eq!(store.write_count(), 1, "CM-54：重发不得二次写入");
+        assert_eq!(store.write_count(), 1, "重发不得二次写入");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! CM-70 保留期清扫的单元测试。
+//! 保留期清扫的单元测试。
 //!
 //! 主线是一条不变量：`retained_until >= expires_at`，以及它在清扫处的**代码级**体现——
 //! 删除之前必须先确认 `expires_at` 已过。这两条各有一条会杀掉违反者的测试：
@@ -47,7 +47,7 @@ fn the_production_constructor_keeps_a_whole_retention_window_after_expiry() {
     assert_eq!(
         RETENTION_AFTER_EXPIRY_NANOS,
         24 * HOUR,
-        "保留窗口与 §3.5 的 24 小时一致"
+        "保留窗口与 24 小时一致"
     );
 }
 
@@ -75,7 +75,7 @@ fn a_grant_whose_retention_ends_before_expiry_is_never_deleted() {
     let report = registry.sweep(retained_until);
     assert!(
         report.deleted.is_empty(),
-        "令牌未过期就删了记录，正是 CM-70 禁止的那件事：{:?}",
+        "令牌未过期就删了记录，正是禁止的那件事：{:?}",
         report.deleted
     );
     assert_eq!(

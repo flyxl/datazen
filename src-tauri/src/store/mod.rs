@@ -8,6 +8,7 @@ mod history;
 pub(crate) mod history_db;
 mod key_store;
 mod models;
+pub(crate) mod platform_profiles;
 mod platform_vault;
 mod schema_diff_profiles;
 mod settings;
@@ -268,6 +269,7 @@ impl Store {
         let mut cache = self.cache.write().await;
 
         cache.connections = self.load_connections_from_disk().await?;
+        cache.platform_profiles = self.load_platform_metadata().await?;
         cache.tunnels = self.load_tunnels_from_disk().await?;
 
         // First launch: store is empty, nothing to seed.

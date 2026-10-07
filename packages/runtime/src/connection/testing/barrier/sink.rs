@@ -1,4 +1,4 @@
-//! 供 provider / 测试使用的 `ResultSink` 载体（fake-runtime-fixtures.md §4.1 F5）。
+//! 供 provider / 测试使用的 `ResultSink` 载体。
 
 use crate::connection::execution::{ExecutionErrorCode, ResultSink, SinkWrite, TruncationReason};
 use crate::connection::types::ExecutionId;
@@ -56,7 +56,7 @@ impl ResultSink for CollectingSink {
     }
 }
 
-/// 写失败型 sink：F5「`ResultSink` 写入失败」的载体。
+/// 写失败型 sink：「`ResultSink` 写入失败」的载体。
 #[derive(Debug, Default)]
 pub struct FailingSink {
     pub code: Option<ExecutionErrorCode>,

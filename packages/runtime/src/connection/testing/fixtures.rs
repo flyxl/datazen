@@ -1,6 +1,6 @@
-//! 固定实体与可调初值（fake-runtime-fixtures.md §8.1、§7.2 / §9.2）。
+//! 固定实体与可调初值。
 //!
-//! §8.1 L425：夹具以**数据表**形式提供，测试不得各自硬编码组织、用户、profile、
+//! 夹具以**数据表**形式提供，测试不得各自硬编码组织、用户、profile、
 //! 命名空间或标记值。凡是要在用例里出现这些字面量的地方，一律从 `fixtures()` 取。
 
 use std::collections::BTreeMap;
@@ -8,46 +8,46 @@ use std::time::Duration;
 
 use crate::connection::types::{ConfigRevision, ConnectionId, OrganizationId, PrincipalId};
 
-/// §8.1 L419：两个组织。
+/// 两个组织。
 pub const ORG_A: &str = "org-alpha";
 pub const ORG_B: &str = "org-beta";
 
-/// §8.1 L420：三个用户。`USER_A1` / `USER_A2` 与 driver 侧共享同一个 DB 账号但策略不同。
+/// 三个用户。`USER_A1` / `USER_A2` 与 driver 侧共享同一个 DB 账号但策略不同。
 pub const USER_A1: &str = "user-alpha-1";
 pub const USER_A2: &str = "user-alpha-2";
 pub const USER_B1: &str = "user-beta-1";
 
-/// §8.1 L421：`PROFILE_P`。
+/// `PROFILE_P`。
 pub const PROFILE_P: &str = "conn-fixture-p";
-/// §8.1 L422：`PROFILE_P_V2` —— configRevision 变化 ⇒ `poolKeyFingerprint` 必须换 key。
+/// `PROFILE_P_V2` —— configRevision 变化 ⇒ `poolKeyFingerprint` 必须换 key。
 pub const PROFILE_P_V2: &str = "conn-fixture-p-v2";
 
-/// §8.1 L423：A / B 两个命名空间的 **目录键**。
+/// A / B 两个命名空间的 **目录键**。
 ///
 /// 与下面的 `NS_A` / `NS_B`（database 字面量）必须分开：目录查找走 `FixtureCatalog::namespace(key)`，
 /// 目标装配走 database。两者混用会让 `fixture_target` 静默找不到命名空间。
 pub const NS_A_KEY: &str = "NS_A";
 pub const NS_B_KEY: &str = "NS_B";
 
-/// §8.1 L423：A / B 两个命名空间的 database 字面量。
+/// A / B 两个命名空间的 database 字面量。
 pub const NS_A: &str = "dz_ns_a";
 pub const NS_B: &str = "dz_ns_b";
 
-/// §8.1 L424：A / B 两个目标标记值，同名表不同值。
+/// A / B 两个目标标记值，同名表不同值。
 pub const MARKER_A: &str = "dz-marker-alpha";
 pub const MARKER_B: &str = "dz-marker-beta";
 
-/// §8.1 L424 / §10.2(2)：跨目标解析护栏表名。
+/// 跨目标解析护栏表名。
 pub const MARKER_TABLE: &str = "dz_target_marker";
 
-/// §8.1 L423：`USER_A1` / `USER_A2` 共享的执行身份。
+/// `USER_A1` / `USER_A2` 共享的执行身份。
 pub const IDENTITY_SHARED: &str = "exec-identity-shared";
 
-/// §10.2 L511 DDL 通用形态。
+/// DDL 通用形态。
 pub const MARKER_TABLE_DDL: &str =
     "CREATE TABLE dz_target_marker (id INTEGER PRIMARY KEY, marker TEXT NOT NULL, written_at TIMESTAMP NOT NULL)";
 
-/// §8.1 L423 的个人执行身份生成式。
+/// 个人执行身份生成式。
 pub fn identity_personal(user_id: &str) -> String {
     format!("exec-identity-{user_id}")
 }
@@ -60,7 +60,7 @@ pub struct FixtureOrg {
 }
 
 /// 固定用户。`execution_identity` 决定 `PoolKeyInputs::execution_identity_key`，
-/// `policy_isolation_key` 决定隔离；两者**必须**能独立变化（§8.1 L425、CM-05/CM-67）。
+/// `policy_isolation_key` 决定隔离；两者**必须**能独立变化。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixtureUser {
     pub key: &'static str,
@@ -68,7 +68,7 @@ pub struct FixtureUser {
     pub organization_id: OrganizationId,
     pub execution_identity: String,
     pub policy_isolation_key: String,
-    /// 与之共享 driver 侧 DB 账号的用户（§8.1 L420）。
+    /// 与之共享 driver 侧 DB 账号的用户。
     pub shares_db_account_with: Option<PrincipalId>,
 }
 
@@ -100,7 +100,7 @@ pub struct FixtureCatalog {
     pub marker_table_ddl: &'static str,
 }
 
-/// §8.1 固定实体表。
+/// 固定实体表。
 pub fn fixtures() -> FixtureCatalog {
     let org_alpha = OrganizationId::new(ORG_A);
     let org_beta = OrganizationId::new(ORG_B);
@@ -132,9 +132,9 @@ pub fn fixtures() -> FixtureCatalog {
                 key: "USER_A2",
                 id: user_a2,
                 organization_id: org_alpha.clone(),
-                // §8.1 L425：与 U1 共享同一执行身份。
+                // 与 U1 共享同一执行身份。
                 execution_identity: IDENTITY_SHARED.to_owned(),
-                // §8.1 L425：但 policyIsolationKey 必须不同，否则 CM-05/CM-67 无法测。
+                // 但 policyIsolationKey 必须不同，否则隔离判据无法测。
                 policy_isolation_key: "policy-alpha-2".to_owned(),
                 shares_db_account_with: Some(user_a1.clone()),
             },
@@ -193,7 +193,7 @@ impl FixtureWorld {
         }
     }
 
-    /// §2 表里 `fixtures.rs` 的第二个导出。
+    /// `fixtures.rs` 的第二个导出。
     pub fn install_fixtures(&mut self) -> &FixtureCatalog {
         self.indexes.clear();
         for (position, org) in self.catalog.orgs.iter().enumerate() {
@@ -230,18 +230,18 @@ impl FixtureWorld {
         self.catalog.namespaces.get(position)
     }
 
-    /// 命名空间对应的标记值 —— §10.2(2) 跨目标解析护栏。
+    /// 命名空间对应的标记值 —— 跨目标解析护栏。
     pub fn marker_value(&self, key: &str) -> Option<&'static str> {
         self.namespace(key).map(|namespace| namespace.marker_value)
     }
 }
 
-/// §2 表里 `fixtures.rs` 的第二个导出的自由函数形态。
+/// `fixtures.rs` 的第二个导出的自由函数形态。
 pub fn install_fixtures(world: &mut FixtureWorld) -> &FixtureCatalog {
     world.install_fixtures()
 }
 
-/// §7.2 / §9.2 的可调初值。`Default` 是设计值，`lowered_for_tests()` 是夹具下调值。
+/// 可调初值。`Default` 是设计值，`lowered_for_tests()` 是夹具下调值。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitialValues {
     pub short_op_pool_max_per_pool_key: u32,
@@ -260,10 +260,10 @@ pub struct InitialValues {
     pub cancel_cleanup_deadline: Duration,
     pub data_buffer_per_pipeline: u64,
     pub idempotency_token_ttl: Duration,
-    /// §6.2：每订阅的事件/字节上限。
+    /// 每订阅的事件/字节上限。
     pub drain_events_per_subscription: u64,
     pub drain_bytes_per_subscription: u64,
-    /// §6.2：无消费者等待与 drain 期限。
+    /// 无消费者等待与 drain 期限。
     pub no_consumer_wait: Duration,
     pub drain_deadline: Duration,
 }
@@ -296,7 +296,7 @@ impl Default for InitialValues {
 }
 
 impl InitialValues {
-    /// §7.2：每用户/每组织逻辑 session 100/1000 → 4/8；数据缓冲 8 MiB → 64 KiB。
+    /// 每用户/每组织逻辑 session 100/1000 → 4/8；数据缓冲 8 MiB → 64 KiB。
     pub fn lowered_for_tests() -> Self {
         Self {
             per_user_logical_sessions: 4,
@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn shared_db_account_users_differ_only_in_policy_isolation_key() {
-        // §8.1 L425 / CM-05、CM-67：共享 IDENTITY_SHARED，但 policyIsolationKey 必须不同。
+        // 共享 IDENTITY_SHARED，但 policyIsolationKey 必须不同。
         let catalog = fixtures();
         let a1 = catalog
             .users
@@ -351,13 +351,13 @@ mod tests {
         assert_eq!(a1.shares_db_account_with.as_ref(), Some(&a2.id));
         assert_ne!(
             a1.policy_isolation_key, a2.policy_isolation_key,
-            "policyIsolationKey 相同会让 CM-05/CM-67 变成假绿"
+            "policyIsolationKey 相同会让隔离判据变成假绿"
         );
     }
 
     #[test]
     fn cross_organization_user_is_not_visible_to_org_alpha() {
-        // §8.1 L421：USER_B1 跨组织不可见。
+        // USER_B1 跨组织不可见。
         let catalog = fixtures();
         let a1 = catalog
             .users
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn profile_v2_changes_config_revision_so_pool_key_must_change() {
-        // §8.1 L422：验证 poolKeyFingerprint 换 key。
+        // 验证 poolKeyFingerprint 换 key。
         let catalog = fixtures();
         let p = catalog
             .profiles
@@ -415,7 +415,7 @@ mod tests {
         assert_ne!(
             world.marker_value("NS_A"),
             world.marker_value("NS_B"),
-            "§10.2(2)：同名表必须写入不同标记值"
+            "同名表必须写入不同标记值"
         );
         assert_eq!(world.marker_value("NS_MISSING"), None);
     }

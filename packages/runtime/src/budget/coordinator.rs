@@ -15,7 +15,7 @@
 //!
 //! ## 取消
 //!
-//! 端口**没有** cancel 方法。等待必须可取消（§9.5），所以取消只能落在 future 被丢弃上：
+//! 端口**没有** cancel 方法。等待必须可取消，所以取消只能落在 future 被丢弃上：
 //! [`WaiterGuard`] 跨 `await` 持有等待者 id，`Drop` 时按 id 精确摘除。
 //! 这是唯一能让「调用方放弃等待」真正回到账本的接缝。
 
@@ -82,7 +82,7 @@ impl BudgetClock for MonotonicBudgetClock {
 
 /// 把一次预算申请投影成「主体」。
 ///
-/// §9.5 的主体轮转与 §9.2 的每用户上限都以主体为单位，而端口的 [`BudgetRequest`] 上
+/// 主体轮转与每用户上限都以主体为单位，而端口的 [`BudgetRequest`] 上
 /// **没有**主体字段（只有 `organization_id` / `connection_id` / `purpose` / `acquire_timeout_ms`）。
 /// 所以主体必须由实现层从服务端上下文推导——**绝不能**来自调用方参数。
 pub trait PrincipalResolver: Send + Sync + 'static {
@@ -102,7 +102,7 @@ impl PrincipalResolver for OrganizationPrincipal {
     }
 }
 
-/// 把端口的 `purpose` 映射成服务端资源类别（§9.5）。
+/// 把端口的 `purpose` 映射成服务端资源类别。
 ///
 /// 端口的 `BudgetPurpose` 只有两值，所以映射也只有两值：**调用方无法自报优先级**——
 /// 类别是这一层的推导结果，而不是请求里的一个字段。`Control` 与 `Metadata` 属于用例层
@@ -114,7 +114,7 @@ pub fn classify(purpose: BudgetPurpose) -> ResourceClass {
     }
 }
 
-/// 把账本拒绝理由投影成端口错误。**不新增 `PortError` 变体**（§4.1「不增不减」）。
+/// 把账本拒绝理由投影成端口错误。**不新增 `PortError` 变体**（不增不减）。
 ///
 /// 额度类事实走 `QuotaExceeded`（用例层再翻成 `ApiError{ResourceBusy}` / `SessionQuotaExceeded`）；
 /// 服务未登记走 `NotFound`。
@@ -286,7 +286,7 @@ impl InProcessBudgetCoordinator {
 
         let waiter = {
             let mut ledger = lock_ledger(&self.ledger);
-            // 队列满 → `QueueFull`，**不静默阻塞**（§9.5）。
+            // 队列满 → `QueueFull`，**不静默阻塞**。
             ledger
                 .enqueue(&claim, self.clock.now_ms(), deadline_ms)
                 .map_err(|reason| port_error(&reason))?
@@ -400,7 +400,7 @@ impl BudgetCoordinator for InProcessBudgetCoordinator {
         for claim in &claims {
             ledger.ensure_service(&claim.connection_id);
         }
-        // 全有或全无（§9.5 Job 多端点）：任一端点拿不到就整体失败、整体不记账。
+        // 全有或全无：任一端点拿不到就整体失败、整体不记账。
         let records = ledger
             .try_admit_many(&claims, now_ms)
             .map_err(|reason| port_error(&reason))?;

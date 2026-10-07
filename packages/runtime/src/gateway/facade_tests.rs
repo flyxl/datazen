@@ -1,6 +1,6 @@
 //! `ExecutionGateway` 门面的受理 / 下发 / 权限 / 计时单测。
 //!
-//! 单独成文件的原因：`mod.rs` 本身已接近单文件上限（§4 的 800 行），
+//! 单独成文件的原因：`mod.rs` 本身已接近单文件上限（800 行），
 //! 门面测试塞回去会顶破。测试模块与被测模块同 crate，但**只**用公开 API 驱动——
 //! 走 `pub(crate)` 捷径会让重构失去编译期护栏。
 //!
@@ -8,7 +8,7 @@
 
 use super::facade_support::*;
 
-// ─────────────────────────────── 受理（§3.1） ───────────────────────────────
+// ─────────────────────────────── 受理 ───────────────────────────────
 
 #[tokio::test]
 async fn a_first_acceptance_is_queued_and_not_a_result() {
@@ -88,7 +88,7 @@ async fn the_same_key_with_a_different_request_is_a_conflict() {
         Ok(_) => panic!("同一个 key 复用到另一个命令必须报冲突"),
         Err(error) => error,
     };
-    // CM-70：冲突指明**是谁**占了这个键，不回显键本身——装了令牌层之后键就是
+    // 冲突指明**是谁**占了这个键，不回显键本身——装了令牌层之后键就是
     // 那把签名提交令牌，回显等于给审计通道塞一份可重放凭据。
     let rendered = error.to_string();
     let json = error.to_persistable_json();
@@ -189,7 +189,7 @@ async fn an_empty_command_is_refused_before_the_port_is_touched() {
     assert_eq!(h.store.write_count(), 0);
 }
 
-// ───────────────────── 拒绝不得降级成「已受理」（§3.1） ─────────────────────
+// ───────────────────── 拒绝不得降级成「已受理」 ─────────────────────
 
 #[tokio::test]
 async fn an_unknown_session_is_not_downgraded_to_accepted() {
@@ -335,7 +335,7 @@ async fn a_driver_failure_keeps_the_dispatch_reservation() {
     );
 }
 
-// ─────────────────────────── 权限与乐观闸门（§3.4） ───────────────────────────
+// ─────────────────────────── 权限与乐观闸门 ───────────────────────────
 
 #[tokio::test]
 async fn a_permission_denied_at_entry_is_not_downgraded_to_accepted() {
@@ -472,7 +472,7 @@ async fn dispatching_twice_is_refused() {
     assert_eq!(h.port.execute_calls(), 1);
 }
 
-// ─────────────────────────────── CM-60 计时 ───────────────────────────────
+// ─────────────────────────────── 计时 ───────────────────────────────
 
 #[tokio::test]
 async fn the_gateway_segment_excludes_the_driver_round_trip() {

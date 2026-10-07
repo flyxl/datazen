@@ -1,4 +1,4 @@
-//! 候选替换在 [`ResourceManager`] 上的门面（CM-68）。
+//! 候选替换在 [`ResourceManager`] 上的门面。
 //!
 //! 候选（candidate）**不进公开目录、不接受执行、不接受订阅**；提交屏障翻转后旧会话
 //! 立即不再执行，且只能**取回同一份**新回执。提交成功但目录发布失败时返回
@@ -11,7 +11,7 @@ use crate::resource::replacement::BeginOutcome;
 use crate::resource::ResourceError;
 
 impl super::manager::ResourceManager {
-    // ---- 候选替换（A3.6 / CM-68） ----
+    // ---- 候选替换 ----
 
     /// 开始一次候选替换。候选**不进公开目录、不接受执行、不接受订阅**。
     ///
@@ -84,7 +84,7 @@ impl super::manager::ResourceManager {
     /// 确认替换：提交屏障 + **目录发布**，两者都成功才算成功。
     ///
     /// 目录发布失败 ⇒ 返回 `CandidateNotPublished` 而**不是**一份「成功」回执：
-    /// 「提交成功但没有目录记录」绝不能被当成替换成功（§7.4 / CM-68）。
+    /// 「提交成功但没有目录记录」绝不能被当成替换成功。
     pub fn confirm_replacement(
         &mut self,
         idempotency_key: &str,
@@ -162,8 +162,8 @@ impl super::manager::ResourceManager {
         Ok(())
     }
 
-    /// 旧会话此刻还能不能执行。提交一旦落成，这里立刻变成 `false`（CM-68：
-    /// 「旧 ID 不再执行」只允许有一个事实来源，就是台账里的 `superseded`）。
+    /// 旧会话此刻还能不能执行。提交一旦落成，这里立刻变成 `false`
+    /// （「旧 ID 不再执行」只允许有一个事实来源，就是台账里的 `superseded`）。
     pub fn old_session_executable(&self, session_id: &DbSessionId) -> bool {
         self.ledger.old_session_executable(session_id)
     }

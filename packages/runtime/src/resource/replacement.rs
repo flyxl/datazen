@@ -1,4 +1,4 @@
-//! 候选替换（CM-68 / connection-management.md §7.4 requiresReplacement + §12 原子发布）。
+//! 候选替换（requiresReplacement + 原子发布）。
 //!
 //! 替换在这里被拆成**三个互不重叠的阶段**，每个阶段有自己的**可观测**证据：
 //!
@@ -42,7 +42,7 @@ pub enum CandidateState {
     Committed,
     /// 已提交且目录记录已落：新会话对外可见，替换完成。
     Published,
-    /// 提交前失败并销毁候选：旧会话仍然有效（§7.4「预算不足或连接失败 ⇒ 销毁候选，
+    /// 提交前失败并销毁候选：旧会话仍然有效（「预算不足或连接失败 ⇒ 销毁候选，
     /// 保留旧会话」）。
     Abandoned,
 }
@@ -132,10 +132,14 @@ impl ReplacementLedger {
 
     /// 登记一个候选。
     ///
-    /// §7.4 幂等：同一 `idempotency_key` 重试返回 [`BeginOutcome::Resumed`]，
+    /// 幂等：同一 `idempotency_key` 重试返回 [`BeginOutcome::Resumed`]，
     /// **不**建立第二条物理连接（调用方据此跳过 `transport.open`）。
     /// 同一 key 却指向**另一个**旧会话则是缺陷，按 `DuplicateCandidate` 拒绝 ——
     /// 那意味着两次并发的替换撞了同一个幂等键。
+    // 八个参数里除 `self` 外全是替换这一次操作必须同时确定的身份量：幂等键 / 旧会话 /
+    // 旧资源 / 候选资源 / 新会话 / 新租约 / 配置修订。少任何一个，幂等判定都无从成立。
+    // 收成结构体只是把这组信息换到调用点的另一处摆，不改这个方法的语义形状。
+    #[allow(clippy::too_many_arguments)]
     pub fn begin(
         &mut self,
         idempotency_key: impl Into<String>,

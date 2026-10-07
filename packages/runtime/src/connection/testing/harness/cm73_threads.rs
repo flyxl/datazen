@@ -1,4 +1,4 @@
-//! §9.3 CM-73 的**真实线程**版：空闲驱逐线程 vs 持有事务句柄的线程。
+//! **真实线程**版：空闲驱逐线程 vs 持有事务句柄的线程。
 //!
 //! `cm73.rs` 的编排是**单线程行为驱动**的（顺序由 journal 的 `seq` 表达），
 //! 它能证明「语义上先回滚注销、再归还资源」这条顺序被记下来了，
@@ -16,7 +16,7 @@
 //! 2. **谁先谁后**用 `Barrier` 的 `seq` 断言：五个点共用一个原子计数器，
 //!    `parked < eviction-precheck < eviction-done < release < resumed`。
 //!    计数器是单线程递增的，所以这个不等式与线程调度无关，是逻辑必然。
-//!    （§6.4 纪律：顺序断言只认 journal `seq` 或本夹具的 `Barrier`。）
+//!    纪律：顺序断言只认 journal `seq` 或本夹具的 `Barrier`。
 //!
 //! `release` 全程**只有编排线程会发**，所以持有线程不可能提前解除阻塞；
 //! 「驱逐落在窗口内」因此是推出来的，不是等出来的。
@@ -53,7 +53,7 @@ const RELEASE_POINT: &str = "cm73-real-thread-release-point";
 /// 持有线程解除阻塞、提交之后的 tag。
 const HOLDER_RESUMED: &str = "cm73-real-thread-holder-resumed";
 
-/// §8.1：夹具目标取自 `fixtures`，用例里不写硬编码命名空间字面量。
+/// 夹具目标取自 `fixtures`，用例里不写硬编码命名空间字面量。
 fn harness_for(namespace_key: &str) -> FakeHarness {
     FakeHarness::from_provider(
         FakeResourceProvider::new(WorkerId::new("w1"), fixture_target(namespace_key))
@@ -61,7 +61,7 @@ fn harness_for(namespace_key: &str) -> FakeHarness {
     )
 }
 
-/// §8.1 `PROFILE_P` 归属：一个 job owner。
+/// `PROFILE_P` 归属：一个 job owner。
 fn owner() -> OwnerRef {
     OwnerRef::Job {
         organization_id: OrganizationId::new(fixtures::ORG_A),
@@ -143,7 +143,7 @@ fn the_fake_harness_can_be_driven_from_two_threads_at_once() {
     );
 }
 
-/// §9.3 真实线程版：驱逐线程与持有事务句柄的线程真并发，可控顺序，行为有差。
+/// 真实线程版：驱逐线程与持有事务句柄的线程真并发，可控顺序，行为有差。
 ///
 /// 断言五件事：
 /// 1. **阻塞生效** —— 持有线程确实卡在 `wait_released` 里（`wait_for_waiters`），
@@ -152,7 +152,7 @@ fn the_fake_harness_can_be_driven_from_two_threads_at_once() {
 /// 3. **行为差异**成立 —— 竞态窗口里的驱逐**拒绝归池**（台账里只有 `Closed`，
 ///    没有 `ReturnedToPool`），同一条驱逐入口对空闲资源则照常归池。
 /// 4. **竞态后果**成立 —— 持有线程解除阻塞后的提交被拒（资源已关闭）。
-/// 5. 收尾 I1–I8 与变化点断言全部收口。
+/// 5. 收尾泄漏不变式与变化点断言全部收口。
 #[test]
 fn a_real_eviction_thread_meets_a_real_thread_holding_a_transaction() {
     let harness = harness_for(NS_A_KEY);
@@ -216,7 +216,7 @@ fn a_real_eviction_thread_meets_a_real_thread_holding_a_transaction() {
         let parked = harness.barrier().arrival_count(HOLDER_PARKED);
         assert_eq!(parked, 1, "持有线程必须恰好 arrive 过一次");
 
-        // 停在窗口里时的快照：事务开着、句柄登记着 —— 这正是 §9.3 竞态的现场。
+        // 停在窗口里时的快照：事务开着、句柄登记着 —— 这正是竞态的现场。
         let snapshot = harness.provider().resource(&racing_resource);
         assert!(
             snapshot
@@ -248,7 +248,7 @@ fn a_real_eviction_thread_meets_a_real_thread_holding_a_transaction() {
             harness.barrier().waiter_count(HOLDER_PARKED)
         );
 
-        // 行为差异：竞态窗口里的驱逐不得把资源归池（§5.3 规则 2 前置）。
+        // 行为差异：竞态窗口里的驱逐不得把资源归池。
         let events = resource_events(&harness, &racing_resource);
         assert!(
             events.contains(&"Closed"),
@@ -256,7 +256,7 @@ fn a_real_eviction_thread_meets_a_real_thread_holding_a_transaction() {
         );
         assert!(
             !events.contains(&"ReturnedToPool"),
-            "持有线程还挂着事务句柄时不得归池（这是 §9.3 要钉住的行为），实际事件序列是 {events:?}"
+            "持有线程还挂着事务句柄时不得归池（这是要钉住的行为），实际事件序列是 {events:?}"
         );
 
         // ---- 对照：同一驱逐入口，在另一条真实线程上跑无事务资源 ----
@@ -334,7 +334,7 @@ fn a_real_eviction_thread_meets_a_real_thread_holding_a_transaction() {
         .expect("竞态后取资源是判负的前置，不是被测语义");
     harness
         .assert_no_handle_reuse(&after_race.resource_id)
-        .unwrap_or_else(|reason| panic!("§9.3 判负（正例不该触发）：{reason}"));
+        .unwrap_or_else(|reason| panic!("判负（正例不该触发）：{reason}"));
     harness
         .close(&after_race.handle)
         .expect("判负用的资源必须能正常关掉，否则泄漏检查会把它算进去");

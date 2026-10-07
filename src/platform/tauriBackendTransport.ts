@@ -12,11 +12,13 @@
  * second backend (HTTP, in-memory) replaces this file and nothing above it.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, Channel } from '@tauri-apps/api/core';
 import {
   createBackendClient,
   setBackendClient,
   type BackendClient,
+  type EventEnvelope, type ConnectionEvent, type ApiErrorPayload,
+  deserializeApiError,
   type BackendTransport,
   type MethodMap,
   type OpenDirectoryInput,
@@ -46,6 +48,11 @@ export const DESKTOP_BACKEND_ID = 'desktop';
  * this is a naming convention and not a lookup table.
  */
 function toCommandName(method: keyof MethodMap): string {
+  const profileCommands: Partial<Record<keyof MethodMap, string>> = {
+    listConnections: 'platform_list_profiles', createConnection: 'platform_create_profile',
+    updateConnection: 'platform_update_profile', disableConnection: 'platform_disable_profile',
+  };
+  if (profileCommands[method]) return profileCommands[method];
   return method.includes('_')
     ? method
     : method.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
@@ -60,9 +67,7 @@ function toCommandName(method: keyof MethodMap): string {
  * { request })` reaches Rust as `{ request }`, not as `{ payload: { request } }`,
  * because Tauri deserializes argument names, not an envelope.
  *
- * `subscribe` is intentionally absent: the current backend pushes events over a
- * Tauri `Channel`, which is not an `AsyncIterable`, and the facade turns a
- * missing `subscribe` into a `CapabilityUnsupported` rather than a `TypeError`.
+ * Channel deliveries are adapted to an iterator with independent subscription cleanup.
  */
 export function createDesktopBackendTransport(): BackendTransport {
   return {
@@ -71,13 +76,66 @@ export function createDesktopBackendTransport(): BackendTransport {
       payload: MethodMap[K]['request'],
     ): Promise<MethodMap[K]['response']> {
       const command = toCommandName(method);
+      const args = method === "getPlatformIdentity" ? {} : method.includes("_") ? payload : { request: payload ?? {} };
       // The request's own fields are the command's named arguments, so this
       // cast is a widening to Tauri's argument bag, not a shape change: the
       // object handed to `invoke` is the same object `call` received.
-      return (await invoke(
-        command,
-        payload as Record<string, unknown>,
-      )) as MethodMap[K]['response'];
+      const response = await invoke(command, args as Record<string, unknown>);
+      if (method === 'readArtifact' && response && typeof response === 'object') {
+        const chunk = response as { bytes?: number[] | Uint8Array };
+        if (Array.isArray(chunk.bytes)) chunk.bytes = new Uint8Array(chunk.bytes);
+      }
+      return response as MethodMap[K]['response'];
+    },
+    subscribe(_method, request) {
+      return {
+        [Symbol.asyncIterator]() {
+          const subscriptionId = crypto.randomUUID();
+          type Message = { kind: 'event'; event: EventEnvelope<ConnectionEvent> } |
+            { kind: 'closed' } | { kind: 'error'; error: ApiErrorPayload };
+          const channel = new Channel<Message>();
+          const queue: EventEnvelope<ConnectionEvent>[] = [];
+          let finished = false;
+          let failure: unknown = null;
+          let wake: (() => void) | null = null;
+          const signal = () => { wake?.(); wake = null; };
+          channel.onmessage = (message) => {
+            if (finished) return;
+            if (message.kind === 'event') {
+              if (queue.length >= 2048) {
+                failure = new Error('Event buffer overflow; restore execution and reconnect.');
+                finished = true;
+              } else queue.push(message.event);
+            }
+            else {
+              finished = true;
+              if (message.kind === 'error') failure = deserializeApiError(message.error);
+            }
+            signal();
+          };
+          const started = invoke<void>('subscribe_events', { request, subscriptionId, onEvent: channel })
+            .catch((error: unknown) => { failure = error; finished = true; signal(); });
+          let stopped = false;
+          return {
+            async next(): Promise<IteratorResult<EventEnvelope<ConnectionEvent>>> {
+              while (!queue.length && !finished) await new Promise<void>((resolve) => { wake = resolve; });
+              if (failure) throw failure;
+              const value = queue.shift();
+              return value ? { value, done: false } : { value: undefined, done: true };
+            },
+            async return(): Promise<IteratorResult<EventEnvelope<ConnectionEvent>>> {
+              finished = true;
+              queue.length = 0;
+              signal();
+              if (stopped) return { value: undefined, done: true };
+              stopped = true;
+              await started;
+              await invoke<void>('stop_event_subscription', { subscriptionId });
+              return { value: undefined, done: true };
+            },
+          };
+        },
+      };
     },
   };
 }

@@ -1,4 +1,4 @@
-//! §3.4 / CM-61·62：来源以请求为准，授权在入口与派发驱动前各判一次。
+//! 来源以请求为准，授权在入口与派发驱动前各判一次。
 
 use std::sync::Arc;
 
@@ -9,7 +9,7 @@ use datazen_runtime::gateway::{
     EventDisposition, ExecutionEventKind, ExecutionSource, GatewayAction, GatewayError,
     InMemoryIdempotencyStore, SourceKind,
 };
-// ───────────────── D §3.4 授权与来源 ─────────────────
+// ───────────────── D 授权与来源 ─────────────────
 
 #[tokio::test(start_paused = true)]
 async fn authorization_is_rechecked_before_dispatching_the_driver() {

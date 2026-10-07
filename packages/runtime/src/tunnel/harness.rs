@@ -10,7 +10,7 @@ use datazen_platform_api::ports::network::TunnelSpec;
 use crate::connection::types::LeaseId;
 use crate::tunnel::{TunnelError, TunnelFault, TunnelHandle, TunnelLedger, TunnelTransport};
 
-/// 物理端口做过的每一件事。CM-32 的「不关闭 / 最后一个引用才关闭」断言
+/// 物理端口做过的每一件事。「不关闭 / 最后一个引用才关闭」断言
 /// **全靠读这个 journal 的计数**，而不是只看返回值。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TunnelEvent {
@@ -28,11 +28,98 @@ impl TunnelEvent {
     }
 }
 
+/// 隧道的**账** —— journal 折出来的物理开合读数。
+///
+/// 它是「一条 spec 开过几次、关过几次」的**唯一**形状，且**全部**由
+/// [`tallies`] 这一个纯函数从 journal 现折、**不落地**：
+/// `RecordingTunnelTransport` 里没有任何计数**字段**，只有 `journal` 这一份事实。
+/// 反例正是「往端口塞一份自存的 `Mutex<usize>` 并让观测方法改读它」——
+/// 那份账会伪装成第一本账，于是第二本账永远查不出来。如今这条路被
+/// `tunnel::single_counter_audit` 的字段审计（R4）杀掉，kill test 是
+/// `the_field_audit_catches_the_planted_second_ledger`。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TunnelPortTally {
+    /// 真正开出隧道的次数（不含「问过但判定不经隧道」）。
+    pub opened: usize,
+    /// 判定「这条 spec 不需要隧道」的次数。
+    pub open_without_tunnel: usize,
+    /// `close` 次数。**至多 1** 才是「最后一个引用才拆」的证据。
+    pub closed: usize,
+}
+
+impl TunnelPortTally {
+    /// 这条隧道此刻**是否还开着**。用开合之差判定，而不是任何一份自存的计数。
+    pub const fn is_open(&self) -> bool {
+        self.opened > self.closed
+    }
+}
+
+/// 一次折叠的结果：整体账 + 逐 spec 账。
+///
+/// 逐 spec 用 `Vec` 线性查找，与 `TunnelEntry::spec` 的选型理由一致：
+/// 冻结的 `TunnelSpec` 只派生 `PartialEq`/`Eq`，没有 `Ord`/`Hash`。
+#[derive(Debug, Clone, Default)]
+pub struct TunnelTallies {
+    /// journal 长度 —— 「物理接缝被触碰的总次数」。
+    pub consulted: usize,
+    /// 不分 spec 的总账。
+    pub total: TunnelPortTally,
+    by_spec: Vec<(TunnelSpec, TunnelPortTally)>,
+}
+
+impl TunnelTallies {
+    /// 某条 spec 的账；从未出现在 journal 里 ⇒ 全零。
+    pub fn for_spec(&self, spec: &TunnelSpec) -> TunnelPortTally {
+        self.by_spec
+            .iter()
+            .find(|(known, _)| known == spec)
+            .map_or_else(TunnelPortTally::default, |(_, tally)| *tally)
+    }
+}
+
+/// **全模块唯一**的「事件流 → 账」折法（纯函数，不持状态、不写回任何字段）。
+///
+/// 端口上每一个观测读数（`close_calls` / `open_calls` / `consulted` / `is_open`）
+/// 都必须是本函数的投影。想加一份自己存着的计数，就会在字段审计里立刻现形。
+pub fn tallies(events: &[TunnelEvent]) -> TunnelTallies {
+    let mut out = TunnelTallies {
+        consulted: events.len(),
+        ..TunnelTallies::default()
+    };
+    for event in events {
+        let spec = event.spec();
+        let slot = match out.by_spec.iter().position(|(known, _)| known == spec) {
+            Some(index) => index,
+            None => {
+                out.by_spec.push((spec.clone(), TunnelPortTally::default()));
+                out.by_spec.len() - 1
+            }
+        };
+        let tally = &mut out.by_spec[slot].1;
+        match event {
+            TunnelEvent::Open(_) => {
+                tally.opened += 1;
+                out.total.opened += 1;
+            }
+            TunnelEvent::OpenWithoutTunnel(_) => {
+                tally.open_without_tunnel += 1;
+                out.total.open_without_tunnel += 1;
+            }
+            TunnelEvent::Close(_) => {
+                tally.closed += 1;
+                out.total.closed += 1;
+            }
+        }
+    }
+    out
+}
+
 /// 记录式隧道物理端口。
 ///
-/// **它不持有任何引用计数** —— 见 `tunnel::transport` 模块头。
+/// **它不持有任何引用计数，也不持有自存的开合计数** —— 见 `tunnel::transport` 模块头。
 /// 这是刻意的：`single_counter_algebra_holds` 要证明的正是「只有一份账」，
-/// 替身自己一旦也数一遍，这条不变量就永远证明不了。
+/// 替身自己一旦也数一遍，这条不变量就永远证明不了；所有读数一律由 [`tallies`]
+/// 从 `journal` 现折。
 pub struct RecordingTunnelTransport {
     journal: Mutex<Vec<TunnelEvent>>,
     /// 故障注入用 `Vec` 而非 map：冻结的 `TunnelSpec` 只派生
@@ -97,20 +184,18 @@ impl RecordingTunnelTransport {
             .clone()
     }
 
-    /// `close` 被调用的**次数** —— CM-32 第二条断言的主观测点。
+    /// `close` 被调用的**次数** —— 第二条断言的主观测点。
+    ///
+    /// 这一行**只**是 [`tallies`] 的一个投影，不是另一份账。
+    /// 把它改读端口里某个自存的 `Mutex<usize>` 会让 `tunnel::single_counter_audit`
+    /// 的字段审计（R4）与投影审计（R5）同时转红。
     pub fn close_calls(&self) -> usize {
-        self.journal()
-            .iter()
-            .filter(|event| matches!(event, TunnelEvent::Close(_)))
-            .count()
+        tallies(&self.journal()).total.closed
     }
 
     /// `open` 被调用的**次数**（只数真正开出隧道的那些调用）。
     pub fn open_calls(&self) -> usize {
-        self.journal()
-            .iter()
-            .filter(|event| matches!(event, TunnelEvent::Open(_)))
-            .count()
+        tallies(&self.journal()).total.opened
     }
 
     /// 物理接缝被**触碰**的总次数：`open` / `close` / 「这条 spec 不需要隧道」。
@@ -118,20 +203,11 @@ impl RecordingTunnelTransport {
     /// 与 [`Self::open_calls`] 的差别正是「台账问了但没建隧道」这一种情形，
     /// 计数断言必须能把它单独看见。
     pub fn consulted(&self) -> usize {
-        self.journal().len()
+        tallies(&self.journal()).consulted
     }
 
     pub fn is_open(&self, spec: &TunnelSpec) -> bool {
-        let journal = self.journal();
-        let opened = journal
-            .iter()
-            .filter(|event| matches!(event, TunnelEvent::Open(s) if s == spec))
-            .count();
-        let closed = journal
-            .iter()
-            .filter(|event| matches!(event, TunnelEvent::Close(s) if s == spec))
-            .count();
-        opened > closed
+        tallies(&self.journal()).for_spec(spec).is_open()
     }
 }
 

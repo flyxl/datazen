@@ -1,5 +1,4 @@
-//! CM-32 主旅程：**两个 session / Job 共用同版本隧道**
-//! （`connection-management.md:1057-1061` 前置与第一、二条断言）。
+//! 主旅程：**两个 session / Job 共用同版本隧道**
 //!
 //! > - 前置：两个 session/Job 共用同版本隧道。
 //! > - 步骤：关闭第一个，继续第二个；第二个结束。
@@ -57,7 +56,7 @@ fn closing_the_first_holder_leaves_the_tunnel_running_for_the_second() {
     assert_eq!(
         harness.transport.close_calls(),
         0,
-        "CM-32 first step: closing one of two holders must not close the tunnel"
+        "first step: closing one of two holders must not close the tunnel"
     );
     assert!(
         harness.transport.is_open(&spec),
@@ -98,7 +97,7 @@ fn closing_the_first_holder_leaves_the_tunnel_running_for_the_second() {
     assert_eq!(
         harness.transport.close_calls(),
         1,
-        "CM-32 second step: exactly one close, on the last reference"
+        "second step: exactly one close, on the last reference"
     );
     assert!(
         !harness.transport.is_open(&spec),
@@ -110,7 +109,7 @@ fn closing_the_first_holder_leaves_the_tunnel_running_for_the_second() {
 
 /// 共享判定必须落在 `TunnelSpec` **全等**上：跳板不同 ⇒ 各开各的隧道。
 ///
-/// 上游 `network.rs` 已用端口测试锁过同一条规则（`:101-112`）；
+/// 上游 `network.rs` 已用端口测试锁过同一条规则；
 /// 本测试钉住的是**实现方没有把判定写松**（例如只比 `route_ref`）。
 #[test]
 fn sharing_is_keyed_by_the_whole_spec_not_just_the_route() {
@@ -236,7 +235,7 @@ fn a_transport_declared_tunnel_free_spec_is_not_counted() {
 ///
 /// 路由版本是 `PoolKeyGeneration` 的分量，由 `ResourceManager` 的陈旧检查把关；
 /// 隧道台账**不得**把它当成共享键的一部分 —— 否则同一 `TunnelSpec` 在路由版本
-/// 递增后会被拆成两条隧道，CM-32 的「同版本共用」就变味了。
+/// 递增后会被拆成两条隧道，「同版本共用」就变味了。
 #[test]
 fn a_route_revision_bump_does_not_split_a_shared_tunnel() {
     let mut harness = TunnelHarness::new();

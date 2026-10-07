@@ -1,4 +1,4 @@
-//! A8 的**输入侧**：请求 DTO 自己的 `Debug` 也不能把令牌印出来。
+//! **输入侧**脱敏：请求 DTO 自己的 `Debug` 也不能把令牌印出来。
 //!
 //! 上一轮只堵了输出侧（`ExecutionRecord` → `RedactedExecuteRequest`）。输入侧
 //! `ExecutionRequest.idempotency_key` 当时仍是**明文**：`format!("{req:?}")` 会把整串

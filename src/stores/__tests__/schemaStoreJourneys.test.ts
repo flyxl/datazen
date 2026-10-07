@@ -21,7 +21,8 @@ vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
 import { renderHook, cleanup } from '@testing-library/react';
 import { createEmptyConnectionSchema } from '../schemaStoreState';
 import { useConnectionSchemaField, useSchemaStore } from '../schemaStore';
-import { relationKey, syncSchemaTables } from '@datazen/driver-sdk';
+import { syncSchemaTables } from '@datazen/driver-sdk';
+import { relationColumnsCacheKey } from '../schemaMetadataKeys';
 
 function snapshot() {
   const state = useSchemaStore.getState().schemas.get('session') ?? createEmptyConnectionSchema();
@@ -105,7 +106,7 @@ describe('schema directory and metadata journeys', () => {
           {
             ...entry,
             relationColumns: {
-              [relationKey({ ...ref, dbSessionId: 'session' })]: {
+              [relationColumnsCacheKey(entry, 'session', ref)]: {
                 ref,
                 columns: [{ name: 'id', dataType: 'integer', nullable: false }],
                 primaryKeys: [],

@@ -4,15 +4,15 @@
 //! 驱动网关：不在测试里复用 `src/gateway/**` 的内部测试支撑，也不碰私有字段。
 //! 因此这里红了就代表对外契约真的破了，而不是内部实现挪了个地方。
 //!
-//! 用例按 §3 的主题分文件，单个文件都远低于 800 行上限：
-//! - `acceptance.rs` §3.1 受理入口顺序、回执≠结果、拒绝不得静默降级为「已受理」
-//! - `idempotency.rs` §3.3 幂等（CM-54/55/56）
-//! - `revision.rs` §3.1 乐观并发闸（`expectedContextRevision`）
-//! - `provenance.rs` §3.4 授权与来源（CM-61/62）
-//! - `cancel.rs` §3.2 取消三态与绑定校验（D-01）
-//! - `events.rs` §3.3 事件投递（陈旧 epoch / 乱序 / 空洞 / 大计数）
-//! - `timing.rs` §3.5 CM-60 两段单调耗时
-//! - `invariants.rs` §4 冻结 DTO、错误类型与源码级不变量
+//! 用例按主题分文件，单个文件都远低于 800 行上限：
+//! - `acceptance.rs` 受理入口顺序、回执≠结果、拒绝不得静默降级为「已受理」
+//! - `idempotency.rs` 幂等
+//! - `revision.rs` 乐观并发闸（`expectedContextRevision`）
+//! - `provenance.rs` 授权与来源
+//! - `cancel.rs` 取消三态与绑定校验
+//! - `events.rs` 事件投递（陈旧 epoch / 乱序 / 空洞 / 大计数）
+//! - `timing.rs` 两段单调耗时
+//! - `invariants.rs` 冻结 DTO、错误类型与源码级不变量
 //!
 //! 全部为单测试二进制：`gateway_fixtures` 只编译一次，因此不存在「另一半夹具在本
 //! 二进制里没人调用」的 `dead_code` 噪音。

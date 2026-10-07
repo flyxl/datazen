@@ -1,27 +1,27 @@
-//! §4.1 注入点目录的三源对撞：文档表格 ↔ `FaultKind` 的真实编号/阶段。
+//! 注入点目录的三源对撞：文档表格 ↔ `FaultKind` 的真实编号/阶段。
 //!
 //! 为什么不能用「手写一份 F 编号数组」当守门测试：那只证明了代码**自己**的顺序自洽，
 //! 文档与代码同时错成同一个值时它照样全绿。本模块因此在**测试运行时**读取三个真源：
 //!
 //! | 侧 | 真源 | 解析出什么 |
 //! |---|---|---|
-//! | 文档一 | §4.1 的注入点目录表格 | 每行的 `F<n>` / 阶段 / 注入类型（单元格里的反引号标识） |
-//! | 文档二 | §4.2 的「阶段 × 故障 × 期望可观察结果」表格 | 每行开头的 `F<n>` 与期望结果里点名的变体 |
+//! | 文档一 | 注入点目录表格 | 每行的 `F<n>` / 阶段 / 注入类型（单元格里的反引号标识） |
+//! | 文档二 | 「阶段 × 故障 × 期望可观察结果」表格 | 每行开头的 `F<n>` 与期望结果里点名的变体 |
 //! | 代码 | `script.rs` 自身的源码 | 每个 `FaultKind` 变体的 `/// F<n>：`、`/// 目录归属：<阶段>` 与 `catalog_id()` 的 `match` 臂 |
 //!
 //! 三条腿都要成立：
 //!
-//! - **命名腿（§4.1）**：文档行里反引号包住的标识，只要**恰好等于**某个 `FaultKind` 变体名，
+//! - **命名腿（第一张表）**：文档行里反引号包住的标识，只要**恰好等于**某个 `FaultKind` 变体名，
 //!   就必须落在该行自己的编号上（`RollbackFailed` 在 F8 行 → `catalog_id` 必须是 `F8`）。
-//! - **阶段腿（§4.1）**：变体自报的 `目录归属：<阶段>` 必须等于该编号所在行的「阶段」单元格
+//! - **阶段腿（第一张表）**：变体自报的 `目录归属：<阶段>` 必须等于该编号所在行的「阶段」单元格
 //!   （在第一个全角 `（` 处截断），并且两侧的编号集合都恰好是 F1–F12。
-//! - **可观察腿（§4.2）**：§4.2 是**独立于 §4.1 的第二张表**。它每行开头的 `F<n>` 加上期望
-//!   结果里点名的变体，构成第三真源；只改 §4.1 + 代码（漏改 §4.2）在这里立刻打红。
+//! - **可观察腿（第二张表）**：可观察结果是**独立演进的另一张表**。它每行开头的 `F<n>` 加上期望
+//!   结果里点名的变体，构成第三真源；只改第一张表 + 代码（漏改第二张表）在这里立刻打红。
 //!
 //! 读不到、解析不出、形状不对，一律 `panic!` 并带上 `file:line`：
 //! **绝不静默跳过** —— 一个会「跳过」的守门测试等于没有守门测试。
 //!
-//! 已知上限（设计的必然，不是缺陷）：把 **§4.1、§4.2 与代码三处同时**改成同一个错误值，
+//! 已知上限（设计的必然，不是缺陷）：把 **两张表格与代码三处同时**改成同一个错误值，
 //! 本测试仍会绿 —— 任何「文档 ↔ 代码」对撞都躲不开这一点，除非再引入文档之外的第四真源。
 //! 本模块的职责是把「单侧/双侧漏改」全部打红，并用非空断言保证解析没退化成空循环。
 
@@ -29,15 +29,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// §4.1 表格的编号全集。缺行、多行、编号重复都会打红。
+/// 注入点目录表格的编号全集。缺行、多行、编号重复都会打红。
 const EXPECTED_IDS: [&str; 12] = [
     "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
 ];
 
-/// 命名腿至少要命中这么多个变体：§4.1 用变体名点名的那几行（F1/F7/F8/F11）。
+/// 命名腿至少要命中这么多个变体：注入点目录用变体名点名的那几行。
 const MIN_NAMED_HITS: usize = 4;
 
-/// 可观察腿至少要命中这么多个变体：§4.2 点名的 F1/F7/F8/F11 四处。
+/// 可观察腿至少要命中这么多个变体：可观察结果表点名的四处。
 /// （F2 的 `ResourceBusy`、F10 的 `Clean` 属于 `ProviderError`/`ResetOutcome`，不是 `FaultKind`，
 /// 按设计被忽略。）
 const MIN_OBSERVABLE_HITS: usize = 4;
@@ -57,7 +57,7 @@ fn assert_non_vacuous(spec: &Spec, code: &CodeCatalogue) {
     let first_line = spec.rows.first().map_or(1, |row| row.line);
     assert!(
         spec.rows.len() == EXPECTED_IDS.len(),
-        "{}:{}: §4.1 表格解析出 {} 行，期望 {} 行 —— 解析多半已经走样",
+        "{}:{}: 注入点目录解析出 {} 行，期望 {} 行 —— 解析多半已经走样",
         spec.path.display(),
         first_line,
         spec.rows.len(),
@@ -74,7 +74,7 @@ fn assert_non_vacuous(spec: &Spec, code: &CodeCatalogue) {
         assert_eq!(
             found.len(),
             1,
-            "{}:{}: §4.1 的 {id} 应当出现恰好一行，实际 {} 行",
+            "{}:{}: 编号 {id} 应当出现恰好一行，实际 {} 行",
             spec.path.display(),
             first_line,
             found.len(),
@@ -110,7 +110,7 @@ fn assert_named_variants_match_their_row(spec: &Spec, code: &CodeCatalogue) {
     }
     assert!(
         hits.len() >= MIN_NAMED_HITS,
-        "{}:{}: 命名腿只命中 {} 个变体（≥{} 才说明 §4.1 仍用变体名点名）：{:?}；\
+        "{}:{}: 命名腿只命中 {} 个变体（≥{} 才说明注入点目录仍用变体名点名）：{:?}；\\
          若这是有意的文档改写，请同步更新本模块的 MIN_NAMED_HITS 并说明理由",
         spec.path.display(),
         spec.rows[0].line,
@@ -142,7 +142,7 @@ fn assert_stage_and_id_set_match(spec: &Spec, code: &CodeCatalogue) {
             .find(|row| row.id == variant.doc_id)
             .unwrap_or_else(|| {
                 panic!(
-                    "{}:{}: 代码自报编号 {}，但 §4.1 表格里没有这一行",
+                    "{}:{}: 代码自报编号 {}，但注入点目录里没有这一行",
                     code.path.display(),
                     variant.line,
                     variant.doc_id
@@ -167,7 +167,7 @@ fn assert_stage_and_id_set_match(spec: &Spec, code: &CodeCatalogue) {
     assert_eq!(
         doc_ids,
         expected,
-        "{}: §4.1 的编号集合与 F1–F12 不一致",
+        "{}: 注入点目录的编号集合与代码里的期望不一致",
         spec.path.display(),
     );
     assert_eq!(
@@ -178,9 +178,9 @@ fn assert_stage_and_id_set_match(spec: &Spec, code: &CodeCatalogue) {
     );
 }
 
-/// 可观察腿（第三真源）：§4.2 是**另一张表**，与 §4.1 独立演进。
+/// 可观察腿（第三真源）：可观察结果是**另一张表**，与注入点目录独立演进。
 ///
-/// 只改 §4.1 + 代码而漏改 §4.2 的改法，在这里必红 —— 这是「双侧同错」唯一的现实缺口。
+/// 只改注入点目录 + 代码而漏改可观察结果表的改法，在这里必红 —— 这是「双侧同错」唯一的现实缺口。
 fn assert_observable_rows_name_the_same_numbers(spec: &Spec, code: &CodeCatalogue) {
     let mut hits: Vec<String> = Vec::new();
     for row in &spec.observables {
@@ -209,7 +209,7 @@ fn assert_observable_rows_name_the_same_numbers(spec: &Spec, code: &CodeCatalogu
     }
     assert!(
         hits.len() >= MIN_OBSERVABLE_HITS,
-        "{}:{}: 可观察腿只命中 {} 个变体（≥{} 才说明 §4.2 仍用变体名点名）：{:?}；\
+        "{}:{}: 可观察腿只命中 {} 个变体（≥{} 才说明可观察结果表仍用变体名点名）：{:?}；\\
          若这是有意的文档改写，请同步更新本模块的 MIN_OBSERVABLE_HITS 并说明理由",
         spec.path.display(),
         spec.observables[0].line,
@@ -221,7 +221,7 @@ fn assert_observable_rows_name_the_same_numbers(spec: &Spec, code: &CodeCatalogu
 
 // ---------------------------------------------------------------- 文档侧解析
 
-/// §4.1 的一行：`| F<n> | 阶段 | 注入类型 |`。
+/// 注入点目录的一行：`| F<n> | 阶段 | 注入类型 |`。
 struct DocRow {
     id: String,
     /// 阶段单元格截到第一个全角 `（` 之前的部分（`描述（\`describeResource\`）` → `描述`）。
@@ -230,7 +230,7 @@ struct DocRow {
     line: usize,
 }
 
-/// §4.2 的一行：`| F<n> <描述> | 期望宿主可观察结果 | 关联 CM |`。
+/// 可观察结果表的一行：`| F<n> <描述> | 期望宿主可观察结果 | 关联 CM |`。
 struct ObsRow {
     /// 注入单元格开头的 `F<n>`。
     id: String,
@@ -253,7 +253,7 @@ impl Spec {
             .join("../../docs/architecture/platform/fake-runtime-fixtures.md");
         let text = fs::read_to_string(&path).unwrap_or_else(|err| {
             panic!(
-                "{}: 读不到 §4.1/§4.2 真源（{err}）—— 守门测试不得跳过",
+                "{}: 读不到注入点目录真源（{err}）—— 守门测试不得跳过",
                 path.display()
             )
         });
@@ -267,7 +267,7 @@ impl Spec {
     }
 }
 
-/// §4.2 行的注入单元格形如 ``F8 rollback 失败`` ⇒ `F8`；形如 ``F10 driver `Clean` 但句柄非空``
+/// 可观察结果表的注入单元格形如 ``F8 rollback 失败`` ⇒ `F8`；形如 ``F10 driver `Clean` 但句柄非空``
 /// 里的反引号要留给 `backticked_tokens`，所以这里只切**第一个空格**之前的部分。
 fn parse_section_42(text: &str, path: &Path) -> Vec<ObsRow> {
     let lines: Vec<&str> = text.lines().collect();
@@ -289,7 +289,7 @@ fn parse_section_42(text: &str, path: &Path) -> Vec<ObsRow> {
     let separator = table_line + 1;
     assert!(
         lines[separator].trim().starts_with("| ---"),
-        "{}:{}: §4.2 表头下面应当是 `| --- | --- | --- |` 分隔行，实际是 `{}`",
+        "{}:{}: 可观察结果表表头下面应当是 `| --- | --- | --- |` 分隔行，实际是 `{}`",
         path.display(),
         separator + 1,
         lines[separator].trim(),
@@ -310,7 +310,7 @@ fn parse_section_42(text: &str, path: &Path) -> Vec<ObsRow> {
         assert_eq!(
             cells.len(),
             3,
-            "{}:{}: §4.2 数据行应当是 3 个单元格，实际 {} 个：`{}`",
+            "{}:{}: 可观察结果表数据行应当是 3 个单元格，实际 {} 个：`{}`",
             path.display(),
             number,
             cells.len(),
@@ -322,7 +322,7 @@ fn parse_section_42(text: &str, path: &Path) -> Vec<ObsRow> {
             .unwrap_or(cells[0]);
         assert!(
             is_f_id(id),
-            "{}:{}: §4.2 行的注入列应当以 F<n> 开头，实际 `{}`",
+            "{}:{}: 可观察结果表行的注入列应当以 F<n> 开头，实际 `{}`",
             path.display(),
             number,
             cells[0],
@@ -336,7 +336,7 @@ fn parse_section_42(text: &str, path: &Path) -> Vec<ObsRow> {
     }
     assert!(
         !rows.is_empty(),
-        "{}:{}: §4.2 表格一行都没解析出来",
+        "{}:{}: 可观察结果表一行都没解析出来",
         path.display(),
         separator + 2,
     );
@@ -373,7 +373,7 @@ fn parse_section_41(text: &str, path: &Path) -> Vec<DocRow> {
     let separator = table_line + 1;
     assert!(
         lines[separator].trim().starts_with("| ---"),
-        "{}:{}: §4.1 表头下面应当是 `| --- | --- | --- |` 分隔行，实际是 `{}`",
+        "{}:{}: 注入点目录表头下面应当是 `| --- | --- | --- |` 分隔行，实际是 `{}`",
         path.display(),
         separator + 1,
         lines[separator].trim(),
@@ -396,7 +396,7 @@ fn parse_section_41(text: &str, path: &Path) -> Vec<DocRow> {
         assert_eq!(
             cells.len(),
             3,
-            "{}:{}: §4.1 数据行应当是 3 个单元格，实际 {} 个：`{}`",
+            "{}:{}: 注入点目录数据行应当是 3 个单元格，实际 {} 个：`{}`",
             path.display(),
             number,
             cells.len(),
@@ -404,7 +404,7 @@ fn parse_section_41(text: &str, path: &Path) -> Vec<DocRow> {
         );
         assert!(
             is_f_id(&cells[0]),
-            "{}:{}: §4.1 行的编号列应当形如 F12，实际 `{}`",
+            "{}:{}: 注入点目录行的编号列应当形如 F12，实际 `{}`",
             path.display(),
             number,
             cells[0],
@@ -419,7 +419,7 @@ fn parse_section_41(text: &str, path: &Path) -> Vec<DocRow> {
     }
     assert!(
         !rows.is_empty(),
-        "{}: §4.1 表格一行都没解析出来",
+        "{}: 注入点目录一行都没解析出来",
         path.display()
     );
     rows

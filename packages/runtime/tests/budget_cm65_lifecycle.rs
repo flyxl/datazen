@@ -1,4 +1,4 @@
-//! CM-65 门禁 · 等待、期限、排空与释放。
+//! 门禁 · 等待、期限、排空与释放。
 //!
 //! `acquire` 等待可取消且受**配置**期限约束；排空按 `DrainScope` 生效且不抢占
 //! 已固定的资源；多端点要么一次拿齐要么全部归还；释放区分「用掉了」与「原样退回」
@@ -277,7 +277,7 @@ fn cm65_drain_never_preempts_pinned_or_live_permits() {
     assert_eq!(
         ledger.permits().count(),
         2,
-        "drain 不得吊销任何在手 permit（§9.5 不抢占）"
+        "drain 不得吊销任何在手 permit（不抢占）"
     );
     assert_eq!(ledger.shared_used(&conn), 1);
     assert!(ledger.node_is_draining(&worker));

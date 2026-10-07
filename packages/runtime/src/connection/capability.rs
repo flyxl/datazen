@@ -1,7 +1,7 @@
-//! 能力快照与十项能力枚举（fake-runtime-fixtures.md §3.3 / connection-management.md §5.2）。
+//! 能力快照与十项能力枚举。
 //!
-//! 默认值逐条对齐 §3.3，并且每一项都写明「非默认取值会把哪条路径推向哪一侧」，
-//! 避免夹具在 `unsupported` / `unknown` 分支上静默跳过断言（§10.4 L534）。
+//! 下面每个默认值都写明「非默认取值会把哪条路径推向哪一侧」，
+//! 避免夹具在 `unsupported` / `unknown` 分支上静默跳过断言。
 
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub enum StatefulSessionSupport {
     /// 默认。固定会话保证成立。
     Supported,
-    /// **不得**在 `unknown` 下开启固定会话保证（§3.3）。
+    /// **不得**在 `unknown` 下开启固定会话保证。
     Unsupported,
     Unknown,
 }
@@ -129,7 +129,7 @@ pub struct CapabilitySnapshot {
 }
 
 impl CapabilitySnapshot {
-    /// §3.3 的默认值集合。
+    /// 全部能力的默认值集合。
     pub fn defaults(driver_id: impl Into<String>, driver_version: impl Into<String>) -> Self {
         Self {
             driver_id: driver_id.into(),
@@ -150,7 +150,7 @@ impl CapabilitySnapshot {
         }
     }
 
-    /// 是否允许开启固定会话保证。`unknown` 明确**不允许**（§3.3）。
+    /// 是否允许开启固定会话保证。`unknown` 明确**不允许**。
     pub const fn fixed_session_guaranteed(&self) -> bool {
         matches!(self.stateful_session, StatefulSessionSupport::Supported)
     }
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn unknown_stateful_session_refuses_the_fixed_session_guarantee() {
-        // §3.3：unknown 时不得开启固定会话保证。
+        // unknown 时不得开启固定会话保证。
         let mut caps = CapabilitySnapshot::defaults("fake-sql", "0.0.1");
         caps.stateful_session = StatefulSessionSupport::Unknown;
         assert!(!caps.fixed_session_guaranteed());
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn degraded_observation_and_transaction_flags_pick_the_right_host_path() {
-        // §3.3：partial/unsupported → observedContext 保持 unknown；partial → TransactionResolutionRequired。
+        // partial/unsupported → observedContext 保持 unknown；partial → TransactionResolutionRequired。
         let mut caps = CapabilitySnapshot::defaults("fake-sql", "0.0.1");
         caps.context_observation = ContextObservation::Partial;
         assert!(caps.context_must_stay_unknown());
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn unsupported_reset_for_reuse_pushes_every_reuse_path_to_close() {
-        // §3.3：resetForReuse=unsupported → 一切复用路径必须走关闭。
+        // resetForReuse=unsupported → 一切复用路径必须走关闭。
         let mut caps = CapabilitySnapshot::defaults("fake-sql", "0.0.1");
         caps.reset_for_reuse = ResetForReuse::Unsupported;
         assert!(!caps.reuse_path_verified());

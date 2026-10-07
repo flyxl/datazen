@@ -1,6 +1,6 @@
-//! CM-60 门禁的两段单调计时。
+//! 门禁的两段单调计时。
 //!
-//! `connection-management.md` §7.2 末段规定的口径是**两段**加法：
+//! 规定的口径是**两段**加法：
 //!
 //! - **段①** gateway 完成鉴权 / 参数校验结束 → 派发 driver；
 //! - **段②** driver 完成 → receipt / 事件状态登记完成。
@@ -17,7 +17,7 @@
 //!
 //! 时钟是**注入**的（[`MonotonicClock`］）。原因有二：
 //!
-//! 1. P3 §6 要求确定性时间——单测必须能在 `start_paused` 或手动推进下得到确定值，
+//! 1. 要求确定性时间——单测必须能在 `start_paused` 或手动推进下得到确定值，
 //!    而 `Instant::now()` 会让「段① == 2ms」这种断言变成概率事件；
 //! 2. `latency.rs` 的口径说明写的是「两段都用 `Instant` 采样」，那是**调用方**
 //!    的选型，不是网关内核的义务。把取时点从内核里拿走，宿主层换任何时钟源
@@ -138,7 +138,7 @@ impl OverheadProbe {
 /// 样本仓库。
 ///
 /// 语义上就是「一段插值序列」，所以直接透传 `latency::nearest_rank_percentile`，
-/// 避免在网关里长出第二套分位数定义（历史上两套定义漂移过，见 §7.2 口径注）。
+/// 避免在网关里长出第二套分位数定义（历史上两套定义漂移过，见上面的口径说明）。
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct OverheadSamples {
     values: Vec<RequestOverhead>,

@@ -1,6 +1,6 @@
-//! CM-66：**逻辑** session 与**物理**连接两套额度分开记账。
+//! **逻辑** session 与**物理**连接两套额度分开记账。
 //!
-//! 夹具（§9.5 CM-66 复现步骤）：单用户逻辑上限 20、已连接编辑器上限 2、
+//! 夹具（复现步骤）：单用户逻辑上限 20、已连接编辑器上限 2、
 //! 单组织逻辑上限 30、物理连接总上限 4。
 //! 步骤：开 20 个 `New` 再开第 21 个 → 并发连 3 个 → 关掉一个已连接的再试 → 另一个用户撞组织上限。
 //!
@@ -27,7 +27,7 @@ fn conn() -> ConnectionId {
     ConnectionId::new(CONN)
 }
 
-/// §9.5 CM-66 的复现夹具。
+/// 复现夹具。
 fn cm66_config() -> BudgetConfig {
     config(8, [1, 1, 1, 0])
         .with_per_user_logical_sessions(20)
@@ -380,7 +380,7 @@ fn cm66_returning_to_the_idle_pool_does_not_release_physical_budget() {
     }
     assert_eq!(ledger.physical(&conn), config.service_physical_connections);
 
-    // 回落空闲池：socket 还活着，**不释放**物理额度（§9.3）。
+    // 回落空闲池：socket 还活着，**不释放**物理额度。
     ok(
         ledger.transition(&held[0], PhysicalOccupancy::IdlePooled),
         "transition to idle pool",

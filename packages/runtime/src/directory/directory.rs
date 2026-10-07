@@ -239,7 +239,7 @@ impl InMemorySessionDirectory {
                 })
             }
             ReplacementOperation::Committed => {
-                let new_handle = self.expect_prepared(&mut inner, &key, "commit")?;
+                let new_handle = self.expect_prepared(&inner, &key, "commit")?;
                 let settled = self.take_lost_commit_reply();
                 let truth = match settled {
                     Some(outcome) => outcome.state(),
@@ -273,7 +273,7 @@ impl InMemorySessionDirectory {
                 )))
             }
             ReplacementOperation::RolledBack => {
-                let new_handle = self.expect_prepared(&mut inner, &key, "roll back")?;
+                let new_handle = self.expect_prepared(&inner, &key, "roll back")?;
                 match self.take_lost_commit_reply() {
                     Some(outcome) => {
                         let truth = outcome.state();
@@ -284,9 +284,9 @@ impl InMemorySessionDirectory {
                             settled = truth.as_str(),
                             "replacement outcome unknown to the caller; both entries held behind the barrier"
                         );
-                        return Err(PortError::ProviderTimeout(format!(
+                        Err(PortError::ProviderTimeout(format!(
                             "replacement {key} outcome unknown; query commit status by operation key"
-                        )));
+                        )))
                     }
                     None => {
                         self.apply_rolled_back(&mut inner, &key);

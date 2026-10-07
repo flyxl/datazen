@@ -1,4 +1,4 @@
-//! §3.3 事件投递：容忍陈旧 epoch / 异会话 / 乱序 / 空洞 / 大计数，
+//! 事件投递：容忍陈旧 epoch / 异会话 / 乱序 / 空洞 / 大计数，
 //! 陈旧事件既不覆盖状态也不重复计行。
 
 use super::{other_request, record};
@@ -7,7 +7,7 @@ use datazen_runtime::connection::{
     ContextConfidence, Counter, DbSessionId, ExecutionId, ExecutionState, SessionState,
 };
 use datazen_runtime::gateway::{EventDisposition, ExecutionEventKind};
-// ───────────────── F §3.3 事件投递 ─────────────────
+// ───────────────── F 事件投递 ─────────────────
 
 #[tokio::test(start_paused = true)]
 async fn an_event_from_a_stale_epoch_is_ignored() {
@@ -330,7 +330,7 @@ async fn g2_snapshot_recovery_must_not_zero_the_observed_row_count() {
             .await
     );
 
-    // 快照不带行数，清零等于把已经上报的结果从审计账上抹掉（CM-55）。
+    // 快照不带行数，清零等于把已经上报的结果从审计账上抹掉。
     let restored = record(&h, &id).await;
     assert_eq!(restored.observed_row_count(), 12);
     assert_eq!(restored.observed_sequence(), Some(Counter::new(2)));

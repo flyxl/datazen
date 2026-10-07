@@ -2090,6 +2090,7 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "chrono",
+ "datazen-application",
  "datazen-driver-api",
  "datazen-platform-api",
  "datazen-runtime",
@@ -2098,6 +2099,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "syn 2.0.119",
  "thiserror 1.0.69",
  "tokio",
  "tracing",

@@ -4,7 +4,7 @@
 //! 它只做四件事：落表、按池键建空闲索引、空桶元数据按 LRU 收口、槽位回收。
 //!
 //! 物理连接只以 [`PhysicalHandle`] 的形式存在于**宿主内部**：它连 `pub` 都不是，
-//! 也不出现在任何公共类型或返回值里（§3.2 明令不导出物理连接句柄）。
+//! 也不出现在任何公共类型或返回值里（明令不导出物理连接句柄）。
 
 use std::collections::BTreeSet;
 
@@ -39,7 +39,7 @@ pub(super) struct PhysicalResource {
     lease: LeaseRecord,
 }
 
-/// 池键桶变空时留下的元数据（§9.2：上限 32 条）。
+/// 池键桶变空时留下的元数据（上限 32 条）。
 #[derive(Debug, Clone, Copy)]
 struct EmptyPoolSlot {
     last_touched_nanos: u64,
@@ -49,7 +49,7 @@ struct EmptyPoolSlot {
 pub(super) struct ResourceTable {
     entries: IndexMap<ResourceId, PhysicalResource>,
     by_lease: IndexMap<LeaseId, ResourceId>,
-    /// `PoolKey` → 该键下可再次签发的空闲租约（**只按数据库与策略分片**，A3.4）。
+    /// `PoolKey` → 该键下可再次签发的空闲租约（**只按数据库与策略分片**）。
     idle_pool: IndexMap<PoolKeyGeneration, IndexSet<LeaseId>>,
     /// 空桶的 LRU 元数据；超过上限就淘汰最久没碰过的。
     empty_pool_lru: IndexMap<PoolKeyGeneration, EmptyPoolSlot>,
@@ -251,10 +251,10 @@ impl ResourceTable {
     }
 }
 
-/// CM-38：一条在用的会话与当前配置版本之间的可见漂移。
+/// 一条在用的会话与当前配置版本之间的可见漂移。
 ///
 /// **不静默重配**是这里的核心：旧会话继续按它自己的 `config_revision` 服务，
-/// 漂移只被**报告**，是否替换由上层走 CM-68 的替换流程决定。
+/// 漂移只被**报告**，是否替换由上层走替换流程决定。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConfigRevisionDrift {
     pub lease_revision: ConfigRevision,
@@ -267,7 +267,7 @@ impl ConfigRevisionDrift {
     }
 }
 
-/// CM-39：禁用/删除一份连接配置时的**实测**处置结果。
+/// 禁用/删除一份连接配置时的**实测**处置结果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisableOutcome {
     pub connection_id: ConnectionId,
@@ -291,7 +291,7 @@ impl DisableOutcome {
     }
 }
 
-/// 排队中的一条申请（§9.2：默认 10 秒获取超时）。
+/// 排队中的一条申请（默认 10 秒获取超时）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueuedLease {
     pub request: LeaseRequest,
@@ -311,7 +311,7 @@ pub struct QueueDrain {
     pub suppressed: Vec<LeaseRequest>,
 }
 
-/// A3.4：一次池键轮换的完整效果。
+/// 一次池键轮换的完整效果。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RotationReport {
     pub outcome: RotationOutcome,

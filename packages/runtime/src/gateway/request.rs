@@ -1,4 +1,4 @@
-//! §7.2 请求受理：校验 handle → 授权重校验 → 幂等查重 → 生成 executionId → 入队 → 回执。
+//! 请求受理：校验 handle → 授权重校验 → 幂等查重 → 生成 executionId → 入队 → 回执。
 //!
 //! ## 回执是「受理回执」，不是「执行结果」
 //!
@@ -11,7 +11,7 @@
 //!
 //! ## 乐观并发闸门为什么查两次
 //!
-//! §7.2 第 4 步会核对 `expectedContextRevision`，但受理与真正派发之间隔着排队、
+//! 第 4 步会核对 `expectedContextRevision`，但受理与真正派发之间隔着排队、
 //! 可能还隔着用户确认弹窗。这段时间里任何 `SET` / 事务提交都会推高 `contextRevision`。
 //! 只在受理时核对一次，等于让一条**基于过期上下文**的语句在旧语义下跑完整条链路。
 //! 闸门因此在两处生效：
@@ -37,7 +37,7 @@ use crate::gateway::provenance::{ExecutionSource, GatewayAction};
 ///
 /// ## `Debug` 是手写的：只脱敏凭据字段
 ///
-/// 装了令牌层（CM-70）之后 `idempotency_key` 就是那把**可重放**的签名提交令牌，
+/// 装了令牌层之后 `idempotency_key` 就是那把**可重放**的签名提交令牌，
 /// 而 [`ExecutionRequest`] 是公开构造、公开持有的输入 DTO——派生 `Debug` 一路走到
 /// 这里就把一份凭据抄进了日志、`panic` 文本与 `assert_eq!` 的失败输出。
 /// 因此下面**不派生** `Debug`，改为手写一份只把 `idempotency_key` 打成 `<redacted>`
@@ -52,16 +52,16 @@ pub struct ExecutionRequest {
     pub expected_context_revision: Counter,
     pub call: CommandCall,
     pub idempotency_key: String,
-    /// CM-61：来源来自**请求**。受理后即冻结，后续事件不得改写。
+    /// 来源来自**请求**。受理后即冻结，后续事件不得改写。
     pub source: ExecutionSource,
-    /// §7.6 取消绑定用的资源绑定 id。
+    /// 取消绑定用的资源绑定 id。
     ///
     /// 取消必须核验 `executionId` / `runtimeEpoch` / `resourceBindingId` 三者一致，
     /// 少了第三个就会出现「用 A 执行的句柄去取消 B」这种跨资源取消。
     pub resource_binding_id: Option<ResourceId>,
 }
 
-/// CM-70：输入侧同一把令牌同样走派生 `Debug` 就是明文泄漏——`format!("{req:?}")`
+/// 输入侧同一把令牌同样走派生 `Debug` 就是明文泄漏——`format!("{req:?}")`
 /// 会连 MAC 段一起逐字打印。这层与 [`super::ExecutionRecord`] 的输出侧脱敏是**两个
 /// 独立缺口**，必须各自堵：只挡最外层，派生 `Debug` 照样会一路走到叶子字段。
 impl std::fmt::Debug for ExecutionRequest {
@@ -100,7 +100,7 @@ impl ExecutionRequest {
         self
     }
 
-    /// §7.2 第 1 步：句柄与参数校验。
+    /// 第 1 步：句柄与参数校验。
     ///
     /// 这一步**不**碰端口、不生成任何 id，因此它的失败不会留下任何痕迹——
     /// 调用方可以直接用同个幂等键重试。
@@ -134,7 +134,7 @@ impl ExecutionRequest {
         IdempotencyScope::from_handle(&self.handle, self.idempotency_key.clone())
     }
 
-    /// 请求指纹。**来源参与指纹**（CM-61）：否则同一个 key 换一个来源重发
+    /// 请求指纹。**来源参与指纹**：否则同一个 key 换一个来源重发
     /// 会被判成重发，回执里的 `source` 就会跟着重发请求走，而不是留在第一次。
     pub fn fingerprint(&self) -> RequestFingerprint {
         RequestFingerprint::of(&self.call, self.expected_context_revision, &self.source)
@@ -188,7 +188,7 @@ impl AcceptanceDisposition {
 pub struct GatewayAcceptance {
     pub receipt: ExecutionReceipt,
     pub disposition: AcceptanceDisposition,
-    /// CM-61：受理时冻结的来源。
+    /// 受理时冻结的来源。
     pub source: ExecutionSource,
     /// 首次受理时刻（单调纳秒）。重发时是**第一次**的时刻，不是本次的时刻。
     pub accepted_at_nanos: u64,
@@ -256,7 +256,7 @@ impl GatewayAcceptance {
 /// `SessionClosed` / `BudgetExhausted` / `SessionQuarantined` / `CancelFailed`
 /// 一律原样上抛，绝不被包装成「已受理」或降级成别的语义。
 /// 其余变体是网关**自己**的判定（权限、幂等、参数），因为 `RuntimeError`
-/// 是冻结 DTO（§4 不可为其新增变体）。
+/// 是冻结 DTO（不可为其新增变体）。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GatewayError {
     #[error("runtime: {0}")]
@@ -268,13 +268,13 @@ pub enum GatewayError {
         reason: &'static str,
     },
 
-    /// CM-54：既有记录读不出来。**要求核验**，不得自动换键重写。
+    /// 既有记录读不出来。**要求核验**，不得自动换键重写。
     #[error("idempotency record unreadable, verification required: {message}")]
     IdempotencyVerificationRequired { message: String },
 
-    /// CM-54：同一个键被复用于另一个语义请求。
+    /// 同一个键被复用于另一个语义请求。
     ///
-    /// **刻意没有键本身**（CM-70 高危缺陷 1 的修复）：装了令牌层之后键就是那把
+    /// **刻意没有键本身**（高危缺陷 1 的修复）：装了令牌层之后键就是那把
     /// 签名提交令牌，回显它等于把一份可重放的凭据抄进错误消息和审计落盘。
     /// 而且冲突**只可能**发生在与本次受理完全相同的作用域上——账本按
     /// `(dbSessionId, runtimeEpoch, 键)` 查记录，读到记录才是冲突——
@@ -293,7 +293,7 @@ pub enum GatewayError {
     #[error("idempotency record could not be persisted: {message}")]
     IdempotencyPersistFailed { message: String },
 
-    /// CM-70：提交令牌在第 0 步被拒（验签 / 版本 / 过期 / 退役）。
+    /// 提交令牌在第 0 步被拒（验签 / 版本 / 过期 / 退役）。
     ///
     /// 刻意**不带**令牌本身，也不带 key：审计落盘里留一份令牌摘要就等于
     /// 给伪造者一个 oracle 去试。只留机器可读的 `reason`。
@@ -366,7 +366,7 @@ impl GatewayError {
 /// 装了令牌层之后 `idempotency_key` 就是那把签名提交令牌，而 [`super::ExecutionRecord`]
 /// 是公开可取的（`ExecutionGateway::execution` 直接把记录交给调用方），派生 `Debug`
 /// 一路走到这里就把一份**可重放**的凭据抄进了日志与审计。只在网关这一侧拦一道：
-/// `connection/session.rs` 是 CM-54 的冻结面，那边一个字节都不动。
+/// `connection/session.rs` 是冻结面，那边一个字节都不动。
 ///
 /// **脱敏范围只限凭据字段**：`call` 原样输出。令牌是凭据、`call` 是负载，而排查幂等
 /// 问题**恰恰要看 payload**（同一个键配了哪条 SQL、参数差在哪），抹掉它会让这条
@@ -388,8 +388,7 @@ impl std::fmt::Debug for RedactedExecuteRequest<'_> {
     }
 }
 
-// CM-06 的编译期 / 反序列化期负例：请求 DTO 上没有身份字段可伪造。
-// 判据原文见 `docs/architecture/platform/connection-management.md:897-901`。
+// 编译期 / 反序列化期负例：请求 DTO 上没有身份字段可伪造。
 //
 // 放在独立文件是单文件 800 行惯例所迫；用 `#[path]` 而非 `mod` 内联，
 // 是为了让负例文件的模块级 `//!` 文档挂在正确的模块上。
@@ -557,7 +556,7 @@ mod tests {
 
     /// 冲突记录只许有标识符，**不许**多出一个字段。
     ///
-    /// 曾经有一版把幂等键原样写回落盘（CM-70 高危缺陷 1）：键在装了令牌层之后
+    /// 曾经有一版把幂等键原样写回落盘（高危缺陷 1）：键在装了令牌层之后
     /// 就是那把签名提交令牌，落盘一份就等于给伪造者一份可重放的凭据。
     /// 这里用「字段全集相等」而不是逐个检查缺失，把这个口子钉死在映射表上——
     /// 往回加 `key` 会立刻转红。

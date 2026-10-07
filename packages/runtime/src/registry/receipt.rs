@@ -1,8 +1,8 @@
-//! `CancelReceipt` —— §7.6 的取消回执（D-01 补齐的冻结面缺口）。
+//! `CancelReceipt` —— 取消回执（补齐的冻结面缺口）。
 //!
 //! **为什么它住在 `registry/` 而不是 `connection/`**：`connection/**` 是 Wave 1 冻结的
 //! 会话/执行 DTO 层，端口的接缝由 Wave 2 的 registry 轨道实现；`SessionPort::cancel_execution`
-//! 在冻结时退化成返回 `ExecutionState`（见 [`super::port`] 里 D-01 的说明），
+//! 在冻结时退化成返回 `ExecutionState`（见 [`super::port`] 的说明），
 //! 补齐它属于**端口实现侧**的职责，因此类型落在 `registry/` 内，由本模块对外导出。
 //!
 //! **`CancelDisposition` 是转出而不是重定义**：三态取值、协议字面量
@@ -10,7 +10,7 @@
 //! `crate::connection::port::CancelDisposition`，本模块只做 `pub use`。另起一份
 //! 同名枚举会让「同一个字面量有两个 Rust 类型」，线上表现与类型系统一起失真。
 //!
-//! **三态的语义边界（§13.1）**：
+//! **三态的语义边界**：
 //!
 //! | disposition | 含义 | 必须是 `Err` 吗 |
 //! | --- | --- | --- |
@@ -28,13 +28,13 @@ use crate::connection::{ExecutionId, ExecutionState};
 
 /// 协议字面量与 serde 形状的**转出**，不是第二份定义。见模块文档的「转出而不是重定义」。
 ///
-/// 之所以在这里 `pub use` 一次：§7.6 的三态与 `CancelReceipt` 同属取消这一个概念，
+/// 之所以在这里 `pub use` 一次：三态与 `CancelReceipt` 同属取消这一个概念，
 /// 调用方 `use runtime::registry::CancelDisposition` 就能拿到完整的一对，
 /// 而不必知道三态实际冻结在 `connection::port` 里。
 #[doc(inline)]
 pub use crate::connection::port::CancelDisposition;
 
-/// `ExecutionState` 的终态判据（§7.6「终态优先」）。
+/// `ExecutionState` 的终态判据（「终态优先」）。
 ///
 /// `connection::execution` 没有提供这个谓词，而本模块的两条规则都依赖它；
 /// 私有定义是为了避免为它改动 Wave 1 冻结文件。
@@ -45,7 +45,7 @@ const fn is_terminal(state: ExecutionState) -> bool {
     )
 }
 
-/// §7.6 规定的取消回执：`executionId` + `disposition` + `state`。
+/// 取消回执：`executionId` + `disposition` + `state`。
 ///
 /// 三个字段缺一不可：缺 `disposition` 就分不清「不支持取消」与「已是终态」，
 /// 缺 `state` 调用方就得再读一次会话投影才能知道结果，竞态窗口从回执挪到了调用方身上。
@@ -57,13 +57,13 @@ pub struct CancelReceipt {
     pub execution_id: ExecutionId,
     /// 控制请求得到的处置。
     pub disposition: CancelDisposition,
-    /// 请求落地后的执行状态快照（§7.6 末段：终态只能由终态事件给出，
+    /// 请求落地后的执行状态快照（终态只能由终态事件给出，
     /// 本字段是**快照**而不是终态承诺）。
     pub state: ExecutionState,
 }
 
 impl CancelReceipt {
-    /// 按 §7.6 的**终态优先**规则归一化一次取消尝试的观测结果。
+    /// 按**终态优先**规则归一化一次取消尝试的观测结果。
     ///
     /// 规则只有两条，且顺序不可换：
     ///
@@ -100,7 +100,7 @@ impl CancelReceipt {
     pub const fn is_coherent(&self) -> bool {
         match self.disposition {
             CancelDisposition::AlreadyFinished => is_terminal(self.state),
-            // `Requested` / `Unsupported` 都必须处在非终态：终态由规则 1 独占。
+            // `Requested` / `Unsupported` 都必须处在非终态：终态只由 AlreadyFinished 给出。
             CancelDisposition::Requested | CancelDisposition::Unsupported => {
                 !is_terminal(self.state)
             }
@@ -121,7 +121,7 @@ mod tests {
         ExecutionId::new(name)
     }
 
-    /// D-01 的形状约束：三个字段齐全，且 camelCase 序列化后逐字等于 §7.6 的键名。
+    /// 形状约束：三个字段齐全，且 camelCase 序列化后逐字等于规定的键名。
     ///
     /// 断言的是**字面量**而不是枚举相等——枚举相等在 `#[serde(rename_all = "camelCase")]`
     /// 被误删时照样通过，而线上键名会全变成 snake_case。
@@ -151,7 +151,7 @@ mod tests {
         );
     }
 
-    /// 三态字面量逐字钉死：`requested` / `unsupported` / `alreadyFinished`（§13.1）。
+    /// 三态字面量逐字钉死：`requested` / `unsupported` / `alreadyFinished`。
     #[test]
     fn dispositions_keep_their_protocol_literals() {
         assert_eq!(CancelDisposition::Requested.as_str(), "requested");
@@ -162,7 +162,7 @@ mod tests {
         );
     }
 
-    /// §7.6 终态优先：对已终态的执行重复取消**不得**改写终态（CM-23）。
+    /// 终态优先：对已终态的执行重复取消**不得**改写终态。
     ///
     /// 反例一旦成立就是谎报：调用方会把一次没有发生过的干预当成发生过。
     #[test]
@@ -186,7 +186,7 @@ mod tests {
         }
     }
 
-    /// CM-22：driver 没有独立取消路径时 `unsupported` 是**正常返回**，
+    /// driver 没有独立取消路径时 `unsupported` 是**正常返回**，
     /// 状态保持 `Running`，绝不能被写成 `CancelRequested`。
     #[test]
     fn driver_without_cancel_path_reports_unsupported_without_touching_state() {

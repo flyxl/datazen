@@ -347,6 +347,20 @@ fn every_tauri_command_is_registered_and_resolvable() {
                         continue;
                     };
                     let lines: Vec<&str> = text.lines().collect();
+                    for line in &lines {
+                        // Macro-generated #[tauri::command]s (e.g. session_command!(name, Req))
+                        // still need to appear in the registration list.
+                        let t = line.trim_start();
+                        if let Some(rest) = t.strip_prefix("session_command!(") {
+                            let name: String = rest
+                                .chars()
+                                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                                .collect();
+                            if !name.is_empty() {
+                                out.insert(name);
+                            }
+                        }
+                    }
                     for (i, line) in lines.iter().enumerate() {
                         if !line.trim_start().starts_with("#[tauri::command") {
                             continue;
@@ -387,6 +401,7 @@ fn every_tauri_command_is_registered_and_resolvable() {
             let tail = line
                 .split_once("crate::commands::")
                 .or_else(|| line.split_once("crate::app_menu::"))
+                .or_else(|| line.split_once("crate::platform::"))
                 .map(|(_, tail)| tail);
             if let Some(tail) = tail {
                 // Tauri accepts nested command module paths as registrations;

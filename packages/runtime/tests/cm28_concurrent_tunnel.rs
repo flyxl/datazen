@@ -1,6 +1,6 @@
-//! CM-28（重复 release/close，高）第三格：**隧道**层的真实并发契约。
+//! 重复 release/close 的第三格：**隧道**层的真实并发契约。
 //!
-//! 判据原文（`docs/architecture/platform/connection-management.md` §16.3，CM-28，行 1033-1037）：
+//! 判据：
 //!
 //! ```text
 //! - 断言：driver close 至多一次有效关闭；预算不负数；隧道不多减引用；重复响应一致。
@@ -10,8 +10,8 @@
 //!
 //! # 为什么这一格也要新写
 //!
-//! `tests/tunnel_refcount_contract.rs:352`
-//! （`one_return_releases_exactly_once_however_many_times_it_is_repeated`）
+//! `tests/tunnel_refcount_contract.rs` 里的
+//! `one_return_releases_exactly_once_however_many_times_it_is_repeated`
 //! 用一个**顺序** `for returns in 1..=6` 循环重复归还，而且数的是隧道端口的
 //! `close`，不是权威计数。`src/tunnel/journey_single_counter.rs` 的
 //! `single_counter_algebra_holds` 则是嵌套 `for` 的纯代数，没有线程。
@@ -24,7 +24,7 @@
 //! 被测的性质正是「这份串行化让权威计数恰好逐份递减」。
 //! 20 个任务用 [`tokio::sync::Barrier`] 同时放行，锁绝不跨 `.await`。
 //!
-//! **不要把 `flavor = "multi_thread"` 简化掉。** 实测：两个 CM-28 文件合计 8 处
+//! **不要把 `flavor = "multi_thread"` 简化掉。** 实测：并发释放的两个文件合计 8 处
 //! `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`（本文件 3 处）
 //! 全部降级成默认 `#[tokio::test]`，**10 条测试仍然全绿** —— 因为 `&mut self` 的
 //! 串行化保证了结论与线程数无关（这是断言稳健的标志，不是假并发：把
@@ -46,7 +46,7 @@ use datazen_runtime::tunnel::{
     TunnelError, TunnelHandle, TunnelLedger, TunnelRelease, TunnelTransport,
 };
 
-/// CM-28 步骤：「并发释放 **20** 次」。
+/// 判据步骤：「并发释放 **20** 次」。
 const CONCURRENCY: usize = 20;
 
 // ------------------------------------------------------------ 隧道端口替身
@@ -57,9 +57,31 @@ enum TunnelEvent {
     Close,
 }
 
-/// 隧道端口：**只**记物理开合，不带任何引用计数（唯一计数在台账里）。
+/// 隧道端口：**只**记物理开合，不带任何引用计数，也不带自存的开合计数
+/// （唯一计数在台账里；登记的反例正是「端口自己再存一份账并让观测方法改读它」）。
 struct RecordingTunnelPort {
     events: Mutex<Vec<TunnelEvent>>,
+}
+
+/// 端口账：物理开合读数，**只**由 [`tally`] 这一个纯折函数算出。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct PortTally {
+    opened: usize,
+    closed: usize,
+}
+
+/// 「事件 → 账」的唯一折法。同 `src/tunnel/harness.rs` 的 `tallies` 一个形状；
+/// 本文件是外部 crate，看不见那个 `#[cfg(test)]` 私有模块，所以照同一规则就地写一份
+/// —— 审计按「每份实现各自只有一个折函数」检查，不跨文件共享。
+fn tally(events: &[TunnelEvent]) -> PortTally {
+    let mut out = PortTally::default();
+    for event in events {
+        match event {
+            TunnelEvent::Open => out.opened += 1,
+            TunnelEvent::Close => out.closed += 1,
+        }
+    }
+    out
 }
 
 impl RecordingTunnelPort {
@@ -69,24 +91,20 @@ impl RecordingTunnelPort {
         })
     }
 
+    /// 唯一事实源：事件日志本身（取锁 + 反毒）。
     fn lock(&self) -> MutexGuard<'_, Vec<TunnelEvent>> {
         self.events
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// 读数一律从 `lock()` 现折 —— 端口里没有任何计数**字段**。
     fn opened(&self) -> usize {
-        self.lock()
-            .iter()
-            .filter(|e| **e == TunnelEvent::Open)
-            .count()
+        tally(&self.lock()).opened
     }
 
     fn closed(&self) -> usize {
-        self.lock()
-            .iter()
-            .filter(|e| **e == TunnelEvent::Close)
-            .count()
+        tally(&self.lock()).closed
     }
 }
 

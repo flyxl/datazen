@@ -58,7 +58,11 @@ describe('relation column loading', () => {
         },
       ],
     }));
-    const values = await loadRelationColumns('session', refs);
+    const values = await loadRelationColumns(
+      { connectionId: 'cfg', metadataRevision: 1 },
+      'session',
+      refs,
+    );
     expect(readColumns.mock.calls.map((call) => (call[1] as RelationRef[]).length)).toEqual([
       256, 1,
     ]);

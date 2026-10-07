@@ -95,7 +95,7 @@ struct FakeInner {
     close: CloseResourceOutcome,
 }
 
-/// §7.1 / §6.5 / §7.6 / §9.4 四个接缝的可控替身。
+/// 四个接缝的可控替身。
 pub(crate) struct FakeBackend {
     inner: Mutex<FakeInner>,
     gate: Mutex<mpsc::UnboundedReceiver<()>>,
@@ -177,7 +177,7 @@ impl FakeBackend {
         Self::count(&self.close_calls)
     }
 
-    /// 同一时刻并发的执行数峰值：跨会话并行（CM-20）的直接证据。
+    /// 同一时刻并发的执行数峰值：跨会话并行的直接证据。
     pub(crate) fn peak_live(&self) -> usize {
         Self::count(&self.peak_live)
     }
@@ -539,10 +539,10 @@ pub(crate) fn entries_of(
 }
 
 /// 取某类条目；多于一条即视为断言失败。
-pub(crate) fn single_of_kind<'a>(
-    entries: &'a [RegistryAuditEntry],
+pub(crate) fn single_of_kind(
+    entries: &[RegistryAuditEntry],
     kind: AuditKind,
-) -> Option<&'a RegistryAuditEntry> {
+) -> Option<&RegistryAuditEntry> {
     let mut found = entries.iter().filter(|entry| entry.kind == kind);
     let first = found.next()?;
     assert!(found.next().is_none(), "kind {kind:?} 出现了多于一条");
@@ -562,7 +562,7 @@ pub(crate) fn close_command(
     }
 }
 
-/// 驱逐命令（§6.4 空闲）。
+/// 驱逐命令（空闲）。
 pub(crate) fn evict_command(at_ms: u64, reply: Reply<Option<SessionView>>) -> ExecCommand {
     ExecCommand::Evict { at_ms, reply }
 }

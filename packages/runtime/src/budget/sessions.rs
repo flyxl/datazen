@@ -1,13 +1,13 @@
-//! 会话额度：逻辑与物理分开记账、排空、节点额度租约（connection-management.md §9.2 / §9.3 / §9.5）。
+//! 会话额度：逻辑与物理分开记账、排空、节点额度租约。
 //!
-//! 这一半的账本实现了 §9.5 的 CM-66 全部约束：
+//! 这一半的账本实现了全部约束：
 //!
 //! - **逻辑与物理是两套上限**。`New` 状态没有 socket，但计入逻辑上限（单用户 100 / 单组织 1000）；
-//!   物理连接另有一套上限（§9.2 的桌面 16 / team 20 是总量口径，物理侧由配置给出）。
-//! - **回落到空闲池不释放物理额度**（§9.3）。`transition` 只换状态、不动计数；只有真正
+//!   物理连接另有一套上限（桌面 16 / team 20 是总量口径，物理侧由配置给出）。
+//! - **回落到空闲池不释放物理额度**。`transition` 只换状态、不动计数；只有真正
 //!   `close_session` 才回收。否则同一份预算会被一份还活着的 socket 重复出售。
 //! - **排空不抢占**。`drain` 只停止接受新的 permit，并报出手上还有多少；已建立的固定会话、
-//!   活跃事务、游标一个都不动（§9.5）。
+//!   活跃事务、游标一个都不动。
 
 use datazen_platform_api::id::{ConnectionId, DbSessionId, OrganizationId, PrincipalId, WorkerId};
 use datazen_platform_api::ports::budget::{
@@ -20,7 +20,7 @@ use crate::budget::records::{counter, mono_timestamp, SessionRecord};
 impl BudgetLedger {
     // ------------------------------------------------------------ 逻辑会话
 
-    /// 开一个**逻辑** session（§9.2 的 `New` 状态）：没有 socket，但计入逻辑上限。
+    /// 开一个**逻辑** session（`New` 状态）：没有 socket，但计入逻辑上限。
     ///
     /// 单用户与单组织两个上限**都**要查，先查用户后查组织，拒哪个由先触发的那个决定。
     pub fn open_session(
@@ -86,7 +86,7 @@ impl BudgetLedger {
         crate::budget::records::physical_of(self, connection_id)
     }
 
-    /// 单用户在该服务上的已连接数（§9.2 的「已连接编辑器」口径）。
+    /// 单用户在该服务上的已连接数（「已连接编辑器」口径）。
     pub fn user_connected(&self, connection_id: &ConnectionId, principal: &PrincipalId) -> u32 {
         crate::budget::records::connected_of(self, connection_id, principal)
     }
@@ -141,7 +141,7 @@ impl BudgetLedger {
 
     /// 切换物理占用状态，**不改变任何计数**。
     ///
-    /// §9.3：回落到空闲池（`IdlePooled`）不释放物理额度，只有真正 close 才释放。
+    /// 回落到空闲池（`IdlePooled`）不释放物理额度，只有真正 close 才释放。
     /// 如果这里顺手减了计数，同一份预算就会被一份还活着的 socket 重复出售。
     pub fn transition(
         &mut self,
@@ -186,10 +186,10 @@ impl BudgetLedger {
 
     // ------------------------------------------------------------ 排空
 
-    /// 按作用域排空（节点 / 组织 / 连接，§9.5）。
+    /// 按作用域排空（节点 / 组织 / 连接）。
     ///
     /// 排空 = 停止接受新的 permit，并报出还在手上多少。**不抢占**：已建立的固定会话、
-    /// 活跃事务、游标一个都不动（§9.5）。
+    /// 活跃事务、游标一个都不动。
     pub fn drain(&mut self, scope: DrainScope) -> DrainReport {
         match &scope {
             DrainScope::Connection(connection_id) => {
@@ -254,10 +254,10 @@ impl BudgetLedger {
 
     // ------------------------------------------------------------ 节点额度
 
-    /// 续期节点额度租约（§9.3）。
+    /// 续期节点额度租约。
     ///
     /// 排空中的节点续期**失败**并按失联处理：调用方据此停止发放新资源。
-    /// 旧额度在 worker 隔离或连接关闭确认之前**不回收**（§9.3），所以成功路径不缩容。
+    /// 旧额度在 worker 隔离或连接关闭确认之前**不回收**，所以成功路径不缩容。
     pub fn renew_node_lease(
         &mut self,
         lease: &NodeLease,

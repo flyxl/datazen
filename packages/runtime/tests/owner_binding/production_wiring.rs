@@ -4,7 +4,7 @@
 //!
 //! 网关的作者器是**构造参数**（`ExecutionGateway::new(port, authorizer, store, clock)`），
 //! 漏传是编译错误；但传错——传 `AlwaysAllow`——**编译照过、行为静默失效**：归属闸门对所有人
-//! 放行，CM-05 / CM-06 在运行期形同虚设，而 `owner_binding.rs` 里的行为测试**依然全绿**
+//! 放行，归属绑定在运行期形同虚设，而 `owner_binding.rs` 里的行为测试**依然全绿**
 //! （它自己传的就是对的作者器）。散文警告对不住这种失效，本文件把它变成一条会红的门禁。
 //!
 //! 今天全仓 `AlwaysAllow` / `AlwaysDeny` 只出现在：定义点、`pub use` 重导出、以及测试代码里。
@@ -491,6 +491,31 @@ fn the_wiring_scan_actually_covers_the_gateway_and_the_host() {
     }
 }
 
+/// `code` 里是否存在 `pub struct <name>`，且 `<name>` 后面紧跟的不是标识符字符。
+///
+/// 守卫要回答的只是「这个类型还在不在这里定义着」。两处都得当心：
+///
+/// - **先折叠空白再匹配。** 否则 rustfmt 把 `pub struct` 折了行，判据就当场失效，
+///   而报错文案是「豁免应当撤掉」——会把人引向一个错误的动作：豁免其实仍然有效，
+///   只是排版变了。
+/// - **命中后必须查尾边界。** 这一条是实测出来的：`pub struct AlwaysAllow` 是
+///   `pub struct AlwaysAllowed` 的前缀，所以直接 `contains` 会把改名后的类型一并算作命中。
+///   一旦授权器改名，豁免清单里的名字就再也匹配不上，可这条守卫还是绿的——豁免从此
+///   变成一条永远空转的死规则，而「豁免与现实脱节」正是它本该抓的那类漂移。
+///
+/// 可见性只认字面的 `pub`：`pub(crate)` 在这里编译不过（`gateway/mod.rs` 把它 `pub use`
+/// 到了模块外），所以不必归一，真出现了也会因为判红而被人看一眼。
+fn defines_public_struct(code: &str, name: &str) -> bool {
+    let flat = code.split_whitespace().collect::<Vec<_>>().join(" ");
+    let needle = format!("pub struct {name}");
+    flat.match_indices(&needle).any(|(at, _)| {
+        flat[at + needle.len()..]
+            .chars()
+            .next()
+            .map_or(true, |c| !(c.is_alphanumeric() || c == '_'))
+    })
+}
+
 /// 豁免不能腐化：被豁免的那个文件必须**真的还在定义**这两个类型。
 #[test]
 fn the_definition_site_exemption_is_still_a_real_definition() {
@@ -498,7 +523,7 @@ fn the_definition_site_exemption_is_still_a_real_definition() {
     let code = executable_code(&src);
     for name in NEVER_WIRE_THESE {
         assert!(
-            code.contains(&format!("pub struct {name}")),
+            defines_public_struct(&code, name),
             "{DEFINITION_SITE} 不再定义 {name}，豁免应当撤掉"
         );
     }

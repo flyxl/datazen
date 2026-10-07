@@ -1,6 +1,6 @@
-//! 句柄铸造与「登记 vs 造句柄」（fake-runtime-fixtures.md §5.1 L416、§9.1、§9.2）。
+//! 句柄铸造与「登记 vs 造句柄」。
 //!
-//! §5.1 要求假提供方**诚实报告句柄**：一个执行如果真的造出了 session handle，
+//! 假提供方必须**诚实报告句柄**：一个执行如果真的造出了 session handle，
 //! 就必须在 `ExecutionCompletion.sessionHandles` 里如实上报。因此这里把两件事拆开：
 //!
 //! - **造句柄**（[`FakeResourceProvider::mint_handle`]）：由提供方铸造 `HandleId`，
@@ -8,11 +8,11 @@
 //! - **登记句柄**（[`FakeResourceProvider::register_handle`]）：把句柄放进
 //!   `FakeResource.handles`，并在 journal 写 `registered`。
 //!   [`FakeResourceProvider::orphan_handle`] 只造句柄、写 `orphaned`，**不**登记 ——
-//!   这正是 §9.2 反例命令 `begin_session_transaction_unregistered` 需要的形状。
+//!   这正是反例命令 `begin_session_transaction_unregistered` 需要的形状。
 //!
-//! 另有一类操作是「用别的资源/别的 epoch 的句柄」（§9.2 的
+//! 另有一类操作是「用别的资源/别的 epoch 的句柄」（
 //! `commit_with_stale_handle` 与 `handle_from_other_resource`）：它们由
-//! [`FakeResourceProvider::resolve`] 判定，按 §3.1「`ResourceHandle` 只由提供方签发，
+//! [`FakeResourceProvider::resolve`] 判定，按「`ResourceHandle` 只由提供方签发，
 //! 每次操作都要校验 `resourceId` + `runtimeEpoch` + owner」执行。
 
 use crate::connection::error::ProviderError;
@@ -28,9 +28,9 @@ use super::FakeResourceProvider;
 
 /// `acquireResource` 的返回值。
 ///
-/// §8.2 L441：`attachmentToken` 是全系统唯一真正随机的值，所以它包在
+/// `attachmentToken` 是全系统唯一真正随机的值，所以它包在
 /// [`Secret`] 里 —— `Secret` 只有 `expose()` 一个出口，没有 `Clone`/`Display`
-/// 明文实现，journal 与任何 `Debug` 输出都拿不到它的内容（§13）。
+/// 明文实现，journal 与任何 `Debug` 输出都拿不到它的内容。
 #[derive(Debug)]
 pub struct AcquiredResource {
     pub resource_id: ResourceId,
@@ -41,7 +41,7 @@ pub struct AcquiredResource {
 }
 
 impl FakeResourceProvider {
-    /// 造一个句柄并按 §3.1 由提供方签发对应的 `ResourceHandle`（只读校验凭证）。
+    /// 造一个句柄并由提供方签发对应的 `ResourceHandle`（只读校验凭证）。
     /// 句柄本身**尚未**登记 —— 调用方决定是 `register_handle` 还是 `orphan_handle`。
     pub fn mint_handle(
         &self,
@@ -64,7 +64,7 @@ impl FakeResourceProvider {
         ))
     }
 
-    /// 造句柄 **并** 登记：进 `FakeResource.handles`，journal 写 `registered`（§5.3 规则 5）。
+    /// 造句柄 **并** 登记：进 `FakeResource.handles`，journal 写 `registered`。
     pub fn register_handle(
         &self,
         resource_id: &ResourceId,
@@ -96,10 +96,10 @@ impl FakeResourceProvider {
         Ok(handle)
     }
 
-    /// §9.2 反例：造句柄但**不**登记，journal 写 `orphaned`。
-    /// 关闭路径随后必须把它收回，否则 §4.3 的 I7 不成立。
+    /// 反例：造句柄但**不**登记，journal 写 `orphaned`。
+    /// 关闭路径随后必须把它收回，否则孤立句柄不变式不成立。
     ///
-    /// `reason` 会原样进 journal —— §4.2 F12 要求「runtime 拒绝把它交给宿主」
+    /// `reason` 会原样进 journal —— 要求「runtime 拒绝把它交给宿主」
     /// 这件事本身是可追溯的，不能只剩一个没有来由的 `orphaned`。
     pub fn orphan_handle(
         &self,
@@ -126,7 +126,7 @@ impl FakeResourceProvider {
         Ok(handle)
     }
 
-    /// 注销句柄：幂等。§5.3 规则 6 要求写 `closed` 事件并从登记册移除。
+    /// 注销句柄：幂等。要求写 `closed` 事件并从登记册移除。
     pub fn close_handle(
         &self,
         resource_id: &ResourceId,
@@ -167,7 +167,7 @@ impl FakeResourceProvider {
     /// 该资源上还开着（未注销）的句柄 id，按 `HandleId` 升序 —— 注销顺序因此是确定的，
     /// 不依赖 `HashMap` 迭代序，journal 里的 `handle closed` 顺序可复现。
     ///
-    /// §9.3 / CM-73 的关闭路径用它来「先注销句柄、再释放资源」。
+    /// 竞态场景的关闭路径用它来「先注销句柄、再释放资源」。
     pub fn open_handle_ids(&self, resource_id: &ResourceId) -> Vec<HandleId> {
         let resources = self.lock();
         let Some(resource) = resources.get(resource_id.as_str()) else {
@@ -182,7 +182,7 @@ impl FakeResourceProvider {
         ids
     }
 
-    /// §3.1 的「每次操作都要校验」对外暴露的只读入口。
+    /// 「每次操作都要校验」对外暴露的只读入口。
     ///
     /// 命令网关在改动任何状态之前先跑这一道：凭证失效的资源不应该被写脏。
     /// 校验口径与 [`FakeResourceProvider::resolve`] 完全一致
@@ -191,11 +191,11 @@ impl FakeResourceProvider {
         self.resolve(&handle.resource_id, handle, false).map(|_| ())
     }
 
-    /// §3.1：每次操作都要用 `ResourceHandle` 校验 `resourceId` + `runtimeEpoch` + owner。
+    /// 每次操作都要用 `ResourceHandle` 校验 `resourceId` + `runtimeEpoch` + owner。
     ///
     /// - `claimed` 是**调用方声称**的资源 id，`handle` 是它出示的凭证。
-    /// - 两者不一致（§9.2 `handle_from_other_resource`）→ `SessionLost`。
-    /// - epoch 不一致（§9.2 `commit_with_stale_handle`）→ `RuntimeEpochMismatch`。
+    /// - 两者不一致（`handle_from_other_resource`）→ `SessionLost`。
+    /// - epoch 不一致（`commit_with_stale_handle`）→ `RuntimeEpochMismatch`。
     /// - 资源已 `Closed` 且调用方没有声明 `allow_closed`（幂等关闭路径）→ `SessionLost`。
     pub(crate) fn resolve(
         &self,
@@ -213,7 +213,7 @@ impl FakeResourceProvider {
             ))
         })?;
         // `verify` 在 resourceId 不符时先报 SessionLost、epoch 不符时再报 RuntimeEpochMismatch，
-        // 正好是 §9.2 两条反例各自期望的错误码。
+        // 正好是两条反例各自期望的错误码。
         handle.verify(claimed, &resource.runtime_epoch, &owner)?;
         if resource.state == FakeResourceState::Closed && !allow_closed {
             return Err(ProviderError::SessionLost(format!(

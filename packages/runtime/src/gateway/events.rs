@@ -1,7 +1,7 @@
-//! CM-55：事件投递的容错。
+//! 事件投递的容错。
 //!
 //! 事件通道不是可信的：它会**乱序**、**重复**、**跨 epoch**、甚至带着别的会话的残帧。
-//! §12.1 的硬要求是「旧 session 的事件不得更新新会话」，CM-55 把它展开成四条可执行规则：
+//! 「旧 session 的事件不得更新新会话」这条硬要求展开成四条可执行规则：
 //!
 //! 1. **陈旧 epoch / 陈旧会话 id 的事件一律丢弃**，不覆盖任何状态；
 //! 2. **乱序与重复事件被识别并丢弃**，不推进状态机，也不**重复落库**；
@@ -23,7 +23,7 @@ use crate::gateway::provenance::ExecutionSource;
 /// 事件种类。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecutionEventKind {
-    /// §7.2 第 9/10 步：上下文观测。
+    /// 上下文观测。
     ContextObserved { confidence: ContextConfidence },
     /// 流式结果分片。`rows` 是本片行数；重复片不得让行数再涨。
     ResultChunk { chunk_index: Counter, rows: u64 },
@@ -218,7 +218,7 @@ impl EventStore {
             .unwrap_or(ExecutionState::Queued)
     }
 
-    /// 已经被丢弃的「事件自带来源」次数。CM-61 的直接观测点。
+    /// 已经被丢弃的「事件自带来源」次数。直接观测点。
     pub fn declared_source_events_ignored(&self) -> u64 {
         self.watermark
             .as_ref()
@@ -244,7 +244,7 @@ impl EventStore {
     /// - 重建水位会把已经到终态的执行倒回 `Queued`；
     /// - 会把累计行数清零，于是同一批结果在快照后又被当作新结果累加一遍；
     /// - 会让缺口之前已应用的序号重新变成「未见过」，重投的旧帧被二次计入
-    ///   （等于恢复路径自己把 CM-55 再打开一次）。
+    ///   （等于恢复路径自己把这条规则再打开一次）。
     ///
     /// 因此这里只更新两样东西：`contextRevision`（与 `apply` 同一口径，只增不减，
     /// 免得一份陈旧快照把已观测到的版本号拉低）和缺口标记。
@@ -322,7 +322,7 @@ impl EventStore {
             }
         }
 
-        // 序号合法。事件自带的来源一律丢弃（CM-61）。
+        // 序号合法。事件自带的来源一律丢弃。
         if event.declared_source.is_some() {
             watermark.declared_source_events_ignored =
                 watermark.declared_source_events_ignored.saturating_add(1);

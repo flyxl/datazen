@@ -1,10 +1,8 @@
-//! CM-70 的端到端重放用例。
+//! 过期幂等键与记录删除的端到端重放用例。
 //!
-//! `connection-management.md` §16.7 中 `**CM-70 过期幂等键与记录删除（H/W1）**`
-//! 整条的原文：
+//! 判据原文：
 //!
 //! ```text
-//! CM-70 过期幂等键与记录删除（H/W1）
 //! - 前置：签名令牌、fake clock，写入已接受且响应丢失。
 //! - 步骤：有效期内重发同/不同输入；过期重发；超过记录保留期删除记录，再重放令牌；
 //!         伪造 issuedAt/keyVersion。
@@ -13,20 +11,20 @@
 //!         SessionLost，运行时 receipt/token 不落盘。
 //! ```
 //!
-//! 这条不是「零基础」：A1/A2（同 receipt、不同输入冲突）在 `gateway_contract/`
+//! 这条不是「零基础」：同 receipt、不同输入冲突在 `gateway_contract/`
 //! 里已经有断言了。这里的职责是把**缺的那几行**补齐，并且全部经由
 //! `ExecutionGateway::with_submission_tokens` 的**公开 API** 走一遍——
 //! 单元测试能碰 `pub(crate)`，集成测试碰不到，所以它能独立证明「对外真的能用」。
 //!
 //! 用例按断言分文件，单文件都远低于 800 行上限：
-//! - `expiry.rs` A3 有效期内重发 / 过期重发
-//! - `retention.rs` A4 超保留期删记录后重放（含协调方点名的反面用例）
-//! - `forgery.rs` A5 伪造 issuedAt / keyVersion
-//! - `retries.rs` A6 客户端不能用新键自动重试结局未知的写入
-//! - `owner_restart.rs` A7 owner 重启后旧令牌 SessionLost
-//! - `redaction.rs` A8 输入侧 DTO 的 `Debug` 脱敏（输出侧那条在 `cm70_no_disk.rs`）
+//! - `expiry.rs` 有效期内重发 / 过期重发
+//! - `retention.rs` 超保留期删记录后重放（含协调方点名的反面用例）
+//! - `forgery.rs` 伪造 issuedAt / keyVersion
+//! - `retries.rs` 客户端不能用新键自动重试结局未知的写入
+//! - `owner_restart.rs` owner 重启后旧令牌 SessionLost
+//! - `redaction.rs` 输入侧 DTO 的 `Debug` 脱敏（输出侧那条在 `cm70_no_disk.rs`）
 //!
-//! A8「运行时 receipt/token 不落盘」不在这里：它是跨切面的反面证据
+//! 「运行时 receipt/token 不落盘」不在这里：它是跨切面的反面证据
 //! （源码扫描 + 文件系统对照 + `Debug` 投影），单独一个测试二进制
 //! `tests/cm70_no_disk.rs`。
 //!
@@ -66,14 +64,9 @@ pub(crate) fn token_reason(error: &GatewayError) -> &'static str {
     }
 }
 
-/// 受理一次并返回回执里的 `executionId`（只入队，不下发）。
-pub(crate) async fn accept(h: &fx::TokenHarness, req: ExecutionRequest) -> String {
-    fx::accept(&h.harness, req).await.as_str().to_owned()
-}
-
 /// 受理并**真的下发**一次，返回 `executionId`。
 ///
-/// CM-70 的每条「不再执行」都拿它当前值当基线：先让一次写入真的落下去，
+/// 每条「不再执行」都拿它当前值当基线：先让一次写入真的落下去，
 /// 之后任何重放都只许把计数**按在这些数字上**，不许把它们顶高。
 pub(crate) async fn write_once(h: &fx::TokenHarness, req: ExecutionRequest) -> String {
     fx::accept_and_dispatch(&h.harness, req)

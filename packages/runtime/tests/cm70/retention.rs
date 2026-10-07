@@ -1,8 +1,8 @@
-//! A4：超过记录保留期删除记录，再重放令牌——不得再执行。
+//! 超过记录保留期删除记录，再重放令牌——不得再执行。
 //!
 //! 这一条是协调方点名的**反面用例**所在：光说「删除后重放不执行」是不够的，
 //! 必须同时证明「令牌还没过期、但授予已经没了」这个窗口是**关着的**。
-//! 否则 `token_gate 通过 → 账本 Miss → 真的执行一次`，正好是 CM-70 禁止的那件事。
+//! 否则 `token_gate 通过 → 账本 Miss → 真的执行一次`，正好是判据禁止的那件事。
 
 use crate::gateway_fixtures as fx;
 use crate::{err, token_reason, write_once};
@@ -60,7 +60,7 @@ async fn a_replay_after_the_record_was_deleted_never_executes() {
     assert!(
         second.tombstones_pruned == 1 && second.refused.is_empty(),
         // `{second:?}` 保留。`refused` 的每个元素是 `guard.grants` 的 **键**，也就是账本
-        // 摘要（`retention.rs:290` 直接 `.map(|(digest, _)| digest.clone())`），与
+        // 摘要（`retention.rs` 直接 `.map(|(digest, _)| digest.clone())`），与
         // `IdempotencyConflict.incoming` 同一个 16 位十六进制指纹，不是令牌原文；其余字段
         // 是计数与 `ExecutionId`。所以这里回显不会带出凭据，真出了事靠指纹定位即可。
         "令牌自身到期后墓碑必须被剪掉：{second:?}"
@@ -136,7 +136,7 @@ async fn a_live_token_whose_grant_is_already_gone_is_refused_not_executed() {
     assert_eq!(
         h.harness.port.execute_calls(),
         1,
-        "这一条是 CM-70 的核心：窗口开着就等于重复执行了一次写入"
+        "这一条是核心：窗口开着就等于重复执行了一次写入"
     );
     assert_eq!(
         h.store.read_calls(),

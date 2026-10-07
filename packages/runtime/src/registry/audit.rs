@@ -1,4 +1,4 @@
-//! CM-72 能力与控制审计条目。
+//! 能力与控制审计条目。
 //!
 //! ## 三条硬约束
 //!
@@ -54,7 +54,7 @@ impl Outcome {
     }
 }
 
-/// 非敏感的能力版本快照（CM-72）。
+/// 非敏感的能力版本快照。
 ///
 /// **只有版本号**。能力位、方言细节可以记（它们是能力探测的结论），
 /// 凭据、attachment token、驱动侧物理句柄一个都不许进来。
@@ -83,7 +83,7 @@ impl CapabilityVersions {
     ///
     /// 判据刻意保守：非空、不超过 32 字符、不含空白与 `/:@=`。
     /// 宽松判据在这里等于没有判据——审计条目里混进 DSN 的代价，
-    /// 正是 CM-72 要消灭的那一类泄漏。
+    /// 正是审计要消灭的那一类泄漏。
     pub fn is_version_only(&self) -> bool {
         fn looks_like_version(value: &str) -> bool {
             let trimmed = value.trim();
@@ -101,27 +101,27 @@ impl CapabilityVersions {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AuditKind {
-    /// §7.1 会话登记成功（物理资源已建立且已进入 Routable）。
+    /// 会话登记成功（物理资源已建立且已进入 Routable）。
     SessionRegistered,
-    /// §4.1 登记失败：调用方拿不到成功。
+    /// 登记失败：调用方拿不到成功。
     SessionRegistrationFailed,
-    /// §6.5 一批句柄登记到 actor。
+    /// 一批句柄登记到 actor。
     HandlesRegistered,
-    /// §7.5 / §9.4 一批句柄在**原资源**上被终结。
+    /// 一批句柄在**原资源**上被终结。
     HandlesFinalized,
     /// 一次执行的终态。
     ExecutionCompleted,
-    /// §7.6 一次取消请求的处置。
+    /// 一次取消请求的处置。
     CancelResolved,
-    /// §6.4 空闲驱逐。
+    /// 空闲驱逐。
     SessionEvicted,
-    /// §7.5 主动关闭。
+    /// 主动关闭。
     SessionClosed,
-    /// §12 worker 崩溃导致整批会话作废。
+    /// worker 崩溃导致整批会话作废。
     SessionInvalidated,
-    /// §9.3 陈旧配额被扣住（尚不可复用）。
+    /// 陈旧配额被扣住（尚不可复用）。
     QuotaHeldStale,
-    /// §9.3 陈旧配额在隔离确认后释放。
+    /// 陈旧配额在隔离确认后释放。
     QuotaReleasedStale,
 }
 
@@ -166,7 +166,7 @@ pub struct RegistryAuditEntry {
     /// 物理层判定的效果。**只有执行终态条目可以带它**。
     pub effect_outcome: Option<&'static str>,
     pub capability_versions: Option<CapabilityVersions>,
-    /// 该时刻 actor 内登记的句柄数（§9.4 归池前检查的宿主侧依据）。
+    /// 该时刻 actor 内登记的句柄数（释放例程归池前检查的宿主侧依据）。
     pub handle_count: usize,
 }
 
@@ -232,10 +232,17 @@ impl RegistryAuditEntry {
         }
     }
 
-    /// 取消处置条目。
+    /// 取消处置条目：`outcome` 是**宿主处理这次控制请求**的结论，不是执行结论。
     ///
-    /// 签名里**没有** `effect_outcome` 参数：取消成功不代表数据已落库或已回滚，
-    /// 让调用方能顺手写一个进去就等于允许覆盖物理层的判定（CM-72）。
+    /// 取消请求被正常受理 → `succeeded`；绑定对不上被拒 → 走 [`Self::failure`] 记 `rejected`。
+    /// 它与 `executionState`（执行被推到了哪个终态）分属两个键，
+    /// 因此 `outcome = "succeeded"` + `executionState = "cancelRequested"` 这组值是自洽的，
+    /// 不构成「执行成功了」的断言。
+    ///
+    /// 特别地：签名里**没有** `effect_outcome` 参数——取消请求成功绝不改写数据效果；
+    /// 让调用方能顺手写一个进去，就等于允许覆盖物理层的判定。
+    ///
+    /// [`Self::failure`]: Self::failure
     pub fn cancel_resolved(
         db_session_id: DbSessionId,
         runtime_epoch: u64,
@@ -251,19 +258,7 @@ impl RegistryAuditEntry {
         }
     }
 
-    /// 取消条目：`outcome` 是**宿主处理这次控制请求**的结论，不是执行结论。
-    ///
-    /// 取消请求被正常受理 → `succeeded`；绑定对不上被拒 → 走 [`Self::failure`] 记 `rejected`。
-    /// 它与 `executionState`（执行被推到了哪个终态）分属两个键，
-    /// 因此 `outcome = "succeeded"` + `executionState = "cancelRequested"` 这组值是自洽的，
-    /// 不构成「执行成功了」的断言。
-    ///
-    /// 特别地：本构造函数**不接收** `effectOutcome` 参数——取消请求成功
-    /// 绝不改写数据效果（CM-72）。
-    ///
-    /// [`Self::failure`]: Self::failure
-
-    /// 句柄终结条目：`undecided` 对应 §9.4「回滚结果不可判定」。
+    /// 句柄终结条目：`undecided` 对应「回滚结果不可判定」。
     pub fn handles_finalized(
         kind: AuditKind,
         db_session_id: DbSessionId,
@@ -296,7 +291,7 @@ impl RegistryAuditEntry {
 
 /// 进程内审计日志。
 ///
-/// **只在内存里**：它是排障与验收证据，不是合规存档，§12 明确禁止把任何会话态落盘。
+/// **只在内存里**：它是排障与验收证据，不是合规存档，会话态一律不落盘。
 #[derive(Debug, Clone, Default)]
 pub struct AuditLog {
     entries: Vec<RegistryAuditEntry>,
@@ -318,7 +313,7 @@ impl AuditLog {
     /// 某一次执行的效果判定（最后一次写入者胜出）。
     ///
     /// 取消条目**不会**出现在结果里——它从不写 `effect_outcome`。
-    /// 这正是 CM-72 要的行为：一次成功的取消请求不得改写已判定的效果。
+    /// 这正是审计要的行为：一次成功的取消请求不得改写已判定的效果。
     pub fn effect_outcome_of(&self, db_session_id: &DbSessionId) -> Option<&'static str> {
         self.entries
             .iter()
@@ -346,7 +341,7 @@ mod tests {
         DbSessionId::new("db_1")
     }
 
-    /// CM-72：取消**处置**字面量与执行**终态**字面量必须互不相交。
+    /// 取消**处置**字面量与执行**终态**字面量必须互不相交。
     ///
     /// 这一点成立且被逐字钉死：`requested` / `unsupported` / `alreadyFinished`
     /// 说的是「控制请求被怎么处置」，`queued` … `cancelled` 说的是「执行落到哪个终态」，
@@ -377,7 +372,7 @@ mod tests {
         }
     }
 
-    /// CM-72：`outcome` 与 `executionState` 正交，靠的是**键名**不是字面量。
+    /// `outcome` 与 `executionState` 正交，靠的是**键名**不是字面量。
     ///
     /// 这里修正一个很容易写错的说法：两组的字面量集合**并不是**互不相交的——
     /// `Outcome::Succeeded` 和 `ExecutionState::Succeeded` 都序列化成 `"succeeded"`，
@@ -423,7 +418,7 @@ mod tests {
         );
     }
 
-    /// CM-72：取消条目**不可能**携带 `effectOutcome`。
+    /// 取消条目**不可能**携带 `effectOutcome`。
     ///
     /// 用构造函数的签名来证明：它压根没有这个参数。
     #[test]
@@ -440,7 +435,7 @@ mod tests {
         assert_eq!(entry.execution_state, Some("cancelRequested"));
     }
 
-    /// CM-72 行为面：一次**成功**的取消请求不得改写已判定的效果。
+    /// 行为面：一次**成功**的取消请求不得改写已判定的效果。
     ///
     /// 这是本模块最容易写错的一条——把「取消成功」顺手写成 `completed`，
     /// 就等于宣称一次部分落库的数据已经干净了。
@@ -473,7 +468,7 @@ mod tests {
         assert_eq!(entries[1].effect_outcome, None);
     }
 
-    /// CM-72：对外错误码在序列化后**逐字**等于枚举字面量。
+    /// 对外错误码在序列化后**逐字**等于枚举字面量。
     ///
     /// 断言的是字面量而不是枚举相等——枚举相等在 `rename_all` 被误改时照样通过。
     #[test]
@@ -492,7 +487,7 @@ mod tests {
         // 这带来一个**真实**的类型层后果：手写 `Deserialize` 对 `&'static str`
         // 要求 `'de: 'static`，因此 `serde_json::from_str` / `from_value`
         // 在这个类型上都编译不过（"implementation of Deserialize is not general enough"）。
-        // 本模块不打算把线上字面量改成 `String`——那样 CM-72 要求的
+        // 本模块不打算把线上字面量改成 `String`——那样审计要求的
         // 「审计侧与调用方逐字同源」就退化成一个可以随手写错的普通字符串。
         // 所以反序列化一侧改用值树逐键断言，同样是逐字校验，且不触碰线上形状。
         let value: serde_json::Value = serde_json::from_str(&json).expect("可反序列化");
@@ -505,7 +500,7 @@ mod tests {
         assert_eq!(value["outcome"], serde_json::json!("rejected"));
     }
 
-    /// CM-72：能力版本只有版本号，条目里不得出现凭据或物理句柄。
+    /// 能力版本只有版本号，条目里不得出现凭据或物理句柄。
     #[test]
     fn audit_entries_never_carry_credentials_or_physical_handles() {
         let capabilities = CapabilityVersions::new("1", "0.0.9");
@@ -554,7 +549,7 @@ mod tests {
         }
     }
 
-    /// 处置为「不可判定」时必须被如实记录，不能被压成成功（§9.4 回滚结果未知）。
+    /// 处置为「不可判定」时必须被如实记录，不能被压成成功（回滚结果未知）。
     #[test]
     fn undecided_finalization_is_recorded_as_undecided() {
         let mut log = AuditLog::new();

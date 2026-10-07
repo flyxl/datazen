@@ -1,4 +1,4 @@
-//! 会话与句柄投影类型（connection-management.md §4 的会话半部、§6.5 句柄登记）。
+//! 会话与句柄投影类型。
 //!
 //! 拆分理由：`types.rs` 只放「标识、目标与归属」，本文件放「会话状态与句柄」，
 //! `execution.rs` 放「执行与结果」。三者按依赖方向单向向下，禁止互相回指。
@@ -10,7 +10,7 @@ use super::types::{
     NamespaceTarget, OwnerRef, ResourceId, Timestamp,
 };
 
-/// 会话句柄。`runtimeEpoch` 每次换 owner 必增；陈旧 epoch 的句柄必须被拒绝（CM-71）。
+/// 会话句柄。`runtimeEpoch` 每次换 owner 必增；陈旧 epoch 的句柄必须被拒绝。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionHandle {
@@ -37,7 +37,7 @@ impl HandleKind {
     }
 }
 
-/// 会话级句柄引用（connection-management.md §6.5）。
+/// 会话级句柄引用。
 ///
 /// 必须在 execution 返回终态**之前**登记到 session actor；未登记 = 非法，
 /// runtime 拒绝把它交给宿主。
@@ -113,7 +113,7 @@ impl SessionContext {
         }
     }
 
-    /// 「观测为 unknown」形态：**禁止**回填 `initialTarget` 假充确认（connection-management.md §5.1 L424）。
+    /// 「观测为 unknown」形态：**禁止**回填 `initialTarget` 假充确认。
     pub fn unknown(initial: &NamespaceTarget, effective_identity: impl Into<String>) -> Self {
         let mut ctx = Self::new(initial.clone(), effective_identity);
         ctx.confidence = ContextConfidence::Unknown;
@@ -131,7 +131,7 @@ pub enum AttachmentState {
     Expired,
 }
 
-/// 会话状态机（connection-management.md §6.1）。
+/// 会话状态机。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionState {
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn unknown_observation_marks_both_context_and_transaction_unknown() {
-        // §3.2 observeSession：可置任一字段为 unknown，且禁止回填 initialTarget 假充确认。
+        // observeSession：可置任一字段为 unknown，且禁止回填 initialTarget 假充确认。
         let initial = NamespaceTarget {
             database: "dz_ns_a".into(),
             catalog: String::new(),
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn session_state_covers_the_documented_lifecycle() {
-        // §6.1：new → opening → ready → executing → reconfiguring → closing → closed / lost。
+        // new → opening → ready → executing → reconfiguring → closing → closed / lost。
         let all = [
             SessionState::New,
             SessionState::Opening,
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn session_view_keeps_configuration_and_session_ids_apart() {
-        // CM-04：SessionView 上并存的是 connectionId（持久化配置）与 dbSessionId（内存态会话）。
+        // SessionView 上并存的是 connectionId（持久化配置）与 dbSessionId（内存态会话）。
         let view = SessionView {
             handle: SessionHandle {
                 db_session_id: DbSessionId::new("dbs_w1_0001"),
@@ -281,7 +281,7 @@ mod tests {
                 job_id: JobId::new("job_org-alpha_0001"),
                 stage_id: "job:job_org-alpha_0001/stage:1".into(),
             },
-            // `initial_target` 是 `ExecutionTarget`（§4：绑定的执行目标），
+            // `initial_target` 是 `ExecutionTarget`（绑定的执行目标），
             // 与 `observed_context.namespace`（命名空间）不是同一个类型。
             initial_target: ExecutionTarget {
                 connection_id: ConnectionId::new("conn-fixture-p"),

@@ -1,8 +1,8 @@
-//! §7.6 取消路径 + D-01。
+//! 取消路径。
 //!
-//! ## D-01 我需要 registry 的 `CancelReceipt`，协调者需裁定
+//! ## 我需要 registry 的 `CancelReceipt`，协调者需裁定
 //!
-//! 架构文档 §7.6 要求 `cancelExecution` 返回 `CancelReceipt { executionId, disposition, state }`，
+//! 架构文档要求 `cancelExecution` 返回 `CancelReceipt { executionId, disposition, state }`，
 //! 其中 `disposition` 是三态 `requested` / `unsupported` / `alreadyFinished`。
 //! 但 `registry/port.rs` 当前的 `cancel_execution` 仍返回 `ExecutionState`：
 //!
@@ -11,20 +11,20 @@
 //!     -> Result<ExecutionState, RuntimeError>;
 //! ```
 //!
-//! 契约文档已经预告了这次改签（原文：「Wave 1 落地 `CancelReceipt` 后应把本方法返回值
-//! 换成它，**不要**在 Wave 2 里就地私造一个结构体绕过去」）。三条轨道并行，
+//! 契约文档已经预告了这次改签（原文：「`CancelReceipt` 落地后应把本方法返回值
+//! 换成它，**不要**就地私造一个结构体绕过去」）。三条轨道并行，
 //! registry 轨道的 `CancelReceipt` 不在本工作树里。
 //!
 //! 因此本模块采取的是**既不越界、也不私造同名结构**的做法：
 //!
-//! - **不改** `registry/port.rs`（§1 禁止修改 `registry/**`）；
+//! - **不改** `registry/port.rs`（禁止修改 `registry/**`）；
 //! - **不**在本模块定义任何名为 `CancelReceipt` 的类型——同名会与未来 registry 的
 //!   正式类型撞车，让协调者合并时出现两个「官方的」取消回执；
 //! - 三态映射收敛在唯一一处 [`disposition_from_port_state`]，
 //!   registry 落地 `CancelReceipt` 后，只需把这里换成对返回值的透传，
 //!   上层 [`CancelOutcome`] 的形状不用动。
 //!
-//! ## D-03：处置三态只有一个定义处
+//! ## 处置三态只有一个定义处
 //!
 //! 本模块此前自带一份 `CancelDisposition` 枚举，靠 `Gateway`/`Cancel` 前缀与 registry
 //! 正式类型区分。它已经**不成立**：三态的字面量与变体在冻结的
@@ -38,13 +38,13 @@
 //! `connection::port`，也不作为方法挂在那个类型上。
 
 use crate::connection::capability::PreciseCancel;
-// D-03：取消处置三态的唯一权威定义。冻结面 `connection::port` 里那一份是**本模块
+// 取消处置三态的唯一权威定义。冻结面 `connection::port` 里那一份是**本模块
 // 直接引用的那个**，不是拷贝——拷贝会让两个定义处各自漂移。
 pub use crate::connection::port::CancelDisposition;
 use crate::connection::{ExecutionId, ExecutionState, ResourceId, RuntimeError, SessionHandle};
 use crate::gateway::provenance::{ExecutionSource, RequestPrincipal};
 
-/// §7.6 取消绑定：三方必须一致。
+/// 取消绑定：三方必须一致。
 ///
 /// `resourceBindingId` 单列是有代价的：只校验 `executionId` + `runtimeEpoch` 时，
 /// 「用事务句柄 A 发起的执行」可以被「游标句柄 B」取消掉，
@@ -245,7 +245,7 @@ pub fn cancel_failed(reason: &'static str) -> RuntimeError {
     RuntimeError::CancelFailed(reason)
 }
 
-/// 授权视图：取消也需要一次权限判定（CM-62）。
+/// 授权视图：取消也需要一次权限判定。
 pub struct CancelAuthorization<'a> {
     pub principal: &'a RequestPrincipal,
     pub source: &'a ExecutionSource,

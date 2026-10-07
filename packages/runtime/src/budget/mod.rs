@@ -1,4 +1,4 @@
-//! 进程内预算与调度（§9.2 / §9.3 / §9.5）。
+//! 进程内预算与调度。
 //!
 //! 本模块实现 [`datazen_platform_api::ports::budget::coordinator::BudgetCoordinator`]，
 //! 落在 `packages/runtime` 内部：单进程共享一份账本，不引入任何新的 crate 依赖。
@@ -20,7 +20,7 @@
 //! 每个入口都显式收 `now_ms`。时间只有一处注入——[`coordinator::BudgetClock`]。
 //! 于是「配额是配置」和「时间可替换」两件事都成立，而不需要任何真实等待。
 //!
-//! ## §9.5 的硬约束落在哪
+//! ## 硬约束落在哪
 //!
 //! 1. **四类分类由服务端决定**，调用方不能自报优先级 → [`coordinator::classify`]，
 //!    端口的 `BudgetPurpose` 只有两值，映射也只由这一层做。

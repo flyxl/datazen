@@ -8,13 +8,13 @@
 //!
 //! 四条账本级硬规则：
 //!
-//! 1. **名额按槽退回**（§9.5 首版保留额不可借用）：permit 记下自己占的是本类保留槽还是共享池槽，
+//! 1. **名额按槽退回**（首版保留额不可借用）：permit 记下自己占的是本类保留槽还是共享池槽，
 //!    核销时退回**同一槽**。永远退回共享会让保留额度的空位凭空漂移到别的类头上。
-//! 2. **取消与超时都不漏**（§9.5）：等待者带 `WaiterId`，取消/超时按 id 精确摘除。等待者
+//! 2. **取消与超时都不漏**：等待者带 `WaiterId`，取消/超时按 id 精确摘除。等待者
 //!    本来就一个槽都没占，所以取消之后共享池水位必须与取消前**逐位相同**。
 //! 3. **保留额不可借用、control 不进共享**：`ResourceClass::may_borrow_reserved()` 恒为
 //!    `false`，`may_join_shared()` 对 `Control` 恒为 `false`。
-//! 4. **同批全有或全无**（§9.5 Job 多端点）：`try_admit_many` 失败时整体回滚，一个名额都不占。
+//! 4. **同批全有或全无**：`try_admit_many` 失败时整体回滚，一个名额都不占。
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -89,9 +89,7 @@ impl BudgetLedger {
 
     /// 按需登记一个 DB 服务。
     pub fn ensure_service(&mut self, connection_id: &ConnectionId) {
-        self.services
-            .entry(connection_id.clone())
-            .or_insert_with(ServiceState::new);
+        self.services.entry(connection_id.clone()).or_default();
     }
 
     /// 服务是否在排空。
@@ -194,7 +192,6 @@ impl BudgetLedger {
 
     /// 立即准入**一个**名额；额度不够时返回 [`AdmitOutcome::Busy`] 而不是排队。
     ///
-
     /// 多名额申请走 [`BudgetLedger::try_admit_many`]：那条路径才做全有或全无的回滚。
     pub fn try_admit(&mut self, claim: &BudgetClaim, now_ms: u64) -> AdmitOutcome {
         if claim.slots != 1 {
@@ -209,7 +206,7 @@ impl BudgetLedger {
                 });
             }
         }
-        let quota = self.config.service_quota.clone();
+        let quota = self.config.service_quota;
         let capacity = self.config.capacity_of(claim.class);
         let Some(mut service) = self.services.remove(&claim.connection_id) else {
             return AdmitOutcome::Denied(DenialReason::UnknownConnection {
@@ -217,7 +214,7 @@ impl BudgetLedger {
             });
         };
         let denied = service.draining || self.draining_orgs.contains(&claim.organization_id);
-        // 同类里已经有人在等，新来的不插队：§9.5 的主体轮转只在队列内部发生。
+        // 同类里已经有人在等，新来的不插队：主体轮转只在队列内部发生。
         let queued = !service.queues[claim.class.index()].is_empty();
         if denied {
             self.services.insert(claim.connection_id.clone(), service);
@@ -249,7 +246,7 @@ impl BudgetLedger {
         AdmitOutcome::Granted(self.commit_grant(claim, slot, None, now_ms))
     }
 
-    /// 全有或全无的多名额预留（§9.5「Job 多端点申请要么一次性预留全部 permit，要么失败释放全部」）。
+    /// 全有或全无的多名额预留：要么一次性预留全部 permit，要么失败释放全部。
     ///
     /// 失败路径必须**一个名额都不占**：先备份被触及的服务状态与 permit 表，失败时整体还原。
     pub fn try_admit_many(
@@ -285,7 +282,7 @@ impl BudgetLedger {
         Ok(granted)
     }
 
-    /// 入队等待。队列满立刻 `QueueFull`，**不**静默阻塞（§9.5）。
+    /// 入队等待。队列满立刻 `QueueFull`，**不**静默阻塞。
     pub fn enqueue(
         &mut self,
         claim: &BudgetClaim,
@@ -389,7 +386,7 @@ impl BudgetLedger {
 
     // ------------------------------------------------------------ 核销
 
-    /// 幂等核销（端口契约 INV-10）。
+    /// 幂等核销。
     ///
     /// 名额**按原槽退回**。重复核销返回 [`ReleaseResult::AlreadyReleased`] 且不二次记账；
     /// 从未签发的 permit 返回 [`ReleaseResult::Unknown`]——这两者必须分得开，

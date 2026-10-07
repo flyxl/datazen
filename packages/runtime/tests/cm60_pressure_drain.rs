@@ -1,6 +1,6 @@
-//! **CM-60 资源压力与 drain（H/W）** —— 行为半的可执行判据。
+//! **资源压力与 drain** —— 行为半的可执行判据。
 //!
-//! 判据原文（`docs/architecture/platform/connection-management.md:1235`）：
+//! 判据：
 //!
 //! - 前置：总额度 20、控制预留 2；100 用户逻辑 session、短请求 fake 固定耗时 10 ms、队列上限 32。
 //! - 步骤：提交 1000 次操作与取消，两个 worker 分配额度；将一个 worker drain；全部完成后关池。
@@ -8,7 +8,7 @@
 //!   拒绝/等待有界；drain 不接新资源；结束后非保留资源、任务、取消句柄和许可均归零。
 //!
 //! 这个二进制只覆盖**行为半**。性能半（release build / 4 vCPU 8 GiB / 预热 / 5 轮 /
-//! 非排队网关附加耗时 p95 ≤ 10 ms）在 `src/bin/cm60-bench.rs`，按 §11.6 与功能测试
+//! 非排队网关附加耗时 p95 ≤ 10 ms）在 `src/bin/cm60-bench/main.rs`，与功能测试
 //! 分开入口——两者不共享二进制。
 //!
 //! 夹具没有一次真实等待：账本每个入口都显式收 `now_ms`，变化点由单一原子 `seq` 定序，
@@ -40,7 +40,7 @@ fn cm60_precondition_quota_shape_and_hundred_logical_sessions() {
     assert_eq!(service_quota.reserved_of(ResourceClass::Control), 2);
     assert_eq!(service_quota.shared, TOTAL - 5);
     assert_eq!(service_quota.shared + 5, TOTAL);
-    // 保留额按类专属，且不可借用共享（§9.5）。
+    // 保留额按类专属，且不可借用共享。
     assert!(!ResourceClass::Control.may_join_shared());
     assert!(ResourceClass::Interactive.may_join_shared());
 }
@@ -183,7 +183,7 @@ fn cm60_assertion_3_denials_and_waits_are_bounded() {
 ///
 /// 两面都要证：被排空的节点**一份新资源都不发**，而另一个节点**继续正常服务**
 /// ——后者证明 drain 是节点级的，不是把整个服务停掉。
-/// 不抢占（§9.5）由 `run()` 在 drain 当场断言。
+/// 不抢占由 `run()` 在 drain 当场断言。
 #[test]
 fn cm60_assertion_4_drain_accepts_no_new_resources_and_preempts_nothing() {
     let report = cm60_pressure::run();
@@ -195,12 +195,12 @@ fn cm60_assertion_4_drain_accepts_no_new_resources_and_preempts_nothing() {
     );
     assert_eq!(
         report.drained.granted, 0,
-        "CM-60 断言四：被排空的节点直批发出了 {} 份新资源",
+        "断言四：被排空的节点直批发出了 {} 份新资源",
         report.drained.granted,
     );
     assert_eq!(
         report.drained.queued, 0,
-        "CM-60 断言四：被排空的节点又把 {} 份请求排进了队列——排空等于不接新资源",
+        "断言四：被排空的节点又把 {} 份请求排进了队列——排空等于不接新资源",
         report.drained.queued,
     );
     assert_eq!(
@@ -238,7 +238,7 @@ fn cm60_assertion_4_drain_accepts_no_new_resources_and_preempts_nothing() {
         report.drain_outstanding + report.drain_pinned,
         "drain 报告应覆盖该节点全部在手 permit"
     );
-    // 不抢占要覆盖 §9.5 的两类 permit：钉住的（活跃事务/游标）和没钉住的。
+    // 不抢占要覆盖的两类 permit：钉住的（活跃事务/游标）和没钉住的。
     // 两类都在场，「drain 不抢占」才不是只覆盖了容易的那一半。
     assert!(
         report.drain_pinned > 0,

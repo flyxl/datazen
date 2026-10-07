@@ -1,12 +1,12 @@
-//! §6.3 会话 actor：单会话串行、跨会话并行的执行仲裁器。
+//! 会话 actor：单会话串行、跨会话并行的执行仲裁器。
 //!
 //! ## 为什么是邮箱而不是锁
 //!
-//! 「同一会话内并发度为 1、不同会话之间真正并发」（CM-20）有两条实现路径：
+//! 「同一会话内并发度为 1、不同会话之间真正并发」有两条实现路径：
 //!
 //! | 路径 | 形状 | 代价 |
 //! | --- | --- | --- |
-//! | 全局 `Mutex` 串行 | 一把锁包住整个 registry 的执行 | 不同会话也互相排队，CM-20 直接不成立 |
+//! | 全局 `Mutex` 串行 | 一把锁包住整个 registry 的执行 | 不同会话也互相排队，要求直接不成立 |
 //! | 每会话 actor + 邮箱 | 每个会话一条 FIFO 队列 | 需要处理飞行中取消、关闭排队这些边界 |
 //!
 //! 这里选后者。**`Mutex` 绝不跨 `.await`**：actor 状态由循环本身以 `&mut` 独占，
@@ -17,25 +17,25 @@
 //! ## 两条通道，不是一条
 //!
 //! - `exec_rx`：**执行队列**。`Open` / `Execute` / `Close` / `Evict` / `RegisterHandles` 按 FIFO。
-//!   飞行中进来的这些请求**排队**，不并发——这是 CM-20 的「同会话并发度 1」在代码里的落点。
-//! - `ctrl_rx`：**控制旁路**（§6.3）。`Cancel` / `InvalidateWorker` 在执行**飞行中**必须能被服务，
-//!   否则「执行中取消」这条主路径会被自己的队列堵死，CM-22 无从谈起。
+//!   飞行中进来的这些请求**排队**，不并发——这是「同会话并发度 1」在代码里的落点。
+//! - `ctrl_rx`：**控制旁路**。`Cancel` / `InvalidateWorker` 在执行**飞行中**必须能被服务，
+//!   否则「执行中取消」这条主路径会被自己的队列堵死。
 //!
 //! 只有 `View` 被放行在飞行中读取：它是纯投影，不碰物理资源。
 //!
 //! ## 释放顺序只有这一份实现
 //!
-//! §9.4 的「归池前检查」是一条**有序**序列，把它拆成两处实现就等于允许乱序：
+//! 「归池前检查」是一条**有序**序列，把它拆成两处实现就等于允许乱序：
 //!
 //! ```text
 //! 1. finalize_handles —— 在**原资源**上回滚/终结已登记句柄（按 resource_id 分组）
 //! 2. drain_handles    —— 从宿主账上注销（此后 registered_handles 必然为 0）
 //! 3. close            —— 关闭物理资源
-//! 4. 清空绑定与句柄   —— actor 终止后不得重建任何句柄（§6.5）
+//! 4. 清空绑定与句柄   —— actor 终止后不得重建任何句柄
 //! ```
 //!
 //! 第 1 步排在关闭之前，是因为在新资源上关掉「旧句柄」等于把一个仍然可提交的
-//! 句柄连同它的资源一起丢掉——调用方随后 commit 会拿到一个静默失败的假成功（CM-73）。
+//! 句柄连同它的资源一起丢掉——调用方随后 commit 会拿到一个静默失败的假成功。
 //!
 //! ## 「不得返回成功」的具体落点
 //!
@@ -88,7 +88,7 @@ pub type AuditOutbox = mpsc::UnboundedSender<RegistryAuditEntry>;
 
 /// 打开一个会话所需的全部输入。
 ///
-/// `db_session_id` 由**调用方**给出（§ID 术语纪律：directory 发号，registry 不生成），
+/// `db_session_id` 由**调用方**给出（术语纪律：directory 发号，registry 不生成），
 /// actor 不校验它的来源，只负责把它与 `runtime_epoch` 一起焊进 [`SessionHandle`]。
 #[derive(Debug, Clone)]
 pub struct OpenRequest {
@@ -104,6 +104,10 @@ pub struct OpenRequest {
 }
 
 /// 执行队列（FIFO）。
+// `Open` 变体（`OpenRequest` + `Reply`）比其余变体大一个量级（≥440 B）。
+// 装箱能消掉此告警，但会给**每次开库**加一次堆分配，且要改 actor 的消息契约；
+// 这里只记录尺寸差事实，不在 lint 清理里改队列形状。
+#[allow(clippy::large_enum_variant)]
 pub enum ExecCommand {
     Open {
         request: OpenRequest,
@@ -114,6 +118,11 @@ pub enum ExecCommand {
         reply: Reply<SessionView>,
     },
     Execute {
+        request: ExecuteInSessionRequest,
+        reply: Reply<ExecutionReceipt>,
+    },
+    ExecuteBound {
+        execution_id: ExecutionId,
         request: ExecuteInSessionRequest,
         reply: Reply<ExecutionReceipt>,
     },
@@ -132,12 +141,12 @@ pub enum ExecCommand {
         mode: CloseMode,
         reply: Reply<SessionState>,
     },
-    /// §7.4-6 第 4 步：举发放闸门，停止旧会话发放新执行（资源与句柄原封不动）。
+    /// 举发放闸门，停止旧会话发放新执行（资源与句柄原封不动）。
     HoldForReplacement {
         handle: SessionHandle,
         reply: Reply<()>,
     },
-    /// §7.4-6 第 10 项：提交前失败，放下闸门，旧会话**原样**恢复发放。
+    /// 提交前失败，放下闸门，旧会话**原样**恢复发放。
     ResumeAfterReplacement {
         handle: SessionHandle,
         reply: Reply<()>,
@@ -149,18 +158,18 @@ pub enum ExecCommand {
     },
 }
 
-/// 控制旁路（§6.3）。飞行中必须可服务。
+/// 控制旁路。飞行中必须可服务。
 pub enum ControlCommand {
     Cancel {
         handle: SessionHandle,
         execution_id: ExecutionId,
-        /// `Some` = 调用方**自带**的 cancelHandle，走 §3.2 L143 的伪造校验。
+        /// `Some` = 调用方**自带**的 cancelHandle，走伪造校验。
         /// `None` = 调用方只给了 executionId（冻结的 `SessionPort` 形状就是如此），
         /// actor 必须用自己在飞行开始时登记的绑定，**不得**因此跳过校验。
         cancel_handle: Option<String>,
         reply: Reply<CancelReceipt>,
     },
-    /// §12 / CM-58：worker 租约失效。`Ok(false)` 表示本会话不属于该 worker。
+    /// worker 租约失效。`Ok(false)` 表示本会话不属于该 worker。
     InvalidateWorker {
         worker_id: WorkerId,
         reply: Reply<bool>,
@@ -224,7 +233,7 @@ struct Physical {
 ///
 /// 这里**只有状态，没有 await 点**：两个 await 点（cancelHandle 公布通道、执行任务句柄）
 /// 挂在 [`ActorState::bind_rx`] / [`ActorState::join`] 上，由主循环取到局部变量去
-/// `select!`。原因很硬：主循环必须一边等执行、一边接控制旁路（§7.6），而取消要读的
+/// `select!`。原因很硬：主循环必须一边等执行、一边接控制旁路，而取消要读的
 /// 正是这份飞行状态；只要把 `InFlight` 取进局部变量，控制旁路就会落在一个
 /// `in_flight == None` 的窗口里，把「飞行中」误判成「未绑定」，每一次飞行中取消
 /// 都回 `unboundExecution`。执行本体必须**始终留在 `state` 里**。
@@ -232,7 +241,7 @@ struct InFlight {
     execution_id: ExecutionId,
     resource_id: String,
     cancel_handle: Option<String>,
-    /// 取消在 cancelHandle 公布**之前**就到了（CM-22 的排队面）。
+    /// 取消在 cancelHandle 公布**之前**就到了（排队面）。
     /// 后端一公布 handle 就必须把这次取消补送下去，否则回执里的
     /// `requested` 是一句没有人兑现的承诺。
     cancel_requested: bool,
@@ -249,7 +258,7 @@ struct ActorState {
     idle_deadline_ms: Option<u64>,
     physical: Option<Physical>,
     handles: HandleRegistry,
-    /// §7.4-6 的发放闸门。`Some(举起前的状态)` = 闸门举着，替换期间旧会话
+    /// 发放闸门。`Some(举起前的状态)` = 闸门举着，替换期间旧会话
     /// 停止发放新执行；`None` = 没在替换里。存**原状态**而不是布尔，是为了
     /// 提交前失败时能原样恢复，而不是写死一个状态凭空抬回去。
     replacement_hold: Option<SessionState>,
@@ -260,9 +269,9 @@ struct ActorState {
     /// 谁也不能先于谁落地：接收端被丢弃而 `in_flight` 还在，等于执行凭空消失。
     bind_rx: Option<mpsc::UnboundedReceiver<String>>,
     join: Option<JoinHandle<Result<ResourceExecution, ProviderError>>>,
-    /// 飞行中收到的、必须排到执行之后的执行队列请求（CM-20 的排队面）。
+    /// 飞行中收到的、必须排到执行之后的执行队列请求（排队面）。
     deferred: VecDeque<ExecCommand>,
-    /// 最近终态，用于 §7.6 的 `alreadyFinished` 判定。上限 [`exec::SETTLED_CAP`]。
+    /// 最近终态，用于 `alreadyFinished` 判定。上限 [`exec::SETTLED_CAP`]。
     settled: Vec<(ExecutionId, ExecutionState)>,
     execution_seq: u64,
     view: SessionView,
@@ -285,7 +294,7 @@ pub fn spawn_actor(
             runtime_epoch: Counter(runtime_epoch.get()),
         },
         connection_id: request.connection_id.clone(),
-        config_revision: request.config_revision.clone(),
+        config_revision: request.config_revision,
         owner: request.owner.clone(),
         initial_target: request.initial_target.clone(),
         observed_context: SessionContext::new(
@@ -329,6 +338,9 @@ pub fn spawn_actor(
 }
 
 /// 循环里的一次推进。
+// `Joined` 变体（264 B）与 `Published`（24 B）尺寸悬殊。装箱会给状态机每一步加一次
+// 堆分配；此告警只作形状记录，不在 lint 清理里改编排器状态机。
+#[allow(clippy::large_enum_variant)]
 enum Step {
     /// cancelHandle 被后端公布。
     Published(Option<String>),
@@ -458,7 +470,7 @@ async fn await_join(
 }
 
 async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
-    // §7.4-6 发放闸门：唯一的判定与拒绝执行点，放在所有命令的共同入口，
+    // 发放闸门：唯一的判定与拒绝执行点，放在所有命令的共同入口，
     // 这样「哪条发放路径忘了查闸门」在结构上就不可能发生。
     let msg = match context::gate(state, msg) {
         Ok(msg) => msg,
@@ -471,7 +483,14 @@ async fn handle_exec(state: &mut ActorState, msg: ExecCommand) {
         ExecCommand::View { handle, reply } => {
             let _ = reply.send(read_view(state, &handle));
         }
-        ExecCommand::Execute { request, reply } => exec::start_execution(state, request, reply),
+        ExecCommand::ExecuteBound {
+            execution_id,
+            request,
+            reply,
+        } => exec::start_execution(state, request, reply, Some(execution_id)),
+        ExecCommand::Execute { request, reply } => {
+            exec::start_execution(state, request, reply, None)
+        }
         ExecCommand::RegisterHandles {
             handle,
             handles,
@@ -524,7 +543,7 @@ async fn finish(state: &mut ActorState) {
 }
 
 // ---------------------------------------------------------------------------
-// §7.1 打开
+// 打开
 // ---------------------------------------------------------------------------
 
 async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionView, RuntimeError> {
@@ -537,7 +556,7 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
         .backend
         .open(OpenResource {
             connection_id: request.connection_id.clone(),
-            config_revision: request.config_revision.clone(),
+            config_revision: request.config_revision,
             owner: request.owner.clone(),
             initial_target: request.initial_target.namespace.clone(),
             runtime_epoch: state.runtime_epoch.get(),
@@ -557,7 +576,7 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
                     ..AuditFacts::none()
                 },
             );
-            // §4.1：登记失败不得返回成功，也不得留下半开的记录。
+            // 登记失败不得返回成功，也不得留下半开的记录。
             return Err(RuntimeError::UnknownSession(
                 request.db_session_id.to_string(),
             ));
@@ -586,13 +605,13 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
 }
 
 // ---------------------------------------------------------------------------
-// §4.4 只读投影
+// 只读投影
 // ---------------------------------------------------------------------------
 
 fn read_view(state: &ActorState, handle: &SessionHandle) -> Result<SessionView, RuntimeError> {
     check_epoch(state, handle)?;
     // 丢失的会话仍然可读：它只剩一具墓碑，但墓碑上的事务状态必须是 `Unknown`
-    // 而不是 `Active`（CM-73）——上层要能看到「这条链的状态已经不可知」。
+    // 而不是 `Active`——上层要能看到「这条链的状态已经不可知」。
     // 墓碑仍然不能当活会话用：任何写操作都会在 `physical.is_none()` 上被拒。
     if state.physical.is_none() && state.view.state != SessionState::Lost {
         return Err(RuntimeError::SessionClosed(state.db_session_id.to_string()));
@@ -611,7 +630,7 @@ fn check_epoch(state: &ActorState, handle: &SessionHandle) -> Result<(), Runtime
 }
 
 // ---------------------------------------------------------------------------
-// §7.6 取消（控制旁路）
+// 取消（控制旁路）
 // ---------------------------------------------------------------------------
 
 async fn handle_control(state: &mut ActorState, msg: ControlCommand) {
@@ -630,7 +649,7 @@ async fn handle_control(state: &mut ActorState, msg: ControlCommand) {
     }
 }
 
-/// §12 / CM-58：worker 租约失效，该会话转 `SessionLost`。
+/// worker 租约失效，该会话转 `SessionLost`。
 async fn invalidate_worker(
     state: &mut ActorState,
     worker_id: &WorkerId,
@@ -640,7 +659,7 @@ async fn invalidate_worker(
     }
     // 释放失败本身就是「转 Lost」的证据，不能因为失败就反过来报「未失效」。
     //
-    // R-02：`SessionInvalidated` 这条审计**只由 `release::release` 发**（走
+    // `SessionInvalidated` 这条审计**只由 `release::release` 发**（走
     // `release_kind(InvalidateWorker)`）。这里再补一条，会产出两条字段逐字相同的条目
     // ——只有自增 `id` 不同——那不是「两条证据」，是同一条事实被数了两遍：
     // 按条数统计作废次数的调用方会把 1 次作废读成 2 次。
@@ -659,7 +678,7 @@ async fn invalidate_worker(
 }
 
 // ---------------------------------------------------------------------------
-// §6.5 / §9.4 登记与释放
+// 登记与释放
 // ---------------------------------------------------------------------------
 
 fn register_handles(
@@ -739,7 +758,7 @@ impl AuditFacts {
 }
 
 fn emit(state: &ActorState, facts: AuditFacts) {
-    // 审计条目存**线上字面量**（CM-72）：这里做的是纯字面量投影，
+    // 审计条目存**线上字面量**：这里做的是纯字面量投影，
     // 没有任何一处自己拼字符串。拼出来的错字不会被类型系统挡住。
     let entry = RegistryAuditEntry {
         kind: facts.kind,

@@ -1,4 +1,4 @@
-//! §7.4-6 第 4 步：替换期间的**发放闸门**。
+//! 替换期间的**发放闸门**。
 //!
 //! 替换是「先建新、再切旧」，切换瞬间旧会话必须既不能再发新执行、
 //! 又不能已经关掉（关掉的是替换编排自己的活）。闸门就是这两者之间那一格：
@@ -9,19 +9,19 @@
 //!            闸门举着               旧条目改关闭路由
 //!            · Execute 被拒          · 物理资源与已登记句柄
 //!            · RegisterHandles 被拒    仍原封不动，由编排交给
-//!            · SetIdleDeadline 被拒   唯一的 §9.4 释放例程
+//!            · SetIdleDeadline 被拒   唯一的释放例程
 //!            · Evict 被拒
 //!            · Close / View / 闸门命令本身照常
 //! ```
 //!
-//! 闸门**不碰**已登记句柄：§9.4 要求句柄在原资源上终结，而终结动作
+//! 闸门**不碰**已登记句柄：它们要求在原资源上终结，而终结动作
 //! 归 [`super::release`]。闸门只负责「别再发新的」，不负责「收旧的」——
 //! 两件事混在一起就会长出第二条释放路径，而第二条路径一定和第一条漂移。
 
 use super::{ActorState, ExecCommand, SessionActor};
 use crate::connection::{CloseMode, RuntimeError, SessionHandle, SessionState};
 
-/// 闸门举着时，非替换编排的一切发放都被拒。§7.4-6：切换前旧会话不得再发新执行。
+/// 闸门举着时，非替换编排的一切发放都被拒：切换前旧会话不得再发新执行。
 const HELD: &str = "replacementInProgress";
 
 /// 举起闸门：旧会话停止发放新执行，物理资源与已登记句柄**原封不动**。
@@ -85,9 +85,9 @@ pub(super) fn gate(state: &ActorState, command: ExecCommand) -> Result<ExecComma
 }
 
 impl SessionActor {
-    /// §7.4-6 第 10 项：提交前失败 ⇒ 销毁候选。
+    /// 提交前失败 ⇒ 销毁候选。
     ///
-    /// 走的是**同一条** §9.4 释放例程（[`super::release`]），不是另写一份关闭：
+    /// 走的是**同一条**释放例程（[`super::release`]），不是另写一份关闭：
     /// 候选即使带句柄消失，也必须先在它自己登记的那条资源上终结。
     pub(crate) async fn destroy_candidate(
         &self,

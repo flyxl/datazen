@@ -9,6 +9,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use datazen_platform_api::ports::network::TunnelSpec;
+
 use crate::connection::{
     ConfigRevision, ConnectionId, ExecutionId, LeaseId, OwnerRef, PoolKeyFingerprint,
     PoolKeyInputs, ResourceId,
@@ -17,14 +19,14 @@ use crate::connection::{
 use crate::resource::transition::lookup_transition;
 use crate::resource::ResourceError;
 
-/// 租约用途。§9.1 资源策略表在宿主侧的投影，决定归还前要跑哪些检查。
+/// 租约用途。资源策略表在宿主侧的投影，决定归还前要跑哪些检查。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LeasePurpose {
     /// 固定会话：长时间持有，只能由显式关闭结束（QueryPanel、导出 Job 阶段…）。
-    /// §7.5 步骤 5：v1 里用户自开的任意 SQL 会话关闭时直接关物理资源。
+    /// v1 里用户自开的任意 SQL 会话关闭时直接关物理资源。
     FixedSession,
-    /// 短操作租约：跑完即归还，归还前必须走完 §9.4 的全部检查并复位回 `Clean`。
+    /// 短操作租约：跑完即归还，归还前必须走完全部检查并复位回 `Clean`。
     ShortOperation,
     /// 元数据资源：只读元数据查询，签发节奏与短操作池一致。
     Metadata,
@@ -44,9 +46,9 @@ impl LeasePurpose {
 ///
 /// `PoolKeyFingerprint::derive`（connection/types.rs）已经把 **database**（经
 /// `NamespaceTarget` 的四个层）与 **policy**（`policy_isolation_key`）折叠进指纹，
-/// 所以 A3.4「按库与策略分片」的第一层由它承担。
+/// 所以「按库与策略分片」的第一层由它承担。
 ///
-/// 但 §9.6 要求「凭据 / 网络路由 / ACL 任一变化 ⇒ 新键」，
+/// 但「凭据 / 网络路由 / ACL 任一变化 ⇒ 新键」是硬要求，
 /// 而 runtime 的指纹里**没有**这三个代的位置（`connection/types.rs` 是冻结的、不可重定义）。
 /// 因此宿主在指纹之上再带两代：凭据代与网络路由代。三层合起来才是完整的池键代：
 ///
@@ -54,7 +56,7 @@ impl LeasePurpose {
 /// PoolKeyGeneration = (fingerprint(database + policy), credential_revision, network_route_revision)
 /// ```
 ///
-/// 任一分量变化 ⇒ 新键 ⇒ **旧空闲不再被签发并被关闭**（CM-67、CM-38）。
+/// 任一分量变化 ⇒ 新键 ⇒ **旧空闲不再被签发并被关闭**。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PoolKeyGeneration {
     pub fingerprint: PoolKeyFingerprint,
@@ -96,15 +98,21 @@ pub struct LeaseRequest {
     pub network_route_revision: Option<u64>,
     pub owner: OwnerRef,
     pub purpose: LeasePurpose,
-    /// A3.5：`Some(r)` 表示「我按 revision r 的配置建模」。宿主当时的实际代与之不符时，
+    /// `Some(r)` 表示「我按 revision r 的配置建模」。宿主当时的实际代与之不符时，
     /// 按显式策略**冲突**，绝不静默改写；`None` 表示不绑定代（允许拿当前代）。
     pub expected_config_revision: Option<ConfigRevision>,
-    /// 同 key 重试返回同一条租约/同一份回执，不建第二条连接（§7.4 幂等）。
+    /// 同 key 重试返回同一条租约/同一份回执，不建第二条连接（幂等）。
     pub idempotency_key: Option<String>,
-    /// §9.2 短操作池的取用超时；超时按 `ResourceBusy` 取消。
+    /// 短操作池的取用超时；超时按 `ResourceBusy` 取消。
     pub acquire_timeout_ms: u64,
     /// `Some(key)` 表示本次申请建的是**候选资源**：未提交前不对外可见、不接受执行。
     pub candidate_for: Option<String>,
+    /// `Some(spec)` 表示这条连接**必须**经由这条隧道。`None` = 直连。
+    ///
+    /// 这里只承载**身份**（走哪条隧道），**不承载任何计数**。引用计数唯一权威在
+    /// `TunnelLedger`；本字段存在的意义只是让 `ResourceManager` 知道该去台账里
+    /// 落一份引用，而不是让它自己记一笔。
+    pub tunnel_spec: Option<TunnelSpec>,
 }
 
 impl LeaseRequest {
@@ -120,7 +128,14 @@ impl LeaseRequest {
             idempotency_key: None,
             acquire_timeout_ms: 10_000,
             candidate_for: None,
+            tunnel_spec: None,
         }
+    }
+
+    /// 声明本连接必须经由 [`spec`] 这条隧道。
+    pub fn via_tunnel(mut self, spec: TunnelSpec) -> Self {
+        self.tunnel_spec = Some(spec);
+        self
     }
 
     pub fn at_credential_revision(mut self, revision: u64) -> Self {
@@ -226,7 +241,7 @@ impl LeaseState {
 pub struct LeaseRecord {
     pub lease_id: LeaseId,
     pub resource_id: ResourceId,
-    /// 归属的连接配置 id（落盘持久化的那一份）。禁用/删除按它批量处置（CM-39）。
+    /// 归属的连接配置 id（落盘持久化的那一份）。禁用/删除按它批量处置。
     pub connection_id: ConnectionId,
     pub pool_key: PoolKeyGeneration,
     pub purpose: LeasePurpose,
@@ -238,7 +253,7 @@ pub struct LeaseRecord {
     /// 归属的稳定键（`OwnerRef::hash()`），禁用/删除按它批量处置。
     pub owner_key: String,
     pub created_at_nanos: u64,
-    /// 进入空闲的时刻；`None` 表示不空闲。§9.2 的 60s TTL 从这里算。
+    /// 进入空闲的时刻；`None` 表示不空闲。60s TTL 从这里算。
     pub idle_since_nanos: Option<u64>,
     /// 当前挂在这条租约上的执行。
     pub active_execution: Option<ExecutionId>,
@@ -283,7 +298,7 @@ impl LeaseRecord {
         self.active_execution = None;
     }
 
-    /// 空闲 TTL 是否已到期（§9.2：60 秒）。没有进入空闲的租约永不到期。
+    /// 空闲 TTL 是否已到期（60 秒）。没有进入空闲的租约永不到期。
     pub fn idle_expired_at(&self, now_nanos: u64, ttl_seconds: u64) -> bool {
         let Some(since) = self.idle_since_nanos else {
             return false;
@@ -372,7 +387,7 @@ mod tests {
 
     #[test]
     fn the_five_required_states_are_all_present_and_wired() {
-        // A3.2 至少要有这条主链，且五个状态都得有文档化的归属。
+        // 至少要有这条主链，且五个状态都得有文档化的归属。
         let mut state = LeaseState::Acquired;
         for next in [
             LeaseState::InUse,

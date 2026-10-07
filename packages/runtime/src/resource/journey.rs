@@ -1,4 +1,4 @@
-//! CM-69（归池双条件）与 CM-73（会话句柄先复位后关闭）的连续旅程。
+//! 归池双条件与会话句柄先复位后关闭的连续旅程。
 //!
 //! 每个用例都跑完整条链路：签发 → 使用 → 归还裁决 → 再签发。
 //! 断言不只看状态字段，还看**物理端口的动作顺序**与**是否真的又开了一条连接**——
@@ -141,7 +141,7 @@ fn only_a_clean_driver_report_and_clear_host_conditions_return_the_lease() {
 }
 
 // ---------------------------------------------------------------------------
-// CM-69：三个宿主条件各自独立地否决复用
+// 三个宿主条件各自独立地否决复用
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -231,7 +231,7 @@ fn an_unreleased_session_handle_refuses_reuse_and_is_rolled_back_before_close() 
     assert!(!report.returned_to_pool());
     assert_eq!(report.disposition, CleanupDisposition::Closed);
     assert_eq!(first_reason_code(&report), "hostUnreleasedSessionHandle");
-    assert!(report.session_reset_performed, "CM-73 reset must happen");
+    assert!(report.session_reset_performed, "reset must happen");
     assert!(
         report.outstanding_handles.is_empty(),
         "after the reset no handle may still be committable"
@@ -363,7 +363,7 @@ fn an_idle_lease_is_closed_once_the_idle_ttl_expires() {
 #[test]
 fn empty_pool_metadata_stays_within_the_documented_lru_limit() {
     let mut fixture = Fixture::new();
-    // 40 个不同 database ⇒ 40 个不同池键（CM-67 的分片维度），每个键的空闲桶都会变空一次。
+    // 40 个不同 database ⇒ 40 个不同池键（分片维度），每个键的空闲桶都会变空一次。
     for index in 0..40 {
         let request = fixture.request_for(&format!("db-{index}"), LeasePurpose::ShortOperation);
         let lease = expect_ok(fixture.manager.acquire(&request), "acquire");

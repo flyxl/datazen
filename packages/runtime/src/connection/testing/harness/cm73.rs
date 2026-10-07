@@ -1,6 +1,6 @@
-//! §9.3 CM-73「空闲驱逐 vs 会话事务」竞态的编排与断言。
+//! 「空闲驱逐 vs 会话事务」竞态的编排与断言。
 //!
-//! §9.3 规定的五步是：
+//! 规定的五步是：
 //!
 //! 1. 会话 + pinned Lease 落在 **R1** 上（记录 `runtimeEpoch` 的实际取值，不硬编码 1 ——
 //!    `FakeIds::force_collision` 可以把它推高，硬编码会把夹具写死）；
@@ -27,16 +27,16 @@ use crate::connection::types::{Counter, DbSessionId, HandleId, LeaseId, OwnerRef
 
 use super::{FakeHarness, GatewayError};
 
-/// 一次 CM-73 竞态跑完之后的判定。
+/// 一次竞态跑完之后的判定。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EvictionRaceOutcome {
     /// 正例：R2 上没有任何句柄登记，旧句柄没有被搬过去。
     HandlesNotReused,
-    /// 反例：R2 上出现了句柄登记，§9.3 的断言必须判负。
+    /// 反例：R2 上出现了句柄登记，断言必须判负。
     HandlesReused { registered_on_recovery: usize },
 }
 
-/// 一次 CM-73 竞态的全部可核对事实。
+/// 一次竞态的全部可核对事实。
 ///
 /// 断言全部针对这些**已记账的量**，不针对内存布局：换实现、换线程模型都不影响。
 #[derive(Debug, Clone)]
@@ -45,11 +45,11 @@ pub struct EvictionRaceReport {
     pub pre_close_epoch: Counter,
     pub pre_close_db_session_id: DbSessionId,
     pub pre_close_lease: LeaseId,
-    /// 停住那一刻新开的事务句柄（§9.3 第 3 步）。
+    /// 停住那一刻新开的事务句柄（第 3 步）。
     pub race_handle_id: HandleId,
     pub recovery_resource_id: ResourceId,
     /// R2 的只读凭证。收尾时用它把恢复资源也走一遍正常关闭路径 ——
-    /// 否则 I2（live 资源）、I4（active session）、I1/I6（permit 收支）永远收不了口。
+    /// 否则 live 资源、active session、permit 收支都永远收不了口。
     pub recovery_handle: ResourceHandle,
     pub recovery_epoch: Counter,
     pub recovery_db_session_id: DbSessionId,
@@ -75,7 +75,7 @@ fn first_handle_id(data: &JsonValue) -> Result<HandleId, GatewayError> {
 }
 
 impl FakeHarness {
-    /// §9.3 的五步竞态，返回可核对的报告。
+    /// 五步竞态，返回可核对的报告。
     ///
     /// `hold_ms` 交给 `begin_session_transaction_hold`：那条命令**不会**自动终结事务，
     /// 它的存在就是为了和关闭 / 驱逐赛跑。假时钟只前进不 sleep。
@@ -88,7 +88,7 @@ impl FakeHarness {
         let race = self.script().hold_for_eviction_then_begin_commit();
         assert!(
             race.rollback_before_release,
-            "CM-73 脚本必须要求「先回滚注销、再归还资源」，否则第 4 步的顺序断言失去意义"
+            "竞态脚本必须要求「先回滚注销、再归还资源」，否则第 4 步的顺序断言失去意义"
         );
 
         // ---- 第 1 步：会话 + pinned lease 落在 R1 ----
@@ -191,7 +191,7 @@ impl FakeHarness {
             .collect()
     }
 
-    /// §9.3 的核心断言：恢复出来的资源上**不得**出现任何句柄登记。
+    /// 核心断言：恢复出来的资源上**不得**出现任何句柄登记。
     ///
     /// 报不出 `Ok` 就是判负 —— 用例只调用这一个方法，不另写一份判负逻辑。
     pub fn assert_no_handle_reuse(&self, recovery_resource_id: &ResourceId) -> Result<(), String> {
@@ -205,7 +205,7 @@ impl FakeHarness {
             .collect::<Vec<_>>()
             .join(", ");
         Err(format!(
-            "§9.3 判负：恢复资源 {} 上出现 {} 条句柄登记（{listed}）—— 驱逐后不得复用旧句柄",
+            "判负：恢复资源 {} 上出现 {} 条句柄登记（{listed}）—— 驱逐后不得复用旧句柄",
             recovery_resource_id.as_str(),
             reused.len()
         ))

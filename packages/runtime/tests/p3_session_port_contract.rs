@@ -1,19 +1,19 @@
 //! P3 接缝覆盖率补齐（验证用新增文件，**不属于目标提交 `8e0e874f`**）。
 //!
 //! 这里只补 `8e0e874f` 自带单测**没有覆盖**的分支，逐条对应 `port.rs` /
-//! `error.rs` 里的契约句与 `connection-management.md` 的条款：
+//! `error.rs` 里的契约句：
 //!
-//! | 用例 | 补的分支 | 依据 |
-//! |---|---|---|
-//! | `terminal_sessions_are_still_readable_including_lost` | `session_view` 在 `Lost` 上仍返回 `Ok` | `port.rs:44-45` |
-//! | `close_is_idempotent_on_a_lost_session` | `close_session` 在 `Lost` 上幂等 | `port.rs:87-88`、§6.1 |
-//! | `close_rejects_on_every_blocking_transaction_state` | `Aborted` 事务 | `port.rs:95-97`（自带单测只测 `Active`/`Unknown`）|
-//! | `budget_and_quarantine_rejections_cross_the_trait_object` | `BudgetExhausted` / `SessionQuarantined` | `port.rs:58` |
-//! | `cancel_failure_never_degrades_into_a_cancel_outcome` | `CancelFailed` 的对外呈现 | `port.rs:78`、`error.rs:244` |
-//! | `invariant_broken_has_no_request_side_code` | `InvariantBroken` | `error.rs:244` |
-//! | `counter_boundaries_do_not_alias_on_the_seam` | `Counter::ZERO` / `u64::MAX` epoch | `§6.3` 逐字段匹配 |
-//! | `context_revision_mismatch_carries_server_actual_at_boundaries` | revision 载荷极值 | `port.rs:57` |
-//! | `reason_literals_are_pinned` | 9 个 reason 字面量 | `error.rs:209` |
+//! | 用例 | 补的分支 |
+//! |---|---|
+//! | `terminal_sessions_are_still_readable_including_lost` | `session_view` 在 `Lost` 上仍返回 `Ok` |
+//! | `close_is_idempotent_on_a_lost_session` | `close_session` 在 `Lost` 上幂等 |
+//! | `close_rejects_on_every_blocking_transaction_state` | `Aborted` 事务（自带单测只测 `Active`/`Unknown`）|
+//! | `budget_and_quarantine_rejections_cross_the_trait_object` | `BudgetExhausted` / `SessionQuarantined` |
+//! | `cancel_failure_never_degrades_into_a_cancel_outcome` | `CancelFailed` 的对外呈现 |
+//! | `invariant_broken_has_no_request_side_code` | `InvariantBroken` |
+//! | `counter_boundaries_do_not_alias_on_the_seam` | `Counter::ZERO` / `u64::MAX` epoch 逐字段匹配 |
+//! | `context_revision_mismatch_carries_server_actual_at_boundaries` | revision 载荷极值 |
+//! | `reason_literals_are_pinned` | 9 个 reason 字面量 |
 //!
 //! 这些用例断言的是**被测提交的契约文本**（`port.rs` 的文档句）与
 //! `RuntimeError` 自身行为，不是这份 fake 的行为；因此同一份文件可以原样
@@ -61,7 +61,7 @@ impl ScriptedPort {
         self
     }
 
-    /// §6.3 末段：`dbSessionId` 与 `runtimeEpoch` 必须逐字段同时相等。
+    /// `dbSessionId` 与 `runtimeEpoch` 必须逐字段同时相等。
     fn locate(&self, handle: &SessionHandle) -> Result<(), RuntimeError> {
         if self.view.handle != *handle {
             return Err(RuntimeError::UnknownSession(
@@ -76,7 +76,7 @@ impl ScriptedPort {
 impl SessionPort for ScriptedPort {
     async fn session_view(&self, handle: &SessionHandle) -> Result<SessionView, RuntimeError> {
         self.locate(handle)?;
-        // 终态不短路：`Closed` / `Lost` 是可读终态（`port.rs:44-45`）。
+        // 终态不短路：`Closed` / `Lost` 是可读终态。
         Ok(self.view.clone())
     }
 
@@ -121,7 +121,7 @@ impl SessionPort for ScriptedPort {
         self.close_calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.locate(handle)?;
-        // 幂等分支先于事务分支（`port.rs:87-90`）：§6.1 的「Lost → Closed 幂等」
+        // 幂等分支先于事务分支：「Lost → Closed 幂等」
         // 意味着清理已完成的会话重复 close 一律 `Ok(())`，不再重新判定事务。
         if matches!(self.view.state, SessionState::Closed | SessionState::Lost) {
             return Ok(());
@@ -193,7 +193,7 @@ fn port_of(view: SessionView) -> Arc<dyn SessionPort> {
     Arc::new(ScriptedPort::new(view))
 }
 
-/// `port.rs:44-45`：终态会话**仍然返回 `Ok`**。自带单测只覆盖了 `Closed`；
+/// 终态会话**仍然返回 `Ok`**。自带单测只覆盖了 `Closed`；
 /// `Lost` 同样是可读终态，漏掉它等于没验证「区分重建 vs 重试」这句话。
 #[tokio::test]
 async fn terminal_sessions_are_still_readable_including_lost() {
@@ -208,7 +208,7 @@ async fn terminal_sessions_are_still_readable_including_lost() {
     }
 }
 
-/// `port.rs:87-88` + §6.1「Lost → Closed 幂等」：`Lost` 会话上的重复 close
+/// 「Lost → Closed 幂等」：`Lost` 会话上的重复 close
 /// 必须返回 `Ok(())`，而不是 `CloseRejected` 或 `UnknownSession`。
 #[tokio::test]
 async fn close_is_idempotent_on_a_lost_session() {
@@ -231,7 +231,7 @@ async fn close_is_idempotent_on_a_lost_session() {
     }
 }
 
-/// `port.rs:95-97` 列的阻塞事务态是 `Active` / `Aborted` / `Unknown` 三个；
+/// 阻塞事务态是 `Active` / `Aborted` / `Unknown` 三个；
 /// 自带单测只跑了前者和第三者，`Aborted` 是漏网的那一个。
 #[tokio::test]
 async fn close_rejects_on_every_blocking_transaction_state() {
@@ -264,9 +264,9 @@ async fn close_rejects_on_every_blocking_transaction_state() {
     }
 }
 
-/// `port.rs:58`：预算耗尽与隔离是 `execute_in_session` 的两条失败条件，
+/// 预算耗尽与隔离是 `execute_in_session` 的两条失败条件，
 /// 但仓库里**没有任何代码构造过它们**。这里让它们穿过 trait object，
-/// 并钉住对外路由（`§13` 的 `ResourceBusy` / `SessionLost`）。
+/// 并钉住对外路由（`ResourceBusy` / `SessionLost`）。
 #[tokio::test]
 async fn budget_and_quarantine_rejections_cross_the_trait_object() {
     let handle = handle_of("db_session_seam", 3);
@@ -297,8 +297,8 @@ async fn budget_and_quarantine_rejections_cross_the_trait_object() {
     }
 }
 
-/// `port.rs:78`：取消失败**不得**降级成「已取消」。`CancelFailed::api_code()`
-/// 刻意返回 `None`（`error.rs:244`）——外层因此拿不到任何请求侧码，
+/// 取消失败**不得**降级成「已取消」。`CancelFailed::api_code()`
+/// 刻意返回 `None`——外层因此拿不到任何请求侧码，
 /// 也就无法把一次取消失败伪装成一次合法的取消结果。
 #[tokio::test]
 async fn cancel_failure_never_degrades_into_a_cancel_outcome() {
@@ -327,7 +327,7 @@ async fn cancel_failure_never_degrades_into_a_cancel_outcome() {
     assert_eq!(err.reason(), "cancelFailed");
 }
 
-/// `error.rs:244`：`InvariantBroken` 不映射任何请求侧码——它不是业务事实，
+/// `InvariantBroken` 不映射任何请求侧码——它不是业务事实，
 /// 编一个 `ApiErrorCode` 等于把一次 bug 伪装成一次合法拒绝。仓库里目前
 /// 没有任何生产代码构造它，这里锁定「它出现时也必须如此」。
 #[tokio::test]
@@ -339,7 +339,7 @@ async fn invariant_broken_has_no_request_side_code() {
     assert_eq!(rejected, Err(err), "rejected() 必须原样交还错误");
 }
 
-/// §6.3 末段的逐字段匹配在计数器极值上同样成立：`Counter::new(0)` 与
+/// 逐字段匹配在计数器极值上同样成立：`Counter::new(0)` 与
 /// `Counter::new(u64::MAX)` 都是合法句柄，别让边界值退化成「总是匹配」。
 #[tokio::test]
 async fn counter_boundaries_do_not_alias_on_the_seam() {
@@ -362,7 +362,7 @@ async fn counter_boundaries_do_not_alias_on_the_seam() {
         assert_eq!(
             got.is_ok(),
             must_match,
-            "登记 epoch={registered} 与探测 epoch={probed} 的命中结果不符 §6.3"
+            "登记 epoch={registered} 与探测 epoch={probed} 的命中结果不符"
         );
         if let Err(e) = got {
             assert_eq!(
@@ -385,7 +385,7 @@ async fn counter_boundaries_do_not_alias_on_the_seam() {
     );
 }
 
-/// `port.rs:57`：`ContextRevisionMismatch` 必须携带服务端实际值，载荷是
+/// `ContextRevisionMismatch` 必须携带服务端实际值，载荷是
 /// 裸 `u64`，极值不得被截断或回绕。
 #[tokio::test]
 async fn context_revision_mismatch_carries_server_actual_at_boundaries() {
@@ -405,7 +405,7 @@ async fn context_revision_mismatch_carries_server_actual_at_boundaries() {
     }
 }
 
-/// `error.rs:209`：`reason()` 是 tracing 事件字段的取值来源。自带单测只断言
+/// `reason()` 是 tracing 事件字段的取值来源。自带单测只断言
 /// 非空且互不重复——重命名不会被发现。这里把 9 个字面量钉死。
 #[test]
 fn reason_literals_are_pinned() {

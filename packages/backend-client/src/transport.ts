@@ -38,6 +38,8 @@ import type {
   ProfileView,
   SessionHandle,
   SessionView,
+  SetSessionContextRequest,
+  OwnerRef,
   SubmitRequest,
   SubscribeEventsRequest,
   SubmissionToken,
@@ -63,6 +65,7 @@ export interface CommandResult {
  *   and they go away when the kernel implements those methods.
  */
 export interface MethodMap {
+  getPlatformIdentity: { request: undefined; response: { clientInstanceId: string; organizationId: string; principalId: string } };
   // ---- Kernel surface (§6.2) ---------------------------------------------
   listConnections: { request: undefined; response: readonly ProfileView[] };
   createConnection: { request: ProfileDraft & SubmitRequest; response: ProfileView };
@@ -81,7 +84,7 @@ export interface MethodMap {
     response: ExecutionReceipt;
   };
   executeAtTarget: { request: ExecuteAtTargetRequest & SubmitRequest; response: ExecutionReceipt };
-  setSessionContext: { request: SubmitRequest; response: ContextChangeReceipt };
+  setSessionContext: { request: SetSessionContextRequest & SubmitRequest; response: ContextChangeReceipt };
   attachSession: { request: AttachmentRequest; response: SessionView };
   detachSession: { request: AttachmentRequest; response: SessionView };
   closeSession: { request: CloseSessionRequest; response: CloseReceipt };
@@ -93,7 +96,7 @@ export interface MethodMap {
   cancelJob: { request: SubmitRequest & { jobId: string }; response: CancelReceipt };
   readArtifact: { request: ArtifactReadRequest; response: ArtifactChunk };
   issueSubmissionToken: {
-    request: { operation: string; handle: SessionHandle | null };
+    request: { operation: string; handle: SessionHandle | null; connectionId?: string; owner?: OwnerRef };
     response: SubmissionToken;
   };
 
