@@ -395,7 +395,7 @@ async fn run_through_kernel(fixture: RealSqlite, cancel_at_gate: bool) -> RealRu
     let result = running.await.expect("join").expect("run");
     // 连接池此刻仍然被 `runtime` 持有着（handler 在里面），所以这里拿到的
     // 是**同一条**连接。
-    let open_rows = open_transaction_rows(&fixture.target_pool, &fixture.target_path).await;
+    let open_rows = open_transaction_rows(&fixture.target_pool, &fixture.target_handle).await;
     RealRun {
         open_rows,
         outcome: KernelRun {

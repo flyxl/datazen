@@ -331,6 +331,10 @@ pub struct RealSqlite {
     /// 目标端那个**还活着**的连接池。留着它是为了同连接回读，见
     /// `open_transaction_rows`。
     pub target_pool: Arc<GatedSqlite>,
+    /// 交进 handler 的那个**目标句柄**。必须用它回读，不能再 `connect` 一次：
+    /// `SqliteDriver::connect` 每次都新建一个 `SqlitePool`（新的 `pool_id`），
+    /// 重连拿到的是另一条连接，看不见这条连接上没提交的事务。
+    pub target_handle: ConnectionHandle,
     pub handler: DataTransferHandler,
     pub source_path: PathBuf,
     pub target_path: PathBuf,
@@ -390,6 +394,7 @@ pub async fn real_sqlite(arm_gate: bool) -> RealSqlite {
         .execute(&target_handle, ddl)
         .await
         .expect("create target table");
+    let probe_handle = target_handle.clone();
 
     let schema = schema_with_snapshot(&["id", "name"]);
     let handler = DataTransferHandler::apply(
@@ -411,6 +416,7 @@ pub async fn real_sqlite(arm_gate: bool) -> RealSqlite {
     RealSqlite {
         gate,
         target_pool: target.clone(),
+        target_handle: probe_handle,
         handler,
         source_path,
         target_path,
@@ -430,11 +436,10 @@ pub async fn real_sqlite(arm_gate: bool) -> RealSqlite {
 ///
 ///   - 真回滚 ⇒ 连接上事务已结束 ⇒ 数到的是磁盘状态；
 ///   - 假回滚 ⇒ 连接还停在事务里 ⇒ 数到自己刚写进去、别人看不见的行。
-pub async fn open_transaction_rows(pool: &GatedSqlite, path: &Path) -> i64 {
-    let handle = pool
-        .connect(&sqlite_config(path, "probe"))
-        .await
-        .expect("probe connect on the same pool");
+pub async fn open_transaction_rows(
+    pool: &GatedSqlite,
+    handle: &ConnectionHandle,
+) -> i64 {
     let result = pool
         .query(&handle, "SELECT COUNT(*) FROM t")
         .await
