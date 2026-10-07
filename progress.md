@@ -117,11 +117,73 @@ mysql / postgres / redis / rqlite / sqlite / sqlserver / turso / vector / **vict
 窗口首尾各记一次 `HEAD` / `TREE` / `SOURCE_SHA`，**必须逐字相等**，否则作废重跑。
 不注入驱动的门禁全程 `git status --porcelain` 保持 0。
 
-### 门禁结论
+### 门禁结论（干净树重跑，被门禁提交 `e998366a6fdbd699f908f5f1b79e41fec3bc7932`）
 
-> 待干净树重跑后由紧随其后的文档提交写入。理由：门禁认证的是 Rust 源码，
-> 而两次提交之间 `progress.md` 之外的源码零差异——
-> `git diff <被门禁提交> <最终提交> -- '*.rs' '*.toml' '*.lock'` 输出为空可自证。
+取证首尾（逐字，必须相等）：
+
+```
+BEFORE_HEAD=e998366a6fdbd699f908f5f1b79e41fec3bc7932
+BEFORE_TREE=46f7daede64e0a661a1ccd46e212dcf85229a7f0
+BEFORE_DIRTY=0
+BEFORE_SOURCE_SHA=86837cc0460293ee8ef0fe93cb92d240d984fecec6f76e7eabdb21644cbe2f0a
+AFTER_HEAD=e998366a6fdbd699f908f5f1b79e41fec3bc7932
+AFTER_TREE=46f7daede64e0a661a1ccd46e212dcf85229a7f0
+AFTER_SOURCE_SHA=86837cc0460293ee8ef0fe93cb92d240d984fecec6f76e7eabdb21644cbe2f0a
+POST_RESTORE_DIRTY=0
+```
+
+`HEAD` / `TREE` / `SOURCE_SHA` 三项**逐字相等**。8 次 `PHASE1_DIRTY_AFTER_*` 全为 `0`
+（每个非注入门禁跑完立即复查工作区）。注入后 `git status --porcelain` 只有
+` M src-tauri/Cargo.toml` 一行，`AFTER_INJECT_*` 三项仍与 BEFORE 相同。
+
+| 门禁命令 | 退出码 | 逐字结论行 |
+| --- | --- | --- |
+| `cargo metadata --no-deps --format-version 1`（**第一个跑**） | 0 | 见上节 |
+| `cargo test -p datazen-runtime` | 0 | lib 412 + 33 个集成二进制，全 ok |
+| `cargo test -p datazen-schema-diff` | 0 | `test result: ok. 225 passed; 0 failed; ...` |
+| `cargo test -p datazen-data-sync` | 0 | `test result: ok. 176 passed; 0 failed; ...` |
+| `cargo test -p datazen-data-transfer` | 0 | `test result: ok. 213 passed; 0 failed; ...` |
+| `cargo test -p datazen-driver-postgres` | **101** | lib `ok. 201 passed; 0 failed`；**集成二进制 `postgres_cross_database` 1 failed（见下，已证为基线既失败）** |
+| `cargo test -p datazen-driver-mysql` | 0 | lib `ok. 178 passed; 0 failed` + 8 个集成二进制全 ok |
+| `cargo test -p datazen-driver-redis` | 0 | lib `ok. 397 passed; 0 failed; 3 ignored` + 5 个集成二进制全 ok |
+| `cargo test -p datazen-driver-sqlserver` | 0 | 8 个集成二进制全 ok（lib 见下节计数） |
+| `cargo test -p datazen --lib` | 0 | `test result: ok. 1762 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 23.72s` |
+| `cargo check -p datazen` | 0 | `warning: \`datazen\` (lib) generated 33 warnings`；`warn_lines=46  warn_files=17`（**仅供对照，判定见「告警」一节**） |
+
+### 唯一红门禁：`postgres_cross_database` 是基线既有失败，非本轨引入
+
+`cargo test -p datazen-driver-postgres` 退出 101，唯一失败用例：
+
+```
+---- cross_database_reads_never_move_the_session stdout ----
+thread 'cross_database_reads_never_move_the_session' panicked at packages/drivers/postgres/tests/postgres_cross_database.rs:305:29:
+seed probe table dz_cross_db_probe_<uuid> in dz_fixture_pg_a: Query failed: error returned from database: permission denied for schema public
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+error: test failed, to rerun pass `-p datazen-driver-postgres --test postgres_cross_database`
+```
+
+这是**连真实库的 gated live 测试**（凭据只从进程环境 `TEST_PG_*` 取）。
+本机 postgres 可连但该 fixture 角色对 schema `public` 无 CREATE 权限，属本机夹具授权问题。
+
+**证明它与本轨无关，两条独立证据：**
+
+1. `git diff --stat 4b782750ddd1c e998366a6 -- packages/drivers/postgres/tests/`
+   **输出为空**——本轨从未碰过该文件。
+2. 在**基线 `4b782750ddd1c` 的独立 detached worktree**上跑同一条命令，**同样失败**：
+
+```
+BASE_PG_XDB_EXIT=101
+thread 'cross_database_reads_never_move_the_session' panicked at packages/drivers/postgres/tests/postgres_cross_database.rs:305:29:
+seed probe table dz_cross_db_probe_<uuid> in dz_fixture_pg_a: Query failed: error returned from database: permission denied for schema public
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+```
+
+同一条用例、同一个 panic 行号、同一个错误串。**基线红、本轨同样红 → 未回归。**
+两次的探针表 UUID 不同（该测试每次生成新 UUID），确认两次都是真跑而非命中残留。
+
+**顺带纠正此前一个口径错误**：此前汇报的「postgres 基线 200 / HEAD 201」
+只统计了 `--lib`，**整包跑时 lib 之外的集成二进制从未被计入**。
+本节的驱动计数已改为整包口径。`--lib` 与整包数字不可比，不可混用。
 
 ### 驱动「连接行为未变」的证明（基线 vs 本 HEAD，各跑一遍整包）
 
