@@ -18,7 +18,7 @@
 | `p5-cancel-hardening` 取消硬化 | feature/p5-cancel-hardening | ✅ MERGED `f440acf91` |
 | `p5-data-sync` handler | feature/p5-data-sync | ✅ 已由 R2 取代 |
 | `p5-data-sync-r2` D1/D2/D5 修复 | feature/p5-data-sync-r2 | ✅ MERGED `31af2b8fb8`，Tester 独立复验 **TEST_PASSED**（10 变异零存活，含修前存活/修后被杀对照），worktree/分支已清理 |
-| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ⏳ 修复轨 `63d27428` 已交付 tip `4c6653daa`（`35e6e5d97`/`4c6653daa` 均纯台账，代码状态止于 `4091d749a`）D1 后端停止预填已落地，**控制变异（改回 `t.name.clone()`）被杀**；D2/D3/D4 闭环。**待新鲜 Tester `10b025d7` 复验**（`0e5f9a54` 已用，`10b025d7` 之前一轮挂掉未出结论）。全套 vitest 红但归 data-sync 的 `DiffDetail` 超时，见 `p5-datasync-test-flakiness`。合并时 squash 范围 `299b7562b^..4c6653daa`（起点必须是 `^`，否则会让范围内那个红的中间提交在任何可达路径上复活） |
+| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ✅ MERGED `7edfbd2e6`，Tester `10b025d7` 独立复验 **TEST_PASSED**（3 位 Tester、前 2 位 TEST_FAILED）。基线 typecheck 0 / vitest 572 文件 6031 用例全绿 / data-transfer 209 / host `--lib` 1733。**M1 控制变异（恢复预填）KILLED**；M2/M3/M4/M5 全 KILLED —— **M5 只在前端单侧恢复预填仍杀 2 条**，证明 D-2 门闸前后端两侧都受保护，不单靠后端。zh-CN blob 与 merge-base 逐字节相同，只改 `en.ts`。**A2 预警的"合并会撞 zh-CN"经实测不成立**：集成分支上该文件 blob 就是 `21d210d0…`，那些 key 从未在集成侧存在，合并零冲突。worktree/分支已清理 |
 | `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ⏳ 修复轨 `2cca952d` 已交付 tip `de75c10be`。7 条变异全 KILLED 含**控制变异 M1（身份恒常化为 `"data-transfer"`）杀 13 条**；`job_kernel.rs` 1023→623+134+289（合计 1046>1023，真拆分）。门禁在拆分后于 `03f153e70` 重跑，**`CODE_SHA` 我已独立重算，`fc8196128..de75c10be` 六个 ref 逐字相同** ⇒ 认证的代码状态 == 交付代码状态。**待新鲜 Tester `08a136ed` 复验** |
 | `p5-datasync-test-flakiness` data-sync 套件可靠性 | — | ⏸ 待开（2026-10-07 开）。`DiffDetail.test.tsx` 跨页反选用例 20s 超时。**已证与前端切轨无关**：归属 `src/windows/data-sync/`、本轨零改动、该文件自 `358a17fdf`(09-30) 未变，且同树 A/B 两次逐字节相同却一次过一次挂 ⇒ 内容不是判别变量。**P5 收口前必须落地**，否则套件不可靠后无法区分后续回归 |
 | `p5-schema-diff-endpoint-identity` schema-diff 侧端点身份 | — | ⏸ 待开（D3 裁定；排在 endpoint-overlap 合入后） |
@@ -92,7 +92,9 @@
 - **裁定缺陷前必须亲自读被引用的代码路径,不能只核对引用是否自洽。** 协调者据四条"独立代码事实"判 D1 不成立,实际漏读 `mapping.rs:65-97` 的 auto-build 与 `:141-146` 的 `!enabled` 传播,被变异执行推翻。**变异执行/杀死的证据强度高于读码推理**;两条裁定同源同错,说明这不是偶发。
 - **门禁数字必须命名来源状态**(`@commit` / `@<worktree sha>`),并首尾各采一次 `HEAD`/`TREE`/`SOURCE_SHA`(仅受跟踪文件,排除两个构建期注入产物)且要求相等。`WORKTREE_SHA` 无法对应可提交状态:`resolve-drivers --drivers=all` 会往**受跟踪**的 `src-tauri/Cargo.toml` 注入 31 行并让 cargo 重写 `Cargo.lock`,二者靠 `git checkout --` 还原(20→18)。协调者曾据 `WORKTREE_SHA` 漂移误判"有人边跑边改",已认错。
 - **门禁必须跑在最终 HEAD 上；门禁跑过之后又落了代码提交,该门禁即作废。** 2026-10-07 **两条在跑的轨同时踩中**:endpoint-overlap 门禁 08:43、拆分提交 08:54;frontend-cutover 门禁 `@299b7562b`、HEAD `4091d749a`(后者改了 `SourceFilterEditor.tsx` 生产代码 + `DataTransferWindow.test.tsx` 测试文件)。测试文件参与 typecheck,故这类失效**不可见**。正确顺序:代码冻结 → 提交 → 在该提交上跑门禁。读数可以平移的唯一条件是 `git diff --name-only <门禁commit> <HEAD>` 为空或只含非门禁文件,且该文件清单必须写进台账,否则就是无依据断言。
-- **工作区指纹不能用 `git write-tree`**——它哈希的是 **index**,不是工作树。index 未更新时它会给出"字节没变"的假象(实测:只剩一个文件 staged,其余 unstaged,前后 `write-tree` 完全相等)。要证明 tsc/vitest 读到的字节没变,必须逐文件哈希工作区内容本身。仪器测的不是被测对象时,"首尾相等"什么都没证明。
+- **工作区指纹不能用 `git write-tree`**——它哈希的是 **index**,不是工作树。index 未更新时它会给出"字节没变"的假象(实测:只剩一个文件 staged,其余 unstaged,前后 `write-tree` 完全相等)。要证明 tsc/vitest 读到的字节没变,必须逐文件哈希工作区内容本身。仪器测的不是被测对象时,"首尾相等"什么都没证明。**协调者自己又踩了一次**:用 `read-tree` + `write-tree` 造 squash 提交时,`rm -f progress.md` 只删了工作树副本、index 里还在,于是 progress.md 进了提交。同一形状的错误同一个会话犯两次,说明它必须写成硬步骤而不是"注意事项":**要剔除文件,用 `git rm --cached`,不要 `rm`**。
+- **做 squash / 构造提交一律在独立临时树里做**,不要在集成分支的工作树上试。`git merge --squash` 会写入工作树,随后的 `git checkout -- .` **不删除未跟踪文件**,残留会挡住正式合并(报"请在合并前移动或删除")。
+- **给 Tester 的 brief 里的"必须存在的缺陷"要先自己核实。** 协调者 brief 断言 `src/lib/transferEndpointOverlap.ts` "必须已删除",Tester 实测该文件在本分支**从未存在**,其删除提交在另一条 ref 上——没有可验证对象。brief 也会过期成错误事实,Tester 推翻时以其实测为准。
 
 ## 收尾义务
 
