@@ -259,8 +259,8 @@ mod tests {
         // the payloads below are filler that exists only to make the variant
         // under test constructible: no number can move a row between categories.
         // The two `Double` rows therefore carry different numbers and still
-        // expect the same category — if a payload ever started to matter, one of
-        // them would stop matching while the other kept matching.
+        // expect the same category: both reach the `"scalar"` arm, which binds
+        // its payload to `_`.
         let shapes: &[(redis::Value, &str)] = &[
             (redis::Value::Nil, "nil"),
             (redis::Value::Okay, "ok"),
