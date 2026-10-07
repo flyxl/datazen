@@ -19,9 +19,11 @@
 | `p5-data-sync` handler | feature/p5-data-sync | ✅ 已由 R2 取代 |
 | `p5-data-sync-r2` D1/D2/D5 修复 | feature/p5-data-sync-r2 | ✅ MERGED `31af2b8fb8`，Tester 独立复验 **TEST_PASSED**（10 变异零存活，含修前存活/修后被杀对照），worktree/分支已清理 |
 | `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ✅ MERGED `7edfbd2e6`，Tester `10b025d7` 独立复验 **TEST_PASSED**（3 位 Tester、前 2 位 TEST_FAILED）。基线 typecheck 0 / vitest 572 文件 6031 用例全绿 / data-transfer 209 / host `--lib` 1733。**M1 控制变异（恢复预填）KILLED**；M2/M3/M4/M5 全 KILLED —— **M5 只在前端单侧恢复预填仍杀 2 条**，证明 D-2 门闸前后端两侧都受保护，不单靠后端。zh-CN blob 与 merge-base 逐字节相同，只改 `en.ts`。**A2 预警的"合并会撞 zh-CN"经实测不成立**：集成分支上该文件 blob 就是 `21d210d0…`，那些 key 从未在集成侧存在，合并零冲突。worktree/分支已清理 |
-| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ⏳ 修复轨 `2cca952d` 已交付 tip `de75c10be`。7 条变异全 KILLED 含**控制变异 M1（身份恒常化为 `"data-transfer"`）杀 13 条**；`job_kernel.rs` 1023→623+134+289（合计 1046>1023，真拆分）。门禁在拆分后于 `03f153e70` 重跑，**`CODE_SHA` 我已独立重算，`fc8196128..de75c10be` 六个 ref 逐字相同** ⇒ 认证的代码状态 == 交付代码状态。**待新鲜 Tester `08a136ed` 复验** |
+| `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ⏳ Tester `08a136ed` **TEST_PASSED**：M1 控制变异 KILL、D1/D2 双向钉死、A/B/D 三组期望互不矛盾（`database` 进 digest）、`CODE_SHA` 我已独立复核、17 驱动逐 id 枚举、范围收敛（`commands/schema_diff/**` 零改动）。**postgres 红门禁我改用等价性证明结案**（见纪律区），不依赖实机复现。**但 Tester 发现本轨新引入 2 条 clippy 告警**（redis 未用 import + 新文件 doc 缩进）—— 已派 `b88b1d95` 修复，修完才合 |
 | `p5-datasync-test-flakiness` data-sync 套件可靠性 | — | ⏸ 待开（2026-10-07 开）。`DiffDetail.test.tsx` 跨页反选用例 20s 超时。**已证与前端切轨无关**：归属 `src/windows/data-sync/`、本轨零改动、该文件自 `358a17fdf`(09-30) 未变，且同树 A/B 两次逐字节相同却一次过一次挂 ⇒ 内容不是判别变量。**P5 收口前必须落地**，否则套件不可靠后无法区分后续回归 |
 | `p5-schema-diff-endpoint-identity` schema-diff 侧端点身份 | — | ⏸ 待开（D3 裁定；排在 endpoint-overlap 合入后） |
+| `p5-redis-rustls-flake` redis 套件 flaky | — | ⏸ 待开（低）。`connect::tests::live_prefer_falls_back_to_plaintext_and_require_refuses` 在 endpoint-overlap HEAD 上观察到失败 2 次、随后连跑 5 次全绿，panic 落在第三方 `rustls-0.23.43/src/crypto/mod.rs:249`（进程级 CryptoProvider 未自动确定）。**是否由本轨新增 redis 测试改变调度时序而提高触发概率，Tester 明示不确定**；不得据此断言因果 |
+| `p5-file-cap-debt` 800 行上限 | — | ⏸ 待开（低，存量）。`traits.rs` 1772→1795(+23)、`sqlserver.rs` 2566→2643(+77)，**两者基线时即已超限**，本轨只加剧未制造。可拆性见"跨轨裁定"末条 |
 | Wave-R 全量回归 | — | ⏸ NOT_STARTED |
 
 冲突面：cutover 只碰 `src/**`+`e2e/**`；endpoint-overlap 只碰 `packages/runtime/src/job/budget.rs`+`src-tauri/src/commands/data_transfer/**`。**两轨互为禁区**，与 data-sync R2 均零重叠。
@@ -40,6 +42,7 @@
 - **裁定：后端停止预填**（`mapping.rs:81-99` 的 `target_table` 改空串，`create_new` 保持 `true`）。四条理由按强度：① `:89-93` 注释自称"创建不存在的目标是用户的明确选择"，同一个 struct literal 却预填了名字——**代码自相矛盾**，名字既属用户，后端就无权代起；② 同函数同情形两模式两种结果，让 Structure 对齐 Data 是统一线上契约的最小改动；③ 线上格式**无"建议名 / 已确认名"标志位**，预填名与用户输入名不可区分，因而必然自动满足 D-2 门闸——**D-2 刚建的闸门会被这条预填静默废掉**；④ 反过来在前端修就得擦掉后端发来的值，正是 D-10 已踩过的歧义。已批准 `p5-frontend-cutover` 扩范围至该文件（与 endpoint-overlap 零文件冲突）。
 - **D-4 未成立为可达缺陷**：`63d27428` 变异 N3（删 `SourceFilterEditor.apply` 的 guard）**存活**，62 测试全绿 ⇒ 该 guard 今天杀不了任何东西；N4（删 `ColumnMappingEditor.commit` 的 guard）被存量 §8.4 测试杀掉，链条本已闭合。可达性以**实测**判定而非推理：`DISABLED_INPUT_ONCHANGE_CALLS=1` / `DISABLED_BUTTON_ONCALLS=0`。guard 保留为纵深防御，但注释须写明**不是修复**，否则下一个人会再报一次。
 - **复用成本修正**：`migrationJobVerdict.ts`(336) + `MigrationJobVerdictPanel.tsx`(311) 可原样复用；`transferJobs.ts`(182) + `useTransferJobRun.ts`(341) + `MigrationJobFailureNotice.tsx`(121) 硬编码三个 transfer 命令名、需依赖注入后才能给另两套用 ⇒ **约 768 行可直接复用，约 644 行需返工**。"另两套几乎白拿"的说法偏差接近一半工作量，禁止据此排期。
+- **800 行上限的可拆性：Tester 的成本结论我要改一半**（她只报事实、未裁定）。实测顶层跨度：`traits.rs` 1795 行里 `pub trait DatabaseDriver` 占 **24–1134（1111 行，单个 trait）**、`KeyValueDriver` 1784–1795（12 行）、测试模块 1264–1783；`sqlserver.rs` 2643 行里 `impl SqlServerDriver` 33–662（630）、`impl DatabaseDriver for SqlServerDriver` 1000–1880（**881，单个 impl**）、测试 1883 起。Tester 写"Rust 不允许 trait 跨文件拆分，会牵动 `inventory` 注册与所有 impl 路径"——**后半句不成立**：`inventory` 注册与各 impl 路径都在驱动 crate，都不动。真正可行的是把**方法体**搬到子 `mod`（`fn foo(&self) -> X { helpers::foo(self) }`），trait/impl 签名原地不动。**但原作者计划的 `traits/{ddl,query,admin,meta}.rs` 按 trait 拆文件行不通**——这个文件里只有一个大 trait，拆不出四个。⇒ `p5-file-cap-debt` 的正确形态是"搬方法体"而非"按 trait 拆文件"。**不预先设计方案**（同 §8.1 纪律）
 
 ## 敞口项
 
@@ -95,6 +98,9 @@
 - **工作区指纹不能用 `git write-tree`**——它哈希的是 **index**,不是工作树。index 未更新时它会给出"字节没变"的假象(实测:只剩一个文件 staged,其余 unstaged,前后 `write-tree` 完全相等)。要证明 tsc/vitest 读到的字节没变,必须逐文件哈希工作区内容本身。仪器测的不是被测对象时,"首尾相等"什么都没证明。**协调者自己又踩了一次**:用 `read-tree` + `write-tree` 造 squash 提交时,`rm -f progress.md` 只删了工作树副本、index 里还在,于是 progress.md 进了提交。同一形状的错误同一个会话犯两次,说明它必须写成硬步骤而不是"注意事项":**要剔除文件,用 `git rm --cached`,不要 `rm`**。
 - **做 squash / 构造提交一律在独立临时树里做**,不要在集成分支的工作树上试。`git merge --squash` 会写入工作树,随后的 `git checkout -- .` **不删除未跟踪文件**,残留会挡住正式合并(报"请在合并前移动或删除")。
 - **给 Tester 的 brief 里的"必须存在的缺陷"要先自己核实。** 协调者 brief 断言 `src/lib/transferEndpointOverlap.ts` "必须已删除",Tester 实测该文件在本分支**从未存在**,其删除提交在另一条 ref 上——没有可验证对象。brief 也会过期成错误事实,Tester 推翻时以其实测为准。
+
+- **警告集合必须用 JSON 流判定，不能 grep human 格式的 `-->`。** cargo 对同 crate 的 lib / lib-test 告警去重，谁先编译谁打印 `-->`，于是 human 格式的差集是**编译顺序产物**：本轮实测会凭空报出 3 个"BASELINE 独有文件"（`vector/.../lifecycle.rs`、`victoriametrics/.../{resource_provider,victoriametrics}.rs`），而 JSON 流里 `comm -23` 是空集、两侧 per-crate 计数完全相同。唯一可靠法：`cargo clippy --workspace --all-targets --keep-going --message-format=json`，取 `level=="warning"` 且 `span.is_primary` 的 `file_name`，去重排序后 `comm -13` / `comm -23`。**推论：绝对告警条数在本仓库不可复现**（实测 985 / 987 条、246 / 248 路径；限定改动文件则是 24 / 26 条、7 / 9 路径），任何"17 条 vs 16 条"之争都无法用数字裁定，只认集合。**今后代理自报告警数一律要求它同时报口径**。
+- **存量红门禁无法复现时，用等价性证明结案，不要停在"证据不足"。** 本轮 postgres `postgres_cross_database.rs:305` 红门禁在 Tester 的新工作树上不出现（无 `.env` ⇒ live 用例静默 SKIP，**"复现不出"不等于"已修复"**，也不是矛盾）。改证：生产 diff 只有两处 `unwrap_or("localhost")→unwrap_or(DEFAULT_HOST)` / `unwrap_or(5432)→unwrap_or(DEFAULT_PORT)`，两个常量**逐字节等于**被替换的字面量，测试目录 diff **0 个文件** ⇒ 新旧编译产物行为可证等价，该红门禁不可能由本轨引入（PG15+ 对非属主角色只给 public schema USAGE 无 CREATE，42501 于 `CREATE TABLE` 处，与本轨无关）。**此证明不依赖任何实机环境，比复现和结构论证都强。**
 
 ## 收尾义务
 
