@@ -3,7 +3,7 @@
 //! * 资源申请发生在取资源**之前**；endpoint 重叠（读写对象不可排除）先拒绝、
 //!   不持有任何许可（§10.1.1 决策表「 cleanup 未确认 → 预算占用」之外的路径）。
 //! * `try_admit_many` 失败时整体回滚，一个名额都不占（BudgetLedger 已有保证）。
-//! * 身份不可证明时不开放危险自覆盖：缺 service_key / connectionId 的端点拒绝。
+//! * 身份不可证明时不开放危险自覆盖：端点给不出 `service_key` 时拒绝。
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -27,8 +27,17 @@ pub enum EndpointRole {
 
 /// 一个迁移端点：归属连接、角色、参与对象、物理服务身份。
 ///
-/// `service_key` 是「同一物理服务」的比较键——不同 profile 可能指向同一对象，
-/// 同一 profile 也可能指向不同库，单靠 connectionId 判断自覆盖会漏报/误报。
+/// 两个字段回答两个**不同**的问题，混用是危险自覆盖漏检的根源：
+///
+/// * `service_key`——「是否同一台物理服务器上的同一对象」。它必须由端点真实位置
+///   （host/port/database/…）导出，所以两个指向同一台服务器的不同连接配置会共享它。
+///   **重叠检测只认它**。
+/// * `connection_id`——持久化连接配置 id，即 AGENTS.md 的 `connectionId`。它回答的是
+///   「这些许可记到哪本账上」（§6.2 `ensure_service` 按它注册），与物理位置无关：
+///   一条保存连接可以被 `connect_dedicated` 按库覆盖成多个会话
+///   （`effective_config.database` 被改写而 `id` 不变），此时两个数据库**不是**同一
+///   个物理端点。把 `connection_id` 当重叠键会让合法的跨库搬运带着一句事实错误的
+///   拒绝信息（见 [`detect_endpoint_overlap`]）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndpointRef {
     pub connection_id: ConnectionId,
@@ -37,31 +46,59 @@ pub struct EndpointRef {
     pub role: EndpointRole,
 }
 
-/// 检测危险重叠：同 service_key 下，任一 reader 的读对象与任一 writer 的写对象
-/// 存在交集即 `EndpointOverlap`；service_key 为空（身份不可证明）且同时存在
-/// reader 与 writer 时同样拒绝（不开放危险自覆盖）。
+/// 端点的物理服务身份；空串意味着身份不可证明。
+///
+/// 归一化（trim + 小写）：调用方拼出的键不该因为大小写或空白差异而漏判。
+///
+/// **刻意只此一种键。** 曾并集过 `connection_id`，那是把「记账键」当成「位置键」：
+/// 它只能把一次 accept 变成 reject，永远不能把 reject 变成 accept——即它只会误伤
+/// 合法搬运而对真实自覆盖零增益，因为它看见的「同一连接」已被 `database` 维度拆开。
+fn identity_key(ep: &EndpointRef) -> Option<String> {
+    let service_key = ep.service_key.trim();
+    (!service_key.is_empty()).then(|| service_key.to_ascii_lowercase())
+}
+
+/// 检测危险重叠：同一物理服务下，任一 reader 的读对象与任一 writer 的写对象存在
+/// 交集即 `EndpointOverlap`。「同一物理服务」= 两端共享同一个 `service_key`
+/// （见 [`identity_key`]），因此同名对象落在**两个不同**物理端点上是允许的。
+///
+/// 任一端给不出 `service_key`（身份不可证明）且存在 writer 时同样拒绝——不开放
+/// 危险自覆盖。
 pub fn detect_endpoint_overlap(endpoints: &[EndpointRef]) -> Result<(), JobError> {
-    let mut reads: HashSet<(String, String)> = HashSet::new();
+    // (身份键, 对象, 读端点连接 id)：读端点 id 随读条目一起存下来，命中时才能
+    // 在错误里点名「哪两端」。
+    let mut reads: HashSet<(String, String, ConnectionId)> = HashSet::new();
     let mut has_writer = false;
     let mut any_unprovable = false;
     for ep in endpoints {
-        if ep.service_key.trim().is_empty() {
+        let key = identity_key(ep);
+        if key.is_none() {
             any_unprovable = true;
         }
         match ep.role {
             EndpointRole::SourceReader => {
                 for obj in &ep.objects {
-                    reads.insert((ep.service_key.clone(), obj.clone()));
+                    if let Some(key) = &key {
+                        reads.insert((key.clone(), obj.clone(), ep.connection_id.clone()));
+                    }
                 }
             }
             EndpointRole::TargetWriter => {
                 has_writer = true;
                 for obj in &ep.objects {
-                    if reads.contains(&(ep.service_key.clone(), obj.clone())) {
-                        return Err(JobError::EndpointOverlap(format!(
-                            "service `{}` object `{obj}` is both read and written",
-                            ep.service_key
-                        )));
+                    if let Some(key) = &key {
+                        let hit = reads
+                            .iter()
+                            .find(|(read_key, read_obj, _)| read_key == key && read_obj == obj)
+                            .map(|(_, _, reader)| reader);
+                        if let Some(reader) = hit {
+                            return Err(JobError::EndpointOverlap(format!(
+                                "object `{obj}` is both read and written on the same physical \
+                                 endpoint (read by connection `{}`, written by connection `{}`)",
+                                reader.as_str(),
+                                ep.connection_id.as_str()
+                            )));
+                        }
                     }
                 }
             }

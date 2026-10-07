@@ -23,7 +23,15 @@ use datazen_runtime::job::{
     SharedClock, StageOutcome, StageSpec, StageTerminal, SUPPORTED_PLAN_MAJOR,
 };
 
-use support::{conn, config, granted, org};
+use support::{config, conn, org};
+
+// 单文件 ≤800 行纪律（AGENTS.md「单文件规模与模块拆分」）：下列两组旅程各自成模块。
+// 拆分只搬运代码，断言与被测调用逐字未改。
+#[path = "job_kernel/endpoint_budget.rs"]
+mod endpoint_budget;
+
+#[path = "job_kernel/runtime_journeys.rs"]
+mod runtime_journeys;
 
 // ---------------------------------------------------------------- 共用夹具
 
@@ -79,264 +87,9 @@ fn repo_clock() -> (InMemoryJobRepository, Arc<SharedClock>) {
     (repo, clock)
 }
 
-// ------------------------------------------------------------- CM-54 幂等
-
-#[tokio::test]
-async fn cm54_same_key_returns_same_job_id_without_reexecution() {
-    let (repo, _clock) = repo_clock();
-    let c = ctx();
-    let payload = apply_payload("plan-1");
-    let def = definition("schemaDiffApply", payload.clone(), "job-1");
-
-    let first = repo
-        .accept(&c, def.clone(), &IdempotencyKey::new("key-1"))
-        .await
-        .expect("accept");
-    let second = repo
-        .accept(&c, def.clone(), &IdempotencyKey::new("key-1"))
-        .await
-        .expect("accept");
-    assert_eq!(first.view.job_id, second.view.job_id, "同键同指纹返回同 jobId");
-
-    // 不同 payload + 同键 → IdempotencyConflict
-    let other = JobDefinition {
-        job_id: JobId::new("job-2"),
-        kind: "schemaDiffApply".into(),
-        owner: owner_job(),
-        payload: serde_json::json!({"consumedPlanId": "plan-2", "planVersion": 1, "handlerVersion": 1, "checkpointVersion": 1}),
-        created_at: datazen_platform_api::id::Timestamp::new("2026-01-01T00:00:00Z"),
-    };
-    let err = repo
-        .accept(&c, other, &IdempotencyKey::new("key-1"))
-        .await
-        .expect_err("conflict");
-    assert!(matches!(err, PortError::IdempotencyConflict), "{err:?}");
-}
-
-#[tokio::test]
-async fn cm54_plan_id_is_consumed_once_by_apply_jobs() {
-    let (repo, _clock) = repo_clock();
-    let c = ctx();
-    let payload = apply_payload("plan-X");
-    repo.accept(&c, definition("dataSyncApply", payload.clone(), "job-a"), &IdempotencyKey::new("k1"))
-        .await
-        .expect("accept-1");
-    let err = repo
-        .accept(&c, definition("dataSyncApply", payload, "job-b"), &IdempotencyKey::new("k2"))
-        .await
-        .expect_err("plan consumed");
-    assert!(matches!(err, PortError::PlanAlreadyConsumed(_)), "{err:?}");
-
-    // prepare 不占用 planId：再申请同一 planId 作为 apply 必须使用新 key 且仍被唯一约束挡住
-    let prep = repo
-        .accept(&c, definition("dataSyncPrepare", prepare_payload(), "job-p"), &IdempotencyKey::new("k3"))
-        .await
-        .expect("prepare accept");
-    assert_eq!(prep.view.state, JobState::Queued);
-}
-
-#[tokio::test]
-async fn cm67_unknown_version_major_is_rejected_at_accept() {
-    let (repo, _clock) = repo_clock();
-    let c = ctx();
-    let payload = serde_json::json!({"planVersion": 2, "handlerVersion": 1, "checkpointVersion": 1});
-    let err = repo
-        .accept(&c, definition("schemaDiffPrepare", payload, "job-v"), &IdempotencyKey::new("k4"))
-        .await
-        .expect_err("version reject");
-    assert!(matches!(err, PortError::UnsupportedVersion(_)), "{err:?}");
-}
-
-// ------------------------------------------------------ claim fencing 旅程
-
-#[tokio::test]
-async fn fencing_old_claim_writes_are_rejected_after_takeover() {
-    let (repo, clock) = repo_clock();
-    let c = ctx();
-    let def = definition("schemaDiffApply", apply_payload("plan-f"), "job-f");
-    repo.accept(&c, def, &IdempotencyKey::new("k5")).await.expect("accept");
-
-    let claim1 = repo.claim(&c, JobId::new("job-f"), WorkerId::new("w1")).await.expect("claim1");
-    // 接管：先让 claim1 到期，再 claim2 generation+1
-    clock.set("2026-01-01T00:06:00Z");
-    let claim2 = repo.claim(&c, JobId::new("job-f"), WorkerId::new("w2")).await.expect("claim2");
-    assert_ne!(claim1.claim_generation, claim2.claim_generation, "接管 generation+1");
-
-    // 旧 claim1 写入被拒绝
-    let stage = datazen_platform_api::dto::job::StageRecord {
-        job_id: JobId::new("job-f"),
-        stage_id: StageId::new("s1"),
-        kind: "apply".into(),
-        claimed_by: Some(WorkerId::new("w1")),
-        execution_ids: vec![],
-        started_at: None,
-        finished_at: None,
-    };
-    let err = repo.record_stage(&c, &claim1, stage.clone()).await.expect_err("stale");
-    assert!(matches!(err, PortError::StaleClaim), "{err:?}");
-
-    // claim2 写入通过
-    let stage2 = datazen_platform_api::dto::job::StageRecord {
-        claimed_by: Some(WorkerId::new("w2")),
-        ..stage
-    };
-    repo.record_stage(&c, &claim2, stage2).await.expect("fenced write ok");
-
-    // renew 不 bump generation、只延 expiresAt；过期 claim 写入被拒绝
-    clock.set("2026-01-01T00:00:20Z");
-    let renewed = repo.renew(&claim2).await.expect("renew");
-    assert_eq!(renewed.claim_generation, claim2.claim_generation, "续约不变 generation");
-    clock.set("2026-01-01T00:20:00Z");
-    let err = repo.record_stage(&c, &renewed, datazen_platform_api::dto::job::StageRecord {
-        job_id: JobId::new("job-f"),
-        stage_id: StageId::new("s2"),
-        kind: "apply".into(),
-        claimed_by: Some(WorkerId::new("w2")),
-        execution_ids: vec![],
-        started_at: None,
-        finished_at: None,
-    }).await.expect_err("expired");
-    assert!(matches!(err, PortError::StaleClaim), "{err:?}");
-}
-
-// ------------------------------------------------------ 取消意图路径
-
-#[tokio::test]
-async fn queued_cancel_is_an_intent_only_and_notstarted_finalizes() {
-    let (repo, _clock) = repo_clock();
-    let c = ctx();
-    repo.accept(&c, definition("schemaDiffPrepare", prepare_payload(), "job-c"), &IdempotencyKey::new("k6"))
-        .await
-        .expect("accept");
-
-    let updated = repo.request_cancel(&c, &JobId::new("job-c")).expect("intent");
-    assert_eq!(updated.view.state, JobState::Queued, "排队取消只记录意图，不提前终结");
-    assert!(updated.view.cancel_requested);
-
-    let finalized = repo
-        .confirm_cancelled_not_started(&c, &JobId::new("job-c"), EffectOutcome::NotStarted)
-        .expect("finalize");
-    assert_eq!(finalized.view.state, JobState::Cancelled);
-    assert_eq!(finalized.view.effect_outcome, Some(EffectOutcome::NotStarted));
-}
-
-// ------------------------------------------------------ 预算与重叠
-
-#[test]
-fn cm31_overlap_is_rejected_before_any_permit_is_held() {
-    let endpoints = vec![
-        EndpointRef {
-            connection_id: conn(),
-            service_key: "svc-1".into(),
-            objects: vec!["users".into()],
-            role: EndpointRole::SourceReader,
-        },
-        EndpointRef {
-            connection_id: conn(),
-            service_key: "svc-1".into(),
-            objects: vec!["users".into()],
-            role: EndpointRole::TargetWriter,
-        },
-    ];
-    let err = detect_endpoint_overlap(&endpoints).expect_err("overlap");
-    assert!(matches!(err, datazen_runtime::job::JobError::EndpointOverlap(_)), "{err:?}");
-
-    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
-    let mut guard = ledger.lock().expect("lock");
-    guard.ensure_service(&conn());
-    drop(guard);
-    let permits = datazen_runtime::job::MultiEndpointPermits::reserve(
-        ledger.clone(),
-        &endpoints,
-        ResourceClass::Job,
-        &org(),
-        &PrincipalId::new("user-a"),
-        0,
-    );
-    assert!(matches!(
-        permits,
-        Err(datazen_runtime::job::JobError::EndpointOverlap(_))
-    ));
-}
-
-#[test]
-fn cm65_multi_endpoint_reserve_is_all_or_nothing() {
-    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
-    {
-        let mut guard = ledger.lock().expect("lock");
-        guard.ensure_service(&conn());
-        guard.ensure_service(&ConnectionId::new("conn-2"));
-    }
-    // EndpointRef has no service_id field; use service_key:
-    let endpoints = vec![
-        EndpointRef {
-            connection_id: conn(),
-            service_key: "svc-a".into(),
-            objects: vec!["users".into()],
-            role: EndpointRole::SourceReader,
-        },
-        EndpointRef {
-            connection_id: ConnectionId::new("conn-2"),
-            service_key: "svc-b".into(),
-            objects: vec!["orders".into()],
-            role: EndpointRole::TargetWriter,
-        },
-    ];
-    let permits = datazen_runtime::job::MultiEndpointPermits::reserve(
-        ledger.clone(),
-        &endpoints,
-        ResourceClass::Job,
-        &org(),
-        &PrincipalId::new("user-a"),
-        0,
-    )
-    .expect("reserve-all");
-    assert_eq!(permits.permits().len(), 2, "全组预留");
-    let held = ledger.lock().expect("lock").permits_of(&PrincipalId::new("user-a"));
-    assert_eq!(held, 2);
-    let _ = permits.release(true);
-}
-
-/// 反向：预算不足/服务未注册时 try_admit_many 整组回滚，一个许可都不持有。
-#[test]
-fn cm65_insufficient_budget_admits_no_permits_at_all() {
-    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
-    {
-        let mut guard = ledger.lock().expect("lock");
-        guard.ensure_service(&conn());
-        // conn-2 故意不注册：该组里任何一个端点不可准入都必须整组回滚
-    }
-    let endpoints = vec![
-        EndpointRef {
-            connection_id: conn(),
-            service_key: "svc-a".into(),
-            objects: vec!["users".into()],
-            role: EndpointRole::SourceReader,
-        },
-        EndpointRef {
-            connection_id: ConnectionId::new("conn-2"),
-            service_key: "svc-b".into(),
-            objects: vec!["orders".into()],
-            role: EndpointRole::TargetWriter,
-        },
-    ];
-    let result = datazen_runtime::job::MultiEndpointPermits::reserve(
-        ledger.clone(),
-        &endpoints,
-        ResourceClass::Job,
-        &org(),
-        &PrincipalId::new("user-a"),
-        0,
-    );
-    assert!(matches!(
-        result,
-        Err(datazen_runtime::job::JobError::BudgetDenied(_))
-    ));
-    let held = ledger.lock().expect("lock").permits_of(&PrincipalId::new("user-a"));
-    assert_eq!(held, 0, "整组回滚后不得持有任何许可");
-}
-
-// ------------------------------------------------ handler 夹具与 runtime 旅程
+// ------------------------------------------------ 共用 handler 夹具
+// 持久化白名单与恢复故障旅程同样要用 CountingHandler/Mode，
+// 所以夹具留在根模块，子模块经 `use super::*;` 取用。
 
 struct CountingHandler {
     kind: &'static str,
@@ -359,7 +112,10 @@ impl JobHandler for CountingHandler {
     fn handler_version(&self) -> u64 {
         1
     }
-    fn validate_plan(&self, plan: &FrozenPlan) -> Result<Vec<StageSpec>, datazen_runtime::job::JobError> {
+    fn validate_plan(
+        &self,
+        plan: &FrozenPlan,
+    ) -> Result<Vec<StageSpec>, datazen_runtime::job::JobError> {
         let _ = plan;
         Ok(vec![StageSpec {
             stage_id: StageId::new("s1"),
@@ -386,8 +142,20 @@ impl JobHandler for CountingHandler {
                 read: datazen_platform_api::id::Counter::new(10),
                 converted: datazen_platform_api::id::Counter::new(10),
                 attempted: datazen_platform_api::id::Counter::new(10),
-                committed: datazen_platform_api::id::Counter::new(if terminal == StageTerminal::Succeeded { 10 } else { 0 }),
-                unknown: datazen_platform_api::id::Counter::new(if terminal == StageTerminal::Unknown { 2 } else { 0 }),
+                committed: datazen_platform_api::id::Counter::new(
+                    if terminal == StageTerminal::Succeeded {
+                        10
+                    } else {
+                        0
+                    },
+                ),
+                unknown: datazen_platform_api::id::Counter::new(
+                    if terminal == StageTerminal::Unknown {
+                        2
+                    } else {
+                        0
+                    },
+                ),
             },
             commit_boundaries: if terminal == StageTerminal::Succeeded {
                 let mut boundaries = vec![datazen_platform_api::dto::job::CommitBoundary {
@@ -404,7 +172,9 @@ impl JobHandler for CountingHandler {
                     boundaries.push(datazen_platform_api::dto::job::CommitBoundary {
                         stage_id: spec.stage_id.clone(),
                         stable_target_fingerprint: "sha256:abc".into(),
-                        committed_at: datazen_platform_api::id::Timestamp::new("2026-01-01T00:00:02Z"),
+                        committed_at: datazen_platform_api::id::Timestamp::new(
+                            "2026-01-01T00:00:02Z",
+                        ),
                         operation_id: None,
                         batch_id: Some("batch-2".into()),
                         payload_digest: Some("sha256:payload2".into()),
@@ -427,8 +197,15 @@ impl JobHandler for CountingHandler {
             error_code: None,
         })
     }
-    fn verify_recovery(&self, checkpoint: &datazen_platform_api::dto::job::Checkpoint) -> RecoveryVerdict {
-        if checkpoint.verification_evidence.iter().any(|e| e.contains("unknown")) {
+    fn verify_recovery(
+        &self,
+        checkpoint: &datazen_platform_api::dto::job::Checkpoint,
+    ) -> RecoveryVerdict {
+        if checkpoint
+            .verification_evidence
+            .iter()
+            .any(|e| e.contains("unknown"))
+        {
             RecoveryVerdict::RequireManualReview {
                 reason: "unknownCommitBoundary".into(),
             }
@@ -438,172 +215,204 @@ impl JobHandler for CountingHandler {
     }
 }
 
-fn runtime_with(
-    repo: Arc<InMemoryJobRepository>,
-    handler: Arc<dyn JobHandler>,
-    ledger: Arc<Mutex<BudgetLedger>>,
-    clock: Arc<SharedClock>,
-) -> JobRuntime {
-    let mut handlers = HandlerRegistry::new();
-    handlers.register(handler);
-    JobRuntime::new(repo, Arc::new(handlers), ledger, clock, 0)
+// ------------------------------------------------------------- CM-54 幂等
+
+#[tokio::test]
+async fn cm54_same_key_returns_same_job_id_without_reexecution() {
+    let (repo, _clock) = repo_clock();
+    let c = ctx();
+    let payload = apply_payload("plan-1");
+    let def = definition("schemaDiffApply", payload.clone(), "job-1");
+
+    let first = repo
+        .accept(&c, def.clone(), &IdempotencyKey::new("key-1"))
+        .await
+        .expect("accept");
+    let second = repo
+        .accept(&c, def.clone(), &IdempotencyKey::new("key-1"))
+        .await
+        .expect("accept");
+    assert_eq!(
+        first.view.job_id, second.view.job_id,
+        "同键同指纹返回同 jobId"
+    );
+
+    // 不同 payload + 同键 → IdempotencyConflict
+    let other = JobDefinition {
+        job_id: JobId::new("job-2"),
+        kind: "schemaDiffApply".into(),
+        owner: owner_job(),
+        payload: serde_json::json!({"consumedPlanId": "plan-2", "planVersion": 1, "handlerVersion": 1, "checkpointVersion": 1}),
+        created_at: datazen_platform_api::id::Timestamp::new("2026-01-01T00:00:00Z"),
+    };
+    let err = repo
+        .accept(&c, other, &IdempotencyKey::new("key-1"))
+        .await
+        .expect_err("conflict");
+    assert!(matches!(err, PortError::IdempotencyConflict), "{err:?}");
 }
 
 #[tokio::test]
-async fn runtime_success_path_records_boundaries_checkpoints_and_progress() {
-    let (repo, clock) = repo_clock();
+async fn cm54_plan_id_is_consumed_once_by_apply_jobs() {
+    let (repo, _clock) = repo_clock();
     let c = ctx();
-    repo.accept(&c, definition("schemaDiffApply", apply_payload("plan-r1"), "job-r1"), &IdempotencyKey::new("r1"))
-        .await
-        .expect("accept");
-    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
-    ledger.lock().expect("lock").ensure_service(&conn());
-    let calls = Arc::new(AtomicUsize::new(0));
-    let repo = Arc::new(repo);
-    let runtime = runtime_with(repo, Arc::new(CountingHandler { kind: "schemaDiffApply", calls: calls.clone(), mode: Mode::Success }), ledger, clock);
-    let result = runtime
-        .run(
+    let payload = apply_payload("plan-X");
+    repo.accept(
+        &c,
+        definition("dataSyncApply", payload.clone(), "job-a"),
+        &IdempotencyKey::new("k1"),
+    )
+    .await
+    .expect("accept-1");
+    let err = repo
+        .accept(
             &c,
-            &JobId::new("job-r1"),
-            &WorkerId::new("w1"),
-            &[EndpointRef { connection_id: conn(), service_key: "svc".into(), objects: vec!["users".into()], role: EndpointRole::SourceReader }],
+            definition("dataSyncApply", payload, "job-b"),
+            &IdempotencyKey::new("k2"),
         )
         .await
-        .expect("run");
-    assert_eq!(result.state, JobState::Succeeded);
-    assert_eq!(result.effect_outcome, EffectOutcome::Completed);
-    assert_eq!(result.progress.committed.get(), 10);
-    assert_eq!(calls.load(Ordering::SeqCst), 1, "handler 只执行一次");
-}
+        .expect_err("plan consumed");
+    assert!(matches!(err, PortError::PlanAlreadyConsumed(_)), "{err:?}");
 
-/// 失败型 handler：run_stage 直接 Err。
-struct ErrHandler;
-
-#[async_trait::async_trait]
-impl JobHandler for ErrHandler {
-    fn kind(&self) -> &str {
-        "schemaDiffApply"
-    }
-    fn handler_version(&self) -> u64 {
-        1
-    }
-    fn validate_plan(&self, _plan: &FrozenPlan) -> Result<Vec<StageSpec>, datazen_runtime::job::JobError> {
-        Ok(vec![StageSpec {
-            stage_id: StageId::new("s1"),
-            kind: "apply".into(),
-            depends_on: vec![],
-        }])
-    }
-    async fn run_stage(
-        &self,
-        _spec: &StageSpec,
-        _cancel: &CancelToken,
-    ) -> Result<StageOutcome, datazen_runtime::job::JobError> {
-        Err(datazen_runtime::job::JobError::BudgetDenied("boom".into()))
-    }
-    fn verify_recovery(&self, _checkpoint: &datazen_platform_api::dto::job::Checkpoint) -> RecoveryVerdict {
-        RecoveryVerdict::ResumeAfterVerify { resume_through: 0 }
-    }
-}
-
-/// D1 反向：run_stage 直接 Err → run 透传 Err，且 BudgetLedger 许可数为 0。
-#[tokio::test]
-async fn run_stage_error_propagates_and_releases_all_permits() {
-    let (repo, clock) = repo_clock();
-    let c = ctx();
-    repo.accept(&c, definition("schemaDiffApply", apply_payload("plan-e1"), "job-e1"), &IdempotencyKey::new("e1"))
-        .await
-        .expect("accept");
-    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
-    ledger.lock().expect("lock").ensure_service(&conn());
-    let repo = Arc::new(repo);
-    let runtime = runtime_with(repo, Arc::new(ErrHandler), ledger.clone(), clock);
-    let err = runtime
-        .run(
+    // prepare 不占用 planId：再申请同一 planId 作为 apply 必须使用新 key 且仍被唯一约束挡住
+    let prep = repo
+        .accept(
             &c,
-            &JobId::new("job-e1"),
-            &WorkerId::new("w1"),
-            &[EndpointRef { connection_id: conn(), service_key: "svc".into(), objects: vec!["users".into()], role: EndpointRole::SourceReader }],
+            definition("dataSyncPrepare", prepare_payload(), "job-p"),
+            &IdempotencyKey::new("k3"),
         )
         .await
-        .expect_err("must propagate");
-    assert!(matches!(err, PortError::BackendUnavailable(_)), "{err:?}");
-    assert_eq!(ledger.lock().expect("lock").permits().count(), 0, "失败路径不得残留许可");
+        .expect("prepare accept");
+    assert_eq!(prep.view.state, JobState::Queued);
 }
 
-/// D1/D2：成功路径许可应已核销（count==0）；单 stage 两条边界 → committed_boundaries 读出 2 条。
 #[tokio::test]
-async fn success_path_releases_permits_and_persists_both_boundaries() {
-    let (repo, clock) = repo_clock();
+async fn cm67_unknown_version_major_is_rejected_at_accept() {
+    let (repo, _clock) = repo_clock();
     let c = ctx();
-    repo.accept(&c, definition("schemaDiffApply", apply_payload("plan-e2"), "job-e2"), &IdempotencyKey::new("e2"))
-        .await
-        .expect("accept");
-    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
-    ledger.lock().expect("lock").ensure_service(&conn());
-    let calls = Arc::new(AtomicUsize::new(0));
-    let repo = Arc::new(repo);
-    let repo_for_read = repo.clone();
-    let runtime = runtime_with(repo, Arc::new(CountingHandler { kind: "schemaDiffApply", calls, mode: Mode::TwoBoundaries }), ledger.clone(), clock);
-    let result = runtime
-        .run(
+    let payload =
+        serde_json::json!({"planVersion": 2, "handlerVersion": 1, "checkpointVersion": 1});
+    let err = repo
+        .accept(
             &c,
-            &JobId::new("job-e2"),
-            &WorkerId::new("w1"),
-            &[EndpointRef { connection_id: conn(), service_key: "svc".into(), objects: vec!["users".into()], role: EndpointRole::SourceReader }],
+            definition("schemaDiffPrepare", payload, "job-v"),
+            &IdempotencyKey::new("k4"),
         )
         .await
-        .expect("run");
-    assert_eq!(result.state, JobState::Succeeded);
-    assert_eq!(ledger.lock().expect("lock").permits().count(), 0, "成功路径许可已核销");
-    let persisted = repo_for_read.committed_boundaries(&JobId::new("job-e2"));
-    assert_eq!(persisted.len(), 2, "单 stage 两条边界必须全部落库: {persisted:?}");
-    assert_eq!(persisted[0].batch_id.as_deref(), Some("batch-1"));
-    assert_eq!(persisted[1].batch_id.as_deref(), Some("batch-2"));
+        .expect_err("version reject");
+    assert!(matches!(err, PortError::UnsupportedVersion(_)), "{err:?}");
 }
 
-#[tokio::test]
-async fn runtime_unknown_outcome_preserves_unknown_and_pending_reason() {
-    let (repo, clock) = repo_clock();
-    let c = ctx();
-    repo.accept(&c, definition("schemaDiffApply", apply_payload("plan-r2"), "job-r2"), &IdempotencyKey::new("r2"))
-        .await
-        .expect("accept");
-    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
-    ledger.lock().expect("lock").ensure_service(&conn());
-    let calls = Arc::new(AtomicUsize::new(0));
-    let repo = Arc::new(repo);
-    let runtime = runtime_with(repo, Arc::new(CountingHandler { kind: "schemaDiffApply", calls: calls.clone(), mode: Mode::Unknown }), ledger, clock);
-    let result = runtime
-        .run(&c, &JobId::new("job-r2"), &WorkerId::new("w1"), &[EndpointRef { connection_id: conn(), service_key: "svc".into(), objects: vec!["users".into()], role: EndpointRole::SourceReader }])
-        .await
-        .expect("run");
-    assert_eq!(result.state, JobState::Failed);
-    assert_eq!(result.effect_outcome, EffectOutcome::Unknown);
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
-}
+// ------------------------------------------------------ claim fencing 旅程
 
 #[tokio::test]
-async fn queued_cancel_before_run_finalizes_not_started_without_budget_or_claim() {
+async fn fencing_old_claim_writes_are_rejected_after_takeover() {
     let (repo, clock) = repo_clock();
     let c = ctx();
-    repo.accept(&c, definition("schemaDiffApply", apply_payload("plan-r3"), "job-r3"), &IdempotencyKey::new("r3"))
+    let def = definition("schemaDiffApply", apply_payload("plan-f"), "job-f");
+    repo.accept(&c, def, &IdempotencyKey::new("k5"))
         .await
         .expect("accept");
-    repo.request_cancel(&c, &JobId::new("job-r3")).expect("intent");
-    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
-    ledger.lock().expect("lock").ensure_service(&conn());
-    let calls = Arc::new(AtomicUsize::new(0));
-    let repo = Arc::new(repo);
-    let runtime = runtime_with(repo, Arc::new(CountingHandler { kind: "schemaDiffApply", calls: calls.clone(), mode: Mode::Success }), ledger.clone(), clock);
-    let result = runtime
-        .run(&c, &JobId::new("job-r3"), &WorkerId::new("w1"), &[EndpointRef { connection_id: conn(), service_key: "svc".into(), objects: vec!["users".into()], role: EndpointRole::SourceReader }])
+
+    let claim1 = repo
+        .claim(&c, JobId::new("job-f"), WorkerId::new("w1"))
         .await
-        .expect("run");
-    assert_eq!(result.state, JobState::Cancelled);
-    assert_eq!(result.effect_outcome, EffectOutcome::NotStarted);
-    assert_eq!(calls.load(Ordering::SeqCst), 0, "取消后不派发");
-    assert_eq!(ledger.lock().expect("lock").permits().count(), 0, "不持有许可");
+        .expect("claim1");
+    // 接管：先让 claim1 到期，再 claim2 generation+1
+    clock.set("2026-01-01T00:06:00Z");
+    let claim2 = repo
+        .claim(&c, JobId::new("job-f"), WorkerId::new("w2"))
+        .await
+        .expect("claim2");
+    assert_ne!(
+        claim1.claim_generation, claim2.claim_generation,
+        "接管 generation+1"
+    );
+
+    // 旧 claim1 写入被拒绝
+    let stage = datazen_platform_api::dto::job::StageRecord {
+        job_id: JobId::new("job-f"),
+        stage_id: StageId::new("s1"),
+        kind: "apply".into(),
+        claimed_by: Some(WorkerId::new("w1")),
+        execution_ids: vec![],
+        started_at: None,
+        finished_at: None,
+    };
+    let err = repo
+        .record_stage(&c, &claim1, stage.clone())
+        .await
+        .expect_err("stale");
+    assert!(matches!(err, PortError::StaleClaim), "{err:?}");
+
+    // claim2 写入通过
+    let stage2 = datazen_platform_api::dto::job::StageRecord {
+        claimed_by: Some(WorkerId::new("w2")),
+        ..stage
+    };
+    repo.record_stage(&c, &claim2, stage2)
+        .await
+        .expect("fenced write ok");
+
+    // renew 不 bump generation、只延 expiresAt；过期 claim 写入被拒绝
+    clock.set("2026-01-01T00:00:20Z");
+    let renewed = repo.renew(&claim2).await.expect("renew");
+    assert_eq!(
+        renewed.claim_generation, claim2.claim_generation,
+        "续约不变 generation"
+    );
+    clock.set("2026-01-01T00:20:00Z");
+    let err = repo
+        .record_stage(
+            &c,
+            &renewed,
+            datazen_platform_api::dto::job::StageRecord {
+                job_id: JobId::new("job-f"),
+                stage_id: StageId::new("s2"),
+                kind: "apply".into(),
+                claimed_by: Some(WorkerId::new("w2")),
+                execution_ids: vec![],
+                started_at: None,
+                finished_at: None,
+            },
+        )
+        .await
+        .expect_err("expired");
+    assert!(matches!(err, PortError::StaleClaim), "{err:?}");
+}
+
+// ------------------------------------------------------ 取消意图路径
+
+#[tokio::test]
+async fn queued_cancel_is_an_intent_only_and_notstarted_finalizes() {
+    let (repo, _clock) = repo_clock();
+    let c = ctx();
+    repo.accept(
+        &c,
+        definition("schemaDiffPrepare", prepare_payload(), "job-c"),
+        &IdempotencyKey::new("k6"),
+    )
+    .await
+    .expect("accept");
+
+    let updated = repo
+        .request_cancel(&c, &JobId::new("job-c"))
+        .expect("intent");
+    assert_eq!(
+        updated.view.state,
+        JobState::Queued,
+        "排队取消只记录意图，不提前终结"
+    );
+    assert!(updated.view.cancel_requested);
+
+    let finalized = repo
+        .confirm_cancelled_not_started(&c, &JobId::new("job-c"), EffectOutcome::NotStarted)
+        .expect("finalize");
+    assert_eq!(finalized.view.state, JobState::Cancelled);
+    assert_eq!(
+        finalized.view.effect_outcome,
+        Some(EffectOutcome::NotStarted)
+    );
 }
 
 // ------------------------------------------------ 持久化白名单
@@ -631,8 +440,17 @@ fn persisted_shapes_never_carry_runtime_handles() {
     };
     let value = serde_json::to_value(&job).expect("serialize");
     let serialized = value.to_string();
-    for forbidden in ["dbSessionId", "runtimeBinding", "attachmentToken", "resourceBindingId", "lease"] {
-        assert!(!serialized.contains(forbidden), "持久化路径不得包含 {forbidden}");
+    for forbidden in [
+        "dbSessionId",
+        "runtimeBinding",
+        "attachmentToken",
+        "resourceBindingId",
+        "lease",
+    ] {
+        assert!(
+            !serialized.contains(forbidden),
+            "持久化路径不得包含 {forbidden}"
+        );
     }
 }
 
@@ -643,10 +461,17 @@ fn persisted_shapes_never_carry_runtime_handles() {
 async fn recovery_commit_succeeded_checkpoint_missing_requires_manual_review() {
     let (repo, _clock) = repo_clock();
     let c = ctx();
-    repo.accept(&c, definition("dataSyncApply", apply_payload("plan-a"), "job-a"), &IdempotencyKey::new("ja"))
+    repo.accept(
+        &c,
+        definition("dataSyncApply", apply_payload("plan-a"), "job-a"),
+        &IdempotencyKey::new("ja"),
+    )
+    .await
+    .expect("accept");
+    let claim = repo
+        .claim(&c, JobId::new("job-a"), WorkerId::new("w1"))
         .await
-        .expect("accept");
-    let claim = repo.claim(&c, JobId::new("job-a"), WorkerId::new("w1")).await.expect("claim");
+        .expect("claim");
     let boundary = datazen_platform_api::dto::job::CommitBoundary {
         stage_id: StageId::new("s1"),
         stable_target_fingerprint: "sha256:abc".into(),
@@ -657,25 +482,49 @@ async fn recovery_commit_succeeded_checkpoint_missing_requires_manual_review() {
         evidence: vec!["target-batch-record".into()],
         verified_at: None,
     };
-    repo.record_commit_boundary(&c, &claim, boundary).await.expect("boundary");
+    repo.record_commit_boundary(&c, &claim, boundary)
+        .await
+        .expect("boundary");
     // 崩溃窗口：没有 checkpoint 落盘
-    assert!(repo.latest_checkpoint(&c, &JobId::new("job-a")).is_none(), "checkpoint 未写入");
-    let recoverable = repo.list_recoverable(&c, Default::default()).await.expect("recoverable");
-    assert!(recoverable.iter().any(|j| j.view.job_id == JobId::new("job-a")), "可恢复候选");
+    assert!(
+        repo.latest_checkpoint(&c, &JobId::new("job-a")).is_none(),
+        "checkpoint 未写入"
+    );
+    let recoverable = repo
+        .list_recoverable(&c, Default::default())
+        .await
+        .expect("recoverable");
+    assert!(
+        recoverable
+            .iter()
+            .any(|j| j.view.job_id == JobId::new("job-a")),
+        "可恢复候选"
+    );
     // 落库边界可见（D2）
-    assert_eq!(repo.committed_boundaries(&JobId::new("job-a")).len(), 1, "边界必须落库");
+    assert_eq!(
+        repo.committed_boundaries(&JobId::new("job-a")).len(),
+        1,
+        "边界必须落库"
+    );
     // 人工审查：标记待核验，并声明 handler 未被二次派发
     repo.mark_pending_verification(&c, &JobId::new("job-a"), "commitSucceededCheckpointMissing")
         .expect("mark");
     let job = repo.get(&c, JobId::new("job-a")).await.expect("get");
-    assert!(job.view.pending_verification_reason.is_some(), "必须记录待核验原因");
+    assert!(
+        job.view.pending_verification_reason.is_some(),
+        "必须记录待核验原因"
+    );
     let calls = Arc::new(AtomicUsize::new(0));
     let _handler = CountingHandler {
         kind: "dataSyncApply",
         calls: calls.clone(),
         mode: Mode::Success,
     };
-    assert_eq!(calls.load(Ordering::SeqCst), 0, "recoverable 旅程不得静默重跑副作用阶段");
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "recoverable 旅程不得静默重跑副作用阶段"
+    );
 }
 
 /// 旅程 B：checkpoint 已写但终态未写 —— 复核后补终态或继续，不重放已确认范围。
@@ -683,10 +532,17 @@ async fn recovery_commit_succeeded_checkpoint_missing_requires_manual_review() {
 async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun() {
     let (repo, _clock) = repo_clock();
     let c = ctx();
-    repo.accept(&c, definition("dataSyncApply", apply_payload("plan-b"), "job-b"), &IdempotencyKey::new("jb"))
+    repo.accept(
+        &c,
+        definition("dataSyncApply", apply_payload("plan-b"), "job-b"),
+        &IdempotencyKey::new("jb"),
+    )
+    .await
+    .expect("accept");
+    let claim = repo
+        .claim(&c, JobId::new("job-b"), WorkerId::new("w1"))
         .await
-        .expect("accept");
-    let claim = repo.claim(&c, JobId::new("job-b"), WorkerId::new("w1")).await.expect("claim");
+        .expect("claim");
     let boundary = datazen_platform_api::dto::job::CommitBoundary {
         stage_id: StageId::new("s1"),
         stable_target_fingerprint: "sha256:abc".into(),
@@ -697,7 +553,9 @@ async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun()
         evidence: vec!["target-batch-record".into()],
         verified_at: None,
     };
-    repo.record_commit_boundary(&c, &claim, boundary.clone()).await.expect("boundary");
+    repo.record_commit_boundary(&c, &claim, boundary.clone())
+        .await
+        .expect("boundary");
     let job = repo.get(&c, JobId::new("job-b")).await.expect("get");
     let cp = datazen_platform_api::dto::job::Checkpoint {
         job_id: JobId::new("job-b"),
@@ -707,11 +565,20 @@ async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun()
         verification_evidence: vec!["target-batch-record".into()],
         recovery_policy: "resumeAfterVerify".into(),
     };
-    repo.save_checkpoint(&c, &claim, cp).await.expect("checkpoint");
+    repo.save_checkpoint(&c, &claim, cp)
+        .await
+        .expect("checkpoint");
     // 终态未写：list_recoverable 仍包含；verify_recovery 裁决 ResumeAfterVerify
-    let recoverable = repo.list_recoverable(&c, Default::default()).await.expect("recoverable");
-    assert!(recoverable.iter().any(|j| j.view.job_id == JobId::new("job-b")));
-    let latest = repo.latest_checkpoint(&c, &JobId::new("job-b")).expect("cp");
+    let recoverable = repo
+        .list_recoverable(&c, Default::default())
+        .await
+        .expect("recoverable");
+    assert!(recoverable
+        .iter()
+        .any(|j| j.view.job_id == JobId::new("job-b")));
+    let latest = repo
+        .latest_checkpoint(&c, &JobId::new("job-b"))
+        .expect("cp");
     assert_eq!(latest.committed.len(), 1);
     // 恢复决策断言：checkpoint 带边界证据 → ResumeAfterVerify，不自动重跑已确认范围
     let calls = Arc::new(AtomicUsize::new(0));
@@ -725,7 +592,11 @@ async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun()
         matches!(verdict, RecoveryVerdict::ResumeAfterVerify { .. }),
         "{verdict:?}"
     );
-    assert_eq!(calls.load(Ordering::SeqCst), 0, "resumeAfterVerify 仍不允许自动重跑副作用阶段");
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "resumeAfterVerify 仍不允许自动重跑副作用阶段"
+    );
     // 重复写相同 checkpoint 版本 → 冲突
     let cp2 = datazen_platform_api::dto::job::Checkpoint {
         job_id: JobId::new("job-b"),
@@ -735,6 +606,18 @@ async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun()
         verification_evidence: vec![],
         recovery_policy: "resumeAfterVerify".into(),
     };
-    let err = repo.save_checkpoint(&c, &claim, cp2).await.expect_err("dup");
-    assert!(matches!(err, PortError::CasConflict { entity: "job_checkpoint", .. }), "{err:?}");
+    let err = repo
+        .save_checkpoint(&c, &claim, cp2)
+        .await
+        .expect_err("dup");
+    assert!(
+        matches!(
+            err,
+            PortError::CasConflict {
+                entity: "job_checkpoint",
+                ..
+            }
+        ),
+        "{err:?}"
+    );
 }

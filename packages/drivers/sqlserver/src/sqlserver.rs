@@ -22,6 +22,14 @@ struct ActiveTransaction {
     restore_isolation: Option<&'static str>,
 }
 
+/// The port SQL Server dials when the config names none. `connect_client`
+/// substitutes it explicitly, and `build_config` leaves it to tiberius, whose
+/// own unset-port default is the same value; one constant feeds both plus
+/// `DatabaseDriver::default_port`, so the host can never compare endpoints
+/// against a port the driver does not dial. SQL Server has no implicit *host* —
+/// `build_config` rejects a missing one — so `default_host` stays `None`.
+const DEFAULT_PORT: u16 = 1433;
+
 impl SqlServerDriver {
     pub fn new() -> Self {
         Self {
@@ -321,14 +329,20 @@ impl SqlServerDriver {
         Ok(cfg)
     }
 
-    async fn connect_client(config: &ConnectionConfig) -> Result<SqlClient, DriverError> {
-        let cfg = Self::build_config(config)?;
+    /// The exact socket [`Self::connect_client`] opens. Split out so the
+    /// host-facing `default_port()` declaration has something assertable to be
+    /// compared against — a constant nothing dials would drift silently.
+    fn dial_addr(config: &ConnectionConfig) -> Result<String, DriverError> {
         let host = config
             .host
             .clone()
             .ok_or_else(|| DriverError::InvalidConfig("host is required".into()))?;
-        let port = config.port.unwrap_or(1433);
-        let addr = format!("{host}:{port}");
+        Ok(format!("{host}:{}", config.port.unwrap_or(DEFAULT_PORT)))
+    }
+
+    async fn connect_client(config: &ConnectionConfig) -> Result<SqlClient, DriverError> {
+        let cfg = Self::build_config(config)?;
+        let addr = Self::dial_addr(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);
         let tcp = tokio::time::timeout(timeout, TcpStream::connect(&addr))
             .await
@@ -984,6 +998,10 @@ fn parse_schema_scope_identity(result: &QueryResult) -> Option<String> {
 
 #[async_trait]
 impl DatabaseDriver for SqlServerDriver {
+    fn default_port(&self) -> Option<u16> {
+        Some(DEFAULT_PORT)
+    }
+
     fn migration_renderer(
         &self,
     ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
@@ -1865,6 +1883,65 @@ impl DatabaseDriver for SqlServerDriver {
 mod tests {
     use super::*;
     use tiberius::EncryptionLevel;
+
+    fn config(port: Option<u16>) -> ConnectionConfig {
+        serde_json::from_value(serde_json::json!({
+            "id": "cfg-1",
+            "name": "sqlserver",
+            "databaseType": "sqlserver",
+            "host": "db-a.example.com",
+            "username": "sa",
+            "database": "app",
+        }))
+        .map(|mut c: ConnectionConfig| {
+            c.port = port;
+            c
+        })
+        .expect("a minimal config deserializes")
+    }
+
+    /// 反漂移闸：`default_port()` 是宿主做端点物理身份摘要时唯一的「默认端口」
+    /// 来源。SQL Server 没有隐式 host（`build_config` 直接报 `host is required`），
+    /// 所以这条闸只需要端口；它一旦与 `dial_addr` 实际拨号的端口分家，省略
+    /// port 的连接与显式写全 1433 的连接就会算出两个不同的 service_key，
+    /// 自覆盖在 admission 静默漏判。这里不测常量本身，只测「声明 == 实拨」。
+    #[test]
+    fn the_declared_default_port_is_exactly_what_connect_dials() {
+        let driver = SqlServerDriver::new();
+        let declared = driver
+            .default_port()
+            .expect("SQL Server has an implicit port");
+        assert_eq!(declared, DEFAULT_PORT);
+        assert_eq!(
+            driver.default_host(),
+            None,
+            "SQL Server requires an explicit host, so there is no implicit one"
+        );
+
+        assert_eq!(
+            SqlServerDriver::dial_addr(&config(None)).expect("host present"),
+            format!("db-a.example.com:{declared}"),
+            "default_port() must be the port connect actually dials"
+        );
+        assert_eq!(
+            SqlServerDriver::dial_addr(&config(Some(1440))).expect("host present"),
+            "db-a.example.com:1440",
+            "an explicit port must win over the declared default"
+        );
+        let mut hostless = config(None);
+        hostless.host = None;
+        assert!(SqlServerDriver::dial_addr(&hostless).is_err());
+
+        // 协议层（tiberius）自己的默认端口也要与声明一致，否则 TCP 拨号与
+        // 登录包会指向两个不同的端口。
+        assert_eq!(
+            SqlServerDriver::build_config(&config(None))
+                .expect("build_config")
+                .get_addr(),
+            format!("db-a.example.com:{declared}"),
+            "the login packet's own default port must agree with the declared one"
+        );
+    }
 
     #[test]
     fn transaction_count_accepts_native_integer_values() {

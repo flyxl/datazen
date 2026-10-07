@@ -8,9 +8,11 @@
 use std::collections::HashMap;
 
 use datazen_platform_api::dto::job::JobState;
+use datazen_platform_api::id::ConnectionId;
 use datazen_runtime::job::{project_frozen_plan, EndpointRole};
 
 use super::admission::{admit_apply_plan, ApplyPlanRequest, PlanAdmission, PlanAvailability};
+use super::endpoint_identity::EndpointIdentity;
 use super::runtime::{endpoint_refs, APPLY_KIND, PREPARE_KIND};
 use super::scope::{
     enforce_same_backend_scope, is_local_session_reference, TransferBackendScope,
@@ -30,6 +32,15 @@ use crate::data_transfer::{
     TableMapping, TransferJob, TransferMode, TransferPreview, TransferRunRequest, WriteMode,
 };
 use crate::testing::app_state::TestAppState;
+
+/// A stand-in endpoint identity, so wiring facts can be asserted without a live
+/// connection. Real identities are produced by `super::endpoint_identity::identify`.
+fn identity(connection_id: &str, service_key: &str) -> EndpointIdentity {
+    EndpointIdentity {
+        connection_id: ConnectionId::new(connection_id),
+        service_key: service_key.to_string(),
+    }
+}
 
 fn job(source_id: &str, target_id: &str) -> TransferJob {
     TransferJob {
@@ -395,21 +406,25 @@ fn a_plan_id_serves_at_most_one_apply_job() {
 // ------------------------------------------------------------- Job wiring facts
 
 #[test]
-fn both_endpoints_share_one_service_key_and_sql_file_has_no_writer() {
+fn endpoints_carry_their_own_identity_and_sql_file_has_no_writer() {
+    let source = identity("conn-source", "data-transfer:aaaa");
+    let target = identity("conn-target", "data-transfer:bbbb");
     let refs = endpoint_refs(
         vec!["users".to_string()],
-        vec!["users_copy".to_string()],
-        false,
+        vec!["users".to_string()],
+        &source,
+        Some(&target),
     );
     assert_eq!(refs.len(), 2);
     assert_eq!(refs[0].role, EndpointRole::SourceReader);
     assert_eq!(refs[1].role, EndpointRole::TargetWriter);
-    assert_eq!(
+    assert_ne!(
         refs[0].service_key, refs[1].service_key,
-        "one service key makes a self-overlap a hard refusal"
+        "two physical endpoints are two services, so a same-named table is not a self-overlap"
     );
+    assert_ne!(refs[0].connection_id, refs[1].connection_id);
 
-    let file_only = endpoint_refs(vec!["users".to_string()], Vec::new(), true);
+    let file_only = endpoint_refs(vec!["users".to_string()], Vec::new(), &source, None);
     assert_eq!(file_only.len(), 1, "a SQL file run has no target endpoint");
     assert_eq!(file_only[0].role, EndpointRole::SourceReader);
     assert_eq!(file_only[0].objects, vec!["users".to_string()]);
@@ -598,6 +613,69 @@ async fn a_sql_file_job_from_a_foreign_backend_is_still_refused() {
     );
 }
 
+/// D1, end to end. A saved connection is a *connection*, not a *database*: two
+/// dedicated sessions on the SAME saved connection, pointing at DIFFERENT
+/// databases, is the ordinary "copy staging into prod" job. Reading and writing
+/// the same object name there is not a self-overlap, because the two objects
+/// live on different physical databases.
+///
+/// Before the fix both endpoints booked their permits under the saved
+/// connection id, so this job was refused with a false "same physical
+/// endpoint" error — the UI could not dispatch the job at all.
+#[tokio::test]
+async fn one_saved_connection_two_databases_is_not_a_self_overlap() {
+    let test = TestAppState::with_options(mock_options()).await;
+    test.save_connection("pg-local").await;
+    let source = test
+        .state
+        .connection_manager
+        .connect_dedicated("pg-local", Some("staging"))
+        .await
+        .expect("a dedicated session on staging");
+    let target = test
+        .state
+        .connection_manager
+        .connect_dedicated("pg-local", Some("prod"))
+        .await
+        .expect("a dedicated session on prod");
+    assert_ne!(
+        source, target,
+        "each dedicated session must get its own dbSessionId, or this job is not the scenario"
+    );
+    for session in [&source, &target] {
+        assert_eq!(
+            test.state
+                .connection_manager
+                .owner_connection_id(session)
+                .await
+                .as_deref(),
+            Some("pg-local"),
+            "both endpoints must belong to the ONE saved connection, or D1 is not reproduced"
+        );
+    }
+
+    let mut job = job(&source, &target);
+    job.source.database = "staging".to_string();
+    job.target
+        .as_mut()
+        .expect("a direct pair has a target")
+        .database = "prod".to_string();
+    job.tables = vec![TableMapping::auto("users")];
+
+    let prepared = prepare_data_transfer_job_impl(&test.state, prepare_request(job))
+        .await
+        .expect("a cross-database copy on one saved connection must not be refused");
+    assert!(
+        prepared.can_execute,
+        "the job must be dispatchable: {:?}",
+        prepared.block_reason
+    );
+    assert!(
+        !prepared.plan_id.is_empty(),
+        "the review must publish a planId"
+    );
+}
+
 /// §2.1 / §9: the apply Job claims the plan before it writes, so the legacy
 /// `execute_data_transfer` — which claims the very same record — is refused for
 /// the same planId even after the Job ended in a non-success state.
@@ -672,4 +750,5 @@ async fn two_concurrent_apply_jobs_share_exactly_one_plan_claim() {
     );
 }
 
+mod endpoint_identity;
 mod job_lifecycle;

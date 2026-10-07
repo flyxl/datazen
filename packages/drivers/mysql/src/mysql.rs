@@ -726,6 +726,14 @@ impl MysqlDriver {
 
 #[async_trait]
 impl DatabaseDriver for MysqlDriver {
+    fn default_host(&self) -> Option<&'static str> {
+        Some(crate::mysql::connection::DEFAULT_HOST)
+    }
+
+    fn default_port(&self) -> Option<u16> {
+        Some(crate::mysql::connection::DEFAULT_PORT)
+    }
+
     fn has_multi_database(&self) -> bool {
         true
     }
