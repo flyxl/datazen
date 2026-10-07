@@ -188,7 +188,7 @@ pub async fn open_live_conn(plan: &ConnectionPlan) -> Result<RedisLiveConn, Driv
 mod tests {
     use super::*;
     use crate::driver::RedisDriver;
-    use datazen_driver_api::{DatabaseDriver, SslMode};
+    use datazen_driver_api::DatabaseDriver;
 
     fn config(host: Option<&str>, port: Option<u16>) -> ConnectionConfig {
         ConnectionConfig {
