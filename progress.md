@@ -3,6 +3,25 @@
 > 分支 `feature/p5-endpoint-overlap`，基线 `codex/p5-integration @ 4b782750ddd1c51f6f75f8275f63dccf4902e8b0`。
 > 本文件是交付前临时台账，**验收合并时必须删除**。
 
+## 交付状态（截至 `8d1c65b8f6f72978dad5969a8b9fa4097de0af6b`）
+
+| 项 | 状态 | 证据所在 |
+| --- | --- | --- |
+| D1 / D2 两处阻塞缺陷 | 已修，两处不可分割 | 「修复」一节 |
+| A–E 非回归矩阵（B / C 各有独立用例） | 全绿 | 「A–E 非回归矩阵」一节 |
+| 变异验证 7 条（含控制变异 M1） | 全部 KILLED | 「变异验证」一节 |
+| 变异结论对当前 HEAD 的有效性 | 前提已证明：4 文件、生产代码 0 改动 | 「变异结论的有效性前提」一节 |
+| 门禁（拆分后在 `8d1c65b8f` 重跑） | 12 项 EXIT 逐字记录，首尾取证逐字相等 | 「最终门禁」一节 |
+| 告警增减 | **不声称**，只交集合；两侧清单逐字节相同 | 「告警：只比集合」一节 |
+| 驱动集 `--drivers=all` | 17 个 crate，断言式枚举 | 「门禁」一节 |
+| `job_kernel.rs` 超 800 行 | **已拆**，623 / 134 / 289 | 「job_kernel.rs 拆分」一节 |
+| `traits.rs` / `sqlserver.rs` 超 800 行 | **未拆，技术债**（上游既违规，本轨只标注并给拆分计划） | 「行数纪律：违规文件」一节 |
+| 唯一红门禁 `postgres_cross_database` | 基线既有失败，非本轨引入 | 「唯一红门禁」一节 |
+
+提交链（老 → 新）：
+`653f2347c` → `24f5a8955` → `b00a1b0c2` → `051a228a4` → **`2940e2530`（修复代码）**
+→ `e998366a6` → `5824392f0` → **`fc8196128`（`job_kernel.rs` 拆分）** → `8d1c65b8f`（本台账）。
+
 ## 本轮：独立验收 TEST_FAILED 的两处阻塞缺陷修复
 
 上一轮（`651a228`→`051a228`）被验收打回，两条阻塞缺陷：
@@ -108,6 +127,27 @@ mysql / postgres / redis / rqlite / sqlite / sqlserver / turso / vector / **vict
 `drivers-registry.json` 另有 3 个 git 驱动 `kiwi` / `olap` / `superset`，本机未克隆，
 故不是 workspace member。16 个驱动目录 + `packages/driver-api` = 17。
 
+这个「17」不是数出来的，是**断言出来的**。逐字输出：
+
+```
+$ HEAD=8d1c65b8f6f72978dad5969a8b9fa4097de0af6b
+$ REGISTRY_SHA=8531e125fa9bc0c9fe4249c6403b479b1aae61fdd7932c5eaadb0971b96f7cb8
+$ cargo metadata --no-deps --format-version 1 > /tmp/dz-metadata.json ; echo METADATA_EXIT=$?
+METADATA_EXIT=0
+METADATA_BYTES=132779
+DRIVER_CRATE_COUNT=17
+IDS=api, clickhouse, duckdb, elasticsearch, hbase, http-support, influxdb, mongodb, mysql, postgres, redis, rqlite, sqlite, sqlserver, turso, vector, victoriametrics
+ASSERT_OK contains: victoriametrics, api, sqlserver  missing=none
+ASSERT_EXIT=0
+```
+
+断言脚本不是 `grep | wc -l`，而是 `node` 读 metadata 后**逐个 id 做成员判定**，
+缺任一 id 即 `exit 1`。取样断言 `victoriametrics`（最容易被漏的尾部驱动）、
+`api`（`datazen-driver-api`，计数里唯一的非驱动 crate）、
+`sqlserver`（本轨 `default_port()` 所在 crate），三条全中。
+`REGISTRY_SHA` 与本轨其它记录一致，说明枚举所依据的注册表未被本轨改动。
+全量 `--drivers=all` 宿主编译另见「格式与规模纪律」一节（`cargo test -p datazen --lib --no-run` EXIT=0）。
+
 门禁重跑的取证方案（取代此前只记 `HEAD` 的不足）：
 `HEAD` 一致**不足以**证明无人改动——此前一轮就出现过 `HEAD` 恒定、
 但工作区 sha 与 dirty 文件数在门禁期间变化（20 → 18）的情况。
@@ -149,6 +189,74 @@ POST_RESTORE_DIRTY=0
 | `cargo test -p datazen-driver-sqlserver` | 0 | 8 个集成二进制全 ok（lib 见下节计数） |
 | `cargo test -p datazen --lib` | 0 | `test result: ok. 1762 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 23.72s` |
 | `cargo check -p datazen` | 0 | `warning: \`datazen\` (lib) generated 33 warnings`；`warn_lines=46  warn_files=17`（**仅供对照，判定见「告警」一节**） |
+### 最终门禁（`@8d1c65b8f`，拆分提交 `fc8196128` **之后**重跑）
+
+**旧读数不可平移。** `5824392f0` 里的认证门禁对应 `2940e2530` 的树，不含拆分；
+拆分动了 `packages/runtime/tests/` 下三个会被编译进测试二进制的文件，
+因此在拆分后**整份门禁重跑**，不是只补一个包。
+
+取证首尾（逐字，必须相等）：
+
+```
+BEFORE_HEAD=8d1c65b8f6f72978dad5969a8b9fa4097de0af6b
+BEFORE_TREE=0e8636c811cb03e6dcd9a5e69e0ec8c8d22e08e2
+BEFORE_DIRTY=0
+BEFORE_SOURCE_SHA=13876a4e2a246a9ed5dc2e33a124d00610115b119109eba11e29bbd47184593e
+AFTER_INJECT_HEAD=8d1c65b8f6f72978dad5969a8b9fa4097de0af6b
+AFTER_INJECT_TREE=0e8636c811cb03e6dcd9a5e69e0ec8c8d22e08e2
+AFTER_INJECT_SOURCE_SHA=13876a4e2a246a9ed5dc2e33a124d00610115b119109eba11e29bbd47184593e
+AFTER_HEAD=8d1c65b8f6f72978dad5969a8b9fa4097de0af6b
+AFTER_TREE=0e8636c811cb03e6dcd9a5e69e0ec8c8d22e08e2
+AFTER_SOURCE_SHA=13876a4e2a246a9ed5dc2e33a124d00610115b119109eba11e29bbd47184593e
+POST_RESTORE_DIRTY=0
+```
+
+`HEAD` / `TREE` / `SOURCE_SHA` 三项**逐字相等**，首尾 `DIRTY=0`。
+8 次 `PHASE1_DIRTY_AFTER_*` 全为 `0`。注入后 `git status --porcelain` 只有
+` M src-tauri/Cargo.toml` 一行。
+
+| 门禁命令 | 退出码 |
+| --- | --- |
+| `cargo metadata --no-deps --format-version 1`（第一个跑） | 0 |
+| `cargo test -p datazen-runtime` | 0 |
+| `cargo test -p datazen-schema-diff` | 0 |
+| `cargo test -p datazen-data-sync` | 0 |
+| `cargo test -p datazen-data-transfer` | 0 |
+| `cargo test -p datazen-driver-postgres` | **101**（见下，唯一红项） |
+| `cargo test -p datazen-driver-mysql` | 0 |
+| `cargo test -p datazen-driver-redis` | 0 |
+| `cargo test -p datazen-driver-sqlserver` | 0 |
+| `node scripts/resolve-drivers.mjs --drivers=all`（注入） | 0 |
+| `cargo test -p datazen --lib` | 0 |
+| `cargo check -p datazen` | 0 |
+
+逐字结论行：
+
+```
+GATE datazen-runtime EXIT=0
+GATE datazen-schema-diff EXIT=0
+GATE datazen-data-sync EXIT=0
+GATE datazen-data-transfer EXIT=0
+GATE datazen-driver-postgres EXIT=101
+GATE datazen-driver-mysql EXIT=0
+GATE datazen-driver-redis EXIT=0
+GATE datazen-driver-sqlserver EXIT=0
+inject_EXIT=0
+GATE datazen-lib EXIT=0
+GATE datazen-check EXIT=0
+POST_RESTORE_DIRTY=0
+```
+
+- `cargo test -p datazen-runtime`：**34 条 `test result:` 行，全部 `ok.`**，
+  与拆分前（`5824392f0` 门禁日志）**逐行相同**，`job_kernel` 那条仍是
+  `test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`。
+- `cargo test -p datazen --lib`：
+  `test result: ok. 1762 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 23.89s`
+- `cargo check -p datazen`：`warning: \`datazen\` (lib) generated 33 warnings`；
+  `warn_lines=46  warn_files=17`（**计数仅供对照，判定见「告警」一节，按集合裁定**）。
+- 全门禁唯一的 `test result: FAILED` 在
+  `packages/drivers/postgres/tests/postgres_cross_database.rs`（下一节证明为基线既有失败）。
+
 
 ### 唯一红门禁：`postgres_cross_database` 是基线既有失败，非本轨引入
 
@@ -235,16 +343,51 @@ m7: test result: FAILED. 4 passed; 1 failed; …
 M2 杀的是「D1 的 Connection 键复活」。M1 的 13 条失败里包含
 `same_object_on_two_physical_endpoints_is_accepted`——
 若身份恒定化，A 与 D 会被混为一谈，正是 M1 存在的意义。
+### 变异结论的有效性前提（**这是前提，不是「无影响」四个字**）
+
+七条变异都跑在 `2940e25307746` 这棵树上，而本轨 HEAD 现在是 `8d1c65b8f6f7`。
+「变异结论继续有效」**只在下述文件清单为真的前提下成立**——清单逐字如下：
+
+```
+$ git diff --stat 2940e2530 8d1c65b8f
+ packages/runtime/tests/job_kernel.rs               | 672 +++++----------------
+ .../runtime/tests/job_kernel/endpoint_budget.rs    | 134 ++++
+ .../runtime/tests/job_kernel/runtime_journeys.rs   | 289 +++++++++
+ progress.md                                        | 449 ++++++++++++--
+ 4 files changed, 958 insertions(+), 586 deletions(-)
+```
+
+**4 个文件，3 个在 `packages/runtime/tests/**`，1 个是 `progress.md`。
+生产代码（`src-tauri/src/**` 与 `packages/**/src/**`）改动数 = 0。**
+因此 M1/M3/M4（M5/M6/M7/M2 同理）所变异的那几行，在 `8d1c65b8f` 上逐字未变，
+KILLED 判定可平移。**若清单里出现任何 `src/**` 文件，本结论立即失效，须整批重跑。**
+
+拆分本身另有独立证据：`cargo test -p datazen-runtime` 在拆分前后
+34 条 `test result:` 行**逐行相同**（`diff` 为空），`job_kernel` 二进制
+hash 与 `test result: ok. 16 passed` 均未变——拆分没有增删任何测试。
+
+**M1 是控制变异，不可被 M2 替代。** M2 杀的是「D1 的 `Connection` 键复活」，
+是**本轮修复内容**的反弱化；M1 杀的是「身份退化成常量 `"data-transfer"`」，
+是**原始缺陷本身**（缺陷成因就是旧实现把身份写成了常量）。
+两者变异点不同、失败集合不同（M1 死 13 条，M2 死 1 条），不可互相顶替。
+
 
 ## 告警：只比集合，不比计数
 
-**不声称任何告警增减。** 计数口径在不同日志里随 `-->` 抽取规则变化，
-「46 行 / 17 文件」这类数字不可比。以下把两侧**文件清单逐字列出**，请按清单核对。
+**不声称任何告警增减。** 计数口径随 `-->` 抽取规则变化，「46 行 / 17 文件」这类数字
+**不可比**；验收方抽得 44/16 属抽取规则差异，**不构成事实分歧**。本轨只提交集合。
 
 生成命令（两侧完全相同）：
 `grep -oE '\-\-> [^:]+' <check 日志> | sort -u > <清单>`
 
-**基线 `@4b782750ddd1`（`/tmp/dz-warn-files-BASE.txt`，17 行）：**
+两侧清单的输入日志与采集时刻（可复现性的全部依据）：
+
+| 侧 | 输入日志 | 采集时刻 | 行数 |
+| --- | --- | --- | --- |
+| 基线 | `/tmp/dz-base-check.log`（脱离工作树，HEAD = `4b782750ddd1`） | 08:10 | 17 |
+| 本轨 | `/tmp/dz-gate-clean-check.log`（本轨工作树，HEAD = `8d1c65b8f6f7`，最终门禁） | 09:03 | 17 |
+
+**基线（`/tmp/dz-warn-files-BASE.txt`，17 行，逐字）：**
 
 ```
 --> packages/data-sync/src/compare.rs
@@ -266,7 +409,7 @@ M2 杀的是「D1 的 Connection 键复活」。M1 的 13 条失败里包含
 --> src-tauri/src/store/platform_vault.rs
 ```
 
-**本轨 `@051a2284 + 脏工作区`（`/tmp/dz-warn-files-MINE.txt`，17 行）：**
+**本轨 `@8d1c65b8f6f72978dad5969a8b9fa4097de0af6b`（`/tmp/dz-warn-files-MINE.txt`，17 行，逐字）：**
 
 ```
 --> packages/data-sync/src/compare.rs
@@ -288,9 +431,23 @@ M2 杀的是「D1 的 Connection 键复活」。M1 的 13 条失败里包含
 --> src-tauri/src/store/platform_vault.rs
 ```
 
-`comm -13`（只在 MINE）= **空**；`comm -23`（只在 BASE）= **空**；交集 17。
+**集合裁定（本轨侧实测）：**
+
+| 比较 | 命令 | 结果 |
+| --- | --- | --- |
+| 我**引入**告警的文件 | `comm -13 <BASE> <MINE>` | **0 条** |
+| 我**消除**告警的文件 | `comm -13 <MINE> <BASE>` | **0 条** |
+| 交集 | `comm -12 <BASE> <MINE>` | **17** |
+| 逐字节比对 | `diff <BASE> <MINE>` | **IDENTICAL（无差异行）** |
+
 两份清单逐字节相同。注意 `src-tauri/src/commands/schema_diff/job.rs`
-出现在**两侧**同一位置——它本就在告警清单里，与本轨无关，本轨也未改它。
+出现在**两侧**同一位置——它本就在告警清单里，与本轨无关，本轨也未改它（D3 属另一轨）。
+
+**自查更正**：核对本节时先用错了输入日志名（`/tmp/dz-gate-clean-datazen-check.log`
+并不存在），MINE 被抽成空清单，`comm` 一度出现假的「BASE 独有 17 条」。
+已按门禁脚本第 47/50 行的真实文件名 `/tmp/dz-gate-clean-check.log` 重抽并复核，
+上表是更正后的结果。**空清单导致的假差异已在读取时识别，未进入结论。**
+
 
 ## `src-tauri/Cargo.toml` 与 `Cargo.lock`：刻意排除，不是漏掉
 
