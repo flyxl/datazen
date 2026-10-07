@@ -254,24 +254,31 @@ mod tests {
 
     #[test]
     fn result_type_of_values() {
-        assert_eq!(result_type_of(&redis::Value::Nil), "nil");
-        assert_eq!(result_type_of(&redis::Value::Okay), "ok");
-        assert_eq!(result_type_of(&redis::Value::Int(42)), "scalar");
-        assert_eq!(result_type_of(&redis::Value::Double(3.14)), "scalar");
-        assert_eq!(
-            result_type_of(&redis::Value::BulkString(b"hello".to_vec())),
-            "scalar"
-        );
-        assert_eq!(
-            result_type_of(&redis::Value::Array(vec![redis::Value::Int(1)])),
-            "array"
-        );
-        assert_eq!(
-            result_type_of(&redis::Value::Map(vec![(
-                redis::Value::BulkString(b"k".to_vec()),
-                redis::Value::Int(1)
-            )])),
-            "map"
-        );
+        // Each row pins one variant to the category `result_type_of` gives it.
+        // The function matches on the variant and binds every payload to `_`, so
+        // the payloads below are filler that exists only to make the variant
+        // under test constructible: no number can move a row between categories.
+        // The two `Double` rows therefore carry different numbers and still
+        // expect the same category: both reach the `"scalar"` arm, which binds
+        // its payload to `_`.
+        let shapes: &[(redis::Value, &str)] = &[
+            (redis::Value::Nil, "nil"),
+            (redis::Value::Okay, "ok"),
+            (redis::Value::Int(42), "scalar"),
+            (redis::Value::Double(10.5), "scalar"),
+            (redis::Value::Double(-0.25), "scalar"),
+            (redis::Value::BulkString(b"hello".to_vec()), "scalar"),
+            (redis::Value::Array(vec![redis::Value::Int(1)]), "array"),
+            (
+                redis::Value::Map(vec![(
+                    redis::Value::BulkString(b"k".to_vec()),
+                    redis::Value::Int(1),
+                )]),
+                "map",
+            ),
+        ];
+        for (shape, category) in shapes {
+            assert_eq!(result_type_of(shape), *category);
+        }
     }
 }
