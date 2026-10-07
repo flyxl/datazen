@@ -366,7 +366,10 @@ pub async fn real_sqlite(arm_gate: bool) -> RealSqlite {
         gate: gate.clone(),
     });
 
-    let ddl = "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL)";
+    // 列名 `order` 是刻意挑的保留字：只有真的把标识符引起来，SQL 才成立。
+    // 用 `id`/`name` 这种裸词，生成 SQL 里**去没去掉引号**在真引擎上看不出来，
+    // 引号这条线就等于没测（见 progress.md 的 M1.4）。
+    let ddl = "CREATE TABLE t (id INTEGER PRIMARY KEY, \"order\" TEXT NOT NULL)";
     let source_handle = source
         .connect(&sqlite_config(&source_path, "source"))
         .await
@@ -379,7 +382,7 @@ pub async fn real_sqlite(arm_gate: bool) -> RealSqlite {
         source
             .execute_with_params(
                 &source_handle,
-                "INSERT INTO t (id, name) VALUES (?, ?)",
+                "INSERT INTO t (id, \"order\") VALUES (?, ?)",
                 &[Value::Integer(id), Value::String(format!("v{id}"))],
             )
             .await
@@ -396,10 +399,10 @@ pub async fn real_sqlite(arm_gate: bool) -> RealSqlite {
         .expect("create target table");
     let probe_handle = target_handle.clone();
 
-    let schema = schema_with_snapshot(&["id", "name"]);
+    let schema = schema_with_snapshot(&["id", "order"]);
     let handler = DataTransferHandler::apply(
         freeze_body(),
-        vec![inspected_for(&["id", "name"])],
+        vec![inspected_for(&["id", "order"])],
         HashMap::from([("t".to_string(), schema.clone())]),
         HashMap::from([("t".to_string(), schema)]),
         TransferEndpoints::Database {
