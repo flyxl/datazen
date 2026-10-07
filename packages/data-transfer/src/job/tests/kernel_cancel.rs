@@ -471,7 +471,7 @@ async fn real_sqlite_engine_ends_up_empty_after_a_kernel_cancel() {
     );
     assert_eq!(
         run.open_rows, 0,
-        "on the very connection the batch was written on, nothing survives: a rollback that          never issued would still be holding those two rows"
+        "on the very connection the batch was written on nothing survives; a rollback that never issued would still be holding those two rows"
     );
     assert_eq!(
         count_rows(&run.target_path).await,
