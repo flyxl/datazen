@@ -1,4 +1,12 @@
 //! Core driver traits.
+//!
+//! [`DatabaseDriver`] is the contract every database driver implements, kept as
+//! one trait on purpose: it is the interface driver authors read, and splitting it
+//! across files would make every signature unresolvable.
+//!
+//! Everything that is not the contract is split under `traits/` — SQL text, the
+//! streaming defaults, command dispatch, the schema rule, the key/value contract
+//! and the structural tests — and re-exported, so their public paths hold.
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -10,14 +18,23 @@ use crate::sql_target::SqlTarget;
 use crate::types::*;
 use crate::{
     execute_command_definition, query_command_definition, schema_catalog_command_definitions,
-    try_execute_schema_catalog_command, CommandResult, DriverCommandDefinition,
+    CommandResult, DriverCommandDefinition,
 };
 
-/// Lowercase hexadecimal encoding used by the default SQL literal formatter.
-/// Dialect implementations may reuse this convention or provide their own
-/// binary literal syntax.
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+mod command_api;
+mod key_value;
+mod schema_target;
+mod sql_text;
+mod streaming;
+
+pub use command_api::execute_standard_sql_command;
+pub use key_value::KeyValueDriver;
+pub use schema_target::{validate_schema_target, SchemaScope};
+
+// The braces below are load-bearing — do not collapse this back to `mod structure_defaults_tests;`.
+#[cfg(test)]
+mod structure_defaults_tests {
+    mod cases;
 }
 
 #[async_trait]
@@ -65,12 +82,7 @@ pub trait DatabaseDriver: Send + Sync {
     }
 
     fn quote_ident(&self, name: &str) -> String {
-        let q = self.quote_char();
-        if q == '`' {
-            format!("`{}`", name.replace('`', "``"))
-        } else {
-            format!("\"{}\"", name.replace('"', "\"\""))
-        }
+        sql_text::quote_ident(self, name)
     }
 
     fn skip_count_query(&self) -> bool {
@@ -92,15 +104,7 @@ pub trait DatabaseDriver: Send + Sync {
     /// The default keeps the historical `LIMIT …` / `LIMIT … OFFSET …` shape for
     /// dialects that opt out of `OFFSET` via [`Self::supports_offset`].
     fn pagination_syntax(&self, limit: u64, offset: u64) -> PaginationSyntax {
-        PaginationSyntax {
-            clause: if self.supports_offset() {
-                format!("LIMIT {limit} OFFSET {offset}")
-            } else {
-                format!("LIMIT {limit}")
-            },
-            requires_order_by: false,
-            order_by_fallback: None,
-        }
+        sql_text::pagination_syntax(self, limit, offset)
     }
 
     /// Whether the driver supports EXPLAIN query plan analysis.
@@ -158,38 +162,7 @@ pub trait DatabaseDriver: Send + Sync {
     }
 
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
-        match value {
-            None | Some(Value::Null) => "NULL".to_string(),
-            Some(Value::Bool(b)) => {
-                if *b {
-                    "TRUE".to_string()
-                } else {
-                    "FALSE".to_string()
-                }
-            }
-            Some(Value::Integer(i)) => i.to_string(),
-            Some(Value::Float(f)) => f.to_string(),
-            Some(Value::String(s)) => {
-                let escaped = s.replace('\\', "\\\\");
-                format!("'{}'", escaped.replace('\'', "''"))
-            }
-            Some(Value::Bytes(b)) => {
-                // Keep the default dialect conservative and lossless. Drivers
-                // with a stricter binary-literal grammar should override this
-                // method (PostgreSQL uses bytea hex input; MySQL/SQLite use
-                // X'...'). Never turn arbitrary bytes into replacement UTF-8.
-                format!("X'{}'", bytes_to_hex(b))
-            }
-            Some(Value::Timestamp(s)) => {
-                let escaped = s.replace('\\', "\\\\");
-                format!("'{}'", escaped.replace('\'', "''"))
-            }
-            Some(Value::Json(j)) => {
-                let s = j.to_string();
-                let escaped = s.replace('\\', "\\\\");
-                format!("'{}'", escaped.replace('\'', "''"))
-            }
-        }
+        sql_text::format_sql_literal(value)
     }
 
     fn build_update_sql(
@@ -198,53 +171,12 @@ pub trait DatabaseDriver: Send + Sync {
         set_columns: &[(&str, Option<Value>)],
         pk_columns: &[(&str, Option<Value>)],
     ) -> String {
-        let set_clauses: Vec<String> = set_columns
-            .iter()
-            .map(|(col, val)| {
-                format!(
-                    "{} = {}",
-                    self.quote_ident(col),
-                    self.format_sql_literal(val)
-                )
-            })
-            .collect();
-        let where_clauses: Vec<String> = pk_columns
-            .iter()
-            .map(|(col, val)| match val {
-                None | Some(Value::Null) => format!("{} IS NULL", self.quote_ident(col)),
-                Some(v) => format!(
-                    "{} = {}",
-                    self.quote_ident(col),
-                    self.format_sql_literal(&Some(v.clone()))
-                ),
-            })
-            .collect();
-        format!(
-            "UPDATE {} SET {} WHERE {}",
-            self.quote_ident(table),
-            set_clauses.join(", "),
-            where_clauses.join(" AND ")
-        )
+        sql_text::build_update_sql(self, table, set_columns, pk_columns)
     }
 
     /// Build `DELETE FROM … WHERE pk…` for row-level deletes (mirrors `build_update_sql`).
     fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
-        let where_clauses: Vec<String> = pk_columns
-            .iter()
-            .map(|(col, val)| match val {
-                None | Some(Value::Null) => format!("{} IS NULL", self.quote_ident(col)),
-                Some(v) => format!(
-                    "{} = {}",
-                    self.quote_ident(col),
-                    self.format_sql_literal(&Some(v.clone()))
-                ),
-            })
-            .collect();
-        format!(
-            "DELETE FROM {} WHERE {}",
-            self.quote_ident(table),
-            where_clauses.join(" AND ")
-        )
+        sql_text::build_delete_sql(self, table, pk_columns)
     }
 
     /// The host this driver dials when the connection config leaves `host` unset.
@@ -312,11 +244,7 @@ pub trait DatabaseDriver: Send + Sync {
         database: &str,
         schema: Option<&str>,
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
-        let table_schema = self
-            .get_table_schema(handle, table, database, schema)
-            .await?;
-        let pks = table_schema.effective_primary_keys();
-        Ok((table_schema.columns, pks))
+        streaming::get_columns(self, handle, table, database, schema).await
     }
 
     /// Batch-fetch columns for all tables in the given database/schema.
@@ -379,30 +307,7 @@ pub trait DatabaseDriver: Send + Sync {
         limit: Option<u32>,
         on_event: QueryStreamCallback,
     ) -> Result<(), DriverError> {
-        if params.is_empty() {
-            return self.query_stream(handle, sql, limit, on_event).await;
-        }
-        let result = self.query_with_params(handle, sql, params).await?;
-        let mut rows = result.rows;
-        let truncated = limit.is_some_and(|cap| rows.len() > cap as usize);
-        if let Some(cap) = limit {
-            rows.truncate(cap as usize);
-        }
-        emit_multi_query_as_stream(
-            MultiQueryResult {
-                results: vec![StatementResult {
-                    sql: sql.to_string(),
-                    columns: result.columns,
-                    rows,
-                    rows_affected: result.rows_affected,
-                    execution_time_ms: result.execution_time_ms,
-                    truncated,
-                }],
-                total_time_ms: result.execution_time_ms,
-            },
-            &on_event,
-        );
-        Ok(())
+        streaming::query_stream_with_params(self, handle, sql, params, limit, on_event).await
     }
 
     /// Register an opaque execution before the backend target is known.
@@ -504,11 +409,7 @@ pub trait DatabaseDriver: Send + Sync {
     /// per-database resources instead resolves them in the `*_at` methods
     /// below, which override these defaults.
     fn qualified_sql(&self, sql: &str, target: SqlTarget<'_>) -> String {
-        if !target.is_present() {
-            return sql.to_string();
-        }
-        self.qualify_sql_target(sql, target.database, target.schema)
-            .unwrap_or_else(|| sql.to_string())
+        sql_text::qualified_sql(self, sql, target)
     }
 
     /// Run `sql` against an explicit target.
@@ -607,19 +508,7 @@ pub trait DatabaseDriver: Send + Sync {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
-        match execute_standard_sql_command(self, handle, command, input.clone()).await {
-            Ok(result) => return Ok(result),
-            Err(DriverError::Unsupported(_)) => {}
-            Err(err) => return Err(err),
-        }
-        if let Some(result) =
-            try_execute_schema_catalog_command(self, handle, command, input).await?
-        {
-            return Ok(result);
-        }
-        Err(DriverError::Unsupported(format!(
-            "unsupported driver command: {command}"
-        )))
+        command_api::execute_command(self, handle, command, input).await
     }
 
     async fn begin_transaction(
@@ -1057,10 +946,7 @@ pub trait DatabaseDriver: Send + Sync {
 
     /// Split a complete SQL buffer. Default uses [`Self::new_sql_scanner`].
     fn split_restore_sql(&self, sql: &str) -> Vec<String> {
-        let mut scanner = self.new_sql_scanner();
-        let mut out = scanner.push(sql);
-        out.extend(scanner.finish());
-        out
+        sql_text::split_restore_sql(self, sql)
     }
 
     /// After a restore statement fails: clear an aborted PG transaction,
@@ -1131,665 +1017,4 @@ pub trait DatabaseDriver: Send + Sync {
             "table structure planning is not supported by this driver".into(),
         ))
     }
-}
-
-/// Default `query` / `execute` command dispatch shared by SQL drivers.
-///
-/// F7: the input object may carry optional targeting fields `database` /
-/// `schema` (injected by the host from the IPC envelope). When present, the
-/// SQL is rewritten through [`DatabaseDriver::qualify_sql_target`] before
-/// execution; drivers without the capability execute as-is (logged), keeping
-/// the host session pin as fallback.
-pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
-    driver: &D,
-    handle: &ConnectionHandle,
-    command: &str,
-    input: serde_json::Value,
-) -> Result<CommandResult, DriverError> {
-    match command {
-        "query" => {
-            let (sql, target) = sql_input_with_target(&input, "query")?;
-            let limit = input
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|v| v.min(u32::MAX as u64) as u32);
-            let result = driver.query_multi_at(handle, &sql, limit, target).await?;
-            let data = serde_json::to_value(result).map_err(|e| {
-                DriverError::QueryFailed(format!("failed to serialize query result: {e}"))
-            })?;
-            Ok(CommandResult::new(data))
-        }
-        "execute" => {
-            let (sql, target) = sql_input_with_target(&input, "execute")?;
-            let rows_affected = driver.execute_at(handle, &sql, target).await?;
-            Ok(CommandResult::new(serde_json::json!({
-                "rowsAffected": rows_affected
-            })))
-        }
-        other => Err(DriverError::Unsupported(format!(
-            "unsupported driver command: {other}"
-        ))),
-    }
-}
-
-/// How precisely a call site must pin the schema dimension.
-///
-/// Listing operations legitimately span every schema in a database (the
-/// connection tree groups tables by their own schema), while single-table
-/// resolution must be exact — an ambiguous table identity is what allowed
-/// same-named tables from different schemas to be merged into one column set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemaScope {
-    /// Listing call: `None` means "every schema in the database".
-    AnySchema,
-    /// Resolution call: a schema-aware driver must receive `Some(schema)`.
-    ExactSchema,
-}
-
-/// Validate the `(database, schema)` target pair against a driver's capability.
-///
-/// **This is the single source of truth for the schema-dimension rule**, and it
-/// is deliberately a free function: the trait method is the only chokepoint
-/// shared by *every* caller (GUI IPC, MCP server, Workflow, `sql_dump`, reuse
-/// wrappers), so drivers must call it at the top of their
-/// `get_tables`/`get_table_schema`/`get_columns`/`get_all_columns`
-/// implementations. Host call sites may call it too, purely to fail earlier
-/// with a friendlier message — that is an optimization, not the guarantee.
-///
-/// | `has_schema_level()` | `schema` | [`SchemaScope::AnySchema`] | [`SchemaScope::ExactSchema`] |
-/// | --- | --- | --- | --- |
-/// | `true` | `Some(s)` non-blank | `Ok` | `Ok` |
-/// | `true` | `None` / blank | `Ok` (all schemas) | `Err(InvalidConfig)` |
-/// | `false` | `None` / blank | `Ok` | `Ok` |
-/// | `false` | `Some(s)` | `Err(InvalidConfig)` | `Err(InvalidConfig)` |
-///
-/// `database` is intentionally not validated here: engines differ on whether a
-/// blank database means "the session's current catalog" (PostgreSQL's listing
-/// path) or is simply invalid.
-pub fn validate_schema_target<D: DatabaseDriver + ?Sized>(
-    driver: &D,
-    database: &str,
-    schema: Option<&str>,
-    scope: SchemaScope,
-) -> Result<(), DriverError> {
-    let schema = schema.map(str::trim).filter(|s| !s.is_empty());
-    let driver_type = driver.driver_type();
-    match (driver.has_schema_level(), schema, scope) {
-        (false, Some(schema), _) => Err(DriverError::InvalidConfig(format!(
-            "driver '{driver_type}' has no schema level: schema '{schema}' is not allowed \
-             (database '{database}')"
-        ))),
-        (true, None, SchemaScope::ExactSchema) => Err(DriverError::InvalidConfig(format!(
-            "driver '{driver_type}' has a schema level: an explicit schema is required \
-             (database '{database}')"
-        ))),
-        _ => Ok(()),
-    }
-}
-
-/// Extract the `sql` input of a standard SQL command together with the target
-/// the host injected into the envelope.
-///
-/// The target is returned rather than applied here: qualification is only half
-/// the story, because a driver that keeps per-database resources must also
-/// route the statement to the right one. Callers pass this to
-/// [`DatabaseDriver::query_multi_at`] / [`DatabaseDriver::execute_at`], which
-/// apply the rewrite *and* the routing.
-fn sql_input_with_target<'a>(
-    input: &'a serde_json::Value,
-    command: &str,
-) -> Result<(String, SqlTarget<'a>), DriverError> {
-    let sql = input
-        .get("sql")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            DriverError::InvalidConfig(format!("command '{command}' requires string input 'sql'"))
-        })?
-        .to_string();
-
-    let database = optional_target_field(input, "database");
-    let schema = optional_target_field(input, "schema");
-    Ok((sql, SqlTarget { database, schema }))
-}
-
-fn optional_target_field<'a>(input: &'a serde_json::Value, key: &str) -> Option<&'a str> {
-    input
-        .get(key)
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-}
-
-#[cfg(test)]
-mod structure_defaults_tests {
-    use super::*;
-    use crate::ReuseDriver;
-    use std::sync::Arc;
-
-    struct StubDriver;
-
-    #[async_trait]
-    impl DatabaseDriver for StubDriver {
-        fn driver_type(&self) -> DatabaseType {
-            "stub".to_string()
-        }
-
-        async fn connect(
-            &self,
-            _config: &ConnectionConfig,
-        ) -> Result<ConnectionHandle, DriverError> {
-            Ok(ConnectionHandle {
-                id: "conn".into(),
-                pool_id: "pool".into(),
-            })
-        }
-
-        async fn test_connection(
-            &self,
-            _config: &ConnectionConfig,
-        ) -> Result<ServerInfo, DriverError> {
-            Ok(ServerInfo {
-                server_version: String::new(),
-                server_type: self.driver_type(),
-            })
-        }
-
-        async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
-            Ok(())
-        }
-
-        async fn get_databases(
-            &self,
-            _handle: &ConnectionHandle,
-        ) -> Result<Vec<String>, DriverError> {
-            Ok(vec![])
-        }
-
-        async fn get_tables(
-            &self,
-            _handle: &ConnectionHandle,
-            _database: &str,
-            _schema: Option<&str>,
-        ) -> Result<Vec<TableInfo>, DriverError> {
-            Ok(vec![])
-        }
-
-        async fn get_table_schema(
-            &self,
-            _handle: &ConnectionHandle,
-            _table: &str,
-            _database: &str,
-            _schema: Option<&str>,
-        ) -> Result<TableSchema, DriverError> {
-            Ok(TableSchema {
-                table_name: String::new(),
-                columns: vec![],
-                primary_keys: vec![],
-                indexes: vec![],
-                foreign_keys: vec![],
-                check_constraints: vec![],
-                table_options: TableOptions::default(),
-            })
-        }
-
-        async fn query(
-            &self,
-            _handle: &ConnectionHandle,
-            _sql: &str,
-        ) -> Result<QueryResult, DriverError> {
-            Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: None,
-                execution_time_ms: 0,
-            })
-        }
-
-        async fn query_multi(
-            &self,
-            _handle: &ConnectionHandle,
-            _sql: &str,
-            _limit: Option<u32>,
-        ) -> Result<MultiQueryResult, DriverError> {
-            Ok(MultiQueryResult {
-                results: vec![],
-                total_time_ms: 0,
-            })
-        }
-
-        async fn query_with_params(
-            &self,
-            _handle: &ConnectionHandle,
-            _sql: &str,
-            _params: &[Value],
-        ) -> Result<QueryResult, DriverError> {
-            Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: None,
-                execution_time_ms: 0,
-            })
-        }
-
-        async fn execute(
-            &self,
-            _handle: &ConnectionHandle,
-            _sql: &str,
-        ) -> Result<u64, DriverError> {
-            Ok(0)
-        }
-
-        async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-            Ok(())
-        }
-    }
-
-    fn sample_request() -> StructureChangeRequest {
-        StructureChangeRequest {
-            mode: StructureChangeMode::Alter,
-            schema: Some("public".into()),
-            table: "users".into(),
-            original_columns: vec![],
-            current_columns: vec![],
-            original_indexes: vec![],
-            current_indexes: vec![],
-        }
-    }
-
-    #[tokio::test]
-    async fn default_ddl_atomicity_is_unknown() {
-        let driver = StubDriver;
-        assert_eq!(driver.ddl_atomicity(), DdlAtomicity::Unknown);
-    }
-
-    #[tokio::test]
-    async fn default_fk_catalog_visibility_fails_closed() {
-        let driver = StubDriver;
-        let handle = ConnectionHandle {
-            id: "conn".into(),
-            pool_id: "pool".into(),
-        };
-
-        assert!(!driver
-            .has_complete_foreign_key_catalog_visibility(&handle)
-            .await
-            .expect("default visibility capability"));
-    }
-
-    #[tokio::test]
-    async fn default_read_snapshot_fails_closed() {
-        let driver = StubDriver;
-        let handle = ConnectionHandle {
-            id: "conn".into(),
-            pool_id: "pool".into(),
-        };
-        let err = driver.begin_read_snapshot(&handle).await.unwrap_err();
-        assert!(
-            matches!(err, DriverError::Unsupported(message) if message.contains("stable read snapshots"))
-        );
-    }
-
-    #[tokio::test]
-    async fn default_structure_capabilities_are_disabled() {
-        let driver = StubDriver;
-        let handle = ConnectionHandle {
-            id: "conn".into(),
-            pool_id: "pool".into(),
-        };
-
-        let caps = driver.structure_capabilities(&handle).await.unwrap();
-        assert_eq!(caps.dialect_id, "stub");
-        assert_eq!(caps.alter_strategy, AlterStrategy::None);
-        assert!(!caps.create_table);
-        assert!(!caps.add_column);
-        assert!(!caps.drop_column);
-        assert!(!caps.rename_column);
-        assert!(!caps.alter_type);
-        assert!(!caps.alter_nullability);
-        assert!(!caps.alter_default);
-        assert!(!caps.alter_primary_key);
-        assert!(!caps.reorder_column);
-        assert!(!caps.comment);
-        assert!(!caps.create_index);
-        assert!(!caps.drop_index);
-        assert!(!caps.rebuild_index);
-        assert!(!caps.index_type);
-        assert!(!caps.index_include);
-        assert!(!caps.index_filter);
-        assert!(!caps.index_comment);
-        assert!(caps.index_methods.is_empty());
-    }
-
-    #[tokio::test]
-    async fn default_plan_structure_changes_is_unsupported() {
-        let driver = StubDriver;
-        let handle = ConnectionHandle {
-            id: "conn".into(),
-            pool_id: "pool".into(),
-        };
-        let request = sample_request();
-
-        let err = driver
-            .plan_structure_changes(&handle, &request)
-            .await
-            .unwrap_err();
-        assert!(
-            matches!(err, DriverError::Unsupported(msg) if msg == "table structure planning is not supported by this driver")
-        );
-    }
-
-    #[test]
-    fn stub_driver_sync_defaults() {
-        let driver = StubDriver;
-        assert_eq!(driver.sync_category(), SyncCategory::Sql);
-        assert_eq!(driver.sync_family(), "stub");
-    }
-
-    #[tokio::test]
-    async fn reuse_driver_forwards_sync_taxonomy() {
-        let inner: Arc<dyn DatabaseDriver> = Arc::new(StubDriver);
-        let driver = ReuseDriver::new(inner, "reuse-stub");
-        assert_eq!(driver.sync_category(), SyncCategory::Sql);
-        assert_eq!(driver.sync_family(), "stub");
-    }
-
-    #[tokio::test]
-    async fn reuse_driver_forwards_structure_methods() {
-        let inner: Arc<dyn DatabaseDriver> = Arc::new(StubDriver);
-        let driver = ReuseDriver::new(inner, "reuse-stub");
-        let handle = ConnectionHandle {
-            id: "conn".into(),
-            pool_id: "pool".into(),
-        };
-
-        let caps = driver.structure_capabilities(&handle).await.unwrap();
-        assert_eq!(caps.dialect_id, "stub");
-        assert_eq!(driver.driver_type(), "reuse-stub");
-
-        let err = driver
-            .plan_structure_changes(&handle, &sample_request())
-            .await
-            .unwrap_err();
-        assert!(matches!(err, DriverError::Unsupported(_)));
-    }
-
-    #[tokio::test]
-    async fn get_columns_uses_effective_primary_keys_when_primary_keys_empty() {
-        struct DriverWithColumnPkOnly;
-
-        #[async_trait]
-        impl DatabaseDriver for DriverWithColumnPkOnly {
-            fn driver_type(&self) -> DatabaseType {
-                "dummy".into()
-            }
-
-            async fn connect(&self, _: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-                unreachable!()
-            }
-
-            async fn test_connection(
-                &self,
-                _: &ConnectionConfig,
-            ) -> Result<ServerInfo, DriverError> {
-                unreachable!()
-            }
-
-            async fn disconnect(&self, _: ConnectionHandle) -> Result<(), DriverError> {
-                Ok(())
-            }
-
-            async fn get_databases(
-                &self,
-                _: &ConnectionHandle,
-            ) -> Result<Vec<String>, DriverError> {
-                Ok(vec![])
-            }
-
-            async fn get_tables(
-                &self,
-                _: &ConnectionHandle,
-                _: &str,
-                _: Option<&str>,
-            ) -> Result<Vec<TableInfo>, DriverError> {
-                Ok(vec![])
-            }
-
-            async fn get_table_schema(
-                &self,
-                _: &ConnectionHandle,
-                _: &str,
-                _: &str,
-                _: Option<&str>,
-            ) -> Result<TableSchema, DriverError> {
-                Ok(TableSchema {
-                    table_name: "users".into(),
-                    columns: vec![ColumnSchema {
-                        name: "id".into(),
-                        data_type: "int".into(),
-                        nullable: false,
-                        default_value: None,
-                        comment: None,
-                        is_primary_key: true,
-                        is_auto_increment: true,
-                    }],
-                    primary_keys: vec![], // intentionally empty to test fallback
-                    indexes: vec![],
-                    foreign_keys: vec![],
-                    check_constraints: vec![],
-                    table_options: TableOptions::default(),
-                })
-            }
-
-            async fn query(
-                &self,
-                _: &ConnectionHandle,
-                _: &str,
-            ) -> Result<QueryResult, DriverError> {
-                unreachable!()
-            }
-
-            async fn query_multi(
-                &self,
-                _: &ConnectionHandle,
-                _: &str,
-                _: Option<u32>,
-            ) -> Result<MultiQueryResult, DriverError> {
-                unreachable!()
-            }
-
-            async fn query_with_params(
-                &self,
-                _: &ConnectionHandle,
-                _: &str,
-                _: &[Value],
-            ) -> Result<QueryResult, DriverError> {
-                unreachable!()
-            }
-
-            async fn execute(&self, _: &ConnectionHandle, _: &str) -> Result<u64, DriverError> {
-                unreachable!()
-            }
-
-            async fn cancel_query(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
-                Ok(())
-            }
-        }
-
-        let driver = DriverWithColumnPkOnly;
-        let handle = ConnectionHandle {
-            id: "c".into(),
-            pool_id: "p".into(),
-        };
-        let (_cols, pks) = driver
-            .get_columns(&handle, "users", "app", None)
-            .await
-            .unwrap();
-        assert_eq!(pks, vec!["id"]);
-    }
-    /// `has_schema_level` defaults to false, and the validator enforces the
-    /// capability/schema pairing in both directions.
-    mod validate_schema_target_tests {
-        use super::*;
-
-        struct SchemaLess;
-        struct SchemaAware;
-
-        macro_rules! stub_driver {
-            ($name:ident, $schema_level:expr) => {
-                #[async_trait]
-                impl DatabaseDriver for $name {
-                    fn driver_type(&self) -> DatabaseType {
-                        stringify!($name).to_lowercase()
-                    }
-                    fn has_schema_level(&self) -> bool {
-                        $schema_level
-                    }
-                    async fn test_connection(
-                        &self,
-                        _: &ConnectionConfig,
-                    ) -> Result<ServerInfo, DriverError> {
-                        unreachable!()
-                    }
-                    async fn connect(
-                        &self,
-                        _: &ConnectionConfig,
-                    ) -> Result<ConnectionHandle, DriverError> {
-                        unreachable!()
-                    }
-                    async fn disconnect(&self, _: ConnectionHandle) -> Result<(), DriverError> {
-                        unreachable!()
-                    }
-                    async fn get_databases(
-                        &self,
-                        _: &ConnectionHandle,
-                    ) -> Result<Vec<String>, DriverError> {
-                        unreachable!()
-                    }
-                    async fn get_tables(
-                        &self,
-                        _: &ConnectionHandle,
-                        _: &str,
-                        _: Option<&str>,
-                    ) -> Result<Vec<TableInfo>, DriverError> {
-                        unreachable!()
-                    }
-                    async fn get_table_schema(
-                        &self,
-                        _: &ConnectionHandle,
-                        _: &str,
-                        _: &str,
-                        _: Option<&str>,
-                    ) -> Result<TableSchema, DriverError> {
-                        unreachable!()
-                    }
-                    async fn query(
-                        &self,
-                        _: &ConnectionHandle,
-                        _: &str,
-                    ) -> Result<QueryResult, DriverError> {
-                        unreachable!()
-                    }
-                    async fn query_multi(
-                        &self,
-                        _: &ConnectionHandle,
-                        _: &str,
-                        _: Option<u32>,
-                    ) -> Result<MultiQueryResult, DriverError> {
-                        unreachable!()
-                    }
-                    async fn query_with_params(
-                        &self,
-                        _: &ConnectionHandle,
-                        _: &str,
-                        _: &[Value],
-                    ) -> Result<QueryResult, DriverError> {
-                        unreachable!()
-                    }
-                    async fn execute(
-                        &self,
-                        _: &ConnectionHandle,
-                        _: &str,
-                    ) -> Result<u64, DriverError> {
-                        unreachable!()
-                    }
-                    async fn cancel_query(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
-                        unreachable!()
-                    }
-                }
-            };
-        }
-
-        stub_driver!(SchemaLess, false);
-        stub_driver!(SchemaAware, true);
-
-        #[test]
-        fn schema_less_driver_accepts_only_none() {
-            assert!(!SchemaLess.has_schema_level());
-            assert!(
-                validate_schema_target(&SchemaLess, "app", None, SchemaScope::AnySchema).is_ok()
-            );
-            assert!(
-                validate_schema_target(&SchemaLess, "app", None, SchemaScope::ExactSchema).is_ok()
-            );
-            let err =
-                validate_schema_target(&SchemaLess, "app", Some("public"), SchemaScope::AnySchema)
-                    .expect_err("schema-less driver must reject a schema");
-            assert!(err.to_string().contains("no schema level"), "{err}");
-            // Blank is treated as absent, not as a schema literally named "".
-            assert!(
-                validate_schema_target(&SchemaLess, "app", Some("  "), SchemaScope::AnySchema)
-                    .is_ok()
-            );
-        }
-
-        #[test]
-        fn schema_aware_driver_requires_schema_only_when_resolving() {
-            assert!(SchemaAware.has_schema_level());
-            // Listing spans every schema, so None is legitimate here.
-            assert!(
-                validate_schema_target(&SchemaAware, "app", None, SchemaScope::AnySchema).is_ok()
-            );
-            assert!(validate_schema_target(
-                &SchemaAware,
-                "app",
-                Some("public"),
-                SchemaScope::AnySchema
-            )
-            .is_ok());
-            assert!(validate_schema_target(
-                &SchemaAware,
-                "app",
-                Some("public"),
-                SchemaScope::ExactSchema
-            )
-            .is_ok());
-            let err = validate_schema_target(&SchemaAware, "app", None, SchemaScope::ExactSchema)
-                .expect_err("schema-aware driver must require a schema when resolving one table");
-            assert!(
-                err.to_string().contains("explicit schema is required"),
-                "{err}"
-            );
-            assert!(validate_schema_target(
-                &SchemaAware,
-                "app",
-                Some(" "),
-                SchemaScope::ExactSchema
-            )
-            .is_err());
-        }
-    }
-}
-
-#[async_trait]
-pub trait KeyValueDriver: Send + Sync {
-    fn driver_type(&self) -> DatabaseType;
-
-    async fn scan_keys_with_info(
-        &self,
-        handle: &ConnectionHandle,
-        db_index: u32,
-        pattern: &str,
-        cursor: u64,
-        count: u32,
-    ) -> Result<(u64, Vec<KeyEntry>, u64), DriverError>;
 }
