@@ -57,6 +57,14 @@ impl PostgresDriver {
 
 #[async_trait]
 impl DatabaseDriver for PostgresDriver {
+    fn default_host(&self) -> Option<&'static str> {
+        Some(crate::connection::DEFAULT_HOST)
+    }
+
+    fn default_port(&self) -> Option<u16> {
+        Some(crate::connection::DEFAULT_PORT)
+    }
+
     fn migration_renderer(
         &self,
     ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {

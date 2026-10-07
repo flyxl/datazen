@@ -13,6 +13,15 @@ pub mod sentinel;
 pub mod standalone;
 pub mod tls;
 
+/// The socket Redis dials when the config names no host. One constant feeds
+/// every defaulting site below — [`build_connection_plan`] and
+/// `parse_node_urls` — and `DatabaseDriver::default_host`, so the host can
+/// never compare endpoints against a value the driver does not dial.
+pub(crate) const DEFAULT_HOST: &str = "127.0.0.1";
+
+/// The port Redis dials when the config names none. See [`DEFAULT_HOST`].
+pub(crate) const DEFAULT_PORT: u16 = 6379;
+
 pub use client::looks_like_connection_loss;
 pub use client::open_pinned_node_conn;
 pub use live::build_connection_plan;

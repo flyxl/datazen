@@ -613,6 +613,69 @@ async fn a_sql_file_job_from_a_foreign_backend_is_still_refused() {
     );
 }
 
+/// D1, end to end. A saved connection is a *connection*, not a *database*: two
+/// dedicated sessions on the SAME saved connection, pointing at DIFFERENT
+/// databases, is the ordinary "copy staging into prod" job. Reading and writing
+/// the same object name there is not a self-overlap, because the two objects
+/// live on different physical databases.
+///
+/// Before the fix both endpoints booked their permits under the saved
+/// connection id, so this job was refused with a false "same physical
+/// endpoint" error — the UI could not dispatch the job at all.
+#[tokio::test]
+async fn one_saved_connection_two_databases_is_not_a_self_overlap() {
+    let test = TestAppState::with_options(mock_options()).await;
+    test.save_connection("pg-local").await;
+    let source = test
+        .state
+        .connection_manager
+        .connect_dedicated("pg-local", Some("staging"))
+        .await
+        .expect("a dedicated session on staging");
+    let target = test
+        .state
+        .connection_manager
+        .connect_dedicated("pg-local", Some("prod"))
+        .await
+        .expect("a dedicated session on prod");
+    assert_ne!(
+        source, target,
+        "each dedicated session must get its own dbSessionId, or this job is not the scenario"
+    );
+    for session in [&source, &target] {
+        assert_eq!(
+            test.state
+                .connection_manager
+                .owner_connection_id(session)
+                .await
+                .as_deref(),
+            Some("pg-local"),
+            "both endpoints must belong to the ONE saved connection, or D1 is not reproduced"
+        );
+    }
+
+    let mut job = job(&source, &target);
+    job.source.database = "staging".to_string();
+    job.target
+        .as_mut()
+        .expect("a direct pair has a target")
+        .database = "prod".to_string();
+    job.tables = vec![TableMapping::auto("users")];
+
+    let prepared = prepare_data_transfer_job_impl(&test.state, prepare_request(job))
+        .await
+        .expect("a cross-database copy on one saved connection must not be refused");
+    assert!(
+        prepared.can_execute,
+        "the job must be dispatchable: {:?}",
+        prepared.block_reason
+    );
+    assert!(
+        !prepared.plan_id.is_empty(),
+        "the review must publish a planId"
+    );
+}
+
 /// §2.1 / §9: the apply Job claims the plan before it writes, so the legacy
 /// `execute_data_transfer` — which claims the very same record — is refused for
 /// the same planId even after the Job ended in a non-success state.

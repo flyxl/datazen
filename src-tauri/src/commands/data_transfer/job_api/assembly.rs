@@ -201,8 +201,10 @@ async fn resolve_database(
     let context = exec::validate_plan_context(state, plan).await?;
     // Endpoint identity comes from the two configs this run actually connects
     // over — the same ones `validate_plan_context` just proved connectable.
-    let source_identity = endpoint_identity::identify(&context.src_config);
-    let target_identity = endpoint_identity::identify(&context.tgt_config);
+    // Each endpoint is identified through *its own* driver, because that is what
+    // resolves a left-out host/port into the address the run really dials.
+    let source_identity = endpoint_identity::identify(&context.src_config, &*context.src_driver);
+    let target_identity = endpoint_identity::identify(&context.tgt_config, &*context.tgt_driver);
     let target = job.database_target().map_err(CommandError::from)?;
     let pairing = enforce_transfer_pairing(
         &context.src_config.database_type,
@@ -379,7 +381,7 @@ async fn resolve_sql_file(
         .cmd_err("apply_data_transfer_job")?;
     // A SQL-file destination has no connection config of its own, so there is no
     // target identity to reserve against — and therefore no writer endpoint.
-    let source_identity = endpoint_identity::identify(&src_config);
+    let source_identity = endpoint_identity::identify(&src_config, &*driver);
     let source_type = src_config.database_type.clone();
     let target_type = target_driver.driver_type().to_string();
     let mut adapters = None;

@@ -11,6 +11,14 @@ use std::time::Duration;
 /// databases must not translate into unbounded server connections.
 const MAX_DATABASE_POOLS_PER_HANDLE: usize = 8;
 
+/// The socket PostgreSQL dials when the config names no host. One constant
+/// feeds both [`build_pg_options`] and `DatabaseDriver::default_host`, so the
+/// host can never compare endpoints against a value the driver does not dial.
+pub(crate) const DEFAULT_HOST: &str = "localhost";
+
+/// The port PostgreSQL dials when the config names none. See [`DEFAULT_HOST`].
+pub(crate) const DEFAULT_PORT: u16 = 5432;
+
 /// Connection ceiling for a cached foreign-database pool. Schema reads are
 /// short and serialized by the caller, so a small pool is enough.
 const DATABASE_POOL_MAX_CONNECTIONS: u32 = 2;
@@ -20,8 +28,8 @@ pub(crate) fn build_pg_options(
 ) -> Result<sqlx::postgres::PgConnectOptions, DriverError> {
     use sqlx::ConnectOptions;
     let mut opts = sqlx::postgres::PgConnectOptions::new()
-        .host(config.host.as_deref().unwrap_or("localhost"))
-        .port(config.port.unwrap_or(5432))
+        .host(config.host.as_deref().unwrap_or(DEFAULT_HOST))
+        .port(config.port.unwrap_or(DEFAULT_PORT))
         .database(PostgresDriver::resolve_connect_database(config));
 
     if let Some(username) = &config.username {
@@ -555,5 +563,77 @@ impl PostgresDriver {
             })
             .to_string(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_driver_api::DatabaseDriver;
+
+    fn config(host: Option<&str>, port: Option<u16>) -> ConnectionConfig {
+        ConnectionConfig {
+            id: "cfg".into(),
+            name: "n".into(),
+            database_type: "postgresql".into(),
+            host: host.map(str::to_string),
+            port,
+            database: Some("app".into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: Default::default(),
+            connection_timeout: 5,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            tunnel_kind: None,
+            tunnel_id: None,
+            http_proxy_tunnel: None,
+            websocket_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        }
+    }
+
+    /// 反漂移闸：`default_host()`/`default_port()` 是宿主做端点物理身份摘要时
+    /// 唯一的「默认 host/port」来源。它一旦与 `build_pg_options` 实际拨号的值分家，
+    /// 省略 host 的连接与显式写全 host 的连接就会算出两个不同的 service_key，
+    /// 自覆盖在 admission 静默漏判。所以这里不测常量本身，只测「声明 == 实拨」。
+    #[test]
+    fn the_declared_defaults_are_exactly_what_connect_dials() {
+        let driver = PostgresDriver::new();
+        let declared_host = driver
+            .default_host()
+            .expect("postgres has an implicit host");
+        let declared_port = driver
+            .default_port()
+            .expect("postgres has an implicit port");
+
+        let dialled = build_pg_options(&config(None, None)).expect("options build");
+        assert_eq!(
+            dialled.get_host(),
+            declared_host,
+            "default_host() must be the host connect actually dials"
+        );
+        assert_eq!(
+            dialled.get_port(),
+            declared_port,
+            "default_port() must be the port connect actually dials"
+        );
+
+        // 常量与声明同源：改一处不改另一处，测试立刻红。
+        assert_eq!(declared_host, DEFAULT_HOST);
+        assert_eq!(declared_port, DEFAULT_PORT);
+
+        // 配置里写了值就用配置的值，默认不覆盖。
+        let explicit =
+            build_pg_options(&config(Some("db-a.example.com"), Some(6432))).expect("options build");
+        assert_eq!(explicit.get_host(), "db-a.example.com");
+        assert_eq!(explicit.get_port(), 6432);
     }
 }

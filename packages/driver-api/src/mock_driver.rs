@@ -42,6 +42,14 @@ pub struct BeginRace {
 pub struct MockDriverOptions {
     /// Driver category reported by `driver_category` (defaults to Sql).
     pub category: DriverCategory,
+    /// Host this mock declares as its implicit default, reported by
+    /// `DatabaseDriver::default_host`. `None` keeps the trait's own default
+    /// ("this driver applies no implicit host"), which is what a mock standing
+    /// in for e.g. SQLite should say.
+    pub default_host: Option<&'static str>,
+    /// Port this mock declares as its implicit default, reported by
+    /// `DatabaseDriver::default_port`.
+    pub default_port: Option<u16>,
     pub columns: Vec<ColumnSchema>,
     pub primary_keys: Vec<String>,
     /// Per-relation read failures for metadata batch partial-success tests.
@@ -126,6 +134,8 @@ impl Default for MockDriverOptions {
     fn default() -> Self {
         Self {
             category: DriverCategory::Sql,
+            default_host: None,
+            default_port: None,
             columns: Vec::new(),
             primary_keys: Vec::new(),
             column_errors_by_table: HashMap::new(),
@@ -371,6 +381,14 @@ impl DatabaseDriver for MockDriver {
 
     fn driver_category(&self) -> DriverCategory {
         self.opts.category.clone()
+    }
+
+    fn default_host(&self) -> Option<&'static str> {
+        self.opts.default_host
+    }
+
+    fn default_port(&self) -> Option<u16> {
+        self.opts.default_port
     }
 
     fn ddl_atomicity(&self) -> DdlAtomicity {

@@ -9,11 +9,19 @@ pub(crate) fn non_empty_secret(value: Option<&str>) -> Option<&str> {
     value.filter(|s| !s.trim().is_empty())
 }
 
+/// The socket MySQL dials when the config names no host. One constant feeds
+/// both [`build_mysql_options`] and `DatabaseDriver::default_host`, so the host
+/// can never compare endpoints against a value the driver does not dial.
+pub(crate) const DEFAULT_HOST: &str = "localhost";
+
+/// The port MySQL dials when the config names none. See [`DEFAULT_HOST`].
+pub(crate) const DEFAULT_PORT: u16 = 3306;
+
 pub(crate) fn build_mysql_options(
     config: &ConnectionConfig,
 ) -> Result<MySqlConnectOptions, DriverError> {
-    let host = config.host.as_deref().unwrap_or("localhost");
-    let port = config.port.unwrap_or(3306);
+    let host = config.host.as_deref().unwrap_or(DEFAULT_HOST);
+    let port = config.port.unwrap_or(DEFAULT_PORT);
     let mut opts = MySqlConnectOptions::new()
         .host(host)
         .port(port)
@@ -147,5 +155,73 @@ impl super::MysqlDriver {
         }
         let sql = Self::build_use_database_sql(&db)?;
         Self::execute_use_on_conn(conn, &sql, &db).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mysql::MysqlDriver;
+    use datazen_driver_api::DatabaseDriver;
+
+    fn config(host: Option<&str>, port: Option<u16>) -> ConnectionConfig {
+        ConnectionConfig {
+            id: "cfg".into(),
+            name: "n".into(),
+            database_type: "mysql".into(),
+            host: host.map(str::to_string),
+            port,
+            database: Some("app".into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: Default::default(),
+            connection_timeout: 5,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            tunnel_kind: None,
+            tunnel_id: None,
+            http_proxy_tunnel: None,
+            websocket_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        }
+    }
+
+    /// 反漂移闸：`default_host()`/`default_port()` 是宿主做端点物理身份摘要时
+    /// 唯一的「默认 host/port」来源。它一旦与 `build_mysql_options` 实际拨号的
+    /// 值分家，省略 host 的连接与显式写全 host 的连接就会算出两个不同的
+    /// service_key，自覆盖在 admission 静默漏判。所以这里不测常量本身，
+    /// 只测「声明 == 实拨」。
+    #[test]
+    fn the_declared_defaults_are_exactly_what_connect_dials() {
+        let driver = MysqlDriver::new(false);
+        let declared_host = driver.default_host().expect("mysql has an implicit host");
+        let declared_port = driver.default_port().expect("mysql has an implicit port");
+
+        let dialled = build_mysql_options(&config(None, None)).expect("options build");
+        assert_eq!(
+            dialled.get_host(),
+            declared_host,
+            "default_host() must be the host connect actually dials"
+        );
+        assert_eq!(
+            dialled.get_port(),
+            declared_port,
+            "default_port() must be the port connect actually dials"
+        );
+
+        assert_eq!(declared_host, DEFAULT_HOST);
+        assert_eq!(declared_port, DEFAULT_PORT);
+
+        let explicit =
+            build_mysql_options(&config(Some("db-a.example.com"), Some(6432))).expect("options");
+        assert_eq!(explicit.get_host(), "db-a.example.com");
+        assert_eq!(explicit.get_port(), 6432);
     }
 }

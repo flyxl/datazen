@@ -247,6 +247,29 @@ pub trait DatabaseDriver: Send + Sync {
         )
     }
 
+    /// The host this driver dials when the connection config leaves `host` unset.
+    ///
+    /// `connect` resolves that default internally, so a config that omits
+    /// `host` and one that spells the same default out reach the *same*
+    /// server. Anything that compares two endpoints — the transfer Job's
+    /// self-overwrite guard, for instance — has to see them as one endpoint,
+    /// and it can only do that by asking the driver, because the default is
+    /// driver knowledge and the host must not hard-code a per-driver table.
+    ///
+    /// The implementation must return the very value `connect` substitutes.
+    /// Drivers should back both with one constant so they cannot drift.
+    /// Defaults to `None`, which means "this driver applies no implicit host".
+    fn default_host(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// The port this driver dials when the connection config leaves `port`
+    /// unset. Same contract as [`Self::default_host`]: return what `connect`
+    /// actually substitutes, `None` when there is no implicit port.
+    fn default_port(&self) -> Option<u16> {
+        None
+    }
+
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError>;
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError>;

@@ -40,6 +40,14 @@ impl DatabaseDriver for RedisDriver {
         "redis".to_string()
     }
 
+    fn default_host(&self) -> Option<&'static str> {
+        Some(crate::connect::DEFAULT_HOST)
+    }
+
+    fn default_port(&self) -> Option<u16> {
+        Some(crate::connect::DEFAULT_PORT)
+    }
+
     fn driver_category(&self) -> DriverCategory {
         DriverCategory::KeyValue
     }

@@ -19,6 +19,7 @@ use datazen_runtime::job::{
 
 use crate::commands::data_transfer::job_api::endpoint_identity::identify;
 use crate::db::{ConnectionConfig, SslMode};
+use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 
 fn org() -> OrganizationId {
     OrganizationId::new("org-1")
@@ -74,14 +75,21 @@ fn cross_database_pair() -> (ConnectionConfig, ConnectionConfig) {
     )
 }
 
+/// These fixtures always name an explicit host, so the mock needs no declared
+/// default: identity resolution asks the driver only for what the config omits.
+fn driver() -> Arc<MockDriver> {
+    MockDriver::new("PostgreSQL", MockDriverOptions::default())
+}
+
 fn refs(
     source: &ConnectionConfig,
     target: &ConnectionConfig,
     objects: &[&str],
 ) -> Vec<EndpointRef> {
     let objects: Vec<String> = objects.iter().map(|name| (*name).to_string()).collect();
-    let source_identity = identify(source);
-    let target_identity = identify(target);
+    let driver = driver();
+    let source_identity = identify(source, &*driver);
+    let target_identity = identify(target, &*driver);
     vec![
         EndpointRef {
             connection_id: source_identity.connection_id,
@@ -144,8 +152,8 @@ fn another_job_on_other_endpoints_does_not_inherit_this_services_key() {
     let (source, _) = cross_database_pair();
     let elsewhere = config("conn-elsewhere", "db-c.example.com", "app", "public");
     assert_ne!(
-        identify(&source).service_key,
-        identify(&elsewhere).service_key
+        identify(&source, &*driver()).service_key,
+        identify(&elsewhere, &*driver()).service_key
     );
 }
 
@@ -253,7 +261,7 @@ fn an_unlocatable_config_keeps_its_connection_id() {
     let mut source = config("conn-source", "db-a.example.com", "app", "public");
     source.host = None;
     source.database = None;
-    let identity = identify(&source);
+    let identity = identify(&source, &*driver());
 
     assert_eq!(
         identity.service_key, "",
@@ -282,8 +290,8 @@ fn an_endpoint_with_no_identity_at_all_is_refused_against_a_writer() {
             role: EndpointRole::SourceReader,
         },
         EndpointRef {
-            connection_id: identify(&target).connection_id,
-            service_key: identify(&target).service_key,
+            connection_id: identify(&target, &*driver()).connection_id,
+            service_key: identify(&target, &*driver()).service_key,
             objects: vec!["orders".to_string()],
             role: EndpointRole::TargetWriter,
         },
