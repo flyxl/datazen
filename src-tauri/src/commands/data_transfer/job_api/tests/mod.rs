@@ -1,9 +1,9 @@
 //! Unit tests for the Job-shaped migration entry points.
 //!
 //! These cover the three contracts that must hold *before* any Job runs, so they
-//! stay pure and synchronous: §8 same-backend admission, §2.1 prepare/apply
-//! payload separation (checked against the runtime plan projector, not against a
-//! copy of its rules), and the one-shot plan lifecycle in the plan store.
+//! stay pure and synchronous: same-backend admission, prepare/apply payload
+//! separation (checked against the runtime plan projector, not against a copy of
+//! its rules), and the one-shot plan lifecycle in the plan store.
 
 use std::collections::HashMap;
 
@@ -19,9 +19,9 @@ use super::scope::{
     LOCAL_BACKEND_SCOPE,
 };
 use super::{
-    apply_data_transfer_job_impl, apply_payload, availability_of, file_artifact_id, format_expiry,
-    fresh_key, plan_digest, prepare_data_transfer_job_impl, prepare_payload,
-    TransferApplyJobRequest, TransferPrepareJobRequest, TransferPrepareJobView,
+    admit_apply, apply_payload, availability_of, file_artifact_id, format_expiry, fresh_key,
+    plan_digest, prepare_data_transfer_job_impl, prepare_payload, TransferApplyJobRequest,
+    TransferApplyJobView, TransferPrepareJobRequest, TransferPrepareJobView,
 };
 use crate::commands::data_transfer::plans::{self, PlanState};
 use crate::commands::error::CommandError;
@@ -104,7 +104,7 @@ fn apply_request() -> ApplyPlanRequest {
     }
 }
 
-// ---------------------------------------------------------------- §2.1 payloads
+// -------------------------------------------------------- prepare/apply payloads
 
 #[test]
 fn prepare_payload_declares_versions_and_consumes_nothing() {
@@ -168,7 +168,7 @@ fn apply_payload_never_carries_endpoints_or_credentials() {
     assert!(text.contains("confirmedDestructive"));
 }
 
-// ------------------------------------------------------------ §8 backend scope
+// ------------------------------------------------------- backend scope gate
 
 #[test]
 fn same_backend_scope_requires_the_local_declaration() {
@@ -474,16 +474,40 @@ fn expiry_is_published_as_an_instant_and_keys_are_per_call() {
     assert_ne!(first, second, "a deliberate retry must be a new Job");
 }
 
-// ------------------------------------------------------- real command path (D1/D8)
+// ------------------------------------------------------ the real command path
 
 /// Options that let the mock driver answer a review, a data read and a write.
+///
+/// A resumable write refuses to start a table unless the endpoint has declared
+/// the two properties a keyset copy depends on: an ordered, complete primary-key
+/// index, and a stable transactional snapshot so a resumed page cannot read a row
+/// set the previous run already moved. Missing either one, the bounded pipeline
+/// gives up before it reads a row and the apply ends `Failed` with no rows moved.
+/// The cursor fixture also has to exhaust — the mock answers every page with the
+/// same rows, so keyset paging would never reach the empty tail that ends a copy.
 fn mock_options() -> crate::testing::mock_driver::MockDriverOptions {
+    use crate::testing::mock_driver::MockDriver;
+    use datazen_driver_api::{IndexInfo, TableOptions};
+
     let mut options = crate::testing::app_state::rich_mock_options();
-    options.columns = crate::testing::mock_driver::MockDriver::default_table_schema("users")
-        .columns
-        .clone();
+    let mut schema = MockDriver::default_table_schema("users");
+    schema.indexes.push(IndexInfo {
+        name: "users_pkey".to_string(),
+        columns: vec!["id".to_string()],
+        is_unique: true,
+        is_primary: true,
+        index_type: "BTREE".to_string(),
+    });
+    schema.table_options = TableOptions {
+        supports_consistent_snapshot: Some(true),
+        ..Default::default()
+    };
+    options.columns = schema.columns.clone();
+    options.primary_keys = schema.primary_keys.clone();
+    options.table_schema = Some(schema);
     options.parameterized_writes = true;
     options.execute_rows_affected = 1;
+    options.empty_keyset_after_cursor = true;
     // The renamed target has to exist as a relation, otherwise inspection
     // reports it with no columns and the review pairs nothing to migrate.
     options.tables.push(datazen_driver_api::TableInfo {
@@ -495,8 +519,8 @@ fn mock_options() -> crate::testing::mock_driver::MockDriverOptions {
     options
 }
 
-/// A SQL-file job: no target session at all, because the artifact is a local
-/// file (§6.1).
+/// A SQL-file job: no target session at all, because its artifact is a file
+/// this process writes locally.
 fn sql_file_job(source_id: String, file_token: String) -> TransferJob {
     TransferJob {
         source: Endpoint {
@@ -556,9 +580,26 @@ fn refusal(error: &CommandError) -> String {
     format!("{error:?}")
 }
 
-/// §6.1 + §8: a SQL-file migration writes to a chosen local file, so it has no
-/// target session to resolve. The §8 gate used to refuse every such job with
-/// "transfer job does not have a database target" before it could even start.
+/// Admit an apply Job and then drive the continuation to a terminal verdict.
+///
+/// The command itself stops at admission so the caller has the Job id; a test
+/// that wants the finished verdict has to take the continuation that admission
+/// handed back and await it.
+async fn apply_and_wait(
+    state: &crate::commands::data_transfer::AppState,
+    request: TransferApplyJobRequest,
+) -> Result<TransferApplyJobView, CommandError> {
+    let admitted = admit_apply(state, request).await?;
+    match admitted.drive {
+        Some(drive) => drive.finish().await,
+        None => Ok(admitted.view),
+    }
+}
+
+/// A SQL-file migration writes to a chosen local file, so it has no target
+/// session to resolve. The same-backend gate used to refuse every such job with
+/// "transfer job does not have a database target" before it could even start,
+/// because it resolved a target the job never had.
 #[tokio::test]
 async fn a_sql_file_job_clears_the_same_backend_gate_on_both_job_paths() {
     let test = TestAppState::with_options(mock_options()).await;
@@ -580,7 +621,7 @@ async fn a_sql_file_job_clears_the_same_backend_gate_on_both_job_paths() {
         "the review must publish a planId"
     );
 
-    let applied = apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared))
+    let applied = apply_and_wait(&test.state, apply_request_from(&prepared))
         .await
         .expect("a SQL-file job must clear the gate on the apply path too");
     assert_eq!(applied.state, JobState::Succeeded, "{:?}", applied.error);
@@ -594,8 +635,8 @@ async fn a_sql_file_job_clears_the_same_backend_gate_on_both_job_paths() {
     );
 }
 
-/// The D1 relaxation must not weaken §8: the local *source* is still checked,
-/// and a SQL-file job gets no exemption from that.
+/// Letting SQL-file jobs skip target resolution must not weaken the gate: the
+/// local *source* is still checked, and a SQL-file job gets no exemption from it.
 #[tokio::test]
 async fn a_sql_file_job_from_a_foreign_backend_is_still_refused() {
     let dir = tempfile::tempdir().expect("temporary SQL output directory");
@@ -606,14 +647,14 @@ async fn a_sql_file_job_from_a_foreign_backend_is_still_refused() {
     let error =
         prepare_data_transfer_job_impl(&TestAppState::new().await.state, prepare_request(job))
             .await
-            .expect_err("a remote source must not pass the §8 gate");
+            .expect_err("a remote source must not pass the same-backend gate");
     assert!(
-        refusal(&error).contains("migration across backends is not available"),
+        refusal(&error).contains("cannot migrate across backends"),
         "{error:?}"
     );
 }
 
-/// D1, end to end. A saved connection is a *connection*, not a *database*: two
+/// End to end. A saved connection is a *connection*, not a *database*: two
 /// dedicated sessions on the SAME saved connection, pointing at DIFFERENT
 /// databases, is the ordinary "copy staging into prod" job. Reading and writing
 /// the same object name there is not a self-overlap, because the two objects
@@ -650,7 +691,7 @@ async fn one_saved_connection_two_databases_is_not_a_self_overlap() {
                 .await
                 .as_deref(),
             Some("pg-local"),
-            "both endpoints must belong to the ONE saved connection, or D1 is not reproduced"
+            "both endpoints must belong to the ONE saved connection, or the overlap is not reproduced"
         );
     }
 
@@ -676,9 +717,11 @@ async fn one_saved_connection_two_databases_is_not_a_self_overlap() {
     );
 }
 
-/// §2.1 / §9: the apply Job claims the plan before it writes, so the legacy
+/// The apply Job claims the plan before it writes, so the legacy
 /// `execute_data_transfer` — which claims the very same record — is refused for
-/// the same planId even after the Job ended in a non-success state.
+/// the same planId even after the Job ended in a non-success state. A claim is
+/// one-shot and is not released on failure; that is what keeps the plan from
+/// being replayed against a second writer.
 #[tokio::test]
 async fn an_apply_job_claims_the_plan_and_refuses_the_legacy_manager() {
     let test = TestAppState::with_options(mock_options()).await;
@@ -690,7 +733,7 @@ async fn an_apply_job_claims_the_plan_and_refuses_the_legacy_manager() {
             .expect("a direct-pair review should issue a plan");
     let plan_id = prepared.plan_id.clone();
 
-    let applied = apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared)).await;
+    let applied = apply_and_wait(&test.state, apply_request_from(&prepared)).await;
     let state = plans::peek_plan_any(&plan_id)
         .expect("the plan stays readable")
         .state;
@@ -730,8 +773,8 @@ async fn two_concurrent_apply_jobs_share_exactly_one_plan_claim() {
             .expect("a direct-pair review should issue a plan");
 
     let (first, second) = tokio::join!(
-        apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared)),
-        apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared)),
+        apply_and_wait(&test.state, apply_request_from(&prepared)),
+        apply_and_wait(&test.state, apply_request_from(&prepared)),
     );
     let refusals = [&first, &second]
         .into_iter()
@@ -750,5 +793,8 @@ async fn two_concurrent_apply_jobs_share_exactly_one_plan_claim() {
     );
 }
 
+mod addressability;
 mod endpoint_identity;
 mod job_lifecycle;
+mod queries;
+mod replay;

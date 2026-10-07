@@ -4,7 +4,7 @@
 //! selection; the plan body itself is always read back from the stored plan. Every
 //! admission rule below therefore compares what the caller reviewed against what the
 //! host actually holds, and fails closed with a "re-prepare" instruction instead of
-//! reusing a stale plan (§2.1 / §8).
+//! reusing a stale plan.
 
 use crate::commands::error::CommandError;
 
@@ -52,7 +52,8 @@ pub(crate) fn admit_apply_plan(
         ));
     }
     // Consumption is checked before expiry/digest so a replayed apply reports the
-    // one-shot fact instead of a time-dependent reason (§2.1: one planId ⇒ one Job).
+    // one-shot fact — one planId yields exactly one Job — instead of a
+    // time-dependent reason that would change as the plan ages.
     match admission.availability {
         PlanAvailability::Available => {}
         PlanAvailability::Claimed => {

@@ -1,4 +1,4 @@
-//! 数据迁移 Job 端点的真实身份：端点重叠检测与 §6.2 原子预算预留共用同一身份。
+//! 数据迁移 Job 端点的真实身份：端点重叠检测与 runtime 的原子预算预留共用同一身份。
 //!
 //! # 为什么这里不能是常量
 //!
@@ -16,7 +16,8 @@
 //! 被误拒」这个缺陷的根因：
 //!
 //! * `connection_id` —— 真实的持久化 `connectionId`（`ConnectionConfig::id`）。它回答
-//!   「这些配额记到哪条已保存连接上」，是 §6.2 `ensure_service` 的记账键。**同一条连接
+//!   「这些配额记到哪条已保存连接上」，是 runtime `EndpointRef::ensure_service` 原子预算
+//!   预留的记账键。**同一条连接
 //!   可以承载任意多个库**（`connect_dedicated` 只覆盖 `effective_config.database`，
 //!   `id` 不变），所以它对「是不是同一个物理端点」没有发言权：拿它当重叠键，会把
 //!   `staging.users` → `prod.users` 这类合法跨库拷贝判成自覆盖，而且报出的
@@ -62,7 +63,7 @@ const SERVICE_KEY_PREFIX: &str = "data-transfer";
 /// `service_key` 参与重叠比较**。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct EndpointIdentity {
-    /// 真实持久化连接配置 id —— §6.2 预算预留按它注册。**不**参与重叠检测。
+    /// 真实持久化连接配置 id —— runtime 的原子预算预留按它注册。**不**参与重叠检测。
     pub(crate) connection_id: ConnectionId,
     /// 端点位置的稳定摘要。位置无法指认（既无 host 也无 database）时留空，
     /// 交给 runtime 的 fail-closed 分支，而不是编造一个不证明任何事的摘要。
@@ -399,7 +400,7 @@ mod tests {
         );
     }
 
-    /// D2：留空 `host` 与把它写成驱动的默认 host 指向**同一台机器**，必须摘要成
+    /// 留空 `host` 与把它写成驱动的默认 host 指向**同一台机器**，必须摘要成
     /// 同一个 service_key，否则同一张表的自覆盖在 admission 就漏判了。
     ///
     /// 反向断言同样重要：驱动**没有**声明默认 host 时，留空 host 就是「未知位置」，
@@ -413,7 +414,7 @@ mod tests {
         assert_eq!(
             identify(&omitted, &*driver_with_defaults()).service_key,
             identify(&explicit, &*driver_with_defaults()).service_key,
-            "省略 host 与显式写成默认 host 是同一台机器，必须同键（否则 D2 漏判）"
+            "省略 host 与显式写成默认 host 是同一台机器，必须同键（否则会漏判成两个不同端点）"
         );
 
         assert_ne!(
@@ -434,7 +435,7 @@ mod tests {
         );
 
         // 两者都省略时，解析结果就是驱动声明的那一对默认值，因此与写全相同。
-        // 这一条正是 D2 的原始形态：UI 里「什么都不填」与「把默认值抄上去」
+        // 这一条是用户真正会写出来的形态：UI 里「什么都不填」与「把默认值抄上去」
         // 是同一台机器，绝不能因为省略就漏判自覆盖。
         let mut omitted_both = config();
         omitted_both.host = None;

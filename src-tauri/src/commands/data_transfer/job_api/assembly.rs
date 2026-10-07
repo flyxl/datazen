@@ -3,7 +3,7 @@
 //! The apply Job never carries a plan body: this module re-reads the immutable plan
 //! the server issued, re-applies the reviewed selection, re-checks the endpoint
 //! contract (driver type/protocol, read-only target, filter and schema fingerprints)
-//! and derives the §6/§7 freeze evidence (mapping fingerprint, stable keys, snapshot
+//! and derives the freeze evidence (mapping fingerprint, stable keys, snapshot
 //! proof) that the handler re-verifies through `validate_plan`.
 
 use std::collections::HashMap;
@@ -110,7 +110,7 @@ fn hydrate_column_mappings(job: &mut TransferJob, inspected: &[TableInspectResul
     }
 }
 
-/// §6/§7 freeze evidence: mapping digest, per-table stable keys, snapshot proof.
+/// Freeze evidence: mapping digest, per-table stable keys, snapshot proof.
 fn derive_freeze(
     job: &TransferJob,
     inspected: &[TableInspectResult],
@@ -152,7 +152,9 @@ fn derive_freeze(
 }
 
 /// Stable complete key columns per participating table; empty means the table
-/// cannot be resumed automatically (§7).
+/// cannot be resumed automatically: a resumed table has to be distinguishable
+/// from a fresh copy of the same table, and without its complete key there is
+/// nothing to resume *by*.
 fn stable_keys(
     table: &crate::data_transfer::model::TableMapping,
     inspected: &[TableInspectResult],

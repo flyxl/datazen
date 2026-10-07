@@ -1,7 +1,7 @@
-//! Job-based Data Transfer entry points (P5 §2.1 / §6 / §7 / §8).
+//! Job-based Data Transfer entry points.
 //!
 //! Two IPC commands replace the single "preview then execute" call with the
-//! review contract the platform docs require:
+//! review contract a destructive cross-database migration needs:
 //!
 //! * `prepare_data_transfer_job` runs a terminal `dataTransferPrepare` Job: it
 //!   inspects, plans, and freezes evidence, then releases every resource. Its
@@ -15,17 +15,25 @@
 //! One `planId` is consumable by exactly one apply Job. A repeated idempotency
 //! key replays the recorded Job instead of writing twice, and any refusal tells
 //! the caller to prepare again rather than silently reusing a stale plan.
+//!
+//! Apply returns as soon as its Job is admitted, not when it finishes: the Job id
+//! is the handle the UI polls, watches and cancels with, so publishing it only
+//! after a terminal run left a long migration both unobservable and structurally
+//! uncancellable. `list_jobs` / `get_job` (in `queries`) are the read side of
+//! that handle.
 
 mod admission;
 mod assembly;
 mod cancel;
 mod endpoint_identity;
+mod queries;
 mod runtime;
 mod scope;
 
 #[cfg(test)]
 mod tests;
 
+pub use queries::*;
 pub use scope::TransferBackendScope;
 
 pub(crate) use cancel::{cancel_data_transfer_job, job_cancel_requested};
@@ -55,7 +63,7 @@ use runtime::JobRunRequest;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TransferPrepareJobRequest {
     pub job: TransferJob,
-    /// §8: both endpoints must declare the local desktop backend. There is no
+    /// Both endpoints must declare the local desktop backend. There is no
     /// default, because "I forgot to declare a scope" is exactly the input the
     /// rule exists to reject.
     pub backend_scope: TransferBackendScope,
@@ -101,7 +109,7 @@ pub struct TransferPrepareJobView {
 
 /// Apply verdict. `commit_boundaries` are the durable write markers, so a caller
 /// that lost its response can tell "unknown" from "never started" without
-/// creating a second Job (§8).
+/// creating a second Job.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferApplyJobView {
@@ -119,8 +127,8 @@ pub struct TransferApplyJobView {
     pub partial: bool,
     pub replayed: bool,
     pub error: Option<String>,
-    /// §7 recovery verdict as decided by the handler over the recorded
-    /// checkpoint: `resumeAfterVerify` | `reject` | `requireManualReview`.
+    /// Recovery verdict as decided by the handler over the recorded checkpoint:
+    /// `resumeAfterVerify` | `reject` | `requireManualReview`.
     pub recovery_verdict: String,
     /// Position of the last confirmed boundary a resume may pass through.
     pub recovery_resume_through: Option<usize>,
@@ -198,25 +206,160 @@ pub(crate) async fn prepare_data_transfer_job_impl(
 }
 
 /// Apply: one planId, one Job, one idempotent write attempt.
+///
+/// The Job id comes back as soon as the Job is admitted — still `queued`, nothing
+/// written — and the write runs on its own task. A cross-database migration can
+/// take minutes; a caller that only received the id after that time had no handle
+/// to poll, to watch progress with, or to cancel with. The Job's own state is the
+/// observable outcome from here on, so a detached failure is logged rather than
+/// returned: the caller has the id and can read what the Job recorded.
 #[tauri::command]
 pub async fn apply_data_transfer_job(
     state: State<'_, AppState>,
     request: TransferApplyJobRequest,
 ) -> Result<TransferApplyJobView, CommandError> {
-    apply_data_transfer_job_impl(&state, request).await
+    apply_detached(&state, request).await
 }
 
-/// The apply body, split from the Tauri wrapper so the plan lifecycle can be
-/// exercised on the real path.
-pub(crate) async fn apply_data_transfer_job_impl(
+/// The apply body, split from the Tauri wrapper so that detaching can itself be
+/// exercised on the real path instead of only through the command wrapper.
+pub(crate) async fn apply_detached(
     state: &AppState,
     request: TransferApplyJobRequest,
 ) -> Result<TransferApplyJobView, CommandError> {
+    let admitted = admit_apply(state, request).await?;
+    let Some(drive) = admitted.drive else {
+        return Ok(admitted.view);
+    };
+    tauri::async_runtime::spawn(async move {
+        let plan_id = drive.plan_id.clone();
+        let job_id = drive.job_id.clone();
+        if let Err(error) = drive.finish().await {
+            tracing::warn!(
+                cmd = "apply_data_transfer",
+                plan_id = %plan_id,
+                job_id = %job_id,
+                error = %crate::log_redact::redact_secrets_for_log(&error.to_string()),
+            );
+        }
+    });
+    Ok(admitted.view)
+}
+
+/// An admitted apply Job: the view to return now, plus the write it still owes.
+pub(crate) struct AdmittedApply {
+    /// What the caller may return immediately. On the admitted path it describes
+    /// a `queued` Job with no progress yet; on the replayed path it is the
+    /// recorded outcome of the earlier run.
+    pub(crate) view: TransferApplyJobView,
+    /// `None` when nothing is left to run because this key already ran.
+    pub(crate) drive: Option<ApplyDrive>,
+}
+
+/// The part of an apply that runs after its Job id is already published.
+pub(crate) struct ApplyDrive {
+    job_id: String,
+    plan_id: String,
+    plan_digest: String,
+    selection_revision: u64,
+    sql_file_destination: Option<std::path::PathBuf>,
+    run: runtime::BoxedJobRun,
+}
+
+impl ApplyDrive {
+    /// Run the write to a terminal state and report the finished verdict.
+    pub(crate) async fn finish(self) -> Result<TransferApplyJobView, CommandError> {
+        let outcome = (self.run).await.cmd_err("apply_data_transfer")?;
+        // The Job view cannot surface stage artifacts, so the host hashes the
+        // emitted SQL file itself and publishes the same content-addressed id.
+        // The hash has to be computed by the host and not by the handler: the
+        // host owns the content-addressing scheme these artifact ids are
+        // expressed in, so an id minted anywhere else would not be comparable
+        // with the ones prepare publishes.
+        let host_artifacts = self
+            .sql_file_destination
+            .as_deref()
+            .map(std::path::Path::new)
+            .and_then(file_artifact_id)
+            .into_iter()
+            .collect::<Vec<String>>();
+        // The digest only exists once the run has written the file, so this is the
+        // first moment the host can name that artifact — and a detached apply
+        // hands this view to nobody. Keeping the id here is what lets `get_job`
+        // publish it later, instead of the only handle to the emitted SQL dying
+        // with the return value of a task that was never awaited.
+        runtime::remember_artifacts(&outcome.job_id, &host_artifacts);
+        Ok(apply_view(
+            outcome,
+            host_artifacts,
+            self.plan_id,
+            self.plan_digest,
+            self.selection_revision,
+        ))
+    }
+}
+
+/// Admit one apply Job, stopping before the write attempt.
+///
+/// Order is load-bearing and is the whole of the recovery story. Everything up to
+/// `assemble` is read-only and repeatable. The idempotency receipt is consulted
+/// *next*, still before the plan is claimed: once a first attempt has consumed
+/// the plan, any retry is refused as "already consumed", so a receipt check placed
+/// after the claim could never recover the result of the attempt that consumed it
+/// and the caller would be stuck holding a one-shot plan it can no longer read.
+/// A receipt found here replays the recorded Job and claims nothing.
+///
+/// Only then does the claim happen, and *before* the write: the claim is the plan
+/// registry's own atomic Available → Executing transition, so the legacy
+/// `execute_data_transfer` path — which claims the very same record — is refused
+/// from the moment this Job starts writing, including after a failed or unknown
+/// outcome. Peeking alone would have left two managers free to execute one planId.
+pub(crate) async fn admit_apply(
+    state: &AppState,
+    request: TransferApplyJobRequest,
+) -> Result<AdmittedApply, CommandError> {
     // `peek_plan_any` also returns claimed/consumed plans, so the refusal can name
     // the real reason ("already consumed") instead of a misleading "unknown plan".
     let plan = plans::peek_plan_any(&request.plan_id)?;
     scope::enforce_same_backend_scope(&plan.job, Some(&request.backend_scope))?;
     let digest = plan_digest(&plan)?;
+    let assembled: FreezeAssembly = assembly::assemble(state, &plan, &request.selection, true)
+        .await
+        .cmd_err("apply_data_transfer")?;
+    let key = request
+        .idempotency_key
+        .unwrap_or_else(|| fresh_key(&request.plan_id));
+    if let Some(job_id) = runtime::receipt_for(&key) {
+        // The SQL file this run would have emitted is named by the endpoints, so
+        // a replay can still publish the same artifact id the first attempt did.
+        let host_artifacts = sql_file_destination(&assembled.endpoints)
+            .as_deref()
+            .map(std::path::Path::new)
+            .and_then(file_artifact_id)
+            .into_iter()
+            .collect();
+        let handler = Arc::new(DataTransferHandler::apply(
+            assembled.freeze,
+            assembled.inspected,
+            assembled.source_schemas,
+            assembled.target_schemas,
+            assembled.endpoints,
+            plan.database_structure.clone(),
+        ));
+        let outcome = runtime::replayed_outcome(&job_id, Vec::new(), handler.as_ref())
+            .await
+            .cmd_err("apply_data_transfer")?;
+        return Ok(AdmittedApply {
+            view: apply_view(
+                outcome,
+                host_artifacts,
+                request.plan_id.clone(),
+                digest.clone(),
+                plan.revision,
+            ),
+            drive: None,
+        });
+    }
     admit_apply_plan(
         &PlanAdmission {
             plan_id: plan.id.clone(),
@@ -235,39 +378,25 @@ pub(crate) async fn apply_data_transfer_job_impl(
             confirmed_destructive: request.confirmed_destructive,
         },
     )?;
-    let assembled: FreezeAssembly = assembly::assemble(state, &plan, &request.selection, true)
-        .await
-        .cmd_err("apply_data_transfer")?;
-    // §2.1 / §9: the plan is claimed *before* the write attempt, not after it.
-    // The claim is the plan registry's own atomic Available → Executing
-    // transition, so the legacy `execute_data_transfer` path — which claims the
-    // very same record — is refused from the moment this Job starts writing,
-    // including after a failed or unknown outcome. Peeking alone would have left
-    // two managers free to execute one planId. Everything above this line is
-    // read-only and repeatable, so a failure there leaves the review usable.
-    let plan = plans::claim_plan(&request.plan_id).map_err(CommandError::from)?;
+    let claimed = plans::claim_plan(&request.plan_id).map_err(CommandError::from)?;
     let sql_file_destination = sql_file_destination(&assembled.endpoints);
-    let handler = Arc::new(DataTransferHandler::apply(
-        assembled.freeze,
-        assembled.inspected,
-        assembled.source_schemas,
-        assembled.target_schemas,
-        assembled.endpoints,
-        plan.database_structure.clone(),
-    ));
-    let key = request
-        .idempotency_key
-        .unwrap_or_else(|| fresh_key(&request.plan_id));
-    let outcome = runtime::run(JobRunRequest {
+    let run_request = JobRunRequest {
         kind: runtime::APPLY_KIND,
         payload: apply_payload(
             &request.plan_id,
             &digest,
-            plan.revision,
+            claimed.revision,
             &request.selection,
             request.confirmed_destructive,
         ),
-        handler,
+        handler: Arc::new(DataTransferHandler::apply(
+            assembled.freeze,
+            assembled.inspected,
+            assembled.source_schemas,
+            assembled.target_schemas,
+            assembled.endpoints,
+            claimed.database_structure,
+        )),
         endpoints: runtime::endpoint_refs(
             assembled.source_objects,
             assembled.target_objects,
@@ -277,28 +406,70 @@ pub(crate) async fn apply_data_transfer_job_impl(
         artifact_ids: Vec::new(),
         idempotency_key: &key,
         plan_id: Some(&request.plan_id),
-    })
-    .await
-    .cmd_err("apply_data_transfer")?;
-    // The Job view cannot surface stage artifacts, so the host hashes the emitted
-    // SQL file itself and publishes the same content-addressed id (§ CM-49).
+    };
+    let admission = runtime::admit(&run_request)
+        .await
+        .cmd_err("apply_data_transfer")?;
+    // Owned from here, so the continuation can outlive this call.
+    let drive_plan = runtime::DrivePlan::from_request(&run_request);
+    match admission {
+        // The receipt appeared between the check above and this accept, so this
+        // key already ran. Report what it recorded instead of a second Job.
+        runtime::Admission::Replayed(outcome) => Ok(AdmittedApply {
+            view: apply_view(
+                outcome,
+                Vec::new(),
+                request.plan_id.clone(),
+                digest.clone(),
+                plan.revision,
+            ),
+            drive: None,
+        }),
+        runtime::Admission::Accepted(accepted) => Ok(AdmittedApply {
+            view: queued_view(
+                &accepted,
+                request.plan_id.clone(),
+                digest.clone(),
+                plan.revision,
+            ),
+            drive: Some(ApplyDrive {
+                job_id: accepted.job_id.as_str().to_string(),
+                plan_id: request.plan_id.clone(),
+                plan_digest: digest,
+                selection_revision: plan.revision,
+                sql_file_destination,
+                run: Box::pin(async move { runtime::drive(accepted, drive_plan).await }),
+            }),
+        }),
+    }
+}
+
+/// Build an apply view from a finished run.
+///
+/// `extra_artifacts` is what the host computed outside the Job; it is appended
+/// only when the Job did not already publish the same id.
+fn apply_view(
+    outcome: runtime::JobOutcome,
+    extra_artifacts: Vec<String>,
+    plan_id: String,
+    plan_digest: String,
+    selection_revision: u64,
+) -> TransferApplyJobView {
     let mut artifact_ids = outcome.artifact_ids;
-    if let Some(path) = sql_file_destination.as_deref() {
-        if let Some(artifact) = file_artifact_id(path) {
-            if !artifact_ids.contains(&artifact) {
-                artifact_ids.push(artifact);
-            }
+    for artifact in extra_artifacts {
+        if !artifact_ids.contains(&artifact) {
+            artifact_ids.push(artifact);
         }
     }
-    Ok(TransferApplyJobView {
+    TransferApplyJobView {
         job_id: outcome.job_id,
         kind: outcome.kind,
         state: outcome.state,
         effect_outcome: outcome.effect_outcome,
         progress: outcome.progress,
-        plan_id: request.plan_id,
-        plan_digest: digest,
-        selection_revision: plan.revision,
+        plan_id,
+        plan_digest,
+        selection_revision,
         commit_boundaries: outcome.commit_boundaries,
         artifact_ids,
         cancelled: outcome.state == JobState::Cancelled,
@@ -311,7 +482,40 @@ pub(crate) async fn apply_data_transfer_job_impl(
         recovery_verdict: outcome.recovery.verdict,
         recovery_resume_through: outcome.recovery.resume_through,
         recovery_reason: outcome.recovery.reason,
-    })
+    }
+}
+
+/// The view of a Job that is admitted but not driven yet.
+///
+/// Nothing has been written, so every progress counter is zero and the effect
+/// outcome is `notStarted`. `recovery_verdict` is empty rather than one of the
+/// three real verdicts: the handler has judged nothing yet, and naming a verdict
+/// here would report a decision that was never made.
+pub(crate) fn queued_view(
+    accepted: &runtime::AcceptedJob,
+    plan_id: String,
+    plan_digest: String,
+    selection_revision: u64,
+) -> TransferApplyJobView {
+    TransferApplyJobView {
+        job_id: accepted.job_id.as_str().to_string(),
+        kind: accepted.kind.clone(),
+        state: JobState::Queued,
+        effect_outcome: EffectOutcome::NotStarted,
+        progress: JobProgress::default(),
+        plan_id,
+        plan_digest,
+        selection_revision,
+        commit_boundaries: Vec::new(),
+        artifact_ids: Vec::new(),
+        cancelled: false,
+        partial: false,
+        replayed: false,
+        error: None,
+        recovery_verdict: String::new(),
+        recovery_resume_through: None,
+        recovery_reason: None,
+    }
 }
 
 /// Prepare payload: contract versions only. No `consumedPlanId` — a prepare Job

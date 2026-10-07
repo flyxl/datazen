@@ -454,6 +454,11 @@ pub fn run() {
             crate::commands::cancel_data_transfer,
             crate::commands::classify_transfer_pair,
             crate::commands::execute_data_transfer,
+            // Job 读侧：`apply_data_transfer_job` 在受理即返回 jobId，
+            // 这两个命令是同一个 id 的读取入口（前端 client 的 getJob/listJobs
+            // 经桌面 transport 映射到这两个 snake_case 名字）。
+            crate::commands::get_job,
+            crate::commands::list_jobs,
             crate::commands::inspect_data_transfer,
             crate::commands::inspect_sql_file_transfer,
             crate::commands::pick_data_transfer_sql_file,

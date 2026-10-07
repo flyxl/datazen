@@ -1,6 +1,14 @@
-//! Accept and run one Data Transfer Job through the P5 Job runtime.
+//! Admit and drive one Data Transfer Job through the P5 Job runtime.
 //!
-//! §2.1/§8 contract enforced here:
+//! A run has two steps. [`admit`] mints the Job id, stores the Job and records
+//! the idempotency receipt: that moment is what makes the id *addressable*, and
+//! it happens while the Job is still `queued`, before any write. [`drive`]
+//! then runs the handler to a terminal state. The split is the whole point of
+//! this module — a Job whose id is only published after the run finished
+//! cannot be cancelled while it is running and reports no progress while it
+//! runs, so the caller can only ever learn the outcome after the fact.
+//!
+//! Contracts enforced here:
 //!
 //! * prepare and apply are distinct Jobs; apply carries only `planId` + plan digest +
 //!   selection revision + reviewed selection + confirmation — never the plan body;
@@ -8,9 +16,14 @@
 //!   second accept with `PlanAlreadyConsumed`, and the host marks the plan consumed
 //!   only after a terminal success;
 //! * a repeated idempotency key replays the *recorded* Job instead of creating a
-//!   second one, so an unknown commit never becomes a second write.
+//!   second one, so an unknown commit never becomes a second write. That is why
+//!   the apply path asks [`receipt_for`] *before* it claims the plan: once the
+//!   plan is consumed a retry would be refused as "already consumed" and could
+//!   never recover the result of the attempt that consumed it.
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use datazen_platform_api::context::OwnerRef;
@@ -40,6 +53,11 @@ pub(crate) const RECOVERY_RESUME_AFTER_VERIFY: &str = "resumeAfterVerify";
 pub(crate) const RECOVERY_REJECT: &str = "reject";
 pub(crate) const RECOVERY_REQUIRE_MANUAL_REVIEW: &str = "requireManualReview";
 
+/// The continuation an admitted Job still owes its caller, boxed so it can
+/// outlive the call that admitted it and be driven from a detached task.
+pub(crate) type BoxedJobRun =
+    Pin<Box<dyn Future<Output = Result<JobOutcome, CommandError>> + Send + 'static>>;
+
 /// Everything the two commands need from one Job run.
 pub(crate) struct JobOutcome {
     pub(crate) job_id: String,
@@ -50,7 +68,7 @@ pub(crate) struct JobOutcome {
     pub(crate) commit_boundaries: Vec<CommitBoundary>,
     pub(crate) artifact_ids: Vec<String>,
     pub(crate) error: Option<String>,
-    /// §7 verdict as decided by the handler over the recorded checkpoint.
+    /// Verdict as decided by the handler over the recorded checkpoint.
     pub(crate) recovery: RecoveryReport,
     /// True when an idempotency key replayed an already accepted Job.
     pub(crate) replayed: bool,
@@ -83,12 +101,29 @@ pub(super) struct TransferJobHost {
     pub(super) repo: Arc<InMemoryJobRepository>,
     ledger: Arc<Mutex<BudgetLedger>>,
     clock: Arc<SharedClock>,
-    /// idempotency key → accepted Job id. A replay never mints a second Job (§8).
+    /// idempotency key → accepted Job id. A replay never mints a second Job:
+    /// the receipt is written at admission, before the write attempt, so a
+    /// crash during the attempt still leaves a way back to its recorded result.
     receipts: Mutex<HashMap<String, JobId>>,
+    /// Job id → artifact ids the host computed itself. The Job view cannot
+    /// surface the artifacts a stage emits (the emitted SQL file is one), so
+    /// the host hashes them and keeps them here; an apply that returned at
+    /// admission has no other place to publish them.
+    artifacts: Mutex<HashMap<JobId, Vec<String>>>,
+    /// Job id → the counters its run accumulated.
+    ///
+    /// The repository has no port for them: `accept` writes `JobProgress::default()`
+    /// once and nothing in the `JobRepository` contract can change it, while the
+    /// runtime accumulates the real counters in `dispatch` and hands them back in
+    /// `JobResult`. A detached run has no caller left to read that result, so the
+    /// host keeps it here — the same reason artifacts are kept — and `queries`
+    /// folds it into the view it publishes.
+    progress: Mutex<HashMap<JobId, JobProgress>>,
 }
 
 /// Process-wide Job host. State is in-memory like the existing connection
-/// sessions: this host *is* the local desktop backend (§8).
+/// sessions: this host *is* the local desktop backend, so it carries no remote
+/// principal and no session token, and a background service cannot reach it.
 pub(super) fn host() -> &'static TransferJobHost {
     static HOST: OnceLock<TransferJobHost> = OnceLock::new();
     HOST.get_or_init(|| {
@@ -103,6 +138,8 @@ pub(super) fn host() -> &'static TransferJobHost {
             ledger,
             clock,
             receipts: Mutex::new(HashMap::new()),
+            artifacts: Mutex::new(HashMap::new()),
+            progress: Mutex::new(HashMap::new()),
         }
     })
 }
@@ -122,7 +159,7 @@ fn now_millis() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-/// Local desktop identity: §8 forbids a background service from reaching this
+/// Local desktop identity: a background service is not allowed to reach this
 /// profile, so the context carries no remote principal and no session token.
 pub(super) fn request_context() -> RequestContext {
     RequestContext::new(
@@ -191,25 +228,134 @@ fn ensure_endpoint_services(
     Ok(())
 }
 
-/// Accept (or replay) and run one Job until it reaches a terminal state.
-pub(crate) async fn run(request: JobRunRequest<'_>) -> Result<JobOutcome, CommandError> {
+/// A Job the repository now holds, together with the identity the worker needs.
+///
+/// The Job exists and is `queued`: it is addressable by
+/// [`AcceptedJob::job_id`] and cancellable, but nothing has been written yet.
+pub(crate) struct AcceptedJob {
+    /// The addressable Job id, fixed at admission.
+    pub(crate) job_id: JobId,
+    /// The kind the Job was accepted under; echoed back in the caller's view.
+    pub(crate) kind: String,
+    /// The admitting request's own context, so driving does not need a second one.
+    ctx: RequestContext,
+}
+
+/// What admitting a run produced.
+pub(crate) enum Admission {
+    /// A fresh queued Job with work still owed to it.
+    Accepted(AcceptedJob),
+    /// The recorded outcome of a Job this idempotency key already ran. No second
+    /// Job was minted and nothing is left to drive.
+    Replayed(JobOutcome),
+}
+
+/// Everything driving an accepted Job needs, owned rather than borrowed so the
+/// continuation can outlive the call that admitted it.
+pub(crate) struct DrivePlan {
+    pub(crate) handler: Arc<DataTransferHandler>,
+    pub(crate) endpoints: Vec<EndpointRef>,
+    pub(crate) artifact_ids: Vec<String>,
+    pub(crate) plan_id: Option<String>,
+}
+
+impl DrivePlan {
+    pub(crate) fn from_request(request: &JobRunRequest<'_>) -> Self {
+        Self {
+            handler: request.handler.clone(),
+            endpoints: request.endpoints.clone(),
+            artifact_ids: request.artifact_ids.clone(),
+            plan_id: request.plan_id.map(str::to_string),
+        }
+    }
+}
+
+/// The Job this idempotency key already named, if this host has one.
+///
+/// Read-only, and that is the point: the apply path consults it *before* it
+/// claims the plan. A retry whose first attempt already consumed the plan would
+/// otherwise be refused as "already consumed" forever and could never recover
+/// the result that attempt produced.
+pub(crate) fn receipt_for(idempotency_key: &str) -> Option<JobId> {
+    lookup_receipt(host(), idempotency_key)
+}
+
+/// The recorded outcome of an already-run Job, replayed under `key`'s receipt.
+pub(crate) async fn replayed_outcome(
+    job_id: &JobId,
+    artifact_ids: Vec<String>,
+    handler: &DataTransferHandler,
+) -> Result<JobOutcome, CommandError> {
+    let host = host();
+    let ctx = request_context();
+    replay(host, &ctx, job_id, artifact_ids, handler).await
+}
+
+/// Artifact ids the host computed for a Job, which the Job record cannot carry.
+pub(super) fn host_artifacts(job_id: &str) -> Vec<String> {
+    host()
+        .artifacts
+        .lock()
+        .ok()
+        .map_or_else(Vec::new, |artifacts| {
+            artifacts.get(job_id).cloned().unwrap_or_default()
+        })
+}
+
+/// Record host-computed artifact ids so a Job that returned at admission can
+/// still publish them through the Job query commands.
+pub(super) fn remember_artifacts(job_id: &str, artifact_ids: &[String]) {
+    let Ok(mut artifacts) = host().artifacts.lock() else {
+        return;
+    };
+    let entry = artifacts.entry(JobId::new(job_id.to_string())).or_default();
+    for artifact in artifact_ids {
+        if !entry.contains(artifact) {
+            entry.push(artifact.clone());
+        }
+    }
+}
+
+/// The counters a Job's run accumulated, if this host recorded them.
+///
+/// `None` means the run has not reported yet — the Job is still queued or still
+/// executing, and the repository's own view (all zeros) is the honest answer for
+/// that window.
+pub(super) fn host_progress(job_id: &str) -> Option<JobProgress> {
+    host().progress.lock().ok()?.get(job_id).cloned()
+}
+
+/// Keep a run's counters under its Job id. Best effort: losing them costs the UI
+/// a zeroed progress bar, which is not worth failing a finished migration over.
+fn remember_progress(job_id: &JobId, progress: &JobProgress) {
+    if let Ok(mut recorded) = host().progress.lock() {
+        recorded.insert(job_id.clone(), *progress);
+    }
+}
+
+/// Accept one Job into the repository, without running it.
+///
+/// This is the moment the Job id becomes addressable: the Job is stored and its
+/// idempotency receipt is written, both before the handler runs. Everything above
+/// is a pure setup step, so a caller can hand the id out and cancel or poll the
+/// Job while it is still queued.
+pub(crate) async fn admit(request: &JobRunRequest<'_>) -> Result<Admission, CommandError> {
     let host = host();
     host.clock.set(now_timestamp().as_str());
     let ctx = request_context();
     if let Some(receipt) = lookup_receipt(host, request.idempotency_key) {
-        return replay(
-            host,
-            &ctx,
-            &receipt,
-            request.artifact_ids,
-            request.handler.as_ref(),
-        )
-        .await;
+        return Ok(Admission::Replayed(
+            replay(
+                host,
+                &ctx,
+                &receipt,
+                request.artifact_ids.clone(),
+                request.handler.as_ref(),
+            )
+            .await?,
+        ));
     }
     ensure_endpoint_services(host, &request.endpoints)?;
-    let mut registry = HandlerRegistry::new();
-    registry.register(request.handler.clone());
-    let handlers = Arc::new(registry);
     let job_id = JobId::new(format!(
         "transfer-{}-{}",
         request.kind,
@@ -235,6 +381,27 @@ pub(crate) async fn run(request: JobRunRequest<'_>) -> Result<JobOutcome, Comman
         .await
         .map_err(admit_error)?;
     remember_receipt(host, request.idempotency_key, &job_id)?;
+    Ok(Admission::Accepted(AcceptedJob {
+        job_id,
+        kind: record.view.kind.clone(),
+        ctx,
+    }))
+}
+
+/// Drive an admitted Job to a terminal state.
+///
+/// This is the only step that writes. It runs on its own task when the caller
+/// wants the id back first, so nothing here may assume a caller is still waiting.
+pub(crate) async fn drive(
+    accepted: AcceptedJob,
+    plan: DrivePlan,
+) -> Result<JobOutcome, CommandError> {
+    let host = host();
+    host.clock.set(now_timestamp().as_str());
+    let AcceptedJob { job_id, kind, ctx } = accepted;
+    let mut registry = HandlerRegistry::new();
+    registry.register(plan.handler.clone());
+    let handlers = Arc::new(registry);
     let runtime = JobRuntime::new(
         host.repo.clone(),
         handlers,
@@ -242,9 +409,9 @@ pub(crate) async fn run(request: JobRunRequest<'_>) -> Result<JobOutcome, Comman
         host.clock.clone() as Arc<dyn JobClock>,
         now_millis(),
     );
-    let worker = WorkerId::new(format!("transfer-{}", request.kind));
+    let worker = WorkerId::new(format!("transfer-{kind}"));
     let result = runtime
-        .run(&ctx, &job_id, &worker, &request.endpoints)
+        .run(&ctx, &job_id, &worker, &plan.endpoints)
         .await
         .map_err(|error| {
             CommandError::Validation(format!(
@@ -265,20 +432,22 @@ pub(crate) async fn run(request: JobRunRequest<'_>) -> Result<JobOutcome, Comman
                 .collect::<Vec<String>>()
         })
         .unwrap_or_default();
-    for artifact in request.artifact_ids {
+    for artifact in plan.artifact_ids {
         if !artifact_ids.contains(&artifact) {
             artifact_ids.push(artifact);
         }
     }
+    remember_artifacts(job_id.as_str(), &artifact_ids);
+    remember_progress(&job_id, &result.progress);
     if result.state == JobState::Succeeded {
-        if let Some(plan_id) = request.plan_id {
+        if let Some(plan_id) = plan.plan_id.as_deref() {
             plans::mark_plan_consumed(plan_id).map_err(CommandError::from)?;
         }
     }
     let commit_boundaries = host.repo.committed_boundaries(&job_id);
     Ok(JobOutcome {
         job_id: job_id.as_str().to_string(),
-        kind: record.view.kind.clone(),
+        kind,
         state: result.state,
         effect_outcome: result.effect_outcome,
         progress: result.progress,
@@ -289,11 +458,19 @@ pub(crate) async fn run(request: JobRunRequest<'_>) -> Result<JobOutcome, Comman
             host,
             &ctx,
             &job_id,
-            request.handler.as_ref(),
+            plan.handler.as_ref(),
             result.progress.unknown.get(),
         ),
         replayed: false,
     })
+}
+
+/// Admit and drive in one call, for callers that genuinely wait for the verdict.
+pub(crate) async fn run(request: JobRunRequest<'_>) -> Result<JobOutcome, CommandError> {
+    match admit(&request).await? {
+        Admission::Replayed(outcome) => Ok(outcome),
+        Admission::Accepted(accepted) => drive(accepted, DrivePlan::from_request(&request)).await,
+    }
 }
 
 fn lookup_receipt(host: &TransferJobHost, key: &str) -> Option<JobId> {
@@ -322,6 +499,17 @@ async fn replay(
                 .to_string(),
         )
     })?;
+    let mut artifact_ids = artifact_ids;
+    for artifact in host_artifacts(job_id.as_str()) {
+        if !artifact_ids.contains(&artifact) {
+            artifact_ids.push(artifact);
+        }
+    }
+    // The recorded counters, not the repository's zeroed view: a replay exists
+    // to hand back what the first attempt really did, and zeros would report a
+    // migration that moved nothing.
+    let progress = host_progress(job_id.as_str()).unwrap_or_else(|| record.view.progress.clone());
+    let unknown_commits = progress.unknown.get();
     Ok(JobOutcome {
         job_id: job_id.as_str().to_string(),
         kind: record.view.kind.clone(),
@@ -330,22 +518,17 @@ async fn replay(
             .view
             .effect_outcome
             .unwrap_or(EffectOutcome::NotStarted),
-        progress: record.view.progress.clone(),
+        progress,
         commit_boundaries: host.repo.committed_boundaries(job_id),
         artifact_ids,
         error: None,
-        recovery: recovery_report(
-            host,
-            ctx,
-            job_id,
-            handler,
-            record.view.progress.unknown.get(),
-        ),
+        recovery: recovery_report(host, ctx, job_id, handler, unknown_commits),
         replayed: true,
     })
 }
 
-/// §7: ask the handler to judge the recorded checkpoint.
+/// Ask the handler to judge the recorded checkpoint — the handler, not the host,
+/// is the authority on whether a checkpoint may be resumed.
 ///
 /// The runtime stamps every checkpoint it writes with a hardcoded
 /// `recovery_policy = "resumeAfterVerify"`
