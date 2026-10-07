@@ -86,12 +86,13 @@ pub fn effective_table_mappings(
                     source_table: t.name.clone(),
                     // Creating an absent target is an explicit user choice, so the
                     // target name is theirs to give: leave it empty rather than
-                    // suggesting the source name. A pre-fill here was
-                    // indistinguishable on the wire from a name the user actually
-                    // typed, so it silently satisfied the frontend mapping gate
-                    // (§8.4) and let an unnamed create-new row prepare as itself.
-                    // Data mode below already returns an empty name for the same
-                    // "target does not exist" case; this aligns the two modes.
+                    // suggesting the source name. A pre-fill here travels on the
+                    // wire as an ordinary string, indistinguishable from a name
+                    // the user actually typed, so it silently satisfied the
+                    // frontend's mapping gate and let an unnamed create-new row
+                    // prepare as itself. Data mode below already returns an empty
+                    // name for the same "target does not exist" case; this aligns
+                    // the two modes.
                     target_table: String::new(),
                     create_new: true,
                     // Keep the row in the inspect result so the mapping UI can
@@ -587,5 +588,136 @@ mod tests {
                 .map(|column| column.native_type.as_str()),
             Some("decimal(12,2)")
         );
+    }
+
+    fn enabled_mapping(source_table: &str, target_table: &str) -> TableMapping {
+        TableMapping {
+            source_table: source_table.into(),
+            target_table: target_table.into(),
+            create_new: false,
+            enabled: true,
+            ..TableMapping::auto(source_table)
+        }
+    }
+
+    #[test]
+    fn the_target_catalog_decides_whether_a_named_mapping_resolves() {
+        let source_tables = vec![table("users")];
+        let target_tables = vec![table("users")];
+        let source_schemas = HashMap::from([("users".into(), schema(&[("id", "bigint")]))]);
+        let target_schemas = HashMap::from([(
+            "users".into(),
+            schema(&[("id", "bigint"), ("name", "varchar")]),
+        )]);
+        let mappings = vec![enabled_mapping("users", "users")];
+
+        let resolved = inspect_tables(
+            &source_tables,
+            &target_tables,
+            &mappings,
+            &source_schemas,
+            &target_schemas,
+            TransferMode::Data,
+            &HashMap::new(),
+        );
+        let unresolved = inspect_tables(
+            &source_tables,
+            &[],
+            &mappings,
+            &source_schemas,
+            &target_schemas,
+            TransferMode::Data,
+            &HashMap::new(),
+        );
+
+        // The catalog is the difference between these two verdicts, not a
+        // decoration: the same mapping against a populated catalog matches and
+        // reports the target's own columns, and against an empty catalog it
+        // cannot resolve at all.
+        assert_eq!(resolved[0].status, TableMappingStatus::Matched);
+        assert_eq!(
+            resolved[0].target_columns,
+            vec!["id".to_string(), "name".to_string()]
+        );
+        assert_eq!(unresolved[0].status, TableMappingStatus::Incompatible);
+        assert!(unresolved[0]
+            .incompatible_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("users")));
+    }
+
+    #[test]
+    fn an_unknown_target_name_is_reported_rather_than_replaced_by_the_source_name() {
+        let source_tables = vec![table("users")];
+        let target_tables = vec![table("users"), table("orders")];
+        let source_schemas = HashMap::from([("users".into(), schema(&[("id", "bigint")]))]);
+        let target_schemas = HashMap::from([("users".into(), schema(&[("id", "bigint")]))]);
+        let mappings = vec![enabled_mapping("users", "ghost")];
+
+        let results = inspect_tables(
+            &source_tables,
+            &target_tables,
+            &mappings,
+            &source_schemas,
+            &target_schemas,
+            TransferMode::Data,
+            &HashMap::new(),
+        );
+
+        // A target name the catalog does not contain is reported as the user's
+        // error, with the offending name intact. It is never quietly swapped
+        // for the source name, because a silently substituted name would copy
+        // into a table the user never asked for.
+        assert_eq!(results[0].status, TableMappingStatus::Incompatible);
+        assert_eq!(results[0].target_table, "ghost");
+        assert_ne!(results[0].target_table, results[0].source_table);
+        assert!(results[0]
+            .incompatible_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("ghost")));
+    }
+
+    #[test]
+    fn a_create_new_row_reports_the_same_thing_with_and_without_a_target_catalog() {
+        let source_tables = vec![table("users")];
+        let source_schemas = HashMap::from([("users".into(), schema(&[("id", "bigint")]))]);
+        let target_schemas = HashMap::from([("users".into(), schema(&[("id", "bigint")]))]);
+        // The shape a file destination produces: the target name is carried
+        // through, and the row is marked as a creation.
+        let mappings = vec![TableMapping {
+            create_new: true,
+            ..TableMapping::auto("users")
+        }];
+
+        let without_catalog = inspect_tables(
+            &source_tables,
+            &[],
+            &mappings,
+            &source_schemas,
+            &target_schemas,
+            TransferMode::Data,
+            &HashMap::new(),
+        );
+        let with_catalog = inspect_tables(
+            &source_tables,
+            &[table("users"), table("orders")],
+            &mappings,
+            &source_schemas,
+            &target_schemas,
+            TransferMode::Data,
+            &HashMap::new(),
+        );
+
+        // A row that creates its target resolves before any catalog lookup, so
+        // handing this caller an empty target list changes nothing it can
+        // observe about that row. Callers with no live target catalog may pass
+        // an empty list without losing information. A populated catalog still
+        // contributes its own additional rows; only the mapped row is pinned.
+        assert_eq!(without_catalog[0].status, TableMappingStatus::CreateNew);
+        let created_with_catalog = with_catalog
+            .iter()
+            .find(|result| result.source_table == "users")
+            .expect("the mapped row must still be present");
+        assert_eq!(&without_catalog[0], created_with_catalog);
     }
 }
