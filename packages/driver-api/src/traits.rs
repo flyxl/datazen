@@ -1,15 +1,12 @@
 //! Core driver traits.
 //!
-//! [`DatabaseDriver`] is the contract every database driver implements, and it is
-//! deliberately kept as one trait: it is the primary interface that driver authors
-//! read, and splitting it across files would make every signature unresolvable
-//! without reading the whole contract back together.
+//! [`DatabaseDriver`] is the contract every database driver implements, kept as
+//! one trait on purpose: it is the interface driver authors read, and splitting it
+//! across files would make every signature unresolvable.
 //!
-//! What is split out are the parts that are not the contract itself, each under
-//! `traits/`: the shared SQL text construction, the streaming and column
-//! resolution defaults, the command dispatch, the schema-dimension rule, the
-//! key/value contract and the structural tests. They are re-exported here, so the
-//! public paths of the items they own do not change.
+//! Everything that is not the contract is split under `traits/` — SQL text, the
+//! streaming defaults, command dispatch, the schema rule, the key/value contract
+//! and the structural tests — and re-exported, so their public paths hold.
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -30,12 +27,15 @@ mod schema_target;
 mod sql_text;
 mod streaming;
 
-#[cfg(test)]
-mod structure_defaults_tests;
-
 pub use command_api::execute_standard_sql_command;
 pub use key_value::KeyValueDriver;
 pub use schema_target::{validate_schema_target, SchemaScope};
+
+// The braces below are load-bearing — do not collapse this back to `mod structure_defaults_tests;`.
+#[cfg(test)]
+mod structure_defaults_tests {
+    mod cases;
+}
 
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {

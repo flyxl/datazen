@@ -4,8 +4,17 @@
 //! contract itself: which methods carry a default, what that default returns and
 //! which of them are documented. They live in their own file because they are a
 //! self-contained block that must not push the contract itself apart.
+//!
+//! The parent module in `traits.rs` declares them with inline braces instead of a
+//! bare `mod x;` declaration, because `clippy::items_after_test_module` only sees a
+//! test module that owns an inner span: the lint requires
+//! `item.span.hi() == test_mod.spans.inner_span.hi()`, and a declaration without
+//! braces has a dummy inner span. That blindness is precisely how the contract
+//! sitting after these tests came to be reported nowhere, so the braces are kept to
+//! put the lint back in charge of this file's layout, and this file keeps the bulk
+//! out of line so `traits.rs` stays inside `DATABASE_DRIVER_TRAITS_CEILING`.
 
-use super::*;
+use super::super::*;
 use crate::ReuseDriver;
 use std::sync::Arc;
 

@@ -11,7 +11,7 @@
 //! module in the crate root declares it — `sqlserver.rs` already owns that
 //! declaration block.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// The ceiling a source file is expected to stay under.
 const LINE_LIMIT: usize = 800;
@@ -29,17 +29,34 @@ const DATABASE_DRIVER_TRAITS_CEILING: usize = 1020;
 /// Path shown in a failure message: `driver-api` is reached by climbing out of
 /// this crate, and a name full of `..` segments is harder to act on than the
 /// `packages/...` form the reader already knows.
+///
+/// The segments are folded lexically so the `..` used to reach the file never
+/// reaches the reader. This rewrites a name that has already been built — it
+/// reads nothing from disk, and it cannot change what the guard measured.
 fn display(path: &Path) -> String {
     let components: Vec<_> = path.components().collect();
     let start = components
         .iter()
         .position(|component| component.as_os_str() == "packages")
         .unwrap_or(0);
-    components[start..]
-        .iter()
-        .map(|component| component.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
+    let mut folded: Vec<String> = Vec::new();
+    for component in &components[start..] {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let poppable = folded
+                    .last()
+                    .is_some_and(|last| !last.is_empty() && !last.starts_with('/') && last != "..");
+                if poppable {
+                    folded.pop();
+                } else {
+                    folded.push("..".to_string());
+                }
+            }
+            other => folded.push(other.as_os_str().to_string_lossy().into_owned()),
+        }
+    }
+    folded.join("/")
 }
 
 fn line_count(path: &Path) -> usize {
@@ -69,15 +86,27 @@ fn driver_api_src() -> PathBuf {
         .join("src")
 }
 
-/// Every `.rs` file directly inside `dir`, sorted, so a failure names the file
-/// that grew rather than whichever the filesystem happened to list first.
+/// Every `.rs` file under `dir`, at any depth, sorted, so a failure names the
+/// file that grew rather than whichever the filesystem happened to list first.
+///
+/// The walk recurses because a guarded file can legitimately sit in a submodule
+/// directory — `driver-api`'s structural tests do — and a file that the guard
+/// cannot see is a file it can no longer report.
 fn rust_files_in(dir: &Path) -> Vec<PathBuf> {
-    let entries =
-        std::fs::read_dir(dir).unwrap_or_else(|err| panic!("cannot list {}: {err}", dir.display()));
-    let mut files: Vec<PathBuf> = entries
-        .map(|entry| entry.expect("readable directory entry").path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
-        .collect();
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = std::fs::read_dir(&dir)
+            .unwrap_or_else(|err| panic!("cannot list {}: {err}", dir.display()));
+        for entry in entries {
+            let path = entry.expect("readable directory entry").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                files.push(path);
+            }
+        }
+    }
     files.sort();
     files
 }
@@ -105,5 +134,22 @@ fn database_driver_trait_declaration_does_not_grow() {
     assert_not_above(
         &driver_api_src().join("traits.rs"),
         DATABASE_DRIVER_TRAITS_CEILING,
+    );
+}
+
+#[test]
+fn displayed_paths_are_canonical() {
+    // The real guarded name is built by climbing out of this crate, so it is the
+    // one that has to survive the fold; the synthetic ones pin the fold itself.
+    assert_eq!(
+        display(Path::new("/w/packages/drivers/sql/../../api/src/t.rs")),
+        "packages/api/src/t.rs"
+    );
+    assert_eq!(display(Path::new("a/b/../c/./d.rs")), "a/c/d.rs");
+
+    let shown = display(&driver_api_src().join("traits.rs"));
+    assert!(
+        !shown.split('/').any(|segment| segment == ".."),
+        "the guarded path is still reported with parent segments: {shown}"
     );
 }
