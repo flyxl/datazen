@@ -58,21 +58,43 @@ export function tableHasActiveMappings(table: TransferTableResult): boolean {
   return normalizeColumnMappings(table).some((m) => !m.skip && m.targetColumn.trim());
 }
 
-export function mergeInspectTables(
-  prev: TransferTableResult[],
-  inspected: TransferTableResult[],
-): TransferTableResult[] {
-  const bySource = new Map(inspected.map((t) => [t.sourceTable, t]));
-  return prev.map((t) => {
-    const next = bySource.get(t.sourceTable);
-    if (!next) return t;
-    return {
-      ...next,
-      enabled: t.enabled,
-      columnMappings: t.columnMappings.length > 0 ? t.columnMappings : next.columnMappings,
-      targetTable: t.targetTable || next.targetTable,
-      createNew: t.createNew,
-      ddlOverride: t.ddlOverride ?? next.ddlOverride,
-    };
-  });
+/**
+ * Whether one row, on its own, is complete enough to carry the gate.
+ *
+ * A table that does not exist yet has nothing the backend can look the name up
+ * for, so the name has to be one somebody typed. An enabled create-new row
+ * behind nothing but whitespace is the one shape the backend will happily echo
+ * back and then write as a nameless table, so it does not clear the gate.
+ */
+function rowClearsGate(row: TransferTableResult): boolean {
+  if (!row.enabled) return false;
+  if (row.createNew && !row.targetTable.trim()) return false;
+  return tableHasActiveMappings(row);
+}
+
+/**
+ * §8.4: the one definition of "the mapping step may be left".
+ *
+ * The Next gate and the post-prepare re-check both call this on the *rows they
+ * hold at the moment they run*, so a rule written twice cannot drift into two
+ * components disagreeing about the same table.
+ */
+export function mappingGateAllowsAdvance(rows: TransferTableResult[]): boolean {
+  return rows.some(rowClearsGate);
+}
+
+/**
+ * Why the gate is shut for a reason the reader can act on, as an i18n key.
+ *
+ * Only the unnamed-create-new case is reported. "Nothing is mapped yet" is the
+ * state the user is still working in, not a dead end that deserves a banner.
+ */
+export function mappingGateBlockReason(
+  rows: TransferTableResult[],
+): 'transfer.mapping.targetNameRequired' | null {
+  if (rows.some(rowClearsGate)) return null;
+  const blocked = rows.some(
+    (row) => row.enabled && row.createNew && tableHasActiveMappings(row),
+  );
+  return blocked ? 'transfer.mapping.targetNameRequired' : null;
 }
