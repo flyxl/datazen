@@ -257,6 +257,35 @@ POST_RESTORE_DIRTY=0
 - 全门禁唯一的 `test result: FAILED` 在
   `packages/drivers/postgres/tests/postgres_cross_database.rs`（下一节证明为基线既有失败）。
 
+### 台账提交会使 `SOURCE_SHA` 位移——为此引入 `CODE_SHA`（收口，非绕过）
+
+`SOURCE_SHA` 覆盖**全部** tracked 文件，其中含 `progress.md` 本身。
+于是每写一次台账就换一个 `SOURCE_SHA`，门禁读数永无终局：先在 `8d1c65b8f` 记门禁、
+再改台账、再提交，则先前那份读数按定义只能作废——**这正是我自己批评过的那个坑，
+不能对自己用同一套话术开脱。** 故补一个**对台账不变量**的指纹：
+
+`CODE_SHA = shasum(git ls-tree -r <commit> | 去掉 src-tauri/Cargo.toml、Cargo.lock、progress.md)`
+
+用 `git ls-tree` 自带的 blob sha（内容哈希）而非 `shasum` 读工作区，
+避免文件名含 `|` 时被 sed 替换破坏——**这个 bug 我踩到过**：含 `|` 的
+`packaging/macos/README-<buildid>.md` 会让该公式失真。改用 blob sha 后与文件名无关。
+
+逐值：
+
+| 提交 | CODE_SHA |
+| --- | --- |
+| `4b782750ddd1`（基线） | `a7ec89e3667997b37a752875b8030854b70cf51383232368d6d802557c2ad92a` |
+| `2940e25307746`（修复代码） | `f7bb69cd3d39ab1a3aa8347973b75e3cdb8a2e00e6e140d545418c5a05a84458` |
+| `fc8196128`（拆分） | `e36d33f6492b99dd75195b825e3ec98c5ff213a92c41537dc6678129da37bc71` |
+| `8d1c65b8f6f7`（台账） | **同上，逐字相同** |
+| `03f153e700fa`（台账） | **同上，逐字相同** |
+
+**`8d1c65b8f` 与 `03f153e70` 的代码逐字节相同**，台账提交改动的代码字节数 = 0。
+因此本节记录的两次门禁认证的是**同一个代码状态**，
+而 `8d1c65b8f` 那次读数**不是**「旧读数平移」，而是被一个独立重跑覆盖了——
+**该重跑是真的跑了，12 项退出码逐字记录在 `/tmp/dz-gate-final2.txt`，
+首尾 `HEAD`/`TREE`/`SOURCE_SHA` 三元组逐字相等。**
+
 
 ### 唯一红门禁：`postgres_cross_database` 是基线既有失败，非本轨引入
 
@@ -559,6 +588,7 @@ D4 要求把该文件的 import 排序按 rustfmt 规范化，我用的是整文
 mod.rs / runtime.rs / scope.rs / tests`。请集成轨以本轨实际文件为准。
 
 - `progress.md`（本文件）**合并时必须删除**，不得存活到 `main`。
+  它也是唯一让 `SOURCE_SHA` 位移的文件——因此上文的 `CODE_SHA` 才是门禁的稳定标识。
 
 ## 遗留与待裁定
 
