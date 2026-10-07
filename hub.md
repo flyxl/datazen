@@ -18,7 +18,7 @@
 | `p5-cancel-hardening` 取消硬化 | feature/p5-cancel-hardening | ✅ MERGED `f440acf91` |
 | `p5-data-sync` handler | feature/p5-data-sync | ✅ 已由 R2 取代 |
 | `p5-data-sync-r2` D1/D2/D5 修复 | feature/p5-data-sync-r2 | ✅ MERGED `31af2b8fb8`，Tester 独立复验 **TEST_PASSED**（10 变异零存活，含修前存活/修后被杀对照），worktree/分支已清理 |
-| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ⏳ 修复轨 `63d27428` 已交付 tip `35e6e5d97`。D1 后端停止预填已落地，**控制变异（改回 `t.name.clone()`）被杀**；D2/D3/D4 闭环。**待新鲜 Tester `10b025d7` 复验**（`0e5f9a54` 已用，`10b025d7` 之前一轮挂掉未出结论）。全套 vitest 红但归 data-sync 的 `DiffDetail` 超时，见 `p5-datasync-test-flakiness`。合并时从 `299b7562b^` squash |
+| `p5-frontend-cutover` 前端切 Job 路径（D9） | feature/p5-frontend-cutover | ⏳ 修复轨 `63d27428` 已交付 tip `4c6653daa`（`35e6e5d97`/`4c6653daa` 均纯台账，代码状态止于 `4091d749a`）D1 后端停止预填已落地，**控制变异（改回 `t.name.clone()`）被杀**；D2/D3/D4 闭环。**待新鲜 Tester `10b025d7` 复验**（`0e5f9a54` 已用，`10b025d7` 之前一轮挂掉未出结论）。全套 vitest 红但归 data-sync 的 `DiffDetail` 超时，见 `p5-datasync-test-flakiness`。合并时 squash 范围 `299b7562b^..4c6653daa`（起点必须是 `^`，否则会让范围内那个红的中间提交在任何可达路径上复活） |
 | `p5-endpoint-overlap` 端点身份修复 | feature/p5-endpoint-overlap | ⏳ 修复轨 `2cca952d` 已交付 tip `de75c10be`。7 条变异全 KILLED 含**控制变异 M1（身份恒常化为 `"data-transfer"`）杀 13 条**；`job_kernel.rs` 1023→623+134+289（合计 1046>1023，真拆分）。门禁在拆分后于 `03f153e70` 重跑，**`CODE_SHA` 我已独立重算，`fc8196128..de75c10be` 六个 ref 逐字相同** ⇒ 认证的代码状态 == 交付代码状态。**待新鲜 Tester `08a136ed` 复验** |
 | `p5-datasync-test-flakiness` data-sync 套件可靠性 | — | ⏸ 待开（2026-10-07 开）。`DiffDetail.test.tsx` 跨页反选用例 20s 超时。**已证与前端切轨无关**：归属 `src/windows/data-sync/`、本轨零改动、该文件自 `358a17fdf`(09-30) 未变，且同树 A/B 两次逐字节相同却一次过一次挂 ⇒ 内容不是判别变量。**P5 收口前必须落地**，否则套件不可靠后无法区分后续回归 |
 | `p5-schema-diff-endpoint-identity` schema-diff 侧端点身份 | — | ⏸ 待开（D3 裁定；排在 endpoint-overlap 合入后） |
