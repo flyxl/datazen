@@ -91,6 +91,7 @@
 - **裁定缺陷前必须亲自读被引用的代码路径,不能只核对引用是否自洽。** 协调者据四条"独立代码事实"判 D1 不成立,实际漏读 `mapping.rs:65-97` 的 auto-build 与 `:141-146` 的 `!enabled` 传播,被变异执行推翻。**变异执行/杀死的证据强度高于读码推理**;两条裁定同源同错,说明这不是偶发。
 - **门禁数字必须命名来源状态**(`@commit` / `@<worktree sha>`),并首尾各采一次 `HEAD`/`TREE`/`SOURCE_SHA`(仅受跟踪文件,排除两个构建期注入产物)且要求相等。`WORKTREE_SHA` 无法对应可提交状态:`resolve-drivers --drivers=all` 会往**受跟踪**的 `src-tauri/Cargo.toml` 注入 31 行并让 cargo 重写 `Cargo.lock`,二者靠 `git checkout --` 还原(20→18)。协调者曾据 `WORKTREE_SHA` 漂移误判"有人边跑边改",已认错。
 - **门禁必须跑在最终 HEAD 上；门禁跑过之后又落了代码提交,该门禁即作废。** 2026-10-07 **两条在跑的轨同时踩中**:endpoint-overlap 门禁 08:43、拆分提交 08:54;frontend-cutover 门禁 `@299b7562b`、HEAD `4091d749a`(后者改了 `SourceFilterEditor.tsx` 生产代码 + `DataTransferWindow.test.tsx` 测试文件)。测试文件参与 typecheck,故这类失效**不可见**。正确顺序:代码冻结 → 提交 → 在该提交上跑门禁。读数可以平移的唯一条件是 `git diff --name-only <门禁commit> <HEAD>` 为空或只含非门禁文件,且该文件清单必须写进台账,否则就是无依据断言。
+- **工作区指纹不能用 `git write-tree`**——它哈希的是 **index**,不是工作树。index 未更新时它会给出"字节没变"的假象(实测:只剩一个文件 staged,其余 unstaged,前后 `write-tree` 完全相等)。要证明 tsc/vitest 读到的字节没变,必须逐文件哈希工作区内容本身。仪器测的不是被测对象时,"首尾相等"什么都没证明。
 
 ## 收尾义务
 
