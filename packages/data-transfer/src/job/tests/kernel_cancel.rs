@@ -330,6 +330,10 @@ async fn pipeline_reads_the_same_bit_the_kernel_flips() {
 
 struct RealRun {
     outcome: KernelRun,
+    /// 目标连接池**还活着**时、在**同一条连接**上读到的行数。必须在夹具
+    /// 析构之前取：连接一还回去，SQLite 自己就把没提交的事务丢了，这条
+    /// 断言就退化成 `count_rows`，等于什么都不说。
+    open_rows: i64,
     source_path: std::path::PathBuf,
     target_path: std::path::PathBuf,
     /// 字段名带下划线：它不参与断言，只负责把临时目录的寿命延到断言之后。
@@ -389,7 +393,11 @@ async fn run_through_kernel(fixture: RealSqlite, cancel_at_gate: bool) -> RealRu
     }
 
     let result = running.await.expect("join").expect("run");
+    // 连接池此刻仍然被 `runtime` 持有着（handler 在里面），所以这里拿到的
+    // 是**同一条**连接。
+    let open_rows = open_transaction_rows(&fixture.target_pool, &fixture.target_path).await;
     RealRun {
+        open_rows,
         outcome: KernelRun {
             state: result.state,
             effect: result.effect_outcome,
@@ -460,6 +468,10 @@ async fn real_sqlite_engine_ends_up_empty_after_a_kernel_cancel() {
     assert_eq!(
         run.outcome.boundaries, 0,
         "a rolled-back batch confirms no boundary"
+    );
+    assert_eq!(
+        run.open_rows, 0,
+        "on the very connection the batch was written on, nothing survives: a rollback that          never issued would still be holding those two rows"
     );
     assert_eq!(
         count_rows(&run.target_path).await,

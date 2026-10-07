@@ -328,6 +328,9 @@ pub struct RealSqlite {
     /// `None` = 对照组，闸门根本不存在——否则闸门会永远等一个没人发的
     /// `opened`，用例挂在 60 秒超时上，而不是挂在断言上。
     pub gate: Option<Arc<SqliteGate>>,
+    /// 目标端那个**还活着**的连接池。留着它是为了同连接回读，见
+    /// `open_transaction_rows`。
+    pub target_pool: Arc<GatedSqlite>,
     pub handler: DataTransferHandler,
     pub source_path: PathBuf,
     pub target_path: PathBuf,
@@ -407,10 +410,43 @@ pub async fn real_sqlite(arm_gate: bool) -> RealSqlite {
 
     RealSqlite {
         gate,
+        target_pool: target.clone(),
         handler,
         source_path,
         target_path,
         dir: Arc::new(dir),
+    }
+}
+
+/// **同连接**回读目标表行数。
+///
+/// 存在的原因不是"多断一层保险"，而是 `count_rows` 那条断言**看不见回滚**：
+/// 目标连接池是 `max_pool_size: 1`，事务没回滚也还在那条连接上开着，等夹具
+/// 一析构、sqlx 把连接还回去，SQLite 自己就把没提交的事务丢了——从**另一个**
+/// 连接看过去，回滚和"没回滚但连接被丢"长得一模一样。M1.2 变异（把取消路径
+/// 上的 `rollback` 换成空操作）就是这么活下来的。
+///
+/// 同一条连接看得见自己没提交的行，所以这条断言才对得上"回滚了没有"：
+///
+///   - 真回滚 ⇒ 连接上事务已结束 ⇒ 数到的是磁盘状态；
+///   - 假回滚 ⇒ 连接还停在事务里 ⇒ 数到自己刚写进去、别人看不见的行。
+pub async fn open_transaction_rows(pool: &GatedSqlite, path: &Path) -> i64 {
+    let handle = pool
+        .connect(&sqlite_config(path, "probe"))
+        .await
+        .expect("probe connect on the same pool");
+    let result = pool
+        .query(&handle, "SELECT COUNT(*) FROM t")
+        .await
+        .expect("probe count rows");
+    match result
+        .rows
+        .first()
+        .and_then(|r| r.first())
+        .and_then(|c| c.clone())
+    {
+        Some(Value::Integer(n)) => n,
+        other => panic!("same-connection COUNT(*) came back as {other:?}, not an integer"),
     }
 }
 
