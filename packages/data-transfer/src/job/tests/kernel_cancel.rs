@@ -334,7 +334,6 @@ struct RealRun {
     /// 析构之前取：连接一还回去，SQLite 自己就把没提交的事务丢了，这条
     /// 断言就退化成 `count_rows`，等于什么都不说。
     open_rows: i64,
-    source_path: std::path::PathBuf,
     target_path: std::path::PathBuf,
     /// 字段名带下划线：它不参与断言，只负责把临时目录的寿命延到断言之后。
     #[allow(dead_code)]
@@ -404,7 +403,6 @@ async fn run_through_kernel(fixture: RealSqlite, cancel_at_gate: bool) -> RealRu
             boundaries: repo.committed_boundaries(&job_id).len(),
             error: result.error,
         },
-        source_path: fixture.source_path.clone(),
         target_path: fixture.target_path.clone(),
         dir: fixture.dir.clone(),
     }

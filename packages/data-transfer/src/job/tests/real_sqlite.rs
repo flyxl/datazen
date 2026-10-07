@@ -441,7 +441,7 @@ pub async fn real_sqlite(arm_gate: bool) -> RealSqlite {
 ///   - 假回滚 ⇒ 连接还停在事务里 ⇒ 数到自己刚写进去、别人看不见的行。
 pub async fn open_transaction_rows(pool: &GatedSqlite, handle: &ConnectionHandle) -> i64 {
     let result = pool
-        .query(&handle, "SELECT COUNT(*) FROM t")
+        .query(handle, "SELECT COUNT(*) FROM t")
         .await
         .expect("probe count rows");
     match result
