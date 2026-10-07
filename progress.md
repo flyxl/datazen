@@ -3,77 +3,322 @@
 > 分支 `feature/p5-endpoint-overlap`，基线 `codex/p5-integration @ 4b782750ddd1c51f6f75f8275f63dccf4902e8b0`。
 > 本文件是交付前临时台账，**验收合并时必须删除**。
 
-## 缺陷
+## 本轮：独立验收 TEST_FAILED 的两处阻塞缺陷修复
 
-Data Transfer Job 路径相对 legacy 是**功能回退**：源 `public.users` → 目标 `public.users`
-跨两个不同物理库时，会被判定为「同一端点既读又写」而拒绝，同名跨库复制在 Job 路径上不可用。
+上一轮（`651a228`→`051a228`）被验收打回，两条阻塞缺陷：
 
-根因两处：
-
-1. `packages/runtime/src/job/budget.rs` `detect_endpoint_overlap` 只按 `(service_key, object)` 建键。
-2. `job_api/runtime.rs` 的 `TRANSFER_SERVICE_KEY` 常量对 reader / writer **取同一个值**，
-   且 `ConnectionId` 硬编码为 `local-source` / `local-target`。
-
-`EndpointRef` 早就带 `connection_id`，但检测器从没用过它。
-
-## 已完成
-
-| 步骤 | 提交 | 内容 |
+| 编号 | 缺陷 | 性质 |
 | --- | --- | --- |
-| 1 | `653f2347c` | `detect_endpoint_overlap` 改用「service_key + connectionId」**身份键并集** |
-| 2 | `24f5a8955` | Job 端点身份改由**真实连接配置**导出（`job_api/endpoint_identity.rs`） |
-| 3 | `b00a1b0c2` | 端点身份用例拆为独立测试二进制 + 消除格式偏差（单文件规模纪律） |
+| D1 | 检测键并入了 `Connection(connection_id)`，把**一条保存连接上的两个数据库**误判为端点重叠 | 阻断（合法跨库复制被拒） |
+| D2 | 摘要只吃 `config.host`，而 `normalized()` **不解析驱动默认值**（默认值在驱动 crate 连接时解析），「省略 host」与「显式写驱动默认 host」得到两个摘要 | 阻断（真实重叠漏检，可致自覆盖） |
 
-## 已实现的事实（随代码与测试落库，台账删除后仍可读出）
+根因判定：`ledger.rs` 的 `services: BTreeMap<ConnectionId, ServiceState>` 回答的是**配额**，
+端点重叠检测回答的是**安全**，一个字段兼两职是范畴错误。**缺陷 100% 在消费端**，
+生产端 `identify` 的设计是对的，予以保留。
 
-- 端点身份来自 `ConnectionConfig`：`connection_id = config.id`（持久化连接配置 id），
-  `service_key = "data-transfer:" + sha256(物理位置摘要)`。**不是**拆成两个固定字符串。
+### 修复（两处不可分割）
+
+1. `packages/runtime/src/job/budget.rs`：删除检测键集里的 `Connection` 分量。
+   `identity_keys() -> Vec<String>` 收敛为 `identity_key() -> Option<String>`（只取 `service_key`）。
+2. `packages/driver-api/src/traits.rs` 新增两个**带默认实现**的 provided 方法
+   `default_host() -> Option<&'static str>` / `default_port() -> Option<u16>`；
+   `endpoint_identity.rs` 的 `ResolvedLocation::of` 在 `config` 缺省时向驱动查询后填入摘要。
+
+**没有为了让 D1 通过而削弱检测器**：A/C 仍由 `service_key` 相等单独拒绝，
+`cm31_same_service_key_on_one_connection_is_rejected` 是专门的反弱化护栏。
+
+### `default_host() == None` 是刻意的 fail-open 选择
+
+`None` 的含义是「**该驱动不施加隐式 host**」，不是「未知」。驱动 crate 才是自身默认值的
+权威持有者，宿主若维护一张 per-driver 默认值表就违反 AGENTS.md「宿主不得硬编码驱动行为」。
+
+- 退路（fail-closed 出口）：解析后既无 host 又无 database ⇒ `service_key` 为空串 ⇒
+  `identity_key()` 返回 `None` ⇒ `any_unprovable && has_writer` ⇒ 直接拒。
+  该分支在 `budget.rs:108-112` **原样保留**。
+- 已评估并否决的替代：(i) 三态 `HostDefault` 枚举——要再改 13 个驱动 crate，
+  且会让 SQLite/DuckDB/MongoDB/ClickHouse 传输一律 fail-close；(ii) 连接时把解析后的地址回写——
+  `connect` 收 `&ConnectionConfig`，`ConnectionHandle` / `ServerInfo` 都不带 host，做不到；
+  (iii) 「无 host 且无默认 ⇒ 不可证明」的粗暴规则——会打死所有文件型驱动。
+
+### 机制选择：向驱动查询，而不是在 `establish_connection` 里改配置
+
+驱动默认值只在驱动 crate 连接时才知道，宿主无从推导。在**准入期**查询驱动是外科手术式的：
+只有传输 Job 的端点身份看到它，`get_session_config` 的返回、`reviewed::identity` 的输入、
+驱动收到的配置对象都不受影响。
+
+### 每个驱动的默认值来自与 `connect` 共用的同一个常量（反漂移）
+
+`default_host()` 的返回值与 `connect` 实际拨号的地址由**同一常量**产生，
+并在驱动 crate 内用测试钉死，宿主不参与。
+
+| 驱动 | `default_host()` | `default_port()` | 与 `connect` 共享的常量 | 驱动内测试 |
+| --- | --- | --- | --- | --- |
+| postgres | `Some("localhost")` | `Some(5432)` | `connection.rs` `DEFAULT_HOST` / `DEFAULT_PORT` | `the_declared_defaults_are_exactly_what_connect_dials` |
+| mysql | `Some("localhost")` | `Some(3306)` | `connection.rs` `DEFAULT_HOST` / `DEFAULT_PORT` | `the_declared_defaults_are_exactly_what_connect_dials` |
+| redis | `Some("127.0.0.1")` | `Some(6379)` | `connect/mod.rs` `DEFAULT_HOST` / `DEFAULT_PORT` | `the_declared_defaults_are_exactly_what_connect_dials` |
+| sqlserver | `None`（host 必填，缺失即报错） | `Some(1433)` | `sqlserver.rs` `DEFAULT_PORT` | `the_declared_default_port_is_exactly_what_connect_dials` |
+| clickhouse / duckdb / elasticsearch / hbase / http-support / influxdb / mongodb / rqlite / sqlite / turso / vector / victoriametrics | `None` | `None` | —（沿用 trait 默认 `None`） | — |
+
+sqlite 证据：`packages/drivers/sqlite/src/sqlite.rs` 零 `.host` 引用，
+`db_path(config)` 只看 `config.database`；因此 `host || database` 的定位锚定规则必须保留。
+
+## A–E 非回归矩阵
+
+| 场景 | 期望 | 用例 |
+| --- | --- | --- |
+| A 两个不同保存连接 → 同一物理服务器/库/对象 | REJECT | `cm31_alias_configs_sharing_one_service_are_still_rejected` |
+| B 一条保存连接、两个数据库、同名对象 | ACCEPT | `cm31_one_connection_id_across_two_databases_is_allowed` + 宿主 `one_saved_connection_two_databases_is_not_a_self_overlap` |
+| C 省略 host vs 显式写驱动默认 host | REJECT | `an_omitted_host_digests_as_the_drivers_declared_default` |
+| D 两个不同保存连接 → 同一物理服务器、不同数据库 | ACCEPT | `cm31_same_object_on_two_different_endpoints_is_allowed` |
+| E SQL 文件目标无写端点 | ACCEPT（行为不变） | 既有 SQL-file 用例 |
+
+D1 与 D2 之间**没有被迫取舍**：A/C 靠 `service_key` 相等单独拒绝，B/D 靠摘要里的 `database` 区分。
+
+## 已实现的事实（台账删除后仍可从代码与测试读出）
+
+- 端点身份来自 `ConnectionConfig`：`connection_id = config.id`（持久化连接配置 id，喂 §6.2 配额账本），
+  `service_key = "data-transfer:" + sha256(物理位置摘要)`（**只**喂安全检测）。
 - 物理位置摘要字段集与 `datazen_schema_diff::reviewed::same_endpoint` 对齐
   （driver/host/port/database/schema/options/tunnel，剔除 `user`），`id` 刻意不参与摘要。
-- 两个端点「共享任意一个身份键」即按同一物理服务处理（`Service` ∪ `Connection`）。
+- `host`/`port` 进摘要前先经 `ResolvedLocation::of` 解析：config 优先，缺失时向驱动查询。
 - `detect_endpoint_overlap` 签名未变（`&[EndpointRef] -> Result<(), JobError>`），无调用方需要改。
-- §6.2 一次性全有或全无预算预留保持不变：`ensure_service` 幂等、本地端点在首个 Job 前注册、
-  每个端点按物理端点独立预留、整体全有或全无。
+- §6.2 一次性全有或全无预算预留保持不变：`ensure_service` 幂等、每个端点按物理端点独立预留、整体全有或全无。
 - `sql_file == true` 的目标侧没有写端点（`target_identity: Option::None`），该路径行为不变。
-- `any_unprovable` 判定保持 `keys.is_empty()`：把「没有 Service 键」当作不可证明会比 legacy 更严，
-  违反主规则。代价是该分支从宿主路径不可达（持久化 `connectionId` 不会为空），
-  作为纵深防御保留。
 
-## 门禁（HEAD `b00a1b0c245c7c58a4587a6609f59d3bdbb3cf3d`）
+## 变更规模（每行都带状态标识）
 
-起止 `HEAD` 一致，起止 `git status --porcelain` 均为空。驱动集 `--drivers=all`
-（`shasum -a256 drivers-registry.json` = `8531e125fa9bc0c9fe4249c6403b479b1aae61fdd7932c5eaadb0971b96f7cb8`，
-`cargo metadata --no-deps` 计得 **17** 个 `datazen-driver-*` 包）。
-
-| 门禁 | 退出码 | 结论行 |
+| 口径 | 命令 | 结果 |
 | --- | --- | --- |
-| `cargo test -p datazen-runtime` | 0 | 847 passed / 0 failed |
-| `cargo test -p datazen-data-transfer` | 0 | 213 passed / 0 failed |
-| `cargo test -p datazen-data-sync` | 0 | 176 passed / 0 failed |
-| `cargo test -p datazen --lib` | 0 | `test result: ok. 1757 passed; 0 failed; 6 ignored; ...` |
-| `cargo check -p datazen` | 0 | `error_lines=0`，`warning_lines=44` |
-| `pnpm typecheck` | 0 | `error TS` 计数 0 |
+| **提交对提交**（权威） | `git diff --shortstat 4b782750ddd1c 2940e25307746` | **21 files, +2037, −152** |
+| 提交 → 工作区（含未提交台账，**无效口径**） | `git diff --shortstat 4b782750ddd1c` | 21 files, +2109, −152 |
+| 两者之差 = 未提交的 `progress.md` | `git diff --shortstat 2940e253` | 1 file, +121, −49 |
 
-## 变异验证（对照变异）
+**曾用错口径并已更正**：早先汇报的 `+2109` 取自单 ref（提交 → **脏工作区**），
+把未提交的台账也算进去了。权威值是提交对提交的 **+2037**。
+后续所有数字一律标注取数状态。
 
-全部在**交付 HEAD `b00a1b0c2`** 上复跑，每个变异一个全新空 `CARGO_TARGET_DIR`，用后即删，
-日志均显示从零 `Compiling`。对照组在**修复前** `4b782750d` 上跑，结果为绿（如实记录，未修改基线树）。
+## 门禁（在干净树重跑；数字见本节末提交）
 
-| 变异 | 改动 | 探针 | 结果 |
+驱动集 `--drivers=all`（`shasum -a256 drivers-registry.json` =
+`8531e125fa9bc0c9fe4249c6403b479b1aae61fdd7932c5eaadb0971b96f7cb8`，
+`cargo metadata --no-deps --format-version 1 > /tmp/dz-metadata.json`（EXIT=0）后 node 解析，
+计得 **17** 个 `datazen-driver-*` 包：
+api / clickhouse / duckdb / elasticsearch / hbase / http-support / influxdb / mongodb /
+mysql / postgres / redis / rqlite / sqlite / sqlserver / turso / vector / **victoriametrics**；
+`drivers-registry.json` 另有 3 个 git 驱动 `kiwi` / `olap` / `superset`，本机未克隆，
+故不是 workspace member。16 个驱动目录 + `packages/driver-api` = 17。
+
+门禁重跑的取证方案（取代此前只记 `HEAD` 的不足）：
+`HEAD` 一致**不足以**证明无人改动——此前一轮就出现过 `HEAD` 恒定、
+但工作区 sha 与 dirty 文件数在门禁期间变化（20 → 18）的情况。
+现采用 **`SOURCE_SHA`**：`git ls-files` 全量 tracked 文件内容求 sha256，
+**排除** `src-tauri/Cargo.toml` 与 `Cargo.lock`（这两份是 codegen 注入产物，见下节）。
+规则是**注入发生在记录窗口之前**，还原发生在窗口之后；
+窗口首尾各记一次 `HEAD` / `TREE` / `SOURCE_SHA`，**必须逐字相等**，否则作废重跑。
+不注入驱动的门禁全程 `git status --porcelain` 保持 0。
+
+### 门禁结论
+
+> 待干净树重跑后由紧随其后的文档提交写入。理由：门禁认证的是 Rust 源码，
+> 而两次提交之间 `progress.md` 之外的源码零差异——
+> `git diff <被门禁提交> <最终提交> -- '*.rs' '*.toml' '*.lock'` 输出为空可自证。
+
+### 驱动「连接行为未变」的证明（基线 vs 本 HEAD，各跑一遍整包）
+
+基线由独立 detached worktree + 独立 `CARGO_TARGET_DIR` 在 `4b782750ddd1` 测得，
+起止 `HEAD` / `tree` / `git status` 均核对未变，工作树与 target 事后已删除。
+
+| 驱动 | 基线 | 本 HEAD | delta |
 | --- | --- | --- | --- |
-| A | `identify` 回退为常量 `service_key` | `cargo test -p datazen --lib` | KILLED，EXIT=101，`1745 passed; 12 failed` |
-| B-host | `identify` 硬编码 `ConnectionId::new("local-source")` | `cargo test -p datazen --lib` | KILLED，EXIT=101，`1748 passed; 9 failed` |
-| B-runtime | `identity_keys` 丢弃 `Connection(...)` 键 | `cargo test -p datazen-runtime` | KILLED，EXIT=101，`job_endpoint_identity.rs:83` |
-| C | 检测器 `.find` 丢掉 `read_key == key` 维度 | `cargo test -p datazen-runtime` | KILLED，EXIT=101，`job_endpoint_identity.rs:31` |
-| 对照 | 无改动（缺陷树 `4b782750d`） | 两个探针 | SURVIVED，EXIT=0（runtime 843 / host lib 1733 全绿） |
+| postgres | 200 | 201 | +1（新增默认值一致性测试） |
+| mysql | 177 | 178 | +1 |
+| redis | 396（+3 ignored） | 397（+3 ignored） | +1 |
+| sqlserver | 120 | 121 | +1 |
+| 合计 | 893 / 0 failed | 897 / 0 failed | 每 crate 恰好 +1，**无任何测试被删、无任何计数低于基线** |
+
+## 变异验证（7 条，全部 KILLED）
+
+方法：每条变异在**独立 detached worktree**（`.worktrees/dz-mut-<名>`，
+起点恒为 `2940e25307746`）+ **独立空 target 目录** 上执行，
+逐条记录「改了几个文件 / 冷编译首行 / 退出码 / 失败用例名 / panic 行」。
+所有变异脚本先 `assert s.count(old) == 1`，锚点数量不对直接失败。
+
+| 变异 | 改什么 | 冷编译首行 | 退出码 | 被谁杀死 |
+| --- | --- | --- | --- | --- |
+| **M1（对照）** | 摘要恒定化：`service_key` 退回常量 `"data-transfer"` | `Compiling proc-macro2` | 101 | **13 failed**，含 `service_key_is_not_a_constant_and_never_holds_config_text`、`connection_id_alone_never_decides_the_service_key` |
+| M2 | `identity_key` 重新并回 `Connection` 分量（**D1 复现**） | 同上 | 101 | `cm31_alias_configs_sharing_one_service_are_still_rejected`，panic `job_endpoint_identity.rs:57:51` |
+| M3 | `ResolvedLocation::of` 去掉驱动兜底（**D2 复现**） | 同上 | 101 | `an_omitted_host_digests_as_the_drivers_declared_default`（panic `endpoint_identity.rs:411:9`）与 `an_omitted_port_…`（`:429:9`） |
+| M4 | 摘要里 `host`/`port` 钉成 `None` | 同上 | 101 | **8 failed**，含 A–E 矩阵的 A、B、C 三条 |
+| M5 | postgres `default_host()` 漂移成 `"127.0.0.1"` | 同上 | 101 | `the_declared_defaults_are_exactly_what_connect_dials`，panic `postgres/src/connection.rs:618:9` |
+| M6 | postgres 删掉 `default_host` override，退回 trait 默认 | 同上 | 101 | 同一测试，panic `:612:14`（`.expect("postgres has an implicit host")`）——**响亮失败，不是静默通过** |
+| M7 | 关掉 `any_unprovable && has_writer` 的 fail-closed | 同上 | 101 | `cm31_unprovable_identity_with_writer_is_rejected`，panic `job_endpoint_identity.rs:141:51` |
+
+**逐字结论行（原文）**
+
+```
+m1: test result: FAILED. 15 passed; 13 failed; 0 ignored; 0 measured; 1740 filtered out; finished in 0.04s
+m2: test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+m3: test result: FAILED. 26 passed; 2 failed; 0 ignored; 0 measured; 1740 filtered out; finished in 0.09s
+m4: test result: FAILED. 20 passed; 8 failed; 0 ignored; 0 measured; 1740 filtered out; finished in 0.04s
+m5: test result: FAILED. 200 passed; 1 failed; …
+m6: test result: FAILED. 200 passed; 1 failed; …
+m7: test result: FAILED. 4 passed; 1 failed; …
+```
+
+每条的 `HEAD_AFTER` 均为 `2940e25307746c72614f5286aace5c52fbbeae70`，
+且 `target_dir_entries_before_build=0`（空目录起点，**排除"复用旧产物"伪通过**），
+变异 worktree 与 target 事后均已删除。
+
+**M1 与 M2 是两条不同的变异，各自独立跑、各自记证据**：M1 杀的是「身份退化成常量」，
+M2 杀的是「D1 的 Connection 键复活」。M1 的 13 条失败里包含
+`same_object_on_two_physical_endpoints_is_accepted`——
+若身份恒定化，A 与 D 会被混为一谈，正是 M1 存在的意义。
+
+## 告警：只比集合，不比计数
+
+**不声称任何告警增减。** 计数口径在不同日志里随 `-->` 抽取规则变化，
+「46 行 / 17 文件」这类数字不可比。以下把两侧**文件清单逐字列出**，请按清单核对。
+
+生成命令（两侧完全相同）：
+`grep -oE '\-\-> [^:]+' <check 日志> | sort -u > <清单>`
+
+**基线 `@4b782750ddd1`（`/tmp/dz-warn-files-BASE.txt`，17 行）：**
+
+```
+--> packages/data-sync/src/compare.rs
+--> packages/data-transfer/src/sql_file.rs
+--> packages/data-transfer/src/writer.rs
+--> packages/drivers/elasticsearch/src/resource_provider.rs
+--> packages/drivers/mongodb/src/resource.rs
+--> src-tauri/src/commands/ai/util.rs
+--> src-tauri/src/commands/data_transfer/plans.rs
+--> src-tauri/src/commands/schema.rs
+--> src-tauri/src/commands/schema_diff/job.rs
+--> src-tauri/src/commands/sync/comparison_store.rs
+--> src-tauri/src/commands/sync/comparison_store/disk.rs
+--> src-tauri/src/commands/sync/plans.rs
+--> src-tauri/src/store/app_db.rs
+--> src-tauri/src/store/app_db/dashboards.rs
+--> src-tauri/src/store/app_db/runs.rs
+--> src-tauri/src/store/app_db/workflows.rs
+--> src-tauri/src/store/platform_vault.rs
+```
+
+**本轨 `@051a2284 + 脏工作区`（`/tmp/dz-warn-files-MINE.txt`，17 行）：**
+
+```
+--> packages/data-sync/src/compare.rs
+--> packages/data-transfer/src/sql_file.rs
+--> packages/data-transfer/src/writer.rs
+--> packages/drivers/elasticsearch/src/resource_provider.rs
+--> packages/drivers/mongodb/src/resource.rs
+--> src-tauri/src/commands/ai/util.rs
+--> src-tauri/src/commands/data_transfer/plans.rs
+--> src-tauri/src/commands/schema.rs
+--> src-tauri/src/commands/schema_diff/job.rs
+--> src-tauri/src/commands/sync/comparison_store.rs
+--> src-tauri/src/commands/sync/comparison_store/disk.rs
+--> src-tauri/src/commands/sync/plans.rs
+--> src-tauri/src/store/app_db.rs
+--> src-tauri/src/store/app_db/dashboards.rs
+--> src-tauri/src/store/app_db/runs.rs
+--> src-tauri/src/store/app_db/workflows.rs
+--> src-tauri/src/store/platform_vault.rs
+```
+
+`comm -13`（只在 MINE）= **空**；`comm -23`（只在 BASE）= **空**；交集 17。
+两份清单逐字节相同。注意 `src-tauri/src/commands/schema_diff/job.rs`
+出现在**两侧**同一位置——它本就在告警清单里，与本轨无关，本轨也未改它。
+
+## `src-tauri/Cargo.toml` 与 `Cargo.lock`：刻意排除，不是漏掉
+
+`git diff --stat 4b782750ddd1c 2940e25307746 -- src-tauri/Cargo.toml Cargo.lock`
+**输出为空**——两份文件与基线逐字节相同，本轨一个字节都没改。
+
+之所以要专门写这一节：`cargo check/test -p datazen` 必须先跑
+`node scripts/resolve-drivers.mjs --drivers=all` 注入驱动依赖，
+而注入会改写 `src-tauri/Cargo.toml`（实测 `31 insertions(+), 1 deletion(-)`），
+cargo 在注入状态下做依赖解析时又会改写 `Cargo.lock`。
+这两个副作用发生在门禁记录窗口内，是 `SOURCE_SHA` 必须排除它们的原因。
+入库版本保留 `# <<driver-dependencies>>` 占位段（`src-tauri/Cargo.toml:18`），
+其中只有 `datazen-driver-api`——这正是 AGENTS.md「Cargo.toml 中的插件占位段在 git 中应保持为空」的要求。
+
+## 格式与规模纪律（如实披露）
+
+- 逐文件 `rustfmt --edition 2021 --check`：**18 个改动 .rs 文件中 16 个 EXIT=0**。
+  余下 2 个的偏差**是基线就有的、与本次改动无关**，逐字核对过：
+  `packages/runtime/src/job/budget.rs`（`release` 的 `.map` 1 处）、
+  `packages/driver-api/src/mock_driver.rs`（`:7` 与 `:19` 两处）。**刻意未修**——修它就是改动
+  与本轨无关的上游代码，扩大爆炸半径。
+  （注：对 crate root 跑 rustfmt 会经 `mod` 递归进子模块并把子模块的 hunk 一并报出，
+  计数会重复。）
+- `mock_driver.rs` 不是 `cfg(test)` 模块：新增字段均为可加字段且默认 `None`，
+  等于改动前的行为，无破坏性。
+### 行数纪律：三份违规文件，性质各不相同
+
+| 文件 | 基线 | 本 HEAD | delta | 性质 |
+| --- | --- | --- | --- | --- |
+| `packages/runtime/tests/job_kernel.rs` | 740 | **1023** | **+283** | **本轨引入，必须拆**（见下） |
+| `packages/driver-api/src/traits.rs` | 1772 | 1795 | +23 | 上游既有违规，本轨只标注 |
+| `packages/drivers/sqlserver/src/sqlserver.rs` | 2566 | 2643 | +77 | 上游既有违规，本轨只标注 |
+| `src-tauri/src/commands/data_transfer/job_api/assembly.rs` | 484 | 517 | +33 | 未超限；两参数 `identify` 调用点迁移 |
+| `src-tauri/src/commands/data_transfer/job_api/runtime.rs` | 418 | 430 | +12 | 未超限；同上 |
+| `src-tauri/src/commands/data_transfer/exec.rs` | 728 | 728 | **+0** | 未超限且**零增长** |
+
+**`job_kernel.rs` 的 +283 是本轨引入的，不是上游遗留**，如实交代来龙去脉：
+
+740（基线）→ 841（`24f5a8955`）→ 742（`b00a1b0c2`）→ 742（`051a228a4`）→ 1023（`2940e253`）。
+
+`051a228a4 → 2940e253` 这一段是 **377 insertions / 96 deletions 的纯重排**：
+D4 要求把该文件的 import 排序按 rustfmt 规范化，我用的是整文件
+`rustfmt --edition 2021`，它把约 60 条本来就超宽的单行 `assert!` 展开了。
+**`#[test]` 数量 4 → 4，没加测试也没删测试**，净效果是纯格式噪声把文件撑到 1023 行。
+
+**明确拒绝的回退路径**：把 rustfmt 展开改回去，计数就好看了。
+那是**刷指标**——它会退回一份 rustfmt 不干净的代码。
+裁定是**拆分**（与 `b00a1b0c2` 当时 841 → 742 同一手法），且必须是独立提交、不得 `--amend`。
+
+**`traits.rs` / `sqlserver.rs` 的拆分计划（技术债，非本轨引入）**
+
+- `traits.rs`（1795 行）：按 trait 职责切为
+  `traits/ddl.rs`（DDL/对象）、`traits/query.rs`（查询/流式）、`traits/admin.rs`（管理命令）、
+  `traits/meta.rs`（能力探测/方言），`traits.rs` 保留 trait 骨架与 re-export。
+  风险是下游 17 个驱动 crate 全部要跟改，**必须独立立项、单独回归**。
+- `sqlserver.rs`（2643 行）：连接与传输已在 `sqlserver/` 下有模块，
+  应把「连接建立 / T-SQL 生成 / 元数据查询 / DDL 渲染」四段各自成文件，
+  `sqlserver.rs` 只留 `SqlServerDriver` 的 trait 实现。
+
+本轨**只标注这两处、不顺手拆**：AGENTS.md 的爆炸半径纪律要求改动限于本轨，
+把 17 个驱动的 trait 改动混进来会让本轨的 diff 失去可审性。
+「本次 +23」**不构成**对上限的通过。
+
+**点名澄清一处外部约束**：`datazen-p5-integration` 轨要求
+`handler.rs`（781 行）与 `host/mod.rs`（721 行）不增长——
+这两条路径在本轨工作树与基线中**都不存在**，
+`job_api/` 下实际内容为 `admission.rs / assembly.rs / cancel.rs / endpoint_identity.rs /
+mod.rs / runtime.rs / scope.rs / tests`。请集成轨以本轨实际文件为准。
+
+- `progress.md`（本文件）**合并时必须删除**，不得存活到 `main`。
 
 ## 遗留与待裁定
 
-- **已加强 legacy 的窄面**：两个连接配置指向同一台物理服务器时，现在会判为同一端点并拒绝。
-  这是 req 3 明确要求的安全性质（灾难性自覆盖），legacy 不具备。如裁定认为必须严格不严于 legacy，
-  请指出要退回哪一半。
-- **已知漏检**：同一台服务器的两个配置，其中一个省略 `host`（走驱动默认值）、另一个显式填写，
-  摘要与连接 id 均不同 ⇒ 漏检。同 `connectionId` 的情形由 `Connection` 键兜住；
-  `assembly.rs` 的 `validate_no_self_table_overwrite` 是第二层。
-- **`schema_diff` Job 路径未动**：`commands/schema_diff/job.rs` 的 `endpoints_from_session_pair`
-  同样使用 `EndpointRef`，但它给两端不同的 connection id，因此行为未变。本次**超范围，未改**。
+- **D2 修复的已知残余边界（如实记录）**：
+  (a) `host: "LOCALHOST"` 与省略 host 仍不同——**刻意**不做 DNS 大小写折叠，
+      因为 `normalized()` 不能对 `database` 做小写化（库名加引号时大小写敏感）；
+  (b) `localhost` 与 `127.0.0.1` 仍不同；
+  (c) 将来某个驱动新增默认 host 却忘了 override 新方法，缺口会静默重开——
+      防线是「per-driver 单一真相常量 + 驱动 crate 内测试」，不是宿主。
+- **`schema_diff` Job 路径未动**：`commands/schema_diff/job.rs` 的 D3 属另一轨，本次**超范围，未改**。
+- 验收方的探针全部跑在 `MockDriver` / `TestAppState` 上，**从未跑过真实驱动**；真实驱动侧的
+  兜底是上面那张「驱动内测试」表，不是宿主测试。
+- **D5 已复核三次**：`grep -rn "connection_id.*trim()" packages/runtime/src packages/runtime/tests
+  src-tauri/src/commands/data_transfer` 无任何命中；`identity_key` 只 trim `service_key`。
+  修复前四个提交里 `identity_keys` 对 `connection_id` 与 `reserve`/
+  `ensure_endpoint_services`（`runtime.rs:189`）的裸值不一致**确实存在**，故该提交是必需的。
+- 遗留未做清单（明写，不掩饰）：
+  1. `job_kernel.rs` 拆分 —— 合并前置条件，独立提交；
+  2. `traits.rs` / `sqlserver.rs` 上限 —— 技术债，需独立立项；
+  3. 两处基线既有 rustfmt 偏差（`budget.rs:182`、`mock_driver.rs:7/:19`）—— 刻意未修；
+  4. `.env` 内容全程未读；临时日志只落系统 temp，仓库内无残留。
+  5. M6 的宿主侧行为**不由宿主测试钉死**（这是设计使然：宿主不该硬编码驱动行为），
+     它的证据是驱动 crate 内那条响亮失败的 `.expect`。
