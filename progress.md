@@ -316,18 +316,24 @@ cargo 在注入状态下做依赖解析时又会改写 `Cargo.lock`。
   计数会重复。）
 - `mock_driver.rs` 不是 `cfg(test)` 模块：新增字段均为可加字段且默认 `None`，
   等于改动前的行为，无破坏性。
-### 行数纪律：三份违规文件，性质各不相同
+### 行数纪律：违规文件，性质各不相同
 
-| 文件 | 基线 | 本 HEAD | delta | 性质 |
+下表「修复侧」列取自 `@fc8196128`（拆分提交，即当前 HEAD）；`traits.rs` / `sqlserver.rs`
+两行未随拆分变动，其数值同时成立 `@2940e253`。基线列一律 `@4b782750`。
+
+| 文件 | 基线 | 修复后（`@fc8196128`） | delta | 性质 |
 | --- | --- | --- | --- | --- |
-| `packages/runtime/tests/job_kernel.rs` | 740 | **1023** | **+283** | **本轨引入，必须拆**（见下） |
+| `packages/runtime/tests/job_kernel.rs` | 740 | 623 | **−117** | 已在 `fc8196128` 拆分，**回到 ≤800 行纪律**（见下） |
+| `packages/runtime/tests/job_kernel/endpoint_budget.rs` | — | 134 | 新增 | 本次拆分新增 |
+| `packages/runtime/tests/job_kernel/runtime_journeys.rs` | — | 289 | 新增 | 本次拆分新增 |
 | `packages/driver-api/src/traits.rs` | 1772 | 1795 | +23 | 上游既有违规，本轨只标注 |
 | `packages/drivers/sqlserver/src/sqlserver.rs` | 2566 | 2643 | +77 | 上游既有违规，本轨只标注 |
 | `src-tauri/src/commands/data_transfer/job_api/assembly.rs` | 484 | 517 | +33 | 未超限；两参数 `identify` 调用点迁移 |
 | `src-tauri/src/commands/data_transfer/job_api/runtime.rs` | 418 | 430 | +12 | 未超限；同上 |
 | `src-tauri/src/commands/data_transfer/exec.rs` | 728 | 728 | **+0** | 未超限且**零增长** |
 
-**`job_kernel.rs` 的 +283 是本轨引入的，不是上游遗留**，如实交代来龙去脉：
+**`job_kernel.rs` 曾出现的 +283（峰值 1023 `@2940e253`）是本轨引入的，不是上游遗留**，
+已按裁定拆分消解，如实交代来龙去脉：
 
 740（基线）→ 841（`24f5a8955`）→ 742（`b00a1b0c2`）→ 742（`051a228a4`）→ 1023（`2940e253`）。
 
@@ -339,6 +345,41 @@ D4 要求把该文件的 import 排序按 rustfmt 规范化，我用的是整文
 **明确拒绝的回退路径**：把 rustfmt 展开改回去，计数就好看了。
 那是**刷指标**——它会退回一份 rustfmt 不干净的代码。
 裁定是**拆分**（与 `b00a1b0c2` 当时 841 → 742 同一手法），且必须是独立提交、不得 `--amend`。
+
+### `job_kernel.rs` 拆分：提交 `fc8196128`（已完成，非计划）
+
+**拆分提交：`fc8196128`**，独立提交，**没有 `--amend`**。
+
+采用**二进制内 `#[path]` 子模块**拆分，理由：`b00a1b0c2` 那次是切到新的测试二进制，
+但本文件有 7 个自用夹具（`ctx` / `owner_job` / `apply_payload` / `prepare_payload` /
+`definition` / `repo_clock` / `runtime_with`）跨块复用；切新二进制要复制夹具或改公开面。
+`#[path]` 手法取自仓库既有先例 `cm70_idempotency_replay.rs:37-47`。
+
+| 文件 | 拆分前 | 拆分后（`@fc8196128`） | 职责 |
+| --- | --- | --- | --- |
+| `packages/runtime/tests/job_kernel.rs` | 1023（单文件） | **623** | 共享夹具 + CM-54 幂等 + fencing + 取消 + 持久化白名单 + 恢复旅程 |
+| `packages/runtime/tests/job_kernel/endpoint_budget.rs` | — | **134** | 预算与重叠门禁旅程（CM-31 / CM-65） |
+| `packages/runtime/tests/job_kernel/runtime_journeys.rs` | — | **289** | JobRuntime 生命周期旅程 |
+
+三文件均 `rustfmt --check` 0 hunk，**均远低于 800 行上限**。
+1046 行总量比拆分前 1023 多 23 行，全部是文档头（6 行）、两处 `use super::*;`、
+7 行 `mod` 声明和 4 行拆分理由注释——**没有新增或删除任何一行测试逻辑**。
+
+- `CountingHandler` / `Mode` / `impl JobHandler` **必须留在根模块**：
+  持久化白名单与恢复故障旅程（根模块 L390/L457）同样要用它们，
+  放子模块会造成反向依赖。第一次拆分尝试放错了位置，编译报
+  `E0422` / `E0433`，已按编译器指正搬回根模块。
+- **测试数量前后都是 16**（根 8 + `endpoint_budget` 3 + `runtime_journeys` 5），
+  `#[test]` / `#[tokio::test]` 分布 4+12 → 4+12，无增无减。
+- **仍是一个测试二进制**（`job_kernel`，二进制名 `job_kernel-4f4c1b6e8f172788` 不变），
+  子模块不是独立 target，`test result:` 行数不变。
+- 拆分后 `cargo test -p datazen-runtime` **EXIT=0**，34 条 `test result:` 行与拆分前
+  （`5824392f0` 干净树门禁日志 `/tmp/dz-gate-clean-datazen-runtime.log`）**逐行相同**；
+  `job_kernel` 那条仍是 `test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`。
+- **未引入新 warning**：`job_kernel` 仍是 4 条（`OrganizationId`、`BudgetClaim`+`BudgetConfig`、
+  `JobClock`+`JobResult`+`SUPPORTED_PLAN_MAJOR`、`variant CancelStage is never constructed`），
+  四条与 `5824392f0` 门禁日志里逐字相同，行号 14/19/22 未变，`CancelStage` 由 421 变 103
+  纯属行号位移。**刻意未修**：它们是上游既有告警，不属本轨。
 
 **`traits.rs` / `sqlserver.rs` 的拆分计划（技术债，非本轨引入）**
 
@@ -378,7 +419,8 @@ mod.rs / runtime.rs / scope.rs / tests`。请集成轨以本轨实际文件为�
   修复前四个提交里 `identity_keys` 对 `connection_id` 与 `reserve`/
   `ensure_endpoint_services`（`runtime.rs:189`）的裸值不一致**确实存在**，故该提交是必需的。
 - 遗留未做清单（明写，不掩饰）：
-  1. `job_kernel.rs` 拆分 —— 合并前置条件，独立提交；
+  1. ~~`job_kernel.rs` 拆分~~ —— **已完成**，提交 `fc8196128`，独立提交未 `--amend`，
+     623 / 134 / 289 三文件均 ≤800；**本轨已无单文件越线项**；
   2. `traits.rs` / `sqlserver.rs` 上限 —— 技术债，需独立立项；
   3. 两处基线既有 rustfmt 偏差（`budget.rs:182`、`mock_driver.rs:7/:19`）—— 刻意未修；
   4. `.env` 内容全程未读；临时日志只落系统 temp，仓库内无残留。
