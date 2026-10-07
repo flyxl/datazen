@@ -21,7 +21,6 @@ import {
   type TransferProfile,
   type TransferTableMapping,
   type TransferTableResult,
-  type TransferExecutionResult,
   type TransferSqlFileTarget,
   type WriteMode,
 } from '../../commands/transfer';
@@ -50,7 +49,11 @@ import {
   TransferPairingNote,
 } from '../../components/migration/MigrationEndpointsBar';
 import { MigrationRunHistoryDialog } from '../../components/migration/MigrationRunHistoryDialog';
-import { normalizeColumnMappings, tableHasActiveMappings } from './transferMappingView';
+import {
+  normalizeColumnMappings,
+  mappingGateAllowsAdvance,
+} from './transferMappingView';
+import { MappingGateNotice } from './MappingGateNotice';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
 import {
   ensureDedicatedSession,
@@ -64,7 +67,9 @@ import {
   useMigrationEndpointPrefill,
 } from '../../lib/migrationWindowPrefill';
 import { useMigrationJobHydration } from '../../hooks/useMigrationJobHydration';
-import { isStalePlanError } from '../../lib/migrationJobHydration';
+import { useTransferJobRun } from '../../hooks/useTransferJobRun';
+import { TransferJobResultPanel } from './TransferJobResultPanel';
+import { MigrationJobFailureNotice } from '../../components/migration/MigrationJobFailureNotice';
 
 type WizardStep = 'endpoints' | 'setup' | 'objects' | 'mapping' | 'preview' | 'result';
 
@@ -80,6 +85,22 @@ export function DataTransferWindow() {
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const migrationJobs = useMigrationJobHydration('dataTransfer');
+  /**
+   * P5 Job path. Every run now goes `prepare` → `apply`; the window keeps only
+   * the review payload (`preview`) in its own state because the rest of the
+   * wizard is written against `TransferPreview`.
+   */
+  const jobRun = useTransferJobRun();
+  // The callbacks are `useCallback`-stable; `jobRun` itself is a fresh object
+  // every render, so the wizard's `useCallback` blocks depend on these instead
+  // or they would be rebuilt (and re-trigger their effects) on every render.
+  const {
+    prepare: prepareJob,
+    apply: applyJob,
+    requestCancel: requestJobCancel,
+    reset: resetJobRun,
+    lastFailure: lastJobFailure,
+  } = jobRun;
   const [sourceSession, setSourceSession] = useState<DedicatedSideSession | null>(null);
   const [targetSession, setTargetSession] = useState<DedicatedSideSession | null>(null);
   const [sourceId, setSourceId] = useState('');
@@ -102,19 +123,27 @@ export function DataTransferWindow() {
   const [writeMode, setWriteMode] = useState<WriteMode>('insert');
   const [tables, setTables] = useState<TransferTableResult[]>([]);
   const [preview, setPreview] = useState<TransferPreview | null>(null);
-  const [result, setResult] = useState<TransferExecutionResult | null>(null);
-  const [resumeToken, setResumeToken] = useState<string | null>(null);
   const [step, setStep] = useState<WizardStep>('endpoints');
   const [batchSize, setBatchSize] = useState(DEFAULT_TRANSFER_OPTIONS.batchSize ?? 500);
   const [stopOnError, setStopOnError] = useState(true);
   const [confirmedDestructive, setConfirmedDestructive] = useState(false);
   const [useTargetDefaultCollation, setUseTargetDefaultCollation] = useState(false);
   const [loading, setLoading] = useState(false);
+  /**
+   * §8.4: true for exactly the window between "the user asked to prepare a
+   * plan" and "the prepare resolved". It is set *before* the await, so the
+   * mapping editor is already inert when the round trip starts — there is no
+   * scheduling gap in which the editor could rewrite the very plan being
+   * prepared.
+   */
+  const [preparing, setPreparing] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [executeProgress, setExecuteProgress] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  /** §8.4: set only by the post-prepare re-check on the mapping step. */
+  const [mappingGateError, setMappingGateError] = useState('');
   const [limitationsOpen, setLimitationsOpen] = useState(false);
   const [executeConfirmOpen, setExecuteConfirmOpen] = useState(false);
   const [selectedMappingTable, setSelectedMappingTable] = useState('');
@@ -122,7 +151,34 @@ export function DataTransferWindow() {
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [profileName, setProfileName] = useState('');
   const profileMappingsRef = useRef<TransferTableMapping[] | null>(null);
-  const jobIdRef = useRef<string | null>(null);
+  const prepareSeqRef = useRef(0);
+  /**
+   * §8.4: the rows as they are *now*, not as they were when the user clicked
+   * Next. Synced by effect (never assigned during render) so the post-await
+   * re-check reads whatever landed while prepare was in flight.
+   */
+  const tablesRef = useRef<TransferTableResult[]>(tables);
+  useEffect(() => {
+    tablesRef.current = tables;
+  }, [tables]);
+
+  /**
+   * §10: the backend keys its receipt map by `idempotencyKey` and mints a fresh
+   * one when the client sends none — which would make every retry of a lost
+   * commit receipt a brand-new write attempt against a plan that may already
+   * have committed. So the apply key is derived from the admitted `planId`: a
+   * retry repeats it and the receipt map can answer, while the prepare key is
+   * per call, because a *new* preview is a new admission and must never be
+   * answered with an older prepare Job's receipt.
+   */
+  const nextPrepareKey = useCallback(() => {
+    prepareSeqRef.current += 1;
+    return `data-transfer/prepare/${prepareSeqRef.current}`;
+  }, []);
+  const applyKeyForPlan = useCallback(
+    (planId: string) => `data-transfer/apply/${planId}`,
+    [],
+  );
 
   useEffect(() => {
     void loadSettings();
@@ -483,7 +539,9 @@ export function DataTransferWindow() {
     profileMappingsRef.current = profile.tables;
     setTables([]);
     setPreview(null);
-    setResult(null);
+    // A different profile is a different plan: any run state from the previous
+    // one must go with it, or §9 would let a spent planId look reusable.
+    resetJobRun();
     setStep('endpoints');
     if (profile.destinationMode === 'sqlFile') {
       setErrorMsg(t('transfer.profile.chooseFile'));
@@ -666,11 +724,27 @@ export function DataTransferWindow() {
         return false;
       }
       setPreviewError('');
+      setMappingGateError('');
       setLoading(true);
       try {
-        const p = await transferCommands.preview(job);
-        setPreview(p);
-        setResumeToken(null);
+        // P5 §8/§9: the plan is admitted by `prepare_data_transfer_job`, which
+        // runs the §8 backend-scope check before anything else and returns the
+        // same `TransferPreview` review the old `preview_data_transfer` did —
+        // so every downstream consumer of `preview` is unchanged. The planId
+        // it carries is the one `apply` must spend, and only once.
+        const view = await prepareJob(job, { idempotencyKey: nextPrepareKey() });
+        if (!view) {
+          // The hook classified the refusal and re-renders with `failure`;
+          // the wizard must not advance past a plan the backend declined to
+          // admit, so this stays a non-advance. The backend's own words are
+          // read synchronously — `prepare` resolves rather than throws, so
+          // `failure` state would not be committed yet and the error panel
+          // would fall back to a generic hint and lose the real cause.
+          const detail = lastJobFailure()?.message;
+          if (detail) setPreviewError(detail);
+          return false;
+        }
+        setPreview(view.review);
         return true;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -685,96 +759,76 @@ export function DataTransferWindow() {
         setLoading(false);
       }
     },
-    [refreshEndpointSessions, buildJob, t],
+    [
+      refreshEndpointSessions,
+      buildJob,
+      prepareJob,
+      lastJobFailure,
+      nextPrepareKey,
+      t,
+    ],
   );
 
   const runExecute = useCallback(
-    async (resumeTokenOverride?: string) => {
+    async () => {
       const sessions = await refreshEndpointSessions();
       const job = buildJob(sessions);
       if (!job) return;
-      const planId = preview?.planId;
-      if (!planId) {
-        setErrorMsg(
-          'Transfer preview is missing its server plan; return to preview and try again.',
-        );
-        setErrorOpen(true);
-        return;
-      }
       if (destinationMode === 'database' && targetReadOnly) {
         setErrorMsg(t('transfer.readOnlyBlock'));
         setErrorOpen(true);
         return;
       }
-      const jobId = crypto.randomUUID();
-      jobIdRef.current = jobId;
-      if (resumeTokenOverride) setStep('preview');
+      // The plan must come from `prepare`. Reading it off `preview` alone would
+      // let the window apply a plan the hook never saw admitted, which is the
+      // §9 "spend it exactly once" case stated backwards.
+      const admitted = jobRun.prepareView;
+      if (!admitted || !preview) {
+        setErrorMsg(t('migrationJob.reprepareOnStalePlan'));
+        setErrorOpen(true);
+        setPreview(null);
+        setStep('mapping');
+        return;
+      }
       setExecuting(true);
       const tableCount =
         tables.length > 0
           ? job.tables.filter((tbl) => tbl.enabled).length
           : Math.max(preview?.writePlans.length ?? 0, preview?.ddl.length ?? 0);
       setExecuteProgress(t('transfer.executingProgress', { count: tableCount }));
-      // SQL-file preview discovers the source table set on the server when
-      // the UI has not inspected a target database. An explicit empty list
-      // would otherwise disable every table in the immutable plan.
-      const selection =
+      // §6.1: an absent selection means "every table the plan froze", which is
+      // exactly the SQL-file case where the UI never inspected a target. An
+      // explicit empty list would instead disable every table in the plan.
+      const sourceTables =
         destinationMode === 'sqlFile' && tables.length === 0
           ? undefined
-          : {
-              sourceTables: job.tables
-                .filter((table) => table.enabled)
-                .map((table) => table.sourceTable),
-            };
+          : job.tables.filter((table) => table.enabled).map((table) => table.sourceTable);
       try {
-        const selectedProfile = transferProfiles.find(
-          (profile) => profile.id === selectedProfileId,
-        );
-        const request = {
-          planId,
-          selection,
-          options: { confirmedDestructive },
-          jobId,
-          ...(resumeTokenOverride || resumeToken
-            ? { resumeToken: resumeTokenOverride ?? resumeToken ?? undefined }
-            : {}),
-        };
-        const profileRef = selectedProfile
-          ? { id: selectedProfile.id, revision: selectedProfile.updatedAt }
-          : undefined;
-        const execResult = profileRef
-          ? await transferCommands.execute(request, profileRef)
-          : await transferCommands.execute(request);
-        setResult(execResult);
-        setResumeToken(execResult.resumeToken ?? null);
-        setStep('result');
-      } catch (e) {
-        if (isStalePlanError(e)) {
-          setErrorMsg(t('migrationJob.reprepareOnStalePlan'));
-          setErrorOpen(true);
-          setPreview(null);
-          setResult(null);
-          setStep('mapping');
-          setExecuteProgress('');
-          return;
-        }
-        setErrorMsg(e instanceof Error ? e.message : String(e));
-        setErrorOpen(true);
+        const view = await applyJob({
+          sourceTables,
+          confirmedDestructive,
+          idempotencyKey: applyKeyForPlan(admitted.planId),
+        });
+        // A refusal (scope, budget, consumed plan) leaves `view` null and the
+        // hook renders the fail-closed notice. Falling through to the result
+        // step here would present a refusal as if a run had settled.
+        setStep(view ? 'result' : 'preview');
       } finally {
         setExecuting(false);
         setExecuteProgress('');
-        jobIdRef.current = null;
       }
     },
     [
       refreshEndpointSessions,
       buildJob,
+      jobRun.prepareView,
+      applyJob,
+      applyKeyForPlan,
       preview,
       targetReadOnly,
       destinationMode,
       tables.length,
       confirmedDestructive,
-      resumeToken,
       t,
     ],
   );
@@ -793,9 +847,36 @@ export function DataTransferWindow() {
   }, [runExecute]);
 
   const handleCancel = useCallback(async () => {
-    const id = jobIdRef.current;
-    if (id) await transferCommands.cancel(id).catch(() => {});
-  }, []);
+    // §2.3: a click is a *request*, not a cancellation. The hook decides which
+    // Job id the request may legally be addressed to and records the
+    // disposition separately, so the UI can tell "cancelled while queued" from
+    // "cancel requested while running" instead of claiming success.
+    const wasApplying = jobRun.phase === 'applying';
+    const acknowledged = await requestJobCancel();
+    // A cancel the backend acknowledged while the plan was merely prepared has
+    // disposed that plan: no write was ever in flight, so there is nothing to
+    // show a verdict for. Dropping it back to mapping is the honest outcome —
+    // the next review mints a fresh planId (§9). A cancel that could not be
+    // addressed changes nothing and must leave the review untouched.
+    if (acknowledged && !wasApplying) {
+      resetJobRun();
+      setPreview(null);
+      setStep('mapping');
+      setExecuteProgress('');
+    }
+  }, [jobRun.phase, requestJobCancel, resetJobRun]);
+
+  /**
+   * §9: once a plan is spent it is dead — the only legal recovery is a fresh
+   * review that mints a new `planId`. `reprepare` drops the settled run so the
+   * wizard cannot offer the spent plan again.
+   */
+  const handleReReviewPlan = useCallback(() => {
+    resetJobRun();
+    setPreview(null);
+    setStep('mapping');
+    setExecuteProgress('');
+  }, [resetJobRun]);
 
   const stepIndex = STEPS.indexOf(step);
   const validBatchSize = Number.isInteger(batchSize) && batchSize >= 1 && batchSize <= 500;
@@ -817,7 +898,8 @@ export function DataTransferWindow() {
       case 'objects':
         return tables.length > 0 && tables.some((tbl) => tbl.enabled);
       case 'mapping':
-        return tables.some((tbl) => tbl.enabled && tableHasActiveMappings(tbl));
+        // Same predicate goNext re-checks after the prepare round trip.
+        return mappingGateAllowsAdvance(tables);
       default:
         return false;
     }
@@ -844,10 +926,32 @@ export function DataTransferWindow() {
     [preview, targetReadOnly, loading, destinationMode],
   );
 
+  /**
+   * §10/CM-42: a re-review may only be offered while nothing is pending
+   * reconcile. A `null` verdict means no Job settled at all (a §8/§6.2
+   * refusal), so there is no half-written range to protect and the affordance
+   * stays open.
+   */
+  const reconcilePending = jobRun.verdict?.requiresReconcile ?? false;
+
   const goNext = useCallback(async () => {
     const next = STEPS[stepIndex + 1];
     if (step === 'mapping' && next === 'preview') {
-      await runPreview({ quiet: true });
+      // §8.4: the editor is disabled for the whole round trip, and the gate is
+      // re-decided against the rows that exist *after* it. Deciding on a
+      // click-time copy would let an inspect/refresh landing mid-flight move
+      // the tables out from under an admitted plan.
+      setPreparing(true);
+      const admitted = await runPreview({ quiet: true }).finally(() => setPreparing(false));
+      if (!admitted) {
+        // Prepare itself refused; the preview step owns that error surface.
+        setStep('preview');
+        return;
+      }
+      if (!mappingGateAllowsAdvance(tablesRef.current)) {
+        setMappingGateError(t('transfer.mapping.gateLost'));
+        return;
+      }
       setStep('preview');
       return;
     }
@@ -855,7 +959,7 @@ export function DataTransferWindow() {
       await runInspect();
     }
     if (next) setStep(next);
-  }, [step, stepIndex, tables.length, runInspect, runPreview, destinationMode]);
+  }, [step, stepIndex, tables.length, runInspect, runPreview, destinationMode, t]);
 
   const goBack = () => {
     const prev = STEPS[stepIndex - 1];
@@ -866,6 +970,8 @@ export function DataTransferWindow() {
     // Mapping edits, including a recordset change, invalidate the opaque
     // server preview immediately. The next preview must review the new scope.
     setPreview(null);
+    // The user is re-answering the question the gate message asked.
+    setMappingGateError('');
     setTables((prev) =>
       prev.map((tbl) => {
         if (tbl.sourceTable !== sourceTable) return tbl;
@@ -1444,11 +1550,18 @@ export function DataTransferWindow() {
               tables={tables}
               selectedSourceTable={selectedMappingTable}
               mode={mode}
+              disabled={preparing}
               onSelectTable={setSelectedMappingTable}
               onUpdateTable={updateTable}
               onTargetTableCommit={(sourceTable) => void refreshTableMapping(sourceTable)}
             />
           )}
+
+          <MappingGateNotice
+            visible={step === 'mapping'}
+            rows={tables}
+            gateLost={mappingGateError}
+          />
 
           {step === 'preview' && !loading && !preview && (
             <div
@@ -1597,97 +1710,39 @@ export function DataTransferWindow() {
             </div>
           )}
 
-          {step === 'result' && result && (
-            <div
-              data-testid="data-transfer-result"
-              className="space-y-3 rounded-lg border border-edge bg-surface-alt p-6 text-sm"
+          {step === 'result' && jobRun.applyView && (
+            <TransferJobResultPanel
+              run={jobRun}
+              onReReview={handleReReviewPlan}
+              testIdPrefix="data-transfer-job"
+            />
+          )}
+
+          {step === 'preview' && jobRun.cancelRequested && (
+            <p
+              role="status"
+              data-testid="data-transfer-cancel-disposition"
+              data-cancel-acknowledged={String(jobRun.cancelAcknowledged)}
+              data-cancel-unknown-job={String(jobRun.cancelUnknownJob)}
+              className="text-sm text-fg-muted"
             >
-              {(() => {
-                const hasUnknownOutcome = result.tables.some(
-                  (table) => table.outcome === 'unknown',
-                );
-                const getTableOutcomeLabel = (table: TransferExecutionResult['tables'][number]) => {
-                  switch (table.outcome) {
-                    case 'committed':
-                      return t('transfer.tableOutcome.committed');
-                    case 'rolledBack':
-                      return t('transfer.tableOutcome.rolledBack');
-                    case 'partiallyApplied':
-                      return t('transfer.tableOutcome.partiallyApplied');
-                    case 'notStarted':
-                      return t('transfer.tableOutcome.notStarted');
-                    case 'unknown':
-                      return t('transfer.tableOutcome.unknown');
-                    default:
-                      return table.success ? t('transfer.success') : t('transfer.error');
-                  }
-                };
-                return (
-                  <>
-                    <p className="text-base font-medium" role="status">
-                      {hasUnknownOutcome
-                        ? t('transfer.runUnknownOutcome')
-                        : result.cancelled
-                          ? t('transfer.runCancelled')
-                          : result.partial
-                            ? t('transfer.runPartial')
-                            : t('transfer.success')}
-                    </p>
-                    <p>
-                      {t(
-                        hasUnknownOutcome
-                          ? 'transfer.confirmedRowsInserted'
-                          : 'transfer.rowsInserted',
-                      )}
-                      : {result.rowsInserted}
-                    </p>
-                    {(result.cancelled || result.partial) && (
-                      <p className="text-fg-muted">
-                        {hasUnknownOutcome
-                          ? t('transfer.unknownOutcomeExplanation')
-                          : t('transfer.partialExplanation')}
-                      </p>
-                    )}
-                    {result.resumeToken ? (
-                      <p
-                        className="text-fg-muted"
-                        role="note"
-                        data-testid="data-transfer-resume-availability-hint"
-                      >
-                        {t('transfer.resumeAvailableHint')}
-                      </p>
-                    ) : null}
-                    {result.tables.map((tbl) => (
-                      <div
-                        key={`${tbl.sourceTable}:${tbl.targetTable}:${tbl.success}:${tbl.outcome ?? ''}`}
-                        data-testid={`data-transfer-table-result-${tbl.sourceTable}`}
-                        data-outcome={tbl.outcome}
-                        className="rounded-lg border border-edge bg-surface p-3"
-                      >
-                        <div className="font-medium">
-                          {tbl.sourceTable}: {getTableOutcomeLabel(tbl)}
-                        </div>
-                        {tbl.outcome ? (
-                          <p className="mt-1 text-fg-muted">
-                            {t('transfer.rowsInserted')}:{' '}
-                            {tbl.rowsInserted == null
-                              ? t('transfer.rowsUnknown')
-                              : tbl.rowsInserted}
-                          </p>
-                        ) : null}
-                        {!tbl.success && tbl.error ? (
-                          <CopyableError
-                            message={tbl.error}
-                            className="error-message mt-2 text-xs"
-                            copyButton
-                          />
-                        ) : null}
-                      </div>
-                    ))}
-                  </>
-                );
-              })()}
-            </div>
+              {jobRun.cancelUnknownJob
+                ? t('migration.cancel.unknownJob')
+                : t('migration.cancel.requestedInFlight')}
+            </p>
+          )}
+
+          {/*
+            A refusal never reaches the result step — `runExecute` stays on
+            `preview` so §8 / §6.2 / §9 fail-closed notices are shown where the
+            user still has the review in front of them.
+          */}
+          {step === 'preview' && jobRun.failure && (
+            <MigrationJobFailureNotice
+              failure={jobRun.failure}
+              onReReview={handleReReviewPlan}
+              testIdPrefix="data-transfer-job"
+            />
           )}
         </div>
       </div>
@@ -1697,10 +1752,15 @@ export function DataTransferWindow() {
           <ChevronLeft className="h-4 w-4" /> {t('transfer.back')}
         </Button>
         <div className="flex items-center gap-2">
-          {step === 'preview' && executing && (
+          {/* A cancel is offered for as long as there is an admitted plan to
+              abandon. While an apply is in flight the server owns the Job id
+              and the control is present but not addressable. */}
+          {step === 'preview' && jobRun.prepareView !== null && (
             <Button
               variant="ghost"
               data-testid="data-transfer-cancel"
+              data-cancel-addressable={String(jobRun.cancelTargetJobId !== null)}
+              disabled={jobRun.cancelTargetJobId === null}
               onClick={() => void handleCancel()}
             >
               {t('transfer.cancel')}
@@ -1710,6 +1770,18 @@ export function DataTransferWindow() {
             <span className="text-sm text-fg-muted">
               {executeProgress || t('transfer.executing')}
             </span>
+          )}
+          {/*
+            §2.3: a cancel click is a *request*, not a cancellation, and it can
+            only be addressed to a Job id the frontend actually holds. The
+            server mints the Job id and returns it with the terminal view, so
+            while `apply_data_transfer_job` is still in flight there is no id
+            to send — say so instead of pretending the run can be stopped.
+          */}
+          {step === 'preview' && executing && jobRun.cancelTargetJobId === null && (
+            <p role="status" className="text-sm text-fg-muted" data-testid="data-transfer-cancel-pending-id">
+              {t('migration.cancel.unknownJob')}
+            </p>
           )}
           {step === 'preview' ? (
             <Button
@@ -1721,17 +1793,33 @@ export function DataTransferWindow() {
               {executing ? <Spinner size="lg" /> : null}
               {executing ? t('transfer.executing') : t('transfer.execute')}
             </Button>
-          ) : step === 'result' && result?.resumeToken ? (
-            <Button
-              variant="run"
-              data-testid="data-transfer-resume"
-              disabled={executing}
-              onClick={() => void runExecute(result.resumeToken ?? undefined)}
-            >
-              {executing ? <Spinner size="lg" /> : null}
-              {t('common.retry')}
-            </Button>
-          ) : step !== 'result' ? (
+          ) : step === 'result' ? (
+            // §9/§10: the Job contract has no resume token, so the only legal
+            // next action after a settled run is a fresh review that mints a new
+            // planId — a spent plan is never replayed under its old id. That is
+            // also exactly the hazard CM-42 names: while a reconcile is still
+            // pending the first run's stopping point is unknown, so one click
+            // here would be a second write over the same range. The affordance
+            // is therefore closed until the target has been verified read-only;
+            // the panel above names the reason, and reopening the window starts a
+            // genuinely fresh review.
+            <>
+              <Button
+                variant="run"
+                data-testid="data-transfer-rereview"
+                data-blocked={reconcilePending ? 'reconcile-pending' : 'false'}
+                disabled={reconcilePending}
+                onClick={handleReReviewPlan}
+              >
+                {t('migration.verdict.rereview')}
+              </Button>
+              {reconcilePending && (
+                <p role="status" data-testid="data-transfer-rereview-blocked" className="text-sm text-fg-muted">
+                  {t('migration.verdict.rereviewBlocked')}
+                </p>
+              )}
+            </>
+          ) : (
             <Button
               data-testid="data-transfer-next"
               disabled={!canNext || loading}
@@ -1740,7 +1828,7 @@ export function DataTransferWindow() {
               {loading ? <Spinner size="lg" /> : t('transfer.next')}
               <ChevronRight className="h-4 w-4" />
             </Button>
-          ) : null}
+          )}
         </div>
       </div>
 

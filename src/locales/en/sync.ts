@@ -4,6 +4,75 @@ const pack = {
     'The previous plan is no longer valid (it expired, the target drifted, or permissions changed). Re-prepare a fresh plan before applying anything.',
   'migrationJob.pendingVerificationHint':
     'A previous job is waiting for verification. Check the job center and reconcile before applying anything new.',
+  // --- Shared Job verdict surface (§2.3 / §6.2 / §7) ---
+  // Used by Data Transfer, Schema Diff and Data Sync alike. "Uncertain" is a
+  // first-class verdict here on purpose: §7 forbids presenting it as success.
+  'migration.verdict.ok': 'Completed',
+  'migration.verdict.partial': 'Partially applied',
+  'migration.verdict.uncertain': 'Outcome uncertain',
+  'migration.verdict.failed': 'Not applied',
+  'migration.verdict.committedRows': 'Confirmed rows',
+  'migration.verdict.replayedReceipt':
+    'This reply came from the recorded receipt for a run that already happened. Nothing was written a second time.',
+  'migration.verdict.noBoundaries':
+    'No write boundary was recorded, so nothing can be reported as committed.',
+  'migration.verdict.recoveryLabel': 'Recovery verdict',
+  'migration.verdict.requiresReconcile':
+    'Verify the target against the recorded boundaries before applying anything else.',
+  'migration.verdict.resumeThrough':
+    'Recovery may resume through boundary #',
+  'migration.verdict.rereview': 'Review a new plan',
+  // §10 / CM-42: an unreconciled run must be verified read-only first. A fresh
+  // review mints a new planId, so one click here would be a second write over a
+  // range whose first outcome is still unknown.
+  'migration.verdict.rereviewBlocked':
+    'This run still has to be reconciled against the target before anything may be written again. Verify it read-only, then close and reopen this window to review a new plan.',
+  'migration.boundary.verified': 'Committed with evidence',
+  'migration.boundary.unverified': 'Committed without evidence — unverified',
+  'migration.progress.counts': 'Read / converted / attempted / committed / unknown',
+  // §2.3: intent is not outcome. Each disposition names where the run stopped.
+  'migration.cancel.none': 'No cancel was requested.',
+  'migration.cancel.notStarted':
+    'Cancel was requested before the run started; nothing was written.',
+  'migration.cancel.requestedInFlight':
+    'Cancel was requested while the run was in flight. The stopping point is not known yet — check the verdict below.',
+  'migration.cancel.settledPartially':
+    'Cancel was requested while the run was in flight. Some boundaries are committed and the rest is not applied.',
+  'migration.cancel.settledRolledBack':
+    'Cancel was requested while the run was in flight. The run was rolled back and committed boundaries were undone.',
+  'migration.cancel.settledCompleted':
+    'Cancel was requested, but the write had already finished. The run completed rather than being cancelled.',
+  'migration.cancel.settledUnknown':
+    'Cancel was requested while the run was in flight, and where it stopped could not be determined.',
+  'migration.cancel.unknownJob':
+    'The backend has no Job for this run, so the cancel request had no target. Nothing was cancelled.',
+  // Fail-closed refusals. Each body states what was refused and what to do.
+  'migration.failure.backendScope.title': 'Backend scope rejected',
+  'migration.failure.backendScope.body':
+    'The endpoints could not prove they are the local desktop backend, so the migration was refused rather than run in an unverified scope. Nothing was written. Re-select both endpoints and review a new plan.',
+  'migration.failure.pipelineBudget.title': 'Pipeline budget refused this run',
+  'migration.failure.pipelineBudget.body':
+    'The run exceeded the 8 MiB pipeline budget and the backend stopped it on purpose, before any of that stage was applied. This is a deliberate safety limit, not a malfunction — narrow the selection or the batch size and review a new plan.',
+  'migration.failure.planConsumed.title': 'This plan was already applied',
+  'migration.failure.planConsumed.body':
+    'A plan can be applied only once, and an earlier run already spent it. Nothing was written a second time. Review a fresh plan to continue.',
+  'migration.failure.stalePlan.title': 'The plan is out of date',
+  'migration.failure.stalePlan.body':
+    'The plan expired, the target drifted, or permissions changed. It is discarded rather than reused — review a fresh plan.',
+  'migration.failure.other.title': 'Migration refused',
+  'migration.failure.other.body':
+    'The backend refused to run. Nothing can be reported as committed — read the detail below.',
+  'migration.failure.reReview': 'Review a new plan',
+  'migration.uncertainty.noCheckpoint':
+    'No checkpoint was recorded, so where this run stopped cannot be reconstructed.',
+  'migration.uncertainty.recoveryRejected':
+    'Recovery was rejected, so this run cannot be resumed and must be verified by hand.',
+  'migration.uncertainty.effectOutcomeUnknown':
+    'The database did not confirm whether the write committed or rolled back.',
+  'migration.uncertainty.missingEvidence':
+    'At least one committed boundary has no evidence, so it is reported as unverified.',
+  'migration.uncertainty.manualReviewRequired':
+    'The backend requires manual review before anything else is applied.',
   'migrationHistory.open': 'Run history',
   'migrationHistory.title': 'Migration run history',
   'migrationHistory.empty': 'No recorded runs yet.',
@@ -306,6 +375,10 @@ const pack = {
   'transfer.mapping.autoMatch': 'Auto-match by name',
   'transfer.mapping.clearUnmapped': 'Clear unmapped',
   'transfer.mapping.unmappedTargetWarning': 'Target columns not mapped: {columns}',
+  'transfer.mapping.gateLost':
+    'The tables changed while the plan was being prepared, so no column is mapped any more. Re-check the mapping and try again.',
+  'transfer.mapping.targetNameRequired':
+    'Name the table this mapping will create before continuing. Nothing exists at the target yet, so there is no name to fall back on.',
   'transfer.mapping.sourceType': 'Source type',
   'transfer.mapping.targetType': 'Target type',
   'transfer.mapping.sourceFilter': 'Source row filter',

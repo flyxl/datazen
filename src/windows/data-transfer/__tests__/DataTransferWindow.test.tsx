@@ -1,19 +1,34 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionConfig } from '../../../types';
-import type {
-  TransferExecutionResult,
-  TransferProfile,
-  TransferTableResult,
-} from '../../../commands/transfer';
+import type { TransferProfile, TransferTableResult } from '../../../commands/transfer';
 import { transferCommands } from '../../../commands/transfer';
+import type {
+  TransferApplyJobView,
+  TransferBackendScope,
+  TransferPrepareJobRequest,
+  TransferPrepareJobView,
+} from '../../../commands/transferJobs';
 import { clearTransferLimitationsDismissed } from '../../../lib/transferLimitationsPrefs';
 
+/**
+ * P5 cutover: the window no longer calls `transferCommands.preview` /
+ * `.execute`. It calls `prepare_data_transfer_job` then `apply_data_transfer_job`
+ * through `src/commands/transferJobs.ts`, and the Job views — not a
+ * `TransferExecutionResult` — are what the result panel renders.
+ *
+ * `prepareTransferJobMock` is therefore keyed on the *raw Job* the window built
+ * (the adapter below unwraps `request.job`), so every assertion about what the
+ * mapping step sent still reads exactly as it did before the cutover.
+ */
 const {
   invokeMock,
   inspectTransferMock,
   inspectSqlFileTransferMock,
-  previewTransferMock,
+  prepareTransferJobMock,
+  prepareKeys,
+  applyTransferJobMock,
+  cancelTransferJobMock,
   getDatabasesMock,
   stableT,
   urlParamMock,
@@ -25,7 +40,10 @@ const {
     invokeMock: vi.fn(),
     inspectTransferMock: vi.fn(),
     inspectSqlFileTransferMock: vi.fn(),
-    previewTransferMock: vi.fn(),
+    prepareTransferJobMock: vi.fn(),
+    prepareKeys: [] as (string | undefined)[],
+    applyTransferJobMock: vi.fn(),
+    cancelTransferJobMock: vi.fn(),
     getDatabasesMock: vi.fn(),
     stableT,
     urlParamMock: vi.fn<(name: string) => string | null>(),
@@ -89,10 +107,26 @@ vi.mock('../../../commands/transfer', () => ({
     pickSqlFile: vi.fn().mockResolvedValue({ fileToken: 'sql-file-token' }),
     inspect: (...args: unknown[]) => inspectTransferMock(...args),
     inspectSqlFile: (...args: unknown[]) => inspectSqlFileTransferMock(...args),
-    preview: (...args: unknown[]) => previewTransferMock(...args),
-    execute: vi.fn().mockResolvedValue({ rowsInserted: 3, tables: [] }),
-    cancel: vi.fn(),
     classifyPair: vi.fn(),
+  },
+}));
+
+vi.mock('../../../commands/transferJobs', () => ({
+  localBackendScope: (): TransferBackendScope => ({
+    sourceBackendScope: 'local-desktop-backend',
+    targetBackendScope: 'local-desktop-backend',
+    profileBackendScopes: [],
+  }),
+  transferJobCommands: {
+    // The window sends `{ job, backendScope, idempotencyKey? }`; the mock is
+    // keyed on the job itself so job-payload assertions stay readable, while
+    // the key is captured separately for the §10 receipt-safety assertions.
+    prepare: async (request: TransferPrepareJobRequest) => {
+      prepareKeys.push(request.idempotencyKey);
+      return toPrepareView(await prepareTransferJobMock(request.job));
+    },
+    apply: (...args: unknown[]) => applyTransferJobMock(...args),
+    cancel: (...args: unknown[]) => cancelTransferJobMock(...args),
   },
 }));
 
@@ -149,7 +183,7 @@ const unsupportedTgt: ConnectionConfig = {
 const inspectRows: TransferTableResult[] = [
   {
     sourceTable: 'users',
-    targetTable: 'users',
+    targetTable: 'users_v2',
     status: 'MATCHED',
     createNew: false,
     enabled: true,
@@ -172,6 +206,50 @@ const sqlInspectRows: TransferTableResult[] = inspectRows.map((row) => ({
   targetColumns: [],
 }));
 
+/**
+ * The verdict inspect actually returns for a source table that has no
+ * counterpart at the target, in Structure / StructureAndData, on a first run
+ * with nothing saved.
+ *
+ * This is a transcript, not a sketch. It was produced by running the real
+ * `datazen_data_transfer::mapping::inspect_tables` — `cargo test -p
+ * datazen-data-transfer --lib mapping::` at 787f0e6fe, with one assertion added
+ * per run, both runs `EXIT=0`, `5 passed; 0 failed`:
+ *
+ *   assert_eq!(results[0].target_table, "new_table");
+ *   assert_eq!(results[0].target_table, results[0].source_table);
+ *
+ * Both held. `effective_table_mappings` (packages/data-transfer/src/mapping.rs)
+ * built the row with `target_table: t.name.clone(), create_new: true`, and the
+ * `!mapping.enabled` branch propagated both verbatim, so the source name came
+ * back as the target name. That was D-1: a D-10 violation, and — because the
+ * wire format cannot mark a name as suggested rather than confirmed — it
+ * silently satisfied the §8.4 mapping gate, so an unnamed create-new row
+ * prepared as `targetTable: <source name>` without the user typing anything.
+ *
+ * Fixed in 299b7562b: the auto-build now returns `String::new()`, matching what
+ * Data mode always returned for this same case, and `inspect_tables`
+ * propagates the empty name verbatim to the row below. The Rust side pins that
+ * in `structure_mode_marks_missing_target_as_create_new` and
+ * `disabled_create_new_rows_keep_all_source_columns_for_explicit_selection`;
+ * this fixture is the frontend half of the same contract.
+ */
+const structureCreateNewRow: TransferTableResult = {
+  sourceTable: 'new_table',
+  targetTable: '',
+  status: 'DISABLED',
+  createNew: true,
+  enabled: false,
+  sourceColumns: ['id', 'name'],
+  sourcePrimaryKeys: ['id'],
+  sourceColumnTypes: { id: 'INTEGER', name: 'TEXT' },
+  targetColumns: [],
+  columnMappings: [
+    { sourceColumn: 'id', targetColumn: 'id', skip: false },
+    { sourceColumn: 'name', targetColumn: 'name', skip: false },
+  ],
+};
+
 const previewSuccess = {
   planId: 'plan-test-1',
   canExecute: true,
@@ -191,6 +269,83 @@ const previewSuccess = {
   mode: 'data',
   writeMode: 'truncateInsert',
 };
+
+type ReviewShape = typeof previewSuccess & Record<string, unknown>;
+
+/**
+ * Wrap a review payload in the FrozenPlan envelope `prepare_data_transfer_job`
+ * returns. The review keeps the `planId`/`canExecute`/`writePlans` the preview
+ * UI has always consumed; the envelope carries the `planId` the *apply* call
+ * spends (§9).
+ */
+function toPrepareView(
+  review: ReviewShape,
+  overrides: Partial<TransferPrepareJobView> = {},
+): TransferPrepareJobView {
+  return {
+    jobId: 'transfer-data-prepare-1',
+    kind: 'data',
+    state: 'prepared',
+    effectOutcome: 'notStarted',
+    planId: 'plan-job-1',
+    planDigest: 'digest-job-1',
+    planVersion: 1,
+    handlerVersion: 1,
+    checkpointVersion: 0,
+    selectionRevision: 1,
+    expiresAt: null,
+    canExecute: review.canExecute,
+    blockReason: null,
+    review,
+    ...overrides,
+  } as TransferPrepareJobView;
+}
+
+/** Terminal success Job: everything committed, every boundary verified. */
+/**
+ * A fully certified terminal run: §7 recorded one boundary, it carries its
+ * `EVIDENCE_*` marker, and every row is accounted for. This is the *only*
+ * shape that may render as `migration.verdict.ok` — the reason each other test
+ * below deliberately degrades one of those three facts.
+ */
+const applySuccess: TransferApplyJobView = {
+  jobId: 'transfer-data-apply-1',
+  kind: 'data',
+  state: 'succeeded',
+  effectOutcome: 'completed',
+  progress: {
+    read: 3,
+    converted: 3,
+    attempted: 3,
+    committed: 3,
+    unknown: 0,
+  },
+  planId: 'plan-job-1',
+  planDigest: 'digest-job-1',
+  selectionRevision: 1,
+  commitBoundaries: [
+    {
+      stageId: 'users',
+      stableTargetFingerprint: 'fp-users',
+      committedAt: 1_700_000_000_000,
+      operationId: 'op-1',
+      batchId: 'batch-1',
+      payloadDigest: 'pd-1',
+      evidence: ['EVIDENCE_ROWS_COMMITTED'],
+      verifiedAt: 1_700_000_001_000,
+    },
+  ],
+  artifactIds: [],
+  cancelled: false,
+  partial: false,
+  replayed: false,
+  error: null,
+  recoveryVerdict: null,
+  recoveryResumeThrough: null,
+  recoveryReason: null,
+  createdAt: 1_700_000_000_000,
+  updatedAt: 1_700_000_001_000,
+} as unknown as TransferApplyJobView;
 
 async function advanceToObjectsStep(emptyTables = false) {
   const { DataTransferWindow } = await import('../DataTransferWindow');
@@ -294,7 +449,10 @@ async function dismissLimitationsDialog() {
   });
 }
 
-async function advanceToMappingStep(inspectedRows = inspectRows) {
+async function advanceToMappingStep(
+  inspectedRows = inspectRows,
+  stopAt: 'objects' | 'mapping' = 'mapping',
+) {
   const { DataTransferWindow } = await import('../DataTransferWindow');
   render(<DataTransferWindow />);
 
@@ -318,7 +476,12 @@ async function advanceToMappingStep(inspectedRows = inspectRows) {
   fireEvent.click(screen.getByTestId('data-transfer-next'));
 
   await waitFor(() => expect(inspectTransferMock).toHaveBeenCalled());
-  await waitFor(() => expect(screen.getByTestId('data-transfer-table-row')).toBeTruthy());
+  // inspect may list any number of tables, so the objects gate is checked for
+  // existence rather than uniqueness.
+  await waitFor(() =>
+    expect(screen.getAllByTestId('data-transfer-table-row').length).toBeGreaterThan(0),
+  );
+  if (stopAt === 'objects') return;
 
   // objects → mapping
   fireEvent.click(screen.getByTestId('data-transfer-next'));
@@ -365,8 +528,13 @@ describe('DataTransferWindow', () => {
     urlParamMock.mockReset();
     urlParamMock.mockReturnValue(null);
     getDatabasesMock.mockResolvedValue(['src', 'tgt']);
-    previewTransferMock.mockReset();
-    previewTransferMock.mockResolvedValue(previewSuccess);
+    prepareTransferJobMock.mockReset();
+    prepareTransferJobMock.mockResolvedValue(previewSuccess);
+    prepareKeys.length = 0;
+    applyTransferJobMock.mockReset();
+    applyTransferJobMock.mockResolvedValue(applySuccess);
+    cancelTransferJobMock.mockReset();
+    cancelTransferJobMock.mockResolvedValue(true);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -697,7 +865,7 @@ describe('DataTransferWindow', () => {
       target: { value: '5' },
     });
 
-    previewTransferMock.mockResolvedValueOnce({
+    prepareTransferJobMock.mockResolvedValueOnce({
       ...previewSuccess,
       writePlans: [
         {
@@ -708,7 +876,7 @@ describe('DataTransferWindow', () => {
     });
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
-    expect(previewTransferMock).toHaveBeenCalledWith(
+    expect(prepareTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         tables: [
           expect.objectContaining({
@@ -731,7 +899,7 @@ describe('DataTransferWindow', () => {
     });
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
-    expect(previewTransferMock).toHaveBeenCalledTimes(2);
+    expect(prepareTransferJobMock).toHaveBeenCalledTimes(2);
   });
 
   it('sends complete composite primary-key tuple bounds in declared order', async () => {
@@ -769,7 +937,7 @@ describe('DataTransferWindow', () => {
 
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
-    expect(previewTransferMock).toHaveBeenCalledWith(
+    expect(prepareTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         tables: [
           expect.objectContaining({
@@ -829,7 +997,7 @@ describe('DataTransferWindow', () => {
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
 
-    expect(previewTransferMock).toHaveBeenLastCalledWith(
+    expect(prepareTransferJobMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         tables: [
           expect.objectContaining({
@@ -875,7 +1043,7 @@ describe('DataTransferWindow', () => {
     await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
-    expect(previewTransferMock).toHaveBeenCalledWith(
+    expect(prepareTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         sqlFileTarget: {
           fileToken: 'sql-file-token',
@@ -917,7 +1085,7 @@ describe('DataTransferWindow', () => {
     await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
-    expect(previewTransferMock).toHaveBeenCalledWith(
+    expect(prepareTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         sqlFileTarget: expect.objectContaining({
           encoding: 'utf16Le',
@@ -985,15 +1153,18 @@ describe('DataTransferWindow', () => {
       expect(screen.getByTestId('data-transfer-execute-confirm')).toBeTruthy();
       expect(screen.getByTestId('data-transfer-execute-confirm-table-users')).toBeTruthy();
     });
-    expect(transferCommands.execute).not.toHaveBeenCalled();
+    expect(applyTransferJobMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('data-transfer-execute-confirm-proceed'));
-    await waitFor(() => expect(transferCommands.execute).toHaveBeenCalled());
-    expect(transferCommands.execute).toHaveBeenCalledWith(
+    await waitFor(() => expect(applyTransferJobMock).toHaveBeenCalled());
+    // §9: the apply spends exactly the FrozenPlan the prepare admitted.
+    expect(applyTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        planId: 'plan-test-1',
+        planId: 'plan-job-1',
+        planDigest: 'digest-job-1',
+        selectionRevision: 1,
         selection: { sourceTables: ['users'] },
-        options: { confirmedDestructive: true },
+        confirmedDestructive: true,
       }),
     );
   });
@@ -1002,12 +1173,15 @@ describe('DataTransferWindow', () => {
     await advanceToPreviewStep('insert');
 
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
-    await waitFor(() => expect(transferCommands.execute).toHaveBeenCalled());
+    await waitFor(() => expect(applyTransferJobMock).toHaveBeenCalled());
+    expect(applyTransferJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({ confirmedDestructive: false }),
+    );
     expect(screen.queryByTestId('data-transfer-execute-confirm')).toBeNull();
   });
 
   it('[tester] lets a SQL-file preview export the server-selected multi-table scope', async () => {
-    previewTransferMock.mockResolvedValueOnce({
+    prepareTransferJobMock.mockResolvedValueOnce({
       ...previewSuccess,
       writePlans: [
         previewSuccess.writePlans[0],
@@ -1017,13 +1191,113 @@ describe('DataTransferWindow', () => {
     await advanceToSqlFilePreview();
 
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
-    await waitFor(() => expect(transferCommands.execute).toHaveBeenCalled());
-    expect(transferCommands.execute).toHaveBeenCalledWith(
+    await waitFor(() => expect(applyTransferJobMock).toHaveBeenCalled());
+    expect(applyTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        planId: 'plan-test-1',
+        planId: 'plan-job-1',
         selection: { sourceTables: ['users'] },
       }),
     );
+  });
+
+  // A9 / §6.1: a SQL-file run has no target rows, so the content-addressed
+  // artifact id the backend minted is the only proof the script was produced.
+  // It has to reach the result surface or the run looks like it did nothing.
+  it('[tester] shows the SQL-file artifact ids a §6.1 apply minted', async () => {
+    applyTransferJobMock.mockResolvedValueOnce({
+      ...applySuccess,
+      progress: { read: 0, converted: 0, attempted: 0, committed: 0, unknown: 0 },
+      commitBoundaries: [],
+      artifactIds: ['transfer-sql-9f2c1a', 'transfer-sql-7be40d'],
+    } as unknown as TransferApplyJobView);
+
+    await advanceToSqlFilePreview();
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+
+    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
+    const artifacts = screen.getAllByTestId('data-transfer-job-artifact');
+    expect(artifacts.map((el) => el.getAttribute('data-artifact-id'))).toEqual([
+      'transfer-sql-9f2c1a',
+      'transfer-sql-7be40d',
+    ]);
+    expect(artifacts[0]).toHaveTextContent('transfer-sql-9f2c1a');
+    // Nothing was written to a target, so no boundary may be claimed.
+    expect(screen.getByTestId('data-transfer-job-verdict')).toHaveAttribute(
+      'data-verified-boundaries',
+      '0',
+    );
+  });
+
+  // A8 / §6.2: the 8 MiB PipelineBudget cap is an intentional fail-closed
+  // rejection. It must never be dressed up as a failed or unknown run.
+  it('[tester] reports an over-budget run as a deliberate refusal, not a failure', async () => {
+    applyTransferJobMock.mockRejectedValueOnce(
+      new Error('pipeline budget exceeded for stage users: 10485760 of 8388608 bytes'),
+    );
+
+    await advanceToPreviewStep('insert');
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+
+    const notice = await screen.findByTestId('data-transfer-job-failure');
+    expect(notice).toHaveAttribute('data-failure-kind', 'pipelineBudget');
+    expect(notice).toHaveAttribute('data-fail-closed', 'true');
+    expect(screen.getByTestId('data-transfer-job-failure-title')).toHaveTextContent(
+      'migration.failure.pipelineBudget.title',
+    );
+    expect(screen.getByTestId('data-transfer-job-failure-body')).toHaveTextContent(
+      'migration.failure.pipelineBudget.body',
+    );
+    // A budget cap is not re-reviewable and not retryable: the only correct
+    // answer is a narrower selection.
+    expect(screen.queryByTestId('data-transfer-job-re-review')).toBeNull();
+    // No Job ran, so no verdict may be drawn — an "unknown outcome" banner
+    // would be the exact misreading §6.2 forbids.
+    expect(screen.queryByTestId('data-transfer-result')).toBeNull();
+    expect(screen.queryByTestId('data-transfer-job-verdict')).toBeNull();
+    // The review the user already holds stays on screen (§9: nothing to redo).
+    expect(screen.getByTestId('data-transfer-preview')).toBeTruthy();
+  });
+
+  // A5 / §8: a scope that cannot be proven local is refused for the same
+  // fail-closed reason, and it is the one refusal that offers no re-review
+  // shortcut of its own beyond the shared button.
+  it('[tester] refuses a run whose endpoints cannot prove the local backend scope', async () => {
+    applyTransferJobMock.mockRejectedValueOnce(
+      new Error('backend scope mismatch: expected local-desktop-backend'),
+    );
+
+    await advanceToPreviewStep('insert');
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+
+    const notice = await screen.findByTestId('data-transfer-job-failure');
+    expect(notice).toHaveAttribute('data-failure-kind', 'backendScope');
+    expect(notice).toHaveAttribute('data-fail-closed', 'true');
+    expect(screen.getByTestId('data-transfer-job-failure-body')).toHaveTextContent(
+      'migration.failure.backendScope.body',
+    );
+    expect(screen.queryByTestId('data-transfer-result')).toBeNull();
+  });
+
+  // §9: a spent plan cannot be applied twice. The backend refuses the second
+  // apply; the window must offer a fresh review, never a second apply.
+  it('[tester] rejects reuse of a spent plan and offers a fresh review instead', async () => {
+    applyTransferJobMock.mockRejectedValueOnce(
+      new Error('plan plan-job-1 is already consumed; re-review the migration to mint a new plan'),
+    );
+
+    await advanceToPreviewStep('insert');
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+
+    const notice = await screen.findByTestId('data-transfer-job-failure');
+    expect(notice).toHaveAttribute('data-failure-kind', 'planConsumed');
+    expect(notice).toHaveAttribute('data-fail-closed', 'false');
+
+    const reReview = screen.getByTestId('data-transfer-job-re-review');
+    fireEvent.click(reReview);
+    // Re-reviewing must never re-apply the spent plan: it drops back to mapping
+    // with a fresh preview required.
+    await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
+    expect(applyTransferJobMock).toHaveBeenCalledTimes(1);
   });
 
   it('[tester] returns SQL-file preview back to the mapping step', async () => {
@@ -1034,7 +1308,7 @@ describe('DataTransferWindow', () => {
   });
 
   it('[tester] keeps SQL-file DDL preview read-only', async () => {
-    previewTransferMock.mockResolvedValueOnce({
+    prepareTransferJobMock.mockResolvedValueOnce({
       ...previewSuccess,
       ddl: [
         {
@@ -1083,7 +1357,7 @@ describe('DataTransferWindow', () => {
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
 
-    expect(previewTransferMock).toHaveBeenCalledWith(
+    expect(prepareTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         tables: [
           expect.objectContaining({
@@ -1177,14 +1451,14 @@ describe('DataTransferWindow', () => {
   it('shows preview error state with retry and back actions when preview fails', async () => {
     await advanceToMappingStep();
 
-    previewTransferMock.mockRejectedValueOnce(new Error('preview boom'));
+    prepareTransferJobMock.mockRejectedValueOnce(new Error('preview boom'));
     fireEvent.click(screen.getByTestId('data-transfer-next'));
 
     const errorPanel = await waitFor(() => screen.getByTestId('data-transfer-preview-error'));
     expect(within(errorPanel).getByText('preview boom')).toBeTruthy();
     expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
 
-    previewTransferMock.mockResolvedValueOnce(previewSuccess);
+    prepareTransferJobMock.mockResolvedValueOnce(previewSuccess);
     fireEvent.click(screen.getByTestId('data-transfer-preview-retry'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
   });
@@ -1192,7 +1466,7 @@ describe('DataTransferWindow', () => {
   it('returns to mapping from preview error state', async () => {
     await advanceToMappingStep();
 
-    previewTransferMock.mockRejectedValueOnce(new Error('preview boom'));
+    prepareTransferJobMock.mockRejectedValueOnce(new Error('preview boom'));
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview-error')).toBeTruthy());
 
@@ -1203,11 +1477,11 @@ describe('DataTransferWindow', () => {
   it('updates preview error message when retry fails', async () => {
     await advanceToMappingStep();
 
-    previewTransferMock.mockRejectedValueOnce(new Error('preview boom'));
+    prepareTransferJobMock.mockRejectedValueOnce(new Error('preview boom'));
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview-error')).toBeTruthy());
 
-    previewTransferMock.mockRejectedValueOnce('retry failed');
+    prepareTransferJobMock.mockRejectedValueOnce('retry failed');
     fireEvent.click(screen.getByTestId('data-transfer-preview-retry'));
     await waitFor(() => {
       const errorPanel = screen.getByTestId('data-transfer-preview-error');
@@ -1215,10 +1489,27 @@ describe('DataTransferWindow', () => {
     });
   });
 
+  it('mints a fresh prepare idempotency key for every admission (§10)', async () => {
+    await advanceToMappingStep();
+
+    prepareTransferJobMock.mockRejectedValueOnce(new Error('preview boom'));
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview-error')).toBeTruthy());
+    expect(prepareKeys).toEqual(['data-transfer/prepare/1']);
+
+    // A retry is a new admission, not a replay: reusing the key would let the
+    // backend answer it from an older prepare Job's receipt, which is exactly
+    // what the apply key is derived from the planId to avoid (§10).
+    prepareTransferJobMock.mockResolvedValueOnce(previewSuccess);
+    fireEvent.click(screen.getByTestId('data-transfer-preview-retry'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+    expect(prepareKeys).toEqual(['data-transfer/prepare/1', 'data-transfer/prepare/2']);
+  });
+
   it('advances to preview error state instead of blank when preview fails from mapping', async () => {
     await advanceToMappingStep();
 
-    previewTransferMock.mockRejectedValueOnce(new Error('mapping preview failed'));
+    prepareTransferJobMock.mockRejectedValueOnce(new Error('mapping preview failed'));
     fireEvent.click(screen.getByTestId('data-transfer-next'));
 
     const errorPanel = await waitFor(() => screen.getByTestId('data-transfer-preview-error'));
@@ -1226,8 +1517,274 @@ describe('DataTransferWindow', () => {
     expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
   });
 
+  it('holds the mapping editor inert while the prepare is in flight (§8.4)', async () => {
+    await advanceToMappingStep();
+
+    let releasePrepare!: (view: typeof previewSuccess) => void;
+    prepareTransferJobMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePrepare = resolve;
+        }),
+    );
+
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+
+    // The editor is already closed for the round trip. The bypass this blocks
+    // is precisely "rename the target to the source name while the backend is
+    // busy": the plan under review is then not the one that gets admitted.
+    const targetTable = await waitFor(() => {
+      const input = screen.getByTestId('data-transfer-target-table-input');
+      expect(input).toBeDisabled();
+      return input as HTMLInputElement;
+    });
+    expect(screen.getByTestId('data-transfer-auto-match')).toBeDisabled();
+    expect(screen.getByTestId('data-transfer-clear-unmapped')).toBeDisabled();
+
+    // jsdom will happily assign .value to a disabled input and dispatch, so the
+    // meaningful assertion is what the attempt leaves behind: nothing.
+    fireEvent.change(targetTable, { target: { value: 'users' } });
+
+    releasePrepare(previewSuccess);
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('transfer.back'));
+    const restored = (await waitFor(() =>
+      screen.getByTestId('data-transfer-target-table-input'),
+    )) as HTMLInputElement;
+    expect(restored.value).toBe('users_v2');
+    expect(restored).not.toBeDisabled();
+  });
+
+  it('re-decides the mapping gate against the rows that exist after prepare (§8.4)', async () => {
+    await advanceToMappingStep();
+
+    // The target-table blur refresh is the one thing already in flight when
+    // Next is pressed: its inspect comes back saying the table has no source
+    // columns any more, so the mapping the click was judged against is gone by
+    // the time prepare is admitted.
+    let resolveInspect!: (rows: TransferTableResult[]) => void;
+    inspectTransferMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveInspect = resolve;
+        }),
+    );
+    fireEvent.focusOut(screen.getByTestId('data-transfer-target-table-input'));
+    await waitFor(() => expect(inspectTransferMock).toHaveBeenCalledTimes(2));
+
+    let releasePrepare!: (view: typeof previewSuccess) => void;
+    prepareTransferJobMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePrepare = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() =>
+      expect(screen.getByTestId('data-transfer-target-table-input')).toBeDisabled(),
+    );
+
+    resolveInspect(inspectRows.map((row) => ({ ...row, sourceColumns: [] })));
+    releasePrepare(previewSuccess);
+
+    const alert = await waitFor(() => screen.getByTestId('data-transfer-mapping-gate-error'));
+    expect(alert.getAttribute('role')).toBe('alert');
+    // Still on the mapping step, with nothing admitted: advancing here in
+    // silence is the §8.4 defect — the preview would review rows that are not
+    // the ones on screen.
+    expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy();
+    expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
+  });
+
+  it('D-10: creating a new table asks for a name instead of assuming the source', async () => {
+    await advanceToMappingStep([
+      { ...inspectRows[0], status: 'CREATE_NEW', targetTable: '', targetColumns: [] },
+    ]);
+
+    const name = () => screen.getByTestId('data-transfer-target-table-input') as HTMLInputElement;
+
+    fireEvent.click(screen.getByTestId('data-transfer-create-new-toggle'));
+
+    // The name of a table that does not exist yet is the one thing the backend
+    // cannot look up for the user, so it is the one thing that must be typed.
+    // Filling the field in with the source name shows a name nobody chose.
+    expect(name().value).toBe('');
+    expect(name().value).not.toBe('users');
+
+    fireEvent.change(name(), { target: { value: 'users_archive' } });
+    expect(name().value).toBe('users_archive');
+
+    // The choice-style field therefore reflects user intent all the way down:
+    // the plan that is prepared is named by the user, not by the source table.
+    prepareTransferJobMock.mockResolvedValueOnce(previewSuccess);
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+    expect(prepareTransferJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tables: [
+          expect.objectContaining({ sourceTable: 'users', targetTable: 'users_archive' }),
+        ],
+      }),
+    );
+  });
+
+  it('D-1: an unnamed create-new row cannot reach a plan via the enable checkbox', async () => {
+    await advanceToMappingStep([structureCreateNewRow], 'objects');
+
+    // It arrives disabled and unnamed, so it cannot hold the gate on its own and
+    // the step cannot be left past it without the user saying the table should
+    // go. Ticking it on the objects step is ordinary intent — and it is the one
+    // route to a create-new row that does NOT go through the create-new toggle,
+    // so it does not hit the D-10 clear-on-toggle path either.
+    const row = screen.getByTestId('data-transfer-table-row');
+    const enable = within(row).getByRole('checkbox');
+    expect(enable).not.toBeChecked();
+
+    // This is the D-1 route. Before 299b7562b the backend pre-filled
+    // `target_table` with the source name, so from here the row was named, the
+    // §8.4 gate was satisfied by a value the user never chose, and the plan
+    // carried `targetTable: 'new_table'` for a table that did not exist.
+    //
+    // The objects step gates on "did the user pick any row" (canNext: 'objects'
+    // is `tables.some(tbl => tbl.enabled)`), so it hands an enabled-but-unnamed
+    // row forward by design; the strict gate is `mappingGateAllowsAdvance` on
+    // the mapping step. That is where the name has to stop being free.
+    fireEvent.click(enable);
+    await waitFor(() => expect(screen.getByTestId('data-transfer-next')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
+
+    // Nothing pre-filled the name on the way in: the backend sends it empty, and
+    // neither the UI nor the D-10 toggle path supplies one.
+    const name = screen.getByTestId('data-transfer-target-table-input') as HTMLInputElement;
+    expect(name.value).toBe('');
+    expect(name.value).not.toBe('new_table');
+
+    // So the row is enabled and still unnamed, and that stops the step.
+    expect(screen.getByTestId('data-transfer-next')).toBeDisabled();
+    expect(screen.getByTestId('data-transfer-mapping-gate-error')).toHaveTextContent(
+      'transfer.mapping.targetNameRequired',
+    );
+    prepareTransferJobMock.mockResolvedValueOnce(previewSuccess);
+    expect(prepareTransferJobMock).not.toHaveBeenCalled();
+
+    // And the name that does reach a plan is the one the user typed, not one
+    // the UI or the backend supplied.
+    fireEvent.change(name, { target: { value: 'new_table_v2' } });
+    await waitFor(() => expect(screen.getByTestId('data-transfer-next')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+    expect(prepareTransferJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tables: [
+          expect.objectContaining({ sourceTable: 'new_table', targetTable: 'new_table_v2' }),
+        ],
+      }),
+    );
+  });
+
+  it('D-2: an enabled create-new row with no name holds the step and says which field is the reason', async () => {
+    await advanceToMappingStep([
+      { ...structureCreateNewRow, enabled: true, status: 'CREATE_NEW', targetTable: '' },
+    ]);
+
+    const name = screen.getByTestId('data-transfer-target-table-input') as HTMLInputElement;
+    expect(name.value).toBe('');
+    expect(name.getAttribute('aria-invalid')).toBe('true');
+
+    // A disabled Next with no explanation is the state D-2 is about.
+    expect(screen.getByTestId('data-transfer-next')).toBeDisabled();
+    const alert = screen.getByTestId('data-transfer-mapping-gate-error');
+    expect(alert.getAttribute('role')).toBe('alert');
+    expect(alert).toHaveTextContent('transfer.mapping.targetNameRequired');
+    expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
+
+    // Whitespace is what an input the user only tabbed through reads as, and
+    // the backend would create the table under exactly those bytes.
+    fireEvent.change(name, { target: { value: '   ' } });
+    expect(screen.getByTestId('data-transfer-next')).toBeDisabled();
+    expect(screen.getByTestId('data-transfer-mapping-gate-error')).toBeTruthy();
+
+    // The same predicate that disarms Next is what clears the banner, so the
+    // two can never disagree about why the step is stuck.
+    fireEvent.change(name, { target: { value: 'users_v2' } });
+    await waitFor(() =>
+      expect(screen.queryByTestId('data-transfer-mapping-gate-error')).toBeNull(),
+    );
+    expect(screen.getByTestId('data-transfer-next')).not.toBeDisabled();
+
+    prepareTransferJobMock.mockResolvedValueOnce(previewSuccess);
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+  });
+
+  it('D-4: a source row filter cannot be rewritten while the prepare is in flight', async () => {
+    // Two conditions so the logic selector is on screen — it changes no
+    // condition and is the exit most likely to miss a guard put in `update`.
+    //
+    // What this test actually proves, established by mutation rather than by
+    // reading the handler: deleting the `disabled` guard from SourceFilterEditor's
+    // `apply` leaves this test GREEN (mutant N3). The guard that actually holds
+    // this chain is one level up — ColumnMappingEditor:189 wires this editor's
+    // onChange to `commit`, and `commit` already opens with `if (disabled) return`.
+    // Deleting *that* guard turns this test red (mutant N4). So the effective last
+    // line is `commit`, which pre-dates this track; the local `apply` guard is
+    // defence in depth against a rewiring, not a fix for a reachable defect.
+    await advanceToMappingStep([
+      {
+        ...inspectRows[0],
+        sourceFilter: {
+          logic: 'and',
+          filters: [
+            { column: 'id', operator: 'eq', value: '1' },
+            { column: 'name', operator: 'eq', value: 'ada' },
+          ],
+        },
+      },
+    ]);
+
+    let releasePrepare!: (view: typeof previewSuccess) => void;
+    prepareTransferJobMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePrepare = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    // Every editor on the step is held inert for the duration of the round
+    // trip — the same `disabled` the DOM is drawn from.
+    await waitFor(() =>
+      expect(screen.getByTestId('data-transfer-target-table-input')).toBeDisabled(),
+    );
+
+    const filter = screen.getByTestId('data-transfer-source-filter');
+    const value = within(filter).getAllByRole('textbox')[0] as HTMLInputElement;
+    expect(value).toBeDisabled();
+    // jsdom will happily assign .value to a disabled input and dispatch, so the
+    // meaningful assertion is what the attempt leaves behind: nothing. A
+    // handler that answered here would rewrite the filter for a plan already
+    // sent without it.
+    fireEvent.change(value, { target: { value: '999' } });
+    // The logic selector is deliberately NOT driven here. Its trigger is a
+    // native `<button disabled>` and React suppresses onClick on disabled form
+    // elements, so the click cannot open the listbox at all — unlike onChange,
+    // which React does not suppress, and which is why the textbox above is the
+    // reachable half of §8.4. What matters is that it is disabled, so the
+    // guarded exit behind it is defence in depth rather than a hole.
+    expect(screen.getByTestId('data-transfer-source-filter-logic')).toBeDisabled();
+
+    releasePrepare(previewSuccess);
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('transfer.back'));
+    const restored = await waitFor(() => screen.getByTestId('data-transfer-source-filter'));
+    const restoredValues = within(restored).getAllByRole('textbox') as HTMLInputElement[];
+    expect(restoredValues.map((input) => input.value)).toEqual(['1', 'ada']);
+  });
+
   it('[tester] renders, edits, and copies the exact DDL preview with warnings', async () => {
-    previewTransferMock.mockResolvedValueOnce({
+    prepareTransferJobMock.mockResolvedValueOnce({
       ...previewSuccess,
       ddl: [
         {
@@ -1263,209 +1820,407 @@ describe('DataTransferWindow', () => {
     );
   });
 
-  it('[tester] exposes cancellable execution progress and finishes as success', async () => {
-    let finishExecute!: (result: TransferExecutionResult) => void;
-    vi.mocked(transferCommands.execute).mockImplementationOnce(
+it('[tester] exposes cancellable execution progress and finishes as success', async () => {
+    let finishApply!: (view: TransferApplyJobView) => void;
+    applyTransferJobMock.mockImplementationOnce(
       () =>
-        new Promise((resolve) => {
-          finishExecute = resolve;
+        new Promise<TransferApplyJobView>((resolve) => {
+          finishApply = resolve;
         }),
     );
-    vi.mocked(transferCommands.cancel).mockRejectedValueOnce(new Error('already finished'));
+
     await advanceToPreviewStep('insert');
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
 
     await waitFor(() => expect(screen.getByTestId('data-transfer-executing-overlay')).toBeTruthy());
     expect(screen.getAllByText(/transfer.executingProgress/)).toHaveLength(2);
-    fireEvent.click(screen.getByTestId('data-transfer-cancel'));
-    await waitFor(() => expect(transferCommands.cancel).toHaveBeenCalledTimes(1));
 
-    finishExecute({
-      rowsInserted: 3,
-      partial: false,
-      cancelled: false,
-      tables: [
-        {
-          sourceTable: 'users',
-          targetTable: 'users',
-          rowsInserted: 3,
-          success: true,
-        },
-      ],
-    });
+    // §2.3 / blocker (c): `apply_data_transfer_job` mints the Job id server-side
+    // and only returns it with the terminal view, so while the apply is in
+    // flight the window holds no id to address a cancel to. The control stays
+    // visible for the duration, reports that it is unaddressable, and refuses
+    // the click instead of pretending a cancel landed.
+    const cancelButton = screen.getByTestId('data-transfer-cancel');
+    expect(cancelButton).toHaveAttribute('data-cancel-addressable', 'false');
+    expect(cancelButton).toBeDisabled();
+    expect(screen.getByTestId('data-transfer-cancel-pending-id')).toHaveTextContent(
+      'migration.cancel.unknownJob',
+    );
+    fireEvent.click(cancelButton);
+    expect(cancelTransferJobMock).not.toHaveBeenCalled();
+
+    finishApply(applySuccess);
+
     await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
-    expect(screen.getByRole('status')).toHaveTextContent('transfer.success');
-    expect(screen.queryByText('transfer.partialExplanation')).toBeNull();
+    const verdict = screen.getByTestId('data-transfer-job-verdict');
+    expect(verdict).toHaveAttribute('data-severity', 'ok');
+    expect(verdict).toHaveAttribute('data-uncertainty', 'none');
+    expect(verdict).toHaveAttribute('data-verified-boundaries', '1');
+    expect(verdict).toHaveAttribute('data-unverified-boundaries', '0');
+    expect(screen.getByTestId('data-transfer-job-verdict-status')).toHaveTextContent(
+      'migration.verdict.ok',
+    );
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute('data-completed', 'true');
+    expect(screen.queryByTestId('data-transfer-job-reconcile')).toBeNull();
+    expect(screen.queryByTestId('data-transfer-job-uncertainty')).toBeNull();
+    expect(screen.queryByTestId('data-transfer-job-error')).toBeNull();
+
+    // §7: the commit boundary, not a boolean, is what makes it a success.
+    const boundary = screen.getByTestId('data-transfer-job-boundary-users');
+    expect(boundary).toHaveAttribute('data-boundary-verified', 'true');
+    expect(boundary).toHaveTextContent('migration.boundary.verified');
+    expect(applyTransferJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planId: 'plan-job-1',
+        planDigest: 'digest-job-1',
+        selectionRevision: 1,
+        selection: { sourceTables: ['users'] },
+        confirmedDestructive: false,
+      }),
+    );
   });
 
-  it('[tester] keeps cancellation available while resuming from a partial result', async () => {
-    let finishResume!: (result: TransferExecutionResult) => void;
-    vi.mocked(transferCommands.cancel).mockResolvedValueOnce(false);
-    vi.mocked(transferCommands.execute)
-      .mockResolvedValueOnce({
-        rowsInserted: 2,
-        partial: true,
-        cancelled: true,
-        resumeToken: 'resume-token',
-        tables: [
-          {
-            sourceTable: 'users',
-            targetTable: 'users',
-            rowsInserted: 2,
-            success: true,
-            outcome: 'partiallyApplied',
-          },
-        ],
-      })
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            finishResume = resolve;
-          }),
-      );
-
+  it('[tester] cancels an admitted plan that was never applied and re-reviews instead of resuming', async () => {
     await advanceToPreviewStep('insert');
-    fireEvent.click(screen.getByTestId('data-transfer-execute'));
-    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
 
-    fireEvent.click(screen.getByTestId('data-transfer-resume'));
-    await waitFor(() => expect(transferCommands.execute).toHaveBeenCalledTimes(2));
-    expect(transferCommands.execute).toHaveBeenLastCalledWith(
-      expect.objectContaining({ resumeToken: 'resume-token' }),
-    );
+    // Before anything is applied the window *does* hold the Job id, so the
+    // cancel is legal and §2.3 can be honoured exactly.
+    const cancelButton = screen.getByTestId('data-transfer-cancel');
+    expect(cancelButton).toHaveAttribute('data-cancel-addressable', 'true');
+    expect(cancelButton).not.toBeDisabled();
+    fireEvent.click(cancelButton);
+
+    await waitFor(() => expect(cancelTransferJobMock).toHaveBeenCalledTimes(1));
+    expect(cancelTransferJobMock).toHaveBeenCalledWith('transfer-data-prepare-1');
+
+    // A disposed plan is gone: back at mapping, no apply was ever issued, and no
+    // result panel may claim something happened.
+    await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
+    expect(applyTransferJobMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('data-transfer-result')).toBeNull();
+    expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
+  });
+
+  it('refuses to treat an unaddressable cancel as a cancellation and leaves the review in place', async () => {
+    cancelTransferJobMock.mockResolvedValueOnce(false);
+    await advanceToPreviewStep('insert');
+
+    const cancelButton = screen.getByTestId('data-transfer-cancel');
+    fireEvent.click(cancelButton);
+
+    // `cancel_data_transfer` answered `false` — it has no such P5 Job. That is
+    // "nothing was cancelled", not "cancelled": the review must survive.
+    await waitFor(() => expect(cancelTransferJobMock).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId('data-transfer-preview')).toBeTruthy();
     expect(screen.queryByTestId('data-transfer-result')).toBeNull();
-    fireEvent.click(screen.getByTestId('data-transfer-cancel'));
-    await waitFor(() => expect(transferCommands.cancel).toHaveBeenCalledTimes(1));
-
-    finishResume({
-      rowsInserted: 2,
-      partial: true,
-      cancelled: true,
-      resumeToken: 'resume-token',
-      tables: [],
-    });
-    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
+    expect(applyTransferJobMock).not.toHaveBeenCalled();
   });
 
   it('[tester] renders partial execution as incomplete with recovery guidance', async () => {
-    vi.mocked(transferCommands.execute).mockResolvedValueOnce({
-      rowsInserted: 0,
+    applyTransferJobMock.mockResolvedValueOnce({
+      ...applySuccess,
+      state: 'failed',
+      effectOutcome: 'partiallyApplied',
+      progress: { read: 4, converted: 4, attempted: 4, committed: 4, unknown: 0 },
+      // Blocker (b): the data-transfer handler records no §7 boundary, so the
+      // four committed rows have nothing behind them and the run cannot be
+      // certified. The panel must say exactly that.
+      commitBoundaries: [],
       partial: true,
-      cancelled: false,
-      tables: [
-        {
-          sourceTable: 'users',
-          targetTable: 'users',
-          rowsInserted: 0,
-          success: false,
-          error: 'injected write failure',
-        },
-      ],
-    });
+      error: 'stage orders failed after the users stage committed',
+      recoveryVerdict: 'reject',
+      recoveryReason: 'no checkpoint was recorded',
+      recoveryResumeThrough: null,
+    } as unknown as TransferApplyJobView);
+
     await advanceToPreviewStep('insert');
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
 
     await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
-    expect(screen.getByRole('status')).toHaveTextContent('transfer.runPartial');
-    expect(screen.getByText('transfer.partialExplanation')).toBeTruthy();
-    expect(screen.getByText('injected write failure')).toBeTruthy();
+    const verdict = screen.getByTestId('data-transfer-job-verdict');
+    expect(verdict).toHaveAttribute('data-severity', 'uncertain');
+    // A recovery verdict of `reject` is the dominant uncertainty: whatever else
+    // is unknown, the backend has already refused to certify this run.
+    expect(verdict).toHaveAttribute('data-uncertainty', 'recoveryRejected');
+    expect(screen.getByTestId('data-transfer-job-verdict-status')).not.toHaveTextContent(
+      'migration.verdict.ok',
+    );
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute('data-completed', 'false');
+    expect(screen.getByTestId('data-transfer-job-verdict-status')).toHaveTextContent(
+      'migration.verdict.uncertain',
+    );
+    expect(screen.getByTestId('data-transfer-job-uncertainty')).toHaveTextContent(
+      'migration.uncertainty.recoveryRejected',
+    );
+
+    // No boundary came back, so there is nothing to verify — and that is stated
+    // rather than smoothed over. With `reject` the stated uncertainty is the
+    // refusal, not the missing evidence (see the evidence-gap test below).
+    expect(screen.getByTestId('data-transfer-job-boundaries-empty')).toHaveAttribute(
+      'data-evidence-gap',
+      'false',
+    );
+    expect(screen.getByTestId('data-transfer-job-recovery-verdict')).toHaveAttribute(
+      'data-verdict',
+      'reject',
+    );
+    expect(screen.getByTestId('data-transfer-job-recovery-reason')).toHaveTextContent(
+      'no checkpoint was recorded',
+    );
+    expect(screen.queryByTestId('data-transfer-job-recovery-resume-through')).toBeNull();
+    expect(screen.getByTestId('data-transfer-job-reconcile')).toBeTruthy();
+    expect(screen.getByTestId('data-transfer-job-error')).toHaveTextContent(
+      'stage orders failed after the users stage committed',
+    );
+    expect(screen.getByTestId('data-transfer-job-rows')).toHaveTextContent(
+      'migration.verdict.committedRows: 4',
+    );
+    expect(screen.queryByTestId('data-transfer-job-boundary-users')).toBeNull();
+
+    // §10: a rejected plan cannot be resumed, only re-reviewed for a new planId —
+    // but a new planId is also a second write over a range whose first run is
+    // unreconciled, so the affordance itself is closed here.
+    expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
+    expect(screen.getByTestId('data-transfer-rereview')).toHaveAttribute(
+      'data-blocked',
+      'reconcile-pending',
+    );
+    expect(screen.getByTestId('data-transfer-rereview')).toBeDisabled();
+    expect(screen.getByTestId('data-transfer-rereview-blocked')).toHaveTextContent(
+      'migration.verdict.rereviewBlocked',
+    );
   });
 
-  it('renders an unknown commit outcome distinctly and does not offer resume', async () => {
-    vi.mocked(transferCommands.execute).mockResolvedValueOnce({
-      rowsInserted: 0,
+  it('flags committed rows with no commit boundary as a missing-evidence gap', async () => {
+    // Rows were written but the backend returned no §7 boundary for them: the
+    // UI cannot claim the work was verified, so it must say so. No recovery
+    // verdict is involved here — the gap alone drives the uncertainty.
+    applyTransferJobMock.mockResolvedValueOnce({
+      ...applySuccess,
+      state: 'failed',
+      effectOutcome: 'partiallyApplied',
+      progress: { read: 5, converted: 5, attempted: 5, committed: 5, unknown: 0 },
+      commitBoundaries: [],
       partial: true,
-      cancelled: false,
-      tables: [
-        {
-          sourceTable: 'users',
-          targetTable: 'users',
-          rowsInserted: null,
-          success: false,
-          outcome: 'unknown',
-          error: 'commit failed; outcome UNKNOWN',
-        },
-        {
-          sourceTable: 'orders',
-          targetTable: 'orders',
-          rowsInserted: 0,
-          success: false,
-          outcome: 'notStarted',
-          error: 'not started because an earlier table has an unknown outcome',
-        },
-      ],
-    });
+      error: 'the transfer ended without reporting a commit boundary',
+      recoveryVerdict: null,
+      recoveryReason: null,
+      recoveryResumeThrough: null,
+    } as unknown as TransferApplyJobView);
+
     await advanceToPreviewStep('insert');
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
 
     await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
-    expect(screen.getByRole('status')).toHaveTextContent('transfer.runUnknownOutcome');
-    expect(screen.getByText('transfer.confirmedRowsInserted: 0')).toBeTruthy();
-    expect(screen.getByText(/transfer.tableOutcome.unknown/)).toBeTruthy();
-    expect(screen.getByText(/transfer.tableOutcome.notStarted/)).toBeTruthy();
-    expect(screen.getAllByText(/transfer.rowsInserted: transfer.rowsUnknown/)).toHaveLength(1);
+    const verdict = screen.getByTestId('data-transfer-job-verdict');
+    expect(verdict).toHaveAttribute('data-severity', 'uncertain');
+    expect(verdict).toHaveAttribute('data-uncertainty', 'missingEvidence');
+    expect(screen.getByTestId('data-transfer-job-uncertainty')).toHaveTextContent(
+      'migration.uncertainty.missingEvidence',
+    );
+    // The gap is explained where it happened, not swallowed.
+    expect(screen.getByTestId('data-transfer-job-boundaries-empty')).toHaveAttribute(
+      'data-evidence-gap',
+      'true',
+    );
+    expect(screen.getByTestId('data-transfer-job-reconcile')).toBeTruthy();
+    // A missing boundary is not a resume offer: §9 has nothing to resume from.
     expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
   });
 
-  it('renders a confirmed destructive preamble with rolled-back rows as partially applied', async () => {
-    vi.mocked(transferCommands.execute).mockResolvedValueOnce({
-      rowsInserted: 1,
-      partial: true,
-      cancelled: false,
-      tables: [
-        {
-          sourceTable: 'users',
-          targetTable: 'users',
-          rowsInserted: 0,
-          success: false,
-          outcome: 'partiallyApplied',
-          error: 'truncate was confirmed; data transaction did not start',
-        },
-        {
-          sourceTable: 'orders',
-          targetTable: 'orders',
-          rowsInserted: 1,
-          success: true,
-          outcome: 'committed',
-        },
-        {
-          sourceTable: 'audit',
-          targetTable: 'audit',
-          rowsInserted: 0,
-          success: false,
-          outcome: 'rolledBack',
-          error: 'audit insert rolled back',
-        },
-      ],
-    });
-    await advanceToPreviewStep('truncateInsert');
-    fireEvent.click(screen.getByTestId('data-transfer-execute'));
-    await waitFor(() => expect(screen.getByTestId('data-transfer-execute-confirm')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('data-transfer-execute-confirm-proceed'));
+  it('renders an unknown commit outcome distinctly and does not offer resume', async () => {
+    // §10 CM-39: the acknowledgement was lost, so the backend cannot say what
+    // landed. "Unknown" must never be smoothed into a failure or a success.
+    applyTransferJobMock.mockResolvedValueOnce({
+      ...applySuccess,
+      state: 'failed',
+      effectOutcome: 'unknown',
+      progress: { read: 3, converted: 3, attempted: 3, committed: 1, unknown: 2 },
+      commitBoundaries: [],
+      error: 'commit acknowledgement lost',
+      recoveryVerdict: 'requireManualReview',
+      recoveryReason: null,
+      recoveryResumeThrough: null,
+    } as unknown as TransferApplyJobView);
 
-    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
-    expect(screen.getByRole('status')).toHaveTextContent('transfer.runPartial');
-    expect(screen.getByText(/transfer.tableOutcome.partiallyApplied/)).toBeTruthy();
-    expect(screen.getByTestId('data-transfer-table-result-users')).toHaveAttribute(
-      'data-outcome',
-      'partiallyApplied',
-    );
-    expect(screen.getByText(/transfer.tableOutcome.rolledBack/)).toBeTruthy();
-  });
-
-  it('[tester] renders a cancelled execution distinctly from success', async () => {
-    vi.mocked(transferCommands.execute).mockResolvedValueOnce({
-      rowsInserted: 0,
-      partial: true,
-      cancelled: true,
-      tables: [],
-    });
     await advanceToPreviewStep('insert');
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
 
     await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
-    expect(screen.getByRole('status')).toHaveTextContent('transfer.runCancelled');
-    expect(screen.getByText('transfer.partialExplanation')).toBeTruthy();
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute(
+      'data-verdict-severity',
+      'uncertain',
+    );
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute('data-requires-reconcile', 'true');
+    expect(screen.getByTestId('data-transfer-job-verdict')).toHaveAttribute(
+      'data-uncertainty',
+      'effectOutcomeUnknown',
+    );
+    expect(screen.getByTestId('data-transfer-job-verdict-status')).toHaveTextContent(
+      'migration.verdict.uncertain',
+    );
+    expect(screen.getByTestId('data-transfer-job-uncertainty')).toHaveTextContent(
+      'migration.uncertainty.effectOutcomeUnknown',
+    );
+    expect(screen.getByTestId('data-transfer-job-recovery-verdict')).toHaveAttribute(
+      'data-verdict',
+      'requireManualReview',
+    );
+    expect(screen.getByTestId('data-transfer-job-reconcile')).toBeTruthy();
+    // committed + unknown both unaccounted for: 1 + 2.
+    expect(screen.getByTestId('data-transfer-job-rows')).toHaveTextContent(
+      'migration.verdict.committedRows: 3',
+    );
+    expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
+    // §10 CM-42: the read-only verification of an unknown operation comes first.
+    // Re-review would mint a fresh planId over the same range, so it is offered
+    // but closed, and the reason is stated where the button is.
+    const reReview = screen.getByTestId('data-transfer-rereview');
+    expect(reReview).toHaveAttribute('data-blocked', 'reconcile-pending');
+    expect(reReview).toBeDisabled();
+    fireEvent.click(reReview);
+    // Still the settled verdict — a blocked affordance must not navigate.
+    expect(screen.queryByTestId('data-transfer-result')).toBeTruthy();
+    expect(screen.getByTestId('data-transfer-job-verdict')).toHaveAttribute(
+      'data-uncertainty',
+      'effectOutcomeUnknown',
+    );
+    expect(screen.getByTestId('data-transfer-rereview-blocked')).toHaveTextContent(
+      'migration.verdict.rereviewBlocked',
+    );
+  });
+
+  it('keeps the re-review affordance open once a run is reconciled', async () => {
+    // The closed affordance above must not become a dead end: a fully completed,
+    // fully evidenced run has nothing left to reconcile, so the next legal move
+    // (a fresh review with a new planId) is available again.
+    await advanceToPreviewStep('insert');
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+
+    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
+    const reReview = screen.getByTestId('data-transfer-rereview');
+    expect(reReview).toHaveAttribute('data-blocked', 'false');
+    expect(reReview).not.toBeDisabled();
+    expect(screen.queryByTestId('data-transfer-rereview-blocked')).toBeNull();
+
+    fireEvent.click(reReview);
+    // A fresh review starts from the selection, not from the settled verdict.
+    await waitFor(() => expect(screen.queryByTestId('data-transfer-result')).toBeNull());
+    expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy();
+  });
+
+  it('renders a confirmed destructive preamble with rolled-back rows as nothing applied', async () => {
+    applyTransferJobMock.mockResolvedValueOnce({
+      ...applySuccess,
+      state: 'cancelled',
+      effectOutcome: 'rolledBack',
+      progress: { read: 3, converted: 3, attempted: 3, committed: 0, unknown: 0 },
+      commitBoundaries: [],
+      cancelled: true,
+      error: 'destructive preamble rolled the batch back',
+    } as unknown as TransferApplyJobView);
+
+    await advanceToPreviewStep('truncateInsert');
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+    // A destructive write mode asks once more before anything is written; the
+    // apply only happens after that second, explicit confirmation.
+    await waitFor(() => expect(screen.getByTestId('data-transfer-execute-confirm')).toBeTruthy());
+    expect(applyTransferJobMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('data-transfer-execute-confirm-proceed'));
+
+    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
+    // Rolled back is a settlement, not a success: the verdict panel must not
+    // read `ok`, and nothing may be counted as committed. It reads `failed`
+    // rather than `partial` because a rolled-back run reported an error and
+    // applied nothing — dressing that up as partial progress would be a lie.
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute(
+      'data-verdict-severity',
+      'failed',
+    );
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute('data-completed', 'false');
+    expect(screen.getByTestId('data-transfer-job-verdict')).toHaveAttribute('data-cancel-disposition', 'none');
+    expect(screen.getByTestId('data-transfer-job-verdict-status')).toHaveTextContent(
+      'migration.verdict.failed',
+    );
+    expect(screen.getByTestId('data-transfer-job-rows')).toHaveTextContent(
+      'migration.verdict.committedRows: 0',
+    );
+    expect(screen.getByTestId('data-transfer-job-boundaries-empty')).toBeTruthy();
+    expect(screen.getByTestId('data-transfer-job-error')).toHaveTextContent(
+      'destructive preamble rolled the batch back',
+    );
+    // The preamble was confirmed, so the destructive call went out with it.
+    expect(applyTransferJobMock).toHaveBeenCalledWith(
+      expect.objectContaining({ confirmedDestructive: true }),
+    );
+  });
+
+  it('[tester] renders a cancelled execution distinctly from success', async () => {
+    // Cancelled before any row moved: §2.3 "not started" is not a failure and
+    // is certainly not a success, so it must read as its own state.
+    applyTransferJobMock.mockResolvedValueOnce({
+      ...applySuccess,
+      state: 'cancelled',
+      effectOutcome: 'notStarted',
+      progress: { read: 0, converted: 0, attempted: 0, committed: 0, unknown: 0 },
+      commitBoundaries: [],
+      cancelled: true,
+      error: null,
+    } as unknown as TransferApplyJobView);
+
+    await advanceToPreviewStep('insert');
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+
+    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute(
+      'data-verdict-severity',
+      'partial',
+    );
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute('data-completed', 'false');
+    expect(screen.getByTestId('data-transfer-job-verdict-status')).toHaveTextContent(
+      'migration.verdict.partial',
+    );
+    expect(screen.getByTestId('data-transfer-job-verdict-status')).not.toHaveTextContent(
+      'migration.verdict.ok',
+    );
+    expect(screen.getByTestId('data-transfer-job-rows')).toHaveTextContent(
+      'migration.verdict.committedRows: 0',
+    );
+    expect(screen.queryByTestId('data-transfer-job-error')).toBeNull();
+    expect(screen.getByTestId('data-transfer-rereview')).toBeTruthy();
+    expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
+  });
+
+  it('retries a lost commit receipt under the same idempotency key instead of a fresh write (§10)', async () => {
+    await advanceToPreviewStep('insert');
+
+    // §10 CM-54: the apply may well have committed; only the receipt was lost.
+    // The window must not present that as a settlement, and the retry has to
+    // repeat the *same* key so the backend's receipt map can answer with the
+    // recorded receipt rather than committing a second time.
+    applyTransferJobMock.mockRejectedValueOnce(new Error('commit ack lost: transport closed'));
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+
+    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
+    expect(screen.queryByTestId('data-transfer-result')).toBeNull();
+    expect(screen.getByTestId('data-transfer-job-failure')).toHaveAttribute(
+      'data-failure-kind',
+      'other',
+    );
+    expect(screen.getByTestId('data-transfer-job-failure-detail')).toHaveTextContent(
+      'commit ack lost: transport closed',
+    );
+
+    applyTransferJobMock.mockResolvedValueOnce({ ...applySuccess, replayed: true });
+    fireEvent.click(screen.getByTestId('data-transfer-execute'));
+
+    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
+    expect(screen.getByTestId('data-transfer-job-replayed')).toHaveTextContent(
+      'migration.verdict.replayedReceipt',
+    );
+    const keys = applyTransferJobMock.mock.calls.map(
+      (call) => (call[0] as { idempotencyKey?: string }).idempotencyKey,
+    );
+    expect(keys).toEqual(['data-transfer/apply/plan-job-1', 'data-transfer/apply/plan-job-1']);
   });
 });

@@ -11,6 +11,12 @@ interface TransferMappingStepProps {
   onSelectTable: (sourceTable: string) => void;
   onUpdateTable: (sourceTable: string, patch: Partial<TransferTableResult>) => void;
   onTargetTableCommit: (sourceTable: string) => void;
+  /**
+   * §8.4: forwarded to the editor, not used to dim this component. The table
+   * list stays selectable — picking a different table is a read-only act and
+   * must not be blocked while a prepare is in flight.
+   */
+  disabled?: boolean;
 }
 
 export function TransferMappingStep({
@@ -20,6 +26,7 @@ export function TransferMappingStep({
   onSelectTable,
   onUpdateTable,
   onTargetTableCommit,
+  disabled = false,
 }: TransferMappingStepProps) {
   const { t } = useI18n();
   const enabledTables = tables.filter((tbl) => tbl.enabled && tbl.sourceTable);
@@ -71,6 +78,7 @@ export function TransferMappingStep({
           key={selected.sourceTable}
           table={selected}
           structureMode={structureMode}
+          disabled={disabled}
           onChange={(patch) => onUpdateTable(selected.sourceTable, patch)}
           onTargetTableBlur={() => onTargetTableCommit(selected.sourceTable)}
         />

@@ -84,9 +84,16 @@ pub fn effective_table_mappings(
             ) {
                 TableMapping {
                     source_table: t.name.clone(),
-                    target_table: t.name.clone(),
+                    // Creating an absent target is an explicit user choice, so the
+                    // target name is theirs to give: leave it empty rather than
+                    // suggesting the source name. A pre-fill here was
+                    // indistinguishable on the wire from a name the user actually
+                    // typed, so it silently satisfied the frontend mapping gate
+                    // (§8.4) and let an unnamed create-new row prepare as itself.
+                    // Data mode below already returns an empty name for the same
+                    // "target does not exist" case; this aligns the two modes.
+                    target_table: String::new(),
                     create_new: true,
-                    // Creating an absent target is an explicit user choice.
                     // Keep the row in the inspect result so the mapping UI can
                     // show every source column and its target type, but do not
                     // make a structure preview create every source table by
@@ -511,6 +518,11 @@ mod tests {
         assert_eq!(maps.len(), 1);
         assert!(maps[0].create_new);
         assert!(!maps[0].enabled);
+        // D-1: the target name is the user's to give, so it must arrive empty.
+        // A pre-fill of the source name was indistinguishable on the wire from
+        // a name the user actually typed.
+        assert_eq!(maps[0].target_table, "");
+        assert_ne!(maps[0].target_table, maps[0].source_table);
     }
 
     #[test]
@@ -534,6 +546,11 @@ mod tests {
         assert_eq!(results[0].status, TableMappingStatus::Disabled);
         assert!(results[0].create_new);
         assert!(!results[0].enabled);
+        // D-1: `inspect_tables` propagates `target_table` verbatim from the
+        // effective mapping, so the empty name has to survive the whole way out
+        // to the inspect result the frontend renders and gates on.
+        assert_eq!(results[0].target_table, "");
+        assert_ne!(results[0].target_table, results[0].source_table);
         assert_eq!(
             results[0]
                 .column_mappings
