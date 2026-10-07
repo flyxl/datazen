@@ -287,3 +287,66 @@ describe('unbound BackendClient reports an explicit error', () => {
     expect(isBackendClientBound()).toBe(false);
   });
 });
+
+/**
+ * `toCounter` is the whole frontend half of the CM-01 counter contract.
+ *
+ * The kernel counts in `u64` and serializes a `Counter` as a decimal string, so
+ * a narrowing helper that only accepts numbers does not reject the payload — it
+ * returns `undefined` for every counter, and every caller that defaults turns
+ * that into 0. A job that moved ten million rows renders as a job that moved
+ * none, with no error anywhere. These tests pin the accepted wire forms, and
+ * pin the refusal to round, because rounding would reintroduce the exact
+ * precision loss CM-01 exists to prevent.
+ */
+describe('toCounter', () => {
+  it('accepts the decimal string the kernel serializes', () => {
+    expect(toCounter('0')).toBe(0);
+    expect(toCounter('42')).toBe(42);
+    expect(toCounter('10000000')).toBe(10_000_000);
+  });
+
+  it('accepts a leading-zero decimal without treating it as octal', () => {
+    expect(toCounter('007')).toBe(7);
+  });
+
+  it('still accepts a bare number', () => {
+    expect(toCounter(0)).toBe(0);
+    expect(toCounter(41)).toBe(41);
+  });
+
+  it('refuses to round a count past what a JS number holds exactly', () => {
+    // 2^53 + 1: a valid decimal integer that `Number` cannot hold exactly, so
+    // accepting it would hand back a count that is simply wrong. Refuse rather
+    // than round — and accept the largest exact value right up to the edge.
+    expect(toCounter('9007199254740993')).toBeUndefined();
+    expect(toCounter(String(Number.MAX_SAFE_INTEGER))).toBe(9007199254740991);
+    expect(toCounter(String(Number.MAX_SAFE_INTEGER + 1))).toBeUndefined();
+  });
+
+  it('rejects anything that is not a plain non-negative integer', () => {
+    for (const value of [
+      '',
+      ' 1',
+      '1 ',
+      '-1',
+      '+1',
+      '1.0',
+      '1e3',
+      '0x10',
+      'NaN',
+      '1,000',
+      null,
+      undefined,
+      true,
+      {},
+      [],
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -1,
+      1.5,
+    ]) {
+      expect(toCounter(value), `toCounter(${String(value)})`).toBeUndefined();
+    }
+  });
+});

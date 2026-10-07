@@ -1,4 +1,4 @@
-//! §8 backend scope enforcement for migration Jobs.
+//! Backend scope enforcement for migration Jobs.
 //!
 //! The desktop/browser surface only offers **same-backend** migration: a background
 //! service can never reach a client-local profile, so any endpoint id that names
@@ -24,7 +24,9 @@ pub const LOCAL_BACKEND_SCOPE: &str = "local-desktop-backend";
 /// Longest endpoint reference accepted as a local session token.
 const MAX_LOCAL_SESSION_TOKEN: usize = 200;
 
-/// Backend ownership declared by the caller for a migration request (§8).
+/// Backend ownership declared by the caller for a migration request. The
+/// declaration is mandatory so that a caller which is not this desktop process
+/// cannot omit the same-backend check by leaving the field out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TransferBackendScope {
@@ -59,14 +61,15 @@ pub fn is_local_session_reference(id: &str) -> bool {
         .any(|ch| ch.is_whitespace() || "/\\@?#:".contains(ch))
 }
 
-/// §8 admission gate: reject anything that is not a same-backend migration.
+/// The admission gate: reject anything that is not a same-backend migration.
 pub fn enforce_same_backend_scope(
     job: &TransferJob,
     scope: Option<&TransferBackendScope>,
 ) -> Result<(), CommandError> {
     let Some(scope) = scope else {
         return Err(CommandError::Validation(
-            "backendScope is required: migration endpoints must declare the local backend (§8)"
+            "backendScope is required: only this desktop process can reach a migration \
+             endpoint, so the caller has to declare that both of them are local"
                 .to_string(),
         ));
     };
@@ -77,7 +80,8 @@ pub fn enforce_same_backend_scope(
         if declared.trim() != LOCAL_BACKEND_SCOPE {
             return Err(CommandError::Validation(format!(
                 "{side} endpoint declares backend scope '{}': the desktop client only offers \
-                 same-backend migration (§8)",
+                 same-backend migration, because no background service can reach a client-local \
+                 profile",
                 redact(declared)
             )));
         }
@@ -88,14 +92,14 @@ pub fn enforce_same_backend_scope(
         .find(|declared| declared.trim() != LOCAL_BACKEND_SCOPE)
     {
         return Err(CommandError::Validation(format!(
-            "request touches backend scope '{}': background services cannot reach a local profile (§8)",
+            "request touches backend scope '{}': no background service can reach a client-local profile",
             redact(foreign)
         )));
     }
     check_local_endpoint_reference("source", &job.source.db_session_id)?;
-    // A SQL-file job has no database target (§6.1): it writes statements to a
-    // local file, so there is no second session to resolve. Requiring one would
-    // refuse every SQL-file migration before it starts.
+    // A SQL-file job has no database target: it writes statements to a local
+    // file, so there is no second session to resolve. Requiring one would refuse
+    // every SQL-file migration before it starts.
     if job.sql_file_target.is_none() {
         let target = job.database_target().map_err(CommandError::from)?;
         check_local_endpoint_reference("target", &target.db_session_id)?;
@@ -112,8 +116,8 @@ fn check_local_endpoint_reference(side: &str, id: &str) -> Result<(), CommandErr
         "migration endpoint does not reference a local backend session"
     );
     Err(CommandError::Validation(format!(
-        "{side} endpoint does not reference a session of the local backend; migration across \
-         backends is not available (§8)"
+        "{side} endpoint does not reference a session of the local backend; this desktop build \
+         cannot migrate across backends, because a remote backend has no local session to resolve"
     )))
 }
 

@@ -9,9 +9,13 @@
  * things in the wire protocol and a frontend that swaps a revision counter for
  * a session id must fail to compile, not silently ship.
  *
- * The wire encoding is deliberately the simplest one that round-trips:
- * ids are opaque strings, counters and timestamps are numbers. JSON carries
- * them without any transform, so an adapter never has to know about it.
+ * The frontend type is `number` in all three cases; that is a statement about
+ * what the UI works with, not about what travels. `Id` is already a string on
+ * the wire, and a `Counter` is a **decimal string**, because the Rust kernel
+ * counts in `u64` and `2^53 + 1` is not representable as a JS number — a
+ * counter encoded as a JSON number would silently lose precision, so
+ * `platform-api`'s `Counter` serializes with `collect_str`. A backend that
+ * wanted to round a row count is exactly the bug this contract exists to stop.
  */
 
 /** Brand of a nominal type. Never instantiated; it only marks intent. */
@@ -25,6 +29,8 @@ export type Id = string & { readonly [datazenBrand]: 'Id' };
  *
  * Never used for anything that is not strictly ordered — in particular a
  * `Counter` is not a timestamp and not an id.
+ *
+ * Reach it on the wire as a decimal string and narrow it with {@link toCounter}.
  */
 export type Counter = number & { readonly [datazenBrand]: 'Counter' };
 
@@ -47,11 +53,29 @@ export function toId(value: unknown): Id | undefined {
   return typeof value === 'string' && value.length > 0 ? (value as Id) : undefined;
 }
 
-/** Non-negative integer `Counter`; `undefined` for anything else. */
+/**
+ * Non-negative integer `Counter`; `undefined` for anything else.
+ *
+ * Accepts both wire encodings. The decimal string is the one `platform-api`
+ * actually emits (`CM-01`: a `u64` serialized with `collect_str`, so that a
+ * count above `2^53` survives the trip), and a bare JSON number is accepted for
+ * the hand-written payloads and the mock drivers that have no `u64` to encode.
+ *
+ * A decimal string is refused above `Number.MAX_SAFE_INTEGER` instead of being
+ * rounded. Rounding here would be the same silent precision loss `CM-01` was
+ * written to prevent, one layer further from the cause; `undefined` leaves the
+ * decision visible to whoever decodes it, and a `JobProgress` reading is a
+ * display value, not a total that anyone reconciles against a ledger.
+ */
 export function toCounter(value: unknown): Counter | undefined {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0
-    ? (value as Counter)
-    : undefined;
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 ? (value as Counter) : undefined;
+  }
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? (parsed as Counter) : undefined;
 }
 
 /** Finite epoch-millisecond `Timestamp`; `undefined` for anything else. */

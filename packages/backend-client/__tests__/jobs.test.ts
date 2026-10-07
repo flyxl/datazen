@@ -31,7 +31,23 @@ const TOKEN: SubmissionToken = {
   expiresAt: timestamp(1_700_000_000_000),
 };
 
+/**
+ * The payload shape the Rust kernel actually puts on the wire.
+ *
+ * Counters are **decimal strings**, not numbers: `platform-api`'s `Counter` is a
+ * `u64` whose `Serialize` uses `collect_str` (CM-01), because a JSON number would
+ * lose precision above `2^53`. Instants are RFC-8601 strings. A fixture written
+ * in the shape the client *wants* rather than the shape the client *gets* is
+ * what let `toCounter` drift: every counter here was a JS number, so the suite
+ * agreed with itself and with nothing else.
+ *
+ * The instants are built from the current clock rather than hard-coded, because
+ * `submitJobIdempotent` only recovers a submission whose `createdAt` falls in a
+ * recent window — a fixed date would silently fall outside it and turn those
+ * recovery tests into "timed out" for a reason that has nothing to do with them.
+ */
 function rawJobView(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const now = new Date().toISOString();
   return {
     jobId: 'job-1',
     kind: 'schemaDiffApply',
@@ -39,12 +55,12 @@ function rawJobView(overrides: Record<string, unknown> = {}): Record<string, unk
     stage: 'apply',
     executionIds: ['exec-1'],
     artifactIds: ['art-1'],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     effectOutcome: 'completed',
     cancelRequested: false,
     pendingVerificationReason: null,
-    progress: { read: 3, converted: 2, attempted: 1, committed: 1, unknown: 0 },
+    progress: { read: '3', converted: '2', attempted: '1', committed: '1', unknown: '0' },
     ...overrides,
   };
 }
@@ -82,6 +98,84 @@ describe('parseJobView', () => {
     expect(job.executionIds).toEqual(['exec-1']);
   });
 
+  // The regression this file exists for: the wire form is a decimal string, and
+  // a client that only accepts numbers does not fail — it reads every counter as
+  // 0, which looks exactly like a job that has done nothing.
+  describe('counter wire form (CM-01)', () => {
+    it('reads the counts the kernel actually sent', () => {
+      const job = parseJobView(rawJobView());
+      expect(job.progress).toEqual({
+        read: 3,
+        converted: 2,
+        attempted: 1,
+        committed: 1,
+        unknown: 0,
+      });
+    });
+
+    it('does not silently collapse a string counter to zero', () => {
+      const job = parseJobView(
+        rawJobView({
+          progress: { read: '0', converted: '0', attempted: '0', committed: '0', unknown: '412' },
+        }),
+      );
+      expect(job.progress.unknown).toBe(412);
+    });
+
+    it('still accepts a bare number for payloads with no u64 to encode', () => {
+      const job = parseJobView(
+        rawJobView({ progress: { read: 7, converted: 0, attempted: 0, committed: 0, unknown: 0 } }),
+      );
+      expect(job.progress.read).toBe(7);
+    });
+
+    it('reads a counter up to the largest value a JS number holds exactly', () => {
+      const job = parseJobView(
+        rawJobView({
+          progress: {
+            read: String(Number.MAX_SAFE_INTEGER),
+            converted: 0,
+            attempted: 0,
+            committed: 0,
+            unknown: 0,
+          },
+        }),
+      );
+      expect(job.progress.read).toBe(Number.MAX_SAFE_INTEGER);
+    });
+
+    it('refuses a present counter it cannot hold rather than reporting it as 0', () => {
+      // Absent means "nothing has moved yet". A count of 2^53 + 1 does not mean
+      // that, and reporting it as 0 is the exact lie this contract forbids.
+      expect(() =>
+        parseJobView(
+          rawJobView({
+            progress: {
+              read: '9007199254740993',
+              converted: '0',
+              attempted: '0',
+              committed: '0',
+              unknown: '0',
+            },
+          }),
+        ),
+      ).toThrowError(/Malformed job progress/);
+    });
+
+    it('still defaults a genuinely absent counter to zero', () => {
+      const job = parseJobView(
+        rawJobView({ progress: { read: '5', converted: '0', attempted: '0' } }),
+      );
+      expect(job.progress).toEqual({
+        read: 5,
+        converted: 0,
+        attempted: 0,
+        committed: 0,
+        unknown: 0,
+      });
+    });
+  });
+
   it('defaults missing P5 fields instead of leaking undefined', () => {
     const job = parseJobView({
       jobId: 'job-2',
@@ -111,9 +205,7 @@ describe('parseJobView', () => {
   });
 
   it('rejects a missing required field', () => {
-    expect(() => parseJobView(rawJobView({ jobId: undefined }))).toThrowError(
-      /Malformed job view/,
-    );
+    expect(() => parseJobView(rawJobView({ jobId: undefined }))).toThrowError(/Malformed job view/);
   });
 });
 
@@ -178,11 +270,10 @@ describe('BackendClient job methods against a fake transport', () => {
     const client = createBackendClient('desktop', fake.transport);
     const updates: Array<{ resubscribed: boolean }> = [];
     const errors: unknown[] = [];
-    const watch = client.watchJob(
-      id('job-1'),
-      (_view, meta) => updates.push(meta),
-      { intervalMs: 5, onError: (e) => errors.push(e) },
-    );
+    const watch = client.watchJob(id('job-1'), (_view, meta) => updates.push(meta), {
+      intervalMs: 5,
+      onError: (e) => errors.push(e),
+    });
 
     await new Promise((resolve) => setTimeout(resolve, 30));
     watch.stop();
@@ -208,11 +299,9 @@ describe('BackendClient job methods against a fake transport', () => {
     // Next submission of the same kind times out: the client must consult
     // the original receipt instead of issuing a second apply.
     fake.responses.set('startJob', new Promise(() => undefined));
-    const recovered = await client.submitJobIdempotent(
-      { kind: 'schemaDiffApply' },
-      TOKEN,
-      { timeoutMs: 10 },
-    );
+    const recovered = await client.submitJobIdempotent({ kind: 'schemaDiffApply' }, TOKEN, {
+      timeoutMs: 10,
+    });
     expect(recovered.state).toBe('succeeded');
     expect(fake.calls.filter((c) => c.method === 'startJob')).toHaveLength(2);
   });
@@ -235,11 +324,9 @@ describe('BackendClient job methods against a fake transport', () => {
     fake.responses.set('listJobs', [rawJobView({ kind: 'dataTransferApply', state: 'running' })]);
 
     const client = createBackendClient('desktop', fake.transport);
-    const recovered = await client.submitJobIdempotent(
-      { kind: 'dataTransferApply' },
-      TOKEN,
-      { timeoutMs: 10 },
-    );
+    const recovered = await client.submitJobIdempotent({ kind: 'dataTransferApply' }, TOKEN, {
+      timeoutMs: 10,
+    });
     expect(recovered.jobId).toBe('job-1');
   });
 });

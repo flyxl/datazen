@@ -409,12 +409,33 @@ function parseEffectOutcome(value: unknown): EffectOutcome | null {
 function parseJobProgress(value: unknown): JobProgress {
   if (!isRecord(value)) return emptyJobProgress();
   return {
-    read: toCounter(value['read']) ?? zeroCounter(),
-    converted: toCounter(value['converted']) ?? zeroCounter(),
-    attempted: toCounter(value['attempted']) ?? zeroCounter(),
-    committed: toCounter(value['committed']) ?? zeroCounter(),
-    unknown: toCounter(value['unknown']) ?? zeroCounter(),
+    read: counterOrAbsent(value['read'], 'read'),
+    converted: counterOrAbsent(value['converted'], 'converted'),
+    attempted: counterOrAbsent(value['attempted'], 'attempted'),
+    committed: counterOrAbsent(value['committed'], 'committed'),
+    unknown: counterOrAbsent(value['unknown'], 'unknown'),
   };
+}
+
+/**
+ * A counter that is **absent** is zero — an older payload simply has no such
+ * field yet. A counter that is **present and unreadable** is a different thing:
+ * it is a count the client cannot hold faithfully, because it exceeds
+ * `Number.MAX_SAFE_INTEGER`, and reporting it as 0 is precisely the silent lie
+ * this narrowing is meant to prevent. A migration of 2^53 + 1 rows and a
+ * migration of no rows must never look alike, so the second case throws instead
+ * of collapsing into the first.
+ */
+function counterOrAbsent(raw: unknown, field: string): Counter {
+  if (raw === undefined || raw === null) return zeroCounter();
+  const narrowed = toCounter(raw);
+  if (narrowed === undefined) {
+    throw new ApiError(
+      'ServiceUnavailable',
+      `Malformed job progress: progress.${field} is ${JSON.stringify(raw)}, which is not a count this client can read without losing it.`,
+    );
+  }
+  return narrowed;
 }
 
 function zeroCounter(): Counter {
@@ -433,8 +454,17 @@ export function parseJobView(raw: unknown): JobView {
   const state = parseEnum<JobState>(raw['state'], JOB_STATES);
   const createdAt = parseTimestamp(raw['createdAt']);
   const updatedAt = parseTimestamp(raw['updatedAt']);
-  if (jobId === undefined || kind === undefined || state === null || createdAt === undefined || updatedAt === undefined) {
-    throw new ApiError('ServiceUnavailable', 'Malformed job view: required field missing or mistyped.');
+  if (
+    jobId === undefined ||
+    kind === undefined ||
+    state === null ||
+    createdAt === undefined ||
+    updatedAt === undefined
+  ) {
+    throw new ApiError(
+      'ServiceUnavailable',
+      'Malformed job view: required field missing or mistyped.',
+    );
   }
   const stage = typeof raw['stage'] === 'string' ? raw['stage'] : null;
   return {
@@ -468,7 +498,10 @@ export function parseCancelReceipt(raw: unknown): CancelReceipt {
   );
   const state = parseEnum<CancelReceipt['state']>(raw['state'], EXECUTION_STATES);
   if (executionId === undefined || disposition === null || state === null) {
-    throw new ApiError('ServiceUnavailable', 'Malformed cancel receipt: required field missing or mistyped.');
+    throw new ApiError(
+      'ServiceUnavailable',
+      'Malformed cancel receipt: required field missing or mistyped.',
+    );
   }
   return { executionId, disposition, state };
 }
@@ -533,7 +566,10 @@ async function submitJobIdempotentImpl(
       applied = await Promise.race([
         startJob(definition, token),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new ApiError('OutcomeUnknown', 'Job submission timed out.')), options.timeoutMs),
+          setTimeout(
+            () => reject(new ApiError('OutcomeUnknown', 'Job submission timed out.')),
+            options.timeoutMs,
+          ),
         ),
       ]);
     }

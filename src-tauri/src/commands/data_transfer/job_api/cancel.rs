@@ -1,4 +1,4 @@
-//! Cancellation for a Data Transfer Job (§2.3).
+//! Cancellation for a Data Transfer Job.
 //!
 //! The Job repository owns cancellation: `request_cancel` records the request
 //! without touching the state, the runtime turns it into a terminal
@@ -16,8 +16,8 @@ use super::runtime::{admit_error, host, request_context};
 
 /// Ask a running Job to stop. `Ok(false)` means this client never accepted
 /// that job id, so the caller may fall back to the legacy registry. A Job that
-/// already finished is answered here too: it is still a P5 Job, and §10.1.1
-/// leaves a terminal state with nothing to interrupt.
+/// already finished is answered here too: it is still a P5 Job, and a state the
+/// runtime has already settled has nothing left to interrupt.
 pub(crate) async fn cancel_data_transfer_job(job_id: &str) -> Result<bool, CommandError> {
     let host = host();
     let ctx = request_context();

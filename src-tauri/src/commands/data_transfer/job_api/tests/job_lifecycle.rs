@@ -3,7 +3,8 @@
 //! its own commit boundaries.
 
 use datazen_platform_api::context::OwnerRef;
-use datazen_platform_api::dto::job::JobDefinition;
+use datazen_platform_api::dto::execution::EffectOutcome;
+use datazen_platform_api::dto::job::{JobDefinition, JobProgress, JobState};
 use datazen_platform_api::id::{ClientInstanceId, IdempotencyKey, JobId};
 use datazen_platform_api::JobRepository;
 
@@ -11,9 +12,11 @@ use super::super::cancel::{cancel_data_transfer_job, job_cancel_requested};
 use super::super::runtime::{host, now_timestamp, request_context, PREPARE_KIND};
 use super::*;
 
-/// §2.3 / D4: a cancel must land on the Job repository. The P5 runtime reads
-/// `view.cancel_requested` and nothing else, and `services::job_registry` never
-/// heard of these Job ids, so a cancel that skipped the repository was lost.
+/// A cancel must land on the Job repository, not on a local registry. The P5
+/// runtime reads `view.cancel_requested` and nothing else, and
+/// `services::job_registry` never heard of these Job ids, so a cancel that
+/// skipped the repository was lost: the Job kept running while the caller had
+/// been told it stopped.
 #[tokio::test]
 async fn a_cancel_request_lands_on_the_job_repository() {
     // A queued Job is the state a cancel actually has to interrupt.
@@ -94,10 +97,17 @@ async fn a_cancel_request_lands_on_the_job_repository() {
     );
 }
 
-/// §7 / D6: the apply view must publish the verdict the handler reached over
-/// its own evidence. The runtime writes `recovery_policy = "resumeAfterVerify"`
-/// into every checkpoint it saves, so a verdict that echoed the checkpoint
+/// The apply view must publish the verdict the handler reached over its own
+/// evidence. The runtime writes `recovery_policy = "resumeAfterVerify"` into
+/// every checkpoint it saves, so a verdict that merely echoed the checkpoint
 /// would claim every transfer was resumable.
+///
+/// The run has to have actually moved rows before any of that means anything. An
+/// earlier version of this test accepted all three verdicts and asserted nothing
+/// about the outcome, which let a write that failed before reading a single row
+/// still look like a healthy one — the test would have passed on a Job that
+/// copied nothing. So the state comes first: a run that ended `Failed` is a
+/// broken fixture, not a verdict to be explained.
 #[tokio::test]
 async fn an_apply_job_publishes_a_recovery_verdict_over_its_own_boundaries() {
     let test = TestAppState::with_options(mock_options()).await;
@@ -107,9 +117,27 @@ async fn an_apply_job_publishes_a_recovery_verdict_over_its_own_boundaries() {
         prepare_data_transfer_job_impl(&test.state, prepare_request(direct_job(&source, &target)))
             .await
             .expect("a direct-pair review should issue a plan");
-    let applied = apply_data_transfer_job_impl(&test.state, apply_request_from(&prepared))
+    let applied = apply_and_wait(&test.state, apply_request_from(&prepared))
         .await
         .expect("the apply Job should run");
+
+    assert_eq!(
+        applied.state,
+        JobState::Succeeded,
+        "the write must finish before its verdict is worth reading: {:?}",
+        applied.error
+    );
+    assert_eq!(
+        applied.effect_outcome,
+        EffectOutcome::Completed,
+        "a completed copy is the only state that earns a resume verdict"
+    );
+    assert_ne!(
+        applied.progress,
+        JobProgress::default(),
+        "a finished copy that counted no rows moved nothing: {:?}",
+        applied.progress
+    );
 
     match applied.recovery_verdict.as_str() {
         "resumeAfterVerify" => {
@@ -128,21 +156,10 @@ async fn an_apply_job_publishes_a_recovery_verdict_over_its_own_boundaries() {
                 "nothing committed means there is nothing to resume through"
             );
         }
-        verdict @ ("reject" | "requireManualReview") => {
-            assert_eq!(
-                applied.recovery_resume_through, None,
-                "{verdict} must not name a resume position"
-            );
-            let reason = applied
-                .recovery_reason
-                .as_deref()
-                .filter(|reason| !reason.is_empty())
-                .unwrap_or_else(|| panic!("{verdict} must say why"));
-            assert!(
-                reason.contains("resume") || reason.contains("evidence"),
-                "the reason must name the missing evidence: {reason}"
-            );
-        }
+        verdict @ ("reject" | "requireManualReview") => panic!(
+            "a Job that completed every boundary must not answer `{verdict}`: {:?}",
+            applied.recovery_reason
+        ),
         other => panic!("unknown recovery verdict: {other}"),
     }
 }
