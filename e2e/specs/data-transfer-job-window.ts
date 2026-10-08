@@ -29,22 +29,25 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
   const SRC_NAME = `JobSrc-${STAMP}`;
   const TGT_NAME = `JobTgt-${STAMP}`;
   /**
-   * Fixture tables. Source and target carry different names on purpose: the
-   * engine refuses a plan whose object is "both read and written", so a plan
-   * that moves `x` → `x` is rejected at `prepare` and never reaches the Job
-   * path these specs assert.
+   * Source and target are distinct PostgreSQL databases, so the same relation
+   * name is safe and is a useful regression case for endpoint identity. A
+   * table name by itself does not make a cross-database transfer a self-write.
    */
-  const JOB_SRC = `xfer_job_src_${STAMP}`;
-  const JOB_TGT = `xfer_job_tgt_${STAMP}`;
+  const JOB_TABLE = `xfer_job_${STAMP}`;
   /** Bulk fixture: keeps the apply in flight long enough to observe a cancel
-   *  while the apply is still in flight. */
-  const BULK_SRC = `xfer_bulk_src_${STAMP}`;
-  const BULK_TGT = `xfer_bulk_tgt_${STAMP}`;
+   *  while the apply is still in flight. The same name exists in two databases. */
+  const BULK_TABLE = `xfer_bulk_${STAMP}`;
+  const BULK_SLOW_FN = `xfer_bulk_slow_${STAMP}`;
   const BULK_ROWS = 30000;
   const ROWS_SELECTOR = '[data-testid="data-transfer-table-row"]';
 
-  /** Plan identity of the Job DTJ-001 spent, handed to DTJ-002. */
-  let spentPlan: { planId: string; planDigest: string; selectionRevision: number } | null = null;
+  /** Receipt identity of the Job DTJ-001 spent, handed to DTJ-002. */
+  let spentPlan: {
+    jobId: string;
+    planId: string;
+    planDigest: string;
+    selectionRevision: number;
+  } | null = null;
 
   const pgConfig = (id: string, name: string, database: string) => ({
     id,
@@ -78,6 +81,30 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     } finally {
       await disconnectBackend(session);
     }
+  }
+
+  type E2eJobView = {
+    jobId: string;
+    state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    cancelRequested: boolean;
+    progress: { read: number | string; converted: number | string; committed: number | string };
+  };
+
+  async function readJob(jobId: string): Promise<E2eJobView> {
+    return invokeBackend<E2eJobView>('get_job', { jobId });
+  }
+
+  async function waitForTerminalJob(jobId: string, timeout = 180000): Promise<E2eJobView> {
+    let latest: E2eJobView | null = null;
+    await browser.waitUntil(
+      async () => {
+        latest = await readJob(jobId);
+        return latest.state !== 'queued' && latest.state !== 'running';
+      },
+      { timeout, interval: 500, timeoutMsg: `Job ${jobId} did not settle` },
+    );
+    if (!latest) throw new Error(`Job ${jobId} did not return a terminal projection`);
+    return latest;
   }
 
   async function exists(selector: string): Promise<boolean> {
@@ -268,9 +295,9 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     await captureJourneyStep(`${scenario}-mapping-ready`);
 
     // This click is what runs `prepare`. It may legitimately refuse (out of
-    // backend scope, over the 8 MiB pipeline budget, or a source/target
-    // object-name collision); the refusal has to be named
-    // instead of showing up later as "execute never enabled".
+    // backend scope, or over the 8 MiB pipeline budget); the refusal has to be
+    // named instead of showing up later as "execute never enabled". The source
+    // and target databases are distinct, so matching relation names are valid.
     const next = await $('[data-testid="data-transfer-next"]');
     const prepareDeadline = Date.now() + 60000;
     while (Date.now() < prepareDeadline) {
@@ -320,37 +347,45 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
 
     try {
       await withSafeModeOff(async () => {
-        await dropTable(srcSession, JOB_SRC);
-        await dropTable(tgtSession, JOB_TGT);
-        await dropTable(srcSession, BULK_SRC);
-        await dropTable(tgtSession, BULK_TGT);
+        await dropTable(srcSession, JOB_TABLE);
+        await dropTable(tgtSession, JOB_TABLE);
+        await dropTable(srcSession, BULK_TABLE);
+        await dropTable(tgtSession, BULK_TABLE);
 
         await invokeBackend('execute_query', {
           dbSessionId: srcSession,
-          sql: `CREATE TABLE ${JOB_SRC} (id int PRIMARY KEY, name text NOT NULL, qty int)`,
+          sql: `CREATE TABLE ${JOB_TABLE} (id int PRIMARY KEY, name text NOT NULL, qty int)`,
         });
         await invokeBackend('execute_query', {
           dbSessionId: srcSession,
-          sql: `INSERT INTO ${JOB_SRC} (id, name, qty) VALUES (1,'a',10),(2,'b',20),(3,'c',30)`,
+          sql: `INSERT INTO ${JOB_TABLE} (id, name, qty) VALUES (1,'a',10),(2,'b',20),(3,'c',30)`,
         });
         await invokeBackend('execute_query', {
           dbSessionId: tgtSession,
-          sql: `CREATE TABLE ${JOB_TGT} (id int PRIMARY KEY, name text NOT NULL, qty int)`,
+          sql: `CREATE TABLE ${JOB_TABLE} (id int PRIMARY KEY, name text NOT NULL, qty int)`,
         });
 
         // Narrow payload on purpose: the backend refuses a pipeline over 8 MiB,
         // and this fixture only needs to be big enough to keep the Job in flight.
         await invokeBackend('execute_query', {
           dbSessionId: srcSession,
-          sql: `CREATE TABLE ${BULK_SRC} (id int PRIMARY KEY, qty int)`,
+          sql: `CREATE TABLE ${BULK_TABLE} (id int PRIMARY KEY, qty int)`,
         });
         await invokeBackend('execute_query', {
           dbSessionId: srcSession,
-          sql: `INSERT INTO ${BULK_SRC} (id, qty) SELECT g, g * 2 FROM generate_series(1, ${BULK_ROWS}) AS g`,
+          sql: `INSERT INTO ${BULK_TABLE} (id, qty) SELECT g, g * 2 FROM generate_series(1, ${BULK_ROWS}) AS g`,
         });
         await invokeBackend('execute_query', {
           dbSessionId: tgtSession,
-          sql: `CREATE TABLE ${BULK_TGT} (id int PRIMARY KEY, qty int)`,
+          sql: `CREATE TABLE ${BULK_TABLE} (id int PRIMARY KEY, qty int)`,
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId: tgtSession,
+          sql: `CREATE FUNCTION ${BULK_SLOW_FN}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.001); RETURN NEW; END $$`,
+        });
+        await invokeBackend('execute_query', {
+          dbSessionId: tgtSession,
+          sql: `CREATE TRIGGER ${BULK_SLOW_FN}_trigger BEFORE INSERT ON ${BULK_TABLE} FOR EACH ROW EXECUTE FUNCTION ${BULK_SLOW_FN}()`,
         });
       });
     } finally {
@@ -367,10 +402,14 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
       const tgtSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
       try {
         await withSafeModeOff(async () => {
-          await dropTable(srcSession, JOB_SRC);
-          await dropTable(srcSession, BULK_SRC);
-          await dropTable(tgtSession, JOB_TGT);
-          await dropTable(tgtSession, BULK_TGT);
+          await dropTable(srcSession, JOB_TABLE);
+          await dropTable(srcSession, BULK_TABLE);
+          await dropTable(tgtSession, JOB_TABLE);
+          await dropTable(tgtSession, BULK_TABLE);
+          await invokeBackend('execute_query', {
+            dbSessionId: tgtSession,
+            sql: `DROP FUNCTION IF EXISTS ${BULK_SLOW_FN}()`,
+          });
         });
       } finally {
         await disconnectBackend(srcSession);
@@ -388,9 +427,9 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     await closeExtraWindows(mainWindow);
   });
 
-  it('DTJ-001: Job 成功后落库=3，关闭重开窗口不重复执行', async () => {
+  it('DTJ-001: 成功结果不重跑，执行中关窗重开仍附着同一后台 Job', async () => {
     await openDataTransferWindow();
-    await driveToPreview(JOB_SRC, JOB_TGT, 'dtj1');
+    await driveToPreview(JOB_TABLE, JOB_TABLE, 'dtj1');
 
     const cancel = await $('[data-testid="data-transfer-cancel"]');
     // A cancel before the apply is addressable: the prepare Job id is ours.
@@ -399,6 +438,10 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     const execute = await $('[data-testid="data-transfer-execute"]');
     await execute.waitForClickable({ timeout: 20000 });
     await execute.click();
+    const acceptedApply = await $('[data-testid="data-transfer-job-active-state"]');
+    await acceptedApply.waitForDisplayed({ timeout: 30000 });
+    const spentJobId = await acceptedApply.getAttribute('data-job-id');
+    expect(spentJobId).toBeTruthy();
     await captureJourneyStep('dtj1-executed');
 
     const result = await $('[data-testid="data-transfer-result"]');
@@ -426,12 +469,13 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     expect(planDigest).toBeTruthy();
     expect(Number(revisionRaw)).toBeGreaterThanOrEqual(0);
     spentPlan = {
+      jobId: spentJobId ?? '',
       planId: planId ?? '',
       planDigest: planDigest ?? '',
       selectionRevision: Number(revisionRaw),
     };
 
-    expect(await targetRowCount(JOB_TGT)).toBe(3);
+    expect(await targetRowCount(JOB_TABLE)).toBe(3);
 
     // A reopened window must not re-drive the Job that already settled.
     await closeExtraWindows(mainWindow);
@@ -439,37 +483,93 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     await openDataTransferWindow();
     await captureJourneyStep('dtj1-reopened');
 
-    expect(await exists('[data-testid="data-transfer-result"]')).toBe(false);
     expect(await exists('[data-testid="data-transfer-execute"]')).toBe(false);
-    expect(await exists('[data-testid="data-transfer-job-verdict"]')).toBe(false);
+
+    const restoredResult = await $('[data-testid="data-transfer-result"][data-restored="true"]');
+    await browser.waitUntil(
+      async () =>
+        (await $('[data-testid="data-transfer-result"][data-restored="true"]').getAttribute('data-job-id')) ===
+        spentPlan?.jobId,
+      { timeout: 30000, interval: 250, timeoutMsg: 'reopened window did not restore the settled Job report' },
+    );
+    expect(await restoredResult.getAttribute('data-completed')).toBe('true');
+    expect(await restoredResult.getAttribute('data-plan-id')).toBe(spentPlan?.planId);
+    const restoredVerdict = await $('[data-testid="data-transfer-job-verdict"]');
+    expect(await restoredVerdict.getAttribute('data-plan-digest')).toBe(spentPlan?.planDigest);
+    expect(await restoredVerdict.getAttribute('data-selection-revision')).toBe(
+      String(spentPlan?.selectionRevision),
+    );
+    expect(Number(await restoredVerdict.getAttribute('data-verified-boundaries'))).toBeGreaterThan(0);
 
     // Re-driving only reaches a fresh prepare — a plan, never a write.
-    await driveToPreview(JOB_SRC, JOB_TGT, 'dtj1-reopen');
+    await driveToPreview(JOB_TABLE, JOB_TABLE, 'dtj1-reopen');
+    expect(await targetRowCount(JOB_TABLE)).toBe(3);
+
+    // Start a deliberately slow bulk write, close its window after admission,
+    // and re-open the window while the same backend Job is still running.
+    await closeExtraWindows(mainWindow);
+    await openDataTransferWindow();
+    await driveToPreview(BULK_TABLE, BULK_TABLE, 'dtj1-background');
+    await (await $('[data-testid="data-transfer-execute"]')).click();
+    const activeState = await $('[data-testid="data-transfer-job-active-state"]');
+    await activeState.waitForDisplayed({ timeout: 30000 });
+    const applyJobId = await activeState.getAttribute('data-job-id');
+    expect(applyJobId).toBeTruthy();
+    const activeResult = await $('[data-testid="data-transfer-result"]');
+    expect(await activeResult.getAttribute('data-verdict-severity')).toBe('active');
+    expect(await activeResult.getAttribute('data-completed')).toBe('false');
+    const activeCancel = await $('[data-testid="data-transfer-cancel"]');
+    expect(await activeCancel.getAttribute('data-cancel-addressable')).toBe('true');
+    expect(await activeCancel.getAttribute('data-job-id')).toBe(applyJobId);
+    expect(['queued', 'running']).toContain((await readJob(applyJobId ?? '')).state);
+
+    await captureJourneyStep('dtj1-background-before-close');
+    await closeExtraWindows(mainWindow);
+    await openDataTransferWindow();
+    const attached = await $('[data-testid="data-transfer-attached-job"]');
+    await browser.waitUntil(
+      async () =>
+        (await $('[data-testid="data-transfer-attached-job"]').getAttribute('data-job-id')) ===
+        applyJobId,
+      { timeout: 30000, interval: 250, timeoutMsg: 'reopened window did not hydrate the active apply Job' },
+    );
+    const attachedState = await $('[data-testid="data-transfer-attached-job-state"]');
+    expect(['queued', 'running']).toContain(await attached.getAttribute('data-state'));
+    expect(await attachedState.isDisplayed()).toBe(true);
+    const attachedCancel = await $('[data-testid="data-transfer-attached-cancel"]');
+    expect(await attachedCancel.getAttribute('data-job-id')).toBe(applyJobId);
+    const progressText = await $('[data-testid="data-transfer-attached-job-progress"]').getText();
+    expect(progressText).toMatch(/\d+\s*\/\s*\d+/);
     expect(await exists('[data-testid="data-transfer-result"]')).toBe(false);
-    expect(await targetRowCount(JOB_TGT)).toBe(3);
+    expect(await exists('[data-testid="data-transfer-execute"]')).toBe(false);
+    await captureJourneyStep('dtj1-background-reopened');
+
+    const settledBackgroundJob = await waitForTerminalJob(applyJobId ?? '');
+    expect(settledBackgroundJob.state).toBe('succeeded');
+    expect(Number(settledBackgroundJob.progress.committed)).toBe(BULK_ROWS);
+    expect(await targetRowCount(BULK_TABLE)).toBe(BULK_ROWS);
+    expect(await exists('[data-testid="data-transfer-attached-job"]')).toBe(false);
 
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
   });
 
-  it('DTJ-002: 同一个 planId 不可二次 apply，重试不会重复落库', async () => {
+  it('DTJ-002: apply 回执丢失后同 key 重放返回原 Job，不重复落库', async () => {
     if (!spentPlan) {
       throw new Error('DTJ-001 must settle a Job before DTJ-002 can retry its plan');
     }
-    // The reopen left a *new* plan pending in the window; a cancel is
-    // addressable again because that prepare Job id is ours.
+    // A fresh plan is prepared in the window, but replay uses DTJ-001's exact
+    // plan and stable idempotency key. The backend must return its original
+    // accepted Job receipt even though that Job is already terminal.
     await openDataTransferWindow();
-    await driveToPreview(JOB_SRC, JOB_TGT, 'dtj2');
+    await driveToPreview(JOB_TABLE, JOB_TABLE, 'dtj2');
     const cancel = await $('[data-testid="data-transfer-cancel"]');
     expect(await cancel.getAttribute('data-cancel-addressable')).toBe('true');
     expect(await cancel.isEnabled()).toBe(true);
 
-    // Replay the spent plan with its own idempotency key. The backend
-    // refuses at admission/claim, before it can look up the receipt — so this
-    // cannot double-write even with the original key.
-    let refusal = '';
-    try {
-      await invokeBackend('apply_data_transfer_job', {
+    const replay = await invokeBackend<{ jobId: string; replayed: boolean; state: string }>(
+      'apply_data_transfer_job',
+      {
         request: {
           planId: spentPlan.planId,
           planDigest: spentPlan.planDigest,
@@ -483,50 +583,71 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
           },
           idempotencyKey: `data-transfer/apply/${spentPlan.planId}`,
         },
-      });
-    } catch (error) {
-      refusal = String(error);
-    }
-    expect(refusal).not.toBe('');
-    expect(refusal).toMatch(/already consumed|already held/i);
+      },
+    );
+    expect(replay.jobId).toBe(spentPlan.jobId);
+    expect(replay.replayed).toBe(true);
+    expect(replay.state).toBe('succeeded');
 
-    // The refusal is the whole point: nothing was written a second time.
-    expect(await targetRowCount(JOB_TGT)).toBe(3);
-    expect(await exists('[data-testid="data-transfer-result"]')).toBe(false);
+    // Replaying the receipt is the whole point: nothing was written twice.
+    expect(await targetRowCount(JOB_TABLE)).toBe(3);
 
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
   });
 
-  it('DTJ-003: apply 进行中取消不可寻址，落库仍为全量', async () => {
+  it('DTJ-003: apply 执行中向真实 apply Job 记录取消意图并等待终态', async () => {
+    const targetSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
+    try {
+      await invokeBackend('execute_query', {
+        dbSessionId: targetSession,
+        sql: `TRUNCATE TABLE ${BULK_TABLE}`,
+      });
+    } finally {
+      await disconnectBackend(targetSession);
+    }
+
     await openDataTransferWindow();
-    await driveToPreview(BULK_SRC, BULK_TGT, 'dtj3');
+    await driveToPreview(BULK_TABLE, BULK_TABLE, 'dtj3');
 
     const execute = await $('[data-testid="data-transfer-execute"]');
     await execute.waitForClickable({ timeout: 20000 });
     await execute.click();
     await captureJourneyStep('dtj3-executing');
 
-    // The server mints the Job id and returns it with the terminal view, so
-    // while the apply is in flight there is no id to cancel — the window says
-    // so instead of pretending the run can be stopped.
-    const pendingId = await $('[data-testid="data-transfer-cancel-pending-id"]');
-    await pendingId.waitForDisplayed({ timeout: 30000 });
+    const activeState = await $('[data-testid="data-transfer-job-active-state"]');
+    await activeState.waitForDisplayed({ timeout: 30000 });
+    const applyJobId = await activeState.getAttribute('data-job-id');
+    expect(applyJobId).toBeTruthy();
+    await browser.waitUntil(
+      async () => (await readJob(applyJobId ?? '')).state === 'running',
+      { timeout: 30000, interval: 200, timeoutMsg: 'apply never reached running state before cancel' },
+    );
 
     const cancel = await $('[data-testid="data-transfer-cancel"]');
-    expect(await cancel.getAttribute('data-cancel-addressable')).toBe('false');
-    expect(await cancel.isEnabled()).toBe(false);
-    // No cancel was requested, so the window must not claim a disposition.
-    expect(await exists('[data-testid="data-transfer-cancel-disposition"]')).toBe(false);
-    expect(await exists('[data-testid="data-transfer-result"]')).toBe(false);
+    expect(await cancel.getAttribute('data-cancel-addressable')).toBe('true');
+    expect(await cancel.getAttribute('data-job-id')).toBe(applyJobId);
+    await cancel.click();
+
+    const cancelBanner = await $('[data-testid="data-transfer-job-active-cancel"]');
+    await cancelBanner.waitForDisplayed({ timeout: 10000 });
+    await browser.waitUntil(
+      async () => (await readJob(applyJobId ?? '')).cancelRequested === true,
+      { timeout: 15000, interval: 250, timeoutMsg: 'backend did not persist the cancel intent' },
+    );
+    expect(await exists('[data-testid="data-transfer-result"]')).toBe(true);
+    expect(await (await $('[data-testid="data-transfer-result"]')).getAttribute('data-completed')).toBe('false');
     await captureJourneyStep('dtj3-inflight');
 
+    const terminalJob = await waitForTerminalJob(applyJobId ?? '');
+    expect(terminalJob.cancelRequested).toBe(true);
+    expect(terminalJob.state).toBe('cancelled');
     const result = await $('[data-testid="data-transfer-result"]');
     await result.waitForDisplayed({ timeout: 180000 });
-    expect(await result.getAttribute('data-completed')).toBe('true');
+    expect(await result.getAttribute('data-completed')).toBe('false');
     const verdict = await $('[data-testid="data-transfer-job-verdict"]');
-    expect(await verdict.getAttribute('data-uncertainty')).toBe('none');
-    expect(Number(await verdict.getAttribute('data-verified-boundaries'))).toBeGreaterThanOrEqual(1);
+    await verdict.waitForDisplayed({ timeout: 10000 });
+    expect(await verdict.getAttribute('data-cancel-disposition')).not.toBe('none');
 
     // Once settled the step moves on: the cancel affordance is gone and the
     // only legal next action is a fresh review (there is no resume token).
@@ -536,9 +657,9 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     expect(await rereview.getAttribute('data-blocked')).toBe('false');
     expect(await rereview.isEnabled()).toBe(true);
 
-    expect(await targetRowCount(BULK_TGT)).toBe(BULK_ROWS);
-    // The small fixture was deselected in this run, so it must be untouched.
-    expect(await targetRowCount(JOB_TGT)).toBe(3);
+    expect(await targetRowCount(BULK_TABLE)).toBeLessThan(BULK_ROWS);
+    // The other fixture was deselected in this run, so it must be untouched.
+    expect(await targetRowCount(JOB_TABLE)).toBe(3);
     await captureJourneyStep('dtj3-settled');
 
     await closeExtraWindows(mainWindow);

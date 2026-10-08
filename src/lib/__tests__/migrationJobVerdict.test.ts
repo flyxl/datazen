@@ -134,6 +134,21 @@ describe('deriveUncertainty — the fail-closed ladder', () => {
     expect(deriveUncertainty('completed', 'someFutureVerdict', null, 0)).toBe('recoveryRejected');
   });
 
+  it('treats only the restart-before-dispatch NotExecuted receipt as known not-started', () => {
+    expect(
+      deriveUncertainty('notStarted', 'notExecuted', 'notDispatchedAfterRestart', 0),
+    ).toBe('none');
+    expect(deriveUncertainty('notStarted', 'notExecuted', 'someOtherReason', 0)).toBe(
+      'recoveryRejected',
+    );
+    expect(
+      deriveUncertainty('completed', 'notExecuted', 'notDispatchedAfterRestart', 0),
+    ).toBe('recoveryRejected');
+    expect(
+      deriveUncertainty('notStarted', 'notExecuted', 'notDispatchedAfterRestart', 0, false, true),
+    ).toBe('recoveryRejected');
+  });
+
   it('takes the recorded reason as evidence even under resumeAfterVerify', () => {
     expect(
       deriveUncertainty('completed', 'resumeAfterVerify', 'no checkpoint was recorded', 0),

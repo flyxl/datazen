@@ -209,6 +209,58 @@ describe('MigrationJobVerdictPanel', () => {
     expect(screen.getByTestId('migration-job-verdict')).toHaveAttribute('data-severity', 'uncertain');
   });
 
+  it('explains the exact restart-before-dispatch receipt without requiring reconciliation', () => {
+    renderVerdict(
+      {
+        state: 'failed',
+        effectOutcome: 'notStarted',
+        cancelRequested: false,
+        recoveryVerdict: 'notExecuted',
+        recoveryReason: 'notDispatchedAfterRestart',
+      },
+      {
+        recoveryVerdict: 'notExecuted',
+        recoveryReason: 'notDispatchedAfterRestart',
+      },
+    );
+
+    expect(screen.getByTestId('migration-job-recovery-verdict')).toHaveTextContent(
+      'Recovery verdict: Not executed',
+    );
+    expect(screen.getByTestId('migration-job-recovery-reason')).toHaveTextContent(
+      'The application restarted after this Job was accepted but before it was dispatched, so no migration work ran.',
+    );
+    expect(screen.getByTestId('migration-job-verdict-status')).toHaveTextContent('Not applied');
+    expect(screen.queryByTestId('migration-job-reconcile')).toBeNull();
+  });
+
+  it('does not assign the restart explanation to a different NotExecuted reason', () => {
+    renderVerdict(
+      {
+        state: 'failed',
+        effectOutcome: 'notStarted',
+        cancelRequested: false,
+        recoveryVerdict: 'notExecuted',
+        recoveryReason: 'someOtherReason',
+      },
+      {
+        recoveryVerdict: 'notExecuted',
+        recoveryReason: 'someOtherReason',
+      },
+    );
+
+    expect(screen.getByTestId('migration-job-recovery-reason')).toHaveTextContent(
+      'someOtherReason',
+    );
+    expect(screen.getByTestId('migration-job-recovery-reason')).not.toHaveTextContent(
+      'application restarted',
+    );
+    expect(screen.getByTestId('migration-job-verdict')).toHaveAttribute(
+      'data-uncertainty',
+      'recoveryRejected',
+    );
+  });
+
   it('reports how far recovery is allowed to resume', () => {
     renderVerdict(
       {

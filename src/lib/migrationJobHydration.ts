@@ -30,8 +30,12 @@ export const MIGRATION_JOB_KINDS = {
 export type MigrationWindow = keyof typeof MIGRATION_JOB_KINDS;
 
 export interface MigrationJobHydration {
+  /** Latest visible projection for this window, including completed jobs. */
+  jobs: JobView[];
   /** Jobs of this window's kinds that are still queued/running. */
   activeJobs: JobView[];
+  /** Jobs of this window's kinds that reached a terminal state. */
+  terminalJobs: JobView[];
   /** Terminal or paused jobs whose effect outcome still needs a human decision. */
   verificationJobs: JobView[];
 }
@@ -47,19 +51,55 @@ export async function hydrateMigrationJobs(
   const kinds = MIGRATION_JOB_KINDS[window];
   const isOurKind = (job: JobView): boolean =>
     (kinds as readonly string[]).includes(job.kind);
-  const summaries = (await client.listJobs({ states: ['queued', 'running'] })).filter(isOurKind);
-  const activeJobs: JobView[] = [];
-  for (const summary of summaries) {
+  const activeSummaries = (await client.listJobs({ states: ['queued', 'running'] })).filter(isOurKind);
+  const refreshedActive: JobView[] = [];
+  for (const summary of activeSummaries) {
     try {
-      activeJobs.push(await client.getJob(summary.jobId));
+      refreshedActive.push(await client.getJob(summary.jobId));
     } catch {
       // A job that vanished between list/get is simply not reported.
     }
   }
-  const verificationJobs = (await client.listJobs({})).filter(
-    (job) => isOurKind(job) && job.pendingVerificationReason !== null,
-  );
-  return { activeJobs, verificationJobs };
+  const summaries = (await client.listJobs({})).filter(isOurKind);
+  const byId = new Map(summaries.map((job) => [job.jobId, job]));
+  for (const job of refreshedActive) {
+    const latestSummary = byId.get(job.jobId);
+    if (!latestSummary || job.updatedAt > latestSummary.updatedAt) {
+      byId.set(job.jobId, job);
+    }
+  }
+  const jobs = [...byId.values()];
+  const activeJobs = jobs.filter((job) => job.state === 'queued' || job.state === 'running');
+  const terminalJobs = jobs.filter((job) => job.state !== 'queued' && job.state !== 'running');
+  const verificationJobs = jobs.filter((job) => job.pendingVerificationReason !== null);
+  return { jobs, activeJobs, terminalJobs, verificationJobs };
+}
+
+/** Replace one watched job in the window projection and recalculate its buckets. */
+export function updateMigrationJobProjection(
+  current: MigrationJobHydration,
+  updated: JobView,
+): MigrationJobHydration {
+  const index = current.jobs.findIndex((job) => job.jobId === updated.jobId);
+  const jobs = [...current.jobs];
+  if (index === -1) jobs.push(updated);
+  else {
+    const existing = jobs[index];
+    if (
+      existing &&
+      ((existing.state !== 'queued' && existing.state !== 'running') ||
+        updated.updatedAt < existing.updatedAt)
+    ) {
+      return current;
+    }
+    jobs[index] = updated;
+  }
+  return {
+    jobs,
+    activeJobs: jobs.filter((job) => job.state === 'queued' || job.state === 'running'),
+    terminalJobs: jobs.filter((job) => job.state !== 'queued' && job.state !== 'running'),
+    verificationJobs: jobs.filter((job) => job.pendingVerificationReason !== null),
+  };
 }
 
 /** Classify a single job for a window banner. */

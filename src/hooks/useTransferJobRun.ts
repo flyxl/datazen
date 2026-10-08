@@ -25,7 +25,8 @@
  *   Job* instead of writing anything.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { JobDetails, JobView } from '@datazen/backend-client';
 import {
   localBackendScope,
   transferJobCommands,
@@ -104,11 +105,7 @@ export interface TransferJobRun {
   cancelUnknownJob: boolean;
   /** Non-null only once a verdict can be stated. */
   verdict: MigrationJobVerdict | null;
-  /**
-   * The backend-minted Job id this window may address a cancel to, or `null`
-   * while an apply is in flight (the backend mints that id internally and only
-   * returns it once the run is terminal).
-   */
+  /** The addressable active apply Job id, or the prepare Job id before apply. */
   cancelTargetJobId: string | null;
   /** True while the apply Job is queued/running — disables "apply" but not "cancel". */
   isInFlight: boolean;
@@ -143,6 +140,67 @@ export function classifyTransferRunFailure(error: unknown): TransferRunFailure {
   return { kind: 'other', message };
 }
 
+function isAmbiguousApplySubmissionError(error: unknown): boolean {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === 'OutcomeUnknown' || code === 'ServiceUnavailable' || code === 'Timeout') {
+      return true;
+    }
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /timed?\s*out|timeout|transport|connection\s+(?:closed|lost)|ack(?:nowledg(?:e)?ment)?\s+lost|outcome\s+unknown/i.test(
+    message,
+  );
+}
+
+function isActiveJobState(state: string): boolean {
+  return state === 'queued' || state === 'running';
+}
+
+/** Merge the generic Job read model into the transfer admission receipt. */
+function projectApplyJobView(current: TransferApplyJobView, latest: JobView): TransferApplyJobView {
+  const active = isActiveJobState(latest.state);
+  return {
+    ...current,
+    state: latest.state,
+    // A terminal summary is not the durable report. Keep it unknown until the
+    // details query returns boundaries and the exact recovery disposition.
+    effectOutcome: active ? latest.effectOutcome ?? current.effectOutcome : 'unknown',
+    progress: latest.progress,
+    artifactIds: [...latest.artifactIds],
+    cancelled: latest.state === 'cancelled',
+    partial:
+      latest.effectOutcome === 'partiallyApplied' || latest.effectOutcome === 'unknown',
+  };
+}
+
+/** Merge the durable terminal read model into the live apply receipt. */
+function projectApplyJobDetails(
+  current: TransferApplyJobView,
+  details: JobDetails,
+): TransferApplyJobView {
+  const { job } = details;
+  return {
+    ...current,
+    jobId: job.jobId,
+    kind: job.kind,
+    state: job.state,
+    effectOutcome: job.effectOutcome ?? 'unknown',
+    progress: job.progress,
+    planId: details.planId ?? current.planId,
+    planDigest: details.planDigest ?? current.planDigest,
+    selectionRevision: details.selectionRevision ?? current.selectionRevision,
+    commitBoundaries: [...details.commitBoundaries],
+    artifactIds: [...job.artifactIds],
+    cancelled: job.state === 'cancelled',
+    partial: job.effectOutcome === 'partiallyApplied' || job.effectOutcome === 'unknown',
+    error: job.error ?? null,
+    recoveryVerdict: details.recovery?.verdict ?? null,
+    recoveryResumeThrough: details.recovery?.resumeThrough ?? null,
+    recoveryReason: details.recovery?.reasonCode ?? null,
+  };
+}
+
 export function useTransferJobRun(): TransferJobRun {
   const [phase, setPhase] = useState<TransferRunPhase>('idle');
   const [prepareView, setPrepareView] = useState<TransferPrepareJobView | null>(null);
@@ -151,6 +209,8 @@ export function useTransferJobRun(): TransferJobRun {
   const [cancelRequested, setCancelRequested] = useState(false);
   const [cancelAcknowledged, setCancelAcknowledged] = useState(false);
   const [cancelUnknownJob, setCancelUnknownJob] = useState(false);
+  const [watchJobId, setWatchJobId] = useState<string | null>(null);
+  const [terminalDetailsJobId, setTerminalDetailsJobId] = useState<string | null>(null);
   /**
    * Refs, not state: `requestCancel` must not re-render the whole wizard just
    * to read ids the previous calls already returned.
@@ -233,24 +293,173 @@ export function useTransferJobRun(): TransferJobRun {
         selection: { sourceTables: input.sourceTables ?? null },
         confirmedDestructive: input.confirmedDestructive,
         backendScope: localBackendScope(),
-        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+        // A plan is spent once, so its id is a stable and naturally scoped
+        // receipt key even when a caller did not supply an explicit one.
+        idempotencyKey: input.idempotencyKey ?? `data-transfer/apply/${prepareView.planId}`,
       };
+      let view: TransferApplyJobView;
       try {
-        const view = await transferJobCommands.apply(request);
-        applyJobIdRef.current = view.jobId;
-        setApplyView(view);
-        setPhase('settled');
-        return view;
+        view = await transferJobCommands.apply(request);
       } catch (error) {
-        // A refusal carries no Job view, so there is nothing to verify — the
-        // UI must not draw a boundary list it cannot back with evidence.
-        fail(classifyTransferRunFailure(error));
-        setPhase('blocked');
-        return null;
+        // The apply may have been accepted even though its receipt was lost.
+        // Repeat the exact request once under the same idempotency key: the
+        // backend replays the original Job view and cannot create a second
+        // write. A new key here would turn an ambiguous response into a second
+        // execution attempt.
+        if (!isAmbiguousApplySubmissionError(error)) {
+          fail(classifyTransferRunFailure(error));
+          setPhase('blocked');
+          return null;
+        }
+        try {
+          view = await transferJobCommands.apply(request);
+        } catch (recoveryError) {
+          fail(classifyTransferRunFailure(recoveryError));
+          setPhase('blocked');
+          return null;
+        }
       }
+
+      // `apply_data_transfer_job` answers at admission. Publish the returned id
+      // before the next render so cancellation and polling address this Job
+      // while it is still queued or running.
+      applyJobIdRef.current = view.jobId;
+      const active = isActiveJobState(view.state);
+      setApplyView(
+        active
+          ? view
+          : {
+              ...view,
+              effectOutcome: 'unknown',
+              recoveryVerdict: 'pendingVerification',
+              recoveryReason: 'jobDetailsPending',
+            },
+      );
+      setPhase(active ? 'applying' : 'settled');
+      setWatchJobId(active ? view.jobId : null);
+      setTerminalDetailsJobId(active ? null : view.jobId);
+      return view;
     },
     [prepareView, phase, applyView],
   );
+
+  useEffect(() => {
+    if (!terminalDetailsJobId) return undefined;
+    let stopped = false;
+    const jobId = terminalDetailsJobId;
+
+    void transferJobCommands
+      .getDetails(jobId)
+      .then((details) => {
+        if (stopped || applyJobIdRef.current !== jobId) return;
+        if (details.job.jobId !== jobId || details.job.kind !== 'dataTransferApply') {
+          throw new Error('jobDetailsIdentityMismatch');
+        }
+        setApplyView((current) =>
+          current?.jobId === jobId ? projectApplyJobDetails(current, details) : current,
+        );
+        if (details.job.cancelRequested) {
+          setCancelRequested(true);
+          setCancelAcknowledged(true);
+          setCancelUnknownJob(false);
+        }
+        if (isActiveJobState(details.job.state)) {
+          setPhase('applying');
+          setWatchJobId(jobId);
+        }
+        setTerminalDetailsJobId(null);
+      })
+      .catch(() => {
+        if (stopped || applyJobIdRef.current !== jobId) return;
+        setApplyView((current) =>
+          current?.jobId === jobId
+            ? {
+                ...current,
+                effectOutcome: 'unknown',
+                recoveryVerdict: 'pendingVerification',
+                recoveryReason: 'jobDetailsUnavailable',
+              }
+            : current,
+        );
+        setTerminalDetailsJobId(null);
+      });
+
+    return () => {
+      stopped = true;
+    };
+  }, [terminalDetailsJobId]);
+
+  useEffect(() => {
+    if (!watchJobId) return undefined;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const poll = async (): Promise<void> => {
+      try {
+        const latest = await transferJobCommands.getJob(watchJobId);
+        if (stopped || applyJobIdRef.current !== watchJobId) return;
+        setApplyView((current) =>
+          current?.jobId === watchJobId ? projectApplyJobView(current, latest) : current,
+        );
+        if (latest.cancelRequested) {
+          setCancelRequested(true);
+          setCancelAcknowledged(true);
+          setCancelUnknownJob(false);
+        }
+        if (!isActiveJobState(latest.state)) {
+          let terminalState = latest.state;
+          try {
+            const details = await transferJobCommands.getDetails(watchJobId);
+            if (stopped || applyJobIdRef.current !== watchJobId) return;
+            if (
+              details.job.jobId !== watchJobId ||
+              details.job.kind !== 'dataTransferApply'
+            ) {
+              throw new Error('jobDetailsIdentityMismatch');
+            }
+            terminalState = details.job.state;
+            setApplyView((current) =>
+              current?.jobId === watchJobId ? projectApplyJobDetails(current, details) : current,
+            );
+            if (details.job.cancelRequested) {
+              setCancelRequested(true);
+              setCancelAcknowledged(true);
+              setCancelUnknownJob(false);
+            }
+          } catch {
+            if (stopped || applyJobIdRef.current !== watchJobId) return;
+            // A missing durable report must stay uncertain; the lightweight
+            // summary cannot prove terminal boundaries or a recovery verdict.
+            setApplyView((current) =>
+              current?.jobId === watchJobId
+                ? {
+                    ...current,
+                    effectOutcome: 'unknown',
+                    recoveryVerdict: 'pendingVerification',
+                    recoveryReason: 'jobDetailsUnavailable',
+                  }
+                : current,
+            );
+          }
+          if (!isActiveJobState(terminalState)) {
+            setPhase('settled');
+            setWatchJobId(null);
+            return;
+          }
+        }
+      } catch {
+        // A failed poll is a temporary loss of observation, not a job failure.
+        // Retry against the same id; never resubmit the apply to recover status.
+      }
+      if (!stopped) timer = setTimeout(() => void poll(), 1500);
+    };
+
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [watchJobId]);
 
   /**
    * Sends `cancel_data_transfer` when — and only when — the frontend holds the
@@ -263,11 +472,17 @@ export function useTransferJobRun(): TransferJobRun {
    */
   const requestCancel = useCallback(async (): Promise<boolean> => {
     setCancelRequested(true);
-    // An apply is in flight: the backend minted that Job id internally and only
-    // returns it after the run settles, so there is nothing to address a cancel
-    // to. Latch the intent and say so, rather than cancelling the prepare Job
-    // and reporting a success that had no effect on the write.
-    const jobId = applyJobIdRef.current ?? (phase === 'applying' ? null : prepareJobIdRef.current);
+    // Apply admission returns its Job id before the worker settles. Use that id
+    // while active; if admission has not returned yet, there is no apply id to
+    // guess and cancelling the prepare Job would not stop the write.
+    const applyJobId = applyJobIdRef.current;
+    const jobId = applyJobId
+      ? applyView && isActiveJobState(applyView.state)
+        ? applyJobId
+        : null
+      : phase === 'applying'
+        ? null
+        : prepareJobIdRef.current;
     if (!jobId) {
       setCancelAcknowledged(false);
       setCancelUnknownJob(true);
@@ -283,7 +498,7 @@ export function useTransferJobRun(): TransferJobRun {
       fail(classifyTransferRunFailure(error));
       return false;
     }
-  }, [phase]);
+  }, [phase, applyView]);
 
   const reset = useCallback(() => {
     setPhase('idle');
@@ -295,6 +510,8 @@ export function useTransferJobRun(): TransferJobRun {
     setCancelUnknownJob(false);
     prepareJobIdRef.current = null;
     applyJobIdRef.current = null;
+    setWatchJobId(null);
+    setTerminalDetailsJobId(null);
   }, []);
 
   const verdict = useMemo<MigrationJobVerdict | null>(() => {
@@ -317,8 +534,13 @@ export function useTransferJobRun(): TransferJobRun {
     });
   }, [applyView, cancelRequested]);
 
-  const cancelTargetJobId =
-    applyJobIdRef.current ?? (phase === 'applying' ? null : prepareView?.jobId ?? null);
+  const cancelTargetJobId = applyJobIdRef.current
+    ? applyView && isActiveJobState(applyView.state)
+      ? applyJobIdRef.current
+      : null
+    : phase === 'applying'
+      ? null
+      : prepareView?.jobId ?? null;
   const isInFlight = applyView ? isMigrationJobInFlight(applyView.state) : phase === 'applying';
 
   return {

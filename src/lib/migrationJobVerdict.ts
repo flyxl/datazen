@@ -22,7 +22,13 @@
  *    defect this type exists to prevent.
  */
 
-import type { CommitBoundary, Counter, EffectOutcome, JobState } from '@datazen/backend-client';
+import type {
+  CommitBoundary,
+  Counter,
+  EffectOutcome,
+  JobRecoveryVerdict,
+  JobState,
+} from '@datazen/backend-client';
 
 /** The cancel races, as the *user* must see them. */
 export type CancelDisposition =
@@ -44,8 +50,8 @@ export type CancelDisposition =
 /** How strongly the UI must phrase the result. `uncertain` outranks `partial`. */
 export type VerdictSeverity = 'ok' | 'partial' | 'uncertain' | 'failed';
 
-/** The three values `apply_*_job` can put in `recoveryVerdict`. */
-export type RecoveryVerdict = 'resumeAfterVerify' | 'reject' | 'requireManualReview';
+/** Shared recovery verdict contract from `@datazen/backend-client`. */
+export type RecoveryVerdict = JobRecoveryVerdict;
 
 /** Why the verdict is uncertain, so the UI can explain it instead of guessing. */
 export type UncertaintyReason =
@@ -196,11 +202,29 @@ export function deriveUncertainty(
    * boundary to prove them.
    */
   hasUnbackedCommit = false,
+  /** True when rows or any boundary contradict a `notExecuted` receipt. */
+  hasWriteEvidence = false,
 ): UncertaintyReason {
   if (effectOutcome === 'unknown') return 'effectOutcomeUnknown';
   if (recoveryVerdict === 'requireManualReview') return 'manualReviewRequired';
   if (recoveryVerdict === 'reject') return 'recoveryRejected';
-  if (recoveryVerdict && recoveryVerdict !== 'resumeAfterVerify') return 'recoveryRejected';
+  // Core records this exact pair when durable admission survived a restart
+  // before dispatch. It proves the handler never ran, so this is a known
+  // not-started result. Keep other `notExecuted` reasons fail-closed: only the
+  // stable reason code below carries this specific meaning.
+  if (recoveryVerdict === 'notExecuted') {
+    if (effectOutcome !== 'notStarted' || recoveryReason !== 'notDispatchedAfterRestart') {
+      return 'recoveryRejected';
+    }
+    if (hasWriteEvidence) return 'recoveryRejected';
+  }
+  if (
+    recoveryVerdict &&
+    recoveryVerdict !== 'resumeAfterVerify' &&
+    recoveryVerdict !== 'notExecuted'
+  ) {
+    return 'recoveryRejected';
+  }
   // A recorded reason is the fail-closed evidence even when the verdict
   // itself stays optimistic; "no checkpoint was recorded" is the canonical one.
   if (recoveryReason && /no checkpoint/i.test(recoveryReason)) return 'noCheckpoint';
@@ -238,6 +262,9 @@ export function deriveMigrationJobVerdict(
     // `EVIDENCE_*` markers, and both must fail closed.
     boundaries.length === 0 &&
       ((input.committedRows ?? 0) > 0 || (input.unknownRows ?? 0) > 0),
+    boundaries.length > 0 ||
+      (input.committedRows ?? 0) > 0 ||
+      (input.unknownRows ?? 0) > 0,
   );
   // "Completed" means finished *and* certifiable. An `effectOutcome` of
   // `completed` alone is the backend's progress flag, not proof — letting it

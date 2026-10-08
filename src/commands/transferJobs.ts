@@ -16,10 +16,14 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { parseJobView } from '@datazen/backend-client';
 import type {
   CommitBoundary,
   EffectOutcome,
+  JobDetails,
   JobProgress,
+  JobRecoveryVerdict,
+  JobView,
   JobState,
   Timestamp,
 } from '@datazen/backend-client';
@@ -113,7 +117,7 @@ export interface TransferApplyJobView {
   /** True when this reply came from the idempotent receipt, not a fresh write. */
   replayed: boolean;
   error: string | null;
-  recoveryVerdict: string;
+  recoveryVerdict: JobRecoveryVerdict | null;
   recoveryResumeThrough: number | null;
   recoveryReason: string | null;
   createdAt?: Timestamp;
@@ -121,7 +125,13 @@ export interface TransferApplyJobView {
 }
 
 type DataTransferJobE2eCall = {
-  command: 'prepare_data_transfer_job' | 'apply_data_transfer_job' | 'cancel_data_transfer';
+  command:
+    | 'prepare_data_transfer_job'
+    | 'apply_data_transfer_job'
+    | 'get_job'
+    | 'get_transfer_job_details'
+    | 'list_jobs'
+    | 'cancel_data_transfer';
   args: unknown;
   response?: unknown;
   error?: string;
@@ -170,6 +180,21 @@ export const transferJobCommands = {
     captureJobCall('apply_data_transfer_job', request, () =>
       invoke<TransferApplyJobView>('apply_data_transfer_job', { request }),
     ),
+
+  /** Read the live P5 Job projection after an accepted apply receipt. */
+  getJob: (jobId: string) =>
+    captureJobCall('get_job', { jobId }, () => invoke<JobView>('get_job', { jobId })),
+
+  /** Read durable terminal evidence after a window reopens. */
+  getDetails: (jobId: string) =>
+    captureJobCall('get_transfer_job_details', { jobId }, async () => {
+      const details = await invoke<JobDetails>('get_transfer_job_details', { jobId });
+      return { ...details, job: parseJobView(details.job) };
+    }),
+
+  /** List Job projections for window hydration and lost-receipt recovery. */
+  listJobs: (filter: Record<string, unknown> = {}) =>
+    captureJobCall('list_jobs', filter, () => invoke<JobView[]>('list_jobs', filter)),
 
   /**
    * Cancel **request**. The same command the legacy path used — the Job

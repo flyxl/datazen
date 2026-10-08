@@ -15,6 +15,7 @@ import {
   boundBackendClient,
   hydrateMigrationJobs,
   MIGRATION_JOB_KINDS,
+  updateMigrationJobProjection,
   type MigrationJobHydration,
   type MigrationWindow,
 } from '../lib/migrationJobHydration';
@@ -40,7 +41,7 @@ export function useMigrationJobHydration(
     const client = boundBackendClient();
     if (!client) {
       setHydrationError(null);
-      setHydration({ activeJobs: [], verificationJobs: [] });
+      setHydration({ jobs: [], activeJobs: [], terminalJobs: [], verificationJobs: [] });
       return () => {
         unsubscribed = true;
       };
@@ -53,16 +54,38 @@ export function useMigrationJobHydration(
         setHydration(result);
         setHydrationError(null);
         // Re-subscribe to each active job's view; on error the watch loop
-        // re-fetches on its next tick (re-subscribe semantics), and `stop()`
-        // is the only unmount action — no backend state is released.
+        // re-fetches on its next tick (re-subscribe semantics). Each update
+        // replaces the job in the returned projection, including moving it
+        // from active to terminal when the backend settles it.
         for (const job of result.activeJobs) {
           if (unsubscribed) break;
-          watchHandles.push(
-            client.watchJob(job.jobId, () => undefined, {
+          const handleState = { stopped: false };
+          const watch = client.watchJob(
+            job.jobId,
+            (latest) => {
+              if (unsubscribed || cancelledRef.current) return;
+              setHydration((current) =>
+                current ? updateMigrationJobProjection(current, latest) : current,
+              );
+              if (latest.state !== 'queued' && latest.state !== 'running') {
+                if (!handleState.stopped) {
+                  handleState.stopped = true;
+                  watch?.stop();
+                }
+              }
+            },
+            {
               intervalMs: 2000,
               onError: () => undefined,
-            }),
+            },
           );
+          watchHandles.push({
+            stop: () => {
+              if (handleState.stopped) return;
+              handleState.stopped = true;
+              watch.stop();
+            },
+          });
         }
       } catch (error) {
         if (unsubscribed || cancelledRef.current) return;
