@@ -494,6 +494,12 @@ fn summary_for_table(
 pub(crate) struct StoredSyncPlan {
     pub(crate) source_db_session_id: String,
     pub(crate) target_db_session_id: String,
+    /// Stable endpoint identities live only in this process-local plan. Live
+    /// dbSessionIds are runtime bindings and never enter durable job payloads.
+    pub(crate) source_endpoint_identity:
+        Option<crate::services::migration_endpoint::EndpointIdentity>,
+    pub(crate) target_endpoint_identity:
+        Option<crate::services::migration_endpoint::EndpointIdentity>,
     pub(crate) source_database: String,
     pub(crate) target_database: String,
     pub(crate) source_schema: Option<String>,
@@ -590,6 +596,8 @@ impl SyncPlanStore {
         let plan = StoredSyncPlan {
             source_db_session_id,
             target_db_session_id,
+            source_endpoint_identity: None,
+            target_endpoint_identity: None,
             source_database,
             target_database,
             source_schema,
@@ -636,6 +644,24 @@ impl SyncPlanStore {
             return Err("sync plan has expired; return to comparison".into());
         }
         Ok(plan.clone())
+    }
+
+    fn attach_endpoint_identities(
+        &self,
+        id: &str,
+        source: crate::services::migration_endpoint::EndpointIdentity,
+        target: crate::services::migration_endpoint::EndpointIdentity,
+    ) -> Result<(), String> {
+        let mut plans = self
+            .plans
+            .lock()
+            .map_err(|_| "sync plan registry is unavailable".to_string())?;
+        let plan = plans.get_mut(id).ok_or_else(|| {
+            "sync plan is unknown or has expired; return to comparison".to_string()
+        })?;
+        plan.source_endpoint_identity = Some(source);
+        plan.target_endpoint_identity = Some(target);
+        Ok(())
     }
 
     /// Claim before a write starts.  A claimed plan remains consumed even if
@@ -742,6 +768,31 @@ pub(crate) fn issue_plan_with_store_and_id(
 
 pub(crate) fn peek_plan(id: &str) -> Result<StoredSyncPlan, String> {
     global_store().peek(id)
+}
+
+pub(crate) fn attach_endpoint_identities(
+    id: &str,
+    source: crate::services::migration_endpoint::EndpointIdentity,
+    target: crate::services::migration_endpoint::EndpointIdentity,
+) -> Result<(), String> {
+    global_store().attach_endpoint_identities(id, source, target)
+}
+
+pub(crate) fn preview_for_plan(id: &str) -> Result<SyncComparisonPreview, String> {
+    let plan = peek_plan(id)?;
+    let tables = plan
+        .comparison
+        .summaries()?
+        .iter()
+        .map(|table| summary_for_table(id, table))
+        .collect();
+    Ok(SyncComparisonPreview {
+        contract_version: SYNC_COMPARISON_CONTRACT_VERSION,
+        plan_id: id.to_string(),
+        selection_revision: plan.selection_revision,
+        tables,
+        page_size: SYNC_COMPARISON_PAGE_SIZE,
+    })
 }
 
 pub(crate) fn claim_plan(id: &str) -> Result<StoredSyncPlan, String> {

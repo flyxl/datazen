@@ -5,7 +5,7 @@
 //! That proves the handler's own refusals, but a handler that is never reached
 //! passes them too — so every test here enters through the production path
 //! (`compare_data_sync_impl`, `jobs::submit_prepare`, `jobs::submit_apply`,
-//! `exec::execute_data_sync_plan_impl`) and reaches real drivers through
+//! `exec::start_data_sync_apply_job_impl`) and reaches real drivers through
 //! `ConnectionManager`. The gate chain, the budget reservation, the plan
 //! consumption and the effect-outcome projection are therefore part of what is
 //! asserted, not decoration around it.
@@ -31,11 +31,10 @@ use crate::testing::mock_driver::MockDriverOptions;
 
 use super::super::error::CommandError;
 use super::super::AppState;
-use super::exec::execute_data_sync_plan_impl;
 use super::host::state::{self, StoredSelection};
 use super::jobs::{submit_apply, submit_prepare, SyncJobOutcome};
 use super::plans::{
-    SyncComparisonPreview, SyncRunRequest, SyncRunSelection, SyncSelectionMode, SyncTableSelection,
+    SyncComparisonPreview, SyncRunSelection, SyncSelectionMode, SyncTableSelection,
 };
 
 /// Mock rows are `(id, name)` pairs against the default `id/name` schema.
@@ -169,7 +168,7 @@ pub fn insert_selection(revision: u64) -> SyncRunSelection {
 /// Hand the apply Job its single-consumption selection, exactly as the IPC layer
 /// does after the user confirms.
 pub fn confirm(plan_id: &str, selection: SyncRunSelection) {
-    state::store_selection(
+    state::store_confirmed_selection(
         plan_id,
         StoredSelection {
             selection,
@@ -391,8 +390,8 @@ async fn the_budget_refuses_a_self_overlapping_pair_before_the_compare_reads_a_r
     .await
     .unwrap_err();
     assert!(
-        error.to_string().contains("is both read and written"),
-        "the budget overlap detector must refuse the self-sync pair, got: {error}"
+        error.to_string().contains("dispatchNotStarted"),
+        "the durable endpoint budget must refuse the self-sync pair before reads, got: {error}"
     );
     assert_eq!(
         test.mock.open_transaction_count(),
@@ -406,7 +405,7 @@ async fn the_budget_refuses_a_self_overlapping_pair_before_the_compare_reads_a_r
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn a_failed_apply_still_consumes_the_plan_id_for_the_legacy_path() {
+async fn preflight_target_drift_does_not_consume_the_durable_plan_receipt() {
     let pair = diff_pair("failed-consumes").await;
     let preview = compare(&pair, None, None).await.unwrap();
     confirm(
@@ -418,6 +417,33 @@ async fn a_failed_apply_still_consumes_the_plan_id_for_the_legacy_path() {
     pair.target
         .set_table_schema_for_test("app", "users", drifted_schema());
 
+    let error = match submit_apply(
+        pair.state(),
+        ApplySpec {
+            plan_id: preview.plan_id.clone(),
+            selection_revision: preview.selection_revision,
+            options: SyncOptions::default(),
+        },
+        None,
+    )
+    .await
+    {
+        Err(error) => error,
+        Ok(_) => panic!("preflight must refuse a stale target before accepting an apply"),
+    };
+    assert!(
+        error.to_string().contains("target schema/key changed"),
+        "the stale target must be refused before durable accept, got: {error}"
+    );
+    assert_eq!(pair.target.open_transaction_count(), 0);
+
+    // The refusal happened before durable accept, so repairing the target may
+    // use the same reviewed plan. Once accepted, retries return that receipt.
+    pair.target.set_table_schema_for_test(
+        "app",
+        "users",
+        MockDriver::default_table_schema("users"),
+    );
     let outcome = submit_apply(
         pair.state(),
         ApplySpec {
@@ -428,49 +454,14 @@ async fn a_failed_apply_still_consumes_the_plan_id_for_the_legacy_path() {
         None,
     )
     .await
-    .expect("a stale plan is a reported Job outcome, not a submit error");
-
-    assert_eq!(outcome.state, JobState::Failed);
-    assert_eq!(
-        outcome.effect,
-        EffectOutcome::RolledBack,
-        "nothing was committed, so the effect must not claim progress"
-    );
-    assert!(
-        message(&outcome).contains("PlanStale"),
-        "the host-recorded reason must survive to the caller, got: {}",
-        message(&outcome)
-    );
-    assert_eq!(pair.target.open_transaction_count(), 0);
-
-    // CM-41: consumption happens at `accept`, so a *failed* apply still spends
-    // the planId. The drift is repaired first, otherwise the legacy
-    // pre-flight fingerprint guard (exec.rs `validate_plan_context`) would
-    // refuse for the wrong reason and never reach `accept` at all.
-    pair.target.set_table_schema_for_test(
-        "app",
-        "users",
-        MockDriver::default_table_schema("users"),
-    );
-    confirm(
-        &preview.plan_id,
-        insert_selection(preview.selection_revision),
-    );
-    let error = execute_data_sync_plan_impl(
-        pair.state(),
-        SyncRunRequest {
-            plan_id: preview.plan_id.clone(),
-            selection: insert_selection(preview.selection_revision),
-            options: SyncOptions::default(),
-            job_id: None,
-        },
-    )
-    .await
-    .unwrap_err();
-    assert!(
-        error.to_string().contains("already submitted"),
-        "the legacy path must find the planId consumed, got: {error}"
-    );
+    .expect("the unconsumed plan can be applied after the target is repaired");
+    assert_eq!(outcome.state, JobState::Succeeded);
+    assert_eq!(outcome.committed, 1);
+    let receipt = super::jobs::find_apply_receipt_for_plan(pair.state(), &preview.plan_id)
+        .await
+        .unwrap()
+        .expect("the accepted durable apply receipt remains discoverable");
+    assert_eq!(receipt.state, JobState::Succeeded);
 }
 
 #[tokio::test]
@@ -491,25 +482,24 @@ async fn two_concurrent_applies_of_one_plan_id_commit_once() {
         submit_apply(pair.state(), spec(), None),
         submit_apply(pair.state(), spec(), None),
     );
-    let (winner, loser) = match (first, second) {
-        (Ok(winner), Err(loser)) | (Err(loser), Ok(winner)) => (winner, loser),
-        (Ok(_), Ok(_)) => panic!("two submits must not both own one planId"),
-        (Err(first), Err(second)) => panic!("the winner must not fail: {first} / {second}"),
-    };
-
-    assert!(
-        loser.to_string().contains("already submitted"),
-        "the loser replays the idempotency receipt instead of running, got: {loser}"
+    let first = first.expect("first request receives an accepted durable job");
+    let second = second.expect("retry receives the same durable receipt");
+    assert_eq!(
+        first.job_id, second.job_id,
+        "one plan has one apply receipt"
     );
     assert_eq!(
-        winner.state,
+        first.state,
         JobState::Succeeded,
         "the winner commits; host said: {}",
-        message(&winner)
+        message(&first)
     );
     assert_eq!(
-        winner.committed, 1,
-        "the row is written exactly once, whatever the loser did"
+        second.state,
+        JobState::Succeeded,
+        "the retry observes the original completed job"
     );
+    assert_eq!(first.committed, 1, "the durable receipt records one row");
+    assert_eq!(second.committed, 1, "a retry does not change the receipt");
     assert_eq!(pair.target.open_transaction_count(), 0);
 }

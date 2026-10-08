@@ -857,7 +857,10 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
     .unwrap_err();
     // The shared mock always returns the same page and cannot honor keyset WHERE.
     // This must fail rather than treating a repeated page as end-of-stream.
-    assert!(err.to_string().contains("not strictly increasing"));
+    assert!(
+        err.to_string().contains("stageFailed"),
+        "a malformed keyset stream must fail the durable prepare job closed, got: {err}"
+    );
     assert_eq!(test.mock.open_transaction_count(), 0);
 }
 
@@ -952,7 +955,7 @@ async fn legacy_apply_rejects_unreviewed_recomparison() {
     )
     .await
     .unwrap_err();
-    assert!(err.to_string().contains("reviewed row selection"), "{err}");
+    assert!(err.to_string().contains("durable Data Sync job"), "{err}");
 }
 
 #[test]

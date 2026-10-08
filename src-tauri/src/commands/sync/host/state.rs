@@ -1,23 +1,24 @@
-//! Process-global, AppState-free kernel shared by every Data Sync Job.
+//! Runtime-only Data Sync artifacts and selections.
 //!
-//! Only AppState-free items live here (artifact store, reviewed selection,
-//! JobRepository/BudgetLedger/Clock). `ConnectionManager` and
-//! `SyncAdapterRegistry` stay per-submission, because they are bound to a
-//! specific `AppState` instance.
-//!
-//! There is deliberately **no cancel store** here. Cancel intent belongs to
-//! the Job record: `JobRepository::request_cancel` records it and the runtime's
-//! per-stage watcher flips the stage's own `CancelToken`, which is the same bit
-//! the handler polls between pages and batches (§5.3). A host-owned flag would
-//! be a second, unverifiable copy of that intent.
+//! Durable Job definitions, state, progress, commit boundaries, and recovery
+//! evidence live in `DesktopJobHost`. This module keeps the row-bearing
+//! ChangeSet and reviewed selection only in process memory; neither contains a
+//! live session id in durable storage. Cancel intent belongs to the Job record.
 
 use std::collections::HashMap;
+#[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
+#[cfg(test)]
+use std::sync::Arc;
+use std::sync::{LazyLock, Mutex, MutexGuard};
 
+#[cfg(test)]
 use datazen_platform_api::context::RequestContext;
+#[cfg(test)]
 use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
+#[cfg(test)]
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
+#[cfg(test)]
 use datazen_runtime::job::{InMemoryJobRepository, SharedClock};
 
 use crate::data_sync::job::ChangeSetArtifact;
@@ -26,8 +27,10 @@ use super::super::plans::SyncRunSelection;
 use crate::data_sync::SyncOptions;
 
 /// Deterministic clock origin: Job bookkeeping must not depend on wall time.
+#[cfg(test)]
 const CLOCK_ORIGIN: &str = "2026-01-01T00:00:00.000Z";
 /// Claim TTL for the in-process Job repository (seconds).
+#[cfg(test)]
 const CLAIM_TTL_SECS: i64 = 300;
 
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -36,31 +39,37 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+#[cfg(test)]
 static CLOCK: LazyLock<Arc<SharedClock>> =
     LazyLock::new(|| Arc::new(SharedClock::at(CLOCK_ORIGIN)));
 
+#[cfg(test)]
 static REPOSITORY: LazyLock<Arc<InMemoryJobRepository>> =
     LazyLock::new(|| Arc::new(InMemoryJobRepository::new(CLOCK.clone(), CLAIM_TTL_SECS)));
 
+#[cfg(test)]
 static LEDGER: LazyLock<Arc<Mutex<BudgetLedger>>> = LazyLock::new(|| {
     Arc::new(Mutex::new(BudgetLedger::new(
         BudgetConfig::desktop_default(),
     )))
 });
 
-/// Frozen ChangeSet Artifacts, keyed by planId (§2.1: the artifact is the
-/// only thing that survives the prepare Job).
+/// Frozen ChangeSet artifacts, keyed by planId. They are process-local and
+/// must be rebuilt through a fresh compare after application restart.
 static ARTIFACTS: LazyLock<Mutex<HashMap<String, ChangeSetArtifact>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Reviewed selection per planId, captured before the apply Job is accepted.
+/// Reviewed selection per planId, installed after durable apply acceptance.
 /// The client can only narrow it — never add rows or rewrite values (§5.1).
 static SELECTIONS: LazyLock<Mutex<HashMap<String, StoredSelection>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Last host-observed failure per Job. The runtime does not carry handler
-/// error text, so the IPC message is reconstructed from this plus the Job
-/// state / effect outcome (see `jobs::message_for`).
+#[cfg(test)]
+static CONFIRMED_SELECTIONS: LazyLock<Mutex<HashMap<String, StoredSelection>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Last host-observed failure per Job for in-process diagnostics. Durable
+/// details contain only stable safe reason codes.
 static FAILURES: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -72,6 +81,7 @@ pub(crate) struct StoredSelection {
 
 /// Desktop Jobs are single-tenant and run in-process, so the context only
 /// has to identify the client session and the accepting request.
+#[cfg(test)]
 pub(crate) fn desktop_context() -> RequestContext {
     RequestContext::new(
         OrganizationId::new("datazen-desktop"),
@@ -83,29 +93,36 @@ pub(crate) fn desktop_context() -> RequestContext {
     )
 }
 
+#[cfg(test)]
 pub(crate) fn clock() -> Arc<SharedClock> {
     CLOCK.clone()
 }
 
+#[cfg(test)]
 pub(crate) fn repository() -> Arc<InMemoryJobRepository> {
     REPOSITORY.clone()
 }
 
+#[cfg(test)]
 pub(crate) fn ledger() -> Arc<Mutex<BudgetLedger>> {
     LEDGER.clone()
 }
 
 /// Monotonic millisecond stamp for budget claims/releases. It is a counter,
 /// not wall time, so permit evidence is reproducible across runs.
+#[cfg(test)]
 static CLOCK_MS: LazyLock<AtomicU64> = LazyLock::new(|| AtomicU64::new(CLOCK_ORIGIN_MS));
 
+#[cfg(test)]
 const CLOCK_ORIGIN_MS: u64 = 1_767_225_600_000;
 
+#[cfg(test)]
 pub(crate) fn now_ms() -> u64 {
     CLOCK_MS.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Drop the per-Job state once the Job reached a terminal state.
+/// Drop test-only in-memory job state.
+#[cfg(test)]
 pub(crate) fn forget(job_id: &str) {
     lock(&FAILURES).remove(job_id);
 }
@@ -135,10 +152,21 @@ pub(crate) fn take_selection(plan_id: &str) -> Option<StoredSelection> {
     lock(&SELECTIONS).remove(plan_id)
 }
 
+#[cfg(test)]
+pub(crate) fn store_confirmed_selection(plan_id: &str, selection: StoredSelection) {
+    lock(&CONFIRMED_SELECTIONS).insert(plan_id.to_string(), selection);
+}
+
+#[cfg(test)]
+pub(crate) fn confirmed_selection(plan_id: &str) -> Option<StoredSelection> {
+    lock(&CONFIRMED_SELECTIONS).get(plan_id).cloned()
+}
+
 pub(crate) fn record_failure(job_id: &str, message: impl Into<String>) {
     lock(&FAILURES).insert(job_id.to_string(), message.into());
 }
 
+#[cfg(test)]
 pub(crate) fn failure_of(job_id: &str) -> Option<String> {
     lock(&FAILURES).get(job_id).cloned()
 }

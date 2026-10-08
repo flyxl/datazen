@@ -15,7 +15,10 @@ use crate::data_sync::{
     TableChangeSet, TableMapping, TableMappingStatus, TableResult,
 };
 use crate::services::metadata_schema;
+use futures_util::FutureExt;
 use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// Compare: statement-only pre-flight, then a `dataSyncPrepare` Job freezes the
@@ -40,159 +43,363 @@ pub(crate) async fn compare_data_sync_impl(
     mappings: &[TableMapping],
     source_filters: &HashMap<String, SyncSourceFilter>,
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
-    let cancelled = match job_id.as_deref() {
-        Some(id) => crate::services::job_registry::ensure_job(id)
-            .await
-            .load(std::sync::atomic::Ordering::SeqCst),
-        None => false,
-    };
-    let src_config = state
+    let job_id = job_id
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or_else(|| format!("data-sync-{}", Uuid::new_v4()));
+    let accepted = start_data_sync_prepare_job_impl(
+        state,
+        source_db_session_id,
+        target_db_session_id,
+        tables,
+        job_id,
+        source_database,
+        target_database,
+        source_schema,
+        target_schema,
+        options,
+        source_filters.clone(),
+        Some(mappings.to_vec()),
+    )
+    .await?;
+    let finished = super::jobs::wait_for_durable_terminal(state, accepted.job_id.as_str()).await?;
+    if finished.state != JobState::Succeeded {
+        return Err(CommandError::Validation(finished.error.unwrap_or_else(
+            || "the Data Sync comparison job did not complete; compare again".to_string(),
+        )));
+    }
+
+    let mut last_error = None;
+    for _ in 0..40 {
+        match super::job_api::preview_for_durable_job(state, finished.job_id.as_str()).await {
+            Ok(preview) => return Ok(preview),
+            Err(error) => {
+                last_error = Some(error);
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| {
+        CommandError::Validation("the comparison completed without a review plan".into())
+    }))
+}
+
+/// Accept a durable prepare job, then return its id while a detached dispatcher
+/// performs the row comparison and builds the process-local review projection.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn start_data_sync_prepare_job_impl(
+    state: &AppState,
+    source_db_session_id: String,
+    target_db_session_id: String,
+    tables: Vec<String>,
+    job_id: String,
+    source_database: Option<String>,
+    target_database: Option<String>,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+    options: SyncOptions,
+    source_filters: HashMap<String, SyncSourceFilter>,
+    mapping_overrides: Option<Vec<TableMapping>>,
+) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
+    let source_config = state
         .connection_manager
         .get_session_config(&source_db_session_id)
         .await
-        .cmd_err("compare_data_sync")?;
-    let tgt_config = state
+        .cmd_err("start_data_sync_prepare_job")?;
+    let target_config = state
         .connection_manager
         .get_session_config(&target_db_session_id)
         .await
-        .cmd_err("compare_data_sync")?;
-    let source_database_name =
-        super::types::resolve_db_name(source_database.as_deref(), src_config.database.as_deref());
-    let target_database_name =
-        super::types::resolve_db_name(target_database.as_deref(), tgt_config.database.as_deref());
-    // Same-family gate: §4 forbids cross-family Data Sync, and it must be
-    // decided before any Job is accepted.
+        .cmd_err("start_data_sync_prepare_job")?;
+    let source_database_name = super::types::resolve_db_name(
+        source_database.as_deref(),
+        source_config.database.as_deref(),
+    );
+    let target_database_name = super::types::resolve_db_name(
+        target_database.as_deref(),
+        target_config.database.as_deref(),
+    );
     crate::data_sync::require_data_sync_family(
-        &src_config.database_type,
-        &tgt_config.database_type,
+        &source_config.database_type,
+        &target_config.database_type,
     )?;
-    let (src_driver, src_handle) = state
+    let (source_driver, _) = state
         .connection_manager
         .get_session(&source_db_session_id)
         .await
-        .cmd_err("compare_data_sync")?;
-    let (tgt_driver, tgt_handle) = state
+        .cmd_err("start_data_sync_prepare_job")?;
+    let (target_driver, _) = state
         .connection_manager
         .get_session(&target_db_session_id)
         .await
-        .cmd_err("compare_data_sync")?;
-    let source_schema = metadata_schema(
-        src_driver.as_ref(),
+        .cmd_err("start_data_sync_prepare_job")?;
+    let source_schema_name = metadata_schema(
+        source_driver.as_ref(),
         source_schema.as_deref(),
         None,
-        src_config.schema.as_deref(),
+        source_config.schema.as_deref(),
     );
-    let target_schema = metadata_schema(
-        tgt_driver.as_ref(),
+    let target_schema_name = metadata_schema(
+        target_driver.as_ref(),
         target_schema.as_deref(),
         None,
-        tgt_config.schema.as_deref(),
+        target_config.schema.as_deref(),
     );
-    let inspected = inspect_data_sync_impl(
+
+    let sessions = super::job_api::own_sessions(
         state,
-        source_db_session_id.clone(),
-        target_db_session_id.clone(),
-        Some(source_database_name.clone()),
-        Some(target_database_name.clone()),
-        source_schema.clone(),
-        target_schema.clone(),
-        mappings,
+        &source_db_session_id,
+        &target_db_session_id,
+        &source_database_name,
+        &target_database_name,
+        source_schema_name.as_deref(),
+        target_schema_name.as_deref(),
     )
     .await?;
-    let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
-    state
-        .sync_adapters
-        .ensure_pair(&src_config.database_type, &tgt_config.database_type)
-        .map_err(CommandError::Validation)?;
-    // The prepare Job's host resolves the same key contracts per table; this
-    // pre-flight keeps "driver has no Data Sync key contract" an IPC-edge
-    // rejection instead of a stage failure.
-    if state
-        .sync_adapters
-        .get_source(&src_config.database_type)
-        .is_none()
-    {
-        return Err(CommandError::Validation(
-            "source driver has no Data Sync key contract".into(),
-        ));
+    let mapping_overrides = mapping_overrides.unwrap_or_default();
+    let preflight = async {
+        let (source_driver, _) = state
+            .connection_manager
+            .get_session(&sessions.source_id)
+            .await
+            .cmd_err("start_data_sync_prepare_job")?;
+        let (target_driver, _) = state
+            .connection_manager
+            .get_session(&sessions.target_id)
+            .await
+            .cmd_err("start_data_sync_prepare_job")?;
+        let inspected = inspect_data_sync_impl(
+            state,
+            sessions.source_id.clone(),
+            sessions.target_id.clone(),
+            Some(source_database_name.clone()),
+            Some(target_database_name.clone()),
+            source_schema_name.clone(),
+            target_schema_name.clone(),
+            &mapping_overrides,
+        )
+        .await?;
+        state
+            .sync_adapters
+            .ensure_pair(&source_config.database_type, &target_config.database_type)
+            .map_err(CommandError::Validation)?;
+        if state
+            .sync_adapters
+            .get_source(&source_config.database_type)
+            .is_none()
+            || state
+                .sync_adapters
+                .get_source(&target_config.database_type)
+                .is_none()
+        {
+            return Err(CommandError::Validation(
+                "a Data Sync endpoint has no compatible key contract".into(),
+            ));
+        }
+        options.validate().map_err(CommandError::from)?;
+        let wanted = tables.into_iter().collect::<std::collections::HashSet<_>>();
+        let order = inspected
+            .iter()
+            .map(|table| (table.source_table.clone(), table.target_table.clone()))
+            .collect::<Vec<_>>();
+        let selected = inspected
+            .iter()
+            .filter(|table| {
+                table.status == TableMappingStatus::Matched
+                    && (wanted.is_empty() || wanted.contains(&table.source_table))
+            })
+            .map(|table| (table.source_table.clone(), table.target_table.clone()))
+            .collect::<Vec<_>>();
+        let skipped = inspected
+            .into_iter()
+            .filter(|table| {
+                table.status != TableMappingStatus::Matched
+                    || (!wanted.is_empty() && !wanted.contains(&table.source_table))
+            })
+            .collect::<Vec<_>>();
+        let mappings = selected
+            .iter()
+            .map(|pair| {
+                let mut mapping = mapping_overrides
+                    .iter()
+                    .find(|mapping| {
+                        mapping.enabled
+                            && mapping.source_table == pair.0
+                            && mapping.target_table == pair.1
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| mapping_of(pair, &source_filters));
+                if let Some(filter) = source_filters.get(&pair.0) {
+                    mapping.source_filter = Some(filter.clone());
+                }
+                mapping
+            })
+            .collect::<Vec<_>>();
+        Ok::<_, CommandError>((
+            order,
+            selected,
+            skipped,
+            mappings,
+            source_driver,
+            target_driver,
+        ))
     }
-    if state
-        .sync_adapters
-        .get_source(&tgt_config.database_type)
-        .is_none()
+    .await;
+    let (order, _selected, skipped, mappings, _source_driver, _target_driver) = match preflight {
+        Ok(value) => value,
+        Err(error) => {
+            super::job_api::release_sessions(state, &sessions.ids()).await;
+            return Err(error);
+        }
+    };
+
+    let plan_id = Uuid::new_v4().to_string();
+    let source_endpoint = Endpoint {
+        connection_id: sessions.source_id.clone(),
+        database: source_database_name.clone(),
+        schema: source_schema_name.clone(),
+    };
+    let target_endpoint = Endpoint {
+        connection_id: sessions.target_id.clone(),
+        database: target_database_name.clone(),
+        schema: target_schema_name.clone(),
+    };
+    let spec = PrepareSpec {
+        source: source_endpoint.clone(),
+        target: target_endpoint.clone(),
+        mappings,
+        options: options.clone(),
+        filters: source_filters,
+        plan_id: Some(plan_id.clone()),
+    };
+    let handler = Arc::new(crate::data_sync::job::DataSyncHandler::for_prepare(
+        spec,
+        super::jobs::recording_host(
+            state,
+            source_endpoint,
+            target_endpoint,
+            HashMap::new(),
+            &job_id,
+        ),
+    ));
+    let endpoints = sessions.endpoints();
+    let payload = serde_json::json!({
+        "planVersion": crate::data_sync::job::body::PLAN_VERSION,
+        "handlerVersion": crate::data_sync::job::body::HANDLER_VERSION,
+        "checkpointVersion": crate::data_sync::job::body::CHECKPOINT_VERSION,
+        "planId": plan_id.clone(),
+        "recoveryTargets": sessions.recovery_targets(),
+        "recoveryPolicy": "verify-only",
+    });
+    let admission = match super::jobs::admit_durable(
+        state,
+        &job_id,
+        super::jobs::PREPARE_KIND,
+        payload,
+        &format!("data-sync-prepare:{job_id}"),
+        &endpoints,
+    )
+    .await
     {
-        return Err(CommandError::Validation(
-            "target driver has no Data Sync key contract".into(),
-        ));
+        Ok(admission) => admission,
+        Err(error) => {
+            super::job_api::release_sessions(state, &sessions.ids()).await;
+            return Err(error);
+        }
+    };
+    if !admission.dispatch {
+        super::job_api::release_sessions(state, &sessions.ids()).await;
+        return Ok(admission.view);
     }
 
-    options.validate().map_err(CommandError::from)?;
-    if cancelled {
-        return Err(CommandError::from(
-            crate::data_sync::DataSyncError::cancelled("compare cancelled"),
-        ));
-    }
-    // §2.1: the row scan is no longer an inline loop. Tables that are not
-    // matched (or outside `wanted`) never reach the Job: they keep their
-    // inspected status and are appended to the rebuilt store afterwards, so
-    // the review panel still sees every table exactly once, in inspect order.
-    let order: Vec<(String, String)> = inspected
-        .iter()
-        .map(|table| (table.source_table.clone(), table.target_table.clone()))
-        .collect();
-    let scanned_names: Vec<(String, String)> = inspected
-        .iter()
-        .filter(|table| {
-            table.status == TableMappingStatus::Matched
-                && (wanted.is_empty() || wanted.contains(&table.source_table))
+    let background_state = state.clone();
+    let owned_ids = sessions.ids();
+    let owned_source_id = sessions.source_id.clone();
+    let owned_target_id = sessions.target_id.clone();
+    let source_identity = crate::services::migration_endpoint::EndpointIdentity {
+        connection_id: sessions.source_endpoint.connection_id.clone(),
+        service_key: sessions.source_endpoint.service_key.clone(),
+    };
+    let target_identity = crate::services::migration_endpoint::EndpointIdentity {
+        connection_id: sessions.target_endpoint.connection_id.clone(),
+        service_key: sessions.target_endpoint.service_key.clone(),
+    };
+    let prepared_job_id = admission.job_id.as_str().to_string();
+    let dispatch_endpoints = endpoints.clone();
+    let accepted_view = admission.view.clone();
+    tauri::async_runtime::spawn(async move {
+        let work = AssertUnwindSafe(async {
+            super::jobs::dispatch_durable(
+                &background_state,
+                &admission,
+                &dispatch_endpoints,
+                handler,
+            )
+            .await;
+            match super::jobs::read_durable_job(&background_state, &prepared_job_id).await {
+                Ok(view) if view.state == JobState::Succeeded => {
+                    if finish_async_prepare_preview(
+                        &background_state,
+                        &prepared_job_id,
+                        &plan_id,
+                        &source_db_session_id,
+                        &target_db_session_id,
+                        &owned_source_id,
+                        &owned_target_id,
+                        &source_database_name,
+                        &target_database_name,
+                        source_schema_name.as_deref(),
+                        target_schema_name.as_deref(),
+                        options,
+                        skipped,
+                        order,
+                        target_config.read_only,
+                        source_identity,
+                        target_identity,
+                    )
+                    .await
+                    .is_err()
+                    {
+                        super::host::state::record_failure(
+                            &prepared_job_id,
+                            "preparePreviewUnavailable",
+                        );
+                    }
+                }
+                _ => {}
+            }
         })
-        .map(|table| (table.source_table.clone(), table.target_table.clone()))
-        .collect();
-    let skipped: Vec<TableResult> = inspected
-        .into_iter()
-        .filter(|table| {
-            table.status != TableMappingStatus::Matched
-                || (!wanted.is_empty() && !wanted.contains(&table.source_table))
-        })
-        .collect();
-    // The plan id is minted here, not by the Job, so the preview can name the
-    // plan before it exists; the prepare Job is bound to it idempotently.
-    let plan_id = Uuid::new_v4().to_string();
-    let prepare = super::jobs::submit_prepare(
-        state,
-        PrepareSpec {
-            source: Endpoint {
-                connection_id: source_db_session_id.clone(),
-                database: source_database_name.clone(),
-                schema: source_schema.clone(),
-            },
-            target: Endpoint {
-                connection_id: target_db_session_id.clone(),
-                database: target_database_name.clone(),
-                schema: target_schema.clone(),
-            },
-            mappings: scanned_names
-                .iter()
-                .map(|table| mapping_of(table, source_filters))
-                .collect(),
-            options: options.clone(),
-            filters: source_filters.clone(),
-            plan_id: Some(plan_id.clone()),
-        },
-        job_id.clone(),
-    )
-    .await?;
-    if prepare.state != JobState::Succeeded {
-        return Err(CommandError::Validation(prepare.message.unwrap_or_else(
-            || "the compare job did not reach a terminal state; compare again".to_string(),
-        )));
-    }
-    // The frozen ChangeSet Artifact is the only row source for the preview
-    // (§2.3): client rows never re-enter the plan.
-    let artifact = super::host::state::load_artifact(&plan_id).ok_or_else(|| {
-        CommandError::Validation(
-            "the compare job produced no frozen ChangeSet; compare again".into(),
-        )
+        .catch_unwind()
+        .await;
+        if work.is_err() {
+            super::host::state::record_failure(&prepared_job_id, "prepareWorkerPanicked");
+        }
+        super::job_api::release_sessions(&background_state, &owned_ids).await;
+    });
+    Ok(accepted_view)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn finish_async_prepare_preview(
+    state: &AppState,
+    job_id: &str,
+    plan_id: &str,
+    source_plan_session_id: &str,
+    target_plan_session_id: &str,
+    source_job_session_id: &str,
+    target_job_session_id: &str,
+    source_database: &str,
+    target_database: &str,
+    source_schema: Option<&str>,
+    target_schema: Option<&str>,
+    options: SyncOptions,
+    skipped: Vec<TableResult>,
+    order: Vec<(String, String)>,
+    target_read_only: bool,
+    source_identity: crate::services::migration_endpoint::EndpointIdentity,
+    target_identity: crate::services::migration_endpoint::EndpointIdentity,
+) -> Result<(), CommandError> {
+    let artifact = super::host::state::load_artifact(plan_id).ok_or_else(|| {
+        CommandError::Validation("the prepare job produced no frozen ChangeSet".into())
     })?;
     let mut rebuilt = artifact_view::comparison_from_artifact(&artifact);
     rebuilt.tables.extend(skipped);
@@ -205,8 +412,16 @@ pub(crate) async fn compare_data_sync_impl(
             .unwrap_or(usize::MAX)
     });
     let comparison = ComparisonStore::from_comparison(rebuilt).map_err(CommandError::Validation)?;
-    let source_schema_name = source_schema.clone();
-    let target_schema_name = target_schema.clone();
+    let (source_driver, source_handle) = state
+        .connection_manager
+        .get_session(source_job_session_id)
+        .await
+        .cmd_err("finish_data_sync_prepare_job")?;
+    let (target_driver, target_handle) = state
+        .connection_manager
+        .get_session(target_job_session_id)
+        .await
+        .cmd_err("finish_data_sync_prepare_job")?;
     let mut source_entries = Vec::new();
     let mut target_entries = Vec::new();
     for table in comparison
@@ -215,24 +430,24 @@ pub(crate) async fn compare_data_sync_impl(
         .into_iter()
         .filter(|table| table.table.status == TableMappingStatus::Matched)
     {
-        let source_schema_snapshot = src_driver
+        let source_schema_snapshot = source_driver
             .get_table_schema(
-                &src_handle,
+                &source_handle,
                 &table.table.source_table,
-                &source_database_name,
-                source_schema.as_deref(),
+                source_database,
+                source_schema,
             )
             .await
-            .cmd_err("compare_data_sync")?;
-        let target_schema_snapshot = tgt_driver
+            .cmd_err("finish_data_sync_prepare_job")?;
+        let target_schema_snapshot = target_driver
             .get_table_schema(
-                &tgt_handle,
+                &target_handle,
                 &table.table.target_table,
-                &target_database_name,
-                target_schema.as_deref(),
+                target_database,
+                target_schema,
             )
             .await
-            .cmd_err("compare_data_sync")?;
+            .cmd_err("finish_data_sync_prepare_job")?;
         source_entries.push((
             table.table.source_table.clone(),
             Some(source_schema_snapshot),
@@ -244,35 +459,33 @@ pub(crate) async fn compare_data_sync_impl(
             table.table.source_filter.clone(),
         ));
     }
-    let source_schema_fingerprint = plans::fingerprint_relations_with_filters(
-        &source_database_name,
-        source_schema_name.as_deref(),
-        source_entries,
-    )
-    .map_err(CommandError::Validation)?;
-    let target_schema_fingerprint = plans::fingerprint_relations_with_filters(
-        &target_database_name,
-        target_schema_name.as_deref(),
-        target_entries,
-    )
-    .map_err(CommandError::Validation)?;
+    let source_fingerprint =
+        plans::fingerprint_relations_with_filters(source_database, source_schema, source_entries)
+            .map_err(CommandError::Validation)?;
+    let target_fingerprint =
+        plans::fingerprint_relations_with_filters(target_database, target_schema, target_entries)
+            .map_err(CommandError::Validation)?;
     plans::issue_plan_with_store_and_id(
-        plan_id,
-        source_db_session_id,
-        target_db_session_id,
-        source_database_name,
-        target_database_name,
-        source_schema_name,
-        target_schema_name,
-        src_driver.as_ref(),
-        tgt_driver.as_ref(),
-        source_schema_fingerprint,
-        target_schema_fingerprint,
+        plan_id.to_string(),
+        source_plan_session_id.to_string(),
+        target_plan_session_id.to_string(),
+        source_database.to_string(),
+        target_database.to_string(),
+        source_schema.map(str::to_string),
+        target_schema.map(str::to_string),
+        source_driver.as_ref(),
+        target_driver.as_ref(),
+        source_fingerprint,
+        target_fingerprint,
         comparison,
         options,
-        tgt_config.read_only,
+        target_read_only,
     )
-    .map_err(CommandError::Validation)
+    .map_err(CommandError::Validation)?;
+    plans::attach_endpoint_identities(plan_id, source_identity, target_identity)
+        .map_err(CommandError::Validation)?;
+    tracing::debug!(job_id, "Data Sync review plan is ready");
+    Ok(())
 }
 
 /// Project one already-inspected matched table back into the frozen
@@ -646,7 +859,9 @@ pub(crate) async fn apply_data_sync_impl(
         target_schema,
         options,
     );
-    Err(CommandError::Validation("legacy apply cannot preserve reviewed row selection; compare, generate selected SQL, then execute that plan".into()))
+    Err(CommandError::Validation(
+        "legacy apply has no reviewed plan; compare and submit the reviewed selection as a durable Data Sync job".into(),
+    ))
 }
 
 /// Re-run inspect gates for selected tables; returns stale table names when structure/PK drifted.

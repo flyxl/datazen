@@ -45,6 +45,10 @@ pub enum DataSyncHandler {
     Apply {
         spec: ApplySpec,
         host: Arc<dyn DataSyncHost>,
+        /// Runtime-only endpoint overrides for a freshly authorized apply.
+        /// They are deliberately absent from ApplySpec and durable payloads.
+        source_endpoint: Option<crate::model::Endpoint>,
+        target_endpoint: Option<crate::model::Endpoint>,
     },
 }
 
@@ -54,7 +58,26 @@ impl DataSyncHandler {
     }
 
     pub fn for_apply(spec: ApplySpec, host: Arc<dyn DataSyncHost>) -> Self {
-        Self::Apply { spec, host }
+        Self::Apply {
+            spec,
+            host,
+            source_endpoint: None,
+            target_endpoint: None,
+        }
+    }
+
+    pub fn for_apply_with_endpoints(
+        spec: ApplySpec,
+        host: Arc<dyn DataSyncHost>,
+        source_endpoint: crate::model::Endpoint,
+        target_endpoint: crate::model::Endpoint,
+    ) -> Self {
+        Self::Apply {
+            spec,
+            host,
+            source_endpoint: Some(source_endpoint),
+            target_endpoint: Some(target_endpoint),
+        }
     }
 
     fn kind_str(&self) -> &'static str {

@@ -54,7 +54,7 @@ use tokio::sync::{mpsc, Semaphore};
 use crate::data_sync::job::body::ApplySpec;
 use crate::data_sync::SyncOptions;
 
-use super::jobs::{cancel_job, submit_apply};
+use super::jobs::{cancel_durable_job, submit_apply};
 use super::jobs_contract::{compare, confirm, insert_selection, message, Pair};
 
 /// The runtime's cancel watcher polls the Job record every
@@ -401,7 +401,7 @@ async fn cancelling_a_running_apply_stops_the_writes_the_executor_would_still_se
              cancel; nothing reached the gate within {PATIENCE:?}"
         );
         assert!(
-            cancel_job(&job_id).await,
+            cancel_durable_job(pair.state(), &job_id).await.unwrap(),
             "cancel_job must report the cancel it just recorded"
         );
         tokio::time::sleep(SETTLE).await;
@@ -439,9 +439,8 @@ async fn cancelling_a_running_apply_stops_the_writes_the_executor_would_still_se
         "the cancelled batch lease must be released before the Job reports"
     );
     assert!(
-        message(&outcome).starts_with("execute cancelled"),
-        "the reason must be the apply stage's own ApplyFailure::cancelled, \
-         got: {}",
+        message(&outcome).contains("cancelled"),
+        "the durable apply result must preserve the cancellation reason, got: {}",
         message(&outcome)
     );
 }
@@ -480,7 +479,7 @@ async fn a_cancel_that_arrives_before_the_job_exists_still_stops_the_apply() {
     // No Job record exists for this id yet, so the kernel half of cancel_job
     // reports NotFound and only the window registry accepts the intent.
     assert!(
-        cancel_job(&job_id).await,
+        cancel_durable_job(pair.state(), &job_id).await.unwrap(),
         "the window registry must accept a cancel for an id it has not seen"
     );
 
