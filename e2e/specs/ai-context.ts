@@ -24,7 +24,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
+describe('AI 上下文引用 E2E 测试', () => {
   let mainWindow: string;
   let contextDir: string;
 
@@ -52,13 +52,13 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
     }
   });
 
-  it('CTX-001: context_get_dir returns a valid path', async () => {
+  it('context_get_dir returns a valid path', async () => {
     const dir = await invokeBackend<string>('context_get_dir');
     expect(dir).toBeTruthy();
     expect(typeof dir).toBe('string');
   });
 
-  it('CTX-002: context_list_files lists seeded files', async () => {
+  it('context_list_files lists seeded files', async () => {
     const entries = await invokeBackend<any[]>('context_list_files', { query: null });
     expect(entries.length).toBeGreaterThanOrEqual(2);
 
@@ -67,13 +67,13 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
     expect(names).toContain('relations.md');
   });
 
-  it('CTX-003: context_list_files supports query filtering', async () => {
+  it('context_list_files supports query filtering', async () => {
     const entries = await invokeBackend<any[]>('context_list_files', { query: 'schema' });
     expect(entries.length).toBe(1);
     expect(entries[0].name).toBe('schema.sql');
   });
 
-  it('CTX-004: context_read_files returns file contents', async () => {
+  it('context_read_files returns file contents', async () => {
     const results = await invokeBackend<[string, string][]>('context_read_files', {
       paths: ['schema.sql'],
     });
@@ -82,7 +82,7 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
     expect(results[0][1]).toContain('CREATE TABLE users');
   });
 
-  it('CTX-005: context_read_files rejects path traversal', async () => {
+  it('context_read_files rejects path traversal', async () => {
     let error: string | null = null;
     try {
       await invokeBackend('context_read_files', {
@@ -94,7 +94,7 @@ describe('AI 上下文引用 E2E 测试 (CTX-001~CTX-006)', () => {
     expect(error).toBeTruthy();
   });
 
-  it('CTX-006: AI Chat panel shows @ context picker trigger', async () => {
+  it('AI Chat panel shows @ context picker trigger', async () => {
     const windows = await openConnectionWindow();
     mainWindow = windows.mainWindow;
 

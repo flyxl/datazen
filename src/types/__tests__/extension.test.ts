@@ -7,9 +7,9 @@ import {
 } from '../wapp';
 
 /**
- * Contract fixtures (F3 test agent): these payloads mirror exactly what the
- * Rust side serializes — `WappSummary` in src-tauri/src/commands/wapps.rs
- * and `WappManifest` in src-tauri/src/wapps/manifest.rs, both
+ * Contract fixtures: these payloads mirror exactly what the Rust side
+ * serializes — `WappSummary` in src-tauri/src/commands/wapps.rs and
+ * `WappManifest` in src-tauri/src/wapps/manifest.rs, both
  * `#[serde(rename_all = "camelCase")]` with `skip_serializing_if` on the
  * optional fields. The `satisfies` clauses make drift a compile error.
  */

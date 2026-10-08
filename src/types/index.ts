@@ -208,7 +208,7 @@ export interface QueryHistoryPage {
 }
 
 /**
- * A saved statement. Since the §2.6 file-first switch this is one `.sql` file
+ * A saved statement. Since the file-first switch this is one `.sql` file
  * under the favorites root, named by `id`, with these fields in `--`
  * front-matter above the statement.
  */
@@ -251,7 +251,7 @@ import type { MonitorSettings } from './dashboard';
 
 export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
 
-/** §4.2 Configurable SQL beautifier options. */
+/** Configurable SQL beautifier options. */
 export interface SqlFormatOptions {
   keywordCase: 'upper' | 'lower' | 'preserve';
   indentStyle: '2spaces' | '4spaces' | 'tab';
@@ -262,7 +262,7 @@ export interface SqlFormatOptions {
 }
 
 /**
- * §5.1 Which SQL the Execute action submits when there is no explicit selection.
+ * Which SQL the Execute action submits when there is no explicit selection.
  * `ask` prompts whenever the script holds more than one statement.
  */
 export type SqlExecutionStrategy =
@@ -326,11 +326,11 @@ export interface AppSettings {
   keymapPreset?: 'default' | 'dbeaver' | 'navicat';
   /** User-customized keyboard shortcut overrides keyed by action ID. */
   customKeymap?: Partial<Record<string, string>>;
-  /** §4.2 SQL beautifier configuration. */
+  /** SQL beautifier configuration. */
   sqlFormatOptions?: SqlFormatOptions;
-  /** §5.1 Execute-action statement targeting strategy. Default 'current_statement'. */
+  /** Execute-action statement targeting strategy. Default 'current_statement'. */
   sqlExecutionStrategy?: SqlExecutionStrategy;
-  /** §6.4 User-defined SQL snippets, merged after the built-in library. */
+  /** User-defined SQL snippets, merged after the built-in library. */
   sqlSnippets?: Array<{ id: string; prefix: string; descriptionKey: string; template: string }>;
   /** SQL syntax highlighting color preset ('default' follows the active theme pack). */
   sqlSyntaxTheme?: string;

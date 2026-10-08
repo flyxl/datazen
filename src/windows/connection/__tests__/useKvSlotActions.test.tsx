@@ -1,8 +1,8 @@
 /**
- * W3-A §1.2 — the host's single KV slot action dispatcher.
+ * The host's single KV slot action dispatcher.
  *
  * The `useI18n` mock echoes keys back verbatim, so every copy assertion below
- * targets an i18n *key* rather than visible English (PRD §7-6).
+ * targets an i18n *key* rather than visible English.
  */
 import { act, fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,7 +43,7 @@ registerTranslations({
   },
 });
 
-/** Every action this build has no executor for (W3-A §1.2 degradation path). */
+/** Every action this build has no executor for (degradation path). */
 const UNWIRED: KvSlotAction[] = [
   { type: 'newKey' },
   { type: 'import' },
@@ -211,7 +211,7 @@ describe('useKvSlotActions — flushDb passes the existing write gate (I-6)', ()
 
   it('executes no driver command on the host side even after consent', async () => {
     // The gate is the host's job; running FLUSHDB is the driver's `flush_db`,
-    // and the host naming a driver command is the hardcoding PRD §7-4 forbids.
+    // and the host naming a driver command is the hardcoding this layering forbids.
     // So consent ends at the warning, and the warning arrives only *after* it.
     const onRefresh = vi.fn();
     render(<Harness onRefresh={onRefresh} />);

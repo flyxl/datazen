@@ -1,11 +1,11 @@
 /**
  * Fail-closed refusal notices for the P5 migration tools.
  *
- * §8 (`backendScope`) and §6.2 (8 MiB `PipelineBudget`) are **refusals**: the
- * backend declined to run because a rule was not satisfied. Presenting either
- * as a warning, a retry prompt or a soft failure would tell the user something
- * the backend did not agree to, which is the one thing these two rules exist
- * to prevent. §10's consumed `planId` is the same shape — the correct action is
+ * `backendScope` and the 8 MiB `PipelineBudget` are **refusals**: the backend
+ * declined to run because a rule was not satisfied. Presenting either as a
+ * warning, a retry prompt or a soft failure would tell the user something the
+ * backend did not agree to, which is the one thing these two rules exist to
+ * prevent. A consumed `planId` is the same shape — the correct action is
  * re-review, not "try again".
  *
  * Domain-free by design: Schema Diff and Data Sync render the same four arms
@@ -62,7 +62,7 @@ function offersReReview(kind: TransferRunFailureKind): boolean {
 
 export interface MigrationJobFailureNoticeProps {
   failure: TransferRunFailure;
-  /** §10: mint a new plan. Never "apply the same plan again". */
+  /** Mint a new plan. Never "apply the same plan again". */
   onReReview?: () => void;
   onDismiss?: () => void;
   testIdPrefix?: string;

@@ -439,7 +439,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
           handlers: {
             onCloseDatabase: dbSessionId
               ? () => {
-                  // F5: release the driver-side pool for this database and drop
+                  // Release the driver-side pool for this database and drop
                   // the tree's local cache, so the next expand re-fetches. The
                   // session itself stays connected. Tabs opened on that database
                   // are closed with it: their backend resources are gone, so

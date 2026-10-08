@@ -19,7 +19,7 @@ vi.mock('../../../components/DataTable/DetailPanel', () => ({
 }));
 
 vi.mock('../../../components/ai/AiChatPanel', () => ({
-  // Echoes the KV context the drawer built, so the §1.3 wiring is observable
+  // Echoes the KV context the drawer built, so the wiring is observable
   // without dragging the real panel (and its stores) into this test.
   AiChatPanel: ({ kvContext }: { kvContext?: { keyName: string } | null }) => (
     <div data-testid="mock-ai-chat-panel" data-kv-key-name={kvContext?.keyName ?? ''} />
@@ -154,13 +154,13 @@ describe('ContentViewDrawers key-props sidebar slot', () => {
 });
 
 /**
- * W3-A §1.3: the assistant sidebar is fed from the panel's relay through a leaf
+ * The assistant sidebar is fed from the panel's relay through a leaf
  * subscription (`useKvSlotSelectedKey`), not from a prop threaded down by the
  * workspace — otherwise every click in the driver's key tree would re-render the
  * whole content column. `null` context (no key, relational panel) must reach the
  * panel as "no KV facts", never as an empty block.
  */
-describe('ContentViewDrawers AI KV context (W3-A §1.3)', () => {
+describe('ContentViewDrawers AI KV context', () => {
   it('builds the context from the key the relay reports', () => {
     const kvPanelState = createKvSlotState();
     kvPanelState.selectKey('user:42');
@@ -184,7 +184,7 @@ describe('ContentViewDrawers AI KV context (W3-A §1.3)', () => {
       'app:cache:session:1',
     );
 
-    // Clearing the selection drops the facts again (§1.3 empty state, both ways).
+    // Clearing the selection drops the facts again (empty state, both ways).
     act(() => {
       kvPanelState.selectKey(null);
     });

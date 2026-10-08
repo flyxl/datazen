@@ -1,13 +1,13 @@
 /**
- * Plumbing contract for the transfer-specific result surface (T2 / A7-A9).
+ * Plumbing contract for the transfer-specific result surface.
  *
  * The panel itself holds no verdict logic — that lives in
  * `src/lib/migrationJobVerdict.ts` and the shared
  * `MigrationJobVerdictPanel`. What is pinned here is only the glue a window
  * depends on:
  *
- *  - the §9 plan identity of the apply reply is exposed as `data-*` (DTJ-002
- *    replays exactly those values over IPC), and
+ *  - the plan identity of the apply reply is exposed as `data-*` (the e2e
+ *    spec replays exactly those values over IPC), and
  *  - a refusal with no admitted Job renders *no* verdict panel at all, because
  *    drawing one would imply a run happened.
  */
@@ -56,7 +56,7 @@ function timestamp(value: number): CommitBoundary['committedAt'] {
   return read;
 }
 
-/** A §7 boundary carrying evidence, i.e. one the verdict may certify. */
+/** A boundary carrying evidence, i.e. one the verdict may certify. */
 function commitBoundary(stage: string): CommitBoundary {
   return {
     stageId: id(stage),
@@ -149,7 +149,7 @@ describe('TransferJobResultPanel', () => {
   });
 
   it('renders no plan and no verdict when the backend refused before admitting a Job', () => {
-    // §8 backendScope: nothing ran, so there is no plan and no outcome.
+    // backendScope: nothing ran, so there is no plan and no outcome.
     render(
       <TransferJobResultPanel
         run={settledRun({

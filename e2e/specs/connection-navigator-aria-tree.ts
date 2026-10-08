@@ -1,7 +1,7 @@
 /**
  * 连接导航树的 ARIA tree 语义回归 (NAV-ARIA)
  *
- * 覆盖 `feature/tree-cleanup` 为 Host 连接树补齐的 tree 语义：
+ * 覆盖 Host 连接树补齐的 tree 语义：
  *   - 唯一的 `role="tree"` 容器；
  *   - 每一行节点都是 `role="treeitem"` 且带合法 `aria-level`（1 基、正整数）；
  *   - `aria-level` 不跳级：任何 L>1 的行都存在一个 L-1 的祖先链；
@@ -10,15 +10,14 @@
  * 定位一律走 `data-*`（`data-section-header` / `data-group-header` /
  * `data-conn-item` / `data-tree-node` / `data-cat-id` / `data-item-name` /
  * `data-db-name` / `data-empty-group`），不使用任何视口几何坐标反查，
- * 符合 AGENTS.md「数据属性解耦」。
+ * 符合仓库的「数据属性解耦」约定。
  *
  * 虚拟化说明：树按 `role="tree"` → 绝对定位行包装 div → 行节点渲染，
  * 窗口外的行根本没有 DOM。因此本文件的所有结构断言都只针对**当前已渲染
  * 的窗口切片**，并用「滚动前后重叠行的 aria-level 完全一致」来证明
  * `aria-level` 属于行本身而不是它被画在窗口的哪个位置。
  *
- * 本文件随 tree-cleanup 一起合入，尚未实际执行
- * （需要 `pnpm tauri:build:webdriver` 产出 webdriver binary）。
+ * 本文件尚未实际执行：需要 `pnpm tauri:build:webdriver` 产出 webdriver binary。
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';

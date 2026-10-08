@@ -1,7 +1,7 @@
 /**
- * F6 RPC bridge — security-focused regression suite (test agent).
+ * RPC bridge — security-focused regression suite (test agent).
  *
- * Scope (PRD §3 / §4.4):
+ * Scope:
  * - credential whitelist proof for context APIs (constructive mapping)
  * - stack-trace / audit-log non-leakage
  * - permission gate vs malformed envelopes, case variants and
@@ -193,7 +193,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('F6 security: credential whitelisting', () => {
+describe('bridge security: credential whitelisting', () => {
   it('getConnections (IPC fallback path) emits constructively whitelisted summaries', async () => {
     getConnectionsIpcMock.mockResolvedValue([LEAKY_CONFIG]);
     handle = attachBridge(frame.iframe, {
@@ -289,7 +289,7 @@ describe('F6 security: credential whitelisting', () => {
   });
 });
 
-describe('F6 security: permission gate vs malformed routing', () => {
+describe('bridge security: permission gate vs malformed routing', () => {
   function attachAll(): WappBridgeHandle {
     return attachBridge(frame.iframe, {
       wappId: 'p',
@@ -336,7 +336,7 @@ describe('F6 security: permission gate vs malformed routing', () => {
       expect(JSON.stringify(frame.sent)).not.toContain('MUST_NOT_APPEAR');
       expect(driverExecuteMock).not.toHaveBeenCalled();
       expect(storageGetMock).not.toHaveBeenCalled();
-      // Own-property routing (BUG-F6-01 fix): prototype members are unknown
+      // Own-property routing: prototype members are unknown
       // APIs, not permission failures.
       expect((sent!.payload as { code: string }).code).toBe(BRIDGE_ERROR.NOT_FOUND);
       // Prototype chain itself remains intact.
@@ -376,7 +376,7 @@ describe('F6 security: permission gate vs malformed routing', () => {
   });
 });
 
-describe('F6 security: malformed command.invoke payloads', () => {
+describe('bridge security: malformed command.invoke payloads', () => {
   beforeEach(() => {
     handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['command:invoke'] });
   });
@@ -447,7 +447,7 @@ describe('F6 security: malformed command.invoke payloads', () => {
   });
 });
 
-describe('F6 security: prototype pollution containment', () => {
+describe('bridge security: prototype pollution containment', () => {
   afterEach(() => {
     handle?.detach();
     // Hard guarantee the suite leaves the realm unharmed.
@@ -507,7 +507,7 @@ describe('F6 security: prototype pollution containment', () => {
   });
 });
 
-describe('F6 security: storage & notify payload validation', () => {
+describe('bridge security: storage & notify payload validation', () => {
   it('rejects missing / empty / non-string storage keys with E_BAD_REQUEST', async () => {
     handle = attachBridge(frame.iframe, { wappId: 'p', permissions: ['storage:local'] });
     const types = ['storage.get', 'storage.set', 'storage.remove'];
@@ -546,7 +546,7 @@ describe('F6 security: storage & notify payload validation', () => {
   });
 });
 
-describe('F6 security: cross-iframe source isolation', () => {
+describe('bridge security: cross-iframe source isolation', () => {
   it('routes messages strictly by event.source — sibling frames cannot cross-talk', async () => {
     const a = makeFakeIframe();
     const b = makeFakeIframe();
@@ -595,7 +595,7 @@ describe('F6 security: cross-iframe source isolation', () => {
   });
 });
 
-describe('F6 security: rate-limit quota lifecycle', () => {
+describe('bridge security: rate-limit quota lifecycle', () => {
   it('frees the slot as soon as a request settles (completion releases quota)', async () => {
     let releaseA!: (v: unknown) => void;
     let releaseD!: (v: unknown) => void;
@@ -685,7 +685,7 @@ describe('F6 security: rate-limit quota lifecycle', () => {
   });
 });
 
-describe('F6 security: manual theme snapshot reflects live theme state', () => {
+describe('bridge security: manual theme snapshot reflects live theme state', () => {
   it('pushThemeSnapshot mirrors the current dark flag and token contract on every call', () => {
     document.documentElement.classList.remove('dark');
     const handle = attachBridge(frame.iframe, { wappId: 'p', permissions: [] });

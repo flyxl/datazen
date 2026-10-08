@@ -30,7 +30,7 @@ interface SourceFilterEditorProps {
   columns: string[];
   filter?: StructuredSourceFilter;
   onChange: (filter: StructuredSourceFilter | undefined) => void;
-  /** §8.4: held inert while the transfer job prepares. */
+  /** Held inert while the transfer job prepares. */
   disabled?: boolean;
 }
 
@@ -57,9 +57,9 @@ export function SourceFilterEditor({
    *
    * The guard that actually holds this editor inert while the prepare is in
    * flight is `ColumnMappingEditor.commit` — pre-existing, and itself proven
-   * load-bearing: deleting its guard kills the pre-existing test
-   * `holds the mapping editor inert while the prepare is in flight (§8.4)`
-   * (mutant N4). Every `onChange` site in this component routes through
+   * load-bearing: deleting its guard kills the pre-existing test that holds the
+   * mapping editor inert while the prepare is in flight (mutant N4). Every
+   * `onChange` site in this component routes through
    * `commit` at the parent, so `commit` is the effective choke point and this
    * one is a second, redundant gate behind it.
    *

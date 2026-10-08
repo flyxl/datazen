@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseSettingsSection, SETTINGS_NAV_GROUPS, SETTINGS_SECTIONS } from '../settingsSections';
 
-describe('settingsSections (F7 registration)', () => {
+describe('settingsSections registration', () => {
   it('registers appearance as the second top-level settings menu item', () => {
     expect(SETTINGS_SECTIONS.map((s) => s.id)).toContain('appearance');
     expect(SETTINGS_SECTIONS[1]?.id).toBe('appearance');

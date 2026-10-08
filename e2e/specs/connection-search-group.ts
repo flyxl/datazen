@@ -2,7 +2,7 @@ import { expect, browser, $, $$ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';
 import { t } from '../i18n.js';
 
-describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
+describe('连接搜索和分组', () => {
   before(async () => {
     await $(
       `input[placeholder="${t('main.searchPlaceholder')}"], [data-testid="connection-search-input"]`,
@@ -11,9 +11,9 @@ describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
     await browser.pause(1000);
   });
 
-  // ── 搜索功能 (CM-008) ─────────────────────────────────────────
+  // ── 搜索功能 ───────────────────────────────────────────────
 
-  it('搜索框应能过滤连接 - 无匹配 (CM-008)', async () => {
+  it('搜索框应能过滤连接 - 无匹配', async () => {
     const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('不存在的连接XYZ_99999');
     await browser.pause(500);
@@ -26,7 +26,7 @@ describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
     await browser.pause(500);
   });
 
-  it('搜索应支持按主机地址过滤 (CM-008)', async () => {
+  it('搜索应支持按主机地址过滤', async () => {
     const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     const itemsBefore = (await $$('[data-conn-item]')).length;
 
@@ -41,7 +41,7 @@ describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
     await browser.pause(300);
   });
 
-  it('搜索应支持按连接名称过滤 (CM-008)', async () => {
+  it('搜索应支持按连接名称过滤', async () => {
     const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('Postgres');
     await browser.pause(500);
@@ -53,7 +53,7 @@ describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
     await browser.pause(300);
   });
 
-  it('搜索框应能输入并清空 (CM-008)', async () => {
+  it('搜索框应能输入并清空', async () => {
     const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('test_value');
     const value = await input.getValue();
@@ -64,18 +64,18 @@ describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
     expect(clearedValue).toBe('');
   });
 
-  it('暂时隐藏数据库对象搜索入口 (CM-009)', async () => {
+  it('暂时隐藏数据库对象搜索入口', async () => {
     expect(await $('[data-testid="global-object-search-toggle"]').isExisting()).toBe(false);
   });
 
-  // ── 分组功能 (CM-007) ─────────────────────────────────────────
+  // ── 分组功能 ───────────────────────────────────────────────
 
-  it('分组头应可展开/折叠 (CM-007)', async () => {
+  it('分组头应可展开/折叠', async () => {
     const headers = await $$('[data-group-header]');
     expect(headers.length).toBeGreaterThan(0);
   });
 
-  it('空白区域绑定了 contextmenu 处理器 (CM-007)', async () => {
+  it('空白区域绑定了 contextmenu 处理器', async () => {
     const hasScrollArea = await browser.execute(() => {
       return (
         document.querySelector('[data-testid="connection-navigator-aside"]') instanceof HTMLElement
@@ -84,7 +84,7 @@ describe('连接搜索和分组 (CM-007, CM-008, CM-009)', () => {
     expect(hasScrollArea).toBe(true);
   });
 
-  it('分组头绑定了 contextmenu 处理器 (CM-007)', async () => {
+  it('分组头绑定了 contextmenu 处理器', async () => {
     // Native context menus block WebDriver, so we only verify the elements exist
     // and have event handlers registered (React attaches via delegation).
     const hasNonUngroupedHeaders = await browser.execute(() => {

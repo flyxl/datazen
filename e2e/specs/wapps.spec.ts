@@ -1,5 +1,5 @@
 /**
- * F9 Host E2E: runtime UI extensions — sample extension fixture journeys (PRD §7/§8).
+ * Host E2E: runtime UI extensions — sample extension fixture journeys.
  *
  * Fixture: `e2e/fixtures/sample-wapp/` (id `datazen.sample`, zero-build
  * static package with one workspace page + one theme contribution).
@@ -11,7 +11,7 @@
  *      asserts them from `{appData}/wapps/datazen.sample/.storage.json`
  *      (context.getConnections, storage.set/get, dark state). Environment-
  *      gated: under macOS WebKit automation `datazen://` subframe navigation
- *      is refused so the fixture JS never runs (BUG-F9-02/BUG-F9-04); in that
+ *      is refused so the fixture JS never runs; in that
  *      case the real shell-level degraded behaviour is asserted instead
  *      (watchdog failure bar / reload recovery / entry URL resolution).
  *   J3 tab independence: connection/workspace modes keep separate state;
@@ -19,7 +19,7 @@
  *   J5 Settings → 外观 shows the extension theme card and applies it persistently
  *   J4 disable removes tab + navigator entry; uninstall (with confirm) removes card
  *      (executed last because it tears the extension down; returns from J5's
- *      Settings view first — BUG-F9-03)
+ *      Settings view first)
  */
 import os from 'node:os';
 import path from 'node:path';
@@ -95,9 +95,8 @@ async function readWappStorage(): Promise<WappStorageFile | null> {
  * outcome. Returns true when the fixture's probe.* values landed in the
  * wapp's `.storage.json` (bridge handshake → permission → IPC → persistence
  * all worked), false when the shell watchdog fired instead — i.e. the iframe
- * content never loaded (BUG-F9-02/BUG-F9-04: under macOS WebKit automation,
- * `datazen://` subframe navigation is refused, so the fixture JS never runs;
- * see docs/development/e2e-coverage.md 例外登记).
+ * content never loaded (under macOS WebKit automation `datazen://` subframe
+ * navigation is refused, so the fixture JS never runs).
  */
 async function ensureSampleWappInstalled() {
   const wapps = await invokeBackend<WappSummaryRow[]>('list_wapps');
@@ -157,7 +156,7 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
   );
   if (!probesLanded) {
     console.warn(
-      '[wapps.spec] BUG-F9-02/04: wapp iframe content does not load under ' +
+      '[wapps.spec] wapp iframe content does not load under ' +
         'WebKit automation (datazen:// subframe navigation refused); assertions ' +
         'fall back to real shell-level product behaviour',
     );
@@ -252,7 +251,7 @@ async function openSampleTabFromNavigator() {
   return iframe;
 }
 
-describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
+describe('UI extensions (sample extension + bridge + appearance)', () => {
   before(async () => {
     // Clean slate: drop any leftover install and theme selection.
     await browser.url('tauri://localhost');
@@ -343,7 +342,7 @@ describe('UI extensions (F9: sample extension + bridge + appearance)', () => {
         await $('[data-testid="wapp-page-shell"]').waitForExist({ timeout: 15000 });
         return;
       }
-      // Degraded environment (BUG-F9-02/04): the real, observable product
+      // Degraded environment: the real, observable product
       // behaviour is the watchdog failure bar — assert it instead.
       await waitForWappShellFallback();
       const reload = await $('[data-testid="wapp-shell-reload"]');

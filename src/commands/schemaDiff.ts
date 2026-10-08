@@ -145,7 +145,7 @@ export interface SchemaDiffPlan {
   expectedTargetSchemas?: TableSchema[];
 }
 
-/** Result of a prepare Job: reviewed plan artifact plus its frozen metadata (§2.2). */
+/** Result of a prepare Job: reviewed plan artifact plus its frozen metadata. */
 export interface SchemaDiffPrepareEnvelope {
   plan: SchemaDiffPlan;
   planId: string;

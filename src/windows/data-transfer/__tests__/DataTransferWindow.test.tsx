@@ -120,7 +120,7 @@ vi.mock('../../../commands/transferJobs', () => ({
   transferJobCommands: {
     // The window sends `{ job, backendScope, idempotencyKey? }`; the mock is
     // keyed on the job itself so job-payload assertions stay readable, while
-    // the key is captured separately for the §10 receipt-safety assertions.
+    // the key is captured separately for the receipt-safety assertions.
     prepare: async (request: TransferPrepareJobRequest) => {
       prepareKeys.push(request.idempotencyKey);
       return toPrepareView(await prepareTransferJobMock(request.job));
@@ -213,8 +213,8 @@ const sqlInspectRows: TransferTableResult[] = inspectRows.map((row) => ({
  *
  * This is a transcript, not a sketch. It was produced by running the real
  * `datazen_data_transfer::mapping::inspect_tables` — `cargo test -p
- * datazen-data-transfer --lib mapping::` at 787f0e6fe, with one assertion added
- * per run, both runs `EXIT=0`, `5 passed; 0 failed`:
+ * datazen-data-transfer --lib mapping::` — with one assertion added per run,
+ * both runs `EXIT=0`, `5 passed; 0 failed`:
  *
  *   assert_eq!(results[0].target_table, "new_table");
  *   assert_eq!(results[0].target_table, results[0].source_table);
@@ -222,15 +222,16 @@ const sqlInspectRows: TransferTableResult[] = inspectRows.map((row) => ({
  * Both held. `effective_table_mappings` (packages/data-transfer/src/mapping.rs)
  * built the row with `target_table: t.name.clone(), create_new: true`, and the
  * `!mapping.enabled` branch propagated both verbatim, so the source name came
- * back as the target name. That was D-1: a D-10 violation, and — because the
- * wire format cannot mark a name as suggested rather than confirmed — it
- * silently satisfied the §8.4 mapping gate, so an unnamed create-new row
- * prepared as `targetTable: <source name>` without the user typing anything.
+ * back as the target name. That broke the rule that a create-new row must be
+ * named by the user, and — because the wire format cannot mark a name as
+ * suggested rather than confirmed — it silently satisfied the mapping gate, so
+ * an unnamed create-new row prepared as `targetTable: <source name>` without
+ * the user typing anything.
  *
- * Fixed in 299b7562b: the auto-build now returns `String::new()`, matching what
- * Data mode always returned for this same case, and `inspect_tables`
- * propagates the empty name verbatim to the row below. The Rust side pins that
- * in `structure_mode_marks_missing_target_as_create_new` and
+ * Fixed: the auto-build now returns `String::new()`, matching what Data mode
+ * always returned for this same case, and `inspect_tables` propagates the empty
+ * name verbatim to the row below. The Rust side pins that in
+ * `structure_mode_marks_missing_target_as_create_new` and
  * `disabled_create_new_rows_keep_all_source_columns_for_explicit_selection`;
  * this fixture is the frontend half of the same contract.
  */
@@ -276,7 +277,7 @@ type ReviewShape = typeof previewSuccess & Record<string, unknown>;
  * Wrap a review payload in the FrozenPlan envelope `prepare_data_transfer_job`
  * returns. The review keeps the `planId`/`canExecute`/`writePlans` the preview
  * UI has always consumed; the envelope carries the `planId` the *apply* call
- * spends (§9).
+ * spends.
  */
 function toPrepareView(
   review: ReviewShape,
@@ -303,7 +304,7 @@ function toPrepareView(
 
 /** Terminal success Job: everything committed, every boundary verified. */
 /**
- * A fully certified terminal run: §7 recorded one boundary, it carries its
+ * A fully certified terminal run: the run recorded one boundary, it carries
  * `EVIDENCE_*` marker, and every row is accounted for. This is the *only*
  * shape that may render as `migration.verdict.ok` — the reason each other test
  * below deliberately degrades one of those three facts.
@@ -1157,7 +1158,7 @@ describe('DataTransferWindow', () => {
 
     fireEvent.click(screen.getByTestId('data-transfer-execute-confirm-proceed'));
     await waitFor(() => expect(applyTransferJobMock).toHaveBeenCalled());
-    // §9: the apply spends exactly the FrozenPlan the prepare admitted.
+    // The apply spends exactly the FrozenPlan the prepare admitted.
     expect(applyTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         planId: 'plan-job-1',
@@ -1200,10 +1201,10 @@ describe('DataTransferWindow', () => {
     );
   });
 
-  // A9 / §6.1: a SQL-file run has no target rows, so the content-addressed
-  // artifact id the backend minted is the only proof the script was produced.
-  // It has to reach the result surface or the run looks like it did nothing.
-  it('[tester] shows the SQL-file artifact ids a §6.1 apply minted', async () => {
+  // A SQL-file run has no target rows, so the content-addressed artifact id the
+  // backend minted is the only proof the script was produced. It has to reach
+  // the result surface or the run looks like it did nothing.
+  it('[tester] shows the SQL-file artifact ids the apply minted', async () => {
     applyTransferJobMock.mockResolvedValueOnce({
       ...applySuccess,
       progress: { read: 0, converted: 0, attempted: 0, committed: 0, unknown: 0 },
@@ -1228,8 +1229,8 @@ describe('DataTransferWindow', () => {
     );
   });
 
-  // A8 / §6.2: the 8 MiB PipelineBudget cap is an intentional fail-closed
-  // rejection. It must never be dressed up as a failed or unknown run.
+  // The 8 MiB PipelineBudget cap is an intentional fail-closed rejection. It must
+  // never be dressed up as a failed or unknown run.
   it('[tester] reports an over-budget run as a deliberate refusal, not a failure', async () => {
     applyTransferJobMock.mockRejectedValueOnce(
       new Error('pipeline budget exceeded for stage users: 10485760 of 8388608 bytes'),
@@ -1251,16 +1252,16 @@ describe('DataTransferWindow', () => {
     // answer is a narrower selection.
     expect(screen.queryByTestId('data-transfer-job-re-review')).toBeNull();
     // No Job ran, so no verdict may be drawn — an "unknown outcome" banner
-    // would be the exact misreading §6.2 forbids.
+    // would be the exact misreading the fail-closed refusal forbids.
     expect(screen.queryByTestId('data-transfer-result')).toBeNull();
     expect(screen.queryByTestId('data-transfer-job-verdict')).toBeNull();
-    // The review the user already holds stays on screen (§9: nothing to redo).
+    // The review the user already holds stays on screen — there is nothing to redo.
     expect(screen.getByTestId('data-transfer-preview')).toBeTruthy();
   });
 
-  // A5 / §8: a scope that cannot be proven local is refused for the same
-  // fail-closed reason, and it is the one refusal that offers no re-review
-  // shortcut of its own beyond the shared button.
+  // A scope that cannot be proven local is refused for the same fail-closed
+  // reason, and it is the one refusal that offers no re-review shortcut of its
+  // own beyond the shared button.
   it('[tester] refuses a run whose endpoints cannot prove the local backend scope', async () => {
     applyTransferJobMock.mockRejectedValueOnce(
       new Error('backend scope mismatch: expected local-desktop-backend'),
@@ -1278,8 +1279,8 @@ describe('DataTransferWindow', () => {
     expect(screen.queryByTestId('data-transfer-result')).toBeNull();
   });
 
-  // §9: a spent plan cannot be applied twice. The backend refuses the second
-  // apply; the window must offer a fresh review, never a second apply.
+  // A spent plan cannot be applied twice. The backend refuses the second apply;
+  // the window must offer a fresh review, never a second apply.
   it('[tester] rejects reuse of a spent plan and offers a fresh review instead', async () => {
     applyTransferJobMock.mockRejectedValueOnce(
       new Error('plan plan-job-1 is already consumed; re-review the migration to mint a new plan'),
@@ -1489,7 +1490,7 @@ describe('DataTransferWindow', () => {
     });
   });
 
-  it('mints a fresh prepare idempotency key for every admission (§10)', async () => {
+  it('mints a fresh prepare idempotency key for every admission', async () => {
     await advanceToMappingStep();
 
     prepareTransferJobMock.mockRejectedValueOnce(new Error('preview boom'));
@@ -1499,7 +1500,7 @@ describe('DataTransferWindow', () => {
 
     // A retry is a new admission, not a replay: reusing the key would let the
     // backend answer it from an older prepare Job's receipt, which is exactly
-    // what the apply key is derived from the planId to avoid (§10).
+    // what the apply key is derived from the planId to avoid.
     prepareTransferJobMock.mockResolvedValueOnce(previewSuccess);
     fireEvent.click(screen.getByTestId('data-transfer-preview-retry'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
@@ -1517,7 +1518,7 @@ describe('DataTransferWindow', () => {
     expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
   });
 
-  it('holds the mapping editor inert while the prepare is in flight (§8.4)', async () => {
+  it('holds the mapping editor inert while the prepare is in flight', async () => {
     await advanceToMappingStep();
 
     let releasePrepare!: (view: typeof previewSuccess) => void;
@@ -1556,7 +1557,7 @@ describe('DataTransferWindow', () => {
     expect(restored).not.toBeDisabled();
   });
 
-  it('re-decides the mapping gate against the rows that exist after prepare (§8.4)', async () => {
+  it('re-decides the mapping gate against the rows that exist after prepare', async () => {
     await advanceToMappingStep();
 
     // The target-table blur refresh is the one thing already in flight when
@@ -1591,13 +1592,13 @@ describe('DataTransferWindow', () => {
     const alert = await waitFor(() => screen.getByTestId('data-transfer-mapping-gate-error'));
     expect(alert.getAttribute('role')).toBe('alert');
     // Still on the mapping step, with nothing admitted: advancing here in
-    // silence is the §8.4 defect — the preview would review rows that are not
-    // the ones on screen.
+    // silence is the mapping-gate defect — the preview would review rows that
+    // are not the ones on screen.
     expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy();
     expect(screen.queryByTestId('data-transfer-preview')).toBeNull();
   });
 
-  it('D-10: creating a new table asks for a name instead of assuming the source', async () => {
+  it('creating a new table asks for a name instead of assuming the source', async () => {
     await advanceToMappingStep([
       { ...inspectRows[0], status: 'CREATE_NEW', targetTable: '', targetColumns: [] },
     ]);
@@ -1629,21 +1630,21 @@ describe('DataTransferWindow', () => {
     );
   });
 
-  it('D-1: an unnamed create-new row cannot reach a plan via the enable checkbox', async () => {
+  it('an unnamed create-new row cannot reach a plan via the enable checkbox', async () => {
     await advanceToMappingStep([structureCreateNewRow], 'objects');
 
     // It arrives disabled and unnamed, so it cannot hold the gate on its own and
     // the step cannot be left past it without the user saying the table should
     // go. Ticking it on the objects step is ordinary intent — and it is the one
     // route to a create-new row that does NOT go through the create-new toggle,
-    // so it does not hit the D-10 clear-on-toggle path either.
+    // so it does not hit the clear-on-toggle path either.
     const row = screen.getByTestId('data-transfer-table-row');
     const enable = within(row).getByRole('checkbox');
     expect(enable).not.toBeChecked();
 
-    // This is the D-1 route. Before 299b7562b the backend pre-filled
+    // This is the enable-checkbox route. The backend used to pre-fill
     // `target_table` with the source name, so from here the row was named, the
-    // §8.4 gate was satisfied by a value the user never chose, and the plan
+    // mapping gate was satisfied by a value the user never chose, and the plan
     // carried `targetTable: 'new_table'` for a table that did not exist.
     //
     // The objects step gates on "did the user pick any row" (canNext: 'objects'
@@ -1656,7 +1657,7 @@ describe('DataTransferWindow', () => {
     await waitFor(() => expect(screen.getByTestId('data-transfer-mapping-step')).toBeTruthy());
 
     // Nothing pre-filled the name on the way in: the backend sends it empty, and
-    // neither the UI nor the D-10 toggle path supplies one.
+    // neither the UI nor the create-new toggle path supplies one.
     const name = screen.getByTestId('data-transfer-target-table-input') as HTMLInputElement;
     expect(name.value).toBe('');
     expect(name.value).not.toBe('new_table');
@@ -1684,7 +1685,7 @@ describe('DataTransferWindow', () => {
     );
   });
 
-  it('D-2: an enabled create-new row with no name holds the step and says which field is the reason', async () => {
+  it('an enabled create-new row with no name holds the step and says which field is the reason', async () => {
     await advanceToMappingStep([
       { ...structureCreateNewRow, enabled: true, status: 'CREATE_NEW', targetTable: '' },
     ]);
@@ -1693,7 +1694,7 @@ describe('DataTransferWindow', () => {
     expect(name.value).toBe('');
     expect(name.getAttribute('aria-invalid')).toBe('true');
 
-    // A disabled Next with no explanation is the state D-2 is about.
+    // A disabled Next with no explanation is the state this is about.
     expect(screen.getByTestId('data-transfer-next')).toBeDisabled();
     const alert = screen.getByTestId('data-transfer-mapping-gate-error');
     expect(alert.getAttribute('role')).toBe('alert');
@@ -1719,7 +1720,7 @@ describe('DataTransferWindow', () => {
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
   });
 
-  it('D-4: a source row filter cannot be rewritten while the prepare is in flight', async () => {
+  it('a source row filter cannot be rewritten while the prepare is in flight', async () => {
     // Two conditions so the logic selector is on screen — it changes no
     // condition and is the exit most likely to miss a guard put in `update`.
     //
@@ -1770,7 +1771,7 @@ describe('DataTransferWindow', () => {
     // native `<button disabled>` and React suppresses onClick on disabled form
     // elements, so the click cannot open the listbox at all — unlike onChange,
     // which React does not suppress, and which is why the textbox above is the
-    // reachable half of §8.4. What matters is that it is disabled, so the
+    // reachable half of the guard. What matters is that it is disabled, so the
     // guarded exit behind it is defence in depth rather than a hole.
     expect(screen.getByTestId('data-transfer-source-filter-logic')).toBeDisabled();
 
@@ -1835,11 +1836,11 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
     await waitFor(() => expect(screen.getByTestId('data-transfer-executing-overlay')).toBeTruthy());
     expect(screen.getAllByText(/transfer.executingProgress/)).toHaveLength(2);
 
-    // §2.3 / blocker (c): `apply_data_transfer_job` mints the Job id server-side
-    // and only returns it with the terminal view, so while the apply is in
-    // flight the window holds no id to address a cancel to. The control stays
-    // visible for the duration, reports that it is unaddressable, and refuses
-    // the click instead of pretending a cancel landed.
+    // `apply_data_transfer_job` mints the Job id server-side and only returns
+    // it with the terminal view, so while the apply is in flight the window
+    // holds no id to address a cancel to. The control stays visible for the
+    // duration, reports that it is unaddressable, and refuses the click instead
+    // of pretending a cancel landed.
     const cancelButton = screen.getByTestId('data-transfer-cancel');
     expect(cancelButton).toHaveAttribute('data-cancel-addressable', 'false');
     expect(cancelButton).toBeDisabled();
@@ -1865,7 +1866,7 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
     expect(screen.queryByTestId('data-transfer-job-uncertainty')).toBeNull();
     expect(screen.queryByTestId('data-transfer-job-error')).toBeNull();
 
-    // §7: the commit boundary, not a boolean, is what makes it a success.
+    // The commit boundary, not a boolean, is what makes it a success.
     const boundary = screen.getByTestId('data-transfer-job-boundary-users');
     expect(boundary).toHaveAttribute('data-boundary-verified', 'true');
     expect(boundary).toHaveTextContent('migration.boundary.verified');
@@ -1884,7 +1885,7 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
     await advanceToPreviewStep('insert');
 
     // Before anything is applied the window *does* hold the Job id, so the
-    // cancel is legal and §2.3 can be honoured exactly.
+    // cancel is legal and can be honoured exactly.
     const cancelButton = screen.getByTestId('data-transfer-cancel');
     expect(cancelButton).toHaveAttribute('data-cancel-addressable', 'true');
     expect(cancelButton).not.toBeDisabled();
@@ -1922,9 +1923,9 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
       state: 'failed',
       effectOutcome: 'partiallyApplied',
       progress: { read: 4, converted: 4, attempted: 4, committed: 4, unknown: 0 },
-      // Blocker (b): the data-transfer handler records no §7 boundary, so the
-      // four committed rows have nothing behind them and the run cannot be
-      // certified. The panel must say exactly that.
+      // The data-transfer handler records no commit boundary, so the four
+      // committed rows have nothing behind them and the run cannot be certified.
+      // The panel must say exactly that.
       commitBoundaries: [],
       partial: true,
       error: 'stage orders failed after the users stage committed',
@@ -1977,8 +1978,8 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
     );
     expect(screen.queryByTestId('data-transfer-job-boundary-users')).toBeNull();
 
-    // §10: a rejected plan cannot be resumed, only re-reviewed for a new planId —
-    // but a new planId is also a second write over a range whose first run is
+    // A rejected plan cannot be resumed, only re-reviewed for a new planId — but
+    // a new planId is also a second write over a range whose first run is
     // unreconciled, so the affordance itself is closed here.
     expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
     expect(screen.getByTestId('data-transfer-rereview')).toHaveAttribute(
@@ -1992,9 +1993,9 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
   });
 
   it('flags committed rows with no commit boundary as a missing-evidence gap', async () => {
-    // Rows were written but the backend returned no §7 boundary for them: the
-    // UI cannot claim the work was verified, so it must say so. No recovery
-    // verdict is involved here — the gap alone drives the uncertainty.
+    // Rows were written but the backend returned no commit boundary for
+    // them: the UI cannot claim the work was verified, so it must say so. No
+    // recovery verdict is involved here — the gap alone drives the uncertainty.
     applyTransferJobMock.mockResolvedValueOnce({
       ...applySuccess,
       state: 'failed',
@@ -2024,13 +2025,13 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
       'true',
     );
     expect(screen.getByTestId('data-transfer-job-reconcile')).toBeTruthy();
-    // A missing boundary is not a resume offer: §9 has nothing to resume from.
+    // A missing boundary is not a resume offer: there is nothing to resume from.
     expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
   });
 
   it('renders an unknown commit outcome distinctly and does not offer resume', async () => {
-    // §10 CM-39: the acknowledgement was lost, so the backend cannot say what
-    // landed. "Unknown" must never be smoothed into a failure or a success.
+    // The acknowledgement was lost, so the backend cannot say what landed.
+    // "Unknown" must never be smoothed into a failure or a success.
     applyTransferJobMock.mockResolvedValueOnce({
       ...applySuccess,
       state: 'failed',
@@ -2072,7 +2073,7 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
       'migration.verdict.committedRows: 3',
     );
     expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
-    // §10 CM-42: the read-only verification of an unknown operation comes first.
+    // The read-only verification of an unknown operation comes first.
     // Re-review would mint a fresh planId over the same range, so it is offered
     // but closed, and the reason is stated where the button is.
     const reReview = screen.getByTestId('data-transfer-rereview');
@@ -2156,8 +2157,8 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
   });
 
   it('[tester] renders a cancelled execution distinctly from success', async () => {
-    // Cancelled before any row moved: §2.3 "not started" is not a failure and
-    // is certainly not a success, so it must read as its own state.
+    // Cancelled before any row moved: "not started" is not a failure and is
+    // certainly not a success, so it must read as its own state.
     applyTransferJobMock.mockResolvedValueOnce({
       ...applySuccess,
       state: 'cancelled',
@@ -2191,10 +2192,10 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
     expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
   });
 
-  it('retries a lost commit receipt under the same idempotency key instead of a fresh write (§10)', async () => {
+  it('retries a lost commit receipt under the same idempotency key instead of a fresh write', async () => {
     await advanceToPreviewStep('insert');
 
-    // §10 CM-54: the apply may well have committed; only the receipt was lost.
+    // The apply may well have committed; only the receipt was lost.
     // The window must not present that as a settlement, and the retry has to
     // repeat the *same* key so the backend's receipt map can answer with the
     // recorded receipt rather than committing a second time.

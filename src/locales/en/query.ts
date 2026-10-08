@@ -159,7 +159,7 @@ const pack = {
   'query.editor.selection.addNextOccurrenceMac': 'Add next occurrence (⌘+D)',
   'query.editor.selection.addNextOccurrenceWin': 'Add next occurrence (Ctrl+D)',
   'query.editor.selection.rectangularHint': 'Column selection (Alt+drag)',
-  // --- §4.1 SQL snippets ---
+  // --- SQL snippets ---
   'query.snippets': 'Snippets',
   'query.snippetsTitle': 'Insert SQL snippet',
   'query.snippets.add': 'Add Snippet',
@@ -191,10 +191,10 @@ const pack = {
   'query.editor.snippet.delete': 'DELETE FROM … WHERE',
   'query.editor.snippet.join': 'JOIN … ON',
   'query.editor.snippet.count': 'SELECT COUNT(1)',
-  // --- §4.2 Beautify ---
+  // --- Beautify ---
   'query.formatShortcutMac': 'Format SQL (⇧⌥F)',
   'query.formatShortcutWin': 'Format SQL (Shift+Alt+F)',
-  // --- §4.3 Explicit completion cache refresh ---
+  // --- Explicit completion cache refresh ---
   'query.refreshCompletion': 'Refresh completion',
   'query.refreshCompletionTitle': 'Reload schema metadata used by autocomplete',
   'query.refreshCompletionDone': 'Completion cache refreshed',

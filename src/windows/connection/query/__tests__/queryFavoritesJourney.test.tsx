@@ -1,8 +1,7 @@
 /**
- * SQL Favorites — file-first panel journey (plan §2.6).
+ * SQL Favorites — file-first panel journey.
  *
- * Implements Principle 3 of `docs/development/interaction-and-testing-principles.md`:
- * a continuous state-machine test, not a set of static assertions. The
+ * This is a continuous state-machine test, not a set of static assertions. The
  * journey walks the panel through every intermediate state a user can observe:
  *
  *   closed → opening → root unknown → root known + empty → a sync client
@@ -10,8 +9,8 @@
  *   window regains focus → rescan → the file appears → opened in a new tab →
  *   connection switched → only that connection's favorites → deleted → gone.
  *
- * The "still empty" step is the point of the whole test. Since §2.6 a
- * favorite is a file in a folder the user may sync, so the panel's listing can
+ * The "still empty" step is the point of the whole test. A favorite is a file
+ * in a folder the user may sync, so the panel's listing can
  * change without the app writing anything. If the panel only called the cached
  * read, a file that arrived during the session would stay invisible until
  * restart — and this test is what pins the rescan that prevents that.

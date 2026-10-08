@@ -1,5 +1,5 @@
 /**
- * §4.3 Explicit completion-cache refresh.
+ * Explicit completion-cache refresh.
  *
  * Picks up tables created outside DataZen without a reconnect or restart, which
  * previously required switching databases to force a re-read.

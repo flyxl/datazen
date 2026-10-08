@@ -129,7 +129,7 @@ export interface SqlSyntaxPreset {
   light: Partial<EditorColorContract> & Partial<ExtendedHighlightColors>;
 }
 
-/** @see https://code.visualstudio.com/docs/getstarted/themes */
+/** Colour slots mirror the VS Code theme colour contract. */
 export const SQL_SYNTAX_PRESETS: SqlSyntaxPreset[] = [
   {
     id: 'default',

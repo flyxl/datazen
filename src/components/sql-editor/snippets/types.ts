@@ -1,5 +1,5 @@
 /**
- * SQL snippet template contracts (§4.1).
+ * SQL snippet template contracts.
  *
  * Templates use CodeMirror's native snippet syntax: `${1:defaultText}` marks an
  * ordered tabstop whose default text is selected on arrival.

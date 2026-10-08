@@ -73,7 +73,7 @@ export function TableView({
   // NlFilterInput handles unconfigured state internally
   const ts = useTableDataStore((s) => s.byPanel.get(panelId));
   /**
-   * F1: the panel pins its own target database, so a cross-database table loads
+   * The panel pins its own target database, so a cross-database table loads
    * correctly even when the session's active database differs.
    */
   const context = useMemo<TableChangeContext>(

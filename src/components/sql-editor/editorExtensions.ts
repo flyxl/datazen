@@ -4,8 +4,6 @@
  * Composes all leaf extension factories (S4-A/B/C/D + S5-A) into compartment
  * groups with a fixed priority order. Compartments allow dynamic reconfiguration
  * without duplicating listeners, timers, or tooltips.
- *
- * §Track S6-D: Central Editor / Query Assembly
  */
 import type { MutableRefObject } from 'react';
 import { EditorView, keymap } from '@codemirror/view';
@@ -321,7 +319,7 @@ export function createSqlExtensions(opts: CreateSqlExtensionsOptions): Extension
 }
 
 /**
- * §4.2 Beautify shortcut. Lives in the SQL compartment so it always formats
+ * Beautify shortcut. Lives in the SQL compartment so it always formats
  * with the dialect currently selected in the panel.
  */
 export function createFormatKeymap(databaseType?: string): Extension {
@@ -603,7 +601,7 @@ export function createCompletionExtensions(
         schema: opts.schema,
       }),
       functionCompletionSource,
-      // §4.1: snippet templates with tabstop expansion
+      // Snippet templates with tabstop expansion
       createSnippetCompletionSource({ t: opts.translate, snippets: opts.snippets }),
       // S4-B: schema-aware completion (reads from metadata snapshot)
       schemaAwareCompletionSource,

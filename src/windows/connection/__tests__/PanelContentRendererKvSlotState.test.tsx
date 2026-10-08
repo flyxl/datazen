@@ -167,7 +167,7 @@ describe('[tester] PanelContentRenderer KV state relay', () => {
   });
 
   it('renders the KV view without a relay while the driver declares no capability', () => {
-    // Wave-2 pre-state: a KV panel exists, but nothing claimed a KV slot, so the
+    // Pre-state: a KV panel exists, but nothing claimed a KV slot, so the
     // host hands over `undefined` and the driver view keeps working as today.
     renderRenderer(undefined);
 

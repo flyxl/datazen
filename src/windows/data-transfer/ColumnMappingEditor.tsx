@@ -25,7 +25,7 @@ interface ColumnMappingEditorProps {
   onChange: (patch: Partial<TransferTableResult>) => void;
   onTargetTableBlur?: () => void;
   /**
-   * §8.4: the editor is held inert for the whole prepare round trip. It is
+   * The editor is held inert for the whole prepare round trip. It is
    * threaded down to every control that mutates `table`, not just wrapped in a
    * disabled-looking overlay, because the editor is what produced the plan.
    */
@@ -46,7 +46,7 @@ export function ColumnMappingEditor({
   const showTargetType = structureMode && table.createNew;
 
   /**
-   * §8.4: an inert editor is inert in the handler, not only in the DOM. A
+   * An inert editor is inert in the handler, not only in the DOM. A
    * disabled control is already unsendable by the user, but one that still
    * answers a dispatched event is one the round trip can be raced through.
    */
@@ -106,7 +106,7 @@ export function ColumnMappingEditor({
               disabled={disabled}
               onChange={(e) => {
                 const createNew = e.target.checked;
-                // D-10: the name of a table that does not exist yet is the one
+                // The name of a table that does not exist yet is the one
                 // thing the backend cannot look up for the user, so it is the
                 // one thing that has to be typed. Prefilling it with the source
                 // name shows a name nobody chose, and the plan the user reads

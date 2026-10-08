@@ -11,7 +11,10 @@ const LANGUAGE_MAP: Record<string, string> = {
   tsql: 'transactsql',
 };
 
-/** Matches the pre-§4.2 hardcoded behaviour so existing callers are unaffected. */
+/**
+ * Matches the hardcoded behaviour this module shipped with, so existing callers
+ * are unaffected.
+ */
 export const DEFAULT_SQL_FORMAT_OPTIONS: SqlFormatOptions = Object.freeze({
   keywordCase: 'upper',
   indentStyle: '2spaces',

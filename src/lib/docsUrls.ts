@@ -1,5 +1,5 @@
 /**
- * Official GitHub Pages help docs (F6 — in-app help opens the User Manual).
+ * Official GitHub Pages help docs — in-app help opens the User Manual.
  * The former "docs.html" deep-dive page was removed; the manual is the
  * single documentation destination now.
  */

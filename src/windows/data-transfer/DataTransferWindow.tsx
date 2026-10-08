@@ -130,7 +130,7 @@ export function DataTransferWindow() {
   const [useTargetDefaultCollation, setUseTargetDefaultCollation] = useState(false);
   const [loading, setLoading] = useState(false);
   /**
-   * §8.4: true for exactly the window between "the user asked to prepare a
+   * True for exactly the window between "the user asked to prepare a
    * plan" and "the prepare resolved". It is set *before* the await, so the
    * mapping editor is already inert when the round trip starts — there is no
    * scheduling gap in which the editor could rewrite the very plan being
@@ -142,7 +142,7 @@ export function DataTransferWindow() {
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
   const [previewError, setPreviewError] = useState('');
-  /** §8.4: set only by the post-prepare re-check on the mapping step. */
+  /** Set only by the post-prepare re-check on the mapping step. */
   const [mappingGateError, setMappingGateError] = useState('');
   const [limitationsOpen, setLimitationsOpen] = useState(false);
   const [executeConfirmOpen, setExecuteConfirmOpen] = useState(false);
@@ -153,7 +153,7 @@ export function DataTransferWindow() {
   const profileMappingsRef = useRef<TransferTableMapping[] | null>(null);
   const prepareSeqRef = useRef(0);
   /**
-   * §8.4: the rows as they are *now*, not as they were when the user clicked
+   * The rows as they are *now*, not as they were when the user clicked
    * Next. Synced by effect (never assigned during render) so the post-await
    * re-check reads whatever landed while prepare was in flight.
    */
@@ -163,7 +163,7 @@ export function DataTransferWindow() {
   }, [tables]);
 
   /**
-   * §10: the backend keys its receipt map by `idempotencyKey` and mints a fresh
+   * The backend keys its receipt map by `idempotencyKey` and mints a fresh
    * one when the client sends none — which would make every retry of a lost
    * commit receipt a brand-new write attempt against a plan that may already
    * have committed. So the apply key is derived from the admitted `planId`: a
@@ -540,7 +540,7 @@ export function DataTransferWindow() {
     setTables([]);
     setPreview(null);
     // A different profile is a different plan: any run state from the previous
-    // one must go with it, or §9 would let a spent planId look reusable.
+    // one must go with it, or a spent planId would look reusable.
     resetJobRun();
     setStep('endpoints');
     if (profile.destinationMode === 'sqlFile') {
@@ -727,8 +727,8 @@ export function DataTransferWindow() {
       setMappingGateError('');
       setLoading(true);
       try {
-        // P5 §8/§9: the plan is admitted by `prepare_data_transfer_job`, which
-        // runs the §8 backend-scope check before anything else and returns the
+        // The plan is admitted by `prepare_data_transfer_job`, which
+        // runs its backend-scope check before anything else and returns the
         // same `TransferPreview` review the old `preview_data_transfer` did —
         // so every downstream consumer of `preview` is unchanged. The planId
         // it carries is the one `apply` must spend, and only once.
@@ -781,7 +781,7 @@ export function DataTransferWindow() {
       }
       // The plan must come from `prepare`. Reading it off `preview` alone would
       // let the window apply a plan the hook never saw admitted, which is the
-      // §9 "spend it exactly once" case stated backwards.
+      // "spend it exactly once" rule stated backwards.
       const admitted = jobRun.prepareView;
       if (!admitted || !preview) {
         setErrorMsg(t('migrationJob.reprepareOnStalePlan'));
@@ -796,7 +796,7 @@ export function DataTransferWindow() {
           ? job.tables.filter((tbl) => tbl.enabled).length
           : Math.max(preview?.writePlans.length ?? 0, preview?.ddl.length ?? 0);
       setExecuteProgress(t('transfer.executingProgress', { count: tableCount }));
-      // §6.1: an absent selection means "every table the plan froze", which is
+      // An absent selection means "every table the plan froze", which is
       // exactly the SQL-file case where the UI never inspected a target. An
       // explicit empty list would instead disable every table in the plan.
       const sourceTables =
@@ -847,7 +847,7 @@ export function DataTransferWindow() {
   }, [runExecute]);
 
   const handleCancel = useCallback(async () => {
-    // §2.3: a click is a *request*, not a cancellation. The hook decides which
+    // A click is a *request*, not a cancellation. The hook decides which
     // Job id the request may legally be addressed to and records the
     // disposition separately, so the UI can tell "cancelled while queued" from
     // "cancel requested while running" instead of claiming success.
@@ -856,7 +856,7 @@ export function DataTransferWindow() {
     // A cancel the backend acknowledged while the plan was merely prepared has
     // disposed that plan: no write was ever in flight, so there is nothing to
     // show a verdict for. Dropping it back to mapping is the honest outcome —
-    // the next review mints a fresh planId (§9). A cancel that could not be
+    // the next review mints a fresh planId. A cancel that could not be
     // addressed changes nothing and must leave the review untouched.
     if (acknowledged && !wasApplying) {
       resetJobRun();
@@ -867,7 +867,7 @@ export function DataTransferWindow() {
   }, [jobRun.phase, requestJobCancel, resetJobRun]);
 
   /**
-   * §9: once a plan is spent it is dead — the only legal recovery is a fresh
+   * Once a plan is spent it is dead — the only legal recovery is a fresh
    * review that mints a new `planId`. `reprepare` drops the settled run so the
    * wizard cannot offer the spent plan again.
    */
@@ -927,9 +927,9 @@ export function DataTransferWindow() {
   );
 
   /**
-   * §10/CM-42: a re-review may only be offered while nothing is pending
-   * reconcile. A `null` verdict means no Job settled at all (a §8/§6.2
-   * refusal), so there is no half-written range to protect and the affordance
+   * A re-review may only be offered while nothing is pending
+   * reconcile. A `null` verdict means no Job settled at all (a refusal before
+   * any write), so there is no half-written range to protect and the affordance
    * stays open.
    */
   const reconcilePending = jobRun.verdict?.requiresReconcile ?? false;
@@ -937,7 +937,7 @@ export function DataTransferWindow() {
   const goNext = useCallback(async () => {
     const next = STEPS[stepIndex + 1];
     if (step === 'mapping' && next === 'preview') {
-      // §8.4: the editor is disabled for the whole round trip, and the gate is
+      // The editor is disabled for the whole round trip, and the gate is
       // re-decided against the rows that exist *after* it. Deciding on a
       // click-time copy would let an inspect/refresh landing mid-flight move
       // the tables out from under an admitted plan.
@@ -1734,8 +1734,8 @@ export function DataTransferWindow() {
 
           {/*
             A refusal never reaches the result step — `runExecute` stays on
-            `preview` so §8 / §6.2 / §9 fail-closed notices are shown where the
-            user still has the review in front of them.
+            `preview` so the fail-closed notices (scope, budget, consumed plan)
+            are shown where the user still has the review in front of them.
           */}
           {step === 'preview' && jobRun.failure && (
             <MigrationJobFailureNotice
@@ -1772,7 +1772,7 @@ export function DataTransferWindow() {
             </span>
           )}
           {/*
-            §2.3: a cancel click is a *request*, not a cancellation, and it can
+            A cancel click is a *request*, not a cancellation, and it can
             only be addressed to a Job id the frontend actually holds. The
             server mints the Job id and returns it with the terminal view, so
             while `apply_data_transfer_job` is still in flight there is no id
@@ -1794,10 +1794,10 @@ export function DataTransferWindow() {
               {executing ? t('transfer.executing') : t('transfer.execute')}
             </Button>
           ) : step === 'result' ? (
-            // §9/§10: the Job contract has no resume token, so the only legal
+            // The Job contract has no resume token, so the only legal
             // next action after a settled run is a fresh review that mints a new
             // planId — a spent plan is never replayed under its old id. That is
-            // also exactly the hazard CM-42 names: while a reconcile is still
+            // also exactly the pending-reconcile hazard: while a reconcile is still
             // pending the first run's stopping point is unknown, so one click
             // here would be a second write over the same range. The affordance
             // is therefore closed until the target has been verified read-only;

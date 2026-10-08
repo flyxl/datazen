@@ -4,11 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 /**
- * Dialog-injection infrastructure sample (R regression proxy).
+ * Dialog-injection infrastructure sample.
  *
- * Progress-file anchor: F3-E2E-003 「原生保存对话框取消 → 返回 false 且不写文件」
- * was previously marked 【留待 R 阶段回归】with a manual-black-box exception,
- * because WebdriverIO cannot drive the real native dialog. The webdriver-only
+ * The native save-dialog cancel case — cancelling returns false and writes no
+ * file — was previously left to manual black-box testing, because WebdriverIO
+ * cannot drive the real native dialog. The webdriver-only
  * dialog-injection surface (`test_inject_dialog_result` /
  * `test_reset_dialog_queue`, see src-tauri/src/commands/dialog.rs) removes that
  * blocker: the spec pre-queues a dialog answer, triggers the command WITHOUT
@@ -76,7 +76,7 @@ describe('对话框注入基建 (DIALOG-INJECTION)', () => {
       compress: false,
     });
 
-    // Cancel feedback contract (F3 decision 2): user dismissed → false.
+    // Cancel feedback contract: user dismissed → false.
     expect(saved).toBe(false);
   });
 

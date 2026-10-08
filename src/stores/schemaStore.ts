@@ -68,7 +68,7 @@ export interface SchemaStore {
    * database dropdown) where the connection schema itself did not change.
    */
   switchDatabase: (database: string, dbSessionId: string) => Promise<void>;
-  /** F7: pin/clear the PG-family current schema (local UI state; sent as the
+  /** Pin/clear the PG-family current schema (local UI state; sent as the
    * `schema` envelope field on query executions). */
   setCurrentSchema: (schema: string | null, dbSessionId: string) => void;
   /** Sync the session `currentDatabase` to the ACTIVE panel's bound database so
@@ -306,8 +306,8 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
     switchDatabase: (database, dbSessionId) => reloadTables(database, dbSessionId, false),
 
     /**
-     * F7: set the PG-family current schema (pure local UI state, like
-     * `currentDatabase` in F1 — no IPC). Query executions carry it as the
+     * Set the PG-family current schema (pure local UI state, like
+     * `currentDatabase` — no IPC). Query executions carry it as the
      * `schema` envelope field; rewrite-capable drivers inline it as
      * `"schema"."t"`. `null` clears the pin.
      */

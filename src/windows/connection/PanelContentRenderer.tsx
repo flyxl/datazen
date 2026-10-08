@@ -484,7 +484,7 @@ function CreateTablePanelContent({
 }: CreateTablePanelContentProps) {
   const { t } = useI18n();
   const isMultiDb = useConnectionSchemaField(dbSessionId, 'isMultiDatabase');
-  // F1: no use_database IPC gate — the editor's queries pin `database`
+  // No use_database IPC gate — the editor's queries pin `database`
   // explicitly and the backend switches the session lazily.
   if (isMultiDb && !database) {
     return (

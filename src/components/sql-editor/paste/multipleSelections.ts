@@ -5,8 +5,6 @@
  * (Alt+drag / Option+drag) selection. Handles keymap priority to avoid breaking
  * CodeMirror's built-in find-next behavior.
  *
- * §Track S5-A step 8, §6.6
- *
  * ## ESCAPE — the full binding inventory
  *
  * Escape is bound by five bindings. The host used to own none of them, so the
@@ -30,7 +28,7 @@
  * content, so it never competes in the editor body.
  *
  * That leaves row 4 as the only competitor for row 3, and it is registered
- * FIRST (`editorExtensions.ts:286`) at default precedence, so an Escape binding
+ * FIRST (`editorExtensions.ts`) at default precedence, so an Escape binding
  * added at default precedence here would lose every time and do nothing. It is
  * therefore mounted at `Prec.high`, the same lever already used below for
  * Shift-Alt-Arrow. `Prec.high` rather than `Prec.highest` on purpose: highest

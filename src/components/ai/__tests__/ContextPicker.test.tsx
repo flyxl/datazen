@@ -232,7 +232,7 @@ describe('ContextPicker', () => {
       expect(document.querySelector('[data-testid="context-picker-back"]')).toBeInTheDocument();
     });
 
-    // BUG-06: Use the captured handler directly instead of window keyDown.
+    // Use the captured handler directly instead of window keyDown.
     capturedHandler.current?.(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(onClose).not.toHaveBeenCalled();
 

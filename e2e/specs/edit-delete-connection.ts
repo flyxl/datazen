@@ -48,7 +48,7 @@ const TEST_CONN: Conn = {
   lastConnectedAt: null,
 };
 
-describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
+describe('编辑、复制和删除连接', () => {
   before(async () => {
     await invokeBackend('save_connection', { config: TEST_CONN });
     await browser.pause(500);
@@ -65,9 +65,9 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
     await browser.pause(300);
   });
 
-  // ── Save & Read (CM-003) ──
+  // ── Save & Read ──
 
-  it('CM-003a: save_connection should persist a new connection', async () => {
+  it('save_connection should persist a new connection', async () => {
     const conns = await invokeBackend<Conn[]>('get_connections');
     const found = conns.find((c) => c.id === TEST_CONN.id);
     expect(found).toBeDefined();
@@ -75,9 +75,9 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
     expect(found!.host).toBe(TEST_CONN.host);
   });
 
-  // ── Edit (CM-003) ──
+  // ── Edit ──
 
-  it('CM-003b: editing a connection name should persist', async () => {
+  it('editing a connection name should persist', async () => {
     const updated = { ...TEST_CONN, name: 'E2E-已编辑连接' };
     await invokeBackend('save_connection', { config: updated });
 
@@ -90,7 +90,7 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
     await invokeBackend('save_connection', { config: TEST_CONN });
   });
 
-  it('CM-003c: editing connection host/port should persist', async () => {
+  it('editing connection host/port should persist', async () => {
     const updated = { ...TEST_CONN, host: '192.168.1.100', port: 5433 };
     await invokeBackend('save_connection', { config: updated });
 
@@ -103,9 +103,9 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
     await invokeBackend('save_connection', { config: TEST_CONN });
   });
 
-  // ── Duplicate (CM-006) ──
+  // ── Duplicate ──
 
-  it('CM-006: duplicating a connection creates a copy with different id', async () => {
+  it('duplicating a connection creates a copy with different id', async () => {
     const connsBefore = await invokeBackend<Conn[]>('get_connections');
     const countBefore = connsBefore.filter((c) => c.name.includes('E2E-编辑删除')).length;
 
@@ -129,9 +129,9 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
     await invokeBackend('delete_connection', { id: copy.id });
   });
 
-  // ── Delete (CM-004) ──
+  // ── Delete ──
 
-  it('CM-004: deleting a connection removes it from the list', async () => {
+  it('deleting a connection removes it from the list', async () => {
     // Create a disposable connection
     const disposable: Conn = {
       ...TEST_CONN,
@@ -149,7 +149,7 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
     expect(conns.find((c) => c.id === disposable.id)).toBeUndefined();
   });
 
-  it('CM-004b: delete should be idempotent (no error on double delete)', async () => {
+  it('delete should be idempotent (no error on double delete)', async () => {
     const disposable: Conn = {
       ...TEST_CONN,
       id: `e2e-disposable2-${Date.now()}`,

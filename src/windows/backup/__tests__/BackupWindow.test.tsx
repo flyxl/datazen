@@ -349,7 +349,7 @@ describe('BackupWindow connection list', () => {
   });
 });
 
-describe('BackupWindow backup flow (F3-BUG-002 coverage)', () => {
+describe('BackupWindow backup flow', () => {
   // An earlier suite case leaves `mockResolvedValue(false)` behind; restore the
   // default accept so the overwrite confirmation behaves per-test.
   beforeEach(() => {

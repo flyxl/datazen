@@ -254,7 +254,7 @@ export function QuerySidebarSection({
   const [historySearch, setHistorySearch] = useState('');
   const [historyScopeMode, setHistoryScopeMode] = useState<'current' | 'all'>('current');
 
-  // Since §2.6 a favorite is a file the user can put in a synced folder, so
+  // A favorite is a file the user can put in a synced folder, so
   // the listing can change without this app writing anything. Two moments can
   // see a file we have never looked at: the panel being opened, and the window
   // coming back to the foreground after the sync client did its work. Both ask
@@ -421,8 +421,8 @@ export function QuerySidebarSection({
             </button>
           </div>
           {favoritesRoot && (
-            // §2.6.3: the user has to be told which folder to sync, otherwise
-            // the file-first format is invisible to the person who benefits.
+            // The user has to be told which folder to sync, otherwise the
+            // file-first format is invisible to the person who benefits.
             <div
               data-testid="favorites-root"
               className="border-b border-edge px-3 py-1.5 text-[11px] text-fg-muted"

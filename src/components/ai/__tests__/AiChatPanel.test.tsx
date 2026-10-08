@@ -467,11 +467,11 @@ describe('AiChatPanel — AI Draft Bridge (S3-B2)', () => {
 });
 
 /**
- * W3-A §1.3: on a KV panel the assistant is told the host-owned facts about the
- * key in scope, and the user sees that before sending. The context is built with
- * the same source the drawer uses, so this cannot drift from `kvAiContext.ts`.
+ * On a KV panel the assistant is told the host-owned facts about the key in
+ * scope, and the user sees that before sending. The context is built with the
+ * same source the drawer uses, so this cannot drift from `kvAiContext.ts`.
  */
-describe('AiChatPanel — KV panel context (W3-A §1.3)', () => {
+describe('AiChatPanel — KV panel context', () => {
   const kvContext = buildKvAiContext({
     connectionName: 'KV Local',
     dbSessionId: 'sess-1',

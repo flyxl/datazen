@@ -282,8 +282,8 @@ export function ContentView({
 
   // Driver-contributable KV surfaces (context bar / status bar / key-props sidebar /
   // connection home). Every binding stays `undefined` unless the driver both declares
-  // the capability and contributed a component, so non-KV and pre-Wave-2 drivers render
-  // exactly as before.
+  // the capability and contributed a component, so non-KV drivers render exactly
+  // as before.
   const kvSlots = useKvWorkspaceSlots({
     activePanel,
     isKvPanel,

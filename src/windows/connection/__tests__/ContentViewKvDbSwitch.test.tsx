@@ -279,8 +279,8 @@ describe('one implementation of "open / activate this db\u2019s panel"', () => {
   });
 
   it('does not let ContentView name a driver or a panel type to switch dbs', () => {
-    // PRD §7-4: no `databaseType === 'redis'` branch on the host side. The db
-    // switch must stay metadata/panel-store driven.
+    // No `databaseType === 'redis'` branch on the host side. The db switch must
+    // stay metadata/panel-store driven.
     const contentView = read('ContentView.tsx');
     expect(contentView).not.toMatch(/databaseType\s*===\s*'redis'/);
     expect(contentView).not.toMatch(/type:\s*'redis-db'/);

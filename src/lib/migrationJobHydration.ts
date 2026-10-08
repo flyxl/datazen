@@ -1,5 +1,6 @@
 /**
- * Migration job hydration — the client-side half of §8 (客户端与接口适配):
+ * Migration job hydration — the client-side half of the client/interface
+ * adaptation:
  *
  * 1. 窗口重新打开先查 Job，再读计划/结果。Window mount must consult the job
  *    center first; only then may it adopt a plan/result (artifact ids on the

@@ -154,9 +154,9 @@ describe('multipleSelections · macOS branch (navigator.platform = MacIntel)', (
   /*  needs a second home. Cmd+Shift+Up/Down CANNOT be used on macOS:    */
   /*  `standardKeymap` owns it as { mac: "Cmd-ArrowUp", shift:          */
   /*  selectDocStart }, i.e. Cmd+Shift+Up = select to start of document. */
-  /*  Shadowing that would break a core macOS gesture (AGENTS.md          */
-  /*  "三维影响度自查" #2), so the macOS copy-line entry point is the    */
-  /*  guaranteed-free four-modifier chord instead.                       */
+  /*  Shadowing that would break a core macOS gesture, so the macOS      */
+  /*  copy-line entry point is the guaranteed-free four-modifier chord  */
+  /*  instead.                                                          */
   /* ------------------------------------------------------------------ */
 
   it('Cmd+Shift+ArrowUp keeps selecting to the start of the document (not copy line)', () => {

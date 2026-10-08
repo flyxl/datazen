@@ -6,7 +6,7 @@
  * on a handful of facts: which key is selected, whether there are unsaved edits,
  * how far the scan got, how many keys are selected, what the last write cost.
  * Neither the driver nor the host can own this alone — the driver may not import
- * host stores (boundary guard R1) and the host must not know what a "draft" is.
+ * host stores (a package-boundary rule) and the host must not know what a "draft" is.
  * So the host keeps an opaque, per-panel state atom and hands the same object to
  * every party through props; the contract lives in
  * `@datazen/driver-sdk` (`KvSlotState`).
@@ -21,7 +21,7 @@
  * 1. **The atom holds one immutable snapshot; every getter reads a scalar out of
  *    it.** A getter that returned an array or built an object would hand
  *    `useSyncExternalStore` a fresh snapshot on every call and the consumer
- *    would re-render forever ("getters are scalars" is a ruling, W3-A §1.1).
+ *    would re-render forever ("getters are scalars" is a ruling).
  * 2. **Writing the value that is already there notifies nobody.** The tree
  *    reports scan progress on every tick; a relay that announced no-ops would
  *    cascade a re-render of every slot in the panel (and a scroll would become a

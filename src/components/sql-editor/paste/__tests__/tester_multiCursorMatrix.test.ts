@@ -536,7 +536,7 @@ describe('[tester] 阶段 C · 既有未覆盖分支补测（鼠标交互 + keyd
   it('keydown 兜底 handler 落空：非 D 键不阻止默认行为', () => {
     const { view, parent } = mountView(12);
     try {
-      // 用 F5：Ctrl+A 之类会被 defaultKeymap 绑定（Mod-a → selectAll，commands:1732），
+      // 用 F5：Ctrl+A 之类会被 defaultKeymap 绑定（Mod-a → selectAll，来自 commands），
       // 那样 defaultPrevented 为 true 是 defaultKeymap 干的，不是本 handler。
       const ev = new KeyboardEvent('keydown', {
         bubbles: true,

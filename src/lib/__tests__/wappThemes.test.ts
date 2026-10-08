@@ -5,9 +5,8 @@ import { describe, expect, it } from 'vitest';
 /**
  * Guards the repo-bundled wapp packages under `packages/wapps/`.
  *
- * Since the unified wapp system (PRD: wapps.md), themes ship as
- * `contributes.themes` inside wapp manifests (apiVersion 2) instead of
- * legacy v1 ThemePacks. The community theme pack was converted accordingly;
+ * Since the unified wapp system, themes ship as `contributes.themes` inside wapp
+ * manifests (apiVersion 2) instead of legacy v1 ThemePacks. The community theme pack was converted accordingly;
  * this suite keeps its token contract honest and validates the sample
  * wapp structure that users install for testing.
  */

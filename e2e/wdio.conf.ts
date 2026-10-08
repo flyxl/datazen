@@ -229,8 +229,7 @@ export const config: WebdriverIO.Config = {
   /**
    * Named groups run via `pnpm e2e:<group>` (package.json) → `--suite <group>`.
    * Single source of truth for group membership; paths are relative to this
-   * config file (same resolution as `specs`). Keep in sync with docs:
-   * docs/development/e2e-testing.md §2.
+   * config file (same resolution as `specs`).
    */
   suites: {
     // Fast regression subset (~30 specs, target <10 min) — `pnpm e2e:smoke`

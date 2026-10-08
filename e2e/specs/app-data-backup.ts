@@ -33,9 +33,9 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-// Decision 3 (F4): export_app_data / import_app_data are merged path/dialog
-// IPCs. Raw paths go through `overridePath`, which only webdriver builds
-// accept and which skips the native file picker (old raw-path behavior).
+// export_app_data / import_app_data are merged path/dialog IPCs. Raw paths go
+// through `overridePath`, which only webdriver builds accept and which skips
+// the native file picker (old raw-path behavior).
 function exportToPath(zipPath: string) {
   return invokeBackend<boolean>('export_app_data', {
     defaultFileName: 'datazen-backup.zip',
@@ -113,9 +113,8 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
     expect(connectionSrc).toContain('menu:export-config');
     expect(connectionSrc).toContain('menu:import-config');
 
-    // Asset-drift fix (R-phase): the menu:export/import-connections listeners
-    // live in MainPage.tsx since commit e883f834 (in-page connection dialog,
-    // right after F2's Window→Page rename) — not in ConnectionPage.tsx.
+    // Asset-drift fix: the menu:export/import-connections listeners live in
+    // MainPage.tsx (in-page connection dialog) — not in ConnectionPage.tsx.
     const mainPageSrc = fs.readFileSync(
       path.resolve(import.meta.dirname, '../../src/windows/main/MainPage.tsx'),
       'utf8',

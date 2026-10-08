@@ -1,5 +1,5 @@
 /**
- * §4.3 Snippet dropdown.
+ * Snippet dropdown.
  *
  * Reuses the app-wide Web Context Menu host (mounted in `App.tsx`) instead of
  * introducing a second popover implementation, so click-away and keyboard

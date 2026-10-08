@@ -1,8 +1,8 @@
 /**
  * Query Execution & Asset Lifecycle Journey Tests.
  *
- * Implements continuous state machine / user journey tests according to
- * `docs/development/interaction-and-testing-principles.md` (Principle 3):
+ * Continuous state machine / user journey tests, each one asserting every
+ * intermediate state instead of only the statically valid end state:
  * 1. Execution strategy lifecycle (cursor -> selection -> ask modal -> choices).
  * 2. Bind parameter gate & remediation lifecycle (missing param -> block -> partial fill -> pass).
  * 3. Result tab pin & multi-stream preservation lifecycle (run 1 -> pin -> run 2 -> append -> unpin).
@@ -19,7 +19,7 @@ import type { StatementResult } from '../../../types';
 import type { QueryPanel } from '../../../stores/panelTypes';
 import { enCopy } from '../../../test/enCopy';
 
-// ── i18n 解耦（原则六 第 4 类豁免 · redis-assert-policy BUG-006）─────────────
+// ── i18n 解耦 ─────────────────────────────────────────────────────────────
 // `useQueryExecutionGate` renders the bind-param block message through
 // `t('query.editor.param.missingValue', { token })` and hands the *rendered*
 // string to `showMessageDialog`. Pinning that whole interpolated string

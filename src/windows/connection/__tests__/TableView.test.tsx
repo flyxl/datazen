@@ -223,7 +223,7 @@ describe('TableView', () => {
     expect(clipboardSpy).toHaveBeenCalledWith(errorMsg);
   });
 
-  it('loads data through the panel target database on mount (F1 BUG-002)', () => {
+  it('loads data through the panel target database on mount', () => {
     renderTable({ database: 'db_b' });
 
     expect(tableStore.loadTableData).toHaveBeenCalledWith({
@@ -237,7 +237,7 @@ describe('TableView', () => {
     });
   });
 
-  it('retries failed loads with the panel target database (F1 BUG-002)', () => {
+  it('retries failed loads with the panel target database', () => {
     seedPanel(contextOf({ database: 'db_b' }), {
       error: 'table not found in current database',
     });

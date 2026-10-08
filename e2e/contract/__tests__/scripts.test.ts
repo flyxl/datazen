@@ -12,7 +12,7 @@ function suiteEntries(conf: string, name: string): string {
   return m[1];
 }
 
-describe('e2e contract scripts (F4)', () => {
+describe('e2e contract scripts', () => {
   const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
     scripts: Record<string, string>;
   };

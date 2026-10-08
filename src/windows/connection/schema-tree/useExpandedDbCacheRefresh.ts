@@ -31,7 +31,7 @@ export interface ExpandedDbCacheRefreshOptions {
    * Expanded object-category keys in
    * `"<connectionId>::<dbName>[::<schema>]::<catId>"` form. When a
    * connection's fingerprint changes, every expanded category of that
-   * connection is reloaded (F1-BUG-005 fix).
+   * connection is reloaded.
    */
   expandedCats: ReadonlySet<string>;
   /** Load tables for one database. Must be session-neutral (no useDatabase). */
@@ -65,7 +65,7 @@ export interface ExpandedDbCacheRefreshOptions {
  * the session's active database. Drivers now expose session-neutral table
  * reads, so this hook never touches `useDatabase`.
  *
- * Ordering / cancellation semantics (F1-BUG-005 fix): for every detected
+ * Ordering / cancellation semantics: for every detected
  * fingerprint change this hook performs ONE synchronous
  * invalidate-then-schedule pass — `clearCaches` runs first, and the table +
  * object-category reloads for that connection are scheduled in the same

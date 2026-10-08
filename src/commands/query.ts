@@ -41,7 +41,7 @@ export const queryCommands = {
       recordHistory?: boolean;
       /** Database this stream reads from. Never a session `USE`. */
       database?: string | null;
-      /** F7: PG-family schema target for the stream. */
+      /** PG-family schema target for the stream. */
       schema?: string | null;
       /** Bound values are sent through the same cancellable stream path. */
       params?: Record<string, string | number | boolean | null>;
@@ -120,7 +120,7 @@ export const queryCommands = {
 
   /**
    * Resolved favorites directory, default or configured. The panel shows this
-   * so the user knows which folder to point a sync service at (§2.6.3).
+   * so the user knows which folder to point a sync service at.
    */
   getFavoritesRoot: () => invoke<string>('get_favorites_root'),
 

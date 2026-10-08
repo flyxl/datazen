@@ -33,7 +33,7 @@ describe('transfer mapping view state', () => {
     expect(row.enabled).toBe(false);
   });
 
-  it('§8.4: the mapping gate is one predicate over the rows it is given, not a snapshot', () => {
+  it('the mapping gate is one predicate over the rows it is given, not a snapshot', () => {
     const mapped = createNewRow({ enabled: true, status: 'MATCHED' });
     const disabledButMapped = createNewRow({ enabled: false });
     const enabledButUnmapped = createNewRow({
@@ -56,7 +56,7 @@ describe('transfer mapping view state', () => {
     expect(mappingGateAllowsAdvance([{ ...mapped, sourceColumns: [] }])).toBe(false);
   });
 
-  it('D-2: a create-new row nobody has named does not clear the mapping gate', () => {
+  it('a create-new row nobody has named does not clear the mapping gate', () => {
     const ready = { enabled: true, status: 'CREATE_NEW' as const };
 
     // The only thing missing is the name. Everything else the gate asks for is
@@ -80,7 +80,7 @@ describe('transfer mapping view state', () => {
     ).toBe(true);
   });
 
-  it('D-2: only an enabled, mapped, unnamed create-new row earns a gate reason', () => {
+  it('only an enabled, mapped, unnamed create-new row earns a gate reason', () => {
     const ready = { enabled: true, status: 'CREATE_NEW' as const };
 
     // The reason the user can act on.

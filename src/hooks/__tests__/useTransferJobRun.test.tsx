@@ -1,8 +1,8 @@
 /**
- * Data Transfer — Job state-machine tests for `useTransferJobRun` (T4).
+ * Data Transfer — Job state-machine tests for `useTransferJobRun`.
  *
  * These drive the hook directly rather than through the wizard, because three
- * of the four §2.3 / §9 / §10 races are unreachable from the UI: the cancel
+ * of the four plan-lifecycle races are unreachable from the UI: the cancel
  * button is disabled while a plan is merely frozen, an apply cannot be clicked
  * twice, and the lost-receipt retry has no button. Testing them where they are
  * actually possible keeps the assertions about the state machine rather than
@@ -211,7 +211,7 @@ describe('useTransferJobRun', () => {
     expect(run.result.current.prepareView?.blockReason).toBe('target is read-only');
   });
 
-  it('reports an §8 backend-scope refusal without leaving a plan behind', async () => {
+  it('reports a backend-scope refusal without leaving a plan behind', async () => {
     prepareMock.mockRejectedValueOnce(
       new Error('backend scope mismatch: expected local-desktop-backend'),
     );
@@ -260,7 +260,7 @@ describe('useTransferJobRun', () => {
     expect(request.backendScope).toBe('localBackendScope');
   });
 
-  it('sends an absent table list for a §6.1 SQL-file run rather than an empty one', async () => {
+  it('sends an absent table list for a SQL-file run rather than an empty one', async () => {
     const run = renderRun();
     await act(async () => {
       await run.result.current.prepare(JOB);
@@ -276,7 +276,7 @@ describe('useTransferJobRun', () => {
     expect(applyMock).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses a second apply on a spent planId without calling the backend (§9)', async () => {
+  it('refuses a second apply on a spent planId without calling the backend', async () => {
     const run = renderRun();
     await prepareAndApply(run);
 
@@ -293,7 +293,7 @@ describe('useTransferJobRun', () => {
     expect(run.result.current.lastFailure()?.message).toMatch(/already applied/i);
   });
 
-  it('lets a §10 retry reach the backend with the same key when the receipt was lost', async () => {
+  it('lets a retry reach the backend with the same key when the receipt was lost', async () => {
     // Lost receipt: the write may well have happened, but the reply never came
     // back, so the hook holds no verdict and must not treat the plan as spent.
     applyMock.mockRejectedValueOnce(new Error('commit ack lost: transport closed'));
@@ -324,7 +324,7 @@ describe('useTransferJobRun', () => {
     expect(run.result.current.applyView?.replayed).toBe(true);
   });
 
-  it('never reuses the prepare idempotency key for the apply (§10)', async () => {
+  it('never reuses the prepare idempotency key for the apply', async () => {
     const run = renderRun();
     await act(async () => {
       await run.result.current.prepare(JOB, { idempotencyKey: 'prepare-key-1' });
@@ -341,7 +341,7 @@ describe('useTransferJobRun', () => {
     expect(applyRequest.idempotencyKey).not.toBe(prepareRequest.idempotencyKey);
   });
 
-  it('treats a §6.2 pipeline-budget refusal as a rejection, not a run failure', async () => {
+  it('treats a pipeline-budget refusal as a rejection, not a run failure', async () => {
     applyMock.mockRejectedValueOnce(
       new Error('pipeline budget exceeded for stage users: 10485760 of 8388608 bytes'),
     );
@@ -364,7 +364,7 @@ describe('useTransferJobRun', () => {
     expect(run.result.current.verdict).toBeNull();
   });
 
-  it('classifies an apply-time §8 backend-scope refusal', async () => {
+  it('classifies an apply-time backend-scope refusal', async () => {
     applyMock.mockRejectedValueOnce(new Error('backend scope rejected: target is not local'));
 
     const run = renderRun();
@@ -445,7 +445,7 @@ describe('useTransferJobRun', () => {
 
     expect(acknowledged).toBe(false);
     expect(cancelMock).not.toHaveBeenCalled();
-    // §2.3: the *request* is latched; nothing claims a cancellation happened.
+    // The *request* is latched; nothing claims a cancellation happened.
     expect(run.result.current.cancelRequested).toBe(true);
     expect(run.result.current.cancelUnknownJob).toBe(true);
 

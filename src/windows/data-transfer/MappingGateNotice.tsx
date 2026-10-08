@@ -3,7 +3,7 @@ import type { TransferTableResult } from '../../commands/transfer';
 import { mappingGateBlockReason } from './transferMappingView';
 
 /**
- * §8.4: the one sentence that explains a Next button the same predicate
+ * The one sentence that explains a Next button the same predicate
  * disarmed. A create-new row nobody has named keeps the user on the mapping
  * step with a reason they can act on, instead of a button that is simply off —
  * and a prepare that came back admitted over rows that no longer clear the gate
