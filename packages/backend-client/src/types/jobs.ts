@@ -133,6 +133,7 @@ export interface CommitBoundary {
 }
 
 export type JobRecoveryVerdict =
+  | 'notExecuted'
   | 'pendingVerification'
   | 'resumeAfterVerify'
   | 'reject'

@@ -18,7 +18,7 @@ use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
     Checkpoint, CommitBoundary, JobClaim, JobDefinition, JobDomainResult, JobFilter, JobRecord,
-    JobRecoveryResult, JobState, RecoveryFilter, StageRecord,
+    JobRecoveryResult, JobRecoveryVerdict, JobState, RecoveryFilter, StageRecord,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
@@ -277,23 +277,34 @@ impl InMemoryJobRepository {
     ) -> Result<JobRecord, PortError> {
         let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
-        let row = inner
-            .jobs
-            .get_mut(job_id)
-            .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
-        if row.claim.is_some() || row.record.view.state != JobState::Queued {
-            return Err(PortError::CasConflict {
-                entity: "job",
-                id: job_id.as_str().into(),
-            });
-        }
-        row.record.view.state = JobState::Failed;
-        row.record.view.effect_outcome = Some(EffectOutcome::NotStarted);
-        row.record.view.error = Some(reason.into());
-        row.record.view.pending_verification_reason = None;
-        row.record.view.updated_at = self.clock.now();
-        row.record.state_version = JobStateVersion::new(row.record.state_version.get() + 1);
-        Ok(row.record.clone())
+        let record = {
+            let row = inner
+                .jobs
+                .get_mut(job_id)
+                .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
+            if row.claim.is_some() || row.record.view.state != JobState::Queued {
+                return Err(PortError::CasConflict {
+                    entity: "job",
+                    id: job_id.as_str().into(),
+                });
+            }
+            row.record.view.state = JobState::Failed;
+            row.record.view.effect_outcome = Some(EffectOutcome::NotStarted);
+            row.record.view.error = Some(reason.into());
+            row.record.view.pending_verification_reason = None;
+            row.record.view.updated_at = self.clock.now();
+            row.record.state_version = JobStateVersion::new(row.record.state_version.get() + 1);
+            row.record.clone()
+        };
+        inner.recovery.insert(
+            job_id.clone(),
+            JobRecoveryResult {
+                verdict: JobRecoveryVerdict::NotExecuted,
+                resume_through: None,
+                reason_code: Some(reason.to_string()),
+            },
+        );
+        Ok(record)
     }
 
     /// 标记待核验（effectOutcome 保留 unknown，不改 state）。
@@ -679,6 +690,7 @@ impl JobRepository for InMemoryJobRepository {
                     row.record.view.state,
                     JobState::Queued | JobState::Running | JobState::Cancelled
                 ) || row.record.view.pending_verification_reason.is_some()
+                    || inner.recovery.contains_key(&row.record.view.job_id)
             })
             .map(|row| row.record.clone())
             .collect();

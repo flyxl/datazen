@@ -22,9 +22,9 @@ use datazen_runtime::job::{
 
 use super::super::plans;
 use super::endpoint_identity::EndpointIdentity;
-use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use crate::data_transfer::job::{derive_evidence, DataTransferHandler};
+use crate::commands::error::CommandError;
+use crate::data_transfer::job::{DataTransferHandler, derive_evidence};
 
 pub(crate) const PREPARE_KIND: &str = "dataTransferPrepare";
 pub(crate) const APPLY_KIND: &str = "dataTransferApply";
@@ -33,6 +33,7 @@ pub(crate) const RECOVERY_RESUME_AFTER_VERIFY: &str = "resumeAfterVerify";
 pub(crate) const RECOVERY_REJECT: &str = "reject";
 pub(crate) const RECOVERY_REQUIRE_MANUAL_REVIEW: &str = "requireManualReview";
 pub(crate) const RECOVERY_PENDING_VERIFICATION: &str = "pendingVerification";
+pub(crate) const RECOVERY_NOT_EXECUTED: &str = "notExecuted";
 
 pub(crate) type BoxedJobRun =
     Pin<Box<dyn Future<Output = Result<JobOutcome, CommandError>> + Send + 'static>>;
@@ -476,6 +477,7 @@ fn outcome_from_details(details: JobDetails, replayed: bool) -> JobOutcome {
 
 fn recovery_report(recovery: JobRecoveryResult) -> RecoveryReport {
     let verdict = match recovery.verdict {
+        JobRecoveryVerdict::NotExecuted => RECOVERY_NOT_EXECUTED,
         JobRecoveryVerdict::PendingVerification => RECOVERY_PENDING_VERIFICATION,
         JobRecoveryVerdict::ResumeAfterVerify => RECOVERY_RESUME_AFTER_VERIFY,
         JobRecoveryVerdict::Reject => RECOVERY_REJECT,

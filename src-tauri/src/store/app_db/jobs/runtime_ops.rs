@@ -2,7 +2,7 @@ use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
     Checkpoint, CommitBoundary, JobClaim, JobDetails, JobDomainResult, JobProgress, JobRecord,
-    JobRecoveryResult, JobRecoveryVerification, JobRecoveryVerdict, JobState,
+    JobRecoveryResult, JobRecoveryVerdict, JobRecoveryVerification, JobState,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
@@ -11,11 +11,11 @@ use datazen_platform_api::id::{
 use datazen_runtime::job::repository::CancelPollSnapshot;
 use datazen_runtime::job::runtime_repository::JobRuntimeRepository;
 use datazen_runtime::job::time::after_seconds;
-use rusqlite::{params, OptionalExtension, Transaction};
+use rusqlite::{OptionalExtension, Transaction, params};
 
+use super::SqliteJobRepository;
 use super::access::{db_read_error, db_write_error, prune_expired_artifacts};
 use super::codec::{decode, encode, idempotency_hash, read_record, safe_identifier};
-use super::SqliteJobRepository;
 
 #[derive(Debug)]
 struct ClaimRow {
@@ -25,7 +25,6 @@ struct ClaimRow {
     worker: Option<String>,
     generation: i64,
     expires_at: Option<String>,
-    state_version: i64,
 }
 
 pub(super) fn check_claim(
@@ -36,7 +35,7 @@ pub(super) fn check_claim(
 ) -> Result<(), PortError> {
     let current = conn
         .query_row(
-            "SELECT organization_id,owner_principal_id,state,worker_id,claim_generation,claim_expires_at,state_version \
+            "SELECT organization_id,owner_principal_id,state,worker_id,claim_generation,claim_expires_at \
              FROM jobs WHERE job_id=?1",
             params![claim.job_id.as_str()],
             |row| {
@@ -47,7 +46,6 @@ pub(super) fn check_claim(
                     worker: row.get(3)?,
                     generation: row.get(4)?,
                     expires_at: row.get(5)?,
-                    state_version: row.get(6)?,
                 })
             },
         )
@@ -176,6 +174,16 @@ impl SqliteJobRepository {
             if changed != 1 {
                 return Err(not_found_or_conflict(tx, ctx, job_id)?);
             }
+            let recovery = JobRecoveryResult {
+                verdict: JobRecoveryVerdict::NotExecuted,
+                resume_through: None,
+                reason_code: Some(reason_code.to_owned()),
+            };
+            tx.execute(
+                "INSERT INTO job_result_details(job_id,recovery_json) VALUES (?1,?2) ON CONFLICT(job_id) DO UPDATE SET recovery_json=excluded.recovery_json",
+                params![job_id.as_str(), encode(&recovery)?],
+            )
+            .map_err(db_write_error)?;
             read_record(tx, ctx, job_id, &now)
         })
     }
@@ -369,6 +377,18 @@ impl SqliteJobRepository {
                     entity: "job",
                     id: claim.job_id.as_str().into(),
                 });
+            }
+            if let Some(reason_code) = pending_reason.as_deref() {
+                let recovery = JobRecoveryResult {
+                    verdict: JobRecoveryVerdict::PendingVerification,
+                    resume_through: None,
+                    reason_code: Some(reason_code.to_owned()),
+                };
+                tx.execute(
+                    "INSERT INTO job_result_details(job_id,recovery_json) VALUES (?1,?2) ON CONFLICT(job_id) DO UPDATE SET recovery_json=excluded.recovery_json",
+                    params![claim.job_id.as_str(), encode(&recovery)?],
+                )
+                .map_err(db_write_error)?;
             }
             read_record(tx, ctx, &claim.job_id, &now)
         })
@@ -742,6 +762,7 @@ fn enum_text<T: serde::Serialize>(value: &T) -> Result<String, PortError> {
 
 fn verdict_text(verdict: JobRecoveryVerdict) -> &'static str {
     match verdict {
+        JobRecoveryVerdict::NotExecuted => "notExecuted",
         JobRecoveryVerdict::PendingVerification => "pendingVerification",
         JobRecoveryVerdict::ResumeAfterVerify => "resumeAfterVerify",
         JobRecoveryVerdict::Reject => "reject",

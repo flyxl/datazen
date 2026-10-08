@@ -10,21 +10,21 @@ use std::sync::{Arc, Mutex};
 
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
+use datazen_platform_api::dto::job::{JobClaim, JobDomainResult};
 use datazen_platform_api::dto::job::{
     JobDefinition, JobDetails, JobFilter, JobRecord, JobRecoveryRequest, JobRecoveryResult,
-    JobRecoveryVerification, JobRecoveryVerdict, JobState, RecoveryFilter,
+    JobRecoveryVerdict, JobRecoveryVerification, JobState, RecoveryFilter,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{IdempotencyKey, JobId, Timestamp, WorkerId};
-use datazen_platform_api::dto::job::{JobClaim, JobDomainResult};
 use futures_util::FutureExt;
 
 use crate::budget::ledger::BudgetLedger;
 use crate::job::budget::EndpointRef;
 use crate::job::handler::{HandlerRegistry, JobHandler};
+use crate::job::recovery::JobRecoveryVerifier;
 use crate::job::runtime::{JobResult, JobRuntime};
 use crate::job::runtime_repository::JobRuntimeRepository;
-use crate::job::recovery::JobRecoveryVerifier;
 use crate::job::time::JobClock;
 
 /// Shared, transport-neutral API for desktop job adapters.
@@ -113,7 +113,9 @@ impl DesktopJobHost {
         claim: &JobClaim,
         result: JobDomainResult,
     ) -> Result<(), PortError> {
-        self.repository.record_domain_result(ctx, claim, result).await
+        self.repository
+            .record_domain_result(ctx, claim, result)
+            .await
     }
 
     /// Enumerate restart candidates. This method is read-only and never dispatches.
@@ -154,6 +156,12 @@ impl DesktopJobHost {
                     .await?;
                 record.view.error = Some("restartNeedsVerification".into());
                 marked.push(record);
+            } else if candidate.view.state == JobState::Queued {
+                let record = self
+                    .repository
+                    .mark_failed_unstarted(ctx, &candidate.view.job_id, "notDispatchedAfterRestart")
+                    .await?;
+                marked.push(record);
             } else {
                 marked.push(candidate);
             }
@@ -185,7 +193,10 @@ impl DesktopJobHost {
             });
         }
         let checkpoint = self.repository.latest_checkpoint(ctx, &job_id).await?;
-        let request = JobRecoveryRequest { details, checkpoint };
+        let request = JobRecoveryRequest {
+            details,
+            checkpoint,
+        };
         let verification = match AssertUnwindSafe(verifier.verify(ctx, &request))
             .catch_unwind()
             .await
