@@ -19,3 +19,6 @@ sqlparser = { version = "0.59", features = ["visitor"] }
 uuid = { version = "1", features = ["v4"] }
 same-file = "1.0.6"
 futures-util = "0.3"
+
+# Must match SQLx 0.8.6 raw handle ABI.
+libsqlite3-sys = "=0.30.1"

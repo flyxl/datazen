@@ -38,6 +38,7 @@ pub(crate) fn tls_mode_for_plan(tls: &TlsPlan) -> Option<TlsMode> {
     if !tls.enabled {
         return None;
     }
+    ensure_crypto_provider();
     if tls.insecure_skip_verify {
         Some(TlsMode::Insecure)
     } else {
@@ -61,6 +62,7 @@ pub(crate) fn load_tls_certificates(
     if !tls.enabled {
         return Ok(None);
     }
+    ensure_crypto_provider();
     let client_tls = match (&tls.cert_path, &tls.key_path) {
         (Some(cert_path), Some(key_path)) => Some(ClientTlsConfig {
             client_cert: read_pem(cert_path, "client certificate")?,
@@ -85,4 +87,68 @@ pub(crate) fn load_tls_certificates(
         client_tls,
         root_cert,
     }))
+}
+
+/// redis 0.27 builds rustls configs through the process default. With both
+/// AWS-LC and ring enabled by different drivers, rustls cannot infer one.
+/// Preserve an application-installed provider; racing installers are harmless
+/// because install_default is a once-only operation.
+pub(super) fn ensure_crypto_provider() {
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_choice_is_tested_in_fresh_processes() {
+        for scenario in ["unset", "existing"] {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "connect::tls::tests::fresh_process_provider_case",
+                    "--nocapture",
+                ])
+                .env("DATAZEN_TLS_PROVIDER_CASE", scenario)
+                .status()
+                .unwrap();
+            assert!(status.success(), "provider scenario {scenario} failed");
+        }
+    }
+
+    #[test]
+    fn fresh_process_provider_case() {
+        let Ok(scenario) = std::env::var("DATAZEN_TLS_PROVIDER_CASE") else {
+            return;
+        };
+        assert!(rustls::crypto::CryptoProvider::get_default().is_none());
+        if scenario == "existing" {
+            rustls::crypto::ring::default_provider()
+                .install_default()
+                .unwrap();
+        }
+        let before = rustls::crypto::CryptoProvider::get_default().cloned();
+        ensure_crypto_provider();
+        let after = rustls::crypto::CryptoProvider::get_default().unwrap();
+        if let Some(before) = before {
+            assert!(
+                std::sync::Arc::ptr_eq(&before, after),
+                "must preserve the installed provider"
+            );
+        }
+        // A builder must succeed with feature-unified ring + AWS-LC.
+        let _ = rustls::ClientConfig::builder();
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "connect::tests::live_prefer_falls_back_to_plaintext_and_require_refuses",
+                "--nocapture",
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
 }

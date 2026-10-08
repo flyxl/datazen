@@ -138,6 +138,12 @@ impl RqliteDriver {
 
 #[async_trait]
 impl DatabaseDriver for RqliteDriver {
+    // This HTTP driver has no parameterized DML implementation. Zero makes
+    // migration consumers reject an active projection before any target write.
+    fn max_bound_parameters(&self) -> usize {
+        0
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "rqlite".to_string()
     }

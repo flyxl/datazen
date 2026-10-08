@@ -71,13 +71,49 @@ impl LiveRedis {
     /// a broken harness is reported instead of being mistaken for a missing
     /// dependency.
     pub(crate) fn start() -> Result<Option<Self>, String> {
+        Self::start_inner(false)
+    }
+
+    pub(crate) fn start_tls() -> Result<Option<Self>, String> {
+        Self::start_inner(true)
+    }
+
+    pub(crate) fn ca_path(&self) -> PathBuf {
+        self.data_dir.join("cert.pem")
+    }
+
+    fn start_inner(tls: bool) -> Result<Option<Self>, String> {
         let binary = std::env::var(BINARY_ENV).unwrap_or_else(|_| "redis-server".to_string());
         let port = probe_port()?;
         let data_dir = fresh_data_dir()?;
 
-        let child = Command::new(&binary)
-            .arg("--port")
-            .arg(port.to_string())
+        if tls {
+            let certificate = Command::new("openssl")
+                .args(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1"])
+                .arg("-keyout").arg(data_dir.join("key.pem"))
+                .arg("-out").arg(data_dir.join("cert.pem"))
+                .stdout(Stdio::null()).stderr(Stdio::null()).status();
+            match certificate {
+                Ok(status) if status.success() => {},
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    let _ = std::fs::remove_dir_all(&data_dir);
+                    eprintln!("SKIP Redis TLS: openssl unavailable");
+                    return Ok(None);
+                },
+                other => return Err(format!("TLS fixture generation failed: {other:?}")),
+            }
+        }
+        let mut command = Command::new(&binary);
+        if tls {
+            command.args(["--port", "0", "--tls-port"]).arg(port.to_string())
+                .arg("--tls-cert-file").arg(data_dir.join("cert.pem"))
+                .arg("--tls-key-file").arg(data_dir.join("key.pem"))
+                .arg("--tls-ca-cert-file").arg(data_dir.join("cert.pem"))
+                .args(["--tls-auth-clients", "no"]);
+        } else {
+            command.arg("--port").arg(port.to_string());
+        }
+        let child = command
             .arg("--bind")
             .arg("127.0.0.1")
             .arg("--dir")
