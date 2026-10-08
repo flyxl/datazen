@@ -1917,7 +1917,7 @@ describe('DataTransferWindow', () => {
       effectOutcome: 'notStarted',
       progress: zero,
       commitBoundaries: [],
-      recoveryVerdict: '',
+      recoveryVerdict: null,
       recoveryReason: null,
     });
     getTransferJobMock

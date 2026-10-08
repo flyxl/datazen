@@ -145,6 +145,8 @@ export function MigrationJobVerdictPanel({
   const verified = verdict.verifiedBoundaries;
   const unverified = verdict.unverifiedBoundaries;
   const uncertaintyLabel = uncertaintyKey(verdict);
+  const recoveryReasonIsRestartBeforeDispatch =
+    recoveryVerdict === 'notExecuted' && recoveryReason === 'notDispatchedAfterRestart';
 
   return (
     <div
@@ -269,12 +271,21 @@ export function MigrationJobVerdictPanel({
 
       {recoveryVerdict ? (
         <p data-testid={`${testIdPrefix}-recovery-verdict`} data-verdict={recoveryVerdict}>
-          {t('migration.verdict.recoveryLabel')}: {recoveryVerdict}
+          {t('migration.verdict.recoveryLabel')}:{' '}
+          {recoveryVerdict === 'notExecuted'
+            ? t('migration.verdict.notExecuted')
+            : recoveryVerdict}
         </p>
       ) : null}
       {recoveryReason ? (
-        <p data-testid={`${testIdPrefix}-recovery-reason`} className="text-fg-muted">
-          {recoveryReason}
+        <p
+          data-testid={`${testIdPrefix}-recovery-reason`}
+          data-reason-code={recoveryReason}
+          className="text-fg-muted"
+        >
+          {recoveryReasonIsRestartBeforeDispatch
+            ? t('migration.verdict.notDispatchedAfterRestart')
+            : recoveryReason}
         </p>
       ) : null}
       {recoveryVerdict && recoveryResumeThrough !== null && recoveryResumeThrough !== undefined ? (

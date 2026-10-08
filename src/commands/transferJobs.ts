@@ -22,6 +22,7 @@ import type {
   EffectOutcome,
   JobDetails,
   JobProgress,
+  JobRecoveryVerdict,
   JobView,
   JobState,
   Timestamp,
@@ -116,7 +117,7 @@ export interface TransferApplyJobView {
   /** True when this reply came from the idempotent receipt, not a fresh write. */
   replayed: boolean;
   error: string | null;
-  recoveryVerdict: string | null;
+  recoveryVerdict: JobRecoveryVerdict | null;
   recoveryResumeThrough: number | null;
   recoveryReason: string | null;
   createdAt?: Timestamp;

@@ -17,6 +17,9 @@ const pack = {
   'migration.verdict.noBoundaries':
     'No write boundary was recorded, so nothing can be reported as committed.',
   'migration.verdict.recoveryLabel': 'Recovery verdict',
+  'migration.verdict.notExecuted': 'Not executed',
+  'migration.verdict.notDispatchedAfterRestart':
+    'The application restarted after this Job was accepted but before it was dispatched, so no migration work ran. Prepare a fresh plan to try again.',
   'migration.verdict.requiresReconcile':
     'Verify the target against the recorded boundaries before applying anything else.',
   'migration.verdict.resumeThrough':

@@ -484,7 +484,11 @@ describe('useTransferJobRun', () => {
       planDigest: 'digest-abc',
       selectionRevision: 3,
       commitBoundaries: [verifiedBoundary('stage-1')],
-      recovery: { verdict: 'resumeAfterVerify', resumeThrough: 1 },
+      recovery: {
+        verdict: 'resumeAfterVerify',
+        resumeThrough: 1,
+        reasonCode: 'targetVerified',
+      },
       stateVersion: counter(1),
       domainResults: [],
       recoveryTargets: [],
@@ -526,6 +530,7 @@ describe('useTransferJobRun', () => {
     expect(run.result.current.applyView?.commitBoundaries).toHaveLength(1);
     expect(run.result.current.applyView?.planDigest).toBe('digest-abc');
     expect(run.result.current.applyView?.recoveryVerdict).toBe('resumeAfterVerify');
+    expect(run.result.current.applyView?.recoveryReason).toBe('targetVerified');
     expect(run.result.current.verdict?.cancelDisposition).toBe('settledRolledBack');
     expect(run.result.current.verdict?.completed).toBe(false);
   });

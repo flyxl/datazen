@@ -3,24 +3,27 @@
 ## Done
 
 - Apply acceptance stores the returned Job id immediately and polls `get_job` through progress and terminal state.
-- Terminal receipts and running jobs both query durable details before presenting the exact terminal verdict in the current window.
-- Apply timeouts/ambiguous replies replay the exact request with the same plan-scoped idempotency key.
-- Cancel requests target the active apply Job id; UI acknowledgement remains separate from the terminal verdict.
+- Terminal receipts and running jobs query durable details before presenting the terminal verdict; reopened windows restore the latest durable apply details.
+- Apply timeouts and ambiguous replies replay the exact request with the same plan-scoped idempotency key.
+- Cancel requests target the active apply Job id; acknowledgement stays separate from the terminal verdict.
 - Shared migration hydration keeps active and terminal projections current from `watchJob`; unmount only stops local polling.
-- Reopened windows show active Transfer Jobs with progress and a reachable cancel action.
-- Reopened windows query `get_transfer_job_details(jobId)` for the latest settled apply and restore its plan identity, progress, boundaries, error, and optional recovery verdict. Missing/failed details stay uncompleted and uncertain.
-- DTJ fixtures now cover matching relation names across distinct databases, receipt replay, and cancel intent on the accepted Job.
+- Reopened windows show active Transfer Jobs with progress and a reachable cancel action. Missing/failed details remain uncompleted and uncertain.
+- Transfer UI now includes frozen Core SHA `33c7e047d5b75efeb43895a7a2a282f7708a7812`, including the shared `JobRecoveryVerdict` / `JobDetails` DTO.
+- `notExecuted` is treated as a known not-started result only for `effectOutcome=notStarted` plus `reasonCode=notDispatchedAfterRestart`, with no write evidence. Other `notExecuted` reason codes remain fail-closed.
+- The verdict panel explains the exact restart-before-dispatch reason and leaves other reason codes unchanged.
 
-## Core integration dependency
+## Independent validation pending
 
-- The frontend adapter follows the frozen `JobDetails` DTO. The Core command/type registration is not present in this checkout yet; runtime WDIO must run after that Core change is merged.
-- DTJ-001 now asserts restored job id, completed verdict, plan identity, and verified commit boundaries after reopening.
+The Core merge and the changes above have not been tested by the coding agent. Run these from a separate detached worktree at the final feature SHA:
 
-## Verification
+```bash
+pnpm exec vitest run \
+  src/lib/__tests__/migrationJobVerdict.test.ts \
+  src/components/migration/__tests__/MigrationJobVerdictPanel.test.tsx \
+  src/hooks/__tests__/useTransferJobRun.test.tsx \
+  src/windows/data-transfer/__tests__/DataTransferWindow.test.tsx \
+  src/commands/__tests__/transferJobs.test.ts
+pnpm typecheck
+```
 
-- Affected Vitest: 8 files, 92 tests passed.
-- Direct `tsc --noEmit`, `tsc -p tsconfig.scripts.json --noEmit`, and `tsc -p tsconfig.pack-ep.json --noEmit` passed.
-- Focused DTJ E2E-spec typecheck passed with a temporary config extending the root project. The standalone `e2e/tsconfig.json` invocation is not usable for this one spec because it omits root JSX and path mappings.
-- Real WDIO was not run: `e2e/.env` is absent and local PostgreSQL/MySQL ports 5432/3306 are unreachable, so the live DTJ fixture prerequisites are unavailable. No app build was attempted.
-- The frozen details IPC is not registered in this checkout yet, so native-app runtime verification also depends on the Core merge.
-- Final gate fingerprint was unchanged before/after: HEAD `1ad1893ce0f18d22e14db7d76ac32766a8b5b9ae`, diff SHA `165a25ac7d8a3987e8da1e6441db13cfb1fd64841234e26707d1e3d00785bdb5`, untracked SHA `fd42398d7554ede18d8d4633d9aa3c4efabcc048c039da4913e24e1f81dc0fdc`.
+Before this Core integration, the prior UI checkpoint reported 8 focused Vitest files / 92 tests passing, three TypeScript checks passing, and no live WDIO run because its PostgreSQL/MySQL prerequisites were unavailable. Those results do not cover the merged Core API or the new `notExecuted` handling.
