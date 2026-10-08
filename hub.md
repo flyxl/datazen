@@ -184,3 +184,5 @@
 
 - 2026-10-08：`codex/p5-transfer-job-ui @ 5161cf69b13f3eaf5952bda8eb6b95216b8f7ef5` 已到 READY_FOR_TEST，coder 报告 Vitest 8 files / 92 tests、root/scripts/pack-ep 三个 TypeScript 项目与 DTJ focused typecheck 均通过；独立 Tester 在 `/private/tmp/dz-p5-transfer-ui-test` 验收中。WDIO 尚未执行，需 Core IPC 合流及适用数据库环境。
 - SchemaDiff 消费者初步核对出 JobDetails 缺安全领域回执持久化、恢复核验只支持同步纯判断。Core 已将公共 API 扩展纳入当前分支：安全 `domainResult` 持久化 + 显式用户触发异步 `JobRecoveryVerifier` / `verify_recovery`，只回写安全核验证据、不重放副作用。`codex/p5-schema-diff-job` 暂继续窗口生命周期接线，等待 Core 冻结 API 后接实际核验。
+
+- Transfer UI independent verification on `5161cf69b13f3eaf5952bda8eb6b95216b8f7ef5` found Core DTO incompatibility: Core `JobView.error` is required, five UI test fixtures omit it, and `DataTransferWindow.test.tsx` declares it optional. Temporary overlay with actual Core backend-client types made Host tsc EXIT=2; overlay was reverted and verifier fingerprint returned to baseline. Coder repair dispatched to add explicit `error: null`/required typing, then new detached re-verification is required. Initial isolated branch vitest 90 pass; watcher non-update mutation killed by hydration assertion; commit is NOT accepted yet.
