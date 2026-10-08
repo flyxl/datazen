@@ -233,6 +233,153 @@ const onlyIn = (head, base) => {
 };
 
 /**
+ * A trait item declaration, reduced to what an out-of-tree implementor has to
+ * match against.
+ *
+ * @typedef {{ name: string, sig: string, required: boolean }} TraitItem
+ */
+
+/**
+ * The start of a `fn` / `const` / `type` item at the top level of a trait body.
+ * Visibility, `default`, `const`, `async`, `unsafe` and `extern "C"` are all
+ * allowed in front of it; a doc comment or an ordinary expression is not.
+ */
+const TRAIT_ITEM_START =
+  /^(?:pub(?:\s*\([^)]*\))?\s+)?(?:default\s+)?(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?(?:extern\s+"[^"]*"\s+)?(?:fn|const|type)\b/;
+
+/**
+ * The identifier an implementor has to write: the one after `fn`, `const` or
+ * `type`. A Rust trait cannot declare the same name twice, so the name is a
+ * sound key for reconciling one trait across a change.
+ *
+ * @param {string} head
+ * @returns {string}
+ */
+function traitItemName(head) {
+  const match = /\b(?:fn|const|type)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(head);
+  return match === null ? '<unnamed>' : match[1];
+}
+
+/**
+ * Read the items of a trait body: what an implementor writes, not what the
+ * default bodies contain.
+ *
+ * `sig` is the declaration text up to the terminator with whitespace collapsed,
+ * so splitting one parameter list across several lines is not read as a
+ * signature change, and the default body is excluded entirely so that editing a
+ * body is not read as one either. `required` records the one distinction that
+ * does force a downstream edit: a declaration ending in a bare `;` must be
+ * written by every implementor, one carrying a body need not be.
+ *
+ * @param {string} source
+ * @param {LineSpan} span
+ * @returns {TraitItem[]}
+ */
+export function readTraitItems(source, span) {
+  const lines = source.split('\n');
+  /** @type {TraitItem[]} */
+  const items = [];
+  let depth = 0;
+  /** @type {{ head: string, rel: number } | null} */
+  let decl = null;
+
+  for (let i = span.start + 1; i < span.end; i += 1) {
+    const code = stripTrailingComment(stripStringAndCharLiterals(lines[i]));
+    const trimmed = code.trim();
+
+    // Inside a default body: nothing here is part of any signature.
+    if (depth > 0) {
+      depth += bracketDelta(code);
+      continue;
+    }
+    if (decl === null) {
+      if (isNonMemberLine(trimmed)) continue;
+      if (!TRAIT_ITEM_START.test(trimmed)) continue;
+      decl = { head: '', rel: 0 };
+    }
+
+    // Walk this line up to whichever comes first: the `;` that ends a required
+    // item, or the `{` that opens a default body. Everything from there on is
+    // body, so it must never reach the signature.
+    let cut = code.length;
+    let rel = decl.rel;
+    let terminator = '';
+    for (let k = 0; k < code.length; k += 1) {
+      const ch = code[k];
+      if (ch === ';' || ch === '{') {
+        cut = k;
+        terminator = ch;
+        break;
+      }
+      if (ch === '(' || ch === '[') rel += 1;
+      else if (ch === ')' || ch === ']') rel -= 1;
+    }
+
+    decl.head += (decl.head === '' ? '' : ' ') + code.slice(0, cut).trim();
+    if (terminator === '' || rel > 0) {
+      decl.rel = rel;
+      continue;
+    }
+
+    items.push({
+      name: traitItemName(decl.head),
+      sig: decl.head.replace(/\s+/g, ' ').trim(),
+      required: terminator === ';',
+    });
+    decl = null;
+    // `code.slice(cut)` starts *at* the terminator, so a `{` opening a body
+    // that runs on is counted here and a one-line body is counted as balanced.
+    depth += bracketDelta(code.slice(cut));
+  }
+  return items;
+}
+
+/**
+ * Reconcile one trait's items across a change, in the gate's own terms: an
+ * out-of-tree implementor is only affected if it has to be edited and
+ * recompiled.
+ *
+ * So a signature that disappears, changes shape, or loses its default body all
+ * land in `removed`; and a new item only separates the two ways of arriving if
+ * it carries a body, since a bodiless one must be written by every implementor.
+ *
+ * @param {TraitItem[]} baseItems
+ * @param {TraitItem[]} headItems
+ * @returns {{ removed: string[], addedRequired: string[], addedDefaulted: string[], baseTotal: number, total: number }}
+ */
+export function reconcileTraitItems(baseItems, headItems) {
+  const headByName = new Map(headItems.map((item) => [item.name, item]));
+  /** @type {string[]} */
+  const removed = [];
+
+  for (const item of baseItems) {
+    const now = headByName.get(item.name);
+    if (now === undefined) {
+      removed.push(`${item.name} (removed from ${item.sig})`);
+    } else if (now.sig !== item.sig) {
+      removed.push(`${item.name} (${item.sig} -> ${now.sig})`);
+    } else if (now.required !== item.required) {
+      removed.push(
+        now.required
+          ? `${item.name} (no longer defaulted: ${item.sig})`
+          : `${item.name} (gained a required body: ${item.sig})`,
+      );
+    }
+  }
+
+  const baseNames = new Set(baseItems.map((item) => item.name));
+  const added = headItems.filter((item) => !baseNames.has(item.name));
+
+  return {
+    removed,
+    addedRequired: added.filter((item) => item.required).map((item) => item.name),
+    addedDefaulted: added.filter((item) => !item.required).map((item) => item.name),
+    baseTotal: baseItems.length,
+    total: headItems.length,
+  };
+}
+
+/**
  * Compare the members of one governed item across the change.
  *
  * Returns the two things the gate needs and nothing else: a precise reason for
@@ -250,6 +397,13 @@ const onlyIn = (head, base) => {
  *   removalReason: string | null,
  *   addedBreaking: string | null,
  *   addedNote: string | null,
+ *   trait: {
+ *     removed: string[],
+ *     addedRequired: string[],
+ *     addedDefaulted: string[],
+ *     baseTotal: number,
+ *     total: number,
+ *   } | null,
  * }}
  */
 export function inspectMemberDiff(rule, baseSource, newSource, baseSpan, newSpan) {
@@ -260,12 +414,22 @@ export function inspectMemberDiff(rule, baseSource, newSource, baseSpan, newSpan
 
   const removed = onlyIn(baseMembers, headMembers);
   const added = onlyIn(headMembers, baseMembers);
+  // Reconciled before the early return below, because it is computed off a
+  // different reader and the early return must not hide it.
+  const trait =
+    rule.kind === 'trait'
+      ? reconcileTraitItems(
+          readTraitItems(baseSource, baseSpan),
+          readTraitItems(newSource, newSpan),
+        )
+      : null;
   const empty = {
     removed,
     added,
     removalReason: null,
     addedBreaking: null,
     addedNote: null,
+    trait,
   };
   if (removed.length === 0 && added.length === 0) return empty;
 

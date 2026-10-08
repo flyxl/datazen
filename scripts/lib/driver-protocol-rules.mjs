@@ -30,11 +30,19 @@
  * within the file; it is matched by `includes`. `scripts/__tests__/check-driver-protocol-compat.test.ts`
  * asserts both properties against the real source tree.
  *
+ * `previousFile` names where a contract lived before it was moved to its own
+ * module. It is read only when `file` has no blob at the base ref, so it is the
+ * base-side half of a relocation rather than a second source of truth, and it
+ * self-invalidates: once the base ref has moved past the move, the anchor is no
+ * longer in `previousFile` and the rule reads as a brand-new addition, exactly
+ * as it would have without the field.
+ *
  * @type {ReadonlyArray<{
  *   id: string,
  *   file: string,
  *   anchor: string,
  *   kind: 'trait' | 'struct' | 'enum',
+ *   previousFile?: string,
  *   implementedBy?: string,
  *   why?: string,
  * }>}
@@ -50,7 +58,10 @@ export const CONTRACT_RULES = Object.freeze([
   },
   {
     id: 'key-value-driver',
-    file: 'packages/driver-api/src/traits.rs',
+    // Declared in its own module since `traits.rs` was split; `traits.rs` still
+    // re-exports it, so the public path never changed.
+    file: 'packages/driver-api/src/traits/key_value.rs',
+    previousFile: 'packages/driver-api/src/traits.rs',
     anchor: 'pub trait KeyValueDriver',
     kind: 'trait',
     implementedBy: 'key/value drivers',

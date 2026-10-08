@@ -20,8 +20,9 @@
  * its own diff would still be green in every unit test above.
  */
 
-import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -36,6 +37,7 @@ import {
   STATIC_INVARIANTS,
   classifyContractChange,
   compareCrateVersions,
+  evaluate,
   findItemSpan,
   isCosmeticLine,
   isRequiredTraitItemAddition,
@@ -67,7 +69,7 @@ const BASE_TRAIT = `pub trait Demo: Send {
  * that attributes the change to a different line than git would — which would
  * make these cases assert the parser's behaviour instead of the real one.
  */
-const diffOf = (before: string, after: string): string => {
+const diffOf = (before: string, after: string, file = 'x.rs'): string => {
   const a = before.split('\n');
   const b = after.split('\n');
   const lcs: number[][] = Array.from({ length: a.length + 1 }, () =>
@@ -102,7 +104,7 @@ const diffOf = (before: string, after: string): string => {
   // removal and the addition that replaces it belong to the same hunk; splitting
   // them would move one of the two to the wrong new-side line number and make
   // these cases assert against a diff git never produces.
-  const header = `diff --git a/x.rs b/x.rs\n--- a/x.rs\n+++ b/x.rs\n`;
+  const header = `diff --git a/${file} b/${file}\n--- a/${file}\n+++ b/${file}\n`;
   const hunks: string[] = [];
   let oldNo = 1;
   let newNo = 1;
@@ -335,6 +337,101 @@ describe('classification — an additive change is additive, not breaking', () =
     const before = 'pub struct Demo {\n    pub a: u32,\n}\n';
     const after = 'pub struct Demo {\n    pub a: u32,\n    pub fn helper(&self);\n}\n';
     expect(classifyViaDiff(STRUCT_RULE, before, after).cls).toBe('additive');
+  });
+});
+
+describe('classification — a trait relocated to its own module', () => {
+  // `traits.rs` was split into `traits/*.rs`. A declaration that moved keeps
+  // its public path (`pub use`), but the old file now holds only a re-export,
+  // which no `pub trait` anchor matches. So the anchor resolves on the head side
+  // and on the base side *read from `previousFile`* — which is what makes the
+  // two signature sets comparable at all.
+  const RELOCATED_RULE = {
+    id: 'demo',
+    file: 'traits/demo.rs',
+    previousFile: 'traits.rs',
+    anchor: 'pub trait Demo',
+    kind: 'trait',
+  } as const;
+
+  const BASE_IN_OLD_FILE =
+    'mod other;\n\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n}\n';
+  const HEAD_IN_NEW_FILE =
+    'use super::Other;\n\n#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n}\n';
+
+  const classifyRelocated = (after: string) => {
+    const records = parseDiffByFile(
+      diffOf(BASE_IN_OLD_FILE, after, RELOCATED_RULE.file),
+    ).get(RELOCATED_RULE.file);
+    expect(records, 'the synthetic diff must produce records').toBeDefined();
+    return classifyContractChange(BASE_IN_OLD_FILE, after, RELOCATED_RULE, records!);
+  };
+
+  it('reads a verbatim move as churn, not as a contract that stopped resolving', () => {
+    // Every head line is an addition and no base line was removed, so a
+    // line-counting classifier calls this 11 lines added and 0 removed. The
+    // signature set is what decides, and it is identical.
+    const finding = classifyRelocated(HEAD_IN_NEW_FILE);
+    expect(finding.cls).not.toBe('breaking');
+    expect(finding.reason).toContain('kept all 2 item signature(s) unchanged');
+  });
+
+  it('still reports a method dropped while the trait moved', () => {
+    // The relocation path must not become a hole: reconciling against
+    // `previousFile` is only sound because the signature set is compared, so a
+    // signature that vanished during the move has to fire.
+    const finding = classifyRelocated(
+      '#[async_trait]\npub trait Demo: Send {\n    fn with_default(&self) -> u32 { 0 }\n}\n',
+    );
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('existing');
+  });
+
+  it('still reports a signature altered while the trait moved', () => {
+    const finding = classifyRelocated(
+      '#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> DriverType;\n    fn with_default(&self) -> u32 { 0 }\n}\n',
+    );
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('removed');
+  });
+
+  it('reports a required item gained while the trait moved', () => {
+    // Every line is new, so a line-based "was this added without a body?" test
+    // would read the moved `existing` as a freshly added requirement. Required
+    // -ness has to come from the signature set for a trait, not from the diff.
+    const finding = classifyRelocated(
+      '#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n    fn added_required(&self) -> u32;\n}\n',
+    );
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('added_required');
+  });
+
+  it('does not report a relocated trait whose only change is a defaulted item', () => {
+    const finding = classifyRelocated(
+      '#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n    fn added_defaulted(&self) -> u32 { 1 }\n}\n',
+    );
+    expect(finding.cls).toBe('additive');
+    expect(finding.reason).toContain('added_defaulted');
+  });
+
+  it('keeps every relocation rule pointed at a file the anchor has left', () => {
+    // `previousFile` is read only when `file` has no blob at the base ref, so
+    // it is a relocation record, not a second source of truth. If the anchor is
+    // still in `previousFile` at HEAD, the repoint is stale and the record can
+    // never be reached — which is also what makes it expire on its own once the
+    // base ref moves past the move.
+    const relocated = CONTRACT_RULES.filter((rule) => rule.previousFile !== undefined);
+    expect(relocated.length, 'at least one rule must record a relocation').toBeGreaterThan(0);
+    for (const rule of relocated) {
+      expect(rule.previousFile, `${rule.id} must not point at its own file`).not.toBe(
+        rule.file,
+      );
+      const oldFile = read(rule.previousFile!);
+      expect(
+        findItemSpan(oldFile, rule.anchor),
+        `${rule.previousFile} still contains "${rule.anchor}" at HEAD, so ${rule.file} is the stale one`,
+      ).toBeNull();
+    }
   });
 });
 
@@ -582,7 +679,7 @@ describe('classification — cosmetics and scope', () => {
     ).get('x.rs')!;
     expect(records.has(0)).toBe(false);
     expect([...records.keys()]).toEqual([40]);
-    expect(records.get(40)).toEqual({ removed: 'old', added: 'new' });
+    expect(records.get(40)).toEqual({ removed: ['old'], added: 'new' });
   });
 
   it('resolves spans without letting braces inside literals confuse it', () => {
@@ -609,6 +706,177 @@ describe('crate version comparison', () => {
   it('treats a missing version as no change rather than a crash', () => {
     expect(compareCrateVersions(null, '0.0.9')).toBe(0);
     expect(compareCrateVersions('0.0.9', null)).toBe(0);
+  });
+});
+
+/**
+ * Three ways this gate used to say "ok" while watching nothing — or crash with
+ * a stack trace instead of a verdict.
+ *
+ * Every test in this block fails against the gate as it was before the fixes,
+ * and each one is written so the only thing that can turn it green is a gate
+ * that actually reads the contract. None of them can be satisfied by a gate that
+ * covers *less*: the assertions are all "this contract was reported", never
+ * "nothing was reported".
+ */
+describe('a governed change is seen, not assumed', () => {
+  it('keeps every removed line of a pure-deletion hunk', () => {
+    // git writes a pure-deletion hunk as a single `@@` in which `newLine` does
+    // not advance, so every removed line collapses onto one new-side line
+    // number. The parser used to keep only the last one it saw at that key, so
+    // deleting a trait item together with the blank line under it left a single
+    // record whose text was `''` — and a blank line is cosmetic, so the lost
+    // signature was scored as a cosmetic edit and the trait came back
+    // `[additive]`. An out-of-tree driver implementing it stops compiling.
+    const records = parseDiffByFile(
+      [
+        'diff --git a/x.rs b/x.rs',
+        '--- a/x.rs',
+        '+++ b/x.rs',
+        '@@ -3,2 +3,0 @@',
+        '-    fn required(&self) -> u32;',
+        '-',
+      ].join('\n') + '\n',
+    ).get('x.rs')!;
+    // One key, holding *both* texts — not one key holding only the blank line.
+    expect(records.get(3)).toEqual({ removed: ['    fn required(&self) -> u32;', ''] });
+
+    const before = 'pub trait Demo: Send {\n    fn required(&self) -> u32;\n\n    fn kept(&self) -> u32;\n}\n';
+    const after = 'pub trait Demo: Send {\n\n    fn kept(&self) -> u32;\n}\n';
+    const finding = classifyViaDiff(TRAIT_RULE, before, after);
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('required');
+  });
+
+  it('does not let a longer identifier stand in for the governed one', () => {
+    // The governed trait is `pub trait Demo`. Matching by substring means
+    // `pub trait DemoV2` satisfies it, so renaming `Demo` to `DemoV2` resolves
+    // the anchor to the *renamed* item, whose item list is unchanged, and the
+    // gate answers `[additive]` for a contract that no longer exists under its
+    // governed name. Anchor matching must respect identifier boundaries.
+    const source =
+      'pub trait DemoV2: Send {\n    fn g(&self) -> u32;\n}\n\npub trait Demo: Send {\n    fn f(&self) -> u32;\n}\n';
+    expect(findItemSpan(source, 'pub trait Demo')).toEqual({ start: 4, end: 6 });
+    // And with only the longer name present, the anchor is genuinely gone.
+    expect(findItemSpan('pub trait DemoV2: Send {\n    fn g(&self) -> u32;\n}\n', 'pub trait Demo')).toBeNull();
+  });
+});
+
+/**
+ * A rule whose file is not there is the worst state this gate can be in: it has
+ * a contract in its table, and it reads nothing for it, and it reports nothing
+ * when that contract changes. Both of these used to produce a clean `ok` (or a
+ * raw `ENOENT` stack trace, which is a non-verdict: CI reads the exit code, and
+ * a crash is not the same thing as a report).
+ *
+ * Driven through a throwaway git repository rather than the real tree, because
+ * the point is what the gate does when a governed path is absent — which the
+ * real repository, where all nineteen paths exist, can never exhibit.
+ */
+describe('a governed contract file that is not where the table says', () => {
+  /** A minimal repo: the version files `evaluate` reads, and no governed trait. */
+  const governedRepo = (change: (repo: string, write: (rel: string, body: string) => void) => void): string => {
+    const repo = mkdtempSync(join(tmpdir(), 'driver-protocol-gate-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+    const write = (rel: string, body: string) => {
+      const abs = join(repo, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, body);
+    };
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'gate@example.invalid');
+    git('config', 'user.name', 'gate');
+    write(GOVERNED_CRATE_MANIFEST, '[package]\nname = "datazen-driver-api"\nversion = "0.1.0"\n');
+    write(
+      'packages/driver-api/src/lib.rs',
+      'pub const PROTOCOL_VERSION: u32 = 4;\npub const MIN_PROTOCOL_VERSION: u32 = 4;\n',
+    );
+    git('add', '-A');
+    git('commit', '-q', '-m', 'base');
+    change(repo, write);
+    git('add', '-A');
+    return repo;
+  };
+
+  const KV_RULE_FILE = 'packages/driver-api/src/traits/key_value.rs';
+  const KV_BODY =
+    '#[async_trait]\npub trait KeyValueDriver: Send + Sync {\n    fn driver_type(&self) -> DatabaseType;\n}\n';
+
+  it('is a violation naming the rule, not a silently skipped table entry', () => {
+    // The `key-value-driver` rule governs a file this repository never had, and
+    // the change under test touches nothing governed. Before the fix the rule
+    // produced no diff records, so the loop skipped it and the gate answered
+    // `ok` — reporting on a contract it is not reading at all.
+    const repo = governedRepo((_, write) => write('packages/driver-api/src/unrelated.rs', '// nothing\n'));
+    try {
+      const { violations } = evaluate({ cwd: repo, base: 'HEAD' });
+      const missing = violations.filter((v) => v.code === 'contract-rule-file-missing');
+      const kv = missing.find((v) => v.message.includes("rule 'key-value-driver'"));
+      expect(kv, `expected a contract-rule-file-missing for key-value-driver, got ${JSON.stringify(violations.map((v) => v.code))}`).toBeDefined();
+      expect(kv!.message).toContain(KV_RULE_FILE);
+      expect(kv!.message).toContain('does not exist in the working tree');
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a contract deleted by this change instead of crashing on it', () => {
+    // Deleting the file a rule governs used to reach `readFileSync` on a path
+    // that no longer existed and die with `ENOENT`. A crash is not a verdict:
+    // it says nothing about *why* the contract is gone, and it cannot be told
+    // apart from a broken checkout. The verdict has to name the rule and say a
+    // governed contract cannot disappear without a PROTOCOL_VERSION bump.
+    const repo = governedRepo((r, write) => {
+      write(KV_RULE_FILE, KV_BODY);
+      execFileSync('git', ['add', '-A'], { cwd: r, stdio: 'ignore' });
+      execFileSync('git', ['commit', '-q', '-m', 'add kv'], { cwd: r, stdio: 'ignore' });
+      execFileSync('git', ['rm', '-q', KV_RULE_FILE], { cwd: r, stdio: 'ignore' });
+    });
+    try {
+      const { violations } = evaluate({ cwd: repo, base: 'HEAD' });
+      const kv = violations.find(
+        (v) => v.code === 'contract-rule-file-missing' && v.message.includes("rule 'key-value-driver'"),
+      );
+      expect(kv, 'a deleted governed file must be reported, not read').toBeDefined();
+      expect(kv!.message).toContain('removed or renamed it');
+      expect(kv!.message).toContain('PROTOCOL_VERSION');
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a contract renamed by this change instead of skipping it', () => {
+    // A pure rename is `0 insertions(+), 0 deletions(-)` in git's own summary,
+    // so no diff record is produced for it either — the old path is gone from
+    // the working tree and no hunk mentions it. That made the rename invisible
+    // from both directions.
+    const repo = governedRepo((r, write) => {
+      write(KV_RULE_FILE, KV_BODY);
+      execFileSync('git', ['add', '-A'], { cwd: r, stdio: 'ignore' });
+      execFileSync('git', ['commit', '-q', '-m', 'add kv'], { cwd: r, stdio: 'ignore' });
+      execFileSync('git', ['mv', KV_RULE_FILE, KV_RULE_FILE.replace('key_value.rs', 'kv_renamed.rs')], {
+        cwd: r,
+        stdio: 'ignore',
+      });
+    });
+    try {
+      const { violations } = evaluate({ cwd: repo, base: 'HEAD' });
+      const kv = violations.find(
+        (v) => v.code === 'contract-rule-file-missing' && v.message.includes("rule 'key-value-driver'"),
+      );
+      expect(kv, 'a renamed governed file must be reported').toBeDefined();
+      expect(kv!.message).toContain(KV_RULE_FILE);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves a healthy tree alone — a rule whose file exists is never reported', () => {
+    // The counterweight to the three above. Every `CONTRACT_RULES` entry points
+    // at a file that exists, so none of them may produce this violation; a fix
+    // that silences the gate by covering less would fail here.
+    const { violations } = evaluate({ cwd: ROOT, base: 'HEAD' });
+    expect(violations.filter((v) => v.code === 'contract-rule-file-missing')).toEqual([]);
   });
 });
 
