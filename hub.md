@@ -179,3 +179,5 @@
 - Wave 2 进行中：`codex/p5-job-host-core`（共享持久化 Job 存储、Desktop host 与详情 read-model）、`codex/p5-transfer-job-ui`（受理后进度/取消/重附着）。Transfer UI 依赖新增 `get_transfer_job_details(jobId)`；Core 冻结接口为 `JobDetails { job, planId, planDigest, selectionRevision, commitBoundaries, recoveryVerdict, resumeThrough, reasonCode }`，只投影安全 DTO，不持久化原始 SQL、凭据、session/lease/token 或 endpoint 配置。恢复未完成时仅需核验，不自动重跑副作用。
 
 - `feature/p5-job-addressable @ 50683a619` 已于 2026-10-08 只读审计：r1 三个 cherry 提交的实现与测试均被当前集成分支后续版本覆盖；查询 JSON 字符串/非零断言也有等价覆盖；唯一 r1 独有文件为 144 行 `progress.md`。不 cherry-pick、不合并；P5 收尾删除该 worktree 和分支。审计确认未发现需人工裁定的独有行为或测试。
+
+- 2026-10-08：Core 稳定 checkpoint `2ffacb59b340c4ac2a329c201a9d241ce5f98d44`，包含 AppState/DesktopJobHost、SQLite v2 与 Transfer durable accept/get/list/cancel/details；`cargo check -p datazen`、`cargo test -p datazen --lib --no-run` EXIT=0。Core 继续补生命周期/回滚/竞态测试与架构事实文档，尚未独立验收。基于 checkpoint 独立派发 `codex/p5-schema-diff-job`，覆盖 Schema Diff Job API 与窗口接入。
