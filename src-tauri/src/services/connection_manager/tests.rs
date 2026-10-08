@@ -463,3 +463,32 @@ async fn test_tester_connect_lock_poison_returns_internal() {
 // 拆分方式对齐 `schema_diff/unified_tests.rs` 的既有先例。
 #[path = "tests/cm04_baseline.rs"]
 mod cm04_baseline;
+
+#[tokio::test]
+async fn migration_identity_retains_route_snapshot_and_current_database() {
+    let (_keyring, mgr, store, _) = test_manager().await;
+    let original = sample_config("cfg-identity");
+    store.save_connection(original.clone()).await.unwrap();
+    let session = mgr.connect("cfg-identity").await.unwrap();
+    {
+        let mut sessions = mgr.connections.write().await;
+        let active = sessions.get_mut(&session).unwrap();
+        active.config.host = Some("127.0.0.1".into());
+        active.config.port = Some(49152);
+        active.config.database = Some("selected-database".into());
+    }
+    let snapshot = mgr.migration_identity_config(&session).await.unwrap();
+    assert_eq!(snapshot.host, original.host);
+    assert_eq!(snapshot.port, original.port);
+    assert_eq!(snapshot.database.as_deref(), Some("selected-database"));
+    assert!(mgr
+        .migration_identity_config("missing-session")
+        .await
+        .is_err());
+    mgr.session_owner_map.write().await.remove(&session);
+    assert!(
+        crate::services::migration_endpoint::session_identity(&mgr, &session, None)
+            .await
+            .is_err()
+    );
+}

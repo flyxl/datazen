@@ -19,7 +19,7 @@ impl ConnectionManager {
             .map_err(ConnectionError::DriverError)
     }
 
-    async fn resolve_tunnel_ref(
+    pub(super) async fn resolve_tunnel_ref(
         &self,
         mut config: ConnectionConfig,
     ) -> Result<ConnectionConfig, ConnectionError> {
@@ -305,6 +305,7 @@ impl ConnectionManager {
             db_session_id.to_string(),
             ActiveSession {
                 handle,
+                identity_config: config.clone(),
                 config,
                 created_at: Instant::now(),
                 last_used: Instant::now(),

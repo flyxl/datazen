@@ -18,6 +18,7 @@ use tokio::time::Duration;
 pub(super) struct ActiveSession {
     pub(super) handle: ConnectionHandle,
     pub(super) config: ConnectionConfig,
+    pub(super) identity_config: ConnectionConfig,
     #[allow(dead_code)]
     pub(super) created_at: Instant,
     pub(super) last_used: Instant,

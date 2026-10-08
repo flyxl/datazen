@@ -18,8 +18,7 @@ use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{JobDefinition, JobState};
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
-    ClientInstanceId, ConnectionId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId,
-    WorkerId,
+    ClientInstanceId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId, WorkerId,
 };
 use datazen_platform_api::ports::budget::ServiceQuota;
 use datazen_platform_api::ports::job::JobRepository;
@@ -532,54 +531,33 @@ async fn endpoints_from_session_pair(
     target_session: &str,
     objects: &[String],
 ) -> Result<Vec<EndpointRef>, CommandError> {
-    let tgt_cfg = state
-        .connection_manager
-        .get_session_config(target_session)
-        .await
-        .cmd_err("endpoints")?;
-    let src_owner = match source_session {
-        Some(s) => state
-            .connection_manager
-            .owner_connection_id(s)
-            .await
-            .unwrap_or_default(),
-        None => String::new(),
-    };
-    let tgt_owner = state
-        .connection_manager
-        .owner_connection_id(target_session)
-        .await
-        .unwrap_or_default();
     let mut out = Vec::new();
-    if let Some(source_session) = source_session {
-        let src_cfg = state
-            .connection_manager
-            .get_session_config(source_session)
-            .await
-            .cmd_err("endpoints")?;
+    if let Some(session) = source_session {
+        let identity = crate::services::migration_endpoint::session_identity(
+            &state.connection_manager,
+            session,
+            None,
+        )
+        .await?;
         out.push(EndpointRef {
-            connection_id: ConnectionId::new(src_owner),
-            service_key: format!(
-                "{}|{}|{}",
-                src_cfg.database_type,
-                src_cfg.host.as_deref().unwrap_or(""),
-                src_cfg.database.as_deref().unwrap_or("")
-            ),
+            connection_id: identity.connection_id,
+            service_key: identity.service_key,
             objects: objects.to_vec(),
             role: EndpointRole::SourceReader,
         });
     }
+    let identity = crate::services::migration_endpoint::session_identity(
+        &state.connection_manager,
+        target_session,
+        None,
+    )
+    .await?;
     out.push(EndpointRef {
-            connection_id: ConnectionId::new(tgt_owner),
-            service_key: format!(
-                "{}|{}|{}",
-                tgt_cfg.database_type,
-                tgt_cfg.host.as_deref().unwrap_or(""),
-                tgt_cfg.database.as_deref().unwrap_or("")
-            ),
-            objects: objects.to_vec(),
-            role: EndpointRole::TargetWriter,
-        });
+        connection_id: identity.connection_id,
+        service_key: identity.service_key,
+        objects: objects.to_vec(),
+        role: EndpointRole::TargetWriter,
+    });
     Ok(out)
 }
 

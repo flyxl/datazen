@@ -509,7 +509,9 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
 
     let test = TestAppState::new().await;
     test.save_and_connect("src-plan").await;
-    test.save_and_connect("tgt-plan").await;
+    let mut target_config = test.save_connection("tgt-plan").await;
+    target_config.host = Some("target.example.invalid".into());
+    test.store.save_connection(target_config).await.unwrap();
     let source = test.connect_config("src-plan").await;
     let target = test.connect_config("tgt-plan").await;
     let preview = super::compare_data_sync_impl(
@@ -539,7 +541,9 @@ async fn execute_data_sync_rejects_when_target_active_database_changes() {
 
     let test = TestAppState::new().await;
     test.save_and_connect("src-plan-db").await;
-    test.save_and_connect("tgt-plan-db").await;
+    let mut target_config = test.save_connection("tgt-plan-db").await;
+    target_config.host = Some("target.example.invalid".into());
+    test.store.save_connection(target_config).await.unwrap();
     let source = test.connect_config("src-plan-db").await;
     let target = test.connect_config("tgt-plan-db").await;
     let preview = super::compare_data_sync_impl(
@@ -830,7 +834,9 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
     })
     .await;
     test.save_and_connect("src-cmp").await;
-    test.save_and_connect("tgt-cmp").await;
+    let mut target_config = test.save_connection("tgt-cmp").await;
+    target_config.host = Some("target.example.invalid".into());
+    test.store.save_connection(target_config).await.unwrap();
     let src = test.connect_config("src-cmp").await;
     let tgt = test.connect_config("tgt-cmp").await;
     let err = super::compare_data_sync_impl(

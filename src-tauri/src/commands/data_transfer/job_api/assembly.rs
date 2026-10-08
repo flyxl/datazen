@@ -16,7 +16,7 @@ use super::super::exec;
 use super::super::inspect::inspect_data_transfer_impl;
 use super::super::plans::{self, StoredTransferPlan};
 use super::super::AppState;
-use super::endpoint_identity::{self, EndpointIdentity};
+use super::endpoint_identity::EndpointIdentity;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::data_transfer::job::{TransferEndpoints, TransferFreezeBody};
 use crate::data_transfer::model::{Endpoint, TableInspectResult, TransferRunSelection};
@@ -205,9 +205,19 @@ async fn resolve_database(
     // over — the same ones `validate_plan_context` just proved connectable.
     // Each endpoint is identified through *its own* driver, because that is what
     // resolves a left-out host/port into the address the run really dials.
-    let source_identity = endpoint_identity::identify(&context.src_config, &*context.src_driver);
-    let target_identity = endpoint_identity::identify(&context.tgt_config, &*context.tgt_driver);
+    let source_identity = crate::services::migration_endpoint::session_identity(
+        &state.connection_manager,
+        &job.source.db_session_id,
+        Some((&job.source.database, job.source.normalized_schema())),
+    )
+    .await?;
     let target = job.database_target().map_err(CommandError::from)?;
+    let target_identity = crate::services::migration_endpoint::session_identity(
+        &state.connection_manager,
+        &target.db_session_id,
+        Some((&target.database, target.normalized_schema())),
+    )
+    .await?;
     let pairing = enforce_transfer_pairing(
         &context.src_config.database_type,
         &context.tgt_config.database_type,
@@ -383,7 +393,12 @@ async fn resolve_sql_file(
         .cmd_err("apply_data_transfer_job")?;
     // A SQL-file destination has no connection config of its own, so there is no
     // target identity to reserve against — and therefore no writer endpoint.
-    let source_identity = endpoint_identity::identify(&src_config, &*driver);
+    let source_identity = crate::services::migration_endpoint::session_identity(
+        &state.connection_manager,
+        &job.source.db_session_id,
+        Some((&job.source.database, job.source.normalized_schema())),
+    )
+    .await?;
     let source_type = src_config.database_type.clone();
     let target_type = target_driver.driver_type().to_string();
     let mut adapters = None;

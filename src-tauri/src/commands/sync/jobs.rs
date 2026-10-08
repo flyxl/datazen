@@ -38,7 +38,7 @@ use std::sync::Arc;
 use datazen_platform_api::context::{OwnerRef, RequestContext};
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{JobDefinition, JobState};
-use datazen_platform_api::id::{ConnectionId, IdempotencyKey, JobId, WorkerId};
+use datazen_platform_api::id::{IdempotencyKey, JobId, WorkerId};
 use datazen_platform_api::{JobRepository, PortError};
 use datazen_runtime::job::{
     EndpointRef, EndpointRole, HandlerRegistry, JobClock, JobHandler, JobRuntime,
@@ -242,34 +242,20 @@ fn recording_host(
     Arc::new(RecordingHost::new(Arc::new(host), job_id))
 }
 
-/// One endpoint's budget identity. `service_key` is never empty: the overlap
-/// detector refuses a reader/writer pair whose physical service identity cannot
-/// be proven, and that refusal is a safety feature (§3), not a fallback case.
-///
-/// `service_key` is the **owning connection profile**, not the database family.
-/// Keying it on `database_type` would call every PostgreSQL server in the app
-/// one service and make a legitimate `server A → server B` sync look like a
-/// self-overlap; keying it on the profile keeps two db sessions of the *same*
-/// connection in one service, which is exactly the dangerous case `detect_endpoint_overlap`
-/// exists to refuse.
 async fn endpoint_ref(
     state: &AppState,
     endpoint: &Endpoint,
     role: EndpointRole,
 ) -> Result<EndpointRef, CommandError> {
-    let owner = state
-        .connection_manager
-        .owner_connection_id(&endpoint.connection_id)
-        .await
-        .ok_or_else(|| {
-            CommandError::Validation(format!(
-                "{role:?} connection {} is no longer available; reconnect before running",
-                endpoint.connection_id
-            ))
-        })?;
+    let identity = crate::services::migration_endpoint::session_identity(
+        &state.connection_manager,
+        &endpoint.connection_id,
+        Some((&endpoint.database, endpoint.schema.as_deref())),
+    )
+    .await?;
     Ok(EndpointRef {
-        connection_id: ConnectionId::new(owner.clone()),
-        service_key: format!("sync|{owner}"),
+        connection_id: identity.connection_id,
+        service_key: identity.service_key,
         objects: vec![endpoint.database.clone()],
         role,
     })
