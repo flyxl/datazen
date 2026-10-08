@@ -11,6 +11,7 @@ import {
 import type { TransferJobDetails } from '../../../commands/transferJobs';
 
 const getDetailsMock = vi.hoisted(() => vi.fn());
+type JobViewFixture = JobView & { error: string | null };
 
 vi.mock('../../../commands/transferJobs', () => ({
   transferJobCommands: { getDetails: getDetailsMock },
@@ -37,7 +38,7 @@ function timestamp(value: number): CommitBoundary['committedAt'] {
   return parsed;
 }
 
-function jobView(overrides: Partial<JobView> = {}): JobView {
+function jobView(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
   return {
     jobId: 'transfer-dataTransferApply-1' as JobView['jobId'],
     kind: 'dataTransferApply',
@@ -50,6 +51,7 @@ function jobView(overrides: Partial<JobView> = {}): JobView {
     effectOutcome: 'completed',
     cancelRequested: false,
     pendingVerificationReason: null,
+    error: null,
     progress: {
       read: counter(3),
       converted: counter(3),

@@ -9,7 +9,9 @@ import {
 
 import { useMigrationJobHydration } from '../useMigrationJobHydration';
 
-function jobView(overrides: Partial<JobView> = {}): JobView {
+type JobViewFixture = JobView & { error: string | null };
+
+function jobView(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
   return {
     jobId: 'transfer-apply-1' as JobView['jobId'],
     kind: 'dataTransferApply',
@@ -22,6 +24,7 @@ function jobView(overrides: Partial<JobView> = {}): JobView {
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,
+    error: null,
     progress: {
       read: 1 as JobView['progress']['read'],
       converted: 1 as JobView['progress']['converted'],

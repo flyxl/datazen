@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { toCounter, type Counter, type JobView } from '@datazen/backend-client';
 
 const cancelMock = vi.hoisted(() => vi.fn());
+type JobViewFixture = JobView & { error: string | null };
 
 function counter(value: number): Counter {
   const parsed = toCounter(value);
@@ -18,7 +19,7 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-function jobView(overrides: Partial<JobView> = {}): JobView {
+function jobView(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
   return {
     jobId: 'transfer-dataTransferApply-1' as JobView['jobId'],
     kind: 'dataTransferApply',
@@ -31,6 +32,7 @@ function jobView(overrides: Partial<JobView> = {}): JobView {
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,
+    error: null,
     progress: {
       read: counter(8),
       converted: counter(6),

@@ -356,9 +356,9 @@ const applySuccess: TransferApplyJobView = {
   updatedAt: 1_700_000_001_000,
 } as unknown as TransferApplyJobView;
 
-function genericTransferJob(
-  overrides: Partial<JobView> & { error?: string | null } = {},
-): JobView & { error?: string | null } {
+type JobViewFixture = JobView & { error: string | null };
+
+function genericTransferJob(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
   return {
     jobId: applySuccess.jobId as JobView['jobId'],
     kind: 'dataTransferApply',
@@ -371,6 +371,7 @@ function genericTransferJob(
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,
+    error: null,
     progress: {
       read: 0 as JobView['progress']['read'],
       converted: 0 as JobView['progress']['converted'],
@@ -604,7 +605,7 @@ describe('DataTransferWindow', () => {
             latestJob?.artifactIds ?? (receipt.artifactIds as unknown as JobView['artifactIds']),
           cancelRequested: latestJob?.cancelRequested ?? false,
           progress: latestJob?.progress ?? receipt.progress,
-          error: (latestJob as (JobView & { error?: string | null }) | undefined)?.error ?? receipt.error,
+          error: latestJob ? (latestJob as JobViewFixture).error : receipt.error,
         }),
         planId: receipt.planId,
         planDigest: receipt.planDigest,

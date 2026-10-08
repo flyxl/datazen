@@ -10,7 +10,9 @@ import {
 } from '../migrationJobHydration';
 import { ApiError, type BackendClient, type JobView } from '@datazen/backend-client';
 
-function jobView(overrides: Partial<JobView> = {}): JobView {
+type JobViewFixture = JobView & { error: string | null };
+
+function jobView(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
   return {
     jobId: 'job-1' as JobView['jobId'],
     kind: 'dataSyncApply',
@@ -23,6 +25,7 @@ function jobView(overrides: Partial<JobView> = {}): JobView {
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,
+    error: null,
     progress: {
       read: 0 as JobView['progress']['read'],
       converted: 0 as JobView['progress']['converted'],

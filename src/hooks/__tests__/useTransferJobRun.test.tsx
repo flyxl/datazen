@@ -33,6 +33,7 @@ const applyMock = vi.hoisted(() => vi.fn());
 const cancelMock = vi.hoisted(() => vi.fn());
 const getJobMock = vi.hoisted(() => vi.fn());
 const getDetailsMock = vi.hoisted(() => vi.fn());
+type JobViewFixture = JobView & { error: string | null };
 
 vi.mock('../../commands/transferJobs', () => ({
   localBackendScope: () => 'localBackendScope',
@@ -156,7 +157,7 @@ function applyView(overrides: Partial<TransferApplyJobView> = {}): TransferApply
   };
 }
 
-function genericJobView(overrides: Partial<JobView> = {}): JobView {
+function genericJobView(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
   return {
     jobId: 'transfer-data-apply-1' as JobView['jobId'],
     kind: 'dataTransferApply',
@@ -169,6 +170,7 @@ function genericJobView(overrides: Partial<JobView> = {}): JobView {
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,
+    error: null,
     progress: {
       read: counter(0),
       converted: counter(0),
