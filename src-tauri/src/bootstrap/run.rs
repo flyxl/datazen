@@ -477,6 +477,7 @@ pub fn run() {
             // 这两个命令是同一个 id 的读取入口（前端 client 的 getJob/listJobs
             // 经桌面 transport 映射到这两个 snake_case 名字）。
             crate::commands::get_job,
+            crate::commands::get_transfer_job_details,
             crate::commands::list_jobs,
             crate::commands::inspect_data_transfer,
             crate::commands::inspect_sql_file_transfer,

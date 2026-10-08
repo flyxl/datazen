@@ -22,13 +22,8 @@
 //! uncancellable. `list_jobs` / `get_job` (in `queries`) are the read side of
 //! that handle.
 //!
-//! What the read side does **not** offer today is a live progress feed: the
-//! counters in `JobProgress` are written once, when the run reaches a terminal
-//! state (`runtime::drive` is the only writer), so a poll during the write sees
-//! `JobState::Running` with all-zero progress, not a partial count. Incremental
-//! counts would need `JobRuntime` to report progress mid-run, which is a change
-//! to the shared runtime contract rather than to this module — so the honest
-//! thing here is to say so, not to imply a watch that does not exist.
+//! Progress, stage artifacts, recovery verdicts and commit boundaries are written
+//! through the shared durable runtime repository and remain queryable after reopen.
 
 mod admission;
 mod assembly;
@@ -179,20 +174,23 @@ pub(crate) async fn prepare_data_transfer_job_impl(
     let key = request
         .idempotency_key
         .unwrap_or_else(|| fresh_key(&review.plan_id));
-    let outcome = runtime::run(JobRunRequest {
-        kind: runtime::PREPARE_KIND,
-        payload: prepare_payload(plan.revision),
-        handler,
-        endpoints: runtime::endpoint_refs(
-            assembled.source_objects,
-            assembled.target_objects,
-            &assembled.source_identity,
-            assembled.target_identity.as_ref(),
-        ),
-        artifact_ids: Vec::new(),
-        idempotency_key: &key,
-        plan_id: None,
-    })
+    let outcome = runtime::run(
+        state,
+        JobRunRequest {
+            kind: runtime::PREPARE_KIND,
+            payload: prepare_payload(&plan.id, &digest, plan.revision),
+            handler,
+            endpoints: runtime::endpoint_refs(
+                assembled.source_objects,
+                assembled.target_objects,
+                &assembled.source_identity,
+                assembled.target_identity.as_ref(),
+            ),
+            artifact_ids: Vec::new(),
+            idempotency_key: &key,
+            plan_id: None,
+        },
+    )
     .await
     .cmd_err("prepare_data_transfer")?;
     Ok(TransferPrepareJobView {
@@ -271,6 +269,7 @@ pub(crate) struct ApplyDrive {
     plan_digest: String,
     selection_revision: u64,
     sql_file_destination: Option<std::path::PathBuf>,
+    host: Arc<datazen_runtime::job::DesktopJobHost>,
     run: runtime::BoxedJobRun,
 }
 
@@ -291,12 +290,22 @@ impl ApplyDrive {
             .and_then(file_artifact_id)
             .into_iter()
             .collect::<Vec<String>>();
-        // The digest only exists once the run has written the file, so this is the
-        // first moment the host can name that artifact — and a detached apply
-        // hands this view to nobody. Keeping the id here is what lets `get_job`
-        // publish it later, instead of the only handle to the emitted SQL dying
-        // with the return value of a task that was never awaited.
-        runtime::remember_artifacts(&outcome.job_id, &host_artifacts);
+        if !host_artifacts.is_empty() {
+            let artifacts = host_artifacts
+                .iter()
+                .cloned()
+                .map(datazen_platform_api::id::ArtifactId::new)
+                .collect::<Vec<_>>();
+            self.host
+                .repository()
+                .append_external_artifacts(
+                    &runtime::request_context(),
+                    &datazen_platform_api::id::JobId::new(outcome.job_id.clone()),
+                    &artifacts,
+                )
+                .await
+                .map_err(runtime::admit_error)?;
+        }
         Ok(apply_view(
             outcome,
             host_artifacts,
@@ -337,30 +346,14 @@ pub(crate) async fn admit_apply(
     let key = request
         .idempotency_key
         .unwrap_or_else(|| fresh_key(&request.plan_id));
-    if let Some(job_id) = runtime::receipt_for(&key) {
-        // The SQL file this run would have emitted is named by the endpoints, so
-        // a replay can still publish the same artifact id the first attempt did.
-        let host_artifacts = sql_file_destination(&assembled.endpoints)
-            .as_deref()
-            .map(std::path::Path::new)
-            .and_then(file_artifact_id)
-            .into_iter()
-            .collect();
-        let handler = Arc::new(DataTransferHandler::apply(
-            assembled.freeze,
-            assembled.inspected,
-            assembled.source_schemas,
-            assembled.target_schemas,
-            assembled.endpoints,
-            plan.database_structure.clone(),
-        ));
-        let outcome = runtime::replayed_outcome(&job_id, Vec::new(), handler.as_ref())
+    if let Some(job_id) = runtime::receipt_for(state, &key).await? {
+        let outcome = runtime::replayed_outcome(state, &job_id)
             .await
             .cmd_err("apply_data_transfer")?;
         return Ok(AdmittedApply {
             view: apply_view(
                 outcome,
-                host_artifacts,
+                Vec::new(),
                 request.plan_id.clone(),
                 digest.clone(),
                 plan.revision,
@@ -386,14 +379,13 @@ pub(crate) async fn admit_apply(
             confirmed_destructive: request.confirmed_destructive,
         },
     )?;
-    let claimed = plans::claim_plan(&request.plan_id).map_err(CommandError::from)?;
     let sql_file_destination = sql_file_destination(&assembled.endpoints);
     let run_request = JobRunRequest {
         kind: runtime::APPLY_KIND,
         payload: apply_payload(
             &request.plan_id,
             &digest,
-            claimed.revision,
+            plan.revision,
             &request.selection,
             request.confirmed_destructive,
         ),
@@ -403,7 +395,7 @@ pub(crate) async fn admit_apply(
             assembled.source_schemas,
             assembled.target_schemas,
             assembled.endpoints,
-            claimed.database_structure,
+            plan.database_structure.clone(),
         )),
         endpoints: runtime::endpoint_refs(
             assembled.source_objects,
@@ -415,14 +407,10 @@ pub(crate) async fn admit_apply(
         idempotency_key: &key,
         plan_id: Some(&request.plan_id),
     };
-    let admission = runtime::admit(&run_request)
+    let admission = runtime::admit(state, &run_request)
         .await
         .cmd_err("apply_data_transfer")?;
-    // Owned from here, so the continuation can outlive this call.
-    let drive_plan = runtime::DrivePlan::from_request(&run_request);
     match admission {
-        // The receipt appeared between the check above and this accept, so this
-        // key already ran. Report what it recorded instead of a second Job.
         runtime::Admission::Replayed(outcome) => Ok(AdmittedApply {
             view: apply_view(
                 outcome,
@@ -433,22 +421,42 @@ pub(crate) async fn admit_apply(
             ),
             drive: None,
         }),
-        runtime::Admission::Accepted(accepted) => Ok(AdmittedApply {
-            view: queued_view(
+        runtime::Admission::Accepted(accepted) => {
+            if let Err(error) = plans::claim_plan(&request.plan_id) {
+                state
+                    .desktop_job_host
+                    .repository()
+                    .mark_failed_unstarted(
+                        &runtime::request_context(),
+                        &accepted.job_id,
+                        "planClaimFailed",
+                    )
+                    .await
+                    .map_err(runtime::admit_error)?;
+                return Err(CommandError::from(error));
+            }
+            let view = queued_view(
                 &accepted,
                 request.plan_id.clone(),
                 digest.clone(),
                 plan.revision,
-            ),
-            drive: Some(ApplyDrive {
-                job_id: accepted.job_id.as_str().to_string(),
-                plan_id: request.plan_id.clone(),
-                plan_digest: digest,
-                selection_revision: plan.revision,
-                sql_file_destination,
-                run: Box::pin(async move { runtime::drive(accepted, drive_plan).await }),
-            }),
-        }),
+            );
+            let drive_plan = runtime::DrivePlan::from_request(&run_request);
+            let host = state.desktop_job_host.clone();
+            let job_id = accepted.job_id.as_str().to_string();
+            Ok(AdmittedApply {
+                view,
+                drive: Some(ApplyDrive {
+                    job_id,
+                    plan_id: request.plan_id.clone(),
+                    plan_digest: digest,
+                    selection_revision: plan.revision,
+                    sql_file_destination,
+                    host: host.clone(),
+                    run: Box::pin(async move { runtime::drive(host, accepted, drive_plan).await }),
+                }),
+            })
+        }
     }
 }
 
@@ -489,7 +497,7 @@ fn apply_view(
         error: outcome.error,
         recovery_verdict: outcome.recovery.verdict,
         recovery_resume_through: outcome.recovery.resume_through,
-        recovery_reason: outcome.recovery.reason,
+        recovery_reason: outcome.recovery.reason_code,
     }
 }
 
@@ -528,12 +536,18 @@ pub(crate) fn queued_view(
 
 /// Prepare payload: contract versions only. No `consumedPlanId` — a prepare Job
 /// consumes nothing, and `project_frozen_plan` refuses one that claims to.
-pub(crate) fn prepare_payload(selection_revision: u64) -> serde_json::Value {
+pub(crate) fn prepare_payload(
+    plan_id: &str,
+    plan_digest: &str,
+    selection_revision: u64,
+) -> serde_json::Value {
     serde_json::json!({
         "kind": runtime::PREPARE_KIND,
         "planVersion": PLAN_VERSION,
         "handlerVersion": HANDLER_VERSION,
         "checkpointVersion": CHECKPOINT_VERSION,
+        "planId": plan_id,
+        "planDigest": plan_digest,
         "selectionRevision": selection_revision,
     })
 }

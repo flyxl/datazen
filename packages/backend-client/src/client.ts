@@ -482,6 +482,7 @@ export function parseJobView(raw: unknown): JobView {
       typeof raw['pendingVerificationReason'] === 'string'
         ? raw['pendingVerificationReason']
         : null,
+    error: typeof raw['error'] === 'string' ? raw['error'] : null,
     progress: parseJobProgress(raw['progress']),
   };
 }

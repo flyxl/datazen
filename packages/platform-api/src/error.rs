@@ -401,6 +401,10 @@ mod tests {
             PortError::ProviderTimeout(_) => "ProviderTimeout",
             PortError::ArtifactExpired => "ArtifactExpired",
             PortError::QuotaExceeded(_) => "QuotaExceeded",
+            PortError::IdempotencyConflict => "IdempotencyConflict",
+            PortError::StaleClaim => "StaleClaim",
+            PortError::PlanAlreadyConsumed(_) => "PlanAlreadyConsumed",
+            PortError::UnsupportedVersion(_) => "UnsupportedVersion",
         }
     }
 

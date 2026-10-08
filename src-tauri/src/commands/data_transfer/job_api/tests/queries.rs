@@ -61,7 +61,7 @@ async fn get_job_returns_a_payload_the_client_parser_accepts() {
         .await
         .expect("the apply Job must run");
 
-    let view = read_job(&applied.job_id)
+    let view = read_job(&test.state, &applied.job_id)
         .await
         .expect("a finished Job is still readable by its id");
     let object = wire(&view);
@@ -185,13 +185,14 @@ async fn list_jobs_narrows_by_state_and_by_kind() {
     // drives it is the whole point: this is the window a caller polls in, and a
     // Job that is invisible here is a Job that cannot be watched or cancelled.
     let queued_applys = read_jobs(
+        &test.state,
         Some(vec![JobState::Queued]),
         Some(APPLY_KIND.to_string()),
         None,
     )
     .await
     .expect("listing must not fail");
-    let prepare_jobs = read_jobs(None, Some(PREPARE_KIND.to_string()), None)
+    let prepare_jobs = read_jobs(&test.state, None, Some(PREPARE_KIND.to_string()), None)
         .await
         .expect("listing must not fail");
 
@@ -225,6 +226,7 @@ async fn list_jobs_narrows_by_state_and_by_kind() {
     // listing and shows up under `succeeded`. A `listJobs` that ignored the state
     // filter would still answer `queued` here.
     let succeeded_applys = read_jobs(
+        &test.state,
         Some(vec![JobState::Succeeded]),
         Some(APPLY_KIND.to_string()),
         None,
@@ -236,6 +238,7 @@ async fn list_jobs_narrows_by_state_and_by_kind() {
         "a finished apply Job belongs in the succeeded listing"
     );
     let none_are_queued = read_jobs(
+        &test.state,
         Some(vec![JobState::Queued]),
         Some(APPLY_KIND.to_string()),
         None,
@@ -257,7 +260,7 @@ async fn list_jobs_narrows_by_state_and_by_kind() {
         .iter()
         .find(|view| view.job_id.as_str() == apply_id)
         .expect("the finished apply is in the listing it was just matched in");
-    let single = read_job(&apply_id)
+    let single = read_job(&test.state, &apply_id)
         .await
         .expect("a finished Job is still readable by its id");
     assert_ne!(
@@ -291,7 +294,7 @@ async fn list_jobs_applies_a_limit_the_repository_never_enforces() {
         .await
         .expect("the apply Job must run");
 
-    let unlimited = read_jobs(None, None, None)
+    let unlimited = read_jobs(&test.state, None, None, None)
         .await
         .expect("listing must not fail");
     assert!(
@@ -300,7 +303,7 @@ async fn list_jobs_applies_a_limit_the_repository_never_enforces() {
         unlimited.len()
     );
 
-    let none = read_jobs(None, None, Some(0))
+    let none = read_jobs(&test.state, None, None, Some(0))
         .await
         .expect("listing must not fail");
     assert!(
@@ -309,7 +312,7 @@ async fn list_jobs_applies_a_limit_the_repository_never_enforces() {
         none.len()
     );
 
-    let one = read_jobs(None, None, Some(1))
+    let one = read_jobs(&test.state, None, None, Some(1))
         .await
         .expect("listing must not fail");
     assert_eq!(
@@ -358,7 +361,7 @@ async fn a_sql_file_job_publishes_its_artifact_through_the_read_side() {
             )
         });
 
-    let view = read_job(&applied.job_id)
+    let view = read_job(&test.state, &applied.job_id)
         .await
         .expect("a finished Job is still readable by its id");
     assert!(

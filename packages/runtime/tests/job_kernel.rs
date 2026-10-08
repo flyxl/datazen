@@ -432,6 +432,7 @@ fn persisted_shapes_never_carry_runtime_handles() {
             effect_outcome: None,
             cancel_requested: false,
             pending_verification_reason: None,
+            error: None,
             progress: Default::default(),
         },
         definition: definition("schemaDiffApply", apply_payload("p"), "j"),

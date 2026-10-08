@@ -7,7 +7,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dto::execution::EffectOutcome;
-use crate::id::{ArtifactId, BlockId, Counter, ExecutionId, JobId, StageId, Timestamp, WorkerId};
+use crate::id::{
+    ArtifactId, BlockId, Counter, ExecutionId, JobId, StageId, Timestamp, WorkerId,
+};
 use crate::OwnerRef;
 
 /// 任务状态。与 `ExecutionState` 是**不同**的状态机：任务状态不含 `cancelRequested`。
@@ -59,6 +61,9 @@ pub struct JobView {
     /// 进入待核验时的原因（如 `outcomeUnknown` / `cleanupNotConfirmed`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_verification_reason: Option<String>,
+    /// Safe, bounded terminal result detail; raw SQL, driver errors and secrets are not stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// P5 五类进度计数；缺省为全零。
     #[serde(default)]
     pub progress: JobProgress,
@@ -98,6 +103,120 @@ pub struct JobRecord {
     pub stages: Vec<StageRecord>,
     /// 状态版本，任务状态 CAS 的比较基准。
     pub state_version: crate::id::JobStateVersion,
+}
+
+/// Safe recovery summary returned by the desktop job details query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum JobRecoveryVerdict {
+    PendingVerification,
+    ResumeAfterVerify,
+    Reject,
+    RequireManualReview,
+}
+
+/// Recovery decision persisted by the host after a handler has inspected its checkpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRecoveryResult {
+    pub verdict: JobRecoveryVerdict,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_through: Option<u64>,
+    /// Stable code only; arbitrary handler error text is not durable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<String>,
+}
+
+/// Detailed read model for a single Job. Bulk list responses remain small.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobDetails {
+    pub job: JobView,
+    /// CAS version captured with this details snapshot.
+    pub state_version: crate::id::JobStateVersion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_revision: Option<u64>,
+    #[serde(default)]
+    pub commit_boundaries: Vec<CommitBoundary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<JobRecoveryResult>,
+    /// Bounded handler receipts, one per completed stage. Free-form text is excluded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domain_results: Vec<JobDomainResult>,
+    /// Stable connection/object identity used only to scope explicit post-restart verification.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recovery_targets: Vec<JobRecoveryTarget>,
+    /// Optional stable before-state fingerprint for explicit post-restart verification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_before_fingerprint: Option<String>,
+    /// Stable recovery policy code; never a free-form instruction or SQL fragment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_policy: Option<String>,
+}
+
+/// Safe persistent target identity. It is not a live session or a resource lease.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRecoveryTarget {
+    pub connection_id: String,
+    pub object_ids: Vec<String>,
+}
+
+/// Persistable handler summary. The host validates every identifier and applies a size cap.
+/// It deliberately has no field for SQL, driver messages, credentials, or runtime handles.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobDomainResult {
+    pub stage_id: StageId,
+    pub result_code: String,
+    pub outcome_code: String,
+    #[serde(default)]
+    pub counters: Vec<JobResultCounter>,
+    #[serde(default)]
+    pub items: Vec<JobResultItem>,
+    #[serde(default)]
+    pub artifact_ids: Vec<ArtifactId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobResultCounter {
+    pub code: String,
+    pub value: Counter,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobResultItem {
+    /// Opaque operation/object identifier, never a statement or user-supplied label.
+    pub item_id: String,
+    pub outcome_code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<String>,
+}
+
+/// Input passed to an explicit recovery verifier after the caller has re-authorized resources.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRecoveryRequest {
+    pub details: JobDetails,
+    pub checkpoint: Option<Checkpoint>,
+}
+
+/// Safe facts returned by an explicit read-only verifier. The host persists these atomically;
+/// the type carries no request to dispatch or replay a Job.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRecoveryVerification {
+    pub result: JobRecoveryResult,
+    #[serde(default)]
+    pub confirmed_boundaries: Vec<CommitBoundary>,
+    #[serde(default)]
+    pub domain_results: Vec<JobDomainResult>,
 }
 
 /// 已提交边界：checkpoint 里**唯一**关于「已经生效到哪里」的事实。
@@ -198,6 +317,7 @@ mod tests {
             effect_outcome: Some(EffectOutcome::Completed),
             cancel_requested: false,
             pending_verification_reason: None,
+            error: None,
             progress: JobProgress::default(),
         }
     }

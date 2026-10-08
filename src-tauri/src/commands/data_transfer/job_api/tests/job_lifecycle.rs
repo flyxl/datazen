@@ -6,10 +6,9 @@ use datazen_platform_api::context::OwnerRef;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{JobDefinition, JobProgress, JobState};
 use datazen_platform_api::id::{ClientInstanceId, IdempotencyKey, JobId};
-use datazen_platform_api::JobRepository;
 
 use super::super::cancel::{cancel_data_transfer_job, job_cancel_requested};
-use super::super::runtime::{host, now_timestamp, request_context, PREPARE_KIND};
+use super::super::runtime::{now_timestamp, request_context, PREPARE_KIND};
 use super::*;
 
 /// A cancel must land on the Job repository, not on a local registry. The P5
@@ -19,14 +18,15 @@ use super::*;
 /// been told it stopped.
 #[tokio::test]
 async fn a_cancel_request_lands_on_the_job_repository() {
+    let test = TestAppState::with_options(mock_options()).await;
     // A queued Job is the state a cancel actually has to interrupt.
     let queued = JobId::new(format!(
         "transfer-dataTransferPrepare-{}",
         uuid::Uuid::new_v4()
     ));
     let ctx = request_context();
-    host()
-        .repo
+    test.state
+        .desktop_job_host
         .accept(
             &ctx,
             JobDefinition {
@@ -49,20 +49,19 @@ async fn a_cancel_request_lands_on_the_job_repository() {
         .expect("a queued Job should be accepted");
 
     assert!(
-        cancel_data_transfer_job(queued.as_str())
+        cancel_data_transfer_job(&test.state, queued.as_str())
             .await
             .expect("a queued Job must accept a cancel request"),
         "the cancel must be taken through the Job repository"
     );
     assert!(
-        job_cancel_requested(queued.as_str())
+        job_cancel_requested(&test.state, queued.as_str())
             .await
             .expect("the recorded cancel must be readable"),
         "the cancel must be recorded on the Job, not just returned as true"
     );
 
     // A finished Job is already decided: nothing to record, nothing to refuse.
-    let test = TestAppState::with_options(mock_options()).await;
     let (_source_config, source) = test.save_and_connect("p5dt-cancel-source").await;
     let (_target_config, target) = test.save_and_connect("p5dt-cancel-target").await;
     let prepared =
@@ -70,13 +69,13 @@ async fn a_cancel_request_lands_on_the_job_repository() {
             .await
             .expect("a direct-pair review should issue a plan");
     assert!(
-        cancel_data_transfer_job(&prepared.job_id)
+        cancel_data_transfer_job(&test.state, &prepared.job_id)
             .await
             .expect("a finished Job must not fail the cancel"),
         "the id is still a P5 Job, so the command answers for it"
     );
     assert!(
-        !job_cancel_requested(&prepared.job_id)
+        !job_cancel_requested(&test.state, &prepared.job_id)
             .await
             .expect("the recorded cancel must be readable"),
         "a Job that already finished has no cancel in effect"
@@ -84,13 +83,13 @@ async fn a_cancel_request_lands_on_the_job_repository() {
 
     // An id this client never accepted belongs to the legacy registry path.
     assert!(
-        !cancel_data_transfer_job("transfer-apply-not-a-job")
+        !cancel_data_transfer_job(&test.state, "transfer-apply-not-a-job")
             .await
             .expect("an unknown Job id is not an error"),
         "an unknown Job id must be refused so the caller can fall back"
     );
     assert!(
-        !job_cancel_requested("transfer-apply-not-a-job")
+        !job_cancel_requested(&test.state, "transfer-apply-not-a-job")
             .await
             .expect("an unknown Job id is not an error"),
         "an unknown Job id has no recorded cancel"

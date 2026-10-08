@@ -231,6 +231,7 @@ mod tests {
                 effect_outcome: None,
                 cancel_requested: false,
                 pending_verification_reason: None,
+                error: None,
                 progress: Default::default(),
             },
             definition: JobDefinition {

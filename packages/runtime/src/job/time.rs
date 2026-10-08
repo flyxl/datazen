@@ -12,6 +12,16 @@ pub trait JobClock: Send + Sync + 'static {
     fn now(&self) -> Timestamp;
 }
 
+/// Production UTC clock for persisted desktop job timestamps.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SystemJobClock;
+
+impl JobClock for SystemJobClock {
+    fn now(&self) -> Timestamp {
+        Timestamp::new(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+    }
+}
+
 /// 单线程测试用可推进时钟。
 #[derive(Debug, Clone)]
 pub struct SharedClock {
@@ -49,7 +59,9 @@ pub fn after_seconds(ts: &Timestamp, secs: i64) -> Result<Timestamp, JobError> {
     let parsed = chrono::DateTime::parse_from_rfc3339(ts.as_str())
         .map_err(|_| JobError::PlanProjectionInvalid("unparseable timestamp".into()))?;
     let shifted = parsed + chrono::Duration::seconds(secs);
-    Ok(Timestamp::new(shifted.format("%Y-%m-%dT%H:%M:%SZ").to_string()))
+    Ok(Timestamp::new(
+        shifted.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+    ))
 }
 
 #[cfg(test)]
