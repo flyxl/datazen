@@ -362,9 +362,9 @@ mod tests {
     }
 
     #[test]
-    fn variant_set_is_exactly_the_seven_from_the_spec() {
-        // §4.1 的变体表是本契约的一部分：多一个「业务拒绝」变体就等于把判定放错层，
-        // 少一个则端口无法表达事实。这里把集合钉死。
+    fn variant_set_includes_the_p5_job_contract() {
+        // Include the four P5 persistence facts; the exhaustive matcher below
+        // makes future additions require an explicit contract update.
         let all = [
             PortError::BackendUnavailable("db".into()),
             PortError::CasConflict {
@@ -376,6 +376,10 @@ mod tests {
             PortError::ProviderTimeout("db".into()),
             PortError::ArtifactExpired,
             PortError::QuotaExceeded("rows".into()),
+            PortError::IdempotencyConflict,
+            PortError::StaleClaim,
+            PortError::PlanAlreadyConsumed("plan-1".into()),
+            PortError::UnsupportedVersion("plan/2".into()),
         ];
         let names: Vec<&str> = all.iter().map(|e| variant_name(e)).collect();
         assert_eq!(
@@ -388,6 +392,10 @@ mod tests {
                 "ProviderTimeout",
                 "ArtifactExpired",
                 "QuotaExceeded",
+                "IdempotencyConflict",
+                "StaleClaim",
+                "PlanAlreadyConsumed",
+                "UnsupportedVersion",
             ]
         );
     }
@@ -401,6 +409,10 @@ mod tests {
             PortError::ProviderTimeout(_) => "ProviderTimeout",
             PortError::ArtifactExpired => "ArtifactExpired",
             PortError::QuotaExceeded(_) => "QuotaExceeded",
+            PortError::IdempotencyConflict => "IdempotencyConflict",
+            PortError::StaleClaim => "StaleClaim",
+            PortError::PlanAlreadyConsumed(_) => "PlanAlreadyConsumed",
+            PortError::UnsupportedVersion(_) => "UnsupportedVersion",
         }
     }
 
@@ -430,6 +442,10 @@ mod tests {
                 PortError::QuotaExceeded("rows".into()),
                 "quota exceeded: rows",
             ),
+            (PortError::IdempotencyConflict, "idempotency conflict: same key, different request payload"),
+            (PortError::StaleClaim, "stale or expired claim: write rejected"),
+            (PortError::PlanAlreadyConsumed("plan-1".into()), "plan already consumed by an apply job: plan-1"),
+            (PortError::UnsupportedVersion("plan/2".into()), "unsupported version: plan/2"),
         ];
         for (error, expected) in cases {
             assert_eq!(error.to_string(), expected);
@@ -604,6 +620,10 @@ mod tests {
         assert!(!PortError::TokenInvalid.is_transient());
         assert!(!PortError::ArtifactExpired.is_transient());
         assert!(!PortError::QuotaExceeded("rows".into()).is_transient());
+        assert!(!PortError::IdempotencyConflict.is_transient());
+        assert!(!PortError::StaleClaim.is_transient());
+        assert!(!PortError::PlanAlreadyConsumed("plan-1".into()).is_transient());
+        assert!(!PortError::UnsupportedVersion("plan/2".into()).is_transient());
     }
 
     /// 从 application 迁到「类型的唯一定义处」：守卫的对象是这个枚举，

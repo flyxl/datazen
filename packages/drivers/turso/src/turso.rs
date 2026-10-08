@@ -218,6 +218,12 @@ fn turso_int(v: &serde_json::Value) -> Option<i64> {
 
 #[async_trait]
 impl DatabaseDriver for TursoDriver {
+    // This HTTP driver has no parameterized DML implementation. Zero makes
+    // migration consumers reject an active projection before any target write.
+    fn max_bound_parameters(&self) -> usize {
+        0
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "turso".to_string()
     }

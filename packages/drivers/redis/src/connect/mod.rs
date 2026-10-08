@@ -12,6 +12,8 @@ pub mod plan;
 pub mod sentinel;
 pub mod standalone;
 pub mod tls;
+#[cfg(test)]
+mod tls_journey;
 
 /// The socket Redis dials when the config names no host. One constant feeds
 /// every defaulting site below — [`build_connection_plan`] and

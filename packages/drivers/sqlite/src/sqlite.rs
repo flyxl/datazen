@@ -3,6 +3,8 @@
 use crate::structure;
 
 mod schema;
+#[path = "parameter_limit.rs"]
+mod parameter_limit;
 use async_trait::async_trait;
 use datazen_driver_api::*;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -14,12 +16,14 @@ use tokio::sync::RwLock;
 
 pub struct SqliteDriver {
     pools: RwLock<HashMap<String, SqlitePool>>,
+    parameter_limit: usize,
 }
 
 impl SqliteDriver {
     pub fn new() -> Self {
         Self {
             pools: RwLock::new(HashMap::new()),
+            parameter_limit: parameter_limit::linked_runtime_limit(),
         }
     }
 
@@ -179,6 +183,10 @@ impl std::hash::Hasher for FileIdentityHasher {
 
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
+    fn max_bound_parameters(&self) -> usize {
+        self.parameter_limit
+    }
+
     fn migration_renderer(
         &self,
     ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
