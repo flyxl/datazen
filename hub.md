@@ -181,3 +181,6 @@
 - `feature/p5-job-addressable @ 50683a619` 已于 2026-10-08 只读审计：r1 三个 cherry 提交的实现与测试均被当前集成分支后续版本覆盖；查询 JSON 字符串/非零断言也有等价覆盖；唯一 r1 独有文件为 144 行 `progress.md`。不 cherry-pick、不合并；P5 收尾删除该 worktree 和分支。审计确认未发现需人工裁定的独有行为或测试。
 
 - 2026-10-08：Core 稳定 checkpoint `2ffacb59b340c4ac2a329c201a9d241ce5f98d44`，包含 AppState/DesktopJobHost、SQLite v2 与 Transfer durable accept/get/list/cancel/details；`cargo check -p datazen`、`cargo test -p datazen --lib --no-run` EXIT=0。Core 继续补生命周期/回滚/竞态测试与架构事实文档，尚未独立验收。基于 checkpoint 独立派发 `codex/p5-schema-diff-job`，覆盖 Schema Diff Job API 与窗口接入。
+
+- 2026-10-08：`codex/p5-transfer-job-ui @ 5161cf69b13f3eaf5952bda8eb6b95216b8f7ef5` 已到 READY_FOR_TEST，coder 报告 Vitest 8 files / 92 tests、root/scripts/pack-ep 三个 TypeScript 项目与 DTJ focused typecheck 均通过；独立 Tester 在 `/private/tmp/dz-p5-transfer-ui-test` 验收中。WDIO 尚未执行，需 Core IPC 合流及适用数据库环境。
+- SchemaDiff 消费者初步核对出 JobDetails 缺安全领域回执持久化、恢复核验只支持同步纯判断。Core 已将公共 API 扩展纳入当前分支：安全 `domainResult` 持久化 + 显式用户触发异步 `JobRecoveryVerifier` / `verify_recovery`，只回写安全核验证据、不重放副作用。`codex/p5-schema-diff-job` 暂继续窗口生命周期接线，等待 Core 冻结 API 后接实际核验。
