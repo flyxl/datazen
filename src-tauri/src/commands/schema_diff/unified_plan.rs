@@ -69,7 +69,7 @@ pub async fn prepare_schema_unified_plan(
     allow_destructive: bool,
     include_indexes: Option<bool>,
     type_overrides: Option<Vec<ColumnTypeOverride>>,
-) -> Result<super::job::SchemaDiffPrepareEnvelope, CommandError> {
+) -> Result<super::job::SchemaDiffJobAccepted, CommandError> {
     let target_table_names = target_table_names.unwrap_or_else(|| table_names.clone());
     super::job::run_prepare_job(
         &state,

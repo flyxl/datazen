@@ -22,7 +22,6 @@ function jobView(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
     artifactIds: [],
     createdAt: 1700000000000 as JobView['createdAt'],
     updatedAt: 1700000000000 as JobView['updatedAt'],
-    error: null,
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,
@@ -75,10 +74,26 @@ describe('isStalePlanError', () => {
 
 describe('latestApplyJob', () => {
   it('picks the newest apply job for the window', () => {
-    const older = jobView({ jobId: 'j1' as JobView['jobId'], createdAt: 1000 as JobView['createdAt'], kind: 'schemaDiffApply' });
-    const newer = jobView({ jobId: 'j2' as JobView['jobId'], createdAt: 2000 as JobView['createdAt'], kind: 'schemaDiffApply' });
-    const prepare = jobView({ jobId: 'j3' as JobView['jobId'], createdAt: 3000 as JobView['createdAt'], kind: 'schemaDiffPrepare' });
-    const other = jobView({ jobId: 'j4' as JobView['jobId'], createdAt: 4000 as JobView['createdAt'], kind: 'dataSyncApply' });
+    const older = jobView({
+      jobId: 'j1' as JobView['jobId'],
+      createdAt: 1000 as JobView['createdAt'],
+      kind: 'schemaDiffApply',
+    });
+    const newer = jobView({
+      jobId: 'j2' as JobView['jobId'],
+      createdAt: 2000 as JobView['createdAt'],
+      kind: 'schemaDiffApply',
+    });
+    const prepare = jobView({
+      jobId: 'j3' as JobView['jobId'],
+      createdAt: 3000 as JobView['createdAt'],
+      kind: 'schemaDiffPrepare',
+    });
+    const other = jobView({
+      jobId: 'j4' as JobView['jobId'],
+      createdAt: 4000 as JobView['createdAt'],
+      kind: 'dataSyncApply',
+    });
     expect(latestApplyJob([older, newer, prepare, other], 'schemaDiff')?.jobId).toBe('j2');
     expect(latestApplyJob([older], 'dataSync')).toBeNull();
   });
@@ -92,7 +107,9 @@ describe('hydrateMigrationJobs', () => {
       listJobs: async (filter: Record<string, unknown>) => {
         order.push('listJobs');
         if (filter['states']) {
-          return [jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataSyncApply', state: 'running' })];
+          return [
+            jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataSyncApply', state: 'running' }),
+          ];
         }
         return [
           jobView({

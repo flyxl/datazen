@@ -37,8 +37,7 @@ const pack = {
     'The application restarted after this Job was accepted but before it was dispatched, so no migration work ran. Prepare a fresh plan to try again.',
   'migration.verdict.requiresReconcile':
     'Verify the target against the recorded boundaries before applying anything else.',
-  'migration.verdict.resumeThrough':
-    'Recovery may resume through boundary #',
+  'migration.verdict.resumeThrough': 'Recovery may resume through boundary #',
   'migration.verdict.rereview': 'Review a new plan',
   // An unreconciled run must be verified read-only first. A fresh
   // review mints a new planId, so one click here would be a second write over a
@@ -575,6 +574,38 @@ const pack = {
   'schemaDiff.confirmDeploy': 'Type {token} to confirm destructive deploy',
   'schemaDiff.deploy': 'Deploy to target',
   'schemaDiff.deploying': 'Deploying…',
+  'schemaDiff.prepareJob': 'Plan job',
+  'schemaDiff.applyJob': 'Apply job',
+  'schemaDiff.jobUnknown': 'Status unavailable',
+  'schemaDiff.jobQueued': 'Accepted; waiting for dispatch',
+  'schemaDiff.jobRunning': 'Running',
+  'schemaDiff.jobSucceeded': 'Completed',
+  'schemaDiff.jobFailed': 'Failed',
+  'schemaDiff.jobCancelled': 'Cancelled',
+  'schemaDiff.jobProgress': 'Attempted {attempted}; committed {committed}; unknown {unknown}',
+  'schemaDiff.requestCancel': 'Request cancellation',
+  'schemaDiff.cancelRequested': 'Cancellation was requested; waiting for the job outcome.',
+  'schemaDiff.cancelUnavailable': 'The cancellation request did not reach this job.',
+  'schemaDiff.planUnavailableAfterRestart':
+    'The reviewed plan is unavailable after restart. Compare again before applying.',
+  'schemaDiff.notDispatchedAfterRestart':
+    'This accepted job was not dispatched before restart. It was not replayed; compare again to create a new job.',
+  'schemaDiff.notExecuted':
+    'This job did not start. Its work was not replayed; compare again to submit a fresh job.',
+  'schemaDiff.recoveryPending':
+    'The target needs an explicit read-only check. This job will not resume automatically.',
+  'schemaDiff.recoveryIdentityUnavailable':
+    'Target identity is unavailable for automatic verification; manual review is required.',
+  'schemaDiff.verifyRecovery': 'Check target state',
+  'schemaDiff.verifyingRecovery': 'Checking target state…',
+  'schemaDiff.recoveryUnchanged':
+    'The target fingerprint is unchanged. This does not prove the statements did not run; compare again before applying.',
+  'schemaDiff.recoveryChanged':
+    'The target fingerprint changed. Review the database manually before creating a new plan.',
+  'schemaDiff.recoveryManualReview':
+    'The read-only check could not determine the outcome. Review the target manually before continuing.',
+  'schemaDiff.lastApplyReport': 'Latest apply report',
+  'schemaDiff.recoveryCode': 'Recovery code: {code}',
   'schemaDiff.deployStatus': 'Deploy status',
   'schemaDiff.executed': 'executed',
   'schemaDiff.missingOnTarget': 'Missing on target (ADD)',

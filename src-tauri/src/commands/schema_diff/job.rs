@@ -9,25 +9,14 @@
 //! 不变量（§2.1）：同一请求只走一种管理器——IPC 一律构造 Job、注册 handler、
 //! 跑 JobRuntime，不直接调旧 prepare/deploy 管理器。
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use sha2::{Digest, Sha256};
 
 use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{JobDefinition, JobState};
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{
-    ClientInstanceId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId, WorkerId,
-};
-use datazen_platform_api::ports::budget::ServiceQuota;
-use datazen_platform_api::ports::job::JobRepository;
-
-use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
-use datazen_runtime::job::{
-    EndpointRef, EndpointRole, HandlerRegistry, InMemoryJobRepository, JobClock, JobHandler,
-    JobRuntime,
-};
+use datazen_platform_api::id::{ClientInstanceId, JobId, OrganizationId, PrincipalId, RequestId};
+use datazen_runtime::job::{EndpointRef, EndpointRole};
 
 use datazen_schema_diff::job::{
     ApplyRequest, PlanStore, PrepareRequest, PreparedPlan, ReadOnlyVerdict, SchemaDiffFrozenPlan,
@@ -36,51 +25,23 @@ use datazen_schema_diff::job::{
 use datazen_schema_diff::types::{SchemaDiffDeployResult, SchemaDiffPlan};
 
 use crate::commands::error::{CmdExt, CommandError};
-use crate::commands::schema_diff::{
-    execute_schema_diff_deploy_impl, fetch_target_table_schema,
-    prepare_schema_diff_plan_with_schemas_impl,
-};
+use crate::commands::schema_diff::prepare_schema_diff_plan_with_schemas_impl;
 use crate::commands::schema_diff::unified_plan::prepare_schema_unified_plan_impl;
 use crate::AppState;
+
+mod recovery;
 
 /// 进程级 Job 基础设施。置于 [`AppState`] 中，驻留整个应用生命周期：
 /// Job 关闭后仍保留终态与 effect 投影（§8：窗口关闭不释放 Job 资源）。
 pub struct SchemaDiffJobInfra {
-    pub repo: Arc<InMemoryJobRepository>,
-    pub ledger: Arc<Mutex<BudgetLedger>>,
     pub plans: Arc<PlanStore>,
 }
 
 impl SchemaDiffJobInfra {
     pub fn new() -> Self {
-        let clock = Arc::new(SystemJobClock);
-        let quota = ServiceQuota::new(64, [4, 4, 4, 0])
-            .expect("schema-diff job budget quota must be valid");
         Self {
-            repo: Arc::new(InMemoryJobRepository::new(clock, 300)),
-            ledger: Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::new(quota)))),
             plans: Arc::new(PlanStore::new()),
         }
-    }
-
-    fn now_ms(&self) -> u64 {
-        let epoch = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default();
-        epoch.as_millis() as u64
-    }
-}
-
-/// 真实时间 JobClock（生产路径）。
-pub struct SystemJobClock;
-
-impl JobClock for SystemJobClock {
-    fn now(&self) -> datazen_platform_api::id::Timestamp {
-        datazen_platform_api::id::Timestamp::new(
-            chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%SZ")
-                .to_string(),
-        )
     }
 }
 
@@ -89,14 +50,15 @@ fn fnv_hex_of_json<T: serde::Serialize>(v: &T) -> String {
     datazen_schema_diff::job::fnv1a64_hex(&bytes)
 }
 
-
 fn source_session_id(request: &PrepareRequest) -> String {
     match request {
         PrepareRequest::Table {
-            source_db_session_id, ..
+            source_db_session_id,
+            ..
         } => source_db_session_id.clone(),
         PrepareRequest::Unified {
-            source_db_session_id, ..
+            source_db_session_id,
+            ..
         } => source_db_session_id.clone(),
     }
 }
@@ -104,12 +66,22 @@ fn source_session_id(request: &PrepareRequest) -> String {
 fn target_session_id(request: &PrepareRequest) -> String {
     match request {
         PrepareRequest::Table {
-            target_db_session_id, ..
+            target_db_session_id,
+            ..
         } => target_db_session_id.clone(),
         PrepareRequest::Unified {
-            target_db_session_id, ..
+            target_db_session_id,
+            ..
         } => target_db_session_id.clone(),
     }
+}
+
+async fn owner_connection_id(state: &AppState, session_id: &str) -> Result<String, CommandError> {
+    state
+        .connection_manager
+        .owner_connection_id(session_id)
+        .await
+        .ok_or_else(|| CommandError::Validation("Migration connection owner is unavailable".into()))
 }
 
 /// §4.2 桌面确认边界：运行时仓配化的恢复策略字符串（§2.2）。
@@ -119,40 +91,6 @@ fn recovery_policy_str(transactional_ddl: bool) -> &'static str {
     } else {
         "readOnlyVerify"
     }
-}
-
-/// 目标结构的 before 指纹：当前目标表的 TableSchema 集合哈希。
-/// 空表集（纯对象计划）退化为渲染语句集合的哈希（弱指纹，在目标结构
-/// 无表对象可读时采用）。
-async fn compute_target_fingerprint(
-    state: &AppState,
-    target_db_session_id: &str,
-    target_database: Option<&str>,
-    target_schema: Option<&str>,
-    tables: &[String],
-    fallback_fns: &[String],
-) -> Result<String, CommandError> {
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(target_db_session_id)
-        .await
-        .cmd_err("compute_target_fingerprint")?;
-    let mut schemas = Vec::new();
-    for table in tables {
-        let schema = fetch_target_table_schema(
-            driver.as_ref(),
-            &handle,
-            table,
-            target_database.unwrap_or(""),
-            target_schema,
-        )
-        .await?;
-        schemas.push(schema);
-    }
-    if schemas.is_empty() {
-        return Ok(fnv_hex_of_json(&fallback_fns));
-    }
-    Ok(fnv_hex_of_json(&schemas))
 }
 
 /// capability/版本/credential 快照（§2.2）：当前连接配置的可核验身份。
@@ -172,11 +110,7 @@ async fn current_capability_hash(
     let read_only = match owner.as_ref() {
         Some(owner) => {
             let persisted = state.store.get_connection(owner).await;
-            config.read_only
-                || persisted
-                    .as_ref()
-                    .map(|p| p.read_only)
-                    .unwrap_or(false)
+            config.read_only || persisted.as_ref().map(|p| p.read_only).unwrap_or(false)
         }
         None => config.read_only,
     };
@@ -193,29 +127,20 @@ async fn current_capability_hash(
 pub struct AppStateBackend {
     state: Arc<AppState>,
     plans: Arc<PlanStore>,
-    last_prepared: Arc<Mutex<Option<(String, SchemaDiffFrozenPlan)>>>,
-    last_deploy: Arc<Mutex<Option<SchemaDiffDeployResult>>>,
+    target_session_id: Option<String>,
 }
 
 impl AppStateBackend {
-    pub fn new(state: Arc<AppState>, plans: Arc<PlanStore>) -> Self {
+    pub fn new(
+        state: Arc<AppState>,
+        plans: Arc<PlanStore>,
+        target_session_id: Option<String>,
+    ) -> Self {
         Self {
             state,
             plans,
-            last_prepared: Arc::new(Mutex::new(None)),
-            last_deploy: Arc::new(Mutex::new(None)),
+            target_session_id,
         }
-    }
-
-    pub fn last_prepared(&self) -> Option<(String, SchemaDiffFrozenPlan)> {
-        self.last_prepared
-            .lock()
-            .ok()
-            .and_then(|g| g.clone())
-    }
-
-    pub fn last_deploy(&self) -> Option<SchemaDiffDeployResult> {
-        self.last_deploy.lock().ok().and_then(|g| g.clone())
     }
 }
 
@@ -254,7 +179,12 @@ impl SchemaDiffJobBackend for AppStateBackend {
                 )
                 .await
                 .map_err(|e| SchemaDiffPlanError::PlanNotFound(e.to_string()))?;
-                (plan, target_db_session_id.clone(), target_database_from_config(&self.state, &target_db_session_id).await, target_schema.clone())
+                (
+                    plan,
+                    target_db_session_id.clone(),
+                    target_database_from_config(&self.state, &target_db_session_id).await,
+                    target_schema.clone(),
+                )
             }
             PrepareRequest::Unified {
                 source_db_session_id,
@@ -287,36 +217,37 @@ impl SchemaDiffJobBackend for AppStateBackend {
                 )
                 .await
                 .map_err(|e| SchemaDiffPlanError::PlanNotFound(e.to_string()))?;
-                (plan, target_db_session_id.clone(), target_database_from_config(&self.state, &target_db_session_id).await, target_schema.clone())
+                (
+                    plan,
+                    target_db_session_id.clone(),
+                    target_database_from_config(&self.state, &target_db_session_id).await,
+                    target_schema.clone(),
+                )
             }
         };
+        let recovery_targets = recovery::prepare_target_objects(&self.state, request)
+            .await
+            .map_err(|_| SchemaDiffPlanError::PlanStale("target identity unavailable".into()))?;
         let plan_id = plan
             .plan_id
             .clone()
             .ok_or_else(|| SchemaDiffPlanError::PlanNotFound("planId missing".into()))?;
-        let fingerprint = compute_target_fingerprint(
+        let fingerprint = recovery::fingerprint_targets(
             &self.state,
             &tgt_sess,
             target_db.as_deref(),
-            target_schema.as_deref(),
-            &plan.tables,
-            &plan
-                .statements
-                .iter()
-                .map(|s| s.sql.clone())
-                .collect::<Vec<_>>(),
+            &recovery_targets,
         )
         .await
         .map_err(|e| SchemaDiffPlanError::PlanStale(e.to_string()))?;
         let capability_hash = current_capability_hash(&self.state, &tgt_sess)
             .await
-            .map_err(|e| SchemaDiffPlanError::CapabilityChanged)?;
-        let transactional_ddl = plan
-            .statements
-            .iter()
-            .any(|s| s.requires_transaction)
+            .map_err(|_| SchemaDiffPlanError::CapabilityChanged)?;
+        let transactional_ddl = plan.statements.iter().any(|s| s.requires_transaction)
             || plan.source_dialect.contains("sqlite")
             || plan.source_dialect.contains("postgres");
+        let mut endpoint_evidence = vec![format!("planTables:{}", plan.tables.join(","))];
+        recovery::record_target_objects(&mut endpoint_evidence, &recovery_targets);
         let meta = SchemaDiffFrozenPlan {
             plan_id: plan_id.clone(),
             plan_version: 1,
@@ -324,25 +255,24 @@ impl SchemaDiffJobBackend for AppStateBackend {
             checkpoint_version: 1,
             selection_revision: 1,
             created_at: datazen_platform_api::id::Timestamp::new(
-                chrono::Utc::now()
-                    .format("%Y-%m-%dT%H:%M:%SZ")
-                    .to_string(),
+                chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
             ),
             expires_at: datazen_platform_api::id::Timestamp::new(
                 (chrono::Utc::now() + chrono::Duration::hours(2))
                     .format("%Y-%m-%dT%H:%M:%SZ")
                     .to_string(),
             ),
-            source_connection_id: source_session_id(request),
-            target_connection_id: target_session_id(request),
+            source_connection_id: owner_connection_id(&self.state, &source_session_id(request))
+                .await
+                .map_err(|_| SchemaDiffPlanError::CapabilityChanged)?,
+            target_connection_id: owner_connection_id(&self.state, &target_session_id(request))
+                .await
+                .map_err(|_| SchemaDiffPlanError::CapabilityChanged)?,
             source_database: None,
             target_database: target_db,
             source_schema: None,
             target_schema,
-            endpoint_evidence: vec![
-                format!("target:{}", tgt_sess),
-                format!("planTables:{}", plan.tables.join(",")),
-            ],
+            endpoint_evidence,
             capability_snapshot_hash: capability_hash,
             schema_fingerprint: fingerprint,
             mapping_fingerprint: fnv_hex_of_json(&plan.tables),
@@ -352,18 +282,17 @@ impl SchemaDiffJobBackend for AppStateBackend {
             } else {
                 "nonAtomicDDL".into()
             },
-            recovery_policy: datazen_schema_diff::job::RecoveryPolicy::parse(
-                recovery_policy_str(transactional_ddl),
-            )
-            .ok_or(SchemaDiffPlanError::RecoveryPolicyInvalid("policy parse".into()))?,
+            recovery_policy: datazen_schema_diff::job::RecoveryPolicy::parse(recovery_policy_str(
+                transactional_ddl,
+            ))
+            .ok_or(SchemaDiffPlanError::RecoveryPolicyInvalid(
+                "policy parse".into(),
+            ))?,
             body_artifact_ids: vec![format!("artifact:plan:{plan_id}")],
             body_digests: vec![fnv_hex_of_json(&plan.statements)],
             confirmed_actions: Vec::new(),
         };
         let body_digest = fnv_hex_of_json(&plan.statements);
-        *self.last_prepared.lock().map_err(|_| {
-            SchemaDiffPlanError::PlanNotFound("last_prepared lock".into())
-        })? = Some((plan_id.clone(), meta.clone()));
         Ok(PreparedPlan {
             meta,
             plan,
@@ -375,11 +304,9 @@ impl SchemaDiffJobBackend for AppStateBackend {
         &self,
         plan_meta: &SchemaDiffFrozenPlan,
     ) -> Result<(), SchemaDiffPlanError> {
-        // verify_authorization 需要目标会话：从 plan_meta 中读取。
-        let target_session = plan_meta
-            .endpoint_evidence
-            .iter()
-            .find_map(|e| e.strip_prefix("target:"))
+        let target_session = self
+            .target_session_id
+            .as_deref()
             .ok_or(SchemaDiffPlanError::CapabilityChanged)?;
         let current = current_capability_hash(&self.state, target_session)
             .await
@@ -392,31 +319,23 @@ impl SchemaDiffJobBackend for AppStateBackend {
 
     async fn read_target_fingerprint(
         &self,
-        plan: &SchemaDiffPlan,
+        _plan: &SchemaDiffPlan,
         plan_meta: &SchemaDiffFrozenPlan,
     ) -> Result<String, SchemaDiffPlanError> {
-        let target_session = plan_meta
-            .endpoint_evidence
-            .iter()
-            .find_map(|e| e.strip_prefix("target:"))
-            .ok_or(SchemaDiffPlanError::PlanStale("target evidence missing".into()))?;
-        let tables: Vec<String> = plan_meta
-            .endpoint_evidence
-            .iter()
-            .find_map(|e| e.strip_prefix("planTables:"))
-            .map(|s| s.split(',').filter(|t| !t.is_empty()).map(String::from).collect())
-            .unwrap_or_default();
-        compute_target_fingerprint(
+        let target_session =
+            self.target_session_id
+                .as_deref()
+                .ok_or(SchemaDiffPlanError::PlanStale(
+                    "target session unavailable".into(),
+                ))?;
+        let targets = recovery::targets_from_evidence(&plan_meta.endpoint_evidence).ok_or(
+            SchemaDiffPlanError::PlanStale("target identity unavailable".into()),
+        )?;
+        recovery::fingerprint_targets(
             &self.state,
             target_session,
             plan_meta.target_database.as_deref(),
-            plan_meta.target_schema.as_deref(),
-            &tables,
-            &plan
-                .statements
-                .iter()
-                .map(|stmt| stmt.sql.clone())
-                .collect::<Vec<_>>(),
+            &targets,
         )
         .await
         .map_err(|e| SchemaDiffPlanError::PlanStale(e.to_string()))
@@ -426,9 +345,9 @@ impl SchemaDiffJobBackend for AppStateBackend {
         &self,
         plan: &SchemaDiffPlan,
         request: &ApplyRequest,
-        _cancel: &datazen_runtime::job::CancelToken,
+        cancel: &datazen_runtime::job::CancelToken,
     ) -> Result<SchemaDiffDeployResult, SchemaDiffPlanError> {
-        let result = execute_schema_diff_deploy_impl(
+        let result = crate::commands::schema_diff::execute_schema_diff_deploy_impl_with_cancel(
             &self.state,
             request.target_db_session_id.clone(),
             plan.clone(),
@@ -438,21 +357,18 @@ impl SchemaDiffJobBackend for AppStateBackend {
             request.job_id.clone(),
             request.target_database.clone(),
             request.target_schema.clone(),
-            request.profile.as_ref().map(|(id, rev)| {
-                crate::store::MigrationProfileRef {
+            request
+                .profile
+                .as_ref()
+                .map(|(id, rev)| crate::store::MigrationProfileRef {
                     id: id.clone(),
                     revision: rev.clone(),
-                }
-            }),
+                }),
+            Some(cancel.flag()),
         )
         .await;
         match result {
-            Ok(r) => {
-                if let Ok(mut slot) = self.last_deploy.lock() {
-                    *slot = Some(r.clone());
-                }
-                Ok(r)
-            }
+            Ok(r) => Ok(r),
             Err(e) => Err(SchemaDiffPlanError::PlanStale(e.to_string())),
         }
     }
@@ -462,37 +378,69 @@ impl SchemaDiffJobBackend for AppStateBackend {
         _plan_meta: &SchemaDiffFrozenPlan,
         _operation_id: &str,
     ) -> Result<ReadOnlyVerdict, SchemaDiffPlanError> {
-        // P5 Wave-1：只读核验由 execute_schema_diff_deploy_impl 的重复快照校验兜底；
-        // 独立的只读核验记录器随工件台账补齐，这里返回「无法唯一证明」作为保守裁决。
+        // A fresh session may be supplied by an explicit recovery command. Until a
+        // safe after-state projection is available, do not infer a committed outcome
+        // from a changed target fingerprint alone.
         Ok(ReadOnlyVerdict::Indeterminate)
     }
-
 }
 
 // ----------------------------------------------------------------- 载荷/上下文
 
-fn job_ctx() -> RequestContext {
+pub(super) fn job_ctx() -> RequestContext {
     RequestContext::new(
-        OrganizationId::new("local"),
-        PrincipalId::new("owner"),
+        OrganizationId::new("datazen-local"),
+        PrincipalId::new("datazen-local-user"),
         None,
-        ClientInstanceId::new("desktop"),
-        RequestId::new("req"),
+        ClientInstanceId::new("datazen-local-client"),
+        RequestId::new(format!("schema-diff-{}", uuid::Uuid::new_v4())),
         None,
     )
 }
 
-fn apply_payload(plan_id: &str, selection_revision: u64) -> serde_json::Value {
-    serde_json::json!({
-        "consumedPlanId": plan_id,
+pub(super) fn apply_payload(
+    stored: &StoredPlan,
+    request: &ApplyRequest,
+) -> Result<serde_json::Value, CommandError> {
+    let plan_bytes = serde_json::to_vec(&stored.plan)
+        .map_err(|_| CommandError::Internal("Schema Diff plan digest failed".into()))?;
+    let plan_digest = format!("sha256:{:x}", Sha256::digest(plan_bytes));
+    let profile_revision_digest = request
+        .profile
+        .as_ref()
+        .map(|profile| {
+            serde_json::to_vec(profile)
+                .map(|bytes| format!("sha256:{:x}", Sha256::digest(bytes)))
+                .map_err(|_| CommandError::Internal("Schema Diff profile digest failed".into()))
+        })
+        .transpose()?;
+    let object_ids = recovery::target_ids_from_evidence(&stored.meta.endpoint_evidence);
+    let recovery_targets = serde_json::json!([{
+        "connectionId": stored.meta.target_connection_id,
+        "objectIds": object_ids,
+    }]);
+    let mut payload = serde_json::json!({
+        "consumedPlanId": stored.meta.plan_id,
+        "planDigest": plan_digest,
         "planVersion": 1,
         "handlerVersion": 1,
         "checkpointVersion": 1,
-        "selectionRevision": selection_revision,
-    })
+        "selectionRevision": stored.meta.selection_revision,
+        "recoveryTargets": recovery_targets,
+        "targetBeforeFingerprint": stored.meta.schema_fingerprint,
+        "recoveryPolicy": stored.meta.recovery_policy.as_str(),
+        "useTransaction": request.use_transaction,
+        "requireRollback": request.require_rollback,
+        "confirmedDestructive": request.confirm_destructive.as_deref()
+            == Some(crate::schema_diff::deploy::DESTRUCTIVE_CONFIRM_TOKEN),
+    });
+    if let Some(digest) = profile_revision_digest {
+        payload["profileRevisionDigest"] = serde_json::Value::String(digest);
+    }
+    Ok(payload)
 }
 
-fn prepare_payload() -> serde_json::Value {
+pub(super) fn prepare_payload() -> serde_json::Value {
     serde_json::json!({
         "planVersion": 1,
         "handlerVersion": 1,
@@ -518,14 +466,14 @@ async fn target_schema_from_config(state: &AppState, session: &str) -> Option<St
         .and_then(|c| c.schema)
 }
 
-fn owner_ref(state_unused: &AppState) -> datazen_platform_api::OwnerRef {
+pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_platform_api::OwnerRef {
     datazen_platform_api::OwnerRef::ClientSession {
         client_instance_id: ClientInstanceId::new("desktop"),
         purpose: "migration".into(),
     }
 }
 
-async fn endpoints_from_session_pair(
+pub(super) async fn endpoints_from_session_pair(
     state: &AppState,
     source_session: Option<&str>,
     target_session: &str,
@@ -567,6 +515,8 @@ async fn endpoints_from_session_pair(
 pub struct SchemaDiffPrepareEnvelope {
     pub plan: SchemaDiffPlan,
     pub plan_id: String,
+    pub source_connection_id: String,
+    pub target_connection_id: String,
     pub selection_revision: u64,
     pub plan_version: u64,
     pub handler_version: u64,
@@ -575,208 +525,120 @@ pub struct SchemaDiffPrepareEnvelope {
     pub recovery_policy: String,
 }
 
-/// 执行 prepare JobRuntime 旅程；成功时返回 envelope。
-pub async fn run_prepare_job(
-    state: &AppState,
-    request: PrepareRequest,
-) -> Result<SchemaDiffPrepareEnvelope, CommandError> {
-    let infra = &state.schema_diff_jobs;
-    let ctx = job_ctx();
-    let clock = Arc::new(SystemJobClock);
-    let owned = Arc::new(state.clone());
-    let backend = Arc::new(AppStateBackend::new(owned, infra.plans.clone()));
-    let handler = Arc::new(SchemaDiffHandler::for_prepare(
-        backend.clone(),
-        infra.plans.clone(),
-        request.clone(),
-    ));
-    let mut registry = HandlerRegistry::new();
-    registry.register(handler);
-    let runtime = JobRuntime::new(
-        infra.repo.clone(),
-        Arc::new(registry),
-        infra.ledger.clone(),
-        clock,
-        infra.now_ms(),
-    );
-    let (source_session, target_session, objects) = match &request {
-        PrepareRequest::Table {
-            source_db_session_id,
-            target_db_session_id,
-            table_names,
-            ..
-        } => (source_db_session_id.clone(), target_db_session_id.clone(), table_names.clone()),
-        PrepareRequest::Unified {
-            source_db_session_id,
-            target_db_session_id,
-            table_names,
-            ..
-        } => (source_db_session_id.clone(), target_db_session_id.clone(), table_names.clone()),
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_platform_api::id::Timestamp;
+    use datazen_schema_diff::job::{RecoveryPolicy, SchemaDiffFrozenPlan};
+    use datazen_schema_diff::types::{
+        PlanRequirement, PlanStatement, RollbackCompleteness, StatementRisk,
     };
-    let endpoints = endpoints_from_session_pair(state, Some(&source_session), &target_session, &objects)
-        .await?;
-    {
-        let mut ledger = infra.ledger.lock().map_err(|_| CommandError::Internal("budget ledger lock".into()))?;
-        for ep in &endpoints {
-            ledger.ensure_service(&ep.connection_id);
+
+    #[test]
+    fn apply_payload_persists_only_allowlisted_schema_diff_receipt_fields() {
+        let target = recovery::table_target("users", Some("public"));
+        let mut evidence = vec!["planTables:users".into()];
+        recovery::record_target_objects(&mut evidence, &[target]);
+        let stored = StoredPlan {
+            meta: SchemaDiffFrozenPlan {
+                plan_id: "plan-opaque-1".into(),
+                plan_version: 1,
+                handler_version: 1,
+                checkpoint_version: 1,
+                selection_revision: 4,
+                created_at: Timestamp::new("2026-10-08T00:00:00Z"),
+                expires_at: Timestamp::new("2026-10-08T02:00:00Z"),
+                source_connection_id: "source-connection".into(),
+                target_connection_id: "target-connection".into(),
+                source_database: None,
+                target_database: Some("app".into()),
+                source_schema: None,
+                target_schema: Some("public".into()),
+                endpoint_evidence: evidence,
+                capability_snapshot_hash: "capability-digest".into(),
+                schema_fingerprint: format!("sha256:{}", "a".repeat(64)),
+                mapping_fingerprint: "mapping-digest".into(),
+                consistency: "tableSnapshot".into(),
+                transaction_scope: "task".into(),
+                recovery_policy: RecoveryPolicy::ReadOnlyVerify,
+                body_artifact_ids: vec!["artifact:plan:plan-opaque-1".into()],
+                body_digests: vec!["body-digest".into()],
+                confirmed_actions: Vec::new(),
+            },
+            plan: SchemaDiffPlan {
+                plan_id: Some("plan-opaque-1".into()),
+                table: "users".into(),
+                tables: vec!["users".into()],
+                source_dialect: "postgresql".into(),
+                target_dialect: "postgresql".into(),
+                same_dialect: true,
+                statements: vec![PlanStatement {
+                    sql: "DROP TABLE private_data".into(),
+                    risk: StatementRisk::Destructive,
+                    rollback_sql: None,
+                    summary: "Remove private data".into(),
+                    requires_transaction: false,
+                }],
+                warnings: Vec::new(),
+                requirements: vec![PlanRequirement::Unsupported {
+                    operation: "private_data".into(),
+                    reason: "not selected".into(),
+                }],
+                rollback_completeness: RollbackCompleteness {
+                    complete: false,
+                    missing: vec!["private_data".into()],
+                },
+                type_suggestions: Vec::new(),
+                expected_target_schemas: Vec::new(),
+            },
+            body_digest: "body-digest".into(),
+        };
+        let request = ApplyRequest {
+            target_db_session_id: "target-live-session".into(),
+            use_transaction: true,
+            require_rollback: true,
+            confirm_destructive: Some("DEPLOY".into()),
+            job_id: Some("schemaDiffApply-live-id".into()),
+            target_database: None,
+            target_schema: None,
+            profile: Some(("private-profile-id".into(), "revision-7".into())),
+        };
+
+        let payload = apply_payload(&stored, &request).expect("safe payload projection succeeds");
+        assert_eq!(payload["useTransaction"], true);
+        assert_eq!(payload["requireRollback"], true);
+        assert_eq!(payload["selectionRevision"], 4);
+        assert!(payload["planDigest"]
+            .as_str()
+            .is_some_and(|value| { value.starts_with("sha256:") && value.len() == 71 }));
+        assert!(payload["profileRevisionDigest"]
+            .as_str()
+            .is_some_and(|value| { value.starts_with("sha256:") && value.len() == 71 }));
+        let encoded = payload.to_string();
+        for forbidden in [
+            "DROP TABLE private_data",
+            "target-live-session",
+            "schemaDiffApply-live-id",
+            "private-profile-id",
+            "revision-7",
+        ] {
+            assert!(!encoded.contains(forbidden), "payload contains {forbidden}");
         }
+        assert_eq!(
+            payload["recoveryTargets"][0]["connectionId"],
+            "target-connection"
+        );
+        assert!(payload["recoveryTargets"][0]["objectIds"][0]
+            .as_str()
+            .is_some_and(|id| id.starts_with("obj-") && id.len() <= 512));
     }
-    let job_id = JobId::new(format!("schemaDiffPrepare-{}", uuid::Uuid::new_v4()));
-    let definition = JobDefinition {
-        job_id: job_id.clone(),
-        kind: "schemaDiffPrepare".into(),
-        owner: owner_ref(state),
-        payload: prepare_payload(),
-        created_at: datazen_platform_api::id::Timestamp::new(
-            chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%SZ")
-                .to_string(),
-        ),
-    };
-    infra
-        .repo
-        .accept(&ctx, definition, &IdempotencyKey::new(format!("idem-{job_id}")))
-        .await
-        .map_err(|e| CommandError::Internal(e.to_string()))?;
-    let result = runtime
-        .run(&ctx, &job_id, &WorkerId::new("schema-diff-host"), &endpoints)
-        .await
-        .map_err(|e| CommandError::Internal(e.to_string()))?;
-    if result.state != JobState::Succeeded {
-        return Err(CommandError::Internal(format!(
-            "schemaDiffPrepare failed: {:?}",
-            result.error
-        )));
-    }
-    let (plan_id, meta) = backend
-        .last_prepared()
-        .ok_or_else(|| CommandError::Internal("prepared plan missing".into()))?;
-    let stored = infra
-        .plans
-        .get(&plan_id)
-        .ok_or_else(|| CommandError::Internal("plan artifact missing".into()))?;
-    Ok(SchemaDiffPrepareEnvelope {
-        plan: stored.plan,
-        plan_id,
-        selection_revision: meta.selection_revision,
-        plan_version: meta.plan_version,
-        handler_version: meta.handler_version,
-        checkpoint_version: meta.checkpoint_version,
-        expires_at: meta.expires_at.as_str().to_string(),
-        recovery_policy: meta.recovery_policy.as_str().to_string(),
-    })
 }
 
-/// 执行 apply JobRuntime 旅程；成功时返回 deploy 结果投影。
-pub async fn run_apply_job(
-    state: &AppState,
-    plan_id: &str,
-    selection_revision: u64,
-    apply_request: ApplyRequest,
-) -> Result<SchemaDiffDeployResult, CommandError> {
-    let infra = &state.schema_diff_jobs;
-    let ctx = job_ctx();
-    let clock = Arc::new(SystemJobClock);
-    let owned = Arc::new(state.clone());
-    let backend = Arc::new(AppStateBackend::new(owned, infra.plans.clone()));
-    let handler = Arc::new(SchemaDiffHandler::for_apply(
-        backend.clone(),
-        infra.plans.clone(),
-        plan_id.to_string(),
-        selection_revision,
-        apply_request.clone(),
-    ));
-    let mut registry = HandlerRegistry::new();
-    registry.register(handler);
-    let runtime = JobRuntime::new(
-        infra.repo.clone(),
-        Arc::new(registry),
-        infra.ledger.clone(),
-        clock,
-        infra.now_ms(),
-    );
-    let stored = infra
-        .plans
-        .get(plan_id)
-        .ok_or_else(|| CommandError::NotFound(format!("plan `{plan_id}` not found")))?;
-    let source_session = if stored.meta.source_connection_id.is_empty() {
-        None
-    } else {
-        Some(stored.meta.source_connection_id.as_str())
-    };
-    let endpoints = endpoints_from_session_pair(
-        state,
-        source_session,
-        &apply_request.target_db_session_id,
-        &stored.meta.endpoint_evidence
-            .iter()
-            .find_map(|e| e.strip_prefix("planTables:"))
-            .map(|s| s.split(',').map(String::from).collect::<Vec<_>>())
-            .unwrap_or_default(),
-    )
-    .await?;
-    {
-        let mut ledger = infra.ledger.lock().map_err(|_| CommandError::Internal("budget ledger lock".into()))?;
-        for ep in &endpoints {
-            ledger.ensure_service(&ep.connection_id);
-        }
-    }
-    let job_id = JobId::new(format!("schemaDiffApply-{}", uuid::Uuid::new_v4()));
-    let definition = JobDefinition {
-        job_id: job_id.clone(),
-        kind: "schemaDiffApply".into(),
-        owner: owner_ref(state),
-        payload: apply_payload(plan_id, selection_revision),
-        created_at: datazen_platform_api::id::Timestamp::new(
-            chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%SZ")
-                .to_string(),
-        ),
-    };
-    infra
-        .repo
-        .accept(&ctx, definition, &IdempotencyKey::new(format!("idem-{job_id}")))
-        .await
-        .map_err(|e| CommandError::Internal(e.to_string()))?;
-    let result = runtime
-        .run(&ctx, &job_id, &WorkerId::new("schema-diff-host"), &endpoints)
-        .await
-        .map_err(|e| CommandError::Internal(e.to_string()))?;
-    // 效果结局投影：映射 JobState/EffectOutcome 回既有 DeployStatus。
-    let status = match (result.state, result.effect_outcome) {
-        (JobState::Succeeded, _) => datazen_schema_diff::types::DeployStatus::Committed,
-        (JobState::Failed, _) if result.error.is_some() => datazen_schema_diff::types::DeployStatus::Failed,
-        (JobState::Failed, EffectOutcome::PartiallyApplied) => datazen_schema_diff::types::DeployStatus::Mixed,
-        (JobState::Failed, EffectOutcome::Unknown) => datazen_schema_diff::types::DeployStatus::Unknown,
-        (JobState::Failed, EffectOutcome::RolledBack) => datazen_schema_diff::types::DeployStatus::RolledBack,
-        (JobState::Cancelled, EffectOutcome::PartiallyApplied) => datazen_schema_diff::types::DeployStatus::Mixed,
-        (JobState::Cancelled, EffectOutcome::Unknown) => datazen_schema_diff::types::DeployStatus::Unknown,
-        (JobState::Cancelled, _) => datazen_schema_diff::types::DeployStatus::Cancelled,
-        _ => datazen_schema_diff::types::DeployStatus::Failed,
-    };
-    // D3：JobResult.error 恒 None（runtime 会返回效果结局，不带原因）；
-    // deploy 的逐条错误与 statement 结果必须从 backend 的最后部署留档取回。
-    let last_deploy = backend.last_deploy();
-    Ok(SchemaDiffDeployResult {
-        status,
-        executed_count: last_deploy
-            .as_ref()
-            .map(|d| d.executed_count)
-            .unwrap_or_else(|| result.progress.attempted.get() as usize),
-        statement_count: last_deploy
-            .as_ref()
-            .map(|d| d.statement_count)
-            .unwrap_or_else(|| result.progress.converted.get() as usize),
-        errors: last_deploy
-            .as_ref()
-            .map(|d| d.errors.clone())
-            .unwrap_or_else(|| result.error.into_iter().collect()),
-        statement_results: last_deploy
-            .as_ref()
-            .map(|d| d.statement_results.clone())
-            .unwrap_or_default(),
-    })
-}
+pub mod desktop;
+pub use desktop::{
+    cancel_schema_diff_job, get_schema_diff_job_details, list_schema_diff_jobs, run_apply_job,
+    run_prepare_job, verify_schema_diff_job_recovery, SchemaDiffJobAccepted, SchemaDiffJobDetails,
+};
 
 /// 旧 IPC 兼容路径：客户端直接携带计划正文时，先注册进 PlanStore 再走 apply Job。
 /// 两种受理（prepare 产物 / 直接携带正文）都满足「只经 JobRuntime」。
@@ -792,6 +654,23 @@ pub async fn register_plan_for_apply(
         .plan_id
         .clone()
         .ok_or_else(|| CommandError::Validation("plan requires planId".into()))?;
+    let target_schema = target_schema_from_config(state, target_db_session_id).await;
+    let targets = plan
+        .tables
+        .iter()
+        .map(|table| recovery::table_target(table, target_schema.as_deref()))
+        .collect::<Vec<_>>();
+    let fingerprint = recovery::fingerprint_targets(
+        state,
+        target_db_session_id,
+        target_database_from_config(state, target_db_session_id)
+            .await
+            .as_deref(),
+        &targets,
+    )
+    .await?;
+    let mut endpoint_evidence = vec![format!("planTables:{}", plan.tables.join(","))];
+    recovery::record_target_objects(&mut endpoint_evidence, &targets);
     let meta = SchemaDiffFrozenPlan {
         plan_id: plan_id.clone(),
         plan_version: 1,
@@ -807,35 +686,16 @@ pub async fn register_plan_for_apply(
                 .to_string(),
         ),
         source_connection_id: String::new(),
-        target_connection_id: target_db_session_id.to_string(),
+        target_connection_id: owner_connection_id(state, target_db_session_id).await?,
         source_database: None,
         target_database: target_database_from_config(state, target_db_session_id).await,
         source_schema: None,
-        target_schema: target_schema_from_config(state, target_db_session_id).await,
-        endpoint_evidence: vec![
-            format!("target:{target_db_session_id}"),
-            format!("planTables:{}", plan.tables.join(",")),
-        ],
+        target_schema,
+        endpoint_evidence,
         capability_snapshot_hash: current_capability_hash(state, target_db_session_id)
             .await
             .map_err(|e| e)?,
-        schema_fingerprint: compute_target_fingerprint(
-            state,
-            target_db_session_id,
-            target_database_from_config(state, target_db_session_id)
-                .await
-                .as_deref(),
-            target_schema_from_config(state, target_db_session_id)
-                .await
-                .as_deref(),
-            &plan.tables,
-            &plan
-                .statements
-                .iter()
-                .map(|stmt| stmt.sql.clone())
-                .collect::<Vec<_>>(),
-        )
-        .await?,
+        schema_fingerprint: fingerprint,
         mapping_fingerprint: datazen_schema_diff::job::fnv1a64_hex(
             &serde_json::to_vec(&plan.tables).unwrap_or_default(),
         ),
@@ -846,13 +706,10 @@ pub async fn register_plan_for_apply(
         body_digests: vec![],
         confirmed_actions: Vec::new(),
     };
-    state
-        .schema_diff_jobs
-        .plans
-        .insert(StoredPlan {
-            meta,
-            plan,
-            body_digest: String::new(),
-        });
+    state.schema_diff_jobs.plans.insert(StoredPlan {
+        meta,
+        plan,
+        body_digest: String::new(),
+    });
     Ok((plan_id, 1))
 }

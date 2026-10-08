@@ -64,6 +64,7 @@ vi.mock('../../../commands/schemaDiff', () => ({
   dialectSupportsTransactionalDdl: vi.fn().mockReturnValue(true),
   exportPlanSql: vi.fn().mockReturnValue(''),
   planHasDestructive: vi.fn().mockReturnValue(false),
+  subscribeSchemaDiffJobUpdates: vi.fn().mockReturnValue(() => {}),
   schemaDiffCommands: {
     getProfiles: vi.fn().mockResolvedValue([]),
     saveProfile: vi.fn().mockResolvedValue(undefined),
@@ -71,6 +72,10 @@ vi.mock('../../../commands/schemaDiff', () => ({
     compareTableSchemas: vi.fn(),
     preparePlan: vi.fn(),
     executeDeploy: vi.fn(),
+    listJobs: vi.fn().mockResolvedValue([]),
+    getJobDetails: vi.fn(),
+    cancelDeploy: vi.fn().mockResolvedValue(true),
+    verifyRecovery: vi.fn(),
   },
 }));
 

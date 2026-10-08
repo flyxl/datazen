@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
-use datazen_platform_api::dto::job::{Checkpoint, CommitBoundary, JobProgress};
+use datazen_platform_api::dto::job::{
+    Checkpoint, CommitBoundary, JobDomainResult, JobProgress, JobResultCounter, JobResultItem,
+};
 use datazen_platform_api::id::{ArtifactId, Counter, StageId, Timestamp};
 
 use datazen_runtime::job::{
@@ -42,11 +44,7 @@ pub struct SchemaDiffHandler<B: SchemaDiffJobBackend> {
 }
 
 impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
-    pub fn for_prepare(
-        backend: Arc<B>,
-        plans: Arc<PlanStore>,
-        request: PrepareRequest,
-    ) -> Self {
+    pub fn for_prepare(backend: Arc<B>, plans: Arc<PlanStore>, request: PrepareRequest) -> Self {
         Self {
             role: HandlerRole::Prepare,
             backend,
@@ -77,11 +75,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
     }
 
     fn now() -> Timestamp {
-        Timestamp::new(
-            chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%SZ")
-                .to_string(),
-        )
+        Timestamp::new(chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string())
     }
 
     fn role_kind(&self) -> &'static str {
@@ -93,7 +87,11 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
 
     fn check_versions(plan: &datazen_runtime::job::FrozenPlan) -> Result<(), JobError> {
         let expected = datazen_runtime::job::SUPPORTED_PLAN_MAJOR;
-        for got in [plan.plan_version, plan.handler_version, plan.checkpoint_version] {
+        for got in [
+            plan.plan_version,
+            plan.handler_version,
+            plan.checkpoint_version,
+        ] {
             if got != expected {
                 return Err(JobError::VersionIncompatible {
                     got,
@@ -119,11 +117,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
     }
 
     /// §4.2 结果语义映射。
-    fn deploy_outcome(
-        &self,
-        deploy: SchemaDiffDeployResult,
-        fingerprint: &str,
-    ) -> StageOutcome {
+    fn deploy_outcome(&self, deploy: SchemaDiffDeployResult, fingerprint: &str) -> StageOutcome {
         let ok_boundaries: Vec<CommitBoundary> = deploy
             .statement_results
             .iter()
@@ -334,7 +328,10 @@ impl<B: SchemaDiffJobBackend> JobHandler for SchemaDiffHandler<B> {
         1
     }
 
-    fn validate_plan(&self, plan: &datazen_runtime::job::FrozenPlan) -> Result<Vec<StageSpec>, JobError> {
+    fn validate_plan(
+        &self,
+        plan: &datazen_runtime::job::FrozenPlan,
+    ) -> Result<Vec<StageSpec>, JobError> {
         Self::check_versions(plan)?;
         match self.role {
             HandlerRole::Prepare => Ok(vec![StageSpec {
@@ -384,5 +381,209 @@ impl<B: SchemaDiffJobBackend> JobHandler for SchemaDiffHandler<B> {
     fn verify_recovery(&self, checkpoint: &Checkpoint) -> RecoveryVerdict {
         decide_recovery(checkpoint)
     }
+
+    fn durable_result(&self, outcome: &StageOutcome) -> Option<JobDomainResult> {
+        let outcome_code = match outcome.effect_outcome {
+            EffectOutcome::NotStarted => "notStarted",
+            EffectOutcome::Completed => "completed",
+            EffectOutcome::RolledBack => "rolledBack",
+            EffectOutcome::PartiallyApplied => "partiallyApplied",
+            EffectOutcome::Unknown => "unknown",
+        };
+        let mut items = outcome
+            .commit_boundaries
+            .iter()
+            .filter_map(|boundary| {
+                boundary
+                    .operation_id
+                    .as_ref()
+                    .map(|operation_id| JobResultItem {
+                        item_id: operation_id.clone(),
+                        outcome_code: "committed".into(),
+                        reason_code: None,
+                    })
+            })
+            .collect::<Vec<_>>();
+        if items.is_empty() && outcome.stage_id.as_str() == "apply" {
+            items.push(JobResultItem {
+                item_id: "apply".into(),
+                outcome_code: outcome_code.into(),
+                reason_code: outcome.error_code.map(|_| "executionFailed".into()),
+            });
+        }
+        Some(JobDomainResult {
+            stage_id: outcome.stage_id.clone(),
+            result_code: "schemaDiff".into(),
+            outcome_code: outcome_code.into(),
+            counters: vec![
+                JobResultCounter {
+                    code: "read".into(),
+                    value: outcome.progress.read,
+                },
+                JobResultCounter {
+                    code: "converted".into(),
+                    value: outcome.progress.converted,
+                },
+                JobResultCounter {
+                    code: "attempted".into(),
+                    value: outcome.progress.attempted,
+                },
+                JobResultCounter {
+                    code: "committed".into(),
+                    value: outcome.progress.committed,
+                },
+                JobResultCounter {
+                    code: "unknown".into(),
+                    value: outcome.progress.unknown,
+                },
+            ],
+            items,
+            artifact_ids: outcome.artifact_ids.clone(),
+        })
+    }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::job::backend::SchemaDiffJobBackend;
+    use crate::job::backend::{ApplyRequest, PrepareRequest, PreparedPlan, ReadOnlyVerdict};
+    use crate::job::plan::{PlanStore, SchemaDiffFrozenPlan, SchemaDiffPlanError};
+    use crate::types::SchemaDiffPlan;
+    use datazen_platform_api::dto::job::JobResultItem;
+    use datazen_platform_api::id::Counter;
+
+    struct UnusedBackend;
+
+    #[async_trait::async_trait]
+    impl SchemaDiffJobBackend for UnusedBackend {
+        async fn prepare_plan(
+            &self,
+            _request: &PrepareRequest,
+            _cancel: &CancelToken,
+        ) -> Result<PreparedPlan, SchemaDiffPlanError> {
+            Err(SchemaDiffPlanError::EndpointEvidenceEmpty)
+        }
+
+        async fn verify_authorization(
+            &self,
+            _plan_meta: &SchemaDiffFrozenPlan,
+        ) -> Result<(), SchemaDiffPlanError> {
+            Err(SchemaDiffPlanError::CapabilityChanged)
+        }
+
+        async fn read_target_fingerprint(
+            &self,
+            _plan: &SchemaDiffPlan,
+            _plan_meta: &SchemaDiffFrozenPlan,
+        ) -> Result<String, SchemaDiffPlanError> {
+            Err(SchemaDiffPlanError::EndpointEvidenceEmpty)
+        }
+
+        async fn deploy(
+            &self,
+            _plan: &SchemaDiffPlan,
+            _request: &ApplyRequest,
+            _cancel: &CancelToken,
+        ) -> Result<SchemaDiffDeployResult, SchemaDiffPlanError> {
+            Err(SchemaDiffPlanError::EndpointEvidenceEmpty)
+        }
+
+        async fn read_only_verify(
+            &self,
+            _plan_meta: &SchemaDiffFrozenPlan,
+            _operation_id: &str,
+        ) -> Result<ReadOnlyVerdict, SchemaDiffPlanError> {
+            Ok(ReadOnlyVerdict::Indeterminate)
+        }
+    }
+
+    fn handler() -> SchemaDiffHandler<UnusedBackend> {
+        SchemaDiffHandler::for_prepare(
+            Arc::new(UnusedBackend),
+            Arc::new(PlanStore::new()),
+            PrepareRequest::Table {
+                source_db_session_id: "source-live-session".into(),
+                target_db_session_id: "target-live-session".into(),
+                table_names: vec!["users".into()],
+                target_table_names: vec!["users".into()],
+                target_only_table_names: Vec::new(),
+                source_schema: None,
+                target_schema: None,
+                allow_destructive: false,
+                include_indexes: None,
+                type_overrides: Vec::new(),
+            },
+        )
+    }
+
+    #[test]
+    fn durable_result_projects_only_stable_codes_counters_and_operation_ids() {
+        let receipt = handler()
+            .durable_result(&StageOutcome {
+                stage_id: StageId::new("apply"),
+                terminal: StageTerminal::Succeeded,
+                progress: JobProgress {
+                    read: Counter::new(0),
+                    converted: Counter::new(2),
+                    attempted: Counter::new(2),
+                    committed: Counter::new(2),
+                    unknown: Counter::new(0),
+                },
+                commit_boundaries: vec![CommitBoundary {
+                    stage_id: StageId::new("apply"),
+                    stable_target_fingerprint: "sha256:0123456789abcdef".into(),
+                    committed_at: Timestamp::new("2026-10-08T00:00:00Z"),
+                    operation_id: Some("op-0123456789abcdef".into()),
+                    batch_id: None,
+                    payload_digest: Some("sha256:fedcba9876543210".into()),
+                    evidence: vec!["stmtOk".into()],
+                    verified_at: None,
+                }],
+                execution_ids: Vec::new(),
+                artifact_ids: Vec::new(),
+                effect_outcome: EffectOutcome::Completed,
+                error_code: None,
+            })
+            .expect("Schema Diff emits a durable stage receipt");
+
+        assert_eq!(receipt.result_code, "schemaDiff");
+        assert_eq!(receipt.outcome_code, "completed");
+        assert_eq!(
+            receipt.items,
+            vec![JobResultItem {
+                item_id: "op-0123456789abcdef".into(),
+                outcome_code: "committed".into(),
+                reason_code: None,
+            }]
+        );
+        assert_eq!(receipt.counters[1].value, Counter::new(2));
+        let serialized = serde_json::to_string(&receipt).expect("safe DTO serializes");
+        assert!(!serialized.contains("source-live-session"));
+        assert!(!serialized.contains("target-live-session"));
+        assert!(!serialized.to_ascii_lowercase().contains("sql"));
+    }
+
+    #[test]
+    fn durable_result_uses_a_stable_fallback_for_apply_without_boundaries() {
+        let receipt = handler()
+            .durable_result(&StageOutcome {
+                stage_id: StageId::new("apply"),
+                terminal: StageTerminal::Failed,
+                progress: JobProgress::default(),
+                commit_boundaries: Vec::new(),
+                execution_ids: Vec::new(),
+                artifact_ids: Vec::new(),
+                effect_outcome: EffectOutcome::Unknown,
+                error_code: Some(ExecutionErrorCode::ResourceLost),
+            })
+            .expect("Schema Diff emits a durable stage receipt");
+
+        assert_eq!(receipt.outcome_code, "unknown");
+        assert_eq!(receipt.items[0].item_id, "apply");
+        assert_eq!(
+            receipt.items[0].reason_code.as_deref(),
+            Some("executionFailed")
+        );
+    }
+}

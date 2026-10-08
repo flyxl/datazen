@@ -1,7 +1,7 @@
 //! Schema Diff Deploy IPC commands.
 
-pub mod unified_plan;
 pub mod job;
+pub mod unified_plan;
 
 use super::error::{CmdExt, CommandError};
 use super::sync::compare::diff_table_schemas_ir;
@@ -902,7 +902,7 @@ pub async fn prepare_schema_diff_plan(
     allow_destructive: bool,
     include_indexes: Option<bool>,
     type_overrides: Option<Vec<ColumnTypeOverride>>,
-) -> Result<job::SchemaDiffPrepareEnvelope, CommandError> {
+) -> Result<job::SchemaDiffJobAccepted, CommandError> {
     let target_table_names = target_table_names.unwrap_or_else(|| table_names.clone());
     job::run_prepare_job(
         &state,
@@ -1860,7 +1860,7 @@ pub async fn execute_schema_diff_deploy(
     profile: Option<crate::store::MigrationProfileRef>,
     plan_id: Option<String>,
     selection_revision: Option<u64>,
-) -> Result<SchemaDiffDeployResult, CommandError> {
+) -> Result<job::SchemaDiffJobAccepted, CommandError> {
     let apply_request = crate::schema_diff::job::ApplyRequest {
         target_db_session_id: target_db_session_id.clone(),
         use_transaction: use_transaction.unwrap_or(true),
@@ -1878,7 +1878,13 @@ pub async fn execute_schema_diff_deploy(
             job::register_plan_for_apply(&state, plan, &target_db_session_id).await?
         }
     };
-    job::run_apply_job(&state, &effective_plan_id, effective_selection_revision, apply_request).await
+    job::run_apply_job(
+        &state,
+        &effective_plan_id,
+        effective_selection_revision,
+        apply_request,
+    )
+    .await
 }
 
 pub(crate) async fn execute_schema_diff_deploy_impl(
@@ -1892,6 +1898,35 @@ pub(crate) async fn execute_schema_diff_deploy_impl(
     target_database: Option<String>,
     target_schema: Option<String>,
     profile: Option<crate::store::MigrationProfileRef>,
+) -> Result<SchemaDiffDeployResult, CommandError> {
+    execute_schema_diff_deploy_impl_with_cancel(
+        state,
+        target_db_session_id,
+        plan,
+        use_transaction,
+        require_rollback,
+        confirm_destructive,
+        job_id,
+        target_database,
+        target_schema,
+        profile,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
+    state: &AppState,
+    target_db_session_id: String,
+    plan: SchemaDiffPlan,
+    use_transaction: Option<bool>,
+    require_rollback: Option<bool>,
+    confirm_destructive: Option<String>,
+    job_id: Option<String>,
+    target_database: Option<String>,
+    target_schema: Option<String>,
+    profile: Option<crate::store::MigrationProfileRef>,
+    cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<SchemaDiffDeployResult, CommandError> {
     crate::commands::history::validate_migration_profile_ref(
         &state,
@@ -2184,9 +2219,14 @@ pub(crate) async fn execute_schema_diff_deploy_impl(
         return fail_schema_diff_deploy(&state, history_run, error).await;
     }
     let plan = reviewed.plan;
-    let cancelled = match job_id.as_deref() {
-        Some(id) => Some(ensure_job(id).await),
-        None => None,
+    let has_external_cancel_flag = cancel_flag.is_some();
+    let cancelled = if let Some(flag) = cancel_flag {
+        Some(flag)
+    } else {
+        match job_id.as_deref() {
+            Some(id) => Some(ensure_job(id).await),
+            None => None,
+        }
     };
 
     let opts = DeployOptions {
@@ -2204,8 +2244,10 @@ pub(crate) async fn execute_schema_diff_deploy_impl(
     )
     .await;
 
-    if let Some(id) = job_id.as_deref() {
-        remove_job(id).await;
+    if !has_external_cancel_flag {
+        if let Some(id) = job_id.as_deref() {
+            remove_job(id).await;
+        }
     }
 
     tracing::info!(
@@ -2236,10 +2278,13 @@ pub(crate) async fn execute_schema_diff_deploy_impl(
     Ok(result)
 }
 
-/// Cancel an in-progress schema diff deploy job.
+/// Persist cancellation intent against the shared desktop Job lifecycle.
 #[tauri::command]
-pub async fn cancel_schema_diff_deploy(job_id: String) -> Result<bool, CommandError> {
-    Ok(cancel_job(&job_id).await)
+pub async fn cancel_schema_diff_deploy(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<bool, CommandError> {
+    job::cancel_schema_diff_job(&state, &job_id).await
 }
 
 /// Compare column-level schema differences for a single table.
@@ -3267,23 +3312,14 @@ mod tests {
             HashMap::from([("public.parent".into(), pg_parent_schema("public.parent"))]),
             HashMap::new(),
         );
-        let (test, source_session, target_session) =
-            pg_command_test_sessions(options).await;
-        let plan = prepare_pg_table_plan(
-            &test,
-            &source_session,
-            &target_session,
-            &["public.parent"],
-        )
-        .await;
+        let (test, source_session, target_session) = pg_command_test_sessions(options).await;
+        let plan =
+            prepare_pg_table_plan(&test, &source_session, &target_session, &["public.parent"])
+                .await;
 
-        let (plan_id, revision) = job::register_plan_for_apply(
-            &test.state,
-            plan,
-            &target_session,
-        )
-        .await
-        .expect("register legacy plan");
+        let (plan_id, revision) = job::register_plan_for_apply(&test.state, plan, &target_session)
+            .await
+            .expect("register legacy plan");
         let apply_request = crate::schema_diff::job::ApplyRequest {
             target_db_session_id: target_session.clone(),
             use_transaction: false,
@@ -3294,14 +3330,29 @@ mod tests {
             target_schema: None,
             profile: None,
         };
-        let result = job::run_apply_job(&test.state, &plan_id, revision, apply_request)
+        let accepted = job::run_apply_job(&test.state, &plan_id, revision, apply_request)
             .await
-            .expect("legacy path must apply cleanly");
+            .expect("legacy path must be accepted");
+        assert_eq!(accepted.kind, "schemaDiffApply");
+        let details = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let details =
+                    job::desktop::read_schema_diff_job_details(&test.state, &accepted.job_id)
+                        .await
+                        .expect("accepted Schema Diff Job remains queryable");
+                if details.details.job.state.is_terminal() {
+                    break details;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("legacy apply Job reaches a durable terminal state");
+        let result = details
+            .deploy_result
+            .expect("terminal apply details contain a report");
         assert!(
-            matches!(
-                result.status,
-                crate::schema_diff::DeployStatus::Committed
-            ),
+            matches!(result.status, crate::schema_diff::DeployStatus::Committed),
             "expected Committed, got {result:?}"
         );
     }

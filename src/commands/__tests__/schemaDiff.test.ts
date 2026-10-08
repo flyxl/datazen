@@ -117,6 +117,86 @@ const prepareEnvelope = (plan: unknown): SchemaDiffPrepareEnvelope => ({
   recoveryPolicy: 'readOnlyVerify',
 });
 
+const emptyProgress = { read: 0, converted: 0, attempted: 0, committed: 0, unknown: 0 };
+
+function mockAcceptedPrepare(envelope: SchemaDiffPrepareEnvelope): void {
+  invokeMock
+    .mockResolvedValueOnce({
+      jobId: 'job-prepare-1',
+      kind: 'schemaDiffPrepare',
+      state: 'queued',
+      progress: emptyProgress,
+    })
+    .mockResolvedValueOnce({
+      details: {
+        job: {
+          jobId: 'job-prepare-1',
+          kind: 'schemaDiffPrepare',
+          state: 'succeeded',
+          progress: emptyProgress,
+          error: null,
+          artifactIds: [],
+        },
+        stateVersion: 2,
+        planId: envelope.planId,
+        planDigest: null,
+        selectionRevision: envelope.selectionRevision,
+        commitBoundaries: [],
+        recovery: null,
+        domainResults: [],
+        recoveryTargets: [],
+        targetBeforeFingerprint: null,
+        recoveryPolicy: null,
+      },
+      prepared: envelope,
+      planUnavailableAfterRestart: false,
+      deployResult: null,
+    });
+}
+
+function mockAcceptedApply(
+  result: unknown = {
+    status: 'committed',
+    executedCount: 1,
+    statementCount: 1,
+    errors: [],
+    statementResults: [],
+  },
+): void {
+  invokeMock
+    .mockResolvedValueOnce({
+      jobId: 'job-apply-1',
+      kind: 'schemaDiffApply',
+      state: 'queued',
+      progress: emptyProgress,
+    })
+    .mockResolvedValueOnce({
+      details: {
+        job: {
+          jobId: 'job-apply-1',
+          kind: 'schemaDiffApply',
+          state: 'succeeded',
+          progress: emptyProgress,
+          error: null,
+          artifactIds: [],
+        },
+        stateVersion: 2,
+        planId: null,
+        planDigest: null,
+        selectionRevision: null,
+        commitBoundaries: [],
+        recovery: null,
+        domainResults: [],
+        recoveryTargets: [],
+        targetBeforeFingerprint: null,
+        recoveryPolicy: null,
+      },
+      prepared: null,
+      planUnavailableAfterRestart: false,
+      deployResult: result,
+    });
+}
+
 describe('schemaDiffCommands wrappers', () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -176,24 +256,26 @@ describe('schemaDiffCommands wrappers', () => {
   });
 
   it('preparePlan normalizes IPC requirement tags into plan requirements', async () => {
-    invokeMock.mockResolvedValueOnce(prepareEnvelope({
-      ...samplePlan(),
-      requirements: [
-        {
-          backfill: {
-            table: 'users',
-            column: 'status',
-            reason: 'Populate existing rows before enforcing NOT NULL.',
+    mockAcceptedPrepare(
+      prepareEnvelope({
+        ...samplePlan(),
+        requirements: [
+          {
+            backfill: {
+              table: 'users',
+              column: 'status',
+              reason: 'Populate existing rows before enforcing NOT NULL.',
+            },
           },
-        },
-        {
-          unsupported: {
-            operation: 'users.meta',
-            reason: 'Operation is not supported',
+          {
+            unsupported: {
+              operation: 'users.meta',
+              reason: 'Operation is not supported',
+            },
           },
-        },
-      ],
-    }));
+        ],
+      }),
+    );
     await expect(
       schemaDiffCommands.preparePlan({
         sourceDbSessionId: 'src-2',
@@ -203,26 +285,26 @@ describe('schemaDiffCommands wrappers', () => {
       }),
     ).resolves.toMatchObject({
       plan: {
-      requirements: [
-        {
-          kind: 'Backfill',
-          table: 'users',
-          column: 'status',
-          reason: 'Populate existing rows before enforcing NOT NULL.',
-        },
-        {
-          kind: 'Unsupported',
-          table: 'users',
-          column: 'meta',
-          reason: 'Operation is not supported',
-        },
-      ],
+        requirements: [
+          {
+            kind: 'Backfill',
+            table: 'users',
+            column: 'status',
+            reason: 'Populate existing rows before enforcing NOT NULL.',
+          },
+          {
+            kind: 'Unsupported',
+            table: 'users',
+            column: 'meta',
+            reason: 'Operation is not supported',
+          },
+        ],
       },
     });
   });
 
   it('preparePlan forwards plan options with optional includeIndexes omitted key intact', async () => {
-    invokeMock.mockResolvedValueOnce(prepareEnvelope(samplePlan()));
+    mockAcceptedPrepare(prepareEnvelope(samplePlan()));
     await expect(
       schemaDiffCommands.preparePlan({
         sourceDbSessionId: 'src-2',
@@ -255,7 +337,7 @@ describe('schemaDiffCommands wrappers', () => {
         },
       ],
     });
-    invokeMock.mockResolvedValueOnce(prepareEnvelope(planWithSug));
+    mockAcceptedPrepare(prepareEnvelope(planWithSug));
     const overrides = [{ table: 'demo_customers', column: 'region', targetType: 'VARCHAR(64)' }];
     const res = await schemaDiffCommands.preparePlan({
       sourceDbSessionId: 'src-1',
@@ -276,7 +358,7 @@ describe('schemaDiffCommands wrappers', () => {
   });
 
   it('prepareUnifiedPlan sends exact mixed object identities with the table scope', async () => {
-    invokeMock.mockResolvedValueOnce(prepareEnvelope(samplePlan({ planId: 'unified-review-1' })));
+    mockAcceptedPrepare(prepareEnvelope(samplePlan({ planId: 'unified-review-1' })));
     const sourceObjects = [
       {
         kind: 'function' as const,
@@ -360,7 +442,7 @@ describe('schemaDiffCommands wrappers', () => {
   });
 
   it('forwards explicit target-only selectors without changing source selectors', async () => {
-    invokeMock.mockResolvedValueOnce(prepareEnvelope(samplePlan({ tables: ['users', 'archive'] })));
+    mockAcceptedPrepare(prepareEnvelope(samplePlan({ tables: ['users', 'archive'] })));
     await schemaDiffCommands.preparePlan({
       sourceDbSessionId: 'src-target-picker',
       targetDbSessionId: 'tgt-target-picker',
@@ -475,7 +557,7 @@ describe('schemaDiffCommands wrappers', () => {
   it('executeDeploy forwards deploy options and confirm token', async () => {
     const plan = samplePlan();
     const result = { status: 'committed', executedCount: 1 };
-    invokeMock.mockResolvedValueOnce(result);
+    mockAcceptedApply(result);
     await expect(
       schemaDiffCommands.executeDeploy({
         targetDbSessionId: 'tgt-3',
@@ -497,6 +579,7 @@ describe('schemaDiffCommands wrappers', () => {
 
   it('executeDeploy forwards the target catalog and schema', async () => {
     const plan = samplePlan();
+    mockAcceptedApply();
     await schemaDiffCommands.executeDeploy({
       targetDbSessionId: 'tgt-5',
       plan,
@@ -516,6 +599,7 @@ describe('schemaDiffCommands wrappers', () => {
 
   it('executeDeploy omits optional keys when not provided', async () => {
     const plan = samplePlan();
+    mockAcceptedApply();
     await schemaDiffCommands.executeDeploy({ targetDbSessionId: 'tgt-4', plan });
     expect(invokeMock).toHaveBeenCalledWith('execute_schema_diff_deploy', {
       targetDbSessionId: 'tgt-4',
@@ -531,14 +615,20 @@ describe('schemaDiffCommands wrappers', () => {
 
 it('keeps the immutable plan identity and forwards required rollback to the backend', async () => {
   const plan = samplePlan({ planId: 'reviewed-plan-42' });
-  invokeMock.mockResolvedValueOnce({ status: 'unknown' });
+  mockAcceptedApply({
+    status: 'unknown',
+    executedCount: 0,
+    statementCount: 0,
+    errors: [],
+    statementResults: [],
+  });
   await schemaDiffCommands.executeDeploy({
     targetDbSessionId: 'target',
     plan,
     requireRollback: true,
     useTransaction: true,
   });
-  expect(invokeMock).toHaveBeenLastCalledWith(
+  expect(invokeMock).toHaveBeenCalledWith(
     'execute_schema_diff_deploy',
     expect.objectContaining({
       plan: expect.objectContaining({ planId: 'reviewed-plan-42' }),
@@ -554,7 +644,7 @@ it('round-trips all requirement tags without losing table or column identity', a
     { unsupported: { operation: 'users', reason: 'table unavailable' } },
     { unsupported: { operation: 'users.id', reason: 'column unavailable' } },
   ];
-  invokeMock.mockResolvedValueOnce(prepareEnvelope({ ...samplePlan(), requirements }));
+  mockAcceptedPrepare(prepareEnvelope({ ...samplePlan(), requirements }));
   const prepared = await schemaDiffCommands.preparePlan({
     sourceDbSessionId: 'src',
     targetDbSessionId: 'tgt',
@@ -566,8 +656,9 @@ it('round-trips all requirement tags without losing table or column identity', a
     { kind: 'Unsupported', table: 'users', column: '', reason: 'table unavailable' },
     { kind: 'Unsupported', table: 'users', column: 'id', reason: 'column unavailable' },
   ]);
+  mockAcceptedApply();
   await schemaDiffCommands.executeDeploy({ targetDbSessionId: 'tgt', plan: prepared.plan });
-  expect(invokeMock).toHaveBeenLastCalledWith(
+  expect(invokeMock).toHaveBeenCalledWith(
     'execute_schema_diff_deploy',
     expect.objectContaining({ plan: expect.objectContaining({ requirements }) }),
   );
