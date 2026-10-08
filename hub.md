@@ -160,3 +160,12 @@
 
 `hub.md` 与各轨 `progress.md` **一律删除**，不得存活到 `main`。P5 全绿并合入 main 前，本文件是唯一跨轨台账。
 - 合入 main 前按序：① `cargo fmt --all` 单独一次机械提交（46 文件欠账，须在全部合并之后）；② Wave-R 全量回归 `--drivers=all`，以新 main 重新定基线——**本轮之前的所有 P5 门禁数字一律不得沿用**；③ 删 `hub.md`；④ `.worktrees/datazen-p5-job-addressable` 的 r1 分支未处置（`git cherry` 报 3 个提交内容不在上游，但 `apply_detached` 在 HEAD 与分支命中数一致，未端到端确认其无独有内容，故保留待裁定）。
+
+## 2026-10-08 P5 收口轮
+
+用户已授权完成 P5。当前基线 `276ee729c`。本轮按正式 P5 退出门槛核对三件套，不以既有轨道合并替代整体交付。
+
+- 只读核对：Transfer D1/D2 旧阻塞记录已过期；r2 受理/回执/查询接线已落地。
+- 真实待办：runtime panic/普通 handler 错误收敛与失败原因；三件套共享物理端点身份；公共持久化 Job 受理/查询/进度与后台执行；Transfer 前端受理后订阅及取消；Sync/Schema Diff 前端切 Job；恢复核验与真实提交边界验证；驱动参数上限与 TLS provider；platform-api 穷尽错误契约测试；注释清理；最终静机 flake 验证和全驱动回归。
+- 本轮未执行门禁；上述只读结论不得当作测试通过。保留既有未核验边界，最终以实现和独立验证更新正式文档。
+- Wave 1：runtime 收敛、共享端点、驱动质量，分别独立 worktree。三件套公共后端与前端接入依赖 Wave 1 合流。
