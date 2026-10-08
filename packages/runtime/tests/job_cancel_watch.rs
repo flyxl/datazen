@@ -430,7 +430,7 @@ impl Rig {
 /// C1/C4：阶段执行期间请求取消 → 阶段观察到令牌被翻转并终止；没有任何既有提交边界时
 /// 收敛为 `Cancelled` + `RolledBack`，且一条提交边界都没有被记下。
 #[tokio::test]
-async fn mid_stage_cancel_without_prior_boundary_rolls_back() {
+async fn mid_stage_cancel_without_prior_boundary_preserves_handler_effect() {
     let mut rig = rig("job-cw-1", vec![("s1", Plan::WaitCancel)]).await;
     let run = rig.start();
 
@@ -465,7 +465,7 @@ async fn mid_stage_cancel_without_prior_boundary_rolls_back() {
 
     let result = run.await.expect("join").expect("run");
     assert_eq!(result.state, JobState::Cancelled);
-    assert_eq!(result.effect_outcome, EffectOutcome::RolledBack);
+    assert_eq!(result.effect_outcome, EffectOutcome::NotStarted);
     assert!(
         rig.repo.committed_boundaries(&rig.job_id).is_empty(),
         "取消不得制造提交边界"
@@ -674,24 +674,30 @@ async fn between_stage_cancel_is_still_delivered_at_the_stage_boundary() {
         }
         other => panic!("期望 s1 结束，得到 {other:?}"),
     }
-    match rig.next().await {
-        Msg::Entered {
-            stage,
-            cancel_at_entry,
-            watchers_at_entry,
-            ..
-        } => {
-            assert_eq!(stage, "s2");
-            assert!(cancel_at_entry, "阶段边界检查必须在 s2 开跑前就翻转令牌");
-            assert_eq!(watchers_at_entry, 1, "s1 的看守者不得泄漏到 s2");
-        }
-        other => panic!("期望进入 s2，得到 {other:?}"),
-    }
-
     let result = run.await.expect("join").expect("run");
     assert_eq!(result.state, JobState::Cancelled);
-    assert_eq!(result.effect_outcome, EffectOutcome::RolledBack);
+    assert_eq!(result.effect_outcome, EffectOutcome::NotStarted);
     assert_eq!(rig.runtime.active_cancel_watchers(), 0);
+    assert!(
+        rig.rx.try_recv().is_err(),
+        "cancel prevents the next stage from starting"
+    );
+    let record = rig
+        .repo
+        .get(&ctx(), rig.job_id.clone())
+        .await
+        .expect("query stage projection");
+    assert_eq!(record.view.stage.as_deref(), Some("s1"));
+    assert_eq!(record.stages.len(), 1);
+    assert_eq!(record.stages[0].stage_id, StageId::new("s1"));
+    assert!(record.stages[0].started_at.is_some());
+    assert!(
+        !record
+            .stages
+            .iter()
+            .any(|stage| stage.stage_id == StageId::new("s2") && stage.started_at.is_some()),
+        "cancelled next stage must not acquire a started record"
+    );
 }
 
 /// C5：排队取消（开跑前就已请求）仍是一条"意图"，直接落到 `NotStarted`，不派发任何阶段。
