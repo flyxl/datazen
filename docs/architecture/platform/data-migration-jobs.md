@@ -234,3 +234,5 @@ BackendClient 的 startJob/getJob/cancelJob 为通用路径；准备/应用 kind
 | CM-49 | SQL 文件无目标连接、产物完整性/受控导出/输出规格一致 |
 
 H 层验证编排与会计，D 层验证真实数据库副作用和方言，F 层验证连续审阅/取消/重附着；P7 再加 W1。测试专属方言留在对应 driver 包。目标批次记录未授权、driver 不支持自动恢复或无真实环境时，报告适用范围与未验证项，不称恢复功能已验证。
+
+三件套宿主准入统一使用 `src-tauri/src/services/migration_endpoint.rs` 的物理位置摘要：实际会话配置中的方言、database、schema、端口、隧道和路由选项参与身份，host/port/schema 缺省由实际驱动声明补齐。Sync 先按执行路径解析所选 database/schema。持久化 connectionId 仅用于预算归属；同一 profile 跨库合法，不同 profile 指向同一物理对象仍拒绝重叠。缺失会话配置或 owner 明确拒绝；SQL 文件输出只建立源数据库身份。摘要不包含配置明文，DNS 别名与本地文件路径别名仍需真实连接层证明。

@@ -170,7 +170,8 @@ impl ConnectionManager {
             .get_connection(&connection_id)
             .await
             .ok_or_else(|| ConnectionError::ConnectionConfigNotFound(connection_id.clone()))?;
-        let (effective_config, tunnel) = self.start_tunnel(config).await?;
+        let identity_config = self.resolve_tunnel_ref(config).await?;
+        let (effective_config, tunnel) = self.start_tunnel(identity_config.clone()).await?;
         let driver = self
             .registry
             .get(&effective_config.database_type)
@@ -185,12 +186,28 @@ impl ConnectionManager {
             ActiveSession {
                 handle: handle.clone(),
                 config: effective_config,
+                identity_config,
                 created_at: Instant::now(),
                 last_used: Instant::now(),
                 tunnel,
             },
         );
         Ok((driver, handle))
+    }
+
+    /// Physical routing snapshot captured before tunnel rewrites; current scope stays authoritative.
+    pub(crate) async fn migration_identity_config(
+        &self,
+        db_session_id: &str,
+    ) -> Result<crate::db::ConnectionConfig, ConnectionError> {
+        let sessions = self.connections.read().await;
+        let active = sessions
+            .get(db_session_id)
+            .ok_or_else(|| ConnectionError::DbSessionNotFound(db_session_id.to_string()))?;
+        let mut config = active.identity_config.clone();
+        config.database = active.config.database.clone();
+        config.schema = active.config.schema.clone();
+        Ok(config)
     }
 
     pub async fn get_session_config(

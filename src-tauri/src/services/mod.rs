@@ -8,3 +8,5 @@ pub mod schema_scope;
 pub use connection_manager::ConnectionManager;
 pub use query_executor::{FilterCondition, OrderBy, QueryExecutor, SortCondition};
 pub use schema_scope::metadata_schema;
+
+pub(crate) mod migration_endpoint;
