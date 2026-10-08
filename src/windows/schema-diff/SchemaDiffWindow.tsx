@@ -218,6 +218,8 @@ export function SchemaDiffWindow() {
       const catalog = await unifiedObjects.load(
         srcConnId,
         tgtConnId,
+        endpoints.sourceDatabase,
+        endpoints.targetDatabase,
         endpoints.sourceSchema,
         endpoints.targetSchema,
       );

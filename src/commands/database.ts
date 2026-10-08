@@ -70,7 +70,7 @@ export const databaseCommands = {
     const populated = new Set(tables.map((table) => table.schema));
     for (const schema of catalog.schemas) {
       if (!populated.has(schema))
-        tables.push({ name: '', schema, tableType: 'table', rowCount: null });
+        tables.push({ name: '', schema, tableType: 'systemTable', rowCount: null });
     }
     return tables;
   },

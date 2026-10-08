@@ -27,7 +27,9 @@ export function qualifySchemaDiffTableName(table: TableInfo, activeSchema?: stri
 
 export function filterTablesForSchema(tables: TableInfo[], activeSchema?: string): TableInfo[] {
   return tables.filter((table) => {
-    if (table.tableType !== 'table') return false;
+    // listTables includes empty-name sentinels for schemas with no relations.
+    // Keep those available to schema discovery, but never present them as tables.
+    if (table.tableType !== 'table' || table.name.length === 0) return false;
     const schema = table.schema?.trim();
     if (activeSchema && schema) {
       return schema === activeSchema;

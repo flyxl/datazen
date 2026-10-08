@@ -229,6 +229,8 @@ export function useSchemaDiffSavedSetups({
         const catalog = await unifiedObjects.load(
           srcConnId,
           tgtConnId,
+          endpoints.sourceDatabase,
+          endpoints.targetDatabase,
           endpoints.sourceSchema,
           endpoints.targetSchema,
         );
@@ -345,6 +347,8 @@ export function useSchemaDiffSavedSetups({
         const catalog = await unifiedObjects.load(
           srcConnId,
           tgtConnId,
+          profile.sourceDatabase,
+          profile.targetDatabase,
           profile.sourceSchema ?? '',
           profile.targetSchema ?? '',
         );
