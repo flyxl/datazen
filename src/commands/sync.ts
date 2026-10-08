@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { JobDetails } from '@datazen/backend-client';
 import type { FilterCondition, Value } from '../types';
 
 export interface SyncTask {
@@ -171,23 +172,10 @@ export interface DataSyncJobView {
   progress: { committed: number | string; unknown: number | string };
 }
 
-export interface DataSyncJobDetails {
-  job: DataSyncJobView;
-  recoveryTargets: Array<{ connectionId: string; objectIds: string[] }>;
-  domainResults: Array<{
-    stageId: string;
-    counters: Array<{ code: string; value: number | string }>;
-  }>;
-  recovery?: {
-    verdict:
-      | 'notExecuted'
-      | 'pendingVerification'
-      | 'resumeAfterVerify'
-      | 'reject'
-      | 'requireManualReview';
-    reasonCode?: string;
-  };
-}
+export type DataSyncJobDetails = Pick<
+  JobDetails,
+  'job' | 'recoveryTargets' | 'domainResults' | 'recovery'
+>;
 
 export interface DataSyncRecoveryRequest {
   jobId: string;
