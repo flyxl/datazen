@@ -7,9 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dto::execution::EffectOutcome;
-use crate::id::{
-    ArtifactId, BlockId, Counter, ExecutionId, JobId, StageId, Timestamp, WorkerId,
-};
+use crate::id::{ArtifactId, BlockId, Counter, ExecutionId, JobId, StageId, Timestamp, WorkerId};
 use crate::OwnerRef;
 
 /// 任务状态。与 `ExecutionState` 是**不同**的状态机：任务状态不含 `cancelRequested`。
@@ -109,6 +107,8 @@ pub struct JobRecord {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum JobRecoveryVerdict {
+    /// Durable admission was committed but no worker ever claimed the Job.
+    NotExecuted,
     PendingVerification,
     ResumeAfterVerify,
     Reject,

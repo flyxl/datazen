@@ -84,7 +84,8 @@ impl SqliteJobRepository {
             let mut statement = tx
                 .prepare(
                     "SELECT job_id FROM jobs WHERE organization_id=?1 AND owner_principal_id=?2 \
-                     AND (state IN ('queued','running','cancelled') OR pending_verification_reason IS NOT NULL) \
+                     AND (state IN ('queued','running','cancelled') OR pending_verification_reason IS NOT NULL \
+                     OR EXISTS (SELECT 1 FROM job_result_details d WHERE d.job_id=jobs.job_id AND d.recovery_json IS NOT NULL)) \
                      AND (?3 IS NULL OR updated_at<=?3) ORDER BY created_at,job_id LIMIT ?4",
                 )
                 .map_err(db_read_error)?;
@@ -226,9 +227,7 @@ fn read_domain_results(
     job_id: &JobId,
 ) -> Result<Vec<JobDomainResult>, PortError> {
     let mut statement = conn
-        .prepare(
-            "SELECT result_json FROM job_domain_results WHERE job_id=?1 ORDER BY stage_id",
-        )
+        .prepare("SELECT result_json FROM job_domain_results WHERE job_id=?1 ORDER BY stage_id")
         .map_err(db_read_error)?;
     let rows = statement
         .query_map(params![job_id.as_str()], |row| row.get::<_, String>(0))

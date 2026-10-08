@@ -1,12 +1,12 @@
 use super::{lock_inner, InMemoryJobRepository};
+use crate::job::runtime_repository::{safe_result_marker, validate_job_domain_result};
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
     JobDetails, JobDomainResult, JobProgress, JobRecoveryResult, JobRecoveryTarget,
-    JobRecoveryVerification, JobRecoveryVerdict, JobState,
+    JobRecoveryVerdict, JobRecoveryVerification, JobState,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{ArtifactId, IdempotencyKey, JobId, JobStateVersion};
-use crate::job::runtime_repository::{safe_result_marker, validate_job_domain_result};
 
 impl InMemoryJobRepository {
     pub fn record_progress(
@@ -79,25 +79,38 @@ impl InMemoryJobRepository {
         }
         let mut inner = lock_inner(&self.inner)?;
         Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
-        let row = inner
-            .jobs
-            .get_mut(&claim.job_id)
-            .ok_or_else(|| PortError::NotFound(claim.job_id.as_str().into()))?;
-        if row.record.state_version != expected {
-            return Err(PortError::CasConflict {
-                entity: "job",
-                id: claim.job_id.as_str().into(),
-            });
+        let record = {
+            let row = inner
+                .jobs
+                .get_mut(&claim.job_id)
+                .ok_or_else(|| PortError::NotFound(claim.job_id.as_str().into()))?;
+            if row.record.state_version != expected {
+                return Err(PortError::CasConflict {
+                    entity: "job",
+                    id: claim.job_id.as_str().into(),
+                });
+            }
+            row.record.view.state = state;
+            row.record.view.effect_outcome = Some(outcome);
+            row.record.view.progress = progress;
+            row.record.view.error = error_code;
+            row.record.view.pending_verification_reason = pending_reason.clone();
+            row.record.view.updated_at = self.clock.now();
+            row.record.state_version = JobStateVersion::new(expected.get().saturating_add(1));
+            row.claim = None;
+            row.record.clone()
+        };
+        if let Some(reason_code) = pending_reason {
+            inner.recovery.insert(
+                claim.job_id.clone(),
+                JobRecoveryResult {
+                    verdict: JobRecoveryVerdict::PendingVerification,
+                    resume_through: None,
+                    reason_code: Some(reason_code),
+                },
+            );
         }
-        row.record.view.state = state;
-        row.record.view.effect_outcome = Some(outcome);
-        row.record.view.progress = progress;
-        row.record.view.error = error_code;
-        row.record.view.pending_verification_reason = pending_reason;
-        row.record.view.updated_at = self.clock.now();
-        row.record.state_version = JobStateVersion::new(expected.get().saturating_add(1));
-        row.claim = None;
-        Ok(row.record.clone())
+        Ok(record)
     }
 
     pub fn persist_recovery(
@@ -165,10 +178,9 @@ impl InMemoryJobRepository {
         if current.record.state_version != expected
             || current.record.view.state != JobState::Failed
             || current.record.view.pending_verification_reason.is_none()
-            || inner
-                .recovery
-                .get(job_id)
-                .map_or(true, |value| value.verdict != JobRecoveryVerdict::PendingVerification)
+            || inner.recovery.get(job_id).map_or(true, |value| {
+                value.verdict != JobRecoveryVerdict::PendingVerification
+            })
         {
             return Err(PortError::CasConflict {
                 entity: "job_recovery",
@@ -176,8 +188,8 @@ impl InMemoryJobRepository {
             });
         }
         let current_boundary_count = inner.boundaries.get(job_id).map_or(0, Vec::len);
-        let total_boundaries = current_boundary_count
-            .saturating_add(verification.confirmed_boundaries.len());
+        let total_boundaries =
+            current_boundary_count.saturating_add(verification.confirmed_boundaries.len());
         if verification
             .result
             .resume_through
@@ -195,8 +207,12 @@ impl InMemoryJobRepository {
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         row.record.state_version = JobStateVersion::new(expected.get().saturating_add(1));
         row.record.view.updated_at = now;
-        let pending = (verification.result.verdict != JobRecoveryVerdict::ResumeAfterVerify)
-            .then(|| reason.clone().unwrap_or_else(|| "recoveryNeedsReview".into()));
+        let pending =
+            (verification.result.verdict != JobRecoveryVerdict::ResumeAfterVerify).then(|| {
+                reason
+                    .clone()
+                    .unwrap_or_else(|| "recoveryNeedsReview".into())
+            });
         row.record.view.pending_verification_reason = pending.clone();
         row.record.view.error = pending;
 
