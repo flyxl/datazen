@@ -199,3 +199,10 @@
 - Sync design note: create Job-owned dedicated DB sessions before durable accept, validate physical service_key against the authorized endpoint, retain only in-memory handler/session binding, release at terminal/handler failure; closing a UI window only unsubscribes. Never persist dbSessionId/credentials or restore a session after restart.
 
 - 2026-10-08 磁盘清理：移除 7 棵已完成 detached 验收 worktree、3 棵已合入 Wave 1 开发 worktree，以及 r1 worktree；删除 3 条已合入 integration 的 Wave 1 分支。清掉对应已完成的 P5 driver/runtime/shared-endpoint 编译缓存（保留 Core 当前 target），可用空间从约 19 GiB 增至 45 GiB。保留必要 main/integration/Core/SchemaDiff/Sync/TransferUI worktrees。`feature/p5-job-addressable` 分支引用暂保留：删除请求被 auto-review 拒绝，理由为该分支含约 1700 行独有实现/测试，与先前只读审计结论冲突；未尝试绕过，须先裁定内容后再删。
+
+### Core JobHost 合入集成分支（2026-10-08）
+
+- 冻结 Core `codex/p5-job-host-core @ 33c7e047d5b75efeb43895a7a2a282f7708a7812` 以 merge commit 合入 `codex/p5-integration`：`85e0ed9d9b00f3960bdd2f60348ff493da9f8303`（父提交 `42cc333a7a4a6911b82196c94f1725b771325b0d` + Core 冻结 SHA）。
+- 内容冲突解决路径：`docs/architecture/platform/data-migration-jobs.md`、`packages/runtime/src/job/repository.rs`、`packages/runtime/src/job/runtime.rs`、`packages/runtime/tests/job_cancel_watch/in_stage_panic.rs`、`packages/runtime/tests/job_kernel/runtime_journeys.rs`。运行时采用 Core 的 async `JobRuntimeRepository` / 原子 `finish` 接口，同时保留 Wave1 派发前失败收敛、阶段边界取消检查、handler 提供的 effect outcome、已确认边界 checkpoint；无提交边界不推断 rollback。保留了 stage error、stage panic、queued cancel、validation failure 与 watcher 回收 journey；未在本次合流执行这些测试。
+- `cargo metadata --no-deps --format-version 1 --offline` EXIT=0；Node 解析临时 JSON 后仅报告 **25 packages / 25 workspace members**。`Cargo.lock` 自动合并后未发现重复依赖。`git diff --check HEAD` EXIT=0。两项门禁前后 HEAD 均为 `42cc333a7a4a6911b82196c94f1725b771325b0d`，工作区 diff fingerprint 均为 `2ddf26528aef6ca9855a6c42fe8bda527bf48eb1cb22b37f067720ce15f35760`；合并提交后 worktree clean。
+- 本次未运行 runtime/Host tests。Core 冻结分支此前的完整 `cargo test -p datazen --lib` 为 EXIT=101（1713 passed / 88 failed / 6 ignored）；88 个失败均是 socket fixture `operation not permitted`，**不计通过**，P5 定向 Core 验收仍按其独立记录判断。
