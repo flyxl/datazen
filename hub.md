@@ -197,3 +197,5 @@
 
 - Core queued recovery checkpoint frozen at `c5ba4a8f0` (`feat(job): persist queued recovery verdicts`): NotExecuted Rust/TS verdict, startup Queued terminalization, recovery candidate query, durable pending-verification finish, Transfer details mapping; SQLite/AppState job tests 7 passed / 0 failed. Core continues formal docs and full gate. SchemaDiff and Sync branches are updating from 8bf to this SHA for typed NotExecuted behavior.
 - Sync design note: create Job-owned dedicated DB sessions before durable accept, validate physical service_key against the authorized endpoint, retain only in-memory handler/session binding, release at terminal/handler failure; closing a UI window only unsubscribes. Never persist dbSessionId/credentials or restore a session after restart.
+
+- 2026-10-08 磁盘清理：移除 7 棵已完成 detached 验收 worktree、3 棵已合入 Wave 1 开发 worktree，以及 r1 worktree；删除 3 条已合入 integration 的 Wave 1 分支。清掉对应已完成的 P5 driver/runtime/shared-endpoint 编译缓存（保留 Core 当前 target），可用空间从约 19 GiB 增至 45 GiB。保留必要 main/integration/Core/SchemaDiff/Sync/TransferUI worktrees。`feature/p5-job-addressable` 分支引用暂保留：删除请求被 auto-review 拒绝，理由为该分支含约 1700 行独有实现/测试，与先前只读审计结论冲突；未尝试绕过，须先裁定内容后再删。
