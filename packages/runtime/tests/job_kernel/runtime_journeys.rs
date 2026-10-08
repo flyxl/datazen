@@ -415,7 +415,7 @@ impl JobHandler for ValidationPanicHandler {
     ) -> Result<StageOutcome, datazen_runtime::job::JobError> {
         panic!("validation must prevent dispatch");
     }
-    fn verify_recovery(&self, _: &Checkpoint) -> RecoveryVerdict {
+    fn verify_recovery(&self, _: &datazen_platform_api::dto::job::Checkpoint) -> RecoveryVerdict {
         RecoveryVerdict::RequireManualReview {
             reason: "test".into(),
         }
