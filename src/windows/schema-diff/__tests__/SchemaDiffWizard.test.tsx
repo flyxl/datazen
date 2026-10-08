@@ -64,6 +64,7 @@ vi.mock('../../../commands/database', () => ({
 vi.mock('../../../commands/file', () => ({ fileCommands: { saveTextWithDialog: vi.fn() } }));
 vi.mock('../../../commands/schemaDiff', async (original) => ({
   ...(await original<typeof import('../../../commands/schemaDiff')>()),
+  subscribeSchemaDiffJobUpdates: vi.fn().mockReturnValue(() => {}),
   schemaDiffCommands: {
     getProfiles: vi.fn().mockResolvedValue([]),
     saveProfile: vi.fn().mockResolvedValue(undefined),
@@ -72,6 +73,10 @@ vi.mock('../../../commands/schemaDiff', async (original) => ({
     preparePlan: vi.fn(),
     prepareUnifiedPlan: vi.fn(),
     executeDeploy: vi.fn(),
+    listJobs: vi.fn().mockResolvedValue([]),
+    getJobDetails: vi.fn(),
+    cancelDeploy: vi.fn().mockResolvedValue(true),
+    verifyRecovery: vi.fn(),
   },
 }));
 
@@ -146,8 +151,26 @@ beforeEach(() => {
     removed: [],
     changed: [],
   });
-  vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({ plan: plan(), planId: 'plan-1', selectionRevision: 1, planVersion: 1, handlerVersion: 1, checkpointVersion: 1, expiresAt: '2026-01-01T00:00:00Z', recoveryPolicy: 'readOnlyVerify' });
-  vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue({ plan: plan(), planId: 'plan-1', selectionRevision: 1, planVersion: 1, handlerVersion: 1, checkpointVersion: 1, expiresAt: '2026-01-01T00:00:00Z', recoveryPolicy: 'readOnlyVerify' });
+  vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({
+    plan: plan(),
+    planId: 'plan-1',
+    selectionRevision: 1,
+    planVersion: 1,
+    handlerVersion: 1,
+    checkpointVersion: 1,
+    expiresAt: '2026-01-01T00:00:00Z',
+    recoveryPolicy: 'readOnlyVerify',
+  });
+  vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue({
+    plan: plan(),
+    planId: 'plan-1',
+    selectionRevision: 1,
+    planVersion: 1,
+    handlerVersion: 1,
+    checkpointVersion: 1,
+    expiresAt: '2026-01-01T00:00:00Z',
+    recoveryPolicy: 'readOnlyVerify',
+  });
   vi.mocked(schemaDiffCommands.executeDeploy).mockResolvedValue({
     status: 'committed',
     executedCount: 1,
@@ -455,8 +478,8 @@ describe('complete schema migration wizard journeys', () => {
   });
 
   it('updates table-local overrides and regenerates exact options, exports SQL and config', async () => {
-    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue(
-      { plan: plan({
+    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({
+      plan: plan({
         typeSuggestions: [
           {
             table: 'users',
@@ -468,8 +491,15 @@ describe('complete schema migration wizard journeys', () => {
             isKeyOrIndexed: true,
           },
         ],
-      }), planId: 'plan-1', selectionRevision: 1, planVersion: 1, handlerVersion: 1, checkpointVersion: 1, expiresAt: '2026-01-01T00:00:00Z', recoveryPolicy: 'readOnlyVerify' },
-    );
+      }),
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
+    });
     vi.mocked(fileCommands.saveTextWithDialog).mockResolvedValue(true);
     render(<SchemaDiffWindow />);
     await reachPlan();
@@ -854,7 +884,16 @@ describe('complete schema migration wizard journeys', () => {
       ],
     },
   ])('refuses footer deploy when rollback or requirements are unmet: %j', async (overrides) => {
-    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({ plan: plan(overrides), planId: 'plan-1', selectionRevision: 1, planVersion: 1, handlerVersion: 1, checkpointVersion: 1, expiresAt: '2026-01-01T00:00:00Z', recoveryPolicy: 'readOnlyVerify' });
+    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({
+      plan: plan(overrides),
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
+    });
     render(<SchemaDiffWindow />);
     await reachDeploy();
     fireEvent.change(screen.getByPlaceholderText('DEPLOY'), { target: { value: 'DEPLOY' } });

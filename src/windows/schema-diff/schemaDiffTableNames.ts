@@ -1,4 +1,18 @@
-import type { TableInfo } from '../../types';
+import type { TableInfo, TableSchemaDiff } from '../../types';
+
+export function tableDiffHasChanges(diff: TableSchemaDiff): boolean {
+  if (diff.targetOnly) return true;
+  const missing = diff.missingOnTarget ?? diff.added;
+  const extra = diff.extraOnTarget ?? diff.removed;
+  return (
+    missing.length > 0 ||
+    extra.length > 0 ||
+    diff.changed.length > 0 ||
+    (diff.missingCheckConstraints?.length ?? 0) > 0 ||
+    (diff.extraCheckConstraints?.length ?? 0) > 0 ||
+    Boolean(diff.tableOptions)
+  );
+}
 
 /** Build the table identifier passed to Schema Diff IPC (schema-qualified when needed). */
 export function qualifySchemaDiffTableName(table: TableInfo, activeSchema?: string): string {

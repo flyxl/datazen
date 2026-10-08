@@ -22,6 +22,7 @@ function jobView(overrides: Partial<JobView> = {}): JobView {
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,
+    error: null,
     progress: {
       read: 0 as JobView['progress']['read'],
       converted: 0 as JobView['progress']['converted'],
@@ -70,10 +71,26 @@ describe('isStalePlanError', () => {
 
 describe('latestApplyJob', () => {
   it('picks the newest apply job for the window', () => {
-    const older = jobView({ jobId: 'j1' as JobView['jobId'], createdAt: 1000 as JobView['createdAt'], kind: 'schemaDiffApply' });
-    const newer = jobView({ jobId: 'j2' as JobView['jobId'], createdAt: 2000 as JobView['createdAt'], kind: 'schemaDiffApply' });
-    const prepare = jobView({ jobId: 'j3' as JobView['jobId'], createdAt: 3000 as JobView['createdAt'], kind: 'schemaDiffPrepare' });
-    const other = jobView({ jobId: 'j4' as JobView['jobId'], createdAt: 4000 as JobView['createdAt'], kind: 'dataSyncApply' });
+    const older = jobView({
+      jobId: 'j1' as JobView['jobId'],
+      createdAt: 1000 as JobView['createdAt'],
+      kind: 'schemaDiffApply',
+    });
+    const newer = jobView({
+      jobId: 'j2' as JobView['jobId'],
+      createdAt: 2000 as JobView['createdAt'],
+      kind: 'schemaDiffApply',
+    });
+    const prepare = jobView({
+      jobId: 'j3' as JobView['jobId'],
+      createdAt: 3000 as JobView['createdAt'],
+      kind: 'schemaDiffPrepare',
+    });
+    const other = jobView({
+      jobId: 'j4' as JobView['jobId'],
+      createdAt: 4000 as JobView['createdAt'],
+      kind: 'dataSyncApply',
+    });
     expect(latestApplyJob([older, newer, prepare, other], 'schemaDiff')?.jobId).toBe('j2');
     expect(latestApplyJob([older], 'dataSync')).toBeNull();
   });
@@ -87,11 +104,21 @@ describe('hydrateMigrationJobs', () => {
       listJobs: async (filter: Record<string, unknown>) => {
         order.push('listJobs');
         if (filter['states']) {
-          return [jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataSyncApply', state: 'running' })];
+          return [
+            jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataSyncApply', state: 'running' }),
+          ];
         }
         return [
-          jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataSyncApply', pendingVerificationReason: 'outcomeUnknown' }),
-          jobView({ jobId: 'j2' as JobView['jobId'], kind: 'workflow', pendingVerificationReason: 'outcomeUnknown' }),
+          jobView({
+            jobId: 'j1' as JobView['jobId'],
+            kind: 'dataSyncApply',
+            pendingVerificationReason: 'outcomeUnknown',
+          }),
+          jobView({
+            jobId: 'j2' as JobView['jobId'],
+            kind: 'workflow',
+            pendingVerificationReason: 'outcomeUnknown',
+          }),
         ];
       },
       getJob: async (jobId: JobView['jobId']) => {

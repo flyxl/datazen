@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { JobDetails, JobProgress, JobState, JobView } from '@datazen/backend-client';
 import type { DatabaseObject, TableSchema, TableSchemaDiff } from '../types';
 
 export type SchemaDiffObjectKind =
@@ -149,6 +150,8 @@ export interface SchemaDiffPlan {
 export interface SchemaDiffPrepareEnvelope {
   plan: SchemaDiffPlan;
   planId: string;
+  sourceConnectionId?: string;
+  targetConnectionId?: string;
   selectionRevision: number;
   planVersion: number;
   handlerVersion: number;
@@ -170,6 +173,79 @@ export interface SchemaDiffDeployResult {
   statementCount: number;
   errors: string[];
   statementResults: StatementExecResult[];
+}
+
+export interface SchemaDiffJobAccepted {
+  jobId: string;
+  kind: 'schemaDiffPrepare' | 'schemaDiffApply';
+  state: JobState;
+  progress: JobProgress;
+}
+
+export interface SchemaDiffJobDetails {
+  details: JobDetails;
+  prepared: SchemaDiffPrepareEnvelope | null;
+  planUnavailableAfterRestart: boolean;
+  deployResult: SchemaDiffDeployResult | null;
+}
+
+type SchemaDiffJobDetailsIpc = Omit<SchemaDiffJobDetails, 'prepared'> & {
+  prepared: SchemaDiffPrepareEnvelopeIpc | null;
+};
+
+export type SchemaDiffJobUpdate =
+  | { type: 'accepted'; accepted: SchemaDiffJobAccepted }
+  | { type: 'details'; details: SchemaDiffJobDetails };
+
+type SchemaDiffJobObserver = (update: SchemaDiffJobUpdate) => void;
+const schemaDiffJobObservers = new Set<SchemaDiffJobObserver>();
+
+export function subscribeSchemaDiffJobUpdates(observer: SchemaDiffJobObserver): () => void {
+  schemaDiffJobObservers.add(observer);
+  return () => schemaDiffJobObservers.delete(observer);
+}
+
+function publishSchemaDiffJobUpdate(update: SchemaDiffJobUpdate): void {
+  for (const observer of schemaDiffJobObservers) observer(update);
+}
+
+function normalizeSchemaDiffJobDetails(raw: SchemaDiffJobDetailsIpc): SchemaDiffJobDetails {
+  return {
+    ...raw,
+    prepared: raw.prepared ? normalizePrepareEnvelope(raw.prepared) : null,
+  };
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForSchemaDiffJob(jobId: string): Promise<SchemaDiffJobDetails> {
+  for (;;) {
+    const details = await schemaDiffCommands.getJobDetails(jobId);
+    publishSchemaDiffJobUpdate({ type: 'details', details });
+    if (details.details.job.state !== 'queued' && details.details.job.state !== 'running') {
+      return details;
+    }
+    await wait(400);
+  }
+}
+
+async function submitSchemaDiffPrepare(
+  command: 'prepare_schema_diff_plan' | 'prepare_schema_unified_plan',
+  request: Record<string, unknown>,
+): Promise<SchemaDiffPrepareEnvelope> {
+  const accepted = await invoke<SchemaDiffJobAccepted>(command, request);
+  publishSchemaDiffJobUpdate({ type: 'accepted', accepted });
+  const result = await waitForSchemaDiffJob(accepted.jobId);
+  if (result.prepared) return result.prepared;
+  const state = result.details.job.state;
+  const reason = result.details.job.error ?? 'planUnavailable';
+  throw new Error(
+    result.planUnavailableAfterRestart
+      ? 'PlanUnavailableAfterRestart: compare again before applying'
+      : `Schema Diff plan job ended in ${state} (${reason})`,
+  );
 }
 
 /// Clipboard export/import format. v2: keys renamed to connectionId per the
@@ -288,7 +364,7 @@ export const schemaDiffCommands = {
         ? { targetOnlyTableNames: params.targetOnlyTableNames }
         : {}),
     };
-    return invoke<SchemaDiffPrepareEnvelopeIpc>('prepare_schema_diff_plan', request).then(normalizePrepareEnvelope);
+    return submitSchemaDiffPrepare('prepare_schema_diff_plan', request);
   },
 
   prepareUnifiedPlan: (params: {
@@ -327,7 +403,7 @@ export const schemaDiffCommands = {
       sourceObjects: params.sourceObjects.map(exactIdentity),
       targetObjects: params.targetObjects.map(exactIdentity),
     };
-    return invoke<SchemaDiffPrepareEnvelopeIpc>('prepare_schema_unified_plan', request).then(normalizePrepareEnvelope);
+    return submitSchemaDiffPrepare('prepare_schema_unified_plan', request);
   },
 
   prepareViewPlan: (params: {
@@ -399,7 +475,7 @@ export const schemaDiffCommands = {
     /** P5: 审阅版本（来自 prepare envelope）。 */
     selectionRevision?: number;
   }) =>
-    invoke<SchemaDiffDeployResult>('execute_schema_diff_deploy', {
+    invoke<SchemaDiffJobAccepted>('execute_schema_diff_deploy', {
       targetDbSessionId: params.targetDbSessionId,
       plan: denormalizePlan(params.plan),
       useTransaction: params.useTransaction,
@@ -411,7 +487,27 @@ export const schemaDiffCommands = {
       ...(params.profile ? { profile: params.profile } : {}),
       ...(params.planId ? { planId: params.planId } : {}),
       ...(params.selectionRevision != null ? { selectionRevision: params.selectionRevision } : {}),
+    }).then(async (accepted) => {
+      publishSchemaDiffJobUpdate({ type: 'accepted', accepted });
+      const detail = await waitForSchemaDiffJob(accepted.jobId);
+      if (detail.deployResult) return detail.deployResult;
+      throw new Error(`Schema Diff apply job ended in ${detail.details.job.state}`);
     }),
 
   cancelDeploy: (jobId: string) => cancelSchemaDiffDeploy(jobId),
+
+  getJobDetails: async (jobId: string) =>
+    normalizeSchemaDiffJobDetails(
+      await invoke<SchemaDiffJobDetailsIpc>('get_schema_diff_job_details', { jobId }),
+    ),
+
+  listJobs: () => invoke<JobView[]>('list_schema_diff_jobs', { states: null, limit: 100 }),
+
+  verifyRecovery: async (jobId: string, targetDbSessionId: string) =>
+    normalizeSchemaDiffJobDetails(
+      await invoke<SchemaDiffJobDetailsIpc>('verify_schema_diff_job_recovery', {
+        jobId,
+        targetDbSessionId,
+      }),
+    ),
 };
