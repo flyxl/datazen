@@ -1,6 +1,6 @@
 # DataZen 团队 Web 服务：Server Host、认证授权与安全设计
 
-> 状态：目标设计，尚未实现。基线：2026-09-30，代码提交 `8592b0fe1`；代码核对时的工作区 HEAD 为 `e544e0699`（2026-09-30 21:08），`8592b0fe1` 是其祖先，两者相差 4 个提交，而 `git diff --stat 8592b0fe1..HEAD -- server packages/application packages/runtime packages/platform-api` 输出为空（这些目录均未创建），因此本文结论对两个基线一致。本文描述 P7「单实例团队 Web 服务」在 `server/` 目录中的落地形态；截至该基线，仓库中**尚不存在 `server/` 目录**，`packages/application`、`packages/runtime`、`packages/platform-api` 也仍是目标目录。因此本文是实施级目标设计，不是已实现事实的记录。
+> 状态：P7 团队 Web 服务仍是目标设计，`server/` 团队服务 host、认证授权与 PostgreSQL adapters 尚未实现。`packages/platform-api`、`packages/runtime`、`packages/backend-client` 等共享契约已存在；桌面 P5 Data Transfer 已接入本机 AppDb `DesktopJobHost`，但它不是团队服务仓储，也不提供多用户或多 worker 语义。本文以下定义服务端目标，不表示这些服务端能力已落地。
 > 读者：负责《分阶段开发计划》P7 的实现者。本文定义**怎么组、怎么鉴权、怎么限流、怎么映射错误**；连接 DTO 与错误码表以[连接与会话管理](connection-management.md)为权威，管理库表结构以[持久化模型](persistence-model.md)为权威，出现时一律以链接为准。
 > 配套：[系统概要设计](system-overview.md)（分层、领域对象、v1 HTTP 路由表、安全总纲）、[连接与会话管理](connection-management.md)（DTO、错误表、幂等、CM-01～74）、[持久化模型](persistence-model.md)（管理库表结构与迁移策略）、[共享应用边界与端口](shared-boundaries-and-ports.md)（端口签名与装配差异）、[P0 runtime fake 夹具](fake-runtime-fixtures.md)（transport-neutral fake 资源、故障/竞态注入与 CM-60 基准 harness）、[分阶段开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)（阶段交付与退出门槛）。
 
@@ -582,7 +582,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 | port | server 首版实现 | 存储 | 与桌面/现状的差异 |
 | --- | --- | --- | --- |
 | `ProfileRepository` | PostgreSQL，按 `organization_id` 限定查询，`expectedRevision` CAS | 管理库 | 桌面现为 `src-tauri/src/store/connections.rs` 的本地库；服务端多组织隔离且无本地用户边界 |
-| `JobRepository` | PostgreSQL，claim/renew 用条件更新 + 租约 | 管理库 | 桌面无 Job 持久化；服务端需在进程重启后把非终态置为待核验而非重新执行 |
+| `JobRepository` | PostgreSQL，claim/renew 用条件更新 + 租约 | 管理库 | 桌面 P5 Data Transfer 已经 `AppDb` SQLite 持久化 Job / receipt / checkpoint / 结果；Schema Diff、Data Sync 与服务端 `JobRepository` 尚未接入。桌面重启只把旧 Job 置为 NotExecuted 或 PendingVerification，不重放 handler |
 | `Audit` | 追加写表，应用角色无 UPDATE/DELETE 授权 | 管理库 | 桌面只写本地日志；服务端审计是安全资产 |
 | `ArtifactStore` | 字节存储 + 元数据表 | 对象存储/受控目录 + 管理库 | 桌面走 `src-tauri/src/commands/file.rs` 的本地路径与扩展名白名单；服务端不接受路径（见 §11） |
 | `SecretProvider` | 服务端密钥管理适配 | KMS/外部密钥服务 | 桌面 `src-tauri/src/store/key_store.rs` + `platform_vault.rs` 的 OS 钥匙串路径在服务端**不适用**（无用户钥匙串） |

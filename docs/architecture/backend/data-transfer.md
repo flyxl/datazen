@@ -1,6 +1,6 @@
 # Data Transfer 架构
 
-> 当前实现说明；核对基线：2026-10-02，`d329539b9`。Source of truth：`packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`。统一 JobRuntime 的目标设计另见 [迁移任务详细设计](../platform/data-migration-jobs.md)。
+> 当前实现说明；P5 本机持久化 Job Core 于 2026-10-08 接入。Source of truth：`packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`、`packages/runtime/src/job/` 与 `src-tauri/src/store/app_db/jobs/`。Core 与尚未接入的领域目标见[迁移任务详细设计](../platform/data-migration-jobs.md)。
 
 ## 1. 职责与执行边界
 
@@ -44,11 +44,13 @@ SQL 文件支持 UTF-8、UTF-8 BOM、UTF-16 LE/BE，以及 none/gzip 压缩。�
   → 执行 / Result
 ```
 
-`commands/data_transfer/plans.rs` 的 `TransferPlanStore` 使用进程内 Mutex + HashMap 保存计划与恢复信息。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。
+`commands/data_transfer/plans.rs` 的 `TransferPlanStore` 使用进程内 Mutex + HashMap 保存计划与恢复信息。计划冻结原始 job、驱动协议、结构/范围/映射指纹、预期 DDL 和目标只读状态，并带有效期。TransferPlanStore 本身不持久化。
 
 peek 不消耗计划；claim 原子将 available 转为 executing 并建立活动执行占用。计划消费后不因失败重新变为 available，避免未知提交结果触发重复执行。执行请求引用 planId，selection 只允许缩小 sourceTables 集合；运行选项只开放破坏性确认，不允许客户端替换冻结映射与 SQL。
 
-该 Store 不是持久 Job 仓储。计划 ID 与恢复令牌不能被解释为重启后仍可使用的持久任务 ID。
+公共 Job 生命周期由 `AppState.desktop_job_host` 持有的 `DesktopJobHost` 与 AppDb SQLite 仓储管理。prepare 命令创建并执行 `dataTransferPrepare` Job，完成后返回终态及审阅数据；apply 命令创建新的 `dataTransferApply` Job，在 Job、幂等 receipt 和 consumed plan ID 原子提交后立即返回 queued jobId，并将 handler future 放入 Tauri 后台任务。`get_job`、`list_jobs`、`get_transfer_job_details` 可读取状态；`cancel_data_transfer` 记录 Job cancel intent 并触发 runtime watcher。幂等重放返回原 Job，不重复执行。
+
+持久 Job 不会使计划变成持久：plan body、resume token 和 live handler/endpoints 仍在进程内。进程重启后不恢复旧 session/worker，也不自动 apply；Queued admission 转为 Failed/NotStarted + `notExecuted`，Running 转为 Failed/Unknown + `pendingVerification`。需要重新 prepare 或由新授权的只读 verifier 按 Job details/checkpoint 明确核验。
 
 ## 4. 数据库执行
 
@@ -71,17 +73,17 @@ peek 不消耗计划；claim 原子将 available 转为 executing 并建立活�
 
 ## 5. 分批恢复
 
-`data_transfer/resume.rs` 的 `TransferResumeCheckpoint` 定义 renew、prepareTable、advanceTable、token、invalidate 等操作。恢复证据包括稳定 key 列、批大小、源指纹、已提交批次和 cursor；单纯保存行数或 OFFSET 不足以恢复。
+`data_transfer/resume.rs` 的 `TransferResumeCheckpoint` 定义 renew、prepareTable、advanceTable、token、invalidate 等旧恢复操作。恢复证据包括稳定 key 列、批大小、源指纹、已提交批次和 cursor；单纯保存行数或 OFFSET 不足以恢复。共享 JobRuntime 另将运行中 handler 提交的 checkpoint 与 CommitBoundary 写入 AppDb，并由 `get_transfer_job_details` 原样读回。
 
-当前可恢复路径要求完整且非 NULL 的稳定主键、可核验的一致性条件与目标事务能力；源与目标运行时会话须分离。实现对已验证的 PostgreSQL/MySQL 路径作显式检查，不应据此声称所有已注册驱动都支持恢复。检查点失效、结构/范围变化、无法证明源一致性时拒绝续跑。
+旧 resume helper 的可恢复路径要求完整且非 NULL 的稳定主键、可核验的一致性条件与目标事务能力；源与目标运行时会话须分离。实现对已验证的 PostgreSQL/MySQL 路径作显式检查，不应据此声称所有已注册驱动都支持恢复。该 helper 不重建旧 Job 的运行时句柄，也不授权重放；检查点失效、结构/范围变化、无法证明源一致性时拒绝续跑。
 
-提交边界与 checkpoint 写入存在故障窗口。必须按代码中已保存的证据核验，不能仅凭“上一批没有 checkpoint”就认定未提交。统一 Job 的提交边界与跨进程核验协议见 [P5 详细设计](../platform/data-migration-jobs.md)。
+持久化边界和 checkpoint 供 UI 在窗口/进程重开后显示，但 Core 不替 Transfer handler 验证目标数据库事实。异步恢复 verifier API 需要调用方提供新授权的只读资源；当前 Transfer 没有自动跨进程续跑能力。必须按代码中已保存的证据核验，不能仅凭“上一批没有 checkpoint”就认定未提交。通用 API 与约束见 [P5 详细设计](../platform/data-migration-jobs.md)。
 
 ## 6. SQL 文件与取消
 
 `data_transfer/sql_file.rs` 负责 SQL 文件输出；SQL 文件目的地不建立目标数据库写会话，但仍需源读取与渲染能力。文件输出失败或取消不能标成完整产物；结果必须表达已输出部分和错误。
 
-IPC 执行与取消由 `commands/data_transfer/jobs.rs`、`exec.rs` 等入口管理。当前进程内取消状态与计划 Store 都不能作为团队服务的跨实例协调机制。平台迁移时分别替换为 JobRepository、持久取消意图、Artifact 与受控导出，删除迁移完成的旧入口。
+旧执行与兼容路径仍由 `commands/data_transfer/exec.rs` 等入口管理；P5 新路径在 `commands/data_transfer/job_api/`。新路径的 cancel intent 持久写入本机 Job repository，运行时通过 `CancelWatch` 将它传给当前 stage。该 SQLite repository 是单机桌面 host，不是团队服务跨实例协调器。Job 只存 Artifact ID 引用，不存文件字节；当前引用 TTL 为 30 天，且不保证仍可下载对应内容。
 
 ## 7. 相关文档
 
