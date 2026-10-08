@@ -97,7 +97,15 @@ const UNGUARDED_DRIVER_CRATES: &[(&str, &str)] = &[
         "no contract binding yet; no env-file read in its tests today",
     ),
     (
+        "rqlite",
+        "no contract binding yet; no env-file read in its tests today",
+    ),
+    (
         "sqlite",
+        "no contract binding yet; no env-file read in its tests today",
+    ),
+    (
+        "turso",
         "no contract binding yet; no env-file read in its tests today",
     ),
     (
@@ -474,9 +482,9 @@ fn unverified_scope_report() {
 /// the report sits outside this pin by design; that is what the availability and
 /// PARTIAL_OBLIGATIONS checks are for.
 const UNGUARDED_CRATES_GOLDEN: &str = "\
-\n--- 免检驱动 crate（共 6 个）：本 guard 不扫描，其结论不被上面的扫描覆盖 ---
+\n--- 免检驱动 crate（共 8 个）：本 guard 不扫描，其结论不被上面的扫描覆盖 ---
      以下 crate 带有 tests/ 目录，却从不绑定本契约模板，因此它们的测试源不在上面『无 env 文件读取』的结论范围内；本 guard 不对它们作任何断言，列为免检是一项已记录的缺口，不是一项结论。未绑定的原因写在 UNGUARDED_DRIVER_CRATES 的代码注释里，不打印成散文，以免自由文本变成新的声明面。
-     清单：clickhouse, duckdb, mongodb, redis, sqlite, sqlserver
+     清单：clickhouse, duckdb, mongodb, redis, rqlite, sqlite, turso, sqlserver
 ";
 
 /// The crates this guard does **not** scan must be named in the report, by name
