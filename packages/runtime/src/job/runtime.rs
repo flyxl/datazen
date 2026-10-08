@@ -19,13 +19,11 @@ use datazen_platform_api::dto::job::{Checkpoint, JobProgress, JobState, StageRec
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{JobId, WorkerId};
 
-use datazen_platform_api::ports::job::JobRepository;
-
 use crate::budget::ledger::BudgetLedger;
 use crate::job::budget::{EndpointRef, MultiEndpointPermits};
 use crate::job::handler::{CancelToken, HandlerRegistry, StageOutcome, StageSpec, StageTerminal};
 use crate::job::plan::project_frozen_plan;
-use crate::job::repository::InMemoryJobRepository;
+use crate::job::runtime_repository::JobRuntimeRepository;
 use crate::job::time::JobClock;
 
 /// 阶段内取消看守者的轮询间隔。
@@ -59,7 +57,7 @@ pub struct JobResult {
 
 /// Job 运行时编排器。
 pub struct JobRuntime {
-    repo: Arc<InMemoryJobRepository>,
+    repo: Arc<dyn JobRuntimeRepository>,
     handlers: Arc<HandlerRegistry>,
     ledger: Arc<Mutex<BudgetLedger>>,
     clock: Arc<dyn JobClock>,
@@ -71,7 +69,7 @@ pub struct JobRuntime {
 
 impl JobRuntime {
     pub fn new(
-        repo: Arc<InMemoryJobRepository>,
+        repo: Arc<dyn JobRuntimeRepository>,
         handlers: Arc<HandlerRegistry>,
         ledger: Arc<Mutex<BudgetLedger>>,
         clock: Arc<dyn JobClock>,
@@ -118,7 +116,8 @@ impl JobRuntime {
             None => {
                 let _ = self
                     .repo
-                    .mark_pending_verification(ctx, job_id, "handlerNotRegistered");
+                    .mark_pending_verification(ctx, job_id, "handlerNotRegistered")
+                    .await;
                 return Err(PortError::UnsupportedVersion(format!(
                     "handler {}@{} not registered",
                     job.definition.kind, plan.handler_version
@@ -130,7 +129,8 @@ impl JobRuntime {
             Ok(s) => s,
             Err(e) => {
                 self.repo
-                    .mark_failed_unstarted(ctx, job_id, &e.to_string()).await?;
+                    .mark_failed_unstarted(ctx, job_id, "planValidationFailed")
+                    .await?;
                 return Err(PortError::from(e));
             }
         };
@@ -139,7 +139,8 @@ impl JobRuntime {
         if latest.view.cancel_requested {
             let cancelled = self
                 .repo
-                .confirm_cancelled_not_started(ctx, job_id, EffectOutcome::NotStarted)?;
+                .confirm_cancelled_not_started(ctx, job_id, EffectOutcome::NotStarted)
+                .await?;
             return Ok(JobResult {
                 state: cancelled.view.state,
                 effect_outcome: EffectOutcome::NotStarted,
@@ -168,6 +169,10 @@ impl JobRuntime {
             }
             Err(err) => {
                 permits.release(false);
+                let _ = self
+                    .repo
+                    .mark_pending_verification(ctx, job_id, "dispatchNeedsVerification")
+                    .await;
                 Err(err)
             }
         }
@@ -195,19 +200,58 @@ impl JobRuntime {
             if latest.view.cancel_requested {
                 cancel.cancel();
             }
+            let stage_started_at = self.clock.now();
             let stage_record = StageRecord {
                 job_id: job_id.clone(),
                 stage_id: spec.stage_id.clone(),
                 kind: spec.kind.clone(),
                 claimed_by: Some(worker.clone()),
                 execution_ids: Vec::new(),
-                started_at: Some(self.clock.now()),
+                started_at: Some(stage_started_at.clone()),
                 finished_at: None,
             };
             self.repo.record_stage(ctx, &claim, stage_record).await?;
-            let outcome = self
-                .run_stage_watched(ctx, job_id, handler.as_ref(), spec, &cancel)
-                .await?;
+            let result = self
+                .run_stage_watched(ctx, job_id, handler.clone(), spec, &cancel)
+                .await;
+            let stage_result = match result {
+                Ok(outcome) => outcome,
+                Err(failure) => {
+                    let finished_at = self.clock.now();
+                    let stage_record = StageRecord {
+                        job_id: job_id.clone(),
+                        stage_id: spec.stage_id.clone(),
+                        kind: spec.kind.clone(),
+                        claimed_by: Some(worker.clone()),
+                        execution_ids: Vec::new(),
+                        started_at: Some(stage_started_at.clone()),
+                        finished_at: Some(finished_at),
+                    };
+                    self.repo.record_stage(ctx, &claim, stage_record).await?;
+                    let latest = self.repo.get(ctx, job_id.clone()).await?;
+                    let code = failure.code().to_string();
+                    let finished = self
+                        .repo
+                        .finish(
+                            ctx,
+                            &claim,
+                            latest.state_version,
+                            JobState::Failed,
+                            EffectOutcome::Unknown,
+                            progress,
+                            Some(code.clone()),
+                            Some(code.clone()),
+                        )
+                        .await?;
+                    return Ok(JobResult {
+                        state: finished.view.state,
+                        effect_outcome: EffectOutcome::Unknown,
+                        progress,
+                        error: Some(code),
+                    });
+                }
+            };
+            let outcome = stage_result;
             progress = accumulate(progress, outcome.progress);
             any_boundary |= !outcome.commit_boundaries.is_empty();
             saw_unknown |= outcome.terminal == StageTerminal::Unknown
@@ -220,6 +264,26 @@ impl JobRuntime {
                     .await?;
                 committed_all.push(b.clone());
             }
+            let finished_at = self.clock.now();
+            self.repo
+                .record_stage(
+                    ctx,
+                    &claim,
+                    StageRecord {
+                        job_id: job_id.clone(),
+                        stage_id: spec.stage_id.clone(),
+                        kind: spec.kind.clone(),
+                        claimed_by: Some(worker.clone()),
+                        execution_ids: outcome.execution_ids.clone(),
+                        started_at: Some(stage_started_at),
+                        finished_at: Some(finished_at),
+                    },
+                )
+                .await?;
+            self.repo
+                .record_artifacts(ctx, &claim, &outcome.artifact_ids)
+                .await?;
+            self.repo.record_progress(ctx, &claim, progress).await?;
             if outcome.terminal != StageTerminal::Succeeded {
                 break;
             }
@@ -255,20 +319,31 @@ impl JobRuntime {
         };
         let latest = self.repo.get(ctx, job_id.clone()).await?;
         // 终态 CAS 会清 claim，因此先在仍有效的 claim 下写效果结局，再落终态。
-        self.repo.set_effect_outcome(ctx, &claim, effect)?;
+        let error_code = if saw_unknown {
+            Some("unknownCommitBoundary".to_string())
+        } else if saw_failed {
+            Some("stageFailed".to_string())
+        } else {
+            None
+        };
+        let pending_reason = saw_unknown.then(|| "unknownCommitBoundary".to_string());
         self.repo
-            .compare_and_set_state(ctx, &claim, latest.state_version, state)
+            .finish(
+                ctx,
+                &claim,
+                latest.state_version,
+                state,
+                effect,
+                progress,
+                error_code.clone(),
+                pending_reason,
+            )
             .await?;
-        if saw_unknown {
-            let _ = self
-                .repo
-                .mark_pending_verification(ctx, job_id, "unknownCommitBoundary");
-        }
         Ok(JobResult {
             state,
             effect_outcome: effect,
             progress,
-            error: None,
+            error: error_code,
         })
     }
 
@@ -288,10 +363,10 @@ impl JobRuntime {
         &self,
         ctx: &RequestContext,
         job_id: &JobId,
-        handler: &dyn crate::job::handler::JobHandler,
+        handler: Arc<dyn crate::job::handler::JobHandler>,
         spec: &StageSpec,
         cancel: &CancelToken,
-    ) -> Result<StageOutcome, PortError> {
+    ) -> Result<StageOutcome, StageRunFailure> {
         let watch = CancelWatch::spawn(
             self.repo.clone(),
             ctx.clone(),
@@ -299,11 +374,24 @@ impl JobRuntime {
             cancel.clone(),
             self.watchers.clone(),
         );
-        let outcome = handler.run_stage(spec, cancel).await;
+        let handler_for_stage = handler.clone();
+        let stage_spec = spec.clone();
+        let stage_cancel = cancel.clone();
+        let stage = tokio::spawn(async move {
+            handler_for_stage
+                .run_stage(&stage_spec, &stage_cancel)
+                .await
+        });
         // 先 abort 再 await：await 返回之后这条任务确定已经结束，不会在
         // dispatch 返回后继续读仓储、继续持有请求上下文。
+        let stage_result = stage.await;
         watch.join().await;
-        outcome.map_err(|e| PortError::BackendUnavailable(e.to_string()))
+        match stage_result {
+            Ok(Ok(outcome)) => Ok(outcome),
+            Ok(Err(_)) => Err(StageRunFailure::HandlerFailed),
+            Err(error) if error.is_panic() => Err(StageRunFailure::HandlerPanicked),
+            Err(_) => Err(StageRunFailure::HandlerStopped),
+        }
     }
 }
 
@@ -316,7 +404,7 @@ struct CancelWatch {
 
 impl CancelWatch {
     fn spawn(
-        repo: Arc<InMemoryJobRepository>,
+        repo: Arc<dyn JobRuntimeRepository>,
         ctx: RequestContext,
         job_id: JobId,
         cancel: CancelToken,
@@ -350,6 +438,23 @@ impl Drop for CancelWatch {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum StageRunFailure {
+    HandlerFailed,
+    HandlerPanicked,
+    HandlerStopped,
+}
+
+impl StageRunFailure {
+    fn code(self) -> &'static str {
+        match self {
+            Self::HandlerFailed => "handlerFailedUnknown",
+            Self::HandlerPanicked => "handlerPanickedUnknown",
+            Self::HandlerStopped => "handlerStoppedUnknown",
+        }
+    }
+}
+
 /// 阶段内取消看守者：与 `run_stage` 并发轮询仓储的取消意图。
 ///
 /// 取消请求只能落在 `request_cancel`（§2.3：取消是意图，不改 state），而阶段执行
@@ -357,13 +462,13 @@ impl Drop for CancelWatch {
 /// `cancel_requested` 为真就翻转内核那一个 [`CancelToken`] 并立即退出——此后内核
 /// 的 `cancel()` 调用有且只有这一个来源，handler 不再需要自己那一条通道。
 async fn watch_cancel_request(
-    repo: Arc<InMemoryJobRepository>,
+    repo: Arc<dyn JobRuntimeRepository>,
     ctx: RequestContext,
     job_id: JobId,
     cancel: CancelToken,
 ) {
     loop {
-        match repo.cancel_poll(&ctx, &job_id) {
+        match repo.cancel_poll(&ctx, &job_id).await {
             Ok(snapshot) => {
                 if snapshot.cancel_requested {
                     cancel.cancel();

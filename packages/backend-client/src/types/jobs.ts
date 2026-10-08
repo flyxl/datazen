@@ -108,6 +108,8 @@ export interface JobView {
   cancelRequested: boolean;
   /** Why the job is pending verification (e.g. `outcomeUnknown`), else null. */
   pendingVerificationReason: string | null;
+  /** Safe result detail written by the Job runtime, else null. */
+  error: string | null;
   /** P5 five-bucket progress; zero when nothing has been reported yet. */
   progress: JobProgress;
 }
@@ -128,6 +130,29 @@ export interface CommitBoundary {
   payloadDigest: string | null;
   evidence: readonly string[];
   verifiedAt: Timestamp | null;
+}
+
+export type JobRecoveryVerdict =
+  | 'pendingVerification'
+  | 'resumeAfterVerify'
+  | 'reject'
+  | 'requireManualReview';
+
+/** Safe recovery receipt; reasonCode is a stable code, never handler text. */
+export interface JobRecoveryResult {
+  verdict: JobRecoveryVerdict;
+  resumeThrough?: number;
+  reasonCode?: string;
+}
+
+/** Durable detail query returned by `get_transfer_job_details`. */
+export interface JobDetails {
+  job: JobView;
+  planId?: string;
+  planDigest?: string;
+  selectionRevision?: number;
+  commitBoundaries: readonly CommitBoundary[];
+  recovery?: JobRecoveryResult;
 }
 
 export type ResultCompleteness = 'pending' | 'complete' | 'truncated';

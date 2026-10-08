@@ -59,6 +59,9 @@ pub struct JobView {
     /// 进入待核验时的原因（如 `outcomeUnknown` / `cleanupNotConfirmed`）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_verification_reason: Option<String>,
+    /// Safe, bounded terminal result detail; raw SQL, driver errors and secrets are not stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// P5 五类进度计数；缺省为全零。
     #[serde(default)]
     pub progress: JobProgress,
@@ -98,6 +101,45 @@ pub struct JobRecord {
     pub stages: Vec<StageRecord>,
     /// 状态版本，任务状态 CAS 的比较基准。
     pub state_version: crate::id::JobStateVersion,
+}
+
+/// Safe recovery summary returned by the desktop job details query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum JobRecoveryVerdict {
+    PendingVerification,
+    ResumeAfterVerify,
+    Reject,
+    RequireManualReview,
+}
+
+/// Recovery decision persisted by the host after a handler has inspected its checkpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRecoveryResult {
+    pub verdict: JobRecoveryVerdict,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_through: Option<u64>,
+    /// Stable code only; arbitrary handler error text is not durable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<String>,
+}
+
+/// Detailed read model for a single Job. Bulk list responses remain small.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobDetails {
+    pub job: JobView,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_revision: Option<u64>,
+    #[serde(default)]
+    pub commit_boundaries: Vec<CommitBoundary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<JobRecoveryResult>,
 }
 
 /// 已提交边界：checkpoint 里**唯一**关于「已经生效到哪里」的事实。
@@ -198,6 +240,7 @@ mod tests {
             effect_outcome: Some(EffectOutcome::Completed),
             cancel_requested: false,
             pending_verification_reason: None,
+            error: None,
             progress: JobProgress::default(),
         }
     }

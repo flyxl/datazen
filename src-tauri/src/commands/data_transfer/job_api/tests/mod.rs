@@ -108,7 +108,7 @@ fn apply_request() -> ApplyPlanRequest {
 
 #[test]
 fn prepare_payload_declares_versions_and_consumes_nothing() {
-    let payload = prepare_payload(3);
+    let payload = prepare_payload("plan-1", "sha256:abcd", 3);
     assert_eq!(payload["kind"], PREPARE_KIND);
     assert_eq!(payload["planVersion"], 1);
     assert_eq!(payload["handlerVersion"], 1);

@@ -308,7 +308,10 @@ pub(crate) fn transfer_error_history_outcome(write_started: bool) -> &'static st
 }
 
 #[tauri::command]
-pub async fn cancel_data_transfer(job_id: String) -> Result<bool, CommandError> {
+pub async fn cancel_data_transfer(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<bool, CommandError> {
     // P5 Jobs are cancelled through the Job repository: `request_cancel`
     // records the intent, the runtime's per-stage cancel watcher flips the
     // `CancelToken` the stage already holds (mid-stage), or the next stage
@@ -316,10 +319,10 @@ pub async fn cancel_data_transfer(job_id: String) -> Result<bool, CommandError> 
     // `Cancelled`. The legacy registry only knows
     // `services::job_registry` jobs, so it stays the fallback for an id this
     // client never accepted.
-    if job_api::cancel_data_transfer_job(&job_id).await? {
+    if job_api::cancel_data_transfer_job(&state, &job_id).await? {
         // A P5 Job answers with the recorded request itself, so the caller
         // learns whether the cancel actually reached the Job.
-        return job_api::job_cancel_requested(&job_id).await;
+        return job_api::job_cancel_requested(&state, &job_id).await;
     }
     Ok(cancel_job(&job_id).await)
 }
