@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
-    Checkpoint, CommitBoundary, JobDetails, JobProgress, JobRecord, JobRecoveryResult, JobState,
+    Checkpoint, CommitBoundary, JobDetails, JobDomainResult, JobProgress, JobRecord,
+    JobRecoveryResult, JobRecoveryVerification, JobState,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{IdempotencyKey, JobId, JobStateVersion};
@@ -68,6 +69,14 @@ pub trait JobRuntimeRepository: JobRepository {
         artifacts: &[ArtifactId],
     ) -> Result<(), PortError>;
 
+    /// Persist one bounded handler result under the active claim fence.
+    async fn record_domain_result(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        result: JobDomainResult,
+    ) -> Result<(), PortError>;
+
     async fn append_external_artifacts(
         &self,
         ctx: &RequestContext,
@@ -94,6 +103,15 @@ pub trait JobRuntimeRepository: JobRepository {
         recovery: JobRecoveryResult,
     ) -> Result<(), PortError>;
 
+    /// Atomically apply an explicit verifier's safe verdict and newly confirmed facts.
+    async fn persist_recovery_verification(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        expected: JobStateVersion,
+        verification: JobRecoveryVerification,
+    ) -> Result<(), PortError>;
+
     async fn receipt_for(
         &self,
         ctx: &RequestContext,
@@ -117,4 +135,61 @@ pub trait JobRuntimeRepository: JobRepository {
         ctx: &RequestContext,
         job_id: JobId,
     ) -> Result<JobDetails, PortError>;
+}
+
+/// Validate the field-level safety and resource bounds shared by all repository implementations.
+pub fn validate_job_domain_result(result: &JobDomainResult) -> Result<(), PortError> {
+    if !safe_result_marker(result.stage_id.as_str())
+        || !safe_result_marker(&result.result_code)
+        || !safe_result_marker(&result.outcome_code)
+        || result.counters.len() > 32
+        || result.items.len() > 4096
+        || result.artifact_ids.len() > 4096
+    {
+        return Err(PortError::BackendUnavailable(
+            "job domain result is outside the safe format".into(),
+        ));
+    }
+    let mut counter_codes = std::collections::HashSet::new();
+    if result
+        .counters
+        .iter()
+        .any(|counter| !safe_result_marker(&counter.code) || !counter_codes.insert(&counter.code))
+    {
+        return Err(PortError::BackendUnavailable(
+            "job result counters are invalid".into(),
+        ));
+    }
+    let mut item_ids = std::collections::HashSet::new();
+    if result.items.iter().any(|item| {
+        !safe_result_marker(&item.item_id)
+            || !safe_result_marker(&item.outcome_code)
+            || item
+                .reason_code
+                .as_deref()
+                .is_some_and(|code| !safe_result_marker(code))
+            || !item_ids.insert(&item.item_id)
+    }) || result
+        .artifact_ids
+        .iter()
+        .any(|artifact| !safe_result_marker(artifact.as_str()))
+    {
+        return Err(PortError::BackendUnavailable(
+            "job result items are invalid".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Result codes and opaque IDs use a narrow alphabet and reject secret/session/SQL labels.
+pub fn safe_result_marker(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    !value.is_empty()
+        && value.len() <= 512
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+        && !["password", "passwd", "credential", "secret", "token", "session", "sql"]
+            .iter()
+            .any(|label| lower.contains(label))
 }

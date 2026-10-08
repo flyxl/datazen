@@ -51,7 +51,13 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
                 | "planId"
                 | "planDigest"
                 | "sourceTables"
+                | "recoveryTargets"
+                | "targetBeforeFingerprint"
+                | "recoveryPolicy"
                 | "confirmedDestructive"
+                | "useTransaction"
+                | "requireRollback"
+                | "profileRevisionDigest"
         ) {
             return Err(PortError::BackendUnavailable(
                 "job plan contains a field outside the durable projection".into(),
@@ -76,14 +82,15 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
         "kind" => value.as_str().is_some_and(safe_identifier),
         "consumedPlanId" | "planId" => value.as_str().is_some_and(safe_identifier),
         "planDigest" => value.as_str().is_some_and(|text| {
-            text.len() <= 80
-                && text.starts_with("sha256:")
-                && text[7..].bytes().all(|byte| byte.is_ascii_hexdigit())
+            safe_digest(text)
         }),
+        "profileRevisionDigest" => value.as_str().is_some_and(safe_digest),
+        "targetBeforeFingerprint" => value.as_str().is_some_and(safe_digest),
+        "recoveryPolicy" => value.as_str().is_some_and(safe_identifier),
         "planVersion" | "handlerVersion" | "checkpointVersion" | "selectionRevision" => {
             value.as_u64().is_some()
         }
-        "confirmedDestructive" => value.as_bool().is_some(),
+        "confirmedDestructive" | "useTransaction" | "requireRollback" => value.as_bool().is_some(),
         "sourceTables" => value.as_array().is_some_and(|items| {
             items.len() <= 100_000
                 && items.iter().all(|item| {
@@ -91,6 +98,7 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
                         .is_some_and(|text| !text.is_empty() && text.len() <= 4096)
                 })
         }),
+        "recoveryTargets" => validate_recovery_targets(value),
         _ => false,
     };
     if valid {
@@ -100,6 +108,40 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
             "job plan field `{key}` has an unsupported durable value"
         )))
     }
+}
+
+fn safe_digest(text: &str) -> bool {
+    text.len() <= 71
+        && text.len() > 7
+        && text.starts_with("sha256:")
+        && text[7..].bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn validate_recovery_targets(value: &Value) -> bool {
+    let Some(targets) = value.as_array() else {
+        return false;
+    };
+    targets.len() <= 128
+        && targets.iter().all(|target| {
+            let Some(object) = target.as_object() else {
+                return false;
+            };
+            object.len() == 2
+                && object.contains_key("connectionId")
+                && object.contains_key("objectIds")
+                && object
+                    .get("connectionId")
+                    .and_then(Value::as_str)
+                    .is_some_and(safe_identifier)
+                && object.get("objectIds").is_some_and(|ids| {
+                    ids.as_array().is_some_and(|items| {
+                        items.len() <= 10_000
+                            && items.iter().all(|item| {
+                                item.as_str().is_some_and(safe_identifier)
+                            })
+                    })
+                })
+        })
 }
 
 pub(super) fn safe_identifier(text: &str) -> bool {

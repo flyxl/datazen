@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
-    Checkpoint, CommitBoundary, JobClaim, JobDetails, JobProgress, JobRecord, JobRecoveryResult,
-    JobState,
+    Checkpoint, CommitBoundary, JobClaim, JobDetails, JobDomainResult, JobProgress, JobRecord,
+    JobRecoveryResult, JobRecoveryVerification, JobState,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{ArtifactId, IdempotencyKey, JobId, JobStateVersion};
@@ -76,6 +76,15 @@ impl JobRuntimeRepository for InMemoryJobRepository {
         InMemoryJobRepository::record_artifacts(self, claim, artifacts)
     }
 
+    async fn record_domain_result(
+        &self,
+        _ctx: &RequestContext,
+        claim: &JobClaim,
+        result: JobDomainResult,
+    ) -> Result<(), PortError> {
+        InMemoryJobRepository::record_domain_result(self, claim, result)
+    }
+
     async fn append_external_artifacts(
         &self,
         _ctx: &RequestContext,
@@ -115,6 +124,16 @@ impl JobRuntimeRepository for InMemoryJobRepository {
         recovery: JobRecoveryResult,
     ) -> Result<(), PortError> {
         InMemoryJobRepository::persist_recovery(self, job_id, recovery)
+    }
+
+    async fn persist_recovery_verification(
+        &self,
+        _ctx: &RequestContext,
+        job_id: &JobId,
+        expected: JobStateVersion,
+        verification: JobRecoveryVerification,
+    ) -> Result<(), PortError> {
+        InMemoryJobRepository::persist_recovery_verification(self, job_id, expected, verification)
     }
 
     async fn receipt_for(

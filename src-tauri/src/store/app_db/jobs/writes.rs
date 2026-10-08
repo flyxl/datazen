@@ -192,7 +192,7 @@ impl SqliteJobRepository {
     }
 }
 
-fn validate_boundary(boundary: &CommitBoundary) -> Result<(), PortError> {
+pub(super) fn validate_boundary(boundary: &CommitBoundary) -> Result<(), PortError> {
     if !safe_marker(boundary.stage_id.as_str())
         || !safe_marker(&boundary.stable_target_fingerprint)
         || boundary

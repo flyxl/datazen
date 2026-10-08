@@ -145,14 +145,39 @@ export interface JobRecoveryResult {
   reasonCode?: string;
 }
 
+/** A bounded, stable handler receipt; it has no free-form field for SQL or driver messages. */
+export interface JobDomainResult {
+  stageId: Id;
+  resultCode: string;
+  outcomeCode: string;
+  counters: readonly { code: string; value: Counter }[];
+  items: readonly {
+    itemId: Id;
+    outcomeCode: string;
+    reasonCode?: string;
+  }[];
+  artifactIds: readonly Id[];
+}
+
+/** Stable target identity used by an explicit fresh-session recovery verifier. */
+export interface JobRecoveryTarget {
+  connectionId: Id;
+  objectIds: readonly Id[];
+}
+
 /** Durable detail query returned by `get_transfer_job_details`. */
 export interface JobDetails {
   job: JobView;
+  stateVersion: Counter;
   planId?: string;
   planDigest?: string;
   selectionRevision?: number;
   commitBoundaries: readonly CommitBoundary[];
   recovery?: JobRecoveryResult;
+  domainResults: readonly JobDomainResult[];
+  recoveryTargets: readonly JobRecoveryTarget[];
+  targetBeforeFingerprint?: string;
+  recoveryPolicy?: string;
 }
 
 export type ResultCompleteness = 'pending' | 'complete' | 'truncated';

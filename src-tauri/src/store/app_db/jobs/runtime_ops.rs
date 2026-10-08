@@ -1,8 +1,8 @@
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
-    Checkpoint, CommitBoundary, JobClaim, JobDetails, JobProgress, JobRecord, JobRecoveryResult,
-    JobRecoveryVerdict, JobState,
+    Checkpoint, CommitBoundary, JobClaim, JobDetails, JobDomainResult, JobProgress, JobRecord,
+    JobRecoveryResult, JobRecoveryVerification, JobRecoveryVerdict, JobState,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
@@ -593,6 +593,14 @@ impl JobRuntimeRepository for SqliteJobRepository {
     ) -> Result<(), PortError> {
         self.record_artifacts_for(ctx, claim, artifacts).await
     }
+    async fn record_domain_result(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        result: JobDomainResult,
+    ) -> Result<(), PortError> {
+        self.write_domain_result(ctx, claim, result).await
+    }
     async fn append_external_artifacts(
         &self,
         ctx: &RequestContext,
@@ -632,6 +640,16 @@ impl JobRuntimeRepository for SqliteJobRepository {
         recovery: JobRecoveryResult,
     ) -> Result<(), PortError> {
         self.persist_recovery_for(ctx, job_id, recovery).await
+    }
+    async fn persist_recovery_verification(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        expected: JobStateVersion,
+        verification: JobRecoveryVerification,
+    ) -> Result<(), PortError> {
+        self.write_recovery_verification(ctx, job_id, expected, verification)
+            .await
     }
     async fn receipt_for(
         &self,

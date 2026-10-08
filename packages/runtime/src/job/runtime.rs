@@ -283,6 +283,19 @@ impl JobRuntime {
             self.repo
                 .record_artifacts(ctx, &claim, &outcome.artifact_ids)
                 .await?;
+            if let Some(result) = handler.durable_result(&outcome) {
+                if result.stage_id != spec.stage_id
+                    || result
+                        .artifact_ids
+                        .iter()
+                        .any(|artifact| !outcome.artifact_ids.contains(artifact))
+                {
+                    return Err(PortError::BackendUnavailable(
+                        "handler result does not match its stage output".into(),
+                    ));
+                }
+                self.repo.record_domain_result(ctx, &claim, result).await?;
+            }
             self.repo.record_progress(ctx, &claim, progress).await?;
             if outcome.terminal != StageTerminal::Succeeded {
                 break;

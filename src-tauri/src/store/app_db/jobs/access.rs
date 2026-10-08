@@ -1,6 +1,7 @@
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::job::{
-    CommitBoundary, JobDetails, JobFilter, JobRecord, JobRecoveryResult, JobState, RecoveryFilter,
+    CommitBoundary, JobDetails, JobDomainResult, JobFilter, JobRecord, JobRecoveryResult,
+    JobRecoveryTarget, JobState, RecoveryFilter,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{JobId, Timestamp};
@@ -158,6 +159,30 @@ impl SqliteJobRepository {
                 .get("selectionRevision")
                 .and_then(serde_json::Value::as_u64);
             let committed = read_boundaries(tx, &job_id)?;
+            let domain_results = read_domain_results(tx, &job_id)?;
+            let recovery_targets = record
+                .definition
+                .payload
+                .get("recoveryTargets")
+                .cloned()
+                .map(serde_json::from_value::<Vec<JobRecoveryTarget>>)
+                .transpose()
+                .map_err(|_| {
+                    PortError::BackendUnavailable("stored recovery targets are invalid".into())
+                })?
+                .unwrap_or_default();
+            let target_before_fingerprint = record
+                .definition
+                .payload
+                .get("targetBeforeFingerprint")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            let recovery_policy = record
+                .definition
+                .payload
+                .get("recoveryPolicy")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
             let recovery = recovery
                 .map(|json| decode::<JobRecoveryResult>(&json))
                 .transpose()?;
@@ -169,11 +194,16 @@ impl SqliteJobRepository {
             };
             Ok(JobDetails {
                 job: record.view,
+                state_version: record.state_version,
                 plan_id: plan_id.or(payload_plan_id),
                 plan_digest: plan_digest.or(payload_digest),
                 selection_revision,
                 commit_boundaries: committed,
                 recovery,
+                domain_results,
+                recovery_targets,
+                target_before_fingerprint,
+                recovery_policy,
             })
         })
     }
@@ -189,6 +219,25 @@ impl SqliteJobRepository {
             read_boundaries(conn, job_id)
         })
     }
+}
+
+fn read_domain_results(
+    conn: &rusqlite::Connection,
+    job_id: &JobId,
+) -> Result<Vec<JobDomainResult>, PortError> {
+    let mut statement = conn
+        .prepare(
+            "SELECT result_json FROM job_domain_results WHERE job_id=?1 ORDER BY stage_id",
+        )
+        .map_err(db_read_error)?;
+    let rows = statement
+        .query_map(params![job_id.as_str()], |row| row.get::<_, String>(0))
+        .map_err(db_read_error)?;
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(decode(&row.map_err(db_read_error)?)?);
+    }
+    Ok(results)
 }
 
 fn read_boundaries(

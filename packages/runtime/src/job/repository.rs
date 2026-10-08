@@ -17,8 +17,8 @@ use async_trait::async_trait;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
-    Checkpoint, CommitBoundary, JobClaim, JobDefinition, JobFilter, JobRecord, JobRecoveryResult,
-    JobState, RecoveryFilter, StageRecord,
+    Checkpoint, CommitBoundary, JobClaim, JobDefinition, JobDomainResult, JobFilter, JobRecord,
+    JobRecoveryResult, JobState, RecoveryFilter, StageRecord,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
@@ -68,6 +68,7 @@ struct Inner {
     /// 逐批已确认提交边界（§7）：record_commit_boundary 落库，按产生顺序递增。
     boundaries: HashMap<JobId, Vec<CommitBoundary>>,
     recovery: HashMap<JobId, JobRecoveryResult>,
+    domain_results: HashMap<(JobId, StageId), JobDomainResult>,
 }
 
 /// `JobRepository` 的内存实现。线程安全：单个 `Mutex` 保护全部索引（同一把锁即受理事务）。

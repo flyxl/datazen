@@ -5,22 +5,26 @@
 //! reopen, [`DesktopJobHost::mark_restart_candidates_for_verification`] marks
 //! old running jobs for inspection and never invokes a handler.
 
+use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
 
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
-    JobDefinition, JobDetails, JobFilter, JobRecord, JobRecoveryResult, JobRecoveryVerdict,
-    JobState, RecoveryFilter,
+    JobDefinition, JobDetails, JobFilter, JobRecord, JobRecoveryRequest, JobRecoveryResult,
+    JobRecoveryVerification, JobRecoveryVerdict, JobState, RecoveryFilter,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{IdempotencyKey, JobId, Timestamp, WorkerId};
+use datazen_platform_api::dto::job::{JobClaim, JobDomainResult};
+use futures_util::FutureExt;
 
 use crate::budget::ledger::BudgetLedger;
 use crate::job::budget::EndpointRef;
 use crate::job::handler::{HandlerRegistry, JobHandler};
 use crate::job::runtime::{JobResult, JobRuntime};
 use crate::job::runtime_repository::JobRuntimeRepository;
+use crate::job::recovery::JobRecoveryVerifier;
 use crate::job::time::JobClock;
 
 /// Shared, transport-neutral API for desktop job adapters.
@@ -102,6 +106,16 @@ impl DesktopJobHost {
         }
     }
 
+    /// Persist a bounded, handler-owned read model under the active worker claim.
+    pub async fn record_domain_result(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        result: JobDomainResult,
+    ) -> Result<(), PortError> {
+        self.repository.record_domain_result(ctx, claim, result).await
+    }
+
     /// Enumerate restart candidates. This method is read-only and never dispatches.
     pub async fn recovery_candidates(
         &self,
@@ -145,6 +159,57 @@ impl DesktopJobHost {
             }
         }
         Ok(marked)
+    }
+
+    /// Explicitly verify an interrupted job using a verifier that owns newly authorized,
+    /// read-only resources. The result is persisted; this method never dispatches a Job.
+    pub async fn verify_recovery(
+        &self,
+        ctx: &RequestContext,
+        job_id: JobId,
+        verifier: Arc<dyn JobRecoveryVerifier>,
+    ) -> Result<JobDetails, PortError> {
+        let details = self.repository.get_details(ctx, job_id.clone()).await?;
+        let pending = details
+            .recovery
+            .as_ref()
+            .is_some_and(|result| result.verdict == JobRecoveryVerdict::PendingVerification);
+        if details.job.state != JobState::Failed
+            || details.job.pending_verification_reason.is_none()
+            || !pending
+            || verifier.kind() != details.job.kind
+        {
+            return Err(PortError::CasConflict {
+                entity: "job_recovery",
+                id: job_id.as_str().into(),
+            });
+        }
+        let checkpoint = self.repository.latest_checkpoint(ctx, &job_id).await?;
+        let request = JobRecoveryRequest { details, checkpoint };
+        let verification = match AssertUnwindSafe(verifier.verify(ctx, &request))
+            .catch_unwind()
+            .await
+        {
+            Ok(Ok(value)) => value,
+            Ok(Err(_)) | Err(_) => JobRecoveryVerification {
+                result: JobRecoveryResult {
+                    verdict: JobRecoveryVerdict::RequireManualReview,
+                    resume_through: None,
+                    reason_code: Some("verificationUnavailable".into()),
+                },
+                confirmed_boundaries: Vec::new(),
+                domain_results: Vec::new(),
+            },
+        };
+        self.repository
+            .persist_recovery_verification(
+                ctx,
+                &job_id,
+                request.details.state_version,
+                verification,
+            )
+            .await?;
+        self.repository.get_details(ctx, job_id).await
     }
 
     /// Explicit caller-driven dispatch. The handler is supplied from live

@@ -4,6 +4,7 @@ mod access;
 mod admission;
 mod codec;
 mod runtime_ops;
+mod results;
 mod writes;
 
 use std::sync::Arc;

@@ -91,6 +91,13 @@ CREATE TABLE job_result_details (
   recovery_json TEXT
 );
 
+CREATE TABLE job_domain_results (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  stage_id TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  PRIMARY KEY (job_id, stage_id)
+);
+
 CREATE TABLE job_artifact_refs (
   job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
   artifact_id TEXT NOT NULL,

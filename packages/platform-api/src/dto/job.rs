@@ -7,7 +7,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dto::execution::EffectOutcome;
-use crate::id::{ArtifactId, BlockId, Counter, ExecutionId, JobId, StageId, Timestamp, WorkerId};
+use crate::id::{
+    ArtifactId, BlockId, Counter, ExecutionId, JobId, StageId, Timestamp, WorkerId,
+};
 use crate::OwnerRef;
 
 /// 任务状态。与 `ExecutionState` 是**不同**的状态机：任务状态不含 `cancelRequested`。
@@ -130,6 +132,8 @@ pub struct JobRecoveryResult {
 #[serde(rename_all = "camelCase")]
 pub struct JobDetails {
     pub job: JobView,
+    /// CAS version captured with this details snapshot.
+    pub state_version: crate::id::JobStateVersion,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -140,6 +144,79 @@ pub struct JobDetails {
     pub commit_boundaries: Vec<CommitBoundary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery: Option<JobRecoveryResult>,
+    /// Bounded handler receipts, one per completed stage. Free-form text is excluded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domain_results: Vec<JobDomainResult>,
+    /// Stable connection/object identity used only to scope explicit post-restart verification.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recovery_targets: Vec<JobRecoveryTarget>,
+    /// Optional stable before-state fingerprint for explicit post-restart verification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_before_fingerprint: Option<String>,
+    /// Stable recovery policy code; never a free-form instruction or SQL fragment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery_policy: Option<String>,
+}
+
+/// Safe persistent target identity. It is not a live session or a resource lease.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRecoveryTarget {
+    pub connection_id: String,
+    pub object_ids: Vec<String>,
+}
+
+/// Persistable handler summary. The host validates every identifier and applies a size cap.
+/// It deliberately has no field for SQL, driver messages, credentials, or runtime handles.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobDomainResult {
+    pub stage_id: StageId,
+    pub result_code: String,
+    pub outcome_code: String,
+    #[serde(default)]
+    pub counters: Vec<JobResultCounter>,
+    #[serde(default)]
+    pub items: Vec<JobResultItem>,
+    #[serde(default)]
+    pub artifact_ids: Vec<ArtifactId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobResultCounter {
+    pub code: String,
+    pub value: Counter,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobResultItem {
+    /// Opaque operation/object identifier, never a statement or user-supplied label.
+    pub item_id: String,
+    pub outcome_code: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<String>,
+}
+
+/// Input passed to an explicit recovery verifier after the caller has re-authorized resources.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRecoveryRequest {
+    pub details: JobDetails,
+    pub checkpoint: Option<Checkpoint>,
+}
+
+/// Safe facts returned by an explicit read-only verifier. The host persists these atomically;
+/// the type carries no request to dispatch or replay a Job.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRecoveryVerification {
+    pub result: JobRecoveryResult,
+    #[serde(default)]
+    pub confirmed_boundaries: Vec<CommitBoundary>,
+    #[serde(default)]
+    pub domain_results: Vec<JobDomainResult>,
 }
 
 /// 已提交边界：checkpoint 里**唯一**关于「已经生效到哪里」的事实。
