@@ -54,17 +54,15 @@ fn type_override_filters_only_catalog_edges_used_exclusively_by_overridden_colum
     let make_snapshot = |usage| SchemaObjectDependencySnapshot {
         identity: table_identity.clone(),
         dependencies: Some(vec![custom_type.clone()]),
-        type_dependency_usages: Some(vec![
-            crate::object_identity::TypeDependencyUsage {
-                dependency: custom_type.clone(),
+        type_dependency_usages: Some(vec![crate::object_identity::TypeDependencyUsage {
+            dependency: custom_type.clone(),
+            usage,
+            column_name: matches!(
                 usage,
-                column_name: matches!(
-                    usage,
-                    crate::object_identity::TypeDependencyUsageKind::ColumnType
-                )
-                .then(|| "state".into()),
-            },
-        ]),
+                crate::object_identity::TypeDependencyUsageKind::ColumnType
+            )
+            .then(|| "state".into()),
+        }]),
         sequence_dependency_usages: None,
     };
     let build_plan = |snapshot: SchemaObjectDependencySnapshot, source: TableSchema| {

@@ -47,10 +47,7 @@ impl From<JobError> for datazen_platform_api::error::PortError {
                 PortError::UnsupportedVersion(format!("major {got}, supported {supported}"))
             }
             JobError::StaleClaim | JobError::ClaimExpired => PortError::StaleClaim,
-            JobError::VersionConflict(id) => PortError::CasConflict {
-                entity: "job",
-                id,
-            },
+            JobError::VersionConflict(id) => PortError::CasConflict { entity: "job", id },
             JobError::Terminal => PortError::CasConflict {
                 entity: "job",
                 id: "terminal".into(),

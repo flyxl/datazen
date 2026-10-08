@@ -10,8 +10,8 @@ use super::{
     unified_objects::operation_node_key,
     unified_type_validation::{is_builtin_type, type_name_matches, type_parts},
 };
-use datazen_driver_api::TableSchema;
 use datazen_driver_api::ObjectKind;
+use datazen_driver_api::TableSchema;
 use std::collections::{BTreeSet, HashMap};
 
 mod table_catalog;

@@ -34,7 +34,7 @@ describe('database metadata facade', () => {
     expect(await databaseCommands.listTables('session', 'app')).toEqual([
       { name: 'users', schema: 'public', tableType: 'table', rowCount: 2 },
       { name: 'users', schema: 'archive', tableType: 'view', rowCount: null },
-      { name: '', schema: 'empty', tableType: 'table', rowCount: null },
+      { name: '', schema: 'empty', tableType: 'systemTable', rowCount: null },
     ]);
     expect(invoke).toHaveBeenCalledExactlyOnceWith('execute_driver_command', {
       request: {

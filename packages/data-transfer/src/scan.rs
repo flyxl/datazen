@@ -2,8 +2,8 @@
 //! Native streaming drivers keep memory bounded. Legacy materializing drivers
 //! retain their documented query_stream memory limitation.
 use super::error::TransferError;
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value};
 use datazen_driver_api::QueryStreamEvent;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value};
 use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

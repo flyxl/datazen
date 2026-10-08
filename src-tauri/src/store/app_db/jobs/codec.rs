@@ -81,9 +81,7 @@ fn validate_plan_value(key: &str, value: &Value) -> Result<(), PortError> {
     let valid = match key {
         "kind" => value.as_str().is_some_and(safe_identifier),
         "consumedPlanId" | "planId" => value.as_str().is_some_and(safe_identifier),
-        "planDigest" => value.as_str().is_some_and(|text| {
-            safe_digest(text)
-        }),
+        "planDigest" => value.as_str().is_some_and(|text| safe_digest(text)),
         "profileRevisionDigest" => value.as_str().is_some_and(safe_digest),
         "targetBeforeFingerprint" => value.as_str().is_some_and(safe_digest),
         "recoveryPolicy" => value.as_str().is_some_and(safe_identifier),
@@ -136,9 +134,9 @@ fn validate_recovery_targets(value: &Value) -> bool {
                 && object.get("objectIds").is_some_and(|ids| {
                     ids.as_array().is_some_and(|items| {
                         items.len() <= 10_000
-                            && items.iter().all(|item| {
-                                item.as_str().is_some_and(safe_identifier)
-                            })
+                            && items
+                                .iter()
+                                .all(|item| item.as_str().is_some_and(safe_identifier))
                     })
                 })
         })

@@ -7,17 +7,17 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 
 use crate::{
-    ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
-    DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
-    StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
-    TransactionHandle, Value,
-};
-use crate::{
     execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
     is_schema_object_command, query_command_definition, query_stream_command_definition,
     schema_catalog_command_definitions, schema_object_command_definitions,
     try_execute_schema_catalog_command, validate_schema_target, CommandResult, DdlAtomicity,
     DriverCommandDefinition, SchemaScope,
+};
+use crate::{
+    ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
+    DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
+    StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
+    TransactionHandle, Value,
 };
 
 /// Models "another task registered its own transaction for the same

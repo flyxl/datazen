@@ -90,7 +90,11 @@ pub fn resolve_recordset(
                     "source primary-key column '{key}' is nullable; tuple ranges require non-null keys"
                 )));
             }
-            datazen_data_sync::recordset_bounds::ensure_supported_bound_type(&column.data_type, key).map_err(TransferError::validation)?;
+            datazen_data_sync::recordset_bounds::ensure_supported_bound_type(
+                &column.data_type,
+                key,
+            )
+            .map_err(TransferError::validation)?;
             types.push(column.data_type.as_str());
         }
         let start = resolve_tuple_bound(tuple_range.start.as_ref(), "start", &types)?;
@@ -178,7 +182,8 @@ fn resolve_bound(
     let Some(bound) = bound else {
         return Ok(None);
     };
-    let (value, key) = canonical_bound_value(&bound.value, data_type, name).map_err(TransferError::validation)?;
+    let (value, key) =
+        canonical_bound_value(&bound.value, data_type, name).map_err(TransferError::validation)?;
     Ok(Some(ResolvedBound {
         values: vec![value],
         inclusive: bound.inclusive,
@@ -205,7 +210,8 @@ fn resolve_tuple_bound(
     let mut keys = Vec::with_capacity(data_types.len());
     for (index, (raw, data_type)) in bound.values.iter().zip(data_types).enumerate() {
         let component = format!("{name}[{}]", index + 1);
-        let (value, key) = canonical_bound_value(raw, data_type, &component).map_err(TransferError::validation)?;
+        let (value, key) =
+            canonical_bound_value(raw, data_type, &component).map_err(TransferError::validation)?;
         values.push(value);
         keys.push(key);
     }

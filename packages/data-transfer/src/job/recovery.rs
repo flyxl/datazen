@@ -128,12 +128,8 @@ mod tests {
 
     #[test]
     fn derive_evidence_marks_unknown_commit_only_with_target_proof() {
-        let with_proof = derive_evidence(
-            "resumeAfterVerify",
-            true,
-            1,
-            &[boundary(&["source-row-1"])],
-        );
+        let with_proof =
+            derive_evidence("resumeAfterVerify", true, 1, &[boundary(&["source-row-1"])]);
         assert!(with_proof.iter().any(|m| m == EVIDENCE_UNKNOWN_COMMIT));
         assert!(with_proof.iter().any(|m| m == EVIDENCE_TARGET_VERIFIED));
 

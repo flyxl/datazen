@@ -26,10 +26,10 @@ use super::model::{
     TableExecutionResult, TableInspectResult, TransferExecutionResult, TransferJob, TransferMode,
     WriteMode,
 };
-use datazen_data_sync::sql::{qualify_relation_sql, quote_ident_sql};
-use datazen_driver_api::{ConnectionHandle, Value};
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ir::{IRDefault, IRType};
+use datazen_data_sync::sql::{qualify_relation_sql, quote_ident_sql};
+use datazen_driver_api::{ConnectionHandle, Value};
 
 pub use super::sql_structure::build_structure_plan;
 
@@ -463,11 +463,7 @@ fn effective_target_schema(job: &TransferJob) -> Option<&str> {
     effective_target_scope(job).1
 }
 
-pub fn target_table_ref(
-    driver: &dyn DatabaseDriver,
-    job: &TransferJob,
-    table: &str,
-) -> String {
+pub fn target_table_ref(driver: &dyn DatabaseDriver, job: &TransferJob, table: &str) -> String {
     let (database, schema) = effective_target_scope(job);
     qualify_target_relation(driver, database, schema, table)
 }
@@ -1263,8 +1259,8 @@ pub async fn execute_with_target(
 mod tests {
     use super::*;
     use crate::model::TableMapping;
-    use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
     use crate::transfer::adapter::SyncSourceAdapter;
+    use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
     use datazen_driver_api::{ColumnSchema, TableSchema};
     use datazen_driver_mysql::MysqlSyncAdapter;
     use datazen_driver_postgres::PgSyncAdapter;

@@ -45,16 +45,16 @@ use datazen_platform_api::context::{OwnerRef, RequestContext};
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{JobDefinition, JobState};
 use datazen_platform_api::id::{
-    ClientInstanceId, ConnectionId, IdempotencyKey, JobId, OrganizationId, PrincipalId,
-    RequestId, Timestamp, WorkerId,
+    ClientInstanceId, ConnectionId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId,
+    Timestamp, WorkerId,
 };
 use datazen_platform_api::ports::budget::ServiceQuota;
 use datazen_platform_api::ports::job::JobRepository;
 
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
 use datazen_runtime::job::{
-    CancelToken, EndpointRef, EndpointRole, HandlerRegistry, InMemoryJobRepository, JobHandler as _,
-    JobRuntime, SharedClock, StageSpec, StageTerminal, CANCEL_POLL_INTERVAL,
+    CancelToken, EndpointRef, EndpointRole, HandlerRegistry, InMemoryJobRepository,
+    JobHandler as _, JobRuntime, SharedClock, StageSpec, StageTerminal, CANCEL_POLL_INTERVAL,
 };
 
 use super::real_sqlite::*;
@@ -243,9 +243,13 @@ async fn kernel_cancel_stops_the_data_stage_before_the_first_commit() {
     let job_id = JobId::new("job-dt-kernel-cancel");
     let clock = Arc::new(SharedClock::at("2026-01-01T00:00:00Z"));
     let repo = Arc::new(InMemoryJobRepository::new(clock.clone(), 300));
-    repo.accept(&ctx(), job_definition(&job_id), &IdempotencyKey::new("job-dt-kernel-cancel"))
-        .await
-        .expect("accept");
+    repo.accept(
+        &ctx(),
+        job_definition(&job_id),
+        &IdempotencyKey::new("job-dt-kernel-cancel"),
+    )
+    .await
+    .expect("accept");
     let ledger = Arc::new(Mutex::new(BudgetLedger::new(budget())));
     ledger.lock().expect("ledger lock").ensure_service(&conn());
     let mut handlers = HandlerRegistry::new();
@@ -261,7 +265,8 @@ async fn kernel_cancel_stops_the_data_stage_before_the_first_commit() {
 
     // 阶段真正阻塞在第一批写入里——此时 job 处于 running。
     await_blocked_write(&fixture.gate).await;
-    repo.request_cancel(&ctx(), &job_id).expect("request_cancel");
+    repo.request_cancel(&ctx(), &job_id)
+        .expect("request_cancel");
     tokio::time::sleep(WATCHER_SLACK).await;
     fixture.gate.opened.notify_one();
     let result = running.await.expect("join").expect("run");

@@ -165,10 +165,7 @@ async fn run_stage_error_fails_job_and_releases_all_permits() {
         .expect("converged failure");
     assert_eq!(result.state, JobState::Failed);
     assert_eq!(result.effect_outcome, EffectOutcome::Unknown);
-    assert_eq!(
-        result.error.as_deref(),
-        Some("handlerFailedUnknown")
-    );
+    assert_eq!(result.error.as_deref(), Some("handlerFailedUnknown"));
     assert_eq!(runtime.active_cancel_watchers(), 0);
     let queried = repo.get(&c, JobId::new("job-e1")).await.expect("query");
     assert_eq!(queried.view.state, JobState::Failed);
@@ -469,7 +466,10 @@ async fn validation_panic_is_unstarted_failure_and_never_claims_budget() {
         .expect("query");
     assert_eq!(queried.view.state, JobState::Failed);
     assert_eq!(queried.view.effect_outcome, Some(EffectOutcome::NotStarted));
-    assert_eq!(queried.view.error.as_deref(), Some("handlerValidationPanicked"));
+    assert_eq!(
+        queried.view.error.as_deref(),
+        Some("handlerValidationPanicked")
+    );
     let details = repo
         .get_details(JobId::new("validation-job"))
         .expect("details");
@@ -519,7 +519,10 @@ async fn validation_error_is_unstarted_failure_without_started_stage() {
         .expect("query failed validation");
     assert_eq!(record.view.state, JobState::Failed);
     assert_eq!(record.view.effect_outcome, Some(EffectOutcome::NotStarted));
-    assert_eq!(record.view.error.as_deref(), Some("handlerValidationFailed"));
+    assert_eq!(
+        record.view.error.as_deref(),
+        Some("handlerValidationFailed")
+    );
     let details = repo
         .get_details(JobId::new("validation-error-job"))
         .expect("details");

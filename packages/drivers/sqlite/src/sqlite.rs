@@ -2,9 +2,9 @@
 
 use crate::structure;
 
-mod schema;
 #[path = "parameter_limit.rs"]
 mod parameter_limit;
+mod schema;
 use async_trait::async_trait;
 use datazen_driver_api::*;
 use sqlx::sqlite::SqlitePoolOptions;

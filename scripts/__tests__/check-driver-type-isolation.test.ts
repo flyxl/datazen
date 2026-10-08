@@ -328,6 +328,16 @@ describe('T-01 dependency edges', () => {
     expect(result.violations[0]).toContain('dev dependency');
   });
 
+  it('does not follow a dependency library dev edge into another driver', () => {
+    const { code, result } = run({
+      members: [{ id: 'pg' }, { id: 'redis' }, { id: 'bridge', contract: false }, { id: 'driver-api' }],
+      edges: { pg: ['bridge'], bridge: ['redis'], redis: ['driver-api'] },
+      kinds: { 'bridge->redis': 'dev' },
+    });
+    expect(result.violations).toEqual([]);
+    expect(code).toBe(0);
+  });
+
   it('fails on transitive reach through a non-driver crate', () => {
     // pg does not name redis; it names a helper that names redis. pg still
     // links redis's implementation types, which is the failure `:99` names.

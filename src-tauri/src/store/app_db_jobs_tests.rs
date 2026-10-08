@@ -1,5 +1,5 @@
 use super::jobs::SqliteJobRepository;
-use super::{APP_DB_FILE, AppDb, AppDbError, SCHEMA_VERSION};
+use super::{AppDb, AppDbError, APP_DB_FILE, SCHEMA_VERSION};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::dto::job::{

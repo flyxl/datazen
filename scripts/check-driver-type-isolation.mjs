@@ -612,7 +612,9 @@ export function checkDriverTypeIsolation(options) {
           const depPkg = index.byId.get(dep.pkg);
           if (depPkg === undefined || reach.has(depPkg.name)) continue;
           for (const dk of dep.dep_kinds ?? [{ kind: null }]) {
-            if (!FOLLOWED_KINDS.has(dk.kind)) continue;
+            // Dependency libraries' dev-dependencies are not linked into the
+            // consuming driver. Only the root driver's own dev edges apply.
+            if (!FOLLOWED_KINDS.has(dk.kind) || dk.kind === 'dev') continue;
             reach.set(depPkg.name, { kind: dk.kind ?? 'normal', depth });
             if (driverNameSet.has(depPkg.name) === false && index.nodeById.has(dep.pkg)) {
               next.push(dep.pkg);

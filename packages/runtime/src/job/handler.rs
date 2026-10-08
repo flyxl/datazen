@@ -14,9 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
-use datazen_platform_api::dto::job::{
-    Checkpoint, CommitBoundary, JobDomainResult, JobProgress,
-};
+use datazen_platform_api::dto::job::{Checkpoint, CommitBoundary, JobDomainResult, JobProgress};
 use datazen_platform_api::id::{ArtifactId, ExecutionId, StageId};
 
 use crate::job::error::JobError;

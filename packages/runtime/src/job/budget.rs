@@ -182,9 +182,7 @@ impl MultiEndpointPermits {
         };
         self.permits
             .iter()
-            .map(|record| {
-                guard.release(&record.to_port_permit(), consumed, self.now_ms)
-            })
+            .map(|record| guard.release(&record.to_port_permit(), consumed, self.now_ms))
             .collect()
     }
 }

@@ -597,9 +597,7 @@ async fn run_test_chunk(
     std::sync::Arc<datazen_driver_api::mock_driver::MockDriver>,
     std::sync::Arc<datazen_driver_api::mock_driver::MockDriver>,
 ) {
-    let _guard = crate::TEST_COMMIT_ACK_LOSS_TEST_LOCK
-        .lock()
-        .await;
+    let _guard = crate::TEST_COMMIT_ACK_LOSS_TEST_LOCK.lock().await;
     run_test_chunk_without_ack_fault_lock(checkpoint, query_error, source_rollback_error).await
 }
 
@@ -726,9 +724,7 @@ async fn test_tester_confirmed_chunk_commit_fences_failed_checkpoint_advance() {
 async fn test_tester_chunk_ack_loss_fences_checkpoint_after_target_commit() {
     use super::super::execute::{arm_test_commit_ack_loss, clear_test_commit_ack_loss};
 
-    let _guard = crate::TEST_COMMIT_ACK_LOSS_TEST_LOCK
-        .lock()
-        .await;
+    let _guard = crate::TEST_COMMIT_ACK_LOSS_TEST_LOCK.lock().await;
     let _reset = clear_test_commit_ack_loss();
     arm_test_commit_ack_loss("items_copy").expect("the one-shot test seam should arm");
     let mut checkpoint = TesterCheckpoint::default();

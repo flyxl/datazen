@@ -1,8 +1,8 @@
 //! Schema Diff IR: convert snapshots into dialect-neutral operations.
 
 use super::{compare::diff_indexes, operations::MigrationOperation, types::ColumnChange};
-use datazen_driver_api::{ForeignKeyDeferrability, ForeignKeyInfo, TableSchema};
 use datazen_driver_api::TypeNormalizer;
+use datazen_driver_api::{ForeignKeyDeferrability, ForeignKeyInfo, TableSchema};
 
 pub fn diff_to_operations(
     table: &str,
@@ -490,15 +490,19 @@ mod tests {
     #[test]
     fn check_constraint_add_and_change_generate_reviewable_operations() {
         let mut source = schema(vec![col("id")]);
-        source.check_constraints.push(datazen_driver_api::CheckConstraint {
-            name: "users_age_check".into(),
-            expression: "age >= 0".into(),
-        });
+        source
+            .check_constraints
+            .push(datazen_driver_api::CheckConstraint {
+                name: "users_age_check".into(),
+                expression: "age >= 0".into(),
+            });
         let mut target = schema(vec![col("id")]);
-        target.check_constraints.push(datazen_driver_api::CheckConstraint {
-            name: "users_age_check".into(),
-            expression: "age > 0".into(),
-        });
+        target
+            .check_constraints
+            .push(datazen_driver_api::CheckConstraint {
+                name: "users_age_check".into(),
+                expression: "age > 0".into(),
+            });
         let ops = diff_to_operations("users", &source, &target, None);
         assert!(ops.iter().any(|op| matches!(
             op,

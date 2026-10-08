@@ -5,11 +5,11 @@
 //! referenced column against the source schema and emits SQL plus bound
 //! values for the driver's parameterized query API.
 
-use datazen_data_sync::sql::quote_ident_sql;
 use crate::error::TransferError;
-use datazen_driver_api::{TableSchema, Value};
-use datazen_driver_api::filters::{FilterCondition, FilterOperator};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use datazen_data_sync::sql::quote_ident_sql;
+use datazen_driver_api::filters::{FilterCondition, FilterOperator};
+use datazen_driver_api::{TableSchema, Value};
 use serde::{Deserialize, Serialize};
 
 const MAX_CONDITIONS: usize = 32;

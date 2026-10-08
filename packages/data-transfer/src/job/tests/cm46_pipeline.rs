@@ -228,10 +228,7 @@ async fn cm46_oversize_json_payload_is_not_charged_sixteen_bytes() {
             > PIPELINE_INITIAL_BYTES,
         "the encoded JSON must be measured, not guessed at 16 bytes"
     );
-    let rows: Rows = vec![vec![
-        Some(Value::Integer(1)),
-        Some(Value::Json(payload)),
-    ]];
+    let rows: Rows = vec![vec![Some(Value::Integer(1)), Some(Value::Json(payload))]];
     let schema = schema_with_snapshot(&["id", "payload"]);
     let src = Arc::new(FakeDb {
         rows,
@@ -280,11 +277,11 @@ async fn cm46_oversize_json_payload_is_not_charged_sixteen_bytes() {
     };
     let outcome = execute_bounded_table(&mut context).await.expect("pipeline");
     let err = outcome.result.result.error.unwrap_or_default();
-    assert!(!outcome.result.result.success, "a 9 MiB payload must not pass");
     assert!(
-        err.contains("pipeline buffer"),
-        "unexpected error: {err}"
+        !outcome.result.result.success,
+        "a 9 MiB payload must not pass"
     );
+    assert!(err.contains("pipeline buffer"), "unexpected error: {err}");
     assert!(
         tgt.state.lock().unwrap().write_sqls.is_empty(),
         "nothing may be written once the payload is refused"
@@ -439,7 +436,10 @@ async fn cm46_cancel_during_transfer_rolls_the_inflight_batch_back() {
         execute_bounded_table(&mut context).await
     });
     let entered = tokio::time::timeout(std::time::Duration::from_secs(10), gate.entered.notified());
-    assert!(entered.await.is_ok(), "pipeline never reached the gated write");
+    assert!(
+        entered.await.is_ok(),
+        "pipeline never reached the gated write"
+    );
     flag.store(true, std::sync::atomic::Ordering::SeqCst);
     gate.opened.notify_one();
     let outcome = handle.await.expect("join").expect("pipeline");

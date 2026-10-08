@@ -14,9 +14,9 @@ use std::collections::HashMap;
 
 use datazen_driver_api::{ForeignKeyDeferrability, ForeignKeyInfo, TableSchema};
 
-use datazen_driver_api::Value;
 use crate::transfer::adapter::SyncTargetAdapter;
 use crate::transfer::ir::{IRDefault, IRType};
+use datazen_driver_api::Value;
 
 use super::model::DdlPreviewKind;
 use super::sql_structure::build_database_structure_plan;

@@ -68,13 +68,10 @@ impl Subscriber for WarnRecorder {
         }
         let mut fields = WarnFields::default();
         event.record(&mut fields);
-        self.events
-            .lock()
-            .expect("warn recorder")
-            .push((
-                fields.job_id.unwrap_or_default(),
-                fields.message.unwrap_or_default(),
-            ));
+        self.events.lock().expect("warn recorder").push((
+            fields.job_id.unwrap_or_default(),
+            fields.message.unwrap_or_default(),
+        ));
     }
 }
 

@@ -3,8 +3,8 @@
 mod access;
 mod admission;
 mod codec;
-mod runtime_ops;
 mod results;
+mod runtime_ops;
 mod writes;
 
 use std::sync::Arc;

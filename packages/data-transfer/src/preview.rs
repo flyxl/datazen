@@ -283,8 +283,8 @@ pub fn build_preview(
 mod tests {
     use super::*;
     use crate::model::{Endpoint, TableMapping, TransferOptions};
-    use datazen_driver_api::Value;
     use crate::transfer::ir::{IRColumn, IRDefault, IRType};
+    use datazen_driver_api::Value;
 
     struct DummyTarget;
 

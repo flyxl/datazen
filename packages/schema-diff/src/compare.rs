@@ -4,8 +4,8 @@ use super::types::{
     ChangedColumnDiff, CheckConstraintSnapshot, ColumnSnapshot, TableColumnDiff, TableOptionChange,
     TableOptionsDiff,
 };
-use datazen_driver_api::{CheckConstraint, ColumnSchema, IndexInfo, TableSchema};
 use datazen_driver_api::TypeNormalizer;
+use datazen_driver_api::{CheckConstraint, ColumnSchema, IndexInfo, TableSchema};
 use std::collections::HashMap;
 
 pub fn column_snapshot(col: &ColumnSchema) -> ColumnSnapshot {

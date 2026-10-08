@@ -162,8 +162,8 @@ fn build_create_table_ddl_ref_with_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_driver_api::Value;
     use crate::transfer::ir::{IRColumn, IRDefault, IRType};
+    use datazen_driver_api::Value;
 
     struct DummyTarget {
         suffix: Option<String>,

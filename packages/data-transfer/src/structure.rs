@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use datazen_driver_api::TableSchema;
 
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ir::{IRColumn, IRDefault, IRTable, IRType};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 
 use super::error::TransferError;
 use super::model::{
@@ -1034,8 +1034,8 @@ pub fn table_eligible_for_data(table: &TableInspectResult, job: &TransferJob) ->
 mod tests {
     use super::super::model::WriteMode;
     use super::*;
-    use datazen_driver_api::Value;
     use crate::transfer::ir::{IRColumn, IRDefault, IRTable, IRType};
+    use datazen_driver_api::Value;
 
     struct DummyTarget;
 
@@ -1496,8 +1496,8 @@ mod tests {
 
     #[tokio::test]
     async fn structure_preflight_failures_are_not_started_and_success_can_continue() {
-        use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
         use crate::transfer::ir::IRColumn;
+        use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 
         struct SourceAdapter {
             reject_columns: bool,

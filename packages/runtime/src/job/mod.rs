@@ -15,8 +15,8 @@ pub mod error;
 pub mod handler;
 mod memory_runtime_repository;
 pub mod plan;
-pub mod repository;
 pub mod recovery;
+pub mod repository;
 pub mod runtime;
 pub mod runtime_repository;
 pub mod time;
@@ -29,8 +29,8 @@ pub use handler::{
     StageTerminal,
 };
 pub use plan::{project_frozen_plan, FrozenPlan, APPLY_KINDS, SUPPORTED_PLAN_MAJOR};
-pub use repository::{CancelPollSnapshot, InMemoryJobRepository};
 pub use recovery::JobRecoveryVerifier;
+pub use repository::{CancelPollSnapshot, InMemoryJobRepository};
 pub use runtime::{JobResult, JobRuntime, CANCEL_POLL_INTERVAL};
 pub use runtime_repository::JobRuntimeRepository;
 pub use time::{JobClock, SharedClock, SystemJobClock};

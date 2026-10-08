@@ -63,10 +63,9 @@ pub fn project_frozen_plan(kind: &str, payload: &Value) -> Result<FrozenPlan, Jo
     }
     let selection_revision = match payload.get("selectionRevision") {
         None => None,
-        Some(v) => Some(
-            v.as_u64()
-                .ok_or_else(|| JobError::PlanProjectionInvalid("selectionRevision must be u64".into()))?,
-        ),
+        Some(v) => Some(v.as_u64().ok_or_else(|| {
+            JobError::PlanProjectionInvalid("selectionRevision must be u64".into())
+        })?),
     };
     Ok(FrozenPlan {
         kind: kind.to_string(),
@@ -116,9 +115,7 @@ mod tests {
         });
         assert_eq!(
             project_frozen_plan("schemaDiffPrepare", &payload).unwrap_err(),
-            JobError::PlanProjectionInvalid(
-                "prepare job must not carry consumedPlanId".into()
-            )
+            JobError::PlanProjectionInvalid("prepare job must not carry consumedPlanId".into())
         );
     }
 
@@ -131,7 +128,10 @@ mod tests {
         });
         assert_eq!(
             project_frozen_plan("dataSyncPrepare", &payload).unwrap_err(),
-            JobError::VersionIncompatible { got: 2, supported: 1 }
+            JobError::VersionIncompatible {
+                got: 2,
+                supported: 1
+            }
         );
     }
 }

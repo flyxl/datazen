@@ -22,9 +22,9 @@ use datazen_runtime::job::{
 
 use super::super::plans;
 use super::endpoint_identity::EndpointIdentity;
-use crate::commands::AppState;
 use crate::commands::error::CommandError;
-use crate::data_transfer::job::{DataTransferHandler, derive_evidence};
+use crate::commands::AppState;
+use crate::data_transfer::job::{derive_evidence, DataTransferHandler};
 
 pub(crate) const PREPARE_KIND: &str = "dataTransferPrepare";
 pub(crate) const APPLY_KIND: &str = "dataTransferApply";

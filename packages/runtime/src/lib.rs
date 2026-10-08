@@ -12,13 +12,13 @@
 pub mod application;
 pub mod budget;
 pub mod connection;
-/// P5 JobRuntime 内核：接受/幂等 receipt/planId 唯一消费/claim fencing/handler 协议/
-/// 多端原子预算/阶段调度与取消意图/效果结局聚合（data-migration-jobs.md 全文口径）。
-pub mod job;
 /// 会话目录端口（`SessionDirectory`）的单进程实现：owner / runtimeEpoch / TTL 路由。
 /// 只存路由信息，不存连接、不存凭据、不落盘。
 pub mod directory;
 pub mod gateway;
+/// P5 JobRuntime 内核：接受/幂等 receipt/planId 唯一消费/claim fencing/handler 协议/
+/// 多端原子预算/阶段调度与取消意图/效果结局聚合（data-migration-jobs.md 全文口径）。
+pub mod job;
 /// 门禁开销的测量口径（分位数算法 + 逐请求求和）。
 pub mod latency;
 /// 会话登记表接缝：`SessionPort` 的**唯一**契约面，Wave 2 的 registry 实现它、gateway 消费它。

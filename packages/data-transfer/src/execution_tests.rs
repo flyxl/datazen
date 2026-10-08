@@ -1113,9 +1113,7 @@ async fn unknown_commit_stops_later_tables_and_hides_unconfirmed_rows() {
 async fn debug_commit_ack_loss_seam_targets_one_successful_commit_once() {
     const ACK_LOSS_TABLE: &str = "e2e_ack_loss_target_once";
 
-    let _guard = crate::TEST_COMMIT_ACK_LOSS_TEST_LOCK
-        .lock()
-        .await;
+    let _guard = crate::TEST_COMMIT_ACK_LOSS_TEST_LOCK.lock().await;
     let source = driver(vec![vec![Some(Value::Integer(1))]], schema(&["id"]));
     let target = driver(vec![], schema(&["id"]));
     super::execute::arm_test_commit_ack_loss(ACK_LOSS_TABLE).unwrap();

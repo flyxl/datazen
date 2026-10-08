@@ -21,13 +21,23 @@ pub const EVIDENCE_CAPABILITY_CHANGED: &str = "capabilityChanged";
 /// 纯函数：给定 checkpoint 判定恢复裁决。不能核验的副作用一律转人工核验，
 /// **未知提交不自动重跑**。
 pub fn decide_recovery(checkpoint: &Checkpoint) -> RecoveryVerdict {
-    let evidence: Vec<&str> = checkpoint.verification_evidence.iter().map(String::as_str).collect();
-    if evidence.iter().any(|e| e.contains(EVIDENCE_VERSIONS_CHANGED)) {
+    let evidence: Vec<&str> = checkpoint
+        .verification_evidence
+        .iter()
+        .map(String::as_str)
+        .collect();
+    if evidence
+        .iter()
+        .any(|e| e.contains(EVIDENCE_VERSIONS_CHANGED))
+    {
         return RecoveryVerdict::Reject {
             reason: "plan/credential versions changed; re-authorize and re-prepare".into(),
         };
     }
-    if evidence.iter().any(|e| e.contains(EVIDENCE_CAPABILITY_CHANGED)) {
+    if evidence
+        .iter()
+        .any(|e| e.contains(EVIDENCE_CAPABILITY_CHANGED))
+    {
         return RecoveryVerdict::Reject {
             reason: "driver capability changed; re-authorize and re-prepare".into(),
         };
@@ -36,20 +46,23 @@ pub fn decide_recovery(checkpoint: &Checkpoint) -> RecoveryVerdict {
     let any_ddl_lost = evidence
         .iter()
         .any(|e| e.contains(EVIDENCE_DDL_RESPONSE_LOST))
-        || checkpoint
-            .committed
-            .iter()
-            .any(|b| b.evidence.iter().any(|e| e.contains(EVIDENCE_DDL_RESPONSE_LOST)));
+        || checkpoint.committed.iter().any(|b| {
+            b.evidence
+                .iter()
+                .any(|e| e.contains(EVIDENCE_DDL_RESPONSE_LOST))
+        });
     let any_ack_lost = evidence
         .iter()
         .any(|e| e.contains(EVIDENCE_COMMIT_ACK_LOST))
-        || checkpoint
-            .committed
-            .iter()
-            .any(|b| b.evidence.iter().any(|e| e.contains(EVIDENCE_COMMIT_ACK_LOST)));
+        || checkpoint.committed.iter().any(|b| {
+            b.evidence
+                .iter()
+                .any(|e| e.contains(EVIDENCE_COMMIT_ACK_LOST))
+        });
     if any_ddl_lost {
         return RecoveryVerdict::RequireManualReview {
-            reason: "ddl response lost; run read-only before/after comparison before resuming".into(),
+            reason: "ddl response lost; run read-only before/after comparison before resuming"
+                .into(),
         };
     }
     if any_ack_lost {
@@ -63,7 +76,8 @@ pub fn decide_recovery(checkpoint: &Checkpoint) -> RecoveryVerdict {
             return RecoveryVerdict::ResumeAfterVerify { resume_through: 0 };
         }
         return RecoveryVerdict::RequireManualReview {
-            reason: "no committed boundaries and recovery policy is not read-only-verifiable".into(),
+            reason: "no committed boundaries and recovery policy is not read-only-verifiable"
+                .into(),
         };
     }
     let mut resume_through = 0usize;

@@ -18,8 +18,8 @@ pub use backend::{
 };
 pub use handler::{HandlerRole, SchemaDiffHandler};
 pub use plan::{
-    fnv1a64_hex, PlanStore, RecoveryPolicy, SchemaDiffFrozenPlan, SchemaDiffPlanError,
-    StoredPlan, SCHEMA_DIFF_HANDLER_VERSION, SUPPORTED_PLAN_MAJOR,
+    fnv1a64_hex, PlanStore, RecoveryPolicy, SchemaDiffFrozenPlan, SchemaDiffPlanError, StoredPlan,
+    SCHEMA_DIFF_HANDLER_VERSION, SUPPORTED_PLAN_MAJOR,
 };
 pub use recovery::{
     decide_recovery, EVIDENCE_BOUNDARY_VERIFIED, EVIDENCE_CAPABILITY_CHANGED,

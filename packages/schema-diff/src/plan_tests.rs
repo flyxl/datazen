@@ -52,10 +52,11 @@ fn pg_to_mysql_strips_schema_prefix_in_ddl() {
 #[test]
 fn cross_dialect_check_constraints_are_blocked_without_expression_translation() {
     let mut src = schema(vec![col("age", "integer")]);
-    src.check_constraints.push(datazen_driver_api::CheckConstraint {
-        name: "users_age_check".into(),
-        expression: "age >= 0".into(),
-    });
+    src.check_constraints
+        .push(datazen_driver_api::CheckConstraint {
+            name: "users_age_check".into(),
+            expression: "age >= 0".into(),
+        });
     let tgt = schema(vec![col("age", "integer")]);
     let plan = build_schema_diff_plan(
         &[("users".into(), src, tgt)],

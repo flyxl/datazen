@@ -89,26 +89,51 @@ impl LiveRedis {
 
         if tls {
             let certificate = Command::new("openssl")
-                .args(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:FALSE", "-addext", "extendedKeyUsage=serverAuth"])
-                .arg("-keyout").arg(data_dir.join("key.pem"))
-                .arg("-out").arg(data_dir.join("cert.pem"))
-                .stdout(Stdio::null()).stderr(Stdio::null()).status();
+                .args([
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-nodes",
+                    "-days",
+                    "1",
+                    "-subj",
+                    "/CN=localhost",
+                    "-addext",
+                    "subjectAltName=IP:127.0.0.1",
+                    "-addext",
+                    "basicConstraints=critical,CA:FALSE",
+                    "-addext",
+                    "extendedKeyUsage=serverAuth",
+                ])
+                .arg("-keyout")
+                .arg(data_dir.join("key.pem"))
+                .arg("-out")
+                .arg(data_dir.join("cert.pem"))
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
             match certificate {
-                Ok(status) if status.success() => {},
+                Ok(status) if status.success() => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     let _ = std::fs::remove_dir_all(&data_dir);
                     eprintln!("SKIP Redis TLS: openssl unavailable");
                     return Ok(None);
-                },
+                }
                 other => return Err(format!("TLS fixture generation failed: {other:?}")),
             }
         }
         let mut command = Command::new(&binary);
         if tls {
-            command.args(["--port", "0", "--tls-port"]).arg(port.to_string())
-                .arg("--tls-cert-file").arg(data_dir.join("cert.pem"))
-                .arg("--tls-key-file").arg(data_dir.join("key.pem"))
-                .arg("--tls-ca-cert-file").arg(data_dir.join("cert.pem"))
+            command
+                .args(["--port", "0", "--tls-port"])
+                .arg(port.to_string())
+                .arg("--tls-cert-file")
+                .arg(data_dir.join("cert.pem"))
+                .arg("--tls-key-file")
+                .arg(data_dir.join("key.pem"))
+                .arg("--tls-ca-cert-file")
+                .arg(data_dir.join("cert.pem"))
                 .args(["--tls-auth-clients", "no"]);
         } else {
             command.arg("--port").arg(port.to_string());

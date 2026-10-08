@@ -1,7 +1,7 @@
 //! Bound DML. Identifiers come from inspected metadata; values never enter SQL.
 use super::{error::TransferError, execute::ValueFormatter, model::ColumnMapping};
-use datazen_driver_api::{DatabaseDriver, Value};
 use datazen_driver_api::TableSchema;
+use datazen_driver_api::{DatabaseDriver, Value};
 
 pub fn bound_insert(
     driver: &dyn DatabaseDriver,

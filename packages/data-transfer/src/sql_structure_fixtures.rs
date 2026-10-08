@@ -12,9 +12,9 @@ use crate::model::{
     ColumnMapping, Endpoint, TableInspectResult, TableMapping, TableMappingStatus, TransferJob,
     TransferMode, TransferOptions, WriteMode,
 };
-use datazen_driver_api::Value;
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ir::{IRColumn, IRDefault, IRType};
+use datazen_driver_api::Value;
 
 /// Source adapter that only implements the mandatory projection hook: table-level
 /// objects keep the catalog shape the tests build.
@@ -167,11 +167,7 @@ pub fn with_index(
 }
 
 /// Add one index flagged as the primary key to a source schema.
-pub fn with_primary_index(
-    mut schema: TableSchema,
-    name: &str,
-    columns: &[&str],
-) -> TableSchema {
+pub fn with_primary_index(mut schema: TableSchema, name: &str, columns: &[&str]) -> TableSchema {
     schema.indexes.push(IndexInfo {
         name: name.into(),
         columns: columns.iter().map(|name| (*name).into()).collect(),
@@ -225,11 +221,7 @@ pub fn mapping_with_skipped_column(
     mapping
 }
 
-pub fn inspected(
-    source: &str,
-    target: &str,
-    columns: &[(&str, &str)],
-) -> TableInspectResult {
+pub fn inspected(source: &str, target: &str, columns: &[(&str, &str)]) -> TableInspectResult {
     TableInspectResult {
         source_table: source.into(),
         target_table: target.into(),

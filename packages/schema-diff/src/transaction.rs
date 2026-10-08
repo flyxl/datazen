@@ -1,6 +1,8 @@
 //! Dialect-aware transaction scope for DDL and DML operations.
 
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver, DdlAtomicity, SqlTarget, TransactionHandle};
+use datazen_driver_api::{
+    ConnectionHandle, DatabaseDriver, DdlAtomicity, SqlTarget, TransactionHandle,
+};
 
 /// Dialect-aware transaction scope.
 ///

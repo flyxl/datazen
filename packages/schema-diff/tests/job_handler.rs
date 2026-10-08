@@ -15,8 +15,7 @@ use datazen_platform_api::ports::job::JobRepository;
 use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
 use datazen_runtime::job::{
     CancelToken, EndpointRef, EndpointRole, HandlerRegistry, InMemoryJobRepository, JobHandler,
-    JobRuntime,
-    RecoveryVerdict, SharedClock, StageSpec, StageTerminal,
+    JobRuntime, RecoveryVerdict, SharedClock, StageSpec, StageTerminal,
 };
 
 use datazen_schema_diff::job::{
@@ -322,7 +321,10 @@ async fn cm41_plan_id_is_consumed_once() {
         .await
         .expect_err("plan consumed");
     assert!(
-        matches!(err, datazen_platform_api::error::PortError::PlanAlreadyConsumed(_)),
+        matches!(
+            err,
+            datazen_platform_api::error::PortError::PlanAlreadyConsumed(_)
+        ),
         "{err:?}"
     );
     let _ = clock;
@@ -345,8 +347,14 @@ async fn cm41_self_cover_endpoint_overlap_is_rejected() {
     .await
     .expect("accept");
     let ledger = budget_ledger();
-    ledger.lock().expect("lock").ensure_service(&ConnectionId::new("conn-src"));
-    ledger.lock().expect("lock").ensure_service(&ConnectionId::new("conn-tgt"));
+    ledger
+        .lock()
+        .expect("lock")
+        .ensure_service(&ConnectionId::new("conn-src"));
+    ledger
+        .lock()
+        .expect("lock")
+        .ensure_service(&ConnectionId::new("conn-tgt"));
     let handler = SchemaDiffHandler::for_apply(
         Arc::new(fake_ok()),
         store,
@@ -375,10 +383,7 @@ async fn cm41_self_cover_endpoint_overlap_is_rejected() {
         .run(&c, &JobId::new("job-sc"), &WorkerId::new("w1"), &endpoints)
         .await
         .expect_err("overlap");
-    assert!(
-        err.to_string().contains("both read and written"),
-        "{err:?}"
-    );
+    assert!(err.to_string().contains("both read and written"), "{err:?}");
 }
 
 // ------------------------------------------------------------- CM-42
@@ -413,10 +418,11 @@ async fn cm42_non_transactional_partial_success_keeps_confirmed_boundaries() {
     assert_eq!(out.terminal, StageTerminal::Failed);
     assert_eq!(out.effect_outcome, EffectOutcome::PartiallyApplied);
     assert_eq!(out.commit_boundaries.len(), 2, "仅已确认的操作有边界");
-    assert!(out
-        .commit_boundaries
-        .iter()
-        .all(|b| b.operation_id.as_deref().map(|s| s.starts_with("op-")).unwrap_or(false)));
+    assert!(out.commit_boundaries.iter().all(|b| b
+        .operation_id
+        .as_deref()
+        .map(|s| s.starts_with("op-"))
+        .unwrap_or(false)));
 }
 
 #[tokio::test]
@@ -426,7 +432,8 @@ async fn cm42_unknown_operation_needs_read_only_verification() {
         plan_with_statements(2),
     );
     let mut backend = fake_ok();
-    backend.deploy_result = deploy_result(DeployStatus::Unknown, &[true, false], "ddl response lost");
+    backend.deploy_result =
+        deploy_result(DeployStatus::Unknown, &[true, false], "ddl response lost");
     let handler = SchemaDiffHandler::for_apply(
         Arc::new(backend),
         store,
@@ -534,7 +541,8 @@ async fn s42_cancel_stops_new_operations_and_keeps_actual_terminal() {
         plan_with_statements(3),
     );
     let mut backend = fake_ok();
-    backend.deploy_result = deploy_result(DeployStatus::Cancelled, &[true, false, false], "cancelled");
+    backend.deploy_result =
+        deploy_result(DeployStatus::Cancelled, &[true, false, false], "cancelled");
     let handler = SchemaDiffHandler::for_apply(
         Arc::new(backend),
         store,

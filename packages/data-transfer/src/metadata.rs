@@ -1,8 +1,8 @@
 //! Driver metadata names are logical identifiers, not SQL-quoted expressions.
 use super::{error::TransferError, model::Endpoint};
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value};
 use crate::transfer::adapter::SyncTargetAdapter;
 use datazen_driver_api::TableSchema;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value};
 use std::collections::HashMap;
 
 pub fn metadata_relation_ref(endpoint: &Endpoint, table: &str) -> Result<String, TransferError> {

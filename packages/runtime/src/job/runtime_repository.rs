@@ -189,7 +189,15 @@ pub fn safe_result_marker(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
-        && !["password", "passwd", "credential", "secret", "token", "session", "sql"]
-            .iter()
-            .any(|label| lower.contains(label))
+        && ![
+            "password",
+            "passwd",
+            "credential",
+            "secret",
+            "token",
+            "session",
+            "sql",
+        ]
+        .iter()
+        .any(|label| lower.contains(label))
 }

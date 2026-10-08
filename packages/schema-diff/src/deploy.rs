@@ -4,8 +4,8 @@ use super::types::{
     DdlAtomicity, DeployStatus, SchemaDiffDeployResult, SchemaDiffPlan, StatementExecResult,
     StatementRisk,
 };
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver, SqlTarget};
 use crate::transaction::TransactionScope;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, SqlTarget};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone)]

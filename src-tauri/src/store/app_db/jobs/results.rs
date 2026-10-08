@@ -1,12 +1,10 @@
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::job::{
-    JobClaim, JobDomainResult, JobRecoveryVerification, JobRecoveryVerdict,
+    JobClaim, JobDomainResult, JobRecoveryVerdict, JobRecoveryVerification,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{JobId, JobStateVersion};
-use datazen_runtime::job::runtime_repository::{
-    safe_result_marker, validate_job_domain_result,
-};
+use datazen_runtime::job::runtime_repository::{safe_result_marker, validate_job_domain_result};
 use rusqlite::{params, OptionalExtension};
 
 use super::access::{db_read_error, db_write_error};

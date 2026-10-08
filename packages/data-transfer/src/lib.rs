@@ -10,7 +10,6 @@ pub mod model;
 pub mod pairing;
 pub mod preview;
 pub mod profile;
-pub mod transfer;
 pub mod recordset;
 pub mod resume;
 pub mod resume_dispatch;
@@ -19,6 +18,7 @@ pub mod sql_file;
 mod sql_structure;
 pub mod structure;
 mod table_order;
+pub mod transfer;
 pub(crate) mod writer;
 
 pub use error::TransferError;

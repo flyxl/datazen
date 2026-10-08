@@ -86,7 +86,11 @@ pub struct SchemaDiffFrozenPlan {
 impl SchemaDiffFrozenPlan {
     /// 版本守卫：未知 major 一律拒绝。
     pub fn validate_versions(&self) -> Result<(), SchemaDiffPlanError> {
-        for got in [self.plan_version, self.handler_version, self.checkpoint_version] {
+        for got in [
+            self.plan_version,
+            self.handler_version,
+            self.checkpoint_version,
+        ] {
             if got != SUPPORTED_PLAN_MAJOR {
                 return Err(SchemaDiffPlanError::VersionIncompatible {
                     got,
@@ -112,10 +116,7 @@ pub enum SchemaDiffPlanError {
     #[error("selection revision mismatch: expected {expected}, got {got}")]
     SelectionRevisionMismatch { expected: u64, got: u64 },
     #[error("unsupported plan/checkpoint version major {got}, supported {supported}")]
-    VersionIncompatible {
-        got: u64,
-        supported: u64,
-    },
+    VersionIncompatible { got: u64, supported: u64 },
     #[error("recovery policy invalid: {0}")]
     RecoveryPolicyInvalid(String),
     #[error("endpoint evidence empty")]
@@ -279,7 +280,10 @@ mod tests {
         m.plan_version = 2;
         assert!(matches!(
             m.validate_versions(),
-            Err(SchemaDiffPlanError::VersionIncompatible { got: 2, supported: 1 })
+            Err(SchemaDiffPlanError::VersionIncompatible {
+                got: 2,
+                supported: 1
+            })
         ));
     }
 

@@ -400,25 +400,21 @@ fn unified_target_dependency_catalog_revalidation_detects_stale_and_incomplete_d
     let reviewed_type_usage = vec![SchemaObjectDependencySnapshot {
         identity: source_table.clone(),
         dependencies: Some(vec![custom_type.clone()]),
-        type_dependency_usages: Some(vec![
-            crate::object_identity::TypeDependencyUsage {
-                dependency: custom_type.clone(),
-                usage: crate::object_identity::TypeDependencyUsageKind::ColumnType,
-                column_name: Some("state".into()),
-            },
-        ]),
+        type_dependency_usages: Some(vec![crate::object_identity::TypeDependencyUsage {
+            dependency: custom_type.clone(),
+            usage: crate::object_identity::TypeDependencyUsageKind::ColumnType,
+            column_name: Some("state".into()),
+        }]),
         sequence_dependency_usages: None,
     }];
     let changed_type_usage = vec![SchemaObjectDependencySnapshot {
         identity: source_table,
         dependencies: Some(vec![custom_type.clone()]),
-        type_dependency_usages: Some(vec![
-            crate::object_identity::TypeDependencyUsage {
-                dependency: custom_type,
-                usage: crate::object_identity::TypeDependencyUsageKind::Expression,
-                column_name: None,
-            },
-        ]),
+        type_dependency_usages: Some(vec![crate::object_identity::TypeDependencyUsage {
+            dependency: custom_type,
+            usage: crate::object_identity::TypeDependencyUsageKind::Expression,
+            column_name: None,
+        }]),
         sequence_dependency_usages: None,
     }];
     assert!(validate_object_dependency_catalog(&reviewed_type_usage, &changed_type_usage).is_err());
@@ -436,27 +432,23 @@ fn unified_target_dependency_catalog_revalidation_detects_stale_and_incomplete_d
         identity: sequence.clone(),
         dependencies: Some(vec![owner.clone()]),
         type_dependency_usages: None,
-        sequence_dependency_usages: Some(vec![
-            crate::object_identity::SequenceDependencyUsage {
-                sequence: sequence.clone(),
-                owner_table: owner.clone(),
-                column_name: "id".into(),
-                usage: crate::object_identity::SequenceDependencyUsageKind::OwnedBy,
-            },
-        ]),
+        sequence_dependency_usages: Some(vec![crate::object_identity::SequenceDependencyUsage {
+            sequence: sequence.clone(),
+            owner_table: owner.clone(),
+            column_name: "id".into(),
+            usage: crate::object_identity::SequenceDependencyUsageKind::OwnedBy,
+        }]),
     }];
     let changed_sequence_usage = vec![SchemaObjectDependencySnapshot {
         identity: sequence.clone(),
         dependencies: Some(vec![owner.clone()]),
         type_dependency_usages: None,
-        sequence_dependency_usages: Some(vec![
-            crate::object_identity::SequenceDependencyUsage {
-                sequence,
-                owner_table: owner,
-                column_name: "legacy_id".into(),
-                usage: crate::object_identity::SequenceDependencyUsageKind::OwnedBy,
-            },
-        ]),
+        sequence_dependency_usages: Some(vec![crate::object_identity::SequenceDependencyUsage {
+            sequence,
+            owner_table: owner,
+            column_name: "legacy_id".into(),
+            usage: crate::object_identity::SequenceDependencyUsageKind::OwnedBy,
+        }]),
     }];
     assert!(validate_object_dependency_catalog(&sequence_review, &changed_sequence_usage).is_err());
     assert!(validate_object_dependency_catalog(&reviewed, &[]).is_err());

@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value};
 use crate::transfer::SyncSourceAdapter;
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value};
 
 /// Run adapter-provided full-type SQL (if any) and map `(name, full_type)` rows.
 pub async fn fetch_full_column_types(

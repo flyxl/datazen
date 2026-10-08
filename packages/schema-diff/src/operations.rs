@@ -2,8 +2,8 @@
 
 use super::object_identity::SequenceOwnershipIdentity;
 use super::types::{ColumnSnapshot, StatementRisk};
-use datazen_driver_api::{CheckConstraint, ForeignKeyInfo, IndexInfo};
 use datazen_driver_api::TableOptions;
+use datazen_driver_api::{CheckConstraint, ForeignKeyInfo, IndexInfo};
 use datazen_driver_api::{
     MigrationRoutine, MigrationSequence, MigrationTrigger, MigrationType, MigrationView,
 };
