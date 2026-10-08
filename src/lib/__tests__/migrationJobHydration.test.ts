@@ -22,6 +22,7 @@ function jobView(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
     artifactIds: [],
     createdAt: 1700000000000 as JobView['createdAt'],
     updatedAt: 1700000000000 as JobView['updatedAt'],
+    error: null,
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,

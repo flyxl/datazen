@@ -98,9 +98,9 @@ impl JobHandler for ErrHandler {
     }
 }
 
-/// D1 反向：run_stage 直接 Err → run 透传 Err，且 BudgetLedger 许可数为 0。
+/// 阶段返回错误 → Job 持久收敛为 Failed/Unknown，且 BudgetLedger 许可数为 0。
 #[tokio::test]
-async fn run_stage_error_propagates_and_releases_all_permits() {
+async fn run_stage_error_fails_job_and_releases_all_permits() {
     let (repo, clock) = repo_clock();
     let c = ctx();
     repo.accept(
@@ -114,7 +114,7 @@ async fn run_stage_error_propagates_and_releases_all_permits() {
     ledger.lock().expect("lock").ensure_service(&conn());
     let repo = Arc::new(repo);
     let runtime = runtime_with(repo, Arc::new(ErrHandler), ledger.clone(), clock);
-    let err = runtime
+    let result = runtime
         .run(
             &c,
             &JobId::new("job-e1"),
@@ -127,8 +127,10 @@ async fn run_stage_error_propagates_and_releases_all_permits() {
             }],
         )
         .await
-        .expect_err("must propagate");
-    assert!(matches!(err, PortError::BackendUnavailable(_)), "{err:?}");
+        .expect("stage failure must be represented as a JobResult");
+    assert_eq!(result.state, JobState::Failed);
+    assert_eq!(result.effect_outcome, EffectOutcome::Unknown);
+    assert_eq!(result.error.as_deref(), Some("handlerFailedUnknown"));
     assert_eq!(
         ledger.lock().expect("lock").permits().count(),
         0,

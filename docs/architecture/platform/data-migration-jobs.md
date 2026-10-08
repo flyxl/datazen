@@ -1,7 +1,7 @@
 # 迁移三件套与 JobRuntime 平台化详细设计
 
-> 状态：P5 目标设计，部分能力已在 Wave 0 落地实现；未实现部分仍为目标设计。代码基线：2026-10-02，`d329539b9`。
-> **Wave 0 已实现**：`packages/runtime/src/job/` 的 JobRuntime 内核——JobHandler 协议（validatePlan/runStage/verifyRecovery）、plan/checkpoint 版本守卫、取消意图、effectOutcome 聚合、claim fencing（`claim_generation`）、幂等 receipt、planId 唯一消费、多端原子预算（含 EndpointOverlap 拒绝）、持久化路径禁运行时句柄与事件载荷白名单；`JobRepository` 端口签名已改为携带 claim。三件套领域物抽取属于 Wave 1。
+> 状态：P5 本机持久化 Core 已实现：共享 JobRuntime facade、AppDb SQLite v2 仓储、Transfer prepare/apply 接受与后台派发、通用详情/恢复读模型。Schema Diff 与 Data Sync 尚未接入这份持久化 host；本文未标为“已实现”的三件套领域协议仍是目标设计。代码以当前实现为准，不代表 P7 server 或跨进程自动续跑已实现。
+> **已实现 Core**：`packages/runtime/src/job/` 提供 `DesktopJobHost` 与 JobRuntime 扩展仓储；`src-tauri/src/store/app_db.rs` 在既有 `{appData}/datazen.sqlite` 上执行事务化 v2 迁移，保留 workflows 并建立 job、receipt、stage、boundary、checkpoint、result、artifact reference 表。`AppState` 经 bootstrap 注入该 host。Transfer apply 在 durable accept 和幂等回执提交后返回 jobId，再由 host facade 托管后台 dispatch。重启只把旧 Running 标为 pending verification、把未派发 Queued 标为 `notExecuted`，不会重放旧 worker 或 handler。
 > 本文按用户要求补齐平台演进设计。连接、错误与 CM 用例以 [连接管理](connection-management.md) 为权威，阶段门槛以 [开发计划](../../development/platform-development-plan.md) 为权威；持久化字段以 [持久化模型](persistence-model.md) 为权威。
 
 ## 1. 范围与代码迁移边界
@@ -26,9 +26,11 @@ Runtime 承担接受/认领、预算、资源申请、子 execution、事件、�
 
 只有 complete 且摘要一致的私有计划 Artifact 可应用；接受时检查其组织、owner/ACL、有效期与选择版本。Job 接受后为其引用建立保留，计划及输入 Artifact 在 Job 终结和恢复保留窗口结束前不受普通 TTL 清理；ArtifactStore/仓储 adapter 以引用检查和删除 CAS 实现，不能只延长客户端缓存。
 
+上述计划 Artifact 保留协议仍是目标设计。当前桌面 Transfer 的 `TransferPlanStore` 与计划正文仍为进程内状态；AppDb Core 只持久化 Job 允许的 plan projection 和 Artifact ID 引用，不保存 Artifact 字节，也未实现该保留锁或 plan 恢复。因此重启后旧 Transfer plan 不能再次 apply，必须重新 prepare；不能把 30 天 Job Artifact reference TTL 理解为计划字节的可用期。
+
 应用操作以 `schemaDiffApply` / `dataSyncApply` / `dataTransferApply` 创建新 Job。输入只包含 planId、计划摘要、selectionRevision、已审阅选择与必要确认。Application 从 Artifact 读取权威计划，不信任客户端返回的计划正文。适配器可以保持现有 inspect/preview/execute IPC 外观，但不可同时调用旧管理器和新 JobRuntime。
 
-同一 planId 仅能被一个 apply Job 消费。接受事务将 Job、幂等 receipt 和 planId 消费约束一起提交；响应丢失后同一幂等键返回原 jobId，不重新执行。P5 在 `jobs.plan` 增加 apply 计划投影与唯一约束，见 [持久化模型 §3.6](persistence-model.md#36-jobs-与-job_checkpoints)。重新审阅后生成新的 planId，不能靠更换幂等键绕过已消费的计划。
+同一 planId 仅能被一个 apply Job 消费。桌面仓储在单个 SQLite 事务中写入 Job、幂等 receipt、已消费 planId 和初始结果行；响应丢失后同一幂等键和请求摘要返回原 jobId，不重新执行。SQLite v2 使用 `(organization_id, consumed_plan_id)` 唯一约束。桌面 durable plan 是受限白名单投影，最大 1 MiB；它不等同于完整领域计划。重新审阅后生成新的 planId，不能靠更换幂等键绕过已消费的计划。服务端 PostgreSQL 目标 schema 见[持久化模型 §3.6](persistence-model.md#36-jobs-与-job_checkpoints)，桌面实现见[持久化模型 §4.1](persistence-model.md#41-桌面本地持久化现状已实现)。
 
 ```mermaid
 sequenceDiagram
@@ -73,11 +75,19 @@ sequenceDiagram
 
 Handler 以 kind + handlerVersion 注册，接口语义是 `validatePlan`、`runStage`、`verifyRecovery`。runStage 由 runtime 提供当前 claim、冻结输入、取消信号与受控资源访问；返回阶段结果、executionIds、已确认提交边界及 Artifact 引用。handler 不直接修改 Job 状态，不自行续租或在未知效果后自动重试。
 
-取消信号由 runtime 单独送达，handler 只读它、不自建取消通道。`dispatch` 为一次派发创建一个 `CancelToken`：进入每个阶段前重读 `cancel_requested`，并在阶段执行期间由一个并发看守者持续重读同一事实，看守者把结果翻译成这一个令牌的翻转，阶段拿到的是同一个 `CancelToken`（`CancelToken::flag()` 可取出其底层原子位交给批次/分页循环）。看守者每轮只读两个 bool（`InMemoryJobRepository::cancel_poll`），不克隆整条 `JobRecord`。阶段正常返回后看守者立即被终止并等待，因此在阶段没有 panic 的那条路径上，`dispatch` 返回时不存在仍持有仓储或请求上下文的游离任务；handler 在阶段内 panic 时看守者只被 `abort` 而来不及 `await` 回收，其生命周期收尾由 `runtime.rs` 的 `CancelWatch` 负责。轮询读失败时的取舍写在 `packages/runtime/src/job/runtime.rs`：记录一条告警并停止轮询，阶段不受影响；若这个 Job 还有下一个阶段，取消意图会在那个边界被重新读到，否则本次运行可能在不感知取消的情况下走完。data-transfer 侧真正的单阶段 Job 是 `prepare`、SQL 文件目标的 `apply`，以及 `structure` / `data` 模式的 `apply`；`structureAndData` 模式的 `apply` 展开为 structure → data → foreignKeys 三个阶段，因此**有**下一个边界，取消意图会在这些阶段边界被重新读到（阶段展开见 `packages/data-transfer/src/job/handler.rs` 的 `validate_plan`，由 `packages/data-transfer/src/job/tests/stage_shape.rs` 钉死）。读失败不得据此伪造失败，也不得静默：告警带 jobId 与错误原文。
+取消信号由 runtime 单独送达，handler 只读它、不自建取消通道。`dispatch` 为一次派发创建一个 `CancelToken`：进入每个阶段前重读 `cancel_requested`，并在阶段执行期间由一个并发看守者持续重读同一事实，看守者把结果翻译成这一个令牌的翻转，阶段拿到的是同一个 `CancelToken`（`CancelToken::flag()` 可取出其底层原子位交给批次/分页循环）。看守者每轮只读两个 bool（`InMemoryJobRepository::cancel_poll`），不克隆整条 `JobRecord`。阶段任务正常返回或以 panic 结束后，看守者都会被终止并等待；handler panic 会映射为 `Failed/Unknown` 与 `handlerPanickedUnknown`，不会让 Job 悬在 `Running`。因此 `dispatch` 返回时不存在仍持有仓储或请求上下文的游离看守者。轮询读失败时的取舍写在 `packages/runtime/src/job/runtime.rs`：记录一条告警并停止轮询，阶段不受影响；若这个 Job 还有下一个阶段，取消意图会在那个边界被重新读到，否则本次运行可能在不感知取消的情况下走完。data-transfer 侧真正的单阶段 Job 是 `prepare`、SQL 文件目标的 `apply`，以及 `structure` / `data` 模式的 `apply`；`structureAndData` 模式的 `apply` 展开为 structure → data → foreignKeys 三个阶段，因此**有**下一个边界，取消意图会在这些阶段边界被重新读到（阶段展开见 `packages/data-transfer/src/job/handler.rs` 的 `validate_plan`，由 `packages/data-transfer/src/job/tests/stage_shape.rs` 钉死）。读失败不得据此伪造失败，也不得静默：告警带 jobId 与错误原文。
 
 取消不制造提交边界。看守者只翻转令牌，不写入任何东西；阶段是否回滚在途批次、是否给出 `Cancelled`，仍完全由 handler 决定（data-transfer 在 execute 之后、commit 之前检查并回滚在途批次，该批次因此不产生提交边界）。
 
 JobState 与 effectOutcome 按 [连接 §10.1.1](connection-management.md#1011-p5-jobhandler-与阶段协议目标设计) 聚合。进度分别报告已读取、已转换、已尝试、已确认提交及未知范围；未确认 commit 的行不能计入 committed。一个对象失败后继续其他独立对象时，总 Job 为 failed，已生效部分保留 partiallyApplied；任何无法核验的副作用令总体 unknown，同时保留确认部分。
+
+### 2.4 当前本机 host 边界
+
+`DesktopJobHost` 是 transport-neutral facade，提供 `accept/get/list/details/cancel/recovery_candidates/mark_restart_candidates_for_verification/verify_recovery/dispatch`。`accept` 只返回已 durable 的 Job，不自行派发。调用方必须在 accept 成功后显式调用 `dispatch`；Data Transfer command 把这个 future 放入受控后台任务，因此 IPC 在 admission 后返回，不等待 terminal。handler、endpoint session 与 worker 只在当前进程内提供给 dispatch，不序列化或从仓储恢复。
+
+运行中的 Job 可通过 `JobRuntimeRepository` 持久写入 progress、artifact 引用、domain result、checkpoint、commit boundary 与终态。`JobDetails` 是安全读模型，含 planId/digest/revision、精确 commit boundaries、recovery result、bounded domain results、artifact IDs，以及可选 recovery target/fingerprint/policy。domain result 仅允许稳定 code、计数、受限 item ID 和 reason code；不接收自由文本、SQL、driver error 或凭据。
+
+启动扫描把旧 Running 终结为 Failed/Unknown，并写入 `pendingVerification`；旧 Queued 以 `notExecuted` / `notDispatchedAfterRestart` 终结为 Failed/NotStarted。后者只是 durable admission 未进入 dispatch 的事实，不是 handler 核验结果；显式 `verify_recovery` 仅接受 PendingVerification，NotExecuted 不能通过 verifier 变成可续跑状态。恢复 verifier 是异步、只读职责，由调用方用新授权的资源提供；host 不自动获取旧 session/lease，也不自动 dispatch。
 
 ## 3. 多端预算、重叠与授权
 
@@ -188,7 +198,7 @@ Web 只能上传/下载授权 Artifact，不接收服务器路径；桌面导出
 
 ## 7. 提交边界与恢复核验
 
-CommitBoundary 记录 stable target、stageId、batch/operation ID、payload digest、确认来源与发生时间；checkpoint 保存最后已确认连续边界及源/映射证据。字段扩展纳入 P5 版本，现有仅目标 fingerprint 的类型不能替代逐批证据。
+当前 Core 已把 `CommitBoundary` 与 `Checkpoint` 作为独立 DTO 持久化到 `job_commit_boundaries`、`job_checkpoints`，并将每阶段的安全 domain result、progress、error code、recovery result 和 Artifact 引用保存在同一 AppDb 中。`get_transfer_job_details` 从仓储读取这些字段，因此窗口/进程重开后仍能看到 exact boundaries 与已保存的安全结果。此处只保证宿主保存 handler 提交的受限 DTO；它不替领域 handler 判断外部数据库的提交事实。
 
 目标批次记录仅在用户授权且 driver 支持时使用：记录 jobId、stageId、batchId、payload digest 和行数，与业务写入**同事务**提交，并对 batchId 唯一。目标业务写入与管理库 checkpoint 无分布式事务，commit 后故障通过读取目标标识补 checkpoint。
 
@@ -197,20 +207,21 @@ CommitBoundary 记录 stable target、stageId、batch/operation ID、payload dig
 | 故障窗口 | 可自动进行的动作 | 写入限制 |
 | --- | --- | --- |
 | 接受前失败 | 原键重试/查回执 | 没有受理则不执行 |
-| 接受后未派发 | 证明旧执行未启动后认领 | 当前 claim 授权通过才派发 |
+| 接受后、派发前进程退出 | 持久状态转为 `Failed` / `NotStarted`，恢复 verdict 为 `notExecuted`，reason 为 `notDispatchedAfterRestart` | 不自动派发；需用户显式重新准备/受理。此 verdict 不代表执行过只读核验 |
+| 旧 Running Job | 终结为 `Failed` / `Unknown` 并设置 `pendingVerification` | 不恢复旧 worker、session 或 lease；必须由新授权的只读 verifier 明确核验 |
 | commit 应答丢失 | 查目标批次/对象证据 | 核验前暂停该范围 |
 | commit 确认但 checkpoint 缺失 | 补确认边界 | 不重发已提交批 |
 | checkpoint 已写，Job 终态缺失 | 核验后补终态或运行未执行阶段 | 固定版本与授权不变才继续 |
 | 源/映射/能力变化 | 生成核验结果 | SourceChanged/PlanStale，不自动续写 |
 | cleanup/旧 worker 隔离不明 | 保留待核验与预算占用 | 不接管副作用范围 |
 
-恢复状态是 Job 的附加投影，不扩展 JobState 枚举。失去 claim 的 worker 不再写仓储；其日志/证据只由当前 owner 核验后登记。P9 的代次校验不能自动阻止外部数据库中的旧 SQL。
+恢复状态是 Job 的附加投影，不扩展 JobState 枚举。当前公共 host 的 `verify_recovery` 接收异步 `JobRecoveryVerifier`、`JobRecoveryRequest { details, checkpoint }`，只允许对 Failed + PendingVerification 的任务执行；新核验结果、可确认的 boundaries/domain results 以 state-version CAS 原子回写。旧 claim 的 worker 被 fencing 后不能再写仓储。当前桌面适配层不自动重放任何阶段；三件套 verifier 仍须自行实施领域读取及其恢复策略，P9 的代次校验也不能阻止外部数据库中的旧 SQL。
 
 ## 8. 客户端与接口适配
 
-BackendClient 的 startJob/getJob/cancelJob 为通用路径；准备/应用 kind 的 schema 由 JobHandler 注册并用于 IPC/HTTP 一致性检查。JobView 的阶段进度和 Artifact 引用在 P5 补充，事件只包含有界状态/引用。
+桌面 Core 当前提供 `get_job`、`list_jobs` 与 Transfer 专用 `get_transfer_job_details` 读路径，并通过 `AppState.desktop_job_host` 注入共享 facade。Transfer 命令为 `prepare_data_transfer_job` / `apply_data_transfer_job`，取消仍走 `cancel_data_transfer`；Tauri command 由 bootstrap 注册。`JobDetails` 含 `job`、`stateVersion`、可选 `planId/planDigest/selectionRevision`、`commitBoundaries`、`recovery`、`domainResults`、`recoveryTargets`、`targetBeforeFingerprint` 与 `recoveryPolicy`。其中 recovery target 仅是 bounded stable IDs，不包含 SQL、credential、session 或 lease。TypeScript 镜像位于 `packages/backend-client/src/types/jobs.ts`。
 
-任务窗口重新打开先查 Job，再读计划/结果；UI unmount 只退订。planId 过期、目标漂移或权限变化要求重新准备，不自动用旧 SQL 应用。apply 响应超时先查原幂等回执，未知提交不新建 Job。
+任务窗口重新打开先查 Job，再读持久化详情；UI unmount 只退订。Transfer apply 响应超时可用幂等 receipt 找回原 Job，且通过 `get_transfer_job_details` 恢复边界/结果。planId 过期、目标漂移或权限变化要求重新准备，不自动用旧 SQL 应用。Schema Diff / Data Sync 的 host 接线、各自 IPC、结果映射与 UI 不属于当前 Core 实现。
 
 桌面/浏览器只开放同 backend 两端迁移。后台服务无法访问客户端本地 profile；输入中出现其他 backend 的 ID 明确拒绝。个人/团队账号的真实执行身份分别派生，不能因使用同一业务数据库共享池或产物可见性。
 
@@ -234,5 +245,7 @@ BackendClient 的 startJob/getJob/cancelJob 为通用路径；准备/应用 kind
 | CM-49 | SQL 文件无目标连接、产物完整性/受控导出/输出规格一致 |
 
 H 层验证编排与会计，D 层验证真实数据库副作用和方言，F 层验证连续审阅/取消/重附着；P7 再加 W1。测试专属方言留在对应 driver 包。目标批次记录未授权、driver 不支持自动恢复或无真实环境时，报告适用范围与未验证项，不称恢复功能已验证。
+
+当前 Core 的本机验证覆盖 AppDb v1→v2 时旧 workflow 保留与 DDL 失败回滚、accept/receipt/plan consumption 原子性与幂等、两个 SQLite repository 竞争同一 plan、Queued 重启转 NotExecuted 且不 dispatch、AppState 重建时 Running 转 PendingVerification、SQLite reopen 后 boundary/checkpoint/progress/artifact/domain result/recovery 读取、显式 async verifier 与不重放 handler、cancel/CAS/stale claim，以及落盘 JSON 不含合成 session token / idempotency key。此证据不等于三件套领域 handler 或真实 driver 的 D/F 层验收。
 
 三件套宿主准入统一使用 `src-tauri/src/services/migration_endpoint.rs` 的物理位置摘要：实际会话配置中的方言、database、schema、端口、隧道和路由选项参与身份，host/port/schema 缺省由实际驱动声明补齐。Sync 先按执行路径解析所选 database/schema。持久化 connectionId 仅用于预算归属；同一 profile 跨库合法，不同 profile 指向同一物理对象仍拒绝重叠。缺失会话配置或 owner 明确拒绝；SQL 文件输出只建立源数据库身份。摘要不包含配置明文，DNS 别名与本地文件路径别名仍需真实连接层证明。

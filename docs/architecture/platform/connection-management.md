@@ -693,6 +693,8 @@ Job 接受时先持久化记录，再获取资源。Job 资源 owner 是 jobId/s
 
 ### 10.1.1 P5 JobHandler 与阶段协议（目标设计）
 
+通用本机持久化 Core 已实现 `JobView` 的 `effectOutcome`、`cancelRequested`、`pendingVerificationReason`、error 与五类 progress，并新增安全 `JobDetails` 供 Transfer 查询。Schema Diff / Data Sync 领域 handler 的完整阶段、恢复决策和真实驱动验收仍按本节目标设计执行。
+
 三件套准备/应用、计划消费和逐批核验的具体算法见 [迁移任务详细设计](data-migration-jobs.md)。AI/MCP/Wapp、调度与辅助任务接入见 [消费者设计](consumer-adapters.md)；跨实例 owner/claim/预算协议见 [多 worker 设计](multi-worker-coordination.md)。本文仍是公共接口、错误码与 CM 用例权威。
 
 JobHandler 按 kind 与 planVersion 注册，负责 `validatePlan / runStage / verifyRecovery`；runtime 负责接受记录、claim、预算申请、阶段调度、取消意图、事件和最终 cleanup。handler 不依赖窗口，不自行申请未计数连接，不通过前端卸载释放资源。runStage 接收冻结计划、stageId、当前 claim、取消信号与受控资源访问接口，输出 executionIds、已确认 CommitBoundary、Artifact 与阶段结果；未知提交输出 unknown，不能自行把失败改为成功。
@@ -701,12 +703,13 @@ JobHandler 按 kind 与 planVersion 注册，负责 `validatePlan / runStage / v
 
 冻结计划必须含 planVersion、checkpointVersion、handlerVersion、稳定源/目标、config/credential/capability 版本、映射指纹与事务边界。checkpoint 只保存确认提交、稳定键和核验证据；恢复器对版本不兼容、源变化、权限变化或证据不足的计划拒绝续跑并要求重新核验/制定计划，不自动交给另一个版本 handler。提交边界记录不能因重试或恢复被覆盖。
 
-JobView 在 P5 补充派生的 effectOutcome、cancelRequested 与待核验原因；effectOutcome 根据执行事实与已确认边界确定：未派发为 notStarted；全部预期效果确认完成为 completed；全部副作用确认回滚为 rolledBack；存在已提交且未完成的范围为 partiallyApplied；任一仍无法核验的副作用为 unknown，并保留已确认部分。JobState 与 effectOutcome 独立，失败/取消不能抹掉已提交范围。
+当前 JobView 已携带 effectOutcome、cancelRequested、pendingVerificationReason、safe error code 与 progress；`JobDetails` 另带 CommitBoundary、Checkpoint 派生结果、bounded domain results 和 recovery verdict。effectOutcome 根据执行事实与已确认边界确定：未派发为 notStarted；全部预期效果确认完成为 completed；全部副作用确认回滚为 rolledBack；存在已提交且未完成的范围为 partiallyApplied；任一仍无法核验的副作用为 unknown，并保留已确认部分。JobState 与 effectOutcome 独立，失败/取消不能抹掉已提交范围。
 
 | 崩溃/失败窗口 | 恢复决策 |
 | --- | --- |
 | 接受记录提交前 | 没有受理，不派发；原幂等键查询/重试仍按过期规则处理 |
-| 接受后、派发前 | 核验尚无外部效果和旧 worker 已停止后，可重新认领 |
+| 接受后、派发前且桌面进程重启 | 持久转为 Failed/NotStarted + `NotExecuted`；不自动重新认领或派发，用户重新 prepare/accept |
+| 旧 Running Job | 转为 Failed/Unknown + `PendingVerification`；新授权的异步只读 verifier 可以回写核验结果，不恢复旧 worker/session |
 | 语句执行/commit 中断，目标结果不明 | 保留 unknown，先核验目标；不盲目接管或重跑 |
 | 目标 commit 成功、checkpoint 未写 | 读取同一目标事务内的批次标识/幂等记录证明已提交，补边界后才继续；不支持该证明的 driver 进入待核验 |
 | checkpoint 已写、终态未写 | 复核目标证据与冻结版本后补终态/继续未执行阶段，不重复已提交范围 |

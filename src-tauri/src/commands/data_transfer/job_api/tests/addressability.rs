@@ -161,8 +161,8 @@ async fn an_apply_job_can_be_cancelled_through_the_id_it_already_published() {
          otherwise the caller has no way to know it landed"
     );
 
-    // The same fact has to be visible from outside the cancel helper, because the
-    // UI learns about a pending cancel by reading the Job, not by asking.
+    // Queued cancellation is confirmed as NotStarted immediately, so the
+    // persisted read model is already terminal before a detached dispatcher runs.
     let read = read_job(&test.state, &job_id)
         .await
         .expect("the cancelled Job is still readable");
@@ -170,7 +170,8 @@ async fn an_apply_job_can_be_cancelled_through_the_id_it_already_published() {
         read.cancel_requested,
         "a caller that only polls getJob would never see the cancel otherwise"
     );
-    assert_eq!(read.state, JobState::Queued, "the Job has not settled yet");
+    assert_eq!(read.state, JobState::Cancelled);
+    assert_eq!(read.effect_outcome, Some(EffectOutcome::NotStarted));
 
     let finished = admitted
         .drive

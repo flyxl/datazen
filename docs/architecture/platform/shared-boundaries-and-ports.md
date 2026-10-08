@@ -1,11 +1,10 @@
 # DataZen 共享应用边界与端口详细设计
 
-> 状态：**契约类型已实现且有单测，运行期接线为零**。已落地 `packages/platform-api`（ID / 上下文 / 目标 / 端口 / DTO）、`packages/application`（用例与错误语义）、`packages/backend-client`（传输无关客户端）、`packages/driver-api` 的资源契约、以及 `src-tauri/src/platform/` 的 Tauri 适配层。
+> 状态：平台 DTO / ports / facade 已实现；P5 Core 已把 `DesktopJobHost` 与 AppDb SQLite v2 接入 AppState，并接通 Data Transfer prepare/apply/query/cancel。Schema Diff、Data Sync、团队 server 与完整 Profile/ConnectionUseCases 仍未全部接线，不能把本机 Job adapter 当成团队服务仓储。
 >
-> **「已实现」的准确含义**：类型、端口签名、构造器与 builder 已存在并有单测覆盖；**没有任何运行期路径从真实连接配置构造它们**。以 `ProfileView` 为例——`packages/platform-api/src/dto/profile.rs` 的 `ProfileView::new()` 把 `config_revision` / `credential_revision` 固定为 `Counter::ZERO`、`enabled` 固定为 `true`、`credential_configured` 固定为 `false`；`with_credential_revision` 与 `with_initial_namespace` 在 `packages/platform-api` 包外**零调用点**，包内命中全部位于 `#[cfg(test)]`（起始行 211）之后。宿主侧 `src-tauri/src/platform/adapter.rs` 的 13 个 `ConnectionUseCases` 方法因此**刻意不接线**——接线需要在 adapter 里编造缺失字段，正是 §7 回退条款禁止的伪映射。
+> **尚未完整接线的准确含义**：运行期 `DesktopJobHost` 只承载当前实现的 Data Transfer Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`src-tauri/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。Schema Diff / Data Sync 尚未使用这个持久 host。
 >
-> 待办：`packages/runtime` 的类型迁移、`server` crate，以及 §8 的 CI 门禁脚本（`check-platform-crate-boundaries.mjs` 存在且在 CI 中运行，但其 `--require-layers` 对 TypeScript 层失效、`forbiddenCode` 用裸 `indexOf` 匹配、且会把「主体存在且干净」报成 VACUOUS）。见各节标注的「尚未实现」。
-> 基线：代码提交 `78b1446dc`（Track D 合流）。本文下述 workspace 成员、前端三处接线的事实已按实现后的根 `Cargo.toml`、`tsconfig.json`、`vite.config.ts` 复核。
+> 仍待实现：团队 `server` crate、完整 Profile/ConnectionUseCases adapter，以及各节明确标为目标设计的 HTTP/多 worker 行为。本文只把代码已落地的 P5 本机 Job core 标为已实现。
 > 读者：本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。标为「目标设计」的段落仍是契约，未随 P1 实现。
 > 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 
@@ -314,7 +313,7 @@ pub trait JobRepository: Send + Sync + 'static {
 
 ```
 
-P5 落地：上述 worker 写入端口已携带 `JobClaim`（`record_stage` / `record_commit_boundary` / `compare_and_set_state` / `save_checkpoint` 均收 `&JobClaim`）。claim 含 `jobId`、`stageId`、`workerId`、`claimGeneration`、`claimedAt`、`expiresAt`；generation 是持久化单调计数。claim、renew、阶段/提交边界/checkpoint 写入与状态 CAS 都在仓储事务中校验当前 generation、worker 与租约未过期；租约时间由仓储权威时钟判断（`packages/runtime/src/job/time.rs` 的注入 `JobClock`）。初次认领和每次接管增加 generation，续约不增加。旧 claim 返回明确失租错误（`PortError::StaleClaim`）且不写任何内容。未认领 queued Job 的取消使用独立请求标记（`request_cancel`），不能伪造 worker claim；恢复扫描只产生核验候选。该契约已在 P5 Wave 0 落地（`packages/runtime/src/job/repository.rs` 的 `InMemoryJobRepository`）；P9 才增加跨 worker 协调。
+P5 落地：上述 worker 写入端口携带 `JobClaim`；claim 含 jobId、stageId、workerId、claimGeneration 与期限。`InMemoryJobRepository` 以锁原子校验，桌面 `SqliteJobRepository` 以 SQLite 事务校验 claim generation、worker、期限及状态版本。`DesktopJobHost` 和 `JobRuntimeRepository` 还提供 cancel polling、未启动失败、pending verification、progress、artifact refs、bounded domain results 与 async recovery receipt 写入。AppDb v2 是当前桌面 adapter；P9 才增加跨 worker 协调，Schema Diff/Data Sync 的持久 host adapter 仍待接线。
 
 ```rust
 #[async_trait]
@@ -344,7 +343,7 @@ pub trait IdentityResolver: Send + Sync + 'static {
 
 `JobRepository` 的落库白名单必须排除 `dbSessionId`、SessionHandle、lease/cursor、取消句柄与 attachment token（[连接 §4.4](connection-management.md#44-可落盘来源与运行时绑定)）；`ExecutionView` 的持久化投影按[连接 §4](connection-management.md#4-dto-与字段定义)的两层来源规则拆分，实时 `runtimeBinding` 只留在 runtime 内存。
 
-P5 `CommitBoundary` 目标字段扩展为 stageId、operationId/batchId、stableTarget、payloadDigest、commit evidence 与 verifiedAt，随 plan/checkpoint 格式版本同步升级；当前仅目标/指纹形态不足以证明某批写入已生效。Job 接受、planId 唯一消费与幂等记录需一个仓储事务，由 application 组合服务调用 adapter，不允许各自提交。详见 [迁移任务设计](data-migration-jobs.md)。
+P5 本机 Core 的 `CommitBoundary` 已包含 stageId、operationId/batchId、stable target fingerprint、payload digest、evidence 与 verifiedAt，并与 checkpoint 写入 SQLite；accept 同事务写 Job、幂等 receipt、consumed plan ID 和初始详情。`JobDetails` 额外读取 progress、recovery verdict、bounded domain results、artifact IDs 与安全 recovery target projection。领域 verifier 仍负责外部事实核验，不允许只凭目标指纹宣称某批写入已生效。团队服务仓储仍是目标设计。详见[迁移任务设计](data-migration-jobs.md)。
 
 ### 4.4 秘密、网络与执行材料端口
 
@@ -488,7 +487,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | 端口 | 桌面本地 | server 单进程 | 多 worker |
 | --- | --- | --- | --- |
 | `ProfileRepository` | 现有 SQLite + AES-256-GCM 存储（`src-tauri/src/store/`） | 同一实现，服务端数据库 | 同一实现，服务端数据库 |
-| `JobRepository` | 本地库；窗口关闭即停止任务 | 服务端库，任务独立于连接存活 | 同上 |
+| `JobRepository` | AppDb SQLite 已用于 P5 Data Transfer；窗口关闭后任务继续，进程重启只标记恢复状态，不重放 handler。Schema Diff / Data Sync 尚为内存态 | 服务端库，任务独立于连接存活 | 同上 |
 | `PolicyService` | 固定本地组织，全部放行 + `readOnly` 配置 | OIDC 登录会话 + membership | 同单进程 |
 | `IdentityResolver` | 当前桌面登录用户 + 配置中的连接账号 | 数据库侧服务身份 + 委托 | 同单进程 |
 | `SecretProvider` | 本机钥匙串主密钥（开发/`DATAZEN_KEYRING=file` 走 `{appData}/.key`） | 服务端密钥管理 | 同单进程 |
@@ -496,7 +495,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | `SessionDirectory` | 进程内 `HashMap` + TTL | 同一 port 的单进程实现 | 共享内存目录 + CAS |
 | `BudgetCoordinator` | 进程内许可表，总额 16（[连接 §9.2](connection-management.md#92-可调初始值) 的「桌面总目标连接」，首版配置起点） | 节点额度 + 全局 permit | 全局 permit；失去续约停止新建连接 |
 | `SubmissionTokenIssuer` | 进程内 HMAC 密钥 | 服务端签名密钥 + `keyVersion` 轮换 | 同单进程 |
-| `ArtifactStore` | 本机目录 + 授权对话框 sink | 服务端存储 + 授权导出 | 同单进程 |
+| `ArtifactStore` | 文件字节经本机路径与授权对话框；Job Core 仅存 Artifact ID 引用（30 天 TTL），不持有字节或保证内容留存 | 服务端存储 + 授权导出 | 同单进程 |
 | `EventSink` | Tauri 事件推送 | SSE | SSE + worker 转发 |
 
 ### 4.8 装配形态
