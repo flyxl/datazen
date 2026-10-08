@@ -6,9 +6,27 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
 import { syncCommands } from '../sync';
 
+let jobSequence = 0;
+
+function queueDurableCompare(preview: unknown): void {
+  const jobId = `sync-prepare-${++jobSequence}`;
+  const queued = {
+    jobId,
+    kind: 'dataSyncPrepare',
+    state: 'queued',
+    effectOutcome: null,
+    error: null,
+    progress: { committed: 0, unknown: 0 },
+  };
+  invoke.mockResolvedValueOnce(queued);
+  invoke.mockResolvedValueOnce({ ...queued, state: 'succeeded' });
+  invoke.mockResolvedValueOnce(preview);
+}
+
 describe('Data Sync immutable plan IPC', () => {
   beforeEach(() => {
     invoke.mockReset();
+    jobSequence = 0;
   });
 
   it('persists profiles through dedicated IPC commands', async () => {
@@ -79,7 +97,7 @@ describe('Data Sync immutable plan IPC', () => {
   });
 
   it('keeps replacement SQL and row payloads out of preview and execute IPC', async () => {
-    invoke.mockResolvedValueOnce({
+    queueDurableCompare({
       planId: 'opaque-plan',
       selectionRevision: 1,
       tables: [
@@ -166,7 +184,7 @@ describe('Data Sync immutable plan IPC', () => {
   });
 
   it('sends only structured per-table filters with the compare request', async () => {
-    invoke.mockResolvedValueOnce({ planId: 'filtered-plan', selectionRevision: 1, tables: [] });
+    queueDurableCompare({ planId: 'filtered-plan', selectionRevision: 1, tables: [] });
     await syncCommands.compareDataSync(
       'source-session',
       'target-session',
@@ -185,7 +203,7 @@ describe('Data Sync immutable plan IPC', () => {
       },
     );
     expect(invoke).toHaveBeenCalledWith(
-      'compare_data_sync',
+      'start_data_sync_prepare_job',
       expect.objectContaining({
         filters: {
           users: {
@@ -195,11 +213,11 @@ describe('Data Sync immutable plan IPC', () => {
         },
       }),
     );
-    expect(JSON.stringify(invoke.mock.calls.at(-1))).not.toContain('WHERE');
+    expect(JSON.stringify(invoke.mock.calls[0])).not.toContain('WHERE');
   });
 
   it('sends a lossless primary-key recordset inside the reviewed source scope', async () => {
-    invoke.mockResolvedValueOnce({ planId: 'recordset-plan', selectionRevision: 1, tables: [] });
+    queueDurableCompare({ planId: 'recordset-plan', selectionRevision: 1, tables: [] });
     await syncCommands.compareDataSync(
       'source-session',
       'target-session',
@@ -222,8 +240,8 @@ describe('Data Sync immutable plan IPC', () => {
         },
       },
     );
-    expect(invoke).toHaveBeenLastCalledWith(
-      'compare_data_sync',
+    expect(invoke).toHaveBeenCalledWith(
+      'start_data_sync_prepare_job',
       expect.objectContaining({
         filters: {
           users: {
@@ -239,7 +257,7 @@ describe('Data Sync immutable plan IPC', () => {
       }),
     );
 
-    invoke.mockResolvedValueOnce({ planId: 'tuple-plan', selectionRevision: 2, tables: [] });
+    queueDurableCompare({ planId: 'tuple-plan', selectionRevision: 2, tables: [] });
     await syncCommands.compareDataSync(
       'source-session',
       'target-session',
@@ -263,8 +281,8 @@ describe('Data Sync immutable plan IPC', () => {
         },
       },
     );
-    expect(invoke).toHaveBeenLastCalledWith(
-      'compare_data_sync',
+    expect(invoke).toHaveBeenCalledWith(
+      'start_data_sync_prepare_job',
       expect.objectContaining({
         filters: {
           events: {
@@ -283,7 +301,7 @@ describe('Data Sync immutable plan IPC', () => {
   });
 
   it('loads an opaque page and preserves selected keys without row payloads in compare', async () => {
-    invoke.mockResolvedValueOnce({
+    queueDurableCompare({
       contractVersion: 1,
       pageSize: 100,
       planId: 'paged-plan',
@@ -364,7 +382,7 @@ describe('Data Sync immutable plan IPC', () => {
   });
 
   it('sends a table scope and one exclusion without materializing page keys', async () => {
-    invoke.mockResolvedValueOnce({
+    queueDurableCompare({
       contractVersion: 1,
       planId: 'scoped-plan',
       selectionRevision: 7,
@@ -434,5 +452,65 @@ describe('Data Sync immutable plan IPC', () => {
       options: { insert: true, update: true, delete: false },
     });
     expect(JSON.stringify(invoke.mock.calls.at(-1))).not.toContain('5000');
+  });
+
+  it('accepts and reads apply results through the durable job lifecycle', async () => {
+    queueDurableCompare({ planId: 'apply-plan', selectionRevision: 4, tables: [] });
+    await syncCommands.compareDataSync('source-session', 'target-session', ['users']);
+
+    invoke.mockResolvedValueOnce({
+      jobId: 'apply-job',
+      kind: 'dataSyncApply',
+      state: 'queued',
+      effectOutcome: null,
+      error: null,
+      progress: { committed: 0, unknown: 0 },
+    });
+    invoke.mockResolvedValueOnce({
+      jobId: 'apply-job',
+      kind: 'dataSyncApply',
+      state: 'succeeded',
+      effectOutcome: 'completed',
+      error: null,
+      progress: { committed: 2, unknown: 0 },
+    });
+    invoke.mockResolvedValueOnce({
+      job: {
+        jobId: 'apply-job',
+        kind: 'dataSyncApply',
+        state: 'succeeded',
+        effectOutcome: 'completed',
+        error: null,
+        progress: { committed: 2, unknown: 0 },
+      },
+      recoveryTargets: [],
+      domainResults: [
+        { stageId: 'apply', counters: [{ code: 'committed', value: 2 }] },
+      ],
+    });
+
+    const result = await syncCommands.executeDataSyncJob(
+      'source-session',
+      'target-session',
+      'apply-job',
+      { insert: true, update: true, delete: false },
+      [{ sourceTable: 'users', targetTable: 'users', operation: 'INSERT', key: [7] }],
+    );
+
+    expect(result.applied).toBe(2);
+    expect(invoke).toHaveBeenCalledWith('start_data_sync_apply_job', {
+      sourceDbSessionId: 'source-session',
+      targetDbSessionId: 'target-session',
+      request: {
+        planId: 'apply-plan',
+        selection: {
+          revision: 4,
+          rows: [{ sourceTable: 'users', targetTable: 'users', operation: 'INSERT', key: [7] }],
+        },
+        options: { insert: true, update: true, delete: false },
+        jobId: 'apply-job',
+      },
+    });
+    expect(invoke).not.toHaveBeenCalledWith('generate_data_sync_sql', expect.anything());
   });
 });

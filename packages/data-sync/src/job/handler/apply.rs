@@ -87,7 +87,13 @@ fn build_batches(plan_id: &str, selection: &[ChangeBlock], options: &SyncOptions
 /// apply：重验 → 子集核验 → 权限 → 事务能力证明 → 逐批 begin/verify/execute/commit/boundary。
 impl DataSyncHandler {
     pub(super) async fn run_apply(&self, cancel: &CancelToken) -> Result<StageOutcome, JobError> {
-        let Self::Apply { spec, host } = self else {
+        let Self::Apply {
+            spec,
+            host,
+            source_endpoint,
+            target_endpoint,
+        } = self
+        else {
             return Err(JobError::PlanProjectionInvalid(
                 "run_apply on a prepare handler".into(),
             ));
@@ -117,7 +123,9 @@ impl DataSyncHandler {
                 ));
             }
         };
-        let source = match host.open_endpoint(&artifact.source).await {
+        let source_binding = source_endpoint.as_ref().unwrap_or(&artifact.source);
+        let target_binding = target_endpoint.as_ref().unwrap_or(&artifact.target);
+        let source = match host.open_endpoint(source_binding).await {
             Ok(s) => s,
             Err(e) => {
                 return Ok(stage_failed(
@@ -131,7 +139,7 @@ impl DataSyncHandler {
                 ));
             }
         };
-        let target = match host.open_endpoint(&artifact.target).await {
+        let target = match host.open_endpoint(target_binding).await {
             Ok(t) => t,
             Err(e) => {
                 host.close_endpoint(source).await;

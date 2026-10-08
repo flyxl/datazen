@@ -4,6 +4,21 @@ const pack = {
     'The previous plan is no longer valid (it expired, the target drifted, or permissions changed). Re-prepare a fresh plan before applying anything.',
   'migrationJob.pendingVerificationHint':
     'A previous job is waiting for verification. Check the job center and reconcile before applying anything new.',
+  'migrationJob.notExecutedHint':
+    'A queued Data Sync job was not started after restart. It was not replayed; run a fresh comparison before applying.',
+  'migrationJob.notExecutedJob': 'Not executed after restart',
+  'migrationJob.verifyRecovery': 'Verify recovery',
+  'migrationJob.verifyingRecovery': 'Verifying…',
+  'migrationJob.cancelJob': 'Cancel job',
+  'migrationJob.cancellingJob': 'Cancelling…',
+  'migrationJob.recoveryEndpointMismatch':
+    'Select the same source and target connections used by this job before verifying recovery.',
+  'migrationJob.recoverySelectEndpoints':
+    'Select and connect both endpoints before verifying recovery.',
+  'migrationJob.recoveryManualReview':
+    'Recovery evidence was recorded. Compare current data before applying anything.',
+  'migrationJob.recoveryRecorded':
+    'Recovery evidence was recorded. Run a fresh comparison before applying anything.',
   // --- Shared Job verdict surface ---
   // Used by Data Transfer, Schema Diff and Data Sync alike. "Uncertain" is a
   // first-class verdict here on purpose: presenting it as success is forbidden.

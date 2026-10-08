@@ -3,9 +3,10 @@
 //! One rule shapes the whole file: a Data Sync Job talks to drivers through
 //! exactly one `ConnectionManager` for its whole lifetime (§9), and the apply
 //! Job keeps exactly one target lease for every batch (§5.3). Everything else
-//! — budget permits, relation metadata — is bookkeeping around those two
-//! leases. The cancel bit is not bookkeeping at all: it is not held here, only
-//! handed straight through from the stage's own `CancelToken`.
+//! — relation metadata — is bookkeeping around those two leases. Durable Job
+//! admission owns the physical-endpoint concurrency budget. The cancel bit is
+//! not bookkeeping at all: it is not held here, only handed straight through
+//! from the stage's own `CancelToken`.
 
 mod executor;
 pub(crate) mod recording;
@@ -21,10 +22,7 @@ use async_trait::async_trait;
 use datazen_driver_api::{
     DatabaseType, SyncKeyContract, SyncSourceAdapter, SyncTargetAdapter, TableSchema,
 };
-use datazen_platform_api::id::ConnectionId;
-use datazen_platform_api::ports::budget::{BudgetPermit, ResourceClass};
-use datazen_runtime::budget::{AdmitOutcome, BudgetClaim, BudgetLedger};
-use datazen_runtime::job::{CancelToken, JobClock};
+use datazen_runtime::job::CancelToken;
 
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
 use crate::data_sync::job::host::{
@@ -63,15 +61,13 @@ pub(crate) struct RelationMeta {
     pub(crate) schema_obj: TableSchema,
 }
 
-/// One opened endpoint lease plus the budget permit that backs it.
+/// One opened endpoint lease owned by the durable Job worker.
 #[derive(Clone)]
 struct Slot {
     is_source: bool,
-    db_session_id: String,
     session: EndpointSession,
     db_type: DatabaseType,
     read_only: bool,
-    permit: Option<BudgetPermit>,
 }
 
 pub(crate) struct HostDataSync {
@@ -171,7 +167,6 @@ impl HostDataSync {
             .find(|slot| slot.session.handle.id == session.handle.id)
             .map(|slot| Slot {
                 is_source: slot.is_source,
-                db_session_id: slot.db_session_id.clone(),
                 session: EndpointSession {
                     driver: session.driver.clone(),
                     handle: session.handle.clone(),
@@ -181,7 +176,6 @@ impl HostDataSync {
                 },
                 db_type: slot.db_type.clone(),
                 read_only: slot.read_only,
-                permit: slot.permit.clone(),
             })
             .ok_or_else(|| invalid("endpoint session is not owned by this Data Sync Job"))
     }
@@ -250,43 +244,12 @@ impl HostDataSync {
             .ok_or_else(|| invalid("target endpoint is not open"))
     }
 
-    /// Take one budget permit for the connection that is about to be opened.
-    /// A `Busy`/`Denied` outcome is a real rejection, not a retry hint: the Job
-    /// never silently competes with another Job for the same connection.
-    fn admit(&self, connection_id: &str) -> Result<BudgetPermit, DataSyncError> {
-        let ctx = state::desktop_context();
-        let connection = ConnectionId::new(connection_id.to_string());
-        let ledger_handle = state::ledger();
-        let mut ledger = lock(&ledger_handle);
-        ledger.ensure_service(&connection);
-        let claim = BudgetClaim::single(
-            ctx.organization_id.clone(),
-            connection.clone(),
-            ctx.principal_id.clone(),
-            ResourceClass::Job,
-        )
-        .pinned();
-        match ledger.try_admit(&claim, state::now_ms()) {
-            AdmitOutcome::Granted(record) => Ok(record.to_port_permit()),
-            AdmitOutcome::Busy(reason) => Err(invalid(format!(
-                "connection {connection_id} is busy: {reason:?}"
-            ))),
-            AdmitOutcome::Denied(reason) => Err(invalid(format!(
-                "connection {connection_id} has no budget headroom left: {reason:?}"
-            ))),
-        }
-    }
-
     /// Open one endpoint lease.
     ///
-    /// The endpoint already names the **dbSessionId** the user reviewed, so the
-    /// host borrows that exact session instead of resolving a connection id:
-    /// `get_or_connect_session` looks the session up by owning profile and may
-    /// hand back a *different* session of that profile — a different active
-    /// database — and applying against a database the review never saw is
-    /// exactly what §2 forbids. The Job therefore owns its budget permit and its
-    /// slot, never a manager reference: the window keeps the session alive for
-    /// the whole compare→apply journey (§8, §9).
+    /// The endpoint names a dedicated, job-owned `dbSessionId`, so this host
+    /// opens that exact session rather than resolving by connection config.
+    /// The Job lifecycle owns that session and the physical endpoint budget;
+    /// this adapter only retains a driver handle while the stage runs.
     async fn open(&self, endpoint: &Endpoint) -> Result<EndpointSession, DataSyncError> {
         let is_source = self.next_side(endpoint)?;
         if self
@@ -354,7 +317,6 @@ impl HostDataSync {
                 "target connection is read-only; return to comparison",
             ));
         }
-        let permit = self.admit(&endpoint.connection_id)?;
         let database = resolve_db_name(Some(&endpoint.database), config.database.as_deref());
         let schema = metadata_schema(
             driver.as_ref(),
@@ -371,11 +333,9 @@ impl HostDataSync {
         };
         lock(&self.slots).push(Slot {
             is_source,
-            db_session_id: db_session_id.to_string(),
             session: session.clone(),
             db_type: config.database_type.clone(),
             read_only: config.read_only,
-            permit: Some(permit),
         });
         Ok(session)
     }
@@ -395,16 +355,7 @@ impl DataSyncHost for HostDataSync {
                 .position(|slot| slot.session.handle.id == session.handle.id)
                 .map(|index| slots.swap_remove(index))
         };
-        if let Some(slot) = popped {
-            // Only the budget permit is released here. The db session belongs to
-            // the window that opened it; closing a Job never disconnects it
-            // (§8: closing the window only unsubscribes).
-            if let Some(permit) = slot.permit {
-                let ledger_handle = state::ledger();
-                let ledger: &mut BudgetLedger = &mut lock(&ledger_handle);
-                let _ = ledger.release(&permit, false, state::now_ms());
-            }
-        }
+        drop(popped);
     }
 
     async fn mapped_table_schemas(
@@ -696,7 +647,7 @@ impl DataSyncHost for HostDataSync {
     }
 
     fn now(&self) -> String {
-        state::clock().now().to_string()
+        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
     }
 
     /// 阶段自身的判定只落日志：真正面向用户的失败记录由外层 `RecordingHost`

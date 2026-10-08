@@ -1,5 +1,8 @@
 //! Dedicated Data Sync execute IPC (bypasses sql_guard / execute_query).
 
+use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
+
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use super::apply::generate_data_sync_sql_impl;
@@ -19,6 +22,7 @@ use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use async_trait::async_trait;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::JobState;
+use futures_util::FutureExt;
 #[cfg(feature = "webdriver")]
 use std::sync::atomic::AtomicU8;
 #[cfg(feature = "webdriver")]
@@ -158,6 +162,21 @@ async fn validate_plan_context(
     state: &AppState,
     plan: &StoredSyncPlan,
 ) -> Result<(), CommandError> {
+    validate_plan_context_sessions(
+        state,
+        plan,
+        &plan.source_db_session_id,
+        &plan.target_db_session_id,
+    )
+    .await
+}
+
+async fn validate_plan_context_sessions(
+    state: &AppState,
+    plan: &StoredSyncPlan,
+    source_session_id: &str,
+    target_session_id: &str,
+) -> Result<(), CommandError> {
     let comparison = plan
         .comparison
         .summaries()
@@ -169,12 +188,12 @@ async fn validate_plan_context(
     }
     let source_config = state
         .connection_manager
-        .get_session_config(&plan.source_db_session_id)
+        .get_session_config(source_session_id)
         .await
         .cmd_err("validate_data_sync_plan")?;
     let target_config = state
         .connection_manager
-        .get_session_config(&plan.target_db_session_id)
+        .get_session_config(target_session_id)
         .await
         .cmd_err("validate_data_sync_plan")?;
     if target_config.read_only {
@@ -194,12 +213,12 @@ async fn validate_plan_context(
     )?;
     let (source_driver, source_handle) = state
         .connection_manager
-        .get_session(&plan.source_db_session_id)
+        .get_session(source_session_id)
         .await
         .cmd_err("validate_data_sync_plan")?;
     let (target_driver, target_handle) = state
         .connection_manager
-        .get_session(&plan.target_db_session_id)
+        .get_session(target_session_id)
         .await
         .cmd_err("validate_data_sync_plan")?;
     if source_driver.driver_type() != plan.source_driver_type
@@ -211,10 +230,35 @@ async fn validate_plan_context(
             "driver contract changed since comparison; return to comparison".into(),
         ));
     }
+    let source_identity = crate::services::migration_endpoint::session_identity(
+        &state.connection_manager,
+        source_session_id,
+        Some((&plan.source_database, plan.source_schema.as_deref())),
+    )
+    .await?;
+    let target_identity = crate::services::migration_endpoint::session_identity(
+        &state.connection_manager,
+        target_session_id,
+        Some((&plan.target_database, plan.target_schema.as_deref())),
+    )
+    .await?;
+    if plan
+        .source_endpoint_identity
+        .as_ref()
+        .is_some_and(|expected| expected != &source_identity)
+        || plan
+            .target_endpoint_identity
+            .as_ref()
+            .is_some_and(|expected| expected != &target_identity)
+    {
+        return Err(CommandError::Validation(
+            "Data Sync endpoint changed since comparison; compare again".into(),
+        ));
+    }
     let source_fingerprint = current_schema_fingerprint(
         source_driver.as_ref(),
         &source_handle,
-        &plan.source_db_session_id,
+        source_session_id,
         &plan.source_database,
         plan.source_schema.as_deref(),
         &comparison,
@@ -224,7 +268,7 @@ async fn validate_plan_context(
     let target_fingerprint = current_schema_fingerprint(
         target_driver.as_ref(),
         &target_handle,
-        &plan.target_db_session_id,
+        target_session_id,
         &plan.target_database,
         plan.target_schema.as_deref(),
         &comparison,
@@ -499,14 +543,23 @@ pub(crate) async fn generate_data_sync_sql_for_plan_impl(
     .await
 }
 
-pub(crate) async fn execute_data_sync_plan_impl(
+/// Admit an apply against the exact reviewed ChangeSet and run it on detached,
+/// job-owned sessions. The selection stays process-local and is installed only
+/// after the durable consumed-plan receipt wins.
+pub(crate) async fn start_data_sync_apply_job_impl(
     state: &AppState,
-    request: SyncRunRequest,
-) -> Result<ExecutionResult, CommandError> {
+    source_db_session_id: String,
+    target_db_session_id: String,
+    mut request: SyncRunRequest,
+) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
     if request.plan_id.trim().is_empty() {
         return Err(CommandError::Validation(
-            "execute_data_sync requires a comparison planId".into(),
+            "apply requires a comparison plan; compare again".into(),
         ));
+    }
+    if let Some(receipt) = super::jobs::find_apply_receipt_for_plan(state, &request.plan_id).await?
+    {
+        return Ok(receipt);
     }
     let plan = plans::peek_plan(&request.plan_id).map_err(CommandError::Validation)?;
     if request.selection.revision != plan.selection_revision {
@@ -515,36 +568,188 @@ pub(crate) async fn execute_data_sync_plan_impl(
         ));
     }
     validate_requested_options(&plan, &request.options)?;
-    let _matcher =
-        plans::validate_selection_streaming(&plan.comparison, &request.selection, &request.options)
-            .map_err(CommandError::Validation)?;
-    // The endpoint context is still proved here so a stale session fails before
-    // any Job exists: the apply Job reports its own effect outcome, and a
-    // preflight refusal must never be reported as "unknown" (§7).
-    validate_plan_context(state, &plan).await?;
-    // The reviewed selection is handed to the Job as the only mutable input it
-    // may act on, and the Job consumes it exactly once.
+    plans::validate_selection_streaming(&plan.comparison, &request.selection, &request.options)
+        .map_err(CommandError::Validation)?;
+    validate_plan_context_sessions(state, &plan, &source_db_session_id, &target_db_session_id)
+        .await?;
+    let artifact = super::host::state::load_artifact(&request.plan_id).ok_or_else(|| {
+        CommandError::Validation("reviewed ChangeSet is unavailable; compare again".into())
+    })?;
+    if artifact.blocks.is_empty() {
+        return Err(CommandError::Validation(
+            "reviewed ChangeSet is empty; compare again".into(),
+        ));
+    }
+
+    let sessions = super::job_api::own_sessions(
+        state,
+        &source_db_session_id,
+        &target_db_session_id,
+        &plan.source_database,
+        &plan.target_database,
+        plan.source_schema.as_deref(),
+        plan.target_schema.as_deref(),
+    )
+    .await?;
+    let job_id = request
+        .job_id
+        .take()
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or_else(|| format!("data-sync-{}", uuid::Uuid::new_v4()));
+    let requested_job_id = job_id.clone();
+    let source_endpoint = crate::data_sync::Endpoint {
+        connection_id: sessions.source_id.clone(),
+        database: plan.source_database.clone(),
+        schema: plan.source_schema.clone(),
+    };
+    let target_endpoint = crate::data_sync::Endpoint {
+        connection_id: sessions.target_id.clone(),
+        database: plan.target_database.clone(),
+        schema: plan.target_schema.clone(),
+    };
+    let spec = ApplySpec {
+        plan_id: request.plan_id.clone(),
+        selection_revision: plan.selection_revision,
+        options: request.options.clone(),
+    };
+    let handler = Arc::new(
+        crate::data_sync::job::DataSyncHandler::for_apply_with_endpoints(
+            spec,
+            super::jobs::recording_host(
+                state,
+                source_endpoint.clone(),
+                target_endpoint.clone(),
+                HashMap::new(),
+                &job_id,
+            ),
+            source_endpoint,
+            target_endpoint,
+        ),
+    );
+    let endpoints = sessions.endpoints();
+    let payload = serde_json::json!({
+        "planVersion": crate::data_sync::job::body::PLAN_VERSION,
+        "handlerVersion": crate::data_sync::job::body::HANDLER_VERSION,
+        "checkpointVersion": crate::data_sync::job::body::CHECKPOINT_VERSION,
+        "planId": request.plan_id.clone(),
+        "consumedPlanId": request.plan_id.clone(),
+        "selectionRevision": plan.selection_revision,
+        "planDigest": format!("sha256:{}", artifact.digest),
+        "targetBeforeFingerprint": format!("sha256:{}", artifact.structure_fingerprint),
+        "recoveryTargets": sessions.recovery_targets(),
+        "recoveryPolicy": "verify-only",
+    });
+    let admission = match super::jobs::admit_durable(
+        state,
+        &job_id,
+        super::jobs::APPLY_KIND,
+        payload,
+        &format!("data-sync-apply:{}", request.plan_id),
+        &endpoints,
+    )
+    .await
+    {
+        Ok(admission) => admission,
+        Err(error) => {
+            super::job_api::release_sessions(state, &sessions.ids()).await;
+            return Err(error);
+        }
+    };
+    if admission.job_id.as_str() != requested_job_id {
+        super::job_api::release_sessions(state, &sessions.ids()).await;
+        return Ok(admission.view);
+    }
+    if !admission.dispatch {
+        super::job_api::release_sessions(state, &sessions.ids()).await;
+        return Ok(admission.view);
+    }
+    if plans::claim_plan(&request.plan_id).is_err() {
+        let _ = state
+            .desktop_job_host
+            .repository()
+            .mark_failed_unstarted(
+                &admission.ctx,
+                &admission.job_id,
+                "planUnavailableAfterAccept",
+            )
+            .await;
+        super::job_api::release_sessions(state, &sessions.ids()).await;
+        return Err(CommandError::Validation(
+            "reviewed plan is no longer available; compare again".into(),
+        ));
+    }
     super::host::state::store_selection(
         &request.plan_id,
         StoredSelection {
             selection: request.selection,
-            options: request.options.clone(),
-        },
-    );
-    let outcome = super::jobs::submit_apply(
-        state,
-        ApplySpec {
-            plan_id: request.plan_id,
-            selection_revision: plan.selection_revision,
             options: request.options,
         },
-        request.job_id.clone(),
-    )
-    .await;
-    if let Some(id) = request.job_id.as_deref() {
-        super::jobs::remove_job(id).await;
+    );
+
+    let background_state = state.clone();
+    let owned_ids = sessions.ids();
+    let dispatch_endpoints = endpoints.clone();
+    let accepted_view = admission.view.clone();
+    let worker_job_id = accepted_view.job_id.as_str().to_string();
+    tauri::async_runtime::spawn(async move {
+        let work = AssertUnwindSafe(super::jobs::dispatch_durable(
+            &background_state,
+            &admission,
+            &dispatch_endpoints,
+            handler,
+        ))
+        .catch_unwind()
+        .await;
+        if work.is_err() {
+            super::host::state::record_failure(&worker_job_id, "applyWorkerPanicked");
+        }
+        super::job_api::release_sessions(&background_state, &owned_ids).await;
+    });
+    Ok(accepted_view)
+}
+
+pub(crate) async fn execute_data_sync_plan_impl(
+    state: &AppState,
+    mut request: SyncRunRequest,
+) -> Result<ExecutionResult, CommandError> {
+    if request.plan_id.trim().is_empty() {
+        return Err(CommandError::Validation(
+            "execute_data_sync requires a comparison planId".into(),
+        ));
     }
-    applied_outcome(outcome)
+    let (source_session_id, target_session_id) = plans::peek_plan(&request.plan_id)
+        .map(|plan| (plan.source_db_session_id, plan.target_db_session_id))
+        .unwrap_or_default();
+    if request
+        .job_id
+        .as_deref()
+        .map_or(true, |job_id| job_id.trim().is_empty())
+    {
+        request.job_id = Some(format!("data-sync-{}", uuid::Uuid::new_v4()));
+    }
+    let accepted =
+        start_data_sync_apply_job_impl(state, source_session_id, target_session_id, request)
+            .await?;
+    let finished = super::jobs::wait_for_durable_terminal(state, accepted.job_id.as_str()).await?;
+    let details = super::jobs::details_durable_job(state, finished.job_id.as_str()).await?;
+    let job = details.job;
+    let message = match job.state {
+        JobState::Succeeded => None,
+        JobState::Cancelled => Some("execute cancelled".to_string()),
+        JobState::Failed => Some(job.error.unwrap_or_else(|| {
+            "the Data Sync apply job failed; compare current data before continuing".to_string()
+        })),
+        JobState::Queued | JobState::Running => {
+            Some("the Data Sync apply job was still running when the request returned".to_string())
+        }
+    };
+    applied_outcome(Ok(super::jobs::SyncJobOutcome {
+        job_id: job.job_id.as_str().to_string(),
+        state: job.state,
+        effect: job.effect_outcome.unwrap_or(EffectOutcome::NotStarted),
+        committed: job.progress.committed.get(),
+        message,
+    }))
 }
 
 /// Map the Job's terminal projection onto the IPC contract.
@@ -957,14 +1162,14 @@ mod tests {
         let first = execute_data_sync_plan_impl(pair.state(), request())
             .await
             .unwrap_err();
-        assert!(first.to_string().contains("change set is empty"));
+        assert!(first.to_string().contains("reviewed ChangeSet is empty"));
 
         // Same planId, same refusal: a spent planId would answer "already
         // submitted" here instead.
         let second = execute_data_sync_plan_impl(pair.state(), request())
             .await
             .unwrap_err();
-        assert!(second.to_string().contains("change set is empty"));
+        assert!(second.to_string().contains("reviewed ChangeSet is empty"));
 
         assert!(plans::peek_plan(&preview.plan_id).is_ok());
         assert_eq!(pair.test.mock.open_transaction_count(), 0);
