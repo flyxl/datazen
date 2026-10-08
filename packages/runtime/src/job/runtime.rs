@@ -212,7 +212,7 @@ impl JobRuntime {
             .await;
         if result.is_err() {
             // Fenced atomic terminal write: a stale worker cannot overwrite a new owner.
-            self.repo.fail_claimed(ctx, claim, "jobDispatchFailed")?;
+            self.repo.fail_claimed(ctx, &claim, "jobDispatchFailed")?;
         }
         result
     }
