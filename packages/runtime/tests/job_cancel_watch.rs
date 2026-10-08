@@ -682,6 +682,22 @@ async fn between_stage_cancel_is_still_delivered_at_the_stage_boundary() {
         rig.rx.try_recv().is_err(),
         "cancel prevents the next stage from starting"
     );
+    let record = rig
+        .repo
+        .get(&ctx(), rig.job_id.clone())
+        .await
+        .expect("query stage projection");
+    assert_eq!(record.view.stage.as_deref(), Some("s1"));
+    assert_eq!(record.stages.len(), 1);
+    assert_eq!(record.stages[0].stage_id, StageId::new("s1"));
+    assert!(record.stages[0].started_at.is_some());
+    assert!(
+        !record
+            .stages
+            .iter()
+            .any(|stage| stage.stage_id == StageId::new("s2") && stage.started_at.is_some()),
+        "cancelled next stage must not acquire a started record"
+    );
 }
 
 /// C5：排队取消（开跑前就已请求）仍是一条"意图"，直接落到 `NotStarted`，不派发任何阶段。

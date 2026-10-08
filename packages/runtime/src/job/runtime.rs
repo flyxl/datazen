@@ -240,6 +240,10 @@ impl JobRuntime {
             if latest.view.cancel_requested {
                 cancel.cancel();
             }
+            if cancel.is_cancelled() {
+                saw_cancelled = true;
+                break;
+            }
             let stage_record = StageRecord {
                 job_id: job_id.clone(),
                 stage_id: spec.stage_id.clone(),
@@ -250,10 +254,6 @@ impl JobRuntime {
                 finished_at: None,
             };
             self.repo.record_stage(ctx, claim, stage_record).await?;
-            if cancel.is_cancelled() {
-                saw_cancelled = true;
-                break;
-            }
             let outcome = match self
                 .run_stage_watched(ctx, job_id, handler.as_ref(), spec, &cancel)
                 .await

@@ -393,7 +393,9 @@ async fn panic_converges_before_return_and_can_be_queried() {
     );
 }
 
-struct ValidationPanicHandler;
+struct ValidationPanicHandler {
+    panic: bool,
+}
 #[async_trait::async_trait]
 impl JobHandler for ValidationPanicHandler {
     fn kind(&self) -> &str {
@@ -406,7 +408,12 @@ impl JobHandler for ValidationPanicHandler {
         &self,
         _: &FrozenPlan,
     ) -> Result<Vec<StageSpec>, datazen_runtime::job::JobError> {
-        panic!("synthetic validation panic");
+        if self.panic {
+            panic!("synthetic validation panic");
+        }
+        Err(datazen_runtime::job::JobError::BudgetDenied(
+            "synthetic validation failure".into(),
+        ))
     }
     async fn run_stage(
         &self,
@@ -441,7 +448,7 @@ async fn validation_panic_is_unstarted_failure_and_never_claims_budget() {
     let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
     let runtime = runtime_with(
         repo.clone(),
-        Arc::new(ValidationPanicHandler),
+        Arc::new(ValidationPanicHandler { panic: true }),
         ledger.clone(),
         clock,
     );
@@ -464,6 +471,54 @@ async fn validation_panic_is_unstarted_failure_and_never_claims_budget() {
         queried.view.pending_verification_reason.as_deref(),
         Some("handlerValidationPanicked")
     );
+    assert_eq!(ledger.lock().expect("ledger").permits().count(), 0);
+    assert_eq!(runtime.active_cancel_watchers(), 0);
+}
+
+#[tokio::test]
+async fn validation_error_is_unstarted_failure_without_started_stage() {
+    let (repo, clock) = repo_clock();
+    let c = ctx();
+    repo.accept(
+        &c,
+        definition(
+            "schemaDiffApply",
+            apply_payload("validation-error-plan"),
+            "validation-error-job",
+        ),
+        &IdempotencyKey::new("validation-error-key"),
+    )
+    .await
+    .expect("accept");
+    let repo = Arc::new(repo);
+    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
+    let runtime = runtime_with(
+        repo.clone(),
+        Arc::new(ValidationPanicHandler { panic: false }),
+        ledger.clone(),
+        clock,
+    );
+    assert!(runtime
+        .run(
+            &c,
+            &JobId::new("validation-error-job"),
+            &WorkerId::new("worker"),
+            &[]
+        )
+        .await
+        .is_err());
+    let record = repo
+        .get(&c, JobId::new("validation-error-job"))
+        .await
+        .expect("query failed validation");
+    assert_eq!(record.view.state, JobState::Failed);
+    assert_eq!(record.view.effect_outcome, Some(EffectOutcome::NotStarted));
+    assert_eq!(
+        record.view.pending_verification_reason.as_deref(),
+        Some("handlerValidationFailed")
+    );
+    assert!(record.view.stage.is_none());
+    assert!(record.stages.is_empty());
     assert_eq!(ledger.lock().expect("ledger").permits().count(), 0);
     assert_eq!(runtime.active_cancel_watchers(), 0);
 }
