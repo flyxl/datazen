@@ -49,14 +49,11 @@ async fn runtime_limit_rejects_oversized_statement_and_splits_large_writes() {
     // fail in the actual engine (not merely in a helper that checks a constant).
     let at_limit = format!("SELECT ?{limit}");
     let params = vec![Value::Integer(7); limit];
-    assert_eq!(
-        driver
-            .query_with_params(&handle, &at_limit, &params)
-            .await
-            .unwrap()
-            .rows[0][0],
-        Some(Value::Integer(7))
-    );
+    let boundary = driver
+        .query_with_params(&handle, &at_limit, &params)
+        .await
+        .unwrap();
+    assert!(matches!(boundary.rows[0][0], Some(Value::Integer(7))));
     let over_limit = format!("SELECT ?{}", limit + 1);
     assert!(driver
         .query_with_params(&handle, &over_limit, &vec![Value::Integer(7); limit + 1])
@@ -107,15 +104,12 @@ async fn runtime_limit_rejects_oversized_statement_and_splits_large_writes() {
         .await
         .unwrap()
         .rows;
-    assert_eq!(
-        rows[0],
-        vec![
-            Some(Value::Integer(total as i64)),
-            Some(Value::Integer(total as i64)),
-            Some(Value::Integer(0)),
-            Some(Value::Integer(total as i64 - 1))
-        ]
-    );
+    for (cell, expected) in rows[0]
+        .iter()
+        .zip([total as i64, total as i64, 0, total as i64 - 1])
+    {
+        assert!(matches!(cell, Some(Value::Integer(actual)) if *actual == expected));
+    }
     let last = driver
         .query(
             &handle,
@@ -124,9 +118,8 @@ async fn runtime_limit_rejects_oversized_statement_and_splits_large_writes() {
         .await
         .unwrap()
         .rows;
-    assert_eq!(
-        last[0][0],
-        Some(Value::String(format!("row-{}", total - 1)))
+    assert!(
+        matches!(&last[0][0], Some(Value::String(actual)) if actual == &format!("row-{}", total - 1))
     );
     driver.disconnect(handle).await.unwrap();
 }

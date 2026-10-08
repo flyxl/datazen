@@ -442,6 +442,10 @@ mod tests {
                 PortError::QuotaExceeded("rows".into()),
                 "quota exceeded: rows",
             ),
+            (PortError::IdempotencyConflict, "idempotency conflict: same key, different request payload"),
+            (PortError::StaleClaim, "stale or expired claim: write rejected"),
+            (PortError::PlanAlreadyConsumed("plan-1".into()), "plan already consumed by an apply job: plan-1"),
+            (PortError::UnsupportedVersion("plan/2".into()), "unsupported version: plan/2"),
         ];
         for (error, expected) in cases {
             assert_eq!(error.to_string(), expected);
