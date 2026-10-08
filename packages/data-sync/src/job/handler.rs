@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
-use datazen_platform_api::dto::job::{Checkpoint, CommitBoundary, JobProgress};
+use datazen_platform_api::dto::job::{
+    Checkpoint, CommitBoundary, JobDomainResult, JobProgress, JobResultCounter,
+};
 use datazen_platform_api::id::StageId;
 use datazen_runtime::job::{
     CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec,
@@ -183,6 +185,60 @@ impl JobHandler for DataSyncHandler {
         RecoveryVerdict::ResumeAfterVerify {
             resume_through: checkpoint.committed.len(),
         }
+    }
+
+    /// Persist only a bounded result projection. Row values, filters, generated
+    /// SQL and driver messages remain in the process-local plan/handler state.
+    fn durable_result(&self, outcome: &StageOutcome) -> Option<JobDomainResult> {
+        let (result_code, outcome_code) = match self {
+            Self::Prepare { .. } => (
+                "comparisonPrepared",
+                match outcome.terminal {
+                    StageTerminal::Succeeded => "completed",
+                    StageTerminal::Cancelled => "cancelled",
+                    StageTerminal::Failed => "failed",
+                    StageTerminal::Unknown => "unknown",
+                },
+            ),
+            Self::Apply { .. } => (
+                "changeSetApplied",
+                match outcome.terminal {
+                    StageTerminal::Succeeded => "completed",
+                    StageTerminal::Cancelled => "cancelled",
+                    StageTerminal::Failed => "failed",
+                    StageTerminal::Unknown => "unknown",
+                },
+            ),
+        };
+        Some(JobDomainResult {
+            stage_id: outcome.stage_id.clone(),
+            result_code: result_code.into(),
+            outcome_code: outcome_code.into(),
+            counters: vec![
+                JobResultCounter {
+                    code: "read".into(),
+                    value: outcome.progress.read,
+                },
+                JobResultCounter {
+                    code: "converted".into(),
+                    value: outcome.progress.converted,
+                },
+                JobResultCounter {
+                    code: "attempted".into(),
+                    value: outcome.progress.attempted,
+                },
+                JobResultCounter {
+                    code: "committed".into(),
+                    value: outcome.progress.committed,
+                },
+                JobResultCounter {
+                    code: "unknown".into(),
+                    value: outcome.progress.unknown,
+                },
+            ],
+            items: Vec::new(),
+            artifact_ids: outcome.artifact_ids.clone(),
+        })
     }
 
     // ----- internal -----
