@@ -207,6 +207,25 @@ impl JobRuntime {
         stages: &[crate::job::handler::StageSpec],
     ) -> Result<JobResult, PortError> {
         let claim = self.repo.claim(ctx, job_id.clone(), worker.clone()).await?;
+        let result = self
+            .dispatch_claimed(ctx, job_id, worker, handler, stages, &claim)
+            .await;
+        if result.is_err() {
+            // Fenced atomic terminal write: a stale worker cannot overwrite a new owner.
+            self.repo.fail_claimed(ctx, claim, "jobDispatchFailed")?;
+        }
+        result
+    }
+
+    async fn dispatch_claimed(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        worker: &WorkerId,
+        handler: Arc<dyn crate::job::handler::JobHandler>,
+        stages: &[StageSpec],
+        claim: &datazen_platform_api::dto::job::JobClaim,
+    ) -> Result<JobResult, PortError> {
         let cancel = CancelToken::new();
         let mut progress = JobProgress::default();
         let mut any_boundary = false;
@@ -230,7 +249,7 @@ impl JobRuntime {
                 started_at: Some(self.clock.now()),
                 finished_at: None,
             };
-            self.repo.record_stage(ctx, &claim, stage_record).await?;
+            self.repo.record_stage(ctx, claim, stage_record).await?;
             if cancel.is_cancelled() {
                 saw_cancelled = true;
                 break;
@@ -266,7 +285,7 @@ impl JobRuntime {
             saw_cancelled |= outcome.terminal == StageTerminal::Cancelled;
             for b in &outcome.commit_boundaries {
                 self.repo
-                    .record_commit_boundary(ctx, &claim, b.clone())
+                    .record_commit_boundary(ctx, claim, b.clone())
                     .await?;
                 committed_all.push(b.clone());
             }
@@ -293,7 +312,7 @@ impl JobRuntime {
                 verification_evidence: evidence,
                 recovery_policy: "resumeAfterVerify".to_string(),
             };
-            self.repo.save_checkpoint(ctx, &claim, checkpoint).await?;
+            self.repo.save_checkpoint(ctx, claim, checkpoint).await?;
         }
         let (state, effect) = match (saw_unknown, saw_failed, saw_cancelled, any_boundary) {
             (true, ..) => (JobState::Failed, EffectOutcome::Unknown),
@@ -305,9 +324,9 @@ impl JobRuntime {
         };
         let latest = self.repo.get(ctx, job_id.clone()).await?;
         // 终态 CAS 会清 claim，因此先在仍有效的 claim 下写效果结局，再落终态。
-        self.repo.set_effect_outcome(ctx, &claim, effect)?;
+        self.repo.set_effect_outcome(ctx, claim, effect)?;
         self.repo
-            .compare_and_set_state(ctx, &claim, latest.state_version, state)
+            .compare_and_set_state(ctx, claim, latest.state_version, state)
             .await?;
         if let Some(reason) = &failure_reason {
             self.repo.mark_pending_verification(ctx, job_id, reason)?;
@@ -320,18 +339,7 @@ impl JobRuntime {
         })
     }
 
-    /// 跑一个阶段，同时挂一个阶段内取消看守者（CANCEL_WATCH）。
-    ///
-    /// 阶段内取消的可达性只由这一处保证：取消意图的落地点是仓储的
-    /// `cancel_requested`，而 `run_stage` 在阶段内不再接触仓储，因此在阶段执行
-    /// 期间必须有一个并发观察者把该标志翻译成本次派发共享的 [`CancelToken`]。
-    /// 看守者在阶段返回后立即被 abort + await 回收：**正常路径**下 `dispatch` 返回时
-    /// 不存在任何仍持有 `repo` / `ctx` 的游离任务（§2.3）。handler panic 展开走的是
-    /// [`CancelWatch`] 的 `Drop` 兜底，那条路径只 abort 不 await，任务真正结束的时机
-    /// 由调度器决定——因此这里承诺的只是「不会一直跑下去」，不是「返回时已结束」。
-    ///
-    /// 取消不制造提交边界：看守者只翻转令牌，什么也不写。阶段是否回滚在途批次、
-    /// 是否给出 `StageTerminal::Cancelled`，仍完全由 handler 决定。
+    /// Executes in the dispatch task; stage faults are caught before watcher abort + await.
     async fn run_stage_watched(
         &self,
         ctx: &RequestContext,

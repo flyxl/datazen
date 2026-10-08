@@ -26,10 +26,10 @@ use datazen_platform_api::id::{
 };
 
 use crate::connection::types::fnv1a64_hex;
-use datazen_platform_api::ports::job::JobRepository;
 use crate::job::error::JobError;
 use crate::job::plan::project_frozen_plan;
 use crate::job::time::{after_seconds, JobClock};
+use datazen_platform_api::ports::job::JobRepository;
 
 /// 单个 Job 的可变行。
 #[derive(Debug, Clone)]
@@ -61,7 +61,7 @@ struct Inner {
     /// 组织键的完整隔离语义由服务端仓储落地，详见 persistence-model §3.6）。
     jobs: HashMap<JobId, JobRow>,
     idempotency: HashMap<String, IdemReceipt>, // key
-    consumed_plans: HashMap<String, JobId>,     // planId
+    consumed_plans: HashMap<String, JobId>,    // planId
     checkpoints: HashMap<(JobId, u64), Checkpoint>,
     /// 逐批已确认提交边界（§7）：record_commit_boundary 落库，按产生顺序递增。
     boundaries: HashMap<JobId, Vec<CommitBoundary>>,
@@ -263,6 +263,29 @@ impl InMemoryJobRepository {
         Ok(())
     }
 
+    /// Dispatch infrastructure failure after claim: preserve evidence and require verification.
+    pub fn fail_claimed(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        reason: &str,
+    ) -> Result<(), PortError> {
+        let _ = ctx;
+        let mut inner = lock_inner(&self.inner)?;
+        Self::check_claim(&inner, claim, &self.clock.now()).map_err(PortError::from)?;
+        let row = inner
+            .jobs
+            .get_mut(&claim.job_id)
+            .ok_or_else(|| PortError::NotFound(claim.job_id.as_str().into()))?;
+        row.record.view.state = JobState::Failed;
+        row.record.view.effect_outcome = Some(EffectOutcome::Unknown);
+        row.record.view.pending_verification_reason = Some(reason.into());
+        row.record.view.updated_at = self.clock.now();
+        row.record.state_version = JobStateVersion::new(row.record.state_version.get() + 1);
+        row.claim = None;
+        Ok(())
+    }
+
     /// 在从未被 claim 的路径终结 Job：failed + notStarted，不走 claim fencing。
     /// 只在 `row.claim.is_none()` 且 Job 仍为 Queued 时允许。
     pub async fn mark_failed_unstarted(
@@ -348,8 +371,8 @@ impl JobRepository for InMemoryJobRepository {
         idem: &IdempotencyKey,
     ) -> Result<JobRecord, PortError> {
         let _ = ctx;
-        let plan = project_frozen_plan(&definition.kind, &definition.payload)
-            .map_err(PortError::from)?;
+        let plan =
+            project_frozen_plan(&definition.kind, &definition.payload).map_err(PortError::from)?;
         let fingerprint = format!(
             "{}|{}",
             definition.kind,
@@ -407,7 +430,9 @@ impl JobRepository for InMemoryJobRepository {
             },
         );
         if let Some(plan_id) = plan.consumed_plan_id {
-            inner.consumed_plans.insert(plan_id, definition.job_id.clone());
+            inner
+                .consumed_plans
+                .insert(plan_id, definition.job_id.clone());
         }
         Ok(record)
     }
@@ -442,8 +467,12 @@ impl JobRepository for InMemoryJobRepository {
         let mut out: Vec<JobRecord> = inner
             .jobs
             .values()
-            .filter(|row| filter.states.is_empty() || filter.states.contains(&row.record.view.state))
-            .filter(|row| filter.owner.is_none() || filter.owner == Some(row.record.definition.owner.clone()))
+            .filter(|row| {
+                filter.states.is_empty() || filter.states.contains(&row.record.view.state)
+            })
+            .filter(|row| {
+                filter.owner.is_none() || filter.owner == Some(row.record.definition.owner.clone())
+            })
             .map(|row| row.record.clone())
             .collect();
         out.sort_by(|a, b| a.view.created_at.cmp(&b.view.created_at));
