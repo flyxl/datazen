@@ -214,3 +214,10 @@
 - Data Sync 冻结 `codex/p5-sync-job @ 7f8db0a2778b4ce40d6e8e4653cb598ee042e4a8` 以 `--no-ff` merge 合入：`c87eaa83bc1f4fbcd4081e40f582a3a108455fb0`。独立验证：3 个 focused Vitest 文件、56 passed（采用 Tester 数字，不采用 coder 的 51/51）。无内容冲突；共同触及的 migration hydration 测试与英文 locale 自动合并。合并后 `git diff --check HEAD^ HEAD` EXIT=0；offline Cargo metadata EXIT=0，25 packages / 25 workspace members；该 merge 未改 `Cargo.toml` / `Cargo.lock`。
 - 静态接线核对：`bootstrap/run.rs` 注册 Sync prepare/apply/details/list/recovery 命令；同步窗口共享 `@datazen/backend-client` 的通用 `listJobs/getJob/watchJob` hydration，同时由 `list_data_sync_jobs` 读取领域详情并显示 `notExecuted`。Rust 返回核心 `JobDetails`；`src/commands/sync.ts` 保留一份窄化 `DataSyncJobDetails` 子集，所用字段及 `recovery.verdict` 五种值（包括 `notExecuted`）与共享 DTO 一致，但这份前端局部类型仍是镜像，后续可考虑直接引用共享 `JobDetails` 以避免漂移。Transfer UI 直接使用共享 DTO。Schema Diff consumer 未合入，等待独立验收。
 - 两个 consumer 合并后的集成 HEAD `c87eaa83bc1f4fbcd4081e40f582a3a108455fb0`；该 SHA 上工作区 clean。未运行 cargo fmt、Host tests 或其他全量门禁。
+
+### Schema Diff consumer 合入（2026-10-08）
+
+- 冻结 `codex/p5-schema-diff-job @ 0e98ccd5eabe9f861a014ccd37ec3db685bf84dc` 以 `--no-ff` 合入；merge commit `cc6b9c1f3ba874029dc32a86b9d9551be793040b`，父提交为 `46bf2d4dcb868f24d3d5d0cd7a485ff5758ec781` 与冻结 SHA。工作树合入前 clean，分支及冻结 SHA 匹配。
+- 唯一内容冲突：`src/lib/__tests__/migrationJobHydration.test.ts`。保留集成分支的终态/取消及 `outcomeUnknown` hydration 断言，并移除夹在合并版本中的重复 `error` fixture 字段；`bootstrap/run.rs` 自动合并后同时保留 Sync 与 Schema Diff 命令注册，`src/locales/en/sync.ts` 保留 `migration.verdict.notDispatchedAfterRestart` 的重启后不执行说明。
+- Schema Diff 独立非 WDIO gates 已通过。Coder 报告 WDIO journeys SD-001/SD-002 为 2/2；独立验收尝试时 WebDriver 端口 4445 未 ready，journey 数为 0，因此这是启动阻塞，**不记为独立 WDIO 通过**。本次合入未重跑 WDIO 或其他测试。
+- 合入前静态检查：`cargo metadata --no-deps --format-version 1 --offline` EXIT=0，25 packages / 25 workspace members；`git diff --check HEAD` EXIT=0。两项检查前后 HEAD 均为 `46bf2d4dcb868f24d3d5d0cd7a485ff5758ec781`，工作区 diff fingerprint 均为 `f2dc3396ebac2eaa7c80820a19b15714931e084d8002ca4a517cde9512bb4185`。merge commit 后 integration worktree clean；未运行非 WDIO tests。
