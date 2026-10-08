@@ -14,7 +14,7 @@
 
 ## Independent validation pending
 
-The Core merge and the changes above have not been tested by the coding agent. Run these from a separate detached worktree at the final feature SHA:
+The first independent Host TypeScript check at `6238df31b1d144b41a2929e4db62ecccd8d5b3cc` found one fixture error: `src/lib/__tests__/migrationJobHydration.test.ts` declared `error: null` twice. The duplicate property was removed. Re-run these from a separate detached worktree at the updated feature SHA:
 
 ```bash
 pnpm exec vitest run \
@@ -26,4 +26,4 @@ pnpm exec vitest run \
 pnpm typecheck
 ```
 
-Before this Core integration, the prior UI checkpoint reported 8 focused Vitest files / 92 tests passing, three TypeScript checks passing, and no live WDIO run because its PostgreSQL/MySQL prerequisites were unavailable. Those results do not cover the merged Core API or the new `notExecuted` handling.
+The coding agent has not run tests or type checks in this worktree. Before this Core integration, the prior UI checkpoint reported 8 focused Vitest files / 92 tests passing, three TypeScript checks passing, and no live WDIO run because its PostgreSQL/MySQL prerequisites were unavailable. Those results do not cover the merged Core API or the new `notExecuted` handling.

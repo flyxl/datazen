@@ -26,7 +26,6 @@ function jobView(overrides: Partial<JobViewFixture> = {}): JobViewFixture {
     effectOutcome: null,
     cancelRequested: false,
     pendingVerificationReason: null,
-    error: null,
     progress: {
       read: 0 as JobView['progress']['read'],
       converted: 0 as JobView['progress']['converted'],
