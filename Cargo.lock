@@ -2099,6 +2099,7 @@ dependencies = [
  "datazen-driver-api",
  "datazen-platform-api",
  "datazen-runtime",
+ "futures-util",
  "hmac 0.12.1",
  "indexmap 2.14.0",
  "serde",

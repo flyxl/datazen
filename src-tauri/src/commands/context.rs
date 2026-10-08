@@ -591,6 +591,7 @@ mod tests {
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
         let app_db = store.app_db();
+        let desktop_job_host = crate::build_desktop_job_host(app_db.clone());
 
         let state = AppState {
             driver_registry: registry,
@@ -617,6 +618,7 @@ mod tests {
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
             cancel_registry: crate::ai::CancellationRegistry::default(),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
+            desktop_job_host,
             platform: crate::platform::PlatformEntry::launch(),
         };
 
@@ -659,6 +661,7 @@ mod tests {
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
+        let desktop_job_host = crate::build_desktop_job_host(store.app_db());
 
         let state = AppState {
             driver_registry: registry,
@@ -685,6 +688,7 @@ mod tests {
             wapps: Arc::new(crate::wapps::WappManager::new(data_dir.join("wapps"))),
             cancel_registry: crate::ai::CancellationRegistry::default(),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
+            desktop_job_host,
             platform: crate::platform::PlatformEntry::launch(),
         };
 

@@ -26,7 +26,7 @@ use datazen_runtime::job::{
 use support::{config, conn, org};
 
 // 单文件 ≤800 行纪律（AGENTS.md「单文件规模与模块拆分」）：下列两组旅程各自成模块。
-// 拆分只搬运代码，断言与被测调用逐字未改。
+// 按职责拆分，保持共享夹具和公共导入集中。
 #[path = "job_kernel/endpoint_budget.rs"]
 mod endpoint_budget;
 
@@ -432,6 +432,7 @@ fn persisted_shapes_never_carry_runtime_handles() {
             effect_outcome: None,
             cancel_requested: false,
             pending_verification_reason: None,
+            error: None,
             progress: Default::default(),
         },
         definition: definition("schemaDiffApply", apply_payload("p"), "j"),

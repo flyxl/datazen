@@ -14,7 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
-use datazen_platform_api::dto::job::{Checkpoint, CommitBoundary, JobProgress};
+use datazen_platform_api::dto::job::{
+    Checkpoint, CommitBoundary, JobDomainResult, JobProgress,
+};
 use datazen_platform_api::id::{ArtifactId, ExecutionId, StageId};
 
 use crate::job::error::JobError;
@@ -158,6 +160,12 @@ pub trait JobHandler: Send + Sync {
     /// 依据 checkpoint 给出恢复裁决。不能核验的副作用 → RequireManualReview；
     /// 版本不兼容 → Reject；**未知提交不自动重跑**。
     fn verify_recovery(&self, checkpoint: &Checkpoint) -> RecoveryVerdict;
+
+    /// Optional bounded read-model projection written by the runtime under the active claim.
+    /// It must contain stable codes/opaque IDs, never SQL or free-form driver messages.
+    fn durable_result(&self, _outcome: &StageOutcome) -> Option<JobDomainResult> {
+        None
+    }
 }
 
 #[cfg(test)]

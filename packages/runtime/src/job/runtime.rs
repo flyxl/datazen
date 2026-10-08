@@ -19,22 +19,20 @@ use datazen_platform_api::dto::job::{Checkpoint, JobProgress, JobState, StageRec
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{JobId, WorkerId};
 
-use datazen_platform_api::ports::job::JobRepository;
-
 use crate::budget::ledger::BudgetLedger;
 use crate::job::budget::{EndpointRef, MultiEndpointPermits};
 use crate::job::handler::{CancelToken, HandlerRegistry, StageOutcome, StageSpec, StageTerminal};
 use crate::job::plan::project_frozen_plan;
-use crate::job::repository::InMemoryJobRepository;
+use crate::job::runtime_repository::JobRuntimeRepository;
 use crate::job::time::JobClock;
 
 /// 阶段内取消看守者的轮询间隔。
 ///
-/// 代价不是「进程内字典查找」：`InMemoryJobRepository` 的全部索引共用一把全局
+/// 代价不是「进程内字典查找」：内存仓储的全部索引共用一把全局
 /// `Mutex`，而 `JobRepository::get` 在**持锁期间**深拷贝整条 `JobRecord`
 /// （`definition.payload` 是 `serde_json::Value`，另有 `Vec<StageRecord>`），
 /// 每个运行中的阶段每秒会因此拷贝 20 次，并与 `request_cancel`、`record_stage`
-/// 和进度写入争锁。所以看守者走 [`InMemoryJobRepository::cancel_poll`]：同一个锁，
+/// 和进度写入争锁。所以内存实现的看守者走轻量 `cancel_poll`：同一个锁，
 /// 只读两个 bool，锁内不做任何拷贝。
 ///
 /// 50ms 是响应延迟与争锁次数之间的折中：取消是低频的用户动作，这个延迟用户感知不到。
@@ -59,7 +57,7 @@ pub struct JobResult {
 
 /// Job 运行时编排器。
 pub struct JobRuntime {
-    repo: Arc<InMemoryJobRepository>,
+    repo: Arc<dyn JobRuntimeRepository>,
     handlers: Arc<HandlerRegistry>,
     ledger: Arc<Mutex<BudgetLedger>>,
     clock: Arc<dyn JobClock>,
@@ -71,7 +69,7 @@ pub struct JobRuntime {
 
 impl JobRuntime {
     pub fn new(
-        repo: Arc<InMemoryJobRepository>,
+        repo: Arc<dyn JobRuntimeRepository>,
         handlers: Arc<HandlerRegistry>,
         ledger: Arc<Mutex<BudgetLedger>>,
         clock: Arc<dyn JobClock>,
@@ -145,20 +143,21 @@ impl JobRuntime {
                     "handlerValidationPanicked".into(),
                 ));
             }
-            Ok(Ok(s)) => s,
-            Ok(Err(e)) => {
+            Ok(Ok(stages)) => stages,
+            Ok(Err(error)) => {
                 self.repo
                     .mark_failed_unstarted(ctx, job_id, "handlerValidationFailed")
                     .await?;
-                return Err(PortError::from(e));
+                return Err(PortError::from(error));
             }
         };
         // 排队取消已登记：调度器确认 notStarted 后终结，不进入预算/claim。
         let latest = self.repo.get(ctx, job_id.clone()).await?;
         if latest.view.cancel_requested {
-            let cancelled =
-                self.repo
-                    .confirm_cancelled_not_started(ctx, job_id, EffectOutcome::NotStarted)?;
+            let cancelled = self
+                .repo
+                .confirm_cancelled_not_started(ctx, job_id, EffectOutcome::NotStarted)
+                .await?;
             return Ok(JobResult {
                 state: cancelled.view.state,
                 effect_outcome: EffectOutcome::NotStarted,
@@ -176,11 +175,11 @@ impl JobRuntime {
             self.clock_ms,
         ) {
             Ok(p) => p,
-            Err(e) => {
+            Err(error) => {
                 self.repo
                     .mark_failed_unstarted(ctx, job_id, "jobBudgetRejected")
                     .await?;
-                return Err(PortError::from(e));
+                return Err(PortError::from(error));
             }
         };
         // D1：派发/收尾任一路径失败，必须释放全部许可；成功路径才按 consumed 核销。
@@ -192,6 +191,10 @@ impl JobRuntime {
             }
             Err(err) => {
                 permits.release(false);
+                let _ = self
+                    .repo
+                    .mark_pending_verification(ctx, job_id, "dispatchNeedsVerification")
+                    .await;
                 Err(err)
             }
         }
@@ -207,25 +210,6 @@ impl JobRuntime {
         stages: &[crate::job::handler::StageSpec],
     ) -> Result<JobResult, PortError> {
         let claim = self.repo.claim(ctx, job_id.clone(), worker.clone()).await?;
-        let result = self
-            .dispatch_claimed(ctx, job_id, worker, handler, stages, &claim)
-            .await;
-        if result.is_err() {
-            // Fenced atomic terminal write: a stale worker cannot overwrite a new owner.
-            self.repo.fail_claimed(ctx, &claim, "jobDispatchFailed")?;
-        }
-        result
-    }
-
-    async fn dispatch_claimed(
-        &self,
-        ctx: &RequestContext,
-        job_id: &JobId,
-        worker: &WorkerId,
-        handler: Arc<dyn crate::job::handler::JobHandler>,
-        stages: &[StageSpec],
-        claim: &datazen_platform_api::dto::job::JobClaim,
-    ) -> Result<JobResult, PortError> {
         let cancel = CancelToken::new();
         let mut progress = JobProgress::default();
         let mut any_boundary = false;
@@ -233,8 +217,8 @@ impl JobRuntime {
         let mut saw_failed = false;
         let mut saw_cancelled = false;
         let mut committed_all = Vec::new();
-        let mut failure_reason = None;
         let mut failure_effect = EffectOutcome::NotStarted;
+        let mut failure_reason = None;
         for spec in stages {
             let latest = self.repo.get(ctx, job_id.clone()).await?;
             if latest.view.cancel_requested {
@@ -244,51 +228,94 @@ impl JobRuntime {
                 saw_cancelled = true;
                 break;
             }
+            let stage_started_at = self.clock.now();
             let stage_record = StageRecord {
                 job_id: job_id.clone(),
                 stage_id: spec.stage_id.clone(),
                 kind: spec.kind.clone(),
                 claimed_by: Some(worker.clone()),
                 execution_ids: Vec::new(),
-                started_at: Some(self.clock.now()),
+                started_at: Some(stage_started_at.clone()),
                 finished_at: None,
             };
-            self.repo.record_stage(ctx, claim, stage_record).await?;
-            let outcome = match self
-                .run_stage_watched(ctx, job_id, handler.as_ref(), spec, &cancel)
-                .await
-            {
+            self.repo.record_stage(ctx, &claim, stage_record).await?;
+            let result = self
+                .run_stage_watched(ctx, job_id, handler.clone(), spec, &cancel)
+                .await;
+            let outcome = match result {
                 Ok(outcome) => outcome,
-                Err(_) => {
+                Err(failure) => {
+                    let finished_at = self.clock.now();
+                    let stage_record = StageRecord {
+                        job_id: job_id.clone(),
+                        stage_id: spec.stage_id.clone(),
+                        kind: spec.kind.clone(),
+                        claimed_by: Some(worker.clone()),
+                        execution_ids: Vec::new(),
+                        started_at: Some(stage_started_at.clone()),
+                        finished_at: Some(finished_at),
+                    };
+                    self.repo.record_stage(ctx, &claim, stage_record).await?;
                     saw_failed = true;
                     saw_unknown = true;
-                    failure_reason = Some("handlerStageFailedOrPanicked".to_string());
+                    failure_effect = EffectOutcome::Unknown;
+                    failure_reason = Some(failure.code().to_string());
                     break;
                 }
             };
-            if outcome.terminal != StageTerminal::Succeeded {
-                failure_effect = outcome.effect_outcome;
-                failure_reason = Some(
-                    if outcome.terminal == StageTerminal::Unknown {
-                        "unknownCommitBoundary"
-                    } else {
-                        "handlerStageTerminated"
-                    }
-                    .to_string(),
-                );
-            }
             progress = accumulate(progress, outcome.progress);
             any_boundary |= !outcome.commit_boundaries.is_empty();
             saw_unknown |= outcome.terminal == StageTerminal::Unknown
                 || outcome.effect_outcome == EffectOutcome::Unknown;
             saw_failed |= outcome.terminal == StageTerminal::Failed;
             saw_cancelled |= outcome.terminal == StageTerminal::Cancelled;
+            if outcome.terminal != StageTerminal::Succeeded {
+                failure_effect = outcome.effect_outcome;
+                failure_reason = Some(if outcome.terminal == StageTerminal::Unknown {
+                    "unknownCommitBoundary".to_string()
+                } else {
+                    "handlerStageTerminated".to_string()
+                });
+            }
             for b in &outcome.commit_boundaries {
                 self.repo
-                    .record_commit_boundary(ctx, claim, b.clone())
+                    .record_commit_boundary(ctx, &claim, b.clone())
                     .await?;
                 committed_all.push(b.clone());
             }
+            let finished_at = self.clock.now();
+            self.repo
+                .record_stage(
+                    ctx,
+                    &claim,
+                    StageRecord {
+                        job_id: job_id.clone(),
+                        stage_id: spec.stage_id.clone(),
+                        kind: spec.kind.clone(),
+                        claimed_by: Some(worker.clone()),
+                        execution_ids: outcome.execution_ids.clone(),
+                        started_at: Some(stage_started_at),
+                        finished_at: Some(finished_at),
+                    },
+                )
+                .await?;
+            self.repo
+                .record_artifacts(ctx, &claim, &outcome.artifact_ids)
+                .await?;
+            if let Some(result) = handler.durable_result(&outcome) {
+                if result.stage_id != spec.stage_id
+                    || result
+                        .artifact_ids
+                        .iter()
+                        .any(|artifact| !outcome.artifact_ids.contains(artifact))
+                {
+                    return Err(PortError::BackendUnavailable(
+                        "handler result does not match its stage output".into(),
+                    ));
+                }
+                self.repo.record_domain_result(ctx, &claim, result).await?;
+            }
+            self.repo.record_progress(ctx, &claim, progress).await?;
             if outcome.terminal != StageTerminal::Succeeded {
                 break;
             }
@@ -312,7 +339,7 @@ impl JobRuntime {
                 verification_evidence: evidence,
                 recovery_policy: "resumeAfterVerify".to_string(),
             };
-            self.repo.save_checkpoint(ctx, claim, checkpoint).await?;
+            self.repo.save_checkpoint(ctx, &claim, checkpoint).await?;
         }
         let (state, effect) = match (saw_unknown, saw_failed, saw_cancelled, any_boundary) {
             (true, ..) => (JobState::Failed, EffectOutcome::Unknown),
@@ -324,30 +351,58 @@ impl JobRuntime {
         };
         let latest = self.repo.get(ctx, job_id.clone()).await?;
         // 终态 CAS 会清 claim，因此先在仍有效的 claim 下写效果结局，再落终态。
-        self.repo.set_effect_outcome(ctx, claim, effect)?;
+        let error_code = if failure_reason.is_some() {
+            failure_reason.clone()
+        } else if saw_unknown {
+            Some("unknownCommitBoundary".to_string())
+        } else if saw_failed {
+            Some("stageFailed".to_string())
+        } else {
+            None
+        };
+        let pending_reason = saw_unknown.then(|| {
+            failure_reason
+                .clone()
+                .unwrap_or_else(|| "unknownCommitBoundary".to_string())
+        });
         self.repo
-            .compare_and_set_state(ctx, claim, latest.state_version, state)
+            .finish(
+                ctx,
+                &claim,
+                latest.state_version,
+                state,
+                effect,
+                progress,
+                error_code.clone(),
+                pending_reason,
+            )
             .await?;
-        if let Some(reason) = &failure_reason {
-            self.repo.mark_pending_verification(ctx, job_id, reason)?;
-        }
         Ok(JobResult {
             state,
             effect_outcome: effect,
             progress,
-            error: failure_reason,
+            error: error_code,
         })
     }
 
-    /// Executes in the dispatch task; stage faults are caught before watcher abort + await.
+    /// 跑一个阶段，同时挂一个阶段内取消看守者（CANCEL_WATCH）。
+    ///
+    /// 阶段内取消的可达性只由这一处保证：取消意图的落地点是仓储的
+    /// `cancel_requested`，而 `run_stage` 在阶段内不再接触仓储，因此在阶段执行
+    /// 期间必须有一个并发观察者把该标志翻译成本次派发共享的 [`CancelToken`]。
+    /// 阶段任务无论正常返回、返回错误或 panic 都会先结束；随后看守者被 abort + await
+    /// 回收，因此 `dispatch` 返回时不存在仍持有 `repo` / `ctx` 的游离任务（§2.3）。
+    ///
+    /// 取消不制造提交边界：看守者只翻转令牌，什么也不写。阶段是否回滚在途批次、
+    /// 是否给出 `StageTerminal::Cancelled`，仍完全由 handler 决定。
     async fn run_stage_watched(
         &self,
         ctx: &RequestContext,
         job_id: &JobId,
-        handler: &dyn crate::job::handler::JobHandler,
+        handler: Arc<dyn crate::job::handler::JobHandler>,
         spec: &StageSpec,
         cancel: &CancelToken,
-    ) -> Result<StageOutcome, PortError> {
+    ) -> Result<StageOutcome, StageRunFailure> {
         let watch = CancelWatch::spawn(
             self.repo.clone(),
             ctx.clone(),
@@ -355,29 +410,29 @@ impl JobRuntime {
             cancel.clone(),
             self.watchers.clone(),
         );
-        // Catch each poll in this task: no detached handler may continue writing after return.
-        // Never copy a panic payload or backend error into a user-visible reason.
-        let mut stage = handler.run_stage(spec, cancel);
-        let outcome = std::future::poll_fn(|cx| {
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| stage.as_mut().poll(cx)))
-            {
-                Ok(std::task::Poll::Pending) => std::task::Poll::Pending,
-                Ok(std::task::Poll::Ready(result)) => {
-                    std::task::Poll::Ready(result.map_err(|_| ()))
-                }
-                Err(_) => std::task::Poll::Ready(Err(())),
-            }
-        })
-        .await;
+        let handler_for_stage = handler.clone();
+        let stage_spec = spec.clone();
+        let stage_cancel = cancel.clone();
+        let stage = tokio::spawn(async move {
+            handler_for_stage
+                .run_stage(&stage_spec, &stage_cancel)
+                .await
+        });
         // 先 abort 再 await：await 返回之后这条任务确定已经结束，不会在
         // dispatch 返回后继续读仓储、继续持有请求上下文。
+        let stage_result = stage.await;
         watch.join().await;
-        outcome.map_err(|_| PortError::BackendUnavailable("handlerStageFailedOrPanicked".into()))
+        match stage_result {
+            Ok(Ok(outcome)) => Ok(outcome),
+            Ok(Err(_)) => Err(StageRunFailure::HandlerFailed),
+            Err(error) if error.is_panic() => Err(StageRunFailure::HandlerPanicked),
+            Err(_) => Err(StageRunFailure::HandlerStopped),
+        }
     }
 }
 
-/// 阶段内取消看守者的句柄：正常路径 `join`（abort + await），异常展开时 `Drop` 兜底
-/// abort，两者都不会留下游离任务。计数器在两条路径上都要减，所以放在 `Drop`。
+/// 阶段内取消看守者的句柄：正常路径 `join`（abort + await），调用方异常展开时 `Drop`
+/// 兜底 abort。计数器在两条路径上都要减，所以放在 `Drop`。
 struct CancelWatch {
     handle: Option<tokio::task::JoinHandle<()>>,
     live: Arc<AtomicUsize>,
@@ -385,7 +440,7 @@ struct CancelWatch {
 
 impl CancelWatch {
     fn spawn(
-        repo: Arc<InMemoryJobRepository>,
+        repo: Arc<dyn JobRuntimeRepository>,
         ctx: RequestContext,
         job_id: JobId,
         cancel: CancelToken,
@@ -410,12 +465,29 @@ impl CancelWatch {
 
 impl Drop for CancelWatch {
     fn drop(&mut self) {
-        // 阶段 panic 导致 `join` 没跑到时，这里仍然 abort；走到 `join` 时句柄已被取走。
+        // 调用方异常展开导致 `join` 没跑到时，这里仍然 abort；正常 join 时句柄已被取走。
         if let Some(handle) = self.handle.take() {
             handle.abort();
         }
         // 计数只在 Drop 里归还，所以 `join`（正常路径）与展开（异常路径）两条路都不会漏减。
         self.live.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StageRunFailure {
+    HandlerFailed,
+    HandlerPanicked,
+    HandlerStopped,
+}
+
+impl StageRunFailure {
+    fn code(self) -> &'static str {
+        match self {
+            Self::HandlerFailed => "handlerFailedUnknown",
+            Self::HandlerPanicked => "handlerPanickedUnknown",
+            Self::HandlerStopped => "handlerStoppedUnknown",
+        }
     }
 }
 
@@ -426,13 +498,13 @@ impl Drop for CancelWatch {
 /// `cancel_requested` 为真就翻转内核那一个 [`CancelToken`] 并立即退出——此后内核
 /// 的 `cancel()` 调用有且只有这一个来源，handler 不再需要自己那一条通道。
 async fn watch_cancel_request(
-    repo: Arc<InMemoryJobRepository>,
+    repo: Arc<dyn JobRuntimeRepository>,
     ctx: RequestContext,
     job_id: JobId,
     cancel: CancelToken,
 ) {
     loop {
-        match repo.cancel_poll(&ctx, &job_id) {
+        match repo.cancel_poll(&ctx, &job_id).await {
             Ok(snapshot) => {
                 if snapshot.cancel_requested {
                     cancel.cancel();

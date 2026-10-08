@@ -4,6 +4,7 @@
 //! 拆分只搬运代码：夹具与导入经 `use super::*;` 全部来自父模块，断言与被测调用逐字未改。
 
 use super::*;
+use datazen_platform_api::dto::job::JobRecoveryVerdict;
 
 // ------------------------------------------------ runtime 生命周期旅程
 fn runtime_with(
@@ -124,8 +125,9 @@ impl JobHandler for ErrHandler {
 }
 
 /// Handler Err converges durably; unknown side effects are not called rollback.
+/// The runtime maps the sanitized handler failure to Failed/Unknown and releases permits.
 #[tokio::test]
-async fn run_stage_error_propagates_and_releases_all_permits() {
+async fn run_stage_error_fails_job_and_releases_all_permits() {
     let (repo, clock) = repo_clock();
     let c = ctx();
     repo.accept(
@@ -165,7 +167,7 @@ async fn run_stage_error_propagates_and_releases_all_permits() {
     assert_eq!(result.effect_outcome, EffectOutcome::Unknown);
     assert_eq!(
         result.error.as_deref(),
-        Some("handlerStageFailedOrPanicked")
+        Some("handlerFailedUnknown")
     );
     assert_eq!(runtime.active_cancel_watchers(), 0);
     let queried = repo.get(&c, JobId::new("job-e1")).await.expect("query");
@@ -382,7 +384,7 @@ async fn panic_converges_before_return_and_can_be_queried() {
         .is_some());
     assert_eq!(
         queried.view.pending_verification_reason.as_deref(),
-        Some("handlerStageFailedOrPanicked")
+        Some("handlerPanickedUnknown")
     );
     assert!(
         runtime
@@ -467,10 +469,14 @@ async fn validation_panic_is_unstarted_failure_and_never_claims_budget() {
         .expect("query");
     assert_eq!(queried.view.state, JobState::Failed);
     assert_eq!(queried.view.effect_outcome, Some(EffectOutcome::NotStarted));
-    assert_eq!(
-        queried.view.pending_verification_reason.as_deref(),
-        Some("handlerValidationPanicked")
-    );
+    assert_eq!(queried.view.error.as_deref(), Some("handlerValidationPanicked"));
+    let details = repo
+        .get_details(JobId::new("validation-job"))
+        .expect("details");
+    assert!(matches!(
+        details.recovery.map(|recovery| recovery.verdict),
+        Some(JobRecoveryVerdict::NotExecuted)
+    ));
     assert_eq!(ledger.lock().expect("ledger").permits().count(), 0);
     assert_eq!(runtime.active_cancel_watchers(), 0);
 }
@@ -513,10 +519,14 @@ async fn validation_error_is_unstarted_failure_without_started_stage() {
         .expect("query failed validation");
     assert_eq!(record.view.state, JobState::Failed);
     assert_eq!(record.view.effect_outcome, Some(EffectOutcome::NotStarted));
-    assert_eq!(
-        record.view.pending_verification_reason.as_deref(),
-        Some("handlerValidationFailed")
-    );
+    assert_eq!(record.view.error.as_deref(), Some("handlerValidationFailed"));
+    let details = repo
+        .get_details(JobId::new("validation-error-job"))
+        .expect("details");
+    assert!(matches!(
+        details.recovery.map(|recovery| recovery.verdict),
+        Some(JobRecoveryVerdict::NotExecuted)
+    ));
     assert!(record.view.stage.is_none());
     assert!(record.stages.is_empty());
     assert_eq!(ledger.lock().expect("ledger").permits().count(), 0);

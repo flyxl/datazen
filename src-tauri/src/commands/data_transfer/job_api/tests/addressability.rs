@@ -99,7 +99,7 @@ async fn an_apply_job_publishes_its_id_before_anything_is_written() {
 
     // The id the caller just received is already a handle: the read side resolves
     // it and reports the same `queued` state.
-    let read = read_job(&view.job_id)
+    let read = read_job(&test.state, &view.job_id)
         .await
         .expect("an admitted Job must be readable by the id its caller holds");
     assert_eq!(read.job_id.as_str(), view.job_id);
@@ -148,29 +148,30 @@ async fn an_apply_job_can_be_cancelled_through_the_id_it_already_published() {
     let job_id = admitted.view.job_id.clone();
 
     assert!(
-        cancel_data_transfer_job(&job_id)
+        cancel_data_transfer_job(&test.state, &job_id)
             .await
             .expect("cancelling a known Job must not fail"),
         "the host accepted this id at admission, so it owns the cancel"
     );
     assert!(
-        job_cancel_requested(&job_id)
+        job_cancel_requested(&test.state, &job_id)
             .await
             .expect("a cancel lookup must not fail"),
         "the cancel must be recorded on the Job the caller is holding, \
          otherwise the caller has no way to know it landed"
     );
 
-    // The same fact has to be visible from outside the cancel helper, because the
-    // UI learns about a pending cancel by reading the Job, not by asking.
-    let read = read_job(&job_id)
+    // Queued cancellation is confirmed as NotStarted immediately, so the
+    // persisted read model is already terminal before a detached dispatcher runs.
+    let read = read_job(&test.state, &job_id)
         .await
         .expect("the cancelled Job is still readable");
     assert!(
         read.cancel_requested,
         "a caller that only polls getJob would never see the cancel otherwise"
     );
-    assert_eq!(read.state, JobState::Queued, "the Job has not settled yet");
+    assert_eq!(read.state, JobState::Cancelled);
+    assert_eq!(read.effect_outcome, Some(EffectOutcome::NotStarted));
 
     let finished = admitted
         .drive
@@ -222,7 +223,7 @@ async fn a_detached_apply_finishes_on_its_own_and_becomes_readable() {
     );
     assert!(!view.job_id.is_empty(), "an empty id is not a handle");
 
-    let terminal = poll_until_terminal(&view.job_id).await;
+    let terminal = poll_until_terminal(&test.state, &view.job_id).await;
     assert_eq!(
         terminal.state,
         JobState::Succeeded,
@@ -301,7 +302,7 @@ async fn an_apply_command_returns_while_the_write_it_owes_is_still_blocked() {
         .await
         .expect("the detached continuation must reach the write on its own task");
 
-    let blocked = read_job(&view.job_id)
+    let blocked = read_job(&test.state, &view.job_id)
         .await
         .expect("an admitted Job stays readable while its write is blocked");
     assert_eq!(
@@ -332,7 +333,7 @@ async fn an_apply_command_returns_while_the_write_it_owes_is_still_blocked() {
 
     gate.release();
 
-    let terminal = poll_until_terminal(&view.job_id).await;
+    let terminal = poll_until_terminal(&test.state, &view.job_id).await;
     assert_eq!(
         terminal.job_id.as_str(),
         view.job_id,
@@ -354,12 +355,15 @@ async fn an_apply_command_returns_while_the_write_it_owes_is_still_blocked() {
 ///
 /// Bounded on purpose: a Job that never leaves `queued` — because the write was
 /// dropped instead of spawned — has to surface as a failure rather than hang.
-async fn poll_until_terminal(job_id: &str) -> datazen_platform_api::dto::job::JobView {
+async fn poll_until_terminal(
+    state: &crate::commands::AppState,
+    job_id: &str,
+) -> datazen_platform_api::dto::job::JobView {
     let deadline = Duration::from_secs(30);
     let poll = Duration::from_millis(20);
     let started = std::time::Instant::now();
     loop {
-        let view = read_job(job_id)
+        let view = read_job(state, job_id)
             .await
             .unwrap_or_else(|error| panic!("an admitted Job must stay readable: {error:?}"));
         if view.state.is_terminal() {
@@ -380,9 +384,13 @@ async fn poll_until_terminal(job_id: &str) -> datazen_platform_api::dto::job::Jo
 /// caller can tell "you asked about a job I don't have" from "the query broke".
 #[tokio::test]
 async fn reading_an_unknown_job_id_is_reported_as_not_found() {
-    let error = read_job("transfer-dataTransferApply-00000000-0000-0000-0000-000000000000")
-        .await
-        .expect_err("an id no run ever issued must not resolve");
+    let test = TestAppState::with_options(mock_options()).await;
+    let error = read_job(
+        &test.state,
+        "transfer-dataTransferApply-00000000-0000-0000-0000-000000000000",
+    )
+    .await
+    .expect_err("an id no run ever issued must not resolve");
     assert!(
         matches!(error, crate::commands::error::CommandError::NotFound(_)),
         "a lookup miss has its own error variant: {error:?}"

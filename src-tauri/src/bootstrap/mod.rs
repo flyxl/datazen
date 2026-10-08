@@ -17,7 +17,9 @@ pub use helpers::is_mcp_stdio_mode;
 pub use run::{run, run_mcp_stdio};
 
 // Crate-internal re-exports used by tray, commands, testing.
-pub(crate) use app_state::finish_app_state;
+pub(crate) use app_state::{
+    build_desktop_job_host, finish_app_state, recover_desktop_jobs_at_startup,
+};
 pub(crate) use helpers::{
     build_tracing_env_filter, is_fullscreen_for_monitor, parse_log_settings_fields,
     resolve_context_dir, resolve_log_dir, resolve_prompts_dir, should_auto_start_embedded_mcp,

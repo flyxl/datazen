@@ -10,8 +10,103 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
-pub const SCHEMA_VERSION: i32 = 1;
+pub const SCHEMA_VERSION: i32 = 2;
 pub const MAX_RUN_ROWS: usize = 500;
+
+const JOB_SCHEMA_V2: &str = r#"
+CREATE TABLE jobs (
+  job_id TEXT PRIMARY KEY NOT NULL,
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','running','succeeded','failed','cancelled')),
+  state_version INTEGER NOT NULL CHECK (state_version > 0),
+  stage TEXT,
+  owner_json TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  execution_ids_json TEXT NOT NULL DEFAULT '[]',
+  artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+  progress_json TEXT NOT NULL,
+  effect_outcome TEXT,
+  cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+  pending_verification_reason TEXT,
+  result_error_code TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  worker_id TEXT,
+  claim_stage_id TEXT,
+  claim_expires_at TEXT,
+  claim_generation INTEGER NOT NULL DEFAULT 0 CHECK (claim_generation >= 0),
+  cancel_requested_at TEXT,
+  consumed_plan_id TEXT,
+  CONSTRAINT ck_jobs_claim_pair CHECK ((worker_id IS NULL) = (claim_expires_at IS NULL)),
+  CONSTRAINT ck_jobs_running_claim CHECK (state <> 'running' OR worker_id IS NOT NULL),
+  UNIQUE (organization_id, consumed_plan_id)
+);
+CREATE INDEX idx_jobs_list ON jobs (organization_id, created_at, job_id);
+CREATE INDEX idx_jobs_recovery ON jobs (organization_id, state, updated_at);
+CREATE INDEX idx_jobs_claim_expiry ON jobs (claim_expires_at) WHERE state = 'running';
+
+CREATE TABLE job_idempotency_receipts (
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  idempotency_key_hash TEXT NOT NULL,
+  request_digest TEXT NOT NULL,
+  receipt_projection TEXT NOT NULL,
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, owner_principal_id, idempotency_key_hash)
+);
+
+CREATE TABLE job_stages (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  stage_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  claimed_by TEXT,
+  execution_ids_json TEXT NOT NULL DEFAULT '[]',
+  started_at TEXT,
+  finished_at TEXT,
+  PRIMARY KEY (job_id, stage_id)
+);
+
+CREATE TABLE job_commit_boundaries (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  sequence INTEGER NOT NULL,
+  boundary_json TEXT NOT NULL,
+  PRIMARY KEY (job_id, sequence)
+);
+
+CREATE TABLE job_checkpoints (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  state_version INTEGER NOT NULL,
+  checkpoint_json TEXT NOT NULL,
+  PRIMARY KEY (job_id, state_version)
+);
+
+CREATE TABLE job_result_details (
+  job_id TEXT PRIMARY KEY NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  plan_id TEXT,
+  plan_digest TEXT,
+  selection_revision INTEGER,
+  recovery_json TEXT
+);
+
+CREATE TABLE job_domain_results (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  stage_id TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  PRIMARY KEY (job_id, stage_id)
+);
+
+CREATE TABLE job_artifact_refs (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  artifact_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  PRIMARY KEY (job_id, artifact_id)
+);
+CREATE INDEX idx_job_artifact_expiry ON job_artifact_refs (expires_at);
+"#;
 
 #[derive(Debug, Error)]
 pub enum AppDbError {
@@ -43,6 +138,7 @@ impl AppDb {
             std::fs::create_dir_all(parent).map_err(|e| AppDbError::Other(e.to_string()))?;
         }
         let conn = Connection::open(&db_path)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
         let db = Arc::new(Self {
             db_path,
@@ -79,8 +175,19 @@ impl AppDb {
         f(&conn)
     }
 
+    pub(super) fn with_conn_mut<T, F>(&self, f: F) -> Result<T, AppDbError>
+    where
+        F: FnOnce(&mut Connection) -> Result<T, AppDbError>,
+    {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppDbError::Other(format!("app db lock poisoned: {e}")))?;
+        f(&mut conn)
+    }
+
     fn init_schema(&self) -> Result<(), AppDbError> {
-        self.with_conn(|conn| {
+        self.with_conn_mut(|conn| {
             conn.execute_batch(
                 r#"
                 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -165,19 +272,27 @@ impl AppDb {
                 "#,
             )?;
 
-            let applied: Option<i32> = conn
-                .query_row(
-                    "SELECT version FROM schema_migrations WHERE version = ?1",
-                    params![SCHEMA_VERSION],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if applied.is_none() {
-                conn.execute(
-                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
-                    params![SCHEMA_VERSION, Utc::now().to_rfc3339()],
+            let mut tx =
+                conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let current: i32 = tx.query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                [],
+                |row| row.get(0),
+            )?;
+            if current < 1 {
+                tx.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?1)",
+                    params![Utc::now().to_rfc3339()],
                 )?;
             }
+            if current < 2 {
+                tx.execute_batch(JOB_SCHEMA_V2)?;
+                tx.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?1)",
+                    params![Utc::now().to_rfc3339()],
+                )?;
+            }
+            tx.commit()?;
             Ok(())
         })
     }
@@ -186,6 +301,7 @@ impl AppDb {
 }
 
 mod dashboards;
+pub(crate) mod jobs;
 mod runs;
 mod workflows;
 
@@ -193,8 +309,13 @@ mod workflows;
 #[path = "app_db_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "app_db_jobs_tests.rs"]
+mod job_tests;
+
 // Re-exported so the paths `app_db::X` keep resolving for `store/mod.rs`
 // and anything else that names these types through this module.
 pub use dashboards::{DashboardRecord, DashboardWorkflowRef, WidgetRecord};
+pub(crate) use jobs::SqliteJobRepository;
 pub use runs::WidgetRunRecord;
 pub use workflows::{WorkflowRecord, WorkflowVisibility};

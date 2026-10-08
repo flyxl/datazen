@@ -60,6 +60,7 @@ function rawJobView(overrides: Record<string, unknown> = {}): Record<string, unk
     effectOutcome: 'completed',
     cancelRequested: false,
     pendingVerificationReason: null,
+    error: null,
     progress: { read: '3', converted: '2', attempted: '1', committed: '1', unknown: '0' },
     ...overrides,
   };
@@ -94,6 +95,7 @@ describe('parseJobView', () => {
     expect(job.effectOutcome).toBe('completed');
     expect(job.cancelRequested).toBe(false);
     expect(job.pendingVerificationReason).toBeNull();
+    expect(job.error).toBeNull();
     expect(job.progress.committed).toBe(1);
     expect(job.executionIds).toEqual(['exec-1']);
   });

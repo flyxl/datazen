@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::ai::SchemaContextBuilder;
@@ -14,6 +14,11 @@ use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::{mcp, redis_flush_gate, wapps, workflow};
+use datazen_platform_api::context::RequestContext;
+use datazen_platform_api::dto::job::RecoveryFilter;
+use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
+use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen_runtime::job::{JobClock, SystemJobClock};
 
 use super::helpers::unique_driver_types;
 
@@ -38,12 +43,14 @@ pub(super) async fn build_gui_app_state(
         t_drv.elapsed()
     );
 
-    Ok(finish_app_state(
+    let state = finish_app_state(
         store,
         registry,
         Arc::new(SyncAdapterRegistry::new()),
         prompts_dir,
-    ))
+    );
+    recover_desktop_jobs_at_startup(&state).await?;
+    Ok(state)
 }
 
 /// Build AppState for headless MCP (shells only; AI/prompts/sync load on first use).
@@ -61,12 +68,51 @@ pub(super) async fn build_app_state(
         needed.len(),
         t_drv.elapsed()
     );
-    Ok(finish_app_state(
+    let state = finish_app_state(
         store,
         registry,
         Arc::new(SyncAdapterRegistry::new()),
         prompts_dir,
+    );
+    recover_desktop_jobs_at_startup(&state).await?;
+    Ok(state)
+}
+
+pub(crate) fn build_desktop_job_host(
+    app_db: Arc<crate::store::AppDb>,
+) -> Arc<datazen_runtime::job::DesktopJobHost> {
+    let clock: Arc<dyn JobClock> = Arc::new(SystemJobClock);
+    let repository: Arc<dyn datazen_runtime::job::JobRuntimeRepository> = Arc::new(
+        crate::store::app_db::jobs::SqliteJobRepository::new(app_db, clock.clone(), 300),
+    );
+    let ledger = Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default())));
+    Arc::new(datazen_runtime::job::DesktopJobHost::new(
+        repository, ledger, clock,
     ))
+}
+
+pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<(), String> {
+    let ctx = RequestContext::new(
+        OrganizationId::new("datazen-local"),
+        PrincipalId::new("datazen-local-user"),
+        None,
+        ClientInstanceId::new("datazen-local-client"),
+        RequestId::new(format!("startup-{}", uuid::Uuid::new_v4())),
+        None,
+    );
+    let candidates = state
+        .desktop_job_host
+        .mark_restart_candidates_for_verification(&ctx, RecoveryFilter::default())
+        .await
+        .map_err(|_| "desktop job recovery scan failed".to_string())?;
+    let interrupted = candidates
+        .iter()
+        .filter(|job| job.view.pending_verification_reason.is_some())
+        .count();
+    if interrupted > 0 {
+        tracing::info!(interrupted, "interrupted desktop jobs require verification");
+    }
+    Ok(())
 }
 
 pub(crate) fn finish_app_state(
@@ -86,6 +132,7 @@ pub(crate) fn finish_app_state(
     let data_dir = store.data_dir().to_path_buf();
     let history_db = store.history_db();
     let app_db = store.app_db();
+    let desktop_job_host = build_desktop_job_host(app_db.clone());
 
     // Runtime wapps: scan {appData}/wapps/ for installed packages.
     let wapps_dir = data_dir.join("wapps");
@@ -122,6 +169,7 @@ pub(crate) fn finish_app_state(
         wapps: wapp_manager,
         cancel_registry: crate::ai::CancellationRegistry::default(),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
+        desktop_job_host,
     };
     if let Ok(adapter) = state.platform.require() {
         if let Err(error) = adapter.inject(state.store.clone(), state.driver_registry.clone()) {

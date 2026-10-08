@@ -524,6 +524,7 @@ Data Sync 任务文件是唯一曾经写入过运行时 `dbSessionId` 的地方�
 | 状态 | 位置 | 失效表现 |
 |---|---|---|
 | 会话取消标志 | `services/job_registry.rs` | 进程级表，key 是 job ID；应用重启后旧 job ID 不可取消，且先于开始执行到达的取消标志会被保留 |
+| P5 Data Transfer handler / endpoint session / dispatch future | `DesktopJobHost` 调用方的当前进程任务与 handler | 运行时 session 和 handler 不落盘；AppDb 只保存 Job facts。进程重启将旧 Queued 标成 NotExecuted、旧 Running 标成 PendingVerification，不恢复旧副作用执行 |
 | AI 调用取消令牌 | `ai/cancel.rs` | 按 AI 调用注册 / 注销 |
 | 查询流执行注册表 | `AppState.query_executions` | 按 `QueryExecutionId` 归属校验；未知或已结束的 ID 一律拒绝 |
 | 会话事务句柄 | `AppState.session_transactions` | 键是 `dbSessionId`；只有显式断开才回滚 |

@@ -108,6 +108,8 @@ export interface JobView {
   cancelRequested: boolean;
   /** Why the job is pending verification (e.g. `outcomeUnknown`), else null. */
   pendingVerificationReason: string | null;
+  /** Safe result detail written by the Job runtime, else null. */
+  error: string | null;
   /** P5 five-bucket progress; zero when nothing has been reported yet. */
   progress: JobProgress;
 }
@@ -128,6 +130,55 @@ export interface CommitBoundary {
   payloadDigest: string | null;
   evidence: readonly string[];
   verifiedAt: Timestamp | null;
+}
+
+export type JobRecoveryVerdict =
+  | 'notExecuted'
+  | 'pendingVerification'
+  | 'resumeAfterVerify'
+  | 'reject'
+  | 'requireManualReview';
+
+/** Safe recovery receipt; reasonCode is a stable code, never handler text. */
+export interface JobRecoveryResult {
+  verdict: JobRecoveryVerdict;
+  resumeThrough?: number;
+  reasonCode?: string;
+}
+
+/** A bounded, stable handler receipt; it has no free-form field for SQL or driver messages. */
+export interface JobDomainResult {
+  stageId: Id;
+  resultCode: string;
+  outcomeCode: string;
+  counters: readonly { code: string; value: Counter }[];
+  items: readonly {
+    itemId: Id;
+    outcomeCode: string;
+    reasonCode?: string;
+  }[];
+  artifactIds: readonly Id[];
+}
+
+/** Stable target identity used by an explicit fresh-session recovery verifier. */
+export interface JobRecoveryTarget {
+  connectionId: Id;
+  objectIds: readonly Id[];
+}
+
+/** Durable detail query returned by `get_transfer_job_details`. */
+export interface JobDetails {
+  job: JobView;
+  stateVersion: Counter;
+  planId?: string;
+  planDigest?: string;
+  selectionRevision?: number;
+  commitBoundaries: readonly CommitBoundary[];
+  recovery?: JobRecoveryResult;
+  domainResults: readonly JobDomainResult[];
+  recoveryTargets: readonly JobRecoveryTarget[];
+  targetBeforeFingerprint?: string;
+  recoveryPolicy?: string;
 }
 
 export type ResultCompleteness = 'pending' | 'complete' | 'truncated';

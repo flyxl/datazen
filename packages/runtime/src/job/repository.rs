@@ -17,8 +17,8 @@ use async_trait::async_trait;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
-    Checkpoint, CommitBoundary, JobClaim, JobDefinition, JobFilter, JobRecord, JobState,
-    RecoveryFilter, StageRecord,
+    Checkpoint, CommitBoundary, JobClaim, JobDefinition, JobDomainResult, JobFilter, JobRecord,
+    JobRecoveryResult, JobRecoveryVerdict, JobState, RecoveryFilter, StageRecord,
 };
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
@@ -30,6 +30,8 @@ use crate::job::error::JobError;
 use crate::job::plan::project_frozen_plan;
 use crate::job::time::{after_seconds, JobClock};
 use datazen_platform_api::ports::job::JobRepository;
+
+mod runtime_methods;
 
 /// 单个 Job 的可变行。
 #[derive(Debug, Clone)]
@@ -65,6 +67,8 @@ struct Inner {
     checkpoints: HashMap<(JobId, u64), Checkpoint>,
     /// 逐批已确认提交边界（§7）：record_commit_boundary 落库，按产生顺序递增。
     boundaries: HashMap<JobId, Vec<CommitBoundary>>,
+    recovery: HashMap<JobId, JobRecoveryResult>,
+    domain_results: HashMap<(JobId, StageId), JobDomainResult>,
 }
 
 /// `JobRepository` 的内存实现。线程安全：单个 `Mutex` 保护全部索引（同一把锁即受理事务）。
@@ -296,22 +300,34 @@ impl InMemoryJobRepository {
     ) -> Result<JobRecord, PortError> {
         let _ = ctx;
         let mut inner = lock_inner(&self.inner)?;
-        let row = inner
-            .jobs
-            .get_mut(job_id)
-            .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
-        if row.claim.is_some() || row.record.view.state != JobState::Queued {
-            return Err(PortError::CasConflict {
-                entity: "job",
-                id: job_id.as_str().into(),
-            });
-        }
-        row.record.view.state = JobState::Failed;
-        row.record.view.effect_outcome = Some(EffectOutcome::NotStarted);
-        row.record.view.pending_verification_reason = Some(reason.into());
-        row.record.view.updated_at = self.clock.now();
-        row.record.state_version = JobStateVersion::new(row.record.state_version.get() + 1);
-        Ok(row.record.clone())
+        let record = {
+            let row = inner
+                .jobs
+                .get_mut(job_id)
+                .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
+            if row.claim.is_some() || row.record.view.state != JobState::Queued {
+                return Err(PortError::CasConflict {
+                    entity: "job",
+                    id: job_id.as_str().into(),
+                });
+            }
+            row.record.view.state = JobState::Failed;
+            row.record.view.effect_outcome = Some(EffectOutcome::NotStarted);
+            row.record.view.error = Some(reason.into());
+            row.record.view.pending_verification_reason = None;
+            row.record.view.updated_at = self.clock.now();
+            row.record.state_version = JobStateVersion::new(row.record.state_version.get() + 1);
+            row.record.clone()
+        };
+        inner.recovery.insert(
+            job_id.clone(),
+            JobRecoveryResult {
+                verdict: JobRecoveryVerdict::NotExecuted,
+                resume_through: None,
+                reason_code: Some(reason.to_string()),
+            },
+        );
+        Ok(record)
     }
 
     /// 标记待核验（effectOutcome 保留 unknown，不改 state）。
@@ -327,6 +343,18 @@ impl InMemoryJobRepository {
             .jobs
             .get_mut(job_id)
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
+        if !row.record.view.state.is_terminal() {
+            row.record.view.state = JobState::Failed;
+            row.record.view.effect_outcome = Some(if row.claim.is_some() {
+                EffectOutcome::Unknown
+            } else {
+                EffectOutcome::NotStarted
+            });
+            row.record.view.error = Some(reason.into());
+            row.record.state_version =
+                JobStateVersion::new(row.record.state_version.get().saturating_add(1));
+            row.claim = None;
+        }
         row.record.view.pending_verification_reason = Some(reason.into());
         row.record.view.updated_at = self.clock.now();
         Ok(row.record.clone())
@@ -408,6 +436,7 @@ impl JobRepository for InMemoryJobRepository {
                 effect_outcome: None,
                 cancel_requested: false,
                 pending_verification_reason: None,
+                error: None,
                 progress: Default::default(),
             },
             definition: definition.clone(),
@@ -492,7 +521,21 @@ impl JobRepository for InMemoryJobRepository {
             .jobs
             .get_mut(&claim.job_id)
             .ok_or_else(|| PortError::NotFound(claim.job_id.as_str().into()))?;
-        row.record.stages.push(stage.clone());
+        if let Some(existing) = row
+            .record
+            .stages
+            .iter_mut()
+            .find(|existing| existing.stage_id == stage.stage_id)
+        {
+            *existing = stage.clone();
+        } else {
+            row.record.stages.push(stage.clone());
+        }
+        for execution_id in &stage.execution_ids {
+            if !row.record.view.execution_ids.contains(execution_id) {
+                row.record.view.execution_ids.push(execution_id.clone());
+            }
+        }
         row.record.view.stage = Some(stage.stage_id.as_str().to_string());
         row.record.view.updated_at = self.clock.now();
         Ok(())
@@ -669,7 +712,8 @@ impl JobRepository for InMemoryJobRepository {
                 matches!(
                     row.record.view.state,
                     JobState::Queued | JobState::Running | JobState::Cancelled
-                )
+                ) || row.record.view.pending_verification_reason.is_some()
+                    || inner.recovery.contains_key(&row.record.view.job_id)
             })
             .map(|row| row.record.clone())
             .collect();
