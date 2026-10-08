@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act, waitFor, cleanup } from '@testing-library/react';
 import { useQueryExecutionGate } from '../query/useQueryExecutionGate';
 import { usePanelStore } from '../../../stores/panelStore';
 import { useSettingsStore } from '../../../stores/settingsStore';
@@ -174,6 +174,11 @@ describe('[tester] useQueryExecutionGate', () => {
   });
 
   afterEach(() => {
+    // vitest.config.ts 里 globals 关闭，@testing-library/react 的自动 cleanup 不会注册。
+    // 不显式卸载的话，hook 内 50ms 的 paramFocusTimerRef 定时器会在 jsdom
+    // 拆掉之后才触发回调，回调里的 document.querySelector 直接抛
+    // "ReferenceError: document is not defined"。
+    cleanup();
     vi.restoreAllMocks();
   });
 
