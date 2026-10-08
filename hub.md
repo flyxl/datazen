@@ -169,3 +169,11 @@
 - 真实待办：runtime panic/普通 handler 错误收敛与失败原因；三件套共享物理端点身份；公共持久化 Job 受理/查询/进度与后台执行；Transfer 前端受理后订阅及取消；Sync/Schema Diff 前端切 Job；恢复核验与真实提交边界验证；驱动参数上限与 TLS provider；platform-api 穷尽错误契约测试；注释清理；最终静机 flake 验证和全驱动回归。
 - 本轮未执行门禁；上述只读结论不得当作测试通过。保留既有未核验边界，最终以实现和独立验证更新正式文档。
 - Wave 1：runtime 收敛、共享端点、驱动质量，分别独立 worktree。三件套公共后端与前端接入依赖 Wave 1 合流。
+
+### Wave 1 已验收并合入（2026-10-08）
+
+- `codex/p5-shared-endpoints` @ `1ad1893ce0f18d22e14db7d76ac32766a8b5b9ae` → merge `9bc5ebf30e34a4d7d17575f09fedc7aa564a86e9`。独立验收：Sync 120/120、Transfer Job API 48/48、Schema Diff 17/17、migration identity 46/46；默认端口删除变异由专用用例杀死，恢复后 1/1 通过；验收 worktree clean，首尾 fingerprint 相同。命令均为 `cargo test --offline --no-default-features -p datazen --lib <filter>`。
+- `codex/p5-runtime-converge` @ `da12d71cc895631f71b9ca61c87a0d4085e4a74c` → merge `ddda3776f86840a0fe4f43b9e48e035e79a0177e`。独立验收：`cargo test -p datazen-runtime --lib --tests --offline --locked` 37 个 test binaries，921 passed / 0 failed / 0 ignored；将 cancellation guard 移到 stage record 之后的变异由 stage projection 断言杀死，恢复后 focused 36 passed；worktree/fingerprint 恢复干净。未覆盖真实 verify-error IPC 入口，仅覆盖 runtime handler/repository recovery verdict 接口。
+- `codex/p5-driver-quality` @ `47b767433a3d935416c84c100d891a3aea4a1418` → merge `fec7a577727b6dbf0f6b206db0ca47cbe5bb69df`。独立验收：`cargo test --offline --locked -p datazen-platform-api -p datazen-driver-sqlite -p datazen-driver-redis -p datazen-driver-rqlite -p datazen-driver-turso` 25 个 test-result rows，774 passed / 0 failed / 8 ignored；SQLite 上限 +1 变异在真实 DB 边界断言失败，回滚后 fingerprint 相同。命令需本机 Redis listener 权限，使用独立验证 target。
+- 三次合入后 `cargo metadata --no-deps --format-version 1 --offline` EXIT=0，25 packages / 25 workspace members。当前集成 HEAD `fec7a577727b6dbf0f6b206db0ca47cbe5bb69df`，该读数仅为元数据 sanity，不代表最终回归。Tester 只读发现 Data Transfer overlap 注释把 `connection_id` 说成身份比较键，与 runtime 实际使用 `service_key` 矛盾；列入后续注释事实核对，不改行为。
+- Wave 2 进行中：`codex/p5-job-host-core`（共享持久化 Job 存储、Desktop host 与详情 read-model）、`codex/p5-transfer-job-ui`（受理后进度/取消/重附着）。Transfer UI 依赖新增 `get_transfer_job_details(jobId)`；Core 冻结接口为 `JobDetails { job, planId, planDigest, selectionRevision, commitBoundaries, recoveryVerdict, resumeThrough, reasonCode }`，只投影安全 DTO，不持久化原始 SQL、凭据、session/lease/token 或 endpoint 配置。恢复未完成时仅需核验，不自动重跑副作用。
