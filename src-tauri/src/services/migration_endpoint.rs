@@ -606,4 +606,48 @@ mod tests {
             identify(&second, &*driver()).service_key
         );
     }
+    #[tokio::test]
+    async fn session_aliases_are_refused_and_cross_database_sessions_remain_legal() {
+        use crate::testing::app_state::TestAppState;
+        use datazen_runtime::job::{detect_endpoint_overlap, EndpointRef, EndpointRole};
+        let test = TestAppState::new().await;
+        let (_, source) = test.save_and_connect("source-alias").await;
+        let (_, target) = test.save_and_connect("target-alias").await;
+        let source_identity = session_identity(&test.state.connection_manager, &source, None)
+            .await
+            .unwrap();
+        let target_identity = session_identity(&test.state.connection_manager, &target, None)
+            .await
+            .unwrap();
+        let mut endpoints = vec![
+            EndpointRef {
+                connection_id: source_identity.connection_id,
+                service_key: source_identity.service_key,
+                objects: vec!["users".into()],
+                role: EndpointRole::SourceReader,
+            },
+            EndpointRef {
+                connection_id: target_identity.connection_id,
+                service_key: target_identity.service_key,
+                objects: vec!["users".into()],
+                role: EndpointRole::TargetWriter,
+            },
+        ];
+        assert!(detect_endpoint_overlap(&endpoints).is_err());
+        let other = session_identity(
+            &test.state.connection_manager,
+            &source,
+            Some(("another-database", None)),
+        )
+        .await
+        .unwrap();
+        endpoints[1].connection_id = other.connection_id;
+        endpoints[1].service_key = other.service_key;
+        assert!(detect_endpoint_overlap(&endpoints).is_ok());
+        assert!(
+            session_identity(&test.state.connection_manager, "missing", None)
+                .await
+                .is_err()
+        );
+    }
 }

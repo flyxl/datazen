@@ -104,6 +104,7 @@ pub async fn gated_pair(
         .await;
     let mut target_config = sample_postgres_config(&format!("{prefix}-target"));
     target_config.database_type = "postgresql".into();
+    target_config.host = Some("target.example.invalid".into());
     test.store.save_connection(target_config).await.unwrap();
     let (_, source_session) = test.save_and_connect(&format!("{prefix}-source")).await;
     let target_session = test.connect_config(&format!("{prefix}-target")).await;
