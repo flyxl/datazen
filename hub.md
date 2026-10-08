@@ -192,3 +192,5 @@
 - Transfer UI retest `24fdb85c92857ecfd7874be0c9d229eb17a7d5ae`：独立验收 `TEST_PASSED`；Core `8bf6b437` backend-client DTO 精确 overlay 后三个 tsc + restore guard EXIT=0；Vitest 10 files / 99 passed；watcher 投影丢弃变异由 hydration assertion 击杀，恢复后 fingerprint 一致。WDIO 无可执行 app。只读建议：用 Core 导出的 JobDetails 取代 UI 镜像子集，并核对 `error` 可空字段序列化；返修接入共享 DTO 后需重新验收。
 
 - Transfer UI shared DTO commit `a6ecc37b40417e2f7f73dfb2a0c7d126afd98849` 独立验收 `TEST_PASSED`：codegen、Host tsc、restore guard EXIT=0；5 focused Vitest files / 82 passed；缺失 error fallback 变异触发预期语义失败，恢复后 fingerprint/clean 与基线一致。实现直接依赖 `@datazen/backend-client` `JobDetails`/`parseJobView`，不再镜像 DTO。尚待 Core 增加 `notExecuted` verdict 后核对联合类型与 UI 显示。
+
+- 2026-10-08：基于 Core API checkpoint `8bf6b437206f0e87d95e1b08fed908ee11afacda` 新建 `codex/p5-sync-job` / `.worktrees/datazen-p5-sync-job`，负责 Data Sync 真实 Job 接入；Core 正在补 queued-after-restart `notExecuted` 状态，消费者需合入后适配。该轨不得改 Core/AppDb/runtime/Transfer/SchemaDiff 文件，必要公共接口扩展由 Core 负责。
