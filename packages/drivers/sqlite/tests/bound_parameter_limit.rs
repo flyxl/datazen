@@ -123,3 +123,86 @@ async fn runtime_limit_rejects_oversized_statement_and_splits_large_writes() {
     );
     driver.disconnect(handle).await.unwrap();
 }
+
+#[tokio::test]
+async fn actual_transfer_splits_a_wide_500_row_page_at_the_linked_runtime_limit() {
+    use datazen_data_transfer::{
+        execute_transfer_data, TableInspectResult, TransferJob, ValueFormatter,
+    };
+    use serde_json::json;
+    use std::collections::HashMap;
+    let source = SqliteDriver::new();
+    let target = SqliteDriver::new();
+    let source_handle = source.connect(&config(":memory:")).await.unwrap();
+    let target_handle = target.connect(&config(":memory:")).await.unwrap();
+    let columns: Vec<String> = (0..150).map(|n| format!("c{n}")).collect();
+    let definitions: Vec<String> = columns
+        .iter()
+        .enumerate()
+        .map(|(n, column)| {
+            format!(
+                "{column} INTEGER{}",
+                if n == 0 { " PRIMARY KEY" } else { "" }
+            )
+        })
+        .collect();
+    let ddl = format!("CREATE TABLE wide ({})", definitions.join(","));
+    source.execute(&source_handle, &ddl).await.unwrap();
+    target.execute(&target_handle, &ddl).await.unwrap();
+    let values: Vec<String> = (0..150).map(|n| format!("id+{n}")).collect();
+    source.execute(&source_handle, &format!("WITH RECURSIVE n(id) AS (SELECT 0 UNION ALL SELECT id+1 FROM n WHERE id<499) INSERT INTO wide SELECT {} FROM n", values.join(","))).await.unwrap();
+    let schema = source
+        .get_table_schema(&source_handle, "wide", "main", None)
+        .await
+        .unwrap();
+    let schema_map = HashMap::from([("wide".into(), schema)]);
+    let job: TransferJob = serde_json::from_value(json!({
+        "source": { "dbSessionId": "source", "database": "main", "schema": null },
+        "target": { "dbSessionId": "target", "database": "main", "schema": null },
+        "mode": "data", "writeMode": "insert", "tables": [],
+        "options": { "batchSize": 500, "stopOnError": true }
+    }))
+    .unwrap();
+    let mappings: Vec<serde_json::Value> = columns
+        .iter()
+        .map(|column| json!({"sourceColumn": column, "targetColumn": column}))
+        .collect();
+    let table: TableInspectResult = serde_json::from_value(json!({
+        "sourceTable": "wide", "targetTable": "wide", "status": "MATCHED",
+        "createNew": false, "enabled": true, "columnMappings": mappings,
+        "sourceColumns": columns, "targetColumns": columns, "sourcePrimaryKeys": ["c0"],
+        "incompatibleReason": null, "sourceRowCount": 500
+    }))
+    .unwrap();
+    let result = execute_transfer_data(
+        &source,
+        &source_handle,
+        &target,
+        &target_handle,
+        &job,
+        &[table],
+        &schema_map,
+        &ValueFormatter::SameFamily,
+        None,
+        false,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.rows_inserted, 500, "{:?}", result.tables);
+    assert!(!result.partial);
+    let result_rows = target
+        .query(
+            &target_handle,
+            "SELECT COUNT(*), SUM(c0), SUM(c149) FROM wide",
+        )
+        .await
+        .unwrap()
+        .rows;
+    for (cell, expected) in result_rows[0].iter().zip([500, 124750, 199250]) {
+        assert!(matches!(cell, Some(Value::Integer(actual)) if *actual == expected));
+    }
+    source.disconnect(source_handle).await.unwrap();
+    target.disconnect(target_handle).await.unwrap();
+}

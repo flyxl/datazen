@@ -89,7 +89,7 @@ impl LiveRedis {
 
         if tls {
             let certificate = Command::new("openssl")
-                .args(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1"])
+                .args(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:FALSE", "-addext", "extendedKeyUsage=serverAuth"])
                 .arg("-keyout").arg(data_dir.join("key.pem"))
                 .arg("-out").arg(data_dir.join("cert.pem"))
                 .stdout(Stdio::null()).stderr(Stdio::null()).status();
