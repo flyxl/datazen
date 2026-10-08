@@ -201,27 +201,23 @@ function addMemberDir(snapshot, rel, name, manifestBody) {
 }
 
 /**
- * Append a path dependency to an existing manifest.
+ * Append a path dependency into one named TOML table.
  *
- * `packages/runtime/Cargo.toml` is chosen over any driver manifest on
+ * The table is named, never implied by "end of file", because an end-of-file
+ * append lands in whatever table happens to be last. Both manifests this suite
+ * edits end with `[dev-dependencies]` — `packages/runtime/Cargo.toml` gained
+ * one in the very change under test — and `normalBuildClosure` walks only
+ * normal and build dependencies, so a probe that landed there was invisible to
+ * the guard. M2/M3/M5 shipped that way: they reported the guard staying green
+ * against a dependency it could not see, and the suite read a vacuous proof as
+ * a pass.
+ *
+ * `packages/runtime/Cargo.toml` is the edit target over any driver manifest on
  * purpose: `scripts/resolve-drivers.mjs` owns the placeholder sections under
  * `packages/drivers/*` and rewrites them during every build, so a probe that
  * edited one would be racing a generator rather than testing the guard.
- */
-function addDependency(snapshot, rel, line) {
-  snapshot.backup(rel);
-  const abs = join(REPO_ROOT, rel);
-  writeFileSync(abs, `${readFileSync(abs, 'utf8').trimEnd()}\n${line}\n`);
-}
-
-/**
- * Append a path dependency into one named TOML table instead of the end of file.
  *
- * `addDependency` is only correct when `[dependencies]` is the last table.
- * `packages/platform-api/Cargo.toml` ends with `[dev-dependencies]`, so an
- * end-of-file append there would silently produce a dev-dependency — a weaker
- * probe than the rule intends, and one whose outcome depends on whether
- * `cargo metadata` happens to resolve dev-deps of a workspace member.
+ * @param table e.g. `dependencies` — never `dev-dependencies`; see above.
  */
 function addDependencyTo(snapshot, rel, table, line) {
   snapshot.backup(rel);
@@ -230,6 +226,30 @@ function addDependencyTo(snapshot, rel, table, line) {
   const out2 = text.replace(`\n[${table}]\n`, `\n[${table}]\n${line}\n`);
   if (out2 === text) throw new Error(`${rel} has no [\`${table}\`] table to extend`);
   writeFileSync(abs, out2);
+}
+
+/**
+ * Is `name = …` declared inside `[table]`, not merely somewhere in the file?
+ *
+ * Each mutation returns a check that proves its probe is on disk, and for the
+ * manifest probes "on disk" is not the question that matters — "on disk in the
+ * table the rule is about" is. M2/M3/M5 answered the first question with
+ * `/^tauri = \{ path = /m`, which an end-of-file append satisfies just as
+ * well as a `[dependencies]` entry, so a probe that landed in
+ * `[dev-dependencies]` reported itself applied while the guard never saw it.
+ *
+ * @param {string} text contents of one `Cargo.toml`
+ * @param {string} name dependency key, e.g. `tauri`
+ * @param {string} table table to look in, e.g. `dependencies`
+ */
+function declaredInTable(text, name, table) {
+  const at = text.search(new RegExp(`^\\[${table}\\]$`, 'm'));
+  if (at === -1) return false;
+  const body = text.slice(at).split('\n').slice(1);
+  const end = body.findIndex((l) => l.startsWith('['));
+  return body
+    .slice(0, end === -1 ? body.length : end)
+    .some((l) => l.startsWith(`${name} = `));
 }
 
 /**
@@ -326,8 +346,13 @@ const MUTATIONS = [
     title: 'the platform kernel takes a dependency on a tauri* crate',
     crate: 'datazen-runtime',
     apply(snapshot, scratch) {
-      addDependency(snapshot, 'packages/runtime/Cargo.toml', `tauri = { path = "${stubCrate('tauri', scratch)}" }`);
-      return () => /^tauri = \{ path = /m.test(readOrEmpty('packages/runtime/Cargo.toml'));
+      addDependencyTo(
+        snapshot,
+        'packages/runtime/Cargo.toml',
+        'dependencies',
+        `tauri = { path = "${stubCrate('tauri', scratch)}" }`,
+      );
+      return () => declaredInTable(readOrEmpty('packages/runtime/Cargo.toml'), 'tauri', 'dependencies');
     },
   },
   {
@@ -336,30 +361,55 @@ const MUTATIONS = [
     title: 'the platform kernel takes a dependency on an HTTP framework',
     crate: 'datazen-runtime',
     apply(snapshot, scratch) {
-      addDependency(snapshot, 'packages/runtime/Cargo.toml', `axum = { path = "${stubCrate('axum', scratch)}" }`);
-      return () => /^axum = \{ path = /m.test(readOrEmpty('packages/runtime/Cargo.toml'));
+      addDependencyTo(
+        snapshot,
+        'packages/runtime/Cargo.toml',
+        'dependencies',
+        `axum = { path = "${stubCrate('axum', scratch)}" }`,
+      );
+      return () => declaredInTable(readOrEmpty('packages/runtime/Cargo.toml'), 'axum', 'dependencies');
     },
   },
   {
     id: 'M4',
     rule: 'F-04',
-    title: 'platform-api depends back on datazen-runtime (ports <-> use cases cycle)',
+    title: 'platform-api takes a dependency outside its allowed layers',
     crate: 'datazen-platform-api',
     apply(snapshot) {
-      // `packages/platform-api` is a real package now, and already a workspace
-      // member, so this only adds the back-edge. It must back up the manifest it
-      // edits rather than register the package directory for removal: the revert
-      // here is an `rm -rf`, and registering a real package deleted its 26
-      // tracked files.
+      // The back-edge into `datazen-runtime` that this used to add is not
+      // reachable by any probe: `platform-api → runtime` closes the cycle
+      // `runtime → application → platform-api`, and cargo refuses a normal
+      // dependency cycle outright — `cargo metadata` exits 101 with "cyclic
+      // package dependency" before the guard reads a package. The probe proved
+      // nothing about F-04 and reported the cargo error instead.
+      //
+      // Every layer outside F-04's allow-list is either that cycle
+      // (`datazen-runtime`, `datazen-application`, `datazen`) or a crate that
+      // drags the whole host into the closure, so the edge is stood up against
+      // a throwaway `server` crate instead. `server` is a declared layer that
+      // ships nothing yet, and this run is the one place where it exists —
+      // which is what the vacuous F-06 line in the baseline already reported.
+      //
+      // `packages/platform-api` is a real package, so back its manifest up
+      // rather than register the package directory for removal: the revert here
+      // is an `rm -rf`, and registering a real package deleted its 26 tracked
+      // files.
+      addMembers(snapshot, ['server']);
+      addMemberDir(snapshot, 'server', 'datazen-server-probe', '[dependencies]\n');
       addDependencyTo(
         snapshot,
         'packages/platform-api/Cargo.toml',
         'dependencies',
-        `datazen-runtime = { path = "${join(REPO_ROOT, 'packages/runtime')}" }`,
+        `datazen-server-probe = { path = "${join(REPO_ROOT, 'server')}" }`,
       );
       return () =>
-        /^\[dependencies\]$/m.test(readOrEmpty('packages/platform-api/Cargo.toml')) &&
-        /datazen-runtime = \{ path = /m.test(readOrEmpty('packages/platform-api/Cargo.toml'));
+        readOrEmpty('Cargo.toml').includes('"server",') &&
+        readOrEmpty('server/Cargo.toml').includes('name = "datazen-server-probe"') &&
+        declaredInTable(
+          readOrEmpty('packages/platform-api/Cargo.toml'),
+          'datazen-server-probe',
+          'dependencies',
+        );
     },
   },
   {
@@ -368,8 +418,13 @@ const MUTATIONS = [
     title: 'the platform kernel takes a dependency on a UI-runtime crate',
     crate: 'datazen-runtime',
     apply(snapshot, scratch) {
-      addDependency(snapshot, 'packages/runtime/Cargo.toml', `react = { path = "${stubCrate('react', scratch)}" }`);
-      return () => /^react = \{ path = /m.test(readOrEmpty('packages/runtime/Cargo.toml'));
+      addDependencyTo(
+        snapshot,
+        'packages/runtime/Cargo.toml',
+        'dependencies',
+        `react = { path = "${stubCrate('react', scratch)}" }`,
+      );
+      return () => declaredInTable(readOrEmpty('packages/runtime/Cargo.toml'), 'react', 'dependencies');
     },
   },
   {
@@ -449,9 +504,15 @@ function runMutation(mutation) {
         ? stdout.split('\n').some((l) => l.includes('ERROR') && l.includes('crates/arch-probe'))
         : violationMentions(stdout, mutation.rule, mutation.crate);
 
-    const cargoBroke = /could not parse|Could not read|failed to load|error: no matching package named/i.test(
-      stdout,
-    );
+    // `cargo metadata` failing is not a red guard, it is a guard that never
+    // ran. The wording is cargo's and varies by failure — "cyclic package
+    // dependency" is how M4 reported itself when its probe closed a cycle — so
+    // match the shape the guard reports a cargo failure with as well as the
+    // messages seen so far.
+    const cargoBroke =
+      /could not parse|Could not read|failed to load|error: no matching package named|cyclic package dependency|`cargo metadata` exited 101/i.test(
+        stdout,
+      );
     if (cargoBroke && !mentions) {
       return { ok: false, code, why: `guard failed on a broken build, not on ${mutation.rule}` };
     }
@@ -482,7 +543,19 @@ function main() {
     return 2;
   }
 
-  const baseline = runGuard();
+  // The baseline is a guard run like any other, and `cargo metadata` rewrites
+  // `Cargo.lock` on some toolchains even with no manifest change. Give it the
+  // same snapshot every mutation gets: without one, that rewrite becomes the
+  // content M1 backs up, no revert restores HEAD's bytes, and the run ends on a
+  // `REVERT FAILED` that no probe caused.
+  const baselineSnapshot = new TreeSnapshot(REPO_ROOT);
+  baselineSnapshot.backup('Cargo.lock');
+  let baseline;
+  try {
+    baseline = runGuard();
+  } finally {
+    baselineSnapshot.revert();
+  }
   if (baseline.code !== 0) {
     out('BASELINE FAILED — the guard is already red on the clean tree, so a red mutation proves nothing.');
     process.stdout.write(`${baseline.stdout.split('\n').slice(-20).join('\n')}\n`);
