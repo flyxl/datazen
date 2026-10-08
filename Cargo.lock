@@ -1963,7 +1963,6 @@ dependencies = [
 name = "datazen-driver-redis"
 version = "0.0.8"
 dependencies = [
- "rustls 0.23.43",
  "async-trait",
  "base64 0.22.1",
  "datazen-driver-api",
@@ -1971,6 +1970,7 @@ dependencies = [
  "futures-util",
  "redis",
  "rmpv",
+ "rustls 0.23.43",
  "serde",
  "serde_json",
  "tauri",
@@ -1985,8 +1985,8 @@ dependencies = [
 name = "datazen-driver-rqlite"
 version = "0.0.8"
 dependencies = [
- "datazen-data-transfer",
  "async-trait",
+ "datazen-data-transfer",
  "datazen-driver-api",
  "datazen-driver-http-support",
  "reqwest",
@@ -2000,13 +2000,13 @@ dependencies = [
 name = "datazen-driver-sqlite"
 version = "0.0.8"
 dependencies = [
- "libsqlite3-sys",
  "async-trait",
  "base64 0.22.1",
  "chrono",
- "datazen-driver-api",
  "datazen-data-transfer",
+ "datazen-driver-api",
  "futures-util",
+ "libsqlite3-sys",
  "same-file",
  "serde_json",
  "sqlparser",
@@ -2037,8 +2037,8 @@ dependencies = [
 name = "datazen-driver-turso"
 version = "0.0.8"
 dependencies = [
- "datazen-data-transfer",
  "async-trait",
+ "datazen-data-transfer",
  "datazen-driver-api",
  "datazen-driver-http-support",
  "reqwest",
