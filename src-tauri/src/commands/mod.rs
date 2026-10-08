@@ -48,7 +48,7 @@ pub use encryption_key::*;
 #[cfg(feature = "webdriver")]
 pub use dialog::*;
 pub use driver_command::*;
-pub(crate) use error::CommandError;
+pub(crate) use error::{CmdExt, CommandError};
 pub use export::*;
 pub use file::*;
 pub use history::*;

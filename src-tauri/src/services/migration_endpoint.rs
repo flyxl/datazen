@@ -61,8 +61,8 @@ pub(crate) async fn session_identity(
     manager: &super::ConnectionManager,
     db_session_id: &str,
     scope: Option<(&str, Option<&str>)>,
-) -> Result<EndpointIdentity, crate::commands::error::CommandError> {
-    use crate::commands::error::{CmdExt, CommandError};
+) -> Result<EndpointIdentity, crate::commands::CommandError> {
+    use crate::commands::{CmdExt, CommandError};
     let owner = manager
         .owner_connection_id(db_session_id)
         .await
@@ -79,10 +79,9 @@ pub(crate) async fn session_identity(
         .await
         .cmd_err("migration_endpoint")?;
     if let Some((database, schema)) = scope {
-        config.database = Some(crate::commands::sync::types::resolve_db_name(
-            Some(database),
-            config.database.as_deref(),
-        ));
+        config.database = normalized(Some(database))
+            .or_else(|| normalized(config.database.as_deref()))
+            .map(str::to_owned);
         config.schema = crate::services::metadata_schema(
             driver.as_ref(),
             schema,
@@ -97,10 +96,10 @@ pub(crate) async fn session_identity(
 pub(crate) fn checked_identify(
     config: &ConnectionConfig,
     driver: &dyn DatabaseDriver,
-) -> Result<EndpointIdentity, crate::commands::error::CommandError> {
+) -> Result<EndpointIdentity, crate::commands::CommandError> {
     let identity = identify(config, driver);
     if identity.connection_id.as_str().trim().is_empty() || identity.service_key.is_empty() {
-        return Err(crate::commands::error::CommandError::Validation(
+        return Err(crate::commands::CommandError::Validation(
             "Migration endpoint requires an owning connection and physical location".into(),
         ));
     }
