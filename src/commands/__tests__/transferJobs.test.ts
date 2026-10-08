@@ -97,6 +97,22 @@ describe('transferJobCommands', () => {
     expect(invokeMock).toHaveBeenCalledWith('cancel_data_transfer', { jobId: 'job-1' });
   });
 
+  it('polls an accepted Job through get_job and list_jobs', async () => {
+    const { transferJobCommands } = await import('../transferJobs');
+
+    await transferJobCommands.getJob('job-1');
+    await transferJobCommands.listJobs({ states: ['queued', 'running'] });
+    await transferJobCommands.getDetails('job-1');
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'get_job', { jobId: 'job-1' });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'list_jobs', {
+      states: ['queued', 'running'],
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(3, 'get_transfer_job_details', {
+      jobId: 'job-1',
+    });
+  });
+
   it('never reaches the legacy execute_data_transfer command after the cutover', async () => {
     const { transferJobCommands } = await import('../transferJobs');
 

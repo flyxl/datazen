@@ -6,9 +6,11 @@ import { transferCommands } from '../../../commands/transfer';
 import type {
   TransferApplyJobView,
   TransferBackendScope,
+  TransferJobDetails,
   TransferPrepareJobRequest,
   TransferPrepareJobView,
 } from '../../../commands/transferJobs';
+import { toCounter, type Counter, type JobView } from '@datazen/backend-client';
 import { clearTransferLimitationsDismissed } from '../../../lib/transferLimitationsPrefs';
 
 /**
@@ -28,6 +30,8 @@ const {
   prepareTransferJobMock,
   prepareKeys,
   applyTransferJobMock,
+  getTransferJobMock,
+  getTransferJobDetailsMock,
   cancelTransferJobMock,
   getDatabasesMock,
   stableT,
@@ -43,6 +47,8 @@ const {
     prepareTransferJobMock: vi.fn(),
     prepareKeys: [] as (string | undefined)[],
     applyTransferJobMock: vi.fn(),
+    getTransferJobMock: vi.fn(),
+    getTransferJobDetailsMock: vi.fn(),
     cancelTransferJobMock: vi.fn(),
     getDatabasesMock: vi.fn(),
     stableT,
@@ -126,6 +132,8 @@ vi.mock('../../../commands/transferJobs', () => ({
       return toPrepareView(await prepareTransferJobMock(request.job));
     },
     apply: (...args: unknown[]) => applyTransferJobMock(...args),
+    getJob: (...args: unknown[]) => getTransferJobMock(...args),
+    getDetails: (...args: unknown[]) => getTransferJobDetailsMock(...args),
     cancel: (...args: unknown[]) => cancelTransferJobMock(...args),
   },
 }));
@@ -348,6 +356,38 @@ const applySuccess: TransferApplyJobView = {
   updatedAt: 1_700_000_001_000,
 } as unknown as TransferApplyJobView;
 
+function genericTransferJob(
+  overrides: Partial<JobView> & { error?: string | null } = {},
+): JobView & { error?: string | null } {
+  return {
+    jobId: applySuccess.jobId as JobView['jobId'],
+    kind: 'dataTransferApply',
+    state: 'running',
+    stage: 'data',
+    executionIds: [],
+    artifactIds: [],
+    createdAt: 1_700_000_000_000 as JobView['createdAt'],
+    updatedAt: 1_700_000_001_000 as JobView['updatedAt'],
+    effectOutcome: null,
+    cancelRequested: false,
+    pendingVerificationReason: null,
+    progress: {
+      read: 0 as JobView['progress']['read'],
+      converted: 0 as JobView['progress']['converted'],
+      attempted: 0 as JobView['progress']['attempted'],
+      committed: 0 as JobView['progress']['committed'],
+      unknown: 0 as JobView['progress']['unknown'],
+    },
+    ...overrides,
+  };
+}
+
+function counter(value: number): Counter {
+  const parsed = toCounter(value);
+  if (parsed === undefined) throw new Error(`toCounter rejected ${value}`);
+  return parsed;
+}
+
 async function advanceToObjectsStep(emptyTables = false) {
   const { DataTransferWindow } = await import('../DataTransferWindow');
   render(<DataTransferWindow />);
@@ -534,6 +574,45 @@ describe('DataTransferWindow', () => {
     prepareKeys.length = 0;
     applyTransferJobMock.mockReset();
     applyTransferJobMock.mockResolvedValue(applySuccess);
+    getTransferJobMock.mockReset();
+    getTransferJobMock.mockResolvedValue(genericTransferJob());
+    getTransferJobDetailsMock.mockReset();
+    getTransferJobDetailsMock.mockImplementation(async () => {
+      const receiptPromise = applyTransferJobMock.mock.results.at(-1)?.value as
+        | Promise<TransferApplyJobView>
+        | undefined;
+      const receipt = receiptPromise ? await receiptPromise : applySuccess;
+      const latestJobPromise = getTransferJobMock.mock.results.at(-1)?.value as
+        | Promise<JobView>
+        | undefined;
+      const latestJob = latestJobPromise ? await latestJobPromise : undefined;
+      const recovery = receipt.recoveryVerdict
+        ? {
+            verdict: receipt.recoveryVerdict as NonNullable<TransferJobDetails['recovery']>['verdict'],
+            ...(receipt.recoveryResumeThrough !== null
+              ? { resumeThrough: receipt.recoveryResumeThrough }
+              : {}),
+            ...(receipt.recoveryReason !== null ? { reasonCode: receipt.recoveryReason } : {}),
+          }
+        : undefined;
+      return {
+        job: genericTransferJob({
+          jobId: latestJob?.jobId ?? (receipt.jobId as JobView['jobId']),
+          state: latestJob?.state ?? receipt.state,
+          effectOutcome: latestJob ? latestJob.effectOutcome : receipt.effectOutcome,
+          artifactIds:
+            latestJob?.artifactIds ?? (receipt.artifactIds as unknown as JobView['artifactIds']),
+          cancelRequested: latestJob?.cancelRequested ?? false,
+          progress: latestJob?.progress ?? receipt.progress,
+          error: (latestJob as (JobView & { error?: string | null }) | undefined)?.error ?? receipt.error,
+        }),
+        planId: receipt.planId,
+        planDigest: receipt.planDigest,
+        selectionRevision: receipt.selectionRevision,
+        commitBoundaries: receipt.commitBoundaries,
+        recovery,
+      } satisfies TransferJobDetails;
+    });
     cancelTransferJobMock.mockReset();
     cancelTransferJobMock.mockResolvedValue(true);
     Object.defineProperty(navigator, 'clipboard', {
@@ -1821,55 +1900,77 @@ describe('DataTransferWindow', () => {
     );
   });
 
-it('[tester] exposes cancellable execution progress and finishes as success', async () => {
-    let finishApply!: (view: TransferApplyJobView) => void;
-    applyTransferJobMock.mockImplementationOnce(
-      () =>
-        new Promise<TransferApplyJobView>((resolve) => {
-          finishApply = resolve;
+  it('[tester] watches the accepted apply Job and cancels it by its real id', async () => {
+    const zero = {
+      read: counter(0),
+      converted: counter(0),
+      attempted: counter(0),
+      committed: counter(0),
+      unknown: counter(0),
+    };
+    applyTransferJobMock.mockResolvedValueOnce({
+      ...applySuccess,
+      state: 'queued',
+      effectOutcome: 'notStarted',
+      progress: zero,
+      commitBoundaries: [],
+      recoveryVerdict: '',
+      recoveryReason: null,
+    });
+    getTransferJobMock
+      .mockResolvedValueOnce(
+        genericTransferJob({
+          state: 'running',
+          progress: { ...zero, read: counter(2), converted: counter(2), attempted: counter(1) },
         }),
-    );
+      )
+      .mockResolvedValueOnce(
+        genericTransferJob({
+          state: 'cancelled',
+          effectOutcome: 'rolledBack',
+          cancelRequested: true,
+          progress: { ...zero, read: counter(2), converted: counter(2), attempted: counter(1) },
+        }),
+      );
 
     await advanceToPreviewStep('insert');
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
 
-    await waitFor(() => expect(screen.getByTestId('data-transfer-executing-overlay')).toBeTruthy());
-    expect(screen.getAllByText(/transfer.executingProgress/)).toHaveLength(2);
-
-    // `apply_data_transfer_job` mints the Job id server-side and only returns
-    // it with the terminal view, so while the apply is in flight the window
-    // holds no id to address a cancel to. The control stays visible for the
-    // duration, reports that it is unaddressable, and refuses the click instead
-    // of pretending a cancel landed.
-    const cancelButton = screen.getByTestId('data-transfer-cancel');
-    expect(cancelButton).toHaveAttribute('data-cancel-addressable', 'false');
-    expect(cancelButton).toBeDisabled();
-    expect(screen.getByTestId('data-transfer-cancel-pending-id')).toHaveTextContent(
-      'migration.cancel.unknownJob',
+    await waitFor(() => expect(screen.getByTestId('data-transfer-job-active-state')).toBeTruthy());
+    expect(screen.getByTestId('data-transfer-job-active-state')).toHaveAttribute(
+      'data-state',
+      'running',
     );
+    expect(screen.getByTestId('data-transfer-job-active-progress')).toHaveTextContent(
+      '2 / 2 / 1 / 0 / 0',
+    );
+
+    const cancelButton = screen.getByTestId('data-transfer-cancel');
+    expect(cancelButton).toHaveAttribute('data-cancel-addressable', 'true');
+    expect(cancelButton).toHaveAttribute('data-job-id', 'transfer-data-apply-1');
+    expect(cancelButton).not.toBeDisabled();
     fireEvent.click(cancelButton);
-    expect(cancelTransferJobMock).not.toHaveBeenCalled();
 
-    finishApply(applySuccess);
+    await waitFor(() => expect(cancelTransferJobMock).toHaveBeenCalledTimes(1));
+    expect(cancelTransferJobMock).toHaveBeenCalledWith('transfer-data-apply-1');
+    expect(screen.getByTestId('data-transfer-job-active-cancel')).toHaveTextContent(
+      'migration.cancel.requestedInFlight',
+    );
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute(
+      'data-verdict-severity',
+      'active',
+    );
 
-    await waitFor(() => expect(screen.getByTestId('data-transfer-result')).toBeTruthy());
+    await waitFor(
+      () => expect(screen.queryByTestId('data-transfer-job-active-state')).toBeNull(),
+      { timeout: 5000 },
+    );
     const verdict = screen.getByTestId('data-transfer-job-verdict');
-    expect(verdict).toHaveAttribute('data-severity', 'ok');
-    expect(verdict).toHaveAttribute('data-uncertainty', 'none');
-    expect(verdict).toHaveAttribute('data-verified-boundaries', '1');
-    expect(verdict).toHaveAttribute('data-unverified-boundaries', '0');
-    expect(screen.getByTestId('data-transfer-job-verdict-status')).toHaveTextContent(
+    expect(verdict).toHaveAttribute('data-severity', 'failed');
+    expect(verdict).toHaveAttribute('data-cancel-disposition', 'settledRolledBack');
+    expect(screen.getByTestId('data-transfer-job-verdict-status')).not.toHaveTextContent(
       'migration.verdict.ok',
     );
-    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute('data-completed', 'true');
-    expect(screen.queryByTestId('data-transfer-job-reconcile')).toBeNull();
-    expect(screen.queryByTestId('data-transfer-job-uncertainty')).toBeNull();
-    expect(screen.queryByTestId('data-transfer-job-error')).toBeNull();
-
-    // The commit boundary, not a boolean, is what makes it a success.
-    const boundary = screen.getByTestId('data-transfer-job-boundary-users');
-    expect(boundary).toHaveAttribute('data-boundary-verified', 'true');
-    expect(boundary).toHaveTextContent('migration.boundary.verified');
     expect(applyTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         planId: 'plan-job-1',
@@ -1877,8 +1978,10 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
         selectionRevision: 1,
         selection: { sourceTables: ['users'] },
         confirmedDestructive: false,
+        idempotencyKey: 'data-transfer/apply/plan-job-1',
       }),
     );
+    expect(getTransferJobMock).toHaveBeenCalledWith('transfer-data-apply-1');
   });
 
   it('[tester] cancels an admitted plan that was never applied and re-reviews instead of resuming', async () => {
@@ -2192,26 +2295,12 @@ it('[tester] exposes cancellable execution progress and finishes as success', as
     expect(screen.queryByTestId('data-transfer-resume')).toBeNull();
   });
 
-  it('retries a lost commit receipt under the same idempotency key instead of a fresh write', async () => {
+  it('recovers a lost apply receipt under the same idempotency key instead of creating another job', async () => {
     await advanceToPreviewStep('insert');
 
-    // The apply may well have committed; only the receipt was lost.
-    // The window must not present that as a settlement, and the retry has to
-    // repeat the *same* key so the backend's receipt map can answer with the
-    // recorded receipt rather than committing a second time.
+    // The apply may have been accepted before the response was lost. The hook
+    // repeats the original key once so the receipt map returns that same Job.
     applyTransferJobMock.mockRejectedValueOnce(new Error('commit ack lost: transport closed'));
-    fireEvent.click(screen.getByTestId('data-transfer-execute'));
-
-    await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
-    expect(screen.queryByTestId('data-transfer-result')).toBeNull();
-    expect(screen.getByTestId('data-transfer-job-failure')).toHaveAttribute(
-      'data-failure-kind',
-      'other',
-    );
-    expect(screen.getByTestId('data-transfer-job-failure-detail')).toHaveTextContent(
-      'commit ack lost: transport closed',
-    );
-
     applyTransferJobMock.mockResolvedValueOnce({ ...applySuccess, replayed: true });
     fireEvent.click(screen.getByTestId('data-transfer-execute'));
 

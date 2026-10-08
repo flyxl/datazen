@@ -69,6 +69,8 @@ import {
 import { useMigrationJobHydration } from '../../hooks/useMigrationJobHydration';
 import { useTransferJobRun } from '../../hooks/useTransferJobRun';
 import { TransferJobResultPanel } from './TransferJobResultPanel';
+import { DataTransferAttachedJobs } from './DataTransferAttachedJobs';
+import { DataTransferTerminalResults } from './DataTransferTerminalResults';
 import { MigrationJobFailureNotice } from '../../components/migration/MigrationJobFailureNotice';
 
 type WizardStep = 'endpoints' | 'setup' | 'objects' | 'mapping' | 'preview' | 'result';
@@ -1094,6 +1096,15 @@ export function DataTransferWindow() {
           {migrationJobs.hydrationError}
         </div>
       ) : null}
+      <DataTransferAttachedJobs
+        jobs={migrationJobs.hydration?.activeJobs ?? []}
+        excludeJobId={jobRun.applyView?.jobId}
+      />
+      <DataTransferTerminalResults
+        jobs={migrationJobs.hydration?.jobs ?? []}
+        excludeJobId={jobRun.applyView?.jobId}
+        hide={jobRun.applyView !== null}
+      />
 
       <div className="border-b border-edge px-6 py-3">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-1">
@@ -1752,15 +1763,28 @@ export function DataTransferWindow() {
           <ChevronLeft className="h-4 w-4" /> {t('transfer.back')}
         </Button>
         <div className="flex items-center gap-2">
-          {/* A cancel is offered for as long as there is an admitted plan to
-              abandon. While an apply is in flight the server owns the Job id
-              and the control is present but not addressable. */}
+          {/* Before apply, this addresses the admitted prepare Job. Once apply
+              returns its acceptance receipt, the result step addresses the
+              apply Job id while it remains queued/running. */}
           {step === 'preview' && jobRun.prepareView !== null && (
             <Button
               variant="ghost"
               data-testid="data-transfer-cancel"
+              data-job-id={jobRun.cancelTargetJobId ?? undefined}
               data-cancel-addressable={String(jobRun.cancelTargetJobId !== null)}
               disabled={jobRun.cancelTargetJobId === null}
+              onClick={() => void handleCancel()}
+            >
+              {t('transfer.cancel')}
+            </Button>
+          )}
+          {step === 'result' && jobRun.isInFlight && (
+            <Button
+              variant="ghost"
+              data-testid="data-transfer-cancel"
+              data-job-id={jobRun.cancelTargetJobId ?? undefined}
+              data-cancel-addressable={String(jobRun.cancelTargetJobId !== null)}
+              disabled={jobRun.cancelTargetJobId === null || jobRun.cancelRequested}
               onClick={() => void handleCancel()}
             >
               {t('transfer.cancel')}
@@ -1771,13 +1795,9 @@ export function DataTransferWindow() {
               {executeProgress || t('transfer.executing')}
             </span>
           )}
-          {/*
-            A cancel click is a *request*, not a cancellation, and it can
-            only be addressed to a Job id the frontend actually holds. The
-            server mints the Job id and returns it with the terminal view, so
-            while `apply_data_transfer_job` is still in flight there is no id
-            to send — say so instead of pretending the run can be stopped.
-          */}
+          {/* During the admission round-trip no apply id exists yet. As soon as
+              the accepted receipt arrives, the same control is addressable by
+              that id while the worker continues in the background. */}
           {step === 'preview' && executing && jobRun.cancelTargetJobId === null && (
             <p role="status" className="text-sm text-fg-muted" data-testid="data-transfer-cancel-pending-id">
               {t('migration.cancel.unknownJob')}

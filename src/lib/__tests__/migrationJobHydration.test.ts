@@ -6,6 +6,7 @@ import {
   isStalePlanError,
   latestApplyJob,
   MIGRATION_JOB_KINDS,
+  updateMigrationJobProjection,
 } from '../migrationJobHydration';
 import { ApiError, type BackendClient, type JobView } from '@datazen/backend-client';
 
@@ -90,7 +91,14 @@ describe('hydrateMigrationJobs', () => {
           return [jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataSyncApply', state: 'running' })];
         }
         return [
-          jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataSyncApply', pendingVerificationReason: 'outcomeUnknown' }),
+          jobView({
+            jobId: 'j1' as JobView['jobId'],
+            kind: 'dataSyncApply',
+            state: 'cancelled',
+            cancelRequested: true,
+            updatedAt: 1_700_000_002_000 as JobView['updatedAt'],
+          }),
+          jobView({ jobId: 'j3' as JobView['jobId'], kind: 'dataSyncApply', state: 'failed', pendingVerificationReason: 'outcomeUnknown' }),
           jobView({ jobId: 'j2' as JobView['jobId'], kind: 'workflow', pendingVerificationReason: 'outcomeUnknown' }),
         ];
       },
@@ -103,8 +111,51 @@ describe('hydrateMigrationJobs', () => {
     const result = await hydrateMigrationJobs(client, 'dataSync');
 
     expect(order).toEqual(['listJobs', 'getJob:j1', 'listJobs']);
-    expect(result.activeJobs).toHaveLength(1);
+    expect(result.activeJobs).toHaveLength(0);
     expect(result.verificationJobs).toHaveLength(1);
     expect(result.verificationJobs[0]?.kind).toBe('dataSyncApply');
+    expect(result.terminalJobs.map((job) => job.jobId)).toEqual(['j1', 'j3']);
+    expect(result.jobs.map((job) => job.jobId)).toEqual(['j1', 'j3']);
+  });
+
+  it('moves a watched job from active to terminal without losing its latest state', () => {
+    const active = jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataTransferApply', state: 'running' });
+    const terminal = { ...active, state: 'cancelled' as const, cancelRequested: true };
+    const initial = {
+      jobs: [active],
+      activeJobs: [active],
+      terminalJobs: [],
+      verificationJobs: [],
+    };
+
+    const updated = updateMigrationJobProjection(initial, terminal);
+
+    expect(updated.jobs).toEqual([terminal]);
+    expect(updated.activeJobs).toEqual([]);
+    expect(updated.terminalJobs).toEqual([terminal]);
+    expect(updated.verificationJobs).toEqual([]);
+  });
+
+  it('does not let a stale watch update move a terminal job back to active', () => {
+    const terminal = jobView({
+      jobId: 'j1' as JobView['jobId'],
+      kind: 'dataTransferApply',
+      state: 'cancelled',
+      updatedAt: 1_700_000_002_000 as JobView['updatedAt'],
+    });
+    const staleActive = jobView({
+      jobId: terminal.jobId,
+      kind: terminal.kind,
+      state: 'running',
+      updatedAt: 1_700_000_001_000 as JobView['updatedAt'],
+    });
+    const current = {
+      jobs: [terminal],
+      activeJobs: [],
+      terminalJobs: [terminal],
+      verificationJobs: [],
+    };
+
+    expect(updateMigrationJobProjection(current, staleActive)).toBe(current);
   });
 });

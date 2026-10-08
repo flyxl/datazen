@@ -17,15 +17,22 @@ import {
   toTimestamp,
   type CommitBoundary,
   type Counter,
+  type JobView,
   type Timestamp,
 } from '@datazen/backend-client';
 import { useTransferJobRun } from '../useTransferJobRun';
-import type { TransferApplyJobView, TransferPrepareJobView } from '../../commands/transferJobs';
+import type {
+  TransferApplyJobView,
+  TransferJobDetails,
+  TransferPrepareJobView,
+} from '../../commands/transferJobs';
 import type { TransferJob } from '../../commands/transfer';
 
 const prepareMock = vi.hoisted(() => vi.fn());
 const applyMock = vi.hoisted(() => vi.fn());
 const cancelMock = vi.hoisted(() => vi.fn());
+const getJobMock = vi.hoisted(() => vi.fn());
+const getDetailsMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../commands/transferJobs', () => ({
   localBackendScope: () => 'localBackendScope',
@@ -33,6 +40,8 @@ vi.mock('../../commands/transferJobs', () => ({
     prepare: (request: unknown) => prepareMock(request),
     apply: (request: unknown) => applyMock(request),
     cancel: (jobId: unknown) => cancelMock(jobId),
+    getJob: (jobId: unknown) => getJobMock(jobId),
+    getDetails: (jobId: unknown) => getDetailsMock(jobId),
   },
 }));
 
@@ -147,6 +156,30 @@ function applyView(overrides: Partial<TransferApplyJobView> = {}): TransferApply
   };
 }
 
+function genericJobView(overrides: Partial<JobView> = {}): JobView {
+  return {
+    jobId: 'transfer-data-apply-1' as JobView['jobId'],
+    kind: 'dataTransferApply',
+    state: 'running',
+    stage: 'data',
+    executionIds: [],
+    artifactIds: [],
+    createdAt: timestamp(1_700_000_000_000),
+    updatedAt: timestamp(1_700_000_001_000),
+    effectOutcome: null,
+    cancelRequested: false,
+    pendingVerificationReason: null,
+    progress: {
+      read: counter(0),
+      converted: counter(0),
+      attempted: counter(0),
+      committed: counter(0),
+      unknown: counter(0),
+    },
+    ...overrides,
+  };
+}
+
 function renderRun() {
   return renderHook(() => useTransferJobRun());
 }
@@ -168,10 +201,22 @@ describe('useTransferJobRun', () => {
     applyMock.mockResolvedValue(applyView());
     cancelMock.mockReset();
     cancelMock.mockResolvedValue(true);
+    getJobMock.mockReset();
+    getJobMock.mockResolvedValue(genericJobView());
+    getDetailsMock.mockReset();
+    getDetailsMock.mockResolvedValue({
+      job: genericJobView({ state: 'succeeded', effectOutcome: 'completed' }),
+      planId: 'plan-abc',
+      planDigest: 'digest-abc',
+      selectionRevision: 3,
+      commitBoundaries: [verifiedBoundary('users')],
+      recovery: { verdict: 'resumeAfterVerify' },
+    } satisfies TransferJobDetails);
   });
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
   });
 
   it('mints a plan on prepare and parks the run in `prepared`, with no verdict yet', async () => {
@@ -258,6 +303,7 @@ describe('useTransferJobRun', () => {
     expect(request.selection.sourceTables).toEqual(['users']);
     expect(request.confirmedDestructive).toBe(false);
     expect(request.backendScope).toBe('localBackendScope');
+    expect(request.idempotencyKey).toBe('data-transfer/apply/plan-abc');
   });
 
   it('sends an absent table list for a SQL-file run rather than an empty one', async () => {
@@ -293,26 +339,16 @@ describe('useTransferJobRun', () => {
     expect(run.result.current.lastFailure()?.message).toMatch(/already applied/i);
   });
 
-  it('lets a retry reach the backend with the same key when the receipt was lost', async () => {
-    // Lost receipt: the write may well have happened, but the reply never came
-    // back, so the hook holds no verdict and must not treat the plan as spent.
+  it('recovers a lost apply receipt by replaying the original idempotency key', async () => {
+    // The write may have been accepted before the response was lost. Repeating
+    // the exact key retrieves that Job's receipt instead of creating a second
+    // write attempt.
     applyMock.mockRejectedValueOnce(new Error('commit ack lost: transport closed'));
+    applyMock.mockResolvedValueOnce(applyView({ replayed: true }));
     const run = renderRun();
     await act(async () => {
       await run.result.current.prepare(JOB);
     });
-    await act(async () => {
-      await run.result.current.apply({ confirmedDestructive: false, idempotencyKey: 'apply-key-1' });
-    });
-
-    expect(run.result.current.phase).toBe('blocked');
-    expect(run.result.current.applyView).toBeNull();
-    expect(run.result.current.failure?.kind).toBe('other');
-
-    // The retry repeats the attempt with the *same* key, so the backend's
-    // receipt map can answer with the recorded receipt instead of committing
-    // a second time.
-    applyMock.mockResolvedValueOnce(applyView({ replayed: true }));
     await act(async () => {
       await run.result.current.apply({ confirmedDestructive: false, idempotencyKey: 'apply-key-1' });
     });
@@ -379,10 +415,20 @@ describe('useTransferJobRun', () => {
   });
 
   it('addresses a cancel to the apply Job id once one exists', async () => {
+    applyMock.mockResolvedValueOnce(
+      applyView({ state: 'queued', effectOutcome: 'notStarted', progress: {
+        read: counter(0),
+        converted: counter(0),
+        attempted: counter(0),
+        committed: counter(0),
+        unknown: counter(0),
+      } }),
+    );
     const run = renderRun();
     await prepareAndApply(run);
 
     expect(run.result.current.cancelTargetJobId).toBe('transfer-data-apply-1');
+    expect(run.result.current.phase).toBe('applying');
     let acknowledged: boolean | null = null;
     await act(async () => {
       acknowledged = await run.result.current.requestCancel();
@@ -393,6 +439,121 @@ describe('useTransferJobRun', () => {
     expect(run.result.current.cancelRequested).toBe(true);
     expect(run.result.current.cancelAcknowledged).toBe(true);
     expect(run.result.current.cancelUnknownJob).toBe(false);
+  });
+
+  it('keeps the accepted job attached through progress, cancel intent, and terminal state', async () => {
+    vi.useFakeTimers();
+    const zero = {
+      read: counter(0),
+      converted: counter(0),
+      attempted: counter(0),
+      committed: counter(0),
+      unknown: counter(0),
+    };
+    applyMock.mockResolvedValueOnce(
+      applyView({ state: 'queued', effectOutcome: 'notStarted', progress: zero }),
+    );
+    getJobMock
+      .mockResolvedValueOnce(
+        genericJobView({
+          state: 'running',
+          progress: { ...zero, read: counter(2), converted: counter(2), attempted: counter(1) },
+        }),
+      )
+      .mockResolvedValueOnce(
+        genericJobView({
+          state: 'cancelled',
+          effectOutcome: 'rolledBack',
+          cancelRequested: true,
+          progress: { ...zero, read: counter(2), converted: counter(2), attempted: counter(1) },
+        }),
+      );
+    getDetailsMock.mockResolvedValueOnce({
+      job: genericJobView({
+        state: 'cancelled',
+        effectOutcome: 'rolledBack',
+        cancelRequested: true,
+        progress: { ...zero, read: counter(2), converted: counter(2), attempted: counter(1) },
+      }),
+      planId: 'plan-abc',
+      planDigest: 'digest-abc',
+      selectionRevision: 3,
+      commitBoundaries: [verifiedBoundary('stage-1')],
+      recovery: { verdict: 'resumeAfterVerify', resumeThrough: 1 },
+    } satisfies TransferJobDetails);
+
+    const run = renderRun();
+    await act(async () => {
+      await run.result.current.prepare(JOB);
+    });
+    await act(async () => {
+      await run.result.current.apply({
+        sourceTables: ['users'],
+        confirmedDestructive: false,
+        idempotencyKey: 'apply-key-1',
+      });
+      await Promise.resolve();
+    });
+
+    expect(run.result.current.phase).toBe('applying');
+    expect(run.result.current.cancelTargetJobId).toBe('transfer-data-apply-1');
+    expect(run.result.current.verdict?.completed).toBe(false);
+    expect(run.result.current.applyView?.state).toBe('running');
+    expect(run.result.current.applyView?.progress.read).toBe(counter(2));
+
+    await act(async () => {
+      await run.result.current.requestCancel();
+    });
+    expect(cancelMock).toHaveBeenCalledWith('transfer-data-apply-1');
+    expect(run.result.current.cancelRequested).toBe(true);
+    expect(run.result.current.cancelAcknowledged).toBe(true);
+    expect(run.result.current.phase).toBe('applying');
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(run.result.current.phase).toBe('settled');
+    expect(getDetailsMock).toHaveBeenCalledWith('transfer-data-apply-1');
+    expect(run.result.current.applyView?.state).toBe('cancelled');
+    expect(run.result.current.applyView?.commitBoundaries).toHaveLength(1);
+    expect(run.result.current.applyView?.planDigest).toBe('digest-abc');
+    expect(run.result.current.applyView?.recoveryVerdict).toBe('resumeAfterVerify');
+    expect(run.result.current.verdict?.cancelDisposition).toBe('settledRolledBack');
+    expect(run.result.current.verdict?.completed).toBe(false);
+  });
+
+  it('stops local polling on unmount without cancelling the accepted Job', async () => {
+    vi.useFakeTimers();
+    const zero = {
+      read: counter(0),
+      converted: counter(0),
+      attempted: counter(0),
+      committed: counter(0),
+      unknown: counter(0),
+    };
+    applyMock.mockResolvedValueOnce(
+      applyView({ state: 'queued', effectOutcome: 'notStarted', progress: zero }),
+    );
+    getJobMock.mockResolvedValue(genericJobView({ state: 'running' }));
+
+    const run = renderRun();
+    await act(async () => {
+      await run.result.current.prepare(JOB);
+    });
+    await act(async () => {
+      await run.result.current.apply({ confirmedDestructive: false });
+      await Promise.resolve();
+    });
+    const callsBeforeUnmount = getJobMock.mock.calls.length;
+    expect(callsBeforeUnmount).toBe(1);
+
+    run.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(getJobMock).toHaveBeenCalledTimes(callsBeforeUnmount);
+    expect(cancelMock).not.toHaveBeenCalled();
   });
 
   it('reports a cancel the backend could not deliver instead of claiming it', async () => {
@@ -434,8 +595,8 @@ describe('useTransferJobRun', () => {
     });
     expect(run.result.current.phase).toBe('applying');
     expect(run.result.current.isInFlight).toBe(true);
-    // The backend mints the apply Job id internally and only returns it once the
-    // run is terminal, so there is no id to address a cancel to yet.
+    // The backend has not returned its acceptance receipt yet, so no apply Job
+    // id exists in this window to address a cancel to.
     expect(run.result.current.cancelTargetJobId).toBeNull();
 
     let acknowledged: boolean | null = null;
@@ -450,10 +611,11 @@ describe('useTransferJobRun', () => {
     expect(run.result.current.cancelUnknownJob).toBe(true);
 
     await act(async () => {
-      releaseApply(applyView());
+      releaseApply(applyView({ state: 'queued', effectOutcome: 'notStarted' }));
       await pending;
     });
-    expect(run.result.current.phase).toBe('settled');
+    expect(run.result.current.phase).toBe('applying');
+    expect(run.result.current.cancelTargetJobId).toBe('transfer-data-apply-1');
   });
 
   it('refuses to apply without an admitted plan', async () => {

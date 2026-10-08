@@ -20,6 +20,7 @@ import type {
   CommitBoundary,
   EffectOutcome,
   JobProgress,
+  JobView,
   JobState,
   Timestamp,
 } from '@datazen/backend-client';
@@ -113,7 +114,7 @@ export interface TransferApplyJobView {
   /** True when this reply came from the idempotent receipt, not a fresh write. */
   replayed: boolean;
   error: string | null;
-  recoveryVerdict: string;
+  recoveryVerdict: string | null;
   recoveryResumeThrough: number | null;
   recoveryReason: string | null;
   createdAt?: Timestamp;
@@ -121,11 +122,31 @@ export interface TransferApplyJobView {
 }
 
 type DataTransferJobE2eCall = {
-  command: 'prepare_data_transfer_job' | 'apply_data_transfer_job' | 'cancel_data_transfer';
+  command:
+    | 'prepare_data_transfer_job'
+    | 'apply_data_transfer_job'
+    | 'get_job'
+    | 'get_transfer_job_details'
+    | 'list_jobs'
+    | 'cancel_data_transfer';
   args: unknown;
   response?: unknown;
   error?: string;
 };
+
+/** Frozen durable details contract exposed by the P5 Job read model. */
+export interface TransferJobDetails {
+  job: JobView & { error?: string | null };
+  planId?: string | null;
+  planDigest?: string | null;
+  selectionRevision?: number | null;
+  commitBoundaries: CommitBoundary[];
+  recovery?: {
+    verdict: 'pendingVerification' | 'resumeAfterVerify' | 'reject' | 'requireManualReview';
+    resumeThrough?: number | null;
+    reasonCode?: string | null;
+  } | null;
+}
 
 function e2eCaptures(): DataTransferJobE2eCall[] | undefined {
   return import.meta.env.VITE_E2E
@@ -170,6 +191,20 @@ export const transferJobCommands = {
     captureJobCall('apply_data_transfer_job', request, () =>
       invoke<TransferApplyJobView>('apply_data_transfer_job', { request }),
     ),
+
+  /** Read the live P5 Job projection after an accepted apply receipt. */
+  getJob: (jobId: string) =>
+    captureJobCall('get_job', { jobId }, () => invoke<JobView>('get_job', { jobId })),
+
+  /** Read durable terminal evidence after a window reopens. */
+  getDetails: (jobId: string) =>
+    captureJobCall('get_transfer_job_details', { jobId }, () =>
+      invoke<TransferJobDetails>('get_transfer_job_details', { jobId }),
+    ),
+
+  /** List Job projections for window hydration and lost-receipt recovery. */
+  listJobs: (filter: Record<string, unknown> = {}) =>
+    captureJobCall('list_jobs', filter, () => invoke<JobView[]>('list_jobs', filter)),
 
   /**
    * Cancel **request**. The same command the legacy path used — the Job
