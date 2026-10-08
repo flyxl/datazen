@@ -390,7 +390,7 @@ async fn the_budget_refuses_a_self_overlapping_pair_before_the_compare_reads_a_r
     .await
     .unwrap_err();
     assert!(
-        error.to_string().contains("dispatchNotStarted"),
+        error.to_string().contains("jobBudgetRejected"),
         "the durable endpoint budget must refuse the self-sync pair before reads, got: {error}"
     );
     assert_eq!(

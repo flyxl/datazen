@@ -278,8 +278,9 @@ async fn kernel_cancel_stops_the_data_stage_before_the_first_commit() {
     );
     assert_eq!(
         result.effect_outcome,
-        EffectOutcome::RolledBack,
-        "no commit boundary was produced, so the whole run rolled back (§7)"
+        EffectOutcome::NotStarted,
+        "§7: no commit boundary does not by itself prove rolledBack — a cancel that
+        committed nothing is notStarted, matching the runtime cancel contract"
     );
     assert!(
         repo.committed_boundaries(&job_id).is_empty(),
@@ -321,8 +322,8 @@ async fn pipeline_reads_the_same_bit_the_kernel_flips() {
     assert_eq!(outcome.terminal, StageTerminal::Cancelled);
     assert_eq!(
         outcome.effect_outcome,
-        EffectOutcome::PartiallyApplied,
-        "a cancelled stage reports the cancelled effect at stage level"
+        EffectOutcome::NotStarted,
+        "a cancelled stage with zero boundaries is notStarted, never rolledBack (§7)"
     );
     assert!(
         outcome.commit_boundaries.is_empty(),
@@ -467,7 +468,12 @@ async fn real_sqlite_engine_ends_up_empty_after_a_kernel_cancel() {
         "a cancel must outrank any stage failure: {:?}",
         run.outcome.error
     );
-    assert_eq!(run.outcome.effect, EffectOutcome::RolledBack);
+    assert_eq!(
+        run.outcome.effect,
+        EffectOutcome::NotStarted,
+        "§7: a cancel before the first commit confirms no boundary, so nothing was
+        applied — rolledBack would claim a rollback that no boundary ever proved"
+    );
     assert_eq!(
         run.outcome.boundaries, 0,
         "a rolled-back batch confirms no boundary"

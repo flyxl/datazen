@@ -743,6 +743,8 @@ impl DataTransferHandler {
                         }
                     }
                 }
+                // `commit_boundaries` 会把 `all_boundaries` 移走，空判定必须先取。
+                let boundaries_empty = all_boundaries.is_empty();
                 Ok(StageOutcome {
                     stage_id: spec.stage_id.clone(),
                     // 取消优先于失败：取消是用户事实，§7 要求保留已确认的那部分，
@@ -758,10 +760,16 @@ impl DataTransferHandler {
                     commit_boundaries: all_boundaries,
                     execution_ids: Vec::new(),
                     artifact_ids: Vec::new(),
-                    effect_outcome: if any_failed || any_cancelled {
-                        EffectOutcome::PartiallyApplied
-                    } else {
-                        EffectOutcome::Completed
+                    // §7：效果由 handler 的实际证据决定，无提交边界本身不证明
+                    // rolledBack。所以「取消/失败 + 零边界」不是 PartiallyApplied：
+                    // 取消时是 NotStarted，失败时才是 RolledBack。与 cancelled_stage
+                    // / failed_stage 及 runtime 侧取消契约（job_cancel_watch.rs：
+                    // cancelled + 零边界 ⇒ NotStarted）逐字一致。
+                    effect_outcome: match (any_failed || any_cancelled, boundaries_empty) {
+                        (false, _) => EffectOutcome::Completed,
+                        (_, true) if any_cancelled => EffectOutcome::NotStarted,
+                        (_, true) => EffectOutcome::RolledBack,
+                        (_, false) => EffectOutcome::PartiallyApplied,
                     },
                     error_code: None,
                 })

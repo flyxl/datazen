@@ -858,7 +858,7 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
     // The shared mock always returns the same page and cannot honor keyset WHERE.
     // This must fail rather than treating a repeated page as end-of-stream.
     assert!(
-        err.to_string().contains("stageFailed"),
+        err.to_string().contains("handlerStageTerminated"),
         "a malformed keyset stream must fail the durable prepare job closed, got: {err}"
     );
     assert_eq!(test.mock.open_transaction_count(), 0);
