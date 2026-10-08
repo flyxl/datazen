@@ -102,6 +102,23 @@ describe('transferJobCommands', () => {
 
     await transferJobCommands.getJob('job-1');
     await transferJobCommands.listJobs({ states: ['queued', 'running'] });
+    invokeMock.mockResolvedValueOnce({
+      job: {
+        jobId: 'job-1',
+        kind: 'dataTransferApply',
+        state: 'running',
+        stage: null,
+        executionIds: [],
+        artifactIds: [],
+        createdAt: 1_700_000_000_000,
+        updatedAt: 1_700_000_000_000,
+        error: null,
+      },
+      stateVersion: 1,
+      commitBoundaries: [],
+      domainResults: [],
+      recoveryTargets: [],
+    });
     await transferJobCommands.getDetails('job-1');
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, 'get_job', { jobId: 'job-1' });
@@ -111,6 +128,30 @@ describe('transferJobCommands', () => {
     expect(invokeMock).toHaveBeenNthCalledWith(3, 'get_transfer_job_details', {
       jobId: 'job-1',
     });
+  });
+
+  it('normalizes an omitted JobView error in durable details through the shared decoder', async () => {
+    invokeMock.mockResolvedValueOnce({
+      job: {
+        jobId: 'job-1',
+        kind: 'dataTransferApply',
+        state: 'succeeded',
+        stage: null,
+        executionIds: [],
+        artifactIds: [],
+        createdAt: 1_700_000_000_000,
+        updatedAt: 1_700_000_000_000,
+      },
+      stateVersion: 1,
+      commitBoundaries: [],
+      domainResults: [],
+      recoveryTargets: [],
+    });
+    const { transferJobCommands } = await import('../transferJobs');
+
+    const details = await transferJobCommands.getDetails('job-1');
+
+    expect(details.job.error).toBeNull();
   });
 
   it('never reaches the legacy execute_data_transfer command after the cutover', async () => {

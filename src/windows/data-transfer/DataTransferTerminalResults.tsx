@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { JobView } from '@datazen/backend-client';
+import type { JobDetails, JobView } from '@datazen/backend-client';
 
-import { transferJobCommands, type TransferJobDetails } from '../../commands/transferJobs';
+import { transferJobCommands } from '../../commands/transferJobs';
 import { MigrationJobVerdictPanel } from '../../components/migration/MigrationJobVerdictPanel';
 import { useLocaleDomains } from '../../hooks/useLocaleDomains';
 import { useI18n } from '../../hooks/useI18n';
@@ -38,7 +38,7 @@ export function DataTransferTerminalResults({
     !hide && latest && !isMigrationJobInFlight(latest.state) && latest.jobId !== excludeJobId
       ? latest
       : null;
-  const [loaded, setLoaded] = useState<{ jobId: string; details: TransferJobDetails } | null>(null);
+  const [loaded, setLoaded] = useState<{ jobId: string; details: JobDetails } | null>(null);
   const [failedJobId, setFailedJobId] = useState<string | null>(null);
 
   useEffect(() => {

@@ -6,9 +6,9 @@ import {
   toTimestamp,
   type CommitBoundary,
   type Counter,
+  type JobDetails,
   type JobView,
 } from '@datazen/backend-client';
-import type { TransferJobDetails } from '../../../commands/transferJobs';
 
 const getDetailsMock = vi.hoisted(() => vi.fn());
 type JobViewFixture = JobView & { error: string | null };
@@ -76,7 +76,7 @@ function boundary(): CommitBoundary {
   };
 }
 
-function details(job = jobView()): TransferJobDetails {
+function details(job = jobView()): JobDetails {
   return {
     job,
     planId: 'plan-1',
@@ -84,6 +84,9 @@ function details(job = jobView()): TransferJobDetails {
     selectionRevision: 4,
     commitBoundaries: [boundary()],
     recovery: { verdict: 'resumeAfterVerify', resumeThrough: 1 },
+    stateVersion: counter(1),
+    domainResults: [],
+    recoveryTargets: [],
   };
 }
 
@@ -133,7 +136,7 @@ describe('DataTransferTerminalResults', () => {
     getDetailsMock.mockResolvedValue({
       ...details(settled),
       recovery: { verdict: 'pendingVerification', reasonCode: 'restartNeedsVerification' },
-    } satisfies TransferJobDetails);
+    } satisfies JobDetails);
     const { DataTransferTerminalResults } = await import('../DataTransferTerminalResults');
     render(<DataTransferTerminalResults jobs={[settled]} />);
 

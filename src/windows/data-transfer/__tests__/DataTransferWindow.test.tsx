@@ -6,11 +6,10 @@ import { transferCommands } from '../../../commands/transfer';
 import type {
   TransferApplyJobView,
   TransferBackendScope,
-  TransferJobDetails,
   TransferPrepareJobRequest,
   TransferPrepareJobView,
 } from '../../../commands/transferJobs';
-import { toCounter, type Counter, type JobView } from '@datazen/backend-client';
+import { toCounter, type Counter, type JobDetails, type JobView } from '@datazen/backend-client';
 import { clearTransferLimitationsDismissed } from '../../../lib/transferLimitationsPrefs';
 
 /**
@@ -589,7 +588,7 @@ describe('DataTransferWindow', () => {
       const latestJob = latestJobPromise ? await latestJobPromise : undefined;
       const recovery = receipt.recoveryVerdict
         ? {
-            verdict: receipt.recoveryVerdict as NonNullable<TransferJobDetails['recovery']>['verdict'],
+            verdict: receipt.recoveryVerdict as NonNullable<JobDetails['recovery']>['verdict'],
             ...(receipt.recoveryResumeThrough !== null
               ? { resumeThrough: receipt.recoveryResumeThrough }
               : {}),
@@ -612,7 +611,10 @@ describe('DataTransferWindow', () => {
         selectionRevision: receipt.selectionRevision,
         commitBoundaries: receipt.commitBoundaries,
         recovery,
-      } satisfies TransferJobDetails;
+        stateVersion: counter(1),
+        domainResults: [],
+        recoveryTargets: [],
+      } satisfies JobDetails;
     });
     cancelTransferJobMock.mockReset();
     cancelTransferJobMock.mockResolvedValue(true);

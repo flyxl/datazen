@@ -17,13 +17,13 @@ import {
   toTimestamp,
   type CommitBoundary,
   type Counter,
+  type JobDetails,
   type JobView,
   type Timestamp,
 } from '@datazen/backend-client';
 import { useTransferJobRun } from '../useTransferJobRun';
 import type {
   TransferApplyJobView,
-  TransferJobDetails,
   TransferPrepareJobView,
 } from '../../commands/transferJobs';
 import type { TransferJob } from '../../commands/transfer';
@@ -213,7 +213,10 @@ describe('useTransferJobRun', () => {
       selectionRevision: 3,
       commitBoundaries: [verifiedBoundary('users')],
       recovery: { verdict: 'resumeAfterVerify' },
-    } satisfies TransferJobDetails);
+      stateVersion: counter(1),
+      domainResults: [],
+      recoveryTargets: [],
+    } satisfies JobDetails);
   });
 
   afterEach(() => {
@@ -482,7 +485,10 @@ describe('useTransferJobRun', () => {
       selectionRevision: 3,
       commitBoundaries: [verifiedBoundary('stage-1')],
       recovery: { verdict: 'resumeAfterVerify', resumeThrough: 1 },
-    } satisfies TransferJobDetails);
+      stateVersion: counter(1),
+      domainResults: [],
+      recoveryTargets: [],
+    } satisfies JobDetails);
 
     const run = renderRun();
     await act(async () => {

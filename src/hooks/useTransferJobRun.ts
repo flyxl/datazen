@@ -26,13 +26,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { JobView } from '@datazen/backend-client';
+import type { JobDetails, JobView } from '@datazen/backend-client';
 import {
   localBackendScope,
   transferJobCommands,
   type TransferApplyJobRequest,
   type TransferApplyJobView,
-  type TransferJobDetails,
   type TransferPrepareJobView,
 } from '../commands/transferJobs';
 import type { TransferJob } from '../commands/transfer';
@@ -178,7 +177,7 @@ function projectApplyJobView(current: TransferApplyJobView, latest: JobView): Tr
 /** Merge the durable terminal read model into the live apply receipt. */
 function projectApplyJobDetails(
   current: TransferApplyJobView,
-  details: TransferJobDetails,
+  details: JobDetails,
 ): TransferApplyJobView {
   const { job } = details;
   return {

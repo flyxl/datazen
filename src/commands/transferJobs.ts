@@ -16,9 +16,11 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { parseJobView } from '@datazen/backend-client';
 import type {
   CommitBoundary,
   EffectOutcome,
+  JobDetails,
   JobProgress,
   JobView,
   JobState,
@@ -134,20 +136,6 @@ type DataTransferJobE2eCall = {
   error?: string;
 };
 
-/** Frozen durable details contract exposed by the P5 Job read model. */
-export interface TransferJobDetails {
-  job: JobView & { error?: string | null };
-  planId?: string | null;
-  planDigest?: string | null;
-  selectionRevision?: number | null;
-  commitBoundaries: CommitBoundary[];
-  recovery?: {
-    verdict: 'pendingVerification' | 'resumeAfterVerify' | 'reject' | 'requireManualReview';
-    resumeThrough?: number | null;
-    reasonCode?: string | null;
-  } | null;
-}
-
 function e2eCaptures(): DataTransferJobE2eCall[] | undefined {
   return import.meta.env.VITE_E2E
     ? (globalThis as typeof globalThis & {
@@ -198,9 +186,10 @@ export const transferJobCommands = {
 
   /** Read durable terminal evidence after a window reopens. */
   getDetails: (jobId: string) =>
-    captureJobCall('get_transfer_job_details', { jobId }, () =>
-      invoke<TransferJobDetails>('get_transfer_job_details', { jobId }),
-    ),
+    captureJobCall('get_transfer_job_details', { jobId }, async () => {
+      const details = await invoke<JobDetails>('get_transfer_job_details', { jobId });
+      return { ...details, job: parseJobView(details.job) };
+    }),
 
   /** List Job projections for window hydration and lost-receipt recovery. */
   listJobs: (filter: Record<string, unknown> = {}) =>
