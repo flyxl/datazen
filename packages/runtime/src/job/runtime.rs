@@ -108,17 +108,24 @@ impl JobRuntime {
                 id: job_id.as_str().into(),
             });
         }
-        let plan = project_frozen_plan(&job.definition.kind, &job.definition.payload)
-            .map_err(PortError::from)?;
+        let plan = match project_frozen_plan(&job.definition.kind, &job.definition.payload) {
+            Ok(plan) => plan,
+            Err(error) => {
+                self.repo
+                    .mark_failed_unstarted(ctx, job_id, "invalidFrozenPlan")
+                    .await?;
+                return Err(PortError::from(error));
+            }
+        };
         let handler = match self
             .handlers
             .resolve(&job.definition.kind, plan.handler_version)
         {
             Some(h) => h,
             None => {
-                let _ = self
-                    .repo
-                    .mark_pending_verification(ctx, job_id, "handlerNotRegistered");
+                self.repo
+                    .mark_failed_unstarted(ctx, job_id, "handlerNotRegistered")
+                    .await?;
                 return Err(PortError::UnsupportedVersion(format!(
                     "handler {}@{} not registered",
                     job.definition.kind, plan.handler_version
@@ -126,20 +133,32 @@ impl JobRuntime {
             }
         };
         // 版本/能力/指纹复验：失败即停止派发，不持有任何预算（§3 条 5）。
-        let stages = match handler.validate_plan(&plan) {
-            Ok(s) => s,
-            Err(e) => {
+        let validation = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            handler.validate_plan(&plan)
+        }));
+        let stages = match validation {
+            Err(_) => {
                 self.repo
-                    .mark_failed_unstarted(ctx, job_id, &e.to_string()).await?;
+                    .mark_failed_unstarted(ctx, job_id, "handlerValidationPanicked")
+                    .await?;
+                return Err(PortError::BackendUnavailable(
+                    "handlerValidationPanicked".into(),
+                ));
+            }
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => {
+                self.repo
+                    .mark_failed_unstarted(ctx, job_id, "handlerValidationFailed")
+                    .await?;
                 return Err(PortError::from(e));
             }
         };
         // 排队取消已登记：调度器确认 notStarted 后终结，不进入预算/claim。
         let latest = self.repo.get(ctx, job_id.clone()).await?;
         if latest.view.cancel_requested {
-            let cancelled = self
-                .repo
-                .confirm_cancelled_not_started(ctx, job_id, EffectOutcome::NotStarted)?;
+            let cancelled =
+                self.repo
+                    .confirm_cancelled_not_started(ctx, job_id, EffectOutcome::NotStarted)?;
             return Ok(JobResult {
                 state: cancelled.view.state,
                 effect_outcome: EffectOutcome::NotStarted,
@@ -157,7 +176,12 @@ impl JobRuntime {
             self.clock_ms,
         ) {
             Ok(p) => p,
-            Err(e) => return Err(PortError::from(e)),
+            Err(e) => {
+                self.repo
+                    .mark_failed_unstarted(ctx, job_id, "jobBudgetRejected")
+                    .await?;
+                return Err(PortError::from(e));
+            }
         };
         // D1：派发/收尾任一路径失败，必须释放全部许可；成功路径才按 consumed 核销。
         let dispatched = self.dispatch(ctx, job_id, worker, handler, &stages).await;
@@ -190,6 +214,8 @@ impl JobRuntime {
         let mut saw_failed = false;
         let mut saw_cancelled = false;
         let mut committed_all = Vec::new();
+        let mut failure_reason = None;
+        let mut failure_effect = EffectOutcome::NotStarted;
         for spec in stages {
             let latest = self.repo.get(ctx, job_id.clone()).await?;
             if latest.view.cancel_requested {
@@ -205,9 +231,33 @@ impl JobRuntime {
                 finished_at: None,
             };
             self.repo.record_stage(ctx, &claim, stage_record).await?;
-            let outcome = self
+            if cancel.is_cancelled() {
+                saw_cancelled = true;
+                break;
+            }
+            let outcome = match self
                 .run_stage_watched(ctx, job_id, handler.as_ref(), spec, &cancel)
-                .await?;
+                .await
+            {
+                Ok(outcome) => outcome,
+                Err(_) => {
+                    saw_failed = true;
+                    saw_unknown = true;
+                    failure_reason = Some("handlerStageFailedOrPanicked".to_string());
+                    break;
+                }
+            };
+            if outcome.terminal != StageTerminal::Succeeded {
+                failure_effect = outcome.effect_outcome;
+                failure_reason = Some(
+                    if outcome.terminal == StageTerminal::Unknown {
+                        "unknownCommitBoundary"
+                    } else {
+                        "handlerStageTerminated"
+                    }
+                    .to_string(),
+                );
+            }
             progress = accumulate(progress, outcome.progress);
             any_boundary |= !outcome.commit_boundaries.is_empty();
             saw_unknown |= outcome.terminal == StageTerminal::Unknown
@@ -248,9 +298,9 @@ impl JobRuntime {
         let (state, effect) = match (saw_unknown, saw_failed, saw_cancelled, any_boundary) {
             (true, ..) => (JobState::Failed, EffectOutcome::Unknown),
             (_, true, _, true) => (JobState::Failed, EffectOutcome::PartiallyApplied),
-            (_, true, _, false) => (JobState::Failed, EffectOutcome::RolledBack),
+            (_, true, _, false) => (JobState::Failed, failure_effect),
             (_, _, true, true) => (JobState::Cancelled, EffectOutcome::PartiallyApplied),
-            (_, _, true, false) => (JobState::Cancelled, EffectOutcome::RolledBack),
+            (_, _, true, false) => (JobState::Cancelled, failure_effect),
             _ => (JobState::Succeeded, EffectOutcome::Completed),
         };
         let latest = self.repo.get(ctx, job_id.clone()).await?;
@@ -259,16 +309,14 @@ impl JobRuntime {
         self.repo
             .compare_and_set_state(ctx, &claim, latest.state_version, state)
             .await?;
-        if saw_unknown {
-            let _ = self
-                .repo
-                .mark_pending_verification(ctx, job_id, "unknownCommitBoundary");
+        if let Some(reason) = &failure_reason {
+            self.repo.mark_pending_verification(ctx, job_id, reason)?;
         }
         Ok(JobResult {
             state,
             effect_outcome: effect,
             progress,
-            error: None,
+            error: failure_reason,
         })
     }
 
@@ -299,11 +347,24 @@ impl JobRuntime {
             cancel.clone(),
             self.watchers.clone(),
         );
-        let outcome = handler.run_stage(spec, cancel).await;
+        // Catch each poll in this task: no detached handler may continue writing after return.
+        // Never copy a panic payload or backend error into a user-visible reason.
+        let mut stage = handler.run_stage(spec, cancel);
+        let outcome = std::future::poll_fn(|cx| {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| stage.as_mut().poll(cx)))
+            {
+                Ok(std::task::Poll::Pending) => std::task::Poll::Pending,
+                Ok(std::task::Poll::Ready(result)) => {
+                    std::task::Poll::Ready(result.map_err(|_| ()))
+                }
+                Err(_) => std::task::Poll::Ready(Err(())),
+            }
+        })
+        .await;
         // 先 abort 再 await：await 返回之后这条任务确定已经结束，不会在
         // dispatch 返回后继续读仓储、继续持有请求上下文。
         watch.join().await;
-        outcome.map_err(|e| PortError::BackendUnavailable(e.to_string()))
+        outcome.map_err(|_| PortError::BackendUnavailable("handlerStageFailedOrPanicked".into()))
     }
 }
 

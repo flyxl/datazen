@@ -63,7 +63,10 @@ async fn runtime_success_path_records_boundaries_checkpoints_and_progress() {
 }
 
 /// 失败型 handler：run_stage 直接 Err。
-struct ErrHandler;
+struct ErrHandler {
+    panic: bool,
+    committed_first: bool,
+}
 
 #[async_trait::async_trait]
 impl JobHandler for ErrHandler {
@@ -77,18 +80,40 @@ impl JobHandler for ErrHandler {
         &self,
         _plan: &FrozenPlan,
     ) -> Result<Vec<StageSpec>, datazen_runtime::job::JobError> {
-        Ok(vec![StageSpec {
+        let mut stages = vec![StageSpec {
             stage_id: StageId::new("s1"),
             kind: "apply".into(),
             depends_on: vec![],
-        }])
+        }];
+        if self.committed_first {
+            stages.push(StageSpec {
+                stage_id: StageId::new("s2"),
+                kind: "apply".into(),
+                depends_on: vec![],
+            });
+        }
+        Ok(stages)
     }
     async fn run_stage(
         &self,
-        _spec: &StageSpec,
-        _cancel: &CancelToken,
+        spec: &StageSpec,
+        cancel: &CancelToken,
     ) -> Result<StageOutcome, datazen_runtime::job::JobError> {
-        Err(datazen_runtime::job::JobError::BudgetDenied("boom".into()))
+        if self.committed_first && spec.stage_id == StageId::new("s1") {
+            return CountingHandler {
+                kind: "schemaDiffApply",
+                calls: Arc::new(AtomicUsize::new(0)),
+                mode: Mode::TwoBoundaries,
+            }
+            .run_stage(spec, cancel)
+            .await;
+        }
+        if self.panic {
+            panic!("synthetic panic payload");
+        }
+        Err(datazen_runtime::job::JobError::BudgetDenied(
+            "synthetic backend secret".into(),
+        ))
     }
     fn verify_recovery(
         &self,
@@ -98,7 +123,7 @@ impl JobHandler for ErrHandler {
     }
 }
 
-/// D1 反向：run_stage 直接 Err → run 透传 Err，且 BudgetLedger 许可数为 0。
+/// Handler Err converges durably; unknown side effects are not called rollback.
 #[tokio::test]
 async fn run_stage_error_propagates_and_releases_all_permits() {
     let (repo, clock) = repo_clock();
@@ -113,8 +138,16 @@ async fn run_stage_error_propagates_and_releases_all_permits() {
     let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
     ledger.lock().expect("lock").ensure_service(&conn());
     let repo = Arc::new(repo);
-    let runtime = runtime_with(repo, Arc::new(ErrHandler), ledger.clone(), clock);
-    let err = runtime
+    let runtime = runtime_with(
+        repo.clone(),
+        Arc::new(ErrHandler {
+            panic: false,
+            committed_first: false,
+        }),
+        ledger.clone(),
+        clock,
+    );
+    let result = runtime
         .run(
             &c,
             &JobId::new("job-e1"),
@@ -127,8 +160,17 @@ async fn run_stage_error_propagates_and_releases_all_permits() {
             }],
         )
         .await
-        .expect_err("must propagate");
-    assert!(matches!(err, PortError::BackendUnavailable(_)), "{err:?}");
+        .expect("converged failure");
+    assert_eq!(result.state, JobState::Failed);
+    assert_eq!(result.effect_outcome, EffectOutcome::Unknown);
+    assert_eq!(
+        result.error.as_deref(),
+        Some("handlerStageFailedOrPanicked")
+    );
+    assert_eq!(runtime.active_cancel_watchers(), 0);
+    let queried = repo.get(&c, JobId::new("job-e1")).await.expect("query");
+    assert_eq!(queried.view.state, JobState::Failed);
+    assert_eq!(queried.view.effect_outcome, Some(EffectOutcome::Unknown));
     assert_eq!(
         ledger.lock().expect("lock").permits().count(),
         0,
@@ -285,5 +327,68 @@ async fn queued_cancel_before_run_finalizes_not_started_without_budget_or_claim(
         ledger.lock().expect("lock").permits().count(),
         0,
         "不持有许可"
+    );
+}
+
+#[tokio::test]
+async fn panic_converges_before_return_and_can_be_queried() {
+    let (repo, clock) = repo_clock();
+    let c = ctx();
+    repo.accept(
+        &c,
+        definition("schemaDiffApply", apply_payload("panic-plan"), "panic-job"),
+        &IdempotencyKey::new("panic-key"),
+    )
+    .await
+    .expect("accept");
+    let repo = Arc::new(repo);
+    let ledger = Arc::new(Mutex::new(BudgetLedger::new(config(8, [1, 1, 1, 0]))));
+    ledger.lock().expect("ledger").ensure_service(&conn());
+    let runtime = runtime_with(
+        repo.clone(),
+        Arc::new(ErrHandler {
+            panic: true,
+            committed_first: true,
+        }),
+        ledger.clone(),
+        clock,
+    );
+    let result = runtime
+        .run(
+            &c,
+            &JobId::new("panic-job"),
+            &WorkerId::new("worker"),
+            &[EndpointRef {
+                connection_id: conn(),
+                service_key: "svc".into(),
+                objects: vec!["users".into()],
+                role: EndpointRole::SourceReader,
+            }],
+        )
+        .await
+        .expect("panic contained");
+    assert_eq!(result.state, JobState::Failed);
+    assert_eq!(result.effect_outcome, EffectOutcome::Unknown);
+    assert_eq!(runtime.active_cancel_watchers(), 0);
+    assert_eq!(ledger.lock().expect("ledger").permits().count(), 0);
+    let queried = repo
+        .get(&c, JobId::new("panic-job"))
+        .await
+        .expect("query after panic");
+    assert_eq!(queried.view.state, JobState::Failed);
+    assert_eq!(repo.committed_boundaries(&JobId::new("panic-job")).len(), 2);
+    assert!(repo
+        .latest_checkpoint(&c, &JobId::new("panic-job"))
+        .is_some());
+    assert_eq!(
+        queried.view.pending_verification_reason.as_deref(),
+        Some("handlerStageFailedOrPanicked")
+    );
+    assert!(
+        runtime
+            .run(&c, &JobId::new("panic-job"), &WorkerId::new("worker"), &[])
+            .await
+            .is_err(),
+        "no implicit replay"
     );
 }
