@@ -167,6 +167,13 @@ pub(crate) async fn inspect_data_transfer_impl(
         }
     }
 
+    // Adapters initialize lazily. Resolve them before the first metadata
+    // enrichment, not after target types have already been inferred.
+    let adapters_ready = state
+        .sync_adapters
+        .ensure_pair(&src_config.database_type, &tgt_config.database_type)
+        .is_ok();
+
     // Fill lengths and numeric precision before deriving editable target
     // types. Otherwise an inferred LONGTEXT/DECIMAL becomes an explicit UI
     // override and hides the exact type fetched later during prepare.
@@ -197,11 +204,7 @@ pub(crate) async fn inspect_data_transfer_impl(
         &source_row_counts,
     );
 
-    if state
-        .sync_adapters
-        .ensure_pair(&src_config.database_type, &tgt_config.database_type)
-        .is_ok()
-    {
+    if adapters_ready {
         if let (Some(src), Some(tgt)) = (
             state.sync_adapters.get_source(&src_config.database_type),
             state.sync_adapters.get_target(&tgt_config.database_type),
