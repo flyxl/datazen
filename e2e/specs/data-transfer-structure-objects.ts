@@ -87,12 +87,15 @@ async function runStructureWizard(srcName: string, tgtName: string, tables: stri
   await clickTransferNext();
 
   await $('[data-testid="data-transfer-mapping-step"]').waitForDisplayed({ timeout: 15000 });
-  const createNew = await $('[data-testid="data-transfer-create-new-toggle"]');
-  if (await createNew.isExisting()) {
+  for (const table of tables) {
+    await $(
+      `[data-testid="data-transfer-mapping-table-item"][data-source-table="${table}"]`,
+    ).click();
+    const createNew = await $('[data-testid="data-transfer-create-new-toggle"]');
     if (!(await createNew.isSelected())) await createNew.click();
-    await (await $('[data-testid="data-transfer-target-table-input"]')).click();
+    await $('[data-testid="data-transfer-target-table-input"]').setValue(table);
     await browser.keys(['Tab']);
-    await browser.pause(1500);
+    await browser.pause(500);
   }
   await advanceTransferWizardToPreview();
 }
@@ -139,7 +142,7 @@ describe('数据传输结构对象发射 (DT-OBJ)', () => {
             sql: `DROP TABLE IF EXISTS ${table} CASCADE`,
           });
         }
-        for (const table of SRC_TABLES) {
+        for (const table of [...SRC_TABLES, ...COLLIDE_TABLES]) {
           await invokeBackend('execute_query', {
             dbSessionId: mySession,
             sql: `DROP TABLE IF EXISTS ${table}`,
@@ -161,11 +164,13 @@ describe('数据传输结构对象发射 (DT-OBJ)', () => {
         await pg('CREATE TABLE dt_obj_other (id INT PRIMARY KEY, code VARCHAR(64) NOT NULL)');
         await pg('CREATE INDEX idx_dt_obj_other_code ON dt_obj_other(code)');
 
-        // Two tables sharing one index name: rejected by a schema-scoped target.
-        await pg('CREATE TABLE dt_obj_coll_a (id INT PRIMARY KEY, code VARCHAR(64) NOT NULL)');
-        await pg('CREATE INDEX idx_dt_obj_shared ON dt_obj_coll_a(code)');
-        await pg('CREATE TABLE dt_obj_coll_b (id INT PRIMARY KEY, code VARCHAR(64) NOT NULL)');
-        await pg('CREATE INDEX idx_dt_obj_shared ON dt_obj_coll_b(code)');
+        // MySQL permits table-scoped index names; PostgreSQL must reject the
+        // collision before deploying either table into its shared namespace.
+        const my = (sql: string) => invokeBackend('execute_query', { dbSessionId: mySession, sql });
+        await my('CREATE TABLE dt_obj_coll_a (id INT PRIMARY KEY, code VARCHAR(64) NOT NULL)');
+        await my('CREATE INDEX idx_dt_obj_shared ON dt_obj_coll_a(code)');
+        await my('CREATE TABLE dt_obj_coll_b (id INT PRIMARY KEY, code VARCHAR(64) NOT NULL)');
+        await my('CREATE INDEX idx_dt_obj_shared ON dt_obj_coll_b(code)');
       });
     } finally {
       await disconnectBackend(srcSession);
@@ -205,7 +210,7 @@ describe('数据传输结构对象发射 (DT-OBJ)', () => {
       const session = await invokeBackend<string>('connect', { connectionId: myTgtId });
       try {
         await withSafeModeOff(async () => {
-          for (const table of SRC_TABLES) {
+          for (const table of [...SRC_TABLES, ...COLLIDE_TABLES]) {
             await invokeBackend('execute_query', {
               dbSessionId: session,
               sql: `DROP TABLE IF EXISTS ${table}`,
@@ -266,7 +271,12 @@ describe('数据传输结构对象发射 (DT-OBJ)', () => {
     expect(lastOf('-index-')).toBeLessThan(firstOf('-foreignKey-'));
 
     await (await $('[data-testid="data-transfer-execute"]')).click();
-    await $('[data-testid="data-transfer-result"]').waitForDisplayed({ timeout: 60000 });
+    const result = await $('[data-testid="data-transfer-result"]');
+    await result.waitForDisplayed({ timeout: 60000 });
+    await browser.waitUntil(async () => (await result.getAttribute('data-completed')) === 'true', {
+      timeout: 90000,
+      timeoutMsg: 'Structure transfer did not reach a verified completed result',
+    });
 
     const session = await invokeBackend<string>('connect', { connectionId: myTgtId });
     try {
@@ -290,7 +300,7 @@ describe('数据传输结构对象发射 (DT-OBJ)', () => {
   });
 
   it('DT-OBJ-2: 目标库按 schema 命名空间判定重名时预览失败并指出冲突双方', async () => {
-    await runStructureWizard(pgSrcName, pgTgtName, COLLIDE_TABLES);
+    await runStructureWizard(myTgtName, pgTgtName, COLLIDE_TABLES);
     const errorBox = await $('[data-testid="data-transfer-preview-error"]');
     await errorBox.waitForDisplayed({ timeout: 20000 });
     const message = await errorBox.getText();

@@ -303,6 +303,14 @@ describe('Data Transfer composite tuple recordset journeys', () => {
         await $('[data-testid="data-transfer-execute"]').click();
         const result = await $('[data-testid="data-transfer-result"]');
         await result.waitForDisplayed({ timeout: 30000 });
+        await browser.waitUntil(
+          async () => (await result.getAttribute('data-completed')) === 'true',
+          {
+            timeout: 90000,
+            timeoutMsg: 'Tuple-range transfer did not finish with a verified result',
+          },
+        );
+        expect(await result.getAttribute('data-verdict-severity')).toBe('ok');
         expect(await result.getText()).not.toContain(t('transfer.error'));
 
         const target = await connectBackend(targetId);
