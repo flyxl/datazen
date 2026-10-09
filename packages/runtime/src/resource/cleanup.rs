@@ -217,6 +217,16 @@ pub enum ReturnReason {
     },
     /// 固定会话不参与归还。这不是故障，是用途。
     FixedSessionNotPoolable,
+    /// **归池前的复位没有被确认**。
+    ///
+    /// 这不是「宿主四项条件之一没过」——四项全清才轮得到归池；也不是驱动重算：
+    /// 它是 §9.4「reset 不支持、失败或超时直接关闭」在宿主侧**实测**到的物理事实。
+    /// 归池裁决因此作废，落点是关闭（`ResourceManager::refuse_park_after_failed_reset`）。
+    ///
+    /// `transport` 装的是 [`ResourceError::reason`] 那个稳定字面码，只用于记账与日志。
+    HostResetUnconfirmed {
+        transport: &'static str,
+    },
 }
 
 impl ReturnReason {
@@ -228,6 +238,7 @@ impl ReturnReason {
             Self::UnreleasedSessionHandle { .. } => "hostUnreleasedSessionHandle",
             Self::OwnerDisabled { .. } => "hostOwnerDisabled",
             Self::FixedSessionNotPoolable => "hostFixedSessionNotPoolable",
+            Self::HostResetUnconfirmed { .. } => "hostResetUnconfirmed",
         }
     }
 }

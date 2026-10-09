@@ -5,6 +5,12 @@
 //!
 //! 归还路径（`release`）是双条件裁决的落点：驱动结论与宿主条件**分别**进来，
 //! 本模块只判定宿主自己的条件，两者同时通过才允许复用。
+//!
+//! 双条件之后还有**第三道闸**，它是物理动作而不是判断：§9.4 要求短租约归池前必须
+//! 真的跑一次复位（`cleanup.rs:494`「复位。短租约归池前必跑」）。这道闸落在
+//! [`ResourceManager::release`] 的 `ReturnedToPool` 分支上 —— 复位未被确认就**不许**归池。
+//! 它不是「宿主重算驱动的 `Clean`」（边界一禁止那个），而是 §9.4 点名要求宿主执行的
+//! 那个物理步骤本身。
 
 use std::sync::Arc;
 
@@ -13,7 +19,7 @@ use indexmap::IndexSet;
 use crate::connection::{ConfigRevision, ConnectionId, ExecutionId, LeaseId};
 use crate::resource::cleanup::{
     CleanupDisposition, CleanupPlan, CleanupReport, DriverCleanVerdict, HostConditionSnapshot,
-    SharedTransport,
+    ReturnDecision, ReturnReason, SharedTransport,
 };
 use crate::resource::generation::{CacheFillOutcome, CacheRevision, GenerationRegistry};
 use crate::resource::lease::{LeaseRecord, LeaseRequest, LeaseState, PoolKeyGeneration};
@@ -308,6 +314,47 @@ impl ResourceManager {
 
     // ---- 归还裁决 ----
 
+    /// 归池被「归池前的复位」否决时的落点。
+    ///
+    /// §9.4 归池前检查：「**reset 不支持、失败或超时直接关闭**」；§7.3 第 6 步：
+    /// 「结果完全消费后 reset；**只有 Clean 才归池**，其余关闭」。复位未被确认 ⇒
+    /// 双条件裁决的结论**作废**，这条租约既不归池也不隔离，而是走关闭：
+    /// * 不复用是文档明写的（上面两句）；
+    /// * 不转隔离是因为此处没有任何待核验的义务 —— 归池裁决成立的前提是宿主四项
+    ///   全清（`HostConditionSnapshot::is_clear`），既无活动执行也无未释放句柄，
+    ///   「回滚结果不明需要人工核验」那个隔离事由根本不成立；
+    /// * 关闭若也没被确认，下面 `Closed` 分支自己会把它升级成隔离，与 :337-340
+    ///   「close 未确认 ⇒ 隔离并保留预算」同形。
+    ///
+    /// 处置与状态**一起**改：`InUse→Closing` 是 `LEASE_TRANSITIONS` 里的合法边
+    /// （`enters_when`「归还裁决判定不复用」）。调用点排在 `move_to` **之前**，
+    /// 所以 `entry.move_to(plan.next_state)` 与末尾的
+    /// [`Self::settle_tunnel_reference`] 读到的都是这里的**最终**处置，
+    /// 不存在「预算没核销而引用先还了」的错拍。
+    fn refuse_park_after_failed_reset(
+        plan: &mut CleanupPlan,
+        lease_id: &LeaseId,
+        error: &ResourceError,
+    ) {
+        debug_assert_eq!(
+            plan.disposition,
+            CleanupDisposition::ReturnedToPool,
+            "只有归池裁决会被归池前的复位否决"
+        );
+        let reason = ReturnReason::HostResetUnconfirmed {
+            transport: error.reason(),
+        };
+        tracing::warn!(
+            lease_id = lease_id.as_str(),
+            transport = error.reason(),
+            "reset before the idle return was not confirmed: §9.4 refuses the park and closes instead"
+        );
+        plan.decision = ReturnDecision::CleanupRequired(reason.clone());
+        plan.disposition = CleanupDisposition::Closed;
+        plan.next_state = LeaseState::Closing;
+        plan.blockers.insert(0, reason);
+    }
+
     /// 归还一条租约：驱动结论 + 宿主条件一起进来，本模块**只做宿主自己的检查**。
     pub fn release(
         &mut self,
@@ -347,6 +394,31 @@ impl ResourceManager {
                     plan.disposition = CleanupDisposition::Quarantined;
                     plan.next_state = LeaseState::Quarantined;
                 }
+            }
+        }
+
+        // **归池前的复位**（§9.4 / §7.3 第 6 步）。这一道闸与上面那段互斥且互补：
+        // 上面走 `Closed`，这里走 `ReturnedToPool`；`CleanupPlan::of` 只在宿主四项
+        // 全清时才判归池，而归池态下 `unreleased_handles` 恒空，所以 `needs_reset`
+        // 恒为假 ⇒ 一次 `release` 至多跑一次复位，绝不会重复复位。
+        //
+        // 为什么归池必须自己跑复位，而不是信驱动那个「Clean 已含复位」的自报：
+        // * `PhysicalTransport::reset` 的文档写死了「短租约归池前**必跑**」——它把复位
+        //   描述成宿主在归池前执行的一个物理步骤，不是一个由驱动顺带说明的结论；
+        // * §9.4 那句「reset 不支持、失败或超时直接关闭」预设宿主**知道**复位结果。
+        //   此前归池路径上宿主从未调用过 `reset`，该预设在这条分支上不成立：宿主只是
+        //   转述了一个自称含复位的 bool，既没有可观测的 `Reset` 事件，也没有失败分支。
+        // * `DriverCleanVerdict` 刻意只有一个私有 bool（`cleanup.rs:23`「想在这里加
+        //   判定依据等于把驱动判定搬进宿主，边界一立刻破」）。本闸**不**重算 `Clean`、
+        //   **不**读任何驱动判定依据，它只是把 §9.4 点名要求宿主做的那个物理动作真的做掉。
+        //
+        // 调用点**必须**排在 `move_to` 之前：`entry.move_to(plan.next_state)` 与末尾
+        // `settle_tunnel_reference(lease_id, plan.disposition)` 都只读最终处置，否则
+        // 会出现「状态已进 Acquired / 引用已归还，处置却是 Closed」的错拍。
+        if plan.disposition == CleanupDisposition::ReturnedToPool {
+            match self.transport.reset(&record.resource_id) {
+                Ok(()) => session_reset_performed = true,
+                Err(error) => Self::refuse_park_after_failed_reset(&mut plan, lease_id, &error),
             }
         }
 

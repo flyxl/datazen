@@ -111,6 +111,7 @@ fn only_a_clean_driver_report_and_clear_host_conditions_return_the_lease() {
     let mut fixture = Fixture::new();
     let lease = fixture.acquire(LeasePurpose::ShortOperation);
     let lease_id = lease.lease_id.clone();
+    let resource_id = lease.resource_id.clone();
 
     let report = fixture.release(
         &lease_id,
@@ -125,12 +126,34 @@ fn only_a_clean_driver_report_and_clear_host_conditions_return_the_lease() {
         !report.physical_budget_released,
         "a pooled lease keeps its budget"
     );
-    assert!(!report.session_reset_performed);
+    // **归池前必须真的跑一次复位。** 依据三条原文：
+    // * `connection-management.md` §9.4（:657）「reset 不支持、失败或超时直接关闭」——
+    //   这句预设宿主知道复位结果，而宿主唯一知道的方式是自己去跑它；
+    // * §7.3 第 6 步（:551）「结果完全消费后 reset；只有 Clean 才归池，其余关闭」；
+    // * `cleanup.rs` 里 `PhysicalTransport::reset` 的文档「复位。短租约归池前必跑」。
+    //
+    // 这里原先是 `assert!(!report.session_reset_performed)`：归池路径上宿主**从没**碰过
+    // 复位端口，只是转述一个自称含复位的私有 bool。那条断言钉的是缺陷本身而不是期望
+    // 行为，所以它随本缺陷的修复一起翻真 —— 不是为了让测试变绿而放宽。
+    assert!(
+        report.session_reset_performed,
+        "归池必须报告复位已执行（§9.4 / §7.3 第 6 步）"
+    );
     assert_eq!(fixture.manager.idle_lease_count(), 1);
     assert_eq!(fixture.state_of(&lease_id), Some(LeaseState::Acquired));
     assert!(
         fixture.transport.snapshot().closed.is_empty(),
         "returning to the pool must not close the physical resource"
+    );
+    // 复位落在**被归池的那条原资源**上，且顺序是 Open → Reset —— 归池不新开连接，
+    // 也没有任何关闭混进来。
+    assert_eq!(
+        fixture.transport.snapshot().events,
+        vec![
+            TransportEvent::Open(resource_id.clone()),
+            TransportEvent::Reset(resource_id),
+        ],
+        "the pre-pool reset runs on the resource being parked"
     );
 
     // 真的复用了：同键再签发拿到同一条租约，且没有新的 Open。
@@ -288,6 +311,113 @@ fn a_reset_that_does_not_succeed_quarantines_the_lease_instead_of_closing_it() {
         "executing on a quarantined lease",
     );
     assert_eq!(fixture.opened().len(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// 归池前的复位：双条件都过了，宿主仍然必须自己跑一次复位
+// ---------------------------------------------------------------------------
+
+/// **归池时复位失败 ⇒ 不许归池**（§9.4 :657「reset 不支持、失败或超时直接关闭」）。
+///
+/// 这条用例是缺陷的反面：修复之前归池分支**从不**调用 `transport.reset`，所以
+/// 复位失败在归池路径上根本不可能被观测到 —— 一个没跑过的复位自然也没有失败分支。
+/// 现在跑它，失败必须把结论作废。
+///
+/// 落点是**关闭**而不是隔离，这里逐条钉住为什么：
+/// * §9.4 给的后果就是「直接关闭」，不是「隔离」；
+/// * 隔离的事由（回滚结果待核验 / 活动执行 / 归属被禁用）在这里一个都不成立：
+///   归池裁决成立的前提是宿主四项全清；
+/// * 关闭这一步被确认 ⇒ 预算当场核销（§9.3「只有实际 close 才释放」）；隧道引用的
+///   结算读的是**最终**处置（`Closed`），不是 `CleanupPlan::of` 的初值（`ReturnedToPool`），
+///   所以不会出现「预算没核销而引用先还了」的错拍。配对证据见
+///   `packages/runtime/tests/tunnel_budget_pairing.rs` 的同名用例。
+#[test]
+fn a_reset_that_fails_during_the_idle_return_closes_the_lease_instead_of_parking_it() {
+    let mut fixture = Fixture::new();
+    let lease = fixture.acquire(LeasePurpose::ShortOperation);
+    let lease_id = lease.lease_id.clone();
+    let resource_id = lease.resource_id.clone();
+    // 宿主四项全清 + 驱动 Clean ⇒ 裁决本意是归池；复位是唯一失败的那一步。
+    fixture.transport.inject(Fault::Reset);
+
+    let report = fixture.release(
+        &lease_id,
+        HostConditionSnapshot::default(),
+        DriverCleanVerdict::reported_clean(),
+    );
+
+    // 1. 归池被否决。
+    assert!(
+        !report.returned_to_pool(),
+        "复位未被确认 ⇒ §9.4 拒绝这次归池，绝不把未知状态的资源留在池里"
+    );
+    assert!(
+        !report.quarantined(),
+        "文档给的后果是关闭，不是隔离：此处没有待核验的回滚义务"
+    );
+    assert_eq!(report.disposition, CleanupDisposition::Closed);
+
+    // 2. 双条件结论作废，并且点名「归池前的复位」这个新事由。
+    assert!(!report.decision.admits_to_idle_pool());
+    assert_eq!(first_reason_code(&report), "hostResetUnconfirmed");
+    assert!(!report.blockers.is_empty());
+
+    // 3. 报告不许谎称复位已完成。
+    assert!(
+        !report.session_reset_performed,
+        "复位失败时 session_reset_performed 必须为假 —— 这是审计的行为证据"
+    );
+
+    // 4. 预算：**关闭**被确认 ⇒ 预算此刻核销。归池被否决不等于预算被释放，也不等于
+    //    预算被扣住 —— 只有「关闭未被确认」才保留预算（下面 `Closed` 分支的既有语义）。
+    assert!(
+        report.physical_budget_released,
+        "落到关闭、且关闭被确认 ⇒ §9.3 要求此刻核销预算"
+    );
+    assert_eq!(
+        fixture.manager.occupied_slots(),
+        0,
+        "确认关闭之后物理槽位必须腾空，否则预算被核销了两次口径"
+    );
+
+    // 5. 空闲池与状态：归池被否决 ⇒ 一条空闲都没有，租约行随确认关闭被摘除。
+    assert_eq!(fixture.manager.idle_lease_count(), 0);
+    assert_eq!(
+        fixture.state_of(&lease_id),
+        None,
+        "关闭被确认 ⇒ 行被 forget，与 `Closed` 处置一致"
+    );
+    expect_err(
+        fixture.manager.accepts_execution(&lease_id),
+        "a lease whose reset failed must never serve traffic again",
+    );
+
+    // 6. 账面证据。本替身的账记的是**已完成**的物理动作（失败的那一步不入账），
+    //    所以「复位失败」的直接证据是上面那条 `hostResetUnconfirmed` 阻断项 ——
+    //    一次都没跑过复位的代码造不出这个名字。账面上看得见的是：
+    //    归池没有变成停放，而是变成了一次**已完成**的关闭，且没有任何复位被记成完成。
+    assert!(
+        fixture.transport.snapshot().reset.is_empty(),
+        "复位没有被确认过 ⇒ 账上不得出现一次已完成的复位（与 session_reset_performed 同口径）"
+    );
+    assert_eq!(
+        fixture.transport.snapshot().closed,
+        vec![resource_id.clone()],
+        "归池被否决的落点是一次关闭，发生在**同一条**原资源上"
+    );
+    assert_eq!(
+        fixture.transport.snapshot().events,
+        vec![
+            TransportEvent::Open(resource_id.clone()),
+            TransportEvent::Close(resource_id),
+        ],
+        "失败的归池复位必须落到一次关闭上，而不是留在池里"
+    );
+
+    // 7. 非空跑：下一次签发必须重新开一条物理连接，而不是捡回这条复位不明的。
+    let next = fixture.acquire(LeasePurpose::ShortOperation);
+    assert_ne!(next.lease_id, lease_id);
+    assert_eq!(fixture.opened().len(), 2);
 }
 
 #[test]

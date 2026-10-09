@@ -86,6 +86,7 @@ pub enum PhysicalEvent {
 pub struct Journal {
     pub events: Vec<PhysicalEvent>,
     pub close_refused: bool,
+    pub reset_refused: bool,
 }
 
 pub struct ScriptedTransport {
@@ -106,6 +107,16 @@ impl ScriptedTransport {
 
     pub fn accept_close(&self) {
         self.lock().close_refused = false;
+    }
+
+    /// 让 `reset` 失败。事件仍然入账 —— 与 [`Self::refuse_close`] 同规：
+    /// **尝试过**复位也是事实，而「宿主跑没跑归池前那道复位」正是 §9.4 要问的。
+    pub fn refuse_reset(&self) {
+        self.lock().reset_refused = true;
+    }
+
+    pub fn accept_reset(&self) {
+        self.lock().reset_refused = false;
     }
 
     /// 某类物理动作的发生次数。
@@ -181,9 +192,15 @@ impl PhysicalTransport for ScriptedTransport {
     }
 
     fn reset(&self, resource_id: &ResourceId) -> Result<(), ResourceError> {
-        self.lock()
+        let mut journal = self.lock();
+        journal
             .events
             .push(PhysicalEvent::Reset(resource_id.clone()));
+        if journal.reset_refused {
+            return Err(ResourceError::TransportRefused(
+                "reset refused by handshake",
+            ));
+        }
         Ok(())
     }
 

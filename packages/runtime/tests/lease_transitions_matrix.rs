@@ -662,3 +662,93 @@ fn an_unclean_driver_verdict_closes_instead_of_parking_but_never_claims_a_clean_
     );
     assert_eq!(counters(&fixture.budget), (0, 1, 1, 0));
 }
+
+// ===========================================================================
+// 5. 归池前的复位（§9.4）：三本账必须一起改口
+// ===========================================================================
+
+/// 归池前的复位**成功**时，池层看到的仍然是停放 —— 多加的那一次物理动作不许
+/// 让 `pool.park`、`idle_after` 或预算核销任何一处漂移。
+#[test]
+fn a_confirmed_pre_pool_reset_parks_the_lease_and_leaves_the_pool_verdict_untouched() {
+    let mut fixture = fixture();
+    let record = ok(fixture.manager.acquire(&main_request()), "acquire");
+
+    let released = ok(
+        fixture.manager.release(
+            &record.lease_id,
+            &clear_host(),
+            &DriverCleanVerdict::reported_clean(),
+            &mut NoHandleCloser,
+        ),
+        "a clean report and a clear host admit the lease",
+    );
+
+    assert!(released.cleanup.returned_to_pool());
+    assert!(
+        released.cleanup.session_reset_performed,
+        "§9.4/§7.3：归池前必跑复位，且必须被记成已执行"
+    );
+    assert_eq!(
+        fixture.transport.labels(),
+        vec!["open", "reset"],
+        "归池不许关闭连接，但必须出现一次复位"
+    );
+    assert!(released.pool.park);
+    assert_eq!(released.pool.idle_after, 1);
+    assert_eq!(released.eviction, IdleEviction::NotNeeded);
+    assert!(
+        !released.budget_settled,
+        "回池不释放物理预算（§9.3）—— 复位这个额外动作不得改变这一格"
+    );
+    assert_eq!(counters(&fixture.budget), (1, 1, 0, 0));
+}
+
+/// 归池前的复位**失败**时，池层必须看到「压根没来」而不是「来了但池子不要」：
+/// `park = false` + `NotOffered` + 预算随确认关闭当场核销。
+///
+/// 这是缺陷在**门面层**的可观测后果：旧实现从不跑复位，于是这条复位失败的路径
+/// 结构上不存在，池层永远被问到 `park = true`。
+#[test]
+fn a_park_refused_by_the_pre_pool_reset_is_reported_to_the_pool_as_not_offered() {
+    let mut fixture = fixture();
+    let record = ok(fixture.manager.acquire(&main_request()), "acquire");
+    fixture.transport.refuse_reset();
+
+    let released = ok(
+        fixture.manager.release(
+            &record.lease_id,
+            &clear_host(),
+            &DriverCleanVerdict::reported_clean(),
+            &mut NoHandleCloser,
+        ),
+        "a refused park is still a disposition, not a ledger failure",
+    );
+
+    assert!(
+        !released.cleanup.returned_to_pool(),
+        "§9.4：reset 失败直接关闭，绝不留在空闲池"
+    );
+    assert_eq!(released.cleanup.disposition, CleanupDisposition::Closed);
+    assert!(released.cleanup.physical_budget_released);
+    assert!(
+        !released.cleanup.session_reset_performed,
+        "失败的复位不得被记成已完成"
+    );
+
+    // 池层的三格：没来 ⇒ NotOffered（不是 Stateless/PoolFull，也不是 park=true）。
+    assert!(!released.pool.park);
+    assert_eq!(released.pool.refusal, Some(PoolRefusal::NotOffered));
+    assert_eq!(released.pool.idle_after, 0);
+    // 关闭被确认 ⇒ 门面层核销预算；不需要额外的池淘汰动作。
+    assert!(released.budget_settled);
+    assert_eq!(released.eviction, IdleEviction::NotNeeded);
+    assert_eq!(
+        fixture.transport.labels(),
+        vec!["open", "reset", "close"],
+        "复位尝试过（入账）⇒ 关闭是复位失败后的替代落点"
+    );
+    assert_eq!(counters(&fixture.budget), (0, 1, 1, 0));
+    assert_eq!(fixture.manager.resources().idle_lease_count(), 0);
+    assert_eq!(fixture.manager.resources().lease_count(), 0);
+}
