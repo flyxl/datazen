@@ -506,11 +506,6 @@ mod tests {
     /// 这正是"伪映射"会落进去的洞：把常量 0 当成真实版本号填进去，
     /// `ConfigRevisionMismatch` 判定会永久失效。本测试把这个事实钉住。
     #[test]
-    /// `ProfileView::new` 的默认值**仍是编造值**——两个 revision 都是 ZERO、永远相等，
-    /// `enabled` 也只能是 true。这条测试现在守护的是"默认值不可用于生产路径"：
-    /// 桌面配置源 `DesktopProfiles` 必须逐字段覆盖成持久化元数据，
-    /// 否则 `ConfigRevisionMismatch` / `RuntimeEpochMismatch` 判定会永久失效。
-    /// 它**不再**是"所以不能接线"的论据——7 项字段已各自有真实来源（见模块文档表格）。
     #[test]
     fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_path() {
         use datazen_platform_api::dto::profile::ProfileView;
@@ -522,9 +517,7 @@ mod tests {
         assert_eq!(view.credential_revision, Counter::ZERO);
         // 两个 revision 因此永远相等 ⇒ 版本不一致判定不可用。
         assert_eq!(view.config_revision, view.credential_revision);
-        // enabled 同样只能取默认值 true；桌面配置源改从 metadata.enabled 取。
         assert!(view.enabled);
-        // 对照：配置源用了带修订的构造器，两个 revision 必须真的不同。
         let real = view
             .with_config_revision(Counter::new(7))
             .with_credential_revision(Counter::new(3));
