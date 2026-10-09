@@ -463,6 +463,15 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 
 **技术落点**
 
+> ⚠ **本节的技术草图已被[设计契约 §4](data-browsing-design/00-contracts.md) 取代，实现时以契约册与对应分册为准。** 以下差异是**实质性**的，不是措辞差异：
+>
+> 1. **选择模型不是几何区间。** 本节草案用 `ranges: { top; left; bottom; right }[]` 表达选区；契约 §4.1 冻结为 `anchor` / `focus` / `extraRanges: CellRange[]` / `mode`，并明确**区间的唯一用途是渲染高亮，绝不参与写操作的定位**——写路径必须经 `rowIdentityAnchors` 解析行身份（这正是 Press 表把「区域」误当定位依据时最容易删错行的原因）。
+> 2. **「`selectedRows` 一律由区域派生」的方向是反的。** 契约 §4.2 规定：`selectedRows` **只由 `row` 模式维护**，进入 `cell` 模式必须**清空**它；行级动作改由**只读**派生函数 `rowsCoveredBySelection(state)` 取得涉及行集合，且**禁止把派生行集写回 `selectedRows`**。契约的方向更安全：把派生值写回可变状态，恰恰就是本节第 5 条想避免的「两套状态打架」。
+> 3. 单元格 `data-*` 属性沿用**既有的** `data-dt-row` / `data-dt-col`（不是本节草案写的 `data-cell-row` / `data-cell-col`），完整属性表见契约 §4.4。
+> 4. 本节把选择模型放在 `src/hooks/useGridSelection.ts` 单个文件里；契约 §4.1 要求**两个都必须存在**的文件——`src/stores/tableData/gridSelection.ts`（纯逻辑，无 React，可单测）+ `src/hooks/useGridSelection.ts`（React 接线）。
+>
+> 本节其余内容（目标行为 1–4、行号列为整行选择入口、测试落点、焦点单元格始终可见）**仍然有效**，契约未推翻它们。
+
 - 新增纯逻辑模块 `src/hooks/useGridSelection.ts`：
   ```ts
   export interface CellRef { rowIndex: number; columnName: string }

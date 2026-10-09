@@ -95,6 +95,10 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 以下文档同样是**按用户明确要求保存的范围例外**，不属于长期维护的 `features/` / `architecture/` / `development/` 三类。它记录的是对标结论与优化方案，而非已实现事实；方案落地后应逐节改写为已实现事实并入 [architecture/frontend/components.md](architecture/frontend/components.md) 与 [features/](features/)，随后删除本文件。
 
 - [数据浏览（Data Browsing）竞品对标与优化方案 PRD](prd/data-browsing-optimization-prd.md)：DataZen 与 TablePlus 在数据浏览维度的差距矩阵（65 项：P0 24 项 / P1 17 项 / P2 12 项 / 持平 12 项，另含 7 项 DataZen 领先项与 6 项双方皆缺的差异化机会）、根因分析、20 个优化方案与 `driver-api` 扩展设计。文内代码引用一律采用「文件 + 符号」形式，不含行号。
+- [数据浏览技术设计总纲](prd/data-browsing-design.md)：把 P0 方案拆成可独立开工、独立验收、独立回滚的 12 份分册，含依赖图、阅读路径、提交切分与「完成定义」。适合作为实际开发入口。
+- [数据浏览技术设计分册](prd/data-browsing-design/)（13 份）：`00-contracts`（冻结的共享契约，**权威来源**：`CellWrite` 三态、`driver-api` 新增方法签名、IPC 变更、错误前缀机制、单元格坐标系与选择模型、共享热文件行数总账）、`01-selection`、`02-keyboard`、`03-clipboard`、`04-insert`、`05-editors`、`06-dirty-cells`、`07-fk-navigation`、`08-filters`、`09-count-and-order`、`10-result-grid`、`11-keyset-paging`、`12-testing`。每份都写到「照着做即可」的粒度：现状事实、数据结构、交互状态机、逐步实现、文件级改动清单（含预估行数与 800 行上限核算）、边界与异常、i18n key、测试清单、自查清单、待裁定项。
+  - 契约册优先：分册与契约冲突时以契约为准；契约册第 9.1 节的**共享热文件行数总账**是跨分册行数账目的唯一权威（多份分册会改同一批文件，各册独立申报必然互相矛盾）。
+  - 分册正文引用的既有符号与路径都经过机械核查（结构完整性、仓库路径是否存在、标识符是否真实存在、公共类型副本是否与契约逐字一致），核查脚本只放系统临时目录、不入库。
 
 ## 开发与发布
 
