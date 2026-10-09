@@ -362,11 +362,7 @@ impl ResourceManager {
                     .push_idle(record.lease_id.clone(), record.pool_key.clone(), now_nanos);
             }
             CleanupDisposition::Closed => {
-                // 登记项 E（并发归还轨发现，**本轨不改**，只留事实）：
-                // 这一行的 `?` 把 `PhysicalTransport::close` 的 `Err` 原样抛给调用方，
-                // 于是本次归还的租约**停在 `Closing`**：不隔离、不核销物理预算，
-                // 关闭义务就此丢失。同一类错误在 `force_close` 里被映成 `Quarantined`，
-                // 两条路径对同一件事给出互斥结果。
+                // 关闭握手没确认 ⇒ **不许**把这条租约留在 `Closing`，也不许把错误原样抛出去。
                 //
                 // 三处一致要求「不能确认就隔离」：
                 // * `PhysicalTransport::close` 的文档「返回 `Err` 表示关闭握手没确认，
@@ -374,24 +370,35 @@ impl ResourceManager {
                 // * `InUse→Closing` 的 `exits_when`「关闭确认 ⇒ Closed；若关闭过程本身
                 //   状态不明 ⇒ Quarantined」；
                 // * 归池前检查「任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主
-                //   检查。reset 不支持、失败或超时直接关闭」——失败之后**仍然**必须关闭。
-                // 两条并列才自洽：先隔离保住租约，关闭义务另行再执行一次——那正是
-                // `force_close` 的形状。只留这条 `?`，两侧各丢一半。
+                //   检查」——失败之后**仍然**必须关闭。
                 //
-                // **怎么复现**：让 `PhysicalTransport::close` 返回一个 `Err`，再走归还
-                // 路径落进本分支 —— 租约行仍在、状态是 `Closing`；同一资源的
-                // `force_close` 则会把它移进 `Quarantined`。本轨两个测试**不覆盖**本分支：
-                // 本轨断言的是「至多一次**被确认的**关闭」（口径见 `force_close` 错误分支
-                // 注释），关闭**失败**属「必须再关一次」，不在本轨断言面内。
-                //
-                // **为什么本轨不改**：把它换成「先 `move_to(Quarantined)` 再返回错误」
-                // 会改变归还路径的返回语义，并外溢到会话句柄的交接面；跨轨改动不该由
-                // 单轨夹带。是否立项、归口哪一轨属协调侧裁定，本轨只保证结论随代码存活。
-                self.transport.close(&record.resource_id)?;
-                if let Some(entry) = self.table.lease_mut(lease_id) {
-                    entry.move_to(LeaseState::Closed)?;
+                // 原来的 `?` 把 `Err` 抛给调用方，租约**停在 `Closing`**：不隔离、不核销
+                // 物理预算、关闭义务就此丢失；而 `force_close` 把同一类错误映成
+                // `Quarantined`，两条路径对同一件事给出互斥结果。现在两条路径同形：
+                // 行留在表里、状态 `Closing→Quarantined`（合法边）、预算不核销、
+                // 隧道引用不归还，`retire`/`force_close` 可以再执行一次关闭义务。
+                match self.transport.close(&record.resource_id) {
+                    Ok(()) => {
+                        if let Some(entry) = self.table.lease_mut(lease_id) {
+                            entry.move_to(LeaseState::Closed)?;
+                        }
+                        self.table.forget(lease_id);
+                    }
+                    Err(error) => {
+                        plan.disposition = CleanupDisposition::Quarantined;
+                        plan.next_state = LeaseState::Quarantined;
+                        // `Closing→Quarantined` 在转移表里是合法边；行还在表里，
+                        // 所以 `retire`（= `force_close` 的形状）能再来一次。
+                        if let Some(entry) = self.table.lease_mut(lease_id) {
+                            entry.move_to(LeaseState::Quarantined)?;
+                        }
+                        tracing::warn!(
+                            lease_id = lease_id.as_str(),
+                            reason = error.reason(),
+                            "close handshake was not confirmed: lease quarantined, physical budget kept"
+                        );
+                    }
                 }
-                self.table.forget(lease_id);
             }
             CleanupDisposition::Quarantined => {
                 tracing::warn!(

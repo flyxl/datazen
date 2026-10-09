@@ -208,6 +208,11 @@ impl InProcessBudgetCoordinator {
         }
     }
 
+    /// 协调器持有的组织。资源层据此构造准入申请，**不接受**调用方逐请求传组织。
+    pub fn organization_id(&self) -> &OrganizationId {
+        &self.organization_id
+    }
+
     /// 注入时钟（测试用假时钟，生产用默认值）。
     pub fn with_clock(mut self, clock: Arc<dyn BudgetClock>) -> Self {
         self.clock = clock;
@@ -254,6 +259,32 @@ impl InProcessBudgetCoordinator {
             self.wakeup.notify_waiters();
         }
         outcome
+    }
+
+    /// 同步核销一张已签发的许可（端口 `release` 的同步内核）。
+    ///
+    /// ## 为什么需要它
+    ///
+    /// 端口 `release` 是 `async` 的，因为它的职责之一是**唤醒等待者**；而物理连接的
+    /// 「关闭被确认」这条路径**不是** await 点：`ResourceManager::release` 与 `force_close`
+    /// 都是同步函数，签名里没有 future 可挂。若没有这个内核，资源层就只能自己留一份
+    /// 「待核销许可」表 —— 那正是 §9.3 与 INV-09 要禁止的第二份占用事实。
+    ///
+    /// 时间与账本都取自协调器自己：调用方**不能**注入时间，也不能跳过唤醒。
+    /// 重复核销返回 [`ReleaseResult::AlreadyReleased`]（幂等，不二次记账），
+    /// 从未签发的许可返回 [`ReleaseResult::Unknown`]（调用方 bug，不静默吞掉）。
+    pub fn release_permit(&self, permit: &BudgetPermit, consumed: bool) -> ReleaseResult {
+        let result = {
+            let mut ledger = lock_ledger(&self.ledger);
+            ledger.release(permit, consumed, self.clock.now_ms())
+        };
+        match result {
+            ReleaseResult::Released { .. } | ReleaseResult::AlreadyReleased { .. } => {
+                self.advance();
+            }
+            ReleaseResult::Unknown { .. } => {}
+        }
+        result
     }
 
     /// 申请一次许可，等不到就按 deadline 失败（端口 `acquire` 的内核）。

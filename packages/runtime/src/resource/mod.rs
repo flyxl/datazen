@@ -33,6 +33,10 @@
 //!              └→ adoption（候选替换门面）
 //!              ↑
 //!    tunnel_wiring（隧道引用 ⇄ 物理预算的归属配对；只读台账，不自建计数）
+//!              ↑
+//!   lease_manager（LeaseManager 门面：句柄登记 ⇄ 物理释放的顺序、预算签发/核销、池策略）
+//!    ├→ pool（池能力声明与归还裁决；不含连接、不自建计数）
+//!    └→ manager（ResourceManager）
 //! ```
 //!
 //! ## 与其它模块的分工
@@ -43,12 +47,17 @@
 //!   会话面只会看到 `RuntimeError::BudgetExhausted`（见 `registry/mod.rs` 的边界声明）。
 //! * 物理端口 [`cleanup::PhysicalTransport`] 是本模块自己定义的**注入式**驱动侧接缝：
 //!   `connection/port.rs` 只冻结了 DTO 与 `BudgetPort`，并没有资源操作端口。
+//! * `budget/**` 是物理占用的**唯一记账方**：开新连接前先拿到许可、关闭被确认后才核销
+//!   （§9.3 / INV-09）。`ResourceManager` 按 CM-32 的单台账审计**不许**新增字段，所以这条
+//!   绑定落在 [`LeaseManager`] 上——池层与资源层都不自建占用计数器。
 
 mod adoption;
 mod cleanup;
 mod generation;
 mod lease;
+mod lease_manager;
 mod manager;
+mod pool;
 mod publication;
 mod replacement;
 mod rotation;
@@ -78,7 +87,15 @@ pub use generation::{
     CacheFillOutcome, CacheRevision, GenerationRegistry, RotationKind, RotationOutcome,
 };
 pub use lease::{LeasePurpose, LeaseRecord, LeaseRequest, LeaseState, PoolKeyGeneration};
+pub use lease_manager::{
+    HandleCloser, HandleRegistry, HandleRelease, IdleEviction, LeaseManager, LeaseRelease,
+    NoHandleCloser, NO_HANDLE_CLOSER,
+};
 pub use manager::ResourceManager;
+pub use pool::{
+    ConnectionPool, PoolDecision, PoolManager, PoolPolicy, PoolRefusal, PoolSnapshot,
+    ResourceModel, DEFAULT_MAX_IDLE_PER_POOL,
+};
 pub use publication::{
     CommitBarrier, DirectoryFault, DirectoryPublisher, Publication, PublishOutcome,
     ReplacementReceipt,
@@ -88,6 +105,7 @@ pub use table::{ConfigRevisionDrift, DisableOutcome, QueueDrain, QueuedLease, Ro
 pub use transition::{TransitionRule, LEASE_TRANSITIONS};
 pub use tunnel_wiring::TunnelDisposition;
 
+use crate::budget::DenialReason;
 use crate::connection::RuntimeError;
 
 /// 本模块全部拒绝的**唯一**出口。
@@ -129,6 +147,20 @@ pub enum ResourceError {
     TunnelPortNotWired,
     #[error("tunnel reference refused: {0}")]
     TunnelRefused(String),
+    #[error("session handle {0} is not registered on this lease")]
+    HandleNotRegistered(String),
+    #[error("session handle {0} is already registered on this lease")]
+    HandleAlreadyRegistered(String),
+    #[error("session handle {0} belongs to another physical resource")]
+    HandleResourceMismatch(String),
+    #[error("pool key {key:?} is declared {declared} but redeclared {requested}")]
+    PoolPolicyConflict {
+        key: PoolKeyGeneration,
+        declared: &'static str,
+        requested: &'static str,
+    },
+    #[error("physical budget refused to admit a new physical occupancy")]
+    PhysicalQuotaRefused(DenialReason),
 }
 
 impl ResourceError {
@@ -150,6 +182,13 @@ impl ResourceError {
             Self::TunnelPortNotWired => "resourceTunnelPortNotWired",
             Self::TunnelRefused(_) => "resourceTunnelRefused",
             Self::InvariantBroken(_) => "resourceInvariantBroken",
+            // 句柄没有登记 ⇒ 对本次裁决而言它不存在（§6.5 的前置条件没满足）。
+            Self::HandleNotRegistered(_) => "resourceHandleNotRegistered",
+            Self::HandleAlreadyRegistered(_) => "resourceHandleAlreadyRegistered",
+            // 句柄挂在别的资源上 ⇒ 复用旧句柄蒙混过关（§6.5 明令禁止）。
+            Self::HandleResourceMismatch(_) => "resourceHandleResourceMismatch",
+            Self::PoolPolicyConflict { .. } => "resourcePoolPolicyConflict",
+            Self::PhysicalQuotaRefused(_) => "resourcePhysicalQuotaRefused",
         }
     }
 
@@ -179,6 +218,16 @@ impl ResourceError {
             Self::PoolMetadataOverflow { .. } | Self::TransportRefused(_) => {
                 RuntimeError::BudgetExhausted(self.reason())
             }
+            // 预算端口拒发物理占用 ⇒ 与池容量拒绝同一条线：会话面只看见
+            // `BudgetExhausted`（budget/mod.rs 的边界声明）。
+            Self::PhysicalQuotaRefused(_) => RuntimeError::BudgetExhausted(self.reason()),
+            // 重复登记句柄 / 同一池键两种能力声明 ⇒ 调用方把契约说错了，不放行。
+            Self::HandleAlreadyRegistered(_) | Self::PoolPolicyConflict { .. } => {
+                RuntimeError::InvariantBroken(self.reason())
+            }
+            Self::HandleResourceMismatch(_) => RuntimeError::InvariantBroken(self.reason()),
+            // 未登记的句柄要摘除 ⇒ 它在本层根本不存在。
+            Self::HandleNotRegistered(_) => RuntimeError::UnknownSession(self.reason().to_string()),
             // 隧道建不成或压根没接隧道端口 ⇒ 宿主侧不满足，归零与核销都由隧道侧说了算，
             // 这里不替它做「当作直连」的猜测（「隧道引用正确」）。
             Self::TunnelPortNotWired | Self::TunnelRefused(_) => {
