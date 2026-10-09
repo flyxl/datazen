@@ -167,6 +167,26 @@ pub(crate) async fn inspect_data_transfer_impl(
         }
     }
 
+    // Fill lengths and numeric precision before deriving editable target
+    // types. Otherwise an inferred LONGTEXT/DECIMAL becomes an explicit UI
+    // override and hides the exact type fetched later during prepare.
+    if matches!(
+        mode,
+        TransferMode::Structure | TransferMode::StructureAndData
+    ) {
+        if let Some(adapter) = state.sync_adapters.get_source(&src_config.database_type) {
+            crate::data_transfer::structure::enrich_source_types(
+                adapter.as_ref(),
+                src_driver.as_ref(),
+                &src_handle,
+                &source,
+                &mut source_schemas,
+            )
+            .await
+            .map_err(CommandError::from)?;
+        }
+    }
+
     let mut results = inspect_tables(
         &src_tables,
         &tgt_tables,
