@@ -177,7 +177,7 @@ describe('数据传输类型映射 Preview DDL (DT-TYPE-MAP)', () => {
       await createNewToggle.click();
     }
     const targetTableInput = await $('[data-testid="data-transfer-target-table-input"]');
-    await targetTableInput.click();
+    await targetTableInput.setValue(TABLE);
     await browser.keys(['Tab']);
     await browser.pause(2000);
 

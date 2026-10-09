@@ -180,7 +180,7 @@ describe('数据传输 MySQL→PG 类型映射旅程 (DT-TYPE-MYSQL-PG-JOURNEY)'
       await createNewToggle.click();
     }
     const targetTableInput = await $('[data-testid="data-transfer-target-table-input"]');
-    await targetTableInput.click();
+    await targetTableInput.setValue(TABLE);
     await browser.keys(['Tab']);
     await browser.pause(2000);
 

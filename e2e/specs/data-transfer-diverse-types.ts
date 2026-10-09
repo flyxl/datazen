@@ -72,6 +72,11 @@ async function runDataTransferWizard(sourceName: string, targetName: string, tab
 
   const result = await $('[data-testid="data-transfer-result"]');
   await result.waitForDisplayed({ timeout: 120000 });
+  await browser.waitUntil(async () => (await result.getAttribute('data-completed')) === 'true', {
+    timeout: 180000,
+    timeoutMsg: 'Wide-type transfer did not reach a verified completed result',
+  });
+  expect(await result.getAttribute('data-verdict-severity')).toBe('ok');
   expect(await result.getText()).not.toContain(t('transfer.error'));
 }
 
