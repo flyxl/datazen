@@ -153,6 +153,22 @@ pub(super) fn runtime(error: rt::RuntimeError) -> ApiError {
         "connection runtime operation failed",
     )
 }
+/// 活连接出口端口的错误映射。
+///
+/// 消息是**给调用方看的分类**，不是内部细节：端口侧的驱动报错文本可能带连接串，
+/// 因此不外传，一律收敛成固定文案（与 [`port`] / [`runtime`] 同一纪律）。
+pub(super) fn live(error: super::live::LiveConnectionError) -> ApiError {
+    use super::live::LiveConnectionError;
+    let code = match error {
+        LiveConnectionError::SessionLost(_) => ApiErrorCode::SessionLost,
+        LiveConnectionError::RuntimeEpochMismatch => ApiErrorCode::SessionLost,
+        LiveConnectionError::Revoked => ApiErrorCode::SessionLost,
+        LiveConnectionError::NotWired | LiveConnectionError::Refused(_) => {
+            ApiErrorCode::ServiceUnavailable
+        }
+    };
+    ApiError::new(code, "live connection port operation failed")
+}
 pub(super) fn port(error: datazen_platform_api::error::PortError) -> ApiError {
     use datazen_platform_api::error::PortError;
     let code = match error {

@@ -465,6 +465,21 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             },
             Err(error) => return Err(convert::runtime(error)),
         };
+        // 关闭路径先作废活连接借用。
+        //
+        // 位置在**回执组装之后、目录释放之前**是刻意的：回执里 `Closed`/`Quarantined`
+        // 的判读需要先读到物理台账；而借用作废必须早于 `directory.release`，否则
+        // 「目录已释放、引用仍可用」这个窗口里，宿主能拿着一份已经作废的引用继续打驱动。
+        let interrupted = lock(&self.inner.live)
+            .clone()
+            .revoke(&request.handle.db_session_id);
+        if interrupted > 0 {
+            tracing::warn!(
+                db_session_id = request.handle.db_session_id.as_str(),
+                borrows = interrupted,
+                "会话关闭打断了仍在外的活连接借用：引用已作废"
+            );
+        }
         if let Some(physical) =
             lock(&self.inner.physical).get(&convert::handle(&request.handle)?.runtime_epoch.get())
         {
