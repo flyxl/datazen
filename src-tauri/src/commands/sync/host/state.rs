@@ -174,8 +174,9 @@ pub(crate) fn failure_of(job_id: &str) -> Option<String> {
 /// Allowlisted guidance only. Never project row values or raw driver diagnostics
 /// into a Job view (including the live in-process view).
 pub(crate) fn safe_failure_of(job_id: &str) -> Option<String> {
-    failure_of(job_id)
-        .as_deref()
+    lock(&FAILURES)
+        .get(job_id)
+        .map(String::as_str)
         .and_then(safe_failure_message)
         .map(str::to_owned)
 }

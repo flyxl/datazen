@@ -41,7 +41,6 @@ use crate::data_sync::{Endpoint, SyncSourceFilter};
 use super::super::error::CommandError;
 use super::super::AppState;
 use super::host::recording::RecordingHost;
-#[cfg(test)]
 use super::host::state;
 use super::host::HostDataSync;
 

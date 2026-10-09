@@ -99,16 +99,7 @@ export function SchemaDiffWindow() {
 
   const endpoints = useSchemaDiffEndpoints({ onError: setError });
   const jobLifecycle = useSchemaDiffJobLifecycle();
-  useSchemaDiffJobRestore({
-    ...jobLifecycle,
-    sourceConnectionId: endpoints.sourceId,
-    targetConnectionId: endpoints.targetId,
-    setPlan,
-    setPlanMeta,
-    setUseTransaction,
-    setStep,
-    setDeployResult,
-  });
+  useSchemaDiffJobRestore({ currentJob: jobLifecycle.currentJob, setDeployResult });
 
   const selectedTables = useMemo(() => enabledTableNames(tablePicks), [tablePicks]);
 
