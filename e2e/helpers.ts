@@ -2704,14 +2704,29 @@ export async function openSchemaDiffWindow(
 }
 
 export async function waitForSchemaDiffNextEnabled(timeout = 20000) {
-  await browser.waitUntil(
-    async () => {
-      const next = await $('[data-testid="schema-diff-next"]');
-      if (!(await next.isExisting().catch(() => false))) return false;
-      return await next.isEnabled().catch(() => false);
-    },
-    { timeout, timeoutMsg: '等待 schema-diff-next 可点击超时' },
-  );
+  try {
+    await browser.waitUntil(
+      async () => {
+        const next = await $('[data-testid="schema-diff-next"]');
+        if (!(await next.isExisting().catch(() => false))) return false;
+        return await next.isEnabled().catch(() => false);
+      },
+      { timeout, timeoutMsg: '等待 schema-diff-next 可点击超时' },
+    );
+  } catch (error) {
+    const state = await browser.execute(() => {
+      const root = document.querySelector('[data-testid="schema-diff-window"]');
+      const text = (id: string) =>
+        document.querySelector(`[data-testid="${id}"]`)?.textContent?.trim();
+      return {
+        step: root?.getAttribute('data-schema-diff-step'),
+        source: text('schema-diff-source'),
+        target: text('schema-diff-target'),
+        error: text('schema-diff-error'),
+      };
+    });
+    throw new Error(`${String(error)}; wizard=${JSON.stringify(state)}`);
+  }
 }
 
 /** Select source/target on the Schema Diff endpoints step and wait until Next is enabled. */

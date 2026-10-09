@@ -273,7 +273,15 @@ pub(crate) async fn read_durable_job(
         .desktop_job_host
         .get(&ctx, JobId::new(job_id.to_string()))
         .await
-        .map(|record| record.view)
+        .map(|record| {
+            let mut view = record.view;
+            if view.state == JobState::Failed {
+                if let Some(message) = state::safe_failure_of(job_id) {
+                    view.error = Some(message);
+                }
+            }
+            view
+        })
         .map_err(port_error)
 }
 
@@ -371,7 +379,7 @@ pub(crate) async fn details_durable_job(
     job_id: &str,
 ) -> Result<datazen_platform_api::dto::job::JobDetails, CommandError> {
     let ctx = durable_context();
-    let details = state
+    let mut details = state
         .desktop_job_host
         .details(&ctx, JobId::new(job_id.to_string()))
         .await
@@ -380,6 +388,11 @@ pub(crate) async fn details_durable_job(
         return Err(CommandError::NotFound(format!(
             "Data Sync job '{job_id}' was not found"
         )));
+    }
+    if details.job.state == JobState::Failed {
+        if let Some(message) = state::safe_failure_of(job_id) {
+            details.job.error = Some(message);
+        }
     }
     Ok(details)
 }

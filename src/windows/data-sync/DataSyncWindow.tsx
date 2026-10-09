@@ -1718,7 +1718,11 @@ export function DataSyncWindow() {
         jobIdRef.current = null;
         jobKindRef.current = null;
       }
-      if (recompareJobId && jobIdRef.current === recompareJobId && jobKindRef.current === 'compare') {
+      if (
+        recompareJobId &&
+        jobIdRef.current === recompareJobId &&
+        jobKindRef.current === 'compare'
+      ) {
         jobIdRef.current = null;
         jobKindRef.current = null;
       }
@@ -2152,11 +2156,12 @@ export function DataSyncWindow() {
           {durableJobs.slice(0, 5).map((details) => {
             const { job, recovery, domainResults } = details;
             const committed = Number(job.progress.committed);
-            const stateLabel = recovery?.verdict === 'notExecuted'
-              ? t('migrationJob.notExecutedJob')
-              : recovery?.verdict === 'pendingVerification'
-                ? t('migrationJob.pendingVerificationHint')
-                : job.state;
+            const stateLabel =
+              recovery?.verdict === 'notExecuted'
+                ? t('migrationJob.notExecutedJob')
+                : recovery?.verdict === 'pendingVerification'
+                  ? t('migrationJob.pendingVerificationHint')
+                  : job.state;
             const counters = domainResults.flatMap((result) => result.counters);
             const committedResult = Number(
               counters.find((counter) => counter.code === 'committed')?.value ?? committed,
@@ -2165,7 +2170,9 @@ export function DataSyncWindow() {
               <div key={job.jobId} className="flex items-center justify-between gap-3 py-0.5">
                 <span>{job.kind}</span>
                 <span>{stateLabel}</span>
-                <span>{t('migration.verdict.committedRows')}: {committedResult}</span>
+                <span>
+                  {t('migration.verdict.committedRows')}: {committedResult}
+                </span>
                 {recovery?.verdict === 'pendingVerification' ? (
                   <Button
                     variant="ghost"
@@ -2664,6 +2671,7 @@ export function DataSyncWindow() {
 
       <Dialog
         open={executeConfirmOpen}
+        testId="data-sync-execute-confirm-dialog"
         title={t('sync.executeDeleteTitle')}
         onClose={() => setExecuteConfirmOpen(false)}
         footer={
@@ -2673,6 +2681,7 @@ export function DataSyncWindow() {
             </Button>
             <Button
               variant="run"
+              data-testid="data-sync-confirm-execute"
               onClick={() => {
                 setExecuteConfirmOpen(false);
                 void runExecute();

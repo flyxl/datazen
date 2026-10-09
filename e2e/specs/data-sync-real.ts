@@ -12,7 +12,12 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { sqlBlockedBySafeMode, disconnectBackend, withSafeModeOff } from '../helpers.js';
+import {
+  invokeBackend,
+  sqlBlockedBySafeMode,
+  disconnectBackend,
+  withSafeModeOff,
+} from '../helpers.js';
 
 // ── Connection configs (credentials from environment variables) ─────
 
@@ -79,23 +84,6 @@ const MY_RO = {
 const ALL_CONFIGS = [PG_SRC, PG_TGT, PG_RO, MY_TGT, MY_RO];
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
-  const result = await browser.executeAsync(
-    (c: string, a: string, done: (r: any) => void) => {
-      (window as any).__TAURI_INTERNALS__
-        .invoke(c, JSON.parse(a))
-        .then((r: any) => done(r))
-        .catch((e: any) => done({ __error: String(e) }));
-    },
-    cmd,
-    JSON.stringify(args),
-  );
-  if (result && typeof result === 'object' && '__error' in (result as any)) {
-    throw new Error((result as any).__error);
-  }
-  return result as T;
-}
 
 async function expectCommandNotFound(invoke: () => Promise<unknown>): Promise<void> {
   let message = '';
@@ -557,7 +545,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
         options: SYNC_EXEC_OPTIONS,
       }),
     );
-    expect(legacyError).toMatch(/reviewed row selection|comparison plan/i);
+    expect(legacyError).toMatch(/reviewed (?:row selection|plan)|comparison plan/i);
 
     const preview = await invokeBackend<CompareDataSyncPreview>('compare_data_sync', {
       sourceDbSessionId: srcSessionId,
@@ -603,7 +591,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     expect(pending.length).toBe(0);
   });
 
-  it('SYNC-REAL-025: confirmed optimistic conflict rolls back and permits a fresh comparison', async () => {
+  it('SYNC-REAL-025: reviewed target conflict rejects before writes and permits a fresh comparison', async () => {
     await runSQL(srcSessionId, "UPDATE sync_apply_exec SET val = 'source-update' WHERE id = 1");
     const preview = await invokeBackend<CompareDataSyncPreview>('compare_data_sync', {
       sourceDbSessionId: srcSessionId,
@@ -614,18 +602,17 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     const selection = await selectionFor(preview, 'sync_apply_exec', 'UPDATE');
 
     await runSQL(tgtSessionId, "UPDATE sync_apply_exec SET val = 'target-concurrent' WHERE id = 1");
-    const result = await invokeBackend<ExecutionResult>('execute_data_sync', {
-      request: {
-        planId: preview.planId,
-        selection,
-        options: SYNC_EXEC_OPTIONS,
-        jobId: null,
-      },
-    });
-    expect(result.rolledBack).toBe(true);
-    expect(result.rollbackReason).toMatch(/optimistic sync conflict/);
-    expect(result.conflicts).toHaveLength(1);
-    expect(result.conflicts?.[0]?.operation).toBe('UPDATE');
+    const error = await expectCommandError(() =>
+      invokeBackend('execute_data_sync', {
+        request: {
+          planId: preview.planId,
+          selection,
+          options: SYNC_EXEC_OPTIONS,
+          jobId: null,
+        },
+      }),
+    );
+    expect(error).toMatch(/did not start/i);
 
     const target = await invokeBackend<{ results: { rows: unknown[][] }[] }>('execute_query', {
       dbSessionId: tgtSessionId,
@@ -707,7 +694,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     ]);
   });
 
-  it('SYNC-REAL-027: a conflict on the second generated page rolls back the first page', async function () {
+  it('SYNC-REAL-027: a reviewed conflict on a later page rejects the complete selection before writes', async function () {
     this.timeout(180000);
     await runSQL(
       srcSessionId,
@@ -733,17 +720,17 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       "UPDATE sync_stream_rollback SET val = 'target-concurrent' WHERE id = 500;",
     );
 
-    const result = await invokeBackend<ExecutionResult>('execute_data_sync', {
-      request: {
-        planId: preview.planId,
-        selection,
-        options: SYNC_EXEC_OPTIONS,
-        jobId: null,
-      },
-    });
-    expect(result.rolledBack).toBe(true);
-    expect(result.applied).toBeGreaterThan(0);
-    expect(result.rollbackReason).toMatch(/optimistic sync conflict/);
+    const error = await expectCommandError(() =>
+      invokeBackend('execute_data_sync', {
+        request: {
+          planId: preview.planId,
+          selection,
+          options: SYNC_EXEC_OPTIONS,
+          jobId: null,
+        },
+      }),
+    );
+    expect(error).toMatch(/did not start/i);
 
     const readback = await invokeBackend<{ results: { rows: unknown[][] }[] }>('execute_query', {
       dbSessionId: tgtSessionId,

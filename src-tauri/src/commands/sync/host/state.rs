@@ -170,3 +170,34 @@ pub(crate) fn record_failure(job_id: &str, message: impl Into<String>) {
 pub(crate) fn failure_of(job_id: &str) -> Option<String> {
     lock(&FAILURES).get(job_id).cloned()
 }
+
+/// Allowlisted guidance only. Never project row values or raw driver diagnostics
+/// into a Job view (including the live in-process view).
+pub(crate) fn safe_failure_of(job_id: &str) -> Option<String> {
+    failure_of(job_id)
+        .as_deref()
+        .and_then(safe_failure_message)
+        .map(str::to_owned)
+}
+
+fn safe_failure_message(message: &str) -> Option<&'static str> {
+    if message.contains("tupleRange") {
+        Some("Invalid recordset: tupleRange must match the complete primary key in declared order.")
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod failure_projection_tests {
+    use super::safe_failure_message;
+
+    #[test]
+    fn recordset_guidance_never_echoes_row_values_or_driver_text() {
+        let message = "tupleRange columns must match primary key; password=secret; row=private";
+        assert_eq!(safe_failure_message(message), Some(
+            "Invalid recordset: tupleRange must match the complete primary key in declared order."
+        ));
+        assert_eq!(safe_failure_message("driver password=secret"), None);
+    }
+}
