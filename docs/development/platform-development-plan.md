@@ -38,7 +38,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 2. 详细设计对应测试编号通过；Unsupported 能力有拒绝断言。
 3. 生产路径不新增裸 unwrap/expect；测试文件通过 typecheck，无 any 绕过。
 4. driver 方言实现及测试在 driver 目录；host 无数据库名称分支。
-5. 新协议兼容声明真实，所有参与构建的 path/Git driver 已迁移或明确禁用对应新能力。
+5. 新协议兼容声明真实，所有参与构建的 path/Git driver 已迁移或明确禁用对应新能力。**自 2026-10 起 P2 第一轮范围收窄为 `basic` 四个驱动**（postgres、mysql、sqlite、redis，即 CI 与默认构建实际编译的集合）；其余 path/Git 驱动移入 P10，由 P10 门槛统一断言。
 6. Agent 不读取 `.env` / `.env.test` 内容进入上下文；测试程序读取合法且输出不得泄密，不提交凭据、生成文件或外部子仓库内容。
 7. 当前架构文档同步描述已经实现的部分；未实现功能仍标记目标设计。
 8. 评审看到清楚的启用条件、关闭/失败行为和回退边界。
@@ -93,10 +93,10 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - namespace/session/transaction/snapshot/data/backup 可选能力注册与运行时能力降低机制。
 - 所有实际建连的预算 port，包括 driver pool、集群节点和控制资源。
 - 现有 Command 和迁移接口保持领域语义；资源获得方式通过 adapter 演进。
-- 先迁移具有真实会话与事务的代表 driver，再迁移其余参与构建驱动；不支持能力明确拒绝。
+- **第一轮只迁移 `basic` 四个驱动**（postgres、mysql、sqlite、redis —— CI 与默认构建实际编译的集合）：先迁移具有真实会话与事务的代表 driver，再迁移该集合内其余驱动；不支持能力明确拒绝。**其余 path/Git 驱动不在 P2 门槛内**，按 P10 补齐；未迁移的驱动必须在能力注册处显式声明未支持，不得静默回退到旧 Command 路径。
 - 修改公共契约时核对 crate SemVer、PROTOCOL_VERSION 和 minimum compatible；同步 path/Git driver、factory、ReuseDriver、生成选型路径。判定规则与门禁见 [driver-capability-migration.md §5.3](../architecture/platform/driver-capability-migration.md)：任何 breaking 改动强制升 `PROTOCOL_VERSION`（`pnpm test:driver-protocol`，CI 硬门禁），升 `MIN` 是主动放弃老驱动兼容性的独立决定，不是 breaking 的处理方式。
 
-退出门槛：D 层 CM-07～19、22～26、30、45、48；不同 driver 不共享实现库类型；新增能力缺失不会 no-op 成功。
+退出门槛：D 层 CM-07～19、22～26、30、45、48；不同 driver 不共享实现库类型；新增能力缺失不会 no-op 成功。**本门槛只对第一轮四个基本驱动断言**；其余驱动的对应断言属于 P10，不得在 P2 记录为已通过。
 
 回退：过渡 adapter 可以支持旧 driver 的独立受控 Command，但不能开放未证明的 statefulSession。
 
@@ -262,11 +262,12 @@ P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
 - 选择一个实现既有能力的新增/适配 driver，限定改动在 driver 包、注册选型、schema/UI/文案和 driver 测试。
 - 运行通用 contract × driver 矩阵，确认 unsupported 路径明确拒绝。
+- **补齐 P2 第一轮未覆盖的 path/Git 驱动**：把其余驱动迁移到 ResourceProvider 与可选能力注册，或显式声明不支持对应能力；本项完成前 `--drivers=all` 不作为发布选型，只作为开发期验证入口。
 - 删除 consumer 的旧共享 session/reconnect/双执行路径，删除 SDK 重复实现。
 - 更新 Driver 公共协议、独立驱动指南和已实现架构；平台计划及关联设计逐节转为事实/流程。
 - 采集 fake runtime 基准、真实典型负载和资源计数，按实测调整默认预算，不承诺跨环境 SQL 延迟。
 
-退出门槛：详细设计 CM-01～74 全部适用门槛，新增 driver 不改宿主数据库分支；未能执行的真实环境验证明确列入发布限制，不能称全部通过。
+退出门槛：详细设计 CM-01～74 全部适用门槛，新增 driver 不改宿主数据库分支；未能执行的真实环境验证明确列入发布限制，不能称全部通过。**`--drivers=all` 下每个驱动的能力声明与 unsupported 拒绝路径逐个核对**，未迁移驱动必须以显式拒绝通过，不得以静默回退计入已通过。
 
 回退：只回退新增驱动选型/包；已删除旧路径不为了兼容缺失能力重新引入。公共契约确有新语义需求时走版本化演进。
 

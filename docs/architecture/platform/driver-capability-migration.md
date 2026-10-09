@@ -179,7 +179,7 @@
 - **绑定参数**：`max_bound_parameters` = 2100。
 - **测试基座**：`tests/` 下共 9 个 `.rs`——7 个 `live_*.rs`（`live_admin_and_sync`、`live_connection`、`live_pagination`、`live_query_types`、`live_schema_metadata`、`live_streaming`、`live_write_and_ddl`）+ `sync_adapter_smoke.rs` + `command_definitions.rs`，另有 `common/` 辅助模块。它是当前 15 个 path 驱动里真实服务端测试覆盖最厚的。
 
-**与目标契约的差距**：这是最接近目标资源模型、也最需要谨慎的一个驱动。它有真实的单物理会话，有 `discard_connection`，有会话级开关，但**没有声明、没有基线校验、没有 reset 复原**。`resetForReuse` 的枚举只有 `verified` / `unsupported` 两值，本驱动拿不到 `verified`——`discard` 是丢弃不是复原。P2 的工作是把「回滚未决事务 → 复原 `restore_isolation` → 复原 `SHOWPLAN_TEXT`/IDENTITY_INSERT 等会话开关」做成显式 `resetResource`，再由 CM-26/CM-69 验证之后才能填 `verified`。
+**与目标契约的差距**：这是最接近目标资源模型、也最需要谨慎的一个驱动。它有真实的单物理会话，有 `discard_connection`，有会话级开关，但**没有声明、没有基线校验、没有 reset 复原**。`resetForReuse` 的枚举只有 `verified` / `unsupported` 两值，本驱动拿不到 `verified`——`discard` 是丢弃不是复原。P10 的工作（本驱动已随批次 2 移出 P2 第一轮）是把「回滚未决事务 → 复原 `restore_isolation` → 复原 `SHOWPLAN_TEXT`/IDENTITY_INSERT 等会话开关」做成显式 `resetResource`，再由 CM-26/CM-69 验证之后才能填 `verified`。
 
 ### 3.5 Redis
 
@@ -255,22 +255,23 @@
   - **CM-08（两个编辑器隔离，H/D/F）与 CM-30（idle 连接计入预算，H/D）必须进模板**：这两条描述的是宿主侧「同一个 driver 实例同时服务两个编辑器、上下文互不破坏」与「预算必须统计真实 idle 连接」，不是某个方言的语义，因此对全部 15 个驱动成立。模板里先把两条的用例骨架写出来（驱动只需提供自己的 `ResourceDescriptor` 与连接统计钩子），后续驱动行就不必再重复列它们。
 - **进出门槛**：模板本身是一个可运行的 hostless harness（`cargo test -p datazen-driver-api`），且在至少一个「全部能力 unsupported」的桩驱动上能全绿。
 
-### 批次 1：代表驱动（每种语义模型各一个）
+### 批次 1：P2 第一轮 = `basic` 四个驱动
 
-选这 4 个是因为它们把 §2.2 的三条结构事实全部覆盖了一遍，且彼此没有共享实现库。
+选这 4 个是因为它们正是 `resolve-drivers.mjs` 的 `basic` 预设——CI 与默认构建实际编译的集合，且彼此没有共享实现库。**P2 的退出门槛只对这 4 个驱动断言**，其余驱动按平台计划 P10 补齐。
 
 | 驱动 | 选它的原因 | 必做 D 层断言 |
 | --- | --- | --- |
 | postgres | `Transactional`（postgres 与 sqlite 同为 `Transactional`）+ 多池 + per-DB 控制通道 + 两个正确拒绝 legacy cancel 的驱动之一（另一个是 mysql） | CM-07、CM-08、CM-09～CM-14、CM-15、CM-16、CM-17～CM-19、CM-22～CM-24、CM-26、CM-30、CM-62、CM-67 |
 | mysql | 唯一 `namespaceSwitch: inPlace`、唯一 `AutoCommitPerStatement`、DDL 隐式提交 | CM-07、CM-10～CM-13、CM-16、CM-17、CM-19、CM-22～CM-24、CM-26、CM-45、CM-48、CM-62 |
-| sqlserver | 唯一真·单物理会话、唯一 `discard_connection`、唯一会话级开关 | CM-07、CM-09、CM-14、CM-17～CM-19、CM-22～CM-24、CM-26、CM-45；另需跑纯 H 的 `CM-69` 与 H/F 的 `CM-74`（二者无 D 层标记，**不能算作 D 层断言**） |
 | sqlite | 唯一的硬编码单连接池反例（`sqlite.rs:288-291`；mysql 只有在 `max_pool_size` 配成 1 时才会同样降到 1，见 `types.rs:170-172` 的 `clamp(1, 100)`）、最小 dialect 面 | CM-07、CM-13、CM-14、CM-17～CM-19、CM-24、CM-26、CM-62 |
+| redis | 唯一的键值语义模型，也是 CI 四个驱动中唯一的非关系库，必须在这一轮就把它的 unsupported 面暴露出来 | CM-07、CM-09、CM-19、CM-24、CM-26、CM-62；补 `contextObservation` 与 `namespaceSwitch` 的 P0 结论；`value_search` 的 `commit` 不得被误认成事务 |
 
 - **CM-19（driver 无状态能力）** 是批次 1 的核心用例：它直接检验「不把单连接池假装成固定资源」，sqlite 这一格就是它的标准靶子。
 - **CM-15** 只对 postgres 成立（切 database 必须替换连接，是 `requiresReplacement` 的教科书实现）；**CM-16**（替换失败保留旧连接）适用于**一切** `requiresReplacement` 驱动——mysql 当前矩阵填 `inPlace`，若 §3.2 的 P0 定案改为 `requiresReplacement`，CM-16 立即对它必做；**CM-11 / CM-12** 只对 mysql 的 `USE` 路径成立。这三条都不允许被推广成「所有驱动都要发 `USE`」的断言。
 - **进出门槛**：这 4 个驱动的 `cargo test -p datazen-driver-<id>` 全绿；`pnpm test:unit:drivers` 干净；`pnpm typecheck` 干净；`pnpm e2e:contract:matrix` 中这 4 行的 D 层用例转绿。任一项不过则批次 1 不完成。
+- **原批次 1 的 `sqlserver` 已移出第一轮**：它是唯一真·单物理会话、唯一 `discard_connection`、唯一会话级开关的语义样本，但其契约测试依赖 `tests/live_*.rs` 真实服务端，CI 不提供该环境。该语义模型与其全部断言转入批次 2（P10），**不得因移出第一轮而从矩阵或断言清单中消失**。
 
-### 批次 2：其余关系库与嵌入式数据库
+### 批次 2：其余关系库与嵌入式数据库（**转入 P10**）
 
 | 驱动 | 必做 D 层断言 | 备注 |
 | --- | --- | --- |
@@ -279,15 +280,17 @@
 | rqlite | CM-07、CM-14、CM-17、CM-19、CM-24、CM-26 | 最低成本档 |
 | turso | CM-07、CM-14、CM-17、CM-19、CM-24、CM-26 | 同上 |
 | mongodb | CM-07、CM-09、CM-14、CM-17、CM-19、CM-24、CM-26、CM-62、CM-67 | 需先解决 `namespaceSwitch` 枚举缺口 |
+| sqlserver | CM-07、CM-09、CM-14、CM-17～CM-19、CM-22～CM-24、CM-26、CM-45；另需跑纯 H 的 `CM-69` 与 H/F 的 `CM-74`（二者无 D 层标记，**不能算作 D 层断言**） | 唯一真·单物理会话、唯一 `discard_connection`、唯一会话级开关；依赖 `tests/live_*.rs` 真实服务端，**需自备环境，否则只能记为未验证** |
 
 - **批次 2 的前置条件**：§5.2 的 `namespaceSwitch` 必须先补齐「无会话按请求寻址」这一情形的表达方式（扩展枚举，或在 `ResourceDescriptor.namespaceShape` 里把它显式建模并由契约测试固定映射）。clickhouse / mongodb / influxdb 三者共用这一前置。
-- **进出门门槛**：本批 5 个驱动 D 层全绿，且批次 1 的 4 个驱动仍然全绿（防止新增能力改坏旧驱动）。`pnpm test:boundaries` 的生产侧基线必须仍为 0 违规。
+- **进出门槛（P10）**：本批 6 个驱动 D 层全绿，且批次 1 的 4 个驱动仍然全绿（防止新增能力改坏旧驱动）。`pnpm test:boundaries` 的生产侧基线必须仍为 0 违规。
 
-### 批次 3：非关系库与明确 unsupported 的固化
+### 批次 3：非关系库与明确 unsupported 的固化（**转入 P10**）
+
+`redis` 已提入批次 1（P2 第一轮）；本批剩余 5 个驱动转入 P10。
 
 | 驱动 | 必做 D 层断言 | 备注 |
 | --- | --- | --- |
-| redis | CM-07、CM-09、CM-19、CM-24、CM-26、CM-62 | 补 `contextObservation` 与 `namespaceSwitch` 的 P0 结论；`value_search` 的 `commit` 不得被误认成事务 |
 | influxdb | CM-07、CM-14、CM-19、CM-24、CM-26 | 需先解决 `namespaceSwitch` 枚举缺口 |
 | victoriametrics | CM-07、CM-14、CM-19、CM-24、CM-26 | |
 | hbase | CM-07、CM-14、CM-19、CM-24、CM-26 | |
@@ -295,18 +298,20 @@
 | elasticsearch | CM-07、CM-14、CM-19、CM-24、CM-26 | **先补最小 Rust 集成测试基线**（当前无 `tests/` 目录，只有 `src/` 内 10 个单元测试） |
 
 - 批次 3 的重点不是接能力，而是**把「不支持」变成可执行的显式拒绝**：`requestCancel` 返回 `Unsupported`、`begin` 返回 `Unsupported`、`resetResource` 返回 `Unsupported`，且每一条都有 CM-24（无取消能力）与 §7 的对应断言。
-- **进出门槛**：13 处 `cancel_query -> Ok(())` 全部改为显式拒绝（见 §7）；这 6 个驱动的 D 层全绿；`pnpm e2e:contract:matrix` 全矩阵转绿。
+- **进出门槛（P10）**：13 处 `cancel_query -> Ok(())` 全部改为显式拒绝（见 §7）；这 5 个驱动的 D 层全绿；`pnpm e2e:contract:matrix` 全矩阵转绿。
 
 ### 4.5 批次顺序的硬性依赖
 
 ```text
 批次 0（契约模板）
-   └─> 批次 1（postgres / mysql / sqlserver / sqlite）
-          └─> 批次 2（clickhouse / duckdb / mongodb / rqlite / turso）
+   └─> 批次 1 = P2（postgres / mysql / sqlite / redis）
+          └─> 批次 2 = P10（clickhouse / duckdb / mongodb / rqlite / turso / sqlserver）
                  │  需要：§5.2 namespaceSwitch 枚举缺口先补齐
-                 └─> 批次 3（redis / influxdb / victoriametrics / hbase / vector / elasticsearch）
+                 └─> 批次 3 = P10（influxdb / victoriametrics / hbase / vector / elasticsearch）
                         需要：13 处 no-op cancel 先改显式拒绝
 ```
+
+P2 第一轮只交付批次 1；批次 2 与批次 3 连同 `sqlserver` 的语义模型由 P10 补齐，届时才允许把 15 驱动矩阵记为全部通过。
 
 ## 5. 协议版本演进
 
