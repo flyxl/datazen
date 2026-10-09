@@ -90,6 +90,12 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [Workflow 资源模型详细设计](architecture/platform/workflow-resource-model.md)：step / session block / transaction block 三种执行单元、目标继承链、Session/Lease/Budget 集成与版本兼容边界。
 - [团队 Web 服务与认证详细设计](architecture/platform/team-server-and-auth.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
 
+### 数据浏览竞品对标与优化方案（一次性方案，范围例外）
+
+以下文档同样是**按用户明确要求保存的范围例外**，不属于长期维护的 `features/` / `architecture/` / `development/` 三类。它记录的是对标结论与优化方案，而非已实现事实；方案落地后应逐节改写为已实现事实并入 [architecture/frontend/components.md](architecture/frontend/components.md) 与 [features/](features/)，随后删除本文件。
+
+- [数据浏览（Data Browsing）竞品对标与优化方案 PRD](prd/data-browsing-optimization-prd.md)：DataZen 与 TablePlus 在数据浏览维度的差距矩阵（65 项：P0 24 项 / P1 17 项 / P2 12 项 / 持平 12 项，另含 7 项 DataZen 领先项与 6 项双方皆缺的差异化机会）、根因分析、20 个优化方案与 `driver-api` 扩展设计。文内代码引用一律采用「文件 + 符号」形式，不含行号。
+
 ## 开发与发布
 
 - [E2E Testing](development/e2e-testing.md)
