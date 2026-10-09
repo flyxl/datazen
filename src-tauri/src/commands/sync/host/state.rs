@@ -5,7 +5,7 @@
 //! ChangeSet and reviewed selection only in process memory; neither contains a
 //! live session id in durable storage. Cancel intent belongs to the Job record.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(test)]
@@ -68,8 +68,11 @@ static SELECTIONS: LazyLock<Mutex<HashMap<String, StoredSelection>>> =
 static CONFIRMED_SELECTIONS: LazyLock<Mutex<HashMap<String, StoredSelection>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Last host-observed failure per Job for in-process diagnostics. Durable
-/// details contain only stable safe reason codes.
+/// A completed comparison may still be publishing its process-local review.
+static PENDING_PREVIEWS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Last host-observed failure; durable details expose only safe reason codes.
 static FAILURES: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -160,6 +163,18 @@ pub(crate) fn store_confirmed_selection(plan_id: &str, selection: StoredSelectio
 #[cfg(test)]
 pub(crate) fn confirmed_selection(plan_id: &str) -> Option<StoredSelection> {
     lock(&CONFIRMED_SELECTIONS).get(plan_id).cloned()
+}
+
+pub(crate) fn mark_preview_pending(job_id: &str) {
+    lock(&PENDING_PREVIEWS).insert(job_id.to_owned());
+}
+
+pub(crate) fn mark_preview_finished(job_id: &str) {
+    lock(&PENDING_PREVIEWS).remove(job_id);
+}
+
+pub(crate) fn preview_pending(job_id: &str) -> bool {
+    lock(&PENDING_PREVIEWS).contains(job_id)
 }
 
 pub(crate) fn record_failure(job_id: &str, message: impl Into<String>) {

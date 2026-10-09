@@ -585,7 +585,7 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
           planId: spentPlan.planId,
           planDigest: spentPlan.planDigest,
           selectionRevision: spentPlan.selectionRevision,
-          selection: {},
+          selection: { sourceTables: [JOB_TABLE] },
           confirmedDestructive: false,
           backendScope: {
             sourceBackendScope: 'local-desktop-backend',

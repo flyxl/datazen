@@ -157,8 +157,17 @@ pub(crate) async fn receipt_for(
 pub(crate) async fn replayed_outcome(
     state: &AppState,
     job_id: &JobId,
+    expected_payload: &serde_json::Value,
 ) -> Result<JobOutcome, CommandError> {
     let ctx = request_context();
+    let record = state
+        .desktop_job_host
+        .get(&ctx, job_id.clone())
+        .await
+        .map_err(admit_error)?;
+    if record.definition.kind != APPLY_KIND || &record.definition.payload != expected_payload {
+        return Err(CommandError::Validation("this idempotency key was already used with a different payload; re-prepare the migration".into()));
+    }
     let details = state
         .desktop_job_host
         .details(&ctx, job_id.clone())
@@ -335,7 +344,15 @@ pub(crate) async fn drive(
                     .await
                     .map_err(admit_error)?;
             }
-            persist_recovery(&host, &ctx, &job_id, plan.handler.as_ref(), result.progress).await?;
+            persist_recovery(
+                &host,
+                &ctx,
+                &job_id,
+                plan.handler.as_ref(),
+                result.progress,
+                result.effect_outcome,
+            )
+            .await?;
         }
         Err(error) => {
             let current = host.get(&ctx, job_id.clone()).await.map_err(admit_error)?;
@@ -364,7 +381,21 @@ pub(crate) async fn drive(
                         .await
                         .map_err(admit_error)?;
                 }
-                JobState::Succeeded | JobState::Failed | JobState::Cancelled => {}
+                JobState::Cancelled => {
+                    persist_recovery(
+                        &host,
+                        &ctx,
+                        &job_id,
+                        plan.handler.as_ref(),
+                        current.view.progress,
+                        current
+                            .view
+                            .effect_outcome
+                            .unwrap_or(EffectOutcome::Unknown),
+                    )
+                    .await?;
+                }
+                JobState::Succeeded | JobState::Failed => {}
             }
         }
     }
@@ -395,12 +426,34 @@ async fn persist_recovery(
     job_id: &JobId,
     handler: &DataTransferHandler,
     progress: JobProgress,
+    effect: EffectOutcome,
 ) -> Result<(), CommandError> {
     let repository = host.repository();
     let mut boundaries = repository
         .committed_boundaries(ctx, job_id)
         .await
         .map_err(admit_error)?;
+    if boundaries.is_empty()
+        && progress.unknown.get() == 0
+        && matches!(
+            effect,
+            EffectOutcome::NotStarted | EffectOutcome::RolledBack
+        )
+    {
+        repository
+            .persist_recovery(
+                ctx,
+                job_id,
+                JobRecoveryResult {
+                    verdict: JobRecoveryVerdict::NotExecuted,
+                    resume_through: None,
+                    reason_code: None,
+                },
+            )
+            .await
+            .map_err(admit_error)?;
+        return Ok(());
+    }
     let Some(mut checkpoint) = repository
         .latest_checkpoint(ctx, job_id)
         .await

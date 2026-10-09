@@ -51,6 +51,25 @@ async fn a_repeated_idempotency_key_replays_the_recorded_job() {
     let first_artifacts = first.artifact_ids.clone();
     let first_progress = first.progress;
 
+    test.state
+        .connection_manager
+        .release(&source)
+        .await
+        .unwrap();
+    test.state
+        .connection_manager
+        .release(&target)
+        .await
+        .unwrap();
+    let mut changed = request.clone();
+    changed.selection_revision += 1;
+    assert!(admit_apply(&test.state, changed)
+        .await
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("different payload"));
+
     let second = apply_and_wait(&test.state, request.clone())
         .await
         .unwrap_or_else(|error| {

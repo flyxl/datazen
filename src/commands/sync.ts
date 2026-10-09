@@ -392,18 +392,7 @@ function durableFailure(job: DataSyncJobView, phase: 'prepare' | 'apply'): Error
 }
 
 async function readPreparePreview(jobId: string): Promise<DataSyncComparisonPreview> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    try {
-      return await invoke<DataSyncComparisonPreview>('get_data_sync_job_preview', { jobId });
-    } catch (error) {
-      lastError = error;
-      await delay(250);
-    }
-  }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('Data Sync comparison finished without a review plan.');
+  return invoke<DataSyncComparisonPreview>('get_data_sync_job_preview', { jobId });
 }
 
 function executionFromJob(details: DataSyncJobDetails): DataSyncExecutionResult {
