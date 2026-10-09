@@ -850,3 +850,41 @@ fn test_tester_abrupt_child_exit_releases_sqlite_owner_lease() {
         "abruptly exited peer's owner lease was not reaped"
     );
 }
+
+#[test]
+fn repeated_pages_reuse_validation_but_detect_edits_after_a_cached_read() {
+    let store = ComparisonStore::from_comparison(comparison(COMPARISON_MEMORY_LIMIT + 1)).unwrap();
+    let summary = store.summaries().unwrap().remove(0);
+    store
+        .load_table_page(
+            &summary.table.source_table,
+            &summary.table.target_table,
+            0,
+            1,
+        )
+        .unwrap();
+    store.summaries().unwrap();
+    assert_eq!(
+        store
+            .inner
+            .manifest_cache
+            .validations
+            .load(Ordering::SeqCst),
+        1
+    );
+    let Storage::File { manifest, .. } = &store.inner.storage else {
+        panic!("expected file store")
+    };
+    let mut bytes = fs::read(manifest).unwrap();
+    bytes[0] = b'!';
+    fs::write(manifest, bytes).unwrap();
+    assert!(store.summaries().is_err());
+    assert_eq!(
+        store
+            .inner
+            .manifest_cache
+            .validations
+            .load(Ordering::SeqCst),
+        2
+    );
+}
