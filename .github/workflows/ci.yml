@@ -69,6 +69,13 @@ jobs:
           pnpm test:boundaries
           pnpm test:i18n-keys
 
+      # 协议号与驱动发布的原子性门禁。放在 strict guards 之后、resolve-drivers
+      # 之前：它只读 drivers-registry.json 与各 crate 的 Cargo.toml，不碰
+      # gitignored codegen，因此无需等驱动注入完成。它需要完整历史（上一步的
+      # fetch-depth: 0）才能读出基线 ref 上的 manifest 与 protocol 数字。
+      - name: Protocol number / driver release atomicity
+        run: pnpm test:driver-protocol-release
+
       - name: Guard i18n sync (warning only)
         run: node scripts/i18n-sync-check.mjs
         continue-on-error: true

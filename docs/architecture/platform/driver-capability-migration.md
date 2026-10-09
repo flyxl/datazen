@@ -379,6 +379,21 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 4. git 驱动在**自己的仓库**里跟进，在 DataZen 侧以 `drivers-registry.json` 的**钉死 `ref`**（`source: "git"` + 指定 `ref`，参见 `olap` 条目 `7096c8737dbe25ab4529e5c3997c9f67309154d9`）提交 DataZen registry PR。钉死 ref 是可复现构建的前提：registry 不指向浮动分支，也不指向未打 tag 的提交。
 5. 宿主升级后，`PROTOCOL_VERSION` 必须 ≥ 全部已发布驱动的 `protocol_version()`。**注意这里的现状是缺口而不是保障**：`registry.rs:134-140` 的 `pv > PROTOCOL_VERSION` 分支目前只是 `tracing::warn!` 然后照常加载，既没有拒绝、也没有把它挡在降级分支之外。要让这条真正成立，P2 必须先在**硬拒绝（返回 `Err`、不 `create()`）**与**加载但标记为不可用并禁止 `execute_driver_command`**之间**二选一并落成门禁**（定案见 [§9](#9-待-p0-验证清单) 待定义 H；闸门现状见 §5.1）——**在定案并落成门禁前，「版本更高的 git 驱动会被拒绝、不静默降级」这句话是不成立的**。
 
+**门禁（已落成）**：`scripts/check-driver-protocol-release.mjs`（`pnpm test:driver-protocol-release`，`.github/workflows/ci.yml:76` 硬门禁，紧随 strict guards 一步、且在 `resolve-drivers` 之前）。它与 [§5.3](#53-哪些改动是-breaking) 那条门禁互不重叠：后者判定契约改动**是否需要**升 `PROTOCOL_VERSION`，本脚本判定**是否真的升了、升了之后这次交付必须跟着发什么**。它只读 `drivers-registry.json` 与各 crate 的 `Cargo.toml`/`lib.rs`，不碰 gitignored codegen，因此无需等驱动注入完成即可运行；`--base=<ref>` 可指定比对基线，默认取 `merge-base(HEAD, origin/main)`。
+
+「一次交付」的发布集按两条可机读的规则判定：path 驱动以 `[package] version` 前进计一次发布，Git 驱动以 `drivers-registry.json` 里钉死 `ref` 的移动计一次发布。**未钉 `ref` 的 Git 驱动（当前 `kiwi` / `superset`）发布决策发生在 clone 时，脚本只把它们列进报告、从不计入发布集**——因为把浮动分支当作「已发布」会把门禁变成永远通过。六条规则全部 fail-closed：
+
+| 规则 | 触发的状态 |
+| --- | --- |
+| `driver-release-state-unreadable` | registry 指向的驱动在基线 ref 或工作区一侧读不到（**读不到不等于没发布**，因此阻断而不是放行） |
+| `protocol-moved-without-driver-release` | `PROTOCOL_VERSION` / `MIN_PROTOCOL_VERSION` 动了，但发布集为空 |
+| `protocol-moved-without-driver-api-release` | 协议号动了，但 `datazen-driver-api` 的 crate 版本没前进 |
+| `driver-released-without-driver-api-release` | 有驱动发布了，但 `datazen-driver-api` 没发——老驱动拿不到新契约 |
+| `released-driver-outside-delivered-protocol-window` | 已发布驱动的 `protocol_version()` 落在本次交付声明的 `MIN..=PROTOCOL` 窗口之外（窗口为空时由 `protocol-window-non-empty` 负责，此处不重复报） |
+| `recompiled-driver-not-released` | 驱动声明的协议号随本次交付上移，却没有跟着发布 |
+
+每条 reject 都逐字点出**哪个驱动、哪个协议数字**不匹配，例如 `driver 'mysql' was released in this delivery (packages/drivers/mysql/Cargo.toml 0.1.0 -> 0.1.1) but declares protocol_version() = 9 (hard-coded override), outside the window MIN_PROTOCOL_VERSION 1 ..= PROTOCOL_VERSION 4 this delivery publishes.` 这条脚本**不新增任何协议协商机制**，只复用既有的 `PROTOCOL_VERSION` / `MIN_PROTOCOL_VERSION` 语义。
+
 **冲突时的判据**：如果某个 breaking 改动无法在本仓库内一次性覆盖全部 path 驱动（例如需要 3 个 git 驱动分别发版），那它**不能**靠下调 `MIN` 蒙混过关，必须先让 DataZen 侧以新 `PROTOCOL_VERSION` 构建、通过 registry 钉 ref 升级全部 git 驱动，最后再打开闸门。在中间状态，宿主应保持 `PROTOCOL_VERSION` 不变、拒绝加载尚未跟进的新能力，而不是接受一个半兼容的组合。
 
 **AI 侧同理**：`AI_PROTOCOL_VERSION` 变更时需要同步更新所有 AI Provider 插件，这条规则在 `AGENTS.md` 中已写明，与本文的驱动协议规则是同一套原子门槛的两次应用。
@@ -424,7 +439,15 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 
 `packages/driver-api/src/capabilities.rs:282` 的 `pub struct CapabilitySet` **目前没有** `#[non_exhaustive]`，紧邻的 `:281` 是 `#[serde(rename_all = "camelCase")]`。**这是当前状态，不是「待补」。**
 
-之所以现在加这个属性是**一行一处**的改动：`1434d29e3` 之后，全仓库**穷举式 `CapabilitySet` 字面量数量为 0**。12 个 path 驱动全部改为 `CapabilitySet::default()` 加逐字段赋值，形态见 `packages/drivers/postgres/src/resource/capabilities.rs:128` 的 `let mut capabilities = CapabilitySet::default();` 及其后 12 条 `capabilities.<字段> = …`（`:130-155`、`:194`、`:228`）。加属性这一步确实只有一处；但**代价落在 out-of-tree 驱动上**，那是边界二的迁移配方要交代的事：旧写法在别的仓库里编不过，而本仓库内的驱动早已全部改完。
+之所以现在加这个属性是**一行一处**的改动，但「本仓库内早已全部改完」这句话在 `1434d29e3` 之后**并不成立**，实测的现状是两种形态并存（15 个 path 驱动，逐驱动核对）：
+
+| 形态 | 驱动 | 落点 |
+| --- | --- | --- |
+| 穷举式 `CapabilitySet { … }` 字面量，12 格全写 | clickhouse、duckdb、elasticsearch、influxdb、rqlite、sqlserver、turso、victoriametrics | 各 `packages/drivers/<id>/src/resource_provider.rs` 的 `capabilities()` |
+| `CapabilitySet::default()` 加逐字段赋值，12 格全写 | postgres、vector、hbase、mysql、sqlite、mongodb | postgres `src/resource/capabilities.rs`、vector / hbase `src/resource/capabilities.rs`、mysql / sqlite / mongodb `src/resource_capabilities.rs` |
+| `CapabilitySet::default()` 加 **5** 格显式赋值，其余 7 格有意留在 fail-closed 默认值并逐格写明理由 | redis | `src/resource/capabilities.rs:119-189`（理由在 `:129-146`） |
+
+前 8 个正是未迁移驱动：它们还没有 `impl ResourceProvider`，经 `LegacyResourceAdapter` 被宿主包起来，能力集就写在 adapter 那一侧的 `capabilities()` 里。**给 `CapabilitySet` 加 `#[non_exhaustive]` 会立刻打断这 8 个驱动**，代价其实落在本仓库内，而不只在 out-of-tree 驱动上。所以加属性这一步的前提是先把未迁移驱动逐个改形态，或为它们保留穷举式构造的等价路径——在这之前不要把这句描述改写成「早已全部改完」。
 
 ### 5.6 `supportsBackup`：判据不是「有没有覆写 dump」
 
@@ -624,6 +647,7 @@ P2 新增的 `capabilities.rs` / `resource.rs` / `session.rs` 必须逐条过这
 | 门禁 | 命令 | 基线 |
 | --- | --- | --- |
 | 驱动协议兼容 | `pnpm test:driver-protocol` | 干净。`source-breaking` 命中时只应报 `source-break-requires-out-of-tree-migration`；同一次运行里 `breaking-change-requires-protocol-bump` 出现次数**必须为 0**（自查项，见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)） |
+| 协议号 / 驱动发布原子性 | `pnpm test:driver-protocol-release` | 干净。协议号与 `datazen-driver-api` 版本都没动时应报 `ok (…) driver releases: 0`；一旦 `PROTOCOL_VERSION` 或 `MIN_PROTOCOL_VERSION` 上升，同一次交付必须同时发出对应驱动（path 驱动升 `[package] version`、钉住的 git 驱动移 `ref`），否则报 `protocol-moved-without-driver-release` / `recompiled-driver-not-released` 并**点名具体驱动与协议号**（[§5.4](#54-什么算契约改动) 末段） |
 | 依赖边界 | `pnpm test:boundaries` | 生产代码 0 违规；fixture 2 处已知违规（不是 0 目标值） |
 | 类型 | `pnpm typecheck` | 干净，**含测试文件**（`tsconfig.json` 已不排除 `__tests__/` 与 `*.test.ts(x)`） |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | 干净 |

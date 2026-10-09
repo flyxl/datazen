@@ -211,4 +211,34 @@ export const CONTRACT_RULES = Object.freeze([
     implementedBy: 'every out-of-tree driver, as CapabilitySet::snapshots',
     why: 'The named consistency guarantees for read snapshots (per table / per database / coordinated). Every value other than Unsupported is a real guarantee the host relies on, so the variant list is a promise the driver makes and cannot silently widen.',
   },
+  {
+    id: 'legacy-resource-adapter',
+    // Anchored on the inherent impl, not on `pub struct LegacyResourceAdapter`.
+    //
+    // That placement is the decision, and it is deliberate. Two spans were
+    // candidates and this comment exists so the choice does not read as
+    // accidental or as "either works":
+    //
+    // - `pub struct LegacyResourceAdapter` resolves to lines 76-83: six
+    //   *private* fields. Dropping or renaming one is internal bookkeeping
+    //   inside driver-api and recompiles nothing outside the crate, so
+    //   governing it would manufacture "breaking" out of edits that cannot
+    //   break anyone.
+    // - `impl LegacyResourceAdapter` resolves to lines 111-287, which is where
+    //   the host's actual binding point lives: `new(driver, driver_id,
+    //   driver_version)` and `with_evidence`. The host calls these to wrap
+    //   every un-migrated path driver, so changing either signature is a
+    //   recompile requirement for the host and the whole un-migrated fleet —
+    //   the exact thing this gate exists to make visible before it is merged
+    //   rather than at the next protocol bump.
+    //
+    // The `ResourceProvider` surface the adapter implements is already
+    // governed by the `resource-provider` rule above; what was ungoverned was
+    // the adapter's own inherent surface. That gap is what this rule closes.
+    file: 'packages/driver-api/src/resource_adapter.rs',
+    anchor: 'impl LegacyResourceAdapter {',
+    kind: 'struct',
+    implementedBy: 'the host, wrapping every un-migrated path driver',
+    why: 'The shim that lets a driver that has not implemented ResourceProvider be driven through it anyway. Its constructor signature is called by the host once per un-migrated driver, so it is a driver/host ABI surface even though it lives in a helper type rather than in a trait.',
+  },
 ]);

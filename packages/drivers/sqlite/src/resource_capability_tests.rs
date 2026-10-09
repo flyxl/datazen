@@ -6,6 +6,7 @@
 
 use super::test_support::*;
 use crate::resource_capabilities::{migration_operation_keys, sqlite_capability_set};
+use datazen_driver_api::capability_domains::{BackupSupport, DataSupport};
 
 #[tokio::test]
 async fn observation_comes_off_the_wire_and_stays_partial() {
@@ -365,4 +366,77 @@ fn the_transaction_declaration_refuses_savepoints_and_names_no_level() {
 
 fn query_call() -> CommandCall {
     CommandCall::new("query", serde_json::json!({ "sql": "SELECT 1" }))
+}
+
+/// `data` is claimed on two axes and withheld on the third; `backup` is not
+/// claimed at all. Both halves of that asymmetry are load-bearing — the first
+/// keeps a real, working driver from being gated out of row read/write, the
+/// second stops a host from being told SQLite cannot be backed up when it
+/// can. `streamingResults` is the one that has to keep failing: it is the axis
+/// the provider genuinely cannot serve, because `execute_on_resource` clones
+/// every row out of an already-materialized result before handing the first
+/// one to the sink.
+#[test]
+fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
+    let (provider, _fake, _budget) = provider();
+    let registry = provider.capabilities();
+    let set = sqlite_capability_set();
+
+    assert_eq!(
+        set.data,
+        DataSupport::BufferedReadWrite,
+        "row read/write are the two axes this provider actually serves; the \
+         downgrade from nominal is the withheld streaming axis and must not \
+         drift silently"
+    );
+    assert!(
+        set.data.enables_row_read(),
+        "query reaches the sink with rows the server sent"
+    );
+    assert!(
+        set.data.enables_row_write(),
+        "execute returns a rowsAffected that the chunk carries verbatim"
+    );
+    assert!(
+        !set.data.enables_streaming_results(),
+        "rows are fully buffered before the sink sees any of them, so streaming \
+         must stay undeclared"
+    );
+    assert!(
+        !set.data.enables_feature(),
+        "only StreamingReadWrite is nominal; a degraded set must not open the \
+         feature as a whole"
+    );
+    assert!(set.data.is_weaker_than_nominal());
+
+    // The declaration and the guards that read it must not drift.
+    assert!(registry.require_row_read().is_ok());
+    assert!(registry.require_row_write().is_ok());
+    let streaming = registry.require_streaming_results();
+    assert!(
+        streaming.is_err(),
+        "the guard must reject even though row read/write are declared"
+    );
+    assert!(
+        streaming
+            .unwrap_err()
+            .to_string()
+            .contains("data.streamingResults"),
+        "the refusal has to name the axis, so a caller knows what to stop asking for"
+    );
+
+    assert_eq!(
+        set.backup,
+        BackupSupport::Unknown,
+        "the provider contract has no backup surface; claiming one would send a \
+         host down a dead end, and refusing one would hide the driver's real dump"
+    );
+    assert!(set.backup.is_undeclared());
+    assert!(
+        registry.require_backup_artifact().is_err(),
+        "SQLite can be dumped (this crate overrides neither `dump_database` nor `restore_sql`, so both ride the shared `sql_dump` defaults (`driver-api/src/traits.rs:918` / `traits.rs:990`) and a real artifact exists), but not through `execute_on_resource`, \
+         which recognizes only `query` and `execute` (resource.rs:394). A host that \
+         trusted an artifact claim would clear this guard and then hit that \
+         dead end, so the cell must stay undeclared rather than be filled."
+    );
 }
