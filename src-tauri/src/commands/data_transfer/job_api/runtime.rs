@@ -447,7 +447,7 @@ async fn persist_recovery(
                 JobRecoveryResult {
                     verdict: JobRecoveryVerdict::NotExecuted,
                     resume_through: None,
-                    reason_code: None,
+                    reason_code: Some("noCommittedWrites".into()),
                 },
             )
             .await
