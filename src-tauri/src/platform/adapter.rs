@@ -5,37 +5,6 @@
 //! §6.2 的九步顺序里，本文件是第 8 步。它的上游依赖第 6 步（Runtime）与第 7 步
 //! （`ApplicationServices`），下游是第 9 步（`state.manage`）。
 //!
-//! ## 第 6、7 步如何落地
-//!
-//! [`PlatformAdapter::inject`] 负责 §6.2 第 6 步（Runtime）与第 7 步
-//! （`ApplicationServices`），由启动装配调用（`bootstrap/app_state.rs`）。它组装
-//! `DesktopProfiles`（配置源）、`DesktopSessionBackend`（租约后端）与
-//! `RuntimeConnectionUseCases`，目标解析器**失败关闭**（四个分支一律返回 `None`，
-//! 不猜目标），最后 `ApplicationServices::new` 构造服务并写入三个 `OnceLock`。
-//! 任何 `OnceLock` 重复写入映射为 `ContextConflict`；`inject()` 重复调用直接返回。
-//!
-//! ## 13 个方法要求的字段现在各是什么状态
-//!
-//! 下表逐项核对过实现，**7 项全部已实现**，均不依赖占位常量：
-//!
-//! | 方法要求的字段 | 落地位置 | 状态 |
-//! | --- | --- | --- |
-//! | `ProfileView::config_revision` | 配置源从 `ProfileMetadata::config_revision` 取持久化值；改配置、禁用连接时单调推进 | 已实现 |
-//! | `ProfileView::credential_revision` | 同上取 `ProfileMetadata::credential_revision`；改密时推进，写入前校验一致 | 已实现 |
-//! | `ProfileView::enabled` | 从 `ProfileMetadata::enabled` 取值；禁用时同时推进 `config_revision` | 已实现 |
-//! | `RuntimeEpoch`（attach / get / close_session） | 由会话租约句柄的 epoch 构造，按 epoch 索引注册表，不匹配时报"epoch 不再匹配" | 已实现 |
-//! | 幂等记录（submission token / `idempotency_key`） | 用例层的 receipts 台账；重放返回 `IdempotencyConflict` | 已实现 |
-//! | `attachment_token`（attach / detach） | attach 校验、detach 解除；上下文变更时轮换 | 已实现 |
-//! | `stream_id`（`subscribe_events`） | `open_session` 回执携带 `stream_id`，订阅按 `StreamId` 进行 | 已实现 |
-//!
-//! 版本号溢出按 `PortError::BackendUnavailable` 处理，不回绕。
-//!
-//! 关于 `ProfileView::new`：该默认构造器仍把两个 revision 置为 `Counter::ZERO`，
-//! 但桌面配置源不使用它的默认值，而是逐字段覆盖为持久化元数据
-//! （`repositories.rs` 的 `DesktopProfiles::record`）。全树 `Counter::ZERO` 只出现在
-//! 测试夹具里，生产路径不产生它——因此 `ConfigRevisionMismatch` /
-//! `RuntimeEpochMismatch` 判定仍然有效，不存在"全是第 0 版"的问题。
-//!
 //! ## 为什么不放 no-op 实现
 //!
 //! 给 13 个方法写空壳（返回空 Vec、返回假的 `SessionView`）会让
@@ -145,12 +114,6 @@ impl PlatformAdapter {
         }
     }
 
-    /// 当前组装进度。**从注入事实推导**，读 `runtime` / `services` 两个 `OnceLock`。
-    ///
-    /// 早先这里是 `ASSEMBLY_STATE` 常量。该常量由 [`PlatformAdapter::inject`] 与
-    /// 各写各的：`inject()` 只写 `OnceLock`、从不回写常量，因此常量自落地起就没被推进过，
-    /// 一直是 `AwaitingApplicationServices`，而实际早已 `FullyWired`。改为推导后，
-    /// 状态不可能再与注入事实脱节。
     pub fn assembly_state(&self) -> AssemblyState {
         if self.services.get().is_some() {
             AssemblyState::FullyWired
@@ -197,11 +160,6 @@ impl PlatformAdapter {
         bridge::require_bridge()
     }
 
-    /// 取已注入的 `ApplicationServices`。
-    ///
-    /// §6.2 第 6、7 步由 [`PlatformAdapter::inject`] 落位（调用点
-    /// `bootstrap/app_state.rs`）；注入之后这里返回实际构造的实例，
-    /// 注入之前为 `None`。保留 `Option` 是为了让调用点能区分"未注入"与"注入失败"。
     pub fn application_services(&self) -> Option<Arc<ApplicationServices>> {
         self.services.get().cloned()
     }
@@ -376,7 +334,6 @@ mod tests {
     #[test]
     fn assembly_state_is_derived_from_injection_not_hand_kept() {
         let adapter = adapter();
-        // 未调用 inject() ⇒ 只有身份就绪，第 6、7 步都还没注入。
         // 这条断言读的是 OnceLock 推导结果，不是常量，因此注入逻辑写错时会失败。
         assert_eq!(adapter.assembly_state(), AssemblyState::IdentityReady);
         let missing: Vec<&str> = adapter
@@ -394,7 +351,6 @@ mod tests {
         for (_, after) in AssemblyState::IdentityReady.missing_steps() {
             assert_ne!(*after, AssemblyState::IdentityReady);
         }
-        // 注入完成后的状态不得再声称缺步。
         assert!(AssemblyState::FullyWired.missing_steps().is_empty());
         // 组装状态与注入事实必须一致：此刻未注入，就取不到应用服务。
         assert!(adapter.application_services().is_none());
@@ -505,8 +461,6 @@ mod tests {
             .expect("未注入必须报错");
         assert_eq!(err.code, ApiErrorCode::CapabilityUnsupported);
         // 报错必须说明未注入这件事，否则调用方无法定位是启动装配漏了哪一步。
-        // 注意：这里断言的"原因"必须与实际状态一致——7 项字段已实现，
-        // 未注入的真实原因是第 6/7 步没跑，不是"字段不存在"。
         for needle in ["§6.2", "未注入", "inject", "不得改走旧共享 session"] {
             assert!(
                 err.message.contains(needle),
