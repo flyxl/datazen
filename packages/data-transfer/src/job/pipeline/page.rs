@@ -10,7 +10,9 @@ use crate::error::TransferError;
 use crate::execute::map_row_values;
 use crate::model::ColumnMapping;
 use crate::recordset::SourceScope;
-use crate::resume::fingerprint::{build_page_for_context, validate_page};
+use crate::resume::fingerprint::{
+    build_page_for_context, build_snapshot_offset_page, validate_page,
+};
 
 use super::budget::PipelineBudget;
 use super::{row_bytes, value_bytes, PIPELINE_INITIAL_BYTES};
@@ -26,6 +28,7 @@ pub struct PageSource<'a> {
     pub quote: char,
     pub schema: &'a TableSchema,
     pub columns: &'a [&'a ColumnMapping],
+    pub offset: Option<u64>,
 }
 
 /// 一页读回并归一化后的行，以及它们在字节账里占的位置。
@@ -130,16 +133,28 @@ async fn read_one_page(
     reserved: usize,
     budget: &mut PipelineBudget,
 ) -> Result<Option<datazen_driver_api::QueryResult>, TransferError> {
-    let query = build_page_for_context(
-        source.driver,
-        select_from,
-        source.scope,
-        keys,
-        cursor,
-        rows_requested,
-        source.quote,
-        source.schema,
-    )?;
+    let query = if let Some(offset) = source.offset {
+        build_snapshot_offset_page(
+            source.driver,
+            select_from,
+            source.scope,
+            keys,
+            offset,
+            rows_requested,
+            source.quote,
+        )?
+    } else {
+        build_page_for_context(
+            source.driver,
+            select_from,
+            source.scope,
+            keys,
+            cursor,
+            rows_requested,
+            source.quote,
+            source.schema,
+        )?
+    };
     let page = match source
         .driver
         .query_with_params(source.handle, &query.0, &query.1)

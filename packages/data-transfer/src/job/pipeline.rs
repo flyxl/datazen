@@ -90,11 +90,28 @@ pub async fn execute_bounded_table(
         .iter()
         .find(|mapping| mapping.source_table == context.table.source_table);
     let recordset = mapping.and_then(|mapping| mapping.recordset.as_ref());
-    let keys = resumable_primary_key(
-        context.source_schema,
-        recordset,
-        &context.source_driver.driver_type(),
-    )?;
+    let driver_type = context.source_driver.driver_type();
+    let (keys, offset_paging) =
+        match resumable_primary_key(context.source_schema, recordset, &driver_type) {
+            Ok(keys) => (keys, false),
+            Err(error) => {
+                if !context.source_driver.supports_offset()
+                    || context
+                        .checkpoint
+                        .has_table_progress(&context.table.source_table)
+                {
+                    return Err(error);
+                }
+                (
+                    crate::resume::fingerprint::primary_key_for_snapshot(
+                        context.source_schema,
+                        recordset,
+                        &driver_type,
+                    )?,
+                    true,
+                )
+            }
+        };
     if !supports_chunk_driver(context.target_type) {
         return Err(TransferError::unsupported(format!(
             "target driver '{}' has no verified bounded chunk transaction contract",
@@ -185,6 +202,7 @@ pub async fn execute_bounded_table(
             row_limit,
             context.checkpoint,
             context.cancelled.as_deref(),
+            offset_paging,
         )
         .await;
         match fingerprint {
@@ -305,6 +323,7 @@ pub async fn execute_bounded_table(
             quote: context.source_quote,
             schema: context.source_schema,
             columns: context.columns,
+            offset: offset_paging.then_some(saved.rows_seen),
         };
         let mut prepared = match read_page_within_budget(
             source,
@@ -346,7 +365,7 @@ pub async fn execute_bounded_table(
                 terminal_error = Some("source primary-key cursor contains NULL".into());
                 break;
             };
-            if !crate::resume::fingerprint::cursor_value_supported(&value) {
+            if !offset_paging && !crate::resume::fingerprint::cursor_value_supported(&value) {
                 terminal_error =
                     Some("source primary-key cursor has an unsupported decoded value type".into());
                 break;
@@ -636,6 +655,10 @@ pub async fn execute_bounded_table(
         });
     }
 
+    if offset_paging && (terminal_error.is_some() || was_cancelled) {
+        // Offsets are scoped to this snapshot, never a cross-run resume cursor.
+        context.checkpoint.invalidate();
+    }
     let has_committed_chunks = saved.rows_seen > 0;
     let outcome = if terminal_error.is_some() || was_cancelled {
         if has_committed_chunks {

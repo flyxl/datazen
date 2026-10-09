@@ -288,6 +288,7 @@ pub async fn execute_chunked_table(
             row_limit,
             context.checkpoint,
             context.cancelled.as_deref(),
+            false,
         )
         .await;
         match fingerprint {

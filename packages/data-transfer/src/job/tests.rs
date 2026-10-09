@@ -165,6 +165,13 @@ impl DatabaseDriver for FakeDb {
                 (Some(Some(Value::Integer(id))), Some(c)) => id > &c,
                 _ => true,
             })
+            .skip(
+                sql.split("OFFSET ")
+                    .nth(1)
+                    .and_then(|value| value.split_whitespace().next())
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(0),
+            )
             .cloned()
             .collect();
         page.truncate(limit);
@@ -480,4 +487,5 @@ mod cm47_48_recovery;
 mod cm49_sql_file;
 mod kernel_cancel;
 mod real_sqlite;
+mod snapshot_paging;
 mod stage_shape;
