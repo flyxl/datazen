@@ -10,9 +10,7 @@ mod websocket;
 pub use http_proxy::HttpProxyTunnel;
 pub use websocket::WebSocketTunnel;
 
-pub use network_provider::{
-    desktop_network_provider, DesktopTunnelHost, DesktopTunnelSource,
-};
+pub use network_provider::{desktop_network_provider, DesktopTunnelHost, DesktopTunnelSource};
 
 /// Upstream-leg probes used by the standalone tunnel connectivity check: the
 /// HTTP-proxy / WebSocket `start` functions are lazy, so these perform the

@@ -100,7 +100,9 @@ struct Roster<T> {
 
 impl<T> Roster<T> {
     fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     /// 全等值定位。`TunnelSpec` 只 `PartialEq`（无 `Ord` / `Hash`），所以只能线性找 ——
@@ -286,10 +288,7 @@ impl TunnelTransport for DesktopTunnelHost {
         }
     }
 
-    fn revision(
-        &self,
-        route_ref: &NetworkRouteRef,
-    ) -> Result<NetworkRouteRevision, TunnelError> {
+    fn revision(&self, route_ref: &NetworkRouteRef) -> Result<NetworkRouteRevision, TunnelError> {
         self.source.revision(route_ref).map_err(|detail| {
             warn!(
                 target: "datazen::tunnel",
@@ -389,7 +388,9 @@ mod tests {
         });
         let bound = probe.await;
         assert!(
-            bound.expect("bind task runs on the calling runtime").is_ok(),
+            bound
+                .expect("bind task runs on the calling runtime")
+                .is_ok(),
             "accept 循环应当挂在调用方的运行时上"
         );
     }

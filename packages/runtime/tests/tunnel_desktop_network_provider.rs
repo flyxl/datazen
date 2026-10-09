@@ -23,12 +23,10 @@ use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{
     ClientInstanceId, NetworkRouteRef, NetworkRouteRevision, OrganizationId, PrincipalId, RequestId,
 };
-use datazen_platform_api::ports::network::{
-    NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec,
-};
+use datazen_platform_api::ports::network::{NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
 use datazen_runtime::tunnel::{
-    DesktopNetworkProvider, DesktopRouteCatalog, TunnelError, TunnelFault, TunnelHandle, TunnelState,
-    TunnelTransport,
+    DesktopNetworkProvider, DesktopRouteCatalog, TunnelError, TunnelFault, TunnelHandle,
+    TunnelState, TunnelTransport,
 };
 
 /// 并发档位。与 `cm28_concurrent_tunnel.rs` 同数：够多才会撞上真的交错。
@@ -265,10 +263,7 @@ async fn ensure(
     provider.ensure_tunnel(&ctx(), spec).await
 }
 
-async fn release(
-    provider: &DesktopNetworkProvider,
-    spec: &TunnelSpec,
-) -> Result<(), PortError> {
+async fn release(provider: &DesktopNetworkProvider, spec: &TunnelSpec) -> Result<(), PortError> {
     provider.release_tunnel(&binding(spec)).await
 }
 
@@ -279,7 +274,10 @@ async fn release(
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn twenty_concurrent_ensures_of_one_tunnel_open_it_exactly_once() {
     let port = Arc::new(RecordingTunnelPort::new());
-    let provider = Arc::new(provider(&ScriptedCatalog::tunneled("127.0.0.1:53124"), Arc::clone(&port)));
+    let provider = Arc::new(provider(
+        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        Arc::clone(&port),
+    ));
 
     let gate = Arc::new(tokio::sync::Barrier::new(CONCURRENCY));
     let mut tasks = Vec::with_capacity(CONCURRENCY);
@@ -298,7 +296,11 @@ async fn twenty_concurrent_ensures_of_one_tunnel_open_it_exactly_once() {
         "{CONCURRENCY} 份共享引用必须全部拿到"
     );
     // 共享身份 = spec 全等值：二十次 ensure 只开一次。
-    assert_eq!(port.opened(), 1, "同一 spec 被并发 ensure 二十次，物理开隧道只能有一次");
+    assert_eq!(
+        port.opened(),
+        1,
+        "同一 spec 被并发 ensure 二十次，物理开隧道只能有一次"
+    );
     assert_eq!(port.closed(), 0, "还有二十份引用在手上，不该拆");
     assert_eq!(
         provider.reference_count(&spec(22)),
@@ -337,7 +339,10 @@ async fn a_tunnel_that_opens_without_a_local_endpoint_is_rolled_back() {
 #[tokio::test]
 async fn a_failed_open_leaves_no_trace_and_a_later_release_closes_nothing() {
     let port = RecordingTunnelPort::failing_open();
-    let provider = provider(&ScriptedCatalog::tunneled("127.0.0.1:53124"), Arc::clone(&port));
+    let provider = provider(
+        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        Arc::clone(&port),
+    );
 
     assert!(matches!(
         ensure(&provider, spec(22)).await,
@@ -356,21 +361,30 @@ async fn a_failed_open_leaves_no_trace_and_a_later_release_closes_nothing() {
 #[tokio::test]
 async fn a_close_that_is_not_confirmed_keeps_the_entry_and_stays_idempotent() {
     let port = RecordingTunnelPort::failing_close();
-    let provider = provider(&ScriptedCatalog::tunneled("127.0.0.1:53124"), Arc::clone(&port));
+    let provider = provider(
+        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        Arc::clone(&port),
+    );
 
     ensure(&provider, spec(22)).await.expect("隧道应当开得起来");
     assert!(release(&provider, &spec(22)).await.is_ok());
     assert!(release(&provider, &spec(22)).await.is_ok());
 
     // 关闭未证实：台账按设计**保留**条目等后续观察，而不是假装预算/隧道已经回收。
-    assert!(matches!(provider.state(&spec(22)), TunnelState::Unconfirmed));
+    assert!(matches!(
+        provider.state(&spec(22)),
+        TunnelState::Unconfirmed
+    ));
     assert_eq!(port.closed(), 0, "没能确认的关闭不许被记成「关过」");
 }
 
 #[tokio::test]
 async fn a_spec_that_needs_no_tunnel_is_answered_without_touching_the_table() {
     let port = Arc::new(RecordingTunnelPort::new());
-    let provider = provider(&ScriptedCatalog::tunneled("127.0.0.1:53124"), Arc::clone(&port));
+    let provider = provider(
+        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        Arc::clone(&port),
+    );
 
     // `via_port == 0` = 不走隧道。这是端口必须原样透传、不许硬造一条固定资源的情形
     // （§9.4：单连接、无状态的生命周期不许被伪装成可池化的固定资源）。
@@ -417,7 +431,10 @@ async fn releasing_one_binding_twenty_concurrent_times_closes_at_most_once() {
 #[tokio::test]
 async fn releasing_a_tunnel_that_was_never_taken_is_a_no_op_success() {
     let port = Arc::new(RecordingTunnelPort::new());
-    let provider = provider(&ScriptedCatalog::tunneled("127.0.0.1:53124"), Arc::clone(&port));
+    let provider = provider(
+        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        Arc::clone(&port),
+    );
 
     assert!(release(&provider, &spec(22)).await.is_ok());
     assert!(release(&provider, &spec(22)).await.is_ok());
@@ -510,7 +527,11 @@ async fn a_direct_route_resolves_to_its_own_endpoint_without_a_tunnel() {
 
     assert!(!plan.tunneled);
     assert_eq!(plan.endpoint, "db.internal:5432");
-    assert_eq!(plan.route_revision.get(), 7, "PoolKey 的 networkRouteRevision 分量就取自这里");
+    assert_eq!(
+        plan.route_revision.get(),
+        7,
+        "PoolKey 的 networkRouteRevision 分量就取自这里"
+    );
     assert_eq!(port.events(), Vec::new(), "直连路由不该碰隧道端口");
 }
 
@@ -518,7 +539,10 @@ async fn a_direct_route_resolves_to_its_own_endpoint_without_a_tunnel() {
 async fn a_tunneled_route_stays_refused_until_this_provider_holds_the_reference() {
     let port = Arc::new(RecordingTunnelPort::new());
     port.set_revision(&NetworkRouteRef::new("route-a"), 9);
-    let provider = provider(&ScriptedCatalog::tunneled("127.0.0.1:53124"), Arc::clone(&port));
+    let provider = provider(
+        &ScriptedCatalog::tunneled("127.0.0.1:53124"),
+        Arc::clone(&port),
+    );
 
     // 还没有任何引用就发 `tunneled: true`，等于把调用方指向一个随时会被拆掉的隧道。
     assert!(matches!(
@@ -555,7 +579,10 @@ async fn the_reference_withdrawn_last_is_the_one_that_tears_the_tunnel_down() {
 
     release(&provider, &second.spec).await.expect("归还第二份");
     assert_eq!(port.closed(), 1, "最后一份归零才真拆");
-    assert!(matches!(resolve(&provider).await, Err(PortError::BackendUnavailable(_))));
+    assert!(matches!(
+        resolve(&provider).await,
+        Err(PortError::BackendUnavailable(_))
+    ));
 }
 
 #[tokio::test]

@@ -50,9 +50,7 @@ use async_trait::async_trait;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{NetworkRouteRef, NetworkRouteRevision};
-use datazen_platform_api::ports::network::{
-    NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec,
-};
+use datazen_platform_api::ports::network::{NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
 
 use super::error::TunnelError;
 use super::ledger::TunnelLedger;
@@ -245,10 +243,7 @@ impl NetworkProvider for DesktopNetworkProvider {
         // `None` = 这一条 spec 根本不必开隧道（`via_port == 0`，或端口当场答复「不用」）。
         // 没有引用可还，也就没有名册要记——不记才是最诚实的记法。
         let Some(lease) = acquired else {
-            return Ok(TunnelBinding {
-                spec,
-                ref_count: 0,
-            });
+            return Ok(TunnelBinding { spec, ref_count: 0 });
         };
 
         {
