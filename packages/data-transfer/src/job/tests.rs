@@ -191,7 +191,13 @@ impl DatabaseDriver for FakeDb {
             execution_time_ms: 0,
         })
     }
-    async fn execute(&self, _: &ConnectionHandle, _: &str) -> Result<u64, DriverError> {
+    async fn execute(&self, _: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
+        self.state.lock().unwrap().write_sqls.push(sql.into());
+        if sql == "INJECT DDL FAILURE" {
+            return Err(DriverError::TransactionError(
+                "synthetic DDL response failure".into(),
+            ));
+        }
         Ok(0)
     }
     // SQL 文件目标按 §6.2 走 spool 流式扫描，夹具如实申报流式能力。
