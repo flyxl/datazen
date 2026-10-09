@@ -17,7 +17,9 @@ import {
   createBackendClient,
   setBackendClient,
   type BackendClient,
-  type EventEnvelope, type ConnectionEvent, type ApiErrorPayload,
+  type EventEnvelope,
+  type ConnectionEvent,
+  type ApiErrorPayload,
   deserializeApiError,
   type BackendTransport,
   type MethodMap,
@@ -49,8 +51,10 @@ export const DESKTOP_BACKEND_ID = 'desktop';
  */
 function toCommandName(method: keyof MethodMap): string {
   const profileCommands: Partial<Record<keyof MethodMap, string>> = {
-    listConnections: 'platform_list_profiles', createConnection: 'platform_create_profile',
-    updateConnection: 'platform_update_profile', disableConnection: 'platform_disable_profile',
+    listConnections: 'platform_list_profiles',
+    createConnection: 'platform_create_profile',
+    updateConnection: 'platform_update_profile',
+    disableConnection: 'platform_disable_profile',
   };
   if (profileCommands[method]) return profileCommands[method];
   return method.includes('_')
@@ -76,7 +80,12 @@ export function createDesktopBackendTransport(): BackendTransport {
       payload: MethodMap[K]['request'],
     ): Promise<MethodMap[K]['response']> {
       const command = toCommandName(method);
-      const args = method === "getPlatformIdentity" ? {} : method.includes("_") ? payload : { request: payload ?? {} };
+      const args =
+        method === 'getPlatformIdentity'
+          ? {}
+          : method.includes('_') || method === 'getJob' || method === 'listJobs'
+            ? payload
+            : { request: payload ?? {} };
       // The request's own fields are the command's named arguments, so this
       // cast is a widening to Tauri's argument bag, not a shape change: the
       // object handed to `invoke` is the same object `call` received.
@@ -91,14 +100,19 @@ export function createDesktopBackendTransport(): BackendTransport {
       return {
         [Symbol.asyncIterator]() {
           const subscriptionId = crypto.randomUUID();
-          type Message = { kind: 'event'; event: EventEnvelope<ConnectionEvent> } |
-            { kind: 'closed' } | { kind: 'error'; error: ApiErrorPayload };
+          type Message =
+            | { kind: 'event'; event: EventEnvelope<ConnectionEvent> }
+            | { kind: 'closed' }
+            | { kind: 'error'; error: ApiErrorPayload };
           const channel = new Channel<Message>();
           const queue: EventEnvelope<ConnectionEvent>[] = [];
           let finished = false;
           let failure: unknown = null;
           let wake: (() => void) | null = null;
-          const signal = () => { wake?.(); wake = null; };
+          const signal = () => {
+            wake?.();
+            wake = null;
+          };
           channel.onmessage = (message) => {
             if (finished) return;
             if (message.kind === 'event') {
@@ -106,19 +120,28 @@ export function createDesktopBackendTransport(): BackendTransport {
                 failure = new Error('Event buffer overflow; restore execution and reconnect.');
                 finished = true;
               } else queue.push(message.event);
-            }
-            else {
+            } else {
               finished = true;
               if (message.kind === 'error') failure = deserializeApiError(message.error);
             }
             signal();
           };
-          const started = invoke<void>('subscribe_events', { request, subscriptionId, onEvent: channel })
-            .catch((error: unknown) => { failure = error; finished = true; signal(); });
+          const started = invoke<void>('subscribe_events', {
+            request,
+            subscriptionId,
+            onEvent: channel,
+          }).catch((error: unknown) => {
+            failure = error;
+            finished = true;
+            signal();
+          });
           let stopped = false;
           return {
             async next(): Promise<IteratorResult<EventEnvelope<ConnectionEvent>>> {
-              while (!queue.length && !finished) await new Promise<void>((resolve) => { wake = resolve; });
+              while (!queue.length && !finished)
+                await new Promise<void>((resolve) => {
+                  wake = resolve;
+                });
               if (failure) throw failure;
               const value = queue.shift();
               return value ? { value, done: false } : { value: undefined, done: true };

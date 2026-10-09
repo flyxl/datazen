@@ -526,7 +526,7 @@ async fn watch_cancel_request(
                 // * 漏掉的取消不是被丢弃，而是**不再被本阶段感知**：如果这个 Job 还有
                 //   下一个阶段，`dispatch` 开跑前会重读到它，在那个边界收敛。data-transfer
                 //   侧真正的单阶段 Job 是 `prepare`、SQL 文件目标的 `apply`，以及
-                //   `structure` / `data` 模式的 `apply`；`structureAndData` 模式的 `apply`
+                //   `data` 模式的 `apply`；仅结构模式为 structure → foreignKeys；结构+数据模式
                 //   展开为 structure → data → foreignKeys 三个阶段，因此**有**下一个边界，
                 //   取消会在这些阶段边界被重新读到，不会在完全不感知取消的情况下走完。
                 // * fail-closed 代价更高：一次瞬时故障就打断一个已经提交了若干批、

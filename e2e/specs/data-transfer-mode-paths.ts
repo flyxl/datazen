@@ -95,7 +95,7 @@ async function runWizard(
     if (await toggle.isExisting()) {
       if (!(await toggle.isSelected())) await toggle.click();
       const targetTableInput = await $('[data-testid="data-transfer-target-table-input"]');
-      await targetTableInput.click();
+      await targetTableInput.setValue(table);
       await browser.keys(['Tab']);
       await browser.pause(1500);
     }

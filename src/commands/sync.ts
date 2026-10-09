@@ -152,7 +152,7 @@ export interface DataSyncExecutionResult {
   applied: number;
   rolledBack: boolean;
   /** Evidence-based transaction outcome; optional for pre-v1 IPC responses. */
-  outcome?: 'not_started' | 'committed' | 'rolled_back' | 'unknown';
+  outcome?: 'not_started' | 'committed' | 'partially_applied' | 'rolled_back' | 'unknown';
   /** Present when execution could not proceed or its outcome is unknown. */
   error?: string;
   rollbackReason?: string;
@@ -384,24 +384,15 @@ function durableFailure(job: DataSyncJobView, phase: 'prepare' | 'apply'): Error
     return new Error('Data Sync job was not executed after restart; start a fresh comparison.');
   }
   if (job.effectOutcome === 'unknown' || Number(job.progress.unknown) > 0) {
-    return new Error('Data Sync write outcome needs verification; compare current data before continuing.');
+    return new Error(
+      'Data Sync write outcome needs verification; compare current data before continuing.',
+    );
   }
   return new Error(`Data Sync ${phase} job failed; compare again before continuing.`);
 }
 
 async function readPreparePreview(jobId: string): Promise<DataSyncComparisonPreview> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    try {
-      return await invoke<DataSyncComparisonPreview>('get_data_sync_job_preview', { jobId });
-    } catch (error) {
-      lastError = error;
-      await delay(250);
-    }
-  }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('Data Sync comparison finished without a review plan.');
+  return invoke<DataSyncComparisonPreview>('get_data_sync_job_preview', { jobId });
 }
 
 function executionFromJob(details: DataSyncJobDetails): DataSyncExecutionResult {
@@ -412,13 +403,15 @@ function executionFromJob(details: DataSyncJobDetails): DataSyncExecutionResult 
   const committed = counter('committed') || Number(job.progress.committed);
   const effect = job.effectOutcome;
   const outcome =
-    effect === 'rolledBack'
-      ? 'rolled_back'
-      : effect === 'notStarted'
-        ? 'not_started'
-        : effect === 'unknown' || counter('unknown') > 0
-          ? 'unknown'
-          : 'committed';
+    effect === 'partiallyApplied'
+      ? 'partially_applied'
+      : effect === 'rolledBack'
+        ? 'rolled_back'
+        : effect === 'notStarted'
+          ? 'not_started'
+          : effect === 'unknown' || counter('unknown') > 0
+            ? 'unknown'
+            : 'committed';
   const error =
     job.state === 'succeeded'
       ? undefined
@@ -590,8 +583,7 @@ export const syncCommands = {
     return executionFromJob(details);
   },
 
-  listDataSyncJobs: () =>
-    invoke<DataSyncJobDetails[]>('list_data_sync_jobs'),
+  listDataSyncJobs: () => invoke<DataSyncJobDetails[]>('list_data_sync_jobs'),
 
   verifyDataSyncRecovery: (request: DataSyncRecoveryRequest) =>
     invoke<DataSyncJobDetails>('verify_data_sync_recovery', { request }),

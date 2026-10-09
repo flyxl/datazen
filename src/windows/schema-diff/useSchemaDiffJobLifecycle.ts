@@ -18,6 +18,8 @@ function latestFirst(jobs: readonly JobView[]): JobView[] {
 
 export interface SchemaDiffTrackedJob extends SchemaDiffJobAccepted {
   details: SchemaDiffJobDetails | null;
+  /** Only jobs submitted in this wizard may populate its execution result. */
+  submittedLocally?: boolean;
 }
 
 export function useSchemaDiffJobLifecycle() {
@@ -28,7 +30,7 @@ export function useSchemaDiffJobLifecycle() {
   const [error, setError] = useState<string | null>(null);
   const accept = useCallback((accepted: SchemaDiffJobAccepted) => {
     setCancelOutcome('idle');
-    setCurrentJob({ ...accepted, details: null });
+    setCurrentJob({ ...accepted, details: null, submittedLocally: true });
   }, []);
 
   const observe = useCallback((details: SchemaDiffJobDetails) => {
@@ -40,7 +42,9 @@ export function useSchemaDiffJobLifecycle() {
       progress: view.progress,
     };
     setCurrentJob((current) =>
-      current && current.jobId !== view.jobId ? current : { ...accepted, details },
+      current && current.jobId !== view.jobId
+        ? current
+        : { ...accepted, details, submittedLocally: current?.submittedLocally ?? false },
     );
     if (view.kind === 'schemaDiffApply') setLatestApply(details);
   }, []);
@@ -79,7 +83,7 @@ export function useSchemaDiffJobLifecycle() {
         const jobs = latestFirst(await schemaDiffCommands.listJobs());
         if (stopped || jobs.length === 0) return;
         const active = jobs.find(isActive);
-        const pending = jobs.find((job) => job.pendingVerificationReason !== null);
+        const pending = jobs.find((job) => job.pendingVerificationReason != null);
         const apply = jobs.find((job) => job.kind === 'schemaDiffApply');
         const prepare = jobs.find((job) => job.kind === 'schemaDiffPrepare');
         const selected = active ?? pending ?? apply ?? prepare;

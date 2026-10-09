@@ -23,6 +23,7 @@ import {
   compareDataSyncObjects,
   inspectDataSyncObjects,
   moveDataSyncBackTo,
+  selectDataSyncFixtureTable,
 } from './journeys/dataSyncJourneyHelpers.js';
 
 async function openDataSyncWindow() {
@@ -341,6 +342,7 @@ describe('数据同步边界与异常 (DS-EDGE)', () => {
       await browser.pause(1500);
       await advanceDataSyncToSetup();
       await inspectDataSyncObjects();
+      await selectDataSyncFixtureTable(TABLE);
       await compareDataSyncObjects();
       await $('[data-testid="data-sync-summary"]').waitForDisplayed({ timeout: 20000 });
       await advanceDataSyncToPreview();
@@ -503,6 +505,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
     await browser.pause(1500);
     await advanceDataSyncToSetup();
     await inspectDataSyncObjects();
+    await selectDataSyncFixtureTable(TABLE);
     await compareDataSyncObjects();
     await captureStep('ds-edge-post-00-compared');
   });
@@ -542,6 +545,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
       await browser.pause(300);
     }
     await inspectDataSyncObjects();
+    await selectDataSyncFixtureTable(TABLE);
     await compareDataSyncObjects();
     await advanceDataSyncToPreview();
     await expect(await $('[data-testid="data-sync-start-disabled"]')).toBeDisplayed();
@@ -553,6 +557,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
     await $('[data-testid="data-sync-option-insert"]').click();
     await browser.pause(300);
     await inspectDataSyncObjects();
+    await selectDataSyncFixtureTable(TABLE);
     await compareDataSyncObjects();
   });
 
@@ -572,7 +577,7 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
 
   it('DS-EDGE-009: 取消映射表勾选后 Execute 应禁用', async () => {
     await moveDataSyncBackTo('objects');
-    const unchecked = await browser.execute((tableName: string) => {
+    const unchecked = await browser.execute(() => {
       let count = 0;
       const rows = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
       for (const row of rows) {
@@ -580,10 +585,9 @@ describe('数据同步比较后边界 (DS-EDGE-POST)', () => {
         if (!cb || cb.disabled || !cb.checked) continue;
         cb.click();
         count += 1;
-        if ((row.textContent || '').includes(tableName)) break;
       }
       return count;
-    }, TABLE);
+    });
     expect(unchecked).toBeGreaterThan(0);
     await browser.pause(400);
     await expect(await $('[data-testid="data-sync-next"]')).toBeDisabled();

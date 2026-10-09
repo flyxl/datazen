@@ -8,6 +8,25 @@ pub fn resumable_primary_key(
     recordset: Option<&super::super::model::TransferRecordset>,
     driver_type: &str,
 ) -> Result<Vec<String>, TransferError> {
+    primary_key_for_paging(schema, recordset, driver_type, true)
+}
+
+/// Offset paging is safe inside one proven read snapshot, even when a key
+/// cannot be rebound losslessly or its collation is unsuitable for restart.
+pub(crate) fn primary_key_for_snapshot(
+    schema: &TableSchema,
+    recordset: Option<&super::super::model::TransferRecordset>,
+    driver_type: &str,
+) -> Result<Vec<String>, TransferError> {
+    primary_key_for_paging(schema, recordset, driver_type, false)
+}
+
+fn primary_key_for_paging(
+    schema: &TableSchema,
+    recordset: Option<&super::super::model::TransferRecordset>,
+    driver_type: &str,
+    resumable: bool,
+) -> Result<Vec<String>, TransferError> {
     if !super::supports_chunk_driver(driver_type) {
         return Err(TransferError::unsupported(format!(
             "source driver '{driver_type}' has no verified keyset resume contract"
@@ -40,7 +59,8 @@ pub fn resumable_primary_key(
                 "primary-key column '{key}' is not proven non-null by source metadata"
             )));
         }
-        if driver_type.eq_ignore_ascii_case("mysql")
+        if resumable
+            && driver_type.eq_ignore_ascii_case("mysql")
             && is_mysql_exact_numeric_type(&column.data_type)
             && !mysql_integer_cursor_is_lossless(&column.data_type)
         {
@@ -48,18 +68,23 @@ pub fn resumable_primary_key(
                 "MySQL primary-key column '{key}' uses exact numeric values with string cursor bindings; in-table resume is disabled for this key type"
             )));
         }
-        datazen_data_sync::recordset_bounds::ensure_supported_bound_type(&column.data_type, key)
+        if resumable {
+            datazen_data_sync::recordset_bounds::ensure_supported_bound_type(
+                &column.data_type,
+                key,
+            )
             .map_err(TransferError::validation)
             .map_err(|error| TransferError::unsupported(error.to_string()))?;
-        if datazen_data_sync::recordset_bounds::is_text_bound_type(&column.data_type) {
-            return Err(TransferError::unsupported(format!(
+            if datazen_data_sync::recordset_bounds::is_text_bound_type(&column.data_type) {
+                return Err(TransferError::unsupported(format!(
                 "primary-key column '{key}' uses text ordering whose collation cannot be verified for resume"
             )));
-        }
-        if is_float_type(&column.data_type) {
-            return Err(TransferError::unsupported(format!(
+            }
+            if is_float_type(&column.data_type) {
+                return Err(TransferError::unsupported(format!(
                 "primary-key column '{key}' has floating-point ordering, which is not supported for resume"
             )));
+            }
         }
     }
     let primary_indexes: Vec<_> = schema
@@ -211,6 +236,45 @@ pub(crate) fn build_page_for_context(
     )
 }
 
+pub(crate) fn build_snapshot_offset_page(
+    driver: &dyn DatabaseDriver,
+    select_from: &str,
+    scope: &SourceScope,
+    keys: &[String],
+    offset: u64,
+    limit: u32,
+    quote: char,
+) -> Result<(String, Vec<Value>), TransferError> {
+    if !driver.supports_offset() || keys.is_empty() || limit == 0 {
+        return Err(TransferError::unsupported(
+            "snapshot offset paging is unavailable",
+        ));
+    }
+    let mut sql = select_from.to_string();
+    if let Some(filter) = scope.where_sql.as_deref() {
+        let predicate = filter
+            .trim()
+            .strip_prefix("WHERE ")
+            .unwrap_or(filter.trim());
+        if !predicate.is_empty() {
+            sql.push_str(" WHERE (");
+            sql.push_str(predicate);
+            sql.push(')');
+        }
+    }
+    sql.push_str(" ORDER BY ");
+    sql.push_str(
+        &keys
+            .iter()
+            .map(|key| quote_ident_sql(key, quote))
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+    sql.push(' ');
+    sql.push_str(&driver.pagination_syntax(u64::from(limit), offset).clause);
+    Ok((sql, scope.count_params.clone()))
+}
+
 pub(crate) async fn fingerprint_source_rows(
     driver: &dyn DatabaseDriver,
     handle: &ConnectionHandle,
@@ -225,6 +289,7 @@ pub(crate) async fn fingerprint_source_rows(
     total_limit: Option<u64>,
     checkpoint: &mut dyn TransferResumeCheckpoint,
     cancelled: Option<&AtomicBool>,
+    offset_paging: bool,
 ) -> Result<String, TransferError> {
     let mut hasher = Sha256::new();
     hash_bytes(&mut hasher, b"datazen-transfer-source-v1");
@@ -252,16 +317,28 @@ pub(crate) async fn fingerprint_source_rows(
         let Some(limit) = remaining_page_limit(chunk_size, rows_seen, total_limit) else {
             break;
         };
-        let (sql, params) = build_page_for_context(
-            driver,
-            select_from,
-            source_scope,
-            keys,
-            cursor.as_deref(),
-            limit,
-            quote,
-            schema,
-        )?;
+        let (sql, params) = if offset_paging {
+            build_snapshot_offset_page(
+                driver,
+                select_from,
+                source_scope,
+                keys,
+                rows_seen,
+                limit,
+                quote,
+            )?
+        } else {
+            build_page_for_context(
+                driver,
+                select_from,
+                source_scope,
+                keys,
+                cursor.as_deref(),
+                limit,
+                quote,
+                schema,
+            )?
+        };
         let page = driver
             .query_with_params(handle, &sql, &params)
             .await
@@ -282,7 +359,9 @@ pub(crate) async fn fingerprint_source_rows(
                 hash_value(&mut hasher, value.as_ref());
             }
         }
-        cursor = Some(last_cursor(&page.rows, cursor_indexes)?);
+        if !offset_paging {
+            cursor = Some(last_cursor(&page.rows, cursor_indexes)?);
+        }
         rows_seen = rows_seen.saturating_add(page.rows.len() as u64);
     }
     hasher.update(rows_seen.to_be_bytes());

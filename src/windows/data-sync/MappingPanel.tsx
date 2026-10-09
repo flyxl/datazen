@@ -68,6 +68,8 @@ export function MappingPanel({
             <div
               key={tableKey(row)}
               data-testid="data-sync-mapping-row"
+              data-source-table={row.sourceTable}
+              data-target-table={row.targetTable}
               className={cn(
                 'border-t border-edge px-3 py-1.5',
                 row.status === 'INCOMPATIBLE' && 'bg-amber-500/5',

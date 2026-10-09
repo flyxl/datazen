@@ -121,9 +121,7 @@ export interface MigrationJobVerdict {
  * package-level gap is reported upstream; until it is fixed, none of the three
  * tools may lose every counter to it.
  */
-export function readJobCounter(
-  value: Counter | number | string | null | undefined,
-): number | null {
+export function readJobCounter(value: Counter | number | string | null | undefined): number | null {
   if (typeof value === 'number') {
     return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : null;
   }
@@ -208,15 +206,18 @@ export function deriveUncertainty(
   if (effectOutcome === 'unknown') return 'effectOutcomeUnknown';
   if (recoveryVerdict === 'requireManualReview') return 'manualReviewRequired';
   if (recoveryVerdict === 'reject') return 'recoveryRejected';
-  // Core records this exact pair when durable admission survived a restart
-  // before dispatch. It proves the handler never ran, so this is a known
-  // not-started result. Keep other `notExecuted` reasons fail-closed: only the
-  // stable reason code below carries this specific meaning.
+  // Only explicit backend proofs may clear the fence. A restart before
+  // dispatch and a confirmed no-write/rollback outcome both require zero
+  // committed or unknown rows and no commit boundaries.
   if (recoveryVerdict === 'notExecuted') {
-    if (effectOutcome !== 'notStarted' || recoveryReason !== 'notDispatchedAfterRestart') {
+    const restartBeforeDispatch =
+      effectOutcome === 'notStarted' && recoveryReason === 'notDispatchedAfterRestart';
+    const noCommittedWrites =
+      (effectOutcome === 'notStarted' || effectOutcome === 'rolledBack') &&
+      recoveryReason === 'noCommittedWrites';
+    if ((!restartBeforeDispatch && !noCommittedWrites) || hasWriteEvidence) {
       return 'recoveryRejected';
     }
-    if (hasWriteEvidence) return 'recoveryRejected';
   }
   if (
     recoveryVerdict &&
@@ -237,9 +238,7 @@ export function deriveUncertainty(
 }
 
 /** Fold the raw Job verdict into the state a user is shown. */
-export function deriveMigrationJobVerdict(
-  input: MigrationJobVerdictInput,
-): MigrationJobVerdict {
+export function deriveMigrationJobVerdict(input: MigrationJobVerdictInput): MigrationJobVerdict {
   const boundaries = input.commitBoundaries ?? [];
   const verifiedBoundaries = boundaries.filter(
     (boundary) => Array.isArray(boundary.evidence) && boundary.evidence.length > 0,
@@ -260,11 +259,8 @@ export function deriveMigrationJobVerdict(
     // A commit is only trustworthy when a boundary backs it. Rows with
     // no boundary at all are strictly worse than a boundary missing its
     // `EVIDENCE_*` markers, and both must fail closed.
-    boundaries.length === 0 &&
-      ((input.committedRows ?? 0) > 0 || (input.unknownRows ?? 0) > 0),
-    boundaries.length > 0 ||
-      (input.committedRows ?? 0) > 0 ||
-      (input.unknownRows ?? 0) > 0,
+    boundaries.length === 0 && ((input.committedRows ?? 0) > 0 || (input.unknownRows ?? 0) > 0),
+    boundaries.length > 0 || (input.committedRows ?? 0) > 0 || (input.unknownRows ?? 0) > 0,
   );
   // "Completed" means finished *and* certifiable. An `effectOutcome` of
   // `completed` alone is the backend's progress flag, not proof — letting it
@@ -292,8 +288,7 @@ export function deriveMigrationJobVerdict(
     verifiedBoundaries,
     unverifiedBoundaries,
     uncertainty,
-    requiresReconcile:
-      inFlight || uncertainty !== 'none' || cancelDisposition === 'settledUnknown',
+    requiresReconcile: inFlight || uncertainty !== 'none' || cancelDisposition === 'settledUnknown',
   };
 }
 

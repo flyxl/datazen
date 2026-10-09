@@ -165,6 +165,13 @@ impl DatabaseDriver for FakeDb {
                 (Some(Some(Value::Integer(id))), Some(c)) => id > &c,
                 _ => true,
             })
+            .skip(
+                sql.split("OFFSET ")
+                    .nth(1)
+                    .and_then(|value| value.split_whitespace().next())
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(0),
+            )
             .cloned()
             .collect();
         page.truncate(limit);
@@ -184,7 +191,13 @@ impl DatabaseDriver for FakeDb {
             execution_time_ms: 0,
         })
     }
-    async fn execute(&self, _: &ConnectionHandle, _: &str) -> Result<u64, DriverError> {
+    async fn execute(&self, _: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
+        self.state.lock().unwrap().write_sqls.push(sql.into());
+        if sql == "INJECT DDL FAILURE" {
+            return Err(DriverError::TransactionError(
+                "synthetic DDL response failure".into(),
+            ));
+        }
         Ok(0)
     }
     // SQL 文件目标按 §6.2 走 spool 流式扫描，夹具如实申报流式能力。
@@ -480,4 +493,5 @@ mod cm47_48_recovery;
 mod cm49_sql_file;
 mod kernel_cancel;
 mod real_sqlite;
+mod snapshot_paging;
 mod stage_shape;

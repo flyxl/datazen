@@ -273,6 +273,21 @@ export async function selectFixtureEndpoints(f: SyncJourneyFixture) {
   await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
 }
 
+/** Select only the journey fixture; other suites share these test databases. */
+export async function selectDataSyncFixtureTable(tableName: string) {
+  const found = await browser.execute((name: string) => {
+    let found = false;
+    for (const row of document.querySelectorAll('[data-testid="data-sync-mapping-row"]')) {
+      const checkbox = row.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      const keep = row.getAttribute('data-source-table') === name;
+      if (keep) found = true;
+      if (checkbox && !checkbox.disabled && checkbox.checked !== keep) checkbox.click();
+    }
+    return found;
+  }, tableName);
+  expect(found).toBe(true);
+}
+
 export async function runCompare(f: SyncJourneyFixture) {
   await advanceDataSyncToSetup();
 
@@ -288,6 +303,7 @@ export async function runCompare(f: SyncJourneyFixture) {
   }
 
   await inspectDataSyncObjects();
+  await selectDataSyncFixtureTable(f.table);
   const rows = await browser.execute((tableName: string) => {
     const els = document.querySelectorAll('[data-testid="data-sync-mapping-row"]');
     return Array.from(els).some((el) => (el.textContent || '').includes(tableName));
@@ -475,6 +491,7 @@ export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
   expect(await deleteOpt.isSelected()).toBe(true);
 
   await inspectDataSyncObjects();
+  await selectDataSyncFixtureTable(f.table);
   await compareDataSyncObjects();
   await captureStep(`${f.screenshotPrefix}-16-delete-recompared`);
 
@@ -507,14 +524,17 @@ export async function runExecuteDeleteConfirmBranch(f: SyncJourneyFixture) {
   await browser.pause(400);
   expect(await $('body').getText()).toContain(t('sync.executeDeleteTitle'));
   await captureStep(`${f.screenshotPrefix}-17-delete-execute-confirm`);
-  const clicked = await browser.execute((label: string) => {
-    const buttons = Array.from(document.querySelectorAll('button')).reverse();
-    const button = buttons.find((btn) => (btn.textContent || '').includes(label));
-    if (!button) return false;
-    button.click();
-    return true;
-  }, t('sync.execute'));
-  expect(clicked).toBe(true);
+  const confirm = await $('[data-testid="data-sync-confirm-execute"]');
+  await confirm.waitForClickable({ timeout: 5000 });
+  await confirm.click();
+  await browser.waitUntil(
+    async () =>
+      (await $('[data-testid="data-sync-window"]').getAttribute('data-sync-step')) === 'result' ||
+      (await $('[data-testid="data-sync-error"]')
+        .isDisplayed()
+        .catch(() => false)),
+    { timeout: 120000, timeoutMsg: 'delete apply did not reach a terminal result' },
+  );
 
   await browser.waitUntil(
     async () => {
