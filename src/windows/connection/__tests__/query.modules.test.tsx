@@ -660,7 +660,6 @@ describe('[tester] query/useQueryExecutionGate', () => {
         setInTransaction: vi.fn(),
         refreshTxStatus: vi.fn().mockResolvedValue(undefined),
         maybeOfferAbortedDialog: vi.fn().mockResolvedValue(undefined),
-        syncContextFromSql: vi.fn().mockResolvedValue(undefined),
         showMessageDialog: vi.fn(),
         onExecutionComplete: vi.fn(),
         ...overrides,
@@ -1609,7 +1608,7 @@ describe('[tester] query/useQueryPanelWorkflows', () => {
 });
 
 describe('[tester] query/useQueryContextPath', () => {
-  it('syncs context path from SQL references', async () => {
+  it('rewrites the context from an explicit browse path, never from SQL', async () => {
     const updatePanel = vi.fn();
     const switchDatabase = vi.fn().mockResolvedValue(undefined);
     const ensureNamespacePath = vi.fn().mockResolvedValue(undefined);
@@ -1633,10 +1632,15 @@ describe('[tester] query/useQueryContextPath', () => {
       }),
     );
 
+    // Plan :137 — naming a foreign database in SQL is inference, not a context
+    // change; the hook must not expose any entry point for it.
+    expect(Object.keys(result.current)).not.toContain('syncContextFromSql');
+
+    // Choosing it explicitly (object tree / qualified path) still switches.
     await act(async () => {
-      await result.current.syncContextFromSql('SELECT * FROM other.users');
+      result.current.handleQualifiedPath(['other']);
     });
-    expect(switchDatabase).toHaveBeenCalled();
+    await waitFor(() => expect(switchDatabase).toHaveBeenCalledWith('other', 'sess-1'));
   });
 
   it('syncs the panel-bound database when switching database at level 0 (non-path)', async () => {

@@ -149,7 +149,6 @@ function renderGate(overrides: Partial<Parameters<typeof useQueryExecutionGate>[
       setInTransaction: vi.fn(),
       refreshTxStatus: vi.fn().mockResolvedValue(undefined),
       maybeOfferAbortedDialog: vi.fn().mockResolvedValue(undefined),
-      syncContextFromSql: vi.fn().mockResolvedValue(undefined),
       showMessageDialog: vi.fn(),
       onExecutionComplete: vi.fn(),
       ...overrides,

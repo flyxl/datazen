@@ -53,7 +53,6 @@ export interface UseQueryExecutionGateOptions {
   setInTransaction: (value: boolean) => void;
   refreshTxStatus: () => Promise<void>;
   maybeOfferAbortedDialog: (error: string | null | undefined) => Promise<void>;
-  syncContextFromSql: (sql: string) => Promise<void>;
   showMessageDialog: (text: string, kind?: 'error' | 'success') => void;
   onExecutionComplete: () => void;
 }
@@ -72,7 +71,6 @@ export function useQueryExecutionGate({
   setInTransaction,
   refreshTxStatus,
   maybeOfferAbortedDialog,
-  syncContextFromSql,
   showMessageDialog,
   onExecutionComplete,
 }: UseQueryExecutionGateOptions) {
@@ -182,7 +180,9 @@ export function useQueryExecutionGate({
         showMessageDialog(t('query.postgresDoubleQuoteHint'), 'error');
         return;
       }
-      await syncContextFromSql(kind === 'selection' && selectionSql != null ? selectionSql : sql);
+      // 执行前不从 SQL 推测并改写已生效的会话上下文：执行目标由命令信封携带
+      // （见 `src-tauri/src/commands/query.rs` 与 `panelTargetDatabase`），
+      // 会话上下文只在下拉/对象树/会话切换的显式路径上改变。
       if (!autoCommit && !inTransaction) {
         try {
           await queryCommands.beginSessionTransaction(dbSessionId);
@@ -263,7 +263,6 @@ export function useQueryExecutionGate({
       boundPayload,
       maybeOfferAbortedDialog,
       refreshTxStatus,
-      syncContextFromSql,
       showMessageDialog,
       t,
       editorRef,

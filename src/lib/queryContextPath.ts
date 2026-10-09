@@ -1,6 +1,23 @@
 import { extractQualifiedToken } from './sqlPathPrefix';
 import { namespaceBranchChildNames, namespaceHasChild, type SqlNamespace } from './sqlNamespace';
 
+/**
+ * Namespace inference from SQL.
+ *
+ * Everything here is **inference, not state**. The two consumers live in
+ * `src/stores/panelQueryContext.ts`, which resolves the *execution target* of one
+ * request from the SQL text plus the current selection: the target rides the
+ * command envelope and the session's own context is left untouched. That
+ * mirrors the backend, where `query.rs` deliberately keeps `schema` as `None`
+ * and never switches the session before running.
+ *
+ * The other half of the old design — rewriting the *effective* session context
+ * from the SQL being typed, both before execution and on a keystroke debounce —
+ * is gone. Inference that changes what the session believes is effective is
+ * only reached through explicit paths (the database dropdown, the object tree,
+ * a session switch).
+ */
+
 const RELATION =
   /\b(?:from|join|update|into)\s+(?:only\s+)?((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*))*)/gi;
 
