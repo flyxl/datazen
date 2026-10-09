@@ -1,6 +1,6 @@
 # 连接管理重构与桌面 / Web 多形态开发计划
 
-> 状态：待执行计划；基线：2026-09-30，`8592b0fe1`。本文按用户明确要求入库，不记录每日进度。
+> 状态：P5 已完成（2026-10-09），P6 可启动；P6 及后续阶段仍为计划。当前基线：`main`，`248200f45`。本文按用户明确要求入库，不记录每日进度。
 > 设计依据：[系统概要](../architecture/platform/system-overview.md)、[连接管理详细设计](../architecture/platform/connection-management.md)。
 
 ## 1. 交付目标与实施原则
@@ -147,30 +147,23 @@ P3 开始前的 DTO/port 目标契约同步修订已落地，**只有契约与�
 
 补充交付与门槛：按连接设计 §12.1 实现块去重、缺块恢复与旧事件隔离；执行→部分结果→取消/断线→恢复→再次执行的连续旅程须覆盖切库、替代 session 和关闭结果视图。旧 consumer 在对应迁移验证完成的 PR 中删除；P10 只做最终残留核验。
 
-## 9. P5：JobRuntime 与数据迁移三件套
+## 9. P5（已完成）：JobRuntime 与数据迁移三件套
 
-详细设计：[迁移三件套与 JobRuntime](../architecture/platform/data-migration-jobs.md)。准备与应用分别受理，apply planId 的唯一消费、逐批提交证据与 claim 校验在 P5 同步实现。
+详细实现：[迁移三件套与 JobRuntime](../architecture/platform/data-migration-jobs.md)。P5 于 2026-10-09 通过数据迁移三件套独立测试与冒烟测试，阶段关闭，P6 前置条件满足。
 
-**目的**：连接资源脱离 UI，任务结果真实反映提交边界。
+已落地事实：
 
-交付：
+- 桌面 `AppDb` 使用 SQLite v2 Job 仓储；共享 `DesktopJobHost` 提供 durable accept、幂等 receipt、状态/进度/结果、取消、恢复核验和后台 dispatch。
+- Schema Diff、Data Sync、Data Transfer 的准备与应用均接入 JobRuntime。领域实现位于 `packages/schema-diff`、`packages/data-sync`、`packages/data-transfer`；Tauri IPC 与桌面适配保留在 `src-tauri/src/commands/`。
+- Job 结果记录提交边界和 `effectOutcome`，区分未开始、已回滚、部分提交、未知和完成；apply `planId` 单次消费，worker 写入受 claim 代次校验。
+- 任务窗口关闭后，后台 Job 继续运行；窗口重开可读取任务状态和结果。应用重启不会自动重放旧 worker：运行中的任务进入待核验，未派发任务标记为未执行。
+- 迁移三件套独立测试和冒烟测试通过，P5 退出门槛已关闭。
 
-- JobRepository、JobHandler 注册、资源阶段、进度、取消和结果。
-- 持久化接受后返回 jobId，窗口只订阅；任务中心可重新附着。
-- 将 `src-tauri/src/schema_diff`、`data_sync`、`data_transfer` 中与 Tauri 无关的领域实现按依赖分阶段抽取到概要 §4.1 的领域包；Tauri commands、窗口、文件选择保留在 adapter。不得把当前目录位置误当成最终共享边界。
-- Schema Diff 比较/审阅/应用阶段分开、目标指纹复验、DDL 原子性按计划判断。
-- Data Sync 同族/结构/PK 门闸、快照范围、review 释放、冲突检测与批次事务。
-- Data Transfer 有界数据管道、IR、源一致性、目标批次记录与检查点核验。
-- endpoint 重叠识别、源目标多端预算申请、防 AB/BA 死锁。
-- 明确 successful/failed/cancelled 与 effectOutcome，保留部分提交和未知信息。
-
-退出门槛：CM-31、40～49、54；Job 执行期 UI unmount 不调用资源 release；已提交/未提交/未知边界通过真实数据库断言。
-
-回退：新 Job 暂停派发，已有任务到安全边界后结束；计划/检查点格式升级使用版本，新旧引擎不能接管不兼容计划。已经写入的任务只按核验与补偿处理。
-
-实施前冻结连接设计 §10.1.1 的 JobHandler、plan/checkpoint 版本、取消意图、effectOutcome 聚合与恢复决策。claimGeneration 及所有 worker 写入的认领校验在 P5 落地，多 worker 调度基础设施才留到 P9。退出门槛增加提交成功/checkpoint 未写、checkpoint 已写/终态未写、版本不兼容与旧 claim 写入拒绝的故障旅程；无法证明目标边界时待核验，不自动重跑。
+本阶段边界：完整计划正文与部分审阅态仍为桌面进程内状态；应用重启后需要重新准备计划或执行只读恢复核验。服务端 ArtifactStore、团队 Web、多 worker 自动接管仍属于后续阶段，不影响 P5 关闭。
 
 ## 10. P6：Workflow、AI、MCP、Wapp 与辅助任务
+
+P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
 详细设计：[Workflow 资源模型](../architecture/platform/workflow-resource-model.md) 与 [消费者接入](../architecture/platform/consumer-adapters.md)。共享授权失效后拒绝绑定操作，MCP/Wapp 只释放自有资源，调度目标和服务授权显式保存，原生工具也计入完整预算。
 

@@ -1,20 +1,20 @@
 # 迁移三件套与 JobRuntime 平台化详细设计
 
-> 状态：P5 本机持久化 Core 已实现：共享 JobRuntime facade、AppDb SQLite v2 仓储、Transfer prepare/apply 接受与后台派发、通用详情/恢复读模型。Schema Diff 与 Data Sync 尚未接入这份持久化 host；本文未标为“已实现”的三件套领域协议仍是目标设计。代码以当前实现为准，不代表 P7 server 或跨进程自动续跑已实现。
-> **已实现 Core**：`packages/runtime/src/job/` 提供 `DesktopJobHost` 与 JobRuntime 扩展仓储；`src-tauri/src/store/app_db.rs` 在既有 `{appData}/datazen.sqlite` 上执行事务化 v2 迁移，保留 workflows 并建立 job、receipt、stage、boundary、checkpoint、result、artifact reference 表。`AppState` 经 bootstrap 注入该 host。Transfer apply 在 durable accept 和幂等回执提交后返回 jobId，再由 host facade 托管后台 dispatch。重启只把旧 Running 标为 pending verification、把未派发 Queued 标为 `notExecuted`，不会重放旧 worker 或 handler。
+> 状态：P5 桌面 JobRuntime 与数据迁移三件套已完成（2026-10-09）。Schema Diff、Data Sync、Data Transfer 的 prepare/apply 均接入共享持久化 Job host；三件套独立测试与冒烟测试通过。本文区分当前桌面实现与后续目标设计，不代表 P7 server、完整服务端 ArtifactStore 或跨进程自动续跑已实现。
+> **当前桌面实现**：`packages/runtime/src/job/` 提供 `DesktopJobHost` 与 JobRuntime 仓储；`src-tauri/src/store/app_db.rs` 在既有 `{appData}/datazen.sqlite` 上执行事务化 v2 迁移，保留 workflows 并建立 job、receipt、stage、boundary、checkpoint、result、artifact reference 表。`AppState` 经 bootstrap 注入该 host。三套领域 handler 经 durable accept 与幂等回执后由后台 dispatch 执行。应用重启后，旧 Running 转为待核验，未派发 Queued 标为 `notExecuted`；不会重放旧 worker 或 handler。
 > 本文按用户要求补齐平台演进设计。连接、错误与 CM 用例以 [连接管理](connection-management.md) 为权威，阶段门槛以 [开发计划](../../development/platform-development-plan.md) 为权威；持久化字段以 [持久化模型](persistence-model.md) 为权威。
 
 ## 1. 范围与代码迁移边界
 
 本文定义 Schema Diff、Data Sync、Data Transfer 的准备、审阅、应用和恢复协议。三者共享 JobRuntime、预算、授权与 Artifact，不合并各自领域语义。
 
-| 引擎 | 当前实现入口 | 目标领域包 | 保留在 host 的部分 |
+| 引擎 | 当前领域包 | 桌面 host adapter | host 保留职责 |
 | --- | --- | --- | --- |
-| Schema Diff | `src-tauri/src/schema_diff/`、`commands/schema_diff.rs` | `packages/schema-diff/` | IPC、窗口与用户确认 |
-| Data Sync | `src-tauri/src/data_sync/`、`commands/sync/` | `packages/data-sync/` | IPC、任务文件与窗口 |
-| Data Transfer | `src-tauri/src/data_transfer/`、`src-tauri/src/transfer/`、`commands/data_transfer/` | `packages/data-transfer/` | IPC、文件选择、原生工具环境 |
+| Schema Diff | `packages/schema-diff/` | `src-tauri/src/commands/schema_diff/` | IPC、窗口与用户确认 |
+| Data Sync | `packages/data-sync/` | `src-tauri/src/commands/sync/` | IPC、任务记录与窗口 |
+| Data Transfer | `packages/data-transfer/` | `src-tauri/src/commands/data_transfer/` | IPC、文件选择、原生工具环境 |
 
-以上目标包由 P5 创建；现有 [Schema Diff](../backend/schema-diff.md)、[Data Sync](../backend/data-sync.md)、[Data Transfer](../backend/data-transfer.md) 文档记录基线事实。Driver 方言、DDL renderer、类型适配和专属测试留在 driver 包。领域引擎不引用 Tauri、HTTP、窗口 Store 或 driver 实现库类型。
+三个领域包和对应桌面 Job adapter 已由 P5 落地。`src-tauri/src/lib.rs` 将领域包导出给 Host；Driver 方言、DDL renderer、类型适配和专属测试留在 driver 包。领域引擎不引用 Tauri、HTTP、窗口 Store 或 driver 实现库类型。
 
 Runtime 承担接受/认领、预算、资源申请、子 execution、事件、取消和 cleanup；领域 handler 承担计划校验、分阶段算法及恢复核验。Application 服务校验授权、输入与计划消费；前端只提交稳定目标、审阅选择及幂等令牌，不提交执行 SQL、原始检查点或 live handle 作为恢复资格。
 
@@ -26,7 +26,7 @@ Runtime 承担接受/认领、预算、资源申请、子 execution、事件、�
 
 只有 complete 且摘要一致的私有计划 Artifact 可应用；接受时检查其组织、owner/ACL、有效期与选择版本。Job 接受后为其引用建立保留，计划及输入 Artifact 在 Job 终结和恢复保留窗口结束前不受普通 TTL 清理；ArtifactStore/仓储 adapter 以引用检查和删除 CAS 实现，不能只延长客户端缓存。
 
-上述计划 Artifact 保留协议仍是目标设计。当前桌面 Transfer 的 `TransferPlanStore` 与计划正文仍为进程内状态；AppDb Core 只持久化 Job 允许的 plan projection 和 Artifact ID 引用，不保存 Artifact 字节，也未实现该保留锁或 plan 恢复。因此重启后旧 Transfer plan 不能再次 apply，必须重新 prepare；不能把 30 天 Job Artifact reference TTL 理解为计划字节的可用期。
+上述计划 Artifact 保留协议仍是目标设计。当前桌面三套引擎的完整计划正文与部分审阅态仍由进程内计划存储管理；AppDb 持久化 Job 允许的 plan projection 和 Artifact ID 引用，不保存完整 Artifact 字节，也未实现服务端引用保留锁。因此应用重启后旧计划不能再次 apply，必须重新 prepare/compare；不能把 Job Artifact reference TTL 理解为计划字节的可用期。该边界不影响当前进程内的 durable Job 接受、后台执行、窗口重附着和提交结果持久化。
 
 应用操作以 `schemaDiffApply` / `dataSyncApply` / `dataTransferApply` 创建新 Job。输入只包含 planId、计划摘要、selectionRevision、已审阅选择与必要确认。Application 从 Artifact 读取权威计划，不信任客户端返回的计划正文。适配器可以保持现有 inspect/preview/execute IPC 外观，但不可同时调用旧管理器和新 JobRuntime。
 
@@ -215,25 +215,25 @@ Web 只能上传/下载授权 Artifact，不接收服务器路径；桌面导出
 | 源/映射/能力变化 | 生成核验结果 | SourceChanged/PlanStale，不自动续写 |
 | cleanup/旧 worker 隔离不明 | 保留待核验与预算占用 | 不接管副作用范围 |
 
-恢复状态是 Job 的附加投影，不扩展 JobState 枚举。当前公共 host 的 `verify_recovery` 接收异步 `JobRecoveryVerifier`、`JobRecoveryRequest { details, checkpoint }`，只允许对 Failed + PendingVerification 的任务执行；新核验结果、可确认的 boundaries/domain results 以 state-version CAS 原子回写。旧 claim 的 worker 被 fencing 后不能再写仓储。当前桌面适配层不自动重放任何阶段；三件套 verifier 仍须自行实施领域读取及其恢复策略，P9 的代次校验也不能阻止外部数据库中的旧 SQL。
+恢复状态是 Job 的附加投影，不扩展 JobState 枚举。当前公共 host 的 `verify_recovery` 接收异步 `JobRecoveryVerifier`、`JobRecoveryRequest { details, checkpoint }`，只允许对 Failed + PendingVerification 的任务执行；新核验结果、可确认的 boundaries/domain results 以 state-version CAS 原子回写。三件套 adapter 已提供各自的显式恢复核验路径；应用重启后不自动重放旧 handler，核验结果按领域策略要求重新准备、人工复核或恢复到可证明边界。旧 claim 的 worker 被 fencing 后不能再写仓储，P9 的代次校验也不能阻止外部数据库中的旧 SQL。
 
 ## 8. 客户端与接口适配
 
-桌面 Core 当前提供 `get_job`、`list_jobs` 与 Transfer 专用 `get_transfer_job_details` 读路径，并通过 `AppState.desktop_job_host` 注入共享 facade。Transfer 命令为 `prepare_data_transfer_job` / `apply_data_transfer_job`，取消仍走 `cancel_data_transfer`；Tauri command 由 bootstrap 注册。`JobDetails` 含 `job`、`stateVersion`、可选 `planId/planDigest/selectionRevision`、`commitBoundaries`、`recovery`、`domainResults`、`recoveryTargets`、`targetBeforeFingerprint` 与 `recoveryPolicy`。其中 recovery target 仅是 bounded stable IDs，不包含 SQL、credential、session 或 lease。TypeScript 镜像位于 `packages/backend-client/src/types/jobs.ts`。
+桌面 `AppState.desktop_job_host` 为三套引擎提供共享 `DesktopJobHost`。Schema Diff、Data Sync 和 Data Transfer 各自提供 Job 接受、取消、列表/详情及结果映射；Transfer 另有 `get_transfer_job_details` 读路径。`JobDetails` 含 `job`、`stateVersion`、可选 `planId/planDigest/selectionRevision`、`commitBoundaries`、`recovery`、`domainResults`、`recoveryTargets`、`targetBeforeFingerprint` 与 `recoveryPolicy`。其中 recovery target 仅是 bounded stable IDs，不包含 SQL、credential、session 或 lease。TypeScript 镜像位于 `packages/backend-client/src/types/jobs.ts`。
 
-任务窗口重新打开先查 Job，再读持久化详情；UI unmount 只退订。Transfer apply 响应超时可用幂等 receipt 找回原 Job，且通过 `get_transfer_job_details` 恢复边界/结果。planId 过期、目标漂移或权限变化要求重新准备，不自动用旧 SQL 应用。Schema Diff / Data Sync 的 host 接线、各自 IPC、结果映射与 UI 不属于当前 Core 实现。
+三套引擎的 apply 都先持久化接受记录和幂等 receipt，再由后台 Job 执行；任务窗口关闭不会取消 Job 或释放 Job 正在使用的资源，重新打开后可重新附着并读取持久化状态。Transfer apply 响应丢失可用幂等 receipt 找回原 Job。计划过期、目标漂移或权限变化要求重新准备，不自动重放旧 SQL。应用重启不自动恢复运行中的 handler；运行中任务需只读核验，Queued 且未派发的任务明确标记为未执行。
 
 桌面/浏览器只开放同 backend 两端迁移。后台服务无法访问客户端本地 profile；输入中出现其他 backend 的 ID 明确拒绝。个人/团队账号的真实执行身份分别派生，不能因使用同一业务数据库共享池或产物可见性。
 
 ## 9. 包抽取与旧路径删除
 
-按类型/纯算法 → driver 能力访问 → Job handler → IPC/HTTP adapter → UI 顺序抽取。先保证新包能独立编译，再让一个 consumer 切换资源获取方式。同一请求从始至终只走一种管理器，不把旧 ConnectionHandle 伪装成新 Lease。
-
-新路径的真实旅程通过后，在同一迁移 PR 删除该 consumer 的旧 session refs、job 标志与窗口释放逻辑；保留必要的载荷转换，不留双执行开关。当前 TransferPlanStore 的进程内 plan/resume token 不升级为持久化保证；格式转换只接受稳定定义，旧活 token 在重启后失效。
+P5 已按类型/纯算法、driver 能力访问、Job handler、桌面 IPC adapter 和 UI 的边界抽取三套领域包。生产执行路径经对应 JobRuntime adapter，不并行调用旧 job 管理器；窗口生命周期只影响 UI 订阅和窗口自身持有的引用。保留必要的 IPC 载荷转换。当前进程内 plan/resume token 不升级为持久化保证；应用重启后旧计划失效，需重新准备。
 
 ## 10. 验收与阶段门槛
 
-| 用例 | 必须提交的证据 |
+P5 桌面迁移三件套已依据独立测试与冒烟测试通过并关闭。下表记录该设计定义的验证类别；服务端、多 worker 等不属于本阶段的验收范围。
+
+| 用例 | 验证类别 |
 | --- | --- |
 | CM-31 / CM-65 / CM-67 | AB/BA 原子多端预留、真实 source/target/control 数量、计划 capability/版本复验 |
 | CM-40 / CM-54 | 关闭窗口继续、接受回执丢失不重复创建 apply Job |
@@ -246,6 +246,6 @@ Web 只能上传/下载授权 Artifact，不接收服务器路径；桌面导出
 
 H 层验证编排与会计，D 层验证真实数据库副作用和方言，F 层验证连续审阅/取消/重附着；P7 再加 W1。测试专属方言留在对应 driver 包。目标批次记录未授权、driver 不支持自动恢复或无真实环境时，报告适用范围与未验证项，不称恢复功能已验证。
 
-当前 Core 的本机验证覆盖 AppDb v1→v2 时旧 workflow 保留与 DDL 失败回滚、accept/receipt/plan consumption 原子性与幂等、两个 SQLite repository 竞争同一 plan、Queued 重启转 NotExecuted 且不 dispatch、AppState 重建时 Running 转 PendingVerification、SQLite reopen 后 boundary/checkpoint/progress/artifact/domain result/recovery 读取、显式 async verifier 与不重放 handler、cancel/CAS/stale claim，以及落盘 JSON 不含合成 session token / idempotency key。此证据不等于三件套领域 handler 或真实 driver 的 D/F 层验收。
+Core 持久化测试覆盖 AppDb v1→v2 时旧 workflow 保留与 DDL 失败回滚、accept/receipt/plan consumption 原子性与幂等、两个 SQLite repository 竞争同一 plan、Queued 重启转 NotExecuted 且不 dispatch、AppState 重建时 Running 转 PendingVerification、SQLite reopen 后 boundary/checkpoint/progress/artifact/domain result/recovery 读取、显式 async verifier 与不重放 handler、cancel/CAS/stale claim，以及落盘 JSON 不含合成 session token / idempotency key。
 
 三件套宿主准入统一使用 `src-tauri/src/services/migration_endpoint.rs` 的物理位置摘要：实际会话配置中的方言、database、schema、端口、隧道和路由选项参与身份，host/port/schema 缺省由实际驱动声明补齐。Sync 先按执行路径解析所选 database/schema。持久化 connectionId 仅用于预算归属；同一 profile 跨库合法，不同 profile 指向同一物理对象仍拒绝重叠。缺失会话配置或 owner 明确拒绝；SQL 文件输出只建立源数据库身份。摘要不包含配置明文，DNS 别名与本地文件路径别名仍需真实连接层证明。

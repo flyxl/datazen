@@ -1,6 +1,6 @@
 # Data Transfer 架构
 
-> 当前实现说明；P5 本机持久化 Job Core 于 2026-10-08 接入。Source of truth：`packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`、`packages/runtime/src/job/` 与 `src-tauri/src/store/app_db/jobs/`。Core 与尚未接入的领域目标见[迁移任务详细设计](../platform/data-migration-jobs.md)。
+> 当前实现说明；P5 桌面 JobRuntime 与数据迁移三件套于 2026-10-09 完成并通过独立测试、冒烟测试。Data Transfer 的实现事实见 `packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`、`packages/runtime/src/job/` 与 `src-tauri/src/store/app_db/jobs/`；后续服务端与跨进程恢复边界见[迁移任务详细设计](../platform/data-migration-jobs.md)。
 
 ## 1. 职责与执行边界
 

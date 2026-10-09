@@ -1,6 +1,6 @@
 # Data Sync 架构
 
-> Source of truth: `packages/data-sync/`、`src-tauri/src/commands/sync/` 和 `src/windows/data-sync/`。
+> P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `packages/data-sync/`、`src-tauri/src/commands/sync/` 和 `src/windows/data-sync/`。
 
 Data Sync 用于**同族数据库的行级差异同步**。它与 Schema Diff、Data Transfer 是三个独立执行模型。
 
@@ -39,13 +39,15 @@ compare_table_pages()
 INSERT / UPDATE / DELETE / UNCHANGED
 ```
 
+比较由 `dataSyncPrepare` Job 执行：Job adapter 以用户当前授权的 source/target session 校验端点，为任务创建专用会话，写入稳定端点引用并 dispatch 比较 handler。兼容的 `compare_data_sync` IPC 返回比较预览；Job 状态、详情和预览可按 `jobId` 查询。
+
 相关代码：
 
-- `data_sync/keyset.rs`
-- `commands/sync/keyset_source.rs`
-- `data_sync/compare.rs`
+- `packages/data-sync/src/keyset.rs`
+- `src-tauri/src/commands/sync/keyset_source.rs`
+- `packages/data-sync/src/compare.rs`
 
-`jobId` 对应取消标志，可中断长时间 compare。
+`jobId` 对应 AppDb 中的 Job 记录与取消意图，可取消长时间 compare。窗口关闭不会取消已接受的 Job；完整比较计划和行级审阅投影仍保存在当前进程。
 
 ## 3. Review / ChangeSet / Preview
 
@@ -63,20 +65,16 @@ Preview 生成 SQL 展示文本；真正 Execute 使用参数化 SQL，不把 Pr
 ## 4. Execute
 
 ```text
-ChangeSet
+reviewed ChangeSet + selectionRevision
   ↓
-generate_table_sql
+accept dataSyncApply + idempotent receipt + consume planId
   ↓
-execute_data_sync(jobId)
+DesktopJobHost dispatches handler on job-owned sessions
   ↓
-begin
-  ↓
-query_with_params
-  ↓
-commit
+batch transaction / checkpoints / commit boundary
 ```
 
-失败或取消会 rollback。Data Sync 使用专用执行通道，不经过普通 `execute_query` 的 Safe Mode 路径，避免正常的 UPDATE/DELETE 安全检查误伤已验证的 ChangeSet。
+apply handler 重新核验计划版本、审阅选择、选项与端点身份。失败或取消回滚当前批次；先前已提交批次保留并记录在 Job 的 `effectOutcome`、进度、检查点和恢复证据中。Data Sync 使用专用执行通道，不经过普通 `execute_query` 的 Safe Mode 路径，避免正常的 UPDATE/DELETE 安全检查误伤已验证的 ChangeSet。
 
 Execute 前支持 `revalidate_data_sync`，发现结构/PK 漂移时阻止执行。
 
@@ -91,25 +89,15 @@ Execute 前支持 `revalidate_data_sync`，发现结构/PK 漂移时阻止执行
 - `apply_data_sync`
 - `execute_data_sync`
 - `cancel_data_sync`
+- `start_data_sync_prepare_job` / `start_data_sync_apply_job`
+- `get_data_sync_job` / `get_data_sync_job_details` / `list_data_sync_jobs`
+- `verify_data_sync_recovery`
 
 ## 6. 连接、会话与取消
 
-Data Sync **不接受任何运行时会话 ID**：源端与目标端一律从任务落盘的 `connectionId` 现场解析，会话由后端在每次端点解析时决定，用完释放或保持共享有明确分支（`commands/sync/tasks.rs` 的 `resolve_task_endpoint`）：
+P5 Job 请求以调用方当前授权的 source/target `dbSessionId` 校验所选端点；接受后运行时 session ID 不写入 Job。adapter 为每个 Job 建立专用 source/target 会话，并通过物理 endpoint identity 复核其与用户授权端点一致。任务完成、失败或派发失败后释放 Job-owned sessions；应用重启后不会复用旧 session 或重放 handler。
 
-| 任务保存的目标库 | 会话来源 | 是否释放 |
-|---|---|---|
-| **指定了**目标库（哪怕它正好等于连接配置的默认库） | `connect_dedicated(connectionId, 该库)`，始终新建物理连接 | **是**——只释放 dedicated 会话 |
-| 未指定 / 只有空白字符 | `resolve_session_for_connection(connectionId)`，复用 GUI 可能已开着的同一条会话 | **否**——共享路径不释放引用 |
-
-判据是**目标库字符串是否非空**：`commands/sync/tasks.rs:77` 写的是 `database.filter(|value| !value.trim().is_empty())`，代码里**从不**把它与连接配置的默认库作比较，所以「目标库恰好等于默认库」照样开专用会话。这么判的理由是宿主不做切库：共享会话当前挂在哪个库是可变的，复用它无法保证任务落在任务自己指定的那个库上（`tasks.rs:79-82` 的注释）。dedicated 会话在后续任何一步失败时也会回滚释放。
-
-与默认库的**比较**确实存在，但它发生在开完会话**之后**，而且是**配置漂移检查**而非会话选择判据（`tasks.rs:125-139`）：持久化任务存的 database 与**连接配置当前的 `config.database` 字段**比对，不一致说明任务 outlive 了一次配置编辑（该处注释原文：`A persisted task may outlive an edited connection config`），随即释放已开的 dedicated 会话并报冲突。注意它比的是配置字段，不是会话实际挂载的库。
-
-三条随之而来的约束：
-
-- **落盘的 `connectionId` 是唯一恢复依据**。任务文件里曾经存在过的运行时 `dbSessionId` 被刻意忽略——它是进程内的，重启后可能已经指向别的库。目标库 / schema 作为**独立的字符串字段**随任务保存；每次解析出会话后会拿**目标库**与该连接的实际库复核一次，不一致直接报冲突并提示重开任务，而不是静默统计到另一个库。schema 则相反：它在限定被检对象时显式应用，允许与连接的可变默认 search path 不同，因此不参与这次复核。
-- **`connectionId` 缺失是配置错误**，不是降级路径。任务必须重新打开并选择连接。
-- **取消走 job 标志**。`jobId` 是取消的唯一句柄，进程内有效、跨进程失效；不按连接或会话归类。取消早于执行到达时同样有效。
+桌面 Job 持久化 connectionId、数据库/Schema 范围及受限的恢复目标标识；不持久化 `dbSessionId`、ChangeSet 行值或完整审阅计划。重启后用户可读取 Job 状态并对应用 Job 做显式只读恢复核验；Data Sync 的副作用需要重新比较，核验不会续跑或重放任务。取消通过 `cancel_data_sync` 写入共享 host 的持久 cancel intent，接受前到达的取消意图也会传递到 Job record。
 
 Data Sync 与另两个成员的边界：**Data Synchronization 只做同族、且结构与主键完全一致的复制**；结构差异与 DDL 生成属于 Schema Diff，异构数据搬迁属于 Data Transfer。写任务时不要把三者混成一种「迁移」。
 
@@ -121,7 +109,7 @@ Data Sync 与另两个成员的边界：**Data Synchronization 只做同族、�
 Endpoints → Setup → Objects → Compare → Preview → Result
 ```
 
-Compare / Preview / Execute 的状态都在当前窗口流程中维护；取消通过 `jobId` 发送到 backend。
+窗口继续承载端点选择、Compare / Preview / Execute 与行级审阅交互。Job 状态可通过 `jobId` 查询并在重新打开窗口后重附着；计划正文、行值和审阅选择仍为当前进程内状态，重启后需要重新比较。
 
 ## 8. Tests
 

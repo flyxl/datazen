@@ -1,10 +1,10 @@
 # DataZen 共享应用边界与端口详细设计
 
-> 状态：平台 DTO / ports / facade 已实现；P5 Core 已把 `DesktopJobHost` 与 AppDb SQLite v2 接入 AppState，并接通 Data Transfer prepare/apply/query/cancel。Schema Diff、Data Sync、团队 server 与完整 Profile/ConnectionUseCases 仍未全部接线，不能把本机 Job adapter 当成团队服务仓储。
+> 状态：平台 DTO / ports / facade 已实现；P5 已把 `DesktopJobHost` 与 AppDb SQLite v2 接入 AppState，并接通 Schema Diff、Data Sync、Data Transfer 三件套的桌面 Job 生命周期。团队 server 与完整 Profile/ConnectionUseCases 仍未全部接线，不能把本机 Job adapter 当成团队服务仓储。
 >
-> **尚未完整接线的准确含义**：运行期 `DesktopJobHost` 只承载当前实现的 Data Transfer Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`src-tauri/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。Schema Diff / Data Sync 尚未使用这个持久 host。
+> **尚未完整接线的准确含义**：运行期 `DesktopJobHost` 已承载三件套的桌面 Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`src-tauri/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。
 >
-> 仍待实现：团队 `server` crate、完整 Profile/ConnectionUseCases adapter，以及各节明确标为目标设计的 HTTP/多 worker 行为。本文只把代码已落地的 P5 本机 Job core 标为已实现。
+> 仍待实现：团队 `server` crate、完整 Profile/ConnectionUseCases adapter，以及各节明确标为目标设计的 HTTP/多 worker 行为。P5 桌面迁移三件套独立测试与冒烟测试已通过；本机 Job host 不提供服务端或多 worker 语义。
 > 读者：本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。标为「目标设计」的段落仍是契约，未随 P1 实现。
 > 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 
@@ -313,7 +313,7 @@ pub trait JobRepository: Send + Sync + 'static {
 
 ```
 
-P5 落地：上述 worker 写入端口携带 `JobClaim`；claim 含 jobId、stageId、workerId、claimGeneration 与期限。`InMemoryJobRepository` 以锁原子校验，桌面 `SqliteJobRepository` 以 SQLite 事务校验 claim generation、worker、期限及状态版本。`DesktopJobHost` 和 `JobRuntimeRepository` 还提供 cancel polling、未启动失败、pending verification、progress、artifact refs、bounded domain results 与 async recovery receipt 写入。AppDb v2 是当前桌面 adapter；P9 才增加跨 worker 协调，Schema Diff/Data Sync 的持久 host adapter 仍待接线。
+P5 落地：上述 worker 写入端口携带 `JobClaim`；claim 含 jobId、stageId、workerId、claimGeneration 与期限。`InMemoryJobRepository` 以锁原子校验，桌面 `SqliteJobRepository` 以 SQLite 事务校验 claim generation、worker、期限及状态版本。`DesktopJobHost` 和 `JobRuntimeRepository` 还提供 cancel polling、未启动失败、pending verification、progress、artifact refs、bounded domain results 与 async recovery receipt 写入。AppDb v2 是当前桌面 adapter，已供迁移三件套共用；P9 才增加跨 worker 协调。
 
 ```rust
 #[async_trait]
@@ -487,7 +487,7 @@ finalize 固化块数、完整性和截断原因；正常完成记 complete，�
 | 端口 | 桌面本地 | server 单进程 | 多 worker |
 | --- | --- | --- | --- |
 | `ProfileRepository` | 现有 SQLite + AES-256-GCM 存储（`src-tauri/src/store/`） | 同一实现，服务端数据库 | 同一实现，服务端数据库 |
-| `JobRepository` | AppDb SQLite 已用于 P5 Data Transfer；窗口关闭后任务继续，进程重启只标记恢复状态，不重放 handler。Schema Diff / Data Sync 尚为内存态 | 服务端库，任务独立于连接存活 | 同上 |
+| `JobRepository` | AppDb SQLite 已用于 P5 桌面迁移三件套；窗口关闭后任务继续，进程重启只标记恢复状态，不重放 handler | 服务端库，任务独立于连接存活 | 同上 |
 | `PolicyService` | 固定本地组织，全部放行 + `readOnly` 配置 | OIDC 登录会话 + membership | 同单进程 |
 | `IdentityResolver` | 当前桌面登录用户 + 配置中的连接账号 | 数据库侧服务身份 + 委托 | 同单进程 |
 | `SecretProvider` | 本机钥匙串主密钥（开发/`DATAZEN_KEYRING=file` 走 `{appData}/.key`） | 服务端密钥管理 | 同单进程 |
