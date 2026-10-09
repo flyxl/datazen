@@ -44,6 +44,11 @@ pub(crate) fn set_e2e_commit_fault(fault: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "webdriver")]
+pub(crate) fn take_e2e_commit_fault() -> u8 {
+    E2E_COMMIT_FAULT.swap(0, Ordering::SeqCst)
+}
+
 struct LiveExecutor {
     driver: Arc<dyn DatabaseDriver>,
     handle: ConnectionHandle,
@@ -105,7 +110,7 @@ impl StatementExecutor for LiveExecutor {
     async fn commit(&mut self) -> Result<(), crate::data_sync::DataSyncError> {
         if let Some(tx) = self.tx.take() {
             #[cfg(feature = "webdriver")]
-            match E2E_COMMIT_FAULT.swap(0, Ordering::SeqCst) {
+            match take_e2e_commit_fault() {
                 1 => {
                     self.driver
                         .commit(tx)
