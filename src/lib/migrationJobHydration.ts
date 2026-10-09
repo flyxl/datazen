@@ -49,9 +49,10 @@ export async function hydrateMigrationJobs(
   window: MigrationWindow,
 ): Promise<MigrationJobHydration> {
   const kinds = MIGRATION_JOB_KINDS[window];
-  const isOurKind = (job: JobView): boolean =>
-    (kinds as readonly string[]).includes(job.kind);
-  const activeSummaries = (await client.listJobs({ states: ['queued', 'running'] })).filter(isOurKind);
+  const isOurKind = (job: JobView): boolean => (kinds as readonly string[]).includes(job.kind);
+  const activeSummaries = (await client.listJobs({ states: ['queued', 'running'] })).filter(
+    isOurKind,
+  );
   const refreshedActive: JobView[] = [];
   for (const summary of activeSummaries) {
     try {
@@ -71,7 +72,7 @@ export async function hydrateMigrationJobs(
   const jobs = [...byId.values()];
   const activeJobs = jobs.filter((job) => job.state === 'queued' || job.state === 'running');
   const terminalJobs = jobs.filter((job) => job.state !== 'queued' && job.state !== 'running');
-  const verificationJobs = jobs.filter((job) => job.pendingVerificationReason !== null);
+  const verificationJobs = jobs.filter((job) => job.pendingVerificationReason != null);
   return { jobs, activeJobs, terminalJobs, verificationJobs };
 }
 
@@ -98,13 +99,13 @@ export function updateMigrationJobProjection(
     jobs,
     activeJobs: jobs.filter((job) => job.state === 'queued' || job.state === 'running'),
     terminalJobs: jobs.filter((job) => job.state !== 'queued' && job.state !== 'running'),
-    verificationJobs: jobs.filter((job) => job.pendingVerificationReason !== null),
+    verificationJobs: jobs.filter((job) => job.pendingVerificationReason != null),
   };
 }
 
 /** Classify a single job for a window banner. */
 export function classifyJobView(job: JobView): 'active' | 'pendingVerification' | 'terminal' {
-  if (job.pendingVerificationReason !== null) return 'pendingVerification';
+  if (job.pendingVerificationReason != null) return 'pendingVerification';
   if (job.state === 'queued' || job.state === 'running') return 'active';
   return 'terminal';
 }
@@ -130,9 +131,7 @@ export function isStalePlanError(error: unknown): boolean {
     if (typeof code === 'string' && (STALE_PLAN_ERROR_CODES as readonly string[]).includes(code)) {
       return true;
     }
-    return (STALE_PLAN_ERROR_CODES as readonly string[]).some((c) =>
-      error.message.includes(c),
-    );
+    return (STALE_PLAN_ERROR_CODES as readonly string[]).some((c) => error.message.includes(c));
   }
   if (typeof error === 'object' && error !== null) {
     const code = (error as { code?: unknown }).code;
@@ -144,13 +143,9 @@ export function isStalePlanError(error: unknown): boolean {
 /** The job center view of this window's own most recent apply job, if any. */
 export function latestApplyJob(jobs: readonly JobView[], window: MigrationWindow): JobView | null {
   const applyKinds = MIGRATION_JOB_KINDS[window].filter((k) => k.endsWith('Apply'));
-  const candidates = jobs.filter((job) =>
-    (applyKinds as readonly string[]).includes(job.kind),
-  );
+  const candidates = jobs.filter((job) => (applyKinds as readonly string[]).includes(job.kind));
   if (candidates.length === 0) return null;
-  return candidates.reduce((latest, job) =>
-    job.createdAt > latest.createdAt ? job : latest,
-  );
+  return candidates.reduce((latest, job) => (job.createdAt > latest.createdAt ? job : latest));
 }
 
 /** Resolve the bound client, or `null` when nothing is bound (e.g. tests). */

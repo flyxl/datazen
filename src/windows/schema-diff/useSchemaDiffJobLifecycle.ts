@@ -83,7 +83,7 @@ export function useSchemaDiffJobLifecycle() {
         const jobs = latestFirst(await schemaDiffCommands.listJobs());
         if (stopped || jobs.length === 0) return;
         const active = jobs.find(isActive);
-        const pending = jobs.find((job) => job.pendingVerificationReason !== null);
+        const pending = jobs.find((job) => job.pendingVerificationReason != null);
         const apply = jobs.find((job) => job.kind === 'schemaDiffApply');
         const prepare = jobs.find((job) => job.kind === 'schemaDiffPrepare');
         const selected = active ?? pending ?? apply ?? prepare;
