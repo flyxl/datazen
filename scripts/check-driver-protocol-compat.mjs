@@ -454,11 +454,35 @@ export function classifyContractChange(baseSource, newSource, rule, records) {
   if (!oldSpan && !newSpan) {
     return { id: rule.id, cls: 'cosmetic', reason: `${rule.id}: anchor not found in either side` };
   }
+  // `!oldSpan && newSpan` — the anchor resolves on the head side and not on the
+  // base side — is the one shape that means the governed item *arrived* in this
+  // delivery. It used to be classified `breaking` with the reason "did not exist
+  // at the base ref (removed outright)", a sentence describing the opposite of
+  // its own condition, so every newly registered contract added one false
+  // breaking and the only way to clear the gate was a PROTOCOL_VERSION bump
+  // that AGENTS.md makes unsatisfiable (every plugin has to move with it).
+  //
+  // Nothing built against the base ref can implement, match or call an item that
+  // did not exist there, so no [MIN_PROTOCOL_VERSION, PROTOCOL_VERSION] window
+  // expresses this change. That is exactly what the matrix's `additive` class is
+  // for, and it still obliges the crate version to move: a new public item
+  // changes what the published crate offers even when it changes no wire
+  // format.
+  //
+  // Both removal paths stay where they were, and they are the other two
+  // branches: an item that stops resolving on the head side (`!newSpan`), and a
+  // removed line inside a span that resolves on both sides (the ladder below).
+  // What this branch does not model is a rule *repointed* at a renamed item in
+  // the same commit — the classifier judges the item its anchor names, and the
+  // rule table is not part of the diff it reads. A repoint that also deletes the
+  // old item is caught only if a rule still covers that old anchor, which is a
+  // table-coverage question; guessing at it here would put back the false
+  // positive this branch exists to remove.
   if (!oldSpan) {
     return {
       id: rule.id,
-      cls: 'breaking',
-      reason: `${rule.id}: ${rule.anchor} did not exist at the base ref (removed outright)`,
+      cls: 'additive',
+      reason: `${rule.id}: ${rule.anchor} is new in this delivery — it does not resolve at the base ref, so nothing compiled against the base ref implements, matches or calls it, and no [MIN_PROTOCOL_VERSION, PROTOCOL_VERSION] window expresses an addition`,
     };
   }
   if (!newSpan) {
@@ -623,8 +647,30 @@ function git(args, cwd) {
 }
 
 /**
+ * Read the base ref out of argv, accepting both `--base=<ref>` and `--base <ref>`.
+ *
+ * The space form is what a person types when re-running the gate by hand on a
+ * suspicious ref, and a flag that only understands the `=` form ignores it
+ * silently — the run then measures a *different* base than the one asked for
+ * and reports ok, which is worse than rejecting the invocation. A trailing
+ * `--base` with no value is ignored the same way, so `resolveBaseRef` still
+ * falls back to the merge base.
+ *
+ * @param {string[]} argv
+ * @returns {string | undefined}
+ */
+export function readBaseArg(argv) {
+  const inline = argv.find((arg) => arg.startsWith('--base='));
+  if (inline !== undefined) return inline.slice('--base='.length);
+  const index = argv.indexOf('--base');
+  const next = index === -1 ? undefined : argv[index + 1];
+  if (next === undefined || next.startsWith('--')) return undefined;
+  return next;
+}
+
+/**
  * Resolve the ref the change is measured against: the merge base of HEAD and
- * `main`, overridable with `--base=<ref>`.
+ * `main`, overridable with `--base=<ref>` or `--base <ref>`.
  *
  * The merge base rather than `main` itself matters because a branch can be
  * behind; measuring against `main` would attribute another branch's commits to
@@ -827,8 +873,7 @@ export function compareCrateVersions(left, right) {
  * @returns {number} process exit code
  */
 function main() {
-  const baseArg = process.argv.find((a) => a.startsWith('--base='));
-  const base = baseArg ? baseArg.slice('--base='.length) : undefined;
+  const base = readBaseArg(process.argv);
 
   const result = evaluate({ base });
 

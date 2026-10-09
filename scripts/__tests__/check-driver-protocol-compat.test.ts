@@ -42,6 +42,7 @@ import {
   isCosmeticLine,
   isRequiredTraitItemAddition,
   parseDiffByFile,
+  readBaseArg,
   readConstValue,
   readCrateVersion,
 } from '../check-driver-protocol-compat.mjs';
@@ -886,6 +887,133 @@ describe('a governed contract file that is not where the table says', () => {
     // that silences the gate by covering less would fail here.
     const { violations } = evaluate({ cwd: ROOT, base: 'HEAD' });
     expect(violations.filter((v) => v.code === 'contract-rule-file-missing')).toEqual([]);
+  });
+});
+
+describe('classification — a contract that is new in this delivery', () => {
+  // The anchor resolves on the head side and not on the base side: the governed
+  // item arrived here. This used to be `breaking` with the reason "did not
+  // exist at the base ref (removed outright)" — a sentence describing the
+  // opposite of its own condition — so every newly registered contract added one
+  // false breaking, and the only way to clear the gate was a PROTOCOL_VERSION
+  // bump that AGENTS.md makes unsatisfiable (every plugin must move with it).
+  //
+  // These cases pin the *shape* of the fix, not one fixture: the classifier
+  // decides from the item's base-side absence, so it has to hold whether the
+  // whole file is new, the file existed and gained the item, or the file both
+  // gained the item and lost unrelated lines.
+  const NEW_TRAIT = `pub trait Demo: Send {
+    fn added(&self) -> u32;
+}
+`;
+
+  it('calls a contract in a file that has no base ref at all additive', () => {
+    const finding = classifyViaDiff(TRAIT_RULE, '', NEW_TRAIT);
+    expect(finding.cls).toBe('additive');
+    expect(finding.reason).toContain('is new in this delivery');
+  });
+
+  it('calls a contract added to a file that already existed at the base ref additive', () => {
+    // The counterweight to a "the file is new, so it is an addition" reading:
+    // the file is *not* new here, and the item still is. Keying the verdict on
+    // the file's base-side existence would report this addition as a removal.
+    const before = 'pub mod other;\n';
+    const after = `pub mod other;
+
+${NEW_TRAIT}`;
+    expect(findItemSpan(before, TRAIT_RULE.anchor)).toBeNull();
+    expect(classifyViaDiff(TRAIT_RULE, before, after).cls).toBe('additive');
+  });
+
+  it('still calls it additive when the same diff removes unrelated lines', () => {
+    // Guards against the tempting stronger guard "this diff removed nothing",
+    // which is satisfied by the first fixture and then reads this one as a
+    // removal of the governed item. What was removed here is `legacy_helper`,
+    // which no rule anchors, and the classifier may not infer more than that.
+    const before = 'pub mod other;\n\nfn legacy_helper() -> u32 {\n    0\n}\n';
+    const after = `pub mod other;
+
+${NEW_TRAIT}`;
+    const finding = classifyViaDiff(TRAIT_RULE, before, after);
+    expect(finding.cls).toBe('additive');
+  });
+
+  it('never calls a *removed* contract additive, even beside a new one', () => {
+    // The mirror image: `Demo` is gone at the head side and `Other` took its
+    // place in the same file, so the same diff both adds and removes. The
+    // removal must still be read as breaking — the fix must not have widened
+    // itself into "a diff that adds something is not breaking".
+    const before = `pub trait Demo: Send {
+    fn existing(&self) -> u32;
+}
+`;
+    const after = `pub trait Other: Send {
+    fn existing(&self) -> u32;
+}
+`;
+    const finding = classifyViaDiff(TRAIT_RULE, before, after);
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('no longer resolves after the change');
+  });
+
+  it('never calls a signature that vanished additive, whatever surrounds it', () => {
+    const before = `pub trait Demo: Send {
+    fn existing(&self) -> u32;
+}
+
+pub trait Neighbour: Send {
+    fn kept(&self) -> u32;
+}
+`;
+    const after = `pub trait Demo: Send {
+    fn existing(&self) -> u32 {
+        0
+    }
+}
+
+pub trait Neighbour: Send {
+    fn kept(&self) -> u32;
+}
+`;
+    expect(classifyViaDiff(TRAIT_RULE, before, after).cls).not.toBe('additive');
+  });
+
+  it('stops claiming a new contract was removed, and names why it is additive', () => {
+    const finding = classifyViaDiff(STRUCT_RULE, '', 'pub struct Demo {\n    pub a: u32,\n}\n');
+    expect(finding.reason).not.toContain('removed outright');
+    expect(finding.reason).not.toContain('did not exist at the base ref (removed');
+    expect(finding.reason).toContain('nothing compiled against the base ref');
+  });
+
+  it('moves the crate version for a new contract, and not the protocol', () => {
+    // The obligation the new class carries. A contract that did not exist at the
+    // base ref changes what the published crate offers, so the crate SemVer has
+    // to move; it changes no wire format, so a PROTOCOL_VERSION bump would be a
+    // claim the migration doc cannot support.
+    expect(COMPAT_MATRIX.classes.additive.requires).toContain('crateVersion');
+    expect(COMPAT_MATRIX.classes.additive.requires).not.toContain('protocol');
+  });
+});
+
+describe('the CLI base flag', () => {
+  it('accepts both --base=<ref> and --base <ref>', () => {
+    // The space form is what an operator types while diagnosing a false
+    // positive. Ignoring it silently measures a different base than the one
+    // asked for and still reports ok.
+    expect(readBaseArg(['--base=abc1234'])).toBe('abc1234');
+    expect(readBaseArg(['--base', 'abc1234'])).toBe('abc1234');
+    expect(readBaseArg([])).toBeUndefined();
+    expect(readBaseArg(['--base'])).toBeUndefined();
+    expect(readBaseArg(['--base', '--other'])).toBeUndefined();
+  });
+
+  it('measures against the ref given after --base, and prints it', () => {
+    const res = spawnSync(process.execPath, ['scripts/check-driver-protocol-compat.mjs', '--base', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    });
+    expect(res.status, res.stdout + res.stderr).toBe(0);
+    expect(res.stdout).toContain('base HEAD;');
   });
 });
 
