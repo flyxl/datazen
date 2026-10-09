@@ -95,6 +95,7 @@ use port_audit::{
 const AUDITED: &[(&str, &str)] = &[
     ("src/tunnel/mod.rs", include_str!("../mod.rs")),
     ("src/tunnel/ledger.rs", include_str!("../ledger.rs")),
+    ("src/tunnel/desktop.rs", include_str!("../desktop.rs")),
     ("src/tunnel/transport.rs", include_str!("../transport.rs")),
     ("src/tunnel/error.rs", include_str!("../error.rs")),
     ("src/tunnel/harness.rs", include_str!("../harness.rs")),
@@ -146,18 +147,33 @@ const AUDITED: &[(&str, &str)] = &[
         "tests/tunnel_arch_support/mod.rs",
         include_str!("../../../tests/tunnel_arch_support/mod.rs"),
     ),
+    (
+        "tests/tunnel_desktop_network_provider.rs",
+        include_str!("../../../tests/tunnel_desktop_network_provider.rs"),
+    ),
 ];
 
-/// 被登记的端口实现数与含端口实现的文件数：夹具端口 + 三个测试轨端口 = 4 / 4。
+/// 被登记的端口实现数与含端口实现的文件数：夹具端口 + 四个测试轨端口 = 5 / 5。
 ///
-/// 三个测试轨端口 = `tunnel_refcount_contract.rs` 的 `HostTunnelTransport`、
+/// 四个测试轨端口 = `tunnel_refcount_contract.rs` 的 `HostTunnelTransport`、
 /// `cm28_concurrent_tunnel.rs` 的 `RecordingTunnelPort`、架构轨共用替身
-/// `tunnel_arch_support/mod.rs` 的 `RecordingTunnelPort`（后两个同名、不同文件，
-/// 所以「实现数」与「文件数」才都从 3 变成 4 —— 只看名字会把它们当成一份）。
+/// `tunnel_arch_support/mod.rs` 的 `RecordingTunnelPort`、桌面轨
+/// `tunnel_desktop_network_provider.rs` 的 `RecordingTunnelPort`（后三个同名、不同文件，
+/// 所以「实现数」与「文件数」才分得开 —— 只看名字会把它们当成一份）。
 ///
-/// 新增第 5 份端口必须同时进 `AUDITED`，否则第二本账可以在没人看的地方长出来。
-const EXPECTED_TRANSPORT_IMPLS: usize = 4;
-const EXPECTED_TRANSPORT_FILES: usize = 4;
+/// 新增第 6 份端口必须同时进 `AUDITED`，否则第二本账可以在没人看的地方长出来。
+///
+/// `src/tunnel/desktop.rs` 也在表里，但它**不是**端口实现（不实现 `TunnelTransport`）：
+/// 它借用台账、不碰计数，登记它是为了让 R6「包内每一个实现 `TunnelTransport` 的文件都得
+/// 在表里」这条补漏在新增文件时照样成立，也为了让它自己的 `AtomicU64`（持有者身份发生器，
+/// 取值从不参与判断）有一处可以被复核的位置。
+///
+/// 桌面轨的替身当初是写在 `desktop.rs` 的 `#[cfg(test)]` 里的，R4/R5 当场把它的
+/// `revision: u64` 判成第二本账并点红（端口里的整数标量字段是账的样子）。**测试替身和
+/// 生产代码同处一个被审计文件时，它自己就成了被审计对象** —— 所以它只能活在外部
+/// 测试 crate 里，且仍然要进这张表。
+const EXPECTED_TRANSPORT_IMPLS: usize = 5;
+const EXPECTED_TRANSPORT_FILES: usize = 5;
 
 const LEDGER: &str = "src/tunnel/ledger.rs";
 const HARNESS: &str = "src/tunnel/harness.rs";
