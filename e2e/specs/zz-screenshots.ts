@@ -1,3 +1,4 @@
+import { readCatalog } from '../schema-metadata.js';
 /**
  * Site screenshot generator (temporary tooling, not a regression spec).
  * Drives the webdriver-enabled app and captures marketing screenshots
@@ -738,7 +739,7 @@ async function selectQueryPanelDatabase(dbName: string) {
         );
       });
   }
-  await browser.pause(900); // allow get_tables refreshes to settle
+  await browser.pause(900); // allow list_catalog refreshes to settle
   await browser
     .waitUntil(async () => (await panelBoundDatabase()) === dbName, {
       timeout: 8000,
@@ -778,17 +779,17 @@ async function selectQueryPanelDatabase(dbName: string) {
 
 /**
  * Verify the primary demo database is reachable so SQL / DataTable panels
- * query demo_sales (F1: get_tables pins the database explicitly — the session
- * is switched lazily by query/stream/explain carrying `database`).
+ * query demo_sales (`list_catalog` pins the database explicitly — the session is
+ * switched lazily by query/stream/explain carrying `database`).
  */
 async function pinDemoPgDatabase() {
   const connId = await invoke<string>('connect', { connectionId: DEMO_PG_CONN_ID });
   if (typeof connId !== 'string' || connId.startsWith('__error')) {
     throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
   }
-  const tables = await invoke('get_tables', { dbSessionId: connId, database: DEMO_PG_DB });
+  const tables = await readCatalog({ dbSessionId: connId, database: DEMO_PG_DB });
   if (tables && typeof tables === 'object' && '__error' in (tables as object)) {
-    throw new Error(`get_tables(${DEMO_PG_DB}) failed: ${JSON.stringify(tables)}`);
+    throw new Error(`list_catalog(${DEMO_PG_DB}) failed: ${JSON.stringify(tables)}`);
   }
   await browser.pause(300);
 }
@@ -1363,9 +1364,9 @@ describe('site screenshots', () => {
     if (typeof connId !== 'string' || connId.startsWith('__error')) {
       throw new Error(`connect(${DEMO_PG_CONN_NAME}) failed: ${JSON.stringify(connId)}`);
     }
-    const tables = await invoke('get_tables', { dbSessionId: connId, database: DEMO_PG_DB });
+    const tables = await readCatalog({ dbSessionId: connId, database: DEMO_PG_DB });
     if (tables && typeof tables === 'object' && '__error' in (tables as object)) {
-      throw new Error(`get_tables(${DEMO_PG_DB}) failed: ${JSON.stringify(tables)}`);
+      throw new Error(`list_catalog(${DEMO_PG_DB}) failed: ${JSON.stringify(tables)}`);
     }
 
     await invoke('connect', { connectionId: DEMO_MYSQL_CONN_ID });

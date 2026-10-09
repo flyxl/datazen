@@ -6,7 +6,7 @@
  * redaction/sanitisation — no secret values, parameter values, result rows, or
  * session identifiers are included in the prompt.
  *
- * §6.9 limits: SQL and error text are each capped at 4,000 characters.
+ * Character limits: SQL and error text are each capped at 4,000 characters.
  */
 
 import {
@@ -16,7 +16,7 @@ import {
 } from '../../../lib/aiQueryActions';
 import type { AiChatDraftRequest, ContentViewCallbacks } from './aiDraftBridge';
 
-// ── §6.9 character caps (matching aiQueryActions MAX_SAFE_TEXT_LENGTH) ─────
+// ── character caps (matching aiQueryActions MAX_SAFE_TEXT_LENGTH) ──────────
 const MAX_PROMPT_SQL_LENGTH = 4_000;
 const MAX_PROMPT_ERROR_LENGTH = 4_000;
 

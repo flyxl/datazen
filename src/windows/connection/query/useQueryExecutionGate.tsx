@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { queryCommands } from '../../../commands/query';
 import { usePanelStore } from '../../../stores/panelStore';
 import { paneArgs, paneKey } from '../../../stores/paneKeys';
@@ -21,6 +21,7 @@ import type { SqlEditorHandle } from '../../../components/SqlEditor';
 import type { BindParams } from '../../../stores/queryExecActions';
 import type { ExecuteKind, PendingExecute } from './contracts';
 import { hasSuspiciousPostgresDoubleQuotedLiteral } from './contracts';
+import { resolveSqlParameterPolicy } from '../../../lib/sqlDialects/sqlParameterPolicy';
 
 export interface ExecutionSnapshot {
   panelId: string;
@@ -75,6 +76,10 @@ export function useQueryExecutionGate({
   showMessageDialog,
   onExecutionComplete,
 }: UseQueryExecutionGateOptions) {
+  const bindParameterPolicy = useMemo(
+    () => resolveSqlParameterPolicy(databaseType),
+    [databaseType],
+  );
   const { t } = useI18n();
   const [confirmDangerous, confirmDangerousDialog] = useConfirmDialog();
   const [txUnclosedOpen, setTxUnclosedOpen] = useState(false);
@@ -193,7 +198,7 @@ export function useQueryExecutionGate({
           : editorRef.current?.getSelection()?.trim() || sql;
 
       // Defense-in-depth: assert no missing parameters before substitution
-      const runMissing = findMissingParams(targetRawSql, rawValues);
+      const runMissing = findMissingParams(targetRawSql, rawValues, bindParameterPolicy);
       if (runMissing.length > 0) {
         showMessageDialog(
           t('query.editor.param.missingValue', { token: runMissing[0].label }),
@@ -202,7 +207,11 @@ export function useQueryExecutionGate({
         return;
       }
 
-      const targetSubstitutedSql = substituteSqlParams(targetRawSql, rawValues);
+      const targetSubstitutedSql = substituteSqlParams(
+        targetRawSql,
+        rawValues,
+        bindParameterPolicy,
+      );
 
       if (kind === 'selection' && selectionSql != null) {
         await storeExecuteSelection(
@@ -243,6 +252,7 @@ export function useQueryExecutionGate({
     [
       sql,
       databaseType,
+      bindParameterPolicy,
       panelId,
       paneId,
       autoCommit,
@@ -430,7 +440,7 @@ export function useQueryExecutionGate({
 
       // 2. Parameter validation (Host autonomous check, blocking execution on missing params)
       const effectiveValues = (paramValues ?? snapshotPayload ?? {}) as Record<string, unknown>;
-      const missing = findMissingParams(sqlForCheck, effectiveValues);
+      const missing = findMissingParams(sqlForCheck, effectiveValues, bindParameterPolicy);
       if (missing.length > 0) {
         const firstMissing = missing[0];
         showMessageDialog(
@@ -505,6 +515,7 @@ export function useQueryExecutionGate({
       boundPayload,
       paramValues,
       sqlExecutionStrategy,
+      bindParameterPolicy,
     ],
   );
 

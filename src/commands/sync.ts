@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { JobDetails } from '@datazen/backend-client';
 import type { FilterCondition, Value } from '../types';
 
 export interface SyncTask {
@@ -159,6 +160,31 @@ export interface DataSyncExecutionResult {
   affectedRows?: number;
   skipped?: number;
   conflicts?: DataSyncConflict[];
+}
+
+export interface DataSyncJobView {
+  jobId: string;
+  kind: string;
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  cancelRequested: boolean;
+  effectOutcome: string | null;
+  error: string | null;
+  progress: { committed: number | string; unknown: number | string };
+}
+
+export type DataSyncJobDetails = Pick<
+  JobDetails,
+  'job' | 'recoveryTargets' | 'domainResults' | 'recovery'
+>;
+
+export interface DataSyncRecoveryRequest {
+  jobId: string;
+  sourceDbSessionId: string;
+  targetDbSessionId: string;
+  sourceDatabase: string;
+  targetDatabase: string;
+  sourceSchema?: string;
+  targetSchema?: string;
 }
 
 export interface DataSyncConflict {
@@ -339,6 +365,80 @@ function selectionFromStatements(
   return { revision: plan.selectionRevision, rows };
 }
 
+const delay = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitForDataSyncJob(jobId: string): Promise<DataSyncJobView> {
+  for (;;) {
+    const job = await invoke<DataSyncJobView>('get_data_sync_job', { jobId });
+    if (job.state === 'succeeded' || job.state === 'failed' || job.state === 'cancelled') {
+      return job;
+    }
+    await delay(400);
+  }
+}
+
+function durableFailure(job: DataSyncJobView, phase: 'prepare' | 'apply'): Error {
+  if (job.state === 'cancelled') return new Error(`Data Sync ${phase} job was cancelled.`);
+  if (job.error === 'notDispatchedAfterRestart') {
+    return new Error('Data Sync job was not executed after restart; start a fresh comparison.');
+  }
+  if (job.effectOutcome === 'unknown' || Number(job.progress.unknown) > 0) {
+    return new Error('Data Sync write outcome needs verification; compare current data before continuing.');
+  }
+  return new Error(`Data Sync ${phase} job failed; compare again before continuing.`);
+}
+
+async function readPreparePreview(jobId: string): Promise<DataSyncComparisonPreview> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      return await invoke<DataSyncComparisonPreview>('get_data_sync_job_preview', { jobId });
+    } catch (error) {
+      lastError = error;
+      await delay(250);
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Data Sync comparison finished without a review plan.');
+}
+
+function executionFromJob(details: DataSyncJobDetails): DataSyncExecutionResult {
+  const job = details.job;
+  const result = details.domainResults.find((entry) => entry.stageId === 'apply');
+  const counter = (code: string): number =>
+    Number(result?.counters.find((entry) => entry.code === code)?.value ?? 0);
+  const committed = counter('committed') || Number(job.progress.committed);
+  const effect = job.effectOutcome;
+  const outcome =
+    effect === 'rolledBack'
+      ? 'rolled_back'
+      : effect === 'notStarted'
+        ? 'not_started'
+        : effect === 'unknown' || counter('unknown') > 0
+          ? 'unknown'
+          : 'committed';
+  const error =
+    job.state === 'succeeded'
+      ? undefined
+      : job.error === 'notDispatchedAfterRestart'
+        ? 'Data Sync job was not executed after restart.'
+        : outcome === 'unknown'
+          ? 'Commit outcome is unknown; compare current data before continuing.'
+          : 'Data Sync apply job failed; compare again before continuing.';
+  return {
+    applied: committed,
+    affectedRows: committed,
+    rolledBack: outcome === 'rolled_back',
+    outcome,
+    error,
+    rollbackReason: outcome === 'rolled_back' ? error : undefined,
+    skipped: 0,
+    conflicts: [],
+  };
+}
+
 export const syncCommands = {
   classifyDataSyncPair: (sourceDatabaseType: string, targetDatabaseType: string) =>
     invoke<DataSyncPairingView>('classify_data_sync_pair', {
@@ -433,11 +533,12 @@ export const syncCommands = {
     filters?: Record<string, DataSyncSourceFilter>,
   ) => {
     activeComparisonPlan = null;
-    const response = await invoke<DataSyncComparisonPreview>('compare_data_sync', {
+    const requestedJobId = jobId ?? `data-sync-${crypto.randomUUID()}`;
+    const accepted = await invoke<DataSyncJobView>('start_data_sync_prepare_job', {
       sourceDbSessionId,
       targetDbSessionId,
       tables: tables ?? null,
-      jobId: jobId ?? null,
+      jobId: requestedJobId,
       sourceDatabase: sourceDatabase ?? null,
       targetDatabase: targetDatabase ?? null,
       sourceSchema: sourceSchema ?? null,
@@ -445,9 +546,55 @@ export const syncCommands = {
       options: options ?? null,
       filters: filters ?? null,
     });
+    const finished = await waitForDataSyncJob(accepted.jobId);
+    if (finished.state !== 'succeeded') throw durableFailure(finished, 'prepare');
+    const response = await readPreparePreview(finished.jobId);
     activeComparisonPlan = response;
     return response;
   },
+
+  /** Apply the reviewed selection directly through a durable background Job. */
+  executeDataSyncJob: async (
+    sourceDbSessionId: string,
+    targetDbSessionId: string,
+    jobId: string,
+    options: SyncOptions,
+    selectedRows?: DataSyncSelectedRow[],
+    tableSelections?: DataSyncTableSelection[],
+  ) => {
+    if (!activeComparisonPlan) {
+      throw new Error('data sync comparison plan is missing; compare again');
+    }
+    activeExecutionOptions = options;
+    const selection = selectionFromTables(
+      activeComparisonPlan,
+      [],
+      options,
+      selectedRows,
+      tableSelections,
+    );
+    const accepted = await invoke<DataSyncJobView>('start_data_sync_apply_job', {
+      sourceDbSessionId,
+      targetDbSessionId,
+      request: {
+        planId: activeComparisonPlan.planId,
+        selection,
+        options,
+        jobId,
+      },
+    });
+    await waitForDataSyncJob(accepted.jobId);
+    const details = await invoke<DataSyncJobDetails>('get_data_sync_job_details', {
+      jobId: accepted.jobId,
+    });
+    return executionFromJob(details);
+  },
+
+  listDataSyncJobs: () =>
+    invoke<DataSyncJobDetails[]>('list_data_sync_jobs'),
+
+  verifyDataSyncRecovery: (request: DataSyncRecoveryRequest) =>
+    invoke<DataSyncJobDetails>('verify_data_sync_recovery', { request }),
 
   applyDataSync: (
     sourceDbSessionId: string,

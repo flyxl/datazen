@@ -1,3 +1,4 @@
+import { listDatabases } from '../schema-metadata.js';
 import { expect, browser } from '@wdio/globals';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -120,8 +121,8 @@ describe('数据库备份功能 (BACKUP)', () => {
     expect(dbSessionId.length).toBeGreaterThan(0);
   });
 
-  it('BACKUP-002: get_databases returns database list', async () => {
-    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId });
+  it('BACKUP-002: list_databases returns database list', async () => {
+    const dbs = await listDatabases({ dbSessionId });
     expect(Array.isArray(dbs)).toBe(true);
     expect(dbs.length).toBeGreaterThan(0);
     expect(dbs).toContain(PG_CONFIG.database);

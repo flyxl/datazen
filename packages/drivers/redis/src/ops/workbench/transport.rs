@@ -239,8 +239,8 @@ where
 /// Aggregate(Sum))` — so the client fans it out and adds the answers up, which
 /// is the `M` the context bar's "采样 N/M" label needs. Pinning it to the sample
 /// shard instead would report a shard's count as if it were the database's.
-/// Two consequences of that policy are documented in the module docs and in
-/// `progress.md`: the number spans the whole cluster, and one unreachable (or
+/// Two consequences of that policy: the number spans the whole cluster, and
+/// one unreachable (or
 /// non-integer-answering) master fails the aggregate, so the command errors
 /// rather than reporting a partial total.
 pub(crate) async fn fetch_dbsize<C>(conn: &mut C) -> Result<u64, String>

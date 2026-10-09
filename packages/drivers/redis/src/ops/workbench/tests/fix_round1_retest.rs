@@ -151,10 +151,10 @@ fn test_tester_cluster_routing_ignores_the_key_for_two_word_probes() {
     // 的"键"是**子命令 token**（USAGE / ENCODING / …），而不是那个键。
     // 后果：Cluster 上这 4 条探测命令必然先被投到错误的分片、吃一次 `-MOVED`、
     // 再重定向重试（并触发一次 slots 重建）。⇒ "Cluster 侧栏恰 6 次单命令往返 /
-    // 命令级 7 次"这一硬口径不成立（见 bugs.md redis-cmds-p0-BUG-007）。
+    // 命令级 7 次"这一硬口径不成立。
     //
     // 本用例是**绊线**：若将来 redis 修正了路由（或我们改成显式按地址路由），
-    // 这两条 assert_eq 会失败，提醒我们同时回收口径与 R 项 9a 的 MONITOR 核对表。
+    // 这两条 assert_eq 会失败，提醒我们同时回收口径与 MONITOR 核对表。
     //
     // [修复轮 3 补注] 本用例只问 **redis 自己的路由表**，表未变 ⇒ 仍然成立，断言一字未松。
     // 变的是驱动侧：探测命令不再交给这张表，而是按 `get_slot(key)` 显式寻址
@@ -199,8 +199,8 @@ fn test_tester_dbsize_on_cluster_is_an_all_master_sum_not_a_shard_view() {
     // "只是被路由到的那一个分片的 DBSIZE"。redis 自己不同意：DBSIZE 属于
     // `MultiNode(AllMasters) + Aggregate(Sum)` ⇒ 返回的是**整个集群**所有主节点的
     // 键数之和（并且任一分片失败即整条命令失败）。
-    // 结论不是"代码算错了数"，而是**给 Wave 2 与 R 项 9b-补/9d 的口径写反了方向**：
-    // M 偏大 ⇒ `truncated` 只会更保守（不会谎称普查），但 9d 的"空分片 ⇒ dbsize 0
+    // 结论不是"代码算错了数"，而是**给 Wave 2 的口径写反了方向**：
+    // M 偏大 ⇒ `truncated` 只会更保守（不会谎称普查），但"空分片 ⇒ dbsize 0
     // 且 truncated false"在多分片非空集群上永远不成立，会被误判成回归。
     assert_eq!(
         RoutingInfo::for_routable(&redis::cmd("DBSIZE")),

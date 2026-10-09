@@ -1,0 +1,48 @@
+//! Redis's implementation of the resource contract.
+//!
+//! The module is split by responsibility, not by convenience:
+//!
+//! * [`capabilities`] — what this driver *declares*, with the file and line each
+//!   claim rests on. A capability that is not proven is declared unsupported.
+//! * [`provider`] — the provider itself: the state it owns and the 14 contract
+//!   methods, each wired to this crate's own connection and execution code.
+//! * [`registry`] — what one live resource remembers. No I/O.
+//! * [`observation`] — reading the session back off the server. Every field is
+//!   either answered by the server or left empty.
+//! * [`payload`] — decoding a Driver Command result for the `ResultSink`, and
+//!   refusing the shapes that channel cannot carry truthfully.
+//!
+//! The rule the whole module exists to enforce: **no method is a shell.** There
+//! is no path here that returns `Ok(())`, an empty result, or a fabricated
+//! context. A capability this driver cannot back is refused with an explicit
+//! [`ResourceError`](datazen_driver_api::resource::ResourceError), and a fact
+//! the server did not give is never invented. That is why a Redis transaction,
+//! a per-execution cancel and a baseline replay are all errors, why most
+//! command payloads are refused rather than decoded into an empty result, and
+//! why an observed namespace stays empty at
+//! [`Partial`](datazen_driver_api::session::ObservationConfidence::Partial)
+//! confidence instead of guessing which logical database the connection is on.
+
+mod capabilities;
+mod observation;
+mod payload;
+mod provider;
+mod registry;
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "tests_behaviour.rs"]
+mod tests_behaviour;
+
+// Live evidence against a real `redis-server`. Held apart from the two offline
+// modules on purpose: those assert that a *missing* connection is an error, and
+// this is the only place in the crate where one is present. See the module doc
+// for why the harness starts its own server rather than reusing one.
+#[cfg(test)]
+#[path = "tests_live.rs"]
+mod tests_live;
+
+pub use provider::RedisResourceProvider;

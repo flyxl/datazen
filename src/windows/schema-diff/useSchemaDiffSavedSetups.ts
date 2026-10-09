@@ -229,6 +229,8 @@ export function useSchemaDiffSavedSetups({
         const catalog = await unifiedObjects.load(
           srcConnId,
           tgtConnId,
+          endpoints.sourceDatabase,
+          endpoints.targetDatabase,
           endpoints.sourceSchema,
           endpoints.targetSchema,
         );
@@ -339,12 +341,14 @@ export function useSchemaDiffSavedSetups({
         const tgtConnId = await endpoints.ensureConnected('target');
         if (!srcConnId || !tgtConnId) return;
         const [sourceRows, targetRows] = await Promise.all([
-          databaseCommands.getTables(srcConnId, profile.sourceDatabase),
-          databaseCommands.getTables(tgtConnId, profile.targetDatabase),
+          databaseCommands.listTables(srcConnId, profile.sourceDatabase),
+          databaseCommands.listTables(tgtConnId, profile.targetDatabase),
         ]);
         const catalog = await unifiedObjects.load(
           srcConnId,
           tgtConnId,
+          profile.sourceDatabase,
+          profile.targetDatabase,
           profile.sourceSchema ?? '',
           profile.targetSchema ?? '',
         );

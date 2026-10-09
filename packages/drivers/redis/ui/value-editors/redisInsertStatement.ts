@@ -3,7 +3,7 @@
  *
  * Builds a single redis-cli-compatible command that re-creates the key from
  * the detail payload `get_key` returns (`key_value_json` shapes, read-only
- * mirror of packages/drivers/redis/src/redis_driver_on.rs):
+ * mirror of packages/drivers/redis/src/driver/session.rs):
  *
  * - string → `{"value": "<s>"}`      ⇒ `SET key value`
  * - hash   → `{field: value, …}`     ⇒ `HSET key f v [f v …]`

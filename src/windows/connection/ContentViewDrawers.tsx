@@ -29,7 +29,7 @@ export interface ContentViewDrawersProps {
   databaseType: DatabaseType | undefined;
   /**
    * Relay of the active KV panel (`undefined` on a relational panel). Read here
-   * only through a leaf subscription, to build the assistant's KV context (§1.3);
+   * only through a leaf subscription, to build the assistant's KV context;
    * the drawer itself keeps rendering the same way either way.
    */
   kvPanelState?: KvSlotState;
@@ -38,13 +38,13 @@ export interface ContentViewDrawersProps {
   /**
    * Driver-contributed key-props sidebar for a KV panel's detail drawer. Present ⇒
    * the drawer renders it instead of the row-detail table, which on a KV panel was
-   * an empty grid behind a working-looking toggle (P-3). Absent ⇒ the row table,
+   * an empty grid behind a working-looking toggle. Absent ⇒ the row table,
    * unchanged.
    */
   keyPropsSidebarSlot?: KvKeyPropsSidebarBinding;
-  /** S3-B2: pending AI draft request from ContentView coordinator. */
+  /** Pending AI draft request from ContentView coordinator. */
   pendingDraftRequest: AiChatDraftRequest | null;
-  /** S3-B2: called after AiChatPanel writes the draft to its textarea. */
+  /** Called after AiChatPanel writes the draft to its textarea. */
   onDraftConsumed: (requestId: string) => void;
 }
 
@@ -78,7 +78,7 @@ export function ContentViewDrawers({
     storageKey: 'connection.aiSidebar',
   });
 
-  // W3-A §1.3: the assistant gets whatever the host really owns about this panel.
+  // The assistant gets whatever the host really owns about this panel.
   // Subscribing to the one scalar here — instead of the workspace passing a key
   // down — keeps a key-tree selection from re-rendering the whole content column.
   const kvSelectedKey = useKvSlotSelectedKey(kvPanelState);
@@ -171,7 +171,7 @@ export function ContentViewDrawers({
       {detailPanelApplicable &&
         (Sidebar && keyPropsSidebarSlot ? (
           // KV panel with a driver-contributed key-props sidebar: the same drawer
-          // slot now carries real content instead of an empty row grid (P-3).
+          // slot now carries real content instead of an empty row grid.
           // The sidebar owns its own container (width / border / scroll) just like
           // DetailPanel does, and is expected to render nothing while `open` is false.
           <div

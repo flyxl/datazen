@@ -2,7 +2,21 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/react';
 import { BackupWindow } from '../BackupWindow';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
-import type { ConnectionConfig } from '../../../types';
+import type { TableInfo, ConnectionConfig } from '../../../types';
+
+function catalogResult(tables: TableInfo[]) {
+  return {
+    data: {
+      database: 'app',
+      schemas: [],
+      relations: tables.map((table) => ({
+        ref: { database: 'app', schema: table.schema ?? null, name: table.name },
+        kind: table.tableType,
+        rowCount: table.rowCount ?? null,
+      })),
+    },
+  };
+}
 
 const {
   invokeMock,
@@ -182,29 +196,32 @@ describe('BackupWindow connection list', () => {
     expect(invokeMock).not.toHaveBeenCalledWith('connect', expect.anything());
   });
 
-  function mockRestoreCommands(tables: unknown[] = []) {
+  function mockRestoreCommands(tables: TableInfo[] = []) {
     urlParamMock.mockImplementation((name: string) => (name === 'mode' ? 'restore' : null));
-    invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_connections') {
-        return [
-          conn({
-            id: 'pg-1',
-            name: 'Local PG',
-            databaseType: 'postgresql',
-            group: PRESET_GROUPS.development,
-            host: 'localhost',
-            database: 'app',
-          }),
-        ];
-      }
-      if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-      if (cmd === 'connect') return 'live-1';
-      if (cmd === 'get_connection_info') return { serverVersion: '16' };
-      if (cmd === 'get_databases') return ['app', 'postgres'];
-      if (cmd === 'get_tables') return tables;
-      if (cmd === 'restore_sql_file') return true;
-      return null;
-    });
+    invokeMock.mockImplementation(
+      async (cmd: string, args?: { request?: { command?: string } }) => {
+        if (cmd === 'get_connections') {
+          return [
+            conn({
+              id: 'pg-1',
+              name: 'Local PG',
+              databaseType: 'postgresql',
+              group: PRESET_GROUPS.development,
+              host: 'localhost',
+              database: 'app',
+            }),
+          ];
+        }
+        if (cmd === 'get_groups') return [PRESET_GROUPS.development];
+        if (cmd === 'connect') return 'live-1';
+        if (cmd === 'get_connection_info') return { serverVersion: '16' };
+        if (args?.request?.command === 'list_databases')
+          return { data: { databases: ['app', 'postgres'] } };
+        if (args?.request?.command === 'list_catalog') return catalogResult(tables);
+        if (cmd === 'restore_sql_file') return true;
+        return null;
+      },
+    );
   }
 
   async function selectRestoreTarget() {
@@ -249,35 +266,38 @@ describe('BackupWindow connection list', () => {
         return () => {};
       },
     );
-    invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_connections') {
-        return [
-          conn({
-            id: 'pg-1',
-            name: 'Local PG',
-            databaseType: 'postgresql',
-            group: PRESET_GROUPS.development,
-            host: 'localhost',
-            database: 'app',
-          }),
-        ];
-      }
-      if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-      if (cmd === 'connect') return 'live-1';
-      if (cmd === 'get_connection_info') return { serverVersion: '16' };
-      if (cmd === 'get_databases') return ['app', 'postgres'];
-      if (cmd === 'get_tables') return [];
-      if (cmd === 'restore_sql_file') {
-        onProgress?.({
-          payload: { current: 1, total: 2, objectName: 'CREATE TABLE users', phase: 'object' },
-        });
-        onProgress?.({
-          payload: { current: 2, total: 2, objectName: 'INSERT INTO users', phase: 'object' },
-        });
-        return true;
-      }
-      return null;
-    });
+    invokeMock.mockImplementation(
+      async (cmd: string, args?: { request?: { command?: string } }) => {
+        if (cmd === 'get_connections') {
+          return [
+            conn({
+              id: 'pg-1',
+              name: 'Local PG',
+              databaseType: 'postgresql',
+              group: PRESET_GROUPS.development,
+              host: 'localhost',
+              database: 'app',
+            }),
+          ];
+        }
+        if (cmd === 'get_groups') return [PRESET_GROUPS.development];
+        if (cmd === 'connect') return 'live-1';
+        if (cmd === 'get_connection_info') return { serverVersion: '16' };
+        if (args?.request?.command === 'list_databases')
+          return { data: { databases: ['app', 'postgres'] } };
+        if (args?.request?.command === 'list_catalog') return catalogResult([]);
+        if (cmd === 'restore_sql_file') {
+          onProgress?.({
+            payload: { current: 1, total: 2, objectName: 'CREATE TABLE users', phase: 'object' },
+          });
+          onProgress?.({
+            payload: { current: 2, total: 2, objectName: 'INSERT INTO users', phase: 'object' },
+          });
+          return true;
+        }
+        return null;
+      },
+    );
 
     await selectRestoreTarget();
     fireEvent.click(screen.getByTestId('backup-start-restore'));
@@ -329,7 +349,7 @@ describe('BackupWindow connection list', () => {
   });
 });
 
-describe('BackupWindow backup flow (F3-BUG-002 coverage)', () => {
+describe('BackupWindow backup flow', () => {
   // An earlier suite case leaves `mockResolvedValue(false)` behind; restore the
   // default accept so the overwrite confirmation behaves per-test.
   beforeEach(() => {
@@ -350,15 +370,18 @@ describe('BackupWindow backup flow (F3-BUG-002 coverage)', () => {
   }
 
   function setupInvoke(backupDatabaseImpl: () => Promise<boolean>) {
-    invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_connections') return pgOnlyConnections();
-      if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-      if (cmd === 'connect') return 'live-1';
-      if (cmd === 'get_connection_info') return { serverVersion: '16' };
-      if (cmd === 'get_databases') return ['app', 'postgres'];
-      if (cmd === 'backup_database') return backupDatabaseImpl();
-      return null;
-    });
+    invokeMock.mockImplementation(
+      async (cmd: string, args?: { request?: { command?: string } }) => {
+        if (cmd === 'get_connections') return pgOnlyConnections();
+        if (cmd === 'get_groups') return [PRESET_GROUPS.development];
+        if (cmd === 'connect') return 'live-1';
+        if (cmd === 'get_connection_info') return { serverVersion: '16' };
+        if (args?.request?.command === 'list_databases')
+          return { data: { databases: ['app', 'postgres'] } };
+        if (cmd === 'backup_database') return backupDatabaseImpl();
+        return null;
+      },
+    );
   }
 
   async function selectBackupTarget() {
@@ -500,16 +523,20 @@ describe('BackupWindow backup flow (F3-BUG-002 coverage)', () => {
 
   it('restore backend error surfaces in status and progress log', async () => {
     urlParamMock.mockImplementation((name: string) => (name === 'mode' ? 'restore' : null));
-    invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_connections') return pgOnlyConnections();
-      if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-      if (cmd === 'connect') return 'live-1';
-      if (cmd === 'get_connection_info') return { serverVersion: '16' };
-      if (cmd === 'get_databases') return ['app', 'postgres'];
-      if (cmd === 'get_tables') return [{ name: 'users', tableType: 'table' }];
-      if (cmd === 'restore_sql_file') throw new Error('restore boom');
-      return null;
-    });
+    invokeMock.mockImplementation(
+      async (cmd: string, args?: { request?: { command?: string } }) => {
+        if (cmd === 'get_connections') return pgOnlyConnections();
+        if (cmd === 'get_groups') return [PRESET_GROUPS.development];
+        if (cmd === 'connect') return 'live-1';
+        if (cmd === 'get_connection_info') return { serverVersion: '16' };
+        if (args?.request?.command === 'list_databases')
+          return { data: { databases: ['app', 'postgres'] } };
+        if (args?.request?.command === 'list_catalog')
+          return catalogResult([{ name: 'users', tableType: 'table' }]);
+        if (cmd === 'restore_sql_file') throw new Error('restore boom');
+        return null;
+      },
+    );
 
     render(<BackupWindow />);
     await waitFor(() => screen.getByText('Local PG'));

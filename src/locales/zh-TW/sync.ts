@@ -1,5 +1,9 @@
 /** Auto-split domain: sync (zh-TW) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    '先前的計畫已失效（已過期、目標結構改變或權限變更）。套用任何內容前，請重新產生一份新的計畫。',
+  'migrationJob.pendingVerificationHint':
+    '先前的作業正等待驗證。請先開啟作業中心並核對狀態，再套用任何新變更。',
   // --- Data Sync ---
   'sync.source': '來源資料庫',
   'sync.target': '目標資料庫',

@@ -87,19 +87,27 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
   ),
 }));
 
-vi.mock('../../../stores/schemaStore', () => ({
-  useSchemaStore: {
-    getState: () => ({
-      reset: vi.fn(),
-      removeConnection: vi.fn(),
-      setActiveConnection: vi.fn(),
-      databases: [],
-      currentDatabase: null,
-      tables: [],
-      upsertSchema: upsertSchemaMock,
-    }),
-  },
-}));
+vi.mock('../../../stores/schemaStore', async () => {
+  // See ConnectionPage.test.tsx: the per-session selectors are part of the real
+  // module's surface, so the mock reproduces them via the shared double.
+  const { schemaStoreMockModule } = await import('../../../test/mocks/schemaStore');
+  const perSession = schemaStoreMockModule({ schemas: new Map(), activeDbSessionId: null });
+  return {
+    useSchemaStore: {
+      getState: () => ({
+        reset: vi.fn(),
+        removeConnection: vi.fn(),
+        setActiveConnection: vi.fn(),
+        databases: [],
+        currentDatabase: null,
+        tables: [],
+        upsertSchema: upsertSchemaMock,
+      }),
+    },
+    useConnectionSchemaField: perSession.useConnectionSchemaField,
+    useConnectionColumnMaps: perSession.useConnectionColumnMaps,
+  };
+});
 
 vi.mock('../../../stores/tableDataStore', () => ({
   useTableDataStore: { getState: () => ({ reset: vi.fn(), removeConnection: vi.fn() }) },
@@ -113,6 +121,15 @@ vi.mock('../../../stores/tableDataStore', () => ({
  */
 vi.mock('../../../stores/panelStore', async () => {
   const { useSyncExternalStore } = await import('react');
+  // `vi.mock` replaces the whole module, so the pane-identity helpers and the
+  // frozen exec default it re-exports must exist here too. Both come from pure
+  // leaf modules, so take the real implementations rather than faking a shape.
+  const pane = await vi.importActual<typeof import('../../../stores/paneKeys')>(
+    '../../../stores/paneKeys',
+  );
+  const { EMPTY_QUERY_EXEC } = await vi.importActual<
+    typeof import('../../../stores/queryExecActions')
+  >('../../../stores/queryExecActions');
   type Panel = { id: string; connectionId: string; databaseType: string; dbName?: string };
   let state: { panels: Panel[]; activePanelId: string | null } = {
     panels: [],
@@ -165,6 +182,8 @@ vi.mock('../../../stores/panelStore', async () => {
     }),
   });
   return {
+    ...pane,
+    EMPTY_QUERY_EXEC,
     usePanelStore: store,
     nextPanelId: (prefix: string, n?: number) => `${prefix}-${n ?? 0}`,
     __panelTest: {

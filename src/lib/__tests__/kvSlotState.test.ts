@@ -82,7 +82,7 @@ describe('createKvSlotState', () => {
 });
 
 /**
- * W3-A §1.1 widening: one table, every new field.
+ * Widening: one table, every new field.
  *
  * Each row pins the two properties the contract's *shape* exists to guarantee:
  * a publish that changes nothing must stay silent (otherwise a scan tick or a
@@ -159,7 +159,7 @@ const WIDENED_FIELDS: Array<{
   },
 ];
 
-describe('widened KvSlotState fields (W3-A §1.1)', () => {
+describe('widened KvSlotState fields', () => {
   for (const field of WIDENED_FIELDS) {
     it(`${field.name}: starts at the documented default`, () => {
       expect(field.read(createKvSlotState())).toEqual(field.initial);
@@ -308,11 +308,11 @@ describe('panel-scoped KV slot atoms', () => {
     expect(getKvSlotState('panel-live')).toBe(live);
     expect(getKvSlotState('panel-live').getSelectedKey()).toBe('y');
 
-    // [tester] BUG-001 deleted the single-panel `disposeKvSlotState` case, which was
+    // [tester] The single-panel `disposeKvSlotState` case is gone, and it was
     // the only place asserting that a recycled panel id comes back *clean*. Since
     // `pruneKvSlotStates` is now the only recycling path, it must carry that
     // guarantee itself: reopening a closed panel id must not inherit the old
-    // selection or the old dirty flag (PRD I-1 dirty gate).
+    // selection or the old dirty flag.
     const reopened = getKvSlotState('panel-closed');
     expect(reopened.getSelectedKey()).toBeNull();
     expect(reopened.getDirty()).toBe(false);
@@ -325,12 +325,12 @@ describe('panel-scoped KV slot atoms', () => {
   });
 });
 
-// [tester] The notify loop iterates a *copy* of the listener set (W3-A §1.1 relay
+// [tester] The notify loop iterates a *copy* of the listener set (relay
 // hygiene). None of the 46 contract cases pin what that copy exists for, so these
 // two cover the mutation-during-notify edges a live workspace produces: a slot
 // unsubscribing while reacting to a change (panel switch unmounting the context
 // bar) and a slot subscribing in the same tick (second consumer mounting).
-describe('[tester] notification snapshot safety (W3-A §1.1)', () => {
+describe('[tester] notification snapshot safety', () => {
   it('still notifies the remaining listeners when one unsubscribes mid-notify', () => {
     const state = createKvSlotState();
     const remaining = vi.fn();

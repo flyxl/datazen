@@ -1,4 +1,18 @@
-import type { TableInfo } from '../../types';
+import type { TableInfo, TableSchemaDiff } from '../../types';
+
+export function tableDiffHasChanges(diff: TableSchemaDiff): boolean {
+  if (diff.targetOnly) return true;
+  const missing = diff.missingOnTarget ?? diff.added;
+  const extra = diff.extraOnTarget ?? diff.removed;
+  return (
+    missing.length > 0 ||
+    extra.length > 0 ||
+    diff.changed.length > 0 ||
+    (diff.missingCheckConstraints?.length ?? 0) > 0 ||
+    (diff.extraCheckConstraints?.length ?? 0) > 0 ||
+    Boolean(diff.tableOptions)
+  );
+}
 
 /** Build the table identifier passed to Schema Diff IPC (schema-qualified when needed). */
 export function qualifySchemaDiffTableName(table: TableInfo, activeSchema?: string): string {
@@ -13,7 +27,9 @@ export function qualifySchemaDiffTableName(table: TableInfo, activeSchema?: stri
 
 export function filterTablesForSchema(tables: TableInfo[], activeSchema?: string): TableInfo[] {
   return tables.filter((table) => {
-    if (table.tableType !== 'table') return false;
+    // listTables includes empty-name sentinels for schemas with no relations.
+    // Keep those available to schema discovery, but never present them as tables.
+    if (table.tableType !== 'table' || table.name.length === 0) return false;
     const schema = table.schema?.trim();
     if (activeSchema && schema) {
       return schema === activeSchema;
@@ -77,11 +93,8 @@ export function mergeSchemaDiffTablePicks(
       const targetName = targetTable
         ? qualifySchemaDiffTableName(targetTable, targetSchema)
         : undefined;
-      const origin = sourceTable && targetTable
-        ? 'both'
-        : sourceTable
-          ? 'source-only'
-          : 'target-only';
+      const origin =
+        sourceTable && targetTable ? 'both' : sourceTable ? 'source-only' : 'target-only';
       return {
         name: sourceName ?? targetName ?? relation,
         enabled: origin !== 'target-only',

@@ -164,9 +164,8 @@ async fn a_cluster_census_requires_the_whole_cluster_to_have_been_scanned() {
 async fn an_empty_cluster_reports_an_empty_census() {
     // `DBSIZE` is the cluster-wide sum, so `dbsize: 0` on a cluster means *every*
     // master is empty — the only case in which an empty sample is not an
-    // estimate. (R 项 9d's earlier wording, "an empty shard ⇒ dbsize 0 and
-    // truncated false", cannot hold on a multi-shard cluster and is replaced by
-    // this.)
+    // estimate. (An earlier wording, "an empty shard ⇒ dbsize 0 and truncated
+    // false", cannot hold on a multi-shard cluster and is replaced by this.)
     let mut conn = ClusterFoldingConn::new();
     conn.inner.push_int("DBSIZE", 0);
     conn.inner.push_scan(0, &[]);

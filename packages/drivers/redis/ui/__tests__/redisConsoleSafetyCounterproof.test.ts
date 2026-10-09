@@ -4,7 +4,7 @@
  *
  * This file exists for the mutation self-check described in the track task
  * book: restore `assessCommand`'s fallback to `return 'safe'` and *only* the
- * cases below go red (10 in the current build — see `## 自验记录`). Each case
+ * cases below go red (10 in the current build). Each case
  * asserts the strictest tier plus "the Console will not run it", never English
  * copy.
  */

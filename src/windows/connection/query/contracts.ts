@@ -1,3 +1,5 @@
+import { createEmptyConnectionSchema } from '../../../stores/schemaStoreState';
+import { projectRelationColumns } from '../../../stores/schemaColumnLoader';
 import type { ConnectionSchemaState } from '../../../stores/schemaStore';
 import type { QueryExecState } from '../../../stores/queryExecActions';
 import type { SqlEditorHandle } from '../../../components/SqlEditor';
@@ -8,6 +10,7 @@ import { useActiveConnectionStore } from '../../../stores/activeConnectionStore'
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { buildQueryDiagnosisContext, type RetryValidationInput } from '../../../lib/aiQueryActions';
 import { parseSqlParams, paramsToPayload } from '../../../lib/sqlBindParams';
+import { resolveSqlParameterPolicy } from '../../../lib/sqlDialects/sqlParameterPolicy';
 import type { ContentViewCallbacks } from './aiDraftBridge';
 
 export interface QueryPanelProps {
@@ -33,8 +36,8 @@ export interface QueryPanelProps {
 
 export type QueryDiagnosisSchemaState = Pick<
   ConnectionSchemaState,
-  'currentDatabase' | 'currentSchema' | 'tables' | 'views' | 'columnMap'
->;
+  'currentDatabase' | 'currentSchema' | 'tables' | 'views'
+> & { columnMap: Record<string, string[]> };
 
 export type QueryDiagnosisExecution = Pick<QueryExecState, 'sql' | 'error'>;
 
@@ -164,7 +167,7 @@ export function readCurrentQueryPanelRetryValidationInput(
   if (!activeConnectionMatchesPanel) return null;
 
   const schemaStoreState = useSchemaStore.getState();
-  const schemaState = schemaStoreState.schemas.get(dbSessionId) ?? schemaStoreState;
+  const schemaState = schemaStoreState.schemas.get(dbSessionId) ?? createEmptyConnectionSchema();
   const latestContext = buildQueryPanelDiagnosisContext({
     execution,
     connectionId: panel.connectionId,
@@ -178,11 +181,19 @@ export function readCurrentQueryPanelRetryValidationInput(
       undefined,
     schema: panel.schema,
     serverVersion: activeConnection?.serverInfo?.serverVersion,
-    schemaState,
+    schemaState: {
+      ...schemaState,
+      ...projectRelationColumns(
+        schemaState,
+        dbSessionId,
+        panel.database ?? schemaState.currentDatabase ?? '',
+        panel.schema ?? undefined,
+      ),
+    },
   });
   if (!latestContext.ok) return null;
 
-  const params = parseSqlParams(execution.sql);
+  const params = parseSqlParams(execution.sql, resolveSqlParameterPolicy(panel.databaseType));
   const boundParams = params.length > 0 ? paramsToPayload(params, paramValues) : {};
 
   return {

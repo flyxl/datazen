@@ -25,9 +25,10 @@ use crate::schema_dependencies::{
     MYSQL_UDF_CATALOG_SQL,
 };
 use crate::schema_objects::{
-    list_objects_sql, list_privileges_sql, object_ddl_sql_with_metadata, DatabaseObject,
-    ObjectKind, PrivilegeGrant,
+    list_objects_sql_for_database, list_privileges_sql, object_ddl_sql_with_metadata,
+    DatabaseObject, ObjectKind, PrivilegeGrant,
 };
+use crate::sql_target::SqlTarget;
 use crate::traits::DatabaseDriver;
 use crate::types::{ColumnInfo, DriverError, QueryResult, Value};
 use crate::ConnectionHandle;
@@ -63,7 +64,8 @@ pub fn schema_object_command_definitions() -> Vec<DriverCommandDefinition> {
                         "type": "string",
                         "enum": ["table", "view", "function", "procedure", "trigger", "sequence", "type"],
                         "description": "Object kind to list"
-                    }
+                    },
+                    "database": { "type": ["string", "null"], "description": "Database that owns the objects (optional)" }
                 },
                 "required": ["kind"]
             }),
@@ -106,6 +108,7 @@ pub fn schema_object_command_definitions() -> Vec<DriverCommandDefinition> {
                     },
                     "name": { "type": "string", "description": "Object name" },
                     "schema": { "type": ["string", "null"], "description": "Schema name (optional)" },
+                    "database": { "type": ["string", "null"], "description": "Database that owns the object (optional)" },
                     "signature": { "type": ["string", "null"], "description": "Routine identity arguments (PostgreSQL overload disambiguation)" },
                     "targetSchema": { "type": ["string", "null"], "description": "Trigger target schema (optional)" },
                     "targetName": { "type": ["string", "null"], "description": "Trigger target relation (optional)" }
@@ -267,10 +270,11 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
             let parsed = ObjectKind::parse(kind_raw).ok_or_else(|| {
                 DriverError::InvalidConfig(format!("Unknown object kind: {kind_raw}"))
             })?;
-            let Some(sql) = list_objects_sql(db_type, parsed) else {
+            let database = input.get("database").and_then(JsonValue::as_str);
+            let Some(sql) = list_objects_sql_for_database(db_type, parsed, database) else {
                 return Ok(CommandResult::new(json!({ "objects": [] })));
             };
-            let result = driver.query(handle, &sql).await?;
+            let result = query_in_target_database(driver, db_type, handle, &sql, database).await?;
             let objects = parse_object_list(&result, parsed.as_str())?;
             Ok(CommandResult::new(json!({ "objects": objects })))
         }
@@ -291,11 +295,17 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
             let signature = input.get("signature").and_then(|v| v.as_str());
             let target_schema = input.get("targetSchema").and_then(|v| v.as_str());
             let target_name = input.get("targetName").and_then(|v| v.as_str());
+            let database = input.get("database").and_then(JsonValue::as_str);
+            let object_schema = if crate::schema_objects::dialect_family(db_type) == "mysql" {
+                schema.or(database)
+            } else {
+                schema
+            };
             let Some(sql) = object_ddl_sql_with_metadata(
                 db_type,
                 parsed,
                 name,
-                schema,
+                object_schema,
                 signature,
                 target_schema,
                 target_name,
@@ -304,13 +314,13 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
                     "This database type does not expose object DDL".into(),
                 ));
             };
-            let result = driver.query(handle, &sql).await?;
+            let result = query_in_target_database(driver, db_type, handle, &sql, database).await?;
             let ddl = extract_object_ddl_checked(&result)?;
             let view_metadata = if parsed == ObjectKind::View
                 && crate::schema_objects::dialect_family(db_type) == "mysql"
             {
                 let show_create_sql =
-                    crate::schema_objects::mysql_show_create_view_sql(name, schema);
+                    crate::schema_objects::mysql_show_create_view_sql(name, object_schema);
                 let show_create = driver.query(handle, &show_create_sql).await?;
                 Some(extract_mysql_view_metadata(&result, &show_create)?)
             } else {
@@ -341,6 +351,22 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
         other => Err(DriverError::Unsupported(format!(
             "unsupported schema object command: {other}"
         ))),
+    }
+}
+
+async fn query_in_target_database<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    db_type: &str,
+    handle: &ConnectionHandle,
+    sql: &str,
+    database: Option<&str>,
+) -> Result<QueryResult, DriverError> {
+    if crate::schema_objects::dialect_family(db_type) == "postgresql" {
+        driver
+            .query_at(handle, sql, SqlTarget::new(database, None))
+            .await
+    } else {
+        driver.query(handle, sql).await
     }
 }
 

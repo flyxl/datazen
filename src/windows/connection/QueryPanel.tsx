@@ -11,16 +11,21 @@ import {
 import { paneArgs, paneKey, resolveFocusedPaneId, usePanelStore } from '../../stores/panelStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useQueryExec } from '../../hooks/useQueryExec';
-import { useSchemaStore } from '../../stores/schemaStore';
+import {
+  useSchemaStore,
+  useConnectionSchemaField,
+  useConnectionColumnMaps,
+} from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { useCompactToolbar } from '../../hooks/useCompactToolbar';
 import { queryToolbarExpandedMinWidth } from './queryToolbarWidth';
 import { formatSql } from '../../lib/sqlFormat';
-import { paramsToPayload } from '../../lib/sqlBindParams';
+import { paramsToPayload, parseSqlParams } from '../../lib/sqlBindParams';
 import { sqlEditorEnhancedEP, useExtension } from '@datazen/extension-points';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { resolveSqlParameterPolicy } from '../../lib/sqlDialects/sqlParameterPolicy';
 import { resolveExportScope } from '../../lib/exportCapability';
 import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
@@ -50,6 +55,14 @@ import {
 import { resolveResultWorkspaceView } from './result-workspace/resultWorkspaceHelpers';
 import { cn } from '../../lib/cn';
 import { sendQueryErrorChatDraft } from './query/queryErrorChatPrompt';
+import {
+  editorOwnerForPane,
+  getQueryPanelSessionRegistry,
+  queryPanelExecutionTarget,
+} from '../../lib/session/queryPanelSessionRoot';
+import type { EditorSessionController } from '../../lib/session/EditorSessionController';
+import { needsTransactionSwitchConfirm } from '../../lib/session/sessionPrompts';
+import type { SessionView } from '@datazen/backend-client';
 
 export type { QueryPanelProps } from './query/contracts';
 
@@ -80,7 +93,7 @@ export function QueryPanel({
   const exec = useQueryExec(panelId, paneId);
   const { openPanelId } = useQueryBuilderContribution();
   // While the visual builder is up it replaces the whole query content area,
-  // so the result pane yields its height to the canvas (PRD §6.4 / G2).
+  // so the result pane yields its height to the canvas.
   const qbOpenHere = openPanelId === panelId;
   // NOTE: the builder is torn down when the panel *tab* closes, not when this
   // component unmounts — switching tabs unmounts the inactive panel too, and
@@ -112,7 +125,11 @@ export function QueryPanel({
 
   const editorRef = useRef<SqlEditorHandle>(null);
   const enhanced = useExtension(sqlEditorEnhancedEP);
-  const bindState = enhanced.useBindParameters?.(exec.sql) ?? {
+  const bindParameterPolicy = useMemo(
+    () => resolveSqlParameterPolicy(databaseType),
+    [databaseType],
+  );
+  const bindState = enhanced.useBindParameters?.(exec.sql, bindParameterPolicy) ?? {
     params: [],
     values: {},
     labels: {},
@@ -124,7 +141,16 @@ export function QueryPanel({
     markSubmitted: () => {},
     getHistory: () => [],
   };
-  const sqlParams = bindState.params;
+  const parsedParamIds = useMemo(
+    () =>
+      new Set<string>(parseSqlParams(exec.sql, bindParameterPolicy).map((param) => param.stableId)),
+    [exec.sql, bindParameterPolicy],
+  );
+  const sqlParams = useMemo(
+    () =>
+      bindState.params.filter((param: { stableId: string }) => parsedParamIds.has(param.stableId)),
+    [bindState.params, parsedParamIds],
+  );
   const paramValues = bindState.values;
   const paramLabels = bindState.labels;
   const paramValuesRef = useRef<Record<string, string>>({});
@@ -174,19 +200,19 @@ export function QueryPanel({
     getStartSize: () => editorViewportRef.current?.offsetHeight,
   });
 
-  const tables = useSchemaStore((s) => s.tables);
-  const views = useSchemaStore((s) => s.views);
-  const columnMap = useSchemaStore((s) => s.columnMap);
-  const namespaceTree = useSchemaStore((s) => s.namespaceTree);
-  const pathAliases = useSchemaStore((s) => s.pathAliases);
-  const databases = useSchemaStore((s) => s.databases);
-  const currentDatabase = useSchemaStore((s) => s.currentDatabase);
-  const currentSchema = useSchemaStore((s) => s.currentSchema);
-  const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
+  const tables = useConnectionSchemaField(dbSessionId, 'tables');
+  const views = useConnectionSchemaField(dbSessionId, 'views');
+  const { columnMap } = useConnectionColumnMaps(dbSessionId);
+  const namespaceTree = useConnectionSchemaField(dbSessionId, 'namespaceTree');
+  const pathAliases = useConnectionSchemaField(dbSessionId, 'pathAliases');
+  const databases = useConnectionSchemaField(dbSessionId, 'databases');
+  const currentDatabase = useConnectionSchemaField(dbSessionId, 'currentDatabase');
+  const currentSchema = useConnectionSchemaField(dbSessionId, 'currentSchema');
+  const isMultiDb = useConnectionSchemaField(dbSessionId, 'isMultiDatabase');
   const ensureColumns = useSchemaStore((s) => s.ensureColumns);
-  const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
-  const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
-  const schemaEpoch = useSchemaStore((s) => s.schemaEpoch);
+  const ensureDatabaseColumns = useSchemaStore((s) => s.ensureDatabaseColumns);
+  const namespaceLoading = useConnectionSchemaField(dbSessionId, 'ensuringCount') > 0;
+  const schemaEpoch = useConnectionSchemaField(dbSessionId, 'schemaEpoch');
 
   const metadataSnapshot = useMetadataSnapshot(dbSessionId);
 
@@ -229,9 +255,13 @@ export function QueryPanel({
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const isPathHierarchy = dbMeta?.namespaceEnsure === 'path-hierarchy';
+  // A panel created before the session pointer was known binds `database: ''`.
+  // `'' ?? x` never falls through, so the empty string would shadow the live
+  // session pointer forever — treat it as unset.
+  const boundDatabase = database?.trim() ? database : null;
   const selectedDatabase = isPathHierarchy
-    ? (currentDatabase ?? database)
-    : (database ?? currentDatabase);
+    ? (currentDatabase ?? boundDatabase)
+    : (boundDatabase ?? currentDatabase);
   const selectedSchema = schema ?? currentSchema;
   const supportsExplain = dbMeta?.supportsExplain === true;
   const hasContextSelectors = isPathHierarchy || (isMultiDb && databases.length > 0);
@@ -239,6 +269,56 @@ export function QueryPanel({
   const schemaState = useMemo(
     () => ({ currentDatabase, currentSchema, tables, views, columnMap }),
     [columnMap, currentDatabase, currentSchema, tables, views],
+  );
+
+  const tx = useQueryTransaction({ dbSessionId });
+
+  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success' = 'error') => {
+    setMessageDialogText(text);
+    setMessageDialogKind(kind);
+    setMessageDialogOpen(true);
+  }, []);
+
+  // Per-pane editor session controller, lazily resolved from the process-wide
+  // registry. Each pane gets its own owner ID, so a duplicated tab never
+  // copies a runtime session handle.
+  const [sessionController, setSessionController] = useState<EditorSessionController | null>(null);
+  const paneKeyValue = paneKey(panelId, paneId);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const owner = await editorOwnerForPane(paneKeyValue);
+        const target = queryPanelExecutionTarget(connectionId, selectedDatabase, selectedSchema);
+        const controller = getQueryPanelSessionRegistry().get(paneKeyValue, target, owner);
+        if (!cancelled) setSessionController(controller);
+      } catch {
+        if (!cancelled) setSessionController(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [paneKeyValue, connectionId, selectedDatabase, selectedSchema]);
+
+  const [confirmSwitchTx, confirmSwitchTxDialog] = useConfirmDialog();
+  const confirmTransactionSwitch = useCallback(
+    (session: SessionView) => {
+      if (!needsTransactionSwitchConfirm(session)) return true;
+      return confirmSwitchTx({
+        title: t('query.session.transactionSwitchConfirm'),
+        message: t('query.session.transactionSwitchConfirm'),
+        kind: 'warning',
+      });
+    },
+    [confirmSwitchTx, t],
+  );
+
+  const reportSessionPrompt = useCallback(
+    (promptKey: string, message?: string) => {
+      showMessageDialog(message ? t(promptKey, { message }) : t(promptKey), 'error');
+    },
+    [showMessageDialog, t],
   );
 
   const contextPathState = useQueryContextPath({
@@ -251,9 +331,10 @@ export function QueryPanel({
     pathAliases,
     databases,
     currentDatabase,
+    sessionController,
+    confirmTransactionSwitch,
+    onSessionPrompt: reportSessionPrompt,
   });
-
-  const tx = useQueryTransaction({ dbSessionId });
 
   const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar(
     useMemo(
@@ -343,12 +424,6 @@ export function QueryPanel({
     () => (sqlParams.length > 0 ? paramsToPayload(sqlParams, paramValues) : undefined),
     [sqlParams, paramValues],
   );
-
-  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success' = 'error') => {
-    setMessageDialogText(text);
-    setMessageDialogKind(kind);
-    setMessageDialogOpen(true);
-  }, []);
 
   const executionGate = useQueryExecutionGate({
     panelId,
@@ -472,10 +547,7 @@ export function QueryPanel({
 
   // Eagerly load column metadata so SQL autocomplete can suggest columns
   // even without a FROM clause (e.g. typing "SELECT na" shows matching columns).
-  //
-  // Phase 1: For multi-DB / path-hierarchy drivers, loadForConnection skips
-  // loadTables, so `tables` stays empty. Trigger loadTables for the current
-  // database so that namespaceTree gets table entries and columnMap can be built.
+  // Load an initially skipped catalog before deriving editor columns.
   const loadTablesFn = useSchemaStore((s) => s.loadTables);
   useEffect(() => {
     if (!dbSessionId || !isMultiDb || !currentDatabase) return;
@@ -487,30 +559,28 @@ export function QueryPanel({
   // Trigger on schemaEpoch (bumped by loadTables) and namespaceTree structural
   // changes (bumped via namespaceFingerprint). Also depends on tables.length so
   // it re-fires after Phase 1 populates tables.
-  const namespaceFingerprint = useSchemaStore((s) => {
-    const tree = s.namespaceTree;
-    if (Array.isArray(tree)) return String(tree.length);
-    return Object.keys(tree).sort().join(',');
-  });
+  const namespaceFingerprint = Array.isArray(namespaceTree)
+    ? String(namespaceTree.length)
+    : Object.keys(namespaceTree).sort().join(',');
   useEffect(() => {
     if (!dbSessionId || !selectedDatabase) return;
-    void loadColumnMap(dbSessionId, selectedDatabase);
+    void ensureDatabaseColumns(dbSessionId, selectedDatabase);
   }, [
     dbSessionId,
-    loadColumnMap,
+    ensureDatabaseColumns,
     selectedDatabase,
     schemaEpoch,
     namespaceFingerprint,
     tables.length,
   ]);
 
-  // Keep the editor metadata cache pinned to the tab's database. Only
-  // switch when the bound database actually changes — switchContext drops
-  // all loaded relations, so calling it per keystroke would thrash the cache.
+  // Reload metadata only when the tab's database/schema context changes.
   useEffect(() => {
     if (!dbSessionId || !selectedDatabase) return;
     const snapshot = metadataCache.getSnapshot(dbSessionId);
-    if (snapshot.database !== selectedDatabase) {
+    const contextChanged =
+      snapshot.database !== selectedDatabase || snapshot.schema !== (selectedSchema ?? undefined);
+    if (contextChanged) {
       metadataCache.switchContext(dbSessionId, {
         database: selectedDatabase,
         schema: selectedSchema ?? undefined,
@@ -787,6 +857,7 @@ export function QueryPanel({
       />
 
       {confirmRetryDialog}
+      {confirmSwitchTxDialog}
       {executionGate.confirmDangerousDialog}
       {executionGate.executionStrategyAskModal}
       <ResultMessageDialog

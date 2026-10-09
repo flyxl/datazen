@@ -4,6 +4,13 @@ version = "0.0.8"
 edition = "2021"
 description = "Shared HTTP helpers for DataZen path drivers"
 license = "GPL-3.0-or-later"
+# The real-driver contract template lives under tests/support/ and is never
+# compiled as part of this crate: a driver crate `#[path]`-includes it, which is
+# why it refers to `crate::CONTRACT` / `crate::contract_driver()` — names that
+# exist in the *including* test crate, not here. Packing the files would ship
+# sources that cannot build and cannot be tested, so they stay out of the
+# published package.
+exclude = ["tests/support/**"]
 
 [dependencies]
 datazen-driver-api = { path = "../../driver-api" }

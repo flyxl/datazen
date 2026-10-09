@@ -55,9 +55,9 @@ jobs:
       - name: TypeScript typecheck
         run: pnpm typecheck
 
-      # 8 个严格守卫合并为一步：任何失败立即停止（fail-fast），
-      # 输出清晰标注哪条命令失败。省掉 7 次 shell launch 开销。
-      - name: All strict guards (stubs, caps, IDs, layers, ci-docs, version, boundaries, i18n keys)
+      # 9 个严格守卫合并为一步：任何失败立即停止（fail-fast），
+      # 输出清晰标注哪条命令失败。省掉 8 次 shell launch 开销。
+      - name: All strict guards (stubs, caps, IDs, layers, ci-docs, version, driver-protocol, boundaries, i18n keys)
         run: |
           node scripts/check-managed-stubs.mjs
           node scripts/check-structure-editor-guardrails.mjs
@@ -65,6 +65,7 @@ jobs:
           pnpm test:layers
           pnpm test:ci-docs
           pnpm test:version
+          pnpm test:driver-protocol
           pnpm test:boundaries
           pnpm test:i18n-keys
 
@@ -80,6 +81,63 @@ jobs:
         # cross-repo assertions live in the Pro repo and run in the Pro's CI.
 
         run: pnpm test:unit
+
+      # Path 驱动 UI 单测（AGENTS.md「驱动测试落点」表）。宿主单测不碰
+      # packages/drivers，所以 `pnpm test:unit` 从不收集这些用例；不单独跑一步
+      # 就没有任何合并门禁执行它们。放在 codegen（`pretest:unit` 产生的
+      # generated.ts）之后、site 检查之前，避开 rust job 里 resolve-drivers 那段。
+      - name: Driver UI unit tests
+        run: pnpm test:unit:drivers
+      # The step above only ever judges `basic`, because that is what
+      # `pnpm install`'s prepare hook seeds (ensure-generated-drivers.mjs ->
+      # resolve-drivers.mjs default). A driver form `basic` does not register
+      # (e.g. `sqlserver`) therefore escapes Host unit coverage entirely.
+      # This step re-runs the same suite under `all` (all registered PATH
+      # drivers: no git driver, so no deploy key and no network needed).
+      # The set lives only in run-unit-driver-set.mjs, never inline here.
+      #
+      # Status: GREEN, not known-red. An earlier revision of this comment
+      # claimed two blockers; both were artifacts of a stale base
+      # (7f35e1932, which predates d1edfa7ba / f4c2e5078 by 9 commits) and
+      # do not exist on feat/platform-p0 @ 7559759b7. Re-measured there with
+      # codegen --drivers=all + generate-builtin-locales:
+      #   Test Files 555 passed (555) | Tests 5677 passed (5677), exit 0, 140s
+      #   tester_tunnelValidationMatrix.test.tsx alone: 36 passed, exit 0
+      # The ContentView / QueryPanel.executeCancel failures named earlier were
+      # the ones cbf87a4c0 fixed ("修复 schemaStore/panelStore mock 漂移导致
+      # 的 18 个前端单测失败"). Do not reintroduce a blocked list here without
+      # re-measuring on the current base.
+      #
+      # HARD GATE — promoted from `continue-on-error: true`.
+      #
+      # It was soft while this step and the 10s testTimeout below had never
+      # executed on a real GitHub runner, so a green 8-core dev-host run was
+      # not evidence about a runner whose spec this project does not control.
+      # That observation window is now closed by decision. The two edits are
+      # ONE change: the `continue-on-error` removed from this step, and the
+      # assertion in scripts/__tests__/run-unit-driver-set.test.ts that used
+      # to require it to be true and now requires its ABSENCE. Re-adding it
+      # deliberately has to redo both, or the suite goes red.
+      #
+      # Residual risk, stated rather than hidden: the first real-runner
+      # execution may go red for reasons unrelated to this branch. The
+      # measured budget below plus `retry: 2` in vitest.config.ts are what
+      # absorb it — neither is a licence to widen either number.
+      #
+      # Timeout budget, measured not guessed (per-test wall time, all 5714
+      # tests, --reporter=json):
+      #   2 workers, load 13  (a local --maxWorkers=2 low-load run) p95 57ms  p99 170ms  max  1745ms
+      #   8 workers, load  7  (mild contention)                    p95 118ms p99 336ms  max  4392ms
+      #   8 workers, load 48  (6-7x contention)                    p95 329ms p99 918ms  max 11629ms
+      # Vitest's 5s default leaves the load-7 worst case at 88% of budget, so
+      # it has no headroom under any further contention. Note testTimeout only fires for
+      # tests that yield: in the load-48 run the three slowest tests (11629ms,
+      # 6540ms, 5236ms) overran 5s and still passed, and the only real timeout
+      # was DataTransferWindow, which awaits. Full derivation in
+      # docs/development/ci-test-matrix.md.
+      - name: Frontend unit tests (all path drivers)
+        run: pnpm test:unit:driver-set
+
       - name: Check site changes
         id: site-changes
         run: |
@@ -126,6 +184,18 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          # dtolnay/rust-toolchain 固定跑
+          #   rustup toolchain install stable --profile minimal
+          # 而 `minimal` 只含 rustc / rust-std / cargo。rustfmt 属于 `default`
+          # profile（default = minimal + rust-docs + rustfmt + clippy），不在
+          # minimal 里，所以不写这一行时 rustfmt 不由本 workflow 保证存在。
+          # 现状之所以还能用，是 ubuntu-latest 镜像恰好预装了 rustfmt 1.9.0，
+          # 而 rustup 不会卸载已装 toolchain 上 profile 之外的 component ——
+          # 那是镜像的事实，不是本文件的契约（`ubuntu-latest` 已公告将切到
+          # Ubuntu 26.04）。显式声明的代价是「已存在时一次 no-op」，收益是下面
+          # 的 fmt 硬门禁从「碰巧能跑」变成「保证能跑」。
+          components: rustfmt
 
       - name: Install Linux system deps (Tauri / webkit2gtk)
         run: |
@@ -150,10 +220,49 @@ jobs:
       - name: Resolve drivers (basic)
         run: node scripts/resolve-drivers.mjs --drivers=basic
 
+      # HARD GATE — Rust 格式。此前 CI 从不检查。
+      #
+      # `.husky/pre-commit` 里有 `cargo fmt --all`，但它是「改写」而不是「失败」，
+      # 且 `git commit --no-verify` 可绕过。所以在加这一步之前，rustfmt 规则在 CI
+      # 上没有任何约束力：任何未格式化的 .rs 都能过一个全绿的 CI。rust job 原有
+      # 16 个 step，全是 test / 守卫 / codegen，没有一个跑 fmt。
+      #
+      # 位置是被迫的，不是排版偏好。`cargo fmt --all` 要加载 Cargo workspace，
+      # 而 src-tauri/src/lib.rs 声明了 `mod driver_init`，其文件是 gitignored 的
+      # codegen，只有 resolve-drivers.mjs 会生成。放在那一步之前，本门禁连加载
+      # 都做不到（实测，非推断）：
+      #   Error writing files: failed to resolve mod `driver_init`:
+      #   src-tauri/src/driver_init.rs does not exist          → EXIT=1
+      # 所以本步必须排在 Resolve drivers 之后。
+      #
+      # 基线实测（对 `git archive HEAD` 展开的 dcc1d9da2 纯净树，`--drivers=basic`，
+      # 与 CI 同一注入序列）：`cargo fmt --all -- --check` EXIT=0，覆盖 801 个
+      # .rs（800 个受版本控制的 + 生成的 driver_init.rs）。即本门禁在当前 main
+      # 上是绿的，不会让首次运行变红。
+      #
+      # 不加 continue-on-error / allowlist / `|| true`：脏树必须 fail。
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+
       # driver-api 与四个 path 驱动均不依赖 --features / 注入产物，合并为一次
       # cargo 调用，省掉一次 workspace 加载与锁获取。
       - name: Rust unit tests (driver API + basic path drivers)
         run: cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
+
+      # ── 驱动集成测试（tests/ 目录）──
+      #
+      # 上一条是 `--lib`，它不会编译 `tests/` 目录。basic 四驱动一共有 32 个集成
+      # 测试文件，此前 CI 一个都没编译过：它们是共享模板与各驱动自有逻辑的宿主，
+      # 坏掉时门禁不会响。今天能编译是运气，不是门禁。
+      #
+      # 用 `--tests` 而不是逐个 `--test`：`--tests` 编译并运行该 crate 下的全部
+      # 集成 target，新加的文件自动进矩阵，不需要有人记得同步名单。
+      #
+      # 不加 `|| true`、不加 continue-on-error。live 层在这里仍然是 unverified，由
+      # 模板自己逐维度报告；有 fixture 的人用
+      # `DATAZEN_CONTRACT_REQUIRE_LIVE=1` 把「无法验证」变成失败。
+      - name: Driver integration tests (basic path drivers, tests/)
+        run: cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 
       - name: Rust unit tests (datazen)
         run: |
@@ -166,6 +275,65 @@ jobs:
 
       - name: Rust unit tests (datazen-ai-api)
         run: cargo test -p datazen-ai-api --lib
+
+      # ── 平台内核架构门禁 ──
+      #
+      # 必须落在这里，不能并进 frontend 的「All strict guards」：那条门禁所在 job
+      # 没有 Rust 工具链（工具链在下面 rust job 的 dtolnay/rust-toolchain@stable），
+      # 而本门禁要读 `cargo metadata` 的 feature-resolved 图。放在 restore 之后，
+      # 断言的是提交态的 workspace 清单，与本地开发者看到的一致。
+      #
+      # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
+      # 新 crate 落到 packages/application / packages/platform-api / server 下就自动入网，
+      # 不需要在这里改任何一处列表。列不出来的 member 是 error 不是 pass。
+      - name: Platform crate dependency boundaries (F-01..F-07)
+        run: pnpm test:platform-arch
+
+      # 计划 :99 的「不同 driver 不共享实现库类型」。F-01 明确放行 driver→driver
+      # 边（allowedLayers 含 'driver'），所以上面那道门禁按设计看不见本条；这里补上，
+      # 同样不带手写名单——driver 集合由各 crate 源码里是否实现 DatabaseDriver 契约
+      # 判定得出，跨 driver 的 Cargo 边 / 源码 use / #[path] 收录三条通道各自独立判定。
+      - name: Driver type isolation (T-01..T-03)
+        run: pnpm test:driver-types
+
+      # 计划 :269 的 datazen-runtime CI 空缺：core crate 及其后继的 Rust 单测
+      # 在此统一执行。crate 集合同样由脚本发现，新增 core crate 无需改 CI。
+      - name: Rust unit tests (platform core crates)
+        run: pnpm test:platform-crates
+
+      # CM-60 的性能半在这里真跑一次。门禁是这台机器上写进产物的判定式：退出码
+      # 0 = 逐轮 p95 与失败数都成立，1 = 判定式不成立，2 = 拒绝在 debug 下跑。
+      # 所以 `--release` 不是性能偏好而是硬约束：`cm60-bench/main.rs` 在
+      # `debug_assertions` 下直接退 2，用 debug 产物测出来的数一律作废。
+      #
+      # 4 vCPU / 8589934592 字节是判据锚点（`connection-management.md` CM-60），
+      # 显式写全而不是靠默认值：默认值一旦被改动，这条命令的日志仍会自证它
+      # 跑的是哪一份计划（产物 plan 段逐字记录）。
+      #
+      # `--out target/bench` 显式给出：`cargo run` 的工作目录行为不随调用方固定，
+      # 写死输出目录才能让下面 upload-artifact 的 glob 一定命中同一批文件。
+      #
+      # rustc 版本在**运行前**取：产物 build 段要记编译器版本，编完再取就晚了。
+      - name: CM-60 latency benchmark (release)
+        run: |
+          DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen-runtime --bin cm60-bench -- \
+            --vcpus 4 --mem-bytes 8589934592 --out target/bench
+      # 基准产物不在版本控制里（/target 被 gitignore），不存成 artifact 就等于
+      # 没人能复核一次红灯。`if: always()` 是因为上面那步红的时候这一步照样要跑。
+      - name: Upload CM-60 benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cm60-bench
+          path: target/bench/cm60-*.json
+          if-no-files-found: warn
+
+      # 门禁自身的变异证明，放最后一步：它会临时改写 Cargo.toml 再还原，
+      # 因此后面不得再有依赖该工作树的步骤。最后运行把「被强杀导致残留变异」
+      # 的影响面降到 0（此时整个 job 已经没有后续步骤了）。
+      # 8 个变异约 5s，失败即说明门禁已经失去鉴别力——比门禁变红更早报警。
+      - name: Platform arch guard self-proof (8 mutations)
+        run: pnpm test:platform-arch:mutations
 
   # ── 聚合 job：两段全绿才算 CI 通过。
   # 分支保护的 required status check 盯 `ci` 一个即可，拆分 job 不影响它。

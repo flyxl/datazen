@@ -15,6 +15,7 @@ import {
   syncCommands,
   DEFAULT_SYNC_OPTIONS,
   type DataSyncExecutionResult,
+  type DataSyncJobDetails,
   type DataSyncRowChange,
   type DataSyncSelectedRow,
   type DataSyncSelectionExclusion,
@@ -75,6 +76,8 @@ import {
   tablesForCompare,
 } from './mappingView';
 import { buildCompareReportText } from './compareReport';
+import { useMigrationJobHydration } from '../../hooks/useMigrationJobHydration';
+import { isStalePlanError } from '../../lib/migrationJobHydration';
 
 import {
   useDataSyncWizardState,
@@ -122,6 +125,10 @@ export function DataSyncWindow() {
   const loadAiConfig = useAiStore((s) => s.loadConfig);
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
+  const migrationJobs = useMigrationJobHydration('dataSync');
+  const [durableJobs, setDurableJobs] = useState<DataSyncJobDetails[]>([]);
+  const [verifyingRecoveryJob, setVerifyingRecoveryJob] = useState<string | null>(null);
+  const [cancellingDurableJob, setCancellingDurableJob] = useState<string | null>(null);
   const [sourceSession, setSourceSession] = useState<DedicatedSideSession | null>(null);
   const [targetSession, setTargetSession] = useState<DedicatedSideSession | null>(null);
   const [sourceId, setSourceId] = useState('');
@@ -195,6 +202,27 @@ export function DataSyncWindow() {
   selectedRowsRef.current = selectedRows;
   tableSelectionsRef.current = tableSelections;
   syncStateRef.current = syncState;
+
+  const refreshDataSyncJobs = useCallback(async () => {
+    try {
+      const jobs = await syncCommands.listDataSyncJobs();
+      setDurableJobs(jobs);
+      return jobs;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDataSyncJobs();
+    const timer = window.setInterval(() => void refreshDataSyncJobs(), 2000);
+    return () => window.clearInterval(timer);
+  }, [refreshDataSyncJobs]);
+
+  const notExecutedJobs = useMemo(
+    () => durableJobs.filter((job) => job.recovery?.verdict === 'notExecuted'),
+    [durableJobs],
+  );
 
   useEffect(() => {
     setSelectedRows([]);
@@ -331,6 +359,83 @@ export function DataSyncWindow() {
       return { source: null, target: null };
     }
   }, [sourceSession, targetSession, sourceId, targetId, sourceDatabase, targetDatabase, t]);
+
+  const verifyDataSyncJobRecovery = useCallback(
+    async (candidate: DataSyncJobDetails) => {
+      if (candidate.recovery?.verdict !== 'pendingVerification') return;
+      const [sourceTarget, targetTarget] = candidate.recoveryTargets;
+      if (
+        !sourceTarget ||
+        !targetTarget ||
+        sourceTarget.connectionId !== sourceId ||
+        targetTarget.connectionId !== targetId
+      ) {
+        setErrorMsg(t('migrationJob.recoveryEndpointMismatch'));
+        setErrorOpen(true);
+        return;
+      }
+      if (!sourceDatabase || !targetDatabase) {
+        setErrorMsg(t('migrationJob.recoverySelectEndpoints'));
+        setErrorOpen(true);
+        return;
+      }
+
+      setVerifyingRecoveryJob(candidate.job.jobId);
+      try {
+        const { source, target } = await refreshEndpointSessions();
+        if (!source?.dbSessionId || !target?.dbSessionId) {
+          throw new Error(t('migrationJob.recoverySelectEndpoints'));
+        }
+        const verified = await syncCommands.verifyDataSyncRecovery({
+          jobId: candidate.job.jobId,
+          sourceDbSessionId: source.dbSessionId,
+          targetDbSessionId: target.dbSessionId,
+          sourceDatabase,
+          targetDatabase,
+          sourceSchema: sourceSchema || undefined,
+          targetSchema: targetSchema || undefined,
+        });
+        refreshDataSyncJobs();
+        setStatusMsg(
+          verified.recovery?.verdict === 'requireManualReview'
+            ? t('migrationJob.recoveryManualReview')
+            : t('migrationJob.recoveryRecorded'),
+        );
+      } catch (error) {
+        setErrorMsg(error instanceof Error ? error.message : String(error));
+        setErrorOpen(true);
+      } finally {
+        setVerifyingRecoveryJob(null);
+      }
+    },
+    [
+      refreshEndpointSessions,
+      refreshDataSyncJobs,
+      sourceDatabase,
+      sourceId,
+      sourceSchema,
+      targetDatabase,
+      targetId,
+      targetSchema,
+      t,
+    ],
+  );
+
+  const cancelDurableDataSyncJob = useCallback(
+    async (jobId: string) => {
+      setCancellingDurableJob(jobId);
+      try {
+        await syncCommands.cancelDataSync(jobId);
+        await refreshDataSyncJobs();
+      } catch (error) {
+        setErrorMsg(error instanceof Error ? error.message : String(error));
+        setErrorOpen(true);
+      } finally {
+        setCancellingDurableJob(null);
+      }
+    },
+    [refreshDataSyncJobs],
+  );
 
   useEffect(() => {
     if (!sourceId) {
@@ -495,7 +600,7 @@ export function DataSyncWindow() {
     let cancelled = false;
     (async () => {
       try {
-        const tables = await databaseCommands.getTables(connId, sourceDatabase);
+        const tables = await databaseCommands.listTables(connId, sourceDatabase);
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
         setSourceSchemas(schemas);
@@ -543,7 +648,7 @@ export function DataSyncWindow() {
     let cancelled = false;
     (async () => {
       try {
-        const tables = await databaseCommands.getTables(connId, targetDatabase);
+        const tables = await databaseCommands.listTables(connId, targetDatabase);
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
         setTargetSchemas(schemas);
@@ -1047,6 +1152,8 @@ export function DataSyncWindow() {
             syncOptions,
           );
 
+      refreshDataSyncJobs();
+
       if (generation !== compareGenerationRef.current) return false;
       const compared = Array.isArray(comparedResponse) ? comparedResponse : comparedResponse.tables;
       const pagedComparison =
@@ -1097,6 +1204,7 @@ export function DataSyncWindow() {
     inspectionComplete,
     handleInspect,
     refreshEndpointSessions,
+    refreshDataSyncJobs,
     mappingResults,
     sourceDatabase,
     targetDatabase,
@@ -1437,6 +1545,7 @@ export function DataSyncWindow() {
 
     let writeStarted = false;
     let executionResolved = false;
+    let recompareJobId: string | null = null;
     try {
       const { source, target } = await refreshEndpointSessions();
       const srcConnId = source?.dbSessionId;
@@ -1458,64 +1567,24 @@ export function DataSyncWindow() {
             )),
       );
 
-      const stmts = await syncCommands.generateDataSyncSql(
-        srcConnId,
-        tgtConnId,
-        tablesWithSelection,
-        syncOptions,
-        sourceDatabase,
-        targetDatabase,
-        sourceSchema || undefined,
-        targetSchema || undefined,
-        selectedRows,
-        ...(tableSelections.length ? [tableSelections] : []),
-      );
       if (jobIdRef.current !== jobId || cancelRequestedJobRef.current === jobId) return;
-      const selected = stmts.filter((statement) =>
-        operationAllowed(statement.operation, syncOptions),
-      );
-      if (selected.length === 0) {
+      if (selectedRows.length === 0 && tableSelections.length === 0) {
         setSyncState('compared');
         setExecuteProgress('');
         return;
       }
-      setExecuteProgress(t('sync.executingSql', { count: selected.length }));
+      setExecuteProgress(t('sync.executing'));
       writeStarted = true;
       writeInFlightRef.current = true;
-      const selectedProfile = syncProfiles.find((profile) => profile.id === selectedProfileId);
-      const profileRef = selectedProfile
-        ? { id: selectedProfile.id, revision: selectedProfile.updatedAt }
-        : undefined;
-      const result = tableSelections.length
-        ? profileRef
-          ? await syncCommands.executeDataSync(
-              tgtConnId,
-              selected,
-              jobId,
-              targetDatabase,
-              selectedRows,
-              tableSelections,
-              profileRef,
-            )
-          : await syncCommands.executeDataSync(
-              tgtConnId,
-              selected,
-              jobId,
-              targetDatabase,
-              selectedRows,
-              tableSelections,
-            )
-        : profileRef
-          ? await syncCommands.executeDataSync(
-              tgtConnId,
-              selected,
-              jobId,
-              targetDatabase,
-              undefined,
-              undefined,
-              profileRef,
-            )
-          : await syncCommands.executeDataSync(tgtConnId, selected, jobId, targetDatabase);
+      const result = await syncCommands.executeDataSyncJob(
+        srcConnId,
+        tgtConnId,
+        jobId,
+        syncOptions,
+        selectedRows,
+        tableSelections,
+      );
+      refreshDataSyncJobs();
       writeStarted = false;
       executionResolved = true;
       writeInFlightRef.current = false;
@@ -1546,12 +1615,17 @@ export function DataSyncWindow() {
           .filter((row) => row.sourceFilter)
           .map((row) => [row.sourceTable, row.sourceFilter as DataSyncSourceFilter]),
       );
+      recompareJobId = crypto.randomUUID();
+      jobIdRef.current = recompareJobId;
+      jobKindRef.current = 'compare';
+      cancelRequestedJobRef.current = null;
+      cancellingStatusJobRef.current = null;
       const recomparedResponse = Object.keys(recompareFilters).length
         ? await syncCommands.compareDataSync(
             srcConnId,
             tgtConnId,
             tablesWithSelection.map((r) => r.sourceTable),
-            jobId,
+            recompareJobId,
             sourceDatabase,
             targetDatabase,
             sourceSchema || undefined,
@@ -1563,13 +1637,14 @@ export function DataSyncWindow() {
             srcConnId,
             tgtConnId,
             tablesWithSelection.map((r) => r.sourceTable),
-            jobId,
+            recompareJobId,
             sourceDatabase,
             targetDatabase,
             sourceSchema || undefined,
             targetSchema || undefined,
             syncOptions,
           );
+      refreshDataSyncJobs();
       const recompared = Array.isArray(recomparedResponse)
         ? recomparedResponse
         : recomparedResponse.tables;
@@ -1610,6 +1685,14 @@ export function DataSyncWindow() {
       setExecuteProgress('');
       setStatusMsg('');
     } catch (e) {
+      if (isStalePlanError(e)) {
+        setErrorMsg(t('migrationJob.reprepareOnStalePlan'));
+        setErrorOpen(true);
+        setSyncState('compared');
+        setLastExecutionResult(null);
+        setExecuteProgress('');
+        return;
+      }
       setErrorMsg(
         `${writeStarted ? t('sync.executionUnknown') + ' ' : ''}${e instanceof Error ? e.message : String(e)}`,
       );
@@ -1635,6 +1718,10 @@ export function DataSyncWindow() {
         jobIdRef.current = null;
         jobKindRef.current = null;
       }
+      if (recompareJobId && jobIdRef.current === recompareJobId && jobKindRef.current === 'compare') {
+        jobIdRef.current = null;
+        jobKindRef.current = null;
+      }
       if (cancelRequestedJobRef.current === jobId) cancelRequestedJobRef.current = null;
     }
   }, [
@@ -1652,6 +1739,7 @@ export function DataSyncWindow() {
     targetReadOnly,
     t,
     writeOutcomeUncertain,
+    refreshDataSyncJobs,
   ]);
 
   const handleExecute = useCallback(() => {
@@ -2040,6 +2128,75 @@ export function DataSyncWindow() {
           <MigrationRunHistoryDialog operation="dataSync" onReconcile={reconcileUnknownRun} />
         }
       />
+
+      {migrationJobs.hydration?.verificationJobs.length ? (
+        <div className="border-b border-edge px-6 py-2 text-xs text-amber-400">
+          {t('migrationJob.pendingVerificationHint')}
+        </div>
+      ) : null}
+      {migrationJobs.hydrationError ? (
+        <div className="border-b border-edge px-6 py-2 text-xs text-amber-400">
+          {migrationJobs.hydrationError}
+        </div>
+      ) : null}
+      {notExecutedJobs.length ? (
+        <div className="border-b border-edge px-6 py-2 text-xs text-amber-400">
+          {t('migrationJob.notExecutedHint')}
+        </div>
+      ) : null}
+      {durableJobs.length ? (
+        <div
+          data-testid="data-sync-job-history"
+          className="max-h-24 overflow-auto border-b border-edge px-6 py-2 text-xs text-fg-muted"
+        >
+          {durableJobs.slice(0, 5).map((details) => {
+            const { job, recovery, domainResults } = details;
+            const committed = Number(job.progress.committed);
+            const stateLabel = recovery?.verdict === 'notExecuted'
+              ? t('migrationJob.notExecutedJob')
+              : recovery?.verdict === 'pendingVerification'
+                ? t('migrationJob.pendingVerificationHint')
+                : job.state;
+            const counters = domainResults.flatMap((result) => result.counters);
+            const committedResult = Number(
+              counters.find((counter) => counter.code === 'committed')?.value ?? committed,
+            );
+            return (
+              <div key={job.jobId} className="flex items-center justify-between gap-3 py-0.5">
+                <span>{job.kind}</span>
+                <span>{stateLabel}</span>
+                <span>{t('migration.verdict.committedRows')}: {committedResult}</span>
+                {recovery?.verdict === 'pendingVerification' ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={verifyingRecoveryJob === job.jobId}
+                    onClick={() => void verifyDataSyncJobRecovery(details)}
+                    data-testid={`data-sync-verify-recovery-${job.jobId}`}
+                  >
+                    {verifyingRecoveryJob === job.jobId
+                      ? t('migrationJob.verifyingRecovery')
+                      : t('migrationJob.verifyRecovery')}
+                  </Button>
+                ) : null}
+                {job.state === 'queued' || job.state === 'running' ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={job.cancelRequested || cancellingDurableJob === job.jobId}
+                    onClick={() => void cancelDurableDataSyncJob(job.jobId)}
+                    data-testid={`data-sync-cancel-job-${job.jobId}`}
+                  >
+                    {job.cancelRequested || cancellingDurableJob === job.jobId
+                      ? t('migrationJob.cancellingJob')
+                      : t('migrationJob.cancelJob')}
+                  </Button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="border-b border-edge px-6 py-3">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-1">

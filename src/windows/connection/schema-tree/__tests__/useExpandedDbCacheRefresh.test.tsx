@@ -10,6 +10,8 @@ import type { ConnectionSchemaState } from '../../../../stores/schemaStoreState'
 /** Shape stored per connection inside schemaStore.schemas. */
 function schemaEntry(databases: string[], epoch: number): ConnectionSchemaState {
   return {
+    connectionId: 'cfg-expand',
+    metadataRevision: 1,
     currentDatabase: databases[0] ?? null,
     currentSchema: null,
     databases,
@@ -18,8 +20,8 @@ function schemaEntry(databases: string[], epoch: number): ConnectionSchemaState 
     tables: [],
     views: [],
     schemaNames: [],
-    columnMap: {},
-    typedColumnMap: {},
+    tableCatalogs: {},
+    relationColumns: {},
     namespaceTree: {},
     loadedPaths: new Set<string>(),
     pathItems: {},
@@ -110,7 +112,7 @@ describe('useExpandedDbCacheRefresh', () => {
     expect(handlers.clearCaches).not.toHaveBeenCalled();
   });
 
-  it('F1-BUG-005: clears caches then schedules object-category reloads in the same pass', async () => {
+  it('clears caches then schedules object-category reloads in the same pass', async () => {
     useSchemaStore.setState((s) => ({
       schemas: new Map(s.schemas).set('conn-sql', schemaEntry(['/data/app.db'], 0)),
     }));
@@ -148,27 +150,31 @@ describe('useExpandedDbCacheRefresh', () => {
       'conn-sql',
       'cfg-sql::/data/app.db::procedure',
       'procedure',
+      '/data/app.db',
     );
     expect(handlers.loadObjectsForCat).toHaveBeenCalledWith(
       'conn-sql',
       'cfg-sql::/data/app.db::main::function',
       'function',
+      '/data/app.db',
     );
     expect(handlers.loadObjectsForCat).not.toHaveBeenCalledWith(
       'conn-sql',
       'cfg-sql::/data/app.db::tables',
       'tables',
+      '/data/app.db',
     );
     expect(handlers.loadObjectsForCat).not.toHaveBeenCalledWith(
       'conn-sql',
       'cfg-other::/data/other.db::procedure',
       'procedure',
+      '/data/other.db',
     );
     expect(handlers.loadTablesForDb).toHaveBeenCalledWith('conn-sql', '/data/app.db');
 
     // Ordering guarantee: the invalidation strictly precedes every recovery
     // reload scheduled by the same wave — a clear can never land after the
-    // reloads it was supposed to precede (the F1-BUG-005 race).
+    // reloads it was supposed to precede.
     const clearOrder = handlers.clearCaches.mock.invocationCallOrder[0];
     expect(handlers.clearCaches).toHaveBeenCalledWith('conn-sql', 'cfg-sql');
     for (const order of handlers.loadObjectsForCat.mock.invocationCallOrder) {
@@ -177,6 +183,33 @@ describe('useExpandedDbCacheRefresh', () => {
     for (const order of handlers.loadTablesForDb.mock.invocationCallOrder) {
       expect(clearOrder).toBeLessThan(order);
     }
+  });
+
+  it('routes an expanded category by its known database even when that db row is collapsed', async () => {
+    useSchemaStore.setState((s) => ({
+      schemas: new Map(s.schemas).set('conn-1', schemaEntry(['db::with-delimiter'], 0)),
+    }));
+    const handlers = makeHandlers();
+    const opts: ExpandedDbCacheRefreshOptions = {
+      ...baseOpts(handlers),
+      expandedDbs: new Set(),
+      expandedCats: new Set(['cfg-1::db::with-delimiter::app::procedure']),
+    };
+    const { rerun } = renderHookWithDeps(opts);
+
+    useSchemaStore.setState((s) => ({
+      schemas: new Map(s.schemas).set('conn-1', schemaEntry(['db::with-delimiter'], 1)),
+    }));
+    rerun();
+
+    await vi.waitFor(() => {
+      expect(handlers.loadObjectsForCat).toHaveBeenCalledWith(
+        'conn-1',
+        'cfg-1::db::with-delimiter::app::procedure',
+        'procedure',
+        'db::with-delimiter',
+      );
+    });
   });
 
   function renderHookWithDeps(opts: ExpandedDbCacheRefreshOptions) {

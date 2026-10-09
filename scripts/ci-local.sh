@@ -18,6 +18,11 @@ set -euo pipefail
 # GitHub Actions 运行器同样默认设 CI=true，与 .github/workflows/ci.yml 行为一致。
 export CI=true
 
+# 与 ci.yml 的 workflow 级 env 保持一致：主密钥走 {appData}/.key，cargo 段绝不
+# 触碰系统钥匙串。钥匙串后端只能显式验证：DATAZEN_TEST_KEYRING=1 时 key_store
+# 的相关用例才会访问 OS keychain（macOS 上会弹系统授权框并阻塞整条测试）。
+export DATAZEN_KEYRING="${DATAZEN_KEYRING:-file}"
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 cd "$ROOT"
 

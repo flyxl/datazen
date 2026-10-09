@@ -30,7 +30,7 @@ import { Spinner } from '../../components/ui/Spinner';
 interface PrivilegeViewProps {
   dbSessionId: string;
   databaseType?: string;
-  /** F1: active catalog for grant/revoke/SQL execution in multi-db sessions. */
+  /** Active catalog for grant/revoke/SQL execution in multi-db sessions. */
   database?: string | null;
 }
 

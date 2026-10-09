@@ -54,7 +54,7 @@ export interface NavigatorTreeRowProps {
   toggleConnection: (connectionId: string, sectionGroup: string) => void;
   toggleDb: (connectionId: string, dbSessionId: string, dbName: string) => void;
   toggleSchema: (schemaKey: string) => void;
-  toggleCategory: (catKey: string, catId: string, dbSessionId: string) => void;
+  toggleCategory: (catKey: string, catId: string, dbSessionId: string, dbName: string) => void;
   activateDatabase: (dbSessionId: string, dbName: string) => Promise<void>;
   ensureNamespacePath: (segments: string[], dbSessionId: string) => Promise<void>;
   setExpandedDbs: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -115,6 +115,7 @@ export interface NavigatorTreeRowProps {
       signature?: string,
       targetSchema?: string,
       targetName?: string,
+      database?: string,
     ) => void;
   };
 }
@@ -398,13 +399,14 @@ export function NavigatorTreeRow({
           data-testid="schema-tree-node"
           data-tree-node="category"
           data-cat-id={row.cat.id}
+          data-cat-key={row.key}
           {...itemProps}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
           style={{ paddingLeft: depthPadding(row.depth) }}
           onClick={() => {
             const conn = connections.find((c) => c.id === catConnectionId);
             const dbSessionId = conn ? (activeConnections[conn.id]?.dbSessionId ?? '') : '';
-            void toggleCategory(row.key, row.cat.id, dbSessionId);
+            void toggleCategory(row.key, row.cat.id, dbSessionId, row.dbName);
           }}
           onContextMenu={(e) => handleCategoryContextMenu(e, row.key, row.cat.id, catConnectionId)}
         >
@@ -419,7 +421,6 @@ export function NavigatorTreeRow({
             fallback={row.cat.icon}
           />
           <span className="min-w-0 truncate">{t(row.cat.labelKey as Parameters<typeof t>[0])}</span>
-          <span className="ml-auto shrink-0 text-[10px] text-fg-muted">{row.count}</span>
         </button>
       );
     }
@@ -435,6 +436,7 @@ export function NavigatorTreeRow({
           data-testid="schema-tree-node"
           data-tree-node={row.catId === 'views' ? 'view' : 'table'}
           data-item-name={row.item.name}
+          data-object-schema={row.item.schema ?? undefined}
           {...itemProps}
           draggable
           onDragStart={(e) => {
@@ -497,6 +499,7 @@ export function NavigatorTreeRow({
           data-testid="schema-tree-node"
           data-tree-node={row.catId}
           data-item-name={row.obj.name}
+          data-object-schema={row.obj.schema ?? undefined}
           {...itemProps}
           className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
           style={{ paddingLeft: depthPadding(row.depth) }}
@@ -516,6 +519,7 @@ export function NavigatorTreeRow({
                   signature,
                   targetSchema,
                   targetName,
+                  row.dbName,
                 );
               } else if (hasSignature) {
                 viewActions?.openObject?.(
@@ -523,9 +527,20 @@ export function NavigatorTreeRow({
                   row.obj.name,
                   row.obj.schema ?? undefined,
                   signature,
+                  undefined,
+                  undefined,
+                  row.dbName,
                 );
               } else {
-                viewActions?.openObject?.(kind, row.obj.name, row.obj.schema ?? undefined);
+                viewActions?.openObject?.(
+                  kind,
+                  row.obj.name,
+                  row.obj.schema ?? undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  row.dbName,
+                );
               }
             }
           }}

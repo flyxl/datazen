@@ -394,25 +394,41 @@ pub type ConfigStore = Store;
 
 ## 主加密密钥（`key_store`）
 
-连接密码、SSH 凭据、`ai_config.enc` 等均用 **AES-256-GCM**；磁盘上存密文。主密钥（32 字节）由 `src-tauri/src/store/key_store.rs` 管理，**不是**写死只用钥匙串或只用文件，而是双后端：
+连接密码、SSH 凭据、`ai_config.enc` 等均用 **AES-256-GCM**；磁盘上存密文。主密钥（32 字节）由 `src-tauri/src/store/key_store.rs` 管理，**不是**写死只用钥匙串或只用文件，而是三后端：
 
 | 后端 | 位置 | 何时使用 |
 |------|------|----------|
 | **OS Keychain** | macOS Keychain / Windows Credential Manager / Linux Secret Service；账户 `app-encryption-key`（服务标识 `APP_IDENTIFIER`） | 正式签名构建的默认路径；`DATAZEN_KEYRING=keyring` 强制 |
-| **文件 `.key`** | `{appData}/.key`（base64 主密钥） | `DATAZEN_KEYRING=file`（dev/CI）；macOS **adhoc/未签名** 二进制（`tauri:dev` 等）自动优先，避免每次重链弹钥匙串 ACL |
+| **Platform vault** | macOS：`security` CLI → 登录钥匙串，服务 `com.datazen.encryption-key` / 账户 `master-key`；Windows：DPAPI → `.key.dpapi` | macOS **adhoc/未签名** 二进制（`tauri:dev` 等）自动优先，ACL 绑 `/usr/bin/security`，避免每次重链弹钥匙串 ACL |
+| **文件 `.key`** | `{appData}/.key`（base64 主密钥，`chmod 600`） | `DATAZEN_KEYRING=file`（dev / CI / 单测）；钥匙串不可用时的兜底 |
 
 选择逻辑摘要：
 
 ```text
-DATAZEN_KEYRING=file     → File
-DATAZEN_KEYRING=keyring  → Keyring
-unset + macOS adhoc      → File
-unset + 其它             → Keyring（失败可回退已有 `.key`）
+DATAZEN_KEYRING=file       → File
+DATAZEN_KEYRING=keyring    → Keyring
+cargo test（cfg(test)）    → File（强制，见下）
+unset + macOS adhoc        → PlatformVault
+unset + Windows            → PlatformVault
+unset + macOS 签名 / Linux → Keyring（失败可回退已有 `.key`）
 ```
 
 - 首次启动随机生成主密钥并写入当前后端；已有 `.key` 时可迁移进钥匙串后删除文件。
 - 应用数据 ZIP **不包含** `.key`；跨机恢复密文需另行备份主密钥（设置流程可走 `save_encryption_key_with_dialog`）。
 - 实现入口：`Store::get_or_create_encryption_key` → `key_store::load_or_create_master_key`。
+
+### 单元测试与钥匙串弹窗
+
+macOS 上任何 Keychain Services 调用（`SecKeychainDefaultForDomain` / `SecItemCopyMatching`——`keyring`
+crate 与 `security` CLI 都走它们）在钥匙串搜索列表异常时都会弹出「找不到用于储存
+`app-encryption-key` 的钥匙串 `login`」模态框，并**阻塞**调用进程直到人工点掉。`cargo test` 一旦命中
+就整条挂死，所以：
+
+- `key_backend()` 在 `cfg(test)` 下恒为 `File`，`load_or_create_from_file` 在测试构建中也不再回探 vault / keychain。
+- 少数需要真正验证钥匙串后端的用例（`keyring_forced_*`、`keyring_creates_and_reloads_master_key`）默认跳过，
+  须显式设 `DATAZEN_TEST_KEYRING=1` 才访问 OS keychain。
+- 门禁脚本 `scripts/ci-local.sh` 与 `.github/workflows/ci.yml` 同样导出 `DATAZEN_KEYRING=file`；
+  E2E 侧的同类处理见 [E2E — 主密钥与系统钥匙串](../../development/e2e-testing.md)。
 
 ### 1.3 查询历史（明文）
 
@@ -475,3 +491,42 @@ SELECT * FROM orders WHERE d = CURRENT_DATE;
 - **排序不变。** 旧面板是 `ORDER BY created_at DESC`，导出后按 `created_at` 倒序（同毫秒以 id 兜底），一致。
 
 覆盖以上各点的测试在 `src-tauri/src/store/favorites/tests/migration.rs`（`tests.rs` 里的 `mod migration`），全部使用真实 `tempfile` 临时目录；文件可执行性在同目录的 `executability.rs`。把 `ALTER TABLE … RENAME` 换成空操作会让其中 4 个测试转红。
+
+### 1.5 DTO 与持久化格式兼容范围
+
+本节记录**当前已实现**的落盘格式能读什么、能写什么，以及哪些运行时状态**被刻意排除在持久化之外**。
+
+#### 1.5.1 字段级兼容规则
+
+所有落盘 DTO 的序列化键名统一为 camelCase（`#[serde(rename_all = "camelCase")]`），Rust 侧保持 snake_case。缺字段一律靠 `#[serde(default)]` 兜底，因此**旧文件永远读得进来，新字段不需要版本号**：
+
+| DTO | 关键字段 | 兼容规则 |
+|---|---|---|
+| `QueryHistoryEntry` | `connectionId`（持久化连接 id）、`database`（会话当时的逻辑库，`""` 表示未知 / 旧行）、`schema` | `schema` 为可选且带 `default`；旧行没有 schema 时读作 `None`，不反推 |
+| `FavoriteQuery` | `id`（`.sql` 文件名的 stem）、`connectionId`、`updatedAt`、`keyword`、`database`、`folder` | `updatedAt` 为可选且带 `default`：从 SQLite 迁移来的收藏没有这一列。`id` 只来自文件名，改标题不会改文件名 |
+| `SyncTask` | `sourceConnectionId` / `targetConnectionId`、`source/targetDatabase`、`source/targetSchema` | 全部 `#[serde(default)]`；连接 id 是**恢复与展示的唯一依据** |
+| `SyncTask` | `sourceDbSessionId` / `targetDbSessionId` | `#[serde(default, skip_serializing)]`：**只读不写**。字段留在 Rust 模型里是为了能解析旧 JSON，落盘时一律省略 |
+
+#### 1.5.2 旧 session ID 不是迁移数据
+
+Data Sync 任务文件是唯一曾经写入过运行时 `dbSessionId` 的地方，现在这条边界由三处机制共同保证：
+
+1. **模型层**：两个 session 字段带 `skip_serializing`，序列化时不存在于输出中，因此任何 `save_sync_task` 都不会把它们写回文件。
+2. **归一化层**：`SyncTask::normalize_legacy_state` 清空这两个字段；同时认为「从行偏移续跑」在进程重启后不安全，把 `current_table_offset` 归零、`strategy` 置 `unknown`、`status` 置 `interrupted`、`resume_state` 置 `unknown` 并记录一条明确的错误信息。加载路径与保存路径都调用它。
+3. **结构层**：迁移运行记录表里根本没有承载 session id 的列——测试直接读表结构断言 `db_session_id` 等敏感列名一个都不存在。
+
+因此：**任务恢复只依据持久化的 `sourceConnectionId` / `targetConnectionId`（以及 database / schema 字段）**，运行时 session ID 既不是迁移输入，也不是迁移输出。Data Transfer 与 Schema Diff 的 profile 同理，落盘记录只含 `connectionId`；Data Transfer 的运行时端点（`dbSessionId` + database + schema）只随任务在内存中流转，从不进入任何 profile 文件。Schema Diff 的 profile 文件本身是加密存储。
+
+#### 1.5.3 不落盘的运行时状态
+
+以下状态**只存在于内存**，跨进程即失效，任何格式变更都不应把它们纳入兼容承诺：
+
+| 状态 | 位置 | 失效表现 |
+|---|---|---|
+| 会话取消标志 | `services/job_registry.rs` | 进程级表，key 是 job ID；应用重启后旧 job ID 不可取消，且先于开始执行到达的取消标志会被保留 |
+| P5 Data Transfer handler / endpoint session / dispatch future | `DesktopJobHost` 调用方的当前进程任务与 handler | 运行时 session 和 handler 不落盘；AppDb 只保存 Job facts。进程重启将旧 Queued 标成 NotExecuted、旧 Running 标成 PendingVerification，不恢复旧副作用执行 |
+| AI 调用取消令牌 | `ai/cancel.rs` | 按 AI 调用注册 / 注销 |
+| 查询流执行注册表 | `AppState.query_executions` | 按 `QueryExecutionId` 归属校验；未知或已结束的 ID 一律拒绝 |
+| 会话事务句柄 | `AppState.session_transactions` | 键是 `dbSessionId`；只有显式断开才回滚 |
+
+兼容性的验证落在 `src-tauri/src/store/tests/migration_tests.rs`：一个测试写入带 `sourceDbSessionId` / `targetDbSessionId` 与行偏移的任务，断言保存后磁盘 JSON 中**不含**这两个键、重新加载后两者为空且断点被中和；另一个测试直接喂一段手写的旧 JSON 数组，断言同样被中和、而连接 id 存活。

@@ -13,7 +13,7 @@
 //!   missing one.
 //!
 //! Behaviour (sample clamping, `truncated`, per-field degradation) is covered by
-//! the scripted `ConnectionLike` in `src/ops_workbench/tests.rs`.
+//! the scripted `ConnectionLike` in `src/ops/workbench/tests.rs`.
 
 use datazen_driver_api::{
     required_access_level, validate_command_input, CommandAccessLevel, CommandCategory,

@@ -72,11 +72,20 @@ describe('ObjectBrowser', () => {
   it('lists objects, opens DDL, and executes it', async () => {
     render(<ObjectBrowser dbSessionId="c1" databaseType="postgresql" database="db_a" />);
     await screen.findByText('fn_ok');
-    expect(getDatabaseObjects).toHaveBeenCalledWith('c1', 'function');
+    expect(getDatabaseObjects).toHaveBeenCalledWith('c1', 'function', 'db_a');
 
     fireEvent.click(screen.getByText('fn_ok'));
     await waitFor(() => {
-      expect(getObjectDdl).toHaveBeenCalledWith('c1', 'function', 'fn_ok', 'public');
+      expect(getObjectDdl).toHaveBeenCalledWith(
+        'c1',
+        'function',
+        'fn_ok',
+        'public',
+        null,
+        null,
+        null,
+        'db_a',
+      );
     });
     expect(screen.getByDisplayValue(/CREATE FUNCTION/)).toBeInTheDocument();
 
@@ -102,7 +111,16 @@ describe('ObjectBrowser', () => {
     await screen.findByText('fn_ok');
     fireEvent.click(screen.getByText('fn_ok'));
     await waitFor(() => {
-      expect(getObjectDdl).toHaveBeenCalledWith('c1', 'function', 'fn_ok', 'public');
+      expect(getObjectDdl).toHaveBeenCalledWith(
+        'c1',
+        'function',
+        'fn_ok',
+        'public',
+        null,
+        null,
+        null,
+        'goecoride',
+      );
     });
 
     fireEvent.click(screen.getByText('query.execute'));
@@ -146,11 +164,20 @@ describe('ObjectBrowser', () => {
 
     fireEvent.click(screen.getByTestId('object-browser-type'));
     const type = await screen.findByText('mood');
-    expect(getDatabaseObjects).toHaveBeenLastCalledWith('c1', 'type');
+    expect(getDatabaseObjects).toHaveBeenLastCalledWith('c1', 'type', 'db_a');
 
     fireEvent.click(type);
     await waitFor(() => {
-      expect(getObjectDdl).toHaveBeenCalledWith('c1', 'type', 'mood', 'public');
+      expect(getObjectDdl).toHaveBeenCalledWith(
+        'c1',
+        'type',
+        'mood',
+        'public',
+        null,
+        null,
+        null,
+        'db_a',
+      );
     });
     expect(screen.getByDisplayValue(/CREATE TYPE public\.mood/)).toBeInTheDocument();
   });
@@ -181,6 +208,7 @@ describe('ObjectBrowser', () => {
         'integer',
         undefined,
         undefined,
+        'db_a',
       );
     });
 
@@ -205,6 +233,7 @@ describe('ObjectBrowser', () => {
         undefined,
         null,
         'orders',
+        'db_a',
       );
     });
   });
@@ -266,6 +295,7 @@ describe('ObjectBrowser', () => {
       'text',
       undefined,
       undefined,
+      'db_a',
     );
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('lookup(text)'));
   });

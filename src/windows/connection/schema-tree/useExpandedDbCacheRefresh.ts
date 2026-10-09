@@ -31,7 +31,7 @@ export interface ExpandedDbCacheRefreshOptions {
    * Expanded object-category keys in
    * `"<connectionId>::<dbName>[::<schema>]::<catId>"` form. When a
    * connection's fingerprint changes, every expanded category of that
-   * connection is reloaded (F1-BUG-005 fix).
+   * connection is reloaded.
    */
   expandedCats: ReadonlySet<string>;
   /** Load tables for one database. Must be session-neutral (no useDatabase). */
@@ -40,7 +40,12 @@ export interface ExpandedDbCacheRefreshOptions {
    * Reload one object category into the caller's cache. `catId` is the trailing
    * segment of `catKey`. Must be session-neutral (no useDatabase).
    */
-  loadObjectsForCat: (dbSessionId: string, catKey: string, catId: string) => Promise<void>;
+  loadObjectsForCat: (
+    dbSessionId: string,
+    catKey: string,
+    catId: string,
+    dbName: string,
+  ) => Promise<void>;
   /**
    * Drop every cached entry belonging to the given runtime db session id.
    * `connectionId` is the persistent config id the session belongs to — table
@@ -56,11 +61,11 @@ export interface ExpandedDbCacheRefreshOptions {
  *
  * Root-cause fix for "sidebar refresh flips my SQL session": the previous
  * inline implementations reloaded each expanded database through
- * `useDatabase` + `getTables`, so the LAST reloaded database silently became
+ * `useDatabase` + `listTables`, so the LAST reloaded database silently became
  * the session's active database. Drivers now expose session-neutral table
  * reads, so this hook never touches `useDatabase`.
  *
- * Ordering / cancellation semantics (F1-BUG-005 fix): for every detected
+ * Ordering / cancellation semantics: for every detected
  * fingerprint change this hook performs ONE synchronous
  * invalidate-then-schedule pass — `clearCaches` runs first, and the table +
  * object-category reloads for that connection are scheduled in the same
@@ -120,7 +125,18 @@ export function useExpandedDbCacheRefresh({
         if (!catKey.startsWith(prefix)) continue;
         const catId = catKey.split('::').pop();
         if (!catId || catId === 'tables' || catId === 'views') continue;
-        void handlersRef.current.loadObjectsForCat(dbSessionId, catKey, catId);
+        const knownDatabases = schemas.get(dbSessionId)?.databases ?? [];
+        const databaseNames = new Set([
+          ...knownDatabases,
+          ...[...expandedDbs]
+            .filter((key) => key.startsWith(prefix))
+            .map((key) => key.slice(prefix.length)),
+        ]);
+        const database = [...databaseNames]
+          .filter((name) => catKey.startsWith(`${prefix}${name}::`))
+          .sort((left, right) => right.length - left.length)[0];
+        if (!database) continue;
+        void handlersRef.current.loadObjectsForCat(dbSessionId, catKey, catId, database);
       }
     }
     // Re-run only when the store surface or the expanded sets change; the

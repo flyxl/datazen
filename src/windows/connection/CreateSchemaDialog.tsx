@@ -5,7 +5,7 @@ interface CreateSchemaDialogProps {
   open: boolean;
   onClose: () => void;
   dbSessionId: string;
-  /** F1: target catalog for create_schema (PG / SQL Server). */
+  /** Target catalog for create_schema (PG / SQL Server). */
   database?: string | null;
   onCreated?: () => void | Promise<void>;
 }

@@ -35,8 +35,8 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
 
     match topology {
         Topology::Standalone => {
-            let host = config.host.as_deref().unwrap_or("127.0.0.1");
-            let port = config.port.unwrap_or(6379);
+            let host = config.host.as_deref().unwrap_or(super::DEFAULT_HOST);
+            let port = config.port.unwrap_or(super::DEFAULT_PORT);
             let db_index = parse_db_index(config.database.as_deref())?;
             let url = build_node_url(&tls, host, port, None, None, Some(db_index));
             Ok(ConnectionPlan::Standalone(StandalonePlan {
@@ -181,5 +181,94 @@ pub async fn open_live_conn(plan: &ConnectionPlan) -> Result<RedisLiveConn, Driv
             let (client, connection) = attempt?;
             Ok(RedisLiveConn::Sentinel { client, connection })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::driver::RedisDriver;
+    use datazen_driver_api::DatabaseDriver;
+
+    fn config(host: Option<&str>, port: Option<u16>) -> ConnectionConfig {
+        ConnectionConfig {
+            id: "cfg".into(),
+            name: "n".into(),
+            database_type: "redis".into(),
+            host: host.map(str::to_string),
+            port,
+            database: None,
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: Default::default(),
+            connection_timeout: 5,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            tunnel_kind: None,
+            tunnel_id: None,
+            http_proxy_tunnel: None,
+            websocket_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        }
+    }
+
+    fn standalone_url(config: &ConnectionConfig) -> String {
+        match build_connection_plan(config).expect("connection plan") {
+            ConnectionPlan::Standalone(plan) => plan.url,
+            other => panic!("expected a standalone plan, got {other:?}"),
+        }
+    }
+
+    /// 反漂移闸：`default_host()`/`default_port()` 是宿主做端点物理身份摘要时
+    /// 唯一的「默认 host/port」来源。它一旦与 `build_connection_plan` /
+    /// `parse_node_urls` 实际拨号的地址分家，省略 host 的连接与显式写全 host
+    /// 的连接就会算出两个不同的 service_key，自覆盖在 admission 静默漏判。
+    /// 这里不测常量本身，只测「声明 == 实拨」。
+    #[test]
+    fn the_declared_defaults_are_exactly_what_connect_dials() {
+        let driver = RedisDriver::new();
+        let declared_host = driver.default_host().expect("redis has an implicit host");
+        let declared_port = driver.default_port().expect("redis has an implicit port");
+
+        assert_eq!(declared_host, crate::connect::DEFAULT_HOST);
+        assert_eq!(declared_port, crate::connect::DEFAULT_PORT);
+
+        let hostless = config(None, None);
+        let tls = parse_tls(None, &hostless.ssl_mode);
+        let expected = build_node_url(&tls, declared_host, declared_port, None, None, Some(0));
+        assert_eq!(
+            standalone_url(&hostless),
+            expected,
+            "default_host()/default_port() must be what build_connection_plan dials"
+        );
+
+        // 集群/哨兵默认节点走parse_node_urls，同一条默认ing 规则必须一致。
+        let nodes = parse_node_urls(None, &hostless, &parse_tls(None, &hostless.ssl_mode), None)
+            .expect("node urls");
+        assert_eq!(
+            nodes,
+            vec![build_node_url(
+                &tls,
+                declared_host,
+                declared_port,
+                None,
+                None,
+                None
+            )],
+            "default_host()/default_port() must be what parse_node_urls dials"
+        );
+
+        let explicit = standalone_url(&config(Some("cache-a.example.com"), Some(6380)));
+        assert!(
+            explicit.starts_with("redis://cache-a.example.com:6380"),
+            "{explicit}"
+        );
     }
 }

@@ -72,6 +72,7 @@ pnpm e2e:core
 pnpm e2e:db
 pnpm e2e:ai
 pnpm e2e:redis          # 显式：packages/drivers/redis/e2e/（不进默认 pnpm e2e）
+pnpm e2e:schema-tree-objects  # MySQL/PostgreSQL Schema Tree 对象 journey（驱动 crate 内用例）
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
 pnpm e2e:dashboard      # data-dashboard*.ts（同样 skip-build）
@@ -91,6 +92,24 @@ pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%
 > 脚本化封装：受限运行环境（应用数据目录写入受限、需 HOME 沙箱）可用
 > [`scripts/run-regression.sh`](../../scripts/run-regression.sh)（全量回归门禁）与
 > [`scripts/run-e2e-minimal.sh`](../../scripts/run-e2e-minimal.sh)（minimal 集 + `E2E_ENV_FILE`/主检出 `.env` 回退解析）。
+
+## Schema Tree 手工 fixtures
+
+MySQL 和 PostgreSQL 的长期手测对象与 E2E 临时对象分开保存。安装脚本会读取现有 E2E 环境配置并确保数据库和对象存在；手工测试时连接到以下数据库：
+
+| 驱动 | 数据库 | 对象范围 |
+|---|---|---|
+| MySQL | `datazen_manual_schema_tree` | 表、外键/索引、视图、函数、存储过程和触发器；[安装器与 SQL](../../packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh)。 |
+| PostgreSQL | `datazen_manual_schema_tree`，schema `manual_schema_tree` | 表、外键/索引、视图、函数、存储过程、触发器、序列、enum 和 domain；[安装器与 SQL](../../packages/drivers/postgres/e2e/install-manual-schema-tree.sh)。 |
+
+首次安装或需要重建 fixture 时，在仓库根目录运行：
+
+```bash
+bash packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh
+bash packages/drivers/postgres/e2e/install-manual-schema-tree.sh
+```
+
+`pnpm e2e:schema-tree-objects` 则在每次 journey 中创建带随机后缀的临时数据库/schema，断言对象树、对象定义和数据操作，并在 finally/after 中仅清理本次成功创建的对象；这些临时对象与上面的长期手测 fixtures 相互隔离。
 
 ## 2.1 CI 并行策略
 

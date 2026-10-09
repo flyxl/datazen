@@ -7,6 +7,7 @@ import {
   type ConnectionNavigatorTreeProps,
 } from '../ConnectionNavigatorTree';
 import { useSchemaStore } from '../../../stores/schemaStore';
+import { createEmptyConnectionSchema } from '../../../stores/schemaStoreState';
 import type { ConnectionConfig, TableInfo } from '../../../types';
 import { showWebContextMenu } from '../../../stores/contextMenuStore';
 import { getUnifiedRowKey } from '../navigator/utils';
@@ -99,6 +100,7 @@ vi.mock('../../../extensions/generated', () => {
       quoteChar: '"',
       sqlDialect: 'postgresql',
       defaultSchema: 'public',
+      supportedObjectKinds: ['function', 'procedure', 'trigger', 'sequence', 'type'] as const,
     },
     mysql: {
       ...sqlMulti,
@@ -107,6 +109,7 @@ vi.mock('../../../extensions/generated', () => {
       sqlDialect: 'mysql',
       defaultPort: 3306,
       clipboardSchemes: ['mysql'],
+      supportedObjectKinds: ['function', 'procedure', 'trigger', 'sequence', 'type'] as const,
     },
     sqlite: {
       ...sqlMulti,
@@ -210,7 +213,7 @@ const mockExecuteQuery = vi.fn();
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
     getDatabases: (...args: unknown[]) => mockGetDatabases(...args),
-    getTables: (...args: unknown[]) => mockGetTables(...args),
+    listTables: (...args: unknown[]) => mockGetTables(...args),
     useDatabase: (...args: unknown[]) => mockUseDatabase(...args),
     getDatabaseObjects: (...args: unknown[]) => mockGetDatabaseObjects(...args),
   },
@@ -362,7 +365,7 @@ async function activateDatabaseContext(
 ) {
   fireEvent.click((await findByText(tableName)).closest('button')!);
   await waitFor(() => {
-    expect(useSchemaStore.getState().currentDatabase).toBe(dbName);
+    expect(activeSchema()?.currentDatabase).toBe(dbName);
   });
 }
 
@@ -488,40 +491,15 @@ type SessionSchemaPatch = {
   schemaEpoch?: number;
 };
 
-const EMPTY_SESSION_SCHEMA = {
-  currentDatabase: null,
-  currentSchema: null,
-  databases: [],
-  databaseType: null,
-  isMultiDatabase: false,
-  tables: [],
-  views: [],
-  schemaNames: [],
-  columnMap: {},
-  typedColumnMap: {},
-  namespaceTree: {},
-  loadedPaths: new Set<string>(),
-  pathItems: {},
-  pathAliases: {},
-  namespaceOwnedByPlugin: false,
-  schemaEpoch: 0,
-  expanded: new Set<string>(),
-  selectedId: null,
-  loading: false,
-  ensuringCount: 0,
-  error: null,
-  columnInflight: new Set<string>(),
-};
+function activeSchema() {
+  const state = useSchemaStore.getState();
+  return state.activeDbSessionId ? state.schemas.get(state.activeDbSessionId) : undefined;
+}
 
 /** Patch (or create) one session's schema-cache entry in the real store. */
 function seedSessionSchema(dbSessionId: string, patch: SessionSchemaPatch): void {
   useSchemaStore.setState((state) => {
-    const base = state.schemas.get(dbSessionId) ?? {
-      ...EMPTY_SESSION_SCHEMA,
-      loadedPaths: new Set<string>(),
-      expanded: new Set<string>(),
-      columnInflight: new Set<string>(),
-    };
+    const base = state.schemas.get(dbSessionId) ?? createEmptyConnectionSchema();
     const next = new Map(state.schemas);
     next.set(dbSessionId, { ...base, ...patch });
     return { schemas: next };
@@ -704,14 +682,14 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
     await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
 
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
+      expect(activeSchema()?.currentDatabase).toBe('db_b');
     });
 
     fireEvent.click((await findByText('users')).closest('button')!);
 
     await waitFor(() => {
-      // F1: no use_database IPC — activation only moves the local context.
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+      // No use_database IPC at all — activation only moves the local context.
+      expect(activeSchema()?.currentDatabase).toBe('db_a');
     });
     expect(onSelectTable).toHaveBeenCalledWith('users', null, 'db_a');
   });
@@ -722,19 +700,19 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
     await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
     await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
+      expect(activeSchema()?.currentDatabase).toBe('db_b');
     });
 
     mockGetTables.mockClear();
 
     // Collapse db_a, then re-expand it: the tables are already cached, so no
-    // getTables call fires — yet the pointer must follow the click. The
+    // listTables call fires — yet the pointer must follow the click. The
     // original bug pinned only as a side effect of the fetch, so cache hits
     // left currentDatabase behind and "查看 ER" opened a stale database.
     fireEvent.click((await findByText('db_a')).closest('button')!);
     fireEvent.click((await findByText('db_a')).closest('button')!);
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+      expect(activeSchema()?.currentDatabase).toBe('db_a');
     });
     await findByText('users');
     expect(mockGetTables).not.toHaveBeenCalledWith('conn-1', 'db_a');
@@ -958,13 +936,13 @@ describe('ConnectionNavigatorTree drop database', () => {
 
     await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+      expect(activeSchema()?.currentDatabase).toBe('db_a');
     });
 
     await triggerDropDatabase(findByText, 'db_a');
 
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('postgres');
+      expect(activeSchema()?.currentDatabase).toBe('postgres');
       expect(mockDriverExecute).toHaveBeenCalledWith({
         dbSessionId: 'conn-1',
         command: 'drop_database',
@@ -983,7 +961,7 @@ describe('ConnectionNavigatorTree drop database', () => {
     await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
     await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
+      expect(activeSchema()?.currentDatabase).toBe('db_b');
     });
 
     mockGetTables.mockClear();
@@ -1021,7 +999,7 @@ describe('ConnectionNavigatorTree drop database', () => {
 
     await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+      expect(activeSchema()?.currentDatabase).toBe('db_a');
     });
 
     await triggerDropDatabase(findByText, 'db_a');
@@ -1064,7 +1042,7 @@ describe('ConnectionNavigatorTree close database connection', () => {
 
     await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+      expect(activeSchema()?.currentDatabase).toBe('db_a');
     });
 
     await triggerCloseDatabase(findByText, 'db_a');
@@ -1105,12 +1083,12 @@ describe('ConnectionNavigatorTree context menu new query', () => {
     await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
 
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
+      expect(activeSchema()?.currentDatabase).toBe('db_b');
     });
 
     await triggerContextMenuAction((await findByText('db_a')).closest('button')!, 'new-query');
 
-    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    expect(activeSchema()?.currentDatabase).toBe('db_a');
     expect(newQuery).toHaveBeenCalled();
   });
 
@@ -1150,15 +1128,15 @@ describe('ConnectionNavigatorTree context menu new query', () => {
     await waitFor(() => expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a'));
     fireEvent.click((await findByText('public')).closest('button')!);
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+      expect(activeSchema()?.currentDatabase).toBe('db_a');
     });
 
     // Set a different active database to verify the fix
-    useSchemaStore.setState({ currentDatabase: 'db_b' });
+    seedSessionSchema('conn-1', { currentDatabase: 'db_b' });
 
     await triggerContextMenuAction((await findByText('public')).closest('button')!, 'new-query');
 
-    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    expect(activeSchema()?.currentDatabase).toBe('db_a');
     expect(newQuery).toHaveBeenCalled();
 
     connectionsState.connections = [MYSQL_CONN];
@@ -1839,11 +1817,19 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="fn_calc"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'function').textContent).toContain('2');
+    expect(categoryButton(container, 'function').textContent).not.toMatch(/\d/);
 
     fireEvent.click(container.querySelector('[data-item-name="fn_calc"]')!);
     await waitFor(() => {
-      expect(openObject).toHaveBeenCalledWith('function', 'fn_calc', undefined);
+      expect(openObject).toHaveBeenCalledWith(
+        'function',
+        'fn_calc',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        '/data/app.db',
+      );
     });
 
     fireEvent.click(categoryButton(container, 'trigger'));
@@ -1852,7 +1838,15 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     });
     fireEvent.click(container.querySelector('[data-item-name="tg_del"]')!);
     await waitFor(() => {
-      expect(openObject).toHaveBeenCalledWith('trigger', 'tg_del', undefined);
+      expect(openObject).toHaveBeenCalledWith(
+        'trigger',
+        'tg_del',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        '/data/app.db',
+      );
     });
 
     fireEvent.click(categoryButton(container, 'sequence'));
@@ -1909,9 +1903,25 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     });
     const routines = container.querySelectorAll('[data-item-name="lookup"]');
     fireEvent.click(routines[0]!);
-    expect(openObject).toHaveBeenCalledWith('function', 'lookup', 'public', 'integer');
+    expect(openObject).toHaveBeenCalledWith(
+      'function',
+      'lookup',
+      'public',
+      'integer',
+      undefined,
+      undefined,
+      '/data/app.db',
+    );
     fireEvent.click(routines[1]!);
-    expect(openObject).toHaveBeenCalledWith('function', 'lookup', 'public', 'text');
+    expect(openObject).toHaveBeenCalledWith(
+      'function',
+      'lookup',
+      'public',
+      'text',
+      undefined,
+      undefined,
+      '/data/app.db',
+    );
 
     fireEvent.click(categoryButton(container, 'trigger'));
     await waitFor(() => {
@@ -1925,6 +1935,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
       undefined,
       undefined,
       'orders',
+      '/data/app.db',
     );
   });
 
@@ -1940,15 +1951,15 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'procedure').textContent).toContain('1');
+    expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
 
     // Category context menu → refresh → backend failure falls back to [].
     mockGetDatabaseObjects.mockRejectedValueOnce(new Error('boom'));
     await openMenuAndPick(categoryButton(container, 'procedure'), 'refresh');
     await waitFor(() => {
-      expect(categoryButton(container, 'procedure').textContent).toContain('0');
+      expect(container.querySelector('[data-item-name="pr_x"]')).toBeNull();
     });
-    expect(container.querySelector('[data-item-name="pr_x"]')).toBeNull();
+    expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
   });
 
   it('activates the clicked database in local state when nothing is cached', async () => {
@@ -1991,7 +2002,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     mockGetTables.mockClear();
     await openMenuAndPick(categoryButton(container, 'procedure'), 'refresh');
     await waitFor(() => {
-      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure');
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure', '/data/app.db');
     });
     expect(container.querySelector('[data-item-name="pr_y"]')).not.toBeNull();
 
@@ -2012,7 +2023,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     });
   });
 
-  it('F1-BUG-005: connection refresh restores expanded object categories', async () => {
+  it('connection refresh restores expanded object categories', async () => {
     const { container, findByText } = await renderWithSqlite(
       [{ name: 'settings', tableType: 'table', schema: undefined }],
       {},
@@ -2026,24 +2037,24 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'procedure').textContent).toContain('1');
+    expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
 
     // Connection-level refresh bumps schemaEpoch → epoch-triggered cache
     // invalidation must not leave the expanded category empty. The recovery
-    // wave re-fetches it and the row keeps its entries + count.
+    // wave re-fetches it and the row keeps its entries.
     mockGetDatabaseObjects.mockClear();
     await triggerConnectionRefresh(findByText, 'SQLite Conn');
 
     await waitFor(() => {
-      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure');
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'procedure', '/data/app.db');
     });
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="pr_x"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'procedure').textContent).toContain('1');
+    expect(categoryButton(container, 'procedure').textContent).not.toMatch(/\d/);
   });
 
-  it('F1-BUG-005: single-db database-node refresh restores expanded categories', async () => {
+  it('single-db database-node refresh restores expanded categories', async () => {
     const { container, findByText } = await renderWithSqlite(
       [{ name: 'settings', tableType: 'table', schema: undefined }],
       {},
@@ -2063,12 +2074,12 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await triggerDatabaseRefresh(findByText, '/data/app.db');
 
     await waitFor(() => {
-      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function');
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function', '/data/app.db');
     });
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="fn_y"]')).not.toBeNull();
     });
-    expect(categoryButton(container, 'function').textContent).toContain('1');
+    expect(categoryButton(container, 'function').textContent).not.toMatch(/\d/);
   });
 
   it('schema-level refresh reloads expanded schema-scoped categories', async () => {
@@ -2123,7 +2134,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     mockGetDatabaseObjects.mockClear();
     await openMenuAndPick(categoryButton(container, 'function'), 'refresh');
     await waitFor(() => {
-      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function');
+      expect(mockGetDatabaseObjects).toHaveBeenCalledWith('conn-sql', 'function', '/data/app.db');
     });
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="fn_z"]')).not.toBeNull();
@@ -2392,6 +2403,109 @@ async function renderPgTree(
 }
 
 describe('ConnectionNavigatorTree multi-db tree variants', () => {
+  it('loads schema objects from the database node being expanded', async () => {
+    connectionsState.connections = [
+      makeConn({
+        id: 'cfg-mysql',
+        name: 'MySQL Conn',
+        databaseType: 'mysql',
+      }),
+    ];
+    activeConnectionsState.connections = {
+      'cfg-mysql': { status: 'connected', dbSessionId: 'conn-mysql', connectionId: 'cfg-mysql' },
+    };
+    mockGetDatabases.mockResolvedValue(['connection_default', 'manual_fixture_db']);
+    mockGetTables.mockResolvedValue([]);
+    mockGetDatabaseObjects.mockImplementation(
+      (_sessionId: string, kind: string, database: string) =>
+        Promise.resolve(
+          kind === 'procedure' && database === 'manual_fixture_db'
+            ? [{ kind: 'procedure', schema: 'manual_fixture_db', name: 'pr_manual_fixture' }]
+            : [],
+        ),
+    );
+    expect(connectionsState.connections[0]?.database).toBeUndefined();
+
+    const { container, findByText } = render(
+      <ConnectionNavigatorTree {...baseProps} activeConnectionId="cfg-mysql" />,
+    );
+    await waitFor(() => {
+      expect(useSchemaStore.getState().schemas.get('conn-mysql')?.databases).toEqual([
+        'connection_default',
+        'manual_fixture_db',
+      ]);
+    });
+    const targetDatabase = await findByText('manual_fixture_db');
+    fireEvent.click(targetDatabase.closest('button')!);
+
+    const procedureCategory = await waitFor(() => {
+      const row = container.querySelector(
+        '[data-cat-key="cfg-mysql::manual_fixture_db::procedure"]',
+      );
+      expect(row).not.toBeNull();
+      return row!;
+    });
+    fireEvent.click(procedureCategory);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-item-name="pr_manual_fixture"]')).not.toBeNull();
+    });
+    expect(mockGetDatabaseObjects).toHaveBeenCalledWith(
+      'conn-mysql',
+      'procedure',
+      'manual_fixture_db',
+    );
+  });
+
+  it('keeps schema-specific object categories scoped to their owning schema', async () => {
+    const { container } = await renderPgTree({}, [
+      { name: 't_public', tableType: 'table', schema: 'public' },
+      { name: 't_audit', tableType: 'table', schema: 'audit' },
+    ] as TableInfo[]);
+
+    const procedures = [
+      { name: 'refresh_public_cache', kind: 'procedure', schema: 'public' },
+      { name: 'refresh_audit_cache', kind: 'procedure', schema: 'audit' },
+      { name: 'refresh_unscoped_cache', kind: 'procedure', schema: null },
+    ];
+    mockGetDatabaseObjects.mockResolvedValue(procedures);
+
+    const auditSchema = await waitFor(() => {
+      const node = container.querySelector<HTMLElement>(
+        '[data-tree-node="schema"][data-schema-name="audit"]',
+      );
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(auditSchema);
+    const auditProcedureCategory = await waitFor(() => {
+      const node = container.querySelector<HTMLElement>(
+        '[data-cat-key="cfg-pg::db_a::audit::procedure"]',
+      );
+      expect(node).not.toBeNull();
+      return node!;
+    });
+    fireEvent.click(auditProcedureCategory);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector(
+          '[data-tree-node="procedure"][data-item-name="refresh_audit_cache"][data-object-schema="audit"]',
+        ),
+      ).not.toBeNull();
+    });
+    expect(
+      container.querySelector(
+        '[data-tree-node="procedure"][data-item-name="refresh_unscoped_cache"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        '[data-tree-node="procedure"][data-item-name="refresh_public_cache"]',
+      ),
+    ).toBeNull();
+  });
+
   it('sorts schemas with the driver default schema first', async () => {
     const { container } = await renderPgTree({}, [
       { name: 't_zeta', tableType: 'table', schema: 'zeta' },
@@ -2527,7 +2641,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     await waitFor(() => {
       expect(useSchemaStore.getState().schemas.get('conn-1')?.currentDatabase).toBe('postgres');
     });
-    expect(useSchemaStore.getState().currentDatabase).toBe('postgres');
+    expect(activeSchema()?.currentDatabase).toBe('postgres');
     expect(onShowMessage).not.toHaveBeenCalled();
   });
 
@@ -2563,7 +2677,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
         command: 'drop_database',
         input: { name: 'first' },
       });
-      expect(useSchemaStore.getState().currentDatabase).toBe('second');
+      expect(activeSchema()?.currentDatabase).toBe('second');
     });
   });
 
@@ -2638,7 +2752,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     const dbButton = (await findByText('db_a')).closest('button')!;
     await openMenuAndPick(dbButton, 'create-schema');
     expect(openCreateSchema).toHaveBeenCalled();
-    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    expect(activeSchema()?.currentDatabase).toBe('db_a');
   });
 });
 
@@ -2744,7 +2858,7 @@ describe('ConnectionNavigatorTree schema context menu', () => {
     await ensureDbTableVisible(findByText, queryAllByText, 'db_a', 'users');
     await ensureDbTableVisible(findByText, queryAllByText, 'db_b', 'orders');
     await waitFor(() => {
-      expect(useSchemaStore.getState().currentDatabase).toBe('db_b');
+      expect(activeSchema()?.currentDatabase).toBe('db_b');
     });
     await activateDatabaseContext(findByText, 'db_a', 'users');
     mockExecuteQuery.mockClear();
@@ -2792,7 +2906,7 @@ describe('ConnectionNavigatorTree schema context menu', () => {
       currentDatabase: 'db_a',
       databases: ['db_a', 'db_b'],
     });
-    useSchemaStore.setState({ currentDatabase: 'db_a' });
+    seedSessionSchema('conn-pg', { currentDatabase: 'db_a' });
 
     fireEvent.click((await findByText('db_b')).closest('button')!);
     await waitFor(() => {
@@ -3218,7 +3332,7 @@ describe('ConnectionNavigatorTree path-hierarchy namespace trees', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-item-name="users"]')).not.toBeNull();
     });
-    expect(useSchemaStore.getState().currentDatabase).toBe('db_x');
+    expect(activeSchema()?.currentDatabase).toBe('db_x');
 
     const leafButton = container.querySelector('[data-item-name="users"]')!.closest('button')!;
     await triggerContextMenuAction(leafButton, 'new-query');
@@ -3227,7 +3341,7 @@ describe('ConnectionNavigatorTree path-hierarchy namespace trees', () => {
     // The leaf's `database` is the namespace fetch path (`public`), not a real
     // database: the store pointer must stay on db_x so ensureNamespacePath
     // keeps prefixing fetches with the right database root.
-    expect(useSchemaStore.getState().currentDatabase).toBe('db_x');
+    expect(activeSchema()?.currentDatabase).toBe('db_x');
   });
 
   it('search prunes unmatched namespaces and force-expands matches', async () => {

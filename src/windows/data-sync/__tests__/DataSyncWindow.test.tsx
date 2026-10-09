@@ -13,10 +13,11 @@ const {
   generateDataSyncSqlMock,
   cancelDataSyncMock,
   getSyncProfilesMock,
+  listDataSyncJobsMock,
   saveSyncProfileMock,
   deleteSyncProfileMock,
   getDatabasesMock,
-  getTablesMock,
+  listTablesMock,
   aiChatMock,
   stableT,
   aiConfiguredRef,
@@ -35,10 +36,11 @@ const {
     generateDataSyncSqlMock: vi.fn(),
     cancelDataSyncMock: vi.fn().mockResolvedValue(true),
     getSyncProfilesMock: vi.fn(),
+    listDataSyncJobsMock: vi.fn(),
     saveSyncProfileMock: vi.fn(),
     deleteSyncProfileMock: vi.fn(),
     getDatabasesMock: vi.fn(),
-    getTablesMock: vi.fn(),
+    listTablesMock: vi.fn(),
     aiChatMock: vi.fn(),
     stableT,
     aiConfiguredRef,
@@ -80,6 +82,15 @@ vi.mock('../../../commands/sync', () => ({
     getDataSyncComparisonPage: (...args: unknown[]) => getDataSyncComparisonPageMock(...args),
     applyDataSync: (...args: unknown[]) => applyDataSyncMock(...args),
     executeDataSync: (...args: unknown[]) => executeDataSyncMock(...args),
+    executeDataSyncJob: (
+      _sourceSessionId: string,
+      targetSessionId: string,
+      jobId: string,
+      options: unknown,
+      selectedRows?: unknown[],
+      tableSelections?: unknown[],
+    ) => executeDataSyncMock(targetSessionId, selectedRows ?? [], jobId, options, selectedRows, tableSelections),
+    listDataSyncJobs: () => listDataSyncJobsMock(),
     generateDataSyncSql: (...args: unknown[]) => generateDataSyncSqlMock(...args),
     cancelDataSync: (...args: unknown[]) => cancelDataSyncMock(...args),
     getSyncProfiles: () => getSyncProfilesMock(),
@@ -92,7 +103,7 @@ vi.mock('../../../commands/sync', () => ({
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
     getDatabases: (...args: unknown[]) => getDatabasesMock(...args),
-    getTables: (...args: unknown[]) => getTablesMock(...args),
+    listTables: (...args: unknown[]) => listTablesMock(...args),
   },
 }));
 
@@ -333,6 +344,7 @@ describe('DataSyncWindow wizard', () => {
     cancelDataSyncMock.mockReset();
     cancelDataSyncMock.mockResolvedValue(true);
     getSyncProfilesMock.mockReset();
+    listDataSyncJobsMock.mockReset().mockResolvedValue([]);
     getSyncProfilesMock.mockResolvedValue([]);
     saveSyncProfileMock.mockReset();
     saveSyncProfileMock.mockResolvedValue(undefined);
@@ -360,8 +372,8 @@ describe('DataSyncWindow wizard', () => {
     getDatabasesMock.mockImplementation(async (connId: string) =>
       connId.includes('pg-src') || connId.includes('my') ? ['src', 'other'] : ['tgt'],
     );
-    getTablesMock.mockReset();
-    getTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
+    listTablesMock.mockReset();
+    listTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
     invokeMock.mockImplementation(
       async (
         cmd: string,
@@ -369,6 +381,7 @@ describe('DataSyncWindow wizard', () => {
           connectionId?: string;
           database?: string | null;
           dbSessionId?: string;
+          request?: { command?: string; dbSessionId?: string };
           sourceDatabaseType?: string;
           targetDatabaseType?: string;
         },
@@ -382,8 +395,12 @@ describe('DataSyncWindow wizard', () => {
           const db = args?.database ?? 'default';
           return `dedicated-${conn}-${db}`;
         }
-        if (cmd === 'get_databases') {
-          return args?.dbSessionId?.includes('pg-src') ? ['src', 'other'] : ['tgt'];
+        if (cmd === 'execute_driver_command' && args?.request?.command === 'list_databases') {
+          return {
+            data: {
+              databases: args.request.dbSessionId?.includes('pg-src') ? ['src', 'other'] : ['tgt'],
+            },
+          };
         }
         if (cmd === 'release_connection') return false;
         if (cmd === 'connect') return `live-${args?.connectionId}`;
@@ -481,9 +498,25 @@ describe('DataSyncWindow wizard', () => {
     await waitFor(() =>
       expect(executeDataSyncMock).toHaveBeenCalledWith(
         'dedicated-pg-tgt-tgt',
-        expect.arrayContaining([expect.objectContaining({ table: 'users', rowKey: [1] })]),
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceTable: 'users',
+            targetTable: 'users',
+            operation: 'INSERT',
+            key: [1],
+          }),
+        ]),
         expect.any(String),
-        'tgt',
+        expect.objectContaining({ insert: true, update: true, delete: false }),
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceTable: 'users',
+            targetTable: 'users',
+            operation: 'INSERT',
+            key: [1],
+          }),
+        ]),
+        [],
       ),
     );
     expect(applyDataSyncMock).not.toHaveBeenCalled();
@@ -673,7 +706,7 @@ describe('DataSyncWindow wizard', () => {
   });
 
   it('shows schema pickers for PostgreSQL when get_tables returns schemas', async () => {
-    getTablesMock.mockResolvedValue([
+    listTablesMock.mockResolvedValue([
       { name: 'users', schema: 'public', tableType: 'table' },
       { name: 'users', schema: 'app', tableType: 'table' },
     ]);
@@ -687,7 +720,7 @@ describe('DataSyncWindow wizard', () => {
   });
 
   it('discovers schemas for any SQL driver that supports table metadata', async () => {
-    getTablesMock.mockResolvedValue([
+    listTablesMock.mockResolvedValue([
       { name: 'users', schema: 'public', tableType: 'table' },
       { name: 'users', schema: 'app', tableType: 'table' },
     ]);
@@ -696,7 +729,7 @@ describe('DataSyncWindow wizard', () => {
     await pickSelect('data-sync-source', 'My Tgt');
     await waitFor(() => expect(screen.getByTestId('data-sync-source-schema')).toBeTruthy());
     expect(screen.getByTestId('data-sync-source-schema')).toHaveTextContent('public');
-    expect(getTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src');
+    expect(listTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src');
   });
 
   it('marks heterogeneous targets as unsupported in the picker', async () => {
@@ -1027,9 +1060,7 @@ describe('DataSyncWindow wizard', () => {
       'AI summary of diffs',
     );
   });
-  it.each(['generate', 'execute'] as const)(
-    'preserves deselection and never falls back after %s failure',
-    async (phase) => {
+  it('preserves deselection and submits apply through a durable job', async () => {
       inspectDataSyncMock.mockResolvedValue([
         { sourceTable: 'users', targetTable: 'clients', status: 'MATCHED' },
       ]);
@@ -1050,43 +1081,44 @@ describe('DataSyncWindow wizard', () => {
       expect(choices[1]).not.toBeChecked();
       fireEvent.click(screen.getByTestId('data-sync-next'));
       await screen.findByTestId('data-sync-preview');
-      if (phase === 'generate') generateDataSyncSqlMock.mockRejectedValue('generation failed');
-      else executeDataSyncMock.mockRejectedValue(new Error('commit response lost'));
+      executeDataSyncMock.mockRejectedValue(new Error('commit response lost'));
       fireEvent.click(screen.getByTestId('data-sync-start'));
       await screen.findByTestId('data-sync-error');
       expect(applyDataSyncMock).not.toHaveBeenCalled();
-      if (phase === 'generate') expect(executeDataSyncMock).not.toHaveBeenCalled();
-      else {
-        expect(executeDataSyncMock.mock.calls[0][1]).toHaveLength(1);
-        expect(screen.getByTestId('data-sync-window')).toHaveAttribute(
-          'data-sync-state',
-          'unknown',
-        );
-        expect(screen.getByTestId('data-sync-start-disabled')).toBeTruthy();
-      }
-      const submitted = generateDataSyncSqlMock.mock.calls.at(-1)?.[2][0];
-      expect(submitted.targetTable).toBe('clients');
-      expect(submitted.rows.map((row: DataSyncRowChange) => row.selected)).toEqual([true, false]);
+      expect(executeDataSyncMock).toHaveBeenCalledTimes(1);
+      const submitted = executeDataSyncMock.mock.calls[0][1] as Array<{
+        sourceTable: string;
+        targetTable: string;
+        key: unknown[];
+      }>;
+      expect(submitted).toHaveLength(1);
+      expect(submitted[0]).toMatchObject({
+        sourceTable: 'users',
+        targetTable: 'clients',
+        key: [1],
+      });
+      expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'unknown');
+      expect(screen.getByTestId('data-sync-start-disabled')).toBeTruthy();
       expect(compareDataSyncMock).toHaveBeenCalledTimes(1);
-    },
-  );
+  });
 
-  it('empty generated selection never triggers any execution', async () => {
+  it('empty row selection never starts a durable apply job', async () => {
     inspectDataSyncMock.mockResolvedValue([
       { sourceTable: 'users', targetTable: 'users', status: 'MATCHED' },
     ]);
     compareDataSyncMock.mockResolvedValue([
       { sourceTable: 'users', targetTable: 'users', status: 'MATCHED', rows: [insertRow()] },
     ]);
-    generateDataSyncSqlMock.mockResolvedValue([]);
     render(<DataSyncWindow />);
-    await advanceToPreview();
-    fireEvent.click(screen.getByTestId('data-sync-start'));
-    await waitFor(() =>
-      expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'compared'),
-    );
+    await advanceToCompare();
+    fireEvent.click(within(screen.getByTestId('data-sync-row-diff')).getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await screen.findByTestId('data-sync-preview');
+    expect(screen.getByTestId('data-sync-start-disabled')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'compared');
     expect(executeDataSyncMock).not.toHaveBeenCalled();
     expect(applyDataSyncMock).not.toHaveBeenCalled();
+    expect(generateDataSyncSqlMock).toHaveBeenCalled();
   });
 
   it('[tester] cancelling a fresh comparison must not unlock an unknown write outcome', async () => {
@@ -1247,12 +1279,11 @@ describe('DataSyncWindow wizard', () => {
       'false',
     );
     fireEvent.click(screen.getByTestId('data-sync-next'));
-    const generateCallsBeforeExecute = generateDataSyncSqlMock.mock.calls.length;
     fireEvent.click(await screen.findByTestId('data-sync-start'));
-    await waitFor(() =>
-      expect(generateDataSyncSqlMock).toHaveBeenCalledTimes(generateCallsBeforeExecute + 1),
-    );
-    expect(generateDataSyncSqlMock.mock.calls.at(-1)?.[2][0].rows[0].key).toEqual([9]);
+    await waitFor(() => expect(executeDataSyncMock).toHaveBeenCalledTimes(2));
+    const submitted = executeDataSyncMock.mock.calls.at(-1)?.[1] as Array<{ key: unknown[] }>;
+    expect(submitted[0]?.key).toEqual([9]);
+    expect(generateDataSyncSqlMock).toHaveBeenCalled();
   });
 
   it('[tester] a stale cancel response never clears the newer comparison job id', async () => {
@@ -1796,6 +1827,56 @@ describe('DataSyncWindow wizard', () => {
     await waitFor(() => expect(screen.getByTestId('data-sync-next')).not.toBeDisabled());
     expect(inspectDataSyncMock).not.toHaveBeenCalled();
     expect(compareDataSyncMock).not.toHaveBeenCalled();
+  });
+
+  it('reopens an active job with live status and a durable cancel action', async () => {
+    listDataSyncJobsMock.mockResolvedValue([
+      {
+        job: {
+          jobId: 'reopened-apply',
+          kind: 'dataSyncApply',
+          state: 'running',
+          cancelRequested: false,
+          effectOutcome: null,
+          error: null,
+          progress: { committed: 0, unknown: 0 },
+        },
+        recoveryTargets: [],
+        domainResults: [],
+      },
+    ]);
+    render(<DataSyncWindow />);
+
+    fireEvent.click(await screen.findByTestId('data-sync-cancel-job-reopened-apply'));
+
+    await waitFor(() =>
+      expect(cancelDataSyncMock).toHaveBeenCalledWith('reopened-apply'),
+    );
+    expect(listDataSyncJobsMock).toHaveBeenCalled();
+  });
+
+  it('shows not-executed restart receipts without offering recovery replay', async () => {
+    listDataSyncJobsMock.mockResolvedValue([
+      {
+        job: {
+          jobId: 'restart-not-executed',
+          kind: 'dataSyncApply',
+          state: 'failed',
+          cancelRequested: false,
+          effectOutcome: 'notStarted',
+          error: 'notDispatchedAfterRestart',
+          progress: { committed: 0, unknown: 0 },
+        },
+        recoveryTargets: [],
+        domainResults: [],
+        recovery: { verdict: 'notExecuted', reasonCode: 'notDispatchedAfterRestart' },
+      },
+    ]);
+    render(<DataSyncWindow />);
+
+    expect(await screen.findByText('migrationJob.notExecutedHint')).toBeTruthy();
+    expect(screen.getByText('migrationJob.notExecutedJob')).toBeTruthy();
+    expect(screen.queryByTestId('data-sync-verify-recovery-restart-not-executed')).toBeNull();
   });
 
   it('keeps the history-run fence after a failed fresh comparison', async () => {

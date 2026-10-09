@@ -1,14 +1,21 @@
 //! Data sync IPC commands (task persistence, inspect/compare/apply/generate).
 
 mod apply;
+mod artifact_view;
 pub(crate) mod compare;
 mod comparison_store;
 mod exec;
 mod filter_validation;
 #[cfg(test)]
 mod filter_validation_tests;
+mod host;
 mod inspect;
+mod job_api;
 mod jobs;
+#[cfg(test)]
+mod jobs_cancel_contract;
+#[cfg(test)]
+mod jobs_contract;
 mod keyset_source;
 mod plans;
 mod tasks;
@@ -30,7 +37,12 @@ pub(crate) use apply::{apply_data_sync_impl, compare_data_sync_impl, revalidate_
 #[cfg(test)]
 pub(crate) use exec::execute_data_sync_impl;
 pub(crate) use exec::{execute_data_sync_plan_impl, generate_data_sync_sql_for_plan_impl};
+pub(crate) use filter_validation::{
+    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
+};
 pub(crate) use inspect::inspect_data_sync_impl;
+pub use job_api::*;
+#[cfg(test)]
 pub(crate) use jobs::cancel_job;
 use plans::{SyncRunRequest, SyncRunSelection};
 use std::collections::HashMap;
@@ -266,8 +278,59 @@ pub fn set_data_sync_test_commit_fault(fault: String) -> Result<(), CommandError
 }
 
 #[tauri::command]
-pub async fn cancel_data_sync(job_id: String) -> Result<bool, CommandError> {
-    Ok(cancel_job(&job_id).await)
+pub async fn cancel_data_sync(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<bool, CommandError> {
+    jobs::cancel_durable_job(&state, &job_id).await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn start_data_sync_prepare_job(
+    state: State<'_, AppState>,
+    source_db_session_id: String,
+    target_db_session_id: String,
+    tables: Option<Vec<String>>,
+    job_id: String,
+    source_database: Option<String>,
+    target_database: Option<String>,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+    options: Option<SyncOptionsInput>,
+    filters: Option<HashMap<String, SyncSourceFilter>>,
+) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
+    apply::start_data_sync_prepare_job_impl(
+        &state,
+        source_db_session_id,
+        target_db_session_id,
+        tables.unwrap_or_default(),
+        job_id,
+        source_database,
+        target_database,
+        source_schema,
+        target_schema,
+        resolve_options(options),
+        filters.unwrap_or_default(),
+        None,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn start_data_sync_apply_job(
+    state: State<'_, AppState>,
+    source_db_session_id: String,
+    target_db_session_id: String,
+    request: SyncRunRequest,
+) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
+    exec::start_data_sync_apply_job_impl(
+        &state,
+        source_db_session_id,
+        target_db_session_id,
+        request,
+    )
+    .await
 }
 
 #[tauri::command]

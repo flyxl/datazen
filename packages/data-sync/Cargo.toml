@@ -1,0 +1,26 @@
+[package]
+name = "datazen-data-sync"
+version = "0.0.1"
+edition = "2021"
+description = "Data Synchronization domain engine for DataZen: gate, compare, changeset, execute"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-driver-api = { workspace = true }
+datazen-platform-api = { workspace = true }
+datazen-runtime = { path = "../runtime" }
+async-trait = "0.1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "1"
+tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+datazen-driver-postgres = { path = "../drivers/postgres" }
+datazen-driver-mysql = { path = "../drivers/mysql" }
+datazen-driver-sqlite = { path = "../drivers/sqlite" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

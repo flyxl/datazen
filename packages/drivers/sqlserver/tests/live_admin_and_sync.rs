@@ -1,7 +1,9 @@
 //! Live SQL Server **admin-command surface** + **sync / keyset pagination**.
 //!
 //! Scope and safety (see also `tests/common/mod.rs`):
-//! - every test skips (never fails) when `.env.test` is absent/incomplete;
+//! - every test skips (never fails) when the instance is not configured.
+//!   Settings come from the process environment; a local env file is read
+//!   only when you opt in with `TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file`;
 //! - writes happen only when `TEST_SQLSERVER_ALLOW_WRITE=1`, only on
 //!   `cfg.scratch(..)` objects, and every scratch object is dropped in a guard
 //!   that runs even when the test body panics;
@@ -1772,21 +1774,23 @@ async fn schema_object_commands_are_wired_and_their_sql_runs_live() {
         .unwrap_or_else(|| panic!("objects must be an array: {}", objects.data));
     eprintln!("✅ list_objects(view) command → {} object(s)", listed.len());
 
-    // A missing object is a well-formed empty DDL, not an error.
-    let ddl = driver
+    // A missing object must fail closed rather than returning an empty or
+    // ambiguous definition that the caller could mistake for usable DDL.
+    let error = driver
         .execute_command(
             &handle,
             "get_object_ddl",
             json!({ "kind": "procedure", "name": "dz_definitely_absent", "schema": "dbo" }),
         )
         .await
-        .expect("get_object_ddl must execute for a missing object");
+        .expect_err("get_object_ddl must reject a missing object");
     assert!(
-        ddl.data["ddl"].is_string(),
-        "get_object_ddl must return a `ddl` string: {}",
-        ddl.data
+        error
+            .to_string()
+            .contains("Object was not found or its DDL is unavailable"),
+        "get_object_ddl should report a missing definition clearly: {error}"
     );
-    eprintln!("✅ get_object_ddl(missing) → ddl={:?}", ddl.data["ddl"]);
+    eprintln!("✅ get_object_ddl(missing) rejected safely: {error}");
 
     let _ = driver.disconnect(handle).await;
 }

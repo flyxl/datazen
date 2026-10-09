@@ -27,6 +27,10 @@ import {
   autoCompletePathHierarchyPath,
 } from '../../../lib/queryContextPath';
 import type { SqlNamespace } from '../../../lib/sqlNamespace';
+import type { EditorSessionController } from '../../../lib/session/EditorSessionController';
+import { switchDatabaseSession } from '../../../lib/session/QueryPanelSession';
+import { switchResultPromptKey, sessionErrorPromptKey } from '../../../lib/session/sessionPrompts';
+import type { SessionView } from '@datazen/backend-client';
 
 export interface UseQueryContextPathOptions {
   panelId: string;
@@ -38,6 +42,12 @@ export interface UseQueryContextPathOptions {
   pathAliases: Record<string, string>;
   databases: string[];
   currentDatabase: string | null;
+  /** Two-phase session switch for the QueryPanel editor owned by this pane. */
+  sessionController?: EditorSessionController | null;
+  /** Confirm switching away from an active transaction. Defaults to abort. */
+  confirmTransactionSwitch?: (session: SessionView) => Promise<boolean> | boolean;
+  /** Surfaces switch conflicts/failures via the mapped session prompt keys. */
+  onSessionPrompt?: (promptKey: string, message?: string) => void;
 }
 
 export function useQueryContextPath({
@@ -50,6 +60,9 @@ export function useQueryContextPath({
   pathAliases,
   databases,
   currentDatabase,
+  sessionController,
+  confirmTransactionSwitch,
+  onSessionPrompt,
 }: UseQueryContextPathOptions) {
   const updatePanel = usePanelStore((s) => s.updatePanel);
   const switchDatabase = useSchemaStore((s) => s.switchDatabase);
@@ -65,7 +78,7 @@ export function useQueryContextPath({
   );
 
   useEffect(() => {
-    void ensureNamespacePath([]);
+    void ensureNamespacePath([], dbSessionId);
   }, [dbSessionId, selectedDatabase, ensureNamespacePath]);
 
   useEffect(() => {
@@ -78,23 +91,64 @@ export function useQueryContextPath({
       setContextPath(next);
       if (isPathHierarchy) {
         updatePanel(panelId, { namespacePath: next.length > 0 ? next : undefined });
-        if (next.length > 0) await ensureNamespacePath(next);
+        if (next.length > 0) await ensureNamespacePath(next, dbSessionId);
         return;
       }
       const db = next[0];
       // Guard: in single-database mode the context-path root can be a *schema*
       // (e.g. `public`) rather than a database — never hand a schema name to
-      // switchDatabase, which would run get_tables('public') and pin the
+      // switchDatabase, which would run listTables('public') and pin the
       // session's currentDatabase to a non-existent database.
       if (db && databases.includes(db) && db !== currentDatabase) {
         // Persist the database to the panel so that `selectedDatabase`
         // (= database ?? currentDatabase) reflects the switch even when the
         // panel already has a bound database from creation time.
         updatePanel(panelId, { database: db });
-        await switchDatabase(db);
+        // Route the switch through the two-phase session switch: the
+        // transaction confirmation and revision-conflict handling live there,
+        // and the prompt keys come from the shared sessionPrompts mapping.
+        // The legacy session pointer only moves when the switch succeeds.
+        if (sessionController) {
+          try {
+            const result = await switchDatabaseSession({
+              controller: sessionController,
+              desired: {
+                database: db,
+                catalog: null,
+                schema: null,
+                path: [],
+              },
+              confirmTransaction: confirmTransactionSwitch,
+              onRevisionConflict: (session) => {
+                onSessionPrompt?.(
+                  'query.session.revisionConflict',
+                  session?.observedContext?.namespace?.database ?? undefined,
+                );
+              },
+            });
+            if (result.status === 'switched') {
+              await switchDatabase(db, dbSessionId);
+            } else {
+              const key = switchResultPromptKey(result);
+              if (key) {
+                onSessionPrompt?.(
+                  key,
+                  result.status === 'failed' && result.error instanceof Error
+                    ? result.error.message
+                    : undefined,
+                );
+              }
+            }
+          } catch (error) {
+            onSessionPrompt?.(sessionErrorPromptKey(error));
+          }
+        } else {
+          await switchDatabase(db, dbSessionId);
+        }
       }
     },
     [
+      dbSessionId,
       currentDatabase,
       databases,
       ensureNamespacePath,
@@ -102,6 +156,9 @@ export function useQueryContextPath({
       panelId,
       switchDatabase,
       updatePanel,
+      sessionController,
+      confirmTransactionSwitch,
+      onSessionPrompt,
     ],
   );
 
@@ -133,14 +190,22 @@ export function useQueryContextPath({
     (parents: string[]) => {
       if (ensureTimer.current) clearTimeout(ensureTimer.current);
       ensureTimer.current = setTimeout(() => {
-        void ensureNamespacePath(parents);
+        void ensureNamespacePath(parents, dbSessionId);
       }, 120);
       const roots = new Set(namespaceRootsFrom(namespaceTree, pathAliases, databases));
       if (parents[0] && roots.has(parents[0]) && !pathsEqual(parents, contextPath)) {
         void applyContextPath(parents);
       }
     },
-    [applyContextPath, contextPath, databases, ensureNamespacePath, namespaceTree, pathAliases],
+    [
+      applyContextPath,
+      contextPath,
+      databases,
+      dbSessionId,
+      ensureNamespacePath,
+      namespaceTree,
+      pathAliases,
+    ],
   );
 
   const syncContextFromSql = useCallback(
@@ -189,7 +254,7 @@ export function QuerySidebarSection({
   const [historySearch, setHistorySearch] = useState('');
   const [historyScopeMode, setHistoryScopeMode] = useState<'current' | 'all'>('current');
 
-  // Since §2.6 a favorite is a file the user can put in a synced folder, so
+  // A favorite is a file the user can put in a synced folder, so
   // the listing can change without this app writing anything. Two moments can
   // see a file we have never looked at: the panel being opened, and the window
   // coming back to the foreground after the sync client did its work. Both ask
@@ -356,8 +421,8 @@ export function QuerySidebarSection({
             </button>
           </div>
           {favoritesRoot && (
-            // §2.6.3: the user has to be told which folder to sync, otherwise
-            // the file-first format is invisible to the person who benefits.
+            // The user has to be told which folder to sync, otherwise the
+            // file-first format is invisible to the person who benefits.
             <div
               data-testid="favorites-root"
               className="border-b border-edge px-3 py-1.5 text-[11px] text-fg-muted"

@@ -1,3 +1,4 @@
+import { listDatabases } from '../schema-metadata.js';
 /**
  * ER diagram full user journey — workspace home / toolbar entry, React Flow canvas,
  * controls, search, table/relation stats, and inferred relationships.
@@ -204,7 +205,7 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-013)', () => {
       database: null,
     });
     try {
-      const databases = await invokeBackend<string[]>('get_databases', { dbSessionId });
+      const databases = await listDatabases({ dbSessionId });
       expect(databases.length).toBeGreaterThan(0);
 
       const schemas = await invokeBackend<unknown[]>('get_er_data', {

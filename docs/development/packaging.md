@@ -65,7 +65,7 @@ Do **not** commit signing secrets. When enabling notarization in CI or manual re
 | 7. Verify | `spctl -a -vv -t install /Applications/DataZen.app` → `accepted` / `source=Notarized Developer ID` |
 | 8. User docs | Once notarized, update release notes to **remove** mandatory `xattr` steps; keep as fallback for side-loaded copies |
 
-Tauri v2 signing hooks live in `tauri.conf.json` (`bundle.macOS.signingIdentity`, etc.). Updater minisign keys ([`docs/updater.md`](updater.md)) are **independent** of Apple code signing.
+Tauri v2 signing hooks live in `tauri.conf.json` (`bundle.macOS.signingIdentity`, etc.). Updater minisign keys ([`docs/development/updater.md`](development/updater.md)) are **independent** of Apple code signing.
 
 ---
 

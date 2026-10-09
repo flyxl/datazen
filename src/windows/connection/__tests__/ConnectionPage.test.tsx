@@ -119,18 +119,28 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
   ),
 }));
 
-vi.mock('../../../stores/schemaStore', () => ({
-  useSchemaStore: {
-    getState: () => ({
-      reset: vi.fn(),
-      removeConnection: vi.fn(),
-      setActiveConnection: vi.fn(),
-      databases: [],
-      currentDatabase: null,
-      tables: [],
-    }),
-  },
-}));
+vi.mock('../../../stores/schemaStore', async () => {
+  // `vi.mock` replaces the whole module, so `ContentView` importing
+  // `useConnectionSchemaField` / `useConnectionColumnMaps` at render time
+  // needs them here too. They come from the shared double (not a fixed `''`)
+  // so a cache hit returns that session's field and a miss the empty snapshot.
+  const { schemaStoreMockModule } = await import('../../../test/mocks/schemaStore');
+  const perSession = schemaStoreMockModule({ schemas: new Map(), activeDbSessionId: null });
+  return {
+    useSchemaStore: {
+      getState: () => ({
+        reset: vi.fn(),
+        removeConnection: vi.fn(),
+        setActiveConnection: vi.fn(),
+        databases: [],
+        currentDatabase: null,
+        tables: [],
+      }),
+    },
+    useConnectionSchemaField: perSession.useConnectionSchemaField,
+    useConnectionColumnMaps: perSession.useConnectionColumnMaps,
+  };
+});
 
 vi.mock('../../../stores/tableDataStore', () => ({
   useTableDataStore: {
@@ -142,7 +152,20 @@ vi.mock('../../../stores/tableDataStore', () => ({
   },
 }));
 
-vi.mock('../../../stores/panelStore', () => {
+vi.mock('../../../stores/panelStore', async () => {
+  // `vi.mock` replaces the whole module, so the pane-identity helpers it
+  // re-exports must exist here too. They live in a dependency-free leaf
+  // module, so take the real implementations rather than faking a shape.
+  //
+  // `EMPTY_QUERY_EXEC` (also re-exported by `panelStore`) is deliberately NOT
+  // pulled in here: loading the real `stores/queryExecActions` graph flips the
+  // "minimizes main instead of closing" case — `hasOpenChildWindows` is never
+  // called and `close()` runs instead (3/3 runs). Nothing in this suite renders
+  // `QueryPanel`/`useQueryExec`, so the gap stays latent; closing it means
+  // re-examining that window-close path, not editing the mock.
+  const pane = await vi.importActual<typeof import('../../../stores/paneKeys')>(
+    '../../../stores/paneKeys',
+  );
   const mockState = { panels: [], activePanelId: null };
   const store = (sel: (s: typeof mockState) => unknown) => sel(mockState);
   store.getState = () => ({
@@ -153,6 +176,7 @@ vi.mock('../../../stores/panelStore', () => {
     removeAllForConnection: vi.fn(),
   });
   return {
+    ...pane,
     usePanelStore: store,
     nextPanelId: (prefix: string) => `panel-${prefix}-test`,
   };
@@ -594,7 +618,7 @@ describe('ConnectionPage', () => {
     expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
   });
 
-  it('TC-window: sidebar Settings button has no unreachable active highlight (F3-BUG-001)', () => {
+  it('TC-window: sidebar Settings button has no unreachable active highlight', () => {
     render(<ConnectionPage />);
 
     const connectionsNav = screen.getByTestId('workspace-nav-databases');

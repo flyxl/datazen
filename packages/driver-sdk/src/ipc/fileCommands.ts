@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { transitionalPlatformServices, transitionalTransport } from './desktopBinding';
 
 export interface OpenedBinaryFile {
   fileName: string;
@@ -8,6 +8,17 @@ export interface OpenedBinaryFile {
 /**
  * Native-dialog file IO shared by drivers (e.g. Redis dump import/export).
  * Dialog + read/write happen atomically on the Rust side; paths never reach JS.
+ *
+ * Thin re-export over `PlatformServices` (§7.2 薄再导出过渡): the exported
+ * names, parameter lists and return types are unchanged, so every caller is
+ * untouched. Positional parameters are assembled into the named input objects
+ * `PlatformServices` declares.
+ *
+ * `openBase64WithDialog` is the one exception and is routed through the
+ * transport rather than `PlatformServices`: §7.1 declares text-open and
+ * directory-open only, so there is no binary-open capability to delegate to.
+ * Adding a fake one here would put an operation in the contract that the
+ * architecture document does not have.
  */
 export const fileCommands = {
   /** Save UTF-8 text via native OS dialog. Returns false if cancelled. */
@@ -17,7 +28,7 @@ export const fileCommands = {
     filterName: string,
     extensions: string[],
   ) =>
-    invoke<boolean>('save_text_with_dialog', {
+    transitionalPlatformServices().saveTextWithDialog({
       contents,
       defaultFileName,
       filterName,
@@ -31,7 +42,7 @@ export const fileCommands = {
     filterName: string,
     extensions: string[],
   ) =>
-    invoke<boolean>('save_base64_with_dialog', {
+    transitionalPlatformServices().saveBinaryWithDialog({
       dataBase64,
       defaultFileName,
       filterName,
@@ -40,8 +51,8 @@ export const fileCommands = {
 
   /** Open a binary file via native dialog; returns basename + base64 (no path). */
   openBase64WithDialog: (filterName: string, extensions: string[]) =>
-    invoke<OpenedBinaryFile | null>('open_base64_with_dialog', {
+    transitionalTransport().call('open_base64_with_dialog', {
       filterName,
       extensions,
-    }),
+    }) as Promise<OpenedBinaryFile | null>,
 };

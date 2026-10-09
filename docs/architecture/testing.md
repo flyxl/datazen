@@ -13,7 +13,7 @@
 | 驱动 UI 单测 | Vitest | `packages/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`） |
 | Host E2E | WebdriverIO | `e2e/specs/` |
 | 驱动 E2E | WebdriverIO | `packages/drivers/<id>/e2e/`（显式脚本，不进默认 `pnpm e2e`） |
-| 手工黑盒测试 | computer-use-mcp | `test/` |
+| 手工黑盒测试 | computer-use-mcp | `test/`（**当前仓库无此目录**，见 §6） |
 
 ### 1.1 驱动测试必须写在驱动 crate 内
 
@@ -200,7 +200,11 @@ pnpm test:unit:drivers  # Path 驱动 UI 单测
 
 ## 6. 手工黑盒测试
 
-`test/` 目录下维护手工黑盒测试文档，使用 `computer-use-mcp` 桌面自动化辅助执行：
+> **当前状态：仓库内没有 `test/` 目录。** 辅助工具 `computer-use-mcp` 仍配置在
+> `.cursor/mcp.json`，但已无配套文档。下文是 2026-08 以「obsolete / outdate」为由删除
+> **之前**的结构（`33860f548`、`a18d45c6c`），`git ls-files test/` 现为 0；6.1 的用例数与
+> 6.2 的报告格式同属删除当时的历史计划，**不描述当前仓库的测试存量**。要恢复手工黑盒层时，
+> 从本节起步即可。
 
 ```
 test/
@@ -213,6 +217,19 @@ test/
 │   ├── BUG-001.md ~ BUG-008.md
 └── screenshots/            # Bug 截图证据
 ```
+
+> 上面 `bugs/BUG-001.md ~ BUG-008.md` 是一套**已随删除消失**的编号。`BUG-00x` 在本仓库
+> **不是一套全局编号**，因此**不可假定裸写 `BUG-00x` 指的就是上面这套**：现存 **15 套**
+> 带前缀的活跃系列（`F1-BUG-00x` 连接导航 / schema 树、`redis-codec-write-BUG-00x` 等，
+> 另有 `redis-tree-ui-` / `redis-kvbar-ui-` / `tunnel-form-` 等域前缀；其中 `redis-workbench-` 对应 `packages/drivers/redis/src/ops/workbench/` 下的一组测试，**它尚无已入库的 `bugs/` 登记表**，前缀按仓库既有的命名式样补的），此外还有 **354 处**裸写
+> `BUG-00x`——它既可能是某个活跃系列的简写，也可能属于另一套已删除编号。引用缺陷编号时
+> **必须连前缀一起写全**，读者才能定位到唯一一套。
+>
+> 复算：`git grep -ohE '[A-Za-z0-9_.-]+-BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' |
+> sed -E 's/-[0-9]+$//' | sort -u | wc -l` → 15（系列数）。裸写处数用
+> `git grep -ohE '(^|[^A-Za-z0-9_.-])BUG-[0-9]+' -- . ':!progress.md' ':!hub.md' | wc -l`
+> → 354。**两个计数测于 `95a60bea5`**（此前标的 `98b2c74e2` 已被下述补前缀动作改变）；编号空间会随各轨补前缀而变动，
+> 复算值与此处不符时以复算值为准——此处只标时点，不承诺永久成立。
 
 ### 6.1 测试模块覆盖
 

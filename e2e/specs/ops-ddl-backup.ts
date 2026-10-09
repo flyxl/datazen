@@ -1,5 +1,5 @@
 /**
- * E2E: DDL 保护 + 备份/还原 预填（ops §5.4）
+ * E2E: DDL 保护 + 备份/还原 预填
  *
  * 完整链路：连接 PG → 展开 DB 节点 → 右键「数据库」→ 菜单含「备份 / 恢复」→
  * 点击「备份数据库」→ 备份子窗口以预填 database 打开（URL 直达 + 连接预填）。
@@ -28,7 +28,7 @@ const SEEDED_CONN_ID = 'conn_e2e_pg';
  * WDIO 全程复用同一个 Tauri 进程，而每个 spec 的 worker 数据库是按 spec
  * 创建后即删除的；Rust 侧 `connect` 对同一 connectionId 会复用仍存活的会话，
  * 于是本 spec 的 UI 连接拿到的是绑在已删除 worker 库上的旧会话，
- * schema 树取数（get_databases 等）全部报
+ * schema 树取数（list_databases 等）全部报
  * `database "e2e_w..." does not exist`。这里强制探测并断开残留会话，
  * 随后 UI 连接会基于本 spec 的 worker 库新建会话。
  */
@@ -43,7 +43,7 @@ async function dropLeakedSeededSession() {
 
 /**
  * 关闭可能残留的右键菜单并等待其真正消失（无菜单时立即成功）。
- * 关闭失败不再被 .catch 静默吞掉——会带 timeoutMsg 抛错（e2e-ops-menu-BUG-001）。
+ * 关闭失败不再被 .catch 静默吞掉——会带 timeoutMsg 抛错。
  */
 async function closeAnyMenu() {
   await browser.execute(() => {
@@ -51,7 +51,7 @@ async function closeAnyMenu() {
     // 判断点按是否落在菜单外。派发目标必须是 Node：
     //  - 向 document 派发不冒泡的事件 → 到不了 window 监听器（原始缺陷）；
     //  - 向 window 派发 → e.target === window（非 Node），contains() 按 WebIDL
-    //    抛 TypeError → hide() 永不执行（BUG-001 实测）；
+    //    抛 TypeError → hide() 永不执行（实测）；
     //  - document.body 既是 Node、又位于菜单 portal root 之外（body 是其祖先）
     //    → 冒泡到 window，contains(body) 为 false → hide() 正常关闭。
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -187,7 +187,7 @@ async function expandConnection(connName: string) {
   await browser.pause(2000);
 }
 
-describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
+describe('运维: 备份/还原 预填', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -205,7 +205,7 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
     await browser.switchToWindow(mainWindow);
   });
 
-  it('OPS-DDL-001: 连接菜单含「备份 / 还原 / 服务器状态 / 进程列表」', async () => {
+  it('连接菜单含「备份 / 还原 / 服务器状态 / 进程列表」', async () => {
     // 按 data-conn-name 定位 seeded 连接：首个 [data-conn-item] 不保证是
     // 已连接的那条，未连接连接的菜单里没有 process-list / server-status。
     await rightClick('[data-conn-item]', E2E_PG_CONN_NAME);
@@ -217,7 +217,7 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
     await dismissMenu();
   });
 
-  it('OPS-DDL-002: 数据库节点右键含「备份 / 还原」', async () => {
+  it('数据库节点右键含「备份 / 还原」', async () => {
     // 展开连接暴露 DB 节点
     await expandConnection('PostgreSQL');
     await browser.pause(1000);
@@ -225,7 +225,7 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
       () => document.querySelectorAll('[data-tree-node="db"]').length,
     );
     if (dbNodeCount === 0) {
-      console.log('No db nodes, skipping OPS-DDL-002');
+      console.log('No db nodes, skipping');
     } else {
       await rightClick('[data-tree-node="db"]');
       const text = await menuText();
@@ -235,11 +235,11 @@ describe('运维 §5.4: 备份/还原 预填 (OPS-DDL-BACKUP)', () => {
     }
   });
 
-  it('OPS-DDL-003: 点击「备份」应打开备份子窗口', async () => {
+  it('点击「备份」应打开备份子窗口', async () => {
     await rightClick('[data-conn-item]', E2E_PG_CONN_NAME);
     await hoverServerSubmenu();
     if (!(await hasMenuItemId('backup'))) {
-      console.log('No backup menu item on connection node, skipping OPS-DDL-003');
+      console.log('No backup menu item on connection node, skipping');
       await dismissMenu();
       return;
     }

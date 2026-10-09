@@ -263,13 +263,13 @@ const pack = {
   'connSettings.title': '連線設定',
   'connSettings.description': '設定目前連線視窗的顯示方式與行為',
   'connection.dashboard.title': '儀表板',
-  // KV workspace slot actions handled by the host (W3-A §1.2). Namespace
+  // KV workspace slot actions handled by the host. Namespace
   // `redis.kvSlot.*` is host-owned copy for the KV panel; the driver keeps its
   // own `redis.*` pack in packages/drivers/redis/locales.
   'redis.kvSlot.flushTitle': '清空目前的資料庫',
   'redis.kvSlot.flushMessage': '此面板所綁定的資料庫中，每一個鍵都會被刪除，且此操作無法復原。',
   'redis.kvSlot.flushBlocked': '安全模式已封鎖清空資料庫。請於「設定」中關閉安全模式後再繼續。',
-  // KV context facts injected into an AI request (W3-A §1.3).
+  // KV context facts injected into an AI request.
   'redis.ai.context.tooltip': '向助理詢問所選的鍵',
   'redis.ai.context.attached': '正在詢問鍵',
   // --- Host DocumentConnectionView (document browser) ---

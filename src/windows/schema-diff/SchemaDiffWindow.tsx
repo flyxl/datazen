@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Copy } from 'lucide-react';
+import { BookOpen, Copy } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
@@ -14,6 +14,7 @@ import {
   schemaDiffCommands,
   type ColumnTypeOverride,
   type SchemaDiffDeployResult,
+  type SchemaDiffPrepareEnvelope,
   type SchemaDiffObjectIdentity,
   type SchemaDiffPlan,
 } from '../../commands/schemaDiff';
@@ -27,13 +28,14 @@ import { openDocsWindow } from '../../lib/windowManager';
 import { cn } from '../../lib/cn';
 import { canRunDeploy } from '../../lib/schemaDiffConfirm';
 import { MigrationRunHistoryDialog } from '../../components/migration/MigrationRunHistoryDialog';
+import { SchemaDiffWindowJobSection } from './SchemaDiffWindowJobSection';
+import { SchemaDiffWindowNavigation } from './SchemaDiffWindowNavigation';
 import type { TableSchemaDiff } from '../../types';
 import {
   isSchemaDiffLimitationsDismissed,
   setSchemaDiffLimitationsDismissed,
 } from '../../lib/schemaDiffLimitationsPrefs';
 import { LimitationsDialog } from '../../components/ui/LimitationsDialog';
-import { Spinner } from '../../components/ui/Spinner';
 import { SCHEMA_DIFF_LIMITATION_KEYS } from './schemaDiffLimitationKeys';
 import { SchemaDiffExecutionPanels } from './SchemaDiffExecutionPanels';
 import { SchemaDiffSelectionSteps } from './SchemaDiffSelectionSteps';
@@ -47,29 +49,18 @@ import {
 import { useSchemaDiffUnifiedObjects } from './useSchemaDiffUnifiedObjects';
 import { useSchemaDiffEndpoints } from './useSchemaDiffEndpoints';
 import { useSchemaDiffSavedSetups } from './useSchemaDiffSavedSetups';
+import { useSchemaDiffJobLifecycle } from './useSchemaDiffJobLifecycle';
+import { useSchemaDiffJobRestore } from './useSchemaDiffJobRestore';
+import { useSchemaDiffClipboardFeedback } from './useSchemaDiffClipboardFeedback';
+import { isStalePlanError } from '../../lib/migrationJobHydration';
 import {
   enabledTableNames,
   enabledSourceTableNames,
   enabledTargetOnlyTableNames,
   mergeSchemaDiffTablePicks,
+  tableDiffHasChanges,
   type SchemaDiffTablePick,
 } from './schemaDiffTableNames';
-
-type ClipboardFeedback = 'summary' | 'sql' | 'config' | null;
-
-function tableDiffHasChanges(diff: TableSchemaDiff): boolean {
-  if (diff.targetOnly) return true;
-  const missing = diff.missingOnTarget ?? diff.added;
-  const extra = diff.extraOnTarget ?? diff.removed;
-  return (
-    missing.length > 0 ||
-    extra.length > 0 ||
-    diff.changed.length > 0 ||
-    (diff.missingCheckConstraints?.length ?? 0) > 0 ||
-    (diff.extraCheckConstraints?.length ?? 0) > 0 ||
-    Boolean(diff.tableOptions)
-  );
-}
 
 export function SchemaDiffWindow() {
   const localesReady = useLocaleDomains(['sync']);
@@ -83,6 +74,7 @@ export function SchemaDiffWindow() {
   const unifiedObjects = useSchemaDiffUnifiedObjects();
   const [diffs, setDiffs] = useState<TableSchemaDiff[]>([]);
   const [plan, setPlan] = useState<SchemaDiffPlan | null>(null);
+  const [planMeta, setPlanMeta] = useState<SchemaDiffPrepareEnvelope | null>(null);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [allowDestructive, setAllowDestructive] = useState(false);
   const [includeIndexes, setIncludeIndexes] = useState(true);
@@ -92,7 +84,7 @@ export function SchemaDiffWindow() {
   const [deployResult, setDeployResult] = useState<SchemaDiffDeployResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [clipboardFeedback, setClipboardFeedback] = useState<ClipboardFeedback>(null);
+  const [clipboardFeedback, showClipboardFeedback] = useSchemaDiffClipboardFeedback();
   const [limitationsOpen, setLimitationsOpen] = useState(false);
   const [typeOverrides, setTypeOverrides] = useState<ColumnTypeOverride[]>([]);
   const planAutoRequestedRef = useRef(false);
@@ -106,13 +98,19 @@ export function SchemaDiffWindow() {
   });
 
   const endpoints = useSchemaDiffEndpoints({ onError: setError });
+  const jobLifecycle = useSchemaDiffJobLifecycle();
+  useSchemaDiffJobRestore({
+    ...jobLifecycle,
+    sourceConnectionId: endpoints.sourceId,
+    targetConnectionId: endpoints.targetId,
+    setPlan,
+    setPlanMeta,
+    setUseTransaction,
+    setStep,
+    setDeployResult,
+  });
 
   const selectedTables = useMemo(() => enabledTableNames(tablePicks), [tablePicks]);
-
-  const showClipboardFeedback = useCallback((kind: ClipboardFeedback) => {
-    setClipboardFeedback(kind);
-    window.setTimeout(() => setClipboardFeedback(null), 2000);
-  }, []);
 
   const savedSetups = useSchemaDiffSavedSetups({
     endpoints,
@@ -155,6 +153,7 @@ export function SchemaDiffWindow() {
     unifiedObjects.clear();
     setDiffs([]);
     setPlan(null);
+    setPlanMeta(null);
     setDeployResult(null);
     setSelectedTable(null);
     setTypeOverrides([]);
@@ -213,12 +212,14 @@ export function SchemaDiffWindow() {
       const tgtConnId = await endpoints.ensureConnected('target');
       if (!srcConnId || !tgtConnId) return;
       const [sourceRows, targetRows] = await Promise.all([
-        databaseCommands.getTables(srcConnId, endpoints.sourceDatabase),
-        databaseCommands.getTables(tgtConnId, endpoints.targetDatabase),
+        databaseCommands.listTables(srcConnId, endpoints.sourceDatabase),
+        databaseCommands.listTables(tgtConnId, endpoints.targetDatabase),
       ]);
       const catalog = await unifiedObjects.load(
         srcConnId,
         tgtConnId,
+        endpoints.sourceDatabase,
+        endpoints.targetDatabase,
         endpoints.sourceSchema,
         endpoints.targetSchema,
       );
@@ -255,6 +256,7 @@ export function SchemaDiffWindow() {
     setError('');
     setDiffs([]);
     setPlan(null);
+    setPlanMeta(null);
     setDeployResult(null);
     if (!endpoints.validateEndpoints()) return false;
 
@@ -366,8 +368,9 @@ export function SchemaDiffWindow() {
                 targetObjects,
               })
             : await schemaDiffCommands.preparePlan(tablePlanParams);
-        setPlan(next);
-        setUseTransaction(dialectSupportsTransactionalDdl(next.targetDialect));
+        setPlan(next.plan);
+        setPlanMeta(next);
+        setUseTransaction(dialectSupportsTransactionalDdl(next.plan.targetDialect));
         setConfirmText('');
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -440,9 +443,17 @@ export function SchemaDiffWindow() {
         profile: selectedSavedProfile
           ? { id: selectedSavedProfile.id, revision: selectedSavedProfile.updatedAt }
           : undefined,
+        planId: planMeta?.planId,
+        selectionRevision: planMeta?.selectionRevision,
       });
       setDeployResult(result);
     } catch (e) {
+      if (isStalePlanError(e)) {
+        setError(t('migrationJob.reprepareOnStalePlan'));
+        setPlan(null);
+        setDeployResult(null);
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
@@ -454,6 +465,7 @@ export function SchemaDiffWindow() {
     plan,
     requireRollback,
     selectedSavedProfile,
+    t,
     transactionEnabled,
     useTransaction,
   ]);
@@ -677,6 +689,26 @@ export function SchemaDiffWindow() {
 
       <SchemaDiffWizardProgress step={step} />
 
+      <SchemaDiffWindowJobSection
+        currentJob={jobLifecycle.currentJob}
+        latestApply={jobLifecycle.latestApply}
+        cancelOutcome={jobLifecycle.cancelOutcome}
+        verifying={jobLifecycle.verifying}
+        error={jobLifecycle.error}
+        targetReady={Boolean(endpoints.targetId)}
+        onCancel={() => void jobLifecycle.requestCancel()}
+        onVerify={(jobId) => {
+          void endpoints
+            .ensureConnected('target')
+            .then((sessionId) => {
+              if (sessionId) void jobLifecycle.verifyRecovery(jobId, sessionId);
+            })
+            .catch((cause) => {
+              setError(cause instanceof Error ? cause.message : String(cause));
+            });
+        }}
+      />
+
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div
           className={cn(
@@ -743,32 +775,16 @@ export function SchemaDiffWindow() {
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between border-t border-edge px-6 py-3">
-        <Button variant="ghost" disabled={stepIndex === 0 || loading} onClick={goBack}>
-          <ChevronLeft className="h-4 w-4" /> {t('schemaDiff.back')}
-        </Button>
-        <div className="flex items-center gap-2">
-          {step === 'deploy' ? (
-            <Button
-              variant="run"
-              data-testid="schema-diff-deploy"
-              disabled={!deployAllowed || loading}
-              onClick={() => void handleDeploy()}
-            >
-              {loading ? <Spinner size="lg" /> : t('schemaDiff.deploy')}
-            </Button>
-          ) : (
-            <Button
-              data-testid="schema-diff-next"
-              disabled={!canNext || loading}
-              onClick={() => void goNext()}
-            >
-              {loading ? <Spinner size="lg" /> : t('schemaDiff.next')}
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </div>
+      <SchemaDiffWindowNavigation
+        stepIndex={stepIndex}
+        loading={loading}
+        step={step}
+        deployAllowed={deployAllowed}
+        canNext={canNext}
+        onBack={goBack}
+        onDeploy={() => void handleDeploy()}
+        onNext={() => void goNext()}
+      />
 
       <LimitationsDialog
         open={limitationsOpen}

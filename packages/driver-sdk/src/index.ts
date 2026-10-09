@@ -12,6 +12,9 @@ export type {
   SqlDialectFamily,
   TableSqlDialect,
   GeneratedSqlType,
+  SqlParameterPolicy,
+  SqlParameterOccurrence,
+  SqlParameterStrategy,
 } from '../../../src/lib/sqlDialects/types';
 
 // === Database metadata ===
@@ -20,7 +23,9 @@ export type {
   ConnectionMode,
   KvWorkspaceCapabilities,
 } from '../../../src/lib/databaseMeta';
-export type { DatabaseObjectKind, TableSchema, TableInfo } from '../../../src/types';
+export type { DatabaseObjectKind } from '../../../src/types';
+export * from './types/schemaMetadata';
+export { schemaClient } from './ipc/schemaClient';
 
 // === SQL function catalog types ===
 export type { FunctionEntry, FunctionParam } from '../../../src/lib/sqlFunctionTypes';
@@ -145,6 +150,12 @@ export {
   cachePathItems,
   subscribeSchemaPathItems,
   useBoundSchemaStore,
+  useBoundConnectionSchemaField,
   bindSchemaStore,
 } from './schemaStoreBridge';
-export type { BoundSchemaStore, SchemaStoreState, UseBoundSchemaStore } from './schemaStoreBridge';
+export type {
+  BoundSchemaStore,
+  SchemaStoreState,
+  SchemaSessionState,
+  UseBoundSchemaStore,
+} from './schemaStoreBridge';

@@ -1,47 +1,35 @@
 //! Real driver journey; run only against a disposable migration database.
 use datazen_driver_api::*;
 use datazen_driver_postgres::*;
+#[path = "../../http-support/tests/support/migration_gate.rs"]
+mod migration_gate;
 #[tokio::test]
-#[ignore = "requires isolated MIGRATION_TEST_DATABASE and explicit credentials"]
 async fn bound_writes_preserve_bytes_decimal_and_transaction_counts() {
-    let database = std::env::var("MIGRATION_TEST_DATABASE").expect("isolated database required");
-    assert!(
-        database.starts_with("dz_mig_"),
-        "refuse shared fixture database"
-    );
-    let driver = PostgresDriver::new();
-    let config = ConnectionConfig {
-        id: format!("migration-bound-{}", uuid::Uuid::new_v4()),
-        name: "migration test".into(),
-        database_type: "postgresql".into(),
-        host: Some(std::env::var("MIGRATION_TEST_HOST").unwrap()),
-        port: Some(
-            std::env::var("MIGRATION_TEST_PORT")
-                .unwrap()
-                .parse()
-                .unwrap(),
-        ),
-        database: Some(database),
-        schema: None,
-        username: Some(std::env::var("MIGRATION_TEST_USER").unwrap()),
-        password: Some(std::env::var("MIGRATION_TEST_PASSWORD").unwrap_or_default()),
-        ssl_mode: Default::default(),
-        connection_timeout: 5,
-        max_pool_size: 3,
-        ssh_tunnel: None,
-        tunnel_kind: None,
-        tunnel_id: None,
-        http_proxy_tunnel: None,
-        websocket_tunnel: None,
-        color_tag: None,
-        group: None,
-        last_connected_at: None,
-        server_version: None,
-        options: None,
-        read_only: false,
-        pinned: false,
+    // Reads `MIGRATION_TEST_*` from the process environment and refuses any
+    // database that is not a disposable fixture. `None` means it already
+    // reported this dimension unverified — or, under
+    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    let Some(config) = migration_gate::require_config(
+        "postgresql",
+        "bound-writes",
+        "postgresql",
+        "migration-bound",
+        &[],
+    ) else {
+        return;
     };
-    let handle = driver.connect(&config).await.unwrap();
+    let driver = PostgresDriver::new();
+    let handle = match driver.connect(&config).await {
+        Ok(handle) => handle,
+        Err(e) => {
+            migration_gate::unverified(
+                "postgresql",
+                "bound-writes",
+                &format!("the configured migration database did not accept a connection: {e}"),
+            );
+            return;
+        }
+    };
     let table = driver.quote_ident(&format!("bound_{}", uuid::Uuid::new_v4().simple()));
     driver.execute(&handle, &format!("CREATE TABLE {table} (id INTEGER PRIMARY KEY, payload BYTEA, amount NUMERIC(65,30), label TEXT)")).await.unwrap();
     let placeholders = ["INTEGER", "BYTEA", "NUMERIC(65,30)", "TEXT"]

@@ -258,7 +258,11 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
       const key = buildEditorRelationKey(session.dbSessionId, request.identity, session.dialectId);
       if (session.inflight.has(key)) continue;
       session.inflight.set(key, request);
-      jobs.push(loadOne(session, key, request).finally(() => session.inflight.delete(key)));
+      jobs.push(
+        loadOne(session, key, request).finally(() => {
+          if (session.inflight.get(key) === request) session.inflight.delete(key);
+        }),
+      );
     }
     await Promise.allSettled(jobs);
   }
@@ -274,22 +278,28 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
       session.pending.set(key, request);
       return;
     }
+    const database = session.database;
+    const schemaContext = session.schema;
+    const dialectId = session.dialectId;
+    const isCurrent = () =>
+      sessions.get(session.dbSessionId) === session &&
+      session.database === database &&
+      session.schema === schemaContext &&
+      session.dialectId === dialectId &&
+      session.inflight.get(key) === request;
     const table = qualifiedNameText(request.identity, session.dialectId);
     try {
       // The session's schema is part of the relation's identity: omitting it
       // makes the host fall back to the connection default, which resolves a
       // relation that lives elsewhere as missing.
-      const schema = await loadTableSchema(
-        session.dbSessionId,
-        table,
-        session.database,
-        session.schema,
-      );
+      const schema = await loadTableSchema(session.dbSessionId, table, database, schemaContext);
+      if (!isCurrent()) return;
       const metadata = schemaToMetadata(key, request.identity, request.kind, schema, now());
       session.relations.set(key, metadata);
       session.errors.delete(key);
       refreshSnapshot(session);
     } catch {
+      if (!isCurrent()) return;
       session.errors.set(key, { at: now() });
       // No epoch bump — the relation simply stays absent; UI degrades on its own.
     }
@@ -319,9 +329,21 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
     ctx: EditorMetadataContext,
   ): void {
     const session = getOrCreateSession(dbSessionId, ctx.database);
-    if (ctx.dialectId) session.dialectId = ctx.dialectId;
-    session.database = ctx.database;
-    session.schema = ctx.schema ?? session.schema;
+    const dialectId = ctx.dialectId || 'standard';
+    if (
+      session.database !== ctx.database ||
+      session.schema !== ctx.schema ||
+      session.dialectId !== dialectId
+    ) {
+      if (session.epoch === 0 && session.relations.size === 0 && session.inflight.size === 0) {
+        session.database = ctx.database;
+        session.schema = ctx.schema;
+        session.dialectId = dialectId;
+        session.cachedSnapshot = buildSnapshot(session);
+      } else {
+        resetContext(session, ctx);
+      }
+    }
     for (const request of requests) enqueue(session, request);
     scheduleFlush(session);
   }
@@ -337,15 +359,34 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
       notify();
       return;
     }
-    let changed = false;
     for (const [key, meta] of [...session.relations]) {
       if (relationMatchesName(session.dialectId, meta.identity, tableName)) {
         session.relations.delete(key);
         session.errors.delete(key);
-        changed = true;
       }
     }
-    if (changed) refreshSnapshot(session);
+    for (const entries of [session.pending, session.inflight]) {
+      for (const [key, request] of entries) {
+        if (relationMatchesName(session.dialectId, request.identity, tableName)) {
+          entries.delete(key);
+          session.errors.delete(key);
+        }
+      }
+    }
+    // Refresh also when an in-flight-only relation was invalidated.
+    refreshSnapshot(session);
+  }
+
+  function resetContext(session: SessionState, ctx: EditorMetadataContext): void {
+    cancelTimer(session);
+    session.database = ctx.database;
+    session.schema = ctx.schema;
+    session.dialectId = ctx.dialectId || 'standard';
+    session.relations.clear();
+    session.errors.clear();
+    session.pending.clear();
+    session.inflight.clear();
+    refreshSnapshot(session);
   }
 
   if (deps.subscribeInvalidation) {
@@ -396,6 +437,7 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
       session.relations.delete(key);
       session.errors.delete(key);
       session.pending.delete(key);
+      session.inflight.delete(key);
       refreshSnapshot(session);
     },
 
@@ -417,17 +459,7 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
 
     switchContext: (dbSessionId: string, ctx: EditorMetadataContext) => {
       const session = getOrCreateSession(dbSessionId, ctx.database);
-      cancelTimer(session);
-      session.database = ctx.database;
-      session.schema = ctx.schema;
-      session.dialectId = ctx.dialectId || 'standard';
-      session.relations.clear();
-      session.errors.clear();
-      session.pending.clear();
-      session.inflight.clear();
-      session.epoch += 1;
-      session.cachedSnapshot = buildSnapshot(session);
-      notify();
+      resetContext(session, ctx);
     },
   };
 }

@@ -7,661 +7,109 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, QueryItem};
 use tokio::net::TcpStream;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 type SqlClient = Client<Compat<TcpStream>>;
 
 pub struct SqlServerDriver {
     clients: RwLock<HashMap<String, SqlClient>>,
+    transactions: Mutex<HashMap<String, ActiveTransaction>>,
 }
+
+struct ActiveTransaction {
+    id: String,
+    restore_isolation: Option<&'static str>,
+}
+
+/// The port SQL Server dials when the config names none. `connect_client`
+/// substitutes it explicitly, and `build_config` leaves it to tiberius, whose
+/// own unset-port default is the same value; one constant feeds both plus
+/// `DatabaseDriver::default_port`, so the host can never compare endpoints
+/// against a port the driver does not dial. SQL Server has no implicit *host* —
+/// `build_config` rejects a missing one — so `default_host` stays `None`.
+const DEFAULT_PORT: u16 = 1433;
+
+mod catalog;
+mod dialect;
+#[cfg(test)]
+mod file_line_cap;
+mod session;
+#[cfg(test)]
+mod tests;
+
+use dialect::{
+    apply_sqlserver_top, needs_own_batch, parse_physical_database_identity,
+    parse_schema_scope_identity, schema_migration_blockers_for_indexes, split_statements,
+    PHYSICAL_DATABASE_IDENTITY_SQL,
+};
 
 impl SqlServerDriver {
     pub fn new() -> Self {
         Self {
             clients: RwLock::new(HashMap::new()),
+            transactions: Mutex::new(HashMap::new()),
         }
     }
-
-    /// Map DataZen SSL mode → (tiberius encryption, trust server certificate).
-    ///
-    /// - `Disable`: plaintext TDS (no TLS)
-    /// - `Prefer` / `Require`: encrypt, trust server cert (common for self-signed)
-    /// - `VerifyCa` / `VerifyFull`: encrypt and verify the certificate chain
-    fn ssl_settings(mode: &SslMode) -> (EncryptionLevel, bool) {
-        match mode {
-            SslMode::Disable => (EncryptionLevel::NotSupported, false),
-            SslMode::Prefer => (EncryptionLevel::On, true),
-            SslMode::Require => (EncryptionLevel::Required, true),
-            SslMode::VerifyCa | SslMode::VerifyFull => (EncryptionLevel::Required, false),
-        }
-    }
-
-    /// `[database].` prefix for a catalog view, or an empty string when the
-    /// caller targets the connection's current database. SQL Server accepts
-    /// three-part names, so a metadata read of another database never needs a
-    /// session-level `USE`.
-    fn catalog_prefix(database: &str) -> String {
-        let trimmed = database.trim();
-        if trimmed.is_empty() {
-            String::new()
-        } else {
-            // Bracket quoting; escape `]` by doubling.
-            format!("[{}].", trimmed.replace(']', "]]"))
-        }
-    }
-
-    /// List tables and views together with the schema that owns them.
-    ///
-    /// The schema column is mandatory: SQL Server has a real schema level, and
-    /// the backup/dump path feeds `TableInfo::schema` straight back into
-    /// `get_table_schema`, which the contract validator rejects when it is
-    /// missing. A schema filter is applied only when the caller pinned one;
-    /// `None` lists every schema in the database, which is the set the
-    /// connection tree groups by.
-    fn build_tables_sql(database: &str, schema: Option<&str>) -> String {
-        let catalog = Self::catalog_prefix(database);
-        let filter = match schema.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(schema) => format!(" WHERE s.name = '{}'", schema.replace('\'', "''")),
-            None => String::new(),
-        };
-        format!(
-            "SELECT s.name AS schema_name, t.name AS table_name, 'TABLE' AS kind \
-             FROM {catalog}sys.tables t JOIN {catalog}sys.schemas s ON t.schema_id = s.schema_id{filter} \
-             UNION ALL \
-             SELECT s.name, v.name, 'VIEW' \
-             FROM {catalog}sys.views v JOIN {catalog}sys.schemas s ON v.schema_id = s.schema_id{filter} \
-             ORDER BY schema_name, table_name"
-        )
-    }
-
-    /// Columns of one table or view, filtered by the explicit `(schema, table)`.
-    ///
-    /// `database` is inlined as a catalog prefix when non-empty, so reading
-    /// another database never needs a session `USE`. `INFORMATION_SCHEMA.COLUMNS`
-    /// is the column source; the catalog-qualified `sys.*` views add the
-    /// identity / default / primary-key / comment metadata it does not expose.
-    /// The object lookup is a derived table keyed on `(schema, name)` so a
-    /// same-named relation in another schema can never duplicate or steal rows.
-    fn build_table_schema_sql(database: &str, schema: &str, table: &str) -> String {
-        let catalog = Self::catalog_prefix(database);
-        let schema = schema.replace('\'', "''");
-        let table = table.replace('\'', "''");
-        format!(
-            "SELECT c.COLUMN_NAME AS column_name, c.DATA_TYPE AS data_type, \
-             CAST(CASE WHEN c.IS_NULLABLE = 'YES' THEN 1 ELSE 0 END AS bit) AS is_nullable, \
-             CAST(CASE WHEN sc.is_identity = 1 THEN 1 ELSE 0 END AS bit) AS is_identity, \
-             dc.definition AS default_value, CAST(ep.value AS nvarchar(max)) AS comment, \
-             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
-             FROM {catalog}INFORMATION_SCHEMA.COLUMNS c \
-             LEFT JOIN ( \
-               SELECT o.object_id, o.name AS object_name, s.name AS schema_name \
-               FROM {catalog}sys.objects o \
-               JOIN {catalog}sys.schemas s ON s.schema_id = o.schema_id \
-             ) obj ON obj.object_name = c.TABLE_NAME AND obj.schema_name = c.TABLE_SCHEMA \
-             LEFT JOIN {catalog}sys.columns sc ON sc.object_id = obj.object_id AND sc.name = c.COLUMN_NAME \
-             LEFT JOIN {catalog}sys.default_constraints dc ON dc.parent_object_id = obj.object_id AND dc.parent_column_id = sc.column_id \
-             LEFT JOIN {catalog}sys.extended_properties ep ON ep.major_id = obj.object_id AND ep.minor_id = sc.column_id AND ep.name = 'MS_Description' \
-             LEFT JOIN ( \
-               SELECT ic.object_id, ic.column_id \
-               FROM {catalog}sys.index_columns ic \
-               INNER JOIN {catalog}sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
-               WHERE i.is_primary_key = 1 \
-             ) pk ON pk.object_id = obj.object_id AND pk.column_id = sc.column_id \
-             WHERE c.TABLE_SCHEMA = '{schema}' AND c.TABLE_NAME = '{table}' \
-             ORDER BY c.ORDINAL_POSITION"
-        )
-    }
-
-    /// Batch columns for every table/view in `database` (optionally narrowed to
-    /// one `schema`). `database` is inlined as a catalog prefix, so a batch read
-    /// of another database needs no session `USE`.
-    fn build_all_columns_sql(database: &str, schema: Option<&str>) -> String {
-        let catalog = Self::catalog_prefix(database);
-        let filter = match schema.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(schema) => format!(" AND s.name = '{}'", schema.replace('\'', "''")),
-            None => String::new(),
-        };
-        format!(
-            "SELECT s.name AS schema_name, o.name AS table_name, c.name AS column_name, \
-             tp.name AS data_type, c.is_nullable, c.is_identity, dc.definition AS default_value, \
-             CAST(ep.value AS nvarchar(max)) AS comment, \
-             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
-             FROM {catalog}sys.columns c \
-             JOIN {catalog}sys.objects o ON c.object_id = o.object_id \
-             JOIN {catalog}sys.schemas s ON o.schema_id = s.schema_id \
-             JOIN {catalog}sys.types tp ON c.user_type_id = tp.user_type_id \
-             LEFT JOIN {catalog}sys.default_constraints dc ON c.default_object_id = dc.object_id \
-             LEFT JOIN {catalog}sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' \
-             LEFT JOIN ( \
-               SELECT ic.object_id, ic.column_id \
-               FROM {catalog}sys.index_columns ic \
-               INNER JOIN {catalog}sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
-               WHERE i.is_primary_key = 1 \
-             ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id \
-             WHERE o.type IN ('U', 'V'){filter} \
-             ORDER BY s.name, o.name, c.column_id"
-        )
-    }
-
-    /// Effective schema for a single-table read: the explicit argument wins,
-    /// otherwise the driver's conventional default (`dbo`). Never a hardcoded
-    /// literal at the call site, so the convention stays owned by the driver.
-    fn effective_schema<'a>(&self, schema: Option<&'a str>) -> Option<&'a str> {
-        schema
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .or(self.default_schema())
-    }
-
-    fn bit_true(v: &Option<Value>) -> bool {
-        matches!(v, Some(Value::Bool(true)) | Some(Value::Integer(1)))
-    }
-
-    fn build_config(config: &ConnectionConfig) -> Result<Config, DriverError> {
-        let mut cfg = Config::new();
-        cfg.host(
-            config
-                .host
-                .clone()
-                .ok_or_else(|| DriverError::InvalidConfig("host is required".into()))?,
-        );
-        if let Some(port) = config.port {
-            cfg.port(port);
-        }
-        let user = config
-            .username
-            .clone()
-            .ok_or_else(|| DriverError::InvalidConfig("username is required".into()))?;
-        let pass = config.password.clone().unwrap_or_default();
-        cfg.authentication(AuthMethod::sql_server(user, pass));
-        if let Some(db) = &config.database {
-            if !db.is_empty() {
-                cfg.database(db);
-            }
-        }
-        let (encryption, default_trust) = Self::ssl_settings(&config.ssl_mode);
-        cfg.encryption(encryption);
-
-        let trust_server_certificate = config
-            .options
-            .as_ref()
-            .and_then(|options| options.get("trustServerCertificate"))
-            .and_then(|value| value.as_bool())
-            .unwrap_or(default_trust);
-        if trust_server_certificate {
-            cfg.trust_cert();
-        }
-
-        if let Some(application_name) = config
-            .options
-            .as_ref()
-            .and_then(|options| options.get("applicationName"))
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            cfg.application_name(application_name);
-        }
-
-        Ok(cfg)
-    }
-
-    async fn connect_client(config: &ConnectionConfig) -> Result<SqlClient, DriverError> {
-        let cfg = Self::build_config(config)?;
-        let host = config
-            .host
-            .clone()
-            .ok_or_else(|| DriverError::InvalidConfig("host is required".into()))?;
-        let port = config.port.unwrap_or(1433);
-        let addr = format!("{host}:{port}");
-        let timeout = Duration::from_secs(config.connection_timeout as u64);
-        let tcp = tokio::time::timeout(timeout, TcpStream::connect(&addr))
-            .await
-            .map_err(|_| DriverError::ConnectionFailed("SQL Server connect timed out".into()))?
-            .map_err(|e| {
-                DriverError::ConnectionFailed(format!("SQL Server connect failed: {e}"))
-            })?;
-        tcp.set_nodelay(true).ok();
-        tokio::time::timeout(timeout, Client::connect(cfg, tcp.compat_write()))
-            .await
-            .map_err(|_| DriverError::ConnectionFailed("SQL Server login timed out".into()))?
-            .map_err(|e| DriverError::ConnectionFailed(format!("SQL Server login failed: {e}")))
-    }
-
-    fn value_from_column(data: &ColumnData<'static>) -> Option<Value> {
-        match data {
-            ColumnData::U8(v) => v.map(|x| Value::Integer(x as i64)),
-            ColumnData::I16(v) => v.map(|x| Value::Integer(x as i64)),
-            ColumnData::I32(v) => v.map(|x| Value::Integer(x as i64)),
-            ColumnData::I64(v) => v.map(Value::Integer),
-            ColumnData::F32(v) => v.map(|x| Value::Float(x as f64)),
-            ColumnData::F64(v) => v.map(Value::Float),
-            ColumnData::Bit(v) => v.map(Value::Bool),
-            ColumnData::String(v) => v.as_ref().map(|s| Value::String(s.to_string())),
-            ColumnData::Guid(v) => v.map(|g| Value::String(g.to_string())),
-            ColumnData::Binary(v) => v.as_ref().map(|b| {
-                Value::String(format!(
-                    "0x{}",
-                    b.iter().map(|x| format!("{x:02x}")).collect::<String>()
-                ))
-            }),
-            ColumnData::Numeric(v) => v.map(|n| Value::String(n.to_string())),
-            ColumnData::Xml(v) => v.as_ref().map(|x| Value::String(x.to_string())),
-            ColumnData::DateTime(_)
-            | ColumnData::SmallDateTime(_)
-            | ColumnData::Time(_)
-            | ColumnData::Date(_)
-            | ColumnData::DateTime2(_)
-            | ColumnData::DateTimeOffset(_) => Self::temporal_value(data),
-        }
-    }
-
-    /// TDS date/time values arrive as tiberius' own calendar structs, whose
-    /// `Debug` output (`Date(739617)`, `Time { increments: … }`) is meaningless
-    /// to a user. Decode them through tiberius' `chrono` bridge and render the
-    /// same textual shapes the MySQL and PostgreSQL drivers return:
-    /// `YYYY-MM-DD`, `HH:MM:SS[.f]`, `YYYY-MM-DD HH:MM:SS[.f]` and RFC 3339 for
-    /// the offset-aware type.
-    fn temporal_value(data: &ColumnData<'static>) -> Option<Value> {
-        use tiberius::time::chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
-        use tiberius::FromSql;
-
-        // A `None` payload is a real SQL NULL and must stay NULL. A *failed*
-        // conversion is not a NULL, so it degrades to the raw shape rather than
-        // silently turning a value into NULL.
-        let payload_is_null = match data {
-            ColumnData::Date(v) => v.is_none(),
-            ColumnData::Time(v) => v.is_none(),
-            ColumnData::DateTime(v) => v.is_none(),
-            ColumnData::SmallDateTime(v) => v.is_none(),
-            ColumnData::DateTime2(v) => v.is_none(),
-            ColumnData::DateTimeOffset(v) => v.is_none(),
-            _ => return None,
-        };
-        if payload_is_null {
-            return None;
-        }
-
-        let rendered = match data {
-            ColumnData::Date(_) => NaiveDate::from_sql(data)
-                .ok()
-                .flatten()
-                .map(|d| d.to_string()),
-            ColumnData::Time(_) => NaiveTime::from_sql(data)
-                .ok()
-                .flatten()
-                .map(|t| t.to_string()),
-            ColumnData::DateTime(_) | ColumnData::SmallDateTime(_) | ColumnData::DateTime2(_) => {
-                NaiveDateTime::from_sql(data)
-                    .ok()
-                    .flatten()
-                    .map(|dt| dt.to_string())
-            }
-            ColumnData::DateTimeOffset(_) => DateTime::<FixedOffset>::from_sql(data)
-                .ok()
-                .flatten()
-                .map(|dt| dt.to_rfc3339()),
-            _ => None,
-        };
-        Some(Value::String(
-            rendered.unwrap_or_else(|| format!("{data:?}")),
-        ))
-    }
-
-    async fn run(client: &mut SqlClient, sql: &str) -> Result<QueryResult, DriverError> {
-        Self::run_routed(client, sql, false).await
-    }
-
-    /// Read a result set from a statement that must go out as a real batch even
-    /// though its text would normally be routed through `sp_executesql`.
-    ///
-    /// `SET SHOWPLAN_TEXT ON` is the reason this exists: while the flag is set
-    /// the server answers with the plan *instead of executing*, and the RPC path
-    /// (prepare + `sp_executesql`) returns no rows for it — the plan only
-    /// arrives over a plain batch.
-    async fn run_batch(client: &mut SqlClient, sql: &str) -> Result<QueryResult, DriverError> {
-        Self::run_routed(client, sql, true).await
-    }
-
-    async fn run_routed(
-        client: &mut SqlClient,
-        sql: &str,
-        force_batch: bool,
-    ) -> Result<QueryResult, DriverError> {
-        use futures_util::TryStreamExt;
-        let start = Instant::now();
-        let mut stream = if force_batch || needs_own_batch(sql) {
-            client.simple_query(sql).await
-        } else {
-            client.query(sql, &[]).await
-        }
-        .map_err(|e| DriverError::QueryFailed(format!("SQL Server query failed: {e}")))?;
-        let mut columns: Vec<ColumnInfo> = Vec::new();
-        let mut result_rows: Vec<Vec<Option<Value>>> = Vec::new();
-        while let Some(item) = stream
-            .try_next()
-            .await
-            .map_err(|e| DriverError::QueryFailed(format!("SQL Server row read failed: {e}")))?
-        {
-            match item {
-                QueryItem::Metadata(meta) => {
-                    columns = meta
-                        .columns()
-                        .iter()
-                        .map(|c| ColumnInfo {
-                            name: c.name().to_string(),
-                            data_type: format!("{:?}", c.column_type()),
-                            nullable: true,
-                        })
-                        .collect();
-                }
-                QueryItem::Row(row) => {
-                    if columns.is_empty() {
-                        columns = row
-                            .columns()
-                            .iter()
-                            .map(|c| ColumnInfo {
-                                name: c.name().to_string(),
-                                data_type: format!("{:?}", c.column_type()),
-                                nullable: true,
-                            })
-                            .collect();
-                    }
-                    let row_values: Vec<Option<Value>> = row
-                        .cells()
-                        .map(|(_, data)| Self::value_from_column(data))
-                        .collect();
-                    result_rows.push(row_values);
-                }
-            }
-        }
-        Ok(QueryResult {
-            columns,
-            rows: result_rows,
-            rows_affected: None,
-            execution_time_ms: start.elapsed().as_millis() as u64,
-        })
-    }
-
-    fn columns_from_tiberius(cols: &[tiberius::Column]) -> Vec<ColumnInfo> {
-        cols.iter()
-            .map(|c| ColumnInfo {
-                name: c.name().to_string(),
-                data_type: format!("{:?}", c.column_type()),
-                nullable: true,
-            })
-            .collect()
-    }
-
-    async fn stream_one(
-        client: &mut SqlClient,
-        stmt: &str,
-        limit: Option<u32>,
-        index: usize,
-        on_event: &QueryStreamCallback,
-    ) -> Result<(), DriverError> {
-        use futures_util::TryStreamExt;
-        let (effective, applied) = apply_sqlserver_top(stmt, limit);
-        let stmt_start = Instant::now();
-        let mut stream = if needs_own_batch(&effective) {
-            client.simple_query(&effective).await
-        } else {
-            client.query(&effective, &[]).await
-        }
-        .map_err(|e| DriverError::QueryFailed(format!("SQL Server query failed: {e}")))?;
-        let mut batcher =
-            QueryRowBatcher::new(Arc::clone(on_event), index, stmt.to_string(), applied);
-        while let Some(item) = stream
-            .try_next()
-            .await
-            .map_err(|e| DriverError::QueryFailed(format!("SQL Server row read failed: {e}")))?
-        {
-            match item {
-                QueryItem::Metadata(meta) => {
-                    batcher.start(Self::columns_from_tiberius(meta.columns()));
-                }
-                QueryItem::Row(row) => {
-                    if !batcher.started() {
-                        batcher.start(Self::columns_from_tiberius(row.columns()));
-                    }
-                    let vals: Vec<Option<Value>> = row
-                        .cells()
-                        .map(|(_, data)| Self::value_from_column(data))
-                        .collect();
-                    if !batcher.push(vals) {
-                        break;
-                    }
-                }
-            }
-        }
-        batcher.finish(stmt_start.elapsed().as_millis() as u64, None);
-        Ok(())
-    }
-}
-
-/// Split a multi-statement script into individual statements.
-///
-/// A plain `split(';')` breaks on any semicolon inside a string literal, a
-/// bracketed identifier or a comment (`SELECT ';' AS [a]` failed with error 105
-/// "Unclosed quotation mark"), so this delegates to the shared, quote/comment
-/// aware scanner in `driver-api`.
-fn split_statements(sql: &str) -> Vec<String> {
-    use datazen_driver_api::sql_split::{is_comment_only_or_empty, split_sql_statements};
-    split_sql_statements(sql)
-        .into_iter()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !is_comment_only_or_empty(s))
-        .collect()
-}
-
-/// T-SQL accepts a few statements **only as the first statement of a batch**:
-/// the programmable-object definitions (`CREATE`/`ALTER` `SCHEMA`, `VIEW`,
-/// `PROCEDURE`/`PROC`, `FUNCTION`, `TRIGGER`, `RULE`, `DEFAULT`). tiberius sends
-/// `Client::query`/`Client::execute` through `sp_executesql`, which rejects them
-/// with error 156 (`Incorrect syntax near the keyword 'SCHEMA'`) — verified
-/// live against Azure SQL Database. Such statements must go out as a real batch
-/// via `Client::simple_query`.
-///
-/// Session-scoped statements (`SET`, `USE`, transaction control) are routed the
-/// same way for the same underlying reason: `sp_executesql` runs them in a
-/// module whose scope ends with the call, so the setting or transaction would be
-/// discarded (and transaction control fails with error 266).
-fn needs_own_batch(sql: &str) -> bool {
-    let mut words = leading_keywords(sql).into_iter();
-    let Some(first) = words.next() else {
-        return false;
-    };
-    match first.as_str() {
-        // Session-scoped statements do not survive the module boundary that
-        // `sp_executesql` (tiberius `Client::query`) creates: the setting, the
-        // `USE` context or the open transaction is rolled back when the module
-        // exits. Transaction control additionally fails outright with error 266
-        // ("Transaction count after EXECUTE indicates a mismatching number of
-        // BEGIN and COMMIT statements"). Send these as a real batch.
-        //
-        // `SET SHOWPLAN_TEXT ON` is the sharpest case: if it does not stick,
-        // `explain()` executes the statement it was asked to plan.
-        "BEGIN" | "COMMIT" | "ROLLBACK" | "SAVE" | "SET" => return true,
-        "CREATE" | "ALTER" => {}
-        _ => return false,
-    }
-    let mut kind = words.next();
-    if kind.as_deref() == Some("OR") {
-        // `CREATE OR ALTER <kind>`, the SQL Server 2016 SP1+ form.
-        let _ = words.next();
-        kind = words.next();
-    }
-    matches!(
-        kind.as_deref(),
-        Some(
-            "SCHEMA" | "VIEW" | "PROCEDURE" | "PROC" | "FUNCTION" | "TRIGGER" | "RULE" | "DEFAULT"
-        )
-    )
-}
-
-/// The first few keywords of `sql`, uppercased, with leading line and block
-/// comments skipped.
-fn leading_keywords(sql: &str) -> Vec<String> {
-    let mut rest = sql;
-    loop {
-        rest = rest.trim_start();
-        if let Some(after) = rest.strip_prefix("--") {
-            rest = after.split_once('\n').map_or("", |(_, tail)| tail);
-            continue;
-        }
-        if let Some(after) = rest.strip_prefix("/*") {
-            rest = after.split_once("*/").map_or("", |(_, tail)| tail);
-            continue;
-        }
-        break;
-    }
-    rest.split_whitespace()
-        .take(4)
-        .map(|word| {
-            word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_')
-                .to_ascii_uppercase()
-        })
-        .collect()
-}
-
-/// True when the statement paginates itself with a **top-level** `OFFSET`
-/// clause.
-///
-/// T-SQL rejects `TOP` in the same query as `OFFSET … FETCH` (error 10741:
-/// "A TOP can not be used in the same query or sub-query as a OFFSET"), so the
-/// editor row cap must not be injected into a statement that already pages:
-/// `SELECT … ORDER BY (SELECT NULL) OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY` —
-/// exactly what the Visual Query Builder emits for SQL Server — failed on
-/// execute until this check existed.
-///
-/// Only depth-0 occurrences count: `TOP` in an outer query next to an `OFFSET`
-/// inside a sub-query is legal, so a nested one must not disable the cap.
-/// String literals, quoted/bracketed identifiers and comments are skipped, so
-/// `SELECT 'OFFSET 5 ROWS' AS [offset] FROM t` still gets its cap.
-fn has_top_level_offset(sql: &str) -> bool {
-    let chars: Vec<char> = sql.chars().collect();
-    let mut depth = 0i32;
-    let mut words: Vec<(i32, String)> = Vec::new();
-    let mut i = 0usize;
-    while i < chars.len() {
-        let c = chars[i];
-        match c {
-            '\'' | '"' => {
-                let quote = c;
-                i += 1;
-                while i < chars.len() {
-                    if chars[i] == quote {
-                        // A doubled quote is an escaped quote, not the end.
-                        if chars.get(i + 1) == Some(&quote) {
-                            i += 2;
-                            continue;
-                        }
-                        i += 1;
-                        break;
-                    }
-                    i += 1;
-                }
-            }
-            '[' => {
-                i += 1;
-                while i < chars.len() {
-                    if chars[i] == ']' {
-                        if chars.get(i + 1) == Some(&']') {
-                            i += 2;
-                            continue;
-                        }
-                        i += 1;
-                        break;
-                    }
-                    i += 1;
-                }
-            }
-            '-' if chars.get(i + 1) == Some(&'-') => {
-                while i < chars.len() && chars[i] != '\n' {
-                    i += 1;
-                }
-            }
-            '/' if chars.get(i + 1) == Some(&'*') => {
-                i += 2;
-                while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
-                    i += 1;
-                }
-                i = (i + 2).min(chars.len());
-            }
-            '(' => {
-                depth += 1;
-                i += 1;
-            }
-            ')' => {
-                depth -= 1;
-                i += 1;
-            }
-            c if c.is_ascii_alphanumeric() || matches!(c, '_' | '@' | '#' | '$') => {
-                let start = i;
-                while i < chars.len()
-                    && (chars[i].is_ascii_alphanumeric()
-                        || matches!(chars[i], '_' | '@' | '#' | '$'))
-                {
-                    i += 1;
-                }
-                words.push((
-                    depth,
-                    chars[start..i]
-                        .iter()
-                        .collect::<String>()
-                        .to_ascii_uppercase(),
-                ));
-            }
-            _ => i += 1,
-        }
-    }
-
-    // `OFFSET <count> [ROW|ROWS]`: the count is a literal or a variable, never a
-    // bare identifier — that is what keeps a column named `offset` from
-    // disabling the cap.
-    words.windows(2).any(|pair| {
-        pair[0].0 == 0
-            && pair[0].1 == "OFFSET"
-            && (pair[1].1.starts_with('@')
-                || pair[1].1.chars().next().is_some_and(|c| c.is_ascii_digit()))
-    })
-}
-
-fn apply_sqlserver_top(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) {
-    let Some(lim) = limit else {
-        return (stmt.to_string(), None);
-    };
-    let trimmed = stmt.trim();
-    let upper = trimmed.to_ascii_uppercase();
-    if !upper.starts_with("SELECT") {
-        return (stmt.to_string(), None);
-    }
-    // A statement that pages itself is left alone: `TOP` cannot join it (10741)
-    // and its own `FETCH NEXT` already bounds the result.
-    if has_top_level_offset(trimmed) {
-        return (stmt.to_string(), None);
-    }
-    let after_select = trimmed["SELECT".len()..].trim_start();
-    let after_upper = after_select.to_ascii_uppercase();
-    let (prefix, body) = if after_upper.starts_with("DISTINCT") {
-        (
-            "SELECT DISTINCT",
-            after_select["DISTINCT".len()..].trim_start(),
-        )
-    } else {
-        ("SELECT", after_select)
-    };
-    // `TOP` is this dialect's own row limit; the switch only caps SELECTs
-    // *without* one, so a hand-written `TOP` is respected verbatim.
-    if body.to_ascii_uppercase().starts_with("TOP") {
-        return (stmt.to_string(), None);
-    }
-    (format!("{prefix} TOP {} {body}", lim + 1), Some(lim))
 }
 
 #[async_trait]
 impl DatabaseDriver for SqlServerDriver {
+    fn default_port(&self) -> Option<u16> {
+        Some(DEFAULT_PORT)
+    }
+
+    fn migration_renderer(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationRenderer>> {
+        Some(std::sync::Arc::new(super::SqlServerMigrationRenderer))
+    }
+
+    fn migration_capabilities(
+        &self,
+    ) -> Option<std::sync::Arc<dyn datazen_driver_api::MigrationCapabilities>> {
+        Some(std::sync::Arc::new(super::SqlServerMigrationCapabilities))
+    }
+
+    fn type_normalizer(&self) -> Option<std::sync::Arc<dyn datazen_driver_api::TypeNormalizer>> {
+        Some(std::sync::Arc::new(super::SqlServerTypeNormalizer))
+    }
+
+    async fn physical_database_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<String>, DriverError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let parameters = [Value::String(database.trim().to_owned())];
+        let result =
+            Self::run_with_params(client, PHYSICAL_DATABASE_IDENTITY_SQL, &parameters).await?;
+        Ok(parse_physical_database_identity(&result))
+    }
+
+    async fn schema_scope_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: &str,
+    ) -> Result<Option<String>, DriverError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let parameters = [Value::String(schema.trim().to_owned())];
+        let result = Self::run_with_params(
+            client,
+            &crate::metadata::schema_scope_identity_sql(database),
+            &parameters,
+        )
+        .await?;
+        Ok(parse_schema_scope_identity(&result))
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "sqlserver".to_string()
     }
@@ -710,49 +158,19 @@ impl DatabaseDriver for SqlServerDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let mut client = Self::connect_client(config).await?;
-        let result = Self::run(&mut client, "SELECT @@VERSION AS version").await?;
-        let version = result
-            .rows
-            .first()
-            .and_then(|r| r.first())
-            .cloned()
-            .flatten()
-            .map(|v| datazen_driver_http_support::value_display(&v))
-            .unwrap_or_default();
-        Ok(ServerInfo {
-            server_version: version,
-            server_type: "sqlserver".to_string(),
-        })
+        SqlServerDriver::test_connection(self, config).await
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-        let client = Self::connect_client(config).await?;
-        let pool_id = format!("sqlserver_{}", uuid::Uuid::new_v4());
-        self.clients.write().await.insert(pool_id.clone(), client);
-        Ok(ConnectionHandle {
-            id: pool_id.clone(),
-            pool_id,
-        })
+        SqlServerDriver::connect(self, config).await
     }
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
-        self.clients.write().await.remove(&handle.pool_id);
-        Ok(())
+        SqlServerDriver::disconnect(self, handle).await
     }
 
     async fn get_databases(&self, handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
-        let mut map = self.clients.write().await;
-        let client = map
-            .get_mut(&handle.pool_id)
-            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let result = Self::run(client, "SELECT name FROM sys.databases ORDER BY name").await?;
-        Ok(result
-            .rows
-            .into_iter()
-            .filter_map(|r| r.into_iter().next().flatten())
-            .map(|v| datazen_driver_http_support::value_display(&v))
-            .collect())
+        SqlServerDriver::get_databases(self, handle).await
     }
 
     async fn get_tables(
@@ -761,50 +179,7 @@ impl DatabaseDriver for SqlServerDriver {
         database: &str,
         schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
-        // Listing may legitimately span every schema; an explicit schema just
-        // narrows the set. A schema-less model would be a caller bug.
-        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
-        let mut map = self.clients.write().await;
-        let client = map
-            .get_mut(&handle.pool_id)
-            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let sql = Self::build_tables_sql(database, schema);
-        let result = Self::run(client, &sql).await?;
-        Ok(result
-            .rows
-            .into_iter()
-            .filter_map(|r| {
-                let schema_name = r
-                    .get(0)
-                    .cloned()
-                    .flatten()
-                    .map(|v| datazen_driver_http_support::value_display(&v))
-                    .unwrap_or_default();
-                let name = r
-                    .get(1)
-                    .cloned()
-                    .flatten()
-                    .map(|v| datazen_driver_http_support::value_display(&v))?;
-                let kind = r
-                    .get(2)
-                    .cloned()
-                    .flatten()
-                    .map(|v| datazen_driver_http_support::value_display(&v))
-                    .unwrap_or_default();
-                Some(TableInfo {
-                    name,
-                    // The backup/dump path feeds this back into
-                    // `get_table_schema`, which requires an exact schema.
-                    schema: Some(schema_name),
-                    table_type: if kind == "VIEW" {
-                        TableType::View
-                    } else {
-                        TableType::Table
-                    },
-                    row_count: None,
-                })
-            })
-            .collect())
+        SqlServerDriver::get_tables(self, handle, database, schema).await
     }
 
     async fn get_table_schema(
@@ -814,78 +189,7 @@ impl DatabaseDriver for SqlServerDriver {
         database: &str,
         schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
-        validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
-        // The validator already guarantees a schema for this driver; resolve it
-        // through `default_schema()` rather than hardcoding `dbo` at the call
-        // site, so the convention stays owned by the driver.
-        let schema = self.effective_schema(schema).unwrap_or_default();
-        let mut map = self.clients.write().await;
-        let client = map
-            .get_mut(&handle.pool_id)
-            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let sql = Self::build_table_schema_sql(database, schema, table);
-        let result = Self::run(client, &sql).await?;
-        let columns: Vec<ColumnSchema> = result
-            .rows
-            .into_iter()
-            .filter_map(|r| {
-                let is_pk = Self::bit_true(&r.get(6).cloned().flatten());
-                Some(ColumnSchema {
-                    name: r
-                        .get(0)
-                        .cloned()
-                        .flatten()
-                        .map(|v| datazen_driver_http_support::value_display(&v))?,
-                    data_type: r
-                        .get(1)
-                        .cloned()
-                        .flatten()
-                        .map(|v| datazen_driver_http_support::value_display(&v))
-                        .unwrap_or_default(),
-                    nullable: r
-                        .get(2)
-                        .cloned()
-                        .flatten()
-                        .map(|v| Self::bit_true(&Some(v)))
-                        .unwrap_or(true),
-                    default_value: r
-                        .get(4)
-                        .cloned()
-                        .flatten()
-                        .map(|v| datazen_driver_http_support::value_display(&v)),
-                    comment: r
-                        .get(5)
-                        .cloned()
-                        .flatten()
-                        .map(|v| datazen_driver_http_support::value_display(&v)),
-                    is_primary_key: is_pk,
-                    is_auto_increment: Self::bit_true(&r.get(3).cloned().flatten()),
-                })
-            })
-            .collect();
-        let primary_keys: Vec<String> = columns
-            .iter()
-            .filter(|c| c.is_primary_key)
-            .map(|c| c.name.clone())
-            .collect();
-        // A relation always has at least one column, so "no columns" means the
-        // table is absent (or not visible) rather than a column-less table.
-        // Reporting `Ok` here would let callers cache a blank structure; this is
-        // the same defect class PostgreSQL fixed in BUG-003.
-        if columns.is_empty() {
-            return Err(DriverError::QueryFailed(format!(
-                "Table '{schema}.{table}' does not exist in database '{database}'"
-            )));
-        }
-        Ok(TableSchema {
-            table_name: table.to_string(),
-            columns,
-            primary_keys,
-            indexes: Vec::new(),
-            foreign_keys: Vec::new(),
-            check_constraints: Vec::new(),
-            table_options: TableOptions::default(),
-        })
+        SqlServerDriver::get_table_schema(self, handle, table, database, schema).await
     }
 
     async fn get_all_columns(
@@ -894,95 +198,7 @@ impl DatabaseDriver for SqlServerDriver {
         database: &str,
         schema: Option<&str>,
     ) -> Result<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>, DriverError> {
-        validate_schema_target(self, database, schema, SchemaScope::AnySchema)?;
-        let mut map = self.clients.write().await;
-        let client = map
-            .get_mut(&handle.pool_id)
-            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let result = Self::run(client, &Self::build_all_columns_sql(database, schema)).await?;
-
-        let mut all_columns: HashMap<String, (Vec<ColumnSchema>, Vec<String>)> = HashMap::new();
-        let mut owners: HashMap<String, String> = HashMap::new();
-
-        for row in &result.rows {
-            // SQL: schema_name(0), table_name(1), column_name(2), data_type(3),
-            //      is_nullable(4), is_identity(5), default_value(6), comment(7),
-            //      is_pk(8)
-            let table_schema = row
-                .get(0)
-                .cloned()
-                .flatten()
-                .map(|v| datazen_driver_http_support::value_display(&v))
-                .unwrap_or_default();
-            let table_name = row
-                .get(1)
-                .cloned()
-                .flatten()
-                .map(|v| datazen_driver_http_support::value_display(&v))
-                .unwrap_or_default();
-            let col_name = row
-                .get(2)
-                .cloned()
-                .flatten()
-                .map(|v| datazen_driver_http_support::value_display(&v))
-                .unwrap_or_default();
-            let data_type = row
-                .get(3)
-                .cloned()
-                .flatten()
-                .map(|v| datazen_driver_http_support::value_display(&v))
-                .unwrap_or_default();
-            let nullable = Self::bit_true(&row.get(4).cloned().flatten());
-            let is_pk = Self::bit_true(&row.get(8).cloned().flatten());
-
-            // The payload is keyed by bare table name, so two same-named tables
-            // in different schemas cannot both be represented. Keep the first
-            // schema seen for a name and say so, rather than merging columns
-            // from two different tables. Rows of the *same* table must all be
-            // collected — only a name/schema clash skips a row.
-            let seen_schema = owners.get(&table_name).cloned();
-            match seen_schema {
-                Some(existing) if existing != table_schema => {
-                    tracing::warn!(
-                        table = %table_name,
-                        kept = %existing,
-                        skipped = %table_schema,
-                        "get_all_columns: same-named table in another schema skipped"
-                    );
-                    continue;
-                }
-                Some(_) => {}
-                None => {
-                    owners.insert(table_name.clone(), table_schema.clone());
-                }
-            }
-
-            let column = ColumnSchema {
-                name: col_name.clone(),
-                data_type,
-                nullable,
-                default_value: row
-                    .get(6)
-                    .cloned()
-                    .flatten()
-                    .map(|v| datazen_driver_http_support::value_display(&v)),
-                comment: row
-                    .get(7)
-                    .cloned()
-                    .flatten()
-                    .map(|v| datazen_driver_http_support::value_display(&v)),
-                is_primary_key: is_pk,
-                is_auto_increment: Self::bit_true(&row.get(5).cloned().flatten()),
-            };
-
-            let entry = all_columns.entry(table_name).or_default();
-            entry.0.push(column);
-            if is_pk {
-                entry.1.push(col_name);
-            }
-        }
-
-        Ok(all_columns)
+        SqlServerDriver::get_all_columns(self, handle, database, schema).await
     }
 
     async fn query(
@@ -1070,42 +286,116 @@ impl DatabaseDriver for SqlServerDriver {
         &self,
         handle: &ConnectionHandle,
         sql: &str,
-        _params: &[Value],
+        params: &[Value],
     ) -> Result<QueryResult, DriverError> {
-        self.query(handle, sql).await
-    }
-
-    async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
-        use futures_util::TryStreamExt;
+        let bound = crate::parameters::bind_values(params);
+        let refs = crate::parameters::to_sql_refs(&bound);
         let mut map = self.clients.write().await;
         let client = map
             .get_mut(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        if needs_own_batch(sql) {
-            // These statements are only legal as the first statement of a
-            // batch, which `sp_executesql` cannot provide; T-SQL reports no row
-            // count for them, so the result is 0.
-            let mut stream = client
-                .simple_query(sql)
-                .await
-                .map_err(|e| DriverError::QueryFailed(format!("SQL Server execute failed: {e}")))?;
-            while stream
-                .try_next()
-                .await
-                .map_err(|e| DriverError::QueryFailed(format!("SQL Server execute failed: {e}")))?
-                .is_some()
-            {}
-            return Ok(0);
-        }
-        client
-            .execute(sql, &[])
-            .await
-            .map(|r| r.total())
-            .map_err(|e| DriverError::QueryFailed(format!("SQL Server execute failed: {e}")))
+        Self::run_routed_with_params(client, sql, &refs, false).await
     }
 
+    fn parameter_placeholder(
+        &self,
+        index: usize,
+        _data_type: Option<&str>,
+    ) -> Result<String, DriverError> {
+        if !(1..=2100).contains(&index) {
+            return Err(DriverError::InvalidConfig(
+                "SQL Server parameter indexes must be between 1 and 2100".into(),
+            ));
+        }
+        Ok(format!("@P{index}"))
+    }
+
+    fn max_bound_parameters(&self) -> usize {
+        2100
+    }
+
+    fn explicit_identity_insert_requires_session_toggle(&self) -> bool {
+        true
+    }
+
+    fn transfer_sql_file_begin_transaction(&self) -> &'static str {
+        "BEGIN TRANSACTION;"
+    }
+
+    fn transfer_sql_file_commit_transaction(&self) -> &'static str {
+        "COMMIT TRANSACTION;"
+    }
+
+    async fn set_identity_insert(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        enabled: bool,
+    ) -> Result<(), DriverError> {
+        SqlServerDriver::set_identity_insert(self, handle, database, schema, table, enabled).await
+    }
+
+    async fn discard_connection(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        SqlServerDriver::discard_connection(self, handle).await
+    }
+
+    fn render_transfer_sql_file_identity_insert(
+        &self,
+        insert_sql: &str,
+        target_relation: &str,
+        mapped_target_columns: &[String],
+    ) -> Result<String, DriverError> {
+        Self::render_sql_file_identity_insert(insert_sql, target_relation, mapped_target_columns)
+    }
+
+    async fn execute_with_params(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        params: &[Value],
+    ) -> Result<u64, DriverError> {
+        SqlServerDriver::execute_with_params(self, handle, sql, params).await
+    }
+
+    async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
+        SqlServerDriver::execute(self, handle, sql).await
+    }
+
+    async fn begin_transaction(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<TransactionHandle, DriverError> {
+        SqlServerDriver::begin_transaction(self, handle).await
+    }
+
+    async fn begin_read_snapshot(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<TransactionHandle, DriverError> {
+        SqlServerDriver::begin_read_snapshot(self, handle).await
+    }
+
+    async fn commit(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        SqlServerDriver::commit(self, tx).await
+    }
+
+    async fn rollback(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        SqlServerDriver::rollback(self, tx).await
+    }
+
+    /// SQL Server has no cancellation this call could honestly perform: the
+    /// `ATTENTION` packet needs a second, concurrent session that this driver
+    /// never opens, so one call cannot prove the query stopped.
+    ///
+    /// This used to answer `Ok(())`, which reported a cancellation that had
+    /// never happened; Track O turns it into an explicit refusal.
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-        Ok(())
+        Err(DriverError::Unsupported(
+            "SQL Server has no per-execution cancellation; the legacy session-wide cancel does nothing"
+                .into(),
+        ))
     }
 
     fn supports_explain(&self) -> bool {
@@ -1197,355 +487,5 @@ impl DatabaseDriver for SqlServerDriver {
     ) -> Result<StructureChangePlan, DriverError> {
         let caps = self.structure_capabilities(handle).await?;
         crate::structure::plan_structure_changes(&caps, request)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tiberius::EncryptionLevel;
-
-    #[test]
-    fn ssl_disable_is_plaintext() {
-        assert_eq!(
-            SqlServerDriver::ssl_settings(&SslMode::Disable),
-            (EncryptionLevel::NotSupported, false)
-        );
-    }
-
-    #[test]
-    fn ssl_require_trusts_cert() {
-        assert_eq!(
-            SqlServerDriver::ssl_settings(&SslMode::Require),
-            (EncryptionLevel::Required, true)
-        );
-    }
-
-    #[test]
-    fn ssl_verify_full_requires_encryption_without_trust() {
-        assert_eq!(
-            SqlServerDriver::ssl_settings(&SslMode::VerifyFull),
-            (EncryptionLevel::Required, false)
-        );
-    }
-
-    #[test]
-    fn sqlserver_declares_a_schema_level_with_dbo_default() {
-        let driver = SqlServerDriver::new();
-        assert!(driver.has_schema_level());
-        assert_eq!(driver.default_schema(), Some("dbo"));
-    }
-
-    #[test]
-    fn effective_schema_prefers_the_argument_then_the_convention() {
-        let driver = SqlServerDriver::new();
-        assert_eq!(driver.effective_schema(Some("sales")), Some("sales"));
-        assert_eq!(driver.effective_schema(Some("  sales ")), Some("sales"));
-        assert_eq!(driver.effective_schema(Some("   ")), Some("dbo"));
-        assert_eq!(driver.effective_schema(None), Some("dbo"));
-    }
-
-    #[test]
-    fn exact_schema_reads_require_an_explicit_schema() {
-        let driver = SqlServerDriver::new();
-        assert!(
-            validate_schema_target(&driver, "app", Some("dbo"), SchemaScope::ExactSchema).is_ok()
-        );
-        // Replaces the old `use_database` session-switch coverage: the target is
-        // now the explicit argument, and a missing schema is a hard error
-        // instead of silently landing on whatever the session pointed at.
-        assert!(
-            validate_schema_target(&driver, "app", None, SchemaScope::ExactSchema).is_err(),
-            "a schema-aware driver must reject an exact-schema read without a schema"
-        );
-        assert!(validate_schema_target(&driver, "app", None, SchemaScope::AnySchema).is_ok());
-    }
-
-    #[test]
-    fn build_table_schema_sql_filters_schema_and_qualifies_catalog() {
-        let sql = SqlServerDriver::build_table_schema_sql("sales", "dbo", "users");
-        assert!(sql.contains("FROM [sales].INFORMATION_SCHEMA.COLUMNS"));
-        assert!(sql.contains("c.TABLE_SCHEMA = 'dbo'"));
-        assert!(sql.contains("c.TABLE_NAME = 'users'"));
-        assert!(sql.contains("is_primary_key = 1"));
-        assert!(sql.contains("is_pk"));
-        // The object lookup must be keyed on (schema, name): joining on the bare
-        // name would let a same-named table in another schema duplicate rows.
-        assert!(sql.contains("obj.schema_name = c.TABLE_SCHEMA"));
-        assert!(!sql.contains("ON o.name = c.TABLE_NAME"));
-        // No session switch may be embedded in a read path.
-        assert!(!sql.to_uppercase().contains("USE ["));
-    }
-
-    #[test]
-    fn build_table_schema_sql_stays_local_when_database_is_blank() {
-        let sql = SqlServerDriver::build_table_schema_sql("", "dbo", "users");
-        assert!(sql.contains("FROM INFORMATION_SCHEMA.COLUMNS"));
-        assert!(!sql.contains("[]."));
-    }
-
-    #[test]
-    fn build_table_schema_sql_escapes_quotes() {
-        let sql = SqlServerDriver::build_table_schema_sql("db]", "d'bo", "us'ers");
-        assert!(sql.contains("FROM [db]]].INFORMATION_SCHEMA.COLUMNS"));
-        assert!(sql.contains("c.TABLE_SCHEMA = 'd''bo'"));
-        assert!(sql.contains("c.TABLE_NAME = 'us''ers'"));
-    }
-
-    #[test]
-    fn build_tables_sql_populates_schema_and_optionally_filters() {
-        let all = SqlServerDriver::build_tables_sql("sales", None);
-        assert!(all.contains("JOIN [sales].sys.schemas s"));
-        assert!(all.contains("s.name AS schema_name"));
-        assert!(!all.contains("WHERE s.name"));
-
-        let filtered = SqlServerDriver::build_tables_sql("sales", Some("dbo"));
-        assert!(filtered.contains("WHERE s.name = 'dbo'"));
-        assert_eq!(filtered.matches("WHERE s.name = 'dbo'").count(), 2);
-    }
-
-    #[test]
-    fn build_all_columns_sql_filters_schema_and_qualifies_catalog() {
-        let sql = SqlServerDriver::build_all_columns_sql("sales", Some("dbo"));
-        assert!(sql.contains("FROM [sales].sys.columns c"));
-        assert!(sql.contains("AND s.name = 'dbo'"));
-        assert!(sql.contains("s.name AS schema_name"));
-    }
-
-    #[test]
-    fn apply_sqlserver_top_inserts_plus_one() {
-        assert_eq!(
-            apply_sqlserver_top("SELECT * FROM t", None),
-            ("SELECT * FROM t".into(), None)
-        );
-        assert_eq!(
-            apply_sqlserver_top("SELECT * FROM t", Some(10)),
-            ("SELECT TOP 11 * FROM t".into(), Some(10))
-        );
-        // A hand-written `TOP` is the dialect's own row limit: respected, and
-        // no cap is reported as applied.
-        assert_eq!(
-            apply_sqlserver_top("SELECT TOP 5 * FROM t", Some(10)),
-            ("SELECT TOP 5 * FROM t".into(), None)
-        );
-        assert_eq!(
-            apply_sqlserver_top("SELECT DISTINCT name FROM t", Some(3)),
-            ("SELECT DISTINCT TOP 4 name FROM t".into(), Some(3))
-        );
-        assert_eq!(
-            apply_sqlserver_top("SELECT DISTINCT TOP 2 name FROM t", Some(3)),
-            ("SELECT DISTINCT TOP 2 name FROM t".into(), None)
-        );
-        assert_eq!(
-            apply_sqlserver_top("INSERT INTO t VALUES (1)", Some(10)),
-            ("INSERT INTO t VALUES (1)".into(), None)
-        );
-        assert_eq!(
-            apply_sqlserver_top("select id from t", Some(1)),
-            ("SELECT TOP 2 id from t".into(), Some(1))
-        );
-
-        // `TOP` cannot share a query with `OFFSET … FETCH` (error 10741), so a
-        // statement that pages itself is never rewritten — this is the statement
-        // the Visual Query Builder emits for SQL Server.
-        let paged = "SELECT [u].[id] FROM [users] AS [u] \
-                     ORDER BY (SELECT NULL) OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY";
-        assert_eq!(apply_sqlserver_top(paged, Some(100)), (paged.into(), None));
-        // The same is true for an offset-only page and for either keyword case.
-        assert_eq!(
-            apply_sqlserver_top("select id from t order by id offset 2 rows", Some(10)),
-            ("select id from t order by id offset 2 rows".into(), None)
-        );
-        assert_eq!(
-            apply_sqlserver_top("SELECT id FROM t OFFSET @skip ROWS", Some(10)),
-            ("SELECT id FROM t OFFSET @skip ROWS".into(), None)
-        );
-
-        // A nested `OFFSET` is legal next to an outer `TOP`, so the cap stays.
-        assert_eq!(
-            apply_sqlserver_top(
-                "SELECT * FROM (SELECT id FROM t ORDER BY id OFFSET 2 ROWS) AS inner_q",
-                Some(10)
-            ),
-            (
-                "SELECT TOP 11 * FROM (SELECT id FROM t ORDER BY id OFFSET 2 ROWS) AS inner_q"
-                    .into(),
-                Some(10)
-            )
-        );
-        // …and a column named `offset` is not an OFFSET clause.
-        assert_eq!(
-            apply_sqlserver_top("SELECT offset FROM t", Some(10)),
-            ("SELECT TOP 11 offset FROM t".into(), Some(10))
-        );
-    }
-
-    #[test]
-    fn has_top_level_offset_ignores_literals_comments_and_identifiers() {
-        assert!(has_top_level_offset(
-            "SELECT id FROM t ORDER BY id OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY"
-        ));
-        assert!(has_top_level_offset("SELECT id FROM t OFFSET 5 ROWS"));
-
-        // Inside a string literal, a bracketed/quoted identifier or a comment it
-        // is data, not a clause.
-        assert!(!has_top_level_offset(
-            "SELECT 'x OFFSET 5 ROWS' AS [offset 3] FROM t"
-        ));
-        assert!(!has_top_level_offset("SELECT id FROM t -- OFFSET 5 ROWS\n"));
-        assert!(!has_top_level_offset(
-            "SELECT id /* OFFSET 5 ROWS */ FROM t"
-        ));
-        assert!(!has_top_level_offset("\"OFFSET 5\" AS c FROM t"));
-        // A doubled bracket inside an identifier must not end it early.
-        assert!(!has_top_level_offset(
-            "SELECT [we]]ird OFFSET 5 ROWS] FROM t"
-        ));
-        // Depth matters: a sub-query's OFFSET is not the outer query's.
-        assert!(!has_top_level_offset(
-            "SELECT * FROM (SELECT id FROM t OFFSET 5 ROWS) AS q"
-        ));
-        assert!(has_top_level_offset(
-            "SELECT * FROM (SELECT id FROM t) AS q OFFSET 1 ROWS"
-        ));
-    }
-
-    /// Regression: the host used to append `LIMIT n OFFSET m`, which T-SQL
-    /// rejects with "Incorrect syntax near 'LIMIT'".
-    #[test]
-    fn pagination_syntax_is_offset_fetch_and_never_limit() {
-        let driver = SqlServerDriver::new();
-        assert!(driver.supports_offset());
-
-        let first_page = driver.pagination_syntax(25, 0);
-        assert_eq!(
-            first_page.clause,
-            "OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY".to_string()
-        );
-        assert!(first_page.requires_order_by);
-        assert_eq!(first_page.order_by_fallback, Some("(SELECT NULL)"));
-        assert!(!first_page.clause.contains("LIMIT"));
-
-        let deep_page = driver.pagination_syntax(50, 150);
-        assert_eq!(
-            deep_page.clause,
-            "OFFSET 150 ROWS FETCH NEXT 50 ROWS ONLY".to_string()
-        );
-        assert!(!deep_page.clause.contains("LIMIT"));
-    }
-
-    #[test]
-    fn batch_only_ddl_is_detected() {
-        // Statements SQL Server rejects through `sp_executesql`.
-        for stmt in [
-            "CREATE SCHEMA [reporting]",
-            "create schema reporting",
-            "CREATE VIEW [dbo].[v] AS SELECT 1 AS c",
-            "ALTER VIEW [dbo].[v] AS SELECT 1 AS c",
-            "CREATE PROCEDURE [dbo].[p] AS SELECT 1",
-            "CREATE PROC [dbo].[p] AS SELECT 1",
-            "CREATE FUNCTION [dbo].[f]() RETURNS INT AS BEGIN RETURN 1 END",
-            "CREATE TRIGGER [dbo].[tr] ON [dbo].[t] AFTER INSERT AS SELECT 1",
-            "CREATE OR ALTER PROCEDURE [dbo].[p] AS SELECT 1",
-            "CREATE OR ALTER VIEW [dbo].[v] AS SELECT 1 AS c",
-            "  -- installs the reporting schema\nCREATE SCHEMA [reporting]",
-            "/* bootstrap */ CREATE TRIGGER [dbo].[tr] ON [dbo].[t] AFTER INSERT AS SELECT 1",
-            // Session-scoped statements must also bypass sp_executesql.
-            "SET NOCOUNT ON",
-            "SET IDENTITY_INSERT [dbo].[t] ON",
-            "BEGIN TRAN; SELECT 1; COMMIT",
-            "BEGIN TRANSACTION",
-            "COMMIT",
-            "ROLLBACK",
-            "SAVE TRAN savepoint_one",
-        ] {
-            assert!(needs_own_batch(stmt), "expected own batch: {stmt}");
-        }
-    }
-
-    #[test]
-    fn statement_splitting_respects_literals_and_comments() {
-        assert_eq!(
-            split_statements("SELECT ';' AS [a]"),
-            vec!["SELECT ';' AS [a]"]
-        );
-        assert_eq!(
-            split_statements("SELECT 1; SELECT ';' AS [b]; -- trailing\n"),
-            vec!["SELECT 1", "SELECT ';' AS [b]"]
-        );
-        assert_eq!(
-            split_statements("SELECT '[;]' AS [c] /* ; */; SELECT 2"),
-            vec!["SELECT '[;]' AS [c] /* ; */", "SELECT 2"]
-        );
-        assert!(split_statements("   ").is_empty());
-    }
-
-    #[test]
-    fn preparable_statements_stay_on_the_rpc_path() {
-        for stmt in [
-            "CREATE TABLE [dbo].[t] ([id] INT NOT NULL)",
-            "ALTER TABLE [dbo].[t] ADD [c] INT NULL",
-            "DROP TABLE [dbo].[t]",
-            "DROP SCHEMA [reporting]",
-            "CREATE SEQUENCE [dbo].[s] AS INT START WITH 1",
-            "CREATE TYPE [dbo].[ty] FROM INT",
-            "INSERT INTO [dbo].[t] ([id]) VALUES (1)",
-            "UPDATE [dbo].[t] SET [id] = 2",
-            "DELETE FROM [dbo].[t]",
-            "MERGE [dbo].[t] AS t USING [dbo].[s] AS s ON t.id = s.id WHEN MATCHED THEN DELETE;",
-            "SELECT * FROM [dbo].[t]",
-            "",
-        ] {
-            assert!(!needs_own_batch(stmt), "expected RPC path: {stmt}");
-        }
-    }
-
-    /// Render a temporal cell and unwrap it to its text payload.
-    fn temporal_text(data: &ColumnData<'static>) -> Option<String> {
-        match SqlServerDriver::value_from_column(data) {
-            Some(Value::String(text)) => Some(text),
-            None => None,
-            other => panic!("expected a text value, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn temporal_columns_render_as_text_not_debug_output() {
-        use tiberius::time::{Date, DateTime2, DateTimeOffset, Time};
-
-        // 2026-01-02 is 739617 days after 0001-01-01; 03:04:05 is 11 045 s.
-        let date = temporal_text(&ColumnData::Date(Some(Date::new(739_617))));
-        assert_eq!(date.as_deref(), Some("2026-01-02"));
-
-        let time = temporal_text(&ColumnData::Time(Some(Time::new(110_450_000_000, 7))));
-        assert_eq!(time.as_deref(), Some("03:04:05"));
-
-        let datetime2 = temporal_text(&ColumnData::DateTime2(Some(DateTime2::new(
-            Date::new(739_617),
-            Time::new(110_450_000_000, 7),
-        ))));
-        assert_eq!(datetime2.as_deref(), Some("2026-01-02 03:04:05"));
-
-        // TDS carries the UTC instant plus the original offset: the live wire
-        // value for `CAST('2026-01-02T03:04:05+08:00' AS DATETIMEOFFSET)` is the
-        // datetime2 `2026-01-01 19:04:05` (day 739616, 68 645 s) with offset 480.
-        let offset = temporal_text(&ColumnData::DateTimeOffset(Some(DateTimeOffset::new(
-            DateTime2::new(Date::new(739_616), Time::new(686_450_000_000, 7)),
-            480,
-        ))));
-        assert_eq!(offset.as_deref(), Some("2026-01-02T03:04:05+08:00"));
-
-        for text in [date, time, datetime2, offset].into_iter().flatten() {
-            assert!(
-                !text.contains("Date(") && !text.contains("Time {") && !text.contains("increments"),
-                "temporal value must not leak tiberius' Debug output: {text}"
-            );
-        }
-    }
-
-    #[test]
-    fn null_temporal_columns_stay_null() {
-        assert_eq!(temporal_text(&ColumnData::Date(None)), None);
-        assert_eq!(temporal_text(&ColumnData::DateTimeOffset(None)), None);
     }
 }

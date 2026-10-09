@@ -509,7 +509,9 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
 
     let test = TestAppState::new().await;
     test.save_and_connect("src-plan").await;
-    test.save_and_connect("tgt-plan").await;
+    let mut target_config = test.save_connection("tgt-plan").await;
+    target_config.host = Some("target.example.invalid".into());
+    test.store.save_connection(target_config).await.unwrap();
     let source = test.connect_config("src-plan").await;
     let target = test.connect_config("tgt-plan").await;
     let preview = super::compare_data_sync_impl(
@@ -539,7 +541,9 @@ async fn execute_data_sync_rejects_when_target_active_database_changes() {
 
     let test = TestAppState::new().await;
     test.save_and_connect("src-plan-db").await;
-    test.save_and_connect("tgt-plan-db").await;
+    let mut target_config = test.save_connection("tgt-plan-db").await;
+    target_config.host = Some("target.example.invalid".into());
+    test.store.save_connection(target_config).await.unwrap();
     let source = test.connect_config("src-plan-db").await;
     let target = test.connect_config("tgt-plan-db").await;
     let preview = super::compare_data_sync_impl(
@@ -603,6 +607,7 @@ async fn execute_data_sync_rejects_read_only_target() {
         preview_sql: "INSERT INTO t VALUES (1)".into(),
         parameters: vec![],
         row_key: vec![],
+        identity_insert: None,
     };
     let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], None, None)
         .await
@@ -806,6 +811,7 @@ async fn cancel_data_sync_stops_execute_before_start() {
         preview_sql: "INSERT INTO t VALUES (1)".into(),
         parameters: vec![],
         row_key: vec![],
+        identity_insert: None,
     };
     let error = super::execute_data_sync_impl(&test.state, id, vec![stmt], Some(job), None)
         .await
@@ -819,11 +825,18 @@ async fn cancel_data_sync_stops_execute_before_start() {
 
 #[tokio::test]
 async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state::{rich_mock_options, TestAppState};
+    use crate::testing::mock_driver::MockDriverOptions;
 
-    let test = TestAppState::with_tables().await;
+    let test = TestAppState::with_options(MockDriverOptions {
+        parameterized_writes: true,
+        ..rich_mock_options()
+    })
+    .await;
     test.save_and_connect("src-cmp").await;
-    test.save_and_connect("tgt-cmp").await;
+    let mut target_config = test.save_connection("tgt-cmp").await;
+    target_config.host = Some("target.example.invalid".into());
+    test.store.save_connection(target_config).await.unwrap();
     let src = test.connect_config("src-cmp").await;
     let tgt = test.connect_config("tgt-cmp").await;
     let err = super::compare_data_sync_impl(
@@ -844,7 +857,10 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
     .unwrap_err();
     // The shared mock always returns the same page and cannot honor keyset WHERE.
     // This must fail rather than treating a repeated page as end-of-stream.
-    assert!(err.to_string().contains("not strictly increasing"));
+    assert!(
+        err.to_string().contains("handlerStageTerminated"),
+        "a malformed keyset stream must fail the durable prepare job closed, got: {err}"
+    );
     assert_eq!(test.mock.open_transaction_count(), 0);
 }
 
@@ -864,6 +880,7 @@ async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
     );
     let test = TestAppState::with_options(MockDriverOptions {
         table_schema: Some(schema),
+        parameterized_writes: true,
         ..MockDriverOptions::default()
     })
     .await;
@@ -938,7 +955,7 @@ async fn legacy_apply_rejects_unreviewed_recomparison() {
     )
     .await
     .unwrap_err();
-    assert!(err.to_string().contains("reviewed row selection"), "{err}");
+    assert!(err.to_string().contains("durable Data Sync job"), "{err}");
 }
 
 #[test]

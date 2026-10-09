@@ -11,7 +11,7 @@ import {
   planJourneys,
 } from '../journeys/plan';
 
-describe('planJourneys (F2 core)', () => {
+describe('planJourneys (core journeys)', () => {
   it('runs DATA/FILTER/QUERY for postgres and mysql', () => {
     for (const id of ['postgres', 'mysql'] as const) {
       const plan = planJourneys(getFixture(id), F2_CORE_JOURNEYS);
@@ -20,12 +20,12 @@ describe('planJourneys (F2 core)', () => {
     }
   });
 
-  it('runs DATA/FILTER/QUERY for sqlite (OBJ not in F2 core)', () => {
+  it('runs DATA/FILTER/QUERY for sqlite (OBJ not in core)', () => {
     const plan = planJourneys(getFixture('sqlite'), F2_CORE_JOURNEYS);
     expect(journeysToRun(plan)).toEqual(['HC-DATA', 'HC-FILTER', 'HC-QUERY']);
   });
 
-  it('skips all F2 core journeys for redis-like mode', () => {
+  it('skips all core journeys for redis-like mode', () => {
     const base = getFixture('postgres');
     const redisLike = {
       ...base,
@@ -43,7 +43,7 @@ describe('planJourneys (F2 core)', () => {
   });
 });
 
-describe('planJourneys (F3 full contract)', () => {
+describe('planJourneys (full contract)', () => {
   it('runs all journeys on postgres/mysql', () => {
     for (const id of ['postgres', 'mysql'] as const) {
       const plan = planJourneys(getFixture(id), ALL_CONTRACT_JOURNEYS);

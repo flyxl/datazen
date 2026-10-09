@@ -1,8 +1,16 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SchemaDiffWindow } from '../SchemaDiffWindow';
 import type { SchemaDiffObjectIdentity } from '../../../commands/schemaDiff';
 import type { DatabaseObject } from '../../../types';
+// Fixture, not production wiring: `useI18n` (key-echoing, so assertions may
+// target key strings) and `useLocaleDomains` (returns true) are mocked, so the
+// graph never registers the host dictionaries and @datazen/ui's own components
+// warn about perfectly registered keys. SchemaDiffWindow.test.tsx carries the
+// full root-cause note; this is the same test-only registration route
+// locales.test.ts uses.
+import '../../../locales';
+import { ensureAllLazyDomains } from '../../../locales/lazyPacks';
 
 const { endpointState, profile, schemaDiffCommands, databaseCommands } = vi.hoisted(() => {
   const state = {
@@ -50,33 +58,55 @@ const { endpointState, profile, schemaDiffCommands, databaseCommands } = vi.hois
         removed: [],
       }),
       preparePlan: vi.fn().mockResolvedValue({
-        table: 'public.users',
-        tables: ['public.users'],
-        sourceDialect: 'postgresql',
-        targetDialect: 'postgresql',
-        sameDialect: true,
-        statements: [],
-        warnings: [],
-        requirements: [],
-        rollbackCompleteness: { complete: true, missing: [] },
-        typeSuggestions: [],
+        plan: {
+          table: 'public.users',
+          tables: ['public.users'],
+          sourceDialect: 'postgresql',
+          targetDialect: 'postgresql',
+          sameDialect: true,
+          statements: [],
+          warnings: [],
+          requirements: [],
+          rollbackCompleteness: { complete: true, missing: [] },
+          typeSuggestions: [],
+        },
+        planId: 'plan-1',
+        selectionRevision: 1,
+        planVersion: 1,
+        handlerVersion: 1,
+        checkpointVersion: 1,
+        expiresAt: '2026-01-01T00:00:00Z',
+        recoveryPolicy: 'readOnlyVerify',
       }),
       prepareUnifiedPlan: vi.fn().mockResolvedValue({
-        table: 'schema objects',
-        tables: [],
-        sourceDialect: 'postgresql',
-        targetDialect: 'postgresql',
-        sameDialect: true,
-        statements: [],
-        warnings: [],
-        requirements: [],
-        rollbackCompleteness: { complete: true, missing: [] },
-        typeSuggestions: [],
+        plan: {
+          table: 'schema objects',
+          tables: [],
+          sourceDialect: 'postgresql',
+          targetDialect: 'postgresql',
+          sameDialect: true,
+          statements: [],
+          warnings: [],
+          requirements: [],
+          rollbackCompleteness: { complete: true, missing: [] },
+          typeSuggestions: [],
+        },
+        planId: 'plan-1',
+        selectionRevision: 1,
+        planVersion: 1,
+        handlerVersion: 1,
+        checkpointVersion: 1,
+        expiresAt: '2026-01-01T00:00:00Z',
+        recoveryPolicy: 'readOnlyVerify',
       }),
       executeDeploy: vi.fn(),
+      listJobs: vi.fn().mockResolvedValue([]),
+      getJobDetails: vi.fn(),
+      cancelDeploy: vi.fn().mockResolvedValue(true),
+      verifyRecovery: vi.fn(),
     },
     databaseCommands: {
-      getTables: vi
+      listTables: vi
         .fn()
         .mockResolvedValue([{ name: 'users', schema: 'public', tableType: 'table' }]),
       getDatabaseObjects: vi.fn().mockResolvedValue([]),
@@ -167,10 +197,17 @@ vi.mock('../../../commands/schemaDiff', () => ({
   dialectSupportsTransactionalDdl: vi.fn().mockReturnValue(true),
   exportPlanSql: vi.fn().mockReturnValue(''),
   planHasDestructive: vi.fn().mockReturnValue(false),
+  subscribeSchemaDiffJobUpdates: vi.fn().mockReturnValue(() => {}),
   schemaDiffCommands,
 }));
 
 describe('SchemaDiffWindow profile loading', () => {
+  beforeAll(async () => {
+    // Eager packs register at import; the lazy `sync` pack needs an explicit
+    // await because the mocked `useLocaleDomains` never requests it.
+    await ensureAllLazyDomains('en');
+  });
+
   beforeEach(() => {
     endpointState.sourceId = 'initial-source';
     endpointState.targetId = 'initial-target';
@@ -193,30 +230,48 @@ describe('SchemaDiffWindow profile loading', () => {
       removed: [],
     });
     schemaDiffCommands.preparePlan.mockResolvedValue({
-      table: 'public.users',
-      tables: ['public.users'],
-      sourceDialect: 'postgresql',
-      targetDialect: 'postgresql',
-      sameDialect: true,
-      statements: [],
-      warnings: [],
-      requirements: [],
-      rollbackCompleteness: { complete: true, missing: [] },
-      typeSuggestions: [],
+      plan: {
+        table: 'public.users',
+        tables: ['public.users'],
+        sourceDialect: 'postgresql',
+        targetDialect: 'postgresql',
+        sameDialect: true,
+        statements: [],
+        warnings: [],
+        requirements: [],
+        rollbackCompleteness: { complete: true, missing: [] },
+        typeSuggestions: [],
+      },
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
     });
     schemaDiffCommands.prepareUnifiedPlan.mockResolvedValue({
-      table: 'schema objects',
-      tables: [],
-      sourceDialect: 'postgresql',
-      targetDialect: 'postgresql',
-      sameDialect: true,
-      statements: [],
-      warnings: [],
-      requirements: [],
-      rollbackCompleteness: { complete: true, missing: [] },
-      typeSuggestions: [],
+      plan: {
+        table: 'schema objects',
+        tables: [],
+        sourceDialect: 'postgresql',
+        targetDialect: 'postgresql',
+        sameDialect: true,
+        statements: [],
+        warnings: [],
+        requirements: [],
+        rollbackCompleteness: { complete: true, missing: [] },
+        typeSuggestions: [],
+      },
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
     });
-    databaseCommands.getTables.mockResolvedValue([
+    databaseCommands.listTables.mockResolvedValue([
       { name: 'users', schema: 'public', tableType: 'table' },
     ]);
     databaseCommands.getDatabaseObjects.mockResolvedValue([]);
@@ -249,7 +304,7 @@ describe('SchemaDiffWindow profile loading', () => {
     await waitFor(() =>
       expect(screen.getByTestId('schema-diff-objects-panel')).toBeInTheDocument(),
     );
-    expect(databaseCommands.getTables).toHaveBeenCalledWith('source-session', 'profile-db');
+    expect(databaseCommands.listTables).toHaveBeenCalledWith('source-session', 'profile-db');
     expect(screen.getByTestId('schema-diff-table-row')).toHaveAttribute(
       'data-table-name',
       'public.users',
@@ -273,7 +328,7 @@ describe('SchemaDiffWindow profile loading', () => {
 
   it('[tester] restores a target-only profile row and forwards separate selectors', async () => {
     profile.targetOnlyTables = ['public.archive'];
-    databaseCommands.getTables.mockImplementation(async (sessionId: string) =>
+    databaseCommands.listTables.mockImplementation(async (sessionId: string) =>
       sessionId === 'source-session'
         ? [{ name: 'users', schema: 'public', tableType: 'table' }]
         : [
@@ -345,7 +400,7 @@ describe('SchemaDiffWindow profile loading', () => {
       targetSchema: 'public',
       targetName: 'orders',
     };
-    databaseCommands.getTables.mockResolvedValue([]);
+    databaseCommands.listTables.mockResolvedValue([]);
     databaseCommands.getDatabaseObjects.mockImplementation(
       async (sessionId: string, kind: string) =>
         (sessionId === 'source-session' ? [sourceRoutine] : [targetTrigger]).filter(
@@ -442,7 +497,7 @@ describe('SchemaDiffWindow profile loading', () => {
           : [otherTrigger, { ...desiredTarget }]
         ).filter((object) => object.kind === kind),
     );
-    databaseCommands.getTables.mockResolvedValue([]);
+    databaseCommands.listTables.mockResolvedValue([]);
 
     render(<SchemaDiffWindow />);
     fireEvent.click(screen.getByTestId('schema-diff-next'));

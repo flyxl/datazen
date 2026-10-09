@@ -59,6 +59,7 @@ export interface ConnectionViewActions {
     signature?: string,
     targetSchema?: string,
     targetName?: string,
+    database?: string,
   ) => void;
   openQueryHistory?: () => void;
   /** 打开目标连接的服务器仪表盘；ctx 由右键菜单显式传入被点击的连接。 */

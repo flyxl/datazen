@@ -40,6 +40,14 @@ impl DatabaseDriver for RedisDriver {
         "redis".to_string()
     }
 
+    fn default_host(&self) -> Option<&'static str> {
+        Some(crate::connect::DEFAULT_HOST)
+    }
+
+    fn default_port(&self) -> Option<u16> {
+        Some(crate::connect::DEFAULT_PORT)
+    }
+
     fn driver_category(&self) -> DriverCategory {
         DriverCategory::KeyValue
     }
@@ -316,8 +324,19 @@ impl DatabaseDriver for RedisDriver {
         crate::commands::exec::execute_redis_command(self, handle, command_id, input).await
     }
 
+    /// There is nothing here that a cancel could stop. Redis addresses a
+    /// command by the connection it arrived on, so the only cancellation this
+    /// driver *could* issue is `CLIENT KILL` — which tears down the whole
+    /// connection and every other session state on it, not the one execution a
+    /// caller asked about. Answering `Ok(())` would report a cancellation that
+    /// never happened, so the refusal is the honest answer. See
+    /// `src/resource/capabilities.rs`, where `precise_cancel` is declined for
+    /// the same reason.
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-        Ok(())
+        Err(DriverError::Unsupported(
+            "Redis has no per-execution cancellation; the legacy session-wide cancel does nothing"
+                .into(),
+        ))
     }
 
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
@@ -426,5 +445,33 @@ mod tests {
             .await
             .expect_err("invalid DB index must fail");
         assert!(matches!(err, DriverError::QueryFailed(_)), "got {err:?}");
+    }
+
+    /// The provider refuses `request_cancel`; the legacy driver method must not
+    /// answer `Ok(())` behind it and report a cancellation that never happened.
+    #[tokio::test]
+    async fn the_legacy_cancel_refuses_instead_of_reporting_a_cancellation_that_never_happened() {
+        let driver = RedisDriver::new();
+        let err = driver
+            .cancel_query(&unknown_pool_handle())
+            .await
+            .expect_err("Redis cannot cancel one execution; Ok(()) was the fail-open defect");
+        assert!(matches!(err, DriverError::Unsupported(_)), "got {err:?}");
+    }
+
+    /// A refusal above and an advertised capability are the same claim written
+    /// twice, so the factory must not advertise either cancel predicate.
+    #[test]
+    fn no_cancel_predicate_is_claimed_by_the_factory_or_the_driver() {
+        let factory = crate::RedisFactory;
+        assert!(
+            !factory.supports_cancel_query(),
+            "the legacy session-wide cancel is refused, so nothing may advertise it"
+        );
+        assert!(
+            !factory.supports_query_execution_cancel(),
+            "Redis has no execution-handle protocol to advertise"
+        );
+        assert!(!RedisDriver::new().supports_query_execution_cancel());
     }
 }

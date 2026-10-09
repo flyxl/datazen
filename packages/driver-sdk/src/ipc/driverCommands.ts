@@ -1,5 +1,6 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
+import { Channel } from '@tauri-apps/api/core';
 import type { DriverCommandDefinition, QueryStreamEvent } from '../../../../src/types';
+import { transitionalTransport } from './desktopBinding';
 
 export interface ExecuteDriverCommandRequest {
   /** Runtime db session id (required for session-bound commands). */
@@ -33,20 +34,33 @@ export interface CommandResult {
   data: unknown;
 }
 
+/**
+ * Thin re-export over the bound `BackendTransport` (§7.2 薄再导出过渡).
+ *
+ * Same exported names, same signatures, same arguments — the payload handed to
+ * the backend is byte-identical to what the previous direct `invoke` sent. Only
+ * the routing moved: the transport is what a non-desktop build replaces, and
+ * the `Channel` wiring below is the desktop half of that seam, kept here where
+ * the push callback is still part of this signature.
+ */
 export const driverCommands = {
   getConnectionCommands: (dbSessionId: string) =>
-    invoke<DriverCommandDefinition[]>('get_connection_commands', { dbSessionId }),
+    transitionalTransport().call('get_connection_commands', { dbSessionId }) as Promise<
+      DriverCommandDefinition[]
+    >,
 
   getDriverCommands: (driverType: string) =>
-    invoke<DriverCommandDefinition[]>('get_driver_commands', { driverType }),
+    transitionalTransport().call('get_driver_commands', { driverType }) as Promise<
+      DriverCommandDefinition[]
+    >,
 
   execute: (request: ExecuteDriverCommandRequest) =>
-    invoke<CommandResult>('execute_driver_command', { request }),
+    transitionalTransport().call('execute_driver_command', { request }) as Promise<CommandResult>,
 
   executeStream: async (request: ExecuteDriverCommandStreamRequest) => {
     const onEventChannel = new Channel<QueryStreamEvent>();
     onEventChannel.onmessage = request.onEvent;
-    await invoke<void>('execute_driver_command_stream', {
+    await transitionalTransport().call('execute_driver_command_stream', {
       request: {
         dbSessionId: request.dbSessionId,
         command: request.command,

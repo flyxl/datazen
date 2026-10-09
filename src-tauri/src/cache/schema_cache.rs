@@ -11,7 +11,10 @@
 use crate::db::registry::DriverRegistry;
 use crate::db::{ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, TableSchema};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
@@ -44,6 +47,7 @@ pub struct DatabaseCache {
 /// Multi-level schema cache.
 pub struct SchemaCache {
     caches: Arc<RwLock<HashMap<String, HashMap<String, DatabaseCache>>>>,
+    generation: AtomicU64,
     cache_ttl: Duration,
     max_tables: usize,
     #[allow(dead_code)]
@@ -54,10 +58,16 @@ impl SchemaCache {
     pub fn new(registry: Arc<DriverRegistry>) -> Self {
         Self {
             caches: Arc::new(RwLock::new(HashMap::new())),
+            generation: AtomicU64::new(0),
             cache_ttl: Duration::from_secs(300),
             max_tables: 1000,
             registry,
         }
+    }
+
+    /// Monotonic invalidation barrier for reads started before DDL/refresh.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
     }
 
     /// Cache bucket for one `(database, schema)` scope.
@@ -96,35 +106,13 @@ impl SchemaCache {
         driver: &Arc<dyn DatabaseDriver>,
         handle: &ConnectionHandle,
     ) -> Result<CachedColumns, DriverError> {
+        let generation = self.generation();
         let scope = Self::scope_key(database, schema);
+        if let Some(cached) = self
+            .try_get_cached_columns(connection_id, database, schema, table)
+            .await
         {
-            let caches = self.caches.read().await;
-            if let Some(db_caches) = caches.get(connection_id) {
-                if let Some(db_cache) = db_caches.get(&scope) {
-                    // An entry with no columns is never a usable answer: it means
-                    // the read resolved against the wrong catalog (or the table is
-                    // gone). Treat it as a miss so a single bad read cannot blank
-                    // the structure view / ER diagram / data grid for the whole TTL.
-                    if let Some(cached) = db_cache.tables.get(table) {
-                        if cached.cached_at.elapsed() < self.cache_ttl
-                            && !cached.schema.columns.is_empty()
-                        {
-                            return Ok(CachedColumns {
-                                columns: cached.schema.columns.clone(),
-                                primary_keys: cached.schema.primary_keys.clone(),
-                                table_name: cached.schema.table_name.clone(),
-                                cached_at: cached.cached_at,
-                            });
-                        }
-                    }
-                    if let Some(cached) = db_cache.columns.get(table) {
-                        if cached.cached_at.elapsed() < self.cache_ttl && !cached.columns.is_empty()
-                        {
-                            return Ok(cached.clone());
-                        }
-                    }
-                }
-            }
+            return Ok(cached);
         }
 
         tracing::debug!("Columns cache miss: {}.{}", scope, table);
@@ -136,14 +124,68 @@ impl SchemaCache {
             cached_at: Instant::now(),
         };
 
-        {
-            let mut caches = self.caches.write().await;
-            let db_cache = Self::get_db_cache_mut(&mut caches, connection_id, &scope);
-            Self::evict_if_needed(&mut db_cache.columns, self.max_tables);
-            db_cache.columns.insert(table.to_string(), entry.clone());
-        }
+        self.store_columns_if_current(
+            connection_id,
+            database,
+            schema,
+            table,
+            entry.clone(),
+            generation,
+        )
+        .await;
 
         Ok(entry)
+    }
+
+    /// Read-only cache lookup, shared by single reads and batch planning.
+    pub async fn try_get_cached_columns(
+        &self,
+        connection_id: &str,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Option<CachedColumns> {
+        let scope = Self::scope_key(database, schema);
+        let caches = self.caches.read().await;
+        let db = caches.get(connection_id)?.get(&scope)?;
+        if let Some(cached) = db.tables.get(table) {
+            if cached.cached_at.elapsed() < self.cache_ttl && !cached.schema.columns.is_empty() {
+                return Some(CachedColumns {
+                    columns: cached.schema.columns.clone(),
+                    primary_keys: cached.schema.effective_primary_keys(),
+                    table_name: cached.schema.table_name.clone(),
+                    cached_at: cached.cached_at,
+                });
+            }
+        }
+        db.columns
+            .get(table)
+            .filter(|cached| {
+                cached.cached_at.elapsed() < self.cache_ttl && !cached.columns.is_empty()
+            })
+            .cloned()
+    }
+
+    pub async fn store_columns_if_current(
+        &self,
+        connection_id: &str,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        columns: CachedColumns,
+        generation: u64,
+    ) {
+        if columns.columns.is_empty() {
+            return;
+        }
+        let scope = Self::scope_key(database, schema);
+        let mut caches = self.caches.write().await;
+        if self.generation() != generation {
+            return;
+        }
+        let db = Self::get_db_cache_mut(&mut caches, connection_id, &scope);
+        Self::evict_if_needed(&mut db.columns, self.max_tables);
+        db.columns.insert(table.to_string(), columns);
     }
 
     /// Returns a cached full schema when fresh; otherwise `None`.
@@ -182,6 +224,26 @@ impl SchemaCache {
         table: &str,
         schema: TableSchema,
     ) {
+        self.store_table_schema_if_current(
+            connection_id,
+            database,
+            schema_name,
+            table,
+            schema,
+            self.generation(),
+        )
+        .await;
+    }
+
+    pub async fn store_table_schema_if_current(
+        &self,
+        connection_id: &str,
+        database: &str,
+        schema_name: Option<&str>,
+        table: &str,
+        schema: TableSchema,
+        generation: u64,
+    ) {
         if schema.columns.is_empty() {
             tracing::warn!(
                 database = %database,
@@ -194,6 +256,9 @@ impl SchemaCache {
 
         let scope = Self::scope_key(database, schema_name);
         let mut caches = self.caches.write().await;
+        if self.generation() != generation {
+            return;
+        }
         let db_cache = Self::get_db_cache_mut(&mut caches, connection_id, &scope);
 
         Self::evict_if_needed(&mut db_cache.tables, self.max_tables);
@@ -206,11 +271,12 @@ impl SchemaCache {
             },
         );
 
+        Self::evict_if_needed(&mut db_cache.columns, self.max_tables);
         db_cache.columns.insert(
             table.to_string(),
             CachedColumns {
                 columns: schema.columns.clone(),
-                primary_keys: schema.primary_keys.clone(),
+                primary_keys: schema.effective_primary_keys(),
                 table_name: schema.table_name.clone(),
                 cached_at: Instant::now(),
             },
@@ -227,6 +293,7 @@ impl SchemaCache {
         driver: &Arc<dyn DatabaseDriver>,
         handle: &ConnectionHandle,
     ) -> Result<TableSchema, DriverError> {
+        let generation = self.generation();
         if let Some(cached) = self
             .try_get_cached_schema(connection_id, database, schema, table)
             .await
@@ -238,8 +305,15 @@ impl SchemaCache {
         let table_schema = driver
             .get_table_schema(handle, table, database, schema)
             .await?;
-        self.store_table_schema(connection_id, database, schema, table, table_schema.clone())
-            .await;
+        self.store_table_schema_if_current(
+            connection_id,
+            database,
+            schema,
+            table,
+            table_schema.clone(),
+            generation,
+        )
+        .await;
         Ok(table_schema)
     }
 
@@ -253,6 +327,7 @@ impl SchemaCache {
 
     pub async fn invalidate(&self, connection_id: &str, database: &str, table: Option<&str>) {
         let mut caches = self.caches.write().await;
+        self.generation.fetch_add(1, Ordering::AcqRel);
 
         // No schema argument: invalidate every schema scope of this database.
         if let Some(db_caches) = caches.get_mut(connection_id) {
@@ -279,8 +354,27 @@ impl SchemaCache {
         }
     }
 
+    pub async fn invalidate_relation(
+        &self,
+        db_session_id: &str,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) {
+        let mut caches = self.caches.write().await;
+        self.generation.fetch_add(1, Ordering::AcqRel);
+        if let Some(db) = caches
+            .get_mut(db_session_id)
+            .and_then(|scopes| scopes.get_mut(&Self::scope_key(database, schema)))
+        {
+            db.columns.remove(table);
+            db.tables.remove(table);
+        }
+    }
+
     pub async fn clear_connection(&self, connection_id: &str) {
         let mut caches = self.caches.write().await;
+        self.generation.fetch_add(1, Ordering::AcqRel);
         caches.remove(connection_id);
     }
 
@@ -294,28 +388,12 @@ impl SchemaCache {
         handle: &ConnectionHandle,
         tables: &[String],
     ) {
-        let scope = Self::scope_key(database, schema);
         for table in tables {
-            if let Ok(schema) = driver
-                .get_table_schema(handle, table, database, schema)
+            if let Err(error) = self
+                .get_table_schema(connection_id, database, schema, table, driver, handle)
                 .await
             {
-                if schema.columns.is_empty() {
-                    tracing::warn!("Warmup skipped for column-less table {}", table);
-                    continue;
-                }
-                let mut caches = self.caches.write().await;
-                let db_cache = Self::get_db_cache_mut(&mut caches, connection_id, &scope);
-                db_cache.tables.insert(
-                    table.to_string(),
-                    CachedSchema {
-                        schema,
-                        cached_at: Instant::now(),
-                        version: 0,
-                    },
-                );
-            } else {
-                tracing::warn!("Warmup skipped for table {}", table);
+                tracing::warn!(%table, %error, "Warmup skipped");
             }
         }
     }
@@ -567,5 +645,37 @@ mod tests {
             "column-less columns-tier entry must be re-fetched from the driver"
         );
         assert!(!cols.columns.is_empty());
+    }
+    #[tokio::test]
+    async fn invalidation_prevents_an_old_full_schema_read_from_repopulating_cache() {
+        let (cache, mock, handle) = cache_with_mock().await;
+        let driver = mock as Arc<dyn DatabaseDriver>;
+        let old_generation = cache.generation();
+        let old = driver
+            .get_table_schema(&handle, "users", "db1", None)
+            .await
+            .unwrap();
+        cache.clear_connection("conn1").await;
+        cache
+            .store_table_schema_if_current(
+                "conn1",
+                "db1",
+                None,
+                "users",
+                old.clone(),
+                old_generation,
+            )
+            .await;
+        assert!(cache
+            .try_get_cached_schema("conn1", "db1", None, "users")
+            .await
+            .is_none());
+        cache
+            .store_table_schema_if_current("conn1", "db1", None, "users", old, cache.generation())
+            .await;
+        assert!(cache
+            .try_get_cached_schema("conn1", "db1", None, "users")
+            .await
+            .is_some());
     }
 }

@@ -46,7 +46,7 @@ import { formatMatchCount, invokeCountMatching } from '../key-browser/batchInvok
 import { ImportExport, type ImportExportProps } from '../key-browser/ImportExport';
 import type { CountMatchingResult } from '../shared/redisInvoke';
 
-/** The wire payload the `## 契约冻结` manufactures. */
+/** The wire payload the key-tree budget contract manufactures. */
 function outcome(overrides: Partial<CountMatchingResult> = {}): CountMatchingResult {
   return { count: 777, truncated: false, consumed: 1000, dbsize: 90_000, ...overrides };
 }

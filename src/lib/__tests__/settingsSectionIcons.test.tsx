@@ -19,7 +19,7 @@ function installDefaultResolver(): void {
   );
 }
 
-describe('settings section icon chain (F7)', () => {
+describe('settings section icon chain', () => {
   it('maps every registered host icon id to a Lucide fallback', () => {
     const lucideById = buildHostLucideById();
     for (const id of UI_ICON_IDS) {
@@ -42,9 +42,9 @@ describe('settings section icon chain (F7)', () => {
     }
   });
 
-  // BUG-F7-01 fixed: ThemedIcon's internal LUCIDE_MAP now includes `Palette`,
-  // so the resolved lucide name renders as an svg glyph (no ? placeholder).
-  it('renders settings.appearance Palette as an svg glyph (BUG-F7-01 fixed)', () => {
+  // ThemedIcon's internal LUCIDE_MAP includes `Palette`, so the resolved lucide
+  // name renders as an svg glyph (no ? placeholder).
+  it('renders settings.appearance Palette as an svg glyph', () => {
     installDefaultResolver();
     expect(getActiveIconResolver().resolve('settings.appearance')).toEqual({
       kind: 'lucide',

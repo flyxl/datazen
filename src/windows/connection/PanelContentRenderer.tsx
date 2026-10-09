@@ -8,7 +8,7 @@ import { resolveExportScope } from '../../lib/exportCapability';
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
 import { invalidateSchemaCache } from '../../lib/schemaCache';
 import { getConnectionView } from '../../lib/connectionViews';
-import { useSchemaStore } from '../../stores/schemaStore';
+import { useConnectionSchemaField } from '../../stores/schemaStore';
 import { onPanelClosed } from '../../stores/panelStore';
 import {
   type Panel,
@@ -440,7 +440,11 @@ function SqlPanelContent({
       <DatabaseObjectView
         dbSessionId={panel.dbSessionId}
         databaseType={panel.databaseType}
-        database={currentDatabase ?? ''}
+        database={
+          (panel as import('../../stores/panelStore').DatabaseObjectPanel).objectDatabase ??
+          currentDatabase ??
+          ''
+        }
         objectKind={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectKind}
         objectName={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectName}
         objectSchema={(panel as import('../../stores/panelStore').DatabaseObjectPanel).objectSchema}
@@ -479,8 +483,8 @@ function CreateTablePanelContent({
   onCancel,
 }: CreateTablePanelContentProps) {
   const { t } = useI18n();
-  const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
-  // F1: no use_database IPC gate — the editor's queries pin `database`
+  const isMultiDb = useConnectionSchemaField(dbSessionId, 'isMultiDatabase');
+  // No use_database IPC gate — the editor's queries pin `database`
   // explicitly and the backend switches the session lazily.
   if (isMultiDb && !database) {
     return (

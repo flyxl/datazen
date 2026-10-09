@@ -195,7 +195,7 @@ describe('WorkspaceView integration: TabBar ⇆ DefaultCards mutual exclusion', 
     expect(screen.getByTestId('workspace-default-cards')).toBeInTheDocument();
   });
 
-  it('closes an open wapp tab when an external refresh disables the wapp (BUG-F4-01)', async () => {
+  it('closes an open wapp tab when an external refresh disables the wapp', async () => {
     wappState.wapps = [makePlugin()];
     const view = render(<WorkspaceView />);
     await act(async () => {});

@@ -4,11 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 /**
- * Dialog-injection infrastructure sample (R regression proxy).
+ * Dialog-injection infrastructure sample.
  *
- * Progress-file anchor: F3-E2E-003 「原生保存对话框取消 → 返回 false 且不写文件」
- * was previously marked 【留待 R 阶段回归】with a manual-black-box exception,
- * because WebdriverIO cannot drive the real native dialog. The webdriver-only
+ * The native save-dialog cancel case — cancelling returns false and writes no
+ * file — was previously left to manual black-box testing, because WebdriverIO
+ * cannot drive the real native dialog. The webdriver-only
  * dialog-injection surface (`test_inject_dialog_result` /
  * `test_reset_dialog_queue`, see src-tauri/src/commands/dialog.rs) removes that
  * blocker: the spec pre-queues a dialog answer, triggers the command WITHOUT
@@ -16,8 +16,8 @@ import path from 'node:path';
  * cancel feedback end-to-end.
  *
  * These cases are the executable template for the remaining dialog-cancel
- * cases registered in docs/development/ipc-refactor-progress.md (their rewrite
- * is handled uniformly by the R regression agent).
+ * cases: each one is a pre-queued answer plus a trigger that deliberately
+ * goes through the real dialog branch.
  */
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ describe('对话框注入基建 (DIALOG-INJECTION)', () => {
       compress: false,
     });
 
-    // Cancel feedback contract (F3 decision 2): user dismissed → false.
+    // Cancel feedback contract: user dismissed → false.
     expect(saved).toBe(false);
   });
 
@@ -139,9 +139,9 @@ describe('对话框注入基建 (DIALOG-INJECTION)', () => {
   });
 
   it('DI-004: malformed injection payload is rejected loudly instead of silently queuing', async () => {
-    await expect(
-      invokeBackend('test_inject_dialog_result', { result: {} }),
-    ).rejects.toThrow(/canceled/);
+    await expect(invokeBackend('test_inject_dialog_result', { result: {} })).rejects.toThrow(
+      /canceled/,
+    );
     await expect(
       invokeBackend('test_inject_dialog_result', { result: { canceled: false } }),
     ).rejects.toThrow(/canceled/);

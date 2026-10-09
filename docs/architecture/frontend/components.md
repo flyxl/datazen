@@ -448,18 +448,15 @@ export const connectionCommands = {
 ```
 
 ```typescript
-// commands/database.ts
-import { invoke } from '@tauri-apps/api/core';
+// 元数据契约：packages/driver-sdk/src/ipc/schemaClient.ts
+import { schemaClient } from '@datazen/driver-sdk';
 
-export const databaseCommands = {
-  getDatabases: (dbSessionId: string) => invoke<string[]>('get_databases', { dbSessionId }),
+const scope = { database: 'app', schema: 'public' };
+const catalog = await schemaClient.listCatalog(dbSessionId, scope);
+const relation = { ...scope, name: 'users' };
+const { value } = await schemaClient.readSchema(dbSessionId, relation);
+// value.ref 是目标身份，value.definition 是完整结构。
 
-  getTables: (dbSessionId: string, database: string) =>
-    invoke<TableInfo[]>('get_tables', { dbSessionId, database }),
-
-  getTableSchema: (dbSessionId: string, table: string) =>
-    invoke<TableSchema>('get_table_schema', { dbSessionId, table }),
-};
 ```
 
 ```typescript

@@ -1,8 +1,10 @@
 //! SQL Server sync adapter.
 
+use datazen_driver_api::sync::contract_from_column;
 use datazen_driver_api::{
-    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
-    SyncSourceAdapter, SyncTargetAdapter, Value,
+    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRForeignKey, IRIndex, IRTableObjects,
+    IRType, SyncAdapterFactory, SyncKeyContract, SyncKeyKind, SyncSourceAdapter, SyncTargetAdapter,
+    TableSchema, Value,
 };
 
 pub struct SqlServerSyncAdapter;
@@ -92,9 +94,119 @@ fn base_type(raw: &str) -> String {
     lower
 }
 
+/// Map SQL Server's catalog index-type vocabulary onto the dialect-neutral
+/// index model used by the transfer IR.
+///
+/// `CLUSTERED` / `NONCLUSTERED` — and the `UNIQUE_CONSTRAINT:` prefix the
+/// catalog parser adds for constraint-backed unique indexes — describe
+/// physical layout and constraint backing rather than a different index kind:
+/// an ordinary `CREATE [UNIQUE] INDEX` reproduces the indexed columns and
+/// uniqueness, which is exactly what the IR can carry. Anything else (gin, rum,
+/// hash, …) is returned untouched so the shared renderer keeps rejecting index
+/// methods it cannot express.
+fn portable_index_type(raw: &str) -> String {
+    match raw.trim().to_ascii_uppercase().as_str() {
+        ""
+        | "CLUSTERED"
+        | "NONCLUSTERED"
+        | "UNIQUE_CONSTRAINT:CLUSTERED"
+        | "UNIQUE_CONSTRAINT:NONCLUSTERED" => String::new(),
+        _ => raw.to_string(),
+    }
+}
+
+fn native_type_name(raw: &str) -> &str {
+    raw.trim()
+        .split(|character: char| character == '(' || character.is_whitespace())
+        .next()
+        .unwrap_or_default()
+}
+
+fn is_safe_native_only_type(raw: &str) -> bool {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match native_type_name(&normalized) {
+        "tinyint" | "xml" => normalized == native_type_name(&normalized),
+        "binary" => {
+            parse_length(&normalized, "binary").is_some_and(|length| (1..=8_000).contains(&length))
+        }
+        _ => false,
+    }
+}
+
+fn normalize_native_type(raw: &str) -> String {
+    raw.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for SqlServerSyncAdapter {
+    fn sync_key_contract(&self, column: &ColumnSchema) -> Result<SyncKeyContract, String> {
+        let lower = column.data_type.trim().to_ascii_lowercase();
+        let base = lower.split(['(', ' ', ',']).next().unwrap_or_default();
+        match base {
+            // SQL Server string comparisons can ignore trailing spaces and
+            // depend on a database collation. The shared bytewise contract
+            // cannot represent those semantics, so refuse string keys until a
+            // driver-owned ordering/equality contract can prove parity.
+            "char" | "nchar" | "varchar" | "nvarchar" | "text" | "ntext" => Err(format!(
+                "SQL Server text key type '{}' has collation and trailing-space semantics that Data Sync cannot verify safely",
+                column.data_type
+            )),
+            // SQL Server's UNIQUEIDENTIFIER ordering differs from the generic
+            // lexical UUID order, so it must not enter the merge/keyset path.
+            "uniqueidentifier" => Err(
+                "SQL Server UNIQUEIDENTIFIER keys do not have a verified Data Sync ordering contract".into(),
+            ),
+            // SQL Server exposes rowversion through the legacy `timestamp`
+            // type name; it is a generated version token, never a row key.
+            "timestamp" | "rowversion" => Err(
+                "SQL Server rowversion columns cannot be used as Data Sync keys".into(),
+            ),
+            "datetime2" | "datetimeoffset" => {
+                let precision = lower
+                    .split_once('(')
+                    .and_then(|(_, rest)| rest.strip_suffix(')'))
+                    .and_then(|value| value.parse::<u8>().ok())
+                    .unwrap_or(7);
+                Ok(SyncKeyContract::reject_nulls(SyncKeyKind::Timestamp {
+                    with_timezone: base == "datetimeoffset",
+                    precision,
+                }))
+            }
+            _ => contract_from_column(column),
+        }
+    }
+
+    fn validate_transfer_source_column(&self, column: &ColumnSchema) -> Result<(), String> {
+        let native = native_type_name(&column.data_type).to_ascii_lowercase();
+        if matches!(native.as_str(), "timestamp" | "rowversion") {
+            return Err(format!(
+                "SQL Server {native} is a generated row version, not a timestamp value; materialize it into a regular binary column before transfer"
+            ));
+        }
+        Ok(())
+    }
+
+    fn transfer_source_type_is_native_only(
+        &self,
+        _column: &ColumnSchema,
+        source_ir: &IRColumn,
+    ) -> bool {
+        matches!(&source_ir.ir_type, IRType::Other(_))
+    }
+
+    fn transfer_source_requires_collation_preservation(&self, column: &ColumnSchema) -> bool {
+        matches!(
+            native_type_name(&column.data_type)
+                .to_ascii_lowercase()
+                .as_str(),
+            "char" | "nchar" | "varchar" | "nvarchar" | "text" | "ntext"
+        )
+    }
+
     /// Rebuild declared type dimensions that INFORMATION_SCHEMA omits, so a
     /// transfer preserves bounded strings and decimal precision/scale.
     fn full_column_types_query(&self, table: &str) -> Option<String> {
@@ -110,6 +222,8 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
                                    ELSE CAST(c.max_length AS varchar(10)) END + ')' \
                       WHEN t.name IN ('decimal','numeric') THEN \
                         '(' + CAST(c.precision AS varchar(10)) + ',' + CAST(c.scale AS varchar(10)) + ')' \
+                      WHEN t.name = 'float' THEN \
+                        '(' + CAST(c.precision AS varchar(10)) + ')' \
                       WHEN t.name IN ('datetime2','datetimeoffset','time') THEN \
                         '(' + CAST(c.scale AS varchar(10)) + ')' \
                       ELSE '' END AS full_type \
@@ -120,40 +234,91 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
         ))
     }
 
+    /// Mirror of the shared mapping, except that SQL Server's catalog index
+    /// types are translated into the dialect-neutral vocabulary the transfer
+    /// renderers understand (see [`portable_index_type`]).
+    ///
+    /// The shared `render_index_ddl` only accepts an ordinary B-tree index, so
+    /// leaving SQL Server's `CLUSTERED` / `NONCLUSTERED` vocabulary in place
+    /// would fail the whole structure plan for any secondary index. Doing the
+    /// translation here — at the point where the catalog vocabulary enters the
+    /// IR — keeps every target adapter working, not just SQL Server itself.
+    fn table_objects_to_ir(&self, schema: &TableSchema) -> IRTableObjects {
+        IRTableObjects {
+            indexes: schema
+                .indexes
+                .iter()
+                .map(|index| IRIndex {
+                    name: index.name.clone(),
+                    columns: index.columns.clone(),
+                    is_unique: index.is_unique,
+                    is_primary: index.is_primary,
+                    index_type: portable_index_type(&index.index_type),
+                })
+                .collect(),
+            foreign_keys: schema
+                .foreign_keys
+                .iter()
+                .map(|foreign_key| IRForeignKey {
+                    name: foreign_key.name.clone(),
+                    columns: foreign_key.columns.clone(),
+                    referenced_table: foreign_key.referenced_table.clone(),
+                    referenced_columns: foreign_key.referenced_columns.clone(),
+                    on_update: foreign_key.on_update.clone(),
+                    on_delete: foreign_key.on_delete.clone(),
+                })
+                .collect(),
+        }
+    }
+
     fn unsupported_transfer_structure_query(
         &self,
         database: &str,
         schema: Option<&str>,
         table: &str,
     ) -> Option<String> {
-        // SQL Server's current schema reader only exposes columns and PKs.
-        // Refuse source objects that would otherwise disappear from the
-        // transfer plan. Keep catalog qualifiers and user names safely quoted
-        // as identifiers/literals, including `]` and apostrophes.
+        // Refuse only table-level objects the transfer plan genuinely cannot
+        // recreate, so this gate keeps the same granularity as the PostgreSQL
+        // adapter: reject what is inexpressible, let through what the IR and
+        // the DDL emitters already carry.
+        //
+        // Secondary indexes and foreign keys are deliberately NOT listed. The
+        // host derives `IRTableObjects` from these same catalog rows and emits
+        // them through `render_index_ddl` / `render_foreign_key_ddl` after all
+        // CREATE TABLE statements, so rejecting them here would refuse objects
+        // Data Transfer already recreates on the target. Anything the catalog
+        // reader cannot model into `IndexInfo` / `ForeignKeyInfo` (filtered,
+        // INCLUDE or descending indexes; disabled or NOT FOR REPLICATION
+        // foreign keys) is already refused there, as is any remaining
+        // referential action the shared renderer cannot express (SET DEFAULT).
+        //
+        // What remains below is inexpressible by the IR model or by the SQL
+        // Server emitters: the model has no computed-column concept, neither
+        // emission path renders CHECK constraints, and
+        // `auto_increment_keyword()` hardcodes `IDENTITY(1,1)`, so a
+        // non-default seed or increment cannot be recreated.
+        //
+        // Keep catalog qualifiers and user names safely quoted as identifiers
+        // or literals, including `]` and apostrophes.
         let catalog = if database.trim().is_empty() {
             String::new()
         } else {
             format!("[{}].", database.replace(']', "]]"))
         };
-        let schema = schema.unwrap_or("dbo").replace('\'', "''");
+        // A blank schema must fall back to `dbo`, exactly as an absent one
+        // does. Emitting `s.name = N''` instead would match no catalog row, so
+        // the precheck would report zero unsupported objects and silently
+        // admit every table — turning this fail-closed gate into fail-open.
+        let schema = schema
+            .map(str::trim)
+            .filter(|schema| !schema.is_empty())
+            .unwrap_or("dbo")
+            .replace('\'', "''");
         let table = table.replace('\'', "''");
         Some(format!(
             "SELECT CONCAT('computed column ', c.name) AS unsupported_object \
              FROM {catalog}sys.computed_columns c \
              JOIN {catalog}sys.tables t ON t.object_id = c.object_id \
-             JOIN {catalog}sys.schemas s ON s.schema_id = t.schema_id \
-             WHERE s.name = N'{schema}' AND t.name = N'{table}' \
-             UNION ALL \
-             SELECT CONCAT('secondary index ', i.name) \
-             FROM {catalog}sys.indexes i \
-             JOIN {catalog}sys.tables t ON t.object_id = i.object_id \
-             JOIN {catalog}sys.schemas s ON s.schema_id = t.schema_id \
-             WHERE s.name = N'{schema}' AND t.name = N'{table}' \
-               AND i.index_id > 0 AND i.is_primary_key = 0 \
-             UNION ALL \
-             SELECT CONCAT('foreign key ', fk.name) \
-             FROM {catalog}sys.foreign_keys fk \
-             JOIN {catalog}sys.tables t ON t.object_id = fk.parent_object_id \
              JOIN {catalog}sys.schemas s ON s.schema_id = t.schema_id \
              WHERE s.name = N'{schema}' AND t.name = N'{table}' \
              UNION ALL \
@@ -176,73 +341,82 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
     fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let lower = base_type(raw);
+        let native = native_type_name(&lower);
 
-        let ir_type = if lower.starts_with("nvarchar") {
+        let ir_type = if native == "nvarchar" {
             let len = parse_length(&lower, "nvarchar");
             IRType::Varchar { length: len }
-        } else if lower.starts_with("varchar") {
+        } else if native == "varchar" {
             let len = parse_length(&lower, "varchar");
             IRType::Varchar { length: len }
-        } else if lower.starts_with("nchar") {
+        } else if native == "nchar" {
             let len = parse_length(&lower, "nchar").unwrap_or(1);
             IRType::Char { length: len }
-        } else if lower.starts_with("char(") || lower == "char" {
+        } else if native == "char" {
             let len = parse_length(&lower, "char").unwrap_or(1);
             IRType::Char { length: len }
-        } else if lower.starts_with("decimal") {
+        } else if native == "decimal" {
             let (p, s) = parse_precision(&lower, "decimal");
             IRType::Decimal {
                 precision: p,
                 scale: s,
             }
-        } else if lower.starts_with("numeric") {
+        } else if native == "numeric" {
             let (p, s) = parse_precision(&lower, "numeric");
             IRType::Decimal {
                 precision: p,
                 scale: s,
             }
-        } else if lower.starts_with("varbinary") {
+        } else if native == "money" {
+            IRType::Decimal {
+                precision: 19,
+                scale: 4,
+            }
+        } else if native == "smallmoney" {
+            IRType::Decimal {
+                precision: 10,
+                scale: 4,
+            }
+        } else if native == "varbinary" {
             let len = parse_length(&lower, "varbinary");
             IRType::Binary { length: len }
-        } else if lower.starts_with("binary") {
-            let len = parse_length(&lower, "binary");
-            IRType::Binary { length: len }
-        } else if lower == "bit" || lower.starts_with("bit(") {
+        } else if native == "binary" || native == "xml" || native == "tinyint" {
+            IRType::Other(lower.clone())
+        } else if native == "bit" {
             IRType::Bool
-        } else if lower == "tinyint" {
-            IRType::Int8
-        } else if lower == "smallint" {
+        } else if native == "smallint" {
             IRType::Int16
-        } else if lower == "int" || lower == "integer" {
+        } else if native == "int" || native == "integer" {
             IRType::Int32
-        } else if lower == "bigint" {
+        } else if native == "bigint" {
             IRType::Int64
-        } else if lower == "real" {
+        } else if native == "real" {
             IRType::Float32
-        } else if lower == "float" || lower.starts_with("float(") {
-            IRType::Float64
-        } else if lower == "text" || lower == "ntext" {
+        } else if native == "float" {
+            match parse_length(&lower, "float") {
+                Some(precision) if precision <= 24 => IRType::Float32,
+                _ => IRType::Float64,
+            }
+        } else if native == "text" || native == "ntext" {
             IRType::Text
-        } else if lower == "image" {
+        } else if native == "image" {
             IRType::Blob
-        } else if lower == "date" {
+        } else if native == "date" {
             IRType::Date
-        } else if lower == "time" || lower.starts_with("time(") {
+        } else if native == "time" {
             IRType::Time {
                 with_timezone: false,
             }
-        } else if lower == "datetime"
-            || lower == "datetime2"
-            || lower.starts_with("datetime2(")
-            || lower == "smalldatetime"
-        {
+        } else if native == "datetimeoffset" {
+            IRType::Timestamp {
+                with_timezone: true,
+            }
+        } else if matches!(native, "datetime" | "datetime2" | "smalldatetime") {
             IRType::Timestamp {
                 with_timezone: false,
             }
-        } else if lower == "uniqueidentifier" {
+        } else if native == "uniqueidentifier" {
             IRType::Uuid
-        } else if lower == "xml" {
-            IRType::Text
         } else {
             IRType::Other(raw.to_string())
         };
@@ -283,10 +457,16 @@ impl SyncTargetAdapter for SqlServerSyncAdapter {
             IRType::Binary { length: None } | IRType::Blob => "VARBINARY(MAX)".into(),
             IRType::Date => "DATE".into(),
             IRType::Time { .. } => "TIME".into(),
-            IRType::Timestamp { .. } => "DATETIME2".into(),
+            IRType::Timestamp {
+                with_timezone: true,
+            } => "DATETIMEOFFSET".into(),
+            IRType::Timestamp {
+                with_timezone: false,
+            } => "DATETIME2".into(),
             IRType::Json => "NVARCHAR(MAX)".into(),
             IRType::Uuid => "UNIQUEIDENTIFIER".into(),
             IRType::Bit { .. } => "BIT".into(),
+            IRType::Other(native) if is_safe_native_only_type(native) => native.clone(),
             IRType::Other(_) => "NVARCHAR(MAX)".into(),
         }
     }
@@ -349,6 +529,61 @@ impl SyncTargetAdapter for SqlServerSyncAdapter {
     fn auto_increment_keyword(&self) -> Option<&str> {
         Some("IDENTITY(1,1)")
     }
+
+    fn supports_explicit_identity_values(&self) -> bool {
+        true
+    }
+
+    /// SQL Server identifies an index by `(object_id, index_id)`, not by a
+    /// schema-level naming object, so two different tables may reuse the same
+    /// index name. Reporting the wider namespace here stops the host's
+    /// `ensure_unique_object_name` from rejecting a plan that SQL Server would
+    /// accept.
+    fn index_names_are_table_scoped(&self) -> bool {
+        true
+    }
+
+    fn validate_transfer_column_type(
+        &self,
+        source_column: &ColumnSchema,
+        source_ir: &IRColumn,
+        _source_text_limit_bytes: Option<u64>,
+        source_requires_collation_preservation: bool,
+        source_type_is_native_only: bool,
+        target_native_type: Option<&str>,
+        _creating_target: bool,
+    ) -> Result<(), String> {
+        if source_requires_collation_preservation {
+            return Err(format!(
+                "source column '{}' uses SQL Server collation semantics that cannot be proven equivalent; choose the target default collation explicitly or review a matching target collation",
+                source_column.name
+            ));
+        }
+        if matches!(&source_ir.ir_type, IRType::Decimal { precision: 0, .. }) {
+            return Err(
+                "unbounded decimal source values cannot be proven to fit SQL Server's maximum precision 38; select a bounded reviewed target type".into(),
+            );
+        }
+        if source_type_is_native_only {
+            let IRType::Other(source_native) = &source_ir.ir_type else {
+                return Err("native-only source type marker is inconsistent".into());
+            };
+            if !is_safe_native_only_type(source_native) {
+                return Err(format!(
+                    "SQL Server cannot safely recreate native-only source type '{source_native}'"
+                ));
+            }
+            let target_native = target_native_type.ok_or_else(|| {
+                "target native type is unavailable for native-only source data".to_string()
+            })?;
+            if normalize_native_type(source_native) != normalize_native_type(target_native) {
+                return Err(format!(
+                    "native-only source type '{source_native}' requires the same target type; found '{target_native}'"
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -375,6 +610,7 @@ mod tests {
         assert!(sql.contains("sys.columns"));
         assert!(sql.contains("c.max_length / 2"));
         assert!(sql.contains("c.precision"));
+        assert!(sql.contains("WHEN t.name = 'float'"));
 
         let quoted = SqlServerSyncAdapter
             .full_column_types_query("dbo.o'brien")
@@ -393,7 +629,7 @@ mod tests {
         let a = SqlServerSyncAdapter;
         assert_eq!(
             a.column_to_ir(&col("a", "tinyint"), None).ir_type,
-            IRType::Int8
+            IRType::Other("tinyint".into())
         );
         assert_eq!(
             a.column_to_ir(&col("a", "smallint"), None).ir_type,
@@ -407,6 +643,44 @@ mod tests {
             a.column_to_ir(&col("a", "bigint"), None).ir_type,
             IRType::Int64
         );
+    }
+
+    #[test]
+    fn sqlserver_sync_key_contract_fails_closed_for_collated_and_guid_keys() {
+        let adapter = SqlServerSyncAdapter;
+        for ty in [
+            "varchar(32)",
+            "nvarchar(64)",
+            "uniqueidentifier",
+            "rowversion",
+        ] {
+            let error = adapter
+                .sync_key_contract(&col("key", ty))
+                .expect_err("key ordering must be verified before paging");
+            assert!(!error.is_empty(), "{ty}");
+        }
+    }
+
+    #[test]
+    fn sqlserver_sync_key_contract_preserves_decimal_and_datetime_semantics() {
+        let adapter = SqlServerSyncAdapter;
+        assert!(matches!(
+            adapter.sync_key_contract(&col("key", "decimal(38, 18)")),
+            Ok(SyncKeyContract {
+                kind: SyncKeyKind::Decimal { scale: Some(18) },
+                null_policy: datazen_driver_api::SyncKeyNullPolicy::Reject,
+            })
+        ));
+        assert!(matches!(
+            adapter.sync_key_contract(&col("key", "datetimeoffset(7)")),
+            Ok(SyncKeyContract {
+                kind: SyncKeyKind::Timestamp {
+                    with_timezone: true,
+                    precision: 7,
+                },
+                null_policy: datazen_driver_api::SyncKeyNullPolicy::Reject,
+            })
+        ));
     }
 
     #[test]
@@ -440,7 +714,161 @@ mod tests {
             a.column_to_ir(&col("t", "uniqueidentifier"), None).ir_type,
             IRType::Uuid
         );
-        assert_eq!(a.column_to_ir(&col("x", "xml"), None).ir_type, IRType::Text);
+        assert_eq!(
+            a.column_to_ir(&col("x", "xml"), None).ir_type,
+            IRType::Other("xml".into())
+        );
+    }
+
+    #[test]
+    fn sqlserver_transfer_preserves_exact_and_native_only_types() {
+        let adapter = SqlServerSyncAdapter;
+        assert!(adapter.supports_explicit_identity_values());
+        assert_eq!(
+            adapter.column_to_ir(&col("amount", "money"), None).ir_type,
+            IRType::Decimal {
+                precision: 19,
+                scale: 4
+            }
+        );
+        assert_eq!(
+            adapter
+                .column_to_ir(&col("small_amount", "smallmoney"), None)
+                .ir_type,
+            IRType::Decimal {
+                precision: 10,
+                scale: 4
+            }
+        );
+        assert_eq!(
+            adapter
+                .column_to_ir(&col("at", "datetimeoffset(7)"), None)
+                .ir_type,
+            IRType::Timestamp {
+                with_timezone: true
+            }
+        );
+        assert_eq!(
+            adapter.ir_type_to_native(&IRType::Timestamp {
+                with_timezone: true
+            }),
+            "DATETIMEOFFSET"
+        );
+        assert_eq!(
+            adapter
+                .column_to_ir(&col("raw", "binary(16)"), None)
+                .ir_type,
+            IRType::Other("binary(16)".into())
+        );
+        assert_eq!(
+            adapter.ir_type_to_native(&IRType::Other("binary(16)".into())),
+            "binary(16)"
+        );
+        assert_eq!(
+            adapter.column_to_ir(&col("f", "float(24)"), None).ir_type,
+            IRType::Float32
+        );
+        assert_eq!(
+            adapter.column_to_ir(&col("f", "float(53)"), None).ir_type,
+            IRType::Float64
+        );
+    }
+
+    #[test]
+    fn sqlserver_transfer_rejects_generated_rowversion_and_unsafe_native_types() {
+        let adapter = SqlServerSyncAdapter;
+        assert!(adapter
+            .validate_transfer_source_column(&col("version", "rowversion"))
+            .is_err());
+        assert!(adapter
+            .validate_transfer_source_column(&col("version", "timestamp"))
+            .is_err());
+        assert!(!is_safe_native_only_type("custom_type"));
+        assert!(!is_safe_native_only_type("binary(MAX)"));
+        assert!(is_safe_native_only_type("binary(8000)"));
+    }
+
+    #[test]
+    fn sqlserver_transfer_native_only_mapping_requires_exact_target_type() {
+        let adapter = SqlServerSyncAdapter;
+        let source_column = col("raw", "tinyint");
+        let source_ir = adapter.column_to_ir(&source_column, None);
+        assert!(adapter
+            .validate_transfer_column_type(
+                &source_column,
+                &source_ir,
+                None,
+                false,
+                true,
+                Some("TINYINT"),
+                false,
+            )
+            .is_ok());
+        assert!(adapter
+            .validate_transfer_column_type(
+                &source_column,
+                &source_ir,
+                None,
+                false,
+                true,
+                Some("SMALLINT"),
+                false,
+            )
+            .is_err());
+
+        let unbounded_decimal = IRColumn {
+            name: "amount".into(),
+            ir_type: IRType::Decimal {
+                precision: 0,
+                scale: 0,
+            },
+            nullable: true,
+            default_expr: None,
+            is_primary_key: false,
+            is_auto_increment: false,
+            comment: None,
+        };
+        assert!(adapter
+            .validate_transfer_column_type(
+                &col("amount", "numeric"),
+                &unbounded_decimal,
+                None,
+                false,
+                false,
+                Some("DECIMAL(38,18)"),
+                true,
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn sqlserver_transfer_requires_explicit_collation_decision() {
+        let adapter = SqlServerSyncAdapter;
+        let source_column = col("name", "nvarchar(20)");
+        assert!(adapter.transfer_source_requires_collation_preservation(&source_column));
+        let source_ir = adapter.column_to_ir(&source_column, None);
+        assert!(adapter
+            .validate_transfer_column_type(
+                &source_column,
+                &source_ir,
+                None,
+                true,
+                false,
+                Some("NVARCHAR(20)"),
+                true,
+            )
+            .is_err());
+        assert!(adapter
+            .validate_transfer_column_type(
+                &source_column,
+                &source_ir,
+                None,
+                false,
+                false,
+                Some("NVARCHAR(20)"),
+                true,
+            )
+            .is_ok());
     }
 
     #[test]
@@ -488,17 +916,83 @@ mod tests {
     }
 
     #[test]
-    fn sqlserver_source_preflight_rejects_unmodeled_structure_objects() {
+    fn sqlserver_source_preflight_rejects_only_unrepresentable_structure_objects() {
         let query = SqlServerSyncAdapter
             .unsupported_transfer_structure_query("db]name", Some("sales' data"), "people's")
             .expect("SQL Server source preflight query");
+        // Escaping invariants: catalog as a quoted identifier, schema/table as
+        // quoted literals.
         assert!(query.contains("[db]]name].sys.computed_columns"));
         assert!(query.contains("s.name = N'sales'' data'"));
         assert!(query.contains("t.name = N'people''s'"));
-        assert!(query.contains("secondary index "));
-        assert!(query.contains("foreign key "));
+        // Still rejected: no IR concept, no emission path, hardcoded IDENTITY.
+        assert!(query.contains("computed column "));
         assert!(query.contains("CHECK constraint "));
         assert!(query.contains("non-default seed/increment"));
+        // Not rejected: the host emits both from the same catalog rows through
+        // `render_index_ddl` / `render_foreign_key_ddl`.
+        assert!(!query.contains("secondary index "));
+        assert!(!query.contains("foreign key "));
+        assert!(!query.contains("sys.indexes"));
+        assert!(!query.contains("sys.foreign_keys"));
+    }
+
+    #[test]
+    fn sqlserver_source_preflight_treats_a_blank_schema_as_absent() {
+        // `s.name = N''` matches no catalog row, so a blank schema would make
+        // the precheck report zero unsupported objects and silently admit
+        // every table. It must fall back to `dbo` instead.
+        for schema in ["", "   ", "\t\n "] {
+            let query = SqlServerSyncAdapter
+                .unsupported_transfer_structure_query("sales", Some(schema), "orders")
+                .expect("SQL Server source preflight query");
+            assert!(query.contains("s.name = N'dbo'"), "{schema:?}: {query}");
+            assert!(!query.contains("N''"), "{schema:?}: {query}");
+            assert!(
+                query.contains("FROM [sales].sys.computed_columns"),
+                "{schema:?}: {query}"
+            );
+        }
+
+        // The absent-schema fallback is unchanged, and a legitimate schema
+        // name keeps its interior space: trimming must not damage a real
+        // identifier.
+        let absent = SqlServerSyncAdapter
+            .unsupported_transfer_structure_query("sales", None, "orders")
+            .expect("SQL Server source preflight query");
+        assert!(absent.contains("s.name = N'dbo'"), "{absent}");
+
+        let named = SqlServerSyncAdapter
+            .unsupported_transfer_structure_query("sales", Some("sales data"), "orders")
+            .expect("SQL Server source preflight query");
+        assert!(named.contains("s.name = N'sales data'"), "{named}");
+        assert!(!named.contains("s.name = N''"), "{named}");
+
+        // Trimming is only a fallback decision; a padded real schema name is
+        // still quoted verbatim around its trimmed value.
+        let padded = SqlServerSyncAdapter
+            .unsupported_transfer_structure_query("sales", Some("  sales  "), "orders")
+            .expect("SQL Server source preflight query");
+        assert!(padded.contains("s.name = N'sales'"), "{padded}");
+
+        // Apostrophe escaping still applies after the fallback decision.
+        let quoted = SqlServerSyncAdapter
+            .unsupported_transfer_structure_query("sales", Some(" o'brien "), "orders")
+            .expect("SQL Server source preflight query");
+        assert!(quoted.contains("s.name = N'o''brien'"), "{quoted}");
+    }
+
+    #[test]
+    fn sqlserver_portable_index_type_maps_own_catalog_vocabulary_only() {
+        assert_eq!(portable_index_type("NONCLUSTERED"), "");
+        assert_eq!(portable_index_type("CLUSTERED"), "");
+        assert_eq!(portable_index_type("UNIQUE_CONSTRAINT:NONCLUSTERED"), "");
+        assert_eq!(portable_index_type("UNIQUE_CONSTRAINT:CLUSTERED"), "");
+        assert_eq!(portable_index_type("  "), "");
+        // Other engines' index methods stay visible so the shared renderer
+        // keeps rejecting them.
+        assert_eq!(portable_index_type("btree"), "btree");
+        assert_eq!(portable_index_type("GIN"), "GIN");
     }
 
     #[test]

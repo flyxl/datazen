@@ -10,7 +10,7 @@ import type {
 } from '../../../types';
 
 /**
- * Continuous journey test (AGENTS.md): create → appears in the list → rename →
+ * Continuous journey test: create → appears in the list → rename →
  * copy → delete-and-unbind, driven through the real store and the real dialogs
  * against a small in-memory backend. Nothing here is a static single point:
  * each step asserts the state transition the previous step produced.

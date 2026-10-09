@@ -25,6 +25,13 @@ export const tursoMeta = {
   clipboardSchemes: ['libsql', 'turso'],
   supportsExplain: true,
   supportedObjectKinds: ['trigger'],
+  sqlParameterPolicy: {
+    atNamed: true,
+    question: true,
+    dollarPositional: false,
+    dollarNamed: true,
+    template: false,
+  },
   structureEditor: {
     columnTypes: [
       { value: 'INTEGER', label: 'INTEGER' },

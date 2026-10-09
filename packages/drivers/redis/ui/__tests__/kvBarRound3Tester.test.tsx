@@ -26,7 +26,7 @@
  *     a session they have not seen yet with nothing, while only the cache paints
  *     `sess-1`'s old answer the instant the panel hops back — with no round trip.
  *     This is the case that measures "the tag did not quietly become a cache",
- *     which is the direction the ruling in `bugs.md` forbids.
+ *     which is the direction the ruling forbids.
  *
  * Assertion policy (PRD §7-6): `data-*` markers, i18n keys and values echoed
  * by Redis (`noeviction`, `allkeys-lfu`) only. No rendered English copy.

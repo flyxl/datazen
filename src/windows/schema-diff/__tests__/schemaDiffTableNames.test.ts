@@ -6,7 +6,11 @@ import {
   mergeSchemaDiffTablePicks,
 } from '../schemaDiffTableNames';
 
-function table(name: string, schema?: string, tableType: TableInfo['tableType'] = 'table'): TableInfo {
+function table(
+  name: string,
+  schema?: string,
+  tableType: TableInfo['tableType'] = 'table',
+): TableInfo {
   return { name, schema, tableType };
 }
 
@@ -60,6 +64,17 @@ describe('Schema Diff table picker identity', () => {
       sourceName: 'public.users',
       targetName: 'users',
     });
+  });
+
+  it('does not expose empty-schema sentinels as table rows', () => {
+    const picks = mergeSchemaDiffTablePicks(
+      [table('', 'public', 'systemTable'), table('', 'app', 'table'), table('users', 'public')],
+      [table('', 'public', 'systemTable'), table('users', 'public')],
+      'public',
+      'public',
+    );
+
+    expect(picks.map((pick) => pick.name)).toEqual(['public.users']);
   });
 
   it('separates source and target-only IPC selections and handles empty selection', () => {

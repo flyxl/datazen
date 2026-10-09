@@ -2,7 +2,7 @@
 //! consumers — declared there under `#[cfg(test)] mod tests`.
 //!
 //! The scripted connection double below is this module's own (the
-//! `ScriptedConn` of `ops_workbench/tests.rs` is private to that module). It
+//! `ScriptedConn` of `ops/workbench/tests.rs` is private to that module). It
 //! journals every request with its arguments — and on a cluster every
 //! *addressed* request together with the slot it was aimed at — so the tests
 //! can assert the cost shape without a live server: `DBSIZE` exactly once per

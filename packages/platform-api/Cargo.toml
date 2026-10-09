@@ -1,0 +1,22 @@
+[package]
+name = "datazen-platform-api"
+version = "0.0.1"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Transport-free platform contracts: ID newtypes, RequestContext, target types, port traits and PortError."
+exclude = ["src/testing/**"]
+
+[features]
+default = []
+# `test-harness` 只是把 `#[cfg(test)]` 之外的 `src/testing/**` 也编进来，
+# 让没有 Tauri 的普通测试进程能装配假端口。cfg 决定是否编译，exclude 决定 cargo package 收不收。
+test-harness = []
+
+[dependencies]
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

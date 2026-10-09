@@ -108,7 +108,7 @@ fn dedup_keys(keys: &mut Vec<String>) {
 /// (`8981d3078`'s `redis_driver_on.rs:138` read it as `unwrap_or(0)`). An
 /// unusable reply therefore yields `0`, which makes the budget fall back to
 /// [`DEFAULT_TREE_BUDGET`] via [`tree_scan_budget`] — the "DBSIZE 不可得 ⇒ 默认档"
-/// degradation `## 契约冻结` promises. The signature has no `Result` so a future
+/// degradation the frozen budget contract promises. The signature has no `Result` so a future
 /// caller cannot re-raise it into a hard dependency again.
 pub(crate) async fn read_dbsize<C>(conn: &mut C) -> u64
 where

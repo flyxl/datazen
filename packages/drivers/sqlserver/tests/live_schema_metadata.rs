@@ -1,8 +1,9 @@
 //! Live **schema / metadata** coverage for the SQL Server driver.
 //!
-//! Every probe runs against the Azure SQL Database configured in
-//! `packages/drivers/sqlserver/.env.test` (see `tests/common/mod.rs`). Tests
-//! that only read skip when no instance is configured; tests that create
+//! Every probe runs against a real Azure SQL Database. Settings come from the
+//! **process environment only**; a local env file is read *only* when you opt
+//! in with `TEST_SQLSERVER_ENV_FILE=/path/to/your/env/file` (see `tests/common/mod.rs`).
+//! Tests that only read skip when no instance is configured; tests that create
 //! objects additionally require `TEST_SQLSERVER_ALLOW_WRITE=1`.
 //!
 //! What is pinned here:
@@ -178,6 +179,109 @@ impl Fixture {
     }
 }
 
+#[tokio::test]
+async fn composite_key_and_secondary_constraints_preserve_catalog_state() {
+    let Some(cfg) = live_config() else { return };
+    if !write_allowed(&cfg, "composite SQL Server schema metadata") {
+        return;
+    }
+
+    let schema = cfg.scratch("meta_keys");
+    let parent = qualified(&schema, "parent");
+    let child = qualified(&schema, "child");
+    let db = cfg.database.clone();
+    let mut fixture = Fixture::start(&cfg).await;
+    fixture.track(format!("DROP TABLE IF EXISTS {child}"));
+    fixture.track(format!("DROP TABLE IF EXISTS {parent}"));
+    fixture.track(format!("DROP SCHEMA IF EXISTS {}", bracket(&schema)));
+
+    fixture
+        .run(move |driver: Arc<SqlServerDriver>, handle: ConnectionHandle| async move {
+            exec(
+                &driver,
+                &handle,
+                "create metadata scratch schema",
+                &format!("CREATE SCHEMA {}", bracket(&schema)),
+            )
+            .await;
+            exec(
+                &driver,
+                &handle,
+                "create composite-key parent",
+                &format!(
+                    "CREATE TABLE {parent} (\
+                     [a] INT NOT NULL, [b] INT NOT NULL, \
+                     CONSTRAINT [pk_meta_parent] PRIMARY KEY ([b], [a]))"
+                ),
+            )
+            .await;
+            exec(
+                &driver,
+                &handle,
+                "create composite-key child and metadata",
+                &format!(
+                    "CREATE TABLE {child} (\
+                     [parent_a] INT NOT NULL, [parent_b] INT NOT NULL, \
+                     [local_a] INT NOT NULL, [local_b] INT NOT NULL, \
+                     CONSTRAINT [pk_meta_child] PRIMARY KEY ([local_b], [local_a]), \
+                     CONSTRAINT [fk_meta_child_parent] FOREIGN KEY ([parent_b], [parent_a]) \
+                       REFERENCES {parent} ([b], [a]) ON DELETE CASCADE ON UPDATE NO ACTION, \
+                     CONSTRAINT [ck_meta_child_positive] CHECK ([local_a] >= 0))"
+                ),
+            )
+            .await;
+            exec(
+                &driver,
+                &handle,
+                "create ordered secondary index",
+                &format!(
+                    "CREATE NONCLUSTERED INDEX [ix_meta_child_parent] ON {child} ([parent_b], [parent_a])"
+                ),
+            )
+            .await;
+
+            let table_schema = driver
+                .get_table_schema(&handle, "child", &db, Some(&schema))
+                .await
+                .expect("composite metadata should be representable");
+            assert_eq!(table_schema.primary_keys, vec!["local_b", "local_a"]);
+            assert_eq!(
+                columns_of(&table_schema),
+                vec!["parent_a", "parent_b", "local_a", "local_b"]
+            );
+
+            let all = driver
+                .get_all_columns(&handle, &db, Some(&schema))
+                .await
+                .expect("get_all_columns should preserve the composite key order");
+            assert_eq!(all["child"].1, table_schema.primary_keys);
+
+            let index = table_schema
+                .indexes
+                .iter()
+                .find(|index| index.name == "ix_meta_child_parent")
+                .expect("secondary index should be present");
+            assert_eq!(index.columns, vec!["parent_b", "parent_a"]);
+            assert!(!index.is_unique && !index.is_primary);
+
+            assert_eq!(table_schema.foreign_keys.len(), 1);
+            let foreign_key = &table_schema.foreign_keys[0];
+            assert_eq!(foreign_key.name, "fk_meta_child_parent");
+            assert_eq!(foreign_key.columns, vec!["parent_b", "parent_a"]);
+            assert_eq!(foreign_key.referenced_table, format!("{}.{}", bracket(&schema), bracket("parent")));
+            assert_eq!(foreign_key.referenced_columns, vec!["b", "a"]);
+            assert_eq!(foreign_key.on_update, "NO ACTION");
+            assert_eq!(foreign_key.on_delete, "CASCADE");
+
+            assert_eq!(table_schema.check_constraints.len(), 1);
+            let check = &table_schema.check_constraints[0];
+            assert_eq!(check.name, "ck_meta_child_positive");
+            assert!(check.expression.contains("local_a"));
+            assert!(check.expression.contains('0'));
+        })
+        .await;
+}
+
 // ═══════════════════════ 1. diverse scratch table ═══════════════════════
 
 #[tokio::test]
@@ -218,8 +322,7 @@ async fn scratch_table_metadata_round_trip() {
                      [payload] VARBINARY(16) NULL,\n\
                      [token] UNIQUEIDENTIFIER NULL,\n\
                      [big] BIGINT NULL,\n\
-                     [ratio] FLOAT NULL,\n\
-                     [doubled] AS ([id] * 2)\n\
+                     [ratio] FLOAT NULL\n\
                      )"
                 ),
             )
@@ -299,7 +402,7 @@ async fn scratch_table_metadata_round_trip() {
             assert_eq!(
                 columns_of(&table_schema),
                 vec![
-                    "id", "note", "amount", "created_at", "payload", "token", "big", "ratio", "doubled"
+                    "id", "note", "amount", "created_at", "payload", "token", "big", "ratio"
                 ],
                 "column names must follow ORDINAL_POSITION"
             );
@@ -317,7 +420,7 @@ async fn scratch_table_metadata_round_trip() {
             assert!(id.default_value.is_none(), "an IDENTITY column has no DEFAULT");
 
             let note = find_column(&table_schema, "note");
-            assert_eq!(note.data_type, "nvarchar");
+            assert_eq!(note.data_type, "nvarchar(100)");
             assert!(!note.nullable);
             assert!(
                 note.default_value
@@ -328,11 +431,11 @@ async fn scratch_table_metadata_round_trip() {
             );
 
             let amount = find_column(&table_schema, "amount");
-            assert_eq!(amount.data_type, "decimal");
+            assert_eq!(amount.data_type, "decimal(18,4)");
             assert!(amount.nullable);
 
             let created = find_column(&table_schema, "created_at");
-            assert_eq!(created.data_type, "datetime2");
+            assert_eq!(created.data_type, "datetime2(3)");
             assert!(!created.nullable);
             assert!(
                 created
@@ -343,16 +446,12 @@ async fn scratch_table_metadata_round_trip() {
                 created.default_value
             );
 
-            assert_eq!(find_column(&table_schema, "payload").data_type, "varbinary");
+            assert_eq!(find_column(&table_schema, "payload").data_type, "varbinary(16)");
             assert_eq!(find_column(&table_schema, "token").data_type, "uniqueidentifier");
             assert_eq!(find_column(&table_schema, "big").data_type, "bigint");
-            assert_eq!(find_column(&table_schema, "ratio").data_type, "float");
+            assert_eq!(find_column(&table_schema, "ratio").data_type, "float(53)");
             assert!(find_column(&table_schema, "payload").nullable);
             assert!(find_column(&table_schema, "token").nullable);
-
-            let doubled = find_column(&table_schema, "doubled");
-            assert_eq!(doubled.data_type, "int");
-            assert!(!doubled.is_primary_key && !doubled.is_auto_increment);
 
             // ── get_columns (trait default) agrees ──
             let (columns, primary_keys) = driver

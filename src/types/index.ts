@@ -81,8 +81,6 @@ export interface DriverCapabilities {
   hasSchemaLevel: boolean;
 }
 
-export type TableType = 'table' | 'view' | 'materializedView' | 'systemTable';
-
 export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
 
 export interface DatabaseObject {
@@ -103,56 +101,16 @@ export interface PrivilegeGrant {
   privilege: string;
 }
 
-export interface TableInfo {
-  name: string;
-  /** `driver-api` declares both as `Option<_>` without `skip_serializing_if`, so
-   *  serde puts `null` on the wire — not `undefined`. `?:` alone is a lie that
-   *  silently rejects the backend's own payload. */
-  schema?: string | null;
-  tableType: TableType;
-  rowCount?: number | null;
-}
-
-export interface ColumnSchema {
-  name: string;
-  dataType: string;
-  nullable: boolean;
-  defaultValue?: string | null;
-  isPrimaryKey?: boolean;
-  isAutoIncrement?: boolean;
-  comment?: string;
-}
-
-export interface IndexInfo {
-  name: string;
-  columns: string[];
-  isUnique: boolean;
-  isPrimary: boolean;
-  indexType?: string;
-}
-
-export interface ForeignKeyInfo {
-  name: string;
-  columns: string[];
-  referencedTable: string;
-  referencedColumns: string[];
-  onUpdate?: string;
-  onDelete?: string;
-  deferrability?:
-    | 'unknown'
-    | 'notDeferrable'
-    | 'deferrableInitiallyImmediate'
-    | 'deferrableInitiallyDeferred';
-}
-
-export interface TableSchema {
-  tableName: string;
-  columns: ColumnSchema[];
-  primaryKeys: string[];
-  indexes: IndexInfo[];
-  foreignKeys: ForeignKeyInfo[];
-  tableOptions?: TableOptionsSnapshot;
-}
+export type {
+  TableType,
+  TableInfo,
+  ColumnSchema,
+  IndexInfo,
+  ForeignKeyInfo,
+  TableSchema,
+  TableOptionsSnapshot,
+} from '@datazen/driver-sdk';
+import type { ColumnSchema, TableOptionsSnapshot } from '@datazen/driver-sdk';
 
 export type Value = string | number | boolean | null | Record<string, unknown> | unknown[];
 
@@ -250,7 +208,7 @@ export interface QueryHistoryPage {
 }
 
 /**
- * A saved statement. Since the §2.6 file-first switch this is one `.sql` file
+ * A saved statement. Since the file-first switch this is one `.sql` file
  * under the favorites root, named by `id`, with these fields in `--`
  * front-matter above the statement.
  */
@@ -293,7 +251,7 @@ import type { MonitorSettings } from './dashboard';
 
 export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
 
-/** §4.2 Configurable SQL beautifier options. */
+/** Configurable SQL beautifier options. */
 export interface SqlFormatOptions {
   keywordCase: 'upper' | 'lower' | 'preserve';
   indentStyle: '2spaces' | '4spaces' | 'tab';
@@ -304,7 +262,7 @@ export interface SqlFormatOptions {
 }
 
 /**
- * §5.1 Which SQL the Execute action submits when there is no explicit selection.
+ * Which SQL the Execute action submits when there is no explicit selection.
  * `ask` prompts whenever the script holds more than one statement.
  */
 export type SqlExecutionStrategy =
@@ -368,11 +326,11 @@ export interface AppSettings {
   keymapPreset?: 'default' | 'dbeaver' | 'navicat';
   /** User-customized keyboard shortcut overrides keyed by action ID. */
   customKeymap?: Partial<Record<string, string>>;
-  /** §4.2 SQL beautifier configuration. */
+  /** SQL beautifier configuration. */
   sqlFormatOptions?: SqlFormatOptions;
-  /** §5.1 Execute-action statement targeting strategy. Default 'current_statement'. */
+  /** Execute-action statement targeting strategy. Default 'current_statement'. */
   sqlExecutionStrategy?: SqlExecutionStrategy;
-  /** §6.4 User-defined SQL snippets, merged after the built-in library. */
+  /** User-defined SQL snippets, merged after the built-in library. */
   sqlSnippets?: Array<{ id: string; prefix: string; descriptionKey: string; template: string }>;
   /** SQL syntax highlighting color preset ('default' follows the active theme pack). */
   sqlSyntaxTheme?: string;
@@ -831,12 +789,6 @@ export interface ChangedColumnDiff {
 export interface CheckConstraintDiffEntry {
   name: string;
   expression: string;
-}
-
-export interface TableOptionsSnapshot {
-  comment?: string | null;
-  engine?: string | null;
-  charset?: string | null;
 }
 
 export interface TableOptionsDiff {

@@ -24,6 +24,12 @@ interface ColumnMappingEditorProps {
   structureMode: boolean;
   onChange: (patch: Partial<TransferTableResult>) => void;
   onTargetTableBlur?: () => void;
+  /**
+   * The editor is held inert for the whole prepare round trip. It is
+   * threaded down to every control that mutates `table`, not just wrapped in a
+   * disabled-looking overlay, because the editor is what produced the plan.
+   */
+  disabled?: boolean;
 }
 
 export function ColumnMappingEditor({
@@ -31,6 +37,7 @@ export function ColumnMappingEditor({
   structureMode,
   onChange,
   onTargetTableBlur,
+  disabled = false,
 }: ColumnMappingEditorProps) {
   const { t } = useI18n();
   const mappings = normalizeColumnMappings(table);
@@ -38,8 +45,18 @@ export function ColumnMappingEditor({
   const showCreateNewToggle = structureMode || table.status === 'CREATE_NEW' || table.createNew;
   const showTargetType = structureMode && table.createNew;
 
+  /**
+   * An inert editor is inert in the handler, not only in the DOM. A
+   * disabled control is already unsendable by the user, but one that still
+   * answers a dispatched event is one the round trip can be raced through.
+   */
+  const commit = (patch: Partial<TransferTableResult>) => {
+    if (disabled) return;
+    onChange(patch);
+  };
+
   const updateMappings = (next: TransferColumnMapping[]) => {
-    onChange({ columnMappings: next });
+    commit({ columnMappings: next });
   };
 
   const handleAutoMatch = () => {
@@ -72,8 +89,13 @@ export function ColumnMappingEditor({
           <Input
             value={table.targetTable}
             data-testid="data-transfer-target-table-input"
-            onChange={(e) => onChange({ targetTable: e.target.value })}
+            disabled={disabled}
+            onChange={(e) => commit({ targetTable: e.target.value })}
             onBlur={() => onTargetTableBlur?.()}
+            aria-invalid={table.createNew && !table.targetTable.trim() ? true : undefined}
+            className={cn(
+              table.createNew && !table.targetTable.trim() && 'border-danger',
+            )}
           />
         </label>
         {showCreateNewToggle && (
@@ -81,13 +103,15 @@ export function ColumnMappingEditor({
             <Checkbox
               checked={table.createNew}
               data-testid="data-transfer-create-new-toggle"
+              disabled={disabled}
               onChange={(e) => {
                 const createNew = e.target.checked;
-                onChange({
-                  createNew,
-                  targetTable:
-                    createNew && !table.targetTable ? table.sourceTable : table.targetTable,
-                });
+                // The name of a table that does not exist yet is the one
+                // thing the backend cannot look up for the user, so it is the
+                // one thing that has to be typed. Prefilling it with the source
+                // name shows a name nobody chose, and the plan the user reads
+                // over is then not the plan that gets written.
+                commit({ createNew, targetTable: createNew ? '' : table.targetTable });
               }}
             />
             {t('transfer.mapping.createNew')}
@@ -100,6 +124,7 @@ export function ColumnMappingEditor({
           variant="ghost"
           size="sm"
           data-testid="data-transfer-auto-match"
+          disabled={disabled}
           onClick={handleAutoMatch}
         >
           {t('transfer.mapping.autoMatch')}
@@ -108,6 +133,7 @@ export function ColumnMappingEditor({
           variant="ghost"
           size="sm"
           data-testid="data-transfer-clear-unmapped"
+          disabled={disabled}
           onClick={handleClearUnmapped}
         >
           {t('transfer.mapping.clearUnmapped')}
@@ -142,6 +168,7 @@ export function ColumnMappingEditor({
             showTargetType={showTargetType}
             sourceType={table.sourceColumnTypes?.[row.sourceColumn]}
             targetOptions={targetOptions(row.targetColumn)}
+            disabled={disabled}
             onChange={(patch) => {
               updateMappings(
                 mappings.map((m) => (m.sourceColumn === row.sourceColumn ? { ...m, ...patch } : m)),
@@ -150,11 +177,16 @@ export function ColumnMappingEditor({
           />
         ))}
       </div>
-      <RecordsetEditor table={table} onChange={(recordset) => onChange({ recordset })} />
+      <RecordsetEditor
+        table={table}
+        disabled={disabled}
+        onChange={(recordset) => commit({ recordset })}
+      />
       <SourceFilterEditor
         columns={table.sourceColumns ?? mappings.map((mapping) => mapping.sourceColumn)}
         filter={table.sourceFilter}
-        onChange={(sourceFilter) => onChange({ sourceFilter })}
+        disabled={disabled}
+        onChange={(sourceFilter) => commit({ sourceFilter })}
       />
     </div>
   );
@@ -162,9 +194,11 @@ export function ColumnMappingEditor({
 
 function RecordsetEditor({
   table,
+  disabled,
   onChange,
 }: {
   table: TransferTableResult;
+  disabled: boolean;
   onChange: (recordset: TransferRecordset | undefined) => void;
 }) {
   const { t } = useI18n();
@@ -251,6 +285,7 @@ function RecordsetEditor({
         <Checkbox
           checked={Boolean(recordset)}
           data-testid="data-transfer-recordset-enable"
+          disabled={disabled}
           onChange={(event) => {
             onChange(
               event.target.checked
@@ -294,6 +329,7 @@ function RecordsetEditor({
                             value={bound?.values[index] ?? ''}
                             placeholder={t('transfer.mapping.recordsetUnbounded')}
                             data-testid={`data-transfer-recordset-tuple-${name}-${index}`}
+                            disabled={disabled}
                             onChange={(event) => {
                               const values = bound?.values.slice() ?? primaryKeys.map(() => '');
                               values[index] = event.target.value;
@@ -308,6 +344,7 @@ function RecordsetEditor({
                           <Checkbox
                             checked={bound.inclusive ?? true}
                             data-testid={`data-transfer-recordset-tuple-${name}-inclusive`}
+                            disabled={disabled}
                             onChange={(event) =>
                               updateTupleBound(name, { inclusive: event.target.checked })
                             }
@@ -327,6 +364,7 @@ function RecordsetEditor({
                 <Select
                   value={orderBy}
                   options={orderOptions}
+                  disabled={disabled}
                   onChange={(value) => update({ orderBy: value || undefined })}
                   className="!h-7 min-w-48 !text-xs"
                   triggerDataAttrs={{ 'data-testid': 'data-transfer-recordset-order' }}
@@ -355,6 +393,7 @@ function RecordsetEditor({
                           value={bound?.value ?? ''}
                           placeholder={t('transfer.mapping.recordsetUnbounded')}
                           data-testid={`data-transfer-recordset-${name}`}
+                          disabled={disabled}
                           onChange={(event) => updateBound(name, { value: event.target.value })}
                           className="h-7 min-w-0 flex-1 rounded border border-edge bg-surface px-2 text-xs"
                         />
@@ -363,6 +402,7 @@ function RecordsetEditor({
                             <Checkbox
                               checked={bound.inclusive ?? true}
                               data-testid={`data-transfer-recordset-${name}-inclusive`}
+                              disabled={disabled}
                               onChange={(event) =>
                                 updateBound(name, { inclusive: event.target.checked })
                               }
@@ -385,6 +425,7 @@ function RecordsetEditor({
               step={1}
               value={recordset.limit ?? ''}
               data-testid="data-transfer-recordset-limit"
+              disabled={disabled}
               onChange={(event) => {
                 const value = event.target.value.trim();
                 update({ limit: value ? Number(value) : undefined });
@@ -404,6 +445,7 @@ function ColumnMappingRow({
   showTargetType,
   sourceType,
   targetOptions,
+  disabled,
   onChange,
 }: {
   row: TransferColumnMapping;
@@ -411,6 +453,7 @@ function ColumnMappingRow({
   showTargetType: boolean;
   sourceType?: string;
   targetOptions: { value: string; label: string }[];
+  disabled: boolean;
   onChange: (patch: Partial<TransferColumnMapping>) => void;
 }) {
   const unmapped = !row.skip && !row.targetColumn.trim();
@@ -437,6 +480,7 @@ function ColumnMappingRow({
           <Input
             value={row.targetColumn}
             data-testid={`data-transfer-target-col-${row.sourceColumn}`}
+            disabled={disabled}
             onChange={(e) =>
               onChange({ targetColumn: e.target.value, skip: !e.target.value.trim() })
             }
@@ -446,6 +490,7 @@ function ColumnMappingRow({
             <Select
               value={row.targetColumn}
               options={targetOptions}
+              disabled={disabled}
               onChange={(value) => onChange({ targetColumn: value, skip: !value.trim() })}
               className="text-xs"
             />
@@ -459,6 +504,7 @@ function ColumnMappingRow({
             placeholder="VARCHAR(255)"
             value={row.targetNativeType ?? ''}
             data-testid={`data-transfer-target-type-${row.sourceColumn}`}
+            disabled={disabled}
             onChange={(e) =>
               onChange({ targetNativeType: e.target.value.trim() ? e.target.value : undefined })
             }
@@ -469,6 +515,7 @@ function ColumnMappingRow({
         <Checkbox
           checked={row.skip ?? false}
           data-testid={`data-transfer-skip-${row.sourceColumn}`}
+          disabled={disabled}
           onChange={(e) => onChange({ skip: e.target.checked })}
         />
       </div>

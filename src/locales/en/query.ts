@@ -79,6 +79,14 @@ const pack = {
   'query.tab': 'Query {n}',
   'query.notConnected': 'Not connected',
   'query.cancelled': 'Query cancelled',
+  'query.session.transactionSwitchConfirm': 'A transaction is active. Switch database anyway?',
+  'query.session.revisionConflict': 'The context changed since you started. Reload the latest state and try again.',
+  'query.session.switchFailed': 'Could not switch database: {message}',
+  'query.session.closeTabActiveExecution': 'This tab has a running query. Close it anyway?',
+  'query.session.disconnected': 'The connection was lost. Re-open a session to continue.',
+  'query.session.executionFailed': 'The query failed: {message}',
+  'query.session.cancelledRetry': 'The query was cancelled. You can run it again.',
+  'query.session.recovered': 'Connection recovered; partial results are available.',
   'query.explainError': 'Explain',
   'query.fixSql': 'Fix SQL',
   'query.retry': 'Retry',
@@ -151,7 +159,7 @@ const pack = {
   'query.editor.selection.addNextOccurrenceMac': 'Add next occurrence (⌘+D)',
   'query.editor.selection.addNextOccurrenceWin': 'Add next occurrence (Ctrl+D)',
   'query.editor.selection.rectangularHint': 'Column selection (Alt+drag)',
-  // --- §4.1 SQL snippets ---
+  // --- SQL snippets ---
   'query.snippets': 'Snippets',
   'query.snippetsTitle': 'Insert SQL snippet',
   'query.snippets.add': 'Add Snippet',
@@ -183,10 +191,10 @@ const pack = {
   'query.editor.snippet.delete': 'DELETE FROM … WHERE',
   'query.editor.snippet.join': 'JOIN … ON',
   'query.editor.snippet.count': 'SELECT COUNT(1)',
-  // --- §4.2 Beautify ---
+  // --- Beautify ---
   'query.formatShortcutMac': 'Format SQL (⇧⌥F)',
   'query.formatShortcutWin': 'Format SQL (Shift+Alt+F)',
-  // --- §4.3 Explicit completion cache refresh ---
+  // --- Explicit completion cache refresh ---
   'query.refreshCompletion': 'Refresh completion',
   'query.refreshCompletionTitle': 'Reload schema metadata used by autocomplete',
   'query.refreshCompletionDone': 'Completion cache refreshed',
@@ -269,6 +277,17 @@ const pack = {
   'tableData.selectedCount': '{selected}/{total} selected',
   'tableData.noColumnsFound': 'No matching fields found',
   'tableData.allColumnsHidden': 'All fields are hidden',
+  'tableData.shortTxDefault': 'Short transaction per save',
+  'tableData.inManualTx': 'Manual transaction open',
+  'tableData.txManualHint': 'Commits join the open manual transaction until it ends.',
+  'tableData.beginTx': 'Begin Tx',
+  'tableData.commitTx': 'Commit Tx',
+  'tableData.rollbackTx': 'Rollback Tx',
+  'tableData.txBeginFailed': 'Failed to begin transaction',
+  'tableData.txCommitFailed': 'Failed to commit transaction',
+  'tableData.txRollbackFailed': 'Failed to roll back transaction',
+  'tableData.errorPendingHint':
+    'Unsaved changes remain staged. Retry, adjust the filter, or roll back before closing this tab.',
   'dataTable.selected': 'Selected',
   'dataTable.sort': 'Sort',
   'dataTable.selectRow': 'Select Row',

@@ -74,7 +74,7 @@ fn redis_table_routes_the_two_word_probes_to_a_shard_that_does_not_hold_the_key(
 ///
 /// No in-process double can observe `impl SlotRoutedConnection for
 /// ClusterConnection` — the doubles implement the trait themselves, so the use of
-/// the public `route_command` is a real-cluster item (R 项 9a). What *is* checkable is the
+/// the public `route_command` needs a real cluster. What *is* checkable is the
 /// only value that impl produces: the route built from a slot must name that
 /// slot's master and nothing else. A drift to `ReplicaOnly`, to `Any`, or to a
 /// different slot would otherwise surface only as `-MOVED` storms on a real

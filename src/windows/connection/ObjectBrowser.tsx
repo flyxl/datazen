@@ -47,7 +47,16 @@ export function ObjectBrowser({ dbSessionId, databaseType, database }: ObjectBro
       const hasMetadata =
         obj.signature != null || obj.targetSchema != null || obj.targetName != null;
       if (!hasMetadata) {
-        return databaseCommands.getObjectDdl(dbSessionId, obj.kind, obj.name, obj.schema);
+        return databaseCommands.getObjectDdl(
+          dbSessionId,
+          obj.kind,
+          obj.name,
+          obj.schema,
+          null,
+          null,
+          null,
+          database,
+        );
       }
       return databaseCommands.getObjectDdl(
         dbSessionId,
@@ -57,9 +66,10 @@ export function ObjectBrowser({ dbSessionId, databaseType, database }: ObjectBro
         obj.signature,
         obj.targetSchema,
         obj.targetName,
+        database,
       );
     },
-    [dbSessionId],
+    [database, dbSessionId],
   );
 
   const load = useCallback(
@@ -67,7 +77,7 @@ export function ObjectBrowser({ dbSessionId, databaseType, database }: ObjectBro
       setLoading(true);
       setError(null);
       try {
-        const rows = await databaseCommands.getDatabaseObjects(dbSessionId, nextKind);
+        const rows = await databaseCommands.getDatabaseObjects(dbSessionId, nextKind, database);
         setObjects(rows);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -76,7 +86,7 @@ export function ObjectBrowser({ dbSessionId, databaseType, database }: ObjectBro
         setLoading(false);
       }
     },
-    [dbSessionId],
+    [database, dbSessionId],
   );
 
   useEffect(() => {

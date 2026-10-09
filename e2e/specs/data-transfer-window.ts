@@ -14,7 +14,7 @@ import {
 
 /**
  * Data Transfer window smoke (DTW-001~DTW-003).
- * Full cross-dialect execute paths are not covered here — see data-transfer-guide.md V1 limits.
+ * Full cross-dialect execute paths are not covered here.
  */
 
 describe('数据传输窗口 (DTW-001~DTW-003)', () => {

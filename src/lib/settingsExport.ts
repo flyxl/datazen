@@ -22,7 +22,7 @@ export interface ExportedEditorSettings {
 }
 
 /**
- * §6.4 Safe whitelist export.
+ * Safe whitelist export.
  * Excludes all credentials, DB connection URLs, passwords, and AI API keys.
  */
 export function exportEditorSettings(settings: AppSettings): string {
@@ -46,7 +46,7 @@ export function exportEditorSettings(settings: AppSettings): string {
 }
 
 /**
- * §6.4 Validates and parses imported JSON, mapping only safe editor/snippet fields.
+ * Validates and parses imported JSON, mapping only safe editor/snippet fields.
  */
 export function importEditorSettings(jsonStr: string): Partial<AppSettings> {
   let parsed: unknown;

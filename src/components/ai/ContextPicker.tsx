@@ -123,7 +123,7 @@ export function ContextPicker({
     let cancelled = false;
     setLoadingTables(true);
     databaseCommands
-      .getTables(dbSessionId, database)
+      .listTables(dbSessionId, database)
       .then((data) => {
         if (!cancelled) {
           setTables(data.map((tbl) => tableToItem(tbl, database)));

@@ -399,8 +399,14 @@ impl DatabaseDriver for VictoriaMetricsDriver {
         cmds
     }
 
+    /// VictoriaMetrics has no cancellation this call could honestly perform: MetricsQL/select has no cancel signal on the HTTP path.
+    /// It used to answer `Ok(())`, which reported a cancellation that had
+    /// never happened; Track O turns it into an explicit refusal.
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-        Ok(())
+        Err(DriverError::Unsupported(
+            "VictoriaMetrics has no per-execution cancellation; the legacy session-wide cancel does nothing"
+                .into(),
+        ))
     }
 }
 

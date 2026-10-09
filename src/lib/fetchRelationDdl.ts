@@ -46,7 +46,16 @@ export async function fetchRelationDdl(
   try {
     const kind = isView ? 'view' : 'table';
     const effectiveSchema = schema ?? database ?? null;
-    const ddl = await databaseCommands.getObjectDdl(dbSessionId, kind, tableName, effectiveSchema);
+    const ddl = await databaseCommands.getObjectDdl(
+      dbSessionId,
+      kind,
+      tableName,
+      effectiveSchema,
+      null,
+      null,
+      null,
+      database,
+    );
     if (ddl && ddl.trim()) return ddl;
   } catch {
     // ignore

@@ -25,6 +25,7 @@ export default defineConfig({
     // never scheduled (no diagnostics, no squiggle).
     dedupe: ['@codemirror/state', '@codemirror/view'],
     alias: {
+      '@datazen/backend-client': resolve(__dirname, 'packages/backend-client/src/index.ts'),
       '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
       '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
       '@datazen/wapp-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),

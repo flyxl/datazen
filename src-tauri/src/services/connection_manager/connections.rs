@@ -40,8 +40,8 @@ impl ConnectionManager {
         connection_id: &str,
         database_override: Option<&str>,
     ) -> Result<String, ConnectionError> {
-        let (driver, handle, mut effective_config, tunnel) = self
-            .establish_connection(connection_id, database_override)
+        let (driver, handle, mut effective_config, tunnel, identity_config) = self
+            .establish_with_identity(connection_id, database_override)
             .await?;
         let db_session_id = handle.id.clone();
 
@@ -64,6 +64,7 @@ impl ConnectionManager {
             ActiveSession {
                 handle,
                 config: effective_config,
+                identity_config,
                 created_at: Instant::now(),
                 last_used: Instant::now(),
                 tunnel,
@@ -85,12 +86,33 @@ impl ConnectionManager {
         ),
         ConnectionError,
     > {
+        let (driver, handle, config, tunnel, _) = self
+            .establish_with_identity(connection_id, database_override)
+            .await?;
+        Ok((driver, handle, config, tunnel))
+    }
+
+    pub(crate) async fn establish_with_identity(
+        &self,
+        connection_id: &str,
+        database_override: Option<&str>,
+    ) -> Result<
+        (
+            Arc<dyn DatabaseDriver>,
+            ConnectionHandle,
+            ConnectionConfig,
+            Option<Tunnel>,
+            ConnectionConfig,
+        ),
+        ConnectionError,
+    > {
         let config = self
             .store
             .get_connection(connection_id)
             .await
             .ok_or_else(|| ConnectionError::ConnectionConfigNotFound(connection_id.to_string()))?;
-        let (mut effective_config, tunnel) = self.start_tunnel(config).await?;
+        let identity_config = self.resolve_tunnel_ref(config).await?;
+        let (mut effective_config, tunnel) = self.start_tunnel(identity_config.clone()).await?;
         if let Some(db) = database_override.map(str::trim).filter(|s| !s.is_empty()) {
             effective_config.database = Some(db.to_string());
         }
@@ -101,7 +123,7 @@ impl ConnectionManager {
             .driver_for_type(&effective_config.database_type)
             .await?;
         let handle = driver.connect(&effective_config).await?;
-        Ok((driver, handle, effective_config, tunnel))
+        Ok((driver, handle, effective_config, tunnel, identity_config))
     }
 
     pub(crate) async fn driver_for_type(

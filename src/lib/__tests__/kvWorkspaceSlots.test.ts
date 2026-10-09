@@ -64,8 +64,8 @@ describe('getKvSlotComponent', () => {
   });
 
   it('degrades to undefined when the capable driver contributed no component', () => {
-    // Wave-2 gap path: capability declared, component missing ⇒ host keeps its
-    // own default UI and must not throw.
+    // Declared-but-uncontributed gap path: capability declared, component
+    // missing ⇒ host keeps its own default UI and must not throw.
     registerMeta('kvcapable-only', {
       contextBar: true,
       statusBar: true,

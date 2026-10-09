@@ -21,7 +21,7 @@ type InstallStep = 'select' | 'review';
 /**
  * Install a UI wapp/plugin from a local `.zip` package or unpacked directory.
  *
- * Two-step flow per PRD §4.3/§8-Q1: native pick → inspect (validate only,
+ * Two-step flow: native pick → inspect (validate only,
  * nothing written) → review name/version/author/permission badges → explicit
  * confirmation performs the actual install. Filesystem paths never cross IPC.
  */

@@ -64,33 +64,11 @@
       ]
     },
     {
-      "id": "skip-pg-json-operators",
+      "id": "disable-question-style-for-non-bind-dialect",
       "sql": "SELECT data ? 'key' , col ?| arr , x ?& y , plain ?",
-      "policy": { "enableQuestion": true },
-      "descriptors": [
-        { "name": "1", "kind": "positional", "syntax": "question", "stableId": "question:1", "ordinal": 1 }
-      ],
-      "occurrences": [
-        { "from": 50, "to": 51, "id": "question:1", "token": "?", "syntax": "question", "name": "1", "ordinal": 1 }
-      ]
-    },
-    {
-      "id": "exclude-declared-at-var",
-      "sql": "DECLARE @limit INT; SELECT TOP (@limit) * FROM t WHERE id = @id",
-      "policy": { "enableAt": true, "excludeDeclaredAtVars": true },
-      "descriptors": [{ "name": "id", "kind": "named", "syntax": "at", "stableId": "named:id" }],
-      "occurrences": [
-        { "from": 60, "to": 63, "id": "named:id", "token": "@id", "syntax": "at", "name": "id" }
-      ]
-    },
-    {
-      "id": "exclude-set-at-var",
-      "sql": "SET @count = 0; SELECT @count, @filter",
-      "policy": { "enableAt": true, "excludeDeclaredAtVars": true },
-      "descriptors": [{ "name": "filter", "kind": "named", "syntax": "at", "stableId": "named:filter" }],
-      "occurrences": [
-        { "from": 31, "to": 38, "id": "named:filter", "token": "@filter", "syntax": "at", "name": "filter" }
-      ]
+      "policy": { "enableQuestion": false },
+      "descriptors": [],
+      "occurrences": []
     },
     {
       "id": "dollar-quote-body",

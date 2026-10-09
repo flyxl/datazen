@@ -3,6 +3,25 @@ use super::AppState;
 use crate::db::{ConnectionConfig, DriverCategory, ServerInfo};
 use tauri::State;
 
+/// 概要 §6.2 第 8 步：把本次 IPC 调用组装出的身份记进结构化日志。
+///
+/// 刻意**不**接收也不返回任何身份参数、也不改变控制流 —— 既有 IPC 外观原样保留
+/// （开发计划 :77），身份由 [`crate::platform`] 组装。身份组装不出来时这里什么都不写，
+/// 原因已在启动期打过一次 warn；这些命令走的是旧用例实现，不存在可被伪映射的
+/// owner 语义。详见 [`crate::platform::ipc`]。
+fn log_ipc_identity(state: &AppState, command: &'static str) {
+    if let Some(scope) = crate::platform::ipc::observe_ipc_call(state) {
+        tracing::debug!(
+            command,
+            request_id = scope.request_id(),
+            principal = scope.principal(),
+            client_instance_id = scope.client_instance(),
+            owner = ?scope.owner(),
+            "ipc identity assembled"
+        );
+    }
+}
+
 pub(crate) async fn get_connections_impl(
     state: &AppState,
 ) -> Result<Vec<ConnectionConfig>, CommandError> {
@@ -60,6 +79,7 @@ pub(crate) async fn connect_impl(
     state: &AppState,
     connection_id: String,
 ) -> Result<String, CommandError> {
+    log_ipc_identity(state, "connect");
     tracing::info!(%connection_id, "connect");
     let db_session_id = state
         .connection_manager
@@ -88,6 +108,7 @@ pub(crate) async fn connect_dedicated_impl(
     connection_id: String,
     database: Option<String>,
 ) -> Result<String, CommandError> {
+    log_ipc_identity(state, "connect_dedicated");
     tracing::info!(%connection_id, database = ?database, "connect_dedicated");
     let db = database.as_deref();
     let db_session_id = state
@@ -116,6 +137,7 @@ pub(crate) async fn ping_connection_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<bool, CommandError> {
+    log_ipc_identity(state, "ping_connection");
     let alive = state.connection_manager.ping(&db_session_id).await;
     Ok(alive)
 }
@@ -124,6 +146,7 @@ pub(crate) async fn release_connection_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<bool, CommandError> {
+    log_ipc_identity(state, "release_connection");
     tracing::info!(%db_session_id, "release_connection");
     let disconnected = state
         .connection_manager
@@ -153,6 +176,7 @@ pub(crate) async fn close_database_impl(
     db_session_id: String,
     database: String,
 ) -> Result<bool, CommandError> {
+    log_ipc_identity(state, "close_database");
     let database = database.trim().to_string();
     if database.is_empty() {
         return Err(CommandError::Validation(
@@ -196,6 +220,7 @@ pub(crate) async fn get_open_databases_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<Vec<String>, CommandError> {
+    log_ipc_identity(state, "get_open_databases");
     let start = std::time::Instant::now();
     let (driver, handle) = state
         .connection_manager
@@ -224,6 +249,7 @@ pub(crate) async fn disconnect_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<(), CommandError> {
+    log_ipc_identity(state, "disconnect");
     tracing::info!(%db_session_id, "disconnect (force)");
     if let Some(tx) = state
         .session_transactions
@@ -251,6 +277,7 @@ pub(crate) async fn get_connection_info_impl(
     state: &AppState,
     db_session_id: String,
 ) -> Result<serde_json::Value, CommandError> {
+    log_ipc_identity(state, "get_connection_info");
     let config = state
         .connection_manager
         .get_session_config(&db_session_id)
@@ -718,8 +745,14 @@ mod coverage_tests {
             "disconnect must tear down the session"
         );
 
-        // Rollback-failure branch: an entry whose handle is unknown to the
-        // driver logs a warning but disconnect still succeeds.
+        // Rollback-failure branch: a pending session transaction whose handle
+        // the driver does not know. This is `disconnect_impl`'s own
+        // pre-teardown rollback (`commands/connection.rs:261`), which logs a
+        // warning and continues — a *different* path from
+        // `ConnectionManager::disconnect`, which now reports a driver that
+        // cannot confirm the teardown instead of claiming a clean disconnect.
+        // So this branch still ends in `Ok`, and this comment used to be the
+        // only place recording that.
         test.save_and_connect("tx-2").await;
         test.state.session_transactions.lock().await.insert(
             format!("{}:bogus", "tx-2"),

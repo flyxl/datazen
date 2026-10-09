@@ -46,9 +46,10 @@ export const sqliteDialectProfile: SqlDialectProfile = {
   foldCase: 'lower',
   projectionAliasVisibility: 'select-only',
   parameterPolicy: {
-    atNamed: false,
+    atNamed: true,
     question: true,
     dollarPositional: false,
+    dollarNamed: true,
     template: false,
   },
 };

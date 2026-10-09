@@ -156,21 +156,39 @@ describe('usePanelHandlers.handleNewQuery binds a database to the query tab', ()
         'public',
         'users',
       );
+      result.current.handleOpenDbObject(
+        'function',
+        'lookup',
+        'public',
+        'integer',
+        undefined,
+        undefined,
+        'db_b',
+      );
     });
 
     const panels = usePanelStore.getState().panels.filter((panel) => panel.type === 'db-object');
-    expect(panels).toHaveLength(4);
+    expect(panels).toHaveLength(5);
+    expect(panels.map((panel) => panel.type === 'db-object' && panel.objectDatabase)).toEqual([
+      'db_a',
+      'db_a',
+      'db_a',
+      'db_a',
+      'db_b',
+    ]);
     expect(panels.map((panel) => panel.type === 'db-object' && panel.objectSignature)).toEqual([
       'integer',
       'text',
       null,
       null,
+      'integer',
     ]);
     expect(panels.map((panel) => panel.type === 'db-object' && panel.objectTargetName)).toEqual([
       null,
       null,
       'orders',
       'users',
+      null,
     ]);
   });
 });

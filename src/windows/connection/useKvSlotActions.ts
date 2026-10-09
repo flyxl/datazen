@@ -1,18 +1,18 @@
 /**
- * Host dispatcher for KV slot actions (W3-A §1.2).
+ * Host dispatcher for KV slot actions.
  *
  * A driver's context bar is the only place these controls live, but it may not
- * reach host capabilities directly (boundary guard R1), so every request it
+ * reach host capabilities directly, so every request it
  * makes arrives here and nowhere else. Three rules shape the implementation:
  *
  * 1. **One dispatcher.** The slot never learns who handled its action and the
  *    host never grows a second entry point, so "what can a context bar ask
  *    for?" has exactly one answer in the tree.
  * 2. **Unwired is not an error.** A request the host cannot carry out is a
- *    no-op plus one developer warning. Throwing would turn a Wave-4 slot that
- *    offers more than this build wires into a crashed toolbar.
+ *    no-op plus one developer warning. Throwing would turn a slot that offers
+ *    more than this build wires into a crashed toolbar.
  * 3. **The dangerous branch passes the existing write gate before anything
- *    else** (PRD I-6): Safe Mode blocks hard, otherwise the shared confirm
+ *    else**: Safe Mode blocks hard, otherwise the shared confirm
  *    dialog asks. That gate is the host's own `useConfirmDialog` +
  *    `settingsStore.safeMode` — the very primitives `@datazen/driver-sdk` binds
  *    for driver UI (`bindConfirmDialog`), so no second confirmation system is
@@ -169,8 +169,9 @@ export function useKvSlotActions({
           // The gate runs first, always: an unwired executor must never become a
           // way to skip it. Approving only gets as far as the warning below —
           // running FLUSHDB is the driver's `flush_db` command, and the host
-          // naming a driver command is the hardcoding PRD §7-4 forbids. Whoever
-          // wires an executor adds it to this branch, behind the same gate.
+          // naming a driver command itself would be the hardcoding the
+          // execution gateway exists to prevent. Whoever wires an executor adds
+          // it to this branch, behind the same gate.
           void gateDangerous(FLUSH_DB_COPY).then((approved) => {
             if (approved) warnUnwired(action);
           });

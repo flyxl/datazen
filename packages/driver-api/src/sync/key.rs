@@ -205,7 +205,7 @@ impl DecimalKey {
             if zeros > 4096 {
                 return Err("decimal exponent exceeds the normalization limit".into());
             }
-            digits.extend(std::iter::repeat('0').take(zeros as usize));
+            digits.extend(std::iter::repeat_n('0', zeros as usize));
             scale = 0;
         }
         if scale > 4096 {

@@ -6,8 +6,8 @@ mod bootstrap;
 mod cache;
 mod commands;
 mod dashboard;
-pub mod data_sync;
-mod data_transfer;
+pub use datazen_data_sync as data_sync;
+pub(crate) use datazen_data_transfer as data_transfer;
 pub mod db;
 mod driver_init;
 mod e2e_quiet;
@@ -15,9 +15,10 @@ mod i18n_locale;
 mod log_redact;
 pub mod mcp;
 mod monitor;
+pub mod platform;
 mod product_features;
 mod redis_flush_gate;
-pub mod schema_diff;
+pub use datazen_schema_diff as schema_diff;
 mod schema_objects;
 mod services;
 mod sql_guard;
@@ -26,7 +27,7 @@ pub mod ssh_tunnel;
 mod store;
 mod theme;
 mod tls;
-pub mod transfer;
+pub use datazen_data_transfer::transfer;
 mod tray;
 pub mod tunnel;
 mod util;
@@ -51,9 +52,9 @@ pub(crate) use app_menu::{
 };
 #[allow(unused_imports)]
 pub(crate) use bootstrap::{
-    build_tracing_env_filter, finish_app_state, is_fullscreen_for_monitor,
-    parse_log_settings_fields, resolve_context_dir, resolve_log_dir, resolve_prompts_dir,
-    should_auto_start_embedded_mcp, unique_driver_types,
+    build_desktop_job_host, build_tracing_env_filter, finish_app_state, is_fullscreen_for_monitor,
+    parse_log_settings_fields, recover_desktop_jobs_at_startup, resolve_context_dir,
+    resolve_log_dir, resolve_prompts_dir, should_auto_start_embedded_mcp, unique_driver_types,
 };
 
 pub use bootstrap::{is_mcp_stdio_mode, run, run_mcp_stdio};

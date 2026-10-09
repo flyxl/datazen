@@ -1,5 +1,9 @@
 /** Auto-split domain: sync (ja) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    '前回のプランは有効ではなくなっています (期限切れ、ターゲットの変更、または権限の変更)。適用する前に新しいプランを作り直してください。',
+  'migrationJob.pendingVerificationHint':
+    '前回のジョブが検証待ちです。新しい変更を適用する前にジョブセンターを確認して整合してください。',
   // --- Data Sync ---
   'sync.source': 'ソース',
   'sync.target': 'ターゲット',

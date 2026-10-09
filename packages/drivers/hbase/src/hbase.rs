@@ -220,6 +220,20 @@ impl HBaseDriver {
         on_event(QueryStreamEvent::Done { total_time_ms: ms });
         Ok(())
     }
+
+    /// The client and base URL behind a handle, if this driver still holds it.
+    ///
+    /// `pub(crate)` rather than `pub`: the pool map is private to this module and
+    /// only the resource provider has a use for the pair. Handing the pair back
+    /// — instead of a borrow — lets the caller drop the read guard before it
+    /// does any I/O, so a probe never holds this lock across an `.await`.
+    pub(crate) async fn endpoint(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Option<(reqwest::Client, String)> {
+        let map = self.clients.read().await;
+        map.get(&handle.pool_id).cloned()
+    }
 }
 
 #[async_trait]

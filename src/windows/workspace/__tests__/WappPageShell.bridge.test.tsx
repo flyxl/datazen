@@ -1,7 +1,7 @@
 /**
- * F6 — WappPageShell ⇄ bridge wiring tests (test agent).
+ * WappPageShell ⇄ bridge wiring tests (test agent).
  *
- * Covers the shell-level trigger paths from PRD §4.4:
+ * Covers the shell-level trigger paths:
  * - bridge attached once per ready iframe with manifest permissions + locale
  * - `datazen:theme-pack-changed` pushes a fresh theme.apply snapshot
  * - MutationObserver on documentElement `class` (dark/light switch) ditto
@@ -83,7 +83,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('WappPageShell bridge wiring (F6)', () => {
+describe('WappPageShell bridge wiring', () => {
   /** Wait for the post-commit attach effect; returns the bridge handle. */
   async function waitForAttachedHandle(): Promise<ReturnType<typeof makeHandle>> {
     await vi.waitFor(

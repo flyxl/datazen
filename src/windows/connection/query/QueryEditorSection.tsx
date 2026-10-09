@@ -112,7 +112,7 @@ export interface QueryEditorSectionProps {
   onExecuteSelection: (sql: string) => void;
   onCancel: () => void;
   onFormat: () => void;
-  /** §4.3 Reports the completion-cache refresh result to the panel's message surface. */
+  /** Reports the completion-cache refresh result to the panel's message surface. */
   onCompletionRefreshed: (message: string) => void;
   onExplain: () => void;
   onBeginTx: () => void;
@@ -331,7 +331,7 @@ export function QueryEditorSection({
   }, [queryBuilder]);
 
   /**
-   * Prefer the editor's own selection-aware formatter (§4.2); `onFormat` stays
+   * Prefer the editor's own selection-aware formatter; `onFormat` stays
    * as the fallback for the rare case the editor has not mounted yet.
    */
   const handleFormatClick = useCallback(() => {
@@ -608,7 +608,7 @@ export function QueryEditorSection({
 
         {/*
          * The builder replaces the editor area rather than stacking above it,
-         * so the canvas owns the panel height (PRD §6.4 / G2).
+         * so the canvas owns the panel height.
          */}
         {qbOpen && queryBuilder && (
           <QueryBuilderHostAdapter

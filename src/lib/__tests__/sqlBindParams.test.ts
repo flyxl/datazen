@@ -3,7 +3,6 @@ import fixture from './fixtures/sqlBindParamCases.json';
 import {
   buildBindPayloadV2,
   coerceParamValue,
-  findDeclaredAtVars,
   getParamLabel,
   paramFingerprint,
   parseSqlParamOccurrences,
@@ -94,26 +93,28 @@ describe('parseSqlParams', () => {
       enableAt: true,
       enableQuestion: true,
       enableTemplate: true,
+      enableDollarPositional: true,
     });
     expect(params.map((p) => p.stableId)).toEqual(['named:name', 'question:1', 'dollar:2']);
   });
 
-  it('excludes declared and assigned @ variables', () => {
-    expect(findDeclaredAtVars('DECLARE @limit INT; SET @count = 1')).toEqual(
-      new Set(['limit', 'count']),
-    );
-    const params = parseSqlParams(
-      'DECLARE @limit INT; SELECT TOP (@limit) * FROM t WHERE id = @id',
-      { enableAt: true, excludeDeclaredAtVars: true },
-    );
-    expect(params).toEqual([
-      {
-        name: 'id',
-        kind: 'named',
-        syntax: 'at',
-        stableId: 'named:id',
-      },
+  it('leaves dialect-local variable decisions to the driver strategy', () => {
+    const sql = 'DECLARE @limit INT; SELECT TOP (@limit) * FROM t WHERE id = @id';
+    expect(parseSqlParamOccurrences(sql, { enableAt: true }).map((param) => param.name)).toEqual([
+      'limit',
+      'limit',
+      'id',
     ]);
+  });
+
+  it('supports SQLite dollar-named placeholders when the driver enables them', () => {
+    expect(
+      parseSqlParams('SELECT $customer_id', { enableDollarNamed: true }).map((param) => ({
+        name: param.name,
+        syntax: param.syntax,
+        stableId: param.stableId,
+      })),
+    ).toEqual([{ name: 'customer_id', syntax: 'dollar-named', stableId: 'named:customer_id' }]);
   });
 });
 
@@ -127,11 +128,9 @@ describe('parseSqlParamOccurrences', () => {
     expect(sql.slice(occ[0].from, occ[0].to)).toBe('?');
   });
 
-  it('skips pg json operators for question marks', () => {
+  it('does not scan question operators when a driver disables question placeholders', () => {
     const sql = "SELECT data ? 'key' , plain ?";
-    const occ = parseSqlParamOccurrences(sql, { enableQuestion: true });
-    expect(occ).toHaveLength(1);
-    expect(sql.slice(occ[0].from, occ[0].to)).toBe('?');
+    expect(parseSqlParamOccurrences(sql, { enableQuestion: false })).toEqual([]);
   });
 });
 
@@ -318,6 +317,7 @@ describe('five syntax families integration', () => {
       enableAt: true,
       enableQuestion: true,
       enableTemplate: true,
+      enableDollarPositional: true,
     });
     // :col and @col share named:col, ${col} also named:col → deduped
     // ? → question:1, $1 → dollar:1

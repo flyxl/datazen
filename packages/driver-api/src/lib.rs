@@ -7,17 +7,26 @@
 pub use async_trait::async_trait;
 pub use inventory;
 
+pub mod capabilities;
+pub mod capability_domains;
 pub mod command;
 mod explain_plan;
 mod factory;
+pub mod filters;
+pub mod mock_driver;
+pub mod namespace;
 mod query_stream;
+pub mod resource;
+pub mod resource_adapter;
 mod reuse;
 pub mod schema_catalog_commands;
 pub mod schema_dependencies;
+pub mod schema_metadata;
 pub mod schema_migration;
 pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod schema_scope_mapping;
+pub mod session;
 pub mod sql_dump;
 pub mod sql_split;
 pub mod sql_target;
@@ -28,6 +37,7 @@ mod traits;
 mod tunnel_types;
 mod types;
 
+pub use capability_domains::{BackupSupport, DataSupport};
 pub use command::{
     check_command_access, execute_command_definition, execute_command_definition_for,
     query_command_definition, query_command_definition_for, query_only_command_definitions,

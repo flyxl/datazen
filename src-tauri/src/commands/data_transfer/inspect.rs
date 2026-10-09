@@ -400,3 +400,184 @@ pub(crate) async fn inspect_sql_file_transfer_impl(
     }
     Ok(results)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data_transfer::model::TableMappingStatus;
+    use crate::db::TableInfo;
+    use crate::testing::app_state::TestAppState;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use datazen_driver_api::ColumnSchema;
+
+    fn table(name: &str) -> TableInfo {
+        TableInfo {
+            name: name.into(),
+            schema: None,
+            table_type: TableType::Table,
+            row_count: Some(2),
+        }
+    }
+
+    fn columns(names: &[&str]) -> Vec<ColumnSchema> {
+        names
+            .iter()
+            .map(|name| ColumnSchema {
+                name: (*name).into(),
+                data_type: "text".into(),
+                nullable: true,
+                default_value: None,
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            })
+            .collect()
+    }
+
+    /// Two sessions over databases whose catalogs deliberately differ: `app`
+    /// is the source and holds only `users`, `app2` is the target and holds
+    /// `users` plus `orders`. Expectations below therefore cannot be met by a
+    /// source-only table list or by an empty target list.
+    async fn source_and_target_state() -> (TestAppState, String, String) {
+        let test = TestAppState::with_options(MockDriverOptions {
+            databases: vec!["app".into(), "app2".into()],
+            tables_by_database: HashMap::from([
+                ("app".into(), vec![table("users")]),
+                ("app2".into(), vec![table("users"), table("orders")]),
+            ]),
+            columns_by_database: HashMap::from([
+                (
+                    "app".into(),
+                    HashMap::from([("users".into(), columns(&["id", "name"]))]),
+                ),
+                (
+                    "app2".into(),
+                    HashMap::from([
+                        ("users".into(), columns(&["id", "name"])),
+                        ("orders".into(), columns(&["id", "total"])),
+                    ]),
+                ),
+            ]),
+            count_total: 2,
+            ..Default::default()
+        })
+        .await;
+        let (_source_config, source) = test.save_and_connect("tt-source").await;
+        let (_target_config, target) = test.save_and_connect("tt-target").await;
+        (test, source, target)
+    }
+
+    async fn inspect_database_to_database(
+        test: &TestAppState,
+        source: String,
+        target: String,
+        mappings: &[TableMapping],
+    ) -> Vec<TableInspectResult> {
+        inspect_data_transfer_impl(
+            &test.state,
+            source,
+            target,
+            Some("app".into()),
+            Some("app2".into()),
+            None,
+            None,
+            TransferMode::Data,
+            mappings,
+        )
+        .await
+        .expect("inspection should succeed")
+    }
+
+    fn named_mapping(target_table: &str) -> Vec<TableMapping> {
+        vec![TableMapping {
+            source_table: "users".into(),
+            target_table: target_table.into(),
+            create_new: false,
+            enabled: true,
+            ..TableMapping::auto("users")
+        }]
+    }
+
+    #[tokio::test]
+    async fn the_target_database_catalog_reaches_the_inspection() {
+        let (test, source, target) = source_and_target_state().await;
+
+        let rows = inspect_database_to_database(&test, source, target, &[]).await;
+
+        let users = rows
+            .iter()
+            .find(|row| row.source_table == "users")
+            .expect("the source table must appear in the result");
+        assert_eq!(users.status, TableMappingStatus::Matched);
+        assert!(users.enabled);
+        assert_eq!(users.target_table, "users");
+        assert_eq!(
+            users.target_columns,
+            vec!["id".to_string(), "name".to_string()]
+        );
+
+        // `orders` exists only in the target database. A row for it can only be
+        // produced from the target's own catalog, so its presence is direct
+        // evidence that this path reads the live target instead of an empty
+        // stand-in.
+        let orders = rows
+            .iter()
+            .find(|row| row.target_table == "orders")
+            .expect("the target-only table must appear in the result");
+        assert_eq!(orders.status, TableMappingStatus::UnmappedTarget);
+    }
+
+    #[tokio::test]
+    async fn a_target_name_the_target_database_lacks_is_reported_not_substituted() {
+        let (test, source, target) = source_and_target_state().await;
+
+        let matched = inspect_database_to_database(
+            &test,
+            source.clone(),
+            target.clone(),
+            &named_mapping("users"),
+        )
+        .await;
+        let absent =
+            inspect_database_to_database(&test, source, target, &named_mapping("archive_users"))
+                .await;
+
+        // The same mapping shape resolves against a name the target catalog
+        // holds and is refused against one it does not, so the verdict follows
+        // the target catalog rather than any name-based fallback.
+        assert_eq!(matched[0].status, TableMappingStatus::Matched);
+        assert_eq!(absent[0].status, TableMappingStatus::Incompatible);
+        assert_eq!(absent[0].target_table, "archive_users");
+        assert_ne!(absent[0].target_table, absent[0].source_table);
+        assert!(absent[0]
+            .incompatible_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("archive_users")));
+    }
+
+    #[tokio::test]
+    async fn a_renamed_sql_file_mapping_is_reported_as_a_creation() {
+        let (test, source, _target) = source_and_target_state().await;
+
+        let rows = inspect_sql_file_transfer_impl(
+            &test.state,
+            source,
+            Some("app".into()),
+            None,
+            TransferMode::Data,
+            None,
+            &named_mapping("archive_users"),
+        )
+        .await
+        .expect("source-only SQL-file inspection should succeed");
+
+        // A file destination has no catalog to look the name up in, so the
+        // mapping engine must be told this row creates its target. Otherwise
+        // the same renamed mapping that reads fine against a database would be
+        // rejected here as an unknown target.
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, TableMappingStatus::CreateNew);
+        assert!(rows[0].create_new);
+        assert_eq!(rows[0].target_table, "archive_users");
+    }
+}

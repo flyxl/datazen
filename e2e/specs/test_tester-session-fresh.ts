@@ -15,7 +15,7 @@
  *   SF-003 主动制造脏会话（带外把配置改指 `postgres`），断言探针自愈后不变量恢复。
  *
  * 断言全部为数据回读（DB 名相等），不依赖任何产品界面文案；失败消息用中文诊断信息。
- * 【留待 R 回归】本 worktree 无 webdriver 编译产物，本轮仅完成静态评审与 tsc 门禁。
+ * 尚未实际执行：本 worktree 无 webdriver 编译产物，仅完成静态评审与 tsc 门禁。
  */
 import { expect, browser } from '@wdio/globals';
 import {

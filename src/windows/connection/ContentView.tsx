@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import { useSchemaStore } from '../../stores/schemaStore';
+import { useSchemaStore, useConnectionSchemaField } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
@@ -94,9 +94,12 @@ export function ContentView({
   const activePanel = allPanels.find((p) => p.id === activePanelId) ?? null;
 
   const savedConnections = useConnectionStore((s) => s.connections);
-  const currentDatabase = useSchemaStore((s) => s.currentDatabase);
-  const schemaTables = useSchemaStore((s) => s.tables);
-  const schemaViews = useSchemaStore((s) => s.views);
+  const currentDatabase = useConnectionSchemaField(
+    activePanel?.dbSessionId ?? '',
+    'currentDatabase',
+  );
+  const schemaTables = useConnectionSchemaField(activePanel?.dbSessionId ?? '', 'tables');
+  const schemaViews = useConnectionSchemaField(activePanel?.dbSessionId ?? '', 'views');
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
 
   const isTablePanel = activePanel?.type === 'table' || activePanel?.type === 'view';
@@ -279,8 +282,8 @@ export function ContentView({
 
   // Driver-contributable KV surfaces (context bar / status bar / key-props sidebar /
   // connection home). Every binding stays `undefined` unless the driver both declares
-  // the capability and contributed a component, so non-KV and pre-Wave-2 drivers render
-  // exactly as before.
+  // the capability and contributed a component, so non-KV drivers render exactly
+  // as before.
   const kvSlots = useKvWorkspaceSlots({
     activePanel,
     isKvPanel,

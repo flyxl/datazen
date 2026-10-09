@@ -1,8 +1,8 @@
 /**
  * Continuous End-to-End User Journey for SQL Snippets.
  *
- * Adheres strictly to `docs/development/interaction-and-testing-principles.md` (Principle 3):
- * Continuous State Machine & Full Lifecycle Testing (no single static slices):
+ * Adheres strictly to continuous state machine & full lifecycle testing
+ * (no single static slices):
  *
  * 1. Discoverability & Initial State (builtins visible, custom empty state)
  * 2. Validation Gate (format regex, duplicate prefix against builtins, empty template)

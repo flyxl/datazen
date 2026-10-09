@@ -22,7 +22,7 @@ DataZen 的 Driver 是**编译期集成**的数据库实现，不通过运行时
 
 当前 API：
 
-- `PROTOCOL_VERSION = 3`
+- `PROTOCOL_VERSION = 4`
 - `MIN_PROTOCOL_VERSION = 1`
 
 ## 2. DatabaseDriver
@@ -51,16 +51,11 @@ cleanup_query_execution
 
 只有实际声明精确取消能力的 Driver 才会被 Host 当作 cancellable；兼容默认实现不会自动获得取消能力。
 
-### 2.1 database 维度的两套契约（重要）
+### 2.1 Schema 元数据目标
 
-`database` 在两个方法族里语义不同，调用方必须区分：
+`get_tables`、`get_table_schema`、`get_columns` 和 `get_all_columns` 都接收显式 `database` 与可选 `schema`，驱动按传入目标读取，不依赖会话当前选中的数据库。Host 的 `list_catalog`、`read_relation_columns`、`read_relation_schema` 和 `refresh_schema_metadata` Driver Commands 以 `RelationRef { database, schema, name }` 表达目标；前端与扩展共用 Driver Command 网关，不再需要按数据库类型选择旧 Host schema IPC。
 
-| 方法 | database 维度 | 谁负责解析 |
-| --- | --- | --- |
-| `get_tables(handle, database)` / `get_all_columns(handle, database)` | **显式参数** | 驱动自己（PG 对非 active 库临时开 pool 后关闭） |
-| `get_table_schema(handle, table)` / `get_columns(handle, table)` | **无参数**，隐含依赖会话 active 库 | **调用方必须先 pin** |
-
-Host 侧统一用 `ConnectionManager::ensure_active_database`（命令层包装为 `ensure_session_database`）在读取前 pin 会话；漏掉就会从别的库拿到答案（详见 [cache.md](cache.md) §1.8）。彻底解法是给后两个方法补上 database 参数，但那属于 Driver API 契约变更（`PROTOCOL_VERSION` + 所有驱动同步），目前以"调用方 pin + 驱动不静默"为约定。
+有 schema 层级的驱动要求读取时提供精确 schema；schema-less 驱动使用 `null`。会话身份由 command envelope 的 `dbSessionId` 提供，与持久化连接配置 ID 分开传递。Host 缓存按 session、database、schema 和 relation 名称隔离，刷新支持 session、database 或 relation 范围。详见 [services.md](services.md) 的 Schema Metadata Gateway 与 [cache.md](cache.md) §1.8。
 
 ### 2.2 分页契约（PaginationSyntax）
 
@@ -86,6 +81,9 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 | 批处理专用语句 | `CREATE`/`ALTER` `SCHEMA`·`VIEW`·`PROCEDURE`·`FUNCTION`·`TRIGGER`、会话级 `SET`（`IDENTITY_INSERT`、`SHOWPLAN_TEXT`）与 `BEGIN TRAN`/`COMMIT`/`ROLLBACK` 必须经 `Client::simple_query` 作为真实 batch 发出；走 `sp_executesql` RPC 会分别报 156 / 544 / 266 |
 | EXPLAIN | `SET SHOWPLAN_TEXT ON` + 语句 + `SET SHOWPLAN_TEXT OFF` 整批执行；经 RPC 传入会**实际执行**被分析的语句 |
 | 时间值 | `date` / `time` / `datetime2` 输出精确文本，`datetimeoffset` 输出带偏移的 RFC3339；不发 Rust Debug 形式（`Date(…)` / `Time { increments: … }`） |
+| 参数 | `query_with_params` / `execute_with_params` 通过 Tiberius TDS 参数绑定传值，使用 `@P1` 到 `@P2100`；批处理专用 SQL 不接受参数并显式返回 Unsupported，SQL 文本不会拼入参数值 |
+| 结构元数据 | 目录读取保留声明类型长度/精度、主键/索引/外键列顺序、外键动作、CHECK 表达式和列注释；无法由公共模型等价表达的计算/生成列、特殊索引及禁用或不可信约束会明确拒绝，避免静默返回不完整结构。Data Transfer 当前仍拒绝二级索引、外键和 CHECK，避免这些对象在传输计划中丢失 |
+| 事务与读取快照 | `begin_transaction`、`commit`、`rollback` 在同一 TDS session 上执行；`begin_read_snapshot` 保存原隔离级别，在 `ALLOW_SNAPSHOT_ISOLATION` 可用时开始 SNAPSHOT 事务，并在提交/回滚后恢复隔离级别。失败的事务收尾会丢弃状态不确定的 session |
 | 语句切分 | 多语句按引号/注释感知的扫描器切分（`driver-api::sql_split`），不使用裸 `;` |
 | 服务端拒绝的写法 | `FETCH NEXT 0 ROWS ONLY`（10744）、缺少 `ORDER BY` 的 `OFFSET/FETCH`（102）。分页控件对 0 行页给出诊断而不是丢弃子句 |
 | 平台限制 | Azure SQL Database：`BACKUP`/`RESTORE` 40510、`msdb` 跨库名 40515、`CREATE LOGIN` 需 master（5001）、serverless 自动暂停首次登录 40613（需退避重试） |

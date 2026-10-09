@@ -50,6 +50,7 @@ export interface PanelHandlers {
     signature?: string,
     targetSchema?: string,
     targetName?: string,
+    database?: string,
   ) => void;
   handleOpenPrivileges: () => void;
   handleOpenServerStatus: (ctx?: ConnectionOpenTarget) => void;
@@ -376,8 +377,10 @@ export function usePanelHandlers({
       signature?: string,
       targetSchema?: string,
       targetName?: string,
+      database?: string,
     ) => {
       if (!sidebarConnCtx) return;
+      const targetDatabase = database ?? currentDatabase ?? initialDatabase ?? '';
       const existing = connPanels.find(
         (p) =>
           p.type === 'db-object' &&
@@ -386,7 +389,8 @@ export function usePanelHandlers({
           (p as DatabaseObjectPanel).objectSchema === (schema ?? null) &&
           (p as DatabaseObjectPanel).objectSignature === (signature ?? null) &&
           (p as DatabaseObjectPanel).objectTargetSchema === (targetSchema ?? null) &&
-          (p as DatabaseObjectPanel).objectTargetName === (targetName ?? null),
+          (p as DatabaseObjectPanel).objectTargetName === (targetName ?? null) &&
+          (p as DatabaseObjectPanel).objectDatabase === targetDatabase,
       );
       if (existing) {
         setActivePanel(existing.id);
@@ -399,13 +403,14 @@ export function usePanelHandlers({
         objectKind: kind,
         objectName: name,
         objectSchema: schema ?? null,
+        objectDatabase: targetDatabase,
         objectSignature: signature ?? null,
         objectTargetSchema: targetSchema ?? null,
         objectTargetName: targetName ?? null,
       };
       addPanel(panel);
     },
-    [sidebarConnCtx, connPanels, addPanel, setActivePanel],
+    [sidebarConnCtx, connPanels, currentDatabase, initialDatabase, addPanel, setActivePanel],
   );
 
   const handleOpenPrivileges = useCallback(() => {
@@ -474,7 +479,20 @@ export function usePanelHandlers({
       // tab's database dropdown) so re-execution and tab restoration use that
       // bound database rather than the session-wide, shared `currentDatabase`,
       // which other tabs or a Settings round-trip can change out from under it.
-      const rawDatabase = target?.database?.trim() || currentDatabase || undefined;
+      // The `currentDatabase` prop mirrors the ACTIVE panel only: from the
+      // workspace home there is no active panel, so it reads null even when
+      // the session entry already carries the user's last picked database
+      // (navigator toggleDb pins it). Fall back to the per-session entry so a
+      // tab opened from the home quick action inherits the session pointer
+      // instead of binding '' (which then shadows the pointer in the tab's
+      // QueryPanel — `database ?? currentDatabase` keeps the empty string).
+      const sessionCurrentDatabase =
+        useSchemaStore
+          .getState()
+          .schemas.get(sidebarConnCtx.dbSessionId)
+          ?.currentDatabase?.trim() || null;
+      const rawDatabase =
+        target?.database?.trim() || currentDatabase?.trim() || sessionCurrentDatabase || undefined;
       let boundDatabase = rawDatabase;
       let namespacePath: string[] | undefined;
       if (isPathHierarchy && rawDatabase) {
@@ -635,7 +653,7 @@ export function usePanelHandlers({
     if (!sidebarConnCtx?.dbSessionId) return;
     useTableDataStore.getState().invalidateCachedData(sidebarConnCtx.dbSessionId);
     if (currentDatabase) {
-      void loadTables(currentDatabase);
+      void loadTables(currentDatabase, sidebarConnCtx.dbSessionId);
     } else {
       void loadForConnection(sidebarConnCtx.dbSessionId, {
         databaseType: sidebarConnCtx.databaseType,

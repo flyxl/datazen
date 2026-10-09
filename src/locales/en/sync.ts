@@ -1,5 +1,95 @@
 /** Auto-split domain: sync (en) — unified sync / transfer / schemaDiff */
 const pack = {
+  'migrationJob.reprepareOnStalePlan':
+    'The previous plan is no longer valid (it expired, the target drifted, or permissions changed). Re-prepare a fresh plan before applying anything.',
+  'migrationJob.pendingVerificationHint':
+    'A previous job is waiting for verification. Check the job center and reconcile before applying anything new.',
+  'migrationJob.notExecutedHint':
+    'A queued Data Sync job was not started after restart. It was not replayed; run a fresh comparison before applying.',
+  'migrationJob.notExecutedJob': 'Not executed after restart',
+  'migrationJob.verifyRecovery': 'Verify recovery',
+  'migrationJob.verifyingRecovery': 'Verifying…',
+  'migrationJob.cancelJob': 'Cancel job',
+  'migrationJob.cancellingJob': 'Cancelling…',
+  'migrationJob.recoveryEndpointMismatch':
+    'Select the same source and target connections used by this job before verifying recovery.',
+  'migrationJob.recoverySelectEndpoints':
+    'Select and connect both endpoints before verifying recovery.',
+  'migrationJob.recoveryManualReview':
+    'Recovery evidence was recorded. Compare current data before applying anything.',
+  'migrationJob.recoveryRecorded':
+    'Recovery evidence was recorded. Run a fresh comparison before applying anything.',
+  // --- Shared Job verdict surface ---
+  // Used by Data Transfer, Schema Diff and Data Sync alike. "Uncertain" is a
+  // first-class verdict here on purpose: presenting it as success is forbidden.
+  'migration.verdict.ok': 'Completed',
+  'migration.verdict.partial': 'Partially applied',
+  'migration.verdict.uncertain': 'Outcome uncertain',
+  'migration.verdict.failed': 'Not applied',
+  'migration.verdict.committedRows': 'Confirmed rows',
+  'migration.verdict.replayedReceipt':
+    'This reply came from the recorded receipt for a run that already happened. Nothing was written a second time.',
+  'migration.verdict.noBoundaries':
+    'No write boundary was recorded, so nothing can be reported as committed.',
+  'migration.verdict.recoveryLabel': 'Recovery verdict',
+  'migration.verdict.notExecuted': 'Not executed',
+  'migration.verdict.notDispatchedAfterRestart':
+    'The application restarted after this Job was accepted but before it was dispatched, so no migration work ran. Prepare a fresh plan to try again.',
+  'migration.verdict.requiresReconcile':
+    'Verify the target against the recorded boundaries before applying anything else.',
+  'migration.verdict.resumeThrough': 'Recovery may resume through boundary #',
+  'migration.verdict.rereview': 'Review a new plan',
+  // An unreconciled run must be verified read-only first. A fresh
+  // review mints a new planId, so one click here would be a second write over a
+  // range whose first outcome is still unknown.
+  'migration.verdict.rereviewBlocked':
+    'This run still has to be reconciled against the target before anything may be written again. Verify it read-only, then close and reopen this window to review a new plan.',
+  'migration.boundary.verified': 'Committed with evidence',
+  'migration.boundary.unverified': 'Committed without evidence — unverified',
+  'migration.progress.counts': 'Read / converted / attempted / committed / unknown',
+  // Intent is not outcome. Each disposition names where the run stopped.
+  'migration.cancel.none': 'No cancel was requested.',
+  'migration.cancel.notStarted':
+    'Cancel was requested before the run started; nothing was written.',
+  'migration.cancel.requestedInFlight':
+    'Cancel was requested while the run was in flight. The stopping point is not known yet — check the verdict below.',
+  'migration.cancel.settledPartially':
+    'Cancel was requested while the run was in flight. Some boundaries are committed and the rest is not applied.',
+  'migration.cancel.settledRolledBack':
+    'Cancel was requested while the run was in flight. The run was rolled back and committed boundaries were undone.',
+  'migration.cancel.settledCompleted':
+    'Cancel was requested, but the write had already finished. The run completed rather than being cancelled.',
+  'migration.cancel.settledUnknown':
+    'Cancel was requested while the run was in flight, and where it stopped could not be determined.',
+  'migration.cancel.unknownJob':
+    'The backend has no Job for this run, so the cancel request had no target. Nothing was cancelled.',
+  // Fail-closed refusals. Each body states what was refused and what to do.
+  'migration.failure.backendScope.title': 'Backend scope rejected',
+  'migration.failure.backendScope.body':
+    'The endpoints could not prove they are the local desktop backend, so the migration was refused rather than run in an unverified scope. Nothing was written. Re-select both endpoints and review a new plan.',
+  'migration.failure.pipelineBudget.title': 'Pipeline budget refused this run',
+  'migration.failure.pipelineBudget.body':
+    'The run exceeded the 8 MiB pipeline budget and the backend stopped it on purpose, before any of that stage was applied. This is a deliberate safety limit, not a malfunction — narrow the selection or the batch size and review a new plan.',
+  'migration.failure.planConsumed.title': 'This plan was already applied',
+  'migration.failure.planConsumed.body':
+    'A plan can be applied only once, and an earlier run already spent it. Nothing was written a second time. Review a fresh plan to continue.',
+  'migration.failure.stalePlan.title': 'The plan is out of date',
+  'migration.failure.stalePlan.body':
+    'The plan expired, the target drifted, or permissions changed. It is discarded rather than reused — review a fresh plan.',
+  'migration.failure.other.title': 'Migration refused',
+  'migration.failure.other.body':
+    'The backend refused to run. Nothing can be reported as committed — read the detail below.',
+  'migration.failure.reReview': 'Review a new plan',
+  'migration.uncertainty.noCheckpoint':
+    'No checkpoint was recorded, so where this run stopped cannot be reconstructed.',
+  'migration.uncertainty.recoveryRejected':
+    'Recovery was rejected, so this run cannot be resumed and must be verified by hand.',
+  'migration.uncertainty.effectOutcomeUnknown':
+    'The database did not confirm whether the write committed or rolled back.',
+  'migration.uncertainty.missingEvidence':
+    'At least one committed boundary has no evidence, so it is reported as unverified.',
+  'migration.uncertainty.manualReviewRequired':
+    'The backend requires manual review before anything else is applied.',
   'migrationHistory.open': 'Run history',
   'migrationHistory.title': 'Migration run history',
   'migrationHistory.empty': 'No recorded runs yet.',
@@ -256,6 +346,12 @@ const pack = {
   'transfer.executing': 'Executing transfer…',
   'transfer.executingProgress': 'Transferring {count} table(s)…',
   'transfer.cancel': 'Cancel',
+  'transfer.job.attachedTitle': 'Data Transfer jobs already running',
+  'transfer.job.restoredTitle': 'Previous Data Transfer result',
+  'transfer.job.detailsLoading': 'Loading the saved transfer report…',
+  'transfer.job.detailsUnavailable': 'The saved report is unavailable; verify the target before retrying.',
+  'transfer.job.queued': 'Transfer queued',
+  'transfer.job.running': 'Transfer running',
   'transfer.back': 'Back',
   'transfer.next': 'Next',
   'transfer.error': 'Transfer error',
@@ -302,6 +398,10 @@ const pack = {
   'transfer.mapping.autoMatch': 'Auto-match by name',
   'transfer.mapping.clearUnmapped': 'Clear unmapped',
   'transfer.mapping.unmappedTargetWarning': 'Target columns not mapped: {columns}',
+  'transfer.mapping.gateLost':
+    'The tables changed while the plan was being prepared, so no column is mapped any more. Re-check the mapping and try again.',
+  'transfer.mapping.targetNameRequired':
+    'Name the table this mapping will create before continuing. Nothing exists at the target yet, so there is no name to fall back on.',
   'transfer.mapping.sourceType': 'Source type',
   'transfer.mapping.targetType': 'Target type',
   'transfer.mapping.sourceFilter': 'Source row filter',
@@ -474,6 +574,38 @@ const pack = {
   'schemaDiff.confirmDeploy': 'Type {token} to confirm destructive deploy',
   'schemaDiff.deploy': 'Deploy to target',
   'schemaDiff.deploying': 'Deploying…',
+  'schemaDiff.prepareJob': 'Plan job',
+  'schemaDiff.applyJob': 'Apply job',
+  'schemaDiff.jobUnknown': 'Status unavailable',
+  'schemaDiff.jobQueued': 'Accepted; waiting for dispatch',
+  'schemaDiff.jobRunning': 'Running',
+  'schemaDiff.jobSucceeded': 'Completed',
+  'schemaDiff.jobFailed': 'Failed',
+  'schemaDiff.jobCancelled': 'Cancelled',
+  'schemaDiff.jobProgress': 'Attempted {attempted}; committed {committed}; unknown {unknown}',
+  'schemaDiff.requestCancel': 'Request cancellation',
+  'schemaDiff.cancelRequested': 'Cancellation was requested; waiting for the job outcome.',
+  'schemaDiff.cancelUnavailable': 'The cancellation request did not reach this job.',
+  'schemaDiff.planUnavailableAfterRestart':
+    'The reviewed plan is unavailable after restart. Compare again before applying.',
+  'schemaDiff.notDispatchedAfterRestart':
+    'This accepted job was not dispatched before restart. It was not replayed; compare again to create a new job.',
+  'schemaDiff.notExecuted':
+    'This job did not start. Its work was not replayed; compare again to submit a fresh job.',
+  'schemaDiff.recoveryPending':
+    'The target needs an explicit read-only check. This job will not resume automatically.',
+  'schemaDiff.recoveryIdentityUnavailable':
+    'Target identity is unavailable for automatic verification; manual review is required.',
+  'schemaDiff.verifyRecovery': 'Check target state',
+  'schemaDiff.verifyingRecovery': 'Checking target state…',
+  'schemaDiff.recoveryUnchanged':
+    'The target fingerprint is unchanged. This does not prove the statements did not run; compare again before applying.',
+  'schemaDiff.recoveryChanged':
+    'The target fingerprint changed. Review the database manually before creating a new plan.',
+  'schemaDiff.recoveryManualReview':
+    'The read-only check could not determine the outcome. Review the target manually before continuing.',
+  'schemaDiff.lastApplyReport': 'Latest apply report',
+  'schemaDiff.recoveryCode': 'Recovery code: {code}',
   'schemaDiff.deployStatus': 'Deploy status',
   'schemaDiff.executed': 'executed',
   'schemaDiff.missingOnTarget': 'Missing on target (ADD)',

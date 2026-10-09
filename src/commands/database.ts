@@ -1,3 +1,4 @@
+import { schemaClient } from '@datazen/driver-sdk';
 import { invoke } from '@tauri-apps/api/core';
 import type {
   FilterCondition,
@@ -7,7 +8,6 @@ import type {
   TableDataResult,
   TableInfo,
   TableSchema,
-  ColumnSchema,
   Value,
 } from '../types';
 import type {
@@ -44,44 +44,36 @@ export interface CommitPendingChangesRequest {
 }
 
 export const databaseCommands = {
-  getDatabases: (dbSessionId: string) => invoke<string[]>('get_databases', { dbSessionId }),
+  getDatabases: async (dbSessionId: string) =>
+    (await schemaClient.listDatabases(dbSessionId)).databases,
 
   /**
    * List a database's tables. `schema` is optional and only meaningful for
    * schema-aware engines (PostgreSQL, SQL Server); omit it to list every schema.
    */
-  getTables: (dbSessionId: string, database: string, schema?: string | null) =>
-    invoke<TableInfo[]>('get_tables', { dbSessionId, database, schema: schema ?? null }),
-
-  /**
-   * `schema` is required for schema-aware engines and must be the table's own
-   * schema — pass `TableInfo.schema`, never a guess.
-   */
-  getColumns: (dbSessionId: string, table: string, database: string, schema?: string | null) =>
-    invoke<string[]>('get_columns', { dbSessionId, table, database, schema: schema ?? null }),
-
-  getColumnsTyped: (dbSessionId: string, table: string, database: string, schema?: string | null) =>
-    invoke<ColumnSchema[]>('get_columns_typed', {
-      dbSessionId,
-      table,
+  listTables: async (
+    dbSessionId: string,
+    database: string,
+    schema?: string | null,
+  ): Promise<TableInfo[]> => {
+    const catalog = await schemaClient.listCatalog(dbSessionId, {
       database,
       schema: schema ?? null,
-    }),
-
-  getAllColumns: (dbSessionId: string, database: string, schema?: string | null) =>
-    invoke<Record<string, string[]>>('get_all_columns', {
-      dbSessionId,
-      database,
-      schema: schema ?? null,
-    }),
-
-  getTableSchema: (dbSessionId: string, table: string, database: string, schema?: string | null) =>
-    invoke<TableSchema>('get_table_schema', {
-      dbSessionId,
-      table,
-      database,
-      schema: schema ?? null,
-    }),
+    });
+    const tables: TableInfo[] = catalog.relations.map((relation) => ({
+      name: relation.ref.name,
+      schema: relation.ref.schema,
+      tableType: relation.kind,
+      rowCount: relation.rowCount,
+    }));
+    // The legacy namespace tree still represents empty schemas with a sentinel.
+    const populated = new Set(tables.map((table) => table.schema));
+    for (const schema of catalog.schemas) {
+      if (!populated.has(schema))
+        tables.push({ name: '', schema, tableType: 'systemTable', rowCount: null });
+    }
+    return tables;
+  },
 
   getErData: (dbSessionId: string, database: string, schema?: string | null) =>
     invoke<TableSchema[]>('get_er_data', { dbSessionId, database, schema: schema ?? null }),
@@ -136,8 +128,12 @@ export const databaseCommands = {
       fingerprint: params.fingerprint,
     }),
 
-  getDatabaseObjects: (dbSessionId: string, kind: string) =>
-    invoke<DatabaseObject[]>('get_database_objects', { dbSessionId, kind }),
+  getDatabaseObjects: (dbSessionId: string, kind: string, database?: string | null) =>
+    invoke<DatabaseObject[]>('get_database_objects', {
+      dbSessionId,
+      kind,
+      database: database ?? null,
+    }),
 
   getObjectDdl: (
     dbSessionId: string,
@@ -147,6 +143,7 @@ export const databaseCommands = {
     signature?: string | null,
     targetSchema?: string | null,
     targetName?: string | null,
+    database?: string | null,
   ) =>
     invoke<string>('get_object_ddl', {
       dbSessionId,
@@ -156,6 +153,7 @@ export const databaseCommands = {
       signature: signature ?? null,
       targetSchema: targetSchema ?? null,
       targetName: targetName ?? null,
+      database: database ?? null,
     }),
 
   getPrivileges: (dbSessionId: string) =>

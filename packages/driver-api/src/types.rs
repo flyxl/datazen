@@ -250,9 +250,10 @@ mod connection_config_tests {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Value {
+    #[default]
     Null,
     Bool(bool),
     Integer(i64),
@@ -261,12 +262,6 @@ pub enum Value {
     Bytes(Vec<u8>),
     Timestamp(String),
     Json(serde_json::Value),
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Value::Null
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -362,7 +357,7 @@ pub struct TableInfo {
     pub row_count: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableOptions {
     /// Table comment when the driver can read and render it without guessing.
@@ -390,19 +385,6 @@ pub struct TableOptions {
     /// user-editable table option.
     #[serde(default)]
     pub migration_blockers: Vec<String>,
-}
-
-impl Default for TableOptions {
-    fn default() -> Self {
-        Self {
-            comment: None,
-            engine: None,
-            charset: None,
-            collation: None,
-            supports_consistent_snapshot: None,
-            migration_blockers: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

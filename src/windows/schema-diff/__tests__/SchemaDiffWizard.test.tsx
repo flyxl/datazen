@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SchemaDiffWindow } from '../SchemaDiffWindow';
 import { schemaDiffCommands, type SchemaDiffPlan } from '../../../commands/schemaDiff';
@@ -6,6 +6,14 @@ import { databaseCommands } from '../../../commands/database';
 import { fileCommands } from '../../../commands/file';
 import type { SchemaDiffObjectIdentity } from '../../../commands/schemaDiff';
 import type { DatabaseObject } from '../../../types';
+// Fixture, not production wiring: `useI18n` (key-echoing, so the many
+// `getByText('schemaDiff.*')` locators keep working) and `useLocaleDomains`
+// (returns true) are mocked, so the graph never registers the host
+// dictionaries and @datazen/ui's own components warn about perfectly
+// registered keys. SchemaDiffWindow.test.tsx carries the full root-cause note;
+// this is the same test-only registration route locales.test.ts uses.
+import '../../../locales';
+import { ensureAllLazyDomains } from '../../../locales/lazyPacks';
 
 const state = vi.hoisted(() => ({
   t: (key: string) => key,
@@ -51,11 +59,12 @@ vi.mock('../../../lib/schemaDiffLimitationsPrefs', () => ({
   setSchemaDiffLimitationsDismissed: vi.fn(),
 }));
 vi.mock('../../../commands/database', () => ({
-  databaseCommands: { getTables: vi.fn(), getDatabaseObjects: vi.fn() },
+  databaseCommands: { listTables: vi.fn(), getDatabaseObjects: vi.fn() },
 }));
 vi.mock('../../../commands/file', () => ({ fileCommands: { saveTextWithDialog: vi.fn() } }));
 vi.mock('../../../commands/schemaDiff', async (original) => ({
   ...(await original<typeof import('../../../commands/schemaDiff')>()),
+  subscribeSchemaDiffJobUpdates: vi.fn().mockReturnValue(() => {}),
   schemaDiffCommands: {
     getProfiles: vi.fn().mockResolvedValue([]),
     saveProfile: vi.fn().mockResolvedValue(undefined),
@@ -64,6 +73,10 @@ vi.mock('../../../commands/schemaDiff', async (original) => ({
     preparePlan: vi.fn(),
     prepareUnifiedPlan: vi.fn(),
     executeDeploy: vi.fn(),
+    listJobs: vi.fn().mockResolvedValue([]),
+    getJobDetails: vi.fn(),
+    cancelDeploy: vi.fn().mockResolvedValue(true),
+    verifyRecovery: vi.fn(),
   },
 }));
 
@@ -115,6 +128,12 @@ async function reachDeploy() {
   await screen.findByTestId('schema-diff-deploy');
 }
 
+beforeAll(async () => {
+  // Eager packs register at import; the lazy `sync` pack needs an explicit
+  // await because the mocked `useLocaleDomains` never requests it.
+  await ensureAllLazyDomains('en');
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   state.endpoints.sourceDatabase = 'source';
@@ -124,7 +143,7 @@ beforeEach(() => {
   state.endpoints.isCrossDialect = false;
   state.endpoints.validateEndpoints.mockReturnValue(true);
   state.endpoints.ensureConnected.mockImplementation(async (side) => `${side}-session`);
-  vi.mocked(databaseCommands.getTables).mockResolvedValue([{ name: 'users', tableType: 'table' }]);
+  vi.mocked(databaseCommands.listTables).mockResolvedValue([{ name: 'users', tableType: 'table' }]);
   vi.mocked(databaseCommands.getDatabaseObjects).mockResolvedValue([]);
   vi.mocked(schemaDiffCommands.compareTableSchemas).mockResolvedValue({
     table: 'users',
@@ -132,8 +151,26 @@ beforeEach(() => {
     removed: [],
     changed: [],
   });
-  vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue(plan());
-  vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue(plan());
+  vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({
+    plan: plan(),
+    planId: 'plan-1',
+    selectionRevision: 1,
+    planVersion: 1,
+    handlerVersion: 1,
+    checkpointVersion: 1,
+    expiresAt: '2026-01-01T00:00:00Z',
+    recoveryPolicy: 'readOnlyVerify',
+  });
+  vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue({
+    plan: plan(),
+    planId: 'plan-1',
+    selectionRevision: 1,
+    planVersion: 1,
+    handlerVersion: 1,
+    checkpointVersion: 1,
+    expiresAt: '2026-01-01T00:00:00Z',
+    recoveryPolicy: 'readOnlyVerify',
+  });
   vi.mocked(schemaDiffCommands.executeDeploy).mockResolvedValue({
     status: 'committed',
     executedCount: 1,
@@ -180,12 +217,19 @@ describe('complete schema migration wizard journeys', () => {
       const rows = sessionId === 'source-session' ? sourceObjects : targetObjects;
       return rows.filter((object) => object.kind === kind);
     });
-    vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue(
-      plan({
+    vi.mocked(schemaDiffCommands.prepareUnifiedPlan).mockResolvedValue({
+      plan: plan({
         planId: 'mixed-plan-1',
         tables: ['users', 'view:public:orders_view', 'function:public:calculate_total'],
       }),
-    );
+      planId: 'mixed-plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
+    });
 
     render(<SchemaDiffWindow />);
     next();
@@ -261,7 +305,7 @@ describe('complete schema migration wizard journeys', () => {
   });
 
   it('selects a target-only table without sending it through source comparison', async () => {
-    vi.mocked(databaseCommands.getTables).mockImplementation(async (sessionId) =>
+    vi.mocked(databaseCommands.listTables).mockImplementation(async (sessionId) =>
       sessionId === 'source-session'
         ? [{ name: 'users', tableType: 'table' }]
         : [
@@ -304,7 +348,7 @@ describe('complete schema migration wizard journeys', () => {
   });
 
   it('exports and saves target-only selections as destructive profile state', async () => {
-    vi.mocked(databaseCommands.getTables).mockImplementation(async (sessionId) =>
+    vi.mocked(databaseCommands.listTables).mockImplementation(async (sessionId) =>
       sessionId === 'source-session'
         ? [{ name: 'users', tableType: 'table' }]
         : [
@@ -376,6 +420,8 @@ describe('complete schema migration wizard journeys', () => {
       targetDatabase: 'target',
       targetSchema: null,
       profile: undefined,
+      planId: 'plan-1',
+      selectionRevision: 1,
     });
     expect(screen.getByTestId('schema-diff-deploy-status')).toHaveTextContent('committed');
     expect(deploy).toBeDisabled();
@@ -432,8 +478,8 @@ describe('complete schema migration wizard journeys', () => {
   });
 
   it('updates table-local overrides and regenerates exact options, exports SQL and config', async () => {
-    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue(
-      plan({
+    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({
+      plan: plan({
         typeSuggestions: [
           {
             table: 'users',
@@ -446,7 +492,14 @@ describe('complete schema migration wizard journeys', () => {
           },
         ],
       }),
-    );
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
+    });
     vi.mocked(fileCommands.saveTextWithDialog).mockResolvedValue(true);
     render(<SchemaDiffWindow />);
     await reachPlan();
@@ -565,7 +618,7 @@ describe('complete schema migration wizard journeys', () => {
       targetSchema: 'public',
       targetName: 'orders',
     };
-    vi.mocked(databaseCommands.getTables).mockResolvedValue([]);
+    vi.mocked(databaseCommands.listTables).mockResolvedValue([]);
     vi.mocked(databaseCommands.getDatabaseObjects).mockImplementation(async (sessionId, kind) =>
       (sessionId === 'source-session' ? [routine] : [trigger]).filter(
         (object) => object.kind === kind,
@@ -831,7 +884,16 @@ describe('complete schema migration wizard journeys', () => {
       ],
     },
   ])('refuses footer deploy when rollback or requirements are unmet: %j', async (overrides) => {
-    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue(plan(overrides));
+    vi.mocked(schemaDiffCommands.preparePlan).mockResolvedValue({
+      plan: plan(overrides),
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'readOnlyVerify',
+    });
     render(<SchemaDiffWindow />);
     await reachDeploy();
     fireEvent.change(screen.getByPlaceholderText('DEPLOY'), { target: { value: 'DEPLOY' } });

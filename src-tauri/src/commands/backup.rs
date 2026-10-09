@@ -10,6 +10,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, State};
 
+// Progress events are fire-and-forget by construction: `emit` fails only when
+// the application is shutting down and there is no window left to receive the
+// event, and the backup/restore result itself is returned through the command
+// channel, not through these events. Reporting a "no window to report to"
+// error to the user would replace a real backup outcome with a shutdown
+// artifact. Not logged either — these fire per object/statement, so a log line
+// would flood for the rest of a large dump. The backup/restore failures
+// themselves are *not* swallowed; see `backup_database_to_path` below.
 fn emit_backup_progress(app: Option<&tauri::AppHandle>, progress: DumpProgress) {
     if let Some(app) = app {
         let _ = app.emit("backup-progress", &progress);
@@ -196,14 +204,42 @@ async fn backup_database_to_path(
     {
         Ok(out) => out,
         Err(e) => {
-            let _ = driver.disconnect(dump_handle).await;
+            // The dump has already failed and `e` is returned below, so a
+            // failure to close `dump_handle` here is a *second, subordinate*
+            // teardown error on a connection the dump itself broke. It is
+            // logged rather than propagated on purpose: returning it instead
+            // of `e` would replace the real cause of the backup failure with
+            // "could not close the backup connection", which is exactly the
+            // masking the ordering below prevents. `dump_handle` is consumed
+            // by the call, so the retry problem noted in
+            // `ConnectionManager::disconnect` applies here too — this
+            // connection is not referenced by the session tables at all, it is
+            // a short-lived connection opened only for the dump.
+            if let Err(teardown) = driver.disconnect(dump_handle).await {
+                tracing::warn!(
+                    cmd = "backup_database",
+                    error = %teardown,
+                    "Failed to close the independent backup connection after the dump failed",
+                );
+            }
             let err = CommandError::from(e);
             tracing::error!(cmd = "backup_database", error = %err);
             return Err(err);
         }
     };
 
-    let _ = driver.disconnect(dump_handle).await;
+    // The dump **succeeded** here. A teardown failure must not turn a backup
+    // that was produced and is about to be written to disk into a reported
+    // failure — the user's data is already in hand, and the only cost of
+    // proceeding is one connection the driver says it could not close. Logged,
+    // not swallowed silently, and deliberately not propagated.
+    if let Err(e) = driver.disconnect(dump_handle).await {
+        tracing::warn!(
+            cmd = "backup_database",
+            error = %e,
+            "Backup finished but the independent backup connection could not be closed",
+        );
+    }
 
     emit_backup_progress(
         app,

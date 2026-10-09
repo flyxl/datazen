@@ -273,7 +273,7 @@ const pack = {
   'connWin.home.connectNow': '연결하기',
   'connWin.home.viewAll': '모두 보기',
   'connection.dashboard.title': '대시보드',
-  // KV workspace slot actions handled by the host (W3-A §1.2). Namespace
+  // KV workspace slot actions handled by the host. Namespace
   // `redis.kvSlot.*` is host-owned copy for the KV panel; the driver keeps its
   // own `redis.*` pack in packages/drivers/redis/locales.
   'redis.kvSlot.flushTitle': '현재 데이터베이스 비우기',
@@ -281,7 +281,7 @@ const pack = {
     '이 패널이 바인딩된 데이터베이스의 모든 키가 삭제됩니다. 되돌릴 수 없습니다.',
   'redis.kvSlot.flushBlocked':
     'Safe Mode는 데이터베이스 비우기를 차단합니다. 계속하려면 설정에서 Safe Mode를 끄세요.',
-  // KV context facts injected into an AI request (W3-A §1.3).
+  // KV context facts injected into an AI request.
   'redis.ai.context.tooltip': '선택한 키에 대해 어시스턴트에게 질문',
   'redis.ai.context.attached': '키에 대해 질문하는 중',
   // --- Host DocumentConnectionView (document browser) ---

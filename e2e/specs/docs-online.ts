@@ -1,17 +1,17 @@
 /**
- * F6 — Online help docs wiring (source + IPC; no in-app Docs sub-window).
+ * Online help docs wiring (source + IPC; no in-app Docs sub-window).
  *
  * Note: Tauri 2 freezes `__TAURI_INTERNALS__.invoke` (non-configurable), so E2E
  * cannot spy/replace invoke. Wiring is asserted via source reads; behavior via
  * direct `open_path` IPC and window-count checks after triggering Help UI.
  *
- * DOCS-001  windowManager uses buildDocsUrl + openPath; no docs-singleton
- * DOCS-002  docsUrls.ts official GitHub Pages bases + section hashes
- * DOCS-003  App.tsx / windowKind: no DocsWindow; legacy ?window=docs → main
- * DOCS-004  open_path IPC accepts https docs URLs (EN + ZH + section)
- * DOCS-005  MenuBar help-docs → openDocsWindow (source)
- * DOCS-006  Help menu click does not spawn a Tauri sub-window
- * DOCS-007  Legacy window.html?window=docs loads main shell (negative)
+ * windowManager uses buildDocsUrl + openPath; no docs-singleton
+ * docsUrls.ts official GitHub Pages bases + section hashes
+ * App.tsx / windowKind: no DocsWindow; legacy ?window=docs → main
+ * open_path IPC accepts https docs URLs (EN + ZH + section)
+ * MenuBar help-docs → openDocsWindow (source)
+ * Help menu click does not spawn a Tauri sub-window
+ * Legacy window.html?window=docs loads main shell (negative)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -48,14 +48,14 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
+describe('Online Help Docs', () => {
   let mainWindow = '';
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
   });
 
-  it('DOCS-001: openDocsWindow uses buildDocsUrl + openPath; no docs-singleton', () => {
+  it('openDocsWindow uses buildDocsUrl + openPath; no docs-singleton', () => {
     const wm = fs.readFileSync(WINDOW_MANAGER, 'utf8');
     expect(wm).toContain('buildDocsUrl');
     expect(wm).toContain('settingsCommands.openPath');
@@ -67,7 +67,7 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     expect(settings).toContain("invoke<void>('open_path', { path })");
   });
 
-  it('DOCS-002: docsUrls.ts defines manual.html bases and legacy section remap', () => {
+  it('docsUrls.ts defines manual.html bases and legacy section remap', () => {
     const src = fs.readFileSync(DOCS_URLS, 'utf8');
     expect(src).toContain(DOCS_BASE_EN);
     expect(src).toContain(DOCS_BASE_ZH);
@@ -89,7 +89,7 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     expect(rust).not.toMatch(/create_sub_window[\s\S]*docs-singleton/);
   });
 
-  it('DOCS-003: App.tsx has no DocsWindow; windowKind aliases ?window=docs → main', () => {
+  it('App.tsx has no DocsWindow; windowKind aliases ?window=docs → main', () => {
     const app = fs.readFileSync(APP_TSX, 'utf8');
     expect(app).not.toContain('DocsWindow');
     expect(app).not.toMatch(/case\s+['"]docs['"]/);
@@ -99,21 +99,21 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     expect(kind).toContain('LEGACY_MAIN_ALIASES');
   });
 
-  it('DOCS-004: open_path IPC accepts manual.html URLs (EN, ZH, section hash)', async () => {
+  it('open_path IPC accepts manual.html URLs (EN, ZH, section hash)', async () => {
     await invokeBackend('open_path', { path: DOCS_BASE_EN });
     await invokeBackend('open_path', { path: DOCS_BASE_ZH });
     await invokeBackend('open_path', { path: `${DOCS_BASE_EN}#workflow` });
     await invokeBackend('open_path', { path: `${DOCS_BASE_ZH}#ai` });
   });
 
-  it('DOCS-005: MenuBar help-docs wires openDocsWindow (source)', () => {
+  it('MenuBar help-docs wires openDocsWindow (source)', () => {
     const menu = fs.readFileSync(MENU_BAR, 'utf8');
     expect(menu).toContain("'help-docs'");
     expect(menu).toContain('openDocsWindow()');
     expect(menu).not.toContain('window.html?window=docs');
   });
 
-  it('DOCS-006: Help menu click does not create a Tauri sub-window', async function () {
+  it('Help menu click does not create a Tauri sub-window', async function () {
     this.timeout(20000);
 
     const handlesBefore = await browser.getWindowHandles();
@@ -130,7 +130,7 @@ describe('Online Help Docs (DOCS-001~DOCS-007)', () => {
     expect(handlesAfter.length).toBe(handlesBefore.length);
   });
 
-  it('DOCS-007: legacy ?window=docs URL resolves to main shell (no Docs sidebar)', async function () {
+  it('legacy ?window=docs URL resolves to main shell (no Docs sidebar)', async function () {
     this.timeout(20000);
 
     await browser.url('tauri://localhost/window.html?window=docs&section=workflows');

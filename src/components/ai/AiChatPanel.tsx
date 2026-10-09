@@ -41,7 +41,7 @@ interface AiChatPanelProps {
   onRunCode?: (code: string, language: string) => void;
   onNewQuery?: (code: string) => void;
   /**
-   * Host-owned KV-panel facts for the key the panel is focused on (W3-A §1.3).
+   * Host-owned KV-panel facts for the key the panel is focused on.
    * Attached to every message the user sends while it is set, and shown as a chip
    * so the egress is visible before sending. `null` (relational panels, or a KV
    * panel with no key in scope) ⇒ plain chat, unchanged.
@@ -184,7 +184,7 @@ export function AiChatPanel({
     void sendMessage({
       dbSessionId,
       database,
-      // KV panels ride their host-owned facts along with the question (§1.3);
+      // KV panels ride their host-owned facts along with the question;
       // `composeKvAiMessage` is the identity function when there is no context.
       content: composeKvAiMessage(input.trim(), kvContext ?? null),
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,

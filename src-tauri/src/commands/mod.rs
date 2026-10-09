@@ -48,6 +48,7 @@ pub use encryption_key::*;
 #[cfg(feature = "webdriver")]
 pub use dialog::*;
 pub use driver_command::*;
+pub(crate) use error::{CmdExt, CommandError};
 pub use export::*;
 pub use file::*;
 pub use history::*;
@@ -77,6 +78,7 @@ use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::wapps::WappManager;
 use crate::workflow::scheduler::WorkflowScheduler;
 use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
@@ -167,9 +169,28 @@ pub struct AppState {
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
     pub cancel_registry: crate::ai::CancellationRegistry,
+    /// P5 Wave-1：Schema Diff 的 JobRuntime 基础设施（仓储/预算/计划库）。
+    pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
+    /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
+    pub desktop_job_host: Arc<datazen_runtime::job::DesktopJobHost>,
+    /// 概要 §6.2 第 8 步的窄适配根：桌面身份 + owner 作用域句柄登记表。
+    ///
+    /// 与 `session_transactions` **并存但互不读写**：后者是旧共享槽（键只有
+    /// `dbSessionId`，表达不了 owner），本字段不往它里面塞任何 owner / 权限信息
+    /// （开发计划 :84 禁止的伪映射）。取不到 adapter 时用
+    /// `AppState::platform_require()`，它返回明确错误而不是 `Option` 兜底。
+    pub platform: crate::platform::PlatformEntry,
 }
 
 impl AppState {
+    /// 取 platform adapter；组装失败 ⇒ 返回原始 `ApiError`，不做任何回落。
+    ///
+    /// 命令侧的统一入口：新接线的能力一律从这里进，避免每个命令各写一遍
+    /// `is_some()` 判断把失败吞成默认行为。
+    pub fn platform_require(&self) -> Result<&Arc<crate::platform::PlatformAdapter>, ApiError> {
+        self.platform.require()
+    }
+
     /// Lazily register AI providers + load prompt templates.
     /// Does not run during GUI startup — only on first AI / prompt use.
     pub async fn ensure_ai_ready(&self) {
@@ -293,3 +314,20 @@ mod tunnel_probe_tests;
 #[cfg(test)]
 #[path = "tunnel_summary_tests.rs"]
 mod tunnel_summary_tests;
+
+// CM-73 baseline evidence. Declared here (not under `services/connection_manager`)
+// because the journey spans the command layer's transaction handling and
+// `mod query` is private to `commands` — reaching it from `services` would
+// require widening production visibility, which the P0 rollback clause forbids.
+// `#[cfg(test)]` only: absent from production builds.
+#[cfg(test)]
+#[path = "cm73_baseline_tests.rs"]
+mod cm73_baseline_tests;
+
+// Companion sweep invariants for the same spec case (CM-73's `- 断言` and
+// `- 基线说明` bullets): reference counting, `release` ordering, and the
+// observable physical-resource chain.
+// Same placement rationale as `cm73_baseline_tests` above.
+#[cfg(test)]
+#[path = "cm73_idle_eviction_tests.rs"]
+mod cm73_idle_eviction_tests;

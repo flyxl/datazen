@@ -1,9 +1,10 @@
+import { listDatabases, readCatalog } from '../schema-metadata.js';
 /**
  * E2E tests for admin command bugfixes — IPC-based approach.
  *
  * Creates connections via save_connection IPC, connects via IPC,
  * and verifies admin commands work correctly.
- * After each operation, re-calls get_databases / get_tables to verify
+ * After each operation, re-calls list_databases / list_catalog to verify
  * that the backend returns updated results (simulating the frontend
  * refresh flow: loadForConnection → getDatabases; loadTables → getTables).
  *
@@ -104,7 +105,7 @@ describe('MySQL admin commands (IPC)', () => {
   it('should create a new database and list it', async function () {
     if (!connId) return this.skip();
 
-    const dbsBefore = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbsBefore = await listDatabases({ dbSessionId: connId });
 
     await invokeBackend('execute_driver_command', {
       request: {
@@ -114,7 +115,7 @@ describe('MySQL admin commands (IPC)', () => {
       },
     });
 
-    const dbsAfter = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbsAfter = await listDatabases({ dbSessionId: connId });
     expect(dbsAfter).toContain(MYSQL_TEST_DB);
     expect(dbsAfter.length).toBeGreaterThan(dbsBefore.length);
   });
@@ -139,9 +140,9 @@ describe('MySQL admin commands (IPC)', () => {
   it('should show new DB after simulated loadForConnection refresh', async function () {
     if (!connId) return this.skip();
 
-    // Simulate the frontend refresh flow: get_databases is session-neutral
-    // (F1 removed use_database) → must include the new DB.
-    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    // Simulate the frontend refresh flow: list_databases carries no
+    // use_database step at all → must include the new DB.
+    const dbs = await listDatabases({ dbSessionId: connId });
     expect(dbs).toContain(MYSQL_TEST_DB);
     expect(dbs.length).toBeGreaterThanOrEqual(2);
   });
@@ -149,7 +150,7 @@ describe('MySQL admin commands (IPC)', () => {
   it('should show ALL databases (not locked to one) when no preferred DB', async function () {
     if (!connId) return this.skip();
 
-    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbs = await listDatabases({ dbSessionId: connId });
     expect(dbs.length).toBeGreaterThanOrEqual(2);
     expect(dbs).toContain(MYSQL_TEST_DB);
   });
@@ -157,14 +158,14 @@ describe('MySQL admin commands (IPC)', () => {
   it('should list tables for a specific database via explicit param', async function () {
     if (!connId) return this.skip();
 
-    // F1: get_tables takes the database explicitly — no use_database needed.
-    const tables = await invokeBackend<{ name: string }[]>('get_tables', {
+    // list_catalog takes the database explicitly — no use_database needed.
+    const tables = await readCatalog({
       dbSessionId: connId,
       database: MYSQL_TEST_DB,
     });
     // New DB has no tables yet — just verify it doesn't error
     expect(tables).toBeDefined();
-    expect(Array.isArray(tables)).toBe(true);
+    expect(Array.isArray(tables.relations)).toBe(true);
   });
 
   it('should drop a database via driver command', async function () {
@@ -179,7 +180,7 @@ describe('MySQL admin commands (IPC)', () => {
       },
     });
 
-    const dbsBefore = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbsBefore = await listDatabases({ dbSessionId: connId });
     expect(dbsBefore).toContain(dropDb);
 
     await invokeBackend('execute_driver_command', {
@@ -190,7 +191,7 @@ describe('MySQL admin commands (IPC)', () => {
       },
     });
 
-    const dbsAfter = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbsAfter = await listDatabases({ dbSessionId: connId });
     expect(dbsAfter).not.toContain(dropDb);
   });
 
@@ -257,11 +258,11 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbs = await listDatabases({ dbSessionId: connId });
     expect(dbs).toContain(PG_TEST_DB);
   });
 
-  it('should create a schema and return it via get_tables (simulating loadTables)', async function () {
+  it('should create a schema and return it via list_catalog (simulating loadTables)', async function () {
     if (!connId) return this.skip();
 
     await invokeBackend('execute_driver_command', {
@@ -272,21 +273,16 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    // Simulate frontend loadTables flow: get_tables with explicit database (F1)
-    const tablesResult = await invokeBackend<{ name: string; schema: string; tableType: string }[]>(
-      'get_tables',
-      { dbSessionId: connId, database: PG_DB },
-    );
+    // Simulate frontend loadTables flow: list_catalog with explicit database
+    const tablesResult = await readCatalog({ dbSessionId: connId, database: PG_DB });
 
-    // Verify new schema appears (either via SCHEMA_MARKER or table entries)
-    const allSchemas = [...new Set(tablesResult.map((t) => t.schema).filter(Boolean))];
+    // Verify empty schemas are returned independently from relations.
+    const allSchemas = tablesResult.schemas;
     expect(allSchemas).toContain(PG_TEST_SCHEMA);
     expect(allSchemas).toContain('public');
 
-    // Verify schemaNames extraction (same logic as frontend setLoadedTables)
-    const schemaNames = [
-      ...new Set(tablesResult.map((t) => t.schema).filter((s): s is string => !!s)),
-    ];
+    // Verify schemaNames extraction (explicit catalog schema list)
+    const schemaNames = tablesResult.schemas;
     expect(schemaNames).toContain(PG_TEST_SCHEMA);
     expect(schemaNames.length).toBeGreaterThanOrEqual(2);
   });
@@ -295,15 +291,12 @@ describe('PostgreSQL admin commands (IPC)', () => {
     if (!connId) return this.skip();
 
     // Simulate full loadForConnection → getDatabases → loadTables flow
-    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbs = await listDatabases({ dbSessionId: connId });
     expect(dbs).toContain(PG_DB);
 
-    const tablesResult = await invokeBackend<{ name: string; schema: string; tableType: string }[]>(
-      'get_tables',
-      { dbSessionId: connId, database: PG_DB },
-    );
+    const tablesResult = await readCatalog({ dbSessionId: connId, database: PG_DB });
 
-    const schemas = [...new Set(tablesResult.map((t) => t.schema).filter(Boolean))];
+    const schemas = tablesResult.schemas;
     expect(schemas).toContain('public');
     expect(schemas).toContain(PG_TEST_SCHEMA);
     expect(schemas.length).toBeGreaterThanOrEqual(2);
@@ -376,7 +369,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    const dbsBefore = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbsBefore = await listDatabases({ dbSessionId: connId });
     expect(dbsBefore).toContain(dropDb);
 
     await invokeBackend('execute_driver_command', {
@@ -387,7 +380,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    const dbsAfter = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbsAfter = await listDatabases({ dbSessionId: connId });
     expect(dbsAfter).not.toContain(dropDb);
   });
 
@@ -452,11 +445,11 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    const tablesBefore = await invokeBackend<{ name: string; schema: string }[]>('get_tables', {
+    const tablesBefore = await readCatalog({
       dbSessionId: connId,
       database: PG_DB,
     });
-    const schemasBefore = [...new Set(tablesBefore.map((t) => t.schema).filter(Boolean))];
+    const schemasBefore = tablesBefore.schemas;
     expect(schemasBefore).toContain(dropSchema);
 
     await invokeBackend('execute_driver_command', {
@@ -468,11 +461,11 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    const tablesAfter = await invokeBackend<{ name: string; schema: string }[]>('get_tables', {
+    const tablesAfter = await readCatalog({
       dbSessionId: connId,
       database: PG_DB,
     });
-    const schemasAfter = [...new Set(tablesAfter.map((t) => t.schema).filter(Boolean))];
+    const schemasAfter = tablesAfter.schemas;
     expect(schemasAfter).not.toContain(dropSchema);
   });
 
@@ -489,7 +482,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    // Pin a query command to another catalog (F1 database pin).
+    // Pin a query command to another catalog (explicit database pin).
     await invokeBackend('execute_driver_command', {
       request: {
         dbSessionId: connId,
@@ -512,11 +505,11 @@ describe('PostgreSQL admin commands (IPC)', () => {
       },
     });
 
-    const tablesAfter = await invokeBackend<{ name: string; schema: string }[]>('get_tables', {
+    const tablesAfter = await readCatalog({
       dbSessionId: connId,
       database: PG_DB,
     });
-    const schemasAfter = [...new Set(tablesAfter.map((t) => t.schema).filter(Boolean))];
+    const schemasAfter = tablesAfter.schemas;
     expect(schemasAfter).not.toContain(dropSchema);
   });
 
@@ -596,7 +589,7 @@ describe('PostgreSQL admin commands (IPC)', () => {
   it('should show created database after full refresh cycle', async function () {
     if (!connId) return this.skip();
 
-    const dbs = await invokeBackend<string[]>('get_databases', { dbSessionId: connId });
+    const dbs = await listDatabases({ dbSessionId: connId });
     expect(dbs).toContain(PG_TEST_DB);
     expect(dbs).toContain(PG_DB);
     expect(dbs.length).toBeGreaterThanOrEqual(2);

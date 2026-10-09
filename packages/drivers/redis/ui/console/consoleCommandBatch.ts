@@ -3,7 +3,7 @@
  * commands the server will run, then fold their danger levels into one verdict
  * (track `redis-console-safety`, PRD §4 I-7 + task book §6.1/§6.3).
  *
- * The split mirrors the server (`src/ops_exec.rs::split_redis_commands`:
+ * The split mirrors the server (`src/ops/exec.rs::split_redis_commands`:
  * newline-separated, trimmed, blanks dropped) with one addition: a line that
  * closes an argument quote opened on an earlier line is treated as a
  * *continuation* and merged into the previous logical command. That is what

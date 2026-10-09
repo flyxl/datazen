@@ -144,7 +144,7 @@ const pack = {
   'query.editor.selection.addNextOccurrenceMac': '添加下一处匹配（⌘+D）',
   'query.editor.selection.addNextOccurrenceWin': '添加下一处匹配（Ctrl+D）',
   'query.editor.selection.rectangularHint': '列选择（Alt+拖动）',
-  // --- §4.1 SQL 代码片段 ---
+  // --- SQL 代码片段 ---
   'query.snippets': '代码片段',
   'query.snippetsTitle': '插入 SQL 代码片段',
   'query.snippets.add': '新增片段',
@@ -175,10 +175,10 @@ const pack = {
   'query.editor.snippet.delete': 'DELETE FROM … WHERE',
   'query.editor.snippet.join': 'JOIN … ON',
   'query.editor.snippet.count': 'SELECT COUNT(1)',
-  // --- §4.2 格式化 ---
+  // --- 格式化 ---
   'query.formatShortcutMac': '格式化 SQL (⇧⌥F)',
   'query.formatShortcutWin': '格式化 SQL (Shift+Alt+F)',
-  // --- §4.3 显式刷新补全缓存 ---
+  // --- 显式刷新补全缓存 ---
   'query.refreshCompletion': '刷新补全',
   'query.refreshCompletionTitle': '重新加载自动补全所用的结构元数据',
   'query.refreshCompletionDone': '补全缓存已刷新',

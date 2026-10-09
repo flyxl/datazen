@@ -1,0 +1,68 @@
+[package]
+name = "datazen-runtime"
+version = "0.0.1"
+edition = "2021"
+description = "DataZen platform runtime kernel — transport-neutral connection resource runtime and its fake resource fixtures"
+license = "GPL-3.0-or-later"
+# 夹具（6400+ 行）只服务于 `cargo test`，不得进入发布出去的 .crate。
+# `#[cfg(any(test, feature = "test-harness"))]` 管的是**编译**：`cargo package` 是**按文件系统**
+# 打包的，`cfg` 对它没有任何影响，所以这里必须显式排除 src/connection/testing/。
+# 排除后仍然可以 `cargo package --verify`：那一步按默认 feature 构建，而默认 feature 为空，
+# `connection/mod.rs` 里的 testing 模块压根不会进入编译图。
+exclude = ["src/connection/testing/**"]
+
+[features]
+# fake-runtime-fixtures.md §12: 夹具跨 crate 暴露时沿用 src-tauri 已有的 feature 名，
+# 避免「同一个概念两个名字」。生产构建不含此 feature，夹具模块即被 cfg 剔除。
+default = []
+test-harness = []
+
+[dependencies]
+datazen-application = { workspace = true }
+datazen-driver-api = { workspace = true }
+# ID newtype（ConnectionId / DbSessionId / Counter …）的唯一定义处。
+# 方向是 runtime → platform-api，符合 platform-api F-04（本包不得依赖 runtime/application/领域包）。
+datazen-platform-api = { workspace = true }
+chrono = { version = "0.4", default-features = false }
+indexmap = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+# P3 基础设施三件套。版本与 workspace 内既有 crate（driver-api / ai-api / src-tauri）保持一致。
+# - async-trait：`#[async_trait]` 让端口 trait 在 `Arc<dyn Trait>` 下仍然对象安全。
+# - tokio：每会话一个 actor + 独立 cancel 通道（connection-management.md §6.3）。
+#   **只开下面五个 feature**，刻意不给 "full"：本包是传输中立的业务核心而不是宿主进程，
+#   F-03 也明令禁止在这里拉 HTTP/transport 框架，一个全功能运行时与之无关且会成为逃逸口。
+#   "test-util" 只为测试期确定性控制时间（`tokio::time::pause()` / `advance()`）；
+#   §6.4 的 TTL 与竞态用例必须靠它而不是真实 `sleep`，否则测试既慢又 flaky。
+#   它不引入任何运行时行为，tokio 在未启用 test-util 时本来就无法被 pause。
+# - tracing：拒绝/降级等非常规路径的观测点（见 connection::error::RuntimeError::rejected）。
+async-trait = "0.1"
+futures-util = "0.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "test-util"] }
+tracing = "0.1"
+# CM-70：提交令牌的 HMAC-SHA256。「过期幂等键 / 伪造 issuedAt·keyVersion 拒绝」这条判据
+# 要求令牌**不可伪造**，所以这里必须是真 MAC，不能拿 FNV 之类的摘要凑——摘要可被碰撞构造，
+# 测试也就跟着失去意义。二者都已在 Cargo.lock 内解析好（本 workspace 的 host 侧已在用），
+# 本包只是第一次显式直接依赖它们，不引入新的版本。
+# 刻意**不**用 `ring`/`aes-gcm` 那类带完整密码学栈的依赖：令牌只需要一处 HMAC。
+hmac = "0.12"
+sha2 = "0.10"
+
+# 集成测试要复用**唯一那份**共享夹具时钟（`connection::testing::clock::FakeClock`），
+# 而不是在本 crate 里另写一个只有 advance 的简化版。夹具模块由
+# `#[cfg(any(test, feature = "test-harness"))]` 门控，集成测试是**外部** crate，
+# 所以只能靠这条自引用的 dev-dependency 把 feature 打开。
+# 依赖自身不构成环：dev 依赖不参与本 crate 的编译图，crate 仍然只编译一次。
+[dev-dependencies]
+datazen-runtime = { path = ".", features = ["test-harness"] }
+# CM-32 单账铁律的可执行形状靠**语法树**判，而不是对源码做字面子串匹配。
+# 子串黑名单是开放世界的：`AtomicU64` / `cached_refs` 这类改个名的第二本账一条都命中不了。
+# 这里必须钉在 syn 2：syn 1.0.109 **压根不认 let-else**，会把
+# `let Some(ledger) = self.tunnels.as_mut() else { .. };` 整句塞进 `Expr::Verbatim`，
+# 于是 `self.tunnels` 这一处读取对审计器**完全不可见**——`settle_tunnel_reference`
+# 恰好就用 let-else 取台账，R4 会因此整个跳过该方法。syn 2 有
+# `LocalInit { expr, diverge }`，`visit_local` 会连 `else` 分支一起下钻。
+# syn 2.0.119 同样已在 Cargo.lock 内解析好（本 workspace 的派生宏链已在用），
+# 这里只补 `full` / `visit` / `extra-traits` 三个 feature，不引入新的版本或新的 crate。
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }

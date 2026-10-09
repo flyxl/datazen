@@ -54,6 +54,17 @@ vi.mock('../../../lib/databaseTypes', () => ({
   escapeIdent: (ident: string) => ident,
 }));
 
+const queryCommandsMock = vi.hoisted(() => ({
+  sessionTransactionStatus: vi.fn().mockResolvedValue(false),
+  beginSessionTransaction: vi.fn().mockResolvedValue(undefined),
+  commitSessionTransaction: vi.fn().mockResolvedValue(undefined),
+  rollbackSessionTransaction: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../commands/query', () => ({
+  queryCommands: queryCommandsMock,
+}));
+
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
     useDatabase: vi.fn().mockResolvedValue(undefined),
@@ -212,7 +223,7 @@ describe('TableView', () => {
     expect(clipboardSpy).toHaveBeenCalledWith(errorMsg);
   });
 
-  it('loads data through the panel target database on mount (F1 BUG-002)', () => {
+  it('loads data through the panel target database on mount', () => {
     renderTable({ database: 'db_b' });
 
     expect(tableStore.loadTableData).toHaveBeenCalledWith({
@@ -226,7 +237,7 @@ describe('TableView', () => {
     });
   });
 
-  it('retries failed loads with the panel target database (F1 BUG-002)', () => {
+  it('retries failed loads with the panel target database', () => {
     seedPanel(contextOf({ database: 'db_b' }), {
       error: 'table not found in current database',
     });
@@ -271,6 +282,17 @@ describe('TableView', () => {
 
     expect(tableStore.startEdit).toHaveBeenCalledWith(PANEL, 0, 'id');
     expect(screen.queryByTestId('table-read-only-tip')).toBeNull();
+  });
+
+  it('starts a manual transaction from the table toolbar', async () => {
+    renderTable();
+
+    await vi.waitFor(() => expect(queryCommandsMock.sessionTransactionStatus).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('table-tx-begin'));
+
+    await vi.waitFor(() =>
+      expect(queryCommandsMock.beginSessionTransaction).toHaveBeenCalledWith('c1'),
+    );
   });
 
   it('blocks cell editing when readOnly prop is true and shows a read-only tip', () => {

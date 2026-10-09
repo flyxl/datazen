@@ -214,7 +214,7 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(loaded().page).toBe(0);
   });
 
-  it('forwards the explicit database and remembers it for refreshes (F1 BUG-002)', async () => {
+  it('forwards the explicit database and remembers it for refreshes', async () => {
     await useTableDataStore
       .getState()
       .loadTableData({ panelId: PANEL, dbSessionId: 'conn-1', table: 'users', database: 'db_b' });

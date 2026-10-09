@@ -70,7 +70,7 @@ fn open_creates_schema_version() {
     let version: i32 = db
         .with_conn(|conn| {
             Ok(
-                conn.query_row("SELECT version FROM schema_migrations LIMIT 1", [], |row| {
+                conn.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
                     row.get(0)
                 })?,
             )

@@ -152,6 +152,7 @@ const VARIANTS: UnifiedRow[] = [
   {
     type: 'category',
     key: 'c1::db1::public::tables',
+    dbName: 'db1',
     cat: { id: 'tables' } as never,
     count: 1,
     expanded: true,
@@ -428,6 +429,8 @@ const connection = (id: string): ConnectionConfig => ({
 
 function schemaState(): ConnectionSchemaState {
   return {
+    connectionId: 'cfg-aria',
+    metadataRevision: 1,
     currentDatabase: null,
     currentSchema: null,
     databases: ['db1'],
@@ -436,8 +439,8 @@ function schemaState(): ConnectionSchemaState {
     tables: [{ name: 'users', schema: 'public', tableType: 'table' } as TableInfo],
     views: [],
     schemaNames: ['public'],
-    columnMap: {},
-    typedColumnMap: {},
+    tableCatalogs: {},
+    relationColumns: {},
     namespaceTree: {},
     loadedPaths: new Set(),
     pathItems: {},

@@ -1675,10 +1675,16 @@ dependencies = [
  "cbc 0.1.2",
  "chrono",
  "datazen-ai-api",
+ "datazen-application",
+ "datazen-data-sync",
+ "datazen-data-transfer",
  "datazen-driver-api",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
+ "datazen-platform-api",
+ "datazen-runtime",
+ "datazen-schema-diff",
  "dirs",
  "flate2",
  "futures-util",
@@ -1744,8 +1750,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-application"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "datazen-platform-api",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
+name = "datazen-data-sync"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "datazen-driver-api",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-sqlite",
+ "datazen-platform-api",
+ "datazen-runtime",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "datazen-data-transfer"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "datazen-data-sync",
+ "datazen-driver-api",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-sqlite",
+ "datazen-platform-api",
+ "datazen-runtime",
+ "flate2",
+ "inventory",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "datazen-driver-api"
-version = "0.0.8"
+version = "0.0.10"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1905,6 +1970,7 @@ dependencies = [
  "futures-util",
  "redis",
  "rmpv",
+ "rustls 0.23.43",
  "serde",
  "serde_json",
  "tauri",
@@ -1920,6 +1986,7 @@ name = "datazen-driver-rqlite"
 version = "0.0.8"
 dependencies = [
  "async-trait",
+ "datazen-data-transfer",
  "datazen-driver-api",
  "datazen-driver-http-support",
  "reqwest",
@@ -1936,8 +2003,10 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "datazen-data-transfer",
  "datazen-driver-api",
  "futures-util",
+ "libsqlite3-sys",
  "same-file",
  "serde_json",
  "sqlparser",
@@ -1969,6 +2038,7 @@ name = "datazen-driver-turso"
 version = "0.0.8"
 dependencies = [
  "async-trait",
+ "datazen-data-transfer",
  "datazen-driver-api",
  "datazen-driver-http-support",
  "reqwest",
@@ -2005,6 +2075,59 @@ dependencies = [
  "tokio",
  "tracing",
  "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-platform-api"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
+name = "datazen-runtime"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen-application",
+ "datazen-driver-api",
+ "datazen-platform-api",
+ "datazen-runtime",
+ "futures-util",
+ "hmac 0.12.1",
+ "indexmap 2.14.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "syn 2.0.119",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "datazen-schema-diff"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen-driver-api",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-sqlite",
+ "datazen-platform-api",
+ "datazen-runtime",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
  "uuid",
 ]
 

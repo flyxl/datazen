@@ -1,5 +1,5 @@
 /**
- * E2E: 对象过滤器 ObjectFilterDialog 完整闭环（ops §5.4）
+ * E2E: 对象过滤器 ObjectFilterDialog 完整闭环
  *
  * 全流程：建测试表 → 连接 → 右键连接「对象过滤…」→ 填 include/exclude + 隐藏系统库 →
  * 保存 → 刷新树断言仅显示命中表（同时验证 ObjectFilterDialog 的可打开性——即 import 修复回归）→
@@ -259,7 +259,7 @@ async function setInputByPlaceholder(placeholder: string, value: string) {
   await browser.pause(200);
 }
 
-describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
+describe('运维: 对象过滤器 (OPS-FILTER)', () => {
   let mainWindow: string;
 
   before(async () => {

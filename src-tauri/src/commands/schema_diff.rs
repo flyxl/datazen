@@ -1,5 +1,6 @@
 //! Schema Diff Deploy IPC commands.
 
+pub mod job;
 pub mod unified_plan;
 
 use super::error::{CmdExt, CommandError};
@@ -19,8 +20,8 @@ use crate::schema_diff::objects::{
 use crate::schema_diff::plan::{is_source_unbounded_text, PlanOptions};
 use crate::schema_diff::types::TableColumnDiff;
 use crate::schema_diff::types::{
-    normalize_dialect, resolve_table_for_dialect, ColumnTypeOverride, SchemaDiffDeployResult,
-    SchemaDiffPlan,
+    normalize_dialect, resolve_table_for_dialect, uses_schema_scope, ColumnTypeOverride,
+    PlanRequirement, SchemaDiffDeployResult, SchemaDiffPlan,
 };
 use crate::schema_diff::SchemaDiffProfile;
 use crate::services::job_registry::{cancel_job, ensure_job, remove_job};
@@ -82,6 +83,60 @@ async fn ensure_distinct_schema_scope(
         .await
         .ok()
         .flatten();
+    let is_sqlserver = crate::schema_diff::types::normalize_dialect(&source_config.database_type)
+        == "sqlserver"
+        && crate::schema_diff::types::normalize_dialect(&target_config.database_type)
+            == "sqlserver";
+    let same_physical_database = matches!(
+        (source_identity.as_deref(), target_identity.as_deref()),
+        (Some(source), Some(target)) if source == target
+    );
+    let source_schema = source_schema_scope
+        .and_then(|schema| (!schema.trim().is_empty()).then_some(schema))
+        .or_else(|| {
+            source_config
+                .schema
+                .as_deref()
+                .filter(|schema| !schema.trim().is_empty())
+        });
+    let target_schema = target_schema_scope
+        .and_then(|schema| (!schema.trim().is_empty()).then_some(schema))
+        .or_else(|| {
+            target_config
+                .schema
+                .as_deref()
+                .filter(|schema| !schema.trim().is_empty())
+        });
+    let (source_schema_identity, target_schema_identity) = if is_sqlserver && same_physical_database
+    {
+        let source_schema_identity = match source_schema {
+            Some(schema) => source_driver
+                .schema_scope_identity(
+                    source_handle,
+                    source_config.database.as_deref().unwrap_or_default(),
+                    schema,
+                )
+                .await
+                .ok()
+                .flatten(),
+            None => None,
+        };
+        let target_schema_identity = match target_schema {
+            Some(schema) => target_driver
+                .schema_scope_identity(
+                    target_handle,
+                    target_config.database.as_deref().unwrap_or_default(),
+                    schema,
+                )
+                .await
+                .ok()
+                .flatten(),
+            None => None,
+        };
+        (source_schema_identity, target_schema_identity)
+    } else {
+        (None, None)
+    };
 
     match crate::schema_diff::reviewed::physical_database_scope(
         source_config,
@@ -90,6 +145,8 @@ async fn ensure_distinct_schema_scope(
         target_identity.as_deref(),
         source_schema_scope,
         target_schema_scope,
+        source_schema_identity.as_deref(),
+        target_schema_identity.as_deref(),
     ) {
         crate::schema_diff::reviewed::PhysicalDatabaseScope::Same => {
             Err(reject_same_schema_scope())
@@ -98,6 +155,81 @@ async fn ensure_distinct_schema_scope(
         crate::schema_diff::reviewed::PhysicalDatabaseScope::Unknown => {
             Err(reject_unverifiable_schema_scope())
         }
+    }
+}
+
+/// Object-only plans do not have the unified planner's SQL Server schema
+/// mapper. Keep their source and target objects in the same configured schema
+/// so a plan cannot render source-schema DDL or drop a same-named object from
+/// another target schema.
+fn sqlserver_object_scope_requirement(
+    source_dialect: &str,
+    target_dialect: &str,
+    source_schema: Option<&str>,
+    target_schema: Option<&str>,
+    source: &[SchemaObjectSnapshot],
+    target: &[SchemaObjectSnapshot],
+) -> Option<PlanRequirement> {
+    if source_dialect != "sqlserver" || target_dialect != "sqlserver" {
+        return None;
+    }
+
+    // SQL Server's driver-level default schema is dbo when no explicit schema
+    // is configured. Object snapshots always carry their catalog schema.
+    let source_scope = source_schema
+        .map(str::trim)
+        .filter(|schema| !schema.is_empty())
+        .unwrap_or("dbo");
+    let target_scope = target_schema
+        .map(str::trim)
+        .filter(|schema| !schema.is_empty())
+        .unwrap_or("dbo");
+    let source_matches_scope = source.iter().all(|object| {
+        object.schema.as_deref() == Some(source_scope)
+            && object
+                .target_schema
+                .as_deref()
+                .is_none_or(|schema| schema == source_scope)
+    });
+    let target_matches_scope = target.iter().all(|object| {
+        object.schema.as_deref() == Some(target_scope)
+            && object
+                .target_schema
+                .as_deref()
+                .is_none_or(|schema| schema == target_scope)
+    });
+
+    if source_scope == target_scope && source_matches_scope && target_matches_scope {
+        return None;
+    }
+
+    Some(PlanRequirement::Unsupported {
+        operation: "sqlserver-object-schema-scope".into(),
+        reason: format!(
+            "SQL Server object-only plans cannot rewrite object definitions across schemas. Source and target objects must both match the same configured schema; source scope is `{source_scope}`, target scope is `{target_scope}`."
+        ),
+    })
+}
+
+fn apply_sqlserver_object_scope_gate(
+    plan: &mut SchemaDiffPlan,
+    source_dialect: &str,
+    target_dialect: &str,
+    source_schema: Option<&str>,
+    target_schema: Option<&str>,
+    source: &[SchemaObjectSnapshot],
+    target: &[SchemaObjectSnapshot],
+) {
+    if let Some(requirement) = sqlserver_object_scope_requirement(
+        source_dialect,
+        target_dialect,
+        source_schema,
+        target_schema,
+        source,
+        target,
+    ) {
+        plan.requirements.push(requirement);
+        plan.statements.clear();
     }
 }
 
@@ -593,7 +725,7 @@ async fn fetch_target_table_dependency_catalog(
                 continue;
             }
 
-            if normalize_dialect(dialect) == "postgresql" && !selected_table.contains('.') {
+            if uses_schema_scope(dialect) && !selected_table.contains('.') {
                 let candidates = snapshots
                     .iter()
                     .filter(|(identity, _)| {
@@ -656,7 +788,7 @@ fn resolve_profile_table(dialect: &str, table: &str, schema: Option<&str>) -> St
 
 fn dependency_relation_identity(dialect: &str, table: &str, schema_scope: Option<&str>) -> String {
     let table = table.trim();
-    if normalize_dialect(dialect) == "postgresql" && !table.contains('.') {
+    if uses_schema_scope(dialect) && !table.contains('.') {
         if let Some(schema) = schema_scope.filter(|value| !value.trim().is_empty()) {
             return format!("{}.{}", schema.trim(), table);
         }
@@ -670,7 +802,7 @@ fn resolve_reviewed_table_snapshot(
     database_scope: &str,
     schema_scope: Option<&str>,
 ) -> (String, String, Option<String>) {
-    if normalize_dialect(dialect) == "postgresql" {
+    if uses_schema_scope(dialect) {
         if let Some((schema, relation)) = table.rsplit_once('.') {
             return (
                 relation.to_string(),
@@ -770,20 +902,22 @@ pub async fn prepare_schema_diff_plan(
     allow_destructive: bool,
     include_indexes: Option<bool>,
     type_overrides: Option<Vec<ColumnTypeOverride>>,
-) -> Result<SchemaDiffPlan, CommandError> {
+) -> Result<job::SchemaDiffJobAccepted, CommandError> {
     let target_table_names = target_table_names.unwrap_or_else(|| table_names.clone());
-    prepare_schema_diff_plan_with_schemas_impl(
+    job::run_prepare_job(
         &state,
-        source_db_session_id,
-        target_db_session_id,
-        table_names,
-        target_table_names,
-        target_only_table_names.unwrap_or_default(),
-        allow_destructive,
-        include_indexes,
-        type_overrides,
-        source_schema,
-        target_schema,
+        crate::schema_diff::job::PrepareRequest::Table {
+            source_db_session_id,
+            target_db_session_id,
+            table_names,
+            target_table_names,
+            target_only_table_names: target_only_table_names.unwrap_or_default(),
+            source_schema,
+            target_schema,
+            allow_destructive,
+            include_indexes,
+            type_overrides: type_overrides.unwrap_or_default(),
+        },
     )
     .await
 }
@@ -821,7 +955,7 @@ pub(crate) async fn prepare_schema_diff_profile_plan_impl(
     .await
 }
 
-async fn prepare_schema_diff_plan_with_schemas_impl(
+pub(crate) async fn prepare_schema_diff_plan_with_schemas_impl(
     state: &AppState,
     source_db_session_id: String,
     target_db_session_id: String,
@@ -893,12 +1027,11 @@ async fn prepare_schema_diff_plan_with_schemas_impl(
         .get_session(&target_db_session_id)
         .await
         .cmd_err("prepare_schema_diff_plan")?;
-    let target_dependency_schema_scope =
-        if normalize_dialect(&tgt_config.database_type) == "postgresql" {
-            target_schema_scope.or(tgt_driver.default_schema())
-        } else {
-            None
-        };
+    let target_dependency_schema_scope = if uses_schema_scope(&tgt_config.database_type) {
+        target_schema_scope.or(tgt_driver.default_schema())
+    } else {
+        None
+    };
     ensure_distinct_schema_scope(
         src_driver.as_ref(),
         &src_handle,
@@ -1274,6 +1407,15 @@ pub async fn prepare_schema_view_plan(
         renderer.as_ref(),
         capabilities.as_ref(),
     );
+    apply_sqlserver_object_scope_gate(
+        &mut plan,
+        &src_dialect,
+        &tgt_dialect,
+        src_config.schema.as_deref(),
+        tgt_config.schema.as_deref(),
+        &source_snapshots,
+        &target_snapshots,
+    );
     if tgt_dialect == "mysql" {
         for object in source_snapshots.iter().chain(&target_snapshots) {
             if let Err(reason) =
@@ -1420,6 +1562,15 @@ pub async fn prepare_schema_routine_trigger_plan(
         renderer.as_ref(),
         capabilities.as_ref(),
     );
+    apply_sqlserver_object_scope_gate(
+        &mut plan,
+        &src_dialect,
+        &tgt_dialect,
+        src_config.schema.as_deref(),
+        tgt_config.schema.as_deref(),
+        &source_snapshots,
+        &target_snapshots,
+    );
     crate::schema_diff::reviewed::freeze_with_objects(
         &mut plan,
         target_db_session_id,
@@ -1535,6 +1686,15 @@ pub async fn prepare_schema_sequence_plan(
         allow_destructive,
         renderer.as_ref(),
         capabilities.as_ref(),
+    );
+    apply_sqlserver_object_scope_gate(
+        &mut plan,
+        &src_dialect,
+        &tgt_dialect,
+        src_config.schema.as_deref(),
+        tgt_config.schema.as_deref(),
+        &source_snapshots,
+        &target_snapshots,
     );
     crate::schema_diff::reviewed::freeze_with_objects(
         &mut plan,
@@ -1652,6 +1812,15 @@ pub async fn prepare_schema_type_plan(
         renderer.as_ref(),
         capabilities.as_ref(),
     );
+    apply_sqlserver_object_scope_gate(
+        &mut plan,
+        &src_dialect,
+        &tgt_dialect,
+        src_config.schema.as_deref(),
+        tgt_config.schema.as_deref(),
+        &source_snapshots,
+        &target_snapshots,
+    );
     crate::schema_diff::reviewed::freeze_with_objects(
         &mut plan,
         target_db_session_id,
@@ -1689,18 +1858,31 @@ pub async fn execute_schema_diff_deploy(
     target_database: Option<String>,
     target_schema: Option<String>,
     profile: Option<crate::store::MigrationProfileRef>,
-) -> Result<SchemaDiffDeployResult, CommandError> {
-    execute_schema_diff_deploy_impl(
-        &state,
-        target_db_session_id,
-        plan,
-        use_transaction,
-        require_rollback,
+    plan_id: Option<String>,
+    selection_revision: Option<u64>,
+) -> Result<job::SchemaDiffJobAccepted, CommandError> {
+    let apply_request = crate::schema_diff::job::ApplyRequest {
+        target_db_session_id: target_db_session_id.clone(),
+        use_transaction: use_transaction.unwrap_or(true),
+        require_rollback: require_rollback.unwrap_or(false),
         confirm_destructive,
         job_id,
-        target_database,
-        target_schema,
-        profile,
+        target_database: target_database.clone(),
+        target_schema: target_schema.clone(),
+        profile: profile.map(|p| (p.id, p.revision)),
+    };
+    let (effective_plan_id, effective_selection_revision) = match (plan_id, selection_revision) {
+        (Some(plan_id), Some(sel_rev)) => (plan_id, sel_rev),
+        _ => {
+            // 兼容路径：客户端直接携带计划正文 ⇒ 先注册进 PlanStore 再跑 apply Job。
+            job::register_plan_for_apply(&state, plan, &target_db_session_id).await?
+        }
+    };
+    job::run_apply_job(
+        &state,
+        &effective_plan_id,
+        effective_selection_revision,
+        apply_request,
     )
     .await
 }
@@ -1716,6 +1898,35 @@ pub(crate) async fn execute_schema_diff_deploy_impl(
     target_database: Option<String>,
     target_schema: Option<String>,
     profile: Option<crate::store::MigrationProfileRef>,
+) -> Result<SchemaDiffDeployResult, CommandError> {
+    execute_schema_diff_deploy_impl_with_cancel(
+        state,
+        target_db_session_id,
+        plan,
+        use_transaction,
+        require_rollback,
+        confirm_destructive,
+        job_id,
+        target_database,
+        target_schema,
+        profile,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
+    state: &AppState,
+    target_db_session_id: String,
+    plan: SchemaDiffPlan,
+    use_transaction: Option<bool>,
+    require_rollback: Option<bool>,
+    confirm_destructive: Option<String>,
+    job_id: Option<String>,
+    target_database: Option<String>,
+    target_schema: Option<String>,
+    profile: Option<crate::store::MigrationProfileRef>,
+    cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<SchemaDiffDeployResult, CommandError> {
     crate::commands::history::validate_migration_profile_ref(
         &state,
@@ -2008,9 +2219,14 @@ pub(crate) async fn execute_schema_diff_deploy_impl(
         return fail_schema_diff_deploy(&state, history_run, error).await;
     }
     let plan = reviewed.plan;
-    let cancelled = match job_id.as_deref() {
-        Some(id) => Some(ensure_job(id).await),
-        None => None,
+    let has_external_cancel_flag = cancel_flag.is_some();
+    let cancelled = if let Some(flag) = cancel_flag {
+        Some(flag)
+    } else {
+        match job_id.as_deref() {
+            Some(id) => Some(ensure_job(id).await),
+            None => None,
+        }
     };
 
     let opts = DeployOptions {
@@ -2028,8 +2244,10 @@ pub(crate) async fn execute_schema_diff_deploy_impl(
     )
     .await;
 
-    if let Some(id) = job_id.as_deref() {
-        remove_job(id).await;
+    if !has_external_cancel_flag {
+        if let Some(id) = job_id.as_deref() {
+            remove_job(id).await;
+        }
     }
 
     tracing::info!(
@@ -2060,10 +2278,13 @@ pub(crate) async fn execute_schema_diff_deploy_impl(
     Ok(result)
 }
 
-/// Cancel an in-progress schema diff deploy job.
+/// Persist cancellation intent against the shared desktop Job lifecycle.
 #[tauri::command]
-pub async fn cancel_schema_diff_deploy(job_id: String) -> Result<bool, CommandError> {
-    Ok(cancel_job(&job_id).await)
+pub async fn cancel_schema_diff_deploy(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<bool, CommandError> {
+    job::cancel_schema_diff_job(&state, &job_id).await
 }
 
 /// Compare column-level schema differences for a single table.
@@ -2236,8 +2457,82 @@ pub async fn compare_table_schemas(
 mod tests {
     use super::*;
     use crate::db::{ColumnSchema, ForeignKeyDeferrability, ForeignKeyInfo, TableInfo, TableType};
+    use crate::schema_diff::types::{PlanStatement, RollbackCompleteness, StatementRisk};
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
     use std::collections::HashMap;
+
+    #[test]
+    fn sqlserver_object_only_plan_blocks_cross_schema_statements() {
+        let source = vec![SchemaObjectSnapshot::view(
+            Some("dbo"),
+            "v",
+            "SELECT 1 AS value",
+        )];
+        let target = vec![SchemaObjectSnapshot::view(
+            Some("sales"),
+            "v",
+            "SELECT 2 AS value",
+        )];
+        let mut plan = SchemaDiffPlan {
+            plan_id: None,
+            table: "v".into(),
+            tables: Vec::new(),
+            source_dialect: "sqlserver".into(),
+            target_dialect: "sqlserver".into(),
+            same_dialect: true,
+            statements: vec![PlanStatement {
+                sql: "CREATE VIEW [dbo].[v] AS SELECT 1 AS value".into(),
+                risk: StatementRisk::Additive,
+                rollback_sql: None,
+                summary: "create view".into(),
+                requires_transaction: false,
+            }],
+            warnings: Vec::new(),
+            requirements: Vec::new(),
+            rollback_completeness: RollbackCompleteness {
+                complete: false,
+                missing: vec!["view rollback is not complete".into()],
+            },
+            type_suggestions: Vec::new(),
+            expected_target_schemas: Vec::new(),
+        };
+
+        apply_sqlserver_object_scope_gate(
+            &mut plan,
+            "sqlserver",
+            "sqlserver",
+            Some("dbo"),
+            Some("sales"),
+            &source,
+            &target,
+        );
+
+        assert!(plan.statements.is_empty());
+        assert!(matches!(
+            plan.requirements.as_slice(),
+            [PlanRequirement::Unsupported { operation, reason }]
+                if operation == "sqlserver-object-schema-scope"
+                    && reason.contains("cannot rewrite object definitions across schemas")
+        ));
+
+        assert!(sqlserver_object_scope_requirement(
+            "sqlserver",
+            "sqlserver",
+            None,
+            None,
+            &[SchemaObjectSnapshot::view(
+                Some("dbo"),
+                "v",
+                "SELECT 1 AS value",
+            )],
+            &[SchemaObjectSnapshot::view(
+                Some("dbo"),
+                "v",
+                "SELECT 2 AS value",
+            )],
+        )
+        .is_none());
+    }
 
     fn test_profile() -> SchemaDiffProfile {
         let now = chrono::Utc::now();
@@ -2807,6 +3102,14 @@ mod tests {
             ("events".into(), "app".into(), Some("public".into()))
         );
         assert_eq!(
+            resolve_reviewed_table_snapshot("sqlserver", "sales.orders", "app", Some("dbo")),
+            ("orders".into(), "app".into(), Some("sales".into()))
+        );
+        assert_eq!(
+            resolve_reviewed_table_snapshot("sqlserver", "orders", "app", Some("dbo")),
+            ("orders".into(), "app".into(), Some("dbo".into()))
+        );
+        assert_eq!(
             resolve_reviewed_table_snapshot("mysql", "events", "app", None),
             ("events".into(), "app".into(), None)
         );
@@ -2988,6 +3291,7 @@ mod tests {
             "main"
         );
         assert_eq!(schema_catalog_database("postgresql", Some("app")), "app");
+        assert_eq!(schema_catalog_database("sqlserver", Some("app")), "app");
         assert_eq!(schema_catalog_database("mysql", None), "");
         assert_eq!(
             schema_catalog_scope("sqlite", Some("/tmp/target.sqlite")),
@@ -2996,6 +3300,60 @@ mod tests {
         assert_eq!(
             schema_catalog_scope("postgresql", Some("app")),
             Some("app".into())
+        );
+    }
+
+    /// D1：兼容路径（未传 planId、直接携带计划正文）登记的 meta 必须与
+    /// verify_authorization / read_target_fingerprint 的哈希口径一致，
+    /// 使不携带 planId 的旧调用也能经 JobRuntime 跑通 apply。
+    #[tokio::test]
+    async fn d1_legacy_full_plan_path_runs_through_job_runtime() {
+        let options = pg_mock_options(
+            HashMap::from([("public.parent".into(), pg_parent_schema("public.parent"))]),
+            HashMap::new(),
+        );
+        let (test, source_session, target_session) = pg_command_test_sessions(options).await;
+        let plan =
+            prepare_pg_table_plan(&test, &source_session, &target_session, &["public.parent"])
+                .await;
+
+        let (plan_id, revision) = job::register_plan_for_apply(&test.state, plan, &target_session)
+            .await
+            .expect("register legacy plan");
+        let apply_request = crate::schema_diff::job::ApplyRequest {
+            target_db_session_id: target_session.clone(),
+            use_transaction: false,
+            require_rollback: false,
+            confirm_destructive: None,
+            job_id: None,
+            target_database: None,
+            target_schema: None,
+            profile: None,
+        };
+        let accepted = job::run_apply_job(&test.state, &plan_id, revision, apply_request)
+            .await
+            .expect("legacy path must be accepted");
+        assert_eq!(accepted.kind, "schemaDiffApply");
+        let details = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let details =
+                    job::desktop::read_schema_diff_job_details(&test.state, &accepted.job_id)
+                        .await
+                        .expect("accepted Schema Diff Job remains queryable");
+                if details.details.job.state.is_terminal() {
+                    break details;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("legacy apply Job reaches a durable terminal state");
+        let result = details
+            .deploy_result
+            .expect("terminal apply details contain a report");
+        assert!(
+            matches!(result.status, crate::schema_diff::DeployStatus::Committed),
+            "expected Committed, got {result:?}"
         );
     }
 }

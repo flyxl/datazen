@@ -1,12 +1,12 @@
 //! `[tester]` Independent re-verification of the W3-B key-tree budget contract
 //! (`redis-tree-backend`). Written against the *published* surface only
 //! (`command_definitions()` + `execute_command()`), never against crate
-//! internals: the in-crate suite (`src/ops_tree_scan/tests.rs`) drives the
+//! internals: the in-crate suite (`src/ops/tree/scan/tests/`) drives the
 //! ledger through a scripted connection double, so it structurally cannot see
 //! (a) the command input parsing or (b) the payload built in
-//! `commands_exec_dispatch.rs`. This file owns exactly that seam, plus the
-//! live-server probes the `## 留待 R 回归` list needs and that a double can
-//! never substitute for.
+//! `src/commands/exec/exec_dispatch.rs`. This file owns exactly that seam,
+//! plus the live-server probes that no connection double can substitute for —
+//! the ones this file marks `#[ignore]` for want of a live Redis or cluster.
 //!
 //! Offline (part of the default gate):
 //! * every input name the dispatch arm parses is declared in the schema, and
@@ -245,11 +245,11 @@ async fn ask(
     }
 }
 
-/// Every field `## 契约冻结` promises for `scan_keys`, on the real payload —
+/// Every field the frozen budget contract promises for `scan_keys`, on the real payload —
 /// including that the legacy `dbSize` spelling and the appended `dbsize` carry
 /// the same number (one DBSIZE read, two names, append-only contract).
 #[tokio::test]
-#[ignore = "requires a live Redis (DATAZEN_TEST_REDIS_URL); see ## 留待 R 回归"]
+#[ignore = "requires a live Redis (DATAZEN_TEST_REDIS_URL)"]
 async fn test_tester_scan_keys_payload_matches_the_freeze() {
     let (driver, handle) = live().await;
     let payload = ask(
@@ -293,7 +293,7 @@ async fn test_tester_scan_keys_payload_matches_the_freeze() {
 /// `key` child carries the full `ChildEntry` field set, `memBytes` being
 /// nullable rather than absent.
 #[tokio::test]
-#[ignore = "requires a live Redis (DATAZEN_TEST_REDIS_URL); see ## 留待 R 回归"]
+#[ignore = "requires a live Redis (DATAZEN_TEST_REDIS_URL)"]
 async fn test_tester_list_children_payload_matches_the_freeze() {
     let (driver, handle) = live().await;
     let payload = ask(
@@ -337,7 +337,7 @@ async fn test_tester_list_children_payload_matches_the_freeze() {
 /// answers all four fields for a key that is not there (nulls present, not
 /// omitted) — the shape Wave 4's `n+` and sidebar render from.
 #[tokio::test]
-#[ignore = "requires a live Redis (DATAZEN_TEST_REDIS_URL); see ## 留待 R 回归"]
+#[ignore = "requires a live Redis (DATAZEN_TEST_REDIS_URL)"]
 async fn test_tester_count_and_probe_payloads_match_the_freeze() {
     let (driver, handle) = live().await;
 
@@ -380,7 +380,7 @@ async fn test_tester_count_and_probe_payloads_match_the_freeze() {
 /// — the ledger's own unit test pins the *opposite* for `Some(0)` and is
 /// unreachable through the command path (see redis-tree-backend-BUG-001).
 #[tokio::test]
-#[ignore = "requires a live Redis (DATAZEN_TEST_REDIS_URL); see ## 留待 R 回归"]
+#[ignore = "requires a live Redis (DATAZEN_TEST_REDIS_URL)"]
 async fn test_tester_zero_budget_equals_absent_budget_over_the_wire() {
     let (driver, handle) = live().await;
 
@@ -436,7 +436,7 @@ async fn test_tester_zero_budget_equals_absent_budget_over_the_wire() {
 /// without a `CROSSSLOT` if every batch names one key's own slot. The
 /// connection double implements the same trait, so it can never show this.
 #[tokio::test]
-#[ignore = "requires a live Redis Cluster (DATAZEN_TEST_REDIS_CLUSTER_URL); see ## 留待 R 回归 9a"]
+#[ignore = "requires a live Redis Cluster (DATAZEN_TEST_REDIS_CLUSTER_URL)"]
 async fn test_tester_cluster_page_never_crosses_slots() {
     let url = std::env::var("DATAZEN_TEST_REDIS_CLUSTER_URL")
         .expect("set DATAZEN_TEST_REDIS_CLUSTER_URL");

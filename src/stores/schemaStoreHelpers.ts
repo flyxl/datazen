@@ -62,7 +62,7 @@ export function parsePathHierarchyDatabaseEntry(entry: string): { id: string; na
   return { id, name: rest };
 }
 
-/** Names that are safe to pass to `get_columns` (complete loaded tables only). */
+/** Names that are safe to pass to `read_relation_columns` (complete loaded tables only). */
 export function knownTableNames(
   namespaceTree: SqlNamespace,
   tables: TableInfo[],

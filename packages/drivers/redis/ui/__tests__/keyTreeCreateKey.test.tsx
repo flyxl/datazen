@@ -88,12 +88,10 @@ bindConnectionStore(create<ConnectionBridgeState>(() => ({ connections: [] })));
 bindConfirmDialog(() => [async () => true, null]);
 bindSchemaStore(
   create<SchemaStoreState>(() => ({
-    databases: ['db0', 'db1'],
-    loading: false,
+    schemas: new Map([
+      ['sess-create', { pathItems: {}, databases: ['db0', 'db1'], loading: false }],
+    ]),
     loadForConnection: async () => {},
-    // Host-store fields this suite never exercises; bound to satisfy the bridge
-    // contract so the Redis tree only ever reads `databases` / `loading`.
-    pathItems: {},
     setLoadedTables: () => {},
     mergeNamespace: () => {},
     registerPathAliases: () => {},

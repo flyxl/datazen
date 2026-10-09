@@ -393,6 +393,10 @@ pub fn validate_sequence_definition_with_identity(
 /// statement plus its optional exact `OWNED BY` relation identity. The Host
 /// may use the identity to order reviewed operations, but SQL must still be
 /// rendered by the database driver.
+// 返回类型是刻意设计：这四元组逐项对应「CREATE 语句 / 可选 `OWNED BY` 身份 / 可选三元组身份 / 可选校验错误」，
+// 是 schema diff 与 Host 复核流程按位置消费的既有形状。换成命名结构体或 type 别名属于契约变更，
+// 会动到 Wave 1/Wave 2 正在依赖的调用点。
+#[allow(clippy::type_complexity)]
 pub fn split_sequence_definition(
     definition: &str,
     schema: Option<&str>,

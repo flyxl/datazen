@@ -223,6 +223,27 @@ pub fn list_objects_sql(db_type: &str, kind: ObjectKind) -> Option<String> {
     }
 }
 
+/// Build an object-list query for a specific database when the dialect needs
+/// an explicit catalog filter. PostgreSQL chooses the database through
+/// `query_at`; MySQL exposes all catalogs through `information_schema`, so its
+/// routine/trigger predicates must name the selected database instead of
+/// relying on the connection's default `DATABASE()` value.
+pub fn list_objects_sql_for_database(
+    db_type: &str,
+    kind: ObjectKind,
+    database: Option<&str>,
+) -> Option<String> {
+    let sql = list_objects_sql(db_type, kind)?;
+    let Some(database) = database.filter(|value| !value.trim().is_empty()) else {
+        return Some(sql);
+    };
+    if dialect_family(db_type) != "mysql" {
+        return Some(sql);
+    }
+
+    Some(sql.replace("DATABASE()", &sql_string(database)))
+}
+
 pub fn object_ddl_sql(
     db_type: &str,
     kind: ObjectKind,
@@ -634,6 +655,19 @@ mod tests {
         assert!(ddl.contains("pg_get_function_identity_arguments"));
         assert!(ddl.contains("'integer, text'"));
         assert!(ddl.contains("p.prokind = 'f'"));
+    }
+
+    #[test]
+    fn mysql_object_catalog_can_target_a_database_without_using_connection_default() {
+        let sql =
+            list_objects_sql_for_database("mysql", ObjectKind::Procedure, Some("manual'catalog"))
+                .unwrap();
+        assert!(sql.contains("ROUTINE_SCHEMA = 'manual''catalog'"));
+        assert!(!sql.contains("DATABASE()"));
+
+        let default_sql =
+            list_objects_sql_for_database("mysql", ObjectKind::Function, None).unwrap();
+        assert!(default_sql.contains("ROUTINE_SCHEMA = DATABASE()"));
     }
 
     #[test]

@@ -16,6 +16,7 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@datazen/backend-client": ["./packages/backend-client/src/index.ts"],
       "@datazen/driver-sdk": ["./packages/driver-sdk/src/index.ts"],
       "@datazen/extension-points": ["./packages/extension-points/src/index.ts"],
       "@datazen/wapp-sdk": ["./packages/wapp-sdk/src/index.ts"],
@@ -23,6 +24,28 @@
       "@datazen/ui": ["./packages/ui/src/index.ts"]
     }
   },
-  "include": ["src", "packages/driver-sdk", "packages/extension-points", "packages/wapp-sdk", "packages/ui", "packages/drivers/*/ui"],
+  "include": [
+    "src",
+    "packages/backend-client",
+    "packages/driver-sdk",
+    "packages/extension-points",
+    "packages/wapp-sdk",
+    "packages/ui",
+    "packages/drivers/clickhouse/ui",
+    "packages/drivers/duckdb/ui",
+    "packages/drivers/elasticsearch/ui",
+    "packages/drivers/hbase/ui",
+    "packages/drivers/influxdb/ui",
+    "packages/drivers/mongodb/ui",
+    "packages/drivers/mysql/ui",
+    "packages/drivers/postgres/ui",
+    "packages/drivers/redis/ui",
+    "packages/drivers/rqlite/ui",
+    "packages/drivers/sqlite/ui",
+    "packages/drivers/sqlserver/ui",
+    "packages/drivers/turso/ui",
+    "packages/drivers/vector/ui",
+    "packages/drivers/victoriametrics/ui"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

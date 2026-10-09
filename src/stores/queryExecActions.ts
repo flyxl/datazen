@@ -131,9 +131,9 @@ export async function runStreamingQuery(
   sql: string,
   getExec: () => Map<string, QueryExecState>,
   setExec: (exec: Map<string, QueryExecState>) => void,
-  /** F1: panel's selected database — pinned on the backend before execution. */
+  /** Panel's selected database — pinned on the backend before execution. */
   database?: string | null,
-  /** F7: panel's PG-family schema target — drivers inline it when supported. */
+  /** Panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
   /** Bound values use this same execution-handle stream. */
   params?: BindParams,
@@ -196,9 +196,9 @@ export async function runBoundQuery(
   params: BindParams,
   getExec: () => Map<string, QueryExecState>,
   setExec: (exec: Map<string, QueryExecState>) => void,
-  /** F1: panel's selected database — pinned on the backend before execution. */
+  /** Panel's selected database — pinned on the backend before execution. */
   database?: string | null,
-  /** F7: panel's PG-family schema target — drivers inline it when supported. */
+  /** Panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
 ): Promise<void> {
   await runStreamingQuery(paneKey, dbSessionId, sql, getExec, setExec, database, schema, params);

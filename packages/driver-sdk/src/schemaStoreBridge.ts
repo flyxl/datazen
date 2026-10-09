@@ -1,21 +1,30 @@
-import type { TableInfo } from '../../../src/types';
+import type { TableInfo } from './types/schemaMetadata';
 
-export type SchemaStoreState = {
+export type SchemaSessionState = {
   pathItems: Record<string, TableInfo[]>;
-  /** Active-session database list (flattened from the per-session cache). */
   databases: string[];
   loading: boolean;
-  loadForConnection: (dbSessionId: string, options?: { skipLoadTables?: boolean }) => Promise<void>;
-  setLoadedTables: (database: string, tables: TableInfo[]) => void;
-  mergeNamespace: (segments: string[], kind: 'branch' | 'tables', names: string[]) => void;
-  registerPathAliases: (entries: { name: string; id: string }[]) => void;
-  cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
 };
+
+export type SchemaStoreState = {
+  schemas: Map<string, SchemaSessionState>;
+  loadForConnection: (dbSessionId: string, options?: { skipLoadTables?: boolean }) => Promise<void>;
+  setLoadedTables: (database: string, tables: TableInfo[], dbSessionId: string) => void;
+  mergeNamespace: (
+    segments: string[],
+    kind: 'branch' | 'tables',
+    names: string[],
+    dbSessionId: string,
+  ) => void;
+  registerPathAliases: (entries: { name: string; id: string }[], dbSessionId: string) => void;
+  cachePathItems: (fetchPath: string, items: TableInfo[], dbSessionId: string) => void;
+};
+
+const EMPTY_SESSION: SchemaSessionState = { pathItems: {}, databases: [], loading: false };
 
 export type BoundSchemaStore = {
   <T>(selector: (state: SchemaStoreState) => T): T;
   getState: () => SchemaStoreState;
-  setState: (partial: Record<string, unknown>) => void;
   subscribe: (listener: (state: SchemaStoreState, prev: SchemaStoreState) => void) => () => void;
 };
 
@@ -34,7 +43,7 @@ function getStore(): BoundSchemaStore {
 
 /**
  * Reactive accessor for the bound host schema store (zustand-hook shape).
- * Driver trees read `databases` / `loading` / actions through it instead of
+ * Driver trees read session entries and actions through it instead of
  * importing the host store module.
  */
 export type UseBoundSchemaStore = {
@@ -53,29 +62,19 @@ export const useBoundSchemaStore: UseBoundSchemaStore = Object.assign(
  * Sync fetched tables into the host schema store (SQL editor autocomplete).
  * Pass `dbSessionId` for custom schema trees that never call `loadForConnection`.
  */
-export function syncSchemaTables(
-  database: string,
-  tables: TableInfo[],
-  dbSessionId?: string,
-): void {
+export function syncSchemaTables(database: string, tables: TableInfo[], dbSessionId: string): void {
   const store = getStore();
-  if (dbSessionId) {
-    store.setState({ dbSessionId });
-  }
-  store.getState().setLoadedTables(database, tables);
+  store.getState().setLoadedTables(database, tables, dbSessionId);
 }
 
 export function syncSchemaNamespace(
   segments: string[],
   kind: 'branch' | 'tables',
   names: string[],
-  options?: { dbSessionId?: string },
+  options: { dbSessionId: string },
 ): void {
   const store = getStore();
-  if (options?.dbSessionId) {
-    store.setState({ dbSessionId: options.dbSessionId });
-  }
-  store.getState().mergeNamespace(segments, kind, names);
+  store.getState().mergeNamespace(segments, kind, names, options.dbSessionId);
 }
 
 /**
@@ -84,32 +83,43 @@ export function syncSchemaNamespace(
  */
 export function registerPathAliases(
   entries: { name: string; id: string }[],
-  dbSessionId?: string,
+  dbSessionId: string,
 ): void {
   const store = getStore();
-  if (dbSessionId) {
-    store.setState({ dbSessionId });
-  }
-  store.getState().registerPathAliases(entries);
+  store.getState().registerPathAliases(entries, dbSessionId);
 }
 
 /** Cached `get_tables` rows for a fetch path (`dbId` or `dbId/catalog[/schema]`). */
-export function getCachedPathItems(fetchPath: string): TableInfo[] | undefined {
-  return boundStore?.getState().pathItems[fetchPath];
+export function getCachedPathItems(
+  fetchPath: string,
+  dbSessionId: string,
+): TableInfo[] | undefined {
+  return boundStore?.getState().schemas.get(dbSessionId)?.pathItems[fetchPath];
 }
 
 /** Store `get_tables` rows so autocomplete and the schema tree share one fetch. */
-export function cachePathItems(fetchPath: string, items: TableInfo[]): void {
-  getStore().getState().cachePathItems(fetchPath, items);
+export function cachePathItems(fetchPath: string, items: TableInfo[], dbSessionId: string): void {
+  getStore().getState().cachePathItems(fetchPath, items, dbSessionId);
 }
 
 /** Subscribe to the shared path-item cache (custom trees hydrate from autocomplete). */
 export function subscribeSchemaPathItems(
   listener: (items: Record<string, TableInfo[]>) => void,
+  dbSessionId: string,
 ): () => void {
   const store = getStore();
-  listener(store.getState().pathItems);
+  listener(store.getState().schemas.get(dbSessionId)?.pathItems ?? EMPTY_SESSION.pathItems);
   return store.subscribe((state, prev) => {
-    if (state.pathItems !== prev.pathItems) listener(state.pathItems);
+    const current = state.schemas.get(dbSessionId)?.pathItems ?? EMPTY_SESSION.pathItems;
+    const previous = prev.schemas.get(dbSessionId)?.pathItems ?? EMPTY_SESSION.pathItems;
+    if (current !== previous) listener(current);
   });
+}
+
+/** Read only the owning session, including stable defaults before it loads. */
+export function useBoundConnectionSchemaField<K extends keyof SchemaSessionState>(
+  dbSessionId: string,
+  key: K,
+): SchemaSessionState[K] {
+  return getStore()((state) => (state.schemas.get(dbSessionId) ?? EMPTY_SESSION)[key]);
 }

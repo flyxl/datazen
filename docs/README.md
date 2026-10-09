@@ -45,6 +45,7 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [MCP](architecture/backend/mcp.md)
 - [Workflow](architecture/backend/workflow.md)
 - [Dashboard](architecture/backend/dashboard.md)
+- [Data Transfer](architecture/backend/data-transfer.md)
 - [Data Sync](architecture/backend/data-sync.md)
 - [Schema Diff](architecture/backend/schema-diff.md)
 - [Wapps](architecture/backend/wapps.md)（含主题应用；旧 `theme.md` 已合并至此）
@@ -63,10 +64,37 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 - [Windows](architecture/windows.md)
 - [Testing](architecture/testing.md)
 
+### 桌面 / Web 平台演进设计（待实现）
+
+以下文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态，不代表当前 main 已支持团队 Web；落地后应改写为实现事实与开发流程。
+
+概要、契约与计划：
+
+- [系统概要设计](architecture/platform/system-overview.md)：三种运行方式、模块职责、交互与接口。
+- [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 74 个测试用例，是接口契约、错误码与验收的唯一权威。
+- [分阶段开发计划](development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛，是阶段→补充契约归属的唯一权威。
+
+补充详细设计（P0–P2）：
+
+- [共享应用边界与端口详细设计](architecture/platform/shared-boundaries-and-ports.md)：包边界与依赖矩阵、runtime 内部模块、端口 trait 签名、请求上下文三来源与 Tauri 组装根。
+- [P0 假资源夹具与基准 harness 详细设计](architecture/platform/fake-runtime-fixtures.md)：transport-neutral fake 的资源契约、F1～F12 故障注入矩阵、CommandJournal、Barrier/DrainBarrier 与 FakeClock。
+- [持久化模型详细设计](architecture/platform/persistence-model.md)：可落盘白名单与禁落盘清单、管理库表的 DDL 与 CHECK、本地 Store ↔ 服务端 DB 映射、schema 版本与 expand/contract。
+- [驱动能力迁移详细设计](architecture/platform/driver-capability-migration.md)：path 能力基线、迁移批次、协议门槛、adapter 退役及 P10 path/Git 发布验收。
+
+补充详细设计与运维流程（P5–P10）：
+
+- [迁移三件套与 JobRuntime 详细设计](architecture/platform/data-migration-jobs.md)：准备/审阅/应用、计划唯一消费、多端预算、提交边界与跨进程恢复。
+- [消费者接入详细设计](architecture/platform/consumer-adapters.md)：AI 共享授权、MCP/Wapp 归属、Dashboard/Monitor 服务身份与原生工具。
+- [多 worker 协调详细设计](architecture/platform/multi-worker-coordination.md)：目录 CAS/路由、claim fencing、节点预算账、分区核销与 drain。
+- [团队服务部署、升级与恢复流程](development/team-service-operations.md)：配置与健康检查、发布兼容、备份一致性、恢复隔离与演练。
+- [Workflow 资源模型详细设计](architecture/platform/workflow-resource-model.md)：step / session block / transaction block 三种执行单元、目标继承链、Session/Lease/Budget 集成与版本兼容边界。
+- [团队 Web 服务与认证详细设计](architecture/platform/team-server-and-auth.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
+
 ## 开发与发布
 
 - [E2E Testing](development/e2e-testing.md)
 - [E2E Coverage](development/e2e-coverage.md)
+- [驱动测试覆盖矩阵](development/driver-test-coverage.md)
 - [E2E IPC Migration](development/e2e-ipc-migration-guide.md)
 - [CI Test Matrix](development/ci-test-matrix.md)
 - [CI Private Drivers](development/ci-private-drivers.md)
@@ -94,3 +122,5 @@ DataZen 文档只保留两类长期有效内容：**当前功能使用文档**�
 4. 设计提案不长期留在 `architecture/`：要么在 `architecture/` 落为「已实现」的事实文档，要么不入库。
 5. 对外发布文案写入本地 `posts/`，不提交。
 6. 删除或重构代码时，同步删除失效文档引用。
+7. **不新增带行号的代码引用。** 禁止写「`文件名` + `:行号`」这种形式的引用；定位一律写成「**文件 + 符号名 / 小节名**」，例如 `scripts/check-driver-type-isolation.mjs` 的 F-01 规则 `forbiddenCrates`、`docs/development/platform-development-plan.md` §6「P2：Driver 固定资源与可选能力契约」。行号是一次性坐标，代码增删一行即失效，而**没有任何门禁校验它**——实测把 `docs/architecture/platform/shared-boundaries-and-ports.md` 里指向 `.mjs` 第 99 行的引用全部改成不存在的第 14001 行，5 个门禁依旧全部 EXIT=0。**错的行号比没有行号更糟**：读者会信任这个精确坐标，跳过去发现对不上，然后连累整篇文档一起被降权；没有行号时读者反而会自己找符号。
+8. **复核既有引用前，先确认被引用对象是谁。** 判断一条行号是否失效，第一步不是打开那个行号看内容，而是先确认这条引用说的究竟哪个文件——它的路径、所在 revision、总行数落在哪个量级。**两个方向都要走这一步**：判定「已失效」之前要确认对象，否则会把本来正确的引用改坏；判定「仍然正确」之前同样要确认，否则会漏掉真的漂移了的那一条。**候选对象之间文件名相近、行数接近时，逐个都量，不要挑一个就开始找证据**——E2E 预置脚本里 `e2e/setup-e2e-env.sh` 与 `e2e/setup-sync-dbs.sh` 同在一条调用链上、职责也都是建库，复核时分别只有 125 行和 117 行；一次真实的误判就发生在把它们当成同一个文件数行数的场合，而那批引用最终被证明**七处全部准确、无一失效**——这个结论只有在数对文件之后才成立。**确认对象是这类判断的前置条件，不是可选的核查步骤。** 复核确认引用确已失效时，**不要把它重新锚回它「曾经所在的那一行」**：那一行现在装的是别的内容，补一个新行号只是让它接着腐烂；只能锚回它原本想指的那个东西，即脚本 + 段落 + 语句，与第 7 条同形。

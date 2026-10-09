@@ -29,7 +29,11 @@ function baseOptions() {
 
 beforeEach(() => {
   invokeMock.mockReset();
-  invokeMock.mockImplementation(async (cmd: string) => (cmd === 'get_tables' ? [] : true));
+  invokeMock.mockImplementation(async (cmd: string) =>
+    cmd === 'execute_driver_command'
+      ? { data: { database: 'app', schemas: [], relations: [] } }
+      : true,
+  );
 });
 
 describe('runSqlFileExecution (decision 3+6 unified IPC)', () => {
@@ -55,7 +59,21 @@ describe('runSqlFileExecution (decision 3+6 unified IPC)', () => {
 
   it('pushes the overwrite option after user confirmation on a non-empty database', async () => {
     invokeMock.mockImplementation(async (cmd: string) =>
-      cmd === 'get_tables' ? [{ name: 'users' }] : true,
+      cmd === 'execute_driver_command'
+        ? {
+            data: {
+              database: 'app',
+              schemas: [],
+              relations: [
+                {
+                  ref: { database: 'app', schema: null, name: 'users' },
+                  kind: 'table',
+                  rowCount: null,
+                },
+              ],
+            },
+          }
+        : true,
     );
     const confirmOverwrite = vi.fn().mockResolvedValue(true);
 
@@ -71,14 +89,28 @@ describe('runSqlFileExecution (decision 3+6 unified IPC)', () => {
 
   it('aborts before restore when overwrite is declined on a non-empty database', async () => {
     invokeMock.mockImplementation(async (cmd: string) =>
-      cmd === 'get_tables' ? [{ name: 'users' }] : true,
+      cmd === 'execute_driver_command'
+        ? {
+            data: {
+              database: 'app',
+              schemas: [],
+              relations: [
+                {
+                  ref: { database: 'app', schema: null, name: 'users' },
+                  kind: 'table',
+                  rowCount: null,
+                },
+              ],
+            },
+          }
+        : true,
     );
     const ok = await runSqlFileExecution({
       ...baseOptions(),
       confirmOverwrite: vi.fn().mockResolvedValue(false),
     });
     expect(ok).toBe(false);
-    // get_tables probing is allowed; the restore itself must never start.
+    // Catalog probing is allowed; the restore itself must never start.
     expect(invokeMock).not.toHaveBeenCalledWith('restore_sql_file', expect.anything());
   });
 
@@ -94,14 +126,19 @@ describe('runSqlFileExecution (decision 3+6 unified IPC)', () => {
   it('returns false when the dialog is dismissed (backend reports not executed)', async () => {
     const ok = await runSqlFileExecution(baseOptions());
     expect(ok).toBe(true);
-    invokeMock.mockImplementation(async (cmd: string) => (cmd === 'get_tables' ? [] : false));
+    invokeMock.mockImplementation(async (cmd: string) =>
+      cmd === 'execute_driver_command'
+        ? { data: { database: 'app', schemas: [], relations: [] } }
+        : false,
+    );
     const cancelled = await runSqlFileExecution(baseOptions());
     expect(cancelled).toBe(false);
   });
 
   it('surfaces backend errors through onError and rethrows', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_tables') return [];
+      if (cmd === 'execute_driver_command')
+        return { data: { database: 'app', schemas: [], relations: [] } };
       throw new Error('boom');
     });
     const onError = vi.fn();

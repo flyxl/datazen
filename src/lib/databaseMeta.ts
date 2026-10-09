@@ -6,7 +6,12 @@
 import type { DatabaseObjectKind, SslMode } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
 import type { FunctionEntry } from './sqlFunctionTypes';
-import type { SqlDialectStrategy, SqlDialectProfile } from './sqlDialects/types';
+import type {
+  SqlDialectStrategy,
+  SqlDialectProfile,
+  SqlParameterPolicy,
+  SqlParameterStrategy,
+} from './sqlDialects/types';
 
 export type ConnectionMode = 'server' | 'file' | 'url';
 
@@ -144,7 +149,7 @@ export interface DatabaseTypeMeta {
    * On-demand SQL namespace completion strategy (host is wapp-agnostic).
    * - `default-sql`: database → tables (MySQL/MariaDB/…)
    * - `postgresql`: database → schema → table (or schema → table when single-db)
-   * - `path-hierarchy`: slash-path levels via `get_tables` + optional name→id aliases
+   * - `path-hierarchy`: slash-path levels via `list_catalog` + optional name→id aliases
    *   (extensions that use catalog/schema navigation rows with schema CATALOG|SCHEMA)
    */
   namespaceEnsure?: 'default-sql' | 'postgresql' | 'path-hierarchy';
@@ -188,6 +193,10 @@ export interface DatabaseTypeMeta {
   sqlDialectStrategy?: SqlDialectStrategy;
   /** Semantic editor profile for identifier quoting, casing, alias visibility, and parameter policies. */
   sqlDialectProfile?: SqlDialectProfile;
+  /** Native SQL bind syntax for drivers without a full semantic dialect profile. */
+  sqlParameterPolicy?: SqlParameterPolicy;
+  /** Driver-owned filtering for bind syntax that is ambiguous in this dialect. */
+  sqlParameterStrategy?: SqlParameterStrategy;
   /**
    * Custom SQL literal value escaper for "Copy as SQL" / export.
    *

@@ -2,54 +2,37 @@
 //!
 //! Run against a disposable migration database, or the dedicated DataZen sync
 //! test database using only unique `dz_mig_fk_*` fixture names:
-//! `MIGRATION_TEST_DATABASE=<database> cargo test -p datazen-driver-postgres --test schema_foreign_key_introspection -- --ignored --nocapture`
+//! `MIGRATION_TEST_DATABASE=<database> cargo test -p datazen-driver-postgres --test schema_foreign_key_introspection`
+//!
+//! This suite is no longer `#[ignore]`d. With `MIGRATION_TEST_DATABASE` unset it reports
+//! `foreign-key-introspection` unverified and skips; with
+//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1` that report is a failure.
 
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+use datazen_driver_api::DatabaseDriver;
 use datazen_driver_postgres::PostgresDriver;
-
-fn config(database: String) -> ConnectionConfig {
-    ConnectionConfig {
-        id: format!("schema-fk-{}", uuid::Uuid::new_v4()),
-        name: "schema FK introspection regression".into(),
-        database_type: "postgresql".into(),
-        host: Some(std::env::var("MIGRATION_TEST_HOST").expect("MIGRATION_TEST_HOST")),
-        port: Some(
-            std::env::var("MIGRATION_TEST_PORT")
-                .expect("MIGRATION_TEST_PORT")
-                .parse()
-                .expect("valid MIGRATION_TEST_PORT"),
-        ),
-        database: Some(database),
-        schema: Some("public".into()),
-        username: Some(std::env::var("MIGRATION_TEST_USER").expect("MIGRATION_TEST_USER")),
-        password: Some(std::env::var("MIGRATION_TEST_PASSWORD").unwrap_or_default()),
-        ssl_mode: Default::default(),
-        connection_timeout: 5,
-        max_pool_size: 2,
-        ssh_tunnel: None,
-        tunnel_kind: None,
-        tunnel_id: None,
-        http_proxy_tunnel: None,
-        websocket_tunnel: None,
-        color_tag: None,
-        group: None,
-        last_connected_at: None,
-        server_version: None,
-        options: None,
-        read_only: false,
-        pinned: false,
-    }
-}
+#[path = "../../http-support/tests/support/migration_gate.rs"]
+mod migration_gate;
 
 #[tokio::test]
-#[ignore = "requires an isolated MIGRATION_TEST_DATABASE and explicit credentials"]
 async fn selected_table_schema_preserves_foreign_key_metadata() {
-    let database = std::env::var("MIGRATION_TEST_DATABASE")
-        .expect("MIGRATION_TEST_DATABASE must name a disposable database");
-    assert!(
-        database.starts_with("dz_mig_") || database == "datazen_sync_src",
-        "refuse non-test database"
-    );
+    // `None` means the gate already reported this dimension unverified — or, under
+    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    let Some(config) = migration_gate::require_config(
+        "postgresql",
+        "foreign-key-introspection",
+        "postgresql",
+        "migration-fk",
+        &["datazen_sync_src"],
+    ) else {
+        return;
+    };
+    // Kept as a local so the assertions below stay byte-identical to the version
+    // that used to run only under `--ignored`.
+    let database = config
+        .database
+        .clone()
+        .expect("the gate always sets the database it just validated");
+
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let parent = format!("dz_mig_fk_parent_{suffix}");
     let source_child = format!("dz_mig_fk_source_child_{suffix}");
@@ -57,7 +40,7 @@ async fn selected_table_schema_preserves_foreign_key_metadata() {
     let constraint = format!("dz_mig_fk_constraint_{suffix}");
     let driver = PostgresDriver::new();
     let handle = driver
-        .connect(&config(database.clone()))
+        .connect(&config)
         .await
         .expect("connect to isolated PostgreSQL database");
 

@@ -91,9 +91,20 @@ function editExisting(overrides: Partial<ConnectionConfig> = {}): ConnectionConf
   };
 }
 
+/**
+ * `ConnectionConfig['databaseType']` is the codegen-derived union from
+ * `generated.ts`, so it only admits the drivers the current `--drivers` set
+ * injected — naming `sqlserver` under `--drivers=basic` is a type error even
+ * though the matrix must cover it. This keeps the union and adds the ids the
+ * matrix deliberately spans builds for; each one is still checked against the
+ * live `DB_REGISTRY` at runtime (see the exhaustiveness guard and
+ * `expectedFormVariant` below), so nothing here widens to an unchecked string.
+ */
+type CrossBuildDatabaseType = ConnectionConfig['databaseType'] | 'sqlserver';
+
 interface Variant {
   label: string;
-  databaseType: ConnectionConfig['databaseType'];
+  databaseType: CrossBuildDatabaseType;
   formVariant: string;
   hasDriverValidator: boolean;
   supportsSSH: boolean;
@@ -126,17 +137,43 @@ const VARIANTS: Variant[] = [
     supportsSSH: true,
     base: { host: 'cache.internal', port: 6379, database: '0' },
   },
+  {
+    // Driver *form* that started out without a driver *validator*: `isDriverForm`
+    // is true, so the generic `!isDriverForm` branch below the validator early
+    // return was skipped and nothing checked host/port — blank host/port saved
+    // cleanly while `ConnectionFields.tsx` renders both as `<Label required>`.
+    // `sqlServerValidate` (driver side) now owns that check, like redis.
+    label: 'driver-form (sqlserver)',
+    databaseType: 'sqlserver',
+    formVariant: 'sqlserver',
+    hasDriverValidator: true,
+    supportsSSH: true,
+    base: { host: 'db.internal', port: 1433, database: 'master', username: 'sa' },
+  },
 ];
 
 function renderVariant(variant: Variant, tunnel: Partial<ConnectionConfig> = {}) {
+  // Downcast, not a blanket escape hatch: when the driver is absent from this
+  // build the id is still what reaches the hook, so the case keeps exercising the
+  // `meta?.connectionForm ?? 'standard'` fallback for an unregistered driver type.
+  const databaseType = variant.databaseType as ConnectionConfig['databaseType'];
   return renderHook(() =>
     useConnectionForm({
       editId: 'c-1',
-      existingConnections: [
-        editExisting({ databaseType: variant.databaseType, ...variant.base, ...tunnel }),
-      ],
+      existingConnections: [editExisting({ databaseType, ...variant.base, ...tunnel })],
     }),
   ).result;
+}
+
+/**
+ * Is this variant's driver part of *this* build? `DB_REGISTRY` is codegen output
+ * (`resolve-drivers.mjs --drivers=<set>`), so `sqlserver` is simply absent under
+ * `--drivers=basic`. Facts that only hold for a driver this build actually injected are
+ * asserted only when this is true — the same decidable condition the `connectionForm`
+ * guard above already used, extracted so the two conditionals cannot drift apart.
+ */
+function isInThisBuild(variant: Variant): boolean {
+  return variant.databaseType in DB_REGISTRY;
 }
 
 beforeEach(() => {
@@ -149,21 +186,47 @@ beforeEach(() => {
 describe('[tester] validate() variant matrix is exhaustive for this build', () => {
   it('test_tester covers every connectionForm variant present in DB_REGISTRY', () => {
     const registered = [...new Set(Object.values(DB_REGISTRY).map((m) => m.connectionForm))].sort();
-    const covered = [...new Set(VARIANTS.map((v) => v.formVariant))].sort();
-    // A new driver form (e.g. sqlserver) must be added to VARIANTS, not skipped.
-    expect(covered).toEqual(registered);
+    const covered = new Set(VARIANTS.map((v) => v.formVariant));
+    // One direction only: every form this build registers needs a VARIANTS entry.
+    // The reverse is deliberately NOT asserted. VARIANTS is a static manifest while
+    // DB_REGISTRY is codegen output (`resolve-drivers.mjs --drivers=<set>`), so a
+    // manifest entry for a form the current build did not inject — `sqlserver` under
+    // `--drivers=basic` — is expected, not a defect. `toEqual` on both sides made the
+    // result depend on which drivers the build happened to select instead of on real
+    // coverage, so adding a variant could only ever move the failure between builds.
+    const uncovered = registered.filter((form) => !covered.has(form));
+    expect(
+      uncovered,
+      `connectionForm(s) registered in DB_REGISTRY with no VARIANTS entry: ${uncovered.join(', ') || '(none)'} — add a variant for each so the matrix stays exhaustive.`,
+    ).toEqual([]);
   });
 
-  it('test_tester the only registered driver validator in this build is redis', () => {
-    const variantsWithValidator = [
-      ...new Set(Object.values(DB_REGISTRY).map((m) => m.connectionForm)),
-    ]
+  it('test_tester every driver validator this build registers has a VARIANTS row', () => {
+    const validatorsInBuild = [...new Set(Object.values(DB_REGISTRY).map((m) => m.connectionForm))]
       .filter((formVariant) => !!getDriverValidator(formVariant))
       .sort();
-    expect(variantsWithValidator).toEqual(['redis']);
-    expect(VARIANTS.filter((v) => v.hasDriverValidator).map((v) => v.formVariant)).toEqual([
-      'redis',
-    ]);
+    // The static manifest, which is codegen-independent: these are the variants the
+    // matrix *declares* own a driver validator. Pinning it keeps the subset guard below
+    // from going vacuous — emptying `hasDriverValidator` would shrink `declared` until
+    // nothing could ever be uncovered while the matrix stopped exercising those forms.
+    const declared = VARIANTS.filter((v) => v.hasDriverValidator).map((v) => v.formVariant);
+    expect(declared).toEqual(['redis', 'sqlserver']);
+
+    // One direction only, the same shape as the connectionForm guard above: every form
+    // this build registers a validator for needs a VARIANTS row declaring it. The reverse
+    // is deliberately NOT asserted. VARIANTS is a static manifest while `validatorsInBuild`
+    // is codegen output (`resolve-drivers.mjs --drivers=<set>`), so a declared row for a
+    // form the current build did not inject — `sqlserver` under `--drivers=basic`, where
+    // `getDriverValidator('sqlserver')` is `undefined` by construction — is expected, not a
+    // defect. `toEqual` on both sides made the result depend on which drivers the build
+    // happened to select, so declaring a validator could only ever move the failure between
+    // builds. Registering a validator for a form with no row (a new superset/olap/kiwi
+    // validator) still goes red under `--drivers=all`.
+    const undeclared = validatorsInBuild.filter((form) => !declared.includes(form));
+    expect(
+      undeclared,
+      `driver validator(s) registered in this build with no VARIANTS row declaring hasDriverValidator: ${undeclared.join(', ') || '(none)'} — add a variant for each so the matrix stays exhaustive.`,
+    ).toEqual([]);
   });
 });
 
@@ -171,8 +234,30 @@ describe('[tester] inline tunnel validation equivalence matrix', () => {
   it.each(VARIANTS)('$label — a tunnel-free connection stays savable', (variant) => {
     const result = renderVariant(variant);
 
-    expect(result.current.formVariant).toBe(variant.formVariant);
-    expect(!!getDriverValidator(variant.formVariant)).toBe(variant.hasDriverValidator);
+    // The static manifest stays authoritative for every driver this build registers —
+    // a renamed form still fails here. Only a driver outside the current codegen set
+    // has no `DB_REGISTRY` entry, and then the hook legitimately resolves the generic
+    // form (`useConnectionForm.ts`: `meta?.connectionForm ?? 'standard'`).
+    const expectedFormVariant = isInThisBuild(variant) ? variant.formVariant : 'standard';
+    expect(result.current.formVariant).toBe(expectedFormVariant);
+    // `hasDriverValidator` stays the static declaration of intent — "sqlserver *should*
+    // own a validator" — and is never flipped to `false` just to make a build that lacks
+    // the driver come out green; that would make the matrix lie about the product defect
+    // it exists to guard. `getDriverValidator` reads the same codegen output as
+    // `DB_REGISTRY`, so for a driver this build did not inject it is `undefined` by
+    // construction and there is no honest assertion available here.
+    //
+    // That gap used to be PR CI's own: PR builds `--drivers=basic`, where the sqlserver
+    // row above is skipped and this file never checks the registration in the pipeline
+    // that gates merges. `packages/drivers/sqlserver/ui/__tests__/connectionFormRegistration.test.ts`
+    // closes it — it asks the generator what it would emit instead of reading the current
+    // `generated.ts`, so it holds in every set, `--drivers=basic` included. Verified by
+    // mutation there: deleting `validator: { export: 'sqlServerValidate' }` from
+    // `resolve-drivers.mjs` fails 4 of its assertions with no driver codegen involved.
+    // `pnpm test:unit:drivers` runs in the `frontend` job, so that suite gates merges.
+    if (isInThisBuild(variant)) {
+      expect(!!getDriverValidator(variant.formVariant)).toBe(variant.hasDriverValidator);
+    }
     expect(result.current.tunnelSource).toBe('none');
     expect(result.current.tunnelRefMissing).toBe(false);
     act(() => {

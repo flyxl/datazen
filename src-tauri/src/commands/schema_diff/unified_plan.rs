@@ -69,6 +69,42 @@ pub async fn prepare_schema_unified_plan(
     allow_destructive: bool,
     include_indexes: Option<bool>,
     type_overrides: Option<Vec<ColumnTypeOverride>>,
+) -> Result<super::job::SchemaDiffJobAccepted, CommandError> {
+    let target_table_names = target_table_names.unwrap_or_else(|| table_names.clone());
+    super::job::run_prepare_job(
+        &state,
+        crate::schema_diff::job::PrepareRequest::Unified {
+            source_db_session_id,
+            target_db_session_id,
+            table_names,
+            target_table_names,
+            target_only_table_names: target_only_table_names.unwrap_or_default(),
+            source_objects: source_objects.unwrap_or_default(),
+            target_objects: target_objects.unwrap_or_default(),
+            source_schema,
+            target_schema,
+            allow_destructive,
+            include_indexes,
+            type_overrides: type_overrides.unwrap_or_default(),
+        },
+    )
+    .await
+}
+
+pub(crate) async fn prepare_schema_unified_plan_impl(
+    state: &AppState,
+    source_db_session_id: String,
+    target_db_session_id: String,
+    table_names: Vec<String>,
+    target_table_names: Option<Vec<String>>,
+    target_only_table_names: Option<Vec<String>>,
+    source_objects: Option<Vec<DatabaseObject>>,
+    target_objects: Option<Vec<DatabaseObject>>,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+    allow_destructive: bool,
+    include_indexes: Option<bool>,
+    type_overrides: Option<Vec<ColumnTypeOverride>>,
 ) -> Result<SchemaDiffPlan, CommandError> {
     let target_table_names = target_table_names.unwrap_or_else(|| table_names.clone());
     let target_only_table_names = target_only_table_names.unwrap_or_default();
@@ -156,12 +192,11 @@ pub async fn prepare_schema_unified_plan(
         .get_session(&target_db_session_id)
         .await
         .cmd_err("prepare_schema_unified_plan")?;
-    let target_dependency_schema_scope =
-        if normalize_dialect(&target_config.database_type) == "postgresql" {
-            target_schema_scope.or(target_driver.default_schema())
-        } else {
-            None
-        };
+    let target_dependency_schema_scope = if uses_schema_scope(&target_config.database_type) {
+        target_schema_scope.or(target_driver.default_schema())
+    } else {
+        None
+    };
     ensure_distinct_schema_scope(
         source_driver.as_ref(),
         &source_handle,
@@ -334,8 +369,7 @@ pub async fn prepare_schema_unified_plan(
 
     let mut planner_source_snapshots = source_snapshots.clone();
     for snapshot in &mut planner_source_snapshots {
-        let target_object_scope = if normalize_dialect(&target_config.database_type) == "postgresql"
-        {
+        let target_object_scope = if uses_schema_scope(&target_config.database_type) {
             target_dependency_schema_scope
         } else {
             Some(super::schema_catalog_database(
@@ -500,7 +534,7 @@ pub async fn prepare_schema_unified_plan(
             target_config.database_type
         )));
     };
-    let source_object_scope = if normalize_dialect(&source_config.database_type) == "postgresql" {
+    let source_object_scope = if uses_schema_scope(&source_config.database_type) {
         source_schema_scope.or(source_driver.default_schema())
     } else {
         Some(super::schema_catalog_database(
@@ -694,7 +728,7 @@ fn table_identities_from_catalog(
         .filter(|table| matches!(table.table_type, TableType::Table))
         .map(|table| {
             let scope = table.schema.as_deref().or_else(|| {
-                if normalize_dialect(dialect) == "postgresql" {
+                if uses_schema_scope(dialect) {
                     schema_scope
                 } else {
                     database
@@ -719,7 +753,7 @@ fn table_identity_for_target(
         .map(|(schema, name)| (Some(schema), name))
         .unwrap_or((None, table));
     let scope = schema.or_else(|| {
-        if normalize_dialect(dialect) == "postgresql" {
+        if uses_schema_scope(dialect) {
             schema_scope
         } else {
             database

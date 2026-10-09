@@ -129,6 +129,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
         ? `${connectionId}::${dbName}::${schemaName}::${cat.id}`
         : `${connectionId}::${dbName}::${cat.id}`;
       const isExpanded = isOpen(expandedCats.has(catKey));
+      let categoryObjects: DatabaseObject[] = [];
 
       let count = 0;
       if (cat.id === 'tables') {
@@ -142,10 +143,19 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
           : viewItems;
         count = filtered.length;
       } else {
-        const allObjs = dbObjectsMap[catKey] ?? [];
+        const loadedObjects = dbObjectsMap[catKey] ?? [];
+        // Driver commands list a whole database's objects. When the navigator
+        // groups tables under schemas, each schema category has its own cache
+        // key, so scope that shared command result to the category's owner.
+        // Otherwise expanding one schema duplicates every routine in every
+        // other schema and makes a leaf appear under the wrong parent. Keep
+        // objects with no schema metadata: some drivers do not expose it.
+        categoryObjects = schemaName
+          ? loadedObjects.filter((object) => object.schema == null || object.schema === schemaName)
+          : loadedObjects;
         const filtered = query
-          ? allObjs.filter((o) => o.name.toLowerCase().includes(query))
-          : allObjs;
+          ? categoryObjects.filter((o) => o.name.toLowerCase().includes(query))
+          : categoryObjects;
         count = filtered.length;
       }
 
@@ -154,6 +164,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
       rows.push({
         type: 'category',
         key: catKey,
+        dbName,
         cat,
         count,
         expanded: isExpanded,
@@ -165,7 +176,7 @@ export function buildNavigatorFlatRows(params: BuildNavigatorFlatRowsParams): Un
         let objs: DatabaseObject[] = [];
         if (cat.id === 'tables') items = tblItems;
         else if (cat.id === 'views') items = viewItems;
-        else objs = dbObjectsMap[catKey] ?? [];
+        else objs = categoryObjects;
         if (
           objectFilter.hideSystemSchemas ||
           objectFilter.tableNameInclude ||

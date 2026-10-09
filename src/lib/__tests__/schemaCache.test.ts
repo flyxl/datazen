@@ -4,9 +4,15 @@ import type { TableSchema } from '../../types';
 const mockGetTableSchema = vi.fn();
 const mockExecuteQuery = vi.fn();
 
-vi.mock('../../commands/database', () => ({
-  databaseCommands: {
-    getTableSchema: (...args: unknown[]) => mockGetTableSchema(...args),
+vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
+  schemaClient: {
+    readSchema: async (session: string, ref: import('@datazen/driver-sdk').RelationRef) => ({
+      value: {
+        ref,
+        definition: await mockGetTableSchema(session, ref.name, ref.database, ref.schema),
+      },
+    }),
   },
 }));
 
@@ -279,5 +285,65 @@ describe('schemaCache inflight / error / immutable', () => {
     unsubscribe();
     invalidateSchemaCache('conn-1');
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+  it('refresh detaches an old request without deleting a newer in-flight read', async () => {
+    let resolveOld!: (value: TableSchema) => void;
+    let resolveNew!: (value: TableSchema) => void;
+    mockGetTableSchema
+      .mockReturnValueOnce(
+        new Promise<TableSchema>((r) => {
+          resolveOld = r;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<TableSchema>((r) => {
+          resolveNew = r;
+        }),
+      );
+    const old = getCachedTableSchema('conn-1', 'users', 'app', 'public');
+    invalidateSchemaCache('conn-1', 'users');
+    const fresh = getCachedTableSchema('conn-1', 'users', 'app', 'public');
+    resolveOld({ ...fullSchema, columns: [{ name: 'old', dataType: 'int', nullable: false }] });
+    await old;
+    const sameFresh = getCachedTableSchema('conn-1', 'users', 'app', 'public');
+    expect(mockGetTableSchema).toHaveBeenCalledTimes(2);
+    resolveNew(fullSchema);
+    await Promise.all([fresh, sameFresh]);
+    expect(await getCachedTableSchema('conn-1', 'users', 'app', 'public')).toBe(fullSchema);
+  });
+
+  it('an invalidated failure cannot suppress a later successful read', async () => {
+    let rejectOld!: (error: Error) => void;
+    mockGetTableSchema
+      .mockReturnValueOnce(
+        new Promise<TableSchema>((_, reject) => {
+          rejectOld = reject;
+        }),
+      )
+      .mockResolvedValueOnce(fullSchema);
+    const old = getCachedTableSchema('conn-1', 'users', 'app');
+    const failed = expect(old).rejects.toThrow('stale failure');
+    invalidateSchemaCache('conn-1');
+    rejectOld(new Error('stale failure'));
+    await failed;
+    expect(await getCachedTableSchema('conn-1', 'users', 'app')).toBe(fullSchema);
+  });
+
+  it('database-scoped invalidation preserves the same relation in other databases', async () => {
+    mockGetTableSchema.mockResolvedValue(fullSchema);
+    await getCachedTableSchema('conn-1', 'users', 'app', 'public');
+    await getCachedTableSchema('conn-1', 'users', 'other', 'public');
+    invalidateSchemaCache('conn-1', 'users', undefined, 'app');
+    await getCachedTableSchema('conn-1', 'users', 'other', 'public');
+    expect(mockGetTableSchema).toHaveBeenCalledTimes(2);
+    await getCachedTableSchema('conn-1', 'users', 'app', 'public');
+    expect(mockGetTableSchema).toHaveBeenCalledTimes(3);
+  });
+
+  it('tuple keys distinguish delimiter-containing catalog names', async () => {
+    mockGetTableSchema.mockResolvedValue(fullSchema);
+    await getCachedTableSchema('conn-1', 'users', 'a::b', 'c');
+    await getCachedTableSchema('conn-1', 'users', 'a', 'b::c');
+    expect(mockGetTableSchema).toHaveBeenCalledTimes(2);
   });
 });

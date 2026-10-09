@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use datazen_driver_api::{SyncKeyContract, SyncKeyValue, SyncSourceAdapter, Value};
 
 use crate::data_sync::{
-    build_keyset_select_sql_with_order_filter_and_pagination, quote_ident_sql, DataSyncError, Row,
-    RowPageSource, SyncSourceFilter,
+    build_keyset_select_sql_with_order_filter_and_pagination, keyset_seek_parameter_count,
+    quote_ident_sql, DataSyncError, Row, RowPageSource, SyncSourceFilter,
 };
 use crate::db::{ConnectionHandle, DatabaseDriver, SqlTarget};
 
@@ -52,6 +52,15 @@ impl DriverKeysetSource {
                 "normalized key contract count does not match primary key columns",
             ));
         }
+        let pagination = driver.pagination_syntax(1, 0);
+        if pagination.clause.trim().is_empty() {
+            return Err(DataSyncError::validation(
+                "driver does not provide a Data Sync keyset pagination clause",
+            ));
+        }
+        driver
+            .parameter_placeholder(1, None)
+            .map_err(|error| DataSyncError::validation(error.to_string()))?;
         let key_order_expressions = pk_columns
             .iter()
             .zip(&key_contracts)
@@ -117,7 +126,7 @@ impl RowPageSource for DriverKeysetSource {
             Some(filter) => filter
                 .build_where_typed_with_key_order(
                     quote,
-                    after_key.map_or(0, |key| key.len()) + 1,
+                    keyset_seek_parameter_count(self.pk_columns.len(), after_key.is_some()) + 1,
                     (self.pk_columns.len() == 1).then(|| self.pk_columns[0].as_str()),
                     Some((&self.pk_columns, &self.key_order_expressions)),
                     |column, value| {
@@ -150,6 +159,11 @@ impl RowPageSource for DriverKeysetSource {
             .driver
             .pagination_syntax(u64::from(page_limit.max(1)), 0)
             .clause;
+        if pagination_clause.trim().is_empty() {
+            return Err(DataSyncError::validation(
+                "driver does not provide a Data Sync keyset pagination clause",
+            ));
+        }
         let (sql, params) = build_keyset_select_sql_with_order_filter_and_pagination(
             &self.table,
             self.database.as_deref(),
@@ -164,13 +178,7 @@ impl RowPageSource for DriverKeysetSource {
             |i| {
                 self.driver
                     .parameter_placeholder(i, None)
-                    .unwrap_or_else(|_| {
-                        if family == "mysql" {
-                            "?".into()
-                        } else {
-                            format!("${i}")
-                        }
-                    })
+                    .map_err(|error| DataSyncError::validation(error.to_string()))
             },
             filter_sql
                 .as_deref()

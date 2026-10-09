@@ -91,18 +91,22 @@ impl MonitorConnectionRegistry {
 
     /// Disconnect and remove the monitor connection for `connection_id`, if present.
     pub async fn disconnect_monitor(&self, connection_id: &str) -> Result<(), ConnectionError> {
+        // Same ruling as `ConnectionManager::disconnect`
+        // (`services/connection_manager/sessions.rs`): the `entries` removal is
+        // a **claim** — it is what makes this teardown happen exactly once, so
+        // it stays above the await — and a driver that cannot confirm the
+        // teardown has left the physical monitor connection up, which the
+        // caller is told instead of an unconditional `Ok(())`. The previous
+        // `let _ =` made this signature a promise the body could not keep: it
+        // returned `Result<(), ConnectionError>` and then discarded the only
+        // error it could ever produce. Propagating changes no behaviour for the
+        // current callers (the tests) and makes the contract true for the first
+        // caller that actually consumes the verdict.
         let entry = self.entries.write().await.remove(connection_id);
         if let Some(entry) = entry {
-            let _ = entry.driver.disconnect(entry.handle).await;
+            entry.driver.disconnect(entry.handle).await?;
         }
         Ok(())
-    }
-
-    pub async fn shutdown(&self) {
-        let keys: Vec<String> = self.entries.read().await.keys().cloned().collect();
-        for connection_id in keys {
-            let _ = self.disconnect_monitor(&connection_id).await;
-        }
     }
 
     #[cfg(test)]
@@ -112,14 +116,32 @@ impl MonitorConnectionRegistry {
         handle: ConnectionHandle,
         database_type: &str,
     ) {
+        self.insert_entry_with_disconnect_error(connection_id, handle, database_type, None)
+            .await;
+    }
+
+    /// Same, but the stub driver's `disconnect` fails — used to pin that an
+    /// unconfirmable teardown is reported instead of turned into a clean
+    /// `Ok(())`.
+    #[cfg(test)]
+    async fn insert_entry_with_disconnect_error(
+        &self,
+        connection_id: &str,
+        handle: ConnectionHandle,
+        database_type: &str,
+        disconnect_error: Option<String>,
+    ) {
         use crate::db::{ConnectionConfig, SslMode};
 
-        struct StubDriver(String);
+        struct StubDriver {
+            db_type: String,
+            disconnect_error: Option<String>,
+        }
 
         #[async_trait::async_trait]
         impl DatabaseDriver for StubDriver {
             fn driver_type(&self) -> crate::db::DatabaseType {
-                self.0.clone()
+                self.db_type.clone()
             }
 
             async fn connect(
@@ -140,7 +162,10 @@ impl MonitorConnectionRegistry {
                 &self,
                 _handle: ConnectionHandle,
             ) -> Result<(), crate::db::DriverError> {
-                Ok(())
+                match &self.disconnect_error {
+                    Some(message) => Err(crate::db::DriverError::QueryFailed(message.clone())),
+                    None => Ok(()),
+                }
             }
 
             async fn get_databases(
@@ -214,7 +239,10 @@ impl MonitorConnectionRegistry {
         self.entries.write().await.insert(
             connection_id.to_string(),
             MonitorEntry {
-                driver: Arc::new(StubDriver(database_type.to_string())),
+                driver: Arc::new(StubDriver {
+                    db_type: database_type.to_string(),
+                    disconnect_error,
+                }),
                 handle,
                 config: ConnectionConfig {
                     id: connection_id.to_string(),
@@ -313,6 +341,56 @@ mod tests {
 
         registry.disconnect_monitor("cfg-2").await.unwrap();
         assert!(!registry.has_entry("cfg-2").await);
+    }
+
+    /// A driver that cannot confirm the teardown has left the physical monitor
+    /// connection up. `disconnect_monitor` promises a `Result`, so it has to
+    /// report that instead of returning an unconditional `Ok(())`; the entry is
+    /// still removed (it is the claim that keeps the teardown to exactly one
+    /// attempt), so the monitor reconnects under a new `pool_id` on next use.
+    #[tokio::test]
+    async fn disconnect_monitor_reports_a_driver_that_could_not_confirm_the_teardown() {
+        let registry = test_registry().await;
+        let handle = ConnectionHandle {
+            id: "mon-h2-fail".into(),
+            pool_id: "mon-pool-2-fail".into(),
+        };
+        registry
+            .insert_entry_with_disconnect_error(
+                "cfg-2-fail",
+                handle,
+                "postgres",
+                Some("teardown not confirmed".into()),
+            )
+            .await;
+
+        let err = registry
+            .disconnect_monitor("cfg-2-fail")
+            .await
+            .expect_err("an unconfirmed monitor teardown must be reported");
+        assert!(
+            err.to_string().contains("teardown not confirmed"),
+            "the driver's own reason must survive into the reported error, got: {err}"
+        );
+        assert!(!registry.has_entry("cfg-2-fail").await);
+    }
+
+    #[tokio::test]
+    async fn disconnect_monitor_is_ok_when_the_driver_confirms_the_teardown() {
+        let registry = test_registry().await;
+        let handle = ConnectionHandle {
+            id: "mon-h2-ok".into(),
+            pool_id: "mon-pool-2-ok".into(),
+        };
+        registry
+            .insert_entry_with_disconnect_error("cfg-2-ok", handle, "postgres", None)
+            .await;
+
+        registry
+            .disconnect_monitor("cfg-2-ok")
+            .await
+            .expect("a confirmed monitor teardown is not an error");
+        assert!(!registry.has_entry("cfg-2-ok").await);
     }
 
     #[tokio::test]

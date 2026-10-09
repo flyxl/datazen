@@ -10,7 +10,7 @@ description: >-
 
 本 Skill 指导主会话 Agent 作为**协调者 (Coordinator)**，负责统筹、拆轨、派发并合流多子代理并行开发与测试任务。
 
-> **不写台账。** 进度、缺陷清单、设计方案一律不落文件。结论必须进代码、测试与 `docs/` 的正式文档（`docs/features/`、`docs/architecture/`、`docs/development/`）。过程产物（如需临时记录）只存在于会话上下文，随会话消亡。
+> **进度落文件，但随开发周期清理。** 各轨把自己的进度记录到该轨分支的 `progress.md`，协调者把跨轨汇总记录到集成分支的 `hub.md`；两者**提交进 git**，以便会话中断、重启或上下文压缩后仍可恢复。feature 开发完成并通过验收后，协调者删除这些进度文件并提交一次清理。设计结论与缺陷修复则必须进代码、测试与 `docs/` 的正式文档（`docs/features/`、`docs/architecture/`、`docs/development/`），不得只停留在进度文件里。
 > 完整项目约定见 `AGENTS.md`。
 
 ## 核心硬性纪律

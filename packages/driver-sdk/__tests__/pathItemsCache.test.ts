@@ -18,19 +18,21 @@ describe('driver-sdk path item cache', () => {
     const items: TableInfo[] = [
       { name: '1/hive', tableType: 'table', schema: 'CATALOG', rowCount: undefined },
     ];
-    expect(getCachedPathItems('1')).toBeUndefined();
-    cachePathItems('1', items);
-    expect(getCachedPathItems('1')).toEqual(items);
+    expect(getCachedPathItems('1', 'session-1')).toBeUndefined();
+    cachePathItems('1', items, 'session-1');
+    expect(getCachedPathItems('1', 'session-1')).toEqual(items);
   });
 
   it('notifies subscribers when autocomplete writes the cache', () => {
     const seen: string[] = [];
     const stop = subscribeSchemaPathItems((cache) => {
       seen.push(...Object.keys(cache));
-    });
-    cachePathItems('42/hive', [
-      { name: 't', tableType: 'table', schema: 'snap', rowCount: undefined },
-    ]);
+    }, 'session-1');
+    cachePathItems(
+      '42/hive',
+      [{ name: 't', tableType: 'table', schema: 'snap', rowCount: undefined }],
+      'session-1',
+    );
     stop();
     expect(seen).toContain('42/hive');
   });

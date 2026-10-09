@@ -38,7 +38,24 @@ pub enum KeyBackend {
 pub fn key_backend() -> KeyBackend {
     match std::env::var("DATAZEN_KEYRING").ok().as_deref() {
         Some("file") => KeyBackend::File,
-        Some("keyring") => KeyBackend::Keyring,
+        Some("keyring") => {
+            // Under `cfg(test)` the keychain is off-limits unless the run explicitly
+            // opted in: an accidental / leaked `DATAZEN_KEYRING=keyring` in the
+            // environment must not send every other test into Keychain Services and
+            // hang the suite on a macOS authorization dialog.
+            #[cfg(test)]
+            {
+                if test_keyring_opted_in() {
+                    KeyBackend::Keyring
+                } else {
+                    KeyBackend::File
+                }
+            }
+            #[cfg(not(test))]
+            {
+                KeyBackend::Keyring
+            }
+        }
         _ => {
             #[cfg(test)]
             {
@@ -50,6 +67,19 @@ pub fn key_backend() -> KeyBackend {
             }
         }
     }
+}
+
+/// Whether this **test run** is allowed to touch the OS keychain.
+///
+/// macOS raises a modal "找不到用于储存 … 的钥匙串 …" dialog for Keychain Services
+/// calls made inside a login session when the keychain search list is broken, and
+/// that call blocks until a human clicks it. Gate steps (`pnpm ci:local`,
+/// `cargo test -p datazen --lib`) must never depend on GUI interaction, so keychain
+/// coverage is opt-in via `DATAZEN_TEST_KEYRING=1`. Production code paths are
+/// unaffected — this only gates `cfg(test)` behaviour.
+#[cfg(test)]
+fn test_keyring_opted_in() -> bool {
+    std::env::var("DATAZEN_TEST_KEYRING").ok().as_deref() == Some("1")
 }
 
 #[cfg(not(test))]
@@ -232,7 +262,13 @@ fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], StoreError> {
     if let Some(key) = read_key_file(data_dir)? {
         return Ok(key);
     }
-    let explicit_file = std::env::var("DATAZEN_KEYRING").ok().as_deref() == Some("file");
+    // Never reach for the OS keychain from a unit test: on macOS a keychain call
+    // made inside a login session can block on a system authorization dialog
+    // ("找不到用于储存 "app-encryption-key" 的钥匙串 "login""), which hangs the
+    // whole `cargo test` run. `key_backend()` already resolves to File under
+    // `cfg(test)`, so honour that instead of probing the vault / keychain.
+    let explicit_file =
+        cfg!(test) || std::env::var("DATAZEN_KEYRING").ok().as_deref() == Some("file");
     if !explicit_file {
         // Try platform vault first, then keyring
         if super::platform_vault::platform_vault_available() {
@@ -364,6 +400,11 @@ pub fn keyring_is_available() -> bool {
 
 #[cfg(test)]
 pub fn delete_keyring_entry_for_test() {
+    // `delete_credential` is a real Keychain Services call, so it needs the same
+    // opt-in as the tests that assert against the keychain backend.
+    if !test_keyring_opted_in() {
+        return;
+    }
     if let Ok(entry) = open_keyring_entry() {
         let _ = entry.delete_credential();
     }
@@ -376,6 +417,23 @@ mod tests {
     use tempfile::tempdir;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Restore `DATAZEN_KEYRING=file` when dropped: these tests force `keyring`, and
+    /// leaving it set leaks an OS-keychain backend into every later test in the binary.
+    struct ForceKeyringGuard;
+
+    impl ForceKeyringGuard {
+        fn new() -> Self {
+            std::env::set_var("DATAZEN_KEYRING", "keyring");
+            Self
+        }
+    }
+
+    impl Drop for ForceKeyringGuard {
+        fn drop(&mut self) {
+            std::env::set_var("DATAZEN_KEYRING", "file");
+        }
+    }
 
     #[test]
     fn file_backend_creates_key_when_missing() {
@@ -418,10 +476,17 @@ mod tests {
     }
 
     #[test]
-    fn env_keyring_forces_keyring_backend() {
+    fn env_keyring_resolves_to_keyring_only_when_opted_in() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Default: a stray `keyring` in the environment must not send the suite into
+        // Keychain Services (that is what hangs `cargo test` on a macOS dialog).
+        std::env::remove_var("DATAZEN_TEST_KEYRING");
         std::env::set_var("DATAZEN_KEYRING", "keyring");
+        assert_eq!(key_backend(), KeyBackend::File);
+        // Opt-in: the same value now means the real keyring backend.
+        std::env::set_var("DATAZEN_TEST_KEYRING", "1");
         assert_eq!(key_backend(), KeyBackend::Keyring);
+        std::env::remove_var("DATAZEN_TEST_KEYRING");
         std::env::set_var("DATAZEN_KEYRING", "file");
     }
 
@@ -494,12 +559,17 @@ mod tests {
         std::env::remove_var("DATAZEN_KEYRING");
         let backend = key_backend();
         assert_eq!(backend, KeyBackend::File);
+        std::env::set_var("DATAZEN_KEYRING", "file");
     }
 
     #[test]
     fn keyring_forced_without_legacy_key_fails_closed_when_keyring_unavailable() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        std::env::set_var("DATAZEN_KEYRING", "keyring");
+        if !test_keyring_opted_in() {
+            eprintln!("skipping: set DATAZEN_TEST_KEYRING=1 to exercise the OS keychain");
+            return;
+        }
+        let _keyring = ForceKeyringGuard::new();
         delete_keyring_entry_for_test();
 
         let dir = tempdir().unwrap();
@@ -531,7 +601,11 @@ mod tests {
     #[test]
     fn keyring_forced_falls_back_to_legacy_dot_key_when_keyring_unavailable() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        std::env::set_var("DATAZEN_KEYRING", "keyring");
+        if !test_keyring_opted_in() {
+            eprintln!("skipping: set DATAZEN_TEST_KEYRING=1 to exercise the OS keychain");
+            return;
+        }
+        let _keyring = ForceKeyringGuard::new();
         delete_keyring_entry_for_test();
 
         if keyring_is_available() {
@@ -620,10 +694,14 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires OS keychain; run with: cargo test keyring_creates_new_key -- --ignored"]
+    #[ignore = "requires OS keychain; run with: DATAZEN_TEST_KEYRING=1 cargo test keyring_creates -- --ignored"]
     fn keyring_creates_and_reloads_master_key() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        std::env::set_var("DATAZEN_KEYRING", "keyring");
+        if !test_keyring_opted_in() {
+            eprintln!("skipping: set DATAZEN_TEST_KEYRING=1 to exercise the OS keychain");
+            return;
+        }
+        let _keyring = ForceKeyringGuard::new();
         delete_keyring_entry_for_test();
 
         if !keyring_is_available() {

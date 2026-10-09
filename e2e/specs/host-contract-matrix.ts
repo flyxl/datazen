@@ -1,5 +1,5 @@
 /**
- * Host Connection Contract matrix (F3): for each DriverFixture, open its
+ * Host Connection Contract matrix: for each DriverFixture, open its
  * connection window and run HC-DATA / HC-FILTER / HC-QUERY.
  */
 import { browser, $ } from '@wdio/globals';
@@ -21,7 +21,7 @@ import {
 
 const DRIVERS: DriverFixtureId[] = [...DEFAULT_MATRIX_DRIVERS];
 
-describe('Host Connection Contract matrix (F3)', () => {
+describe('Host Connection Contract matrix', () => {
   let mainWindow: string;
 
   before(async () => {

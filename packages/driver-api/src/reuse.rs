@@ -60,8 +60,50 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.transfer_explicit_identity_insert_clause()
     }
 
+    fn explicit_identity_insert_requires_session_toggle(&self) -> bool {
+        self.inner
+            .explicit_identity_insert_requires_session_toggle()
+    }
+
+    async fn advance_transfer_identity_sequences(
+        &self,
+        handle: &ConnectionHandle,
+        schema: Option<&str>,
+        table: &str,
+        columns: &[String],
+    ) -> Result<(), DriverError> {
+        self.inner
+            .advance_transfer_identity_sequences(handle, schema, table, columns)
+            .await
+    }
+
+    async fn set_identity_insert(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+        enabled: bool,
+    ) -> Result<(), DriverError> {
+        self.inner
+            .set_identity_insert(handle, database, schema, table, enabled)
+            .await
+    }
+
+    async fn discard_connection(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        self.inner.discard_connection(handle).await
+    }
+
     fn transfer_sql_file_insert_batch_size(&self) -> usize {
         self.inner.transfer_sql_file_insert_batch_size()
+    }
+
+    fn transfer_sql_file_begin_transaction(&self) -> &'static str {
+        self.inner.transfer_sql_file_begin_transaction()
+    }
+
+    fn transfer_sql_file_commit_transaction(&self) -> &'static str {
+        self.inner.transfer_sql_file_commit_transaction()
     }
 
     fn render_transfer_sql_file_insert(
@@ -71,6 +113,19 @@ impl DatabaseDriver for ReuseDriver {
     ) -> Result<String, DriverError> {
         self.inner
             .render_transfer_sql_file_insert(insert_template, identity_override_marker)
+    }
+
+    fn render_transfer_sql_file_identity_insert(
+        &self,
+        insert_sql: &str,
+        target_relation: &str,
+        mapped_target_columns: &[String],
+    ) -> Result<String, DriverError> {
+        self.inner.render_transfer_sql_file_identity_insert(
+            insert_sql,
+            target_relation,
+            mapped_target_columns,
+        )
     }
 
     fn type_normalizer(&self) -> Option<Arc<dyn TypeNormalizer>> {
@@ -282,6 +337,10 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.parameter_placeholder(index, data_type)
     }
 
+    fn max_bound_parameters(&self) -> usize {
+        self.inner.max_bound_parameters()
+    }
+
     async fn execute_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -441,6 +500,27 @@ impl DatabaseDriver for ReuseDriver {
             server_type: self.db_type.clone(),
             ..info
         })
+    }
+
+    async fn physical_database_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<String>, DriverError> {
+        self.inner
+            .physical_database_identity(handle, database)
+            .await
+    }
+
+    async fn schema_scope_identity(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        schema: &str,
+    ) -> Result<Option<String>, DriverError> {
+        self.inner
+            .schema_scope_identity(handle, database, schema)
+            .await
     }
 
     fn prompt_overrides(&self) -> HashMap<PromptScenario, PromptTemplate> {
@@ -659,6 +739,23 @@ mod tests {
             _handle: &ConnectionHandle,
         ) -> Result<bool, DriverError> {
             Ok(self.full_fk_catalog_visibility)
+        }
+
+        async fn physical_database_identity(
+            &self,
+            _handle: &ConnectionHandle,
+            database: &str,
+        ) -> Result<Option<String>, DriverError> {
+            Ok(Some(format!("physical:{database}")))
+        }
+
+        async fn schema_scope_identity(
+            &self,
+            _handle: &ConnectionHandle,
+            database: &str,
+            schema: &str,
+        ) -> Result<Option<String>, DriverError> {
+            Ok(Some(format!("schema:{database}:{schema}")))
         }
 
         async fn connect(
@@ -1024,6 +1121,32 @@ mod tests {
         assert!(!reuse.supports_query_execution_cancel());
         assert!(
             matches!(error, DriverError::Unsupported(message) if message.contains("compatibility driver"))
+        );
+    }
+
+    #[tokio::test]
+    async fn reuse_driver_forwards_database_and_schema_scope_identities() {
+        let reuse = ReuseDriver::new(FakeDriver::new(1, false), "sqlserver");
+        let handle = ConnectionHandle {
+            id: "h".into(),
+            pool_id: "p".into(),
+        };
+
+        assert_eq!(
+            reuse
+                .physical_database_identity(&handle, "DataZen")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("physical:DataZen")
+        );
+        assert_eq!(
+            reuse
+                .schema_scope_identity(&handle, "DataZen", "sales")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("schema:DataZen:sales")
         );
     }
 

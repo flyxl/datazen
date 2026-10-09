@@ -138,6 +138,12 @@ impl RqliteDriver {
 
 #[async_trait]
 impl DatabaseDriver for RqliteDriver {
+    // This HTTP driver has no parameterized DML implementation. Zero makes
+    // migration consumers reject an active projection before any target write.
+    fn max_bound_parameters(&self) -> usize {
+        0
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "rqlite".to_string()
     }
@@ -386,8 +392,15 @@ impl DatabaseDriver for RqliteDriver {
         Ok(explain_result_from_query(result))
     }
 
+    /// rqlite speaks the SQLite wire protocol over HTTP and has no
+    /// per-execution cancel, so this refuses by name. It used to answer
+    /// `Ok(())`, which reported a cancellation that had never been sent to the
+    /// node.
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
-        Ok(())
+        Err(DriverError::Unsupported(
+            "rqlite has no per-execution cancellation; the legacy session-wide cancel does nothing"
+                .into(),
+        ))
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {

@@ -118,8 +118,8 @@ describe('useKvWorkspaceSlots', () => {
     expect(slots.connectionHome).toBeUndefined();
 
     // The shared bundle: exactly `KvPanelSlotProps`. `request` is deliberately NOT
-    // in it (§1.2) — the context bar is the only surface allowed to ask the host
-    // for something, so the base object stays free of an action channel.
+    // in it — the context bar is the only surface allowed to ask the host for
+    // something, so the base object stays free of an action channel.
     expect(slots.statusBar?.props).toEqual({
       connectionId: 'cfg-1',
       dbSessionId: 'sess-1',
@@ -195,7 +195,8 @@ describe('useKvWorkspaceSlots', () => {
   });
 
   it('returns no bindings when the driver declares the capability but contributed no component', () => {
-    // Wave-2 gap path: meta says "I can", this build ships nothing ⇒ status quo.
+    // Capability-without-implementation path: meta says "I can", this build ships
+    // nothing ⇒ status quo.
     registerMeta('kvcapable-only', {
       kvWorkspace: { contextBar: true, statusBar: true, keyPropsSidebar: true, home: true },
     });
@@ -278,7 +279,7 @@ describe('useKvWorkspaceSlots', () => {
     expect(withPanel.result.current.connectionHome).toBeUndefined();
   });
 
-  // [tester] PRD §3.0 keep-alive tabs: two panels of the *same* connection on two
+  // [tester] Keep-alive tabs: two panels of the *same* connection on two
   // databases must never share a selection. Switching the active panel has to swap
   // the relay wholesale (atom + every slot props bundle), otherwise the context bar
   // of db5 keeps showing the key selected in db7.
@@ -334,7 +335,7 @@ describe('useKvWorkspaceSlots', () => {
   });
 
   // [tester] Panels are created before their `databaseType` is known in some
-  // flows (PRD R-4); the hook must then hand over the atom but no bindings, so a
+  // flows; the hook must then hand over the atom but no bindings, so a
   // driver component never renders against a half-resolved panel.
   it('[tester] opens no in-panel binding while the active panel has no database type', () => {
     registerMeta('kvfull', { kvWorkspace: { contextBar: true, statusBar: true } });

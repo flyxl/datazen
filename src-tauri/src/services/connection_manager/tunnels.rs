@@ -19,7 +19,7 @@ impl ConnectionManager {
             .map_err(ConnectionError::DriverError)
     }
 
-    async fn resolve_tunnel_ref(
+    pub(super) async fn resolve_tunnel_ref(
         &self,
         mut config: ConnectionConfig,
     ) -> Result<ConnectionConfig, ConnectionError> {
@@ -194,7 +194,30 @@ impl ConnectionManager {
                     "Evicting idle db session (session_owner_map entry kept for auto-reconnect)"
                 );
                 if let Some(driver) = self.registry.get(&active.config.database_type).await {
-                    let _ = driver.disconnect(active.handle).await;
+                    // Idle eviction is a background sweep with no user action
+                    // and no IPC caller to hand an error to, so the failure
+                    // cannot be propagated — returning it would abort the
+                    // ticker loop started by `spawn_idle_cleanup` and silently
+                    // stop eviction for the rest of the process. It is logged
+                    // rather than swallowed so the leak is diagnosable: the
+                    // physical connection is still up, its `pool_id` is now
+                    // unreachable, and `session_owner_map` is kept, so the next
+                    // `reconnect` builds a *second* connection beside the
+                    // orphan. (That retry-on-reconnect behaviour is the
+                    // deliberate trade-off documented above; the unlogged
+                    // variant of it was the actual defect.)
+                    let pool_id = active.handle.pool_id.clone();
+                    if let Err(e) = driver.disconnect(active.handle).await {
+                        tracing::warn!(
+                            db_session_id = %id,
+                            pool_id = %pool_id,
+                            name = %active.config.name,
+                            error = %e,
+                            "Idle eviction could not confirm the physical teardown; \
+                             the connection is left up and unreachable under this \
+                             db_session_id",
+                        );
+                    }
                 }
             }
         }
@@ -223,8 +246,31 @@ impl ConnectionManager {
             .keys()
             .cloned()
             .collect::<Vec<_>>();
+        // `shutdown` runs from `RunEvent::ExitRequested`
+        // (`bootstrap/run.rs:584`) inside `block_on`, on the way out of the
+        // process: there is no caller left to return a `Result` to, and
+        // aborting the loop on the first failure would strand every remaining
+        // session. So the errors are collected and summarised instead of
+        // discarded one by one — a teardown that could not be confirmed is
+        // exactly the thing a post-mortem log is for, and the previous
+        // `let _ =` made it invisible.
+        let mut unconfirmed = Vec::new();
         for session_id in session_ids {
-            let _ = self.disconnect(&session_id).await;
+            if let Err(e) = self.disconnect(&session_id).await {
+                tracing::warn!(
+                    db_session_id = %session_id,
+                    error = %e,
+                    "Shutdown teardown could not be confirmed",
+                );
+                unconfirmed.push(session_id);
+            }
+        }
+        if !unconfirmed.is_empty() {
+            tracing::warn!(
+                count = unconfirmed.len(),
+                db_session_ids = ?unconfirmed,
+                "Shutdown finished with unconfirmed physical teardowns",
+            );
         }
     }
 
@@ -259,6 +305,7 @@ impl ConnectionManager {
             db_session_id.to_string(),
             ActiveSession {
                 handle,
+                identity_config: config.clone(),
                 config,
                 created_at: Instant::now(),
                 last_used: Instant::now(),

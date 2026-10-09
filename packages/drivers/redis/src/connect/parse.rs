@@ -149,8 +149,8 @@ pub(crate) fn parse_node_urls(
     let key = nodes_key.unwrap_or("clusterNodes");
     let mut nodes = opt_string_array(opts, key);
     if nodes.is_empty() && nodes_key.is_none() {
-        let host = config.host.as_deref().unwrap_or("127.0.0.1");
-        let port = config.port.unwrap_or(6379);
+        let host = config.host.as_deref().unwrap_or(super::DEFAULT_HOST);
+        let port = config.port.unwrap_or(super::DEFAULT_PORT);
         nodes.push(format!("{host}:{port}"));
     }
     nodes

@@ -90,17 +90,29 @@ Settings → **External MCP Servers** 管理已保存配置与运行时连接态
 |----|------|
 | `McpClientManager` | stdio 子进程生命周期、工具发现、`call_tool` |
 | `commands/mcp.rs` | IPC：`mcp_client_connect` / `disconnect` / `list` / `tools` / `call_tool` |
-| `commands/ai.rs` | `collect_mcp_tool_definitions()` 合并 DB tools + MCP tools；`run_streaming_tool_loop` 路由 `mcp/*` 前缀 |
+| `commands/ai/mod.rs` | `collect_mcp_tool_definitions()` 合并 DB tools + MCP tools；`run_streaming_tool_loop` 路由 `mcp/*` 前缀 |
 | 前端 `McpClientSection` | 配置 CRUD、env 编辑、连接/重试、运行时工具列表 |
 
-AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider；模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程。详见 [`ai.md` — AI Chat MCP 工具](./ai.md#110-ai-chat-mcp-工具)。
+AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider；模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程。详见 [`ai.md` — AI Chat MCP 工具](./ai.md#111-ai-chat-mcp-工具)。
 
 ### 1.3 连接 ID（connection_id vs db_session_id）
 
-MCP tools 与 GUI IPC 共用 `ConnectionManager` 语义（详见 [服务层 — 连接 ID 约定](./services.md#连接-id-约定)）：
+MCP tools 与 GUI IPC 共用 `ConnectionManager` 语义（详见 [服务层 — 连接 ID 约定](./services.md#21-连接-id-约定)）：
 
 - **`connection_id`**：`connections.json` 中的持久化连接 UUID；`list_connections` 返回值；MCP tools / prompts / AI db tools 入参。
 - **`db_session_id`**：GUI `connect` 返回的运行时会话 ID；GUI IPC（`query`、`get_schema` 等）在已连接后传此 ID。
 
 > 历史演进：早期版本 MCP 工具入参叫 `config_id`、运行时句柄叫 `connection_id`。现行为上表术语，且 MCP 侧不保留 `config_id` 兼容别名——旧键会被直接拒绝（见 CHANGELOG 破坏性变更）。
+
+MCP Server 与 GUI 跑在同一个进程里：内嵌 server 启动时复制的是同一份 `AppState`，其中 `ConnectionManager`、会话事务表与查询执行注册表都是**共享的同一个实例**。`src-tauri/src/mcp/` 内不做任何会话管理——不建立连接、不释放引用、不管生命周期，所有取数都落到与 GUI 相同的 [db tools 辅助](services.md) 上。
+
+由此得到三条已实现的行为边界：
+
+- **MCP 用持久化 id 入参，用共享会话执行**。每个 DB tool 先过连接白名单，再把 `connection_id` 交给 `resolve_connection_with_id` 转成运行时会话。因为会话是共享的，一次 MCP `query` 命中的很可能正是 GUI 查询编辑器正在用的那条 `dbSessionId`。
+- **引用只增不减**。该取会话路径取得引用后不释放，因此被 MCP 访问过的会话引用计数常驻 ≥1，不会被空闲回收扫掉。
+- **目标完全来自显式参数**。database / schema 按「调用方参数 → 连接配置回退 → 驱动约定」的顺序解析，**从不读取会话当前所在的库**——因为 MCP 是「人在工具调用里打字写表名」的入口，借用会话默认库会让同一份提示在不同会话下得到不同结果。
+
+连接白名单是显式配置：白名单为空时按**拒绝一切**处理，不是「空即放行」。被拒绝的调用返回的是明确的权限错误，而不是静默返回空结果。
+
+MCP 侧只有一个执行类入口会绕过 db tools：`run_workflow` 把 `connection_id` 与 MCP 自己的权限模式交给与 GUI 共用的 Workflow 执行器。
 
