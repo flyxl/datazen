@@ -262,12 +262,15 @@ describe('数据传输结构对象发射 (DT-OBJ)', () => {
 
     // DOM order must be: all tables, then all indexes, then all foreign keys.
     const blockIds: string[] = [];
-    const blocks = await preview.$$('div[data-testid^="data-transfer-ddl-"]');
+    const blocks = await preview.$$('[data-testid^="data-transfer-ddl-preview-"]');
     for (const block of blocks) blockIds.push((await block.getAttribute('data-testid')) ?? '');
     const lastOf = (needle: string) =>
       blockIds.reduce((acc, id, i) => (id.includes(needle) ? i : acc), -1);
     const firstOf = (needle: string) => blockIds.findIndex((id) => id.includes(needle));
-    expect(lastOf('-ddl-editor-')).toBeLessThan(lastOf('-index-'));
+    expect(lastOf('-table-')).toBeGreaterThanOrEqual(0);
+    expect(firstOf('-index-')).toBeGreaterThanOrEqual(0);
+    expect(firstOf('-foreignKey-')).toBeGreaterThanOrEqual(0);
+    expect(lastOf('-table-')).toBeLessThan(firstOf('-index-'));
     expect(lastOf('-index-')).toBeLessThan(firstOf('-foreignKey-'));
 
     await (await $('[data-testid="data-transfer-execute"]')).click();

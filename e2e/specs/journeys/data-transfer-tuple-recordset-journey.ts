@@ -262,6 +262,7 @@ describe('Data Transfer composite tuple recordset journeys', () => {
         await clickTransferNext();
 
         const dataMode = await $('[data-testid="data-transfer-mode-data"]');
+        await dataMode.scrollIntoView();
         await dataMode.waitForClickable({ timeout: 10000 });
         await dataMode.click();
         await clickTransferNext();
