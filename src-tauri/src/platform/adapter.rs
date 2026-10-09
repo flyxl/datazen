@@ -5,36 +5,36 @@
 //! §6.2 的九步顺序里，本文件是第 8 步。它的上游依赖第 6 步（Runtime）与第 7 步
 //! （`ApplicationServices`），下游是第 9 步（`state.manage`）。
 //!
-//! ## 为什么 `ApplicationServices` 仍然是空的
+//! ## 第 6、7 步如何落地
 //!
-//! 不是"没来得及接"，而是**接了就是违规**。契约层的
-//! [`ConnectionUseCases`](datazen_application::sessions::ConnectionUseCases) 共 13 个方法，
-//! 每个方法都要求调用链能提供旧运行时**不存在**的事实：
+//! [`PlatformAdapter::inject`] 负责 §6.2 第 6 步（Runtime）与第 7 步
+//! （`ApplicationServices`），由启动装配调用（`bootstrap/app_state.rs`）。它组装
+//! `DesktopProfiles`（配置源）、`DesktopSessionBackend`（租约后端）与
+//! `RuntimeConnectionUseCases`，目标解析器**失败关闭**（四个分支一律返回 `None`，
+//! 不猜目标），最后 `ApplicationServices::new` 构造服务并写入三个 `OnceLock`。
+//! 任何 `OnceLock` 重复写入映射为 `ContextConflict`；`inject()` 重复调用直接返回。
 //!
-//! | 方法要求的字段 | 旧运行时 `ConnectionConfig` 有吗 |
-//! | --- | --- |
-//! | `ProfileView::config_revision` | ❌ 无版本列 |
-//! | `ProfileView::credential_revision` | ❌ 无版本列 |
-//! | `ProfileView::enabled` | ❌ 无启用位 |
-//! | `RuntimeEpoch`（`attach_session` / `get_session` / `close_session`） | ❌ 无会话世代 |
-//! | 幂等记录（`issue_submission_token` / `open_session` 的 `idempotency_key`） | ❌ 无幂等表 |
-//! | `attachment_token`（`attach_session` / `detach_session`） | ❌ 无附件令牌 |
-//! | `stream_id`（`subscribe_events`） | ❌ 无事件流 |
+//! ## 13 个方法要求的字段现在各是什么状态
 //!
-//! 要让这 13 个方法"能跑"，只能在 adapter 里编造上面这些值。而 `ProfileView::new`
-//! 恰好把两个 revision 直接置成 `Counter::ZERO` —— 那是契约层为桌面形态预留的
-//! **占位常量**，一旦被当成真实版本号填进去，`ConfigRevisionMismatch` /
-//! `RuntimeEpochMismatch` 判定就永久失效：所有连接看起来都是"第 0 版"。
+//! 下表逐项核对过实现，**7 项全部已实现**，均不依赖占位常量：
 //!
-//! 这正是开发计划 :84 禁止的"把新语义伪映射成旧对象"：不写 owner、不写权限，
-//! 而是把语义**编造**成能通过编译的样子。因此：
+//! | 方法要求的字段 | 落地位置 | 状态 |
+//! | --- | --- | --- |
+//! | `ProfileView::config_revision` | 配置源从 `ProfileMetadata::config_revision` 取持久化值；改配置、禁用连接时单调推进 | 已实现 |
+//! | `ProfileView::credential_revision` | 同上取 `ProfileMetadata::credential_revision`；改密时推进，写入前校验一致 | 已实现 |
+//! | `ProfileView::enabled` | 从 `ProfileMetadata::enabled` 取值；禁用时同时推进 `config_revision` | 已实现 |
+//! | `RuntimeEpoch`（attach / get / close_session） | 由会话租约句柄的 epoch 构造，按 epoch 索引注册表，不匹配时报"epoch 不再匹配" | 已实现 |
+//! | 幂等记录（submission token / `idempotency_key`） | 用例层的 receipts 台账；重放返回 `IdempotencyConflict` | 已实现 |
+//! | `attachment_token`（attach / detach） | attach 校验、detach 解除；上下文变更时轮换 | 已实现 |
+//! | `stream_id`（`subscribe_events`） | `open_session` 回执携带 `stream_id`，订阅按 `StreamId` 进行 | 已实现 |
 //!
-//! * `ApplicationServices` **不构造**，`sessions` **不接线**；
-//! * [`PlatformAdapter::application_services`] 恒为 `None`；
-//! * 需要它的调用点走 [`PlatformAdapter::require_application_services`]，拿到的是
-//!   明确的 `CapabilityUnsupported`，而不是一个半真半假的会话。
+//! 版本号溢出按 `PortError::BackendUnavailable` 处理，不回绕。
 //!
-//! 补齐路径是**给旧运行时加真实的版本/世代/幂等列**，不是在本文件里造常量。
+//! 关于 `ProfileView::new`：该默认构造器仍把两个 revision 置为 `Counter::ZERO`，
+//! 但桌面配置源不使用它的默认值，而是逐字段覆盖为持久化元数据
+//! （`repositories.rs` 的 `DesktopProfiles::record`）。全树 `Counter::ZERO` 只出现在
+//! 测试夹具里，生产路径不产生它——因此 `ConfigRevisionMismatch` /
+//! `RuntimeEpochMismatch` 判定仍然有效，不存在"全是第 0 版"的问题。
 //!
 //! ## 为什么不放 no-op 实现
 //!
@@ -63,35 +63,32 @@ use super::identity::{DesktopIdentity, OwnerIntent};
 /// 组装进度。用来把"当前缺哪一步"变成可读的常量，而不是散落在注释里。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssemblyState {
-    /// 第 1–5 步（DriverRegistry / Store / repositories / 环境适配）由既有 bootstrap 提供，
-    /// 第 8 步的身份组装已就绪。
+    /// 身份与 owner 组装已就绪，第 6、7 步尚未注入。
     IdentityReady,
-    /// 第 6 步（Runtime）尚未接线。
-    AwaitingRuntime,
-    /// 第 7 步（`ApplicationServices`）尚未接线——见模块头的"为什么仍然是空的"。
+    /// 第 6 步（Runtime）已注入，第 7 步尚未注入。
     AwaitingApplicationServices,
+    /// §6.2 九步全部落地。
+    FullyWired,
 }
-
-/// 当前组装状态。
-///
-/// 三个 flag 同时成立：第 6、7 步都还没到，**因此**第 8 步只能提供身份与失败关闭，
-/// 不能提供用例调用。写成常量而不是运行时判断，是为了让"接线了没有"这件事
-/// 出现在代码评审的 diff 里，而不是藏在某个 `Option::is_some()` 后面。
-pub const ASSEMBLY_STATE: AssemblyState = AssemblyState::AwaitingApplicationServices;
 
 impl AssemblyState {
     /// §6.2 中**尚未**落地的步骤，按顺序。供日志与启动自检打印，避免"为什么不能用"。
+    ///
+    /// 每项的第二个元素是"补上这一步之后"的 [`AssemblyState`]。
     pub fn missing_steps(self) -> &'static [(&'static str, AssemblyState)] {
         match self {
-            AssemblyState::IdentityReady => &[],
-            AssemblyState::AwaitingRuntime => &[("§6.2-6 Runtime", AssemblyState::AwaitingRuntime)],
-            AssemblyState::AwaitingApplicationServices => &[
-                ("§6.2-6 Runtime", AssemblyState::AwaitingRuntime),
+            AssemblyState::IdentityReady => &[
+                ("§6.2-6 Runtime", AssemblyState::AwaitingApplicationServices),
                 (
                     "§6.2-7 ApplicationServices",
                     AssemblyState::AwaitingApplicationServices,
                 ),
             ],
+            AssemblyState::AwaitingApplicationServices => &[(
+                "§6.2-7 ApplicationServices",
+                AssemblyState::AwaitingApplicationServices,
+            )],
+            AssemblyState::FullyWired => &[],
         }
     }
 }
@@ -148,8 +145,20 @@ impl PlatformAdapter {
         }
     }
 
+    /// 当前组装进度。**从注入事实推导**，读 `runtime` / `services` 两个 `OnceLock`。
+    ///
+    /// 早先这里是 `ASSEMBLY_STATE` 常量。该常量由 [`PlatformAdapter::inject`] 与
+    /// 各写各的：`inject()` 只写 `OnceLock`、从不回写常量，因此常量自落地起就没被推进过，
+    /// 一直是 `AwaitingApplicationServices`，而实际早已 `FullyWired`。改为推导后，
+    /// 状态不可能再与注入事实脱节。
     pub fn assembly_state(&self) -> AssemblyState {
-        ASSEMBLY_STATE
+        if self.services.get().is_some() {
+            AssemblyState::FullyWired
+        } else if self.runtime.get().is_some() {
+            AssemblyState::AwaitingApplicationServices
+        } else {
+            AssemblyState::IdentityReady
+        }
     }
 
     pub fn identity(&self) -> &DesktopIdentity {
@@ -188,23 +197,23 @@ impl PlatformAdapter {
         bridge::require_bridge()
     }
 
-    /// §6.2 第 7 步尚未接线，因此**恒为** `None`。
+    /// 取已注入的 `ApplicationServices`。
     ///
-    /// 保留这个方法而不是删掉，是为了让调用点写出的 `None` 指向一个已知原因，
-    /// 而不是"忘了注入"。
+    /// §6.2 第 6、7 步由 [`PlatformAdapter::inject`] 落位（调用点
+    /// `bootstrap/app_state.rs`）；注入之后这里返回实际构造的实例，
+    /// 注入之前为 `None`。保留 `Option` 是为了让调用点能区分"未注入"与"注入失败"。
     pub fn application_services(&self) -> Option<Arc<ApplicationServices>> {
         self.services.get().cloned()
     }
 
-    /// 需要应用服务时调用；未接线 ⇒ 明确报错，不回落旧路径。
+    /// 需要应用服务时调用；未注入 ⇒ 明确报错，不回落旧路径。
     pub fn require_application_services(&self) -> Result<Arc<ApplicationServices>, ApiError> {
         self.application_services().ok_or_else(|| {
             ApiError::new(
                 ApiErrorCode::CapabilityUnsupported,
-                "ApplicationServices 未接线（概要 §6.2 第 6/7 步未落地）：\
-                 桌面运行时缺 config/credential revision、runtime epoch、幂等记录、\
-                 attachment token 与事件流，无法在不编造值的前提下实现 13 个连接用例；\
-                 因此此处不做回落，也不得改走旧共享 session",
+                "ApplicationServices 未注入（§6.2 第 6/7 步未落位）：\
+                 启动装配尚未调用 PlatformAdapter::inject，或在注入完成前就发起了用例调用；\
+                 此处不做回落，也不得改走旧共享 session",
             )
         })
     }
@@ -343,9 +352,12 @@ impl PlatformEntry {
         self.inner.as_ref().map_err(|err| err.clone())
     }
 
-    /// 当前组装进度。失败与未接线都指向 §6.2 尚未落地的步骤，不假装已完成。
+    /// 当前组装进度。组装失败或 `inject()` 之前指向 §6.2 尚未落地的步骤，不假装已完成。
     pub fn assembly_state(&self) -> AssemblyState {
-        ASSEMBLY_STATE
+        match self.inner.as_ref() {
+            Ok(adapter) => adapter.assembly_state(),
+            Err(_) => AssemblyState::IdentityReady,
+        }
     }
 }
 
@@ -362,10 +374,13 @@ mod tests {
     }
 
     #[test]
-    fn assembly_state_reports_exactly_the_missing_steps() {
+    fn assembly_state_is_derived_from_injection_not_hand_kept() {
         let adapter = adapter();
-        assert_eq!(adapter.assembly_state(), ASSEMBLY_STATE);
-        let missing: Vec<&str> = ASSEMBLY_STATE
+        // 未调用 inject() ⇒ 只有身份就绪，第 6、7 步都还没注入。
+        // 这条断言读的是 OnceLock 推导结果，不是常量，因此注入逻辑写错时会失败。
+        assert_eq!(adapter.assembly_state(), AssemblyState::IdentityReady);
+        let missing: Vec<&str> = adapter
+            .assembly_state()
             .missing_steps()
             .iter()
             .map(|(name, _)| *name)
@@ -375,7 +390,14 @@ mod tests {
             vec!["§6.2-6 Runtime", "§6.2-7 ApplicationServices"],
             "缺哪两步必须可枚举，否则调用方无法定位"
         );
-        assert!(AssemblyState::IdentityReady.missing_steps().is_empty());
+        // 每条缺步记录的目标状态必须比当前状态靠后，否则"补齐到哪"是错的。
+        for (_, after) in AssemblyState::IdentityReady.missing_steps() {
+            assert_ne!(*after, AssemblyState::IdentityReady);
+        }
+        // 注入完成后的状态不得再声称缺步。
+        assert!(AssemblyState::FullyWired.missing_steps().is_empty());
+        // 组装状态与注入事实必须一致：此刻未注入，就取不到应用服务。
+        assert!(adapter.application_services().is_none());
         assert_eq!(adapter.identity().principal_id().as_str(), "alice");
         assert!(adapter.handles().is_empty());
     }
@@ -475,22 +497,17 @@ mod tests {
         let adapter = adapter();
         assert!(
             adapter.application_services().is_none(),
-            "第 7 步未接线时不得凭空造出 ApplicationServices"
+            "inject() 之前不得凭空造出 ApplicationServices"
         );
         let err = adapter
             .require_application_services()
             .err()
-            .expect("未接线必须报错");
+            .expect("未注入必须报错");
         assert_eq!(err.code, ApiErrorCode::CapabilityUnsupported);
-        // 报错必须说明缺哪些事实，否则调用方无法定位。
-        for needle in [
-            "§6.2",
-            "config/credential revision",
-            "runtime epoch",
-            "幂等记录",
-            "attachment token",
-            "不得改走旧共享 session",
-        ] {
+        // 报错必须说明未注入这件事，否则调用方无法定位是启动装配漏了哪一步。
+        // 注意：这里断言的"原因"必须与实际状态一致——7 项字段已实现，
+        // 未注入的真实原因是第 6/7 步没跑，不是"字段不存在"。
+        for needle in ["§6.2", "未注入", "inject", "不得改走旧共享 session"] {
             assert!(
                 err.message.contains(needle),
                 "报错缺少「{needle}」：{}",
@@ -535,7 +552,13 @@ mod tests {
     /// 这正是"伪映射"会落进去的洞：把常量 0 当成真实版本号填进去，
     /// `ConfigRevisionMismatch` 判定会永久失效。本测试把这个事实钉住。
     #[test]
-    fn profile_view_defaults_expose_the_fabrication_trap() {
+    /// `ProfileView::new` 的默认值**仍是编造值**——两个 revision 都是 ZERO、永远相等，
+    /// `enabled` 也只能是 true。这条测试现在守护的是"默认值不可用于生产路径"：
+    /// 桌面配置源 `DesktopProfiles` 必须逐字段覆盖成持久化元数据，
+    /// 否则 `ConfigRevisionMismatch` / `RuntimeEpochMismatch` 判定会永久失效。
+    /// 它**不再**是"所以不能接线"的论据——7 项字段已各自有真实来源（见模块文档表格）。
+    #[test]
+    fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_path() {
         use datazen_platform_api::dto::profile::ProfileView;
         use datazen_platform_api::id::{ConnectionId, Counter};
 
@@ -545,7 +568,12 @@ mod tests {
         assert_eq!(view.credential_revision, Counter::ZERO);
         // 两个 revision 因此永远相等 ⇒ 版本不一致判定不可用。
         assert_eq!(view.config_revision, view.credential_revision);
-        // enabled 同样只能取默认值 true，而旧 ConnectionConfig 连这个列都没有。
+        // enabled 同样只能取默认值 true；桌面配置源改从 metadata.enabled 取。
         assert!(view.enabled);
+        // 对照：配置源用了带修订的构造器，两个 revision 必须真的不同。
+        let real = view
+            .with_config_revision(Counter::new(7))
+            .with_credential_revision(Counter::new(3));
+        assert_ne!(real.config_revision, real.credential_revision);
     }
 }

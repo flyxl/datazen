@@ -23,11 +23,9 @@
 //!    两者并存但互不写入，迁移缺口在 [`handles`] 的文档与测试里写明（CM-73 "不改"）。
 //! 2. **不为"接口齐全"补空壳。**
 //!    [`ConnectionUseCases`](datazen_application::sessions::ConnectionUseCases) 的 13 个方法
-//!    本 track **不实现**。理由不是省事：每一个方法都要求旧实现**并不具备**的字段
-//!    （`config_revision` / `credential_revision` / `runtime_epoch` / 幂等记录 /
-//!    `attachment_token` / `stream_id`）。硬接就只能凭空造 revision 与 epoch，
-//!    那正是 :84 禁止的伪映射（概要 §2.6 也要求迁移期丢弃不透明 revision）。详见
-//!    [`adapter`] 的模块文档。
+//!    由 `RuntimeConnectionUseCases` **逐个实现**，没有任何返回空 Vec 或假 `SessionView`
+//!    的空壳：revision、epoch、幂等记录、`attachment_token`、`stream_id` 都取真实来源，
+//!    逐项落地位置见 [`adapter`] 的模块文档。
 //! 3. **未注入即报错。**
 //!    [`bridge`] 是给前端桥预留的注入口；未注入时 [`bridge::require_bridge`] 返回带固定
 //!    文案的错误，**不静默回退到 Tauri 直连**（概要 §7.4）。后端侧对应的显式错误入口是
@@ -38,10 +36,13 @@
 //! §6.2 的顺序是 `1 DriverRegistry → 2 Store → 3 repositories → 4 环境适配 → 5 运行时适配
 //! → 6 Runtime → 7 ApplicationServices → 8 Tauri command 窄适配 → 9 state.manage`。
 //!
-//! 本 track 在第 8 步落位：identity / owner / error / bridge / handle registry 就绪，
-//! 第 6 步 `Runtime` 与第 7 步 `ApplicationServices::new` 的 `sessions` 实参缺席，
-//! 因此 [`adapter::PlatformAdapter::application_services`] 恒为 `None`，
-//! 取用方必须走 [`adapter::PlatformAdapter::require_application_services`] 拿到显式错误。
+//! 本 track 覆盖第 3、6、7、8 步。第 6、7 步由
+//! [`adapter::PlatformAdapter::inject`] 组装（`DesktopProfiles` +
+//! `DesktopSessionBackend` + `RuntimeConnectionUseCases` + `ApplicationServices`），
+//! 调用点在 `bootstrap/app_state.rs`。注入之后
+//! [`adapter::PlatformAdapter::application_services`] 返回实际构造的实例；
+//! **注入之前**取用方走 [`adapter::PlatformAdapter::require_application_services`]，
+//! 拿到带固定文案的显式错误，而不是一个半真半假的会话。
 
 pub mod adapter;
 pub mod bridge;
@@ -56,7 +57,7 @@ pub mod resource_mapping;
 pub mod session_backend;
 pub mod session_commands;
 
-pub use adapter::{PlatformAdapter, PlatformEntry, ASSEMBLY_STATE};
+pub use adapter::{AssemblyState, PlatformAdapter, PlatformEntry};
 pub use bridge::{BridgeInjection, FrontendBridge};
 pub use error::into_command_error;
 pub use handles::{HandleKey, SessionHandleRegistry, SessionScopedHandle};
