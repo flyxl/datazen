@@ -506,7 +506,6 @@ mod tests {
     /// 这正是"伪映射"会落进去的洞：把常量 0 当成真实版本号填进去，
     /// `ConfigRevisionMismatch` 判定会永久失效。本测试把这个事实钉住。
     #[test]
-    #[test]
     fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_path() {
         use datazen_platform_api::dto::profile::ProfileView;
         use datazen_platform_api::id::{ConnectionId, Counter};
