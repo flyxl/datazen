@@ -145,10 +145,10 @@ pub struct JobDetails {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recovery: Option<JobRecoveryResult>,
     /// Bounded handler receipts, one per completed stage. Free-form text is excluded.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub domain_results: Vec<JobDomainResult>,
     /// Stable connection/object identity used only to scope explicit post-restart verification.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub recovery_targets: Vec<JobRecoveryTarget>,
     /// Optional stable before-state fingerprint for explicit post-restart verification.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -320,6 +320,44 @@ mod tests {
             error: None,
             progress: JobProgress::default(),
         }
+    }
+
+    #[test]
+    fn empty_job_details_keep_client_collection_contract() {
+        let details = JobDetails {
+            job: job_view(),
+            state_version: crate::id::JobStateVersion::new(1),
+            plan_id: None,
+            plan_digest: None,
+            selection_revision: None,
+            commit_boundaries: Vec::new(),
+            recovery: None,
+            domain_results: Vec::new(),
+            recovery_targets: Vec::new(),
+            target_before_fingerprint: None,
+            recovery_policy: None,
+        };
+        let mut value = serde_json::to_value(&details).expect("serialize details");
+        for key in ["commitBoundaries", "domainResults", "recoveryTargets"] {
+            assert_eq!(
+                value[key],
+                json!([]),
+                "client requires {key} even before a stage completes"
+            );
+        }
+        // Old persisted records may omit these collections; reads remain compatible.
+        value
+            .as_object_mut()
+            .expect("details object")
+            .remove("domainResults");
+        value
+            .as_object_mut()
+            .expect("details object")
+            .remove("recoveryTargets");
+        assert_eq!(
+            serde_json::from_value::<JobDetails>(value).expect("legacy details"),
+            details
+        );
     }
 
     #[test]
