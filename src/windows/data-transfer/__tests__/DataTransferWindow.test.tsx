@@ -1578,7 +1578,8 @@ describe('DataTransferWindow', () => {
     prepareTransferJobMock.mockRejectedValueOnce(new Error('preview boom'));
     fireEvent.click(screen.getByTestId('data-transfer-next'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview-error')).toBeTruthy());
-    expect(prepareKeys).toEqual(['data-transfer/prepare/1']);
+    expect(prepareKeys).toHaveLength(1);
+    expect(prepareKeys[0]).toMatch(/^data-transfer\/prepare\/[^/]+\/1$/);
 
     // A retry is a new admission, not a replay: reusing the key would let the
     // backend answer it from an older prepare Job's receipt, which is exactly
@@ -1586,7 +1587,14 @@ describe('DataTransferWindow', () => {
     prepareTransferJobMock.mockResolvedValueOnce(previewSuccess);
     fireEvent.click(screen.getByTestId('data-transfer-preview-retry'));
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
-    expect(prepareKeys).toEqual(['data-transfer/prepare/1', 'data-transfer/prepare/2']);
+    expect(prepareKeys).toHaveLength(2);
+    expect(prepareKeys[1]).toBe(prepareKeys[0]?.replace(/\/1$/, '/2'));
+    cleanup();
+    await advanceToMappingStep();
+    fireEvent.click(screen.getByTestId('data-transfer-next'));
+    await waitFor(() => expect(prepareKeys).toHaveLength(3));
+    expect(prepareKeys[2]).toMatch(/^data-transfer\/prepare\/[^/]+\/1$/);
+    expect(prepareKeys[2]).not.toBe(prepareKeys[0]);
   });
 
   it('advances to preview error state instead of blank when preview fails from mapping', async () => {
@@ -1705,9 +1713,7 @@ describe('DataTransferWindow', () => {
     await waitFor(() => expect(screen.getByTestId('data-transfer-preview')).toBeTruthy());
     expect(prepareTransferJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        tables: [
-          expect.objectContaining({ sourceTable: 'users', targetTable: 'users_archive' }),
-        ],
+        tables: [expect.objectContaining({ sourceTable: 'users', targetTable: 'users_archive' })],
       }),
     );
   });
@@ -1964,10 +1970,9 @@ describe('DataTransferWindow', () => {
       'active',
     );
 
-    await waitFor(
-      () => expect(screen.queryByTestId('data-transfer-job-active-state')).toBeNull(),
-      { timeout: 5000 },
-    );
+    await waitFor(() => expect(screen.queryByTestId('data-transfer-job-active-state')).toBeNull(), {
+      timeout: 5000,
+    });
     const verdict = screen.getByTestId('data-transfer-job-verdict');
     expect(verdict).toHaveAttribute('data-severity', 'failed');
     expect(verdict).toHaveAttribute('data-cancel-disposition', 'settledRolledBack');
@@ -2158,7 +2163,10 @@ describe('DataTransferWindow', () => {
       'data-verdict-severity',
       'uncertain',
     );
-    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute('data-requires-reconcile', 'true');
+    expect(screen.getByTestId('data-transfer-result')).toHaveAttribute(
+      'data-requires-reconcile',
+      'true',
+    );
     expect(screen.getByTestId('data-transfer-job-verdict')).toHaveAttribute(
       'data-uncertainty',
       'effectOutcomeUnknown',
@@ -2245,7 +2253,10 @@ describe('DataTransferWindow', () => {
       'failed',
     );
     expect(screen.getByTestId('data-transfer-result')).toHaveAttribute('data-completed', 'false');
-    expect(screen.getByTestId('data-transfer-job-verdict')).toHaveAttribute('data-cancel-disposition', 'none');
+    expect(screen.getByTestId('data-transfer-job-verdict')).toHaveAttribute(
+      'data-cancel-disposition',
+      'none',
+    );
     expect(screen.getByTestId('data-transfer-job-verdict-status')).toHaveTextContent(
       'migration.verdict.failed',
     );

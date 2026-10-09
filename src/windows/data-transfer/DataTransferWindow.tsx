@@ -49,10 +49,7 @@ import {
   TransferPairingNote,
 } from '../../components/migration/MigrationEndpointsBar';
 import { MigrationRunHistoryDialog } from '../../components/migration/MigrationRunHistoryDialog';
-import {
-  normalizeColumnMappings,
-  mappingGateAllowsAdvance,
-} from './transferMappingView';
+import { normalizeColumnMappings, mappingGateAllowsAdvance } from './transferMappingView';
 import { MappingGateNotice } from './MappingGateNotice';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
 import {
@@ -154,6 +151,7 @@ export function DataTransferWindow() {
   const [profileName, setProfileName] = useState('');
   const profileMappingsRef = useRef<TransferTableMapping[] | null>(null);
   const prepareSeqRef = useRef(0);
+  const [prepareScope] = useState(() => crypto.randomUUID());
   /**
    * The rows as they are *now*, not as they were when the user clicked
    * Next. Synced by effect (never assigned during render) so the post-await
@@ -175,12 +173,9 @@ export function DataTransferWindow() {
    */
   const nextPrepareKey = useCallback(() => {
     prepareSeqRef.current += 1;
-    return `data-transfer/prepare/${prepareSeqRef.current}`;
-  }, []);
-  const applyKeyForPlan = useCallback(
-    (planId: string) => `data-transfer/apply/${planId}`,
-    [],
-  );
+    return `data-transfer/prepare/${prepareScope}/${prepareSeqRef.current}`;
+  }, [prepareScope]);
+  const applyKeyForPlan = useCallback((planId: string) => `data-transfer/apply/${planId}`, []);
 
   useEffect(() => {
     void loadSettings();
@@ -761,79 +756,69 @@ export function DataTransferWindow() {
         setLoading(false);
       }
     },
-    [
-      refreshEndpointSessions,
-      buildJob,
-      prepareJob,
-      lastJobFailure,
-      nextPrepareKey,
-      t,
-    ],
+    [refreshEndpointSessions, buildJob, prepareJob, lastJobFailure, nextPrepareKey, t],
   );
 
-  const runExecute = useCallback(
-    async () => {
-      const sessions = await refreshEndpointSessions();
-      const job = buildJob(sessions);
-      if (!job) return;
-      if (destinationMode === 'database' && targetReadOnly) {
-        setErrorMsg(t('transfer.readOnlyBlock'));
-        setErrorOpen(true);
-        return;
-      }
-      // The plan must come from `prepare`. Reading it off `preview` alone would
-      // let the window apply a plan the hook never saw admitted, which is the
-      // "spend it exactly once" rule stated backwards.
-      const admitted = jobRun.prepareView;
-      if (!admitted || !preview) {
-        setErrorMsg(t('migrationJob.reprepareOnStalePlan'));
-        setErrorOpen(true);
-        setPreview(null);
-        setStep('mapping');
-        return;
-      }
-      setExecuting(true);
-      const tableCount =
-        tables.length > 0
-          ? job.tables.filter((tbl) => tbl.enabled).length
-          : Math.max(preview?.writePlans.length ?? 0, preview?.ddl.length ?? 0);
-      setExecuteProgress(t('transfer.executingProgress', { count: tableCount }));
-      // An absent selection means "every table the plan froze", which is
-      // exactly the SQL-file case where the UI never inspected a target. An
-      // explicit empty list would instead disable every table in the plan.
-      const sourceTables =
-        destinationMode === 'sqlFile' && tables.length === 0
-          ? undefined
-          : job.tables.filter((table) => table.enabled).map((table) => table.sourceTable);
-      try {
-        const view = await applyJob({
-          sourceTables,
-          confirmedDestructive,
-          idempotencyKey: applyKeyForPlan(admitted.planId),
-        });
-        // A refusal (scope, budget, consumed plan) leaves `view` null and the
-        // hook renders the fail-closed notice. Falling through to the result
-        // step here would present a refusal as if a run had settled.
-        setStep(view ? 'result' : 'preview');
-      } finally {
-        setExecuting(false);
-        setExecuteProgress('');
-      }
-    },
-    [
-      refreshEndpointSessions,
-      buildJob,
-      jobRun.prepareView,
-      applyJob,
-      applyKeyForPlan,
-      preview,
-      targetReadOnly,
-      destinationMode,
-      tables.length,
-      confirmedDestructive,
-      t,
-    ],
-  );
+  const runExecute = useCallback(async () => {
+    const sessions = await refreshEndpointSessions();
+    const job = buildJob(sessions);
+    if (!job) return;
+    if (destinationMode === 'database' && targetReadOnly) {
+      setErrorMsg(t('transfer.readOnlyBlock'));
+      setErrorOpen(true);
+      return;
+    }
+    // The plan must come from `prepare`. Reading it off `preview` alone would
+    // let the window apply a plan the hook never saw admitted, which is the
+    // "spend it exactly once" rule stated backwards.
+    const admitted = jobRun.prepareView;
+    if (!admitted || !preview) {
+      setErrorMsg(t('migrationJob.reprepareOnStalePlan'));
+      setErrorOpen(true);
+      setPreview(null);
+      setStep('mapping');
+      return;
+    }
+    setExecuting(true);
+    const tableCount =
+      tables.length > 0
+        ? job.tables.filter((tbl) => tbl.enabled).length
+        : Math.max(preview?.writePlans.length ?? 0, preview?.ddl.length ?? 0);
+    setExecuteProgress(t('transfer.executingProgress', { count: tableCount }));
+    // An absent selection means "every table the plan froze", which is
+    // exactly the SQL-file case where the UI never inspected a target. An
+    // explicit empty list would instead disable every table in the plan.
+    const sourceTables =
+      destinationMode === 'sqlFile' && tables.length === 0
+        ? undefined
+        : job.tables.filter((table) => table.enabled).map((table) => table.sourceTable);
+    try {
+      const view = await applyJob({
+        sourceTables,
+        confirmedDestructive,
+        idempotencyKey: applyKeyForPlan(admitted.planId),
+      });
+      // A refusal (scope, budget, consumed plan) leaves `view` null and the
+      // hook renders the fail-closed notice. Falling through to the result
+      // step here would present a refusal as if a run had settled.
+      setStep(view ? 'result' : 'preview');
+    } finally {
+      setExecuting(false);
+      setExecuteProgress('');
+    }
+  }, [
+    refreshEndpointSessions,
+    buildJob,
+    jobRun.prepareView,
+    applyJob,
+    applyKeyForPlan,
+    preview,
+    targetReadOnly,
+    destinationMode,
+    tables.length,
+    confirmedDestructive,
+    t,
+  ]);
 
   const handleExecuteClick = useCallback(() => {
     if (writeMode !== 'insert') {
@@ -1799,7 +1784,11 @@ export function DataTransferWindow() {
               the accepted receipt arrives, the same control is addressable by
               that id while the worker continues in the background. */}
           {step === 'preview' && executing && jobRun.cancelTargetJobId === null && (
-            <p role="status" className="text-sm text-fg-muted" data-testid="data-transfer-cancel-pending-id">
+            <p
+              role="status"
+              className="text-sm text-fg-muted"
+              data-testid="data-transfer-cancel-pending-id"
+            >
               {t('migration.cancel.unknownJob')}
             </p>
           )}
@@ -1834,7 +1823,11 @@ export function DataTransferWindow() {
                 {t('migration.verdict.rereview')}
               </Button>
               {reconcilePending && (
-                <p role="status" data-testid="data-transfer-rereview-blocked" className="text-sm text-fg-muted">
+                <p
+                  role="status"
+                  data-testid="data-transfer-rereview-blocked"
+                  className="text-sm text-fg-muted"
+                >
                   {t('migration.verdict.rereviewBlocked')}
                 </p>
               )}

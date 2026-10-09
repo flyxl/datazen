@@ -631,8 +631,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     ).toBe(true);
   });
 
-  it('SYNC-REAL-026: streams and applies a plan larger than the former 64 MiB load limit', async function () {
-    this.timeout(300000);
+  it('SYNC-REAL-026: streams and applies a plan larger than the former 64 MiB load limit', async () => {
     const valueBytes = 14 * 1024;
     const expectedRows = 5000;
     const options = { ...SYNC_EXEC_OPTIONS, batchSize: 500 };
@@ -689,10 +688,9 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       [2500, valueBytes],
       [5000, valueBytes],
     ]);
-  });
+  }).timeout(300000);
 
-  it('SYNC-REAL-027: later-batch conflict preserves and reports exactly the committed first batch', async function () {
-    this.timeout(180000);
+  it('SYNC-REAL-027: later-batch conflict preserves and reports exactly the committed first batch', async () => {
     await runSQL(
       srcSessionId,
       `CREATE TABLE sync_stream_rollback (id integer PRIMARY KEY, val text NOT NULL);
@@ -733,7 +731,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       ...Array.from({ length: 500 }, (_, id) => [id, `source-${id}`]),
       [500, 'target-concurrent'],
     ]);
-  });
+  }).timeout(180000);
 
   it('SYNC-REAL-010: stale target schema rejects before write', async () => {
     await runSQL(
