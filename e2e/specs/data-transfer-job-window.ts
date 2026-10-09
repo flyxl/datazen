@@ -559,7 +559,16 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     expect(settledBackgroundJob.state).toBe('succeeded');
     expect(Number(settledBackgroundJob.progress.committed)).toBe(BULK_ROWS);
     expect(await targetRowCount(BULK_TABLE)).toBe(BULK_ROWS);
-    expect(await exists('[data-testid="data-transfer-attached-job"]')).toBe(false);
+    // Backend settlement can precede the window's next hydration poll.
+    // Require the UI to converge, rather than observing it between ticks.
+    await browser.waitUntil(
+      async () => !(await exists('[data-testid="data-transfer-attached-job"]')),
+      {
+        timeout: 10000,
+        interval: 250,
+        timeoutMsg: 'completed background Job remained in the active-job projection',
+      },
+    );
 
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
