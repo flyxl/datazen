@@ -1088,7 +1088,9 @@ export function DataTransferWindow() {
       <DataTransferTerminalResults
         jobs={migrationJobs.hydration?.jobs ?? []}
         excludeJobId={jobRun.applyView?.jobId}
-        hide={jobRun.applyView !== null}
+        // Once a new run is preparing, an older completed report must not
+        // impersonate the new run while its admission is still in flight.
+        hide={jobRun.phase !== 'idle'}
       />
 
       <div className="border-b border-edge px-6 py-3">
