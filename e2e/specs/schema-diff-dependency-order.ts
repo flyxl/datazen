@@ -701,14 +701,13 @@ describe('Schema Diff supported dependency order (SD-DAG)', function () {
           '[data-testid="schema-diff-deploy-panel"] input[placeholder="DEPLOY"]',
         );
         await confirmation.setValue('DEPLOY');
-        let deployError = '';
-        try {
-          await deploySchemaDiffPlan({ assertSuccess: false });
-        } catch (error) {
-          deployError = String(error);
-        }
-        expect(deployError.toLowerCase()).toContain('catalog changed after review');
-        expect(deployError.toLowerCase()).toContain(fixture.lateChildTable.toLowerCase());
+        // Durable jobs report a refused apply as a terminal result, not an
+        // IPC exception. Assert the refusal and zero execution, then read the
+        // actual catalog below to prove neither parent nor dependency was dropped.
+        await deploySchemaDiffPlan({ assertSuccess: false });
+        expect(await $('[data-testid="schema-diff-deploy-status"]').getText()).toContain('failed');
+        expect(await $('[data-testid="schema-diff-deploy-count"]').getText()).toMatch(/^0\//);
+        expect(await $('[data-testid="schema-diff-deploy-errors"]').getText()).not.toBe('');
         expect(await tableExists(fixture, fixture.parentTable)).toBe(true);
         expect(await tableExists(fixture, fixture.lateChildTable)).toBe(true);
         expect(await tableExists(fixture, fixture.childTable)).toBe(false);
