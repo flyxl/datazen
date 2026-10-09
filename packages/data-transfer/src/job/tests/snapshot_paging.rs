@@ -110,3 +110,38 @@ fn snapshot_paging_does_not_relax_mysql_resume_key_admission() {
         );
     }
 }
+
+#[test]
+fn snapshot_offset_page_preserves_recordset_predicates_and_bound_parameters() {
+    let schema = schema_with_snapshot(&["id", "name"]);
+    let driver = FakeDb {
+        rows: vec![],
+        schema,
+        state: Mutex::new(State::default()),
+        commit_error_after_effect: false,
+        slow: None,
+    };
+    for predicate in ["WHERE id > ?", "id > ?"] {
+        let scope = crate::recordset::SourceScope {
+            where_sql: Some(predicate.into()),
+            recordset_sql: None,
+            params: vec![],
+            count_params: vec![Value::String("9007199254740993".into())],
+        };
+        let (sql, params) = crate::resume::fingerprint::build_snapshot_offset_page(
+            &driver,
+            "SELECT id, name FROM t",
+            &scope,
+            &["id".into()],
+            4,
+            2,
+            '"',
+        )
+        .unwrap();
+        assert_eq!(
+            sql,
+            "SELECT id, name FROM t WHERE (id > ?) ORDER BY \"id\" LIMIT 2 OFFSET 4"
+        );
+        assert!(matches!(&params[..], [Value::String(value)] if value == "9007199254740993"));
+    }
+}

@@ -252,9 +252,15 @@ pub(crate) fn build_snapshot_offset_page(
     }
     let mut sql = select_from.to_string();
     if let Some(filter) = scope.where_sql.as_deref() {
-        sql.push_str(" WHERE (");
-        sql.push_str(filter);
-        sql.push(')');
+        let predicate = filter
+            .trim()
+            .strip_prefix("WHERE ")
+            .unwrap_or(filter.trim());
+        if !predicate.is_empty() {
+            sql.push_str(" WHERE (");
+            sql.push_str(predicate);
+            sql.push(')');
+        }
     }
     sql.push_str(" ORDER BY ");
     sql.push_str(
