@@ -76,17 +76,17 @@ Preview 包含：
 - 前缀长度索引与表达式索引（例如 `name(10)`）；
 - 索引或外键引用了未勾选迁移的表；
 - 索引/外键列未映射或被跳过；
-- 命名冲突：索引与外键名在目标命名空间内重复时要求先重命名源对象。命名空间与大小写敏感性由 target adapter 决定：按表隔离索引名、大小写敏感的目标（如 Postgres）可共存；按 schema 隔离、大小写不敏感的目标则视为冲突。
+- 命名冲突：索引与外键名在目标命名空间内重复时要求先重命名源对象。命名空间与大小写规则由 target adapter 决定。例如 MySQL 允许不同表使用同名索引，而 PostgreSQL 的同一 schema 共享索引名称，跨表重名必须先处理。
 
 ## 当前限制
 
 Data Transfer 当前主要面向基表。它不承诺迁移视图、函数、触发器、存储过程等完整数据库对象生态；具体支持范围由当前 Driver adapter 和 UI 能力决定。
 
-当前没有表级断点续传；Cancel 针对当前 transfer job。
+普通传输与断点续传分别校验。对于具备完整主键和一致性快照、但不满足游标续传条件的源表（例如 MySQL BIGINT 主键或文本复合主键），普通传输在同一次快照中按主键排序、分页读取，并保持缓冲和批次大小限制；取消或失败后禁止复用该快照的分页位置续写，必须重新审阅。Cancel 针对当前 transfer job。
 
 ## 代码位置
 
-- Backend：`src-tauri/src/data_transfer/`
-- IR / DDL：`src-tauri/src/transfer/`
+- 传输引擎与任务管道：`packages/data-transfer/src/`
+- IR / DDL：`packages/data-transfer/src/structure.rs` 与对应 Driver adapter
 - IPC：`src-tauri/src/commands/data_transfer/`
 - Frontend：`src/windows/data-transfer/`
