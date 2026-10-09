@@ -250,6 +250,9 @@ pub(crate) fn execution_response_from_result(
 ) -> DataSyncExecutionResponse {
     match result {
         Ok(result) => DataSyncExecutionResponse::from_result(result),
+        Err(CommandError::DataSyncPartiallyApplied(committed)) => {
+            DataSyncExecutionResponse::partially_applied(committed)
+        }
         Err(CommandError::DataSyncOutcomeUnknown(error)) => {
             DataSyncExecutionResponse::unknown(error)
         }

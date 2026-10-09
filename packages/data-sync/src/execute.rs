@@ -51,6 +51,7 @@ fn is_zero(value: &usize) -> bool {
 pub enum ExecutionOutcome {
     NotStarted,
     Committed,
+    PartiallyApplied,
     RolledBack,
     Unknown,
 }
@@ -79,6 +80,21 @@ impl DataSyncExecutionResponse {
             result,
             outcome,
             error: None,
+        }
+    }
+
+    pub fn partially_applied(committed: u64) -> Self {
+        Self {
+            result: ExecutionResult {
+                applied: committed as usize,
+                affected_rows: committed,
+                rolled_back: false,
+                rollback_reason: None,
+                skipped: 0,
+                conflicts: Vec::new(),
+            },
+            outcome: ExecutionOutcome::PartiallyApplied,
+            error: Some("Some batches committed before execution stopped. Compare current data before continuing.".into()),
         }
     }
 

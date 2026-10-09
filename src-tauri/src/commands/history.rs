@@ -100,31 +100,39 @@ pub(crate) async fn finish_data_sync_migration_run(
     run.outcome = match outcome {
         ExecutionOutcome::NotStarted => "not_started",
         ExecutionOutcome::Committed => "committed",
+        ExecutionOutcome::PartiallyApplied => "partially_applied",
         ExecutionOutcome::RolledBack => "rolled_back",
         ExecutionOutcome::Unknown => "unknown",
     }
     .into();
     run.phase = "finished".into();
     run.finished_at = Some(Utc::now().to_rfc3339());
-    run.committed_count = if outcome == ExecutionOutcome::Committed {
+    run.committed_count = if matches!(
+        outcome,
+        ExecutionOutcome::Committed | ExecutionOutcome::PartiallyApplied
+    ) {
         response.result.applied as u64
     } else {
         0
     };
     run.failed_count = u64::from(matches!(
         outcome,
-        ExecutionOutcome::NotStarted | ExecutionOutcome::RolledBack
+        ExecutionOutcome::NotStarted
+            | ExecutionOutcome::RolledBack
+            | ExecutionOutcome::PartiallyApplied
     ));
     run.conflict_count = response.result.conflicts.len() as u64;
     run.cancelled = cancelled;
     run.rollback_outcome = match outcome {
         ExecutionOutcome::NotStarted | ExecutionOutcome::Committed => "notRequired",
         ExecutionOutcome::RolledBack => "completed",
+        ExecutionOutcome::PartiallyApplied => "partial",
         ExecutionOutcome::Unknown => "unknown",
     }
     .into();
     run.error_summary = match outcome {
         ExecutionOutcome::Committed => None,
+        ExecutionOutcome::PartiallyApplied => Some("Some batches committed before execution stopped. Compare current data before continuing.".into()),
         ExecutionOutcome::NotStarted => Some(
             "Execution did not start. Review the endpoint context and run a fresh comparison."
                 .into(),

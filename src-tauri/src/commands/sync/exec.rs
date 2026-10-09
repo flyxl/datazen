@@ -781,6 +781,14 @@ fn applied_outcome(
             skipped: 0,
             conflicts: Vec::new(),
         }),
+        JobState::Failed if applied.effect == EffectOutcome::RolledBack => Ok(ExecutionResult {
+            applied: 0,
+            affected_rows: 0,
+            rolled_back: true,
+            rollback_reason: Some("Execution did not commit; rollback was confirmed.".into()),
+            skipped: 0,
+            conflicts: Vec::new(),
+        }),
         JobState::Failed => Err(match applied.effect {
             EffectOutcome::Unknown => CommandError::DataSyncOutcomeUnknown(
                 message.unwrap_or_else(|| {
@@ -788,12 +796,7 @@ fn applied_outcome(
                         .to_string()
                 }),
             ),
-            EffectOutcome::PartiallyApplied => CommandError::Validation(
-                message.unwrap_or_else(|| {
-                    "some rows committed before the failure; compare current data before continuing"
-                        .to_string()
-                }),
-            ),
+            EffectOutcome::PartiallyApplied => CommandError::DataSyncPartiallyApplied(applied.committed),
             _ => CommandError::DataSyncNotStarted(message.unwrap_or_else(|| {
                 "the apply job did not start; compare again".to_string()
             })),

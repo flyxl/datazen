@@ -454,63 +454,70 @@ describe('Data Sync immutable plan IPC', () => {
     expect(JSON.stringify(invoke.mock.calls.at(-1))).not.toContain('5000');
   });
 
-  it('accepts and reads apply results through the durable job lifecycle', async () => {
-    queueDurableCompare({ planId: 'apply-plan', selectionRevision: 4, tables: [] });
-    await syncCommands.compareDataSync('source-session', 'target-session', ['users']);
+  it.each([
+    { state: 'succeeded', effect: 'completed', expected: 'committed' },
+    { state: 'failed', effect: 'partiallyApplied', expected: 'partially_applied' },
+  ])(
+    'preserves $effect through the durable apply lifecycle',
+    async ({ state, effect, expected }) => {
+      queueDurableCompare({ planId: 'apply-plan', selectionRevision: 4, tables: [] });
+      await syncCommands.compareDataSync('source-session', 'target-session', ['users']);
 
-    invoke.mockResolvedValueOnce({
-      jobId: 'apply-job',
-      kind: 'dataSyncApply',
-      state: 'queued',
-      effectOutcome: null,
-      error: null,
-      progress: { committed: 0, unknown: 0 },
-    });
-    invoke.mockResolvedValueOnce({
-      jobId: 'apply-job',
-      kind: 'dataSyncApply',
-      state: 'succeeded',
-      effectOutcome: 'completed',
-      error: null,
-      progress: { committed: 2, unknown: 0 },
-    });
-    invoke.mockResolvedValueOnce({
-      job: {
+      invoke.mockResolvedValueOnce({
         jobId: 'apply-job',
         kind: 'dataSyncApply',
-        state: 'succeeded',
-        effectOutcome: 'completed',
+        state: 'queued',
+        effectOutcome: null,
+        error: null,
+        progress: { committed: 0, unknown: 0 },
+      });
+      invoke.mockResolvedValueOnce({
+        jobId: 'apply-job',
+        kind: 'dataSyncApply',
+        state,
+        effectOutcome: effect,
         error: null,
         progress: { committed: 2, unknown: 0 },
-      },
-      recoveryTargets: [],
-      domainResults: [
-        { stageId: 'apply', counters: [{ code: 'committed', value: 2 }] },
-      ],
-    });
-
-    const result = await syncCommands.executeDataSyncJob(
-      'source-session',
-      'target-session',
-      'apply-job',
-      { insert: true, update: true, delete: false },
-      [{ sourceTable: 'users', targetTable: 'users', operation: 'INSERT', key: [7] }],
-    );
-
-    expect(result.applied).toBe(2);
-    expect(invoke).toHaveBeenCalledWith('start_data_sync_apply_job', {
-      sourceDbSessionId: 'source-session',
-      targetDbSessionId: 'target-session',
-      request: {
-        planId: 'apply-plan',
-        selection: {
-          revision: 4,
-          rows: [{ sourceTable: 'users', targetTable: 'users', operation: 'INSERT', key: [7] }],
+      });
+      invoke.mockResolvedValueOnce({
+        job: {
+          jobId: 'apply-job',
+          kind: 'dataSyncApply',
+          state,
+          effectOutcome: effect,
+          error: null,
+          progress: { committed: 2, unknown: 0 },
         },
-        options: { insert: true, update: true, delete: false },
-        jobId: 'apply-job',
-      },
-    });
-    expect(invoke).not.toHaveBeenCalledWith('generate_data_sync_sql', expect.anything());
-  });
+        recoveryTargets: [],
+        domainResults: [{ stageId: 'apply', counters: [{ code: 'committed', value: 2 }] }],
+      });
+
+      const result = await syncCommands.executeDataSyncJob(
+        'source-session',
+        'target-session',
+        'apply-job',
+        { insert: true, update: true, delete: false },
+        [{ sourceTable: 'users', targetTable: 'users', operation: 'INSERT', key: [7] }],
+      );
+
+      expect(result.applied).toBe(2);
+      expect(result.outcome).toBe(expected);
+      expect(result.rolledBack).toBe(false);
+      expect(Boolean(result.error)).toBe(state !== 'succeeded');
+      expect(invoke).toHaveBeenCalledWith('start_data_sync_apply_job', {
+        sourceDbSessionId: 'source-session',
+        targetDbSessionId: 'target-session',
+        request: {
+          planId: 'apply-plan',
+          selection: {
+            revision: 4,
+            rows: [{ sourceTable: 'users', targetTable: 'users', operation: 'INSERT', key: [7] }],
+          },
+          options: { insert: true, update: true, delete: false },
+          jobId: 'apply-job',
+        },
+      });
+      expect(invoke).not.toHaveBeenCalledWith('generate_data_sync_sql', expect.anything());
+    },
+  );
 });

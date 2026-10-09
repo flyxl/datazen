@@ -247,10 +247,7 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     await clickNext('setup', ['[data-testid="data-transfer-write-mode"]']);
     // Entering the objects step is what triggers `inspect`; Next stays disabled
     // there until rows arrive, so the list must be awaited before going on.
-    await clickNext('objects', [
-      ROWS_SELECTOR,
-      '[data-testid="data-transfer-objects-empty"]',
-    ]);
+    await clickNext('objects', [ROWS_SELECTOR, '[data-testid="data-transfer-objects-empty"]']);
     await selectOnlyTable(only, scenario);
     await captureJourneyStep(`${scenario}-selection`);
 
@@ -446,7 +443,10 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
 
     const result = await $('[data-testid="data-transfer-result"]');
     await result.waitForDisplayed({ timeout: 120000 });
-    expect(await result.getAttribute('data-completed')).toBe('true');
+    await browser.waitUntil(async () => (await result.getAttribute('data-completed')) === 'true', {
+      timeout: 30000,
+      timeoutMsg: 'completed transfer did not publish its terminal verdict',
+    });
     expect(await result.getAttribute('data-verdict-severity')).toBe('ok');
     expect(await result.getAttribute('data-replayed')).toBe('false');
     expect(await result.getAttribute('data-requires-reconcile')).toBe('false');
@@ -488,9 +488,14 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     const restoredResult = await $('[data-testid="data-transfer-result"][data-restored="true"]');
     await browser.waitUntil(
       async () =>
-        (await $('[data-testid="data-transfer-result"][data-restored="true"]').getAttribute('data-job-id')) ===
-        spentPlan?.jobId,
-      { timeout: 30000, interval: 250, timeoutMsg: 'reopened window did not restore the settled Job report' },
+        (await $('[data-testid="data-transfer-result"][data-restored="true"]').getAttribute(
+          'data-job-id',
+        )) === spentPlan?.jobId,
+      {
+        timeout: 30000,
+        interval: 250,
+        timeoutMsg: 'reopened window did not restore the settled Job report',
+      },
     );
     expect(await restoredResult.getAttribute('data-completed')).toBe('true');
     expect(await restoredResult.getAttribute('data-plan-id')).toBe(spentPlan?.planId);
@@ -499,7 +504,9 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     expect(await restoredVerdict.getAttribute('data-selection-revision')).toBe(
       String(spentPlan?.selectionRevision),
     );
-    expect(Number(await restoredVerdict.getAttribute('data-verified-boundaries'))).toBeGreaterThan(0);
+    expect(Number(await restoredVerdict.getAttribute('data-verified-boundaries'))).toBeGreaterThan(
+      0,
+    );
 
     // Re-driving only reaches a fresh prepare — a plan, never a write.
     await driveToPreview(JOB_TABLE, JOB_TABLE, 'dtj1-reopen');
@@ -531,7 +538,11 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
       async () =>
         (await $('[data-testid="data-transfer-attached-job"]').getAttribute('data-job-id')) ===
         applyJobId,
-      { timeout: 30000, interval: 250, timeoutMsg: 'reopened window did not hydrate the active apply Job' },
+      {
+        timeout: 30000,
+        interval: 250,
+        timeoutMsg: 'reopened window did not hydrate the active apply Job',
+      },
     );
     const attachedState = await $('[data-testid="data-transfer-attached-job-state"]');
     expect(['queued', 'running']).toContain(await attached.getAttribute('data-state'));
@@ -599,10 +610,12 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
   it('DTJ-003: apply 执行中向真实 apply Job 记录取消意图并等待终态', async () => {
     const targetSession = await invokeBackend<string>('connect', { connectionId: TGT_ID });
     try {
-      await invokeBackend('execute_query', {
-        dbSessionId: targetSession,
-        sql: `TRUNCATE TABLE ${BULK_TABLE}`,
-      });
+      await withSafeModeOff(() =>
+        invokeBackend('execute_query', {
+          dbSessionId: targetSession,
+          sql: `TRUNCATE TABLE ${BULK_TABLE}`,
+        }),
+      );
     } finally {
       await disconnectBackend(targetSession);
     }
@@ -619,10 +632,11 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
     await activeState.waitForDisplayed({ timeout: 30000 });
     const applyJobId = await activeState.getAttribute('data-job-id');
     expect(applyJobId).toBeTruthy();
-    await browser.waitUntil(
-      async () => (await readJob(applyJobId ?? '')).state === 'running',
-      { timeout: 30000, interval: 200, timeoutMsg: 'apply never reached running state before cancel' },
-    );
+    await browser.waitUntil(async () => (await readJob(applyJobId ?? '')).state === 'running', {
+      timeout: 30000,
+      interval: 200,
+      timeoutMsg: 'apply never reached running state before cancel',
+    });
 
     const cancel = await $('[data-testid="data-transfer-cancel"]');
     expect(await cancel.getAttribute('data-cancel-addressable')).toBe('true');
@@ -636,7 +650,9 @@ describe('数据传输 Job 闭环 (DTJ)', () => {
       { timeout: 15000, interval: 250, timeoutMsg: 'backend did not persist the cancel intent' },
     );
     expect(await exists('[data-testid="data-transfer-result"]')).toBe(true);
-    expect(await (await $('[data-testid="data-transfer-result"]')).getAttribute('data-completed')).toBe('false');
+    expect(
+      await (await $('[data-testid="data-transfer-result"]')).getAttribute('data-completed'),
+    ).toBe('false');
     await captureJourneyStep('dtj3-inflight');
 
     const terminalJob = await waitForTerminalJob(applyJobId ?? '');

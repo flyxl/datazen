@@ -2110,6 +2110,7 @@ export function DataSyncWindow() {
   const lastExecutionOutcome =
     lastExecutionResult?.outcome ?? (lastExecutionResult?.rolledBack ? 'rolled_back' : 'committed');
   const lastExecutionIsUnknown = lastExecutionOutcome === 'unknown';
+  const lastExecutionIsPartial = lastExecutionOutcome === 'partially_applied';
   const lastExecutionWasRolledBack = lastExecutionOutcome === 'rolled_back';
 
   // All hooks above. Gate the body on the `sync` locale pack so the UI never
@@ -2532,7 +2533,7 @@ export function DataSyncWindow() {
                 data-testid="data-sync-execute-done"
                 className={cn(
                   'flex flex-wrap items-center gap-3 text-sm',
-                  lastExecutionIsUnknown || lastExecutionWasRolledBack
+                  lastExecutionIsUnknown || lastExecutionWasRolledBack || lastExecutionIsPartial
                     ? 'text-amber-700 dark:text-amber-400'
                     : 'text-green-700 dark:text-green-400',
                 )}
@@ -2541,9 +2542,11 @@ export function DataSyncWindow() {
                 <span>
                   {lastExecutionIsUnknown
                     ? t('sync.executionUnknown')
-                    : lastExecutionWasRolledBack
-                      ? lastExecutionResult?.rollbackReason || t('sync.rolledBack')
-                      : t('sync.executeDone')}
+                    : lastExecutionIsPartial
+                      ? t('migration.verdict.partial')
+                      : lastExecutionWasRolledBack
+                        ? lastExecutionResult?.rollbackReason || t('sync.rolledBack')
+                        : t('sync.executeDone')}
                 </span>
                 {lastExecutionResult?.skipped ? (
                   <span className="text-amber-600 dark:text-amber-400">

@@ -726,7 +726,7 @@ async function invokeSettings<T>(cmd: string, args: Record<string, unknown> = {}
             }
           ).__TAURI_INTERNALS__
             ?.invoke(c, JSON.parse(a))
-            .then((r) => done(r))
+            .then((r) => done({ __result: r }))
             .catch((e: unknown) => done({ __error: String(e) }));
         },
         cmd,
@@ -735,7 +735,9 @@ async function invokeSettings<T>(cmd: string, args: Record<string, unknown> = {}
       if (result && typeof result === 'object' && result !== null && '__error' in result) {
         throw new Error(String((result as { __error: string }).__error));
       }
-      return result as T;
+      // A domain DTO may legitimately contain an `error` field. Keep it
+      // inside an envelope so WebDriver does not treat it as its own error.
+      return (result as { __result: T }).__result;
     } catch (err) {
       lastError = err;
       if (!isRetryableIpcError(err) || attempt >= IPC_MAX_ATTEMPTS) throw err;
