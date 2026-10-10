@@ -81,7 +81,7 @@ mod journey_rotation;
 pub use cleanup::{
     CancellationOutcome, CleanupDisposition, CleanupPlan, CleanupReport, DriverCleanVerdict,
     ExecutionCancellationRecord, HostConditionSnapshot, PhysicalTransport, ProtocolDebt,
-    ReturnDecision, ReturnReason, SharedTransport,
+    ResetDisposition, ReturnDecision, ReturnReason, SharedTransport,
 };
 pub use generation::{
     CacheFillOutcome, CacheRevision, GenerationRegistry, RotationKind, RotationOutcome,

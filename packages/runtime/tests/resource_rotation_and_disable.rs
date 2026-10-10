@@ -15,7 +15,8 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::resource::{
     CacheFillOutcome, CancellationOutcome, DriverCleanVerdict, HostConditionSnapshot, LeasePurpose,
-    LeaseRequest, MonotonicSource, PhysicalTransport, ResourceError, ResourceManager, RotationKind,
+    LeaseRequest, MonotonicSource, PhysicalTransport, ResetDisposition, ResourceError,
+    ResourceManager, RotationKind,
 };
 
 /// 固定时刻的单调时钟：这三组旅程断言的是代次与处置，不是时长。
@@ -105,9 +106,10 @@ impl PhysicalTransport for ScriptedTransport {
         Ok(())
     }
 
-    fn reset(&self, resource_id: &ResourceId) -> Result<(), ResourceError> {
+    fn reset(&self, resource_id: &ResourceId) -> Result<ResetDisposition, ResourceError> {
+        // 本文件断言的是代次与处置，不是复位判决，所以替身一律报 `Clean`。
         self.lock().reset.push(resource_id.clone());
-        Ok(())
+        Ok(ResetDisposition::Clean)
     }
 
     fn cancel(

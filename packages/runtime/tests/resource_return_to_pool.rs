@@ -17,8 +17,9 @@ use datazen_runtime::connection::{
     OwnerRef, PoolKeyInputs, ResourceId, SessionHandleRef,
 };
 use datazen_runtime::resource::{
-    DriverCleanVerdict, HostConditionSnapshot, LeasePurpose, LeaseRequest, LeaseState,
-    MonotonicSource, PhysicalTransport, ProtocolDebt, ResourceError, ResourceManager,
+    CleanupDisposition, DriverCleanVerdict, HostConditionSnapshot, LeasePurpose, LeaseRequest,
+    LeaseState, MonotonicSource, PhysicalTransport, ProtocolDebt, ResetDisposition, ResourceError,
+    ResourceManager,
 };
 
 // ---- 时钟替身 ----
@@ -60,6 +61,9 @@ enum PhysicalEvent {
 struct Journal {
     events: Vec<PhysicalEvent>,
     reset_fails: bool,
+    /// 驱动明确回答 `Discard`（正常判决）。与 `reset_fails` 是**两格**：
+    /// 那是握手没确认（`Err`），这是拿到了确定的答复「不能复用」。
+    reset_discards: bool,
     issued: u64,
 }
 
@@ -76,6 +80,14 @@ impl ScriptedTransport {
 
     fn fail_reset(&self) {
         self.lock().reset_fails = true;
+    }
+
+    /// 驱动明确回复 `Discard`：**无法证明已复位**，不得再次签发。
+    ///
+    /// 名字里没有 `fail`，因为首版全部 path 驱动（15/15）都走这一格
+    /// （`ResetForReuse::Unsupported`）—— 这是**常态**，不是故障注入。
+    fn discard_reset(&self) {
+        self.lock().reset_discards = true;
     }
 
     fn events(&self) -> Vec<PhysicalEvent> {
@@ -116,7 +128,7 @@ impl PhysicalTransport for ScriptedTransport {
         Ok(())
     }
 
-    fn reset(&self, resource_id: &ResourceId) -> Result<(), ResourceError> {
+    fn reset(&self, resource_id: &ResourceId) -> Result<ResetDisposition, ResourceError> {
         let mut journal = self.lock();
         journal
             .events
@@ -124,7 +136,11 @@ impl PhysicalTransport for ScriptedTransport {
         if journal.reset_fails {
             return Err(ResourceError::TransportRefused("session reset rejected"));
         }
-        Ok(())
+        if journal.reset_discards {
+            // 判决**原样**返回：宿主必须自己决定「Discard ⇒ 不能进池」。
+            return Ok(ResetDisposition::Discard);
+        }
+        Ok(ResetDisposition::Clean)
     }
 
     fn cancel(
@@ -513,6 +529,96 @@ fn a_failed_reset_during_the_idle_return_closes_the_lease_instead_of_parking_it(
         .expect("a lease whose pre-pool reset failed may not be reissued");
     assert_ne!(fresh.lease_id, leased.lease_id);
     assert_eq!(transport.open_count(), 2);
+}
+
+/// **`Discard` ⇒ 不进池**（§9.4「宿主检查全通过 AND driver Clean」/ §7.3 第 6 步
+/// 「只有 Clean 才归池，其余关闭」）。
+///
+/// 这是本轨修掉的那条真缺陷在**公开面**上的证词。缺陷态下 `PhysicalTransport::reset`
+/// 的签名是 `Result<(), ResourceError>`：`Clean` 与 `Discard` 都落在 `Ok(())`，
+/// 于是归池分支的 `Ok(()) => session_reset_performed = true` 对两者一视同仁 ——
+/// 驱动诚实地说「我复位不了」，宿主看到的是成功，然后把驱动**明说**不能复用的资源
+/// 塞进空闲池。本用例在缺陷态下会失败在**第一句断言**上（资源真的进了池）。
+///
+/// 与上面 `a_failed_reset_during_the_idle_return_...` 并列但不同格：那里是 `Err`
+/// （握手从未确认 ⇒ 结果**未知**），这里是 `Ok(Discard)`（驱动给了**确定**的答复）。
+///
+/// **这条路径就是首版的常态**：15/15 path 驱动声明 `ResetForReuse::Unsupported`，
+/// postgres / mysql / sqlite 的 `reset_resource` 都返回 `Discard`，理由写在各自代码里
+/// ——「no *proven* initialization protocol」。所以断言的不是异常，是日常。
+#[test]
+fn a_discarded_reset_never_parks_the_resource_in_the_idle_pool() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+    // 宿主四项全清 + 驱动 Clean ⇒ 裁决本意是归池；唯一否决它的是复位**判决**。
+    transport.discard_reset();
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default(),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a driver Discard is a disposition, not a ledger failure");
+
+    // 1. **核心断言：驱动说不能复用 ⇒ 绝不进池。**
+    assert!(
+        !report.returned_to_pool(),
+        "驱动明确回答 Discard ⇒ 不得归池：池里不许出现驱动明说不能复用的资源"
+    );
+    assert_eq!(
+        manager.idle_lease_count(),
+        0,
+        "空闲池必须一条都没有（缺陷态下这里是 1：判决被压扁成 Ok(()) 之后直接停放）"
+    );
+
+    // 2. 驱动给了确定的答复 ⇒ 没有待核验的不确定性 ⇒ 关闭而非隔离。
+    assert!(!report.quarantined());
+    assert_eq!(report.disposition, CleanupDisposition::Closed);
+
+    // 3. 阻断项点名**驱动判决**，与 `Err` 那格的 `hostResetUnconfirmed` 不同名 ——
+    //    审计要能分辨「知道不能复用」与「没拿到答复」。
+    assert_eq!(first_blocker_code(&report), "driverDiscardedReset");
+    assert!(
+        !report
+            .blockers
+            .iter()
+            .any(|reason| reason.reason_code() == "hostResetUnconfirmed"),
+        "Discard 是确定的答复，不许与「未被确认」互推"
+    );
+
+    // 4. 不得替驱动谎称复位已完成。
+    assert!(
+        !report.session_reset_performed,
+        "驱动没能证明已复位 ⇒ 不得记成已完成"
+    );
+
+    // 5. 预算：关闭被确认 ⇒ 当场核销（§9.3「只有实际 close 才释放」）。
+    assert!(report.disposition.releases_physical_budget());
+
+    // 6. 账面次序：复位被请求、被答复 Discard，然后按「其余关闭」落一次关闭。
+    assert_eq!(
+        transport.events(),
+        vec![
+            PhysicalEvent::Open(ResourceId::new("res-1")),
+            PhysicalEvent::Reset(ResourceId::new("res-1")),
+            PhysicalEvent::Close(ResourceId::new("res-1")),
+        ],
+        "Discard 的落点是在**同一条**原资源上关闭，且复位排在关闭之前"
+    );
+
+    // 7. 非空跑：下一次签发必须重新开一条物理连接，绝不捡回驱动拒绝对外复用的那条。
+    let fresh = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("a discarded resource must never serve the next request");
+    assert_ne!(fresh.lease_id, leased.lease_id);
+    assert_eq!(
+        transport.open_count(),
+        2,
+        "被 Discard 的资源不得复用 ⇒ 必须另开一条物理连接"
+    );
 }
 
 #[test]

@@ -13,7 +13,7 @@ use crate::connection::{
     ConnectionId, Counter, ExecutionId, HandleId, HandleKind, LeaseId, ResourceId, SessionHandleRef,
 };
 use crate::resource::cleanup::{
-    CleanupDisposition, DriverCleanVerdict, HostConditionSnapshot, ProtocolDebt,
+    CleanupDisposition, DriverCleanVerdict, HostConditionSnapshot, ProtocolDebt, ReturnReason,
 };
 use crate::resource::harness::{
     pool_key_inputs, workflow_owner, Fault, RecordingTransport, TestClock, TransportEvent,
@@ -418,6 +418,165 @@ fn a_reset_that_fails_during_the_idle_return_closes_the_lease_instead_of_parking
     let next = fixture.acquire(LeasePurpose::ShortOperation);
     assert_ne!(next.lease_id, lease_id);
     assert_eq!(fixture.opened().len(), 2);
+}
+
+/// **`Discard` ⇒ 不进池**：驱动**明确**回答「无法证明已复位」时必须关闭，不得归池。
+///
+/// 这是本轨修掉的那条真缺陷的正面证据。缺陷态下 `PhysicalTransport::reset` 返回
+/// `Result<(), _>`，`Ok(())` 把 `Clean` 与 `Discard` 压成同一格，于是归池分支的
+/// `Ok(()) => session_reset_performed = true` 对两者一视同仁 —— 驱动诚实地说
+/// 「我复位不了」，宿主看到的是成功，然后把资源塞回空闲池。
+///
+/// 与上一条 `a_reset_that_fails_during_the_idle_return_...` 并列但**不同格**：
+/// 那里是 `Err`（握手从未确认 ⇒ 结果**未知**），这里是 `Ok(Discard)`
+/// （驱动给了**确定**的答复）。两者都关闭，但阻断项不同名 —— 把「知道不能复用」
+/// 与「不知道」记成同一件事，审计就再也分不出驱动到底答了什么。
+///
+/// **`Discard` 是正常的、预期内的结果**：首版 15/15 path 驱动都声明
+/// `ResetForReuse::Unsupported`，postgres/mysql/sqlite 的 `reset_resource` 返回
+/// `Discard`（理由：no *proven* initialization protocol）。所以这条用例断言的
+/// 不是异常路径，而是**首版的常态路径**。
+#[test]
+fn a_discarded_reset_refuses_the_idle_park_and_closes_the_resource() {
+    let mut fixture = Fixture::new();
+    let lease = fixture.acquire(LeasePurpose::ShortOperation);
+    let lease_id = lease.lease_id.clone();
+    let resource_id = lease.resource_id.clone();
+    // 宿主四项全清 + 驱动 Clean ⇒ 裁决本意是归池；复位判决是唯一否决它的那一步。
+    fixture.transport.inject(Fault::ResetDiscard);
+
+    let report = fixture.release(
+        &lease_id,
+        HostConditionSnapshot::default(),
+        DriverCleanVerdict::reported_clean(),
+    );
+
+    // 1. **核心断言：不进池。** 驱动明说不能复用 ⇒ 绝不许出现在空闲池里。
+    assert!(
+        !report.returned_to_pool(),
+        "驱动明确回答 Discard ⇒ §7.3「只有 Clean 才归池，其余关闭」：绝不归池"
+    );
+    assert!(
+        !report.quarantined(),
+        "驱动给了确定的答复，没有待核验的不确定性"
+    );
+    assert_eq!(report.disposition, CleanupDisposition::Closed);
+    assert_eq!(
+        fixture.manager.idle_lease_count(),
+        0,
+        "空闲池必须一条都没有 —— 池里不许出现驱动明说不能复用的资源"
+    );
+
+    // 2. 阻断项点名**驱动判决**，与 `hostResetUnconfirmed`（`Err` 那一格）不同名。
+    assert!(!report.decision.admits_to_idle_pool());
+    assert_eq!(first_reason_code(&report), "driverDiscardedReset");
+    assert!(
+        !report
+            .blockers
+            .iter()
+            .any(|reason| reason.reason_code() == "hostResetUnconfirmed"),
+        "Discard 是确定的答复，不是「没拿到答复」：两个阻断项不许互推"
+    );
+
+    // 3. `Discard` 是常态 ⇒ 不得被记成故障。
+    assert!(
+        !ReturnReason::DriverDiscardedReset.is_fault(),
+        "首版全部驱动都走这一格，把它当故障会让真正的告警淹没在常态里"
+    );
+
+    // 4. `Discard` **不**谎报复位已完成：驱动没能证明回到基线，报告就不能替它说做到了。
+    assert!(
+        !report.session_reset_performed,
+        "驱动没能证明复位 ⇒ 不得记成已完成"
+    );
+
+    // 5. 预算：落点是关闭、且关闭被确认 ⇒ 此刻核销（§9.3「只有实际 close 才释放」）。
+    assert!(report.physical_budget_released);
+    assert_eq!(fixture.manager.occupied_slots(), 0);
+    assert_eq!(fixture.state_of(&lease_id), None, "确认关闭 ⇒ 行被摘除");
+
+    // 6. 账面：复位**被请求过也真的入账了**（驱动答复过），紧随其后是一次关闭。
+    //    这与 `Err` 那格形成对照 —— 那里失败的那一步不入账。
+    assert_eq!(
+        fixture.transport.snapshot().events,
+        vec![
+            TransportEvent::Open(resource_id.clone()),
+            TransportEvent::Reset(resource_id.clone()),
+            TransportEvent::Close(resource_id),
+        ],
+        "复位被请求、被答复 Discard，然后是关闭：判决不许把这条路径变成归池"
+    );
+
+    // 7. 非空跑：下一次签发必须重新开一条物理连接，绝不捡回驱动拒绝对外复用的那条。
+    let next = fixture.acquire(LeasePurpose::ShortOperation);
+    assert_ne!(next.lease_id, lease_id);
+    assert_eq!(fixture.opened().len(), 2);
+}
+
+/// `Discard` 出现在**关闭分支**（还有未释放句柄）时：收尾照样进行，关闭不被否决。
+///
+/// 依据在 `ResourceManager::release` 的该分支上写全了，这里钉住行为：
+/// 关闭本来就不需要复用性（§7.5 第 5 步「任意用户 SQL session 首版直接关闭物理资源；
+/// **不复用未知会话状态**」），所以「驱动没能证明已复位」在这条路径上不构成额外阻断
+/// —— 资源照样关掉、预算照样核销。
+///
+/// 但报告**必须**留着那批句柄：驱动没能证明回滚真的发生过，审计里就不能写成
+/// 「已回滚」。
+#[test]
+fn a_discarded_reset_during_a_close_does_not_block_the_close_but_keeps_the_handles_visible() {
+    let mut fixture = Fixture::new();
+    let lease = fixture.acquire(LeasePurpose::ShortOperation);
+    let lease_id = lease.lease_id.clone();
+    let resource_id = lease.resource_id.clone();
+    let handle = SessionHandleRef::new(
+        HandleId::new("handle-discard-1"),
+        HandleKind::Transaction,
+        resource_id.clone(),
+        Counter::new(3),
+    );
+    fixture.transport.inject(Fault::ResetDiscard);
+
+    let report = fixture.release(
+        &lease_id,
+        HostConditionSnapshot::default().with_unreleased_handle(handle.clone()),
+        DriverCleanVerdict::reported_clean(),
+    );
+
+    // 1. 落点仍然是关闭：`Discard` 不把关闭升级成隔离，也不阻止关闭。
+    assert_eq!(
+        report.disposition,
+        CleanupDisposition::Closed,
+        "关闭不需要复用性 ⇒ 驱动没能证明复位不构成额外阻断（§9.4 / §7.5 第 5 步）"
+    );
+    assert!(!report.quarantined());
+    // 阻断项的**首个**事由仍然是宿主那一项（未释放句柄），`Discard` 不改判它。
+    assert_eq!(first_reason_code(&report), "hostUnreleasedSessionHandle");
+
+    // 2. 关闭被确认 ⇒ 预算核销。
+    assert!(report.physical_budget_released);
+    assert!(report.disposition.releases_physical_budget());
+    assert_eq!(fixture.manager.occupied_slots(), 0);
+
+    // 3. **关键**：驱动没能证明复位 ⇒ 不许谎称「回滚过了」，句柄必须留在报告里。
+    assert!(
+        !report.session_reset_performed,
+        "Discard 没能证明复位 ⇒ 不得记成已完成"
+    );
+    assert_eq!(
+        report.outstanding_handles,
+        vec![handle.handle_id.clone()],
+        "驱动没证明回滚发生过，审计里就不能把句柄写成已解除"
+    );
+
+    // 4. 次序不变：复位（被答复 Discard）仍然排在关闭之前。
+    assert_eq!(
+        fixture.transport.snapshot().events,
+        vec![
+            TransportEvent::Open(resource_id.clone()),
+            TransportEvent::Reset(resource_id.clone()),
+            TransportEvent::Close(resource_id),
+        ]
+    );
 }
 
 #[test]

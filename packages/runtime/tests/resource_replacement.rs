@@ -15,7 +15,8 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::resource::{
     BeginOutcome, DirectoryFault, DirectoryPublisher, LeasePurpose, LeaseRequest, MonotonicSource,
-    PhysicalTransport, Publication, ReplacementReceipt, ResourceError, ResourceManager,
+    PhysicalTransport, Publication, ReplacementReceipt, ResetDisposition, ResourceError,
+    ResourceManager,
 };
 
 /// 固定时刻的单调时钟：本文件断言的是状态裁决，不依赖时长，因此不需要推进。
@@ -84,9 +85,11 @@ impl PhysicalTransport for ScriptedTransport {
         Ok(())
     }
 
-    fn reset(&self, resource_id: &ResourceId) -> Result<(), ResourceError> {
+    fn reset(&self, resource_id: &ResourceId) -> Result<ResetDisposition, ResourceError> {
+        // 本文件的替身把复位记成一次**已完成**的物理动作（同 `close` 的记账口径），
+        // 因为这里断言的是替换闸门，不是复位判决本身。判决一律报 `Clean`。
         self.lock().closed.push(resource_id.clone());
-        Ok(())
+        Ok(ResetDisposition::Clean)
     }
 
     fn cancel(

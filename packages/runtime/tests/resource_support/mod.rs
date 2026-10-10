@@ -31,7 +31,7 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::resource::{
     HostConditionSnapshot, LeaseManager, LeasePurpose, LeaseRequest, MonotonicSource,
-    PhysicalTransport, ResourceError, ResourceManager,
+    PhysicalTransport, ResetDisposition, ResourceError, ResourceManager,
 };
 
 use crate::support;
@@ -87,6 +87,11 @@ pub struct Journal {
     pub events: Vec<PhysicalEvent>,
     pub close_refused: bool,
     pub reset_refused: bool,
+    /// 驱动明确回答 `Discard`（**正常判决**，首版全部 path 驱动都走这一格）。
+    ///
+    /// 与 `reset_refused` 是**两格**，刻意不合并：那是握手没确认（`Err`），
+    /// 这是拿到了确定的答复「无法证明已复位」。
+    pub reset_discarded: bool,
 }
 
 pub struct ScriptedTransport {
@@ -117,6 +122,15 @@ impl ScriptedTransport {
 
     pub fn accept_reset(&self) {
         self.lock().reset_refused = false;
+    }
+
+    /// 让驱动明确回复 `Discard`：**无法证明已复位**，不得再次签发。
+    ///
+    /// 名字里没有 `fail`，因为首版全部 path 驱动（15/15）都走这一格
+    /// （`ResetForReuse::Unsupported`）—— 这是**常态**，不是故障注入。
+    /// 事件照样入账：复位真的被请求过、也真的被答复过。
+    pub fn discard_reset(&self) {
+        self.lock().reset_discarded = true;
     }
 
     /// 某类物理动作的发生次数。
@@ -191,7 +205,7 @@ impl PhysicalTransport for ScriptedTransport {
         Ok(())
     }
 
-    fn reset(&self, resource_id: &ResourceId) -> Result<(), ResourceError> {
+    fn reset(&self, resource_id: &ResourceId) -> Result<ResetDisposition, ResourceError> {
         let mut journal = self.lock();
         journal
             .events
@@ -201,7 +215,11 @@ impl PhysicalTransport for ScriptedTransport {
                 "reset refused by handshake",
             ));
         }
-        Ok(())
+        if journal.reset_discarded {
+            // 判决**原样**返回：宿主必须自己决定「Discard ⇒ 不能进池」。
+            return Ok(ResetDisposition::Discard);
+        }
+        Ok(ResetDisposition::Clean)
     }
 
     fn cancel(

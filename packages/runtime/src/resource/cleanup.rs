@@ -227,6 +227,16 @@ pub enum ReturnReason {
     HostResetUnconfirmed {
         transport: &'static str,
     },
+    /// 驱动**明确**回答「无法证明已复位」（[`ResetDisposition::Discard`]）。
+    ///
+    /// 这与 [`Self::HostResetUnconfirmed`] 是**两件事**，不许合并：这里是驱动给了
+    /// 确定的答复，只是答复是「不能复用」；那里是宿主压根没拿到答复（`Err`）。
+    /// 把两者压成一条路径，就等于把「知道不能复用」谎报成「不知道」。
+    ///
+    /// **这是正常的、预期内的结果，不是故障。** 首版 15/15 path 驱动都落这一格
+    /// （全部声明 `ResetForReuse::Unsupported`），所以它按 `info` 记账，
+    /// **不得**记成 warn —— 否则真正的告警会被每一条正常归还淹没。
+    DriverDiscardedReset,
 }
 
 impl ReturnReason {
@@ -239,7 +249,17 @@ impl ReturnReason {
             Self::OwnerDisabled { .. } => "hostOwnerDisabled",
             Self::FixedSessionNotPoolable => "hostFixedSessionNotPoolable",
             Self::HostResetUnconfirmed { .. } => "hostResetUnconfirmed",
+            Self::DriverDiscardedReset => "driverDiscardedReset",
         }
+    }
+
+    /// 这条阻断项是不是**故障**。
+    ///
+    /// 分发依据是「这是不是一次预期内的正常答复」，而不是文案好看：
+    /// [`Self::DriverDiscardedReset`] 是驱动按契约给出的正常判决（首版全部驱动都这样），
+    /// 记成 warn 会让真正的告警淹在常态里。其余变体都是异常或宿主主动拒绝。
+    pub const fn is_fault(&self) -> bool {
+        !matches!(self, Self::DriverDiscardedReset)
     }
 }
 
@@ -492,6 +512,58 @@ impl CancellationOutcome {
     }
 }
 
+/// 一次复位的**驱动判决**，由 [`PhysicalTransport::reset`] 原样带回宿主。
+///
+/// 它回答的是「这条资源能不能证明自己回到了初始化基线」，而不是「复位这个动作有没有
+/// 报错」——后者是 `Err`，是**第三种**结果，不属于本类型：
+///
+/// | 结果 | 含义 | 宿主落点 |
+/// |---|---|---|
+/// | `Ok(Clean)` | 已回到基线，可复用 | 允许归池（且宿主那四项还须全清） |
+/// | `Ok(Discard)` | **无法证明**回到基线，不得再次签发 | 关闭并释放物理预算 |
+/// | `Err(..)` | 握手从未确认，结果**未知** | 归池作废；落点见 [`crate::resource::ResourceManager::release`] |
+///
+/// ## 为什么本模块自己定一个，而不是复用 `driver-api` 的 `ResetDisposition`
+///
+/// 两者**形状相同**（都是 `Clean` / `Discard`），语义逐字对齐，但**刻意不共用符号**：
+///
+/// * `packages/driver-api/src/session.rs` 那个是**驱动协议的冻结面**。它的增删由
+///   `PROTOCOL_VERSION` 与协议成员闸门治理（见 `docs/architecture/platform/
+///   driver-capability-migration.md` §6），而本类型是宿主资源层的内部端口返回。
+///   共用符号等于让驱动协议的任何一次演进顺着类型别名渗进 `resource/**` 的公开面。
+/// * 本模块的边界声明要求它只收发**账目标识**与自有结论（见 `resource/mod.rs` 模块头），
+///   而 `DriverCleanVerdict` 的同款处理已经确立了这条惯例：**结论进得来，判定依据进不来**。
+/// * 宿主在此**不重算**驱动的判决，只做三态分派 —— 所以本类型只需要两个取值，
+///   不需要把驱动侧的 `reason` 一并搬进来（`Error` 侧同样只带走一个稳定字面码）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResetDisposition {
+    /// 资源已回到初始化基线，可以再次签发。
+    Clean,
+    /// **无法证明**已回到基线 ⇒ 不得再次签发。
+    ///
+    /// **这是正常的、预期内的结果，不是异常。** 首版全部 path 驱动都走这一格：
+    /// 15/15 声明 `ResetForReuse::Unsupported`，postgres / mysql / sqlite 的
+    /// `reset_resource` 都返回 `Discard`，理由写在各自代码里 ——「no *proven*
+    /// initialization protocol」。把常态记成 warn 级别的故障，会让真正的告警淹没在
+    /// 每一条正常归还里。
+    Discard,
+}
+
+impl ResetDisposition {
+    /// 只有 `Clean` 允许这条资源被再次签发。
+    pub const fn admits_reuse(self) -> bool {
+        matches!(self, Self::Clean)
+    }
+
+    /// 判决名，用于日志与指标（不随文案改写而漂移）。
+    pub const fn disposition_code(self) -> &'static str {
+        match self {
+            Self::Clean => "clean",
+            Self::Discard => "discard",
+        }
+    }
+}
+
 /// 宿主注入的**物理端口**：本模块唯一的驱动侧出入口。
 ///
 /// 为什么自己定义而不是复用 `connection/port.rs`：`connection/port.rs` 冻结的是 DTO
@@ -502,8 +574,21 @@ pub trait PhysicalTransport: Send + Sync + 'static {
     fn open(&self, request: &LeaseRequest) -> Result<ResourceId, ResourceError>;
     /// 关闭物理连接。返回 `Err` 表示关闭握手没确认，调用方必须转隔离而不是放行。
     fn close(&self, resource: &ResourceId) -> Result<(), ResourceError>;
-    /// 复位。短租约归池前必跑；驱动判定 `Clean` 时已经包含它。
-    fn reset(&self, resource: &ResourceId) -> Result<(), ResourceError>;
+    /// 复位，返回**驱动判决**（不是「有没有报错」）。短租约归池前必跑。
+    ///
+    /// 三种结果互不重叠，调用方必须**分别**处理，不得把其中两种压成同一条路径：
+    ///
+    /// * `Ok(ResetDisposition::Clean)` —— 可复用，归池裁决继续；
+    /// * `Ok(ResetDisposition::Discard)` —— 驱动**明确**回答「无法证明已复位」。
+    ///   这是正常返回值（见 [`ResetDisposition::Discard`]），调用方必须**关闭**，
+    ///   不得再签发；§9.4「reset 不支持、失败或超时直接关闭」、§7.3 第 6 步
+    ///   「只有 Clean 才归池，其余关闭」。
+    /// * `Err(..)` —— 握手从未确认，结果**未知**。与 `Discard` 的区别是「不知道」
+    ///   与「知道不能复用」，两者不许互推。
+    ///
+    /// 返回 `Ok(())` 式的二值签名是**错的**：它把上面头两种压成同一个值，于是驱动
+    /// 诚实地说「我复位不了」时，宿主看到的是成功。这正是本签名携带判决的原因。
+    fn reset(&self, resource: &ResourceId) -> Result<ResetDisposition, ResourceError>;
     /// 请求精确取消一次运行中的执行，返回**真实处置**。
     fn cancel(
         &self,
