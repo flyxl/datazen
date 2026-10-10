@@ -206,3 +206,20 @@ CLI `codegraph explore` 在 PATH 中。AGENTS.md 明文要求「reach for it BEF
 2. **代理自报的门禁结论不可信**。`p3-desktop-tunnel` 自报 `cargo fmt --check` EXIT=0,合并后复跑为 1。
 3. **失败通知不等于代理死亡**。`p3-lease-pool` 在我误判其死亡后继续产出并跑到 8/8 变异全杀。**处置任何失败通知前先读工作树。**
 4. **长输出落 mktemp,退出码单独打印**。本会话曾把 `cargo test` 的 stdout 丢进 `/dev/null`,而 `test result:` 走 stdout,导致「EXIT=0 但计数缺失」,差点误判。
+
+---
+
+## 九、轨 `p2-handle-closer` 合流记录(`e612cb0c1`)
+
+独立 Tester(`29657ced`)验收 **ACCEPT**,含 4 个变异验证。`progress.md` 已按 AGENTS.md:204 删除
+(不得存活集成分支),以下三条是从台账抢救出来、**必须仍可从代码/测试读出的结论**:
+
+| 编号 | 结论 | 落在哪 |
+|---|---|---|
+| **A-9** | `close_handle` 无默认体 ⇒ 编译期强制每个 provider 表态。15 个 path 驱动里**只有 7 个自写 impl**(postgres/mysql/sqlite/redis/mongodb/hbase/vector),另 8 个(clickhouse/duckdb/elasticsearch/influxdb/rqlite/sqlserver/turso/victoriametrics)走 `LegacyResourceAdapter` 代劳。所以「15 个驱动全部实现」按字面(各 crate 自己写)**不成立**,按「provider 路径都满足无默认体 trait」成立 | `resource_adapter.rs:290`;`resource_no_default_bodies_tests.rs` 的 `EXPECTED_METHODS 15` / `EXPECTED_ASYNC_METHODS 12` |
+| **A-10** | **postgres「真的 ROLLBACK」离线零断言兜底**。唯一能观测的测试 `live::closing_a_transaction_handle_rolls_it_back_and_frees_nothing_else` 在 `TEST_PG_HOST` 缺失时走 `live_gate::unverified_or_fail(..., strict=false)` ⇒ **直接 return,零断言显示 green**。变异「删掉 `await rollback_impl` 的服务端确认」实测存活(隔离复跑 EXIT=0,9 passed)。实现经读码确认非 stub(`execution.rs:997-1012` = `sqlx::query("ROLLBACK").execute(...).await` + `map_err`),判定为**测试强度缺口,非实现造假**。**移交 P7 处理** | `packages/drivers/postgres/tests/postgres_resource_close_handle.rs` |
+| **A-11** | **trait 文档契约未在 6/9 个 impl 上实现且无测试锁定(待修)**。`resource.rs:635-639` 承诺 `handle.is_closed()` ⇒ 报告成功;实测仅 postgres 有该短路(`contract.rs:403-405`),mysql/sqlite/redis/mongodb/hbase/vector/adapter 在资源已关时仍返 `Err`。宿主侧 `LeaseFacade::release` 对 `Err` 是 fail-closed,故无数据安全隐患,但违反已发布 trait 文档 | `packages/driver-api/src/resource.rs:635-639` |
+
+另一条信息项(非本轨引入,base 遗留):`src-tauri/src/db/registry.rs:163-181` 对
+`pv > PROTOCOL_VERSION` 与 `pv < PROTOCOL_VERSION` 均只 `tracing::warn!` 后照常注册,只有
+`pv < MIN_PROTOCOL_VERSION`(=1)才 `return Err`。**故「协议 5 发布后旧驱动会被拒」在运行时并不成立。**
