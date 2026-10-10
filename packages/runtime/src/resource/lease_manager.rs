@@ -454,13 +454,36 @@ impl LeaseManager {
             handle_release.deregistered.push(handle_id);
         }
 
-        // (2) 宿主条件：调用方给的四项 + 本层刚摘干净的句柄事实。
+        // (2) 宿主条件：调用方声明的那一份 **∪** 本层登记册**此刻还剩**的句柄。
+        //
+        // **不是「以调用方为准」。** 本层是句柄登记册的唯一权威（模块头第 2 条：
+        // 「本层持有真正的句柄登记表，宿主条件由本层推导，调用方**无法**谎报
+        // 『登记的句柄都空了』」）。旧写法把 `merged.unreleased_handles` 整个换成
+        // 调用方那一份（只滤 `closed`），于是 `self.handles` 里真实存在的句柄
+        // 对裁决完全不可见 —— 传一份 `HostConditionSnapshot::default()` 就能把
+        // 「登记册里还有一条开着的事务」盖掉，`ReturnedToPool` 当场被记下来，
+        // 而那条连接刚关掉一条事务句柄。§9.4「§6.5 已登记句柄为空」是归池的
+        // 必要条件，它不该取决于调用方记不记得报。
+        //
+        // **为什么关掉并摘净之后反而允许归池**：§6.5 的次序是「先在原 resource 上
+        // 回滚/关闭句柄并从 actor 注销，**确认后才释放资源**」。关掉 + 摘登记 =
+        // 登记册已清空 = 那一项归池前置**已满足**，此时仍不放行就等于让一条彻底
+        // 收尾过的租约永远回不了池。`lease_handle_registry.rs:102` 与
+        // `lease_transitions_matrix.rs:570` 钉的正是这个，且断言消息写的是
+        // "once the registry is clean the lease may go back to the idle pool"。
+        // 这与 `HostConditionSnapshot::outstanding_handles` 过滤 `closed` 是同一条
+        // 理由，两处口径必须逐字一致。
+        //
+        // 所以并入的是**本层登记册此刻还剩的**句柄：关得掉 ⇒ (1) 里已经摘干净 ⇒
+        // 什么都不并；关不掉 ⇒ `?` 已在 (1) 提前返回，走不到这里。这条并集因此
+        // 只对「登记册里有 (1) 管不到的残留」生效 —— 而那正是 (4) 要报的漏报。
         let mut merged = host.clone();
         merged.unreleased_handles = host
             .unreleased_handles
             .iter()
             .filter(|handle| !handle.closed)
             .cloned()
+            .chain(self.handles.for_lease(lease_id))
             .collect();
 
         // (3) 台账裁决。摘登记发生在**之前**，所以这里的 close 一定排在句柄关闭之后。

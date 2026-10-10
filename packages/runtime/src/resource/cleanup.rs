@@ -80,8 +80,13 @@ impl ProtocolDebt {
 ///
 /// 四个字段正是三个独立场景加一个归属禁用：
 /// (a) `active_executions` 非空；(b) `outstanding_protocol` 非空；
-/// (c) `unreleased_handles` 非空；(d) `owner_disabled`。
-/// **任意一项非空即拒绝复用**，三者互不替代 —— 驱动报 `Clean` 不会让其中任何一项消失。
+/// (c) `unreleased_handles` 里有**仍未终结**的句柄；(d) `owner_disabled`。
+/// **任意一项成立即拒绝复用**，三者互不替代 —— 驱动报 `Clean` 不会让其中任何一项消失。
+///
+/// 字段 (c) 的读法只有一处（[`Self::outstanding_handles`]）：`closed = true` 的句柄
+/// **不算**阻断项。字段名仍叫 `unreleased_handles` 是因为它是调用方交进来的原始
+/// 声明（含已关闭的那些），过滤在读取侧做，不在写入侧做 —— 写入侧过滤会让
+/// 「调用方报过但已关闭」这件事在快照里消失，而报表要能看出它曾经存在过。
 ///
 /// 第五个字段 `fixed_session` 不是「故障」，而是**用途**声明：用户自开的
 /// 任意 SQL 会话关闭时直接关物理资源。这类会话即使四项检查全清也不进空闲池。
@@ -110,17 +115,44 @@ pub struct HostConditionSnapshot {
 }
 
 impl HostConditionSnapshot {
+    /// **仍未终结**的会话级句柄：`closed = true` 的不算。
+    ///
+    /// 这是本快照对「句柄」这一项的**唯一**口径，`is_clear` / `first_blocker` /
+    /// `all_blockers` / `ResourceManager::release` 的 `needs_reset` 四处一律经它读，
+    /// 不再各自 `.is_empty()` 或 `iter().any(|h| !h.closed)`。
+    ///
+    /// 为什么必须过滤 `closed`：`SessionHandleRef.closed` 是「已自行关闭、登记还挂着」
+    /// 的终态标志（`lease_manager.rs` 的 `deregister_handle` 文档把这称为登记与摘除的
+    /// 「对称另一半」；`ExecutionCompletion` 也正是这样上报已完结的句柄）。宿主把它
+    /// 提交/回滚掉之后，它就不再是一项未了义务 —— 再拿它挡归池，租约会因为一条
+    /// **死**句柄永远进不了空闲池，池化收益整体失效且无任何测试覆盖过这种输入。
+    ///
+    /// 与 [`CleanupReport::outstanding_handles`] 的过滤条件逐字一致，两份口径因此
+    /// 不可能再对同一个快照给出「不清」与「没有未了句柄」两种答案。
+    pub fn outstanding_handles(&self) -> impl Iterator<Item = &SessionHandleRef> {
+        self.unreleased_handles
+            .iter()
+            .filter(|handle| !handle.closed)
+    }
+
     /// 四项宿主条件全满足（注意：这**不代表**可以回池，驱动那一侧还没看，
     /// 用途也可能根本不允许归还）。
-    pub const fn is_clear(&self) -> bool {
+    ///
+    /// 句柄那一项读 [`Self::outstanding_handles`]，不是 `unreleased_handles.is_empty()`
+    /// —— 后者会把已关闭的句柄也算成阻断项，见那边的理由。
+    pub fn is_clear(&self) -> bool {
         self.active_executions.is_empty()
             && self.outstanding_protocol.is_empty()
-            && self.unreleased_handles.is_empty()
+            && self.outstanding_handles().next().is_none()
             && self.owner_disabled.is_none()
     }
 
     /// 宿主侧认为「这条租约有资格进空闲池」：四项检查全清，且用途允许归还。
-    pub const fn admits_to_pool(&self) -> bool {
+    ///
+    /// 不再是 `const fn`：句柄那一项经 [`Self::outstanding_handles`] 读，而它返回
+    /// 迭代器。已核实全仓没有任何调用点依赖 const（`admits_to_pool` 本身无生产
+    /// 调用方，`is_clear` 只被本方法与两处文档提及）。
+    pub fn admits_to_pool(&self) -> bool {
         self.is_clear() && !self.fixed_session
     }
 
@@ -145,7 +177,7 @@ impl HostConditionSnapshot {
                     })
             })
             .or_else(|| {
-                self.unreleased_handles.first().map(|handle| {
+                self.outstanding_handles().next().map(|handle| {
                     ReturnReason::UnreleasedSessionHandle {
                         handle_id: handle.handle_id.clone(),
                         kind: handle.kind,
@@ -186,7 +218,7 @@ impl HostConditionSnapshot {
                 detail: debt.detail,
             });
         }
-        for handle in &self.unreleased_handles {
+        for handle in self.outstanding_handles() {
             blockers.push(ReturnReason::UnreleasedSessionHandle {
                 handle_id: handle.handle_id.clone(),
                 kind: handle.kind,
@@ -500,9 +532,7 @@ impl CleanupReport {
             outstanding_handles: if session_reset_performed {
                 Vec::new()
             } else {
-                host.unreleased_handles
-                    .iter()
-                    .filter(|handle| !handle.closed)
+                host.outstanding_handles()
                     .map(|handle| handle.handle_id.clone())
                     .collect()
             },

@@ -474,7 +474,10 @@ impl ResourceManager {
         // 注意 `Discard` 也**不**清空 `outstanding_handles`：驱动没能证明那份回滚真的
         // 发生了，报告里就必须留着这些句柄，不能替驱动把「回滚过」写进审计
         // （`CleanupReport::from_plan` 只在 `session_reset_performed` 为真时清空）。
-        let needs_reset = host.unreleased_handles.iter().any(|handle| !handle.closed);
+        // 只有**仍未终结**的句柄才需要在关闭前复位（回滚、解除映射）；已 `closed`
+        // 的死句柄不构成收尾义务。口径与 `HostConditionSnapshot::outstanding_handles`
+        // 是同一处，两边的过滤条件必须逐字相同。
+        let needs_reset = host.outstanding_handles().next().is_some();
         let mut session_reset_performed = false;
         if plan.disposition == CleanupDisposition::Closed && needs_reset {
             match self.transport.reset(&record.resource_id) {
