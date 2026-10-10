@@ -132,6 +132,33 @@
   (3) `acquire_resource` 次数借出前后不变（没有新建物理连接），
       且 `reset_resource` 0 次（借出不触发复位）。
 
+## §9.4 陷阱：本轨的正面回答
+
+**（a）是否接了这个检查？没有，且不接。**
+- 宿主侧不接 `require_reset_for_reuse`：`src-tauri` 不 import 它，
+  `packages/runtime/src/` 对它 0 处引用（grep 实测，命中全在 `packages/driver-api/`）。
+- 归池判定在 `packages/runtime/src/resource/**`（另两轨在改），而宿主**根本不调
+  `ResourceManager`**（grep 实测：`src-tauri` 对 `ResourceManager` 只在注释里被提，
+  没有构造）。所以本轨的接线**够不到**归池路径，这是结构事实而非疏漏。
+- 唯一相邻处是 `session_backend::close:519-522` 的 `let _reset = provider
+  .reset_resource(...)`：它把 `ResetDisposition` 丢弃后直接 `close_resource`。
+  这是**既有形状**（本轨之前就有），不是本轨引入；本轨不改它（另轨在接），此处记账。
+
+**（b）空闲池不可达的后果是否观察到？**
+本轨观察不到：桌面会话走 `SessionBackend::close`（关闭路径），不归池。
+归池是 `resource::ResourceManager` 的事，那条路径上已有
+`resource/journey.rs` 的钉死用例：复位失败/未确认 ⇒ `returned_to_pool() == false`、
+`decision.admits_to_idle_pool() == false`、`first_reason_code() == "hostResetUnconfirmed"`。
+所以「不可达」在那条路径上是**已被断言的事实**，不是静默空转。
+
+**（c）建议怎么让它显式、可观测？**
+本轨加了 `adapter.log_runtime_wiring()`：启动时把 `live_connections` /
+`idle_reclaim_enabled` / `idle_reclaimer` 三项打成一行。前两项 false 是配置事实
+（debug），第三项 false 是装配缺陷（warn，说清「会话只建不回收、额度单调下降」）。
+**刻意不**打 `pool reachable` 这种字段：首版空闲池在真实驱动上恒不可达是正确的，
+为了让日志变绿而谎报能力正是简报禁止的那件事。真要观测「池为什么空」，
+该看的是归池路径已有的 `hostResetUnconfirmed` 理由码，而不是一个新布尔。
+
 ## 取舍与待裁决
 
 1. **`ExecutionGateway` 不在宿主侧新增引用**（见最终报告）。
