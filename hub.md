@@ -241,3 +241,60 @@ CLI `codegraph explore` 在 PATH 中。AGENTS.md 明文要求「reach for it BEF
 `SessionRegistry`(`registry/actor.rs`)全部公开面 = 4 个方法，其中 `exec`:197 / `control`:210 是通用 actor 入口，**不是会话语义**。
 
 **结论：执行面接口完备，会话生命周期面只到「actor + 查询态」。** ⇒ P4 可以按接口写执行路径（142 处调用点的大头），但「每 QueryPanel 一个懒固定 session」所需的三件事没有接口可依。据此定 P3/P4 策略为 **B/C 合成**：由轨 B 在接线的同时冻结 `openSession` / `setSessionContext` / `closeSession` 三个入口的**签名**（不必实现完），P4 即可按签名开发，P3 继续填实现，最后一起验证。契约冻结的既有雏形：`RuntimeConnectionUseCases`、`DesktopSessionBackend`、`platform/session_commands.rs` 注册的 12 个命令。
+
+---
+
+## 十一、轨 `p3-reset-capability` 合流记录
+
+独立 Tester `bedeaab1` 验收 **ACCEPT**(`79a108480`)。合流时 `cleanup.rs` 有两处文本冲突
+(`reason_code()` match 臂各含一条新变体),解法是**两条都保留** —— 这正是不冲突的语义:
+轨 1 的 `DriverDiscardedReset` 发生在**执行阶段**(reset 已调用、驱动答复不能复用),
+本轨的 `DriverResetUnsupported` 发生在**准入阶段**(reset 未被调用、能力已否决)。
+已在变体文档里写明这个分工。`reason_code()` 的穷尽性由编译器把守,不需人工核对。
+
+**验收中测出的两条数字失实(不可引用)**:
+- 提交方台账称 `Default = Unsupported` 会让 runtime `1001 → 963 / 38 failed`;**Tester 独立复现为 `981 / 24`**(两次一致)
+- 提交方称 `HostConditionSnapshot::default()` 有 **27** 处调用点;**实为 34 处**(35 行命中含 1 行 doc)
+方向与结论成立(`Verified` 的理由不受影响),但这两个数字不得出现在任何结论里。
+
+**A-12(中,未闭合接缝)**:`reset_for_reuse` **无任何生产供给路径** ——
+`with_reset_for_reuse()` 全仓 7 处调用**全在 `tests/**`**;`HostConditionSnapshot` 在
+`packages/runtime` 之外零构造;`src-tauri` 对 `datazen_runtime::resource` 零命中。
+故 `Default = Verified` 当下不构成缺陷(没有生产者会走到归池裁决),但「由供给侧显式负责」
+**没有任何编译期或测试保证**。**接线轨(`p3-runtime-wiring`)必须在构造
+`HostConditionSnapshot` 时显式 `with_reset_for_reuse(caps.reset_for_reuse)`**,否则会静默
+退回「跑一次复位再关闭」。
+
+---
+
+## 十二、轨 `p3-runtime-wiring` 合流记录(`d4b98e5ea`)
+
+P3 新资源运行时在桌面侧**首次真正启用**。此前 `with_live_connections` /
+`start_idle_reclaimer` / `SessionRegistry::set_idle_deadline` 三个接线点在 `src-tauri`
+内**零调用方**;本轨接入后:
+- `DesktopLiveConnectionSource`(`src-tauri/src/platform/live_source.rs`)实现出向端口,
+  核心是补一张 `by_session` 反向索引 —— `resources` 的 key 是不透明 uuid,而端口只带
+  `{dbSessionId, runtimeEpoch}`,缺它宿主只剩「新建连接」(契约禁止)或「永远拒绝」两条路
+- `inject` 里启动扫描器、`RunEvent::ExitRequested` 里停
+- `SessionRegistry::set_idle_deadline` 公开入口,**生产有真实调用方**
+  (`application/idle.rs:248`),不是「又一个零调用方」
+
+**A-13(推翻我先前的判断,必须留痕)**:我此前多次把「`src-tauri` 对 `ExecutionGateway`
+引用数为 0」记为 P3/P6 的缺口。**这个判断是错的。** 读码证实
+`packages/runtime/src/application/operations.rs` 的 `enqueue` **无条件**走
+`gateway.accept(...)`(`:48`),`:93` 走 `dispatch`,`:108` 走 `resolve_unknown_outcome`
+—— 门面已把网关藏好,**宿主零引用是设计结果而非缺口**。在宿主新增直接引用反而会开一条
+绕过幂等/授权的后门。
+
+**A-14(测试脆弱,用户裁示不修)**:`src-tauri/src/platform/live_source_tests.rs:497`
+断言 `resource_key == format!("conn-1#{}", acquires_after_open - 1)`,而夹具 provider 的
+`{seq}` 是**跨测试全局自增**的。`cargo test` 默认并行 ⇒ 「本测试第一个用该 provider」
+这个前提不成立,变绿依赖执行次序。表现为基线偶发 `left: "conn-1#999" / right: "conn-1#0"`。
+**用户明确裁示不修,合流放行。** 症状:该断言同时能杀掉三个「端口作假」变异,守住了该守的,
+但守的方式带次序洞。若将来它开始无故变红,根因在这里,不要去查产品代码。
+
+**A-15(终止回收与 worker 未接)**:`start_idle_reclaimer` 本轨已接,但它只做**空闲**淘汰;
+**终止**(异常/失联)的清理路径未接。§9.4 的完整清理包含两者。
+
+**A-16(§6.4 顺延语义未定)**:`refresh_idle_deadline` 的「哪次业务活动算真实活动」
+需与 P4 consumer 迁移一起定。方法、测试、入口齐了,缺调用点。
