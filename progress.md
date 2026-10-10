@@ -211,16 +211,97 @@ session actor；未登记 = 非法」，而 `closed` 字段是给「已自行关
 
 ## 改动清单（文件:行 → 改了什么）
 
-_待填。_
+| 文件 | 行 | 改了什么 |
+|---|---|---|
+| `packages/runtime/src/resource/cleanup.rs` | 132-140 | 新增 `HostConditionSnapshot::outstanding_handles()`：**唯一**的句柄口径，过滤 `closed` |
+| " | 143-148 | `is_clear()` 改读该谓词（去掉 `const`）—— 已关闭的句柄不再挡归池 |
+| " | 180-184 | `first_blocker()` 句柄那一格改读该谓词 |
+| " | 221-227 | `all_blockers()` 句柄那一格改读该谓词 |
+| " | 538-540 | `CleanupReport::from_plan` 的 `outstanding_handles` 改读该谓词（两份口径合一） |
+| " | 79-99 | 字段文档写清「`closed` 的句柄不是未了义务」与过滤为什么放在读取侧 |
+| `packages/runtime/src/resource/manager.rs` | 480 | `needs_reset` 改读同一谓词（四处口径合一） |
+| `packages/runtime/src/resource/lease_manager.rs` | 459-486 | (2) 宿主条件改成「调用方声明 ∪ 登记册**此刻还剩**的句柄」；理由与「为什么关净后允许归池」写全 |
+| `packages/runtime/tests/cm74_assert3_clean_verdict_with_registered_handle.rs` | 新文件 696 行 | 7 条 CM-74 断言 3 用例 |
+
+**未新增任何 `ReturnReason` 变体。** 本轨只修口径，没有新的阻断项类型。
 
 ## 门禁（全部本轨实测，未采信任何他人数字）
 
-_待填。_
+首尾各记录一次 HEAD 与工作区 sha，证明运行期间没人动过：
+起始 `HEAD=9d6c1145f`（代码提交）→ 收尾 `HEAD=9d6c1145f`、`git status --porcelain` 空。
 
-## 失败证据（改动前）
+| 门禁 | 命令 | 退出码 | 逐字结论行 |
+|---|---|---|---|
+| A | `cargo fmt --all -- --check` | 0 | 无任何输出（0 字节日志） |
+| B | `cargo check --workspace --all-targets` | 0 | `Finished dev profile [unoptimized + debuginfo] target(s) in 16m 16s`；`grep -cE "^error"` = **0** |
+| C | `cargo test -p datazen-runtime --no-fail-fast` | 0 | **1015 passed / 0 failed**（基线 `abcbb41d0` 实测 **1008**，差 7 = 本轨新增） |
+| D | `cargo test -p datazen --lib` | 0 | `test result: ok. 1810 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 46.02s` |
+| E1 | `node scripts/check-driver-protocol-compat.mjs --base abcbb41d0` | 0 | `[check-driver-protocol-compat] ok (base abcbb41d0; PROTOCOL_VERSION 5 -> 5, MIN_PROTOCOL_VERSION 1 -> 1, crate 0.0.11 -> 0.0.11).` |
+| E2 | `node scripts/check-driver-protocol-release.mjs --base abcbb41d0` | 0 | `[check-driver-protocol-release] ok (base 9d6c1145f; ...; driver releases: 0)` |
+| F | 新测试在基线 `abcbb41d0` 上跑 | 101 | 见下节 |
+| G | `git status --porcelain` | — | 空；三个 codegen 均在 `.gitignore` 中（`.gitignore:69/99/72`），未 add 未删 |
 
-_待填。_
+## 失败证据（改动前 = 基线 `abcbb41d0`）
+
+独立 detached worktree `/tmp/cm74-baseline-probe` @ `abcbb41d0`（跑完已 `git worktree remove --force`，
+未碰本工作树），只把新测试文件逐字拷入，**不改任何生产代码**：
+
+```
+$ cargo test -p datazen-runtime --test cm74_assert3_clean_verdict_with_registered_handle
+BASELINE_A3_EXIT=101
+
+test a_clean_driver_verdict_never_carries_a_registered_cursor_into_the_pool ... ok
+test a_clean_driver_verdict_never_carries_a_registered_handle_into_the_pool ... ok
+test a_handle_left_in_the_registry_never_parks_even_when_the_host_claims_clear ... ok
+test a_handle_that_cannot_be_closed_never_parks_and_stays_retryable ... ok
+test a_clean_driver_verdict_parks_after_the_registry_is_actually_clean ... ok
+test a_lease_without_any_handle_still_parks_on_the_production_release_path ... ok
+test a_closed_session_handle_no_longer_blocks_the_return ... FAILED
+
+---- a_closed_session_handle_no_longer_blocks_the_return stdout ----
+thread '...' panicked at ...cm74_assert3_clean_verdict_with_registered_handle.rs:355:5:
+a closed handle is not an outstanding obligation: the lease must park
+
+test result: FAILED. 6 passed; 1 failed; 0 ignored
+```
+
+**计数反证**（同一棵基线树，先带新测试再删掉它各跑一次）：
+带新测试 ⇒ `1014 passed / 1 failed`；删掉新测试 ⇒ `1008 passed / 0 failed`。
+差的 7 个正是本轨新增，没有悄悄增删别的用例。
+
+## 变异验证（证明新测试真的在守东西）
+
+独立 detached worktree `/tmp/cm74-mutation-probe` @ `9d6c1145f`，跑完已删。
+
+| 变异 | 结果 |
+|---|---|
+| M1 `is_clear()` 退回 `unreleased_handles.is_empty()` | **未被抓到**（EXIT=0）。`first_blocker` 那条路先判了，`is_clear` 在这条用例上不是承重墙 |
+| M2 `first_blocker()` 退回读 `unreleased_handles.first()` | **被抓到**（EXIT=101），`a_closed_session_handle_no_longer_blocks_the_return` 转红 |
+| M3 `all_blockers()` 退回读 `&self.unreleased_handles` | **未被抓到**（EXIT=0）。它只进报表不进裁决，说明本轨对它的改动是**口径统一**而非修复 |
+| M4 `lease_manager` 并集退回「只用调用方」 | **未被抓到**（EXIT=0）。证实这一处是**零行为变化的安全网**，与台账记录一致，不是修复 |
+
+**诚实结论**：真正承重的是 `first_blocker()` 那一格（M2）。`is_clear` / `all_blockers` /
+`lease_manager` 并集三处改动是为口径一致与未来防护，**不是本轮缺陷的修复点**。
+这一点必须让协调者知道：本轨的净行为修复只有一处。
 
 ## 取舍与待裁决项
 
-_待填。_
+1. **缺陷 B 我第一版修错了**（详见台账「缺陷 B」节）。第一版把「关之前的登记快照」
+   并进宿主条件，三条既有用例转红；查 §6.5/§9.4 后发现是我错、它们对。
+   **教训**：既有用例转红时先查权威文本再判谁错，不要默认「新写的测试更对」。
+2. **`is_clear()` 不再是 `const fn`**。已核实全仓无 const 依赖（`admits_to_pool` 自身
+   无生产调用方）。若将来有人在 const 上下文用它，会得到编译错误而不是静默降级 —— 可接受。
+3. **变异 M1/M3/M4 未被抓到** ⇒ 这三处改动的价值是**防止未来回归**，不是本轮修复。
+   若协调者希望最小 diff，可以只保留 `first_blocker` 的改动与 7 条测试，
+   但代价是 `is_clear` / `all_blockers` / `from_plan` 三处继续和 `first_blocker` 口径不一致
+   —— 我选择保留统一，理由写在各处注释里。
+4. **本轨只交付断言 3。** 四条后续落点见台账「本轨明确交回给后续的四条」表。
+5. **零 `ReturnReason` 新增**，因此与 `p3-reset-capability` 轨的合流面只有
+   `cleanup.rs::HostConditionSnapshot` 一个 impl 块内的三个方法体，且我改的是
+   **句柄那一格**（第 3 格）、它改的是**末位能力格**，不同臂、不同行。
+6. **`docs/` 一字未改** —— 文档说该做的（§9.4「§6.5 已登记句柄为空」）代码做到了，
+   反倒是代码对「已关闭的句柄」多挡了一道，那是代码偏离文档，不是文档偏离代码。
+
+## 遗留
+
+无未完成项。断言 3 已转绿并附失败证据。
