@@ -19,7 +19,7 @@ use super::{
 use crate::connection::error::ProviderError;
 use crate::connection::execution::{EffectOutcome, ExecutionErrorCode, SessionCommand};
 use crate::connection::port::BudgetClass;
-use crate::connection::session::HandleKind;
+use crate::connection::session::{HandleKind, TransactionState};
 use crate::connection::testing::fake_resource::{FaultKind, ResourceOp};
 use crate::connection::testing::fixtures::{NS_A_KEY, NS_B_KEY};
 use crate::connection::testing::harness::fixture_target;
@@ -400,6 +400,176 @@ fn a_handle_from_another_resource_is_rejected() {
         "跨资源使用句柄必须被拒，实际返回了 {:?}",
         result.map(|value| value.data)
     );
+}
+
+// ---------------------------------------------------------------------------
+// 反例四：未登记句柄（CM-74 断言 4）
+// ---------------------------------------------------------------------------
+
+/// CM-74 断言 4：「未登记句柄被拒绝返回」——**提交**与**回滚**两条终结路径
+/// 都必须在触达后端之前被 `ensure_registered` 拦下。
+///
+/// 这条用例存在的理由是上面那条 `a_handle_from_another_resource_is_rejected`
+/// **顶不掉它**（2026-06 曾据此判过「已覆盖」，属于误判）：那条走
+/// `SessionCommand::HandleFromOtherResource`，命中的是 `session_cmds.rs` 里
+/// **另一套** match，判负点是资源归属检查，**根本不经过** `ensure_registered`。
+/// 把 `ensure_registered` 整个删成放行，那条照样绿。
+///
+/// 断言分两层，缺一不可：
+/// 1. **返回值**：`ProviderError::SessionNotFound` + `api_code == SessionNotFound`。
+///    光有这一层只能证明「报了个错」，证明不了后端没动手。
+/// 2. **后端零动作**：三个互相独立的探针 ——
+///    (a) 预先注入的事务故障额度**没被消费**（`transaction_operation` 是
+///    `ResourceOp::Transaction` 故障的唯一消费点）；(b) 资源上的
+///    `transaction_state` 仍是反例 begin 留下的 `Active`（真跑了 Commit/Rollback
+///    会被打回 `None`）；(c) 登记册仍无该句柄、孤儿表仍有它、台账没多出
+///    `HandleAction::Closed`，回滚那半程还没多出 `ResourceEvent::Quarantined`
+///    （回滚真跑了 F8 `RollbackFailed` 就会隔离资源并保留预算占用）。
+///
+/// 只测 (1) 的退化盲区：某次重构让 `ensure_registered` **报错之后仍继续调后端**，
+/// 返回值照样是 `SessionNotFound`，只有 (a)(b) 能抓住。
+#[test]
+fn an_unregistered_handle_is_refused_by_both_commit_and_rollback_without_touching_the_backend() {
+    let harness = harness_for(NS_A_KEY);
+    let acquired = harness
+        .acquire(owner(), "pol-1", BudgetClass::Session)
+        .expect("acquire 必须成功");
+
+    // 反例命令：句柄**铸出来**了（后续两步的前提），但**不进登记册**。
+    let begun = harness
+        .invoke(
+            SessionCommand::BeginSessionTransactionUnregistered,
+            &acquired.handle,
+            json!({}),
+        )
+        .expect("反例 begin 必须成功：句柄已铸造、已记 orphaned，只是没登记");
+    let handle_id = first_handle_id(&begun);
+
+    // 前提自证：没登记这条不变量必须先成立，否则测的就不是断言 4。
+    assert!(
+        !harness.journal().handle_registry().contains_key(&handle_id),
+        "前提：句柄 {handle_id} 必须不在登记册里"
+    );
+    assert_eq!(
+        harness
+            .journal()
+            .orphan_handles()
+            .iter()
+            .map(|record| record.handle_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![handle_id.as_str()],
+        "前提：反例命令必须把句柄 {handle_id} 记成 orphaned"
+    );
+
+    // ---- 后端零动作（一）：提交 ----
+    // 注入一次 F8 提交故障。真跑到后端的话，这份额度必被消耗掉。
+    harness.script().once(
+        ResourceOp::Transaction,
+        FaultKind::CommitUnknown {
+            code: "protocolError",
+        },
+    );
+    let commit = harness.invoke(
+        SessionCommand::CommitSessionTransaction,
+        &acquired.handle,
+        json!({ "handleId": handle_id }),
+    );
+    match commit {
+        Err(error @ GatewayError::Provider(ProviderError::SessionNotFound(_))) => {
+            assert_eq!(
+                error.api_code(),
+                Some(crate::connection::error::ApiErrorCode::SessionNotFound),
+                "未登记句柄的提交必须报 SessionNotFound，而不是别的错误码"
+            );
+        }
+        other => panic!("未登记句柄的提交必须被拒，实际是 {other:?}"),
+    }
+    assert_eq!(
+        harness.script().pending(ResourceOp::Transaction),
+        1,
+        "后端零动作：提交被拒就不得消费注入的事务故障额度，剩余 {} 份说明后端被触达了",
+        harness.script().pending(ResourceOp::Transaction)
+    );
+    assert_eq!(
+        harness
+            .provider()
+            .resource(&acquired.resource_id)
+            .expect("刚 acquire 的资源必然还在")
+            .transaction_state,
+        TransactionState::Active,
+        "后端零动作：事务状态必须仍是反例 begin 留下的 Active，被打到 None 就说明 Commit 真的跑了"
+    );
+
+    // 上一份注入额度在提交这一路没被消费，这里换一份回滚故障重新起判。
+    harness.script().clear();
+
+    // ---- 后端零动作（二）：回滚 ----
+    harness.script().once(
+        ResourceOp::Transaction,
+        FaultKind::RollbackFailed {
+            reason: "回滚失败：连接已断".to_owned(),
+        },
+    );
+    let rollback = harness.invoke(
+        SessionCommand::RollbackSessionTransaction,
+        &acquired.handle,
+        json!({ "handleId": handle_id }),
+    );
+    match rollback {
+        Err(error @ GatewayError::Provider(ProviderError::SessionNotFound(_))) => {
+            assert_eq!(
+                error.api_code(),
+                Some(crate::connection::error::ApiErrorCode::SessionNotFound),
+                "未登记句柄的回滚必须报 SessionNotFound，而不是别的错误码"
+            );
+        }
+        other => panic!("未登记句柄的回滚必须被拒，实际是 {other:?}"),
+    }
+    assert_eq!(
+        harness.script().pending(ResourceOp::Transaction),
+        1,
+        "后端零动作：回滚被拒就不得消费注入的事务故障额度，剩余 {} 份说明后端被触达了",
+        harness.script().pending(ResourceOp::Transaction)
+    );
+    assert_eq!(
+        harness
+            .provider()
+            .resource(&acquired.resource_id)
+            .expect("刚 acquire 的资源必然还在")
+            .transaction_state,
+        TransactionState::Active,
+        "后端零动作：事务状态必须仍是 Active，被打到 None 就说明 Rollback 真的跑了"
+    );
+    assert!(
+        !harness
+            .journal()
+            .entries()
+            .iter()
+            .any(|entry| matches!(entry, JournalEntry::Resource { event: ResourceEvent::Quarantined, .. })),
+        "后端零动作：回滚真跑了注入的 RollbackFailed 就该隔离资源并留下 Quarantined 台账；不得出现"
+    );
+
+    // ---- 后端零动作（三）：登记册 / 台账全程未变 ----
+    // 句柄从头到尾没进过登记册，所以「关闭后不许有残留登记」这件事必须成立。
+    assert!(
+        !harness.journal().handle_registry().contains_key(&handle_id),
+        "后端零动作：提交/回滚都不得让未登记句柄混进登记册"
+    );
+    assert!(
+        !harness.journal().entries().iter().any(
+            |entry| matches!(entry, JournalEntry::Handle { handle_id: id, action: HandleAction::Closed, .. } if id == &handle_id)
+        ),
+        "后端零动作：句柄从未登记，台账上不得出现它的 Closed 注销事件"
+    );
+
+    harness.script().clear();
+    harness
+        .close(&acquired.handle)
+        .expect("收尾 close_resource 必须成功");
+    // 孤儿句柄必须在关资源时被回收（I7），否则上面「零动作」只是把泄漏推后了。
+    if let Err(violations) = harness.assert_no_leak() {
+        panic!("未登记句柄这条反例的收尾泄漏不变量不成立：{violations}");
+    }
 }
 
 // ---------------------------------------------------------------------------
