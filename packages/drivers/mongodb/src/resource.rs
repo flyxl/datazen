@@ -40,7 +40,8 @@ use datazen_driver_api::resource::{
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
     EffectOutcome, ExecutionCompletion, ResetDisposition, ResourceHealth, SessionContext,
-    SessionObservation, TransactionObservation, TransactionOptions, TransactionState,
+    SessionHandleRef, SessionObservation, TransactionObservation, TransactionOptions,
+    TransactionState,
 };
 use datazen_driver_api::{
     ConnectionHandle, DatabaseDriver, QueryExecutionId, SqlTarget, Value, PROTOCOL_VERSION,
@@ -548,6 +549,29 @@ impl ResourceProvider for MongodbResourceProvider {
                 Err(ResourceError::Driver(error))
             }
         }
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(&self.driver_id, self.runtime_epoch)?;
+        // Refused, never absorbed. MongoDB sessions here are bound to the
+        // client, not to a cursor the caller owns: this provider declares
+        // `session_scoped_handles = Unsupported` and reports an empty
+        // `session_handles` list on every completion. `Ok(())` would read as
+        // "closed" to the host and let it judge the session clean without
+        // anything having been closed.
+        Err(ResourceError::unsupported(
+            self.driver_id.as_str(),
+            "close_handle",
+            format!(
+                "this provider issues no session-scoped handles, so handle '{}' ({:?}) names \
+                 nothing this provider can close",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
     }
 }
 

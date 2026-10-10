@@ -640,8 +640,40 @@ impl ResourceProvider for LegacyResourceAdapter {
             })?;
         Ok(CloseDisposition::Closed)
     }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(&self.driver_id, self.runtime_epoch)?;
+        // The legacy `DatabaseDriver` surface has nowhere to put a
+        // session-scoped handle: `execute_on_resource` fills
+        // `ExecutionCompletion.session_handles` with an empty list because the
+        // wrapped driver never mints one. Reporting `Ok(())` here would be a
+        // claim about something the adapter cannot even name, and the host
+        // would read it as "closed" and judge the session clean. Refusing by
+        // name keeps the legacy path fail-closed until a legacy driver really
+        // can carry a handle.
+        Err(ResourceError::unsupported(
+            &self.driver_id,
+            "close_handle",
+            format!(
+                "the legacy DatabaseDriver surface carries no session-scoped handle, so handle \
+                 '{}' ({:?}) names nothing this adapter can close; a driver that does issue them \
+                 needs a ResourceProvider of its own",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
+    }
 }
 
 #[cfg(test)]
 #[path = "resource_adapter_tests.rs"]
 mod tests;
+
+/// §6.5 per-handle close on the legacy surface. Its own file because
+/// `resource_adapter_tests.rs` is already past the size ceiling.
+#[cfg(test)]
+#[path = "resource_adapter_close_handle_tests.rs"]
+mod close_handle_tests;

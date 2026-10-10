@@ -40,7 +40,9 @@ use datazen_driver_api::resource::{
     DescribeResourceRequest, IdentityScope, InitializationRequirement, ResourceError,
     ResourceHandle, ResourceProvider, ResourcePurpose, ResourceScope, ResultChunk, ResultSink,
 };
-use datazen_driver_api::session::{CancelDisposition, CloseDisposition, TransactionOptions};
+use datazen_driver_api::session::{
+    CancelDisposition, CloseDisposition, SessionHandleKind, SessionHandleRef, TransactionOptions,
+};
 use datazen_driver_api::{
     iter_driver_factories, require_resource_provider, ConnectionConfig, DatabaseDriverFactory,
     ResourceProviderMissing,
@@ -145,6 +147,18 @@ fn transaction_options() -> TransactionOptions {
         read_only: None,
         defers_commit: false,
     }
+}
+
+/// A `SessionHandleRef` shaped like the ones the host receives in
+/// `ExecutionCompletion.session_handles`. Only the *identity* matters to the
+/// ownership check, so the fields below are deliberately arbitrary.
+fn session_handle() -> SessionHandleRef {
+    SessionHandleRef::new(
+        "tx-not-issued",
+        SessionHandleKind::Transaction,
+        "not-issued".to_string(),
+        1,
+    )
 }
 
 /// A budget port that records what it was asked for, so a test can prove a
@@ -604,6 +618,13 @@ async fn a_handle_this_provider_never_issued_is_refused_on_every_entry_point() {
         (
             "close_resource",
             provider.close_resource(&foreign).await.map(|_| ()),
+        ),
+        (
+            "close_handle",
+            provider
+                .close_handle(&foreign, &session_handle())
+                .await
+                .map(|_| ()),
         ),
     ];
 

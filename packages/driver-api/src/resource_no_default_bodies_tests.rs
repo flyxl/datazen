@@ -28,10 +28,11 @@
 //!
 //! Both in-crate `ResourceProvider` implementations —
 //! `resource_adapter.rs::LegacyResourceAdapter` and the integration fixture
-//! `tests/support/mod.rs::FakeProvider` — already spell out all 14 methods, so
-//! none of them leans on a default body and none needed changing. That is
-//! re-checked whenever the method-count test below runs: if a default body ever
-//! appears, the fixtures break at compile time *and* this gate goes red.
+//! `tests/support/mod.rs::FakeProvider` — spell out all 15 methods, so neither
+//! leans on a default body. Both had to grow `close_handle` by hand when
+//! protocol 5 added it, which is the point: the compiler refuses to let either
+//! one skip the new capability, and the method-count test below turns a missed
+//! impl into a named failure rather than a silently absent method.
 
 /// The file under guard, as source text.
 const RESOURCE_RS: &str = include_str!("resource.rs");
@@ -40,8 +41,8 @@ const RESOURCE_RS: &str = include_str!("resource.rs");
 const TRAIT_NAME: &str = "ResourceProvider";
 
 /// Method counts asserted against the trait doc comment in `resource.rs`.
-const EXPECTED_METHODS: usize = 14;
-const EXPECTED_ASYNC_METHODS: usize = 11;
+const EXPECTED_METHODS: usize = 15;
+const EXPECTED_ASYNC_METHODS: usize = 12;
 
 /// The core gate: not one `{` may survive inside the trait block.
 #[test]

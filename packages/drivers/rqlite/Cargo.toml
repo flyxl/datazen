@@ -1,6 +1,6 @@
 [package]
 name = "datazen-driver-rqlite"
-version = "0.0.8"
+version = "0.0.9"
 edition = "2021"
 description = "DataZen rqlite database driver"
 license = "GPL-3.0-or-later"

@@ -1,7 +1,7 @@
 //! The PostgreSQL resource provider's bookkeeping.
 //!
 //! This is a real implementation, not a shell. Every contract method — all
-//! fourteen, in [`contract`] — is bound to this crate's own connection and
+//! fifteen, in [`contract`] — is bound to this crate's own connection and
 //! execution machinery:
 //!
 //! | contract method | what actually runs |
@@ -13,6 +13,7 @@
 //! | begin / commit / rollback | `begin_transaction_impl` / `commit_impl` / `rollback_impl` (`execution.rs:915` / `:980` / `:997`), which really pin a `PoolConnection` |
 //! | [`ResourceProvider::request_cancel`] | `cancel_query_with_execution_impl` (`execution.rs:369`): execution-addressed, `pg_cancel_backend` on a *separate* control pool |
 //! | [`ResourceProvider::close_resource`] | `disconnect_impl` (`connection.rs:444`) plus exactly one budget release |
+//! | [`ResourceProvider::close_handle`] | `rollback_impl` on the *named* pinned transaction (`take_named_transaction` first proves the ref is the one open) |
 //!
 //! The four rules this provider never breaks are stated where they are
 //! enforced: ownership on [`PostgresResourceProvider::resource_of`], explicit
@@ -145,6 +146,68 @@ impl PostgresResourceProvider {
             .ok_or_else(|| ResourceError::TransactionResolutionRequired {
                 operation: operation.to_string(),
             })
+    }
+
+    /// Take out the open transaction **only if it is the one named**.
+    ///
+    /// [`Self::take_transaction`] answers "is a transaction open?"; this one
+    /// answers "is *this* handle's transaction open?", which is the question
+    /// [`ResourceProvider::close_handle`] has to ask. The distinction matters:
+    /// a host that replays a stale ref, or races a `commit_transaction`, must
+    /// be told which of the two happened — not quietly handed whichever
+    /// transaction happens to be open now.
+    fn take_named_transaction(
+        &self,
+        handle: &ResourceHandle,
+        handle_id: &str,
+    ) -> Result<OpenTransaction, ResourceError> {
+        handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
+        let key = handle.resource_key().to_string();
+        let mut registry = self.lock();
+        let resource =
+            registry
+                .live
+                .get_mut(&key)
+                .ok_or_else(|| ResourceError::InvalidResourceState {
+                    resource_key: key.clone(),
+                    operation: "close_handle".to_string(),
+                    state: "no resource with this key is open on this provider".to_string(),
+                })?;
+
+        let open = resource
+            .transaction
+            .as_ref()
+            .map(|transaction| transaction.id.clone());
+        match open {
+            Some(id) if id == handle_id => {
+                resource
+                    .transaction
+                    .take()
+                    .ok_or_else(|| ResourceError::InvalidResourceState {
+                        resource_key: key.clone(),
+                        operation: "close_handle".to_string(),
+                        state: "the named session handle left the open transaction while it was \
+                                being closed"
+                            .to_string(),
+                    })
+            }
+            Some(other) => Err(ResourceError::InvalidResourceState {
+                resource_key: key.clone(),
+                operation: "close_handle".to_string(),
+                state: format!(
+                    "session handle '{handle_id}' is not the transaction open on this resource; \
+                     the open one is '{other}'"
+                ),
+            }),
+            None => Err(ResourceError::InvalidResourceState {
+                resource_key: key,
+                operation: "close_handle".to_string(),
+                state: format!(
+                    "no transaction is open on this resource, so session handle '{handle_id}' \
+                     names nothing this provider holds"
+                ),
+            }),
+        }
     }
 
     /// Advance the resource's revision under the lock.
@@ -465,6 +528,6 @@ impl PostgresResourceProvider {
     }
 }
 
-/// The fourteen [`ResourceProvider`] methods. A child module so it sees the
+/// The fifteen [`ResourceProvider`] methods. A child module so it sees the
 /// provider's private bookkeeping without widening any visibility.
 mod contract;

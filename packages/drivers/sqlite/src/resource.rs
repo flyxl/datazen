@@ -34,8 +34,8 @@ use datazen_driver_api::resource::{
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
     EffectOutcome, ExecutionCompletion, ObservationConfidence, ResetDisposition, ResourceHealth,
-    SessionContext, SessionObservation, SessionState, TransactionObservation, TransactionOptions,
-    TransactionState,
+    SessionContext, SessionHandleRef, SessionObservation, SessionState, TransactionObservation,
+    TransactionOptions, TransactionState,
 };
 use datazen_driver_api::{
     ConnectionHandle, DatabaseDriver, QueryExecutionId, SqlTarget, TransactionHandle, Value,
@@ -697,6 +697,33 @@ impl ResourceProvider for SqliteResourceProvider {
                 Err(ResourceError::Driver(error))
             }
         }
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(&self.driver_id, self.runtime_epoch)?;
+        // Refused, never absorbed. This provider reports
+        // `session_scoped_handles = Unsupported` and every `ExecutionCompletion`
+        // it builds carries an empty `session_handles` list, so there is no
+        // cursor, prepared statement or transaction handle it ever issued.
+        // Returning `Ok(())` here would be indistinguishable from "closed" —
+        // the host would deregister the ref and judge the session clean while
+        // nothing was ever closed, which is exactly what §6.5 exists to
+        // prevent. The refusal names the handle so the mismatch is diagnosable
+        // rather than merely fatal.
+        Err(ResourceError::unsupported(
+            self.driver_id.as_str(),
+            "close_handle",
+            format!(
+                "this provider issues no session-scoped handles, so handle '{}' ({:?}) names \
+                 nothing this provider can close; session_scoped_handles is Unsupported and every \
+                 ExecutionCompletion reports an empty session_handles list",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
     }
 }
 

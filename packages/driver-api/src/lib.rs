@@ -98,8 +98,16 @@ pub use types::*;
 /// Protocol version for the driver API.
 ///
 /// Bump this when making breaking changes to `DatabaseDriver`, `KeyValueDriver`,
-/// or `DatabaseDriverFactory` traits.
-pub const PROTOCOL_VERSION: u32 = 4;
+/// `DatabaseDriverFactory`, or `ResourceProvider` traits.
+///
+/// 4 → 5: `ResourceProvider` gained the required `close_handle` method (§6.5
+/// per-handle close). Every impl — in-tree and out-of-tree — has to spell out
+/// what it does with a session-scoped handle, so this is a source break.
+///
+/// [`MIN_PROTOCOL_VERSION`] deliberately stayed at 1: raising it is a product
+/// decision about which old plugins keep loading, not a consequence of this
+/// break, and `driver-capability-migration.md` keeps the two apart.
+pub const PROTOCOL_VERSION: u32 = 5;
 
 /// Minimum protocol version the host still supports.
 ///

@@ -1,7 +1,7 @@
 //! The Redis resource provider's bookkeeping.
 //!
 //! This is a real implementation, not a shell. Every contract method — all
-//! fourteen, in [`contract`] — is bound to this crate's own connection and
+//! fifteen, in [`contract`] — is bound to this crate's own connection and
 //! execution machinery:
 //!
 //! | contract method | what actually runs |
@@ -478,6 +478,6 @@ impl RedisResourceProvider {
     }
 }
 
-/// The fourteen [`ResourceProvider`] methods. A child module so it sees the
+/// The fifteen [`ResourceProvider`] methods. A child module so it sees the
 /// provider's private bookkeeping without widening any visibility.
 mod contract;

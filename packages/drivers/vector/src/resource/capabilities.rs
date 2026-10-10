@@ -27,7 +27,7 @@
 //! | `transactions` | no levels, no savepoints, no maximum | The Qdrant REST API this driver speaks has no transaction endpoint, and `VectorDriver::execute` already refuses writes outright. A declared level would be one nothing honours. |
 //! | `ddl_atomicity` | left empty | No DDL path exists on this provider: `execute` is refused before it reaches the wire, so there is no statement whose atomicity could be observed. The empty map is the honest answer, and `atomicity_for` resolves an absent key to `Unknown`. |
 //! | `data` | `Unknown` (default) | See [`vector_capability_set`]'s own comment — the domain has no honest value for "buffered read-only", and both alternatives lie. |
-//! | `backup` | `Unknown` (default) | Nothing here produces or consumes an artifact, and the 14 contract methods contain no backup surface at all. |
+//! | `backup` | `Unknown` (default) | Nothing here produces or consumes an artifact, and the 15 contract methods contain no backup surface at all. |
 
 use datazen_driver_api::capabilities::{
     Availability, CapabilityRegistry, CapabilitySet, CapabilitySnapshot, ContextObservation,
@@ -122,7 +122,7 @@ pub fn vector_connection_cost(_config: &ConnectionConfig) -> ConnectionCostPolic
 ///   nothing, and it fails closed: `enables_feature()` is false, so a caller
 ///   has to ask instead of assuming.
 /// * `backup` stays `Unknown` for the same reason — no artifact is produced or
-///   consumed anywhere in this driver or in the 14 contract methods.
+///   consumed anywhere in this driver or in the 15 contract methods.
 pub fn vector_capability_set() -> CapabilitySet {
     let mut capabilities = CapabilitySet::default();
 
@@ -239,7 +239,7 @@ pub fn vector_capability_evidence() -> Vec<(&'static str, String)> {
         ),
         (
             "backup",
-            "unknown: this driver produces and consumes no artifact, and none of the 14 contract \
+            "unknown: this driver produces and consumes no artifact, and none of the 15 contract \
              methods carries a backup surface"
                 .to_string(),
         ),

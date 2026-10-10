@@ -162,6 +162,13 @@ pub struct FakeProvider {
     pub open: std::sync::Mutex<std::collections::BTreeMap<String, BudgetPermit>>,
     pub cancelled: std::sync::Mutex<std::collections::BTreeSet<String>>,
     pub seen: std::sync::Mutex<std::collections::BTreeSet<String>>,
+    /// Session-scoped handles this fake has minted and not yet closed. Keyed by
+    /// handle id; a handle only leaves this set when `close_handle` says it is
+    /// closed, so a test can tell "closed" apart from "never issued".
+    pub session_handles: std::sync::Mutex<std::collections::BTreeMap<String, SessionHandleRef>>,
+    /// Handle ids `close_handle` has accepted, in no particular order. Lets a
+    /// test assert a handle was closed exactly once.
+    pub closed_handles: std::sync::Mutex<std::collections::BTreeSet<String>>,
     pub disconnects: AtomicUsize,
 }
 
@@ -210,6 +217,8 @@ impl FakeProvider {
             open: std::sync::Mutex::new(Default::default()),
             cancelled: std::sync::Mutex::new(Default::default()),
             seen: std::sync::Mutex::new(Default::default()),
+            session_handles: std::sync::Mutex::new(Default::default()),
+            closed_handles: std::sync::Mutex::new(Default::default()),
             disconnects: AtomicUsize::new(0),
         }
     }
@@ -366,6 +375,20 @@ impl ResourceProvider for FakeProvider {
             confidence: ObservationConfidence::Confirmed,
             ..SessionContext::unobserved()
         };
+        // Register the server-prepared statement *before* reporting it. §6.5
+        // lets the host close any ref it was handed; a provider that reports a
+        // ref it does not hold would make that close impossible to honour.
+        let session_handle = SessionHandleRef {
+            handle_id: "seq-1".to_string(),
+            kind: SessionHandleKind::ServerPrepared,
+            resource_id: handle.resource_key().to_string(),
+            runtime_epoch: self.epoch,
+            closed: false,
+        };
+        self.session_handles
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(session_handle.handle_id.clone(), session_handle.clone());
         Ok(ExecutionCompletion {
             completion_status: CompletionStatus::Succeeded,
             effect_outcome: EffectOutcome::Completed,
@@ -378,13 +401,7 @@ impl ResourceProvider for FakeProvider {
                 effect: None,
                 revision: 3,
             },
-            session_handles: vec![SessionHandleRef {
-                handle_id: "seq-1".to_string(),
-                kind: SessionHandleKind::ServerPrepared,
-                resource_id: handle.resource_key().to_string(),
-                runtime_epoch: self.epoch,
-                closed: false,
-            }],
+            session_handles: vec![session_handle],
             protocol_drained: true,
             resource_health: ResourceHealth::Healthy,
         })
@@ -545,10 +562,61 @@ impl ResourceProvider for FakeProvider {
         match removed {
             Some(_) => {
                 self.disconnects.fetch_add(1, Ordering::SeqCst);
+                // A confirmed close records itself on the handle, the way a
+                // real driver does (`ResourceHandle::mark_closed`). Without it
+                // the §6.5 "the resource already closed, so the handle close is
+                // a no-op success" branch is unreachable in this fixture.
+                handle.mark_closed();
                 Ok(CloseDisposition::Closed)
             }
             None => Ok(CloseDisposition::Closed),
         }
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        self.require("close_handle")?;
+        handle.check(self.provider_id(), self.epoch)?;
+        if !session_handle.belongs_to(handle.resource_key(), self.epoch) {
+            return Err(ResourceError::InvalidResourceState {
+                resource_key: handle.resource_key().to_string(),
+                operation: "close_handle".to_string(),
+                state: format!(
+                    "session handle '{}' does not belong to this resource at this epoch",
+                    session_handle.handle_id
+                ),
+            });
+        }
+        if handle.is_closed() {
+            return Ok(());
+        }
+        // The fake declares `session_scoped_handles = Supported`, so it has to
+        // actually hold handles: a close that silently succeeded without one
+        // ever being registered would make this fake unable to tell the two
+        // apart, which is the mistake the real drivers refuse to make.
+        let removed = self
+            .session_handles
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&session_handle.handle_id);
+        if removed.is_none() {
+            return Err(ResourceError::InvalidResourceState {
+                resource_key: handle.resource_key().to_string(),
+                operation: "close_handle".to_string(),
+                state: format!(
+                    "session handle '{}' was never issued by this provider",
+                    session_handle.handle_id
+                ),
+            });
+        }
+        self.closed_handles
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(session_handle.handle_id.clone());
+        Ok(())
     }
 }
 

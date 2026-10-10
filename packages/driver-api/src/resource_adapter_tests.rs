@@ -22,7 +22,7 @@ enum CancelBehaviour {
 /// A legacy-style driver: session-wide `cancel_query` returns `Ok(())` like
 /// 13 of the 15 shipped drivers, and `cancel_query_with_execution` is only
 /// wired up when the test says so.
-struct LegacyFake {
+pub(super) struct LegacyFake {
     precise_cancel: Option<CancelBehaviour>,
     legacy_cancel_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     precise_cancel_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -32,7 +32,7 @@ struct LegacyFake {
 }
 
 impl LegacyFake {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             precise_cancel: None,
             legacy_cancel_calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -241,7 +241,7 @@ fn shape() -> NamespaceShape {
     }
 }
 
-fn adapter(driver: LegacyFake) -> LegacyResourceAdapter {
+pub(super) fn adapter(driver: LegacyFake) -> LegacyResourceAdapter {
     LegacyResourceAdapter::new(
         Arc::new(driver),
         "legacy-fake",

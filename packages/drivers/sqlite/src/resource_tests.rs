@@ -6,6 +6,7 @@
 
 use super::test_support::*;
 use crate::resource_capabilities::sqlite_capability_set;
+use datazen_driver_api::session::{SessionHandleKind, SessionHandleRef};
 
 #[test]
 fn factory_capabilities_refuse_everything_the_driver_cannot_do() {
@@ -311,4 +312,108 @@ fn call(command: &str) -> CommandCall {
 
 fn completion_status_succeeded() -> datazen_driver_api::session::CompletionStatus {
     datazen_driver_api::session::CompletionStatus::Succeeded
+}
+
+// --- per-handle close (§6.5) ---------------------------------------------
+
+/// A `SessionHandleRef` as the host would hand it over: same resource, same
+/// epoch, a name. sqlite has no such handle to name, which is the point.
+fn session_handle_for(handle: &ResourceHandle) -> SessionHandleRef {
+    SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    )
+}
+
+#[tokio::test]
+async fn close_handle_refuses_rather_than_claiming_a_close_that_never_happened() {
+    // §6.5: a returned `Ok(())` here would let the host deregister the ref and
+    // judge the session clean while nothing was ever closed. sqlite issues no
+    // session-scoped handle at all, so the honest answer is a refusal — and a
+    // refusal that names the handle, so the mismatch is diagnosable.
+    let (provider, fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+
+    let error = provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect_err("a provider that issues no session-scoped handle must not report one closed");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::OperationNotSupported { ref operation, ref reason, .. }
+                if operation == "close_handle"
+                    && reason.contains("tx-1")
+                    && reason.contains("Transaction")
+        ),
+        "the refusal must name the handle and its kind, got {error:?}"
+    );
+    // Nothing was closed, so nothing may claim to be: the resource handle is
+    // still open, the permit is still charged, and the wire was never touched.
+    assert!(!handle.is_closed());
+    assert_eq!(budget.released(), 0);
+    fake.with(|wire| assert!(wire.statements.is_empty()));
+}
+
+#[tokio::test]
+async fn close_handle_refuses_for_every_handle_kind() {
+    // The refusal is a property of the provider, not of the kind it was handed.
+    // sqlite issues none of the three, so none of the three may come back `Ok`.
+    let (provider, _fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+
+    for kind in [
+        SessionHandleKind::Transaction,
+        SessionHandleKind::Cursor,
+        SessionHandleKind::ServerPrepared,
+    ] {
+        let session_handle = SessionHandleRef::new(
+            format!("{kind:?}-1"),
+            kind,
+            handle.resource_key().to_string(),
+            handle.runtime_epoch(),
+        );
+        assert!(
+            provider
+                .close_handle(&handle, &session_handle)
+                .await
+                .is_err(),
+            "a {kind:?} handle must be refused too"
+        );
+    }
+    assert!(!handle.is_closed());
+}
+
+#[tokio::test]
+async fn close_handle_checks_ownership_before_it_refuses() {
+    // A refusal must not also swallow a wrong-handle bug: the ownership check
+    // runs first, so a handle from another provider is reported as exactly
+    // that rather than as "this driver has no such handles".
+    let (provider, _fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    let foreign =
+        ResourceHandle::issue("some-other-provider", "not-issued", handle.runtime_epoch());
+    let session_handle = SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        "not-issued".to_string(),
+        handle.runtime_epoch(),
+    );
+
+    let error = provider
+        .close_handle(&foreign, &session_handle)
+        .await
+        .expect_err("a handle this provider never issued cannot be closed through it");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::ResourceOwnershipMismatch { ref expected, ref actual }
+                if expected == "sqlite" && actual == "some-other-provider"
+        ),
+        "expected an ownership mismatch, got {error:?}"
+    );
 }

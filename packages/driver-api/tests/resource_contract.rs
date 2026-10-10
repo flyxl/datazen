@@ -190,6 +190,10 @@ async fn a_provider_that_cannot_answer_refuses_instead_of_succeeding_quietly() {
             )
             .await
             .unwrap_err(),
+        provider
+            .close_handle(&handle, &ref_for(&handle, provider.epoch, "seq-1"))
+            .await
+            .unwrap_err(),
     ] {
         assert!(
             matches!(err, ResourceError::OperationNotSupported { .. }),
@@ -327,4 +331,213 @@ async fn the_contract_survives_serde_at_the_boundary() {
 
     let decoded: ResourceDescriptor = serde_json::from_value(encoded).expect("round trips");
     assert_eq!(decoded, descriptor);
+}
+
+// ---------------------------------------------------------------------------
+// §6.5 per-handle close
+// ---------------------------------------------------------------------------
+
+/// A ref of the shape a host receives in `ExecutionCompletion.session_handles`.
+fn ref_for(handle: &ResourceHandle, epoch: u64, handle_id: &str) -> SessionHandleRef {
+    SessionHandleRef::new(
+        handle_id.to_string(),
+        SessionHandleKind::ServerPrepared,
+        handle.resource_key().to_string(),
+        epoch,
+    )
+}
+
+/// Acquires a resource and runs one execution, which is what mints the fake's
+/// server-prepared ref. Returns the resource plus that ref, straight from the
+/// provider rather than hand-built, so the test follows the host's real path.
+async fn acquire_and_mint() -> (FakeProvider, ResourceHandle, SessionHandleRef) {
+    let provider = FakeProvider::stateful();
+    let budget = Arc::new(AllowanceBudget::new(4));
+    let handle = provider
+        .acquire_resource(&acquire_request(), &port(&budget))
+        .await
+        .expect("acquire works");
+
+    let completion = provider
+        .execute_on_resource(
+            &handle,
+            &QueryExecutionId::new("exec-1"),
+            &CommandCall::new("query", serde_json::json!({ "sql": "select 1" })),
+            &CollectingSink::new(),
+        )
+        .await
+        .expect("execute works");
+    assert_eq!(
+        completion.session_handles.len(),
+        1,
+        "the fake declares session-scoped handle support, so one execution mints one ref"
+    );
+
+    let session_handle = completion.session_handles[0].clone();
+    assert_eq!(session_handle.kind, SessionHandleKind::ServerPrepared);
+    (provider, handle, session_handle)
+}
+
+#[tokio::test]
+async fn a_ref_the_provider_reported_can_be_closed_and_then_only_once() {
+    let (provider, handle, session_handle) = acquire_and_mint().await;
+
+    provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect("closing a ref the provider just reported must succeed");
+
+    let closed = provider
+        .closed_handles
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    assert!(
+        closed.contains(&session_handle.handle_id),
+        "the handle must be recorded as closed, exactly once"
+    );
+    assert_eq!(closed.len(), 1);
+    drop(closed);
+
+    // Closing a handle is not closing the resource: the host keys its own
+    // bookkeeping off `ResourceHandle::is_closed`, so a handle close that
+    // flipped it would look identical to a resource close.
+    assert!(!handle.is_closed());
+
+    // A second close of the same ref names nothing the provider still holds.
+    // Reporting success here would tell the host a teardown happened twice.
+    assert!(
+        matches!(
+            provider
+                .close_handle(&handle, &session_handle)
+                .await
+                .unwrap_err(),
+            ResourceError::InvalidResourceState { .. }
+        ),
+        "closing an already-closed ref must not succeed a second time"
+    );
+    assert!(!handle.is_closed());
+}
+
+#[tokio::test]
+async fn a_handle_close_leaves_the_resources_budget_and_session_alone() {
+    let (provider, handle, session_handle) = acquire_and_mint().await;
+
+    provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect("close works");
+
+    // The resource is still open and still observable — a handle close is a
+    // narrow operation, and a provider that quietly tore the session down
+    // would break every other caller sharing it.
+    assert!(!handle.is_closed());
+    let observed = provider
+        .observe_session(&handle)
+        .await
+        .expect("the resource must still be usable after a handle close");
+    assert_eq!(observed.state, SessionState::Ready);
+}
+
+#[tokio::test]
+async fn a_provider_that_declares_no_session_handles_refuses_instead_of_claiming_a_close() {
+    // `FakeProvider::minimal()` reports `session_scoped_handles` as anything but
+    // `Supported`. It must refuse by name: returning `Ok(())` would be a claim
+    // that a handle was torn down when this provider never held one.
+    let provider = FakeProvider::minimal();
+    let budget = Arc::new(AllowanceBudget::new(4));
+    let handle = provider
+        .acquire_resource(&acquire_request(), &port(&budget))
+        .await
+        .expect("acquire works");
+    let session_handle = ref_for(&handle, provider.epoch, "seq-never-minted");
+
+    match provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .unwrap_err()
+    {
+        ResourceError::OperationNotSupported {
+            ref operation,
+            ref driver,
+            ..
+        } => {
+            assert_eq!(operation, "close_handle");
+            assert_eq!(driver, "fake-provider");
+        }
+        other => panic!("expected an explicit refusal, got {other:?}"),
+    }
+    assert!(!handle.is_closed());
+}
+
+#[tokio::test]
+async fn a_handle_close_checks_ownership_and_epoch_before_it_looks_at_the_ref() {
+    // Same ordering every driver uses: a wrong handle is a wrong handle, not a
+    // generic "not supported". The host cannot retry safely if the two faults
+    // are collapsed into one.
+    let (provider, handle, session_handle) = acquire_and_mint().await;
+
+    let foreign = ResourceHandle::issue("someone-else", handle.resource_key(), provider.epoch);
+    assert!(matches!(
+        provider
+            .close_handle(&foreign, &session_handle)
+            .await
+            .unwrap_err(),
+        ResourceError::ResourceOwnershipMismatch { .. }
+    ));
+
+    let stale = ResourceHandle::issue("fake-provider", handle.resource_key(), provider.epoch - 1);
+    assert!(matches!(
+        provider
+            .close_handle(&stale, &session_handle)
+            .await
+            .unwrap_err(),
+        ResourceError::StaleRuntimeEpoch { .. }
+    ));
+}
+
+#[tokio::test]
+async fn a_ref_borrowed_from_another_resource_cannot_close_this_one() {
+    // §6.5: a ref belongs to exactly one resource. Replaying it against a second
+    // resource must not tear down whatever happens to be open there.
+    let (provider, handle, session_handle) = acquire_and_mint().await;
+    let borrowed = SessionHandleRef::new(
+        session_handle.handle_id.clone(),
+        session_handle.kind,
+        "a-different-resource".to_string(),
+        provider.epoch,
+    );
+
+    assert!(
+        matches!(
+            provider.close_handle(&handle, &borrowed).await.unwrap_err(),
+            ResourceError::InvalidResourceState { .. }
+        ),
+        "a ref minted for another resource must not close this one"
+    );
+    // And the real ref is still closable: the refusal consumed nothing.
+    provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect("the refusal must not have consumed the handle");
+}
+
+#[tokio::test]
+async fn a_handle_close_after_the_resource_closed_is_a_no_op_success() {
+    // The host can lose a race: `close_resource` may land first. The contract
+    // says that is a success, because the handle's underlying object is already
+    // gone with the session.
+    let (provider, handle, session_handle) = acquire_and_mint().await;
+    provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect("close works");
+    provider
+        .close_resource(&handle)
+        .await
+        .expect("resource close works");
+
+    provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect("closing a handle after the resource closed is idempotent");
 }

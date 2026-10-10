@@ -1,4 +1,4 @@
-//! The fourteen contract methods, and nothing else.
+//! The fifteen contract methods, and nothing else.
 //!
 //! This file is the *declaration surface*: every method of
 //! [`ResourceProvider`] exactly as postgres answers it. The bookkeeping they
@@ -32,8 +32,8 @@ use datazen_driver_api::resource::{
 };
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, ContextChangeDisposition,
-    ExecutionCompletion, ResetDisposition, ResourceHealth, SessionObservation, SessionState,
-    TransactionObservation, TransactionOptions,
+    ExecutionCompletion, ResetDisposition, ResourceHealth, SessionHandleKind, SessionHandleRef,
+    SessionObservation, SessionState, TransactionObservation, TransactionOptions,
 };
 use datazen_driver_api::{DriverError, QueryExecutionId};
 
@@ -367,5 +367,85 @@ impl ResourceProvider for PostgresResourceProvider {
                 Ok(CloseDisposition::CloseUnconfirmed)
             }
         }
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
+
+        // The ref must name *this* resource at *this* epoch. `belongs_to` is the
+        // same test `session_handles_of` satisfies when it mints the handle, so
+        // a ref forged against another resource — or replayed after this
+        // provider instance was replaced — is refused instead of closing a
+        // transaction that belongs to someone else.
+        if !session_handle.belongs_to(handle.resource_key(), self.runtime_epoch) {
+            return Err(ResourceError::InvalidResourceState {
+                resource_key: handle.resource_key().to_string(),
+                operation: "close_handle".to_string(),
+                state: format!(
+                    "session handle '{}' belongs to resource '{}' at epoch {}, not to this \
+                     resource at epoch {}",
+                    session_handle.handle_id,
+                    session_handle.resource_id,
+                    session_handle.runtime_epoch,
+                    self.runtime_epoch
+                ),
+            });
+        }
+
+        // The resource is gone, so every handle issued on it went with it.
+        // Repeating the close carries no information; refusing it would make a
+        // host that closes before the resource look like a caller that missed
+        // its own handle.
+        if handle.is_closed() {
+            return Ok(());
+        }
+
+        // The one kind this provider actually issues. A cursor or a
+        // server-prepared handle is refused *by name*, and the name includes
+        // the handle itself: saying so is what makes `Ok(())` on this method
+        // mean "closed", rather than "there was nothing to do" — the failure
+        // §6.5 exists to prevent.
+        if session_handle.kind != SessionHandleKind::Transaction {
+            return Err(ResourceError::unsupported(
+                POSTGRES_PROVIDER_ID,
+                "close_handle",
+                format!(
+                    "this provider issues no {:?} handle, so handle '{}' names nothing it can \
+                     close: session_handles_of only ever mints a transaction handle",
+                    session_handle.kind, session_handle.handle_id
+                ),
+            ));
+        }
+
+        // `Ok` on this call is a claim that the pinned connection was released.
+        // It is only reached after the server acknowledged the ROLLBACK; the
+        // transaction is taken out of the record first so a concurrent commit
+        // cannot also claim it.
+        let transaction = self.take_named_transaction(handle, &session_handle.handle_id)?;
+        self.bump_revision(handle);
+        self.driver
+            .rollback_impl(transaction.to_handle())
+            .await
+            .map_err(|error| {
+                // `rollback_impl` drops the pinned connection from the driver's
+                // registry before it sends ROLLBACK, so a failure here leaves
+                // the effect genuinely unobservable — there is no truthful
+                // "closed". `Err` is the honest report: the handle stays
+                // registered, the host keeps the lease out of the pool, and the
+                // remedy is `close_resource`, which disconnects the pool.
+                tracing::warn!(
+                    driver = POSTGRES_PROVIDER_ID,
+                    resource_key = %handle.resource_key(),
+                    session_handle_id = %session_handle.handle_id,
+                    error = %error,
+                    "rolling back a session-scoped transaction handle could not be confirmed; \
+                     the handle is reported as still open"
+                );
+                ResourceError::Driver(error)
+            })
     }
 }

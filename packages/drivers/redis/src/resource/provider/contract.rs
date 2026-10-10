@@ -1,4 +1,4 @@
-//! The fourteen contract methods, and nothing else.
+//! The fifteen contract methods, and nothing else.
 //!
 //! This file is the *declaration surface*: every method of
 //! [`ResourceProvider`] exactly as Redis answers it. The bookkeeping they
@@ -33,7 +33,8 @@ use datazen_driver_api::resource::{
 };
 use datazen_driver_api::session::{
     CancelReceipt, CloseDisposition, ContextChangeDisposition, ExecutionCompletion,
-    ResetDisposition, SessionObservation, TransactionObservation, TransactionOptions,
+    ResetDisposition, SessionHandleRef, SessionObservation, TransactionObservation,
+    TransactionOptions,
 };
 use datazen_driver_api::{DatabaseDriver, QueryExecutionId};
 
@@ -382,5 +383,31 @@ impl ResourceProvider for RedisResourceProvider {
                 Ok(CloseDisposition::CloseUnconfirmed)
             }
         }
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(REDIS_PROVIDER_ID, self.runtime_epoch)?;
+        // Refused, never absorbed. Redis has no cursor, no server-side prepared
+        // statement and no multi-statement transaction, so
+        // `session_scoped_handles` stays at its fail-closed `Unknown` and every
+        // `ExecutionCompletion` reports an empty `session_handles` list.
+        // Returning `Ok(())` here would be indistinguishable from "closed" —
+        // the host would deregister the ref and judge the session clean while
+        // nothing was ever closed, which is exactly what §6.5 exists to
+        // prevent.
+        Err(ResourceError::unsupported(
+            REDIS_PROVIDER_ID,
+            "close_handle",
+            format!(
+                "this provider issues no session-scoped handles, so handle '{}' ({:?}) names \
+                 nothing this provider can close; session_scoped_handles stays Unknown and every \
+                 ExecutionCompletion reports an empty session_handles list",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
     }
 }

@@ -1,4 +1,4 @@
-//! The fourteen [`ResourceProvider`] methods, one by one.
+//! The fifteen [`ResourceProvider`] methods, one by one.
 //!
 //! A child module so it reaches the provider's private bookkeeping without
 //! widening any visibility.
@@ -31,7 +31,8 @@ use datazen_driver_api::resource::{
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
     EffectOutcome, ExecutionCompletion, ResetDisposition, ResourceHealth, SessionContext,
-    SessionObservation, TransactionObservation, TransactionOptions, TransactionState,
+    SessionHandleRef, SessionObservation, TransactionObservation, TransactionOptions,
+    TransactionState,
 };
 use datazen_driver_api::{DatabaseDriver, DriverError, QueryExecutionId};
 
@@ -234,6 +235,27 @@ impl ResourceProvider for VectorResourceProvider {
         handle: &ResourceHandle,
     ) -> Result<CloseDisposition, ResourceError> {
         self.close(handle).await
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(VECTOR_PROVIDER_ID, self.runtime_epoch)?;
+        // Refused, never absorbed. Qdrant has no server-side cursor and this
+        // provider starts no transaction, so it mints no session-scoped handle
+        // at all; `Ok(())` would tell the host "closed" about something that
+        // was never issued.
+        Err(ResourceError::unsupported(
+            VECTOR_PROVIDER_ID,
+            "close_handle",
+            format!(
+                "this provider issues no session-scoped handles, so handle '{}' ({:?}) names \
+                 nothing this provider can close",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
     }
 }
 

@@ -3,7 +3,7 @@
 //! `HBaseDriver` had no legacy resource adapter to wrap, so this provider was
 //! written by hand against the contract. This file holds the parts every
 //! contract method shares — the epoch, the live-resource registry, acquisition
-//! validation, budget bookkeeping — and [`contract`] holds the fourteen
+//! validation, budget bookkeeping — and [`contract`] holds the fifteen
 //! implementations themselves.
 //!
 //! ## What each contract method actually runs

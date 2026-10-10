@@ -4,7 +4,7 @@
 //!
 //! * [`capabilities`] — what this driver *declares*, with the file and line each
 //!   claim rests on. A capability that is not proven is declared unsupported.
-//! * [`provider`] — the provider itself: the state it owns and the 14 contract
+//! * [`provider`] — the provider itself: the state it owns and the 15 contract
 //!   methods, each wired to this crate's own connection and execution code.
 //! * [`registry`] — what one live resource remembers. No I/O.
 //! * [`observation`] — reading the session back off the server. Every field is
@@ -32,6 +32,12 @@ mod registry;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+/// §6.5 per-handle close. Its own file because `tests` is already at the size
+/// ceiling and this covers exactly one method.
+#[cfg(test)]
+#[path = "tests_close_handle.rs"]
+mod tests_close_handle;
 
 #[cfg(test)]
 #[path = "tests_behaviour.rs"]
