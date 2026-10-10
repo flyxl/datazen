@@ -14,8 +14,8 @@ use datazen_driver_api::resource::{
     ResourceProvider, ResourcePurpose, ResourceScope, ReusePolicy,
 };
 use datazen_driver_api::session::{
-    CloseDisposition, ObservationConfidence, ResetDisposition, ResourceHealth, SessionState,
-    TransactionState,
+    CloseDisposition, ObservationConfidence, ResetDisposition, ResourceHealth, SessionHandleKind,
+    SessionHandleRef, SessionState, TransactionState,
 };
 use datazen_driver_api::DatabaseDriver;
 
@@ -517,6 +517,26 @@ async fn closing_releases_the_charge_exactly_once_and_is_idempotent() {
         vec!["1".to_string()],
         "exactly one permit, returned exactly once"
     );
+
+    // The confirmed close also records itself on the handle, which is what makes
+    // `close_handle`'s idempotent-success branch reachable in *production*
+    // rather than only in a test that marks the flag by hand. Before this was
+    // recorded, `is_closed()` was permanently false for this provider and the
+    // host stayed fail-closed over a close that had already happened.
+    assert!(
+        handle.is_closed(),
+        "a confirmed close must mark the handle closed, or a replayed handle close is refused"
+    );
+    let session_handle = SessionHandleRef::new(
+        "scan-1",
+        SessionHandleKind::Cursor,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    );
+    provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect("after a confirmed close, repeating a handle close is idempotent success");
 
     // Closing again is not an error — a caller that retries a close must not be
     // told it failed — and it must not return the same permit a second time.

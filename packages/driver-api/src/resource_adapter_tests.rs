@@ -26,7 +26,7 @@ pub(super) struct LegacyFake {
     precise_cancel: Option<CancelBehaviour>,
     legacy_cancel_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     precise_cancel_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    disconnect_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    pub(super) disconnect_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     connect_fails: bool,
     disconnect_fails: bool,
 }
@@ -230,6 +230,60 @@ fn port(budget: &Arc<CountingBudget>) -> Arc<dyn BudgetPort> {
     budget.clone()
 }
 
+/// A fresh budget for tests that need only *some* port and never read it back
+/// (the sibling `close_handle_tests.rs` has no use for the counters). Kept here
+/// rather than duplicated there so there is still exactly one `CountingBudget`
+/// type in this module.
+pub(super) fn port_for_test() -> Arc<dyn BudgetPort> {
+    Arc::new(AllowanceBudgetPort::new(2))
+}
+
+/// A budget that grants whatever is asked and records nothing. Distinct from
+/// [`CountingBudget`] only in that no caller needs its counters, so keeping the
+/// two apart documents which tests care about the accounting.
+struct AllowanceBudgetPort {
+    permits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    allowance: u32,
+}
+
+impl AllowanceBudgetPort {
+    fn new(allowance: u32) -> Self {
+        Self {
+            permits: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            allowance,
+        }
+    }
+}
+
+#[async_trait]
+impl BudgetPort for AllowanceBudgetPort {
+    async fn acquire_physical_connections(
+        &self,
+        count: u32,
+    ) -> Result<BudgetPermit, ResourceError> {
+        if count > self.allowance {
+            return Err(ResourceError::BudgetDenied {
+                requested: count,
+                reason: "no allowance".to_string(),
+            });
+        }
+        let seq = self
+            .permits
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(BudgetPermit {
+            permit_id: format!("permit-{seq}"),
+            physical_connections: count,
+        })
+    }
+
+    async fn release_physical_connections(
+        &self,
+        _permit: &BudgetPermit,
+    ) -> Result<(), ResourceError> {
+        Ok(())
+    }
+}
+
 fn shape() -> NamespaceShape {
     NamespaceShape {
         levels: vec![NamespaceLevel {
@@ -252,7 +306,7 @@ pub(super) fn adapter(driver: LegacyFake) -> LegacyResourceAdapter {
     )
 }
 
-fn acquire_request() -> AcquireResourceRequest {
+pub(super) fn acquire_request() -> AcquireResourceRequest {
     AcquireResourceRequest {
         connection_config: config(),
         target: target("app"),

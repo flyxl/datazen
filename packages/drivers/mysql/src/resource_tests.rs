@@ -142,6 +142,17 @@ async fn close_releases_the_budget_exactly_once() {
     assert_eq!(budget.granted(), vec![pool_size_plus_control()]);
     assert_eq!(budget.released(), 1);
     assert_eq!(fake.read(|wire| wire.disconnect_calls), 1);
+
+    // The confirmed close also records itself on the handle, which is what
+    // makes `close_handle`'s idempotent-success branch reachable in
+    // *production* rather than only in a test that marks the flag by hand.
+    // Before this was recorded, `is_closed()` was permanently false here and the
+    // host stayed fail-closed over a close that had already happened.
+    assert!(handle.is_closed());
+    provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect("after a confirmed close, repeating a handle close is idempotent success");
 }
 
 #[tokio::test]

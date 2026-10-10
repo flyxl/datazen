@@ -110,9 +110,26 @@ async fn the_adapter_refuses_every_handle_kind_and_leaves_the_handle_open() {
 /// not already gone.
 #[tokio::test]
 async fn an_already_closed_resource_makes_the_handle_close_a_success() {
-    let provider = adapter(LegacyFake::new());
-    let handle = ResourceHandle::issue("legacy-fake", "app", 7);
-    handle.mark_closed();
+    let fake = LegacyFake::new();
+    let disconnect_calls = fake.disconnect_calls.clone();
+    let provider = adapter(fake);
+    let handle = provider
+        .acquire_resource(
+            &super::tests::acquire_request(),
+            &super::tests::port_for_test(),
+        )
+        .await
+        .expect("a legacy driver acquires through the adapter");
+
+    // `close_resource` is what actually ends the resource — and now records the
+    // fact on the handle, which is what makes the branch below reachable at all
+    // in production rather than only in tests.
+    provider
+        .close_resource(&handle)
+        .await
+        .expect("the resource closes");
+    assert!(handle.is_closed());
+    let disconnects_after_close = disconnect_calls.load(std::sync::atomic::Ordering::SeqCst);
 
     provider
         .close_handle(
@@ -125,6 +142,13 @@ async fn an_already_closed_resource_makes_the_handle_close_a_success() {
     // Neither side of the ledger moved: no connection was dropped, and the
     // resource's own close remains the only thing that ever released it.
     assert!(handle.is_closed());
+    // The wire side proves the `Ok` was a report, not a second close: the only
+    // `disconnect` is the one `close_resource` already performed.
+    assert_eq!(
+        disconnect_calls.load(std::sync::atomic::Ordering::SeqCst),
+        disconnects_after_close,
+        "an idempotent close must not disconnect the driver a second time"
+    );
 }
 
 /// Ordering, not just presence: `is_closed` is checked *after* ownership, so a

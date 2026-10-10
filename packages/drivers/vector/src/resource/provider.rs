@@ -358,6 +358,15 @@ impl VectorResourceProvider {
         live.budget
             .release_physical_connections(&live.permit)
             .await?;
+        // Recorded only on a confirmed close, the way `postgres` and `redis`
+        // do. The `closed` key set above is *this instance's* memory; the flag
+        // rides on the handle, so it answers for any clone the caller kept and
+        // survives this provider going away. Without it `is_closed()` is
+        // permanently false here and `close_handle`'s idempotent-success branch
+        // is unreachable in production: the host would be fail-closed (the
+        // lease stays parked, un-pooled) over a close that already happened.
+        // The `CloseUnconfirmed` arm above deliberately leaves it false.
+        handle.mark_closed();
         self.lock().closed.insert(resource_key);
         Ok(CloseDisposition::Closed)
     }

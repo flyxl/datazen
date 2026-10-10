@@ -1,7 +1,7 @@
 # progress.md — 轨 A-11：`close_handle` 幂等关闭缺口
 
 缺陷编号：A-11（独立验收发现）
-状态：**IN PROGRESS**（独立 Tester `50c14069` 打回，本轨修复 D-1/D-2/D-4）
+状态：**READY_FOR_TEST**（D-1/D-2/D-4/D-5 均已处置，待复检）
 
 ## 验收打回项（`50c14069`，REJECT）
 
@@ -30,7 +30,7 @@ hbase 与 vector 的 2 条顺序测试本来就是正确形状（传给 `close_h
 实测：9 个 `impl ResourceProvider` 里只有 postgres 实现了这个短路
 （`packages/drivers/postgres/src/resource/provider/contract.rs:403-405`）。
 postgres 把它排在 `belongs_to` 检查**之后**："closed + 外国引用" 先被
-`InvalidResourceState` 拒绝。宿主 `LeaseFacade::release`
+`InvalidResourceState` 拒绝。宿主 `LeaseManager::release`
 （`packages/runtime/src/resource/lease_manager.rs:431-455`）对 `Err` 是 fail-closed
 （保持登记不释放），所以**没有数据安全隐患**；但这是**已发布 trait 文档与实现不一致**。
 
@@ -128,14 +128,54 @@ postgres 把它排在 `belongs_to` 检查**之后**："closed + 外国引用" �
   让「已关」前提真的作用在被测引用上。hbase 是样板
   （`packages/drivers/hbase/src/resource/tests/unsupported.rs:326-348`）：
   传给 `close_handle` 的是已关的 `mine`/`handle`，foreign 只作对照组不进调用。
-- **D-2**：待评估。redis/postgres 是在 `close_resource` 的 `disconnect` 成功后
-  `handle.mark_closed()` 一行；mysql/sqlite/mongodb 的 `LiveResource` 与 adapter 的
-  `LiveResource` 均不存 handle，要 mark 就得把 handle 存进 `LiveResource`
-  （改 4 个 struct + 4 处构造 + 4 处调用）。hbase/vector 走 `provider::close`，
-  那里的 `LiveResource` 是 `snapshot()` 出来的拷贝（`Arc<AtomicBool>` 共享 flag，
-  clone 能把 flag 带回来），代价另行实测。
 - **D-4**：9 处 `LeaseFacade` 全部改为 `LeaseManager`，并核对 fail-closed 的真实
   位置与行为后如实引用。
+
+## D-2 实测结论：选 (a)，代价低于预估，且 `LiveResource` 根本不用改
+
+先独立确认事实：`grep -rn "\.mark_closed()" packages/ src-tauri/src/ --include=*.rs | grep -v tests`
+⇒ 生产命中只有 redis（`provider/contract.rs:358`）与 postgres（同构 `:347`）各 1 处。
+MySQL/sqlite/mongodb/hbase/vector 的 `close_resource` 从不标记，`close_resource` 的**已关**判断
+靠各自的 registry key 集合／`live` map，与 flag 无关 —— 所以它们的 `is_closed()`
+恒 false，A-11 补的短路在生产永不触发（base 上即如此）。
+
+**预估代价被高估了。** 上面写「要改 4 个 struct + 4 处构造 + 4 处调用」是错的：
+`close_resource(&self, handle: &ResourceHandle)` **本来就把 handle 拿到手**，
+mark 只需要在已确认关闭的分支里加一行，`LiveResource` 一行不动：
+
+| 位置 | 落点 |
+| --- | --- |
+| `packages/drivers/mysql/src/resource.rs` | `close_resource` 的 `Ok(())` + 无残留事务分支 |
+| `packages/drivers/sqlite/src/resource.rs` | 同 |
+| `packages/drivers/mongodb/src/resource.rs` | `close_resource` 的 `Ok(())` 分支 |
+| `packages/drivers/hbase/src/resource/provider.rs` | `close()` 的 `Closed` 分支（`closed` key set 之旁） |
+| `packages/drivers/vector/src/resource/provider.rs` | 同 |
+| `packages/driver-api/src/resource_adapter.rs` | `close_resource` 的 `Ok(Closed)` 分支 |
+
+**放在哪条臂是有讲究的**（不是无脑 success 就 mark）：与 redis/postgres 完全一致，
+只在**已确认关闭**时 mark —— `CloseUnconfirmed`（mysql/sqlite 有残留事务、hbase/vector/
+adapter disconnect 失败）与 `Err` 臂一律**不**mark。否则未确认的关闭会被读成「已经关了」，
+重试直接 `Ok`，而 permit 还挂着 —— 正是 `mark_closed` 文档警告的那个 bug。
+
+顺带补了 3 条**生产可达性**测试把新 true 的行为焊死：mysql
+（`close_releases_the_budget_exactly_once`）、hbase
+（`closing_releases_the_charge_exactly_once_and_is_idempotent`）、adapter
+（`an_already_closed_resource_makes_the_handle_close_a_success` 改为真 acquire +
+真 `close_resource` + 真 `close_handle`，并断言 `disconnect_calls` 不增）。
+前两条若无此改动必红。
+
+## D-5 判定：做了一半，改了 3 处
+
+mysql/sqlite/mongodb/redis 本来就有 `budget.released()` / wire 断言，缺的是
+hbase/vector/adapter 三个。**已补**：
+
+- hbase / vector 正向测试：加 `budget.released().is_empty()`（把测试从
+  `opened()` 改成显式 acquire，才拿得到 ledger 引用）。
+- adapter 正向测试：加 `disconnect_calls` 前后不变断言。
+
+**没做 wire 侧**：hbase/vector 的 stub（stargate / qdrant）`close_resource` 之外
+没有可观测的 wire 计数器，adapter 的 `LegacyFake::disconnect_calls` 是现成的所以补了。
+budget 侧才是 A-11 这条 short-circuit 真正可能骗过人的地方（二次放行 permit）。
 
 ## D-1 放行条件的复验方式
 

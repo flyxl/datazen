@@ -638,6 +638,14 @@ impl ResourceProvider for LegacyResourceAdapter {
                 );
                 err
             })?;
+        // Recorded only on a confirmed close, the way `postgres` and `redis`
+        // do. Without it `is_closed()` is permanently false here and
+        // `close_handle`'s idempotent-success branch is unreachable in
+        // production: the host is fail-closed on `Err` (the lease stays parked,
+        // un-pooled) and would stay parked over a close that already happened.
+        // The `CloseUnconfirmed` arm above deliberately leaves it false, so an
+        // unconfirmed close is never read as "already closed".
+        handle.mark_closed();
         Ok(CloseDisposition::Closed)
     }
 

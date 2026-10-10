@@ -537,6 +537,16 @@ impl ResourceProvider for MongodbResourceProvider {
                     .await?;
                 // No transaction was ever opened through this provider, so a
                 // close is clean by construction.
+                //
+                // Recorded only on a confirmed close, the way `postgres` and
+                // `redis` do. Without it `is_closed()` is permanently false for
+                // this provider and `close_handle`'s idempotent-success branch
+                // is unreachable in production: the host would be fail-closed
+                // (the lease stays parked, un-pooled) over a close that
+                // already happened. The `Err` arm below deliberately leaves the
+                // flag false, so a failed close is never read as "already
+                // closed".
+                handle.mark_closed();
                 Ok(CloseDisposition::Closed)
             }
             Err(error) => {

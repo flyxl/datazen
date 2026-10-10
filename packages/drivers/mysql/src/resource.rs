@@ -779,6 +779,15 @@ impl ResourceProvider for MysqlResourceProvider {
                     );
                     return Ok(CloseDisposition::CloseUnconfirmed);
                 }
+                // Recorded only on a confirmed close, the way `postgres` and
+                // `redis` do. Without it `is_closed()` is permanently false for
+                // this provider and `close_handle`'s idempotent-success branch
+                // is unreachable in production: the host would be fail-closed
+                // (the lease stays parked, un-pooled) over a close that
+                // already happened. `CloseUnconfirmed` above and the `Err` below
+                // deliberately leave the flag false, so an unconfirmed close is
+                // never read as "already closed".
+                handle.mark_closed();
                 Ok(CloseDisposition::Closed)
             }
             Err(error) => {

@@ -113,7 +113,12 @@ async fn a_transaction_call_on_a_foreign_handle_is_refused_as_stale_first() {
 /// that already happened.
 #[tokio::test]
 async fn closing_a_handle_on_an_already_closed_resource_is_success_not_a_refusal() {
-    let (provider, handle) = opened().await;
+    let provider = provider();
+    let budget = Arc::new(BudgetLedger::default());
+    let handle = provider
+        .acquire_resource(&acquire_request(&config(), scope()), &budget.as_port())
+        .await
+        .expect("the client registers without a round trip");
     handle.mark_closed();
     let session_handle = SessionHandleRef::new(
         "scan-1",
@@ -130,6 +135,14 @@ async fn closing_a_handle_on_an_already_closed_resource_is_success_not_a_refusal
     // Nothing was re-opened and nothing was re-closed: the resource stays gone,
     // which is the state the `Ok` reports.
     assert!(handle.is_closed());
+    // And the accounting proves the `Ok` was a report, not a second close:
+    // `close_resource` is the only call that releases this permit, so an
+    // untouched ledger is what distinguishes a no-op from a real teardown.
+    assert!(
+        budget.released().is_empty(),
+        "an idempotent close must not release the permit a second time, got {:?}",
+        budget.released()
+    );
 }
 
 /// Ordering, not just presence. `is_closed` must be checked *after* ownership,
