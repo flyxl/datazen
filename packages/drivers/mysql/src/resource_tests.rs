@@ -530,4 +530,62 @@ async fn close_handle_checks_ownership_before_it_refuses() {
     );
 }
 
+#[tokio::test]
+async fn close_handle_on_an_already_closed_resource_is_idempotent_success() {
+    // §6.5 names exactly one legitimate repeat: the resource handle is already
+    // marked closed, so the close has happened and re-doing it is not
+    // information. A host that released the lease before this ref went away is
+    // not a caller that missed its own handle, so it must not be told an error
+    // — `LeaseFacade::release` is fail-closed and would keep the lease parked
+    // forever. The refusal below stays the honest answer for a *live* resource.
+    let (provider, fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    handle.mark_closed();
+
+    provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect("closing a handle on an already-closed resource is idempotent success");
+
+    // Nothing may be touched on the way to that `Ok`: the wire is silent, no
+    // permit is released (the resource's own close already did that), and the
+    // flag stays flipped rather than being the evidence this call manufactured.
+    assert!(handle.is_closed());
+    assert_eq!(budget.released(), 0);
+    fake.with(|wire| assert!(wire.statements.is_empty() && wire.commands.is_empty()));
+}
+
+#[tokio::test]
+async fn close_handle_refuses_a_foreign_ref_even_on_a_closed_resource() {
+    // Ordering, not just presence: `is_closed` must come *after* the ownership
+    // check, so a closed resource never excuses a ref that belongs to another
+    // one. Matching postgres exactly is what keeps one behaviour across the
+    // nine providers instead of two subtly different contracts.
+    let (provider, _fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    handle.mark_closed();
+    let foreign =
+        ResourceHandle::issue("some-other-provider", "not-issued", handle.runtime_epoch());
+    let session_handle = SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        "not-issued".to_string(),
+        handle.runtime_epoch(),
+    );
+
+    let error = provider
+        .close_handle(&foreign, &session_handle)
+        .await
+        .expect_err("a closed resource must not excuse a ref from another one");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::ResourceOwnershipMismatch { ref expected, ref actual }
+                if expected == "mysql" && actual == "some-other-provider"
+        ),
+        "expected an ownership mismatch, got {error:?}"
+    );
+}
+
 // --- observation / context ----------------------------------------------

@@ -1,6 +1,7 @@
 # progress.md — 轨 A-11：`close_handle` 幂等关闭缺口
 
 缺陷编号：A-11（独立验收发现）
+状态：**READY_FOR_TEST**（本轮工作已提交，未 push）
 
 ## 缺陷
 
@@ -19,25 +20,92 @@
 postgres 把它排在 `belongs_to` 检查**之后**："closed + 外国引用" 先被
 `InvalidResourceState` 拒绝。宿主 `LeaseFacade::release`
 （`packages/runtime/src/resource/lease_manager.rs:431-455`）对 `Err` 是 fail-closed
-（保持登记不释放），所以没有数据安全隐患；但这是**已发布 trait 文档与实现不一致**。
+（保持登记不释放），所以**没有数据安全隐患**；但这是**已发布 trait 文档与实现不一致**。
 
-## 选择：补实现，不改文档
+## 最终选择：补实现，不改文档
 
-理由见最终报告（父代理汇总）。
-
-## 落点
-
-按 `AGENTS.md` 驱动测试落点表：Rust 单元测试写同文件 `#[cfg(test)]` 或
-`<crate>/tests/`。
+- **收窄文档会把幂等关闭降级成缺陷报告**。文档那句是「已发布 trait 契约」的一部分
+  （`PROTOCOL_VERSION = 5`，轨 A 合流后进入对外契约面），把它改窄等于宣布
+  「资源已关后重放 close 报错」是常规形态 —— 而这恰是 A-11 要修的不一致本身。
+- **阻断理由不对称**。原阻断实现给的理由是「不可重入」：担心 `Ok(())` 被误读成
+  「我真的关掉了某个句柄」。这个顾虑只对**活着的资源**成立 —— 所以 postgres
+  把短路放在 `belongs_to` 之后、只对已关资源生效。资源都关了，还谈「假称关闭」
+  没有对象：没有任何东西可被误判。
+- **fail-closed 在反方向咬人**。宿主对 `Err` 不释放登记，于是「已关资源上的重放」
+  会让租约永远停在池外，而 close 其实早就成功了。这是**收益为负的拒绝**：
+  不换取任何安全性，只换来永久泄漏。
+- **测试面不对称**。redis 的既有测试只断言 `!handle.is_closed()`（反方向），
+  没有任何测试锁正向契约；把责任推给文档会让正向契约永远无人看守。
+- **与本仓库既有语义一致**。`ResourceHandle::mark_closed` 的自身文档
+  （`resource.rs:162-167`）明确说 `is_closed()` 为真意味着「已经关了，重复关是
+  幂等的」；`close_resource` 自己也以 `is_closed()` 为幂等短路
+  （`resource_adapter.rs:612-615`「Already closed: idempotent, and no second
+  budget release」）。`close_handle` 走反方向才是异类。
 
 ## 变更清单
 
-（进行中，随改动追加）
+### 实现（7 处，行为与 postgres 一致：`is_closed` 短路排在 `handle.check` 之后）
 
-## 门禁结论
+| 文件:行 | 改了什么 |
+| --- | --- |
+| `packages/drivers/mysql/src/resource.rs`（`close_handle`） | 加 `if handle.is_closed() { return Ok(()); }`，排在 `handle.check` 后，注释说明顺序与 postgres 一致 |
+| `packages/drivers/sqlite/src/resource.rs`（同） | 同上 |
+| `packages/drivers/mongodb/src/resource.rs`（同） | 同上 |
+| `packages/drivers/redis/src/resource/provider/contract.rs`（同） | 同上 |
+| `packages/drivers/hbase/src/resource/provider/contract.rs`（同） | 同上 |
+| `packages/drivers/vector/src/resource/provider/contract.rs`（同） | 同上 |
+| `packages/driver-api/src/resource_adapter.rs`（`LegacyResourceAdapter::close_handle`） | 同上 |
 
-（进行中，逐条追加命令 / 退出码 / 结论行）
+**未动**：postgres（原本已正确）、`packages/runtime/**`、`PROTOCOL_VERSION`、
+驱动能力声明、trait 签名、CI。
+
+### 测试（每个修过的 impl 一条正向 + 一条顺序，共 14 条）
+
+落点遵守 `AGENTS.md` 驱动测试落点表：同文件 `#[cfg(test)]` / `<crate>/tests/`。
+
+| 文件 | 新增 |
+| --- | --- |
+| `packages/drivers/mysql/src/resource_tests.rs` | `close_handle_on_an_already_closed_resource_is_idempotent_success` + `close_handle_refuses_a_foreign_ref_even_on_a_closed_resource` |
+| `packages/drivers/sqlite/src/resource_tests.rs` | 同名两条 |
+| `packages/drivers/mongodb/src/resource_tests.rs` | 同名两条 |
+| `packages/drivers/redis/src/resource/tests_close_handle.rs` | 同名两条（该文件此前只有反方向断言） |
+| `packages/drivers/hbase/src/resource/tests/unsupported.rs` | `closing_a_handle_on_an_already_closed_resource_is_success_not_a_refusal` + `a_foreign_ref_is_still_refused_on_a_closed_resource` |
+| `packages/drivers/vector/src/resource/tests/unsupported.rs` | 同名两条 |
+| `packages/driver-api/src/resource_adapter_close_handle_tests.rs` | `an_already_closed_resource_makes_the_handle_close_a_success` + `a_foreign_ref_is_still_refused_on_a_closed_resource` |
+
+## 门禁实测（命令 / 退出码 / 结论行）
+
+环境：`CARGO_TARGET_DIR=/tmp/cargo-a11-isclosed`；每轮首尾记录 HEAD
+（= `e5e189a81` → `e5e189a81`，运行期间无人动过树）。
+
+| 门禁 | 命令 | 退出码 | 结论行 |
+| --- | --- | --- | --- |
+| A | `cargo fmt --all -- --check` | **0** | （无 diff 输出） |
+| B | `cargo check --workspace --all-targets` | **0** | `Finished dev profile [unoptimized + debuginfo] target(s) in 5m 32s`，`grep -cE "^error"` = **0** |
+| C | `cargo test -p datazen-driver-api -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis -p datazen-driver-postgres -p datazen-driver-mongodb -p datazen-driver-hbase -p datazen-driver-vector --no-fail-fast` | **101** | `passed=1585 failed=1 ignored=10`；唯一失败 `cross_database_reads_never_move_the_session`：`seed probe table dz_cross_db_probe_...: permission denied for schema public`（本地 PG role 缺 CREATE；该文件 `close_handle` 出现 **0** 次，与本改动无关，任务书已列为例外） |
+| D | `cargo test -p datazen --lib` | **0** | `test result: ok. 1810 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out`（与基线逐字一致） |
+| E1 | `node scripts/check-driver-protocol-compat.mjs --base 8dae098cc` | **0** | `[check-driver-protocol-compat] ok (base 8dae098cc; PROTOCOL_VERSION 5 -> 5, MIN_PROTOCOL_VERSION 1 -> 1, crate 0.0.11 -> 0.0.11)` |
+| E2 | `node scripts/check-driver-protocol-release.mjs --base 8dae098cc` | **0** | `[check-driver-protocol-release] ok (base e5e189a81...; PROTOCOL_VERSION 5 -> 5, ...; driver releases: 0)` |
+| F | `git status --porcelain` | — | 只含上述 14 个路径；无 `src-tauri/Cargo.toml` / `Cargo.lock` 改动，无未跟踪 codegen |
+
+## 反向验证（证明新测试真有效，而不是恒真）
+
+临时删掉 mysql 的 `is_closed` 短路后跑 `cargo test -p datazen-driver-mysql --lib close_handle`：
+`test result: FAILED. 4 passed; 1 failed` ——
+`close_handle_on_an_already_closed_resource_is_idempotent_success ... FAILED`。
+即新测试确实在实现缺失时变红。变体已还原（`grep -n is_closed` 确认恢复）。
+这是独立验证意义上的变异测试：**同一棵树上做，且变异前后 HEAD 与门禁结论均已记录**。
 
 ## 待裁定项
 
-（无则填无）
+1. **mongodb 的「外国引用」用例用了 epoch 0**，断言 `ResourceOwnershipMismatch`
+   （expected == actual == "mongodb"）或 `StaleRuntimeEpoch`。用 epoch 0 租借号是
+   为了不与真实租约撞键；postgres/sqlite/mysql/redis 的同类用例用的是
+   `ResourceHandle::issue("some-other-provider", ...)`（provider_id 不同 ⇒
+   `ResourceOwnershipMismatch`）。四库更贴文档原意（「belongs to another resource」），
+   mongodb 这条是退化形式。已确认它能守住顺序语义，但若裁决者希望严格一致，
+   应改成 provider_id 不同的写法 —— 那会需要给 `test_support` 加一个 helper。
+2. **vector / hbase 的外国引用用例**用的是 `unacquired_handle` + 第二个 provider
+   实例（epoch 不同 ⇒ `StaleRuntimeEpoch`）。与 postgres 的
+   `belongs_to` 拒绝（`InvalidResourceState`）不等价，但两者都在 `handle.check`
+   这一层、且都在 `is_closed` 之前，守住的是同一条顺序。

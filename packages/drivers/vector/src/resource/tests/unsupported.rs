@@ -12,7 +12,8 @@ use std::sync::Arc;
 use datazen_driver_api::namespace::{NamespaceLevelKind, NamespaceTarget};
 use datazen_driver_api::resource::{Baseline, ResourceError, ResourceHandle, ResourceProvider};
 use datazen_driver_api::session::{
-    CancelDisposition, ContextChangeDisposition, ResetDisposition, TransactionOptions,
+    CancelDisposition, ContextChangeDisposition, ResetDisposition, SessionHandleKind,
+    SessionHandleRef, TransactionOptions,
 };
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, DriverError};
 
@@ -99,6 +100,69 @@ async fn a_transaction_call_on_a_foreign_handle_is_refused_as_stale_first() {
         .await
         .expect_err("no key here was ever opened");
     assert!(matches!(error, ResourceError::InvalidResourceState { .. }));
+}
+
+/// §6.5's one legitimate repeat of a handle close.
+///
+/// The refusals in this file cover a *live* resource. Once the resource handle
+/// is marked closed, `close_resource` has already run and every handle issued on
+/// it went with it — so repeating the close carries no information, and the
+/// published trait doc promises `Ok(())` rather than a refusal. This is not
+/// cosmetic: `LeaseFacade::release` treats `Err` as fail-closed and keeps the
+/// lease out of the pool, so a refusal here parks the lease forever over a close
+/// that already happened.
+#[tokio::test]
+async fn closing_a_handle_on_an_already_closed_resource_is_success_not_a_refusal() {
+    let (provider, handle) = opened().await;
+    handle.mark_closed();
+    let session_handle = SessionHandleRef::new(
+        "scan-1",
+        SessionHandleKind::Cursor,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    );
+
+    provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect("the resource is already closed, so this close already happened");
+
+    // Nothing was re-opened and nothing was re-closed: the resource stays gone,
+    // which is the state the `Ok` reports.
+    assert!(handle.is_closed());
+}
+
+/// Ordering, not just presence. `is_closed` must be checked *after* ownership,
+/// so a closed resource never excuses a ref belonging to another one — that is
+/// the order postgres uses and the order §6.5 describes. Sharing one order
+/// across every provider is worth more than any convenience a shorter path
+/// would buy.
+#[tokio::test]
+async fn a_foreign_ref_is_still_refused_on_a_closed_resource() {
+    let mine = provider();
+    let theirs = provider();
+    let handle = unacquired_handle(&theirs, "vector_resource:never-opened");
+    handle.mark_closed();
+    let session_handle = SessionHandleRef::new(
+        "scan-1",
+        SessionHandleKind::Cursor,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    );
+
+    let error = mine
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect_err("a closed resource must not excuse a ref from another one");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::StaleRuntimeEpoch { .. }
+                | ResourceError::ResourceOwnershipMismatch { .. }
+        ),
+        "expected the ownership epoch refusal, got {error:?}"
+    );
 }
 
 #[tokio::test]

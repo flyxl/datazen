@@ -6,6 +6,7 @@
 
 use super::test_support::*;
 use crate::resource_capabilities::mongodb_capability_set;
+use datazen_driver_api::session::{SessionHandleKind, SessionHandleRef};
 
 #[test]
 fn factory_capabilities_refuse_everything_the_driver_cannot_do() {
@@ -370,6 +371,78 @@ async fn the_driver_itself_refuses_a_session_wide_cancel() {
         driver.cancel_query(&handle).await,
         Err(DriverError::Unsupported(_))
     ));
+}
+
+/// A `SessionHandleRef` as the host would hand it over: same resource, same
+/// epoch, a name. mongodb issues no session-scoped handle to name, which is the
+/// point of the refusal tests.
+fn session_handle_for(handle: &ResourceHandle) -> SessionHandleRef {
+    SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    )
+}
+
+#[tokio::test]
+async fn close_handle_on_an_already_closed_resource_is_idempotent_success() {
+    // §6.5 names exactly one legitimate repeat: the resource handle is already
+    // marked closed, so the close has happened and re-doing it is not
+    // information. A host that released the lease before this ref went away is
+    // not a caller that missed its own handle, so it must not be told an error
+    // — `LeaseFacade::release` is fail-closed and would keep the lease parked
+    // forever. The refusal stays the honest answer for a *live* resource.
+    let (provider, fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    handle.mark_closed();
+
+    provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect("closing a handle on an already-closed resource is idempotent success");
+
+    // Nothing may be touched on the way to that `Ok`: no wire traffic, no
+    // transaction, and no second permit release — `close_resource` already
+    // released the one the resource held.
+    assert!(handle.is_closed());
+    assert_eq!(budget.released(), 0);
+    fake.with(|wire| {
+        assert!(wire.statements.is_empty());
+        assert_eq!(wire.begin_calls, 0);
+    });
+}
+
+#[tokio::test]
+async fn close_handle_refuses_a_foreign_ref_even_on_a_closed_resource() {
+    // Ordering, not just presence: `is_closed` must come *after* the ownership
+    // check, so a closed resource never excuses a ref that belongs to another
+    // one. Matching postgres exactly is what keeps one behaviour across the
+    // nine providers instead of two subtly different contracts.
+    let (provider, _fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    handle.mark_closed();
+    let foreign = ResourceHandle::issue("mongodb", "someone-elses-connection", 0);
+    let session_handle = SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        "someone-elses-connection".to_string(),
+        0,
+    );
+
+    let error = provider
+        .close_handle(&foreign, &session_handle)
+        .await
+        .expect_err("a closed resource must not excuse a ref from another one");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::ResourceOwnershipMismatch { ref expected, ref actual }
+                if expected == "mongodb" && actual == "mongodb"
+        ) || matches!(error, ResourceError::StaleRuntimeEpoch { .. }),
+        "expected an epoch mismatch for a handle this provider never issued, got {error:?}"
+    );
 }
 
 /// A syntactically valid MongoDB command, the way a caller really sends one:

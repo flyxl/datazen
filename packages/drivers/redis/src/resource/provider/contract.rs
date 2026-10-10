@@ -391,6 +391,18 @@ impl ResourceProvider for RedisResourceProvider {
         session_handle: &SessionHandleRef,
     ) -> Result<(), ResourceError> {
         handle.check(REDIS_PROVIDER_ID, self.runtime_epoch)?;
+        // The resource is gone, so every handle issued on it went with it —
+        // and Redis issued none in the first place. Repeating the close
+        // carries no information; refusing it would make a host that closed
+        // the resource before this ref look like a caller that missed its own
+        // handle. Ordered *after* the ownership check, exactly as postgres
+        // does: a closed resource does not excuse a ref belonging to another
+        // one, so "closed + foreign" is still refused as the ownership
+        // failure it is — postgres reports exactly that as
+        // `InvalidResourceState`.
+        if handle.is_closed() {
+            return Ok(());
+        }
         // Refused, never absorbed. Redis has no cursor, no server-side prepared
         // statement and no multi-statement transaction, so
         // `session_scoped_handles` stays at its fail-closed `Unknown` and every

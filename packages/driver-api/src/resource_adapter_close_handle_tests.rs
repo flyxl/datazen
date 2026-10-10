@@ -96,3 +96,58 @@ async fn the_adapter_refuses_every_handle_kind_and_leaves_the_handle_open() {
         assert!(!handle.is_closed());
     }
 }
+
+/// §6.5's one legitimate repeat, and the only piece of the trait doc the legacy
+/// surface was not honouring.
+///
+/// `close_resource` has already run, so every handle issued on the resource went
+/// with it and repeating the close carries no information — the adapter must say
+/// so rather than refuse. This is operational, not cosmetic: the host is
+/// fail-closed on `Err` (`LeaseFacade::release` keeps the lease exactly as it
+/// is, un-pooled), so a refusal on this path parks the lease forever over a close
+/// that already happened. The legacy driver never mints a session-scoped handle,
+/// which is what makes the `Ok` honest: nothing is being claimed closed that was
+/// not already gone.
+#[tokio::test]
+async fn an_already_closed_resource_makes_the_handle_close_a_success() {
+    let provider = adapter(LegacyFake::new());
+    let handle = ResourceHandle::issue("legacy-fake", "app", 7);
+    handle.mark_closed();
+
+    provider
+        .close_handle(
+            &handle,
+            &ref_for(&handle, "tx-1", SessionHandleKind::Transaction),
+        )
+        .await
+        .expect("the resource is already closed, so this close already happened");
+
+    // Neither side of the ledger moved: no connection was dropped, and the
+    // resource's own close remains the only thing that ever released it.
+    assert!(handle.is_closed());
+}
+
+/// Ordering, not just presence: `is_closed` is checked *after* ownership, so a
+/// closed resource never excuses a ref belonging to another one. That is the
+/// order postgres uses and the order §6.5 describes; sharing one order across
+/// every provider is worth more than any convenience a shorter path would buy.
+#[tokio::test]
+async fn a_foreign_ref_is_still_refused_on_a_closed_resource() {
+    let provider = adapter(LegacyFake::new());
+    let mine = ResourceHandle::issue("legacy-fake", "app", 7);
+    mine.mark_closed();
+    let foreign = ResourceHandle::issue("someone-else", "app", 7);
+
+    let error = provider
+        .close_handle(
+            &foreign,
+            &ref_for(&foreign, "tx-1", SessionHandleKind::Transaction),
+        )
+        .await
+        .expect_err("a closed resource must not excuse a ref from another one");
+
+    assert!(
+        matches!(error, ResourceError::ResourceOwnershipMismatch { .. }),
+        "expected an ownership mismatch, got {error:?}"
+    );
+}

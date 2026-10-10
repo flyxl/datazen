@@ -11,6 +11,12 @@
 //! down, because the tempting wrong answer — `Ok(())` — is not a harmless
 //! no-op: the host would deregister the ref and judge the session clean while
 //! nothing was ever closed.
+//!
+//! That refusal is scoped to a **live** resource, though. §6.5 carves out one
+//! repeat that is not a refusal: a handle the resource handle already marks
+//! closed. The tests below hold both halves, because the two failure modes are
+//! opposite — dropping the short-circuit parks a lease forever, and letting the
+//! refusal run on a closed resource is the same "closed" a live one is owed.
 
 use std::sync::Arc;
 
@@ -96,6 +102,80 @@ async fn close_handle_refuses_for_every_handle_kind() {
     }
     assert!(!handle.is_closed());
     assert!(ledger.released().is_empty());
+}
+
+#[tokio::test]
+async fn close_handle_on_an_already_closed_resource_is_idempotent_success() {
+    // §6.5's one legitimate repeat. `ResourceHandle::is_closed()` is the host's
+    // own record that `close_resource` already ran, so every handle issued on
+    // the resource went with it — and Redis issued none to begin with, so there
+    // is nothing left to refuse. `Ok(())` is what the published trait doc
+    // promises here, and the reason is operational rather than cosmetic:
+    // `LeaseFacade::release` treats `Err` as fail-closed and keeps the lease
+    // out of the pool, so a refusal on this path parks the lease forever over a
+    // close that already happened.
+    let provider = provider();
+    let ledger = Arc::new(BudgetLedger::default());
+    let handle = seed_under(&provider, &ledger, "redis_close_handle_closed");
+    handle.mark_closed();
+
+    provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect("closing a handle on an already-closed resource is idempotent success");
+
+    // The budget must be exactly where it was. `close_resource` is the only call
+    // that releases the permit; this one must not release it again, and must not
+    // charge anything either. `seed_under` hands the permit straight in, so an
+    // untouched ledger is the whole accounting story.
+    assert!(
+        ledger.acquired().is_empty(),
+        "an idempotent close must not re-charge the budget"
+    );
+    assert!(
+        ledger.released().is_empty(),
+        "an idempotent close must not release the permit a second time"
+    );
+    // And the flag is still the one `mark_closed` set: this call neither needs it
+    // nor manufactures it, which is what makes the `Ok` above a report rather
+    // than a side effect.
+    assert!(handle.is_closed());
+}
+
+#[tokio::test]
+async fn close_handle_refuses_a_foreign_ref_even_on_a_closed_resource() {
+    // Ordering, not just presence: `is_closed` is checked *after* ownership, so
+    // a closed resource never excuses a ref belonging to another one. That is
+    // the order postgres uses and the order §6.5 describes — the closed flag
+    // says "the close already happened", which is only true of refs this
+    // provider really issued. Keeping all nine providers on one order is worth
+    // more than any convenience a shorter path would buy.
+    let provider = provider();
+    let ledger = Arc::new(BudgetLedger::default());
+    let handle = seed_under(&provider, &ledger, "redis_close_handle_closed_foreign");
+    handle.mark_closed();
+    let foreign =
+        ResourceHandle::issue("some-other-provider", "not-issued", handle.runtime_epoch());
+    let session_handle = SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        "not-issued".to_string(),
+        handle.runtime_epoch(),
+    );
+
+    let error = provider
+        .close_handle(&foreign, &session_handle)
+        .await
+        .expect_err("a closed resource must not excuse a ref from another one");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::ResourceOwnershipMismatch { ref expected, ref actual }
+                if expected == REDIS_PROVIDER_ID && actual == "some-other-provider"
+        ),
+        "expected an ownership mismatch, got {error:?}"
+    );
 }
 
 #[tokio::test]

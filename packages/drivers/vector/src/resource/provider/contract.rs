@@ -243,6 +243,17 @@ impl ResourceProvider for VectorResourceProvider {
         session_handle: &SessionHandleRef,
     ) -> Result<(), ResourceError> {
         handle.check(VECTOR_PROVIDER_ID, self.runtime_epoch)?;
+        // The resource is gone, so every handle issued on it went with it —
+        // and this provider mints none at all. Repeating the close carries no
+        // information; refusing it would make a host that closed the resource
+        // before this ref look like a caller that missed its own handle.
+        // Ordered *after* the ownership check, exactly as postgres does: a
+        // closed resource does not excuse a ref belonging to another one, so
+        // "closed + foreign" is still refused as the ownership failure it is —
+        // postgres reports exactly that as `InvalidResourceState`.
+        if handle.is_closed() {
+            return Ok(());
+        }
         // Refused, never absorbed. Qdrant has no server-side cursor and this
         // provider starts no transaction, so it mints no session-scoped handle
         // at all; `Ok(())` would tell the host "closed" about something that
