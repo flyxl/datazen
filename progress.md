@@ -182,3 +182,59 @@ budget 侧才是 A-11 这条 short-circuit 真正可能骗过人的地方（二�
 把任一 impl 的 `is_closed` 短路提到 `handle.check` 之前，该 impl 的顺序测试必须
 变红，7/7 全红才算修好。变异在独立 detached worktree 做
 （`git worktree add --detach`），不碰本工作树。
+
+## 门禁实测（修复轮；`CARGO_TARGET_DIR=/tmp/cargo-a11-fix`）
+
+首尾 HEAD 均为 `a200bf1f4`（工作区 `git status --porcelain` 空），运行期间无人动过树。
+
+| 门禁 | 命令 | 退出码 | 结论行 |
+| --- | --- | --- | --- |
+| A | `cargo fmt --all -- --check` | **0** | 无 diff 输出 |
+| B | `cargo check --workspace --all-targets` | **0** | `Finished dev profile ... in 15m 08s`，`grep -c "^error"` = **0** |
+| C | `cargo test -p datazen-driver-api -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis -p datazen-driver-mongodb -p datazen-driver-hbase -p datazen-driver-vector -p datazen-driver-postgres --no-fail-fast` | **101** | `passed=1585 failed=1 ignored=10`；唯一失败 `cross_database_reads_never_move_the_session` @ `postgres_cross_database.rs:305`：`permission denied for schema public`（本地 PG role 缺 CREATE，任务书已列为例外，该文件 `close_handle` 出现 0 次） |
+| D | `cargo test -p datazen --lib` | **0** | `test result: ok. 1810 passed; 0 failed; 6 ignored` |
+| E1 | `node scripts/check-driver-protocol-compat.mjs --base abcbb41d0` | **0** | `ok (base abcbb41d0; PROTOCOL_VERSION 5 -> 5, MIN_PROTOCOL_VERSION 1 -> 1, crate 0.0.11 -> 0.0.11)` |
+| E2 | `node scripts/check-driver-protocol-release.mjs --base abcbb41d0` | **0** | `ok ...; driver releases: 0` |
+| F | 变异 2 在 7/7 impl 上被杀 | — | 见下 |
+| G | `git status --porcelain` | — | **空**；`Cargo.lock` / `src-tauri/Cargo.toml` 无 diff |
+
+## 变异 2 实测（F 门禁，独立 detached worktree）
+
+**第一轮踩过的坑，如实记下**：首轮变异把 mutation worktree 指在 `4411bad42`
+（当时只有 progress.md 提交，D-1 的测试修改还没提交），结果 7/7 **全部存活** ——
+那不是假阴性，而是如实复现了**打回时的旧形状**：`handle.mark_closed()` 用在
+`handle` 上、传入的是未关的 `foreign`。把 D-1/D-4 先提交、worktree 重指
+`a8056ec0a` 之后再跑，7/7 立刻全红。**教训：变异前必须确认 worktree 指向的是
+含最新测试形状的 commit，而不是「分支 HEAD」这个说法。**
+
+最终形态（在 `a200bf1f4` 上复跑一次，同样 7/7 全红）：
+
+| impl | 变红测试 | 退出码 |
+| --- | --- | --- |
+| mysql | `close_handle_refuses_a_foreign_ref_even_on_a_closed_resource` | 101 |
+| sqlite | 同名 | 101 |
+| mongodb | 同名 | 101 |
+| redis | `resource::tests_close_handle::close_handle_refuses_a_foreign_ref_even_on_a_closed_resource` | 101 |
+| hbase | `a_foreign_ref_is_still_refused_on_a_closed_resource` | 101 |
+| vector | 同名 | 101 |
+| adapter | `a_foreign_ref_is_still_refused_on_a_closed_resource` | 101 |
+
+失败形态一致且可判读：`expect_err` 收到 `()`（即变异体提前返回 `Ok(())`），
+例如 mysql：
+`panicked at ...resource_tests.rs:597:10: a closed resource must not excuse a ref
+from another one: ()`。
+
+hbase/vector 另需注意：它们的顺序测试函数名**不含 `close_handle`**，所以
+`--lib close_handle` 过滤器会选中 0 条测试并以 EXIT=0 假绿；必须改用
+`foreign_ref` 过滤。第一轮正是因此显示 `0 passed`（而不是真的存活）。
+
+## 遗留 / 待裁定
+
+1. **hbase/vector 的 D-5 wire 侧未做**（budget 侧已补）：两者的 stub 在
+   `close_resource` 之外没有可观测 wire 计数器，要补得先给 stub 加计数 ——
+   收益低于成本，且 budget 侧才是这条 short-circuit 真正能骗过人的地方。
+   adapter 因为 `LegacyFake::disconnect_calls` 现成，wire 侧顺手补了。
+2. **`opened()` helper 在两处测试里被内联展开**（hbase/vector 正向测试），
+   为了拿到 `Arc<BudgetLedger>` 引用才能断言 `released()`。`opened()` 本身
+   没有 ledger 返回值；若后续有第三条同类需求，应给 `opened()` 加一个
+   返回 ledger 的重载，而不是继续复制那 5 行。
