@@ -45,7 +45,7 @@ use datazen_driver_api::resource::{
 };
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, ContextChangeDisposition,
-    ExecutionCompletion, ResetDisposition, ResourceHealth, SessionObservation,
+    ExecutionCompletion, ResetDisposition, ResourceHealth, SessionHandleRef, SessionObservation,
     TransactionObservation, TransactionOptions,
 };
 use datazen_driver_api::{
@@ -248,6 +248,48 @@ impl ResourceProvider for CountingProvider {
         _handle: &ResourceHandle,
     ) -> Result<CloseDisposition, ResourceError> {
         Ok(CloseDisposition::Closed)
+    }
+
+    /// 协议 5 新增的必填方法。这里**显式拒绝**，且理由取自本 provider 自己的实现，
+    /// 不是从任何驱动抄来的。
+    ///
+    /// 它不发会话级句柄，而且是**结构性**不发：`execute_on_resource` 恒返回
+    /// `Err(Unsupported("not exercised"))`，`ExecutionCompletion` 在这个夹具里
+    /// 从来没有被构造过一次，因此不存在 `session_handles` 列表——不是空列表，
+    /// 是根本没有列表。与之相应，`capabilities()` 只覆盖
+    /// `stateful_session` 一格，`session_scoped_handles` 留在
+    /// `CapabilitySet::default()` 的 fail-closed `Unknown` 上（**不是**
+    /// `Unsupported`，见 `wiring_capabilities` 的注释：只声明本文件真正用到的那一格）。
+    ///
+    /// 返回 `Ok(())` 在这里是宿主无从察觉的谎言：宿主会注销该登记并判定会话干净，
+    /// 而 driver 侧自始至终没有关过任何东西——§6.5 要防的正是这一种失败。
+    ///
+    /// 与 basic 4 驱动的两处**有意**不同，差别都源于本夹具自身的性质：
+    ///
+    /// 1. 不做 `SessionHandleRef::belongs_to` 归属校验。该校验保护的是
+    ///    「不去关**别的**资源上的句柄」；本 provider 不发任何句柄，没有可供误关的
+    ///    对象，所以它在本实现里恒为真，写下来只是噪声。
+    /// 2. 不做 `handle.is_closed()` → `Ok(())` 的幂等成功分支。真实驱动在
+    ///    `close_resource` 确认关闭时会 `mark_closed()`，该分支才可达；而上面的
+    ///    `close_resource` 直接返回 `Closed` 且**从不** `mark_closed()`，
+    ///    于是本 provider 发出的句柄的 `is_closed()` 恒为 `false`，写下这个分支
+    ///    就是不可达的死代码——注释再解释它为什么重要，也改变不了它永不执行的事实。
+    async fn close_handle(
+        &self,
+        _handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        Err(ResourceError::unsupported(
+            self.driver_id.as_str(),
+            "close_handle",
+            format!(
+                "CountingProvider issues no session-scoped handles: execute_on_resource returns \
+                 Err(\"not exercised\") before any ExecutionCompletion is ever built, so no \
+                 session_handles list exists and handle '{}' ({:?}) names nothing this provider \
+                 can close; session_scoped_handles stays at the fail-closed default Unknown",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
     }
 }
 
