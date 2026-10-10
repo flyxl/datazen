@@ -183,6 +183,14 @@ impl std::hash::Hasher for FileIdentityHasher {
 
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
+    fn supports_bound_writes(&self) -> bool {
+        true
+    }
+
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        Some(SqlLiteralDialect::Sqlite)
+    }
+
     fn max_bound_parameters(&self) -> usize {
         self.parameter_limit
     }

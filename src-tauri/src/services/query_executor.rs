@@ -68,7 +68,7 @@ impl QueryExecutor {
             .await?;
 
         let qi = |name: &str| driver.quote_ident(name);
-        let format_lit = |v: &Value| driver.format_sql_literal(&Some(v.clone()));
+        let format_lit = |v: &Value| driver.try_format_sql_literal(&Some(v.clone()));
 
         let data_sql = Self::build_select_sql(
             &cached.table_name,
@@ -82,7 +82,7 @@ impl QueryExecutor {
                 (page as u64).saturating_mul(page_size as u64),
             ),
             filter_logic,
-        );
+        )?;
 
         let target = SqlTarget::new(Some(database), schema);
 
@@ -105,7 +105,7 @@ impl QueryExecutor {
             &qi,
             &format_lit,
             filter_logic,
-        );
+        )?;
         tracing::info!(%table, "query_executor: count query");
         tracing::debug!(
             %table,
@@ -142,9 +142,9 @@ impl QueryExecutor {
         columns: &[ColumnSchema],
         filters: &Option<Vec<FilterCondition>>,
         qi: &dyn Fn(&str) -> String,
-        format_lit: &dyn Fn(&Value) -> String,
+        format_lit: &dyn Fn(&Value) -> Result<String, DriverError>,
         filter_logic: Option<&str>,
-    ) -> String {
+    ) -> Result<String, DriverError> {
         let _ = columns;
         let mut sql = format!("SELECT COUNT(*) FROM {}", qi(table_name));
 
@@ -152,15 +152,15 @@ impl QueryExecutor {
             let parts: Vec<String> = conditions
                 .iter()
                 .map(|c| Self::format_condition(c, qi, format_lit))
-                .filter(|s| !s.is_empty())
-                .collect();
+                .collect::<Result<_, _>>()?;
+            let parts: Vec<String> = parts.into_iter().filter(|s| !s.is_empty()).collect();
             if !parts.is_empty() {
                 sql.push_str(" WHERE ");
                 sql.push_str(&parts.join(filter_join(filter_logic)));
             }
         }
 
-        sql
+        Ok(sql)
     }
 
     fn build_select_sql(
@@ -169,10 +169,10 @@ impl QueryExecutor {
         filters: Option<Vec<FilterCondition>>,
         order_by: Option<OrderBy>,
         qi: &dyn Fn(&str) -> String,
-        format_lit: &dyn Fn(&Value) -> String,
+        format_lit: &dyn Fn(&Value) -> Result<String, DriverError>,
         pagination: &PaginationSyntax,
         filter_logic: Option<&str>,
-    ) -> String {
+    ) -> Result<String, DriverError> {
         let mut sql = String::new();
         sql.push_str("SELECT ");
         if columns.is_empty() {
@@ -193,7 +193,7 @@ impl QueryExecutor {
             let parts: Vec<String> = conditions
                 .iter()
                 .map(|c| Self::format_condition(c, qi, format_lit))
-                .collect();
+                .collect::<Result<_, _>>()?;
             let parts: Vec<String> = parts.into_iter().filter(|s| !s.is_empty()).collect();
             if !parts.is_empty() {
                 sql.push_str(" WHERE ");
@@ -249,35 +249,35 @@ impl QueryExecutor {
             sql.push(' ');
             sql.push_str(&pagination.clause);
         }
-        sql
+        Ok(sql)
     }
 
     fn format_condition(
         condition: &FilterCondition,
         qi: &dyn Fn(&str) -> String,
-        format_lit: &dyn Fn(&Value) -> String,
-    ) -> String {
+        format_lit: &dyn Fn(&Value) -> Result<String, DriverError>,
+    ) -> Result<String, DriverError> {
         // Incomplete filters (e.g. just-added eq with empty value) must not enter SQL.
         // Otherwise drivers cast '' onto integer PKs and the whole table load fails.
         if !Self::filter_is_complete(condition) {
-            return String::new();
+            return Ok(String::new());
         }
 
         let col = qi(&condition.column);
-        match condition.operator {
-            FilterOperator::Eq => format!("{col} = {}", format_lit(&condition.value)),
-            FilterOperator::Ne => format!("{col} != {}", format_lit(&condition.value)),
-            FilterOperator::Gt => format!("{col} > {}", format_lit(&condition.value)),
-            FilterOperator::Lt => format!("{col} < {}", format_lit(&condition.value)),
-            FilterOperator::Gte => format!("{col} >= {}", format_lit(&condition.value)),
-            FilterOperator::Lte => format!("{col} <= {}", format_lit(&condition.value)),
-            FilterOperator::Like => format!("{col} LIKE {}", format_lit(&condition.value)),
+        let sql = match condition.operator {
+            FilterOperator::Eq => format!("{col} = {}", format_lit(&condition.value)?),
+            FilterOperator::Ne => format!("{col} != {}", format_lit(&condition.value)?),
+            FilterOperator::Gt => format!("{col} > {}", format_lit(&condition.value)?),
+            FilterOperator::Lt => format!("{col} < {}", format_lit(&condition.value)?),
+            FilterOperator::Gte => format!("{col} >= {}", format_lit(&condition.value)?),
+            FilterOperator::Lte => format!("{col} <= {}", format_lit(&condition.value)?),
+            FilterOperator::Like => format!("{col} LIKE {}", format_lit(&condition.value)?),
             FilterOperator::In => match &condition.value {
                 Value::Json(serde_json::Value::Array(arr)) => {
                     let parts: Vec<String> = arr
                         .iter()
                         .map(|j| format_lit(&Value::Json(j.clone())))
-                        .collect();
+                        .collect::<Result<_, _>>()?;
                     format!("{col} IN ({})", parts.join(", "))
                 }
                 Value::String(s) => {
@@ -286,7 +286,7 @@ impl QueryExecutor {
                         .map(|p| p.trim())
                         .filter(|p| !p.is_empty())
                         .map(|p| format_lit(&Value::String(p.to_string())))
-                        .collect();
+                        .collect::<Result<_, _>>()?;
                     if parts.is_empty() {
                         String::new()
                     } else {
@@ -297,7 +297,8 @@ impl QueryExecutor {
             },
             FilterOperator::IsNull => format!("{col} IS NULL"),
             FilterOperator::IsNotNull => format!("{col} IS NOT NULL"),
-        }
+        };
+        Ok(sql)
     }
 
     /// Filters that still need a value (just added / cleared) are ignored until complete.
@@ -344,8 +345,8 @@ mod tests {
         format!("\"{}\"", name)
     }
 
-    fn simple_lit(value: &Value) -> String {
-        match value {
+    fn simple_lit(value: &Value) -> Result<String, DriverError> {
+        Ok(match value {
             Value::Null => "NULL".to_string(),
             Value::Bool(b) => {
                 if *b {
@@ -360,7 +361,7 @@ mod tests {
             Value::Bytes(_) => "NULL".to_string(),
             Value::Timestamp(s) => format!("'{}'", s.replace('\'', "''")),
             Value::Json(v) => format!("'{}'", v.to_string().replace('\'', "''")),
-        }
+        })
     }
 
     fn make_column(name: &str, is_pk: bool) -> ColumnSchema {
@@ -422,7 +423,8 @@ mod tests {
             &simple_lit,
             &tsql_syntax(3, 25),
             None,
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("OFFSET 75 ROWS FETCH NEXT 25 ROWS ONLY"),
             "expected T-SQL paging clause, got: {sql}"
@@ -447,7 +449,8 @@ mod tests {
             &simple_lit,
             &tsql_syntax(0, 50),
             None,
-        );
+        )
+        .unwrap();
         assert!(sql.contains("ORDER BY \"id\" ASC"), "got: {sql}");
         assert!(!sql.contains("(SELECT NULL)"), "got: {sql}");
         assert!(
@@ -473,7 +476,8 @@ mod tests {
             &simple_lit,
             &limit_syntax(0, 50),
             None,
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("ORDER BY \"id\" ASC"),
             "Expected default ORDER BY primary key, got: {sql}"
@@ -496,7 +500,8 @@ mod tests {
             &simple_lit,
             &limit_syntax(0, 50),
             None,
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("ORDER BY \"order_id\" ASC, \"product_id\" ASC"),
             "Expected composite PK ordering, got: {sql}"
@@ -519,7 +524,8 @@ mod tests {
             &simple_lit,
             &limit_syntax(0, 50),
             None,
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("ORDER BY \"name\" DESC"),
             "Expected explicit ORDER BY, got: {sql}"
@@ -542,7 +548,8 @@ mod tests {
             &simple_lit,
             &limit_syntax(0, 50),
             None,
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("ORDER BY \"col_a\" ASC"),
             "Expected fallback ORDER BY first column, got: {sql}"
@@ -566,7 +573,8 @@ mod tests {
             &simple_lit,
             &limit_syntax(0, 10),
             None,
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("WHERE \"flag\" = TRUE"),
             "Expected driver-style TRUE literal, got: {sql}"
@@ -588,7 +596,8 @@ mod tests {
             &simple_qi,
             &simple_lit,
             None,
-        );
+        )
+        .unwrap();
         assert!(sql.contains("WHERE \"status\" = 'active'"));
     }
 
@@ -616,7 +625,8 @@ mod tests {
             &simple_lit,
             &limit_syntax(0, 10),
             Some("or"),
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("WHERE \"status\" = 'active' OR \"role\" = 'admin'"),
             "got: {sql}"
@@ -645,7 +655,8 @@ mod tests {
             &simple_qi,
             &simple_lit,
             Some("OR"),
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("WHERE \"status\" = 'active' OR \"role\" = 'admin'"),
             "got: {sql}"
@@ -671,7 +682,8 @@ mod tests {
             &simple_lit,
             &limit_only_syntax(25),
             None,
-        );
+        )
+        .unwrap();
         assert!(sql.contains("LIMIT 25"));
         assert!(!sql.contains("OFFSET"));
     }
@@ -689,11 +701,11 @@ mod tests {
             value: Value::Null,
         };
         assert_eq!(
-            QueryExecutor::format_condition(&in_filter, &simple_qi, &simple_lit),
+            QueryExecutor::format_condition(&in_filter, &simple_qi, &simple_lit).unwrap(),
             "\"id\" IN ('1', '2', '3')"
         );
         assert_eq!(
-            QueryExecutor::format_condition(&null_filter, &simple_qi, &simple_lit),
+            QueryExecutor::format_condition(&null_filter, &simple_qi, &simple_lit).unwrap(),
             "\"deleted_at\" IS NULL"
         );
     }
@@ -715,7 +727,8 @@ mod tests {
             &simple_lit,
             &limit_syntax(0, 50),
             None,
-        );
+        )
+        .unwrap();
         assert!(
             !sql.contains("WHERE"),
             "empty eq value must not produce WHERE, got: {sql}"
@@ -746,7 +759,8 @@ mod tests {
             &simple_lit,
             &limit_syntax(0, 50),
             Some("and"),
-        );
+        )
+        .unwrap();
         assert!(
             sql.contains("WHERE \"name\" = 'alice'"),
             "expected only complete filter in WHERE, got: {sql}"

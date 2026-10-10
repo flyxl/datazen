@@ -264,6 +264,25 @@ pub enum Value {
     Json(serde_json::Value),
 }
 
+/// SQL literal syntax supported by a driver for generated SQL artifacts and
+/// read-only filter statements. Runtime writes must use bound parameters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqlLiteralDialect {
+    ClickHouse,
+    DuckDb,
+    MySql,
+    Postgres,
+    SqlServer,
+    Sqlite,
+}
+
+/// A SQL statement whose values remain separate from its SQL text.
+#[derive(Debug, Clone)]
+pub struct BoundSqlStatement {
+    pub sql: String,
+    pub parameters: Vec<Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
