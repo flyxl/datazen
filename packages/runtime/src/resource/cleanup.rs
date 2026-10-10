@@ -1,4 +1,4 @@
-//! 宿主侧归还裁决：**双条件**判定 + 清理报告 + 注入式物理端口。
+//! 宿主侧归还裁决：**能力闸 + 双条件**判定 + 清理报告 + 注入式物理端口。
 //!
 //! ## 边界一在这里落地
 //!
@@ -6,11 +6,19 @@
 //! 刻意不携带任何判定依据：宿主看不到 `Clean` 是怎么算出来的，也没有在本模块重算它的入口。
 //! 宿主只做**自己的**检查（[`HostConditionSnapshot`]）。两侧**都**通过才允许回池 ——
 //! 形状对齐 `platform-api` 的 `PoolReturnVerdict::decide`。
+//!
+//! ## 能力闸：在双闸**之前**
+//!
+//! 归池准入还要读一项驱动侧事实：`ResetForReuse`（`connection::capability`，宿主侧那份）。
+//! 它在**能力声明阶段**就确定了，比运行时 `Clean` 更根本 —— 驱动说没有 verified
+//! reset-to-baseline 路径时，归池候选当场作废，连那次注定失败的复位往返都不必跑。
+//! `Verified` 时本闸完全静默，双闸一步都不少。
 
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crate::connection::capability::ResetForReuse;
 use crate::connection::port::CancelDisposition;
 use crate::connection::{ExecutionId, HandleId, HandleKind, LeaseId, ResourceId, SessionHandleRef};
 
@@ -73,6 +81,14 @@ impl ProtocolDebt {
 ///
 /// 第五个字段 `fixed_session` 不是「故障」，而是**用途**声明：用户自开的
 /// 任意 SQL 会话关闭时直接关物理资源。这类会话即使四项检查全清也不进空闲池。
+///
+/// 第六个字段 `reset_for_reuse` 同理不是「故障」，而是**能力**声明：驱动在能力
+/// 声明阶段说了有没有 verified reset-to-baseline 路径。说没有 ⇒ 归池候选当场作废，
+/// 连那次注定失败的复位往返都不必跑（§9.4「reset 不支持…直接关闭」）。
+///
+/// 后两者都被算作 `HostConditionSnapshot`（而非另开端口）的理由：它们与四项检查
+/// **同向**（都是「宿主侧已知 ⇒ 拒绝复用」），且都不携带判定依据 —— 与
+/// `FixedSessionNotPoolable` 完全同构。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostConditionSnapshot {
     pub active_executions: Vec<ExecutionId>,
@@ -81,6 +97,12 @@ pub struct HostConditionSnapshot {
     pub owner_disabled: Option<String>,
     /// 固定会话：不参与归还池。
     pub fixed_session: bool,
+    /// 归池复用的复位能力声明。`Unsupported` ⇒ 不进归池候选，直接关闭。
+    ///
+    /// 默认 `Verified`（与 `CapabilitySnapshot::defaults()` 对齐）：它让「调用方
+    /// 没有供给能力」时的行为与本次改动之前**逐字节相同**（仍跑一次复位再发现不能
+    /// 归池）。换句话说，忘记供给的失败模式不会比改动前更糟，只会退回旧行为。
+    pub reset_for_reuse: ResetForReuse,
 }
 
 impl HostConditionSnapshot {
@@ -99,7 +121,11 @@ impl HostConditionSnapshot {
     }
 
     /// 按固定顺序取**第一个**阻断项，保证裁决结果稳定可复现：
-    /// 活动执行 → 未完成协议 → 未释放句柄 → 归属被禁用。
+    /// 活动执行 → 未完成协议 → 未释放句柄 → 归属被禁用 → 固定会话 → 复位能力未声明。
+    ///
+    /// 复位能力排在**最后**是同一定序原则的延伸：它不覆盖任何一条宿主条件的阻断，
+    /// 因为那些是「这一侧**当前**的状态」，而能力是「驱动侧**从开始**就如此」的静态事实。
+    /// 排最后意味着**先报更具体、更可操作的那一条**。
     pub fn first_blocker(&self) -> Option<ReturnReason> {
         self.active_executions
             .first()
@@ -133,6 +159,13 @@ impl HostConditionSnapshot {
                 self.fixed_session
                     .then_some(ReturnReason::FixedSessionNotPoolable)
             })
+            .or_else(|| self.reset_blocker())
+    }
+
+    /// 复位能力阻断项：驱动**没有 verified baseline** 时不产生阻断（归池候选直接作废），
+    /// 否则本条不参与，交给双闸自己判。
+    fn reset_blocker(&self) -> Option<ReturnReason> {
+        (!self.reset_for_reuse.admits_reuse()).then_some(ReturnReason::DriverResetUnsupported)
     }
 
     /// 全部阻断项，用于报告（不是只报第一个）。
@@ -163,6 +196,9 @@ impl HostConditionSnapshot {
         if self.fixed_session {
             blockers.push(ReturnReason::FixedSessionNotPoolable);
         }
+        if let Some(reason) = self.reset_blocker() {
+            blockers.push(reason);
+        }
         blockers
     }
 
@@ -189,6 +225,12 @@ impl HostConditionSnapshot {
     /// 标记为固定会话（用户自开的会话关闭时直接关物理资源）。
     pub const fn as_fixed_session(mut self) -> Self {
         self.fixed_session = true;
+        self
+    }
+
+    /// 标记复位能力（驱动能力声明阶段的结论）。
+    pub fn with_reset_for_reuse(mut self, reset_for_reuse: ResetForReuse) -> Self {
+        self.reset_for_reuse = reset_for_reuse;
         self
     }
 }
@@ -237,6 +279,16 @@ pub enum ReturnReason {
     /// （全部声明 `ResetForReuse::Unsupported`），所以它按 `info` 记账，
     /// **不得**记成 warn —— 否则真正的告警会被每一条正常归还淹没。
     DriverDiscardedReset,
+    /// **驱动在能力声明阶段就说了不复位**，因此这条租约根本不进归池候选。
+    ///
+    /// 与 [`Self::HostResetUnconfirmed`] 是同一件事（§9.4「reset 不支持…直接关闭」）的
+    /// **两个不同证据等级**：那条是宿主**实测**到复位端口失败，本条是驱动**声明**过
+    /// 「没有 verified baseline」——能力快照一出来就是确定事实，不必等一次注定失败的往返。
+    ///
+    /// 它仍然**不是故障**：`FixedSessionNotPoolable` 已经示范过「不归池」可以表达成用途。
+    /// 15 个 path 驱动全部声明 `ResetForReuse::Unsupported`（驱动侧 `Default` 亦是
+    /// `Unsupported`，失败安全），首版池为空是**正确行为**，这里让它显式、可观测。
+    DriverResetUnsupported,
 }
 
 impl ReturnReason {
@@ -250,6 +302,7 @@ impl ReturnReason {
             Self::FixedSessionNotPoolable => "hostFixedSessionNotPoolable",
             Self::HostResetUnconfirmed { .. } => "hostResetUnconfirmed",
             Self::DriverDiscardedReset => "driverDiscardedReset",
+            Self::DriverResetUnsupported => "driverResetUnsupported",
         }
     }
 
@@ -278,7 +331,14 @@ impl ReturnDecision {
     /// 顺序与 `PoolReturnVerdict::decide` 一致：**先看驱动**，驱动不干净就直接以
     /// `DriverUnclean` 收口 —— 因为在那种情况下再报「活动执行」是误导，根因在驱动侧。
     /// 驱动过了才轮到宿主四项，逐项独立判定，任一不满足立刻拒绝。
+    ///
+    /// 能力闸排在两组判断**之前**：`Unsupported` 是驱动在能力声明阶段就确定的事实，
+    /// 比运行时 `Clean` 更根本 —— 少了它，归池路径会先跑一次注定失败的复位才发现不能归池。
+    /// `Verified` 时本闸完全静默，后面仍是完整的双闸（驱动结论 + 宿主四项），一步都不少。
     pub fn decide(driver: DriverCleanVerdict, host: &HostConditionSnapshot) -> Self {
+        if !host.reset_for_reuse.admits_reuse() {
+            return Self::CleanupRequired(ReturnReason::DriverResetUnsupported);
+        }
         if !driver.is_clean() {
             return Self::CleanupRequired(ReturnReason::DriverUnclean);
         }
