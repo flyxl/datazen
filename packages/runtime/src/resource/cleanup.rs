@@ -11,8 +11,12 @@
 //!
 //! 归池准入还要读一项驱动侧事实：`ResetForReuse`（`connection::capability`，宿主侧那份）。
 //! 它在**能力声明阶段**就确定了，比运行时 `Clean` 更根本 —— 驱动说没有 verified
-//! reset-to-baseline 路径时，归池候选当场作废，连那次注定失败的复位往返都不必跑。
-//! `Verified` 时本闸完全静默，双闸一步都不少。
+//! reset-to-baseline 路径时，归池候选当场作废，连那次注定失败的复位往返都不必跑
+//! （§9.4「reset 不支持…直接关闭」）。`Verified` 时本闸完全静默，双闸一步都不少。
+//!
+//! 闸门**位置**：它坐在 [`HostConditionSnapshot::first_blocker`] 这同一条报障通道里，
+//! 排在宿主四项**之后**。理由是报障纪律而不是判定强度 ——「具体状态优先于静态事实」，
+//! 与 `FixedSessionNotPoolable` 完全同构（`fixed_session` 也在那条链的末尾）。
 
 use std::sync::Arc;
 
@@ -330,15 +334,12 @@ impl ReturnDecision {
     ///
     /// 顺序与 `PoolReturnVerdict::decide` 一致：**先看驱动**，驱动不干净就直接以
     /// `DriverUnclean` 收口 —— 因为在那种情况下再报「活动执行」是误导，根因在驱动侧。
-    /// 驱动过了才轮到宿主四项，逐项独立判定，任一不满足立刻拒绝。
+    /// 驱动过了才轮到宿主侧，逐项独立判定，任一不满足立刻拒绝。
     ///
-    /// 能力闸排在两组判断**之前**：`Unsupported` 是驱动在能力声明阶段就确定的事实，
-    /// 比运行时 `Clean` 更根本 —— 少了它，归池路径会先跑一次注定失败的复位才发现不能归池。
-    /// `Verified` 时本闸完全静默，后面仍是完整的双闸（驱动结论 + 宿主四项），一步都不少。
+    /// 复位能力**不**在这里特判，它经 [`Self::first_blocker`] 同一条通道进来，排在
+    /// 宿主条件之后（见那边的定序理由）。这样「具体状态优先于静态事实」的报障纪律
+    /// 对能力同样成立：有活动执行时报的是活动执行，不会让能力把根因盖掉。
     pub fn decide(driver: DriverCleanVerdict, host: &HostConditionSnapshot) -> Self {
-        if !host.reset_for_reuse.admits_reuse() {
-            return Self::CleanupRequired(ReturnReason::DriverResetUnsupported);
-        }
         if !driver.is_clean() {
             return Self::CleanupRequired(ReturnReason::DriverUnclean);
         }

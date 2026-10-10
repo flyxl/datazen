@@ -102,6 +102,16 @@ impl ScriptedTransport {
             .count()
     }
 
+    /// 复位**次数**。归池准入被能力否决时必须是 0 —— 断言最终状态证明不了那次往返
+    /// 有没有被省掉（关闭/隔离在缺陷态下同样会发生），只有计次能证明。
+    fn reset_count(&self) -> usize {
+        self.lock()
+            .events
+            .iter()
+            .filter(|event| matches!(event, PhysicalEvent::Reset(_)))
+            .count()
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Journal> {
         // 断言失败一次不该把后续断言全变成 panic 噪声，所以不传播 poison。
         self.journal
@@ -647,4 +657,164 @@ fn an_idle_lease_is_closed_once_the_idle_ttl_expires() {
     assert!(transport
         .events()
         .contains(&PhysicalEvent::Close(ResourceId::new("res-1"))));
+}
+
+// ---- 能力闸：驱动声明不复位 ⇒ 归池候选当场作废 ----
+
+/// **驱动声明 `ResetForReuse::Unsupported` ⇒ 一次复位都不跑**（§9.4「reset 不支持…直接关闭」）。
+///
+/// 断言的**核心是 `reset_count() == 0`**：省掉那次注定失败的往返正是本任务的全部收益，
+/// 而「最终状态」在缺陷态下会照样成立（关闭同样会发生），所以只有计次能证明它真的被省掉了。
+///
+/// 同时这条锁的是「首版池为空是正确行为，且**显式、可观测**」：15 个 path 驱动全部声明
+/// `Unsupported`，归池不成立是**事实**而不是待排查的故障 —— 阻断码 `driverResetUnsupported`
+/// 让它能在审计里被看见。
+#[test]
+fn a_resource_whose_driver_declares_reset_unsupported_is_closed_without_a_reset_round_trip() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default()
+                .with_reset_for_reuse(datazen_runtime::connection::capability::ResetForReuse::Unsupported),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("the capability refusal is reported, not a ledger failure");
+
+    assert!(!report.returned_to_pool(), "能力声明不复位 ⇒ 不进归池候选");
+    assert_eq!(
+        transport.reset_count(),
+        0,
+        "§9.4 允许直接关闭，宿主没必要先跑一次注定失败的复位 —— \
+         断言计次才能证明这次往返真的被省掉，断言最终状态证明不了"
+    );
+    assert_eq!(
+        transport.events(),
+        vec![
+            PhysicalEvent::Open(ResourceId::new("res-1")),
+            PhysicalEvent::Close(ResourceId::new("res-1")),
+        ],
+        "没有复位插在 Open 与 Close 之间"
+    );
+    assert_eq!(
+        first_blocker_code(&report),
+        "driverResetUnsupported",
+        "阻断码必须点名**能力拒绝**，而不是伪装成运行时故障"
+    );
+    assert_eq!(
+        manager.idle_lease_count(),
+        0,
+        "不进归池候选 ⇒ 空闲池一条都没有"
+    );
+    // 物理预算被核销：这是被确认的关闭，不是隔离。
+    assert!(report.disposition.releases_physical_budget());
+
+    // 非空跑：下一次签发必须另开物理资源 —— 这条连接没有 verified baseline，不能复用。
+    let fresh = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("a capability-refused lease does not poison the next request");
+    assert_ne!(fresh.lease_id, leased.lease_id);
+    assert_eq!(transport.open_count(), 2);
+    assert_eq!(transport.reset_count(), 0, "新建路径同样不跑无谓复位");
+}
+
+/// **`Verified` 时能力闸完全静默**，`§9.4` 的双闸一步不少。
+///
+/// 与上一条是同一枚硬币的两面：证明能力闸只挡 `Unsupported`，没有顺手把
+/// 「宿主四项 + 驱动 `Clean` + 归池前复位」这条完整链路一起废掉。
+#[test]
+fn a_verified_reset_capability_still_runs_the_full_two_gate_contract() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default()
+                .with_reset_for_reuse(datazen_runtime::connection::capability::ResetForReuse::Verified),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a verified capability admits the lease to the full contract");
+
+    // 第一闸（能力）过了，第二、三闸照旧：归池 + 归池前真的复位。
+    assert!(report.returned_to_pool());
+    assert!(report.session_reset_performed, "§9.4：归池前必跑复位");
+    assert_eq!(
+        transport.events(),
+        vec![
+            PhysicalEvent::Open(ResourceId::new("res-1")),
+            PhysicalEvent::Reset(ResourceId::new("res-1")),
+        ],
+        "Verified 的路径与改动之前逐字节相同：复位跑在原资源上，且不关它"
+    );
+    assert_eq!(manager.idle_lease_count(), 1);
+
+    // **双闸仍然各自独立生效**：能力过了，驱动报不干净照样不进池。
+    transport.fail_reset();
+    let second = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the idle pool serves the next request");
+    let unclean = manager
+        .release(
+            &second.lease_id,
+            HostConditionSnapshot::default()
+                .with_reset_for_reuse(datazen_runtime::connection::capability::ResetForReuse::Verified),
+            DriverCleanVerdict::reported_unclean(),
+        )
+        .expect("the driver gate is still independent of the capability gate");
+    assert!(!unclean.returned_to_pool());
+    assert_eq!(first_blocker_code(&unclean), "driverUnclean");
+}
+
+/// 新增 `ReturnReason` 变体必须被 `all_blockers` / `first_blocker` 如实报告。
+///
+/// 与宿主任一其他阻断项并存时也要能报出来：它排在**最后**（静态事实不覆盖具体状态），
+/// 但 `all_blockers` 一条不漏。
+#[test]
+fn the_capability_blocker_is_reported_by_first_and_all_blockers() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+    let running = ExecutionId::new("exec-running");
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default()
+                .with_active_execution(running.clone())
+                .with_reset_for_reuse(datazen_runtime::connection::capability::ResetForReuse::Unsupported),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("two independent blockers are both reported");
+
+    assert!(
+        !report.returned_to_pool(),
+        "任一阻断项成立即不复用"
+    );
+    // 定序：更具体的宿主状态排在前，能力这种静态事实排在后。
+    assert_eq!(
+        report.blockers.first().map(|r| r.reason_code()),
+        Some("hostActiveExecution"),
+        "与活动执行并存时，报出来的第一条是更具体的宿主状态"
+    );
+    assert!(
+        report
+            .blockers
+            .iter()
+            .any(|r| r.reason_code() == "driverResetUnsupported"),
+        "all_blockers 必须把能力阻断项一并报出来，不能只报第一条: {:?}",
+        report.blockers.iter().map(|r| r.reason_code()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        transport.reset_count(),
+        0,
+        "能力做了归池否决 ⇒ 复位永远不会被跑到"
+    );
 }
