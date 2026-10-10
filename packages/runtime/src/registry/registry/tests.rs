@@ -443,3 +443,195 @@ async fn 投递失败保留表项_额度不挂stale等重投() {
         "ctrl_rx 已经丢了，同一个 future 里的 exec_rx 必然一起丢：actor 任务确实没了"
     );
 }
+
+// ---------------------------------------------------------------------------
+// `set_idle_deadline`：执行中「顺延」这条 §6.4 要求的可达性
+// ---------------------------------------------------------------------------
+
+/// 期限时间轴上的三个刻度。刻意远离真实时钟：判定完全由注入值决定，
+/// 因此测试不依赖 sleep，也不依赖机器负载。
+const TIMELINE_PAST: u64 = 1_000;
+const TIMELINE_SOON: u64 = 60_000;
+const TIMELINE_FAR: u64 = 600_000;
+
+/// 登记一个会话，返回它的公开句柄。
+///
+/// 走 [`SessionRegistry::register_session`] 的返回值而不是事后再查表：这正是
+/// 宿主自己拿句柄的方式，测试怎么读内部表与它无关。
+async fn register_with_handle(registry: &SessionRegistry) -> SessionHandle {
+    registry
+        .register_session(open_request())
+        .await
+        .expect("登记必须成功：这是本用例的前提")
+        .handle
+}
+
+/// 一个会话能被设成「远未到期」，于是驱逐不动手。
+///
+/// 反证用：若 `set_idle_deadline` 是空实现（收了参数什么也不写），
+/// `open_request()` 里那个 `Some(IDLE_DEADLINE_MS)` 会让它在 `TIMELINE_SOON`
+/// 时刻照样被驱逐（`IDLE_DEADLINE_MS == TIMELINE_SOON`，正是边界）——本用例因此红。
+#[tokio::test]
+async fn 期限设到未来则驱逐不动手_去掉公开入口前它不可能被设() {
+    let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
+    let handle = register_with_handle(&registry).await;
+
+    let acknowledged = registry
+        .set_idle_deadline(&handle, Some(TIMELINE_FAR))
+        .await
+        .expect("在册会话必须能设期限");
+    assert_eq!(
+        acknowledged,
+        Some(TIMELINE_FAR),
+        "返回值必须就是刚设进去的那个值：否则调用方无法确认写入生效"
+    );
+
+    let evicted = registry.evict_idle_at(TIMELINE_SOON).await;
+    assert!(
+        evicted.is_empty(),
+        "期限在更远的未来 ⇒ 这个时刻必须什么都不做；被驱逐就说明期限没被真正写进去"
+    );
+    assert!(registry.is_registered(&db_session_id()), "会话必须仍在册");
+    assert_eq!(registry.remaining_quota(), 3, "未驱逐就不还额度");
+}
+
+/// 同一会话，同一个入口，把期限改回**过去** ⇒ 驱逐立刻动手。
+///
+/// 与 `期限设到未来则驱逐不动手_去掉公开入口前它不可能被设` 成对：一正一反
+/// 才说明差别来自期限本身，而不是「registry 恰好没扫到这一行」。
+#[tokio::test]
+async fn 期限改回过去则驱逐动手_摘行还额度() {
+    let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
+    let handle = register_with_handle(&registry).await;
+
+    // 先确认远未到期时不动手。
+    registry
+        .set_idle_deadline(&handle, Some(TIMELINE_FAR))
+        .await
+        .expect("在册会话必须能设期限");
+    assert!(
+        registry.evict_idle_at(TIMELINE_SOON).await.is_empty(),
+        "前提：远未到期时驱逐不动手"
+    );
+
+    // 再把期限拉回过去。
+    registry
+        .set_idle_deadline(&handle, Some(TIMELINE_PAST))
+        .await
+        .expect("在册会话必须能改期限");
+    let evicted = registry.evict_idle_at(TIMELINE_SOON).await;
+
+    assert_eq!(evicted.len(), 1, "期限已过 ⇒ 这个时刻必须驱逐");
+    assert_eq!(
+        evicted[0].handle.db_session_id,
+        db_session_id(),
+        "驱逐的必须是这一行"
+    );
+    assert!(
+        !registry.is_registered(&db_session_id()),
+        "驱逐成功必须摘行"
+    );
+    assert_eq!(registry.remaining_quota(), 4, "驱逐成功必须还额度");
+}
+
+/// `None` 是**配置事实**（本会话不参与回收），不是「清空成 0」。
+///
+/// 这一条与 `未设期限的会话永不被驱逐`（既有用例）互为表里：既有那条证明
+/// `open_request` 从不设期限时不动手，这一条证明**显式设成 `None`** 也是同一种
+/// 语义。把 `None` 当 0 处理的最短后果是「所有会话一开就到期」，比不回收糟得多。
+#[tokio::test]
+async fn 设成None表示不参与回收_不是把期限清成零() {
+    let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
+    let handle = register_with_handle(&registry).await;
+
+    let acknowledged = registry
+        .set_idle_deadline(&handle, None)
+        .await
+        .expect("在册会话必须能清除期限");
+    assert_eq!(acknowledged, None, "清除后登记表侧必须真的没有期限");
+
+    // `TIMELINE_FAR` 远大于任何可能被误当成 0 的期限值。
+    let evicted = registry.evict_idle_at(TIMELINE_FAR).await;
+    assert!(
+        evicted.is_empty(),
+        "未设期限 ⇒ 任何时刻都不动手；被驱逐就说明 None 被当成了 0/已过期"
+    );
+    assert!(registry.is_registered(&db_session_id()));
+}
+
+/// 已关闭的会话再设期限 ⇒ `UnknownSession`，且**不会**为它重新建一个期限。
+///
+/// 走的是 [`Self::locate`]：`close_registered` 成功后行已 `forget`，因此定位就失败，
+/// 永远到不了 actor 里的 `set_idle_deadline`，也就到不了它的 `SessionClosed` 分支。
+/// 这不是「位置放错了」，而是与 `submit_execution` / `cancel_registered` 完全同构的
+/// 既有事实——本方法照抄这个形状，因此报错也必须是同一个错。
+///
+/// 为什么不是 `SessionClosed`：那需要在 actor 还活着、物理资源已释放时下单；
+/// 而这条路**根本到不了 actor**。把这一格写成 `SessionClosed` 会让断言与
+/// 兄弟入口的实际行为相反，且会把「关掉的会话」误判成「关不掉的会话」（后者要重试）。
+/// 「不认识」与「已关闭」在这里由调用方能否重试来区分，而这个入口两者都重试无意义，
+/// 因此同形是更诚实的选择。
+#[tokio::test]
+async fn 关闭后的会话设期限得到UnknownSession且不重建() {
+    let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
+    let handle = register_with_handle(&registry).await;
+
+    registry
+        .close_registered(&handle, crate::connection::CloseMode::RollbackAndClose)
+        .await
+        .expect("关闭必须成功：这是本用例的前提");
+    assert!(
+        !registry.is_registered(&db_session_id()),
+        "前提：关闭后登记表里已经没这一行"
+    );
+
+    let error = registry
+        .set_idle_deadline(&handle, Some(TIMELINE_FAR))
+        .await
+        .expect_err("会话已关，设期限必须被拒");
+    assert!(
+        matches!(error, RuntimeError::UnknownSession(ref id) if id == &db_session_id().to_string()),
+        "已摘行的会话一律 UnknownSession，与 submit_execution / cancel_registered 同形"
+    );
+
+    // 拒绝没有任何副作用：额度已随关闭归还，不会因为这次拒绝再变一次。
+    assert_eq!(
+        registry.remaining_quota(),
+        4,
+        "关闭时已归还一格，拒绝不得再动账"
+    );
+    assert!(
+        registry.evict_idle_at(TIMELINE_FAR).await.is_empty(),
+        "拒绝不得把任何会话塞回驱逐表"
+    );
+}
+
+/// epoch 不匹配 ⇒ `UnknownSession`。
+///
+/// INV-07 的最后一格：旧 epoch 的句柄连期限都改不了。放行它等于允许
+/// 「用一个已经被取代的会话句柄去动新会话的驱逐表」。
+#[tokio::test]
+async fn epoch不匹配时设期限得到UnknownSession() {
+    let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
+    let mut stale = register_with_handle(&registry).await;
+    stale.runtime_epoch = crate::connection::Counter::new(stale.runtime_epoch.get() + 1);
+
+    let error = registry
+        .set_idle_deadline(&stale, Some(TIMELINE_FAR))
+        .await
+        .expect_err("epoch 不匹配必须被拒");
+    assert!(
+        matches!(error, RuntimeError::UnknownSession(ref id) if id == &db_session_id().to_string()),
+        "INV-07：纪元不匹配一律 UnknownSession，不得透明改到新会话上"
+    );
+    // 真正在册的那个会话的登记状态没被顺手改掉：Stale 句柄连读都不该影响它。
+    assert!(
+        registry.is_registered(&db_session_id()),
+        "Stale 句柄不得影响在册会话的登记状态"
+    );
+    assert_eq!(
+        registry.remaining_quota(),
+        3,
+        "在册会话仍占一格，且 Stale 句柄的拒绝不得释放额度"
+    );
+}

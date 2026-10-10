@@ -22,19 +22,23 @@
 //! `deferred` 队列（`registry/actor.rs` 的 `handle_exec_while_flying`），因此驱逐不会与
 //! 执行并发。
 //!
-//! 但「暂停后**顺延**」做不到：应用层**只能在建会话时设一次期限**，因为
-//! `SessionRegistry` 没有暴露 `set_idle_deadline` 的公开包装（`registry/actor.rs` 里的
-//! `fn set_idle_deadline` 是私有的，唯一调用者是它自己的命令分发）。要补齐这一格需要
-//! registry 侧加一个公开包装——`registry/**` 不在本轨可写范围，故此处如实记录而非变通。
-//! 同一缺口也让「有活连接借用在外的会话」只能事后作废（[`crate::application::live`]），
-//! 而不是事前阻止驱逐。
+//! 但「暂停后**顺延**」曾经做不到：应用层**只能在建会话时设一次期限**——
+//! [`crate::registry::actor::ExecCommand::SetIdleDeadline`] 一直有 actor 命令，
+//! 而 `SessionRegistry` 此前没有它的公开包装，`idle_deadline_ms` 又是 actor 私有状态，
+//! 于是那条命令在类型层面不可达。P3 收尾补上了那个入口：
+//! [`SessionRegistry::set_idle_deadline`](crate::registry::SessionRegistry::set_idle_deadline)，
+//! 与 `cancel_execution_bound` 同形。因此「执行中以业务活动把期限往后顺延」现在可达，
+//! 「有活连接借用在外的会话」也能**事前**阻止驱逐，而不是只能事后作废
+//! （[`crate::application::live`] 的 `revoke` 仍然是兜底，不是主路径）。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use datazen_application::error::ApiError;
 use datazen_platform_api::ports::session_directory::{CloseDisposition, SessionDirectory};
 
+use super::convert;
 use super::{results::lock, RuntimeConnectionUseCases};
 use crate::connection::DbSessionId;
 
@@ -187,6 +191,48 @@ impl RuntimeConnectionUseCases {
             }
         });
         IdleReclaimer { stop, task }
+    }
+
+    /// 把会话的空闲期限**顺延**到「现在 + policy 期限」，即 §6.4 的「业务活动刷新」。
+    ///
+    /// ## 为什么必须是应用层方法
+    ///
+    /// §9.2 逐字写：「登录心跳不能刷新 lastBusinessActivity；执行期间不以 idle 判定回收」。
+    /// 因此刷新的时机只能是**真实的业务活动**（一次执行完成、一次显式读取），
+    /// 不能是任何周期性任务——把刷新写进扫描器会让「心跳刷新」这条禁令失效，
+    /// 且会话只要挂着就永远不回收，正好是 §6.4 要防的那半句。
+    ///
+    /// ## 三种 `None` 必须分开
+    ///
+    /// 1. 策略关闭 ⇒ 本方法**不动** registry：期限本来就是 `None`，写一次 `None`
+    ///    与不写等价，但会白发一次 actor 往返。
+    /// 2. 会话已不在册 / epoch 不匹配 ⇒ 如实返回错误，**不**把它当成「刷成功了」。
+    /// 3. 会话物理资源已释放 ⇒ 同样如实返回错误，不重建、不透明替换。
+    ///
+    /// 刷新只延长期限，**不**提前回收：顺延是单向的（`max(now + span, at)`），
+    /// 见 [`Self::idle_deadline_ms`] 里同一把尺子的截断方向。
+    pub async fn refresh_idle_deadline(
+        &self,
+        handle: &datazen_platform_api::dto::session::SessionHandle,
+    ) -> Result<Option<u64>, ApiError> {
+        let policy = *lock(&self.inner.idle);
+        let Some(span) = policy.deadline_ms() else {
+            return Ok(None);
+        };
+        // 与 `create_session` 写入 `OpenRequest.idle_deadline_ms` 同一条路径、同一把尺子：
+        // 两处单位不一致会让「到期」变成随机器负载漂移的量。
+        let at = self
+            .inner
+            .clock
+            .now_ms()
+            .saturating_add(span)
+            .max(self.inner.clock.now_ms());
+        let internal = convert::handle(handle)?;
+        self.inner
+            .registry
+            .set_idle_deadline(&internal, Some(at))
+            .await
+            .map_err(convert::runtime)
     }
 }
 
