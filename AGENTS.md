@@ -242,10 +242,14 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 
 ## i18n 国际化规则
 
-- **开发期间**：只修改 `en.ts`（英文），不要同时修改其他语言文件。
+- **开发期间**：只加英文的**领域包** `src/locales/en/<domain>.ts`，不要同时修改其他语言文件。
+  ⚠️ **不是 `src/locales/en.ts`** —— 那只是 2 行的向后兼容 re-export shim
+  （`export { default } from './en/index';`），往里加 key 不产生任何效果。
+  动手前先按 key 前缀定位领域包（见 [src/locales/README.md](src/locales/README.md) 的领域清单）。
 - **发布前**：使用 `node scripts/i18n-sync-check.mjs` 检查翻译完整性，然后通过 i18n-sync skill 补齐所有语言。
-- `en.ts` 是唯一的翻译 source of truth，其他语言文件必须保持相同的 key 集合。
-- 采用领域包（Domain Packs）结构，子窗口与深层功能通过 `useLocaleDomains` 按需惰性（Lazy）加载。
+- `src/locales/en/<domain>.ts` 是唯一的翻译 source of truth（该目录下全部领域包合起来），其他语言必须保持相同的 key 集合。
+- 采用领域包（Domain Packs）结构，**全部 10 种语言**（`de` / `en` / `es` / `fr` / `ja` / `ko` / `pt-BR` / `ru` / `zh-CN` / `zh-TW`）都按领域拆分；`<locale>.ts` 一律是 shim。
+  子窗口与深层功能通过 `useLocaleDomains` 按需惰性（Lazy）加载。
 
 ## 代码风格
 

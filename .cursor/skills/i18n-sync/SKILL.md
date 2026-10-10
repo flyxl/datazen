@@ -1,6 +1,6 @@
 # i18n Translation Sync Skill
 
-Sync non-English locale files with `en.ts` by translating missing or changed keys.
+Sync non-English locale files with the English dictionary by translating missing or changed keys.
 
 ## When to Use
 
@@ -16,13 +16,19 @@ Sync non-English locale files with `en.ts` by translating missing or changed key
 node scripts/i18n-sync-check.mjs --verbose
 ```
 
-2. **Read en.ts** to get the English values for changed/added keys.
+2. **Read the English values** for the changed/added keys. Where they live depends
+   on the scope — never assume a flat `en.ts` (see step 3).
 
-3. **For each locale file** that has missing or stale keys:
-   - Read the locale file
-   - Translate only the changed English values into the target language
-   - Use StrReplace to update the locale file with correct translations
-   - Preserve the existing key order and file structure
+3. **For each locale** that has missing or stale keys, write into the **same file
+   layout the English key already lives in**:
+   - **Host** (`src/locales/`) → `src/locales/<locale>/<domain>.ts`, using the
+     domain of the English key. ⚠️ `src/locales/<locale>.ts` is a 2-line re-export
+     shim (`export { default } from './<locale>/index'`) — writing there has **no
+     effect**. All 10 host locales are domain-split.
+   - **Driver pack** (`packages/drivers/<id>/locales/`) → `<locale>.ts`; driver
+     packs are genuinely flat monoliths, so `en.ts` there is correct.
+   - Translate only the changed English values; preserve the existing key order
+     and file structure.
 
 4. **Run the locale test** to verify all keys are in sync:
 
@@ -47,12 +53,14 @@ pnpm exec vitest run src/locales/locales.test.ts
 - Keep interpolation placeholders like `{count}`, `{name}` unchanged
 - Keep technical terms (SQL, JSON, YAML, etc.) untranslated
 - Match the tone and style of existing translations in each locale
-- Do NOT modify `en.ts` — it is the source of truth
+- Do NOT modify the English keys — they are the source of truth
 
 ## Important Rules
 
-- **During development**: Only modify `en.ts` (and optionally `zh-CN.ts`).
-  Other locales are synced before release.
+- **During development**: Only add keys to the host's English **domain packs**
+  (`src/locales/en/<domain>.ts`; `src/locales/en.ts` is a shim). Driver packs use
+  `packages/drivers/<id>/locales/en.ts`, which is a real file. All other locales
+  are synced before release.
 - **Before release**: Run this skill to translate all missing/stale keys.
 - The `scripts/i18n-sync-check.mjs` script returns exit code 1 if there are
   outstanding translations, making it suitable for CI checks.
