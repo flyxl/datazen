@@ -1,7 +1,19 @@
 # progress.md — 轨 A-11：`close_handle` 幂等关闭缺口
 
 缺陷编号：A-11（独立验收发现）
-状态：**READY_FOR_TEST**（本轮工作已提交，未 push）
+状态：**IN PROGRESS**（独立 Tester `50c14069` 打回，本轨修复 D-1/D-2/D-4）
+
+## 验收打回项（`50c14069`，REJECT）
+
+| 编号 | 级别 | 内容 |
+| --- | --- | --- |
+| D-1 | blocker | 7 条「foreign ref 在已关资源上仍被拒绝」顺序测试里，5 条把 `mark_closed()` 用在 `handle` 上、传给 `close_handle` 的却是从未关过的 `foreign` ⇒ `is_closed` 与 ownership 谁先都返回同一个 ownership 错，测试分不出顺序。受影响：mysql、sqlite、mongodb、redis、`LegacyResourceAdapter` |
+| D-2 | major | 生产代码里 `mark_closed()` 只有 redis/postgres 各 1 处；mysql/sqlite/mongodb/hbase/vector 的 `close_resource` 从不标记 ⇒ 其 `is_closed()` 恒 false，短路在生产永不触发（base 上即如此，非本轨引入） |
+| D-4 | minor | 7 处注释与 2 份台账引用不存在的符号 `LeaseFacade`（9 处命中、0 处定义）。真实类型是 `LeaseManager` @ `packages/runtime/src/resource/lease_manager.rs:225`；fail-closed 行为本身成立（`release` 内 `closer.close(&handle)?`，`lease_manager.rs:450`） |
+| D-5 | 低 | hbase/vector/adapter 正向测试只断言 `is_closed` flag，无 budget/wire 副作用断言（mysql/sqlite 等都有） |
+
+hbase 与 vector 的 2 条顺序测试本来就是正确形状（传给 `close_handle` 的是已关的
+`handle`，foreign 作对照），作 D-1 的样板。
 
 ## 缺陷
 
@@ -109,3 +121,24 @@ postgres 把它排在 `belongs_to` 检查**之后**："closed + 外国引用" �
    实例（epoch 不同 ⇒ `StaleRuntimeEpoch`）。与 postgres 的
    `belongs_to` 拒绝（`InvalidResourceState`）不等价，但两者都在 `handle.check`
    这一层、且都在 `is_closed` 之前，守住的是同一条顺序。
+
+## 修复轮 1计划（D-1 / D-2 / D-4）
+
+- **D-1**：把 5 条顺序测试里传给 `close_handle` 的那个 handle 也 `mark_closed()`，
+  让「已关」前提真的作用在被测引用上。hbase 是样板
+  （`packages/drivers/hbase/src/resource/tests/unsupported.rs:326-348`）：
+  传给 `close_handle` 的是已关的 `mine`/`handle`，foreign 只作对照组不进调用。
+- **D-2**：待评估。redis/postgres 是在 `close_resource` 的 `disconnect` 成功后
+  `handle.mark_closed()` 一行；mysql/sqlite/mongodb 的 `LiveResource` 与 adapter 的
+  `LiveResource` 均不存 handle，要 mark 就得把 handle 存进 `LiveResource`
+  （改 4 个 struct + 4 处构造 + 4 处调用）。hbase/vector 走 `provider::close`，
+  那里的 `LiveResource` 是 `snapshot()` 出来的拷贝（`Arc<AtomicBool>` 共享 flag，
+  clone 能把 flag 带回来），代价另行实测。
+- **D-4**：9 处 `LeaseFacade` 全部改为 `LeaseManager`，并核对 fail-closed 的真实
+  位置与行为后如实引用。
+
+## D-1 放行条件的复验方式
+
+把任一 impl 的 `is_closed` 短路提到 `handle.check` 之前，该 impl 的顺序测试必须
+变红，7/7 全红才算修好。变异在独立 detached worktree 做
+（`git worktree add --detach`），不碰本工作树。
