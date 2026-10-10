@@ -166,37 +166,45 @@ session actor；未登记 = 非法」，而 `closed` 字段是给「已自行关
 （`grep -rn "is_clear()"` 只有 `admits_to_pool` 与两处文档提及；`admits_to_pool` 本身
 也只有文档引用，无生产调用点）。
 
-### 缺陷 B（结构性的，比 A 更值得说）：生产路径上「登记册里有句柄」根本到不了裁决
+### 缺陷 B（第一版修法被自己推翻，记录这个弯路）
 
-`LeaseManager::release`（`lease_manager.rs:447-472`）的顺序是
+`LeaseManager::release`（`lease_manager.rs:447-472`）第 (2) 步旧写法是
+`merged.unreleased_handles = host.unreleased_handles.filter(!closed)`
+—— 只用调用方声明的那一份，`self.handles` 里真实存在的句柄对**裁决**不可见。
+第一版我据此判它是缺陷，改成「并集关**之前**的登记快照」。
 
-```
-(1) for handle in self.handles.for_lease(lease_id) { closer.close(&handle)?; deregister(..); }
-(2) merged.unreleased_handles = host.unreleased_handles.filter(!closed);   ← 只用调用方给的
-(3) self.resources.release(lease_id, merged, *driver)?;                    ← 这里才裁决
-```
+**然后三条既有用例当场转红**：
 
-第 (1) 步把**本层自己登记的句柄**关掉并摘干净，第 (2) 步却只合并**调用方**在
-`host` 里声明的那一份。于是 `self.handles` 里真实存在的 N 条句柄，对裁决**完全不可见**：
+| 用例 | 断言 |
+|---|---|
+| `lease_handle_registry.rs:102` | "once the registry is clean the lease may go back to the idle pool" |
+| `lease_transitions_matrix.rs:570` | "a closer that can close the handle lets the return through" |
+| `lease_handle_registry.rs:177` | 重试后 `released.pool.park` |
 
-- 若调用方如实把那些句柄也放进 `host.unreleased_handles`（现状的做法，见
-  `lease_transitions_matrix.rs:587`）⇒ 走运，能被拒；
-- 若调用方只传 `clear_host()`（这正是 `HostConditionSnapshot::default()`，
-  `pool_capacity_budget.rs` 里 6 个用例都这么干）⇒ **`ReturnedToPool` 被记下来**，
-  而那条租约刚刚还有一条开着的事务句柄。
+**我判这三条对、我错**，依据是两份权威文本而不是用例数量：
 
-`lease_manager` 模块头第 2 条自己写明这段存在的理由：「`ResourceManager` 只看见调用方
-交给它的 `HostConditionSnapshot`；本层持有真正的句柄登记表，宿主条件由本层推导，
-调用方**无法**谎报『登记的句柄都空了』。」—— 实际代码没有做到这句话：第 (2) 步
-恰恰**允许**调用方用一份空快照覆盖掉本层已知的事实。这是本轨实测出的**第二条真缺陷**，
-也是一条比 A 更根本的：A 是口径不一致，B 是「唯一的权威登记册没有接进裁决」。
+1. §6.5 逐字：「淘汰、替换或隔离时，**先在原 resource 上回滚/关闭句柄并从 actor 注销，
+   确认后才释放资源**」。关掉 + 摘登记 = 登记册已清空 = §9.4 那一项归池前置
+   **已满足**。此时仍不放行，等于让一条彻底收尾过的租约永远回不了池 ——
+   短操作每次新开物理连接再关掉，池恒空，池化收益整体失效。
+2. 我自己的缺陷 A 修法就是这个理由：`outstanding_handles()` 过滤 `closed`
+   的论证是「宿主把它提交/回滚掉之后，它就不再是一项未了义务」。
+   同一条理由在这里一字不差地成立。我一边过滤 `closed`、一边又把关掉的句柄
+   并回去，是自相矛盾。
 
-**修法**：第 (2) 步把**本层登记册**与调用方声明**并**起来（不是覆盖），
-即「本层已摘掉的不算、调用方报的、以及调用方漏报但登记册里有的」都算未了义务。
-这样「driver Clean + host 四项全清 + 登记册里有句柄」这一组合在生产路径上必然被拒，
-断言 3 才真正成立。**这一处正是原简报点名「不要再合流冲突面上硬改」的位置**
-（`lease_manager.rs` 在两个已合流轨里改动 0 次，是干净地盘；父代理也确认过）。
+**所以 B 不是缺陷，「以调用方为准」这一侧的真正缺口是**：登记册**此刻还剩**
+（关不掉、没摘掉）的句柄，必须并入宿主条件。旧写法漏了这个，
+于是 `NoHandleCloser` 之外还有一条缝 —— 但那条缝被 (1) 的 `?` 提前返回堵住了，
+所以旧写法在既有用法下恰好不出错。**修正后的并集因此是零行为变化的安全网**，
+不是修复：它让「本层是登记册唯一权威」这句话成为代码而不是注释。
 
+**这一条的教训记入取舍节**：三条既有用例转红时，先查权威文本再判谁错。
+我第一反应是「它们钉的是缺陷」，查完 §6.5/§9.4 发现是我错。
+
+## 状态
+
+**进行中**。缺陷 A 已修（7 条新用例全绿，1015/0）；缺陷 B 修正为安全网并集。
+门禁见下节，随进度更新。
 ## 状态
 
 **进行中**。两个缺陷已实测并定位；修法与证据见上一节。门禁见下节，随进度更新。
