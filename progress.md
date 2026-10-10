@@ -81,9 +81,60 @@ CM-74 步骤说「再分别走归池、setSessionContext 替换、closeSession �
 ⇒ 新测试：驱逐后拿旧 id 走恢复路径，必须拿到**新**的 dbSessionId（`FakeIds` 按序发号），
 且新 resource 上零句柄登记。
 
+## 拆分决定：**选项 B**（先只做断言 3），其余四条记入台账作为后续
+
+### 理由（自判，不是执行上级安排）
+
+我选 B 而不是 A 或 C，判据是**「缺口是不是真的」**与**「落点热不热」**两条一起看：
+
+**1. 断言 3 大概率已经成立，我倾向用实测代替改码。**
+`CleanupPlan::of`（`cleanup.rs:397`）→ `ReturnDecision::decide` → `host.first_blocker()`，
+而 `first_blocker()` 的第 3 格正是 `unreleased_handles` ⇒
+`ReturnReason::UnreleasedSessionHandle { .. }`（`cleanup.rs:146-155`）。
+`Returned` 只在 `first_blocker()` 返回 `None` 时成立，也就是**四项全清**。
+「driver 报 Clean」只让裁决走到 `first_blocker()`，它**不能**让任何一项宿主条件消失
+（`decide` 的注释明写这句）。所以断言 3 在结构上成立。
+⇒ 我的活是**写一条能杀死「读错数」这种变形的测试**，而不是改代码。
+
+**2. 断言 3 不碰 harness，而其余四条都要碰。**
+父代理给的落点表我逐条核对了：断言 1 的 journal 次序、断言 4 的登记校验、
+断言 5 的恢复判负，全部要改 `connection/testing/harness/**` 或 `fake_resource/**`
+（这正是原简报点名的「已有夹具，别重造」区域）。断言 3 只动 `resource/cleanup.rs::of`
+这条判据与 `packages/runtime/tests/` 下基于 `ResourceManager` 的集成测试。
+
+**3. 五条一起做治不了我的毛病，反而放大它。**
+本会话已连续 4 次中断、每次都零提交。一次交付五条 = 五个可能出错的推理链条 +
+harness 与两个已合流轨的潜在冲突全部堆在同一次提交里。断言 3 单独一条：
+- 落点最小（`cleanup.rs::of` + 一个新集成测试文件）；
+- 与 `p3-reset-capability` 轨的冲突面最小 —— 那轨改的是 `first_blocker`/`all_blockers`
+  **末位**（`reset_for_reuse`），我改的是**句柄那一格**（第 3 格），同一函数但不同臂；
+- 最可能成活（预期零代码改动，只加测试）。
+
+**4. A 的并行前提不成立。**
+A 要求两轨不碰同一文件。但断言 3 的集成测试要写 `HostConditionSnapshot::with_unreleased_handle`，
+而这正是 `resource_return_to_pool.rs` / `lease_transitions_matrix.rs` / `tunnel_budget_pairing.rs`
+三个文件共用的构造；断言 1/4/5 那条轨一旦也要写 `LeaseManager::release` 的句柄用例，
+两边都会落到 `packages/runtime/tests/`。真实冲突比父代理估的更近。
+
+### 边界（本轨只做这些）
+
+- **改**：`packages/runtime/tests/cm74_assert3_clean_verdict_with_registered_handle.rs`（新文件）
+- **可能改**：`packages/runtime/src/resource/cleanup.rs`（仅在实测发现判据真被绕过时）
+- **不碰**：`connection/testing/**`、`resource/lease_manager.rs`、`resource/manager.rs`、
+  `resource/mod.rs` 的导出面、`PhysicalTransport::reset` 签名
+
+### 本轨明确交回给后续的四条
+
+| 断言 | 后续落点（已核实存在，但本轨不碰） |
+|---|---|
+| 1 | `resource/lease_manager.rs:447-455` 的 close→deregister 次序 + `connection/testing/harness/cm74_release_order.rs` |
+| 2 | `resource/adoption.rs::confirm_replacement` + `packages/runtime/tests/resource_replacement.rs` |
+| 4 | `session_cmds.rs:138-141` 的 `SessionNotFound` + `lease_manager.rs:449` 的 `?` 中断 |
+| 5 | `harness/cm73.rs` 五步 + `harness/tests.rs:437` 的判负 |
+
 ## 状态
 
-**进行中**。设计已落账（上一节）。代码与门禁见下节，随进度更新。
+**进行中**。拆分决定与四条后续落点已落账（上一节）。代码与门禁见下节，随进度更新。
 
 ## 改动清单（文件:行 → 改了什么）
 
