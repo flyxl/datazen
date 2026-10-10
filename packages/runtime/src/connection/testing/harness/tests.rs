@@ -541,11 +541,13 @@ fn an_unregistered_handle_is_refused_by_both_commit_and_rollback_without_touchin
         "后端零动作：事务状态必须仍是 Active，被打到 None 就说明 Rollback 真的跑了"
     );
     assert!(
-        !harness
-            .journal()
-            .entries()
-            .iter()
-            .any(|entry| matches!(entry, JournalEntry::Resource { event: ResourceEvent::Quarantined, .. })),
+        !harness.journal().entries().iter().any(|entry| matches!(
+            entry,
+            JournalEntry::Resource {
+                event: ResourceEvent::Quarantined,
+                ..
+            }
+        )),
         "后端零动作：回滚真跑了注入的 RollbackFailed 就该隔离资源并留下 Quarantined 台账；不得出现"
     );
 
