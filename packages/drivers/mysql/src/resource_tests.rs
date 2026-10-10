@@ -536,7 +536,7 @@ async fn close_handle_on_an_already_closed_resource_is_idempotent_success() {
     // marked closed, so the close has happened and re-doing it is not
     // information. A host that released the lease before this ref went away is
     // not a caller that missed its own handle, so it must not be told an error
-    // — `LeaseFacade::release` is fail-closed and would keep the lease parked
+    // — `LeaseManager::release` is fail-closed and would keep the lease parked
     // forever. The refusal below stays the honest answer for a *live* resource.
     let (provider, fake, budget) = provider();
     let handle = acquire(&provider, &budget).await;
@@ -561,11 +561,18 @@ async fn close_handle_refuses_a_foreign_ref_even_on_a_closed_resource() {
     // check, so a closed resource never excuses a ref that belongs to another
     // one. Matching postgres exactly is what keeps one behaviour across the
     // nine providers instead of two subtly different contracts.
+    //
+    // The premise has to land on the handle actually handed to `close_handle`,
+    // not merely on some handle in the test: a *foreign* handle that was never
+    // closed yields the same ownership refusal in both orders, so the test
+    // would pass even with the short-circuit hoisted above `handle.check`. So
+    // the one passed in is marked closed too — that is the only shape where the
+    // two orders disagree and this test pins which one runs.
     let (provider, _fake, budget) = provider();
     let handle = acquire(&provider, &budget).await;
-    handle.mark_closed();
     let foreign =
         ResourceHandle::issue("some-other-provider", "not-issued", handle.runtime_epoch());
+    foreign.mark_closed();
     let session_handle = SessionHandleRef::new(
         "tx-1",
         SessionHandleKind::Transaction,

@@ -293,7 +293,7 @@ async fn the_driver_refuses_writes_before_they_reach_the_wire() {
 /// is marked closed, `close_resource` has already run and every handle issued on
 /// it went with it — so repeating the close carries no information, and the
 /// published trait doc promises `Ok(())` rather than a refusal. This is not
-/// cosmetic: `LeaseFacade::release` treats `Err` as fail-closed and keeps the
+/// cosmetic: `LeaseManager::release` treats `Err` as fail-closed and keeps the
 /// lease out of the pool, so a refusal here parks the lease forever over a close
 /// that already happened.
 #[tokio::test]

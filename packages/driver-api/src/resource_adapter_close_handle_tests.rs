@@ -103,7 +103,7 @@ async fn the_adapter_refuses_every_handle_kind_and_leaves_the_handle_open() {
 /// `close_resource` has already run, so every handle issued on the resource went
 /// with it and repeating the close carries no information — the adapter must say
 /// so rather than refuse. This is operational, not cosmetic: the host is
-/// fail-closed on `Err` (`LeaseFacade::release` keeps the lease exactly as it
+/// fail-closed on `Err` (`LeaseManager::release` keeps the lease exactly as it
 /// is, un-pooled), so a refusal on this path parks the lease forever over a close
 /// that already happened. The legacy driver never mints a session-scoped handle,
 /// which is what makes the `Ok` honest: nothing is being claimed closed that was
@@ -131,12 +131,18 @@ async fn an_already_closed_resource_makes_the_handle_close_a_success() {
 /// closed resource never excuses a ref belonging to another one. That is the
 /// order postgres uses and the order §6.5 describes; sharing one order across
 /// every provider is worth more than any convenience a shorter path would buy.
+///
+/// The premise has to land on the handle actually handed to `close_handle`,
+/// not merely on some handle in the test: a *foreign* handle that was never
+/// closed yields the same ownership refusal in both orders, so the test would
+/// pass even with the short-circuit hoisted above `handle.check`. So the one
+/// passed in is marked closed too — that is the only shape where the two
+/// orders disagree and this test pins which one runs.
 #[tokio::test]
 async fn a_foreign_ref_is_still_refused_on_a_closed_resource() {
     let provider = adapter(LegacyFake::new());
-    let mine = ResourceHandle::issue("legacy-fake", "app", 7);
-    mine.mark_closed();
     let foreign = ResourceHandle::issue("someone-else", "app", 7);
+    foreign.mark_closed();
 
     let error = provider
         .close_handle(

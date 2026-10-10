@@ -111,7 +111,7 @@ async fn close_handle_on_an_already_closed_resource_is_idempotent_success() {
     // the resource went with it — and Redis issued none to begin with, so there
     // is nothing left to refuse. `Ok(())` is what the published trait doc
     // promises here, and the reason is operational rather than cosmetic:
-    // `LeaseFacade::release` treats `Err` as fail-closed and keeps the lease
+    // `LeaseManager::release` treats `Err` as fail-closed and keeps the lease
     // out of the pool, so a refusal on this path parks the lease forever over a
     // close that already happened.
     let provider = provider();
@@ -150,12 +150,19 @@ async fn close_handle_refuses_a_foreign_ref_even_on_a_closed_resource() {
     // says "the close already happened", which is only true of refs this
     // provider really issued. Keeping all nine providers on one order is worth
     // more than any convenience a shorter path would buy.
+    //
+    // The premise has to land on the handle actually handed to `close_handle`,
+    // not merely on some handle in the test: a *foreign* handle that was never
+    // closed yields the same ownership refusal in both orders, so the test
+    // would pass even with the short-circuit hoisted above `handle.check`. So
+    // the one passed in is marked closed too — that is the only shape where the
+    // two orders disagree and this test pins which one runs.
     let provider = provider();
     let ledger = Arc::new(BudgetLedger::default());
     let handle = seed_under(&provider, &ledger, "redis_close_handle_closed_foreign");
-    handle.mark_closed();
     let foreign =
         ResourceHandle::issue("some-other-provider", "not-issued", handle.runtime_epoch());
+    foreign.mark_closed();
     let session_handle = SessionHandleRef::new(
         "tx-1",
         SessionHandleKind::Transaction,
