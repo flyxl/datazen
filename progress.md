@@ -132,9 +132,74 @@ A 要求两轨不碰同一文件。但断言 3 的集成测试要写 `HostCondit
 | 4 | `session_cmds.rs:138-141` 的 `SessionNotFound` + `lease_manager.rs:449` 的 `?` 中断 |
 | 5 | `harness/cm73.rs` 五步 + `harness/tests.rs:437` 的判负 |
 
+## 实测结果：**断言 3 不成立，两个真缺陷**
+
+「先写测试当实验」直接跑出两条失败（基线 `abcbb41d0` 上 `cargo test -p datazen-runtime
+--test cm74_assert3_clean_verdict_with_registered_handle`，EXIT=101，
+`6 tests` 中 2 条 FAILED）。
+
+### 缺陷 A（严重）：已关闭的句柄仍把租约挡在池外，`is_clear()` 与报表口径互相矛盾
+
+`HostConditionSnapshot::is_clear()`（`cleanup.rs:115`）判 `unreleased_handles.is_empty()`，
+**不看 `closed` 标志**；而同一文件 `CleanupReport::from_plan`（`cleanup.rs:502-510`）
+在填 `outstanding_handles` 时**过滤掉** `!handle.closed`。两份口径对同一个快照给出
+不同答案：
+
+- `is_clear()`：`[closed=true 的句柄]` ⇒ **不清** ⇒ 拒绝归池；
+- `from_plan`：同一个快照 ⇒ `outstanding_handles == []` ⇒ 报表说「没有未了句柄」。
+
+后果是**永久泄漏**：宿主已经把它的事务提交/回滚掉（句柄 `closed = true`，按
+`SessionHandleRef` 的契约这是合法终态，`connection/execution.rs` 的 `ExecutionCompletion`
+正是这样上报的），却因为一条死句柄永远无法再进空闲池。每次短操作都新开物理连接、
+关掉，池恒空。这与 §9.3「归还到 idle pool 不释放物理连接预算」配套的池化收益
+整体失效，且**没有任何一个既有测试覆盖过 `closed = true` 的输入**
+（`grep -rn "\.closed = true" packages/runtime/tests` 只有本轨新写的那一处）。
+
+`SessionHandleRef.closed` 的语义写在 `connection/session.rs:42`：「必须……登记到
+session actor；未登记 = 非法」，而 `closed` 字段是给「已自行关闭、登记还挂着」用的
+对称另一半（`lease_manager.rs:621-624` 的 `deregister_handle` 文档明写这句）。
+所以「closed 的句柄不是未了义务」是本类型的既有契约，`is_clear` 漏掉它才是缺陷。
+
+**修法**：新增 `outstanding_handles()`（过滤 `closed`）谓词，`is_clear()` / `first_blocker()`
+/ `all_blockers()` / `manager.rs` 的 `needs_reset` 四处统一改读它。`is_clear()` 是
+`const fn`，改成读迭代器方法后**不再是 const** —— 已核实全仓无调用方依赖 const
+（`grep -rn "is_clear()"` 只有 `admits_to_pool` 与两处文档提及；`admits_to_pool` 本身
+也只有文档引用，无生产调用点）。
+
+### 缺陷 B（结构性的，比 A 更值得说）：生产路径上「登记册里有句柄」根本到不了裁决
+
+`LeaseManager::release`（`lease_manager.rs:447-472`）的顺序是
+
+```
+(1) for handle in self.handles.for_lease(lease_id) { closer.close(&handle)?; deregister(..); }
+(2) merged.unreleased_handles = host.unreleased_handles.filter(!closed);   ← 只用调用方给的
+(3) self.resources.release(lease_id, merged, *driver)?;                    ← 这里才裁决
+```
+
+第 (1) 步把**本层自己登记的句柄**关掉并摘干净，第 (2) 步却只合并**调用方**在
+`host` 里声明的那一份。于是 `self.handles` 里真实存在的 N 条句柄，对裁决**完全不可见**：
+
+- 若调用方如实把那些句柄也放进 `host.unreleased_handles`（现状的做法，见
+  `lease_transitions_matrix.rs:587`）⇒ 走运，能被拒；
+- 若调用方只传 `clear_host()`（这正是 `HostConditionSnapshot::default()`，
+  `pool_capacity_budget.rs` 里 6 个用例都这么干）⇒ **`ReturnedToPool` 被记下来**，
+  而那条租约刚刚还有一条开着的事务句柄。
+
+`lease_manager` 模块头第 2 条自己写明这段存在的理由：「`ResourceManager` 只看见调用方
+交给它的 `HostConditionSnapshot`；本层持有真正的句柄登记表，宿主条件由本层推导，
+调用方**无法**谎报『登记的句柄都空了』。」—— 实际代码没有做到这句话：第 (2) 步
+恰恰**允许**调用方用一份空快照覆盖掉本层已知的事实。这是本轨实测出的**第二条真缺陷**，
+也是一条比 A 更根本的：A 是口径不一致，B 是「唯一的权威登记册没有接进裁决」。
+
+**修法**：第 (2) 步把**本层登记册**与调用方声明**并**起来（不是覆盖），
+即「本层已摘掉的不算、调用方报的、以及调用方漏报但登记册里有的」都算未了义务。
+这样「driver Clean + host 四项全清 + 登记册里有句柄」这一组合在生产路径上必然被拒，
+断言 3 才真正成立。**这一处正是原简报点名「不要再合流冲突面上硬改」的位置**
+（`lease_manager.rs` 在两个已合流轨里改动 0 次，是干净地盘；父代理也确认过）。
+
 ## 状态
 
-**进行中**。拆分决定与四条后续落点已落账（上一节）。代码与门禁见下节，随进度更新。
+**进行中**。两个缺陷已实测并定位；修法与证据见上一节。门禁见下节，随进度更新。
 
 ## 改动清单（文件:行 → 改了什么）
 
