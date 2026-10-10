@@ -74,9 +74,25 @@
   `close_resource`。这是既有形状，不是本轨引入；本轨不改它（另轨在接能力判定进归池），
   但在报告里记账。
 
-## 门禁实测
+## 门禁实测（逐字结论行，全部以 HEAD c5ebbcac 为准）
 
-（跑完再填，逐字抄结论行）
+| 门禁 | 命令 | 退出码 | 结论行 |
+| --- | --- | --- | --- |
+| A | `cargo fmt --all -- --check` | **0** | 无输出（干净） |
+| B | `cargo check --workspace --all-targets` | **0** | `Finished dev profile ... in 14m 38s`；`grep -c "^error"` = **0** |
+| C | `cargo test -p datazen-runtime --no-fail-fast` | **0** | 43 个 `test result: ok`；total **1008 passed / 0 failed** |
+| C 基线（同树 f5a33b7dc） | 同上 | 0 | 43 个 `test result: ok`；total **1001 passed / 0 failed** |
+| D | `cargo test -p datazen --lib` | **0** | `test result: ok. 1811 passed; 0 failed; 6 ignored` |
+| D 基线（同树 f5a33b7dc） | 同上 | 0 | `test result: ok. 1810 passed; 0 failed; 6 ignored` |
+| E | `npx tsc --noEmit` | 不适用 | 本轨未改任何前端文件（`git status` 无 `src/**` 改动） |
+
+C 的 7 条增量 = 5 条 `registry/registry/tests.rs` + 2 条 `tests/p3_live_port.rs`。
+D 的 1 条增量 = 1 条 `live_source_tests.rs`。D 没有新增失败。
+
+基线说明：两条基线都跑在**本工作树自己的 f5a33b7dc** 上（`c5ebbcac` 之前），
+不是轨 A 合流后的 `e612cb0c1`。轨 A 合流可能让 C 的基线变成 1004，但本轨的
+「1001 → 1008」是同树对比，结论不受影响。
+
 
 ## 实现记录（按提交顺序）
 
