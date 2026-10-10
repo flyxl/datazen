@@ -1,7 +1,7 @@
 use crate::commands::error::{CmdExt, CommandError};
-use datazen_driver_api::sql_identifiers::qualify_relation_sql;
 use crate::schema_diff::types::{ChangedColumnDiff, ColumnChange, ColumnSnapshot, TableColumnDiff};
 use crate::transfer::ir::{IRColumn, IRTable, IRType};
+use datazen_driver_api::sql_identifiers::qualify_relation_sql;
 use std::collections::HashMap;
 
 // ── Helpers ─────────────────────────────────────────────────────────
