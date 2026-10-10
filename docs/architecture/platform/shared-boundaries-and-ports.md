@@ -110,6 +110,7 @@ flowchart TD
     PA[packages/platform-api]
     DAPI[packages/driver-api]
     DOM[schema-diff / data-sync / data-transfer]
+    MC[packages/migration-common]
     DRV[packages/drivers/*]
 
     TA --> APP
@@ -124,6 +125,9 @@ flowchart TD
     RT --> DAPI
     RT -.注册 JobHandler.-> DOM
     DOM --> PA
+    DOM --> DAPI
+    DOM -.Sync / Transfer.-> MC
+    MC --> DAPI
     DRV --> DAPI
     FE -.只依赖契约.-> PA
 ```
@@ -139,6 +143,7 @@ flowchart TD
 | F-05 | `packages/application`、`packages/runtime`、`packages/platform-api` 不出现 `react`、`@tauri-apps/api` 等前端标识（Rust 侧通过 crate 名与 `build.rs` 依赖检查，前端侧由 §7 的字符串扫描补齐） | UI 运行时进入后端依赖图 |
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
+| F-08 | `packages/migration-common` 的 normal + build 工作区依赖只允许自身与 driver-api；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共算法反向依赖领域引擎、runtime 或平台传输，重新形成耦合 |
 
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 

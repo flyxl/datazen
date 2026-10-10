@@ -28,7 +28,7 @@ use super::model::{
 };
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ir::{IRDefault, IRType};
-use datazen_data_sync::sql::{qualify_relation_sql, quote_ident_sql};
+use datazen_driver_api::sql_identifiers::{qualify_relation_sql, quote_ident_sql};
 use datazen_driver_api::{ConnectionHandle, Value};
 
 pub use super::sql_structure::build_structure_plan;

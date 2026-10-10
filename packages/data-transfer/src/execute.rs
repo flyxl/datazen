@@ -10,7 +10,7 @@ use datazen_driver_api::TableSchema;
 
 use crate::transfer::adapter::SyncTargetAdapter;
 use crate::transfer::ir::IRType;
-use datazen_data_sync::sql::{qualify_relation_sql, quote_ident_sql};
+use datazen_driver_api::sql_identifiers::{qualify_relation_sql, quote_ident_sql};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value};
 
 use super::error::TransferError;

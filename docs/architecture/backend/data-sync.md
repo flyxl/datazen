@@ -2,6 +2,8 @@
 
 > P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `packages/data-sync/`、`src-tauri/src/commands/sync/` 和 `src/windows/data-sync/`。
 
+共享边界值规范化、比较与端点配对算法位于 `packages/migration-common/`；SQL 名称处理工具位于 `packages/driver-api/src/sql_identifiers.rs`。Data Sync 与 Data Transfer 直接依赖这些公共实现，Data Transfer 不依赖 Data Sync 领域包。Job 生命周期继续复用 `packages/runtime/src/job/`。
+
 Data Sync 用于**同族数据库的行级差异同步**。它与 Schema Diff、Data Transfer 是三个独立执行模型。
 
 | 能力 | 用途 |

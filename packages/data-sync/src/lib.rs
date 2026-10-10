@@ -19,7 +19,7 @@ pub mod model;
 pub mod pairing;
 pub mod profile;
 mod recordset;
-pub mod recordset_bounds;
+pub use datazen_migration_common::recordset_bounds;
 pub mod session;
 pub mod sql;
 pub mod state;

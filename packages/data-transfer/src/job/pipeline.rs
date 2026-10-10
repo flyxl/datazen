@@ -163,7 +163,9 @@ pub async fn execute_bounded_table(
         "SELECT {} FROM {}",
         projection
             .iter()
-            .map(|column| { datazen_data_sync::sql::quote_ident_sql(column, context.source_quote) })
+            .map(|column| {
+                datazen_driver_api::sql_identifiers::quote_ident_sql(column, context.source_quote)
+            })
             .collect::<Vec<_>>()
             .join(", "),
         context.source_table_ref

@@ -69,13 +69,13 @@ fn primary_key_for_paging(
             )));
         }
         if resumable {
-            datazen_data_sync::recordset_bounds::ensure_supported_bound_type(
+            datazen_migration_common::recordset_bounds::ensure_supported_bound_type(
                 &column.data_type,
                 key,
             )
             .map_err(TransferError::validation)
             .map_err(|error| TransferError::unsupported(error.to_string()))?;
-            if datazen_data_sync::recordset_bounds::is_text_bound_type(&column.data_type) {
+            if datazen_migration_common::recordset_bounds::is_text_bound_type(&column.data_type) {
                 return Err(TransferError::unsupported(format!(
                 "primary-key column '{key}' uses text ordering whose collation cannot be verified for resume"
             )));
