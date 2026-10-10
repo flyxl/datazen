@@ -55,6 +55,14 @@ impl SqlServerDriver {
 
 #[async_trait]
 impl DatabaseDriver for SqlServerDriver {
+    fn supports_bound_writes(&self) -> bool {
+        true
+    }
+
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        Some(SqlLiteralDialect::SqlServer)
+    }
+
     fn default_port(&self) -> Option<u16> {
         Some(DEFAULT_PORT)
     }

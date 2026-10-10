@@ -726,6 +726,14 @@ impl MysqlDriver {
 
 #[async_trait]
 impl DatabaseDriver for MysqlDriver {
+    fn supports_bound_writes(&self) -> bool {
+        true
+    }
+
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        Some(SqlLiteralDialect::MySql)
+    }
+
     fn default_host(&self) -> Option<&'static str> {
         Some(crate::mysql::connection::DEFAULT_HOST)
     }

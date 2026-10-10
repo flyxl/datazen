@@ -218,6 +218,10 @@ fn turso_int(v: &serde_json::Value) -> Option<i64> {
 
 #[async_trait]
 impl DatabaseDriver for TursoDriver {
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        Some(SqlLiteralDialect::Sqlite)
+    }
+
     // This HTTP driver has no parameterized DML implementation. Zero makes
     // migration consumers reject an active projection before any target write.
     fn max_bound_parameters(&self) -> usize {

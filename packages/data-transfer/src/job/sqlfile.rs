@@ -46,6 +46,33 @@ impl DataTransferHandler {
                 )
                 .await;
                 match result {
+                    Ok(res) if res.cancelled || res.partial => {
+                        let cancelled = res.cancelled;
+                        tracing::warn!(
+                            destination = destination.display().to_string(),
+                            cancelled,
+                            table_errors = ?res.tables.iter().filter_map(|table| table.error.as_deref()).collect::<Vec<_>>(),
+                            "SQL file was not published because generation was incomplete"
+                        );
+                        Ok(StageOutcome {
+                            stage_id: spec.stage_id.clone(),
+                            terminal: if cancelled {
+                                StageTerminal::Cancelled
+                            } else {
+                                StageTerminal::Failed
+                            },
+                            progress: JobProgress::default(),
+                            commit_boundaries: Vec::new(),
+                            execution_ids: Vec::new(),
+                            artifact_ids: Vec::new(),
+                            effect_outcome: EffectOutcome::RolledBack,
+                            error_code: Some(if cancelled {
+                                ExecutionErrorCode::Cancelled
+                            } else {
+                                ExecutionErrorCode::SqlError
+                            }),
+                        })
+                    }
                     Ok(res) => {
                         let digest = artifact_digest(destination)?;
                         let boundary = commit_boundary(

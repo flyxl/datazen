@@ -10,8 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use datazen_driver_api::{
     async_trait, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DdlAtomicity,
-    DriverError, QueryExecutionId, QueryResult, ServerInfo, SqlTarget, SslMode, StatementResult,
-    TableInfo, TableSchema, Value,
+    DriverError, QueryExecutionId, QueryResult, ServerInfo, SqlLiteralDialect, SqlTarget, SslMode,
+    StatementResult, TableInfo, TableSchema, Value,
 };
 
 use super::Dialect;
@@ -633,6 +633,18 @@ impl<D: DatabaseDriver> DatabaseDriver for WithheldPreciseCancel<D> {
 
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
         self.inner.format_sql_literal(value)
+    }
+
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        self.inner.sql_literal_dialect()
+    }
+
+    fn supports_bound_writes(&self) -> bool {
+        self.inner.supports_bound_writes()
+    }
+
+    fn try_format_sql_literal(&self, value: &Option<Value>) -> Result<String, DriverError> {
+        self.inner.try_format_sql_literal(value)
     }
 
     fn supports_offset(&self) -> bool {

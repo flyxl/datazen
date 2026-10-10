@@ -282,7 +282,11 @@ impl StreamFormatter {
     }
 
     /// Format a batch of rows into text.
-    fn rows(&mut self, rows: &[Vec<Option<Value>>], columns: &[String]) -> String {
+    fn rows(
+        &mut self,
+        rows: &[Vec<Option<Value>>],
+        columns: &[String],
+    ) -> Result<String, crate::db::DriverError> {
         match &mut self.state {
             FormatterState::Csv => {
                 let mut out = String::new();
@@ -295,7 +299,7 @@ impl StreamFormatter {
                     }
                     out.push('\n');
                 }
-                out
+                Ok(out)
             }
             FormatterState::Json { started } => {
                 let mut out = String::new();
@@ -313,7 +317,7 @@ impl StreamFormatter {
                     out.push('\n');
                     out.push_str(&obj);
                 }
-                out
+                Ok(out)
             }
             FormatterState::SqlInsert { pending } => {
                 pending.extend(rows.iter().cloned());
@@ -322,12 +326,12 @@ impl StreamFormatter {
         }
     }
 
-    fn flush_sql(&mut self, columns: &[String]) -> String {
+    fn flush_sql(&mut self, columns: &[String]) -> Result<String, crate::db::DriverError> {
         let FormatterState::SqlInsert { pending } = &mut self.state else {
-            return String::new();
+            return Ok(String::new());
         };
         if pending.is_empty() {
-            return String::new();
+            return Ok(String::new());
         }
         let mut out = String::new();
         let mut batch: Vec<Vec<Option<Value>>> = Vec::new();
@@ -340,7 +344,7 @@ impl StreamFormatter {
                     &self.database_type,
                     self.driver.as_ref(),
                     &batch,
-                ));
+                )?);
                 batch.clear();
             }
         }
@@ -351,29 +355,29 @@ impl StreamFormatter {
                 &self.database_type,
                 self.driver.as_ref(),
                 &batch,
-            ));
+            )?);
         }
-        out
+        Ok(out)
     }
 
     /// Text to write at the very end of a table dump (JSON `]`, SQL `COMMIT`).
-    fn tail(&mut self, columns: &[String]) -> String {
+    fn tail(&mut self, columns: &[String]) -> Result<String, crate::db::DriverError> {
         match self.format {
-            DataFormat::Json => {
+            DataFormat::Json => Ok({
                 let FormatterState::Json { started } = &mut self.state else {
-                    return String::new();
+                    return Ok(String::new());
                 };
                 if *started {
                     "\n]".into()
                 } else {
                     "]".into()
                 }
-            }
+            }),
             DataFormat::SqlInsert => {
                 let batched = self.flush_sql(columns);
-                format!("{batched}COMMIT;\n")
+                Ok(format!("{}COMMIT;\n", batched?))
             }
-            DataFormat::Csv => String::new(),
+            DataFormat::Csv => Ok(String::new()),
         }
     }
 }
@@ -384,7 +388,7 @@ fn emit_insert_batch(
     database_type: &Option<String>,
     driver: &dyn DatabaseDriver,
     rows: &[Vec<Option<Value>>],
-) -> String {
+) -> Result<String, crate::db::DriverError> {
     let db_type = database_type.as_deref();
     let col_list = columns
         .iter()
@@ -403,13 +407,13 @@ fn emit_insert_batch(
         }
         let values = row
             .iter()
-            .map(|v| driver.format_sql_literal(v))
-            .collect::<Vec<_>>()
+            .map(|value| driver.try_format_sql_literal(value))
+            .collect::<Result<Vec<_>, _>>()?
             .join(", ");
         out.push_str(&format!("({values})"));
     }
     out.push_str(";\n");
-    out
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -655,6 +659,7 @@ async fn write_data_file(
     let rows_written = Arc::new(AtomicU64::new(0));
     let tail_stated = Arc::new(AtomicU64::new(0));
     let last_emit_rows = Arc::new(AtomicU64::new(0));
+    let format_error = Arc::new(Mutex::new(None::<String>));
 
     let cb_sink = Arc::clone(&sink);
     let cb_fmt = Arc::clone(&formatter);
@@ -663,6 +668,7 @@ async fn write_data_file(
     let cb_rows = Arc::clone(&rows_written);
     let cb_tail = Arc::clone(&tail_stated);
     let cb_last_emit = Arc::clone(&last_emit_rows);
+    let cb_format_error = Arc::clone(&format_error);
     let cb_app = app.clone();
     let cb_table = table.table_name.clone();
 
@@ -681,12 +687,15 @@ async fn write_data_file(
         QueryStreamEvent::Rows { rows, .. } => {
             ensure_header(&cb_cols, &cb_fmt, &cb_sink, &cb_header, false);
             let cols = lock_export_stream(&cb_cols).clone();
-            let text = lock_export_stream(&cb_fmt).rows(&rows, &cols);
-            if !text.is_empty() {
-                if let Err(e) = lock_export_stream(&cb_sink).append_str(&text) {
-                    // Cannot return an error through the Fn callback; the query
-                    // will surface via query_stream's error propagation instead.
-                    let _ = e;
+            match lock_export_stream(&cb_fmt).rows(&rows, &cols) {
+                Ok(text) if !text.is_empty() => {
+                    if let Err(e) = lock_export_stream(&cb_sink).append_str(&text) {
+                        let _ = e;
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    *lock_export_stream(&cb_format_error) = Some(error.to_string());
                 }
             }
             let total = cb_rows.fetch_add(rows.len() as u64, Ordering::Relaxed) + rows.len() as u64;
@@ -714,10 +723,15 @@ async fn write_data_file(
             );
             if cb_tail.fetch_add(1, Ordering::Relaxed) == 0 {
                 let cols = lock_export_stream(&cb_cols).clone();
-                let text = lock_export_stream(&cb_fmt).tail(&cols);
-                if !text.is_empty() {
-                    if let Err(e) = lock_export_stream(&cb_sink).append_str(&text) {
-                        let _ = e;
+                match lock_export_stream(&cb_fmt).tail(&cols) {
+                    Ok(text) if !text.is_empty() => {
+                        if let Err(e) = lock_export_stream(&cb_sink).append_str(&text) {
+                            let _ = e;
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        *lock_export_stream(&cb_format_error) = Some(error.to_string());
                     }
                 }
             }
@@ -746,10 +760,16 @@ async fn write_data_file(
         .await
         .cmd_err("export")?;
 
+    if let Some(error) = lock_export(&format_error)?.take() {
+        return Err(CommandError::Validation(format!(
+            "SQL export could not safely render a value: {error}"
+        )));
+    }
+
     // Ensure tail is written even if no Done event fired.
     if tail_stated.load(Ordering::Relaxed) == 0 {
         let cols = lock_export(&columns)?.clone();
-        let text = lock_export(&formatter)?.tail(&cols);
+        let text = lock_export(&formatter)?.tail(&cols)?;
         if !text.is_empty() {
             lock_export(&sink)?.append_str(&text)?;
         }
@@ -1033,7 +1053,7 @@ mod tests {
 
     fn test_driver() -> Arc<dyn DatabaseDriver> {
         crate::testing::mock_driver::MockDriver::new(
-            "test",
+            "sqlite",
             crate::testing::mock_driver::MockDriverOptions::default(),
         )
     }
@@ -1055,9 +1075,9 @@ mod tests {
         let cols = vec!["id".to_string(), "name".to_string()];
         let header = f.header(&cols);
         assert_eq!(header, "id,name\n");
-        let text = f.rows(&rows2(), &cols);
+        let text = f.rows(&rows2(), &cols).unwrap();
         assert_eq!(text, "1,\"a,b\"\n2,\n");
-        assert_eq!(f.tail(&cols), "");
+        assert_eq!(f.tail(&cols).unwrap(), "");
     }
 
     #[test]
@@ -1066,7 +1086,7 @@ mod tests {
         let cols = vec!["text".to_string()];
         let _ = f.header(&cols);
         assert_eq!(
-            f.rows(&[vec![v_str("before\rafter")]], &cols),
+            f.rows(&[vec![v_str("before\rafter")]], &cols).unwrap(),
             "\"before\rafter\"\n"
         );
     }
@@ -1081,12 +1101,12 @@ mod tests {
             vec![Some(Value::Integer(2)), Some(Value::Null)],
         ];
         // First call writes object 1 with a leading newline, no comma yet.
-        let a = f.rows(&rows[..1], &cols);
+        let a = f.rows(&rows[..1], &cols).unwrap();
         assert_eq!(a, "\n{\"id\":1,\"name\":\"x\"}");
         // Second call adds a comma.
-        let b = f.rows(&rows[1..], &cols);
+        let b = f.rows(&rows[1..], &cols).unwrap();
         assert_eq!(b, ",\n{\"id\":2,\"name\":null}");
-        assert_eq!(f.tail(&cols), "\n]");
+        assert_eq!(f.tail(&cols).unwrap(), "\n]");
     }
 
     #[test]
@@ -1099,7 +1119,7 @@ mod tests {
             v_str("datazen:bytes:hex:00fffe"),
         ]];
         assert_eq!(
-            f.rows(&rows, &cols),
+            f.rows(&rows, &cols).unwrap(),
             "datazen:bytes:hex:00fffe,datazen:text:datazen:bytes:hex:00fffe\n"
         );
     }
@@ -1109,8 +1129,11 @@ mod tests {
         let mut f = StreamFormatter::new(DataFormat::Json, "t".into(), None, test_driver());
         let cols = vec!["payload".to_string()];
         let mut text = f.header(&cols);
-        text.push_str(&f.rows(&[vec![Some(Value::Bytes(vec![0x00, 0xff, 0xfe]))]], &cols));
-        text.push_str(&f.tail(&cols));
+        text.push_str(
+            &f.rows(&[vec![Some(Value::Bytes(vec![0x00, 0xff, 0xfe]))]], &cols)
+                .unwrap(),
+        );
+        text.push_str(&f.tail(&cols).unwrap());
         let parsed: serde_json::Value = serde_json::from_str(&text).expect("valid JSON export");
         assert_eq!(
             parsed[0]["payload"],
@@ -1152,19 +1175,19 @@ mod tests {
         let mut f = StreamFormatter::new(
             DataFormat::SqlInsert,
             "users".into(),
-            Some("postgres".into()),
+            Some("sqlite".into()),
             test_driver(),
         );
         let cols = vec!["id".to_string(), "email".to_string()];
         let header = f.header(&cols);
         assert_eq!(header, "BEGIN;\n");
         // Two rows -> single batched INSERT with two tuples.
-        let text = f.rows(&rows2(), &cols);
+        let text = f.rows(&rows2(), &cols).unwrap();
         assert_eq!(
             text,
-            "INSERT INTO \"users\" (\"id\", \"email\") VALUES\n  (1, 'a,b'),\n  (2, NULL);\n"
+            "INSERT INTO \"users\" (\"id\", \"email\") VALUES\n  (1, CAST(X'612c62' AS TEXT)),\n  (2, NULL);\n"
         );
-        let tail = f.tail(&cols);
+        let tail = f.tail(&cols).unwrap();
         assert_eq!(tail, "COMMIT;\n");
     }
 
@@ -1174,13 +1197,13 @@ mod tests {
         let cols = vec!["id".to_string()];
         let rows: Vec<Vec<Option<Value>>> =
             (0..600).map(|i| vec![Some(Value::Integer(i))]).collect();
-        let text = f.rows(&rows, &cols);
+        let text = f.rows(&rows, &cols).unwrap();
         // 600 rows -> two batched INSERT statements (500 + 100 rows), all in
         // this rows call since flush drains every pending row.
         assert_eq!(text.matches("INSERT INTO").count(), 2);
         // The last row (599) is in the second batch.
         assert!(text.contains("(599);"));
-        let tail = f.tail(&cols);
+        let tail = f.tail(&cols).unwrap();
         // No pending rows left; tail only adds COMMIT (single transaction).
         assert_eq!(tail, "COMMIT;\n");
         assert_eq!(tail.matches("INSERT INTO").count(), 0);
@@ -1191,7 +1214,9 @@ mod tests {
         let mut f = StreamFormatter::new(DataFormat::SqlInsert, "t".into(), None, test_driver());
         let cols = vec!["payload".to_string()];
         let _ = f.header(&cols);
-        let text = f.rows(&[vec![Some(Value::Bytes(vec![0x00, 0xff, 0xfe]))]], &cols);
+        let text = f
+            .rows(&[vec![Some(Value::Bytes(vec![0x00, 0xff, 0xfe]))]], &cols)
+            .unwrap();
         assert!(text.contains("X'00fffe'"), "{text}");
         assert!(!text.contains('\u{fffd}'), "{text}");
     }

@@ -58,6 +58,70 @@ async fn collect_rows(
 }
 
 #[tokio::test]
+async fn sql_literal_and_bound_update_preserve_quotes_slashes_controls_and_unicode() {
+    let directory = std::env::temp_dir().join(format!("datazen-literal-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("literal.db");
+    std::fs::File::create(&path).unwrap();
+
+    let driver = SqliteDriver::new();
+    let handle = driver
+        .connect(&config(path.to_str().unwrap()))
+        .await
+        .unwrap();
+    let expected = "quote' slash\\ trailing\\\n\t雪";
+    let literal = driver
+        .try_format_sql_literal(&Some(Value::String(expected.into())))
+        .unwrap();
+    let result = driver
+        .query(&handle, &format!("SELECT {literal}"))
+        .await
+        .unwrap();
+    assert!(matches!(
+        result.rows.first().and_then(|row| row.first()).and_then(Option::as_ref),
+        Some(Value::String(actual)) if actual == expected
+    ));
+
+    driver
+        .execute(
+            &handle,
+            "CREATE TABLE literal_rows (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+        )
+        .await
+        .unwrap();
+    driver
+        .execute(&handle, "INSERT INTO literal_rows VALUES (1, 'initial')")
+        .await
+        .unwrap();
+    let statement = driver
+        .build_update_statement(
+            "literal_rows",
+            &[("value", Some(Value::String(expected.into())))],
+            &[("id", Some(Value::Integer(1)))],
+        )
+        .unwrap();
+    assert!(!statement.sql.contains(expected));
+    assert_eq!(
+        driver
+            .execute_with_params(&handle, &statement.sql, &statement.parameters)
+            .await
+            .unwrap(),
+        1
+    );
+    let result = driver
+        .query(&handle, "SELECT value FROM literal_rows WHERE id = 1")
+        .await
+        .unwrap();
+    assert!(matches!(
+        result.rows.first().and_then(|row| row.first()).and_then(Option::as_ref),
+        Some(Value::String(actual)) if actual == expected
+    ));
+
+    driver.disconnect(handle).await.unwrap();
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
 async fn test_tester_projected_bound_transfer_preserves_values_and_rolls_back_failed_table() {
     let directory =
         std::env::temp_dir().join(format!("datazen-tester-transfer-{}", uuid::Uuid::new_v4()));

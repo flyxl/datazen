@@ -251,12 +251,14 @@ where
             let tuples: Vec<String> = result
                 .rows
                 .iter()
-                .map(|row| {
-                    let vals: Vec<String> =
-                        row.iter().map(|v| driver.format_sql_literal(v)).collect();
-                    format!("({})", vals.join(", "))
+                .map(|row| -> Result<String, DriverError> {
+                    let vals: Vec<String> = row
+                        .iter()
+                        .map(|value| driver.try_format_sql_literal(value))
+                        .collect::<Result<_, _>>()?;
+                    Ok(format!("({})", vals.join(", ")))
                 })
-                .collect();
+                .collect::<Result<_, _>>()?;
             append_batched_inserts(
                 out,
                 &rel,

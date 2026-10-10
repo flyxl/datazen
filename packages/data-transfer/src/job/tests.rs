@@ -88,6 +88,10 @@ fn unsupported<T>() -> Result<T, DriverError> {
 
 #[async_trait]
 impl DatabaseDriver for FakeDb {
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        Some(SqlLiteralDialect::Postgres)
+    }
+
     async fn cancel_query(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }

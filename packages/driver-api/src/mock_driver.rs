@@ -11,7 +11,7 @@ use crate::{
     is_schema_object_command, query_command_definition, query_stream_command_definition,
     schema_catalog_command_definitions, schema_object_command_definitions,
     try_execute_schema_catalog_command, validate_schema_target, CommandResult, DdlAtomicity,
-    DriverCommandDefinition, SchemaScope,
+    DriverCommandDefinition, SchemaScope, SqlLiteralDialect,
 };
 use crate::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType,
@@ -386,12 +386,28 @@ impl MockDriver {
 
 #[async_trait]
 impl DatabaseDriver for MockDriver {
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        match self.db_type.to_ascii_lowercase().as_str() {
+            "clickhouse" => Some(SqlLiteralDialect::ClickHouse),
+            "duckdb" => Some(SqlLiteralDialect::DuckDb),
+            "mysql" | "mariadb" | "doris" | "starrocks" => Some(SqlLiteralDialect::MySql),
+            "postgres" | "postgresql" => Some(SqlLiteralDialect::Postgres),
+            "sqlserver" | "mssql" => Some(SqlLiteralDialect::SqlServer),
+            "sqlite" | "turso" | "rqlite" => Some(SqlLiteralDialect::Sqlite),
+            _ => None,
+        }
+    }
+
     fn driver_type(&self) -> DatabaseType {
         self.db_type.clone()
     }
 
     fn driver_category(&self) -> DriverCategory {
         self.opts.category.clone()
+    }
+
+    fn supports_bound_writes(&self) -> bool {
+        self.opts.parameterized_writes
     }
 
     fn default_host(&self) -> Option<&'static str> {

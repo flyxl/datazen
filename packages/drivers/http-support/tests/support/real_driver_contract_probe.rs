@@ -31,7 +31,8 @@
 
 use datazen_driver_api::{
     async_trait, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DdlAtomicity,
-    DriverCommandDefinition, DriverError, QueryResult, ServerInfo, TableInfo, TableSchema, Value,
+    DriverCommandDefinition, DriverError, QueryResult, ServerInfo, SqlLiteralDialect, TableInfo,
+    TableSchema, Value,
 };
 
 /// Suffix appended to a perturbed `String`. A suffix rather than a fixed
@@ -134,6 +135,24 @@ fn other_atomicity(hit: bool, base: DdlAtomicity) -> DdlAtomicity {
     }
 }
 
+/// A dialect guaranteed to differ from `base` when `hit`.
+fn other_sql_literal_dialect(
+    hit: bool,
+    base: Option<SqlLiteralDialect>,
+) -> Option<SqlLiteralDialect> {
+    if !hit {
+        return base;
+    }
+    Some(match base {
+        None | Some(SqlLiteralDialect::SqlServer) => SqlLiteralDialect::Sqlite,
+        Some(SqlLiteralDialect::Sqlite) => SqlLiteralDialect::Postgres,
+        Some(SqlLiteralDialect::Postgres) => SqlLiteralDialect::MySql,
+        Some(SqlLiteralDialect::MySql) => SqlLiteralDialect::ClickHouse,
+        Some(SqlLiteralDialect::ClickHouse) => SqlLiteralDialect::DuckDb,
+        Some(SqlLiteralDialect::DuckDb) => SqlLiteralDialect::SqlServer,
+    })
+}
+
 #[async_trait]
 impl<D: DatabaseDriver> DatabaseDriver for Misreports<D> {
     // --- the serverless surface: each method perturbs only when named
@@ -169,6 +188,32 @@ impl<D: DatabaseDriver> DatabaseDriver for Misreports<D> {
             self.hit("format_sql_literal"),
             &self.inner.format_sql_literal(value),
         )
+    }
+
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        other_sql_literal_dialect(
+            self.hit("sql_literal_dialect"),
+            self.inner.sql_literal_dialect(),
+        )
+    }
+
+    fn supports_bound_writes(&self) -> bool {
+        flip(
+            self.hit("supports_bound_writes"),
+            self.inner.supports_bound_writes(),
+        )
+    }
+
+    fn try_format_sql_literal(&self, value: &Option<Value>) -> Result<String, DriverError> {
+        let result = self.inner.try_format_sql_literal(value);
+        if self.hit("try_format_sql_literal") {
+            Ok(match result {
+                Ok(value) => format!("{value}{PROBE_MARK}"),
+                Err(_) => PROBE_MARK.to_string(),
+            })
+        } else {
+            result
+        }
     }
 
     fn supports_offset(&self) -> bool {

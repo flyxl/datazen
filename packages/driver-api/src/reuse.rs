@@ -176,6 +176,18 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.format_sql_literal(value)
     }
 
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        self.inner.sql_literal_dialect()
+    }
+
+    fn supports_bound_writes(&self) -> bool {
+        self.inner.supports_bound_writes()
+    }
+
+    fn try_format_sql_literal(&self, value: &Option<Value>) -> Result<String, DriverError> {
+        self.inner.try_format_sql_literal(value)
+    }
+
     fn build_update_sql(
         &self,
         table: &str,
