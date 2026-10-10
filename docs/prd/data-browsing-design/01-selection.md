@@ -2,9 +2,9 @@
 
 > **状态**：目标设计，**未实现**。本册描述的能力（单元格坐标、矩形区域选择、`cell`/`row`/`none` 三模式）在今天的数据浏览网格里**完全不存在**：现状只有整行选择 `TableState.selectedRows`。
 >
-> **依赖**：本册**完全依赖** [00-contracts](00-contracts.md)，尤其是第 4 节（单元格坐标系与选择模型契约，权威、不得另立一套）、第 2 节（兼容性铁律 R1~R5）、第 8 节（统一错误码与英文文案落点）。本册**被 02（键盘导航）/ 03（剪贴板）/ 05（类型化编辑器）/ 06（dirty 高亮）/ 07（外键跳转）依赖**：这五册消费的坐标、区域、模式、DOM 属性、纯函数签名全部在本册冻结。
+> **依赖**：本册**完全依赖** [00-contracts](00-contracts.md)，尤其是第 4 节（单元格坐标系与选择模型契约，权威、不得另立一套）、第 2 节（兼容性铁律 R1~R5）、第 8 节（统一错误码与英文文案落点）。本册**被 02（键盘导航）/ 03（剪贴板）/ 05（类型化编辑器）/ 06（dirty 高亮）/ 07（外键跳转）依赖**：这五册消费的坐标、区域、模式、DOM 属性、纯函数签名全部在本册冻结。。其中 **02 的选择器契约（`data-dt-row-view`）与本册的行号槽 DOM 形态（`<div role="rowheader">` + 内层 `<button tabIndex={-1}>`）是硬依赖**：01 一旦落地，02 的 6 处行定位断言与 02 的 roving tabindex 都只能在这个 DOM 形态上实现，02 不得再改角色
 >
-> **预估工作量**：**3.5 人日**（纯逻辑与单测 1.5 人日；组件接线与抽取重构 1.0 人日；连续旅程测试与 E2E 1.0 人日）。不含 02~07 的键盘、剪贴板、编辑器、高亮、外键工作量。
+> **预估工作量**：**4.0 人日**（纯逻辑与单测 1.5 人日；组件接线与抽取重构 1.0 人日；**ARIA 角色三元组与行号槽 `rowheader` 改造 0.5 人日**；连续旅程测试与 E2E 1.0 人日）。不含 02~07 的键盘、剪贴板、编辑器、高亮、外键工作量。⚠️ 本数字已含 [契约第 4.4 节](00-contracts.md) 追加的「行号槽 `<button>` → `<div role="rowheader">` + 内层按钮」改造（0.5 人日那一项）；总纲 [第 2 节](../data-browsing-design.md) 的 01 行**已同步改成 4.0**，两处必须一起改，否则总量对不上。
 >
 > **本文档不包含什么**：
 > - 不包含键盘导航与快捷键集（DB-02；本册只保留 `Escape` 退出与"守卫函数"两个边界，方向键 / `Home` / `End` / `PgUp` / `PgDn` / `Shift+方向键` / `Enter` / `Tab` 全部归 02）。
@@ -12,7 +12,7 @@
 > - 不包含类型化编辑器、Set Value、dirty 高亮、外键跳转、新增行 INSERT、查询结果网格可编辑（分别归 05 / 05 / 06 / 07 / 04 / 10）。
 > - 不包含**任何 Rust 侧改动**：DB-01 是纯前端能力，不改 `driver-api`、不改 DTO、不新增 IPC 命令、**不动 `PROTOCOL_VERSION`**。
 > - 不包含列重排 / 冻结 / 列宽列序持久化（DB-12）、不包含 `@datazen/ui` 抽取（DB-13）。
-> - 不包含"是否引入完整 ARIA 网格语义"的最终裁定（见第 11 节 Q1）。
+> - **ARIA 角色集合的裁定权已归本册**（不再是未决问题 Q1）：`grid` / `row` / `gridcell` / `rowheader` + `aria-rowcount` / `aria-colcount` / `aria-activedescendant` **由本册原子加齐**（契约第 4.4 节）。本册**仍不包含**的是 roving tabindex 与键盘导航——那是 02 的职责，02 只改焦点不碰角色（见 4.4 与 Q1）。
 
 ---
 
@@ -57,7 +57,7 @@
 | `src/components/DataTable/VirtualBody.tsx` | `VirtualBodyProps`：`columns`/`rows`/`rowHeight`/`editingCell`/`selectedRows`/`highlightedRow?`/`scrollElement`/`columnWidths?`/`onCellDoubleClick`/`onCellEdit`/`onCellEditCancel`/`onRowSelect` |
 | 同上 | `VirtualBody`：`useVirtualTable({ rows, rowHeight, overscan: 12, scrollElement })`；`colNames = columns.map((c) => c.name)`；把 `selected={selectedRows.has(vRow.index)}`、`nextSelected={selectedRows.has(vRow.index + 1)}`、`highlighted` 传给每行 |
 | 同上 | `VirtualRow`（`memo`）：外层 `div` 带 `tabIndex={0}`、`onClick={handleClick}`、`onDoubleClick={handleRowDoubleClick}`（双击 → 第 0 列编辑）、`onKeyDown={handleKeyDown}`（`Enter`/`' '` → `onRowSelect(vRow.index)`，**无修饰键**）；`handleClick` 把 `e.metaKey \|\| e.ctrlKey` 映射成 `multi`、`e.shiftKey` 映射成 `range` |
-| 同上 | 行号槽是 `<button type="button">`（`title={selectRowLabel}`，无 testid），`onClick={handleSelectButtonClick}`（`e.stopPropagation()` 后调 `onRowSelect(vRow.index, { multi, range })`） |
+| 同上 | 行号槽是 `<button type="button">`（`title={selectRowLabel}`，无 testid），`onClick={handleSelectButtonClick}`（`e.stopPropagation()` 后调 `onRowSelect(vRow.index, { multi, range })`） |。⚠️ **这一点在加 `role="row"` 之后会变成缺陷**：行容器一旦声明 `role="row"`，其直接子元素的内容模型就被限定为 `gridcell` / `rowheader` / `columnheader`，`<button>` 不在集合内，屏幕阅读器会**把整个行号槽当作无效内容丢弃**（详见 4.4 与 Step 8）
 | 同上 | 单元格：`div` 带 `data-testid="data-table-cell"`、`data-dt-row={vRow.index}`、`data-dt-col={col.name}`、`onDoubleClick`（`stopPropagation` 后 `onCellDoubleClick(vRow.index, col.name)`）；`isEditing = editingCell?.row === vRow.index && editingCell.col === col.name`；`colW = columnWidths?.[colIdx] ?? 160` |
 | 同上 | 单元格**没有** `data-dt-selected` / `data-dt-editing` / `data-dt-cell-type`，**没有** `role`，**没有** `id` |
 
@@ -224,11 +224,16 @@ export function gridSelectionCellCount(selection: GridSelection, columnOrder: re
 export function columnsCoveredBySelection(selection: GridSelection, columnOrder: readonly string[]): number;
 
 /**
- * 选区覆盖的行下标集合（升序、去重）——工具栏 "N 行" 的 N，
+ * 选区覆盖的行下标集合（去重，无序保证，调用方不得依赖顺序）——工具栏 "N 行" 的 N，
  * 以及"行级批量动作降级为涉及的行集合"的唯一来源。
  * ⚠ 返回的是 UI 行下标，任何写路径都必须再经 `rowIdentityAnchors` 解析（契约 §4.3）。
+ *
+ * ⚠ 签名已由契约 §4.2.1 冻结为**单参数 + ReadonlySet**：不得加 `columnOrder`
+ *   （本函数求的是行覆盖集，与列序无关），不得返回 `number[]`
+ *   （03 的既有断言写作 `.size > 0`，数组无 `.size`，typecheck 会失败）。
+ *   `mode === 'row'` 时直接返回 `state.selectedRows` 本身，不拷贝。
  */
-export function rowsCoveredBySelection(selection: GridSelection, columnOrder: readonly string[]): number[];
+export function rowsCoveredBySelection(state: GridSelection): ReadonlySet<number>;
 
 /** 精确相等（含模式、锚点、焦点、附加区顺序无关比较）。用于避免无意义 store 写入。 */
 export function gridSelectionEquals(
@@ -354,6 +359,15 @@ export function applyClearGridSelection(ts: TableState): Partial<TableState>;
 
 /** 新增：列显隐收敛。 */
 export function applyReconcileSelection(ts: TableState, columnOrder: readonly string[]): Partial<TableState>;
+
+/**
+ * 新增：**重新取数时的统一重置对象**——把「按 rowIndex 记账的全部选择状态」一次打包，
+ * 供三个收敛点（`patchPanelForReload` / `commitFetchedPage` / `invalidateCachedData`）各自 `...reset()`。
+ * 返回值固定为 `{ gridSelection: EMPTY_GRID_SELECTION, selectedRows: new Set(), lastSelectedIndex: null }`。
+ * 为什么要做成函数而不是三处各写一遍：只要三处有一处漏写一项，缺陷就会重现；
+ * 让三处引用**同一个**对象是从结构上消灭"漏写一项"的可能（契约 §4.3 推论）。
+ */
+export function rowIndexSelectionReset(): Partial<TableState>;
 ```
 
 > `TableDataStore` 的 `selectRow` / `toggleSelectAll` **签名与语义完全不变**，只是实现改为调用 `applyRowSelect` / `applyToggleSelectAll`。这样 `src/stores/__tests__/tableDataStore.test.ts` 与 `e2e/specs/table-batch-ops.ts` 一行都不用改。
@@ -516,9 +530,49 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 
 - **焦点宿主是网格滚动容器**（`role="grid"` + `tabIndex={0}` + `aria-activedescendant` 指向焦点单元格的 id）。单元格**不**各自带 `tabIndex`。
 - 单元格模式的任何指针交互（落在单元格上的 `pointerdown`）在设置选区的同时调 `scrollEl.focus()`；落在编辑器 input 上时不夺焦点（见 4.5）。
-- 行号槽 `<button>` 保持浏览器默认可聚焦；既有的行 div `tabIndex={0}` **本册不改**（既有单测用 `[tabindex="0"]` 找行），由此产生的"同一网格两个 Tab 停靠点"记入未决问题 Q1。
+- 行号槽：**外层 `<div role="rowheader">`，内层 `<button type="button" tabIndex={-1}>`**。本册**把行号槽移出 Tab 序列**，因此 01 落地后网格只有行 div 一个可 Tab 停靠点；行 div 的 `tabIndex={0}` **本册仍不改**（既有单测用 `[tabindex="0"]` 找行），「行容器与 02 的滚动容器谁当焦点宿主」记入未决问题 Q1（已裁定归 02 收口）。
 - **Q1 已裁定（02 收口）**：分册 02 采纳 roving tabindex，**由 02 把行容器改成 `tabIndex={-1}` 并一次性迁移定位行的那 6 处既有断言**（`VirtualBody.test.tsx` ×2、`DataTable.test.tsx` ×1、`e2e/detail-panel` ×1、`e2e/ops-process-server` ×2；定位方式改用 `[data-dt-row-view]` 或 `[data-dt-row]`）。本册**不做这次迁移**——零回归优先，且迁移与焦点模型同属 02 的职责。中间态（01 落地到 02 落地之间）确实多一个 Tab 停靠点，**已被接受**。
 - **ARIA 网格角色必须原子添加（重要，勿拆）**：本册给滚动容器加 `role="grid"`、给单元格加 `role="gridcell"`，因此**必须同时**给行容器加 `role="row"`，并一起提供 `aria-rowcount` / `aria-colcount` / `aria-activedescendant`。**缺少 `role="row"` 的 `role="gridcell"` 是无效 ARIA**——屏幕阅读器会宣布这是一个网格却找不到任何行，体验**比完全不加角色更糟**。所以本册一次性加齐这一组；02 只在此之上改焦点（`tabIndex`）与键盘行为，**不新增也不删除任何 ARIA 角色**。任何分册若只想加其中一部分，必须先回到契约讨论，**禁止半套**。
+
+#### 4.4b 行号槽的 `rowheader` 改造（契约第 4.4 节追加项，**归本册，不可推给 02**）
+
+契约第 4.4 节已经裁定：行号槽从 `<button>` 改为 `<div role="rowheader">` + 内部**独立可聚焦**的 `<button>`。这一项是**给 `role="row"` 扫尾的**，不是独立的可访问性增强——
+因此它与 `role="row"` **必须同一个提交落地**，拆开就等于交出一个无效 ARIA 中间态。
+
+```tsx
+<div role="rowheader" className="flex w-10 shrink-0 items-center border-r border-edge/30">
+  <button
+    type="button"
+    tabIndex={-1}
+    className={cn(
+      'flex h-full w-full items-center justify-center text-xs text-fg-muted',
+      selected && 'border-l-2 border-l-accent text-accent',
+    )}
+    onClick={handleSelectButtonClick}
+    title={selectRowLabel}
+  >
+    {vRow.index + 1}
+  </button>
+</div>
+```
+
+**三条必须钉死的约束**：
+
+| # | 约束 | 理由 |
+| --- | --- | --- |
+| R-1 | 内层按钮 `tabIndex={-1}`，**不得**保留浏览器默认可聚焦 | `role="grid"` 用 `aria-activedescendant` 管理焦点时，格内可聚焦控件会与之打架：屏幕阅读器念的是「第 3 行第 2 列」，用户 Tab 进去却落在行号槽上，读与操作分离。移出 Tab 序列后，键盘焦点只由 02 的 roving tabindex 与 `moveCellFocus` 决定 |
+| R-2 | **样式类（`w-10` / `border-r` / 选中态 `border-l-2 border-l-accent text-accent`）从按钮迁到外层 `div`**，按钮补 `h-full w-full` | 否则行号槽宽度塌成内容宽、竖线错位、选中态左边框画到内层按钮上。**列宽与边框属于「格」，字号属于「格内文本」**——这条分界线是本改造最容易做坏的地方 |
+| R-3 | `onClick={handleSelectButtonClick}`、`title={selectRowLabel}`、行号文本 `{vRow.index + 1}` **原样保留，不动 `e.stopPropagation()` 的语义** | 行号槽的整行选择语义由既有代码定义；本改造只改 DOM 形态与可聚焦性。若顺手把 `stopPropagation()` 删掉，行的 `onClick` 会与按钮的 `onClick` 双触发 |
+
+**`aria-activedescendant` 与本改造的相容性**：网格永远不会把 active descendant 指到 `rowheader` 上（`aria-activedescendant` 只指向 `r{row}c{col}` 形式的单元格 id，见上条），
+所以行号槽不参与焦点托管，只需满足内容模型即可。**新增 `role="rowheader"` 后不要再给它加 `aria-selected`**——行的选中态由行容器的 `data-dt-selection-rows` 与 `aria-selected` 表达，
+两处都加会让屏幕阅读器把「已选中」念两次。
+
+**为什么归 01 而不是 02**：02 只改焦点（`tabIndex`），不碰角色集合（契约第 4.4 节原话：「**02 不得**因为 K-7 只加 tabIndex 不加 role 的理由新增或删除任何角色」）。
+而本改造新增了一个角色。若放在 02，`role="row"` 与 `role="rowheader"` 之间会横跨两个提交，中间态是「行容器已是 `row`、行号槽仍是裸 `<button>`」——正是本改造要消灭的那个状态。
+
+**对 02 的影响（必须写明，否则 02 会踩）**：02 的 roving tabindex 作用于**行容器**（`data-dt-row-view`），不作用于行号槽按钮。
+02 **不得**为了「让行号槽能被方向键选中」而给它加 `tabIndex={0}` 或把它纳入 roving 序列——那会同时违反 R-1 与契约第 4.4 节。
 - `aria-activedescendant` 的 id 由 `useId()` 前缀 + `r{rowIndex}c{columnIndex}` 组成（**不含列名**，避免列名里的空格 / 引号产生非法 id）；E2E 一律用 `data-dt-*` 定位，不依赖 id。
 - 焦点离开网格（`onBlur`）：**不清空选择**（用户可能去点工具栏的"删除行""导出"）；只有 `Escape`、空白点击、重新取数、列显隐失效才清空。
 - 编辑期间焦点在 `EditableCell` 的 input 上；`blur` 会触发既有的 `coerceAndCommit` —— 因此**禁止**在 `pointerdown` 里对编辑器 input 调 `scrollEl.focus()`（会造成"点一下就把编辑提交了"的隐蔽数据问题）。
@@ -578,13 +632,24 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 - **修改符号**：
   - `selectRow` / `toggleSelectAll` 改为委托 `applyRowSelect` / `applyToggleSelectAll`；
   - 新增 `setGridSelection` / `clearGridSelection` / `beginCellSelection` / `reconcileGridSelectionForColumns` 四个薄封装（委托 `apply*`）；
-  - `patchPanelForReload` 的 updater 结果里**统一**并入 `gridSelection: EMPTY_GRID_SELECTION`（这样 `setPage` / `setPageSize` / `setFilters` / `clearFilters` / `applyFilters` / `setSort` **一处都不用单独改**）；
-  - **同时**在 `patchPanelForReload` 里清空 `selectedRows: new Set()` 与 `lastSelectedIndex: null`；
-  - `commitFetchedPage` 与 `invalidateCachedData` 也把三者（`gridSelection` / `selectedRows` / `lastSelectedIndex`）一并重置；
-  - `setVisibleColumns` 末尾追加一次 `reconcileGridSelectionForColumns`（列被隐藏后收敛）。
-- **为什么**：契约 §4.3 明确"翻页、筛选、排序变化后 `rowIndex` 的含义会整体平移"。保留旧坐标等于让选区指向**另一行**，这比"选区消失"危险得多。集中在一处重置（而不是让 6 个动作各自记得清）是本册最关键的一致性技巧。
-- **⚠ 既有缺陷（本次必须一并修）**：`patchPanelForReload` 今天**只**并入 `updater(ts)` 并把 `requestRevision` 加一，**它完全没有清空 `selectedRows`，也没有清 `lastSelectedIndex`**；而 `setPage` / `setPageSize` / `setSort` / `setFilters` / `applyFilters` **全部**经它走到重新取数。后果是：用户翻页（或改排序、改筛选）之后，`selectedRows` 里保留的下标指向的是**新页的另一批行**——此时点"删除选中行"，删掉的是**错误的行**。这**不是**"与既有行为对齐"（原稿如此假设，是错的），而是一个真实存在的数据丢失缺陷。因此本步必须把 `selectedRows` 与 `lastSelectedIndex` 一并纳入三处收敛点的重置，而不能只清新增的 `gridSelection`。分册 03 的 U-1 独立复现了同一结论。
-- **自测**：新增 store 用例断言 `setPage` / `setSort` / `applyFilters` 调用后 `selectedRows` 为空、`lastSelectedIndex` 为 `null`、`gridSelection.mode === 'none'`（Step 12）；并在 `tableDataStore.test.ts` 里确认既有用例仍绿——**若有既有断言依赖"翻页后 `selectedRows` 保留"，那正是缺陷的测试化，必须一并改正并在提交信息里写明**，不得为了让它变绿而放弃修复。
+  - **新增 `rowIndexSelectionReset()`（见 §3.5）作为三处收敛点唯一的重置来源**，三处各写一次 `...rowIndexSelectionReset()`：
+    - `patchPanelForReload`：在并入 `updater(ts)` 的同时并入 `...rowIndexSelectionReset()`；
+    - `commitFetchedPage`：把今天已有的 `selectedRows: new Set()` 换成 `...rowIndexSelectionReset()`（**并补齐今天漏掉的 `lastSelectedIndex`**）；
+    - `invalidateCachedData`：同上。
+  - `setVisibleColumns` 末尾追加一次 `reconcileGridSelectionForColumns`（列被隐藏后收敛，只收敛 `gridSelection`，**不动 `selectedRows`**——列显隐不改变行下标语义）。
+- **为什么必须在收敛点做、而不是让六个 action 各自记得清**：`setPage` / `setPageSize` / `setSort` / `setFilters` / `clearFilters` / `applyFilters` **六个动作全部**经 `patchPanelForReload` 走到 `reloadPanel`（已逐条核实）。把这六个动作各自写一遍清空，就是"六份必须永远保持同步的复制品"——新增第七个触发重新取数的动作（04 的 INSERT 后刷新、03 的粘贴后刷新、DB-18 的 keyset 翻页）时漏写一份，缺陷立刻重现。收敛点模式把"必须同步的东西"从 6 份压到 1 份，并由 §9.7 的回归用例钉住。
+- **⚠ 这一步同时修一个既有的数据丢失级缺陷，不是新功能**（契约 §4.3 推论）。今天三处的确切行为（逐条读过源码）：
+  | 收敛点 | 今天是否清 `gridSelection` | 今天是否清 `selectedRows` | 今天是否清 `lastSelectedIndex` |
+  | --- | --- | --- | --- |
+  | `patchPanelForReload` | —（字段还不存在） | **否**（它只并入 `updater(ts)` 并把 `requestRevision` 加一） | **否** |
+  | `commitFetchedPage`（响应成功落盘） | —（字段还不存在） | **是**（`selectedRows: new Set()`） | **否**（`lastSelectedIndex` 从不在此写入） |
+  | `invalidateCachedData` | —（字段还不存在） | **是** | **否** |
+  由此产生三类可复现的后果：
+  1. **陈旧锚点**：任何一次成功重新取数后 `selectedRows` 虽被清空，`lastSelectedIndex` 仍指向上一次的数据集；用户紧接着做 `Shift+行号槽`（`selectRow(..., { range: true })`）时，锚点用的是旧页的旧下标，选出的连续区间**不是用户依据"当前空选择"能预期的区间**。
+  2. **在途 / 失败窗口**：`setPage` / `setSort` / `setFilters` 会**立刻**改写 `page` / `sorts` / `filters` 并递增 `requestRevision`，但 `rows` 与选择状态只有在响应提交（`commitFetchedPage`）时才一起换；`loadTableData` 的 `catch` 分支只写 `loading` / `loadingRevision` / `error`。也就是说请求失败时，分页器与筛选器已经宣称"你在新查询/新页上"，而 `selectedRows` + `lastSelectedIndex` 却仍属于**上一个数据集**——此时任何行级批量动作（删除、导出、`applyColumnToRows`）虽然作用于"界面上仍高亮的那几行"，但用户对"我现在在哪个查询上"的判断与选择状态的来源已经不一致。
+  3. **隐式耦合**：今天"重新取数会清掉行选择"这一保证，实际是由**另一个函数**（`commitFetchedPage`）顺带提供的，而不是由"改变了 page/sort/filter 的那个函数"提供。任何 early-return（`requestRevision` / `loadingRevision` 不匹配、在途短路）或失败分支都会**静默**打破这一保证，且没有任何测试覆盖它（已核实：现有用例无一条断言重新取数后的选择状态）。
+  结论：**必须把 `gridSelection` + `selectedRows` + `lastSelectedIndex` 三者在三处收敛点统一清空**，只清新增的 `gridSelection` 等于把最危险的那一套留下。分册 03 的 U-1 独立复现了同一结论。
+- **自测**：`src/stores/__tests__/tableDataStore.selectionReset.test.ts`（新增，见 §9.7）——**必须先红后绿**，且要按 §9.7 的说明把断言打在"响应提交之前"（在途窗口）与"失败路径"上，否则 `selectedRows` 那一半会因为 `commitFetchedPage` 本来就清而**假绿**。`src/stores/__tests__/tableDataStore.test.ts` 一行都不用改（已核实其中 `setPage` / `applyFilters` / `setSort` 用例只断言 mock 调用参数与 `page` / `rows` / `filters`，没有任何断言依赖"重新取数后保留选择"；见 §11 Q10）。
 
 ### Step 5 · 事件守卫：`src/lib/gridEventGuards.ts`（新增）
 
@@ -612,12 +677,12 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 - **为什么**：把单元格的 DOM 契约收敛到**一个**文件，06 加 `data-dt-dirty`、05 换编辑器、13 换渲染器都只改这里；同时 `memo` 才能生效（见 Step 8）。
 - **自测**：`GridCell.test.tsx`（新增）断言 `resolveDataTableCellFromEvent(cell)` 能从最外层命中；`classifyDataType` 与 `data-dt-cell-type` 一致；`selected === false` 时**不输出** `data-dt-selected` 属性。
 
-### Step 8 · 虚拟行改用 `GridCell`：`src/components/DataTable/VirtualBody.tsx`
+### Step 8 · 虚拟行改用 `GridCell`：`src/components/DataTable/VirtualBody.tsx` **＋ 行号槽 `rowheader` 改造**
 
 - **修改符号**：`VirtualRowProps` 增加 `isCellSelected`（`(rowIndex, columnName) => boolean`）、`dragSelecting`（透传给样式）；行内单元格渲染换成 `<GridCell …/>`；`VirtualBodyProps` 增加 `gridSelection?: GridSelection`、`columnOrder`（或直接由 `columns` 推）。
 - **关键约束**：`GridCell` 的回调必须是**稳定引用**（直接把 `onCellDoubleClick` / `onCellEdit` / `onCellEditCancel` 这三个 props 透传，让 `GridCell` 自己带上 `rowIndex`/`column.name` 调），**禁止**在 `columns.map` 里写内联箭头函数；否则 `memo(GridCell)` 每帧全部失效，100 万行虚拟滚动会退化。同时把 `data-dt-surface` 挂到 `min-w-max` 的 filler 上。
 - **为什么**：这是唯一能把"每格选中判定"接进虚拟滚动的入口；行卸载/复用问题在这里一次性解决。
-- **自测**：`npx vitest run src/components/DataTable/__tests__/VirtualBody.test.tsx`（既有断言应保持通过，因为 `data-dt-*` 与 `[tabindex="0"]` 都没变）+ 新增的选中属性断言。
+- **自测**：`npx vitest run src/components/DataTable/__tests__/VirtualBody.test.tsx`（既有断言应保持通过，因为 `data-dt-*` 与 `[tabindex="0"]` 都没变）+ 新增的选中属性断言。。⚠️ **唯一会受行号槽改造影响的既有断言**是按标签找行号槽的用例（若有 `getByRole("button")` 之类的模糊查询仍能命中，因为**按钮没被删除**、只是被包进 `role="rowheader"`）；新增断言见第 9 节。**外层 `div` + 内层按钮使本文件净增约 3 行，仍在 `207 → ~185` 的预算内**（`~185` 估的是「改用 `GridCell`」的净减，wrapper 吃掉其中一部分）
 
 ### Step 9 · 抽出右键菜单 + `DataTable` 瘦身与接线
 
@@ -662,16 +727,16 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | --- | --- | --- | --- | --- |
 | `src/stores/tableData/gridSelection.ts` | **新增** | 契约类型 + 全部纯函数 + `EMPTY_GRID_SELECTION` | ~210 | 否 |
 | `src/hooks/useGridSelection.ts` | **新增** | 指针/焦点/Escape 事件翻译、拖拽会话、边缘自动滚动 | ~300 | 否 |
-| `src/components/DataTable/GridCell.tsx` | **新增** | 单元格渲染与 `data-dt-*` 契约（06/05/13 的扩展点） | ~90 | 否 |
+| `src/components/DataTable/GridCell.tsx` | **新增** | 单元格渲染与 `data-dt-*` 契约（05 / 06 / 07 的扩展点） | ~90 | 否 |
 | `src/components/DataTable/useDataTableContextMenu.ts` | **新增** | 从 `DataTable` 搬出的右键菜单构造 + 选区感知条目 | ~300 | 否 |
 | `src/lib/gridEventGuards.ts` | **新增** | `isComposingEvent` / `isEditableTarget`（01/02/03/05 共享） | ~45 | 否 |
 | `src/lib/gridErrors.ts` | **本册创建骨架**（~60 行） | `GridErrorCode` + `classifyGridError()`：`grid.<域>.<原因>: ` 前缀匹配 + `'unknown'` 回退（契约 §8）。**裁定：按「提交顺序最靠前、且确实需要该文件的分册负责建骨架」这一统一规则由 01 建**（契约 §9.1）；04/05/08/09/10 只追加前缀常量 | ~60 | 否 |
 | `src/stores/tableData/selectionActions.ts` | **新增** | 选择状态转移纯函数（含既有 `selectRow`/`toggleSelectAll` 的搬移） | ~230 | 否 |
-| `src/windows/connection/TablePendingChangesBar.tsx` | **新增** | 从 `TableView` 抽出的暂存改动条 + 事务控件（**必须保留全部既有 testid**） | ~150 | 否 |
+| `src/windows/connection/TablePendingChangesBar.tsx` | **新增** | 从 `TableView` 抽出的暂存改动条 + 事务控件（**必须保留全部既有 testid**）；**归属见下方裁定：由本册首次创建，03/06 只能复用** | ~150 | 否 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState` 增加 `gridSelection` | 55 → ~60 | 否 |
 | `src/stores/tableData/connectionState.ts` | 修改 | `emptyTableState` 初始化 `gridSelection` | 87 → ~89 | 否 |
 | `src/stores/tableDataStore.ts` | 修改 | 4 个新动作（薄封装）+ 委托既有选择动作 + 重新取数路径统一清空 | 722 → ~700 | 否（**本册必须净减少**） |
-| `src/components/DataTable/VirtualBody.tsx` | 修改 | 改用 `GridCell`、透传选区判定、`data-dt-surface` | 207 → ~185 | 否 |
+| `src/components/DataTable/VirtualBody.tsx` | 修改 | 改用 `GridCell`、透传选区判定、`data-dt-surface`、**行号槽 `<button>` → `<div role="rowheader">` + 内层 `tabIndex={-1}` 按钮**、行容器加 `role="row"` | 207 → ~185 | 否 |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 3 个新 props、`surfaceProps` 接线、选区摘要、删行降级为行集、菜单外移 | 628 → ~450 | 否（**必须拆分，否则 02/03 必然越线**） |
 | `src/windows/connection/TableView.tsx` | 修改 | 接线 `gridSelection` / `onGridSelectionChange`；替换内联暂存条 | 770 → ~660 | 否（**前置抽取后才安全**） |
 | `src/components/DataTable/TableHeader.tsx` | **本册不改**（已核对） | 列序由 `TableData.columns` 过滤后保持原序决定；`data-col-header` 已存在；区域判列只用列名 + `columnOrder`，**无需新增 DOM 属性** | 115（不变） | 否 |
@@ -681,9 +746,12 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | `src/stores/tableData/__tests__/selectionActions.test.ts` | **新增** | 状态转移单测 | ~180 | 否 |
 | `src/lib/__tests__/gridEventGuards.test.ts` | **新增** | 守卫单测 | ~70 | 否 |
 | `src/components/DataTable/__tests__/GridCell.test.tsx` | **新增** | 单元格 DOM 契约测试 | ~110 | 否 |
+| `src/components/DataTable/__tests__/VirtualBody.rowheader.test.tsx` | **新增** | 行号槽 `rowheader` 内容模型与 R-1~R-3 三条约束的 DOM 断言（独立文件，理由见 9.2） | ~70 | 否 |
 | `src/components/DataTable/__tests__/DataTable.selection.test.tsx` | **新增** | 选区组件测试 | ~260 | 否 |
 | `src/components/DataTable/__tests__/DataTable.selection.journey.test.tsx` | **新增** | 连续旅程测试（指针 + Escape + 编辑 + IME） | ~300 | 否 |
 | `e2e/specs/table-cell-selection.ts` | **新增** | 真实鼠标序列 E2E（含明细断言与 `captureJourneyStep`） | ~220 | 否 |
+
+**组件归属裁定（防止三个分册各抽一份）**：`src/windows/connection/TablePendingChangesBar.tsx` **由本册 Step 10 首次创建**；分册 03 与 06 **只能复用**它，或**扩展它的 props**，**不得另建同名职责的组件**（03 曾拟名 `TableViewPendingBar.tsx`、06 曾拟名 `PendingChangesBar.tsx`，二者一律改用本组件，不再各建一份）。任何后续修改都必须逐字保留 `pending-changes-bar` / `pending-preview` / `pending-commit` / `pending-rollback` / `table-tx-controls` / `table-tx-begin` / `table-tx-commit` / `table-tx-rollback` / `table-read-only-tip` 这些既有 testid —— `src/windows/connection/__tests__/TableView.test.tsx`、`e2e/specs/table-edit.ts`、`e2e/specs/detail-panel.ts` 直接依赖它们。改动量确认：本册**人日预估不变（3.5 人日）**，因为 §9.7 新增的是测试文件而非生产代码，且已包含在"纯逻辑与单测 1.5 人日"预算内。
 
 **需要同步修改的既有测试**：**预期为零**。本册的 DOM 属性只做加法（`data-dt-row` / `data-dt-col` / `data-testid="data-table-cell"` 位置不变，行 div 的 `tabIndex={0}` 不撤），右键菜单在无选区时输出逐字不变，store 的 `selectRow` / `toggleSelectAll` 语义不变，`emptyTableState` 的既有断言是逐字段的。若出现必须改的既有用例，说明设计破坏了兼容性，应当先改设计而不是改断言。
 
@@ -696,13 +764,13 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | # | 场景 | 期望行为 |
 | --- | --- | --- |
 | 1 | **空表**（`rows.length === 0`） | 不存在任何可命中的单元格 ⇒ `pointerdown` 不建立选区；`mode` 恒为 `none`（若之前有选区，取数重置已把它清掉）；工具栏不渲染选区摘要；`Escape` 无副作用；`Delete` 无副作用。**不得**因为 `rows.length === 0` 而让 `role="grid"` / `tabIndex` 消失（键盘宿主必须始终存在） |
-| 2 | **只有 1 行** | 竖直拖拽越界 → `focus` 夹到第 0 行；摘要显示 `1 rows × M columns`；`rowsCoveredBySelection` 返回 `[0]`；02 的 `↓` 无处可去（`moveCellFocus` 返回 `null` 时**不改变选择**） |
+| 2 | **只有 1 行** | 竖直拖拽越界 → `focus` 夹到第 0 行；摘要显示 `1 rows × M columns`；`rowsCoveredBySelection` 返回**大小为 1 的集合且含 0**（`has(0) === true`）；02 的 `↓` 无处可去（`moveCellFocus` 返回 `null` 时**不改变选择**） |
 | 3 | **只有 1 列** | 区域恒为 1 列宽；`normalizeCellRange` 在该列上必须与自身相等（`indexOf` 退化为同一下标）；`Cmd+单击` 同一格两次 = 先追加后移除，最终 `extraRanges` 为空；摘要 `N rows × 1 columns` |
 | 4 | **无主键表** | **选择完全可用**（选择不需要行身份）。行级写操作入口保持今天的状态（`onDeleteRows` 不传 ⇒ 删除按钮不渲染）；`rowsCoveredBySelection` 仍可用于复制/导出/摘要。**禁止**因无主键而禁用选择或隐藏摘要。任何写路径（如删除）必须继续走 `stageRowDelete` → `rowIdentityAnchors`（契约 §4.3） |
-| 5 | **只读连接**（`isConnectionReadOnly === true`，`TableView.isEditable` 为 false） | 选择、摘要、复制、导出、行号槽整行选择全部**可用**（今天 `selectedRows` 就不受 `isEditable` 影响）；双击单元格不进入编辑，沿用既有 `showReadOnlyTip()` 与既有 key `tableData.readOnlyEditDisabled`；删除行按钮不渲染（`onDeleteRows` 不传）。若后端返回以 `grid.cell.readOnly: ` 开头的消息，前端必须先经 `classifyGridError()`（`src/lib/gridErrors.ts`，新增，由 04/05 首次落地）分类再渲染，**未命中任何前缀时原样显示原始消息**（契约第 8 节） |
+| 5 | **只读连接**（`isConnectionReadOnly === true`，`TableView.isEditable` 为 false） | 选择、摘要、复制、导出、行号槽整行选择全部**可用**（今天 `selectedRows` 就不受 `isEditable` 影响）；双击单元格不进入编辑，沿用既有 `showReadOnlyTip()` 与既有 key `tableData.readOnlyEditDisabled`；删除行按钮不渲染（`onDeleteRows` 不传）。若后端返回以 `grid.cell.readOnly: ` 开头的消息，前端必须先经 `classifyGridError()`（`src/lib/gridErrors.ts`，**由本册 01 创建骨架**，契约 §8.1 归属总则）分类再渲染，**未命中任何前缀时原样显示原始消息**（契约第 8 节） |
 | 6 | **列被隐藏**（`setVisibleColumns`） | `reconcileGridSelectionForColumns` 立即收敛：引用已隐藏列的附加区被丢弃；主区的 `anchor` 或 `focus` 列被隐藏 ⇒ 整个选择退回 `EMPTY_GRID_SELECTION`（`mode → none`）。理由：维护"选择一定可见"这一不变量，避免出现看不见却仍参与 `N 行 × M 列` 与复制范围的幽灵选区。备选方案（迁移到相邻可见列）见未决问题 Q3 |
-| 7 | **翻页后**（`setPage` / `setPageSize`） | `gridSelection` 重置为 `EMPTY_GRID_SELECTION`，`selectedRows` 清空（沿用 `commitFetchedPage` 的既有行为）。理由：`rowIndex` 语义整体平移，保留旧坐标会指向另一行 |
-| 8 | **筛选 / 排序变化后**（`setFilters` / `clearFilters` / `applyFilters` / `setSort`） | 同第 7 条：全部经 `patchPanelForReload` ⇒ 统一重置。**特别注意**：`setSort` 只改顺序、行数可能完全一样，最容易让人误以为"选区还能留"——必须重置，否则高亮的格会指向另一行 |
+| 7 | **翻页后**（`setPage` / `setPageSize`） | **三者一起清**：`gridSelection.mode === 'none'`、`selectedRows` 为空、`lastSelectedIndex` 为 `null`（完整口径见第 18 条）。⚠ 今天只有 `commitFetchedPage` 顺带清了 `selectedRows`，且 **`lastSelectedIndex` 在任何路径都不会被清**——所以这不是"沿用既有行为"，是必须一并修的既有缺陷（§5 Step 4 有逐函数核实表） |
+| 8 | **筛选 / 排序变化后**（`setFilters` / `clearFilters` / `applyFilters` / `setSort`） | 同第 7 条：六者全部经 `patchPanelForReload` ⇒ 在收敛点统一清三者。**特别注意**：`setSort` 只改顺序、行数可能完全一样，最容易让人误以为"选区还能留"——必须重置，否则高亮的格会指向另一行 |
 | 9 | **双击进入编辑中**（`editingCell !== null`） | 选区**保留**（编辑不取消选择）；`data-dt-editing="true"` 挂在被编辑格；`pointerdown` 落在编辑器 input 上被完全忽略（不夺焦点、不重设选区）；`Escape` 优先交给编辑器（网格 Escape 直接返回）；`Delete` 仍被既有 `handleDeleteKey` 的 `if (editingCell) return` 拦住 |
 | 10 | **粘贴进行中 / 暂存提交中**（03 引入；`pendingStatus !== 'idle'`） | 选择状态**不冻结**（用户仍可移动选区、查看摘要）；写操作本身由 03/04 拒绝并由它们给出提示。`stageCellChange` / `stageRowDelete` 成功后**不清空**选区（与今天一致：它们不碰 `selectedRows`，本册也不让它们碰 `gridSelection`） |
 | 11 | **拖拽超出视口** | 边缘 24px 内启动 rAF 自动滚动，每次步长约 `rowHeight`；`focus` 夹在 `[0, rowCount-1]`；指针落在行间空隙或表格两侧留白时**保留上一个有效坐标**；`pointerup` / `pointercancel` / 窗口失焦结束会话并按当前坐标提交一次 |
@@ -757,7 +825,7 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | `normalizeCellRange returns null for unknown column` | 传入不在 `columnOrder` 的列名 → `null`（不猜测位置） |
 | `single cell range contains exactly one cell` | 单格区域的 `cellRangeContains` 只对自己为真 |
 | `gridSelectionContains covers primary and extra ranges` | 主区 + 两个附加区，命中判定覆盖三处且不越界 |
-| `rowsCoveredBySelection dedupes overlapping ranges` | 主区与附加区重叠时行下标不重复且升序 |
+| `rowsCoveredBySelection dedupes overlapping ranges` | 主区与附加区重叠时行下标不重复（`size` 等于并集基数），**不依赖返回值的顺序**（返回 `ReadonlySet`，不得断言升序） |
 | `columnsCoveredBySelection counts the union of columns` | 主区 3 列 + 附加区落在第 4 列 → 返回 4 |
 | `toggleExtraRange adds then removes the same cell` | 同一格调两次 → 回到原状态；不产生零面积区域 |
 | `reconcileGridSelection drops ranges with hidden columns` | 隐藏附加区引用的列 → 只丢该附加区，主区保留 |
@@ -815,6 +883,16 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | `read-only grid does not open an editor on double click` | `enableSetNull` 无关：传只读装配（不传 `onCellEdit`）时双击单元格不产生编辑输入框 |
 | `no gridSelection prop keeps today's DOM` | 不传新 props 时容器**没有** `role="grid"`、单元格**没有** `data-dt-selected`（回归保护） |
 
+**文件**：`src/components/DataTable/__tests__/VirtualBody.rowheader.test.tsx`（新增；**独立文件**，不塞进既有 `VirtualBody.test.tsx`——既有文件归 02 的 6 处行定位迁移，两边同时改一个文件会让 01 与 02 的 diff 缠在一起）
+
+| 用例名 | 断言要点 |
+| --- | --- |
+| `gutter renders as rowheader not a bare button` | 行容器的**第一个**子元素 `tagName === "DIV"` 且 `getAttribute("role") === "rowheader"`；`row.querySelector("button")` 非空（**按钮没被删除**，只是被包进去） |
+| `gutter button is not in tab order` | `rowheader` 内层按钮 `tabIndex === -1`；断言 `screen.getByTitle(selectRowLabel)` 后 `expect(btn).toHaveAttribute("tabindex", "-1")`。这是 R-1 的**唯一可观测断言**，不能省 |
+| `row container is row and cells are gridcell` | 行容器 `role === "row"`；行内至少一个 `role === "gridcell"` 且带 `data-dt-row` / `data-dt-col`。**这一条与上一条必须同时存在**——只有 `rowheader` 没有 `row`，或只有 `row` 没有 `rowheader`，都是契约第 4.4 节明令的半套 |
+| `gutter click still selects whole row and does not double-fire` | 点行号槽 → `onRowSelect` **恰好被调用 1 次**（`toHaveBeenCalledTimes(1)`），参数为 `rowIndex, { multi: false, range: false }`。「恰好 1 次」而不是「被调用」是 R-3 的回归锁：一旦有人删掉 `stopPropagation()`，行容器与按钮会双触发，这条立刻红 |
+| `gutter width and border stay on the rowheader cell` | `rowheader` 的 class 含 `w-10` 与 `border-r`；内层按钮 class **不含** `w-10`。R-2 的结构性断言，防止样式类被留在内层导致宽度塌陷 |
+
 ### 9.3 连续旅程测试（journey，**AGENTS.md 强制**）
 
 **文件**：`src/components/DataTable/__tests__/DataTable.selection.journey.test.tsx`（新增；命名沿用仓库既有的 `*.journey.test.ts(x)` 约定）
@@ -843,7 +921,7 @@ export function isEditableTarget(target: EventTarget | null): boolean;
 | `TC-SEL-002: 拖拽应产生矩形区域` | 从 `(r2,c1)` 拖到 `(r5,c3)` → `data-dt-selection-rows="4"`、`data-dt-selection-cols="3"`、`data-dt-selection-cells="12"`；工具栏文本含 `4 rows × 3 columns` |
 | `TC-SEL-003: Shift+单击应从锚点扩区` | 单击后再 Shift+单击 → 选中格数 = 区域面积 |
 | `TC-SEL-004: Escape 应清空选区` | 选区建立后派发 `keydown Escape` → `[data-dt-selected]` 数量为 0，且 store 的 `gridSelection.mode === 'none'` |
-| `TC-SEL-005: 行号槽仍走整行选择（回归）` | 点行号槽 → `selectedRows.size === 1`、`gridSelection.mode === 'row'`、`gridSelection.anchor === null` |
+| `TC-SEL-005: 行号槽仍走整行选择（回归）` | 点行号槽 → `selectedRows.size === 1`、`gridSelection.mode === 'row'`、`gridSelection.anchor === null` |。补充：点的是 `[role="rowheader"] button`（**新定位方式**），不是坐标；断言 `rowheader` 元素存在且行数 = 可见行数 |
 | `TC-SEL-006: 翻页后选区不残留` | 建立选区 → 下一页 → 断言 `mode === 'none'` 且 `selectedRows.size === 0` |
 | `TC-SEL-007: 只读连接可选不可编辑` | 用只读连接（或把 `isEditable` 置假）→ 选择与摘要可用；双击后出现 `[data-testid="table-read-only-tip"]`，且**没有** `[data-testid="table-edit-input"]` |
 | 每步 | 调 `captureJourneyStep('table-cell-selection-<step>')` 记录步骤截图，便于失败定位 |
@@ -886,7 +964,27 @@ grep -nE 'table-cell-selection|table-batch-ops|table-edit|passing|failing' "$LOG
 
 **文件**：`src/stores/__tests__/tableDataStore.selectionReset.test.ts`（新增）
 
-这组用例对应 §5 Step 4 与契约 §4.3 推论。**在实现前它们应当失败**（今天 `patchPanelForReload` 不清 `selectedRows`），这正是"缺陷已被测试钉住"的证据；实现后转绿。请在提交信息里写明这一点，**禁止**为了让它们一开始就绿而弱化断言。
+这组用例对应 §5 Step 4 与契约 §4.3 推论。**在实现前它们应当失败**，这正是"缺陷已被测试钉住"的证据；实现后转绿。请在提交信息里写明这一点，**禁止**为了让它们一开始就绿而弱化断言。
+
+#### 9.7.1 "先红后绿"必须真的做红——否则 `selectedRows` 那一半断言会**假绿**
+
+先写下两条**可执行的前置断言**（逐行读源码确认过的事实；若其中任何一条不再成立，说明源码已变，本节的断言时刻必须重新推导）：
+
+| 前置断言（作为测试文件头的注释 + 一条 `it.todo` 记录，让它在被推翻时可见） | 今天的事实 |
+| --- | --- |
+| `patchPanelForReload` **不清**任何按 `rowIndex` 记账的选择状态 | **成立**：它只 `...updater(ts)` 并把 `requestRevision` 加一；`selectedRows` / `lastSelectedIndex` 都不在它的返回值里 |
+| `commitFetchedPage` / `invalidateCachedData` 清 `selectedRows`，但**从不清** `lastSelectedIndex` | **成立**：全仓库 `lastSelectedIndex` 只由 `selectRow` / `toggleSelectAll` / `deleteRows` 写入（外加 `emptyTableState` 初始化），三条重新取数路径一处都不写它 |
+
+**结论：三半断言各自的"做红"能力完全不同，必须区别对待。**
+
+- **`lastSelectedIndex === null`**：三条路径**今天都会红**（没有任何路径清它）⇒ 放在 `await` 成功响应之后断言即可，天然是红的。
+- **`selectedRows.size === 0`**：**只有在"响应提交之前"或"失败路径"上才会红**。若照既有 `tableDataStore.test.ts` 的写法 `await vi.waitFor(...)` 等到响应落盘再断言，`commitFetchedPage` 已经"顺手"把 `selectedRows` 清空了 ⇒ 断言**恒真**，用例是假绿、缺陷照旧存在。三种做红方式（至少实现 A 与 B 两种）：
+  - **A｜在途窗口**：用既有夹具 `deferred<typeof sampleResponse>()` 让 `getTableData` 返回挂起的 promise，`setPage(...)` 之后**同步**断言三者；此刻 `page` 已变，而 `rows` 与选择状态都还是旧数据集。
+  - **B｜失败路径**：`mockDatabaseCommands.getTableData.mockRejectedValueOnce(...)`，`setPage(...)` 后等到 `loading === false && error !== null` 再断言三者；今天 `catch` 分支只写 `loading` / `loadingRevision` / `error`，选择状态原样存活。
+  - **C｜陈旧锚点（最能证明用户可见后果）**：不 await 取数，先 `selectRow(PANEL, 0)`，再 `setPage(PANEL, 1)`，紧接着 `selectRow(PANEL, 1, { range: true })`，断言 `selectedRows` 恰为 `{1}`——**今天会得到 `{0, 1}`**，因为旧锚点被当成了当前页的锚点。
+- **`gridSelection.mode === 'none'`**：该字段在本册落地前不存在 ⇒ 它不承担"做红"职责，只承担"修好之后不许回归"。不要用它来声称"这组用例是红的"。
+
+> 上面三条 `setPage` / `setSort` / `applyFilters` 用例**至少各有一条采用方式 A 或 B**；方式 C 建议单独一条（它同时是"陈旧锚点"的文档化证据）。若全部采用"等待成功响应后断言"的写法，这组用例在实现前后**都是绿的**，等于没测——这是本节最容易被写成摆设的地方。
 
 | 用例名 | 断言要点 |
 | --- | --- |
@@ -917,6 +1015,7 @@ grep -nE 'table-cell-selection|table-batch-ops|table-edit|passing|failing' "$LOG
 | 10 | 忘记 `isComposing` 守卫，或用 `any` / 索引类型绕过事件形状 | 用 `src/lib/gridEventGuards.ts` 的 `isComposingEvent`（同时认 `event.isComposing` 与 `event.nativeEvent.isComposing`） | 中文/日文输入法按 Enter 选字时触发网格级动作（清选区、删行），用户数据被破坏 |
 | 11 | 把选中态写成 DOM class 或用 `querySelectorAll` 反查选中格来做状态推导 | 状态 → 渲染单向流动；DOM 属性只用于 E2E 断言与右键反查 | 虚拟滚动复用 DOM 节点后，旧 class 残留造成"幽灵选中"，且状态无法序列化给 03/06 |
 | 12 | 为了省事把选区渲染成"整行假单元格"（把 anchor/focus 扩成整行） | `mode:'cell'` 只高亮矩形内的格；行集语义走 `rowsCoveredBySelection` 派生值 | 视觉上与 `row` 模式无法区分，用户以为选了整行，动作却只作用于矩形内的列 |
+| 13 | 各分册各抽一份"暂存改动条 + 事务控件"（01 叫 `TablePendingChangesBar`、03 想叫 `TableViewPendingBar`、06 想叫 `PendingChangesBar`） | 一律复用本册 Step 10 首次创建的 `src/windows/connection/TablePendingChangesBar.tsx`，只允许扩展 props | 三份实现各自漂移：testid 被改名后 `e2e/specs/table-edit.ts` 与 `e2e/specs/detail-panel.ts` **静默失效**；`TableView.tsx` 被三处同时改造成冲突；800 行红线被三份半成品一起突破 |
 
 ---
 
@@ -924,8 +1023,8 @@ grep -nE 'table-cell-selection|table-batch-ops|table-edit|passing|failing' "$LOG
 
 | # | 问题 | 建议 |
 | --- | --- | --- |
-| Q10 | **重新取数时清空 `selectedRows` / `lastSelectedIndex` 属于行为变更，是否会被既有测试或使用习惯抵触？** 我已核实 `patchPanelForReload` 今天确实不清它们，且 `setPage` / `setSort` / `applyFilters` 全走它 —— 所以这是修正一个"翻页后删除会删错行"的数据丢失缺陷（契约 §4.3 推论、分册 03 的 U-1 独立复现） | **必须修，不建议保留旧行为**。若既有测试断言了"翻页后 `selectedRows` 保留"，那是把缺陷测试化了，应一并改正并在提交信息写明。唯一需要人工确认的是产品口径：翻页后选择**消失**（本册方案）是否会让高频"跨页多选后批量操作"的用户不满 —— 若确有此需求，正确做法是引入**跨页选择集（按行身份记账）**作为独立特性，而不是保留 `rowIndex` 记账 |
-| Q1 | **同一网格出现两个 Tab 停靠点**：本册给滚动容器加 `tabIndex={0}` 作为单元格模式的键盘宿主，但既有 `VirtualBody` 的行 div 仍是 `tabIndex={0}`（既有单测用 `[tabindex="0"]` 找行） | 建议：**本册保留行 div 不变**（零回归优先），由 **02 统一收口**为"容器负责焦点、行 div 改 `tabIndex={-1}`"，并同步更新 `VirtualBody.test.tsx` / `DataTable.test.tsx` 的定位方式（改用 `[data-dt-row]` 而不是 `[tabindex="0"]`）。需要人工确认这个顺序是否可接受（代价是 01 落地到 02 落地之间多一个 Tab 停靠点） |
+| Q10 | **重新取数时清空 `selectedRows` / `lastSelectedIndex` 属于行为变更，是否会被既有测试或使用习惯抵触？** 我已核实 `patchPanelForReload` 今天确实不清它们，且 `setPage` / `setSort` / `applyFilters` 全走它 —— 所以这是修正一个"翻页后删除会删错行"的数据丢失缺陷（契约 §4.3 推论、分册 03 的 U-1 独立复现） | **必须修，不建议保留旧行为**。若既有测试断言了"翻页后 `selectedRows` 保留"，那是把缺陷测试化了，应一并改正并在提交信息写明。**已核实（本册自问自答）**：`src/stores/__tests__/tableDataStore.test.ts` 中 `setPage` / `applyFilters` / `setSort` 的用例只断言 `mockDatabaseCommands.getTableData` 的调用参数（`page` / `skipCount` / `database` / `schema` / `filters`）与 `page` / `rows` / `filters` 的落盘结果，**没有任何一条依赖"重新取数后保留选择"** ⇒ 本项修复**不需要改任何既有断言**，也不需要放宽任何既有用例的语义；唯一新增量是 §9.7 的新测试文件（约 120 行，已含在"纯逻辑与单测 1.5 人日"预算内）。本案**本身不改变总人日**（Q10 的修复早于 ARIA 裁定就已计入预算）。本册当前总预估是 **4.0 人日**，其中 3.5→4.0 的 +0.5 来自 Q1② 的行号槽 `rowheader` 改造，与本项无关——别把两件事记在同一笔账上。唯一需要人工确认的是产品口径：翻页后选择**消失**（本册方案）是否会让高频"跨页多选后批量操作"的用户不满 —— 若确有此需求，正确做法是引入**跨页选择集（按行身份记账）**作为独立特性，而不是保留 `rowIndex` 记账 |
+| Q1 | **同一网格出现两个 Tab 停靠点** + **ARIA 角色集合的最终裁定**：本册给滚动容器加 `tabIndex={0}` 作为单元格模式的键盘宿主，但既有 `VirtualBody` 的行 div 仍是 `tabIndex={0}`（既有单测用 `[tabindex="0"]` 找行） | **已裁定，两半各有归属**。① 焦点：建议**本册保留行 div 不变**（零回归优先），由 **02 统一收口**为「容器负责焦点、行 div 改 `tabIndex={-1}`」，并同步更新 `VirtualBody.test.tsx` / `DataTable.test.tsx` 的定位方式（改用 `[data-dt-row-view]` 而不是 `[tabindex="0"]`）。② 角色：**已裁定归本册原子加齐** `grid` / `row` / `gridcell` / `rowheader` + `aria-rowcount` / `aria-colcount` / `aria-activedescendant`（契约第 4.4 节），**02 只改焦点不碰角色**。因此本册 01 已相应把预估从 3.5 上调到 **4.0 人日**（+0.5 = 行号槽 `rowheader` 改造，见 4.4b 与 Step 8），总纲第 2 节 01 行同步改为 4.0。人工只需确认 ①② 这个顺序可接受（代价是 01 落地到 02 落地之间多一个 Tab 停靠点，**已被接受**） |
 | Q2 | **macOS 上 `Ctrl+单击` 同时是右键**：加选判定沿用既有 `metaKey \|\| ctrlKey`（`VirtualBody` 的行选择就是这么写的） | 建议：保持一致性，`metaKey \|\| ctrlKey`；同时约定 `contextmenu` 事件优先（先开菜单、不改选区）。代价是 macOS 用户用 Ctrl+点击做加选会同时弹菜单。若裁定不可接受，替代方案是"加选只认 `metaKey`，Windows/Linux 只认 `ctrlKey`"——但这需要平台判定，且与既有行选择行为不一致 |
 | Q3 | **列被隐藏时选区怎么办** | 建议：**清空**（本册方案），维护"选择一定可见"。备选：把失效角迁移到相邻可见列（更"聪明"，但用户看到一个自己没选的格被高亮，不可预期）。倾向前者 |
 | Q4 | **`src/lib/gridErrors.ts`（`GridErrorCode` + `classifyGridError`）由谁建立** | **已裁定：本册（01）建骨架**，理由见契约 §9.1：01 是提交顺序里**最先合并**的分册，而本册自己就要写 `classifyGridError` 的消费侧用例（前缀匹配 + `'unknown'` 回退必须保留原始消息）——文件不存在则本册的用例无法编译，本册会被一个**下游**分册卡住。改成「本册建骨架、后续分册只追加前缀常量」后，本册不再有下游依赖。本册文件清单因此增加一个 ~60 行新文件（原稿写"本册不建"是基于"01 不产生后端错误"，但没考虑用例的可编译性） |
@@ -933,5 +1032,5 @@ grep -nE 'table-cell-selection|table-batch-ops|table-edit|passing|failing' "$LOG
 | Q6 | **水平方向自动滚动**：拖拽时若目标列已在视口外，`elementFromPoint` 取不到单元格，本册只保留上一个有效坐标、不做横向自动滚动 | 建议：按本册方案（先不做）。横向滚动在列很多、列宽很大时才痛；若实测反馈强烈，由 02 或 DB-12 一并做（它们要处理列重排与冻结，横向滚动逻辑天然属于那里） |
 | Q7 | **PRD DB-01 目标行为 5「`selectedRows` 一律由区域派生」与契约 §4.2「cell 模式清空 `selectedRows`」正面冲突** | 建议：**以契约为准**——`selectedRows` 只由 `row` 模式维护，区域涉及的行集用**派生只读值** `rowsCoveredBySelection(...)` 表达，不写入 `selectedRows`（否则就是契约明令禁止的"两套真相"）。PRD 该句应改写为"行级批量动作降级为涉及的行集合（派生值）"。需要人工确认，因为这直接决定删除/导出的作用域语义 |
 | Q8 | **`Cmd/Ctrl+A` 的语义** | 建议：留给 02 裁定并实现——候选一是"整行全选"（= 既有 `toggleSelectAll`，与 `e2e/specs/table-batch-ops.ts` 的 `TC-TABLE-013` 用例名一致），候选二是"选中当前页全部单元格"（TablePlus 语义更接近整行）。本册不实现的原因是它与 02 的快捷键集强耦合，且今天的测试没有断言结果 |
-| Q9 | **`data-dt-cell-type` 是否需要区分 NULL** | 建议：**不区分**——该属性表达"列的类型"，NULL 是**值**的属性。NULL 的判定由值本身（`NULL` 文本 / 05 的类型化编辑器）负责。若 05 需要"该格为 NULL"的 DOM 信号，应新增 `data-dt-null`（由 05 登记），而不是污染 `data-dt-cell-type` 的语义 |
+| ~~Q9~~ | **`data-dt-cell-type` 是否需要区分 NULL** | **已裁定并关闭：不区分。** 该属性表达「**列的类型**」，NULL 是**值**的属性。「该格为 NULL」需要独立 DOM 信号时用 `data-dt-null`，**归属 05**（契约 §4.4 全量表已收录该行），**不得**污染 `data-dt-cell-type` 的语义 |
 | Q12 | **`data-dt-cell-type` 的取值粒度：7 个类型族还是 11 个 `CellType`**（05 提出：它的类型化编辑器需要区分 `date`/`time`/`datetime`、`bytes`/`text`、`enum`/`uuid`/`unknown`） | **裁定：权威分类是 `CellType`（11 个值，05 的 `src/lib/cellTypes.ts`）；渲染族只是它的投影（供颜色用）**。但**取值按提交顺序分段收敛**，因为 `cellTypes.ts` 由 05 创建而 01 先合并：本册先用**既有的** `classifyDataType`（7 族，今天已存在于 `dataTypeColors.ts`，本册可直接调用），**05 合并时把同一属性的来源换成 `resolveCellType`**——这是 `GridCell` 里一行的替换，**本册无需为它改任何代码**。理由：这样既避免"01 依赖一个还没被创建的文件"的倒置，也避免维护两套类型分类（08 的算子分派、05 的编辑器分派、本册的属性三者必须同源）。本册的 `emits data-dt-cell-type ...` 用例断言 `datetime`，在两种粒度下都成立，不必改；细粒度用例（`date` / `time` / `enum` / `uuid` 互不相等）**由 05 追加**。 |

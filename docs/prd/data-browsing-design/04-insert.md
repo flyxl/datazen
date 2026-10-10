@@ -95,11 +95,11 @@
 - `src/locales/en/query.ts`：字段名以 `tableView.*` / `query.*` / `tableData.*` 开头的英文领域包（`const pack = {...} as const; export default pack;`）；已有 `tableData.noPrimaryKey`、`tableData.commitFailed`、`tableData.pendingChanges`（`{count} unsaved changes`）、`tableData.confirmCommit`（`Commit {updates} updates and {deletes} deletes?`）、`tableData.readOnlyEditDisabled`、`tableData.previewTitle` 等。
 - `src/locales/en/index.ts`：`...query` 等域名包被展开进 en 字典。
 - `src/locales/index.ts`：`export type I18nKey = TranslationKey | (string & {})` —— 新增 key 不会因 `TranslationKey`（由 `zh-CN` 派生）而 typecheck 失败，但**拼错的 key 也不会报错**（§8 要求测试兜住）。
-- `src/lib/gridErrors.ts` **不存在**；`classifyGridError` 在 01/03 分册中登记为「由 04/05 首次建立」或由 03 建立（01 的未决问题 Q4 与 03 的文件清单存在归属冲突，本册按 §11 Q-5 处理）。
+- `src/lib/gridErrors.ts` **在基线中不存在**；其**创建归属已由契约 §8.1 归属总则冻结给 01**（01 是提交顺序里最先合并的分册）。本册合并时该文件必然已存在，因此本册**只有「追加」这一种合法动作**：按 §8.1 三步追加 `grid.insert.*` 码，**禁止整文件重写**（整文件覆盖不产生编译错误，只会静默抹掉其他分册的码）。原 §11 Q-5 的归属冲突**已关闭**，见该条。
 
 ### 2.6 权威契约与 PRD 原文
 
-- `00-contracts.md` §1.4 的五个事实、§3.5「`build_insert_sql` 默认实现的 4 条语义要求」、§3.6「宿主必须拒绝的组合」、§5.1 冻结签名、§8.2 错误码清单与文案纪律、§10 本册模板。
+- `00-contracts.md` §1.4 的五个事实、§3.5「`build_insert_sql` 默认实现的 4 条语义要求」、§3.6「宿主必须拒绝的组合」、**§4.5 写路径硬约束 W-1…W-6（本册的主契约，Step 1 的迁移清单与 §7 的第 17–20 条都引它）**、§5.1 冻结签名、§8.2 错误码清单与文案纪律、§9.1 共用文件归属与追加纪律、§10 本册模板。
 - `docs/prd/data-browsing-optimization-prd.md` DB-04 原文：入口为「工具条 `+ 行` / `⌘/Ctrl+I` / 双击最后一行下方空白区」；草稿行可编辑所有非自增列、自增与有默认值的列显示 `DEFAULT`；支持多行草稿、`⌘+D` 复制、`Delete` 删除；提交与 UPDATE/DELETE 同事务同流程、INSERT 影响行数同样要求为 1；**顺序固定 inserts → updates → deletes**；**无主键表允许插入**；`VirtualBody` 渲染 `data-testid="draft-row-N"`；驱动专属测试落 postgres / mysql / sqlite / sqlserver。
 - **签名冲突提示**：PRD 原文写的是 `fn build_insert_sql(&self, table: &str, columns: &[(String, CellWrite)])`，而 `00-contracts.md` §5.1 冻结的是 `columns: &[(&str, CellWrite)]`。**以 00 为准**（00 明确「以下方法签名是最终形态，分册不得改动」）。
 
@@ -234,11 +234,40 @@ pub struct RowChangePlan {
 | `sql_template` | 驱动渲染的预览 SQL（**展示用**，执行前一律重建） | 与 `build_insert_sql` + 回填子句一致 |
 | `parameter_summary` | 形如 `INSERT <列>=<值摘要>` | 仅展示 |
 
-由此可从插入语句**无损反推** `PendingRowInsert`：`for col in changed_columns` → `current_values[col]` 为 `None`/`Some(Null)` 则 `CellWrite::Null`，否则 `CellWrite::Value(v)`；`changed_columns` 之外的列即 `Unset`。这条反推是 `validate_immutable_plan` 重建计划的基础。**反推丢失的只有 `draft_id`**（它不进计划，见 §11 Q-4）。
+由此可从插入语句反推 `PendingRowInsert` 的 `values`：`changed_columns` 里的列，`current_values[col]` 为 `None` / `Some(Value::Null)` → `CellWrite::Null`，否则 `CellWrite::Value(v)`；`changed_columns` 之外的列即 `Unset`。这是 `validate_immutable_plan` 重建计划的基础。**反推拿不回的有两样**：(1) `draft_id`（它不进计划，见 §11 Q-4）；(2) 请求侧可能出现的 `CellWrite::Value(Value::Null)`——它与 `CellWrite::Null` 渲染成同一段 SQL，但反推只会得到后者。**第 (2) 项必须在请求侧规范化掉（§3.4 的 V-7），否则该行的指纹在重建时必然不等**；第 (1) 项则必须**排除在指纹之外**（§3.4 的可重建性铁律）。这两条不是可选优化，是「带插入的提交能不能用」的前提。
 
 ### 3.4 指纹覆盖插入（`changes_fingerprint` 扩展）
 
+#### 3.4.1 可重建性铁律（本节最重要的一条）
+
+`validate_immutable_plan` 的最后一步是「用 `plan_changes` / `plan_inserts` 从 `RowChangePlan` **重建整张计划**，要求 `rebuilt.fingerprint == fingerprint`」。
+
+由此得到一条**必须先于实现写下**的约束：
+
+> **指纹 payload 里的每一个字节，都必须能从 `RowChangePlan` 重建出来。**
+> 否则每一次带插入的提交都会得到 `rebuilt.fingerprint != fingerprint`，被拒为 `grid.commit.stalePlan`——
+> 表现是「插入功能完全不可用」，而报错文案指向指纹，极易被误诊成前端签名 bug。
+
+`PendingRowInsert` 有两个字段不满足这条：`draft_id`（计划里根本没有）与未经规范化的 `CellWrite::Value(Value::Null)`（反推只会得到 `CellWrite::Null`）。**两条都必须处理，处理方式不同**：
+
+| 不满足的字段 | 处理方式 | 理由 |
+| --- | --- | --- |
+| `draft_id` | **结构性排除在 payload 之外** | 它是 UI 行身份，不进任何 SQL。草稿行的防串改由**顺序契约**保证（`RowCommitStatementResult` 与 `plan.inserts` 同序，§11 Q-4），不靠指纹 |
+| `CellWrite::Value(Value::Null)` | **请求侧规范化为 `CellWrite::Null`**（V-7） | 两者渲染成同一段 SQL，规范化不损失任何执行语义；不规范化则该行指纹必然不等 |
+
+「结构性排除」的意思是**用一个独立的投影类型把它挡在结构之外**，而不是靠 `skip_serializing_if` 顺手漏掉——后者会让后来的人以为「这个字段本来就没参与哈希」，而真相是「参与了就会炸」。
+
+#### 3.4.2 实现
+
 ```rust
+/// 指纹用的插入投影：**刻意只含 `values`**。
+/// `draft_id` 不在这里（可重建性铁律，§3.4.1）；`sql_template` / `warnings` 同样不进。
+#[derive(Serialize)]
+struct InsertFingerprintEntry<'a> {
+    /// 已规范化的写入意图；`BTreeMap` 按列名有序，序列化结果稳定。
+    values: &'a BTreeMap<String, CellWrite>,
+}
+
 fn changes_fingerprint(
     table: &RowChangeTableContext,
     changes: &[PendingRowChange],
@@ -250,16 +279,27 @@ fn changes_fingerprint(
         changes: &'a [PendingRowChange],
         /// 空时**不参与哈希**：保证「没有插入」的计划指纹与今天逐字节相同，
         /// 既有断言 commit_reuses_plan_fingerprint_and_returns_plan_id 不被打破。
-        #[serde(skip_serializing_if = "<[PendingRowInsert]>::is_empty")]
-        inserts: &'a [PendingRowInsert],
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        inserts: Vec<InsertFingerprintEntry<'a>>,
     }
-    let payload = FingerprintPayload { table, changes, inserts };
+    let payload = FingerprintPayload {
+        table,
+        changes,
+        inserts: inserts
+            .iter()
+            .map(|i| InsertFingerprintEntry { values: &i.values })
+            .collect(),
+    };
     let bytes = serde_json::to_vec(&payload).map_err(CommandError::Json)?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 ```
 
-**结论：`fingerprint` 必须覆盖插入内容**（`draft_id` + 每个 `values` 的三态），否则「预览后又在同一行改了一个列值」不会被察觉，`validate_immutable_plan` 的重建校验就会放过一个与用户确认内容不同的计划 —— 这是契约 §1.4 事实 5 明确禁止的「计划开裂」。
+**仍然成立的部分**：`fingerprint` 覆盖插入内容（每个 `values` 的三态，逐条按请求顺序），否则「预览后又在同一条草稿上改了一个列值」不会被察觉，重建校验会放过一个与用户确认内容不同的计划——这是契约 §1.4 事实 5 明确禁止的「计划开裂」。多条草稿的**相对顺序**也被覆盖（数组按序序列化），所以「把两条内容不同的草稿对调」会改变指纹。
+
+**不被覆盖的部分（是有意的）**：草稿的 `draft_id`。两条**内容完全相同**的草稿互换位置，指纹不变——而这在执行上是等价的（SQL 逐字节相同），不是漏洞。
+
+
 
 ### 3.5 执行结果（`RowCommitStatementResult`）
 
@@ -416,6 +456,12 @@ export interface TableState {
 - **为什么**：该文件**今天就已 1331 行、超过 800 行上限**；本册还要往里加插入逻辑与测试，不拆会同时违反规模纪律并让 review 无法聚焦。模块路径 `commands::data::*` 对外不变（`mod.rs` 兼容），所以拆分是纯结构提交，可独立回滚。
 - **怎么自测**：`cargo test -p datazen --lib` 退出码 `0` 且用例数与拆分前**逐个不变**（先记下旧用例清单再比对）；`test result: ok`；`wc -l` 三个文件均 ≤ 800。**不得**在同一提交里改行为。
 
+- **迁移清单（不是可选项，契约 §4.5 硬性要求）**：本 Step 拆的是 `commands/data.rs`（1331 行），而该文件里恰好藏着**今天仓库中唯一**真正阻止空 `WHERE` 落到 `build_delete_sql` / `build_update_sql` 的检查——`validate_legacy_pk_columns`。它必须被**逐项**搬进新树，不能只写「拆分文件」：
+  1. `validate_legacy_pk_columns` 的函数体 → `row_change_plan.rs`，并按 **W-3 加强**：既有实现只校验「非空且值非 NULL」，**不校验键集是否等于 `CachedColumns.primary_keys`**，因此一张 `(tenant_id, order_no)` 复合主键表只要前端传了 `{tenant_id: 7}` 就会静默生成 `WHERE "tenant_id" = 7` 命中成千上万行。搬过去时补上列集相等断言，语义升级为 W-1。
+  2. 其配套测试 `commit_row_deletes_rejects_empty_pk` → `data/tests.rs`，**改名并扩充**为同时覆盖 W-1（行身份为空）、W-2（拒绝发生在 SQL 生成之前）、W-3（复合主键漏一列）的三条用例。
+  3. `generate_handler!`（`src-tauri/src/bootstrap/run.rs`）里 `commit_row_updates` / `commit_row_deletes` 两个**遗留写入口**按 **C-1 已裁定删除**：注销注册项 + 删 `commit_row_updates_impl` / `commit_row_deletes_impl` + 删 `tableDataStore.test.ts` 里 4 处 mock + 加回归断言「这两个命令名不再出现在 `generate_handler!` 中」（见分册 12 §7.2.1 的 A-2）。
+  4. **顺序**：迁移与删除都在本 Step 同一个提交里完成，因为它们同属一次目录化；拆到两个提交会让中间态既没有旧守卫也没有新守卫。
+
 ### Step 2 · `driver-api`：`CellWrite` + 两个新 trait 方法 + 默认实现 + `ReuseDriver` 转发
 
 - **改哪个文件 / 加什么符号**：
@@ -431,9 +477,10 @@ export interface TableState {
 - **改哪个文件 / 加什么符号**：
   - `commands/data/row_change_plan.rs`：新增 `PendingRowInsert`；给 `RowChangePlan` 加 `inserts`（带 `#[serde(default)]`，序列化始终输出）；扩展 `changes_fingerprint` 签名与 payload（§3.4）；新增 `canonicalize_inserts(driver, table, inserts, columns) -> Result<Vec<PendingRowInsert>, CommandError>`；`build_row_change_plan` 增加插入分支：为每条草稿调 `canonicalize_inserts` 校验 → 组装 `columns: Vec<(&str, CellWrite)>` → `driver.build_insert_sql` → 追加回填子句（Step 6 落地）→ 生成 `PlannedStatement`（`row_identity` 与 `original_values` 为空 map；`current_values` 与 `changed_columns` 严格由 `values` 派生，`changed_columns` 排序）→ **按请求顺序 `push` 到 `inserts`（不排序）**；`validate_table_context` 保持不变。
   - `commands/data/row_change_plan.rs`：`preview_pending_changes_impl` 增加第 4 个参数 `inserts: Vec<PendingRowInsert>`；`preview_pending_changes`（tauri command）增加 `#[serde(default)] inserts` 参数并透传。
-  - `commands/data/mod.rs`（原 `data.rs` 内的遗留入口不动）。
+  - `commands/data/row_change_execute.rs`：W-3 的列集相等校验**必须在紧邻生成 SQL 的那一刻**重新读 `SchemaCache::get_columns`，**不得**复用预览阶段缓存下来的主键列表（契约 §11 C-4 的最小成本缓解）。
+  - `commands/data/mod.rs`（原 `data.rs` 内的遗留入口按 §11 C-1 裁定删除，不再「不动」）。
 - **为什么**：`PlannedStatement` 复用要求「`changed_columns` 是唯一权威写列清单」，所以插入的 `Unset` 必须靠**不在 `changed_columns` 里**表达（§3.3）；`canonicalize_inserts` 必须独立于 `canonicalize_changes`（后者对空身份直接报错，且会丢掉「全列 Unset」的行 —— 而全列 Unset 在 INSERT 语义下是合法的 `DEFAULT VALUES`）。
-- **`canonicalize_inserts` 的校验规则（全部在预览期完成，报错即拒绝）**：
+- **`canonicalize_inserts` 的校验规则（全部在预览期完成，报错即拒绝）**：。**V-7 是「规范化」而不是拒绝，V-8 是「不需要规则」——两条都列出来，是因为它们各自对应一个真实踩过的坑，且都属于「看起来像 bug 的正确代码」**
 
 | # | 规则 | 不满足时 |
 | --- | --- | --- |
@@ -443,6 +490,8 @@ export interface TableState {
 | V-4 | 表结构不可用（`SchemaCache::get_columns` 返回空列清单）→ **不做** V-2/V-3，附 `ChangeWarning { code: "insert-schema-unavailable" }`，把 NOT NULL / 唯一约束交给数据库报错 | 不拒绝，只警告（避免把「驱动元数据缺失」误判成「用户没填」） |
 | V-5 | `is_auto_increment` 列给 `CellWrite::Null` | 允许（交数据库报错），附 warning `insert-null-on-auto-increment`；宿主**不猜** |
 | V-6 | 全列 `Unset` | **合法**（`DEFAULT VALUES`），只要 V-3 通过；**禁止**复用「无实际改动就丢弃」的既有规则（那是 `PendingRowChange` 的纪律，见 §10 第 3 条） |
+| V-7 | `CellWrite::Value(Value::Null)` | **规范化为 `CellWrite::Null`**，不拒绝。两者渲染成同一段 SQL；不规范化则该草稿的指纹在 `validate_immutable_plan` 重建时必然不等（§3.4.1），表现为「带这条草稿的提交一律被判 `stalePlan`」 |
+| V-8 | `values` 里的列名重复 | `BTreeMap` 在反序列化阶段即报错（JSON 对象重复键），请求根本进不到校验层，**不需要**额外规则。列出来是为了让实现者确认「不是漏了检查」 |
 
 - **怎么自测**：`cargo test -p datazen --lib commands::data`；用例见 §9 `insert_*`。**必须同步改**的既有测试调用点（都在 `commands/data/tests.rs`）：`preview_builds_driver_sql_without_opening_a_transaction`、`commit_reuses_plan_fingerprint_and_returns_plan_id`、`commit_rejects_stale_fingerprint_before_execution`、`preview_rejects_changes_without_primary_key_identity`、`commit_rejects_database_context_change_without_switching_session`、`commit_allows_concrete_table_schema_when_connection_schema_is_unspecified`、`commit_rejects_explicit_schema_context_change` —— 一律补 `vec![]`（插入为空）。这些用例使用 `rich_mock_options()`，其 `columns` 为空 → 恰好走 V-4 分支，不影响既有断言。
 
@@ -452,13 +501,17 @@ export interface TableState {
   1. `commands/data/row_change_execute.rs::execute_row_change_plan_impl`：把首判断改成
      `if plan.inserts.is_empty() && plan.updates.is_empty() && plan.deletes.is_empty() { … }`。
   2. `commands/data/row_change_plan.rs::plan_changes`：把 `plan.inserts` 也**反推**进返回值。`PendingRowChange` 装不下插入（空身份过不了 `identity_key`），所以这一步有两种实现：(a) 把 `plan_changes` 改成返回 `(Vec<PendingRowChange>, Vec<PendingRowInsert>)`（推荐，改动面小、语义直白）；(b) 新增 `plan_inserts(&RowChangePlan) -> Vec<PendingRowInsert>` 并在 `validate_immutable_plan` 里同时调用两者。
-- **为什么**：**两个独立的致命点。**
+- **为什么**：**三个独立的致命点。**
   - (1) 漏改 → `updates`/`deletes` 都为空、只有插入时函数在第一行就 `return Ok(affected_rows: 0)`：**不报错、不开事务、不执行任何语句**，用户在界面上看到「提交成功」，数据库里什么都没有（契约 §1.4 事实 3）。
-  - (2) 漏改 `plan_changes` → `validate_immutable_plan` 重建出的计划**丢掉全部插入**，`rebuilt.fingerprint != fingerprint`，于是**每一次带插入的提交都会被判成「计划已过期或被动过」而拒绝**（表现为功能完全不可用，且报错文案指向指纹，极易被误诊为前端签名 bug）。这是本册最隐蔽的第二个坑：它把「数据丢失」换成了「功能不可用」，两者都必须有测试锁死。
+这是本册最隐蔽的第二个坑：它把「数据丢失」换成了「功能不可用」，两者都必须有测试锁死。
+  - (3) **(1)(2) 都做对了仍然全盘失败** —— 这是最难查的一个。`plan_inserts` 按 §3.3 反推出的 `PendingRowInsert` **没有 `draft_id`**（计划里根本没这个字段），且 `CellWrite::Value(Value::Null)` 会被反推成 `CellWrite::Null`。若指纹 payload 直接序列化 `PendingRowInsert`（本册早期版本就是这么写的、含 `draft_id`），重建出的指纹与客户端算出的**必然不等**，于是**每一次带插入的提交都被拒**。两条修法都在 §3.4.1：`draft_id` **结构性排除**（`InsertFingerprintEntry`），`Value(Value::Null)` **请求侧规范化**（V-7）。换句话说：(2) 修的是「重建丢内容」，(3) 修的是「重建拿不回请求侧的额外信息」——**两个是不同的坑，只修一个照样全盘 `stalePlan`**。
 - **怎么自测**：
   - 新增回归测试 `commit_executes_insert_only_plan_instead_of_returning_empty_success`：`options.columns` 配好列、`options.execute_rows_affected = 1`，只传 `inserts`（`changes` 为空）→ 断言 `response.affected_rows == 1`、`response.statements.len() == 1`、`response.statements[0].operation == "insert"`、`mock.execute_calls() == 1`、`mock.commit_calls() == 1`。
   - 新增 `commit_rebuilds_plan_with_inserts_without_fingerprint_mismatch`：预览拿到 plan 后立刻提交 → 必须 `Ok`（若 `plan_changes` 漏 inserts，会拿到 `Row change plan fingerprint is stale or was modified`）。
   - 手动反向验证（一次性）：临时删掉 (1) 里的 `plan.inserts.is_empty() &&`，确认回归测试**变红**——测试必须真的能抓住这个坑。
+  - 新增 `commit_accepts_insert_with_explicit_null_value_and_multiple_drafts`：两条草稿，第一条把某列写成 `CellWrite::Value(Value::Null)`、第二条 `draft_id` 取随机 UUID → 预览后立刻提交必须 `Ok`。这条同时锁住 V-7 的规范化与 §3.4.1 的 `draft_id` 排除（任一没做本用例就红）。
+  - 新增 `fingerprint_is_reconstructible_from_plan_alone`（**纯函数级，不需要驱动**）：同一组 `PendingRowInsert`，断言 `changes_fingerprint(..)` 与「`plan_inserts(&plan)` 反推后再算一次」的结果**相等**。这是 §3.4.1 铁律的可执行形式，比任何端到端用例都更早、更快地失败。
+  - 手动反向验证（一次性）：把 `InsertFingerprintEntry` 改回直接序列化 `PendingRowInsert`，确认上面两条用例**变红**。
 
 ### Step 5 · **陷阱 2**：把插入放进**同一个**事务执行块
 
@@ -507,7 +560,7 @@ export interface TableState {
 - **改哪个文件 / 加什么符号**：
   - `src/components/DataTable/VirtualBody.tsx`：`VirtualBodyProps` 加 `draftRows?: DraftRowViewModel[]`（`{ draftId, cells: Record<string, CellWrite> }`）与 `onDraftCellEdit` / `onDraftRowRemove`；在真实行之后渲染草稿行，节点带 `data-testid="draft-row-N"`、`data-row-kind="draft"`，`Unset` 格显示 `DEFAULT` 占位（`tableData.insertDefault`）。
   - `src/windows/connection/TableView.tsx`：工具条「+ 行」按钮（`tableData.insertRow`，`title` 带 `⌘/Ctrl+I`）、`⌘/Ctrl+I` 与 `⌘/Ctrl+D` 快捷键（与 02 分册的键盘表对齐，避免重复注册）、最后一行下方空白区双击处理、`Delete` 移除草稿；三处 `pendingChanges.size === 0` 门闸改用 `hasPendingWork(ts)`；预览对话框增加 `inserts` 段落（复用既有 `tableData.previewTitle` / `previewSql` / `previewParameters` / `previewWarnings`）；确认文案在 `inserts.length > 0` 时改走 `tableData.confirmCommitWithInserts`。
-  - `src/lib/gridErrors.ts`（**新增**，若 03 已建立则只补码表）：见 §8。
+  - `src/lib/gridErrors.ts`（**01 已建骨架**，本册按契约 §8.1 三步只补码表，**禁止整文件重写**）：见 §8。
 - **为什么**：草稿行不能写进 `ts.rows`（§3.7 R-5），所以必须由 `VirtualBody` 的**派生渲染**承接；「+ 行」在只读连接下**不渲染**（契约 R4：能力缺失时隐藏入口，而不是渲染一个点了报错的按钮）。
 - **怎么自测**：`pnpm typecheck` + `npx vitest run`（组件级用例见 §9）+ `pnpm e2e:minimal`（`e2e/specs/table-insert.ts`）。
 
@@ -539,7 +592,7 @@ export interface TableState {
 | `packages/drivers/{mysql,postgres,sqlite,sqlserver}/src/*.rs` | 修改 | 方言覆盖 | 每驱动 +15~35 | 否 |
 | `packages/drivers/*/src/tests.rs`（4 个） | 修改 | 三态断言 | 每驱动 +40 | 否 |
 | `src/lib/tableChanges.ts` | 修改 | `CellWrite`、`PendingInsert`、计划/结果类型、纯函数 | +90 | 否（现 227 行） |
-| `src/lib/gridErrors.ts` | 新增（若 03 未建则本册建） | `GridErrorCode` + `classifyGridError` | ≈ 70 | 否 |
+| `src/lib/gridErrors.ts` | **修改（追加）** | **01 已建骨架**（契约 §8.1 归属总则）；本册只追加 `grid.insert.*` 码，**禁止整文件覆盖** | +15 | 否 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState` 三个新字段 | +12 | 否 |
 | `src/stores/tableData/pendingChanges.ts` | 修改 | `pendingWorkSignature`、`hasPendingWork`、`draftsForWire` | +50 | 否（现 127 行） |
 | `src/stores/tableDataStore.ts` | 修改 | 5 个草稿动作 + 早退判据 + 请求体 | +170 | 否（现 722 行 → 加后 ≈ 890 **会越线 → 见下方拆分**） |
@@ -580,6 +633,11 @@ export interface TableState {
 | 16 | **草稿行在预览后被删除/修改** | `pendingWorkSignature` 不一致 → 预览计划作废、要求重新预览（现有纪律，不得降级为「按新数据重算」） | R-3 |
 | 17 | **翻页 / 改筛选 / 改排序 / 关闭面板** | `highlightedNewRowKey` 立即清空；面板关闭丢弃草稿（与既有 `pendingChanges` 的丢弃语义一致）；有暂存工作时 `invalidateCachedData` 不触碰该面板（判据改用 R-2） | `invalidateCachedData`、R-4 |
 | 18 | **自增列被显式写 `NULL`** | 允许提交并交数据库报错，附 warning `insert-null-on-auto-increment`；宿主**不猜**、不静默改写为 `Unset` | V-5 |
+| 19 | **复合主键只提供了部分列** | **W-1/W-3**：在**生成 SQL 之前**就拒绝（`CommandError::Validation`），不是发出去以后再看影响行数。既有 `identity_key` 只要求 map 非空且值非 NULL，**不校验键集相等**——这条必须在本册补上（见 Step 1 迁移清单第 1 项） | `validate_legacy_pk_columns`（加强后） |
+| 20 | **两个客户端同时改同一行的不同列** | **W-5**：不检测、不阻断，last-writer-wins。`WHERE` **只带主键谓词**，**禁止**把被编辑列的旧值塞进 `WHERE`（那会让「我改这一列」反过来变成「我只能改这一列」）。文档与 UI 文案**不得**出现「只影响这一行」「不会覆盖别人的修改」 | `build_update_sql` |
+| 21 | **唯一约束冲突 / 权限不足等数据库拒绝** | **W-6**：IPC 返回体里 `grid.commit.*` 后面跟**宿主自己的话**（如「本次写入被数据库拒绝（权限或约束）」），**不跟数据库原文**。`CommandError` 的序列化只调凭据脱敏（`redact_secrets_for_log`），而它**只覆盖 4 类凭据模式、不处理绝对路径**——直接透传会把本机目录结构暴露到界面与日志。原始错误只进日志，且同样受日志脱敏约束 | `cmd_err`、契约 §4.5 W-6 |
+| 22 | **`parameter_summary` / `value_summary`（120 字符截断）** | **W-6 附则**：截断**不等于脱敏**，截断后仍可能保留可识别的业务数据。这两个字段只用于展示与日志，**不得**进入任何 IPC 返回体的持久化路径 | `RowCommitStatementResult` |
+| 23 | **预览到提交之间表结构被改（DDL）** | **C-4 已知残留，不在本批实现**：计划指纹只覆盖列值、不覆盖表结构。缓解只有一条且**必须做**——W-3 的列集相等校验在生成 SQL 的那一刻现读 `SchemaCache::get_columns`，把窗口从「整个面板生命周期」压到「单次提交调用内」；失败时把本次读到的主键列集与语句类型一并写日志。**不做** schema 版本号、不做结构指纹、不做「结构变了就禁编辑」门禁 | 契约 §11 C-4 |
 
 ---
 
@@ -621,7 +679,7 @@ export interface TableState {
 | `grid.commit.conflictingIntents: ` | 同一行既删除又有列写入 | 指出冲突行 |
 | `grid.cell.readOnly: ` | 只读/生成列 | 说明具体原因 |
 
-**前端分类器**：`src/lib/gridErrors.ts`（**新增**；若 03-clipboard 已建立该文件则本册只**追加**上述 `grid.insert.*` 码值，不新建第二份骨架）：
+**前端分类器**：`src/lib/gridErrors.ts`（**01 已创建骨架**；本册按契约 §8.1 三步**只追加**上述 `grid.insert.*` 码值，**不新建第二份骨架、也不整文件重写**）：
 
 ```ts
 export type GridErrorCode =
@@ -650,13 +708,16 @@ export function classifyGridError(message: string): GridErrorCode | 'unknown';
 | 用例名 | 断言要点 |
 | --- | --- |
 | `commit_executes_insert_only_plan_instead_of_returning_empty_success` | **陷阱 1 回归**：只有 `inserts` 时 `affected_rows == 1`、`statements.len() == 1`、`operation == "insert"`、`mock.execute_calls() == 1`、`mock.commit_calls() == 1`（把提前返回的判断写错时此用例必须变红） |
+| `fingerprint_is_reconstructible_from_plan_alone` | **陷阱 1(3) 回归（纯函数级）**：同一组 `PendingRowInsert`，`changes_fingerprint(..)` 与「`plan_inserts(&plan)` 反推后重算」**相等**。这是 §3.4.1 铁律的可执行形式 |
+| `insert_canonicalization_normalizes_value_null_to_null_write` | `Value(Value::Null)` 进、`CellWrite::Null` 出，且 `changed_columns` 含该列（V-7） |
+| `commit_accepts_insert_with_explicit_null_value_and_multiple_drafts` | **陷阱 1(3) 端到端**：一条草稿用 `Value(Value::Null)`、另一条随机 `draft_id` → 预览后立刻提交 `Ok`。任一修法缺失即红 |
 | `commit_rebuilds_plan_with_inserts_without_fingerprint_mismatch` | **陷阱 1 第二半**：`plan_changes` / `plan_inserts` 漏掉 inserts 时，本用例会拿到 `Row change plan fingerprint is stale or was modified` 而失败 |
 | `insert_canonicalization_sorts_columns_and_keeps_order_of_rows` | 同一行内 `changed_columns` 排序稳定；**多行之间不排序**（顺序 = 请求顺序） |
 | `canonicalize_inserts_rejects_missing_not_null_without_default` | V-3 → `grid.insert.noWritableColumn`；错误文本含列名 |
 | `canonicalize_inserts_rejects_unknown_column` | V-2 → `grid.insert.unknownColumn` |
 | `canonicalize_inserts_allows_all_unset_when_defaults_exist` | V-6：全 `Unset` 且 `columns` 里每个 NOT NULL 列都有 `default_value` 或 `is_auto_increment` → 计划里出现一条 `DEFAULT VALUES` 语句（**不是**被当作「无改动」丢掉） |
 | `canonicalize_inserts_skips_schema_checks_when_columns_are_unknown` | V-4：`options.columns` 为空（如 `rich_mock_options()`）→ 不拒绝，附 `insert-schema-unavailable` warning |
-| `fingerprint_covers_insert_values_but_stays_stable_without_inserts` | 只有 `changes` 时指纹与旧实现**逐字节相同**（保护 `commit_reuses_plan_fingerprint_and_returns_plan_id`）；改一个插入列值 → 指纹变化 |
+| `fingerprint_covers_insert_values_but_stays_stable_without_inserts` | 只有 `changes` 时指纹与旧实现**逐字节相同**（保护 `commit_reuses_plan_fingerprint_and_returns_plan_id`）；改一个插入列值 → 指纹变化；**只改 `draft_id` → 指纹不变**（§3.4.1 的结构性排除，这条必须钉死，否则会有人「顺手把它加回去」）；对调两条内容不同的草稿 → 指纹变化 |
 | `insert_and_update_share_one_transaction_and_one_commit` | **陷阱 2**：`execute_calls() == 2`（真执行两次）、`commit_calls() == 1`、`open_transaction_count() == 0`、`affected_rows == 2` |
 | `insert_joins_open_user_transaction_instead_of_committing` | 预置 `session_transactions` → `commit_calls()` 不增长、`open_transaction_count()` 不归零、但插入已执行 |
 | `insert_rolls_back_whole_batch_on_failure` | **事务原子性**：让某条语句失败（`execute_rows_affected = 2` 触发 `grid.commit.affectedMismatch`，或用 `MockDriverOptions.execute_error` 让执行直接报错）→ 整批 `Err`、`commit_calls()` 不增长、`open_transaction_count()` 归零。**注意**：`MockDriver` 目前只把 `rollback_calls` 记在内部、**没有**公开访问器，因此要么补一个 `rollback_calls()` 访问器（测试基建的纯新增），要么就用「无 commit + 事务计数归零」间接断言；不要为了断言而在生产路径加钩子 |
@@ -762,7 +823,7 @@ export function classifyGridError(message: string): GridErrorCode | 'unknown';
 | Q-1 | **回填子句的位置**：契约 §5.1 只冻结了 `insert_returning_clause()`，宿主「追加」的语义对 T-SQL 不成立（`OUTPUT` 必须在列清单与 `VALUES` 之间）。是否新增位置枚举/新 trait 方法？ | 建议**不新增**：维持「`Some("")` = 已内联、宿主用查询路径读」的约定，在 `traits.rs` 文档注释写清并由驱动测试锁死（零新增方法、不破冻结签名）。备选：新增 `insert_returning_placement()`（带默认实现，不破兼容）——需要人工裁定是否值得为此扩契约 |
 | Q-2 | **MySQL 族的主键回填**：契约把 MySQL 归入「用 `LAST_INSERT_ID()`，由驱动另行处理」，但 §5.1 没有任何「插入后再查一次」的入口，因此 MySQL 只能返回 `None` 走降级（无高亮）。 | 建议本册先按 `None` 降级交付（不猜、不假装）；若产品要求 MySQL 也高亮，另开一条契约改动（新增 `post_insert_identity_query(&self) -> Option<String>` 类方法，带默认实现，不破兼容）——**不属于本册范围**，需人工确认优先级 |
 | Q-3 | **SQLite 的 `RETURNING` 版本门槛**：SQLite 3.35 起支持 `RETURNING`，更早版本语法错误。驱动该在连接时探测版本，还是一律返回 `None`？ | 建议**在连接时读版本并缓存到驱动实例**，`insert_returning_clause` 按版本返回 `Some`/`None`；不引入新 trait 方法。备选：一律 `None`（最保守，退回降级路径） |
-| Q-4 | **草稿行与提交结果的关联**：`PlannedStatement` 刻意不加 `draftId`，前端靠「插入结果与 `plan.inserts` 同序」对齐。是否要显式字段？ | 建议**不加字段**（复用 PRD 已定的 `PlannedStatement`，靠顺序契约 + 测试锁死）；若人工裁定要更强健的关联，再加 `#[serde(default)] draft_id: Option<String>` 到 `PlannedStatement` 与 `RowCommitStatementResult`（纯新增，不破兼容） |
-| Q-5 | **`src/lib/gridErrors.ts` 的归属**：01 分册把它登记为「由 04/05 首次建立」，03 分册的文件清单里已把它列为新增（冲突）。 | 建议**以先落地者为准**：本册只**追加** `grid.insert.*` 码值，若 03 已建则请求其在本册合并前合入 main，避免两份骨架。需人工确认合并顺序 |
-| Q-6 | **执行顺序是否要驱动可声明**：PRD 提到「顺序固定 inserts → updates → deletes；需要别的顺序由驱动声明」，但 00-contracts §5 冻结的新增方法只有 5 个，其中没有顺序声明入口。 | 建议**本册不做驱动声明**，把所有驱动统一为 `inserts → updates → deletes` 并写进架构文档；若确有驱动需要别的顺序，另立一条契约改动（新增带默认实现的方法），不要偷偷在宿主里按 `driver_type()` 分支（违反零硬编码） |
+| Q-4 | **草稿行与提交结果的关联**：`PlannedStatement` 刻意不加 `draftId`，前端靠「插入结果与 `plan.inserts` 同序」对齐。是否要显式字段？ | 建议**不加字段**（复用 PRD 已定的 `PlannedStatement`，靠顺序契约 + 测试锁死）；若人工裁定要更强健的关联，再加 `#[serde(default)] draft_id: Option<String>` 到 `PlannedStatement` 与 `RowCommitStatementResult`（纯新增，不破兼容） | **本条同时决定了指纹的形状**：`draft_id` 不能进指纹 payload（计划里没有它，重建时拿不回来），所以 §3.4.1 把它结构性排除；代价是「两条内容相同的草稿互换位置」不会被指纹察觉，而这在执行上等价。**若人工裁定改为加 `draftId` 字段**，则 §3.4 的 payload 必须同步改成包含它，且 `plan_inserts` 要能重建出该字段——两处要一起改，只改一处就是 §3.4.1 说的全盘 `stalePlan` |
+| Q-5 | **`src/lib/gridErrors.ts` 的归属**：01 分册把它登记为「由 04/05 首次建立」，03 分册的文件清单里已把它列为新增（冲突）。 | **已裁定并关闭：归属冻结给 01**（契约 §8.1 归属总则）。理由不是「以先落地者为准」——那仍然依赖不可知的合并时序——而是 **01 是提交顺序里唯一最早的分册**，因此无论并行开发如何交错，它必然先落地。本册只需按三步追加 `grid.insert.*`，无需请求任何分册为它让路。**附带硬约束：禁止整文件重写该文件**（并行下会静默抹掉他人码值且无编译错误） |
+| Q-6 | **执行顺序是否要驱动可声明**：PRD 提到「顺序固定 inserts → updates → deletes；需要别的顺序由驱动声明」，但 00-contracts §5 冻结的新增方法只有 5 个，其中没有顺序声明入口。 | **已裁定并冻结顺序声明**：① 顺序**恒为** `inserts → updates → deletes`，同一类内部按 `plan` 数组顺序（插入按请求顺序，即前端草稿视觉顺序）；② **不提供驱动声明入口**——契约 §5 不加方法，宿主**禁止**按 `driver_type()` 分支（违反零硬编码）；③ 确需别的顺序时，走**新的契约改动**（新增带默认实现的方法，默认实现即本顺序，所以未覆写的驱动零影响），不得在宿主里私开分支；④ 这条顺序与「同一事务内执行」是两件事：原子性见 Step 5 的陷阱 2，顺序见本条，两条都要有测试 |
 | Q-7 | **`affected == 0` 的容忍度**：本册按「驱动不上报计数」容忍 0 并记 warning。是否要更严格的「至少 1」？ | 建议保持容忍：真正的失败一定表现为 `driver.execute`/`query` 返回 `Err`，而 0 行影响对单行 `VALUES` 无信息量；严格化会误杀一批不上报计数的驱动（且违背契约 §8.2 把 INSERT 排除在 `affected != 1` 之外的口径）。**需要人工确认可接受** |

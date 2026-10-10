@@ -142,9 +142,14 @@
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind", content = "value")]
 pub enum CellWrite {
-    Null,           // 该列进语句，写 SQL NULL
-    Value(Value),   // 该列进语句，写此值
-    Unset,          // 该列不进语句：UPDATE 不动这一列；INSERT 交给数据库默认值
+    /// 该列出现在语句中，写入 SQL NULL：`SET c = NULL` / `INSERT ... VALUES (NULL)`。
+    Null,
+    /// 该列出现在语句中，写入此值。
+    Value(Value),
+    /// 该列**不出现在语句中**：
+    /// - UPDATE：这一列不被触碰。
+    /// - INSERT：由数据库自己填（DEFAULT / 自增 / 生成列 / 触发器）。
+    Unset,
 }
 ```
 
@@ -575,43 +580,69 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 
 > 每步都给「改哪个文件 / 加什么符号 / 为什么 / 怎么自测」。**Step 0 不通过就停止**，不要在本册里再造一份依赖。
 
-**Step 0（前置门禁）**：确认 ① `src/lib/tableChanges.ts` 已有契约册 §3.3 的 `CellWrite` / `cellWriteNull` / `cellWriteValue` / `cellWriteUnset`（由 DB-04 的「提交 1」落地）；② 01 的三件已落下：`src/stores/tableData/gridSelection.ts`、`src/hooks/useGridSelection.ts`、`src/components/DataTable/GridCell.tsx`；③ `src/lib/gridEventGuards.ts` 已导出 `isComposingEvent` / `isEditableTarget`（01 新增，本册的 IME 与失焦判定直接复用，**不得另写一份**）。
+### Step 0 · 前置门禁
+
+确认 ① `src/lib/tableChanges.ts` 已有契约册 §3.3 的 `CellWrite` / `cellWriteNull` / `cellWriteValue` / `cellWriteUnset`（由 DB-04 的「提交 1」落地）；② 01 的三件已落下：`src/stores/tableData/gridSelection.ts`、`src/hooks/useGridSelection.ts`、`src/components/DataTable/GridCell.tsx`；③ `src/lib/gridEventGuards.ts` 已导出 `isComposingEvent` / `isEditableTarget`（01 新增，本册的 IME 与失焦判定直接复用，**不得另写一份**）。
 **为什么**：这三者是**冻结契约**，本册只消费。**自测**：`npx vitest run src/lib/__tests__/tableChanges.test.ts`（DB-04 的用例）绿；`gridSelection.ts` 导出 `CellCoord` / `CellRange` / `GridSelection` / `EMPTY_GRID_SELECTION` / `normalizeCellRange` / `rowsCoveredBySelection` / `moveCellFocus` / `selectionFromAnchorFocus`；`GridCell.tsx` 导出 `GridCell` / `GridCellProps`；`gridEventGuards.ts` 导出那两个函数（§11 未决 #10 列出本册消费的完整清单）。
 
-**Step 1** `src/lib/cellTypes.ts`（**新增**）：`CellType`、`CellTypeMatch`、`CellTypeRule`、`CellTypeHints`、`DEFAULT_CELL_TYPE_RULES`、`matchCellTypeRule`、`resolveCellType`、`cellTypeToDataTypeFamily`、`isZonedCellType`、`isReadOnlyCellType`；`src/lib/databaseMeta.ts`（**修改**）加 `DatabaseTypeMeta.cellTypes?: CellTypeHints`。
+### Step 1 · `src/lib/cellTypes.ts`（**新增**）
+
+`CellType`、`CellTypeMatch`、`CellTypeRule`、`CellTypeHints`、`DEFAULT_CELL_TYPE_RULES`、`matchCellTypeRule`、`resolveCellType`、`cellTypeToDataTypeFamily`、`isZonedCellType`、`isReadOnlyCellType`；`src/lib/databaseMeta.ts`（**修改**）加 `DatabaseTypeMeta.cellTypes?: CellTypeHints`。
 **为什么**：全部类型判断的唯一入口；驱动差异靠 `hints.overrides` 表达，宿主零驱动分支。**自测**：`npx vitest run src/lib/__tests__/cellTypes.test.ts`（表驱动，含 `point`、`ARRAY`、`USER-DEFINED`、`Nullable(Int32)`、`tinyint(1)`、`enum('a','b')`、`varbinary(max)`、`FixedString(16)`、`datetimeoffset`、空串；以及「顺序不变量」：`datetime` 不被 `date` 抢走）。
 
-**Step 2** `src/lib/cellEditorKind.ts`（**新增**）：`CellEditorKind`、`CellEditorKindInput`、`resolveCellEditorKind`、阈值常量、`CellValueErrorReason`、`CoerceResult`、`coerceValue`、`CellReadOnlyReason`、`CellEditabilityInput`、`CellEditability`、`resolveCellEditable`。
+### Step 2 · `src/lib/cellEditorKind.ts`（**新增**）
+
+`CellEditorKind`、`CellEditorKindInput`、`resolveCellEditorKind`、阈值常量、`CellValueErrorReason`、`CoerceResult`、`coerceValue`、`CellReadOnlyReason`、`CellEditabilityInput`、`CellEditability`、`resolveCellEditable`。
 **为什么**：控件分派、值强制转换、可编辑性三件事共享同一份类型判断，且必须可脱离 React 单测。**自测**：`npx vitest run src/lib/__tests__/cellEditorKind.test.ts`（含 `Number('')`/`Number(' ')`/`Number('0x10')`/`Number('١٢')`/`NaN`/`Infinity` 全部被拒；`coerceValue` 返回 `CellWrite` 三态；`resolveCellEditable` 十种原因各有用例）。
 
-**Step 3** `src/lib/gridErrors.ts`（**新增**，契约册 §8.1 指定的位置）：`GridErrorCode` 联合类型（含 `grid.cell.readOnly` 与 §8.2 全表）、`classifyGridError(message): GridErrorCode`（**前缀匹配**，未命中返回 `'unknown'`）、`readOnlyReasonMessageKey(reason): string`。
+### Step 3 · `src/lib/gridErrors.ts`（**01 已建骨架；本册按契约 §8.1 三步追加 `grid.cell.*` 码，禁止整文件重写**）
+
+`GridErrorCode` 联合类型（含 `grid.cell.readOnly` 与 §8.2 全表）、`classifyGridError(message): GridErrorCode`（**前缀匹配**，未命中返回 `'unknown'`）、`readOnlyReasonMessageKey(reason): string`。
 **为什么**：只读原因必须落成可断言的前端分类结果；未知前缀必须回退显示原始消息。**自测**：`npx vitest run src/lib/__tests__/gridErrors.test.ts`。
 
-**Step 4** `src/lib/cellEditorCandidates.ts`（**新增**）：`buildDistinctCandidatesSql({ context, column, limit })`（纯函数，用 `escapeIdent` 引号化，`limit` 固定 200，单条语句，不含 `;` 与多语句）。
+### Step 4 · `src/lib/cellEditorCandidates.ts`（**新增**）
+
+`buildDistinctCandidatesSql({ context, column, limit })`（纯函数，用 `escapeIdent` 引号化，`limit` 固定 200，单条语句，不含 `;` 与多语句）。
 **为什么**：候选值取数需要 SQL，但 SQL 构造必须可单测且只有一份；执行仍走既有 `queryCommands.executeQuery`。**自测**：单测断言引号化（含列名里有引号/反引号的用例）、`LIMIT 200`、拒绝空列名；grep 断言宿主里没有 `if (driverType ===`。
 
-**Step 5** `src/lib/dataTypeColors.ts`（**修改**）：`classifyDataType` 改为 `cellTypeToDataTypeFamily(resolveCellType(dataType))`，签名与 `FAMILY_CLASS` 不变。
+### Step 5 · `src/lib/dataTypeColors.ts`（**修改**）
+
+`classifyDataType` 改为 `cellTypeToDataTypeFamily(resolveCellType(dataType))`，签名与 `FAMILY_CLASS` 不变。
 **为什么**：契约要求「显示分类」与「编辑器分类」同一标准。**自测**：`npx vitest run src/lib/__tests__/dataTypeColors.test.ts`（**既有断言零改动通过**）+ 新增 `dataTypeColors.parity.test.ts` 断言 `classifyDataType(t) === cellTypeToDataTypeFamily(resolveCellType(t))` 对代表性类型串逐条成立。
 
-**Step 6** `src/components/DataTable/editors/`（**新增**）：`toEditString.ts`（把 `EditableCell` 里的实现搬过来，`EditableCell` 改为再导出以保住既有 import 路径）、`CellEditorHost.tsx`（分派 + 键盘/IME/blur 状态机，**唯一**处理提交时机的地方；IME 判定**复用** 01 的 `isComposingEvent`，见 Step 0 与 §4.3）、`TextCellEditor.tsx`、`NumberCellEditor.tsx`、`BooleanCellEditor.tsx`、`EnumCellEditor.tsx`、`TemporalCellEditor.tsx`、`JsonCellEditor.tsx`、`LongTextCellEditor.tsx`、`BinaryCellEditor.tsx`（只读提示）、`setValueMenu.ts`（纯函数：产出 Set Value 子菜单项与禁用规则）。
+### Step 6 · `src/components/DataTable/editors/`（**新增**）
+
+`toEditString.ts`（把 `EditableCell` 里的实现搬过来，`EditableCell` 改为再导出以保住既有 import 路径）、`CellEditorHost.tsx`（分派 + 键盘/IME/blur 状态机，**唯一**处理提交时机的地方；IME 判定**复用** 01 的 `isComposingEvent`，见 Step 0 与 §4.3）、`TextCellEditor.tsx`、`NumberCellEditor.tsx`、`BooleanCellEditor.tsx`、`EnumCellEditor.tsx`、`TemporalCellEditor.tsx`、`JsonCellEditor.tsx`、`LongTextCellEditor.tsx`、`BinaryCellEditor.tsx`（只读提示）、`setValueMenu.ts`（纯函数：产出 Set Value 子菜单项与禁用规则）。
 **为什么**：`EditableCell.tsx` 单文件承载所有类型会把文件与认知都撑爆（PRD 亦要求按族拆分、单文件 < 200 行）。**自测**：`npx vitest run src/components/DataTable/editors`（组件 + journey，含 IME 用例）。
 
-**Step 7** `src/lib/dataTableContextMenu.ts`（**修改**）：`DataTableContextMenuLabels` 加 `setValue`/`setDefault`/`setEmpty`/`revertCell`/`loadCandidates`；`Handlers` 加 `onSetValue?: (id: SetValueActionId) => void`、`onLoadCandidates?: () => void`；`BuildDataTableContextMenuArgs` 加 `setValue?: { canNull: boolean; canEmpty: boolean; rowKind: 'update' | 'insert'; hasPending: boolean }`；`buildDataTableContextMenuItems` 在 `setValue` 存在时输出 `submenu('set-value', …)`；**`onSetValue` 未提供时保持今天的 `more-actions` + `set-null` 布局不变**。
+### Step 7 · `src/lib/dataTableContextMenu.ts`（**修改**）
+
+`DataTableContextMenuLabels` 加 `setValue`/`setDefault`/`setEmpty`/`revertCell`/`loadCandidates`；`Handlers` 加 `onSetValue?: (id: SetValueActionId) => void`、`onLoadCandidates?: () => void`；`BuildDataTableContextMenuArgs` 加 `setValue?: { canNull: boolean; canEmpty: boolean; rowKind: 'update' | 'insert'; hasPending: boolean }`；`buildDataTableContextMenuItems` 在 `setValue` 存在时输出 `submenu('set-value', …)`；**`onSetValue` 未提供时保持今天的 `more-actions` + `set-null` 布局不变**。
 **为什么**：既有测试断言 `set-null` 在 `more-actions` 内、`enableSetNull` 为假时不出现——新入口不能顺手改掉旧行为（旧调用方如结果网格仍需旧菜单）。**自测**：既有 `dataTableContextMenu.test.ts`、`DataTable.test.tsx` 零改动通过；新增用例断言两条分支各自的菜单形状。
 
-**Step 8** `src/stores/tableData/stageCellWrite.ts`（**新增**，纯函数）+ `src/stores/tableDataStore.ts`（**修改**）：新增 action `stageCellWrite(panelId, row, col, write: CellWrite)`；`stageCellChange` 改为 `stageCellWrite(..., cellWriteValue(toCellValue(value)))` 的薄壳；`TableState` 增 `enumCandidates: Map<string, readonly string[]>` 与 `setEnumCandidates`/`clearEnumCandidates`。
+### Step 8 · `src/stores/tableData/stageCellWrite.ts`（**新增**，纯函数）+ `src/stores/tableDataStore.ts`（**修改**）
+
+新增 action `stageCellWrite(panelId, row, col, write: CellWrite)`；`stageCellChange` 改为 `stageCellWrite(..., cellWriteValue(toCellValue(value)))` 的薄壳；`TableState` 增 `enumCandidates: Map<string, readonly string[]>` 与 `setEnumCandidates`/`clearEnumCandidates`。
 **为什么**：三态必须有一个入口，同时 `stageCellChange` 的既有语义不能变（`applyColumnToRows` 与既有测试都依赖它）；把纯逻辑放到新文件是为了**不让 `tableDataStore.ts` 越过 800 行**（它今天 722 行，01 的 Step 3/4 把选择转移搬走后约 700 行）。**自测**：`npx vitest run src/stores/__tests__/tableDataStore.cellWrite.test.ts` + 既有 `tableDataStore.test.ts` 零改动通过。
 
-**Step 9** `src/components/DataTable/GridCell.tsx`（**01 新增，本册扩展**）+ `CellRenderer.tsx`（**修改**）：`GridCellProps` 增可选 `cellType?: CellType`、`editorKind?: CellEditorKind`、`editable?: boolean`、`readOnlyReason?: CellReadOnlyReason | null`、`onCellWrite?: (write: CellWrite) => void`，并把「哪一格正在编辑」的判定与 `data-dt-editing` 交给 01 已冻结的输出方式；`CellRendererProps` 同样增这几个字段，且其 `isEditing` 分支由 `<EditableCell>` 换成 `<CellEditorHost>`。
+### Step 9 · `src/components/DataTable/GridCell.tsx`（**01 新增，本册扩展**）+ `CellRenderer.tsx`（**修改**）
+
+`GridCellProps` 增可选 `cellType?: CellType`、`editorKind?: CellEditorKind`、`editable?: boolean`、`readOnlyReason?: CellReadOnlyReason | null`、`onCellWrite?: (write: CellWrite) => void`，并把「哪一格正在编辑」的判定与 `data-dt-editing` 交给 01 已冻结的输出方式；`CellRendererProps` 同样增这几个字段，且其 `isEditing` 分支由 `<EditableCell>` 换成 `<CellEditorHost>`。
 **为什么**：`data-dt-*` 的 DOM 契约由 01 收敛在 `GridCell`（契约册 §4.4 + 01 §3.7），本册只做**加法**，不动它的取值语义；编辑器分派只依赖 props 里的 `cellType`，**不依赖属性字符串**，因此两册可以各自演进（粒度统一见 §11 未决 #14）。**本册不改 `VirtualBody.tsx`**：它已由 01 的 Step 8 改为渲染 `GridCell` 并保证回调稳定，本册只需保证新增 props 稳定透传。**自测**：`npx vitest run src/components/DataTable`（既有 `VirtualBody.test.tsx`、`CellRenderer.*.test.tsx` 断言零改动通过；01 的 `GridCell.test.tsx` 保持通过）+ 新增断言 `onCellWrite` 收到 `CellWrite`。
 
-**Step 10** `DataTable.tsx`（**修改**）：`DataTableProps` 增可选 `onCellWrite?: (row: number, col: string, write: CellWrite) => void`、`cellTypes?: ReadonlyMap<string, CellType>`、`cellEditability?: (row: number, col: string) => CellEditability`、`readOnlyReason?: CellReadOnlyReason`、`setValueHandlers?: { onSetValue; onLoadCandidates }`、`enumCandidates?: ReadonlyMap<string, readonly string[]>`；全部**稳定引用**透传给 `GridCell`（经 `VirtualBody`）与右键菜单构造（`onSetValue` 存在时菜单走 `set-value` 子菜单，否则保持既有 `more-actions` 形状）。
+### Step 10 · `DataTable.tsx`（**修改**）
+
+`DataTableProps` 增可选 `onCellWrite?: (row: number, col: string, write: CellWrite) => void`、`cellTypes?: ReadonlyMap<string, CellType>`、`cellEditability?: (row: number, col: string) => CellEditability`、`readOnlyReason?: CellReadOnlyReason`、`setValueHandlers?: { onSetValue; onLoadCandidates }`、`enumCandidates?: ReadonlyMap<string, readonly string[]>`；全部**稳定引用**透传给 `GridCell`（经 `VirtualBody`）与右键菜单构造（`onSetValue` 存在时菜单走 `set-value` 子菜单，否则保持既有 `more-actions` 形状）。
 **为什么**：容器只做组合与透传，判断逻辑留在纯函数里。**自测**：`npx vitest run src/components/DataTable/__tests__/DataTable.test.tsx` 既有用例零改动通过；新增用例断言 `onCellWrite` 收到 `CellWrite`。
 
-**Step 11** `src/windows/connection/tableEditing.ts`（**新增**，纯逻辑：把 `TableState` + 列元数据算成 `columnCellTypes` / `resolveCellEditable` 的输入 / 候选值 provider 工厂）+ `src/windows/connection/TableView.tsx`（**修改**）：接上面新增的 props，注入 `onCellWrite` → `actions.stageCellWrite`、`loadCandidates` → `queryCommands.executeQuery(buildDistinctCandidatesSql(...))`、导航前 `resolveEditorBeforeNavigation()`；`PanelContentRenderer.tsx`（**修改**）给视图面板传 `readOnlyReason="view"`。
+### Step 11 · `src/windows/connection/tableEditing.ts`（**新增**，纯逻辑
+
+把 `TableState` + 列元数据算成 `columnCellTypes` / `resolveCellEditable` 的输入 / 候选值 provider 工厂）+ `src/windows/connection/TableView.tsx`（**修改**）：接上面新增的 props，注入 `onCellWrite` → `actions.stageCellWrite`、`loadCandidates` → `queryCommands.executeQuery(buildDistinctCandidatesSql(...))`、导航前 `resolveEditorBeforeNavigation()`；`PanelContentRenderer.tsx`（**修改**）给视图面板传 `readOnlyReason="view"`。
 **为什么**：`TableView.tsx` 原本已 770 行，接线逻辑必须落在独立模块（01 的 Step 10 抽出 `TablePendingChangesBar` 后约 660 行，本册只净增接线部分）。**与 01 的收敛点对齐**：`setPage` / `setPageSize` / `setSort` / `applyFilters` / `commitFetchedPage` / `invalidateCachedData` 都会把 `gridSelection` 与 `selectedRows` 重置（01 §4.3 的收敛点），因此这些路径必须**先** `resolveEditorBeforeNavigation()`（合法提交、非法中止导航），否则会出现「编辑器还开着、但它的焦点格已不在选择里」的不一致状态。**自测**：`npx vitest run src/windows/connection/__tests__/TableView.test.tsx`（既有用例零改动通过）+ 新用例：无主键表双击不调 `startEdit` 且给出原因文案；`readOnly` + `view` 时原因为 `view`；翻页时若有非法草稿则导航被中止。
 
-**Step 12** i18n + CHANGELOG + 收尾：在 `src/locales/en/query.ts` 添加第 8 节列出的 key（**只改英文侧**）；在 `CHANGELOG.md` 记录两条行为变更：JSON 非法输入由「提交原文」改为「阻止提交」、`point` 类几何类型由 `number` 色改为 `text` 色；补齐覆盖率。**自测**：`pnpm typecheck`、`npx vitest run --coverage`、`pnpm e2e:skip-build -- --spec e2e/specs/table-editors.ts`。
+### Step 12 · i18n + CHANGELOG + 收尾
+
+在 `src/locales/en/query.ts` 添加第 8 节列出的 key（**只改英文侧**）；在 `CHANGELOG.md` 记录两条行为变更：JSON 非法输入由「提交原文」改为「阻止提交」、`point` 类几何类型由 `number` 色改为 `text` 色；补齐覆盖率。**自测**：`pnpm typecheck`、`npx vitest run --coverage`、`pnpm e2e:skip-build -- --spec e2e/specs/table-editors.ts`。
 
 ---
 
@@ -621,7 +652,7 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | --- | --- | --- | --- | --- |
 | `src/lib/cellTypes.ts` | 新增 | 类型归一化表 + `resolveCellType` + 与渲染族的投影 | 180 | 否 |
 | `src/lib/cellEditorKind.ts` | 新增 | 控件分派、`coerceValue`、`resolveCellEditable` | 200 | 否 |
-| `src/lib/gridErrors.ts` | 新增 | `GridErrorCode` + `classifyGridError` 前缀匹配 + 原因→key | 95 | 否 |
+| `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 `grid.cell.*` 码，**禁止整文件覆盖** | +20 | 否 |
 | `src/lib/cellEditorCandidates.ts` | 新增 | `SELECT DISTINCT … LIMIT 200` 纯构造器 | 70 | 否 |
 | `src/lib/dataTypeColors.ts` | 修改 | 既有 API 不变，内部改为投影单一路径 | 56 → 60 | 否 |
 | `src/lib/databaseMeta.ts` | 修改 | 增 `DatabaseTypeMeta.cellTypes?: CellTypeHints` | 211 → 218 | 否 |
@@ -827,10 +858,10 @@ export function resolveEditorBeforeNavigation(panelId: string): EditorNavigation
 | 4 | 方言陷阱（SQL Server `timestamp`/`rowversion`、MySQL `tinyint(1)`、ClickHouse `FixedString`）靠共享表还是靠驱动 `cellTypes` 覆盖 | 建议 **共享表负责通用 SQL 名，驱动覆盖负责方言陷阱**；本册必须为 sqlserver 的 `timestamp` 与 mysql 的 `tinyint(1)` 各写**一条驱动 hints 的单测**（不需要真驱动） |
 | 5 | 生成列（generated/computed）的识别：`ColumnSchema`（`packages/driver-sdk`）没有 `isGenerated` 字段；SQL Server 的 `columns_sql` 虽已查出 `is_computed`/`generated_always_type`，但没有映射到 `ColumnSchema` | 建议本批只落地「自增列」判定；生成列作为 `driver-api` 的**新增可选字段**（`is_generated`，`#[serde(default)]`，不需要提升 `PROTOCOL_VERSION`）单独立项。本册把 `generated` 原因保留在联合类型里，当前恒不触发 |
 | 6 | 大值（> 64 KiB）的就地编辑：PRD DB-13 提到的 `load_cell_value` **不在**契约册 §5 冻结的 5 个新方法内 | 建议 **v1 不新增后端入口**：大值只读展示 + 尺寸 + 「复制到文件」，等 DB-13 落地专用入口后再开编辑。理由是契约册只冻结了 5 个方法，本册不得越权发明第 6 个 |
-| 7 | 新增 DOM 属性 `data-dt-readonly="<reason>"`（测试与 E2E 需要；契约册 §4.4 与 01 的 §3.7 都只冻结了 `data-dt-selected` / `data-dt-dirty` / `data-dt-editing` / `data-dt-cell-type`，**尚未**包含它） | 建议**并入契约册 §4.4 与 01 的 `GridCell`**（与其同族，只增不改，输出点仍在 `GridCell`）；在获批前本册的测试不得依赖它，只读原因改用「`grid.cell.readOnly` + 具体文案」断言 |
+| 7 | ~~新增 DOM 属性 `data-dt-readonly="<reason>"`（契约 §4.4 与 01 的 §3.7 当时都**尚未**包含它）~~ | **已裁定并关闭：已并入契约 §4.4 全量属性总表，创建归属 05**。本册**可以**在测试与 E2E 中依赖 `data-dt-readonly`（不必退化为只断言文案）；`data-dt-null` 同样归 05（01 的 Q9 已裁定）。输出点仍在 `GridCell`，与 `data-dt-cell-type` 同族、只增不改 |
 | 8 | 无效输入是否需要独立错误码（如 `grid.cell.invalidValue`） | 建议 **v1 不进契约册 §8.2**：编辑器行内错误 + 「N 格待修正」计数已足够。若 DB-06/DB-10 需要跨面板统一呈现「哪些格待修正」，再作为 §8.2 的新条目提案 |
 | 9 | `DataTable.tsx` 与 `TableView.tsx` 的行数预算（DB-02/03/06/10 都会动这两个文件） | **已由 01 的前置抽取解决**：01 的 Step 9 把右键菜单搬到 `useDataTableContextMenu.ts`（`DataTable.tsx` 628 → ~450），Step 10 把暂存条搬到 `TablePendingChangesBar.tsx`（`TableView.tsx` 770 → ~660），Step 3/4 把选择转移搬到 `selectionActions.ts`（`tableDataStore.ts` 722 → ~700）。本册因此在其基线上分别净增 ~45 / ~25 / ~50，**不再触红线**；但 02/03/06/10 仍须各自核算，集成方统一复核 |
-| 10 | 01 的接口面是否够本册用 | **已确认够用（01 已落盘）**。本册消费：`gridSelection.ts` 的 `CellCoord` / `CellRange` / `GridSelection` / `EMPTY_GRID_SELECTION` / `normalizeCellRange` / `gridSelectionContains` / `rowsCoveredBySelection(selection, columnOrder): number[]` / `moveCellFocus` / `selectionFromAnchorFocus`；`useGridSelection.ts` 的 `surfaceProps` / `isCellSelected` / `activeDescendantId` / `focusKey`；`GridCell` 与 `GridCellProps`；store 的 `setGridSelection` / `clearGridSelection` / `beginCellSelection` / `reconcileGridSelectionForColumns`；`gridEventGuards.ts` 的 `isComposingEvent` / `isEditableTarget`。**不需要 01 再新增任何导出**——本册的「Tab 提交后进入下一格」用 `moveCellFocus`（纯函数）+ `setGridSelection`（写回）+ 本册的 `requestEdit(coord)` 即可表达。**唯一仍然需要 02 的**：把 `Enter` / `Tab` 接进 `surfaceProps.onKeyDown` 并调用本册暴露的 `requestEdit`；本册只提供入口，不注册网格级快捷键 |
+| 10 | 01 的接口面是否够本册用 | **已确认够用（01 已落盘）**。本册消费：`gridSelection.ts` 的 `CellCoord` / `CellRange` / `GridSelection` / `EMPTY_GRID_SELECTION` / `normalizeCellRange` / `gridSelectionContains` / **`rowsCoveredBySelection(state): ReadonlySet<number>`（单参数；返回 `ReadonlySet` 而非 `number[]`，见契约 §4.2.1）** / `moveCellFocus` / `selectionFromAnchorFocus`；`useGridSelection.ts` 的 `surfaceProps` / `isCellSelected` / `activeDescendantId` / `focusKey`；`GridCell` 与 `GridCellProps`；store 的 `setGridSelection` / `clearGridSelection` / `beginCellSelection` / `reconcileGridSelectionForColumns`；`gridEventGuards.ts` 的 `isComposingEvent` / `isEditableTarget`。**不需要 01 再新增任何导出**——本册的「Tab 提交后进入下一格」用 `moveCellFocus`（纯函数）+ `setGridSelection`（写回）+ 本册的 `requestEdit(coord)` 即可表达。**唯一仍然需要 02 的**：把 `Enter` / `Tab` 接进 `surfaceProps.onKeyDown` 并调用本册暴露的 `requestEdit`；本册只提供入口，不注册网格级快捷键 |
 | 11 | Set Value 是否作用于整个选择区域（多格） | 建议 **v1 只作用于右键命中的那一格**（`multiRowSelection` 时沿用既有的「不做单格动作」规则），多格批量走 DB-03 粘贴路径；理由是批量 `Set NULL` 需要一个明确的「N 格将被改为 NULL」确认，属独立交互设计。若将来要做多格，目标集必须取 01 的 `rowsCoveredBySelection` / `selectionRanges`，**不得**把派生行集写回 `selectedRows`（契约册 §4.3） |
 | 12 | 枚举候选值的取数实现：宿主拼 `SELECT DISTINCT` vs 新增 Driver Command | 建议 **宿主拼**（复用 `queryCommands.executeQuery` + `escapeIdent`，已有「`formatRowAsSqlInsert` 在宿主拼 SQL」的先例），但必须写清边界：只构造单条 `SELECT DISTINCT`、只用于候选值、不参与写路径；若后续有驱动声明「不支持 DISTINCT 列采样」，再升级为 Driver Command |
 | 13 | ~~契约册 §7 `DataGridCapabilities.editable` 缺省值矛盾~~ | **已按本册建议冻结（契约册 §7 已改）**：字段名冻结为 `DatabaseTypeMeta.dataGrid?: DataGridCapabilities`，`editable` **缺省 `true`**（只有显式 `false` 才关闭写入，等价于今天 `isEditable = !isConnectionReadOnly`，符合 R4）。本册 §3.7 与正文已同步，不再需要「字段名未冻结时的退路」兜底逻辑 |

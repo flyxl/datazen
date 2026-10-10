@@ -4,7 +4,7 @@
 > **依赖**：`00-contracts.md`（§1.4 计划/提交链路与 `fingerprint`/`affected == 1`、§3 `CellWrite` 三态、§4.3 选择状态永不参与写操作定位、§8 错误前缀机制、第 10 节写作模板）；`01-selection.md`（选择与写路径解耦、重取数清空选择）；分册 04（行身份）；`05-editors.md`（编辑态与输入法）；`06-dirty-cells.md`（脏单元格呈现与提交入口）。
 > **被谁依赖**：`12-testing.md`（本册新增的表驱动负例进入回归矩阵）；后续任何「查询结果集内写入」能力（批量粘贴、结果集批注、AI 生成变更）都必须先经过本册的判定层。
 > **预估人日**：3.5 人日（判定层与驱动契约 1.5 / 前端只读化与原因解释 1.0 / 测试 1.0）。
-> **不包含**：INSERT 新增行；结果网格内的删除；跨行批量写入（`applyColumnToRows` 语义）；视图与物化视图的可写性；唯一键/伪主键定位；`CellWrite` 在查询结果链路上的完整落地（属分册 06）；驱动侧的 SQL 文本解析；事务语义变更。
+> **不包含**：INSERT 新增行；结果网格内的删除；跨行批量写入（`applyColumnToRows` 语义）；视图与物化视图的可写性；唯一键/伪主键定位；`CellWrite` 在查询结果链路上的完整落地（**属分册 04**，`CellWrite` 是 04 的落地契约）；驱动侧的 SQL 文本解析；事务语义变更。
 
 ---
 
@@ -83,9 +83,17 @@
 
 **观察结论**：该函数**只改本地结果副本**，没有持久化、没有写回数据库、没有计划、没有 `fingerprint`、没有 `affected == 1` 校验。**任何以它为终点的编辑路径必然是数据丢失路径。**
 
-### 2.3 仓库里没有 SQL 结构解析器
+### 2.3 宿主拿不到 SQL 结构解析器（解析能力在驱动 crate 里，但不可达）
 
-`src-tauri/src/sql_guard/` 只有安全扫描，可复用的符号是：`reject_null_bytes`、`normalize_fullwidth`、`strip_sql_comments`、`normalize_sql`、`check_sql`、`is_write_sql`、`apply_params`，外加 `scanner.rs`。
+**先纠正一个容易犯的错：仓库里确实有结构解析器，只是宿主用不上。** `sqlparser = 0.59` 是 `packages/driver-api` 与 6 个 path 驱动的依赖（clickhouse / sqlite / postgres / mysql / sqlserver / duckdb），每个驱动各有自己的 `src/sql_target.rs`，用它把未限定的表引用补上 schema（对外只暴露 trait 方法 `qualify_sql_target`，解析失败则原样透传）。但：
+
+1. **`src-tauri/Cargo.toml` 没有声明 `sqlparser`**，所以宿主代码**不能直接 `use sqlparser`**。⚠ 需要说清的是：宿主**编译期**其实能编译到它——`datazen-driver-api` 是 workspace 依赖，`sqlparser` 在它的依赖图里；但 Rust 的依赖**不传递可见**，没有 `use` 声明就用不了。所以结论是「**用不了**」，不是「**不存在**」——这两者的差别正是本册要把解析放进 Driver Command API 的理由；
+2. 驱动侧的 `mod sql_target` 是**私有模块**，不导出任何 AST；宿主与驱动之间只经 `DriverRegistry` / `execute_driver_command` 通信，拿不到对方的内部类型；
+3. 就算把它提到宿主，`sql_target.rs` 干的是「补 schema 限定」这一件事，**没有** `FROM` / `JOIN` / 聚合 / 列归属的提取逻辑可复用。
+
+所以本册的结论不变（宿主不做 SQL 文本解析），但**理由是「不可达」而不是「不存在」**。这也是第 3 节把 `describe_result_origin` 设计成 **Driver Command API 方法**的直接原因：解析能力天然长在驱动侧，就该由驱动回答，宿主只负责拼装与降级。
+
+宿主侧 `src-tauri/src/sql_guard/` 只有安全扫描，可复用的符号是：`reject_null_bytes`、`normalize_fullwidth`、`strip_sql_comments`、`normalize_sql`、`check_sql`、`is_write_sql`、`apply_params`，外加 `scanner.rs`。
 
 这些符号回答的是「这条 SQL 是否危险 / 是否写语句 / 参数如何绑定」，**没有一个能回答「这条 SELECT 的结果来自哪张表、是不是 JOIN、有没有聚合、某一列是不是直通列」**。因此「复用既有解析器判定可写回性」这条路在本仓库**不存在**。
 
@@ -515,7 +523,7 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 
 ### 3.7 为什么不用宿主侧的 SQL 文本解析（本册最核心的否决）
 
-1. **仓库里没有结构解析器**（§2.3）。`sql_guard` 全部符号都是安全扫描语义，无法回答来源问题。要新增一个解析器，等于在宿主里手写 SQL 方言解析——而 DataZen 支持多方言，宿主一旦按方言分支就违反「零硬编码」。
+1. **宿主拿不到结构解析器**（§2.3）：`sqlparser` 只声明在 `driver-api` 与 6 个 path 驱动 crate 里，`src-tauri` 未声明该依赖（宿主**用不了**它），驱动侧的解析模块也不导出 AST；宿主侧的 `sql_guard` 全部符号都是安全扫描语义，无法回答来源问题。要新增一次来源判定，只能走 **Driver Command API**。
 2. **正则/手写解析必然出错**：`SELECT *` 后面可能是 JOIN；`FROM t1, t2` 是隐式 JOIN；CTE、派生表、`WITH ... AS MATERIALIZED`、方言特有语法（`QUALIFY`、`UNNEST`、`LATERAL`、`PIVOT`）会让任何启发式破产。**判断错一次的代价不是少一个功能，而是生成一条会误伤多行的 UPDATE。**
 3. **结果集的列信息不携带来源**（§2.4）。就算解析出 `FROM orders`，宿主也无法知道结果第 3 列来自 `orders.total` 还是 `orders.quantity * orders.price`；不知道这一点就无法写出正确的 `SET` 列名。
 4. **别名会让文本解析定位错列**：`SELECT id AS order_id` 时按结果列名写回会写成 `SET order_id = ...`（错列或不存在）；`FROM orders o` 时按解析出的 token 写回会写成 `SET ... UPDATE o`（错表名）。
@@ -633,7 +641,7 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 
 ### Step 5 · 错误分类器
 
-- **改哪个文件**：新增 `src/lib/gridErrors.ts`。
+- **改哪个文件**：`src/lib/gridErrors.ts`（**01 已建骨架**；本册按契约 §8.1 三步追加 6 个只读原因码，**禁止整文件重写**）。
 - **加什么符号**：`classifyGridError`、`GridErrorClass`。
 - **为什么**：`CommandError` 到 IPC 是无 `code` 的脱敏字符串，前端只能按前缀匹配；未知前缀必须回退原文，避免把新错误吞成「未知错误」。
 - **怎么自测**：`npx vitest run src/lib/__tests__/gridErrors.test.ts` —— 覆盖全部 6 个前缀；断言未知前缀回退为 `{ kind: 'unknown', message: <原文> }` 且原文一字不改。
@@ -684,13 +692,13 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 | `src-tauri/src/commands/mod.rs` | 修改 | 登记新命令模块 | ~2 | 否 |
 | `src/commands/query.ts` | 修改 | 两个 IPC wrapper | ~25 | 否 |
 | `src/lib/resultEditability.ts` | **新增** | 前端镜像类型 + `resolveGridEditability` + 文案 key 映射 | ~180 | 否（新文件） |
-| `src/lib/gridErrors.ts` | **新增** | `classifyGridError` 前缀分类 | ~60 | 否（新文件） |
+| `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 6 个只读原因码，**禁止整文件覆盖** | +20 | 否 |
 | `src/stores/panelResultEdit.ts` | **新增** | 判定缓存与结果网格编辑状态切片 | ~140 | 否（新文件） |
 | `src/stores/panelStore.ts` | 修改 | 最小接线（暴露切片入口 / 复用 `updateResultCell`） | **≤ 15** | **实测 728 行 → 加 15 行 = 743，仍在上限内**；超过 15 行即视为失败，须整体搬入新文件 |
 | `src/windows/connection/ContentViewDrawers.tsx` | 修改 | `handleDetailFieldEdit` 的 `query` 分支改为判定驱动；只读出口 | ~55 | 否（实测 228 行） |
 | `src/locales/en/query.ts` | 修改 | 追加只读原因与错误文案 key | ~30 | 否（实测 424 行） |
 | `src/lib/__tests__/resultEditability.test.ts` | **新增** | 行级合并判定单测 | ~140 | 否 |
-| `src/lib/__tests__/gridErrors.test.ts` | **新增** | 前缀分类单测 | ~70 | 否 |
+| `src/lib/__tests__/gridErrors.test.ts` | **修改（追加）** | 01 已建；本册只增本册前缀的断言用例，**禁止重写整个测试文件** | +30 | 否 |
 | `src/windows/connection/__tests__/ContentViewDrawers.resultReadOnly.test.tsx` | **新增** | 只读时禁止编辑的组件测试 | ~160 | 否 |
 | `src/windows/connection/__tests__/resultGridEditability.journey.test.ts` | **新增** | 连续旅程（击键全流程）测试 | ~200 | 否 |
 | `e2e/specs/result-grid-readonly.spec.ts` | **新增** | E2E 只读链路与「零写调用」断言 | ~120 | 否 |
@@ -715,8 +723,8 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 | B-11 | **`SELECT *`** | `SELECT *` 本身**不**构成可写理由。单表 `SELECT *` 且主键在结果中 → 可写；JOIN 上的 `SELECT *` → `multiTable` 只读。**判定完全依赖驱动声明，不依赖 SQL 文本** | 视情形 |
 | B-12 | **结果为空** | 表级判定照常计算并展示（可写则显示可写态）；无行可编辑；不报错、不弹提示 | — |
 | B-13 | **只读连接 / 只读会话** | 只读；文案「当前连接是只读的」。判定层消费 `session_writable`，接线时复用既有连接只读标志，**不新增平行概念** | `sessionReadOnly` |
-| B-14 | **无权限** | 判定层**不猜**权限（不因「可能有权限」放行，也不因「可能没权限」拦截）。提交阶段由数据库拒绝 → `grid.result.writeDenied: <数据库原文>`，界面显示失败、保留原值、**绝不**显示成功 | — |
-| B-15 | **行被他人改动** | `WHERE` 用的是取数时的原值快照；若原值已被改，WHERE 不命中 → `affected == 0` → 计划链路拒绝（既有 `affected == 1` 校验）。界面提示「该行已被他人修改，请重新执行查询」，保留原值 | — |
+| B-14 | **无权限** | **判定层不猜**权限（不因「可能有权限」放行，也不因「可能没权限」拦截）。提交阶段由数据库拒绝 → 错误码 `grid.result.writeDenied`，**但用户可见文案必须由宿主重写**（契约 §4.5 W-6：`CommandError` 的序列化只做凭据脱敏、不处理绝对路径，直接回显会把本机目录结构暴露到界面与日志）。原样文案：`grid.result.writeDenied: 本次写入被数据库拒绝（权限或约束）`，数据库原文只进日志。界面显示失败、保留原值、**绝不**显示成功 | — |
+| B-15 | **行被他人改动** | **本设计不检测并发冲突**（契约 §4.5 W-5）。`WHERE` **只带行身份（主键）谓词**，**不含**任何非主键列的旧值；因此别人改过这一行的其他列时，本方提交会**静默覆盖**（last-writer-wins），界面**不得**提示「已被他人修改」。唯一会暴露的是 `affected == 0`（行已被删）→ 计划链路拒绝（既有 `affected == 1` 校验），此时提示「该行已不存在，请重新执行查询」，保留原值。**禁止**把非主键列的原值塞进 `WHERE`——那会让「我改了这一列」反过来变成「我只能改这一列」 | — |
 | B-16 | **定位键取值为 NULL** | 页面级判定 → 只读（`NULL` 无法参与 `=` 比较，写 WHERE 会命中 0 行或误伤） | `keyValueNull` |
 | B-17 | **定位键在已取到的行内重复** | 页面级判定 → 只读。即使 `affected == 1` 能兜住，也应在判定层拒绝，避免用户在编辑后才发现 | `duplicateIdentity` |
 | B-18 | **驱动谎报**（`columns` 长度与结果列数不一致 / 列名重复 / `passthrough` 为真但 `source_column` 为 `None` / 列来源表与 `detail.table` 不一致） | 整体降级 `unknownOrigin` 语义 → 只读，原因码 `ambiguousOrigin`；同时记 warn 日志，便于定位驱动缺陷 | `ambiguousOrigin` |

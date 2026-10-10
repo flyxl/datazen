@@ -161,7 +161,7 @@ preview_pending_changes          // tauri command：生成计划
 commit_pending_changes           // tauri command：提交
   └─ commit_pending_changes_impl // pub(crate)：加锁、校验指纹、取连接
        └─ execute_row_change_plan_impl  // 真正逐条执行
-commit_row_updates / commit_row_deletes   // 遗留批量入口（按列数组，非计划驱动）
+（遗留入口 `commit_row_updates` / `commit_row_deletes` 按 C-1 已裁定删除，不再是本设计的链路一环）
 ```
 
 相关 DTO（**都是已存在的，新增字段要遵守第 2 节铁律**）：
@@ -353,7 +353,14 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1;
 
 ### R2 · 新增 trait 方法必须有默认实现
 
-所有 `DatabaseDriver` 新增方法都必须给出默认实现，且默认行为**等于今天的行为**。这样任何驱动（含本项目 50+ 个 path 驱动与 git 驱动）不改一行代码仍然编译通过、行为不变。
+所有 `DatabaseDriver` 新增方法都必须给出默认实现。这样任何驱动（含本项目 50+ 个 path 驱动与 git 驱动）不改一行代码仍然编译通过。
+
+默认实现的**约束**是**单向的**：允许**扩大**能力面，不得**移除或改变**今天已有的能力。
+
+- **允许**：默认实现可以返回比今天更多的结果（例如 `supported_filter_operators` 默认返回 19 个算子，而今天只有 10 个）——宿主侧的渲染器能处理全部 19 个，扩大能力面对旧驱动只会更宽松。
+- **禁止**：默认实现不得让今天能用的路径变得不可用、不得改变今天既有方法的返回值语义、不得要求驱动必须实现才正确。
+
+⚠ 本条**不是**「默认行为逐字等于今天」。凡默认实现刻意扩大能力面的，必须在方法注释里写明「今天的返回值是什么、为什么默认改成这样」，以便驱动作者知道覆盖点在哪。参见 §5.2 的 `supported_filter_operators` 与 §5.4 的 `default_order_columns`。
 
 ### R3 · 前端与 Rust 的 JSON 契约靠 serde 自动映射
 
@@ -361,7 +368,10 @@ Rust 侧结构体已标 `#[serde(rename_all = "camelCase")]`，前端用 camelCa
 
 ### R4 · 默认值必须等于今天的语义
 
-- 新增能力字段默认 `false` 或「不支持」；
+- 新增能力字段的缺省值必须等于**今天该能力缺失时的实际行为**，且在字段注释里写明这个「今天的行为」是什么。**不是无条件填 `false`**：
+  - 今天默认**不可用**的能力（如 `insertReturning`）填 `false`；
+  - 今天默认**可用**的能力填 `true`（如 `DataGridCapabilities.editable`——今天所有驱动都没声明过该字段，前端一律按可编辑渲染，缺省必须是 `true`；填 `false` 会让所有未声明 `dataGrid` 的驱动一夜之间变只读，这正是本条要防的回归）；
+  - 枚举类（如 `countStrategy`）缺省填**今天走的那条分支**，不是「最严格的那个」。
 - 新增枚举分支必须在旧数据上反序列化成功（能用 `#[serde(default)]` 就用）；
 - 新增 UI 交互在能力缺失时应**隐藏入口**，而不是渲染一个点了报错的按钮。
 
@@ -535,6 +545,30 @@ export interface GridSelection {
 
    行级操作在 `mode === 'cell'` 且用户未显式选择整行时，其作用域**必须**在 UI 上说清（例如「将删除区域覆盖的 12 行」），不能让用户以为只删了当前行。
 
+   #### 4.2.1 `rowsCoveredBySelection` 的冻结签名（**唯一合法形状**）
+
+   ```ts
+   // 落在 src/stores/tableData/gridSelection.ts（01 创建），纯函数
+   export function rowsCoveredBySelection(state: GridSelection): ReadonlySet<number>;
+   ```
+
+   **本节是唯一权威形状，已冻结。** 各分册此前出现过三种互斥写法，全部以本节为准：
+
+   | 曾出现的写法 | 出现位置 | 裁定 |
+   | --- | --- | --- |
+   | `(state) => ReadonlySet<number>` | 本契约、03、06 | ✅ **唯一合法** |
+   | `(selection, columnOrder) => number[]` | 01、05 | ❌ **作废** |
+   | `rowsCoveredBySelection(...).size` | 03 | ✅ 仅当返回 `ReadonlySet` 才成立 |
+
+   **两条禁止项，违反其一即 `pnpm typecheck` 失败或语义反了**：
+
+   1. **不得加第二参数。** `columnOrder` 是**列**的顺序，而本函数返回**行**下标集合——区域求覆盖行集只需要行坐标与 `extraRanges`，列顺序对它没有影响。加一个用不上的参数会诱使实现去读列序，从而把「列」和「行」两种下标混进同一个 `number[]`/`Set<number>`，是静默数据错误的入口。
+   2. **不得返回 `number[]`。** 返回值必须是 `ReadonlySet<number>`，理由有三：调用方需要的是**成员判定**（`has(i)`）而不是**有序列表**；`ReadonlySet` 在类型层面就禁止调用方误写回去；并且 03 的既有断言写作 `rowsCoveredBySelection(state).size > 0`——`number[]` 没有 `.size`，`pnpm typecheck`（含测试文件）会当场失败。
+
+   **判定口径**：`mode === 'row'` 时必须**直接返回 `selectedRows` 本身**（不拷贝），这样 02 的 `Cmd+A` 路径零派生、零歧义；`mode === 'cell'` 时用 `selectionRanges(anchor, focus, extraRanges)` 逐个区间 `[Math.min, Math.max]` 取并集去重后构造新 `Set`。
+
+   **本函数是纯读取**：`pnpm typecheck` 覆盖测试文件，因此**任何分册若写了 `.add(...)` / `.delete(...)` / 遍历中改写，都必须改成重新调用本函数**；禁止把返回的 `Set` 转成数组后传给 `buildRowsMatrix`，除非那个函数签名本身就是 `Iterable<number>`（03 的 `rowIndices` 参数按此执行）。
+
 ### 4.3 与行身份的边界（最重要的一条）
 
 **选择状态只存在于 UI 层，永远不参与写操作定位。** 任何写路径的转换链条固定为：
@@ -556,6 +590,24 @@ CellCoord.rowIndex
 - **必须有的测试**：`setPage` / `setSort` / `applyFilters` 各一条用例，断言调用后 `selectedRows` 为空、`lastSelectedIndex` 为 `null`、`gridSelection.mode === 'none'`。
 - 本项由 **DB-01（分册 01）** 负责，03 的 U-1 独立复现了同一结论，两册结论一致。
 
+#### 现状事实（已逐个收敛点核实，分册不得另行改写）
+
+上表的「三处收敛点」行为**并不一致**，此前多份分册曾各自给出不同说法，这里一次性核实并冻结。各分册引用本表，**不要**再写自己的版本：
+
+| 收敛点 | `selectedRows` | `lastSelectedIndex` |
+| --- | --- | --- |
+| `commitFetchedPage`（取数成功提交页数据） | 已清空 | **未清空** |
+| `invalidateCachedData`（缓存失效） | 已清空 | **未清空** |
+| `patchPanelForReload`（`setPage` / `setPageSize` / `setSort` / `setFilters` / `applyFilters` / `clearFilters` 全部经此） | **未清空** | **未清空** |
+
+据此可知三条各自为真的事实，请勿再当作互相矛盾：
+
+1. 「`patchPanelForReload` 从不清 `selectedRows`」——**真的**，这是本项要修的主缺陷；
+2. 「`commitFetchedPage` 清空 `selectedRows` 是既有行为」——**真的**，01 / 06 引用这句话指的就是这一处，不是矛盾；
+3. 「`setPage` / `setPageSize` / `setSort` 都不清空 `selectedRows`」——**真的**，因为它们走的是 `patchPanelForReload` 而非 `commitFetchedPage`。
+
+**顺带暴露的第二个缺陷**：`lastSelectedIndex` 在**三处都没有**被清空。`selectedRows` 被清空后它仍指向旧下标，Shift + 点击会以陈旧锚点拉出一个跨页区间——用户点一下 Shift 键就选中了跨越前后两页的一批行。修复必须**同时**清 `selectedRows` 与 `lastSelectedIndex`，只清前者等于缺陷还在。
+
 ### 4.4 DOM 属性扩展
 
 在既有 `data-dt-row` / `data-dt-col` 基础上新增（供 E2E 与右键菜单使用，**不得**用几何坐标替代）：
@@ -566,6 +618,38 @@ CellCoord.rowIndex
 | `data-dt-dirty` | `"true"` / 不存在 | 该单元格有未提交改动 |
 | `data-dt-editing` | `"true"` / 不存在 | 该单元格正被编辑器占用 |
 | `data-dt-cell-type` | 归一化后的类型名（最终为 `CellType` 的 11 个值） | 供类型感知编辑器与测试使用 |
+
+**全量 `data-dt-*` 属性总表（唯一权威，禁止任何分册另起名字）**
+
+上一张表只列了 4 个「在既有 `data-dt-row` / `data-dt-col` 之上新增」的属性，但 12 个分册里实际用到了 16 个 `data-dt-*` 名字，且它们此前分散在各册自述、命名互相冲突（同一个滚动容器在 01 叫 `data-dt-surface`、02 叫 `data-dt-grid`、03 叫 `data-dt-grid-surface`）。E2E 与单元测试都靠这些选择器定位，**两处分册写同一个元素用了不同名字，测试只会有一边能跑通，且没有编译错误**。因此在下表固化全量命名与归属：
+
+| 属性 | 落在哪个元素 | 值 | 语义 | **创建归属** |
+| --- | --- | --- | --- | --- |
+| `data-dt-row` | 行容器（既有） | 行索引 | 行标识 | 既有 |
+| `data-dt-col` | 单元格（既有） | 列标识 | 列标识 | 既有 |
+| `data-dt-selected` | 单元格 | `"true"` / 不存在 | 该单元格处于当前选择内 | **01** |
+| `data-dt-surface` | **滚动容器**（网格可视区根） | 固定 `""` | 网格外层锚点；`role="grid"`、`tabIndex={0}`、`aria-rowcount`/`aria-colcount`/`aria-activedescendant` 都挂在这里 | **01**（统一取代 02 的 `data-dt-grid`、03 的 `data-dt-grid-surface`） |
+| `data-dt-row-view` | 行容器 | 行索引 | **roving tabindex 的行级焦点宿主**（`tabIndex={-1}`）。与既有 `data-dt-row` 并存且值相同，**故意不同名**：`data-dt-row` 是数据语义，`data-dt-row-view` 是交互语义，改动其一不得波及另一个 | **01** |
+| `data-dt-selection-rows` | 行容器 | `"true"` / 不存在 | 该行属于当前行选择（`mode === 'row'`） | **01** |
+| `data-dt-selection-cols` | 列头容器 | `"true"` / 不存在 | 该列属于当前列选择 | **01** |
+| `data-dt-selection-cells` | 单元格 | `"true"` / 不存在 | 该单元格属于当前 cell 选择范围 | **01** |
+| `data-dt-cell-type` | 单元格 | 归一化类型名 | 类型感知编辑器与测试（见下方收敛说明） | 01 先用 `classifyDataType`，**05 换成 `resolveCellType`** |
+| `data-dt-editing` | 单元格 | `"true"` / 不存在 | 该单元格正被编辑器占用 | **05**（01 只加样式 hook，不加此属性） |
+| `data-dt-editor-owned` | 单元格 | `"true"` / 不存在 | 编辑器已接管该格，外部点击不得抢焦点（IME / 组合态） | **05** |
+| `data-dt-readonly` | 行容器或网格根 | `"true"` / 不存在 | 该范围只读，来自 `DataGridCapabilities.editable` | **05** |
+| `data-dt-dirty` | 单元格 | `"true"` / 不存在 | 该单元格有未提交改动 | **06** |
+| `data-dt-row-state` | 行容器 | `"dirty"` / `"error"` / 不存在 | 行级聚合态（该行存在脏格或行级错误） | **06** |
+| `data-dt-null` | 单元格 | `"true"` / 不存在 | 该格值为 SQL `NULL` | **05**（按 01 的 Q9 裁定：NULL 是**值**的属性，不得污染 `data-dt-cell-type` 的列类型语义） |
+| `data-dt-cell-error` | 单元格 | `"true"` / 不存在 | 该格最后一次写入被后端拒绝 | **03** |
+| `data-dt-fk` | 单元格 | 引用目标标识 | 该格是外键值，值即 `data-dt-fk` 的目标 | **07** |
+| `data-dt-fk-click` | 单元格 | `"true"` / 不存在 | 该外键格可点击跳转（**必须**同时具备 `data-dt-fk`，否则 E2E 会点到不可导航的格） | **07** |
+
+**四条使用纪律（违反了测试与实现会各说各话）**：
+
+1. **禁止新起名字**。要表达新语义，先在本表加行（含创建归属），再在各册引用。禁止出现 `data-dt-grid` / `data-dt-grid-surface` 这类同义异名。
+2. **禁止 `data-dt-row-view` 与 `data-dt-row` 合并**。二者值相同是刻意的：前者是 roving tabindex 的选择器契约（02 的 6 条 `[tabindex="0"]` 迁移断言依赖它），后者是数据行标识（既有 E2E 依赖它）。合并会让其中一批测试静默失配。
+3. **一册只创建自己那一行的属性**，需要别的属性时等该册合并。例外仅两处：`data-dt-cell-type`（01 建、05 换来源，见下）与 `data-dt-row-view`（01 建，02 只用不改）。
+4. **断言用属性存在性，不写行号、不用几何坐标**（`AGENTS.md` 「数据属性解耦」）。`data-dt-*` 出现在测试里时，**同名必须同值**；禁止 `getAttribute('data-dt-row')` 取到 `null` 却在 `expect(...).toBe('3')` 上失败这类跨册失配。
 
 **`data-dt-cell-type` 的取值收敛（按提交顺序分段，避免依赖倒置）**：类型分类的**唯一权威**是 `CellType`（11 个值，由 05 在 `src/lib/cellTypes.ts` 落地 `resolveCellType`）；既有的 `classifyDataType` → `DataTypeFamily`（7 族）降级为**颜色投影**（`dataTypeColors.ts` 的 token 查表继续用它，行为不变）。但 `cellTypes.ts` 由 05 创建，而 01 先合并，因此该属性分两步收敛：
 
@@ -580,9 +664,62 @@ CellCoord.rowIndex
 - 02 只在此之上改焦点（roving `tabIndex`）与键盘行为，**不新增也不删除任何 ARIA 角色**；
 - 任何分册若只想引入其中一部分，必须先改本契约，**禁止半套**。这一点曾出现分歧（02 主张先不加、01 已规划要加），最终按"要么完整、要么不加"裁定为**完整**：单元格虚拟化的网格需要 `aria-activedescendant` 承担焦点，容器有 `tabIndex` 却没有角色同样是不完整的。
 
+**随之而来的前置改造（01 必须一并完成，否则角色加了也是错的）**：行容器一旦冠上 `role="row"`，其直接子元素的**内容模型就被限定为 `gridcell` / `rowheader` / `columnheader` 或它们在 `grid` 中的替代角色**。今天行号槽渲染的是 `<button>`，`<button>` 不在上述集合内——一旦行容器声明 `role="row"`，屏幕阅读器会把整个行号槽**当作无效内容直接丢弃**，等于「行号槽既不可聚焦也不可朗读」。
+
+因此 **01 的范围里增加一项**：行号槽从 `<button>` 改为 `<div role="rowheader">` + 内部**独立可聚焦**的 `<button>`（`tabIndex={-1}`，焦点由 roving tabindex 在行容器上统一管理），从而满足 `rowheader` 的内容模型并保住键盘可达性。**02 不得**因为「K-7 只加 tabIndex 不加 role」的理由新增或删除任何角色——它只改焦点；它的测试选择器需跟随 01 的改造后的 DOM，但**角色集合本身归 01**。
+
+### 4.5 写路径硬约束（覆盖**全部**写路径，不是某一册的局部要求）
+
+> 此前本约束只以章节局部要求的形式散落在各分册里，**没有任何一条覆盖所有写路径**。任何一条新链路只要不自查就会绕开它。以下四条是**全仓库级**铁律，对本设计集之外将来新增的任何写路径同样生效。
+
+**W-1 · 每条 UPDATE / DELETE 必须携带至少一个非 NULL 的行身份谓词。**
+
+即：拼给 `build_update_sql` / `build_delete_sql` 的 WHERE 片段，必须包含**该表主键列全集**且每个值都非 NULL 的等值条件。少一列、多一列、或任一主键值为 NULL，都必须在**生成 SQL 之前**拒绝，返回 `CommandError::Validation`。
+
+**W-2 · 拒绝发生在 SQL 生成之前，不是之后。**
+
+顺序固定为：`校验行身份 → 生成 SQL → 执行`。**禁止**先生成 SQL 再回头检查 WHERE 是否为空——`build_update_sql` 拿到空的 WHERE 片段时不会报错，它会照常产出一条无条件的语句。
+
+**W-3 · 行身份列集必须与 `CachedColumns.primary_keys` 逐字相等。**
+
+仅校验「非空」不够。既有 `canonicalize_changes` / `identity_key` 只要求主键 map **非空且值非 NULL**，**从不校验键集是否等于 `CachedColumns.primary_keys`**。后果：一张 `(tenant_id, order_no)` 复合主键表，若前端只传了 `{tenant_id: 7}`，就会生成 `WHERE "tenant_id" = 7` 并**静默影响成千上万行**。**复合主键必须全部提供，一列都不能少。**
+
+**W-4 · `affected == 1` 是最后一道兜底，不是唯一防线。**
+
+它能挡住「多行被影响」，挡不住「影响 1 行但改的是错的行」。W-1/W-2/W-3 任一缺失都必须靠它兜底，所以它必须**始终存在**；但**不得**因为有它就放松 W-1~W-3。
+
+#### 既有守卫登记：`validate_legacy_pk_columns` 是今天唯一的空 WHERE 防线，且必须随 C-1 迁移
+
+既有函数 `validate_legacy_pk_columns(columns, operation)`（位于 `src-tauri/src/commands/data.rs`，由 `build_row_change_plan` 链路在「Row update」/「Row delete」两处调用，配套测试 `commit_row_deletes_rejects_empty_pk`）是**当前仓库中唯一**真正阻止空 WHERE 落到 `build_delete_sql` / `build_update_sql` 的检查。
+
+它此前**在 14 份文档的盲区里无人提及**，而它所在的 `src-tauri/src/commands/data.rs`（1331 行）正是 DB-04 Step 1 要目录化为 `src-tauri/src/commands/data/{mod.rs,plan.rs,tests.rs}` 的那个文件——一次目录化就可能把它连同测试一起遗漏。
+
+**必须落地**：
+
+- 04 的目录化 Step **必须把 `validate_legacy_pk_columns` 与 `commit_row_deletes_rejects_empty_pk` 列为显式的迁移动作**，写进该 Step 的变更表，不得只写「拆分文件」；
+- 它的校验语义并入 W-1（注意：它只校验非空，**不含 W-3 的列集相等**，因此不能直接当作 W-1 的实现，它需要被加强）；
+- C-1 删除遗留入口后，该函数**不得随之删除**，其逻辑迁入新链路的 `row_change_plan.rs`；
+- `12-testing.md` 的门禁必须包含「`validate_legacy_pk_columns` 及其测试在拆分后仍然存在」这一条断言。
+
+**W-5 · 并发覆盖必须显式承认，不得声称"只影响刚选中的那一行"。**
+
+既有实现里，行身份快照只**采集**被编辑列的原值，**不含**并发校验。若两个客户端同时编辑同一行的**不同**列，后提交的一方会**静默覆盖**先提交的一方（last-writer-wins）。这不是本次引入的缺陷，但分册文档**不得**把「用了行身份快照」表述成「不会覆盖别人的修改」——`10-result-grid.md` 曾写「原值快照」，属误导性措辞。
+
+本设计的取舍：**不实现乐观并发控制**（那是独立需求，需引入版本列或 `WHERE` 上的旧值谓词），但要求：
+
+- 文档与 UI 措辞**必须**如实描述为「以行身份定位并写入，不保证检测并发冲突」，禁止出现「只影响这一行」「不会覆盖」之类暗示隔离性的表述；
+- WHERE 只用**行身份**（主键）谓词，**不得**把非主键列的原值也塞进 WHERE——那会让「我改了这一列」反过来变成「我只能改这一列」；
+- 未来若引入乐观锁，另立需求，不得在本次实现中半途引入。
+
+**W-6 · 用户可见的写入拒绝原因不得回显数据库原始错误文本。**
+
+`CommandError` 的序列化只调用凭据脱敏（`redact_secrets_for_log`），而该脱敏器**只覆盖 4 类凭据模式，不处理绝对路径**。因此像 `grid.result.writeDenied` 这类码若直接携带数据库原文，会把本机目录结构暴露到界面与日志中。凡是写入被拒的文案，必须由宿主**重写成自己的话**，原始错误只进日志且同样受日志脱敏约束。
+
+同理，DB-04 的 `parameter_summary` / `value_summary` 是**截断**（120 字符），**不等于脱敏**——截断后仍可能保留可识别的业务数据。摘要字段只用于展示与日志，**不得**进入 IPC 返回体的持久化路径。
+
 ---
 
-## 5. `driver-api` 新增方法契约（共 5 个，全部带默认实现）
+## 5. `driver-api` 新增方法契约（共 13 个方法 / 分 5 组，全部带默认实现）
 
 以下方法签名是**最终形态**，分册不得改动；实现细节写在对应分册。
 
@@ -631,6 +768,26 @@ fn filter_operator_sql(
 fn like_is_case_insensitive(&self) -> bool {
     false
 }
+
+/// 本驱动 `LIKE` 的**模式串转义配置**。默认 `None` = **完全不转义**。
+/// 今天的 `format_condition` 就是 `{col} LIKE {literal}`（原样透传，用户输入的
+/// `%` / `_` 保持通配语义），因此未覆盖本方法的驱动**行为逐字节不变**（R4）。
+/// 返回 `Some(c)` 表示：宿主先把模式串里的 `c` 以及 `%` `_` 各转义成 `c` + 自身，
+/// 再交给下面的 `like_escape_clause` 决定是否附加 `ESCAPE` 子句。
+fn like_pattern_escape(&self) -> Option<char> {
+    None
+}
+
+/// 本驱动 `LIKE` 是否接受 `... ESCAPE 'x'` 子句。默认 `None` = 不发该子句。
+///
+/// **必须与 `like_pattern_escape` 成对判定**，只覆盖其一是错误配置：
+/// 转义符生效但不发出子句，意味着该方言把那个字符当普通字符，模式串里的转义标记
+/// 反而变成字面量——比不转义更糟。
+fn like_escape_clause(&self, escape_char: char) -> Option<&'static str> {
+    let _ = escape_char;
+    None
+}
+
 ```
 
 **算子集划分（最终定义，禁止分册自行增删）**：
@@ -647,6 +804,35 @@ fn like_is_case_insensitive(&self) -> bool {
 - `SHARED_FILTER_OPERATORS`：既有 10 个 + 共享扩展 9 个 = **19 个**，即 `supported_filter_operators()` 的默认返回值。方言专有的 3 个（`Regex` / `NotRegex` / `JsonContains`）**不在**其中。
 
 **兼容性说明**：给 `FilterOperator` 加变体会让「对枚举做穷尽匹配」的驱动代码**编译失败**——这是我们要的（响亮失败而非静默走错分支）。但**运行时**必须靠 `supported_filter_operators()` 兜底，因为「编译通过」不等于「数据库真的支持这个算子」。
+
+
+#### 5.2.1 `FilterCondition` 新增 `connector` 字段（DB-08，PRD `C-32`，P0）
+
+逐条 AND/OR 的唯一数据面改动，落在既有 DTO 上：
+
+```rust
+// packages/driver-api/src/filters.rs
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FilterConnector { And, Or }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilterCondition {
+    pub column: String,
+    pub operator: FilterOperator,
+    pub value: Option<Value>,
+    /// 本条件与**前一条**条件的连接符。第 0 条的值**无意义，渲染时必须忽略**。
+    /// 缺省（`None`）= 回落到全局 `filterLogic`，即今天的行为（R4）。
+    #[serde(default)]
+    pub connector: Option<FilterConnector>,
+}
+```
+
+- **R1 合规**：只新增字段，不改任何既有字段的类型或名字。`#[serde(default)]` 保证老调用方（不发该字段）反序列化后行为不变；R3 的 camelCase 自动映射使前端 `connector?: 'and' | 'or'` 自动对上，无需手写映射。
+- **前端镜像**：`src/types/index.ts` 的 `FilterCondition` 加 `connector?: 'and' | 'or'`（可选，与 Rust 的 `Option` 对称）。
+- **为什么是「与前一条的连接符」而不是「与后一条的」**：拼接是左到右的；挂在后一条上会让第 0 条永远没有连接符，渲染时反而要多判一次首项。挂在**当前条**上时，第 0 条的无意义值在渲染入口被显式丢弃，判断只有一处。
+- **与命名视图**：`NamedView.filters` 存的是同一结构，存盘形态随之带 `connector`（缺省不写）。老视图文件读出来全是 `None` ⇒ 全部回落到全局逻辑 ⇒ 行为不变。
 
 ### 5.3 行数策略（DB-09）
 
@@ -818,24 +1004,91 @@ export interface DataGridCapabilities {
 1. **后端**：新增的、需要被前端精确识别的错误，其 `CommandError` 消息**必须以契约前缀开头**，格式为 `grid.<域>.<原因>: <人类可读说明>`。例如：
    `grid.commit.affectedMismatch: expected 1 affected row, got 3`
    前缀是**契约的一部分**，改动它等同于改契约。
-2. **前端**：定义 `GridErrorCode` 联合类型与 `classifyGridError(message: string): GridErrorCode`（位置建议 `src/lib/gridErrors.ts`，新增），用**前缀匹配**归一化。匹配不到任何前缀时返回 `'unknown'`，此时 **UI 必须回退到显示原始消息**，而不是吞掉错误或显示空白。
+2. **前端**：定义 `GridErrorCode` 联合类型与 `classifyGridError(message: string): GridErrorCode`（**位置 `src/lib/gridErrors.ts`，由分册 01 创建，见下方「归属总则」**），用**前缀匹配**归一化。匹配不到任何前缀时返回 `'unknown'`，此时 **UI 必须回退到显示原始消息**，而不是吞掉错误或显示空白。
 
 **为什么用前缀而不是正则/包含匹配**：前缀是唯一在两侧都能稳定断言的形态，测试可以逐字比对；包含匹配会因为消息里出现同样的词而误判。
 
-### 8.2 错误码清单
+#### 归属总则：`src/lib/gridErrors.ts` 只由 01 创建，其余分册一律「追加分支」
 
-前缀一律 `grid.`，其后按「域.原因」分段：
+> 这是全文唯一一处**结构性**的文件归属裁定，其余分册不得自行声明创建该文件。
 
-| 错误码 | 触发条件 | 用户可见文案要求 |
+| 分册 | 动作 |
+| --- | --- |
+| **01** | **创建** `src/lib/gridErrors.ts`，含 `GridErrorCode` 联合类型、`classifyGridError`、`grid.<域>.*` 的**前缀注册表骨架**（本册只填 `grid.selection.*` / `grid.cell.*` / `grid.row.*` 三个域）。 |
+| 03 / 04 / 05 / 06 / 07 / 08 / 09 / 10 / 11 | **复用 01 的骨架**，只往联合类型与注册表里**追加自己那一域**的码。**禁止**新建该文件、禁止整文件覆盖。 |
+
+**为什么必须这样裁定**：本设计集的 12 份分册曾对同一文件给出 6 种互斥说法（01 建 / 7 册说「新增」/ 08 说「与 09 共用，只建一次」/ 06 与 07 与 11 说「该文件不存在」）。后果不是编译失败而是**静默全文件覆盖**——后合并的分册把自己那份 `classifyGridError` 整体写回去，01 刚加的分支与类型一并消失，`tsc` 全绿、测试在合并瞬间开始漏分支，直到线上某条错误落到 `'unknown'` 才被发现。
+
+**追加的合规动作只有三步**（顺序固定）：① 在 `GridErrorCode` 联合类型里加成员；② 在前缀注册表里加本域条目；③ 在本册 §6 变更表登记文件为「修改（追加）」。**第 ④ 步禁止**：任何分册不得通过「重写整个 `gridErrors.ts`」来加自己的码。
+
+**新码的登记门禁**：分册若在本册设计中新造了本表以外的 `grid.*` 码，必须**同时**在本表登记一行（码 / 触发条件 / 文案要求 / 归属分册），否则不得进入实现。分册无权自行扩充错误码空间。
+
+### 8.2 错误码清单（全量 42 个）
+
+前缀一律 `grid.`，其后按「域.原因」分段。**本表是全集**：本设计集在实现阶段只允许使用下面这 42 个码，一个不多一个不少。
+
+| # | 错误码 | 归属分册 | 触发条件 | 用户可见文案要求 |
+| --- | --- | --- | --- | --- |
+| 1 | `grid.cell.readOnly` | 05 | 连接级只读 / 无主键表 / 生成列 | 说明不可编辑的**具体原因**，禁止只显示「不可编辑」 |
+| 2 | `grid.cell.invalidValue` | 05 | 类型化编辑器解析失败 | 说明期望类型与收到的值 |
+| 3 | `grid.cell.ambiguousIdentity` | 03 | 一页内出现重复行身份键 | 说明该页无法安全定位，请缩小范围 |
+| 4 | `grid.cell.noRowIdentity` | 03 | 目标行没有可用行身份锚点 | 说明该行不可写入 |
+| 5 | `grid.commit.stalePlan` | 04 / 06 | `fingerprint` 不匹配 | 说明计划已过期，要求重新预览 |
+| 6 | `grid.commit.affectedMismatch` | 04 / 06 | 影响行数 ≠ 1（INSERT 除外） | 说明「预期影响 1 行、实际 N 行，已回滚/未提交」 |
+| 7 | `grid.commit.conflictingIntents` | 04 | 同一行既标记删除又有列写入 | 说明冲突并指出是同一行 |
+| 8 | `grid.insert.noWritableColumn` | 04 | 一行的所有列都是 `Unset`、且无默认值可依赖 | 提示至少填一列 |
+| 9 | `grid.insert.returningUnavailable` | 04 | `insert_returning_clause` 为 `None` | 说明「新行主键无法自动定位，已为你刷新当前页」 |
+| 10 | `grid.insert.duplicateDraft` | 04 | 同一 draftId 被提交两次 | 说明草稿已提交，请刷新 |
+| 11 | `grid.insert.unknownColumn` | 04 | 草稿引用了不存在/不可写的列 | 指出具体列名 |
+| 12 | `grid.filter.unsupportedOperator` | 08 | 算子不在驱动白名单 | 说清「该数据库不支持 X 筛选」，并给出可替代算子 |
+| 13 | `grid.filter.incomplete` | 08 | 筛选条件缺值 | 提示补齐，**不得**静默丢弃后照常查询 |
+| 14 | `grid.view.invalid` | 08 | 命名视图名非法/为空 | 说明命名规则 |
+| 15 | `grid.view.nameExists` | 08 | 命名视图重名 | 提示换名或覆盖 |
+| 16 | `grid.count.estimateUnavailable` | 09 | 请求估算但驱动无该能力 | 回退到 exact 并说明，不静默 |
+| 17 | `grid.paste.tooLarge` | 03 | 粘贴数据超过上限 | 说明上限值与实际大小 |
+| 18 | `grid.paste.raggedRow` | 03 | 各行列数不一致 | 说明不一致的行号 |
+| 19 | `grid.paste.unclosedQuote` | 03 | TSV 内引号未闭合 | 说明无法解析的行列 |
+| 20 | `grid.paste.outOfBounds` | 03 | 粘贴区域越出可见列 | 说明越界列名 |
+| 21 | `grid.paste.noWritableCell` | 03 | 粘贴目标单元格均不可写 | 说明原因（只读/生成列） |
+| 22 | `grid.paste.notNullEmpty` | 03 | 空值写入 NOT NULL 列 | 说明该列不接受空值 |
+| 23 | `grid.paste.identityChanged` | 03 | 粘贴期间行身份已变 | 要求重新加载后再粘 |
+| 24 | `grid.paste.empty` | 03 | 剪贴板无有效数据 | 说明未读到可粘贴内容 |
+| 25 | `grid.clipboard.readFailed` | 03 | 读系统剪贴板失败 | 提示重试或手动复制 |
+| 26 | `grid.clipboard.writeFailed` | 03 | 写系统剪贴板失败 | 提示重试 |
+| 27 | `grid.clipboard.paste` | 03 | 粘贴流程级失败（无法归入上面各具体原因） | 给出可复制的上下文 |
+| 28 | `grid.fk.targetUnresolved` | 07 | 外键目标表/列解析不出 | 说明哪个外键解析失败 |
+| 29 | `grid.fk.unknownConstraint` | 07 | 找不到对应外键约束元数据 | 说明无法识别引用来源 |
+| 30 | `grid.fk.valueNull` | 07 | 外键列值为 NULL，无从跳转 | 说明该行为空 |
+| 31 | `grid.fk.shapeMismatch` | 07 | 目标列数/类型与源不匹配 | 说明不匹配之处 |
+| 32 | `grid.fk.probeFailed` | 07 | 探测目标表元数据失败 | 说明探测失败原因 |
+| 33 | `grid.result.originUnavailable` | 10 | `describe_result_origin` 未实现/不可判定 | 说明结果集来源不明，保持只读 |
+| 34 | `grid.result.originAmbiguous` | 10 | 来源可判定但不唯一 | 说明存在多个候选来源，保持只读 |
+| 35 | `grid.result.rowNotAddressable` | 10 | 结果行没有唯一可定位行身份 | 说明该结果集行不可写 |
+| 36 | `grid.result.multiRowNotAllowed` | 10 | 结果行映射到多张源表行 | 说明存在歧义，保持只读 |
+| 37 | `grid.result.writeDenied` | 10 | 目标列不可写（生成列/无 PK 等） | 说明具体原因 |
+| 38 | `grid.paging.keysetUnavailable` | 11 | 表无稳定唯一键集 | 说明该表无法键集分页 |
+| 39 | `grid.paging.cursorInvalidated` | 11 | 游标指向的数据已变更 | 说明需从头重新加载 |
+| 40 | `grid.paging.cursorTooDeep` | 11 | 游标链超过上限 | 说明层数上限 |
+| 41 | `grid.paste.crossTable` | 03 | 剪贴板来源表与目标表不是同一张表 | **必须**说明来源表与目标表全名，并要求用户确认后才写入 |
+| 42 | `grid.paste.columnMismatch` | 03 | 按列名对齐时，来源列在目标表找不到同名列 | 说明被丢弃的来源列名；被丢弃的列**不得**按位置补写 |
+
+**域 → 注册表前缀的映射**（`classifyGridError` 按此表最长前缀匹配）：
+
+| 域前缀 | 码数 | 归属分册 |
 | --- | --- | --- |
-| `grid.filter.unsupportedOperator` | 算子不在驱动白名单 | 说清「该数据库不支持 X 筛选」，并给出可替代算子 |
-| `grid.filter.incomplete` | 筛选条件缺值 | 提示补齐，**不得**静默丢弃后照常查询 |
-| `grid.insert.noWritableColumn` | 一行的所有列都是 `Unset`、且无默认值可依赖 | 提示至少填一列 |
-| `grid.insert.returningUnavailable` | `insert_returning_clause` 为 `None` | 说明「新行主键无法自动定位，已为你刷新当前页」 |
-| `grid.commit.stalePlan` | `fingerprint` 不匹配 | 说明计划已过期，要求重新预览 |
-| `grid.commit.affectedMismatch` | 影响行数 ≠ 1（INSERT 除外） | 说明「预期影响 1 行、实际 N 行，已回滚/未提交」 |
-| `grid.commit.conflictingIntents` | 同一行既标记删除又有列写入 | 说明冲突并指出是同一行 |
-| `grid.cell.readOnly` | 连接级只读 / 无主键表 / 生成列 | 说明不可编辑的**具体原因**，禁止只显示「不可编辑」 |
+| `grid.cell.*` | 4 | 05（2）/ 03（2） |
+| `grid.commit.*` | 3 | 04 / 06 |
+| `grid.insert.*` | 4 | 04 |
+| `grid.filter.*` | 2 | 08 |
+| `grid.view.*` | 2 | 08 |
+| `grid.count.*` | 1 | 09 |
+| `grid.paste.*` | 10 | 03 |
+| `grid.clipboard.*` | 3 | 03 |
+| `grid.fk.*` | 5 | 07 |
+| `grid.result.*` | 5 | 10 |
+| `grid.paging.*` | 3 | 11 |
+
+**不属错误码、不得混入本表的同名命名空间**（历史上已被误扫入）：PRD 的埋点事件名（`grid.edit.commit` / `grid.selection.created` / `grid.shortcut.used` / `grid.row.inserted` / `grid.count.mode` / `grid.filter.operator` / `grid.fk.follow` / `grid.default_sort` / `grid.saved_view.used`）、`settings.grid.pasteOverflow*` 这组 i18n key、以及文件名里的 `*-grid.md`。它们与 `GridErrorCode` 无任何关系，`classifyGridError` 不得为其返回任何分支。
 
 **文案纪律**：所有新增用户可见文案**只改英文侧**。注意英文侧不是单个文件，而是**领域包**：真正的词条在 `src/locales/en/<域名>.ts`（现有域名有 `core` / `connection` / `query` / `schema` / `settings` / `sync` / `chart` / `dashboard` / `ai` / `backup` / `mcp` / `onboarding` / `workflows`）。数据浏览相关文案按语义就近放入 `query.ts` 或 `connection.ts`，**不要新建域名**。
 >
@@ -880,7 +1133,35 @@ export interface DataGridCapabilities {
 
 **每一份分册都必须自己写清**：本册不变量是否被破坏、需要同步修改的既有测试有哪些、以及「做完了怎么证明」。
 
-### 9.1 共享热文件总账（跨分册唯一账本）
+### 9.1 共用文件的归属与追加纪律（合并期唯一的裁决依据）
+
+提交序（01 → 02 → 03 → 05 → 06 → 04 → **08 → 09** → 10 → 07 → 11）**同时就是共用文件的归属序**。多条分册要写同一个文件时，按下面三条执行，**不再逐对协商**：
+
+| 规则 | 内容 |
+| --- | --- |
+| **G-1 唯一归属** | 一个新文件/新接口由**提交序里最早需要它的那一册**创建。后续分册一律标「修改（追加）」，**禁止**再写「新增」「新建」「与 X 共用，只建一次」「谁先合并谁建」。 |
+| **G-2 禁止整文件重写** | 后续分册在共用文件上**只允许新增自己那几行**（枚举成员、注册表条目、导出）。整文件覆盖在并行合并下**不产生任何编译错误**，只会静默抹掉先到者的内容——这是本设计集最危险的一种失败模式。 |
+| **G-3 显式先后边** | 若 B 依赖 A 的**产出结构**（不只是同一文件），依赖图上必须有一条实边，且 B 排在 A 之后。 |
+
+**已按 G-1/G-2/G-3 冻结的全部分配**（这是唯一清单，各册不得再自行博弈）：
+
+| 共用对象 | 创建归属 | 后续分册只允许做什么 |
+| --- | --- | --- |
+| `src/lib/gridErrors.ts` | **01** | 03/04/05/06/07/08/09/10/11 按契约 §8.1 三步追加本册前缀的码 |
+| `src/stores/tableData/gridSelection.ts` + `src/hooks/useGridSelection.ts` | **01** | 02 只调，不改签名（签名已冻结于 §4.2.1） |
+| `src/components/DataTable/GridCell.tsx` | **01** | 05 加 `editing`/`editorOwned`/`readonly`，06 加 `dirty`，07 加 `fk`；**只加 prop 与 `data-*`，不改既有渲染分支** |
+| `data-dt-*` 全量属性总表 | **01**（表在 §4.4） | 各册只在自己那一行里加取值，**禁止另起名字** |
+| `src/lib/databaseMeta.ts` 的 `DataGridCapabilities` | **08** | 09 追加 `countStrategy?` / `allowFirstColumnFallbackOrder?` |
+| `src-tauri/src/services/query_executor/{mod.rs,tests.rs}`（目录化） | **08** | 09 只改 `mod.rs` 并往 `tests.rs` 补用例，**不做搬迁** |
+| `src-tauri/src/commands/data/`（目录化） | **04** | 04 同时把 `validate_legacy_pk_columns` 及其测试迁入 `plan.rs` |
+| `src/lib/cellTypes.ts` | **05** | 01 的 `data-dt-cell-type` 在 05 合并时把来源换成 `resolveCellType` |
+| `src-tauri/src/services/traits/browsing.rs` | **09** | — |
+| `src/stores/fkNavigationStore.ts` | **07** | — |
+| `src/stores/panelResultEdit.ts` | **10** | — |
+
+**G-3 的实边（依赖图上原来漏画的一条）**：**09 → 08**。09 依赖的不是 08 的筛选逻辑，而是 08 的**目录化产出**——09 合并时 `query_executor/` 必须已是目录，否则 09 的 `build_select_sql` / `get_table_data` 改动会落在一个已被搬走的文件上。提交序已保证 08 先于 09，此边**只为让依赖图本身完整**，不代表 09 可以引用 08 的筛选符号。
+
+### 9.2 共享热文件总账（跨分册唯一账本）
 
 **为什么需要它**：多个分册会往同一批文件里加接线。各册在 §6 里独立申报行数时**必然互相矛盾**——实际已经发生：08 判定「本册与 09 合计必超 800」，05 判定「由 01 前置抽取后不再触红线」，两者都对了一半（05 没算 03/08/09/11 的增量）。因此行数账目**只有一个权威来源：本小节**。
 
@@ -891,51 +1172,68 @@ export interface DataGridCapabilities {
 3. 「创建归属」列给出的文件，**只有该分册可以创建**；其他分册只能复用、追加成员或加可选 props，**禁止另建平行文件**（同一职责三个文件名的教训已经出现过一次）。
 4. 分册若发现本账本与自己实测不符，**先改本账本**（它是契约的一部分），再改自己的推算；禁止各册各算一套。
 5. 所有行数在提交前用 `wc -l` 实测复核，**估算值不得当结论**。
+6. **本账本里的每个行数都必须标注实测命令与行号区间**（形如 `wc -l src/…/DataTable.tsx` = 628；抽取量为 `sed -n '200,424p'` = 225 行），**不得只给一个裸数字或「~N」估算**。这条规则本身是被迫加上的：本账本初版三处估算互相矛盾（契约写 −~70、05 写 ~495、07 写 ~450），根因是 01 的抽取量被记成 70 而实测为 225——**三个各自「看起来合理」的估算，叠加后得到一个谁都过不了 800 行红线的结论**。估算值可以出现在分册的讨论里，但**不得进入本账本**。
 
 **创建归属（一次性裁定）**：
 
 | 文件 | 状态 | 创建 / 抽取归属 | 其他分册只能 |
 | --- | --- | --- | --- |
-| `src/windows/connection/TablePendingChangesBar.tsx` | 新建（~110 行） | **01**（从 `TableView.tsx` 抽出暂存条与事务控件，testid 逐字保留） | 复用或加可选 props |
-| `src/windows/connection/TableFilterToolbar.tsx` | 新建（~120 行） | **08**（抽出筛选入口 + 视图菜单 + 快筛输入） | 复用或加可选 props |
+| `src/windows/connection/TablePendingChangesBar.tsx` | 新建（**~120 行**） | **01**（从 `TableView.tsx` 抽出，**实测移除 93 行**：JSX 块 530–622，含 `table-tx-controls` 与 `pending-changes-bar` 两个 `data-testid` 容器，testid 逐字保留） | 复用或加可选 props |
+| `src/windows/connection/TableFilterToolbar.tsx` | 新建（**~110 行**） | **08**（抽出筛选入口 + 视图菜单 + 快筛输入，**实测移除 ~90 行**：工具栏容器 JSX 449–508 = 60 行，加快筛 handler ~30 行） | 复用或加可选 props |
 | `src/stores/tableData/gridSelection.ts` | 新建（纯逻辑，无 React） | **01** | 只复用 |
 | `src/hooks/useGridSelection.ts` | 新建（React 接线） | **01** | 只复用 |
-| `src/lib/gridErrors.ts` | 新建（骨架 ~60 行） | **01**（见下方裁定说明） | 只追加前缀常量与用例 |
+| `src/lib/gridErrors.ts` | 新建（骨架 ~60 行） | **01**（见 §8 归属总则与下方裁定说明） | **只允许按 §8 三步追加**，禁止整文件覆盖 |
 | `src/lib/cellTypes.ts`（`resolveCellType` / `CellType`） | 新建 | **05** | 只消费 |
 | `src/lib/databaseMeta.ts` 的 `DataGridCapabilities` + `dataGrid?` | 既有文件 | **08**（按合并序最早需要它） | 只加自己那一项，且必须已存在于本契约 §7 |
 | `src-tauri/src/services/query_executor.rs` → `query_executor/{mod.rs,tests.rs}` | **既有 797 行** ⚠ | **08**（目录化） | 只新增子模块文件（如 `filter_sql.rs`） |
 | `packages/driver-api/src/traits/browsing.rs` | 新建 | **09**（DB-09 的第一个新 trait 方法落在这里） | 后续新方法继续追加到同一文件 |
-| `src-tauri/src/commands/data.rs` → `data/{mod.rs,plan.rs,...}` | **既有 1331 行** ⚠⚠ | **04**（Step 1，目录化；`tests.rs` 约 700 行） | 只新增子模块文件；**任何分册要改这个文件，必须先 rebase 到 04 的目录化之后** |
+| `src-tauri/src/commands/data.rs` → `data/{mod.rs,row_change_plan.rs,row_change_execute.rs,tests.rs}` | **既有 1331 行** ⚠⚠ | **04**（Step 1，目录化；**必须显式迁移 `validate_legacy_pk_columns` 及其测试**，见 §4.5） | 只新增子模块文件；**任何分册要改这个文件，必须先 rebase 到 04 的目录化之后** |
 | `src/stores/panelStore.ts` | **既有 728 行** ⚠ | 不新增归属；**10** 只允许在其上加 ≤15 行接线 | 07 把返回栈放进**新文件** `src/stores/fkNavigationStore.ts`；10 的判定逻辑放进 `src/stores/panelResultEdit.ts`。超出 15 行者必须把逻辑整体搬进新文件，**不得**放任它突破 800 |
 
-**`src/windows/connection/TableView.tsx` 行数总账**（基线 770，已实测）：
+#### 行数总账的读法（先读这段，否则下表会被误用）
 
-| 分册 | 净增（估算） | 前置抽取 | 结余 |
-| --- | --- | --- | --- |
-| 02 | +4（键盘接线只放 `gridKeyboard.ts` / `useGridKeyboardNav.ts`，本层仅挂 props） | 依赖 01 + 08 | ~704 |
-| 03 | +20 | 依赖 01 | ~724 |
-| 05 | +25 | 依赖 01 | ~749 |
-| 06 | 负（改走 `TablePendingChangesBar`，不再内联计数块） | 依赖 01 | ~749 |
-| 08 | +40，**同册抽出 `TableFilterToolbar.tsx`（−120）** | 依赖 01 | ~669 |
-| 09 | +60 | 依赖 01 + 08 | ~729 |
-| 11 | +15 | 依赖 01 + 08 | ~744 |
-| 07 | +? 先抽出 `TableDataToolbar.tsx`（~155）与 `TableFkBreadcrumb.tsx`（~95） | 依赖 01；**自报 660 → ~640** | ~640 |
-| 04 / 10 | **必须申报，且不得为正**（04 改的是 `commands/data.rs`，与前端无关；10 改的是查询结果视图 `ContentViewDrawers.tsx`，不是本文件） | 依赖 01 + 08 | ≤ 800 |
+- 下表的「移除」列是 **`wc -l` 实测的 JSX/代码块行数**，不是拍脑袋的估值。原文里 `−110` / `−120` / `−~70` / `~300` 四种互不相容的数字并存，正是因为没人量过。
+- 「前置抽取」列写的是**该分册合并时，账上已经发生的抽取**。凡写作「依赖 08」的，必须是排在 08 之后的提交；若它排在 08 之前（提交序 01 → 02 → 03 → 05 → 06 → 04 → 08 → 09 → 10 → 07 → 11），它就**看不到** 08 的抽取，不得预先扣除。
+- **峰值以「该分册自己那次提交结束时」为准**，不是以最终值为准。
 
-> **`TableView.tsx` 的抽取一共三次，顺序不可颠倒**：01（`TablePendingChangesBar`，−110）→ 08（`TableFilterToolbar`，−120）→ 07（`TableDataToolbar` + `TableFkBreadcrumb`，−20 净）。三次都由各自的分册在**自己那次提交里**完成。任何分册若在自己的提交里看到这个文件已超过 800 行，说明它没有 rebase 到前一次抽取，**必须先 rebase 而不是继续加**。
+**`src/windows/connection/TableView.tsx` 行数总账**（基线 **770**，已实测）：
 
-**结论（必须遵守）**：**08 抽出 `TableFilterToolbar.tsx` 不是"优化"，而是 09 / 11 能合并的前置条件**——不加这次抽取时，各册实测增量叠加约 `660 + 4 + 20 + 25 + 40 + 60 + 15 ≈ 824 > 800`。02 的 §6 已自行把增量压到 +4（仅挂 props，方法体全在新增文件里），这是正确做法，可作为其余分册的模板。04 / 07 / 10 若需要在这个文件里加东西，必须自带抽取方案。
+| 合并序 | 分册 | 本册净增 | 本册移除 | 前置抽取（该提交时已发生） | 提交后余额 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | **01** | +10 | **−93**（`TablePendingChangesBar`） | 无 | **687** |
+| 2 | 02 | +4（键盘逻辑全在 `gridKeyboard.ts` / `useGridKeyboardNav.ts`，本层仅挂 props） | 0 | 01 | **691** |
+| 3 | 03 | +20 | 0 | 01 | **711** |
+| 4 | 05 | +25 | 0 | 01 | **736** |
+| 5 | 06 | ±0（改走 `TablePendingChangesBar`，不再内联计数块） | 0 | 01 | **736** |
+| 6 | 04 | 0（只改 `commands/data.rs`，Rust 侧） | 0 | — | **736** |
+| 7 | 08 | +40 | **−90**（`TableFilterToolbar`） | 01 | **686** |
+| 8 | 09 | +60 | 0 | 01 + 08 | **746** ← **峰值** |
+| 9 | 10 | 0（改的是 `ContentViewDrawers.tsx`，不是本文件） | 0 | — | **746** |
+| 10 | 07 | +10 | **−30**（`TableDataToolbar` + `TableFkBreadcrumb` 合计，净 −20 取整后按 −30 记） | 01 + 08 | **726** |
+| 11 | 11 | +15 | 0 | 01 + 08 | **741** |
 
-**`src/components/DataTable/DataTable.tsx` 行数总账**（基线 628）：
+**峰值 746（09 合并后），距 800 余量 54 行，全程不触红线。**
 
-| 分册 | 净增/抽取 | 说明 |
-| --- | --- | --- |
-| 01 | 抽取 `useDataTableContextMenu.ts`（−~70） | 本册 Step 前置，抽出右键菜单逻辑 |
-| 02 | +40 | 接线键盘；`DataTable.tsx` 628 → ~668（02 自报） |
-| 05 | 抽取 `CellEditorHost`（净减） | 编辑器宿主移出 |
-| 03 / 06 / 10 | **必须申报** | 均需接线 |
+> **为什么 08 的抽取仍然是强制前置条件**：把 08 那次 −90 拿掉重算，其余各册一字不改，则第 8 行（09 合并后）变成 **836 > 800**，第 11 行（11 合并后）变成 **891**。也就是说触发点**不是**原文所说的「各册合计 824」，而是**逐笔叠加后的第一个越界提交——09**。结论不变（不做这次抽取，09 无法合并），但越界数字与触发点此前两处都算错了。
+>
+> **三次抽取的顺序不可颠倒**：01（`TablePendingChangesBar`，−93）→ 08（`TableFilterToolbar`，−90）→ 07（`TableDataToolbar` + `TableFkBreadcrumb`）。三次都由各自的分册在**自己那次提交里**完成。任何分册若在自己的提交里看到这个文件已超过 800 行，说明它没有 rebase 到前一次抽取，**必须先 rebase 而不是继续加**。
 
-该文件在 01 / 05 两次抽取后基线约 500，各册叠加不得突破 800；**任何分册若要往它加超过 50 行，必须先抽取**。
+**`src/components/DataTable/DataTable.tsx` 行数总账**（基线 **628**，已实测）：
+
+| 合并序 | 分册 | 本册净增 | 本册移除 | 前置抽取 | 提交后余额 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | **01** | +10 | **−225**（`useDataTableContextMenu.ts`，实测块 200–424，即整个 `handleContextMenu` 回调） | 无 | **403** |
+| 2 | 02 | +40 | 0 | 01 | **443** |
+| 3 | 03 | +25 | 0 | 01 | **468** |
+| 4 | 05 | +15 | **−40**（`CellEditorHost` 抽走，编辑器宿主移出） | 01 | **443** |
+| 5 | 06 | +20 | 0 | 01 + 05 | **463** |
+| 6 | 10 | +20 | 0 | 01 + 05 | **483** ← 峰值 |
+
+**峰值 483（10 合并后），距 800 余量 317 行。**
+
+> 原文三处数字（契约「−~70」、05 的「~495」、07 的「~450」）彼此不相容，根因是把 01 的抽取规模从 225 误记成 70。实测基线 **403** 而非 ~558 / ~500，因此该文件的余量远比原先估计的宽裕：**任何分册往它加超过 100 行才需要考虑抽取**（不是原文的 50 行）。若某分册仍按 628 这个旧基线做推算，一律以本表为准。
+
+**其余热文件基线（已实测，分册引用前请先用 `wc -l` 复核）**：`FilterEditor.tsx` 558、`tableDataStore.ts` 722、`panelStore.ts` 728、`ContentViewDrawers.tsx` 228、`VirtualBody.tsx` 207、`query_executor.rs` 797、`commands/data.rs` 1331、`driver-api/src/types.rs` 939、`driver-api/src/traits.rs` 1020。
 
 **说明：为什么 `gridErrors.ts` 由 01 创建而不是 04/05/08**。01 的原文建议「留给 04/05 首次建立」，理由是「DB-01 不产生后端错误」。但按提交顺序 **01 最先合并**，而 01 自己就要写 `classifyGridError` 的消费侧用例（前缀匹配 + `'unknown'` 回退必须保留原始消息）。若文件不存在，01 的用例无法编译，01 就被一个下游分册卡住。因此按「**提交顺序最靠前、且确实需要该文件的分册负责建骨架**」这一统一规则，改由 **01 建骨架**（~60 行，形状完全照抄本契约 §8），04/05/08/09/10 只追加前缀常量。这条规则同时消除了「两个分册各建一份骨架」的风险。
 
@@ -970,6 +1268,7 @@ export interface DataGridCapabilities {
 
 | # | 问题 | 建议 |
 | --- | --- | --- |
-| C-1 | `CellWrite` 是否也替换既有的 `CellUpdate.value: Option<Value>`（遗留批量入口 `commit_row_updates` / `commit_row_deletes`） | 建议**不动**遗留入口，新链路专用 `CellWrite`；遗留入口待使用方清零后单独删除，避免一次提交同时改两条路径 |
+| C-1 | `CellWrite` 是否也替换既有的 `CellUpdate.value: Option<Value>`（遗留批量入口 `commit_row_updates` / `commit_row_deletes`） | **已裁定：删除遗留入口**。原「建议不动」的口径已推翻，理由如下（复核后确认，属高危）：① 两个命令**仍注册在 Tauri IPC**（`bootstrap/run.rs` 的 `generate_handler!` 列表内），任何 IPC 调用方或注入的 JS 都能触达，它们**不只**是死代码；② 两者都直接迭代 `driver.execute(...)` 并**把 affected 计数整个丢弃**，因此**是全仓库唯一不走 `affected == 1` 护栏的写路径**——DB-04 建立的那道护栏它们完全不经过；③ 两者只有 `validate_legacy_pk_columns` 挡空 WHERE，而它只校验「pk_columns 非空」，不校验是否等于真实主键列集；④ 前端**零生产调用点**（仅 `tableDataStore` 的测试 mock 断言 `not.toHaveBeenCalled()`），删除的使用成本为零。**动作**：从 `generate_handler!` 注销两个命令，删除 `commit_row_updates_impl` / `commit_row_deletes_impl` 及其导出，保留并迁移 `validate_legacy_pk_columns` 的校验逻辑到新链路（见 §4.5），同步删除 `tableDataStore.test.ts` 中的 mock 与 `not.toHaveBeenCalled()` 断言。**回归防线**：新增一条契约测试，断言 `tauri::generate_handler!` 注册的命令清单中**不存在** `commit_row_updates` 与 `commit_row_deletes`——否则将来重新注册时无人察觉 |
 | C-2 | ~~`supported_filter_operators()` 默认返回共享算子集，是否意味着所有驱动「宣称支持」新算子但实际 SQL 可能失败~~ **已裁定** | **裁定：默认返回共享的 19 个**（§5.2 与 §7 已按此冻结）。原先的顾虑不成立：共享的 19 个算子**全部由宿主 `format_condition` 渲染**，驱动不需要为它们写任何代码（驱动只提供 `quote_ident` / `format_sql_literal` 这两个已有方法）；只有**方言专有的 3 个**（`Regex` / `NotRegex` / `JsonContains`）必须由驱动显式声明并经 `filter_operator_sql` 渲染。因此缺省给 19 个不会让任何驱动"谎称支持"，也不会造出会报错的入口——真正无法渲染的组合由 `filter_operator_sql` / `supported_filter_operators()` 在**发语句之前显式拒绝**兜住，而不是靠把白名单缩小到 10 个。若按原建议只给 10 个，新算子在**任何未改动的驱动**上都不可用，DB-08 等于白做。残留的真实差异只有 `LIKE` 的大小写与转义（各驱动默认排序规则不同），它由 `like_is_case_insensitive()` 只影响**文案**，不改变 SQL |
 | C-3 | ~~`PROTOCOL_VERSION` 是否随本次改动提升~~ **已裁定：不提升** | **不提升，保持 4**（`MIN_PROTOCOL_VERSION` 保持 1）。分册 04 独立复核后得出同一结论：只新增**带默认实现**的 trait 方法、默认行为等于今天、不动任何既有方法签名与 IPC DTO 字段。唯一残留是「旧 `ref` 的 git 驱动不会覆盖新方法」，那是**驱动覆盖缺口**（登记为刷新 git 驱动 `ref` 的事项），不构成提升协议版本的理由——提升版本会强制所有插件同步升级，代价远大于收益。若后续确需修改**既有**方法签名，再单独提升并同步 git 驱动 `ref` |
+| C-4 | **W-3 与「预览 → 提交」之间的 TOCTOU：列集相等校验比对的是 `SchemaCache::get_columns` 的缓存快照，而计划指纹（`changes_fingerprint`）只覆盖列值、不覆盖表结构。若两次预览之间、或校验通过与语句发出之间，另一会话对表做了 DDL（加列、删列、改主键），本设计的三道防线都会基于过期的 `primary_keys` 判定 | **已裁定：登记为已知残留，不在本批实现**，理由与本批的最小成本缓解如下。理由：① 修彻底需要在 SQL 上附加 `WHERE` 的旧值谓词或引入版本列，那是 **DB-04 范围外**的乐观并发控制，与 W-5「本设计明确不实现乐观并发」同源；② SchemaCache 本来就是缓存，任何基于它的判定都天然带这个窗口，本批若单独给写路径补一层，会与只读路径的判定口径分叉；③ DDL 与本批的 P0 目标（选择、键盘、剪贴板、筛选）正交，把它塞进本批会让 04 的提交链路再增一条与 §4.5 W-1…W-4 平行的规则，增加实习生实现面却不降低真实风险。**本批的最小成本缓解（必须在 04 落地，不得省略）**：W-3 的列集相等校验必须在**紧邻生成 SQL 的那一刻**读取 `SchemaCache::get_columns`（**不得**复用预览阶段缓存下来的主键列表），这样至少把窗口从「整个面板生命周期」压缩到「单次提交调用内」；并在提交失败时把该次读取的主键列集与失败语句的类型一并写进日志，便于事后定位。**明确不做**：不做 schema 版本号、不做表结构指纹、不做「结构变了就禁用编辑」的额外门禁。**遗留影响**：在一个持续 DDL 的表上，仍可能出现「按旧主键列集生成的 WHERE 未命中」（落到 `affected == 0` → 被既有 `affected == 1` 校验拒绝，属于**失败而非误写**）这一可观测后果；真正危险的方向是「旧主键列已不再是主键」而语句仍按它拼 WHERE，此时 W-3 的兜底也失效——该情形需由 DB 的表结构变更纪律（不在 DDL 期间批量编辑数据）承担，不在本批验收范围内。**若将来要求覆盖，须另立需求并单独裁定** |

@@ -281,7 +281,7 @@ export interface DataTableProps {
 
 | 属性 | 值 | 语义 | 输出者 | 备注 |
 | --- | --- | --- | --- | --- |
-| `data-dt-grid` | `"true"` | 网格滚动容器标记；**焦点宿主**与 E2E 聚焦点的唯一稳定选择器 | 容器 `div`（`DataTable.tsx`） | 与 01 的 `data-dt-surface` 一起挂在同一元素上；`role` 决策见 K-7 |
+| `data-dt-surface` | `"true"` | 网格滚动容器标记；**焦点宿主**与 E2E 聚焦点的唯一稳定选择器 | 容器 `div`（`DataTable.tsx`） | 与 01 **共用**同一元素（同一个属性名，不是两个属性）；`role` 决策见 K-7 |
 | `data-dt-row-view` | 行下标 | 行容器标记（`VirtualBody` 的行 `div`） | 行容器 `div` | **必须**与 `data-dt-row` 区分：`data-dt-row` 在单元格上，被 `closest('[data-dt-row]')` 用于反查单元格；行容器若也叫 `data-dt-row`，`closest` 会先命中行容器而丢掉列名，**直接破坏既有单元格解析** |
 | `data-dt-active` | `"true"` / **不输出** | 该格是键盘光标格（`:focus` 之外的「当前单元格」标记） | 单元格 `div`（`VirtualBody`/01 的 `GridCell`） | 只由 props 派生，禁止写入局部 state / DOM class（01 §4.6 同一纪律） |
 
@@ -368,7 +368,7 @@ export interface DataTableProps {
 
 | 要素 | 内容 |
 | --- | --- |
-| **进入条件** | ① 用户 `Tab` 到容器（`data-dt-grid` + `tabIndex={0}`）；② 鼠标点单元格后由 01 调 `scrollEl.focus()`（01 §4.2 已写）；③ `Enter`/`F2` 提交/取消后焦点回到容器。进入后若有 `cursor`（cell/row 模式）则渲染 `data-dt-active`，`aria-activedescendant` 指向该格 id（id 生成归 01，§4.4 已定用 `useId()` 前缀，**不含列名**） |
+| **进入条件** | ① 用户 `Tab` 到容器（`data-dt-surface` + `tabIndex={0}`）；② 鼠标点单元格后由 01 调 `scrollEl.focus()`（01 §4.2 已写）；③ `Enter`/`F2` 提交/取消后焦点回到容器。进入后若有 `cursor`（cell/row 模式）则渲染 `data-dt-active`，`aria-activedescendant` 指向该格 id（id 生成归 01，§4.4 已定用 `useId()` 前缀，**不含列名**） |
 | **状态内行为** | 所有键在**容器**这一个监听点上处理（§3.3 唯一入口纪律）；行容器与单元格内**不再有** Tab 停靠点；焦点永不因按键逃到行号槽按钮 |
 | **退出跃迁** | `Tab`/`Shift+Tab` → `consume` + `preventDefault` 后**由浏览器把焦点移出网格**（我们只挡住网格内部的 Tab 目标，不主动改焦点，避免自造焦点跳转链）；点击网格外元素 → 焦点自然移出，**选区与光标记忆保留**（§4.7）；`Escape` → 01 清选择但**不**移出焦点（焦点仍在容器上，符合 ARIA 复合控件惯例） |
 
@@ -380,7 +380,7 @@ export interface DataTableProps {
 | `src/components/DataTable/__tests__/DataTable.test.tsx`（1 处） | 同上 | 同上 | 同上 |
 | `e2e/specs/detail-panel.ts`（1 处） | `span.closest('[tabindex="0"]')` | 行不再是唯一候选 | 改为 `span.closest('[data-dt-row-view]')`（语义等价：从格内元素上溯到行容器） |
 | `e2e/specs/ops-process-server.ts`（2 处） | `cell.closest('[tabindex="0"]')`、`document.querySelectorAll('[tabindex="0"]')` | 同上 | 改为 `[data-dt-row-view]`（两处都改） |
-| `e2e/specs/table-batch-ops.ts` `TC-TABLE-013` | `document.querySelector('table, [role="grid"]')`，**匹配不到任何元素** | 容器有了 `data-dt-grid` | 改为 `[data-dt-grid]`（§5 Step 7） |
+| `e2e/specs/table-batch-ops.ts` `TC-TABLE-013` | `document.querySelector('table, [role="grid"]')`，**匹配不到任何元素** | 容器有了 `data-dt-surface` | 改为 `[data-dt-surface]`（§5 Step 7） |
 | 键盘可访问性（真收益） | 每行一个 Tab 停靠点：100 行 = 按 100 次 `Tab` 才能穿过去 | 1 个停靠点，行内用方向键 | 这是本次改动的**主要收益**，必须在 PR 描述里写明 |
 | 行内的可聚焦元素 | 行号槽 `<button>` 实测是 Tab 停靠点（`e2e/specs/ops-process-server.ts` 用 `cell.closest('[tabindex="0"]').click()` 间接依赖行可聚焦） | 行号槽仍是停靠点 ⇒ 容器 `Tab` 必须 `preventDefault` 才能真的离开网格 | 见 §4.1 `Tab` 行；`data-dt-row-view` 迁移后 `ops-process-server.ts` 的点击路径改走行容器，不再依赖 `tabindex` |
 
@@ -426,12 +426,12 @@ export interface DataTableProps {
 it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
   // ① 把焦点真正放到网格容器上（今天的选择器匹配不到元素，这是假绿的根因）
   await browser.execute(() => {
-    const grid = document.querySelector('[data-dt-grid]');
+    const grid = document.querySelector('[data-dt-surface]');
     if (grid) (grid as HTMLElement).focus();
   });
 
   // ② 先断言前提成立：焦点确实在网格内，且此刻还没有行被选中
-  expect(await browser.execute(() => document.activeElement?.hasAttribute('data-dt-grid') ?? false)).toBe(true);
+  expect(await browser.execute(() => document.activeElement?.hasAttribute('data-dt-surface') ?? false)).toBe(true);
   const rowsBefore = await browser.execute(() => Number(
     document.querySelector('[data-dt-selection-rows]')?.getAttribute('data-dt-selection-rows') ?? '0',
   ));
@@ -502,9 +502,9 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 ### Step 2 —— 容器成为焦点宿主
 
 - **文件**：`src/components/DataTable/DataTable.tsx`（修改；起点 628 行）。
-- **符号**：承载虚拟滚动的容器 `div` 上新增 `data-dt-grid="true"`、`tabIndex={keyboardNavigation ? 0 : -1}`、`aria-label`（走 i18n）、`aria-activedescendant`（值来自 01 的 `useGridSelection().activeDescendantId`）、`data-dt-selected` 之外的 `data-dt-surface`（01 已定）；新增 prop `keyboardNavigation` 与 `onRequestScrollIntoView`（§3.4）。**不新增** `role`（K-7）。
+- **符号**：承载虚拟滚动的容器 `div` 上新增 `data-dt-surface="true"`、`tabIndex={keyboardNavigation ? 0 : -1}`、`aria-label`（走 i18n）、`aria-activedescendant`（值来自 01 的 `useGridSelection().activeDescendantId`）、`data-dt-selected` 之外的 `data-dt-surface`（01 已定）；新增 prop `keyboardNavigation` 与 `onRequestScrollIntoView`（§3.4）。**不新增** `role`（K-7）。
 - **为什么**：键盘导航必须有唯一的焦点与唯一的事件落点；今天的网格**完全没有**焦点宿主（§2.4 证实 `role`/`tabIndex` 均不存在），这是所有键盘能力的前置条件。
-- **怎么自测**：组件测试里 `container.querySelector('[data-dt-grid]')` 非空且 `keyboardNavigation` 缺省时 `tabIndex` 为 `-1`（保证缺省行为逐位等于今天）；`pnpm typecheck`。
+- **怎么自测**：组件测试里 `container.querySelector('[data-dt-surface]')` 非空且 `keyboardNavigation` 缺省时 `tabIndex` 为 `-1`（保证缺省行为逐位等于今天）；`pnpm typecheck`。
 
 ### Step 3 —— 行容器退出 Tab 序列（焦点裁定落地）
 
@@ -555,7 +555,7 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 | `src/lib/gridKeyboard.ts` | **新增** | 键→意图→命令的纯逻辑、光标派生与夹取 | +190 | 否（新增文件，余量充足） |
 | `src/hooks/useGridKeyboardNav.ts` | **新增** | React 接线：事件摊平、光标记忆、命令分发 | +130 | 否 |
 | `src/hooks/useGridSelection.ts` | 修改（01 的新增文件） | 在 `surfaceProps.onKeyDown` 最前面调用 02 的 handler（**只加 3~5 行**） | +5 | 取决于 01 的预估；本册只加 5 行，不得把 02 的逻辑写进来 |
-| `src/components/DataTable/DataTable.tsx` | 修改 | 容器 `data-dt-grid`/`tabIndex`/`aria-*`、两个新 prop 透传 | **628 → ~668** | **未触及，但余量只剩约 132 行**：本册只允许加接线，**禁止**把键盘语义、命令分发、journey 辅助函数写进这个文件 |
+| `src/components/DataTable/DataTable.tsx` | 修改 | 容器 `data-dt-surface`/`tabIndex`/`aria-*`、两个新 prop 透传 | **628 → ~668** | **未触及，但余量只剩约 132 行**：本册只允许加接线，**禁止**把键盘语义、命令分发、journey 辅助函数写进这个文件 |
 | `src/components/DataTable/VirtualBody.tsx` | 修改 | 行 `tabIndex={-1}`、`data-dt-row-view`、行级 `data-dt-selected`、删除旧 `handleKeyDown` | 207 → ~215 | 否 |
 | `src/components/DataTable/EditableCell.tsx` | **不触及** | IME `Enter` 守卫归 05（01 §4.5 已登记） | 0 | 否（119 行，保持不动以避免与 05 撞车） |
 | `src/windows/connection/TableView.tsx` | 修改（仅传 prop） | 把 `keyboardNavigation` 与 `onRequestScrollIntoView` 传下去 | **770 → ~774** | **未触及，但余量只剩约 26 行**：这是本册**不把键盘接线放在这一层**的硬理由。若实现方发现需要在此加超过 5 行，必须停下来重新裁定（拆文件）而不是继续加 |
@@ -577,7 +577,7 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 
 | # | 场景 | 期望行为 |
 | --- | --- | --- |
-| E1 | **空表**（`rowCount === 0`） | 所有导航键 `consume`（no-op，不抛错）；`Enter`/`F2` `ignored`；`Cmd+A` 仍调用 `toggleSelectAll`（既有语义在空集上是 no-op）并**允许**把 `mode` 切到 `row`（不显示任何高亮，I2 允许 `selectedRows` 为空）；容器**仍可聚焦**（`data-dt-grid` 存在，`tabIndex={0}`），保证键盘用户不会「卡在一个按不动的东西上」 |
+| E1 | **空表**（`rowCount === 0`） | 所有导航键 `consume`（no-op，不抛错）；`Enter`/`F2` `ignored`；`Cmd+A` 仍调用 `toggleSelectAll`（既有语义在空集上是 no-op）并**允许**把 `mode` 切到 `row`（不显示任何高亮，I2 允许 `selectedRows` 为空）；容器**仍可聚焦**（`data-dt-surface` 存在，`tabIndex={0}`），保证键盘用户不会「卡在一个按不动的东西上」 |
 | E2 | **单元格为空**（`NULL` / `''`） | 焦点与选择不受值影响（`data-dt-selected` / `data-dt-active` 只看坐标，不看值）；`Enter`/`F2` 走既有 `onCellDoubleClick`，由它决定「空值进编辑得到空串」还是别的既有语义，02 不做判定 |
 | E3 | **编辑器打开**（`editingCell !== null`） | 除 `Tab`（05 接管）外全部 `pass`；网格**不得**因按键改变选区；`Escape` 由编辑器取消编辑，**不得**同时清空选区（01 已用 `editingCell !== null` 守卫）；`Enter` 由编辑器提交，**不得**因此移动光标格（提交后的光标移动是 05 的可选项，02 不代劳） |
 | E4 | **上/左边界按无修饰方向键** | `moveCellFocus` 返回 `null` ⇒ `consume`（no-op）。**严禁**塌陷成「以边界格为单格」——那会让「已选中 3×3 区域，按一下 `↑` 想看看能否再扩」变成区域消失 |
@@ -679,9 +679,9 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 | 用例名 | 断言要点 |
 | --- | --- |
 | `TC-TABLE-013: Ctrl+A 应选中当前页所有行`（**改写**） | §4.6 的 5 段断言；**必须验证假绿已消除**（临时移除处理分支后该用例必须变红） |
-| `TC-KBD-001: 容器可聚焦并进入单元格模式` | 点 `[data-dt-grid]` 后 `document.activeElement` 具备 `data-dt-grid`；`Enter` 后出现 `[data-dt-editing="true"]`（01 的属性） |
+| `TC-KBD-001: 容器可聚焦并进入单元格模式` | 点 `[data-dt-surface]` 后 `document.activeElement` 具备 `data-dt-surface`；`Enter` 后出现 `[data-dt-editing="true"]`（01 的属性） |
 | `TC-KBD-002: 方向键移动与 Shift 扩区` | `[data-dt-active]` 的 `data-dt-row`/`data-dt-col` 逐步变化；`[data-dt-selected="true"]` 计数随 `Shift+↓` 单调增加 |
-| `TC-KBD-003: Tab 离开网格` | 焦点格连续 `Tab` 后 `activeElement` 不再位于 `[data-dt-grid]` 内；网格内 `[tabindex="0"]` 命中 0 次 |
+| `TC-KBD-003: Tab 离开网格` | 焦点格连续 `Tab` 后 `activeElement` 不再位于 `[data-dt-surface]` 内；网格内 `[tabindex="0"]` 命中 0 次 |
 | `TC-KBD-004: 编辑器内方向键不移动单元格光标` | 进入编辑后在输入框内按方向键；`[data-dt-active]` 的坐标不变 |
 | `TC-KBD-005: PgDn 不触发取数` | 记下当前页首行值 → `PgDn` → 首行值不变（无 `setPage`）；`[data-dt-active]` 行号变大 |
 | `TC-KBD-006: Cmd+A 后 Escape 再按方向键不跳回首行` | 覆盖 §4.7 的光标记忆语义 |
@@ -717,7 +717,7 @@ it('TC-TABLE-013: Ctrl+A 应选中当前页所有行', async () => {
 | K-4 | `mod+←` / `mod+→` 映射为 `Home`/`End`（行首/行尾）是否会与浏览器/WebView 的默认行为冲突 | **推荐：采纳映射并 `preventDefault`**。理由：macOS 笔记本键盘没有独立 `Home`/`End`，不映射等于 Mac 用户拿不到行首/行尾。副作用是覆盖了「光标到行首」的原生语义，但在网格里没有 caret，无副作用 |
 | K-5 | `Cmd/Ctrl+A` 让 `row` 模式多了一条键盘进入条件，01 §4.2 的跃迁表需要同步 | **推荐：由 01 在下一版补一行「`Cmd/Ctrl+A` → `row`」，两册不留双份描述**。理由：本册已按契约 §4.2 的两条「必须遵守」实现（复用 `selectedRows` / `toggleSelectAll`），不构成契约冲突，但跃迁表必须单点维护 |
 | K-6 | `Space` 是否为「切换当前光标行整行选中」保留 | **推荐：不注册，保持 `pass`**（浏览器滚动）。理由：`Enter` 已承担「进入编辑」、`Cmd+A` 承担「全选行」、行号槽 `Enter` 承担「选该行」，`Space` 再叠一层只会制造第 4 种「选行」路径。09/19 若要用 `Space` 做预览（Quick Look），需回到本册重裁 |
-| K-7 | 容器的 `role`：本册裁定只加 `tabIndex={0}` + `aria-label` + `aria-activedescendant` + `data-dt-grid`，**不加** `role="grid"`；而 01 §4.4 写的是「`role="grid"` + `tabIndex={0}` + `aria-activedescendant`」 | **推荐：role 三元组单独作为一次无障碍改动的范围**。理由：`role="grid"` 要求 `row`/`gridcell` 同步补齐（ARIA required owned elements），而行号槽 `<button>` 是行容器的直接子元素，塞进 `role="row"` 里本身就是非法内容模型；半套 ARIA 比没有 `role` 更糟（屏幕阅读器会宣告一个坏掉的网格）。本册**只**落焦点与键位，`role` 待 K-7 单独裁定；`data-dt-grid` 保证 E2E 不依赖 `role` |
+| ~~K-7~~ | 容器的 `role`（本册原主张：只加 `tabIndex` + `aria-*` + `data-dt-surface`，**不加** `role="grid"`） | **已裁定并关闭：本册的主张被撤销。** 维持 01 的方案——`role="grid"` + 行容器 `role="row"` + 单元格 `role="gridcell"` 连同 `aria-rowcount` / `aria-colcount` / `aria-activedescendant` **由 01 一次性原子加齐**（契约 §4.4「ARIA 网格角色必须原子添加」）。随之，01 必须一并完成行号槽 `<button>` → `<div role="rowheader">` + 内层 `<button tabIndex={-1}>` 的改造（原 `<button>` 不是 `role="row"` 的合法直接子元素，会被屏幕阅读器整块丢弃）。**本册的职责收窄为：只改焦点与键位，不新增、不删除任何 ARIA 角色**；测试选择器跟随 01 改造后的 DOM。容器属性名统一为 `data-dt-surface`（01 已冻结的全量表里的唯一名字），**不再另立 `data-dt-grid`** |
 | K-8 | `Delete`/`Backspace` 在 `cell` 模式下是否改为「清空选区覆盖单元格的内容」 | **推荐：本册不动，归 05/06 与 PRD 一起裁定**。理由：那是**写操作**，必须走契约 §4.3 的 `rowIdentityAnchors → pendingChanges` 链路并新增批量 `CellWrite`，与键盘导航不是同一风险等级；本册只保证「现状：no-op」被 journey 测试固化，避免将来被误接到删行上 |
 | K-9 | 光标记忆（`none` 模式重新进入时的落点）是否应该进 store（`TableState`），因为它影响渲染吗 | **推荐：不进 store**。理由：它**不影响渲染**（`none` 模式下没有任何 `data-dt-active`），只影响下一次按键的落点；放进 store 会平白新增一个「重新取数时要清空」的字段（契约 §4.3 的收敛点会多一处遗漏风险）。放在 `useGridKeyboardNav` 的 `useRef` 里，配合 `clampGridCursor` 兜底 |
 | K-10 | `PgUp`/`PgDn` 的「一屏」是否等于 `viewportRowCount`，以及 `viewportRowCount` 由谁提供 | **推荐：由调用方（虚拟滚动的持有者）注入，步长 = `max(1, viewportRowCount - 1)`**。理由：本册禁止几何反查单元格坐标（01 同纪律），而「可见行数」是视口度量、不是坐标反查；由虚拟滚动方提供比 `scrollEl.clientHeight / rowHeight` 更准确（`rowHeight` 可能被行高自适应改掉） |

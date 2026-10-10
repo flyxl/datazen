@@ -2,7 +2,7 @@
 
 > **状态**：目标设计，**未实现**。本文描述的是「加完这些代码之后系统应该长什么样」，当前 `main` 上没有 `supports_keyset_pagination`、没有 `keyset_predicate_sql`、没有 `src/lib/keysetPaging.ts`、没有 `grid.paging.*` 错误码。凡本文出现的符号，都标注了「既有」或「新增」，未标注即视为读错。
 >
-> **依赖**：[00-contracts.md](00-contracts.md)（**契约源，尤其第 1.5 / 1.6 / 5.4 / 5.5 / 8 节**）、[09-count-and-order.md](09-count-and-order.md)（稳定全序与默认排序策略，**本工作树中该分册尚不存在**，见未决问题 K-9）。本册**不重新定义**契约；若要偏离，只能先改 00，再改本册，最后改代码。
+> **依赖**：[00-contracts.md](00-contracts.md)（**契约源，尤其第 1.5 / 1.6 / 5.4 / 5.5 / 8 节**）、[09-count-and-order.md](09-count-and-order.md)（稳定全序与默认排序策略；该分册**已存在**，且它的「不包含」小节显式把键集分页划归本册，依赖方向是**单向**的：本册依赖它，它不依赖本册）。本册**不重新定义**契约；若要偏离，只能先改 00，再改本册，最后改代码。
 >
 > **被谁依赖**：本册处于依赖图叶子（[总纲](../data-browsing-design.md) §4.1），没有任何分册依赖它。但 PRD 的 C-47（手填 Offset 跳页）、C-48（深翻页性能）与 DB-09 的「不排序即翻页不稳定」提示都以本册结论为准；[12-testing.md](12-testing.md) 的 journey 模板可直接引用本册第 9 节的键集旅程用例。
 >
@@ -115,7 +115,7 @@
 - `src/commands/database.ts::databaseCommands.getTableData` 是 IPC 封装，逐个字段显式传参（`database` / `schema` 缺省补 `null`）。
 - `src/types/index.ts::TableDataResult { columns, rows, totalRows?, page, pageSize }` 与 `src/types/index.ts::SortCondition { column, descending }` 是前端镜像；`src/types/settings.ts` 里还有一份重复的 `SortCondition`。
 - `src/locales/en/query.ts` 已持有 `pagination.perPage` / `pagination.prev` / `pagination.next` / `pagination.page` / `pagination.pageOf`。
-- `src/lib/gridErrors.ts` **不存在**（00 契约第 8.1 节建议的新增落点），`classifyGridError` 也没有实现——键集的错误码依赖它，见第 8 节。
+- `src/lib/gridErrors.ts` 在基线中不存在，但**归属已由 00 契约 §8.1 冻结给 01**：本册合并时它已存在，本册只按三步追加 `grid.paging.*` 分支。见第 8 节。
 - `src/stores/__tests__/tableDataStore.test.ts`、`src/components/DataTable/__tests__/Pagination.test.tsx`、`src/stores/tableData/__tests__/` 是前端既有测试落点。
 
 ### 2.6 与 00 契约不一致/需回填的点（不藏）
@@ -320,7 +320,7 @@ pub(crate) fn keyset_decision(
 > 注意方向：追加的主键列用 `ASC`（与今天主键注入的方向一致），不反转用户的方向。混合方向的字典序展开见 3.4。
 
 ```rust
-// src-tauri/src/services/query_executor.rs（或拆分后的 table_read_sql.rs）
+// src-tauri/src/services/query_executor/mod.rs（08 已目录化）；键集逻辑另落 table_read_sql.rs
 /// 组装一次分页读的 SELECT。新增符号；`build_select_sql` 保留原名、原签名、原语义，
 /// 作为「无游标」适配器转调它，从而既有的 5 个语义锚点用例一个都不动。
 #[allow(clippy::too_many_arguments)]
@@ -548,56 +548,65 @@ export function nextRequestCursor(
 | C3 | Step 6、Step 8 | `feat(grid): wire keyset cursors and paging hints` | `npx vitest run`、`pnpm typecheck` |
 | C4 | Step 7、Step 9 | `feat(grid): add keyset pagination` | 上述 + 各驱动 crate + `pnpm e2e:skip-build` + `pnpm e2e:contract:matrix` |
 
-**Step 1 · `driver-api` 新增 `keyset` 公开模块（纯新增，不含 trait 方法）**
+### Step 1 · `driver-api` 新增 `keyset` 公开模块（纯新增，不含 trait 方法）
+
 改：`packages/driver-api/src/keyset.rs`（新增）、`packages/driver-api/src/lib.rs`（加 `pub mod keyset;`）。
 加：`PagingMode`、`OrderColumn`、`KeysetUnavailableReason`、`PagePagingInfo`、`CursorValue`（`to_value` / `from_value`）、`lexicographic_seek_predicate`。
-为什么：这些类型要被宿主、前端与所有驱动共用；共享算法集中一处，避免 50 个驱动各写一遍展开式；`CursorValue` 的带标签形态必须先定下来，否则前端游标回传会在 untagged `Value` 上静默变形。
+为什么：这些类型要被宿主、前端与所有驱动共用；共享算法集中一处，避免每个驱动各写一遍展开式（仓库当前注册 18 个：15 个 path + 3 个 git）；`CursorValue` 的带标签形态必须先定下来，否则前端游标回传会在 untagged `Value` 上静默变形。
 自测：`cargo test -p datazen-driver-api --lib` —— 新增的表驱动用例（第 9 节 D1~D5）。
 
-**Step 2 · 契约方法落地（默认实现 = 今天）**
+### Step 2 · 契约方法落地（默认实现 = 今天）
+
 改：`packages/driver-api/src/traits.rs`（按 3.1 **逐字**加两个方法，默认体 `false` / `None`）、`packages/driver-api/src/reuse.rs`（转发两个方法）。
 加：兼容性用例「什么都不覆盖的驱动 → `false` / `None`」（D6）；`reuse.rs` 的转发用例（D7）。
 为什么：先让契约存在于代码里、且对既有驱动**零影响**，后续每一步都能被这道门禁保护；`ReuseDriver` 不转发的话，线级复用驱动永远拿到默认值，能力位形同虚设。
 自测：`cargo test -p datazen-driver-api --lib`；**并**跑 `cargo test -p datazen --lib` 确认宿主未受影响（这两个方法还没被调用）。
 
-**Step 3 · 宿主的排序规格与全序判定（仍未接线）**
+### Step 3 · 宿主的排序规格与全序判定（仍未接线）
+
 改：`src-tauri/src/services/table_paging.rs`（新增），`src-tauri/src/services/mod.rs`（导出）。
 加：`OrderSpec` / `OrderSource` / `KeysetDecision` / `keyset_decision` / `cursor_from_row`（从结果集末行按 `order_columns` 取键值，返回 `Option<Vec<CursorValue>>`）。
 为什么：把「什么算稳定全序」「哪里取边界」变成**纯函数**，可以脱离数据库与 IPC 单测；这是本册最容易写错、也最该被测死的部分。
 自测：`cargo test -p datazen --lib`——`keyset_decision_*` 表驱动用例（第 9 节 H1~H6）。
 
-**Step 4 · 宿主的 SQL 组装（仍不改变默认行为）**
-改：`src-tauri/src/services/table_read_sql.rs`（新增，把 `build_select_sql` / `build_count_sql` / `format_condition` / `filter_is_complete` / `filter_join` **机械搬迁**过来）、`src-tauri/src/services/query_executor.rs`（调用新模块、只留编排）。
+### Step 4 · 宿主的 SQL 组装（仍不改变默认行为）
+
+改：`src-tauri/src/services/table_read_sql.rs`（**新增**，把 `build_select_sql` / `build_count_sql` / `format_condition` / `filter_is_complete` / `filter_join` **机械搬迁**过来）、`src-tauri/src/services/query_executor/mod.rs`（调用新模块、只留编排）。**注意路径**：本册排在提交序末位，此时 `query_executor/` 目录**已由 08 完成目录化**，基线里的单文件 `query_executor.rs` 不复存在——凡本册仍写 `query_executor.rs` 的地方，一律读作 `query_executor/mod.rs`。
 加：`build_paged_select_sql` + `PagedSelectSql`；`build_select_sql` 保留原签名、原语义（作为无游标适配器）。
 为什么：`query_executor.rs` 已 797 行（2.1），键集逻辑必须落在新文件（第 6 节）；搬迁是纯位移，**搬迁前后 SQL 文本必须逐字节相同**。
 自测：`cargo test -p datazen --lib`，**先确认既有的 5 个语义锚点用例（A1 列出的）在搬迁后原样通过**，再跑新增的黄金 SQL 用例（第 9 节 H7~H12）。
 
-**Step 5 · 宿主读链路与 IPC 接线（默认不启用）**
-改：`src-tauri/src/services/query_executor.rs`（新增 `get_table_data_page`，`get_table_data` 变成它的薄包装、签名不变）、`src-tauri/src/commands/schema.rs`（`get_table_data_impl` 接可选 `after_key`、回填 `paging`）。
+### Step 5 · 宿主读链路与 IPC 接线（默认不启用）
+
+改：`src-tauri/src/services/query_executor/mod.rs`（新增 `get_table_data_page`，`get_table_data` 变成它的薄包装、签名不变）、`src-tauri/src/commands/schema.rs`（`get_table_data_impl` 接可选 `after_key`、回填 `paging`）。
 加：`grid.paging.keysetUnavailable` / `grid.paging.cursorInvalidated` / `grid.paging.cursorTooDeep` 三个 `CommandError` 消息；`PagePagingInfo` 的组装。
 为什么：能力的**裁决权在后端**——前端只信 `paging.mode`；游标值由后端从**它自己返回的行**里截取，前端只做原样回传，避免前端按列名重新推导边界（列名会随 `visibleColumns` 漂移）。
 自测：`cargo test -p datazen --lib`（H13~H16：mock 驱动开/关能力各一条）；`commands/schema/tests.rs` 里既有的 `get_table_data_*` 用例必须原样通过。
 > ⚠ 自测必须包含「**不传 `afterKey` 的老调用形状仍然成功**」：Tauri v2 命令的缺省参数行为要用一个显式 `invoke`（或临时用例）验证一次；若发现缺失参数会报 `invalid args`，则**不要**给既有命令加参数，改为新增 `get_table_data_keyset` 命令承载游标（见 K-4 的同类取舍）。
 
-**Step 6 · 前端状态与请求接线**
+### Step 6 · 前端状态与请求接线
+
 改：`src/types/index.ts`、`src/stores/tableData/types.ts`、`src/stores/tableData/connectionState.ts`（`emptyTableState`）、`src/stores/tableDataStore.ts`（`loadTableData` 带游标、`commitFetchedPage` 写 `keyset`、`setPage` 按 4.1 收紧）、`src/commands/database.ts`（可选 `afterKey`）。
 加：`src/lib/keysetPaging.ts` + `src/lib/__tests__/keysetPaging.test.ts`。
 为什么：竞态保护、选择清理、`rowIdentityAnchors` 重建全部走既有 `commitFetchedPage`，键集**不许**另开一条写 `rows` 的路。
 自测：`npx vitest run`（F1~F6）+ `pnpm typecheck`。
 
-**Step 7 · 让具体驱动开启（每个驱动一个独立小提交）**
+### Step 7 · 让具体驱动开启（每个驱动一个独立小提交）
+
 改：`packages/drivers/postgres`、`packages/drivers/mysql`、`packages/drivers/sqlite`、`packages/drivers/sqlserver` 各加两个方法的覆盖，测试写在各自 crate（`src/<driver>/tests.rs` 或 `tests/`）。
 加：各驱动的 `keyset_predicate_sql` 用例（第 9 节 P/M/S/T 组）。
 为什么：兼容性铁律要求「先有默认实现、再让驱动开启」；能力位一旦开启就改变了 SQL 生成路径，必须一个驱动一个提交，才能独立回滚。
 自测：`cargo test -p datazen-driver-<id>`；**`packages/drivers/sqlserver` 的用例必须断言 SQL 里不出现行值比较**（`((a, b) > …)` 这种形状）。
 
-**Step 8 · UI 提示与降级可见**
+### Step 8 · UI 提示与降级可见
+
 改：`src/components/DataTable/Pagination.tsx`（新增可选 `pagingHint?: { reason: KeysetUnavailableReason | null; driftSuspected: boolean; mode: PagingMode }`，渲染一行提示）、`src/components/DataTable/DataTable.tsx`（透传）、`src/windows/connection/TableView.tsx`（从 store 取）。
 为什么：降级必须**可见**，否则用户会把「慢」当成「坏」；同时 UI 不得渲染一个点了会跳错页的按钮。
 自测：`npx vitest run`（F7~F8）+ `pnpm e2e:skip-build`。
 
-**Step 9 · 文案、错误码与文档收尾**
-改：`src/locales/en/query.ts`（第 8 节 key 全表）、`src/lib/gridErrors.ts`（新增 `classifyGridError` 的 `grid.paging.*` 前缀分支；该文件由 00 契约第 8.1 节规划，若 DB-04/08 已先建则只追加）。
+### Step 9 · 文案、错误码与文档收尾
+
+改：`src/locales/en/query.ts`（第 8 节 key 全表）、`src/lib/gridErrors.ts`（**01 已建骨架**，本册按契约 §8.1 三步追加 `grid.paging.*` 前缀分支，禁止整文件重写；该文件由 01 拥有，先建则只追加）。
 加：`e2e/specs/table-keyset-paging.ts`；`e2e/contract/journeys/` 的分页 journey。
 为什么：文案与错误码是「可理解」的一部分；E2E 是唯一能证明「顺序翻页不重复」的门禁。
 自测：`npx vitest run`、`pnpm e2e:minimal`、`pnpm e2e:contract:matrix`。
@@ -616,7 +625,7 @@ export function nextRequestCursor(
 | `packages/driver-api/src/mock_driver.rs` | 修改 | `MockDriverOptions` 加 `supports_keyset_pagination` / `keyset_predicate_returns_none`；`MockDriver` 覆盖两个方法 | +30 | 否（文件较大，需自查） |
 | `src-tauri/src/services/table_paging.rs` | **新增** | `OrderSpec` / `keyset_decision` / `cursor_from_row` + 用例 | ~230（含 ~110 行测试） | 否 |
 | `src-tauri/src/services/table_read_sql.rs` | **新增** | SQL 文本层（搬迁既有 5 个函数 + 新增 `build_paged_select_sql` + 既有/新增用例） | ~620（含 ~300 行测试） | **接近**：若超 800，再把 `format_condition` / `filter_is_complete` / `filter_join` 拆到 `table_filter_sql.rs` |
-| `src-tauri/src/services/query_executor.rs` | 修改 | 只留编排：`get_table_data`（薄包装）+ 新增 `get_table_data_page` | 797 → **~330**（搬迁后）→ **~420**（加键集） | 拆分后**不再触及** |
+| `src-tauri/src/services/query_executor/mod.rs`（合并时已由 08 目录化） | 修改 | 只留编排：`get_table_data`（薄包装）+ 新增 `get_table_data_page` | **~340（08 目录化后）** → 搬迁 `table_read_sql` → **~150** → 加键集 **~240** | 拆分后**不再触及** |
 | `src-tauri/src/services/mod.rs` | 修改 | 导出两个新模块 | +4 | 否 |
 | `src-tauri/src/commands/schema.rs` | 修改 | IPC 接可选 `after_key`、回填 `paging` | +40 | 否（现 385 行） |
 | `src/types/index.ts` | 修改 | 前端镜像类型 | +35 | 否 |
@@ -629,7 +638,7 @@ export function nextRequestCursor(
 | `src/components/DataTable/Pagination.tsx` | 修改 | `pagingHint` 渲染 | +35 | 否（现 137 行） |
 | `src/components/DataTable/DataTable.tsx` | 修改 | 透传 `pagingHint` | +6 | 否 |
 | `src/windows/connection/TableView.tsx` | 修改 | 从 store 组装 `pagingHint` | +15 | 否 |
-| `src/lib/gridErrors.ts` | **新增/修改** | `classifyGridError` + `grid.paging.*` 前缀 | +25 | 否 |
+| `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 `grid.paging.*` 码，**禁止整文件覆盖** | +25 | 否 |
 | `src/locales/en/query.ts` | 修改 | 第 8 节 key | +12 | 否（现 424 行） |
 | `packages/drivers/{postgres,mysql,sqlite,sqlserver}/src/*.rs` | 修改 | 覆盖两个能力位 | 每驱动 +25 | 各驱动主文件需自查；sqlserver 主文件已较大，必要时把覆盖写进 `sqlserver/keyset.rs` 子模块 |
 | `packages/drivers/{postgres,mysql,sqlite,sqlserver}/src/**/tests.rs` | 修改 | 驱动侧谓词用例 | 每驱动 +60 | 否 |
@@ -638,7 +647,7 @@ export function nextRequestCursor(
 
 ### 6.1 必须处理的三个「已超限」文件（诚实记录）
 
-1. `src-tauri/src/services/query_executor.rs`（**现 797 行**）——本册**必须**拆分，否则加任何东西都越线。方案：把 SQL 文本层整体搬到 `table_read_sql.rs`，`QueryExecutor` 只留「取缓存 → 组装 → 发查询 → 组装结果」。搬迁后约 330 行，留出约 470 行余量。既有 `#[cfg(test)] mod tests` **随函数一起搬**，用例名不改（它们是 A1 的口径）。
+1. `src-tauri/src/services/query_executor/`（**基线 797 行，但本册合并时 08 已完成目录化**，`mod.rs` 约 340 行、`tests.rs` 约 460 行）——本册**仍需**把 SQL 文本层整体搬出，否则加键集会越线。方案：把 SQL 文本层整体搬到 `table_read_sql.rs`，`QueryExecutor` 只留「取缓存 → 组装 → 发查询 → 组装结果」。搬迁后约 330 行，留出约 470 行余量。既有 `#[cfg(test)] mod tests` **随函数一起搬**，用例名不改（它们是 A1 的口径）。
 2. `packages/driver-api/src/reuse.rs`（**现 1159 行，早于本册就超限**）——本册要加约 16 行。两个选择，**二选一但必须写进提交信息**：(a) 本册提交内先把 `impl DatabaseDriver for ReuseDriver` 整体搬到 `packages/driver-api/src/reuse/driver_impl.rs`（`reuse.rs` 变 `reuse/mod.rs` + `driver_impl.rs`，纯位移，转发用例跟着走），原始 1159 行降到约 550 + 约 620；(b) 记为既有技术债、本册只加 16 行，并在 `progress.md` 与提交信息里注明。**建议 (a)**：本册是「新增 trait 方法」的批次，转发块正是相关代码，顺手拆成本最低。
 3. `packages/driver-api/src/types.rs`（**现 939 行**）、`packages/driver-api/src/traits.rs`（**现 1020 行**）——同样早于本册超限。本册只加 4 / 22 行，且都是契约要求的位置，**不建议在本册顺手拆**（拆 DTO 与 trait 的爆炸半径远大于收益）。记录为既有技术债（K-10），提交信息里注明「未新增超限文件，仅触碰既有超限文件」。
 
@@ -831,6 +840,6 @@ export function nextRequestCursor(
 | K-6 | **游标值内联 vs 参数化**：`query_at` 没有绑定参数，因此本册让驱动内联字面量；但 `packages/data-sync/src/keyset.rs` 已经证明参数化是可行的 | (a) 内联字面量（本册方案，与筛选路径一致）；(b) 把浏览读切到 `query_with_params_at`，并给驱动加「占位符渲染」约定 | **(a)**。00 契约第 5.5 节的签名只回传 `Option<String>`、不回收参数，参数化需要额外约定占位符顺序；筛选值今天也是内联的，改路径属另一批次。(b) 可作为后续「值与字面量彻底分离」的独立方案 |
 | K-7 | **稳定全序的唯一键来源**：`CachedColumns` 没有唯一索引信息，今天只能用主键；契约第 1.6 节还要求用 `effective_primary_keys()` 而不是自己过滤 `is_primary_key`，而 `build_select_sql` 今天恰恰是自己过滤 | (a) v1 只用主键且沿用产出 `ORDER BY` 的那一份（本册方案）；(b) 扩展 `SchemaCache` 拿 `TableSchema.indexes`（`IndexInfo::is_unique`），让唯一索引也能支撑键集；(c) 顺手把 PK 来源收敛到 `cached.primary_keys` | **(a)** 先落地；**(c) 归 09 分册**（它拥有默认排序策略，且「收敛 PK 来源」会改变既有 SQL，必须有独立回归）；**(b)** 记为后续增强——它能让「按 `email` 排序」这类常见诉求也用上键集 |
 | K-8 | **漂移提示策略**：`driftSuspected` 只在「本页行数 < 每页条数但 COUNT 说还有后页」时置真；是否要做更主动的漂移检测（翻页时重算 COUNT） | (a) 只做这个廉价信号 + 一次按需重算；(b) 每次键集翻页都重算 COUNT | **(a)**。翻页时重算 COUNT 会把「深翻页快」这件事重新拖慢（既有 `skipCount: true` 就是为省这次 COUNT 才存在的）；(b) 的收益只是提示更及时 |
-| K-9 | **09 分册尚不存在**：本册依赖它的 `default_order_columns`（契约第 5.4 节）与「不排序即不稳定」提示；等它落地后需要回填一致性与共用 i18n key | (a) 本册先按契约签名实现并在 09 落地后回填；(b) 等 09 落地再开工本册 | **(a)**，但**必须在提交信息与 `progress.md` 里标注「待与 09 对齐」**：09 落地后回填两处——(i) 全序判定必须消费 `default_order_columns` 的输出而不是自己复制一份；(ii) `pagination.hint.unstableOrderWarning` 的归属（谁定义、谁引用） |
+| K-9 | **与 09 的落点一致性**（**已核对，非未决**）：稳定全序的唯一键来源由 **09 拥有**——本册 K-7 的方案 (c)「把 PK 来源收敛到 `cached.primary_keys`」已明确归 09，因为它会改变既有 `ORDER BY` SQL，必须有独立回归；同时 09 的「不包含」小节把键集分页整体划归本册。⇒ **依赖是单向的**（本册 → 09），没有环。实施约束：① 冻结提交顺序里 `09` 排在 `11` **之前**（见总纲第 4 节），所以 09 必须**只依赖列元数据、不引用任何键集类型**，否则两册任意颠倒顺序都会编不过；② 两册共用同一批「不稳定排序」i18n key，**以 09 的 key 为准**，本册不再另起名 |
 | K-10 | **既有超限文件**：`reuse.rs`(1159) / `types.rs`(939) / `traits.rs`(1020) 早于本册就超过 800 行；本册必须往其中两三个文件加行 | (a) 本册顺手拆 `reuse.rs`（转发块位移）；(b) 全部记为既有技术债，本册只加行 | **(a) 仅对 `reuse.rs`**（本册改的正是转发块，位移成本最低、收益最直接）；`types.rs` / `traits.rs` **建议 (b)**（拆 DTO 与 trait 的爆炸半径远大于收益），但要在提交信息里明确「未新增超限文件，仅触碰既有超限文件」，避免被误判为本册引入 |
 | K-11 | **`en.ts` 口径冲突**：仓库 `AGENTS.md` 的 i18n 规则与总纲 §6 DoD 第 9 条写「新增 key 只在 `en.ts`」，但已核实 `src/locales/en.ts` 只有 `export { default } from './en/index'`（两行），改它无效；00 契约第 8 节与总纲 §5.4 已改为「领域包」 | (a) 按领域包执行，并把两处旧表述按事实修正；(b) 按旧表述改 `en.ts` | **(a)**。本册只改 `src/locales/en/query.ts`（第 8 节）。修正旧表述不在本册授权范围（不得改其它文档），因此**在此登记**，请文档 owner 收口 |

@@ -31,7 +31,8 @@
 | **变更** | 无显式排序时，主键列的来源从「`columns` 上的 `is_primary_key` 标志」改为「`CachedColumns.primary_keys`」 |
 | **为什么** | `CachedColumns.primary_keys` 已在缓存层经过 `TableSchema::effective_primary_keys()` 归一化（优先 `primary_keys` 字段）；而今天的 `build_select_sql` **完全没读它**，只遍历列标志。于是「驱动填了 `primary_keys` 却没在列上打 `is_primary_key` 标志」的表会**找不到主键、退化成按第一列排序** —— 这是既有隐患，本册修正它 |
 | **影响面（会变）** | ①「`primary_keys` 非空、但对应列未打 `is_primary_key` 标志」的表：从 `ORDER BY <第一列> ASC` 变为 `ORDER BY <真实主键> ASC`（结果集顺序与分页稳定性同时改变）；② 由 ① 派生：这类表不再出现「无主键、按首列排序」的提示（它现在真的有主键了） |
-| **影响面（不会变）** | 列标志与 `primary_keys` 一致的驱动（**树内 16 个 path 驱动经代码核实均属此类**：postgres 的 `get_columns_impl` 用 `pk_names.contains(&name)` 同时产出列标志与主键表；其余驱动走 `traits::streaming::get_columns` 默认实现，其 `pks` 直接来自 `TableSchema::effective_primary_keys()`）；有主键且列标志齐全的表；显式排序路径；**全部行数路径**（`count_strategy` / `count_estimate_sql` 与排序无关） |
+| **影响面（不会变）** | 列标志与 `primary_keys` 一致的驱动（**树内 15 个 path 驱动经代码核实均属此类**：postgres 的 `get_columns_impl` 用 `pk_names.contains(&name)` 同时产出列标志与主键表；其余驱动走 `traits::streaming::get_columns` 默认实现，其 `pks` 直接来自 `TableSchema::effective_primary_keys()`）；有主键且列标志齐全的表；显式排序路径；**全部行数路径**（`count_strategy` / `count_estimate_sql` 与排序无关） |
+> ⚠ **驱动的计数口径**：`packages/drivers/` 下有 16 个目录，但其中 `http-support` **不是驱动**（`drivers-registry.json` 里没有它，crate 自述为「Shared HTTP helpers for DataZen path drivers」）。按注册表口径：path 驱动 **15** 个（postgres / mysql / sqlite / redis / mongodb / sqlserver / clickhouse / duckdb / elasticsearch / rqlite / turso / influxdb / victoriametrics / hbase / vector），git 驱动 **3** 个（kiwi / olap / superset），合计 **18**。**不要用目录数当驱动数。**
 | **无法穷举的部分** | `drivers-registry.json` 里的 git 驱动（kiwi / olap / superset 等）源码在构建时才克隆，**不在本工作树内，其列标志与 `primary_keys` 是否一致无法核实**。因此合入时必须：在 PR 描述里列出树内核实结果，并在宿主加一条 `tracing::debug!`（当 `cached.primary_keys` 与「列标志推导结果」不一致时打印表名），让不一致的表可被发现与上报 |
 | **合入条件** | ② 四条既有路径各一条测试 + 一条「列标志与 `primary_keys` 不一致时按 `primary_keys` 排序」的新语义测试（§9 A 组）；③ 已确认 `build_select_sql` 是**私有** `fn`（非 `pub`），给它加参数**不违反**契约 R1 —— R1 约束的是驱动可见的 trait 方法与 IPC DTO，不是宿主内部私有辅助函数 |
 
@@ -171,7 +172,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 
 **`skip_count_query` 的覆盖现状（本册的兼容性事实基础）**：
 
-- 全仓 grep `fn skip_count_query` 只命中两处：`packages/driver-api/src/traits.rs`（默认实现）与 `packages/driver-api/src/reuse.rs`（纯转发）。**树内 16 个 path 驱动（postgres / mysql / sqlite / sqlserver / clickhouse / duckdb / redis / mongodb / rqlite / turso / elasticsearch / influxdb / hbase / vector / victoriametrics + http-support）没有一个覆盖它。**
+- 全仓 grep `fn skip_count_query` 只命中两处：`packages/driver-api/src/traits.rs`（默认实现）与 `packages/driver-api/src/reuse.rs`（纯转发）。**树内 15 个 path 驱动（postgres / mysql / sqlite / sqlserver / clickhouse / duckdb / redis / mongodb / rqlite / turso / elasticsearch / influxdb / hbase / vector / victoriametrics + http-support）没有一个覆盖它。**
 - PRD §7 DB-09 提到的 OLAP / Kiwi / Superset 在 `drivers-registry.json` 里是 `source: "git"` 的驱动，源码在构建时才克隆，**本工作树中不存在，因此其覆盖行为无法核实**。本册的兼容性论证只能采用「默认实现恒等于今天的行为」这一形式，**不得**依赖任何具体 git 驱动的实现细节。
 
 ### 2.3 前端
@@ -240,9 +241,9 @@ fn allow_first_column_fallback_order(&self) -> bool { true }
 
 | 符号 | 缺省值 | 为什么是这个缺省 |
 | --- | --- | --- |
-| `count_strategy()` | 由 `skip_count_query()` 推出 | 树内 16 个 path 驱动与所有未改动的 git 驱动都得到 `Exact`，与今天一致；`skip_count_query == true` 的驱动得到 `Unsupported`，也与今天一致。**这是全册最重要的兼容性技巧** |
+| `count_strategy()` | 由 `skip_count_query()` 推出 | 树内 15 个 path 驱动与所有未改动的 git 驱动都得到 `Exact`，与今天一致；`skip_count_query == true` 的驱动得到 `Unsupported`，也与今天一致。**这是全册最重要的兼容性技巧** |
 | `count_estimate_sql()` | `None` | 「我没有估算手段」= 退回精确计数，绝不猜 |
-| `default_order_columns()` | 主键列 → 否则第一列 → 否则空 | **选择逻辑**必须与今天 `build_select_sql` 的注入逻辑等价（含「无主键退化为第一列」）。⚠ **但输入变了**：宿主传的是 `CachedColumns.primary_keys`（归一化后的真实主键），而不是从列标志现推 —— 这是 §1.1 声明的行为变更，不能写成「完全等价」 |
+| `default_order_columns()` | 主键列 → 否则第一列 → 否则空 | **选择逻辑**必须复刻今天 `build_select_sql` 的三段规则（主键 → 无主键退化首列 → 空），但这**不等于**行为等价：⚠ **输入变了**：宿主传的是 `CachedColumns.primary_keys`（归一化后的真实主键），而不是从列标志现推 —— 这是 §1.1 声明的行为变更，不能写成「完全等价」 |
 | `allow_first_column_fallback_order()` | `true` | `false` 会让无主键表从「按首列排序」变成「不排序」，是行为变化，只能由驱动显式声明 |
 
 > **参数语义（契约 §5.3 已冻结，与本文档早期草稿不同）**：`count_estimate_sql(database, schema, table)` 收到的是**未引用的原始表名 + 显式库/schema**，与 `get_columns` / `get_table_schema` 的既有惯例完全一致；**标识符引用由驱动自己做**（用 `self.quote_ident` / `self.quote_char`），宿主不代劳。
@@ -472,12 +473,28 @@ export function canPageForward(view: TotalRowsView, rowCount: number, pageSize: 
 // ⚠ 本块与契约 §7 逐字对齐；`editable` 的缺省值是 true（不是 false），
 //   理由见契约 §7 的字段注释：R4 要求缺省值等于今天的语义，而今天是可编辑的。
 export interface DataGridCapabilities {
-  editable?: boolean;              // 缺省 true（= 今天 isEditable = !isConnectionReadOnly）
-  insertReturning?: boolean;       // 缺省 false（今天没有插入能力）
-  countStrategy?: CountStrategy;   // 缺省 'exact'
-  filterOperators?: FilterOperator[]; // 缺省 = 共享算子集 19 个
-  likeCaseInsensitive?: boolean;   // 缺省 false
+  /**
+   * 表级可写入。**默认 true**（等于今天的 `isEditable = !isConnectionReadOnly`）。
+   * 只有显式写 `editable: false` 才关闭写入入口。
+   *
+   * ⚠ 本字段的缺省值曾经误写为 false，已更正：契约第 2 节 R4 规定「默认值必须等于今天的语义」，
+   * 而今天在没有任何该声明时网格是**可编辑**的。若缺省为 false，所有未声明该能力的驱动
+   * 会在一夜之间变成只读——那是严重回归，不是保守。
+   */
+  editable?: boolean;
+  /** 插入后数据库能回填新行主键（对应 insert_returning_clause）。默认 false（今天没有插入能力）。 */
+  insertReturning?: boolean;
+  /** 行数策略；缺省视为 'exact'（与既有 `skip_count_query` 的缺省语义对齐）。 */
+  countStrategy?: 'exact' | 'estimated' | 'unsupported';
+  /**
+   * 支持的筛选算子；缺省为**共享算子集的 19 个**（见第 5.2 节：既有 10 + 共享扩展 9）。
+   * 方言专有的 3 个（Regex / NotRegex / JsonContains）**必须**由驱动显式声明才会出现在 UI。
+   */
+  filterOperators?: FilterOperator[];
+  /** LIKE 在默认排序规则下大小写不敏感（仅影响文案，不改变 SQL）。默认 false。 */
+  likeCaseInsensitive?: boolean;
 }
+// 注：`countStrategy` 上面写的是字面量联合（与契约 §7 逐字一致），而本册 §3 已导出 `export type CountStrategy = 'exact' | 'estimated' | 'unsupported'`。两者同形。**落地时二选一**：要么在 `databaseMeta.ts` 里 `import type { CountStrategy }` 后写 `countStrategy?: CountStrategy`，要么删掉 §3 的别名。**不要两处各定义一份**——契约冻结的是字段名与取值集合，不是「必须写成内联联合」。
 export interface DatabaseTypeMeta {
   // …既有字段不动
   /** 新增。**字段名已由契约 §7 冻结为 `dataGrid`**；缺省时宿主按契约 §7 的缺省值行事（= 今天的体验）。 */
@@ -582,7 +599,7 @@ estimateTableRows: (
 
 - 主键为空时 `default_order_columns()` 默认实现给出第一列 ⇒ 对「列标志与 `primary_keys` 一致」的表，SQL 与今天逐字节相同；
 - 前端在 `columns.every(c => !c.isPrimaryKey) && defaultOrderOverride !== 'none'` 时显示 `t('defaultSort.noPrimaryKey')`，并提供两个出路：**按首列排序**（= 保持现状）与**自定义排序**（引导用户点列头）。两条出路都是既有能力，不新增数据通路；
-- **已知的残留不精确（必须写进实现注释）**：前端只有 `columns` 上的 `is_primary_key` 标志，因此对「列标志缺失但 `primary_keys` 非空」的驱动（正是 §1.1 影响面里的那类表），会**误显示**「无主键、按首列排序」的提示，而实际 SQL 已按真实主键排序。本册**不为此新增 IPC 字段**（那会扩大 DTO 改动面），保留偏差并列入 §11 Q14 裁定；受影响范围与 §1.1 完全一致（树内 16 个 path 驱动不受影响）。
+- **已知的残留不精确（必须写进实现注释）**：前端只有 `columns` 上的 `is_primary_key` 标志，因此对「列标志缺失但 `primary_keys` 非空」的驱动（正是 §1.1 影响面里的那类表），会**误显示**「无主键、按首列排序」的提示，而实际 SQL 已按真实主键排序。本册**不为此新增 IPC 字段**（那会扩大 DTO 改动面），保留偏差并列入 §11 Q14 裁定；受影响范围与 §1.1 完全一致（树内 15 个 path 驱动不受影响）。
 
 ---
 
@@ -590,7 +607,9 @@ estimateTableRows: (
 
 > 每一步都写「改哪个文件 / 加什么符号 / 为什么 / 怎么自测」。**顺序不可调换**：Step 1~2 先把新契约的**选择逻辑**与今天对齐（有主键用主键、无主键退化第一列）并用测试钉住，Step 3 才允许宿主改**输入来源**（唯一的行为变更，§1.1），Step 4 之后才动行数通路。这是契约 §2 R2/R4 与 §5.4 合入条件的要求。
 
-### Step 0（拆分，前置，纯搬运）：把 `query_executor.rs` 的测试模块挪出去
+### Step 0（**已由 08 完成，本册只补用例**）：`query_executor/` 的测试模块
+
+> **本 Step 在本册合并时已经不存在了。** `query_executor.rs → query_executor/{mod.rs,tests.rs}` 的目录化**归属冻结给 08**（契约 §9.1；提交序 01 → 02 → 03 → 05 → 06 → 04 → **08 → 09** → 10 → 07 → 11，08 必然先落地）。本册合并时该目录必然已存在，因此**不需要 Step 0**，只需确认 `mod.rs` 末尾的 `#[cfg(test)] mod tests;` 仍在，并往 `tests.rs` 补本册用例。下面保留搬迁形态的描述，仅供回读 08 的产出结构。
 
 - **改哪个文件**：`src-tauri/src/services/query_executor.rs` → 目录模块 `src-tauri/src/services/query_executor/mod.rs` + 新增 `src-tauri/src/services/query_executor/tests.rs`；`src-tauri/src/services/mod.rs` 的 `mod query_executor;` 声明不变（目录模块对声明透明）。
 - **加什么符号**：`mod.rs` 末尾保留 `#[cfg(test)] mod tests;`；测试体原样搬到 `tests.rs`，只把 `use super::*;` 改为 `use super::*;`（同层级引用，符号路径不变）。
@@ -620,7 +639,7 @@ estimateTableRows: (
 - **改哪个文件**：`src-tauri/src/services/query_executor/mod.rs`（`build_select_sql` 新增 `default_order: &[String]` 参数并删掉内部的 `is_primary_key` 推导；`get_table_data` 新增 `count_strategy`、`default_order_columns` 两个参数，并在开头用 `cached.primary_keys` 调 `resolve_default_order` 与 `resolve_count_strategy`，同时输出 §3.2 要求的不一致告警）、新增 `src-tauri/src/services/table_browsing.rs`、`src-tauri/src/services/mod.rs`（导出新模块）。
 - **加什么符号**：`resolve_default_order`、`resolve_count_strategy`、`QueryExecutor::estimate_row_count`、`table_browsing::pk_sources_disagree`（或等价的告警判定函数）。
 - **为什么**：这是本册的行为中枢——「谁来排」（宿主写死 → 驱动声明）与「主键从哪来」（列标志 → 归一化主键表）两件事都在这一步落地。把纯决策逻辑放在新文件里，`query_executor/mod.rs` 只留调用点（第 6 节有行数账）。
-- **提交与说明（契约 §5.4 合入条件 ①，不可省略）**：提交信息必须显式写出这是一次行为变更，并在 PR 描述里附上影响面表（= §1.1 的表），包含「树内 16 个 path 驱动经核实列标志与 `primary_keys` 一致」「git 驱动不在树内、依靠 `tracing::debug!` 告警发现不一致」两条结论。**禁止**把这次变更描述成「纯重构，行为不变」。
+- **提交与说明（契约 §5.4 合入条件 ①，不可省略）**：提交信息必须显式写出这是一次行为变更，并在 PR 描述里附上影响面表（= §1.1 的表），包含「树内 15 个 path 驱动经核实列标志与 `primary_keys` 一致」「git 驱动不在树内、依靠 `tracing::debug!` 告警发现不一致」两条结论。**禁止**把这次变更描述成「纯重构，行为不变」。
 - **怎么自测**：
   - Step 2 的五条用例全绿（**最重要**）；
   - `explicit_sort_overrides_default_pk_order` 仍绿，证明显式排序优先级没被打破；
@@ -686,9 +705,9 @@ estimateTableRows: (
 | `packages/driver-api/src/traits.rs` 的 `mod` 声明 | 修改 | 声明 `mod browsing;` | +1 | — |
 | `packages/driver-api/src/reuse.rs` | 修改 | 4 条转发（`count_strategy` / `count_estimate_sql` / `default_order_columns` / `allow_first_column_fallback_order`） | +24 | 否（既有约 1159 行，**已超限**；本次只补转发，属最小必要改动） |
 | `packages/driver-api/src/mock_driver.rs` | 修改 | `MockDriverOptions` 新增 `skip_count_query`、`count_estimate_rows`，并在 `Default` 与 `impl DatabaseDriver` 接通 | +20 | 否 |
-| `src-tauri/src/services/query_executor.rs` | **目录化**：`query_executor/mod.rs` + `query_executor/tests.rs` | 生产代码留 `mod.rs`，测试整块搬走 | 搬运（0 净增） | **拆除红线风险**：现状 797 行，目录化后生产文件约 340 行，本册净增 30~40 后仍在 380 行以内 |
+| ~~`src-tauri/src/services/query_executor.rs`~~ | **目录化归属冻结给 08**（契约 §9.1；提交序 08 早于 09） | 本册合并时 `query_executor/` 目录**必然已存在**，本册**不做搬迁**，只改 `mod.rs` 与 `tests.rs` | 0（搬迁由 08 完成） | **拆除红线风险**：现状 797 行，**由 08 完成**目录化后生产文件约 340 行，本册净增 30~40 后仍在 380 行以内 |
 | `src-tauri/src/services/query_executor/mod.rs` | 修改 | `build_select_sql` 新增 `default_order` 参数并删除内部主键推导；`get_table_data` 新增两个参数、改用 `cached.primary_keys` 调 `resolve_default_order`（**行为变更，见 §1.1**）、接 `resolve_count_strategy`、补 `total_rows_kind`；新增 `estimate_row_count` 与估算分支的并发结构 | +55 / -25 | 否（约 370 行） |
-| `src-tauri/src/services/query_executor/tests.rs` | 修改（Step 0 由原文件搬出） | 四条等价性用例 + 一条新语义用例 + 三态与并发用例 | 搬运（约 460）+ 新增约 150 | 否 |
+| `src-tauri/src/services/query_executor/tests.rs` | 修改（**搬迁已由 08 完成**，本册只补用例） | 四条等价性用例 + 一条新语义用例 + 三态与并发用例 | 新增约 150（不含 08 搬出的约 460） | 否 |
 | `src-tauri/src/services/table_browsing.rs` | **新增** | `resolve_count_strategy` / `resolve_default_order` 两个纯函数 + 单测 | ~120（含测试） | 否 |
 | `src-tauri/src/services/mod.rs` | 修改 | 导出新模块 | +2 | 否 |
 | `src-tauri/src/commands/schema.rs` | 修改 | `get_table_data_impl` 两个新可选入参；新增 `estimate_table_rows_impl` / `estimate_table_rows` | +70 | 否（约 455 行） |
@@ -699,9 +718,9 @@ estimateTableRows: (
 | `packages/drivers/postgres/ui/meta.ts` | 修改 | 声明 `dataGrid.countStrategy = 'estimated'` | +5 | 否 |
 | `src/types/index.ts` | 修改 | `CountStrategy`、`TableDataResult.totalRowsKind`、`AppSettings` 三字段 | +25 | 否 |
 | `src/commands/database.ts` | 修改 | `getTableData` 两个新入参 + `estimateTableRows` | +20 | 否（约 180 行） |
-| `src/lib/databaseMeta.ts` | 修改 | `DataGridCapabilities` + `dataGrid?` | +22 | 否（约 233 行） |
+| `src/lib/databaseMeta.ts` | **修改（追加）** | `DataGridCapabilities` 与 `dataGrid?` 的**创建归属已冻结给 08**（提交序 08 早于 09，契约 §9.1）；本册合并时它们必然已存在，只追加 `countStrategy?` / `allowFirstColumnFallbackOrder?` 两项，**禁止整文件重写** | +22 | 否（合并时约 255 行） |
 | `src/lib/totalRowsDisplay.ts` | **新增** | 三态归一、紧凑格式化、未知态翻页判定 | ~60 | 否 |
-| `src/lib/gridErrors.ts` | **新增**（契约 §8 要求，本册用到 `grid.count.*` 前缀） | `GridErrorCode` + `classifyGridError` | ~40 | 否 |
+| `src/lib/gridErrors.ts` | **修改（追加）**（本册用到 `grid.count.*` 前缀） | 01 已建骨架；本册按契约 §8.1 三步追加 `grid.count.*` 码，**禁止整文件覆盖** | +10 | 否 |
 | `src/stores/settingsStore.ts` | 修改 | `DEFAULT_SETTINGS` 三个默认值 | +4 | 否 |
 | `src/stores/tableData/types.ts` | 修改 | `TableState` 两个新字段 | +6 | 否 |
 | `src/stores/tableData/connectionState.ts` | 修改 | `emptyTableState` 两个新字段初值 | +2 | 否 |
@@ -717,7 +736,7 @@ estimateTableRows: (
 | `src/lib/__tests__/totalRowsDisplay.test.ts` | **新增** | 纯函数用例 | ~70 | 否 |
 | `src/components/DataTable/__tests__/Pagination.countKind.test.tsx` | **新增** | 三态组件用例（避免把既有 `Pagination.test.tsx` 撑大） | ~110 | 否 |
 
-> **800 行红线的结论**：本册有 **两处**必须处理的既有超限/临界文件 —— `src-tauri/src/services/query_executor.rs`（797，**必须**目录化拆测试）与 `src/stores/tableDataStore.ts`（722，净增需节制）。`packages/driver-api/src/traits.rs`（1020）与 `types.rs`（939）**已经超限**，本册按契约强制位置只做最小净增，并把「是否拆分这两个文件」列入第 11 节。
+> **800 行红线的结论**：本册有 **两处**必须处理的既有超限/临界文件 —— `src-tauri/src/services/query_executor.rs`（797，**目录化拆测试已由 08 完成**，本册合并时生产文件约 340 行，净增 30~40 后仍有余量）与 `src/stores/tableDataStore.ts`（722，净增需节制）。`packages/driver-api/src/traits.rs`（1020）与 `types.rs`（939）**已经超限**，本册按契约强制位置只做最小净增，并把「是否拆分这两个文件」列入第 11 节。
 
 ---
 
@@ -937,7 +956,7 @@ estimateTableRows: (
 | Q8 | **`driver-api` 的 `types.rs`（约 939 行）与 `traits.rs`（约 1020 行）已超 800 行红线** | 本册按契约强制位置只做最小净增（`types.rs` +18；`traits.rs` 只加签名，方法体放新增 `traits/browsing.rs`）。**建议：本册不动它们的既有内容**，把「是否拆分这两个文件」立为独立的存量治理项。（A）**推荐**：本次豁免，仅记录；（B）借本册一并拆分 `types.rs` 为 `types/{core,ddl,transfer}.rs`——改动面覆盖全仓所有 `use datazen_driver_api::...`，风险与收益不成比例 |
 | Q9 | **`grid.count.estimateUnavailable` 的触发时机** | （A）**建议**：只在「用户显式要求估算（`rowCountMode = 'estimated'` 或点了估算刷新）而驱动 `count_estimate_sql` 为 `None`」时提示一次；（B）`auto` 模式下驱动不支持估算是**预期内**的降级，静默退回精确即可，不提示。请确认这个二分 |
 | Q10 | **未知态下 `Page N` 的 N 从哪来** | 未知态没有总数，`page` 只能来自面板自身的请求页码（`TableState.page + 1`）。**建议**：直接显示 `TableState.page + 1`，并在用户翻到空页时按 B10 处理。备选：显示「第 N 页（未知总数）」，但会与 `pagination.pageOnly` 的文案取舍绑定，请一并裁定用哪种措辞 |
-| Q11 | **§1.1 的行为变更要不要给用户一个可见提示** | 变更只影响「`primary_keys` 非空但列未打标志」的表（树内 16 个 path 驱动均不受影响，见 §1.1）。（A）**建议**：只在 PR 描述与 `tracing::debug!` 里交代，UI 不提示 —— 因为对绝大多数用户它只是「排序终于对了」，提示反而制造困惑；（B）跟随更新日志给一句「无主键判定改为以真实主键为准」。请裁定是否需要面向用户披露 |
+| Q11 | **§1.1 的行为变更要不要给用户一个可见提示** | 变更只影响「`primary_keys` 非空但列未打标志」的表（树内 15 个 path 驱动均不受影响，见 §1.1）。（A）**建议**：只在 PR 描述与 `tracing::debug!` 里交代，UI 不提示 —— 因为对绝大多数用户它只是「排序终于对了」，提示反而制造困惑；（B）跟随更新日志给一句「无主键判定改为以真实主键为准」。请裁定是否需要面向用户披露 |
 | Q12 | **估算分支与精确分支的失败语义不一致，是否接受** | 本册的取舍是「精确分支保持 `try_join!`（行数失败 ⇒ 整页失败，与今天一致），估算分支 `join!`（估算失败 ⇒ 降级为未知、数据照常）」（§3.3）。（A）**建议**：接受这个不对称，因为估算分支的全部意义就是「行数不得绑架数据可见性」，而精确分支改语义属于独立议题（见 Q5）；（B）要求两者一致 —— 那么要么把精确分支也改成降级（= Q5 选 B，行为变更面更大），要么把估算分支改成 `try_join!`（等于白做）。请裁定 |
 | Q13 | **`primary_keys` 与列标志不一致的运行时告警级别与开关** | 本册定为 `tracing::debug!`（不刷屏、可上报时开启）。（A）**建议**：保持 `debug`，并在 PR 描述里给出查看方法；（B）改为 `warn!`（更易发现，但会在整类驱动上持续刷日志）。请裁定 |
 | Q14 | **「无主键」提示对不一致驱动的误报怎么处理**（§4.6 的残留不精确） | （A）**建议**：本册接受误报，只写实现注释 + 本条目，等驱动侧补齐列标志后自然消失；（B）让宿主在返回的列上**按 `cached.primary_keys` 回填 `is_primary_key` 标志** —— 提示会变准，但同一份标志同时被写路径消费（`commitFetchedPage` 用它算 `pkColumns`、`TableView` 用它判编辑能力），等于顺手改变了「这些表能不能写」的行为，**风险显著大于收益，不建议在本册做**；（C）在 `TableDataResult` 上再加一个输出字段（如 `defaultOrderColumnsUsed: string[]`）让前端精确显示 —— 干净但扩大了 IPC 输出契约，需要先改契约册。请裁定选哪一个 |

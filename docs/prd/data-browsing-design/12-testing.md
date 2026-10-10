@@ -92,7 +92,9 @@
 | `src/components/DataTable/VirtualBody.tsx` | 单元格 `data-testid="data-table-cell"`、`data-dt-row`、`data-dt-col` | **无条件渲染**，与 `VITE_E2E` 无关 —— 这是今天唯一同时适用于单测与 E2E 的单元格锚点 |
 | `src/components/DataTable/TableHeader.tsx` | 表头单元格 `data-col-header` | 同上，列名锚点 |
 | `src/lib/dataTableContextMenu.ts` | `resolveDataTableCellFromEvent`、`resolveDataTableHeaderColFromEvent` | 用 `target.closest('[data-dt-row][data-dt-col]')` / `closest('[data-col-header]')` 反查。这是本项目确认过的正确做法，**禁止**用视口几何坐标反查 |
-| `00-contracts.md` 第 4.4 节 | `data-dt-selected` / `data-dt-dirty` / `data-dt-editing` / `data-dt-cell-type` | **契约新增**，由分册 01 / 05 / 06 实现。本册所有 journey 断言都建立在这四个属性上 |
+| `00-contracts.md` 第 4.4 节 | **全量 `data-dt-*` 属性总表（18 行 = 既有 2 个 + 新增 16 个，唯一权威）** 与「创建归属」列 | 测试选择器的唯一命名来源。16 个新增属性各有归属分册（01 建 6 个 + `data-dt-cell-type`；05 建 4 个；06 建 2 个；03 / 07 各建 1 与 2 个）；**任何分册禁止另起名字**。测试里出现 `data-dt-*` 时「同名必须同值」 |
+| `00-contracts.md` 第 4.4 节的两条选择器陷阱 | `data-dt-row`（数据语义，既有 E2E 依赖）vs `data-dt-row-view`（roving tabindex 的交互语义，02 迁移断言依赖） | 二者**值相同但刻意不同名**，合并会让其中一批测试静默失配；测试改选择器时必须确认自己用的是哪一层语义 |
+| `00-contracts.md` 第 9.1 / 9.2 节 | G-1 唯一归属 / G-2 禁止整文件重写 / G-3 显式先后边；共享热文件总账 | **测试文件同样适用**：`src/components/DataTable/__tests__/DataTable.test.tsx`、`src/stores/__tests__/tableDataStore.test.ts`、`src-tauri/src/services/query_executor/tests.rs` 这类共享测试文件只允许**追加自己的 `describe` 块**，禁止整文件重写（重写在并行合并下没有编译错误，只会静默抹掉先到者的用例） |
 
 > **给实习生的第一条硬提醒**：`tid()` 在 vitest（jsdom）里返回 `{}`，因为 `VITE_E2E` 没被设。所以
 >
@@ -195,7 +197,7 @@
 | 类别 | 放哪个目录 | 跑哪条命令 | 适合测什么 | **不适合**测什么 |
 | --- | --- | --- | --- | --- |
 | **Rust 单测**（Host） | `src-tauri/src/**` 内联 `#[cfg(test)] mod tests`；宿主编排集成测试在 `src-tauri/tests/` | `cargo test -p datazen --lib`（集成另跑 `cargo test -p datazen`） | SQL 拼装（`QueryExecutor::build_select_sql` / `build_count_sql` / `format_condition` / `filter_is_complete` / `filter_join`）、`RowChangePlan` 组装与 `changes_fingerprint`、`execute_row_change_plan_impl` 的影响行数校验、错误前缀生成、serde 线上形态 | 任何驱动方言细节（那是驱动 crate 的事）、任何前端交互与渲染 |
-| **Rust 单测**（`driver-api` 与驱动 crate） | `packages/driver-api/src/**` 与 `packages/drivers/<id>/src/**` 内联 `#[cfg(test)]` | `cargo test -p datazen-driver-api --lib`；`cargo test -p datazen-driver-<id>` | 五个新 trait 方法的**默认实现**及其等价性、`CellWrite` 的 serde 三态、方言覆盖实现（MySQL 的 `INSERT INTO t () VALUES ()`、PG/SQLite 的 `RETURNING`）、`CountStrategy` 推导、键集谓词边界 | Host IPC、React 渲染、跨库 UI 旅程 |
+| **Rust 单测**（`driver-api` 与驱动 crate） | `packages/driver-api/src/**` 与 `packages/drivers/<id>/src/**` 内联 `#[cfg(test)]` | `cargo test -p datazen-driver-api --lib`；`cargo test -p datazen-driver-<id>` | `00-contracts.md` 第 5 节五个小节新增的**全部 trait 方法**（`build_insert_sql`、`insert_returning_clause`、`supported_filter_operators`、`filter_operator_sql`、`like_is_case_insensitive`、`count_strategy`、`count_estimate_sql`、`default_order_columns`、`allow_first_column_fallback_order`、`supports_keyset_pagination`、`keyset_predicate_sql`，共 11 个）的**默认实现**及其「不写任何代码的驱动行为与今天一致」的语义基线（`skip_count_query` → `CountStrategy`、共享 19 算子、`allow_first_column_fallback_order = true` 都属于这一类；**唯一例外是 `default_order_columns`——它的选择逻辑等价但输入变了，属有意的行为修正，见 §9.6，禁止写成「完全等价」**）、`CellWrite` 的 serde 三态、方言覆盖实现（MySQL 的 `INSERT INTO t () VALUES ()`、PG/SQLite 的 `RETURNING`）、`CountStrategy` 推导、键集谓词边界 | Host IPC、React 渲染、跨库 UI 旅程 |
 | **Rust 集成**（驱动） | `packages/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --tests`（CI 对 basic 四驱动正用这条） | 需要真实/内存数据库的契约（`real_driver_contract.rs` 一类）、跨 schema/跨库、`use_database`、DDL 往返、迁移旅程 | 单个纯函数的句式断言（那是内联单测） |
 | **Host 前端单测** | `src/**/__tests__/**` | `pnpm test:unit`（basic）或 `pnpm test:unit:driver-set`（默认 all，且自带 codegen 重铺） | store 动作与竞态（`requestRevision` / `loadingRevision`）、`pendingChanges` 纯函数、`valuesEqual` 语义、`DataTable` 渲染与回调契约、journey test | 真实排版/几何、真实剪贴板、原生对话框、真实驱动 SQL |
 | **驱动 UI 单测** | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` | 只属于某一个驱动的 UI、方言 profile、驱动专属 Command 的 invoke 形状、驱动 locale pack 注册 | 宿主通用网格行为（禁止放这里，见 §3.2 反向） |
@@ -286,9 +288,12 @@
 三层锚点，按优先级使用：
 
 1. **契约 `data-*` 属性（首选，单测 + E2E 都可用，无条件渲染）**
+   - 权威名单在 `00-contracts.md` 第 4.4 节的**全量 `data-dt-*` 属性总表**（18 行 = 既有 2 个 + 新增 16 个），**不要凭记忆写**：写测试时打开那张表，按「属性 → 落在哪个元素 → 值 → 语义 → 创建归属」四列逐字抄。
    - 既有：`data-dt-row`（行下标）、`data-dt-col`（**列名**）、`data-col-header`（列名）、`data-testid="data-table-cell"`。
-   - 契约新增（分册实现）：`data-dt-selected`、`data-dt-dirty`、`data-dt-editing`、`data-dt-cell-type`。值一律是字符串 `"true"` 或**属性不存在**（不要用 `"false"`，否则 `.getAttribute()` 与 CSS 选择器 `[data-dt-selected]` 的语义会分叉）。
+   - 契约新增的取值形态只有两种：字符串（`"true"` / 枚举名，如 `data-dt-row-state` 的 `"dirty"` / `"error"`、`data-dt-cell-type` 的归一化类型名）或**属性不存在**。**不要写 `"false"`**，否则 `.getAttribute()` 的取值与 CSS 选择器 `[data-dt-selected]` 的存在性判定会分叉。
    - **列名不是列下标**：`CellCoord.columnName` 与 `data-dt-col` 都用列名，因为 `visibleColumns` 一变，列下标就失去稳定含义。
+   - **同名必须同值**：`data-dt-row` 与 `data-dt-row-view` 值相同但语义不同（前者数据、后者 roving tabindex），**禁止合并**，也禁止在断言里互换。
+   - **一册只创建自己那一行的属性**：需要别人那行的属性时，等该册合并；提前写断言等于测一个还不存在的契约。
 2. **`tid()` 生成的 `data-testid`（E2E 首选，单测需 stubEnv）**
    - 新 UI 一律写 `{...tid('grid-insert-row-button')}` 这类，命名 `<area>-<element>-<action>`。
    - Host 单测里 `tid()` 返回 `{}`（见 §2.1），要按 `data-testid` 定位必须 `vi.stubEnv('VITE_E2E', '1')`；能改用第 1 层就不用它。
@@ -296,10 +301,13 @@
    - 需要断言「可访问名称」本身就来自字典时，用 `enCopy(key)` 回读（`src/test/enCopy.ts`），**禁止裸写 `en[key]`**。
    - 驱动 UI 测试统一 `useI18n: () => ({ t: (key) => key })`，之后可以 `getByText('query.filter.apply')` 这类 key 定位。
 
-**错误前缀也是一条契约锚点**（`00-contracts.md` 第 8 节）：`CommandError` 序列化到 IPC 之后是**脱敏后的字符串，没有机器可读的 `code` 字段**（`src-tauri/src/commands/error.rs` 的 `Serialize` 实现先脱敏再 `serialize_str`，其内联测试也钉住了「错误类别必须保留在文本里」）。因此新增的、需要前端精确识别的错误，消息以 `grid.<域>.<原因>: <说明>` **前缀**开头，前端用 `classifyGridError(message)`（建议位置 `src/lib/gridErrors.ts`）做前缀匹配，匹配不到返回 `'unknown'` 并**回退显示原始消息**。
+**错误前缀也是一条契约锚点**（`00-contracts.md` 第 8 节）：`CommandError` 序列化到 IPC 之后是**脱敏后的字符串，没有机器可读的 `code` 字段**（`src-tauri/src/commands/error.rs` 的 `Serialize` 实现先脱敏再 `serialize_str`，其内联测试也钉住了「错误类别必须保留在文本里」）。因此新增的、需要前端精确识别的错误，消息以 `grid.<域>.<原因>: <说明>` **前缀**开头，前端用 `classifyGridError(message)` 做前缀匹配，匹配不到返回 `'unknown'` 并**回退显示原始消息**。
 
+- **位置与归属已冻结，不再是「建议」**：`src/lib/gridErrors.ts` 由 **分册 01 创建**（含 `GridErrorCode` 联合类型、`classifyGridError`、前缀注册表骨架，01 只填 `grid.selection.*` / `grid.cell.*` / `grid.row.*` 三个域）；03 / 04 / 05 / 06 / 07 / 08 / 09 / 10 / 11 **只追加自己那一域的码**，禁止重写整个文件。追加的合规动作固定三步：① 联合类型加成员；② 注册表加本域条目；③ 分册 §6 变更表登记「修改（追加）」。
+- **码空间是一个闭集**：`00-contracts.md` 第 8.2 节的清单是**全量 42 个**，实现阶段一个不多一个不少；分册若新造了表外的码，必须**同时**在契约那张表登记一行（码 / 触发条件 / 文案要求 / 归属分册），否则不得进入实现。**测试因此可以按 40 个码逐条断言分类结果**；分册自己的下限只需覆盖**本册新增的前缀**（§9）。
 - 为什么是前缀而不是 `includes`：前缀是唯一在两侧都能逐字断言的形态；包含匹配会因为消息正文里出现同样的词而误判。
 - 现成范式：`src/lib/connectionShareError.ts` 的 `translateConnectionShareError`（`trimmed.startsWith(...)` 逐条前缀匹配，匹配不到 `return trimmed`），对应测试 `src/lib/__tests__/connectionShareError.test.ts` 覆盖「已知映射 / 未知透传 / 空消息 fallback」三类。**`gridErrors.ts` 照它写，测试照它写。**
+- 三条必须有的用例：① 每个已登记前缀**逐字**分类正确；② 未知前缀返回 `'unknown'` 且 **UI 回退显示原始消息**（不吞、不变空白）；③ **前缀只匹配开头** —— 正文里含同样词的普通消息不得被误分类。
 
 ### 4.3 断言风格
 
@@ -343,6 +351,12 @@
 - **模块级副作用**：i18n 注册表、驱动注册是全局的。驱动 UI 套件靠 `src/test/driverUiSetup.ts` 统一装配；宿主用例不要自己再 `registerLocale` 一堆（除非该用例测的就是注册链）。
 - **真实数据库 / 真实文件**：用带前缀的可丢弃对象名（既有 `_e2e_*` 与契约矩阵的 `_e2e_hc_*`），`after` 里 best-effort 清理；**不要**依赖「上一次运行留下的表还在」。
 - **禁止 `it.only` / `describe.only` 提交**（会让整套门禁静默缩水），也不要用 `it.skip` 掩盖失败 —— 需要跳过就写明原因并以「已知不可验证」记录在分册第 11 节。
+
+**共享测试文件只允许追加，禁止整文件重写**（这是 `00-contracts.md` 第 9.1 节 G-2 在测试侧的对应物）。数据浏览 12 份分册会反复碰同一批测试文件：`src/components/DataTable/__tests__/DataTable.test.tsx`、`src/stores/__tests__/tableDataStore.test.ts`、`src/stores/tableData/__tests__/pendingChanges.test.ts`、`src-tauri/src/services/query_executor/tests.rs`、`e2e/specs/table-*.ts`、`e2e/contract/__tests__/`、`src/lib/__tests__/databaseTypes.test.ts`。
+
+- **正确做法**：新增一个自己的 `describe('DB-XX …')` 块，或往已有 `describe` 里追加独立 `it`；改别人的断言必须能说出「本册改了哪条既有行为导致它必须变」。
+- **禁止**：把整个文件重写一遍（含自己那份 + 记忆里别人的那份）。并行合并下这种重写**不产生任何编译错误**，只会静默抹掉先到者的用例 —— 门禁全绿，覆盖却已经消失。
+- **同理禁止另建平行测试文件**：同一个职责不要出现 `gridSelection.test.ts` 与 `gridSelection2.test.ts` 两份。分册若发现自己的用例无处可放，先看是不是该追加到既有 `describe`。
 
 ### 4.6 异步等待的正确写法
 
@@ -667,7 +681,7 @@ DB-04 / DB-05 的旅程按同样结构写，步骤固定为：
 | 形态 | 为什么必须 | 放在哪一类测试 |
 | --- | --- | --- |
 | **无主键表** | `build_select_sql` 现状会退化成「第一列排序」，是 DB-09 / DB-18 的根因；写入路径也不得拿第一列当行身份 | Host Rust 单测（SQL 拼装）+ Host 前端单测（默认排序展示）+ 契约矩阵 |
-| **复合主键表** | 行身份是原值快照字典，复合主键必须两个列都进 `row_identity`；漏一列会命中多行 | Host Rust 单测（`buildRowIdentity` / `duplicateRowIdentityKeys`）+ E2E |
+| **复合主键表** | 行身份必须是主键列全集（契约 §4.5 W-1/W-3），**漏一列在生成 SQL 之前就被拒绝**（`CommandError::Validation`），不是「命中多行」；只校验「非空」不足以守住这道门，必须断言键集与 `CachedColumns.primary_keys` 逐字相等 | Host Rust 单测（`buildRowIdentity` / `duplicateRowIdentityKeys` + W-1/W-3 拒绝用例）+ E2E |
 | **含 NULL 的列** | 三态语义的核心：`Null` 与 `Unset` 必须可区分；`original_value` 为 NULL 时行身份仍然要能定位 | 全部层级（这是本批方案最容易错的一处） |
 | **超长文本**（≥ 64KB 单值） | 单元格渲染截断、剪贴板/导出不被截、SQL 生成不因为长度爆栈 | Host 前端单测（渲染与复制）+ Host Rust 单测（参数摘要） |
 | **多字节与 emoji**（`中文🙂`，含组合字符） | 剪贴板行列切分、TSV 转义、光标定位在代理对上不能错位 | Host 前端 journey（§5 夹具已含）+ 驱动 crate 单测（`Value::String` 往返） |
@@ -776,6 +790,19 @@ tail -n 40 "$LOG"
 | 改 `scripts/**` 或宿主 CI 口径 | `pnpm test:scripts`（对应脚本自测在 `scripts/__tests__/`） | `Test Files` / `Tests` |
 | CI 完整复现 | `pnpm ci:local`（`bash scripts/ci-local.sh`） | 逐段结论 |
 
+#### 7.2.1 本批改动特有的四条断言门禁（**不是可选项**）
+
+上表是**按改动类型**触发的通用门禁。本批（DB-01…DB-20）另有四条**只能由本批自己写**的断言，它们防的都是「删对了、删过头了」这类**绿色失败**——测试全绿但安全能力已经没了：
+
+| # | 断言 | 为什么必须 | 失败形态 |
+| --- | --- | --- | --- |
+| **A-1** | **`validate_legacy_pk_columns` 的逻辑在目录化后仍然存在**：新链路 `src-tauri/src/commands/data/row_change_plan.rs` 里有承接 W-1 的行身份校验，且 `data/tests.rs` 里仍有「行身份为空 → 拒绝」的用例 | 它是**今天仓库里唯一**真正阻止空 `WHERE` 落到 `build_delete_sql` / `build_update_sql` 的检查，而它恰好位于 DB-04 Step 1 要拆分的 `commands/data.rs`（1331 行）里。一次「拆分文件」最容易把它连同测试一起漏掉 | 目录化后 `cargo test` 全绿（因为**根本没有这条用例了**），但 DB-04 上线后空 `WHERE` 重新可达 |
+| **A-2** | **C-1 删除遗留写入口后，`generate_handler!` 里不再出现 `commit_row_updates` / `commit_row_deletes`** | 删 `bootstrap/run.rs` 的注册项与删函数体是**两件事**。只删函数体 → 编译失败（好事）；只删注册项 → 前端 `invoke` 在运行时才失败（坏）。这条断言把「运行时才发现」提前到单测 | 删了函数忘了删注册（或反之）→ `pnpm typecheck` 与 `cargo test` 都过，只有用户点到某个入口才炸 |
+| **A-3** | **W-1/W-3 的拒绝发生在 SQL 生成之前**：构造「复合主键只给一列」的输入，断言 `build_update_sql` **从未被调用**（mock 上计数为 0），且返回 `CommandError::Validation` | `build_update_sql` 拿到空 WHERE 片段**不会报错**，会照常产出一条无条件语句。若守卫放在 SQL 之后，测试也能绿 | 断言写成「返回了错误」就算过，而错误其实发生在语句已被生成之后 —— 真实库里那一步可能已经发出去了 |
+| **A-4** | **W-6：写入拒绝的用户可见文案不含数据库原文**：提交一条必失败语句（唯一约束冲突），断言 IPC 返回体里**不含**驱动原始错误文本，也不含任何绝对路径 | `CommandError` 的序列化只调 `redact_secrets_for_log`，而它**只覆盖 4 类凭据模式，不处理绝对路径**。文案若直接透传，本机目录结构会出现在界面和日志里 | 界面把 `duplicate key value violates unique constraint "x" ... at /Users/<name>/…` 整段显示出来 |
+
+> A-1…A-4 应当落成**可执行**的测试（Host Rust 单测 / Host 前端单测），不是本文档里的提醒。写不进测试的条目等于不存在。
+
 > **CI 里真正会拦人的前端守卫**（决定本批方案会不会因格式/命名被红）：`pnpm typecheck`，然后 CI 把九条守卫合并成一步 fail-fast：`node scripts/check-managed-stubs.mjs`、`node scripts/check-structure-editor-guardrails.mjs`、`pnpm test:ids`、`pnpm test:layers`、`pnpm test:ci-docs`、`pnpm test:version`、`pnpm test:driver-protocol`、`pnpm test:boundaries`、`pnpm test:i18n-keys`，接着是 `pnpm test:unit`、`pnpm test:unit:drivers`、`pnpm test:unit:driver-set`。Rust 侧是 `cargo fmt --all -- --check`、basic 四驱动的 `cargo test --lib` 与 `--tests`、`cargo test -p datazen --lib --features ...`、`cargo test -p datazen-ai-api --lib`。
 
 ### 7.3 为什么必须首尾各记录一次 HEAD 与工作区 sha
@@ -858,18 +885,18 @@ git -C . status --porcelain=v1 | git hash-object --stdin
 
 | 方案 | 落点 | 数量下限 | 关键用例类型（必须含） | E2E / 契约 |
 | --- | --- | --- | --- | --- |
-| **DB-01** 单元格 / 区域选择模型 | Host 前端单测 + journey | 纯函数 ≥12；DOM 断言 ≥5；journey ≥1 | `normalizeCellRange` 的**列序**归一化（不是字典序）、行列反转、单格区域、越界裁剪；`GridSelection` 的 `anchor`/`focus`/`extraRanges`/`mode` 互斥跃迁；**cell 模式必须清空 `selectedRows`**；Escape → `none` | 无（纯前端）；`data-dt-selected` 的渲染断言必含 |
-| **DB-02** 键盘导航 | Host 前端单测 + journey | 键位映射 ≥10；journey ≥1 | 修饰键**精确匹配**（`mod+c` 不得在 `mod+shift+c` 时触发）；`delete` 同时匹配 Delete 与 Backspace；`'table'` 作用域在输入框聚焦时**被跳过**；Tab / Enter / Escape 的进入与退出；连续击键的逐格前进与后退 | 无 |
-| **DB-03** 剪贴板 | Host 前端单测 + journey | 序列化/反序列化 ≥8；journey ≥1 | TSV 的**转义**（含制表符 / 换行 / 双引号）；行列对齐；空选区不写剪贴板；粘贴**半截 TSV** 只覆盖到已有列、不越界；多字节与 emoji 不被切断；粘贴走 `stageCellChange` 而不是直接改 `rows` | 可选：真实剪贴板的 E2E（jsdom 不可信，原则四） |
-| **DB-04** 新增行 INSERT | 三处：`driver-api` / 驱动 crate / Host | `driver-api` ≥8；驱动 crate ≥2；Host（store 组装 + 冲突拒绝）≥8；journey ≥1 | `build_insert_sql` 默认实现：`Unset` 列**不出现在列清单与 VALUES**；全 `Unset` → `DEFAULT VALUES`；`insert_returning_clause` 默认 `None`；MySQL 驱动覆盖为 `INSERT INTO t () VALUES ()`；PG/SQLite 覆盖为 `RETURNING`；`grid.insert.noWritableColumn` / `grid.insert.returningUnavailable` 前缀断言；`delete_marked` 与非 `Unset` 列写入并存 ⇒ `grid.commit.conflictingIntents` | 契约矩阵 HC-EDIT 扩展 1 条；至少 1 个驱动的 crate E2E |
-| **DB-05** 类型化编辑器与 Set Value | Host 前端单测 + journey | 类型归一化 ≥12；journey ≥1 | 每种 `data-dt-cell-type` 的编辑器选择；**空串 → NULL** 与「原值为 NULL 时保持不动」的区分；Boolean/Integer/Numeric/JSON 的强转；Enter 提交 / Escape 取消 / blur 未改动即取消；**IME 组合态不得提交**；生成列与只读列不得进入编辑 | 可选：`data-dt-cell-type` 的 E2E 断言 |
-| **DB-06** 待提交单元格高亮 | Host 前端单测 + journey | 属性断言 ≥6；journey ≥1 | `data-dt-dirty` **出现与消失**；改回原值不算改动（必须复用 `valuesEqual`）；回滚后全部消失；翻页后 dirty 状态**不串行**（`rowIdentityAnchors` 语义） | 无 |
-| **DB-07** 外键跳转与返回栈 | Host 前端单测 + journey | 返回栈 + 跳转 ≥8；journey ≥1 | 返回栈 push/pop 的 LIFO 顺序；连续两次跳转后一次返回回到中间表；无 FK 列时**不渲染入口**；候选值选择器的加载与取消；跳转与选择状态互不污染 | 契约矩阵 ≥1 条（FK 目录来自驱动元数据） |
-| **DB-08** 筛选能力与命名视图 | 三处：`driver-api` / 驱动 crate / Host | `driver-api` ≥10；驱动 crate ≥2；Host ≥12；journey ≥1 | `supported_filter_operators()` 默认集与覆盖；`filter_operator_sql` 默认 `None`；**既有 10 个算子的渲染逐字不变**（兼容性回归）；不支持 / 未实现的算子必须报 `grid.filter.unsupportedOperator`，**禁止静默丢弃条件后照常查询**；不完整条件报 `grid.filter.incomplete`；命名视图 CRUD + 重载；`gridErrors` 的前缀匹配与未知回退 | 契约矩阵 HC-FILTER 扩展；驱动 crate 至少 2 条方言专有算子 |
-| **DB-09** 行数三态与默认排序 | 两处：`driver-api` + Host | `driver-api` ≥10；Host ≥10；journey ≥1 | `count_strategy()` **由 `skip_count_query()` 推出**（默认实现等价性：不写任何代码的驱动行为与今天完全一致）；`Estimated` 与 `count_estimate_sql`；UI 显示「约 N 行」；`default_order_columns()` 默认实现与 `build_select_sql` 今天的注入逻辑**完全等价**（含无主键退化为第一列）；`allow_first_column_fallback_order() == false` 时无主键表不加排序 | 契约矩阵 HC-DATA |
-| **DB-14** 查询结果网格可编辑 | Host 前端单测 + journey | ≥8；journey ≥1 | 只读结果**不渲染任何写入入口**；可写结果与表数据走**同一条** store 路径（不得另起一套）；执行新查询后的状态重置；能力缺失时隐藏入口而不是禁用 | 契约矩阵 HC-QUERY 扩展 |
+| **DB-01** 单元格 / 区域选择模型 | Host 前端单测 + journey | 纯函数 ≥12；DOM/ARIA 断言 ≥8；journey ≥1 | `src/stores/tableData/gridSelection.ts`（**纯逻辑，不依赖 React，必须能脱离组件单测**）与 `src/hooks/useGridSelection.ts`（React 接线）**分文件测**；`normalizeCellRange` 的**列序**归一化（不是字典序）、行列反转、单格区域、越界裁剪；`GridSelection` 的 `anchor`/`focus`/`extraRanges`/`mode` 互斥跃迁；**cell 模式必须清空 `selectedRows`**；Escape → `none`；`role="grid"` + `role="row"` + `role="gridcell"` 与 `aria-rowcount` / `aria-colcount` / `aria-activedescendant` **原子齐全**（缺 `role="row"` 是无效 ARIA，比不加更糟）；行号槽从 `<button>` 改 `<div role="rowheader">` + 内层可聚焦 `<button>` | 无（纯前端）。**必含 `data-dt-selected` / `data-dt-surface` / `data-dt-row-view` / `data-dt-selection-*` 的渲染断言**（按契约 §4.4 表逐字取名） |
+| **DB-02** 键盘导航 | Host 前端单测 + journey | 键位映射 ≥10；journey ≥1 | 修饰键**精确匹配**（`mod+c` 不得在 `mod+shift+c` 时触发）；`delete` 同时匹配 Delete 与 Backspace；`'table'` 作用域在输入框聚焦时**被跳过**；Tab / Enter / Escape 的进入与退出；连续击键的逐格前进与后退；roving `tabIndex` 的迁移断言（既有 `[tabindex="0"]` 选择器需随 01 的 DOM 改造同步更新，**不得**新增或删除任何 ARIA 角色） | 无 |
+| **DB-03** 剪贴板 | Host 前端单测 + journey | 序列化/反序列化 ≥8；journey ≥1 | TSV 的**转义**（含制表符 / 换行 / 双引号）；行列对齐；空选区不写剪贴板；粘贴**半截 TSV** 只覆盖到已有列、不越界；多字节与 emoji 不被切断；粘贴走 `stageCellChange` 而不是直接改 `rows`；`grid.paste.tooLarge` 与 `grid.paste.raggedRow` 的**逐行报错**（指出不一致的行号）；`data-dt-cell-error` 的出现与消失 | 可选：真实剪贴板的 E2E（jsdom 不可信，原则四） |
+| **DB-04** 新增行 INSERT | 三处：`driver-api` / 驱动 crate / Host | `driver-api` ≥8；驱动 crate ≥2；Host（store 组装 + 冲突拒绝）≥8；journey ≥1 | `build_insert_sql` 默认实现：`Unset` 列**不出现在列清单与 VALUES**；全 `Unset` → `DEFAULT VALUES`；`insert_returning_clause` 默认 `None`；MySQL 驱动覆盖为 `INSERT INTO t () VALUES ()`；PG/SQLite 覆盖为 `RETURNING`；`grid.insert.noWritableColumn` / `grid.insert.returningUnavailable` / `grid.insert.duplicateDraft` / `grid.insert.unknownColumn` 前缀断言；`delete_marked` 与非 `Unset` 列写入并存 ⇒ `grid.commit.conflictingIntents`；`grid.commit.stalePlan`（指纹不匹配必须**拒绝**提交，禁止降级为按新数据重算） | 契约矩阵 HC-EDIT 扩展 1 条；至少 1 个驱动的 crate E2E |
+| **DB-05** 类型化编辑器与 Set Value | Host 前端单测 + journey | 类型归一化 ≥12；journey ≥1 | `src/lib/cellTypes.ts` 的 `resolveCellType`（`CellType` 11 个值，**类型分类的唯一权威**）；`classifyDataType` → `DataTypeFamily` 降级为**颜色投影**，行为不变（`dataTypeColors.ts` 仍用它）；`data-dt-cell-type` 的来源在 05 合并时从 `classifyDataType` 换成 `resolveCellType`；`data-dt-null` 与 `data-dt-editing` / `data-dt-editor-owned` / `data-dt-readonly` 的渲染；**空串 → NULL** 与「原值为 NULL 时保持不动」的区分；Boolean/Integer/Numeric/JSON 的强转；Enter 提交 / Escape 取消 / blur 未改动即取消；**IME 组合态不得提交**（`data-dt-editor-owned` 生效）；生成列与只读列不得进入编辑，报 `grid.cell.readOnly` 且说清**具体原因**；解析失败报 `grid.cell.invalidValue` | 可选：`data-dt-cell-type` 的 E2E 断言 |
+| **DB-06** 待提交单元格高亮 | Host 前端单测 + journey | 属性断言 ≥6；journey ≥1 | `data-dt-dirty` **出现与消失**；`data-dt-row-state` 的行级聚合（`"dirty"` / `"error"` / 不存在）；改回原值不算改动（必须复用 `valuesEqual`）；回滚后全部消失；翻页后 dirty 状态**不串行**（`rowIdentityAnchors` 语义） | 无 |
+| **DB-07** 外键跳转与返回栈 | Host 前端单测 + journey | 返回栈 + 跳转 ≥8；journey ≥1 | `data-dt-fk`（值即引用目标标识）与 `data-dt-fk-click`（**必须同时具备 `data-dt-fk`**，否则 E2E 会点到不可导航的格）成对断言；返回栈 push/pop 的 LIFO 顺序；连续两次跳转后一次返回回到中间表；无 FK 列时**不渲染入口**；候选值选择器的加载与取消；跳转与选择状态互不污染 | 契约矩阵 ≥1 条（FK 目录来自驱动元数据） |
+| **DB-08** 筛选能力与命名视图 | 三处：`driver-api` / 驱动 crate / Host | `driver-api` ≥10；驱动 crate ≥2；Host ≥12；journey ≥1 | **已裁定**：`supported_filter_operators()` 默认返回**共享的 19 个**（既有 10 + 共享扩展 9，全部由宿主 `format_condition` 渲染，驱动无需写代码）；**方言专有的 3 个**（`Regex` / `NotRegex` / `JsonContains`）**不在**默认集，必须由驱动显式声明并只能经 `filter_operator_sql` 渲染；`filter_operator_sql` 默认 `None`；**既有 10 个算子的渲染逐字不变**（兼容性回归）；无法渲染的组合必须在**发语句之前显式拒绝**（`grid.filter.unsupportedOperator`），**禁止静默丢弃条件后照常查询**；不完整条件报 `grid.filter.incomplete`；`like_is_case_insensitive()` 只影响**文案**、不改变 SQL；命名视图 `grid.view.invalid` / `grid.view.nameExists` + CRUD + 重载 | 契约矩阵 HC-FILTER 扩展；驱动 crate 至少 2 条方言专有算子 |
+| **DB-09** 行数三态与默认排序 | 两处：`driver-api` + Host | `driver-api` ≥10；Host ≥10；journey ≥1 | `count_strategy()` **由既有 `skip_count_query()` 推出**（`skip → Unsupported`，否则 `Exact`）——契约称这是「本契约里最重要的兼容性技巧」，**这条默认实现必须有用例**：不写任何代码的驱动行为与今天一致；覆盖后才得到 `Estimated` + `count_estimate_sql`；请求估算但驱动无该能力 ⇒ `grid.count.estimateUnavailable`，**回退到 exact 并说明，不静默**；UI 显示「约 N 行」。**`default_order_columns()` 禁止写成「与今天完全等价」**（`09-count-and-order.md` 明令禁止该措辞，契约 §5.4 的注释也直接否定它）：真实口径是**选择逻辑等价、但输入变了** —— 今天 `build_select_sql` 从传入的 `columns` 里挑 `is_primary_key == true`，新设计由宿主传入已归一化的 `CachedColumns.primary_keys`（经 `effective_primary_keys()`）；当驱动的**列标志与 `primary_keys` 字段不一致**时（确有驱动如此）新旧结论不同：新设计按真实主键排序，旧实现退化成按第一列排序 —— **这是一次有意的行为修正，不是回归**。契约为此设了三个合入前提，测试清单必须可执行地体现：① 显式声明这是行为变更并说明影响面（无主键表 + 「主键字段与列标志不一致」的表）；② 四条路径各一测 + **一条不一致场景用例**（逐条见 §9.6）；③ 确认 `build_select_sql` 是**私有** `fn`（非 `pub`），给它加参数**不违反 R1**（R1 约束的是驱动可见的 trait 方法与 IPC DTO，不是宿主内部私有辅助函数；若发现它已被外部引用，先解决引用再改）。另：`allow_first_column_fallback_order() == false` 时无主键表不加排序 | 契约矩阵 HC-DATA |
+| **DB-14** 查询结果网格可编辑 | Host 前端单测 + journey | ≥8；journey ≥1 | 只读结果**不渲染任何写入入口**；可写结果与表数据走**同一条** store 路径（不得另起一套 `panelResultEdit.ts` 以外的实现）；执行新查询后的状态重置；`DataGridCapabilities` 缺能力时**隐藏**入口而不是禁用 | 契约矩阵 HC-QUERY 扩展 |
 | **DB-18** 键集分页 | 两处：`driver-api` + Host | `driver-api` ≥10；Host ≥8；journey ≥1 | `supports_keyset_pagination()` 默认 `false`；`keyset_predicate_sql` 的空排序 / 复合排序 / 单向边界 / 不可转换时返回 `None`；宿主在 `None` 或能力缺失时**降级回 OFFSET**（不是报错也不是静默空表）；翻页与排序切换后的游标失效 | 驱动 crate ≥1；契约矩阵扩展 1 条 |
-| **跨方案（所有分册）** | `src/lib/gridErrors.ts` + 其单测 | 前缀匹配 ≥5；回退 ≥2 | 每个 `grid.<域>.<原因>` 前缀**逐字**匹配；未知前缀 ⇒ `'unknown'` 且 **UI 回退显示原始消息**（不吞、不变空）；空消息 / 纯空白消息走 fallback；前缀**只匹配开头**（正文里含同样词不得误判）；与 `src/lib/connectionShareError.ts` 的既有范式保持同一形状 | 无 |
+| **跨方案（所有分册）** | `src/lib/gridErrors.ts`（**由 01 创建**）+ 其单测 | 前缀匹配 ≥5；回退 ≥2；**码空间完整性 1 条** | **位置与归属已冻结**（不是「建议位置」）：01 创建含 `GridErrorCode` 联合 + `classifyGridError` + 前缀注册表骨架；其余分册**只追加自己那一域**，禁止重写整个文件；`00-contracts.md` 第 8.2 节的清单是**全量 40 个码的闭集** —— 测试逐条断言分类结果；每条 `grid.<域>.<原因>` 前缀**逐字**匹配；未知前缀 ⇒ `'unknown'` 且 **UI 回退显示原始消息**（不吞、不变空）；空消息 / 纯空白消息走 fallback；前缀**只匹配开头**（正文里含同样词不得误判）；与 `src/lib/connectionShareError.ts` 的既有范式保持同一形状 | 无 |
 
 **通用下限（每份分册都要满足）**：
 
@@ -924,6 +951,30 @@ git -C . status --porcelain=v1 | git hash-object --stdin
 3. 核通用下限四条（journey / 反向注入 / 边界形态 / `grid.*` 错误前缀各一条）。
 4. 核该分册认领的 §9.4 形态是否真有一条用例。
 5. 一切通过后，把分册实际跑到门禁结论（§7.4 模板）贴进分册第 9 节，并写明**哪些没跑、为什么**（例如「`pnpm e2e:contract:matrix` 未跑：本机缺 webdriver 构建」）——**没跑就写没跑，不要用「逻辑上应该没问题」代替**。
+
+### 9.6 DB-09 默认排序必须单列的用例（口径见契约 §5.4，禁止「完全等价」）
+
+这一小节是 §9.1 那张表的**展开件**，因为 `default_order_columns` 是本批方案里唯一一处**默认实现会发生行为变化**的地方，写成一行表格容易被当成「兼容性回归」而漏测。
+
+**先说清口径**（`09-count-and-order.md` 明令禁止「完全等价」这个措辞）：
+
+- **等价的是选择逻辑**：有主键用主键、无主键退化为第一列、返回空数组表示不加默认排序。
+- **变了的是输入**：今天 `build_select_sql` 自己从传入的 `columns` 里挑 `is_primary_key == true`；新设计改由宿主把 `CachedColumns.primary_keys`（已过 `effective_primary_keys()` 归一化）当参数传进 `default_order_columns(columns, primary_keys)`。
+- **因此当驱动的「列标志」与「`primary_keys` 字段」不一致时，新旧结论不同**：新设计按真实主键排序，旧实现退化成按第一列排序。**这是一次有意的行为修正，不是回归** —— 写用例时就要按「新语义是对的、旧行为是错的」来断言。
+- **合入前必须能在测试清单里可执行地体现契约 §5.4 的三个条件**：① 在分册与提交信息里显式声明这是行为变更并说明影响面（无主键表 + 「主键字段与列标志不一致」的表）；② 下面 5 条用例全有；③ 确认 `build_select_sql` 是**私有** `fn`（非 `pub`），给私有辅助函数加参数**不违反 R1**（R1 只约束驱动可见的 trait 方法与 IPC DTO）。若发现它已被外部引用，先解决引用再改。
+
+**必须单列的 5 条用例**（前 4 条来自契约 §5.4 条件 ②，第 5 条是它额外要求的那条）：
+
+| # | 用例（可观察行为） | 落点 | 归属 | 断言要点 |
+| --- | --- | --- | --- | --- |
+| 1 | 有主键表：无显式排序时按主键列排序 | Host Rust 单测（`query_executor/tests.rs`） | 09 补 | 生成的 `ORDER BY` 逐字等于主键列；**不得**退回第一列 |
+| 2 | 无主键表：退化为按第一列排序 | 同上 | 09 补 | 与今天的兜底行为一致；同时断言 `allow_first_column_fallback_order()` 为 `true` 时才有这一句 |
+| 3 | 复合主键表：排序列按 `primary_keys` 的顺序全部出现 | 同上 | 09 补 | 顺序与 `primary_keys` 一致（不是 `columns` 顺序、不是字典序） |
+| 4 | 显式排序覆盖默认排序 | 同上 | 09 补 | 用户 `sorts` 非空时**完全不注入**默认排序（默认排序不得与显式排序叠加） |
+| 5 | **列标志与 `primary_keys` 不一致时，按 `primary_keys` 排序** | 同上 | **09 补（独立用例，不得并入第 1 条）** | 构造「`columns[i].is_primary_key == true` 但该列不在 `primary_keys` 中」与「`primary_keys` 中的列其 `is_primary_key != true`」两种夹具；断言结果跟随 `primary_keys`。这条是**新语义的钉子**，合并进别的用例就会在实现退回旧逻辑时静默通过 |
+| 6 | `allow_first_column_fallback_order() == false`：无主键表不加任何默认排序 | 同上 | 09 补 | 生成的 SQL **不含** `ORDER BY` 默认项（与第 2 条互为正反例） |
+
+**落点与归属说明**：用例代码写在 `src-tauri/src/services/query_executor/tests.rs`。该文件在契约 §9.1 的分配里由**分册 08 目录化时创建**，**分册 09 只往里面补自己的用例**（符合 G-2「禁止整文件重写」）。所以本册这一节标的是「**归 09 补**」，不是「09 新建文件」——本册同时把 `query_executor/tests.rs` 列为共享测试文件（§4.5），追加纪律照那里执行。
 
 ---
 

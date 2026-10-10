@@ -120,7 +120,7 @@
 | `src/styles/themes.css` | `:root` / `.dark` 的 `--dt-*` | 只有 7 个类型色 token，注释声明「overridable by theme packs」；**没有任何脏标记 token** |
 | `tailwind.config.ts` | `colors.dt` | 把 7 个 `--dt-*` 映射为 `text-dt-*` 等工具类 |
 | `src/locales/locales.test.ts` | `resolves every literal t() key used in host source` | 扫描宿主源码里 `t('字面量键')` 并要求键存在于 `en` 词典 —— **新增文案必须同时加 `en` 词条，且调用点必须写成字面量键** |
-| `src/lib/gridErrors.ts` | — | **基线里不存在**（00 契约把它标为「新增」，落点建议在 DB-08）。因此本册不得依赖 `classifyGridError()`，错误展示一律按 00 契约「未知则回退显示原始消息」 |
+| `src/lib/gridErrors.ts` | 修改（追加） | **基线里不存在；创建归属已冻结给 01**（契约 §8.1 归属总则），本册合并时骨架必然已建。本册只追加 `grid.dirty.*` 码，按 §8.1 三步走（① `GridErrorCode` 加成员 → ② `GRID_ERROR_CODES` 加条目 → ③ §6 变更表登记），**禁止整文件重写** | +10 | 否 |
 
 ### 2.5 既有测试（读法参考，不在本册改动范围外乱动）
 
@@ -615,8 +615,15 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 **错误码：本册不新增任何错误码。** 理由与落点说明：
 
 - 本册涉及的失败态全部复用**既有**标识：行身份歧义用 `AMBIGUOUS_ROW_IDENTITY_ERROR`（已存在于 `src/stores/tableData/pendingChanges.ts` 并在 `commitFetchedPage` / `stageCellChange` / `stageRowDelete` 里写入 `error`）；提交期的计划过期 / 影响行数不符由提交链路产生 `grid.commit.stalePlan` / `grid.commit.affectedMismatch`（00 契约 8.2 已定义），本册只负责**标记保留**。
-- 因此本册**不改** `src/lib/gridErrors.ts`，也**不依赖**它：该文件在基线中**不存在**（00 契约 8.1 把它标为「新增」并建议了位置，但未指派分册）。按 00 契约「匹配不到前缀时返回 `'unknown'`，UI 必须回退显示原始消息」，本册的错误展示一律使用原始消息；若 DB-06 落地时该模块已存在，则把错误文本交给 `classifyGridError()` 分类后再展示，行为不变。
-- 将来若确需脏标记专属错误，前缀用 `grid.dirty.<原因>: <说明>`，并在 `classifyGridError()` 的前缀表里加一条。
+- `src/lib/gridErrors.ts` 在基线中不存在，**创建归属已由 00 契约 §8.1 归属总则冻结给 01**（本册排在 01 之后，合并时骨架必然已建）。因此本册**只追加** `grid.dirty.*` 域的码，按 §8.1 三步走（① `GridErrorCode` 加成员 → ② `GRID_ERROR_CODES` 加条目 → ③ §6 变更表登记），**禁止整文件重写**——并行合并下整文件覆盖不产生任何编译错误，只会静默抹掉其他分册的码。
+- **分类与展示纪律**：匹配不到前缀时 `classifyGridError()` 返回 `'unknown'`，UI **必须回退显示原始消息**。因此 §6 变更表已把本册依赖登记为「否」——**实现阶段不得依赖分类器已经能正确归类**，错误展示先按原始消息渲染，分类只作为后续增强。
+- 将来若确需脏标记专属错误，前缀用 `grid.dirty.<原因>: <说明>`，并在本册的追加步骤里登记。
+
+**写路径纪律继承（契约 §4.5，本册的脏标记最终会流向提交链路，故此处显式声明）**：
+
+- **W-5 · 脏标记不代表「别人没改过」**：脏标记记的是「本会话暂存过什么」，与数据库里的当前值无关。取回数据后 `commitFetchedPage` 会用 `overlayPendingRows` 把暂存值盖回 `currentValues`（本册第 9 条边界），所以**界面永远显示本会话的值**。若另一客户端已改过同一行的其他列，本会话提交会**静默覆盖**（last-writer-wins），本册**不得**在文案里出现「只影响这一行」「不会覆盖别人的修改」这类暗示隔离性的表述；`WHERE` 只带主键谓词，不塞非主键列旧值。
+- **W-6 · 提交失败文案不得回显数据库原文**：脏标记的失败态最终会显示提交链路的 `grid.commit.*` / `grid.result.writeDenied`。这些码后面跟**必须**是宿主自己重写过的文案，不是驱动/数据库原文——`CommandError` 的序列化只做凭据脱敏（`redact_secrets_for_log`，仅覆盖 4 类凭据模式），**不处理绝对路径**。数据库原文只进日志。
+- **W-1…W-4 属提交链路，不属本册**：行身份谓词、SQL 生成前拒绝、列集相等、`affected == 1` 兜底这四条由分册 04 在 `commands/data/row_change_plan.rs` 与 `row_change_execute.rs` 落地（见契约 §4.5），本册只负责**不破坏**它们——脏标记只往 `PendingRowChange` 的暂存结构里加值，**不参与**行身份的构造。
 
 ---
 
@@ -722,7 +729,7 @@ counts.cellsOnPage + counts.cellsOffPage === counts.totalCells
 | --- | --- | --- |
 | **D-1** | `valuesEqual` 的判等语义是否升级？**事实**：它用 `JSON.stringify(left ?? null)`，因此 `{a:1,b:2}` 与 `{b:2,a:1}` 判为**不等**（JSON 列会假脏），`NaN` 与 `null` 判为**相等**，`undefined` 与 `null` 判为**相等**（这一条是需要的）。同文件里已有更稳的私有 `stableSerialize`，但未导出。00 契约 3.4 要求「一律复用既有 `valuesEqual`」，因此本册不改它。 | **推荐 A**：本册保持 `valuesEqual` 原样，只补一条把上述行为逐条钉住的单测；把「`valuesEqual` 内部改用 `stableSerialize`（并导出它）」作为独立小改动，排在 DB-03 / DB-05 之后统一做。**备选 B**：现在就改，好处是顺手消灭 JSON 假脏；代价是它在同一次提交里动到**写路径**（`changedColumns` 的计算来源），违反「一次提交只做一件事」。 |
 | **D-2** | PRD DB-06 技术落点要求「`CellRenderer` 增加 `dirty` / `originalValue` / `state`」，本册改为把标记挂在 `VirtualBody` 的单元格 wrapper 上。 | **推荐 A（本册方案）**：标记覆盖单元格盒子（含 padding），`CellRenderer` 一行不改，既有的 5 条 `querySelector('span')` + `className` 断言零风险。**备选 B**：按 PRD 原文给 `CellRenderer` 加 `dirty` 并只做文本级弱化（不改 DOM 结构），代价是要同步改 4 条既有断言，且「左边框 + 角标」仍需 wrapper 承担 —— 等于两处表达同一件事。建议采纳 A 并把结论回写 PRD。 |
-| **D-3** | 行级脏状态需要一个可断言的 DOM 属性，但 00 契约 4.4 只冻结了 `data-dt-selected` / `data-dt-dirty` / `data-dt-editing` / `data-dt-cell-type`，没有行级属性。 | **推荐 A**：新增 `data-dt-row-state="dirty" \| "deleted" \| "inserted"`（挂在 `VirtualRow` 的行容器上），由 00 契约 owner 追认后写进 4.4 表。理由：E2E 断言不依赖样式，`line-through` / `opacity` 这类断言太脆。**备选 B**：不加行级属性，E2E 只断言单元格 `data-dt-dirty` 与行号槽圆点（`tid('row-deleted-dot')`）。 |
+| ~~D-3~~ | 行级脏状态需要一个可断言的 DOM 属性，但 00 契约 4.4 当时只冻结了 4 个单元格级属性 | **已裁定并关闭：采纳推荐 A。** `data-dt-row-state="dirty" \| "deleted" \| "inserted"` 挂在 `VirtualRow` 的行容器上，**已并入契约 §4.4 全量属性总表，创建归属 06**（无需合并时再找契约 owner 追认）。E2E 断言该属性，**不依赖** `line-through` / `opacity` 这类样式 |
 | **D-4** | 是否提供**单元格级**「恢复原值」右键项？ | **推荐**：本册**不实现**。PRD 只要求「恢复此行」；单元格级恢复会与 DB-03 的菜单改造撞在同一段代码上。留到 DB-03 批次统一做（实现成本很低：把 `originalValues[col]` 经 `stageCellChange` 写回即可，`valuesEqual` 自动判定回退）。 |
 | **D-5** | 携带未提交改动关闭标签页是否要拦截？**事实**：`removePanel` 直接删 slice，改动静默丢失；只有页面报错时有 `tableData.errorPendingHint` 提示。 | **推荐 A**：本册只把「关标签页 = 丢弃」写成明确事实，并靠 `tableData.pendingOffPage` 让用户看得见还剩多少改动；拦截弹窗属于窗口 / 会话职责，交 DB-16 或会话分册裁定。**备选 B**：本册顺手加一个确认弹窗（跨了职责边界，且 `PanelTabBar` 不在本册落点内）。 |
 | **D-6** | 批量粘贴的写放大：`applyColumnToRows` 逐格 `stageCellChange`，1000 格 = 1000 次 store 写与 1000 次索引重建。 | **推荐 A**：本册先定义并实现 `stageCellChanges(panelId, edits: ReadonlyArray<{ row: number; col: string; value: unknown }>)`（一次构键、一次 `set()`），DB-03 直接复用；同时留一条「逐格调用也语义正确」的守护测试。**备选 B**：本册不管，等 DB-03 提性能 —— 风险是 DB-03 落地时才发现要改 store 签名，又要回改本册的测试。 |

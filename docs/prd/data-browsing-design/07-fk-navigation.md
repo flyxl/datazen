@@ -99,7 +99,7 @@
 | 目标 | 事实 |
 | --- | --- |
 | 网格内 FK 跳转 | `src/` 全量 grep `referencedTable` / `referenced_table` 只命中类型定义、`relationPrediction`、`relationMetadata`、编辑器语义层与 `ForeignKeysView`；**没有任何跳转 / 返回栈 / 面包屑实现**；`TablePanel.targetColumn` 只有类型声明与写入点，**没有渲染侧消费者** |
-| `src/lib/gridErrors.ts` | 不存在；由 03/05 首次建立（01 的未决问题 Q4 已登记），07 只做**追加** |
+| `src/lib/gridErrors.ts` | **由 01 创建骨架**（契约 §8.1 归属总则已冻结）；07 只做**追加**，禁止整文件重写 |
 | `src/stores/tableData/gridSelection.ts`、`src/hooks/useGridSelection.ts`、`src/components/DataTable/GridCell.tsx` | 均不存在；由 01 建立（本册依赖它们） |
 | `src/lib/queryContextPath.ts` / `src/lib/sqlPathPrefix.ts` | 存在 `splitPathHierarchyDatabasePin` / `parseQualifiedPathParents` 等路径工具，但**都不是"把 `schema.table` 拆成两段"的语义**；本册**不**用前端字符串解析定位目标表（理由见 2.1 结论） |
 
@@ -691,7 +691,7 @@ GraphCell 箭头 onClick
 
 ### Step 12 · 错误分类增量
 
-- **文件**：`src/lib/gridErrors.ts`（03/05 建立；本册**追加**）。
+- **文件**：`src/lib/gridErrors.ts`（**01 建立骨架**；本册按契约 §8.1 三步**追加**，禁止整文件重写）。
 - **新增内容**：`GridErrorCode` 联合类型增加 `'grid.fk.shapeMismatch' | 'grid.fk.unknownConstraint' | 'grid.fk.valueNull' | 'grid.fk.targetUnresolved' | 'grid.fk.probeFailed'`，并同步 `GRID_ERROR_CODES`；`classifyGridError` 的实现**不改**（前缀匹配天然覆盖新成员）。
 - **为什么**：契约 §8.1 要求错误码是前端分类结果；前缀匹配表是唯一的码表来源，新增前缀必须进同一张表，否则前端只能显示原文（不算错，但用户看不到可读结论）。
 - **自测**：`npx vitest run src/lib/__tests__/gridErrors.test.ts`（01/03/05 已有该文件；断言每个新码 `classifyGridError(code + ': 任意说明') === code`，且未知消息仍是 `'unknown'` 并保留原文）。
@@ -740,7 +740,7 @@ GraphCell 箭头 onClick
 | `src/stores/tableDataStore.ts` | 修改 | `seedPanel` + 接口声明 | +28（01 后约 700 → ~728） | **接近**（01 要求 ≤ 700；本册加 28 后需在 02/03 之前复核，见 U-4） |
 | `src/types/connection.ts` | 修改 | 3 个 DTO | +42（250 → ~292） | 否 |
 | `src/commands/database.ts` | 修改 | `resolveForeignKeyTargets` 薄封装 | +6（161 → ~167） | 否 |
-| `src/lib/gridErrors.ts` | 修改（03/05 新增） | `GridErrorCode` + 码表追加 5 个 `grid.fk.*` | +10（~60 → ~70） | 否 |
+| `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 5 个 `grid.fk.*` 码，**禁止整文件覆盖** | +10 | 否 |
 | `src/locales/en/schema.ts` | 修改 | 追加 `fkNav.*`（第 8 节） | +18（306 → ~324） | 否 |
 | `src/lib/__tests__/fkNavigation.test.ts` | **新增** | 纯逻辑单测 | ~230 | 否 |
 | `src/lib/__tests__/fkNavigationActions.test.ts` | **新增** | 编排测试（mock IPC + 两个 store） | ~200 | 否 |

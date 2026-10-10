@@ -138,6 +138,7 @@
 | G9 | 批量写入是 N 次全量重算 | `applyColumnToRows` + `rebuildEditBuffer` | 10 万格粘贴在现状形态下不可行 |
 | G10 | 列元数据不够用 | `ColumnDef` 只有 `name` / `type` | 粘贴的类型与可空判定必须拿 `ColumnSchema`，因此必须在 `TableView` 层做，不能塞进 `DataTable` |
 | G11 | 复制可能落到「屏幕上的截断文本」 | `CellRenderer` 的 120 字截断 + `handleContextMenu` 的 `window.getSelection()` 回退 | 用户复制的值与看到的一致、却与数据库里的值**不一致**；长 JSON / 长文本被静默截掉尾部。裁定见 §3.8 |
+| G12 | **跨表粘贴会按位置静默写错列** | 本册 Step 3 的 `planPaste` 只收 `columnOrder`，把矩阵第 *i* 列写进目标第 *i* 列；而剪贴板是**操作系统全局资源**（今天已有 `navigator.clipboard.writeText` / 系统剪贴板，无需任何应用内通道） | 用户从 `users(id, name, email)` 复制，切到 `orders(id, user_id, amount, created_at)` 粘贴 → `name` 落进 `user_id`、`email` 落进 `amount`，**全程零提示、零错误码**，`planPaste` 认为这是一次完全合法的粘贴。一旦提交就是**另一张表**的数据损坏，且因为 `nullable` 判定也过了，数据库不会报错 |
 
 ---
 
@@ -378,9 +379,104 @@ export function pendingCellKey(rowIndex: number, columnName: string): string;
 | `pendingCellKeys` | 统计「覆盖了多少待提交改动」 | 缺省空集合；`TableView` 从 `TableState.pendingChanges` + `rowIdentityAnchors` 构造 |
 | `cancelled`（`PastePlan` 未含） | — | 取消由调用方在分批写入之间检查，不进数据类型 |
 
+### 3.2b 跨表粘贴：来源追踪与列名对齐（G12 的修复，**本册新增，不可省略**）
+
+**问题重述（不是「要不要支持跨表粘贴」，而是「跨表粘贴不能静默写错列」）**：
+
+- 「从 A 表复制、粘到 B 表」本身是**正当且高频**的用法（灌数据、对拍两表），本册**不禁止**它；
+- 缺陷在于**按位置对齐且不告知**。目标表列序与来源表列序毫无关系时，位置对齐等于让用户把 `email` 的内容写进 `amount`。
+
+**修复分三层，缺一层都留洞**：
+
+| 层 | 做什么 | 拦住什么 | 拦不住什么 |
+| --- | --- | --- | --- |
+| L1 **来源追踪** | 应用内复制时把来源表与来源列名写进模块级 `lastCopySource` | 能证明「同表」→ 免确认直接写 | 证明**不了**（外部复制、另一个 DataZen 窗口、后台进程改写剪贴板） |
+| L2 **列名对齐** | 来源已知时按**列名**而非列序对齐 | 列序不同的两表互相粘贴 | 来源未知（Excel / 外部应用）时的错列 |
+| L3 **强制确认** | L1 证明不了同表、或 L2 对不齐时，`planPaste` 置 `requiresConfirmation`，调用方在 `stageCellWrites` **之前**弹确认 | 兜住 L1/L2 的全部漏网 | —（这就是它作为最后一层存在的理由） |
+
+**L1 为什么不可靠，必须写进代码注释**：模块级 `lastCopySource` 记的是「**上一次经由本应用复制的**内容」，
+它与此刻系统剪贴板里的真实内容**没有强绑定**——用户在 Excel 里复制一次，它就过期了。
+因此它**只能用来抬高门（raise the gate），绝不能用来自动放行或自动改写对齐**。任何「因为 L1 说来源是 A 表所以直接按 A 表列名对齐」的写法都是错的。
+
+```ts
+/** 一次复制的来源。`columnNames[i]` 对应矩阵第 `i` 列；`null` 表示该侧未知。 */
+export interface ClipboardSource {
+  /** 表身份键，由 `tableChangeKey(context)` 生成（见下）。 */
+  tableKey: string;
+  /** 来源列名，顺序与矩阵列一致。**tsv 复制没有表头，但这里照样有值**——这正是 L1 的价值所在。 */
+  columnNames: readonly string[];
+  /** 来源列的类型族，用 `DataTypeFamily`（`classifyDataType` 的 7 族；05 落地后换成 `resolveCellType` 的 11 `CellType`）。 */
+  columnTypes: readonly DataTypeFamily[];
+  // 提交顺序里 03 排在 05 之前 ⇒ 此处只能是 DataTypeFamily，禁止提前引用 05 才创建的 CellType
+}
+
+/** 模块级「上次复制来源」。**刻意做成模块状态而不是 store**：它描述的是系统剪贴板，不是当前会话的表状态。 */
+let lastCopySource: ClipboardSource | null = null;
+export function recordClipboardSource(source: ClipboardSource): void;
+/** 测试可注入；生产只读。 */
+export function peekClipboardSource(): ClipboardSource | null;
+export function clearClipboardSource(): void;
+
+/** 表身份键。`connectionId` 恒为**配置归属**，`database` / `schema` 的 `null` 归一为 `''`。 */
+export function tableChangeKey(context: TableChangeContext | null): string;
+```
+
+**`tableChangeKey` 的三条陷阱（照抄即错）**：
+
+1. **不能用 `dbSessionId`**——重连一次就换 id，同表粘贴会被误判成跨表，天天弹确认。AGENTS.md 的命名规范就是这么定的：归属/配置语义用 `connectionId`。
+2. **必须整体转小写再比较**——`schema` 在 PG 下大小写敏感、在 MySQL 下不敏感；不归一就会在 MySQL 上天天误报「跨表」。
+3. **`null` 与 `''` 是同一张表**——`TableChangeContext.database` 允许 `null`（SQLite），与显式空串必须归一后再比。
+
+**L2 的对齐算法（`planPaste` 内部，Step 3 实现）**：
+
+```ts
+const sourceNames = options.source?.columnNames;
+if (sourceNames && sourceNames.length === matrix.width) {
+  const byName = mapColumnsByName(sourceNames, options.columnOrder);
+  if (byName.matched > 0) {
+    // 用 byName.mapping 取代位置对齐；byName.dropped 里的来源列进 PastePlan.droppedColumns + grid.paste.columnMismatch
+    return { mode: "byName", ... };
+  }
+}
+// matched === 0 ⇒ 名称完全对不上 ⇒ 这就是跨表的强证据，退回位置对齐并强制确认
+return { mode: "byPosition", crossTable: true, requiresConfirmation: true, ... };
+```
+
+| 场景 | `mode` | `requiresConfirmation` | 用户看到什么 |
+| --- | --- | --- | --- |
+| 同表同序（最常见） | `byName` | **false** | 无提示，与无此功能时一致（零回归） |
+| 同表但列被隐藏/拖拽过 | `byName` | **false** | 无提示。**这正是按名对齐的价值**——按位置对齐在这种场景下是错的 |
+| 跨表，列名部分重合（如都叫 `id`） | `byName` | `true` | 「来自 <源表>，只有 2/5 列同名将写入：id、created_at」 |
+| 跨表，列名完全不重合 | `byPosition` | `true` | 「内容来自另一张表或外部应用，将按当前位置写入 5 列」 |
+| 从 Excel / 外部应用粘贴（`source === undefined`） | `byPosition` | **`true`** | 同上 |
+
+**`requiresConfirmation` 的缺省必须是 `true`**，只有「L1 证明同表」才能置 `false`。
+注意这与契约 R4「默认值等于今天缺省时的实际行为」并不冲突：**今天根本没有粘贴功能**（§2.4 G1），
+所以这里没有「今天的行为」需要保持一致——`planPaste` 的每个默认值都是新行为，不适用 R4。
+
+**`PastePlan` 新增四个字段**（全部只读诊断，不参与写入决策）：
+
+```ts
+export interface PastePlan {
+  /* …既有字段不变… */
+  /** 来源与目标是否同一张表。`null` = 来源未知（无法判断），不等于 `false`。 */
+  crossTable: boolean | null;
+  /** 实际采用的对齐方式。`unknown` = 矩阵未进规划（如超限/空），未做任何对齐。 */
+  alignment: 'byName' | 'byPosition' | 'unknown';
+  /** 按名对齐时被丢弃的来源列名（去重、保序）。**这些列一个格都不会写。** */
+  droppedColumns: string[];
+  /** 调用方**必须**先弹确认框再 `stageCellWrites`；`confirmPaste(...)` 的默认焦点与默认动作恒为「取消」。 */
+  requiresConfirmation: boolean;
+}
+```
+
+**确认门必须落在 `onPasteText` 的 `stageCellWrites` 之前**（Step 7）：
+`planPaste` → `requiresConfirmation` → `confirmPaste(文案, { confirmLabel: 粘贴, cancelLabel: 取消 })` → 用户确认才 `stageCellWrites`。
+默认焦点与默认动作都是**取消**——误粘贴的代价是改错另一张表，回退成本远高于多点一次。
+
 ### 3.3 错误码与提示
 
-位置：`src/lib/gridErrors.ts`（**新增**）。
+位置：`src/lib/gridErrors.ts`（**由 01 创建骨架，本册按契约 §8.1 三步追加**：`GridErrorCode` 联合类型加成员 → `GRID_ERROR_CODES` 加条目 → §6 变更表登记「修改（追加）」）。**禁止整文件重写**——并行开发下整文件覆盖不产生任何编译错误，只会静默抹掉其他分册的码。
 
 ```ts
 /** 前端可精确识别的网格错误码。后端经 `CommandError` 消息前缀产出，前端经本联合类型归一化。 */
@@ -404,6 +500,9 @@ export type GridErrorCode =
   | 'grid.paste.outOfBounds'
   | 'grid.paste.noWritableCell'
   | 'grid.paste.notNullEmpty'
+  | 'grid.paste.identityChanged'
+  | 'grid.paste.crossTable'
+  | 'grid.paste.columnMismatch'
   | 'grid.paste.identityChanged'
   | 'grid.clipboard.writeFailed'
   | 'grid.clipboard.readFailed';
@@ -446,6 +545,8 @@ export interface PasteProblem {
 | `grid.paste.noWritableCell` | 所有目标列都不可写 | 说明原因（全部是自增列 / 全部是未知列） |
 | `grid.paste.notNullEmpty` | 未加引号的空字段落到 `nullable === false` 的列 | 指出行号与列名，说明 NULL 未写入 |
 | `grid.paste.identityChanged` | 粘贴会改动主键列，且改动后行身份无法唯一解析 | 指出行号与列名，说明「改动后无法唯一定位该行」 |
+| `grid.paste.crossTable` | 来源表与目标表不是同一张表，或来源未知 | **必须**给出「来自 <源表全名>」与「将写入 <目标表全名>」两段文案；`source === undefined` 时写「来源未知（可能是从 Excel 或其他应用复制的）」，**不得**写「来自未知表」这种等于没说的话 |
+| `grid.paste.columnMismatch` | 按列名对齐时来源列在目标表找不到同名列 | 列出被丢弃的来源列名（最多 5 个 + `…`），并声明「这些列不会被写入」；**禁止**把它们按位置补写到目标表末尾 |
 | `grid.clipboard.writeFailed` | `copyToClipboard` 返回 `false` | 说明复制失败，不谎报成功 |
 | `grid.clipboard.readFailed` | `readClipboard()` 抛错（权限/未绑定平台服务） | 说明无法读取剪贴板，建议改用 `⌘+V` |
 
@@ -680,7 +781,7 @@ export interface DataTableProps {
 | 矩阵越过当前页剩余行 | 截断 | 记 `grid.paste.outOfBounds`，提示「N 格未写入，未自动翻页」 |
 | 落点列在 `visibleColumns` 之外 | — | 不可能发生：落点来自 DOM 的 `data-dt-col` 或 `gridSelection`，两者都只在可见列上产生 |
 
-**焦点要求**：滚动容器必须能获得焦点才能收到 `paste`。现状滚动容器**没有** `tabIndex`（`VirtualBody` 的行 `div` 才有）。本册给滚动容器加 `tabIndex={0}` + `data-dt-grid-surface`，并**移除行 `div` 的 `tabIndex={0}`**——否则 `Tab` 会在每行之间跳（`VirtualBody` 的 `VirtualRow` 已把它设成 0，且行上还有 Enter/Space 的 `handleKeyDown`）。行键盘可达性改由 `data-dt-row` + 网格自身的 roving tabindex 承担。这是一个**对既有可访问性行为的修正**，记入 U-5。
+**焦点要求**：滚动容器必须能获得焦点才能收到 `paste`。现状滚动容器**没有** `tabIndex`（`VirtualBody` 的行 `div` 才有）。本册给滚动容器加 `tabIndex={0}` + `data-dt-surface`，并**移除行 `div` 的 `tabIndex={0}`**——否则 `Tab` 会在每行之间跳（`VirtualBody` 的 `VirtualRow` 已把它设成 0，且行上还有 Enter/Space 的 `handleKeyDown`）。行键盘可达性改由 `data-dt-row` + 网格自身的 roving tabindex 承担。这是一个**对既有可访问性行为的修正**，记入 U-5。
 
 ### 4.4 IME 与组合输入
 
@@ -700,9 +801,9 @@ export interface DataTableProps {
 
 ### Step 1 · 错误码表
 
-- **改**：`src/lib/gridErrors.ts`（新增）。
+- **改**：`src/lib/gridErrors.ts`（01 已建骨架，本册**只追加** `grid.paste.*` 码，**禁止整文件重写**）。
 - **加**：`GridErrorCode`、`GRID_ERROR_CODES`、`classifyGridError`。
-- **为什么**：`00` §8 要求前端有唯一的分类入口；本册新增 12 个码，必须在**同一处**登记，否则「前缀匹配顺序」会散落在各调用点。
+- **为什么**：`00` §8 要求前端有唯一的分类入口；本册新增 15 个码，必须在**同一处**登记，否则「前缀匹配顺序」会散落在各调用点。
 - **自测**：`npx vitest run src/lib/__tests__/gridErrors.test.ts` —— 逐码断言 `classifyGridError(code + ': 任意说明') === code`；断言 `GRID_ERROR_CODES` 无重复；断言未知消息返回 `'unknown'`。
 
 ### Step 2 · `CellWrite` 三态与列可写判定
@@ -733,6 +834,9 @@ export interface DataTableProps {
   9. `planPaste` 的可写判定：`columnWritability(column).writable === false` → 该列**所有**目标格 `unset` + 记一次 `grid.cell.readOnly`（`detail` = 列名，去重进 `skippedColumns`）。
   10. `planPaste` 的溢出：`overflow === 'expand'` 时把 bounds 扩到矩阵尺寸，但 `bottomRow` 被 `pageRowCount - 1` 截断，被截断的格计 `skipped` + 一次 `grid.paste.outOfBounds`。
   11. `planPaste` 超限：格数 > `maxCells` 或 `byteLength` > `GRID_PASTE_MAX_BYTES` → 返回 `writes: []` + `grid.paste.tooLarge`（**不部分写入**）。
+  12. **列对齐（G12，最高优先级，编号靠后但必须先实现）**：`source?.columnNames` 存在且长度等于 `matrix.width` 时按列名对齐（`alignment: "byName"`），无同名列进 `droppedColumns` + `grid.paste.columnMismatch`；同名列为 0 ⇒ 判定跨表，退回位置对齐 + `crossTable: true` + `requiresConfirmation: true`。
+  13. **`requiresConfirmation` 的缺省恒为 `true`**；只有 `source && source.tableKey === tableChangeKey(context)` 才置 `false`。
+  14. `recordClipboardSource` / `peekClipboardSource` / `clearClipboardSource` / `tableChangeKey` 一并导出；`tableChangeKey` 的小写与 `null`→`''` 归一是必测项。
 - **自测**：`npx vitest run src/lib/__tests__/gridClipboard.test.ts`，用例见 9.1。
 
 ### Step 4 · 抽出批量写入纯函数
@@ -765,7 +869,7 @@ export interface DataTableProps {
 - **输入**：`{ panelId, isEditable, columns: readonly ColumnSchema[], columnOrder, rows, pendingChanges, gridSelection, title, onProblem }`。
 - **行为**：
   - `buildCopyText(target)`：`row` → `serializeCells(buildSelectionMatrix(...), { format: 'tsv' })`（全列）；`cell` → `toClipboardRange` + `buildSelectionMatrix` + `serializeCells`。返回 `null` 的情形：无选择、`range === null`。
-  - `onPasteText(text, anchor)`：`parseClipboardMatrix` → `planPaste` → 若 `writes.length > GRID_PASTE_CONFIRM_CELLS` 先 `confirmPaste(...)`（用 `useConfirmDialog`）→ 分批调 `store.stageCellWrites` → 汇总 `PasteOutcome` → 返回 `true`。
+  - `onPasteText(text, anchor)`：`parseClipboardMatrix` → `planPaste` → 若 `writes.length > GRID_PASTE_CONFIRM_CELLS` 先 `confirmPaste(...)`（用 `useConfirmDialog`）→ 分批调 `store.stageCellWrites` → 汇总 `PasteOutcome` → 返回 `true`。。**注意**：本步必须在调用 `planPaste` 前先 `const source = peekClipboardSource()` 传进去，并在 `planPaste` 之后、`stageCellWrites` **之前**判断 `requiresConfirmation`——顺序反了就成了「先写再问」，与 3.2b 的设计意图相反
   - `onPasteFromClipboard(anchor)`：`await requirePlatformServices().readClipboard()`（try/catch → `grid.clipboard.readFailed`）→ 走同一条 `onPasteText` 逻辑。
   - 只读拦截：`!isEditable` 时 `onPasteText` 立即 `showReadOnlyTip()` 并返回 `true`（消费掉，避免落到浏览器默认），复制仍可用（只读表当然可以复制）。
   - 超大批量：`writes.length > GRID_PASTE_CHUNK_CELLS` 时分批 `stageCellWrites`，每批之间 `await new Promise<void>(resolve => { window.requestAnimationFrame(() => resolve()); })`，并在提示里给进度。
@@ -789,7 +893,7 @@ export interface DataTableProps {
 
 ### Step 10 · `DataTable` 接线与 `VirtualBody` 属性
 
-- **改**：`src/components/DataTable/DataTable.tsx`：① 新增 3 个 props；② 把滚动容器 `onCopy` / `onPaste` 绑到 `clipboard`；③ 滚动容器加 `tabIndex={0}` + `data-dt-grid-surface`；④ 把 `handleContextMenu` 的主体搬去 `useDataTableContextMenu`（Step 11）；⑤ 删除局部 `copyText`。
+- **改**：`src/components/DataTable/DataTable.tsx`：① 新增 3 个 props；② 把滚动容器 `onCopy` / `onPaste` 绑到 `clipboard`；③ 滚动容器加 `tabIndex={0}` + `data-dt-surface`；④ 把 `handleContextMenu` 的主体搬去 `useDataTableContextMenu`（Step 11）；⑤ 删除局部 `copyText`。
 - **改**：`src/components/DataTable/VirtualBody.tsx`：① 单元格加 `data-dt-cell-error={problem ? 'true' : undefined}`（契约 §4.4 之外的**增量**属性，见 U-7）；② 移除行 `div` 的 `tabIndex={0}`（焦点改由网格容器承担）；③ 单元格单击时 `stopPropagation` 的取舍由 DB-01 决定（本册不碰）。
 - **为什么**：`00` §4.4 要求定位走 `data-*`；`tabIndex` 是「原生 paste 能不能收到」的前提。
 - **自测**：`npx vitest run src/components/DataTable/` 全绿；新增 `DataTable.clipboard.test.tsx` 断言「不传 `clipboard` 时容器没有 `onCopy`/`onPaste` 的可观测效果」。
@@ -808,9 +912,9 @@ export interface DataTableProps {
 
 | 文件路径 | 新增/修改 | 职责 | 预估行数 | 触及 800 行上限？ |
 | --- | --- | --- | --- | --- |
-| `src/lib/gridErrors.ts` | 新增 | 错误码联合类型 + 前缀分类 | ~70 | 否 |
+| `src/lib/gridErrors.ts` | **修改（追加）** | 01 已建骨架；本册按契约 §8.1 三步追加 `grid.paste.*` 码，**禁止整文件覆盖** | +15 | 否 |
 | `src/lib/tableChanges.ts` | 修改 | 增 `CellWrite` 三态、构造器、`CellWriteInput`、`columnWritability` | +55（227 → ~282） | 否 |
-| `src/lib/gridClipboard.ts` | 新增 | 二维解析、区域→矩阵、序列化、粘贴规划、超限常量 | ~340 | 否 |
+| `src/lib/gridClipboard.ts` | 新增 | 二维解析、区域→矩阵、序列化、粘贴规划、超限常量 | ~340 | 否 |（本册新建；**含 3.2b 的 `ClipboardSource` / `recordClipboardSource` / `peekClipboardSource` / `tableChangeKey`**）
 | `src/stores/tableData/stageCellWrite.ts` | 新增 | 批量写入纯函数（从 `stageCellChange` 抽出） | ~160 | 否 |
 | `src/stores/tableDataStore.ts` | 修改 | `stageCellChange` 变薄包装；新增 `stageCellWrites`；翻页/排序清 `gridSelection` | **−80 / +25**（722 → ~667） | 否（净减） |
 | `src/stores/tableData/types.ts` | 修改 | 增 `gridSelection`（若 01 已加则不改） | +3 | 否 |
@@ -823,7 +927,8 @@ export interface DataTableProps {
 | `src/windows/connection/TablePendingChangesBar.tsx` | **01 新增，本册只复用** | 待提交改动工具条（`table-tx-controls` + `pending-changes-bar`）；命名在 01/03/06 之间统一，由 01 的 Step 10 首次创建 | ~150（**不计入本册**） | 否 |
 | `src/windows/connection/TableView.tsx` | 修改 | `useGridClipboard` 接线 + 粘贴确认框；工具条由 01 移出（本册依赖该前置，不自行拆分） | **−（01 的抽取）/ +20**（770 → ~640） | 否（依赖 01 抽取后安全） |
 | `src/locales/en/query.ts` | 修改 | 剪贴板文案（第 8 节） | +32（424 → ~456） | 否 |
-| `src/lib/__tests__/gridClipboard.test.ts` | 新增 | 解析/序列化/规划单测 | ~330 | — |
+| `src/lib/__tests__/gridClipboard.test.ts` | 新增 | 解析/序列化/规划单测 | ~330 | — |（含 `tableChangeKey` 的大小写与 `null` 归一）
+| `src/lib/__tests__/gridClipboard.crossTable.test.ts` | **新增** | 3.2b 三层对齐的纯逻辑单测（同表免确认 / 按名对齐 / 名不匹配退回位置 / 来源未知强制确认）。**独立文件**，便于单独验收 G12 | ~90 | 否 |
 | `src/lib/__tests__/gridErrors.test.ts` | 新增 | 错误码分类单测 | ~45 | — |
 | `src/stores/tableData/__tests__/stageCellWrite.test.ts` | 新增 | 批量写入与单格等价性 | ~180 | — |
 | `src/hooks/__tests__/useClipboardCopyFeedback.test.tsx` | 新增 | 复制反馈三条保证 | ~120 | — |
@@ -874,6 +979,8 @@ export interface DataTableProps {
 | B24 | **剪贴板写失败** | `grid.clipboard.writeFailed`，`copied` 保持 `false`，不回滚成功态以外的任何状态 |
 | B25 | **`pendingChanges` 覆盖** | 粘贴覆盖既有暂存改动时**不弹窗**（否则高频操作被打断），但结果提示**必须**回显覆盖了几处（`dataTable.pasteOverwrotePending`） |
 | B26 | **主键列被粘贴** | 允许写入，但每格都要过 `stageCellWritesInto` 的 `hasPendingIdentityCollision` / `rowIdentityIsUnique`；会导致身份不唯一的格记 `grid.paste.identityChanged` 并跳过，其余格照常 |
+| B27 | **剪贴板内容来自另一张表**（应用内复制，`source.tableKey !== tableChangeKey(context)`） | **允许写入，但必须先确认**：文案含源表与目标表全名、列名对齐结果（`matched`/`total`）与被丢弃列。默认动作「取消」。确认后按 `alignment` 写，**被丢弃的列一个格都不写** |
+| B28 | **剪贴板内容来自应用之外**（Excel / Numbers / 另一个 DataZen 窗口，`source === undefined`） | 一律按位置对齐 + **强制确认**（文案明说来源未知）。这是 B27 的兜底：L1 的 `lastCopySource` 与真实剪贴板**没有强绑定**，用户在 Excel 里复制一次它就过期了，所以「来源未知」必须按「可能跨表」处理，不能按「同表」处理 |
 | B27 | **目标格的值与原值相等** | 沿用既有语义：该列改动被**删除**；该行若无其它改动且未标删除则整条 `pendingChanges` 移除。因此「粘贴 12 格但其中 3 格值未变」时待提交计数是 9，**不是** 12。结果提示用实际 `staged` |
 | B28 | **粘贴后预览已失效** | `previewPlan` 置 `null`、`pendingStatus` 置 `'idle'`（与 `stageCellChange` 一致）。指纹纪律（`00` §1.4 事实 5）因此不被绕过 |
 
@@ -911,6 +1018,10 @@ export interface DataTableProps {
 | `dataTable.pasteNotAllowedEmpty` | `Row {row}, column {column} cannot be empty; NULL was not written.` | B9 / B10 |
 | `dataTable.pasteIdentityChanged` | `Row {row}, column {column} is part of the row identity; the change was skipped.` | B26 |
 | `dataTable.pasteNoWritableColumn` | `None of the pasted columns can be written here.` | `grid.paste.noWritableCell` |
+| `dataTable.pasteCrossTableTitle` | `Paste content from another table` | `grid.paste.crossTable` |
+| `dataTable.pasteCrossTableBody` | `The clipboard content came from a different table ({source}). It will be written to {target}. Only {matched} of {total} columns match by name.` | `grid.paste.crossTable` |
+| `dataTable.pasteUnknownSourceBody` | `The clipboard source is unknown (it may come from Excel or another app). {total} columns will be written to {target} by position.` | `grid.paste.crossTable` |
+| `dataTable.pasteDroppedColumns` | `{count} pasted columns have no matching column here and will not be written: {names}.` | `grid.paste.columnMismatch` |
 | `dataTable.pasteNoRowIdentity` | `Cannot paste: this table has no primary key.` | B8 |
 | `dataTable.pasteConfirmTitle` | `Paste {cells} cells?` | B17 确认框标题 |
 | `dataTable.pasteConfirmMessage` | `Writes {rows} row(s) × {cols} column(s) and overwrites {overwritten} staged change(s).` | B17 确认框正文 |
@@ -986,6 +1097,12 @@ export interface DataTableProps {
 | `clips to the region in clip mode` | `overflow: 'clip'`，bounds 等于区域 |
 | `counts overwritten pending changes` | 传入 `pendingCellKeys` → `overwrittenPending` 正确 |
 | `rejects the whole batch when over the cell limit` | `writes: []` + `grid.paste.tooLarge`（无部分写入） |
+| `aligns by column name when the source table is known` | `source.columnNames = ["name","email"]` + `columnOrder = ["email","name","id"]` ⇒ `alignment === "byName"`，`email` 的值写进 `email` 列（**不是** `name` 列）；`droppedColumns === []`；`requiresConfirmation === false` |
+| `drops source columns that have no same-named target column` | 来源多出的 `created_at` ⇒ `droppedColumns === ["created_at"]` + problem `grid.paste.columnMismatch`；断言该列**没有任何格出现在 `writes` 里**（不能只断言 `droppedColumns`，那证明不了真没写） |
+| `falls back to position and demands confirmation when no name matches` | 来源列名与目标零交集 ⇒ `alignment === "byPosition"`、`crossTable === true`、`requiresConfirmation === true`，且 `writes` 的列序是位置序 |
+| `requires confirmation when the source is unknown` | 不传 `source` ⇒ `crossTable === null`（**不是 `false`**）、`requiresConfirmation === true`、`alignment === "byPosition"` |
+| `does not require confirmation for the same table` | `source.tableKey === tableChangeKey(context)` ⇒ `requiresConfirmation === false`。**这是唯一的免确认路径**，其余全部必须为 `true` |
+| `tableChangeKey is stable across reconnect and schema case` | `{connectionId:"c1", database:"db", schema:"Public", table:"T"}` 与 `{connectionId:"c1", database:"db", schema:"public", table:"t"}` ⇒ **key 相同**；`database: null` 与 `database: ""` ⇒ key 相同；换 `dbSessionId` ⇒ key **不变**；换 `connectionId` ⇒ key **变** |
 | `normalizes reverse selections` | 反向区域（`focus` 在 `anchor` 左上）→ 走的仍是 `topRow`/`leftColumn` |
 
 ### 9.2 纯逻辑单测 · 其余
@@ -1071,8 +1188,10 @@ export interface DataTableProps {
 | **U-4** | 仓库里 TSV 转义有三份实现（`serializeDataTableRowsAsTsv` / `exportData.ts` 的 `escapeTSV` / `exportStream.ts` 的 `escapeTSV`），本册只收口第一份 | **建议**：本册只收口剪贴板路径（`serializeCells`），导出链路留给 DB-10 一次性收敛，理由是导出有流式与内存约束、改动面与验证面都更大。接受「合并后仍有两套」的过渡状态，并在 DB-10 的分册里列为必须项 |
 | **U-5** | 为让网格容器能收到原生 `paste`，本册给滚动容器加 `tabIndex={0}` 并**移除** `VirtualBody` 行 `div` 的 `tabIndex={0}` | **建议照做**。理由：行级 `tabIndex` 会让 `Tab` 逐行跳（当前每行都是 tab stop），这本身就是可访问性缺陷；焦点应收敛到网格容器 + roving tabindex。但该改动会影响既有可访问性断言与 E2E 的 Tab 行为，需 DB-02（键盘导航）会签；若 DB-02 已定义 roving tabindex，则本册直接复用它，不再自行加 `tabIndex` |
 | **U-6** | E2E 如何构造带 `clipboardData` 的 `paste` / `copy` 事件：WKWebView 上 `new ClipboardEvent('paste', { clipboardData })` 是否可用未经实测；且既有注释（`e2e/specs/table-edit.ts`）已说明键盘输入不可靠 | **建议**：先在 `e2e/specs/table-clipboard.ts` 里实测 `dispatchEvent` 路径；若不可用，降级为 `import.meta.env.DEV` 的 `window.__gridClipboard` 探针（注入文本、读取上次写入文本），与既有 `window.__tableDataStore` 同一范式。**不接受**为了 E2E 把剪贴板逻辑从原生事件改回 `useKeyboardShortcuts`——那是拿产品缺陷换测试便利 |
-| **U-7** | 本册新增 `data-dt-cell-error` DOM 属性，超出 `00` §4.4 的属性表 | **建议**加进 `00` §4.4 的表（属性是纯增量、不破坏既有断言），而不是让各分册自行发明属性名。请在合并本册时同步更新 `00-contracts.md`；若契约冻结不允许追加，则退化为 `data-dt-problem="true"` 之外的方案——但那反而更差 |
+| ~~U-7~~ | 本册新增 `data-dt-cell-error` DOM 属性，超出 `00` §4.4 的属性表 | **已裁定并关闭：已并入契约 §4.4 全量属性总表**（创建归属 **03**）。无需在本册合并时回写契约——总表已预先收录，不必依赖「合并时同步更新 `00`」这种时序动作 |
 | **U-8** | `⌘+⇧+C` 的语义：PRD 沿用 TablePlus 的「复制选中单元格」，但本册让 `⌘+C` 在 `cell` 模式下已经就是区域复制，于是 `⌘+⇧+C` 被指派给「打开 Copy Selected Cells As… 菜单」 | **建议**维持本册方案（一个组合键一个语义，且分属两条不同实现路径：`⌘C` 走原生事件、`⌘⇧C` 走快捷键表）。若将来 UX 坚持「`⌘+⇧+C` 直接复制 TSV」，则它必须与 `⌘+C` 在 `cell` 模式下产出**完全相同**的文本，否则同一区域两种复制结果会成为新的缺陷源 |
+| **U-10** | **跨表粘贴是否应该在确认后按名对齐，还是干脆一律按位置对齐**（3.2b 已给出建议方案：优先按名，退回位置 + 确认） | **建议按 3.2b 实现**。人工需要确认的是产品口径：**从 A 表复制、粘到 B 表**是正当用法，所以不能禁；但「同名才写、不同名就丢」对**跨表结构相似**的数据迁移是有损的（`user_name` vs `nickname` 这类列名差异会让整批列被丢弃）。若产品更看重「一次粘过去再手工修」，可以保留纯位置对齐 + 只加确认门（把 `alignment` 恒定为 `byPosition`、`droppedColumns` 恒为空），代价是同表内列被隐藏/拖拽后的粘贴仍然按位置错列。**这是一个产品取舍，不是技术问题，需要产品给一句话** |
+| **U-9** | 「粘贴前确认」的阈值（2 000 格）与硬上限（100 000 格 / 10 MiB）是引用 PRD 的定性要求后由本册定的数 | **建议**先按本册常量实现（集中定义在 `src/lib/gridClipboard.ts`，便于调参），并在 PRD §10 的 `grid.clipboard.paste` 埋点观察实际分布后再调整。**不要**把阈值散落在 hook 里 |
 | **U-9** | 「粘贴前确认」的阈值（2 000 格）与硬上限（100 000 格 / 10 MiB）是引用 PRD 的定性要求后由本册定的数 | **建议**先按本册常量实现（集中定义在 `src/lib/gridClipboard.ts`，便于调参），并在 PRD §10 的 `grid.clipboard.paste` 埋点观察实际分布后再调整。**不要**把阈值散落在 hook 里 |
 | **U-10** | `src/hooks/useClipboardCopyFeedback.ts` 与 `packages/ui` 的 `useCopyFeedback` 是两份语义相同、底层不同的实现（前者带降级链，后者不带宽） | **建议**短期接受两份（`packages/ui` 不允许 import `@tauri-apps/api`，这是硬约束），但在 `useClipboardCopyFeedback` 的注释里交叉引用两处，并把「两者的语义一致性」写成一个共享测试形状（第 9.3 节复用同一个 harness）。中期可考虑让宿主注入「写剪贴板」函数给 `@datazen/ui`，从而只留一份实现——那是独立重构，不在本册 |
 | **U-11** | `CellRenderer` 的 120 字硬截断是**显示层**决策，本册只在 §3.8 裁定「剪贴板以数据源为准、不受截断影响」（R-A~R-F），**没有**改显示 | **建议由显示 / 特殊类型分册（DB-13 一系）裁定**是否把硬截断改为「完整文本 + CSS 省略（`text-overflow: ellipsis` / `truncate`）」，使屏幕选中、辅助技术与 `window.getSelection()` 都能拿到完整值。本册不越界：即使显示层改成不截断，剪贴板的取值口径（R-A：读 `TableState.rows`）也不变；反之显示层不改，本册的 G11 也已通过 R-B 移除 DOM 回退而修复 |
