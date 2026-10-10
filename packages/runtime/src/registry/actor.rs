@@ -560,6 +560,9 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
             owner: request.owner.clone(),
             initial_target: request.initial_target.namespace.clone(),
             runtime_epoch: state.runtime_epoch.get(),
+            // 出向端口的反向索引靠它才有第一个 key。透传而非新分配：
+            // `request.db_session_id` 就是这一行在 registry 里的身份。
+            db_session_id: request.db_session_id.clone(),
         })
         .await;
 

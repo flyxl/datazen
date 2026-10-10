@@ -23,8 +23,9 @@
 use async_trait::async_trait;
 
 use crate::connection::{
-    CommandCall, ConfigRevision, ConnectionId, EffectOutcome, ExecutionId, ExecutionState,
-    NamespaceTarget, OwnerRef, ResourceId, SessionContext, SessionHandleRef, StreamId,
+    CommandCall, ConfigRevision, ConnectionId, DbSessionId, EffectOutcome, ExecutionId,
+    ExecutionState, NamespaceTarget, OwnerRef, ResourceId, SessionContext, SessionHandleRef,
+    StreamId,
 };
 
 use tokio::sync::mpsc;
@@ -40,6 +41,17 @@ pub struct OpenResource {
     pub owner: OwnerRef,
     pub initial_target: NamespaceTarget,
     pub runtime_epoch: u64,
+    /// 正在打开的会话 id。**出向端口反向索引的唯一来源。**
+    ///
+    /// 为什么必须有它：`LiveConnectionRequest` 只带 `{ dbSessionId, runtimeEpoch }`，
+    /// 而 `SessionBackend::open` 若不认识 `dbSessionId`，宿主就无法把「刚开好的这份
+    /// 物理资源」与「将来来借用的那个会话」对应起来——`runtime_epoch` 没有公开的
+    /// 反查表（`SessionRegistry::epoch_of` 是单向的 id → epoch）。少这一字段时
+    /// 只剩两条路：让端口新建连接（契约禁止），或让端口永远拒绝（等于没接线）。
+    ///
+    /// 它由 actor 从 `OpenRequest::db_session_id` 透传，因此**不是**新事实：
+    /// 同一个 id、同一个来源，只是第一次越过接缝到达后端。
+    pub db_session_id: DbSessionId,
 }
 
 /// 打开结果。

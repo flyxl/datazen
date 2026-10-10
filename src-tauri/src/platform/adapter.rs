@@ -89,6 +89,21 @@ pub struct PlatformAdapter {
     services: std::sync::OnceLock<Arc<ApplicationServices>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
+    /// 出向端口适配器。未接线是配置事实（`None`），不是故障。
+    ///
+    /// 单独存一份是为了让「接线用的那个实例」与「将来要查询绑定的那个实例」
+    /// 是**同一个**：两个实例背后是两张 `by_session` 表，端口就会查不到
+    /// 自己刚绑定的那一行。`inject` 之外不需要它，因此放在 `OnceLock` 里
+    /// 而不是字段构造参数。
+    live: std::sync::OnceLock<Arc<super::live_source::DesktopLiveConnectionSource>>,
+    /// 空闲回收驱动器。**归应用层所有**，宿主只负责在退出时停它。
+    ///
+    /// 放在 adapter 上而不是 `AppState`：`inject` 一次、进程一份，停它的时机
+    /// （进程退出）与 adapter 的生命周期天然重合，不需要再引入一个「谁来持有句柄」
+    /// 的所有权问题。`IdleReclaimer::Drop` 本身就会 stop + abort，因此即使
+    /// 漏了显式 `stop`，任务也不会泄漏——这里仍显式停，是为了让停止**发生在一个
+    /// 确定的时刻**，而不是等某个不可预测的析构点。
+    idle_reclaimer: std::sync::Mutex<Option<datazen_runtime::application::IdleReclaimer>>,
 }
 
 impl PlatformAdapter {
@@ -100,6 +115,8 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
+            live: std::sync::OnceLock::new(),
+            idle_reclaimer: std::sync::Mutex::new(None),
         })
     }
 
@@ -111,6 +128,8 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
+            live: std::sync::OnceLock::new(),
+            idle_reclaimer: std::sync::Mutex::new(None),
         }
     }
 
@@ -196,7 +215,14 @@ impl PlatformAdapter {
         }
         let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
         let backend = Arc::new(super::session_backend::DesktopSessionBackend::new(
-            registry, store, 32,
+            registry.clone(),
+            store.clone(),
+            32,
+        ));
+        let live = Arc::new(super::live_source::DesktopLiveConnectionSource::new(
+            registry,
+            store,
+            backend.clone(),
         ));
         let runtime = Arc::new(
             datazen_runtime::application::RuntimeConnectionUseCases::new(
@@ -205,6 +231,17 @@ impl PlatformAdapter {
                 backend.clone(),
             ),
         );
+        // 出向端口在此接线。放在 `runtime` 构造之后、`services` 之前：端口是**宿主
+        // 装配期**决定的事（与 `RuntimeConnectionUseCases::new` 的三个业务依赖分开），
+        // 而 `services` 一旦 set 出去，`assembly_state()` 就报 FullyWired——在那之前
+        // 端口必须已经能用，否则会有一个「看起来装好了、第一个借用就 NotWired」的窗口。
+        runtime.with_live_connections(live.clone());
+        self.live.set(live).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "live source already injected",
+            )
+        })?;
         let sink = runtime.result_sink();
         backend
             .set_publisher(Arc::new(move |id, output| {
@@ -233,7 +270,7 @@ impl PlatformAdapter {
             datazen_application::identity_policy::IdentityPolicy::new(),
             runtime.clone(),
         ));
-        self.runtime.set(runtime).map_err(|_| {
+        self.runtime.set(runtime.clone()).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "runtime already injected")
         })?;
         self.profiles.set(profiles).map_err(|_| {
@@ -242,7 +279,111 @@ impl PlatformAdapter {
         self.services.set(services).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "services already injected")
         })?;
+        // 空闲回收驱动器：**应用层自己拥有**，宿主不再另挂定时器（这样就不会有
+        // 「两个驱动器抢同一张 registry 表」的形状）。放在 services 之后启动，
+        // 是为了让「装配已 FullyWired」与「回收器已在跑」不出现反序——反序时
+        // 会出现一个会话已建、回收器还没起的窗口，而那段时间的空闲判定完全缺失。
+        self.start_idle_reclaimer();
+        self.log_runtime_wiring();
         Ok(())
+    }
+
+    /// 把两条出/入口的接线状态打成一行**可观测**的启动日志。
+    ///
+    /// ## 为什么必须打出来而不是留在「代码里看得出来」
+    ///
+    /// 「端口接没接上」在此前只有两种观测方式：读源码，或在生产环境撞一次
+    /// `NotWired` 才知道。两者都不合格——前者不可执行，后者太晚。
+    ///
+    /// 这一行同时是三件「配置事实」的落点，每件都需要在看板上与故障区分开：
+    ///
+    /// 1. `live_connections`：出向端口是否接线。false 时**不是**错误，是「本部署
+    ///    不给宿主执行网关取活连接」，`borrow_live_connection` 得到
+    ///    `ServiceUnavailable`。把它打成 warn 会让每个未接线部署都刷屏。
+    /// 2. `idle_policy`：空闲回收开关。false 时**不是**错误，是「本部署不做空闲
+    ///    回收」，与 §9.2 的 `deadline == None` 是同一件事。
+    /// 3. `idle_reclaimer`：扫描任务是否在跑。false 只有一种原因——`runtime()`
+    ///    在 `start` 之前就失败了，那是**真故障**，因此这一项单独用 warn。
+    ///
+    /// ## 它不断言归池可达性
+    ///
+    /// 首版空闲池在真实驱动上恒不可达（15 个驱动全部
+    /// `ResetForReuse::Unsupported`）。那是**正确行为**：§9.4 要求归池前检查与
+    /// 驱动 `Clean` 双条件齐备，缺一半就不许把连接留在池里。所以这里不打
+    /// 「pool reachable」这种会骗人的字段，也不为了让它变绿而谎报能力。
+    fn log_runtime_wiring(&self) {
+        let Ok(runtime) = self.runtime() else {
+            tracing::warn!("runtime wiring 未落位：runtime 尚未注入，出向端口与空闲回收都不可用");
+            return;
+        };
+        let reclaimer_running = match self.idle_reclaimer.lock() {
+            Ok(slot) => slot.is_some(),
+            Err(poisoned) => poisoned.into_inner().is_some(),
+        };
+        if reclaimer_running {
+            tracing::debug!(
+                live_connections = runtime.has_live_connections(),
+                idle_reclaim_enabled = runtime.idle_policy().is_enabled(),
+                idle_scan_interval_ms =
+                    u64::try_from(runtime.idle_policy().scan_interval().as_millis())
+                        .unwrap_or(u64::MAX),
+                "runtime wiring: 出向端口与空闲回收均按配置落位（未接线/关闭均为配置事实，非故障）"
+            );
+        } else {
+            tracing::warn!(
+                live_connections = runtime.has_live_connections(),
+                idle_reclaim_enabled = runtime.idle_policy().is_enabled(),
+                "runtime wiring: 空闲回收扫描器未启动——这不是配置事实而是装配缺陷，\
+                 会话将只建不回收，额度会随会话数单调下降"
+            );
+        }
+    }
+
+    /// 起空闲回收驱动器，句柄留在 adapter 里，进程退出时 [`Self::stop_idle_reclaimer`] 停它。
+    ///
+    /// 重复调用是安全的：第二个句柄会替换第一个，被替换那个在自己的 `Drop` 里
+    /// stop + abort，所以不会留下第二个活着的扫描任务。
+    fn start_idle_reclaimer(&self) {
+        let Ok(runtime) = self.runtime() else {
+            return;
+        };
+        let reclaimer = runtime.start_idle_reclaimer();
+        match self.idle_reclaimer.lock() {
+            // 取了锁再替换：`Drop` 里同样会拿这把锁，因此「旧句柄已停」与
+            // 「新句柄已装」不会交叠。
+            Ok(mut slot) => *slot = Some(reclaimer),
+            Err(poisoned) => *poisoned.into_inner() = Some(reclaimer),
+        }
+        tracing::debug!("idle reclaimer started: runtime 自有的周期扫描器已接管空闲驱逐");
+    }
+
+    /// 停空闲回收驱动器。幂等；从未启动过时是空操作。
+    ///
+    /// 由 `RunEvent::ExitRequested`（`bootstrap/run.rs`）调用。只翻标志不 abort
+    /// 扫描任务：`IdleReclaimer::stop` 让它在下一轮循环边界退出，正在进行中的
+    /// 一次 `reclaim_idle()` 会跑完——那是必要的，因为半途打断会在 registry 与
+    /// 应用层台账之间留下「驱逐了一半」的中间态。
+    pub fn stop_idle_reclaimer(&self) {
+        let taken = match self.idle_reclaimer.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(poisoned) => poisoned.into_inner().take(),
+        };
+        if let Some(reclaimer) = taken {
+            reclaimer.stop();
+            tracing::debug!("idle reclaimer stopped");
+        }
+    }
+
+    /// 出向端口适配器。未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn live_source(
+        &self,
+    ) -> Result<Arc<super::live_source::DesktopLiveConnectionSource>, ApiError> {
+        self.live.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "live connection source not injected: 启动装配尚未调用 PlatformAdapter::inject",
+            )
+        })
     }
     pub fn runtime(
         &self,

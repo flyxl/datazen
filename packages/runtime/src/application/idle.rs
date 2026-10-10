@@ -118,6 +118,21 @@ impl IdleReclaimer {
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
     }
+
+    /// 扫描任务是否已经退出。
+    ///
+    /// ## 为什么必须暴露
+    ///
+    /// 「驱动器能被停、不泄漏 task」这句话在只有 `stop()` 时**不可测**：调用方
+    /// 收到的 `()` 什么也不证明——标志翻了，任务可能在下一轮 `sleep` 里、也可能
+    /// 已经死了。没有这个投影，测试只能靠 `sleep` 赌一个轮次（CI 上偶发，
+    /// 且猜顺序正是本项目测试纪律要避免的）。
+    ///
+    /// `JoinHandle::is_finished()` 不阻塞、不 join，因此可以直接在断言里调；
+    /// 它为真即证明 tokio 已经回收过这个任务。
+    pub fn is_finished(&self) -> bool {
+        self.task.is_finished()
+    }
 }
 
 impl Drop for IdleReclaimer {

@@ -78,6 +78,70 @@
 
 （跑完再填，逐字抄结论行）
 
+## 实现记录（按提交顺序）
+
+### 提交 2 `5b1ae9154`：任务 3，`SessionRegistry::set_idle_deadline`
+
+- `registry/registry.rs`：加公开包装，形状与 `cancel_execution_bound` 同形。
+- `application/idle.rs`：加 `refresh_idle_deadline()`（业务活动触发，非周期任务）；
+  模块头的「已知缺口」改为已闭合事实。
+- `registry/registry/tests.rs`：5 条新用例，**不靠 sleep**——期限时间轴是注入的三个
+  刻度（PAST/SOON/FAR），判据是行为差：设未来则不动手、改回过去则动手、设 None 则
+  永不回收、已摘行则 `UnknownSession`、epoch 不匹配则 `UnknownSession`。
+
+### 提交 3：任务 1+2，宿主侧接线
+
+- `packages/runtime/src/registry/backend.rs`：`OpenRequest` 的 `db_session_id` 透传
+  进 `OpenRequest`（`backend.rs` 的 `OpenResource`）。**理由**：没有它，宿主的
+  `open()` 认不出「这一份资源将来归哪个会话」，出向端口只剩「新建连接」与「永远
+  拒绝」两条路。
+- `packages/runtime/src/registry/actor.rs:557`：构造 `OpenResource` 时带上同一个 id。
+- `src-tauri/src/platform/session_backend.rs`：加 `by_session`（dbSessionId →
+  resource_id）反向索引；`open` 里绑、`close` 里摘；`Resource` 只开三个投影
+  （epoch / resource_key / provider_id），不开 `provider` 与 `handle` 本体。
+- `src-tauri/src/platform/live_source.rs`（新）：`DesktopLiveConnectionSource`
+  实现 `LiveConnectionSource`，四步（反查资源 → 解析权威 driver type → 取驱动
+  引用 → 从资源投影 handle），每步失败都是拒绝，没有一步会新建物理连接。
+- `src-tauri/src/platform/adapter.rs`：`inject` 里 `with_live_connections(...)` +
+  `start_idle_reclaimer()`；`stop_idle_reclaimer()` 由 `RunEvent::ExitRequested`
+  调用（`bootstrap/run.rs:614`）。
+- `src-tauri/src/platform/live_source_tests.rs`（新）：接线生效的三条判据。
+
+### 可观测性（陷阱三问的「建议」落点）
+
+- `adapter.rs` 加 `log_runtime_wiring()`：启动时把 `live_connections` /
+  `idle_reclaim_enabled` / `idle_reclaimer` 三项打成一行。前两项为 false 时是
+  **配置事实**用 debug，第三项为 false 是**装配缺陷**用 warn（并说清后果：
+  会话只建不回收、额度单调下降）。
+- 刻意**不**打「pool reachable」这种会骗人的字段：首版空闲池在真实驱动上恒
+  不可达是正确行为，不为了让日志变绿而谎报能力。
+- `IdleReclaimer` 加 `is_finished()` 投影：没有它，「能被停、不泄漏 task」
+  只有 `stop()` 一个 `()` 返回值可断言，等于不可测。
+
+### 新测试（都钉行为，不钉「构造函数被调用过」）
+
+- `registry/registry/tests.rs` +5：期限设未来则不动手、改回过去则动手、
+  设 None 则永不回收、已摘行则 `UnknownSession`、epoch 不匹配则
+  `UnknownSession`。期限时间轴是注入刻度，不靠 sleep。
+- `tests/p3_live_port.rs` +2：起的扫描器停后 `is_finished()` 由 false 翻 true
+  （不泄漏 task）；借了还再借，端口**真的被查了两次**（不是回放缓存）。
+- `live_source_tests.rs`（新，主机侧）1 条主用例，三条判据同时成立：
+  (1) 端口被真的查询一次，入参就是 runtime 带给它的 handle；
+  (2) `ConnectionHandle.id` == 后端 open 发回的 `resource_key`，
+      `pool_id` == `provider_id`；
+  (3) `acquire_resource` 次数借出前后不变（没有新建物理连接），
+      且 `reset_resource` 0 次（借出不触发复位）。
+
 ## 取舍与待裁决
 
-（边做边记）
+1. **`ExecutionGateway` 不在宿主侧新增引用**（见最终报告）。
+2. **`Resource::epoch()` 等三个投影是 `pub(super)`**：只给 `live_source` 用，
+   不给整个 crate。`provider` 与 `handle` 本体不开——交出去等于把关闭权交出。
+3. **`Box::leak` 出现在两处测试夹具**（provider 的 `capabilities()` /
+   `namespace_shape()` 返回 `&'static`，`register_test_factory` 要 `'static`
+   factory）。都是 `#[cfg(test)]`，生产路径没有泄漏。
+4. **`unbind` 放在 `close` 而不是应用层 `close_session`**：`close` 是唯一能保证
+   「关物理资源」与「摘绑定」同帧的地方。应用层先做会在 `CloseRejected` 时漏摘。
+5. **待裁决：`refresh_idle_deadline` 的调用点还没有**。方法、测试、入口都齐了，
+   但「哪一次业务活动算真实活动」需要与 P4 consumer 迁移一起定——本轨不迁
+   consumer（明确不做），所以先只提供入口，不硬塞一个调用点。

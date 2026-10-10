@@ -4,6 +4,7 @@ pub mod error;
 pub mod handles;
 pub mod identity;
 pub mod ipc;
+pub mod live_source;
 pub mod policy;
 pub mod repositories;
 pub mod resource_budget;
@@ -19,6 +20,7 @@ pub use identity::{
     local_principal, new_client_instance_id, DesktopIdentity, OwnerIntent, LOCAL_ORGANIZATION_ID,
 };
 pub use ipc::{IpcCallScope, IPC_SESSION_PURPOSE};
+pub use live_source::DesktopLiveConnectionSource;
 
 /// 结构性测试的公共取样器：抽掉**注释**与 `#[cfg(test)]` 之后的部分。
 ///

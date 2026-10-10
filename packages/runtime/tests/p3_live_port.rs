@@ -13,6 +13,8 @@
 //! | `期限开着时到期会话被回收_且四本账都干净` | §6.4 空闲 ⇒ 断开；应用层登记同步清理 |
 //! | `期限关闭时到期会话不会被回收` | `idle_deadline_ms == None` 是配置事实，不是「计数器为 0」 |
 //! | `周期扫描器自己会驱动回收_宿主不必再挂定时器` | 驱动器归应用层所有 |
+//! | `起的扫描器停后任务真的退出_不泄漏task` | 起得也要停得；不泄漏 task |
+//! | `借了还再借_台账计数回到同一格且端口真的被查了两次` | 端口被真的查询（不是回放缓存） |
 //! | `回收会作废在外的借用_持有者拿到的是已作废引用` | 被回收 ⇒ 旧借用立刻失效 |
 //! | `未接线时借出得到服务不可用_且不留登记行` | 没接线是配置事实，不登记 |
 //! | `宿主拒绝出借时不留下空登记行` | 拒绝路径不得留下孤儿行 |
@@ -475,6 +477,91 @@ async fn 周期扫描器自己会驱动回收_宿主不必再挂定时器() {
     assert!(!service.is_registered(&id));
     assert_eq!(service.tracked_session_rows(), 0);
     assert!(!service.is_attached(&opened.session.handle));
+}
+
+/// 扫描器**能被停**，且停之后 tokio 真的回收了那个任务（不泄漏）。
+///
+/// 这一条是「接线」的另一半：只断言 `start_idle_reclaimer()` 被调用过，那么把
+/// `stop()` 改成空实现的实现照样全绿——于是每次进程退出都留一个活着的扫描任务。
+/// 判据因此是行为：`is_finished()` 从 false 翻到 true。
+///
+/// 与上一条的分工：上一条证明「扫描器真的会回收」，这一条证明「扫完能停下」。
+/// 合起来才覆盖驱动器完整生命周期，缺一条都只测了一半。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn 起的扫描器停后任务真的退出_不泄漏task() {
+    let (service, _, _) = setup();
+    // 期限开着、扫描间隔 5 ms：这一条不关心回收谁，只关心起停本身。
+    service.with_idle_policy(IdlePolicy::with_deadline(SHORT, Duration::from_millis(5)));
+    let c = ctx("u", "c");
+    let opened = open(&service, &c, "e").await;
+    let handle = opened.session.handle.clone();
+
+    let reclaimer = service.start_idle_reclaimer();
+    assert!(
+        !reclaimer.is_finished(),
+        "刚起时任务必须还在跑；立即退出说明测的是另一件事"
+    );
+
+    reclaimer.stop();
+
+    // 有界轮询而不是 sleep 一个大数：CI 慢机器不误判，快机器不白等。
+    for _ in 0..400 {
+        if reclaimer.is_finished() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert!(
+        reclaimer.is_finished(),
+        "stop() 之后扫描任务必须退出——不退出就是每次进程退出都留一个活任务"
+    );
+
+    // 幂等：再停一次不能让已退出的任务复活。
+    reclaimer.stop();
+    assert!(reclaimer.is_finished());
+
+    // 停的是驱动器，不是会话：会话仍可按需显式关闭，且关闭不留登记行。
+    close(&service, &c, &handle).await;
+    assert_eq!(service.live_connection_rows(), 0);
+    assert_eq!(service.tracked_session_rows(), 0);
+}
+
+/// 同一会话先借后还再借：台账计数必须回到同一格，且端口**真的被查了两次**。
+///
+/// 「第二轮回放缓存」是这条路最像成功的失败形状：计数对、内容也对，但端口压根
+/// 没被问。因此 `host.requests` 的条数必须等于轮数，而不是 ≤ 轮数。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn 借了还再借_台账计数回到同一格且端口真的被查了两次() {
+    let (service, _, host) = setup();
+    let c = ctx("u", "c");
+    let opened = open(&service, &c, "e").await;
+    let handle = opened.session.handle.clone();
+
+    for _ in 1..=2u32 {
+        let lease = service
+            .borrow_live_connection(&c, &handle, LivePurpose::CommandExecution)
+            .await
+            .expect("每一轮都必须借得到：接线不能只对第一次生效");
+        let lent = lease.connection().expect("新借出的必须可用");
+        assert_eq!(
+            lent.handle().id,
+            handle.db_session_id.as_str(),
+            "每一轮拿到的仍必须是那一个会话的资源"
+        );
+        assert_eq!(service.live_connection_borrows(), 1);
+        assert_eq!(service.live_connection_rows(), 1);
+        let released = lease.release();
+        assert!(!released.revoked);
+        assert_eq!(service.live_connection_rows(), 0);
+        assert_eq!(service.live_connection_borrows(), 0);
+    }
+
+    assert_eq!(
+        lock(&host.requests).len(),
+        2,
+        "两轮借出必须各自真的过一次端口；只有一次就说明第二轮回放了缓存"
+    );
+    close(&service, &c, &handle).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
