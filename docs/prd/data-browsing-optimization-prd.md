@@ -72,7 +72,7 @@ DataZen 的数据浏览在**「读」的骨架上是齐的**（虚拟滚动、�
 
 ### 2.4 范围与非目标
 
-**范围内**：表格数据标签页（`TableView`）与查询结果标签页（`ResultTableView`）的网格交互；筛选/排序/分页；行变更（增删改）与提交；行/列/单元格的复制与导出；特殊类型展示；网格快捷键。
+**范围内**：表格数据标签页（`TableView`）与查询结果标签页（`ResultTableView`）的网格交互；筛选/排序/分页；行变更（增删改）与提交；行/列/单元格的复制与导出；特殊类型展示；网格快捷键；**网格无障碍（ARIA 表格语义 + 受管焦点，对应 C-66 / DB-01 第 6–7 条）**。⚠ 最后这一项虽然**没有 TablePlus 的一手对标证据**，但属于合规底线，不因缺证据而出范围。
 
 **非目标（本期不做，写明避免发散）**：
 
@@ -359,8 +359,8 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 | C-28 | 大小写不敏感匹配（`ILIKE` 等） | ✅ | ❌ | P0 | |
 | C-29 | 正则匹配 | ❌［存疑］ | ❌ | P2 | TablePlus 未记载 → 可作 DataZen 差异点，不作为对标缺口 |
 | C-30 | `Any column` 全列搜索 | ✅ | 🟡 | P1 | 有快速筛选但需指定列 |
-| C-31 | `Raw SQL` 自由条件 | ✅ | 🟡 | P1 | 表达式受限（8 运算符、禁混用） |
-| C-32 | 多条件逐条 AND/OR | ✅ | ❌ | P0 | 全局单一逻辑 |
+| C-31 | `Raw SQL` 自由条件 | ✅ | 🟡 | P1（**本期保持排除，记为待排期**） | 表达式受限（8 运算符、禁混用）。**已裁定：本期不做**，安全边界见 §8.4 的条件性条款 |
+| C-32 | 多条件逐条 AND/OR | ✅ | ❌ | **P0（已裁定保留在本期范围）** | 全局单一逻辑。证据：`TableView.tsx` 的 `handleQuickFilter` 对混用直接报 `filter.mixedLogic`。实现落在分册 08，**不得**在本期降级（详见 DB-08 与 C-33 的边界） |
 | C-33 | 嵌套布尔分组 `(A AND B) OR (C AND D)` | ❌ | ❌ | P2 | 两侧都缺；TablePlus 的逃生口是 Raw SQL |
 | C-34 | 生成 SQL 预览 | ✅ | 🟡 | P1 | 变更 SQL 有预览；**筛选** SQL 无预览 |
 | C-35 | 按当前筛选一键导出 | ✅ | 🟡 | P1 | 可经导出对话框，但无直达 |
@@ -394,10 +394,11 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 | C-63 | 100 万行级网格流畅度（虚拟滚动） | 🟡［存疑］ | ✅ | — | DataZen 用 `@tanstack/react-virtual`；TablePlus 无虚拟化记载 |
 | C-64 | AI 自然语言筛选 | ❌ | ✅ | — | **DataZen 优势，保持并加强** |
 | C-65 | 变更计划指纹 + 警告 + 歧义写入拒绝 | ❌ | ✅ | — | **DataZen 优势，保持** |
+| C-66 | 无障碍：网格可被读屏软件逐格导航（`role="grid"` 语义 + 受管焦点） | ［无一手证据］ | ❌ | **P0** | **对标缺口两侧都不成立**：TablePlus 侧本次对标**没有采到任何一手证据**（官方文档与 changelog 均未记载读屏支持），因此**不据此判定 TablePlus 缺失或具备**；DataZen 侧是**代码事实**——今天的网格**完全没有 ARIA 角色**，行号槽还是一个裸 `<button>`。这是**可访问性合规底线**，不因「竞品也没证据」而降级 |
 
-**统计**（逐行实测，非估计）：矩阵共 **65 项**（C-01~C-65），无空缺、无重复编号。
+**统计**（逐行实测，非估计）：矩阵共 **66 项**（C-01~C-66），无空缺、无重复编号。
 
-- **按级别**：**P0 24 项**（其中 DS ❌ 17 项、🟡 7 项）、**P1 17 项**、**P2 12 项**、已具备或持平 **12 项**。
+- **按级别**：**P0 25 项**（其中 DS ❌ 18 项、🟡 7 项）、**P1 17 项**、**P2 12 项**、已具备或持平 **12 项**。（C-66 的 TP 单元格为「无一手证据」，**不计入**「TP 有而 DS 没有」那一类统计。）
 - **按双方强弱**：TablePlus 有而 DataZen 完全没有 **25 项**（TP ✅ / DS ❌）；TablePlus 有而 DataZen 部分具备 **17 项**（TP ✅ / DS 🟡）；TablePlus 侧本身仅存疑或有缺陷、而 DataZen 完全没有 **2 项**（C-15 枚举与布尔编辑器、C-41 多列排序）；双方都不完整 **1 项**（C-59 无主键表写入）；**DataZen 领先 7 项**（TP ❌ 6 项：C-58/C-60/C-61/C-62/C-64/C-65；TP 存疑 1 项：C-63）；**双方皆缺 8 项**（其中 C-48 键集分页已定为 P0、C-29 正则列为 P2，其余 6 项 C-23/C-24/C-33/C-37/C-43/C-44 属差异化机会）；能力持平 **5 项**（C-07/C-11/C-40/C-51/C-55）。
 
 ---
@@ -412,6 +413,7 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 | R4 | **服务端 SQL 构造器是最小公倍数** | 运算符集合、单一 AND/OR、单列 ORDER BY 都由 host 统一生成，driver 只能改语法不能改能力 | C-25~C-33、C-41 |
 | R5 | **性能策略只有「精确」与「放弃」** | `skip_count` 是布尔位，无估算、无阈值、无 keyset | C-46、C-47、C-48、D-6 |
 | R6 | **元数据已有但未接到网格上** | FK 在 `TableSchema.foreignKeys` 可得、枚举类型在列类型里、`editBuffer` 已算出——但都没进 `DataTable` 的渲染与事件 | C-12、C-22、C-15（枚举） |
+| R8 | **网格从来没有可访问性语义** | 行/单元格只是带 `onClick` 的 `<div>`，**没有任何 ARIA role**；行号槽是裸 `<button>`；每行各自 `tabIndex={0}` 导致 Tab 键逐行穿透 | C-66 |
 | R7 | **默认排序是隐式注入且不可配** | `build_select_sql` 无显式排序时注入 `ORDER BY <主键> ASC` | §4.12 的四个头部问题同源；C-48 |
 
 **结论**：R1/R2/R3 是纯前端重构，可在不改 SQL 通路的前提下完成约 70% 的差距修补；R4/R5/R7 需要 `driver-api` 能力位扩展；R6 是「接线」成本最低、体感最强的一类，应作为第一批交付。
@@ -439,7 +441,7 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 | DB-13 | 特殊类型可视化（JSON 树 / BLOB hex 与图片 / 数组 / 几何） | R3 | P1 | DB-05 | `@datazen/ui` 抽取 + `CellRenderer` |
 | DB-14 | 查询结果可编辑 + 结果内搜索替换 | D-10/D-13 | P0/P1 | DB-01/02/05 | `ResultTableView`、`result-workspace/` |
 | DB-15 | 筛选 SQL 预览与「按当前筛选导出」 | — | P1 | DB-08 | `FilterEditor`、`DataExportDialog` |
-| DB-16 | 无主键表的显式禁用与解释 + SQL 直达 | — | P1 | — | `TableView`、i18n |
+| DB-16 | 无主键表的显式禁用与解释 + SQL 直达 | **R7** | P1 | DB-09 | `TableView`、i18n；**落地分册 09**（默认排序与「无主键」判定都在那里） |
 | DB-17 | 网格密度与外观偏好（行高/交替行/自动隐藏滚动条/行号） | — | P2 | — | `settingsStore`、设置页 |
 | DB-18 | keyset 分页策略（驱动能力位），同时拆掉默认排序负债 | R5/R7 | **P0** | DB-09 | `driver-api`、`query_executor` |
 | DB-19 | 全库值搜索（AI 增强版） | — | P2 | — | 新命令 + 面板 |
@@ -460,6 +462,8 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 3. 区域选择时，行级批量动作（删除行、导出选中）**自动降级为「涉及的行集合」**，工具条显示 `N 行 × M 列`。
 4. 焦点单元格始终可见（键盘移动时自动滚动到可视区）。
 5. 区域选择必须是**单一来源**：`selectedRows` 一律由区域派生，避免两套状态打架导致「删除范围超出预期」这类危险缺陷。
+6. **网格必须是可被读屏软件导航的表格**（对应 C-66）：网格根 `role="grid"`、行 `role="row"`、单元格 `role="gridcell"`、**行号槽 `role="rowheader"`**；配 `aria-rowcount` / `aria-colcount` / `aria-activedescendant`。⚠ 关键约束：`role="row"` 的**直接子元素只允许** `gridcell` / `rowheader` / `columnheader`，而今天行号槽渲染的是裸 `<button>` —— 屏幕阅读器会**整段丢弃行号槽**。因此行号槽必须重构成外层 `<div role="rowheader">` + 内层 `<button tabIndex={-1}>`（样式类迁到外层）。
+7. **这套角色必须原子落地**：只有 `grid` 角色而没有 `row` / `gridcell` / `rowheader` 与受管焦点，会让读屏软件比「完全没有语义」更困惑（会播报一个空表格）。**与 DB-02 的焦点模型同批合入**，并遵守两条纪律：**① 焦点只落在网格容器上**（容器 `tabIndex={0}` 作为唯一 Tab 停靠点，行改 `tabIndex={-1}`）；**② 本方案拥有 ARIA 角色集合的裁定权，其他方案一律不得再新增或删除任何 role**。
 
 **技术落点**
 
@@ -468,7 +472,8 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 > 1. **选择模型不是几何区间。** 本节草案用 `ranges: { top; left; bottom; right }[]` 表达选区；契约 §4.1 冻结为 `anchor` / `focus` / `extraRanges: CellRange[]` / `mode`，并明确**区间的唯一用途是渲染高亮，绝不参与写操作的定位**——写路径必须经 `rowIdentityAnchors` 解析行身份（这正是 Press 表把「区域」误当定位依据时最容易删错行的原因）。
 > 2. **「`selectedRows` 一律由区域派生」的方向是反的。** 契约 §4.2 规定：`selectedRows` **只由 `row` 模式维护**，进入 `cell` 模式必须**清空**它；行级动作改由**只读**派生函数 `rowsCoveredBySelection(state)` 取得涉及行集合，且**禁止把派生行集写回 `selectedRows`**。契约的方向更安全：把派生值写回可变状态，恰恰就是本节第 5 条想避免的「两套状态打架」。
 > 3. 单元格 `data-*` 属性沿用**既有的** `data-dt-row` / `data-dt-col`（不是本节草案写的 `data-cell-row` / `data-cell-col`），完整属性表见契约 §4.4。
-> 4. 本节把选择模型放在 `src/hooks/useGridSelection.ts` 单个文件里；契约 §4.1 要求**两个都必须存在**的文件——`src/stores/tableData/gridSelection.ts`（纯逻辑，无 React，可单测）+ `src/hooks/useGridSelection.ts`（React 接线）。
+> 4. **ARIA 归属在本册（DB-01），不在 DB-02。** 经裁定：`role="grid"` 骨架与行号槽 `rowheader` 改造**全部归 DB-01**；DB-02 只负责**焦点模型**（roving tabindex、受管焦点、键位），并遵守「**不得新增或删除任何 role**」这条纪律。⚠ 反过来更重要：契约 §4.4 有一条硬约束（`role="row"` 的直接子元素只允许 `gridcell` / `rowheader` / `columnheader`），它意味着**行号槽的 DOM 形态是 DB-01 对 DB-02 的前置条件**——两个方案必须**同批合入**，中间态（有 `grid` 但没有完整三元组，或行号槽仍是裸 `<button>`）对比屏软件比今天更糟。
+> 5. 本节把选择模型放在 `src/hooks/useGridSelection.ts` 单个文件里；契约 §4.1 要求**两个都必须存在**的文件——`src/stores/tableData/gridSelection.ts`（纯逻辑，无 React，可单测）+ `src/hooks/useGridSelection.ts`（React 接线）。
 >
 > 本节其余内容（目标行为 1–4、行号列为整行选择入口、测试落点、焦点单元格始终可见）**仍然有效**，契约未推翻它们。
 
@@ -535,6 +540,7 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 - 新增 `src/hooks/useGridKeyboard.ts`，接收 `{ selection, editable, hasPending, columns }` 与动作回调，返回 `onKeyDown`；`DataTable` 只做一次绑定，避免快捷键散落在 5 个子组件里。
 - 快捷键以数据形式注册进 `useKeyboardShortcuts`（`scope: 'table'`），并新增「快捷键帮助」面板——`ShortcutDef` 已带 `description`，直接复用。
 - **输入法安全**：所有编辑态快捷键必须检查 `nativeEvent.isComposing`（现有 quick filter 输入框已这样做），避免中文输入法回车误触发。
+- **受管焦点（roving tabindex）**：网格容器是**唯一**的 Tab 停靠点；行容器改 `tabIndex={-1}`，真实焦点由 `aria-activedescendant` 指向 `{rowIndex, columnIndex}` 对应的单元格 id。⚠ 这不是优化而是**修 bug**：今天每个虚拟行都是 `tabIndex={0}`，Tab 键会**逐行穿透**（1000 行 = 按 1000 次 Tab）。⚠ 既有测试里有 6 处 `[tabindex="0"]` 断言，**必须一并迁移**，否则它们会把新行为判成回归。
 - **不抢全局键**：`⌘+S` 等仅在网格面板聚焦（`activePanel?.type === 'table' | 'view'`）时生效。
 
 **验收标准**
@@ -542,6 +548,8 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 - 上表 19 行全部可被 E2E 断言。
 - 中文输入法下输入 `测试` 后按 `Enter` 不触发提交/插入行。
 - 焦点在 SQL 编辑器时网格快捷键不生效（反向亦然）。
+- 网格容器之外按一次 `Tab` 即离开整个网格（不逐行穿透）；在容器内用方向键移动时 `aria-activedescendant` 同步更新，且目标单元格被滚动进可视区。
+- 读屏软件能逐格播报行号与列名（行号槽作为 `rowheader` 可被播报）。
 
 **测试落点**：`src/hooks/__tests__/useGridKeyboard.test.ts`（连续击键旅程：进入编辑 → Tab → Enter → Esc 的半途状态）、`e2e/specs/table-keyboard.ts`。
 
@@ -742,9 +750,9 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
 
 1. **运算符补齐**（`FilterOperator` 扩展）：`notLike`、`iLike`、`notILike`、`contains`、`notContains`、`startsWith`、`endsWith`（后四个是 `like` 家族的前端语法糖，落到 SQL 时按方言选 `LIKE`/`ILIKE`）、`between`、`notBetween`、`notIn`、`regex`（**仅驱动声明支持时出现**，PG `~`、MySQL `REGEXP`、ClickHouse `match`；TablePlus 无此能力，属差异点而非对标项）。
 2. **多值输入**：`in`/`notIn` 用 token 输入（逗号或回车成 token）；`between` 用两个输入框。
-3. **逐条 AND/OR**：从「全局单开关」升级为扁平列表 + 每条件可选连接符，SQL 按出现顺序加括号左结合。嵌套分组（C-33）列入 P2，**不默默降级**。
+3. **逐条 AND/OR（C-32，P0，不得降级）**：从「全局单开关」升级为扁平列表 + 每条件可选连接符，SQL 按出现顺序**加括号**左结合。关键约束：**新连接符必须是可选的**——未设置或非法时回落到全局 `filterLogic`；当所有条件的连接符都相同时，**生成的 SQL 必须与今天逐字节一致**（这是回归判定线，不是「大致相同」）。⚠ 副作用：`filter.and` / `filter.or` 在 10 种语言里都已存在且都是**逐字节相同的 SQL 关键字**，可直接复用；而 `filter.mixedLogic` 将变为死 key，**必须删除**，否则会留下一个永不再触发的翻译项。嵌套分组（C-33）列入 P2，**不默默降级**。
 4. **`Any column`**：生成 `col1 ILIKE x OR col2 ILIKE x …`；列数超阈值（如 30 列）时提示代价。
-5. **`Raw SQL` 条件**：只允许作为 WHERE 子句片段，必须过 `sql_guard` 的注释剥离与危险语句扫描，拒绝 `;` 与注释逃逸，错误可读。
+5. **`Raw SQL` 条件：⛔ 本期保持排除（已裁定，记为 P1 待排期）**。实现时（若未来排期）的准入条件是固定的：只允许作为 WHERE 子句片段，必须过 `sql_guard` 的注释剥离与危险语句扫描，拒绝 `;` 与注释逃逸，错误可读——这条与 §8.4 的条件性条款是同一件事的两面。⚠ **排除它不影响 DB-08 的其余交付**，第 3 条的逐条 AND/OR 已经能覆盖绝大多数「手写 SQL 才能表达」的诉求，因此不要把 Raw SQL 当成 DB-08 的前置条件。
 6. **筛选 SQL 预览**：面板内 `SQL` 按钮显示即将执行的数据语句与 COUNT 语句（脱敏后）。
 7. **按表记忆 + 命名视图**：
    - 按 `connectionId + database + schema + table` 记住上次筛选/排序/列可见性/列顺序；设置项「默认筛选状态」（记住 / 常显 / 常隐）。
@@ -761,6 +769,8 @@ SELECT COUNT(*) FROM <table> WHERE <同条件>
   ```
   默认按 ANSI 给出，PG 覆盖 `regex`/`iLike`，MySQL 覆盖 `regex`；不支持的驱动让 UI 隐藏该运算符，**而不是生成跑不通的 SQL**。
 - `filterExpression` 解析器补齐新运算符与 `<>`（映射 `ne`），**保留** `==` 的显式拒绝（避免与赋值混淆）；混用 AND/OR 改为按逐条连接符解析。
+- i18n：新增 3 个英文 key（嵌套逻辑说明、连接符重置、全局逻辑被禁用时的提示），复用已有的 `filter.and` / `filter.or`；**删除死 key `filter.mixedLogic`**。
+- ⚠ 本节的技术草图已被[设计契约 §5](data-browsing-design/00-contracts.md)取代：冻结后的运算符集合（**13 个运算符，19 条记录**）与逐条连接符字段（`FilterCondition.connector?: 'and' | 'or'`）以契约为准；**`count_strategy` 不在本册**，它归分册 09。
 - 偏好持久化：`settingsStore` 新增 `tableViewPrefs: Record<tableKey, TableViewPref>` 与 `namedViews`，带容量上限（如 200 表）与 LRU 淘汰。
 
 **验收标准**
@@ -925,7 +935,7 @@ src/lib/
 ### 8.4 安全与一致性边界（不得放松）
 
 - **粘贴/批量编辑不得绕过现有约束**：全部走 `stageCellChange` → `pendingChanges` → `RowChangePlan`（含指纹与警告）→ `commit_pending_changes_impl`（`affected == 1` 强校验）。这正是 TablePlus 出过无 WHERE UPDATE 的那条路径，DataZen 已筑好的闸不许为了新功能开洞。
-- **`Raw SQL` 筛选必须过 `sql_guard`**：注释剥离 + 危险语句扫描 + 仅 WHERE 片段；拒绝多语句。
+- **`Raw SQL` 筛选必须过 `sql_guard`**（**条件性条款**）：注释剥离 + 危险语句扫描 + 仅 WHERE 片段；拒绝多语句。⚠ 本期 **`Raw SQL` 条件保持排除**（裁定见 C-31 与分册 08 的未决问题 Q-9，记为 **P1 待排期**），因此该条款**当前不生效**；一旦排期实现，它是**不可协商的准入条件**，不得因为「只给内部用户用」而放宽。
 - **只读连接/驱动**：粘贴、`Set Value`、`+ 行`、删除一律不可用（复用 `TableView` 的 `isEditable` 判定链）。
 - **Safe Mode**：结果网格的现有行为同步到 DB-14；「本地视图编辑」与「写回数据库」必须视觉可分。
 - **凭据与数据**：新错误文案走现有 `CommandError` 脱敏管线；日志不得打印单元格值（可能含 PII）。
@@ -980,7 +990,7 @@ src/lib/
 | 阶段 | 内容 | 依赖 | 建议并行轨 |
 |---|---|---|---|
 | M1（接线，最低风险） | DB-06 高亮 → DB-02 快捷键 → DB-16 无主键显式化 → DB-09 估算与默认排序可配 | 无 | 轨 A（前端交互）、轨 B（后端 count/sort 策略） |
-| M2（交互内核） | DB-01 选择模型 → DB-03 剪贴板 → DB-04 新增行 | M1 的 DB-02 | 轨 A（选择+剪贴板）、轨 C（INSERT 全栈） |
+| M2（交互内核） | DB-01 选择模型（**含 ARIA 角色三元组与行号槽 `rowheader` 改造**）→ DB-03 剪贴板 → DB-04 新增行 | M1 的 DB-02（**焦点模型必须同批就位**，否则 `role="grid"` 没有受管焦点） | 轨 A（选择+剪贴板）、轨 C（INSERT 全栈） |
 | M3（表达力） | DB-08 筛选器 + 命名视图 → DB-11 多列排序 → DB-15 预览/导出直达 | M1 | 轨 D（筛选+驱动方言）、轨 B（SQL 生成） |
 | M4（可读性与结果） | DB-05 类型编辑器 → DB-13 特殊类型（含 `@datazen/ui` 抽取）→ DB-14 结果可编辑 → DB-10 复制格式 | M2 | 轨 E（编辑器 + UI 包）、轨 A（结果网格） |
 | M5（打磨与超越） | DB-12 列工具、DB-20 FK 选择器与反查、DB-18 keyset、DB-17/19 视数据决定 | M3、M4 | — |
