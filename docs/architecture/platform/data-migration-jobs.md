@@ -16,6 +16,10 @@
 
 三个领域包和对应桌面 Job adapter 已由 P5 落地。`src-tauri/src/lib.rs` 将领域包导出给 Host；Driver 方言、DDL renderer、类型适配和专属测试留在 driver 包。领域引擎不引用 Tauri、HTTP、窗口 Store 或 driver 实现库类型。
 
+公共代码的实际归属：三套引擎共享 `runtime` 的 JobHandler/JobRuntime 和 `platform-api` 的任务 DTO；SQL 标识符引用与旧 family-based 表名限定工具位于 `driver-api::sql_identifiers`。`packages/migration-common` 只提供记录集边界值规范化/比较和端点 category/family 配对规则，不依赖领域引擎、runtime 或平台传输。Data Sync 与 Data Transfer 直接依赖它，Data Transfer 不再依赖 Data Sync。Data Sync 的 `recordset_bounds`、`sync_pairing` 和 `sql` 工具旧路径保留为转导出，只有一份实现。
+
+领域语义仍分别拥有：Schema Diff 的结构差异与操作依赖图、Data Sync 的同族门闸与 ChangeSet、Data Transfer 的异构 IR 转换与续传策略。共享配对规则只分类端点；各领域继续执行自己的能力限制（例如 Transfer 拒绝缺少适配器的 Redis 配对）。`qualify_relation_sql` 保留既有 family-based 兼容语义；驱动自有 SQL 重写继续使用 `DatabaseDriver::qualified_sql`，本次不改变驱动 trait、协议版本或执行行为。
+
 Runtime 承担接受/认领、预算、资源申请、子 execution、事件、取消和 cleanup；领域 handler 承担计划校验、分阶段算法及恢复核验。Application 服务校验授权、输入与计划消费；前端只提交稳定目标、审阅选择及幂等令牌，不提交执行 SQL、原始检查点或 live handle 作为恢复资格。
 
 ## 2. 公共执行模型

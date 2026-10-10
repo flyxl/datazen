@@ -28,6 +28,7 @@ pub mod schema_objects;
 pub mod schema_scope_mapping;
 pub mod session;
 pub mod sql_dump;
+pub mod sql_identifiers;
 pub mod sql_split;
 pub mod sql_target;
 pub mod sqlite_structure;

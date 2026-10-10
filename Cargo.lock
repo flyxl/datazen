@@ -1772,6 +1772,7 @@ dependencies = [
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
+ "datazen-migration-common",
  "datazen-platform-api",
  "datazen-runtime",
  "serde",
@@ -1789,11 +1790,11 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
- "datazen-data-sync",
  "datazen-driver-api",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
+ "datazen-migration-common",
  "datazen-platform-api",
  "datazen-runtime",
  "flate2",
@@ -2076,6 +2077,14 @@ dependencies = [
  "tracing",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "datazen-migration-common"
+version = "0.0.1"
+dependencies = [
+ "datazen-driver-api",
+ "serde_json",
 ]
 
 [[package]]

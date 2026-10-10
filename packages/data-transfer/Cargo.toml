@@ -10,7 +10,7 @@ webdriver = []
 
 [dependencies]
 datazen-driver-api = { workspace = true }
-datazen-data-sync = { path = "../data-sync" }
+datazen-migration-common = { workspace = true }
 datazen-runtime = { path = "../runtime" }
 datazen-platform-api = { workspace = true }
 async-trait = "0.1"

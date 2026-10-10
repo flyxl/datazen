@@ -9,6 +9,7 @@ members = [
     "packages/runtime",
     "packages/schema-diff",
     "packages/data-sync",
+    "packages/migration-common",
     "packages/data-transfer",
     "packages/drivers/*",
 ]
@@ -23,6 +24,7 @@ datazen-driver-api = { path = "packages/driver-api" }
 datazen-platform-api = { path = "packages/platform-api" }
 datazen-application = { path = "packages/application" }
 datazen-schema-diff = { path = "packages/schema-diff" }
+datazen-migration-common = { path = "packages/migration-common" }
 datazen-data-sync = { path = "packages/data-sync" }
 datazen-data-transfer = { path = "packages/data-transfer" }
 

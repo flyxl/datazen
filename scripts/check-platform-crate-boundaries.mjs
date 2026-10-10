@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Platform crate dependency boundary gate — F-01..F-07 of
+ * Platform crate dependency boundary gate — F-01..F-08 of
  * `docs/architecture/platform/shared-boundaries-and-ports.md` §2.4.
  *
  * The requirement this implements (platform-development-plan.md:80):
@@ -176,6 +176,16 @@ const RULES = Object.freeze([
     tsForbid: ['@tauri-apps/', 'fetch(', 'XMLHttpRequest'],
     specTokens: ['packages/backend-client', '@tauri-apps/', 'fetch(', 'XMLHttpRequest'],
     note: 'the browser client stays transport-agnostic',
+  },
+  {
+    id: 'F-08',
+    subjects: ['migration-common'],
+    subjectsFromSpec: true,
+    allowedLayers: ['migration-common', 'driver-api'],
+    forbiddenCrates: 'spec',
+    specTokens: ['packages/migration-common'],
+    specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
+    note: 'shared migration algorithms cannot depend on domain engines, runtime or transports',
   },
 ]);
 

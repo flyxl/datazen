@@ -7,6 +7,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 datazen-driver-api = { workspace = true }
+datazen-migration-common = { workspace = true }
 datazen-platform-api = { workspace = true }
 datazen-runtime = { path = "../runtime" }
 async-trait = "0.1"

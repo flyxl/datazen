@@ -7,7 +7,7 @@
 
 use crate::error::TransferError;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use datazen_data_sync::sql::quote_ident_sql;
+use datazen_driver_api::sql_identifiers::quote_ident_sql;
 use datazen_driver_api::filters::{FilterCondition, FilterOperator};
 use datazen_driver_api::{TableSchema, Value};
 use serde::{Deserialize, Serialize};
