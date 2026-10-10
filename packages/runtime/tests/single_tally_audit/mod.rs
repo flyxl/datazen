@@ -33,6 +33,14 @@
 //! 先改这一行，于是「加字段」从一次无声的编辑变成一次显式的架构复核。把它写成类型黑名单
 //! （靠 `idle_ttl_seconds: u64` 在册而放行 `u64`）做不到这一点，也挡不住改名换型。
 //!
+//! # P3 加字段的实录（这道闸第一次实战触发）
+//!
+//! `admissions_declined_for_reset`（归池因驱动声明不复位而作废的次数）就是先撞上 R1
+//! 才进结构的。它为什么不是第二本账：隧道引用计数的唯一权威是 `TunnelLedger`（`tunnels`），
+//! 这个计数器既不经它算也不与它对账。它只回答一个独立问题（「首版池为什么永远是空的」），
+//! 且只反映**能力声明**这一种拒绝 —— 运行时失败（`hostResetUnconfirmed` / `driverUnclean`）
+//! 是故障，不并进同一个数。可观测性计数与第二本账的分界就在此：前者不与第一本账同事实。
+//!
 //! # 本审计自己也踩过的两个坑（都是实测出来的，都已修）
 //!
 //! 1. **R5 曾被挂在 R4 的覆盖面闸门之后**。闸门的判据是「方法体有没有碰 `self.tunnels`」，
@@ -69,7 +77,14 @@ const REFN_COUNT: &str = "ref_count";
 ///
 /// 这不是缓存下来的现状快照，而是一道复核闸：新增/删除任何字段都要显式改这一行，
 /// 改动因此被迫经过一次架构判断，而不是悄悄溜进结构体。
-const MANAGER_FIELDS: [&str; 9] = [
+///
+/// `admissions_declined_for_reset` 在册的理由（这道闸第一次被实战触发就是它）：
+/// 它计的是「归池因驱动声明 `ResetForReuse::Unsupported` 而作废的次数」。它**不是**
+/// 第二本隧道账 —— 隧道引用计数的唯一权威始终是 `TunnelLedger`（即 `tunnels` 字段），
+/// 这个数字既不经它算、也不与它对账，是一个只增不减的观测计数，回答一个独立问题：
+/// 「首版池为什么永远是空的」。放在 `ResourceManager` 而不是账簿上，因为归池裁决发生
+/// 在这里，别处拿不到这个事实。
+const MANAGER_FIELDS: [&str; 10] = [
     "table",
     "generations",
     "ledger",
@@ -78,6 +93,7 @@ const MANAGER_FIELDS: [&str; 9] = [
     "disabled",
     "queue",
     "idle_ttl_seconds",
+    "admissions_declined_for_reset",
     "tunnels",
 ];
 

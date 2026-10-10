@@ -679,8 +679,9 @@ fn a_resource_whose_driver_declares_reset_unsupported_is_closed_without_a_reset_
     let report = manager
         .release(
             &leased.lease_id,
-            HostConditionSnapshot::default()
-                .with_reset_for_reuse(datazen_runtime::connection::capability::ResetForReuse::Unsupported),
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Unsupported,
+            ),
             DriverCleanVerdict::reported_clean(),
         )
         .expect("the capability refusal is reported, not a ledger failure");
@@ -736,8 +737,9 @@ fn a_verified_reset_capability_still_runs_the_full_two_gate_contract() {
     let report = manager
         .release(
             &leased.lease_id,
-            HostConditionSnapshot::default()
-                .with_reset_for_reuse(datazen_runtime::connection::capability::ResetForReuse::Verified),
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Verified,
+            ),
             DriverCleanVerdict::reported_clean(),
         )
         .expect("a verified capability admits the lease to the full contract");
@@ -763,8 +765,9 @@ fn a_verified_reset_capability_still_runs_the_full_two_gate_contract() {
     let unclean = manager
         .release(
             &second.lease_id,
-            HostConditionSnapshot::default()
-                .with_reset_for_reuse(datazen_runtime::connection::capability::ResetForReuse::Verified),
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Verified,
+            ),
             DriverCleanVerdict::reported_unclean(),
         )
         .expect("the driver gate is still independent of the capability gate");
@@ -789,15 +792,14 @@ fn the_capability_blocker_is_reported_by_first_and_all_blockers() {
             &leased.lease_id,
             HostConditionSnapshot::default()
                 .with_active_execution(running.clone())
-                .with_reset_for_reuse(datazen_runtime::connection::capability::ResetForReuse::Unsupported),
+                .with_reset_for_reuse(
+                    datazen_runtime::connection::capability::ResetForReuse::Unsupported,
+                ),
             DriverCleanVerdict::reported_clean(),
         )
         .expect("two independent blockers are both reported");
 
-    assert!(
-        !report.returned_to_pool(),
-        "任一阻断项成立即不复用"
-    );
+    assert!(!report.returned_to_pool(), "任一阻断项成立即不复用");
     // 定序：更具体的宿主状态排在前，能力这种静态事实排在后。
     assert_eq!(
         report.blockers.first().map(|r| r.reason_code()),
@@ -810,11 +812,91 @@ fn the_capability_blocker_is_reported_by_first_and_all_blockers() {
             .iter()
             .any(|r| r.reason_code() == "driverResetUnsupported"),
         "all_blockers 必须把能力阻断项一并报出来，不能只报第一条: {:?}",
-        report.blockers.iter().map(|r| r.reason_code()).collect::<Vec<_>>()
+        report
+            .blockers
+            .iter()
+            .map(|r| r.reason_code())
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         transport.reset_count(),
         0,
         "能力做了归池否决 ⇒ 复位永远不会被跑到"
     );
+}
+
+/// 空池的第一因指针：能力拒绝必须被**计数**，否则「池永远空」依旧不可观测。
+///
+/// P3 要求交付「物理资源数、lease state、资源占用」的可观测面。`occupied_slots()` 与
+/// `idle_lease_count()` 早已存在，但只看这两个数分不出「预算/池策略把池按住了」和
+/// 「这个连接族根本没有归池通道」。本计数只数**能力拒绝**——运行时失败不进这个数，
+/// 那是故障，由 `hostResetUnconfirmed` / `driverUnclean` 另路表达。
+#[test]
+fn the_declined_admissions_count_is_the_pointer_to_why_the_pool_stays_empty() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    assert_eq!(
+        manager.admissions_declined_for_reset(),
+        0,
+        "初始为 0，不是某个 sentinel"
+    );
+    assert_eq!(manager.occupied_slots(), 0);
+
+    // 能力拒绝：计数 +1，物理资源仍被确认关闭（预算核销）。
+    let declined = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+    manager
+        .release(
+            &declined.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Unsupported,
+            ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("the capability refusal is reported, not a ledger failure");
+    assert_eq!(manager.admissions_declined_for_reset(), 1);
+    assert_eq!(manager.occupied_slots(), 0, "关闭已确认 ⇒ 槽位释放");
+    assert_eq!(manager.idle_lease_count(), 0, "池仍然空");
+
+    // 复用成功的租约**不进**这个计数：它只反映能力，不反映运气好坏。
+    let verified = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("a fresh lease after the declined one");
+    manager
+        .release(
+            &verified.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Verified,
+            ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a verified capability parks the lease");
+    assert_eq!(
+        manager.admissions_declined_for_reset(),
+        1,
+        "归池成功不得污染能力拒绝计数"
+    );
+    assert_eq!(manager.idle_lease_count(), 1, "这一条真的进了池");
+    assert_eq!(transport.reset_count(), 1, "整轮只有能力拒绝那次省掉了复位");
+
+    // 运行时故障同样**不进**这个计数：reset 失败是故障，不是能力事实。
+    transport.fail_reset();
+    let failed = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the idle pool serves the next request");
+    manager
+        .release(
+            &failed.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Verified,
+            ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a failed pre-pool reset closes the lease");
+    assert_eq!(
+        manager.admissions_declined_for_reset(),
+        1,
+        "`hostResetUnconfirmed` 是故障，不得与能力拒绝混在一个计数里"
+    );
+    assert_eq!(transport.reset_count(), 2, "复位被跑过（只是失败了）");
 }

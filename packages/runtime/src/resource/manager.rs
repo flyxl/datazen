@@ -43,6 +43,8 @@ pub struct ResourceManager {
     pub(super) disabled: IndexSet<ConnectionId>,
     pub(super) queue: Vec<QueuedLease>,
     pub(super) idle_ttl_seconds: u64,
+    /// 归池因驱动声明不复位而作废的次数。见 [`Self::admissions_declined_for_reset`]。
+    pub(super) admissions_declined_for_reset: usize,
     /// 隧道台账。`None` = **没接隧道端口**（配置事实），不是「隧道计数为 0」。
     ///
     /// 唯一权威是台账本身：本模块任何位置都**不**另存一份隧道引用计数，
@@ -62,6 +64,7 @@ impl ResourceManager {
             disabled: IndexSet::new(),
             queue: Vec::new(),
             idle_ttl_seconds: IDLE_POOL_TTL_SECONDS,
+            admissions_declined_for_reset: 0,
             tunnels: None,
         }
     }
@@ -93,6 +96,20 @@ impl ResourceManager {
 
     pub fn idle_lease_count(&self) -> usize {
         self.table.total_idle()
+    }
+
+    /// 归池因**驱动声明不复位**而作废的次数。计数不是句柄，可以公开。
+    ///
+    /// 它是「池为什么永远空」的**第一因**指针：首版 15 个 path 驱动全部声明
+    /// `ResetForReuse::Unsupported`，所以这个数只会涨、而 `idle_lease_count()` 恒 0。
+    /// 两者放在一起读才看得出「池不可达」是**能力事实**而不是调度异常 ——
+    /// 同样是空池，`admissions_declined_for_reset() == 0` 时要去查预算与池策略，
+    /// 非 0 时结论就是「这个连接族没有归池通道」。
+    ///
+    /// 只为能力拒绝计数，**不给运行时失败计数**：后者已由 `CleanupReport` 的
+    /// `hostResetUnconfirmed` / `driverUnclean` 表达，且那是故障，不该和能力混在一个数里。
+    pub fn admissions_declined_for_reset(&self) -> usize {
+        self.admissions_declined_for_reset
     }
 
     pub fn lease_count(&self) -> usize {
@@ -406,6 +423,38 @@ impl ResourceManager {
             .logged("release a lease that is not in use"));
         }
         let mut plan = CleanupPlan::of(&record, &host, driver);
+
+        // 「首版池为空」的**显式、可观测**信号。
+        //
+        // 15 个 path 驱动全部声明 `ResetForReuse::Unsupported`，所以「归池不成立」
+        // 在首版是**常态而非故障**：此前这条路上既没有日志也没有指标，池为什么永远空
+        // 不可观测。这里把结论打成一条 `info`（不是 `warn` —— 没有任何东西出错），
+        // 并且带上归池候选是否当场作废、物理资源是关闭还是保留。
+        //
+        // 刻意**不**在这里伪造 `Verified` 声明，也不让 stub 里的驱动假装干净：
+        // 池不可达若是正确行为，就让它显式。真正可复用时应观察到的是
+        // `pooled = true`；长期只看到 `pooled = false` +
+        // `reason = "driverResetUnsupported"` 就等于「这个连接族没有归池通道」，
+        // 那是能力事实，不是待排查的故障。
+        let capability_declined = matches!(
+            plan.decision.reason(),
+            Some(ReturnReason::DriverResetUnsupported)
+        );
+        if capability_declined {
+            self.admissions_declined_for_reset += 1;
+        }
+        tracing::info!(
+            lease_id = lease_id.as_str(),
+            pooled = plan.decision.admits_to_idle_pool(),
+            reason = plan
+                .decision
+                .reason()
+                .map(|reason| reason.reason_code())
+                .unwrap_or("admitted"),
+            admissions_declined = self.admissions_declined_for_reset,
+            disposition = ?plan.disposition,
+            "idle-pool admission decided: §9.4 refuses the park when the driver declares no verified reset"
+        );
 
         // 还有未释放的会话级句柄时，必须先在**原资源**上复位（回滚事务、
         // 解除映射），再关。**这段复位的目的不是复用性，而是关闭前的收尾**：
