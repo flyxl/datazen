@@ -298,3 +298,45 @@ P3 新资源运行时在桌面侧**首次真正启用**。此前 `with_live_conn
 
 **A-16(§6.4 顺延语义未定)**:`refresh_idle_deadline` 的「哪次业务活动算真实活动」
 需与 P4 consumer 迁移一起定。方法、测试、入口齐了,缺调用点。
+
+## 十三、轨 `a11-isclosed` 修复验收(`e76b8928a` → 合流 `815a528a7`)
+
+**REJECT → 修复 → ACCEPT。** Tester `43134d7a` 独立验收,三条原缺陷逐项复验:
+
+- **D-1(顺序测试前提错)**:5 条测试原先对**错误的句柄**标 `mark_closed()`,两种顺序返同一归属错,
+  属装饰性测试。修复后 7/7 impl 全红(变异:`is_closed` 短路提到 `handle.check` 之前)。
+  每个 impl **实际运行数均 > 0**(6/1/1/2/1/1/3),无 0 条假绿。
+  **坑:hbase/vector 的测试函数名不含 `close_handle`**,按那过滤选中 0 条且 EXIT=0 假绿,须按 `foreign`/`foreign_ref` 过滤。
+- **D-2(`mark_closed()` 缺失)**:6 个 impl 补齐,逐个读码确认 `CloseUnconfirmed` 与 `Err` 两臂**一律不标**
+  (mysql/sqlite `transaction.is_some()` 臂、hbase/vector disconnect 失败臂、adapter 三处;每处就地注释写明该约束)。
+  生产可达:mysql `acquire → close_resource → mark → close_handle → Ok` 全链无手工标记。
+- **D-4**:`LeaseFacade` → `LeaseManager` 9 处。产品代码 0 命中,台账 2 处只是复述 REJECT 原文。
+- **D-5**:正向测试已含 `budget.released()` / `disconnect_calls`;hbase/vector wire 侧未做,
+  理由成立(两者 stub 的 `disconnect` 只是 `clients.remove()`,无计数器)。
+
+**修复方曾踩的坑(可复用)**:首轮变异 7/7 全存活,因为 worktree 指向**只写进度的空提交**,
+忠实复现了 REJECT 前的旧形态 —— 不是变体测试弱,是基线错了。修正指向后 7 条全红。
+
+**遗留(非阻塞)**:「只在确认臂标记」这一约束在 sqlite/mongodb 上**只靠读码保证,无测试锁定**
+(变异 3 在这两个 impl 上 EXIT=0)。属测试强度缺口,非实现缺陷。
+
+## 十四、轨 `cm74-handle-release` 验收(`e89972aa0`)
+
+**ACCEPT**,Tester `35cd3b73` 独立复现全部证据。7 个变异:M1/M2/**M5** 被杀,M3/M4/M6/M7 存活。
+
+**M5 是承重的**:反向变异「让**所有**句柄都不挡归池」被 2 条测试杀死(EXIT=101)——
+ 证明修复没有为治「死句柄挡归池」而放过真正未释放的句柄。修复方向**有防线**。
+
+**三条记录(均不构成 blocker,但修正了提交方的描述)**:
+
+1. **后果描述夸大(中)** —— 「永久泄漏」不准确。被死句柄挡归池的资源实际走 `Closed` 分支
+   (reset → 物理 close → 预算核销),**资源不泄漏**;真实损失是**池化收益失效**(池恒空,
+   每次短操作新开连接)。缺陷本身真实,措辞过重。
+2. **生产不可达(中)** —— 全仓无生产调用方构造带 `unreleased_handles` 的 `HostConditionSnapshot`
+   (`src-tauri/` 零 `LeaseManager` 使用)。**库级契约缺陷**,值得修,今天无生产影响。
+3. **覆盖承重面窄(低)** —— 7 条新测试**只有 `first_blocker` 那一格**的变异会被杀;
+   `is_clear` / `all_blockers` / `from_plan` / `needs_reset` / `lease_manager` 并集五处**无测试保护**。
+   将来重构这几处,缺陷可能静默回归。提交方已诚实披露,非隐瞒。
+
+`needs_reset` 改写与旧 `any(|h| !h.closed)` **逐词等价**;自建探针覆盖空/全 closed/部分 closed 三输入,
+确认「只有 `closed=true` 被豁免」。**未新增 `ReturnReason` 变体。**
