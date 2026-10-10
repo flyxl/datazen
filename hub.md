@@ -223,3 +223,21 @@ CLI `codegraph explore` 在 PATH 中。AGENTS.md 明文要求「reach for it BEF
 另一条信息项(非本轨引入,base 遗留):`src-tauri/src/db/registry.rs:163-181` 对
 `pv > PROTOCOL_VERSION` 与 `pv < PROTOCOL_VERSION` 均只 `tracing::warn!` 后照常注册,只有
 `pv < MIN_PROTOCOL_VERSION`(=1)才 `return Err`。**故「协议 5 发布后旧驱动会被拒」在运行时并不成立。**
+
+---
+
+## 十、P3/P4 接口完整度实测(2026-10-10,HEAD `8dae098cc`)
+
+§7 的七个流程方法，按 camelCase 搜全为 0 —— 那是命名差异不是缺口。逐一实测真实接口面：
+
+| §7 流程 | runtime 是否有 | 实测落点 |
+|---|---|---|
+| §7.2 executeInSession | ✅ | `gateway/execution.rs:13` `impl ExecutionGateway`,`accept`/`dispatch`/`apply_event`/`recover_from_snapshot`/`resolve_unknown_outcome`/`cancel` 等 9 个公开方法 |
+| §7.6 cancelExecution | ✅ | `ExecutionGateway::cancel` |
+| §7.1 **openSession** | ❌ | 无。`application/mod.rs` 公开面只有 4 个**查询态**方法(`registered_session_ids`:205、`is_registered`:209、`tracked_session_rows`:221、`is_attached`:228)，没有创建 |
+| §7.4 **setSessionContext** | ❌ | 无 |
+| §7.5 **closeSession** | ❌ | 无 |
+
+`SessionRegistry`(`registry/actor.rs`)全部公开面 = 4 个方法，其中 `exec`:197 / `control`:210 是通用 actor 入口，**不是会话语义**。
+
+**结论：执行面接口完备，会话生命周期面只到「actor + 查询态」。** ⇒ P4 可以按接口写执行路径（142 处调用点的大头），但「每 QueryPanel 一个懒固定 session」所需的三件事没有接口可依。据此定 P3/P4 策略为 **B/C 合成**：由轨 B 在接线的同时冻结 `openSession` / `setSessionContext` / `closeSession` 三个入口的**签名**（不必实现完），P4 即可按签名开发，P3 继续填实现，最后一起验证。契约冻结的既有雏形：`RuntimeConnectionUseCases`、`DesktopSessionBackend`、`platform/session_commands.rs` 注册的 12 个命令。
