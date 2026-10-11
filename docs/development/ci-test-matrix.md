@@ -47,7 +47,7 @@
 | 依赖 | `pnpm install --frozen-lockfile` | Node **24**、pnpm **11**（与 workflow 一致） |
 | 代码生成 | `node scripts/generate-builtin-locales.mjs` | `builtinLocales.ts` 为 gitignore codegen |
 | 类型 | `pnpm typecheck` | `tsc --noEmit` |
-| 守卫 | `check-managed-stubs.mjs`、`check-structure-editor-guardrails.mjs` 等 | 防止误提交 inject 产物 |
+| 守卫 | `check-managed-stubs.mjs`、`check-id-terminology.mjs`、`check-module-layers.mjs` 等 | 防止误提交 inject 产物、ID 术语回退、分层倒置。`check-structure-editor-guardrails.mjs` 已移至发布前，见 §2.1.3 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
 | Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | `packages/drivers/*/ui/__tests__/`；与 Host 单测互不收集，两步都必须跑 |
@@ -185,9 +185,9 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 
 ### 2.1.2 `check-ci-docs-consistency.mjs` 覆盖什么、不覆盖什么
 
-`scripts/check-ci-docs-consistency.mjs`（别名 `pnpm test:ci-docs`）**已经由 `ci.yml`
-的 "All strict guards" 步直接调用**（`pnpm test:ci-docs`，与 `test:ids` / `test:layers`
-同一 fail-fast 列表内）。它只做三件事：
+`scripts/check-ci-docs-consistency.mjs`（别名 `pnpm test:ci-docs`）**由 `release.yml`
+的 `pre-release-guards` 步调用**——它是发布前门禁，不是每次 PR 的门禁（§2.1.3）。
+它只做三件事：
 
 1. **drivers** —— 本文档中提到的驱动 id 是否都存在于 `drivers-registry.json`；
 2. **window boundaries** —— `windows.md` 记录的子窗口 kind 是否与 `windowKind.ts` /
@@ -205,6 +205,24 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 - `scripts/__tests__/run-unit-driver-set.test.ts` —— §2.1.1 的
   `testTimeout` / `retry` / 耗时串按**字符串存在性**守，`run-unit-driver-set.mjs`
   的三条腿与「硬门禁标记必须缺席」按结构守；**不校验这些数字是否属实**。
+
+### 2.1.3 per-PR 门禁与发布前门禁的分工
+
+守卫按「什么时候出问题才算晚」分成两处，两处都由 workflow 强制，不是约定：
+
+| 位置 | 守卫 | 判据 |
+|------|------|------|
+| `ci.yml` 每次 PR | stubs、IDs、layers、driver-protocol、boundaries、i18n key 冲突 | 改错了必须在**合并前**发现——每个 PR 都要付这个钱 |
+| `release.yml` `pre-release-guards` | version、ci-docs、structure-editor guardrails | 只在**发布这一刻**才有意义：版本号只在 `bump-version` 时变，CI 矩阵只随发布计划变，caps 注册表发布前查一次即可 |
+
+`pre-release-guards` 已进 `build` 的 `needs`，因此发布前这三条不过，发布构建就不启动——
+这是 workflow 的硬依赖，不是文档承诺。三条都只用 Node 内置模块读 git 跟踪文件，
+不碰 gitignored codegen，所以该 job 不需要 `resolve-drivers`、`pnpm install` 或任何 secret。
+
+`i18n-sync-check` 也在该 job，但保持 `continue-on-error`：它原先挂在 `ci.yml` 里也是
+`continue-on-error: true`，常年是黄的、没人看，债累积到 **8 个宿主语言缺 832 个 key**。
+移过来只是让这笔债在发布时可见。把它升级为发布硬阻断是一次策略变更（会立刻卡住
+下一次发布，直到补齐翻译），需单独决定，不在本次改动内。
 
 ### 2.2 rust job（Rust 段，浅克隆）
 
@@ -424,8 +442,8 @@ grep -rliE "wdio|webdriver|pnpm e2e" .github/   # 无输出
 grep -rnE "e2e:ci:" .github/workflows/            # 无输出
 ```
 
-`ci.yml` 实际执行的只有：`pnpm typecheck`、strict guards（stubs / caps / IDs / layers /
-ci-docs / version / driver-protocol / boundaries / i18n keys）、`pnpm test:unit`、
+`ci.yml` 实际执行的只有：`pnpm typecheck`、strict guards（stubs / IDs / layers /
+driver-protocol / boundaries / i18n keys）、`pnpm test:unit`、
 `pnpm test:unit:drivers`、Rust `fmt --check` 与各 crate 单测、平台架构门禁。
 
 **结论：PR 绿灯与 E2E 覆盖无关。** 上表所有行的 `CI` 列都是 ❌，不是「暂时没接」，

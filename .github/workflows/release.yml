@@ -167,10 +167,51 @@ jobs:
       - name: Typecheck the driver union
         run: node scripts/with-driver-inject.mjs --drivers=all,kiwi,superset -- node scripts/ci-union-typecheck.mjs
 
+  # 三条只跟"发布这一刻的状态"有关的门禁,不占每次 PR:
+  #   - version:      所有版本源必须一致,但版本号只在 bump-version 时变;
+  #   - ci-docs:      ci-test-matrix.md 与真实 CI 必须同步,而矩阵只随发布计划变;
+  #   - guardrails:   Host caps 注册表不得出现裸模式串,发布前查一次即可。
+  # 它们只读 git 跟踪文件(仅用 Node 内置模块),不碰 gitignored codegen,
+  # 因此不需要 resolve-drivers、pnpm install 或任何 secret。
+  pre-release-guards:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # 与 ci.yml 的 node-version 保持一致（check-ci-docs-consistency 校验
+          # 工具链一致性，版本漂移会让这里的结论不可比）
+          node-version: 24
+
+      - name: Version consistency
+        run: node scripts/check-version-consistency.mjs
+
+      - name: CI docs consistency
+        run: node scripts/check-ci-docs-consistency.mjs
+
+      - name: Structure editor guardrails
+        run: node scripts/check-structure-editor-guardrails.mjs
+
+      # i18n 同步检查：AGENTS.md 把它归为"发布前"动作，原先挂在 ci.yml 里却是
+      # continue-on-error: true，于是常年是黄的、没人看，债累积到 8 个宿主语言
+      # 缺 832 个 key。移到这里让债在发布这一刻可见，而不是每个 PR 都亮一次。
+      #
+      # 刻意 continue-on-error：把它升级为发布硬阻断是一个策略变更（会立刻
+      # 卡住下一次发布，直到补齐翻译），需要单独决定，不能顺手夹带。
+      # 要升级时删掉下一行即可；补齐翻译走 i18n-sync skill。
+      - name: i18n translation completeness (advisory)
+        run: node scripts/i18n-sync-check.mjs
+        continue-on-error: true
+
   build:
     # Secrets (Deploy Keys, Windows signing) live in Environment "release"
     # — see docs/development/ci-private-drivers.md
-    needs: [prepare-pro-extension, union-typecheck]
+    needs: [prepare-pro-extension, union-typecheck, pre-release-guards]
     environment: release
     permissions:
       contents: write
