@@ -52,6 +52,7 @@ struct Row {
     purpose: LeasePurpose,
     state: LeaseState,
     idle_since: Option<std::time::Instant>,
+    verify_after: Option<std::time::Instant>,
 }
 #[derive(Default)]
 struct State {
@@ -87,6 +88,7 @@ impl ProductionLeaseManager {
                 purpose,
                 state: LeaseState::Acquired,
                 idle_since: None,
+                verify_after: None,
             },
         );
         Ok(())
@@ -155,11 +157,19 @@ impl ProductionLeaseManager {
             .rows
             .get_mut(id)
             .ok_or(ResourceError::TransportRefused("lease not registered"))?;
-        row.state = row.state.transition(if confirmed {
+        let next = if confirmed {
             LeaseState::Closed
         } else {
             LeaseState::Quarantined
-        })?;
+        };
+        if row.state != next {
+            row.state = row.state.transition(next)?;
+        }
+        if !confirmed {
+            row.idle_since = None;
+            row.verify_after =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(300));
+        }
         if confirmed {
             let key = row.key.clone();
             state.rows.remove(id);
@@ -168,6 +178,27 @@ impl ProductionLeaseManager {
             }
         }
         Ok(())
+    }
+    /// Claim a close-only verification attempt without making quarantine acquirable.
+    pub fn quarantine_to_verify(&self) -> Vec<ResourceId> {
+        let Ok(mut state) = self.state.lock() else {
+            return Vec::new();
+        };
+        let now = std::time::Instant::now();
+        state
+            .rows
+            .iter_mut()
+            .filter_map(|(id, row)| {
+                if row.state != LeaseState::Quarantined
+                    || !row.verify_after.is_some_and(|at| at <= now)
+                {
+                    return None;
+                }
+                // Claim under the ledger lock; another reclaimer cannot close concurrently.
+                row.verify_after = Some(now + std::time::Duration::from_secs(300));
+                Some(id.clone())
+            })
+            .collect()
     }
     pub fn claim_idle(&self, key: &PoolKeyGeneration) -> Result<Option<ResourceId>, ResourceError> {
         let mut state = self

@@ -151,3 +151,57 @@ Delete this ledger before delivery.
 - CHECK_EXIT=0; log /tmp/datazen-p346-cancel-fix-check.log. Only existing PostgreSQL integration fixture unused variable warning.
 - Before/after HEAD 0c107d0a9f258159b495856cc089f48d982ad777; before/after tracked + untracked source SHA c165b0f21c12b3e3298dbb5d902afb96804259adfb3cf6b22ccf39d04049bd5f; both unchanged throughout compilation. git diff --check exit 0.
 - Independent WDIO acceptance is still required; this compile does not establish live cancel/finish races or UI streaming correctness.
+
+
+# P3 runtime implementation ledger
+
+## Implemented production paths
+- FileArtifactStore injected at desktop assembly (`Store.data_dir/result-artifacts`); publisher writes immutable disk blocks before bounded events and readers use published disk prefix. Writer capability/ACL/TTL, 4096 artifacts, 32 MiB blocks, 256 MiB aggregate bytes, writer-lost restart truncation and corrupt recovery bounds are active.
+- Owner-only directories/files on Unix; no-follow opens, bounded metadata/block recovery reads. Export capabilities bind organization/principal, expire after 300 seconds and reject arbitrary server paths; partial JSONL export requires explicit confirmation and durable truncation marker.
+- Logical/editor quotas and descriptor physical cost use the shared coordinator; strict refused/unknown costs reject. ProductionLeaseManager participates in opening/execution/return/close. Only declared reusable metadata resources park after driver Clean and host checks; actual pool checkout, key invalidation and 60-second idle retirement run. Unconfirmed closure quarantines and retains physical budget.
+- Transaction observations set context_after and handle lifecycle. Repeated exact live transaction handles are idempotent; only exact explicit closure retires a handle. Missing handles never imply closure.
+- executeAtTarget admission is an owned task with per-key coordination, receipt recovery and caller-drop cleanup through original actor drain/close; unknown outcomes retain their outcome and uncertain resources retain budget. Completion restores gateway unknown resolution and session/context events.
+- Token/receipt/coordinator/gateway directories reclaim by issued-token lifetime, protect active admissions/executions and cap at 4096. Closed session and budget retirement tombstones are bounded; missing observations never erase live unknown-outcome fences. Existing SQL guards, binding, history and cancel token validation retained.
+- Host typed metadata executes on original runtime resource via desktop helper, publishes typed commandResult. Safe executionError artifact is best-effort; independent generic errorCode remains readable if disk publication fails.
+- Single wildcard relation Verified source requires execution-before same-pin driver schema/resolvedTarget, confirmed exact context equality and completion columns/PK proof. Other statement source context stays Unknown/ReadOnly with actual statement index.
+
+## Dependencies (separate commits)
+- driver-api fec6c7fe -> local 93afb6243.
+- desktop Host helpers cd7fecd4e -> local 9064db194.
+- driver-api streaming 87ee7bdcca -> local da79fce12.
+- driver-api prepared streaming e4a9eb008 -> local 2252555de.
+
+## Validation
+Only compiler checks performed; no Cargo/Vitest tests and no WDIO run in this track.
+Initial formal gate HEAD da79fce12c0950a6234a73bf4646cb56b08114b4, source SHA e0c79b0172eeb594a94d52c73bf4a721ecbad34bfdb8f0812cba8e2bda8ac085.
+`CARGO_TARGET_DIR=/tmp/datazen-p346-runtime-target cargo check -p datazen-runtime`: exit 0, `Finished dev profile ... in 4.08s`.
+`CARGO_TARGET_DIR=/tmp/datazen-p346-runtime-target cargo check -p datazen --lib --no-default-features`: exit 0, 49 warnings (desktop helper/baseline/disabled feature warnings), `Finished dev profile ... in 21.68s`.
+Before/after HEAD and source SHA (including untracked Rust source) matched. Latest interface dependency requires following gate recorded below.
+Logs remain /tmp/datazen-p346-final-runtime.log and /tmp/datazen-p346-final-host.log.
+
+## Final resumed gate
+- HEAD before/after: `2252555dec25c42dafccf94d655f89dfc529ee17`.
+- Source SHA before/after, including untracked source: `c8b8664e2682f8709401e3efbb56cda6ac08e226459523d8165f09d2375cc732` (MATCH).
+- `cargo check -p datazen-runtime`: EXIT=0, `Finished dev profile [unoptimized + debuginfo] target(s) in 1.27s`.
+- `cargo check -p datazen --lib --no-default-features`: EXIT=0, `Finished dev profile [unoptimized + debuginfo] target(s) in 5.40s`, Host 50 warnings (includes inactive export adapter getter and baseline/helper/disabled-feature warnings).
+- Both checks used independent `/tmp/datazen-p346-runtime-target`; logs `/tmp/datazen-p346-runtime-gate.log`, `/tmp/datazen-p346-host-gate.log`.
+- One resumed intermediate gate failed on a duplicate artifact getter inserted on PlatformEntry; fixed, and the final matching gate above passed. No tests ran.
+- Additional actual-budget fixes: multi-connection descriptor cost atomically reserves all unit permits; queued acquisitions consume only their own scheduled grant; caller drop returns an already granted unobserved permit; scheduling grants notify other waiting futures. Physical snapshots/caps include real primary permits. Unpublished disk remnants remain charged to the byte budget until deletion/recovery.
+- Other open/context operations now use per-key coordination and short receipt-map locks; context replacements retire old application rows only after actual replacement success, using physical outcome evidence.
+
+## Explicit pending integration/verification
+- Real PostgreSQL/MySQL pinned and incremental streaming implementations belong to driver track, not this commit; integrate them before claiming P3 streaming end-to-end complete.
+- Fresh independent WDIO validation is pending, including cancellation/admission races, bounded prefix publication, typed catalog, error recovery and original-resource result edits.
+- Quarantined physical budget is deliberately not recovered without confirmed close; follow-up close-only verification is implemented below, pending WDIO/fault validation.
+- Verified writable mapping is deliberately limited to a single wildcard relation. Multi-statement context source remains unobserved rather than guessed.
+- Desktop Save dialog/IPC export wiring is implemented in the follow-up below; UI export journey remains pending.
+- Row prefix blocks presently obtain columns at final statementMetadata; desktop has statementColumns consumption and driver was asked to publish it using write_output. This extra live-columns behavior must be checked on the integrated driver revision.
+- Ledger is temporary branch coordination data and must be removed during final integration acceptance.
+
+## Follow-up: controlled export and quarantine verification (2026-10-12)
+- New Host IPC `export_artifact(request: { artifactId })` uses the actual execution-publication FileArtifactStore. It accepts no path, owner, org, capability, or truncation-confirmation input. Trusted identity is assembled by PlatformAdapter. ACL/TTL and finalized lifecycle are checked before dialogs. Truncated artifacts require a native confirmation, followed by the native Save dialog; dismissal returns `{status:"cancelled"}`. JSONL is the only accepted extension. Existing destination files are protected by exclusive creation (no overwrite support).
+- Save capability binds artifact ID + organization + principal, expires after 300 seconds, and is single-use. Context delegation is rejected. Export runs on a blocking worker; dropping the IPC future signals cancellation. Each bounded block checks cancellation and capability expiry; completion rechecks artifact ACL/TTL/revocation before sync. Errors/cancellation remove the newly created incomplete file (filesystem removal can itself fail; no overwrite or deletion of preexisting files). Cancellation after successful sync cannot undo a committed export. Native dialog cancellation produces no capability/file.
+- Export IO no longer holds the global artifact state mutex through every block. Revocation/expiration can proceed while IO runs and is rechecked before successful completion. Output and store files use owner-only creation/no-follow flags on Unix.
+- Isolation decision: architecture connection-management §7.4/close flow says CloseUnconfirmed enters quarantine and is verified later. Therefore a later verification path is required for P3; automatic reconnect/reuse is forbidden and unnecessary. The production ledger now claims quarantined resources for close-only verification every 300 seconds from the actual idle reclaimer. Each original resource close has a 10-second timeout. Only the driver's real Closed confirmation removes the physical resource and settles its budget. Timeout/CloseUnconfirmed/error keeps quarantine, budget, and original unknown execution outcome. No Clean observation is invented.
+- Compiler gate: `CARGO_TARGET_DIR=/tmp/datazen-p346-runtime-target cargo check -p datazen --lib --no-default-features`: EXIT=0; 49 Host warnings (baseline/helper/disabled feature); runtime compiles as dependency. Exact terminal: `    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.88s`. Before/after HEAD both `45bb4492aaf5c4e1c3174bd4b03f807619fe2d69`; source SHA including untracked source both `dab70a1aa7ed7cdb1c7f744a753300b18337c3c704de1f16df3e695c7ab3a699`. Log `/tmp/datazen-p346-export-host.log`. `git diff --check` clean.
+- One intermediate build exposed private dialog helper visibility (EXIT=101); corrected using crate-private dialog module, no public path IPC. Final matching gate passed. No WDIO, Cargo tests or Vitest tests ran. This follow-up and 45bb are READY_FOR_TEST, not independently accepted.

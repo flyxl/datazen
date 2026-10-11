@@ -14,7 +14,10 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -44,6 +47,8 @@ struct ExportGrant {
     owner: PrincipalId,
     expires: u64,
     allow_truncated: bool,
+    artifact: Option<ArtifactId>,
+    cancelled: Option<Arc<AtomicBool>>,
 }
 pub struct FileArtifactStore {
     root: PathBuf,
@@ -544,8 +549,31 @@ impl FileArtifactStore {
                 owner: ctx.principal_id.clone(),
                 expires: now().saturating_add(300),
                 allow_truncated: false,
+                artifact: None,
+                cancelled: None,
             },
         );
+        Ok(())
+    }
+    /// Register an artifact-specific native-dialog capability. Cancellation is host-owned.
+    pub fn authorize_dialog_export(
+        &self,
+        ctx: &RequestContext,
+        id: ArtifactId,
+        handle: LeaseId,
+        path: PathBuf,
+        partial_confirmed: bool,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<(), PortError> {
+        self.authorize_export(ctx, handle.clone(), path)?;
+        let mut state = self.state.lock().map_err(|_| unavailable())?;
+        let grant = state
+            .exports
+            .get_mut(&handle)
+            .ok_or(PortError::TokenInvalid)?;
+        grant.artifact = Some(id);
+        grant.allow_truncated = partial_confirmed;
+        grant.cancelled = Some(cancelled);
         Ok(())
     }
     /// Host calls only after the user confirms that the exported JSONL is partial.
@@ -661,6 +689,7 @@ impl ArtifactStore for FileArtifactStore {
         if grant.expires <= now()
             || grant.organization != c.organization_id
             || grant.owner != c.principal_id
+            || grant.artifact.as_ref().is_some_and(|bound| bound != &id)
         {
             return Err(PortError::TokenInvalid);
         }
@@ -668,11 +697,21 @@ impl ArtifactStore for FileArtifactStore {
         if !r.metadata.lifecycle.allows_plain_export() && !(truncated && grant.allow_truncated) {
             return Err(invalid());
         }
-        let path = s
-            .exports
-            .remove(&handle)
-            .ok_or(PortError::TokenInvalid)?
-            .path;
+        let grant = s.exports.remove(&handle).ok_or(PortError::TokenInvalid)?;
+        drop(s);
+        let path = grant.path;
+        let check_cancelled = || {
+            if grant
+                .cancelled
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::Acquire))
+            {
+                Err(PortError::TokenInvalid)
+            } else {
+                Ok(())
+            }
+        };
+        check_cancelled()?;
         let mut output = private_file(OpenOptions::new().write(true).create_new(true))
             .open(&path)
             .map_err(|_| unavailable())?;
@@ -685,6 +724,10 @@ impl ArtifactStore for FileArtifactStore {
                 exported_bytes += marker.len() as u64;
             }
             for index in 0..r.sizes.len() {
+                check_cancelled()?;
+                if grant.expires <= now() {
+                    return Err(PortError::TokenInvalid);
+                }
                 let bytes = read_block(
                     &self.dir(&id).join(format!("{index}.chunk")),
                     r.sizes[index],
@@ -692,8 +735,16 @@ impl ArtifactStore for FileArtifactStore {
                 output.write_all(&bytes).map_err(|_| unavailable())?;
                 exported_bytes += bytes.len() as u64;
             }
+            check_cancelled()?;
+            if grant.expires <= now() {
+                return Err(PortError::TokenInvalid);
+            }
+            // Recheck revocation and artifact TTL at the publication boundary.
+            let state = self.state.lock().map_err(|_| unavailable())?;
+            self.visible(&state, c, &id)?;
             output.sync_all().map_err(|_| unavailable())
         })();
+        drop(output);
         if result.is_err() {
             let _ = fs::remove_file(path);
         }

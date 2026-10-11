@@ -261,6 +261,7 @@ pub fn run() {
             crate::platform::session_commands::subscribe_events,
             crate::platform::session_commands::stop_event_subscription,
             crate::platform::session_commands::read_artifact_chunk,
+            crate::platform::artifact_export::export_artifact,
             crate::platform::session_commands::platform_list_profiles,
             crate::platform::session_commands::platform_create_profile,
             crate::platform::session_commands::platform_update_profile,

@@ -12,7 +12,7 @@ mod dashboard;
 mod data;
 mod data_session;
 mod data_transfer;
-mod dialog;
+pub(crate) mod dialog;
 pub(crate) mod driver_command;
 mod encryption_key;
 mod error;

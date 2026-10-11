@@ -220,6 +220,23 @@ impl SessionBackend for DesktopSessionBackend {
     }
     async fn reclaim_idle_resources(&self) {
         self.retire_idle(self.leases.idle_to_retire(None)).await;
+        for id in self.leases.quarantine_to_verify() {
+            let Ok(resource) = self.resource(id.as_str()).await else {
+                continue;
+            };
+            // Close the original resource only; timeout cannot prove physical closure.
+            let confirmed = matches!(
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    resource.provider.close_resource(&resource.handle)
+                )
+                .await,
+                Ok(Ok(ds::CloseDisposition::Closed))
+            );
+            if self.leases.closed(&id, confirmed).is_ok() && confirmed {
+                self.resources.write().await.remove(id.as_str());
+            }
+        }
     }
     async fn execute(
         &self,
