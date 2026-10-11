@@ -87,3 +87,12 @@ This ledger must be deleted before delivery/merge to main.
 - The one-time 05:35 Asia/Shanghai heartbeat fired and was deleted.
 
 - PG cancel receipt fix committed `72289de8cf2f708bde7920bec89ed941315871fd`: an accepted precise cancel returns `Some(CancelRequested)` (nonterminal) to match `driver-api`; unregistered execution remains `None`. Combined validation candidate advanced to `e796bfeac`. Fresh tester is aligning to it for independent WDIO rerun.
+
+## Host PostgreSQL multi-database discovery regression (2026-10-12)
+
+- Fresh Luna max verifier used an isolated `/private/tmp` worktree at candidate `e796bfeac`; no credentials or raw errors were surfaced.
+- Real PostgreSQL probe: legacy driver `list_databases` returned 25 entries. `executeAtTarget(list_databases)` failed before a receipt for both a null namespace database and a valid explicit database; safe projection showed only generic `Error`, no code/status, and message length 15. Host DOM showed zero database nodes; PG multi-database tree and query selector journeys failed. Stop-button WDIO journey passed. MySQL and PostgreSQL retained-resource driver journeys passed 2/2.
+- Independent code review found two concrete issues: database discovery was routed through `metadataTarget`, which treated an empty `currentDatabase` as an explicit empty target; `list_databases` was also omitted from Query authorization classifiers and therefore classified as Write.
+- Focused fix commits from coder worktree: `a67c3065a` adds `databaseDiscoveryTarget` with null namespace and uses it for `getDatabases`, and corrects the session-backend command classifier; `d2147f03a` corrects the runtime enqueue Query classifier. Combined candidate is now `2bb263fb4`.
+- This fix is not accepted yet. Independent verifier must rebuild with `pnpm tauri:build:webdriver`, then rerun PostgreSQL/MySQL multi-database tree and query selector WDIO paths against `2bb263fb4`; record matching gate source fingerprints. No unit tests/Cargo tests/Vitest/computer-use testing are authorized.
+- Before delivery, remove the diagnostic-only probe from tester's WDIO diff; review and retain only permanent safe journey assertions.
