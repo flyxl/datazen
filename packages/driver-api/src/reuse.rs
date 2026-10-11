@@ -205,6 +205,20 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.connect(config).await
     }
 
+    async fn connect_fixed_session(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ConnectionHandle, DriverError> {
+        self.inner.connect_fixed_session(config).await
+    }
+
+    async fn observe_fixed_session(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<crate::session::SessionContext, DriverError> {
+        self.inner.observe_fixed_session(handle).await
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         let info = self.inner.test_connection(config).await?;
         Ok(ServerInfo {

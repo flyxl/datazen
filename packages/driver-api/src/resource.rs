@@ -404,6 +404,14 @@ pub struct ResultChunk {
 #[async_trait]
 pub trait ResultSink: Send + Sync {
     async fn write(&self, chunk: ResultChunk) -> Result<(), ResourceError>;
+    /// Deliver typed non-tabular command output without disguising it as rows.
+    /// Sinks must explicitly opt in; discarding a successful command's output
+    /// is an error rather than a silent no-op.
+    async fn write_output(&self, _output: serde_json::Value) -> Result<(), ResourceError> {
+        Err(ResourceError::SinkRejected {
+            reason: "this sink does not accept command output".into(),
+        })
+    }
     async fn complete(&self) -> Result<(), ResourceError>;
     async fn fail(&self, reason: &str) -> Result<(), ResourceError>;
 }
