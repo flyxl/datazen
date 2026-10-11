@@ -32,8 +32,8 @@ use datazen_driver_api::resource::{
 };
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, ContextChangeDisposition,
-    ExecutionCompletion, ResetDisposition, ResourceHealth, SessionHandleKind, SessionHandleRef,
-    SessionObservation, SessionState, TransactionObservation, TransactionOptions,
+    ExecutionCompletion, ExecutionState, ResetDisposition, ResourceHealth, SessionHandleKind,
+    SessionHandleRef, SessionObservation, SessionState, TransactionObservation, TransactionOptions,
 };
 use datazen_driver_api::{DriverError, QueryExecutionId};
 
@@ -338,10 +338,12 @@ impl ResourceProvider for PostgresResourceProvider {
         Ok(CancelReceipt {
             execution_id: execution_id.clone(),
             disposition,
-            // The driver does not publish an execution's state after a cancel
-            // *request*, and a request is not a terminal event. `None` is the
-            // honest value; a plausible `Cancelled` here would be a lie.
-            state: None,
+            // Acceptance records the control request, not the SQL outcome.
+            // Only execution completion can establish a terminal state; an
+            // unregistered execution still has no state known to this provider.
+            state: disposition
+                .is_accepted()
+                .then_some(ExecutionState::CancelRequested),
         })
     }
 
