@@ -439,13 +439,17 @@ pub fn report_unverified(dimension: &str, reason: &str) {
     live_gate::report_unverified(crate::CONTRACT.label, dimension, reason);
 }
 
-/// The pure decision behind strict mode, split out so it can be tested without
-/// mutating the process environment (which is process-global and racy against
-/// every other test in this binary running on its own thread).
+/// The pure decision behind `DATAZEN_CONTRACT_REQUIRE_LIVE`, split out so it can
+/// be tested without mutating the process environment (which is process-global
+/// and racy against every other test in this binary running on its own thread).
 ///
 /// Only the exact string `1` arms it, so an accidentally-present variable — an
 /// empty value, a path, someone's `DATAZEN_CONTRACT_REQUIRE_LIVE=/opt/thing` —
 /// cannot quietly turn every skipped dimension into a failure.
+///
+/// Strict is the default now, so this name no longer describes how you *get*
+/// strict; it describes the legacy variable that still means it. See
+/// [`strict_live_decision`] for the rule that actually runs.
 ///
 /// The decision itself lives in `live_gate`, shared with the migration and
 /// resource-budget suites that cannot see `CONTRACT`. It is defined once
@@ -455,25 +459,44 @@ pub fn strict_live_requested(value: Option<String>) -> bool {
     live_gate::strict_live_requested(value)
 }
 
+/// The pure decision behind `DATAZEN_CONTRACT_ALLOW_UNVERIFIED` — the one
+/// variable that can waive strictness, and only for someone who types `=1` on
+/// purpose. Same exact-string rule, same reason for it.
+pub fn allow_unverified_requested(value: Option<String>) -> bool {
+    live_gate::allow_unverified_requested(value)
+}
+
+/// The pure rule both variables feed: strict unless the waiver says otherwise,
+/// and a surviving `DATAZEN_CONTRACT_REQUIRE_LIVE=1` outranks the waiver.
+pub fn strict_live_decision(
+    allow_unverified: Option<String>,
+    require_live: Option<String>,
+) -> bool {
+    live_gate::strict_live_decision(allow_unverified, require_live)
+}
+
 fn strict_live() -> bool {
     live_gate::strict_live()
 }
 
-/// Report one dimension as unverified, and — when this run was explicitly asked
-/// to prove the live tier — fail instead of returning early.
+/// Report one dimension as unverified, and — unless this run explicitly waived
+/// strictness — fail instead of returning early.
 ///
-/// The default has to stay lenient: CI has no fixtures at all, and a suite that
-/// failed there would only teach everyone to ignore it. The problem with lenient
-/// is not the early return, it is that `open_live` returning `None` looks
+/// The default is strict. It used to be lenient, and the reason is the whole
+/// point of this function: lenient made `open_live` returning `None` look
 /// *exactly* like the dimension having passed, and `test result: ok` cannot tell
-/// the two apart. That is why the reporting exists — but a line on stderr that
-/// nobody reads is not the same as a result, so whoever has fixtures needs a way
-/// to demand the difference.
+/// the two apart. A line on stderr that nobody reads is not a result. So the
+/// cost moved onto the operator who has no database — they now say so, once, by
+/// name — instead of onto the operator who has one and never noticed the suite
+/// had stopped running.
+///
+/// The cost of strict-by-default is that an unreachable server and a hung
+/// connection hook are red too, not just an absent one. That is accepted: a
+/// green that can hide all three is what produced a "verified" cross-database
+/// run that verified nothing.
 ///
 /// This is not a different suite. Same tests, same dimensions, same fixtures —
-/// run with `DATAZEN_CONTRACT_REQUIRE_LIVE=1` the absence of a server becomes a
-/// failure, which is the only way to make "green" mean "verified" rather than
-/// "nothing objected".
+/// what changed is only who has to say out loud that they are not running.
 pub fn unverified_or_fail(dimension: &str, reason: &str, strict: bool) {
     live_gate::unverified_or_fail(crate::CONTRACT.label, dimension, reason, strict);
 }

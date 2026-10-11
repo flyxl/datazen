@@ -34,9 +34,10 @@
 //! matched, the test returned, and cargo reported `ok. 4 passed` for a run that
 //! had proven nothing.
 //!
-//! Every environment-shaped exit routes through `unverified`, so
-//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1` turns each one into a failure instead of a
-//! silent pass. Without that variable the suite still skips — CI has no fixtures.
+//! Every environment-shaped exit routes through `unverified`, so each one is a
+//! failure by default. `DATAZEN_CONTRACT_REQUIRE_LIVE=1` still means exactly
+//! that; `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` is the one deliberate way to get
+//! the skip back on a machine with no fixtures.
 
 use datazen_driver_api::{
     ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, TransactionHandle, Value,

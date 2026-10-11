@@ -730,16 +730,17 @@ fn check_report_claims(availability: &Result<(), String>, report: String) {
     );
 }
 
-/// Strict mode is armed by exactly one string, and by nothing else.
+/// Strict mode is armed by exactly one string, and the opt-out is waived by
+/// exactly one string.
 ///
 /// The failure this guards against is a variable that is merely *present* — an
 /// empty value, a path, someone's `DATAZEN_CONTRACT_REQUIRE_LIVE=/opt/fixtures` —
-/// silently arming a mode whose whole job is to turn skips into failures. That
-/// would make CI flaky in a way nobody could reproduce, which is worse than the
-/// leniency it replaced.
+/// silently changing the gate's behaviour. In either direction that is the same
+/// bug: a typo would either force a red run nobody can explain, or hand back a
+/// green run that means nothing, while reading as if it had been asked for.
 #[test]
 fn strict_mode_is_armed_by_exactly_one_string() {
-    for lenient in [
+    for not_armed in [
         None,
         Some(String::new()),
         Some("   ".to_string()),
@@ -751,8 +752,8 @@ fn strict_mode_is_armed_by_exactly_one_string() {
         Some("11".to_string()),
     ] {
         assert!(
-            !strict_live_requested(lenient.clone()),
-            "{lenient:?} must not arm strict mode — only the exact value \"1\" does"
+            !strict_live_requested(not_armed.clone()),
+            "{not_armed:?} must not arm strict mode — only the exact value \"1\" does"
         );
     }
     for armed in ["1", " 1 ", "\t1\n"] {
@@ -761,28 +762,86 @@ fn strict_mode_is_armed_by_exactly_one_string() {
             "{armed:?} is the documented way to demand the live tier and must arm it"
         );
     }
+
+    // The waiver is the one thing that can give strictness back, so it gets the
+    // same exactness: a near-miss must not be a quiet, undeclared waiver.
+    for not_waived in [
+        None,
+        Some(String::new()),
+        Some("0".to_string()),
+        Some("true".to_string()),
+        Some("yes".to_string()),
+        Some("01".to_string()),
+        Some("/opt/fixtures".to_string()),
+    ] {
+        assert!(
+            !allow_unverified_requested(not_waived.clone()),
+            "{not_waived:?} must not waive strictness — only the exact value \"1\" does, \
+             because giving up strictness has to be a declaration, not a side effect"
+        );
+    }
+    for waived in ["1", " 1 "] {
+        assert!(
+            allow_unverified_requested(Some(waived.to_string())),
+            "{waived:?} is the documented opt-out for local no-database work and must waive it"
+        );
+    }
 }
 
-/// The default is lenient, and the opt-in is not — proven by *running* both paths
-/// rather than by reading them.
+/// Strict is the default, and the only way out of it is one typed variable.
 ///
-/// `catch_unwind` is used instead of setting the variable because the env is
+/// This is the whole policy in one table. Before, the row `unset → lenient` is
+/// what let a cross-database run report `ok` while verifying nothing, and no
+/// test here would have noticed: every one of them called the helper directly
+/// with a hand-picked boolean. The combination rule is pinned instead, where it
+/// is actually decided.
+#[test]
+fn the_gate_is_strict_unless_the_opt_out_is_typed_on_purpose() {
+    let one = Some("1".to_string());
+    let zero = Some("0".to_string());
+
+    assert!(
+        strict_live_decision(None, None),
+        "no configuration at all must be strict — a green run nobody configured is exactly the \
+         fake-green this gate exists to prevent"
+    );
+    assert!(
+        strict_live_decision(None, one.clone()),
+        "DATAZEN_CONTRACT_REQUIRE_LIVE=1 must stay effective after the default flipped"
+    );
+    assert!(
+        strict_live_decision(zero, None),
+        "DATAZEN_CONTRACT_ALLOW_UNVERIFIED=0 does not name a waiver; it is a near-miss and must \
+         not make the gate lenient"
+    );
+    assert!(
+        strict_live_decision(Some("true".to_string()), None),
+        "a truthy-looking waiver value is not a declaration; strict must survive it"
+    );
+    assert!(
+        !strict_live_decision(one.clone(), None),
+        "the explicit opt-out is the one sanctioned way to skip, for local no-database work"
+    );
+    assert!(
+        strict_live_decision(one.clone(), one),
+        "a surviving DATAZEN_CONTRACT_REQUIRE_LIVE=1 must outrank a blanket waiver — a demand for \
+         real-protocol conclusions is not something a waiver should be able to cancel"
+    );
+}
+
+/// An unverifiable dimension fails by default and skips only under the explicit
+/// opt-out — proven by *running* both paths rather than by reading them.
+///
+/// `catch_unwind` is used instead of setting the variables because the env is
 /// process-global: mutating it would race every other test in this binary that
 /// runs on its own thread, and the resulting flake would be indistinguishable
 /// from a real failure.
 #[test]
-fn an_unverifiable_dimension_skips_by_default_and_fails_only_when_asked() {
-    let lenient = std::panic::catch_unwind(|| unverified_or_fail("CM-08", "no fixture", false));
-    assert!(
-        lenient.is_ok(),
-        "the default must stay lenient or every machine without fixtures fails the whole suite"
-    );
-
-    let strict = std::panic::catch_unwind(|| unverified_or_fail("CM-08", "no fixture", true));
-    let panic = strict.expect_err(
-        "asking to prove the live tier must make an unverifiable dimension a failure, otherwise \
-         the request is another thing that gets ignored and green keeps meaning 'nothing \
-         objected'",
+fn an_unverifiable_dimension_fails_by_default_and_skips_only_when_the_operator_allows_it() {
+    let default = std::panic::catch_unwind(|| unverified_or_fail("CM-08", "no fixture", true));
+    let panic = default.expect_err(
+        "the default must fail an unverifiable dimension, otherwise a machine with no fixtures \
+         still produces test result: ok for a run that verified nothing",
     );
     let message = panic
         .downcast_ref::<String>()
@@ -792,6 +851,65 @@ fn an_unverifiable_dimension_skips_by_default_and_fails_only_when_asked() {
     assert!(
         message.contains("CM-08") && message.contains("no fixture"),
         "the failure must name the dimension and the reason, or it is not actionable: {message}"
+    );
+    assert!(
+        message.contains("DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1"),
+        "the failure must name the one opt-out, because the person hitting a red run on a laptop \
+         with no database is exactly who needs to know how to get the run they wanted: {message}"
+    );
+
+    let waived = std::panic::catch_unwind(|| unverified_or_fail("CM-08", "no fixture", false));
+    assert!(
+        waived.is_ok(),
+        "an operator who deliberately set DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 must get the skip \
+         back, or the opt-out is a switch with no off position"
+    );
+}
+
+/// The policy is only in force if `strict_live()` actually reads both variables
+/// and passes them to the shared decision — this pins the wiring, not just the
+/// pure helpers.
+///
+/// Without this, a later "simplification" of `strict_live()` back to a single
+/// `REQUIRE_LIVE` read would leave every table above still green, because they
+/// all call the pure function directly.
+#[test]
+fn the_live_gate_reads_both_variables_and_defers_to_the_shared_decision() {
+    let source = template_sources()
+        .into_iter()
+        .find(|path| path.ends_with("live_gate.rs"))
+        .unwrap_or_else(|| {
+            panic!(
+                "the template scan did not yield live_gate.rs, so this test cannot check the \
+                 wiring it is here to check"
+            )
+        })
+        .canonicalize()
+        .and_then(std::fs::read_to_string)
+        .expect("the live gate source must be readable");
+
+    let body = source
+        .split("pub fn strict_live() -> bool")
+        .nth(1)
+        .expect("strict_live() must exist in the live gate")
+        .split("\n}")
+        .next()
+        .unwrap_or_default();
+
+    assert!(
+        body.contains("std::env::var(ALLOW_UNVERIFIED_VAR)"),
+        "strict_live() must read the explicit opt-out, or the opt-out documented everywhere else \
+         does nothing: {body}"
+    );
+    assert!(
+        body.contains("std::env::var(REQUIRE_LIVE_VAR)"),
+        "strict_live() must still read DATAZEN_CONTRACT_REQUIRE_LIVE; it is the backward-compatible \
+         switch every existing strict invocation depends on: {body}"
+    );
+    assert!(
+        body.contains("strict_live_decision("),
+        "strict_live() must delegate to the pure decision, or the rule tested above is not the \
+         rule that runs: {body}"
     );
 }
 

@@ -11,8 +11,10 @@
 //! Everything above the live section is offline: it needs no server, because
 //! every case it covers is decided before any socket is touched. The live
 //! section at the bottom runs by default but reports itself unverified when no
-//! server is configured (and fails outright under
-//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1`). It reads credentials from the **process
+//! server is configured — and unverified is a failure unless the run explicitly
+//! waived strictness with `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`
+//! (`DATAZEN_CONTRACT_REQUIRE_LIVE=1` still forces the failure). It reads
+//! credentials from the **process
 //! environment only** (`TEST_PG_*`), matching `postgres_resource_contract.rs` —
 //! no file fallback, see AGENTS.md 「本地环境变量文件保护」.
 
@@ -435,8 +437,8 @@ async fn every_refusal_leaves_the_resource_handle_open() {
 /// Not `#[ignore]`d. A static `#[ignore]` is neither a pass nor a failure: cargo
 /// reports it in the `ignored` count and exits 0, so a suite pinned behind one
 /// is indistinguishable from a suite that passed. Instead it runs by default and
-/// *reports itself unverified*, failing only under
-/// `DATAZEN_CONTRACT_REQUIRE_LIVE=1`.
+/// *reports itself unverified* — which fails, unless the run explicitly waived
+/// strictness with `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`.
 mod live {
     use super::*;
 

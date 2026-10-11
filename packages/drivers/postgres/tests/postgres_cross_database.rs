@@ -6,7 +6,9 @@
 //! BUG-003, where the session was re-pointed and every later read silently
 //! resolved against the wrong database.
 //!
-//! Skips cleanly when PostgreSQL is unavailable. Credentials come from the
+//! When PostgreSQL is unavailable the dimension reports itself **unverified**,
+//! which is a red test unless the run explicitly waived strictness (see below).
+//! Credentials come from the
 //! **process environment only** (`TEST_PG_*` keys, injected by CI secret or by
 //! the developer shell). This file used to fall back to parsing
 //! `packages/drivers/.env`, which conflicted with the repo's `.env` protection
@@ -37,9 +39,11 @@
 //! cargo reported `ok`. The name carries a fresh UUID, so a table left behind by
 //! an interrupted run can never be mistaken for this run's probe.
 //!
-//! Every environment-shaped exit routes through `unverified`, so
-//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1` turns each one into a failure instead of a
-//! silent pass. Without that variable the test still skips — CI has no fixtures.
+//! Every environment-shaped exit routes through `unverified`, so an unreachable
+//! server, a missing fixture database or no `TEST_PG_*` at all is a **failure**
+//! by default. `DATAZEN_CONTRACT_REQUIRE_LIVE=1` still means exactly that, and
+//! `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` is the one deliberate way to get the
+//! skip back on a machine with no Postgres.
 
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, SqlTarget, Value};
 use datazen_driver_postgres::PostgresDriver;

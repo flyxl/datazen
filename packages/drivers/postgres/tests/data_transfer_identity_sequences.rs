@@ -120,8 +120,8 @@ async fn insert_default_and_read(
 
 #[tokio::test]
 async fn explicit_id_import_advances_identity_and_owned_serial_sequences_safely() {
-    // `None` means the gate already reported this dimension unverified — or, under
-    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    // `None` means the gate already reported this dimension unverified — which is
+    // a failure, unless the run waived strictness (`DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`).
     let Some(config) = migration_gate::require_config(
         "postgresql",
         "identity-sequence-import",

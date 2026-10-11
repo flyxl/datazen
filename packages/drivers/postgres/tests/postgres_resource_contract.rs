@@ -25,8 +25,10 @@
 //!
 //! Everything above the live section is offline: it needs no server. The
 //! live section at the bottom runs by default but reports itself unverified
-//! when no server is configured (and fails outright under
-//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1`). It reads credentials from the
+//! when no server is configured — and unverified is a failure unless the run
+//! explicitly waived strictness with `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`
+//! (`DATAZEN_CONTRACT_REQUIRE_LIVE=1` still forces the failure). It reads
+//! credentials from the
 //! **process environment only** (`TEST_PG_*`), matching
 //! `tests/postgres_cross_database.rs` — no file fallback, see AGENTS.md
 //! 「本地环境变量文件保护」.
@@ -723,7 +725,8 @@ async fn a_cancel_is_never_accepted_for_an_execution_that_is_not_registered() {
 /// behind one is indistinguishable from a suite that passed — which is how this
 /// section spent its whole life while the budget-ledger round-trip it covers
 /// went unexercised. Instead it runs by default and *reports itself
-/// unverified*, failing only under `DATAZEN_CONTRACT_REQUIRE_LIVE=1`.
+/// unverified* — which fails, unless the run explicitly waived strictness with
+/// `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`.
 mod live {
     use super::*;
 

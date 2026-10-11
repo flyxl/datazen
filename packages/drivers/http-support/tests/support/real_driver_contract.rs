@@ -26,10 +26,13 @@
 //! * **Free tier** — real assertions that need no server. They run everywhere, including
 //!   CI, and are what actually proves the *declared* contract is self-consistent.
 //! * **Live tier** — one named `#[tokio::test]` per CM dimension. Each needs a real
-//!   server and **dedicated** fixture databases; without them it skips and reports the
-//!   dimension it could not verify. `fake-runtime-fixtures.md` §10.4 forbids substituting
-//!   a fake runtime for a real-protocol conclusion, so a skip is reported as unverified,
-//!   never as "verified".
+//!   server and **dedicated** fixture databases. Without them the dimension is
+//!   **unverified**, and unverified is a failure — `fake-runtime-fixtures.md`
+//!   §10.4 forbids substituting a fake runtime for a real-protocol conclusion, and
+//!   the shared live gate turns the missing conclusion into a red test rather than
+//!   a green one. The only way to get the old skip is the explicit, self-describing
+//!   `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`; see `support/live_gate.rs` for why that
+//!   is a deliberate declaration and not a default.
 //!
 //! Credentials come from the **process environment only** (CI secret or developer shell),
 //! per `fake-runtime-fixtures.md` §10.2 rule 5 and AGENTS.md「本地环境变量文件保护」.
@@ -47,9 +50,11 @@
 //!
 //! `Contract::availability` is the gate, and it is deliberately strict: both
 //! target names must start with `dz_fixture_` and must differ. A developer with
-//! no dedicated fixture databases therefore gets a *skip with the reason*, not a
-//! run against whatever happens to be installed — point the two keys at two of
-//! your own prefixed databases to get a live tier.
+//! no dedicated fixture databases therefore gets a *failure naming the dimension
+//! it could not verify*, not a run against whatever happens to be installed —
+//! point the two keys at two of your own prefixed databases to get a live tier,
+//! or set `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` if you know you have none and
+//! want the honest skip line instead.
 //!
 //! **Layout.** One file per tier, because one file per tier is what keeps every
 //! file under the 800-line ceiling *and* keeps the responsibilities separable:

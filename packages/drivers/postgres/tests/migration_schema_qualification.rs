@@ -7,8 +7,8 @@ mod migration_gate;
 
 #[tokio::test]
 async fn test_transfer_qualified_metadata_isolates_selected_schema() {
-    // `None` means the gate already reported this dimension unverified — or, under
-    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    // `None` means the gate already reported this dimension unverified — which is
+    // a failure, unless the run waived strictness (`DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`).
     let Some(mut config) = migration_gate::require_config(
         "postgresql",
         "transfer-qualified-metadata",

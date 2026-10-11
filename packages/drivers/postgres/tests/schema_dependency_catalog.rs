@@ -4,8 +4,8 @@
 //! MIGRATION_TEST_DATABASE=<database> cargo test -p datazen-driver-postgres --test schema_dependency_catalog
 //!
 //! This suite is no longer `#[ignore]`d. With `MIGRATION_TEST_DATABASE` unset it reports
-//! `view-and-trigger-dependencies` unverified and skips; with
-//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1` that report is a failure.
+//! `view-and-trigger-dependencies` unverified — which is a failure by default;
+//! `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` is the one way to get the skip back.
 
 use datazen_driver_api::DatabaseDriver;
 use datazen_driver_postgres::PostgresDriver;
@@ -15,8 +15,8 @@ mod migration_gate;
 
 #[tokio::test]
 async fn structured_view_and_trigger_dependencies_are_exact_and_complete() {
-    // `None` means the gate already reported this dimension unverified — or, under
-    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    // `None` means the gate already reported this dimension unverified — which is
+    // a failure, unless the run waived strictness (`DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`).
     let Some(config) = migration_gate::require_config(
         "postgresql",
         "view-and-trigger-dependencies",

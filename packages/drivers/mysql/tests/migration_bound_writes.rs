@@ -7,8 +7,8 @@ mod migration_gate;
 async fn bound_writes_preserve_bytes_decimal_and_transaction_counts() {
     // Reads `MIGRATION_TEST_*` from the process environment and refuses any
     // database that is not a disposable fixture. `None` means it already
-    // reported this dimension unverified — or, under
-    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    // reported this dimension unverified — which already failed it, unless the run
+    // waived strictness with `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`.
     let Some(config) =
         migration_gate::require_config("mysql", "bound-writes", "mysql", "migration-bound", &[])
     else {
