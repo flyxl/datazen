@@ -53,12 +53,22 @@
  *
  * ## Usage
  *
- *     node scripts/check-driver-protocol-release.mjs [--base=<ref>] [--cwd=<dir>]
+ *     node scripts/check-driver-protocol-release.mjs [--base <ref> | --base=<ref>] [--cwd <dir>]
  *
- * Exit 0 with an `ok (...)` line, exit 1 with one line per violation on stderr.
+ * Exit 0 with an `ok (...)` line, exit 1 with one line per violation on stderr,
+ * exit 2 with the usage text if the arguments could not be parsed.
  * `--base` defaults to `merge-base HEAD main` (the same default the sibling
  * compatibility gate uses); `--cwd` exists so the gate can be exercised against
  * a fixture repository instead of only against the real tree.
+ *
+ * Argument parsing is shared with `check-driver-protocol-compat.mjs`
+ * (`parseGateArgs`), and it **refuses what it does not understand**. This gate
+ * used to read only `--base=<ref>`: the space form `--base <ref>` was dropped
+ * silently, the run fell back to the default base, compared HEAD with itself,
+ * printed `driver releases: 0`, and still exited 0 — a false green for a
+ * delivery that had actually released 15 drivers. A gate's exit code is its
+ * verdict, so a misspelled flag now fails the run (exit 2) instead of quietly
+ * changing which range is being measured.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -72,6 +82,8 @@ import {
   PROTOCOL_VERSION_FILE,
   PROTOCOL_VERSION_SYMBOL,
   compareCrateVersions,
+  gateUsageError,
+  parseGateArgs,
   readBlobAtRef,
   readConstValue,
   readCrateVersion,
@@ -585,26 +597,19 @@ function readDriverSourcesAtRef(cwd, entry, ref) {
 
 /**
  * @param {string[]} argv
- * @returns {{ cwd: string, base: string | undefined }}
- */
-function parseArgs(argv) {
-  let cwd = ROOT;
-  /** @type {string | undefined} */
-  let base;
-  for (const arg of argv) {
-    if (arg.startsWith('--base=')) base = arg.slice('--base='.length);
-    else if (arg.startsWith('--cwd=')) cwd = resolve(arg.slice('--cwd='.length));
-  }
-  return { cwd, base };
-}
-
-/**
- * @param {string[]} argv
  * @returns {number} process exit code
  */
 export function main(argv = process.argv.slice(2)) {
-  const { cwd, base } = parseArgs(argv);
-  const result = evaluate({ cwd, base });
+  const parsed = parseGateArgs(argv, { flags: ['--base', '--cwd'] });
+  if (!parsed.ok) {
+    return gateUsageError(
+      LOG_PREFIX,
+      'node scripts/check-driver-protocol-release.mjs [--base <ref> | --base=<ref>] [--cwd <dir>]',
+      parsed,
+    );
+  }
+  const cwd = parsed.values['--cwd'] === undefined ? ROOT : resolve(parsed.values['--cwd']);
+  const result = evaluate({ cwd, base: parsed.values['--base'] });
 
   const releaseLines = result.releases.map((r) => `  ${r.id} ${r.before} -> ${r.after} (${r.reason})`);
   process.stdout.write(

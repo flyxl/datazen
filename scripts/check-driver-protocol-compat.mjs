@@ -647,25 +647,92 @@ function git(args, cwd) {
 }
 
 /**
- * Read the base ref out of argv, accepting both `--base=<ref>` and `--base <ref>`.
+ * Parse a protocol gate's argv, or return the reason it cannot be parsed.
  *
- * The space form is what a person types when re-running the gate by hand on a
- * suspicious ref, and a flag that only understands the `=` form ignores it
- * silently — the run then measures a *different* base than the one asked for
- * and reports ok, which is worse than rejecting the invocation. A trailing
- * `--base` with no value is ignored the same way, so `resolveBaseRef` still
- * falls back to the merge base.
+ * ## An unknown flag is a verdict, not noise
  *
- * @param {string[]} argv
- * @returns {string | undefined}
+ * These gates run in CI and their exit code *is* the review verdict. A gate
+ * that ignores an argument it does not recognise falls back to its default
+ * base, measures a **different** range than the one that was asked for, and
+ * still prints a clean `ok`. That is a false green, and it is strictly worse
+ * than not accepting the flag at all, because the run looks like it answered
+ * the question when it answered a different one.
+ *
+ * That is not hypothetical: `check-driver-protocol-release.mjs` used to read
+ * only `--base=<ref>`. Typing `--base <ref>` — the form an operator writes
+ * when re-running by hand against a suspicious ref — was dropped silently, the
+ * run compared HEAD against itself, printed `driver releases: 0`, and exited
+ * **0**. A reviewer reading that line would conclude no driver shipped, when
+ * 15 had.
+ *
+ * So the invariant this function exists to hold is: **either the run happened
+ * against exactly the flags given, or the run does not happen.** A misspelled
+ * flag, an unknown flag, a repeated flag, and a value flag with no value are
+ * all refused, because each of them otherwise resolves to "measure something
+ * nobody asked for and call it ok".
+ *
+ * ## Both spellings of a value flag mean the same thing
+ *
+ * `--base=<ref>` is what CI and the npm scripts write; `--base <ref>` is what
+ * a person types. They must resolve to the same ref, so the value is read from
+ * whichever spelling was used rather than from one of them while ignoring the
+ * other.
+ *
+ * @param {string[]} argv arguments **after** the script path (`process.argv.slice(2)`)
+ * @param {{ flags: readonly string[] }} options the flags this gate accepts
+ * @returns {{ ok: true, values: Record<string, string> } | { ok: false, message: string }}
  */
-export function readBaseArg(argv) {
-  const inline = argv.find((arg) => arg.startsWith('--base='));
-  if (inline !== undefined) return inline.slice('--base='.length);
-  const index = argv.indexOf('--base');
-  const next = index === -1 ? undefined : argv[index + 1];
-  if (next === undefined || next.startsWith('--')) return undefined;
-  return next;
+export function parseGateArgs(argv, options) {
+  const known = new Set(options.flags);
+  /** @type {Record<string, string>} */
+  const values = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    const eq = token.indexOf('=');
+    const name = eq === -1 ? token : token.slice(0, eq);
+    if (!known.has(name)) {
+      return { ok: false, message: `unknown argument '${token}'` };
+    }
+    if (Object.prototype.hasOwnProperty.call(values, name)) {
+      return { ok: false, message: `argument '${name}' was given more than once` };
+    }
+    /** @type {string | null} */
+    let value = eq === -1 ? null : token.slice(eq + 1);
+    if (value === null) {
+      // A value that itself looks like a flag means the value was forgotten.
+      // Guessing here would reintroduce the silent fallback this rejects.
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith('-')) {
+        return { ok: false, message: `argument '${name}' requires a value` };
+      }
+      value = next;
+      i += 1;
+    }
+    if (value === '') {
+      return { ok: false, message: `argument '${name}' requires a non-empty value` };
+    }
+    values[name] = value;
+  }
+  return { ok: true, values };
+}
+
+/**
+ * Print the "I will not guess" verdict for a gate whose argv could not be
+ * parsed, and return the process exit code for it.
+ *
+ * Exit 2, not 1: 1 is what a gate returns when it ran and found a violation,
+ * and a usage error must not be filed under the same code as a real finding —
+ * otherwise `--nosuchflag` and "the protocol was released without a driver"
+ * become indistinguishable in CI logs.
+ *
+ * @param {string} prefix    the gate's log prefix
+ * @param {string} usage     the one-line usage to print
+ * @param {{ ok: false, message: string }} parsed
+ * @returns {number} process exit code
+ */
+export function gateUsageError(prefix, usage, parsed) {
+  console.error(`${prefix} ${parsed.message}\n\nusage: ${usage}`);
+  return 2;
 }
 
 /**
@@ -873,9 +940,16 @@ export function compareCrateVersions(left, right) {
  * @returns {number} process exit code
  */
 function main() {
-  const base = readBaseArg(process.argv);
+  const parsed = parseGateArgs(process.argv.slice(2), { flags: ['--base'] });
+  if (!parsed.ok) {
+    return gateUsageError(
+      LOG_PREFIX,
+      'node scripts/check-driver-protocol-compat.mjs [--base <ref> | --base=<ref>]',
+      parsed,
+    );
+  }
 
-  const result = evaluate({ base });
+  const result = evaluate({ base: parsed.values['--base'] });
 
   if (result.findings.length > 0) {
     console.log(`${LOG_PREFIX} governed contract changes vs ${result.base}:`);
