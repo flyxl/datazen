@@ -555,7 +555,7 @@ export function TableView({
           {txError}
           {txLost && <button className="ml-3 underline" data-testid="table-session-open-new" onClick={() => {
             void tableSessionController(panelId, context).then((controller) => controller.openNewSession())
-              .then(() => { setTxLost(false); setInTx(false); actions.reload(); })
+              .then(() => { setTxLost(false); setInTx(false); setTxError(null); actions.reload(); })
               .catch((error: unknown) => setTxError(extractErrorMessage(error, t('query.session.disconnected'))));
           }}>{t('query.session.openNew')}</button>}
         </div>

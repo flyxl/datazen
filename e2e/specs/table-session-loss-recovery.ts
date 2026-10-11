@@ -86,8 +86,8 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         expect(interrupted).toContain('unknown');
         await recovery.click();
         await browser.waitUntil(async () => !(await $('[data-testid="table-session-open-new"]').isExisting()), { timeout: 20000 });
-        // Opening another session does not rewrite the interrupted transaction.
-        expect(await $('body').getText()).toContain('resourceLost');
+        // Successful explicit recovery clears the stale toolbar error.
+        expect(await $('body').getText()).not.toContain('resourceLost');
         await $('[data-testid="table-tx-begin"]').waitForEnabled({ timeout: 20000 });
         await $('[data-testid="table-tx-begin"]').click();
         await $('[data-testid="table-tx-rollback"]').waitForEnabled({ timeout: 20000 });
