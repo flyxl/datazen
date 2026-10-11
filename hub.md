@@ -74,7 +74,7 @@ This ledger must be deleted before delivery/merge to main.
 
 - User confirmed future testers: GPT-6 Luna, max. Fresh independent tester `/root/p346_combined_verify_r2` is active.
 - User requests future coders: GPT-6.1 Sol, low; preserve currently running agents' work, use this setting when spawning coder instances.
-- One-time heartbeat `05-35-p3-p4-p6` is ACTIVE for 2026-10-12 05:35 Asia/Shanghai, attached to this chat; it resumes unfinished work and agents, then closes itself.
+- One-time heartbeat `05-35-p3-p4-p6` fired at 2026-10-12 05:35 Asia/Shanghai. The app reports it already does not exist; no active schedule remains.
 - Updated combined candidate `74c61627509103636b6c7f0c57a6f2c55efeb6b6` includes driver cancellation fix `ec83ad3c9` and runtime export/quarantine source from final `e62798e67`; production source merged without conflicts.
 - Older frozen candidate `aa6fe601d` webdriver build succeeded. Initial real WDIO 0 passed / 2 failed: PG reached cancellation IPC after earlier identity/parameter/temp/schema/600-row/transaction journeys; MySQL fixture profile missing. Tester is fixing only diagnostic wrapper and fixtures before completing the round. Neither candidate is accepted.
 
@@ -91,20 +91,26 @@ This ledger must be deleted before delivery/merge to main.
 ## Host PostgreSQL multi-database discovery regression (2026-10-12)
 
 - Fresh Luna max verifier used an isolated `/private/tmp` worktree at candidate `e796bfeac`; no credentials or raw errors were surfaced.
-- Real PostgreSQL probe: legacy driver `list_databases` returned 25 entries. `executeAtTarget(list_databases)` failed before a receipt for both a null namespace database and a valid explicit database; safe projection showed only generic `Error`, no code/status, and message length 15. Host DOM showed zero database nodes; PG multi-database tree and query selector journeys failed. Stop-button WDIO journey passed. MySQL and PostgreSQL retained-resource driver journeys passed 2/2.
+- The initial PostgreSQL target probe used a malformed request envelope and did not represent the generated-client call. The full WDIO UI showed zero database nodes; a later stage-split safe probe against `2bb263fb4` established the actual cause: target execution is accepted and succeeds, but artifact readback fails. Stop-button WDIO journey passed. MySQL and PostgreSQL retained-resource driver journeys passed 2/2.
 - Independent code review found two concrete issues: database discovery was routed through `metadataTarget`, which treated an empty `currentDatabase` as an explicit empty target; `list_databases` was also omitted from Query authorization classifiers and therefore classified as Write.
 - Focused fix commits from coder worktree: `a67c3065a` adds `databaseDiscoveryTarget` with null namespace and uses it for `getDatabases`, and corrects the session-backend command classifier; `d2147f03a` corrects the runtime enqueue Query classifier. Combined candidate is now `2bb263fb4`.
-- This fix is not accepted yet. Independent verifier must rebuild with `pnpm tauri:build:webdriver`, then rerun PostgreSQL/MySQL multi-database tree and query selector WDIO paths against `2bb263fb4`; record matching gate source fingerprints. No unit tests/Cargo tests/Vitest/computer-use testing are authorized.
+- The database-target and authorization fixes were necessary but insufficient. The explicit artifact IPC mapping is now in candidate `300e6cf25`; independent verifier must rebuild that candidate and rerun PostgreSQL/MySQL multi-database tree and query selector WDIO paths with matching source fingerprints. No unit tests/Cargo tests/Vitest/computer-use testing are authorized.
 - Before delivery, remove the diagnostic-only probe from tester's WDIO diff; review and retain only permanent safe journey assertions.
 
 ## P6 Workflow SQL target guard
 
 - Code review found the SQL `Command` path (`query`/`execute`) entered `independent_sql::execute` without the same multi-database target requirement enforced by legacy Workflow `Query` steps.
 - Coder commit `40749f978` moves the existing `database_is_required` policy to the shared independent SQL entry. Multi-database drivers now require a step, workflow, or connection database before opening the SQL resource; single-database drivers remain allowed. Explicit malformed namespace values continue to fail validation before this guard.
-- This extends the earlier P6 Workflow SQL execution/cancellation/effect-diagnostic work. The commit is not yet part of the accepted candidate and has no compile or WDIO result; include it in the next isolated build and, where feasible, run Workflow WDIO against PostgreSQL/MySQL. No unit tests are authorized.
+- This extends the earlier P6 Workflow SQL execution/cancellation/effect-diagnostic work. It is integrated in candidate `300e6cf25`, with compile and WDIO validation still pending. Include it in the current isolated build and, where feasible, run Workflow WDIO against PostgreSQL/MySQL. No unit tests are authorized.
 
 ## Continued candidate state (2026-10-12)
 
-- The candidate now includes the shared Workflow SQL target guard as commit `e6782a879` (cherry-picked from coder commit `40749f978`). It remains uncompiled and unaccepted pending the next matching WDIO build.
-- Independent safe probes against fixed candidate `2bb263fb4` confirmed the database-discovery target failure is shared by both dialects: legacy `list_databases` returns 25 PG / 14 MySQL entries, while the all-null connection-scope `execute_at_target` call fails before a receipt. Both DOM trees remain at zero database nodes. Probe-only changes were removed; tester is running the frozen multi-database and query selector/Stop WDIO journeys.
-- Coder is tracing and repairing the shared pre-receipt target submission path in its own worktree. Do not accept P4 until the database tree and target selector pass on both drivers. The candidate can advance independently; the verifier remains frozen on `2bb263fb4` for its current WDIO round.
+- The candidate includes the shared Workflow SQL target guard as commit `e6782a879`; it remains uncompiled and unaccepted pending the matching WDIO build.
+- Safe stage-split probes on fixed candidate `2bb263fb4` confirmed: legacy counts were PG 25 / MySQL 14; generated-client target submissions returned queued receipts, then succeeded with completed effects; artifact readback was the failing stage. Temporary probes are being removed before the verifier moves to the fixed candidate.
+- Do not accept P4 until the database tree and target selector pass on both drivers and result-readback works. Candidate `300e6cf25` now contains the explicit IPC mapping; a fresh webdriver build is pending.
+
+## Artifact readback fix and next gate
+
+- The stage-split safe WDIO probe corrected the failure boundary: PostgreSQL and MySQL target submissions both return `queued`, then terminate `succeeded` with `effectOutcome=completed`. The helper fails during artifact readback; the direct legacy database counts remain 25/14.
+- Source confirms `ExecutionProjection.recover()` calls `BackendClient.readArtifact`, whose default naming would invoke `read_artifact`, but desktop only registers `read_artifact_chunk`. Coder commit `fd812d7fd` adds the explicit transport override; it is integrated in candidate `300e6cf25`. No budget policy was changed.
+- Independent verifier is removing the temporary probe, retaining only reviewed test journeys, moving to `300e6cf25`, rebuilding with `pnpm tauri:build:webdriver`, then running PG/MySQL database tree/selector/Stop plus feasible PG table journeys and PG/MySQL Workflow WDIO. The fix is not accepted until those matching gates finish with stable source hashes.
