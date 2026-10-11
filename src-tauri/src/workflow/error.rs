@@ -56,6 +56,15 @@ pub enum WorkflowError {
         code: String,
     },
 
+    /// The execution may still be live. Error strategies must fail closed.
+    #[error("Workflow SQL execution {execution_id} terminal state unconfirmed: state={state}, effects={effects}, code={code}")]
+    SqlUnconfirmed {
+        execution_id: String,
+        state: String,
+        effects: String,
+        code: String,
+    },
+
     #[error("Workflow SQL result unavailable for execution {execution_id}: effects={effects}, code={code}")]
     SqlResultRead {
         execution_id: String,

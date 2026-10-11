@@ -294,18 +294,27 @@ impl WorkflowExecutor {
                     _ => {
                         let timeout = step.timeout_secs().unwrap_or(30);
                         let started = Instant::now();
-                        let result = tokio::time::timeout(
-                            std::time::Duration::from_secs(timeout),
-                            Self::execute_single_step(
-                                step,
-                                app_state,
-                                connection_id,
-                                workflow_database,
-                                context,
-                                options,
-                            ),
-                        )
-                        .await;
+                        let execution = Self::execute_single_step(
+                            step,
+                            app_state,
+                            connection_id,
+                            workflow_database,
+                            context,
+                            options,
+                        );
+                        // SQL owns its deadline so dropping a future cannot release
+                        // Skip/Fallback before the database reaches a terminal state.
+                        let is_sql = matches!(step, WorkflowStep::Query { .. })
+                            || matches!(step, WorkflowStep::Command { command, .. } if matches!(command.as_str(), "query" | "execute"));
+                        let result = if is_sql {
+                            Ok(execution.await)
+                        } else {
+                            tokio::time::timeout(
+                                std::time::Duration::from_secs(timeout),
+                                execution,
+                            )
+                            .await
+                        };
                         let elapsed = started.elapsed().as_millis() as u64;
                         match result {
                             Ok(Ok(mut sr)) => {
@@ -375,10 +384,13 @@ impl WorkflowExecutor {
         options: &WorkflowExecuteOptions,
     ) -> Result<(), WorkflowError> {
         let err_text = err.to_string();
-        match step
-            .on_error_strategy()
-            .unwrap_or_else(|| default_strategy.clone())
-        {
+        let strategy = if matches!(&err, WorkflowError::SqlUnconfirmed { .. }) {
+            ErrorStrategy::Abort
+        } else {
+            step.on_error_strategy()
+                .unwrap_or_else(|| default_strategy.clone())
+        };
+        match strategy {
             ErrorStrategy::Abort => {
                 step_results.push(StepExecutionResult {
                     step_id: step.step_id().into(),
@@ -407,6 +419,19 @@ impl WorkflowExecutor {
                 Ok(())
             }
             ErrorStrategy::Fallback { steps } => {
+                // Retain the failed SQL execution evidence even when fallback succeeds.
+                if matches!(&err, WorkflowError::SqlExecution { .. } | WorkflowError::SqlResultRead { .. }) {
+                    step_results.push(StepExecutionResult {
+                        step_id: step.step_id().into(),
+                        step_type: step.step_type_str().into(),
+                        status: StepStatus::Failed,
+                        result: None,
+                        execution_time_ms: elapsed,
+                        error: Some(err_text),
+                        connection_name: None,
+                        sql_executed: None,
+                    });
+                }
                 Self::execute_steps(
                     &steps,
                     app_state,

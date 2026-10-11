@@ -41,6 +41,8 @@ pub(super) async fn execute(
     connection_id: &str,
     permission_mode: Option<crate::mcp::permission::McpPermissionMode>,
 ) -> Result<CommandResult, WorkflowError> {
+    let deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_secs(step.timeout_secs.unwrap_or(30));
     let (config, metadata) = state
         .store
         .platform_profile(connection_id)
@@ -142,30 +144,78 @@ pub(super) async fn execute(
             ),
         )
         .await
-        .map_err(|error| WorkflowError::Validation(error.to_string()))?;
+        .map_err(|error| WorkflowError::SqlUnconfirmed {
+            // Submission may have been accepted even if its receipt is lost.
+            execution_id: "unavailable".into(),
+            state: "Unknown".into(),
+            effects: "Unknown".into(),
+            code: format!("Submission:{:?}", error.code),
+        })?;
     let mut cancellation = CancelOnDrop {
         runtime: runtime.clone(),
         context: call.context().clone(),
         execution: Some(receipt.execution_id.clone()),
     };
     let started = std::time::Instant::now();
+    let mut last_state = "Accepted".to_owned();
+    let mut last_effects = "Unknown".to_owned();
+    let unconfirmed = |state: &str, effects: &str, code: String| WorkflowError::SqlUnconfirmed {
+        execution_id: receipt.execution_id.as_str().to_owned(),
+        state: state.to_owned(),
+        effects: effects.to_owned(),
+        code,
+    };
+    let mut timed_out = false;
+    let mut poll_deadline = deadline;
     let view = loop {
-        let view = runtime
-            .get_execution(call.context(), receipt.execution_id.clone())
-            .await
-            .map_err(|error| WorkflowError::Validation(error.to_string()))?;
-        if view.state.is_terminal() {
-            break view;
+        let polled = tokio::time::timeout_at(
+            poll_deadline,
+            runtime.get_execution(call.context(), receipt.execution_id.clone()),
+        ).await;
+        match polled {
+            Ok(Ok(view)) => {
+                last_state = format!("{:?}", view.state);
+                last_effects = format!("{:?}", view.effect_outcome);
+                if view.state.is_terminal() {
+                    break view;
+                }
+            }
+            Ok(Err(error)) => return Err(unconfirmed(
+                &last_state, &last_effects, format!("{:?}", error.code),
+            )),
+            Err(_) if timed_out => return Err(unconfirmed(
+                &last_state, &last_effects, "TimeoutAwaitingTerminal".into(),
+            )),
+            Err(_) => {
+                timed_out = true;
+                // A cancellation receipt only acknowledges the request. Keep
+                // polling until the execution itself confirms a terminal state.
+                let cancelled = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    runtime.cancel_execution(call.context(), receipt.execution_id.clone()),
+                ).await;
+                match cancelled {
+                    Ok(Ok(_)) => {},
+                    Ok(Err(error)) => return Err(unconfirmed(
+                        &last_state, &last_effects, format!("Cancel:{:?}", error.code),
+                    )),
+                    Err(_) => return Err(unconfirmed(
+                        &last_state, &last_effects, "CancelAcknowledgementTimeout".into(),
+                    )),
+                }
+                poll_deadline = tokio::time::Instant::now()
+                    + std::time::Duration::from_secs(30);
+            }
         }
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     };
     cancellation.execution = None;
-    if view.state != ExecutionState::Succeeded {
+    if timed_out || view.state != ExecutionState::Succeeded {
         return Err(WorkflowError::SqlExecution {
             execution_id: receipt.execution_id.as_str().to_owned(),
             state: format!("{:?}", view.state),
             effects: format!("{:?}", view.effect_outcome),
-            code: format!("{:?}", view.error_code),
+            code: if timed_out { format!("StepTimeout:{:?}", view.error_code) } else { format!("{:?}", view.error_code) },
         });
     }
     // Reading a result does not execute SQL again. Preserve the known effect
