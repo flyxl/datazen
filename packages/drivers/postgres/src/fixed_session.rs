@@ -21,7 +21,7 @@ impl PostgresDriver {
                 .await
                 .get(&handle.pool_id)
                 .cloned()
-                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+                .ok_or_else(|| DriverError::SessionLost)?;
             let mut connection = pool
                 .acquire()
                 .await
@@ -58,7 +58,7 @@ impl PostgresDriver {
             .await
             .get(&handle.id)
             .copied()
-            .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            .ok_or_else(|| DriverError::SessionLost)?;
         // Holding the checkout serializes this observation with user SQL.
         // SQLx fetch/execute has consumed ReadyForQuery before this point.
         let pinned = self
@@ -67,11 +67,11 @@ impl PostgresDriver {
             .await
             .get(&handle.id)
             .cloned()
-            .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            .ok_or_else(|| DriverError::SessionLost)?;
         let mut connection = pinned.lock().await;
         sqlx::Connection::ping(&mut **connection)
             .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            .map_err(fixed_observation_error)?;
         let control = self
             .control_pools
             .read()
@@ -100,11 +100,7 @@ impl PostgresDriver {
             Some("idle") => TransactionState::Idle,
             Some("idle in transaction") => TransactionState::Active,
             Some("idle in transaction (aborted)") => TransactionState::Aborted,
-            None => {
-                return Err(DriverError::ConnectionFailed(
-                    "SessionLost: backend disappeared".into(),
-                ))
-            }
+            None => return Err(DriverError::SessionLost),
             _ => TransactionState::Unknown,
         };
         if transaction_state == TransactionState::Aborted {
@@ -127,7 +123,7 @@ impl PostgresDriver {
         )
         .fetch_one(&mut **connection)
         .await
-        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        .map_err(fixed_observation_error)?;
         let context = SessionContext {
             namespace: NamespaceTarget {
                 database: row.try_get(0).map_err(decode_error)?,
@@ -150,4 +146,26 @@ impl PostgresDriver {
 }
 fn decode_error(error: sqlx::Error) -> DriverError {
     DriverError::QueryFailed(error.to_string())
+}
+
+// Only errors proving this retained channel is gone classify as session loss.
+// SQL/permission/cancellation errors remain ordinary query failures.
+fn fixed_observation_error(error: sqlx::Error) -> DriverError {
+    let disconnected = match &error {
+        sqlx::Error::Io(error) => matches!(
+            error.kind(),
+            std::io::ErrorKind::UnexpectedEof
+                | std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::ConnectionAborted
+                | std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::NotConnected
+        ),
+        sqlx::Error::Database(error) => matches!(error.code().as_deref(), Some("57P01" | "57P02")),
+        _ => false,
+    };
+    if disconnected {
+        DriverError::SessionLost
+    } else {
+        DriverError::QueryFailed(error.to_string())
+    }
 }

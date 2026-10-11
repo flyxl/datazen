@@ -33,6 +33,7 @@ pub(super) enum ReleaseReason {
     Evict,
     InvalidateWorker,
     ActorGone,
+    ResourceLost,
 }
 
 /// 唯一释放例程。**顺序**是本函数的全部价值所在，见模块文档。
@@ -212,7 +213,9 @@ pub(super) fn release_kind(reason: ReleaseReason) -> AuditKind {
     match reason {
         ReleaseReason::Close => AuditKind::SessionClosed,
         ReleaseReason::Evict => AuditKind::SessionEvicted,
-        ReleaseReason::InvalidateWorker | ReleaseReason::ActorGone => AuditKind::SessionInvalidated,
+        ReleaseReason::InvalidateWorker
+        | ReleaseReason::ActorGone
+        | ReleaseReason::ResourceLost => AuditKind::SessionInvalidated,
     }
 }
 

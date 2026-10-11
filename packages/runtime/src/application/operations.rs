@@ -103,7 +103,14 @@ impl RuntimeConnectionUseCases {
                         .map_err(gateway_error),
                     Err(error) => Err(error),
                 };
-                service.inner.sink.finish(&id, result.is_ok());
+                let resource_lost = result
+                    .as_ref()
+                    .err()
+                    .is_some_and(|error| error.code == ApiErrorCode::SessionLost);
+                service
+                    .inner
+                    .sink
+                    .finish(&id, result.is_ok(), resource_lost);
                 if service
                     .inner
                     .sink

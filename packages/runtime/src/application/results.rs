@@ -322,7 +322,7 @@ impl RuntimeResultSink {
             entry.outcome = Some(outcome);
         }
     }
-    pub(super) fn finish(&self, id: &ExecutionId, success: bool) {
+    pub(super) fn finish(&self, id: &ExecutionId, success: bool, resource_lost: bool) {
         if let Some(entry) = lock(&self.0).get_mut(id) {
             match entry.outcome.take() {
                 Some(outcome) if success => {
@@ -342,8 +342,20 @@ impl RuntimeResultSink {
                 _ => {
                     entry.view.state = ExecutionState::Failed;
                     entry.view.effect_outcome = EffectOutcome::Unknown;
-                    entry.view.error_code = Some(ExecutionErrorCode::HostRejected);
+                    entry.view.error_code = Some(if resource_lost {
+                        ExecutionErrorCode::ResourceLost
+                    } else {
+                        ExecutionErrorCode::HostRejected
+                    });
                     entry.view.runtime_binding = None;
+                    if resource_lost {
+                        if let Some(provenance) = entry.view.provenance.as_mut() {
+                            provenance.context_after.transaction_state =
+                                datazen_platform_api::dto::session::TransactionState::Unknown;
+                            provenance.context_after.confidence =
+                                datazen_platform_api::dto::session::ContextConfidence::Unknown;
+                        }
+                    }
                 }
             }
             entry.view.result_completeness = if entry.view.state == ExecutionState::Succeeded {
@@ -370,7 +382,9 @@ impl RuntimeResultSink {
                     entry.view.state = ExecutionState::Failed;
                     entry.view.result_completeness = ResultCompleteness::Truncated;
                     entry.view.truncation_reason = Some("artifactFinalizationFailed".into());
-                    entry.view.error_code = Some(ExecutionErrorCode::HostRejected);
+                    if entry.view.error_code != Some(ExecutionErrorCode::ResourceLost) {
+                        entry.view.error_code = Some(ExecutionErrorCode::HostRejected);
+                    }
                 }
             }
             entry.event(ConnectionEvent::ExecutionChanged {

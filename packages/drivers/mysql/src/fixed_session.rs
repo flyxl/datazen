@@ -20,7 +20,7 @@ impl MysqlDriver {
                 .await
                 .get(&handle.pool_id)
                 .cloned()
-                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+                .ok_or_else(|| DriverError::SessionLost)?;
             let mut connection = pool
                 .acquire()
                 .await
@@ -59,31 +59,29 @@ impl MysqlDriver {
             .await
             .get(&handle.id)
             .copied()
-            .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            .ok_or_else(|| DriverError::SessionLost)?;
         let pinned = self
             .transactions
             .lock()
             .await
             .get(&handle.id)
             .cloned()
-            .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            .ok_or_else(|| DriverError::SessionLost)?;
         let mut connection = pinned.lock().await;
         let row =
             sqlx::query("SELECT DATABASE(), CURRENT_USER(), @@session.autocommit, CONNECTION_ID()")
                 .fetch_one(&mut **connection)
                 .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                .map_err(fixed_observation_error)?;
         let id: u64 = row.try_get(3).map_err(decode_error)?;
         if id != expected_id {
-            return Err(DriverError::ConnectionFailed(
-                "SessionLost: backend changed".into(),
-            ));
+            return Err(DriverError::SessionLost);
         }
         let transaction_state = if self.is_mariadb {
             let active: i64 = sqlx::query_scalar("SELECT @@session.in_transaction")
                 .fetch_one(&mut **connection)
                 .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                .map_err(fixed_observation_error)?;
             if active == 0 {
                 TransactionState::Idle
             } else {
@@ -154,4 +152,28 @@ impl MysqlDriver {
 }
 fn decode_error(error: sqlx::Error) -> DriverError {
     DriverError::QueryFailed(error.to_string())
+}
+
+// Only errors proving this retained channel is gone classify as session loss.
+// SQL/permission/cancellation errors remain ordinary query failures.
+fn fixed_observation_error(error: sqlx::Error) -> DriverError {
+    let disconnected = match &error {
+        sqlx::Error::Io(error) => matches!(
+            error.kind(),
+            std::io::ErrorKind::UnexpectedEof
+                | std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::ConnectionAborted
+                | std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::NotConnected
+        ),
+        sqlx::Error::Database(error) => error
+            .try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
+            .is_some_and(|error| matches!(error.number(), 1053 | 1927 | 2006 | 2013)),
+        _ => false,
+    };
+    if disconnected {
+        DriverError::SessionLost
+    } else {
+        DriverError::QueryFailed(error.to_string())
+    }
 }

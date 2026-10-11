@@ -23,7 +23,7 @@ use tokio::task::JoinError;
 use super::release::provider_to_runtime;
 use crate::connection::error::ProviderError;
 use crate::connection::{
-    Counter, EffectOutcome, ExecuteInSessionRequest, ExecutionErrorCode, ExecutionId,
+    CloseMode, Counter, EffectOutcome, ExecuteInSessionRequest, ExecutionErrorCode, ExecutionId,
     ExecutionReceipt, ExecutionState, RuntimeError, SessionState,
 };
 use crate::registry::audit::{AuditKind, Outcome};
@@ -139,6 +139,22 @@ pub(super) async fn apply_completion(
     let execution = match execution {
         Ok(execution) => execution,
         Err(failure) => {
+            let resource_lost = matches!(&failure, RuntimeError::SessionLost(_));
+            if resource_lost {
+                // Retire the original resource through the normal cleanup path;
+                // cleanup cannot prove the interrupted transaction's outcome.
+                let _ = super::release::release(
+                    state,
+                    CloseMode::RollbackAndClose,
+                    super::release::ReleaseReason::ResourceLost,
+                )
+                .await;
+                state.view.state = SessionState::Lost;
+                state.view.observed_context.transaction_state =
+                    crate::connection::TransactionState::Unknown;
+                state.view.observed_context.confidence =
+                    crate::connection::ContextConfidence::Unknown;
+            }
             state.handles.release_execution(&active.execution_id);
             remember(state, active.execution_id.clone(), ExecutionState::Failed);
             emit(
@@ -146,7 +162,11 @@ pub(super) async fn apply_completion(
                 AuditFacts {
                     kind: AuditKind::ExecutionCompleted,
                     outcome: Outcome::Undecided,
-                    error_code: Some(ExecutionErrorCode::HostRejected),
+                    error_code: Some(if resource_lost {
+                        ExecutionErrorCode::ResourceLost
+                    } else {
+                        ExecutionErrorCode::HostRejected
+                    }),
                     execution_state: Some(ExecutionState::Failed),
                     effect_outcome: Some(EffectOutcome::Unknown),
                     handle_count: state.handles.handle_count(),
