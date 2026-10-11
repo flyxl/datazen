@@ -34,6 +34,20 @@ Worktrees are `.worktrees/datazen-p346-{drivers,runtime,desktop}`. No track may 
 
 ## Remaining acceptance work
 
+Coordinator review is active. The resumed tracks remain unaccepted; their working diffs are not integrated.
+
+- Committed integration baseline `c0f15b65319eb331af8ebe11b7c86c7b05fa5460`: direct TypeScript check EXIT=0 (`/tmp/datazen-p346-root-committed-tsc.log`); HEAD unchanged and tracked diff SHA at both boundaries `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+- Runtime review requested artifact recovery count/size validation, publication failure handling, and export capability owner/TTL binding.
+- Runtime review found admission cancellation can orphan a target execution before its receipt; the runtime track is implementing owned admission and cleanup.
+- Cross-track contract uses typed `commandResult` artifact output for catalog commands, not fabricated row columns. Driver and runtime implementations must be checked together.
+- Host resource purpose must not be guessed from arbitrary `get_`/`list_` prefixes; runtime review requested validated command policy.
+- Desktop acceptance must preserve concrete sanitized database diagnostics and the existing error-to-success recovery journey.
+- Result writeback review: the baseline `ResultTableView` is a read-only adapter whose edit callback does not persist. Verified mapping and original-runtime writeback are an unimplemented P4 requirement, not an established baseline writeback regression.
+- Coordinator found accidental removal of terminal session/context events; runtime confirmed and is restoring them. Target admissions also need per-key coordination instead of a global lock across connection waits.
+- Fixed driver sessions must use per-resource locks; holding the transaction-map lock through SQL would serialize independent editors.
+- Metadata migration must preserve existing typed `list_catalog` / `read_relation_columns` / `read_relation_schema` semantics, configuration-aware cache identity and bounded batches; switching to legacy `list_tables` is insufficient.
+- Driver API dependency commit: `fec6c7fe2b3b82cfe8f63b56e3de9c37b201c597` (retained-session hooks and typed output); not yet independently accepted/integrated.
+
 - Driver fixed physical-session support for PostgreSQL/MySQL; both currently declare stateful editor sessions unsupported.
 - Host resource scope must consume provider connection-cost policy rather than constant 1.
 - Runtime transaction handle registration/retirement must match driver completion observations, avoiding duplicates and stale handles.
