@@ -6,18 +6,34 @@ pub(super) struct IssuedToken {
     operation: IdempotentOperation,
     epoch: Counter,
     handle: Option<SessionHandle>,
+    expires_at_nanos: u64,
 }
 fn operation(value: IdempotentOperation) -> SubmissionOperation {
     match value {
         IdempotentOperation::CreateProfile => SubmissionOperation::OpenSession,
         IdempotentOperation::OpenSession => SubmissionOperation::OpenSession,
         IdempotentOperation::ExecuteInSession => SubmissionOperation::ExecuteInSession,
+        IdempotentOperation::CancelExecution => SubmissionOperation::CancelExecution,
         IdempotentOperation::ExecuteAtTarget => SubmissionOperation::OpenSession,
         IdempotentOperation::SetSessionContext => SubmissionOperation::SetContext,
         IdempotentOperation::StartJob => SubmissionOperation::OpenSession,
     }
 }
 impl RuntimeConnectionUseCases {
+    pub fn validate_cancel_submission(
+        &self,
+        ctx: &RequestContext,
+        key: &IdempotencyKey,
+        execution_id: &ExecutionId,
+    ) -> Result<(), ApiError> {
+        let handle = self.inner.sink.handle(ctx, execution_id)?;
+        self.validate_token(
+            ctx,
+            key,
+            IdempotentOperation::CancelExecution,
+            Some(&handle),
+        )
+    }
     pub fn validate_profile_submission(
         &self,
         ctx: &RequestContext,
@@ -41,7 +57,9 @@ impl RuntimeConnectionUseCases {
         };
         if matches!(
             op,
-            IdempotentOperation::ExecuteInSession | IdempotentOperation::SetSessionContext
+            IdempotentOperation::ExecuteInSession
+                | IdempotentOperation::SetSessionContext
+                | IdempotentOperation::CancelExecution
         ) && handle.is_none()
         {
             return Err(ApiError::invalid_argument(
@@ -70,15 +88,20 @@ impl RuntimeConnectionUseCases {
                     "submission token unavailable",
                 )
             })?;
-        lock(&self.inner.tokens).insert(
+        let now = self.inner.clock.now_nanos();
+        let mut tokens = lock(&self.inner.tokens);
+        tokens.retain(|_, token| token.expires_at_nanos > now);
+        tokens.insert(
             token_digest(&key),
             IssuedToken {
                 ctx: ctx.clone(),
                 operation: op,
                 epoch,
                 handle: handle.cloned(),
+                expires_at_nanos: now.saturating_add(DEFAULT_TTL_NANOS),
             },
         );
+        drop(tokens);
         let expires = std::time::SystemTime::now()
             .checked_add(std::time::Duration::from_secs(86400))
             .and_then(|v| v.duration_since(std::time::UNIX_EPOCH).ok())

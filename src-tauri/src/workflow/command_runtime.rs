@@ -24,18 +24,13 @@ pub fn resolve_connection_id<'a>(
 /// here to give command steps the same inheritance a query step already gets
 /// from `step_database.or(inherited_database)` in `executor.rs`.
 ///
-/// Precedence mirrors the query branch: an explicit, non-blank
-/// `input.database` always wins; a blank one is treated as unset.
+/// An explicit `input.database` wins, including malformed values that must be
+/// rejected by execution validation rather than silently replaced.
 pub fn inject_inherited_database(
     mut input: serde_json::Value,
     workflow_database: &str,
 ) -> serde_json::Value {
-    let already_set = input
-        .get("database")
-        .and_then(|v| v.as_str())
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
-    if already_set {
+    if input.get("database").is_some_and(|value| !value.is_null()) {
         return input;
     }
     // `inject_sql_target_fields` already filters blank/empty values, so a
@@ -62,7 +57,23 @@ pub async fn execute_command_with_mode(
     workflow_connection: Option<&str>,
     permission_mode: Option<McpPermissionMode>,
 ) -> Result<CommandResult, WorkflowError> {
+    // Validate explicit namespace input before resolving or opening a resource.
+    // Null/absent fields inherit the workflow policy; malformed explicit fields
+    // must not silently execute against the connection's configured namespace.
+    for field in ["database", "schema"] {
+        if let Some(value) = step.input.get(field) {
+            if !value.is_null() && !value.as_str().is_some_and(|name| !name.trim().is_empty()) {
+                return Err(WorkflowError::Validation(format!(
+                    "explicit {field} must be a non-empty string"
+                )));
+            }
+        }
+    }
     let connection_id = resolve_connection_id(step, workflow_connection)?;
+    if matches!(step.command.as_str(), "query" | "execute") {
+        return super::independent_sql::execute(app_state, step, connection_id, permission_mode)
+            .await;
+    }
     let (_runtime_id, driver, handle) = app_state
         .connection_manager
         .resolve_session_for_connection(connection_id)
@@ -92,31 +103,7 @@ pub async fn execute_command_with_mode(
     )
     .map_err(|e| WorkflowError::Validation(e))?;
 
-    if matches!(definition.id.as_str(), "query" | "execute") {
-        if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
-            let read_only = app_state
-                .connection_manager
-                .get_session_config(&handle.id)
-                .await
-                .map(|c| c.read_only)
-                .unwrap_or(false);
-            let safe_mode = app_state.store.get_settings().await.safe_mode;
-            crate::sql_guard::check_sql(sql, read_only, safe_mode)
-                .map_err(WorkflowError::Validation)?;
-        }
-        if let Some(mode) = permission_mode {
-            if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
-                crate::mcp::permission::check_sql_allowed(sql, mode)
-                    .map_err(WorkflowError::Validation)?;
-            }
-        }
-    }
-
-    // Legacy SQL workflows can select a database per step. There is no session
-    // switch any more: the target travels with the command input so drivers
-    // that can qualify SQL inline (`qualify_sql_target`) rewrite unqualified
-    // relations to the step's database instead of the adapter re-pointing the
-    // shared pooled connection.
+    // Non-SQL driver commands retain their explicit namespace in the input.
     let mut input = step.input.clone();
     let database = input
         .get("database")

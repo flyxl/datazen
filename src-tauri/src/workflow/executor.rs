@@ -468,10 +468,10 @@ impl WorkflowExecutor {
                         .or_else(|| workflow_connection.map(str::to_string));
                     if let Some(connection_id) = effective_connection {
                         let config = app_state
-                            .connection_manager
-                            .get_session_config(&connection_id)
+                            .store
+                            .platform_profile(&connection_id)
                             .await
-                            .ok();
+                            .map(|(config, _)| config);
                         let multi_db = match config.as_ref() {
                             Some(c) => app_state
                                 .driver_registry
@@ -768,20 +768,16 @@ async fn effective_connection_name(
     workflow_connection: Option<&str>,
 ) -> Result<String, WorkflowError> {
     let id = command_runtime::resolve_connection_id(step, workflow_connection)?;
-    let (runtime_id, _, _) = app_state
-        .connection_manager
-        .resolve_session_for_connection(id)
-        .await
-        .map_err(|e| WorkflowError::ConnectionFailed {
-            connection_id: id.to_string(),
-            message: e.to_string(),
-        })?;
     app_state
-        .connection_manager
-        .get_session_config(&runtime_id)
+        .store
+        .platform_profile(id)
         .await
-        .map(|c| c.name)
-        .map_err(|e| WorkflowError::Driver(e.to_string()))
+        .filter(|(_, metadata)| metadata.enabled)
+        .map(|(config, _)| config.name)
+        .ok_or_else(|| WorkflowError::ConnectionFailed {
+            connection_id: id.to_owned(),
+            message: "profile unavailable".into(),
+        })
 }
 
 fn resolve_json_templates(

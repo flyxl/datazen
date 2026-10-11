@@ -24,6 +24,8 @@ pub(super) struct Resource {
     provider: Arc<dyn dr::ResourceProvider>,
     handle: dr::ResourceHandle,
     baseline: dr::Baseline,
+    connection_id: String,
+    config_revision: u64,
     epoch: u64,
     revision: tokio::sync::Mutex<u64>,
     last_context: tokio::sync::Mutex<rc::SessionContext>,
@@ -239,6 +241,8 @@ impl SessionBackend for DesktopSessionBackend {
                 provider,
                 handle,
                 baseline,
+                connection_id: request.connection_id.as_str().to_owned(),
+                config_revision: request.config_revision.0,
                 epoch: request.runtime_epoch,
                 revision: tokio::sync::Mutex::new(0),
                 last_context: tokio::sync::Mutex::new(map::context(&observation.context)),
@@ -258,12 +262,70 @@ impl SessionBackend for DesktopSessionBackend {
         request: ExecuteOnResource,
     ) -> Result<ResourceExecution, rc::ProviderError> {
         let resource = self.resource(&request.resource_id).await?;
+        let mut input = request.command.input.clone();
+        if matches!(
+            request.command.command.as_str(),
+            "query" | "execute" | "query_stream"
+        ) {
+            if let Some(params) = input.get("params").cloned() {
+                let sql = input
+                    .get("sql")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| {
+                        rc::ProviderError::HostRejected("SQL input unavailable".into())
+                    })?;
+                let bound_sql = crate::sql_guard::apply_params(sql, &params)
+                    .map_err(rc::ProviderError::HostRejected)?;
+                if let Some(object) = input.as_object_mut() {
+                    object.insert("sql".into(), serde_json::Value::String(bound_sql));
+                    object.remove("params");
+                }
+            }
+        }
+        let (config, metadata) = self
+            .store
+            .platform_profile(&resource.connection_id)
+            .await
+            .ok_or_else(|| rc::ProviderError::HostRejected("profile unavailable".into()))?;
+        if !metadata.enabled || metadata.config_revision != resource.config_revision {
+            return Err(rc::ProviderError::HostRejected(
+                "profile disabled or revision changed".into(),
+            ));
+        }
+        if matches!(
+            request.command.command.as_str(),
+            "query" | "execute" | "query_stream"
+        ) {
+            let sql = input
+                .get("sql")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| rc::ProviderError::HostRejected("SQL input unavailable".into()))?;
+            crate::sql_guard::check_sql(
+                sql,
+                config.read_only,
+                self.store.get_settings().await.safe_mode,
+            )
+            .map_err(rc::ProviderError::HostRejected)?;
+        }
         let publisher = self
             .publisher
             .read()
             .map_err(|_| rc::ProviderError::ProtocolError("publisher unavailable".into()))?
             .clone()
             .ok_or_else(|| rc::ProviderError::ProtocolError("publisher not installed".into()))?;
+        let started = std::time::Instant::now();
+        let record_history = request
+            .command
+            .input
+            .get("recordHistory")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let history_sql = request
+            .command
+            .input
+            .get("sql")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
         let execution = QueryExecutionId::new(request.execution_id.as_str());
         let cancel_handle = uuid::Uuid::new_v4().to_string();
         resource
@@ -276,10 +338,10 @@ impl SessionBackend for DesktopSessionBackend {
             id: request.execution_id.clone(),
             publisher: publisher.clone(),
         };
-        let call = dr::CommandCall::new(
-            request.command.command.clone(),
-            request.command.input.clone(),
-        );
+        if let Some(object) = input.as_object_mut() {
+            object.remove("recordHistory");
+        }
+        let call = dr::CommandCall::new(request.command.command.clone(), input);
         let result = match call.command.as_str() {
             "platform.beginTransaction" => resource
                 .provider
@@ -375,13 +437,50 @@ impl SessionBackend for DesktopSessionBackend {
             })?;
             *previous = observed_context.clone();
         }
+        let context_revision = *revision;
+        drop(previous);
+        drop(revision);
+        if record_history {
+            if let Some(sql) = history_sql {
+                let rows_affected = completion
+                    .as_ref()
+                    .map(|completion| {
+                        completion
+                            .statement_results
+                            .iter()
+                            .filter_map(|statement| statement.rows_affected)
+                            .reduce(u64::saturating_add)
+                    })
+                    .flatten();
+                let entry = crate::store::QueryHistoryEntry {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    connection_id: resource.connection_id.clone(),
+                    database: observed_context.namespace.database.clone(),
+                    schema: (!observed_context.namespace.schema.is_empty())
+                        .then(|| observed_context.namespace.schema.clone()),
+                    sql,
+                    executed_at: chrono::Utc::now(),
+                    execution_time_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64,
+                    rows_affected,
+                    success: state == rc::ExecutionState::Succeeded,
+                    error_message: if driver_failed {
+                        Some("executionFailed".into())
+                    } else {
+                        None
+                    },
+                };
+                if self.store.add_query_history(entry).await.is_err() {
+                    tracing::warn!("query history persistence failed");
+                }
+            }
+        }
         Ok(ResourceExecution {
             execution_id: request.execution_id.clone(),
             stream_id: rc::StreamId::new(format!("result:{}", request.execution_id.as_str())),
             state,
             effect_outcome: map::effect(effect_outcome),
             context_after: observed_context,
-            context_revision: *revision,
+            context_revision,
             handles: map::handles(driver_handles, &request.resource_id, resource.epoch),
             cancel_handle,
         })

@@ -152,6 +152,7 @@ impl RuntimeConnectionUseCases {
     /// 也没有权限替它加。逐会话的差别只能体现在 `physical.is_none()` / 未设期限 / 未到期
     /// 这三道闸门里，而它们都在 registry 内部，本层不需要重复判断。
     pub async fn reclaim_idle(&self) -> IdleReclamation {
+        self.inner.sink.reclaim_expired();
         let at_ms = self.inner.clock.now_ms();
         let evicted = self.inner.registry.evict_idle_at(at_ms).await;
         let mut result = IdleReclamation::default();

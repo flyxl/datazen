@@ -59,7 +59,16 @@ pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
         }
         "execute" => {
             let (sql, target) = sql_input_with_target(&input, "execute")?;
-            let rows_affected = driver.execute_at(handle, &sql, target).await?;
+            let rows_affected = if let Some(parameters) = input.get("boundParameters") {
+                let parameters: Vec<crate::Value> = serde_json::from_value(parameters.clone())
+                    .map_err(|_| DriverError::QueryFailed("invalid bound parameters".into()))?;
+                let sql = driver.qualified_sql(&sql, target);
+                driver
+                    .execute_with_params(handle, &sql, &parameters)
+                    .await?
+            } else {
+                driver.execute_at(handle, &sql, target).await?
+            };
             Ok(CommandResult::new(serde_json::json!({
                 "rowsAffected": rows_affected
             })))

@@ -1,4 +1,11 @@
-import { ApiError, type BackendClient, type ExecutionTarget, type NamespaceTarget, type OwnerRef, type SessionView } from '@datazen/backend-client';
+import {
+  ApiError,
+  type BackendClient,
+  type ExecutionTarget,
+  type NamespaceTarget,
+  type OwnerRef,
+  type SessionView,
+} from '@datazen/backend-client';
 import { EditorSessionController } from './EditorSessionController';
 
 /**
@@ -27,7 +34,15 @@ export class QueryPanelSessionRegistry {
   }
 
   /** Copy semantics: a new owner ID, a new controller — never the runtime handle. */
-  duplicate(_sourceKey: string, targetKey: string, target: ExecutionTarget, owner: OwnerRef): EditorSessionController {
+  duplicate(
+    _sourceKey: string,
+    targetKey: string,
+    target: ExecutionTarget,
+    owner: OwnerRef,
+  ): EditorSessionController {
+    if (this.controllers.has(targetKey)) {
+      throw new ApiError('ContextConflict', 'The destination pane already owns a session.');
+    }
     const fresh = new EditorSessionController(this.client, target, owner);
     this.controllers.set(targetKey, fresh);
     return fresh;
@@ -35,10 +50,12 @@ export class QueryPanelSessionRegistry {
 
   async remove(key: string): Promise<void> {
     const controller = this.controllers.get(key);
-    this.controllers.delete(key);
-    if (controller) {
-      try { await controller.close('requireNoTransaction'); } catch { /* session may already be gone */ }
-    }
+    if (!controller) return;
+    // Keep ownership reachable when the backend refuses to close an active
+    // transaction. A failed close must not turn the session into an orphan.
+    await controller.close('requireNoTransaction');
+    // A concurrent replacement owns the key now; never remove its controller.
+    if (this.controllers.get(key) === controller) this.controllers.delete(key);
   }
 }
 
@@ -62,13 +79,17 @@ export interface DatabaseSwitchOptions {
  * with the latest expectedContextRevision. Failed revision / transaction /
  * replacement leaves the previous runtime handle intact.
  */
-export async function switchDatabaseSession(options: DatabaseSwitchOptions): Promise<DatabaseSwitchResult> {
+export async function switchDatabaseSession(
+  options: DatabaseSwitchOptions,
+): Promise<DatabaseSwitchResult> {
   const { controller, desired } = options;
   try {
-    const current = await controller.refresh() ?? controller.snapshot;
+    const current = (await controller.refresh()) ?? controller.snapshot;
     const txState = current?.observedContext?.transactionState;
-    if (txState === 'active' || txState === 'unknown') {
-      const ok = options.confirmTransaction ? await options.confirmTransaction(current as SessionView) : false;
+    if (txState === 'active' || txState === 'aborted' || txState === 'unknown') {
+      const ok = options.confirmTransaction
+        ? await options.confirmTransaction(current as SessionView)
+        : false;
       if (!ok) return { status: 'cancelled' };
     }
     try {

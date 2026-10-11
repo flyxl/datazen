@@ -1,3 +1,4 @@
+import { runEditorQuery } from '../lib/session/runEditorQuery';
 import { queryCommands } from '../commands/query';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { applyQueryStreamEvent } from '../lib/queryStream';
@@ -137,6 +138,7 @@ export async function runStreamingQuery(
   schema?: string | null,
   /** Bound values use this same execution-handle stream. */
   params?: BindParams,
+  connectionId?: string,
 ): Promise<void> {
   const runId = ++streamRunCounter;
   const currentExec = getExec().get(paneKey);
@@ -170,7 +172,11 @@ export async function runStreamingQuery(
       schema: schema ?? null,
       ...(params && Object.keys(params).length > 0 ? { params } : {}),
     };
-    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, streamOptions);
+    if (connectionId) {
+      await runEditorQuery(paneKey, connectionId, sql, database, schema, params, onEvent);
+    } else {
+      await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, streamOptions);
+    }
     const exec = getExec().get(paneKey);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
@@ -200,6 +206,17 @@ export async function runBoundQuery(
   database?: string | null,
   /** Panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
+  connectionId?: string,
 ): Promise<void> {
-  await runStreamingQuery(paneKey, dbSessionId, sql, getExec, setExec, database, schema, params);
+  await runStreamingQuery(
+    paneKey,
+    dbSessionId,
+    sql,
+    getExec,
+    setExec,
+    database,
+    schema,
+    params,
+    connectionId,
+  );
 }

@@ -271,7 +271,13 @@ export function QueryPanel({
     [columnMap, currentDatabase, currentSchema, tables, views],
   );
 
-  const tx = useQueryTransaction({ dbSessionId });
+  const tx = useQueryTransaction({
+    dbSessionId,
+    paneKey: paneKey(panelId, paneId),
+    connectionId,
+    database: selectedDatabase,
+    schema: selectedSchema,
+  });
 
   const showMessageDialog = useCallback((text: string, kind: 'error' | 'success' = 'error') => {
     setMessageDialogText(text);

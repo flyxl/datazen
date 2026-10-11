@@ -448,11 +448,21 @@ impl ResourceProvider for MysqlResourceProvider {
             }
             "execute" => {
                 let sql = sql_of(&self.driver_id, &call.input)?;
-                let rows_affected = self
-                    .driver
-                    .execute_at(&connection, &sql, sql_target)
-                    .await
-                    .map_err(ResourceError::Driver)?;
+                let rows_affected = if let Some(parameters) = call.input.get("boundParameters") {
+                    let parameters: Vec<Value> = serde_json::from_value(parameters.clone())
+                        .map_err(|_| {
+                            ResourceError::Driver(DriverError::QueryFailed(
+                                "invalid bound parameters".into(),
+                            ))
+                        })?;
+                    let qualified = self.driver.qualified_sql(&sql, sql_target);
+                    self.driver
+                        .execute_with_params(&connection, &qualified, &parameters)
+                        .await
+                } else {
+                    self.driver.execute_at(&connection, &sql, sql_target).await
+                }
+                .map_err(ResourceError::Driver)?;
                 sink.write(ResultChunk {
                     statement_index: 0,
                     sql: sql.clone(),

@@ -40,24 +40,29 @@ pub(super) struct ExecutionEntry {
     pub stream: StreamId,
     pub view: ExecutionView,
     pub events: Vec<ConnectionEventEnvelope>,
+    sequence: u64,
     pub chunks: Vec<RuntimeArtifactChunk>,
     pub bytes: u64,
     pub outcome: Option<ResourceExecution>,
     pub created: std::time::Instant,
-    pub subscribers: Vec<std::sync::mpsc::Sender<ConnectionEventEnvelope>>,
+    pub subscribers: Vec<std::sync::mpsc::SyncSender<ConnectionEventEnvelope>>,
 }
 impl ExecutionEntry {
     fn event(&mut self, event: ConnectionEvent) {
+        self.sequence = self.sequence.saturating_add(1);
         let mut envelope = EventEnvelope::new(
             self.stream.clone(),
-            Counter::new(self.events.len() as u64 + 1),
+            Counter::new(self.sequence),
             self.handle.runtime_epoch.clone(),
             event,
         );
         envelope.session_handle = Some(self.handle.clone());
         self.subscribers
-            .retain(|tx| tx.send(envelope.clone()).is_ok());
+            .retain(|tx| tx.try_send(envelope.clone()).is_ok());
         self.events.push(envelope);
+        if self.events.len() > 4096 {
+            self.events.drain(..self.events.len() - 4096);
+        }
     }
     pub fn visible_to(&self, ctx: &RequestContext) -> bool {
         self.ctx.organization_id == ctx.organization_id
@@ -69,6 +74,14 @@ impl ExecutionEntry {
 #[derive(Clone, Default)]
 pub struct RuntimeResultSink(pub(super) Arc<Mutex<HashMap<ExecutionId, ExecutionEntry>>>);
 impl RuntimeResultSink {
+    /// Reclaim settled executions after their result retention expires. Active
+    /// executions retain their cancellation/ownership records until completion.
+    pub(super) fn reclaim_expired(&self) {
+        lock(&self.0).retain(|_, entry| {
+            !entry.view.state.is_terminal()
+                || entry.created.elapsed() <= std::time::Duration::from_secs(86400)
+        });
+    }
     pub fn publish_rows(
         &self,
         id: &ExecutionId,
@@ -116,6 +129,7 @@ impl RuntimeResultSink {
         output: Option<serde_json::Value>,
         source: Option<StatementResultSource>,
     ) -> Result<(), ApiError> {
+        self.reclaim_expired();
         let mut entries = lock(&self.0);
         let total_bytes = entries
             .values()
@@ -194,12 +208,14 @@ impl RuntimeResultSink {
         stream: StreamId,
         view: ExecutionView,
     ) {
+        self.reclaim_expired();
         let mut entry = ExecutionEntry {
             ctx,
             handle,
             stream,
             view,
             events: Vec::new(),
+            sequence: 0,
             chunks: Vec::new(),
             bytes: 0,
             outcome: None,
@@ -319,14 +335,43 @@ impl RuntimeResultSink {
             .values_mut()
             .find(|e| &e.stream == stream && e.visible_to(ctx))
             .ok_or_else(|| ApiError::new(ApiErrorCode::NotFound, "stream unavailable"))?;
-        let events = entry
-            .events
-            .iter()
-            .filter(|e| e.sequence.get() > after.map(|v| v.get()).unwrap_or(0))
-            .cloned()
-            .collect::<Vec<_>>();
-        let (tx, rx) = std::sync::mpsc::channel();
+        let replay_gap = entry.events.first().is_some_and(|event| {
+            event.sequence.get()
+                > after
+                    .map(|value| value.get())
+                    .unwrap_or(0)
+                    .saturating_add(1)
+        });
+        let reset = || {
+            let mut envelope = EventEnvelope::new(
+                entry.stream.clone(),
+                Counter::new(entry.sequence),
+                entry.handle.runtime_epoch.clone(),
+                ConnectionEvent::StreamResetRequired {
+                    reason: "eventReplayExpired".into(),
+                },
+            );
+            envelope.session_handle = Some(entry.handle.clone());
+            envelope
+        };
+        let events = if replay_gap {
+            vec![reset()]
+        } else {
+            entry
+                .events
+                .iter()
+                .filter(|e| e.sequence.get() > after.map(|v| v.get()).unwrap_or(0))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let (tx, rx) = std::sync::mpsc::sync_channel(256);
         if !entry.view.state.is_terminal() {
+            if entry.subscribers.len() >= 64 {
+                return Err(ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "execution subscriber limit reached",
+                ));
+            }
             entry.subscribers.push(tx);
         }
         Ok(Box::new(LiveSubscription {

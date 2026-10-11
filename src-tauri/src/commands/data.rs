@@ -74,6 +74,8 @@ pub struct ChangeWarning {
 pub struct RowChangePlan {
     pub plan_id: String,
     pub fingerprint: String,
+    #[serde(default)]
+    pub config_revision: Option<u64>,
     pub table: RowChangeTableContext,
     pub updates: Vec<PlannedStatement>,
     pub deletes: Vec<PlannedStatement>,
@@ -342,6 +344,7 @@ fn build_row_change_plan(
     Ok(RowChangePlan {
         plan_id: Uuid::new_v4().to_string(),
         fingerprint,
+        config_revision: None,
         table,
         updates,
         deletes,
@@ -399,10 +402,11 @@ fn validate_immutable_plan(
         ));
     }
     rebuilt.plan_id = plan.plan_id.clone();
+    rebuilt.config_revision = plan.config_revision;
     Ok(rebuilt)
 }
 
-fn bound_statement_for_plan(
+pub(super) fn bound_statement_for_plan(
     driver: &dyn crate::db::DatabaseDriver,
     table: &str,
     planned: &PlannedStatement,
@@ -446,15 +450,24 @@ pub(crate) async fn preview_pending_changes_impl(
     changes: Vec<PendingRowChange>,
 ) -> Result<RowChangePlan, CommandError> {
     tracing::info!(db_session_id = %table.db_session_id, table = %table.table, change_count = changes.len(), "preview_pending_changes");
-    let (driver, _handle) = state
-        .connection_manager
-        .get_session(&table.db_session_id)
+    let (config, metadata) = state
+        .store
+        .platform_profile(&table.connection_id)
         .await
-        .cmd_err("preview_pending_changes")?;
-    // Preview is deliberately pure with respect to the database: it obtains
-    // the driver only to call the dialect SQL builders and opens no transaction
-    // and executes no statement.
-    build_row_change_plan(driver.as_ref(), table, &changes)
+        .ok_or_else(|| CommandError::NotFound("Connection profile unavailable".into()))?;
+    if !metadata.enabled || config.database_type != table.driver_type {
+        return Err(CommandError::Validation(
+            "Table connection context changed".into(),
+        ));
+    }
+    let driver = state
+        .driver_registry
+        .get_sql_driver_by_name(config.database_type.as_str())
+        .await
+        .ok_or_else(|| CommandError::NotConfigured("Driver unavailable".into()))?;
+    let mut plan = build_row_change_plan(driver.as_ref(), table, &changes)?;
+    plan.config_revision = Some(metadata.config_revision);
+    Ok(plan)
 }
 
 #[tauri::command]
@@ -466,139 +479,6 @@ pub async fn preview_pending_changes(
     preview_pending_changes_impl(&state, context, changes).await
 }
 
-async fn execute_row_change_plan_impl(
-    state: &AppState,
-    db_session_id: &str,
-    driver: &std::sync::Arc<dyn crate::db::DatabaseDriver>,
-    handle: &crate::db::ConnectionHandle,
-    plan: &RowChangePlan,
-) -> Result<CommitPendingChangesResponse, CommandError> {
-    if plan.updates.is_empty() && plan.deletes.is_empty() {
-        return Ok(CommitPendingChangesResponse {
-            plan_id: plan.plan_id.clone(),
-            fingerprint: plan.fingerprint.clone(),
-            statements: Vec::new(),
-            affected_rows: 0,
-        });
-    }
-
-    // Build every statement before opening a transaction. Drivers without
-    // bound-write support reject the plan here, before any database side effect.
-    let updates = plan
-        .updates
-        .iter()
-        .map(|planned| bound_statement_for_plan(driver.as_ref(), &plan.table.table, planned, false))
-        .collect::<Result<Vec<_>, _>>()?;
-    let deletes = plan
-        .deletes
-        .iter()
-        .map(|planned| bound_statement_for_plan(driver.as_ref(), &plan.table.table, planned, true))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let session_open = state
-        .session_transactions
-        .lock()
-        .await
-        .contains_key(db_session_id);
-    let trait_tx = if session_open {
-        None
-    } else {
-        match driver.begin_transaction(handle).await {
-            Ok(tx) => Some(tx),
-            Err(DriverError::TransactionError(_)) => None,
-            Err(e) => return Err(CommandError::Driver(e)),
-        }
-    };
-
-    if !session_open && trait_tx.is_none() {
-        driver
-            .execute(handle, "BEGIN")
-            .await
-            .cmd_err("commit_pending_changes")?;
-    }
-
-    let result: Result<(Vec<RowCommitStatementResult>, u64), CommandError> = async {
-        let mut statements = Vec::with_capacity(plan.updates.len() + plan.deletes.len());
-        let mut affected_rows = 0;
-        for (planned, statement) in plan.updates.iter().zip(&updates) {
-            let affected = driver
-                .execute_with_params(handle, &statement.sql, &statement.parameters)
-                .await
-                .cmd_err("commit_pending_changes")?;
-            if affected != 1 {
-                return Err(CommandError::Validation(format!(
-                    "UPDATE for one row identity affected {affected} rows; refusing ambiguous write"
-                )));
-            }
-            affected_rows += affected;
-            statements.push(RowCommitStatementResult {
-                operation: "update".into(),
-                row_identity: planned.row_identity.clone(),
-                affected_rows: affected,
-            });
-        }
-        for (planned, statement) in plan.deletes.iter().zip(&deletes) {
-            let affected = driver
-                .execute_with_params(handle, &statement.sql, &statement.parameters)
-                .await
-                .cmd_err("commit_pending_changes")?;
-            if affected != 1 {
-                return Err(CommandError::Validation(format!(
-                    "DELETE for one row identity affected {affected} rows; refusing ambiguous write"
-                )));
-            }
-            affected_rows += affected;
-            statements.push(RowCommitStatementResult {
-                operation: "delete".into(),
-                row_identity: planned.row_identity.clone(),
-                affected_rows: affected,
-            });
-        }
-        Ok((statements, affected_rows))
-    }
-    .await;
-
-    match result {
-        Ok((statements, affected_rows)) => {
-            if session_open {
-                return Ok(CommitPendingChangesResponse {
-                    plan_id: plan.plan_id.clone(),
-                    fingerprint: plan.fingerprint.clone(),
-                    statements,
-                    affected_rows,
-                });
-            }
-            if let Some(tx) = trait_tx {
-                driver.commit(tx).await.cmd_err("commit_pending_changes")?;
-            } else {
-                driver
-                    .execute(handle, "COMMIT")
-                    .await
-                    .cmd_err("commit_pending_changes")?;
-            }
-            Ok(CommitPendingChangesResponse {
-                plan_id: plan.plan_id.clone(),
-                fingerprint: plan.fingerprint.clone(),
-                statements,
-                affected_rows,
-            })
-        }
-        Err(error) => {
-            if session_open {
-                return Err(error);
-            }
-            if let Some(tx) = trait_tx {
-                if let Err(rollback_error) = driver.rollback(tx).await {
-                    tracing::warn!("rollback failed: {rollback_error}");
-                }
-            } else if let Err(rollback_error) = driver.execute(handle, "ROLLBACK").await {
-                tracing::warn!("rollback failed: {rollback_error}");
-            }
-            Err(error)
-        }
-    }
-}
-
 pub(crate) async fn commit_pending_changes_impl(
     state: &AppState,
     request: CommitPendingChangesRequest,
@@ -608,67 +488,39 @@ pub(crate) async fn commit_pending_changes_impl(
         plan_id = %request.plan.plan_id,
         "commit_pending_changes"
     );
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&request.db_session_id)
-        .await
-        .cmd_err("commit_pending_changes")?;
-    let config = state
-        .connection_manager
-        .get_session_config(&request.db_session_id)
-        .await
-        .cmd_err("commit_pending_changes")?;
-    let owner = state
-        .connection_manager
-        .owner_connection_id(&request.db_session_id)
-        .await;
     validate_table_context(&request.plan.table)?;
-    if owner.as_deref() != Some(request.plan.table.connection_id.as_str()) {
-        return Err(CommandError::Validation(
-            "Row change plan belongs to a different connection".into(),
-        ));
-    }
-    if driver.driver_type() != request.plan.table.driver_type
-        || config.database_type != request.plan.table.driver_type
-    {
-        return Err(CommandError::Validation(
-            "Row change plan belongs to a different driver context".into(),
-        ));
-    }
-    if config.database != request.plan.table.database {
-        return Err(CommandError::Validation(
-            "Database context changed; reload and preview pending changes again".into(),
-        ));
-    }
-    // A connection-level schema is optional. When it is omitted, the table
-    // context may still contain the concrete schema returned by the
-    // navigator (for example PostgreSQL's `public`). Only an explicitly
-    // configured schema is a binding context that must match the preview.
-    if let Some(config_schema) = config.schema.as_deref() {
-        if request.plan.table.schema.as_deref() != Some(config_schema) {
-            return Err(CommandError::Validation(
-                "Schema context changed; reload and preview pending changes again".into(),
-            ));
-        }
-    }
-    let read_only = state
-        .connection_manager
-        .get_session_config(&request.db_session_id)
+    let (config, metadata) = state
+        .store
+        .platform_profile(&request.plan.table.connection_id)
         .await
-        .map(|config| config.read_only)
-        .unwrap_or(false);
-    if read_only {
+        .ok_or_else(|| CommandError::NotFound("Connection profile unavailable".into()))?;
+    if !metadata.enabled || config.database_type != request.plan.table.driver_type {
+        return Err(CommandError::Validation(
+            "Table connection context changed".into(),
+        ));
+    }
+    if request.plan.config_revision != Some(metadata.config_revision) {
+        return Err(CommandError::Validation(
+            "Connection configuration changed; preview the changes again".into(),
+        ));
+    }
+    if config.read_only {
         return Err(CommandError::Validation(
             "Connection is read-only; row changes are not allowed".into(),
         ));
     }
+    let driver = state
+        .driver_registry
+        .get_sql_driver_by_name(config.database_type.as_str())
+        .await
+        .ok_or_else(|| CommandError::NotConfigured("Driver unavailable".into()))?;
     let plan = validate_immutable_plan(
         driver.as_ref(),
         &request.db_session_id,
         &request.plan,
         &request.fingerprint,
     )?;
-    execute_row_change_plan_impl(&*state, &request.db_session_id, &driver, &handle, &plan).await
+    super::data_session::execute_plan(state, driver.as_ref(), &plan).await
 }
 
 #[tauri::command]

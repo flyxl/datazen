@@ -96,6 +96,8 @@ pub enum SubmissionOperation {
     SetContext,
     /// 会话内执行（`owner_runtime_epoch` 必填）。
     ExecuteInSession,
+    /// Cancel an execution bound to the issuing session epoch.
+    CancelExecution,
 }
 
 impl SubmissionOperation {
@@ -104,6 +106,7 @@ impl SubmissionOperation {
             Self::OpenSession => "open",
             Self::SetContext => "context",
             Self::ExecuteInSession => "execute",
+            Self::CancelExecution => "cancel",
         }
     }
 
@@ -112,6 +115,7 @@ impl SubmissionOperation {
             "open" => Some(Self::OpenSession),
             "context" => Some(Self::SetContext),
             "execute" => Some(Self::ExecuteInSession),
+            "cancel" => Some(Self::CancelExecution),
             _ => None,
         }
     }

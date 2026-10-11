@@ -70,10 +70,7 @@ impl RuntimeConnectionUseCases {
                         capability_snapshot: CapabilitySnapshot::new(profile.driver_id, "", 0),
                         executed_at: Timestamp::new(utc_now()),
                     }),
-                    artifact_ids: vec![ArtifactId::new(format!(
-                        "artifact-{}",
-                        receipt.execution_id.as_str()
-                    ))],
+                    artifact_ids: vec![],
                     result_completeness: ResultCompleteness::Pending,
                     truncation_reason: None,
                     error_code: None,
