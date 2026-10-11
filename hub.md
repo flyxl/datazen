@@ -96,3 +96,9 @@ This ledger must be deleted before delivery/merge to main.
 - Focused fix commits from coder worktree: `a67c3065a` adds `databaseDiscoveryTarget` with null namespace and uses it for `getDatabases`, and corrects the session-backend command classifier; `d2147f03a` corrects the runtime enqueue Query classifier. Combined candidate is now `2bb263fb4`.
 - This fix is not accepted yet. Independent verifier must rebuild with `pnpm tauri:build:webdriver`, then rerun PostgreSQL/MySQL multi-database tree and query selector WDIO paths against `2bb263fb4`; record matching gate source fingerprints. No unit tests/Cargo tests/Vitest/computer-use testing are authorized.
 - Before delivery, remove the diagnostic-only probe from tester's WDIO diff; review and retain only permanent safe journey assertions.
+
+## P6 Workflow SQL target guard
+
+- Code review found the SQL `Command` path (`query`/`execute`) entered `independent_sql::execute` without the same multi-database target requirement enforced by legacy Workflow `Query` steps.
+- Coder commit `40749f978` moves the existing `database_is_required` policy to the shared independent SQL entry. Multi-database drivers now require a step, workflow, or connection database before opening the SQL resource; single-database drivers remain allowed. Explicit malformed namespace values continue to fail validation before this guard.
+- This extends the earlier P6 Workflow SQL execution/cancellation/effect-diagnostic work. The commit is not yet part of the accepted candidate and has no compile or WDIO result; include it in the next isolated build and, where feasible, run Workflow WDIO against PostgreSQL/MySQL. No unit tests are authorized.
