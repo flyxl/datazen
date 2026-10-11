@@ -48,7 +48,7 @@ pub fn enforce_workflow_query_guards(
     Ok(())
 }
 
-/// Decide whether a query step must name a database before it can run.
+/// Decide whether a SQL step must name a database before it can run.
 ///
 /// True only when all three hold: the step (and workflow) resolved nothing,
 /// the connection pins no default of its own, and the driver can address more
@@ -453,46 +453,6 @@ impl WorkflowExecutor {
                     .as_deref()
                     .map(|s| context.resolve_template(s))
                     .transpose()?;
-                // A query step must land on a known database. If the step, the
-                // workflow AND the connection all leave it unset, the driver
-                // quietly falls back to its own default (PostgreSQL hardcodes
-                // `"postgres"` in `resolve_connect_database`) and the user sees
-                // a misleading `relation "..." does not exist` much later.
-                //
-                // Only multi-database drivers are gated: a driver with a single
-                // fixed database has nothing to disambiguate, and erroring
-                // there would break workflows that legitimately omit it.
-                if resolved_database.is_none() {
-                    let effective_connection = resolved_step_connection
-                        .clone()
-                        .or_else(|| workflow_connection.map(str::to_string));
-                    if let Some(connection_id) = effective_connection {
-                        let config = app_state
-                            .store
-                            .platform_profile(&connection_id)
-                            .await
-                            .map(|(config, _)| config);
-                        let multi_db = match config.as_ref() {
-                            Some(c) => app_state
-                                .driver_registry
-                                .get_capabilities(&c.database_type)
-                                .await
-                                .map(|caps| caps.has_multi_database)
-                                .unwrap_or(false),
-                            None => false,
-                        };
-                        if database_is_required(
-                            resolved_database.as_deref(),
-                            config.as_ref().and_then(|c| c.database.as_deref()),
-                            multi_db,
-                        ) {
-                            return Err(WorkflowError::MissingDatabase {
-                                step_id: id.clone(),
-                                connection_id,
-                            });
-                        }
-                    }
-                }
                 let command = WorkflowCommandStep::from_legacy_query(
                     id.clone(),
                     context.resolve_template(sql)?,
