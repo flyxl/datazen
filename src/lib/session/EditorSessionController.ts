@@ -24,6 +24,30 @@ export class EditorSessionController {
   ) { this.latestTarget = initialTarget; }
 
   get snapshot(): SessionView | null { return this.session; }
+  /** Project a lost resource without replacing its handle or execution receipt. */
+  markSessionLost(handle: SessionHandle | null = this.session?.handle ?? null): void {
+    if (!handle || !this.session || !sameHandle(handle, this.session.handle)) return;
+    this.session = { ...this.session, state: 'lost', observedContext: {
+      ...this.session.observedContext, transactionState: 'unknown',
+    } };
+    this.publish();
+  }
+  acceptSessionError(error: unknown, handle: SessionHandle | null = this.session?.handle ?? null): boolean {
+    if (!(error instanceof ApiError) || !['SessionLost', 'SessionNotFound', 'RuntimeEpochMismatch'].includes(error.code)) return false;
+    this.markSessionLost(handle);
+    return true;
+  }
+  async getExecution(executionId: ExecutionReceipt['executionId']) {
+    const handle = this.session?.handle ?? null;
+    try {
+      const view = await this.client.getExecution(executionId);
+      if (view.errorCode === 'resourceLost') this.markSessionLost(handle);
+      return view;
+    } catch (error) {
+      this.acceptSessionError(error, handle);
+      throw error;
+    }
+  }
   get activeExecution(): ExecutionReceipt | null { return this.execution; }
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -67,14 +91,19 @@ export class EditorSessionController {
   execute(call: CommandCall): Promise<ExecutionReceipt> {
     return this.serial(async () => {
       const session = await this.ensureSession();
-      const token = await this.token('executeInSession');
-      const receipt = await this.client.executeInSession({
-        handle: session.handle, expectedContextRevision: session.contextRevision,
-        call, idempotencyKey: token.idempotencyKey,
-      }, token);
-      this.execution = receipt;
-      this.publish();
-      return receipt;
+      try {
+        const token = await this.token('executeInSession');
+        const receipt = await this.client.executeInSession({
+          handle: session.handle, expectedContextRevision: session.contextRevision,
+          call, idempotencyKey: token.idempotencyKey,
+        }, token);
+        this.execution = receipt;
+        this.publish();
+        return receipt;
+      } catch (error) {
+        this.acceptSessionError(error, session.handle);
+        throw error;
+      }
     });
   }
 
@@ -144,12 +173,7 @@ export class EditorSessionController {
     try {
       view = await this.client.getSession(handle);
     } catch (error) {
-      if (error instanceof ApiError && ['SessionLost', 'SessionNotFound', 'RuntimeEpochMismatch'].includes(error.code)) {
-        if (this.session && sameHandle(handle, this.session.handle)) {
-          this.session = { ...this.session, state: 'lost' };
-          this.publish();
-        }
-      }
+      this.acceptSessionError(error, handle);
       throw error;
     }
     this.acceptSession(view);
@@ -157,6 +181,8 @@ export class EditorSessionController {
   }
   acceptSession(view: SessionView): boolean {
     if (!this.session || !sameHandle(view.handle, this.session.handle)) return false;
+    // A later stale observation cannot revive a handle declared lost.
+    if (this.session.state === 'lost' && !['lost', 'closed'].includes(view.state)) return false;
     if (counterValue(view.contextRevision) < counterValue(this.session.contextRevision)) return false;
     this.session = view;
     if (view.observedContext.confidence === 'confirmed') this.latestTarget = { ...this.latestTarget, namespace: view.observedContext.namespace };

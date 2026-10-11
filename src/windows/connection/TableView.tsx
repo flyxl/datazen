@@ -155,14 +155,24 @@ export function TableView({
   }, [refreshTxStatus]);
   const executeTableTransaction = useCallback(async (operation: 'begin' | 'commit' | 'rollback') => {
     const controller = await tableSessionController(panelId, context);
-    const receipt = await controller.execute({ command: `platform.${operation}Transaction`, input: { defersCommit: true } });
-    for (;;) {
-      const execution = await controller.client.getExecution(receipt.executionId);
-      if (execution.state === 'succeeded') break;
-      if (execution.state === 'failed' || execution.state === 'cancelled') throw new Error(execution.errorCode ?? 'Transaction outcome unavailable');
-      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    try {
+      const receipt = await controller.execute({ command: `platform.${operation}Transaction`, input: { defersCommit: true } });
+      for (;;) {
+        const execution = await controller.getExecution(receipt.executionId);
+        if (execution.state === 'succeeded') break;
+        if (execution.state === 'failed' || execution.state === 'cancelled') throw new Error(`${execution.errorCode ?? 'Transaction outcome unavailable'}; effect: ${execution.effectOutcome}`);
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      await controller.refresh();
+    } catch (error) {
+      if (!controller.acceptSessionError(error) && controller.snapshot?.state !== 'lost') {
+        // Observe resource loss after a terminal execution failure, while
+        // preserving the original transaction error and its effect outcome.
+        await controller.refresh().catch(() => undefined);
+      }
+      setTxLost(controller.snapshot?.state === 'lost' || controller.snapshot?.state === 'closed');
+      throw error;
     }
-    await controller.refresh();
   }, [panelId, context]);
   const handleBeginTx = useCallback(async () => {
     setTxBusy(true);
@@ -545,7 +555,7 @@ export function TableView({
           {txError}
           {txLost && <button className="ml-3 underline" data-testid="table-session-open-new" onClick={() => {
             void tableSessionController(panelId, context).then((controller) => controller.openNewSession())
-              .then(() => { setTxLost(false); setInTx(false); setTxError(null); actions.reload(); })
+              .then(() => { setTxLost(false); setInTx(false); actions.reload(); })
               .catch((error: unknown) => setTxError(extractErrorMessage(error, t('query.session.disconnected'))));
           }}>{t('query.session.openNew')}</button>}
         </div>
