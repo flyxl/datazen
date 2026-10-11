@@ -42,6 +42,7 @@ async function listObjects(
   dbSessionId: string,
   database: string,
   schema: string,
+  connectionId?: string,
 ): Promise<{ objects: SchemaDiffObjectIdentity[]; errors: SchemaDiffObjectLoadErrors['source'] }> {
   const objects: SchemaDiffObjectIdentity[] = [];
   const errors: SchemaDiffObjectLoadErrors['source'] = {};
@@ -49,7 +50,7 @@ async function listObjects(
   // connection for catalog reads and do not permit overlapping commands.
   for (const kind of OBJECT_KINDS) {
     try {
-      const rows = await databaseCommands.getDatabaseObjects(dbSessionId, kind, database, schema || null);
+      const rows = await databaseCommands.getDatabaseObjects(dbSessionId, kind, database, schema || null, connectionId);
       objects.push(...rows.map((object) => normalizeObject(object, kind)));
     } catch (error) {
       errors[kind] = error instanceof Error ? error.message : String(error);
@@ -96,11 +97,13 @@ export function useSchemaDiffUnifiedObjects() {
       targetDatabase: string,
       sourceSchema: string,
       targetSchema: string,
+      sourceConnectionId?: string,
+      targetConnectionId?: string,
     ): Promise<SchemaDiffObjectCatalog | null> => {
       const requestId = ++requestIdRef.current;
       const [source, target] = await Promise.all([
-        listObjects(sourceDbSessionId, sourceDatabase, sourceSchema),
-        listObjects(targetDbSessionId, targetDatabase, targetSchema),
+        listObjects(sourceDbSessionId, sourceDatabase, sourceSchema, sourceConnectionId),
+        listObjects(targetDbSessionId, targetDatabase, targetSchema, targetConnectionId),
       ]);
       if (requestId !== requestIdRef.current) return null;
 

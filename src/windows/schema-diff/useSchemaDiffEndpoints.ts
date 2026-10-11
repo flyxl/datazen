@@ -9,7 +9,7 @@ import {
   releaseDedicatedSession,
   type DedicatedSideSession,
 } from '../../lib/dedicatedDbSession';
-import { pickDefaultSchema, uniqueSchemasFromTables } from '../data-sync/utils';
+import { pickDefaultSchema } from '../data-sync/utils';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import {
   pickPrefillDatabase,
@@ -271,9 +271,9 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
     let cancelled = false;
     (async () => {
       try {
-        const tables = await databaseCommands.listTables(connId, sourceDatabase);
+        const catalog = await databaseCommands.listCatalog(connId, sourceDatabase, null, sourceId);
         if (cancelled) return;
-        const schemas = uniqueSchemasFromTables(tables);
+        const schemas = catalog.schemas;
         setSourceSchemas(schemas);
         setSourceSchema((prev) =>
           pickPrefillSchema(
@@ -324,9 +324,9 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
     let cancelled = false;
     (async () => {
       try {
-        const tables = await databaseCommands.listTables(connId, targetDatabase);
+        const catalog = await databaseCommands.listCatalog(connId, targetDatabase, null, targetId);
         if (cancelled) return;
-        const schemas = uniqueSchemasFromTables(tables);
+        const schemas = catalog.schemas;
         setTargetSchemas(schemas);
         setTargetSchema((prev) =>
           pickPrefillSchema(

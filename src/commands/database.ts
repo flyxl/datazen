@@ -47,11 +47,11 @@ export interface CommitPendingChangesRequest {
 const databaseDiscoveryInFlight = new Map<string, Promise<string[]>>();
 
 export const databaseCommands = {
-  getDatabases: (dbSessionId: string): Promise<string[]> => {
+  getDatabases: (dbSessionId: string, connectionId?: string): Promise<string[]> => {
     const existing = databaseDiscoveryInFlight.get(dbSessionId);
     if (existing) return existing;
     const discovery = Promise.resolve().then(async () =>
-      (await executeTargetCommand(databaseDiscoveryTarget(dbSessionId), {
+      (await executeTargetCommand(databaseDiscoveryTarget(dbSessionId, connectionId), {
         command: 'list_databases', input: {},
       }) as { databases: string[] }).databases,
     ).finally(() => {
@@ -67,16 +67,16 @@ export const databaseCommands = {
    * List a database's tables. `schema` is optional and only meaningful for
    * schema-aware engines (PostgreSQL, SQL Server); omit it to list every schema.
    */
-  listCatalog: async (dbSessionId: string, database: string, schema?: string | null) => {
-    const catalog = await executeTargetCommand(metadataTarget(dbSessionId, database, schema ?? null), {
+  listCatalog: async (dbSessionId: string, database: string, schema?: string | null, connectionId?: string) => {
+    const catalog = await executeTargetCommand(metadataTarget(dbSessionId, database, schema ?? null, undefined, connectionId), {
       command: 'list_catalog', input: { database, schema: schema ?? null },
     }) as import('@datazen/driver-sdk').ListCatalogOutput;
     if (!Array.isArray(catalog.relations) || !Array.isArray(catalog.schemas)) throw new Error('Invalid catalog result');
     return catalog;
   },
 
-  listTables: async (dbSessionId: string, database: string, schema?: string | null): Promise<TableInfo[]> => {
-    const catalog = await databaseCommands.listCatalog(dbSessionId, database, schema);
+  listTables: async (dbSessionId: string, database: string, schema?: string | null, connectionId?: string): Promise<TableInfo[]> => {
+    const catalog = await databaseCommands.listCatalog(dbSessionId, database, schema, connectionId);
     return catalog.relations.map((relation) => ({ name: relation.ref.name, schema: relation.ref.schema,
       tableType: relation.kind, rowCount: relation.rowCount }));
   },
@@ -132,8 +132,8 @@ export const databaseCommands = {
       fingerprint: params.fingerprint,
     }),
 
-  getDatabaseObjects: async (dbSessionId: string, kind: string, database?: string | null, schema?: string | null): Promise<DatabaseObject[]> => {
-    const result = await executeTargetCommand(metadataTarget(dbSessionId, database ?? null, schema ?? null), {
+  getDatabaseObjects: async (dbSessionId: string, kind: string, database?: string | null, schema?: string | null, connectionId?: string): Promise<DatabaseObject[]> => {
+    const result = await executeTargetCommand(metadataTarget(dbSessionId, database ?? null, schema ?? null, undefined, connectionId), {
       command: 'list_objects', input: { kind, database: database ?? null, schema: schema ?? null },
     }) as { objects?: DatabaseObject[] };
     if (!Array.isArray(result.objects)) throw new Error('Invalid object catalog result');

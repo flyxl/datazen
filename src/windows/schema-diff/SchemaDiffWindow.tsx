@@ -203,8 +203,8 @@ export function SchemaDiffWindow() {
       const tgtConnId = await endpoints.ensureConnected('target');
       if (!srcConnId || !tgtConnId) return;
       const [sourceRows, targetRows] = await Promise.all([
-        databaseCommands.listTables(srcConnId, endpoints.sourceDatabase),
-        databaseCommands.listTables(tgtConnId, endpoints.targetDatabase),
+        databaseCommands.listTables(srcConnId, endpoints.sourceDatabase, endpoints.sourceSchema || null, endpoints.sourceId),
+        databaseCommands.listTables(tgtConnId, endpoints.targetDatabase, endpoints.targetSchema || null, endpoints.targetId),
       ]);
       const catalog = await unifiedObjects.load(
         srcConnId,
@@ -213,6 +213,8 @@ export function SchemaDiffWindow() {
         endpoints.targetDatabase,
         endpoints.sourceSchema,
         endpoints.targetSchema,
+        endpoints.sourceId,
+        endpoints.targetId,
       );
       if (catalog) {
         unifiedObjects.restoreSelection(

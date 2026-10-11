@@ -38,23 +38,27 @@ export async function executeTargetCommand(target: ExecutionTarget, call: Comman
   }
 }
 
-/** The legacy tree id is used only to locate persistent ownership, never execute. */
+/** Dedicated callers supply persistent ownership; active callers can locate it by tree id. */
 export function metadataTarget(
   dbSessionId: string, database: string | null, schema: string | null, table?: string,
+  connectionId?: string,
 ): ExecutionTarget {
-  const entry = Object.values(useActiveConnectionStore.getState().connections)
-    .find((connection) => connection.dbSessionId === dbSessionId);
-  if (!entry) throw new ApiError('SessionLost', 'Metadata owner unavailable');
+  const entry = connectionId === undefined
+    ? Object.values(useActiveConnectionStore.getState().connections)
+      .find((connection) => connection.dbSessionId === dbSessionId)
+    : undefined;
+  const owner = connectionId ?? entry?.connectionId;
+  if (!owner) throw new ApiError('SessionLost', 'Metadata owner unavailable');
   return {
-    connectionId: toId(entry.connectionId) as ExecutionTarget['connectionId'],
-    namespace: { database: database ?? entry.currentDatabase, schema, catalog: null, path: [] },
+    connectionId: toId(owner) as ExecutionTarget['connectionId'],
+    namespace: { database: database ?? entry?.currentDatabase ?? null, schema, catalog: null, path: [] },
     object: table ? { kind: 'relation', name: table, signature: null } : null,
   };
 }
 
 /** Database discovery belongs to the connection, before any database is selected. */
-export function databaseDiscoveryTarget(dbSessionId: string): ExecutionTarget {
-  const target = metadataTarget(dbSessionId, null, null);
+export function databaseDiscoveryTarget(dbSessionId: string, connectionId?: string): ExecutionTarget {
+  const target = metadataTarget(dbSessionId, null, null, undefined, connectionId);
   return { ...target, namespace: { database: null, schema: null, catalog: null, path: [] } };
 }
 

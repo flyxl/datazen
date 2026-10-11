@@ -21,6 +21,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
     const connectionName = `Schema selection ${stamp}`;
     const sourceSchema = `sd_source_${stamp}`;
     const targetSchema = `sd_target_${stamp}`;
+    const emptySchema = `sd_empty_${stamp}`;
     const viewName = `selected_view_${stamp}`;
     const mainWindow = await browser.getWindowHandle();
     const mainUrl = await browser.getUrl();
@@ -34,10 +35,11 @@ describe('Schema Diff PostgreSQL selected schema', function () {
       saved = true;
       session = await invokeBackend<string>('connect', { connectionId });
       await withSafeModeOff(async () => {
-        for (const schema of [sourceSchema, targetSchema]) {
+        for (const schema of [sourceSchema, targetSchema, emptySchema]) {
           // CREATE without IF NOT EXISTS proves ownership before cleanup can drop it.
           await invokeBackend('execute_query', { dbSessionId: session, sql: `CREATE SCHEMA "${schema}"` });
           ownedSchemas.push(schema);
+          if (schema === emptySchema) continue;
           await invokeBackend('execute_query', {
             dbSessionId: session,
             sql: `CREATE VIEW "${schema}"."${viewName}" AS SELECT 1 AS id`,
@@ -49,8 +51,17 @@ describe('Schema Diff PostgreSQL selected schema', function () {
       await selectDzOptionInWrap('schema-diff-target', connectionName);
       await selectDzOptionInWrap('schema-diff-source-database', PG_SYNC_DB);
       await selectDzOptionInWrap('schema-diff-target-database', PG_SYNC_DB);
+      // An empty schema must be selectable from catalog.schemas, independent of relations.
+      await selectDzOptionInWrap('schema-diff-source-schema', emptySchema);
+      expect(await $('[data-testid="schema-diff-source-schema"]').getText()).toContain(emptySchema);
       await selectDzOptionInWrap('schema-diff-source-schema', sourceSchema);
       await selectDzOptionInWrap('schema-diff-target-schema', targetSchema);
+      // This fixture is connected only through backend/dedicated sessions;
+      // no workspace connection action registers it in activeConnectionStore.
+      expect(await $('[data-testid="schema-diff-source-database"]').getText()).toContain(PG_SYNC_DB);
+      expect(await $('[data-testid="schema-diff-target-database"]').getText()).toContain(PG_SYNC_DB);
+      expect(await $('[data-testid="schema-diff-source-schema"]').getText()).toContain(sourceSchema);
+      expect(await $('[data-testid="schema-diff-target-schema"]').getText()).toContain(targetSchema);
 
       await clickSchemaDiffNext();
       await browser.waitUntil(async () => {
@@ -97,7 +108,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
             });
             const remaining = await invokeBackend<QueryResultPayload>('execute_query', {
               dbSessionId: session,
-              sql: `SELECT count(*) AS c FROM pg_namespace WHERE nspname IN ('${sourceSchema}', '${targetSchema}')`,
+                sql: `SELECT count(*) AS c FROM pg_namespace WHERE nspname IN ('${sourceSchema}', '${targetSchema}', '${emptySchema}')`,
             });
             if (cleanupFailed || queryScalar(remaining, 'c') !== 0) {
               throw new Error('Schema selection fixture cleanup failed');
