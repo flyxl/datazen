@@ -197,16 +197,18 @@ jobs:
       - name: Structure editor guardrails
         run: node scripts/check-structure-editor-guardrails.mjs
 
-      # i18n 同步检查：AGENTS.md 把它归为"发布前"动作，原先挂在 ci.yml 里却是
-      # continue-on-error: true，于是常年是黄的、没人看，债累积到 8 个宿主语言
-      # 缺 832 个 key。移到这里让债在发布这一刻可见，而不是每个 PR 都亮一次。
+      # i18n 翻译完整性 = 发布硬阻断。裁定：发布出去的版本不能只有英文，
+      # 8 个宿主语言必须与 en.ts 的 key 集合完全一致，缺一个都不许发。
       #
-      # 刻意 continue-on-error：把它升级为发布硬阻断是一个策略变更（会立刻
-      # 卡住下一次发布，直到补齐翻译），需要单独决定，不能顺手夹带。
-      # 要升级时删掉下一行即可；补齐翻译走 i18n-sync skill。
-      - name: i18n translation completeness (advisory)
+      # 它原先挂在 ci.yml 里却是 continue-on-error: true，于是常年是黄的、没人看，
+      # 债累积到 8 个宿主语言缺 832 个 key——一个"看得见但没人当回事"的门禁，
+      # 等于没有门禁。现在它不再 advisory：债务会在发布这一刻挡住构建，
+      # 这正是它该待的位置。补齐翻译走 i18n-sync skill（只补，不改 en.ts）。
+      #
+      # 预期后果：版本已 bump 但翻译未补齐时，发布直接失败。bump-version skill
+      # 触发重建时必须一并跑 i18n-sync-check。
+      - name: i18n translation completeness (release blocker)
         run: node scripts/i18n-sync-check.mjs
-        continue-on-error: true
 
   build:
     # Secrets (Deploy Keys, Windows signing) live in Environment "release"

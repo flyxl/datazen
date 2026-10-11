@@ -85,18 +85,14 @@
 两个 `continue-on-error` 的一半在 workflow，另一半（断言它不存在的那条）也在
 `scripts/__tests__/` 下。**只改 workflow 永远不够，只改守卫也永远不够。**
 
-**⚠️ 不要做"把 `ci.yml` 里所有 `continue-on-error` 都清掉"的清扫。** 仓库四个 workflow
-里现存**恰好一处** `continue-on-error: true`，它**不属于**这个硬门禁：
+**⚠️ 这个硬门禁曾经有过一个例外，而且它已经被消除了。** 四个 workflow 里最后一处
+`continue-on-error: true` 是 `release.yml` 的 i18n 翻译完整性步——它把"翻译不全"降级成
+"黄色提醒"，于是 8 个宿主语言缺 **832 个 key** 长期无人理会，一个看得见但没人当回事的门禁
+等于没有门禁。现已裁定**发布不允许只有英文**：该步改为硬阻断（§2.1.3），全仓
+`continue-on-error: true` 归零。因此现在**不存在**"哪一步必须软"的例外清单；
+若将来重新引入 `continue-on-error: true`，必须同时更新本节并说明为何该失败不该阻断。
 
-```yaml
-- name: Guard i18n sync (warning only)
-  run: node scripts/i18n-sync-check.mjs
-  continue-on-error: true
-```
-
-那是 i18n 翻译完整性检查，步名里的 "(warning only)" 就是它的语义：翻译缺漏不该卡住
-一个功能 PR。`pnpm test:unit:driver-set` 步**必须没有** `continue-on-error`；上面这步
-**必须有**。全仓 grep 的"一处命中"是事实，不是待清理的残留。
+`pnpm test:unit:driver-set` 步**必须没有** `continue-on-error`；上面这条已不适用。
 
 **`testTimeout` 取值依据（实测，非拍脑袋）。** 对全部 5714 个 Host 用例逐条统计
 墙钟耗时（驱动集 `all`，8 核 macOS，`--reporter=json`），三个竞争档位：
@@ -213,16 +209,20 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 | 位置 | 守卫 | 判据 |
 |------|------|------|
 | `ci.yml` 每次 PR | stubs、IDs、layers、driver-protocol、boundaries、i18n key 冲突 | 改错了必须在**合并前**发现——每个 PR 都要付这个钱 |
-| `release.yml` `pre-release-guards` | version、ci-docs、structure-editor guardrails | 只在**发布这一刻**才有意义：版本号只在 `bump-version` 时变，CI 矩阵只随发布计划变，caps 注册表发布前查一次即可 |
+| `release.yml` `pre-release-guards` | version、ci-docs、structure-editor guardrails、**i18n 翻译完整性（硬阻断）** | 前三条只在**发布这一刻**才有意义：版本号只在 `bump-version` 时变，CI 矩阵只随发布计划变，caps 注册表发布前查一次即可。第四条是**发布政策**而非代码卫生——发布出去的版本不允许只有英文 |
 
-`pre-release-guards` 已进 `build` 的 `needs`，因此发布前这三条不过，发布构建就不启动——
-这是 workflow 的硬依赖，不是文档承诺。三条都只用 Node 内置模块读 git 跟踪文件，
+`pre-release-guards` 已进 `build` 的 `needs`，因此发布前这四条不过，发布构建就不启动——
+这是 workflow 的硬依赖，不是文档承诺。四条都只用 Node 内置模块读 git 跟踪文件，
 不碰 gitignored codegen，所以该 job 不需要 `resolve-drivers`、`pnpm install` 或任何 secret。
 
-`i18n-sync-check` 也在该 job，但保持 `continue-on-error`：它原先挂在 `ci.yml` 里也是
-`continue-on-error: true`，常年是黄的、没人看，债累积到 **8 个宿主语言缺 832 个 key**。
-移过来只是让这笔债在发布时可见。把它升级为发布硬阻断是一次策略变更（会立刻卡住
-下一次发布，直到补齐翻译），需单独决定，不在本次改动内。
+**i18n-sync-check 已是发布硬阻断。** 裁定：**发布出去的版本不能只有英文翻译**。它原先挂在
+`ci.yml` 里却是 `continue-on-error: true`，常年是黄的、没人看，债累积到 **8 个宿主语言缺
+832 个 key**——这正是"看得见但没人当回事"的门禁。现在删掉 `continue-on-error`，该步与
+其余三条同级：翻译不全，`build` 根本不启动。
+
+**已知后果，且是预期的**：版本已 bump 而翻译未补齐时，发布直接失败。这不是回归，
+是把一笔被掩盖的债显性化。`bump-version` skill 触发重建时必须一并跑
+`node scripts/i18n-sync-check.mjs`，缺失的 key 用 i18n-sync skill 补齐（只补翻译，不改 `en.ts`）。
 
 ### 2.2 rust job（Rust 段，浅克隆）
 
