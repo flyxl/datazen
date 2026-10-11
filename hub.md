@@ -8,7 +8,7 @@ All tracks start from `246835a9c`; the coordinator handles review, integration a
 
 | Track | Agent | Branch | Scope | State |
 | --- | --- | --- | --- | --- |
-| Drivers | `/root/p346_drivers` | `codex/p346-drivers` | PostgreSQL/MySQL fixed physical sessions and required neutral driver hooks | Coding |
+| Drivers | `/root/p346_driver_cancel_fix` | `codex/p346-drivers` | PostgreSQL/MySQL fixed physical sessions and required neutral driver hooks | Coding |
 | Runtime | `/root/p346_runtime` | `codex/p346-runtime` | P3 production ArtifactStore, resource policy and transaction handle lifecycle | Coding |
 | Desktop | `/root/p346_desktop` | `codex/p346-desktop` | P4 query/table/metadata/result consumers and existing WDIO assertions | Coding |
 
@@ -58,3 +58,14 @@ Coordinator review is active. The resumed tracks remain unaccepted; their workin
 Only WDIO tests are authorized. No Vitest/Cargo tests or computer-use testing. Never read env file contents; test programs may load configuration privately.
 
 This ledger must be deleted before delivery/merge to main.
+
+## Resumed integration snapshot (2026-10-12)
+
+- Driver implementation `0c107d0a9`, runtime `45bb4492a`, desktop `cd6496c7f` are committed; compile checks passed but independent live acceptance is incomplete.
+- Root Workflow diagnostics follow-up `529606200` compiled successfully, not yet independently accepted.
+- Isolated combined candidate `.worktrees/datazen-p346-candidate` at `aa6fe601d` includes exact API/helper dependencies, all three implementations, Workflow diagnostics, and WDIO preparation `aad272f3a` / `2f438abf1`. Only process-ledger add/add conflicts required resolution. Production source had no merge conflicts.
+- Existing independent driver tester resumed against this explicit candidate for webdriver build and actual PG/MySQL journeys. WDIO has not yet run on this candidate.
+- Driver cancellation paths hold a global execution lock across control network waits; repair coder is handling per-execution coordination and neutral early statementColumns production.
+- Runtime coder resumed controlled artifact export IPC follow-up. Desktop confirmed autocomplete browsing, latest target reopen, and source-context write guards in committed code.
+- New tester model request GPT-6 Luna ultra was rejected by tool: supported maximum is max. User clarification is pending; do not silently substitute a different model or effort. Existing tester continues its current round.
+- Root integration checkout still contains only previously integrated baseline, not unaccepted candidate implementations.
