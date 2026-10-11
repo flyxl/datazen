@@ -63,7 +63,7 @@ pub(super) async fn execute(
     // Query steps and SQL Command steps converge here after resolving workflow
     // inheritance and validating explicit namespace fields. Require a named
     // database before either path can acquire an independent SQL resource.
-    if super::executor::database_is_required(
+    if super::workflows::executor::database_is_required(
         step.input.get("database").and_then(serde_json::Value::as_str),
         config.database.as_deref(),
         driver.has_multi_database(),
