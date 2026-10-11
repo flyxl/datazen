@@ -148,6 +148,14 @@ This ledger must be deleted before delivery/merge to main.
 - P3 driver review found MySQL `close_resource` removes live registration before close is confirmed; repeat close can return `Closed` without rechecking physical state. The audit is confirming actor bypass and resource-accounting effects; no patch yet.
 - Independent verifier must rebuild after each production patch. Only PostgreSQL/MySQL WDIO is authorized; no computer-use, Vitest or Cargo/unit tests. Do not claim P3/P4/P6 complete until database tree, dedicated migration discovery/schema selection, driver cancel/session lifecycle, P4 result recovery and P6 timeout/cancel journeys pass on matching builds.
 
+## Latest wake continuation status (2026-10-12)
+
+- Candidate now includes the precise physical-disconnect classification fix `eb6d10547` and successful TableView recovery banner fix `3f32bb6a8`; latest candidate HEAD is `3f32bb6a8b2d0a1392c82b3414a092010e4c232c`. Both changes are isolated from the verifier tree. Full candidate `git diff --check` passes.
+- P4 coder `2ddb2b242` maps only confirmed PG/MySQL retained-session loss to typed `SessionLost`/`resourceLost`; normal SQL, permission and cancel errors keep their ordinary classification. Follow-up `d21e2d92f` clears the stale transaction error only after explicit new-session recovery succeeds and adjusts the PG/MySQL WDIO journey.
+- Independent verifier `/private/tmp/datazen-p346-verifier-r3` is still building old pinned candidate `6db665478` to finish its already-started build check; it has not started WDIO. This result cannot accept the latest candidate. A fresh Luna max verifier run must build `3f32bb6a8` and run only PG/MySQL WDIO for database discovery, schema selection, TableView recovery, retained resources and Workflow timeout.
+- To repair the verifier-only `node_modules` symlink, tester replaced it with a real directory and ran `pnpm install --frozen-lockfile` in that independent verifier tree (0 downloads). This conflicts with the repo environment note; no install has been run in the primary checkout. Reuse that verification tree after the current build exits and record the deviation.
+- No P3/P4/P6 WDIO acceptance exists yet for the current candidate; do not merge to main or mark complete. No computer-use, unit, Cargo or typecheck runs are authorized.
+
 ## Singleflight acceptance and next P4/P3 fixes (2026-10-12)
 
 - Clean PG/MySQL `multi-database.ts` WDIO on verifier HEAD `368a49e44554fb1336460a705e9325e463d6a2cb` (candidate source `d49edd39e`): EXIT=0, 6 passing / 0 failing / 0 pending. Both drivers passed E2E-001 database nodes, E2E-002 expand/tables, and E2E-003 QueryPanel selector. Fresh webdriver build EXIT=0 (24.54s; 2 bundles). Build code fingerprint `f708f6c3…`; WDIO patch diff SHA `8c28620a…` unchanged. No app/WDIO processes remain. This verifies the observed duplicate discovery scenario is fixed; the old unpaired receipt trace remains insufficient to prove a unique root cause.
