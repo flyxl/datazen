@@ -160,6 +160,24 @@ impl MysqlDriver {
                     sqlx::Either::Right(row) => {
                         if columns.is_empty() {
                             columns = Self::columns_of_row(&row);
+                            if let Err(error) = sink
+                                .write_output(serde_json::json!({
+                                    "kind": "statementColumns",
+                                    "statementIndex": statement_index,
+                                    "columns": columns,
+                                }))
+                                .await
+                            {
+                                delivery_error = Some(error);
+                                drain_deadline = Some(
+                                    tokio::time::Instant::now() + std::time::Duration::from_secs(5),
+                                );
+                                let _ = tokio::time::timeout(
+                                    std::time::Duration::from_secs(2),
+                                    self.cancel_query_with_execution(handle, execution_id),
+                                )
+                                .await;
+                            }
                         }
                         if delivery_error.is_some() {
                             continue;
@@ -284,6 +302,13 @@ impl MysqlDriver {
                 rows: Vec::new(),
                 rows_affected: Some(affected),
             })
+            .await?;
+            sink.write_output(serde_json::json!({
+                "kind": "statementMetadata",
+                "statementIndex": statement_index,
+                "columns": columns,
+                "truncated": truncated,
+            }))
             .await?;
             results.push(StatementResult {
                 sql: statement,

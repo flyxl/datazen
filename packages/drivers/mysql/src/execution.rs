@@ -10,6 +10,7 @@ pub(crate) const MYSQL_CONNECTION_ID_SQL: &str = "SELECT CONNECTION_ID()";
 
 pub(crate) struct MysqlQueryExecution {
     pub(crate) session_id: String,
+    pub(crate) cancel_gate: Arc<tokio::sync::Mutex<()>>,
     pub(crate) target_pool: Option<MySqlPool>,
     pub(crate) control_pool: Option<MySqlPool>,
     pub(crate) thread_id: Option<u64>,
@@ -27,11 +28,30 @@ impl super::MysqlDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
+        let gate = {
+            let executions = self.query_executions.lock().await;
+            match executions.get(execution_id) {
+                Some(execution) if execution.session_id == handle.id => {
+                    execution.cancel_gate.clone()
+                }
+                Some(_) => return Err(DriverError::QueryExecutionSessionMismatch),
+                None => return Ok(()),
+            }
+        };
+        // Keep the original connection occupied until its cancellation completes.
+        // Other executions never wait on this gate.
+        let _cancel_guard = gate.lock().await;
         let mut executions = self.query_executions.lock().await;
         if let Some(execution) = executions.get(execution_id) {
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
             }
+        }
+        if executions
+            .get(execution_id)
+            .is_some_and(|execution| !Arc::ptr_eq(&execution.cancel_gate, &gate))
+        {
+            return Ok(());
         }
         executions.remove(execution_id);
         Ok(())

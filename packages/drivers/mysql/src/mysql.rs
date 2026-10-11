@@ -1460,6 +1460,7 @@ impl DatabaseDriver for MysqlDriver {
         executions.insert(
             execution_id.clone(),
             MysqlQueryExecution {
+                cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
                 session_id: handle.id.clone(),
                 target_pool,
                 control_pool,
@@ -1933,9 +1934,20 @@ impl DatabaseDriver for MysqlDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
-        // Keep the registry entry locked until KILL QUERY completes. A MySQL
+        // Keep this execution gated until KILL QUERY completes. A MySQL
         // thread id belongs to a pooled connection and can be reused; early
         // cleanup could otherwise let a delayed cancel hit a later query.
+        let gate = {
+            let executions = self.query_executions.lock().await;
+            let execution = executions.get(execution_id).ok_or_else(|| {
+                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+            })?;
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            execution.cancel_gate.clone()
+        };
+        let _cancel_guard = gate.lock().await;
         let mut executions = self.query_executions.lock().await;
         let (thread_id, control_pool) = {
             let execution = executions.get_mut(execution_id).ok_or_else(|| {
@@ -1943,6 +1955,11 @@ impl DatabaseDriver for MysqlDriver {
             })?;
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            if !std::sync::Arc::ptr_eq(&execution.cancel_gate, &gate) {
+                return Err(DriverError::QueryExecutionNotFound(
+                    execution_id.as_str().into(),
+                ));
             }
             execution.cancel_requested = true;
             let Some(thread_id) = execution.thread_id else {
@@ -1953,8 +1970,10 @@ impl DatabaseDriver for MysqlDriver {
             (thread_id, execution.control_pool.clone())
         };
 
+        drop(executions);
+
         let Some(control_pool) = control_pool else {
-            if let Some(execution) = executions.get_mut(execution_id) {
+            if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                 execution.cancel_requested = false;
             }
             return Err(DriverError::ConnectionFailed(
@@ -1964,7 +1983,7 @@ impl DatabaseDriver for MysqlDriver {
         let mut conn = match control_pool.acquire().await {
             Ok(conn) => conn,
             Err(error) => {
-                if let Some(execution) = executions.get_mut(execution_id) {
+                if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                     execution.cancel_requested = false;
                 }
                 return Err(DriverError::ConnectionFailed(error.to_string()));
@@ -1974,7 +1993,7 @@ impl DatabaseDriver for MysqlDriver {
         match Self::execute_text_on_conn(&mut conn, &kill_sql).await {
             Ok(_) => Ok(()),
             Err(error) => {
-                if let Some(execution) = executions.get_mut(execution_id) {
+                if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                     execution.cancel_requested = false;
                 }
                 Err(DriverError::QueryFailed(error.to_string()))

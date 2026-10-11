@@ -12,6 +12,7 @@ pub(crate) const PG_CANCEL_BACKEND_SQL: &str = "SELECT pg_cancel_backend($1)";
 
 pub(crate) struct PgQueryExecution {
     pub session_id: String,
+    pub(crate) cancel_gate: Arc<tokio::sync::Mutex<()>>,
     pub target_pool: Option<PgPool>,
     pub control_pool: Option<PgPool>,
     pub backend_pid: Option<i32>,
@@ -105,11 +106,30 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
+        let gate = {
+            let executions = self.query_executions.lock().await;
+            match executions.get(execution_id) {
+                Some(execution) if execution.session_id == handle.id => {
+                    execution.cancel_gate.clone()
+                }
+                Some(_) => return Err(DriverError::QueryExecutionSessionMismatch),
+                None => return Ok(()),
+            }
+        };
+        // Keep the original connection occupied until its cancellation completes.
+        // Other executions never wait on this gate.
+        let _cancel_guard = gate.lock().await;
         let mut executions = self.query_executions.lock().await;
         if let Some(execution) = executions.get(execution_id) {
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
             }
+        }
+        if executions
+            .get(execution_id)
+            .is_some_and(|execution| !Arc::ptr_eq(&execution.cancel_gate, &gate))
+        {
+            return Ok(());
         }
         executions.remove(execution_id);
         Ok(())
@@ -362,6 +382,7 @@ impl PostgresDriver {
         executions.insert(
             execution_id.clone(),
             PgQueryExecution {
+                cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
                 session_id: handle.id.clone(),
                 target_pool,
                 control_pool,
@@ -378,6 +399,17 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
     ) -> Result<(), DriverError> {
+        let gate = {
+            let executions = self.query_executions.lock().await;
+            let execution = executions.get(execution_id).ok_or_else(|| {
+                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+            })?;
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            execution.cancel_gate.clone()
+        };
+        let _cancel_guard = gate.lock().await;
         let mut executions = self.query_executions.lock().await;
         let (backend_pid, control_pool) = {
             let execution = executions.get_mut(execution_id).ok_or_else(|| {
@@ -386,6 +418,11 @@ impl PostgresDriver {
             if execution.session_id != handle.id {
                 return Err(DriverError::QueryExecutionSessionMismatch);
             }
+            if !std::sync::Arc::ptr_eq(&execution.cancel_gate, &gate) {
+                return Err(DriverError::QueryExecutionNotFound(
+                    execution_id.as_str().into(),
+                ));
+            }
             execution.cancel_requested = true;
             let Some(backend_pid) = execution.backend_pid else {
                 return Ok(());
@@ -393,8 +430,10 @@ impl PostgresDriver {
             (backend_pid, execution.control_pool.clone())
         };
 
+        drop(executions);
+
         let Some(control_pool) = control_pool else {
-            if let Some(execution) = executions.get_mut(execution_id) {
+            if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                 execution.cancel_requested = false;
             }
             return Err(DriverError::ConnectionFailed(
@@ -404,7 +443,7 @@ impl PostgresDriver {
         let mut conn = match control_pool.acquire().await {
             Ok(conn) => conn,
             Err(error) => {
-                if let Some(execution) = executions.get_mut(execution_id) {
+                if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                     execution.cancel_requested = false;
                 }
                 return Err(DriverError::ConnectionFailed(error.to_string()));
@@ -418,14 +457,16 @@ impl PostgresDriver {
             Ok(row) => match row.try_get(0) {
                 Ok(cancelled) => cancelled,
                 Err(error) => {
-                    if let Some(execution) = executions.get_mut(execution_id) {
+                    if let Some(execution) =
+                        self.query_executions.lock().await.get_mut(execution_id)
+                    {
                         execution.cancel_requested = false;
                     }
                     return Err(DriverError::QueryFailed(error.to_string()));
                 }
             },
             Err(error) => {
-                if let Some(execution) = executions.get_mut(execution_id) {
+                if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                     execution.cancel_requested = false;
                 }
                 return Err(DriverError::QueryFailed(error.to_string()));
@@ -434,7 +475,7 @@ impl PostgresDriver {
         if cancelled {
             Ok(())
         } else {
-            if let Some(execution) = executions.get_mut(execution_id) {
+            if let Some(execution) = self.query_executions.lock().await.get_mut(execution_id) {
                 execution.cancel_requested = false;
             }
             Err(DriverError::QueryExecutionNotFound(format!(

@@ -140,3 +140,14 @@ Start/end tracked source diff SHA: `f569fbabd2f28717a2fa4f7c71ba728c3518698bd093
 No tests were added or run. Independent WDIO acceptance is pending.
 
 Delete this ledger before delivery.
+
+
+## Cancellation and streaming metadata follow-up — READY_FOR_TEST
+
+- PostgreSQL and MySQL cancellation now gate the addressed execution rather than holding the global execution registry across control connection acquisition/network SQL. Finish waits for the same execution gate before cleanup; entry identity is checked by Arc identity to avoid stale cancellation acting on a replacement registration. Existing immutable physical target identity remains intact.
+- Both drivers publish the existing neutral statementColumns output before the first row batch. Statement completion publishes statementMetadata including columns/truncated, covering empty query results too. Rejected early metadata publication follows the existing bounded cancel/drain path.
+- Existing registry test fixtures gained the required execution gate field; no tests were added or executed.
+- Compile-only command: CARGO_TARGET_DIR=/tmp/datazen-p346-cancel-fix-target cargo check -p datazen-driver-postgres -p datazen-driver-mysql --tests
+- CHECK_EXIT=0; log /tmp/datazen-p346-cancel-fix-check.log. Only existing PostgreSQL integration fixture unused variable warning.
+- Before/after HEAD 0c107d0a9f258159b495856cc089f48d982ad777; before/after tracked + untracked source SHA c165b0f21c12b3e3298dbb5d902afb96804259adfb3cf6b22ccf39d04049bd5f; both unchanged throughout compilation. git diff --check exit 0.
+- Independent WDIO acceptance is still required; this compile does not establish live cancel/finish races or UI streaming correctness.
