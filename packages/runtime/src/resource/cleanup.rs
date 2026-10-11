@@ -324,6 +324,9 @@ pub enum ReturnReason {
     /// 它仍然**不是故障**：`FixedSessionNotPoolable` 已经示范过「不归池」可以表达成用途。
     /// 15 个 path 驱动全部声明 `ResetForReuse::Unsupported`（驱动侧 `Default` 亦是
     /// `Unsupported`，失败安全），首版池为空是**正确行为**，这里让它显式、可观测。
+    ///
+    /// 与 [`Self::DriverDiscardedReset`] 的分工：那条发生在**执行阶段**（reset 已被调用，
+    /// 驱动答复不能复用），本条发生在**准入阶段**（reset 根本没被调用，能力就已否决）。
     DriverResetUnsupported,
 }
 
