@@ -119,9 +119,9 @@ export const databaseCommands = {
       fingerprint: params.fingerprint,
     }),
 
-  getDatabaseObjects: async (dbSessionId: string, kind: string, database?: string | null): Promise<DatabaseObject[]> => {
-    const result = await executeTargetCommand(metadataTarget(dbSessionId, database ?? null, null), {
-      command: 'list_objects', input: { kind, database: database ?? null },
+  getDatabaseObjects: async (dbSessionId: string, kind: string, database?: string | null, schema?: string | null): Promise<DatabaseObject[]> => {
+    const result = await executeTargetCommand(metadataTarget(dbSessionId, database ?? null, schema ?? null), {
+      command: 'list_objects', input: { kind, database: database ?? null, schema: schema ?? null },
     }) as { objects?: DatabaseObject[] };
     if (!Array.isArray(result.objects)) throw new Error('Invalid object catalog result');
     return result.objects;

@@ -38,14 +38,6 @@ function normalizeObject(
   };
 }
 
-function filterSchema(
-  objects: SchemaDiffObjectIdentity[],
-  schema: string,
-): SchemaDiffObjectIdentity[] {
-  if (!schema) return objects;
-  return objects.filter((object) => !object.schema || object.schema === schema);
-}
-
 async function listObjects(
   dbSessionId: string,
   database: string,
@@ -57,13 +49,13 @@ async function listObjects(
   // connection for catalog reads and do not permit overlapping commands.
   for (const kind of OBJECT_KINDS) {
     try {
-      const rows = await databaseCommands.getDatabaseObjects(dbSessionId, kind, database);
+      const rows = await databaseCommands.getDatabaseObjects(dbSessionId, kind, database, schema || null);
       objects.push(...rows.map((object) => normalizeObject(object, kind)));
     } catch (error) {
       errors[kind] = error instanceof Error ? error.message : String(error);
     }
   }
-  return { objects: filterSchema(objects, schema), errors };
+  return { objects, errors };
 }
 
 export function useSchemaDiffUnifiedObjects() {
