@@ -6,7 +6,10 @@ type Execution = { state: string; artifactIds: string[]; errorCode: string | nul
 
 describe('[tester] mysql retained resource journey', () => {
   it('retains identity, temp schema, typed rows, stream and rollback', async () => {
-    const profiles = await invokeBackend<Array<{ id: string; databaseType: string; database?: string }>>('get_connections');
+    const profiles = await browser.executeAsync((done: (rows: Array<{ id: string; databaseType: string; database?: string }>) => void) => {
+      const api = window as unknown as { __TAURI_INTERNALS__: { invoke: (command: string) => Promise<Array<{ id: string; databaseType: string; database?: string }>> } };
+      void api.__TAURI_INTERNALS__.invoke('get_connections').then(rows => done(rows.map(({ id, databaseType, database }) => ({ id, databaseType, database }))));
+    });
     const profile = profiles.find(p => p.databaseType === 'mysql' && p.database);
     if (!profile?.database) throw new Error('Required seeded mysql profile unavailable');
     const identity = await invokeBackend<{ clientInstanceId: string }>('get_platform_identity');
@@ -16,15 +19,20 @@ describe('[tester] mysql retained resource journey', () => {
       owner: { kind: 'editor', clientInstanceId: identity.clientInstanceId, editorSessionId: `driver-verify-${Date.now()}` }, idempotencyKey: token.idempotencyKey,
     } });
     const handle = opened.session.handle;
-    async function run(sql: string, boundParameters?: unknown[], command = 'query', extraInput: Record<string, unknown> = {}): Promise<{ rows: unknown[][]; outputs: unknown[]; execution: Execution }> {
+    async function run(sql: string, boundParameters?: unknown[], command = 'query', extraInput: Record<string, unknown> = {}, expectedState = 'succeeded', cancel = false): Promise<{ rows: unknown[][]; outputs: unknown[]; execution: Execution }> {
       const session = await invokeBackend<Session>('get_session', { request: { handle } });
       const issued = await invokeBackend<{ idempotencyKey: string }>('issue_submission_token', { request: { operation: 'executeInSession', handle } });
       const receipt = await invokeBackend<{ executionId: string }>('execute_in_session', { request: { handle, expectedContextRevision: session.contextRevision, call: { command, input: { sql, ...extraInput, ...(boundParameters ? { boundParameters } : {}) } }, idempotencyKey: issued.idempotencyKey } });
       let execution: Execution = { state: 'accepted', artifactIds: [], errorCode: null };
+      if (cancel) {
+        await browser.waitUntil(async () => (await invokeBackend<Execution>('get_execution', { request: { executionId: receipt.executionId } })).state === 'running', { timeout: 5000, interval: 50 });
+        const cancellation = await invokeBackend<{ idempotencyKey: string; expiresAt: string }>('issue_submission_token', { request: { operation: 'cancelExecution', handle } });
+        await invokeBackend('cancel_execution', { request: { executionId: receipt.executionId, submissionToken: cancellation } });
+      }
       await browser.waitUntil(async () => {
         execution = await invokeBackend<Execution>('get_execution', { request: { executionId: receipt.executionId } });
         return ['succeeded', 'failed', 'cancelled'].includes(execution.state);
-      }, { timeout: 20000, interval: 50, timeoutMsg: 'platform execution did not terminate' });
+      }, { timeout: cancel ? 5000 : 20000, interval: 50, timeoutMsg: 'platform execution did not terminate' });
       const rows: unknown[][] = [];
       const outputs: unknown[] = [];
       for (const artifactId of execution.artifactIds) {
@@ -37,7 +45,8 @@ describe('[tester] mysql retained resource journey', () => {
           if (++index >= Number(chunk.publishedChunkCount)) break;
         }
       }
-      expect(execution.state).toBe('succeeded');
+      if (cancel) expect(['failed', 'cancelled']).toContain(execution.state);
+      else expect(execution.state).toBe(expectedState);
       return { rows, outputs, execution };
     }
     try {
@@ -63,6 +72,10 @@ describe('[tester] mysql retained resource journey', () => {
         await run('ROLLBACK');
         const after = await run('SELECT label FROM driver_verify_temp WHERE id = 1');
         expect(after.rows[0]?.[0]).toBe('retained');
+        await run('SELECT SLEEP(10)', undefined, 'query', {}, 'cancelled', true);
+        await run('ROLLBACK');
+        const afterCancel = await run('SELECT id FROM driver_verify_temp');
+        expect(afterCancel.rows).toEqual([[1]]);
       });
     } finally {
       await invokeBackend('close_session', { request: { handle, mode: 'rollbackAndClose' } });
