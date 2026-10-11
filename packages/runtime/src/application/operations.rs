@@ -27,7 +27,7 @@ impl RuntimeConnectionUseCases {
                 | "list_objects"
                 | "get_object_ddl"
                 | "get_schemas"
-                | "get_databases"
+                | "list_databases"
                 | "list_catalog"
                 | "read_relation_columns"
                 | "read_relation_schema"
