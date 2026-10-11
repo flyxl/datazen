@@ -2,6 +2,18 @@
 
 Integration branch: `codex/p3-p4-p6-runtime`. Work is in progress; these phases are not accepted.
 
+## Active tracks
+
+All tracks start from `246835a9c`; the coordinator handles review, integration and WDIO acceptance.
+
+| Track | Agent | Branch | Scope | State |
+| --- | --- | --- | --- | --- |
+| Drivers | `/root/p346_drivers` | `codex/p346-drivers` | PostgreSQL/MySQL fixed physical sessions and required neutral driver hooks | Coding |
+| Runtime | `/root/p346_runtime` | `codex/p346-runtime` | P3 production ArtifactStore, resource policy and transaction handle lifecycle | Coding |
+| Desktop | `/root/p346_desktop` | `codex/p346-desktop` | P4 query/table/metadata/result consumers and existing WDIO assertions | Coding |
+
+Worktrees are `.worktrees/datazen-p346-{drivers,runtime,desktop}`. No track may edit another checkout. Review/verification must use a separate worktree from the coder.
+
 ## Existing implementation changes
 
 - Query execution, transactions and cancellation now use pane-owned session APIs.
