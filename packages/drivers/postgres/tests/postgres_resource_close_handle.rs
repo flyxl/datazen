@@ -556,6 +556,7 @@ mod live {
             matches!(
                 after,
                 ResourceError::InvalidResourceState { .. }
+                    | ResourceError::TransactionResolutionRequired { .. }
                     | ResourceError::Driver(_)
                     | ResourceError::OperationNotSupported { .. }
             ),
@@ -571,9 +572,14 @@ mod live {
         // The resource is untouched: the permit belongs to the resource, and
         // closing a handle must never be mistaken for closing the resource.
         assert!(!handle.is_closed());
+        // Exactly one acquire, charged at the resource's own pool cost: the
+        // config's effective pool size plus the single control-pool connection
+        // used for cancellation. The `interactive_scope(32)` above is only a
+        // ceiling the charge must fit under, never the charge itself.
+        let expected_charge = config.effective_max_pool_size() + 1;
         assert_eq!(
             ledger.acquired(),
-            vec![32],
+            vec![expected_charge],
             "the handle close must not have re-acquired a permit either"
         );
         assert!(
