@@ -217,4 +217,5 @@ Logs remain /tmp/datazen-p346-final-runtime.log and /tmp/datazen-p346-final-host
 
 - The first webdriver build of `300e6cf25` failed with Rust E0433 in `workflow/independent_sql.rs`: `executor` is nested under `workflow::workflows`, so `super::executor` was an invalid module path.
 - Coder fix `4761a67c1` changes the reference to `super::workflows::executor::database_is_required`; integrated candidate is `9e8118afb65ff0438210d04b301f795fd7f589dd`.
-- This fixes the statically identified compiler error only. No matching webdriver build has completed yet; the old `.app` is stale and must not be used. Independent PG/MySQL WDIO acceptance remains pending.
+- This fixes the statically identified compiler error. A fresh `pnpm tauri:build:webdriver` completed successfully on exact production-code HEAD `9e8118afb65ff0438210d04b301f795fd7f589dd`; it regenerated the `.app`. The old `.app` remains stale. Independent PG/MySQL WDIO acceptance is running/pending.
+- Static transport review confirmed the explicit Tauri argument envelope and byte-array conversion match `read_artifact_chunk`. Updated the existing transport unit-test expectation from the obsolete `read_artifact` name to the registered command; no unit tests were run, per scope.
