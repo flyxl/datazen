@@ -90,20 +90,42 @@ impl Default for PgTestConfig {
 /// Resolve a `TEST_PG_*` key from the **process environment only**.
 ///
 /// No file fallback, deliberately: see the module header. An unset key keeps
-/// the default, so a developer with a local server on the default port still
-/// gets a live run without exporting anything; the database defaults name
-/// dedicated `dz_fixture_` databases, and a server that does not have them
-/// simply skips the test (see `cross_database_reads_never_move_the_session`).
+/// the default, but only when *some* `TEST_PG_*` key is set — see
+/// `load_pg_config`.
 fn env_var(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|value| !value.is_empty())
 }
 
 /// Build the live-test config from `TEST_PG_*` process env.
 ///
-/// Returns `None` only when the caller must not proceed at all; today every
-/// key has a usable default, so the gate is decided by whether the server is
-/// actually reachable (see `cross_database_reads_never_move_the_session`).
+/// Returns `None` when **no** `TEST_PG_*` key is present at all. It stays silent
+/// so the caller reports once, through the gate, instead of printing a skip line
+/// a strict run would then contradict.
+///
+/// Why this is a gate and not just a default source: the defaults are connection
+/// parameters (`127.0.0.1:5432`, user `postgres`), but `database_a` /
+/// `database_b` are *fixture* names this test seeds into and drops tables in. A
+/// run with nothing exported that still connected would be reaching for whatever
+/// happens to sit at those names on the developer's own server — and on a
+/// machine with no PostgreSQL it would report the cross-database dimension
+/// "unverified" while pretending it had looked. Returning `None` makes the
+/// honest case (nobody configured anything) the same case the gate already knows
+/// how to fail, and it gives PostgreSQL the same semantics MySQL's
+/// `load_mysql_config` has had all along.
+///
+/// Behaviour change this makes, stated plainly: **no `TEST_PG_*` at all used to
+/// mean "connect to the built-in defaults"**, and now means "this dimension is
+/// unverified" — a red test by default, and an honest skip only under the
+/// explicit `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`. A machine with a local
+/// PostgreSQL on the default port must now export `TEST_PG_*` (at minimum host,
+/// user and the two database names) to get this run.
 fn load_pg_config() -> Option<PgTestConfig> {
+    let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_PG_"));
+
+    if !has_marker {
+        return None;
+    }
+
     let mut cfg = PgTestConfig::default();
     if let Some(v) = env_var("TEST_PG_HOST") {
         cfg.host = v;
@@ -207,7 +229,11 @@ async fn assert_handle_session_untouched(
 #[tokio::test]
 async fn cross_database_reads_never_move_the_session() {
     let Some(cfg) = load_pg_config() else {
-        unverified("TEST_PG_* is not in the process environment");
+        unverified(
+            "no `TEST_PG_*` in the process environment — this dimension needs two dedicated \
+             dz_fixture_ databases named explicitly, so it does not fall back to connection \
+             defaults that may address a developer's own server",
+        );
         return;
     };
 
