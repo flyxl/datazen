@@ -69,3 +69,11 @@ This ledger must be deleted before delivery/merge to main.
 - Runtime coder resumed controlled artifact export IPC follow-up. Desktop confirmed autocomplete browsing, latest target reopen, and source-context write guards in committed code.
 - New tester model request GPT-6 Luna ultra was rejected by tool: supported maximum is max. User clarification is pending; do not silently substitute a different model or effort. Existing tester continues its current round.
 - Root integration checkout still contains only previously integrated baseline, not unaccepted candidate implementations.
+
+## Agent settings and scheduled continuation
+
+- User confirmed future testers: GPT-6 Luna, max. Fresh independent tester `/root/p346_combined_verify_r2` is active.
+- User requests future coders: GPT-6.1 Sol, low; preserve currently running agents' work, use this setting when spawning coder instances.
+- One-time heartbeat `05-35-p3-p4-p6` is ACTIVE for 2026-10-12 05:35 Asia/Shanghai, attached to this chat; it resumes unfinished work and agents, then closes itself.
+- Updated combined candidate `74c61627509103636b6c7f0c57a6f2c55efeb6b6` includes driver cancellation fix `ec83ad3c9` and runtime export/quarantine source from final `e62798e67`; production source merged without conflicts.
+- Older frozen candidate `aa6fe601d` webdriver build succeeded. Initial real WDIO 0 passed / 2 failed: PG reached cancellation IPC after earlier identity/parameter/temp/schema/600-row/transaction journeys; MySQL fixture profile missing. Tester is fixing only diagnostic wrapper and fixtures before completing the round. Neither candidate is accepted.
