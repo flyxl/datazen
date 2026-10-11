@@ -153,6 +153,13 @@ Delete this ledger before delivery.
 - Independent WDIO acceptance is still required; this compile does not establish live cancel/finish races or UI streaming correctness.
 
 
+## Host artifact readback repair (2026-10-12)
+
+- Stage-split PG/MySQL WDIO probes confirmed that target submissions return `queued`, then terminate `succeeded` with `effectOutcome=completed`; each produces one artifact. Reading it fails before a database list reaches the UI.
+- `ExecutionProjection.recover()` calls `BackendClient.readArtifact`. Desktop's generic camelCase mapping generated `read_artifact`, but the only registered Host IPC is `read_artifact_chunk`. The explicit override is commit `fd812d7fd`, integrated as candidate commit `300e6cf25`.
+- Validation status: source trace and safe stage-split WDIO probe confirm the failing stage; the mapping still needs a matching `pnpm tauri:build:webdriver` and PostgreSQL/MySQL UI WDIO rerun. No tests other than authorized WDIO are in scope.
+
+
 # P3 runtime implementation ledger
 
 ## Implemented production paths
