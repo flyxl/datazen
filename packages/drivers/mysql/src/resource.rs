@@ -36,8 +36,8 @@ use datazen_driver_api::resource::{
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
     EffectOutcome, ExecutionCompletion, ExecutionState, ObservationConfidence, ResetDisposition,
-    ResourceHealth, SessionContext, SessionHandleRef, SessionObservation, SessionState,
-    TransactionObservation, TransactionOptions, TransactionState,
+    ResourceHealth, SessionContext, SessionHandleKind, SessionHandleRef, SessionObservation,
+    SessionState, TransactionObservation, TransactionOptions, TransactionState,
 };
 use datazen_driver_api::{
     ConnectionHandle, DatabaseDriver, DriverError, QueryExecutionId, SqlTarget, TransactionHandle,
@@ -52,6 +52,7 @@ use crate::resource_capabilities::{mysql_connection_cost, mysql_namespace_shape}
 /// [`MysqlResourceProvider::close_resource`].
 struct LiveResource {
     connection: ConnectionHandle,
+    fixed: bool,
     permit: BudgetPermit,
     budget: Arc<dyn BudgetPort>,
     /// The namespace this resource is currently pointed at, as last read back
@@ -202,6 +203,43 @@ impl MysqlResourceProvider {
         }
     }
 
+    fn reconcile_transaction(
+        &self,
+        handle: &ResourceHandle,
+        connection: &ConnectionHandle,
+        state: TransactionState,
+    ) {
+        let mut transactions = lock(&self.transactions);
+        if state == TransactionState::Idle {
+            transactions.remove(handle.resource_key());
+        } else if matches!(
+            state,
+            TransactionState::Active | TransactionState::Aborted | TransactionState::Unknown
+        ) {
+            transactions
+                .entry(handle.resource_key().into())
+                .or_insert_with(|| OpenTransaction {
+                    handle: TransactionHandle {
+                        id: format!("mysql_sql_tx_{}", uuid::Uuid::new_v4()),
+                        connection_id: connection.id.clone(),
+                    },
+                    snapshot: false,
+                });
+        }
+    }
+    fn session_handles_of(&self, handle: &ResourceHandle) -> Vec<SessionHandleRef> {
+        self.open_transaction_of(handle)
+            .map(|transaction| {
+                vec![SessionHandleRef::new(
+                    transaction.handle.id,
+                    SessionHandleKind::Transaction,
+                    handle.resource_key(),
+                    self.runtime_epoch,
+                )]
+            })
+            .unwrap_or_default()
+    }
+
     /// Take the open transaction off the resource, or report that there is
     /// none. A caller must never "commit" or "roll back" nothing successfully.
     fn take_transaction(
@@ -277,7 +315,7 @@ impl MysqlResourceProvider {
             transaction_observation: self.transaction_observation(handle),
             // `session_scoped_handles` is `Unsupported`: the provider issues
             // none, so it must not report any.
-            session_handles: Vec::new(),
+            session_handles: self.session_handles_of(handle),
             protocol_drained: true,
             // The command round-tripped on this very connection, which is
             // evidence of liveness.
@@ -345,10 +383,20 @@ impl ResourceProvider for MysqlResourceProvider {
             provider_id: self.driver_id.clone(),
             resource_key: request.connection_config.id.clone(),
             namespace_shape: self.namespace_shape.clone(),
-            session_continuity: SessionContinuity::Leased,
+            session_continuity: if fixed_purpose(request.purpose) {
+                SessionContinuity::Fixed
+            } else {
+                SessionContinuity::Leased
+            },
             reuse_policy: ReusePolicy::Unknown,
             initialization_requirements: Vec::<InitializationRequirement>::new(),
-            connection_cost_policy: mysql_connection_cost(&request.connection_config),
+            connection_cost_policy: if fixed_purpose(request.purpose) {
+                ConnectionCostPolicy::PoolBounded {
+                    max_physical_connections: 2,
+                }
+            } else {
+                mysql_connection_cost(&request.connection_config)
+            },
         })
     }
 
@@ -362,9 +410,19 @@ impl ResourceProvider for MysqlResourceProvider {
         // a caller's requested scope instead would let the budget admit a scope
         // the provider then exceeds, which is exactly what the descriptor
         // promises not to happen.
+        let fixed = fixed_purpose(request.scope.purpose)
+            || request.scope.pin_for_streaming
+            || request.scope.holds_open_transaction;
+        let cost = if fixed {
+            ConnectionCostPolicy::PoolBounded {
+                max_physical_connections: 2,
+            }
+        } else {
+            mysql_connection_cost(&request.connection_config)
+        };
         let ConnectionCostPolicy::PoolBounded {
             max_physical_connections: required,
-        } = mysql_connection_cost(&request.connection_config)
+        } = cost
         else {
             return Err(ResourceError::OperationNotSupported {
                 driver: self.driver_id.clone(),
@@ -373,8 +431,30 @@ impl ResourceProvider for MysqlResourceProvider {
                     .to_string(),
             });
         };
+        if request.scope.max_physical_connections < required {
+            return Err(ResourceError::BudgetDenied {
+                requested: required,
+                reason: "fixed data session plus independent control connection".into(),
+            });
+        }
+        if !request.baseline.initialization_requirements.is_empty() {
+            return Err(ResourceError::unsupported(
+                &self.driver_id,
+                "acquire_resource",
+                "baseline replay is unsupported",
+            ));
+        }
         let permit = budget.acquire_physical_connections(required).await?;
-        let connection = match self.driver.connect(&request.connection_config).await {
+        let mut config = request.connection_config.clone();
+        if request.target.database.is_some() {
+            config.database = request.target.database.clone();
+        }
+        let opened = if fixed {
+            self.driver.connect_fixed_session(&config).await
+        } else {
+            self.driver.connect(&config).await
+        };
+        let connection = match opened {
             Ok(connection) => connection,
             Err(error) => {
                 // The permit was taken before the connect; a failed connect must
@@ -398,6 +478,7 @@ impl ResourceProvider for MysqlResourceProvider {
             handle.resource_key().to_string(),
             LiveResource {
                 connection,
+                fixed,
                 permit,
                 budget: Arc::clone(budget),
                 target,
@@ -414,7 +495,29 @@ impl ResourceProvider for MysqlResourceProvider {
         sink: &dyn ResultSink,
     ) -> Result<ExecutionCompletion, ResourceError> {
         let connection = self.connection_of(handle, "execute_on_resource")?;
-        let target = self.target_of(handle)?;
+        let fixed = lock(&self.live)
+            .get(handle.resource_key())
+            .map(|resource| resource.fixed)
+            .unwrap_or(false);
+        if fixed
+            && !matches!(
+                call.command.as_str(),
+                "query" | "query_stream" | "execute" | "get_table_schema"
+            )
+        {
+            return Err(ResourceError::unsupported(
+                &self.driver_id,
+                "execute_on_resource",
+                "this catalog/admin command does not execute on a retained session",
+            ));
+        }
+        // Unqualified SQL resolves against the retained physical session,
+        // including a USE issued by the user in an earlier execution.
+        let target = if fixed {
+            NamespaceTarget::empty()
+        } else {
+            self.target_of(handle)?
+        };
         let sql_target = SqlTarget::new(target.database.as_deref(), target.schema.as_deref());
 
         // Register this execution id with the driver so `request_cancel` can
@@ -424,73 +527,78 @@ impl ResourceProvider for MysqlResourceProvider {
             .await
             .map_err(ResourceError::Driver)?;
 
-        let outcome = match call.command.as_str() {
-            "query" => {
-                let sql = sql_of(&self.driver_id, &call.input)?;
-                let multi = self
-                    .driver
-                    .query_multi_at(&connection, &sql, limit_of(&call.input), sql_target)
-                    .await
+        let outcome: Result<ExecutionCompletion, ResourceError> = async {
+            let completion = match call.command.as_str() {
+                "query" | "query_stream" => {
+                    let sql = sql_of(&self.driver_id, &call.input)?;
+                    let sql = self.driver.qualified_sql(&sql, sql_target);
+                    let parameters: Option<Vec<Value>> = call
+                        .input
+                        .get("boundParameters")
+                        .map(|value| serde_json::from_value(value.clone()))
+                        .transpose()
+                        .map_err(|_| {
+                            DriverError::InvalidConfig("invalid bound parameters".into())
+                        })?;
+                    let results = self
+                        .driver
+                        .query_to_sink(
+                            &connection,
+                            execution_id,
+                            &sql,
+                            limit_of(&call.input),
+                            parameters.as_deref(),
+                            sink,
+                        )
+                        .await?;
+                    self.completion(handle, results, self.effect_outcome(handle))
+                }
+                "execute" => {
+                    let sql = sql_of(&self.driver_id, &call.input)?;
+                    let rows_affected = if let Some(parameters) = call.input.get("boundParameters")
+                    {
+                        let parameters: Vec<Value> = serde_json::from_value(parameters.clone())
+                            .map_err(|_| {
+                                ResourceError::Driver(DriverError::QueryFailed(
+                                    "invalid bound parameters".into(),
+                                ))
+                            })?;
+                        let qualified = self.driver.qualified_sql(&sql, sql_target);
+                        self.driver
+                            .execute_with_params(&connection, &qualified, &parameters)
+                            .await
+                    } else {
+                        self.driver.execute_at(&connection, &sql, sql_target).await
+                    }
                     .map_err(ResourceError::Driver)?;
-                for (statement_index, statement) in multi.results.iter().enumerate() {
-                    // Awaiting the write is the backpressure signal: a slow
-                    // sink throttles the producer instead of buffering.
                     sink.write(ResultChunk {
-                        statement_index,
-                        sql: statement.sql.clone(),
-                        rows: statement.rows.clone(),
-                        rows_affected: statement.rows_affected,
+                        statement_index: 0,
+                        sql: sql.clone(),
+                        rows: Vec::new(),
+                        rows_affected: Some(rows_affected),
                     })
                     .await?;
+                    self.completion(handle, Vec::new(), self.effect_outcome(handle))
                 }
-                let results = multi.results;
-                self.completion(handle, results, self.effect_outcome(handle))
-            }
-            "execute" => {
-                let sql = sql_of(&self.driver_id, &call.input)?;
-                let rows_affected = if let Some(parameters) = call.input.get("boundParameters") {
-                    let parameters: Vec<Value> = serde_json::from_value(parameters.clone())
-                        .map_err(|_| {
-                            ResourceError::Driver(DriverError::QueryFailed(
-                                "invalid bound parameters".into(),
-                            ))
-                        })?;
-                    let qualified = self.driver.qualified_sql(&sql, sql_target);
-                    self.driver
-                        .execute_with_params(&connection, &qualified, &parameters)
+                other => {
+                    // Anything else is a driver command: the driver owns its own
+                    // dispatch (admin commands, DDL helpers, ...). The result is
+                    // carried losslessly as one JSON row.
+                    let result = self
+                        .driver
+                        .execute_command(&connection, other, call.input.clone())
                         .await
-                } else {
-                    self.driver.execute_at(&connection, &sql, sql_target).await
+                        .map_err(ResourceError::Driver)?;
+                    sink.write_output(
+                        serde_json::json!({ "kind": "commandResult", "data": result.data }),
+                    )
+                    .await?;
+                    self.completion(handle, Vec::new(), self.effect_outcome(handle))
                 }
-                .map_err(ResourceError::Driver)?;
-                sink.write(ResultChunk {
-                    statement_index: 0,
-                    sql: sql.clone(),
-                    rows: Vec::new(),
-                    rows_affected: Some(rows_affected),
-                })
-                .await?;
-                self.completion(handle, Vec::new(), self.effect_outcome(handle))
-            }
-            other => {
-                // Anything else is a driver command: the driver owns its own
-                // dispatch (admin commands, DDL helpers, ...). The result is
-                // carried losslessly as one JSON row.
-                let result = self
-                    .driver
-                    .execute_command(&connection, other, call.input.clone())
-                    .await
-                    .map_err(ResourceError::Driver)?;
-                sink.write(ResultChunk {
-                    statement_index: 0,
-                    sql: other.to_string(),
-                    rows: vec![vec![Some(Value::Json(result.data))]],
-                    rows_affected: None,
-                })
-                .await?;
-                self.completion(handle, Vec::new(), self.effect_outcome(handle))
-            }
-        };
+            };
+            Ok(completion)
+        }
+        .await;
 
         // Deregistering is best effort: a cleanup failure must not turn a
         // completed execution into an error the caller sees as a query failure.
@@ -506,6 +614,19 @@ impl ResourceProvider for MysqlResourceProvider {
             );
         }
 
+        let mut outcome = outcome?;
+        if fixed {
+            let context = self
+                .driver
+                .observe_fixed_session(&connection)
+                .await
+                .map_err(ResourceError::Driver)?;
+            self.reconcile_transaction(handle, &connection, context.transaction_state);
+            outcome.context_after = context.clone();
+            outcome.transaction_observation = self.transaction_observation(handle);
+            outcome.transaction_observation.state = context.transaction_state;
+            outcome.session_handles = self.session_handles_of(handle);
+        }
         sink.complete().await?;
         Ok(outcome)
     }
@@ -516,43 +637,39 @@ impl ResourceProvider for MysqlResourceProvider {
     ) -> Result<SessionObservation, ResourceError> {
         let connection = self.connection_of(handle, "observe_session")?;
         let revision = self.next_revision();
-        let transaction = self.transaction_observation(handle);
-        let transaction_state = transaction.state;
-
-        // Real read-back: the only accepted evidence of the current namespace.
-        let (namespace, observed) = match self.read_back_database(&connection).await? {
-            Some(database) => (NamespaceTarget::empty().with_database(database), true),
-            None => (NamespaceTarget::empty(), false),
+        let fixed = lock(&self.live)
+            .get(handle.resource_key())
+            .map(|resource| resource.fixed)
+            .unwrap_or(false);
+        let context = if fixed {
+            self.driver
+                .observe_fixed_session(&connection)
+                .await
+                .map_err(ResourceError::Driver)?
+        } else {
+            let mut context = SessionContext::unobserved();
+            context.namespace.database = self.read_back_database(&connection).await?;
+            context.confidence = if context.namespace.database.is_some() {
+                ObservationConfidence::Partial
+            } else {
+                ObservationConfidence::Unknown
+            };
+            context
         };
-        if observed {
-            self.store_target(handle, namespace.clone());
+        self.store_target(handle, context.namespace.clone());
+        if fixed {
+            self.reconcile_transaction(handle, &connection, context.transaction_state);
         }
-
+        let mut transaction = self.transaction_observation(handle);
+        if fixed {
+            transaction.state = context.transaction_state;
+        }
+        transaction.revision = revision;
         Ok(SessionObservation {
             state: SessionState::Ready,
-            context: SessionContext {
-                namespace,
-                // MySQL has no `search_path`, and the provider never queries
-                // the authenticated identity, so both stay empty rather than
-                // being guessed.
-                search_path: Vec::new(),
-                effective_identity: None,
-                transaction_state,
-                // `None` is "the driver cannot tell", which is the truth: the
-                // provider never issues `SELECT @@autocommit`.
-                autocommit: None,
-                // `Partial`, matching the declared `context_observation`: the
-                // namespace came off the wire but the transaction state is the
-                // provider's own bookkeeping, so the context as a whole is not
-                // fully confirmed.
-                confidence: if observed {
-                    ObservationConfidence::Partial
-                } else {
-                    ObservationConfidence::Unknown
-                },
-            },
+            context,
             transaction,
-            handles: Vec::new(),
+            handles: self.session_handles_of(handle),
             protocol_drained: true,
             resource_health: ResourceHealth::Healthy,
             context_revision: revision,
@@ -633,6 +750,15 @@ impl ResourceProvider for MysqlResourceProvider {
         // else is a plain transaction. The two are different wire statements,
         // so the distinction is preserved instead of being flattened.
         let snapshot = options.read_only == Some(true);
+        if !snapshot && options.isolation_level.is_some() {
+            self.driver
+                .execute(
+                    &connection,
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+                )
+                .await
+                .map_err(ResourceError::Driver)?;
+        }
         let transaction = if snapshot {
             self.driver.begin_read_snapshot(&connection).await
         } else {
@@ -662,7 +788,25 @@ impl ResourceProvider for MysqlResourceProvider {
         // Ownership and epoch validation only: the driver resolves the pinned
         // connection itself, out of the `TransactionHandle`.
         self.connection_of(handle, "commit_transaction")?;
-        let transaction = self.take_transaction(handle, "commit_transaction")?;
+        let transaction = match self.take_transaction(handle, "commit_transaction") {
+            Ok(transaction) => transaction,
+            Err(error) => {
+                if !lock(&self.live)
+                    .get(handle.resource_key())
+                    .map(|resource| resource.fixed)
+                    .unwrap_or(false)
+                {
+                    return Err(error);
+                }
+                OpenTransaction {
+                    handle: TransactionHandle {
+                        id: "fixed_sql_transaction".into(),
+                        connection_id: handle.resource_key().to_string(),
+                    },
+                    snapshot: false,
+                }
+            }
+        };
         let revision = self.next_revision();
         match self.driver.commit(transaction.handle).await {
             Ok(()) => Ok(TransactionObservation::finished(
@@ -688,7 +832,25 @@ impl ResourceProvider for MysqlResourceProvider {
         // Ownership and epoch validation only: the driver resolves the pinned
         // connection itself, out of the `TransactionHandle`.
         self.connection_of(handle, "rollback_transaction")?;
-        let transaction = self.take_transaction(handle, "rollback_transaction")?;
+        let transaction = match self.take_transaction(handle, "rollback_transaction") {
+            Ok(transaction) => transaction,
+            Err(error) => {
+                if !lock(&self.live)
+                    .get(handle.resource_key())
+                    .map(|resource| resource.fixed)
+                    .unwrap_or(false)
+                {
+                    return Err(error);
+                }
+                OpenTransaction {
+                    handle: TransactionHandle {
+                        id: "fixed_sql_transaction".into(),
+                        connection_id: handle.resource_key().to_string(),
+                    },
+                    snapshot: false,
+                }
+            }
+        };
         let revision = self.next_revision();
         match self.driver.rollback(transaction.handle).await {
             Ok(()) => Ok(TransactionObservation::finished(
@@ -827,28 +989,38 @@ impl ResourceProvider for MysqlResourceProvider {
         // one, so "closed + foreign" is still refused as the ownership
         // failure it is — postgres reports exactly that as
         // `InvalidResourceState`.
+        if !session_handle.belongs_to(handle.resource_key(), self.runtime_epoch)
+            || session_handle.kind != SessionHandleKind::Transaction
+        {
+            return Err(ResourceError::InvalidResourceState {
+                resource_key: handle.resource_key().into(),
+                operation: "close_handle".into(),
+                state: "foreign or unsupported session handle".into(),
+            });
+        }
         if handle.is_closed() {
             return Ok(());
         }
-        // Refused, never absorbed. This provider reports
-        // `session_scoped_handles = Unsupported` and every `ExecutionCompletion`
-        // it builds carries an empty `session_handles` list, so there is no
-        // cursor, prepared statement or transaction handle it ever issued.
-        // Returning `Ok(())` here would be indistinguishable from "closed" —
-        // the host would deregister the ref and judge the session clean while
-        // nothing was ever closed, which is exactly what §6.5 exists to
-        // prevent. The refusal names the handle so the mismatch is diagnosable
-        // rather than merely fatal.
-        Err(ResourceError::unsupported(
-            self.driver_id.as_str(),
-            "close_handle",
-            format!(
-                "this provider issues no session-scoped handles, so handle '{}' ({:?}) names \
-                 nothing this provider can close; session_scoped_handles is Unsupported and every \
-                 ExecutionCompletion reports an empty session_handles list",
-                session_handle.handle_id, session_handle.kind
-            ),
-        ))
+        let transaction = self.open_transaction_of(handle).ok_or_else(|| {
+            ResourceError::InvalidResourceState {
+                resource_key: handle.resource_key().into(),
+                operation: "close_handle".into(),
+                state: "transaction handle is not registered".into(),
+            }
+        })?;
+        if transaction.handle.id != session_handle.handle_id {
+            return Err(ResourceError::InvalidResourceState {
+                resource_key: handle.resource_key().into(),
+                operation: "close_handle".into(),
+                state: "transaction handle is not registered".into(),
+            });
+        }
+        self.driver
+            .rollback(transaction.handle)
+            .await
+            .map_err(ResourceError::Driver)?;
+        lock(&self.transactions).remove(handle.resource_key());
+        Ok(())
     }
 }
 
@@ -860,3 +1032,11 @@ mod test_support;
 #[cfg(test)]
 #[path = "resource_tests.rs"]
 mod tests;
+
+fn fixed_purpose(purpose: datazen_driver_api::resource::ResourcePurpose) -> bool {
+    matches!(
+        purpose,
+        datazen_driver_api::resource::ResourcePurpose::InteractiveQuery
+            | datazen_driver_api::resource::ResourcePurpose::AgentSession
+    )
+}

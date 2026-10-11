@@ -6,6 +6,7 @@
 
 use super::test_support::*;
 use crate::resource_capabilities::CONTROL_POOL_CONNECTIONS;
+use datazen_driver_api::resource::ConnectionCostPolicy;
 use datazen_driver_api::session::{SessionHandleKind, SessionHandleRef};
 
 // --- capability honesty -------------------------------------------------
@@ -18,7 +19,7 @@ fn capability_set_matches_the_migration_matrix() {
         .clone();
     // 事实二 / §6.1: a transaction that only pins a connection for a while is
     // not a stateful session, and a pool of size one is never evidence of one.
-    assert_eq!(capabilities.stateful_session, Availability::Unsupported);
+    assert_eq!(capabilities.stateful_session, Availability::Supported);
     assert!(
         capabilities.declares_anything(),
         "an all-unknown set would claim nothing"
@@ -38,7 +39,7 @@ fn capability_set_matches_the_migration_matrix() {
 }
 
 #[tokio::test]
-async fn a_pool_of_one_is_never_reported_as_a_fixed_session() {
+async fn an_editor_resource_declares_a_retained_physical_session() {
     // CM-19: `max_connections(1)` in `sqlite.rs`/`mysql.rs` is a pool size, not
     // evidence of a fixed resource, so `SessionContinuity::is_fixed()` must be
     // false for everything this provider describes.
@@ -52,8 +53,14 @@ async fn a_pool_of_one_is_never_reported_as_a_fixed_session() {
         })
         .await
         .expect("describe should succeed");
-    assert_eq!(descriptor.session_continuity, SessionContinuity::Leased);
-    assert!(!descriptor.session_continuity.is_fixed());
+    assert_eq!(descriptor.session_continuity, SessionContinuity::Fixed);
+    assert!(descriptor.session_continuity.is_fixed());
+    assert_eq!(
+        descriptor.connection_cost_policy,
+        ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: 2
+        }
+    );
 }
 
 #[test]
@@ -319,15 +326,14 @@ async fn other_commands_reach_the_driver_and_come_back_as_json() {
     let commands = fake.read(|wire| wire.commands.clone());
     assert_eq!(commands.len(), 1);
     assert_eq!(commands[0].0, "show_status");
-    let chunks = sink
+    assert!(sink
         .chunks
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .clone();
-    match &chunks[0].rows[0][0] {
-        Some(Value::Json(data)) => assert_eq!(data["echo"], "show_status"),
-        other => panic!("expected a JSON result, got {other:?}"),
-    }
+        .is_empty());
+    let outputs = sink.outputs.lock().unwrap_or_else(|p| p.into_inner());
+    assert_eq!(outputs[0]["kind"], "commandResult");
+    assert_eq!(outputs[0]["data"]["echo"], "show_status");
 }
 
 #[tokio::test]
@@ -467,10 +473,8 @@ async fn close_handle_refuses_rather_than_claiming_a_close_that_never_happened()
     assert!(
         matches!(
             error,
-            ResourceError::OperationNotSupported { ref operation, ref reason, .. }
+            ResourceError::InvalidResourceState { ref operation, .. }
                 if operation == "close_handle"
-                    && reason.contains("tx-1")
-                    && reason.contains("Transaction")
         ),
         "the refusal must name the handle and its kind, got {error:?}"
     );

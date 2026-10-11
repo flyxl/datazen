@@ -69,13 +69,23 @@ impl ResourceProvider for PostgresResourceProvider {
             // A pool lends a backend per statement. That is not a fixed
             // session, and claiming `Fixed` here is what would let a caller
             // pin assumptions the driver cannot keep.
-            session_continuity: SessionContinuity::Leased,
+            session_continuity: if fixed_purpose(request.purpose) {
+                SessionContinuity::Fixed
+            } else {
+                SessionContinuity::Leased
+            },
             reuse_policy: ReusePolicy::SingleUse,
             // No initialization protocol is proven for this driver, so none is
             // declared. `acquire_resource` refuses a non-empty baseline rather
             // than silently skipping it.
             initialization_requirements: Vec::new(),
-            connection_cost_policy: postgres_connection_cost(&request.connection_config),
+            connection_cost_policy: if fixed_purpose(request.purpose) {
+                datazen_driver_api::resource::ConnectionCostPolicy::PoolBounded {
+                    max_physical_connections: 2,
+                }
+            } else {
+                postgres_connection_cost(&request.connection_config)
+            },
             namespace_shape: self.namespace_shape.clone(),
         })
     }
@@ -91,7 +101,22 @@ impl ResourceProvider for PostgresResourceProvider {
             .acquire_physical_connections(physical_connections)
             .await?;
 
-        let connection = match self.driver.connect_impl(&request.connection_config).await {
+        let mut config = request.connection_config.clone();
+        if request.target.database.is_some() {
+            config.database = request.target.database.clone();
+        }
+        if request.target.schema.is_some() {
+            config.schema = request.target.schema.clone();
+        }
+        let fixed = fixed_purpose(request.scope.purpose)
+            || request.scope.pin_for_streaming
+            || request.scope.holds_open_transaction;
+        let opened = if fixed {
+            self.driver.open_fixed_session(&config).await
+        } else {
+            self.driver.connect_impl(&config).await
+        };
+        let connection = match opened {
             Ok(connection) => connection,
             Err(error) => {
                 // The connect failed, so the charge is released here and nowhere
@@ -128,7 +153,9 @@ impl ResourceProvider for PostgresResourceProvider {
             .await
             .map_err(ResourceError::Driver)?;
 
-        let outcome = self.run_command(handle, &resource, call, sink).await;
+        let outcome = self
+            .run_command(handle, &resource, call, execution_id, sink)
+            .await;
         // Either way the registration goes away: after this call the execution
         // is no longer running, and a later cancel must report that honestly
         // instead of replaying a stale registration.
@@ -146,11 +173,31 @@ impl ResourceProvider for PostgresResourceProvider {
     ) -> Result<SessionObservation, ResourceError> {
         let resource = self.resource_of(handle, "observe_session")?;
         let context = self.context_of(&resource).await?;
+        let resource = if self
+            .driver
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&resource.connection.id)
+        {
+            self.reconcile_transaction(handle, context.transaction_state)?
+        } else {
+            resource
+        };
         let revision = self.bump_revision(handle);
         // The observation was taken before the revision moved, so restate it
         // under the new revision: a caller comparing two observations must see
         // them as different.
         let mut transaction = self.transaction_observation_of(&resource);
+        if self
+            .driver
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&resource.connection.id)
+        {
+            transaction.state = context.transaction_state;
+        }
         transaction.revision = revision;
 
         Ok(SessionObservation {
@@ -448,4 +495,12 @@ impl ResourceProvider for PostgresResourceProvider {
                 ResourceError::Driver(error)
             })
     }
+}
+
+pub(super) fn fixed_purpose(purpose: datazen_driver_api::resource::ResourcePurpose) -> bool {
+    matches!(
+        purpose,
+        datazen_driver_api::resource::ResourcePurpose::InteractiveQuery
+            | datazen_driver_api::resource::ResourcePurpose::AgentSession
+    )
 }

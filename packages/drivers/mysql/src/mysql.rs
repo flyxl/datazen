@@ -6,6 +6,10 @@ mod catalog;
 mod connection;
 #[path = "execution.rs"]
 mod execution;
+#[path = "resource_stream.rs"]
+mod resource_stream;
+#[path = "schema_table.rs"]
+mod schema_table;
 #[path = "sql.rs"]
 mod sql;
 #[path = "type_decode.rs"]
@@ -143,13 +147,15 @@ pub struct MysqlDriver {
     /// Applied with `USE` on each acquired connection so pooled sessions stay consistent.
     pub(crate) active_databases: RwLock<HashMap<String, String>>,
     /// Open transactions: connection held for the lifetime of BEGIN…COMMIT/ROLLBACK, keyed by handle.id.
-    pub(crate) transactions: Mutex<HashMap<String, PoolConnection<MySql>>>,
+    pub(crate) fixed_states: RwLock<HashMap<String, datazen_driver_api::session::TransactionState>>,
+    pub(crate) fixed_sessions: RwLock<HashMap<String, u64>>,
+    pub(crate) transactions: Mutex<HashMap<String, std::sync::Arc<Mutex<PoolConnection<MySql>>>>>,
     /// Exact execution target registry. The MySQL thread id never leaves the
     /// driver; the host/UI only sees QueryExecutionId.
     pub(crate) query_executions: Mutex<HashMap<QueryExecutionId, MysqlQueryExecution>>,
     /// Independent control connections used only for KILL QUERY.
     pub(crate) control_pools: RwLock<HashMap<String, MySqlPool>>,
-    is_mariadb: bool,
+    pub(crate) is_mariadb: bool,
 }
 
 impl MysqlDriver {
@@ -165,6 +171,8 @@ impl MysqlDriver {
             pools: RwLock::new(HashMap::new()),
             active_databases: RwLock::new(HashMap::new()),
             transactions: Mutex::new(HashMap::new()),
+            fixed_sessions: RwLock::new(HashMap::new()),
+            fixed_states: RwLock::new(HashMap::new()),
             query_executions: Mutex::new(HashMap::new()),
             control_pools: RwLock::new(HashMap::new()),
             is_mariadb,
@@ -839,6 +847,32 @@ impl DatabaseDriver for MysqlDriver {
         }
     }
 
+    async fn connect_fixed_session(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ConnectionHandle, DriverError> {
+        self.open_fixed_session(config).await
+    }
+    async fn observe_fixed_session(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<datazen_driver_api::session::SessionContext, DriverError> {
+        self.read_fixed_session(handle).await
+    }
+
+    async fn query_to_sink(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        parameters: Option<&[Value]>,
+        sink: &dyn datazen_driver_api::resource::ResultSink,
+    ) -> Result<Vec<StatementResult>, datazen_driver_api::resource::ResourceError> {
+        self.stream_resource_query(handle, execution_id, sql, limit, parameters, sink)
+            .await
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         let opts = build_mysql_options(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);
@@ -945,18 +979,24 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
-        if let Some(mut conn) = self.transactions.lock().await.remove(&handle.id) {
-            let _ = Self::execute_text_on_conn(&mut conn, "ROLLBACK").await;
+        let removed = self.transactions.lock().await.remove(&handle.id);
+        if let Some(pinned) = removed {
+            let mut conn = pinned.lock().await;
+            let _ = Self::execute_text_on_conn(&mut *conn, "ROLLBACK").await;
         }
+        self.fixed_sessions.write().await.remove(&handle.id);
+        self.fixed_states.write().await.remove(&handle.id);
         self.active_databases.write().await.remove(&handle.pool_id);
         self.query_executions
             .lock()
             .await
             .retain(|_, execution| execution.session_id != handle.id);
-        if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
+        let removed_pool = self.pools.write().await.remove(&handle.pool_id);
+        if let Some(pool) = removed_pool {
             pool.close().await;
         }
-        if let Some(pool) = self.control_pools.write().await.remove(&handle.pool_id) {
+        let removed_pool = self.control_pools.write().await.remove(&handle.pool_id);
+        if let Some(pool) = removed_pool {
             pool.close().await;
         }
         Ok(())
@@ -1102,184 +1142,35 @@ impl DatabaseDriver for MysqlDriver {
         database: &str,
         schema: Option<&str>,
     ) -> Result<TableSchema, DriverError> {
-        let t0 = std::time::Instant::now();
         validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
+        let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+        if let Some(pinned) = pinned {
+            let mut conn = pinned.lock().await;
+            let db = if database.trim().is_empty() {
+                sqlx::query_scalar::<_, Option<String>>("SELECT DATABASE()")
+                    .fetch_one(&mut **conn)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?
+                    .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?
+            } else {
+                database.to_string()
+            };
+            return self
+                .table_schema_on_connection(&mut **conn, table, &db)
+                .await;
+        }
         let db = self.effective_database(handle, database).await;
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let pool = {
+            let pools = self.pools.read().await;
+            Self::get_pool(&pools, handle)?.clone()
+        };
         let mut conn = pool
             .acquire()
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-
-        // Fully qualified, so the SHOW family resolves against `database`
-        // instead of whatever schema the pooled connection happens to default
-        // to. MySQL accepts `db.table` here — no `USE`, no pollution.
-        let q = Self::qualified_table_ref(&db, table);
-
-        let col_rows = match sqlx::query(&format!("SHOW FULL COLUMNS FROM {}", q))
-            .fetch_all(&mut *conn)
+        self.table_schema_on_connection(&mut *conn, table, &db)
             .await
-        {
-            Ok(rows) => rows,
-            Err(e) => {
-                let err_msg = e.to_string();
-                if Self::is_table_not_found_error(&err_msg) {
-                    // Never report a missing relation as a table with no
-                    // columns: callers cache that, blanking the data grid.
-                    return Err(DriverError::QueryFailed(format!(
-                        "Table '{}' does not exist in database '{}'",
-                        Self::bare_table_name(table),
-                        db
-                    )));
-                }
-                return Err(DriverError::QueryFailed(err_msg));
-            }
-        };
-        let idx_rows = sqlx::query(&format!("SHOW INDEX FROM {}", q))
-            .fetch_all(&mut *conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let create_row = sqlx::query(&format!("SHOW CREATE TABLE {}", q))
-            .fetch_one(&mut *conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let table_options_row = sqlx::query(MYSQL_TABLE_OPTIONS_QUERY)
-            .bind(&db)
-            .bind(Self::bare_table_name(table))
-            .fetch_optional(&mut *conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let engine = table_options_row
-            .as_ref()
-            .and_then(|row| row.try_get::<Option<String>, _>("ENGINE").ok().flatten());
-        let charset = table_options_row.as_ref().and_then(|row| {
-            row.try_get::<Option<String>, _>("TABLE_CHARSET")
-                .ok()
-                .flatten()
-        });
-        let collation = table_options_row.as_ref().and_then(|row| {
-            row.try_get::<Option<String>, _>("TABLE_COLLATION")
-                .ok()
-                .flatten()
-        });
-        let table_comment = table_options_row.as_ref().and_then(|row| {
-            row.try_get::<Option<String>, _>("TABLE_COMMENT")
-                .ok()
-                .flatten()
-        });
-
-        tracing::info!(%table, col_rows = col_rows.len(), idx_rows = idx_rows.len(),
-            ms = t0.elapsed().as_millis() as u64,
-            "mysql get_table_schema: SHOW queries done");
-
-        // ── columns from SHOW FULL COLUMNS ──
-        let mut pk_names: Vec<String> = Vec::new();
-        let columns: Vec<ColumnSchema> = col_rows
-            .iter()
-            .map(|r| {
-                let name = decode_mysql_text(r, "Field");
-                let col_type = decode_mysql_text(r, "Type");
-                let nullable = decode_mysql_text(r, "Null");
-                let key = decode_mysql_text(r, "Key");
-                let extra = decode_mysql_text(r, "Extra");
-                let comment: Option<String> = {
-                    let s = decode_mysql_text(r, "Comment");
-                    if s.is_empty() {
-                        None
-                    } else {
-                        Some(s)
-                    }
-                };
-                let is_pk = key == "PRI";
-                if is_pk {
-                    pk_names.push(name.clone());
-                }
-                ColumnSchema {
-                    is_primary_key: is_pk,
-                    name,
-                    data_type: col_type,
-                    nullable: nullable == "YES",
-                    default_value: decode_mysql_text_opt(r, "Default"),
-                    comment,
-                    is_auto_increment: extra.contains("auto_increment"),
-                }
-            })
-            .collect();
-
-        // ── indexes from SHOW INDEX ──
-        let mut idx_map: HashMap<String, IndexInfo> = HashMap::new();
-        for r in &idx_rows {
-            let idx_name = decode_mysql_text(r, "Key_name");
-            let col_name = decode_mysql_text(r, "Column_name");
-            let non_unique: i64 = r.try_get::<i64, _>("Non_unique").unwrap_or(1);
-            let idx_type = decode_mysql_text(r, "Index_type");
-            let sub_part: Option<i64> = r
-                .try_get::<Option<i64>, _>("Sub_part")
-                .ok()
-                .flatten()
-                .or_else(|| {
-                    r.try_get::<Option<i32>, _>("Sub_part")
-                        .ok()
-                        .flatten()
-                        .map(|v| v as i64)
-                });
-            let col_spec = match sub_part {
-                Some(sp) if sp > 0 => format!("{col_name}({sp})"),
-                _ => col_name,
-            };
-
-            let entry = idx_map
-                .entry(idx_name.clone())
-                .or_insert_with(|| IndexInfo {
-                    name: idx_name.clone(),
-                    columns: Vec::new(),
-                    is_unique: non_unique == 0,
-                    is_primary: idx_name == "PRIMARY",
-                    index_type: idx_type,
-                });
-            entry.columns.push(col_spec);
-        }
-
-        let primary_keys = idx_map
-            .get("PRIMARY")
-            .map(|idx| {
-                idx.columns
-                    .iter()
-                    .map(|c| c.split('(').next().unwrap_or(c).to_string())
-                    .collect()
-            })
-            .unwrap_or(pk_names);
-
-        let mut indexes: Vec<IndexInfo> = idx_map.into_values().collect();
-        indexes.sort_by(|a, b| b.is_primary.cmp(&a.is_primary).then(a.name.cmp(&b.name)));
-
-        // ── foreign keys parsed from SHOW CREATE TABLE output ──
-        let create_sql = decode_mysql_text_idx(&create_row, 1);
-        let foreign_keys = Self::parse_fk_from_create_table(&create_sql);
-        let check_constraints = Self::parse_check_from_create_table(&create_sql);
-
-        tracing::info!(%table, cols = columns.len(), indexes = indexes.len(), fks = foreign_keys.len(), checks = check_constraints.len(),
-            total_ms = t0.elapsed().as_millis() as u64, "mysql get_table_schema: complete");
-
-        Ok(TableSchema {
-            table_name: table.to_string(),
-            columns,
-            primary_keys,
-            indexes,
-            foreign_keys,
-            check_constraints,
-            table_options: TableOptions {
-                supports_consistent_snapshot: Some(supports_consistent_snapshot_engine(
-                    engine.as_deref(),
-                )),
-                engine,
-                charset,
-                collation,
-                comment: table_comment,
-                ..TableOptions::default()
-            },
-        })
     }
 
     async fn query(
@@ -1287,9 +1178,14 @@ impl DatabaseDriver for MysqlDriver {
         handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<QueryResult, DriverError> {
+        if let Some(state) = self.fixed_states.write().await.get_mut(&handle.id) {
+            *state = datazen_driver_api::session::TransactionState::Unknown;
+        }
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 let start = Instant::now();
                 let rows = sqlx::query(sql)
                     .fetch_all(&mut **conn)
@@ -1339,6 +1235,9 @@ impl DatabaseDriver for MysqlDriver {
         sql: &str,
         limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError> {
+        if let Some(state) = self.fixed_states.write().await.get_mut(&handle.id) {
+            *state = datazen_driver_api::session::TransactionState::Unknown;
+        }
         let statements = split_mysql_statements(sql);
         if statements.is_empty() {
             return Ok(MultiQueryResult {
@@ -1350,8 +1249,10 @@ impl DatabaseDriver for MysqlDriver {
         let total_start = Instant::now();
         let mut results = Vec::with_capacity(statements.len());
 
-        let mut txs = self.transactions.lock().await;
-        if let Some(conn) = txs.get_mut(&handle.id) {
+        let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+        if let Some(pinned) = pinned {
+            let mut conn = pinned.lock().await;
             for stmt in &statements {
                 let (effective_sql, applied_limit) = apply_mysql_select_limit(stmt, limit);
                 let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
@@ -1394,7 +1295,7 @@ impl DatabaseDriver for MysqlDriver {
                         truncated,
                     });
                 } else {
-                    let result = Self::execute_text_on_conn(conn, effective_sql.as_str())
+                    let result = Self::execute_text_on_conn(&mut *conn, effective_sql.as_str())
                         .await
                         .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                     let stmt_ms = stmt_start.elapsed().as_millis() as u64;
@@ -1415,7 +1316,6 @@ impl DatabaseDriver for MysqlDriver {
                 total_time_ms: total_start.elapsed().as_millis() as u64,
             });
         }
-        drop(txs);
 
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
@@ -1496,6 +1396,9 @@ impl DatabaseDriver for MysqlDriver {
         limit: Option<u32>,
         on_event: QueryStreamCallback,
     ) -> Result<(), DriverError> {
+        if let Some(state) = self.fixed_states.write().await.get_mut(&handle.id) {
+            *state = datazen_driver_api::session::TransactionState::Unknown;
+        }
         let statements = split_mysql_statements(sql);
         if statements.is_empty() {
             on_event(QueryStreamEvent::Done { total_time_ms: 0 });
@@ -1504,8 +1407,10 @@ impl DatabaseDriver for MysqlDriver {
 
         let total_start = Instant::now();
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 for (index, stmt) in statements.iter().enumerate() {
                     Self::stream_one_statement(&mut **conn, stmt, limit, index, &on_event).await?;
                 }
@@ -1558,7 +1463,7 @@ impl DatabaseDriver for MysqlDriver {
                 session_id: handle.id.clone(),
                 target_pool,
                 control_pool,
-                thread_id: None,
+                thread_id: self.fixed_sessions.read().await.get(&handle.id).copied(),
                 cancel_requested: false,
                 transactional,
             },
@@ -1590,9 +1495,14 @@ impl DatabaseDriver for MysqlDriver {
         sql: &str,
         params: &[Value],
     ) -> Result<QueryResult, DriverError> {
+        if let Some(state) = self.fixed_states.write().await.get_mut(&handle.id) {
+            *state = datazen_driver_api::session::TransactionState::Unknown;
+        }
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 let start = Instant::now();
                 let rows = Self::bind_values(sqlx::query(sql), params)
                     .fetch_all(&mut **conn)
@@ -1650,9 +1560,14 @@ impl DatabaseDriver for MysqlDriver {
         sql: &str,
         params: &[Value],
     ) -> Result<u64, DriverError> {
+        if let Some(state) = self.fixed_states.write().await.get_mut(&handle.id) {
+            *state = datazen_driver_api::session::TransactionState::Unknown;
+        }
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
                 let result = Self::bind_values(sqlx::query(sql), params)
                     .execute(&mut **conn)
                     .await
@@ -1677,10 +1592,15 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
+        if let Some(state) = self.fixed_states.write().await.get_mut(&handle.id) {
+            *state = datazen_driver_api::session::TransactionState::Unknown;
+        }
         {
-            let mut txs = self.transactions.lock().await;
-            if let Some(conn) = txs.get_mut(&handle.id) {
-                let result = Self::execute_text_on_conn(conn, sql)
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+
+            if let Some(pinned) = pinned {
+                let mut conn = pinned.lock().await;
+                let result = Self::execute_text_on_conn(&mut *conn, sql)
                     .await
                     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
                 return Ok(result.rows_affected());
@@ -1706,13 +1626,33 @@ impl DatabaseDriver for MysqlDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
-        let mut txs = self.transactions.lock().await;
+        let txs = self.transactions.lock().await;
+        if self.fixed_sessions.read().await.contains_key(&handle.id) {
+            let pinned = txs
+                .get(&handle.id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            drop(txs);
+            let mut conn = pinned.lock().await;
+            Self::execute_text_on_conn(&mut *conn, "BEGIN")
+                .await
+                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            self.fixed_states.write().await.insert(
+                handle.id.clone(),
+                datazen_driver_api::session::TransactionState::Active,
+            );
+            return Ok(TransactionHandle {
+                id: format!("fixed_tx_{}", uuid::Uuid::new_v4()),
+                connection_id: handle.id.clone(),
+            });
+        }
         if txs.contains_key(&handle.id) {
             return Err(DriverError::TransactionError(
                 "A transaction is already open on this connection".into(),
             ));
         }
 
+        drop(txs);
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let mut conn = pool
@@ -1727,7 +1667,10 @@ impl DatabaseDriver for MysqlDriver {
             .await
             .map_err(|e| DriverError::TransactionError(e.to_string()))?;
 
-        txs.insert(handle.id.clone(), conn);
+        self.transactions.lock().await.insert(
+            handle.id.clone(),
+            std::sync::Arc::new(tokio::sync::Mutex::new(conn)),
+        );
         Ok(TransactionHandle {
             id: format!("mysql_tx_{}", uuid::Uuid::new_v4()),
             connection_id: handle.id.clone(),
@@ -1738,13 +1681,42 @@ impl DatabaseDriver for MysqlDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
-        let mut txs = self.transactions.lock().await;
+        let txs = self.transactions.lock().await;
+        if self.fixed_sessions.read().await.contains_key(&handle.id) {
+            let pinned = txs
+                .get(&handle.id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            drop(txs);
+            let mut conn = pinned.lock().await;
+            Self::execute_text_on_conn(
+                &mut *conn,
+                "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+            )
+            .await
+            .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            Self::execute_text_on_conn(
+                &mut *conn,
+                "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY",
+            )
+            .await
+            .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            self.fixed_states.write().await.insert(
+                handle.id.clone(),
+                datazen_driver_api::session::TransactionState::Active,
+            );
+            return Ok(TransactionHandle {
+                id: format!("fixed_tx_{}", uuid::Uuid::new_v4()),
+                connection_id: handle.id.clone(),
+            });
+        }
         if txs.contains_key(&handle.id) {
             return Err(DriverError::TransactionError(
                 "A transaction is already open on this connection".into(),
             ));
         }
 
+        drop(txs);
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let mut conn = pool
@@ -1779,7 +1751,10 @@ impl DatabaseDriver for MysqlDriver {
             return Err(DriverError::TransactionError(e.to_string()));
         }
 
-        txs.insert(handle.id.clone(), conn);
+        self.transactions.lock().await.insert(
+            handle.id.clone(),
+            std::sync::Arc::new(tokio::sync::Mutex::new(conn)),
+        );
         Ok(TransactionHandle {
             id: format!("mysql_snapshot_{}", uuid::Uuid::new_v4()),
             connection_id: handle.id.clone(),
@@ -1787,7 +1762,30 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn commit(&self, tx: TransactionHandle) -> Result<(), DriverError> {
-        let mut conn = self
+        if self
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&tx.connection_id)
+        {
+            let pinned = self
+                .transactions
+                .lock()
+                .await
+                .get(&tx.connection_id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            let mut conn = pinned.lock().await;
+            Self::execute_text_on_conn(&mut *conn, "COMMIT")
+                .await
+                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            self.fixed_states.write().await.insert(
+                tx.connection_id.clone(),
+                datazen_driver_api::session::TransactionState::Idle,
+            );
+            return Ok(());
+        }
+        let pinned = self
             .transactions
             .lock()
             .await
@@ -1795,6 +1793,7 @@ impl DatabaseDriver for MysqlDriver {
             .ok_or_else(|| {
                 DriverError::TransactionError("Transaction not found or already ended".into())
             })?;
+        let mut conn = pinned.lock().await;
 
         Self::execute_text_on_conn(&mut conn, "COMMIT")
             .await
@@ -1803,7 +1802,30 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn rollback(&self, tx: TransactionHandle) -> Result<(), DriverError> {
-        let mut conn = self
+        if self
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&tx.connection_id)
+        {
+            let pinned = self
+                .transactions
+                .lock()
+                .await
+                .get(&tx.connection_id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            let mut conn = pinned.lock().await;
+            Self::execute_text_on_conn(&mut *conn, "ROLLBACK")
+                .await
+                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+            self.fixed_states.write().await.insert(
+                tx.connection_id.clone(),
+                datazen_driver_api::session::TransactionState::Idle,
+            );
+            return Ok(());
+        }
+        let pinned = self
             .transactions
             .lock()
             .await
@@ -1811,6 +1833,7 @@ impl DatabaseDriver for MysqlDriver {
             .ok_or_else(|| {
                 DriverError::TransactionError("Transaction not found or already ended".into())
             })?;
+        let mut conn = pinned.lock().await;
 
         Self::execute_text_on_conn(&mut conn, "ROLLBACK")
             .await
@@ -2263,15 +2286,155 @@ impl DatabaseDriver for MysqlDriver {
         &self,
         handle: &ConnectionHandle,
         command: &str,
-        input: serde_json::Value,
+        mut input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
         match execute_standard_sql_command(self, handle, command, input.clone()).await {
             Err(DriverError::Unsupported(_)) => {}
             other => return other,
         }
-        if let Some(result) =
-            try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+        if command == "get_table_schema" {
+            if let Some(raw) = input.get("relationSql").and_then(serde_json::Value::as_str) {
+                let parsed = sqlparser::parser::Parser::parse_sql(
+                    &sqlparser::dialect::MySqlDialect {},
+                    &format!("SELECT * FROM {raw}"),
+                )
+                .map_err(|_| DriverError::InvalidConfig("invalid relation identifier".into()))?;
+                let [sqlparser::ast::Statement::Query(query)] = parsed.as_slice() else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let sqlparser::ast::SetExpr::Select(select) = &*query.body else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let [relation] = select.from.as_slice() else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let sqlparser::ast::TableFactor::Table { name, .. } = &relation.relation else {
+                    return Err(DriverError::InvalidConfig(
+                        "one named relation is required".into(),
+                    ));
+                };
+                let parts = name
+                    .0
+                    .iter()
+                    .map(|part| {
+                        part.as_ident()
+                            .map(|ident| ident.value.clone())
+                            .ok_or_else(|| {
+                                DriverError::InvalidConfig("named relation is required".into())
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                if input
+                    .get("database")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none()
+                {
+                    let context = self.read_fixed_session(handle).await?;
+                    input["database"] =
+                        serde_json::json!(context.namespace.database.ok_or_else(|| {
+                            DriverError::InvalidConfig("database is required".into())
+                        })?);
+                }
+                match parts.as_slice() {
+                    [table] => {
+                        input["table"] = serde_json::json!(table);
+                        input["schema"] = serde_json::Value::Null;
+                    }
+                    [database, table] => {
+                        input["database"] = serde_json::json!(database);
+                        input["table"] = serde_json::json!(table);
+                        input["schema"] = serde_json::Value::Null;
+                    }
+                    _ => {
+                        return Err(DriverError::InvalidConfig(
+                            "unsupported relation namespace".into(),
+                        ))
+                    }
+                }
+            }
+        }
+        let raw_relation_result = if command == "get_table_schema"
+            && input.get("relationSql").is_some()
+            && self.fixed_sessions.read().await.contains_key(&handle.id)
         {
+            let database = input["database"]
+                .as_str()
+                .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?;
+            let table = input["table"]
+                .as_str()
+                .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
+            let pinned = self
+                .transactions
+                .lock()
+                .await
+                .get(&handle.id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            let mut conn = pinned.lock().await;
+            let schema = self
+                .table_schema_exact_on_connection(&mut **conn, table, database)
+                .await?;
+            Some(CommandResult::new(serde_json::json!({"schema": schema})))
+        } else {
+            None
+        };
+        if let Some(mut result) = match raw_relation_result {
+            Some(result) => Some(result),
+            None => {
+                try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+            }
+        } {
+            if command == "get_table_schema"
+                && self.fixed_sessions.read().await.contains_key(&handle.id)
+            {
+                let table = input["table"]
+                    .as_str()
+                    .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
+                let requested = input["database"]
+                    .as_str()
+                    .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?;
+                let pinned = self
+                    .transactions
+                    .lock()
+                    .await
+                    .get(&handle.id)
+                    .cloned()
+                    .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+                let mut conn = pinned.lock().await;
+                let database = if requested.is_empty() {
+                    sqlx::query_scalar::<_, Option<String>>("SELECT DATABASE()")
+                        .fetch_one(&mut **conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?
+                        .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?
+                } else {
+                    requested.to_string()
+                };
+                let relation = if input.get("relationSql").is_some() {
+                    format!(
+                        "`{}`.`{}`",
+                        database.replace('`', "``"),
+                        table.replace('`', "``")
+                    )
+                } else {
+                    Self::qualified_table_ref(&database, table)
+                };
+                let create_row = sqlx::query(&format!("SHOW CREATE TABLE {}", relation))
+                    .fetch_one(&mut **conn)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                let temporary = decode_mysql_text_idx(&create_row, 1)
+                    .trim_start()
+                    .to_ascii_uppercase()
+                    .starts_with("CREATE TEMPORARY TABLE");
+                result.data["resolvedTarget"] = serde_json::json!({ "database": database, "catalog": null, "schema": null, "table": decode_mysql_text_idx(&create_row, 0), "path": [], "sessionScoped": temporary });
+            }
             return Ok(result);
         }
         if is_schema_object_command(command) {

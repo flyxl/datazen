@@ -29,12 +29,19 @@ impl PostgresDriver {
             return Ok(());
         }
 
-        let mut transactions = self.transactions.lock().await;
-        let conn = transactions.get_mut(&handle.id).ok_or_else(|| {
-            DriverError::TransactionError(
-                "identity sequence synchronization requires the active table transaction".into(),
-            )
-        })?;
+        let pinned = self
+            .transactions
+            .lock()
+            .await
+            .get(&handle.id)
+            .cloned()
+            .ok_or_else(|| {
+                DriverError::TransactionError(
+                    "identity sequence synchronization requires the active table transaction"
+                        .into(),
+                )
+            })?;
+        let mut conn = pinned.lock().await;
 
         let version: i32 =
             sqlx::query_scalar("SELECT current_setting('server_version_num')::integer")
@@ -63,8 +70,10 @@ impl PostgresDriver {
             if !seen.insert(column) {
                 continue;
             }
-            self.advance_one_transfer_identity_sequence(conn, &relation, schema, table, column)
-                .await?;
+            self.advance_one_transfer_identity_sequence(
+                &mut *conn, &relation, schema, table, column,
+            )
+            .await?;
         }
         Ok(())
     }

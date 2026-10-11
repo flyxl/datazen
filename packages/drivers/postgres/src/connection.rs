@@ -118,7 +118,7 @@ impl PostgresDriver {
         let filter_clause = match schema_filter {
             Some(s) if !s.trim().is_empty() => {
                 let escaped = s.replace('\'', "''");
-                format!("AND n.nspname IN ('{escaped}', 'public')")
+                format!("AND n.nspname = '{escaped}'")
             }
             _ => String::new(),
         };
@@ -453,9 +453,13 @@ impl PostgresDriver {
         &self,
         handle: ConnectionHandle,
     ) -> Result<(), DriverError> {
-        if let Some(mut conn) = self.transactions.lock().await.remove(&handle.id) {
-            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+        let removed = self.transactions.lock().await.remove(&handle.id);
+        if let Some(pinned) = removed {
+            let mut conn = pinned.lock().await;
+            let _ = sqlx::query("ROLLBACK").execute(&mut **conn).await;
         }
+        self.fixed_sessions.write().await.remove(&handle.id);
+        self.fixed_contexts.write().await.remove(&handle.id);
         self.active_databases.write().await.remove(&handle.pool_id);
         self.connect_configs.write().await.remove(&handle.pool_id);
         let foreign_pools: Vec<PgPool> = {
@@ -476,10 +480,12 @@ impl PostgresDriver {
             .lock()
             .await
             .retain(|_, execution| execution.session_id != handle.id);
-        if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
+        let removed_pool = self.pools.write().await.remove(&handle.pool_id);
+        if let Some(pool) = removed_pool {
             pool.close().await;
         }
-        if let Some(pool) = self.control_pools.write().await.remove(&handle.pool_id) {
+        let removed_pool = self.control_pools.write().await.remove(&handle.pool_id);
+        if let Some(pool) = removed_pool {
             pool.close().await;
         }
         Ok(())

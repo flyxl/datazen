@@ -90,12 +90,18 @@ impl super::MysqlDriver {
 
         let result: Result<(), DriverError> = async {
             if transactional {
-                let mut txs = self.transactions.lock().await;
-                let conn = txs.get_mut(&handle.id).ok_or_else(|| {
-                    DriverError::Unsupported(
-                        "transaction execution connection is no longer available".into(),
-                    )
-                })?;
+                let pinned = self
+                    .transactions
+                    .lock()
+                    .await
+                    .get(&handle.id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        DriverError::Unsupported(
+                            "transaction execution connection is no longer available".into(),
+                        )
+                    })?;
+                let mut conn = pinned.lock().await;
                 if self.is_cancel_requested(handle, execution_id).await? {
                     Err(DriverError::QueryCancelled)
                 } else {

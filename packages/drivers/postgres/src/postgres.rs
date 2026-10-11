@@ -26,7 +26,10 @@ pub struct PostgresDriver {
     /// Monotonic clock backing the LRU eviction of [`Self::database_pools`].
     pub(crate) database_pool_clock: AtomicU64,
     /// Open transactions: connection held for the lifetime of BEGIN…COMMIT/ROLLBACK, keyed by handle.id.
-    pub(crate) transactions: Mutex<HashMap<String, PoolConnection<Postgres>>>,
+    pub(crate) fixed_contexts: RwLock<HashMap<String, datazen_driver_api::session::SessionContext>>,
+    pub(crate) fixed_sessions: RwLock<HashMap<String, i32>>,
+    pub(crate) transactions:
+        Mutex<HashMap<String, std::sync::Arc<Mutex<PoolConnection<Postgres>>>>>,
     /// Exact execution target registry.
     pub(crate) query_executions:
         Mutex<HashMap<QueryExecutionId, crate::execution::PgQueryExecution>>,
@@ -49,6 +52,8 @@ impl PostgresDriver {
             database_pools: RwLock::new(HashMap::new()),
             database_pool_clock: AtomicU64::new(0),
             transactions: Mutex::new(HashMap::new()),
+            fixed_sessions: RwLock::new(HashMap::new()),
+            fixed_contexts: RwLock::new(HashMap::new()),
             query_executions: Mutex::new(HashMap::new()),
             control_pools: RwLock::new(HashMap::new()),
         }
@@ -192,6 +197,32 @@ impl DatabaseDriver for PostgresDriver {
         on_event: QueryStreamCallback,
     ) -> Result<(), DriverError> {
         Self::query_stream_at_impl(self, handle, sql, limit, target, on_event).await
+    }
+
+    async fn connect_fixed_session(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ConnectionHandle, DriverError> {
+        self.open_fixed_session(config).await
+    }
+    async fn observe_fixed_session(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<datazen_driver_api::session::SessionContext, DriverError> {
+        self.read_fixed_session(handle).await
+    }
+
+    async fn query_to_sink(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        parameters: Option<&[Value]>,
+        sink: &dyn datazen_driver_api::resource::ResultSink,
+    ) -> Result<Vec<StatementResult>, datazen_driver_api::resource::ResourceError> {
+        self.stream_resource_query(handle, execution_id, sql, limit, parameters, sink)
+            .await
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
