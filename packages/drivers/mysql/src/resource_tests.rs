@@ -218,17 +218,27 @@ async fn closing_with_an_open_transaction_is_not_reported_as_clean() {
         .begin_transaction(&handle, &TransactionOptions::default())
         .await
         .expect("begin should succeed");
-    // The connection is gone, but the caller's transaction was resolved
-    // without its knowledge: that is `CloseUnconfirmed`, not `Closed`.
+    // Preserve the transaction and physical permit until explicit rollback.
+    for _ in 0..2 {
+        assert_eq!(
+            provider.close_resource(&handle).await.unwrap(),
+            CloseDisposition::CloseUnconfirmed
+        );
+        assert!(!handle.is_closed());
+        assert_eq!(budget.released(), 0);
+    }
+    provider.rollback_transaction(&handle).await.unwrap();
     assert_eq!(
         provider.close_resource(&handle).await.unwrap(),
-        CloseDisposition::CloseUnconfirmed
+        CloseDisposition::Closed
     );
+    assert!(handle.is_closed());
+    assert_eq!(budget.released(), 1);
     assert_eq!(
-        budget.released(),
-        1,
-        "the permit is still released exactly once"
+        provider.close_resource(&handle).await.unwrap(),
+        CloseDisposition::Closed
     );
+    assert_eq!(budget.released(), 1);
 }
 
 #[tokio::test]
@@ -245,6 +255,16 @@ async fn a_failed_disconnect_keeps_the_permit_charged() {
         ResourceError::Driver(DriverError::ConnectionFailed(_))
     ));
     assert_eq!(budget.released(), 0);
+    assert!(!handle.is_closed());
+    assert!(provider.close_resource(&handle).await.is_err());
+    assert_eq!(budget.released(), 0);
+    fake.with(|wire| wire.disconnect_fails = false);
+    assert_eq!(
+        provider.close_resource(&handle).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(handle.is_closed());
+    assert_eq!(budget.released(), 1);
 }
 
 // --- execute_on_resource ------------------------------------------------

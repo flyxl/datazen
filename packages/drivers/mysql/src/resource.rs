@@ -52,6 +52,8 @@ use crate::resource_capabilities::{mysql_connection_cost, mysql_namespace_shape}
 /// [`MysqlResourceProvider::close_resource`].
 struct LiveResource {
     connection: ConnectionHandle,
+    /// Once disconnect starts, its cancellation or failure cannot prove closure.
+    close_started: bool,
     fixed: bool,
     permit: BudgetPermit,
     budget: Arc<dyn BudgetPort>,
@@ -80,6 +82,7 @@ pub(crate) struct MysqlResourceProvider {
     capabilities: CapabilityRegistry,
     live: Mutex<BTreeMap<String, LiveResource>>,
     transactions: Mutex<BTreeMap<String, OpenTransaction>>,
+    close_gate: tokio::sync::Mutex<()>,
     revision: AtomicU64,
 }
 
@@ -128,6 +131,7 @@ impl MysqlResourceProvider {
             capabilities,
             live: Mutex::new(BTreeMap::new()),
             transactions: Mutex::new(BTreeMap::new()),
+            close_gate: tokio::sync::Mutex::new(()),
             revision: AtomicU64::new(0),
         }
     }
@@ -146,6 +150,7 @@ impl MysqlResourceProvider {
         handle.check(&self.driver_id, self.runtime_epoch)?;
         lock(&self.live)
             .get(handle.resource_key())
+            .filter(|resource| !resource.close_started)
             .map(|resource| resource.connection.clone())
             .ok_or_else(|| ResourceError::InvalidResourceState {
                 resource_key: handle.resource_key().to_string(),
@@ -478,6 +483,7 @@ impl ResourceProvider for MysqlResourceProvider {
             handle.resource_key().to_string(),
             LiveResource {
                 connection,
+                close_started: false,
                 fixed,
                 permit,
                 budget: Arc::clone(budget),
@@ -921,57 +927,53 @@ impl ResourceProvider for MysqlResourceProvider {
         handle: &ResourceHandle,
     ) -> Result<CloseDisposition, ResourceError> {
         handle.check(&self.driver_id, self.runtime_epoch)?;
-        // Drop the bookkeeping first so a repeated close cannot double-release
-        // the budget permit or reconnect a live resource.
-        let resource = lock(&self.live).remove(handle.resource_key());
-        let transaction = lock(&self.transactions).remove(handle.resource_key());
-        let Some(resource) = resource else {
-            // Already closed. `check` above still rejects a foreign or stale
-            // handle; a handle of ours that is simply gone is not an error,
-            // and it must not charge the budget a second time.
+        // Missing bookkeeping is not evidence of physical closure.
+        if handle.is_closed() {
             return Ok(CloseDisposition::Closed);
-        };
-
-        let outcome = self.driver.disconnect(resource.connection.clone()).await;
-        match outcome {
-            Ok(()) => {
-                resource
-                    .budget
-                    .release_physical_connections(&resource.permit)
-                    .await?;
-                if transaction.is_some() {
-                    // The permit is genuinely released above: `disconnect`
-                    // closed the physical connection, so the charge is over.
-                    // What is *not* clean is the caller's transaction —
-                    // `disconnect` rolled the pinned connection back without
-                    // the caller asking — so the close is not confirmed.
-                    tracing::warn!(
-                        driver = %self.driver_id,
-                        "closed a resource that still had an open transaction; the driver rolled it back"
-                    );
-                    return Ok(CloseDisposition::CloseUnconfirmed);
-                }
-                // Recorded only on a confirmed close, the way `postgres` and
-                // `redis` do. Without it `is_closed()` is permanently false for
-                // this provider and `close_handle`'s idempotent-success branch
-                // is unreachable in production: the host would be fail-closed
-                // (the lease stays parked, un-pooled) over a close that
-                // already happened. `CloseUnconfirmed` above and the `Err` below
-                // deliberately leave the flag false, so an unconfirmed close is
-                // never read as "already closed".
-                handle.mark_closed();
-                Ok(CloseDisposition::Closed)
-            }
-            Err(error) => {
-                // The connection may still be alive, so the permit is not
-                // released: the budget stays charged until the leak is settled.
-                tracing::warn!(
-                    driver = %self.driver_id,
-                    "disconnect failed during close; the budget permit is retained"
-                );
-                Err(ResourceError::Driver(error))
-            }
         }
+        // Dropping a timed-out close releases this gate so verification can retry.
+        let Ok(_close_guard) = self.close_gate.try_lock() else {
+            return Ok(CloseDisposition::CloseUnconfirmed);
+        };
+        let (connection, budget, permit) = {
+            let mut live = lock(&self.live);
+            let resource = live.get_mut(handle.resource_key()).ok_or_else(|| {
+                ResourceError::InvalidResourceState {
+                    resource_key: handle.resource_key().into(),
+                    operation: "close_resource".into(),
+                    state: "resource is not held by this provider and closure is unconfirmed"
+                        .into(),
+                }
+            })?;
+            // Preserve an open transaction for explicit rollback. Disconnect
+            // must not erase it and later masquerade as a confirmed clean close.
+            if lock(&self.transactions).contains_key(handle.resource_key()) {
+                return Ok(CloseDisposition::CloseUnconfirmed);
+            }
+            // Persist before awaiting: other resource operations are refused
+            // while closing, including after a failed or dropped attempt. A
+            // later close retries the original retained driver pools.
+            resource.close_started = true;
+            (
+                resource.connection.clone(),
+                Arc::clone(&resource.budget),
+                resource.permit.clone(),
+            )
+        };
+        if let Err(error) = self.driver.disconnect(connection).await {
+            // Keep the resource and permit addressable for quarantine and retry.
+            tracing::warn!(
+                driver = %self.driver_id,
+                "disconnect failed during close; resource and budget permit are retained"
+            );
+            return Err(ResourceError::Driver(error));
+        }
+        budget.release_physical_connections(&permit).await?;
+        // Publish confirmation only after both physical closure and accounting
+        // completed. Until then any repeated close remains unconfirmed.
+        handle.mark_closed();
+        lock(&self.live).remove(handle.resource_key());
+        Ok(CloseDisposition::Closed)
     }
 
     async fn close_handle(

@@ -991,14 +991,24 @@ impl DatabaseDriver for MysqlDriver {
             .lock()
             .await
             .retain(|_, execution| execution.session_id != handle.id);
-        let removed_pool = self.pools.write().await.remove(&handle.pool_id);
-        if let Some(pool) = removed_pool {
+        // Keep the same pools registered across cancellation/timeouts. Removing
+        // before close().await would make the next disconnect falsely succeed
+        // without waiting for the outstanding physical connections.
+        let pool = self.pools.read().await.get(&handle.pool_id).cloned();
+        if let Some(pool) = pool {
             pool.close().await;
         }
-        let removed_pool = self.control_pools.write().await.remove(&handle.pool_id);
-        if let Some(pool) = removed_pool {
+        let control_pool = self
+            .control_pools
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
+        if let Some(pool) = control_pool {
             pool.close().await;
         }
+        self.pools.write().await.remove(&handle.pool_id);
+        self.control_pools.write().await.remove(&handle.pool_id);
         Ok(())
     }
 
