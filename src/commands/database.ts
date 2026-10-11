@@ -1,4 +1,4 @@
-import { executeTargetCommand, metadataTarget } from '../lib/session/targetCommand';
+import { databaseDiscoveryTarget, executeTargetCommand, metadataTarget } from '../lib/session/targetCommand';
 import { invoke } from '@tauri-apps/api/core';
 import type {
   FilterCondition,
@@ -46,7 +46,7 @@ export interface CommitPendingChangesRequest {
 
 export const databaseCommands = {
   getDatabases: async (dbSessionId: string) =>
-    (await executeTargetCommand(metadataTarget(dbSessionId, null, null), {
+    (await executeTargetCommand(databaseDiscoveryTarget(dbSessionId), {
       command: 'list_databases', input: {},
     }) as { databases: string[] }).databases,
 

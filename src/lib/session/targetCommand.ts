@@ -52,6 +52,12 @@ export function metadataTarget(
   };
 }
 
+/** Database discovery belongs to the connection, before any database is selected. */
+export function databaseDiscoveryTarget(dbSessionId: string): ExecutionTarget {
+  const target = metadataTarget(dbSessionId, null, null);
+  return { ...target, namespace: { database: null, schema: null, catalog: null, path: [] } };
+}
+
 export async function readTargetSchema(
   dbSessionId: string, table: string, database: string, schema: string | null,
 ): Promise<import('../../types').TableSchema> {
