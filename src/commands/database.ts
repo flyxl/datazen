@@ -44,11 +44,24 @@ export interface CommitPendingChangesRequest {
   fingerprint: string;
 }
 
+const databaseDiscoveryInFlight = new Map<string, Promise<string[]>>();
+
 export const databaseCommands = {
-  getDatabases: async (dbSessionId: string) =>
-    (await executeTargetCommand(databaseDiscoveryTarget(dbSessionId), {
-      command: 'list_databases', input: {},
-    }) as { databases: string[] }).databases,
+  getDatabases: (dbSessionId: string): Promise<string[]> => {
+    const existing = databaseDiscoveryInFlight.get(dbSessionId);
+    if (existing) return existing;
+    const discovery = Promise.resolve().then(async () =>
+      (await executeTargetCommand(databaseDiscoveryTarget(dbSessionId), {
+        command: 'list_databases', input: {},
+      }) as { databases: string[] }).databases,
+    ).finally(() => {
+      if (databaseDiscoveryInFlight.get(dbSessionId) === discovery) {
+        databaseDiscoveryInFlight.delete(dbSessionId);
+      }
+    });
+    databaseDiscoveryInFlight.set(dbSessionId, discovery);
+    return discovery;
+  },
 
   /**
    * List a database's tables. `schema` is optional and only meaningful for
