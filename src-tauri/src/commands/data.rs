@@ -1,4 +1,4 @@
-use super::error::{CmdExt, CommandError};
+use super::error::CommandError;
 use super::AppState;
 use crate::db::{BoundSqlStatement, DriverError, Value};
 use serde::{Deserialize, Serialize};
@@ -75,7 +75,7 @@ pub struct RowChangePlan {
     pub plan_id: String,
     pub fingerprint: String,
     #[serde(default)]
-    pub config_revision: Option<u64>,
+    pub config_revision: Option<datazen_platform_api::id::Counter>,
     pub table: RowChangeTableContext,
     pub updates: Vec<PlannedStatement>,
     pub deletes: Vec<PlannedStatement>,
@@ -185,7 +185,7 @@ fn effective_identity(
     Ok(identity)
 }
 
-fn validate_table_context(table: &RowChangeTableContext) -> Result<(), CommandError> {
+pub(super) fn validate_table_context(table: &RowChangeTableContext) -> Result<(), CommandError> {
     if table.connection_id.trim().is_empty()
         || table.db_session_id.trim().is_empty()
         || table.driver_type.trim().is_empty()
@@ -466,7 +466,9 @@ pub(crate) async fn preview_pending_changes_impl(
         .await
         .ok_or_else(|| CommandError::NotConfigured("Driver unavailable".into()))?;
     let mut plan = build_row_change_plan(driver.as_ref(), table, &changes)?;
-    plan.config_revision = Some(metadata.config_revision);
+    plan.config_revision = Some(datazen_platform_api::id::Counter::new(
+        metadata.config_revision,
+    ));
     Ok(plan)
 }
 
@@ -482,6 +484,14 @@ pub async fn preview_pending_changes(
 pub(crate) async fn commit_pending_changes_impl(
     state: &AppState,
     request: CommitPendingChangesRequest,
+) -> Result<CommitPendingChangesResponse, CommandError> {
+    commit_pending_changes_with_handle(state, request, None).await
+}
+
+async fn commit_pending_changes_with_handle(
+    state: &AppState,
+    request: CommitPendingChangesRequest,
+    manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
 ) -> Result<CommitPendingChangesResponse, CommandError> {
     tracing::info!(
         db_session_id = %request.db_session_id,
@@ -499,7 +509,11 @@ pub(crate) async fn commit_pending_changes_impl(
             "Table connection context changed".into(),
         ));
     }
-    if request.plan.config_revision != Some(metadata.config_revision) {
+    if request.plan.config_revision
+        != Some(datazen_platform_api::id::Counter::new(
+            metadata.config_revision,
+        ))
+    {
         return Err(CommandError::Validation(
             "Connection configuration changed; preview the changes again".into(),
         ));
@@ -520,146 +534,40 @@ pub(crate) async fn commit_pending_changes_impl(
         &request.plan,
         &request.fingerprint,
     )?;
-    super::data_session::execute_plan(state, driver.as_ref(), &plan).await
+    super::data_session::execute_plan(state, driver.as_ref(), &plan, manual_handle).await
 }
 
 #[tauri::command]
 pub async fn commit_pending_changes(
     state: State<'_, AppState>,
     db_session_id: String,
+    manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
     plan: RowChangePlan,
     fingerprint: String,
 ) -> Result<CommitPendingChangesResponse, CommandError> {
-    commit_pending_changes_impl(
+    commit_pending_changes_with_handle(
         &state,
         CommitPendingChangesRequest {
             db_session_id,
             plan,
             fingerprint,
         },
+        manual_handle,
     )
     .await
 }
 
 pub(crate) async fn commit_row_updates_impl(
-    state: &AppState,
-    db_session_id: String,
-    table: String,
-    updates: Vec<RowUpdateBatch>,
+    _state: &AppState,
+    _db_session_id: String,
+    _table: String,
+    _updates: Vec<RowUpdateBatch>,
 ) -> Result<(), CommandError> {
-    tracing::info!(%db_session_id, %table, batch_count = updates.len(), "commit_row_updates");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("commit_row_updates")?;
-    let read_only = state
-        .connection_manager
-        .get_session_config(&db_session_id)
-        .await
-        .map(|c| c.read_only)
-        .unwrap_or(false);
-    if read_only {
-        return Err(CommandError::Validation(
-            "Connection is read-only; row edits are not allowed".into(),
-        ));
-    }
-    for batch in &updates {
-        if batch.set_columns.is_empty() {
-            return Err(CommandError::Validation(
-                "Row update requires changed columns".into(),
-            ));
-        }
-        validate_legacy_pk_columns(&batch.pk_columns, "Row update")?;
-    }
-
-    let statements = updates
-        .iter()
-        .map(|batch| {
-            let set_columns: Vec<(&str, Option<Value>)> = batch
-                .set_columns
-                .iter()
-                .map(|column| (column.column.as_str(), column.value.clone()))
-                .collect();
-            let pk_columns: Vec<(&str, Option<Value>)> = batch
-                .pk_columns
-                .iter()
-                .map(|column| (column.column.as_str(), column.value.clone()))
-                .collect();
-            driver
-                .build_update_statement(&table, &set_columns, &pk_columns)
-                .map_err(CommandError::Driver)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let session_open = state
-        .session_transactions
-        .lock()
-        .await
-        .contains_key(&db_session_id);
-
-    // Prefer DatabaseDriver transaction API; fall back to BEGIN/COMMIT strings
-    // for drivers that still stub the trait. Skip wrapping when a session
-    // transaction is already open so row edits join that transaction.
-    let trait_tx = if session_open {
-        None
-    } else {
-        match driver.begin_transaction(&handle).await {
-            Ok(tx) => Some(tx),
-            Err(DriverError::TransactionError(_)) => None,
-            Err(e) => return Err(CommandError::Driver(e)),
-        }
-    };
-
-    if !session_open && trait_tx.is_none() {
-        driver
-            .execute(&handle, "BEGIN")
-            .await
-            .cmd_err("commit_row_updates")?;
-    }
-
-    let result: Result<(), CommandError> = async {
-        for statement in &statements {
-            driver
-                .execute_with_params(&handle, &statement.sql, &statement.parameters)
-                .await
-                .cmd_err("commit_row_updates")?;
-        }
-        Ok(())
-    }
-    .await;
-
-    match result {
-        Ok(()) => {
-            if session_open {
-                tracing::info!(%db_session_id, %table, batch_count = updates.len(), "commit_row_updates OK (session tx)");
-                return Ok(());
-            }
-            if let Some(tx) = trait_tx {
-                driver.commit(tx).await.cmd_err("commit_row_updates")?;
-            } else {
-                driver
-                    .execute(&handle, "COMMIT")
-                    .await
-                    .cmd_err("commit_row_updates")?;
-            }
-            tracing::info!(%db_session_id, %table, batch_count = updates.len(), "commit_row_updates OK");
-            Ok(())
-        }
-        Err(e) => {
-            if session_open {
-                return Err(e);
-            }
-            if let Some(tx) = trait_tx {
-                if let Err(rb_err) = driver.rollback(tx).await {
-                    tracing::warn!("rollback failed: {rb_err}");
-                }
-            } else if let Err(rb_err) = driver.execute(&handle, "ROLLBACK").await {
-                tracing::warn!("rollback failed: {rb_err}");
-            }
-            Err(e)
-        }
-    }
+    // Legacy writes contain no provenance, config revision or runtime binding.
+    // Reject rather than silently joining a connection-tree transaction.
+    Err(CommandError::Validation(
+        "Legacy row writes are disabled; preview and commit a target-bound ChangeSet".into(),
+    ))
 }
 
 #[tauri::command]
@@ -673,114 +581,16 @@ pub async fn commit_row_updates(
 }
 
 pub(crate) async fn commit_row_deletes_impl(
-    state: &AppState,
-    db_session_id: String,
-    table: String,
-    deletes: Vec<RowDeleteBatch>,
+    _state: &AppState,
+    _db_session_id: String,
+    _table: String,
+    _deletes: Vec<RowDeleteBatch>,
 ) -> Result<(), CommandError> {
-    tracing::info!(%db_session_id, %table, batch_count = deletes.len(), "commit_row_deletes");
-    let (driver, handle) = state
-        .connection_manager
-        .get_session(&db_session_id)
-        .await
-        .cmd_err("commit_row_deletes")?;
-    let read_only = state
-        .connection_manager
-        .get_session_config(&db_session_id)
-        .await
-        .map(|c| c.read_only)
-        .unwrap_or(false);
-    if read_only {
-        return Err(CommandError::Validation(
-            "Connection is read-only; row deletes are not allowed".into(),
-        ));
-    }
-    if deletes.is_empty() {
-        return Ok(());
-    }
-    for batch in &deletes {
-        validate_legacy_pk_columns(&batch.pk_columns, "Row delete")?;
-    }
-
-    let statements = deletes
-        .iter()
-        .map(|batch| {
-            let pk_columns: Vec<(&str, Option<Value>)> = batch
-                .pk_columns
-                .iter()
-                .map(|column| (column.column.as_str(), column.value.clone()))
-                .collect();
-            driver
-                .build_delete_statement(&table, &pk_columns)
-                .map_err(CommandError::Driver)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let session_open = state
-        .session_transactions
-        .lock()
-        .await
-        .contains_key(&db_session_id);
-
-    let trait_tx = if session_open {
-        None
-    } else {
-        match driver.begin_transaction(&handle).await {
-            Ok(tx) => Some(tx),
-            Err(DriverError::TransactionError(_)) => None,
-            Err(e) => return Err(CommandError::Driver(e)),
-        }
-    };
-
-    if !session_open && trait_tx.is_none() {
-        driver
-            .execute(&handle, "BEGIN")
-            .await
-            .cmd_err("commit_row_deletes")?;
-    }
-
-    let result: Result<(), CommandError> = async {
-        for statement in &statements {
-            driver
-                .execute_with_params(&handle, &statement.sql, &statement.parameters)
-                .await
-                .cmd_err("commit_row_deletes")?;
-        }
-        Ok(())
-    }
-    .await;
-
-    match result {
-        Ok(()) => {
-            if session_open {
-                tracing::info!(%db_session_id, %table, batch_count = deletes.len(), "commit_row_deletes OK (session tx)");
-                return Ok(());
-            }
-            if let Some(tx) = trait_tx {
-                driver.commit(tx).await.cmd_err("commit_row_deletes")?;
-            } else {
-                driver
-                    .execute(&handle, "COMMIT")
-                    .await
-                    .cmd_err("commit_row_deletes")?;
-            }
-            tracing::info!(%db_session_id, %table, batch_count = deletes.len(), "commit_row_deletes OK");
-            Ok(())
-        }
-        Err(e) => {
-            if session_open {
-                return Err(e);
-            }
-            if let Some(tx) = trait_tx {
-                if let Err(rb_err) = driver.rollback(tx).await {
-                    tracing::warn!("rollback failed: {rb_err}");
-                }
-            } else if let Err(rb_err) = driver.execute(&handle, "ROLLBACK").await {
-                tracing::warn!("rollback failed: {rb_err}");
-            }
-            Err(e)
-        }
-    }
+    // Legacy writes contain no provenance, config revision or runtime binding.
+    // Reject rather than silently joining a connection-tree transaction.
+    Err(CommandError::Validation(
+        "Legacy row writes are disabled; preview and commit a target-bound ChangeSet".into(),
+    ))
 }
 
 #[tauri::command]
@@ -1266,3 +1076,20 @@ mod tests {
         assert!(err.to_string().contains("primary-key"));
     }
 }
+
+#[path = "table_target.rs"]
+mod table_target;
+
+#[tauri::command]
+pub async fn get_table_data_at_target(
+    state: State<'_, AppState>,
+    request: table_target::TableReadRequest,
+) -> Result<crate::db::TableDataResult, CommandError> {
+    table_target::read(&state, request).await
+}
+
+#[path = "result_mapping.rs"]
+mod result_mapping;
+pub(crate) use result_mapping::{
+    result_relation_candidate, verify_result_mapping, ResultRelationCandidate,
+};

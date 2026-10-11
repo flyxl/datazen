@@ -320,6 +320,7 @@ pub fn run() {
             crate::commands::get_object_ddl,
             crate::commands::get_privileges,
             crate::commands::get_table_data,
+            crate::commands::get_table_data_at_target,
             // ── 表结构编辑 ──
             crate::commands::get_structure_capabilities,
             crate::commands::plan_table_structure_changes,

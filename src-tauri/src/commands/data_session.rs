@@ -136,6 +136,7 @@ pub(super) async fn execute_plan(
     state: &AppState,
     driver: &dyn crate::db::DatabaseDriver,
     plan: &RowChangePlan,
+    manual_handle: Option<SessionHandle>,
 ) -> Result<CommitPendingChangesResponse, CommandError> {
     let mut writes = Vec::new();
     for (delete, changes) in [(false, &plan.updates), (true, &plan.deletes)] {
@@ -156,49 +157,76 @@ pub(super) async fn execute_plan(
     let adapter = state.platform_require().map_err(into_command_error)?;
     let context = adapter.begin_call().context().clone();
     let runtime = adapter.runtime().map_err(into_command_error)?;
-    let token = runtime
-        .issue_submission_token(&context, IdempotentOperation::OpenSession, None)
-        .await
-        .map_err(into_command_error)?;
-    let opened = runtime
-        .open_session(
-            &context,
-            OpenSessionRequest {
-                initial_target: ExecutionTarget::new(
-                    ConnectionId::new(&plan.table.connection_id),
-                    NamespaceTarget::new(
-                        plan.table.database.clone(),
-                        None,
-                        plan.table.schema.clone(),
-                        Vec::new(),
+    let manual = manual_handle.is_some();
+    let opened = if let Some(handle) = manual_handle {
+        let view = runtime
+            .get_session(&context, handle)
+            .await
+            .map_err(into_command_error)?;
+        if view.connection_id.as_str() != plan.table.connection_id
+            || view.observed_context.namespace.database != plan.table.database
+            || view.observed_context.namespace.schema != plan.table.schema
+            || !matches!(
+                view.observed_context.transaction_state,
+                datazen_platform_api::dto::session::TransactionState::Active
+            )
+        {
+            return Err(CommandError::Validation(
+                "Manual table transaction target changed or transaction not active".into(),
+            ));
+        }
+        view
+    } else {
+        let token = runtime
+            .issue_submission_token(&context, IdempotentOperation::OpenSession, None)
+            .await
+            .map_err(into_command_error)?;
+        runtime
+            .open_session(
+                &context,
+                OpenSessionRequest {
+                    initial_target: ExecutionTarget::new(
+                        ConnectionId::new(&plan.table.connection_id),
+                        NamespaceTarget::new(
+                            plan.table.database.clone(),
+                            None,
+                            plan.table.schema.clone(),
+                            Vec::new(),
+                        ),
                     ),
-                ),
-                owner: OwnerRef::ClientSession {
-                    client_instance_id: context.client_instance_id.clone(),
-                    purpose: "tableChangeSet".into(),
+                    owner: OwnerRef::ClientSession {
+                        client_instance_id: context.client_instance_id.clone(),
+                        purpose: "tableChangeSet".into(),
+                    },
+                    idempotency_key: token.idempotency_key,
                 },
-                idempotency_key: token.idempotency_key,
-            },
-        )
-        .await
-        .map_err(into_command_error)?;
+            )
+            .await
+            .map_err(into_command_error)?
+            .session
+    };
     let mut session = TableSession {
         runtime,
         context,
-        handle: Some(opened.session.handle),
+        handle: Some(opened.handle),
     };
-    if plan.config_revision != Some(opened.session.config_revision.get()) {
+    if plan.config_revision != Some(opened.config_revision) {
+        if manual {
+            session.handle = None;
+        }
         return Err(CommandError::Validation(
             "Connection configuration changed before execution; preview again".into(),
         ));
     }
     let result = async {
-        session
-            .execute(
-                "platform.beginTransaction",
-                serde_json::json!({"defersCommit":true}),
-            )
-            .await?;
+        if !manual {
+            session
+                .execute(
+                    "platform.beginTransaction",
+                    serde_json::json!({"defersCommit":true}),
+                )
+                .await?;
+        }
         let mut statements = Vec::new();
         for (delete, change, statement) in writes {
             let affected = session
@@ -223,12 +251,14 @@ pub(super) async fn execute_plan(
                 affected_rows: affected,
             });
         }
-        session
-            .execute(
-                "platform.commitTransaction",
-                serde_json::json!({"defersCommit":true}),
-            )
-            .await?;
+        if !manual {
+            session
+                .execute(
+                    "platform.commitTransaction",
+                    serde_json::json!({"defersCommit":true}),
+                )
+                .await?;
+        }
         Ok(CommitPendingChangesResponse {
             plan_id: plan.plan_id.clone(),
             fingerprint: plan.fingerprint.clone(),
@@ -237,6 +267,12 @@ pub(super) async fn execute_plan(
         })
     }
     .await;
+    if manual {
+        // The table owner retains control of its explicit transaction even on
+        // failure; neither Drop nor this ChangeSet may commit/rollback/close it.
+        session.handle = None;
+        return result;
+    }
     let handle = session
         .handle
         .as_ref()
@@ -248,11 +284,10 @@ pub(super) async fn execute_plan(
             &session.context,
             CloseSessionRequest {
                 handle,
-                mode: if result.is_ok() {
-                    CloseMode::RequireNoTransaction
-                } else {
-                    CloseMode::RollbackAndClose
-                },
+                // commit's receipt is already terminal. Cleanup must also work when
+                // subsequent context observation is unknown; it cannot change the
+                // proven committed effect of the response.
+                mode: CloseMode::RollbackAndClose,
             },
         )
         .await;
