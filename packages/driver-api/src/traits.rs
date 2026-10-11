@@ -257,6 +257,23 @@ pub trait DatabaseDriver: Send + Sync {
         Err(DriverError::Unsupported("fixed session observation".into()))
     }
 
+    /// Incrementally deliver SQL rows with awaitable sink backpressure. The
+    /// returned statements contain metadata, never a duplicate row buffer.
+    async fn query_to_sink(
+        &self,
+        _handle: &ConnectionHandle,
+        _execution_id: &QueryExecutionId,
+        _sql: &str,
+        _limit: Option<u32>,
+        _sink: &dyn crate::resource::ResultSink,
+    ) -> Result<Vec<StatementResult>, crate::resource::ResourceError> {
+        Err(crate::resource::ResourceError::unsupported(
+            self.driver_type(),
+            "query_to_sink",
+            "incremental result delivery is unsupported",
+        ))
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError>;
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError>;

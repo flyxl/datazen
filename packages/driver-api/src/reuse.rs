@@ -219,6 +219,19 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.observe_fixed_session(handle).await
     }
 
+    async fn query_to_sink(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        sink: &dyn crate::resource::ResultSink,
+    ) -> Result<Vec<StatementResult>, crate::resource::ResourceError> {
+        self.inner
+            .query_to_sink(handle, execution_id, sql, limit, sink)
+            .await
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         let info = self.inner.test_connection(config).await?;
         Ok(ServerInfo {
