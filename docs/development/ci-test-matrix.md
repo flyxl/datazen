@@ -17,7 +17,7 @@
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
 | 平台 crate 架构门禁（F-01..F-07） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
 | Basic path 驱动 lib | ✅ 四 crate 并行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
-| Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 要求 live 层 |
+| Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行；CI 无数据库，live 层在命令里**显式豁免**（见 §2.2） | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；live 层**默认严格**（验不到即失败），本地无数据库时加 `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` 声明豁免，`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 压过豁免、强制严格 |
 | 非 basic path 驱动集成测试（19 个文件：sqlserver 11 / clickhouse 3 / duckdb 3 / mongodb 2） | ❌ 未进 PR 矩阵 | **All SKU** 构建时编译链接 | 改这些驱动时本地 `cargo test -p datazen-driver-<id> --tests` |
 | 可选 path 驱动 lib | ❌ | **All SKU** 构建时编译链接 | 改驱动 crate 时本地必跑 |
 | Git 驱动（kiwi/superset） | ❌ | **Akulaku SKU**（需 Deploy Key） | 见 [ci-private-drivers.md](./ci-private-drivers.md) |
@@ -225,8 +225,14 @@ Rust 测试顺序（与 `ci.yml` 一致）：
 ```bash
 # driver-api 与四个 path 驱动合为一次 cargo 调用（不依赖 --features）
 cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
-# 驱动集成测试：--lib 不编译 tests/，所以 basic 四驱动的集成 target 独立成步
-cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
+# 驱动集成测试：--lib 不编译 tests/，所以 basic 四驱动的集成 target 独立成步。
+# live 契约层默认严格（验不到即失败）。CI 全文件没有数据库容器，也没有任何
+# TEST_PG_* / TEST_MYSQL_*，所以显式声明豁免——去掉前缀就会红（实测 42 个）。
+# 要在 CI 里真验 live：先 provision 数据库并注入 TEST_PG_* / TEST_MYSQL_*，再删掉
+# 这个前缀；DATAZEN_CONTRACT_REQUIRE_LIVE=1 压过豁免。
+# （实测：不加前缀 EXIT=101，42 个 live 层测试翻转；命令不带 --no-fail-fast，
+#  cargo 在第一个失败的 binary 就停。）
+DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 # datazen 需要 features 选择注入的驱动
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen --lib --features "$FEATURES"

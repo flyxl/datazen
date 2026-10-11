@@ -265,11 +265,24 @@ jobs:
       # 用 `--tests` 而不是逐个 `--test`：`--tests` 编译并运行该 crate 下的全部
       # 集成 target，新加的文件自动进矩阵，不需要有人记得同步名单。
       #
-      # 不加 `|| true`、不加 continue-on-error。live 层在这里仍然是 unverified，由
-      # 模板自己逐维度报告；有 fixture 的人用
-      # `DATAZEN_CONTRACT_REQUIRE_LIVE=1` 把「无法验证」变成失败。
+      # 不加 `|| true`、不加 continue-on-error：脏树必须 fail。
+      #
+      # live 契约层默认严格：验不到的维度判失败，而不是「打印一行未验证、再被 libtest
+      # 记成 ok.1 passed」。本 workflow 全文件没有 `services:`，没有 postgres / mysql
+      # 容器，也没有任何 `TEST_PG_*` / `TEST_MYSQL_*`，所以不显式豁免就等于让整条
+      # 集成测试链红掉（实测 42 个测试翻转；本命令不带 --no-fail-fast，cargo 会在
+      # 第一个失败的 binary 就停，例如 datazen-driver-mysql 的 migration_bound_writes）。
+      # 那是环境缺失，不是被验证过的失败。
+      #
+      # 所以豁免写死在命令里：`DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` 是「此处没有数据库、
+      # live 层不验」的**显式声明**，不依赖「没设就宽松」的默认值。模板仍会逐维度走一遍
+      # 门闸，只是以「未验证」记账（libtest 会吞掉通过用例的 stdout，所以那些
+      # `⏭ 未验证` 行不会出现在 CI 日志里）。
+      #
+      # 要在 CI 里真验 live：先 provision 数据库并注入 `TEST_PG_*` / `TEST_MYSQL_*`，
+      # 再去掉这个豁免——`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 压过豁免，门禁立刻恢复严格。
       - name: Driver integration tests (basic path drivers, tests/)
-        run: cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
+        run: DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 
       - name: Rust unit tests (datazen)
         run: |
