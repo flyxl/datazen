@@ -84,3 +84,5 @@ pub use handles::{ExecutionBinding, HandleRegistry};
 pub use port::SessionPort;
 pub use receipt::CancelReceipt;
 pub use registry::SessionRegistry;
+
+mod intent;

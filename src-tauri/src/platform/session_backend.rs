@@ -1,3 +1,6 @@
+mod execution;
+mod opening;
+mod release;
 use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
 use crate::{db::DriverRegistry, store::Store};
 use async_trait::async_trait;
@@ -30,7 +33,12 @@ pub(super) struct Resource {
     revision: tokio::sync::Mutex<u64>,
     last_context: tokio::sync::Mutex<rc::SessionContext>,
     cancels: tokio::sync::Mutex<HashMap<String, String>>,
-    _short_permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    transactions: tokio::sync::Mutex<Vec<ds::SessionHandleRef>>,
+    finalized_transaction: tokio::sync::Mutex<Option<ds::TransactionObservation>>,
+    protocol_drained: std::sync::atomic::AtomicBool,
+    _budget_scope: Arc<dyn dr::BudgetPort>,
+    logical: std::sync::Mutex<Option<datazen_runtime::resource::LogicalSessionPermit>>,
+    purpose: datazen_runtime::resource::LeasePurpose,
 }
 
 impl Resource {
@@ -54,7 +62,10 @@ impl Resource {
 pub struct DesktopSessionBackend {
     registry: Arc<DriverRegistry>,
     store: Arc<Store>,
-    budget: Arc<dyn dr::BudgetPort>,
+    budget: Arc<datazen_runtime::budget::InProcessBudgetCoordinator>,
+    organization: datazen_platform_api::id::OrganizationId,
+    principal: datazen_platform_api::id::PrincipalId,
+    leases: datazen_runtime::resource::ProductionLeaseManager,
     resources: tokio::sync::RwLock<HashMap<String, Arc<Resource>>>,
     /// dbSessionId → 已打开的物理 resource_id。**出向端口唯一能用的反向索引。**
     ///
@@ -68,18 +79,39 @@ pub struct DesktopSessionBackend {
     /// key 的来源是 `OpenResource::db_session_id`（actor 从 `OpenRequest` 透传）。
     by_session: tokio::sync::RwLock<HashMap<String, String>>,
     publisher: RwLock<Option<ResultPublisher>>,
-    short_resources: Arc<tokio::sync::Semaphore>,
 }
 impl DesktopSessionBackend {
     pub fn new(registry: Arc<DriverRegistry>, store: Arc<Store>, physical_limit: u32) -> Self {
+        Self::new_scoped(
+            registry,
+            store,
+            physical_limit,
+            datazen_platform_api::id::OrganizationId::new(super::identity::LOCAL_ORGANIZATION_ID),
+            super::identity::local_principal().unwrap_or_else(|| {
+                datazen_platform_api::id::PrincipalId::new("unresolved-desktop-user")
+            }),
+        )
+    }
+    pub fn new_scoped(
+        registry: Arc<DriverRegistry>,
+        store: Arc<Store>,
+        physical_limit: u32,
+        organization: datazen_platform_api::id::OrganizationId,
+        principal: datazen_platform_api::id::PrincipalId,
+    ) -> Self {
         Self {
             registry,
             store,
-            budget: Arc::new(DesktopResourceBudget::new(physical_limit)),
+            budget: Arc::new(datazen_runtime::budget::InProcessBudgetCoordinator::new(
+                datazen_runtime::budget::BudgetConfig::from_parts(physical_limit, [1, 2, 1, 0]),
+                organization.clone(),
+            )),
+            organization,
+            principal,
+            leases: datazen_runtime::resource::LeaseManager::production(),
             resources: tokio::sync::RwLock::new(HashMap::new()),
             by_session: tokio::sync::RwLock::new(HashMap::new()),
             publisher: RwLock::new(None),
-            short_resources: Arc::new(tokio::sync::Semaphore::new(2)),
         }
     }
     pub fn set_publisher(&self, publisher: ResultPublisher) -> Result<(), rc::ProviderError> {
@@ -135,355 +167,65 @@ struct Sink {
 #[async_trait]
 impl dr::ResultSink for Sink {
     async fn write(&self, chunk: dr::ResultChunk) -> Result<(), dr::ResourceError> {
-        (self.publisher)(&self.id, serde_json::json!({"kind":"rows","statementIndex":chunk.statement_index,"sql":chunk.sql,"rows":chunk.rows,"rowsAffected":chunk.rows_affected})).map_err(|_| dr::ResourceError::SinkRejected { reason: "result publication failed".into() })
+        if chunk.rows.len() > 1024 {
+            return Err(dr::ResourceError::SinkRejected {
+                reason: "driver result block row limit".into(),
+            });
+        }
+        self.write_output(serde_json::json!({"kind":"rows","statementIndex":chunk.statement_index,"sql":chunk.sql,"rows":chunk.rows,"rowsAffected":chunk.rows_affected})).await
+    }
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), dr::ResourceError> {
+        struct Limited {
+            bytes: usize,
+        }
+        impl std::io::Write for Limited {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.bytes = self.bytes.saturating_add(bytes.len());
+                if self.bytes > 32 * 1024 * 1024 {
+                    return Err(std::io::Error::other("result output exceeds limit"));
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        serde_json::to_writer(&mut Limited { bytes: 0 }, &output).map_err(|_| {
+            dr::ResourceError::SinkRejected {
+                reason: "command output byte limit".into(),
+            }
+        })?;
+        (self.publisher)(&self.id, output).map_err(|_| dr::ResourceError::SinkRejected {
+            reason: "command output publication failed".into(),
+        })
     }
     async fn complete(&self) -> Result<(), dr::ResourceError> {
         Ok(())
     }
-    async fn fail(&self, _reason: &str) -> Result<(), dr::ResourceError> {
-        Ok(())
+    async fn fail(&self, reason: &str) -> Result<(), dr::ResourceError> {
+        self.write_output(serde_json::json!({"kind":"executionError","message":super::diagnostics::safe_message(reason)})).await
     }
 }
 #[async_trait]
 impl SessionBackend for DesktopSessionBackend {
     async fn open(&self, request: OpenResource) -> Result<OpenedResource, rc::ProviderError> {
-        let (config, metadata) = self
-            .store
-            .platform_profile(request.connection_id.as_str())
-            .await
-            .ok_or_else(|| rc::ProviderError::SessionNotFound("profile unavailable".into()))?;
-        if !metadata.enabled || metadata.config_revision != request.config_revision.0 {
-            return Err(rc::ProviderError::HostRejected(
-                "profile disabled or revision changed".into(),
-            ));
-        }
-        let provider = self
-            .registry
-            .resource_provider(&config.database_type)
-            .await
-            .map_err(|_| rc::ProviderError::CapabilityUnsupported)?;
-        if matches!(request.owner, rc::OwnerRef::Editor { .. }) {
-            provider
-                .capabilities()
-                .require_stateful_session()
-                .map_err(|_| rc::ProviderError::CapabilityUnsupported)?;
-        }
-        let purpose = if matches!(request.owner, rc::OwnerRef::ClientSession { .. }) {
-            dr::ResourcePurpose::MetadataInspection
-        } else {
-            dr::ResourcePurpose::InteractiveQuery
-        };
-        let target = map::namespace(&request.initial_target);
-        let identity_scope = dr::IdentityScope::default();
-        let descriptor = provider
-            .describe_resource(&dr::DescribeResourceRequest {
-                connection_config: config.clone(),
-                identity_scope: identity_scope.clone(),
-                target: target.clone(),
-                purpose,
-            })
-            .await
-            .map_err(map::error)?;
-        let baseline = dr::Baseline::new(descriptor.initialization_requirements);
-        let short_permit = if matches!(request.owner, rc::OwnerRef::ClientSession { .. }) {
-            Some(
-                self.short_resources
-                    .clone()
-                    .acquire_owned()
-                    .await
-                    .map_err(|_| rc::ProviderError::ResourceBusy("short resource pool closed"))?,
-            )
-        } else {
-            None
-        };
-        let handle = provider
-            .acquire_resource(
-                &dr::AcquireResourceRequest {
-                    connection_config: config,
-                    target,
-                    scope: dr::ResourceScope {
-                        purpose,
-                        max_physical_connections: 1,
-                        holds_open_transaction: false,
-                        pin_for_streaming: false,
-                    },
-                    identity_scope,
-                    baseline: baseline.clone(),
-                },
-                &self.budget,
-            )
-            .await
-            .map_err(map::error)?;
-        let observation = match provider.observe_session(&handle).await {
-            Ok(observation) => observation,
-            Err(error) => {
-                let _ = provider.close_resource(&handle).await;
-                return Err(map::error(error));
-            }
-        };
-        let resource_id = uuid::Uuid::new_v4().to_string();
-        let capabilities = provider.capabilities();
-        let opened = OpenedResource {
-            context: map::context(&observation.context),
-            capabilities: CapabilityVersions::new(
-                capabilities.snapshot.protocol_version.to_string(),
-                capabilities.snapshot.driver_version.clone(),
-            ),
-            resource_id: resource_id.clone(),
-            driver_supports_cancel: capabilities
-                .capabilities
-                .precise_cancel
-                .accepts_precise_cancel(),
-        };
-        self.resources.write().await.insert(
-            resource_id.clone(),
-            Arc::new(Resource {
-                provider,
-                handle,
-                baseline,
-                connection_id: request.connection_id.as_str().to_owned(),
-                config_revision: request.config_revision.0,
-                epoch: request.runtime_epoch,
-                revision: tokio::sync::Mutex::new(0),
-                last_context: tokio::sync::Mutex::new(map::context(&observation.context)),
-                cancels: tokio::sync::Mutex::new(HashMap::new()),
-                _short_permit: short_permit,
-            }),
-        );
-        // 出向端口的反向索引：没有这一行，借出请求就只能新建连接或凭空拒绝。
-        // 先确认资源真的在表里再绑（`insert` 刚刚做完，这一步因此恒真，但留着
-        // 是为了让「绑定 ⇒ 资源在册」这条不变式在代码里看得见，而不是靠调用顺序）。
-        self.bind_live_resource(request.db_session_id.as_str(), &resource_id)
-            .await;
-        Ok(opened)
+        self.open_for_command(request, "").await
+    }
+    async fn open_for_command(
+        &self,
+        request: OpenResource,
+        command: &str,
+    ) -> Result<OpenedResource, rc::ProviderError> {
+        self.open_resource(request, command).await
+    }
+    async fn reclaim_idle_resources(&self) {
+        self.retire_idle(self.leases.idle_to_retire(None)).await;
     }
     async fn execute(
         &self,
         request: ExecuteOnResource,
     ) -> Result<ResourceExecution, rc::ProviderError> {
-        let resource = self.resource(&request.resource_id).await?;
-        let mut input = request.command.input.clone();
-        if matches!(
-            request.command.command.as_str(),
-            "query" | "execute" | "query_stream"
-        ) {
-            if let Some(params) = input.get("params").cloned() {
-                let sql = input
-                    .get("sql")
-                    .and_then(serde_json::Value::as_str)
-                    .ok_or_else(|| {
-                        rc::ProviderError::HostRejected("SQL input unavailable".into())
-                    })?;
-                let bound_sql = crate::sql_guard::apply_params(sql, &params)
-                    .map_err(rc::ProviderError::HostRejected)?;
-                if let Some(object) = input.as_object_mut() {
-                    object.insert("sql".into(), serde_json::Value::String(bound_sql));
-                    object.remove("params");
-                }
-            }
-        }
-        let (config, metadata) = self
-            .store
-            .platform_profile(&resource.connection_id)
-            .await
-            .ok_or_else(|| rc::ProviderError::HostRejected("profile unavailable".into()))?;
-        if !metadata.enabled || metadata.config_revision != resource.config_revision {
-            return Err(rc::ProviderError::HostRejected(
-                "profile disabled or revision changed".into(),
-            ));
-        }
-        if matches!(
-            request.command.command.as_str(),
-            "query" | "execute" | "query_stream"
-        ) {
-            let sql = input
-                .get("sql")
-                .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| rc::ProviderError::HostRejected("SQL input unavailable".into()))?;
-            crate::sql_guard::check_sql(
-                sql,
-                config.read_only,
-                self.store.get_settings().await.safe_mode,
-            )
-            .map_err(rc::ProviderError::HostRejected)?;
-        }
-        let publisher = self
-            .publisher
-            .read()
-            .map_err(|_| rc::ProviderError::ProtocolError("publisher unavailable".into()))?
-            .clone()
-            .ok_or_else(|| rc::ProviderError::ProtocolError("publisher not installed".into()))?;
-        let started = std::time::Instant::now();
-        let record_history = request
-            .command
-            .input
-            .get("recordHistory")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
-        let history_sql = request
-            .command
-            .input
-            .get("sql")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
-        let execution = QueryExecutionId::new(request.execution_id.as_str());
-        let cancel_handle = uuid::Uuid::new_v4().to_string();
-        resource
-            .cancels
-            .lock()
-            .await
-            .insert(request.execution_id.as_str().into(), cancel_handle.clone());
-        request.cancel_handle_sink.publish(&cancel_handle);
-        let sink = Sink {
-            id: request.execution_id.clone(),
-            publisher: publisher.clone(),
-        };
-        if let Some(object) = input.as_object_mut() {
-            object.remove("recordHistory");
-        }
-        let call = dr::CommandCall::new(request.command.command.clone(), input);
-        let result = match call.command.as_str() {
-            "platform.beginTransaction" => resource
-                .provider
-                .begin_transaction(
-                    &resource.handle,
-                    &serde_json::from_value::<ds::TransactionOptions>(call.input.clone()).map_err(
-                        |_| rc::ProviderError::HostRejected("invalid transaction options".into()),
-                    )?,
-                )
-                .await
-                .map(|transaction| (None, Some(transaction))),
-            "platform.commitTransaction" => resource
-                .provider
-                .commit_transaction(&resource.handle)
-                .await
-                .map(|transaction| (None, Some(transaction))),
-            "platform.rollbackTransaction" => resource
-                .provider
-                .rollback_transaction(&resource.handle)
-                .await
-                .map(|transaction| (None, Some(transaction))),
-            _ => resource
-                .provider
-                .execute_on_resource(&resource.handle, &execution, &call, &sink)
-                .await
-                .map(|completion| (Some(completion), None)),
-        };
-        resource
-            .cancels
-            .lock()
-            .await
-            .remove(request.execution_id.as_str());
-        let observation = resource.provider.observe_session(&resource.handle).await;
-        let (completion, transaction, driver_failed) = match result {
-            Ok((completion, transaction)) => (completion, transaction, false),
-            Err(_) => (None, None, true),
-        };
-        let observation = observation.map_err(map::error)?;
-        let context_after = completion
-            .as_ref()
-            .map(|c| &c.context_after)
-            .unwrap_or(&observation.context);
-        let effect_outcome = completion
-            .as_ref()
-            .map(|c| c.effect_outcome)
-            .or_else(|| transaction.as_ref().and_then(|t| t.effect))
-            .unwrap_or(if driver_failed {
-                ds::EffectOutcome::Unknown
-            } else {
-                ds::EffectOutcome::NotStarted
-            });
-        let state = completion
-            .as_ref()
-            .map(|c| match c.completion_status {
-                ds::CompletionStatus::Succeeded => rc::ExecutionState::Succeeded,
-                ds::CompletionStatus::Failed { .. } => rc::ExecutionState::Failed,
-                ds::CompletionStatus::Cancelled { .. } => rc::ExecutionState::Cancelled,
-            })
-            .unwrap_or(if effect_outcome == ds::EffectOutcome::Unknown {
-                rc::ExecutionState::Failed
-            } else {
-                rc::ExecutionState::Succeeded
-            });
-        if let Some(completion) = &completion {
-            for (index, statement) in completion.statement_results.iter().enumerate() {
-                publisher(
-                    &request.execution_id,
-                    serde_json::json!({"kind":"statementMetadata","statementIndex":index,"columns":statement.columns,"rowsAffected":statement.rows_affected,"truncated":statement.truncated}),
-                )?;
-            }
-        }
-        let driver_handles = completion
-            .as_ref()
-            .map(|c| c.session_handles.as_slice())
-            .unwrap_or(observation.handles.as_slice());
-        if driver_handles.iter().any(|handle| {
-            !handle.belongs_to(
-                resource.handle.resource_key(),
-                resource.handle.runtime_epoch(),
-            )
-        }) {
-            return Err(rc::ProviderError::HostRejected(
-                "driver handle bound to another resource".into(),
-            ));
-        }
-        let mut revision = resource.revision.lock().await;
-        let mut previous = resource.last_context.lock().await;
-        let observed_context = map::context(context_after);
-        *revision = (*revision).max(request.expected_context_revision);
-        if *previous != observed_context {
-            *revision = revision.checked_add(1).ok_or_else(|| {
-                rc::ProviderError::ProtocolError("context revision exhausted".into())
-            })?;
-            *previous = observed_context.clone();
-        }
-        let context_revision = *revision;
-        drop(previous);
-        drop(revision);
-        if record_history {
-            if let Some(sql) = history_sql {
-                let rows_affected = completion
-                    .as_ref()
-                    .map(|completion| {
-                        completion
-                            .statement_results
-                            .iter()
-                            .filter_map(|statement| statement.rows_affected)
-                            .reduce(u64::saturating_add)
-                    })
-                    .flatten();
-                let entry = crate::store::QueryHistoryEntry {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    connection_id: resource.connection_id.clone(),
-                    database: observed_context.namespace.database.clone(),
-                    schema: (!observed_context.namespace.schema.is_empty())
-                        .then(|| observed_context.namespace.schema.clone()),
-                    sql,
-                    executed_at: chrono::Utc::now(),
-                    execution_time_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64,
-                    rows_affected,
-                    success: state == rc::ExecutionState::Succeeded,
-                    error_message: if driver_failed {
-                        Some("executionFailed".into())
-                    } else {
-                        None
-                    },
-                };
-                if self.store.add_query_history(entry).await.is_err() {
-                    tracing::warn!("query history persistence failed");
-                }
-            }
-        }
-        Ok(ResourceExecution {
-            execution_id: request.execution_id.clone(),
-            stream_id: rc::StreamId::new(format!("result:{}", request.execution_id.as_str())),
-            state,
-            effect_outcome: map::effect(effect_outcome),
-            context_after: observed_context,
-            context_revision,
-            handles: map::handles(driver_handles, &request.resource_id, resource.epoch),
-            cancel_handle,
-        })
+        self.execute_resource(request).await
     }
     async fn cancel(&self, request: CancelOnResource) -> Result<ResourceCancel, rc::ProviderError> {
         let resource = self.resource(&request.resource_id).await?;
@@ -528,118 +270,45 @@ impl SessionBackend for DesktopSessionBackend {
         &self,
         request: FinalizeHandles,
     ) -> Result<HandleFinalization, rc::ProviderError> {
-        let resource = self.resource(&request.resource_id).await?;
-        if request.handles.iter().any(|handle| {
-            handle.resource_id.as_str() != request.resource_id
-                || handle.runtime_epoch.get() != resource.epoch
-        }) {
-            return Err(rc::ProviderError::HostRejected(
-                "handle resource binding mismatch".into(),
-            ));
-        }
-        if request
-            .handles
-            .iter()
-            .any(|handle| !handle.closed && handle.kind != rc::HandleKind::Transaction)
-        {
-            return Err(rc::ProviderError::CapabilityUnsupported);
-        }
-        let before = resource
-            .provider
-            .observe_session(&resource.handle)
-            .await
-            .map_err(map::error)?;
-        let active = request
-            .handles
-            .iter()
-            .filter(|handle| !handle.closed)
-            .count();
-        let effect = if active > 0 {
-            let transaction = match request.disposition {
-                HandleDisposition::Commit => {
-                    resource.provider.commit_transaction(&resource.handle).await
-                }
-                HandleDisposition::Rollback => {
-                    resource
-                        .provider
-                        .rollback_transaction(&resource.handle)
-                        .await
-                }
-            }
-            .map_err(map::error)?;
-            transaction.effect.unwrap_or(ds::EffectOutcome::Unknown)
-        } else {
-            ds::EffectOutcome::NotStarted
-        };
-        let after = resource
-            .provider
-            .observe_session(&resource.handle)
-            .await
-            .map_err(map::error)?;
-        let remaining = after.handles.iter().filter(|handle| !handle.closed).count();
-        if active == 0 && before.handles.iter().any(|handle| !handle.closed) {
-            return Err(rc::ProviderError::CleanupFailed(
-                "unregistered driver handles".into(),
-            ));
-        }
-        Ok(HandleFinalization {
-            finalized: request.handles.len().saturating_sub(remaining),
-            remaining,
-            effect_outcome: map::effect(effect),
-        })
+        self.finalize_resource_handles(request).await
     }
     async fn close(
         &self,
         request: CloseResource,
     ) -> Result<CloseResourceOutcome, rc::ProviderError> {
-        let resource = self.resource(&request.resource_id).await?;
-        if request.registered_handles != 0 {
-            return Err(rc::ProviderError::CleanupFailed(
-                "registered handles remain".into(),
-            ));
-        }
-        let observation = resource
-            .provider
-            .observe_session(&resource.handle)
-            .await
-            .map_err(map::error)?;
-        if observation.handles.iter().any(|handle| !handle.closed)
-            || matches!(
-                observation.transaction.state,
-                ds::TransactionState::Active
-                    | ds::TransactionState::Aborted
-                    | ds::TransactionState::Unknown
-            )
-        {
-            return Ok(CloseResourceOutcome::Undecidable {
-                reason: "resource state unresolved",
-            });
-        }
-        let _reset = resource
-            .provider
-            .reset_resource(&resource.handle, &resource.baseline)
-            .await;
-        // 出向端口绑定与物理资源同帧摘除：`Closed` 与 `Undecidable` 都不该再被借出。
-        self.unbind_live_resource_by_resource(&request.resource_id)
-            .await;
-        match resource
-            .provider
-            .close_resource(&resource.handle)
-            .await
-            .map_err(map::error)?
-        {
-            ds::CloseDisposition::Closed => {
-                self.resources.write().await.remove(&request.resource_id);
-                Ok(CloseResourceOutcome::Closed)
-            }
-            ds::CloseDisposition::CloseUnconfirmed => Ok(CloseResourceOutcome::Undecidable {
-                reason: "driver close unconfirmed",
-            }),
-        }
+        self.close_resource_lease(request).await
     }
 }
 
 impl DesktopSessionBackend {
+    async fn retire_idle(&self, ids: Vec<rc::ResourceId>) {
+        for id in ids {
+            let Ok(resource) = self.resource(id.as_str()).await else {
+                continue;
+            };
+            let host = datazen_runtime::resource::HostConditionSnapshot::default();
+            if self
+                .leases
+                .returning(
+                    &id,
+                    datazen_runtime::resource::DriverCleanVerdict::reported_unclean(),
+                    &host,
+                )
+                .is_err()
+            {
+                continue;
+            }
+            let confirmed = matches!(
+                resource.provider.close_resource(&resource.handle).await,
+                Ok(ds::CloseDisposition::Closed)
+            );
+            let _ = self.leases.closed(&id, confirmed);
+            if confirmed {
+                self.resources.write().await.remove(id.as_str());
+            }
+        }
+    }
+
     /// 按 `resource_id` 摘绑定。由 [`SessionBackend::close`] 调用——它是
     /// **唯一**能保证「关物理资源」与「摘出向端口绑定」同帧发生的地方。
     ///

@@ -159,7 +159,14 @@ pub(super) async fn apply_completion(
     };
 
     // 句柄必须**先**登记，再把终态交给调用方。
-    let register_error = state.handles.register(execution.handles.clone()).err();
+    let register_error = state
+        .handles
+        .observe(
+            execution.handles.clone(),
+            &active.resource_id,
+            state.runtime_epoch.get(),
+        )
+        .err();
     state.context_revision = execution.context_revision;
     state.view.context_revision = Counter(execution.context_revision);
     state.view.observed_context = execution.context_after.clone();

@@ -6,7 +6,7 @@ pub(super) struct IssuedToken {
     operation: IdempotentOperation,
     epoch: Counter,
     handle: Option<SessionHandle>,
-    expires_at_nanos: u64,
+    pub(super) expires_at_nanos: u64,
 }
 fn operation(value: IdempotentOperation) -> SubmissionOperation {
     match value {
@@ -89,19 +89,27 @@ impl RuntimeConnectionUseCases {
                 )
             })?;
         let now = self.inner.clock.now_nanos();
-        let mut tokens = lock(&self.inner.tokens);
-        tokens.retain(|_, token| token.expires_at_nanos > now);
-        tokens.insert(
-            token_digest(&key),
-            IssuedToken {
-                ctx: ctx.clone(),
-                operation: op,
-                epoch,
-                handle: handle.cloned(),
-                expires_at_nanos: now.saturating_add(DEFAULT_TTL_NANOS),
-            },
-        );
-        drop(tokens);
+        {
+            let mut tokens = lock(&self.inner.tokens);
+            tokens.retain(|_, token| token.expires_at_nanos > now);
+            if tokens.len() >= 4096 {
+                return Err(ApiError::new(
+                    ApiErrorCode::ResourceBusy,
+                    "submission token capacity reached",
+                ));
+            }
+            tokens.insert(
+                token_digest(&key),
+                IssuedToken {
+                    ctx: ctx.clone(),
+                    operation: op,
+                    epoch,
+                    handle: handle.cloned(),
+                    expires_at_nanos: now.saturating_add(DEFAULT_TTL_NANOS),
+                },
+            );
+        }
+        self.reclaim_receipts().await;
         let expires = std::time::SystemTime::now()
             .checked_add(std::time::Duration::from_secs(86400))
             .and_then(|v| v.duration_since(std::time::UNIX_EPOCH).ok())
@@ -112,6 +120,63 @@ impl RuntimeConnectionUseCases {
             idempotency_key: IdempotencyKey::new(key),
             expires_at: clock.project(crate::directory::MonoInstant::ZERO),
         })
+    }
+    pub(super) async fn coordinate_admission(
+        &self,
+        key: &str,
+    ) -> Result<tokio::sync::OwnedMutexGuard<()>, ApiError> {
+        let mutex = {
+            let mut keys = lock(&self.inner.target_admissions);
+            keys.retain(|_, value| value.strong_count() > 0);
+            if let Some(mutex) = keys.get(key).and_then(std::sync::Weak::upgrade) {
+                mutex
+            } else {
+                if keys.len() >= 4096 {
+                    return Err(ApiError::new(
+                        ApiErrorCode::ResourceBusy,
+                        "admission capacity reached",
+                    ));
+                }
+                let mutex = Arc::new(tokio::sync::Mutex::new(()));
+                keys.insert(key.into(), Arc::downgrade(&mutex));
+                mutex
+            }
+        };
+        Ok(mutex.lock_owned().await)
+    }
+    pub(super) async fn reclaim_receipts(&self) {
+        let now = self.inner.clock.now_nanos();
+        let active_tokens: std::collections::HashSet<String> = lock(&self.inner.tokens)
+            .iter()
+            .filter(|(_, token)| token.expires_at_nanos > now)
+            .map(|(key, _)| key.clone())
+            .collect();
+        let active_admissions: std::collections::HashSet<String> = {
+            let mut keys = lock(&self.inner.target_admissions);
+            keys.retain(|_, mutex| mutex.strong_count() > 0);
+            keys.keys().cloned().collect()
+        };
+        self.inner.receipts.lock().await.retain(|key, _| {
+            active_tokens.contains(&token_digest(key)) || active_admissions.contains(key)
+        });
+        let active_executions = lock(&self.inner.sink.0)
+            .values()
+            .filter(|e| !e.view.state.is_terminal())
+            .map(|e| e.view.execution_id.clone())
+            .collect();
+        let live_sessions = lock(&self.inner.sessions)
+            .values()
+            .filter(|e| e.closed.is_none())
+            .map(|e| e.handle.db_session_id.as_str().to_owned())
+            .collect();
+        self.inner
+            .gateway
+            .reclaim_external_receipts(
+                |key| active_tokens.contains(&token_digest(key)) || active_admissions.contains(key),
+                &active_executions,
+                &live_sessions,
+            )
+            .await;
     }
     pub(super) fn validate_token(
         &self,

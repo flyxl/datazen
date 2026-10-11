@@ -130,7 +130,7 @@ pub(super) async fn release(
         Vec::new(),
     );
     let closed = match state.backend.close(close_request).await {
-        Ok(CloseResourceOutcome::Closed) => true,
+        Ok(CloseResourceOutcome::Closed | CloseResourceOutcome::ReturnedToPool) => true,
         Ok(CloseResourceOutcome::Undecidable { .. }) | Err(_) => false,
     };
     if !closed {

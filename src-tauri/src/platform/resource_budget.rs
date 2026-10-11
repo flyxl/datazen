@@ -1,16 +1,41 @@
+//! Driver budget adapter: each scope uses the shared four-class runtime ledger.
 use async_trait::async_trait;
 use datazen_driver_api::resource::{BudgetPermit, BudgetPort, ResourceError};
-use std::{collections::HashMap, sync::Mutex};
+use datazen_platform_api::id::{ConnectionId, OrganizationId, PrincipalId};
+use datazen_runtime::budget::{BudgetClaim, InProcessBudgetCoordinator, ResourceClass};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 pub struct DesktopResourceBudget {
-    limit: u32,
-    permits: Mutex<HashMap<String, u32>>,
+    coordinator: Arc<InProcessBudgetCoordinator>,
+    claim: BudgetClaim,
+    expected_cost: u32,
+    permits: Mutex<HashMap<String, (u32, Vec<datazen_runtime::budget::BudgetPermit>)>>,
 }
 impl DesktopResourceBudget {
-    pub fn new(limit: u32) -> Self {
+    pub fn scoped(
+        coordinator: Arc<InProcessBudgetCoordinator>,
+        organization: OrganizationId,
+        principal: PrincipalId,
+        connection: ConnectionId,
+        class: ResourceClass,
+        cost: u32,
+    ) -> Self {
         Self {
-            limit,
+            coordinator,
+            claim: BudgetClaim::single(organization, connection, principal, class)
+                .with_slots(cost)
+                .pinned(),
+            expected_cost: cost,
             permits: Mutex::new(HashMap::new()),
+        }
+    }
+    fn denied(requested: u32) -> ResourceError {
+        ResourceError::BudgetDenied {
+            requested,
+            reason: "physical budget refused".into(),
         }
     }
 }
@@ -20,22 +45,31 @@ impl BudgetPort for DesktopResourceBudget {
         &self,
         requested: u32,
     ) -> Result<BudgetPermit, ResourceError> {
-        let mut permits = self
-            .permits
-            .lock()
-            .map_err(|_| ResourceError::BudgetDenied {
-                requested,
-                reason: "budget unavailable".into(),
-            })?;
-        let used: u32 = permits.values().sum();
-        if requested == 0 || requested > self.limit.saturating_sub(used) {
-            return Err(ResourceError::BudgetDenied {
-                requested,
-                reason: "physical connection limit reached".into(),
-            });
+        if requested == 0 || requested != self.expected_cost {
+            return Err(Self::denied(requested));
         }
+        let records = if requested == 1 {
+            vec![self
+                .coordinator
+                .acquire_claim_with(&self.claim, 10_000)
+                .await
+                .map_err(|_| Self::denied(requested))?]
+        } else {
+            self.coordinator
+                .acquire_cost_now(&self.claim)
+                .map_err(|_| Self::denied(requested))?
+        };
         let id = uuid::Uuid::new_v4().to_string();
-        permits.insert(id.clone(), requested);
+        let mut permits = match self.permits.lock() {
+            Ok(permits) => permits,
+            Err(_) => {
+                for record in &records {
+                    self.coordinator.release_permit(record, false);
+                }
+                return Err(Self::denied(requested));
+            }
+        };
+        permits.insert(id.clone(), (requested, records));
         Ok(BudgetPermit {
             permit_id: id,
             physical_connections: requested,
@@ -45,22 +79,20 @@ impl BudgetPort for DesktopResourceBudget {
         &self,
         permit: &BudgetPermit,
     ) -> Result<(), ResourceError> {
-        let mut permits = self
-            .permits
-            .lock()
-            .map_err(|_| ResourceError::BudgetDenied {
-                requested: 0,
-                reason: "budget unavailable".into(),
-            })?;
-        if let Some(count) = permits.get(&permit.permit_id) {
+        let mut permits = self.permits.lock().map_err(|_| Self::denied(0))?;
+        if let Some((count, record)) = permits.get(&permit.permit_id) {
             if *count != permit.physical_connections {
-                return Err(ResourceError::BudgetDenied {
-                    requested: 0,
-                    reason: "permit mismatch".into(),
-                });
+                return Err(Self::denied(0));
             }
+            for permit in record {
+                match self.coordinator.release_permit(permit, true) {
+                    datazen_runtime::budget::ReleaseResult::Released { .. }
+                    | datazen_runtime::budget::ReleaseResult::AlreadyReleased { .. } => {}
+                    _ => return Err(Self::denied(0)),
+                }
+            }
+            permits.remove(&permit.permit_id);
         }
-        permits.remove(&permit.permit_id);
         Ok(())
     }
 }

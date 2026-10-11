@@ -225,6 +225,10 @@ impl PoolManager {
         }
     }
 
+    pub(crate) fn forget(&mut self, key: &PoolKeyGeneration) {
+        self.pools.remove(key);
+    }
+
     /// 声明某个池键的能力与容量。同一策略重复声明是幂等的；**冲突**声明直接拒绝，
     /// 因为一个池键同时有状态又无状态意味着有人把驱动契约说错了。
     pub fn declare(

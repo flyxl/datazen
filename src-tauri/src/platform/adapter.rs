@@ -104,6 +104,7 @@ pub struct PlatformAdapter {
     /// 漏了显式 `stop`，任务也不会泄漏——这里仍显式停，是为了让停止**发生在一个
     /// 确定的时刻**，而不是等某个不可预测的析构点。
     idle_reclaimer: std::sync::Mutex<Option<datazen_runtime::application::IdleReclaimer>>,
+    artifacts: std::sync::OnceLock<Arc<datazen_runtime::artifact::FileArtifactStore>>,
 }
 
 impl PlatformAdapter {
@@ -117,6 +118,7 @@ impl PlatformAdapter {
             profiles: std::sync::OnceLock::new(),
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
+            artifacts: std::sync::OnceLock::new(),
         })
     }
 
@@ -130,9 +132,23 @@ impl PlatformAdapter {
             profiles: std::sync::OnceLock::new(),
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
+            artifacts: std::sync::OnceLock::new(),
         }
     }
 
+    /// Host export adapters retain the same store used by result publication.
+    /// Save-dialog paths become owner-bound expiring capabilities in this store;
+    /// frontend request paths are never accepted as an ExportSink.
+    pub(crate) fn artifact_store(
+        &self,
+    ) -> Result<Arc<datazen_runtime::artifact::FileArtifactStore>, ApiError> {
+        self.artifacts.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "artifact storage is not wired",
+            )
+        })
+    }
     pub fn assembly_state(&self) -> AssemblyState {
         if self.services.get().is_some() {
             AssemblyState::FullyWired
@@ -214,11 +230,24 @@ impl PlatformAdapter {
             return Ok(());
         }
         let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
-        let backend = Arc::new(super::session_backend::DesktopSessionBackend::new(
+        let backend = Arc::new(super::session_backend::DesktopSessionBackend::new_scoped(
             registry.clone(),
             store.clone(),
-            32,
+            16,
+            self.identity.organization_id().clone(),
+            self.identity.principal_id().clone(),
         ));
+        let artifacts = Arc::new(
+            datazen_runtime::artifact::FileArtifactStore::open(
+                store.data_dir().join("result-artifacts"),
+            )
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "artifact storage initialization failed",
+                )
+            })?,
+        );
         let live = Arc::new(super::live_source::DesktopLiveConnectionSource::new(
             registry,
             store,
@@ -243,9 +272,22 @@ impl PlatformAdapter {
             )
         })?;
         let sink = runtime.result_sink();
+        sink.with_artifact_store(artifacts.clone())?;
+        self.artifacts.set(artifacts).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "artifact storage already injected",
+            )
+        })?;
         backend
             .set_publisher(Arc::new(move |id, output| {
-                sink.publish_output(id, output).map_err(|_| {
+                let result = match output.get("source").cloned() {
+                    Some(source) => serde_json::from_value(source)
+                        .map_err(|_| ApiError::invalid_argument("invalid result source"))
+                        .and_then(|source| sink.publish_statement_output(id, output, source)),
+                    None => sink.publish_output(id, output),
+                };
+                result.map_err(|_| {
                     datazen_runtime::connection::ProviderError::ProtocolError(
                         "result publication rejected".into(),
                     )

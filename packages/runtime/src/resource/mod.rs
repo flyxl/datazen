@@ -58,6 +58,8 @@ mod lease;
 mod lease_manager;
 mod manager;
 mod pool;
+mod production;
+pub use production::{LogicalSessionPermit, ProductionLeaseManager};
 mod publication;
 mod replacement;
 mod rotation;

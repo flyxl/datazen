@@ -185,6 +185,8 @@ pub struct CloseResource {
 pub enum CloseResourceOutcome {
     /// 已确认关闭。
     Closed,
+    /// Logical lease released into a verified pool; physical budget remains charged.
+    ReturnedToPool,
     /// 无法确认（`SessionLost` / `OutcomeUnknown` 路径）。
     Undecidable { reason: &'static str },
 }
@@ -205,6 +207,18 @@ pub trait SessionBackend: Send + Sync + 'static {
     ) -> Result<OpenedResource, crate::connection::ProviderError>;
 
     /// 在资源上执行。
+    /// Host-authenticated opening intent for a one-command explicit-target lease.
+    /// Implementations that cannot distinguish intent retain their ordinary open contract.
+    async fn open_for_command(
+        &self,
+        request: OpenResource,
+        _command: &str,
+    ) -> Result<OpenedResource, crate::connection::ProviderError> {
+        self.open(request).await
+    }
+
+    async fn reclaim_idle_resources(&self) {}
+
     async fn execute(
         &self,
         request: ExecuteOnResource,

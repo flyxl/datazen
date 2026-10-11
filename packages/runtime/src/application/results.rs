@@ -19,7 +19,7 @@ use std::{
 pub(super) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|p| p.into_inner())
 }
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeArtifactChunk {
     pub artifact_id: ArtifactId,
@@ -41,7 +41,7 @@ pub(super) struct ExecutionEntry {
     pub view: ExecutionView,
     pub events: Vec<ConnectionEventEnvelope>,
     sequence: u64,
-    pub chunks: Vec<RuntimeArtifactChunk>,
+    pub writer: Option<datazen_platform_api::ports::artifact::ArtifactWriter>,
     pub bytes: u64,
     pub outcome: Option<ResourceExecution>,
     pub created: std::time::Instant,
@@ -72,11 +72,47 @@ impl ExecutionEntry {
 }
 /// Host-only publication capability. It accepts only executions already admitted by the use case.
 #[derive(Clone, Default)]
-pub struct RuntimeResultSink(pub(super) Arc<Mutex<HashMap<ExecutionId, ExecutionEntry>>>);
+pub struct RuntimeResultSink(
+    pub(super) Arc<Mutex<HashMap<ExecutionId, ExecutionEntry>>>,
+    Arc<
+        std::sync::OnceLock<
+            Result<Arc<crate::artifact::FileArtifactStore>, datazen_platform_api::error::PortError>,
+        >,
+    >,
+);
 impl RuntimeResultSink {
+    pub fn with_artifact_store(
+        &self,
+        store: Arc<crate::artifact::FileArtifactStore>,
+    ) -> Result<(), ApiError> {
+        self.1.set(Ok(store)).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "artifact storage already initialized",
+            )
+        })
+    }
+    fn store(&self) -> Result<Arc<crate::artifact::FileArtifactStore>, ApiError> {
+        self.1
+            .get_or_init(|| {
+                let root = std::env::temp_dir().join(format!(
+                    "datazen-artifacts-{}",
+                    crate::directory::DbSessionIdGenerator::new()
+                        .generate()
+                        .as_str()
+                ));
+                crate::artifact::FileArtifactStore::open(root).map(Arc::new)
+            })
+            .clone()
+            .map_err(convert::port)
+    }
+
     /// Reclaim settled executions after their result retention expires. Active
     /// executions retain their cancellation/ownership records until completion.
     pub(super) fn reclaim_expired(&self) {
+        if let Some(Ok(store)) = self.1.get() {
+            let _ = store.reclaim_expired_sync();
+        }
         lock(&self.0).retain(|_, entry| {
             !entry.view.state.is_terminal()
                 || entry.created.elapsed() <= std::time::Duration::from_secs(86400)
@@ -150,50 +186,91 @@ impl RuntimeResultSink {
                     "statement source execution mismatch",
                 ))
             }
-            None => match entry.view.provenance.as_ref() {
-                Some(provenance) => StatementResultSource {
-                    execution_id: id.clone(),
-                    statement_index: 0,
-                    context: provenance.context_before.clone(),
-                    relation: None,
-                    writable_mapping: WritableMapping::ReadOnly,
-                },
-                None => unknown_source(id),
-            },
+            None => {
+                let mut source = unknown_source(id);
+                source.statement_index = output
+                    .as_ref()
+                    .and_then(|o| o.get("statementIndex"))
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|i| u32::try_from(i).ok())
+                    .unwrap_or(0);
+                source
+            }
         };
-        let artifact_id = ArtifactId::new(format!("artifact-{}", id.as_str()));
-        let size = serde_json::to_vec(
-            &serde_json::json!({"columns":&columns,"rows":&rows,"output":&output,"source":&source}),
-        )
-        .map_err(|_| ApiError::invalid_argument("invalid result block"))?
-        .len() as u64;
-        if size > 32 * 1024 * 1024
-            || total_bytes.saturating_add(size) > 256 * 1024 * 1024
-            || entry.chunks.len() >= 65536
-        {
+        let store = self.store()?;
+        if entry.writer.is_none() {
+            let fingerprint = entry
+                .view
+                .provenance
+                .as_ref()
+                .map(datazen_platform_api::ports::artifact::provenance_fingerprint)
+                .unwrap_or_else(|| "unobserved".into());
+            let (artifact_id, writer) = store
+                .create_sync(
+                    &entry.ctx,
+                    datazen_platform_api::ports::artifact::ArtifactSpec::new(
+                        entry.ctx.organization_id.clone(),
+                        entry.ctx.principal_id.clone(),
+                        id.clone(),
+                        fingerprint,
+                    ),
+                )
+                .map_err(convert::port)?;
+            entry.writer = Some(writer);
+            entry.view.artifact_ids.push(artifact_id);
+        }
+        let writer = entry.writer.as_mut().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "artifact writer unavailable",
+            )
+        })?;
+        let artifact_id = writer.artifact_id.clone();
+        let index = writer.next_chunk_index;
+        let chunk = RuntimeArtifactChunk {
+            artifact_id: artifact_id.clone(),
+            chunk_index: index,
+            byte_offset: writer.published_byte_size,
+            columns,
+            rows,
+            output,
+            source: source.clone(),
+            published_chunk_count: index.saturating_increment(),
+            published_byte_length: Counter::ZERO,
+            complete: false,
+        };
+        struct BoundedBytes(Vec<u8>);
+        impl std::io::Write for BoundedBytes {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if self.0.len().saturating_add(bytes.len()) >= 32 * 1024 * 1024 {
+                    return Err(std::io::Error::other("artifact block limit"));
+                }
+                self.0.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut encoded = BoundedBytes(Vec::new());
+        serde_json::to_writer(&mut encoded, &chunk).map_err(|_| {
+            ApiError::new(ApiErrorCode::PayloadTooLarge, "result block exceeds budget")
+        })?;
+        let mut bytes = encoded.0;
+        bytes.push(b'\n');
+        if total_bytes.saturating_add(bytes.len() as u64) > 256 * 1024 * 1024 {
             return Err(ApiError::new(
                 ApiErrorCode::PayloadTooLarge,
                 "result artifact budget exceeded",
             ));
         }
-        let byte_offset = Counter::new(entry.bytes);
-        entry.bytes += size;
-        let index = Counter::new(entry.chunks.len() as u64);
-        entry.chunks.push(RuntimeArtifactChunk {
-            artifact_id: artifact_id.clone(),
-            chunk_index: index,
-            byte_offset,
-            columns,
-            rows,
-            output,
-            source: source.clone(),
-            published_chunk_count: Counter::new(index.get() + 1),
-            published_byte_length: Counter::new(entry.bytes),
-            complete: false,
-        });
-        if entry.view.artifact_ids.is_empty() {
-            entry.view.artifact_ids.push(artifact_id.clone());
-        }
+        store
+            .append_sync(
+                writer,
+                datazen_platform_api::ports::artifact::ChunkPayload::new(bytes),
+            )
+            .map_err(convert::port)?;
+        entry.bytes = writer.published_byte_size.get();
         entry.event(ConnectionEvent::ResultChunk(ResultChunkEvent {
             artifact_id,
             chunk_index: index,
@@ -216,7 +293,7 @@ impl RuntimeResultSink {
             view,
             events: Vec::new(),
             sequence: 0,
-            chunks: Vec::new(),
+            writer: None,
             bytes: 0,
             outcome: None,
             subscribers: Vec::new(),
@@ -276,6 +353,25 @@ impl RuntimeResultSink {
             };
             if entry.view.result_completeness == ResultCompleteness::Truncated {
                 entry.view.truncation_reason = Some("executionInterrupted".into());
+            }
+            if let Some(writer) = entry.writer.take() {
+                let reason = match entry.view.state {
+                    ExecutionState::Succeeded => None,
+                    ExecutionState::Cancelled => {
+                        Some(datazen_platform_api::dto::artifact::AbortReason::Cancelled)
+                    }
+                    _ => Some(datazen_platform_api::dto::artifact::AbortReason::ExecutionFailed),
+                };
+                if self
+                    .store()
+                    .and_then(|store| store.finish_sync(writer, reason).map_err(convert::port))
+                    .is_err()
+                {
+                    entry.view.state = ExecutionState::Failed;
+                    entry.view.result_completeness = ResultCompleteness::Truncated;
+                    entry.view.truncation_reason = Some("artifactFinalizationFailed".into());
+                    entry.view.error_code = Some(ExecutionErrorCode::HostRejected);
+                }
             }
             entry.event(ConnectionEvent::ExecutionChanged {
                 execution: entry.view.clone(),
@@ -386,41 +482,20 @@ impl RuntimeResultSink {
         artifact: &ArtifactId,
         index: Counter,
     ) -> Result<RuntimeArtifactChunk, ApiError> {
-        let entries = lock(&self.0);
-        let entry = entries
-            .values()
-            .find(|e| e.view.artifact_ids.contains(artifact) && e.visible_to(ctx))
-            .ok_or_else(|| ApiError::new(ApiErrorCode::NotFound, "artifact unavailable"))?;
-        if entry.created.elapsed() > std::time::Duration::from_secs(86400) {
-            return Err(ApiError::new(
-                ApiErrorCode::NotFound,
-                "result artifact expired",
-            ));
-        }
-        if entry.chunks.is_empty() && index.get() == 0 {
-            return Ok(RuntimeArtifactChunk {
-                artifact_id: artifact.clone(),
-                chunk_index: index,
-                byte_offset: Counter::new(0),
-                columns: serde_json::json!([]),
-                rows: Vec::new(),
-                output: None,
-                source: unknown_source(&entry.view.execution_id),
-                published_chunk_count: Counter::new(0),
-                published_byte_length: Counter::new(0),
-                complete: entry.view.result_completeness == ResultCompleteness::Complete,
-            });
-        }
-        let mut chunk = entry
-            .chunks
-            .get(index.get() as usize)
-            .cloned()
-            .ok_or_else(|| {
-                ApiError::new(ApiErrorCode::NotFound, "artifact chunk not yet published")
+        // Artifact ACL/TTL live in the durable store, independent of a session or
+        // execution tombstone. Restart recovery therefore preserves readable results.
+        let store = self.store()?;
+        let bytes = store
+            .read_sync(ctx, artifact, index)
+            .map_err(convert::port)?;
+        let metadata = store.describe_sync(ctx, artifact).map_err(convert::port)?;
+        let mut chunk: RuntimeArtifactChunk =
+            serde_json::from_slice(&bytes.bytes).map_err(|_| {
+                ApiError::new(ApiErrorCode::ServiceUnavailable, "artifact block invalid")
             })?;
-        chunk.published_chunk_count = Counter::new(entry.chunks.len() as u64);
-        chunk.published_byte_length = Counter::new(entry.bytes);
-        chunk.complete = entry.view.result_completeness == ResultCompleteness::Complete;
+        chunk.published_chunk_count = metadata.published_chunk_count;
+        chunk.published_byte_length = metadata.published_byte_size;
+        chunk.complete = metadata.result_completeness == ResultCompleteness::Complete;
         Ok(chunk)
     }
 }

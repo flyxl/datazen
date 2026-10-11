@@ -33,6 +33,26 @@ impl SessionBackend for ObservedBackend {
         );
         Ok(opened)
     }
+    async fn open_for_command(
+        &self,
+        r: OpenResource,
+        command: &str,
+    ) -> Result<OpenedResource, ProviderError> {
+        let epoch = r.runtime_epoch;
+        let opened = self.inner.open_for_command(r, command).await?;
+        lock(&self.physical).insert(
+            epoch,
+            PhysicalOutcome {
+                id: opened.resource_id.clone(),
+                release: None,
+                effect: crate::connection::EffectOutcome::Unknown,
+            },
+        );
+        Ok(opened)
+    }
+    async fn reclaim_idle_resources(&self) {
+        self.inner.reclaim_idle_resources().await;
+    }
     async fn execute(&self, r: ExecuteOnResource) -> Result<ResourceExecution, ProviderError> {
         self.sink.started(&r.execution_id, &r.resource_id);
         let outcome = self.inner.execute(r).await?;

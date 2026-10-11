@@ -40,3 +40,49 @@ Before and after scoped tracked+untracked source SHA: b3f32270cfc57226756e825a9a
 - Cancellation/drain failure returns SessionLost and tombstones the data handle; control pool and budget are released by resource close. Server or socket shutdown timing still needs WDIO/live verification.
 - API prerequisite commits: fec6c7fe2b3b82cfe8f63b56e3de9c37b201c597, 87ee7bdcca7b00115b8a399acfdf4efd2c6e1e90, e4a9eb008f6a527a5033cedfc867baa363ea5571.
 - This branch-only progress ledger must be removed during accepted integration; it is not a permanent deliverable.
+
+
+# P3 runtime implementation ledger
+
+## Implemented production paths
+- FileArtifactStore injected at desktop assembly (`Store.data_dir/result-artifacts`); publisher writes immutable disk blocks before bounded events and readers use published disk prefix. Writer capability/ACL/TTL, 4096 artifacts, 32 MiB blocks, 256 MiB aggregate bytes, writer-lost restart truncation and corrupt recovery bounds are active.
+- Owner-only directories/files on Unix; no-follow opens, bounded metadata/block recovery reads. Export capabilities bind organization/principal, expire after 300 seconds and reject arbitrary server paths; partial JSONL export requires explicit confirmation and durable truncation marker.
+- Logical/editor quotas and descriptor physical cost use the shared coordinator; strict refused/unknown costs reject. ProductionLeaseManager participates in opening/execution/return/close. Only declared reusable metadata resources park after driver Clean and host checks; actual pool checkout, key invalidation and 60-second idle retirement run. Unconfirmed closure quarantines and retains physical budget.
+- Transaction observations set context_after and handle lifecycle. Repeated exact live transaction handles are idempotent; only exact explicit closure retires a handle. Missing handles never imply closure.
+- executeAtTarget admission is an owned task with per-key coordination, receipt recovery and caller-drop cleanup through original actor drain/close; unknown outcomes retain their outcome and uncertain resources retain budget. Completion restores gateway unknown resolution and session/context events.
+- Token/receipt/coordinator/gateway directories reclaim by issued-token lifetime, protect active admissions/executions and cap at 4096. Closed session and budget retirement tombstones are bounded; missing observations never erase live unknown-outcome fences. Existing SQL guards, binding, history and cancel token validation retained.
+- Host typed metadata executes on original runtime resource via desktop helper, publishes typed commandResult. Safe executionError artifact is best-effort; independent generic errorCode remains readable if disk publication fails.
+- Single wildcard relation Verified source requires execution-before same-pin driver schema/resolvedTarget, confirmed exact context equality and completion columns/PK proof. Other statement source context stays Unknown/ReadOnly with actual statement index.
+
+## Dependencies (separate commits)
+- driver-api fec6c7fe -> local 93afb6243.
+- desktop Host helpers cd7fecd4e -> local 9064db194.
+- driver-api streaming 87ee7bdcca -> local da79fce12.
+- driver-api prepared streaming e4a9eb008 -> local 2252555de.
+
+## Validation
+Only compiler checks performed; no Cargo/Vitest tests and no WDIO run in this track.
+Initial formal gate HEAD da79fce12c0950a6234a73bf4646cb56b08114b4, source SHA e0c79b0172eeb594a94d52c73bf4a721ecbad34bfdb8f0812cba8e2bda8ac085.
+`CARGO_TARGET_DIR=/tmp/datazen-p346-runtime-target cargo check -p datazen-runtime`: exit 0, `Finished dev profile ... in 4.08s`.
+`CARGO_TARGET_DIR=/tmp/datazen-p346-runtime-target cargo check -p datazen --lib --no-default-features`: exit 0, 49 warnings (desktop helper/baseline/disabled feature warnings), `Finished dev profile ... in 21.68s`.
+Before/after HEAD and source SHA (including untracked Rust source) matched. Latest interface dependency requires following gate recorded below.
+Logs remain /tmp/datazen-p346-final-runtime.log and /tmp/datazen-p346-final-host.log.
+
+## Final resumed gate
+- HEAD before/after: `2252555dec25c42dafccf94d655f89dfc529ee17`.
+- Source SHA before/after, including untracked source: `c8b8664e2682f8709401e3efbb56cda6ac08e226459523d8165f09d2375cc732` (MATCH).
+- `cargo check -p datazen-runtime`: EXIT=0, `Finished dev profile [unoptimized + debuginfo] target(s) in 1.27s`.
+- `cargo check -p datazen --lib --no-default-features`: EXIT=0, `Finished dev profile [unoptimized + debuginfo] target(s) in 5.40s`, Host 50 warnings (includes inactive export adapter getter and baseline/helper/disabled-feature warnings).
+- Both checks used independent `/tmp/datazen-p346-runtime-target`; logs `/tmp/datazen-p346-runtime-gate.log`, `/tmp/datazen-p346-host-gate.log`.
+- One resumed intermediate gate failed on a duplicate artifact getter inserted on PlatformEntry; fixed, and the final matching gate above passed. No tests ran.
+- Additional actual-budget fixes: multi-connection descriptor cost atomically reserves all unit permits; queued acquisitions consume only their own scheduled grant; caller drop returns an already granted unobserved permit; scheduling grants notify other waiting futures. Physical snapshots/caps include real primary permits. Unpublished disk remnants remain charged to the byte budget until deletion/recovery.
+- Other open/context operations now use per-key coordination and short receipt-map locks; context replacements retire old application rows only after actual replacement success, using physical outcome evidence.
+
+## Explicit pending integration/verification
+- Real PostgreSQL/MySQL pinned and incremental streaming implementations belong to driver track, not this commit; integrate them before claiming P3 streaming end-to-end complete.
+- Fresh independent WDIO validation is pending, including cancellation/admission races, bounded prefix publication, typed catalog, error recovery and original-resource result edits.
+- Quarantined physical budget is deliberately not recovered without confirmed close; automatic repair of quarantined resources is not implemented.
+- Verified writable mapping is deliberately limited to a single wildcard relation. Multi-statement context source remains unobserved rather than guessed.
+- Desktop Save dialog/IPC export wiring is not added in this scope; PlatformAdapter retains the actual result store and exposes a Host getter. Its ArtifactStore export enforces owner/TTL capabilities, but UI export journey is pending.
+- Row prefix blocks presently obtain columns at final statementMetadata; desktop has statementColumns consumption and driver was asked to publish it using write_output. This extra live-columns behavior must be checked on the integrated driver revision.
+- Ledger is temporary branch coordination data and must be removed during final integration acceptance.
