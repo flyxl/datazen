@@ -1,5 +1,4 @@
 import { runEditorQuery } from '../lib/session/runEditorQuery';
-import { queryCommands } from '../commands/query';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { applyQueryStreamEvent } from '../lib/queryStream';
 import { resolvePostQueryViewMode } from '../lib/chart/postQueryView';
@@ -167,16 +166,8 @@ export async function runStreamingQuery(
   };
 
   try {
-    const streamOptions = {
-      database: database ?? null,
-      schema: schema ?? null,
-      ...(params && Object.keys(params).length > 0 ? { params } : {}),
-    };
-    if (connectionId) {
-      await runEditorQuery(paneKey, connectionId, sql, database, schema, params, onEvent);
-    } else {
-      await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, streamOptions);
-    }
+    if (!connectionId) throw new Error('A persistent connection owner is required for query execution');
+    await runEditorQuery(paneKey, connectionId, sql, database, schema, params, onEvent);
     const exec = getExec().get(paneKey);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);

@@ -42,6 +42,13 @@ export function applyQueryStreamEvent<T extends StreamableQueryTab>(
       };
       return { ...tab, results, error: null };
     }
+    case 'statementSnapshot': {
+      const targetIndex = event.index + baseOffset;
+      const results = tab.results.slice();
+      while (results.length <= targetIndex) results.push(emptyStatement(''));
+      results[targetIndex] = event.result;
+      return { ...tab, results };
+    }
     case 'rows': {
       const targetIndex = event.index + baseOffset;
       const results = tab.results.map((result, index) =>

@@ -86,3 +86,41 @@ Logs remain /tmp/datazen-p346-final-runtime.log and /tmp/datazen-p346-final-host
 - Desktop Save dialog/IPC export wiring is not added in this scope; PlatformAdapter retains the actual result store and exposes a Host getter. Its ArtifactStore export enforces owner/TTL capabilities, but UI export journey is pending.
 - Row prefix blocks presently obtain columns at final statementMetadata; desktop has statementColumns consumption and driver was asked to publish it using write_output. This extra live-columns behavior must be checked on the integrated driver revision.
 - Ledger is temporary branch coordination data and must be removed during final integration acceptance.
+
+
+# P4 desktop track
+
+Worktree: `.worktrees/datazen-p346-desktop`; baseline `246835a9c`.
+
+## Implemented
+
+- Query panes lazily own independent runtime sessions. Duplicate panes never copy handles. Community/Pro editor callbacks route through the same owned wrapper; missing owner cannot fall back to legacy execution. Manual BEGIN, transactions, cancellation and observed context use the pane controller.
+- Dropdown changes publish UI context only after runtime success. SQL qualification and path completion affect browsing only. Explicit recovery opens a new session at the last confirmed target. Blocked close keeps the tab and transaction controls reachable.
+- Table reads execute explicit targets through runtime; short ChangeSets own a transaction/session. Manual table operations use a table-owned handle, preserving transaction ownership on partial failure. Metadata for that manual handle stays on the same resource. Legacy shared row commit commands reject writes.
+- Typed catalog separates schemas from relations, retaining empty schema navigation. Batch columns remain bounded at 256. Schema/DDL cache keys include authenticated identity, persistent profile revision and target; invalidation understands the scoped tuple. Object catalog/DDL use independent target runtime leases.
+- Final statement metadata supplies verified source and original runtime binding. Result cell writes read immutable server artifacts/PK and validate same-resource schema, context and live binding. Values are bound, qualification is driver-owned. PK edits require table ChangeSets; zero changed rows get same-resource readback classification. Successful result edits invalidate the local writable binding and require explicit query rerun for another edit.
+- Existing WDIO query, cancellation/isolation edge and error recovery journeys now assert real result header/cell DOM. Existing Rust tests moved verbatim into commands/data/tests.rs only.
+
+## Checks
+
+- Direct Node tsc --noEmit, `/tmp/p346-desktop-tsc7.log`: EXIT=0.
+- `CARGO_TARGET_DIR=/tmp/datazen-p346-desktop-target cargo check -p datazen --lib`, `/tmp/p346-desktop-cargo-check2.log`: EXIT=0; Finished dev profile in 31.32s.
+- Both gates HEAD `cd7fecd4ee9550bcca45f717aa594bc0fe6bf863`, source SHA `ac04eadbe5d626137b5dc00e8d09fb7fc5edac0a2d710db147e7442afe577705` identical before/after, includes tracked and untracked non-env source. Subsequent frontend BEGIN/source fixes passed final gates below.
+- Final Node tsc `/tmp/p346-desktop-tsc-final.log`: EXIT=0; final Host check `/tmp/p346-desktop-cargo-final.log`: EXIT=0, Finished dev profile in 0.64s. Both HEAD cd7fecd4e and SHA 2644f0d9b6ff315057c6ba3b24e2746a7a7d336d3117e9b175affc6604883f6d equal before/after. Result concurrency guard tsc delivery gate EXIT=0, HEAD cd7fecd4e and SHA bf578a73d3a542f785236354eae6af75d36c2365d0ef4182880f163236b61879 equal before/after. Final statementColumns consumption and short-session target confirmation passed Node tsc /tmp/p346-desktop-tsc-ready.log EXIT=0 and Host check /tmp/p346-desktop-cargo-ready.log EXIT=0 (Finished dev profile in 17.82s). HEAD cd7fecd4e and SHA 4a7a607262b8bc9515e9dc7a20fa456b3bb5bfd4153e5874d1758ab58da841ec equal before/after. Only existing WDIO edge DOM assertions and this ledger changed subsequently.
+- No unit tests added/run. No env content read. WDIO not run in this track; parent will integrate runtime/driver final commits into independent acceptance candidate and use the required webdriver build.
+
+## Dependencies and honest limits
+
+- Verified source producer depends on runtime pre-statement same-pin proof and driver resolvedTarget/bound-stream implementation; not live validated here.
+- Query result editing is conservative: exact wildcard single relation proof, PK included, no PK edits, one successful edit then explicit rerun. No automatic replay of arbitrary SQL.
+- Original session loss/replacement keeps artifacts readable but writable authority is rejected. UI may retain a formerly live binding until interaction; Host rechecks it before writing.
+- P6 subsequent consumers still use legacy SQL: DatabaseObjectView, ImportDialog, IndexesView, DocumentConnectionView, ObjectBrowser, PrivilegeView, TableStructureEditor, navigator/useNavigatorContextMenus, useConnectionContextMenu; exportStream uses the legacy streaming facade. Coordinator classified administration/import/export helpers as P6, while P4 schema/DDL caches and directory reads are migrated. This is not a claim that all legacy SQL consumers are removed.
+- Live PG/MySQL validation of table paging/manual transaction, result edit, cancellation/transport recovery, error recovery, Community and Pro remains outstanding. Compile success is not P4 acceptance.
+
+Delete this ledger during accepted integration/merge.
+
+## Delivery checkpoint
+
+Final direct Node tsc `/tmp/p346-desktop-tsc-commit.log`: `EXIT=0`. Before/after `HEAD=cd7fecd4ee9550bcca45f717aa594bc0fe6bf863` and `SOURCE_SHA=3bdb1178defef3150de7ee26b8bfbfaa23ac16c61435424595694868fbf37e2a` match. This checkpoint text is the only change after that gate. Final Rust source was checked by `/tmp/p346-desktop-cargo-ready.log`: `EXIT=0`, `Finished dev profile [unoptimized + debuginfo] target(s) in 17.82s`; both fingerprints matched.
+
+READY_FOR_TEST means reviewable and compilation-ready, not live acceptance. Parent must build with `pnpm tauri:build:webdriver` after runtime/driver integration and run the strengthened existing WDIO tests.

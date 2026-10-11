@@ -179,7 +179,7 @@ pub async fn read(
         &context,
         &target,
         revision,
-        None,
+        request.manual_handle.as_ref(),
         "get_table_schema",
         json!({
             "table": request.context.table, "database": database, "schema": request.context.schema,

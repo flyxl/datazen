@@ -205,8 +205,19 @@ describe('SQL 查询模块（编辑器、执行、结果、历史与收藏）', 
   it('应能输入 SQL 并执行查询 (SQ-001, SQ-002)', async () => {
     await openQueryTab();
     await executeSQL('SELECT 1 AS test_col');
-    const body = await $('body').getText();
-    expect(body.includes('test_col') || body.includes(`1 ${t('common.rows')}`)).toBe(true);
+    const table = $('[data-testid="result-workspace-table"]');
+    await table.waitForDisplayed({ timeout: 15000 });
+    const result = await browser.execute(() => {
+      const root = document.querySelector('[data-testid="result-workspace-table"]');
+      return {
+        headers: Array.from(root?.querySelectorAll('[data-col-header]') ?? [])
+          .map((node) => node.getAttribute('data-col-header')),
+        cells: Array.from(root?.querySelectorAll('[data-testid="data-table-cell"]') ?? [])
+          .map((node) => node.textContent?.trim()),
+      };
+    });
+    expect(result.headers).toContain('test_col');
+    expect(result.cells).toEqual(['1']);
   });
 
   it('流式查询超过一批的结果不应被批大小截断', async () => {

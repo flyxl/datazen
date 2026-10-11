@@ -210,6 +210,20 @@ pub(super) async fn execute_plan(
         context,
         handle: Some(opened.handle),
     };
+    if opened.observed_context.namespace.database != plan.table.database
+        || plan
+            .table
+            .schema
+            .as_ref()
+            .is_some_and(|schema| opened.observed_context.namespace.schema.as_ref() != Some(schema))
+    {
+        if manual {
+            session.handle = None;
+        }
+        return Err(CommandError::Validation(
+            "Table target could not be confirmed on its owned session".into(),
+        ));
+    }
     if plan.config_revision != Some(opened.config_revision) {
         if manual {
             session.handle = None;

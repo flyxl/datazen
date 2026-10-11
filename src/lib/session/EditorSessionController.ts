@@ -9,6 +9,7 @@ import { counterValue, sameHandle } from './counters';
 
 /** One instance per editor/pane. Runtime handles never leave this in-memory owner. */
 export class EditorSessionController {
+  private latestTarget: ExecutionTarget;
   private session: SessionView | null = null;
   private opening: Promise<SessionView> | null = null;
   private tail: Promise<unknown> = Promise.resolve();
@@ -20,7 +21,7 @@ export class EditorSessionController {
     readonly client: BackendClient,
     readonly initialTarget: ExecutionTarget,
     readonly owner: OwnerRef,
-  ) {}
+  ) { this.latestTarget = initialTarget; }
 
   get snapshot(): SessionView | null { return this.session; }
   get activeExecution(): ExecutionReceipt | null { return this.execution; }
@@ -51,9 +52,10 @@ export class EditorSessionController {
       this.opening = (async () => {
         const token = await this.token('openSession');
         const receipt = await this.client.openSession({
-          initialTarget: this.initialTarget, owner: this.owner, idempotencyKey: token.idempotencyKey,
+          initialTarget: this.latestTarget, owner: this.owner, idempotencyKey: token.idempotencyKey,
         }, token);
         this.session = receipt.session;
+        if (receipt.session.observedContext.confidence === 'confirmed') this.latestTarget = { ...this.latestTarget, namespace: receipt.session.observedContext.namespace };
         this.attachmentToken = receipt.attachmentToken;
         this.publish();
         return receipt.session;
@@ -103,6 +105,7 @@ export class EditorSessionController {
       }, token);
       // Failed revision/transaction/replacement leaves the previous handle intact.
       this.session = receipt.session;
+      if (receipt.session.observedContext.confidence === 'confirmed') this.latestTarget = { ...this.latestTarget, namespace: receipt.session.observedContext.namespace };
       if (receipt.attachmentToken !== null) this.attachmentToken = receipt.attachmentToken;
       // The tracked execution belonged to the handle we just gave up; it can no
       // longer be cancelled through this controller. Its results stay readable
@@ -137,7 +140,18 @@ export class EditorSessionController {
   async refresh(): Promise<SessionView | null> {
     const handle = this.session?.handle;
     if (!handle) return null;
-    const view = await this.client.getSession(handle);
+    let view: SessionView;
+    try {
+      view = await this.client.getSession(handle);
+    } catch (error) {
+      if (error instanceof ApiError && ['SessionLost', 'SessionNotFound', 'RuntimeEpochMismatch'].includes(error.code)) {
+        if (this.session && sameHandle(handle, this.session.handle)) {
+          this.session = { ...this.session, state: 'lost' };
+          this.publish();
+        }
+      }
+      throw error;
+    }
     this.acceptSession(view);
     return this.session;
   }
@@ -145,6 +159,7 @@ export class EditorSessionController {
     if (!this.session || !sameHandle(view.handle, this.session.handle)) return false;
     if (counterValue(view.contextRevision) < counterValue(this.session.contextRevision)) return false;
     this.session = view;
+    if (view.observedContext.confidence === 'confirmed') this.latestTarget = { ...this.latestTarget, namespace: view.observedContext.namespace };
     this.publish();
     return true;
   }
@@ -195,7 +210,7 @@ export class EditorSessionController {
         owner.editorSessionId === this.owner.editorSessionId) {
       throw new Error('Cloned editors require a distinct owner ID');
     }
-    return new EditorSessionController(this.client, this.initialTarget, owner);
+    return new EditorSessionController(this.client, this.latestTarget, owner);
   }
 }
 

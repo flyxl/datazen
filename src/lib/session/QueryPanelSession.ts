@@ -91,6 +91,20 @@ export async function switchDatabaseSession(
         ? await options.confirmTransaction(current as SessionView)
         : false;
       if (!ok) return { status: 'cancelled' };
+      // Confirmation means rollback, never an implicit commit. Wait for the
+      // authoritative receipt before requesting a context replacement.
+      const receipt = await controller.execute({
+        command: 'platform.rollbackTransaction', input: { defersCommit: true },
+      });
+      for (;;) {
+        const execution = await controller.client.getExecution(receipt.executionId);
+        if (execution.state === 'succeeded') break;
+        if (execution.state === 'failed' || execution.state === 'cancelled') {
+          throw new Error(execution.errorCode ?? 'Rollback outcome unavailable');
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      await controller.refresh();
     }
     try {
       const session = await controller.setContext(desired);

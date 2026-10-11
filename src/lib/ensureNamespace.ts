@@ -26,6 +26,7 @@ export interface EnsureDeps {
   cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
   getDatabases: (dbSessionId: string) => Promise<string[]>;
+  listCatalog?: (dbSessionId: string, database: string) => Promise<{ tables: TableInfo[]; schemas: string[] }>;
   listTables: (dbSessionId: string, database: string) => Promise<TableInfo[]>;
 }
 
@@ -121,8 +122,10 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
       databases[0];
     if (!preferred) return;
 
-    const all = await deps.listTables(dbSessionId, preferred);
+    const catalog = await deps.listCatalog?.(dbSessionId, preferred);
+    const all = catalog?.tables ?? await deps.listTables(dbSessionId, preferred);
     const bySchema = new Map<string, string[]>();
+    for (const name of catalog?.schemas ?? []) if (isSchemaGroupingSchema(name)) bySchema.set(name, []);
     for (const item of all) {
       if (!isSchemaGroupingSchema(item.schema)) continue;
       const list = bySchema.get(item.schema!) ?? [];
@@ -139,9 +142,11 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
 
   if (isMultiDatabase && segments.length === 1) {
     const [db] = segments;
-    const all = await deps.listTables(dbSessionId, db);
+    const catalog = await deps.listCatalog?.(dbSessionId, db);
+    const all = catalog?.tables ?? await deps.listTables(dbSessionId, db);
     const tableItems = all.filter((item) => item.tableType !== 'view');
     const bySchema = new Map<string, string[]>();
+    for (const name of catalog?.schemas ?? []) if (isSchemaGroupingSchema(name)) bySchema.set(name, []);
     for (const item of tableItems) {
       if (!isSchemaGroupingSchema(item.schema)) continue;
       const list = bySchema.get(item.schema!) ?? [];

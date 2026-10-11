@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { tableManualHandle } from '../lib/session/tableSession';
 import { databaseCommands } from '../commands/database';
 import { t } from '../locales/t';
 import type { DatabaseType, FilterCondition, SortCondition } from '../types';
@@ -219,6 +220,8 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
     try {
       const res = await databaseCommands.getTableData({
+        context,
+        manualHandle: tableManualHandle(panelId),
         dbSessionId: context.dbSessionId,
         table: context.table,
         page,
@@ -678,6 +681,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       const response = await databaseCommands.commitPendingChanges({
         dbSessionId: context.dbSessionId,
         plan,
+        manualHandle: tableManualHandle(panelId),
         fingerprint: plan.fingerprint,
       });
       const latest = get().byPanel.get(panelId);
@@ -704,7 +708,10 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       patchPanel(get, set, panelId, () => ({ pendingStatus: 'idle' }));
       return result;
     } catch (e) {
-      const error = extractErrorMessage(e, t('tableData.commitFailed'));
+      let error = extractErrorMessage(e, t('tableData.commitFailed'));
+      try {
+        if (tableManualHandle(panelId)) error += ' Some changes may remain in the current transaction. Inspect or roll back before retrying.';
+      } catch { /* Preserve the original failure when the owner was lost. */ }
       patchPanel(get, set, panelId, () => ({ pendingStatus: 'idle', error }));
       return {
         ...emptyResult,

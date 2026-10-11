@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { queryCommands } from '../../../commands/query';
+import { editorOwnerForPane, getQueryPanelSessionRegistry, queryPanelExecutionTarget } from '../../../lib/session/queryPanelSessionRoot';
 import { usePanelStore } from '../../../stores/panelStore';
 import { paneArgs, paneKey } from '../../../stores/paneKeys';
 import { useSettingsStore } from '../../../stores/settingsStore';
@@ -185,10 +185,25 @@ export function useQueryExecutionGate({
       // 会话上下文只在下拉/对象树/会话切换的显式路径上改变。
       if (!autoCommit && !inTransaction) {
         try {
-          await queryCommands.beginSessionTransaction(dbSessionId);
+          const panel = usePanelStore.getState().panels.find((entry) => entry.id === panelId);
+          if (!panel || panel.type !== 'query') throw new Error('Query panel unavailable');
+          const key = paneKey(panelId, paneId);
+          const controller = getQueryPanelSessionRegistry().get(key,
+            queryPanelExecutionTarget(connectionId, panel.database ?? null, panel.schema ?? null),
+            await editorOwnerForPane(key));
+          const receipt = await controller.execute({ command: 'platform.beginTransaction', input: { defersCommit: true } });
+          for (;;) {
+            const execution = await controller.client.getExecution(receipt.executionId);
+            if (execution.state === 'succeeded') break;
+            if (execution.state === 'failed' || execution.state === 'cancelled') throw new Error(execution.errorCode ?? 'Transaction outcome unavailable');
+            await new Promise<void>((resolve) => setTimeout(resolve, 50));
+          }
+          const session = await controller.refresh();
+          if (session?.observedContext.transactionState !== 'active') throw new Error('Transaction state could not be confirmed');
           setInTransaction(true);
-        } catch {
-          /* driver may not support transactions; continue */
+        } catch (error) {
+          showMessageDialog(error instanceof Error ? error.message : String(error), 'error');
+          return;
         }
       }
       const rawValues = (paramValues ?? boundPayload ?? {}) as Record<string, unknown>;
