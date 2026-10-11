@@ -102,3 +102,9 @@ This ledger must be deleted before delivery/merge to main.
 - Code review found the SQL `Command` path (`query`/`execute`) entered `independent_sql::execute` without the same multi-database target requirement enforced by legacy Workflow `Query` steps.
 - Coder commit `40749f978` moves the existing `database_is_required` policy to the shared independent SQL entry. Multi-database drivers now require a step, workflow, or connection database before opening the SQL resource; single-database drivers remain allowed. Explicit malformed namespace values continue to fail validation before this guard.
 - This extends the earlier P6 Workflow SQL execution/cancellation/effect-diagnostic work. The commit is not yet part of the accepted candidate and has no compile or WDIO result; include it in the next isolated build and, where feasible, run Workflow WDIO against PostgreSQL/MySQL. No unit tests are authorized.
+
+## Continued candidate state (2026-10-12)
+
+- The candidate now includes the shared Workflow SQL target guard as commit `e6782a879` (cherry-picked from coder commit `40749f978`). It remains uncompiled and unaccepted pending the next matching WDIO build.
+- Independent safe probes against fixed candidate `2bb263fb4` confirmed the database-discovery target failure is shared by both dialects: legacy `list_databases` returns 25 PG / 14 MySQL entries, while the all-null connection-scope `execute_at_target` call fails before a receipt. Both DOM trees remain at zero database nodes. Probe-only changes were removed; tester is running the frozen multi-database and query selector/Stop WDIO journeys.
+- Coder is tracing and repairing the shared pre-receipt target submission path in its own worktree. Do not accept P4 until the database tree and target selector pass on both drivers. The candidate can advance independently; the verifier remains frozen on `2bb263fb4` for its current WDIO round.
