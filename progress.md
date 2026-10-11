@@ -124,3 +124,19 @@ Delete this ledger during accepted integration/merge.
 Final direct Node tsc `/tmp/p346-desktop-tsc-commit.log`: `EXIT=0`. Before/after `HEAD=cd7fecd4ee9550bcca45f717aa594bc0fe6bf863` and `SOURCE_SHA=3bdb1178defef3150de7ee26b8bfbfaa23ac16c61435424595694868fbf37e2a` match. This checkpoint text is the only change after that gate. Final Rust source was checked by `/tmp/p346-desktop-cargo-ready.log`: `EXIT=0`, `Finished dev profile [unoptimized + debuginfo] target(s) in 17.82s`; both fingerprints matched.
 
 READY_FOR_TEST means reviewable and compilation-ready, not live acceptance. Parent must build with `pnpm tauri:build:webdriver` after runtime/driver integration and run the strengthened existing WDIO tests.
+
+
+# Workflow SQL diagnostic follow-up
+
+Status: implemented, compilation checked; not independently accepted.
+
+- Failed SQL execution reports execution identity, terminal state, effect outcome and structural error code.
+- Result-read failures retain the known effect outcome and execution identity. Reading a result never submits SQL again.
+- Error text uses structural codes; driver payloads and credentials are not copied into these diagnostics.
+
+Check: `cargo check -p datazen --lib`, EXIT=0, log `/tmp/datazen-p346-workflow-check.log`.
+Start/end HEAD: `f5e4b9ff78cedd0f0d53c44327d0c4ed211a0ccf`.
+Start/end tracked source diff SHA: `f569fbabd2f28717a2fa4f7c71ba728c3518698bd093f787e20e7ca234141368`.
+No tests were added or run. Independent WDIO acceptance is pending.
+
+Delete this ledger before delivery.

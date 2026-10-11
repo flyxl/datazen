@@ -148,17 +148,27 @@ pub(super) async fn execute(
     };
     cancellation.execution = None;
     if view.state != ExecutionState::Succeeded {
-        return Err(WorkflowError::Driver(format!(
-            "workflow SQL execution {:?}: {:?}",
-            view.state, view.error_code
-        )));
+        return Err(WorkflowError::SqlExecution {
+            execution_id: receipt.execution_id.as_str().to_owned(),
+            state: format!("{:?}", view.state),
+            effects: format!("{:?}", view.effect_outcome),
+            code: format!("{:?}", view.error_code),
+        });
     }
+    // Reading a result does not execute SQL again. Preserve the known effect
+    // when storage or transport fails after the statement has completed.
+    let result_read_error =
+        |error: datazen_application::error::ApiError| WorkflowError::SqlResultRead {
+            execution_id: receipt.execution_id.as_str().to_owned(),
+            effects: format!("{:?}", view.effect_outcome),
+            code: format!("{:?}", error.code),
+        };
     let mut statements = BTreeMap::<u64, serde_json::Value>::new();
     for artifact in view.artifact_ids {
         let first = runtime
             .read_artifact_chunk(call.context(), artifact.clone(), Counter::ZERO)
             .await
-            .map_err(|error| WorkflowError::Validation(error.to_string()))?;
+            .map_err(&result_read_error)?;
         let count = first.published_chunk_count.get();
         for index in 0..count {
             let chunk = if index == 0 {
@@ -167,7 +177,7 @@ pub(super) async fn execute(
                 runtime
                     .read_artifact_chunk(call.context(), artifact.clone(), Counter::new(index))
                     .await
-                    .map_err(|error| WorkflowError::Validation(error.to_string()))?
+                    .map_err(&result_read_error)?
             };
             let Some(output) = chunk.output else { continue };
             let Some(statement_index) = output

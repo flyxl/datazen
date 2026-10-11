@@ -46,6 +46,23 @@ pub enum WorkflowError {
     #[error("{0}")]
     Driver(String),
 
+    #[error(
+        "Workflow SQL execution {execution_id}: state={state}, effects={effects}, code={code}"
+    )]
+    SqlExecution {
+        execution_id: String,
+        state: String,
+        effects: String,
+        code: String,
+    },
+
+    #[error("Workflow SQL result unavailable for execution {execution_id}: effects={effects}, code={code}")]
+    SqlResultRead {
+        execution_id: String,
+        effects: String,
+        code: String,
+    },
+
     #[error("{0}")]
     Validation(String),
 
