@@ -114,3 +114,10 @@ This ledger must be deleted before delivery/merge to main.
 - The stage-split safe WDIO probe corrected the failure boundary: PostgreSQL and MySQL target submissions both return `queued`, then terminate `succeeded` with `effectOutcome=completed`. The helper fails during artifact readback; the direct legacy database counts remain 25/14.
 - Source confirms `ExecutionProjection.recover()` calls `BackendClient.readArtifact`, whose default naming would invoke `read_artifact`, but desktop only registers `read_artifact_chunk`. Coder commit `fd812d7fd` adds the explicit transport override; it is integrated in candidate `300e6cf25`. No budget policy was changed.
 - Independent verifier is removing the temporary probe, retaining only reviewed test journeys, moving to `300e6cf25`, rebuilding with `pnpm tauri:build:webdriver`, then running PG/MySQL database tree/selector/Stop plus feasible PG table journeys and PG/MySQL Workflow WDIO. The fix is not accepted until those matching gates finish with stable source hashes.
+
+## Latest candidate and verifier status (2026-10-12 05:35)
+
+- The matching webdriver build attempted from `300e6cf25` failed at Rust E0433 in `workflow/independent_sql.rs`: the executor module is nested under `workflow::workflows`, so `super::executor` did not resolve.
+- Coder `4761a67c1` corrected the path; candidate is now `9e8118afb65ff0438210d04b301f795fd7f589dd`. This source fix has not yet passed a fresh webdriver build.
+- Independent Luna max verifier is preserving its reviewed WDIO-only patches, aligning to the new candidate, then rebuilding. Its previous `.app` is stale and cannot be used.
+- No other unfinished agent is currently active; historical coders are complete. Do not mark P3/P4 accepted until PG/MySQL database discovery and downstream journeys pass on the matching fresh build. P6 remains in progress.
