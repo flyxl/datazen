@@ -211,28 +211,28 @@ async fn a_handle_from_another_provider_is_rejected() {
 }
 
 #[tokio::test]
-async fn closing_with_an_open_transaction_is_not_reported_as_clean() {
-    let (provider, _fake, budget) = provider();
+async fn quarantined_transaction_can_close_without_a_separate_rollback() {
+    let (provider, fake, budget) = provider();
     let handle = acquire(&provider, &budget).await;
     provider
         .begin_transaction(&handle, &TransactionOptions::default())
         .await
         .expect("begin should succeed");
-    // Preserve the transaction and physical permit until explicit rollback.
+    fake.with(|wire| wire.disconnect_fails = true);
     for _ in 0..2 {
-        assert_eq!(
-            provider.close_resource(&handle).await.unwrap(),
-            CloseDisposition::CloseUnconfirmed
-        );
+        assert!(provider.close_resource(&handle).await.is_err());
         assert!(!handle.is_closed());
         assert_eq!(budget.released(), 0);
+        assert!(provider.open_transaction_of(&handle).is_some());
     }
-    provider.rollback_transaction(&handle).await.unwrap();
+    // The Host verifier retries only close_resource, never rollback_transaction.
+    fake.with(|wire| wire.disconnect_fails = false);
     assert_eq!(
         provider.close_resource(&handle).await.unwrap(),
         CloseDisposition::Closed
     );
     assert!(handle.is_closed());
+    assert!(provider.open_transaction_of(&handle).is_none());
     assert_eq!(budget.released(), 1);
     assert_eq!(
         provider.close_resource(&handle).await.unwrap(),

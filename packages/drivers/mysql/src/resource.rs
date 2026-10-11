@@ -945,11 +945,10 @@ impl ResourceProvider for MysqlResourceProvider {
                         .into(),
                 }
             })?;
-            // Preserve an open transaction for explicit rollback. Disconnect
-            // must not erase it and later masquerade as a confirmed clean close.
-            if lock(&self.transactions).contains_key(handle.resource_key()) {
-                return Ok(CloseDisposition::CloseUnconfirmed);
-            }
+            // An unresolved transaction forbids reuse, not physical teardown.
+            // Quarantine verification only retries close_resource; disconnect
+            // drops its pinned connection and awaits the original pools closing.
+            // Retain transaction bookkeeping until that closure is confirmed.
             // Persist before awaiting: other resource operations are refused
             // while closing, including after a failed or dropped attempt. A
             // later close retries the original retained driver pools.
@@ -972,6 +971,7 @@ impl ResourceProvider for MysqlResourceProvider {
         // Publish confirmation only after both physical closure and accounting
         // completed. Until then any repeated close remains unconfirmed.
         handle.mark_closed();
+        lock(&self.transactions).remove(handle.resource_key());
         lock(&self.live).remove(handle.resource_key());
         Ok(CloseDisposition::Closed)
     }
