@@ -225,10 +225,11 @@ impl DatabaseDriver for ReuseDriver {
         execution_id: &QueryExecutionId,
         sql: &str,
         limit: Option<u32>,
+        parameters: Option<&[Value]>,
         sink: &dyn crate::resource::ResultSink,
     ) -> Result<Vec<StatementResult>, crate::resource::ResourceError> {
         self.inner
-            .query_to_sink(handle, execution_id, sql, limit, sink)
+            .query_to_sink(handle, execution_id, sql, limit, parameters, sink)
             .await
     }
 

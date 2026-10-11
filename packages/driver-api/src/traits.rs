@@ -265,6 +265,7 @@ pub trait DatabaseDriver: Send + Sync {
         _execution_id: &QueryExecutionId,
         _sql: &str,
         _limit: Option<u32>,
+        _parameters: Option<&[Value]>,
         _sink: &dyn crate::resource::ResultSink,
     ) -> Result<Vec<StatementResult>, crate::resource::ResourceError> {
         Err(crate::resource::ResourceError::unsupported(
