@@ -28,6 +28,25 @@ function run() {
   return { code, logs, output: logs.join('\n') };
 }
 
+/**
+ * A tree scan that must not observe another process's probe files.
+ *
+ * `withTempSourceFile(s)` plants probes into the real source tree while holding an
+ * on-disk `mkdir` lock. Vitest runs test files across parallel worker processes, so
+ * an unlocked `run()` here can scan the tree while a sibling worker has probes
+ * planted in it, and report findings that do not exist in the tree being scanned.
+ * That is how the two `driver-sdk-no-direct-tauri` assertions below came to fail
+ * only under the full suite while passing in isolation: they assert on global
+ * properties of whatever the scan happened to see.
+ *
+ * The lock is re-entrant, so this would also be safe around a `run()` already
+ * nested in `withTempSourceFile(s)`; it is used here only at the three call sites
+ * that hold no lock of their own.
+ */
+function runLocked() {
+  return withProbeLock(() => run());
+}
+
 /** The same, for the `--require-layers` argument `--require-layers=a,b` parses. */
 function runRequired(layers: string[]) {
   const logs: string[] = [];
@@ -99,7 +118,7 @@ describe('checkModuleLayers', () => {
     };
     LAYER_RULES.push(probe);
     try {
-      const { code, output } = run();
+      const { code, output } = runLocked();
       expect(code).toBe(1);
       expect(output).toContain('src/lib');
       expect(output).toContain('probe');
@@ -427,11 +446,11 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
         // green. Asserting the debt is reported *and* not enforced is what keeps
         // the day the migration lands from looking like a regression.
         expect(violations.filter((v) => v.rule === 'driver-sdk-no-direct-tauri')).toEqual([]);
-        expect(run().code).toBe(0);
+        expect(runLocked().code).toBe(0);
       });
 
       it('says out loud that its findings are non-blocking', () => {
-        const { code, output } = run();
+        const { code, output } = runLocked();
         expect(code).toBe(0);
         expect(output).toMatch(/advisory finding\(s\) \(non-blocking\)/);
       });
@@ -583,7 +602,8 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
     const PROBE_DIR = 'scripts/__boundaryProbe__';
     const PROBE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
     /** Tauri import as written; the body every "should have been caught" case plants. */
-    const EVIL = 'import { invoke } from "@tauri-apps/api/core";\nexport const go = () => invoke("x");\n';
+    const EVIL =
+      'import { invoke } from "@tauri-apps/api/core";\nexport const go = () => invoke("x");\n';
 
     type Rule = (typeof LAYER_RULES)[number];
 
@@ -632,8 +652,8 @@ describe('checkModuleLayers watches the same file set as the driver boundary gua
       // A rule with nothing to compare enforces nothing, and nothing in the
       // output used to say so.
       const rel = `${PROBE_DIR}/bare/__boundaryProbe__.ts`;
-      withTempSourceFile(rel, "export const n = 1;\n", () => {
-        expect(readFileSync(resolve(PROBE_ROOT, rel), 'utf8')).toBe("export const n = 1;\n");
+      withTempSourceFile(rel, 'export const n = 1;\n', () => {
+        expect(readFileSync(resolve(PROBE_ROOT, rel), 'utf8')).toBe('export const n = 1;\n');
         const { code } = withTempRule(
           { name: '__probe-no-needle', from: `${PROBE_DIR}/bare`, blocking: true },
           run,
