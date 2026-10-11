@@ -77,3 +77,11 @@ This ledger must be deleted before delivery/merge to main.
 - One-time heartbeat `05-35-p3-p4-p6` is ACTIVE for 2026-10-12 05:35 Asia/Shanghai, attached to this chat; it resumes unfinished work and agents, then closes itself.
 - Updated combined candidate `74c61627509103636b6c7f0c57a6f2c55efeb6b6` includes driver cancellation fix `ec83ad3c9` and runtime export/quarantine source from final `e62798e67`; production source merged without conflicts.
 - Older frozen candidate `aa6fe601d` webdriver build succeeded. Initial real WDIO 0 passed / 2 failed: PG reached cancellation IPC after earlier identity/parameter/temp/schema/600-row/transaction journeys; MySQL fixture profile missing. Tester is fixing only diagnostic wrapper and fixtures before completing the round. Neither candidate is accepted.
+
+## WDIO execution evidence and confirmed defect
+
+- The previous tester ran the real combined candidate (`aa6fe601d`): initial PG/MySQL retained journeys 0/2 because of one PG cancel receipt contract defect and one missing MySQL profile fixture.
+- With test-only fixture/expectation corrections, MySQL retained journey passed 1/1 across identity, typed bound query, temp table + same-pin metadata, 600 rows, transaction rollback, precise cancel, and same-pin recovery. `SELECT SLEEP` may return succeeded with value 1 after cancellation; a `WHERE SLEEP(10)=0` cancel returns failed/cancelled, consistent with server behavior.
+- PostgreSQL journey passed earlier identity, bound parameters, temp table/schema, 600 rows, transaction rollback and failed-transaction recovery. Its sole remaining failure is confirmed production mismatch: PG resource provider returns `CancelReceipt.state=None` after precise cancellation, while Host rejects missing state as ProtocolError (`outcomeUnknown`). New coder `/root/p346_pg_cancel_receipt_fix` is repairing driver receipt semantics; fresh Luna max tester `/root/p346_pg_cancel_retest` will independently verify.
+- The original tester hit the workspace spend cap during final Host UI WDIO coverage; its worktree has two uncommitted test-only patches for safe error-code projection/MySQL profile fixture and SLEEP cancellation semantics. Preserve these as test inputs, review before applying; no production changes there.
+- The one-time 05:35 Asia/Shanghai heartbeat fired and was deleted.
