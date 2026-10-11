@@ -255,9 +255,22 @@ describe('generated driver_init.rs is rustfmt-canonical', () => {
     }
   }, 120_000);
 
-  afterAll(() => {
-    if (stage) rmSync(stage, { recursive: true, force: true });
-  });
+  // Explicit budget, matching the `beforeAll` above, and for the same reason:
+  // this hook does bulk filesystem work, not unit-sized work.
+  //
+  // Removing the staging tree recursively measured 13158ms on this host with the
+  // machine otherwise idle — already past Vitest's 10000ms default before any
+  // contention. So this was never a rare "only under load" flake: the teardown
+  // overran on every run, and the suite reported `Test Files 1 failed` while all
+  // 8 tests had passed. A false negative on an otherwise green suite is the
+  // same failure class as a false green — it teaches reviewers to re-run rather
+  // than read.
+  afterAll(
+    () => {
+      if (stage) rmSync(stage, { recursive: true, force: true });
+    },
+    120_000,
+  );
 
   /* --- primary: byte-for-byte against frozen, independently held goldens --- */
 

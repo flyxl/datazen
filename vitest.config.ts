@@ -73,6 +73,34 @@ export default defineConfig({
     // green exit code; that inference is invalid by construction.
     // Root-level, so — like testTimeout — it covers both CI unit-test steps.
     retry: 2,
+    // Hooks need their own budget because they do categorically different work
+    // from tests: they stage directory trees, shell out to git, and recursively
+    // delete what they staged. Nothing in the per-test measurement above bounds
+    // any of that.
+    //
+    // Measured, unloaded, single-file run on this host: removing the staging
+    // tree in driver-init-rustfmt's `afterAll` took 13158ms — past Vitest's
+    // 10000ms hook default with no contention at all. That suite therefore
+    // reported `Test Files 1 failed` on every run while its 8 tests all passed.
+    // A hook timeout that fires on a green suite is a false negative of exactly
+    // the kind testTimeout above was raised to stop producing: it costs a full
+    // re-run and trains people to re-run instead of read the result.
+    //
+    // 120_000 is NOT a margin claim derived from 13158ms, and nothing here
+    // asserts that 10s is Nx anything — the measurement above is a single
+    // unloaded sample and does not support a multiplier, for the same reason
+    // docs/development/ci-test-matrix.md §2.1.1 rejects one for testTimeout. It
+    // is the budget this repo already hands its slowest hooks explicitly
+    // (driver-init-rustfmt's `beforeAll`, resolve-pro); aligning the global
+    // default with that avoids inventing a second, differently-derived ceiling
+    // for the same class of work.
+    //
+    // What this costs, stated plainly: a genuinely hung hook now takes up to 120s to
+    // report instead of 10s, for every suite matched by `include`. That is the
+    // price of not letting legitimate teardown be mistaken for a hang. An
+    // explicit per-hook timeout, as on the `afterAll` above, still overrides
+    // this and is the right tool for a hook with a known worst case.
+    hookTimeout: 120_000,
     include: [
       'src/**/*.test.{ts,tsx}',
       'scripts/__tests__/**/*.test.{ts,mjs}',
