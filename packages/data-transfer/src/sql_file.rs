@@ -28,7 +28,7 @@ use super::model::{
 };
 use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::transfer::ir::{IRDefault, IRType};
-use datazen_data_sync::sql::{qualify_relation_sql, quote_ident_sql};
+use datazen_driver_api::sql_identifiers::{qualify_relation_sql, quote_ident_sql};
 use datazen_driver_api::{ConnectionHandle, Value};
 
 pub use super::sql_structure::build_structure_plan;
@@ -724,13 +724,15 @@ fn insert_sql_batch(
                     mappings.len()
                 )));
             }
-            Ok(format!(
-                "({})",
-                row.iter()
-                    .map(|value| driver.format_sql_literal(value))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ))
+            let values = row
+                .iter()
+                .map(|value| {
+                    driver
+                        .try_format_sql_literal(value)
+                        .map_err(|error| TransferError::unsupported(error.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(format!("({})", values.join(", ")))
         })
         .collect::<Result<Vec<_>, TransferError>>()?;
     render_sql_file_insert(
@@ -1513,7 +1515,7 @@ mod tests {
         )
         .unwrap();
         assert!(sql.contains("\"display_name\""));
-        assert!(sql.contains("'O''Reilly'"));
+        assert!(sql.contains("$datazen$O'Reilly$datazen$"));
     }
 
     #[test]

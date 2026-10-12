@@ -454,11 +454,35 @@ export function classifyContractChange(baseSource, newSource, rule, records) {
   if (!oldSpan && !newSpan) {
     return { id: rule.id, cls: 'cosmetic', reason: `${rule.id}: anchor not found in either side` };
   }
+  // `!oldSpan && newSpan` — the anchor resolves on the head side and not on the
+  // base side — is the one shape that means the governed item *arrived* in this
+  // delivery. It used to be classified `breaking` with the reason "did not exist
+  // at the base ref (removed outright)", a sentence describing the opposite of
+  // its own condition, so every newly registered contract added one false
+  // breaking and the only way to clear the gate was a PROTOCOL_VERSION bump
+  // that AGENTS.md makes unsatisfiable (every plugin has to move with it).
+  //
+  // Nothing built against the base ref can implement, match or call an item that
+  // did not exist there, so no [MIN_PROTOCOL_VERSION, PROTOCOL_VERSION] window
+  // expresses this change. That is exactly what the matrix's `additive` class is
+  // for, and it still obliges the crate version to move: a new public item
+  // changes what the published crate offers even when it changes no wire
+  // format.
+  //
+  // Both removal paths stay where they were, and they are the other two
+  // branches: an item that stops resolving on the head side (`!newSpan`), and a
+  // removed line inside a span that resolves on both sides (the ladder below).
+  // What this branch does not model is a rule *repointed* at a renamed item in
+  // the same commit — the classifier judges the item its anchor names, and the
+  // rule table is not part of the diff it reads. A repoint that also deletes the
+  // old item is caught only if a rule still covers that old anchor, which is a
+  // table-coverage question; guessing at it here would put back the false
+  // positive this branch exists to remove.
   if (!oldSpan) {
     return {
       id: rule.id,
-      cls: 'breaking',
-      reason: `${rule.id}: ${rule.anchor} did not exist at the base ref (removed outright)`,
+      cls: 'additive',
+      reason: `${rule.id}: ${rule.anchor} is new in this delivery — it does not resolve at the base ref, so nothing compiled against the base ref implements, matches or calls it, and no [MIN_PROTOCOL_VERSION, PROTOCOL_VERSION] window expresses an addition`,
     };
   }
   if (!newSpan) {
@@ -623,8 +647,97 @@ function git(args, cwd) {
 }
 
 /**
+ * Parse a protocol gate's argv, or return the reason it cannot be parsed.
+ *
+ * ## An unknown flag is a verdict, not noise
+ *
+ * These gates run in CI and their exit code *is* the review verdict. A gate
+ * that ignores an argument it does not recognise falls back to its default
+ * base, measures a **different** range than the one that was asked for, and
+ * still prints a clean `ok`. That is a false green, and it is strictly worse
+ * than not accepting the flag at all, because the run looks like it answered
+ * the question when it answered a different one.
+ *
+ * That is not hypothetical: `check-driver-protocol-release.mjs` used to read
+ * only `--base=<ref>`. Typing `--base <ref>` — the form an operator writes
+ * when re-running by hand against a suspicious ref — was dropped silently, the
+ * run compared HEAD against itself, printed `driver releases: 0`, and exited
+ * **0**. A reviewer reading that line would conclude no driver shipped, when
+ * 15 had.
+ *
+ * So the invariant this function exists to hold is: **either the run happened
+ * against exactly the flags given, or the run does not happen.** A misspelled
+ * flag, an unknown flag, a repeated flag, and a value flag with no value are
+ * all refused, because each of them otherwise resolves to "measure something
+ * nobody asked for and call it ok".
+ *
+ * ## Both spellings of a value flag mean the same thing
+ *
+ * `--base=<ref>` is what CI and the npm scripts write; `--base <ref>` is what
+ * a person types. They must resolve to the same ref, so the value is read from
+ * whichever spelling was used rather than from one of them while ignoring the
+ * other.
+ *
+ * @param {string[]} argv arguments **after** the script path (`process.argv.slice(2)`)
+ * @param {{ flags: readonly string[] }} options the flags this gate accepts
+ * @returns {{ ok: true, values: Record<string, string> } | { ok: false, message: string }}
+ */
+export function parseGateArgs(argv, options) {
+  const known = new Set(options.flags);
+  /** @type {Record<string, string>} */
+  const values = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    const eq = token.indexOf('=');
+    const name = eq === -1 ? token : token.slice(0, eq);
+    if (!known.has(name)) {
+      return { ok: false, message: `unknown argument '${token}'` };
+    }
+    if (Object.prototype.hasOwnProperty.call(values, name)) {
+      return { ok: false, message: `argument '${name}' was given more than once` };
+    }
+    /** @type {string | null} */
+    let value = eq === -1 ? null : token.slice(eq + 1);
+    if (value === null) {
+      // A value that itself looks like a flag means the value was forgotten.
+      // Guessing here would reintroduce the silent fallback this rejects.
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith('-')) {
+        return { ok: false, message: `argument '${name}' requires a value` };
+      }
+      value = next;
+      i += 1;
+    }
+    if (value === '') {
+      return { ok: false, message: `argument '${name}' requires a non-empty value` };
+    }
+    values[name] = value;
+  }
+  return { ok: true, values };
+}
+
+/**
+ * Print the "I will not guess" verdict for a gate whose argv could not be
+ * parsed, and return the process exit code for it.
+ *
+ * Exit 2, not 1: 1 is what a gate returns when it ran and found a violation,
+ * and a usage error must not be filed under the same code as a real finding —
+ * otherwise `--nosuchflag` and "the protocol was released without a driver"
+ * become indistinguishable in CI logs.
+ *
+ * @param {string} prefix    the gate's log prefix
+ * @param {string} usage     the one-line usage to print
+ * @param {{ ok: false, message: string }} parsed
+ * @returns {number} process exit code
+ */
+export function gateUsageError(prefix, usage, parsed) {
+  console.error(`${prefix} ${parsed.message}\n\nusage: ${usage}`);
+  return 2;
+}
+
+/**
  * Resolve the ref the change is measured against: the merge base of HEAD and
- * `main`, overridable with `--base=<ref>`.
+ * `main`, overridable with `--base=<ref>` or `--base <ref>`.
  *
  * The merge base rather than `main` itself matters because a branch can be
  * behind; measuring against `main` would attribute another branch's commits to
@@ -827,10 +940,16 @@ export function compareCrateVersions(left, right) {
  * @returns {number} process exit code
  */
 function main() {
-  const baseArg = process.argv.find((a) => a.startsWith('--base='));
-  const base = baseArg ? baseArg.slice('--base='.length) : undefined;
+  const parsed = parseGateArgs(process.argv.slice(2), { flags: ['--base'] });
+  if (!parsed.ok) {
+    return gateUsageError(
+      LOG_PREFIX,
+      'node scripts/check-driver-protocol-compat.mjs [--base <ref> | --base=<ref>]',
+      parsed,
+    );
+  }
 
-  const result = evaluate({ base });
+  const result = evaluate({ base: parsed.values['--base'] });
 
   if (result.findings.length > 0) {
     console.log(`${LOG_PREFIX} governed contract changes vs ${result.base}:`);

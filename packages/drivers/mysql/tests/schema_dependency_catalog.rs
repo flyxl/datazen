@@ -9,8 +9,8 @@
 //! the PostgreSQL server. See `http-support/tests/support/migration_gate.rs`.
 //!
 //! This suite is no longer `#[ignore]`d. With `MYSQL_MIGRATION_TEST_DATABASE` unset it reports
-//! `view-dependency-catalog` unverified and skips; with
-//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1` that report is a failure.
+//! `view-dependency-catalog` unverified — which is a failure by default;
+//! `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` is the one way to get the skip back.
 
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, QueryResult, Value as DriverValue};
 use datazen_driver_mysql::MysqlDriver;
@@ -20,8 +20,8 @@ mod migration_gate;
 
 #[tokio::test]
 async fn view_dependency_catalog_returns_exact_table_and_routine_edges_when_visible() {
-    // `None` means the gate already reported this dimension unverified — or, under
-    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    // `None` means the gate already reported this dimension unverified — which is
+    // a failure, unless the run waived strictness (`DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`).
     let Some(config) = migration_gate::require_config(
         "mysql",
         "view-dependency-catalog",
@@ -160,8 +160,8 @@ async fn view_dependency_catalog_returns_exact_table_and_routine_edges_when_visi
 
 #[tokio::test]
 async fn table_dependency_catalog_proves_empty_and_exact_composite_fk_edges() {
-    // `None` means the gate already reported this dimension unverified — or, under
-    // `DATAZEN_CONTRACT_REQUIRE_LIVE=1`, already failed it.
+    // `None` means the gate already reported this dimension unverified — which is
+    // a failure, unless the run waived strictness (`DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`).
     let Some(config) = migration_gate::require_config(
         "mysql",
         "view-dependency-catalog",

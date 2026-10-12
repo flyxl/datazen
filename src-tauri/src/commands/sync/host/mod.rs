@@ -312,11 +312,8 @@ impl HostDataSync {
             )?,
             None => family_of(&config.database_type),
         };
-        if !is_source && config.read_only {
-            return Err(invalid(
-                "target connection is read-only; return to comparison",
-            ));
-        }
+        // Prepare only reads the target. Read-only admission belongs to the
+        // apply permission gate, so users can still inspect and compare it.
         let database = resolve_db_name(Some(&endpoint.database), config.database.as_deref());
         let schema = metadata_schema(
             driver.as_ref(),

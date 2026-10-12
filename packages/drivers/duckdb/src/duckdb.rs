@@ -123,6 +123,10 @@ impl DuckDbDriver {
 
 #[async_trait]
 impl DatabaseDriver for DuckDbDriver {
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        Some(SqlLiteralDialect::DuckDb)
+    }
+
     fn driver_type(&self) -> DatabaseType {
         "duckdb".to_string()
     }

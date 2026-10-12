@@ -322,7 +322,9 @@ describe('Data Sync unknown outcome history recovery', () => {
             },
             profile: fixture.profileRef,
           });
-          expect(replay.outcome).toBe('not_started');
+          // An idempotent receipt repeats the original unknown outcome without
+          // attempting another write. It must never turn uncertainty into a refusal.
+          expect(replay.outcome).toBe('unknown');
           expect(await valueAt(fixture.targetSession, fixture.names.target, fixture.table)).toBe(
             expectedValue,
           );

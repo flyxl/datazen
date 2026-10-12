@@ -163,3 +163,5 @@ SQLite 侧仍以 `ADD COLUMN` / 索引为主；复杂 `DROP`/`MODIFY` 会提示�
 | SQLite 警告多 | 引擎 ALTER 能力有限，属预期 |
 
 更偏架构的说明见仓库 `docs/architecture/backend/schema-diff.md`。
+
+后台任务与向导状态独立。重新打开窗口会在任务状态区显示历史任务及恢复核验信息；历史计划不会覆盖新向导的连接、库或 schema 选择，也不会自动跳过比较与审阅。

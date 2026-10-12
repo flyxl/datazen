@@ -9,11 +9,15 @@
 
 use std::collections::BTreeMap;
 
+// `DataSupport` is named at the one place the `data` domain is declared; the
+// `backup` cell is set with `Default::default()`, so `BackupSupport` is only
+// ever written in the comment that explains why it stays `Unknown`.
 use datazen_driver_api::capabilities::{
     Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
     PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
     TransactionObservation as TransactionObservationCap, TransactionSupport,
 };
+use datazen_driver_api::capability_domains::DataSupport;
 use datazen_driver_api::namespace::{
     CanonicalIdRules, CaseFolding, CaseRules, NamespaceLevel, NamespaceLevelKind,
     NamespacePathSegment, NamespaceShape,
@@ -110,6 +114,48 @@ pub(crate) fn sqlite_capability_set() -> CapabilitySet {
     // `SqliteDriver::ddl_atomicity` answers `Transactional` and the reviewed
     // rebuild path runs inside one transaction.
     capabilities.ddl_atomicity = ddl_atomicity_support(DdlAtomicity::Transactional);
+
+    // `rowRead` / `rowWrite` / `streamingResults`, measured rather than assumed.
+    //
+    // `rowRead` and `rowWrite` hold: `resource.rs:398` routes `query` to
+    // `query_multi_at` and `resource.rs:419` routes `execute` to `execute_at`,
+    // and the `rows_affected` that comes back is carried into the chunk at
+    // `resource.rs:427` rather than invented on this side.
+    //
+    // `streamingResults` does NOT hold, which is what keeps this off
+    // `StreamingReadWrite`. `resource.rs:408` writes the chunk with
+    // `rows: statement.rows.clone()`: the rows are *cloned out of an
+    // already-materialized* `StatementResult` whose `rows` is a fully built
+    // `Vec` (`driver-api/src/types.rs:301`). Awaiting the sink write is real
+    // backpressure, but only between statements — the whole result set was
+    // already in memory before the first byte was handed over. A local file
+    // has no wire to pull incrementally from, so `BufferedReadWrite` says
+    // exactly what this provider can do.
+    capabilities.data = DataSupport::BufferedReadWrite;
+
+    // Declared, and left at `BackupSupport::Unknown`, on purpose.
+    //
+    // This crate overrides neither `dump_database` nor `restore_sql`, so a
+    // SQLite database is dumped and restored by the shared
+    // `sql_dump::dump_sql_database_with_progress` /
+    // `restore_sql_statements_with_progress` defaults
+    // (`driver-api/src/traits.rs:918` / `traits.rs:990`) — a real capability.
+    // But that path runs against `ConnectionHandle`, and `ResourceProvider`
+    // cannot reach it: `execute_on_resource` recognizes only `query` and
+    // `execute` (`resource.rs:394`).
+    //
+    // Neither filling variant would be honest. `ArtifactAndRestore` would
+    // advertise a surface this provider does not have, and a host that
+    // trusted it would clear `require_backup_artifact()` and then hit the
+    // dead end above. `Unsupported` is the opposite lie — it would tell the
+    // host a SQLite database cannot be backed up, hiding a feature that
+    // demonstrably works, and for a local file it is the obvious way anyone
+    // would back one up. "This contract cannot express the backup capability"
+    // and "this database cannot be backed up" are two different statements, so
+    // the cell stays undeclared (`Default::default()` is `Unknown`) and the
+    // caller asks.
+    capabilities.backup = Default::default();
+
     capabilities
 }
 

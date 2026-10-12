@@ -135,18 +135,30 @@ describe('deriveUncertainty — the fail-closed ladder', () => {
   });
 
   it('treats only the restart-before-dispatch NotExecuted receipt as known not-started', () => {
-    expect(
-      deriveUncertainty('notStarted', 'notExecuted', 'notDispatchedAfterRestart', 0),
-    ).toBe('none');
+    expect(deriveUncertainty('notStarted', 'notExecuted', 'notDispatchedAfterRestart', 0)).toBe(
+      'none',
+    );
     expect(deriveUncertainty('notStarted', 'notExecuted', 'someOtherReason', 0)).toBe(
       'recoveryRejected',
     );
-    expect(
-      deriveUncertainty('completed', 'notExecuted', 'notDispatchedAfterRestart', 0),
-    ).toBe('recoveryRejected');
+    expect(deriveUncertainty('completed', 'notExecuted', 'notDispatchedAfterRestart', 0)).toBe(
+      'recoveryRejected',
+    );
     expect(
       deriveUncertainty('notStarted', 'notExecuted', 'notDispatchedAfterRestart', 0, false, true),
     ).toBe('recoveryRejected');
+  });
+
+  it('clears a confirmed no-write fence only when the effect and evidence agree', () => {
+    for (const effect of ['notStarted', 'rolledBack']) {
+      expect(deriveUncertainty(effect, 'notExecuted', 'noCommittedWrites', 0)).toBe('none');
+      expect(deriveUncertainty(effect, 'notExecuted', 'noCommittedWrites', 0, false, true)).toBe(
+        'recoveryRejected',
+      );
+    }
+    for (const effect of ['completed', 'partiallyApplied', 'unknown']) {
+      expect(deriveUncertainty(effect, 'notExecuted', 'noCommittedWrites', 0)).not.toBe('none');
+    }
   });
 
   it('takes the recorded reason as evidence even under resumeAfterVerify', () => {
@@ -289,7 +301,12 @@ describe('deriveMigrationJobVerdict', () => {
     const outcomes = ['notStarted', 'completed', 'rolledBack', 'partiallyApplied', 'unknown'];
     for (const state of states) {
       for (const effectOutcome of outcomes) {
-        for (const recoveryVerdict of [null, 'resumeAfterVerify', 'reject', 'requireManualReview']) {
+        for (const recoveryVerdict of [
+          null,
+          'resumeAfterVerify',
+          'reject',
+          'requireManualReview',
+        ]) {
           for (const boundaries of [[], [unverifiedBoundary]] as const) {
             const verdict = deriveMigrationJobVerdict(
               input({ state, effectOutcome, recoveryVerdict, commitBoundaries: boundaries }),

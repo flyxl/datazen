@@ -6,6 +6,7 @@
 
 use super::test_support::*;
 use crate::resource_capabilities::CONTROL_POOL_CONNECTIONS;
+use datazen_driver_api::session::{SessionHandleKind, SessionHandleRef};
 
 // --- capability honesty -------------------------------------------------
 
@@ -141,6 +142,17 @@ async fn close_releases_the_budget_exactly_once() {
     assert_eq!(budget.granted(), vec![pool_size_plus_control()]);
     assert_eq!(budget.released(), 1);
     assert_eq!(fake.read(|wire| wire.disconnect_calls), 1);
+
+    // The confirmed close also records itself on the handle, which is what
+    // makes `close_handle`'s idempotent-success branch reachable in
+    // *production* rather than only in a test that marks the flag by hand.
+    // Before this was recorded, `is_closed()` was permanently false here and the
+    // host stayed fail-closed over a close that had already happened.
+    assert!(handle.is_closed());
+    provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect("after a confirmed close, repeating a handle close is idempotent success");
 }
 
 #[tokio::test]
@@ -423,6 +435,175 @@ async fn request_cancel_surfaces_a_real_failure() {
         error,
         ResourceError::Driver(DriverError::QueryFailed(_))
     ));
+}
+
+// --- per-handle close (§6.5) ---------------------------------------------
+
+/// A `SessionHandleRef` as the host would hand it over: same resource, same
+/// epoch, a name. mysql has no such handle to name, which is the point.
+fn session_handle_for(handle: &ResourceHandle) -> SessionHandleRef {
+    SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    )
+}
+
+#[tokio::test]
+async fn close_handle_refuses_rather_than_claiming_a_close_that_never_happened() {
+    // §6.5: a returned `Ok(())` here would let the host deregister the ref and
+    // judge the session clean while nothing was ever closed. mysql issues no
+    // session-scoped handle at all, so the honest answer is a refusal — and a
+    // refusal that names the handle, so the mismatch is diagnosable.
+    let (provider, fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+
+    let error = provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect_err("a provider that issues no session-scoped handle must not report one closed");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::OperationNotSupported { ref operation, ref reason, .. }
+                if operation == "close_handle"
+                    && reason.contains("tx-1")
+                    && reason.contains("Transaction")
+        ),
+        "the refusal must name the handle and its kind, got {error:?}"
+    );
+    // Nothing was closed, so nothing may claim to be: the resource handle is
+    // still open, the permit is still charged, and the wire was never touched.
+    assert!(!handle.is_closed());
+    assert_eq!(budget.released(), 0);
+    fake.with(|wire| assert!(wire.statements.is_empty() && wire.commands.is_empty()));
+}
+
+#[tokio::test]
+async fn close_handle_refuses_for_every_handle_kind() {
+    // The refusal is a property of the provider, not of the kind it was handed.
+    // mysql issues none of the three, so none of the three may come back `Ok`.
+    let (provider, _fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+
+    for kind in [
+        SessionHandleKind::Transaction,
+        SessionHandleKind::Cursor,
+        SessionHandleKind::ServerPrepared,
+    ] {
+        let session_handle = SessionHandleRef::new(
+            format!("{kind:?}-1"),
+            kind,
+            handle.resource_key().to_string(),
+            handle.runtime_epoch(),
+        );
+        assert!(
+            provider
+                .close_handle(&handle, &session_handle)
+                .await
+                .is_err(),
+            "a {kind:?} handle must be refused too"
+        );
+    }
+    assert!(!handle.is_closed());
+}
+
+#[tokio::test]
+async fn close_handle_checks_ownership_before_it_refuses() {
+    // A refusal must not also swallow a wrong-handle bug: the ownership check
+    // runs first, so a handle from another provider is reported as exactly
+    // that rather than as "this driver has no such handles".
+    let (provider, _fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    let foreign =
+        ResourceHandle::issue("some-other-provider", "not-issued", handle.runtime_epoch());
+    let session_handle = SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        "not-issued".to_string(),
+        handle.runtime_epoch(),
+    );
+
+    let error = provider
+        .close_handle(&foreign, &session_handle)
+        .await
+        .expect_err("a handle this provider never issued cannot be closed through it");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::ResourceOwnershipMismatch { ref expected, ref actual }
+                if expected == "mysql" && actual == "some-other-provider"
+        ),
+        "expected an ownership mismatch, got {error:?}"
+    );
+}
+
+#[tokio::test]
+async fn close_handle_on_an_already_closed_resource_is_idempotent_success() {
+    // §6.5 names exactly one legitimate repeat: the resource handle is already
+    // marked closed, so the close has happened and re-doing it is not
+    // information. A host that released the lease before this ref went away is
+    // not a caller that missed its own handle, so it must not be told an error
+    // — `LeaseManager::release` is fail-closed and would keep the lease parked
+    // forever. The refusal below stays the honest answer for a *live* resource.
+    let (provider, fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    handle.mark_closed();
+
+    provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect("closing a handle on an already-closed resource is idempotent success");
+
+    // Nothing may be touched on the way to that `Ok`: the wire is silent, no
+    // permit is released (the resource's own close already did that), and the
+    // flag stays flipped rather than being the evidence this call manufactured.
+    assert!(handle.is_closed());
+    assert_eq!(budget.released(), 0);
+    fake.with(|wire| assert!(wire.statements.is_empty() && wire.commands.is_empty()));
+}
+
+#[tokio::test]
+async fn close_handle_refuses_a_foreign_ref_even_on_a_closed_resource() {
+    // Ordering, not just presence: `is_closed` must come *after* the ownership
+    // check, so a closed resource never excuses a ref that belongs to another
+    // one. Matching postgres exactly is what keeps one behaviour across the
+    // nine providers instead of two subtly different contracts.
+    //
+    // The premise has to land on the handle actually handed to `close_handle`,
+    // not merely on some handle in the test: a *foreign* handle that was never
+    // closed yields the same ownership refusal in both orders, so the test
+    // would pass even with the short-circuit hoisted above `handle.check`. So
+    // the one passed in is marked closed too — that is the only shape where the
+    // two orders disagree and this test pins which one runs.
+    let (provider, _fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    let foreign =
+        ResourceHandle::issue("some-other-provider", "not-issued", handle.runtime_epoch());
+    foreign.mark_closed();
+    let session_handle = SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        "not-issued".to_string(),
+        handle.runtime_epoch(),
+    );
+
+    let error = provider
+        .close_handle(&foreign, &session_handle)
+        .await
+        .expect_err("a closed resource must not excuse a ref from another one");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::ResourceOwnershipMismatch { ref expected, ref actual }
+                if expected == "mysql" && actual == "some-other-provider"
+        ),
+        "expected an ownership mismatch, got {error:?}"
+    );
 }
 
 // --- observation / context ----------------------------------------------

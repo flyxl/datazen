@@ -17,7 +17,7 @@
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
 | 平台 crate 架构门禁（F-01..F-07） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
 | Basic path 驱动 lib | ✅ 四 crate 并行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
-| Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行 | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 要求 live 层 |
+| Basic path 驱动集成测试（`tests/`，32 个文件） | ✅ `--tests` 编译并运行；CI 无数据库，live 层在命令里**显式豁免**（见 §2.2） | Basic SKU 内嵌 | `cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests`；live 层**默认严格**（验不到即失败），本地无数据库时加 `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` 声明豁免，`DATAZEN_CONTRACT_REQUIRE_LIVE=1` 压过豁免、强制严格 |
 | 非 basic path 驱动集成测试（19 个文件：sqlserver 11 / clickhouse 3 / duckdb 3 / mongodb 2） | ❌ 未进 PR 矩阵 | **All SKU** 构建时编译链接 | 改这些驱动时本地 `cargo test -p datazen-driver-<id> --tests` |
 | 可选 path 驱动 lib | ❌ | **All SKU** 构建时编译链接 | 改驱动 crate 时本地必跑 |
 | Git 驱动（kiwi/superset） | ❌ | **Akulaku SKU**（需 Deploy Key） | 见 [ci-private-drivers.md](./ci-private-drivers.md) |
@@ -47,7 +47,7 @@
 | 依赖 | `pnpm install --frozen-lockfile` | Node **24**、pnpm **11**（与 workflow 一致） |
 | 代码生成 | `node scripts/generate-builtin-locales.mjs` | `builtinLocales.ts` 为 gitignore codegen |
 | 类型 | `pnpm typecheck` | `tsc --noEmit` |
-| 守卫 | `check-managed-stubs.mjs`、`check-structure-editor-guardrails.mjs` 等 | 防止误提交 inject 产物 |
+| 守卫 | `check-managed-stubs.mjs`、`check-id-terminology.mjs`、`check-module-layers.mjs` 等 | 防止误提交 inject 产物、ID 术语回退、分层倒置。`check-structure-editor-guardrails.mjs` 已移至发布前，见 §2.1.3 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
 | Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → `vitest run`。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | `packages/drivers/*/ui/__tests__/`；与 Host 单测互不收集，两步都必须跑 |
@@ -85,18 +85,14 @@
 两个 `continue-on-error` 的一半在 workflow，另一半（断言它不存在的那条）也在
 `scripts/__tests__/` 下。**只改 workflow 永远不够，只改守卫也永远不够。**
 
-**⚠️ 不要做"把 `ci.yml` 里所有 `continue-on-error` 都清掉"的清扫。** 仓库四个 workflow
-里现存**恰好一处** `continue-on-error: true`，它**不属于**这个硬门禁：
+**⚠️ 这个硬门禁曾经有过一个例外，而且它已经被消除了。** 四个 workflow 里最后一处
+`continue-on-error: true` 是 `release.yml` 的 i18n 翻译完整性步——它把"翻译不全"降级成
+"黄色提醒"，于是 8 个宿主语言缺 **832 个 key** 长期无人理会，一个看得见但没人当回事的门禁
+等于没有门禁。现已裁定**发布不允许只有英文**：该步改为硬阻断（§2.1.3），全仓
+`continue-on-error: true` 归零。因此现在**不存在**"哪一步必须软"的例外清单；
+若将来重新引入 `continue-on-error: true`，必须同时更新本节并说明为何该失败不该阻断。
 
-```yaml
-- name: Guard i18n sync (warning only)
-  run: node scripts/i18n-sync-check.mjs
-  continue-on-error: true
-```
-
-那是 i18n 翻译完整性检查，步名里的 "(warning only)" 就是它的语义：翻译缺漏不该卡住
-一个功能 PR。`pnpm test:unit:driver-set` 步**必须没有** `continue-on-error`；上面这步
-**必须有**。全仓 grep 的"一处命中"是事实，不是待清理的残留。
+`pnpm test:unit:driver-set` 步**必须没有** `continue-on-error`；上面这条已不适用。
 
 **`testTimeout` 取值依据（实测，非拍脑袋）。** 对全部 5714 个 Host 用例逐条统计
 墙钟耗时（驱动集 `all`，8 核 macOS，`--reporter=json`），三个竞争档位：
@@ -185,9 +181,9 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 
 ### 2.1.2 `check-ci-docs-consistency.mjs` 覆盖什么、不覆盖什么
 
-`scripts/check-ci-docs-consistency.mjs`（别名 `pnpm test:ci-docs`）**已经由 `ci.yml`
-的 "All strict guards" 步直接调用**（`pnpm test:ci-docs`，与 `test:ids` / `test:layers`
-同一 fail-fast 列表内）。它只做三件事：
+`scripts/check-ci-docs-consistency.mjs`（别名 `pnpm test:ci-docs`）**由 `release.yml`
+的 `pre-release-guards` 步调用**——它是发布前门禁，不是每次 PR 的门禁（§2.1.3）。
+它只做三件事：
 
 1. **drivers** —— 本文档中提到的驱动 id 是否都存在于 `drivers-registry.json`；
 2. **window boundaries** —— `windows.md` 记录的子窗口 kind 是否与 `windowKind.ts` /
@@ -205,6 +201,28 @@ load 48 那一档里 `DiffDetail`(11629ms)、`resolve-pro`(6540ms)、`tableDataS
 - `scripts/__tests__/run-unit-driver-set.test.ts` —— §2.1.1 的
   `testTimeout` / `retry` / 耗时串按**字符串存在性**守，`run-unit-driver-set.mjs`
   的三条腿与「硬门禁标记必须缺席」按结构守；**不校验这些数字是否属实**。
+
+### 2.1.3 per-PR 门禁与发布前门禁的分工
+
+守卫按「什么时候出问题才算晚」分成两处，两处都由 workflow 强制，不是约定：
+
+| 位置 | 守卫 | 判据 |
+|------|------|------|
+| `ci.yml` 每次 PR | stubs、IDs、layers、driver-protocol、boundaries、i18n key 冲突 | 改错了必须在**合并前**发现——每个 PR 都要付这个钱 |
+| `release.yml` `pre-release-guards` | version、ci-docs、structure-editor guardrails、**i18n 翻译完整性（硬阻断）** | 前三条只在**发布这一刻**才有意义：版本号只在 `bump-version` 时变，CI 矩阵只随发布计划变，caps 注册表发布前查一次即可。第四条是**发布政策**而非代码卫生——发布出去的版本不允许只有英文 |
+
+`pre-release-guards` 已进 `build` 的 `needs`，因此发布前这四条不过，发布构建就不启动——
+这是 workflow 的硬依赖，不是文档承诺。四条都只用 Node 内置模块读 git 跟踪文件，
+不碰 gitignored codegen，所以该 job 不需要 `resolve-drivers`、`pnpm install` 或任何 secret。
+
+**i18n-sync-check 已是发布硬阻断。** 裁定：**发布出去的版本不能只有英文翻译**。它原先挂在
+`ci.yml` 里却是 `continue-on-error: true`，常年是黄的、没人看，债累积到 **8 个宿主语言缺
+832 个 key**——这正是"看得见但没人当回事"的门禁。现在删掉 `continue-on-error`，该步与
+其余三条同级：翻译不全，`build` 根本不启动。
+
+**已知后果，且是预期的**：版本已 bump 而翻译未补齐时，发布直接失败。这不是回归，
+是把一笔被掩盖的债显性化。`bump-version` skill 触发重建时必须一并跑
+`node scripts/i18n-sync-check.mjs`，缺失的 key 用 i18n-sync skill 补齐（只补翻译，不改 `en.ts`）。
 
 ### 2.2 rust job（Rust 段，浅克隆）
 
@@ -225,8 +243,14 @@ Rust 测试顺序（与 `ci.yml` 一致）：
 ```bash
 # driver-api 与四个 path 驱动合为一次 cargo 调用（不依赖 --features）
 cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
-# 驱动集成测试：--lib 不编译 tests/，所以 basic 四驱动的集成 target 独立成步
-cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
+# 驱动集成测试：--lib 不编译 tests/，所以 basic 四驱动的集成 target 独立成步。
+# live 契约层默认严格（验不到即失败）。CI 全文件没有数据库容器，也没有任何
+# TEST_PG_* / TEST_MYSQL_*，所以显式声明豁免——去掉前缀就会红（实测 42 个）。
+# 要在 CI 里真验 live：先 provision 数据库并注入 TEST_PG_* / TEST_MYSQL_*，再删掉
+# 这个前缀；DATAZEN_CONTRACT_REQUIRE_LIVE=1 压过豁免。
+# （实测：不加前缀 EXIT=101，42 个 live 层测试翻转；命令不带 --no-fail-fast，
+#  cargo 在第一个失败的 binary 就停。）
+DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 # datazen 需要 features 选择注入的驱动
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen --lib --features "$FEATURES"
@@ -418,8 +442,8 @@ grep -rliE "wdio|webdriver|pnpm e2e" .github/   # 无输出
 grep -rnE "e2e:ci:" .github/workflows/            # 无输出
 ```
 
-`ci.yml` 实际执行的只有：`pnpm typecheck`、strict guards（stubs / caps / IDs / layers /
-ci-docs / version / driver-protocol / boundaries / i18n keys）、`pnpm test:unit`、
+`ci.yml` 实际执行的只有：`pnpm typecheck`、strict guards（stubs / IDs / layers /
+driver-protocol / boundaries / i18n keys）、`pnpm test:unit`、
 `pnpm test:unit:drivers`、Rust `fmt --check` 与各 crate 单测、平台架构门禁。
 
 **结论：PR 绿灯与 E2E 覆盖无关。** 上表所有行的 `CI` 列都是 ❌，不是「暂时没接」，

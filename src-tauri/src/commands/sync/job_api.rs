@@ -186,6 +186,19 @@ pub(crate) async fn preview_for_durable_job(
     let plan_id = details.plan_id.ok_or_else(|| {
         CommandError::Validation("Data Sync prepare job has no durable plan receipt".into())
     })?;
+    // The durable comparison can finish before its row-bearing review store
+    // is materialized. Wait for that producer, rather than publishing a stale
+    // plan error after an arbitrary ten-second retry window.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
+    while super::host::state::preview_pending(job_id) {
+        if tokio::time::Instant::now() >= deadline {
+            return Err(CommandError::Validation(
+                "Data Sync review projection is still being prepared; retry loading the preview"
+                    .into(),
+            ));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
     super::plans::preview_for_plan(&plan_id).map_err(CommandError::Validation)
 }
 

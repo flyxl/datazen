@@ -340,16 +340,23 @@ pub(crate) async fn admit_apply(
     let plan = plans::peek_plan_any(&request.plan_id)?;
     scope::enforce_same_backend_scope(&plan.job, Some(&request.backend_scope))?;
     let digest = plan_digest(&plan)?;
-    let assembled: FreezeAssembly = assembly::assemble(state, &plan, &request.selection, true)
-        .await
-        .cmd_err("apply_data_transfer")?;
     let key = request
         .idempotency_key
         .unwrap_or_else(|| fresh_key(&request.plan_id));
     if let Some(job_id) = runtime::receipt_for(state, &key).await? {
-        let outcome = runtime::replayed_outcome(state, &job_id)
-            .await
-            .cmd_err("apply_data_transfer")?;
+        let outcome = runtime::replayed_outcome(
+            state,
+            &job_id,
+            &apply_payload(
+                &request.plan_id,
+                &request.plan_digest,
+                request.selection_revision,
+                &request.selection,
+                request.confirmed_destructive,
+            ),
+        )
+        .await
+        .cmd_err("apply_data_transfer")?;
         return Ok(AdmittedApply {
             view: apply_view(
                 outcome,
@@ -379,6 +386,9 @@ pub(crate) async fn admit_apply(
             confirmed_destructive: request.confirmed_destructive,
         },
     )?;
+    let assembled: FreezeAssembly = assembly::assemble(state, &plan, &request.selection, true)
+        .await
+        .cmd_err("apply_data_transfer")?;
     let sql_file_destination = sql_file_destination(&assembled.endpoints);
     let run_request = JobRunRequest {
         kind: runtime::APPLY_KIND,

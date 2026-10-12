@@ -163,3 +163,5 @@ Cross-database CREATE TABLE DDL belongs to Transfer / adapter IR; the Deploy pat
 | Many SQLite warnings | Limited ALTER — expected |
 
 Architecture notes: `docs/architecture/backend/schema-diff.md`.
+
+Background jobs are independent of wizard state. Reopening the window shows job history and recovery evidence in the status panel. Historical plans do not overwrite a new endpoint scope or skip comparison and review.

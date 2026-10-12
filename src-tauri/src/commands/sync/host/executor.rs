@@ -164,6 +164,24 @@ impl TargetExecutor for HostTargetExecutor {
 
     async fn commit(&mut self) -> Result<(), DataSyncError> {
         if let Some(tx) = self.tx.take() {
+            #[cfg(feature = "webdriver")]
+            match super::super::exec::take_e2e_commit_fault() {
+                1 => {
+                    self.driver.commit(tx).await.map_err(|error| {
+                        DataSyncError::outcome_unknown(format!("commit: {error}"))
+                    })?;
+                    return Err(DataSyncError::outcome_unknown(
+                        "E2E injected commit response loss after commit",
+                    ));
+                }
+                2 => {
+                    let _ = self.driver.rollback(tx).await;
+                    return Err(DataSyncError::outcome_unknown(
+                        "E2E injected transaction boundary response loss before commit",
+                    ));
+                }
+                _ => {}
+            }
             self.driver
                 .commit(tx)
                 .await

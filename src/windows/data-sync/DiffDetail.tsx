@@ -26,6 +26,17 @@ interface DiffDetailProps {
   hasTableSelection?: boolean;
   pageLoading?: boolean;
   pageIndex?: number;
+  /**
+   * 客户端分页的每页行数,默认 `PAGE_SIZE`。
+   *
+   * 只在**本地分页**路径生效(`table.pageSize` 与 `table.rowCount` 都缺席时);服务端
+   * 分页的页大小由 `table.pageSize` 决定,此处不参与。产品路径两者都不必传。
+   *
+   * 存在的理由是给测试一个注入口:跨页去重是必须真的翻页的 journey,而本地分页的
+   * 页大小是模块常量 `PAGE_SIZE`,测试原本只能堆 501 行凑出第二页——那一次渲染在
+   * jsdom 里要几十秒,单条就足以让并发下的整套前端测试超时变红。
+   */
+  pageSize?: number;
   hasPreviousPage?: boolean;
   hasNextPage?: boolean;
   onPageChange?: (direction: 'previous' | 'next') => void;
@@ -54,6 +65,7 @@ export function DiffDetail({
   hasTableSelection = false,
   pageLoading = false,
   pageIndex = 0,
+  pageSize = PAGE_SIZE,
   hasPreviousPage = false,
   hasNextPage = false,
   onPageChange,
@@ -73,11 +85,11 @@ export function DiffDetail({
 
   const pageCount = serverPaged
     ? Math.max(1, Math.ceil((table.rowCount ?? diffRows.length) / (table.pageSize ?? PAGE_SIZE)))
-    : Math.max(1, Math.ceil(diffRows.length / PAGE_SIZE));
+    : Math.max(1, Math.ceil(diffRows.length / pageSize));
   const safePage = serverPaged ? pageIndex : Math.min(page, pageCount - 1);
   const pageRows = serverPaged
     ? diffRows
-    : diffRows.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+    : diffRows.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
   const toggleRow = (idx: number, checked: boolean) => {
     const next = [...(table.rows ?? [])];

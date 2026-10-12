@@ -1,7 +1,8 @@
 import {
   ApiError,
   type BackendClient, type CommandCall, type ExecutionReceipt,
-  type ExecutionTarget, type NamespaceTarget, type OwnerRef, type SessionView,
+  type ExecutionTarget, type NamespaceTarget, type OwnerRef, type SessionHandle,
+  type SessionView,
   type CloseMode, type CloseReceipt, type CancelReceipt,
 } from '@datazen/backend-client';
 import { counterValue, sameHandle } from './counters';
@@ -75,9 +76,26 @@ export class EditorSessionController {
     });
   }
 
+  /**
+   * Two-phase context change.
+   *
+   * Entry: a ready session plus a desired namespace target. In state: one
+   * `setSessionContext` carrying the current `expectedContextRevision`. Exit:
+   * either the runtime rejects it (revision conflict / open transaction /
+   * replacement failure) and the previous handle stays bound and usable, or it
+   * commits and the receipt decides what happens next.
+   *
+   * A successful commit with a non-null `replacedSessionId` is a replacement:
+   * the runtime published a *new* session and marked the old one `Closing`.
+   * Rebinding to the new session orphans the old handle — nothing else in the
+   * owner can reach it (`close()`/`detach()` and the `QueryPanelSessionRegistry`
+   * release path all act on the controller's *current* session). So the old
+   * handle is released here, right after the atomic rebind.
+   */
   setContext(desired: NamespaceTarget): Promise<SessionView> {
     return this.serial(async () => {
       const session = await this.ensureSession();
+      const previousHandle = session.handle;
       const token = await this.token('setSessionContext');
       const receipt = await this.client.setSessionContext({
         handle: session.handle, expectedContextRevision: session.contextRevision,
@@ -86,9 +104,34 @@ export class EditorSessionController {
       // Failed revision/transaction/replacement leaves the previous handle intact.
       this.session = receipt.session;
       if (receipt.attachmentToken !== null) this.attachmentToken = receipt.attachmentToken;
+      // The tracked execution belonged to the handle we just gave up; it can no
+      // longer be cancelled through this controller. Its results stay readable
+      // through their own `ExecutionProjection`.
+      if (receipt.replacedSessionId !== null) this.execution = null;
       this.publish();
+      if (receipt.replacedSessionId !== null) {
+        await this.releaseReplacedSession(previousHandle);
+      }
       return receipt.session;
     });
+  }
+
+  /**
+   * Best-effort release of the session a replacement took over from.
+   *
+   * The runtime already marked it `Closing` and owns its teardown, so this is
+   * idempotent cleanup rather than the mechanism that ends it: a close that
+   * fails (already gone, `SessionLost`, transport error) must not surface to
+   * the user, who has already moved to the new session. `requireNoTransaction`
+   * keeps it from disturbing a transaction on the *replacement* side.
+   */
+  private async releaseReplacedSession(handle: SessionHandle): Promise<void> {
+    if (sameHandle(handle, this.session?.handle ?? null)) return;
+    try {
+      await this.client.closeSession({ handle, mode: 'requireNoTransaction' });
+    } catch {
+      /* the replacement already retired it; nothing to report */
+    }
   }
 
   async refresh(): Promise<SessionView | null> {

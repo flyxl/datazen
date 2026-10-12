@@ -17,7 +17,7 @@ const changedRow = (id: number): DataSyncRowChange => ({
   selected: true,
 });
 
-function Journey({ count = 1 }: { count?: number }) {
+function Journey({ count = 1, pageSize }: { count?: number; pageSize?: number }) {
   const [rows, setRows] = useState(Array.from({ length: count }, (_, i) => changedRow(i)));
   const table: DataSyncTableResult = {
     sourceTable: 'source',
@@ -26,7 +26,7 @@ function Journey({ count = 1 }: { count?: number }) {
     columns: ['id', 'name', 'age'],
     rows,
   };
-  return <DiffDetail table={table} options={options} onUpdateRows={setRows} />;
+  return <DiffDetail table={table} options={options} onUpdateRows={setRows} pageSize={pageSize} />;
 }
 
 function ScopedJourney() {
@@ -77,8 +77,12 @@ describe('diff review journeys', () => {
     expect(screen.getByText('sync.targetShort: old')).toHaveClass('line-through');
   });
 
+  // count 必须恒等于 pageSize + 1:断言第 2 页只有 1 个 checkbox,且对它用单数
+  // getByRole('checkbox'),都依赖第 2 页恰好剩 1 行。页大小取 6 而非模块默认的 500,
+  // 是因为本地分页的页大小原本没有注入口,只能堆 501 行凑出第二页——那一次渲染在
+  // jsdom 里实测 38.5s,是 20s 预算的 1.93 倍,足以让并发下的整套前端测试超时变红。
   it('keeps cross-page row deselection when navigating in both directions', () => {
-    render(<Journey count={501} />);
+    render(<Journey count={7} pageSize={6} />);
     const review = screen.getByTestId('data-sync-row-diff');
     fireEvent.click(within(review).getAllByRole('checkbox')[0]);
     fireEvent.click(screen.getByText('sync.pageNext'));
@@ -89,7 +93,7 @@ describe('diff review journeys', () => {
     expect(within(review).getAllByRole('checkbox')[1]).toBeChecked();
     fireEvent.click(screen.getByText('sync.pageNext'));
     expect(within(review).getByRole('checkbox')).not.toBeChecked();
-  }, 20_000);
+  });
 
   it('option changes never reselect manually excluded rows', () => {
     const rows = [{ ...changedRow(1), selected: false }, changedRow(2)];

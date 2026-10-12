@@ -40,7 +40,8 @@ use datazen_driver_api::resource::{
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
     EffectOutcome, ExecutionCompletion, ResetDisposition, ResourceHealth, SessionContext,
-    SessionObservation, TransactionObservation, TransactionOptions, TransactionState,
+    SessionHandleRef, SessionObservation, TransactionObservation, TransactionOptions,
+    TransactionState,
 };
 use datazen_driver_api::{
     ConnectionHandle, DatabaseDriver, QueryExecutionId, SqlTarget, Value, PROTOCOL_VERSION,
@@ -536,6 +537,16 @@ impl ResourceProvider for MongodbResourceProvider {
                     .await?;
                 // No transaction was ever opened through this provider, so a
                 // close is clean by construction.
+                //
+                // Recorded only on a confirmed close, the way `postgres` and
+                // `redis` do. Without it `is_closed()` is permanently false for
+                // this provider and `close_handle`'s idempotent-success branch
+                // is unreachable in production: the host would be fail-closed
+                // (the lease stays parked, un-pooled) over a close that
+                // already happened. The `Err` arm below deliberately leaves the
+                // flag false, so a failed close is never read as "already
+                // closed".
+                handle.mark_closed();
                 Ok(CloseDisposition::Closed)
             }
             Err(error) => {
@@ -548,6 +559,41 @@ impl ResourceProvider for MongodbResourceProvider {
                 Err(ResourceError::Driver(error))
             }
         }
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(&self.driver_id, self.runtime_epoch)?;
+        // The resource is gone, so every handle issued on it went with it —
+        // and this provider issued none in the first place. Repeating the close
+        // carries no information; refusing it would make a host that closed the
+        // resource before this ref look like a caller that missed its own
+        // handle. Ordered *after* the ownership check, exactly as postgres
+        // does: a closed resource does not excuse a ref belonging to another
+        // one, so "closed + foreign" is still refused as the ownership
+        // failure it is — postgres reports exactly that as
+        // `InvalidResourceState`.
+        if handle.is_closed() {
+            return Ok(());
+        }
+        // Refused, never absorbed. MongoDB sessions here are bound to the
+        // client, not to a cursor the caller owns: this provider declares
+        // `session_scoped_handles = Unsupported` and reports an empty
+        // `session_handles` list on every completion. `Ok(())` would read as
+        // "closed" to the host and let it judge the session clean without
+        // anything having been closed.
+        Err(ResourceError::unsupported(
+            self.driver_id.as_str(),
+            "close_handle",
+            format!(
+                "this provider issues no session-scoped handles, so handle '{}' ({:?}) names \
+                 nothing this provider can close",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
     }
 }
 

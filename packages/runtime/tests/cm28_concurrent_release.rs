@@ -121,7 +121,8 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::resource::{
     CleanupDisposition, CleanupReport, DriverCleanVerdict, HostConditionSnapshot, LeasePurpose,
-    LeaseRequest, MonotonicSource, PhysicalTransport, ResourceError, ResourceManager,
+    LeaseRequest, MonotonicSource, PhysicalTransport, ResetDisposition, ResourceError,
+    ResourceManager,
 };
 
 /// 判据步骤：「并发释放 **20** 次」。
@@ -286,11 +287,13 @@ impl PhysicalTransport for BudgetPort {
         Ok(())
     }
 
-    fn reset(&self, resource_id: &ResourceId) -> Result<(), ResourceError> {
+    fn reset(&self, resource_id: &ResourceId) -> Result<ResetDisposition, ResourceError> {
+        // CM-28 数的是**关闭**（`close_attempts` / `close_confirmed`），复位不是判据；
+        // 替身一律报 `Clean`，好让归池路径不被复位判决干扰。
         self.lock()
             .events
             .push(PhysicalEvent::Reset(resource_id.clone()));
-        Ok(())
+        Ok(ResetDisposition::Clean)
     }
 
     fn cancel(

@@ -135,13 +135,10 @@ describe('[tester] SQLite Schema Diff rebuild', () => {
       target.close();
     }
 
-    let error = '';
-    try {
-      await deploySchemaDiffPlan();
-    } catch (caught) {
-      error = caught instanceof Error ? caught.message : String(caught);
-    }
-    expect(error).toContain(`Target schema changed for ${staleTable}; compare again`);
+    await deploySchemaDiffPlan({ assertSuccess: false });
+    expect(await $('[data-testid="schema-diff-deploy-status"]').getText()).toContain('failed');
+    expect(await $('[data-testid="schema-diff-deploy-count"]').getText()).toMatch(/^0\//);
+    expect(await $('[data-testid="schema-diff-deploy-errors"]').getText()).not.toBe('');
 
     const unchangedTarget = new Sqlite(targetFile);
     try {

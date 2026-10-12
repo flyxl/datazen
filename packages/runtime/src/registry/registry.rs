@@ -639,6 +639,50 @@ impl SessionRegistry {
             .await
     }
 
+    /// 设置（或清除）一个会话的空闲驱逐期限。
+    ///
+    /// ## 这个方法存在的理由
+    ///
+    /// [`crate::registry::actor::ExecCommand::SetIdleDeadline`] 一直有对应的
+    /// actor 命令与 `set_idle_deadline` 判定，但 `SessionRegistry` **从未**有
+    /// 它的公开包装——所以「执行中以一次业务活动把期限往后顺延」这条 §6.4
+    /// 要求**在类型层面就不可达**：唯一的调用方是 actor 自己的命令分发。
+    /// 本方法补上那一个入口，形状与 [`Self::cancel_execution_bound`] 一致。
+    ///
+    /// ## `None` 与「到期」不是同一件事
+    ///
+    /// `deadline_ms == None` 表示**本会话不参与空闲驱逐**（配置事实），
+    /// 而 `Some(at_ms)` 是绝对毫秒。把「已经到期」写成 `None` 会让
+    /// [`Self::evict_idle_at`] 的第二道闸门（未设期限 ⇒ 不动手）永远放行它，
+    /// 于是回收器永远够不着这个会话。要表达「立刻到期」就给一个**过去**的
+    /// 时刻，应用层 [`crate::application::idle`] 就是这么截断的。
+    ///
+    /// ## 报什么错，与兄弟入口完全同形
+    ///
+    /// `UnknownSession`（行不在表里：从未登记 / 已关闭摘行 / epoch 不匹配）
+    /// 由 [`Self::locate`] 在**下单之前**就给出；`SessionClosed`（行还在、
+    /// 物理资源已释放）由 actor 里的 `set_idle_deadline` 给出。两条都不重建、
+    /// 不透明替换。前一条与 [`Self::submit_execution`] / [`Self::cancel_registered`]
+    /// 逐字同形——本方法刻意不改这个形状。
+    pub async fn set_idle_deadline(
+        &self,
+        handle: &SessionHandle,
+        deadline_ms: Option<u64>,
+    ) -> Result<Option<u64>, RuntimeError> {
+        self.audit.pump();
+        let record = self.locate(&handle.db_session_id)?;
+        let result = record
+            .actor
+            .exec(|reply| ExecCommand::SetIdleDeadline {
+                handle: handle.clone(),
+                deadline_ms,
+                reply,
+            })
+            .await;
+        self.audit.pump();
+        result
+    }
+
     /// 关闭会话（登记表侧）。
     ///
     /// 释放顺序由 [`crate::registry::actor`] 负责：先在原资源上终结已登记句柄，

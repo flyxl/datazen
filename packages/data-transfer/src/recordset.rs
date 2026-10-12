@@ -7,13 +7,15 @@
 
 use datazen_driver_api::TableSchema;
 
-use datazen_data_sync::sql::quote_ident_sql;
+use datazen_driver_api::sql_identifiers::quote_ident_sql;
 use datazen_driver_api::Value;
 
 use super::error::TransferError;
 use super::filter::SourceFilter;
 use super::model::{TransferRecordset, TransferRecordsetBound, TransferRecordsetTupleBound};
-use datazen_data_sync::recordset_bounds::{canonical_bound_value, compare_bound_keys, BoundKey};
+use datazen_migration_common::recordset_bounds::{
+    canonical_bound_value, compare_bound_keys, BoundKey,
+};
 
 #[derive(Debug, Clone)]
 pub struct ResolvedRecordset {
@@ -90,7 +92,7 @@ pub fn resolve_recordset(
                     "source primary-key column '{key}' is nullable; tuple ranges require non-null keys"
                 )));
             }
-            datazen_data_sync::recordset_bounds::ensure_supported_bound_type(
+            datazen_migration_common::recordset_bounds::ensure_supported_bound_type(
                 &column.data_type,
                 key,
             )
@@ -409,7 +411,9 @@ pub fn preview_summary(
                 .iter()
                 .find(|column| column.name == *key)
                 .is_some_and(|column| {
-                    datazen_data_sync::recordset_bounds::is_text_bound_type(&column.data_type)
+                    datazen_migration_common::recordset_bounds::is_text_bound_type(
+                        &column.data_type,
+                    )
                 })
         });
         if has_text_key {

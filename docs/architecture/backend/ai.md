@@ -214,4 +214,4 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 
 **四、AI 的工具调用与 MCP 共用一条取会话路径。** AI DB tools 走 `services/db_tools.rs`，与 MCP 完全相同：拿持久化 `connectionId`、先过连接白名单、再转成运行时会话，且**不释放引用**。因此被 AI 工具访问过的会话同样不会被空闲回收扫掉。
 
-**五、取消是 AI 自己的注册表。** AI 侧用一张按调用 ID 登记的取消令牌表（`ai/cancel.rs`），在开始时登记、结束时注销；取消一个已结束或从未开始的调用不报错，也不产生任何效果。它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。Data Sync 与 Data Transfer 兼容路径的取消状态只在内存；P5 Data Transfer Job API 使用 AppDb `DesktopJobHost` 的持久 cancel intent，进程重启时保留任务事实但不恢复旧 handler/session。
+**五、取消是 AI 自己的注册表。** AI 侧用一张按调用 ID 登记的取消令牌表（`ai/cancel.rs`），在开始时登记、结束时注销；取消一个已结束或从未开始的调用不报错，也不产生任何效果。它与长任务机制互不相通，key 也不同（AI 是调用 ID，Job 是 job ID）。AI 调用与仍走兼容旧路径的任务取消状态只在内存；P5 迁移三件套 Job API 使用 AppDb `DesktopJobHost` 的持久 cancel intent，进程重启时保留任务事实但不恢复旧 handler/session。

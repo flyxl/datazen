@@ -90,6 +90,17 @@ const ALLOWLIST = [
     line: /invokeBackend<string>\('connect',\s*\{\s*connectionId:\s*config\.id/,
   },
   {
+    // `EditorSessionConfig.connectionId` IS the persisted connection config id
+    // (types.ts: "Persistent connection config id this session reads metadata
+    // through"), so projecting it into a `connectionId:` key is the correct
+    // post-rename usage per naming.md §3 — the same shape as the entry above.
+    // The pattern cannot tell "connectionId used as a session key" (the
+    // reversal it guards) from "connectionId used as the config key" (legal),
+    // because that distinction is semantic, not lexical.
+    file: 'src/lib/relationMetadata/sessionConfig.ts',
+    line: /connectionId: config\.connectionId as MetadataSessionIdentity/,
+  },
+  {
     // Backward-compat shim: tries `connectionId` first, falls back to
     // legacy `configId` IPC arg for older builds.
     file: 'e2e/helpers.ts',

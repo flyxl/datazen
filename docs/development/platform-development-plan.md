@@ -1,6 +1,6 @@
 # 连接管理重构与桌面 / Web 多形态开发计划
 
-> 状态：待执行计划；基线：2026-09-30，`8592b0fe1`。本文按用户明确要求入库，不记录每日进度。
+> 状态：P5 已完成（2026-10-09），P6 可启动；P6 及后续阶段仍为计划。当前基线：`main`，`248200f45`。本文按用户明确要求入库，不记录每日进度。
 > 设计依据：[系统概要](../architecture/platform/system-overview.md)、[连接管理详细设计](../architecture/platform/connection-management.md)。
 
 ## 1. 交付目标与实施原则
@@ -38,7 +38,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 2. 详细设计对应测试编号通过；Unsupported 能力有拒绝断言。
 3. 生产路径不新增裸 unwrap/expect；测试文件通过 typecheck，无 any 绕过。
 4. driver 方言实现及测试在 driver 目录；host 无数据库名称分支。
-5. 新协议兼容声明真实，所有参与构建的 path/Git driver 已迁移或明确禁用对应新能力。
+5. 新协议兼容声明真实，所有参与构建的 path/Git driver 已迁移或明确禁用对应新能力。**自 2026-10 起 P2 第一轮范围收窄为 `basic` 四个驱动**（postgres、mysql、sqlite、redis，即 CI 与默认构建实际编译的集合）；其余 path/Git 驱动移入 P10，由 P10 门槛统一断言。
 6. Agent 不读取 `.env` / `.env.test` 内容进入上下文；测试程序读取合法且输出不得泄密，不提交凭据、生成文件或外部子仓库内容。
 7. 当前架构文档同步描述已经实现的部分；未实现功能仍标记目标设计。
 8. 评审看到清楚的启用条件、关闭/失败行为和回退边界。
@@ -93,17 +93,18 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - namespace/session/transaction/snapshot/data/backup 可选能力注册与运行时能力降低机制。
 - 所有实际建连的预算 port，包括 driver pool、集群节点和控制资源。
 - 现有 Command 和迁移接口保持领域语义；资源获得方式通过 adapter 演进。
-- 先迁移具有真实会话与事务的代表 driver，再迁移其余参与构建驱动；不支持能力明确拒绝。
+- **第一轮只迁移 `basic` 四个驱动**（postgres、mysql、sqlite、redis —— CI 与默认构建实际编译的集合）：先迁移具有真实会话与事务的代表 driver，再迁移该集合内其余驱动；不支持能力明确拒绝。**其余 path/Git 驱动不在 P2 门槛内**，按 P10 补齐；未迁移的驱动必须在能力注册处显式声明未支持，不得静默回退到旧 Command 路径。
 - 修改公共契约时核对 crate SemVer、PROTOCOL_VERSION 和 minimum compatible；同步 path/Git driver、factory、ReuseDriver、生成选型路径。判定规则与门禁见 [driver-capability-migration.md §5.3](../architecture/platform/driver-capability-migration.md)：任何 breaking 改动强制升 `PROTOCOL_VERSION`（`pnpm test:driver-protocol`，CI 硬门禁），升 `MIN` 是主动放弃老驱动兼容性的独立决定，不是 breaking 的处理方式。
 
-退出门槛：D 层 CM-07～19、22～26、30、45、48；不同 driver 不共享实现库类型；新增能力缺失不会 no-op 成功。
+退出门槛：D 层 CM-07～19、22～26、30、45、48；不同 driver 不共享实现库类型；新增能力缺失不会 no-op 成功。**本门槛只对第一轮四个基本驱动断言**；其余驱动的对应断言属于 P10，不得在 P2 记录为已通过。
 
 回退：过渡 adapter 可以支持旧 driver 的独立受控 Command，但不能开放未证明的 statefulSession。
 
 「协议升级与驱动发布是原子兼容门槛，不允许用下调最低版本掩盖 breaking change」这句回退约定分两半落地，现状（`scripts/check-driver-protocol-compat.mjs`，由 `pnpm test:driver-protocol` 接入 CI 硬门禁，28 个单测）：
 
-- **已实现——"不允许下调最低版本"这半**。脚本把它写成两条不变量并直接阻断：`min-protocol-never-lowered`（`MIN_PROTOCOL_VERSION` 不得下降，报错文案即回指本节）与 `protocol-window-non-empty`（`MIN_PROTOCOL_VERSION <= PROTOCOL_VERSION`）；另外对 10 条受管契约（`CONTRACT_RULES`：`database-driver` / `key-value-driver` / `driver-factory` / `resource-provider` / `budget-port` / `resource-error` / `driver-command-definition` / `capability-set` / `capability-registry` / `reuse-driver`）内的增删改强制 `PROTOCOL_VERSION` 上移。当前窗口是 `PROTOCOL_VERSION = 4`、`MIN_PROTOCOL_VERSION = 1`。
-- **仍缺——"原子"那半，待 P0 验证**。协议号上移与驱动发布是否在同一次交付中发生，属于发布流程约束，脚本无从判定，因此没有任何门禁覆盖它；并且 `LegacyResourceAdapter`（`packages/driver-api/src/resource_adapter.rs`）不在这 10 条受管契约之内，其构造签名目前可以在不升协议号的情况下改变。**本节不新增门禁脚本**；补齐属于 CI 轨道的独立决定。
+- **已实现——"不允许下调最低版本"这半**。脚本把它写成两条不变量并直接阻断：`min-protocol-never-lowered`（`MIN_PROTOCOL_VERSION` 不得下降，报错文案即回指本节）与 `protocol-window-non-empty`（`MIN_PROTOCOL_VERSION <= PROTOCOL_VERSION`）；另外对 20 条受管契约（`CONTRACT_RULES`，规则表在 `scripts/lib/driver-protocol-rules.mjs`）内的增删改强制 `PROTOCOL_VERSION` 上移。最初受管的 10 条是 `database-driver` / `key-value-driver` / `driver-factory` / `resource-provider` / `budget-port` / `resource-error` / `driver-command-definition` / `capability-set` / `capability-registry` / `reuse-driver`，其后补入 `availability` / `namespace-switch` / `context-observation` / `transaction-observation` / `session-continuity` / `session-scoped-handles` / `reset-for-reuse` / `precise-cancel` / `snapshots` 与 `legacy-resource-adapter`。当前窗口是 `PROTOCOL_VERSION = 4`、`MIN_PROTOCOL_VERSION = 1`。
+- **已实现——"原子"那半**。`scripts/check-driver-protocol-release.mjs`（`pnpm test:driver-protocol-release`，CI 硬门禁，紧随 strict guards 一步）只读 `drivers-registry.json` 与各 crate 的 `Cargo.toml`/`lib.rs`，不依赖 codegen，因此无需等驱动注入完成即可判定一次交付里协议号与驱动发布是否绑定在同一 commit。它与数字那半互不重叠：`check-driver-protocol-compat.mjs` 判定契约改动**是否需要**升协议号，本脚本判定**是否真的升了、升了之后该跟着发什么**。六条规则按 fail-closed 报出：`driver-release-state-unreadable`（基线 ref 与工作区之间的驱动发布态不可读，例如 registry 指向的 crate 在基线上不存在）、`protocol-moved-without-driver-release`、`protocol-moved-without-driver-api-release`、`driver-released-without-driver-api-release`、`released-driver-outside-delivered-protocol-window`（已发布驱动的 `protocol_version()` 落在本次交付声明的 `MIN..=PROTOCOL` 窗口之外）、`recompiled-driver-not-released`（驱动声明的协议号随本次交付上移却没有跟着发布）。path 驱动以 `[package] version` 前进计一次发布，Git 驱动以 `drivers-registry.json` 的 `ref` 移动计；未钉 `ref` 的 Git 驱动（当前 `kiwi` / `superset`）发布决策发生在 clone 时，脚本只报告、从不计数。
+- **已实现——`LegacyResourceAdapter` 纳入受管契约**。`legacy-resource-adapter` 规则锚在 `impl LegacyResourceAdapter {`（`packages/driver-api/src/resource_adapter.rs:111`）而不是 `pub struct LegacyResourceAdapter`（`:76`）：宿主为每个未迁移驱动调用一次 `LegacyResourceAdapter::new(driver, driver_id, driver_version)`，被治理的是这条构造 ABI，而结构体本身只有六个私有字段，改它们在 crate 外不触发任何重编译。`scripts/__tests__/driver-protocol-legacy-adapter.test.ts` 同时断言被否决的那个锚点确实覆盖不到构造签名，并断言只有这一条规则覆盖它，以免日后悄悄变成"两个锚点都行"。
 
 ## 7. P3：统一 Session / Lease / Budget / ExecutionGateway
 
@@ -147,30 +148,23 @@ P3 开始前的 DTO/port 目标契约同步修订已落地，**只有契约与�
 
 补充交付与门槛：按连接设计 §12.1 实现块去重、缺块恢复与旧事件隔离；执行→部分结果→取消/断线→恢复→再次执行的连续旅程须覆盖切库、替代 session 和关闭结果视图。旧 consumer 在对应迁移验证完成的 PR 中删除；P10 只做最终残留核验。
 
-## 9. P5：JobRuntime 与数据迁移三件套
+## 9. P5（已完成）：JobRuntime 与数据迁移三件套
 
-详细设计：[迁移三件套与 JobRuntime](../architecture/platform/data-migration-jobs.md)。准备与应用分别受理，apply planId 的唯一消费、逐批提交证据与 claim 校验在 P5 同步实现。
+详细实现：[迁移三件套与 JobRuntime](../architecture/platform/data-migration-jobs.md)。P5 于 2026-10-09 通过数据迁移三件套独立测试与冒烟测试，阶段关闭，P6 前置条件满足。
 
-**目的**：连接资源脱离 UI，任务结果真实反映提交边界。
+已落地事实：
 
-交付：
+- 桌面 `AppDb` 使用 SQLite v2 Job 仓储；共享 `DesktopJobHost` 提供 durable accept、幂等 receipt、状态/进度/结果、取消、恢复核验和后台 dispatch。
+- Schema Diff、Data Sync、Data Transfer 的准备与应用均接入 JobRuntime。领域实现位于 `packages/schema-diff`、`packages/data-sync`、`packages/data-transfer`；Tauri IPC 与桌面适配保留在 `src-tauri/src/commands/`。
+- Job 结果记录提交边界和 `effectOutcome`，区分未开始、已回滚、部分提交、未知和完成；apply `planId` 单次消费，worker 写入受 claim 代次校验。
+- 任务窗口关闭后，后台 Job 继续运行；窗口重开可读取任务状态和结果。应用重启不会自动重放旧 worker：运行中的任务进入待核验，未派发任务标记为未执行。
+- 迁移三件套独立测试和冒烟测试通过，P5 退出门槛已关闭。
 
-- JobRepository、JobHandler 注册、资源阶段、进度、取消和结果。
-- 持久化接受后返回 jobId，窗口只订阅；任务中心可重新附着。
-- 将 `src-tauri/src/schema_diff`、`data_sync`、`data_transfer` 中与 Tauri 无关的领域实现按依赖分阶段抽取到概要 §4.1 的领域包；Tauri commands、窗口、文件选择保留在 adapter。不得把当前目录位置误当成最终共享边界。
-- Schema Diff 比较/审阅/应用阶段分开、目标指纹复验、DDL 原子性按计划判断。
-- Data Sync 同族/结构/PK 门闸、快照范围、review 释放、冲突检测与批次事务。
-- Data Transfer 有界数据管道、IR、源一致性、目标批次记录与检查点核验。
-- endpoint 重叠识别、源目标多端预算申请、防 AB/BA 死锁。
-- 明确 successful/failed/cancelled 与 effectOutcome，保留部分提交和未知信息。
-
-退出门槛：CM-31、40～49、54；Job 执行期 UI unmount 不调用资源 release；已提交/未提交/未知边界通过真实数据库断言。
-
-回退：新 Job 暂停派发，已有任务到安全边界后结束；计划/检查点格式升级使用版本，新旧引擎不能接管不兼容计划。已经写入的任务只按核验与补偿处理。
-
-实施前冻结连接设计 §10.1.1 的 JobHandler、plan/checkpoint 版本、取消意图、effectOutcome 聚合与恢复决策。claimGeneration 及所有 worker 写入的认领校验在 P5 落地，多 worker 调度基础设施才留到 P9。退出门槛增加提交成功/checkpoint 未写、checkpoint 已写/终态未写、版本不兼容与旧 claim 写入拒绝的故障旅程；无法证明目标边界时待核验，不自动重跑。
+本阶段边界：完整计划正文与部分审阅态仍为桌面进程内状态；应用重启后需要重新准备计划或执行只读恢复核验。服务端 ArtifactStore、团队 Web、多 worker 自动接管仍属于后续阶段，不影响 P5 关闭。
 
 ## 10. P6：Workflow、AI、MCP、Wapp 与辅助任务
+
+P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
 详细设计：[Workflow 资源模型](../architecture/platform/workflow-resource-model.md) 与 [消费者接入](../architecture/platform/consumer-adapters.md)。共享授权失效后拒绝绑定操作，MCP/Wapp 只释放自有资源，调度目标和服务授权显式保存，原生工具也计入完整预算。
 
@@ -269,11 +263,12 @@ P3 开始前的 DTO/port 目标契约同步修订已落地，**只有契约与�
 
 - 选择一个实现既有能力的新增/适配 driver，限定改动在 driver 包、注册选型、schema/UI/文案和 driver 测试。
 - 运行通用 contract × driver 矩阵，确认 unsupported 路径明确拒绝。
+- **补齐 P2 第一轮未覆盖的 path/Git 驱动**：把其余驱动迁移到 ResourceProvider 与可选能力注册，或显式声明不支持对应能力；本项完成前 `--drivers=all` 不作为发布选型，只作为开发期验证入口。
 - 删除 consumer 的旧共享 session/reconnect/双执行路径，删除 SDK 重复实现。
 - 更新 Driver 公共协议、独立驱动指南和已实现架构；平台计划及关联设计逐节转为事实/流程。
 - 采集 fake runtime 基准、真实典型负载和资源计数，按实测调整默认预算，不承诺跨环境 SQL 延迟。
 
-退出门槛：详细设计 CM-01～74 全部适用门槛，新增 driver 不改宿主数据库分支；未能执行的真实环境验证明确列入发布限制，不能称全部通过。
+退出门槛：详细设计 CM-01～74 全部适用门槛，新增 driver 不改宿主数据库分支；未能执行的真实环境验证明确列入发布限制，不能称全部通过。**`--drivers=all` 下每个驱动的能力声明与 unsupported 拒绝路径逐个核对**，未迁移驱动必须以显式拒绝通过，不得以静默回退计入已通过。
 
 回退：只回退新增驱动选型/包；已删除旧路径不为了兼容缺失能力重新引入。公共契约确有新语义需求时走版本化演进。
 

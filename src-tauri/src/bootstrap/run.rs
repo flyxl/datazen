@@ -621,6 +621,14 @@ pub fn run() {
                         state.connection_manager.shutdown().await;
                         state.mcp_client_manager.disconnect_all().await;
                     });
+                    // 空闲回收驱动器在此停。它归 runtime 应用层所有，宿主不驱动它，
+                    // 但**必须**在退出时停：否则进程收尾时它还在跑 `reclaim_idle`，
+                    // 即一边关物理资源一边又在驱逐表上做全表扫描——那正是 §7.5
+                    // 「Drop 仅做同步兜底标记并把资源移交 runtime cleanup queue」
+                    // 要避免的竞态形状。
+                    if let Ok(adapter) = state.platform_require() {
+                        adapter.stop_idle_reclaimer();
+                    }
                 }
                 // macOS Dock click (applicationShouldHandleReopen): raise MainWindow.
                 #[cfg(target_os = "macos")]

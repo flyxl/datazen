@@ -22,7 +22,7 @@ use crate::connection::{
     ConfigRevision, ConnectionId, DbSessionId, ExecutionId, LeaseId, NamespaceTarget, OwnerRef,
     PoolKeyInputs, ResourceId,
 };
-use crate::resource::cleanup::{PhysicalTransport, SharedTransport};
+use crate::resource::cleanup::{PhysicalTransport, ResetDisposition, SharedTransport};
 use crate::resource::lease::{LeasePurpose, LeaseRecord, LeaseRequest};
 use crate::resource::publication::{
     DirectoryFault, DirectoryPublisher, Publication, ReplacementReceipt,
@@ -87,6 +87,12 @@ pub enum Fault {
     None,
     Open,
     Reset,
+    /// 驱动明确回复 `Discard`（**正常判决**，首版全部 path 驱动都走这一格）。
+    ///
+    /// 与 `Reset` 是**两格**，刻意不合并：`Reset` 是握手从未确认（`Err`），
+    /// 本变体是驱动给了确定的答复「无法证明已复位」。压成一格之后，就再也测不出
+    /// 「宿主有没有区分『不知道』与『知道不能复用』」。
+    ResetDiscard,
     Close,
     Cancel,
 }
@@ -180,16 +186,25 @@ impl PhysicalTransport for RecordingTransport {
         Ok(())
     }
 
-    fn reset(&self, resource: &ResourceId) -> Result<(), ResourceError> {
+    fn reset(&self, resource: &ResourceId) -> Result<ResetDisposition, ResourceError> {
         let mut journal = self.locked();
-        if journal.fault == Fault::Reset {
-            return Err(ResourceError::TransportRefused(
+        match journal.fault {
+            Fault::Reset => Err(ResourceError::TransportRefused(
                 "reset refused by fault injection",
-            ));
+            )),
+            // 驱动明确回答「无法证明已复位」。**事件照样入账**：复位这个动作真的
+            // 被请求过、也真的被答复过，只是答复是 `Discard` —— 这正是审计要看到的。
+            Fault::ResetDiscard => {
+                journal.reset.push(resource.clone());
+                journal.events.push(TransportEvent::Reset(resource.clone()));
+                Ok(ResetDisposition::Discard)
+            }
+            _ => {
+                journal.reset.push(resource.clone());
+                journal.events.push(TransportEvent::Reset(resource.clone()));
+                Ok(ResetDisposition::Clean)
+            }
         }
-        journal.reset.push(resource.clone());
-        journal.events.push(TransportEvent::Reset(resource.clone()));
-        Ok(())
     }
 
     fn cancel(

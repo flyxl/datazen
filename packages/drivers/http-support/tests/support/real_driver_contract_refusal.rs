@@ -18,7 +18,7 @@
 
 use datazen_driver_api::{
     validate_schema_target, ConnectionHandle, DatabaseDriver, DdlAtomicity, DriverError,
-    QueryExecutionId, SchemaScope, Value,
+    QueryExecutionId, SchemaScope, SqlLiteralDialect, Value,
 };
 use std::fs;
 
@@ -58,6 +58,9 @@ pub const SERVERLESS_TRAIT_METHODS: &[&str] = &[
     "quote_ident",
     "ddl_atomicity",
     "format_sql_literal",
+    "sql_literal_dialect",
+    "supports_bound_writes",
+    "try_format_sql_literal",
     "supports_offset",
     "supports_explain",
     "command_definitions",
@@ -113,10 +116,10 @@ struct CommandRow {
 /// wrapper differs from the driver it wraps in exactly these two fields.
 ///
 /// The remaining fields exist so "identical everywhere else" is not a claim the
-/// type cannot back. This type once held six fields while the wrapper implements
-/// 25 trait methods, so 19 methods had no observation at all and a wrapper that
-/// appended `!` to every identifier, or inverted `supports_offset`, went green
-/// through this whole file. Every field here reads one of
+/// type cannot back. The original snapshot held six fields while the wrapper
+/// implemented 25 trait methods, so 19 methods had no observation at all and a
+/// wrapper that appended `!` to every identifier, or inverted `supports_offset`,
+/// went green through this whole file. Every field here reads one of
 /// [`SERVERLESS_TRAIT_METHODS`]; what is left over is named, with reasons, in
 /// [`SERVER_REQUIRED_TRAIT_METHODS`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +136,10 @@ struct RefusalSnapshot {
     quoted_ident: String,
     literal_absent: String,
     literal_quote: String,
+    sql_literal_dialect: Option<SqlLiteralDialect>,
+    supports_bound_writes: bool,
+    try_literal_absent: Result<String, String>,
+    try_literal_quote: Result<String, String>,
     ddl_atomicity: DdlAtomicity,
     supports_offset: bool,
     supports_explain: bool,
@@ -173,6 +180,14 @@ impl RefusalSnapshot {
             literal_absent: driver.format_sql_literal(&None),
             literal_quote: driver
                 .format_sql_literal(&Some(Value::String(LITERAL_PROBE.to_string()))),
+            sql_literal_dialect: driver.sql_literal_dialect(),
+            supports_bound_writes: driver.supports_bound_writes(),
+            try_literal_absent: driver
+                .try_format_sql_literal(&None)
+                .map_err(|error| error.to_string()),
+            try_literal_quote: driver
+                .try_format_sql_literal(&Some(Value::String(LITERAL_PROBE.to_string())))
+                .map_err(|error| error.to_string()),
             ddl_atomicity: driver.ddl_atomicity(),
             supports_offset: driver.supports_offset(),
             supports_explain: driver.supports_explain(),
@@ -206,7 +221,8 @@ impl RefusalSnapshot {
     fn summary(&self) -> String {
         format!(
             "declared={:?} execution_cancel={} driver_type={:?} sync_family={:?} quote_char={:?} \
-             quoted_ident={:?} literal_absent={:?} literal_quote={:?} ddl_atomicity={:?} \
+             quoted_ident={:?} literal_absent={:?} literal_quote={:?} sql_literal_dialect={:?} \
+             supports_bound_writes={} try_literal_absent={:?} try_literal_quote={:?} ddl_atomicity={:?} \
              supports_offset={} supports_explain={} commands=[{}] original={:?} second={:?} \
              multi_database={} schema_level={}",
             self.declared,
@@ -217,6 +233,10 @@ impl RefusalSnapshot {
             self.quoted_ident,
             self.literal_absent,
             self.literal_quote,
+            self.sql_literal_dialect,
+            self.supports_bound_writes,
+            self.try_literal_absent,
+            self.try_literal_quote,
             self.ddl_atomicity,
             self.supports_offset,
             self.supports_explain,
@@ -450,8 +470,8 @@ async fn a_withheld_capability_is_refused_and_leaves_the_target_and_the_serverle
 /// lists below are read against the wrapper's actual source, so neither can drift
 /// away from it.
 ///
-/// Without this, "the snapshot has 6 fields" and "the wrapper implements 25
-/// methods" are two true statements that add up to 19 methods nothing observes.
+/// Without this, the original snapshot's 6 fields and the wrapper's 25 methods
+/// left 19 methods with no observation.
 /// That gap is invisible to a reader of the passing test, so it is made a
 /// failing one: add a delegation to the wrapper and this test fails until the new
 /// method is either observed or disclosed. Removing a method from the observed

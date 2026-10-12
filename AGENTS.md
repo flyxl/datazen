@@ -204,6 +204,24 @@ cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust �
 - **禁止**把它们当交付物：轨道通过验收并合并后，`progress.md` 与 `hub.md` **必须删除**，不得存活在 `main` 上。删除是合并流程的收尾步骤之一，与清理 worktree、删除 feature 分支同级。
 - **缺陷清单不单独建文件**：缺陷结论记在台账里当下游输入，最终必须变成代码、测试和 `docs/` 正式文档里的事实。台账消失后，结论必须仍然能从代码和测试读出来——否则说明结论只存在于台账里，是没做完。
 
+**请求用户决策时，必须在同一轮内交付足以决策的上下文。** 只抛结论、把选择丢回去，等于让用户
+在你没有给出依据的情况下替你承担判断责任。实测代价：门禁盘点阶段把「R3 规则要不要转阻断」
+和「restore-guards 要不要留在 typecheck 链里」两条标进「需你决定」，却各只给一句
+「这是特性级重构」「建议原样保留」——没有数字、没有范围、没有代价、没有替代方案，
+用户无法判断，只能照单接受或拒绝，两条都成了无效征求意见。写「需你决定」之前先自查：
+
+- **具体位置**：哪条规则、哪个文件、哪一行、当前实测命中几条（本例：R3 全仓仅 1 处，
+  `src/windows/connection/DocumentConnectionView.tsx` 单行 import 引入 9 个符号）。
+- **实测数字**：耗时占比、当前是否已红、翻成阻断会让多少个 PR 变红
+  （本例：38ms / 13808ms typecheck = 0.28%；翻阻断则每个 PR 都红）。
+- **修复的工作量与边界**：改哪几个包、动多少个调用点、是否要扩展共享契约
+  （本例：9 个纯函数要经 `DatabaseTypeMeta` 暴露，而该契约当前零函数槽位）。
+- **各选项的代价**：包含「什么都不做」这一项，以及选项之间的可逆性。
+- **实测与推断要分开**：凡是推断，标明依据；凡是实测，给出命令与退出码。
+
+同样地，**对已有结论补上下文时，先核对结论本身是否经得起复查**——本次正是靠复查发现
+「136 行纯逻辑函数被说成特性级重构」这个定级错误：数字补齐后，改成契约扩展而非改写文件。
+
 推广与发布文案只写本地 `posts/`（gitignored）。
 
 ### 文档维护纪律
@@ -246,7 +264,10 @@ pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
   ⚠️ **不是 `src/locales/en.ts`** —— 那只是 2 行的向后兼容 re-export shim
   （`export { default } from './en/index';`），往里加 key 不产生任何效果。
   动手前先按 key 前缀定位领域包（见 [src/locales/README.md](src/locales/README.md) 的领域清单）。
-- **发布前**：使用 `node scripts/i18n-sync-check.mjs` 检查翻译完整性，然后通过 i18n-sync skill 补齐所有语言。
+- **发布前（硬阻断）**：`node scripts/i18n-sync-check.mjs` 已在 `.github/workflows/release.yml`
+  的 `pre-release-guards` 中作为**发布硬门禁**——翻译不完整，发布构建根本不启动。
+  **发布出去的版本不允许只有英文**；`bump-version` skill 触发重建时必须一并跑该检查。
+  缺失的 key 用 i18n-sync skill 补齐（只补翻译，不改英文领域包 `src/locales/en/<domain>.ts`）。
 - `src/locales/en/<domain>.ts` 是唯一的翻译 source of truth（该目录下全部领域包合起来），其他语言必须保持相同的 key 集合。
 - 采用领域包（Domain Packs）结构，**全部 10 种语言**（`de` / `en` / `es` / `fr` / `ja` / `ko` / `pt-BR` / `ru` / `zh-CN` / `zh-TW`）都按领域拆分；`<locale>.ts` 一律是 shim。
   子窗口与深层功能通过 `useLocaleDomains` 按需惰性（Lazy）加载。

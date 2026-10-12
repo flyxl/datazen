@@ -69,6 +69,37 @@ pub enum ResetForReuse {
     Unsupported,
 }
 
+impl ResetForReuse {
+    /// 这条资源有没有资格进归池候选。
+    ///
+    /// `Verified` 才放行 —— 未验证时归pool 候选当场作废，直接走关闭路径
+    /// （§9.4「reset 不支持…直接关闭」）。与 `SessionScopedHandleSupport::enables_feature`
+    /// / `driver-api` 侧同形：**只有显式声明过的一侧才给过**。
+    ///
+    /// `CapabilitySnapshot` 那侧的 `reuse_path_verified()` 是同一个判据的快照级读法；
+    /// 归池判定需要一个不经过快照、只对着这一个枚举问的口径，所以这里再给一次。
+    pub const fn admits_reuse(self) -> bool {
+        matches!(self, Self::Verified)
+    }
+}
+
+impl Default for ResetForReuse {
+    /// **`Verified`**，与 [`CapabilitySnapshot::defaults`]() 的取值**一致**。
+    ///
+    /// 这不是疏漏，是**改动前后逐字节同行为**的要求：`HostConditionSnapshot` 派生
+    /// `Default`，而 `Default` 的语义是「调用方什么都没供给时的初值」。若这里取
+    /// `Unsupported`，27 处既有 `HostConditionSnapshot::default()` 调用点的归池裁决
+    /// 会一次性翻成 `Closed`——那不是本任务引入的语义变化，是凭空把别人的用例改红。
+    ///
+    /// 反过来问「默认允许归池是不是更危险」：不会，因为它只**退回改动前的旧行为**
+    /// ——跑一次复位、发现不行、关闭。也就是说，「忘记供给」的失败模式与本次改动
+    /// 之前**完全相同**，不会把没有 verified baseline 的连接偷偷塞进共享池。
+    /// 真正要防的是**声明了不复位却被当成可归池**，那由供给侧显式给 `Unsupported` 负责。
+    fn default() -> Self {
+        Self::Verified
+    }
+}
+
 /// 精确取消支持度。`Unsupported` 时必须返回 `Unsupported`，**不得降级**为 session-wide cancel。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -239,5 +270,11 @@ mod tests {
         let mut caps = CapabilitySnapshot::defaults("fake-sql", "0.0.1");
         caps.reset_for_reuse = ResetForReuse::Unsupported;
         assert!(!caps.reuse_path_verified());
+        // 枚举自身的判据与快照级判据必须是同一个结论。
+        assert!(!caps.reset_for_reuse.admits_reuse());
+        assert!(
+            ResetForReuse::Verified.admits_reuse(),
+            "`Verified` 是唯一允许进归池候选的取值"
+        );
     }
 }

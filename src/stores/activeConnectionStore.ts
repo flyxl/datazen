@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { connectionCommands } from '../commands/connection';
 import { bindSessionMetadataIdentity } from './metadataIdentityBinding';
+import { dropColumnReadsForSession } from './schemaColumnBatcher';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { t } from '../locales/t';
 import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
@@ -259,6 +260,9 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
   },
 
   removeByDbSessionId: (dbSessionId) => {
+    // Exit transition: a queued column read for this session can no longer be
+    // committed anywhere, so it is dropped here rather than left to fail.
+    dropColumnReadsForSession(dbSessionId);
     set((s) => {
       const next = { ...s.connections };
       for (const key of Object.keys(next)) {

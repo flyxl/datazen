@@ -30,64 +30,10 @@ pub struct SqlStatement {
     pub identity_insert: Option<IdentityInsertTarget>,
 }
 
-pub fn quote_ident_sql(name: &str, quote: char) -> String {
-    if quote == '[' {
-        return format!("[{}]", name.replace(']', "]]"));
-    }
-    let doubled = name.replace(quote, &format!("{quote}{quote}"));
-    format!("{quote}{doubled}{quote}")
-}
-
-/// Qualify `table` as `schema.table` when `schema` is non-empty (PostgreSQL etc.).
-pub fn qualify_table_sql(schema: Option<&str>, table: &str, quote: char) -> String {
-    match schema.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(schema) => format!(
-            "{}.{}",
-            quote_ident_sql(schema, quote),
-            quote_ident_sql(table, quote)
-        ),
-        None => quote_ident_sql(table, quote),
-    }
-}
-
-/// Qualify a table reference for DML/SELECT without switching the session catalog.
-///
-/// - MySQL/MariaDB/ClickHouse: `` `database`.`table` `` when `database` is set.
-/// - SQL Server: `[database].[schema].[table]` with either qualifier set.
-/// - PostgreSQL and similar: `"schema"."table"` when `schema` is set.
-/// - Otherwise: bare `table`.
-pub fn qualify_relation_sql(
-    family: &str,
-    database: Option<&str>,
-    schema: Option<&str>,
-    table: &str,
-    quote: char,
-) -> String {
-    let family = family.to_ascii_lowercase();
-    if matches!(family.as_str(), "mysql" | "mariadb" | "clickhouse") {
-        return match database.map(str::trim).filter(|s| !s.is_empty()) {
-            Some(db) => format!(
-                "{}.{}",
-                quote_ident_sql(db, quote),
-                quote_ident_sql(table, quote)
-            ),
-            None => quote_ident_sql(table, quote),
-        };
-    }
-    if family == "sqlserver" {
-        return [
-            database.map(str::trim).filter(|s| !s.is_empty()),
-            schema.map(str::trim).filter(|s| !s.is_empty()),
-            Some(table),
-        ]
-        .into_iter()
-        .flatten()
-        .map(|part| quote_ident_sql(part, quote))
-        .collect::<Vec<_>>()
-        .join(".");
-    }
-    qualify_table_sql(schema, table, quote)
-}
+// Compatibility exports; implementation belongs to the driver SQL contract.
+pub use datazen_driver_api::sql_identifiers::{
+    qualify_relation_sql, qualify_table_sql, quote_ident_sql,
+};
 
 pub fn qualify_table_ident<Q>(schema: Option<&str>, table: &str, quote_ident: Q) -> String
 where

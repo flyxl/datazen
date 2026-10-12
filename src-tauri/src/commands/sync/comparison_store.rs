@@ -36,6 +36,8 @@ const ROW_FILE_PREFIX: &str = "table-";
 const ROW_FILE_SUFFIX: &str = ".rows";
 mod disk;
 use disk::*;
+mod manifest_cache;
+use manifest_cache::ManifestCache;
 mod recovery;
 use recovery::*;
 
@@ -54,6 +56,7 @@ enum Storage {
 #[derive(Debug)]
 struct Inner {
     storage: Storage,
+    manifest_cache: ManifestCache,
     #[cfg(test)]
     full_load_calls: AtomicUsize,
 }
@@ -396,6 +399,7 @@ impl StreamingComparisonStoreWriter {
                 };
                 Ok(ComparisonStore {
                     inner: Arc::new(Inner {
+                        manifest_cache: ManifestCache::default(),
                         storage: Storage::File {
                             root: self.root.clone(),
                             directory,
@@ -570,6 +574,7 @@ impl ComparisonStore {
         };
         Ok(Self {
             inner: Arc::new(Inner {
+                manifest_cache: ManifestCache::default(),
                 storage,
                 #[cfg(test)]
                 full_load_calls: AtomicUsize::new(0),
@@ -598,7 +603,7 @@ impl ComparisonStore {
                         COMPARISON_FULL_LOAD_LIMIT / (1024 * 1024)
                     ));
                 }
-                let manifest = read_manifest(manifest, directory)?;
+                let manifest = self.inner.manifest_cache.read(manifest, directory)?;
                 let mut tables = Vec::with_capacity(manifest.tables.len());
                 for table in &manifest.tables {
                     let mut restored = table.table.clone();
@@ -627,7 +632,7 @@ impl ComparisonStore {
                 manifest,
                 ..
             } => {
-                let manifest = read_manifest(manifest, directory)?;
+                let manifest = self.inner.manifest_cache.read(manifest, directory)?;
                 Ok(manifest
                     .tables
                     .iter()
@@ -669,7 +674,7 @@ impl ComparisonStore {
                 manifest,
                 ..
             } => {
-                let manifest = read_manifest(manifest, directory)?;
+                let manifest = self.inner.manifest_cache.read(manifest, directory)?;
                 let table = manifest
                     .tables
                     .iter()

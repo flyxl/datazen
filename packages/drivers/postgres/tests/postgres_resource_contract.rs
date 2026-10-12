@@ -25,8 +25,10 @@
 //!
 //! Everything above the live section is offline: it needs no server. The
 //! live section at the bottom runs by default but reports itself unverified
-//! when no server is configured (and fails outright under
-//! `DATAZEN_CONTRACT_REQUIRE_LIVE=1`). It reads credentials from the
+//! when no server is configured — and unverified is a failure unless the run
+//! explicitly waived strictness with `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`
+//! (`DATAZEN_CONTRACT_REQUIRE_LIVE=1` still forces the failure). It reads
+//! credentials from the
 //! **process environment only** (`TEST_PG_*`), matching
 //! `tests/postgres_cross_database.rs` — no file fallback, see AGENTS.md
 //! 「本地环境变量文件保护」.
@@ -40,7 +42,9 @@ use datazen_driver_api::resource::{
     DescribeResourceRequest, IdentityScope, InitializationRequirement, ResourceError,
     ResourceHandle, ResourceProvider, ResourcePurpose, ResourceScope, ResultChunk, ResultSink,
 };
-use datazen_driver_api::session::{CancelDisposition, CloseDisposition, TransactionOptions};
+use datazen_driver_api::session::{
+    CancelDisposition, CloseDisposition, SessionHandleKind, SessionHandleRef, TransactionOptions,
+};
 use datazen_driver_api::{
     iter_driver_factories, require_resource_provider, ConnectionConfig, DatabaseDriverFactory,
     ResourceProviderMissing,
@@ -145,6 +149,18 @@ fn transaction_options() -> TransactionOptions {
         read_only: None,
         defers_commit: false,
     }
+}
+
+/// A `SessionHandleRef` shaped like the ones the host receives in
+/// `ExecutionCompletion.session_handles`. Only the *identity* matters to the
+/// ownership check, so the fields below are deliberately arbitrary.
+fn session_handle() -> SessionHandleRef {
+    SessionHandleRef::new(
+        "tx-not-issued",
+        SessionHandleKind::Transaction,
+        "not-issued".to_string(),
+        1,
+    )
 }
 
 /// A budget port that records what it was asked for, so a test can prove a
@@ -605,6 +621,13 @@ async fn a_handle_this_provider_never_issued_is_refused_on_every_entry_point() {
             "close_resource",
             provider.close_resource(&foreign).await.map(|_| ()),
         ),
+        (
+            "close_handle",
+            provider
+                .close_handle(&foreign, &session_handle())
+                .await
+                .map(|_| ()),
+        ),
     ];
 
     for (method, outcome) in outcomes {
@@ -702,7 +725,8 @@ async fn a_cancel_is_never_accepted_for_an_execution_that_is_not_registered() {
 /// behind one is indistinguishable from a suite that passed — which is how this
 /// section spent its whole life while the budget-ledger round-trip it covers
 /// went unexercised. Instead it runs by default and *reports itself
-/// unverified*, failing only under `DATAZEN_CONTRACT_REQUIRE_LIVE=1`.
+/// unverified* — which fails, unless the run explicitly waived strictness with
+/// `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1`.
 mod live {
     use super::*;
 

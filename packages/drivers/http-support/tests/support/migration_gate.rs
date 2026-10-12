@@ -9,10 +9,17 @@
 //!
 //! This module is the way out of that bind: read the configuration from the
 //! **process environment only** (no `.env` file is opened, parsed, or sourced),
-//! and when it is absent *report the dimension unverified* — a skip by default,
-//! a failure under `DATAZEN_CONTRACT_REQUIRE_LIVE=1`. Same tests, same
-//! assertions; the difference is that "green" can now be made to mean
-//! "verified".
+//! and when it is absent *report the dimension unverified* — which is a failure
+//! by default, and a skip only under the explicit
+//! `DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1` opt-out. `DATAZEN_CONTRACT_REQUIRE_LIVE=1`
+//! still forces the failure, so every existing strict invocation is unchanged.
+//! Same tests, same assertions; what changed is that "green" now means
+//! "verified" without anyone having to remember to ask for it.
+//!
+//! The price is stated plainly: on a machine with no migration fixtures, these
+//! suites are now red rather than silently green, and a half-provisioned fixture
+//! server is red the same way. An operator who genuinely has no database sets
+//! the one opt-out variable and gets the honest skip line back.
 //!
 //! Credentials are never interpolated into a message. A missing key is named, a
 //! present one is not — so a stray print of a failure reason cannot leak a

@@ -23,6 +23,7 @@ import { installDocumentScrollLock } from './lib/documentScrollLock';
 import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
 import { maybeCheckOnStartup } from './lib/updater';
 import { getWindowKind } from './lib/windowKind';
+import { bindDesktopBackend } from './platform/tauriBackendTransport';
 import { startLocaleSync } from './lib/localeSync';
 import { initProExtensions } from './extensions/generated-pro';
 import * as extensionPoints from '@datazen/extension-points';
@@ -88,6 +89,8 @@ const SETTINGS_PRELOAD_TIMEOUT_MS = 3_000;
 async function bootstrap() {
   try {
     if ('__TAURI_INTERNALS__' in globalThis) {
+      // Every window needs the backend facade before job hydration runs.
+      bindDesktopBackend();
       try {
         const settingsPreload = import('./stores/settingsStore').then(
           async ({ useSettingsStore }) => {

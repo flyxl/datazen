@@ -191,6 +191,14 @@ async fn an_apply_job_can_be_cancelled_through_the_id_it_already_published() {
         EffectOutcome::NotStarted,
         "a Job cancelled before it wrote has no effect to report"
     );
+    assert_eq!(
+        finished.recovery_verdict,
+        super::super::runtime::RECOVERY_NOT_EXECUTED
+    );
+    let details = super::super::queries::read_transfer_job_details(&test.state, &finished.job_id)
+        .await
+        .unwrap();
+    assert!(details.job.pending_verification_reason.is_none());
 }
 
 /// The continuation the command left behind finishes on its own, and the Job it

@@ -28,7 +28,7 @@ use crate::model::{DdlPreviewItem, TableExecutionOutcome, TableInspectResult, Tr
 use crate::resume::{ResumeTableProgress, TransferResumeCheckpoint};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 
-use crate::job::checkpoint::commit_boundary;
+mod structure_stage;
 use crate::job::outcome::{absorb_progress, cancelled_stage, failed_stage, unbounded_stage};
 use crate::job::pipeline::{execute_bounded_table, BoundedPipelineContext, PIPELINE_INITIAL_BYTES};
 use crate::job::plan::{validate_frozen_plan, TransferFreezeBody};
@@ -261,11 +261,18 @@ impl JobHandler for DataTransferHandler {
                 kind: "prepare".into(),
                 depends_on: vec![],
             }],
-            ("dataTransferApply", TransferMode::Structure) => vec![StageSpec {
-                stage_id: StageId::new("structure"),
-                kind: "structure".into(),
-                depends_on: vec![],
-            }],
+            ("dataTransferApply", TransferMode::Structure) => vec![
+                StageSpec {
+                    stage_id: StageId::new("structure"),
+                    kind: "structure".into(),
+                    depends_on: vec![],
+                },
+                StageSpec {
+                    stage_id: StageId::new("foreignKeys"),
+                    kind: "foreignKeys".into(),
+                    depends_on: vec![StageId::new("structure")],
+                },
+            ],
             ("dataTransferApply", TransferMode::Data) => vec![StageSpec {
                 stage_id: StageId::new("data"),
                 kind: "data".into(),
@@ -383,161 +390,27 @@ impl DataTransferHandler {
         spec: &StageSpec,
         cancel: &CancelToken,
     ) -> Result<StageOutcome, JobError> {
-        match &self.endpoints {
-            TransferEndpoints::Database {
-                target_driver,
-                target_handle,
-                ..
-            } => {
-                let selected: HashSet<String> = self
-                    .freeze
-                    .job
-                    .tables
-                    .iter()
-                    .filter(|t| t.enabled)
-                    .map(|t| t.source_table.clone())
-                    .collect();
-                let plan = self.database_structure.as_deref().unwrap_or(&[]);
-                // 共享内核那一位：阶段内取消由内核看守者翻转，结构阶段在每个 DDL 之前读的就是它。
-                let atomic_cancel = cancel.flag();
-                let results = crate::structure::execute_database_structure_plan(
-                    target_driver.as_ref(),
-                    target_handle,
-                    plan,
-                    &selected,
-                    crate::structure::DatabaseStructurePhase::Prepare,
-                    Some(atomic_cancel),
-                    None,
-                )
-                .await;
-                let mut boundaries = Vec::new();
-                for item in plan.iter().filter(|item| {
-                    selected.contains(&item.source_table)
-                        && item.kind != crate::model::DdlPreviewKind::ForeignKey
-                }) {
-                    let committed = results.iter().any(|r| {
-                        r.source_table == item.source_table
-                            && r.outcome == Some(TableExecutionOutcome::Committed)
-                    });
-                    if committed {
-                        boundaries.push(commit_boundary(
-                            spec.stage_id.as_str(),
-                            &item.source_table,
-                            &{
-                                use sha2::{Digest, Sha256};
-                                let mut h = Sha256::new();
-                                h.update(item.ddl.as_bytes());
-                                format!("{:x}", h.finalize())
-                            },
-                            0,
-                            "target-ddl-ack",
-                            "sha256:structure",
-                            None,
-                        ));
-                    }
-                }
-                let succeeded = results
-                    .iter()
-                    .all(|r| r.outcome == Some(TableExecutionOutcome::Committed));
-                Ok(StageOutcome {
-                    stage_id: spec.stage_id.clone(),
-                    terminal: if succeeded {
-                        StageTerminal::Succeeded
-                    } else {
-                        StageTerminal::Failed
-                    },
-                    progress: JobProgress::default(),
-                    commit_boundaries: boundaries,
-                    execution_ids: Vec::new(),
-                    artifact_ids: Vec::new(),
-                    effect_outcome: if succeeded {
-                        EffectOutcome::Completed
-                    } else {
-                        EffectOutcome::PartiallyApplied
-                    },
-                    error_code: None,
-                })
-            }
-            TransferEndpoints::SqlFile { .. } => Ok(StageOutcome {
-                stage_id: spec.stage_id.clone(),
-                terminal: StageTerminal::Succeeded,
-                progress: JobProgress::default(),
-                commit_boundaries: Vec::new(),
-                execution_ids: Vec::new(),
-                artifact_ids: Vec::new(),
-                effect_outcome: EffectOutcome::Completed,
-                error_code: None,
-            }),
-        }
+        self.run_database_structure(
+            spec,
+            cancel,
+            crate::structure::DatabaseStructurePhase::Prepare,
+        )
+        .await
     }
 
     async fn run_foreign_keys(
         &self,
         spec: &StageSpec,
-        _cancel: &CancelToken,
+        cancel: &CancelToken,
     ) -> Result<StageOutcome, JobError> {
-        match &self.endpoints {
-            TransferEndpoints::Database {
-                target_driver,
-                target_handle,
-                ..
-            } => {
-                let selected: HashSet<String> = self
-                    .freeze
-                    .job
-                    .tables
-                    .iter()
-                    .filter(|t| t.enabled)
-                    .map(|t| t.source_table.clone())
-                    .collect();
-                let plan = self.database_structure.as_deref().unwrap_or(&[]);
-                let results = crate::structure::execute_database_structure_plan(
-                    target_driver.as_ref(),
-                    target_handle,
-                    plan,
-                    &selected,
-                    crate::structure::DatabaseStructurePhase::ForeignKeys,
-                    None,
-                    None,
-                )
-                .await;
-                let succeeded = results
-                    .iter()
-                    .all(|r| r.outcome == Some(TableExecutionOutcome::Committed));
-                Ok(StageOutcome {
-                    stage_id: spec.stage_id.clone(),
-                    terminal: if succeeded {
-                        StageTerminal::Succeeded
-                    } else {
-                        StageTerminal::Failed
-                    },
-                    progress: JobProgress::default(),
-                    commit_boundaries: Vec::new(),
-                    execution_ids: Vec::new(),
-                    artifact_ids: Vec::new(),
-                    effect_outcome: if succeeded {
-                        EffectOutcome::Completed
-                    } else {
-                        EffectOutcome::PartiallyApplied
-                    },
-                    error_code: None,
-                })
-            }
-            TransferEndpoints::SqlFile { .. } => Ok(StageOutcome {
-                stage_id: spec.stage_id.clone(),
-                terminal: StageTerminal::Succeeded,
-                progress: JobProgress::default(),
-                commit_boundaries: Vec::new(),
-                execution_ids: Vec::new(),
-                artifact_ids: Vec::new(),
-                effect_outcome: EffectOutcome::Completed,
-                error_code: None,
-            }),
-        }
+        self.run_database_structure(
+            spec,
+            cancel,
+            crate::structure::DatabaseStructurePhase::ForeignKeys,
+        )
+        .await
     }
-}
 
-impl DataTransferHandler {
     async fn run_data(
         &self,
         spec: &StageSpec,

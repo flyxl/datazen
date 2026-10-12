@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use datazen_driver_api::TableSchema;
 
-use datazen_data_sync::sql::quote_ident_sql;
+use datazen_driver_api::sql_identifiers::quote_ident_sql;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 
 use super::error::TransferError;
@@ -288,6 +288,7 @@ pub async fn execute_chunked_table(
             row_limit,
             context.checkpoint,
             context.cancelled.as_deref(),
+            false,
         )
         .await;
         match fingerprint {

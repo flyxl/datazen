@@ -103,7 +103,7 @@ pub fn hbase_connection_cost(_config: &ConnectionConfig) -> ConnectionCostPolicy
 ///   that claims nothing, and it fails closed: `enables_feature()` is false, so
 ///   a caller has to ask instead of assuming.
 /// * `backup` stays `Unknown` for the same reason — no artifact is produced or
-///   consumed anywhere in this driver or in the 14 contract methods.
+///   consumed anywhere in this driver or in the 15 contract methods.
 pub fn hbase_capability_set() -> CapabilitySet {
     let mut capabilities = CapabilitySet::default();
 
@@ -226,7 +226,7 @@ pub fn hbase_capability_evidence() -> Vec<(&'static str, String)> {
         ),
         (
             "backup",
-            "unknown: this driver produces and consumes no artifact, and none of the 14 contract \
+            "unknown: this driver produces and consumes no artifact, and none of the 15 contract \
              methods carries a backup surface"
                 .to_string(),
         ),

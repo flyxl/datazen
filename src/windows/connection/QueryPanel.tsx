@@ -439,7 +439,6 @@ export function QueryPanel({
     setInTransaction: tx.setInTransaction,
     refreshTxStatus: tx.refreshTxStatus,
     maybeOfferAbortedDialog: tx.maybeOfferAbortedDialog,
-    syncContextFromSql: contextPathState.syncContextFromSql,
     showMessageDialog,
     onExecutionComplete: () => {
       bindState.markSubmitted(bindState.values);
@@ -533,12 +532,6 @@ export function QueryPanel({
     tables,
     views,
   ]);
-
-  useEffect(() => {
-    if (!exec.sql.trim()) return;
-    const timer = setTimeout(() => void contextPathState.syncContextFromSql(exec.sql), 50);
-    return () => clearTimeout(timer);
-  }, [exec.sql, contextPathState.syncContextFromSql]);
 
   useEffect(() => {
     void loadHistory(connectionId);

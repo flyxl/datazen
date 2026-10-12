@@ -61,6 +61,7 @@ export function TransferMappingStep({
             key={tbl.sourceTable}
             type="button"
             data-testid="data-transfer-mapping-table-item"
+            data-source-table={tbl.sourceTable}
             className={cn(
               'px-3 py-2 text-left text-sm hover:bg-surface-alt',
               selected?.sourceTable === tbl.sourceTable && 'bg-surface-alt font-medium text-accent',

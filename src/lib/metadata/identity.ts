@@ -35,9 +35,30 @@ export function metadataCacheKey(input: MetadataIdentityInput): string {
   ]);
 }
 
+/**
+ * The identity/config dimensions of one metadata request, without its target.
+ *
+ * `connectionId` (which persistent config) and `dbSessionId` (which runtime
+ * session) are distinct dimensions and are never collapsed into one optional
+ * field — see the ID 术语规范 in AGENTS.md.
+ */
+export type MetadataSessionIdentity = Omit<MetadataIdentityInput, 'target'>;
+
+/**
+ * Session address: identity + config + runtime session, no target.
+ *
+ * This is the single derivation of the session-level address. Cache layers that
+ * hold *per-session* state (rather than per-relation state) must address it
+ * through this function so their partition boundaries match
+ * {@link metadataCacheKey} exactly.
+ */
+export function metadataSessionKey(input: MetadataSessionIdentity): string {
+  return JSON.stringify([input.connectionId, input.configRevision, input.dbSessionId]);
+}
+
 /** Config-level bucket key: identity + config (no target). */
 export function metadataConfigBucket(input: MetadataIdentityInput): string {
-  return JSON.stringify([input.connectionId, input.configRevision, input.dbSessionId]);
+  return metadataSessionKey(input);
 }
 
 /** Batch bucket key: identity + config + target namespace (object excluded). */

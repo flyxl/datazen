@@ -179,7 +179,7 @@
 - **绑定参数**：`max_bound_parameters` = 2100。
 - **测试基座**：`tests/` 下共 9 个 `.rs`——7 个 `live_*.rs`（`live_admin_and_sync`、`live_connection`、`live_pagination`、`live_query_types`、`live_schema_metadata`、`live_streaming`、`live_write_and_ddl`）+ `sync_adapter_smoke.rs` + `command_definitions.rs`，另有 `common/` 辅助模块。它是当前 15 个 path 驱动里真实服务端测试覆盖最厚的。
 
-**与目标契约的差距**：这是最接近目标资源模型、也最需要谨慎的一个驱动。它有真实的单物理会话，有 `discard_connection`，有会话级开关，但**没有声明、没有基线校验、没有 reset 复原**。`resetForReuse` 的枚举只有 `verified` / `unsupported` 两值，本驱动拿不到 `verified`——`discard` 是丢弃不是复原。P2 的工作是把「回滚未决事务 → 复原 `restore_isolation` → 复原 `SHOWPLAN_TEXT`/IDENTITY_INSERT 等会话开关」做成显式 `resetResource`，再由 CM-26/CM-69 验证之后才能填 `verified`。
+**与目标契约的差距**：这是最接近目标资源模型、也最需要谨慎的一个驱动。它有真实的单物理会话，有 `discard_connection`，有会话级开关，但**没有声明、没有基线校验、没有 reset 复原**。`resetForReuse` 的枚举只有 `verified` / `unsupported` 两值，本驱动拿不到 `verified`——`discard` 是丢弃不是复原。P10 的工作（本驱动已随批次 2 移出 P2 第一轮）是把「回滚未决事务 → 复原 `restore_isolation` → 复原 `SHOWPLAN_TEXT`/IDENTITY_INSERT 等会话开关」做成显式 `resetResource`，再由 CM-26/CM-69 验证之后才能填 `verified`。
 
 ### 3.5 Redis
 
@@ -255,22 +255,23 @@
   - **CM-08（两个编辑器隔离，H/D/F）与 CM-30（idle 连接计入预算，H/D）必须进模板**：这两条描述的是宿主侧「同一个 driver 实例同时服务两个编辑器、上下文互不破坏」与「预算必须统计真实 idle 连接」，不是某个方言的语义，因此对全部 15 个驱动成立。模板里先把两条的用例骨架写出来（驱动只需提供自己的 `ResourceDescriptor` 与连接统计钩子），后续驱动行就不必再重复列它们。
 - **进出门槛**：模板本身是一个可运行的 hostless harness（`cargo test -p datazen-driver-api`），且在至少一个「全部能力 unsupported」的桩驱动上能全绿。
 
-### 批次 1：代表驱动（每种语义模型各一个）
+### 批次 1：P2 第一轮 = `basic` 四个驱动
 
-选这 4 个是因为它们把 §2.2 的三条结构事实全部覆盖了一遍，且彼此没有共享实现库。
+选这 4 个是因为它们正是 `resolve-drivers.mjs` 的 `basic` 预设——CI 与默认构建实际编译的集合，且彼此没有共享实现库。**P2 的退出门槛只对这 4 个驱动断言**，其余驱动按平台计划 P10 补齐。
 
 | 驱动 | 选它的原因 | 必做 D 层断言 |
 | --- | --- | --- |
 | postgres | `Transactional`（postgres 与 sqlite 同为 `Transactional`）+ 多池 + per-DB 控制通道 + 两个正确拒绝 legacy cancel 的驱动之一（另一个是 mysql） | CM-07、CM-08、CM-09～CM-14、CM-15、CM-16、CM-17～CM-19、CM-22～CM-24、CM-26、CM-30、CM-62、CM-67 |
 | mysql | 唯一 `namespaceSwitch: inPlace`、唯一 `AutoCommitPerStatement`、DDL 隐式提交 | CM-07、CM-10～CM-13、CM-16、CM-17、CM-19、CM-22～CM-24、CM-26、CM-45、CM-48、CM-62 |
-| sqlserver | 唯一真·单物理会话、唯一 `discard_connection`、唯一会话级开关 | CM-07、CM-09、CM-14、CM-17～CM-19、CM-22～CM-24、CM-26、CM-45；另需跑纯 H 的 `CM-69` 与 H/F 的 `CM-74`（二者无 D 层标记，**不能算作 D 层断言**） |
 | sqlite | 唯一的硬编码单连接池反例（`sqlite.rs:288-291`；mysql 只有在 `max_pool_size` 配成 1 时才会同样降到 1，见 `types.rs:170-172` 的 `clamp(1, 100)`）、最小 dialect 面 | CM-07、CM-13、CM-14、CM-17～CM-19、CM-24、CM-26、CM-62 |
+| redis | 唯一的键值语义模型，也是 CI 四个驱动中唯一的非关系库，必须在这一轮就把它的 unsupported 面暴露出来 | CM-07、CM-09、CM-19、CM-24、CM-26、CM-62；补 `contextObservation` 与 `namespaceSwitch` 的 P0 结论；`value_search` 的 `commit` 不得被误认成事务 |
 
 - **CM-19（driver 无状态能力）** 是批次 1 的核心用例：它直接检验「不把单连接池假装成固定资源」，sqlite 这一格就是它的标准靶子。
 - **CM-15** 只对 postgres 成立（切 database 必须替换连接，是 `requiresReplacement` 的教科书实现）；**CM-16**（替换失败保留旧连接）适用于**一切** `requiresReplacement` 驱动——mysql 当前矩阵填 `inPlace`，若 §3.2 的 P0 定案改为 `requiresReplacement`，CM-16 立即对它必做；**CM-11 / CM-12** 只对 mysql 的 `USE` 路径成立。这三条都不允许被推广成「所有驱动都要发 `USE`」的断言。
 - **进出门槛**：这 4 个驱动的 `cargo test -p datazen-driver-<id>` 全绿；`pnpm test:unit:drivers` 干净；`pnpm typecheck` 干净；`pnpm e2e:contract:matrix` 中这 4 行的 D 层用例转绿。任一项不过则批次 1 不完成。
+- **原批次 1 的 `sqlserver` 已移出第一轮**：它是唯一真·单物理会话、唯一 `discard_connection`、唯一会话级开关的语义样本，但其契约测试依赖 `tests/live_*.rs` 真实服务端，CI 不提供该环境。该语义模型与其全部断言转入批次 2（P10），**不得因移出第一轮而从矩阵或断言清单中消失**。
 
-### 批次 2：其余关系库与嵌入式数据库
+### 批次 2：其余关系库与嵌入式数据库（**转入 P10**）
 
 | 驱动 | 必做 D 层断言 | 备注 |
 | --- | --- | --- |
@@ -279,15 +280,17 @@
 | rqlite | CM-07、CM-14、CM-17、CM-19、CM-24、CM-26 | 最低成本档 |
 | turso | CM-07、CM-14、CM-17、CM-19、CM-24、CM-26 | 同上 |
 | mongodb | CM-07、CM-09、CM-14、CM-17、CM-19、CM-24、CM-26、CM-62、CM-67 | 需先解决 `namespaceSwitch` 枚举缺口 |
+| sqlserver | CM-07、CM-09、CM-14、CM-17～CM-19、CM-22～CM-24、CM-26、CM-45；另需跑纯 H 的 `CM-69` 与 H/F 的 `CM-74`（二者无 D 层标记，**不能算作 D 层断言**） | 唯一真·单物理会话、唯一 `discard_connection`、唯一会话级开关；依赖 `tests/live_*.rs` 真实服务端，**需自备环境，否则只能记为未验证** |
 
 - **批次 2 的前置条件**：§5.2 的 `namespaceSwitch` 必须先补齐「无会话按请求寻址」这一情形的表达方式（扩展枚举，或在 `ResourceDescriptor.namespaceShape` 里把它显式建模并由契约测试固定映射）。clickhouse / mongodb / influxdb 三者共用这一前置。
-- **进出门门槛**：本批 5 个驱动 D 层全绿，且批次 1 的 4 个驱动仍然全绿（防止新增能力改坏旧驱动）。`pnpm test:boundaries` 的生产侧基线必须仍为 0 违规。
+- **进出门槛（P10）**：本批 6 个驱动 D 层全绿，且批次 1 的 4 个驱动仍然全绿（防止新增能力改坏旧驱动）。`pnpm test:boundaries` 的生产侧基线必须仍为 0 违规。
 
-### 批次 3：非关系库与明确 unsupported 的固化
+### 批次 3：非关系库与明确 unsupported 的固化（**转入 P10**）
+
+`redis` 已提入批次 1（P2 第一轮）；本批剩余 5 个驱动转入 P10。
 
 | 驱动 | 必做 D 层断言 | 备注 |
 | --- | --- | --- |
-| redis | CM-07、CM-09、CM-19、CM-24、CM-26、CM-62 | 补 `contextObservation` 与 `namespaceSwitch` 的 P0 结论；`value_search` 的 `commit` 不得被误认成事务 |
 | influxdb | CM-07、CM-14、CM-19、CM-24、CM-26 | 需先解决 `namespaceSwitch` 枚举缺口 |
 | victoriametrics | CM-07、CM-14、CM-19、CM-24、CM-26 | |
 | hbase | CM-07、CM-14、CM-19、CM-24、CM-26 | |
@@ -295,18 +298,20 @@
 | elasticsearch | CM-07、CM-14、CM-19、CM-24、CM-26 | **先补最小 Rust 集成测试基线**（当前无 `tests/` 目录，只有 `src/` 内 10 个单元测试） |
 
 - 批次 3 的重点不是接能力，而是**把「不支持」变成可执行的显式拒绝**：`requestCancel` 返回 `Unsupported`、`begin` 返回 `Unsupported`、`resetResource` 返回 `Unsupported`，且每一条都有 CM-24（无取消能力）与 §7 的对应断言。
-- **进出门槛**：13 处 `cancel_query -> Ok(())` 全部改为显式拒绝（见 §7）；这 6 个驱动的 D 层全绿；`pnpm e2e:contract:matrix` 全矩阵转绿。
+- **进出门槛（P10）**：13 处 `cancel_query -> Ok(())` 全部改为显式拒绝（见 §7）；这 5 个驱动的 D 层全绿；`pnpm e2e:contract:matrix` 全矩阵转绿。
 
 ### 4.5 批次顺序的硬性依赖
 
 ```text
 批次 0（契约模板）
-   └─> 批次 1（postgres / mysql / sqlserver / sqlite）
-          └─> 批次 2（clickhouse / duckdb / mongodb / rqlite / turso）
+   └─> 批次 1 = P2（postgres / mysql / sqlite / redis）
+          └─> 批次 2 = P10（clickhouse / duckdb / mongodb / rqlite / turso / sqlserver）
                  │  需要：§5.2 namespaceSwitch 枚举缺口先补齐
-                 └─> 批次 3（redis / influxdb / victoriametrics / hbase / vector / elasticsearch）
+                 └─> 批次 3 = P10（influxdb / victoriametrics / hbase / vector / elasticsearch）
                         需要：13 处 no-op cancel 先改显式拒绝
 ```
+
+P2 第一轮只交付批次 1；批次 2 与批次 3 连同 `sqlserver` 的语义模型由 P10 补齐，届时才允许把 15 驱动矩阵记为全部通过。
 
 ## 5. 协议版本演进
 
@@ -374,6 +379,21 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 4. git 驱动在**自己的仓库**里跟进，在 DataZen 侧以 `drivers-registry.json` 的**钉死 `ref`**（`source: "git"` + 指定 `ref`，参见 `olap` 条目 `7096c8737dbe25ab4529e5c3997c9f67309154d9`）提交 DataZen registry PR。钉死 ref 是可复现构建的前提：registry 不指向浮动分支，也不指向未打 tag 的提交。
 5. 宿主升级后，`PROTOCOL_VERSION` 必须 ≥ 全部已发布驱动的 `protocol_version()`。**注意这里的现状是缺口而不是保障**：`registry.rs:134-140` 的 `pv > PROTOCOL_VERSION` 分支目前只是 `tracing::warn!` 然后照常加载，既没有拒绝、也没有把它挡在降级分支之外。要让这条真正成立，P2 必须先在**硬拒绝（返回 `Err`、不 `create()`）**与**加载但标记为不可用并禁止 `execute_driver_command`**之间**二选一并落成门禁**（定案见 [§9](#9-待-p0-验证清单) 待定义 H；闸门现状见 §5.1）——**在定案并落成门禁前，「版本更高的 git 驱动会被拒绝、不静默降级」这句话是不成立的**。
 
+**门禁（已落成）**：`scripts/check-driver-protocol-release.mjs`（`pnpm test:driver-protocol-release`，`.github/workflows/ci.yml:76` 硬门禁，紧随 strict guards 一步、且在 `resolve-drivers` 之前）。它与 [§5.3](#53-哪些改动是-breaking) 那条门禁互不重叠：后者判定契约改动**是否需要**升 `PROTOCOL_VERSION`，本脚本判定**是否真的升了、升了之后这次交付必须跟着发什么**。它只读 `drivers-registry.json` 与各 crate 的 `Cargo.toml`/`lib.rs`，不碰 gitignored codegen，因此无需等驱动注入完成即可运行；`--base=<ref>` 可指定比对基线，默认取 `merge-base(HEAD, origin/main)`。
+
+「一次交付」的发布集按两条可机读的规则判定：path 驱动以 `[package] version` 前进计一次发布，Git 驱动以 `drivers-registry.json` 里钉死 `ref` 的移动计一次发布。**未钉 `ref` 的 Git 驱动（当前 `kiwi` / `superset`）发布决策发生在 clone 时，脚本只把它们列进报告、从不计入发布集**——因为把浮动分支当作「已发布」会把门禁变成永远通过。六条规则全部 fail-closed：
+
+| 规则 | 触发的状态 |
+| --- | --- |
+| `driver-release-state-unreadable` | registry 指向的驱动在基线 ref 或工作区一侧读不到（**读不到不等于没发布**，因此阻断而不是放行） |
+| `protocol-moved-without-driver-release` | `PROTOCOL_VERSION` / `MIN_PROTOCOL_VERSION` 动了，但发布集为空 |
+| `protocol-moved-without-driver-api-release` | 协议号动了，但 `datazen-driver-api` 的 crate 版本没前进 |
+| `driver-released-without-driver-api-release` | 有驱动发布了，但 `datazen-driver-api` 没发——老驱动拿不到新契约 |
+| `released-driver-outside-delivered-protocol-window` | 已发布驱动的 `protocol_version()` 落在本次交付声明的 `MIN..=PROTOCOL` 窗口之外（窗口为空时由 `protocol-window-non-empty` 负责，此处不重复报） |
+| `recompiled-driver-not-released` | 驱动声明的协议号随本次交付上移，却没有跟着发布 |
+
+每条 reject 都逐字点出**哪个驱动、哪个协议数字**不匹配，例如 `driver 'mysql' was released in this delivery (packages/drivers/mysql/Cargo.toml 0.1.0 -> 0.1.1) but declares protocol_version() = 9 (hard-coded override), outside the window MIN_PROTOCOL_VERSION 1 ..= PROTOCOL_VERSION 4 this delivery publishes.` 这条脚本**不新增任何协议协商机制**，只复用既有的 `PROTOCOL_VERSION` / `MIN_PROTOCOL_VERSION` 语义。
+
 **冲突时的判据**：如果某个 breaking 改动无法在本仓库内一次性覆盖全部 path 驱动（例如需要 3 个 git 驱动分别发版），那它**不能**靠下调 `MIN` 蒙混过关，必须先让 DataZen 侧以新 `PROTOCOL_VERSION` 构建、通过 registry 钉 ref 升级全部 git 驱动，最后再打开闸门。在中间状态，宿主应保持 `PROTOCOL_VERSION` 不变、拒绝加载尚未跟进的新能力，而不是接受一个半兼容的组合。
 
 **AI 侧同理**：`AI_PROTOCOL_VERSION` 变更时需要同步更新所有 AI Provider 插件，这条规则在 `AGENTS.md` 中已写明，与本文的驱动协议规则是同一套原子门槛的两次应用。
@@ -419,7 +439,15 @@ pub const MIN_PROTOCOL_VERSION: u32 = 1; // lib.rs:105
 
 `packages/driver-api/src/capabilities.rs:282` 的 `pub struct CapabilitySet` **目前没有** `#[non_exhaustive]`，紧邻的 `:281` 是 `#[serde(rename_all = "camelCase")]`。**这是当前状态，不是「待补」。**
 
-之所以现在加这个属性是**一行一处**的改动：`1434d29e3` 之后，全仓库**穷举式 `CapabilitySet` 字面量数量为 0**。12 个 path 驱动全部改为 `CapabilitySet::default()` 加逐字段赋值，形态见 `packages/drivers/postgres/src/resource/capabilities.rs:128` 的 `let mut capabilities = CapabilitySet::default();` 及其后 12 条 `capabilities.<字段> = …`（`:130-155`、`:194`、`:228`）。加属性这一步确实只有一处；但**代价落在 out-of-tree 驱动上**，那是边界二的迁移配方要交代的事：旧写法在别的仓库里编不过，而本仓库内的驱动早已全部改完。
+之所以现在加这个属性是**一行一处**的改动，但「本仓库内早已全部改完」这句话在 `1434d29e3` 之后**并不成立**，实测的现状是两种形态并存（15 个 path 驱动，逐驱动核对）：
+
+| 形态 | 驱动 | 落点 |
+| --- | --- | --- |
+| 穷举式 `CapabilitySet { … }` 字面量，12 格全写 | clickhouse、duckdb、elasticsearch、influxdb、rqlite、sqlserver、turso、victoriametrics | 各 `packages/drivers/<id>/src/resource_provider.rs` 的 `capabilities()` |
+| `CapabilitySet::default()` 加逐字段赋值，12 格全写 | postgres、vector、hbase、mysql、sqlite、mongodb | postgres `src/resource/capabilities.rs`、vector / hbase `src/resource/capabilities.rs`、mysql / sqlite / mongodb `src/resource_capabilities.rs` |
+| `CapabilitySet::default()` 加 **5** 格显式赋值，其余 7 格有意留在 fail-closed 默认值并逐格写明理由 | redis | `src/resource/capabilities.rs:119-189`（理由在 `:129-146`） |
+
+前 8 个正是未迁移驱动：它们还没有 `impl ResourceProvider`，经 `LegacyResourceAdapter` 被宿主包起来，能力集就写在 adapter 那一侧的 `capabilities()` 里。**给 `CapabilitySet` 加 `#[non_exhaustive]` 会立刻打断这 8 个驱动**，代价其实落在本仓库内，而不只在 out-of-tree 驱动上。所以加属性这一步的前提是先把未迁移驱动逐个改形态，或为它们保留穷举式构造的等价路径——在这之前不要把这句描述改写成「早已全部改完」。
 
 ### 5.6 `supportsBackup`：判据不是「有没有覆写 dump」
 
@@ -619,6 +647,7 @@ P2 新增的 `capabilities.rs` / `resource.rs` / `session.rs` 必须逐条过这
 | 门禁 | 命令 | 基线 |
 | --- | --- | --- |
 | 驱动协议兼容 | `pnpm test:driver-protocol` | 干净。`source-breaking` 命中时只应报 `source-break-requires-out-of-tree-migration`；同一次运行里 `breaking-change-requires-protocol-bump` 出现次数**必须为 0**（自查项，见 [§5.5](#55-source-breaking老驱动跑得好好的但新的编不出来)） |
+| 协议号 / 驱动发布原子性 | `pnpm test:driver-protocol-release` | 干净。协议号与 `datazen-driver-api` 版本都没动时应报 `ok (…) driver releases: 0`；一旦 `PROTOCOL_VERSION` 或 `MIN_PROTOCOL_VERSION` 上升，同一次交付必须同时发出对应驱动（path 驱动升 `[package] version`、钉住的 git 驱动移 `ref`），否则报 `protocol-moved-without-driver-release` / `recompiled-driver-not-released` 并**点名具体驱动与协议号**（[§5.4](#54-什么算契约改动) 末段） |
 | 依赖边界 | `pnpm test:boundaries` | 生产代码 0 违规；fixture 2 处已知违规（不是 0 目标值） |
 | 类型 | `pnpm typecheck` | 干净，**含测试文件**（`tsconfig.json` 已不排除 `__tests__/` 与 `*.test.ts(x)`） |
 | 驱动 UI 单测 | `pnpm test:unit:drivers` | 干净 |

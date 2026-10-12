@@ -78,3 +78,19 @@ export interface EditorMetadataContext {
   /** Dialect id (e.g. `postgresql`, `mysql`) — drives identifier folding/quoting. */
   dialectId: string;
 }
+
+/**
+ * The *configuration* dimension of one editor metadata session.
+ *
+ * Metadata cached for a session belongs to the connection configuration that
+ * produced it: rebinding the session to another `connectionId`, or bumping that
+ * config's revision, invalidates everything read under the previous
+ * configuration. The two fields are separate isolation dimensions and are never
+ * merged into a single optional value (ID 术语规范).
+ */
+export interface EditorSessionConfig {
+  /** Persistent connection config id this session reads metadata through. */
+  connectionId: string;
+  /** Session-local revision of that config; bumped on every config change. */
+  configRevision: number;
+}

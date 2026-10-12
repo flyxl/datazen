@@ -68,19 +68,7 @@ pub(crate) async fn compare_data_sync_impl(
         )));
     }
 
-    let mut last_error = None;
-    for _ in 0..40 {
-        match super::job_api::preview_for_durable_job(state, finished.job_id.as_str()).await {
-            Ok(preview) => return Ok(preview),
-            Err(error) => {
-                last_error = Some(error);
-                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-            }
-        }
-    }
-    Err(last_error.unwrap_or_else(|| {
-        CommandError::Validation("the comparison completed without a review plan".into())
-    }))
+    super::job_api::preview_for_durable_job(state, finished.job_id.as_str()).await
 }
 
 /// Accept a durable prepare job, then return its id while a detached dispatcher
@@ -324,6 +312,7 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
         service_key: sessions.target_endpoint.service_key.clone(),
     };
     let prepared_job_id = admission.job_id.as_str().to_string();
+    super::host::state::mark_preview_pending(&prepared_job_id);
     let dispatch_endpoints = endpoints.clone();
     let accepted_view = admission.view.clone();
     tauri::async_runtime::spawn(async move {
@@ -373,6 +362,7 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
         if work.is_err() {
             super::host::state::record_failure(&prepared_job_id, "prepareWorkerPanicked");
         }
+        super::host::state::mark_preview_finished(&prepared_job_id);
         super::job_api::release_sessions(&background_state, &owned_ids).await;
     });
     Ok(accepted_view)

@@ -23,7 +23,6 @@ import { formatLastConnected } from '../../../lib/formatters';
 import {
   namespaceRootsFrom,
   pathsEqual,
-  resolveQueryContextPath,
   autoCompletePathHierarchyPath,
 } from '../../../lib/queryContextPath';
 import type { SqlNamespace } from '../../../lib/sqlNamespace';
@@ -208,23 +207,10 @@ export function useQueryContextPath({
     ],
   );
 
-  const syncContextFromSql = useCallback(
-    async (sql: string) => {
-      const resolved = resolveQueryContextPath(sql, {
-        databases,
-        namespaceRoots: namespaceRootsFrom(namespaceTree, pathAliases, databases),
-      });
-      if (!resolved || pathsEqual(resolved, contextPath)) return;
-      await applyContextPath(resolved);
-    },
-    [applyContextPath, contextPath, databases, namespaceTree, pathAliases],
-  );
-
   return {
     contextPath,
     handleSelectContextLevel,
     handleQualifiedPath,
-    syncContextFromSql,
   };
 }
 

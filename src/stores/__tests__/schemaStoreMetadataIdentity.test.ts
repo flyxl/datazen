@@ -178,8 +178,16 @@ describe('relation columns are cached per metadata identity', () => {
     });
 
     const pending = useSchemaStore.getState().ensureColumns(['users'], DB_SESSION, 'testdb');
+    // Column reads coalesce per namespace, so the transport starts a window
+    // later. Superseding the identity *while the read is in flight* is what
+    // this is about; wait for the read to actually be in flight first.
+    await vi.waitFor(() => expect(release).not.toBeNull());
     useSchemaStore.getState().bindMetadataIdentity(DB_SESSION, 'cfg-2');
-    release!();
+    const releaseRead = (): void => {
+      if (release == null) throw new Error('the read never started');
+      release();
+    };
+    releaseRead();
     await pending;
 
     expect(entry().relationColumns).toEqual({});

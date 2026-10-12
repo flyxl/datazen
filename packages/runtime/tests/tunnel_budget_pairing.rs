@@ -289,6 +289,83 @@ fn a_failed_session_reset_escalates_to_quarantine_and_keeps_the_tunnel_reference
 /// `Closed`，宿主条件必须既挡复用（未释放句柄）又不触发隔离（无执行中、无禁用归属）。
 /// 没有它，上面两个隔离用例都只验「保留」这一侧，删除 `release` 路径上的结算
 /// 不会有任何用例转红 —— 这一格就是补这个洞的。
+/// **归池前的复位失败**时，配对判据必须读**最终**处置，不能读 `CleanupPlan::of` 的初值。
+///
+/// 这一格是配对表里唯一「处置会在裁决之后被物理事实改写」的入口：初值是
+/// `ReturnedToPool`（不核销预算），复位失败把它改成 `Closed`（此刻核销）。
+/// 若结算读的是初值，就会出现「报告说预算已核销、隧道引用却留着」的错拍；
+/// 反过来若归池分支被放行（缺陷态），引用会在连接还留在池里时被提前拆掉。
+/// 两个方向都由 `assert_paired` 那一条判据当场抓出来。
+#[test]
+fn a_park_refused_by_the_pre_pool_reset_settles_the_reference_with_the_final_disposition() {
+    let (mut manager, transport, tunnel, connection_id) = wired();
+    let spec = tunnel_spec();
+    let lease = manager
+        .acquire(&request(&connection_id, "appdb").via_tunnel(spec.clone()))
+        .expect("the tunnel stage succeeded");
+    // 宿主四项全清 + 驱动 Clean ⇒ 初值 `ReturnedToPool`；只有复位这一步失败。
+    transport.fail_reset();
+
+    let report = manager
+        .release(
+            &lease.lease_id,
+            clean_host(),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a refused park is a disposition, not a ledger failure");
+
+    assert_eq!(
+        report.disposition,
+        CleanupDisposition::Closed,
+        "§9.4：归池被复位否决 ⇒ 直接关闭"
+    );
+    assert!(!report.returned_to_pool());
+    // 配对核心：预算随确认关闭核销 ⇒ 引用必须**同刻**归还，两侧不许错拍。
+    assert_released(&report);
+    assert_eq!(
+        manager.tunnel_refs(&spec),
+        None,
+        "初值 `ReturnedToPool` 不得参与结算 —— 判据只有最终处置那一个来源"
+    );
+    assert_eq!((manager.tunnel_close_calls(), tunnel.closed()), (1, 1));
+    assert_eq!(manager.lease_count(), 0, "预算核销之后租约行才被抹掉");
+}
+
+/// 归池成功时（复位被确认），隧道引用**不得**因为多跑了一次复位而被提前归还。
+///
+/// §9.3 与配对表第一行：回池不释放物理预算 ⇒ 引用一并保留。加了归池前的复位之后，
+/// 这条路径上多了一次物理动作，但结算判据没变，所以引用必须原样留着。
+#[test]
+fn a_confirmed_pre_pool_reset_parks_and_still_keeps_the_tunnel_reference() {
+    let (mut manager, _transport, tunnel, connection_id) = wired();
+    let spec = tunnel_spec();
+    let lease = manager
+        .acquire(&request(&connection_id, "appdb").via_tunnel(spec.clone()))
+        .expect("the tunnel stage succeeded");
+
+    let report = manager
+        .release(
+            &lease.lease_id,
+            clean_host(),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a clean lease returns to the idle pool");
+
+    assert_eq!(report.disposition, CleanupDisposition::ReturnedToPool);
+    assert!(
+        report.session_reset_performed,
+        "§9.4：归池前必跑复位；跑了复位也不改变「回池不释放预算」这一格"
+    );
+    assert_still_held(&report);
+    assert_eq!(
+        manager.tunnel_refs(&spec),
+        Some(1),
+        "预算没核销 ⇒ 引用就还占着，复位这个额外动作不得动它"
+    );
+    assert_eq!(tunnel.closed(), 0);
+    assert_eq!(manager.idle_lease_count(), 1);
+}
+
 #[test]
 fn a_confirmed_reset_and_close_in_one_release_gives_the_reference_back_with_the_budget() {
     let (mut manager, transport, tunnel, connection_id) = wired();

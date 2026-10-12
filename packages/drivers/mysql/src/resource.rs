@@ -36,8 +36,8 @@ use datazen_driver_api::resource::{
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
     EffectOutcome, ExecutionCompletion, ExecutionState, ObservationConfidence, ResetDisposition,
-    ResourceHealth, SessionContext, SessionObservation, SessionState, TransactionObservation,
-    TransactionOptions, TransactionState,
+    ResourceHealth, SessionContext, SessionHandleRef, SessionObservation, SessionState,
+    TransactionObservation, TransactionOptions, TransactionState,
 };
 use datazen_driver_api::{
     ConnectionHandle, DatabaseDriver, DriverError, QueryExecutionId, SqlTarget, TransactionHandle,
@@ -779,6 +779,15 @@ impl ResourceProvider for MysqlResourceProvider {
                     );
                     return Ok(CloseDisposition::CloseUnconfirmed);
                 }
+                // Recorded only on a confirmed close, the way `postgres` and
+                // `redis` do. Without it `is_closed()` is permanently false for
+                // this provider and `close_handle`'s idempotent-success branch
+                // is unreachable in production: the host would be fail-closed
+                // (the lease stays parked, un-pooled) over a close that
+                // already happened. `CloseUnconfirmed` above and the `Err` below
+                // deliberately leave the flag false, so an unconfirmed close is
+                // never read as "already closed".
+                handle.mark_closed();
                 Ok(CloseDisposition::Closed)
             }
             Err(error) => {
@@ -791,6 +800,45 @@ impl ResourceProvider for MysqlResourceProvider {
                 Err(ResourceError::Driver(error))
             }
         }
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(&self.driver_id, self.runtime_epoch)?;
+        // The resource is gone, so every handle issued on it went with it —
+        // and this provider issued none in the first place. Repeating the close
+        // carries no information; refusing it would make a host that closed the
+        // resource before this ref look like a caller that missed its own
+        // handle. Ordered *after* the ownership check, exactly as postgres
+        // does: a closed resource does not excuse a ref belonging to another
+        // one, so "closed + foreign" is still refused as the ownership
+        // failure it is — postgres reports exactly that as
+        // `InvalidResourceState`.
+        if handle.is_closed() {
+            return Ok(());
+        }
+        // Refused, never absorbed. This provider reports
+        // `session_scoped_handles = Unsupported` and every `ExecutionCompletion`
+        // it builds carries an empty `session_handles` list, so there is no
+        // cursor, prepared statement or transaction handle it ever issued.
+        // Returning `Ok(())` here would be indistinguishable from "closed" —
+        // the host would deregister the ref and judge the session clean while
+        // nothing was ever closed, which is exactly what §6.5 exists to
+        // prevent. The refusal names the handle so the mismatch is diagnosable
+        // rather than merely fatal.
+        Err(ResourceError::unsupported(
+            self.driver_id.as_str(),
+            "close_handle",
+            format!(
+                "this provider issues no session-scoped handles, so handle '{}' ({:?}) names \
+                 nothing this provider can close; session_scoped_handles is Unsupported and every \
+                 ExecutionCompletion reports an empty session_handles list",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
     }
 }
 

@@ -17,8 +17,9 @@ use datazen_runtime::connection::{
     OwnerRef, PoolKeyInputs, ResourceId, SessionHandleRef,
 };
 use datazen_runtime::resource::{
-    DriverCleanVerdict, HostConditionSnapshot, LeasePurpose, LeaseRequest, LeaseState,
-    MonotonicSource, PhysicalTransport, ProtocolDebt, ResourceError, ResourceManager,
+    CleanupDisposition, DriverCleanVerdict, HostConditionSnapshot, LeasePurpose, LeaseRequest,
+    LeaseState, MonotonicSource, PhysicalTransport, ProtocolDebt, ResetDisposition, ResourceError,
+    ResourceManager,
 };
 
 // ---- 时钟替身 ----
@@ -60,6 +61,9 @@ enum PhysicalEvent {
 struct Journal {
     events: Vec<PhysicalEvent>,
     reset_fails: bool,
+    /// 驱动明确回答 `Discard`（正常判决）。与 `reset_fails` 是**两格**：
+    /// 那是握手没确认（`Err`），这是拿到了确定的答复「不能复用」。
+    reset_discards: bool,
     issued: u64,
 }
 
@@ -78,6 +82,14 @@ impl ScriptedTransport {
         self.lock().reset_fails = true;
     }
 
+    /// 驱动明确回复 `Discard`：**无法证明已复位**，不得再次签发。
+    ///
+    /// 名字里没有 `fail`，因为首版全部 path 驱动（15/15）都走这一格
+    /// （`ResetForReuse::Unsupported`）—— 这是**常态**，不是故障注入。
+    fn discard_reset(&self) {
+        self.lock().reset_discards = true;
+    }
+
     fn events(&self) -> Vec<PhysicalEvent> {
         self.lock().events.clone()
     }
@@ -87,6 +99,16 @@ impl ScriptedTransport {
             .events
             .iter()
             .filter(|event| matches!(event, PhysicalEvent::Open(_)))
+            .count()
+    }
+
+    /// 复位**次数**。归池准入被能力否决时必须是 0 —— 断言最终状态证明不了那次往返
+    /// 有没有被省掉（关闭/隔离在缺陷态下同样会发生），只有计次能证明。
+    fn reset_count(&self) -> usize {
+        self.lock()
+            .events
+            .iter()
+            .filter(|event| matches!(event, PhysicalEvent::Reset(_)))
             .count()
     }
 
@@ -116,7 +138,7 @@ impl PhysicalTransport for ScriptedTransport {
         Ok(())
     }
 
-    fn reset(&self, resource_id: &ResourceId) -> Result<(), ResourceError> {
+    fn reset(&self, resource_id: &ResourceId) -> Result<ResetDisposition, ResourceError> {
         let mut journal = self.lock();
         journal
             .events
@@ -124,7 +146,11 @@ impl PhysicalTransport for ScriptedTransport {
         if journal.reset_fails {
             return Err(ResourceError::TransportRefused("session reset rejected"));
         }
-        Ok(())
+        if journal.reset_discards {
+            // 判决**原样**返回：宿主必须自己决定「Discard ⇒ 不能进池」。
+            return Ok(ResetDisposition::Discard);
+        }
+        Ok(ResetDisposition::Clean)
     }
 
     fn cancel(
@@ -411,6 +437,200 @@ fn an_unclean_driver_report_never_returns_to_the_idle_pool_even_when_the_host_is
     );
 }
 
+/// **归池之前必须真的跑一次复位**（§9.4 :657 / §7.3 :551 第 6 步）。
+///
+/// 顺序断言是这里唯一的证法：计数查不出「复位有没有跑在归池之前」，也查不出
+/// 「宿主到底跑没跑」——修复之前归池路径上 `reset` 一次都没被调用过，而任何
+/// 「复位次数 ≥ 0」式的断言照样放过。本用例钉的是完整序列 `Open → Reset`，
+/// 并且**没有**任何关闭混进来（归池不许关连接）。
+#[test]
+fn returning_to_the_idle_pool_resets_the_resource_on_the_original_handle() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default(),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a clean driver report and a clear host snapshot admit the lease");
+
+    assert!(report.returned_to_pool());
+    assert!(
+        report.session_reset_performed,
+        "§9.4：短租约归池前必跑复位，报告必须把这件事如实记下来"
+    );
+    assert_eq!(
+        transport.events(),
+        vec![
+            PhysicalEvent::Open(ResourceId::new("res-1")),
+            PhysicalEvent::Reset(ResourceId::new("res-1")),
+        ],
+        "复位必须发生在**被归池的那条原资源**上，且归池不得关闭它"
+    );
+    assert_eq!(manager.idle_lease_count(), 1);
+
+    // 非空跑：复位过之后仍然真的可复用（同一条租约、没有新开连接）。
+    let reused = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the idle pool serves the next request");
+    assert_eq!(reused.lease_id, leased.lease_id);
+    assert_eq!(transport.open_count(), 1);
+}
+
+/// **归池时复位失败 ⇒ 不许归池**（§9.4 :657「reset 不支持、失败或超时直接关闭」）。
+///
+/// 缺陷态下（归池分支不调 `reset`）这条用例的三个断言全部成立不了：宿主从没问过
+/// 复位端口，失败无从发生，连接会被直接停进空闲池。现在必须看到：
+/// * 处置是**关闭**，不是隔离（文档给的后果就是「直接关闭」；隔离的事由——活动执行 /
+///   归属禁用 / 回滚结果待核验——在这里一个都不成立，因为归池裁决的前提是宿主四项全清）；
+/// * 空闲池一条都没有，下一次签发必须重新 `Open`；
+/// * 阻断项点名 `hostResetUnconfirmed`，`session_reset_performed` 为假。
+#[test]
+fn a_failed_reset_during_the_idle_return_closes_the_lease_instead_of_parking_it() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+    // 只让复位失败；关闭仍然可被确认，这样落点才是纯粹的「复位否决 ⇒ 关闭」。
+    transport.fail_reset();
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default(),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a refused park is a disposition, not a ledger failure");
+
+    assert!(
+        !report.returned_to_pool(),
+        "复位未被确认 ⇒ §9.4 拒绝这次归池，绝不把状态未知的连接留在空闲池里"
+    );
+    assert!(!report.quarantined(), "文档给的后果是直接关闭，不是隔离");
+    assert_eq!(first_blocker_code(&report), "hostResetUnconfirmed");
+    assert!(
+        !report.session_reset_performed,
+        "没成功的复位不得被记成已完成"
+    );
+    // 关闭被确认 ⇒ 预算当场核销（§9.3「归还到 idle pool 不释放预算，只有实际 close 才释放」）。
+    assert!(report.disposition.releases_physical_budget());
+    assert_eq!(
+        transport.events(),
+        vec![
+            PhysicalEvent::Open(ResourceId::new("res-1")),
+            PhysicalEvent::Reset(ResourceId::new("res-1")),
+            PhysicalEvent::Close(ResourceId::new("res-1")),
+        ],
+        "失败的归池复位必须落到同一条原资源的一次关闭上"
+    );
+    assert_eq!(
+        manager.idle_lease_count(),
+        0,
+        "被否决的归池一条空闲都不许留下"
+    );
+
+    // 非空跑：下一次签发必须重新开一条物理连接，而不是捡回这条复位不明的。
+    let fresh = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("a lease whose pre-pool reset failed may not be reissued");
+    assert_ne!(fresh.lease_id, leased.lease_id);
+    assert_eq!(transport.open_count(), 2);
+}
+
+/// **`Discard` ⇒ 不进池**（§9.4「宿主检查全通过 AND driver Clean」/ §7.3 第 6 步
+/// 「只有 Clean 才归池，其余关闭」）。
+///
+/// 这是本轨修掉的那条真缺陷在**公开面**上的证词。缺陷态下 `PhysicalTransport::reset`
+/// 的签名是 `Result<(), ResourceError>`：`Clean` 与 `Discard` 都落在 `Ok(())`，
+/// 于是归池分支的 `Ok(()) => session_reset_performed = true` 对两者一视同仁 ——
+/// 驱动诚实地说「我复位不了」，宿主看到的是成功，然后把驱动**明说**不能复用的资源
+/// 塞进空闲池。本用例在缺陷态下会失败在**第一句断言**上（资源真的进了池）。
+///
+/// 与上面 `a_failed_reset_during_the_idle_return_...` 并列但不同格：那里是 `Err`
+/// （握手从未确认 ⇒ 结果**未知**），这里是 `Ok(Discard)`（驱动给了**确定**的答复）。
+///
+/// **这条路径就是首版的常态**：15/15 path 驱动声明 `ResetForReuse::Unsupported`，
+/// postgres / mysql / sqlite 的 `reset_resource` 都返回 `Discard`，理由写在各自代码里
+/// ——「no *proven* initialization protocol」。所以断言的不是异常，是日常。
+#[test]
+fn a_discarded_reset_never_parks_the_resource_in_the_idle_pool() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+    // 宿主四项全清 + 驱动 Clean ⇒ 裁决本意是归池；唯一否决它的是复位**判决**。
+    transport.discard_reset();
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default(),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a driver Discard is a disposition, not a ledger failure");
+
+    // 1. **核心断言：驱动说不能复用 ⇒ 绝不进池。**
+    assert!(
+        !report.returned_to_pool(),
+        "驱动明确回答 Discard ⇒ 不得归池：池里不许出现驱动明说不能复用的资源"
+    );
+    assert_eq!(
+        manager.idle_lease_count(),
+        0,
+        "空闲池必须一条都没有（缺陷态下这里是 1：判决被压扁成 Ok(()) 之后直接停放）"
+    );
+
+    // 2. 驱动给了确定的答复 ⇒ 没有待核验的不确定性 ⇒ 关闭而非隔离。
+    assert!(!report.quarantined());
+    assert_eq!(report.disposition, CleanupDisposition::Closed);
+
+    // 3. 阻断项点名**驱动判决**，与 `Err` 那格的 `hostResetUnconfirmed` 不同名 ——
+    //    审计要能分辨「知道不能复用」与「没拿到答复」。
+    assert_eq!(first_blocker_code(&report), "driverDiscardedReset");
+    assert!(
+        !report
+            .blockers
+            .iter()
+            .any(|reason| reason.reason_code() == "hostResetUnconfirmed"),
+        "Discard 是确定的答复，不许与「未被确认」互推"
+    );
+
+    // 4. 不得替驱动谎称复位已完成。
+    assert!(
+        !report.session_reset_performed,
+        "驱动没能证明已复位 ⇒ 不得记成已完成"
+    );
+
+    // 5. 预算：关闭被确认 ⇒ 当场核销（§9.3「只有实际 close 才释放」）。
+    assert!(report.disposition.releases_physical_budget());
+
+    // 6. 账面次序：复位被请求、被答复 Discard，然后按「其余关闭」落一次关闭。
+    assert_eq!(
+        transport.events(),
+        vec![
+            PhysicalEvent::Open(ResourceId::new("res-1")),
+            PhysicalEvent::Reset(ResourceId::new("res-1")),
+            PhysicalEvent::Close(ResourceId::new("res-1")),
+        ],
+        "Discard 的落点是在**同一条**原资源上关闭，且复位排在关闭之前"
+    );
+
+    // 7. 非空跑：下一次签发必须重新开一条物理连接，绝不捡回驱动拒绝对外复用的那条。
+    let fresh = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("a discarded resource must never serve the next request");
+    assert_ne!(fresh.lease_id, leased.lease_id);
+    assert_eq!(
+        transport.open_count(),
+        2,
+        "被 Discard 的资源不得复用 ⇒ 必须另开一条物理连接"
+    );
+}
+
 #[test]
 fn an_idle_lease_is_closed_once_the_idle_ttl_expires() {
     let (mut manager, transport, clock, connection_id) = manager();
@@ -437,4 +657,246 @@ fn an_idle_lease_is_closed_once_the_idle_ttl_expires() {
     assert!(transport
         .events()
         .contains(&PhysicalEvent::Close(ResourceId::new("res-1"))));
+}
+
+// ---- 能力闸：驱动声明不复位 ⇒ 归池候选当场作废 ----
+
+/// **驱动声明 `ResetForReuse::Unsupported` ⇒ 一次复位都不跑**（§9.4「reset 不支持…直接关闭」）。
+///
+/// 断言的**核心是 `reset_count() == 0`**：省掉那次注定失败的往返正是本任务的全部收益，
+/// 而「最终状态」在缺陷态下会照样成立（关闭同样会发生），所以只有计次能证明它真的被省掉了。
+///
+/// 同时这条锁的是「首版池为空是正确行为，且**显式、可观测**」：15 个 path 驱动全部声明
+/// `Unsupported`，归池不成立是**事实**而不是待排查的故障 —— 阻断码 `driverResetUnsupported`
+/// 让它能在审计里被看见。
+#[test]
+fn a_resource_whose_driver_declares_reset_unsupported_is_closed_without_a_reset_round_trip() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Unsupported,
+            ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("the capability refusal is reported, not a ledger failure");
+
+    assert!(!report.returned_to_pool(), "能力声明不复位 ⇒ 不进归池候选");
+    assert_eq!(
+        transport.reset_count(),
+        0,
+        "§9.4 允许直接关闭，宿主没必要先跑一次注定失败的复位 —— \
+         断言计次才能证明这次往返真的被省掉，断言最终状态证明不了"
+    );
+    assert_eq!(
+        transport.events(),
+        vec![
+            PhysicalEvent::Open(ResourceId::new("res-1")),
+            PhysicalEvent::Close(ResourceId::new("res-1")),
+        ],
+        "没有复位插在 Open 与 Close 之间"
+    );
+    assert_eq!(
+        first_blocker_code(&report),
+        "driverResetUnsupported",
+        "阻断码必须点名**能力拒绝**，而不是伪装成运行时故障"
+    );
+    assert_eq!(
+        manager.idle_lease_count(),
+        0,
+        "不进归池候选 ⇒ 空闲池一条都没有"
+    );
+    // 物理预算被核销：这是被确认的关闭，不是隔离。
+    assert!(report.disposition.releases_physical_budget());
+
+    // 非空跑：下一次签发必须另开物理资源 —— 这条连接没有 verified baseline，不能复用。
+    let fresh = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("a capability-refused lease does not poison the next request");
+    assert_ne!(fresh.lease_id, leased.lease_id);
+    assert_eq!(transport.open_count(), 2);
+    assert_eq!(transport.reset_count(), 0, "新建路径同样不跑无谓复位");
+}
+
+/// **`Verified` 时能力闸完全静默**，`§9.4` 的双闸一步不少。
+///
+/// 与上一条是同一枚硬币的两面：证明能力闸只挡 `Unsupported`，没有顺手把
+/// 「宿主四项 + 驱动 `Clean` + 归池前复位」这条完整链路一起废掉。
+#[test]
+fn a_verified_reset_capability_still_runs_the_full_two_gate_contract() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Verified,
+            ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a verified capability admits the lease to the full contract");
+
+    // 第一闸（能力）过了，第二、三闸照旧：归池 + 归池前真的复位。
+    assert!(report.returned_to_pool());
+    assert!(report.session_reset_performed, "§9.4：归池前必跑复位");
+    assert_eq!(
+        transport.events(),
+        vec![
+            PhysicalEvent::Open(ResourceId::new("res-1")),
+            PhysicalEvent::Reset(ResourceId::new("res-1")),
+        ],
+        "Verified 的路径与改动之前逐字节相同：复位跑在原资源上，且不关它"
+    );
+    assert_eq!(manager.idle_lease_count(), 1);
+
+    // **双闸仍然各自独立生效**：能力过了，驱动报不干净照样不进池。
+    transport.fail_reset();
+    let second = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the idle pool serves the next request");
+    let unclean = manager
+        .release(
+            &second.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Verified,
+            ),
+            DriverCleanVerdict::reported_unclean(),
+        )
+        .expect("the driver gate is still independent of the capability gate");
+    assert!(!unclean.returned_to_pool());
+    assert_eq!(first_blocker_code(&unclean), "driverUnclean");
+}
+
+/// 新增 `ReturnReason` 变体必须被 `all_blockers` / `first_blocker` 如实报告。
+///
+/// 与宿主任一其他阻断项并存时也要能报出来：它排在**最后**（静态事实不覆盖具体状态），
+/// 但 `all_blockers` 一条不漏。
+#[test]
+fn the_capability_blocker_is_reported_by_first_and_all_blockers() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    let leased = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+    let running = ExecutionId::new("exec-running");
+
+    let report = manager
+        .release(
+            &leased.lease_id,
+            HostConditionSnapshot::default()
+                .with_active_execution(running.clone())
+                .with_reset_for_reuse(
+                    datazen_runtime::connection::capability::ResetForReuse::Unsupported,
+                ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("two independent blockers are both reported");
+
+    assert!(!report.returned_to_pool(), "任一阻断项成立即不复用");
+    // 定序：更具体的宿主状态排在前，能力这种静态事实排在后。
+    assert_eq!(
+        report.blockers.first().map(|r| r.reason_code()),
+        Some("hostActiveExecution"),
+        "与活动执行并存时，报出来的第一条是更具体的宿主状态"
+    );
+    assert!(
+        report
+            .blockers
+            .iter()
+            .any(|r| r.reason_code() == "driverResetUnsupported"),
+        "all_blockers 必须把能力阻断项一并报出来，不能只报第一条: {:?}",
+        report
+            .blockers
+            .iter()
+            .map(|r| r.reason_code())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        transport.reset_count(),
+        0,
+        "能力做了归池否决 ⇒ 复位永远不会被跑到"
+    );
+}
+
+/// 空池的第一因指针：能力拒绝必须被**计数**，否则「池永远空」依旧不可观测。
+///
+/// P3 要求交付「物理资源数、lease state、资源占用」的可观测面。`occupied_slots()` 与
+/// `idle_lease_count()` 早已存在，但只看这两个数分不出「预算/池策略把池按住了」和
+/// 「这个连接族根本没有归池通道」。本计数只数**能力拒绝**——运行时失败不进这个数，
+/// 那是故障，由 `hostResetUnconfirmed` / `driverUnclean` 另路表达。
+#[test]
+fn the_declined_admissions_count_is_the_pointer_to_why_the_pool_stays_empty() {
+    let (mut manager, transport, _clock, connection_id) = manager();
+    assert_eq!(
+        manager.admissions_declined_for_reset(),
+        0,
+        "初始为 0，不是某个 sentinel"
+    );
+    assert_eq!(manager.occupied_slots(), 0);
+
+    // 能力拒绝：计数 +1，物理资源仍被确认关闭（预算核销）。
+    let declined = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the first lease opens a fresh physical resource");
+    manager
+        .release(
+            &declined.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Unsupported,
+            ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("the capability refusal is reported, not a ledger failure");
+    assert_eq!(manager.admissions_declined_for_reset(), 1);
+    assert_eq!(manager.occupied_slots(), 0, "关闭已确认 ⇒ 槽位释放");
+    assert_eq!(manager.idle_lease_count(), 0, "池仍然空");
+
+    // 复用成功的租约**不进**这个计数：它只反映能力，不反映运气好坏。
+    let verified = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("a fresh lease after the declined one");
+    manager
+        .release(
+            &verified.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Verified,
+            ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a verified capability parks the lease");
+    assert_eq!(
+        manager.admissions_declined_for_reset(),
+        1,
+        "归池成功不得污染能力拒绝计数"
+    );
+    assert_eq!(manager.idle_lease_count(), 1, "这一条真的进了池");
+    assert_eq!(transport.reset_count(), 1, "整轮只有能力拒绝那次省掉了复位");
+
+    // 运行时故障同样**不进**这个计数：reset 失败是故障，不是能力事实。
+    transport.fail_reset();
+    let failed = manager
+        .acquire(&request(&connection_id, "appdb"))
+        .expect("the idle pool serves the next request");
+    manager
+        .release(
+            &failed.lease_id,
+            HostConditionSnapshot::default().with_reset_for_reuse(
+                datazen_runtime::connection::capability::ResetForReuse::Verified,
+            ),
+            DriverCleanVerdict::reported_clean(),
+        )
+        .expect("a failed pre-pool reset closes the lease");
+    assert_eq!(
+        manager.admissions_declined_for_reset(),
+        1,
+        "`hostResetUnconfirmed` 是故障，不得与能力拒绝混在一个计数里"
+    );
+    assert_eq!(transport.reset_count(), 2, "复位被跑过（只是失败了）");
 }

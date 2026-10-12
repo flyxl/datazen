@@ -81,9 +81,10 @@ ChangeSet 只包含**已勾选**且 options 允许的变更。DELETE 默认不�
 
 ## 6. 执行与安全
 
-- DML 走专用通道 **`execute_data_sync`**，不经 SQL 编辑器的 Safe Mode / `execute_query`。
+- 窗口通过 **`start_data_sync_apply_job`** 提交后台任务，DML 走专用执行通道，不经 SQL 编辑器的 Safe Mode / `execute_query`。
 - 目标连接标记 **read_only** 时 Execute 禁用。
-- 支持 job 取消；数据库支持时在事务中执行（失败 rollback）。
+- 支持 job 取消；目标必须支持批次事务。每批独立提交，失败时仅回滚当前批次。此前已提交的批次会保留，结果标为「部分已应用」并记录已提交行数；重新比较后再决定后续操作。
+- 首批失败且回滚确认后，结果为 `rolled_back`；提交或回滚无法确认时，结果为 `unknown`。已受理计划的重放返回原任务结果，不会重复写入。
 - **MCP V1 不暴露** Sync 的 apply/execute 工具（高风险写操作）。
 
 ---

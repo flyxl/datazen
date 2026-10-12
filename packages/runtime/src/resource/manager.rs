@@ -5,6 +5,12 @@
 //!
 //! 归还路径（`release`）是双条件裁决的落点：驱动结论与宿主条件**分别**进来，
 //! 本模块只判定宿主自己的条件，两者同时通过才允许复用。
+//!
+//! 双条件之后还有**第三道闸**，它是物理动作而不是判断：§9.4 要求短租约归池前必须
+//! 真的跑一次复位（`cleanup.rs:494`「复位。短租约归池前必跑」）。这道闸落在
+//! [`ResourceManager::release`] 的 `ReturnedToPool` 分支上 —— 复位未被确认就**不许**归池。
+//! 它不是「宿主重算驱动的 `Clean`」（边界一禁止那个），而是 §9.4 点名要求宿主执行的
+//! 那个物理步骤本身。
 
 use std::sync::Arc;
 
@@ -13,7 +19,7 @@ use indexmap::IndexSet;
 use crate::connection::{ConfigRevision, ConnectionId, ExecutionId, LeaseId};
 use crate::resource::cleanup::{
     CleanupDisposition, CleanupPlan, CleanupReport, DriverCleanVerdict, HostConditionSnapshot,
-    SharedTransport,
+    ResetDisposition, ReturnDecision, ReturnReason, SharedTransport,
 };
 use crate::resource::generation::{CacheFillOutcome, CacheRevision, GenerationRegistry};
 use crate::resource::lease::{LeaseRecord, LeaseRequest, LeaseState, PoolKeyGeneration};
@@ -37,6 +43,8 @@ pub struct ResourceManager {
     pub(super) disabled: IndexSet<ConnectionId>,
     pub(super) queue: Vec<QueuedLease>,
     pub(super) idle_ttl_seconds: u64,
+    /// 归池因驱动声明不复位而作废的次数。见 [`Self::admissions_declined_for_reset`]。
+    pub(super) admissions_declined_for_reset: usize,
     /// 隧道台账。`None` = **没接隧道端口**（配置事实），不是「隧道计数为 0」。
     ///
     /// 唯一权威是台账本身：本模块任何位置都**不**另存一份隧道引用计数，
@@ -56,6 +64,7 @@ impl ResourceManager {
             disabled: IndexSet::new(),
             queue: Vec::new(),
             idle_ttl_seconds: IDLE_POOL_TTL_SECONDS,
+            admissions_declined_for_reset: 0,
             tunnels: None,
         }
     }
@@ -87,6 +96,20 @@ impl ResourceManager {
 
     pub fn idle_lease_count(&self) -> usize {
         self.table.total_idle()
+    }
+
+    /// 归池因**驱动声明不复位**而作废的次数。计数不是句柄，可以公开。
+    ///
+    /// 它是「池为什么永远空」的**第一因**指针：首版 15 个 path 驱动全部声明
+    /// `ResetForReuse::Unsupported`，所以这个数只会涨、而 `idle_lease_count()` 恒 0。
+    /// 两者放在一起读才看得出「池不可达」是**能力事实**而不是调度异常 ——
+    /// 同样是空池，`admissions_declined_for_reset() == 0` 时要去查预算与池策略，
+    /// 非 0 时结论就是「这个连接族没有归池通道」。
+    ///
+    /// 只为能力拒绝计数，**不给运行时失败计数**：后者已由 `CleanupReport` 的
+    /// `hostResetUnconfirmed` / `driverUnclean` 表达，且那是故障，不该和能力混在一个数里。
+    pub fn admissions_declined_for_reset(&self) -> usize {
+        self.admissions_declined_for_reset
     }
 
     pub fn lease_count(&self) -> usize {
@@ -308,6 +331,77 @@ impl ResourceManager {
 
     // ---- 归还裁决 ----
 
+    /// 归池被「归池前的复位」否决时的落点。
+    ///
+    /// §9.4 归池前检查：「**reset 不支持、失败或超时直接关闭**」；§7.3 第 6 步：
+    /// 「结果完全消费后 reset；**只有 Clean 才归池**，其余关闭」。复位未被确认 ⇒
+    /// 双条件裁决的结论**作废**，这条租约既不归池也不隔离，而是走关闭：
+    /// * 不复用是文档明写的（上面两句）；
+    /// * 不转隔离是因为此处没有任何待核验的义务 —— 归池裁决成立的前提是宿主四项
+    ///   全清（`HostConditionSnapshot::is_clear`），既无活动执行也无未释放句柄，
+    ///   「回滚结果不明需要人工核验」那个隔离事由根本不成立；
+    /// * 关闭若也没被确认，下面 `Closed` 分支自己会把它升级成隔离，与 :337-340
+    ///   「close 未确认 ⇒ 隔离并保留预算」同形。
+    ///
+    /// 处置与状态**一起**改：`InUse→Closing` 是 `LEASE_TRANSITIONS` 里的合法边
+    /// （`enters_when`「归还裁决判定不复用」）。调用点排在 `move_to` **之前**，
+    /// 所以 `entry.move_to(plan.next_state)` 与末尾的
+    /// [`Self::settle_tunnel_reference`] 读到的都是这里的**最终**处置，
+    /// 不存在「预算没核销而引用先还了」的错拍。
+    fn refuse_park_after_failed_reset(
+        plan: &mut CleanupPlan,
+        lease_id: &LeaseId,
+        error: &ResourceError,
+    ) {
+        debug_assert_eq!(
+            plan.disposition,
+            CleanupDisposition::ReturnedToPool,
+            "只有归池裁决会被归池前的复位否决"
+        );
+        let reason = ReturnReason::HostResetUnconfirmed {
+            transport: error.reason(),
+        };
+        tracing::warn!(
+            lease_id = lease_id.as_str(),
+            transport = error.reason(),
+            "reset before the idle return was not confirmed: §9.4 refuses the park and closes instead"
+        );
+        plan.decision = ReturnDecision::CleanupRequired(reason.clone());
+        plan.disposition = CleanupDisposition::Closed;
+        plan.next_state = LeaseState::Closing;
+        plan.blockers.insert(0, reason);
+    }
+
+    /// 驱动**明确**回答「无法证明已复位」（`Ok(Discard)`）⇒ 拒绝归池，落点是关闭。
+    ///
+    /// 与 [`Self::refuse_park_after_failed_reset`] 是**并行的两个落点**，不是一个：
+    /// 那里是 `Err`（握手从未确认，结果未知），这里是 `Discard`（驱动给了确定的答复）。
+    /// 两者都把结论作废、都关闭，但阻断项不同名 —— 审计要能分辨「驱动说不能复用」
+    /// 与「宿主没拿到答复」。
+    ///
+    /// **日志级别是 `info` 不是 `warn`：`Discard` 是正常的、预期内的结果。** 首版全部
+    /// path 驱动（15/15）声明 `ResetForReuse::Unsupported`，postgres/mysql/sqlite 的
+    /// `reset_resource` 都返回 `Discard`（理由：「no *proven* initialization protocol」）。
+    /// 把它记成故障，等于让每一条正常归还都刷一条告警。
+    fn refuse_park_after_discarded_reset(plan: &mut CleanupPlan, lease_id: &LeaseId) {
+        debug_assert_eq!(
+            plan.disposition,
+            CleanupDisposition::ReturnedToPool,
+            "只有归池裁决会被归池前的复位否决"
+        );
+        let reason = ReturnReason::DriverDiscardedReset;
+        tracing::info!(
+            lease_id = lease_id.as_str(),
+            reset_disposition = crate::resource::ResetDisposition::Discard.disposition_code(),
+            "the driver did not prove the reset (ResetForReuse::Unsupported is the norm in this \
+             release): §9.4/§7.3 park the idle return and close the resource instead"
+        );
+        plan.decision = ReturnDecision::CleanupRequired(reason.clone());
+        plan.disposition = CleanupDisposition::Closed;
+        plan.next_state = LeaseState::Closing;
+        plan.blockers.insert(0, reason);
+    }
+
     /// 归还一条租约：驱动结论 + 宿主条件一起进来，本模块**只做宿主自己的检查**。
     pub fn release(
         &mut self,
@@ -330,14 +424,72 @@ impl ResourceManager {
         }
         let mut plan = CleanupPlan::of(&record, &host, driver);
 
+        // 「首版池为空」的**显式、可观测**信号。
+        //
+        // 15 个 path 驱动全部声明 `ResetForReuse::Unsupported`，所以「归池不成立」
+        // 在首版是**常态而非故障**：此前这条路上既没有日志也没有指标，池为什么永远空
+        // 不可观测。这里把结论打成一条 `info`（不是 `warn` —— 没有任何东西出错），
+        // 并且带上归池候选是否当场作废、物理资源是关闭还是保留。
+        //
+        // 刻意**不**在这里伪造 `Verified` 声明，也不让 stub 里的驱动假装干净：
+        // 池不可达若是正确行为，就让它显式。真正可复用时应观察到的是
+        // `pooled = true`；长期只看到 `pooled = false` +
+        // `reason = "driverResetUnsupported"` 就等于「这个连接族没有归池通道」，
+        // 那是能力事实，不是待排查的故障。
+        let capability_declined = matches!(
+            plan.decision.reason(),
+            Some(ReturnReason::DriverResetUnsupported)
+        );
+        if capability_declined {
+            self.admissions_declined_for_reset += 1;
+        }
+        tracing::info!(
+            lease_id = lease_id.as_str(),
+            pooled = plan.decision.admits_to_idle_pool(),
+            reason = plan
+                .decision
+                .reason()
+                .map(|reason| reason.reason_code())
+                .unwrap_or("admitted"),
+            admissions_declined = self.admissions_declined_for_reset,
+            disposition = ?plan.disposition,
+            "idle-pool admission decided: §9.4 refuses the park when the driver declares no verified reset"
+        );
+
         // 还有未释放的会话级句柄时，必须先在**原资源**上复位（回滚事务、
-        // 解除映射），再关。复位结果不明 ⇒ 进隔离，绝不静默丢弃，也不允许换一个新
-        // 资源把旧事务蒙混过去。
-        let needs_reset = host.unreleased_handles.iter().any(|handle| !handle.closed);
+        // 解除映射），再关。**这段复位的目的不是复用性，而是关闭前的收尾**：
+        // 回滚旧事务、解除映射，然后关掉。因此三态在这里的语义与归池分支**不同**：
+        //
+        // * `Clean` —— 收尾已完成（事务已回滚、映射已解除）；
+        // * `Discard` —— 驱动明确说「无法证明回到基线」。**它不阻止关闭，也不改变落点。**
+        //   依据：§9.4 把「关闭」定为所有复位非 `Clean` 结果的落点；§6.5 要求
+        //   「先在原 resource 上回滚/关闭句柄并从 actor 注销，**确认后才释放资源**」
+        //   —— 这里的「确认」对象是**关闭**，不是复位；§7.5 第 5 步更是明写
+        //   「任意用户 SQL session 首版直接关闭物理资源；**不复用未知会话状态**」。
+        //   关闭本来就不需要复用性，所以「不能证明已复位」这件事在关闭路径上
+        //   不构成额外阻断：资源照样被关掉，预算照样释放。
+        // * `Err` —— 握手从未确认，**结果未知**。这才是需要改判的一格：处置升级成
+        //   `Quarantined`，预算继续占用，等运维核验（既有行为，不变）。
+        //
+        // 注意 `Discard` 也**不**清空 `outstanding_handles`：驱动没能证明那份回滚真的
+        // 发生了，报告里就必须留着这些句柄，不能替驱动把「回滚过」写进审计
+        // （`CleanupReport::from_plan` 只在 `session_reset_performed` 为真时清空）。
+        // 只有**仍未终结**的句柄才需要在关闭前复位（回滚、解除映射）；已 `closed`
+        // 的死句柄不构成收尾义务。口径与 `HostConditionSnapshot::outstanding_handles`
+        // 是同一处，两边的过滤条件必须逐字相同。
+        let needs_reset = host.outstanding_handles().next().is_some();
         let mut session_reset_performed = false;
         if plan.disposition == CleanupDisposition::Closed && needs_reset {
             match self.transport.reset(&record.resource_id) {
-                Ok(()) => session_reset_performed = true,
+                Ok(ResetDisposition::Clean) => session_reset_performed = true,
+                Ok(ResetDisposition::Discard) => {
+                    tracing::info!(
+                        lease_id = lease_id.as_str(),
+                        reset_disposition = ResetDisposition::Discard.disposition_code(),
+                        "the driver did not prove the reset while closing: the close stands, \
+                         because closing never needed reuse (the handles stay on the report)"
+                    );
+                }
                 Err(error) => {
                     tracing::warn!(
                         lease_id = lease_id.as_str(),
@@ -347,6 +499,42 @@ impl ResourceManager {
                     plan.disposition = CleanupDisposition::Quarantined;
                     plan.next_state = LeaseState::Quarantined;
                 }
+            }
+        }
+
+        // **归池前的复位**（§9.4 / §7.3 第 6 步）。这一道闸与上面那段互斥且互补：
+        // 上面走 `Closed`，这里走 `ReturnedToPool`；`CleanupPlan::of` 只在宿主四项
+        // 全清时才判归池，而归池态下 `unreleased_handles` 恒空，所以 `needs_reset`
+        // 恒为假 ⇒ 一次 `release` 至多跑一次复位，绝不会重复复位。
+        //
+        // 为什么归池必须自己跑复位，而不是信驱动那个「Clean 已含复位」的自报：
+        // * `PhysicalTransport::reset` 的文档写死了「短租约归池前**必跑**」——它把复位
+        //   描述成宿主在归池前执行的一个物理步骤，不是一个由驱动顺带说明的结论；
+        // * §9.4 那句「reset 不支持、失败或超时直接关闭」预设宿主**知道**复位结果。
+        //   此前归池路径上宿主从未调用过 `reset`，该预设在这条分支上不成立：宿主只是
+        //   转述了一个自称含复位的 bool，既没有可观测的 `Reset` 事件，也没有失败分支。
+        // * `DriverCleanVerdict` 刻意只有一个私有 bool（`cleanup.rs:23`「想在这里加
+        //   判定依据等于把驱动判定搬进宿主，边界一立刻破」）。本闸**不**重算 `Clean`、
+        //   **不**读任何驱动判定依据，它只是把 §9.4 点名要求宿主做的那个物理动作真的做掉。
+        //
+        // **判决必须原样传下去，不许压扁成「有没有报错」。** §9.4 的判据是
+        // 「宿主检查全部通过 **AND driver 返回 Clean**」，§7.3 第 6 步是
+        // 「只有 Clean 才归池，**其余关闭**」——两处都以**判决**为条件，不是以
+        // 「`reset` 有没有返回 `Err`」为条件。压扁成 `Ok(())` 会让驱动诚实地说
+        // 「我复位不了」时宿主看到成功，然后把驱动明说不能复用的资源塞进空闲池。
+        // 三态因此在这里分开：`Clean` 归池、`Discard` 关闭、`Err` 关闭（也是 §9.4
+        // 的落点，但阻断项点名「未被确认」，与 `Discard` 的「驱动明说不能复用」不同名）。
+        //
+        // 调用点**必须**排在 `move_to` 之前：`entry.move_to(plan.next_state)` 与末尾
+        // `settle_tunnel_reference(lease_id, plan.disposition)` 都只读最终处置，否则
+        // 会出现「状态已进 Acquired / 引用已归还，处置却是 Closed」的错拍。
+        if plan.disposition == CleanupDisposition::ReturnedToPool {
+            match self.transport.reset(&record.resource_id) {
+                Ok(ResetDisposition::Clean) => session_reset_performed = true,
+                Ok(ResetDisposition::Discard) => {
+                    Self::refuse_park_after_discarded_reset(&mut plan, lease_id)
+                }
+                Err(error) => Self::refuse_park_after_failed_reset(&mut plan, lease_id, &error),
             }
         }
 
@@ -362,11 +550,7 @@ impl ResourceManager {
                     .push_idle(record.lease_id.clone(), record.pool_key.clone(), now_nanos);
             }
             CleanupDisposition::Closed => {
-                // 登记项 E（并发归还轨发现，**本轨不改**，只留事实）：
-                // 这一行的 `?` 把 `PhysicalTransport::close` 的 `Err` 原样抛给调用方，
-                // 于是本次归还的租约**停在 `Closing`**：不隔离、不核销物理预算，
-                // 关闭义务就此丢失。同一类错误在 `force_close` 里被映成 `Quarantined`，
-                // 两条路径对同一件事给出互斥结果。
+                // 关闭握手没确认 ⇒ **不许**把这条租约留在 `Closing`，也不许把错误原样抛出去。
                 //
                 // 三处一致要求「不能确认就隔离」：
                 // * `PhysicalTransport::close` 的文档「返回 `Err` 表示关闭握手没确认，
@@ -374,24 +558,35 @@ impl ResourceManager {
                 // * `InUse→Closing` 的 `exits_when`「关闭确认 ⇒ Closed；若关闭过程本身
                 //   状态不明 ⇒ Quarantined」；
                 // * 归池前检查「任一失败都关闭，即使 driver 返回 Clean 也不能绕过宿主
-                //   检查。reset 不支持、失败或超时直接关闭」——失败之后**仍然**必须关闭。
-                // 两条并列才自洽：先隔离保住租约，关闭义务另行再执行一次——那正是
-                // `force_close` 的形状。只留这条 `?`，两侧各丢一半。
+                //   检查」——失败之后**仍然**必须关闭。
                 //
-                // **怎么复现**：让 `PhysicalTransport::close` 返回一个 `Err`，再走归还
-                // 路径落进本分支 —— 租约行仍在、状态是 `Closing`；同一资源的
-                // `force_close` 则会把它移进 `Quarantined`。本轨两个测试**不覆盖**本分支：
-                // 本轨断言的是「至多一次**被确认的**关闭」（口径见 `force_close` 错误分支
-                // 注释），关闭**失败**属「必须再关一次」，不在本轨断言面内。
-                //
-                // **为什么本轨不改**：把它换成「先 `move_to(Quarantined)` 再返回错误」
-                // 会改变归还路径的返回语义，并外溢到会话句柄的交接面；跨轨改动不该由
-                // 单轨夹带。是否立项、归口哪一轨属协调侧裁定，本轨只保证结论随代码存活。
-                self.transport.close(&record.resource_id)?;
-                if let Some(entry) = self.table.lease_mut(lease_id) {
-                    entry.move_to(LeaseState::Closed)?;
+                // 原来的 `?` 把 `Err` 抛给调用方，租约**停在 `Closing`**：不隔离、不核销
+                // 物理预算、关闭义务就此丢失；而 `force_close` 把同一类错误映成
+                // `Quarantined`，两条路径对同一件事给出互斥结果。现在两条路径同形：
+                // 行留在表里、状态 `Closing→Quarantined`（合法边）、预算不核销、
+                // 隧道引用不归还，`retire`/`force_close` 可以再执行一次关闭义务。
+                match self.transport.close(&record.resource_id) {
+                    Ok(()) => {
+                        if let Some(entry) = self.table.lease_mut(lease_id) {
+                            entry.move_to(LeaseState::Closed)?;
+                        }
+                        self.table.forget(lease_id);
+                    }
+                    Err(error) => {
+                        plan.disposition = CleanupDisposition::Quarantined;
+                        plan.next_state = LeaseState::Quarantined;
+                        // `Closing→Quarantined` 在转移表里是合法边；行还在表里，
+                        // 所以 `retire`（= `force_close` 的形状）能再来一次。
+                        if let Some(entry) = self.table.lease_mut(lease_id) {
+                            entry.move_to(LeaseState::Quarantined)?;
+                        }
+                        tracing::warn!(
+                            lease_id = lease_id.as_str(),
+                            reason = error.reason(),
+                            "close handshake was not confirmed: lease quarantined, physical budget kept"
+                        );
+                    }
                 }
-                self.table.forget(lease_id);
             }
             CleanupDisposition::Quarantined => {
                 tracing::warn!(

@@ -968,7 +968,7 @@ fn value_as_u64_accepts_int_float_and_numeric_string() {
 }
 
 #[test]
-fn execution_ipc_response_preserves_all_four_evidence_outcomes_flattened() {
+fn execution_ipc_response_preserves_all_evidence_outcomes_flattened() {
     use crate::commands::error::CommandError;
     use crate::data_sync::{ExecutionOutcome, ExecutionResult};
 
@@ -1006,6 +1006,13 @@ fn execution_ipc_response_preserves_all_four_evidence_outcomes_flattened() {
         ),
     ];
 
+    let partial =
+        super::execution_response_from_result(Err(CommandError::DataSyncPartiallyApplied(500)));
+    assert_eq!(partial.outcome, ExecutionOutcome::PartiallyApplied);
+    assert_eq!(partial.result.applied, 500);
+    assert!(!partial.result.rolled_back);
+    assert!(partial.error.is_some());
+
     for (response, expected) in cases {
         assert_eq!(response.outcome, expected);
         let json = serde_json::to_value(response).unwrap();
@@ -1014,6 +1021,7 @@ fn execution_ipc_response_preserves_all_four_evidence_outcomes_flattened() {
             match expected {
                 ExecutionOutcome::NotStarted => "not_started",
                 ExecutionOutcome::Committed => "committed",
+                ExecutionOutcome::PartiallyApplied => "partially_applied",
                 ExecutionOutcome::RolledBack => "rolled_back",
                 ExecutionOutcome::Unknown => "unknown",
             }

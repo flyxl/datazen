@@ -186,6 +186,10 @@ impl ClickHouseDriver {
 
 #[async_trait]
 impl DatabaseDriver for ClickHouseDriver {
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        Some(SqlLiteralDialect::ClickHouse)
+    }
+
     fn has_multi_database(&self) -> bool {
         true
     }

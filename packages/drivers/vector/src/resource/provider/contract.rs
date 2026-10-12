@@ -1,4 +1,4 @@
-//! The fourteen [`ResourceProvider`] methods, one by one.
+//! The fifteen [`ResourceProvider`] methods, one by one.
 //!
 //! A child module so it reaches the provider's private bookkeeping without
 //! widening any visibility.
@@ -31,7 +31,8 @@ use datazen_driver_api::resource::{
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
     EffectOutcome, ExecutionCompletion, ResetDisposition, ResourceHealth, SessionContext,
-    SessionObservation, TransactionObservation, TransactionOptions, TransactionState,
+    SessionHandleRef, SessionObservation, TransactionObservation, TransactionOptions,
+    TransactionState,
 };
 use datazen_driver_api::{DatabaseDriver, DriverError, QueryExecutionId};
 
@@ -234,6 +235,38 @@ impl ResourceProvider for VectorResourceProvider {
         handle: &ResourceHandle,
     ) -> Result<CloseDisposition, ResourceError> {
         self.close(handle).await
+    }
+
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError> {
+        handle.check(VECTOR_PROVIDER_ID, self.runtime_epoch)?;
+        // The resource is gone, so every handle issued on it went with it —
+        // and this provider mints none at all. Repeating the close carries no
+        // information; refusing it would make a host that closed the resource
+        // before this ref look like a caller that missed its own handle.
+        // Ordered *after* the ownership check, exactly as postgres does: a
+        // closed resource does not excuse a ref belonging to another one, so
+        // "closed + foreign" is still refused as the ownership failure it is —
+        // postgres reports exactly that as `InvalidResourceState`.
+        if handle.is_closed() {
+            return Ok(());
+        }
+        // Refused, never absorbed. Qdrant has no server-side cursor and this
+        // provider starts no transaction, so it mints no session-scoped handle
+        // at all; `Ok(())` would tell the host "closed" about something that
+        // was never issued.
+        Err(ResourceError::unsupported(
+            VECTOR_PROVIDER_ID,
+            "close_handle",
+            format!(
+                "this provider issues no session-scoped handles, so handle '{}' ({:?}) names \
+                 nothing this provider can close",
+                session_handle.handle_id, session_handle.kind
+            ),
+        ))
     }
 }
 

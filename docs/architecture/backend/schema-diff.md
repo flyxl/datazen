@@ -1,6 +1,6 @@
 # Schema Diff 架构
 
-> Source of truth: `packages/schema-diff/`, `src-tauri/src/commands/schema_diff.rs`, `packages/driver-api/src/schema_migration.rs`。
+> P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `packages/schema-diff/`, `src-tauri/src/commands/schema_diff/`, `src-tauri/src/commands/schema_diff.rs`, `packages/driver-api/src/schema_migration.rs`。
 
 Schema Diff 的职责是把源库结构视为 **desired state**，比较目标结构，生成可审阅的迁移计划，并在目标库执行。
 
@@ -33,14 +33,14 @@ Host 不直接拼接 PostgreSQL/MySQL/SQLite 的 DDL。方言实现位于 Driver
 
 | 文件 | 职责 |
 |---|---|
-| `schema_diff/compare.rs` | 列、PK、索引差异；支持 `TypeNormalizer` |
-| `schema_diff/ir.rs` | Snapshot → `MigrationOperation` |
-| `schema_diff/operations.rs` | 方言无关操作及风险 |
-| `schema_diff/dependencies.rs` | 操作依赖与执行顺序 |
-| `schema_diff/plan.rs` | 能力检查、DDL 渲染、计划生成 |
-| `schema_diff/deploy.rs` | 目标库部署及事务/部分失败结果 |
-| `schema_diff/types.rs` | Snapshot、Diff、Plan DTO |
-| `commands/schema_diff.rs` | Tauri IPC 边界 |
+| `packages/schema-diff/src/compare.rs` | 列、PK、索引差异；支持 `TypeNormalizer` |
+| `packages/schema-diff/src/ir.rs` | Snapshot → `MigrationOperation` |
+| `packages/schema-diff/src/operations.rs` | 方言无关操作及风险 |
+| `packages/schema-diff/src/dependencies.rs` | 操作依赖与执行顺序 |
+| `packages/schema-diff/src/plan.rs` | 能力检查、DDL 渲染、计划生成 |
+| `packages/schema-diff/src/deploy.rs` | 目标库部署及事务/部分失败结果 |
+| `packages/schema-diff/src/types.rs` | Snapshot、Diff、Plan DTO |
+| `src-tauri/src/commands/schema_diff/` | Tauri IPC 与桌面 Job adapter |
 
 Driver API 中的 `MigrationRenderer` 负责把操作转换为 `MigrationStatement`；`MigrationCapabilities` 描述是否支持某操作、是否需要 rebuild、DDL 是否事务化；`TypeNormalizer` 用于跨 Driver 类型别名比较。
 
@@ -114,15 +114,15 @@ Endpoints
 
 ## 6. 连接与目标
 
-Schema Diff 的 IPC **全部**收成对的 `sourceDbSessionId` / `targetDbSessionId`：`commands/schema_diff.rs` 里没有任何一条路径会建立会话，比较、应用、预览全部消费前端已经建好的会话。
+Schema Diff 的 prepare/apply 请求以 `sourceDbSessionId` / `targetDbSessionId` 指定用户当前授权的端点；Job 列表、详情、取消与恢复核验则按 `jobId` 操作共享桌面 Job host。桌面 Job adapter 接受并持久化 Job 后，在后台 dispatch 对应 handler。
 
 - **专用会话由前端建、由前端放**。源端与目标端各自持有一条专用会话：端点组件用 `ensureDedicatedSession` 调 `connectDedicated` 建立，并在端点或目标库变化、以及组件卸载时用 `releaseDedicatedSession` 释放上一条（走的是与普通释放同一套引用计数，计数归零才真正断开）。释放发生在建立新会话**之前**，不会新旧两条同时挂着。端点没变时先 `ping` 探活，探活失败才重连。后端只做 `get_session` / `get_session_config` 查找。
 - **profile 落盘的是 `connectionId`**。加密的 profile 文件保存 `sourceConnectionId` / `targetConnectionId`，不保存任何运行时会话 ID；Deploy 的历史记录写入的同样是解析出来的 `connectionId`。
 - **反查依赖 owner 映射**。部署时把目标会话反查成 `connectionId` 以便落库；反查失败即中止部署并报「目标连接归属不可用」，不会退化成写一个空归属。Idle 回收故意保留 owner 映射正是为了让这条反查在会话物理连接消失后仍然可用。
 - **目标库在建连时就定死，不切库**。专用会话建立时把用户选中的库作为连接覆盖传下去（SQLite 例外：`main` 是目录别名，会传文件路径而不是 `main`），因此会话始终停在选中的库上，宿主不需要切库路径。
-- **只有部署阶段可取消，比较阶段不可**。`cancel_schema_diff_deploy` 收一个 `jobId`，写的是与 Data Sync / Data Transfer 同一个进程级 job 标志（`services/job_registry.rs`），后端不做任何归属校验，因此谁拿到该 jobId 都能取消；部署执行时取出这个标志并观察它（`commands/schema_diff.rs:2177-2180`）。比较（compare）本身没有对应的取消命令，只能靠关闭面板让前端释放专用会话。
+- **prepare/apply 均由共享 Job 生命周期管理**。`cancel_schema_diff_deploy` 按 `jobId` 向 `DesktopJobHost` 记录取消意图；关闭面板不会取消已接受的 Job。Job 状态、提交边界与结果可通过详情查询，恢复核验只读，不会重放旧 handler。
 
-与另两个成员的边界：Schema Diff 负责**结构差异对比与 DDL 迁移生成**；同族数据复制属于 Data Synchronization，异构数据搬迁属于 Data Transfer。三者共用「专用会话 + 持久化 connectionId」的约束，但各自的会话由谁建立、profile 存什么并不相同。三者的取消也都落到同一张 job 标志表上，但只有 Schema Diff 的取消点局限在部署阶段。
+与另两个成员的边界：Schema Diff 负责**结构差异对比与 DDL 迁移生成**；同族数据复制属于 Data Synchronization，异构数据搬迁属于 Data Transfer。三者共用「专用会话 + 持久化 connectionId」的约束，但各自的会话由谁建立、profile 存什么并不相同。三者 prepare/apply Job 共用桌面持久化 host 与取消、详情和恢复核验机制。
 
 ## 7. Tests
 

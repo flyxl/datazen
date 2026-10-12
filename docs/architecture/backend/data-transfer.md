@@ -1,6 +1,8 @@
 # Data Transfer 架构
 
-> 当前实现说明；P5 本机持久化 Job Core 于 2026-10-08 接入。Source of truth：`packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`、`packages/runtime/src/job/` 与 `src-tauri/src/store/app_db/jobs/`。Core 与尚未接入的领域目标见[迁移任务详细设计](../platform/data-migration-jobs.md)。
+> 当前实现说明；P5 桌面 JobRuntime 与数据迁移三件套于 2026-10-09 完成并通过独立测试、冒烟测试。Data Transfer 的实现事实见 `packages/data-transfer/`、`src-tauri/src/commands/data_transfer/`、`packages/runtime/src/job/` 与 `src-tauri/src/store/app_db/jobs/`；后续服务端与跨进程恢复边界见[迁移任务详细设计](../platform/data-migration-jobs.md)。
+
+共享边界值规范化、比较与端点配对算法位于 `packages/migration-common/`；SQL 名称处理工具位于 `packages/driver-api/src/sql_identifiers.rs`。Data Sync 与 Data Transfer 直接依赖这些公共实现，Data Transfer 不依赖 Data Sync 领域包。Job 生命周期继续复用 `packages/runtime/src/job/`。
 
 ## 1. 职责与执行边界
 
@@ -81,7 +83,7 @@ peek 不消耗计划；claim 原子将 available 转为 executing 并建立活�
 
 ## 6. SQL 文件与取消
 
-`data_transfer/sql_file.rs` 负责 SQL 文件输出；SQL 文件目的地不建立目标数据库写会话，但仍需源读取与渲染能力。文件输出失败或取消不能标成完整产物；结果必须表达已输出部分和错误。
+`data_transfer/sql_file.rs` 负责 SQL 文件输出；SQL 文件目的地不建立目标数据库写会话，但仍需源读取与渲染能力。INSERT 字面量必须由目标 SQL 驱动声明的 `SqlLiteralDialect` 生成；无方言或值无法安全表示时停止生成，不能回退到默认转义。文件输出失败或取消不能标成完整产物；结果必须表达已输出部分和错误。
 
 旧执行与兼容路径仍由 `commands/data_transfer/exec.rs` 等入口管理；P5 新路径在 `commands/data_transfer/job_api/`。新路径的 cancel intent 持久写入本机 Job repository，运行时通过 `CancelWatch` 将它传给当前 stage。该 SQLite repository 是单机桌面 host，不是团队服务跨实例协调器。Job 只存 Artifact ID 引用，不存文件字节；当前引用 TTL 为 30 天，且不保证仍可下载对应内容。
 

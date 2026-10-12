@@ -5,6 +5,11 @@
  * navigation) and the Visual Query Builder (auto-JOIN detection). It lives below
  * both so that neither depends on the other, and it subscribes to schema
  * invalidation so a DDL statement refreshes every reader at once.
+ *
+ * Sessions are partitioned by identity *and* configuration *and* runtime
+ * session: see {@link editorSessionCacheKey}. Callers still pass only their
+ * `dbSessionId` — the configuration is resolved per call, so a rebind moves the
+ * session to a new partition without any caller having to announce it.
  */
 
 import type { TableSchema } from '../../types';
@@ -15,6 +20,7 @@ import {
   relationBaseName,
   relationIdentityKey,
 } from './identity';
+import { editorSessionCacheKey, resolveEditorSessionConfig } from './sessionConfig';
 import type {
   EditorMetadataContext,
   EditorMetadataSnapshot,
@@ -22,6 +28,7 @@ import type {
   EditorRelationKind,
   EditorRelationMetadata,
   EditorRelationRequest,
+  EditorSessionConfig,
 } from './types';
 import type { QualifiedRelationId } from './identity';
 
@@ -39,6 +46,10 @@ interface PendingRequest {
 }
 
 interface SessionState {
+  /** Address of the identity/config/session partition this state lives in. */
+  key: string;
+  /** The configuration this partition belongs to; never re-read while live. */
+  config: EditorSessionConfig;
   dbSessionId: string;
   dialectId: string;
   database: string;
@@ -187,6 +198,8 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
   const allowQualified = deps.allowQualified ?? true;
   const now = deps.now ?? Date.now;
 
+  // Both maps are keyed by the identity/config/session partition address, not
+  // by `dbSessionId`: see {@link editorSessionCacheKey}.
   const sessions = new Map<string, SessionState>();
   const emptySnapshots = new Map<string, EditorMetadataSnapshot>();
   const listeners = new Set<() => void>();
@@ -213,9 +226,18 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
   }
 
   function getOrCreateSession(dbSessionId: string, database?: string): SessionState {
-    let session = sessions.get(dbSessionId);
+    const config = resolveEditorSessionConfig(dbSessionId);
+    const key = editorSessionCacheKey(dbSessionId, config);
+    // Exit transition for a configuration rebind: the previous partition can no
+    // longer be addressed, so tear it down (debounce timer included) instead of
+    // leaving it to answer a later read or commit a load issued under the config
+    // the session no longer has.
+    dropSupersededPartitions(dbSessionId, key);
+    let session = sessions.get(key);
     if (session == null) {
       session = {
+        key,
+        config,
         dbSessionId,
         dialectId: 'standard',
         // Empty until the first switchContext/ensureRelations pins the tab's
@@ -228,9 +250,35 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
         inflight: new Map(),
       };
       session.cachedSnapshot = buildSnapshot(session);
-      sessions.set(dbSessionId, session);
+      sessions.set(key, session);
     }
     return session;
+  }
+
+  /** Drop every partition of `dbSessionId` except the one now being addressed. */
+  function dropSupersededPartitions(dbSessionId: string, keepKey: string): void {
+    for (const [key, session] of [...sessions.entries()]) {
+      if (key === keepKey || session.dbSessionId !== dbSessionId) continue;
+      cancelTimer(session);
+      sessions.delete(key);
+      emptySnapshots.delete(key);
+    }
+  }
+
+  /** The partition a session currently reads and writes (never creates one). */
+  function currentSession(dbSessionId: string): SessionState | undefined {
+    return sessions.get(editorSessionCacheKey(dbSessionId));
+  }
+
+  /**
+   * Every partition of one runtime session.
+   *
+   * Schema/DDL invalidation is config-agnostic: it says "this session's schema
+   * moved", which is true of every configuration that session was read under,
+   * so it must reach all of them.
+   */
+  function sessionPartitions(dbSessionId: string): SessionState[] {
+    return [...sessions.values()].filter((session) => session.dbSessionId === dbSessionId);
   }
 
   function cancelTimer(session: SessionState): void {
@@ -282,7 +330,11 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
     const schemaContext = session.schema;
     const dialectId = session.dialectId;
     const isCurrent = () =>
-      sessions.get(session.dbSessionId) === session &&
+      sessions.get(session.key) === session &&
+      // The configuration is re-read, not assumed: a rebind issued while this
+      // load was in flight must strand its result instead of publishing columns
+      // read under the config the session no longer has.
+      editorSessionCacheKey(session.dbSessionId) === session.key &&
       session.database === database &&
       session.schema === schemaContext &&
       session.dialectId === dialectId &&
@@ -349,32 +401,38 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
   }
 
   function relationMatchesNameTarget(dbSessionId: string, tableName?: string): void {
-    const session = sessions.get(dbSessionId);
-    if (session == null) return;
+    const targets = sessionPartitions(dbSessionId);
+    if (targets.length === 0) return;
     if (tableName == null) {
-      // Whole-session invalidation (schema refresh / session close).
-      cancelTimer(session);
-      sessions.delete(dbSessionId);
-      emptySnapshots.delete(dbSessionId);
+      // Whole-session invalidation (schema refresh / session close). It applies
+      // to every configuration the session was read under, not just the one
+      // that happens to be current.
+      for (const session of targets) {
+        cancelTimer(session);
+        sessions.delete(session.key);
+        emptySnapshots.delete(session.key);
+      }
       notify();
       return;
     }
-    for (const [key, meta] of [...session.relations]) {
-      if (relationMatchesName(session.dialectId, meta.identity, tableName)) {
-        session.relations.delete(key);
-        session.errors.delete(key);
-      }
-    }
-    for (const entries of [session.pending, session.inflight]) {
-      for (const [key, request] of entries) {
-        if (relationMatchesName(session.dialectId, request.identity, tableName)) {
-          entries.delete(key);
+    for (const session of targets) {
+      for (const [key, meta] of [...session.relations]) {
+        if (relationMatchesName(session.dialectId, meta.identity, tableName)) {
+          session.relations.delete(key);
           session.errors.delete(key);
         }
       }
+      for (const entries of [session.pending, session.inflight]) {
+        for (const [key, request] of entries) {
+          if (relationMatchesName(session.dialectId, request.identity, tableName)) {
+            entries.delete(key);
+            session.errors.delete(key);
+          }
+        }
+      }
+      // Refresh also when an in-flight-only relation was invalidated.
+      refreshSnapshot(session);
     }
-    // Refresh also when an in-flight-only relation was invalidated.
-    refreshSnapshot(session);
   }
 
   function resetContext(session: SessionState, ctx: EditorMetadataContext): void {
@@ -404,14 +462,17 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
     },
 
     getSnapshot: (dbSessionId: string) => {
-      const session = sessions.get(dbSessionId);
+      const session = currentSession(dbSessionId);
       if (session == null) {
         // Referentially stable empty snapshot for unknown sessions so that
-        // `useSyncExternalStore` doesn't re-render on every read.
-        let empty = emptySnapshots.get(dbSessionId);
+        // `useSyncExternalStore` doesn't re-render on every read. Keyed by the
+        // session address, so a rebound session never sees the partition the
+        // previous configuration memoized.
+        const key = editorSessionCacheKey(dbSessionId);
+        let empty = emptySnapshots.get(key);
         if (empty == null) {
           empty = emptySnapshot(dbSessionId);
-          emptySnapshots.set(dbSessionId, empty);
+          emptySnapshots.set(key, empty);
         }
         return empty;
       }
@@ -420,7 +481,7 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
     },
 
     getRelation: (dbSessionId: string, key: EditorRelationKey) => {
-      return sessions.get(dbSessionId)?.relations.get(key);
+      return currentSession(dbSessionId)?.relations.get(key);
     },
 
     subscribe: (listener: () => void) => {
@@ -431,7 +492,7 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
     },
 
     invalidateRelation: (dbSessionId: string, identity: QualifiedRelationId, dialectId: string) => {
-      const session = sessions.get(dbSessionId);
+      const session = currentSession(dbSessionId);
       if (session == null) return;
       const key = buildEditorRelationKey(dbSessionId, identity, dialectId ?? session.dialectId);
       session.relations.delete(key);
@@ -442,11 +503,13 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
     },
 
     invalidateSession: (dbSessionId: string) => {
-      const session = sessions.get(dbSessionId);
-      if (session == null) return;
-      cancelTimer(session);
-      sessions.delete(dbSessionId);
-      emptySnapshots.delete(dbSessionId);
+      const targets = sessionPartitions(dbSessionId);
+      if (targets.length === 0) return;
+      for (const session of targets) {
+        cancelTimer(session);
+        sessions.delete(session.key);
+        emptySnapshots.delete(session.key);
+      }
       notify();
     },
 
@@ -469,12 +532,13 @@ export function createMetadataCache(deps: MetadataCacheDeps = {}): MetadataCache
  *
  * KNOWN MULTI-PANE HAZARD — deliberately not fixed in the pane-layout wave.
  * This is a process-level singleton (one instance for the whole app), and its
- * sessions are keyed by `dbSessionId` alone: `switchContext()` overwrites the
- * `database` / `schema` / `dialectId` of that session and clears its relation
- * maps in place. Once one tab is split into several panes, two editors on the
- * same `dbSessionId` share a single context slot, so focusing pane B after
- * pane A changed its context silently invalidates A's cached snapshot and every
- * completion A triggers afterwards re-queries under B's context.
+ * sessions are keyed by identity + configuration + `dbSessionId`: `switchContext()`
+ * overwrites the `database` / `schema` / `dialectId` of that session and clears
+ * its relation maps in place. Once one tab is split into several panes, two
+ * editors on the same `dbSessionId` share a single context slot, so focusing
+ * pane B after pane A changed its context silently invalidates A's cached
+ * snapshot and every completion A triggers afterwards re-queries under B's
+ * context.
  *
  * The fix belongs to the next pane wave and is a real state-model change, not a
  * cosmetic one: either key the cache by `dbSessionId::paneId` (a pane-key

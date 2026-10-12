@@ -3,7 +3,8 @@
 //! Source of truth: `docs/architecture/platform/connection-management.md` §4
 //! (DTOs and target validation order), §5.1 (the nine operation rows, which the
 //! [`ResourceProvider`] trait below spells out as 11 async methods plus 3
-//! required accessors), §5.2 (capabilities) and
+//! required accessors), §6.5 (per-handle close, the twelfth async method), §5.2
+//! (capabilities) and
 //! `docs/architecture/platform/driver-capability-migration.md`
 //! §6 (degraded legacy paths, retirement preconditions).
 //!
@@ -39,8 +40,8 @@ use crate::capabilities::{CapabilityRegistry, SessionContinuity};
 use crate::namespace::{NamespaceLevelKind, NamespaceShape, NamespaceTarget};
 use crate::session::{
     CancelReceipt, CloseDisposition, ContextChangeDisposition, ExecutionCompletion,
-    ResetDisposition, SessionHandleKind, SessionObservation, TransactionObservation,
-    TransactionOptions,
+    ResetDisposition, SessionHandleKind, SessionHandleRef, SessionObservation,
+    TransactionObservation, TransactionOptions,
 };
 use crate::{ConnectionConfig, DriverError, QueryExecutionId};
 
@@ -483,12 +484,16 @@ impl ResourceError {
 ///
 /// §5.1 lists **nine operation rows**; this trait spells them out as **11 async
 /// methods** plus **3 required accessors** (`provider_id`, `capabilities`,
-/// `namespace_shape`) — **14 required methods** in total. The row/method gap
-/// is deliberate: §5.1 counts `begin/commit/rollback` as one row, while the
-/// trait needs three separately implemented methods so a driver can support a
-/// commit without inventing a rollback.
+/// `namespace_shape`). §6.5 adds one more required method,
+/// [`ResourceProvider::close_handle`], which is not a §5.1 row at all — closing
+/// a session-scoped handle is a driver action on a handle the driver itself
+/// issued, and it has no resource-level counterpart. That makes **12 async
+/// methods plus 3 required accessors — 15 required methods** in total. The
+/// row/method gap is deliberate: §5.1 counts `begin/commit/rollback` as one row,
+/// while the trait needs three separately implemented methods so a driver can
+/// support a commit without inventing a rollback.
 ///
-/// All 14 methods are **required**, with no default bodies. A provider that
+/// All 15 methods are **required**, with no default bodies. A provider that
 /// cannot honour one must say so in its own code, where the failure is
 /// visible, instead of inheriting a body that quietly does nothing. This is
 /// what makes "新增能力缺失不会 no-op 成功" structural rather than a convention.
@@ -602,6 +607,44 @@ pub trait ResourceProvider: Send + Sync {
         &self,
         handle: &ResourceHandle,
     ) -> Result<CloseDisposition, ResourceError>;
+
+    /// Close one session-scoped handle this provider issued on `handle`.
+    ///
+    /// §6.5: the host registers every [`SessionHandleRef`] an execution hands
+    /// out, and returning a lease to the pool requires the registered set to be
+    /// empty. Closing one is **the driver's** action — the host has no
+    /// protocol access to a cursor, a server-side prepared statement or a
+    /// pinned transaction — so this method is where that work actually happens.
+    ///
+    /// It is deliberately **narrower** than `close_resource`:
+    ///
+    /// * the resource stays open. Only the named handle goes away; budget is
+    ///   untouched, and `close_resource` remains the only call that releases
+    ///   it.
+    /// * `session_handle` must name a handle *this* provider issued on *this*
+    ///   resource at *this* epoch. A ref that fails
+    ///   [`SessionHandleRef::belongs_to`] is [`ResourceError::InvalidResourceState`],
+    ///   not a silent success.
+    /// * a provider that issues **no** handle of that kind returns
+    ///   [`ResourceError::unsupported`]. Returning `Ok(())` there would be a
+    ///   lie the host cannot detect: the host would deregister the handle and
+    ///   judge the session clean while the driver never closed anything.
+    ///   This mirrors what the drivers already do for
+    ///   [`crate::capabilities::SessionScopedHandleSupport::Unsupported`] — the
+    ///   refusal and the capability declaration are the same fact.
+    /// * a handle the provider does not currently hold open is
+    ///   [`ResourceError::InvalidResourceState`], not `Ok`. The one legitimate
+    ///   repeat is a handle the resource handle already marks closed
+    ///   ([`ResourceHandle::is_closed`]), which is reported as success because
+    ///   the close already happened and re-doing it is not information.
+    ///
+    /// `Err` means the handle is still registered: the host keeps the lease
+    /// exactly as it is and the caller may retry.
+    async fn close_handle(
+        &self,
+        handle: &ResourceHandle,
+        session_handle: &SessionHandleRef,
+    ) -> Result<(), ResourceError>;
 }
 
 #[cfg(test)]

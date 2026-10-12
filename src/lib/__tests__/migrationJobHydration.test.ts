@@ -48,6 +48,19 @@ describe('MIGRATION_JOB_KINDS', () => {
 });
 
 describe('classifyJobView', () => {
+  it('does not invent pending verification when the wire omits an absent reason', () => {
+    const { pendingVerificationReason: omitted, ...wire } = jobView({ state: 'succeeded' });
+    expect(omitted).toBeNull();
+    const decoded = wire as unknown as JobView;
+    expect(classifyJobView(decoded)).toBe('terminal');
+    const projection = updateMigrationJobProjection(
+      { jobs: [], activeJobs: [], terminalJobs: [], verificationJobs: [] },
+      decoded,
+    );
+    expect(projection.verificationJobs).toEqual([]);
+    expect(projection.terminalJobs).toEqual([decoded]);
+  });
+
   it('marks verification-pending jobs separately from active ones', () => {
     expect(classifyJobView(jobView({ pendingVerificationReason: 'outcomeUnknown' }))).toBe(
       'pendingVerification',
@@ -119,8 +132,17 @@ describe('hydrateMigrationJobs', () => {
             cancelRequested: true,
             updatedAt: 1_700_000_002_000 as JobView['updatedAt'],
           }),
-          jobView({ jobId: 'j3' as JobView['jobId'], kind: 'dataSyncApply', state: 'failed', pendingVerificationReason: 'outcomeUnknown' }),
-          jobView({ jobId: 'j2' as JobView['jobId'], kind: 'workflow', pendingVerificationReason: 'outcomeUnknown' }),
+          jobView({
+            jobId: 'j3' as JobView['jobId'],
+            kind: 'dataSyncApply',
+            state: 'failed',
+            pendingVerificationReason: 'outcomeUnknown',
+          }),
+          jobView({
+            jobId: 'j2' as JobView['jobId'],
+            kind: 'workflow',
+            pendingVerificationReason: 'outcomeUnknown',
+          }),
         ];
       },
       getJob: async (jobId: JobView['jobId']) => {
@@ -140,7 +162,11 @@ describe('hydrateMigrationJobs', () => {
   });
 
   it('moves a watched job from active to terminal without losing its latest state', () => {
-    const active = jobView({ jobId: 'j1' as JobView['jobId'], kind: 'dataTransferApply', state: 'running' });
+    const active = jobView({
+      jobId: 'j1' as JobView['jobId'],
+      kind: 'dataTransferApply',
+      state: 'running',
+    });
     const terminal = { ...active, state: 'cancelled' as const, cancelRequested: true };
     const initial = {
       jobs: [active],

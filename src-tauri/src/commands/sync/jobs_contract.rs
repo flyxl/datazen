@@ -201,6 +201,33 @@ pub fn message(outcome: &SyncJobOutcome) -> String {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
+async fn readonly_target_can_be_compared_but_cannot_be_applied() {
+    let mut pair = diff_pair("readonly-prepare").await;
+    let mut config = sample_postgres_config("readonly-prepare-ro");
+    config.database_type = "postgresql".into();
+    config.host = Some("target.example.invalid".into());
+    config.read_only = true;
+    pair.test.store.save_connection(config).await.unwrap();
+    pair.target_session = pair.test.connect_config("readonly-prepare-ro").await;
+
+    let preview = compare(&pair, None, None).await.expect("read-only compare");
+    assert_eq!(preview.tables[0].insert_count, 1);
+    let error = super::exec::execute_data_sync_plan_impl(
+        pair.state(),
+        super::plans::SyncRunRequest {
+            plan_id: preview.plan_id,
+            selection: insert_selection(preview.selection_revision),
+            options: SyncOptions::default(),
+            job_id: None,
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("read-only"));
+    assert_eq!(pair.target.open_transaction_count(), 0);
+}
+
+#[tokio::test]
 async fn prepare_job_freezes_a_change_set_and_closes_both_snapshots() {
     let pair = diff_pair("prepare-freeze").await;
     let spec = PrepareSpec {

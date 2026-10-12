@@ -1,4 +1,4 @@
-//! Canonical typed conversion and comparison for Transfer recordset bounds.
+//! Canonical typed conversion and comparison for migration recordset bounds.
 
 use datazen_driver_api::Value;
 
@@ -352,3 +352,7 @@ fn decimal_digit_at(value: &DecimalKey, index: usize) -> u8 {
         value.digits.as_bytes()[source as usize]
     }
 }
+
+#[cfg(test)]
+#[path = "recordset_bounds_tests.rs"]
+mod tests;

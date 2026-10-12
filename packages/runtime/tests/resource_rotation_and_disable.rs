@@ -15,7 +15,8 @@ use datazen_runtime::connection::{
 };
 use datazen_runtime::resource::{
     CacheFillOutcome, CancellationOutcome, DriverCleanVerdict, HostConditionSnapshot, LeasePurpose,
-    LeaseRequest, MonotonicSource, PhysicalTransport, ResourceError, ResourceManager, RotationKind,
+    LeaseRequest, MonotonicSource, PhysicalTransport, ResetDisposition, ResourceError,
+    ResourceManager, RotationKind,
 };
 
 /// 固定时刻的单调时钟：这三组旅程断言的是代次与处置，不是时长。
@@ -41,6 +42,11 @@ impl MonotonicSource for FixedClock {
 struct Journal {
     opened: Vec<ResourceId>,
     closed: Vec<ResourceId>,
+    /// 复位与关闭是**两个不同的**物理动作，必须分账。
+    ///
+    /// 这里曾把 `reset` 也打进 `closed`，于是「关闭了几次」实际数的是 close+reset。
+    /// §9.4 要求归池前必须真的跑一次复位，那条串账会立刻把断言变成假阳性。
+    reset: Vec<ResourceId>,
     cancelled: Vec<ExecutionId>,
     cancel_disposition: Option<CancelDisposition>,
     issued: u64,
@@ -70,6 +76,11 @@ impl ScriptedTransport {
         self.lock().closed.clone()
     }
 
+    /// 复位次数。归池前的那道闸（§9.4）唯一的可观测证据。
+    fn reset_count(&self) -> usize {
+        self.lock().reset.len()
+    }
+
     fn cancelled(&self) -> Vec<ExecutionId> {
         self.lock().cancelled.clone()
     }
@@ -95,9 +106,10 @@ impl PhysicalTransport for ScriptedTransport {
         Ok(())
     }
 
-    fn reset(&self, resource_id: &ResourceId) -> Result<(), ResourceError> {
-        self.lock().closed.push(resource_id.clone());
-        Ok(())
+    fn reset(&self, resource_id: &ResourceId) -> Result<ResetDisposition, ResourceError> {
+        // 本文件断言的是代次与处置，不是复位判决，所以替身一律报 `Clean`。
+        self.lock().reset.push(resource_id.clone());
+        Ok(ResetDisposition::Clean)
     }
 
     fn cancel(
@@ -186,6 +198,13 @@ fn a_credential_rotation_retires_the_idle_leases_of_the_previous_generation() {
         transport.closed(),
         vec![old.resource_id.clone()],
         "the previous generation is closed, not left idle"
+    );
+    // §9.4：归池之前必须真的跑过一次复位。轮换只是把那条**已经归池**的连接关掉，
+    // 所以此刻端口上只有一次复位（归池时的那次）、一次关闭（轮换淘汰时的那次）。
+    assert_eq!(
+        transport.reset_count(),
+        1,
+        "the idle return ran the pre-pool reset"
     );
     assert_eq!(manager.idle_lease_count(), 0);
 

@@ -20,6 +20,7 @@ pub enum CommandError {
     NotConfigured(String),
     Validation(String),
     DataSyncNotStarted(String),
+    DataSyncPartiallyApplied(u64),
     DataSyncOutcomeUnknown(String),
     Internal(String),
 }
@@ -27,6 +28,7 @@ pub enum CommandError {
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::DataSyncPartiallyApplied(count) => write!(f, "{count} rows committed before execution stopped; compare current data before continuing"),
             Self::Store(e) => write!(f, "{e}"),
             Self::Connection(e) => write!(f, "{e}"),
             Self::Driver(e) => write!(f, "{e}"),

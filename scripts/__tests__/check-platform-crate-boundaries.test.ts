@@ -700,3 +700,32 @@ describe('declaredDependencies — the manifest-side scan', () => {
     ]);
   });
 });
+
+// Shared migration algorithms must stay below every domain and platform host.
+describe('F-08 shared migration algorithms', () => {
+  const common = { name: 'datazen-migration-common', dir: 'packages/migration-common' };
+  const transfer = { name: 'datazen-data-transfer', dir: 'packages/data-transfer' };
+
+  it('allows the driver contract and excludes dev-only domain dependencies', () => {
+    const result = run(fixture([...CORE, common, transfer], {
+      'datazen-migration-common': ['datazen-driver-api', 'datazen-data-transfer'],
+    }, [], { 'datazen-migration-common->datazen-data-transfer': 'dev' }));
+    expect(result.violations.filter((v) => v.startsWith('F-08'))).toEqual([]);
+    expect(result.evaluated.some((e) => e.rule === 'F-08')).toBe(true);
+  });
+
+  it('rejects a reverse dependency on a migration domain engine', () => {
+    const result = run(fixture([...CORE, common, transfer], {
+      'datazen-migration-common': ['datazen-data-transfer'],
+    }));
+    expect(result.violations.join('\n')).toMatch(/F-08.*datazen-migration-common.*→ datazen-data-transfer/);
+  });
+
+  it('rejects transport dependencies reached indirectly through driver-api', () => {
+    const result = run(fixture([...CORE, common], {
+      'datazen-migration-common': ['datazen-driver-api'],
+      'datazen-driver-api': ['tauri'],
+    }, [{ name: 'tauri' }]));
+    expect(result.violations.join('\n')).toMatch(/F-08.*datazen-migration-common.*→ tauri/);
+  });
+});

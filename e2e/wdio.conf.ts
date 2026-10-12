@@ -505,7 +505,8 @@ export const config: WebdriverIO.Config = {
   path: '/',
   logLevel: 'warn',
   waitforTimeout: 10000,
-  connectionRetryTimeout: 30000,
+  // Allow the 90s IPC script deadline to expire before the HTTP transport.
+  connectionRetryTimeout: 120000,
   connectionRetryCount: 3,
   framework: 'mocha',
   reporters: ['spec'],

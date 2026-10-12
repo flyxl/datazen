@@ -23,7 +23,8 @@ use datazen_runtime::connection::{
     ConfigRevision, ConnectionId, ExecutionId, NamespaceTarget, OwnerRef, PoolKeyInputs, ResourceId,
 };
 use datazen_runtime::resource::{
-    LeasePurpose, LeaseRequest, MonotonicSource, PhysicalTransport, ResourceError, ResourceManager,
+    LeasePurpose, LeaseRequest, MonotonicSource, PhysicalTransport, ResetDisposition,
+    ResourceError, ResourceManager,
 };
 use datazen_runtime::tunnel::{TunnelError, TunnelFault, TunnelHandle, TunnelTransport};
 
@@ -148,11 +149,13 @@ impl PhysicalTransport for ScriptedTransport {
         Ok(())
     }
 
-    fn reset(&self, _resource_id: &ResourceId) -> Result<(), ResourceError> {
+    fn reset(&self, _resource_id: &ResourceId) -> Result<ResetDisposition, ResourceError> {
+        // 复位结果未知（握手未确认）是故障注入；这一格只用来验证
+        // 「未知 ⇒ 升级成 Quarantined」。
         if self.lock().reset_fails {
             return Err(ResourceError::TransportRefused("session reset unconfirmed"));
         }
-        Ok(())
+        Ok(ResetDisposition::Clean)
     }
 
     fn cancel(

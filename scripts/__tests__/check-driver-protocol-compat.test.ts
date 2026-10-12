@@ -42,6 +42,7 @@ import {
   isCosmeticLine,
   isRequiredTraitItemAddition,
   parseDiffByFile,
+  parseGateArgs,
   readConstValue,
   readCrateVersion,
 } from '../check-driver-protocol-compat.mjs';
@@ -173,7 +174,16 @@ describe('rule table — every governed contract exists in the tree', () => {
       if (rule.kind === 'trait') {
         expect(declaration, `${rule.id}`).toContain('pub trait');
       } else if (rule.kind === 'struct') {
-        expect(declaration, `${rule.id}`).toContain('pub struct');
+        // `pub struct Foo` — the usual anchor. Also `impl Foo {`, the inherent
+        // impl of the same item, for rules whose ABI surface is the
+        // constructor rather than the (private) field list:
+        // `legacy-resource-adapter` anchors on the inherent impl because the
+        // host calls `LegacyResourceAdapter::new` once per un-migrated driver,
+        // and that signature is what the rule exists to watch. It is still a
+        // struct item, and the classifier reads it with struct semantics, so
+        // admitting it here does not weaken the check it is making: a rule
+        // anchored at a trait or an enum is still rejected.
+        expect(declaration, `${rule.id}`).toMatch(/\bpub struct\b|\bimpl \w+ \{/);
       } else if (rule.kind === 'enum') {
         expect(declaration, `${rule.id}`).toContain('pub enum');
       }
@@ -360,9 +370,9 @@ describe('classification — a trait relocated to its own module', () => {
     'use super::Other;\n\n#[async_trait]\npub trait Demo: Send {\n    fn existing(&self) -> u32;\n    fn with_default(&self) -> u32 { 0 }\n}\n';
 
   const classifyRelocated = (after: string) => {
-    const records = parseDiffByFile(
-      diffOf(BASE_IN_OLD_FILE, after, RELOCATED_RULE.file),
-    ).get(RELOCATED_RULE.file);
+    const records = parseDiffByFile(diffOf(BASE_IN_OLD_FILE, after, RELOCATED_RULE.file)).get(
+      RELOCATED_RULE.file,
+    );
     expect(records, 'the synthetic diff must produce records').toBeDefined();
     return classifyContractChange(BASE_IN_OLD_FILE, after, RELOCATED_RULE, records!);
   };
@@ -423,9 +433,7 @@ describe('classification — a trait relocated to its own module', () => {
     const relocated = CONTRACT_RULES.filter((rule) => rule.previousFile !== undefined);
     expect(relocated.length, 'at least one rule must record a relocation').toBeGreaterThan(0);
     for (const rule of relocated) {
-      expect(rule.previousFile, `${rule.id} must not point at its own file`).not.toBe(
-        rule.file,
-      );
+      expect(rule.previousFile, `${rule.id} must not point at its own file`).not.toBe(rule.file);
       const oldFile = read(rule.previousFile!);
       expect(
         findItemSpan(oldFile, rule.anchor),
@@ -741,7 +749,8 @@ describe('a governed change is seen, not assumed', () => {
     // One key, holding *both* texts — not one key holding only the blank line.
     expect(records.get(3)).toEqual({ removed: ['    fn required(&self) -> u32;', ''] });
 
-    const before = 'pub trait Demo: Send {\n    fn required(&self) -> u32;\n\n    fn kept(&self) -> u32;\n}\n';
+    const before =
+      'pub trait Demo: Send {\n    fn required(&self) -> u32;\n\n    fn kept(&self) -> u32;\n}\n';
     const after = 'pub trait Demo: Send {\n\n    fn kept(&self) -> u32;\n}\n';
     const finding = classifyViaDiff(TRAIT_RULE, before, after);
     expect(finding.cls).toBe('breaking');
@@ -758,7 +767,9 @@ describe('a governed change is seen, not assumed', () => {
       'pub trait DemoV2: Send {\n    fn g(&self) -> u32;\n}\n\npub trait Demo: Send {\n    fn f(&self) -> u32;\n}\n';
     expect(findItemSpan(source, 'pub trait Demo')).toEqual({ start: 4, end: 6 });
     // And with only the longer name present, the anchor is genuinely gone.
-    expect(findItemSpan('pub trait DemoV2: Send {\n    fn g(&self) -> u32;\n}\n', 'pub trait Demo')).toBeNull();
+    expect(
+      findItemSpan('pub trait DemoV2: Send {\n    fn g(&self) -> u32;\n}\n', 'pub trait Demo'),
+    ).toBeNull();
   });
 });
 
@@ -775,7 +786,9 @@ describe('a governed change is seen, not assumed', () => {
  */
 describe('a governed contract file that is not where the table says', () => {
   /** A minimal repo: the version files `evaluate` reads, and no governed trait. */
-  const governedRepo = (change: (repo: string, write: (rel: string, body: string) => void) => void): string => {
+  const governedRepo = (
+    change: (repo: string, write: (rel: string, body: string) => void) => void,
+  ): string => {
     const repo = mkdtempSync(join(tmpdir(), 'driver-protocol-gate-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
     const write = (rel: string, body: string) => {
@@ -807,12 +820,17 @@ describe('a governed contract file that is not where the table says', () => {
     // the change under test touches nothing governed. Before the fix the rule
     // produced no diff records, so the loop skipped it and the gate answered
     // `ok` — reporting on a contract it is not reading at all.
-    const repo = governedRepo((_, write) => write('packages/driver-api/src/unrelated.rs', '// nothing\n'));
+    const repo = governedRepo((_, write) =>
+      write('packages/driver-api/src/unrelated.rs', '// nothing\n'),
+    );
     try {
       const { violations } = evaluate({ cwd: repo, base: 'HEAD' });
       const missing = violations.filter((v) => v.code === 'contract-rule-file-missing');
       const kv = missing.find((v) => v.message.includes("rule 'key-value-driver'"));
-      expect(kv, `expected a contract-rule-file-missing for key-value-driver, got ${JSON.stringify(violations.map((v) => v.code))}`).toBeDefined();
+      expect(
+        kv,
+        `expected a contract-rule-file-missing for key-value-driver, got ${JSON.stringify(violations.map((v) => v.code))}`,
+      ).toBeDefined();
       expect(kv!.message).toContain(KV_RULE_FILE);
       expect(kv!.message).toContain('does not exist in the working tree');
     } finally {
@@ -835,7 +853,8 @@ describe('a governed contract file that is not where the table says', () => {
     try {
       const { violations } = evaluate({ cwd: repo, base: 'HEAD' });
       const kv = violations.find(
-        (v) => v.code === 'contract-rule-file-missing' && v.message.includes("rule 'key-value-driver'"),
+        (v) =>
+          v.code === 'contract-rule-file-missing' && v.message.includes("rule 'key-value-driver'"),
       );
       expect(kv, 'a deleted governed file must be reported, not read').toBeDefined();
       expect(kv!.message).toContain('removed or renamed it');
@@ -854,15 +873,20 @@ describe('a governed contract file that is not where the table says', () => {
       write(KV_RULE_FILE, KV_BODY);
       execFileSync('git', ['add', '-A'], { cwd: r, stdio: 'ignore' });
       execFileSync('git', ['commit', '-q', '-m', 'add kv'], { cwd: r, stdio: 'ignore' });
-      execFileSync('git', ['mv', KV_RULE_FILE, KV_RULE_FILE.replace('key_value.rs', 'kv_renamed.rs')], {
-        cwd: r,
-        stdio: 'ignore',
-      });
+      execFileSync(
+        'git',
+        ['mv', KV_RULE_FILE, KV_RULE_FILE.replace('key_value.rs', 'kv_renamed.rs')],
+        {
+          cwd: r,
+          stdio: 'ignore',
+        },
+      );
     });
     try {
       const { violations } = evaluate({ cwd: repo, base: 'HEAD' });
       const kv = violations.find(
-        (v) => v.code === 'contract-rule-file-missing' && v.message.includes("rule 'key-value-driver'"),
+        (v) =>
+          v.code === 'contract-rule-file-missing' && v.message.includes("rule 'key-value-driver'"),
       );
       expect(kv, 'a renamed governed file must be reported').toBeDefined();
       expect(kv!.message).toContain(KV_RULE_FILE);
@@ -877,6 +901,159 @@ describe('a governed contract file that is not where the table says', () => {
     // that silences the gate by covering less would fail here.
     const { violations } = evaluate({ cwd: ROOT, base: 'HEAD' });
     expect(violations.filter((v) => v.code === 'contract-rule-file-missing')).toEqual([]);
+  });
+});
+
+describe('classification — a contract that is new in this delivery', () => {
+  // The anchor resolves on the head side and not on the base side: the governed
+  // item arrived here. This used to be `breaking` with the reason "did not
+  // exist at the base ref (removed outright)" — a sentence describing the
+  // opposite of its own condition — so every newly registered contract added one
+  // false breaking, and the only way to clear the gate was a PROTOCOL_VERSION
+  // bump that AGENTS.md makes unsatisfiable (every plugin must move with it).
+  //
+  // These cases pin the *shape* of the fix, not one fixture: the classifier
+  // decides from the item's base-side absence, so it has to hold whether the
+  // whole file is new, the file existed and gained the item, or the file both
+  // gained the item and lost unrelated lines.
+  const NEW_TRAIT = `pub trait Demo: Send {
+    fn added(&self) -> u32;
+}
+`;
+
+  it('calls a contract in a file that has no base ref at all additive', () => {
+    const finding = classifyViaDiff(TRAIT_RULE, '', NEW_TRAIT);
+    expect(finding.cls).toBe('additive');
+    expect(finding.reason).toContain('is new in this delivery');
+  });
+
+  it('calls a contract added to a file that already existed at the base ref additive', () => {
+    // The counterweight to a "the file is new, so it is an addition" reading:
+    // the file is *not* new here, and the item still is. Keying the verdict on
+    // the file's base-side existence would report this addition as a removal.
+    const before = 'pub mod other;\n';
+    const after = `pub mod other;
+
+${NEW_TRAIT}`;
+    expect(findItemSpan(before, TRAIT_RULE.anchor)).toBeNull();
+    expect(classifyViaDiff(TRAIT_RULE, before, after).cls).toBe('additive');
+  });
+
+  it('still calls it additive when the same diff removes unrelated lines', () => {
+    // Guards against the tempting stronger guard "this diff removed nothing",
+    // which is satisfied by the first fixture and then reads this one as a
+    // removal of the governed item. What was removed here is `legacy_helper`,
+    // which no rule anchors, and the classifier may not infer more than that.
+    const before = 'pub mod other;\n\nfn legacy_helper() -> u32 {\n    0\n}\n';
+    const after = `pub mod other;
+
+${NEW_TRAIT}`;
+    const finding = classifyViaDiff(TRAIT_RULE, before, after);
+    expect(finding.cls).toBe('additive');
+  });
+
+  it('never calls a *removed* contract additive, even beside a new one', () => {
+    // The mirror image: `Demo` is gone at the head side and `Other` took its
+    // place in the same file, so the same diff both adds and removes. The
+    // removal must still be read as breaking — the fix must not have widened
+    // itself into "a diff that adds something is not breaking".
+    const before = `pub trait Demo: Send {
+    fn existing(&self) -> u32;
+}
+`;
+    const after = `pub trait Other: Send {
+    fn existing(&self) -> u32;
+}
+`;
+    const finding = classifyViaDiff(TRAIT_RULE, before, after);
+    expect(finding.cls).toBe('breaking');
+    expect(finding.reason).toContain('no longer resolves after the change');
+  });
+
+  it('never calls a signature that vanished additive, whatever surrounds it', () => {
+    const before = `pub trait Demo: Send {
+    fn existing(&self) -> u32;
+}
+
+pub trait Neighbour: Send {
+    fn kept(&self) -> u32;
+}
+`;
+    const after = `pub trait Demo: Send {
+    fn existing(&self) -> u32 {
+        0
+    }
+}
+
+pub trait Neighbour: Send {
+    fn kept(&self) -> u32;
+}
+`;
+    expect(classifyViaDiff(TRAIT_RULE, before, after).cls).not.toBe('additive');
+  });
+
+  it('stops claiming a new contract was removed, and names why it is additive', () => {
+    const finding = classifyViaDiff(STRUCT_RULE, '', 'pub struct Demo {\n    pub a: u32,\n}\n');
+    expect(finding.reason).not.toContain('removed outright');
+    expect(finding.reason).not.toContain('did not exist at the base ref (removed');
+    expect(finding.reason).toContain('nothing compiled against the base ref');
+  });
+
+  it('moves the crate version for a new contract, and not the protocol', () => {
+    // The obligation the new class carries. A contract that did not exist at the
+    // base ref changes what the published crate offers, so the crate SemVer has
+    // to move; it changes no wire format, so a PROTOCOL_VERSION bump would be a
+    // claim the migration doc cannot support.
+    expect(COMPAT_MATRIX.classes.additive.requires).toContain('crateVersion');
+    expect(COMPAT_MATRIX.classes.additive.requires).not.toContain('protocol');
+  });
+});
+
+/** Narrow `parseGateArgs`'s verdict so the assertions below read as prose. */
+function parseBase(argv: string[]): { ok: boolean; base?: string; message?: string } {
+  const res = parseGateArgs(argv, { flags: ['--base'] });
+  return res.ok ? { ok: true, base: res.values['--base'] } : { ok: false, message: res.message };
+}
+
+describe('the CLI base flag', () => {
+  it('accepts both --base=<ref> and --base <ref> as the same ref', () => {
+    // The space form is what an operator types while diagnosing a false
+    // positive. Ignoring it silently measures a different base than the one
+    // asked for and still reports ok.
+    expect(parseBase(['--base=abc1234'])).toEqual({ ok: true, base: 'abc1234' });
+    expect(parseBase(['--base', 'abc1234'])).toEqual({ ok: true, base: 'abc1234' });
+    expect(parseBase([])).toEqual({ ok: true, base: undefined });
+  });
+
+  it('refuses --base with no value rather than falling back to the default', () => {
+    // The fallback is the dangerous half: defaulting here would report ok for
+    // the merge base while the caller believed they had pinned a ref.
+    expect(parseBase(['--base']).ok).toBe(false);
+    expect(parseBase(['--base', '--other']).ok).toBe(false);
+    expect(parseBase(['--base=']).ok).toBe(false);
+  });
+
+  it('refuses an unknown flag instead of ignoring it', () => {
+    const res = parseGateArgs(['--nosuchflag=1'], { flags: ['--base'] });
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.message).toContain('--nosuchflag=1');
+  });
+
+  it('refuses a repeated flag, which is ambiguous about which ref was meant', () => {
+    expect(parseBase(['--base', 'abc', '--base', 'def']).ok).toBe(false);
+  });
+
+  it('measures against the ref given after --base, and prints it', () => {
+    const res = spawnSync(
+      process.execPath,
+      ['scripts/check-driver-protocol-compat.mjs', '--base', 'HEAD'],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+      },
+    );
+    expect(res.status, res.stdout + res.stderr).toBe(0);
+    expect(res.stdout).toContain('base HEAD;');
   });
 });
 
@@ -899,5 +1076,35 @@ describe('the shipped CLI', () => {
       encoding: 'utf8',
     });
     expect(res.stdout).toMatch(/base [0-9a-f]{7,40};/);
+  });
+
+  it('exits non-zero on an unknown flag, so a typo cannot read as a clean run', () => {
+    // Exit 2, distinct from the 1 that means "ran and found a violation": a
+    // usage error must not be filed in CI logs as a real protocol finding.
+    const res = spawnSync(
+      process.execPath,
+      ['scripts/check-driver-protocol-compat.mjs', '--nosuchflag=1'],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+      },
+    );
+    expect(res.status).toBe(2);
+    expect(res.stderr).toContain("unknown argument '--nosuchflag=1'");
+    expect(res.stderr).toContain('usage:');
+    expect(res.stdout).not.toContain('ok (base');
+  });
+
+  it('exits non-zero when --base is given no value', () => {
+    const res = spawnSync(
+      process.execPath,
+      ['scripts/check-driver-protocol-compat.mjs', '--base'],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+      },
+    );
+    expect(res.status).toBe(2);
+    expect(res.stderr).toContain("argument '--base' requires a value");
   });
 });

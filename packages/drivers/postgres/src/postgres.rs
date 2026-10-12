@@ -57,6 +57,14 @@ impl PostgresDriver {
 
 #[async_trait]
 impl DatabaseDriver for PostgresDriver {
+    fn supports_bound_writes(&self) -> bool {
+        true
+    }
+
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        Some(SqlLiteralDialect::Postgres)
+    }
+
     fn default_host(&self) -> Option<&'static str> {
         Some(crate::connection::DEFAULT_HOST)
     }

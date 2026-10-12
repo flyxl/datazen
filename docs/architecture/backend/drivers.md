@@ -32,7 +32,7 @@ Driver 基础能力包括：
 - connect / test_connection / disconnect
 - get_databases / get_tables / get_table_schema
 - query / query_multi / query_stream
-- query_with_params / execute
+- query_with_params / execute / execute_with_params
 - transaction
 - EXPLAIN
 - Driver Commands
@@ -50,6 +50,10 @@ cleanup_query_execution
 ```
 
 只有实际声明精确取消能力的 Driver 才会被 Host 当作 cancellable；兼容默认实现不会自动获得取消能力。
+
+Host 生成的写语句必须把 SQL 模板与 `Vec<Value>` 分开，通过 `parameter_placeholder()` 和 `execute_with_params()` 传值；没有绑定写能力的驱动返回 `Unsupported`，Host 在开启事务前拒绝该批写入。`build_update_statement()` / `build_delete_statement()` 生成的预览只含占位符，不能把值插入 SQL 文本。
+
+SQL 筛选与 SQL 文件产物使用 `try_format_sql_literal()`。每个 SQL 驱动显式声明 `SqlLiteralDialect`，共享格式器按方言使用对会话转义模式稳定的表示（例如 MySQL 的 UTF-8 十六进制转换、PostgreSQL / DuckDB 的 dollar-quoted 文本）；未声明方言时返回 `Unsupported`，不会猜测反斜杠规则。无方言的键值 / 文档驱动不应调用 SQL 字面量接口。旧的无结果 `format_sql_literal()` 和内插式 `build_*_sql()` 仅保留兼容，产品写路径不使用它们。
 
 ### 2.1 Schema 元数据目标
 

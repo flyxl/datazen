@@ -212,18 +212,31 @@ pub async fn execute_data_sync(
     request: SyncRunRequest,
     profile: Option<crate::store::MigrationProfileRef>,
 ) -> Result<DataSyncExecutionResponse, CommandError> {
-    let mut run =
-        crate::commands::history::start_migration_run(&state, "dataSync", profile.as_ref()).await;
-    run.selected_count = request.selection.rows.len() as u64;
-    if let Ok(plan) = plans::peek_plan(&request.plan_id) {
-        run.source_connection_id = state
-            .connection_manager
-            .owner_connection_id(&plan.source_db_session_id)
-            .await;
-        run.target_connection_id = state
-            .connection_manager
-            .owner_connection_id(&plan.target_db_session_id)
-            .await;
+    // A consumed-plan receipt identifies an existing execution. Replaying it
+    // must neither write again nor invent a second migration-history run.
+    let replay = jobs::find_apply_receipt_for_plan(&state, &request.plan_id)
+        .await
+        .is_ok_and(|receipt| receipt.is_some());
+    let mut run = if replay {
+        None
+    } else {
+        Some(
+            crate::commands::history::start_migration_run(&state, "dataSync", profile.as_ref())
+                .await,
+        )
+    };
+    if let Some(run) = run.as_mut() {
+        run.selected_count = request.selection.rows.len() as u64;
+        if let Ok(plan) = plans::peek_plan(&request.plan_id) {
+            run.source_connection_id = state
+                .connection_manager
+                .owner_connection_id(&plan.source_db_session_id)
+                .await;
+            run.target_connection_id = state
+                .connection_manager
+                .owner_connection_id(&plan.target_db_session_id)
+                .await;
+        }
     }
     let (response, cancelled) = match crate::commands::history::validate_migration_profile_ref(
         &state,
@@ -240,8 +253,10 @@ pub async fn execute_data_sync(
             execution_response_and_cancelled(execute_data_sync_plan_impl(&state, request).await)
         }
     };
-    crate::commands::history::finish_data_sync_migration_run(&state, run, &response, cancelled)
-        .await;
+    if let Some(run) = run {
+        crate::commands::history::finish_data_sync_migration_run(&state, run, &response, cancelled)
+            .await;
+    }
     Ok(response)
 }
 
@@ -250,6 +265,9 @@ pub(crate) fn execution_response_from_result(
 ) -> DataSyncExecutionResponse {
     match result {
         Ok(result) => DataSyncExecutionResponse::from_result(result),
+        Err(CommandError::DataSyncPartiallyApplied(committed)) => {
+            DataSyncExecutionResponse::partially_applied(committed)
+        }
         Err(CommandError::DataSyncOutcomeUnknown(error)) => {
             DataSyncExecutionResponse::unknown(error)
         }

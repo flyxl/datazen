@@ -18,7 +18,7 @@ async fn count_scoped_source_rows(
     scope: &crate::data_transfer::recordset::SourceScope,
     limit: Option<u64>,
 ) -> Result<u64, CommandError> {
-    let relation = crate::data_sync::sql::qualify_relation_sql(
+    let relation = datazen_driver_api::sql_identifiers::qualify_relation_sql(
         &driver.driver_type(),
         Some(&endpoint.database),
         endpoint.normalized_schema(),

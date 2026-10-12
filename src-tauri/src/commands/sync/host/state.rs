@@ -5,7 +5,7 @@
 //! ChangeSet and reviewed selection only in process memory; neither contains a
 //! live session id in durable storage. Cancel intent belongs to the Job record.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(test)]
@@ -68,8 +68,11 @@ static SELECTIONS: LazyLock<Mutex<HashMap<String, StoredSelection>>> =
 static CONFIRMED_SELECTIONS: LazyLock<Mutex<HashMap<String, StoredSelection>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Last host-observed failure per Job for in-process diagnostics. Durable
-/// details contain only stable safe reason codes.
+/// A completed comparison may still be publishing its process-local review.
+static PENDING_PREVIEWS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Last host-observed failure; durable details expose only safe reason codes.
 static FAILURES: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -162,6 +165,18 @@ pub(crate) fn confirmed_selection(plan_id: &str) -> Option<StoredSelection> {
     lock(&CONFIRMED_SELECTIONS).get(plan_id).cloned()
 }
 
+pub(crate) fn mark_preview_pending(job_id: &str) {
+    lock(&PENDING_PREVIEWS).insert(job_id.to_owned());
+}
+
+pub(crate) fn mark_preview_finished(job_id: &str) {
+    lock(&PENDING_PREVIEWS).remove(job_id);
+}
+
+pub(crate) fn preview_pending(job_id: &str) -> bool {
+    lock(&PENDING_PREVIEWS).contains(job_id)
+}
+
 pub(crate) fn record_failure(job_id: &str, message: impl Into<String>) {
     lock(&FAILURES).insert(job_id.to_string(), message.into());
 }
@@ -169,4 +184,36 @@ pub(crate) fn record_failure(job_id: &str, message: impl Into<String>) {
 #[cfg(test)]
 pub(crate) fn failure_of(job_id: &str) -> Option<String> {
     lock(&FAILURES).get(job_id).cloned()
+}
+
+/// Allowlisted guidance only. Never project row values or raw driver diagnostics
+/// into a Job view (including the live in-process view).
+pub(crate) fn safe_failure_of(job_id: &str) -> Option<String> {
+    lock(&FAILURES)
+        .get(job_id)
+        .map(String::as_str)
+        .and_then(safe_failure_message)
+        .map(str::to_owned)
+}
+
+fn safe_failure_message(message: &str) -> Option<&'static str> {
+    if message.contains("tupleRange") {
+        Some("Invalid recordset: tupleRange must match the complete primary key in declared order.")
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod failure_projection_tests {
+    use super::safe_failure_message;
+
+    #[test]
+    fn recordset_guidance_never_echoes_row_values_or_driver_text() {
+        let message = "tupleRange columns must match primary key; password=secret; row=private";
+        assert_eq!(safe_failure_message(message), Some(
+            "Invalid recordset: tupleRange must match the complete primary key in declared order."
+        ));
+        assert_eq!(safe_failure_message("driver password=secret"), None);
+    }
 }

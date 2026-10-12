@@ -1,6 +1,6 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{DriverError, Value};
+use crate::db::{BoundSqlStatement, DriverError, Value};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -297,16 +297,23 @@ fn build_row_change_plan(
                     .map(|(column, value)| format!("PK {column}={}", value_summary(value))),
             )
             .collect();
+        let sql_template = if change.delete_marked {
+            driver
+                .build_delete_statement(&table.table, &pk_columns)
+                .map_err(CommandError::Driver)?
+                .sql
+        } else {
+            driver
+                .build_update_statement(&table.table, &set_columns, &pk_columns)
+                .map_err(CommandError::Driver)?
+                .sql
+        };
         let statement = PlannedStatement {
             row_identity: change.row_identity.clone(),
             original_values: change.original_values.clone(),
             current_values: change.current_values.clone(),
             changed_columns: change.changed_columns.clone(),
-            sql_template: if change.delete_marked {
-                driver.build_delete_sql(&table.table, &pk_columns)
-            } else {
-                driver.build_update_sql(&table.table, &set_columns, &pk_columns)
-            },
+            sql_template,
             parameter_summary,
         };
 
@@ -395,6 +402,44 @@ fn validate_immutable_plan(
     Ok(rebuilt)
 }
 
+fn bound_statement_for_plan(
+    driver: &dyn crate::db::DatabaseDriver,
+    table: &str,
+    planned: &PlannedStatement,
+    delete: bool,
+) -> Result<BoundSqlStatement, CommandError> {
+    let pk_columns: Vec<(&str, Option<Value>)> = planned
+        .row_identity
+        .iter()
+        .map(|(column, value)| (column.as_str(), value.clone()))
+        .collect();
+    if delete {
+        return driver
+            .build_delete_statement(table, &pk_columns)
+            .map_err(CommandError::Driver);
+    }
+
+    let set_columns: Vec<(&str, Option<Value>)> = planned
+        .changed_columns
+        .iter()
+        .map(|column| {
+            planned
+                .current_values
+                .get(column)
+                .cloned()
+                .map(|value| (column.as_str(), value))
+                .ok_or_else(|| {
+                    CommandError::Validation(format!(
+                        "Missing current value for changed column '{column}'"
+                    ))
+                })
+        })
+        .collect::<Result<_, _>>()?;
+    driver
+        .build_update_statement(table, &set_columns, &pk_columns)
+        .map_err(CommandError::Driver)
+}
+
 pub(crate) async fn preview_pending_changes_impl(
     state: &AppState,
     table: RowChangeTableContext,
@@ -437,6 +482,19 @@ async fn execute_row_change_plan_impl(
         });
     }
 
+    // Build every statement before opening a transaction. Drivers without
+    // bound-write support reject the plan here, before any database side effect.
+    let updates = plan
+        .updates
+        .iter()
+        .map(|planned| bound_statement_for_plan(driver.as_ref(), &plan.table.table, planned, false))
+        .collect::<Result<Vec<_>, _>>()?;
+    let deletes = plan
+        .deletes
+        .iter()
+        .map(|planned| bound_statement_for_plan(driver.as_ref(), &plan.table.table, planned, true))
+        .collect::<Result<Vec<_>, _>>()?;
+
     let session_open = state
         .session_transactions
         .lock()
@@ -462,9 +520,9 @@ async fn execute_row_change_plan_impl(
     let result: Result<(Vec<RowCommitStatementResult>, u64), CommandError> = async {
         let mut statements = Vec::with_capacity(plan.updates.len() + plan.deletes.len());
         let mut affected_rows = 0;
-        for planned in &plan.updates {
+        for (planned, statement) in plan.updates.iter().zip(&updates) {
             let affected = driver
-                .execute(handle, &planned.sql_template)
+                .execute_with_params(handle, &statement.sql, &statement.parameters)
                 .await
                 .cmd_err("commit_pending_changes")?;
             if affected != 1 {
@@ -479,9 +537,9 @@ async fn execute_row_change_plan_impl(
                 affected_rows: affected,
             });
         }
-        for planned in &plan.deletes {
+        for (planned, statement) in plan.deletes.iter().zip(&deletes) {
             let affected = driver
-                .execute(handle, &planned.sql_template)
+                .execute_with_params(handle, &statement.sql, &statement.parameters)
                 .await
                 .cmd_err("commit_pending_changes")?;
             if affected != 1 {
@@ -663,6 +721,25 @@ pub(crate) async fn commit_row_updates_impl(
         validate_legacy_pk_columns(&batch.pk_columns, "Row update")?;
     }
 
+    let statements = updates
+        .iter()
+        .map(|batch| {
+            let set_columns: Vec<(&str, Option<Value>)> = batch
+                .set_columns
+                .iter()
+                .map(|column| (column.column.as_str(), column.value.clone()))
+                .collect();
+            let pk_columns: Vec<(&str, Option<Value>)> = batch
+                .pk_columns
+                .iter()
+                .map(|column| (column.column.as_str(), column.value.clone()))
+                .collect();
+            driver
+                .build_update_statement(&table, &set_columns, &pk_columns)
+                .map_err(CommandError::Driver)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let session_open = state
         .session_transactions
         .lock()
@@ -690,20 +767,9 @@ pub(crate) async fn commit_row_updates_impl(
     }
 
     let result: Result<(), CommandError> = async {
-        for batch in &updates {
-            let set_columns: Vec<(&str, Option<Value>)> = batch
-                .set_columns
-                .iter()
-                .map(|c| (c.column.as_str(), c.value.clone()))
-                .collect();
-            let pk_columns: Vec<(&str, Option<Value>)> = batch
-                .pk_columns
-                .iter()
-                .map(|c| (c.column.as_str(), c.value.clone()))
-                .collect();
-            let sql = driver.build_update_sql(&table, &set_columns, &pk_columns);
+        for statement in &statements {
             driver
-                .execute(&handle, &sql)
+                .execute_with_params(&handle, &statement.sql, &statement.parameters)
                 .await
                 .cmd_err("commit_row_updates")?;
         }
@@ -784,6 +850,20 @@ pub(crate) async fn commit_row_deletes_impl(
         validate_legacy_pk_columns(&batch.pk_columns, "Row delete")?;
     }
 
+    let statements = deletes
+        .iter()
+        .map(|batch| {
+            let pk_columns: Vec<(&str, Option<Value>)> = batch
+                .pk_columns
+                .iter()
+                .map(|column| (column.column.as_str(), column.value.clone()))
+                .collect();
+            driver
+                .build_delete_statement(&table, &pk_columns)
+                .map_err(CommandError::Driver)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
     let session_open = state
         .session_transactions
         .lock()
@@ -808,15 +888,9 @@ pub(crate) async fn commit_row_deletes_impl(
     }
 
     let result: Result<(), CommandError> = async {
-        for batch in &deletes {
-            let pk_columns: Vec<(&str, Option<Value>)> = batch
-                .pk_columns
-                .iter()
-                .map(|c| (c.column.as_str(), c.value.clone()))
-                .collect();
-            let sql = driver.build_delete_sql(&table, &pk_columns);
+        for statement in &statements {
             driver
-                .execute(&handle, &sql)
+                .execute_with_params(&handle, &statement.sql, &statement.parameters)
                 .await
                 .cmd_err("commit_row_deletes")?;
         }
@@ -871,6 +945,12 @@ pub async fn commit_row_deletes(
 mod tests {
     use super::*;
     use crate::testing::app_state::TestAppState;
+
+    async fn with_parameterized_driver() -> TestAppState {
+        let mut options = crate::testing::app_state::rich_mock_options();
+        options.parameterized_writes = true;
+        TestAppState::with_options(options).await
+    }
 
     fn table_context(connection_id: &str, db_session_id: &str) -> RowChangeTableContext {
         RowChangeTableContext {
@@ -928,7 +1008,7 @@ mod tests {
 
     #[tokio::test]
     async fn preview_builds_driver_sql_without_opening_a_transaction() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let (_, conn_id) = test.save_and_connect("preview-only").await;
         let plan = preview_pending_changes_impl(
             &test.state,
@@ -941,7 +1021,8 @@ mod tests {
         assert_eq!(plan.table.db_session_id, conn_id);
         assert_eq!(plan.updates.len(), 1);
         assert!(plan.updates[0].sql_template.contains("UPDATE \"users\""));
-        assert!(plan.updates[0].sql_template.contains("\"id\" = 1"));
+        assert!(plan.updates[0].sql_template.contains("\"id\" = ?2"));
+        assert!(!plan.updates[0].sql_template.contains("Updated"));
         assert!(!crate::commands::session_transaction_status_impl(
             &test.state,
             plan.table.db_session_id.clone()
@@ -954,6 +1035,7 @@ mod tests {
     async fn commit_reuses_plan_fingerprint_and_returns_plan_id() {
         let mut options = crate::testing::app_state::rich_mock_options();
         options.execute_rows_affected = 1;
+        options.parameterized_writes = true;
         let test = TestAppState::with_options(options).await;
         let (_, conn_id) = test.save_and_connect("commit-plan").await;
         let plan = preview_pending_changes_impl(
@@ -982,7 +1064,7 @@ mod tests {
 
     #[tokio::test]
     async fn commit_rejects_stale_fingerprint_before_execution() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let (_, conn_id) = test.save_and_connect("stale-plan").await;
         let plan = preview_pending_changes_impl(
             &test.state,
@@ -1012,7 +1094,7 @@ mod tests {
 
     #[tokio::test]
     async fn preview_rejects_changes_without_primary_key_identity() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let (_, conn_id) = test.save_and_connect("preview-no-pk").await;
         let error = preview_pending_changes_impl(
             &test.state,
@@ -1088,6 +1170,7 @@ mod tests {
     async fn commit_rejects_database_context_change_without_switching_session() {
         let mut options = crate::testing::app_state::rich_mock_options();
         options.execute_rows_affected = 1;
+        options.parameterized_writes = true;
         let test = TestAppState::with_options(options).await;
         let (_, conn_id) = test.save_and_connect("context-database").await;
         let plan = preview_pending_changes_impl(
@@ -1119,6 +1202,7 @@ mod tests {
     async fn commit_allows_concrete_table_schema_when_connection_schema_is_unspecified() {
         let mut options = crate::testing::app_state::rich_mock_options();
         options.execute_rows_affected = 1;
+        options.parameterized_writes = true;
         let test = TestAppState::with_options(options).await;
         let (_, conn_id) = test.save_and_connect("context-schema-default").await;
         let plan = preview_pending_changes_impl(
@@ -1148,6 +1232,7 @@ mod tests {
     async fn commit_rejects_explicit_schema_context_change() {
         let mut options = crate::testing::app_state::rich_mock_options();
         options.execute_rows_affected = 1;
+        options.parameterized_writes = true;
         let test = TestAppState::with_options(options).await;
         let mut config =
             crate::testing::app_state::sample_postgres_config("context-schema-explicit");
@@ -1180,7 +1265,7 @@ mod tests {
 
     #[tokio::test]
     async fn commit_row_updates_success() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let (_, conn_id) = test.save_and_connect("data-cfg").await;
         commit_row_updates_impl(
             &test.state,
@@ -1213,7 +1298,7 @@ mod tests {
 
     #[tokio::test]
     async fn commit_row_updates_rejects_read_only_connection() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let mut config = crate::testing::app_state::sample_postgres_config("ro-edit");
         config.read_only = true;
         test.store.save_connection(config).await.unwrap();
@@ -1240,7 +1325,7 @@ mod tests {
 
     #[tokio::test]
     async fn commit_row_updates_joins_open_session_transaction() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let (_, conn_id) = test.save_and_connect("tx-edit").await;
         crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
             .await
@@ -1274,7 +1359,7 @@ mod tests {
 
     #[tokio::test]
     async fn commit_row_deletes_success() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let (_, conn_id) = test.save_and_connect("data-del").await;
         commit_row_deletes_impl(
             &test.state,
@@ -1293,7 +1378,7 @@ mod tests {
 
     #[tokio::test]
     async fn commit_row_deletes_rejects_read_only_connection() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let mut config = crate::testing::app_state::sample_postgres_config("ro-del");
         config.read_only = true;
         test.store.save_connection(config).await.unwrap();
@@ -1316,7 +1401,7 @@ mod tests {
 
     #[tokio::test]
     async fn commit_row_deletes_rejects_empty_pk() {
-        let test = TestAppState::with_tables().await;
+        let test = with_parameterized_driver().await;
         let (_, conn_id) = test.save_and_connect("data-del-empty-pk").await;
         let err = commit_row_deletes_impl(
             &test.state,

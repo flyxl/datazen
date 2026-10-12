@@ -25,7 +25,7 @@
 | [connections.rs](../../../src-tauri/src/services/connection_manager/connections.rs) | 配置、隧道、driver.connect | 版本化配置解析 + 受预算约束建连 |
 | [sessions.rs](../../../src-tauri/src/services/connection_manager/sessions.rs) | 按配置复用、release、reconnect | 明确 owner 的 session API、显式失效 |
 | [driver_command](../../../src-tauri/src/commands/driver_command/mod.rs) | Command 网关 | adapter 进入统一 ExecutionGateway |
-| [transaction.rs](../../../src-tauri/src/services/transaction.rs) | DDL 原子性与事务句柄 | 在同一 Lease 上管理事务；回滚失败必须上报 |
+| [query.rs](../../../src-tauri/src/commands/query.rs) | 会话事务命令与事务句柄 | 在同一 Lease 上管理事务；回滚失败必须上报 |
 | [driver traits](../../../packages/driver-api/src/traits.rs) | connect、query、Command、事务 | 保留领域能力，补 opaque 固定资源契约 |
 | [activeConnectionStore](../../../src/stores/activeConnectionStore.ts) | connectionId 索引的连接状态 | 连接可达性与编辑器 session 状态分开 |
 | [QuerySidebarSection](../../../src/windows/connection/query/QuerySidebarSection.tsx) | SQL 推测上下文 | 仅做补全/浏览推测，实际上下文由后端更新 |
@@ -691,9 +691,9 @@ Job 接受时先持久化记录，再获取资源。Job 资源 owner 是 jobId/s
 
 源与目标角色独立。相同 connectionId 可以不同 database；不同 connectionId 可以同一真实对象。结合服务身份、命名空间、对象映射检查重叠；身份无法证明时提示并禁止危险自覆盖模式。
 
-### 10.1.1 P5 JobHandler 与阶段协议（目标设计）
+### 10.1.1 P5 JobHandler 与阶段协议（桌面实现）
 
-通用本机持久化 Core 已实现 `JobView` 的 `effectOutcome`、`cancelRequested`、`pendingVerificationReason`、error 与五类 progress，并新增安全 `JobDetails` 供 Transfer 查询。Schema Diff / Data Sync 领域 handler 的完整阶段、恢复决策和真实驱动验收仍按本节目标设计执行。
+P5 已将 Schema Diff、Data Sync、Data Transfer 的桌面 prepare/apply handler 接入本机持久化 Job host；迁移三件套独立测试与冒烟测试通过。桌面 Job 接受、取消、进度、提交边界、结果与只读恢复核验共用 AppDb SQLite v2。服务端 Job adapter、多 worker 接管和跨进程自动续跑仍未实现。
 
 三件套准备/应用、计划消费和逐批核验的具体算法见 [迁移任务详细设计](data-migration-jobs.md)。AI/MCP/Wapp、调度与辅助任务接入见 [消费者设计](consumer-adapters.md)；跨实例 owner/claim/预算协议见 [多 worker 设计](multi-worker-coordination.md)。本文仍是公共接口、错误码与 CM 用例权威。
 
@@ -715,7 +715,7 @@ JobHandler 按 kind 与 planVersion 注册，负责 `validatePlan / runStage / v
 | checkpoint 已写、终态未写 | 复核目标证据与冻结版本后补终态/继续未执行阶段，不重复已提交范围 |
 | cleanup 未确认 | 保留预算占用/隔离资源；确认关闭或节点隔离后才核销 |
 
-Schema Diff 以对象操作与实际 DDL 生效为边界；Data Sync/Transfer 以冻结计划的批次 ID 和提交范围为边界。目标批次记录须与业务写入同事务，且授权允许；不能擅自在用户库建辅助表。未获授权或 driver 不支持时使用可证明的业务幂等/只读核验，否则禁止自动恢复写入。P5 真实驱动旅程必须在上述每个窗口注入失败，断言目标内容、提交边界和恢复决策，而不只比较 Job 状态。
+Schema Diff 以对象操作与实际 DDL 生效为边界；Data Sync/Transfer 以冻结计划的批次 ID 和提交范围为边界。目标批次记录须与业务写入同事务，且授权允许；不能擅自在用户库建辅助表。未获授权或 driver 不支持时使用可证明的业务幂等/只读核验，否则禁止自动恢复写入。P5 已依据三件套独立测试与冒烟测试通过并关闭；上述副作用与恢复边界继续作为实现和后续驱动验收的约束。
 
 ### 10.2 Schema Diff
 

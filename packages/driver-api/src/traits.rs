@@ -161,8 +161,24 @@ pub trait DatabaseDriver: Send + Sync {
         DdlAtomicity::Unknown
     }
 
+    /// Legacy best-effort SQL literal formatter. New code should use
+    /// [`Self::try_format_sql_literal`], which requires an explicit dialect.
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
         sql_text::format_sql_literal(value)
+    }
+
+    /// The literal grammar this driver can safely render for SQL artifacts.
+    /// Drivers with session-dependent or unsupported syntax must leave this
+    /// unset; their export/filter callers then fail closed.
+    fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
+        None
+    }
+
+    fn try_format_sql_literal(&self, value: &Option<Value>) -> Result<String, DriverError> {
+        let dialect = self.sql_literal_dialect().ok_or_else(|| {
+            DriverError::Unsupported("this driver has no declared SQL literal formatter".into())
+        })?;
+        sql_text::format_sql_literal_for_dialect(value, dialect)
     }
 
     fn build_update_sql(
@@ -177,6 +193,25 @@ pub trait DatabaseDriver: Send + Sync {
     /// Build `DELETE FROM … WHERE pk…` for row-level deletes (mirrors `build_update_sql`).
     fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
         sql_text::build_delete_sql(self, table, pk_columns)
+    }
+
+    /// Build an UPDATE with driver placeholders and values kept out of SQL.
+    fn build_update_statement(
+        &self,
+        table: &str,
+        set_columns: &[(&str, Option<Value>)],
+        pk_columns: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        sql_text::build_update_statement(self, table, set_columns, pk_columns)
+    }
+
+    /// Build a DELETE with driver placeholders and values kept out of SQL.
+    fn build_delete_statement(
+        &self,
+        table: &str,
+        pk_columns: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        sql_text::build_delete_statement(self, table, pk_columns)
     }
 
     /// The host this driver dials when the connection config leaves `host` unset.
@@ -366,6 +401,13 @@ pub trait DatabaseDriver: Send + Sync {
         sql: &str,
         params: &[Value],
     ) -> Result<QueryResult, DriverError>;
+
+    /// Whether this driver implements both placeholder generation and bound
+    /// DML execution. Callers use this to reject writes before opening a
+    /// transaction.
+    fn supports_bound_writes(&self) -> bool {
+        false
+    }
 
     /// Render a parameter for this dialect. Unsupported drivers must fail before writes.
     /// `data_type` comes from the inspected target column metadata.

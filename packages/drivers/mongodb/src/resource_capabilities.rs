@@ -9,11 +9,15 @@
 
 use std::collections::BTreeMap;
 
+// `DataSupport` is named at the one place the `data` domain is declared; the
+// `backup` cell is set with `Default::default()`, so `BackupSupport` is only
+// ever written in the comment that explains why it stays `Unknown`.
 use datazen_driver_api::capabilities::{
     Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
     PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
     TransactionObservation as TransactionObservationCap, TransactionSupport,
 };
+use datazen_driver_api::capability_domains::DataSupport;
 use datazen_driver_api::namespace::{
     CanonicalIdRules, CaseFolding, CaseRules, NamespaceLevel, NamespaceLevelKind,
     NamespacePathSegment, NamespaceShape,
@@ -114,6 +118,50 @@ pub(crate) fn mongodb_capability_set() -> CapabilitySet {
         max_open_transactions: None,
     };
     capabilities.ddl_atomicity = ddl_atomicity_support();
+
+    // `rowRead` / `rowWrite` / `streamingResults`, measured rather than assumed.
+    //
+    // `rowRead` and `rowWrite` hold: `resource.rs:340` routes `query` to
+    // `query_multi_at` and `resource.rs:362` routes `execute` to `execute_at`,
+    // and the `rows_affected` that comes back is carried into the chunk at
+    // `resource.rs:370` rather than invented on this side.
+    //
+    // `streamingResults` does NOT hold, which is what keeps this off
+    // `StreamingReadWrite`. `resource.rs:352` writes the chunk with
+    // `rows: statement.rows.clone()`: the rows are *cloned out of an
+    // already-materialized* `StatementResult` whose `rows` is a fully built
+    // `Vec` (`driver-api/src/types.rs:301`). Awaiting the sink write is real
+    // backpressure, but only between statements — the last document of
+    // statement 0 was already in memory before its first byte was handed
+    // over, so no caller can pull a cursor incrementally. This crate does
+    // reach a real MongoDB cursor elsewhere, but through the legacy
+    // `ConnectionHandle` API rather than this contract, and that is not
+    // evidence for anything `execute_on_resource` does.
+    capabilities.data = DataSupport::BufferedReadWrite;
+
+    // Declared, and left at `BackupSupport::Unknown`, on purpose.
+    //
+    // A MongoDB deployment can be dumped and restored — this crate overrides
+    // neither `dump_database` nor `restore_sql`, so both ride the shared
+    // `sql_dump` defaults (`driver-api/src/traits.rs:918` / `traits.rs:990`),
+    // and the deployment-level tools (`mongodump` / `mongorestore`) the
+    // product reaches for a server live outside both. But none of that runs
+    // through `ResourceProvider`: `execute_on_resource` recognizes only
+    // `query` and `execute` (`resource.rs:338`), so this contract has no
+    // method that produces or consumes a backup artifact.
+    //
+    // Neither filling variant would be honest. `ArtifactAndRestore` would
+    // advertise a surface this provider does not have, and a host that
+    // trusted it would clear `require_backup_artifact()` and then hit the
+    // dead end above. `Unsupported` is the opposite lie — it would tell the
+    // host MongoDB cannot be backed up, which is plainly false of the
+    // deployment and is exactly the kind of buried feature this cell exists
+    // not to create. "This contract cannot express the backup capability" and
+    // "this database cannot be backed up" are two different statements, so the
+    // cell stays undeclared (`Default::default()` is `Unknown`) and the caller
+    // asks.
+    capabilities.backup = Default::default();
+
     capabilities
 }
 

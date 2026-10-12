@@ -6,6 +6,7 @@
 
 use super::test_support::*;
 use crate::resource_capabilities::mongodb_capability_set;
+use datazen_driver_api::session::{SessionHandleKind, SessionHandleRef};
 
 #[test]
 fn factory_capabilities_refuse_everything_the_driver_cannot_do() {
@@ -370,6 +371,90 @@ async fn the_driver_itself_refuses_a_session_wide_cancel() {
         driver.cancel_query(&handle).await,
         Err(DriverError::Unsupported(_))
     ));
+}
+
+/// A `SessionHandleRef` as the host would hand it over: same resource, same
+/// epoch, a name. mongodb issues no session-scoped handle to name, which is the
+/// point of the refusal tests.
+fn session_handle_for(handle: &ResourceHandle) -> SessionHandleRef {
+    SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    )
+}
+
+#[tokio::test]
+async fn close_handle_on_an_already_closed_resource_is_idempotent_success() {
+    // §6.5 names exactly one legitimate repeat: the resource handle is already
+    // marked closed, so the close has happened and re-doing it is not
+    // information. A host that released the lease before this ref went away is
+    // not a caller that missed its own handle, so it must not be told an error
+    // — `LeaseManager::release` is fail-closed and would keep the lease parked
+    // forever. The refusal stays the honest answer for a *live* resource.
+    let (provider, fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    handle.mark_closed();
+
+    provider
+        .close_handle(&handle, &session_handle_for(&handle))
+        .await
+        .expect("closing a handle on an already-closed resource is idempotent success");
+
+    // Nothing may be touched on the way to that `Ok`: no wire traffic, no
+    // transaction, and no second permit release — `close_resource` already
+    // released the one the resource held.
+    assert!(handle.is_closed());
+    assert_eq!(budget.released(), 0);
+    fake.with(|wire| {
+        assert!(wire.statements.is_empty());
+        assert_eq!(wire.begin_calls, 0);
+    });
+}
+
+#[tokio::test]
+async fn close_handle_refuses_a_foreign_ref_even_on_a_closed_resource() {
+    // Ordering, not just presence: `is_closed` must come *after* the ownership
+    // check, so a closed resource never excuses a ref that belongs to another
+    // one. Matching postgres exactly is what keeps one behaviour across the
+    // nine providers instead of two subtly different contracts.
+    //
+    // The premise has to land on the handle actually handed to `close_handle`,
+    // not merely on some handle in the test: a *foreign* handle that was never
+    // closed yields the same ownership refusal in both orders, so the test
+    // would pass even with the short-circuit hoisted above `handle.check`. So
+    // the one passed in is marked closed too — that is the only shape where the
+    // two orders disagree and this test pins which one runs.
+    //
+    // The foreign handle is another *provider's*, matching the four sibling
+    // drivers (and the trait doc's "belongs to another resource"), so the one
+    // refusal named below is the ownership one rather than an epoch collision.
+    let (provider, _fake, budget) = provider();
+    let handle = acquire(&provider, &budget).await;
+    let foreign =
+        ResourceHandle::issue("some-other-provider", "not-issued", handle.runtime_epoch());
+    foreign.mark_closed();
+    let session_handle = SessionHandleRef::new(
+        "tx-1",
+        SessionHandleKind::Transaction,
+        "not-issued".to_string(),
+        handle.runtime_epoch(),
+    );
+
+    let error = provider
+        .close_handle(&foreign, &session_handle)
+        .await
+        .expect_err("a closed resource must not excuse a ref from another one");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::ResourceOwnershipMismatch { ref expected, ref actual }
+                if expected == "mongodb" && actual == "some-other-provider"
+        ),
+        "expected an ownership mismatch, got {error:?}"
+    );
 }
 
 /// A syntactically valid MongoDB command, the way a caller really sends one:

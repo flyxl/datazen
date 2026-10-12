@@ -11,7 +11,8 @@ use std::sync::Arc;
 use datazen_driver_api::namespace::{NamespaceLevelKind, NamespaceTarget};
 use datazen_driver_api::resource::{Baseline, ResourceError, ResourceHandle, ResourceProvider};
 use datazen_driver_api::session::{
-    CancelDisposition, ContextChangeDisposition, ResetDisposition, TransactionOptions,
+    CancelDisposition, ContextChangeDisposition, ResetDisposition, SessionHandleKind,
+    SessionHandleRef, TransactionOptions,
 };
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, DriverError};
 
@@ -283,6 +284,83 @@ async fn the_driver_refuses_writes_before_they_reach_the_wire() {
     assert!(
         matches!(&error, DriverError::QueryFailed(reason) if reason.contains("writes are not supported")),
         "the write refusal must say writes are unsupported, got {error:?}"
+    );
+}
+
+/// §6.5's one legitimate repeat of a handle close.
+///
+/// The refusals in this file cover a *live* resource. Once the resource handle
+/// is marked closed, `close_resource` has already run and every handle issued on
+/// it went with it — so repeating the close carries no information, and the
+/// published trait doc promises `Ok(())` rather than a refusal. This is not
+/// cosmetic: `LeaseManager::release` treats `Err` as fail-closed and keeps the
+/// lease out of the pool, so a refusal here parks the lease forever over a close
+/// that already happened.
+#[tokio::test]
+async fn closing_a_handle_on_an_already_closed_resource_is_success_not_a_refusal() {
+    let server = stargate_answering().await;
+    let provider = provider();
+    let budget = Arc::new(BudgetLedger::default());
+    let handle = provider
+        .acquire_resource(&acquire_request(&config_for(&server)), &budget.as_port())
+        .await
+        .expect("the stub answers, so the resource opens");
+    handle.mark_closed();
+    let session_handle = SessionHandleRef::new(
+        "scan-1",
+        SessionHandleKind::Cursor,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    );
+
+    provider
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect("the resource is already closed, so this close already happened");
+
+    // Nothing was re-opened and nothing was re-closed: the resource stays gone,
+    // which is the state the `Ok` reports.
+    assert!(handle.is_closed());
+    // And the accounting proves the `Ok` was a report, not a second close:
+    // `close_resource` is the only call that releases this permit, so an
+    // untouched ledger is what distinguishes a no-op from a real teardown.
+    assert!(
+        budget.released().is_empty(),
+        "an idempotent close must not release the permit a second time, got {:?}",
+        budget.released()
+    );
+}
+
+/// Ordering, not just presence. `is_closed` must be checked *after* ownership,
+/// so a closed resource never excuses a ref belonging to another one — that is
+/// the order postgres uses and the order §6.5 describes. Sharing one order
+/// across every provider is worth more than any convenience a shorter path
+/// would buy.
+#[tokio::test]
+async fn a_foreign_ref_is_still_refused_on_a_closed_resource() {
+    let mine = provider();
+    let theirs = provider();
+    let handle = unacquired_handle(&theirs, "hbase_resource:hbase-cfg");
+    handle.mark_closed();
+    let session_handle = SessionHandleRef::new(
+        "scan-1",
+        SessionHandleKind::Cursor,
+        handle.resource_key().to_string(),
+        handle.runtime_epoch(),
+    );
+
+    let error = mine
+        .close_handle(&handle, &session_handle)
+        .await
+        .expect_err("a closed resource must not excuse a ref from another one");
+
+    assert!(
+        matches!(
+            error,
+            ResourceError::StaleRuntimeEpoch { .. }
+                | ResourceError::ResourceOwnershipMismatch { .. }
+        ),
+        "expected the ownership epoch refusal, got {error:?}"
     );
 }
 

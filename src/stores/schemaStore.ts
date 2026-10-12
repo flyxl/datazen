@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { useMemo } from 'react';
 import { projectRelationColumns } from './schemaColumnLoader';
 import { SchemaRequestTracker } from './schemaRequestTracker';
-import { loadRelationColumns, resolveColumnRelations } from './schemaColumnLoader';
+import { resolveColumnRelations } from './schemaColumnLoader';
+import { schemaColumnBatcher } from './schemaColumnBatcher';
+import { registerEditorSessionConfigResolver } from '../lib/relationMetadata/sessionConfig';
 import { databaseCommands } from '../commands/database';
 import { DB_REGISTRY } from '../lib/databaseTypes';
 import {
@@ -523,7 +525,10 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       });
       try {
         const requested = latestIdentity(schema);
-        const values = await loadRelationColumns(requested, dbSessionId, refs);
+        // Routed through the identity/config/target batcher: concurrent asks for
+        // the same namespace share one read, asks that differ in any isolation
+        // dimension never do.
+        const values = await schemaColumnBatcher.ensure(requested, dbSessionId, refs);
         if (!isCurrent()) return;
         const latest = get().schemas.get(dbSessionId);
         if (!latest) return;
@@ -653,4 +658,22 @@ bindSchemaStore(useSchemaStore);
 // makes the announcement inert rather than failing.
 registerMetadataIdentityBinder((dbSessionId, connectionId) => {
   useSchemaStore.getState().bindMetadataIdentity(dbSessionId, connectionId);
+});
+
+// Same reasoning, opposite direction: the editor metadata cache lives under
+// `src/lib` and must not import this module, so it asks which configuration a
+// session currently reads through. The answer is the very identity its own
+// cache keys are built from, which is what makes a rebind unreachable to
+// everything read under the previous configuration.
+//
+// `metadataRevision` is this store's name for the configuration revision: it
+// bumps exactly when `bindMetadataIdentity` moves the session onto another
+// `connectionId`, and stays put when the same config is rebound. It is
+// translated, not passed through, because the two layers deliberately spell
+// their key dimensions differently.
+registerEditorSessionConfigResolver((dbSessionId) => {
+  const entry = useSchemaStore.getState().schemas.get(dbSessionId);
+  if (entry == null) return null;
+  const { connectionId, metadataRevision } = latestIdentity(entry);
+  return { connectionId, configRevision: metadataRevision };
 });

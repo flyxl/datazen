@@ -10,11 +10,15 @@
 
 use std::collections::BTreeMap;
 
+// `DataSupport` is named at the one place the `data` domain is declared; the
+// `backup` cell is set with `Default::default()`, so `BackupSupport` is only
+// ever written in the comment that explains why it stays `Unknown`.
 use datazen_driver_api::capabilities::{
     Availability, CapabilitySet, ContextObservation, DdlAtomicitySupport, NamespaceSwitch,
     PreciseCancelSupport, ResetForReuse, SessionScopedHandleSupport, SnapshotSupport,
     TransactionObservation as TransactionObservationCap, TransactionSupport,
 };
+use datazen_driver_api::capability_domains::DataSupport;
 use datazen_driver_api::namespace::{
     CanonicalIdRules, CaseFolding, CaseRules, NamespaceLevel, NamespaceLevelKind,
     NamespacePathSegment, NamespaceShape,
@@ -114,6 +118,49 @@ pub(crate) fn mysql_capability_set(precise_cancel: bool) -> CapabilitySet {
         max_open_transactions: Some(1),
     };
     capabilities.ddl_atomicity = ddl_atomicity_support(DdlAtomicity::AutoCommitPerStatement);
+
+    // `rowRead` / `rowWrite` / `streamingResults`, measured rather than assumed.
+    //
+    // `rowRead` and `rowWrite` hold: `resource.rs:429` routes `query` to
+    // `query_multi_at` and `resource.rs:452` routes `execute` to
+    // `execute_at`, the same two entry points the read and write paths of this
+    // crate use, and `execute_at`'s `rows_affected` is carried into the chunk at
+    // `resource.rs:460` rather than invented on this side.
+    //
+    // `streamingResults` does NOT hold, which is what keeps this off
+    // `StreamingReadWrite`. `resource.rs:441` writes the chunk with
+    // `rows: statement.rows.clone()`: the rows are *cloned out of an
+    // already-materialized* `StatementResult` whose `rows` is a fully built
+    // `Vec` (`driver-api/src/types.rs:301`). Awaiting the sink write is real
+    // backpressure, but only between statements — the last row of statement 0
+    // was already in memory before its first byte was handed over, so no
+    // caller can pull incrementally. `BufferedReadWrite` says exactly that.
+    capabilities.data = DataSupport::BufferedReadWrite;
+
+    // Declared, and left at `BackupSupport::Unknown`, on purpose.
+    //
+    // MySQL genuinely can be dumped and restored — this crate overrides
+    // `dump_database` / `dump_database_with_progress` (`mysql.rs:2164` /
+    // `mysql.rs:2174`, the latter opening a `single_transaction` snapshot
+    // first) and inherits the shared
+    // `sql_dump::restore_sql_statements_with_progress` default
+    // (`driver-api/src/traits.rs:990`). But that whole path runs against
+    // `ConnectionHandle`, and `ResourceProvider` has no method that reaches
+    // it: `execute_on_resource` recognizes only `query` and `execute`
+    // (`resource.rs:436`), so a dump cannot be produced through this contract
+    // at all.
+    //
+    // Neither filling variant would be honest. `ArtifactAndRestore` would
+    // advertise a surface this provider does not have, and a host that
+    // trusted it would clear `require_backup_artifact()` and then hit the
+    // dead end above. `Unsupported` is the opposite lie — it would tell the
+    // host MySQL cannot be backed up, hiding a feature that demonstrably
+    // works. "This contract cannot express the backup capability" and "this
+    // database cannot be backed up" are two different statements, so the cell
+    // stays undeclared (`Default::default()` is `Unknown`) and the caller
+    // asks.
+    capabilities.backup = Default::default();
+
     capabilities
 }
 
