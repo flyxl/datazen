@@ -37,7 +37,9 @@ use datazen_driver_api::session::{
 };
 use datazen_driver_api::{DriverError, QueryExecutionId};
 
-use super::super::capabilities::{postgres_connection_cost, POSTGRES_PROVIDER_ID};
+use super::super::capabilities::{
+    METADATA_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID, postgres_resource_connection_cost,
+};
 use super::super::registry::OpenTransaction;
 use super::PostgresResourceProvider;
 
@@ -91,7 +93,7 @@ impl ResourceProvider for PostgresResourceProvider {
                     max_physical_connections: 2,
                 }
             } else {
-                postgres_connection_cost(&request.connection_config)
+                postgres_resource_connection_cost(&request.connection_config, request.purpose)
             },
             namespace_shape: self.namespace_shape.clone(),
         })
@@ -114,6 +116,13 @@ impl ResourceProvider for PostgresResourceProvider {
         }
         if request.target.schema.is_some() {
             config.schema = request.target.schema.clone();
+        }
+        if request.scope.purpose
+            == datazen_driver_api::resource::ResourcePurpose::MetadataInspection
+        {
+            // Catalog reads are sequential and short-lived. Keep the actual
+            // pool bound equal to the metadata cost declared to the budget.
+            config.max_pool_size = METADATA_POOL_CONNECTIONS;
         }
         let fixed = fixed_purpose(request.scope.purpose)
             || request.scope.pin_for_streaming

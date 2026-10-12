@@ -42,8 +42,8 @@ use sqlx::PgPool;
 use crate::postgres::PostgresDriver;
 
 use super::capabilities::{
-    postgres_capability_registry, postgres_connection_cost, postgres_namespace_shape,
-    POSTGRES_PROVIDER_ID,
+    POSTGRES_PROVIDER_ID, postgres_capability_registry, postgres_namespace_shape,
+    postgres_resource_connection_cost,
 };
 use super::observation;
 use super::payload::decode_command_result;
@@ -385,7 +385,7 @@ impl PostgresResourceProvider {
                 max_physical_connections: 2,
             }
         } else {
-            postgres_connection_cost(&request.connection_config)
+            postgres_resource_connection_cost(&request.connection_config, request.scope.purpose)
         };
         let ConnectionCostPolicy::PoolBounded {
             max_physical_connections: required,

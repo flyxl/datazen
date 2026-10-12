@@ -16,14 +16,14 @@ use datazen_driver_api::capabilities::{
     SessionScopedHandleSupport, SnapshotSupport, TransactionObservation, TransactionSupport,
 };
 // `capabilities` only re-imports the domain enums privately; they live here.
+use datazen_driver_api::ConnectionConfig;
+use datazen_driver_api::PROTOCOL_VERSION;
 use datazen_driver_api::capability_domains::DataSupport;
 use datazen_driver_api::namespace::{
     CanonicalIdRules, CaseFolding, CaseRules, NamespaceLevel, NamespaceLevelKind,
     NamespacePathSegment, NamespaceShape,
 };
-use datazen_driver_api::resource::ConnectionCostPolicy;
-use datazen_driver_api::ConnectionConfig;
-use datazen_driver_api::PROTOCOL_VERSION;
+use datazen_driver_api::resource::{ConnectionCostPolicy, ResourcePurpose};
 
 /// The provider id every [`ResourceHandle`] this crate issues is bound to.
 ///
@@ -40,6 +40,28 @@ pub(crate) const POSTGRES_DRIVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// for the sole purpose of issuing `pg_cancel_backend`. A cancel therefore
 /// costs one physical connection beyond the data pool, always.
 pub(crate) const CONTROL_POOL_CONNECTIONS: u32 = 1;
+
+/// Metadata commands are short-lived and execute one command at a time. Their
+/// data pool is intentionally bounded to one connection; cancellation still
+/// uses the separate control pool above.
+pub(crate) const METADATA_POOL_CONNECTIONS: u32 = 1;
+
+pub(crate) fn postgres_metadata_connection_cost() -> ConnectionCostPolicy {
+    ConnectionCostPolicy::PoolBounded {
+        max_physical_connections: METADATA_POOL_CONNECTIONS + CONTROL_POOL_CONNECTIONS,
+    }
+}
+
+pub(crate) fn postgres_resource_connection_cost(
+    config: &ConnectionConfig,
+    purpose: ResourcePurpose,
+) -> ConnectionCostPolicy {
+    if purpose == ResourcePurpose::MetadataInspection {
+        postgres_metadata_connection_cost()
+    } else {
+        postgres_connection_cost(config)
+    }
+}
 
 /// The namespace shape PostgreSQL really has.
 ///
