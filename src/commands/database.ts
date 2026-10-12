@@ -87,8 +87,30 @@ export const databaseCommands = {
       tableType: relation.kind, rowCount: relation.rowCount }));
   },
 
-  getErData: (dbSessionId: string, database: string, schema?: string | null) =>
-    invoke<TableSchema[]>('get_er_data', { dbSessionId, database, schema: schema ?? null }),
+  getErData: async (dbSessionId: string, database: string, schema?: string | null): Promise<TableSchema[]> => {
+    // Capture ownership once, then carry exact catalog identities through every
+    // read. ER metadata must never borrow the query editor's session resource.
+    const target = metadataTarget(dbSessionId, database, schema ?? null);
+    const catalog = await executeTargetCommand(target, {
+      command: 'list_catalog', input: { database, schema: schema ?? null },
+    }) as import('@datazen/driver-sdk').ListCatalogOutput;
+    if (!Array.isArray(catalog.relations)) throw new Error('Invalid catalog result');
+    const schemas: TableSchema[] = [];
+    for (const relation of catalog.relations) {
+      const ref = relation.ref;
+      const data = await executeTargetCommand({
+        ...target,
+        namespace: { ...target.namespace, database: ref.database, schema: ref.schema },
+        object: { kind: 'relation', name: ref.name, signature: null },
+      }, {
+        command: 'get_table_schema',
+        input: { database: ref.database, schema: ref.schema, table: ref.name },
+      }) as { schema?: TableSchema } | null;
+      if (!data?.schema || !Array.isArray(data.schema.columns)) throw new Error('Invalid schema result');
+      schemas.push(data.schema);
+    }
+    return schemas;
+  },
 
   getTableData: (params: {
     dbSessionId: string;
