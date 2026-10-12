@@ -104,10 +104,14 @@ pub use types::*;
 /// per-handle close). Every impl — in-tree and out-of-tree — has to spell out
 /// what it does with a session-scoped handle, so this is a source break.
 ///
+/// 5 → 6: `ResourceProvider` gained the required `connection_handle` method for
+/// Host metadata adapters. Implementations must return only a validated,
+/// already-held connection, so this is a source break.
+///
 /// [`MIN_PROTOCOL_VERSION`] deliberately stayed at 1: raising it is a product
 /// decision about which old plugins keep loading, not a consequence of this
 /// break, and `driver-capability-migration.md` keeps the two apart.
-pub const PROTOCOL_VERSION: u32 = 5;
+pub const PROTOCOL_VERSION: u32 = 6;
 
 /// Minimum protocol version the host still supports.
 ///
