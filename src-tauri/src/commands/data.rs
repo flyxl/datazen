@@ -527,7 +527,7 @@ async fn commit_pending_changes_with_handle(
         .database
         .as_deref()
         .filter(|database| !database.trim().is_empty())
-        .is_some_and(|database| database != request.plan.table.database)
+        .is_some_and(|database| request.plan.table.database.as_deref() != Some(database))
     {
         return Err(CommandError::Validation(
             "Database context changed; preview the changes again".into(),
