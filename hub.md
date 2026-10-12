@@ -225,3 +225,10 @@ This ledger must be deleted before delivery/merge to main.
 - Original P4 coder `/root/p4_pg_multidb_fix` has been resumed in `/private/tmp/datazen-p4-pg-fix` to fix these two actual failures. The initial Step 2 discovery diagnosis was incorrect and has been superseded by the exact line 71 report. The helper export/import issue is confirmed. No assertions should be weakened and no env contents may be read.
 - The completed R4 tester supplied sanitized file/line/parser-stage diagnostics only and did not rerun tests or edit files. After P4 commits, integrate into the isolated candidate and dispatch a fresh GPT-6 Luna + max verifier in a separate clean worktree for webdriver build and the PG/MySQL WDIO allowlist only.
 - No unit, Cargo, Vitest, typecheck, or computer-use tests are authorized. Do not accept P3/P4/P6 until the matching candidate passes the fresh independent WDIO round.
+
+## P4 repair integrated, R5 acceptance pending (2026-10-12)
+
+- P4 coder commit `8a4e3bbad` was reviewed and cherry-picked into the isolated candidate as `ad234ba269066bda55b98c2e175975b4be9e9358` (tree `25dea91cd41aa70a2a6eeef4caf2e85e71eb036e`). Candidate and coder worktrees are clean; commit check is clean.
+- The database option failure is fixed by sharing only the in-flight `list_databases` promise by explicit connection owner; the promise is removed on success or failure, no result cache is kept, and session-scoped callers without an owner remain isolated. The Table recovery journey now uses an in-file search helper rather than importing a private helper from `e2e/helpers.ts`.
+- A fresh GPT-6 Luna + max verifier is next, using `/private/tmp/datazen-p346-verifier-r3`, separate from the candidate. It must reset to exact `ad234ba26`, build with `pnpm tauri:build:webdriver`, then run only the seven PostgreSQL/MySQL WDIO files listed in this ledger's preceding verification section. It must record HEAD/tree/status before and after, and report sanitized per-spec counts and first failure stages only.
+- No non-WDIO tests, computer-use tests, `.env` content reads, or source edits in the verifier tree.
