@@ -339,9 +339,19 @@ impl SessionRegistry {
     ///
     /// 顺序不可调换：先占 id、再占额度、再打开物理资源，只有拿到投影之后才放进
     /// 可见表。任何一步失败都**不留痕**——没有表项、没有半开额度、没有占位。
+    pub async fn reclaim_idle_resources(&self) {
+        self.backend.reclaim_idle_resources().await;
+    }
     pub async fn register_session(
         &self,
         request: OpenRequest,
+    ) -> Result<SessionView, RuntimeError> {
+        self.register_session_for_command(request, "").await
+    }
+    pub async fn register_session_for_command(
+        &self,
+        request: OpenRequest,
+        command: &str,
     ) -> Result<SessionView, RuntimeError> {
         self.audit.pump();
         let db_session_id = request.db_session_id.clone();
@@ -356,7 +366,7 @@ impl SessionRegistry {
             opening.push(db_session_id.clone());
         }
 
-        match self.open_and_publish(request, worker_id).await {
+        match self.open_and_publish(request, worker_id, command).await {
             Ok(view) => {
                 self.release_opening(&db_session_id);
                 self.audit.pump();
@@ -373,6 +383,7 @@ impl SessionRegistry {
         &self,
         request: OpenRequest,
         worker_id: WorkerId,
+        command: &str,
     ) -> Result<SessionView, RuntimeError> {
         let db_session_id = request.db_session_id.clone();
         self.quota.try_reserve()?;
@@ -384,7 +395,10 @@ impl SessionRegistry {
         let actor = spawn_actor(
             request,
             runtime_epoch,
-            Arc::clone(&self.backend),
+            Arc::new(super::intent::CommandBackend {
+                inner: self.backend.clone(),
+                command: command.to_owned(),
+            }),
             self.outbox.clone(),
         );
 

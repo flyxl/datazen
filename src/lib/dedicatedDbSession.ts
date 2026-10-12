@@ -60,7 +60,7 @@ export async function listDatabasesDedicated(
   );
   try {
     const { databaseCommands } = await import('../commands/database');
-    const databases = await databaseCommands.getDatabases(dbSessionId);
+    const databases = await databaseCommands.getDatabases(dbSessionId, connectionId);
     return { databases, dbSessionId: null };
   } finally {
     await releaseDedicatedSession(dbSessionId);

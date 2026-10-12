@@ -10,6 +10,8 @@ const mockDatabaseCommands = {
   commitPendingChanges: vi.fn(),
 };
 
+vi.mock('../../lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+
 vi.mock('../../commands/database', () => ({
   databaseCommands: mockDatabaseCommands,
 }));
@@ -471,6 +473,7 @@ describe('tableDataStore (panel-scoped)', () => {
     expect(loaded().pendingChanges.size).toBe(0);
     expect(mockDatabaseCommands.commitPendingChanges).toHaveBeenCalledWith({
       dbSessionId: 'conn-1',
+      manualHandle: null,
       plan: samplePlan,
       fingerprint: samplePlan.fingerprint,
     });

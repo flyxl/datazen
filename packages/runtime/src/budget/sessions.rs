@@ -58,12 +58,43 @@ impl BudgetLedger {
                 principal: principal.clone(),
                 connection_id: connection_id.clone(),
                 occupancy: None,
+                connected_editor: false,
             },
         );
         self.user_logical.insert(principal.clone(), user_used + 1);
         self.org_logical
             .insert(organization_id.clone(), org_used + 1);
         Ok(ticket)
+    }
+
+    /// Editor quota is independent of the physical permit cost. It must not
+    /// charge another physical slot merely because a logical session is attached.
+    pub fn connect_editor(&mut self, ticket: &DbSessionId) -> Result<(), DenialReason> {
+        let record =
+            self.sessions
+                .get(ticket)
+                .cloned()
+                .ok_or_else(|| DenialReason::UnknownConnection {
+                    connection_id: ConnectionId::new(ticket.as_str()),
+                })?;
+        if record.connected_editor {
+            return Ok(());
+        }
+        let used = self.user_connected(&record.connection_id, &record.principal);
+        let cap = self.config.per_user_connected_editors;
+        if used >= cap {
+            return Err(DenialReason::ConnectedEditorsExhausted {
+                principal: record.principal,
+                cap,
+            });
+        }
+        if let Some(service) = self.services.get_mut(&record.connection_id) {
+            *service.user_connected.entry(record.principal).or_insert(0) += 1;
+        }
+        if let Some(record) = self.sessions.get_mut(ticket) {
+            record.connected_editor = true;
+        }
+        Ok(())
     }
 
     /// 某个 session 的记录。
@@ -170,6 +201,10 @@ impl BudgetLedger {
         if record.occupancy.is_some() {
             if let Some(service) = self.services.get_mut(&record.connection_id) {
                 service.physical = service.physical.saturating_sub(1);
+            }
+        }
+        if record.occupancy.is_some() || record.connected_editor {
+            if let Some(service) = self.services.get_mut(&record.connection_id) {
                 if let Some(connected) = service.user_connected.get_mut(&record.principal) {
                     *connected = connected.saturating_sub(1);
                 }

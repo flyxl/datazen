@@ -77,6 +77,13 @@ impl ResourceProvider for VectorResourceProvider {
         &self.namespace_shape
     }
 
+    fn connection_handle(
+        &self,
+        handle: &ResourceHandle,
+    ) -> Result<datazen_driver_api::ConnectionHandle, ResourceError> {
+        Ok(self.resource_of(handle, "connection_handle")?.connection)
+    }
+
     /// What this resource would be, without becoming one.
     ///
     /// No connection is opened and no budget is charged: describing must be

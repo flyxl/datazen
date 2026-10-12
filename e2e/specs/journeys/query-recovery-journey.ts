@@ -55,9 +55,14 @@ describe('查询错误恢复完整用户旅程 (QUERY-RECOVERY-JOURNEY)', () => 
       async () => !(await $('[data-testid="query-error-message"]').isExisting()),
       { timeout: 5000, timeoutMsg: '修正 SQL 后错误面板仍然存在' },
     );
-    const resultText = await result.getText();
-    expect(resultText).toContain('recovered_value');
-    expect(resultText).toContain('42');
+    await browser.waitUntil(async () => {
+      const actual = await browser.execute(() => {
+        const table = document.querySelector('[data-testid="result-workspace-table"]');
+        return { headers: Array.from(table?.querySelectorAll('[data-col-header]') ?? []).map((cell) => cell.getAttribute('data-col-header')),
+          cells: Array.from(table?.querySelectorAll('[data-testid="data-table-cell"]') ?? []).map((cell) => cell.textContent?.trim()) };
+      });
+      return actual.headers.includes('recovered_value') && actual.cells.length === 1 && actual.cells[0] === '42';
+    }, { timeout: 15000, timeoutMsg: '恢复查询未显示真实结果列与单元格' });
     await captureJourneyStep('query-recovery-success');
   });
 });

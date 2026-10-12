@@ -16,6 +16,9 @@ pub struct PostgresDriver {
     pub(crate) pools: RwLock<HashMap<String, PgPool>>,
     /// Template connection config (host/user/pass/timeout) for reconnecting to other databases.
     pub(crate) connect_configs: RwLock<HashMap<String, ConnectionConfig>>,
+    /// Weak entries avoid retaining one lifecycle gate per historical pool.
+    /// Active creators, closers and waiters each hold the same gate strongly.
+    pub(crate) pool_lifecycle: Mutex<HashMap<String, std::sync::Weak<RwLock<()>>>>,
     /// Database the handle's pool is currently connected to, keyed by pool_id.
     pub(crate) active_databases: RwLock<HashMap<String, String>>,
     /// Pools for databases **other than** the handle's active one, keyed by
@@ -26,7 +29,10 @@ pub struct PostgresDriver {
     /// Monotonic clock backing the LRU eviction of [`Self::database_pools`].
     pub(crate) database_pool_clock: AtomicU64,
     /// Open transactions: connection held for the lifetime of BEGIN…COMMIT/ROLLBACK, keyed by handle.id.
-    pub(crate) transactions: Mutex<HashMap<String, PoolConnection<Postgres>>>,
+    pub(crate) fixed_contexts: RwLock<HashMap<String, datazen_driver_api::session::SessionContext>>,
+    pub(crate) fixed_sessions: RwLock<HashMap<String, i32>>,
+    pub(crate) transactions:
+        Mutex<HashMap<String, std::sync::Arc<Mutex<PoolConnection<Postgres>>>>>,
     /// Exact execution target registry.
     pub(crate) query_executions:
         Mutex<HashMap<QueryExecutionId, crate::execution::PgQueryExecution>>,
@@ -45,10 +51,13 @@ impl PostgresDriver {
         Self {
             pools: RwLock::new(HashMap::new()),
             connect_configs: RwLock::new(HashMap::new()),
+            pool_lifecycle: Mutex::new(HashMap::new()),
             active_databases: RwLock::new(HashMap::new()),
             database_pools: RwLock::new(HashMap::new()),
             database_pool_clock: AtomicU64::new(0),
             transactions: Mutex::new(HashMap::new()),
+            fixed_sessions: RwLock::new(HashMap::new()),
+            fixed_contexts: RwLock::new(HashMap::new()),
             query_executions: Mutex::new(HashMap::new()),
             control_pools: RwLock::new(HashMap::new()),
         }
@@ -194,6 +203,32 @@ impl DatabaseDriver for PostgresDriver {
         Self::query_stream_at_impl(self, handle, sql, limit, target, on_event).await
     }
 
+    async fn connect_fixed_session(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ConnectionHandle, DriverError> {
+        self.open_fixed_session(config).await
+    }
+    async fn observe_fixed_session(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<datazen_driver_api::session::SessionContext, DriverError> {
+        self.read_fixed_session(handle).await
+    }
+
+    async fn query_to_sink(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        parameters: Option<&[Value]>,
+        sink: &dyn datazen_driver_api::resource::ResultSink,
+    ) -> Result<Vec<StatementResult>, datazen_driver_api::resource::ResourceError> {
+        self.stream_resource_query(handle, execution_id, sql, limit, parameters, sink)
+            .await
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         Self::test_connection_impl(self, config).await
     }
@@ -245,6 +280,18 @@ impl DatabaseDriver for PostgresDriver {
         schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
         Self::get_tables_impl(self, handle, database, schema).await
+    }
+
+    async fn get_schemas(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<Vec<String>>, DriverError> {
+        let pool = self.pool_for_target(handle, database).await?;
+        let schemas = sqlx::query_scalar::<_, String>(
+            "SELECT nspname::text FROM pg_namespace WHERE nspname NOT IN ('pg_catalog', 'information_schema') AND nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp_%' AND has_schema_privilege(oid, 'USAGE') ORDER BY nspname"
+        ).fetch_all(&pool).await.map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+        Ok(Some(schemas))
     }
 
     async fn get_columns(

@@ -7,6 +7,7 @@ pub mod command;
 pub mod command_runtime;
 pub mod error;
 pub mod history;
+mod independent_sql;
 pub(crate) mod migration;
 pub mod workflows;
 

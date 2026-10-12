@@ -233,6 +233,8 @@ export function useSchemaDiffSavedSetups({
           endpoints.targetDatabase,
           endpoints.sourceSchema,
           endpoints.targetSchema,
+          endpoints.sourceId,
+          endpoints.targetId,
         );
         if (!catalog) return;
         const missing = unifiedObjects.restoreSelection(
@@ -341,8 +343,8 @@ export function useSchemaDiffSavedSetups({
         const tgtConnId = await endpoints.ensureConnected('target');
         if (!srcConnId || !tgtConnId) return;
         const [sourceRows, targetRows] = await Promise.all([
-          databaseCommands.listTables(srcConnId, profile.sourceDatabase),
-          databaseCommands.listTables(tgtConnId, profile.targetDatabase),
+          databaseCommands.listTables(srcConnId, profile.sourceDatabase, profile.sourceSchema ?? null, endpoints.sourceId),
+          databaseCommands.listTables(tgtConnId, profile.targetDatabase, profile.targetSchema ?? null, endpoints.targetId),
         ]);
         const catalog = await unifiedObjects.load(
           srcConnId,
@@ -351,6 +353,8 @@ export function useSchemaDiffSavedSetups({
           profile.targetDatabase,
           profile.sourceSchema ?? '',
           profile.targetSchema ?? '',
+          endpoints.sourceId,
+          endpoints.targetId,
         );
         if (catalog) {
           const missing = unifiedObjects.restoreSelection(

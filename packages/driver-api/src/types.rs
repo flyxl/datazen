@@ -684,6 +684,10 @@ pub struct BackupRestoreOptions {
 
 #[derive(Debug, Error)]
 pub enum DriverError {
+    /// A retained physical session disappeared; never silently reconnect it.
+    #[error("Database session lost")]
+    SessionLost,
+
     #[error("Connection failed: {0}")]
     ConnectionFailed(String),
 

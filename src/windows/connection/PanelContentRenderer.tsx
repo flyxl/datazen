@@ -213,6 +213,7 @@ function SqlPanelContent({
             (panel.structureEditing ? (
               <TableStructureEditor
                 dbSessionId={panel.dbSessionId}
+                connectionId={panel.connectionId}
                 databaseType={panel.databaseType}
                 database={panel.database ?? currentDatabase ?? ''}
                 schema={panel.tableSchema ?? resolveTableSchema(panel.tableName)}
@@ -343,6 +344,7 @@ function SqlPanelContent({
     return (
       <CreateTablePanelContent
         dbSessionId={panel.dbSessionId}
+        connectionId={panel.connectionId}
         databaseType={panel.databaseType}
         database={panelDatabase}
         schema={schema}
@@ -466,6 +468,7 @@ function SqlPanelContent({
 
 interface CreateTablePanelContentProps {
   dbSessionId: string;
+  connectionId: string;
   databaseType: import('../../types').DatabaseType;
   database: string | null;
   schema: string | null;
@@ -476,6 +479,7 @@ interface CreateTablePanelContentProps {
 /** Ensures multi-db session is on the target database before rendering the editor. */
 function CreateTablePanelContent({
   dbSessionId,
+  connectionId,
   databaseType,
   database,
   schema,
@@ -497,6 +501,7 @@ function CreateTablePanelContent({
   return (
     <TableStructureEditor
       dbSessionId={dbSessionId}
+      connectionId={connectionId}
       databaseType={databaseType}
       database={database ?? ''}
       schema={schema}

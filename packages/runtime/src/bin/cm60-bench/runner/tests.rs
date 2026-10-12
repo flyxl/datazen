@@ -88,6 +88,39 @@ async fn every_request_produces_exactly_one_sample() {
     assert!(!round.sample_count_mismatch());
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_plan_larger_than_gateway_history_is_split_without_losing_samples() {
+    let plan = BenchPlan {
+        warmup: 2,
+        per_round: GATEWAY_HISTORY_CAPACITY + 1,
+        rounds: 1,
+        concurrency: 4,
+        fake_command: std::time::Duration::from_millis(10),
+    };
+    let run = drive_all(plan, 8, 17_179_869_184, 0)
+        .await
+        .unwrap_or_else(|error| panic!("bench failed: {error}"));
+    let round = &run.rounds[0];
+
+    assert_eq!(round.outcome.requested, plan.per_round);
+    assert_eq!(round.n(), plan.per_round);
+    assert_eq!(round.measured(), plan.per_round);
+    assert_eq!(round.failures(), 0);
+    assert_eq!(run.raw.len(), plan.per_round);
+    assert_eq!(
+        run.journal.admitted,
+        plan.warmup + plan.per_round,
+        "预热和测量请求必须都进入全局受理账"
+    );
+    assert_eq!(
+        run.journal.execution_records_retained,
+        plan.warmup + plan.per_round,
+        "所有容量分段都应保留到最终汇总"
+    );
+    assert_eq!(run.journal.outstanding_at_end, 0);
+    assert!(run.journal.projection.is_clean());
+}
+
 /// **真实 harness 守门测试**：开着故障注入跑整个 harness，断言
 /// （1）N 仍然是每一条获准请求，**不因失败而缩水**；（2）打不出时长的那些**只**
 /// 落在 `unmeasured_failures` 上，绝不被补成一个数；（3）门禁因此变红。
@@ -221,6 +254,10 @@ async fn event_stream_is_lossless_across_the_round() {
     let run = drive_all(tiny(), 8, 17_179_869_184, 0).await.unwrap();
     assert!(run.journal.projection.is_clean(), "事件重复/丢失必须为 0");
     assert_eq!(run.journal.outstanding_at_end, 0, "在途执行必须归零");
+    assert_eq!(
+        run.journal.events_projected, run.journal.events_emitted,
+        "已投影事件数必须与 fake driver 发出的事件数相等"
+    );
 }
 
 #[tokio::test(start_paused = true)]

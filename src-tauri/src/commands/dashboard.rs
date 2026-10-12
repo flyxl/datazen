@@ -449,7 +449,7 @@ mod tests {
         use crate::testing::app_state::TestAppState;
         use crate::workflow::model::{WorkflowDefinition, WorkflowStep};
 
-        let test = TestAppState::with_tables().await;
+        let test = TestAppState::with_tables_and_resource_provider().await;
         test.save_connection("widget-cfg").await;
         test.connect_config("widget-cfg").await;
 

@@ -1,3 +1,4 @@
+import { metadataScopeKey } from '../lib/session/targetCommand';
 import { create } from 'zustand';
 import { useMemo } from 'react';
 import { projectRelationColumns } from './schemaColumnLoader';
@@ -81,7 +82,7 @@ export interface SchemaStore {
     database: string,
     all: TableInfo[],
     dbSessionId: string,
-    options?: { pinCurrentDatabase?: boolean },
+    options?: { pinCurrentDatabase?: boolean; schemaNames?: string[] },
   ) => void;
   removeRelation: (name: string, dbSessionId: string) => void;
   mergeNamespace: (
@@ -108,7 +109,7 @@ export interface SchemaStore {
    * config revision) must invalidate everything read under the old identity:
    * the revision is bumped and the per-relation cache is dropped.
    */
-  bindMetadataIdentity: (dbSessionId: string, connectionId: string) => void;
+  bindMetadataIdentity: (dbSessionId: string, connectionId: string, scope?: string) => void;
   toggleExpand: (id: string, dbSessionId: string) => void;
   setSelected: (id: string | null, dbSessionId: string) => void;
   reset: () => void;
@@ -147,9 +148,15 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
     const isCurrent = requests.begin(dbSessionId, 'tables');
     commitConnectionPatch(dbSessionId, { loading: true, error: null });
     try {
-      const all = await databaseCommands.listTables(dbSessionId, database);
+      const catalog = await databaseCommands.listCatalog(dbSessionId, database);
+      const all: TableInfo[] = catalog.relations.map((relation) => ({
+        name: relation.ref.name,
+        schema: relation.ref.schema,
+        tableType: relation.kind,
+        rowCount: relation.rowCount,
+      }));
       if (!isCurrent()) return;
-      get().setLoadedTables(database, all, dbSessionId);
+      get().setLoadedTables(database, all, dbSessionId, { schemaNames: catalog.schemas });
       const state = get().schemas.get(dbSessionId);
       commitConnectionPatch(dbSessionId, {
         loading: false,
@@ -396,6 +403,18 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
         },
         getDatabases: databaseCommands.getDatabases,
         listTables: databaseCommands.listTables,
+        listCatalog: async (sessionId: string, database: string) => {
+          const catalog = await databaseCommands.listCatalog(sessionId, database);
+          return {
+            schemas: catalog.schemas,
+            tables: catalog.relations.map((relation) => ({
+              name: relation.ref.name,
+              schema: relation.ref.schema,
+              tableType: relation.kind,
+              rowCount: relation.rowCount,
+            })),
+          };
+        },
       };
       const pending = namespaceEnsurePending(segments, deps);
       if (pending) {
@@ -439,10 +458,15 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       let nextLoadedPaths = loadedPaths;
 
       if (!namespaceOwnedByPlugin && !meta?.namespaceOwnedByPlugin) {
-        const hasSchemaGrouping = all.some((item) => isSchemaGroupingSchema(item.schema));
+        const hasSchemaGrouping =
+          (options?.schemaNames ?? []).some(isSchemaGroupingSchema) ||
+          all.some((item) => isSchemaGroupingSchema(item.schema));
 
         if (hasSchemaGrouping) {
           const bySchema = new Map<string, string[]>();
+          for (const name of options?.schemaNames ?? []) {
+            if (isSchemaGroupingSchema(name)) bySchema.set(name, []);
+          }
           for (const item of all) {
             if (!isSchemaGroupingSchema(item.schema)) continue;
             if (!item.name) {
@@ -467,7 +491,10 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       }
 
       const schemaNames = [
-        ...new Set(all.map((item) => item.schema).filter((s): s is string => !!s)),
+        ...new Set([
+          ...(options?.schemaNames ?? []),
+          ...all.map((item) => item.schema).filter((s): s is string => !!s),
+        ]),
       ];
 
       commitConnectionPatch(dbSessionId, {
@@ -503,9 +530,13 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
 
     ensureColumns: async (tableNames, dbSessionId, database, options) => {
       if (!dbSessionId || !database.trim()) return;
+      const initialSchema = get().schemas.get(dbSessionId);
+      if (!initialSchema) return;
+      const isCurrent = requests.captureSlot(dbSessionId, 'columns');
+      await metadataScopeKey(dbSessionId, initialSchema.connectionId || undefined);
+      if (!isCurrent()) return;
       const schema = get().schemas.get(dbSessionId);
       if (!schema) return;
-      const isCurrent = requests.captureSlot(dbSessionId, 'columns');
       const refs = resolveColumnRelations(
         schema,
         tableNames,
@@ -578,12 +609,18 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       await get().ensureColumns(allNames, dbSessionId, database);
     },
 
-    bindMetadataIdentity: (dbSessionId, connectionId) => {
+    bindMetadataIdentity: (dbSessionId, connectionId, scope) => {
       if (!dbSessionId || !connectionId) return;
       const schema = get().schemas.get(dbSessionId) ?? createEmptyConnectionSchema();
-      if (schema.connectionId === connectionId && schema.metadataRevision > 0) return;
+      if (
+        schema.connectionId === connectionId &&
+        schema.metadataRevision > 0 &&
+        (!scope || schema.metadataScopeKey === scope)
+      )
+        return;
       commitConnectionPatch(dbSessionId, {
         connectionId,
+        metadataScopeKey: scope,
         // Anything cached so far was read under the previous identity (or, for
         // a first bind, under an unbound one) and must not survive it.
         metadataRevision: schema.metadataRevision + 1,
@@ -656,8 +693,8 @@ bindSchemaStore(useSchemaStore);
 // depends on it), so it announces new (session, config) bindings through this
 // seam instead. Suites that mock the whole schema store leave it unbound, which
 // makes the announcement inert rather than failing.
-registerMetadataIdentityBinder((dbSessionId, connectionId) => {
-  useSchemaStore.getState().bindMetadataIdentity(dbSessionId, connectionId);
+registerMetadataIdentityBinder((dbSessionId, connectionId, scope) => {
+  useSchemaStore.getState().bindMetadataIdentity(dbSessionId, connectionId, scope);
 });
 
 // Same reasoning, opposite direction: the editor metadata cache lives under

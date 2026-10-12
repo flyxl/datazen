@@ -9,6 +9,17 @@ import {
   setEditorContent,
 } from '../../helpers.js';
 
+async function expectResultCell(column: string, value: string): Promise<void> {
+  await browser.waitUntil(async () => {
+    const actual = await browser.execute(() => {
+      const table = document.querySelector('[data-testid="result-workspace-table"]');
+      return { headers: Array.from(table?.querySelectorAll('[data-col-header]') ?? []).map((cell) => cell.getAttribute('data-col-header')),
+        cells: Array.from(table?.querySelectorAll('[data-testid="data-table-cell"]') ?? []).map((cell) => cell.textContent?.trim()) };
+    });
+    return actual.headers.includes(column) && actual.cells.length === 1 && actual.cells[0] === value;
+  }, { timeout: 15000, timeoutMsg: `真实结果列/单元格未出现: ${column}` });
+}
+
 describe('SQL 查询边界完整用户旅程 (QUERY-EDGE-JOURNEY, TC-QUERY-006, TC-QUERY-009~012)', () => {
   let mainWindow: string;
   let firstJourneyTabIndex: number;
@@ -44,9 +55,7 @@ describe('SQL 查询边界完整用户旅程 (QUERY-EDGE-JOURNEY, TC-QUERY-006, 
       { timeout: 10000, timeoutMsg: '取消查询后执行按钮未恢复' },
     );
     await executeSQL('SELECT 99 AS cancel_recovered_value');
-    expect(await $('[data-testid="result-workspace-table"]').getText()).toContain(
-      'cancel_recovered_value',
-    );
+    await expectResultCell('cancel_recovered_value', '99');
     await captureJourneyStep('query-edge-cancel-recovered');
 
     await openQueryTab();
@@ -56,9 +65,7 @@ describe('SQL 查询边界完整用户旅程 (QUERY-EDGE-JOURNEY, TC-QUERY-006, 
     );
     expect(emptyEditorText).not.toContain('cancel_recovered_value');
     await executeSQL('SELECT 2 AS isolated_second_tab');
-    expect(await $('[data-testid="result-workspace-table"]').getText()).toContain(
-      'isolated_second_tab',
-    );
+    await expectResultCell('isolated_second_tab', '2');
     await captureJourneyStep('query-edge-second-tab');
 
     const tabs = await $$('[data-testid="panel-tab"]');
@@ -67,11 +74,8 @@ describe('SQL 查询边界完整用户旅程 (QUERY-EDGE-JOURNEY, TC-QUERY-006, 
     );
     expect(tabCount).toBeGreaterThan(firstJourneyTabIndex + 1);
     await (await tabs[firstJourneyTabIndex].$('button')).click();
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes('cancel_recovered_value'),
-      { timeout: 5000, timeoutMsg: '切回首个查询 Tab 后结果未保留' },
-    );
-    expect(await $('body').getText()).not.toContain('isolated_second_tab');
+    await expectResultCell('cancel_recovered_value', '99');
+    await expect(await $('[data-col-header="isolated_second_tab"]')).not.toExist();
     await captureJourneyStep('query-edge-first-tab-restored');
   });
 });

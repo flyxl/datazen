@@ -24,6 +24,7 @@ function fixture(tx: 'none' | 'active' | 'unknown' = 'none', conflict = false) {
       ? vi.fn(async () => { throw new ApiError('ContextConflict', 'revision mismatch'); })
       : vi.fn(async () => ({ session: session('2', tx), replacedSessionId: 's', attachmentToken: 'new' })),
     getSession: vi.fn(async () => session('1', tx)),
+    getExecution: vi.fn(async () => ({ state: 'succeeded' })),
     closeSession: vi.fn(async () => ({ dbSessionId: 's', state: 'closed', effectOutcome: 'unknown', resourceRelease: 'quarantined' })),
   };
   return client as unknown as BackendClient & typeof client;
@@ -65,6 +66,9 @@ describe('switchDatabaseSession', () => {
     });
     expect(conflict.status).toBe('conflict');
     expect(onConflict).toHaveBeenCalledOnce();
+    expect(client.executeInSession).toHaveBeenCalledWith(expect.objectContaining({
+      call: { command: 'platform.rollbackTransaction', input: { defersCommit: true } },
+    }), expect.anything());
     expect(controller.snapshot?.handle.dbSessionId).toBe('s');
   });
 

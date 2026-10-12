@@ -23,15 +23,14 @@ use datazen_driver_api::resource::{
     DescribeResourceRequest, IdentityScope, InitializationRequirement, ResourceError,
     ResourceHandle, ResourceProvider, ResourcePurpose, ResourceScope, ResultChunk, ResultSink,
 };
-use datazen_driver_api::session::{CancelDisposition, TransactionOptions};
+use datazen_driver_api::session::{CancelDisposition, ExecutionState, TransactionOptions};
 use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DriverError, QueryExecutionId};
 
 use crate::postgres::PostgresDriver;
 
 use super::capabilities::{
-    postgres_capability_registry, postgres_capability_set, postgres_connection_cost,
-    postgres_namespace_shape, CONTROL_POOL_CONNECTIONS, POSTGRES_CAPABILITY_REVISION,
-    POSTGRES_DRIVER_VERSION, POSTGRES_PROVIDER_ID,
+    postgres_capability_registry, postgres_capability_set, postgres_namespace_shape,
+    POSTGRES_CAPABILITY_REVISION, POSTGRES_DRIVER_VERSION, POSTGRES_PROVIDER_ID,
 };
 use super::PostgresResourceProvider;
 
@@ -316,7 +315,6 @@ async fn declared_unsupported_capabilities_are_refused_by_the_registry() {
     let registry = provider.capabilities();
 
     let refusals: Vec<(&str, Result<(), CapabilityError>)> = vec![
-        ("statefulSession", registry.require_stateful_session()),
         ("contextObservation", registry.require_context_observation()),
         ("resetForReuse", registry.require_reset_for_reuse()),
         ("snapshots", registry.require_snapshots()),
@@ -346,6 +344,7 @@ async fn declared_supported_capabilities_are_the_ones_the_code_actually_has() {
     let (_driver, provider) = provider_with_driver();
     let registry = provider.capabilities();
 
+    assert!(registry.require_stateful_session().is_ok());
     assert!(registry.require_precise_cancel().is_ok());
     assert!(registry.require_transaction_observation().is_ok());
     assert!(registry.require_session_scoped_handles().is_ok());
@@ -362,24 +361,19 @@ async fn declared_supported_capabilities_are_the_ones_the_code_actually_has() {
     );
 }
 
-/// `data` is claimed on two axes and withheld on the third; `backup` is not
-/// claimed at all. Both halves of that asymmetry are load-bearing — the first
-/// keeps a real, working driver from being gated out of row read/write, the
-/// second stops a host from being told PostgreSQL cannot be backed up when it
-/// can. `streamingResults` is the one that has to keep failing: it is the axis
-/// the provider genuinely cannot serve, because `run_command` materializes
-/// every row before handing the first one to the sink.
+/// `data` supports row read, row write and bounded streaming; `backup` is not
+/// claimed because this provider has no artifact surface. The streaming path
+/// sends bounded batches from the physical connection to the result sink.
 #[tokio::test]
-async fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
+async fn data_supports_bounded_streaming_and_backup_stays_undeclared() {
     let (_driver, provider) = provider_with_driver();
     let registry = provider.capabilities();
     let set = postgres_capability_set();
 
     assert_eq!(
         set.data,
-        DataSupport::BufferedReadWrite,
-        "row read/write are proven by traits.rs:1127/:1139; the downgrade from nominal \
-         is the withheld streaming axis and must not drift silently"
+        DataSupport::StreamingReadWrite,
+        "resource_stream emits bounded batches and execute preserves rowsAffected"
     );
     assert!(
         set.data.enables_row_read(),
@@ -390,32 +384,20 @@ async fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
         "execute returns a rowsAffected that payload.rs only accepts verbatim"
     );
     assert!(
-        !set.data.enables_streaming_results(),
-        "rows are fully buffered before the sink sees any of them, so streaming \
-         must stay undeclared"
+        set.data.enables_streaming_results(),
+        "bounded result batches are sent to the sink as rows are read"
     );
     assert!(
-        !set.data.enables_feature(),
+        set.data.enables_feature(),
         "only StreamingReadWrite is nominal; a degraded set must not open the \
          feature as a whole"
     );
-    assert!(set.data.is_weaker_than_nominal());
+    assert!(!set.data.is_weaker_than_nominal());
 
     // The declaration and the guards that read it must not drift.
     assert!(registry.require_row_read().is_ok());
     assert!(registry.require_row_write().is_ok());
-    let streaming = registry.require_streaming_results();
-    assert!(
-        streaming.is_err(),
-        "the guard must reject even though row read/write are declared"
-    );
-    assert!(
-        streaming
-            .unwrap_err()
-            .to_string()
-            .contains("data.streamingResults"),
-        "the refusal has to name the axis, so a caller knows what to stop asking for"
-    );
+    assert!(registry.require_streaming_results().is_ok());
 
     assert_eq!(
         set.backup,
@@ -502,20 +484,22 @@ async fn a_described_resource_charges_the_pool_plus_the_control_connection() {
     assert_eq!(
         descriptor.connection_cost_policy,
         ConnectionCostPolicy::PoolBounded {
-            max_physical_connections: config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS,
+            max_physical_connections: 2,
         },
         "the real cost is the data pool plus the pg_cancel_backend control connection"
     );
     assert_eq!(
         descriptor.connection_cost_policy,
-        postgres_connection_cost(&config)
+        ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: 2
+        }
     );
     assert_eq!(
         descriptor.session_continuity,
-        SessionContinuity::Leased,
-        "a PgPool is not a fixed session"
+        SessionContinuity::Fixed,
+        "editor resources retain their physical checkout"
     );
-    assert!(!descriptor.is_fixed_session());
+    assert!(descriptor.is_fixed_session());
     assert!(descriptor.initialization_requirements.is_empty());
     assert_eq!(descriptor.namespace_shape, postgres_namespace_shape());
     assert_ne!(descriptor.resource_key, "");
@@ -547,7 +531,7 @@ async fn an_acquire_smaller_than_the_real_cost_is_denied() {
     let (_driver, provider) = provider_with_driver();
     let config = config();
     let scope = ResourceScope {
-        max_physical_connections: 2,
+        max_physical_connections: 1,
         ..interactive_scope()
     };
 
@@ -563,12 +547,9 @@ async fn an_acquire_smaller_than_the_real_cost_is_denied() {
         // meaning `BudgetPort::acquire_physical_connections` gives it. The
         // scope's own smaller ceiling is in the reason.
         Err(ResourceError::BudgetDenied { requested, reason }) => {
-            assert_eq!(
-                requested,
-                config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS
-            );
+            assert_eq!(requested, 2);
             assert!(
-                reason.contains("2"),
+                reason.contains("1"),
                 "the reason must name the scope that was refused: {reason}"
             );
         }
@@ -577,31 +558,16 @@ async fn an_acquire_smaller_than_the_real_cost_is_denied() {
 }
 
 #[tokio::test]
-async fn an_acquire_that_pins_for_streaming_is_refused_not_downgraded() {
+async fn streaming_acquisition_keeps_the_fixed_connection_budget() {
     let (_driver, provider) = provider_with_driver();
-    let config = config();
-    let scope = ResourceScope {
-        pin_for_streaming: true,
-        ..interactive_scope()
-    };
-
-    let error = provider
-        .acquire_resource(
-            &acquire_request(&config, scope),
-            &ledger_port(&Arc::new(BudgetLedger::default())),
-        )
-        .await
-        .expect_err("a pinned streaming connection is a fixed session");
-
-    match error {
-        ResourceError::OperationNotSupported {
-            driver, operation, ..
-        } => {
-            assert_eq!(driver, POSTGRES_PROVIDER_ID);
-            assert_eq!(operation, "acquire_resource");
-        }
-        other => panic!("expected OperationNotSupported, got {other:?}"),
-    }
+    let request = acquire_request(
+        &config(),
+        ResourceScope {
+            pin_for_streaming: true,
+            ..interactive_scope()
+        },
+    );
+    assert_eq!(provider.validate_acquisition(&request).unwrap(), 2);
 }
 
 #[tokio::test]
@@ -632,13 +598,6 @@ async fn no_refused_acquire_ever_charged_the_budget() {
             target: catalog_target(),
             ..acquire_request(&config, interactive_scope())
         },
-        acquire_request(
-            &config,
-            ResourceScope {
-                pin_for_streaming: true,
-                ..interactive_scope()
-            },
-        ),
         unproven_requirement(),
         acquire_request(
             &config,
@@ -685,10 +644,7 @@ async fn a_connection_the_driver_cannot_open_is_reported_and_charges_nothing() {
         Err(ResourceError::Driver(DriverError::ConnectionFailed(_))) => {}
         other => panic!("expected the connect failure to surface, got {other:?}"),
     }
-    assert_eq!(
-        ledger.acquired(),
-        vec![config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS]
-    );
+    assert_eq!(ledger.acquired(), vec![2]);
     assert_eq!(
         ledger.released().len(),
         1,
@@ -731,10 +687,7 @@ async fn cancel_reaches_exactly_one_execution_and_leaves_every_other_untouched()
 
     assert_eq!(receipt.execution_id, wanted);
     assert_eq!(receipt.disposition, CancelDisposition::Requested);
-    assert!(
-        receipt.state.is_none(),
-        "a cancel request is not a terminal state, so no state may be substituted"
-    );
+    assert_eq!(receipt.state, Some(ExecutionState::CancelRequested));
 
     assert!(
         driver

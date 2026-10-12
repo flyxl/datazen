@@ -13,7 +13,12 @@ function seedSchema(
   patch: Partial<ConnectionSchemaState>,
 ) {
   const schemas = new Map(store.getState().schemas);
-  schemas.set(session, { ...createEmptyConnectionSchema(), ...schemas.get(session), ...patch });
+  schemas.set(session, {
+    ...createEmptyConnectionSchema(),
+    connectionId: 'cfg-1',
+    ...schemas.get(session),
+    ...patch,
+  });
   store.setState({ schemas, activeDbSessionId: session });
 }
 function schemaSnapshot(store: TestSchemaStore, session: string) {
@@ -46,7 +51,7 @@ function cachedRelation(
   };
 }
 
-const { mockReadColumns } = vi.hoisted(() => ({
+const { mockReadColumns, mockListTables } = vi.hoisted(() => ({
   mockReadColumns: vi.fn(async (_session: string, refs: readonly RelationRef[]) => ({
     results: refs.map((ref) => ({
       status: 'ok' as const,
@@ -60,21 +65,48 @@ const { mockReadColumns } = vi.hoisted(() => ({
       },
     })),
   })),
+  mockListTables: vi.fn(
+    async (_dbSessionId: string, _database: string) =>
+      [
+        { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
+        { name: 'products', tableType: 'table', schema: 'public', rowCount: null },
+        { name: 'orders', tableType: 'table', schema: 'public', rowCount: null },
+      ] as TableInfo[],
+  ),
 }));
 
-vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
-  schemaClient: { readColumns: mockReadColumns },
+vi.mock('../../lib/session/targetCommand', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/session/targetCommand')>()),
+  metadataScopeKey: async (dbSessionId: string, connectionId?: string) =>
+    `${connectionId ?? 'missing-owner'}:${dbSessionId}`,
+  executeTargetCommand: async (
+    target: import('@datazen/backend-client').ExecutionTarget,
+    call: import('@datazen/backend-client').CommandCall,
+  ) => {
+    if (call.command !== 'read_relation_columns')
+      throw new Error(`Unexpected command: ${call.command}`);
+    const input = call.input as { relations: RelationRef[] };
+    return mockReadColumns(target.connectionId, input.relations);
+  },
 }));
 
 vi.mock('../../commands/database', () => ({
   databaseCommands: {
     getDatabases: vi.fn().mockResolvedValue(['testdb']),
-    listTables: vi.fn().mockResolvedValue([
-      { name: 'users', tableType: 'TABLE', schema: 'public', rowCount: null },
-      { name: 'products', tableType: 'TABLE', schema: 'public', rowCount: null },
-      { name: 'orders', tableType: 'TABLE', schema: 'public', rowCount: null },
-    ]),
+    listTables: mockListTables,
+    listCatalog: async (_dbSessionId: string, database: string) => {
+      const tables = await mockListTables(_dbSessionId, database);
+      const relations = tables.map((table) => ({
+        ref: { database, schema: table.schema ?? null, name: table.name },
+        kind: table.tableType?.toLowerCase() === 'view' ? ('view' as const) : ('table' as const),
+        rowCount: table.rowCount ?? null,
+      }));
+      return {
+        database,
+        schemas: [...new Set(relations.flatMap(({ ref }) => (ref.schema ? [ref.schema] : [])))],
+        relations,
+      };
+    },
   },
 }));
 
@@ -492,7 +524,7 @@ describe('schemaStore.ensureDatabaseColumns', () => {
 
     const state = schemaSnapshot(useSchemaStore, 'test-conn');
     expect(mockReadColumns).toHaveBeenCalledTimes(1);
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'testdb', schema: 'public', name: 'users' },
       { database: 'testdb', schema: 'public', name: 'products' },
       { database: 'testdb', schema: 'public', name: 'orders' },
@@ -532,7 +564,7 @@ describe('schemaStore.ensureColumns', () => {
   it('reads only requested full identities and derives names and types together', async () => {
     await useSchemaStore.getState().loadTables('testdb', 'test-conn');
     await useSchemaStore.getState().ensureColumns(['users'], 'test-conn', 'testdb');
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'testdb', schema: 'public', name: 'users' },
     ]);
     expect(schemaSnapshot(useSchemaStore, 'test-conn').columnMap).toEqual({
@@ -549,7 +581,7 @@ describe('schemaStore.ensureColumns', () => {
     mockReadColumns.mockClear();
     await useSchemaStore.getState().ensureColumns(['users', 'orders'], 'test-conn', 'testdb');
     expect(mockReadColumns).toHaveBeenCalledOnce();
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'testdb', schema: 'public', name: 'orders' },
     ]);
   });
@@ -569,7 +601,7 @@ describe('schemaStore.ensureColumns', () => {
       namespaceTree: { hive: { snap: { wb_daily_orders: [] } } },
     });
     await useSchemaStore.getState().ensureColumns(['wb_d', 'wb_daily_orders'], 'test-conn', 'hive');
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'hive', schema: null, name: 'wb_daily_orders' },
     ]);
   });
@@ -609,7 +641,7 @@ describe('schemaStore.ensureColumns', () => {
         { pinCurrentDatabase: false },
       );
     await useSchemaStore.getState().ensureColumns(['users'], 'test-conn', 'tab_db');
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'tab_db', schema: 'archive', name: 'users' },
     ]);
     expect(schemaSnapshot(useSchemaStore, 'test-conn').currentDatabase).toBe('testdb');
@@ -956,12 +988,12 @@ describe('schemaStore keyed multi-connection', () => {
   });
 
   it('ensureColumns uses per-connection columnInflight', async () => {
-    seedSchema(useSchemaStore, 'conn-a', {});
+    seedSchema(useSchemaStore, 'conn-a', { connectionId: 'cfg-a' });
     useSchemaStore
       .getState()
       .setLoadedTables('db', [{ name: 'users', tableType: 'table' }], 'conn-a');
 
-    seedSchema(useSchemaStore, 'conn-b', {});
+    seedSchema(useSchemaStore, 'conn-b', { connectionId: 'cfg-b' });
     useSchemaStore
       .getState()
       .setLoadedTables('db', [{ name: 'orders', tableType: 'table' }], 'conn-b');
@@ -970,10 +1002,10 @@ describe('schemaStore keyed multi-connection', () => {
     await useSchemaStore.getState().ensureColumns(['users'], 'conn-a', 'db');
     await useSchemaStore.getState().ensureColumns(['orders'], 'conn-b', 'db');
 
-    expect(mockReadColumns).toHaveBeenCalledWith('conn-a', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-a', [
       { name: 'users', database: 'db', schema: null },
     ]);
-    expect(mockReadColumns).toHaveBeenCalledWith('conn-b', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-b', [
       { name: 'orders', database: 'db', schema: null },
     ]);
     expect(schemaSnapshot(useSchemaStore, 'conn-a').columnMap).toEqual({

@@ -203,6 +203,15 @@ impl InMemorySessionDirectory {
                 // 一个替换操作键**只允许被 prepare 一次**。同一个旧句柄再来一次
                 // `Prepared`（无论候选是不是同一个）都是调用方的重复投递：接受它会让
                 // 第二次静默覆盖操作记录，把第一个候选永久孤立在屏障态里再也结算不了。
+                let retained_sessions: std::collections::HashSet<_> =
+                    inner.entries.keys().cloned().collect();
+                inner.operations.retain(|_, record| {
+                    record.state().is_barrier()
+                        || retained_sessions.contains(&record.old().db_session_id)
+                });
+                if inner.operations.len() >= 4096 {
+                    return Err(PortError::QuotaExceeded("replacement records".into()));
+                }
                 if inner.operations.contains_key(&key) {
                     return Err(PortError::cas_conflict(
                         "replacement",
@@ -322,6 +331,16 @@ impl InMemorySessionDirectory {
         // 作废后**删除**条目：后续请求只能是「不知道」，绝无透明重建。
         inner.entries.remove(&db_session_id);
         inner.digests.remove(&db_session_id);
+        if inner.invalidations.len() >= 4096 {
+            if let Some(old) = inner
+                .invalidations
+                .iter()
+                .min_by(|(_, a), (_, b)| a.invalidated_at.as_str().cmp(b.invalidated_at.as_str()))
+                .map(|(id, _)| id.clone())
+            {
+                inner.invalidations.remove(&old);
+            }
+        }
         inner.invalidations.insert(
             db_session_id.clone(),
             InvalidationRecord {
@@ -351,6 +370,18 @@ impl InMemorySessionDirectory {
             .entry_for_handle(&mut inner, handle)
             .map_err(|rejection| rejection.to_port_error(&handle.db_session_id))?;
         entry.close(ClosureReason::Released(disposition));
+        let closed: Vec<_> = inner
+            .entries
+            .iter()
+            .filter(|(id, entry)| {
+                **id != handle.db_session_id && entry.state() == RoutingState::Closed
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in closed.iter().take(closed.len().saturating_sub(4095)) {
+            inner.entries.remove(id);
+            inner.digests.remove(id);
+        }
         inner.revision = inner.revision.wrapping_add(1);
         tracing::debug!(%handle.db_session_id, disposition = ?disposition, "session released");
         Ok(())

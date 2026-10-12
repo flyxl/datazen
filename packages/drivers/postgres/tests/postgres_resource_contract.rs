@@ -356,9 +356,9 @@ fn the_provider_identifies_itself_as_this_crate() {
         datazen_driver_api::PROTOCOL_VERSION,
         "an unchanged contract means an unchanged protocol version"
     );
-    assert!(
-        registry.snapshot.capability_revision > 0,
-        "a declared capability set must carry a revision so a stale snapshot is detectable"
+    assert_eq!(
+        registry.snapshot.capability_revision, 3,
+        "the revision advances when the provider adds fixed sessions and streaming results"
     );
 }
 
@@ -386,12 +386,11 @@ fn the_factory_and_the_provider_declare_the_same_capabilities() {
 // 3. A resource is acquired for a real price, and nothing unproven is replayed.
 // ---------------------------------------------------------------------------
 
-/// A resource here is a leased pool slot, so switching the target namespace
-/// needs a different resource. `SessionContinuity::Fixed` plus
-/// `NamespaceSwitch::InPlace` is the shape that would make a caller believe a
-/// `SET` had been applied; neither is declared.
+/// Interactive queries retain a fixed backend, but PostgreSQL cannot switch
+/// the attached database in place. Fixed session continuity does not imply an
+/// in-place namespace change.
 #[tokio::test]
-async fn a_descriptor_refuses_to_claim_a_fixed_session() {
+async fn a_fixed_interactive_session_still_requires_replacement_to_switch_database() {
     let config = config();
     let provider = require_resource_provider(postgres()).expect("postgres has a provider");
 
@@ -400,9 +399,9 @@ async fn a_descriptor_refuses_to_claim_a_fixed_session() {
         .await
         .expect("describe needs no server");
 
-    assert_eq!(descriptor.session_continuity, SessionContinuity::Leased);
-    assert!(!descriptor.session_continuity.is_fixed());
-    assert!(!descriptor.is_fixed_session());
+    assert_eq!(descriptor.session_continuity, SessionContinuity::Fixed);
+    assert!(descriptor.session_continuity.is_fixed());
+    assert!(descriptor.is_fixed_session());
     assert_eq!(
         require_resource_provider(postgres())
             .expect("postgres has a provider")
@@ -430,13 +429,15 @@ async fn describe_states_the_real_physical_cost_and_refuses_levels_postgres_has_
             max_physical_connections,
         } => assert_eq!(
             max_physical_connections,
-            config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS,
-            "the declared cost must include the control connection used for cancellation"
+            1 + CONTROL_POOL_CONNECTIONS,
+            "an interactive resource retains one backend plus the cancellation control connection"
         ),
-        other => panic!("postgres pools are bounded by the pool size, not {other:?}"),
+        other => panic!(
+            "postgres fixed sessions are bounded by their retained connections, not {other:?}"
+        ),
     }
-    assert_eq!(descriptor.session_continuity, SessionContinuity::Leased);
-    assert!(!descriptor.is_fixed_session());
+    assert_eq!(descriptor.session_continuity, SessionContinuity::Fixed);
+    assert!(descriptor.is_fixed_session());
     assert!(
         descriptor.initialization_requirements.is_empty(),
         "no unproven initialization is replayed on acquire"
@@ -467,21 +468,18 @@ async fn a_scope_that_cannot_pay_for_the_resource_is_denied_before_anything_is_o
     let ledger = Arc::new(BudgetLedger::default());
     let budget: Arc<dyn BudgetPort> = Arc::clone(&ledger) as Arc<dyn BudgetPort>;
 
-    // The provider needs the data pool plus the control connection. A scope
-    // that names fewer must be told so instead of being quietly satisfied.
+    // An interactive resource retains one backend and a control connection. A
+    // scope that names fewer must be refused before the provider opens either.
     let error = provider
-        .acquire_resource(&acquire_request(&config, interactive_scope(2)), &budget)
+        .acquire_resource(&acquire_request(&config, interactive_scope(1)), &budget)
         .await
-        .expect_err("a scope of 2 cannot pay for a pool of 10 plus a control connection");
+        .expect_err("a scope of 1 cannot pay for the retained backend and control connection");
 
     match error {
         ResourceError::BudgetDenied { requested, reason } => {
-            assert_eq!(
-                requested,
-                config.effective_max_pool_size() + CONTROL_POOL_CONNECTIONS
-            );
+            assert_eq!(requested, 1 + CONTROL_POOL_CONNECTIONS);
             assert!(
-                reason.contains("2"),
+                reason.contains("1"),
                 "the reason must name the scope that was refused: {reason}"
             );
         }

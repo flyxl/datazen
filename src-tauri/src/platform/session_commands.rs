@@ -47,6 +47,12 @@ pub struct ExecutionRequest {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CancelExecutionRequest {
+    pub execution_id: ExecutionId,
+    pub submission_token: datazen_platform_api::dto::idempotency::SubmissionToken,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenRequest {
     pub operation: IdempotentOperation,
     pub handle: Option<datazen_platform_api::dto::session::SessionHandle>,
@@ -138,10 +144,15 @@ pub async fn get_execution(
 #[tauri::command]
 pub async fn cancel_execution(
     state: State<'_, AppState>,
-    request: ExecutionRequest,
+    request: CancelExecutionRequest,
 ) -> Result<serde_json::Value, ApiError> {
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
+    adapter.runtime()?.validate_cancel_submission(
+        call.context(),
+        &request.submission_token.idempotency_key,
+        &request.execution_id,
+    )?;
     encode(
         adapter
             .runtime()?

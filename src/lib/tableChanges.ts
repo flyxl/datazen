@@ -42,6 +42,7 @@ export interface ChangeWarning {
 export interface RowChangePlan {
   planId: string;
   fingerprint: string;
+  configRevision?: import('@datazen/backend-client').Counter | null;
   table: TableChangeContext;
   updates: PlannedStatement[];
   deletes: PlannedStatement[];

@@ -42,8 +42,8 @@ use sqlx::PgPool;
 use crate::postgres::PostgresDriver;
 
 use super::capabilities::{
-    postgres_capability_registry, postgres_connection_cost, postgres_namespace_shape,
-    POSTGRES_PROVIDER_ID,
+    postgres_capability_registry, postgres_namespace_shape, postgres_resource_connection_cost,
+    CONTROL_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID,
 };
 use super::observation;
 use super::payload::decode_command_result;
@@ -65,6 +65,7 @@ pub struct PostgresResourceProvider {
     namespace_shape: NamespaceShape,
     runtime_epoch: u64,
     resources: Mutex<ResourceRegistry>,
+    close_gate: tokio::sync::Mutex<()>,
 }
 
 impl PostgresResourceProvider {
@@ -78,6 +79,7 @@ impl PostgresResourceProvider {
             namespace_shape: postgres_namespace_shape(),
             runtime_epoch: next_runtime_epoch(),
             resources: Mutex::new(ResourceRegistry::default()),
+            close_gate: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -112,6 +114,7 @@ impl PostgresResourceProvider {
         self.lock()
             .live
             .get(handle.resource_key())
+            .filter(|resource| !resource.close_started)
             .map(LiveResource::snapshot)
             .ok_or_else(|| ResourceError::InvalidResourceState {
                 resource_key: handle.resource_key().to_string(),
@@ -131,15 +134,15 @@ impl PostgresResourceProvider {
         handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
         let key = handle.resource_key().to_string();
         let mut registry = self.lock();
-        let resource =
-            registry
-                .live
-                .get_mut(&key)
-                .ok_or_else(|| ResourceError::InvalidResourceState {
-                    resource_key: key.clone(),
-                    operation: operation.to_string(),
-                    state: "no resource with this key is open on this provider".to_string(),
-                })?;
+        let resource = registry
+            .live
+            .get_mut(&key)
+            .filter(|resource| !resource.close_started)
+            .ok_or_else(|| ResourceError::InvalidResourceState {
+                resource_key: key.clone(),
+                operation: operation.to_string(),
+                state: "no resource with this key is open on this provider".to_string(),
+            })?;
         resource
             .transaction
             .take()
@@ -164,15 +167,15 @@ impl PostgresResourceProvider {
         handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
         let key = handle.resource_key().to_string();
         let mut registry = self.lock();
-        let resource =
-            registry
-                .live
-                .get_mut(&key)
-                .ok_or_else(|| ResourceError::InvalidResourceState {
-                    resource_key: key.clone(),
-                    operation: "close_handle".to_string(),
-                    state: "no resource with this key is open on this provider".to_string(),
-                })?;
+        let resource = registry
+            .live
+            .get_mut(&key)
+            .filter(|resource| !resource.close_started)
+            .ok_or_else(|| ResourceError::InvalidResourceState {
+                resource_key: key.clone(),
+                operation: "close_handle".to_string(),
+                state: "no resource with this key is open on this provider".to_string(),
+            })?;
 
         let open = resource
             .transaction
@@ -253,23 +256,32 @@ impl PostgresResourceProvider {
     /// database and principal, but not a context it could mistake for
     /// confirmed.
     async fn context_of(&self, resource: &LiveResource) -> Result<SessionContext, ResourceError> {
-        match resource.transaction.as_ref() {
-            Some(transaction) => {
-                let facts = observation::read_pinned_session(
-                    &self.driver.transactions,
-                    &transaction.connection_id,
-                )
-                .await?;
-                Ok(observation::pinned_context(&facts))
-            }
-            None => {
-                let pool = self
-                    .pool_of(&resource.connection, "read_session_context")
-                    .await?;
-                let facts = observation::read_pooled_session(&pool).await?;
-                Ok(observation::leased_context(&facts))
-            }
+        if self
+            .driver
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&resource.connection.id)
+        {
+            return self
+                .driver
+                .read_fixed_session(&resource.connection)
+                .await
+                .map_err(ResourceError::Driver);
         }
+        if let Some(transaction) = resource.transaction.as_ref() {
+            let facts = observation::read_pinned_session(
+                &self.driver.transactions,
+                &transaction.connection_id,
+            )
+            .await?;
+            return Ok(observation::pinned_context(&facts));
+        }
+        let pool = self
+            .pool_of(&resource.connection, "read_session_context")
+            .await?;
+        let facts = observation::read_pooled_session(&pool).await?;
+        Ok(observation::leased_context(&facts))
     }
 
     /// The transaction observation that matches [`Self::context_of`].
@@ -288,6 +300,37 @@ impl PostgresResourceProvider {
                 revision: resource.revision,
             },
         }
+    }
+
+    /// Reconcile a transaction started/ended by user SQL from server evidence.
+    /// The handle names a cleanup action on this retained physical resource.
+    fn reconcile_transaction(
+        &self,
+        handle: &ResourceHandle,
+        state: TransactionState,
+    ) -> Result<LiveResource, ResourceError> {
+        let mut registry = self.lock();
+        let resource = registry
+            .live
+            .get_mut(handle.resource_key())
+            .ok_or_else(|| ResourceError::InvalidResourceState {
+                resource_key: handle.resource_key().into(),
+                operation: "reconcile_transaction".into(),
+                state: "SessionLost".into(),
+            })?;
+        match state {
+            TransactionState::Idle => resource.transaction = None,
+            TransactionState::Active | TransactionState::Aborted
+                if resource.transaction.is_none() =>
+            {
+                resource.transaction = Some(OpenTransaction {
+                    id: format!("pg_sql_tx_{}", uuid::Uuid::new_v4()),
+                    connection_id: resource.connection.id.clone(),
+                });
+            }
+            _ => {}
+        }
+        Ok(resource.snapshot())
     }
 
     /// The handles this provider issued for the live resource. Never a handle
@@ -311,22 +354,14 @@ impl PostgresResourceProvider {
     /// Everything an acquire must check, done before any budget is charged and
     /// before any socket is opened. Split out so the ordering is verifiable on
     /// its own: a refused request must never cost the caller a connection.
-    fn validate_acquisition(&self, request: &AcquireResourceRequest) -> Result<u32, ResourceError> {
+    pub(super) fn validate_acquisition(
+        &self,
+        request: &AcquireResourceRequest,
+    ) -> Result<u32, ResourceError> {
         // The namespace shape is the contract: PostgreSQL has a database level
         // and a schema level and *no* catalog level, so a catalog target is
         // refused by name.
         self.namespace_shape.canonicalize(&request.target)?;
-
-        if request.scope.pin_for_streaming {
-            return Err(ResourceError::OperationNotSupported {
-                driver: POSTGRES_PROVIDER_ID.to_string(),
-                operation: "acquire_resource".to_string(),
-                reason: "pin_for_streaming needs a fixed, session-bound connection. This \
-                         provider declares statefulSession = unsupported, because a sqlx pool \
-                         of any size hands out a different backend per statement."
-                    .to_string(),
-            });
-        }
 
         if !request.baseline.initialization_requirements.is_empty() {
             return Err(ResourceError::OperationNotSupported {
@@ -345,9 +380,19 @@ impl PostgresResourceProvider {
         // The cost policy is the single source of truth for the charge. If it
         // ever stops being a bounded pool, acquisition is refused rather than
         // guessed at.
+        let fixed = contract::fixed_purpose(request.scope.purpose)
+            || request.scope.pin_for_streaming
+            || request.scope.holds_open_transaction;
+        let cost = if fixed {
+            ConnectionCostPolicy::PoolBounded {
+                max_physical_connections: 2,
+            }
+        } else {
+            postgres_resource_connection_cost(&request.connection_config, request.scope.purpose)
+        };
         let ConnectionCostPolicy::PoolBounded {
             max_physical_connections: required,
-        } = postgres_connection_cost(&request.connection_config)
+        } = cost
         else {
             return Err(ResourceError::OperationNotSupported {
                 driver: POSTGRES_PROVIDER_ID.to_string(),
@@ -363,10 +408,11 @@ impl PostgresResourceProvider {
                 requested: required,
                 reason: format!(
                     "the scope allows {} physical connection(s); this resource needs {}: a pool \
-                     of {} plus the control pool used for cancellation",
+                     of {} plus a control pool of {} connection(s) used for cancellation",
                     request.scope.max_physical_connections,
                     required,
-                    request.connection_config.effective_max_pool_size()
+                    required.saturating_sub(CONTROL_POOL_CONNECTIONS),
+                    CONTROL_POOL_CONNECTIONS
                 ),
             });
         }
@@ -388,6 +434,7 @@ impl PostgresResourceProvider {
             resource_key.clone(),
             LiveResource {
                 connection,
+                close_started: false,
                 permit,
                 budget,
                 transaction: None,
@@ -417,9 +464,34 @@ impl PostgresResourceProvider {
         operation: &str,
         commit: bool,
     ) -> Result<TransactionObservation, ResourceError> {
-        let transaction = self.take_transaction(handle, operation)?;
+        let resource = self.resource_of(handle, operation)?;
+        let transaction = match self.take_transaction(handle, operation) {
+            Ok(transaction) => transaction,
+            Err(error)
+                if self
+                    .driver
+                    .fixed_sessions
+                    .read()
+                    .await
+                    .contains_key(&resource.connection.id) =>
+            {
+                let _ = error;
+                OpenTransaction {
+                    id: "fixed_sql_transaction".into(),
+                    connection_id: resource.connection.id.clone(),
+                }
+            }
+            Err(error) => return Err(error),
+        };
         let revision = self.bump_revision(handle);
 
+        let aborted = commit
+            && self
+                .driver
+                .read_fixed_session(&resource.connection)
+                .await
+                .map(|context| context.transaction_state == TransactionState::Aborted)
+                .unwrap_or(false);
         let outcome = if commit {
             self.driver.commit_impl(transaction.to_handle()).await
         } else {
@@ -429,7 +501,11 @@ impl PostgresResourceProvider {
         match outcome {
             Ok(()) => Ok(TransactionObservation::finished(
                 TransactionState::Idle,
-                EffectOutcome::Completed,
+                if aborted {
+                    EffectOutcome::RolledBack
+                } else {
+                    EffectOutcome::Completed
+                },
                 revision,
             )),
             Err(error) => {
@@ -455,52 +531,125 @@ impl PostgresResourceProvider {
     /// Run one Driver Command on the live resource and hand what came back to
     /// the sink.
     ///
-    /// The accepted command set is deliberately narrow: only results the sink
-    /// channel can carry truthfully. A catalog or admin command returns a
-    /// payload a `ResultChunk` has no way to express, and reporting that as
-    /// "no rows, succeeded" is exactly the shell behaviour the contract
-    /// forbids, so it is refused with `OperationNotSupported`.
+    /// SQL rows use incremental delivery; catalog/admin payloads use typed
+    /// output. Fixed sessions only admit commands with a same-connection path.
     async fn run_command(
         &self,
         handle: &ResourceHandle,
         resource: &LiveResource,
         call: &CommandCall,
+        execution_id: &datazen_driver_api::QueryExecutionId,
         sink: &dyn ResultSink,
     ) -> Result<ExecutionCompletion, ResourceError> {
+        if self
+            .driver
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&resource.connection.id)
+            && !matches!(
+                call.command.as_str(),
+                "query" | "query_stream" | "execute" | "get_table_schema"
+            )
+        {
+            return Err(ResourceError::unsupported(
+                POSTGRES_PROVIDER_ID,
+                "execute_on_resource",
+                "this catalog/admin command does not execute on a retained session",
+            ));
+        }
+        if let Some(database) = call
+            .input
+            .get("database")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            if !self
+                .driver
+                .is_active_database(&resource.connection, database)
+                .await
+            {
+                return Err(ResourceError::unsupported(
+                    POSTGRES_PROVIDER_ID,
+                    "execute_on_resource",
+                    "the target database requires a separately budgeted resource",
+                ));
+            }
+        }
         // The pre-execution state is a snapshot, deliberately: what the caller
         // sees as "before" is what was true when the statement was sent.
         let context_before = self.context_of(resource).await?;
-        let transaction = resource.transaction.clone();
-        let transaction_observation = self.transaction_observation_of(resource);
-
-        let result = self
-            .driver
-            .execute_command_impl(&resource.connection, &call.command, call.input.clone())
-            .await;
-
-        let result = match result {
-            Ok(result) => result,
-            Err(error) => {
-                // The sink learns the execution ended before the error returns
-                // to the caller.
-                let reason = format!("driver command '{}' failed: {error}", call.command);
-                let _ = sink.fail(&reason).await;
-                return Err(ResourceError::Driver(DriverError::QueryFailed(reason)));
+        let statement_results = if matches!(call.command.as_str(), "query" | "query_stream") {
+            let sql = call.input["sql"].as_str().ok_or_else(|| {
+                ResourceError::Driver(DriverError::InvalidConfig("sql is required".into()))
+            })?;
+            let target = datazen_driver_api::SqlTarget::new(
+                call.input
+                    .get("database")
+                    .and_then(serde_json::Value::as_str),
+                call.input.get("schema").and_then(serde_json::Value::as_str),
+            );
+            self.driver
+                .ensure_transaction_reaches(&resource.connection, target)
+                .await?;
+            let sql = datazen_driver_api::DatabaseDriver::qualified_sql(&*self.driver, sql, target);
+            let limit = call
+                .input
+                .get("limit")
+                .and_then(serde_json::Value::as_u64)
+                .map(|n| n.min(u32::MAX as u64) as u32);
+            let parameters: Option<Vec<datazen_driver_api::Value>> = call
+                .input
+                .get("boundParameters")
+                .map(|value| serde_json::from_value(value.clone()))
+                .transpose()
+                .map_err(|_| DriverError::InvalidConfig("invalid bound parameters".into()))?;
+            self.driver
+                .stream_resource_query(
+                    &resource.connection,
+                    execution_id,
+                    &sql,
+                    limit,
+                    parameters.as_deref(),
+                    sink,
+                )
+                .await?
+        } else {
+            let result = self
+                .driver
+                .execute_command_impl(&resource.connection, &call.command, call.input.clone())
+                .await
+                .map_err(ResourceError::Driver)?;
+            if call.command == "execute" {
+                let (statements, chunks) = decode_command_result(&result.data)?;
+                for chunk in chunks {
+                    sink.write(chunk).await?;
+                }
+                statements
+            } else {
+                sink.write_output(
+                    serde_json::json!({ "kind": "commandResult", "data": result.data }),
+                )
+                .await?;
+                Vec::new()
             }
         };
-
-        let (statement_results, chunks) = decode_command_result(&result.data)?;
-        for chunk in chunks {
-            // A sink that rejects a chunk has already been handed rows, so the
-            // statements did run; `SinkRejected` reports the delivery failure
-            // without pretending the work did not happen.
-            sink.write(chunk).await?;
-        }
-        sink.complete().await?;
-
         let context_after = self.context_of(resource).await?;
+        let current = if self
+            .driver
+            .fixed_sessions
+            .read()
+            .await
+            .contains_key(&resource.connection.id)
+        {
+            self.reconcile_transaction(handle, context_after.transaction_state)?
+        } else {
+            resource.snapshot()
+        };
+        let mut transaction_observation = self.transaction_observation_of(&current);
+        transaction_observation.state = context_after.transaction_state;
 
-        let session_handles = match transaction {
+        let session_handles = match current.transaction {
             Some(transaction) => vec![SessionHandleRef::new(
                 transaction.id,
                 SessionHandleKind::Transaction,
@@ -510,6 +659,7 @@ impl PostgresResourceProvider {
             None => Vec::new(),
         };
 
+        sink.complete().await?;
         Ok(ExecutionCompletion {
             completion_status: CompletionStatus::Succeeded,
             effect_outcome: EffectOutcome::Completed,
@@ -518,8 +668,8 @@ impl PostgresResourceProvider {
             context_after,
             transaction_observation,
             session_handles,
-            // Every row was buffered and handed to the sink; the connection
-            // will not be read again for this execution.
+            // Every SQLx result was consumed before completion; no row buffer
+            // is duplicated in statement_results.
             protocol_drained: true,
             // The command returned, which is the evidence for `Healthy`; a
             // failure above is an `Err`, never a completion.

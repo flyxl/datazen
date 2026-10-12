@@ -261,6 +261,7 @@ pub fn run() {
             crate::platform::session_commands::subscribe_events,
             crate::platform::session_commands::stop_event_subscription,
             crate::platform::session_commands::read_artifact_chunk,
+            crate::platform::artifact_export::export_artifact,
             crate::platform::session_commands::platform_list_profiles,
             crate::platform::session_commands::platform_create_profile,
             crate::platform::session_commands::platform_update_profile,
@@ -320,6 +321,8 @@ pub fn run() {
             crate::commands::get_object_ddl,
             crate::commands::get_privileges,
             crate::commands::get_table_data,
+            crate::commands::get_table_data_at_target,
+            crate::commands::commit_query_result_cell,
             // ── 表结构编辑 ──
             crate::commands::get_structure_capabilities,
             crate::commands::plan_table_structure_changes,

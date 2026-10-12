@@ -12,6 +12,7 @@ import { ExecutionSummaryCard } from './ExecutionSummaryCard';
 
 export interface ResultTableViewProps {
   result: StatementResult;
+  onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
   rowDetailIndex?: number | null;
   onRowDetail?: (rowIndex: number) => void;
   dataExportCapability?: DataExportCapability;
@@ -25,6 +26,7 @@ export interface ResultTableViewProps {
  */
 export function ResultTableView({
   result,
+  onCellEdit,
   rowDetailIndex = null,
   onRowDetail,
   dataExportCapability,
@@ -32,6 +34,7 @@ export function ResultTableView({
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  const [editError, setEditError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
 
   const columnDefs = useMemo<ColumnDef[]>(
@@ -78,13 +81,13 @@ export function ResultTableView({
       // Safe Mode blocks in-place edit of query results. The row detail panel
       // still opens on double-click so the user can inspect the record.
       onRowDetail?.(row);
-      if (safeMode) {
+      if (safeMode || !onCellEdit || result.source?.writableMapping !== 'verified' || !result.runtimeBinding) {
         setEditingCell(null);
         return;
       }
       setEditingCell({ row, col });
     },
-    [onRowDetail, safeMode],
+    [onRowDetail, onCellEdit, safeMode, result.source, result.runtimeBinding],
   );
 
   if (isMutationExecution(result)) {
@@ -97,6 +100,10 @@ export function ResultTableView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" {...tid('result-workspace-table')}>
+      {result.source?.writableMapping === 'verified' && !result.runtimeBinding && (
+        <div className="p-2 text-xs text-fg-muted">{t('query.resultEditRequiresRefresh')}</div>
+      )}
+      {editError && <div role="alert" className="p-2 text-sm text-red-400">{editError}</div>}
       <DataTable
         columns={columnDefs}
         rows={result.rows}
@@ -104,7 +111,13 @@ export function ResultTableView({
         rowHeight={32}
         editingCell={safeMode ? null : editingCell}
         onCellDoubleClick={handleCellDoubleClick}
-        onCellEdit={(_row, _col, _value) => setEditingCell(null)}
+        onCellEdit={(row, column, value) => {
+          setEditError(null);
+          void onCellEdit?.(row, column, value).then(() => setEditingCell(null)).catch((error: unknown) => {
+            setEditingCell(null);
+            setEditError(error instanceof Error ? error.message : String(error));
+          });
+        }}
         onCellEditCancel={() => setEditingCell(null)}
         enableSetNull={false}
         onRowClick={onRowDetail}

@@ -21,6 +21,7 @@ pub enum IdempotentOperation {
     CreateProfile,
     OpenSession,
     ExecuteInSession,
+    CancelExecution,
     ExecuteAtTarget,
     SetSessionContext,
     StartJob,

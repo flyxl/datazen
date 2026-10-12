@@ -48,6 +48,7 @@ tracing = "0.1"
 # 刻意**不**用 `ring`/`aes-gcm` 那类带完整密码学栈的依赖：令牌只需要一处 HMAC。
 hmac = "0.12"
 sha2 = "0.10"
+libc = "0.2"
 
 # 集成测试要复用**唯一那份**共享夹具时钟（`connection::testing::clock::FakeClock`），
 # 而不是在本 crate 里另写一个只有 advance 的简化版。夹具模块由

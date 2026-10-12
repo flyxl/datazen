@@ -41,6 +41,7 @@ import { Spinner } from '../../components/ui/Spinner';
 
 interface TableStructureEditorProps {
   dbSessionId: string;
+  connectionId: string;
   databaseType: DatabaseType;
   /** Logical database for multi-db drivers; ensures session before plan/execute. */
   database: string;
@@ -129,6 +130,7 @@ async function fetchEstimatedTableRows(args: {
 
 export function TableStructureEditor({
   dbSessionId,
+  connectionId,
   databaseType,
   database,
   schema: requestSchema = null,
@@ -176,7 +178,7 @@ export function TableStructureEditor({
     const capsPromise = structureCommands.getStructureCapabilities(dbSessionId);
     const schemaPromise =
       mode === 'alter' && initialTableName
-        ? getCachedTableSchema(dbSessionId, initialTableName, database, tableSchema)
+        ? getCachedTableSchema(dbSessionId, initialTableName, database, tableSchema, connectionId)
         : Promise.resolve(null);
 
     Promise.all([capsPromise, schemaPromise])

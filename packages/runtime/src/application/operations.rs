@@ -18,10 +18,21 @@ impl RuntimeConnectionUseCases {
         request: ExecuteInSessionRequest,
         short: bool,
     ) -> Result<ExecutionReceipt, ApiError> {
-        let action = if request.call.command == "query"
-            || request.call.command.starts_with("list_")
-            || request.call.command.starts_with("get_")
-        {
+        let action = if matches!(
+            request.call.command.as_str(),
+            "query"
+                | "query_stream"
+                | "get_table_schema"
+                | "list_tables"
+                | "list_objects"
+                | "get_object_ddl"
+                | "get_schemas"
+                | "list_databases"
+                | "list_catalog"
+                | "read_relation_columns"
+                | "read_relation_schema"
+                | "refresh_schema_metadata"
+        ) {
             AuthorizationAction::Query
         } else {
             AuthorizationAction::Write
@@ -70,10 +81,7 @@ impl RuntimeConnectionUseCases {
                         capability_snapshot: CapabilitySnapshot::new(profile.driver_id, "", 0),
                         executed_at: Timestamp::new(utc_now()),
                     }),
-                    artifact_ids: vec![ArtifactId::new(format!(
-                        "artifact-{}",
-                        receipt.execution_id.as_str()
-                    ))],
+                    artifact_ids: vec![],
                     result_completeness: ResultCompleteness::Pending,
                     truncation_reason: None,
                     error_code: None,
@@ -95,7 +103,14 @@ impl RuntimeConnectionUseCases {
                         .map_err(gateway_error),
                     Err(error) => Err(error),
                 };
-                service.inner.sink.finish(&id, result.is_ok());
+                let resource_lost = result
+                    .as_ref()
+                    .err()
+                    .is_some_and(|error| error.code == ApiErrorCode::SessionLost);
+                service
+                    .inner
+                    .sink
+                    .finish(&id, result.is_ok(), resource_lost);
                 if service
                     .inner
                     .sink
@@ -111,6 +126,7 @@ impl RuntimeConnectionUseCases {
                 if let Ok(view) = service.session_view(&ctx, &handle).await {
                     service.inner.sink.session_event(view);
                 }
+
                 if short {
                     let _ = service
                         .close_session(
@@ -121,6 +137,102 @@ impl RuntimeConnectionUseCases {
                 }
             });
         }
+        Ok(receipt)
+    }
+    async fn execute_target_owned(
+        &self,
+        ctx: &RequestContext,
+        request: ExecuteAtTargetRequest,
+        abandoned: Arc<std::sync::atomic::AtomicBool>,
+        cleanup_handle: Arc<Mutex<Option<SessionHandle>>>,
+    ) -> Result<ExecutionReceipt, ApiError> {
+        request.validate()?;
+        self.validate_token(
+            ctx,
+            &request.idempotency_key,
+            IdempotentOperation::ExecuteAtTarget,
+            None,
+        )?;
+        self.authorize(ctx, AuthorizationAction::Query).await?;
+        let profile = self.profile(ctx, &request.target.connection_id).await?;
+        if profile.config_revision.counter() != request.expected_config_revision {
+            return Err(ApiError::new(
+                ApiErrorCode::ConfigRevisionMismatch,
+                "connection configuration changed",
+            ));
+        }
+        let fingerprint = serde_json::to_value(&request)
+            .map_err(|_| ApiError::invalid_argument("invalid target request"))?;
+        let _admission = self
+            .coordinate_admission(request.idempotency_key.as_str())
+            .await?;
+        if let Some((prior, value)) = self
+            .inner
+            .receipts
+            .lock()
+            .await
+            .get(request.idempotency_key.as_str())
+            .cloned()
+        {
+            if prior != fingerprint {
+                return Err(ApiError::new(
+                    ApiErrorCode::IdempotencyConflict,
+                    "target request changed",
+                ));
+            }
+            return convert::json_convert(&value);
+        }
+        let opened = self
+            .create_session_for_command(
+                ctx,
+                request.target,
+                OwnerRef::ClientSession {
+                    client_instance_id: ctx.client_instance_id.clone(),
+                    purpose: "explicitTargetExecution".into(),
+                },
+                &request.call.command,
+            )
+            .await?;
+        let handle = opened.session.handle;
+        *lock(&cleanup_handle) = Some(handle.clone());
+        if abandoned.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "target admission abandoned",
+            ));
+        }
+        let result = self
+            .enqueue(
+                ctx,
+                ExecuteInSessionRequest::new(
+                    handle.clone(),
+                    request.call,
+                    request.idempotency_key.clone(),
+                ),
+                true,
+            )
+            .await;
+        let receipt = match result {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                let _ = self
+                    .close_session(
+                        ctx,
+                        CloseSessionRequest::new(handle, CloseMode::RollbackAndClose),
+                    )
+                    .await;
+                return Err(error);
+            }
+        };
+        self.inner.receipts.lock().await.insert(
+            request.idempotency_key.as_str().to_owned(),
+            (
+                fingerprint,
+                serde_json::to_value(&receipt).map_err(|_| {
+                    ApiError::new(ApiErrorCode::OutcomeUnknown, "target receipt unavailable")
+                })?,
+            ),
+        );
         Ok(receipt)
     }
 }
@@ -189,15 +301,24 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         )?;
         let fingerprint = serde_json::to_value(&request)
             .map_err(|_| ApiError::invalid_argument("invalid session request"))?;
-        let mut receipts = self.inner.receipts.lock().await;
-        if let Some((prior, value)) = receipts.get(request.idempotency_key.as_str()) {
-            if prior != &fingerprint {
+        let _admission = self
+            .coordinate_admission(request.idempotency_key.as_str())
+            .await?;
+        if let Some((prior, value)) = self
+            .inner
+            .receipts
+            .lock()
+            .await
+            .get(request.idempotency_key.as_str())
+            .cloned()
+        {
+            if prior != fingerprint {
                 return Err(ApiError::new(
                     ApiErrorCode::IdempotencyConflict,
                     "session request changed",
                 ));
             }
-            let receipt: OpenSessionReceipt = convert::json_convert(value)?;
+            let receipt: OpenSessionReceipt = convert::json_convert(&value)?;
             let entry = self.session_entry(ctx, &receipt.session.handle)?;
             if entry.closed.is_some() {
                 return Err(ApiError::new(
@@ -210,7 +331,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         let receipt = self
             .create_session(ctx, request.initial_target, request.owner)
             .await?;
-        receipts.insert(
+        self.inner.receipts.lock().await.insert(
             request.idempotency_key.as_str().to_owned(),
             (
                 fingerprint,
@@ -280,6 +401,9 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             IdempotentOperation::ExecuteInSession,
             Some(&request.handle),
         )?;
+        let _admission = self
+            .coordinate_admission(request.idempotency_key.as_str())
+            .await?;
         self.enqueue(ctx, request, false).await
     }
     async fn execute_at_target(
@@ -287,78 +411,61 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         ctx: &RequestContext,
         request: ExecuteAtTargetRequest,
     ) -> Result<ExecutionReceipt, ApiError> {
-        request.validate()?;
-        self.validate_token(
-            ctx,
-            &request.idempotency_key,
-            IdempotentOperation::ExecuteAtTarget,
-            None,
-        )?;
-        self.authorize(ctx, AuthorizationAction::Query).await?;
-        let profile = self.profile(ctx, &request.target.connection_id).await?;
-        if profile.config_revision.counter() != request.expected_config_revision {
-            return Err(ApiError::new(
-                ApiErrorCode::ConfigRevisionMismatch,
-                "connection configuration changed",
-            ));
-        }
-        let fingerprint = serde_json::to_value(&request)
-            .map_err(|_| ApiError::invalid_argument("invalid target request"))?;
-        let mut receipts = self.inner.receipts.lock().await;
-        if let Some((prior, value)) = receipts.get(request.idempotency_key.as_str()) {
-            if prior != &fingerprint {
-                return Err(ApiError::new(
-                    ApiErrorCode::IdempotencyConflict,
-                    "target request changed",
-                ));
+        let service = self.clone();
+        let ctx = ctx.clone();
+        let abandoned = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cleanup_handle = Arc::new(Mutex::new(None));
+        let (reply, receive) = tokio::sync::oneshot::channel();
+        let (ack, acknowledged) = tokio::sync::oneshot::channel();
+        let cancel_flag = abandoned.clone();
+        tokio::spawn(async move {
+            let result = service
+                .execute_target_owned(&ctx, request, abandoned, cleanup_handle.clone())
+                .await;
+            let delivered = reply.send(result).is_ok();
+            if !delivered || acknowledged.await.is_err() {
+                let abandoned_handle = lock(&cleanup_handle).clone();
+                if let Some(handle) = abandoned_handle {
+                    // Closing queues behind protocol completion on the original actor;
+                    // it cannot rebind a handle to a replacement resource.
+                    let executions: Vec<_> = lock(&service.inner.sink.0)
+                        .values()
+                        .filter(|entry| entry.handle == handle && !entry.view.state.is_terminal())
+                        .map(|entry| entry.view.execution_id.clone())
+                        .collect();
+                    for id in executions {
+                        if let Ok(runtime_handle) = convert::handle(&handle) {
+                            let _ = service
+                                .inner
+                                .registry
+                                .cancel_execution(&runtime_handle, &id)
+                                .await;
+                        }
+                    }
+                    let _ = service
+                        .close_session(
+                            &ctx,
+                            CloseSessionRequest::new(handle, CloseMode::RollbackAndClose),
+                        )
+                        .await;
+                }
             }
-            return convert::json_convert(value);
-        }
-        let opened = self
-            .create_session(
-                ctx,
-                request.target,
-                OwnerRef::ClientSession {
-                    client_instance_id: ctx.client_instance_id.clone(),
-                    purpose: "explicitTargetExecution".into(),
-                },
-            )
-            .await?;
-        let handle = opened.session.handle;
-        let result = self
-            .enqueue(
-                ctx,
-                ExecuteInSessionRequest::new(
-                    handle.clone(),
-                    request.call,
-                    request.idempotency_key.clone(),
-                ),
-                true,
-            )
-            .await;
-        let receipt = match result {
-            Ok(receipt) => receipt,
-            Err(error) => {
-                let _ = self
-                    .close_session(
-                        ctx,
-                        CloseSessionRequest::new(handle, CloseMode::RollbackAndClose),
-                    )
-                    .await;
-                return Err(error);
+        });
+        struct AdmissionDrop(Arc<std::sync::atomic::AtomicBool>);
+        impl Drop for AdmissionDrop {
+            fn drop(&mut self) {
+                self.0.store(true, std::sync::atomic::Ordering::Release);
             }
-        };
-        receipts.insert(
-            request.idempotency_key.as_str().to_owned(),
-            (
-                fingerprint,
-                serde_json::to_value(&receipt).map_err(|_| {
-                    ApiError::new(ApiErrorCode::OutcomeUnknown, "target receipt unavailable")
-                })?,
-            ),
-        );
-        Ok(receipt)
+        }
+        let guard = AdmissionDrop(cancel_flag);
+        let result = receive.await.map_err(|_| {
+            ApiError::new(ApiErrorCode::OutcomeUnknown, "target admission task lost")
+        })?;
+        let _ = ack.send(());
+        drop(guard);
+        result
     }
+
     async fn set_session_context(
         &self,
         ctx: &RequestContext,
@@ -374,15 +481,24 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
         )?;
         let fingerprint = serde_json::to_value(&request)
             .map_err(|_| ApiError::invalid_argument("invalid context request"))?;
-        let mut receipts = self.inner.receipts.lock().await;
-        if let Some((prior, value)) = receipts.get(request.idempotency_key.as_str()) {
-            if prior != &fingerprint {
+        let _admission = self
+            .coordinate_admission(request.idempotency_key.as_str())
+            .await?;
+        if let Some((prior, value)) = self
+            .inner
+            .receipts
+            .lock()
+            .await
+            .get(request.idempotency_key.as_str())
+            .cloned()
+        {
+            if prior != fingerprint {
                 return Err(ApiError::new(
                     ApiErrorCode::IdempotencyConflict,
                     "context request changed",
                 ));
             }
-            return convert::json_convert(value);
+            return convert::json_convert(&value);
         }
         let entry = self.session_entry(ctx, &request.handle)?;
         self.session_view(ctx, &request.handle).await?;
@@ -400,6 +516,36 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             })
             .await
             .map_err(convert::runtime)?;
+        if replaced.session.db_session_id != request.handle.db_session_id {
+            let epoch = convert::handle(&request.handle)?.runtime_epoch.get();
+            let physical = lock(&self.inner.physical).get(&epoch).cloned();
+            let release = match physical.as_ref().and_then(|p| p.release) {
+                Some(
+                    crate::registry::backend::CloseResourceOutcome::Closed
+                    | crate::registry::backend::CloseResourceOutcome::ReturnedToPool,
+                ) => ResourceRelease::Confirmed,
+                Some(crate::registry::backend::CloseResourceOutcome::Undecidable { .. }) => {
+                    ResourceRelease::Quarantined
+                }
+                None => ResourceRelease::Pending,
+            };
+            if let Some(old) = lock(&self.inner.sessions).get_mut(&request.handle.db_session_id) {
+                old.closed = Some(CloseReceipt {
+                    db_session_id: request.handle.db_session_id.clone(),
+                    state: SessionState::Closed,
+                    effect_outcome: physical
+                        .map(|p| convert::json_convert(p.effect))
+                        .transpose()?
+                        .unwrap_or(EffectOutcome::Unknown),
+                    resource_release: release,
+                });
+                old.closed_at = Some(Instant::now());
+            }
+            if release == ResourceRelease::Confirmed {
+                lock(&self.inner.physical).remove(&epoch);
+            }
+            self.reclaim_session_tombstones();
+        }
         lock(&self.inner.sessions).insert(
             replaced.session.db_session_id.clone(),
             SessionEntry {
@@ -409,6 +555,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
                 handle: replaced.session.clone(),
                 attached: true,
                 closed: None,
+                closed_at: None,
             },
         );
         self.inner.sink.invalidate(&request.handle);
@@ -417,7 +564,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             replaced_session_id: Some(replaced.replaced_session_id),
             attachment_token: Some(replaced.attachment_token),
         };
-        receipts.insert(
+        self.inner.receipts.lock().await.insert(
             request.idempotency_key.as_str().to_owned(),
             (
                 fingerprint,
@@ -484,9 +631,10 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             lock(&self.inner.physical).get(&convert::handle(&request.handle)?.runtime_epoch.get())
         {
             receipt.resource_release = match physical.release {
-                Some(crate::registry::backend::CloseResourceOutcome::Closed) => {
-                    ResourceRelease::Confirmed
-                }
+                Some(
+                    crate::registry::backend::CloseResourceOutcome::Closed
+                    | crate::registry::backend::CloseResourceOutcome::ReturnedToPool,
+                ) => ResourceRelease::Confirmed,
                 Some(crate::registry::backend::CloseResourceOutcome::Undecidable { .. }) => {
                     ResourceRelease::Quarantined
                 }
@@ -501,7 +649,13 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             .await;
         if let Some(entry) = lock(&self.inner.sessions).get_mut(&request.handle.db_session_id) {
             entry.closed = Some(receipt.clone());
+            entry.closed_at = Some(Instant::now());
         }
+        if receipt.resource_release == ResourceRelease::Confirmed {
+            lock(&self.inner.physical)
+                .remove(&convert::handle(&request.handle)?.runtime_epoch.get());
+        }
+        self.reclaim_session_tombstones();
         self.inner.sink.invalidate(&request.handle);
         Ok(receipt)
     }

@@ -17,6 +17,7 @@ const {
   saveSyncProfileMock,
   deleteSyncProfileMock,
   getDatabasesMock,
+  listDatabasesDedicatedMock,
   listTablesMock,
   aiChatMock,
   stableT,
@@ -40,6 +41,7 @@ const {
     saveSyncProfileMock: vi.fn(),
     deleteSyncProfileMock: vi.fn(),
     getDatabasesMock: vi.fn(),
+    listDatabasesDedicatedMock: vi.fn(),
     listTablesMock: vi.fn(),
     aiChatMock: vi.fn(),
     stableT,
@@ -89,7 +91,15 @@ vi.mock('../../../commands/sync', () => ({
       options: unknown,
       selectedRows?: unknown[],
       tableSelections?: unknown[],
-    ) => executeDataSyncMock(targetSessionId, selectedRows ?? [], jobId, options, selectedRows, tableSelections),
+    ) =>
+      executeDataSyncMock(
+        targetSessionId,
+        selectedRows ?? [],
+        jobId,
+        options,
+        selectedRows,
+        tableSelections,
+      ),
     listDataSyncJobs: () => listDataSyncJobsMock(),
     generateDataSyncSql: (...args: unknown[]) => generateDataSyncSqlMock(...args),
     cancelDataSync: (...args: unknown[]) => cancelDataSyncMock(...args),
@@ -105,6 +115,11 @@ vi.mock('../../../commands/database', () => ({
     getDatabases: (...args: unknown[]) => getDatabasesMock(...args),
     listTables: (...args: unknown[]) => listTablesMock(...args),
   },
+}));
+
+vi.mock('../../../lib/dedicatedDbSession', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/dedicatedDbSession')>()),
+  listDatabasesDedicated: (...args: unknown[]) => listDatabasesDedicatedMock(...args),
 }));
 
 vi.mock('../../../commands/ai', () => ({
@@ -369,9 +384,31 @@ describe('DataSyncWindow wizard', () => {
     aiChatMock.mockReset();
     aiChatMock.mockResolvedValue('AI summary of diffs');
     getDatabasesMock.mockReset();
-    getDatabasesMock.mockImplementation(async (connId: string) =>
-      connId.includes('pg-src') || connId.includes('my') ? ['src', 'other'] : ['tgt'],
-    );
+    getDatabasesMock.mockImplementation(async (_dbSessionId: string, connectionId: string) => {
+      if (connectionId === 'pg-src' || connectionId === 'pg-src-alt' || connectionId === 'my-tgt') {
+        return ['src', 'other'];
+      }
+      if (connectionId === 'pg-tgt' || connectionId === 'pg-tgt-ro') return ['tgt'];
+      throw new Error('Unexpected database discovery owner in fixture');
+    });
+    listDatabasesDedicatedMock
+      .mockReset()
+      .mockImplementation(async (connectionId: string, preferredDatabase?: string) => {
+        const dbSessionId = String(
+          await invokeMock('connect_dedicated', {
+            connectionId,
+            database: preferredDatabase ?? null,
+          }),
+        );
+        try {
+          return {
+            databases: await getDatabasesMock(dbSessionId, connectionId),
+            dbSessionId: null,
+          };
+        } finally {
+          await invokeMock('release_connection', { dbSessionId });
+        }
+      });
     listTablesMock.mockReset();
     listTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
     invokeMock.mockImplementation(
@@ -729,7 +766,7 @@ describe('DataSyncWindow wizard', () => {
     await pickSelect('data-sync-source', 'My Tgt');
     await waitFor(() => expect(screen.getByTestId('data-sync-source-schema')).toBeTruthy());
     expect(screen.getByTestId('data-sync-source-schema')).toHaveTextContent('public');
-    expect(listTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src');
+    expect(listTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src', null, 'my-tgt');
   });
 
   it('marks heterogeneous targets as unsupported in the picker', async () => {
@@ -1061,45 +1098,45 @@ describe('DataSyncWindow wizard', () => {
     );
   });
   it('preserves deselection and submits apply through a durable job', async () => {
-      inspectDataSyncMock.mockResolvedValue([
-        { sourceTable: 'users', targetTable: 'clients', status: 'MATCHED' },
-      ]);
-      compareDataSyncMock.mockResolvedValue([
-        {
-          sourceTable: 'users',
-          targetTable: 'clients',
-          status: 'MATCHED',
-          columns: ['id', 'name'],
-          rows: [insertRow(), { ...insertRow(), key: [9] }],
-        },
-      ]);
-      render(<DataSyncWindow />);
-      await advanceToCompare();
-      const review = screen.getByTestId('data-sync-row-diff');
-      const choices = within(review).getAllByRole('checkbox');
-      fireEvent.click(choices[1]);
-      expect(choices[1]).not.toBeChecked();
-      fireEvent.click(screen.getByTestId('data-sync-next'));
-      await screen.findByTestId('data-sync-preview');
-      executeDataSyncMock.mockRejectedValue(new Error('commit response lost'));
-      fireEvent.click(screen.getByTestId('data-sync-start'));
-      await screen.findByTestId('data-sync-error');
-      expect(applyDataSyncMock).not.toHaveBeenCalled();
-      expect(executeDataSyncMock).toHaveBeenCalledTimes(1);
-      const submitted = executeDataSyncMock.mock.calls[0][1] as Array<{
-        sourceTable: string;
-        targetTable: string;
-        key: unknown[];
-      }>;
-      expect(submitted).toHaveLength(1);
-      expect(submitted[0]).toMatchObject({
+    inspectDataSyncMock.mockResolvedValue([
+      { sourceTable: 'users', targetTable: 'clients', status: 'MATCHED' },
+    ]);
+    compareDataSyncMock.mockResolvedValue([
+      {
         sourceTable: 'users',
         targetTable: 'clients',
-        key: [1],
-      });
-      expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'unknown');
-      expect(screen.getByTestId('data-sync-start-disabled')).toBeTruthy();
-      expect(compareDataSyncMock).toHaveBeenCalledTimes(1);
+        status: 'MATCHED',
+        columns: ['id', 'name'],
+        rows: [insertRow(), { ...insertRow(), key: [9] }],
+      },
+    ]);
+    render(<DataSyncWindow />);
+    await advanceToCompare();
+    const review = screen.getByTestId('data-sync-row-diff');
+    const choices = within(review).getAllByRole('checkbox');
+    fireEvent.click(choices[1]);
+    expect(choices[1]).not.toBeChecked();
+    fireEvent.click(screen.getByTestId('data-sync-next'));
+    await screen.findByTestId('data-sync-preview');
+    executeDataSyncMock.mockRejectedValue(new Error('commit response lost'));
+    fireEvent.click(screen.getByTestId('data-sync-start'));
+    await screen.findByTestId('data-sync-error');
+    expect(applyDataSyncMock).not.toHaveBeenCalled();
+    expect(executeDataSyncMock).toHaveBeenCalledTimes(1);
+    const submitted = executeDataSyncMock.mock.calls[0][1] as Array<{
+      sourceTable: string;
+      targetTable: string;
+      key: unknown[];
+    }>;
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatchObject({
+      sourceTable: 'users',
+      targetTable: 'clients',
+      key: [1],
+    });
+    expect(screen.getByTestId('data-sync-window')).toHaveAttribute('data-sync-state', 'unknown');
+    expect(screen.getByTestId('data-sync-start-disabled')).toBeTruthy();
+    expect(compareDataSyncMock).toHaveBeenCalledTimes(1);
   });
 
   it('empty row selection never starts a durable apply job', async () => {
@@ -1770,6 +1807,10 @@ describe('DataSyncWindow wizard', () => {
     fireEvent.click(screen.getByText('migrationHistory.open'));
     fireEvent.click(await screen.findByText(/failed/));
     fireEvent.click(await screen.findByTestId('migration-run-reconcile'));
+    await waitFor(() => {
+      expect(getDatabasesMock).toHaveBeenCalledWith('dedicated-pg-src-default', 'pg-src');
+      expect(getDatabasesMock).toHaveBeenCalledWith('dedicated-pg-tgt-default', 'pg-tgt');
+    });
     await waitFor(() => expect(screen.getByTestId('data-sync-step-endpoints')).toBeTruthy());
     await waitFor(() =>
       expect(screen.getByTestId('data-sync-target-database')).toHaveTextContent('tgt'),
@@ -1849,9 +1890,7 @@ describe('DataSyncWindow wizard', () => {
 
     fireEvent.click(await screen.findByTestId('data-sync-cancel-job-reopened-apply'));
 
-    await waitFor(() =>
-      expect(cancelDataSyncMock).toHaveBeenCalledWith('reopened-apply'),
-    );
+    await waitFor(() => expect(cancelDataSyncMock).toHaveBeenCalledWith('reopened-apply'));
     expect(listDataSyncJobsMock).toHaveBeenCalled();
   });
 

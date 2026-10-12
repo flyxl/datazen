@@ -1,4 +1,4 @@
-import { queryCommands } from '../commands/query';
+import { runEditorQuery } from '../lib/session/runEditorQuery';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { applyQueryStreamEvent } from '../lib/queryStream';
 import { resolvePostQueryViewMode } from '../lib/chart/postQueryView';
@@ -36,6 +36,7 @@ export interface QueryExecState {
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
   executionId: string | null;
+  publishedArtifacts?: import('../lib/queryResultArtifacts').QueryResultArtifacts;
   streamRunId?: number;
   resultDetailRowIndex: number | null;
 }
@@ -137,6 +138,7 @@ export async function runStreamingQuery(
   schema?: string | null,
   /** Bound values use this same execution-handle stream. */
   params?: BindParams,
+  connectionId?: string,
 ): Promise<void> {
   const runId = ++streamRunCounter;
   const currentExec = getExec().get(paneKey);
@@ -165,12 +167,8 @@ export async function runStreamingQuery(
   };
 
   try {
-    const streamOptions = {
-      database: database ?? null,
-      schema: schema ?? null,
-      ...(params && Object.keys(params).length > 0 ? { params } : {}),
-    };
-    await queryCommands.executeQueryStream(dbSessionId, sql, onEvent, streamOptions);
+    if (!connectionId) throw new Error('A persistent connection owner is required for query execution');
+    await runEditorQuery(paneKey, connectionId, sql, database, schema, params, onEvent);
     const exec = getExec().get(paneKey);
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
@@ -200,6 +198,17 @@ export async function runBoundQuery(
   database?: string | null,
   /** Panel's PG-family schema target — drivers inline it when supported. */
   schema?: string | null,
+  connectionId?: string,
 ): Promise<void> {
-  await runStreamingQuery(paneKey, dbSessionId, sql, getExec, setExec, database, schema, params);
+  await runStreamingQuery(
+    paneKey,
+    dbSessionId,
+    sql,
+    getExec,
+    setExec,
+    database,
+    schema,
+    params,
+    connectionId,
+  );
 }

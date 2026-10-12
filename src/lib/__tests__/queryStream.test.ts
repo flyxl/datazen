@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyQueryStreamEvent } from '../queryStream';
+import { EMPTY_QUERY_EXEC } from '../../stores/queryExecActions';
+import { reduceQueryExecutionState } from '../queryExecutionViewModel';
 import type { StatementResult } from '../../types';
 
 function tab(results: StatementResult[] = []) {
@@ -136,5 +138,22 @@ describe('applyQueryStreamEvent', () => {
     expect(state.results[0].pinned).toBe(true);
     expect(state.results[1].sql).toBe('SELECT new_query');
     expect(state.results[1].rows).toEqual([['Alice']]);
+  });
+});
+
+
+describe('published execution artifact lifetime', () => {
+  it('retains the finalized prefix on cancellation/failure and drops it before a new run', () => {
+    const artifacts = { executionId: 'execution-old', artifactIds: ['artifact-old'], resultCompleteness: 'truncated' as const };
+    let state = applyQueryStreamEvent({ ...EMPTY_QUERY_EXEC }, { type: 'publishedArtifacts', artifacts });
+    state = reduceQueryExecutionState(state, { type: 'cancelled' });
+    expect(state.publishedArtifacts).toEqual(artifacts);
+    state = reduceQueryExecutionState(state, { type: 'failed', error: 'Synthetic failure' });
+    expect(state.publishedArtifacts).toEqual(artifacts);
+    state = reduceQueryExecutionState(state, { type: 'start' });
+    expect(state.publishedArtifacts).toBeUndefined();
+    state = applyQueryStreamEvent(state, { type: 'executionStarted', executionId: 'execution-new' });
+    expect(state.publishedArtifacts).toBeUndefined();
+    expect(state.executionId).toBe('execution-new');
   });
 });

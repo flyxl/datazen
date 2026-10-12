@@ -65,7 +65,8 @@ pub fn schema_object_command_definitions() -> Vec<DriverCommandDefinition> {
                         "enum": ["table", "view", "function", "procedure", "trigger", "sequence", "type"],
                         "description": "Object kind to list"
                     },
-                    "database": { "type": ["string", "null"], "description": "Database that owns the objects (optional)" }
+                    "database": { "type": ["string", "null"], "description": "Database that owns the objects (optional)" },
+                    "schema": { "type": ["string", "null"], "description": "Restrict objects to this schema (optional)" }
                 },
                 "required": ["kind"]
             }),
@@ -271,11 +272,25 @@ pub async fn execute_schema_object_command<D: DatabaseDriver + ?Sized>(
                 DriverError::InvalidConfig(format!("Unknown object kind: {kind_raw}"))
             })?;
             let database = input.get("database").and_then(JsonValue::as_str);
+            let schema = match input.get("schema") {
+                None | Some(JsonValue::Null) => None,
+                Some(JsonValue::String(schema)) if !schema.trim().is_empty() => {
+                    Some(schema.as_str())
+                }
+                Some(_) => {
+                    return Err(DriverError::InvalidConfig(
+                        "schema must be a non-empty string or null".into(),
+                    ));
+                }
+            };
             let Some(sql) = list_objects_sql_for_database(db_type, parsed, database) else {
                 return Ok(CommandResult::new(json!({ "objects": [] })));
             };
             let result = query_in_target_database(driver, db_type, handle, &sql, database).await?;
-            let objects = parse_object_list(&result, parsed.as_str())?;
+            let mut objects = parse_object_list(&result, parsed.as_str())?;
+            if let Some(schema) = schema {
+                objects.retain(|object| object.schema.as_deref() == Some(schema));
+            }
             Ok(CommandResult::new(json!({ "objects": objects })))
         }
         "get_object_ddl" => {

@@ -379,7 +379,7 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
         command: &str,
-        input: serde_json::Value,
+        mut input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
         if command == "drop_database" {
             // PostgreSQL cannot drop the currently-open database, nor one that still
@@ -391,9 +391,142 @@ impl PostgresDriver {
             Err(DriverError::Unsupported(_)) => {}
             other => return other,
         }
-        if let Some(result) =
-            try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+        if command == "get_table_schema" {
+            if let Some(raw) = input.get("relationSql").and_then(serde_json::Value::as_str) {
+                let parsed = sqlparser::parser::Parser::parse_sql(
+                    &sqlparser::dialect::PostgreSqlDialect {},
+                    &format!("SELECT * FROM {raw}"),
+                )
+                .map_err(|_| DriverError::InvalidConfig("invalid relation identifier".into()))?;
+                let [sqlparser::ast::Statement::Query(query)] = parsed.as_slice() else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let sqlparser::ast::SetExpr::Select(select) = &*query.body else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let [relation] = select.from.as_slice() else {
+                    return Err(DriverError::InvalidConfig(
+                        "one relation is required".into(),
+                    ));
+                };
+                let sqlparser::ast::TableFactor::Table { name, .. } = &relation.relation else {
+                    return Err(DriverError::InvalidConfig(
+                        "one named relation is required".into(),
+                    ));
+                };
+                let parts = name
+                    .0
+                    .iter()
+                    .map(|part| {
+                        part.as_ident()
+                            .map(|ident| {
+                                if ident.quote_style.is_none() {
+                                    ident.value.to_lowercase()
+                                } else {
+                                    ident.value.clone()
+                                }
+                            })
+                            .ok_or_else(|| {
+                                DriverError::InvalidConfig("named relation is required".into())
+                            })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                if input
+                    .get("database")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none()
+                {
+                    let context = self.read_fixed_session(handle).await?;
+                    input["database"] =
+                        serde_json::json!(context.namespace.database.ok_or_else(|| {
+                            DriverError::InvalidConfig("database is required".into())
+                        })?);
+                }
+                match parts.as_slice() {
+                    [table] => {
+                        input["table"] = serde_json::json!(table);
+                        input["schema"] = serde_json::Value::Null;
+                    }
+                    [schema, table] => {
+                        input["table"] = serde_json::json!(table);
+                        input["schema"] = serde_json::json!(schema);
+                    }
+                    [database, schema, table] => {
+                        input["database"] = serde_json::json!(database);
+                        input["table"] = serde_json::json!(table);
+                        input["schema"] = serde_json::json!(schema);
+                    }
+                    _ => {
+                        return Err(DriverError::InvalidConfig(
+                            "unsupported relation namespace".into(),
+                        ))
+                    }
+                }
+            }
+        }
+        let raw_relation_result = if command == "get_table_schema"
+            && input.get("relationSql").is_some()
+            && self.fixed_sessions.read().await.contains_key(&handle.id)
         {
+            let database = input["database"]
+                .as_str()
+                .ok_or_else(|| DriverError::InvalidConfig("database is required".into()))?;
+            self.ensure_transaction_reaches(handle, SqlTarget::new(Some(database), None))
+                .await?;
+            let table = input["table"]
+                .as_str()
+                .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
+            let schema = input.get("schema").and_then(serde_json::Value::as_str);
+            let pinned = self
+                .transactions
+                .lock()
+                .await
+                .get(&handle.id)
+                .cloned()
+                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+            let mut conn = pinned.lock().await;
+            let schema = self
+                .table_schema_exact_on_connection(&mut **conn, table, schema)
+                .await?;
+            Some(CommandResult::new(serde_json::json!({"schema": schema})))
+        } else {
+            None
+        };
+        if let Some(mut result) = match raw_relation_result {
+            Some(result) => Some(result),
+            None => {
+                try_execute_schema_catalog_command(self, handle, command, input.clone()).await?
+            }
+        } {
+            if command == "get_table_schema"
+                && self.fixed_sessions.read().await.contains_key(&handle.id)
+            {
+                let table = input["table"]
+                    .as_str()
+                    .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
+                let schema = input.get("schema").and_then(serde_json::Value::as_str);
+                let (schema, table) = if input.get("relationSql").is_some() {
+                    (schema, table)
+                } else {
+                    crate::sql::resolve_pg_table_schema(table, schema)
+                };
+                let relation = crate::sql::pg_regclass_name(schema, table);
+                let pinned = self
+                    .transactions
+                    .lock()
+                    .await
+                    .get(&handle.id)
+                    .cloned()
+                    .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+                let mut conn = pinned.lock().await;
+                let row = sqlx::query("SELECT current_database() AS database, n.nspname::text AS schema, c.relname::text AS table, c.relpersistence = 't' AS session_scoped FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.oid = to_regclass($1)")
+                    .bind(relation).fetch_one(&mut **conn).await.map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                result.data["resolvedTarget"] = serde_json::json!({ "database": row.try_get::<String,_>("database").map_err(|e| DriverError::QueryFailed(e.to_string()))?, "catalog": null, "schema": row.try_get::<String,_>("schema").map_err(|e| DriverError::QueryFailed(e.to_string()))?, "table": row.try_get::<String,_>("table").map_err(|e| DriverError::QueryFailed(e.to_string()))?, "path": [], "sessionScoped": row.try_get::<bool,_>("session_scoped").map_err(|e| DriverError::QueryFailed(e.to_string()))? });
+            }
             return Ok(result);
         }
         if is_schema_object_command(command) {

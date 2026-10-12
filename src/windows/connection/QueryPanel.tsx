@@ -259,10 +259,12 @@ export function QueryPanel({
   // `'' ?? x` never falls through, so the empty string would shadow the live
   // session pointer forever — treat it as unset.
   const boundDatabase = database?.trim() ? database : null;
-  const selectedDatabase = isPathHierarchy
+  const [ownedSessionState, setOwnedSessionState] = useState<SessionView | null>(null);
+  const observedNamespace = ownedSessionState?.observedContext.confidence === 'confirmed' ? ownedSessionState.observedContext.namespace : null;
+  const selectedDatabase = observedNamespace ? observedNamespace.database : isPathHierarchy
     ? (currentDatabase ?? boundDatabase)
     : (boundDatabase ?? currentDatabase);
-  const selectedSchema = schema ?? currentSchema;
+  const selectedSchema = observedNamespace ? observedNamespace.schema : schema ?? currentSchema;
   const supportsExplain = dbMeta?.supportsExplain === true;
   const hasContextSelectors = isPathHierarchy || (isMultiDb && databases.length > 0);
   const queryResultExportCapability = resolveExportScope(dbMeta);
@@ -271,7 +273,13 @@ export function QueryPanel({
     [columnMap, currentDatabase, currentSchema, tables, views],
   );
 
-  const tx = useQueryTransaction({ dbSessionId });
+  const tx = useQueryTransaction({
+    dbSessionId,
+    paneKey: paneKey(panelId, paneId),
+    connectionId,
+    database: selectedDatabase,
+    schema: selectedSchema,
+  });
 
   const showMessageDialog = useCallback((text: string, kind: 'error' | 'success' = 'error') => {
     setMessageDialogText(text);
@@ -300,6 +308,22 @@ export function QueryPanel({
       cancelled = true;
     };
   }, [paneKeyValue, connectionId, selectedDatabase, selectedSchema]);
+
+  useEffect(() => {
+    if (!sessionController) return;
+    const sync = () => {
+      const view = sessionController.snapshot;
+      setOwnedSessionState(view);
+      if (!view || view.observedContext.confidence !== 'confirmed') return;
+      const namespace = view.observedContext.namespace;
+      usePanelStore.getState().updatePanel(panelId, {
+        database: namespace.database ?? undefined,
+        schema: namespace.schema ?? undefined,
+      });
+    };
+    sync();
+    return sessionController.subscribe(sync);
+  }, [sessionController, panelId]);
 
   const [confirmSwitchTx, confirmSwitchTxDialog] = useConfirmDialog();
   const confirmTransactionSwitch = useCallback(
@@ -685,6 +709,16 @@ export function QueryPanel({
       data-execution-seq={executionSeq}
       data-query-running={exec.running ? 'true' : 'false'}
     >
+      {ownedSessionState && ['lost', 'closed'].includes(ownedSessionState.state) && (
+        <div className="flex items-center gap-2 px-3 py-2 text-sm" role="status">
+          <span>{t('query.session.disconnected')}</span>
+          <button data-testid="editor-new-session-button" type="button"
+            onClick={() => void sessionController?.openNewSession().catch((error: unknown) =>
+              showMessageDialog(error instanceof Error ? error.message : String(error), 'error'))}>
+            {t('query.session.openNew')}
+          </button>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <QueryEditorSection
@@ -769,6 +803,8 @@ export function QueryPanel({
               data-testid="query-results-host"
             >
               <QueryResultsPane
+                publishedArtifacts={exec.publishedArtifacts}
+                onCellEdit={(row, col, value) => usePanelStore.getState().updateResultCell(panelId, activeResultIdx, row, col, value, ...paneArgs(paneId))}
                 dbSessionId={dbSessionId}
                 databaseType={databaseType}
                 sql={exec.sql}

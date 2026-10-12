@@ -75,6 +75,55 @@ vi.mock('../../commands/query', () => ({
   },
 }));
 
+vi.mock('../../lib/session/runEditorQuery', () => ({
+  runEditorQuery: (...args: unknown[]) => {
+    const connectionId = String(args[1] ?? '');
+    const params = args[5] as Record<string, string | number | boolean | null> | undefined;
+    return mockExecuteQueryStream(
+      connectionId === 'cfg-2' ? 'sess-2' : 'sess-1',
+      args[2],
+      args[6],
+      {
+        database: (args[3] as string | null | undefined) ?? null,
+        schema: (args[4] as string | null | undefined) ?? null,
+        ...(params ? { params } : {}),
+      },
+    );
+  },
+}));
+
+// The historical panelStore fixture predates the required connection owner
+// argument. Supply the fixture's sole owner when it calls the shared current
+// query action so the differential still exercises the old pane routing logic.
+vi.mock('../queryExecActions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../queryExecActions')>();
+  return {
+    ...actual,
+    runStreamingQuery: (
+      paneKey: string,
+      dbSessionId: string,
+      sql: string,
+      getExec: Parameters<typeof actual.runStreamingQuery>[3],
+      setExec: Parameters<typeof actual.runStreamingQuery>[4],
+      database?: string | null,
+      schema?: string | null,
+      params?: Parameters<typeof actual.runStreamingQuery>[7],
+      connectionId?: string,
+    ) =>
+      actual.runStreamingQuery(
+        paneKey,
+        dbSessionId,
+        sql,
+        getExec,
+        setExec,
+        database,
+        schema,
+        params,
+        connectionId ?? 'cfg-1',
+      ),
+  };
+});
+
 vi.mock('../../stores/activeConnectionStore', () => ({
   useActiveConnectionStore: {
     getState: () => activeConnectionState,
@@ -190,6 +239,7 @@ async function runScenarios(build: Build, keys: PaneKeys): Promise<Observation> 
     },
   );
   void st().executeQuery(B, undefined, paneId);
+  await vi.waitFor(() => expect(emit).toBeTypeOf('function'));
   emit?.({ type: 'statementStart', index: 0, sql: 'SELECT typed-in-B-after-split', columns: [] });
   emit?.({ type: 'rows', index: 0, rows: [[1]] });
   const keysHoldingRows = [...st().queryExec.entries()]

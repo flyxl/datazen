@@ -8,7 +8,7 @@
 //! | 用例 | 分支 |
 //! | --- | --- |
 //! | 句柄先在原资源上终结再关物理资源 | 四步顺序 |
-//! | 跨资源句柄按登记资源分批终结 | 按 resource_id 分组 |
+//! | 同资源的多个句柄合并为一个终结批次 | 按 resource_id 分组 |
 //! | 回滚关闭把 disposition 写成 Rollback | 模式决定处置 |
 //! | 有活句柄要求无事务关闭当场拒绝 | 派发前拒绝 |
 //! | 无登记句柄时直接关资源 | 无需终结 |
@@ -18,8 +18,8 @@
 //! | 租约失效作废后额度扣住不外发 | 两段式 |
 //! | 归池前的登记句柄检查一律不放行 | 归池前 |
 //! | 归池时 driver 报 Clean 但宿主仍有登记句柄不得算归池成功 | 归池时 |
-//! | driver 逐批少报且明说还有剩余 | 逐批注销时机 |
-//! | driver 两批确认数正好对平但宿主账未清空 | 确认数对平独占 |
+//! | driver 报告仍有句柄时宿主账保留整批 | 逐批注销时机 |
+//! | driver 多报终结数时宿主账未清空 | 登记数不可被多报抵消 |
 
 #![allow(dead_code)]
 mod registry_fixtures;
@@ -72,15 +72,10 @@ async fn session_with_handles(registry: &Arc<SessionRegistry>) -> SessionHandle 
 
 #[tokio::test(start_paused = true)]
 async fn 句柄先在登记时的资源上终结再关当前物理资源() {
-    // 句柄登记在 `res_legacy` 上，会话当前的物理资源是 `res_1`：
-    // 两者不同正是「为什么终结必须在关闭之前」的可观测形态——
-    // 终结请求带着登记时的资源，关闭请求带着当前资源。
+    // 执行在 `res_1` 上签发两个句柄；释放必须先在该资源上终结它们，再关闭资源。
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![
-                handle_ref("h1", "res_legacy"),
-                handle_ref("h2", "res_legacy"),
-            ])
+            .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
             .finalizes(2, 0),
     )
     .await;
@@ -97,13 +92,13 @@ async fn 句柄先在登记时的资源上终结再关当前物理资源() {
 
     let traces = backend.traces().await;
     assert_eq!(
-        traces.finalized[0].resource_id, "res_legacy",
-        "终结必须落在句柄登记时的那个资源上"
+        traces.finalized[0].resource_id, "res_1",
+        "终结必须落在签发句柄的资源上"
     );
     assert_eq!(traces.finalized[0].handles.len(), 2);
     assert_eq!(
         traces.closed_with[0].resource_id, "res_1",
-        "关闭必须落在当前物理资源上"
+        "句柄终结后才关闭当前物理资源"
     );
     assert_eq!(
         traces.closed_with[0].registered_handles, 0,
@@ -119,17 +114,15 @@ async fn 句柄先在登记时的资源上终结再关当前物理资源() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 跨资源句柄按登记资源分批终结不得跨资源混合() {
+async fn 同资源的多个句柄合并为一个终结批次() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![
-                handle_ref("h1", "res_a"),
-                handle_ref("h2", "res_b"),
-                handle_ref("h3", "res_a"),
+                handle_ref("h1", "res_1"),
+                handle_ref("h2", "res_1"),
+                handle_ref("h3", "res_1"),
             ])
-            // 3 个句柄分两批：确认数必须**逐批不同**（2 + 1 = 3），
-            // 释放流程比的是累计确认数与宿主登记数，固定回报表达不了这个形状。
-            .finalize_sequence(&[(2, 0), (1, 0)]),
+            .finalizes(3, 0),
     )
     .await;
     let registry = registry_with(&backend);
@@ -142,25 +135,19 @@ async fn 跨资源句柄按登记资源分批终结不得跨资源混合() {
 
     assert_eq!(
         backend.finalize_calls(),
-        2,
-        "同一资源上的句柄必须合并，不能一个一批"
+        1,
+        "同一资源上的句柄必须合并为一批"
     );
     let traces = backend.traces().await;
-    assert_eq!(traces.finalized[0].resource_id, "res_a");
-    assert_eq!(traces.finalized[0].handles.len(), 2);
-    assert_eq!(traces.finalized[1].resource_id, "res_b");
-    assert_eq!(
-        traces.finalized[1].handles.len(),
-        1,
-        "批内不得混入别的资源的句柄：那就是把旧句柄提交到新会话"
-    );
+    assert_eq!(traces.finalized[0].resource_id, "res_1");
+    assert_eq!(traces.finalized[0].handles.len(), 3);
 }
 
 #[tokio::test(start_paused = true)]
 async fn 回滚关闭把终结处置写成回滚() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![handle_ref("h1", "res_a")])
+            .handles(vec![handle_ref("h1", "res_1")])
             .finalizes(1, 0),
     )
     .await;
@@ -183,7 +170,7 @@ async fn 回滚关闭把终结处置写成回滚() {
 async fn 有活句柄要求无事务关闭当场拒绝且零后端动作() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![handle_ref("h1", "res_a")])
+            .handles(vec![handle_ref("h1", "res_1")])
             .finalizes(1, 0),
     )
     .await;
@@ -250,7 +237,7 @@ async fn 宿主登记数与后端确认数对不上时墓碑不得报已关闭()
     // 宿主登记 2 个句柄，后端只确认终结 1 个：剩下那一个的命运已经不可知。
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_a")])
+            .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
             .finalizes(1, 0),
     )
     .await;
@@ -307,7 +294,7 @@ async fn 宿主登记数与后端确认数对不上时墓碑不得报已关闭()
 async fn 不可判定的关闭仍必须注销并归还额度() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_a")])
+            .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
             .finalizes(1, 0),
     )
     .await;
@@ -505,7 +492,7 @@ async fn 归池时driver报clean但宿主仍有登记句柄不得算归池成功
     // 其 Clean 不构成事务终结的证据」。
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_a")])
+            .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
             .finalizes(1, 0),
     )
     .await;
@@ -579,24 +566,14 @@ async fn 归池时driver报clean但宿主仍有登记句柄不得算归池成功
     );
 }
 
-/// FU2：driver **逐批少报并明说还有剩余**时，宿主账必须留痕并判失。
-///
-/// 与上一条的区别是**少报的形状**。上面那条 `finalizes(1, 0)` 里 driver 报
-/// `remaining == 0`（自称收干净）而确认数只有 1，失败来自判据 (a)「累计确认数 ≠ 登记数」。
-/// 本例把两个句柄分到**两个资源**、逐批回报 `(1, 0)` 与 `(0, 1)`：
-/// 第一批整批确认 ⇒ 注销；第二批 driver **明说那一个还活着** ⇒ 不注销。
-/// 于是宿主账上剩的这一个既没被确认、也带着 `remaining > 0` 的原话，
-/// 判据 (b)「宿主自己数一遍」在这里**独自**起作用——(a) 与 (b) 谁都不是冗余的。
-///
-/// 为什么必须有这一条：如果注销时机退回「取样即注销」，第二批的 `remaining == 1`
-/// 会被账上的空洞盖过去，判据 (b) 又变回恒真式，而 `handlesStillOpen` 与
-/// `registeredHandlesRemained` 这两道出口就都只能靠 driver 的口头数字触发。
+/// driver 明确报告批次仍有一个句柄时，宿主必须保留整批登记项并判失。
+/// 一次执行返回的句柄绑定到当前物理资源；未逐项确认整个批次前，不能只注销其中一部分。
 #[tokio::test(start_paused = true)]
-async fn driver逐批少报且明说还有剩余时宿主账必须留痕并判失() {
+async fn driver报告仍有句柄时宿主账保留整批并判失() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_b")])
-            .finalize_sequence(&[(1, 0), (0, 1)]),
+            .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
+            .finalizes(1, 1),
     )
     .await;
     let registry = registry_with(&backend);
@@ -605,7 +582,7 @@ async fn driver逐批少报且明说还有剩余时宿主账必须留痕并判�
     let error = registry
         .close_registered(&handle, close_any())
         .await
-        .expect_err("第二批句柄明确还活着 ⇒ 不得算干净收尾");
+        .expect_err("driver 报告仍有句柄 ⇒ 不得算干净收尾");
     match error {
         RuntimeError::SessionLost(cause) => assert_eq!(
             cause, "handlesStillOpen",
@@ -615,14 +592,10 @@ async fn driver逐批少报且明说还有剩余时宿主账必须留痕并判�
     }
 
     let traces = backend.traces().await;
+    assert_eq!(traces.finalized.len(), 1, "同一资源的句柄只发一个终结批次");
     assert_eq!(
-        traces.finalized.len(),
-        2,
-        "两个资源两批终结请求，一批都不能少"
-    );
-    assert_eq!(
-        traces.closed_with[0].registered_handles, 1,
-        "driver 报剩余的那一个必须还挂在宿主账上，并带进关闭请求：确认掉的注销、没确认的留着"
+        traces.closed_with[0].registered_handles, 2,
+        "批次未全部确认时宿主必须保留整批句柄，并带入关闭请求"
     );
     assert_eq!(backend.close_calls(), 1, "任一失败都关闭");
     assert_eq!(
@@ -632,31 +605,14 @@ async fn driver逐批少报且明说还有剩余时宿主账必须留痕并判�
     );
 }
 
-/// 判据 (b) 的**专属**用例：累计确认数正好对平，宿主账却没清空。
-///
-/// 上一条让判据 (a) 失败（累计确认 1 ≠ 登记 2），这一条把 (a) 摆平：两批各报
-/// `(2, 0)` 与 `(0, 0)`，累计确认 `2 + 0 = 2` **正好等于**登记数 2。
-/// driver 两批都自称收干净（`remaining == 0`），判据 (a) 于是通过。
-///
-/// 宿主账上却还挂着两个句柄：第一批只交出去 1 个却报确认 2 个，**多报**，
-/// 逐批对不上就不注销；第二批报确认 0 个，**少报**，同样不注销。
-/// 于是只有判据 (b)「释放后宿主自己数一遍」能叫停它——理由是
-/// `registeredHandlesRemained`，而不是 driver 自己的 `handlesStillOpen`
-/// （本例两批 `remaining` 都是 0，那句话 driver 根本没说过）。
-///
-/// 为什么这条必须独立成例：(a) 与 (b) 都不是对方的冗余。少报会让 (a) 先响，
-/// 本例则构造出**只有 (b) 会响**的形状。反过来，若把 (b) 删掉（只留总数比较），
-/// 本例会绿——多报与少报相抵，宿主账上其实还留着两个活句柄，归池却判成功。
+/// 驱动多报终结数时，宿主不得注销任何未被逐项确认的句柄，即使它声称
+/// `remaining == 0`。宿主账必须保留整批句柄，关闭请求也必须带上真实计数。
 #[tokio::test(start_paused = true)]
-async fn driver两批确认数正好对平但宿主账未清空时仍判不可知() {
+async fn driver多报终结数时宿主账未清空仍判不可知() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_b")])
-            // 第一批（res_a，1 个句柄）报确认 2 个：**多报**；
-            // 第二批（res_b，1 个句柄）报确认 0 个：**少报**。
-            // 累计 2 == 登记 2 ⇒ 判据 (a) 通过；两批 remaining 都是 0 ⇒ driver
-            // 从头到尾没说过「还有句柄活着」。
-            .finalize_sequence(&[(2, 0), (0, 0)]),
+            .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
+            .finalizes(3, 0),
     )
     .await;
     let registry = registry_with(&backend);
@@ -665,24 +621,20 @@ async fn driver两批确认数正好对平但宿主账未清空时仍判不可�
     let error = registry
         .close_registered(&handle, close_any())
         .await
-        .expect_err("累计确认数对得上，但宿主账上仍有活句柄 ⇒ 不得算干净收尾");
+        .expect_err("驱动多报终结数，宿主账仍有句柄 ⇒ 不得算干净收尾");
     match error {
         RuntimeError::SessionLost(cause) => assert_eq!(
             cause, "registeredHandlesRemained",
-            "理由必须来自宿主自己数账，不能借 driver 的 `remaining`（本例恒为 0）"
+            "宿主账上的句柄未全部得到逐项确认"
         ),
         other => panic!("期望 SessionLost(registeredHandlesRemained)，实际 {other:?}"),
     }
 
     let traces = backend.traces().await;
-    assert_eq!(
-        traces.finalized.len(),
-        2,
-        "两个资源两批终结请求，一批都不能少"
-    );
+    assert_eq!(traces.finalized.len(), 1, "同一资源只发送一个终结批次");
     assert_eq!(
         traces.closed_with[0].registered_handles, 2,
-        "多报/少报相抵时宿主账一个都不能注销，两个句柄必须如实带进关闭请求"
+        "多报不得注销句柄，关闭请求必须携带真实的宿主句柄数"
     );
     assert_eq!(backend.close_calls(), 1, "任一失败都关闭");
     assert_eq!(
@@ -700,7 +652,7 @@ async fn driver两批确认数正好对平但宿主账未清空时仍判不可�
 async fn 归池时driver如实终结全部句柄则正常归还额度() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
-            .handles(vec![handle_ref("h1", "res_a"), handle_ref("h2", "res_a")])
+            .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
             .finalizes(2, 0),
     )
     .await;

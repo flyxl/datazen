@@ -205,7 +205,15 @@ pub async fn execute(
                 )
                 .await?;
             let tables = datazen_driver_api::parse_tables_from_command(&result.data);
-            let mut schemas: Vec<String> = tables.iter().filter_map(|t| t.schema.clone()).collect();
+            let mut schemas = driver
+                .get_schemas(handle, &input.database)
+                .await?
+                .unwrap_or_else(|| {
+                    tables
+                        .iter()
+                        .filter_map(|table| table.schema.clone())
+                        .collect()
+                });
             schemas.sort();
             schemas.dedup();
             let relations = tables
@@ -252,6 +260,92 @@ pub async fn execute(
         _ => {
             return Err(CommandError::Validation(
                 "Unsupported metadata command".into(),
+            ))
+        }
+    };
+    Ok(CommandResult::new(data))
+}
+
+/// Called by the runtime execution gateway after target lease acquisition.
+/// No tree/session lookup or shared legacy cache is consulted here.
+pub async fn execute_on_runtime_resource(
+    driver: Arc<dyn DatabaseDriver>,
+    handle: &ConnectionHandle,
+    command: &str,
+    input: Value,
+) -> Result<CommandResult, CommandError> {
+    let data = match command {
+        "list_catalog" => {
+            let input: CatalogInput = decode(input)?;
+            if input.database.trim().is_empty() {
+                return Err(CommandError::Validation("Database is required".into()));
+            }
+            validate_schema_target(
+                driver.as_ref(),
+                &input.database,
+                input.schema.as_deref(),
+                SchemaScope::AnySchema,
+            )?;
+            let result = driver
+                .execute_command(
+                    handle,
+                    "list_tables",
+                    json!({"database":input.database,"schema":input.schema}),
+                )
+                .await?;
+            let tables = datazen_driver_api::parse_tables_from_command(&result.data);
+            let mut schemas = driver
+                .get_schemas(handle, &input.database)
+                .await?
+                .unwrap_or_else(|| {
+                    tables
+                        .iter()
+                        .filter_map(|table| table.schema.clone())
+                        .collect()
+                });
+            schemas.sort();
+            schemas.dedup();
+            let relations = tables
+                .into_iter()
+                .filter(|table| !table.name.is_empty())
+                .map(|table| RelationSummary {
+                    relation: RelationRef {
+                        database: input.database.clone(),
+                        schema: table.schema,
+                        name: table.name,
+                    },
+                    kind: table.table_type,
+                    row_count: table.row_count,
+                })
+                .collect();
+            serde_json::to_value(ListCatalogOutput {
+                database: input.database,
+                schemas,
+                relations,
+            })?
+        }
+        "read_relation_schema" => {
+            let input: SchemaInput = decode(input)?;
+            validate_relation(driver.as_ref(), &input.relation)?;
+            let definition = driver
+                .get_table_schema(
+                    handle,
+                    &input.relation.name,
+                    &input.relation.database,
+                    input.relation.schema.as_deref(),
+                )
+                .await?;
+            json!({"value":RelationSchema { relation: input.relation, definition }})
+        }
+        "read_relation_columns" => {
+            let input: ColumnsInput = decode(input)?;
+            serde_json::to_value(
+                columns::read_on_runtime_resource(&driver, handle, input.relations).await?,
+            )?
+        }
+        _ => {
+            return Err(CommandError::Validation(
+                "Unsupported runtime metadata command".into(),
             ))
         }
     };

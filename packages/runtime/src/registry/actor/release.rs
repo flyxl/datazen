@@ -33,6 +33,7 @@ pub(super) enum ReleaseReason {
     Evict,
     InvalidateWorker,
     ActorGone,
+    ResourceLost,
 }
 
 /// 唯一释放例程。**顺序**是本函数的全部价值所在，见模块文档。
@@ -130,7 +131,7 @@ pub(super) async fn release(
         Vec::new(),
     );
     let closed = match state.backend.close(close_request).await {
-        Ok(CloseResourceOutcome::Closed) => true,
+        Ok(CloseResourceOutcome::Closed | CloseResourceOutcome::ReturnedToPool) => true,
         Ok(CloseResourceOutcome::Undecidable { .. }) | Err(_) => false,
     };
     if !closed {
@@ -212,7 +213,9 @@ pub(super) fn release_kind(reason: ReleaseReason) -> AuditKind {
     match reason {
         ReleaseReason::Close => AuditKind::SessionClosed,
         ReleaseReason::Evict => AuditKind::SessionEvicted,
-        ReleaseReason::InvalidateWorker | ReleaseReason::ActorGone => AuditKind::SessionInvalidated,
+        ReleaseReason::InvalidateWorker
+        | ReleaseReason::ActorGone
+        | ReleaseReason::ResourceLost => AuditKind::SessionInvalidated,
     }
 }
 

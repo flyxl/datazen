@@ -779,6 +779,7 @@ export function useNavigatorContextMenus(deps: NavigatorContextMenuDeps) {
         const dbType = conn?.databaseType ?? 'postgresql';
         const tableSchema = await fetchTableSchemaForSqlGeneration({
           dbSessionId,
+          connectionId,
           tableName: name,
           schema,
           database: dbName,

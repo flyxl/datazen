@@ -600,7 +600,7 @@ export function DataSyncWindow() {
     let cancelled = false;
     (async () => {
       try {
-        const tables = await databaseCommands.listTables(connId, sourceDatabase);
+        const tables = await databaseCommands.listTables(connId, sourceDatabase, null, sourceId);
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
         setSourceSchemas(schemas);
@@ -648,7 +648,7 @@ export function DataSyncWindow() {
     let cancelled = false;
     (async () => {
       try {
-        const tables = await databaseCommands.listTables(connId, targetDatabase);
+        const tables = await databaseCommands.listTables(connId, targetDatabase, null, targetId);
         if (cancelled) return;
         const schemas = uniqueSchemasFromTables(tables);
         setTargetSchemas(schemas);

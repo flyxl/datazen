@@ -291,6 +291,17 @@ impl ResourceProvider for FakeProvider {
         &self.shape
     }
 
+    fn connection_handle(
+        &self,
+        _handle: &ResourceHandle,
+    ) -> Result<datazen_driver_api::ConnectionHandle, ResourceError> {
+        Err(ResourceError::unsupported(
+            self.provider_id(),
+            "connection_handle",
+            "fixture has no native driver connection",
+        ))
+    }
+
     async fn describe_resource(
         &self,
         request: &DescribeResourceRequest,
