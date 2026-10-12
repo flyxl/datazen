@@ -68,21 +68,19 @@ vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [vi.fn().mockResolvedValue(true), null],
 }));
 
-const sessionTransactionStatus = vi.hoisted(() => vi.fn().mockResolvedValue(false));
-const beginSessionTransaction = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-const commitSessionTransaction = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-const rollbackSessionTransaction = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const transactionController = vi.hoisted(() => ({
+  refresh: vi.fn().mockResolvedValue({ observedContext: { transactionState: 'none' } }),
+  execute: vi.fn().mockResolvedValue({ executionId: 'tx-1' }),
+  client: { getExecution: vi.fn().mockResolvedValue({ state: 'succeeded' }) },
+}));
+vi.mock('../../../lib/session/queryPanelSessionRoot', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/session/queryPanelSessionRoot')>()),
+  editorOwnerForPane: vi.fn().mockResolvedValue({ kind: 'editor', clientInstanceId: 'client-1', editorSessionId: 'p1' }),
+  getQueryPanelSessionRegistry: () => ({ get: vi.fn(() => transactionController) }),
+}));
 
 vi.mock('../../../commands/query', () => ({
   queryCommands: {
-    sessionTransactionStatus: (...args: Parameters<typeof sessionTransactionStatus>) =>
-      sessionTransactionStatus(...args),
-    beginSessionTransaction: (...args: Parameters<typeof beginSessionTransaction>) =>
-      beginSessionTransaction(...args),
-    commitSessionTransaction: (...args: Parameters<typeof commitSessionTransaction>) =>
-      commitSessionTransaction(...args),
-    rollbackSessionTransaction: (...args: Parameters<typeof rollbackSessionTransaction>) =>
-      rollbackSessionTransaction(...args),
     getExplain: (...args: Parameters<typeof getExplain>) => getExplain(...args),
     clearQueryHistory: vi.fn().mockResolvedValue(undefined),
     // The favorites panel rescans on open and on window focus. Without these
@@ -801,34 +799,34 @@ describe('[tester] query/QueryTransactionModals', () => {
 describe('[tester] query/useQueryTransaction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    sessionTransactionStatus.mockResolvedValue(false);
+    transactionController.refresh.mockResolvedValue({ observedContext: { transactionState: 'none' } });
   });
 
   it('refreshes transaction status on mount and handles begin/commit/rollback', async () => {
-    const { result } = renderHook(() => useQueryTransaction({ dbSessionId: 'sess-1' }));
+    const { result } = renderHook(() => useQueryTransaction({ dbSessionId: 'sess-1', paneKey: 'p1', connectionId: 'cfg-1', database: 'app' }));
 
-    await waitFor(() => expect(sessionTransactionStatus).toHaveBeenCalled());
+    await waitFor(() => expect(transactionController.refresh).toHaveBeenCalled());
 
     await act(async () => {
       await result.current.handleBeginTx();
     });
-    expect(beginSessionTransaction).toHaveBeenCalledWith('sess-1');
+    expect(transactionController.execute).toHaveBeenCalledWith({ command: 'platform.beginTransaction', input: { defersCommit: true } });
 
-    sessionTransactionStatus.mockResolvedValueOnce(true);
+    transactionController.refresh.mockResolvedValueOnce({ observedContext: { transactionState: 'active' } });
     await act(async () => {
       await result.current.handleCommitTx();
     });
-    expect(commitSessionTransaction).toHaveBeenCalledWith('sess-1');
+    expect(transactionController.execute).toHaveBeenCalledWith({ command: 'platform.commitTransaction', input: { defersCommit: true } });
 
     await act(async () => {
       await result.current.handleRollbackTx();
     });
-    expect(rollbackSessionTransaction).toHaveBeenCalledWith('sess-1');
+    expect(transactionController.execute).toHaveBeenCalledWith({ command: 'platform.rollbackTransaction', input: { defersCommit: true } });
   });
 
   it('opens aborted dialog when error indicates aborted transaction', async () => {
-    sessionTransactionStatus.mockResolvedValue(false);
-    const { result } = renderHook(() => useQueryTransaction({ dbSessionId: 'sess-1' }));
+    transactionController.refresh.mockResolvedValue({ observedContext: { transactionState: 'none' } });
+    const { result } = renderHook(() => useQueryTransaction({ dbSessionId: 'sess-1', paneKey: 'p1', connectionId: 'cfg-1', database: 'app' }));
 
     await act(async () => {
       await result.current.maybeOfferAbortedDialog('current transaction is aborted');
@@ -1615,7 +1613,11 @@ describe('[tester] query/useQueryPanelWorkflows', () => {
 });
 
 describe('[tester] query/useQueryContextPath', () => {
-  it('rewrites the context from an explicit browse path, never from SQL', async () => {
+  const contextController = {
+    refresh: vi.fn().mockResolvedValue(null), snapshot: null,
+    setContext: vi.fn().mockResolvedValue({}),
+  } as unknown as import('../../../lib/session/EditorSessionController').EditorSessionController;
+  it('uses a qualified path for browsing without changing execution context', async () => {
     const updatePanel = vi.fn();
     const switchDatabase = vi.fn().mockResolvedValue(undefined);
     const ensureNamespacePath = vi.fn().mockResolvedValue(undefined);
@@ -1629,6 +1631,7 @@ describe('[tester] query/useQueryContextPath', () => {
     const { result } = renderHook(() =>
       useQueryContextPath({
         panelId: 'p1',
+        sessionController: contextController,
         dbSessionId: 'sess-1',
         isPathHierarchy: false,
         selectedDatabase: 'app',
@@ -1643,11 +1646,13 @@ describe('[tester] query/useQueryContextPath', () => {
     // change; the hook must not expose any entry point for it.
     expect(Object.keys(result.current)).not.toContain('syncContextFromSql');
 
-    // Choosing it explicitly (object tree / qualified path) still switches.
+    // Qualified paths update browsing without publishing a runtime context change.
     await act(async () => {
       result.current.handleQualifiedPath(['other']);
     });
-    await waitFor(() => expect(switchDatabase).toHaveBeenCalledWith('other', 'sess-1'));
+    expect(result.current.contextPath).toEqual(['other']);
+    expect(switchDatabase).not.toHaveBeenCalled();
+    expect(updatePanel).not.toHaveBeenCalled();
   });
 
   it('syncs the panel-bound database when switching database at level 0 (non-path)', async () => {
@@ -1664,6 +1669,7 @@ describe('[tester] query/useQueryContextPath', () => {
     const { result } = renderHook(() =>
       useQueryContextPath({
         panelId: 'p1',
+        sessionController: contextController,
         dbSessionId: 'sess-1',
         isPathHierarchy: false,
         selectedDatabase: 'app',
@@ -1680,7 +1686,7 @@ describe('[tester] query/useQueryContextPath', () => {
 
     // Switching the database inside the panel writes the new DB back onto the
     // panel's bound `database`.
-    expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'other' });
+    await waitFor(() => expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'other', schema: undefined }));
   });
 
   it('binds the full path hierarchy when switching levels inside a path-hierarchy panel', async () => {
@@ -1697,6 +1703,7 @@ describe('[tester] query/useQueryContextPath', () => {
     const { result } = renderHook(() =>
       useQueryContextPath({
         panelId: 'p1',
+        sessionController: contextController,
         dbSessionId: 'sess-1',
         isPathHierarchy: true,
         selectedDatabase: 'hive',
@@ -1713,10 +1720,10 @@ describe('[tester] query/useQueryContextPath', () => {
     });
 
     // Level 0 writes the root onto the panel's bound database…
-    expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'hive' });
+    await waitFor(() => expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'hive', schema: undefined, namespacePath: ['hive'] }));
     // …and the whole selected path (root-first) is written onto the panel's
     // bound namespacePath.
-    expect(updatePanel).toHaveBeenCalledWith('p1', { namespacePath: ['hive'] });
+    expect(result.current.contextPath).toEqual(['hive']);
 
     // Then the user drills into a nested catalog/schema level — the full path
     // (root + deeper levels) stays bound together.
@@ -1724,6 +1731,6 @@ describe('[tester] query/useQueryContextPath', () => {
     await act(async () => {
       result.current.handleSelectContextLevel(1, 'snap');
     });
-    expect(updatePanel).toHaveBeenCalledWith('p1', { namespacePath: ['hive', 'snap'] });
+    await waitFor(() => expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'hive', schema: undefined, namespacePath: ['hive', 'snap'] }));
   });
 });

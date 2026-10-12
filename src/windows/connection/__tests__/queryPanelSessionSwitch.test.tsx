@@ -5,8 +5,8 @@ import type { EditorSessionController } from '../../../lib/session/EditorSession
 
 /**
  * Journey tests for the two-phase database switch of a QueryPanel editor
- * session: the runtime session context is switched first, and the legacy
- * `switchDatabase` pointer only moves once the session switch succeeded.
+ * session: the runtime session context is switched first, and panel context
+ * is published only once the session switch succeeded.
  */
 
 const panelMocks = vi.hoisted(() => ({ updatePanel: vi.fn() }));
@@ -96,6 +96,8 @@ function controllerWith(behavior: {
     behavior.setContext ?? ((view: SessionView) => Promise.resolve(view)),
   );
   const controller = {
+    execute: vi.fn().mockResolvedValue({ executionId: 'rollback-1' }),
+    client: { getExecution: vi.fn().mockResolvedValue({ state: 'succeeded' }) },
     snapshot: behavior.view ?? sessionView(),
     refresh: vi.fn().mockResolvedValue(behavior.view === undefined ? sessionView() : behavior.view),
     setContext,
@@ -136,7 +138,7 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
 
   afterEach(cleanup);
 
-  it('moves the legacy pointer only after the session switch succeeded', async () => {
+  it('publishes the panel context only after the session switch succeeded', async () => {
     const { controller, setContext } = controllerWith({});
     const onSessionPrompt = vi.fn();
     const { result } = renderHookWith({ controller, onSessionPrompt });
@@ -152,8 +154,8 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
       schema: null,
       path: [],
     });
-    await waitFor(() => expect(schemaMocks.switchDatabase).toHaveBeenCalledWith('other', 'sess-1'));
-    expect(panelMocks.updatePanel).toHaveBeenCalledWith('panel-1', { database: 'other' });
+    await waitFor(() => expect(schemaMocks.ensureNamespacePath).toHaveBeenCalledWith(['other'], 'sess-1'));
+    expect(panelMocks.updatePanel).toHaveBeenCalledWith('panel-1', { database: 'other', schema: undefined });
     // A clean session needs no transaction confirmation and no user prompt.
     expect(onSessionPrompt).not.toHaveBeenCalled();
   });
@@ -197,7 +199,11 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
     });
 
     await waitFor(() => expect(setContext).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(schemaMocks.switchDatabase).toHaveBeenCalledWith('other', 'sess-1'));
+    expect(controller.execute).toHaveBeenCalledWith({
+      command: 'platform.rollbackTransaction', input: { defersCommit: true },
+    });
+    expect(controller.client.getExecution).toHaveBeenCalledWith('rollback-1');
+    await waitFor(() => expect(schemaMocks.ensureNamespacePath).toHaveBeenCalledWith(['other'], 'sess-1'));
   });
 
   it('prompts a revision conflict and keeps the previous database', async () => {
@@ -214,7 +220,7 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
     await waitFor(() =>
       expect(onSessionPrompt).toHaveBeenCalledWith(
         'query.session.revisionConflict',
-        expect.anything(),
+        undefined,
       ),
     );
     expect(setContext).toHaveBeenCalledTimes(1);
@@ -254,7 +260,7 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
     expect(schemaMocks.switchDatabase).not.toHaveBeenCalled();
   });
 
-  it('falls back to the legacy pointer when the pane has no session controller', async () => {
+  it('keeps context unchanged when the pane has no session controller', async () => {
     const onSessionPrompt = vi.fn();
     const { result } = renderHookWith({ controller: null, onSessionPrompt });
 
@@ -262,7 +268,8 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
       result.current.handleSelectContextLevel(0, 'other');
     });
 
-    await waitFor(() => expect(schemaMocks.switchDatabase).toHaveBeenCalledWith('other', 'sess-1'));
+    expect(schemaMocks.switchDatabase).not.toHaveBeenCalled();
+    expect(panelMocks.updatePanel).not.toHaveBeenCalled();
     expect(onSessionPrompt).not.toHaveBeenCalled();
   });
 });
