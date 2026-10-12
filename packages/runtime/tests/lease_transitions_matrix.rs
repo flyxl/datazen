@@ -15,7 +15,7 @@ use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use datazen_runtime::budget::{DenialReason, ResourceClass};
+use datazen_runtime::budget::DenialReason;
 use datazen_runtime::connection::{ExecutionId, HandleId, SessionHandleRef};
 use datazen_runtime::resource::{
     CleanupDisposition, DriverCleanVerdict, IdleEviction, LeaseState, NoHandleCloser, PoolRefusal,
@@ -408,12 +408,8 @@ fn a_refused_physical_quota_closes_what_it_opened_and_leaks_no_permit() {
         Err(error) => error,
     };
     match &error {
-        ResourceError::PhysicalQuotaRefused(DenialReason::Exhausted { class, .. }) => {
-            assert_eq!(
-                *class,
-                ResourceClass::Interactive,
-                "a short operation lease is billed to the interactive class"
-            );
+        ResourceError::PhysicalQuotaRefused(DenialReason::PhysicalExhausted { cap, .. }) => {
+            assert_eq!(*cap, 2, "the physical occupancy cap is enforced");
         }
         other => panic!("expected an exhausted physical quota, got {other:?}"),
     }
