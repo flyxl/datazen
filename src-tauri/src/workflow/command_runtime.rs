@@ -24,13 +24,20 @@ pub fn resolve_connection_id<'a>(
 /// here to give command steps the same inheritance a query step already gets
 /// from `step_database.or(inherited_database)` in `executor.rs`.
 ///
-/// An explicit `input.database` wins, including malformed values that must be
-/// rejected by execution validation rather than silently replaced.
+/// A non-empty explicit `input.database` wins, including malformed values that
+/// must be rejected by execution validation rather than silently replaced.
 pub fn inject_inherited_database(
     mut input: serde_json::Value,
     workflow_database: &str,
 ) -> serde_json::Value {
-    if input.get("database").is_some_and(|value| !value.is_null()) {
+    let should_inherit = match input.get("database") {
+        None | Some(serde_json::Value::Null) => true,
+        Some(serde_json::Value::String(database)) => database.trim().is_empty(),
+        // Keep malformed, non-string values intact so the normal input
+        // validator can reject them instead of quietly choosing another DB.
+        Some(_) => false,
+    };
+    if !should_inherit {
         return input;
     }
     // `inject_sql_target_fields` already filters blank/empty values, so a

@@ -523,6 +523,26 @@ async fn commit_pending_changes_with_handle(
             "Connection is read-only; row changes are not allowed".into(),
         ));
     }
+    if config
+        .database
+        .as_deref()
+        .filter(|database| !database.trim().is_empty())
+        .is_some_and(|database| database != request.plan.table.database)
+    {
+        return Err(CommandError::Validation(
+            "Database context changed; preview the changes again".into(),
+        ));
+    }
+    if config
+        .schema
+        .as_deref()
+        .filter(|schema| !schema.trim().is_empty())
+        .is_some_and(|schema| request.plan.table.schema.as_deref() != Some(schema))
+    {
+        return Err(CommandError::Validation(
+            "Schema context changed; preview the changes again".into(),
+        ));
+    }
     let driver = state
         .driver_registry
         .get_sql_driver_by_name(config.database_type.as_str())
