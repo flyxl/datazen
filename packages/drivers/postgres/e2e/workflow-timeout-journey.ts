@@ -14,14 +14,27 @@ describe('postgres workflow timeout journey', () => {
     });
     const profile = profiles.find(row => row.databaseType === 'postgresql' && row.database);
     if (!profile?.database) throw new Error('Required seeded postgres profile unavailable');
-    for (const strategy of ['skip', 'fallback'] as const) {
-      const id = `workflow-timeout-postgres-${strategy}-${Date.now()}`;
+    const cases = [
+      { entry: 'legacy-query', strategy: 'skip' },
+      { entry: 'legacy-query', strategy: 'fallback' },
+      { entry: 'command-query', strategy: 'skip' },
+      { entry: 'command-execute', strategy: 'fallback' },
+    ] as const;
+    for (const { entry, strategy } of cases) {
+      const id = `workflow-timeout-postgres-${entry}-${strategy}-${Date.now()}`;
       const observer = { type: 'query', id: 'observe', sql: "SELECT count(*) AS active FROM pg_stat_activity WHERE state = 'active' AND query LIKE '%wf_timeout_postgres%' AND pid <> pg_backend_pid()" };
+      const sql = 'SELECT pg_sleep(10) /* wf_timeout_postgres */';
+      const slowStep = {
+        id: 'slow', timeout_secs: 1,
+        on_error: { strategy, ...(strategy === 'fallback' ? { fallback_steps: [observer] } : {}) },
+        ...(entry === 'legacy-query'
+          ? { type: 'query', sql }
+          : { type: 'command', command: entry === 'command-query' ? 'query' : 'execute', input: { sql } }),
+      };
       await invokeBackend('workflow_save', { workflow: {
         id, name: id, description: 'SQL timeout terminal ordering', variables: [],
         connection: profile.id, database: profile.database,
-        steps: [{ type: 'query', id: 'slow', sql: 'SELECT pg_sleep(10) /* wf_timeout_postgres */', timeout_secs: 1,
-          on_error: { strategy, ...(strategy === 'fallback' ? { fallback_steps: [observer] } : {}) } },
+        steps: [slowStep,
           ...(strategy === 'skip' ? [observer] : []), { type: 'query', id: 'next', sql: 'SELECT 73' }],
       } });
       try {
@@ -35,7 +48,10 @@ describe('postgres workflow timeout journey', () => {
         const execution = await invokeBackend<View>('get_execution', { request: { executionId } });
         expect(['succeeded', 'failed', 'cancelled']).toContain(execution.state);
         expect(slow?.error).toContain('effects=');
-        expect(Number(result.steps.find(step => step.stepId === 'observe')?.result?.rows?.[0]?.active)).toBe(0);
+        const observed = result.steps.find(step => step.stepId === 'observe');
+        expect(observed?.status).toBe('success');
+        expect(Number(observed?.result?.rows?.[0]?.active)).toBe(0);
+        expect(result.steps.map(step => step.stepId)).toEqual(['slow', 'observe', 'next']);
         expect(result.steps.find(step => step.stepId === 'next')?.status).toBe('success');
       } finally {
         await invokeBackend('workflow_delete', { workflowId: id });
