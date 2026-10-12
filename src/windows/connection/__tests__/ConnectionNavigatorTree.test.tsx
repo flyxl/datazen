@@ -214,6 +214,20 @@ vi.mock('../../../commands/database', () => ({
   databaseCommands: {
     getDatabases: (...args: unknown[]) => mockGetDatabases(...args),
     listTables: (...args: unknown[]) => mockGetTables(...args),
+    listCatalog: async (dbSessionId: string, database: string) => {
+      const tables: TableInfo[] = await mockGetTables(dbSessionId, database);
+      return {
+        database,
+        schemas: [...new Set(tables.map((table) => table.schema).filter(
+          (schema): schema is string => typeof schema === 'string' && schema.length > 0,
+        ))],
+        relations: tables.filter((table) => table.name).map((table) => ({
+          ref: { database, schema: table.schema ?? null, name: table.name },
+          kind: table.tableType,
+          rowCount: table.rowCount ?? null,
+        })),
+      };
+    },
     useDatabase: (...args: unknown[]) => mockUseDatabase(...args),
     getDatabaseObjects: (...args: unknown[]) => mockGetDatabaseObjects(...args),
   },

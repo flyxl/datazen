@@ -34,6 +34,8 @@ describe('useSchemaDiffUnifiedObjects', () => {
         'target_db',
         'public',
         'public',
+        'source-connection',
+        'target-connection',
       );
     });
 
@@ -41,11 +43,15 @@ describe('useSchemaDiffUnifiedObjects', () => {
       'source-session',
       'view',
       'source_db',
+      'public',
+      'source-connection',
     );
     expect(databaseCommands.getDatabaseObjects).toHaveBeenCalledWith(
       'target-session',
       'view',
       'target_db',
+      'public',
+      'target-connection',
     );
     expect(result.current.sourceObjects.map((object) => object.name)).toContain('source_db-view');
     expect(result.current.targetObjects.map((object) => object.name)).toContain('target_db-view');

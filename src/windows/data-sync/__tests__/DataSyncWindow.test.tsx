@@ -369,9 +369,13 @@ describe('DataSyncWindow wizard', () => {
     aiChatMock.mockReset();
     aiChatMock.mockResolvedValue('AI summary of diffs');
     getDatabasesMock.mockReset();
-    getDatabasesMock.mockImplementation(async (connId: string) =>
-      connId.includes('pg-src') || connId.includes('my') ? ['src', 'other'] : ['tgt'],
-    );
+    getDatabasesMock.mockImplementation(async (_dbSessionId: string, connectionId: string) => {
+      if (connectionId === 'pg-src' || connectionId === 'pg-src-alt' || connectionId === 'my-tgt') {
+        return ['src', 'other'];
+      }
+      if (connectionId === 'pg-tgt' || connectionId === 'pg-tgt-ro') return ['tgt'];
+      throw new Error('Unexpected database discovery owner in fixture');
+    });
     listTablesMock.mockReset();
     listTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
     invokeMock.mockImplementation(
@@ -729,7 +733,7 @@ describe('DataSyncWindow wizard', () => {
     await pickSelect('data-sync-source', 'My Tgt');
     await waitFor(() => expect(screen.getByTestId('data-sync-source-schema')).toBeTruthy());
     expect(screen.getByTestId('data-sync-source-schema')).toHaveTextContent('public');
-    expect(listTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src');
+    expect(listTablesMock).toHaveBeenCalledWith('dedicated-my-tgt-src', 'src', null, 'my-tgt');
   });
 
   it('marks heterogeneous targets as unsupported in the picker', async () => {
@@ -1770,6 +1774,10 @@ describe('DataSyncWindow wizard', () => {
     fireEvent.click(screen.getByText('migrationHistory.open'));
     fireEvent.click(await screen.findByText(/failed/));
     fireEvent.click(await screen.findByTestId('migration-run-reconcile'));
+    await waitFor(() => {
+      expect(getDatabasesMock).toHaveBeenCalledWith('dedicated-pg-src-default', 'pg-src');
+      expect(getDatabasesMock).toHaveBeenCalledWith('dedicated-pg-tgt-default', 'pg-tgt');
+    });
     await waitFor(() => expect(screen.getByTestId('data-sync-step-endpoints')).toBeTruthy());
     await waitFor(() =>
       expect(screen.getByTestId('data-sync-target-database')).toHaveTextContent('tgt'),

@@ -36,7 +36,7 @@ vi.mock('../../../lib/dedicatedDbSession', () => ({
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
-    listTables: vi.fn().mockResolvedValue([]),
+    listCatalog: vi.fn().mockResolvedValue({ database: '', schemas: [], relations: [] }),
   },
 }));
 
@@ -76,6 +76,7 @@ const MOCK_CONNECTIONS: ConnectionConfig[] = [
 describe('useSchemaDiffEndpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(databaseCommands.listCatalog).mockResolvedValue({ database: '', schemas: [], relations: [] });
     urlParamMock.mockReset();
     urlParamMock.mockReturnValue(null);
     vi.mocked(invoke).mockResolvedValue(MOCK_CONNECTIONS);
@@ -275,11 +276,10 @@ describe('useSchemaDiffEndpoints', () => {
     });
   });
 
-  it('discovers schemas through table metadata for non-PostgreSQL SQL drivers', async () => {
-    vi.mocked(databaseCommands.listTables).mockResolvedValue([
-      { name: 'users', schema: 'public', tableType: 'table' },
-      { name: 'users', schema: 'app', tableType: 'table' },
-    ]);
+  it('discovers schemas from the catalog for non-PostgreSQL SQL drivers', async () => {
+    vi.mocked(databaseCommands.listCatalog).mockResolvedValue({
+      database: 'datazen_sync_src', schemas: ['app', 'public'], relations: [],
+    });
     const { result } = renderHook(() => useSchemaDiffEndpoints());
 
     await waitFor(() => expect(result.current.connections).toHaveLength(3));
@@ -292,21 +292,22 @@ describe('useSchemaDiffEndpoints', () => {
     await waitFor(() => {
       expect(result.current.sourceSchemas).toEqual(['app', 'public']);
     });
-    expect(databaseCommands.listTables).toHaveBeenCalledWith(
+    expect(databaseCommands.listCatalog).toHaveBeenCalledWith(
       'session-mysql-tgt',
       'datazen_sync_src',
+      null,
+      'mysql-tgt',
     );
   });
 
-  it('prefers the configured connection schema over an empty public schema marker', async () => {
+  it('prefers the configured connection schema when the catalog has empty schemas', async () => {
     vi.mocked(invoke).mockResolvedValue([
       pgConn('pg-src', 'PG Src', 'worker_db', 'e2e_worker_0'),
       pgConn('pg-tgt', 'PG Tgt', 'datazen_sync_tgt'),
     ]);
-    vi.mocked(databaseCommands.listTables).mockResolvedValue([
-      { name: '', schema: 'public', tableType: 'systemTable' },
-      { name: 'e2e_contract_conn', schema: 'e2e_worker_0', tableType: 'table' },
-    ]);
+    vi.mocked(databaseCommands.listCatalog).mockResolvedValue({
+      database: 'worker_db', schemas: ['e2e_worker_0', 'public'], relations: [],
+    });
 
     const { result } = renderHook(() => useSchemaDiffEndpoints());
     await waitFor(() => expect(result.current.connections).toHaveLength(2));
