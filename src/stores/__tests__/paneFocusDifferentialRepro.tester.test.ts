@@ -92,6 +92,38 @@ vi.mock('../../lib/session/runEditorQuery', () => ({
   },
 }));
 
+// The historical panelStore fixture predates the required connection owner
+// argument. Supply the fixture's sole owner when it calls the shared current
+// query action so the differential still exercises the old pane routing logic.
+vi.mock('../queryExecActions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../queryExecActions')>();
+  return {
+    ...actual,
+    runStreamingQuery: (
+      paneKey: string,
+      dbSessionId: string,
+      sql: string,
+      getExec: Parameters<typeof actual.runStreamingQuery>[3],
+      setExec: Parameters<typeof actual.runStreamingQuery>[4],
+      database?: string | null,
+      schema?: string | null,
+      params?: Parameters<typeof actual.runStreamingQuery>[7],
+      connectionId?: string,
+    ) =>
+      actual.runStreamingQuery(
+        paneKey,
+        dbSessionId,
+        sql,
+        getExec,
+        setExec,
+        database,
+        schema,
+        params,
+        connectionId ?? 'cfg-1',
+      ),
+  };
+});
+
 vi.mock('../../stores/activeConnectionStore', () => ({
   useActiveConnectionStore: {
     getState: () => activeConnectionState,

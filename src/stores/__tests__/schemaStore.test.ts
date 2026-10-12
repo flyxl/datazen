@@ -988,12 +988,12 @@ describe('schemaStore keyed multi-connection', () => {
   });
 
   it('ensureColumns uses per-connection columnInflight', async () => {
-    seedSchema(useSchemaStore, 'conn-a', {});
+    seedSchema(useSchemaStore, 'conn-a', { connectionId: 'cfg-a' });
     useSchemaStore
       .getState()
       .setLoadedTables('db', [{ name: 'users', tableType: 'table' }], 'conn-a');
 
-    seedSchema(useSchemaStore, 'conn-b', {});
+    seedSchema(useSchemaStore, 'conn-b', { connectionId: 'cfg-b' });
     useSchemaStore
       .getState()
       .setLoadedTables('db', [{ name: 'orders', tableType: 'table' }], 'conn-b');
@@ -1002,10 +1002,10 @@ describe('schemaStore keyed multi-connection', () => {
     await useSchemaStore.getState().ensureColumns(['users'], 'conn-a', 'db');
     await useSchemaStore.getState().ensureColumns(['orders'], 'conn-b', 'db');
 
-    expect(mockReadColumns).toHaveBeenCalledWith('conn-a', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-a', [
       { name: 'users', database: 'db', schema: null },
     ]);
-    expect(mockReadColumns).toHaveBeenCalledWith('conn-b', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-b', [
       { name: 'orders', database: 'db', schema: null },
     ]);
     expect(schemaSnapshot(useSchemaStore, 'conn-a').columnMap).toEqual({
