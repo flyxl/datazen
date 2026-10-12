@@ -222,9 +222,9 @@ pub(crate) fn postgres_capability_set() -> CapabilitySet {
 /// Bumped whenever [`postgres_capability_set`] changes meaning, so a cached
 /// snapshot can be told apart from the current declaration. `1` is the first
 /// set that was actually checked against the code below; a snapshot taken
-/// before this module existed carried `0`. `2` declared `data` (rowRead and
-/// rowWrite proven, streamingResults not) — `backup` stayed empty across both.
-pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 2;
+/// before this module existed carried `0`. `2` added buffered row read/write;
+/// `3` adds fixed interactive/agent sessions and bounded streaming results.
+pub(crate) const POSTGRES_CAPABILITY_REVISION: u64 = 3;
 
 /// The full registry: identity, version, protocol and the declared set.
 pub(crate) fn postgres_capability_registry() -> CapabilityRegistry {
@@ -291,9 +291,9 @@ fn postgres_capability_evidence() -> Vec<(&'static str, String)> {
         (
             "connectionCostPolicy",
             concat!(
-                "InteractiveQuery and full-pool resources are charged at ",
-                "effective_max_pool_size plus one control connection; ",
-                "MetadataInspection uses one data connection plus one control connection",
+                "InteractiveQuery and AgentSession retain one data connection plus one control connection; ",
+                "MetadataInspection uses one data connection plus one control connection; ",
+                "other pooled resources use effective_max_pool_size plus one control connection",
             )
             .to_string(),
         ),

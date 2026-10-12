@@ -361,15 +361,11 @@ async fn declared_supported_capabilities_are_the_ones_the_code_actually_has() {
     );
 }
 
-/// `data` is claimed on two axes and withheld on the third; `backup` is not
-/// claimed at all. Both halves of that asymmetry are load-bearing — the first
-/// keeps a real, working driver from being gated out of row read/write, the
-/// second stops a host from being told PostgreSQL cannot be backed up when it
-/// can. `streamingResults` is the one that has to keep failing: it is the axis
-/// the provider genuinely cannot serve, because `run_command` materializes
-/// every row before handing the first one to the sink.
+/// `data` supports row read, row write and bounded streaming; `backup` is not
+/// claimed because this provider has no artifact surface. The streaming path
+/// sends bounded batches from the physical connection to the result sink.
 #[tokio::test]
-async fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
+async fn data_supports_bounded_streaming_and_backup_stays_undeclared() {
     let (_driver, provider) = provider_with_driver();
     let registry = provider.capabilities();
     let set = postgres_capability_set();
@@ -377,8 +373,7 @@ async fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
     assert_eq!(
         set.data,
         DataSupport::StreamingReadWrite,
-        "row read/write are proven by traits.rs:1127/:1139; the downgrade from nominal \
-         is the withheld streaming axis and must not drift silently"
+        "resource_stream emits bounded batches and execute preserves rowsAffected"
     );
     assert!(
         set.data.enables_row_read(),
@@ -390,8 +385,7 @@ async fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
     );
     assert!(
         set.data.enables_streaming_results(),
-        "rows are fully buffered before the sink sees any of them, so streaming \
-         must stay undeclared"
+        "bounded result batches are sent to the sink as rows are read"
     );
     assert!(
         set.data.enables_feature(),
