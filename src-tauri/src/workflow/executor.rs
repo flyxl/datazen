@@ -301,6 +301,8 @@ impl WorkflowExecutor {
                             workflow_database,
                             context,
                             options,
+                            tokio::time::Instant::from_std(*global_start)
+                                + std::time::Duration::from_secs(global_timeout_secs),
                         );
                         // SQL owns its deadline so dropping a future cannot release
                         // Skip/Fallback before the database reaches a terminal state.
@@ -309,8 +311,13 @@ impl WorkflowExecutor {
                         let result = if is_sql {
                             Ok(execution.await)
                         } else {
-                            tokio::time::timeout(
-                                std::time::Duration::from_secs(timeout),
+                            tokio::time::timeout_at(
+                                (tokio::time::Instant::from_std(*global_start)
+                                    + std::time::Duration::from_secs(global_timeout_secs))
+                                .min(
+                                    tokio::time::Instant::now()
+                                        + std::time::Duration::from_secs(timeout),
+                                ),
                                 execution,
                             )
                             .await
@@ -364,6 +371,9 @@ impl WorkflowExecutor {
                     }
                 }
             }
+            if global_start.elapsed().as_secs() >= global_timeout_secs {
+                return Err(WorkflowError::GlobalTimeout(global_timeout_secs));
+            }
             Ok(())
         })
     }
@@ -383,8 +393,14 @@ impl WorkflowExecutor {
         global_start: &Instant,
         options: &WorkflowExecuteOptions,
     ) -> Result<(), WorkflowError> {
+        let global_expired = global_start.elapsed().as_secs() >= global_timeout_secs;
+        let err = if global_expired && !err.to_string().contains("GlobalTimeout") {
+            WorkflowError::Step(format!("GlobalTimeout ({global_timeout_secs}s): {err}"))
+        } else {
+            err
+        };
         let err_text = err.to_string();
-        let strategy = if matches!(&err, WorkflowError::SqlUnconfirmed { .. }) {
+        let strategy = if global_expired || matches!(&err, WorkflowError::SqlUnconfirmed { .. }) {
             ErrorStrategy::Abort
         } else {
             step.on_error_strategy()
@@ -420,7 +436,10 @@ impl WorkflowExecutor {
             }
             ErrorStrategy::Fallback { steps } => {
                 // Retain the failed SQL execution evidence even when fallback succeeds.
-                if matches!(&err, WorkflowError::SqlExecution { .. } | WorkflowError::SqlResultRead { .. }) {
+                if matches!(
+                    &err,
+                    WorkflowError::SqlExecution { .. } | WorkflowError::SqlResultRead { .. }
+                ) {
                     step_results.push(StepExecutionResult {
                         step_id: step.step_id().into(),
                         step_type: step.step_type_str().into(),
@@ -456,6 +475,7 @@ impl WorkflowExecutor {
         workflow_database: Option<&str>,
         context: &mut WorkflowContext,
         options: &WorkflowExecuteOptions,
+        workflow_deadline: tokio::time::Instant,
     ) -> Result<StepExecutionResult, WorkflowError> {
         match step {
             WorkflowStep::Query {
@@ -493,6 +513,7 @@ impl WorkflowExecutor {
                     context,
                     options,
                     Some(sql),
+                    workflow_deadline,
                 )
                 .await
             }
@@ -534,6 +555,7 @@ impl WorkflowExecutor {
                     context,
                     options,
                     None,
+                    workflow_deadline,
                 )
                 .await
             }
@@ -691,6 +713,7 @@ impl WorkflowExecutor {
         context: &mut WorkflowContext,
         options: &WorkflowExecuteOptions,
         legacy_sql_template: Option<&str>,
+        workflow_deadline: tokio::time::Instant,
     ) -> Result<StepExecutionResult, WorkflowError> {
         if step.command == "query" {
             if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
@@ -701,13 +724,20 @@ impl WorkflowExecutor {
                 input["sql"] = serde_json::Value::String(clean.clone());
                 input["limit"] = serde_json::Value::Number(limit.into());
                 let step = WorkflowCommandStep { input, ..step };
-                let conn_name =
-                    effective_connection_name(app_state, &step, workflow_connection).await?;
-                let result = command_runtime::execute_command_with_mode(
+                let conn_name = tokio::time::timeout_at(
+                    workflow_deadline,
+                    effective_connection_name(app_state, &step, workflow_connection),
+                )
+                .await
+                .map_err(|_| {
+                    WorkflowError::Step("GlobalTimeout before dispatch; no SQL submitted".into())
+                })??;
+                let result = command_runtime::execute_command_with_deadline(
                     app_state,
                     &step,
                     workflow_connection,
                     options.permission_mode,
+                    Some(workflow_deadline),
                 )
                 .await?;
                 let structured = normalize_query_result(&result.data)?;
@@ -725,12 +755,20 @@ impl WorkflowExecutor {
             }
         }
 
-        let conn_name = effective_connection_name(app_state, &step, workflow_connection).await?;
-        let result = command_runtime::execute_command_with_mode(
+        let conn_name = tokio::time::timeout_at(
+            workflow_deadline,
+            effective_connection_name(app_state, &step, workflow_connection),
+        )
+        .await
+        .map_err(|_| {
+            WorkflowError::Step("GlobalTimeout before dispatch; no SQL submitted".into())
+        })??;
+        let result = command_runtime::execute_command_with_deadline(
             app_state,
             &step,
             workflow_connection,
             options.permission_mode,
+            Some(workflow_deadline),
         )
         .await?;
         context.set_step_result(&step.id, result.data.clone());

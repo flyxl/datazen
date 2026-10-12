@@ -42,7 +42,9 @@ async fn before_dispatch<T>(
 ) -> Result<T, WorkflowError> {
     tokio::time::timeout_at(deadline, future)
         .await
-        .map_err(|_| WorkflowError::Step("SQL step timed out before dispatch; no SQL submitted".into()))
+        .map_err(|_| {
+            WorkflowError::Step("SQL step timed out before dispatch; no SQL submitted".into())
+        })
 }
 
 pub(super) async fn execute(
@@ -50,12 +52,14 @@ pub(super) async fn execute(
     step: &WorkflowCommandStep,
     connection_id: &str,
     permission_mode: Option<crate::mcp::permission::McpPermissionMode>,
+    workflow_deadline: Option<tokio::time::Instant>,
 ) -> Result<CommandResult, WorkflowError> {
-    let deadline = tokio::time::Instant::now()
+    let step_deadline = tokio::time::Instant::now()
         + std::time::Duration::from_secs(step.timeout_secs.unwrap_or(30));
-    let (config, metadata) = before_dispatch(
-        deadline, state.store.platform_profile(connection_id),
-    ).await?
+    let global_limit = workflow_deadline.is_some_and(|deadline| deadline <= step_deadline);
+    let deadline = workflow_deadline.map_or(step_deadline, |deadline| deadline.min(step_deadline));
+    let (config, metadata) = before_dispatch(deadline, state.store.platform_profile(connection_id))
+        .await?
         .ok_or_else(|| WorkflowError::ConnectionFailed {
             connection_id: connection_id.into(),
             message: "profile unavailable".into(),
@@ -65,17 +69,22 @@ pub(super) async fn execute(
     }
     let driver = before_dispatch(
         deadline,
-        state.driver_registry.get_sql_driver_by_name(config.database_type.as_str()),
-    ).await?
-        .ok_or_else(|| WorkflowError::UnsupportedCommand {
-            command: step.command.clone(),
-            connection_id: connection_id.into(),
-        })?;
+        state
+            .driver_registry
+            .get_sql_driver_by_name(config.database_type.as_str()),
+    )
+    .await?
+    .ok_or_else(|| WorkflowError::UnsupportedCommand {
+        command: step.command.clone(),
+        connection_id: connection_id.into(),
+    })?;
     // Query steps and SQL Command steps converge here after resolving workflow
     // inheritance and validating explicit namespace fields. Require a named
     // database before either path can acquire an independent SQL resource.
     if super::workflows::executor::database_is_required(
-        step.input.get("database").and_then(serde_json::Value::as_str),
+        step.input
+            .get("database")
+            .and_then(serde_json::Value::as_str),
         config.database.as_deref(),
         driver.has_multi_database(),
     ) {
@@ -111,7 +120,9 @@ pub(super) async fn execute(
     crate::sql_guard::check_sql(
         sql,
         config.read_only,
-        before_dispatch(deadline, state.store.get_settings()).await?.safe_mode,
+        before_dispatch(deadline, state.store.get_settings())
+            .await?
+            .safe_mode,
     )
     .map_err(WorkflowError::Validation)?;
     if let Some(mode) = permission_mode {
@@ -141,8 +152,9 @@ pub(super) async fn execute(
     let token = before_dispatch(
         deadline,
         runtime.issue_submission_token(call.context(), IdempotentOperation::ExecuteAtTarget, None),
-    ).await?
-        .map_err(|error| WorkflowError::Validation(error.to_string()))?;
+    )
+    .await?
+    .map_err(|error| WorkflowError::Validation(error.to_string()))?;
     // Check explicitly before polling submission: timeout_at may poll an already
     // ready future even when its deadline has elapsed.
     if tokio::time::Instant::now() >= deadline {
@@ -168,9 +180,10 @@ pub(super) async fn execute(
                 token.idempotency_key,
             ),
         ),
-    ).await
-        .map_err(|_| submission_unconfirmed("SubmissionReceiptTimeout".into()))?
-        .map_err(|error| submission_unconfirmed(format!("Submission:{:?}", error.code)))?;
+    )
+    .await
+    .map_err(|_| submission_unconfirmed("SubmissionReceiptTimeout".into()))?
+    .map_err(|error| submission_unconfirmed(format!("Submission:{:?}", error.code)))?;
     let mut cancellation = CancelOnDrop {
         runtime: runtime.clone(),
         context: call.context().clone(),
@@ -209,12 +222,20 @@ pub(super) async fn execute(
                     break view;
                 }
             }
-            Ok(Err(error)) => return Err(unconfirmed(
-                &last_state, &last_effects, format!("{:?}", error.code),
-            )),
-            Err(_) if timed_out => return Err(unconfirmed(
-                &last_state, &last_effects, "TimeoutAwaitingTerminal".into(),
-            )),
+            Ok(Err(error)) => {
+                return Err(unconfirmed(
+                    &last_state,
+                    &last_effects,
+                    format!("{:?}", error.code),
+                ))
+            }
+            Err(_) if timed_out => {
+                return Err(unconfirmed(
+                    &last_state,
+                    &last_effects,
+                    "TimeoutAwaitingTerminal".into(),
+                ))
+            }
             Err(_) => {
                 timed_out = true;
                 // A cancellation receipt only acknowledges the request. Keep
@@ -222,18 +243,26 @@ pub(super) async fn execute(
                 let cancelled = tokio::time::timeout(
                     std::time::Duration::from_secs(5),
                     runtime.cancel_execution(call.context(), receipt.execution_id.clone()),
-                ).await;
+                )
+                .await;
                 match cancelled {
-                    Ok(Ok(_)) => {},
-                    Ok(Err(error)) => return Err(unconfirmed(
-                        &last_state, &last_effects, format!("Cancel:{:?}", error.code),
-                    )),
-                    Err(_) => return Err(unconfirmed(
-                        &last_state, &last_effects, "CancelAcknowledgementTimeout".into(),
-                    )),
+                    Ok(Ok(_)) => {}
+                    Ok(Err(error)) => {
+                        return Err(unconfirmed(
+                            &last_state,
+                            &last_effects,
+                            format!("Cancel:{:?}", error.code),
+                        ))
+                    }
+                    Err(_) => {
+                        return Err(unconfirmed(
+                            &last_state,
+                            &last_effects,
+                            "CancelAcknowledgementTimeout".into(),
+                        ))
+                    }
                 }
-                poll_deadline = tokio::time::Instant::now()
-                    + std::time::Duration::from_secs(30);
+                poll_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
             }
         }
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
@@ -244,7 +273,19 @@ pub(super) async fn execute(
             execution_id: receipt.execution_id.as_str().to_owned(),
             state: format!("{:?}", view.state),
             effects: format!("{:?}", view.effect_outcome),
-            code: if timed_out { format!("StepTimeout:{:?}", view.error_code) } else { format!("{:?}", view.error_code) },
+            code: if timed_out {
+                format!(
+                    "{}:{:?}",
+                    if global_limit {
+                        "GlobalTimeout"
+                    } else {
+                        "StepTimeout"
+                    },
+                    view.error_code
+                )
+            } else {
+                format!("{:?}", view.error_code)
+            },
         });
     }
     // Reading a result does not execute SQL again. Preserve the known effect
@@ -258,6 +299,8 @@ pub(super) async fn execute(
     // Terminal is known, so result transport timeout can safely use Skip/Fallback.
     // One deadline covers all chunks rather than extending on every read.
     let read_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    let read_deadline =
+        workflow_deadline.map_or(read_deadline, |deadline| deadline.min(read_deadline));
     let read_timeout = || WorkflowError::SqlResultRead {
         execution_id: receipt.execution_id.as_str().to_owned(),
         effects: format!("{:?}", view.effect_outcome),
@@ -312,8 +355,9 @@ pub(super) async fn execute(
             }
         }
         Ok::<_, WorkflowError>(statements)
-    }).await
-        .map_err(|_| read_timeout())??;
+    })
+    .await
+    .map_err(|_| read_timeout())??;
     Ok(CommandResult::new(serde_json::json!({
         "results": statements.into_values().collect::<Vec<_>>(),
         "totalTimeMs": started.elapsed().as_millis() as u64,

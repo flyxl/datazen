@@ -57,6 +57,16 @@ pub async fn execute_command_with_mode(
     workflow_connection: Option<&str>,
     permission_mode: Option<McpPermissionMode>,
 ) -> Result<CommandResult, WorkflowError> {
+    execute_command_with_deadline(app_state, step, workflow_connection, permission_mode, None).await
+}
+
+pub(super) async fn execute_command_with_deadline(
+    app_state: &AppState,
+    step: &WorkflowCommandStep,
+    workflow_connection: Option<&str>,
+    permission_mode: Option<McpPermissionMode>,
+    workflow_deadline: Option<tokio::time::Instant>,
+) -> Result<CommandResult, WorkflowError> {
     // Validate explicit namespace input before resolving or opening a resource.
     // Null/absent fields inherit the workflow policy; malformed explicit fields
     // must not silently execute against the connection's configured namespace.
@@ -71,8 +81,14 @@ pub async fn execute_command_with_mode(
     }
     let connection_id = resolve_connection_id(step, workflow_connection)?;
     if matches!(step.command.as_str(), "query" | "execute") {
-        return super::independent_sql::execute(app_state, step, connection_id, permission_mode)
-            .await;
+        return super::independent_sql::execute(
+            app_state,
+            step,
+            connection_id,
+            permission_mode,
+            workflow_deadline,
+        )
+        .await;
     }
     let (_runtime_id, driver, handle) = app_state
         .connection_manager
