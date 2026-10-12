@@ -42,8 +42,8 @@ use sqlx::PgPool;
 use crate::postgres::PostgresDriver;
 
 use super::capabilities::{
-    POSTGRES_PROVIDER_ID, postgres_capability_registry, postgres_namespace_shape,
-    postgres_resource_connection_cost,
+    CONTROL_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID, postgres_capability_registry,
+    postgres_namespace_shape, postgres_resource_connection_cost,
 };
 use super::observation;
 use super::payload::decode_command_result;
@@ -405,10 +405,11 @@ impl PostgresResourceProvider {
                 requested: required,
                 reason: format!(
                     "the scope allows {} physical connection(s); this resource needs {}: a pool \
-                     of {} plus the control pool used for cancellation",
+                     of {} plus a control pool of {} connection(s) used for cancellation",
                     request.scope.max_physical_connections,
                     required,
-                    request.connection_config.effective_max_pool_size()
+                    required.saturating_sub(CONTROL_POOL_CONNECTIONS),
+                    CONTROL_POOL_CONNECTIONS
                 ),
             });
         }

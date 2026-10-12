@@ -290,7 +290,12 @@ fn postgres_capability_evidence() -> Vec<(&'static str, String)> {
         ),
         (
             "connectionCostPolicy",
-            "effective_max_pool_size() data connections + 1 control connection".to_string(),
+            concat!(
+                "InteractiveQuery and full-pool resources are charged at ",
+                "effective_max_pool_size plus one control connection; ",
+                "MetadataInspection uses one data connection plus one control connection",
+            )
+            .to_string(),
         ),
         (
             "data",
