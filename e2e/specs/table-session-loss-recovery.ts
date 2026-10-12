@@ -3,11 +3,18 @@ import {
   clickNavigatorRefresh, closeExtraWindows, disconnectBackend, expandSchemaTableCategory,
   expandAllGroups, expandConnectedConnectionInNavigator, invokeBackend,
   openConnectionsWorkspace, parseQueryRows, queryScalar, waitForConnectionToolbar,
-  setNavigatorSearch, withSafeModeOff, type QueryResultPayload,
+  withSafeModeOff, type QueryResultPayload,
 } from '../helpers.js';
 import {
   MYSQL_SYNC_DB, PG_SYNC_DB, mysqlConnectionConfig, pgConnectionConfig,
 } from '../lib/schemaDiffFixtures.js';
+
+async function setFixtureNavigatorSearch(query: string): Promise<void> {
+  const input = await $('[data-testid="connection-navigator-aside"] input');
+  await input.waitForDisplayed({ timeout: 15000 });
+  if (query) await input.setValue(query);
+  else await input.clearValue();
+}
 
 // Unique databases isolate termination from every seeded/user connection.
 for (const dialect of ['postgresql', 'mysql'] as const) {
@@ -84,7 +91,7 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         await openConnectionsWorkspace();
         await expandAllGroups();
         // Filter the virtualized navigator so the exact fixture card is mounted.
-        await setNavigatorSearch(name);
+        await setFixtureNavigatorSearch(name);
         await browser.waitUntil(async () => browser.execute((wanted: string) => {
           const card = Array.from(document.querySelectorAll('[data-conn-item]')).find((node) => node.getAttribute('data-conn-name') === wanted);
           if (!card) return false;
@@ -92,7 +99,7 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
           return true;
         }, name), { timeout: 15000, timeoutMsg: 'Fresh recovery fixture connection unavailable' });
         await waitForConnectionToolbar();
-        await setNavigatorSearch('');
+        await setFixtureNavigatorSearch('');
         await expandConnectedConnectionInNavigator(name);
         await clickNavigatorRefresh();
         await expandSchemaTableCategory(tableSchema, database);

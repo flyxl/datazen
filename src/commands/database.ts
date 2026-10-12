@@ -48,18 +48,23 @@ const databaseDiscoveryInFlight = new Map<string, Promise<string[]>>();
 
 export const databaseCommands = {
   getDatabases: (dbSessionId: string, connectionId?: string): Promise<string[]> => {
-    const existing = databaseDiscoveryInFlight.get(dbSessionId);
+    // Dedicated endpoint sessions share connection-scoped discovery, while
+    // callers without an explicit owner retain the active-session boundary.
+    const key = JSON.stringify(connectionId === undefined
+      ? ['session', dbSessionId]
+      : ['connection', connectionId]);
+    const existing = databaseDiscoveryInFlight.get(key);
     if (existing) return existing;
     const discovery = Promise.resolve().then(async () =>
       (await executeTargetCommand(databaseDiscoveryTarget(dbSessionId, connectionId), {
         command: 'list_databases', input: {},
       }) as { databases: string[] }).databases,
     ).finally(() => {
-      if (databaseDiscoveryInFlight.get(dbSessionId) === discovery) {
-        databaseDiscoveryInFlight.delete(dbSessionId);
+      if (databaseDiscoveryInFlight.get(key) === discovery) {
+        databaseDiscoveryInFlight.delete(key);
       }
     });
-    databaseDiscoveryInFlight.set(dbSessionId, discovery);
+    databaseDiscoveryInFlight.set(key, discovery);
     return discovery;
   },
 
