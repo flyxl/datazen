@@ -194,6 +194,22 @@ impl PostgresDriver {
             == Some(database)
     }
 
+    /// Select one gate per original pool, including callers waiting to acquire it.
+    /// Never remove an entry while a waiter retains its Arc: that would let a
+    /// new caller create a second gate for the same physical resource. Expired
+    /// weak entries are reclaimed on the next lookup, after the last caller
+    /// (including a cancelled close) drops its Arc.
+    async fn pool_lifecycle_gate(&self, pool_id: &str) -> std::sync::Arc<tokio::sync::RwLock<()>> {
+        let mut gates = self.pool_lifecycle.lock().await;
+        gates.retain(|_, gate| gate.strong_count() > 0);
+        if let Some(gate) = gates.get(pool_id).and_then(std::sync::Weak::upgrade) {
+            return gate;
+        }
+        let gate = std::sync::Arc::new(tokio::sync::RwLock::new(()));
+        gates.insert(pool_id.to_string(), std::sync::Arc::downgrade(&gate));
+        gate
+    }
+
     /// Resolve the pool that serves `database` for this handle.
     ///
     /// The handle's own database (and a blank name, which callers use to mean
@@ -205,6 +221,10 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         database: &str,
     ) -> Result<PgPool, DriverError> {
+        let lifecycle = self.pool_lifecycle_gate(&handle.pool_id).await;
+        // Keep the read side across resolution, I/O and cache registration.
+        // Disconnect's write side must see every creation admitted before it.
+        let _creation = lifecycle.read().await;
         let db = database.trim();
         if db.is_empty() || self.is_active_database(handle, db).await {
             let pools = self.pools.read().await;
@@ -283,20 +303,26 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         database: &str,
     ) -> Result<bool, DriverError> {
+        let lifecycle = self.pool_lifecycle_gate(&handle.pool_id).await;
+        let _close = lifecycle.write().await;
         let db = database.trim();
         if db.is_empty() || self.is_active_database(handle, db).await {
             return Err(DriverError::InvalidConfig(
                 "cannot close the connection's own database".into(),
             ));
         }
-        let removed = self
+        let key = (handle.pool_id.clone(), db.to_string());
+        let pool = self
             .database_pools
-            .write()
+            .read()
             .await
-            .remove(&(handle.pool_id.clone(), db.to_string()));
-        match removed {
-            Some(entry) => {
-                entry.pool.close().await;
+            .get(&key)
+            .map(|entry| entry.pool.clone());
+        match pool {
+            Some(pool) => {
+                // A cancelled close remains registered for disconnect/retry.
+                pool.close().await;
+                self.database_pools.write().await.remove(&key);
                 Ok(true)
             }
             None => Ok(false),
@@ -453,6 +479,11 @@ impl PostgresDriver {
         &self,
         handle: ConnectionHandle,
     ) -> Result<(), DriverError> {
+        let lifecycle = self.pool_lifecycle_gate(&handle.pool_id).await;
+        // Tokio's per-pool write gate waits for earlier creators and blocks
+        // later ones until every original pool and its config are removed.
+        // Cancellation drops the guard; retained registrations permit retry.
+        let _disconnect = lifecycle.write().await;
         let removed = self.transactions.lock().await.remove(&handle.id);
         if let Some(pinned) = removed {
             let mut conn = pinned.lock().await;

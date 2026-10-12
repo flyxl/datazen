@@ -16,6 +16,9 @@ pub struct PostgresDriver {
     pub(crate) pools: RwLock<HashMap<String, PgPool>>,
     /// Template connection config (host/user/pass/timeout) for reconnecting to other databases.
     pub(crate) connect_configs: RwLock<HashMap<String, ConnectionConfig>>,
+    /// Weak entries avoid retaining one lifecycle gate per historical pool.
+    /// Active creators, closers and waiters each hold the same gate strongly.
+    pub(crate) pool_lifecycle: Mutex<HashMap<String, std::sync::Weak<RwLock<()>>>>,
     /// Database the handle's pool is currently connected to, keyed by pool_id.
     pub(crate) active_databases: RwLock<HashMap<String, String>>,
     /// Pools for databases **other than** the handle's active one, keyed by
@@ -48,6 +51,7 @@ impl PostgresDriver {
         Self {
             pools: RwLock::new(HashMap::new()),
             connect_configs: RwLock::new(HashMap::new()),
+            pool_lifecycle: Mutex::new(HashMap::new()),
             active_databases: RwLock::new(HashMap::new()),
             database_pools: RwLock::new(HashMap::new()),
             database_pool_clock: AtomicU64::new(0),
