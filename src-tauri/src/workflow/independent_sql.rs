@@ -188,10 +188,19 @@ pub(super) async fn execute(
     let mut timed_out = false;
     let mut poll_deadline = deadline;
     let view = loop {
-        let polled = tokio::time::timeout_at(
-            poll_deadline,
-            runtime.get_execution(call.context(), receipt.execution_id.clone()),
-        ).await;
+        // timeout_at polls its inner future first. A ready registry lookup
+        // can therefore win even after expiry on every iteration. Enforce the
+        // deadline explicitly before polling, including the terminal grace period.
+        let polled = if tokio::time::Instant::now() >= poll_deadline {
+            Err(())
+        } else {
+            tokio::time::timeout_at(
+                poll_deadline,
+                runtime.get_execution(call.context(), receipt.execution_id.clone()),
+            )
+            .await
+            .map_err(|_| ())
+        };
         match polled {
             Ok(Ok(view)) => {
                 last_state = format!("{:?}", view.state);
