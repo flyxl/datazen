@@ -27,6 +27,7 @@ export interface SchemaDiffEndpointSessions {
 
 export interface UseSchemaDiffEndpointsOptions {
   onError?: (message: string) => void;
+  onClearError?: (message: string) => void;
 }
 
 function sessionDatabaseOverride(
@@ -40,6 +41,17 @@ function sessionDatabaseOverride(
 
 export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = {}) {
   const { onError } = options;
+  const discoveryCallbacks = useRef(options);
+  discoveryCallbacks.current = options;
+  const discoveryErrors = useRef<{ source: string | null; target: string | null }>({
+    source: null,
+    target: null,
+  });
+  const clearDiscoveryError = useCallback((side: 'source' | 'target') => {
+    const message = discoveryErrors.current[side];
+    discoveryErrors.current[side] = null;
+    if (message) discoveryCallbacks.current.onClearError?.(message);
+  }, []);
   const { t } = useI18n();
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
@@ -138,6 +150,7 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
   }, [targetSession?.dbSessionId]);
 
   useEffect(() => {
+    clearDiscoveryError('source');
     if (!sourceId) {
       setSourceDatabases([]);
       setSourceSchemas([]);
@@ -151,7 +164,12 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
     (async () => {
       try {
         const { databases } = await listDatabasesDedicated(sourceId, cfg?.database);
-        if (cancelled) return;
+        if (
+          cancelled ||
+          discoveryOwners.current.sourceId !== sourceId ||
+          discoveryOwners.current.connections !== connections
+        ) return;
+        clearDiscoveryError('source');
         setSourceDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setSourceDatabase((prev) =>
@@ -167,7 +185,9 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         if (!cancelled && discoveryOwners.current.sourceId === sourceId && discoveryOwners.current.connections === connections) {
           setSourceDatabases([]);
           const code = error instanceof ApiError && API_ERROR_CODES.includes(error.code) ? error.code : 'unknown';
-          reportError(`databaseDiscovery.source:${code}`);
+          const message = `databaseDiscovery.source:${code}`;
+          discoveryErrors.current.source = message;
+          discoveryCallbacks.current.onError?.(message);
         }
       }
     })();
@@ -178,6 +198,7 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
   }, [sourceId, connections]);
 
   useEffect(() => {
+    clearDiscoveryError('target');
     if (!targetId) {
       setTargetDatabases([]);
       setTargetSchemas([]);
@@ -191,7 +212,12 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
     (async () => {
       try {
         const { databases } = await listDatabasesDedicated(targetId, cfg?.database);
-        if (cancelled) return;
+        if (
+          cancelled ||
+          discoveryOwners.current.targetId !== targetId ||
+          discoveryOwners.current.connections !== connections
+        ) return;
+        clearDiscoveryError('target');
         setTargetDatabases(databases ?? []);
         const preferred = cfg?.database ?? '';
         setTargetDatabase((prev) =>
@@ -207,7 +233,9 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         if (!cancelled && discoveryOwners.current.targetId === targetId && discoveryOwners.current.connections === connections) {
           setTargetDatabases([]);
           const code = error instanceof ApiError && API_ERROR_CODES.includes(error.code) ? error.code : 'unknown';
-          reportError(`databaseDiscovery.target:${code}`);
+          const message = `databaseDiscovery.target:${code}`;
+          discoveryErrors.current.target = message;
+          discoveryCallbacks.current.onError?.(message);
         }
       }
     })();

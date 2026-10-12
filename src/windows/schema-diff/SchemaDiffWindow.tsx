@@ -97,7 +97,13 @@ export function SchemaDiffWindow() {
     storageKey: 'schema-diff.table-list',
   });
 
-  const endpoints = useSchemaDiffEndpoints({ onError: setError });
+  const clearEndpointError = useCallback((message: string) => {
+    setError((current) => (current === message ? '' : current));
+  }, []);
+  const endpoints = useSchemaDiffEndpoints({
+    onError: setError,
+    onClearError: clearEndpointError,
+  });
   const jobLifecycle = useSchemaDiffJobLifecycle();
   useSchemaDiffJobRestore({ currentJob: jobLifecycle.currentJob, setDeployResult });
 
