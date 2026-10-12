@@ -383,55 +383,52 @@ impl ResourceProvider for PostgresResourceProvider {
     ) -> Result<CloseDisposition, ResourceError> {
         handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
 
+        if handle.is_closed() {
+            return Ok(CloseDisposition::Closed);
+        }
+        // Cancellation drops the gate, allowing close-only verification to
+        // retry the same retained physical resource. Concurrent closes cannot
+        // release the same permit twice.
+        let Ok(_close_guard) = self.close_gate.try_lock() else {
+            return Ok(CloseDisposition::CloseUnconfirmed);
+        };
         let resource = {
             let mut registry = self.lock();
-            match registry.live.remove(handle.resource_key()) {
-                Some(resource) => resource,
-                // A confirmed close is idempotent, and its budget was already
-                // released — releasing twice would be the bug. The fact rides
-                // on the handle, so this holds for the life of the process
-                // without the provider retaining a key per confirmed close.
-                None if handle.is_closed() => {
-                    return Ok(CloseDisposition::Closed);
-                }
-                None => {
-                    return Err(ResourceError::InvalidResourceState {
-                        resource_key: handle.resource_key().to_string(),
-                        operation: "close_resource".to_string(),
-                        state: "this provider instance holds no open resource with this key: it \
-                                was never acquired here, a previous close of it was not \
-                                confirmed, or the handle belongs to another provider instance"
-                            .to_string(),
-                    });
-                }
-            }
+            let resource = registry
+                .live
+                .get_mut(handle.resource_key())
+                .ok_or_else(|| ResourceError::InvalidResourceState {
+                    resource_key: handle.resource_key().to_string(),
+                    operation: "close_resource".to_string(),
+                    state: "resource is not held by this provider and closure is unconfirmed"
+                        .to_string(),
+                })?;
+            // Persist before awaiting; cancellation is not evidence of closure
+            // or of a resolved transaction outcome.
+            resource.close_started = true;
+            resource.snapshot()
         };
-
-        match self.driver.disconnect_impl(resource.connection).await {
-            Ok(()) => {
-                handle.mark_closed();
-                // The connections are really gone, so the charge is really
-                // recoverable. Released here and nowhere else.
-                resource
-                    .budget
-                    .release_physical_connections(&resource.permit)
-                    .await?;
-                Ok(CloseDisposition::Closed)
-            }
-            Err(error) => {
-                // The pools may or may not be gone. The budget is **not**
-                // released and the handle is not marked closed, so the leak is
-                // visible instead of being reported as a clean close.
-                tracing::warn!(
-                    driver = POSTGRES_PROVIDER_ID,
-                    resource_key = %handle.resource_key(),
-                    error = %error,
-                    "close could not be confirmed; the physical-connection budget is not \
-                     released and a retry is refused"
-                );
-                Ok(CloseDisposition::CloseUnconfirmed)
-            }
+        if self
+            .driver
+            .disconnect_impl(resource.connection)
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                driver = POSTGRES_PROVIDER_ID,
+                "disconnect failed during close; resource and budget permit are retained"
+            );
+            return Ok(CloseDisposition::CloseUnconfirmed);
         }
+        resource
+            .budget
+            .release_physical_connections(&resource.permit)
+            .await?;
+        // Both physical closure and accounting are confirmed. No transaction
+        // result is inferred from best-effort ROLLBACK during disconnect.
+        handle.mark_closed();
+        self.lock().live.remove(handle.resource_key());
+        Ok(CloseDisposition::Closed)
     }
 
     async fn close_handle(

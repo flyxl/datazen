@@ -458,36 +458,47 @@ impl PostgresDriver {
             let mut conn = pinned.lock().await;
             let _ = sqlx::query("ROLLBACK").execute(&mut **conn).await;
         }
+        // Retain every original pool until all close futures confirm closure.
+        // A host timeout may cancel this future at any await; the next close
+        // must still find and await those same pools, including foreign catalogs.
+        let foreign_pools: Vec<PgPool> = self
+            .database_pools
+            .read()
+            .await
+            .iter()
+            .filter(|((owner, _), _)| owner == &handle.pool_id)
+            .map(|(_, entry)| entry.pool.clone())
+            .collect();
+        for pool in foreign_pools {
+            pool.close().await;
+        }
+        let pool = self.pools.read().await.get(&handle.pool_id).cloned();
+        if let Some(pool) = pool {
+            pool.close().await;
+        }
+        let control_pool = self
+            .control_pools
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
+        if let Some(pool) = control_pool {
+            pool.close().await;
+        }
+        self.database_pools
+            .write()
+            .await
+            .retain(|(owner, _), _| owner != &handle.pool_id);
+        self.pools.write().await.remove(&handle.pool_id);
+        self.control_pools.write().await.remove(&handle.pool_id);
         self.fixed_sessions.write().await.remove(&handle.id);
         self.fixed_contexts.write().await.remove(&handle.id);
         self.active_databases.write().await.remove(&handle.pool_id);
         self.connect_configs.write().await.remove(&handle.pool_id);
-        let foreign_pools: Vec<PgPool> = {
-            let mut cache = self.database_pools.write().await;
-            let keys: Vec<(String, String)> = cache
-                .keys()
-                .filter(|(owner, _)| owner == &handle.pool_id)
-                .cloned()
-                .collect();
-            keys.into_iter()
-                .filter_map(|key| cache.remove(&key).map(|entry| entry.pool))
-                .collect()
-        };
-        for pool in foreign_pools {
-            pool.close().await;
-        }
         self.query_executions
             .lock()
             .await
             .retain(|_, execution| execution.session_id != handle.id);
-        let removed_pool = self.pools.write().await.remove(&handle.pool_id);
-        if let Some(pool) = removed_pool {
-            pool.close().await;
-        }
-        let removed_pool = self.control_pools.write().await.remove(&handle.pool_id);
-        if let Some(pool) = removed_pool {
-            pool.close().await;
-        }
         Ok(())
     }
 

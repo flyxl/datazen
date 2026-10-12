@@ -18,6 +18,8 @@ use datazen_driver_api::{ConnectionHandle, TransactionHandle};
 /// What this provider owns for one acquired resource.
 pub(super) struct LiveResource {
     pub(super) connection: ConnectionHandle,
+    /// A failed or cancelled close permits only a retry of physical teardown.
+    pub(super) close_started: bool,
     pub(super) permit: datazen_driver_api::resource::BudgetPermit,
     pub(super) budget: Arc<dyn BudgetPort>,
     /// The transaction this provider opened, when one is open. `commit_impl` /
@@ -38,6 +40,7 @@ impl LiveResource {
     pub(super) fn snapshot(&self) -> LiveResource {
         LiveResource {
             connection: self.connection.clone(),
+            close_started: self.close_started,
             permit: self.permit.clone(),
             budget: self.budget.clone(),
             transaction: self.transaction.clone(),

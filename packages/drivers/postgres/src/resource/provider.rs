@@ -65,6 +65,7 @@ pub struct PostgresResourceProvider {
     namespace_shape: NamespaceShape,
     runtime_epoch: u64,
     resources: Mutex<ResourceRegistry>,
+    close_gate: tokio::sync::Mutex<()>,
 }
 
 impl PostgresResourceProvider {
@@ -78,6 +79,7 @@ impl PostgresResourceProvider {
             namespace_shape: postgres_namespace_shape(),
             runtime_epoch: next_runtime_epoch(),
             resources: Mutex::new(ResourceRegistry::default()),
+            close_gate: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -112,6 +114,7 @@ impl PostgresResourceProvider {
         self.lock()
             .live
             .get(handle.resource_key())
+            .filter(|resource| !resource.close_started)
             .map(LiveResource::snapshot)
             .ok_or_else(|| ResourceError::InvalidResourceState {
                 resource_key: handle.resource_key().to_string(),
@@ -131,15 +134,15 @@ impl PostgresResourceProvider {
         handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
         let key = handle.resource_key().to_string();
         let mut registry = self.lock();
-        let resource =
-            registry
-                .live
-                .get_mut(&key)
-                .ok_or_else(|| ResourceError::InvalidResourceState {
-                    resource_key: key.clone(),
-                    operation: operation.to_string(),
-                    state: "no resource with this key is open on this provider".to_string(),
-                })?;
+        let resource = registry
+            .live
+            .get_mut(&key)
+            .filter(|resource| !resource.close_started)
+            .ok_or_else(|| ResourceError::InvalidResourceState {
+                resource_key: key.clone(),
+                operation: operation.to_string(),
+                state: "no resource with this key is open on this provider".to_string(),
+            })?;
         resource
             .transaction
             .take()
@@ -164,15 +167,15 @@ impl PostgresResourceProvider {
         handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
         let key = handle.resource_key().to_string();
         let mut registry = self.lock();
-        let resource =
-            registry
-                .live
-                .get_mut(&key)
-                .ok_or_else(|| ResourceError::InvalidResourceState {
-                    resource_key: key.clone(),
-                    operation: "close_handle".to_string(),
-                    state: "no resource with this key is open on this provider".to_string(),
-                })?;
+        let resource = registry
+            .live
+            .get_mut(&key)
+            .filter(|resource| !resource.close_started)
+            .ok_or_else(|| ResourceError::InvalidResourceState {
+                resource_key: key.clone(),
+                operation: "close_handle".to_string(),
+                state: "no resource with this key is open on this provider".to_string(),
+            })?;
 
         let open = resource
             .transaction
@@ -431,6 +434,7 @@ impl PostgresResourceProvider {
             resource_key.clone(),
             LiveResource {
                 connection,
+                close_started: false,
                 permit,
                 budget,
                 transaction: None,
