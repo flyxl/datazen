@@ -1,3 +1,4 @@
+import type { TargetCommandPhaseHook } from '../lib/session/targetCommandPhase';
 import { databaseDiscoveryTarget, executeTargetCommand, metadataTarget } from '../lib/session/targetCommand';
 import { invoke } from '@tauri-apps/api/core';
 import type {
@@ -72,16 +73,16 @@ export const databaseCommands = {
    * List a database's tables. `schema` is optional and only meaningful for
    * schema-aware engines (PostgreSQL, SQL Server); omit it to list every schema.
    */
-  listCatalog: async (dbSessionId: string, database: string, schema?: string | null, connectionId?: string) => {
+  listCatalog: async (dbSessionId: string, database: string, schema?: string | null, connectionId?: string, onPhase?: TargetCommandPhaseHook) => {
     const catalog = await executeTargetCommand(metadataTarget(dbSessionId, database, schema ?? null, undefined, connectionId), {
       command: 'list_catalog', input: { database, schema: schema ?? null },
-    }) as import('@datazen/driver-sdk').ListCatalogOutput;
+    }, 'commandResult', onPhase) as import('@datazen/driver-sdk').ListCatalogOutput;
     if (!Array.isArray(catalog.relations) || !Array.isArray(catalog.schemas)) throw new Error('Invalid catalog result');
     return catalog;
   },
 
-  listTables: async (dbSessionId: string, database: string, schema?: string | null, connectionId?: string): Promise<TableInfo[]> => {
-    const catalog = await databaseCommands.listCatalog(dbSessionId, database, schema, connectionId);
+  listTables: async (dbSessionId: string, database: string, schema?: string | null, connectionId?: string, onPhase?: TargetCommandPhaseHook): Promise<TableInfo[]> => {
+    const catalog = await databaseCommands.listCatalog(dbSessionId, database, schema, connectionId, onPhase);
     return catalog.relations.map((relation) => ({ name: relation.ref.name, schema: relation.ref.schema,
       tableType: relation.kind, rowCount: relation.rowCount }));
   },

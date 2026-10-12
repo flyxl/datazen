@@ -1,3 +1,4 @@
+import type { TargetCommandPhaseHook } from './targetCommandPhase';
 import type {
   ArtifactChunk,
   BackendClient,
@@ -37,6 +38,7 @@ export class ExecutionProjection {
     private readonly onSession?: (
       event: Extract<ConnectionEvent, { kind: 'sessionChanged' }>,
     ) => void,
+    private readonly onReadPhase?: TargetCommandPhaseHook,
   ) {}
 
   get chunks(): readonly PublishedResultChunk[] {
@@ -116,6 +118,7 @@ export class ExecutionProjection {
     const existing = this.reads.get(key);
     if (existing) return existing;
     const read = (async () => {
+      this.onReadPhase?.('artifact-read');
       const chunk = await this.client.readArtifact({
         artifactId: artifactId as ArtifactChunk['artifactId'],
         chunkIndex: wireCounter(index),
@@ -133,6 +136,7 @@ export class ExecutionProjection {
   }
 
   async recover(): Promise<void> {
+    this.onReadPhase?.('execution-view');
     const view = await this.client.getExecution(this.receipt.executionId);
     if (view.executionId !== this.receipt.executionId)
       throw new Error('Execution identity mismatch');
@@ -141,6 +145,7 @@ export class ExecutionProjection {
     for (const artifactId of view.artifactIds) {
       // Publication grows while writing: fetch fresh metadata even when chunk
       // zero was already displayed before a disconnect.
+      this.onReadPhase?.('artifact-read');
       const first = await this.client.readArtifact({ artifactId, chunkIndex: wireCounter(0n) });
       if (first.artifactId !== artifactId) throw new Error('Artifact identity mismatch');
       const count = first?.totalChunks ?? first?.publishedChunkCount;

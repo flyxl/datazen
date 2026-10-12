@@ -149,7 +149,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
         try {
           const discoveryFailure = await browser.execute(() => document.querySelector(
             '[data-testid="schema-diff-window"]',
-          )?.getAttribute('data-discovery-failure')?.match(/^schemaObjectDiscovery\.(ensure-source|ensure-target|list-source-tables|list-target-tables|object-catalog):([A-Za-z]+)$/)?.[0] ?? 'unavailable');
+          )?.getAttribute('data-discovery-failure')?.match(/^schemaObjectDiscovery\.(ensure-source|ensure-target|list-source-tables|list-target-tables|object-catalog):(?:(profiles|submission-token|target-admission|execution-view|artifact-read|dispose):)?([A-Za-z]+)$/)?.[0] ?? 'unavailable');
           console.info(`P4 schema next discoveryFailure=${discoveryFailure}`);
         } catch { console.info('P4 schema next discoveryFailure=unavailable'); }
         throw new Error('P4 schema selection failed at next');
@@ -175,7 +175,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
             const catalogLoadState = state && ['never-started', 'loading', 'completed', 'invalidated'].includes(state) ? state : 'unavailable';
             const errorBanner = document.querySelector('[data-testid="schema-diff-window"] [data-testid="copyable-error-message"]');
             const globalErrorPresent = Boolean(errorBanner);
-            const discoveryFailure = document.querySelector('[data-testid="schema-diff-window"]')?.getAttribute('data-discovery-failure')?.match(/^schemaObjectDiscovery\.(ensure-source|ensure-target|list-source-tables|list-target-tables|object-catalog):([A-Za-z]+)$/)?.[0] ?? 'unavailable';
+            const discoveryFailure = document.querySelector('[data-testid="schema-diff-window"]')?.getAttribute('data-discovery-failure')?.match(/^schemaObjectDiscovery\.(ensure-source|ensure-target|list-source-tables|list-target-tables|object-catalog):(?:(profiles|submission-token|target-admission|execution-view|artifact-read|dispose):)?([A-Za-z]+)$/)?.[0] ?? 'unavailable';
             const panel = document.querySelector('[data-testid="schema-diff-objects-panel"]');
             const picker = document.querySelector('[data-testid="schema-diff-unified-object-picker"]');
             const counts = (side: 'source' | 'target') => {

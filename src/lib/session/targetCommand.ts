@@ -1,3 +1,4 @@
+import type { TargetCommandPhaseHook } from './targetCommandPhase';
 import { ApiError, toId, type CommandCall, type ExecutionTarget } from '@datazen/backend-client';
 import { bindSessionMetadataIdentity } from '../../stores/metadataIdentityBinding';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
@@ -5,16 +6,19 @@ import { ExecutionProjection } from './ExecutionProjection';
 import { queryPanelSessionClient } from './queryPanelSessionRoot';
 
 /** A metadata/table operation owns a target lease, never an editor handle. */
-export async function executeTargetCommand(target: ExecutionTarget, call: CommandCall, responseKind: 'commandResult' | 'rows' = 'commandResult'): Promise<unknown> {
+export async function executeTargetCommand(target: ExecutionTarget, call: CommandCall, responseKind: 'commandResult' | 'rows' = 'commandResult', onPhase?: TargetCommandPhaseHook): Promise<unknown> {
   const client = queryPanelSessionClient();
+  onPhase?.('profiles');
   const profiles = await client.listConnections();
   const profile = profiles.find((entry) => entry.connectionId === target.connectionId);
   if (!profile?.enabled) throw new ApiError('NotFound', 'Connection profile unavailable');
+  onPhase?.('submission-token');
   const token = await client.issueSubmissionToken('executeAtTarget', null);
+  onPhase?.('target-admission');
   const receipt = await client.executeAtTarget({
     target, expectedConfigRevision: profile.configRevision, call, idempotencyKey: token.idempotencyKey,
   }, token);
-  const projection = new ExecutionProjection(client, receipt, null);
+  const projection = new ExecutionProjection(client, receipt, null, undefined, onPhase);
   try {
     for (;;) {
       await projection.recover();
@@ -34,7 +38,13 @@ export async function executeTargetCommand(target: ExecutionTarget, call: Comman
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
   } finally {
-    await projection.dispose();
+    try {
+      await projection.dispose();
+    } catch (error) {
+      // Successful disposal must not overwrite the phase of the original failure.
+      onPhase?.('dispose');
+      throw error;
+    }
   }
 }
 
