@@ -143,15 +143,46 @@ describe('Schema Diff PostgreSQL selected schema', function () {
       breadcrumb('next');
       await clickSchemaDiffNext();
       breadcrumb('objects-wait');
-      await browser.waitUntil(async () => {
-        const identities = await browser.execute(() => Array.from(
-          document.querySelectorAll('[data-object-kind="view"][data-object-identity]'),
-          (row) => row.getAttribute('data-object-identity'),
-        ));
-        return [sourceSchema, targetSchema].every((schema) => identities.some((identity) =>
-          identity && JSON.parse(identity)[1] === schema && JSON.parse(identity)[2] === viewName,
-        ));
-      }, { timeout: 30000, timeoutMsg: 'Selected-schema views were not discovered on both sides' });
+      try {
+        await browser.waitUntil(async () => {
+          const identities = await browser.execute(() => Array.from(
+            document.querySelectorAll('[data-object-kind="view"][data-object-identity]'),
+            (row) => row.getAttribute('data-object-identity'),
+          ));
+          return [sourceSchema, targetSchema].every((schema) => identities.some((identity) =>
+            identity && JSON.parse(identity)[1] === schema && JSON.parse(identity)[2] === viewName,
+          ));
+        }, { timeout: 30000, timeoutMsg: 'Selected-schema views were not discovered on both sides' });
+      } catch {
+        // Never return identity attributes, labels or error text from this
+        // snapshot. Its keys are fixed and all values are counts/booleans.
+        try {
+          const snapshot = await browser.execute(() => {
+            const panel = document.querySelector('[data-testid="schema-diff-objects-panel"]');
+            const picker = document.querySelector('[data-testid="schema-diff-unified-object-picker"]');
+            const counts = (side: 'source' | 'target') => {
+              const count = (kind: string) => document.querySelectorAll(`[data-testid^="schema-diff-object-row-${side}-${kind}-"]`).length;
+              return { view: count('view'), type: count('type'), sequence: count('sequence'),
+                function: count('function'), procedure: count('procedure'), trigger: count('trigger') };
+            };
+            const errors = (side: 'source' | 'target') => {
+              const present = (kind: string) => Boolean(document.querySelector(`[data-testid="schema-diff-object-error-${side}-${kind}"]`));
+              return { view: present('view'), type: present('type'), sequence: present('sequence'),
+                function: present('function'), procedure: present('procedure'), trigger: present('trigger') };
+            };
+            return { panelPresent: Boolean(panel), pickerPresent: Boolean(picker),
+              loading: Boolean(picker?.querySelector(':scope > [aria-live="polite"]')),
+              sourceViewRows: document.querySelectorAll('[data-testid^="schema-diff-object-row-source-view-"]').length,
+              targetViewRows: document.querySelectorAll('[data-testid^="schema-diff-object-row-target-view-"]').length,
+              sourceKindCounts: counts('source'), targetKindCounts: counts('target'),
+              sourceKindErrors: errors('source'), targetKindErrors: errors('target') };
+          });
+          console.info(`P4 schema objects wait snapshot=${JSON.stringify(snapshot)}`);
+        } catch {
+          console.info('P4 schema objects wait snapshotAvailable=false');
+        }
+        throw new Error('P4 schema selection failed at objects-wait');
+      }
       breadcrumb('objects-observe');
       const observed = await browser.execute(() => ({
         source: Array.from(document.querySelectorAll('[data-testid^="schema-diff-object-row-source-"]'),
