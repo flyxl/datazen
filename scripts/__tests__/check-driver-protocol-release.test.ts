@@ -37,11 +37,9 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * A ref old enough that the delivery since then released every path driver.
- *
- * Chosen over `HEAD` precisely because the default-base run and this run must
- * NOT look alike: if they did, "the flag was honoured" would be
- * indistinguishable from "the flag was dropped again".
+ * A historical reference before this delivery's driver and protocol releases.
+ * The default merge-base moves as repository history advances, so compare the
+ * full output while asserting that each run reports the base it measured.
  */
 const BASE = 'bab7c67be';
 
@@ -109,8 +107,6 @@ describe('the release gate accepts both spellings of --base', () => {
   it('measures the ref that was asked for, not the default base', () => {
     const res = runCli(['--base', BASE]);
     expect(res.stdout).toContain(`base ${BASE};`);
-    // The exact shape of the original false green: with the base dropped, the
-    // gate compares HEAD to itself and the protocol never moves.
     expect(res.stdout).not.toContain('PROTOCOL_VERSION 5 -> 5');
     expect(res.stdout).toContain('driver releases: 15');
   });
@@ -124,7 +120,10 @@ describe('the release gate accepts both spellings of --base', () => {
       const fallback = runCli([]);
 
       expect(fallback.status, fallback.stdout + fallback.stderr).toBe(0);
-      expect(fallback.stdout).toContain('driver releases: 0');
+      // The default merge-base may itself predate this delivery, so its
+      // release count depends on repository history. It must report its base,
+      // and the explicitly pinned older base must change the complete result.
+      expect(fallback.stdout).toMatch(/\(base [0-9a-f]{7,40};/);
       expect(pinned.stdout).not.toBe(fallback.stdout);
     },
     FULL_RUN_TIMEOUT,
