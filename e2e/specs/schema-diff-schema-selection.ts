@@ -141,7 +141,19 @@ describe('Schema Diff PostgreSQL selected schema', function () {
       expect(await $('[data-testid="schema-diff-target-schema"]').getText()).toContain(targetSchema);
 
       breadcrumb('next');
-      await clickSchemaDiffNext();
+      try {
+        await clickSchemaDiffNext();
+      } catch {
+        // A refused Next now stays on endpoints; capture only the product's
+        // anchored fixed discovery marker before the helper timeout is hidden.
+        try {
+          const discoveryFailure = await browser.execute(() => document.querySelector(
+            '[data-testid="schema-diff-window"]',
+          )?.getAttribute('data-discovery-failure')?.match(/^schemaObjectDiscovery\.(ensure-source|ensure-target|list-source-tables|list-target-tables|object-catalog):([A-Za-z]+)$/)?.[0] ?? 'unavailable');
+          console.info(`P4 schema next discoveryFailure=${discoveryFailure}`);
+        } catch { console.info('P4 schema next discoveryFailure=unavailable'); }
+        throw new Error('P4 schema selection failed at next');
+      }
       breadcrumb('objects-wait');
       try {
         await browser.waitUntil(async () => {
@@ -161,7 +173,9 @@ describe('Schema Diff PostgreSQL selected schema', function () {
             const step = document.querySelector('[data-testid="schema-diff-objects-step"]');
             const state = step?.getAttribute('data-catalog-load-state');
             const catalogLoadState = state && ['never-started', 'loading', 'completed', 'invalidated'].includes(state) ? state : 'unavailable';
-            const globalErrorPresent = Boolean(document.querySelector('[data-testid="schema-diff-window"] [data-testid="copyable-error-message"]'));
+            const errorBanner = document.querySelector('[data-testid="schema-diff-window"] [data-testid="copyable-error-message"]');
+            const globalErrorPresent = Boolean(errorBanner);
+            const discoveryFailure = document.querySelector('[data-testid="schema-diff-window"]')?.getAttribute('data-discovery-failure')?.match(/^schemaObjectDiscovery\.(ensure-source|ensure-target|list-source-tables|list-target-tables|object-catalog):([A-Za-z]+)$/)?.[0] ?? 'unavailable';
             const panel = document.querySelector('[data-testid="schema-diff-objects-panel"]');
             const picker = document.querySelector('[data-testid="schema-diff-unified-object-picker"]');
             const counts = (side: 'source' | 'target') => {
@@ -174,7 +188,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
               return { view: present('view'), type: present('type'), sequence: present('sequence'),
                 function: present('function'), procedure: present('procedure'), trigger: present('trigger') };
             };
-            return { catalogLoadState, globalErrorPresent, panelPresent: Boolean(panel), pickerPresent: Boolean(picker),
+            return { catalogLoadState, globalErrorPresent, discoveryFailure, panelPresent: Boolean(panel), pickerPresent: Boolean(picker),
               loading: Boolean(picker?.querySelector(':scope > [aria-live="polite"]')),
               sourceViewRows: document.querySelectorAll('[data-testid^="schema-diff-object-row-source-view-"]').length,
               targetViewRows: document.querySelectorAll('[data-testid^="schema-diff-object-row-target-view-"]').length,

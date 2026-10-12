@@ -1,3 +1,4 @@
+import { discoveryFailure } from './schemaDiffObjectDiscovery';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, API_ERROR_CODES } from '@datazen/backend-client';
 import { invoke } from '@tauri-apps/api/core';
@@ -28,6 +29,7 @@ export interface SchemaDiffEndpointSessions {
 export interface UseSchemaDiffEndpointsOptions {
   onError?: (message: string) => void;
   onClearError?: (message: string) => void;
+  onDiscoveryFailure?: (diagnostic: string) => void;
 }
 
 function sessionDatabaseOverride(
@@ -503,9 +505,8 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
         else setTargetSession(next);
         return next?.dbSessionId ?? null;
       } catch (e) {
-        reportError(
-          `${t('schemaDiff.connectFailed')} ${e instanceof Error ? e.message : String(e)}`,
-        );
+        discoveryCallbacks.current.onDiscoveryFailure?.(discoveryFailure(side === 'source' ? 'ensure-source' : 'ensure-target', e));
+        reportError(`${t('schemaDiff.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
         return null;
       }
     },
