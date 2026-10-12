@@ -48,7 +48,6 @@ describe('tableSchemaForSql', () => {
     invalidateSchemaCache('sess-1');
   });
   it('reads a bare exact name once, preserving schema and dotted identifiers', async () => {
-    const ref = { database: 'app', schema: 'archive', name: 'users.v2' };
     readSchema.mockResolvedValueOnce(buildPseudoTableSchema('users.v2', ['id']));
     const result = await fetchTableSchemaForSqlGeneration({
       dbSessionId: 'sess-1',

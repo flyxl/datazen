@@ -56,18 +56,32 @@ function result(rows: StatementResult['rows']): StatementResult {
 }
 
 function writableResult(): StatementResult {
-  const executionId = toId('execution-1');
+  const executionId = toId('execution-1')!;
   return {
     ...result([[1]]),
-    runtimeBinding: { executionId, resourceBindingId: toId('resource-1'),
-      handle: { dbSessionId: toId('session-1'), runtimeEpoch: toId('epoch-1') } },
-    source: { executionId, statementIndex: 0, writableMapping: 'verified',
-      relation: { connectionId: toId('connection-1'),
+    runtimeBinding: {
+      executionId,
+      resourceBindingId: toId('resource-1')!,
+      handle: { dbSessionId: toId('session-1')!, runtimeEpoch: toId('epoch-1')! },
+    },
+    source: {
+      executionId,
+      statementIndex: 0,
+      writableMapping: 'verified',
+      relation: {
+        connectionId: toId('connection-1')!,
         namespace: { database: 'app', catalog: null, schema: 'public', path: [] },
-        object: { kind: 'table', name: 'users', signature: null } },
-      context: { namespace: { database: 'app', catalog: null, schema: 'public', path: [] },
-        searchPath: null, effectiveIdentity: null, transactionState: 'none',
-        autocommit: true, confidence: 'confirmed' } },
+        object: { kind: 'table', name: 'users', signature: null },
+      },
+      context: {
+        namespace: { database: 'app', catalog: null, schema: 'public', path: [] },
+        searchPath: null,
+        effectiveIdentity: null,
+        transactionState: 'none',
+        autocommit: true,
+        confidence: 'confirmed',
+      },
+    },
   };
 }
 
@@ -91,7 +105,13 @@ describe('ResultTableView', () => {
 
   it('enters editing for a verified result with a runtime binding', () => {
     const onRowDetail = vi.fn();
-    render(<ResultTableView result={writableResult()} onCellEdit={vi.fn().mockResolvedValue(undefined)} onRowDetail={onRowDetail} />);
+    render(
+      <ResultTableView
+        result={writableResult()}
+        onCellEdit={vi.fn().mockResolvedValue(undefined)}
+        onRowDetail={onRowDetail}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
     expect(onRowDetail).toHaveBeenCalledWith(0);
@@ -102,18 +122,31 @@ describe('ResultTableView', () => {
 
   it('keeps verified persisted results read-only until their runtime binding is refreshed', () => {
     const onRowDetail = vi.fn();
-    render(<ResultTableView result={{ ...writableResult(), runtimeBinding: null }}
-      onCellEdit={vi.fn().mockResolvedValue(undefined)} onRowDetail={onRowDetail} />);
+    render(
+      <ResultTableView
+        result={{ ...writableResult(), runtimeBinding: null }}
+        onCellEdit={vi.fn().mockResolvedValue(undefined)}
+        onRowDetail={onRowDetail}
+      />,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
     expect(onRowDetail).toHaveBeenCalledWith(0);
     expect(screen.getByText('query.resultEditRequiresRefresh')).toBeInTheDocument();
-    expect(dataTableMock.render).toHaveBeenLastCalledWith(expect.objectContaining({ editingCell: null }));
+    expect(dataTableMock.render).toHaveBeenLastCalledWith(
+      expect.objectContaining({ editingCell: null }),
+    );
   });
 
   it('does not enter edit mode for result cells when Safe Mode is on', () => {
     settingsState.safeMode = true;
     const onRowDetail = vi.fn();
-    render(<ResultTableView result={writableResult()} onCellEdit={vi.fn().mockResolvedValue(undefined)} onRowDetail={onRowDetail} />);
+    render(
+      <ResultTableView
+        result={writableResult()}
+        onCellEdit={vi.fn().mockResolvedValue(undefined)}
+        onRowDetail={onRowDetail}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'edit result cell' }));
 

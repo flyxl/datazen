@@ -68,9 +68,9 @@ const { mockReadColumns, mockListTables } = vi.hoisted(() => ({
   mockListTables: vi.fn(
     async (_dbSessionId: string, _database: string) =>
       [
-        { name: 'users', tableType: 'TABLE', schema: 'public', rowCount: null },
-        { name: 'products', tableType: 'TABLE', schema: 'public', rowCount: null },
-        { name: 'orders', tableType: 'TABLE', schema: 'public', rowCount: null },
+        { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
+        { name: 'products', tableType: 'table', schema: 'public', rowCount: null },
+        { name: 'orders', tableType: 'table', schema: 'public', rowCount: null },
       ] as TableInfo[],
   ),
 }));

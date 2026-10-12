@@ -1,11 +1,14 @@
 import { projectRelationColumns } from '../schemaColumnLoader';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReadColumnsOutput, TableInfo } from '@datazen/driver-sdk';
+import type { ReadColumnsOutput, RelationRef, TableInfo } from '@datazen/driver-sdk';
 
 const mocks = vi.hoisted(() => ({
   databases: vi.fn<() => Promise<string[]>>(),
   tables: vi.fn<() => Promise<TableInfo[]>>(),
-  columns: vi.fn<() => Promise<ReadColumnsOutput>>(),
+  columns:
+    vi.fn<
+      (connectionId: string, relations: readonly RelationRef[]) => Promise<ReadColumnsOutput>
+    >(),
 }));
 vi.mock('../../commands/database', () => ({
   databaseCommands: {
