@@ -31,7 +31,7 @@ describe('mysql workflow timeout journey', () => {
           await invokeBackend('workflow_save', { workflow: {
             id, name: id, description: 'SQL timeout terminal ordering', variables: [],
             connection: profile.id, database: profile.database,
-            ...(globalTimeout ? { timeout_secs: 1 } : {}),
+            ...(globalTimeout ? { timeout_secs: 5 } : {}),
             steps: [slowStep,
               ...(strategy === 'skip' ? [observer] : []), { type: 'query', id: 'next', sql: 'SELECT 73' }],
           } });
@@ -48,6 +48,7 @@ describe('mysql workflow timeout journey', () => {
               if (!executionId) throw new Error('Global timeout lost execution identity');
               const execution = await invokeBackend<View>('get_execution', { request: { executionId } });
               expect(['succeeded', 'failed', 'cancelled']).toContain(execution.state);
+              expect(['notStarted', 'completed', 'rolledBack', 'partiallyApplied', 'unknown']).toContain(execution.effectOutcome);
               continue;
             }
             expect(result.success).toBe(true);
