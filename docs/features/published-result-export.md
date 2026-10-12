@@ -9,5 +9,3 @@ Cancelled or failed queries can retain a finalized partial result. The result ar
 The file contains published execution chunks, including their output and provenance, rather than only the currently selected result table. Reading or exporting this retained result does not execute SQL again or require the original database session to remain usable. Backend ownership, expiry and lifecycle checks still apply.
 
 Starting a new query removes the previous execution's artifact export action immediately. Result pinning and the existing table export retain their own behavior.
-
-Implementation: `runEditorQuery` publishes finalized artifact references before reporting success, failure or cancellation. The pane retains those references and `QueryArtifactExport` calls `export_artifact` with only the artifact id. Identity, partial-result confirmation and destination authorization are supplied by Host code.
