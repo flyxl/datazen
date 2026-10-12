@@ -217,5 +217,15 @@ export function deserializeApiError(raw: unknown): ApiError {
  */
 function toApiErrorCode(value: unknown): ApiErrorCode {
   if (typeof value === 'string' && isApiErrorCode(value)) return value;
+  if (typeof value === 'string') {
+    // Rust's ApiErrorCode uses serde `rename_all = "camelCase"`, while the
+    // TypeScript union intentionally keeps PascalCase discriminants. Decode
+    // the wire spelling before treating a code as unknown; otherwise every
+    // structured Rust rejection is silently collapsed into ServiceUnavailable.
+    const wireCode = API_ERROR_CODES.find(
+      (code) => `${code[0].toLowerCase()}${code.slice(1)}` === value,
+    );
+    if (wireCode) return wireCode;
+  }
   return 'ServiceUnavailable';
 }
