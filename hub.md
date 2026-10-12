@@ -217,3 +217,11 @@ This ledger must be deleted before delivery/merge to main.
 
 - Old verifier `/root/p346_final_acceptance_r3` completed its full report on old candidate `6597af184` (9/13); its worktree remained clean and did not modify source.
 - New tester `/root/p346_final_acceptance_r4` (fresh GPT-6 Luna + max instance) is running from the independent `/private/tmp/datazen-p346-verifier-r3`, reset to exact candidate `379e2d6458f5655c880cb01bffe5fb47bb2c59cb` (tree `8ed10ae986de93edb19c7fb1bc1c9033ba7d1218`). It will perform a fresh webdriver build and the same serial seven-file PG/MySQL WDIO allowlist. No source changes or non-WDIO tests are authorized.
+
+## R4 WDIO failures and P4 repair continuation (2026-10-12)
+
+- Fresh webdriver build on exact candidate `379e2d6458f5655c880cb01bffe5fb47bb2c59cb` passed. WDIO result: 10 passed / 1 failed / 0 pending; five spec files passed and two failed. PG/MySQL multi-database 6/6, retained-resource 2/2, workflow-timeout 2/2 passed; MySQL cancellation semantics fix is accepted by live WDIO.
+- Remaining failures on this exact candidate: Schema Diff Step 2 did not discover/assert the selected PostgreSQL schema views; TableView recovery spec failed to load with `SyntaxError` before registering tests. No raw failure log was exposed. Candidate and verifier fingerprints remained `379e2d645` / `8ed10ae`, and both worktrees were clean.
+- Original P4 coder `/root/p4_pg_multidb_fix` has been resumed in `/private/tmp/datazen-p4-pg-fix` to identify and fix only those two failures. It is checking the exact runner/parser diagnostic and object identity DOM/driver route; assertions must not be weakened and no env contents may be read.
+- The completed R4 tester was asked for a sanitized file/line/parser-stage report only; no tests are being rerun by that agent. After P4 commits, integrate into the isolated candidate and dispatch a fresh GPT-6 Luna + max verifier in a separate clean worktree for webdriver build and the PG/MySQL WDIO allowlist only.
+- No unit, Cargo, Vitest, typecheck, or computer-use tests are authorized. Do not accept P3/P4/P6 until the matching candidate passes the fresh independent WDIO round.
