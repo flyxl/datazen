@@ -165,6 +165,14 @@ This ledger must be deleted before delivery/merge to main.
 - Fresh Luna max tester `/root/p346_final_acceptance_r2` is aligned to the exact candidate HEAD/tree above. It must rebuild webdriver and run only the PostgreSQL/MySQL WDIO journeys enumerated in its task. A previous fresh tester hit the workspace spend cap before doing verification; the second attempt is active.
 - Keep P3/P4/P6 in progress until the matching build and all runnable PG/MySQL WDIO journeys complete. Do not merge to main or open a PR without a new user request. Only the project integration branch may receive accepted work; remove temporary `hub.md`/`progress.md` at final delivery as required by AGENTS.md.
 
+## First matching-candidate WDIO round (2026-10-12)
+
+- Fresh build on verifier exact HEAD `8f6d8a2c8a36be405bb1bf43b7874a5bc9205029` succeeded (`pnpm tauri:build:webdriver` EXIT=0); verifier start/end HEAD/tree matched and stayed clean. Nine serial WDIO invocations, 13 Mocha cases: 7 passed / 6 failed.
+- Passed: Host multi-database discovery PG 3/3 + MySQL 3/3; PostgreSQL retained-resource driver journey 1/1.
+- Failed: Schema Diff schema-selection at selecting `sourceSchema` (WebDriverError); TableView recovery PG and MySQL at navigator lookup/click for `recovery_probe` (WebDriverError); PostgreSQL workflow-timeout at `slow` terminal-status assertion; MySQL retained-resource and workflow-timeout both stopped before test body with `MYSQL_PROFILE_MISSING`.
+- P4 coder resumed to investigate/fix schema selection and TableView journey. P6 coder resumed to inspect PG terminal-state assertion without weakening its contract. P3 driver coder resumed to seed a MySQL profile through the existing test config and clean it up safely; no `.env` content may be read or surfaced.
+- All six failures are open; no current candidate acceptance. Each repair must be followed by a fresh webdriver build and a new independent Luna max WDIO verifier, running only PG/MySQL journeys.
+
 ## Singleflight acceptance and next P4/P3 fixes (2026-10-12)
 
 - Clean PG/MySQL `multi-database.ts` WDIO on verifier HEAD `368a49e44554fb1336460a705e9325e463d6a2cb` (candidate source `d49edd39e`): EXIT=0, 6 passing / 0 failing / 0 pending. Both drivers passed E2E-001 database nodes, E2E-002 expand/tables, and E2E-003 QueryPanel selector. Fresh webdriver build EXIT=0 (24.54s; 2 bundles). Build code fingerprint `f708f6c3…`; WDIO patch diff SHA `8c28620a…` unchanged. No app/WDIO processes remain. This verifies the observed duplicate discovery scenario is fixed; the old unpaired receipt trace remains insufficient to prove a unique root cause.
