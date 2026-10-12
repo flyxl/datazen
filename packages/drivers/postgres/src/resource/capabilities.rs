@@ -16,14 +16,14 @@ use datazen_driver_api::capabilities::{
     SessionScopedHandleSupport, SnapshotSupport, TransactionObservation, TransactionSupport,
 };
 // `capabilities` only re-imports the domain enums privately; they live here.
-use datazen_driver_api::ConnectionConfig;
-use datazen_driver_api::PROTOCOL_VERSION;
 use datazen_driver_api::capability_domains::DataSupport;
 use datazen_driver_api::namespace::{
     CanonicalIdRules, CaseFolding, CaseRules, NamespaceLevel, NamespaceLevelKind,
     NamespacePathSegment, NamespaceShape,
 };
 use datazen_driver_api::resource::{ConnectionCostPolicy, ResourcePurpose};
+use datazen_driver_api::ConnectionConfig;
+use datazen_driver_api::PROTOCOL_VERSION;
 
 /// The provider id every [`ResourceHandle`] this crate issues is bound to.
 ///

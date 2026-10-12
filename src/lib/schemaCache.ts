@@ -1,7 +1,12 @@
 import type { TableSchema } from '../types';
 
 import { relationKey } from '@datazen/driver-sdk';
-import { executeTargetCommand, metadataTarget, readTargetSchema, metadataScopeKey } from './session/targetCommand';
+import {
+  executeTargetCommand,
+  metadataTarget,
+  readTargetSchema,
+  metadataScopeKey,
+} from './session/targetCommand';
 import { SchemaResourceCache } from './schemaResourceCache';
 
 const schemaCache = new SchemaResourceCache<TableSchema>();
@@ -77,11 +82,17 @@ export async function getCachedTableSchema(
   tableName: string,
   database: string,
   schema?: string | null,
+  connectionId?: string,
 ): Promise<TableSchema> {
-  const key = JSON.stringify([await metadataScopeKey(dbSessionId), cacheKey(dbSessionId, tableName, database, schema)]);
+  const key = JSON.stringify([
+    await metadataScopeKey(dbSessionId, connectionId),
+    cacheKey(dbSessionId, tableName, database, schema),
+  ]);
 
   return schemaCache.get(key, async () =>
-    deepFreeze(await readTargetSchema(dbSessionId, tableName, database, schema ?? null)),
+    deepFreeze(
+      await readTargetSchema(dbSessionId, tableName, database, schema ?? null, connectionId),
+    ),
   );
 }
 
@@ -98,11 +109,19 @@ export async function getCachedDDL(
   resultExtractor: (rows: unknown[][]) => string,
   database: string,
   identity?: DdlCacheIdentity,
+  connectionId?: string,
 ): Promise<string> {
-  const key = JSON.stringify([await metadataScopeKey(dbSessionId), ddlCacheKey(dbSessionId, tableName, database, identity)]);
+  const key = JSON.stringify([
+    await metadataScopeKey(dbSessionId, connectionId),
+    ddlCacheKey(dbSessionId, tableName, database, identity),
+  ]);
 
   return ddlCache.get(key, async () => {
-    const rows = await executeTargetCommand(metadataTarget(dbSessionId, database, null, tableName), { command: 'query', input: { sql } }, 'rows') as unknown[][];
+    const rows = (await executeTargetCommand(
+      metadataTarget(dbSessionId, database, null, tableName, connectionId),
+      { command: 'query', input: { sql } },
+      'rows',
+    )) as unknown[][];
     return resultExtractor(rows);
   });
 }
@@ -121,8 +140,10 @@ export function invalidateSchemaCache(
   const sessions = new Set<string>();
   const matches = (key: string, ddl: boolean): boolean => {
     const parsed: unknown = JSON.parse(key);
-    const parts: unknown = Array.isArray(parsed) && parsed.length === 2 && typeof parsed[1] === 'string'
-      ? JSON.parse(parsed[1]) : parsed;
+    const parts: unknown =
+      Array.isArray(parsed) && parsed.length === 2 && typeof parsed[1] === 'string'
+        ? JSON.parse(parsed[1])
+        : parsed;
     if (!Array.isArray(parts)) return false;
     const [session, db, kind, namespace, name] = parts;
     if (typeof session !== 'string') return false;

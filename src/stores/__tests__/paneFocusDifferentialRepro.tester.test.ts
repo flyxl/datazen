@@ -75,6 +75,23 @@ vi.mock('../../commands/query', () => ({
   },
 }));
 
+vi.mock('../../lib/session/runEditorQuery', () => ({
+  runEditorQuery: (...args: unknown[]) => {
+    const connectionId = String(args[1] ?? '');
+    const params = args[5] as Record<string, string | number | boolean | null> | undefined;
+    return mockExecuteQueryStream(
+      connectionId === 'cfg-2' ? 'sess-2' : 'sess-1',
+      args[2],
+      args[6],
+      {
+        database: (args[3] as string | null | undefined) ?? null,
+        schema: (args[4] as string | null | undefined) ?? null,
+        ...(params ? { params } : {}),
+      },
+    );
+  },
+}));
+
 vi.mock('../../stores/activeConnectionStore', () => ({
   useActiveConnectionStore: {
     getState: () => activeConnectionState,

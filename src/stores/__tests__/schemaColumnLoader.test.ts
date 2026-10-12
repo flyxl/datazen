@@ -4,9 +4,15 @@ import { createEmptyConnectionSchema } from '../schemaStoreState';
 import type { RelationRef } from '@datazen/driver-sdk';
 
 const readColumns = vi.hoisted(() => vi.fn());
-vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
-  schemaClient: { readColumns },
+vi.mock('../../lib/session/targetCommand', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/session/targetCommand')>()),
+  executeTargetCommand: async (
+    target: import('@datazen/backend-client').ExecutionTarget,
+    call: import('@datazen/backend-client').CommandCall,
+  ) => {
+    const input = call.input as { relations: RelationRef[] };
+    return readColumns(target.connectionId, input.relations);
+  },
 }));
 vi.mock('../../lib/driverCapabilities', () => ({
   capabilitiesForDbSession: () => ({ hasSchemaLevel: true }),

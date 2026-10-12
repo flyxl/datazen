@@ -19,9 +19,9 @@ use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::*;
 
 mod admin_commands;
+mod fixed_session;
 mod migration;
 mod mysql;
-mod fixed_session;
 mod resource;
 mod resource_capabilities;
 mod schema_scope_mapping;

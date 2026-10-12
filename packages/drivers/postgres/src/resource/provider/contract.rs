@@ -38,7 +38,7 @@ use datazen_driver_api::session::{
 use datazen_driver_api::{DriverError, QueryExecutionId};
 
 use super::super::capabilities::{
-    METADATA_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID, postgres_resource_connection_cost,
+    postgres_resource_connection_cost, METADATA_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID,
 };
 use super::super::registry::OpenTransaction;
 use super::PostgresResourceProvider;

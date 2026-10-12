@@ -42,8 +42,8 @@ use sqlx::PgPool;
 use crate::postgres::PostgresDriver;
 
 use super::capabilities::{
-    CONTROL_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID, postgres_capability_registry,
-    postgres_namespace_shape, postgres_resource_connection_cost,
+    postgres_capability_registry, postgres_namespace_shape, postgres_resource_connection_cost,
+    CONTROL_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID,
 };
 use super::observation;
 use super::payload::decode_command_result;

@@ -134,6 +134,7 @@ export function createQueryDropHandler({
       for (const t of payload.tables) {
         const tableSchema = await fetchTableSchemaForSqlGeneration({
           dbSessionId: targetSessionId,
+          connectionId,
           tableName: t.tableName,
           schema: t.schema,
           database,

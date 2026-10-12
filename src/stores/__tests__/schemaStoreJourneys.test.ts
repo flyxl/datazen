@@ -11,11 +11,34 @@ vi.mock('../../commands/database', () => ({
   databaseCommands: {
     getDatabases: mocks.databases,
     listTables: mocks.tables,
+    listCatalog: async (_dbSessionId: string, database: string) => {
+      const tables = await mocks.tables();
+      const relations = tables.map((table) => ({
+        ref: { database, schema: table.schema ?? null, name: table.name },
+        kind: table.tableType?.toLowerCase() === 'view' ? ('view' as const) : ('table' as const),
+        rowCount: table.rowCount ?? null,
+      }));
+      return {
+        database,
+        schemas: [...new Set(relations.flatMap(({ ref }) => (ref.schema ? [ref.schema] : [])))],
+        relations,
+      };
+    },
   },
 }));
-vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
-  schemaClient: { readColumns: mocks.columns },
+vi.mock('../../lib/session/targetCommand', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/session/targetCommand')>()),
+  metadataScopeKey: async (dbSessionId: string, connectionId?: string) =>
+    `${connectionId ?? 'missing-owner'}:${dbSessionId}`,
+  executeTargetCommand: async (
+    target: import('@datazen/backend-client').ExecutionTarget,
+    call: import('@datazen/backend-client').CommandCall,
+  ) => {
+    if (call.command !== 'read_relation_columns')
+      throw new Error(`Unexpected command: ${call.command}`);
+    const input = call.input as { relations: import('@datazen/driver-sdk').RelationRef[] };
+    return mocks.columns(target.connectionId, input.relations);
+  },
 }));
 
 import { renderHook, cleanup } from '@testing-library/react';
@@ -54,7 +77,7 @@ describe('schema directory and metadata journeys', () => {
     useSchemaStore.getState().reset();
     useSchemaStore.setState({
       activeDbSessionId: 'session',
-      schemas: new Map([['session', createEmptyConnectionSchema()]]),
+      schemas: new Map([['session', { ...createEmptyConnectionSchema(), connectionId: 'cfg-1' }]]),
     });
   });
 

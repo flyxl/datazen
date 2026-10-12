@@ -64,9 +64,10 @@ export async function loadRelationColumns(
     );
     const first = batch[0];
     if (!first) continue;
-    const response = await executeTargetCommand(metadataTarget(dbSessionId, first.database, first.schema), {
-      command: 'read_relation_columns', input: { relations: batch },
-    }) as import('@datazen/driver-sdk').ReadColumnsOutput;
+    const response = (await executeTargetCommand(
+      metadataTarget(dbSessionId, first.database, first.schema, undefined, session.connectionId),
+      { command: 'read_relation_columns', input: { relations: batch } },
+    )) as import('@datazen/driver-sdk').ReadColumnsOutput;
     for (const row of response.results) {
       if (
         row.status === 'ok' &&

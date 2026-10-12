@@ -275,16 +275,21 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const panel = initial.panels.find((p) => p.id === panelId);
     if (!panel) return;
     if (panel.type === 'table' || panel.type === 'view') {
-      try { await getQueryPanelSessionRegistry().remove(tableSessionKey(panelId)); }
-      catch {
-        useTableDataStore.setState((state) => {
-          const previous = state.byPanel.get(panelId);
-          if (!previous) return state;
-          const byPanel = new Map(state.byPanel);
-          byPanel.set(panelId, { ...previous, error: t('query.session.closeBlocked') });
-          return { byPanel };
-        });
-        return; // keep the tab and its transaction controls reachable
+      const registry = getQueryPanelSessionRegistry();
+      const key = tableSessionKey(panelId);
+      if (registry.peek(key)) {
+        try {
+          await registry.remove(key);
+        } catch {
+          useTableDataStore.setState((state) => {
+            const previous = state.byPanel.get(panelId);
+            if (!previous) return state;
+            const byPanel = new Map(state.byPanel);
+            byPanel.set(panelId, { ...previous, error: t('query.session.closeBlocked') });
+            return { byPanel };
+          });
+          return; // keep the tab and its transaction controls reachable
+        }
       }
     }
     if (panel.type === 'query') {
@@ -425,13 +430,16 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const panel = get().panels.find((p) => p.id === panelId);
     if (!panel || panel.type !== 'query') return;
     const key = paneKey(panelId, paneId);
-    try {
-      await getQueryPanelSessionRegistry().remove(key);
-    } catch {
-      set((state) => ({
-        queryExec: patchExec(state.queryExec, key, { error: t('query.session.closeBlocked') }),
-      }));
-      return;
+    const registry = getQueryPanelSessionRegistry();
+    if (registry.peek(key)) {
+      try {
+        await registry.remove(key);
+      } catch {
+        set((state) => ({
+          queryExec: patchExec(state.queryExec, key, { error: t('query.session.closeBlocked') }),
+        }));
+        return;
+      }
     }
     const nextExec = cancelAndCleanupPaneExec(panel, paneId, get().queryExec);
     set((s) => {
@@ -611,17 +619,29 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const exec = get().queryExec.get(key);
     if (!exec) return;
     const original = exec.results[resultIdx];
-    if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified') throw new Error('Result is read-only; execute the query again');
+    if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified')
+      throw new Error('Result is read-only; execute the query again');
     const columnIndex = original.columns.findIndex((column) => column.name === col);
     if (columnIndex < 0 || !original.rows[row]) throw new Error('Result cell unavailable');
     if (JSON.stringify(original.rows[row][columnIndex]) === JSON.stringify(value)) return;
     if (resultWriteInflight.has(key)) throw new Error('A result edit is already in progress');
     resultWriteInflight.add(key);
     try {
-      await invoke('commit_query_result_cell', { request: { binding: original.runtimeBinding,
-        statementIndex: original.source.statementIndex, rowIndex: row, column: col, value } });
+      await invoke('commit_query_result_cell', {
+        request: {
+          binding: original.runtimeBinding,
+          statementIndex: original.source.statementIndex,
+          rowIndex: row,
+          column: col,
+          value,
+        },
+      });
     } catch (error) {
-      set((state) => ({ queryExec: patchExec(state.queryExec, key, { error: error instanceof Error ? error.message : String(error) }) }));
+      set((state) => ({
+        queryExec: patchExec(state.queryExec, key, {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      }));
       throw error;
     } finally {
       resultWriteInflight.delete(key);

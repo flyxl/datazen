@@ -121,6 +121,9 @@ describe('loadBatchExportTableData', () => {
     expect(getTableData).toHaveBeenCalledTimes(3);
     expect(getTableData).toHaveBeenNthCalledWith(1, {
       dbSessionId: 'c1',
+      database: 'app',
+      schema: null,
+      driverType: 'sqlite',
       table: 'users',
       page: 0,
       pageSize: 2,

@@ -10,9 +10,31 @@ const { readSchema, readColumns, capabilities } = vi.hoisted(() => ({
   readColumns: vi.fn(),
   capabilities: vi.fn(),
 }));
-vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
-  schemaClient: { readSchema, readColumns },
+vi.mock('../session/targetCommand', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../session/targetCommand')>()),
+  metadataScopeKey: async (dbSessionId: string, connectionId?: string) =>
+    `${connectionId ?? 'missing-owner'}:${dbSessionId}`,
+  metadataTarget: (
+    dbSessionId: string,
+    database: string | null,
+    schema: string | null,
+    table?: string,
+    connectionId?: string,
+  ) => ({
+    connectionId: connectionId ?? dbSessionId,
+    namespace: { database, schema, catalog: null, path: [] },
+    object: table ? { kind: 'relation', name: table, signature: null } : null,
+  }),
+  readTargetSchema: (...args: unknown[]) => readSchema(...args),
+  executeTargetCommand: async (
+    target: import('@datazen/backend-client').ExecutionTarget,
+    call: import('@datazen/backend-client').CommandCall,
+  ) => {
+    if (call.command !== 'read_relation_columns')
+      throw new Error(`Unexpected command: ${call.command}`);
+    const input = call.input as { relations: import('@datazen/driver-sdk').RelationRef[] };
+    return readColumns(target.connectionId, input.relations);
+  },
 }));
 vi.mock('../driverCapabilities', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../driverCapabilities')>()),
@@ -27,17 +49,22 @@ describe('tableSchemaForSql', () => {
   });
   it('reads a bare exact name once, preserving schema and dotted identifiers', async () => {
     const ref = { database: 'app', schema: 'archive', name: 'users.v2' };
-    readSchema.mockResolvedValueOnce({
-      value: { ref, definition: buildPseudoTableSchema('users.v2', ['id']) },
-    });
+    readSchema.mockResolvedValueOnce(buildPseudoTableSchema('users.v2', ['id']));
     const result = await fetchTableSchemaForSqlGeneration({
       dbSessionId: 'sess-1',
+      connectionId: 'cfg-1',
       tableName: 'users.v2',
       schema: 'archive',
       database: 'app',
       databaseType: 'postgresql',
     });
-    expect(readSchema).toHaveBeenCalledExactlyOnceWith('sess-1', ref);
+    expect(readSchema).toHaveBeenCalledExactlyOnceWith(
+      'sess-1',
+      'users.v2',
+      'app',
+      'archive',
+      'cfg-1',
+    );
     expect(readColumns).not.toHaveBeenCalled();
     expect(result?.tableName).toBe('users.v2');
   });
@@ -51,13 +78,14 @@ describe('tableSchemaForSql', () => {
     });
     const result = await fetchTableSchemaForSqlGeneration({
       dbSessionId: 'sess-1',
+      connectionId: 'cfg-1',
       tableName: 'users',
       schema: 'mydb',
       database: 'mydb',
       databaseType: 'mysql',
     });
-    expect(readSchema).toHaveBeenCalledExactlyOnceWith('sess-1', ref);
-    expect(readColumns).toHaveBeenCalledExactlyOnceWith('sess-1', [ref]);
+    expect(readSchema).toHaveBeenCalledExactlyOnceWith('sess-1', 'users', 'mydb', null, 'cfg-1');
+    expect(readColumns).toHaveBeenCalledExactlyOnceWith('cfg-1', [ref]);
     expect(result?.columns).toEqual(columns);
     expect(result?.primaryKeys).toEqual(['id']);
   });
@@ -74,6 +102,7 @@ describe('tableSchemaForSql', () => {
     });
     const result = await fetchTableSchemaForSqlGeneration({
       dbSessionId: 'sess-1',
+      connectionId: 'cfg-1',
       tableName: 'users',
       schema: 'public',
       database: 'app',
@@ -81,8 +110,10 @@ describe('tableSchemaForSql', () => {
       columnMap: { users: ['id', 'email'] },
     });
     expect(result).toEqual(buildPseudoTableSchema('users', ['id', 'email']));
-    expect(readSchema).toHaveBeenCalledTimes(1);
-    expect(readColumns).toHaveBeenCalledTimes(1);
+    expect(readSchema).toHaveBeenCalledExactlyOnceWith('sess-1', 'users', 'app', 'public', 'cfg-1');
+    expect(readColumns).toHaveBeenCalledExactlyOnceWith('cfg-1', [
+      { database: 'app', schema: 'public', name: 'users' },
+    ]);
   });
   describe('generateTableSqlWithFallbacks', () => {
     const schema = buildPseudoTableSchema('users', ['id', 'name']);

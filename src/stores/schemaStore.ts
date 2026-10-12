@@ -149,8 +149,12 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
     commitConnectionPatch(dbSessionId, { loading: true, error: null });
     try {
       const catalog = await databaseCommands.listCatalog(dbSessionId, database);
-      const all: TableInfo[] = catalog.relations.map((relation) => ({ name: relation.ref.name,
-        schema: relation.ref.schema, tableType: relation.kind, rowCount: relation.rowCount }));
+      const all: TableInfo[] = catalog.relations.map((relation) => ({
+        name: relation.ref.name,
+        schema: relation.ref.schema,
+        tableType: relation.kind,
+        rowCount: relation.rowCount,
+      }));
       if (!isCurrent()) return;
       get().setLoadedTables(database, all, dbSessionId, { schemaNames: catalog.schemas });
       const state = get().schemas.get(dbSessionId);
@@ -401,9 +405,15 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
         listTables: databaseCommands.listTables,
         listCatalog: async (sessionId: string, database: string) => {
           const catalog = await databaseCommands.listCatalog(sessionId, database);
-          return { schemas: catalog.schemas, tables: catalog.relations.map((relation) => ({
-            name: relation.ref.name, schema: relation.ref.schema, tableType: relation.kind, rowCount: relation.rowCount,
-          })) };
+          return {
+            schemas: catalog.schemas,
+            tables: catalog.relations.map((relation) => ({
+              name: relation.ref.name,
+              schema: relation.ref.schema,
+              tableType: relation.kind,
+              rowCount: relation.rowCount,
+            })),
+          };
         },
       };
       const pending = namespaceEnsurePending(segments, deps);
@@ -448,7 +458,9 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       let nextLoadedPaths = loadedPaths;
 
       if (!namespaceOwnedByPlugin && !meta?.namespaceOwnedByPlugin) {
-        const hasSchemaGrouping = (options?.schemaNames ?? []).some(isSchemaGroupingSchema) || all.some((item) => isSchemaGroupingSchema(item.schema));
+        const hasSchemaGrouping =
+          (options?.schemaNames ?? []).some(isSchemaGroupingSchema) ||
+          all.some((item) => isSchemaGroupingSchema(item.schema));
 
         if (hasSchemaGrouping) {
           const bySchema = new Map<string, string[]>();
@@ -479,7 +491,10 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       }
 
       const schemaNames = [
-        ...new Set([...(options?.schemaNames ?? []), ...all.map((item) => item.schema).filter((s): s is string => !!s)]),
+        ...new Set([
+          ...(options?.schemaNames ?? []),
+          ...all.map((item) => item.schema).filter((s): s is string => !!s),
+        ]),
       ];
 
       commitConnectionPatch(dbSessionId, {
@@ -515,9 +530,9 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
 
     ensureColumns: async (tableNames, dbSessionId, database, options) => {
       if (!dbSessionId || !database.trim()) return;
-      await metadataScopeKey(dbSessionId);
       const schema = get().schemas.get(dbSessionId);
       if (!schema) return;
+      await metadataScopeKey(dbSessionId, schema.connectionId || undefined);
       const isCurrent = requests.captureSlot(dbSessionId, 'columns');
       const refs = resolveColumnRelations(
         schema,
@@ -594,7 +609,12 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
     bindMetadataIdentity: (dbSessionId, connectionId, scope) => {
       if (!dbSessionId || !connectionId) return;
       const schema = get().schemas.get(dbSessionId) ?? createEmptyConnectionSchema();
-      if (schema.connectionId === connectionId && schema.metadataRevision > 0 && (!scope || schema.metadataScopeKey === scope)) return;
+      if (
+        schema.connectionId === connectionId &&
+        schema.metadataRevision > 0 &&
+        (!scope || schema.metadataScopeKey === scope)
+      )
+        return;
       commitConnectionPatch(dbSessionId, {
         connectionId,
         metadataScopeKey: scope,

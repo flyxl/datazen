@@ -30,16 +30,9 @@ const {
   mockExportTableStructureToFile: vi.fn().mockResolvedValue('ok'),
 }));
 
-vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
-  schemaClient: {
-    readSchema: async (session: string, ref: import('@datazen/driver-sdk').RelationRef) => ({
-      value: {
-        ref,
-        definition: await mockGetTableSchema(session, ref.name, ref.database, ref.schema),
-      },
-    }),
-  },
+vi.mock('../../../lib/schemaCache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/schemaCache')>()),
+  getCachedTableSchema: (...args: unknown[]) => mockGetTableSchema(...args),
 }));
 
 vi.mock('../../../commands/driver', () => ({
@@ -184,6 +177,7 @@ afterEach(cleanup);
 function baseProps(mode: 'create' | 'alter', overrides?: Record<string, unknown>) {
   return {
     dbSessionId: 'conn-1',
+    connectionId: 'connection-1',
     databaseType: 'postgresql' as const,
     database: 'db_b',
     mode,
@@ -324,7 +318,13 @@ describe('TableStructureEditor branches', () => {
     mockGetTableSchema.mockResolvedValue(ALTER_SCHEMA);
     await mountAndLoad({ mode: 'alter', tableName: 'users' });
 
-    expect(mockGetTableSchema).toHaveBeenCalledWith('conn-1', 'users', 'db_b', null);
+    expect(mockGetTableSchema).toHaveBeenCalledWith(
+      'conn-1',
+      'users',
+      'db_b',
+      null,
+      'connection-1',
+    );
     expect(screen.getByTestId('column-table')).toBeInTheDocument();
     expect(mockGetStructureCapabilities).toHaveBeenCalledWith('conn-1');
   });

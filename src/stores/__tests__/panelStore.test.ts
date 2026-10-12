@@ -49,6 +49,23 @@ vi.mock('../../commands/query', () => ({
   },
 }));
 
+vi.mock('../../lib/session/runEditorQuery', () => ({
+  runEditorQuery: (
+    _paneKey: string,
+    connectionId: string,
+    sql: string,
+    database: string | null | undefined,
+    schema: string | null | undefined,
+    params: Record<string, string | number | boolean | null> | undefined,
+    onEvent: (event: unknown) => void,
+  ) =>
+    mockExecuteQueryStream(connectionId, sql, onEvent, {
+      database: database ?? null,
+      schema: schema ?? null,
+      ...(params ? { params } : {}),
+    }),
+}));
+
 vi.mock('../../stores/activeConnectionStore', () => ({
   useActiveConnectionStore: {
     getState: () => activeConnectionState,
@@ -146,7 +163,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT DATABASE()',
       expect.any(Function),
       { database: 'db_b', schema: null },
@@ -172,7 +189,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM t_afi_installment_payment',
       expect.any(Function),
       { database: 'tradingdb', schema: null },
@@ -194,12 +211,10 @@ describe('panelStore', () => {
 
     await usePanelStore.getState().executeQuery(panel.id);
 
-    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
-      'SELECT 1',
-      expect.any(Function),
-      { database: null, schema: null },
-    );
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith('cfg-1', 'SELECT 1', expect.any(Function), {
+      database: null,
+      schema: null,
+    });
   });
 
   it('executeQuery forwards the currentSchema of the panel session (PG)', async () => {
@@ -218,7 +233,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM users',
       expect.any(Function),
       { database: 'db_b', schema: 'sales' },
@@ -260,7 +275,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558:presto_afi_data/hive/snap', schema: null },
@@ -302,7 +317,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558:presto_afi_data/hive/snap', schema: null },
@@ -344,7 +359,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558:presto_afi_data/hive/snap', schema: null },
@@ -386,7 +401,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558/hive/snap', schema: null },
@@ -430,7 +445,7 @@ describe('panelStore', () => {
     await usePanelStore.getState().executeQuery(panel.id);
 
     expect(mockExecuteQueryStream).toHaveBeenCalledWith(
-      'sess-1',
+      'cfg-1',
       'SELECT * FROM afi_id_loan_t_afi_installment_order',
       expect.any(Function),
       { database: '558/hive/snap', schema: null },
