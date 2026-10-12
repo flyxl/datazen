@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { connectionCommands } from '../../commands/connection';
-import { databaseCommands } from '../../commands/database';
 import { ensureDedicatedSession, listDatabasesDedicated } from '../dedicatedDbSession';
 
 const mockGetDatabases = vi.fn();
@@ -48,7 +47,7 @@ describe('ensureDedicatedSession', () => {
     });
 
     expect(connectionCommands.connectDedicated).toHaveBeenCalledWith('pg', 'app_db');
-    expect(databaseCommands.getDatabases).toHaveBeenCalledWith('sqlite-session', 'pg');
+    expect(mockGetDatabases).toHaveBeenCalledWith('sqlite-session', 'pg');
     expect(connectionCommands.releaseConnection).toHaveBeenCalledWith('sqlite-session');
   });
 });

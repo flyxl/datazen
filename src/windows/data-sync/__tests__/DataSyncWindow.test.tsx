@@ -393,13 +393,22 @@ describe('DataSyncWindow wizard', () => {
     });
     listDatabasesDedicatedMock
       .mockReset()
-      .mockImplementation(async (connectionId: string, preferredDatabase?: string) => ({
-        databases: await getDatabasesMock(
-          `dedicated-${connectionId}-${preferredDatabase ?? 'default'}`,
-          connectionId,
-        ),
-        dbSessionId: null,
-      }));
+      .mockImplementation(async (connectionId: string, preferredDatabase?: string) => {
+        const dbSessionId = String(
+          await invokeMock('connect_dedicated', {
+            connectionId,
+            database: preferredDatabase ?? null,
+          }),
+        );
+        try {
+          return {
+            databases: await getDatabasesMock(dbSessionId, connectionId),
+            dbSessionId: null,
+          };
+        } finally {
+          await invokeMock('release_connection', { dbSessionId });
+        }
+      });
     listTablesMock.mockReset();
     listTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
     invokeMock.mockImplementation(
