@@ -23,7 +23,8 @@ describe('[tester] mysql retained resource journey', () => {
         if (cancel) {
           await browser.waitUntil(async () => (await invokeBackend<Execution>('get_execution', { request: { executionId: receipt.executionId } })).state === 'running', { timeout: 5000, interval: 50 });
           const cancellation = await invokeBackend<{ idempotencyKey: string; expiresAt: string }>('issue_submission_token', { request: { operation: 'cancelExecution', handle } });
-          await invokeBackend('cancel_execution', { request: { executionId: receipt.executionId, submissionToken: cancellation } });
+          const cancelled = await invokeBackend<{ disposition: string }>('cancel_execution', { request: { executionId: receipt.executionId, submissionToken: cancellation } });
+          expect(cancelled.disposition).toBe('requested');
         }
         await browser.waitUntil(async () => {
           execution = await invokeBackend<Execution>('get_execution', { request: { executionId: receipt.executionId } });
@@ -68,7 +69,10 @@ describe('[tester] mysql retained resource journey', () => {
           await run('ROLLBACK');
           const after = await run('SELECT label FROM driver_verify_temp WHERE id = 1');
           expect(after.rows[0]?.[0]).toBe('retained');
-          await run('SELECT SLEEP(10)', undefined, 'query', {}, 'cancelled', true);
+          // A standalone SLEEP returns 1 (success) when KILL QUERY interrupts it.
+          // In a table predicate the same interruption raises server error 1317.
+          // Keep the terminal-state assertion strict: acceptance alone is not cancellation.
+          await run('SELECT id FROM driver_verify_temp WHERE SLEEP(10) = 0', undefined, 'query', {}, 'cancelled', true);
           await run('ROLLBACK');
           const afterCancel = await run('SELECT id FROM driver_verify_temp');
           expect(afterCancel.rows).toEqual([[1]]);
