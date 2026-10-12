@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ApiError, API_ERROR_CODES } from '@datazen/backend-client';
 import { invoke } from '@tauri-apps/api/core';
 import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
@@ -46,6 +47,8 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
   const [targetSession, setTargetSession] = useState<DedicatedSideSession | null>(null);
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
+  const discoveryOwners = useRef({ sourceId, targetId, connections });
+  discoveryOwners.current = { sourceId, targetId, connections };
   const [sourceDatabases, setSourceDatabases] = useState<string[]>([]);
   const [targetDatabases, setTargetDatabases] = useState<string[]>([]);
   const [sourceDatabase, setSourceDatabase] = useState('');
@@ -160,8 +163,12 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
             prev,
           ),
         );
-      } catch {
-        if (!cancelled) setSourceDatabases([]);
+      } catch (error) {
+        if (!cancelled && discoveryOwners.current.sourceId === sourceId && discoveryOwners.current.connections === connections) {
+          setSourceDatabases([]);
+          const code = error instanceof ApiError && API_ERROR_CODES.includes(error.code) ? error.code : 'unknown';
+          reportError(`databaseDiscovery.source:${code}`);
+        }
       }
     })();
     return () => {
@@ -196,8 +203,12 @@ export function useSchemaDiffEndpoints(options: UseSchemaDiffEndpointsOptions = 
             prev,
           ),
         );
-      } catch {
-        if (!cancelled) setTargetDatabases([]);
+      } catch (error) {
+        if (!cancelled && discoveryOwners.current.targetId === targetId && discoveryOwners.current.connections === connections) {
+          setTargetDatabases([]);
+          const code = error instanceof ApiError && API_ERROR_CODES.includes(error.code) ? error.code : 'unknown';
+          reportError(`databaseDiscovery.target:${code}`);
+        }
       }
     })();
     return () => {

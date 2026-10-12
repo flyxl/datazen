@@ -10,10 +10,18 @@ import {
 } from '../lib/schemaDiffFixtures.js';
 
 async function setFixtureNavigatorSearch(query: string): Promise<void> {
-  const input = await $('[data-testid="connection-navigator-aside"] input');
-  await input.waitForDisplayed({ timeout: 15000 });
-  if (query) await input.setValue(query);
-  else await input.clearValue();
+  // React may replace the input between WebDriver's synthetic keystrokes.
+  // Reacquire it in one DOM operation and dispatch the actual controlled-input event.
+  await browser.waitUntil(async () => browser.execute((value: string) => {
+    const input = document.querySelector<HTMLInputElement>('[data-testid="connection-navigator-aside"] input');
+    if (!input) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (!setter) return false;
+    setter.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }, query), { timeout: 15000, timeoutMsg: 'Recovery fixture navigator search unavailable' });
 }
 
 // Unique databases isolate termination from every seeded/user connection.
@@ -36,6 +44,7 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
       let admin: string | undefined;
       let setup: string | undefined;
       let created = false;
+      let stage = 'fixture-setup';
       const run = (sql: string) => invokeBackend<QueryResultPayload>('execute_query', { dbSessionId: admin, sql });
       const terminate = async (onlyTransaction: boolean) => {
         if (dialect === 'postgresql') {
@@ -87,18 +96,22 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         // Raw save_connection does not perform the frontend store's refresh or
         // emit datazen:connections-changed. Mount MainPage to load saved configs.
         await browser.url('tauri://localhost');
+        stage = 'workspace-mount';
         await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 20000 });
         await openConnectionsWorkspace();
         await expandAllGroups();
         // Filter the virtualized navigator so the exact fixture card is mounted.
         await setFixtureNavigatorSearch(name);
+        stage = 'fixture-card-selection';
         await browser.waitUntil(async () => browser.execute((wanted: string) => {
           const card = Array.from(document.querySelectorAll('[data-conn-item]')).find((node) => node.getAttribute('data-conn-name') === wanted);
           if (!card) return false;
           card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
           return true;
         }, name), { timeout: 15000, timeoutMsg: 'Fresh recovery fixture connection unavailable' });
+        stage = 'connection-toolbar';
         await waitForConnectionToolbar();
+        stage = 'fixture-catalog-navigation';
         await setFixtureNavigatorSearch('');
         await expandConnectedConnectionInNavigator(name);
         await clickNavigatorRefresh();
@@ -107,12 +120,15 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         await table.waitForDisplayed({ timeout: 20000 });
         await table.scrollIntoView({ block: 'center' });
         await table.click();
+        stage = 'transaction-begin';
         const begin = await $('[data-testid="table-tx-begin"]');
         await begin.waitForEnabled({ timeout: 20000 });
         await begin.click();
         const rollback = await $('[data-testid="table-tx-rollback"]');
         await rollback.waitForEnabled({ timeout: 20000 });
+        stage = 'terminate-fixture-session';
         await withSafeModeOff(() => terminate(true));
+        stage = 'loss-detection';
         await rollback.click();
         const recovery = await $('[data-testid="table-session-open-new"]');
         await recovery.waitForDisplayed({ timeout: 20000 });
@@ -121,11 +137,13 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         expect(interrupted).toContain('resourceLost');
         expect(interrupted).toContain('unknown');
         await recovery.click();
+        stage = 'explicit-recovery';
         await browser.waitUntil(async () => !(await $('[data-testid="table-session-open-new"]').isExisting()), { timeout: 20000 });
         // Successful explicit recovery clears the stale toolbar error.
         expect(await $('body').getText()).not.toContain('resourceLost');
         await $('[data-testid="table-tx-begin"]').waitForEnabled({ timeout: 20000 });
         await $('[data-testid="table-tx-begin"]').click();
+        stage = 'reopened-transaction';
         await $('[data-testid="table-tx-rollback"]').waitForEnabled({ timeout: 20000 });
         await $('[data-testid="table-tx-rollback"]').click();
         await $('[data-testid="table-tx-begin"]').waitForEnabled({ timeout: 20000 });
@@ -137,6 +155,10 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         } finally {
           await disconnectBackend(verification);
         }
+      } catch (error) {
+        const category = error instanceof Error && ['WebDriverError', 'TimeoutError', 'AssertionError', 'Error'].includes(error.name)
+          ? error.name : 'Error';
+        throw new Error(`P4 table recovery failed at ${stage} (${category})`);
       } finally {
         try {
           await closeExtraWindows(mainWindow);
