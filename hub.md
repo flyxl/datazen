@@ -204,7 +204,7 @@ This ledger must be deleted before delivery/merge to main.
 - One serial WDIO allowlist run completed 13 cases: 9 passed, 4 failed, 0 pending. Multi-database PG/MySQL 6/6 passed; Workflow timeout PG/MySQL 2/2 passed; retained-resource PG 1/1 passed. Failures: Schema Diff source endpoint option stayed unavailable; TableView recovery PG/MySQL could not find the saved fixture connection card; MySQL retained-resource expected failed/cancelled but received succeeded.
 - MySQL coder confirmed the retained-resource failure came from fixture SQL semantics: standalone `SELECT SLEEP(10)` can be interrupted and return `1` successfully. Commit `fba14efaa` changes the journey to `SELECT id FROM driver_verify_temp WHERE SLEEP(10) = 0`, which should yield server error 1317 on interruption, and asserts cancel disposition `requested` while retaining strict terminal-state assertions. Integrated as candidate `4cf4f80ff`; no test/build yet on this exact candidate.
 - P4 original coder is repairing the two remaining P4 journey failures, tracing the connection option and saved fixture profile visibility. It must keep the source/object/schema contract and both database recovery flows intact.
-- The failure round's source review is still completing on verifier `6597af184`; its results cannot accept the newer `4cf4f80ff`. After P4 fix, integrate and start a new GPT-6 Luna + max verifier on exact candidate, in a separate worktree, with only PostgreSQL/MySQL WDIO. No `.env` reads or non-WDIO tests.
+- The failure round's source review completed on verifier `6597af184`; its results cannot accept newer candidates `4cf4f80ff` or `379e2d645`. A fresh GPT-6 Luna + max verifier was started on the exact latest candidate with only PostgreSQL/MySQL WDIO. No `.env` reads or non-WDIO tests.
 
 ## P3/P4 failure repairs integrated (2026-10-12)
 
@@ -212,3 +212,8 @@ This ledger must be deleted before delivery/merge to main.
 - P3 cancellation SQL semantics fix `fba14efaa` is integrated as `4cf4f80ff`: standalone MySQL `SLEEP` may return success after KILL QUERY, so the journey now interrupts `SLEEP` inside a table predicate and expects the stable server error. It also asserts cancel receipt disposition is `requested`; the strict failed/cancelled terminal assertion remains.
 - Current candidate is clean at `379e2d6458f5655c880cb01bffe5fb47bb2c59cb`, tree `8ed10ae986de93edb19c7fb1bc1c9033ba7d1218`; `git show --check` and cumulative repair-range `git diff --check` pass. No build or WDIO run yet on this candidate.
 - Prior verifier round on `6597af184` is complete at 9/13; source review is returning its final report. Those results are not acceptance for the current candidate. Next action is a fresh Luna max verifier in a distinct clean tree, then only the allowed PG/MySQL WDIO suite.
+
+## Fresh re-verification on current candidate (2026-10-12)
+
+- Old verifier `/root/p346_final_acceptance_r3` completed its full report on old candidate `6597af184` (9/13); its worktree remained clean and did not modify source.
+- New tester `/root/p346_final_acceptance_r4` (fresh GPT-6 Luna + max instance) is running from the independent `/private/tmp/datazen-p346-verifier-r3`, reset to exact candidate `379e2d6458f5655c880cb01bffe5fb47bb2c59cb` (tree `8ed10ae986de93edb19c7fb1bc1c9033ba7d1218`). It will perform a fresh webdriver build and the same serial seven-file PG/MySQL WDIO allowlist. No source changes or non-WDIO tests are authorized.
