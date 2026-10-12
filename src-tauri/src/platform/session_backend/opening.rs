@@ -1,11 +1,4 @@
 use super::*;
-
-fn log_open_failure(stage: &'static str, category: &'static str) {
-    // Keep target-open diagnostics useful without logging connection identity,
-    // namespace values, SQL, or provider error messages.
-    tracing::warn!(stage, category, "session resource open failed");
-}
-
 impl DesktopSessionBackend {
     pub(super) async fn open_resource(
         &self,
@@ -25,18 +18,12 @@ impl DesktopSessionBackend {
                 | "read_relation_schema"
                 | "refresh_schema_metadata"
         );
-        let profile = self
+        let (config, metadata) = self
             .store
             .platform_profile(request.connection_id.as_str())
-            .await;
-        let Some((config, metadata)) = profile else {
-            log_open_failure("profile", "unavailable");
-            return Err(rc::ProviderError::SessionNotFound(
-                "profile unavailable".into(),
-            ));
-        };
+            .await
+            .ok_or_else(|| rc::ProviderError::SessionNotFound("profile unavailable".into()))?;
         if !metadata.enabled || metadata.config_revision != request.config_revision.0 {
-            log_open_failure("profile", "disabled-or-revision-mismatch");
             return Err(rc::ProviderError::HostRejected(
                 "profile disabled or revision changed".into(),
             ));
@@ -49,25 +36,18 @@ impl DesktopSessionBackend {
             matches!(request.owner, rc::OwnerRef::Editor { .. }),
         )
         .map_err(|_| {
-            log_open_failure("logical-budget", "quota-denied");
             rc::ProviderError::ResourceBusy("logical session or connected editor quota")
         })?;
         let mut provider = self
             .registry
             .resource_provider(&config.database_type)
             .await
-            .map_err(|_| {
-                log_open_failure("provider", "unavailable");
-                rc::ProviderError::CapabilityUnsupported
-            })?;
+            .map_err(|_| rc::ProviderError::CapabilityUnsupported)?;
         if !metadata_only {
             provider
                 .capabilities()
                 .require_stateful_session()
-                .map_err(|_| {
-                    log_open_failure("provider-capability", "stateful-session-unsupported");
-                    rc::ProviderError::CapabilityUnsupported
-                })?;
+                .map_err(|_| rc::ProviderError::CapabilityUnsupported)?;
         }
         // Both editors and explicit-target callers can execute arbitrary SQL.
         // A short logical lifetime does not waive physical-session continuity.
@@ -86,18 +66,7 @@ impl DesktopSessionBackend {
                 purpose,
             })
             .await
-            .map_err(|error| {
-                let mapped = map::error(error);
-                let category = match &mapped {
-                    rc::ProviderError::TargetRequired(_) => "target-required",
-                    rc::ProviderError::TargetUnsupported(_) => "target-unsupported",
-                    rc::ProviderError::CapabilityUnsupported => "capability-unsupported",
-                    rc::ProviderError::ResourceBusy(_) => "resource-busy",
-                    _ => "provider-error",
-                };
-                log_open_failure("describe", category);
-                mapped
-            })?;
+            .map_err(map::error)?;
         let cost = match descriptor.connection_cost_policy {
             dr::ConnectionCostPolicy::PoolBounded {
                 max_physical_connections,
@@ -109,10 +78,9 @@ impl DesktopSessionBackend {
                 declared_cost
             }
             _ => {
-                log_open_failure("connection-cost", "policy-refused");
                 return Err(rc::ProviderError::ResourceBusy(
                     "driver connection cost refused under strict budget",
-                ));
+                ))
             }
         };
         let pool_key = datazen_runtime::resource::PoolKeyGeneration {
@@ -158,18 +126,14 @@ impl DesktopSessionBackend {
             cost,
         ));
         let idle = if metadata_only && pool_policy.parkable() {
-            self.leases.claim_idle(&pool_key).map_err(|_| {
-                log_open_failure("idle-lease", "lookup-failed");
-                rc::ProviderError::ProtocolError("pool lookup failed".into())
-            })?
+            self.leases
+                .claim_idle(&pool_key)
+                .map_err(|_| rc::ProviderError::ProtocolError("pool lookup failed".into()))?
         } else {
             None
         };
         let (handle, resource_id, reused) = if let Some(idle) = idle {
-            let held = self.resource(idle.as_str()).await.map_err(|error| {
-                log_open_failure("idle-resource", "not-available");
-                error
-            })?;
+            let held = self.resource(idle.as_str()).await?;
             provider = held.provider.clone();
             baseline = held.baseline.clone();
             budget_scope = held._budget_scope.clone();
@@ -192,19 +156,7 @@ impl DesktopSessionBackend {
                     &budget_scope,
                 )
                 .await
-                .map_err(|error| {
-                    let mapped = map::error(error);
-                    let category = match &mapped {
-                        rc::ProviderError::TargetRequired(_) => "target-required",
-                        rc::ProviderError::TargetUnsupported(_) => "target-unsupported",
-                        rc::ProviderError::CapabilityUnsupported => "capability-unsupported",
-                        rc::ProviderError::ResourceBusy(_) => "resource-busy",
-                        rc::ProviderError::SqlError(_) => "driver-error",
-                        _ => "provider-error",
-                    };
-                    log_open_failure("acquire", category);
-                    mapped
-                })?;
+                .map_err(map::error)?;
             (handle, uuid::Uuid::new_v4().to_string(), false)
         };
         if !reused {
@@ -219,7 +171,6 @@ impl DesktopSessionBackend {
                 )
                 .is_err()
             {
-                log_open_failure("lease-register", "physical-lease-rejected");
                 let confirmed = matches!(
                     provider.close_resource(&handle).await,
                     Ok(ds::CloseDisposition::Closed)
@@ -244,7 +195,6 @@ impl DesktopSessionBackend {
         let observation = match provider.observe_session(&handle).await {
             Ok(observation) => observation,
             Err(error) => {
-                log_open_failure("observe", "session-observation-failed");
                 let _ = self.leases.returning(
                     &rc::ResourceId::new(&resource_id),
                     datazen_runtime::resource::DriverCleanVerdict::reported_unclean(),
