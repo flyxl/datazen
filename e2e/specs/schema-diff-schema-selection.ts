@@ -1,5 +1,4 @@
 import { expect, browser, $ } from '@wdio/globals';
-import { API_ERROR_CODES } from '@datazen/backend-client';
 import {
   clickSchemaDiffNext,
   closeExtraWindows,
@@ -19,12 +18,11 @@ async function selectEndpointOption(testId: string, label: string): Promise<void
   let discoveryCode = '';
   try {
     await browser.waitUntil(async () => {
-      const result = await browser.execute((id: string, wanted: string, allowedCodes: readonly string[]) => {
+      const result = await browser.execute((id: string, wanted: string) => {
         const diagnostic = document.querySelector('[data-testid="schema-diff-window"] [data-testid="copyable-error-message"]')?.textContent?.trim()
           .match(/^databaseDiscovery\.(source|target):([A-Za-z]+)$/);
         // The product emits only its allowlisted API code, never a raw error message.
-        const discoveryCode = diagnostic && (allowedCodes.includes(diagnostic[2]) || diagnostic[2] === 'unknown')
-          ? `databaseDiscovery.${diagnostic[1]}:${diagnostic[2]}` : '';
+        const discoveryCode = diagnostic ? `databaseDiscovery.${diagnostic[1]}:${diagnostic[2]}` : '';
         const trigger = document.querySelector(`[data-testid="${id}"] > button[aria-haspopup="listbox"]`) as HTMLButtonElement | null;
         const selected = trigger?.querySelector('span')?.textContent?.trim() === wanted;
         const triggerExpanded = trigger?.getAttribute('aria-expanded') === 'true';
@@ -38,7 +36,7 @@ async function selectEndpointOption(testId: string, label: string): Promise<void
         if (option) option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
         // Selection is confirmed on the next observation after React commits.
         return state;
-      }, testId, label, API_ERROR_CODES);
+      }, testId, label);
       observed = result;
       discoveryCode = result.discoveryCode;
       if (discoveryCode) throw new Error('Endpoint discovery rejected');
