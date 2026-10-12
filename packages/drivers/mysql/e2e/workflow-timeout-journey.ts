@@ -31,26 +31,26 @@ describe('mysql workflow timeout journey', () => {
           await invokeBackend('workflow_save', { workflow: {
             id, name: id, description: 'SQL timeout terminal ordering', variables: [],
             connection: profile.id, database: profile.database,
-          ...(globalTimeout ? { timeout_secs: 1 } : {}),
+            ...(globalTimeout ? { timeout_secs: 1 } : {}),
             steps: [slowStep,
               ...(strategy === 'skip' ? [observer] : []), { type: 'query', id: 'next', sql: 'SELECT 73' }],
           } });
           try {
             const result = await invokeBackend<Run>('workflow_execute', { workflowId: id, variables: {}, connectionId: profile.id });
             if (globalTimeout) {
-            expect(result.success).toBe(false);
-            const slow = result.steps.find(step => step.stepId === 'slow');
-            expect(slow?.status).toBe('failed');
-            expect(slow?.error).toContain('GlobalTimeout');
-            expect(slow?.error).toContain('effects=');
-            expect(result.steps.map(step => step.stepId)).toEqual(['slow']);
-            const executionId = slow?.error?.match(/execution ([^: ]+):/)?.[1];
-            if (!executionId) throw new Error('Global timeout lost execution identity');
-            const execution = await invokeBackend<View>('get_execution', { request: { executionId } });
-            expect(['succeeded', 'failed', 'cancelled']).toContain(execution.state);
-            continue;
-          }
-          expect(result.success).toBe(true);
+              expect(result.success).toBe(false);
+              const slow = result.steps.find(step => step.stepId === 'slow');
+              expect(slow?.status).toBe('failed');
+              expect(slow?.error).toContain('GlobalTimeout');
+              expect(slow?.error).toContain('effects=');
+              expect(result.steps.map(step => step.stepId)).toEqual(['slow']);
+              const executionId = slow?.error?.match(/execution ([^: ]+):/)?.[1];
+              if (!executionId) throw new Error('Global timeout lost execution identity');
+              const execution = await invokeBackend<View>('get_execution', { request: { executionId } });
+              expect(['succeeded', 'failed', 'cancelled']).toContain(execution.state);
+              continue;
+            }
+            expect(result.success).toBe(true);
             const slow = result.steps.find(step => step.stepId === 'slow');
             expect(slow?.status).toBe(strategy === 'skip' ? 'skipped' : 'failed');
             expect(slow?.error).toContain('StepTimeout');

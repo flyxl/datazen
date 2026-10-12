@@ -394,7 +394,9 @@ impl WorkflowExecutor {
         options: &WorkflowExecuteOptions,
     ) -> Result<(), WorkflowError> {
         let global_expired = global_start.elapsed().as_secs() >= global_timeout_secs;
-        let err = if global_expired && !err.to_string().contains("GlobalTimeout") {
+        let err = if global_expired
+            && !matches!(&err, WorkflowError::SqlExecution { code, .. } if code.starts_with("GlobalTimeout:"))
+        {
             WorkflowError::Step(format!("GlobalTimeout ({global_timeout_secs}s): {err}"))
         } else {
             err

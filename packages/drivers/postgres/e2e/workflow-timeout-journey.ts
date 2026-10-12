@@ -42,18 +42,18 @@ describe('postgres workflow timeout journey', () => {
         try {
           const result = await invokeBackend<Run>('workflow_execute', { workflowId: id, variables: {}, connectionId: profile.id });
           if (globalTimeout) {
-          expect(result.success).toBe(false);
-          const slow = result.steps.find(step => step.stepId === 'slow');
-          expect(slow?.status).toBe('failed');
-          expect(slow?.error).toContain('GlobalTimeout');
-          expect(slow?.error).toContain('effects=');
-          expect(result.steps.map(step => step.stepId)).toEqual(['slow']);
-          const executionId = slow?.error?.match(/execution ([^: ]+):/)?.[1];
-          if (!executionId) throw new Error('Global timeout lost execution identity');
-          const execution = await invokeBackend<View>('get_execution', { request: { executionId } });
-          expect(['succeeded', 'failed', 'cancelled']).toContain(execution.state);
-          continue;
-        }
+            expect(result.success).toBe(false);
+            const slow = result.steps.find(step => step.stepId === 'slow');
+            expect(slow?.status).toBe('failed');
+            expect(slow?.error).toContain('GlobalTimeout');
+            expect(slow?.error).toContain('effects=');
+            expect(result.steps.map(step => step.stepId)).toEqual(['slow']);
+            const executionId = slow?.error?.match(/execution ([^: ]+):/)?.[1];
+            if (!executionId) throw new Error('Global timeout lost execution identity');
+            const execution = await invokeBackend<View>('get_execution', { request: { executionId } });
+            expect(['succeeded', 'failed', 'cancelled']).toContain(execution.state);
+            continue;
+          }
           expect(result.success).toBe(true);
           const slow = result.steps.find(step => step.stepId === 'slow');
           expect(slow?.status).toBe(strategy === 'skip' ? 'skipped' : 'failed');
