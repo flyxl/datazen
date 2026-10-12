@@ -66,6 +66,9 @@ export function useSchemaDiffUnifiedObjects() {
   const [selectedTargetKeys, setSelectedTargetKeys] = useState<string[]>([]);
   const [errors, setErrors] = useState<SchemaDiffObjectLoadErrors>({ source: {}, target: {} });
   const requestIdRef = useRef(0);
+  // Fixed lifecycle evidence distinguishes an empty catalog from a load that
+  // never ran or whose endpoint owner was invalidated before publication.
+  const [catalogLoadState, setCatalogLoadState] = useState<'never-started' | 'loading' | 'completed' | 'invalidated'>('never-started');
 
   const selectedSourceSet = useMemo(() => new Set(selectedSourceKeys), [selectedSourceKeys]);
   const selectedTargetSet = useMemo(() => new Set(selectedTargetKeys), [selectedTargetKeys]);
@@ -82,6 +85,7 @@ export function useSchemaDiffUnifiedObjects() {
 
   const clear = useCallback(() => {
     requestIdRef.current += 1;
+    setCatalogLoadState((previous) => previous === 'never-started' ? previous : 'invalidated');
     setSourceObjects([]);
     setTargetObjects([]);
     setSelectedSourceKeys([]);
@@ -101,12 +105,14 @@ export function useSchemaDiffUnifiedObjects() {
       targetConnectionId?: string,
     ): Promise<SchemaDiffObjectCatalog | null> => {
       const requestId = ++requestIdRef.current;
+      setCatalogLoadState('loading');
       const [source, target] = await Promise.all([
         listObjects(sourceDbSessionId, sourceDatabase, sourceSchema, sourceConnectionId),
         listObjects(targetDbSessionId, targetDatabase, targetSchema, targetConnectionId),
       ]);
       if (requestId !== requestIdRef.current) return null;
 
+      setCatalogLoadState('completed');
       setSourceObjects(source.objects);
       setTargetObjects(target.objects);
       // Newly discovered schema objects are opt-in. This preserves the
@@ -164,6 +170,7 @@ export function useSchemaDiffUnifiedObjects() {
   );
 
   return {
+    catalogLoadState,
     sourceObjects,
     targetObjects,
     selectedSourceObjects,

@@ -65,7 +65,7 @@ export function SchemaDiffSelectionSteps({
   }
 
   return (
-    <div className="min-h-0 flex-1 space-y-3 overflow-auto" data-testid="schema-diff-objects-step">
+    <div className="min-h-0 flex-1 space-y-3 overflow-auto" data-testid="schema-diff-objects-step" data-catalog-load-state={unifiedObjects.catalogLoadState}>
       <SchemaDiffObjectsStep
         loading={loading}
         tables={tablePicks}

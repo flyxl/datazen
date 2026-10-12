@@ -158,6 +158,10 @@ describe('Schema Diff PostgreSQL selected schema', function () {
         // snapshot. Its keys are fixed and all values are counts/booleans.
         try {
           const snapshot = await browser.execute(() => {
+            const step = document.querySelector('[data-testid="schema-diff-objects-step"]');
+            const state = step?.getAttribute('data-catalog-load-state');
+            const catalogLoadState = state && ['never-started', 'loading', 'completed', 'invalidated'].includes(state) ? state : 'unavailable';
+            const globalErrorPresent = Boolean(document.querySelector('[data-testid="schema-diff-window"] [data-testid="copyable-error-message"]'));
             const panel = document.querySelector('[data-testid="schema-diff-objects-panel"]');
             const picker = document.querySelector('[data-testid="schema-diff-unified-object-picker"]');
             const counts = (side: 'source' | 'target') => {
@@ -170,7 +174,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
               return { view: present('view'), type: present('type'), sequence: present('sequence'),
                 function: present('function'), procedure: present('procedure'), trigger: present('trigger') };
             };
-            return { panelPresent: Boolean(panel), pickerPresent: Boolean(picker),
+            return { catalogLoadState, globalErrorPresent, panelPresent: Boolean(panel), pickerPresent: Boolean(picker),
               loading: Boolean(picker?.querySelector(':scope > [aria-live="polite"]')),
               sourceViewRows: document.querySelectorAll('[data-testid^="schema-diff-object-row-source-view-"]').length,
               targetViewRows: document.querySelectorAll('[data-testid^="schema-diff-object-row-target-view-"]').length,
