@@ -205,7 +205,15 @@ pub async fn execute(
                 )
                 .await?;
             let tables = datazen_driver_api::parse_tables_from_command(&result.data);
-            let mut schemas: Vec<String> = tables.iter().filter_map(|t| t.schema.clone()).collect();
+            let mut schemas = driver
+                .get_schemas(handle, &input.database)
+                .await?
+                .unwrap_or_else(|| {
+                    tables
+                        .iter()
+                        .filter_map(|table| table.schema.clone())
+                        .collect()
+                });
             schemas.sort();
             schemas.dedup();
             let relations = tables
@@ -286,10 +294,15 @@ pub async fn execute_on_runtime_resource(
                 )
                 .await?;
             let tables = datazen_driver_api::parse_tables_from_command(&result.data);
-            let mut schemas: Vec<String> = tables
-                .iter()
-                .filter_map(|table| table.schema.clone())
-                .collect();
+            let mut schemas = driver
+                .get_schemas(handle, &input.database)
+                .await?
+                .unwrap_or_else(|| {
+                    tables
+                        .iter()
+                        .filter_map(|table| table.schema.clone())
+                        .collect()
+                });
             schemas.sort();
             schemas.dedup();
             let relations = tables

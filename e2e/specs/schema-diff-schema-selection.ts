@@ -6,11 +6,27 @@ import {
   invokeBackend,
   openSchemaDiffWindow,
   queryScalar,
-  selectDzOptionInWrap,
   withSafeModeOff,
   type QueryResultPayload,
 } from '../helpers.js';
 import { PG_SYNC_DB, pgConnectionConfig } from '../lib/schemaDiffFixtures.js';
+
+// Wait for the actual asynchronously-loaded option, and never toggle an
+// already-open listbox during retry. Generic helpers search only once per open.
+async function selectEndpointOption(testId: string, label: string): Promise<void> {
+  await browser.waitUntil(async () => browser.execute((id: string, wanted: string) => {
+    const trigger = document.querySelector(`[data-testid="${id}"] button[aria-haspopup="listbox"]`) as HTMLElement | null;
+    if (!trigger) return false;
+    if (trigger.textContent?.trim() === wanted) return true;
+    if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+    const option = Array.from(document.querySelectorAll('[data-testid="select-listbox"] [role="option"]'))
+      .find((node) => node.textContent?.trim() === wanted);
+    if (!option) return false;
+    option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    return true;
+  }, testId, label), { timeout: 20000, timeoutMsg: `Endpoint option unavailable: ${testId}/${label}` });
+  await browser.waitUntil(async () => (await $(`[data-testid="${testId}"]`).getText()).includes(label), { timeout: 5000 });
+}
 
 describe('Schema Diff PostgreSQL selected schema', function () {
   this.timeout(120000);
@@ -47,15 +63,15 @@ describe('Schema Diff PostgreSQL selected schema', function () {
         }
       });
       await openSchemaDiffWindow();
-      await selectDzOptionInWrap('schema-diff-source', connectionName);
-      await selectDzOptionInWrap('schema-diff-target', connectionName);
-      await selectDzOptionInWrap('schema-diff-source-database', PG_SYNC_DB);
-      await selectDzOptionInWrap('schema-diff-target-database', PG_SYNC_DB);
+      await selectEndpointOption('schema-diff-source', connectionName);
+      await selectEndpointOption('schema-diff-target', connectionName);
+      await selectEndpointOption('schema-diff-source-database', PG_SYNC_DB);
+      await selectEndpointOption('schema-diff-target-database', PG_SYNC_DB);
       // An empty schema must be selectable from catalog.schemas, independent of relations.
-      await selectDzOptionInWrap('schema-diff-source-schema', emptySchema);
+      await selectEndpointOption('schema-diff-source-schema', emptySchema);
       expect(await $('[data-testid="schema-diff-source-schema"]').getText()).toContain(emptySchema);
-      await selectDzOptionInWrap('schema-diff-source-schema', sourceSchema);
-      await selectDzOptionInWrap('schema-diff-target-schema', targetSchema);
+      await selectEndpointOption('schema-diff-source-schema', sourceSchema);
+      await selectEndpointOption('schema-diff-target-schema', targetSchema);
       // This fixture is connected only through backend/dedicated sessions;
       // no workspace connection action registers it in activeConnectionStore.
       expect(await $('[data-testid="schema-diff-source-database"]').getText()).toContain(PG_SYNC_DB);

@@ -1,6 +1,6 @@
 import { expect, browser, $ } from '@wdio/globals';
 import {
-  clickCardConnectButton, clickTableInSidebar, closeExtraWindows, disconnectBackend,
+  clickNavigatorRefresh, closeExtraWindows, disconnectBackend, expandSchemaTableCategory,
   expandAllGroups, expandConnectedConnectionInNavigator, invokeBackend,
   openConnectionsWorkspace, parseQueryRows, queryScalar, waitForConnectionToolbar,
   withSafeModeOff, type QueryResultPayload,
@@ -17,6 +17,8 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
     it('offers a new session after transaction resource loss and can transact again', async () => {
       const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       const database = `e2e_table_loss_${stamp}`;
+      const tableName = `recovery_probe_${stamp}`;
+      let tableSchema: string | undefined;
       const adminId = `e2e_loss_admin_${stamp}`;
       const connectionId = `e2e_loss_table_${stamp}`;
       const name = `Table loss ${dialect} ${stamp}`;
@@ -60,17 +62,35 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         savedIds.push(connectionId);
         setup = await invokeBackend<string>('connect', { connectionId });
         await withSafeModeOff(async () => {
-          await invokeBackend('execute_query', { dbSessionId: setup, sql: 'CREATE TABLE recovery_probe (id INT PRIMARY KEY)' });
-          await invokeBackend('execute_query', { dbSessionId: setup, sql: 'INSERT INTO recovery_probe VALUES (1)' });
+          await invokeBackend('execute_query', { dbSessionId: setup, sql: `CREATE TABLE ${tableName} (id INT PRIMARY KEY)` });
+          await invokeBackend('execute_query', { dbSessionId: setup, sql: `INSERT INTO ${tableName} VALUES (1)` });
         });
+        const fixture = await invokeBackend<QueryResultPayload>('execute_query', { dbSessionId: setup, sql: `SELECT count(*) AS c FROM ${tableName}` });
+        expect(queryScalar(fixture, 'c')).toBe(1);
+        const metadata = await invokeBackend<{ data: { tables: Array<{ name: string; schema?: string | null }> } }>('execute_driver_command', {
+          request: { dbSessionId: setup, command: 'list_tables', input: { database, schema: null } },
+        });
+        const relation = metadata.data.tables.find((table) => table.name === tableName);
+        expect(relation).toBeDefined();
+        tableSchema = relation?.schema ?? undefined;
         await disconnectBackend(setup);
         setup = undefined;
         await openConnectionsWorkspace();
         await expandAllGroups();
-        await clickCardConnectButton(name);
+        await browser.waitUntil(async () => browser.execute((wanted: string) => {
+          const card = Array.from(document.querySelectorAll('[data-conn-item]')).find((node) => node.textContent?.includes(wanted));
+          if (!card) return false;
+          card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+          return true;
+        }, name), { timeout: 15000, timeoutMsg: 'Fresh recovery fixture connection unavailable' });
         await waitForConnectionToolbar();
         await expandConnectedConnectionInNavigator(name);
-        await clickTableInSidebar('recovery_probe');
+        await clickNavigatorRefresh();
+        await expandSchemaTableCategory(tableSchema, database);
+        const table = await $(`[data-testid="schema-tree-node"][data-tree-node="table"][data-item-name="${tableName}"]`);
+        await table.waitForDisplayed({ timeout: 20000 });
+        await table.scrollIntoView({ block: 'center' });
+        await table.click();
         const begin = await $('[data-testid="table-tx-begin"]');
         await begin.waitForEnabled({ timeout: 20000 });
         await begin.click();
@@ -96,7 +116,7 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         expect(await $('[data-testid="table-session-open-new"]').isExisting()).toBe(false);
         const verification = await invokeBackend<string>('connect', { connectionId });
         try {
-          const result = await invokeBackend<QueryResultPayload>('execute_query', { dbSessionId: verification, sql: 'SELECT count(*) AS c FROM recovery_probe' });
+          const result = await invokeBackend<QueryResultPayload>('execute_query', { dbSessionId: verification, sql: `SELECT count(*) AS c FROM ${tableName}` });
           expect(queryScalar(result, 'c')).toBe(1);
         } finally {
           await disconnectBackend(verification);

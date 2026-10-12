@@ -135,10 +135,10 @@ impl DesktopSessionBackend {
                 .get(&config.database_type)
                 .await
                 .ok_or(rc::ProviderError::CapabilityUnsupported)?;
-            let handle = datazen_driver_api::ConnectionHandle {
-                id: resource.handle.resource_key().into(),
-                pool_id: resource.handle.provider_id().into(),
-            };
+            let handle = resource
+                .provider
+                .connection_handle(&resource.handle)
+                .map_err(map::error)?;
             let before = resource
                 .provider
                 .observe_session(&resource.handle)

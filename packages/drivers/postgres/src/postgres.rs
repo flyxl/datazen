@@ -278,6 +278,18 @@ impl DatabaseDriver for PostgresDriver {
         Self::get_tables_impl(self, handle, database, schema).await
     }
 
+    async fn get_schemas(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Option<Vec<String>>, DriverError> {
+        let pool = self.pool_for_target(handle, database).await?;
+        let schemas = sqlx::query_scalar::<_, String>(
+            "SELECT nspname::text FROM pg_namespace WHERE nspname NOT IN ('pg_catalog', 'information_schema') AND nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp_%' AND has_schema_privilege(oid, 'USAGE') ORDER BY nspname"
+        ).fetch_all(&pool).await.map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+        Ok(Some(schemas))
+    }
+
     async fn get_columns(
         &self,
         handle: &ConnectionHandle,

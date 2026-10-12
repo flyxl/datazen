@@ -300,6 +300,16 @@ pub trait DatabaseDriver: Send + Sync {
         schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError>;
 
+    /// Complete schema names, including empty schemas, when the driver can
+    /// enumerate them. None lets catalog adapters retain relation-derived names.
+    async fn get_schemas(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<Option<Vec<String>>, DriverError> {
+        Ok(None)
+    }
+
     async fn get_table_schema(
         &self,
         handle: &ConnectionHandle,
