@@ -156,6 +156,15 @@ This ledger must be deleted before delivery/merge to main.
 - To repair the verifier-only `node_modules` symlink, tester replaced it with a real directory and ran `pnpm install --frozen-lockfile` in that independent verifier tree (0 downloads). This conflicts with the repo environment note; no install has been run in the primary checkout. Reuse that verification tree after the current build exits and record the deviation.
 - No P3/P4/P6 WDIO acceptance exists yet for the current candidate; do not merge to main or mark complete. No computer-use, unit, Cargo or typecheck runs are authorized.
 
+## Final acceptance candidate (2026-10-12)
+
+- P6 review found its timeout journey covered only legacy `query`. Original P6 coder added PG/MySQL cases for `Command(query)+Skip` and `Command(execute)+Fallback`, asserting `StepTimeout`, execution/effect evidence, confirmed terminal execution, zero live slow-query count before observer/next, and ordered successful continuation. Commit `01ef98d24` is integrated as candidate commit `8f6d8a2c8`.
+- Latest candidate HEAD `8f6d8a2c8a36be405bb1bf43b7874a5bc9205029`, tree `53f618dca9e0f9d2b67cb2b95d107d2fc33d8754`; candidate clean and full-range `git diff --check` passes.
+- P3 cancellation receipt fix `72289de8` is present in candidate as equivalent commit `e796bfeac`; dynamic same-session cancellation/cross-session isolation remains for WDIO. P3 driver quality audit found no new static blocker in MySQL close/quarantine/retry; close-timeout dynamic retry remains unproven.
+- P6 coder audit confirmed code matches `4293b02e6`; remaining fail-closed receipt/cancel/terminal uncertainty and terminal artifact-read timeout boundaries remain source-reviewed but are not failure-injected by current WDIO.
+- Fresh Luna max tester `/root/p346_final_acceptance_r2` is aligned to the exact candidate HEAD/tree above. It must rebuild webdriver and run only the PostgreSQL/MySQL WDIO journeys enumerated in its task. A previous fresh tester hit the workspace spend cap before doing verification; the second attempt is active.
+- Keep P3/P4/P6 in progress until the matching build and all runnable PG/MySQL WDIO journeys complete. Do not merge to main or open a PR without a new user request. Only the project integration branch may receive accepted work; remove temporary `hub.md`/`progress.md` at final delivery as required by AGENTS.md.
+
 ## Singleflight acceptance and next P4/P3 fixes (2026-10-12)
 
 - Clean PG/MySQL `multi-database.ts` WDIO on verifier HEAD `368a49e44554fb1336460a705e9325e463d6a2cb` (candidate source `d49edd39e`): EXIT=0, 6 passing / 0 failing / 0 pending. Both drivers passed E2E-001 database nodes, E2E-002 expand/tables, and E2E-003 QueryPanel selector. Fresh webdriver build EXIT=0 (24.54s; 2 bundles). Build code fingerprint `f708f6c3…`; WDIO patch diff SHA `8c28620a…` unchanged. No app/WDIO processes remain. This verifies the observed duplicate discovery scenario is fixed; the old unpaired receipt trace remains insufficient to prove a unique root cause.
