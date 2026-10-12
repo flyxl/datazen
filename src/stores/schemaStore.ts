@@ -530,10 +530,13 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
 
     ensureColumns: async (tableNames, dbSessionId, database, options) => {
       if (!dbSessionId || !database.trim()) return;
+      const initialSchema = get().schemas.get(dbSessionId);
+      if (!initialSchema) return;
+      const isCurrent = requests.captureSlot(dbSessionId, 'columns');
+      await metadataScopeKey(dbSessionId, initialSchema.connectionId || undefined);
+      if (!isCurrent()) return;
       const schema = get().schemas.get(dbSessionId);
       if (!schema) return;
-      await metadataScopeKey(dbSessionId, schema.connectionId || undefined);
-      const isCurrent = requests.captureSlot(dbSessionId, 'columns');
       const refs = resolveColumnRelations(
         schema,
         tableNames,

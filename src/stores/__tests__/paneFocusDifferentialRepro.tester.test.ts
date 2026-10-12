@@ -207,6 +207,7 @@ async function runScenarios(build: Build, keys: PaneKeys): Promise<Observation> 
     },
   );
   void st().executeQuery(B, undefined, paneId);
+  await vi.waitFor(() => expect(emit).toBeTypeOf('function'));
   emit?.({ type: 'statementStart', index: 0, sql: 'SELECT typed-in-B-after-split', columns: [] });
   emit?.({ type: 'rows', index: 0, rows: [[1]] });
   const keysHoldingRows = [...st().queryExec.entries()]

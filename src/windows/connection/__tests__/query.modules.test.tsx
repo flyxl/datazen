@@ -30,6 +30,7 @@ import { usePanelStore } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
 import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
 import { toQueryExecutionViewModel } from '../../../lib/queryExecutionViewModel';
+import { invalidateSchemaCache } from '../../../lib/schemaCache';
 
 const refreshSchemaMetadata = vi.hoisted(() => vi.fn().mockResolvedValue({ revision: 1 }));
 vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
@@ -56,6 +57,45 @@ vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
   },
 }));
 
+vi.mock('../../../lib/session/targetCommand', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/session/targetCommand')>()),
+  metadataScopeKey: async (dbSessionId: string, connectionId?: string) =>
+    `${connectionId ?? 'missing-owner'}:${dbSessionId}`,
+  metadataTarget: (
+    dbSessionId: string,
+    database: string | null,
+    schema: string | null,
+    table?: string,
+    connectionId?: string,
+  ) => ({
+    connectionId: connectionId ?? dbSessionId,
+    namespace: { database, schema, catalog: null, path: [] },
+    object: table ? { kind: 'relation', name: table, signature: null } : null,
+  }),
+  readTargetSchema: (...args: unknown[]) => getTableSchema(...args),
+  executeTargetCommand: async (
+    target: import('@datazen/backend-client').ExecutionTarget,
+    call: import('@datazen/backend-client').CommandCall,
+  ) => {
+    if (call.command !== 'read_relation_columns')
+      throw new Error(`Unexpected query drop command: ${call.command}`);
+    const input = call.input as { relations: import('@datazen/driver-sdk').RelationRef[] };
+    const results = await Promise.all(
+      input.relations.map(async (ref) => ({
+        status: 'ok' as const,
+        value: {
+          ref,
+          columns: (
+            (await getColumns(target.connectionId, ref.name, ref.database, ref.schema)) as string[]
+          ).map((name) => ({ name, dataType: '', nullable: true })),
+          primaryKeys: [],
+        },
+      })),
+    );
+    return { results };
+  },
+}));
+
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
@@ -75,7 +115,9 @@ const transactionController = vi.hoisted(() => ({
 }));
 vi.mock('../../../lib/session/queryPanelSessionRoot', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../lib/session/queryPanelSessionRoot')>()),
-  editorOwnerForPane: vi.fn().mockResolvedValue({ kind: 'editor', clientInstanceId: 'client-1', editorSessionId: 'p1' }),
+  editorOwnerForPane: vi
+    .fn()
+    .mockResolvedValue({ kind: 'editor', clientInstanceId: 'client-1', editorSessionId: 'p1' }),
   getQueryPanelSessionRegistry: () => ({ get: vi.fn(() => transactionController) }),
 }));
 
@@ -387,6 +429,12 @@ describe('[tester] query/contracts', () => {
 });
 
 describe('[tester] query/queryDropHandler', () => {
+  beforeEach(() => {
+    invalidateSchemaCache('sess-1');
+    getTableSchema.mockReset();
+    getColumns.mockReset();
+  });
+
   it('inserts generated SQL from table schema on drop', async () => {
     getTableSchema.mockResolvedValueOnce({
       tableName: 'users',
@@ -407,7 +455,7 @@ describe('[tester] query/queryDropHandler', () => {
     });
 
     await handler({ tables: [{ tableName: 'users', schema: 'public' }] }, 10);
-    expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'users', 'app', 'public');
+    expect(getTableSchema).toHaveBeenCalledWith('sess-1', 'users', 'app', 'public', 'cfg-1');
     expect(insertAt).toHaveBeenCalled();
   });
 
@@ -799,34 +847,63 @@ describe('[tester] query/QueryTransactionModals', () => {
 describe('[tester] query/useQueryTransaction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    transactionController.refresh.mockResolvedValue({ observedContext: { transactionState: 'none' } });
+    transactionController.refresh.mockResolvedValue({
+      observedContext: { transactionState: 'none' },
+    });
   });
 
   it('refreshes transaction status on mount and handles begin/commit/rollback', async () => {
-    const { result } = renderHook(() => useQueryTransaction({ dbSessionId: 'sess-1', paneKey: 'p1', connectionId: 'cfg-1', database: 'app' }));
+    const { result } = renderHook(() =>
+      useQueryTransaction({
+        dbSessionId: 'sess-1',
+        paneKey: 'p1',
+        connectionId: 'cfg-1',
+        database: 'app',
+      }),
+    );
 
     await waitFor(() => expect(transactionController.refresh).toHaveBeenCalled());
 
     await act(async () => {
       await result.current.handleBeginTx();
     });
-    expect(transactionController.execute).toHaveBeenCalledWith({ command: 'platform.beginTransaction', input: { defersCommit: true } });
+    expect(transactionController.execute).toHaveBeenCalledWith({
+      command: 'platform.beginTransaction',
+      input: { defersCommit: true },
+    });
 
-    transactionController.refresh.mockResolvedValueOnce({ observedContext: { transactionState: 'active' } });
+    transactionController.refresh.mockResolvedValueOnce({
+      observedContext: { transactionState: 'active' },
+    });
     await act(async () => {
       await result.current.handleCommitTx();
     });
-    expect(transactionController.execute).toHaveBeenCalledWith({ command: 'platform.commitTransaction', input: { defersCommit: true } });
+    expect(transactionController.execute).toHaveBeenCalledWith({
+      command: 'platform.commitTransaction',
+      input: { defersCommit: true },
+    });
 
     await act(async () => {
       await result.current.handleRollbackTx();
     });
-    expect(transactionController.execute).toHaveBeenCalledWith({ command: 'platform.rollbackTransaction', input: { defersCommit: true } });
+    expect(transactionController.execute).toHaveBeenCalledWith({
+      command: 'platform.rollbackTransaction',
+      input: { defersCommit: true },
+    });
   });
 
   it('opens aborted dialog when error indicates aborted transaction', async () => {
-    transactionController.refresh.mockResolvedValue({ observedContext: { transactionState: 'none' } });
-    const { result } = renderHook(() => useQueryTransaction({ dbSessionId: 'sess-1', paneKey: 'p1', connectionId: 'cfg-1', database: 'app' }));
+    transactionController.refresh.mockResolvedValue({
+      observedContext: { transactionState: 'none' },
+    });
+    const { result } = renderHook(() =>
+      useQueryTransaction({
+        dbSessionId: 'sess-1',
+        paneKey: 'p1',
+        connectionId: 'cfg-1',
+        database: 'app',
+      }),
+    );
 
     await act(async () => {
       await result.current.maybeOfferAbortedDialog('current transaction is aborted');
@@ -1389,8 +1466,17 @@ describe('[tester] query/QueryResultsPane', () => {
   };
 
   it('keeps finalized partial-result export reachable alongside a query error', () => {
-    render(<QueryResultsPane {...baseProps} error="Synthetic execution failure"
-      publishedArtifacts={{ executionId: 'execution-failed', artifactIds: ['artifact-prefix'], resultCompleteness: 'truncated' }} />);
+    render(
+      <QueryResultsPane
+        {...baseProps}
+        error="Synthetic execution failure"
+        publishedArtifacts={{
+          executionId: 'execution-failed',
+          artifactIds: ['artifact-prefix'],
+          resultCompleteness: 'truncated',
+        }}
+      />,
+    );
     expect(screen.getByTestId('query-artifact-export-button')).toBeTruthy();
     expect(screen.getByText('query.artifactExport.partial')).toBeTruthy();
   });
@@ -1614,7 +1700,8 @@ describe('[tester] query/useQueryPanelWorkflows', () => {
 
 describe('[tester] query/useQueryContextPath', () => {
   const contextController = {
-    refresh: vi.fn().mockResolvedValue(null), snapshot: null,
+    refresh: vi.fn().mockResolvedValue(null),
+    snapshot: null,
     setContext: vi.fn().mockResolvedValue({}),
   } as unknown as import('../../../lib/session/EditorSessionController').EditorSessionController;
   it('uses a qualified path for browsing without changing execution context', async () => {
@@ -1686,7 +1773,9 @@ describe('[tester] query/useQueryContextPath', () => {
 
     // Switching the database inside the panel writes the new DB back onto the
     // panel's bound `database`.
-    await waitFor(() => expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'other', schema: undefined }));
+    await waitFor(() =>
+      expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'other', schema: undefined }),
+    );
   });
 
   it('binds the full path hierarchy when switching levels inside a path-hierarchy panel', async () => {
@@ -1720,7 +1809,13 @@ describe('[tester] query/useQueryContextPath', () => {
     });
 
     // Level 0 writes the root onto the panel's bound database…
-    await waitFor(() => expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'hive', schema: undefined, namespacePath: ['hive'] }));
+    await waitFor(() =>
+      expect(updatePanel).toHaveBeenCalledWith('p1', {
+        database: 'hive',
+        schema: undefined,
+        namespacePath: ['hive'],
+      }),
+    );
     // …and the whole selected path (root-first) is written onto the panel's
     // bound namespacePath.
     expect(result.current.contextPath).toEqual(['hive']);
@@ -1731,6 +1826,12 @@ describe('[tester] query/useQueryContextPath', () => {
     await act(async () => {
       result.current.handleSelectContextLevel(1, 'snap');
     });
-    await waitFor(() => expect(updatePanel).toHaveBeenCalledWith('p1', { database: 'hive', schema: undefined, namespacePath: ['hive', 'snap'] }));
+    await waitFor(() =>
+      expect(updatePanel).toHaveBeenCalledWith('p1', {
+        database: 'hive',
+        schema: undefined,
+        namespacePath: ['hive', 'snap'],
+      }),
+    );
   });
 });

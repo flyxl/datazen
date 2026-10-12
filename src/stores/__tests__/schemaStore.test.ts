@@ -524,7 +524,7 @@ describe('schemaStore.ensureDatabaseColumns', () => {
 
     const state = schemaSnapshot(useSchemaStore, 'test-conn');
     expect(mockReadColumns).toHaveBeenCalledTimes(1);
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'testdb', schema: 'public', name: 'users' },
       { database: 'testdb', schema: 'public', name: 'products' },
       { database: 'testdb', schema: 'public', name: 'orders' },
@@ -564,7 +564,7 @@ describe('schemaStore.ensureColumns', () => {
   it('reads only requested full identities and derives names and types together', async () => {
     await useSchemaStore.getState().loadTables('testdb', 'test-conn');
     await useSchemaStore.getState().ensureColumns(['users'], 'test-conn', 'testdb');
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'testdb', schema: 'public', name: 'users' },
     ]);
     expect(schemaSnapshot(useSchemaStore, 'test-conn').columnMap).toEqual({
@@ -581,7 +581,7 @@ describe('schemaStore.ensureColumns', () => {
     mockReadColumns.mockClear();
     await useSchemaStore.getState().ensureColumns(['users', 'orders'], 'test-conn', 'testdb');
     expect(mockReadColumns).toHaveBeenCalledOnce();
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'testdb', schema: 'public', name: 'orders' },
     ]);
   });
@@ -601,7 +601,7 @@ describe('schemaStore.ensureColumns', () => {
       namespaceTree: { hive: { snap: { wb_daily_orders: [] } } },
     });
     await useSchemaStore.getState().ensureColumns(['wb_d', 'wb_daily_orders'], 'test-conn', 'hive');
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'hive', schema: null, name: 'wb_daily_orders' },
     ]);
   });
@@ -641,7 +641,7 @@ describe('schemaStore.ensureColumns', () => {
         { pinCurrentDatabase: false },
       );
     await useSchemaStore.getState().ensureColumns(['users'], 'test-conn', 'tab_db');
-    expect(mockReadColumns).toHaveBeenCalledWith('test-conn', [
+    expect(mockReadColumns).toHaveBeenCalledWith('cfg-1', [
       { database: 'tab_db', schema: 'archive', name: 'users' },
     ]);
     expect(schemaSnapshot(useSchemaStore, 'test-conn').currentDatabase).toBe('testdb');

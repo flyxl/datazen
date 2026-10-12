@@ -23,7 +23,7 @@ use datazen_driver_api::resource::{
     DescribeResourceRequest, IdentityScope, InitializationRequirement, ResourceError,
     ResourceHandle, ResourceProvider, ResourcePurpose, ResourceScope, ResultChunk, ResultSink,
 };
-use datazen_driver_api::session::{CancelDisposition, TransactionOptions};
+use datazen_driver_api::session::{CancelDisposition, ExecutionState, TransactionOptions};
 use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DriverError, QueryExecutionId};
 
 use crate::postgres::PostgresDriver;
@@ -693,10 +693,7 @@ async fn cancel_reaches_exactly_one_execution_and_leaves_every_other_untouched()
 
     assert_eq!(receipt.execution_id, wanted);
     assert_eq!(receipt.disposition, CancelDisposition::Requested);
-    assert!(
-        receipt.state.is_none(),
-        "a cancel request is not a terminal state, so no state may be substituted"
-    );
+    assert_eq!(receipt.state, Some(ExecutionState::CancelRequested));
 
     assert!(
         driver

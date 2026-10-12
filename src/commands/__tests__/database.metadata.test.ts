@@ -36,7 +36,7 @@ describe('database metadata facade', () => {
     });
   });
 
-  it('preserves same-named relations and empty schemas at the tree adapter boundary', async () => {
+  it('preserves same-named relations and keeps empty schemas in catalog metadata', async () => {
     const owner = target('cfg-1', 'app', null);
     targetCommands.metadata.mockReturnValue(owner);
     targetCommands.execute.mockResolvedValue({
@@ -54,16 +54,25 @@ describe('database metadata facade', () => {
     expect(await databaseCommands.listTables('session', 'app', null, 'cfg-1')).toEqual([
       { name: 'users', schema: 'public', tableType: 'table', rowCount: 2 },
       { name: 'users', schema: 'archive', tableType: 'view', rowCount: null },
-      { name: '', schema: 'empty', tableType: 'systemTable', rowCount: null },
     ]);
-    expect(targetCommands.metadata).toHaveBeenCalledExactlyOnceWith(
+    expect(await databaseCommands.listCatalog('session', 'app', null, 'cfg-1')).toMatchObject({
+      schemas: ['public', 'archive', 'empty'],
+      relations: [
+        { ref: { database: 'app', schema: 'public', name: 'users' } },
+        { ref: { database: 'app', schema: 'archive', name: 'users' } },
+      ],
+    });
+    expect(targetCommands.metadata).toHaveBeenCalledTimes(2);
+    expect(targetCommands.metadata).toHaveBeenCalledWith(
       'session',
       'app',
       null,
       undefined,
       'cfg-1',
     );
-    expect(targetCommands.execute).toHaveBeenCalledExactlyOnceWith(
+    expect(targetCommands.execute).toHaveBeenCalledTimes(2);
+    expect(targetCommands.execute).toHaveBeenNthCalledWith(
+      1,
       owner,
       {
         command: 'list_catalog',

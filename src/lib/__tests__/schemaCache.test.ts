@@ -328,6 +328,7 @@ describe('schemaCache inflight / error / immutable', () => {
         }),
       );
     const old = getCachedTableSchema('conn-1', 'users', 'app', 'public');
+    await vi.waitFor(() => expect(mockGetTableSchema).toHaveBeenCalledOnce());
     invalidateSchemaCache('conn-1', 'users');
     const fresh = getCachedTableSchema('conn-1', 'users', 'app', 'public');
     resolveOld({ ...fullSchema, columns: [{ name: 'old', dataType: 'int', nullable: false }] });
@@ -350,6 +351,7 @@ describe('schemaCache inflight / error / immutable', () => {
       .mockResolvedValueOnce(fullSchema);
     const old = getCachedTableSchema('conn-1', 'users', 'app');
     const failed = expect(old).rejects.toThrow('stale failure');
+    await vi.waitFor(() => expect(mockGetTableSchema).toHaveBeenCalledOnce());
     invalidateSchemaCache('conn-1');
     rejectOld(new Error('stale failure'));
     await failed;

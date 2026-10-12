@@ -72,7 +72,9 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-const tables = (name: string): TableInfo[] => [{ name, schema: null, tableType: 'table' }];
+const tables = (name: string): TableInfo[] => [
+  { name, schema: null, tableType: 'table', rowCount: null },
+];
 
 describe('schema directory and metadata journeys', () => {
   beforeEach(() => {
