@@ -49,6 +49,25 @@ async function selectEndpointOption(testId: string, label: string): Promise<void
   }
 }
 
+// Keep timeout evidence available even when an awaited WebDriver IPC never
+// resolves. Every call site supplies a fixed stage, never fixture identities.
+function breadcrumb(stage:
+  | 'fixture-window-handle' | 'fixture-window-url'
+  | 'fixture-save' | 'fixture-connect' | 'fixture-ddl-start'
+  | 'fixture-create-schema' | 'fixture-create-view' | 'fixture-ddl-complete'
+  | 'window-open' | 'window-open-complete'
+  | 'select-source' | 'select-target'
+  | 'select-source-database' | 'select-target-database'
+  | 'select-empty-schema' | 'assert-empty-schema'
+  | 'select-source-schema' | 'select-target-schema' | 'assert-endpoints'
+  | 'next' | 'objects-wait' | 'objects-observe' | 'objects-assert'
+  | 'panel-assert' | 'journey-complete'
+  | 'cleanup-window' | 'cleanup-ddl' | 'cleanup-verification'
+  | 'cleanup-disconnect' | 'cleanup-delete' | 'cleanup-complete'
+): void {
+  console.info(`P4 schema selection stage=${stage}`);
+}
+
 describe('Schema Diff PostgreSQL selected schema', function () {
   this.timeout(120000);
 
@@ -61,48 +80,69 @@ describe('Schema Diff PostgreSQL selected schema', function () {
     const targetSchema = `sd_target_${stamp}`;
     const emptySchema = `sd_empty_${stamp}`;
     const viewName = `selected_view_${stamp}`;
+    breadcrumb('fixture-window-handle');
     const mainWindow = await browser.getWindowHandle();
+    breadcrumb('fixture-window-url');
     const mainUrl = await browser.getUrl();
     const ownedSchemas: string[] = [];
     let saved = false;
     let session: string | undefined;
     try {
+      breadcrumb('fixture-save');
       await invokeBackend('save_connection', {
         config: pgConnectionConfig(connectionId, connectionName, PG_SYNC_DB),
       });
       saved = true;
+      breadcrumb('fixture-connect');
       session = await invokeBackend<string>('connect', { connectionId });
+      breadcrumb('fixture-ddl-start');
       await withSafeModeOff(async () => {
         for (const schema of [sourceSchema, targetSchema, emptySchema]) {
           // CREATE without IF NOT EXISTS proves ownership before cleanup can drop it.
+          breadcrumb('fixture-create-schema');
           await invokeBackend('execute_query', { dbSessionId: session, sql: `CREATE SCHEMA "${schema}"` });
           ownedSchemas.push(schema);
           if (schema === emptySchema) continue;
+          breadcrumb('fixture-create-view');
           await invokeBackend('execute_query', {
             dbSessionId: session,
             sql: `CREATE VIEW "${schema}"."${viewName}" AS SELECT 1 AS id`,
           });
         }
       });
+      breadcrumb('fixture-ddl-complete');
+      breadcrumb('window-open');
       await openSchemaDiffWindow();
+      breadcrumb('window-open-complete');
       // Endpoint options include the driver type, unlike navigator card names.
+      breadcrumb('select-source');
       await selectEndpointOption('schema-diff-source', connectionLabel);
+      breadcrumb('select-target');
       await selectEndpointOption('schema-diff-target', connectionLabel);
+      breadcrumb('select-source-database');
       await selectEndpointOption('schema-diff-source-database', PG_SYNC_DB);
+      breadcrumb('select-target-database');
       await selectEndpointOption('schema-diff-target-database', PG_SYNC_DB);
       // An empty schema must be selectable from catalog.schemas, independent of relations.
+      breadcrumb('select-empty-schema');
       await selectEndpointOption('schema-diff-source-schema', emptySchema);
+      breadcrumb('assert-empty-schema');
       expect(await $('[data-testid="schema-diff-source-schema"]').getText()).toContain(emptySchema);
+      breadcrumb('select-source-schema');
       await selectEndpointOption('schema-diff-source-schema', sourceSchema);
+      breadcrumb('select-target-schema');
       await selectEndpointOption('schema-diff-target-schema', targetSchema);
       // This fixture is connected only through backend/dedicated sessions;
       // no workspace connection action registers it in activeConnectionStore.
+      breadcrumb('assert-endpoints');
       expect(await $('[data-testid="schema-diff-source-database"]').getText()).toContain(PG_SYNC_DB);
       expect(await $('[data-testid="schema-diff-target-database"]').getText()).toContain(PG_SYNC_DB);
       expect(await $('[data-testid="schema-diff-source-schema"]').getText()).toContain(sourceSchema);
       expect(await $('[data-testid="schema-diff-target-schema"]').getText()).toContain(targetSchema);
 
+      breadcrumb('next');
       await clickSchemaDiffNext();
+      breadcrumb('objects-wait');
       await browser.waitUntil(async () => {
         const identities = await browser.execute(() => Array.from(
           document.querySelectorAll('[data-object-kind="view"][data-object-identity]'),
@@ -112,6 +152,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
           identity && JSON.parse(identity)[1] === schema && JSON.parse(identity)[2] === viewName,
         ));
       }, { timeout: 30000, timeoutMsg: 'Selected-schema views were not discovered on both sides' });
+      breadcrumb('objects-observe');
       const observed = await browser.execute(() => ({
         source: Array.from(document.querySelectorAll('[data-testid^="schema-diff-object-row-source-"]'),
           (row) => row.getAttribute('data-object-identity')),
@@ -119,22 +160,27 @@ describe('Schema Diff PostgreSQL selected schema', function () {
           (row) => row.getAttribute('data-object-identity')),
         errors: document.querySelectorAll('[data-testid^="schema-diff-object-error-"]').length,
       }));
+      breadcrumb('objects-assert');
       expect(observed.errors).toBe(0);
       for (const [schema, identities] of [[sourceSchema, observed.source], [targetSchema, observed.target]] as const) {
         expect(identities).toHaveLength(1);
         expect(JSON.parse(identities[0] ?? 'null')).toEqual(['view', schema, viewName, null, null, null]);
         expect(identities.every((identity) => identity && JSON.parse(identity)[1] === schema)).toBe(true);
       }
+      breadcrumb('panel-assert');
       await expect(await $('[data-testid="schema-diff-objects-panel"]')).toBeDisplayed();
+      breadcrumb('journey-complete');
     } finally {
       // Restore navigation even when setup or discovery fails.
       try {
+        breadcrumb('cleanup-window');
         await closeExtraWindows(mainWindow);
         await browser.switchToWindow(mainWindow);
         await browser.url(mainUrl);
       } finally {
         try {
           if (session) {
+            breadcrumb('cleanup-ddl');
             let cleanupFailed = false;
             await withSafeModeOff(async () => {
               for (const schema of ownedSchemas) {
@@ -145,6 +191,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
                 }
               }
             });
+            breadcrumb('cleanup-verification');
             const remaining = await invokeBackend<QueryResultPayload>('execute_query', {
               dbSessionId: session,
                 sql: `SELECT count(*) AS c FROM pg_namespace WHERE nspname IN ('${sourceSchema}', '${targetSchema}', '${emptySchema}')`,
@@ -155,9 +202,12 @@ describe('Schema Diff PostgreSQL selected schema', function () {
           }
         } finally {
           try {
+            breadcrumb('cleanup-disconnect');
             if (session) await disconnectBackend(session);
           } finally {
+            breadcrumb('cleanup-delete');
             if (saved) await invokeBackend('delete_connection', { id: connectionId });
+            breadcrumb('cleanup-complete');
           }
         }
       }
