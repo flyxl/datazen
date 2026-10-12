@@ -22,7 +22,7 @@ import {
 import { extractErrorMessage } from '../../stores/tableData/connectionState';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
-import { queryCommands } from '../../commands/query';
+import { tableSessionController } from '../../lib/session/tableSession';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { DatabaseType, FilterCondition, SortCondition } from '../../types';
 import { Spinner } from '../../components/ui/Spinner';
@@ -135,46 +135,74 @@ export function TableView({
   // transaction; otherwise each commit runs as its own short transaction.
   const [inTx, setInTx] = useState(false);
   const [txBusy, setTxBusy] = useState(false);
+  const [txLost, setTxLost] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
   const refreshTxStatus = useCallback(async () => {
     try {
-      setInTx(await queryCommands.sessionTransactionStatus(dbSessionId));
-    } catch {
-      setInTx(false);
+      const controller = await tableSessionController(panelId, context);
+      const snapshot = await controller.refresh();
+      setTxLost(snapshot?.state === 'lost' || snapshot?.state === 'closed');
+      const state = snapshot?.observedContext.transactionState;
+      setInTx(state === 'active' || state === 'aborted' || state === 'unknown');
+    } catch (error) {
+      const controller = await tableSessionController(panelId, context);
+      setTxLost(controller.snapshot?.state === 'lost' || controller.snapshot?.state === 'closed');
+      setTxError(extractErrorMessage(error, t('query.session.disconnected')));
     }
-  }, [dbSessionId]);
+  }, [panelId, context, t]);
   useEffect(() => {
     void refreshTxStatus();
   }, [refreshTxStatus]);
+  const executeTableTransaction = useCallback(async (operation: 'begin' | 'commit' | 'rollback') => {
+    const controller = await tableSessionController(panelId, context);
+    try {
+      const receipt = await controller.execute({ command: `platform.${operation}Transaction`, input: { defersCommit: true } });
+      for (;;) {
+        const execution = await controller.getExecution(receipt.executionId);
+        if (execution.state === 'succeeded') break;
+        if (execution.state === 'failed' || execution.state === 'cancelled') throw new Error(`${execution.errorCode ?? 'Transaction outcome unavailable'}; effect: ${execution.effectOutcome}`);
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      await controller.refresh();
+    } catch (error) {
+      if (!controller.acceptSessionError(error) && controller.snapshot?.state !== 'lost') {
+        // Observe resource loss after a terminal execution failure, while
+        // preserving the original transaction error and its effect outcome.
+        await controller.refresh().catch(() => undefined);
+      }
+      setTxLost(controller.snapshot?.state === 'lost' || controller.snapshot?.state === 'closed');
+      throw error;
+    }
+  }, [panelId, context]);
   const handleBeginTx = useCallback(async () => {
     setTxBusy(true);
     setTxError(null);
     try {
-      await queryCommands.beginSessionTransaction(dbSessionId);
+      await executeTableTransaction('begin');
       await refreshTxStatus();
     } catch (e) {
       setTxError(extractErrorMessage(e, t('tableData.txBeginFailed')));
     } finally {
       setTxBusy(false);
     }
-  }, [dbSessionId, refreshTxStatus, t]);
+  }, [executeTableTransaction, refreshTxStatus, t]);
   const handleCommitTx = useCallback(async () => {
     setTxBusy(true);
     setTxError(null);
     try {
-      await queryCommands.commitSessionTransaction(dbSessionId);
+      await executeTableTransaction('commit');
       await refreshTxStatus();
     } catch (e) {
       setTxError(extractErrorMessage(e, t('tableData.txCommitFailed')));
     } finally {
       setTxBusy(false);
     }
-  }, [dbSessionId, refreshTxStatus, t]);
+  }, [executeTableTransaction, refreshTxStatus, t]);
   const handleRollbackTx = useCallback(async () => {
     setTxBusy(true);
     setTxError(null);
     try {
-      await queryCommands.rollbackSessionTransaction(dbSessionId);
+      await executeTableTransaction('rollback');
       await refreshTxStatus();
       actions.reload();
     } catch (e) {
@@ -182,7 +210,7 @@ export function TableView({
     } finally {
       setTxBusy(false);
     }
-  }, [actions, dbSessionId, refreshTxStatus, t]);
+  }, [actions, executeTableTransaction, refreshTxStatus, t]);
 
   useEffect(() => {
     return () => {
@@ -523,8 +551,13 @@ export function TableView({
         </div>
       )}
       {txError && (
-        <div className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400">
+        <div data-testid="table-transaction-error" className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400">
           {txError}
+          {txLost && <button className="ml-3 underline" data-testid="table-session-open-new" onClick={() => {
+            void tableSessionController(panelId, context).then((controller) => controller.openNewSession())
+              .then(() => { setTxLost(false); setInTx(false); setTxError(null); actions.reload(); })
+              .catch((error: unknown) => setTxError(extractErrorMessage(error, t('query.session.disconnected'))));
+          }}>{t('query.session.openNew')}</button>}
         </div>
       )}
       {isEditable && (

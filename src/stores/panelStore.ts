@@ -1,3 +1,6 @@
+import { useTableDataStore } from './tableDataStore';
+import { invoke } from '@tauri-apps/api/core';
+import { tableSessionKey } from '../lib/session/tableSession';
 import { getQueryPanelSessionRegistry } from '../lib/session/queryPanelSessionRoot';
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
@@ -20,6 +23,8 @@ import { cancelAndCleanupExec, cancelAndCleanupPaneExec } from './panelExecClean
 import { DEFAULT_PANE_ID, paneKey, paneKeysOfPanel } from './paneKeys';
 import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 import { createPanelCloseNotifier } from './panelCloseNotifier';
+
+const resultWriteInflight = new Set<string>();
 
 export type { QueryExecState, BindParams };
 export { EMPTY_QUERY_EXEC, emptyQueryExecState } from './queryExecActions';
@@ -176,7 +181,7 @@ interface PanelActions {
     col: string,
     value: unknown,
     paneId?: string,
-  ) => void;
+  ) => Promise<void>;
   setChartConfig: (panelId: string, config: ChartConfig, paneId?: string) => void;
   setResultViewMode: (panelId: string, mode: 'table' | 'chart', paneId?: string) => void;
 
@@ -269,6 +274,19 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const initial = get();
     const panel = initial.panels.find((p) => p.id === panelId);
     if (!panel) return;
+    if (panel.type === 'table' || panel.type === 'view') {
+      try { await getQueryPanelSessionRegistry().remove(tableSessionKey(panelId)); }
+      catch {
+        useTableDataStore.setState((state) => {
+          const previous = state.byPanel.get(panelId);
+          if (!previous) return state;
+          const byPanel = new Map(state.byPanel);
+          byPanel.set(panelId, { ...previous, error: t('query.session.closeBlocked') });
+          return { byPanel };
+        });
+        return; // keep the tab and its transaction controls reachable
+      }
+    }
     if (panel.type === 'query') {
       const registry = getQueryPanelSessionRegistry();
       for (const key of paneKeysOfPanel(initial.queryExec, panelId)) {
@@ -588,11 +606,31 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     }));
   },
 
-  updateResultCell: (panelId, resultIdx, row, col, value, paneId) => {
+  updateResultCell: async (panelId, resultIdx, row, col, value, paneId) => {
     const key = paneKey(panelId, paneId);
     const exec = get().queryExec.get(key);
     if (!exec) return;
-    const results = exec.results.map((r, ri) => {
+    const original = exec.results[resultIdx];
+    if (!original?.runtimeBinding || original.source?.writableMapping !== 'verified') throw new Error('Result is read-only; execute the query again');
+    const columnIndex = original.columns.findIndex((column) => column.name === col);
+    if (columnIndex < 0 || !original.rows[row]) throw new Error('Result cell unavailable');
+    if (JSON.stringify(original.rows[row][columnIndex]) === JSON.stringify(value)) return;
+    if (resultWriteInflight.has(key)) throw new Error('A result edit is already in progress');
+    resultWriteInflight.add(key);
+    try {
+      await invoke('commit_query_result_cell', { request: { binding: original.runtimeBinding,
+        statementIndex: original.source.statementIndex, rowIndex: row, column: col, value } });
+    } catch (error) {
+      set((state) => ({ queryExec: patchExec(state.queryExec, key, { error: error instanceof Error ? error.message : String(error) }) }));
+      throw error;
+    } finally {
+      resultWriteInflight.delete(key);
+    }
+    // Retained artifacts are immutable. This edited snapshot requires a fresh
+    // explicit query before another edit; never replay arbitrary original SQL.
+    const current = get().queryExec.get(key);
+    if (!current || current.results[resultIdx]?.runtimeBinding !== original.runtimeBinding) return;
+    const results = current.results.map((r, ri) => {
       if (ri !== resultIdx) return r;
       const colIdx = r.columns.findIndex((c) => c.name === col);
       if (colIdx === -1) return r;
@@ -602,7 +640,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
         next[colIdx] = value as Value;
         return next;
       });
-      return { ...r, rows };
+      return { ...r, rows, runtimeBinding: null };
     });
     set((s) => ({ queryExec: patchExec(s.queryExec, key, { results }) }));
   },

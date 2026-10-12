@@ -350,6 +350,7 @@ async fn transaction_execution_cancel_is_pending_until_target_is_bound() {
     driver.query_executions.lock().await.insert(
         execution_id.clone(),
         PgQueryExecution {
+            cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             session_id: handle.id.clone(),
             target_pool: None,
             control_pool: None,
@@ -630,6 +631,7 @@ mod stream_target_pool {
         driver.query_executions.lock().await.insert(
             id.clone(),
             PgQueryExecution {
+                cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
                 session_id: handle.id.clone(),
                 target_pool: None,
                 control_pool: None,

@@ -404,6 +404,14 @@ pub struct ResultChunk {
 #[async_trait]
 pub trait ResultSink: Send + Sync {
     async fn write(&self, chunk: ResultChunk) -> Result<(), ResourceError>;
+    /// Deliver typed non-tabular command output without disguising it as rows.
+    /// Sinks must explicitly opt in; discarding a successful command's output
+    /// is an error rather than a silent no-op.
+    async fn write_output(&self, _output: serde_json::Value) -> Result<(), ResourceError> {
+        Err(ResourceError::SinkRejected {
+            reason: "this sink does not accept command output".into(),
+        })
+    }
     async fn complete(&self) -> Result<(), ResourceError>;
     async fn fail(&self, reason: &str) -> Result<(), ResourceError>;
 }
@@ -483,17 +491,17 @@ impl ResourceError {
 /// The resource operations of `connection-management.md` §5.1.
 ///
 /// §5.1 lists **nine operation rows**; this trait spells them out as **11 async
-/// methods** plus **3 required accessors** (`provider_id`, `capabilities`,
-/// `namespace_shape`). §6.5 adds one more required method,
+/// methods** plus **4 required accessors** (`provider_id`, `capabilities`,
+/// `namespace_shape`, `connection_handle`). §6.5 adds one more required method,
 /// [`ResourceProvider::close_handle`], which is not a §5.1 row at all — closing
 /// a session-scoped handle is a driver action on a handle the driver itself
 /// issued, and it has no resource-level counterpart. That makes **12 async
-/// methods plus 3 required accessors — 15 required methods** in total. The
+/// methods plus 4 required accessors — 16 required methods** in total. The
 /// row/method gap is deliberate: §5.1 counts `begin/commit/rollback` as one row,
 /// while the trait needs three separately implemented methods so a driver can
 /// support a commit without inventing a rollback.
 ///
-/// All 15 methods are **required**, with no default bodies. A provider that
+/// All 16 methods are **required**, with no default bodies. A provider that
 /// cannot honour one must say so in its own code, where the failure is
 /// visible, instead of inheriting a body that quietly does nothing. This is
 /// what makes "新增能力缺失不会 no-op 成功" structural rather than a convention.
@@ -521,6 +529,14 @@ pub trait ResourceProvider: Send + Sync {
 
     /// The namespace shape every target is validated against.
     fn namespace_shape(&self) -> &NamespaceShape;
+
+    /// Borrow the already-held driver's handle for Host metadata adapters.
+    /// Implementations must validate ownership/epoch and live registration;
+    /// this never acquires, reconnects, or transfers resource ownership.
+    fn connection_handle(
+        &self,
+        handle: &ResourceHandle,
+    ) -> Result<crate::ConnectionHandle, ResourceError>;
 
     /// Describe what acquiring would give, without acquiring.
     async fn describe_resource(

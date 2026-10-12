@@ -10,6 +10,8 @@ mod admin_commands;
 mod catalog;
 mod connection;
 mod execution;
+mod fixed_session;
+mod resource_stream;
 mod migration;
 mod numeric;
 mod postgres;

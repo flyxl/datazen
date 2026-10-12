@@ -28,7 +28,7 @@ import {
 import type { SqlNamespace } from '../../../lib/sqlNamespace';
 import type { EditorSessionController } from '../../../lib/session/EditorSessionController';
 import { switchDatabaseSession } from '../../../lib/session/QueryPanelSession';
-import { switchResultPromptKey, sessionErrorPromptKey } from '../../../lib/session/sessionPrompts';
+import { switchResultPromptKey } from '../../../lib/session/sessionPrompts';
 import type { SessionView } from '@datazen/backend-client';
 
 export interface UseQueryContextPathOptions {
@@ -58,13 +58,12 @@ export function useQueryContextPath({
   namespaceTree,
   pathAliases,
   databases,
-  currentDatabase,
+  currentDatabase: _currentDatabase,
   sessionController,
   confirmTransactionSwitch,
   onSessionPrompt,
 }: UseQueryContextPathOptions) {
   const updatePanel = usePanelStore((s) => s.updatePanel);
-  const switchDatabase = useSchemaStore((s) => s.switchDatabase);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
   const [contextPath, setContextPath] = useState<string[]>(() => panelNamespacePath ?? []);
   const ensureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,102 +86,53 @@ export function useQueryContextPath({
 
   const applyContextPath = useCallback(
     async (next: string[]) => {
-      setContextPath(next);
-      if (isPathHierarchy) {
-        updatePanel(panelId, { namespacePath: next.length > 0 ? next : undefined });
-        if (next.length > 0) await ensureNamespacePath(next, dbSessionId);
+      const desired = {
+        database: next[0] ?? selectedDatabase ?? null,
+        catalog: null,
+        schema: isPathHierarchy ? null : next[1] ?? null,
+        path: isPathHierarchy ? next : [],
+      };
+      // Publish selection only after the runtime accepts the replacement.
+      // A cancelled transaction dialog or CAS conflict keeps the old selection.
+      if (!sessionController) return;
+      const result = await switchDatabaseSession({
+        controller: sessionController,
+        desired,
+        confirmTransaction: confirmTransactionSwitch,
+      });
+      if (result.status !== 'switched') {
+        const key = switchResultPromptKey(result);
+        if (key) onSessionPrompt?.(key, result.status === 'failed' && result.error instanceof Error
+          ? result.error.message : undefined);
         return;
       }
-      const db = next[0];
-      // Guard: in single-database mode the context-path root can be a *schema*
-      // (e.g. `public`) rather than a database — never hand a schema name to
-      // switchDatabase, which would run listTables('public') and pin the
-      // session's currentDatabase to a non-existent database.
-      if (db && databases.includes(db) && db !== currentDatabase) {
-        // Persist the database to the panel so that `selectedDatabase`
-        // (= database ?? currentDatabase) reflects the switch even when the
-        // panel already has a bound database from creation time.
-        updatePanel(panelId, { database: db });
-        // Route the switch through the two-phase session switch: the
-        // transaction confirmation and revision-conflict handling live there,
-        // and the prompt keys come from the shared sessionPrompts mapping.
-        // The legacy session pointer only moves when the switch succeeds.
-        if (sessionController) {
-          try {
-            const result = await switchDatabaseSession({
-              controller: sessionController,
-              desired: {
-                database: db,
-                catalog: null,
-                schema: null,
-                path: [],
-              },
-              confirmTransaction: confirmTransactionSwitch,
-              onRevisionConflict: (session) => {
-                onSessionPrompt?.(
-                  'query.session.revisionConflict',
-                  session?.observedContext?.namespace?.database ?? undefined,
-                );
-              },
-            });
-            if (result.status === 'switched') {
-              await switchDatabase(db, dbSessionId);
-            } else {
-              const key = switchResultPromptKey(result);
-              if (key) {
-                onSessionPrompt?.(
-                  key,
-                  result.status === 'failed' && result.error instanceof Error
-                    ? result.error.message
-                    : undefined,
-                );
-              }
-            }
-          } catch (error) {
-            onSessionPrompt?.(sessionErrorPromptKey(error));
-          }
-        } else {
-          await switchDatabase(db, dbSessionId);
-        }
-      }
+      setContextPath(next);
+      updatePanel(panelId, {
+        database: desired.database ?? undefined,
+        schema: desired.schema ?? undefined,
+        ...(isPathHierarchy ? { namespacePath: next.length ? next : undefined } : {}),
+      });
+      if (next.length) await ensureNamespacePath(next, dbSessionId);
     },
-    [
-      dbSessionId,
-      currentDatabase,
-      databases,
-      ensureNamespacePath,
-      isPathHierarchy,
-      panelId,
-      switchDatabase,
-      updatePanel,
-      sessionController,
-      confirmTransactionSwitch,
-      onSessionPrompt,
-    ],
+    [dbSessionId, selectedDatabase, ensureNamespacePath, isPathHierarchy, panelId,
+      updatePanel, sessionController, confirmTransactionSwitch, onSessionPrompt],
   );
 
   useEffect(() => {
     if (!isPathHierarchy) return;
     const next = autoCompletePathHierarchyPath(namespaceTree, pathAliases, databases, contextPath);
     if (next) {
-      void applyContextPath(next);
+      setContextPath(next);
+      void ensureNamespacePath(next, dbSessionId);
     }
-  }, [isPathHierarchy, namespaceTree, pathAliases, databases, contextPath, applyContextPath]);
+  }, [isPathHierarchy, namespaceTree, pathAliases, databases, contextPath, ensureNamespacePath, dbSessionId]);
 
   const handleSelectContextLevel = useCallback(
     (index: number, value: string) => {
       if (!value) return;
-      // Level 0 is always the database/catalog root. Sync it to the panel's
-      // bound `database` (for both plain and path-hierarchy drivers) so that
-      // re-execution and tab restoration keep using the tab's own database.
-      if (index === 0) updatePanel(panelId, { database: value });
-      // Level 1 is the PG-family schema envelope only for non-path-hierarchy
-      // drivers; in path-hierarchy trees it is a namespace level carried by
-      // `namespacePath`, not the panel schema.
-      if (!isPathHierarchy && index === 1) updatePanel(panelId, { schema: value });
       void applyContextPath([...contextPath.slice(0, index), value]);
     },
-    [applyContextPath, contextPath, panelId, updatePanel, isPathHierarchy],
+    [applyContextPath, contextPath],
   );
 
   const handleQualifiedPath = useCallback(
@@ -193,7 +143,9 @@ export function useQueryContextPath({
       }, 120);
       const roots = new Set(namespaceRootsFrom(namespaceTree, pathAliases, databases));
       if (parents[0] && roots.has(parents[0]) && !pathsEqual(parents, contextPath)) {
-        void applyContextPath(parents);
+        // SQL qualification drives browsing and completion only. It cannot
+        // prove that execution changed the session namespace.
+        setContextPath(parents);
       }
     },
     [

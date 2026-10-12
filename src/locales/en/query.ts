@@ -81,11 +81,13 @@ const pack = {
   'query.cancelled': 'Query cancelled',
   'query.session.closeBlocked':
     'The session could not be closed. Resolve its transaction or running execution, then close it again.',
-  'query.session.transactionSwitchConfirm': 'A transaction is active. Switch database anyway?',
+  'query.session.transactionSwitchConfirm': 'A transaction is active. Roll it back and switch database?',
   'query.session.revisionConflict':
     'The context changed since you started. Reload the latest state and try again.',
   'query.session.switchFailed': 'Could not switch database: {message}',
   'query.session.closeTabActiveExecution': 'This tab has a running query. Close it anyway?',
+  'query.resultEditRequiresRefresh': 'Execute the query again before editing this retained result.',
+  'query.session.openNew': 'Open new session',
   'query.session.disconnected': 'The connection was lost. Re-open a session to continue.',
   'query.session.executionFailed': 'The query failed: {message}',
   'query.session.cancelledRetry': 'The query was cancelled. You can run it again.',

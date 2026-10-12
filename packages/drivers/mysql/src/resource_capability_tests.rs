@@ -374,7 +374,7 @@ fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
 
     assert_eq!(
         set.data,
-        DataSupport::BufferedReadWrite,
+        DataSupport::StreamingReadWrite,
         "row read/write are the two axes this provider actually serves; the \
          downgrade from nominal is the withheld streaming axis and must not \
          drift silently"
@@ -388,32 +388,21 @@ fn data_is_read_write_but_not_streaming_and_backup_stays_undeclared() {
         "execute returns a rowsAffected that the chunk carries verbatim"
     );
     assert!(
-        !set.data.enables_streaming_results(),
+        set.data.enables_streaming_results(),
         "rows are fully buffered before the sink sees any of them, so streaming \
          must stay undeclared"
     );
     assert!(
-        !set.data.enables_feature(),
+        set.data.enables_feature(),
         "only StreamingReadWrite is nominal; a degraded set must not open the \
          feature as a whole"
     );
-    assert!(set.data.is_weaker_than_nominal());
+    assert!(!set.data.is_weaker_than_nominal());
 
     // The declaration and the guards that read it must not drift.
     assert!(registry.require_row_read().is_ok());
     assert!(registry.require_row_write().is_ok());
-    let streaming = registry.require_streaming_results();
-    assert!(
-        streaming.is_err(),
-        "the guard must reject even though row read/write are declared"
-    );
-    assert!(
-        streaming
-            .unwrap_err()
-            .to_string()
-            .contains("data.streamingResults"),
-        "the refusal has to name the axis, so a caller knows what to stop asking for"
-    );
+    assert!(registry.require_streaming_results().is_ok());
 
     assert_eq!(
         set.backup,

@@ -146,6 +146,7 @@ struct WaiterGuard {
     ledger: Arc<Mutex<BudgetLedger>>,
     wakeup: Arc<Notify>,
     waiter: Option<WaiterId>,
+    clock: Arc<dyn BudgetClock>,
 }
 
 impl WaiterGuard {
@@ -161,8 +162,16 @@ impl Drop for WaiterGuard {
         };
         {
             let mut ledger = lock_ledger(&self.ledger);
-            // 取消只改队列，不动任何额度计数：名额本来就没预留，取消不该改变可用额度。
+            // Remove this waiter only. A scheduler may already have granted its
+            // permit before the future observed it; return that unused grant too.
             ledger.cancel(waiter);
+            let granted = ledger
+                .permits()
+                .find(|record| record.waiter == Some(waiter))
+                .map(|record| record.to_port_permit());
+            if let Some(permit) = granted {
+                ledger.release(&permit, false, self.clock.now_ms());
+            }
         }
         self.wakeup.notify_waiters();
     }
@@ -231,6 +240,16 @@ impl InProcessBudgetCoordinator {
         inspect(&ledger)
     }
 
+    /// Session quota mutation shares the physical permit ledger. Callers must not
+    /// recreate occupancy accounting alongside this ledger.
+    pub fn mutate_ledger<R>(&self, mutate: impl FnOnce(&mut BudgetLedger) -> R) -> R {
+        let mut ledger = lock_ledger(&self.ledger);
+        let result = mutate(&mut ledger);
+        drop(ledger);
+        self.wakeup.notify_waiters();
+        result
+    }
+
     /// 推进一轮调度并唤醒所有等待者。
     ///
     /// 额度一有变化（核销、关连接、时钟到期）就必须调它，否则等待者会一直挂着。
@@ -293,7 +312,17 @@ impl InProcessBudgetCoordinator {
         request: &BudgetRequest,
         timeout_ms: u64,
     ) -> Result<BudgetPermit, PortError> {
-        let claim = self.claim_of(request);
+        self.acquire_claim_with(&self.claim_of(request), timeout_ms)
+            .await
+    }
+
+    /// Internal authenticated-class admission. Physical cost is one atomic claim,
+    /// and waiting uses the same fairness queues and cancellation guard as the port.
+    pub async fn acquire_claim_with(
+        &self,
+        claim: &BudgetClaim,
+        timeout_ms: u64,
+    ) -> Result<BudgetPermit, PortError> {
         let started_ms = self.clock.now_ms();
         let deadline_ms = started_ms.saturating_add(timeout_ms);
 
@@ -327,6 +356,7 @@ impl InProcessBudgetCoordinator {
             ledger: Arc::clone(&self.ledger),
             wakeup: Arc::clone(&self.wakeup),
             waiter: Some(waiter),
+            clock: self.clock.clone(),
         };
         loop {
             // 先注册再复查：`Notified::enable()` 把「注册」提到复查之前，
@@ -335,10 +365,16 @@ impl InProcessBudgetCoordinator {
             tokio::pin!(notified);
             notified.as_mut().enable();
             if let Some(result) = self.settle(&claim, waiter, deadline_ms) {
-                guard.disarm();
+                if result.is_ok() {
+                    guard.disarm();
+                }
                 return result;
             }
-            notified.await;
+            let remaining = deadline_ms.saturating_sub(self.clock.now_ms());
+            tokio::select! {
+                _ = notified => {},
+                _ = tokio::time::sleep(std::time::Duration::from_millis(remaining)) => {},
+            }
         }
     }
 
@@ -347,7 +383,7 @@ impl InProcessBudgetCoordinator {
     /// 顺序很重要：**先判 deadline，再试准入**。否则超时之后的一次机会会被当成正常放行。
     fn settle(
         &self,
-        claim: &BudgetClaim,
+        _claim: &BudgetClaim,
         waiter: WaiterId,
         deadline_ms: u64,
     ) -> Option<Result<BudgetPermit, PortError>> {
@@ -356,31 +392,42 @@ impl InProcessBudgetCoordinator {
         if now_ms >= deadline_ms {
             return Some(Err(timeout_error(deadline_ms)));
         }
-        match ledger.try_admit(claim, now_ms) {
-            AdmitOutcome::Granted(record) => Some(Ok(record.to_port_permit())),
-            AdmitOutcome::Denied(reason) => Some(Err(port_error(&reason))),
-            AdmitOutcome::Busy(_) => {
-                let report = ledger.pump(now_ms);
-                if report.timed_out.contains(&waiter) {
-                    return Some(Err(timeout_error(deadline_ms)));
-                }
-                report
-                    .granted
-                    .iter()
-                    .find(|record| record.waiter == Some(waiter))
-                    .map(|record| Ok(record.to_port_permit()))
-                    // 放行也可能发生在**别的** pumping 点上（例如别人 release 触发的
-                    // [`InProcessBudgetCoordinator::advance`]）：那次 pumping 已经把
-                    // waiter 从队列里摘走并签发了 permit，这里自己的 pumping 自然什么也
-                    // 放不出来。只看自己这一轮的报告会让已获批的等待者一直挂到 deadline。
-                    .or_else(|| {
-                        ledger
-                            .permits()
-                            .find(|record| record.waiter == Some(waiter))
-                            .map(|record| Ok(record.to_port_permit()))
-                    })
-            }
+        let report = ledger.pump(now_ms);
+        if report.timed_out.contains(&waiter) {
+            return Some(Err(timeout_error(deadline_ms)));
         }
+        let settled = ledger
+            .permits()
+            .find(|record| record.waiter == Some(waiter))
+            .map(|record| Ok(record.to_port_permit()));
+        let awakened = !report.granted.is_empty();
+        drop(ledger);
+        if awakened {
+            self.wakeup.notify_waiters();
+        }
+        settled
+    }
+    /// Atomic declared physical cost. Multi-slot claims either reserve every
+    /// slot now or fail; they never hold partial slots while waiting.
+    pub fn acquire_cost_now(&self, claim: &BudgetClaim) -> Result<Vec<BudgetPermit>, PortError> {
+        let now = self.clock.now_ms();
+        let mut ledger = lock_ledger(&self.ledger);
+        if claim.slots == 0 || claim.slots > ledger.config().service_quota.total {
+            return Err(PortError::QuotaExceeded("declared physical cost".into()));
+        }
+        ledger.ensure_service(&claim.connection_id);
+        let mut unit = claim.clone();
+        unit.slots = 1;
+        let claims = vec![unit; claim.slots as usize];
+        ledger
+            .try_admit_many(&claims, now)
+            .map(|records| {
+                records
+                    .into_iter()
+                    .map(|record| record.to_port_permit())
+                    .collect()
+            })
+            .map_err(|reason| port_error(&reason))
     }
 
     fn claim_of(&self, request: &BudgetRequest) -> BudgetClaim {

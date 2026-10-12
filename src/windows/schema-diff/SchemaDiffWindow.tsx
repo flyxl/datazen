@@ -18,7 +18,7 @@ import {
   type SchemaDiffObjectIdentity,
   type SchemaDiffPlan,
 } from '../../commands/schemaDiff';
-import { databaseCommands } from '../../commands/database';
+import { discoverSchemaDiffObjects, discoveryFailure, SchemaObjectDiscoveryError } from './schemaDiffObjectDiscovery';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useLocaleDomains } from '../../hooks/useLocaleDomains';
@@ -57,7 +57,6 @@ import {
   enabledTableNames,
   enabledSourceTableNames,
   enabledTargetOnlyTableNames,
-  mergeSchemaDiffTablePicks,
   tableDiffHasChanges,
   type SchemaDiffTablePick,
 } from './schemaDiffTableNames';
@@ -97,7 +96,15 @@ export function SchemaDiffWindow() {
     storageKey: 'schema-diff.table-list',
   });
 
-  const endpoints = useSchemaDiffEndpoints({ onError: setError });
+  const [discoveryDiagnostic, setDiscoveryDiagnostic] = useState('');
+  const clearEndpointError = useCallback((message: string) => {
+    setError((current) => (current === message ? '' : current));
+  }, []);
+  const endpoints = useSchemaDiffEndpoints({
+    onError: setError,
+    onClearError: clearEndpointError,
+    onDiscoveryFailure: setDiscoveryDiagnostic,
+  });
   const jobLifecycle = useSchemaDiffJobLifecycle();
   useSchemaDiffJobRestore({ currentJob: jobLifecycle.currentJob, setDeployResult });
 
@@ -194,44 +201,21 @@ export function SchemaDiffWindow() {
     (profile) => profile.id === savedSetups.selectedProfileId,
   );
 
-  const loadSourceTables = useCallback(async () => {
-    if (!endpoints.validateEndpoints()) return;
+  const loadSourceTables = useCallback(async (): Promise<boolean> => {
+    if (!endpoints.validateEndpoints()) return false;
     setObjectsLoading(true);
     setError('');
+    setDiscoveryDiagnostic('');
     try {
-      const srcConnId = await endpoints.ensureConnected('source');
-      const tgtConnId = await endpoints.ensureConnected('target');
-      if (!srcConnId || !tgtConnId) return;
-      const [sourceRows, targetRows] = await Promise.all([
-        databaseCommands.listTables(srcConnId, endpoints.sourceDatabase),
-        databaseCommands.listTables(tgtConnId, endpoints.targetDatabase),
-      ]);
-      const catalog = await unifiedObjects.load(
-        srcConnId,
-        tgtConnId,
-        endpoints.sourceDatabase,
-        endpoints.targetDatabase,
-        endpoints.sourceSchema,
-        endpoints.targetSchema,
-      );
-      if (catalog) {
-        unifiedObjects.restoreSelection(
-          catalog,
-          unifiedObjects.selectedSourceObjects,
-          unifiedObjects.selectedTargetObjects,
-        );
-      }
-      setTablePicks(
-        mergeSchemaDiffTablePicks(
-          sourceRows,
-          targetRows,
-          endpoints.sourceSchema || undefined,
-          endpoints.targetSchema || undefined,
-        ),
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const picks = await discoverSchemaDiffObjects(endpoints, unifiedObjects);
+      if (!picks) return false;
+      setTablePicks(picks);
+      return true;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+      setDiscoveryDiagnostic(error instanceof SchemaObjectDiscoveryError ? error.diagnostic : discoveryFailure('object-catalog', error));
       setTablePicks([]);
+      return false;
     } finally {
       setObjectsLoading(false);
     }
@@ -526,7 +510,7 @@ export function SchemaDiffWindow() {
       return;
     }
     if (next === 'objects' && tablePicks.length === 0) {
-      await loadSourceTables();
+      if (!await loadSourceTables()) return;
     }
     if (next) setStep(next);
   }, [
@@ -660,6 +644,7 @@ export function SchemaDiffWindow() {
     <div
       className="flex h-screen min-h-0 flex-col bg-surface text-fg"
       data-testid="schema-diff-window"
+      data-discovery-failure={discoveryDiagnostic || undefined}
     >
       <TitleBar
         title={t('common.schemaDiff')}

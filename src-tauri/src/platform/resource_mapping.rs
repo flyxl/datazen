@@ -97,6 +97,9 @@ pub fn error(error: ResourceError) -> rc::ProviderError {
         ResourceError::SinkRejected { .. } => {
             rc::ProviderError::ProtocolError("result delivery failed".into())
         }
+        ResourceError::Driver(datazen_driver_api::DriverError::SessionLost) => {
+            rc::ProviderError::ResourceLost("retained physical session lost".into())
+        }
         ResourceError::Driver(_) => rc::ProviderError::SqlError("driver execution failed".into()),
     }
 }

@@ -48,7 +48,7 @@ pub fn enforce_workflow_query_guards(
     Ok(())
 }
 
-/// Decide whether a query step must name a database before it can run.
+/// Decide whether a SQL step must name a database before it can run.
 ///
 /// True only when all three hold: the step (and workflow) resolved nothing,
 /// the connection pins no default of its own, and the driver can address more
@@ -294,18 +294,27 @@ impl WorkflowExecutor {
                     _ => {
                         let timeout = step.timeout_secs().unwrap_or(30);
                         let started = Instant::now();
-                        let result = tokio::time::timeout(
-                            std::time::Duration::from_secs(timeout),
-                            Self::execute_single_step(
-                                step,
-                                app_state,
-                                connection_id,
-                                workflow_database,
-                                context,
-                                options,
-                            ),
-                        )
-                        .await;
+                        let execution = Self::execute_single_step(
+                            step,
+                            app_state,
+                            connection_id,
+                            workflow_database,
+                            context,
+                            options,
+                        );
+                        // SQL owns its deadline so dropping a future cannot release
+                        // Skip/Fallback before the database reaches a terminal state.
+                        let is_sql = matches!(step, WorkflowStep::Query { .. })
+                            || matches!(step, WorkflowStep::Command { command, .. } if matches!(command.as_str(), "query" | "execute"));
+                        let result = if is_sql {
+                            Ok(execution.await)
+                        } else {
+                            tokio::time::timeout(
+                                std::time::Duration::from_secs(timeout),
+                                execution,
+                            )
+                            .await
+                        };
                         let elapsed = started.elapsed().as_millis() as u64;
                         match result {
                             Ok(Ok(mut sr)) => {
@@ -375,10 +384,13 @@ impl WorkflowExecutor {
         options: &WorkflowExecuteOptions,
     ) -> Result<(), WorkflowError> {
         let err_text = err.to_string();
-        match step
-            .on_error_strategy()
-            .unwrap_or_else(|| default_strategy.clone())
-        {
+        let strategy = if matches!(&err, WorkflowError::SqlUnconfirmed { .. }) {
+            ErrorStrategy::Abort
+        } else {
+            step.on_error_strategy()
+                .unwrap_or_else(|| default_strategy.clone())
+        };
+        match strategy {
             ErrorStrategy::Abort => {
                 step_results.push(StepExecutionResult {
                     step_id: step.step_id().into(),
@@ -407,6 +419,19 @@ impl WorkflowExecutor {
                 Ok(())
             }
             ErrorStrategy::Fallback { steps } => {
+                // Retain the failed SQL execution evidence even when fallback succeeds.
+                if matches!(&err, WorkflowError::SqlExecution { .. } | WorkflowError::SqlResultRead { .. }) {
+                    step_results.push(StepExecutionResult {
+                        step_id: step.step_id().into(),
+                        step_type: step.step_type_str().into(),
+                        status: StepStatus::Failed,
+                        result: None,
+                        execution_time_ms: elapsed,
+                        error: Some(err_text),
+                        connection_name: None,
+                        sql_executed: None,
+                    });
+                }
                 Self::execute_steps(
                     &steps,
                     app_state,
@@ -453,46 +478,6 @@ impl WorkflowExecutor {
                     .as_deref()
                     .map(|s| context.resolve_template(s))
                     .transpose()?;
-                // A query step must land on a known database. If the step, the
-                // workflow AND the connection all leave it unset, the driver
-                // quietly falls back to its own default (PostgreSQL hardcodes
-                // `"postgres"` in `resolve_connect_database`) and the user sees
-                // a misleading `relation "..." does not exist` much later.
-                //
-                // Only multi-database drivers are gated: a driver with a single
-                // fixed database has nothing to disambiguate, and erroring
-                // there would break workflows that legitimately omit it.
-                if resolved_database.is_none() {
-                    let effective_connection = resolved_step_connection
-                        .clone()
-                        .or_else(|| workflow_connection.map(str::to_string));
-                    if let Some(connection_id) = effective_connection {
-                        let config = app_state
-                            .store
-                            .platform_profile(&connection_id)
-                            .await
-                            .map(|(config, _)| config);
-                        let multi_db = match config.as_ref() {
-                            Some(c) => app_state
-                                .driver_registry
-                                .get_capabilities(&c.database_type)
-                                .await
-                                .map(|caps| caps.has_multi_database)
-                                .unwrap_or(false),
-                            None => false,
-                        };
-                        if database_is_required(
-                            resolved_database.as_deref(),
-                            config.as_ref().and_then(|c| c.database.as_deref()),
-                            multi_db,
-                        ) {
-                            return Err(WorkflowError::MissingDatabase {
-                                step_id: id.clone(),
-                                connection_id,
-                            });
-                        }
-                    }
-                }
                 let command = WorkflowCommandStep::from_legacy_query(
                     id.clone(),
                     context.resolve_template(sql)?,

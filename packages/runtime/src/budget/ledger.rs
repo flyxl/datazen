@@ -206,6 +206,12 @@ impl BudgetLedger {
                 });
             }
         }
+        if self.physical(&claim.connection_id) >= self.config.service_physical_connections {
+            return AdmitOutcome::Busy(DenialReason::PhysicalExhausted {
+                connection_id: claim.connection_id.clone(),
+                cap: self.config.service_physical_connections,
+            });
+        }
         let quota = self.config.service_quota;
         let capacity = self.config.capacity_of(claim.class);
         let Some(mut service) = self.services.remove(&claim.connection_id) else {
@@ -415,6 +421,16 @@ impl BudgetLedger {
             self.consumed_total = self.consumed_total.saturating_add(1);
         } else {
             self.returned_total = self.returned_total.saturating_add(1);
+        }
+        if self.retired.len() >= 4096 {
+            if let Some(old) = self
+                .retired
+                .iter()
+                .min_by_key(|(_, retirement)| retirement.released_at_ms)
+                .map(|(id, _)| id.clone())
+            {
+                self.retired.remove(&old);
+            }
         }
         self.retired.insert(
             record.permit_id.clone(),

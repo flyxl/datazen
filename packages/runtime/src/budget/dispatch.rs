@@ -41,7 +41,14 @@ impl BudgetLedger {
                 );
             }
             if !service.draining {
-                dispatch_service(self, &mut service, &config, now_ms, &mut report);
+                dispatch_service(
+                    self,
+                    &connection_id,
+                    &mut service,
+                    &config,
+                    now_ms,
+                    &mut report,
+                );
             }
             self.services.insert(connection_id, service);
         }
@@ -52,6 +59,7 @@ impl BudgetLedger {
 /// 先走保留额（本类专属，不参与轮转），再走共享池 `4:2:1`。
 fn dispatch_service(
     ledger: &mut BudgetLedger,
+    connection_id: &datazen_platform_api::id::ConnectionId,
     service: &mut ServiceState,
     config: &BudgetConfig,
     now_ms: u64,
@@ -63,6 +71,16 @@ fn dispatch_service(
     loop {
         let mut granted_any = false;
         for class in ResourceClass::ALL {
+            if service.physical.saturating_add(
+                ledger
+                    .permits
+                    .values()
+                    .filter(|record| record.connection_id == *connection_id)
+                    .count() as u32,
+            ) >= config.service_physical_connections
+            {
+                return;
+            }
             let headroom = service
                 .classes
                 .bucket(class)
@@ -90,6 +108,16 @@ fn dispatch_service(
     }
     // 共享池：加权轮转，跳过空队列。
     while service.shared_used < config.service_quota.shared {
+        if service.physical.saturating_add(
+            ledger
+                .permits
+                .values()
+                .filter(|record| record.connection_id == *connection_id)
+                .count() as u32,
+        ) >= config.service_physical_connections
+        {
+            return;
+        }
         let Some(class) = service.rr.pick(&service.queues) else {
             break;
         };

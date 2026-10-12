@@ -14,7 +14,6 @@ import { ExplainPanel } from '../../../components/ai/ExplainPanel';
 import { ResultWorkspace } from '../result-workspace';
 import { AddToDashboardDialog } from '../../dashboard/AddToDashboardDialog';
 import { DataExportDialog } from '../../../components/DataTable/DataExportDialog';
-import { queryCommands } from '../../../commands/query';
 import { isAbortedTransactionError } from '../../../lib/sqlTransactionGuard';
 import { useI18n } from '../../../hooks/useI18n';
 import { cn } from '../../../lib/cn';
@@ -34,7 +33,7 @@ export interface UseQueryTransactionOptions {
 }
 
 export function useQueryTransaction({
-  dbSessionId,
+  dbSessionId: _dbSessionId,
   paneKey,
   connectionId,
   database,
@@ -56,20 +55,16 @@ export function useQueryTransaction({
 
   const readTxStatus = useCallback(async () => {
     const controller = await ownedController();
-    if (!controller) return queryCommands.sessionTransactionStatus(dbSessionId);
+    if (!controller) throw new Error('Query transaction requires a persistent connection owner');
     const session = await controller.refresh();
     const state = session?.observedContext?.transactionState;
     return state === 'active' || state === 'aborted' || state === 'unknown';
-  }, [ownedController, dbSessionId]);
+  }, [ownedController]);
 
   const transaction = useCallback(
     async (operation: 'begin' | 'commit' | 'rollback') => {
       const controller = await ownedController();
-      if (!controller) {
-        if (operation === 'begin') return queryCommands.beginSessionTransaction(dbSessionId);
-        if (operation === 'commit') return queryCommands.commitSessionTransaction(dbSessionId);
-        return queryCommands.rollbackSessionTransaction(dbSessionId);
-      }
+      if (!controller) throw new Error('Query transaction requires a persistent connection owner');
       const receipt = await controller.execute({
         command: `platform.${operation}Transaction`,
         input: { defersCommit: true },
@@ -84,7 +79,7 @@ export function useQueryTransaction({
       }
       await controller.refresh();
     },
-    [ownedController, dbSessionId],
+    [ownedController],
   );
 
   const refreshTxStatus = useCallback(async () => {
@@ -321,6 +316,7 @@ export function FavoriteNameDialog({
 }
 
 export interface QueryResultsPaneProps {
+  onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
   dbSessionId: string;
   databaseType?: string;
   sql: string;
@@ -360,6 +356,7 @@ export interface QueryResultsPaneProps {
 }
 
 export function QueryResultsPane({
+  onCellEdit,
   dbSessionId,
   databaseType,
   sql,
@@ -575,6 +572,7 @@ export function QueryResultsPane({
                 )}
                 <ResultWorkspace
                   result={activeResult}
+                  onCellEdit={running ? undefined : onCellEdit}
                   view={running ? 'table' : resultViewMode}
                   chartConfig={chartConfig}
                   rowDetailIndex={resultDetailRowIndex}

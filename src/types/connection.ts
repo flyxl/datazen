@@ -167,6 +167,9 @@ export interface QueryResult {
 }
 
 export interface StatementResult {
+  source?: import('@datazen/backend-client').StatementResultSource | null;
+  runtimeBinding?: import('@datazen/backend-client').RuntimeResultBinding | null;
+  provenance?: import('@datazen/backend-client').ResultProvenance | null;
   sql: string;
   columns: ColumnInfo[];
   rows: (Value | null)[][];
@@ -186,6 +189,7 @@ export type QueryStreamEvent =
   | { type: 'executionStarted'; executionId: string }
   | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
   | { type: 'rows'; index: number; rows: (Value | null)[][] }
+  | { type: 'statementSnapshot'; index: number; result: StatementResult }
   | {
       type: 'statementEnd';
       index: number;

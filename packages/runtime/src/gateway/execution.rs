@@ -69,6 +69,37 @@ impl ExecutionGateway {
         }
     }
 
+    /// The application owns issued-token lifetime. Keep every live admission or
+    /// execution; forget only expired terminal receipts. Unknown fences survive
+    /// for as long as their original session can accept a write.
+    pub(crate) async fn reclaim_external_receipts(
+        &self,
+        retain_key: impl Fn(&str) -> bool,
+        active: &std::collections::HashSet<ExecutionId>,
+        live_sessions: &std::collections::HashSet<String>,
+    ) {
+        let mut state = self.state.lock().await;
+        let retired: Vec<_> = state
+            .records
+            .iter()
+            .filter(|(id, record)| !active.contains(*id) && !retain_key(&record.idempotency_key))
+            .map(|(id, record)| {
+                (
+                    id.clone(),
+                    IdempotencyScope::from_handle(&record.handle, &record.idempotency_key),
+                )
+            })
+            .collect();
+        for (id, scope) in retired {
+            if self.ledger.forget(&scope).is_ok() {
+                state.records.remove(&id);
+            }
+        }
+        state
+            .unverified
+            .retain(|fence| live_sessions.contains(&fence.db_session_id));
+    }
+
     /// 已装配的令牌闸门。`None` 即未装配。
     pub fn submission_tokens(&self) -> Option<&Arc<SubmissionTokenGuard>> {
         self.tokens.as_ref()
@@ -187,6 +218,11 @@ impl ExecutionGateway {
                             "同一写入存在结局未知的尝试（指纹 {}），自动重试已被拒绝；                             核验后请显式调用 resolve_unknown_outcome",
                             fingerprint.as_str()
                         ),
+                    });
+                }
+                if state.records.len() >= 4096 {
+                    return Err(GatewayError::InvalidRequest {
+                        reason: "executionCapacityReached",
                     });
                 }
                 request.check_context_revision(view.context_revision)?;

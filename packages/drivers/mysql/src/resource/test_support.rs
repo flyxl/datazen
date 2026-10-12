@@ -329,6 +329,28 @@ impl DatabaseDriver for FakeMysql {
         Ok(())
     }
 
+    async fn query_to_sink(
+        &self,
+        handle: &ConnectionHandle,
+        _execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<u32>,
+        _parameters: Option<&[Value]>,
+        sink: &dyn ResultSink,
+    ) -> Result<Vec<StatementResult>, ResourceError> {
+        let mut results = self.query_multi(handle, sql, limit).await?.results;
+        for (statement_index, statement) in results.iter_mut().enumerate() {
+            sink.write(ResultChunk {
+                statement_index,
+                sql: statement.sql.clone(),
+                rows: std::mem::take(&mut statement.rows),
+                rows_affected: statement.rows_affected,
+            })
+            .await?;
+        }
+        Ok(results)
+    }
+
     async fn execute_command(
         &self,
         _handle: &ConnectionHandle,
@@ -348,6 +370,7 @@ impl DatabaseDriver for FakeMysql {
 #[derive(Default)]
 pub(crate) struct RecordingSink {
     pub(crate) chunks: Mutex<Vec<ResultChunk>>,
+    pub(crate) outputs: Mutex<Vec<serde_json::Value>>,
     pub(crate) completed: AtomicUsize,
 }
 
@@ -358,6 +381,14 @@ impl ResultSink for RecordingSink {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .push(chunk);
+        Ok(())
+    }
+
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .push(output);
         Ok(())
     }
 
@@ -470,8 +501,8 @@ pub(crate) fn test_config() -> ConnectionConfig {
 
 pub(crate) fn scope() -> ResourceScope {
     ResourceScope {
-        purpose: ResourcePurpose::InteractiveQuery,
-        max_physical_connections: 1,
+        purpose: ResourcePurpose::MetadataInspection,
+        max_physical_connections: test_config().effective_max_pool_size() + 1,
         holds_open_transaction: false,
         pin_for_streaming: false,
     }

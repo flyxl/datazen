@@ -150,6 +150,9 @@ impl OverheadSamples {
     }
 
     pub fn push(&mut self, sample: RequestOverhead) {
+        if self.values.len() >= 4096 {
+            self.values.remove(0);
+        }
         self.values.push(sample);
     }
 

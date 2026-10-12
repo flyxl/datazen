@@ -43,6 +43,7 @@ pub struct ExecutionBinding {
 pub struct HandleRegistry {
     handles: Vec<SessionHandleRef>,
     bindings: Vec<ExecutionBinding>,
+    retired: Vec<SessionHandleRef>,
 }
 
 impl HandleRegistry {
@@ -65,6 +66,71 @@ impl HandleRegistry {
             seen.push(&candidate.handle_id);
         }
         self.handles.extend(handles);
+        Ok(self.handles.len())
+    }
+
+    /// Apply explicit driver observations atomically. An identical live handle is
+    /// an observation of the same resource; only an exact closed observation retires it.
+    /// Missing handles never imply closure.
+    pub fn observe(
+        &mut self,
+        observations: Vec<SessionHandleRef>,
+        resource: &str,
+        epoch: u64,
+    ) -> Result<usize, RuntimeError> {
+        let mut updated = self.handles.clone();
+        let mut retired = self.retired.clone();
+        let mut seen = Vec::new();
+        for observation in observations {
+            if observation.resource_id.as_str() != resource
+                || observation.runtime_epoch.get() != epoch
+                || seen.contains(&observation.handle_id)
+            {
+                return Err(RuntimeError::InvariantBroken(
+                    "handleObservationBindingMismatch",
+                ));
+            }
+            seen.push(observation.handle_id.clone());
+            if let Some(position) = updated
+                .iter()
+                .position(|held| held.handle_id == observation.handle_id)
+            {
+                let held = &updated[position];
+                if held.kind != observation.kind
+                    || held.resource_id != observation.resource_id
+                    || held.runtime_epoch != observation.runtime_epoch
+                {
+                    return Err(RuntimeError::InvariantBroken(
+                        "handleObservationIdentityMismatch",
+                    ));
+                }
+                if observation.closed {
+                    retired.push(updated.remove(position));
+                }
+            } else if observation.closed {
+                if !retired.iter().any(|held| {
+                    held.handle_id == observation.handle_id
+                        && held.kind == observation.kind
+                        && held.resource_id == observation.resource_id
+                        && held.runtime_epoch == observation.runtime_epoch
+                }) {
+                    return Err(RuntimeError::InvariantBroken("unregisteredClosedHandle"));
+                }
+            } else {
+                if retired
+                    .iter()
+                    .any(|held| held.handle_id == observation.handle_id)
+                {
+                    return Err(RuntimeError::InvariantBroken("retiredHandleReactivated"));
+                }
+                updated.push(observation);
+            }
+        }
+        self.handles = updated;
+        if retired.len() > 64 {
+            retired.drain(..retired.len() - 64);
+        }
+        self.retired = retired;
         Ok(self.handles.len())
     }
 
@@ -91,9 +157,21 @@ impl HandleRegistry {
     /// 注销按 `handle_id` 精确匹配；不在账上的 id 直接忽略（重复注销不得二次生效）。
     /// 返回注销之后账上剩余的句柄数。
     pub fn retire(&mut self, finalized: &[SessionHandleRef]) -> usize {
-        let retired: Vec<&HandleId> = finalized.iter().map(|handle| &handle.handle_id).collect();
-        self.handles
-            .retain(|held| !retired.contains(&&held.handle_id));
+        self.handles.retain(|held| {
+            let matched = finalized.iter().any(|candidate| {
+                held.handle_id == candidate.handle_id
+                    && held.kind == candidate.kind
+                    && held.resource_id == candidate.resource_id
+                    && held.runtime_epoch == candidate.runtime_epoch
+            });
+            if matched {
+                self.retired.push(held.clone());
+            }
+            !matched
+        });
+        if self.retired.len() > 64 {
+            self.retired.drain(..self.retired.len() - 64);
+        }
         self.handles.len()
     }
 

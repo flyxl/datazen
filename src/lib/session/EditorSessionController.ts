@@ -9,6 +9,7 @@ import { counterValue, sameHandle } from './counters';
 
 /** One instance per editor/pane. Runtime handles never leave this in-memory owner. */
 export class EditorSessionController {
+  private latestTarget: ExecutionTarget;
   private session: SessionView | null = null;
   private opening: Promise<SessionView> | null = null;
   private tail: Promise<unknown> = Promise.resolve();
@@ -20,9 +21,33 @@ export class EditorSessionController {
     readonly client: BackendClient,
     readonly initialTarget: ExecutionTarget,
     readonly owner: OwnerRef,
-  ) {}
+  ) { this.latestTarget = initialTarget; }
 
   get snapshot(): SessionView | null { return this.session; }
+  /** Project a lost resource without replacing its handle or execution receipt. */
+  markSessionLost(handle: SessionHandle | null = this.session?.handle ?? null): void {
+    if (!handle || !this.session || !sameHandle(handle, this.session.handle)) return;
+    this.session = { ...this.session, state: 'lost', observedContext: {
+      ...this.session.observedContext, transactionState: 'unknown',
+    } };
+    this.publish();
+  }
+  acceptSessionError(error: unknown, handle: SessionHandle | null = this.session?.handle ?? null): boolean {
+    if (!(error instanceof ApiError) || !['SessionLost', 'SessionNotFound', 'RuntimeEpochMismatch'].includes(error.code)) return false;
+    this.markSessionLost(handle);
+    return true;
+  }
+  async getExecution(executionId: ExecutionReceipt['executionId']) {
+    const handle = this.session?.handle ?? null;
+    try {
+      const view = await this.client.getExecution(executionId);
+      if (view.errorCode === 'resourceLost') this.markSessionLost(handle);
+      return view;
+    } catch (error) {
+      this.acceptSessionError(error, handle);
+      throw error;
+    }
+  }
   get activeExecution(): ExecutionReceipt | null { return this.execution; }
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -51,9 +76,10 @@ export class EditorSessionController {
       this.opening = (async () => {
         const token = await this.token('openSession');
         const receipt = await this.client.openSession({
-          initialTarget: this.initialTarget, owner: this.owner, idempotencyKey: token.idempotencyKey,
+          initialTarget: this.latestTarget, owner: this.owner, idempotencyKey: token.idempotencyKey,
         }, token);
         this.session = receipt.session;
+        if (receipt.session.observedContext.confidence === 'confirmed') this.latestTarget = { ...this.latestTarget, namespace: receipt.session.observedContext.namespace };
         this.attachmentToken = receipt.attachmentToken;
         this.publish();
         return receipt.session;
@@ -65,14 +91,19 @@ export class EditorSessionController {
   execute(call: CommandCall): Promise<ExecutionReceipt> {
     return this.serial(async () => {
       const session = await this.ensureSession();
-      const token = await this.token('executeInSession');
-      const receipt = await this.client.executeInSession({
-        handle: session.handle, expectedContextRevision: session.contextRevision,
-        call, idempotencyKey: token.idempotencyKey,
-      }, token);
-      this.execution = receipt;
-      this.publish();
-      return receipt;
+      try {
+        const token = await this.token('executeInSession');
+        const receipt = await this.client.executeInSession({
+          handle: session.handle, expectedContextRevision: session.contextRevision,
+          call, idempotencyKey: token.idempotencyKey,
+        }, token);
+        this.execution = receipt;
+        this.publish();
+        return receipt;
+      } catch (error) {
+        this.acceptSessionError(error, session.handle);
+        throw error;
+      }
     });
   }
 
@@ -103,6 +134,7 @@ export class EditorSessionController {
       }, token);
       // Failed revision/transaction/replacement leaves the previous handle intact.
       this.session = receipt.session;
+      if (receipt.session.observedContext.confidence === 'confirmed') this.latestTarget = { ...this.latestTarget, namespace: receipt.session.observedContext.namespace };
       if (receipt.attachmentToken !== null) this.attachmentToken = receipt.attachmentToken;
       // The tracked execution belonged to the handle we just gave up; it can no
       // longer be cancelled through this controller. Its results stay readable
@@ -137,14 +169,23 @@ export class EditorSessionController {
   async refresh(): Promise<SessionView | null> {
     const handle = this.session?.handle;
     if (!handle) return null;
-    const view = await this.client.getSession(handle);
+    let view: SessionView;
+    try {
+      view = await this.client.getSession(handle);
+    } catch (error) {
+      this.acceptSessionError(error, handle);
+      throw error;
+    }
     this.acceptSession(view);
     return this.session;
   }
   acceptSession(view: SessionView): boolean {
     if (!this.session || !sameHandle(view.handle, this.session.handle)) return false;
+    // A later stale observation cannot revive a handle declared lost.
+    if (this.session.state === 'lost' && !['lost', 'closed'].includes(view.state)) return false;
     if (counterValue(view.contextRevision) < counterValue(this.session.contextRevision)) return false;
     this.session = view;
+    if (view.observedContext.confidence === 'confirmed') this.latestTarget = { ...this.latestTarget, namespace: view.observedContext.namespace };
     this.publish();
     return true;
   }
@@ -195,7 +236,7 @@ export class EditorSessionController {
         owner.editorSessionId === this.owner.editorSessionId) {
       throw new Error('Cloned editors require a distinct owner ID');
     }
-    return new EditorSessionController(this.client, this.initialTarget, owner);
+    return new EditorSessionController(this.client, this.latestTarget, owner);
   }
 }
 

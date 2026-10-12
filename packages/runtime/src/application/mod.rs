@@ -60,6 +60,7 @@ struct Inner {
     live: Mutex<LiveConnections>,
     /// 空闲回收策略。`deadline == None` 表示本部署不做空闲回收。
     idle: Mutex<IdlePolicy>,
+    target_admissions: Mutex<HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
     receipts: tokio::sync::Mutex<HashMap<String, (serde_json::Value, serde_json::Value)>>,
 }
 #[derive(Clone)]
@@ -70,6 +71,7 @@ struct SessionEntry {
     handle: SessionHandle,
     attached: bool,
     closed: Option<CloseReceipt>,
+    closed_at: Option<Instant>,
 }
 struct RuntimeClock(Instant);
 impl RuntimeClock {
@@ -157,6 +159,7 @@ impl RuntimeConnectionUseCases {
                 clock,
                 live: Mutex::new(LiveConnections::unwired()),
                 idle: Mutex::new(IdlePolicy::default()),
+                target_admissions: Mutex::new(HashMap::new()),
                 receipts: tokio::sync::Mutex::new(HashMap::new()),
             }),
         }
@@ -200,6 +203,23 @@ impl RuntimeConnectionUseCases {
     /// 活连接借用台账行数。只读投影。
     pub fn live_connection_rows(&self) -> usize {
         lock(&self.inner.live).rows()
+    }
+    fn reclaim_session_tombstones(&self) {
+        let mut sessions = lock(&self.inner.sessions);
+        sessions.retain(|_, entry| {
+            entry
+                .closed_at
+                .is_none_or(|at| at.elapsed().as_secs() <= 86400)
+        });
+        let mut closed: Vec<_> = sessions
+            .iter()
+            .filter_map(|(id, entry)| entry.closed_at.map(|at| (id.clone(), at)))
+            .collect();
+        closed.sort_by_key(|(_, at)| *at);
+        let excess = closed.len().saturating_sub(4095);
+        for (id, _) in closed.into_iter().take(excess) {
+            sessions.remove(&id);
+        }
     }
     /// registry 在册会话 id（只读投影）。异常路径「没留下登记行」就靠它断言。
     pub fn registered_session_ids(&self) -> Vec<crate::connection::DbSessionId> {
@@ -406,24 +426,40 @@ impl RuntimeConnectionUseCases {
         target: ExecutionTarget,
         owner: OwnerRef,
     ) -> Result<OpenSessionReceipt, ApiError> {
+        self.create_session_for_command(ctx, target, owner, "")
+            .await
+    }
+    async fn create_session_for_command(
+        &self,
+        ctx: &RequestContext,
+        target: ExecutionTarget,
+        owner: OwnerRef,
+        command: &str,
+    ) -> Result<OpenSessionReceipt, ApiError> {
+        self.reclaim_session_tombstones();
         let profile = self.profile(ctx, &target.connection_id).await?;
         let rt_owner = convert::owner(ctx, &target.connection_id, &owner)?;
         let id = DbSessionIdGenerator::new().generate();
         let view = self
             .inner
             .registry
-            .register_session(crate::registry::OpenRequest {
-                db_session_id: id.clone(),
-                worker_id: WorkerId::new("local-runtime"),
-                connection_id: target.connection_id.clone(),
-                config_revision: rt::ConfigRevision::new(profile.config_revision.counter().get()),
-                owner: rt_owner,
-                initial_target: convert::target(&target)?,
-                expires_at: Timestamp::new(""),
-                // 绝对单调毫秒，与 `reclaim_idle` 的 `at_ms` 同尺。`None` 表示本部署
-                // 不做空闲回收（配置事实），不是「忘了配」。
-                idle_deadline_ms: self.idle_deadline_ms(),
-            })
+            .register_session_for_command(
+                crate::registry::OpenRequest {
+                    db_session_id: id.clone(),
+                    worker_id: WorkerId::new("local-runtime"),
+                    connection_id: target.connection_id.clone(),
+                    config_revision: rt::ConfigRevision::new(
+                        profile.config_revision.counter().get(),
+                    ),
+                    owner: rt_owner,
+                    initial_target: convert::target(&target)?,
+                    expires_at: Timestamp::new(""),
+                    // 绝对单调毫秒，与 `reclaim_idle` 的 `at_ms` 同尺。`None` 表示本部署
+                    // 不做空闲回收（配置事实），不是「忘了配」。
+                    idle_deadline_ms: self.idle_deadline_ms(),
+                },
+                command,
+            )
             .await
             .map_err(convert::runtime)?;
         let handle = convert::public_handle(&view.handle);
@@ -475,6 +511,7 @@ impl RuntimeConnectionUseCases {
                 handle: handle.clone(),
                 attached: true,
                 closed: None,
+                closed_at: None,
             },
         );
         Ok(OpenSessionReceipt {

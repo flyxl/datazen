@@ -137,7 +137,7 @@ impl QueryExecutor {
         })
     }
 
-    fn build_count_sql(
+    pub(crate) fn build_count_sql(
         table_name: &str,
         columns: &[ColumnSchema],
         filters: &Option<Vec<FilterCondition>>,
@@ -163,7 +163,7 @@ impl QueryExecutor {
         Ok(sql)
     }
 
-    fn build_select_sql(
+    pub(crate) fn build_select_sql(
         table_name: &str,
         columns: &[ColumnSchema],
         filters: Option<Vec<FilterCondition>>,

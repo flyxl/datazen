@@ -158,7 +158,7 @@ export function ContentViewDrawers({
           store.stageCellChange(activePanel.id, row, col, value);
         }
       } else if (activePanel?.type === 'query' && activeQueryExec) {
-        updateResultCell(activePanel.id, activeQueryExec.activeResultIdx, row, col, value);
+        void updateResultCell(activePanel.id, activeQueryExec.activeResultIdx, row, col, value).catch(() => undefined);
       }
     },
     [activePanel, activeQueryExec, updateResultCell, selectedRows],
@@ -192,7 +192,7 @@ export function ContentViewDrawers({
                 ? selectedRows
                 : undefined
             }
-            editable
+            editable={activePanel?.type !== 'query' || (activeQueryResult?.source?.writableMapping === 'verified' && !!activeQueryResult?.runtimeBinding)}
             onFieldEdit={handleDetailFieldEdit}
           />
         ))}

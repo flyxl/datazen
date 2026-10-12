@@ -1,7 +1,7 @@
-import { queryCommands } from '../commands/query';
 import type { TableSchema } from '../types';
 
-import { relationKey, schemaClient } from '@datazen/driver-sdk';
+import { relationKey } from '@datazen/driver-sdk';
+import { executeTargetCommand, metadataTarget, readTargetSchema, metadataScopeKey } from './session/targetCommand';
 import { SchemaResourceCache } from './schemaResourceCache';
 
 const schemaCache = new SchemaResourceCache<TableSchema>();
@@ -78,18 +78,10 @@ export async function getCachedTableSchema(
   database: string,
   schema?: string | null,
 ): Promise<TableSchema> {
-  const key = cacheKey(dbSessionId, tableName, database, schema);
+  const key = JSON.stringify([await metadataScopeKey(dbSessionId), cacheKey(dbSessionId, tableName, database, schema)]);
 
   return schemaCache.get(key, async () =>
-    deepFreeze(
-      (
-        await schemaClient.readSchema(dbSessionId, {
-          database,
-          schema: schema ?? null,
-          name: tableName,
-        })
-      ).value.definition,
-    ),
+    deepFreeze(await readTargetSchema(dbSessionId, tableName, database, schema ?? null)),
   );
 }
 
@@ -107,12 +99,11 @@ export async function getCachedDDL(
   database: string,
   identity?: DdlCacheIdentity,
 ): Promise<string> {
-  const key = ddlCacheKey(dbSessionId, tableName, database, identity);
+  const key = JSON.stringify([await metadataScopeKey(dbSessionId), ddlCacheKey(dbSessionId, tableName, database, identity)]);
 
   return ddlCache.get(key, async () => {
-    const multi = await queryCommands.executeQuery(dbSessionId, sql, undefined, database, null);
-    const row = multi.results[0]?.rows[0];
-    return resultExtractor(row ? [row] : []);
+    const rows = await executeTargetCommand(metadataTarget(dbSessionId, database, null, tableName), { command: 'query', input: { sql } }, 'rows') as unknown[][];
+    return resultExtractor(rows);
   });
 }
 
@@ -129,7 +120,9 @@ export function invalidateSchemaCache(
 ): void {
   const sessions = new Set<string>();
   const matches = (key: string, ddl: boolean): boolean => {
-    const parts: unknown = JSON.parse(key);
+    const parsed: unknown = JSON.parse(key);
+    const parts: unknown = Array.isArray(parsed) && parsed.length === 2 && typeof parsed[1] === 'string'
+      ? JSON.parse(parsed[1]) : parsed;
     if (!Array.isArray(parts)) return false;
     const [session, db, kind, namespace, name] = parts;
     if (typeof session !== 'string') return false;

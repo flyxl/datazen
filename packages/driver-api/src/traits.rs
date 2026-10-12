@@ -239,6 +239,42 @@ pub trait DatabaseDriver: Send + Sync {
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError>;
 
+    /// Open and retain one physical session. A lost session must never be
+    /// transparently replaced under this handle. The provider budgets sockets.
+    async fn connect_fixed_session(
+        &self,
+        _config: &ConnectionConfig,
+    ) -> Result<ConnectionHandle, DriverError> {
+        Err(DriverError::Unsupported("fixed physical sessions".into()))
+    }
+
+    /// Read server state on the retained session (or its independent control
+    /// connection), after the user protocol has drained.
+    async fn observe_fixed_session(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<crate::session::SessionContext, DriverError> {
+        Err(DriverError::Unsupported("fixed session observation".into()))
+    }
+
+    /// Incrementally deliver SQL rows with awaitable sink backpressure. The
+    /// returned statements contain metadata, never a duplicate row buffer.
+    async fn query_to_sink(
+        &self,
+        _handle: &ConnectionHandle,
+        _execution_id: &QueryExecutionId,
+        _sql: &str,
+        _limit: Option<u32>,
+        _parameters: Option<&[Value]>,
+        _sink: &dyn crate::resource::ResultSink,
+    ) -> Result<Vec<StatementResult>, crate::resource::ResourceError> {
+        Err(crate::resource::ResourceError::unsupported(
+            self.driver_type(),
+            "query_to_sink",
+            "incremental result delivery is unsupported",
+        ))
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError>;
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError>;
@@ -263,6 +299,16 @@ pub trait DatabaseDriver: Send + Sync {
         database: &str,
         schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError>;
+
+    /// Complete schema names, including empty schemas, when the driver can
+    /// enumerate them. None lets catalog adapters retain relation-derived names.
+    async fn get_schemas(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<Option<Vec<String>>, DriverError> {
+        Ok(None)
+    }
 
     async fn get_table_schema(
         &self,

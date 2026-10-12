@@ -21,6 +21,7 @@ use datazen_driver_api::*;
 mod admin_commands;
 mod migration;
 mod mysql;
+mod fixed_session;
 mod resource;
 mod resource_capabilities;
 mod schema_scope_mapping;

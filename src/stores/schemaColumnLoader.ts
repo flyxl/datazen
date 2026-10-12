@@ -1,5 +1,5 @@
 import type { RelationRef, RelationColumns } from '@datazen/driver-sdk';
-import { schemaClient } from '@datazen/driver-sdk';
+import { executeTargetCommand, metadataTarget } from '../lib/session/targetCommand';
 import { capabilitiesForDbSession, relationSchemaFor } from '../lib/driverCapabilities';
 import { knownTableNames } from './schemaStoreHelpers';
 import { relationColumnsCacheKey, type SessionMetadataIdentity } from './schemaMetadataKeys';
@@ -62,7 +62,11 @@ export async function loadRelationColumns(
     const expected = new Set(
       batch.map((ref) => relationColumnsCacheKey(session, dbSessionId, ref)),
     );
-    const response = await schemaClient.readColumns(dbSessionId, batch);
+    const first = batch[0];
+    if (!first) continue;
+    const response = await executeTargetCommand(metadataTarget(dbSessionId, first.database, first.schema), {
+      command: 'read_relation_columns', input: { relations: batch },
+    }) as import('@datazen/driver-sdk').ReadColumnsOutput;
     for (const row of response.results) {
       if (
         row.status === 'ok' &&

@@ -2111,6 +2111,7 @@ dependencies = [
  "futures-util",
  "hmac 0.12.1",
  "indexmap 2.14.0",
+ "libc",
  "serde",
  "serde_json",
  "sha2 0.10.9",

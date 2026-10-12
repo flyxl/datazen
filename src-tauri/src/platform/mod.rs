@@ -1,5 +1,7 @@
+pub mod artifact_export;
 pub mod adapter;
 pub mod bridge;
+mod diagnostics;
 pub mod error;
 pub mod handles;
 pub mod identity;
