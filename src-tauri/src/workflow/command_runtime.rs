@@ -195,7 +195,10 @@ mod tests {
 
     #[tokio::test]
     async fn inherited_connection_executes_query_command() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+            crate::testing::mock_driver::MockDriverOptions::default(),
+        )
+        .await;
         test.save_connection("wf-inherit").await;
         let step = WorkflowCommandStep::new(
             "q1",
@@ -211,7 +214,10 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_query_normalization_executes_through_command_runtime() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+            crate::testing::mock_driver::MockDriverOptions::default(),
+        )
+        .await;
         test.save_connection("wf-legacy").await;
         let step = WorkflowCommandStep::from_legacy_query(
             "users",

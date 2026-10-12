@@ -912,7 +912,10 @@ mod tests {
 
     #[tokio::test]
     async fn workflow_default_connection_is_inherited_by_legacy_query() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+            crate::testing::mock_driver::MockDriverOptions::default(),
+        )
+        .await;
         test.save_connection("wf-default").await;
         let workflow = WorkflowDefinition {
             database: None,
@@ -948,7 +951,10 @@ mod tests {
 
     #[tokio::test]
     async fn step_connection_override_executes_command() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+            crate::testing::mock_driver::MockDriverOptions::default(),
+        )
+        .await;
         test.save_connection("wf-default").await;
         test.save_connection("wf-override").await;
         let workflow = WorkflowDefinition {

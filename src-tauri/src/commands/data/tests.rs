@@ -58,6 +58,14 @@ fn composite_update_change(tenant_id: i64, id: i64, next_id: Option<i64>) -> Pen
     }
 }
 
+fn assert_legacy_write_disabled(error: crate::commands::error::CommandError) {
+    assert!(matches!(
+        error,
+        crate::commands::error::CommandError::Validation(message)
+            if message.contains("Legacy row writes are disabled")
+    ));
+}
+
 #[tokio::test]
 async fn preview_builds_driver_sql_without_opening_a_transaction() {
     let test = with_parameterized_driver().await;
@@ -88,7 +96,7 @@ async fn commit_reuses_plan_fingerprint_and_returns_plan_id() {
     let mut options = crate::testing::app_state::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
-    let test = TestAppState::with_options(options).await;
+    let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("commit-plan").await;
     let plan = preview_pending_changes_impl(
         &test.state,
@@ -252,7 +260,7 @@ async fn commit_allows_concrete_table_schema_when_connection_schema_is_unspecifi
     let mut options = crate::testing::app_state::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
-    let test = TestAppState::with_options(options).await;
+    let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("context-schema-default").await;
     let plan = preview_pending_changes_impl(
         &test.state,
@@ -312,10 +320,10 @@ async fn commit_rejects_explicit_schema_context_change() {
 }
 
 #[tokio::test]
-async fn commit_row_updates_success() {
+async fn commit_row_updates_rejects_legacy_write() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("data-cfg").await;
-    commit_row_updates_impl(
+    let error = commit_row_updates_impl(
         &test.state,
         conn_id,
         "users".into(),
@@ -331,21 +339,21 @@ async fn commit_row_updates_success() {
         }],
     )
     .await
-    .unwrap();
+    .unwrap_err();
+    assert_legacy_write_disabled(error);
 }
 
 #[tokio::test]
-async fn commit_row_updates_not_connected_errors() {
+async fn commit_row_updates_rejects_legacy_write_without_session() {
     let test = TestAppState::new().await;
-    assert!(
-        commit_row_updates_impl(&test.state, "missing".into(), "users".into(), vec![],)
-            .await
-            .is_err()
-    );
+    let error = commit_row_updates_impl(&test.state, "missing".into(), "users".into(), vec![])
+        .await
+        .unwrap_err();
+    assert_legacy_write_disabled(error);
 }
 
 #[tokio::test]
-async fn commit_row_updates_rejects_read_only_connection() {
+async fn commit_row_updates_rejects_legacy_write_for_read_only_connection() {
     let test = with_parameterized_driver().await;
     let mut config = crate::testing::app_state::sample_postgres_config("ro-edit");
     config.read_only = true;
@@ -368,17 +376,17 @@ async fn commit_row_updates_rejects_read_only_connection() {
     )
     .await
     .unwrap_err();
-    assert!(err.to_string().contains("read-only"));
+    assert_legacy_write_disabled(err);
 }
 
 #[tokio::test]
-async fn commit_row_updates_joins_open_session_transaction() {
+async fn commit_row_updates_does_not_join_open_session_transaction() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("tx-edit").await;
     crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
         .await
         .unwrap();
-    commit_row_updates_impl(
+    let error = commit_row_updates_impl(
         &test.state,
         conn_id.clone(),
         "users".into(),
@@ -394,7 +402,8 @@ async fn commit_row_updates_joins_open_session_transaction() {
         }],
     )
     .await
-    .unwrap();
+    .unwrap_err();
+    assert_legacy_write_disabled(error);
     assert!(
         crate::commands::session_transaction_status_impl(&test.state, conn_id.clone())
             .await
@@ -406,10 +415,10 @@ async fn commit_row_updates_joins_open_session_transaction() {
 }
 
 #[tokio::test]
-async fn commit_row_deletes_success() {
+async fn commit_row_deletes_rejects_legacy_write() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("data-del").await;
-    commit_row_deletes_impl(
+    let error = commit_row_deletes_impl(
         &test.state,
         conn_id,
         "users".into(),
@@ -421,11 +430,12 @@ async fn commit_row_deletes_success() {
         }],
     )
     .await
-    .unwrap();
+    .unwrap_err();
+    assert_legacy_write_disabled(error);
 }
 
 #[tokio::test]
-async fn commit_row_deletes_rejects_read_only_connection() {
+async fn commit_row_deletes_rejects_legacy_write_for_read_only_connection() {
     let test = with_parameterized_driver().await;
     let mut config = crate::testing::app_state::sample_postgres_config("ro-del");
     config.read_only = true;
@@ -444,11 +454,11 @@ async fn commit_row_deletes_rejects_read_only_connection() {
     )
     .await
     .unwrap_err();
-    assert!(err.to_string().contains("read-only"));
+    assert_legacy_write_disabled(err);
 }
 
 #[tokio::test]
-async fn commit_row_deletes_rejects_empty_pk() {
+async fn commit_row_deletes_rejects_legacy_write_before_pk_validation() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("data-del-empty-pk").await;
     let err = commit_row_deletes_impl(
@@ -459,5 +469,5 @@ async fn commit_row_deletes_rejects_empty_pk() {
     )
     .await
     .unwrap_err();
-    assert!(err.to_string().contains("primary-key"));
+    assert_legacy_write_disabled(err);
 }
