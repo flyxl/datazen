@@ -16,12 +16,14 @@
 //! - **压力半另跑**，不与延迟半共用入口。
 //! - 基准与功能测试**分开二进制入口**，CI 才能区分超时原因。
 //!
-//! ## 必须原样披露的两处偏离
+//! ## 必须原样披露的三处偏离
 //!
 //! 1. **单线程运行时**。虚拟时间要求 `tokio::time::pause()`，而 `pause()` 在多线程运行时上会 panic，
 //!    因此这里用 `new_current_thread`。8 路并发共享一个线程：测到的 p95 是**单核下界**，
 //!    不含跨核竞争与跨核缓存争用。
-//! 2. **夹具是手抄的**。`tests/gateway_fixtures/` 只对集成测试可见，二进制入口够不到它；
+//! 2. **按网关保留上限分段**。一个网关实例最多保留 4096 条执行历史；基准每段不超过该上限，
+//!    并为每段创建独立的会话和网关。所有段共享请求序号与诊断账本，最终仍按完整计划统计。
+//! 3. **夹具是手抄的**。`tests/gateway_fixtures/` 只对集成测试可见，二进制入口够不到它；
 //!    这里照着它逐字段复刻，抄错字段会让基准测一个不存在的会话形状。
 
 use std::collections::BTreeMap;
@@ -38,7 +40,7 @@ use datazen_runtime::connection::{
 use datazen_runtime::gateway::owner_binding::OwnerMatchAuthorizer;
 use datazen_runtime::gateway::{
     ExecutionEvent, ExecutionGateway, ExecutionRequest, ExecutionSource, GatewayError,
-    InMemoryIdempotencyStore, RequestPrincipal, SourceKind,
+    InMemoryIdempotencyStore, RequestPrincipal, SourceKind, GATEWAY_HISTORY_CAPACITY,
 };
 
 use crate::clock::InstantClock;
@@ -49,7 +51,7 @@ use crate::outcome::{
 };
 use crate::plan::{BenchPlan, SPEC_MEMORY_BYTES, SPEC_VCPUS};
 
-/// 夹具会话 id。全基准只用一个逻辑会话（单进程固定 fake command 即可）。
+/// 夹具会话 id 前缀；每个容量分段会派生独立会话。
 const SESSION_ID: &str = "db_session_cm60_bench";
 /// 夹具 `runtimeEpoch`。
 const RUNTIME_EPOCH: u64 = 1;
@@ -78,18 +80,18 @@ fn owner() -> OwnerRef {
     }
 }
 
-fn handle() -> SessionHandle {
+fn handle_for(session_id: &str) -> SessionHandle {
     SessionHandle {
-        db_session_id: DbSessionId::new(SESSION_ID),
+        db_session_id: DbSessionId::new(session_id),
         runtime_epoch: Counter::new(RUNTIME_EPOCH),
     }
 }
 
 /// 处于 `Ready` 的会话视图：可受理执行。
-fn ready_view() -> SessionView {
+fn ready_view_for(session_id: &str) -> SessionView {
     let connection_id = ConnectionId::new("cnx-cm60-bench");
     SessionView {
-        handle: handle(),
+        handle: handle_for(session_id),
         connection_id: connection_id.clone(),
         config_revision: ConfigRevision::new(3),
         owner: owner(),
@@ -107,11 +109,21 @@ fn ready_view() -> SessionView {
     }
 }
 
+#[cfg(test)]
+fn ready_view() -> SessionView {
+    ready_view_for(SESSION_ID)
+}
+
+#[cfg(test)]
 fn principal() -> RequestPrincipal {
+    principal_for(SESSION_ID)
+}
+
+fn principal_for(session_id: &str) -> RequestPrincipal {
     RequestPrincipal::new(
         PrincipalId::new("principal-cm60-bench"),
         OrganizationId::new("org-cm60-bench"),
-        DbSessionId::new(SESSION_ID),
+        DbSessionId::new(session_id),
     )
 }
 
@@ -133,9 +145,14 @@ fn call(index: usize) -> CommandCall {
 
 /// 第 `index` 个请求。幂等键带序号：**键重复就会退化成幂等重发**，
 /// 重发不产生新执行，两次请求会落在同一个 executionId 上，事件流随即被判重复。
+#[cfg(test)]
 fn request(index: usize) -> ExecutionRequest {
+    request_for(index, SESSION_ID)
+}
+
+fn request_for(index: usize, session_id: &str) -> ExecutionRequest {
     ExecutionRequest::new(
-        handle(),
+        handle_for(session_id),
         Counter::new(REVISION),
         call(index),
         format!("{IDEMPOTENCY_PREFIX}-{index:08}"),
@@ -144,10 +161,10 @@ fn request(index: usize) -> ExecutionRequest {
 }
 
 /// 该执行的事件帧。
-fn event(execution_id: &ExecutionId, sequence: u64) -> ExecutionEvent {
+fn event_for(execution_id: &ExecutionId, sequence: u64, session_id: &str) -> ExecutionEvent {
     ExecutionEvent {
         execution_id: execution_id.clone(),
-        db_session_id: DbSessionId::new(SESSION_ID),
+        db_session_id: DbSessionId::new(session_id),
         runtime_epoch: Counter::new(RUNTIME_EPOCH),
         sequence: Counter::new(sequence),
         context_revision: Counter::new(REVISION),
@@ -197,10 +214,11 @@ async fn one(
     port: &FakeDriverPort,
     who: &RequestPrincipal,
     index: usize,
+    session_id: &str,
     acc: &mut WorkerAcc,
 ) {
     acc.outcome.requested += 1;
-    let acceptance = match gateway.accept(who, request(index)).await {
+    let acceptance = match gateway.accept(who, request_for(index, session_id)).await {
         Ok(acceptance) => acceptance,
         Err(error) => {
             // 被拒：**从未获准**，因此不在 N 里——不是被豁免，是压根没进过 N 的口径。
@@ -236,7 +254,7 @@ async fn one(
             return;
         }
     }
-    project(gateway, port, &execution_id, acc).await;
+    project(gateway, port, &execution_id, session_id, acc).await;
 }
 
 /// 把一次执行的事件帧按序投给网关，统计重复 / 丢失（性能门槛）。
@@ -244,12 +262,16 @@ async fn project(
     gateway: &ExecutionGateway,
     port: &FakeDriverPort,
     execution_id: &ExecutionId,
+    session_id: &str,
     acc: &mut WorkerAcc,
 ) {
     for sequence in event_sequence() {
-        let disposition = gateway.apply_event(event(execution_id, sequence)).await;
+        let disposition = gateway
+            .apply_event(event_for(execution_id, sequence, session_id))
+            .await;
         match disposition {
             datazen_runtime::gateway::EventDisposition::Applied => {
+                acc.projection.applied += 1;
                 acc.events_projected += 1;
                 // 终态到达，执行从「在途」里退出（泄漏对账）。
                 if sequence == u64::from(crate::driver::EVENTS_PER_EXECUTION) {
@@ -294,12 +316,14 @@ async fn drive(
     port: Arc<FakeDriverPort>,
     total: usize,
     concurrency: usize,
+    session_id: &str,
     keys: &Arc<AtomicUsize>,
 ) -> Result<(WorkerAcc, u64), BenchError> {
     let started = Instant::now();
     let next = Arc::new(AtomicUsize::new(0));
     let keys = Arc::clone(keys);
-    let who = Arc::new(principal());
+    let who = Arc::new(principal_for(session_id));
+    let session_id = session_id.to_owned();
     let mut tasks = Vec::with_capacity(concurrency);
     for _ in 0..concurrency {
         let gateway = Arc::clone(&gateway);
@@ -307,6 +331,7 @@ async fn drive(
         let next = Arc::clone(&next);
         let keys = Arc::clone(&keys);
         let who = Arc::clone(&who);
+        let session_id = session_id.clone();
         tasks.push(tokio::spawn(async move {
             let mut acc = WorkerAcc::default();
             loop {
@@ -319,6 +344,7 @@ async fn drive(
                     &port,
                     &who,
                     keys.fetch_add(1, Ordering::Relaxed),
+                    &session_id,
                     &mut acc,
                 )
                 .await;
@@ -356,16 +382,18 @@ async fn slice_samples(gateway: &ExecutionGateway, before: usize) -> Vec<RawSamp
         .collect()
 }
 
-/// 把一轮的 worker 账组装成 [`RoundOutcome`]。
-async fn assemble(
-    gateway: &ExecutionGateway,
+/// 把多个容量分段的 worker 账与样本合成一轮 [`RoundOutcome`]。
+fn assemble(
     acc: WorkerAcc,
     round: usize,
     concurrency: usize,
-    before: usize,
+    mut samples: Vec<RawSample>,
     wall_time_nanos: u64,
 ) -> RoundOutcome {
-    let samples = slice_samples(gateway, before).await;
+    for (ordinal, sample) in samples.iter_mut().enumerate() {
+        sample.round = round;
+        sample.ordinal = ordinal + 1;
+    }
     let totals: Vec<u64> = samples
         .iter()
         .map(|sample| {
@@ -377,13 +405,7 @@ async fn assemble(
     RoundOutcome {
         round,
         concurrency,
-        samples: samples
-            .into_iter()
-            .map(|mut sample| {
-                sample.round = round;
-                sample
-            })
-            .collect(),
+        samples,
         outcome: acc.outcome,
         rejections: acc.rejections,
         // 网关没有排队受理态（`AcceptanceDisposition` 只有 Accepted / Replayed），
@@ -430,6 +452,10 @@ fn notes(
         "单线程运行时：pause() 在多线程运行时上会 panic，故 8 路并发共享一个线程。\
          测得的 p95 是单核下界，不含跨核竞争与跨核缓存争用。"
             .to_owned(),
+        format!(
+            "每个网关最多保留 {GATEWAY_HISTORY_CAPACITY} 条执行历史；超过上限的计划按独立会话/网关分段执行，\
+             各段共享幂等存储、全局请求序号和诊断账本，分位数按完整轮次合并。"
+        ),
         "禁止任何出站 socket：tokio 运行时只 enable_time()，未装 IO 驱动；\
          fake 端口不碰文件、不碰网络。"
             .to_owned(),
@@ -486,12 +512,16 @@ fn notes(
 
 /// 汇总 journal。覆盖**含预热**的全部请求：泄漏不因发生在预热阶段而消失。
 fn journal(
-    port: &FakeDriverPort,
+    ports: &[Arc<FakeDriverPort>],
     driver: &crate::driver::DriverJournal,
     warmup: &RoundOutcome,
     rounds: &[RoundOutcome],
     execution_count: usize,
 ) -> ExecutionJournal {
+    let outstanding_at_end = ports
+        .iter()
+        .map(|port| port.outstanding())
+        .fold(0u64, u64::saturating_add);
     let mut admitted = 0usize;
     let mut dispatched = 0usize;
     let mut completed = 0usize;
@@ -511,14 +541,16 @@ fn journal(
         completed = completed.saturating_add(round.outcome.completed);
         projection.merge(&round.event_projection);
     }
-    projection.outstanding_at_end = projection.outstanding_at_end.max(port.outstanding());
-    let balanced =
-        port.outstanding() == 0 && projection.is_clean() && driver.dropped_round_trips() == 0;
+    projection.outstanding_at_end = projection.outstanding_at_end.max(outstanding_at_end);
+    let balanced = outstanding_at_end == 0
+        && projection.is_clean()
+        && projection.applied == driver.events_emitted()
+        && driver.dropped_round_trips() == 0;
     ExecutionJournal {
         admitted,
         dispatched,
         completed,
-        outstanding_at_end: port.outstanding(),
+        outstanding_at_end,
         session_view_calls: driver.session_view_calls(),
         execute_calls: driver.execute_calls(),
         cancel_calls: driver.cancel_calls(),
@@ -582,67 +614,99 @@ async fn drive_all(
     inject_failure_every: u64,
 ) -> Result<BenchRun, BenchError> {
     let started = Instant::now();
-    let (port, driver_journal) = FakeDriverPort::new(
-        ready_view(),
-        plan.fake_command,
-        EXEC_PREFIX,
-        inject_failure_every,
-    );
-    let gateway = Arc::new(ExecutionGateway::new(
-        Arc::clone(&port) as Arc<dyn datazen_runtime::registry::SessionPort>,
-        OwnerMatchAuthorizer::shared(),
-        InMemoryIdempotencyStore::shared(),
-        Arc::new(InstantClock::new()),
-    ));
+    let driver_journal = Arc::new(crate::driver::DriverJournal::default());
+    let idempotency_store = InMemoryIdempotencyStore::shared();
+    let mut gateways = Vec::with_capacity(1 + plan.rounds.saturating_mul(2));
+    let mut ports = Vec::with_capacity(1 + plan.rounds.saturating_mul(2));
+    let mut session_ordinal = 0usize;
 
     // 幂等键序号源：整次运行共用，预热也算在内。
     let keys = Arc::new(AtomicUsize::new(0));
 
-    // 预热：样本照采，但**不进任何分位数**，也不进 raw 产物。
-    let warmup_before = gateway.overhead_samples().await.len();
-    let (warmup_acc, warmup_wall) = drive(
-        Arc::clone(&gateway),
-        Arc::clone(&port),
-        plan.warmup,
-        plan.concurrency,
-        &keys,
-    )
-    .await?;
-    let warmup = assemble(
-        &gateway,
-        warmup_acc,
-        0,
-        plan.concurrency,
-        warmup_before,
-        warmup_wall,
-    )
-    .await;
+    // 预热样本照采，但**不进测量轮次的分位数**，也不进 raw 产物。大于网关容量时同样分段。
+    let mut warmup_acc = WorkerAcc::default();
+    let mut warmup_samples = Vec::with_capacity(plan.warmup);
+    let mut warmup_wall = 0u64;
+    let mut warmup_remaining = plan.warmup;
+    while warmup_remaining > 0 {
+        let batch_size = warmup_remaining.min(GATEWAY_HISTORY_CAPACITY);
+        let session = session_id(session_ordinal);
+        let port = FakeDriverPort::new_with_journal(
+            ready_view_for(&session),
+            plan.fake_command,
+            &format!("{EXEC_PREFIX}-{session_ordinal:05}"),
+            inject_failure_every,
+            Arc::clone(&driver_journal),
+        );
+        let gateway = make_gateway(&port, &idempotency_store);
+        let (batch_acc, batch_wall) = drive(
+            Arc::clone(&gateway),
+            Arc::clone(&port),
+            batch_size,
+            plan.concurrency,
+            &session,
+            &keys,
+        )
+        .await?;
+        warmup_acc.merge(batch_acc);
+        warmup_wall = warmup_wall.saturating_add(batch_wall);
+        warmup_samples.extend(slice_samples(&gateway, 0).await);
+        gateways.push(gateway);
+        ports.push(port);
+        warmup_remaining -= batch_size;
+        session_ordinal += 1;
+    }
+    let warmup = assemble(warmup_acc, 0, plan.concurrency, warmup_samples, warmup_wall);
 
     let mut rounds = Vec::with_capacity(plan.rounds);
     let mut raw = Vec::with_capacity(plan.per_round.saturating_mul(plan.rounds));
     for round in 1..=plan.rounds {
-        let before = gateway.overhead_samples().await.len();
-        let (acc, wall) = drive(
-            Arc::clone(&gateway),
-            Arc::clone(&port),
-            plan.per_round,
-            plan.concurrency,
-            &keys,
-        )
-        .await?;
-        let outcome = assemble(&gateway, acc, round, plan.concurrency, before, wall).await;
+        let mut acc = WorkerAcc::default();
+        let mut samples = Vec::with_capacity(plan.per_round);
+        let mut wall = 0u64;
+        let mut remaining = plan.per_round;
+        while remaining > 0 {
+            // 网关会在达到历史容量后拒绝新请求，并且计时仓库有相同上限。每段显式使用
+            // 新会话/网关，避免把 capacity refusal 当作延迟失败，也不丢掉多余样本。
+            let batch_size = remaining.min(GATEWAY_HISTORY_CAPACITY);
+            let session = session_id(session_ordinal);
+            let port = FakeDriverPort::new_with_journal(
+                ready_view_for(&session),
+                plan.fake_command,
+                &format!("{EXEC_PREFIX}-{session_ordinal:05}"),
+                inject_failure_every,
+                Arc::clone(&driver_journal),
+            );
+            let gateway = make_gateway(&port, &idempotency_store);
+            let (batch_acc, batch_wall) = drive(
+                Arc::clone(&gateway),
+                Arc::clone(&port),
+                batch_size,
+                plan.concurrency,
+                &session,
+                &keys,
+            )
+            .await?;
+            acc.merge(batch_acc);
+            wall = wall.saturating_add(batch_wall);
+            samples.extend(slice_samples(&gateway, 0).await);
+            gateways.push(gateway);
+            ports.push(port);
+            remaining -= batch_size;
+            session_ordinal += 1;
+        }
+        let outcome = assemble(acc, round, plan.concurrency, samples, wall);
         raw.extend_from_slice(&outcome.samples);
         rounds.push(outcome);
     }
 
+    // 网关保留全量分段记录到汇总时，使 execution_records_retained 与原始样本跨度一致。
+    let mut execution_count = 0usize;
+    for gateway in &gateways {
+        execution_count = execution_count.saturating_add(gateway.execution_count().await);
+    }
     // journal 覆盖**含预热**的全部请求：泄漏不因发生在预热阶段而消失。
-    let journal = journal(
-        &port,
-        &driver_journal,
-        &warmup,
-        &rounds,
-        gateway.execution_count().await,
-    );
+    let journal = journal(&ports, &driver_journal, &warmup, &rounds, execution_count);
     let run = BenchRun {
         plan,
         conforms_to_spec: true,
@@ -668,6 +732,22 @@ async fn drive_all(
         ),
         ..run
     })
+}
+
+fn session_id(ordinal: usize) -> String {
+    format!("{SESSION_ID}_{ordinal:05}")
+}
+
+fn make_gateway(
+    port: &Arc<FakeDriverPort>,
+    store: &Arc<InMemoryIdempotencyStore>,
+) -> Arc<ExecutionGateway> {
+    Arc::new(ExecutionGateway::new(
+        Arc::clone(port) as Arc<dyn datazen_runtime::registry::SessionPort>,
+        OwnerMatchAuthorizer::shared(),
+        Arc::clone(store) as Arc<dyn datazen_runtime::gateway::IdempotencyStore>,
+        Arc::new(InstantClock::new()),
+    ))
 }
 
 #[cfg(test)]

@@ -52,6 +52,13 @@ use crate::gateway::request::RedactedExecuteRequest;
 use crate::registry::SessionPort;
 use GatewayAction::{Cancel, Execute};
 
+/// Maximum execution history retained by one gateway instance.
+///
+/// The execution records and their matching overhead samples share this bound. Long-running
+/// benchmark harnesses must start a fresh gateway before submitting more than this many
+/// requests, or they will measure the runtime's capacity refusal instead of request overhead.
+pub const GATEWAY_HISTORY_CAPACITY: usize = 4096;
+
 pub mod cancel;
 pub mod events;
 pub mod idempotency;

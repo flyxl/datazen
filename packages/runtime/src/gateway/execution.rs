@@ -220,7 +220,7 @@ impl ExecutionGateway {
                         ),
                     });
                 }
-                if state.records.len() >= 4096 {
+                if state.records.len() >= GATEWAY_HISTORY_CAPACITY {
                     return Err(GatewayError::InvalidRequest {
                         reason: "executionCapacityReached",
                     });
