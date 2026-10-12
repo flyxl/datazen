@@ -551,7 +551,7 @@ export function TableView({
         </div>
       )}
       {txError && (
-        <div className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400">
+        <div data-testid="table-transaction-error" className="border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400">
           {txError}
           {txLost && <button className="ml-3 underline" data-testid="table-session-open-new" onClick={() => {
             void tableSessionController(panelId, context).then((controller) => controller.openNewSession())

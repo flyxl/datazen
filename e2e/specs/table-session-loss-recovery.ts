@@ -45,17 +45,25 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
       let setup: string | undefined;
       let created = false;
       let stage = 'fixture-setup';
+      let receiptMarkers = { receiptPresent: false, resourceLost: false, unknown: false };
       const run = (sql: string) => invokeBackend<QueryResultPayload>('execute_query', { dbSessionId: admin, sql });
       const terminate = async (onlyTransaction: boolean) => {
         if (dialect === 'postgresql') {
           const result = await run(`SELECT pg_terminate_backend(pid) AS terminated FROM pg_stat_activity
             WHERE datname = '${database}' AND pid <> pg_backend_pid()
             ${onlyTransaction ? "AND state = 'idle in transaction'" : ''}`);
-          if (onlyTransaction) expect(parseQueryRows(result).length).toBeGreaterThan(0);
+          if (onlyTransaction) {
+            stage = 'terminate-response';
+            expect(parseQueryRows(result).length).toBeGreaterThan(0);
+          }
         } else {
           const result = await run(`SELECT ID FROM information_schema.PROCESSLIST WHERE DB = '${database}'`);
           const ids = parseQueryRows(result).map((row) => Number(row[0]));
-          if (onlyTransaction) expect(ids.length).toBeGreaterThan(0);
+          if (onlyTransaction) {
+            stage = 'terminate-response';
+            expect(ids.length).toBeGreaterThan(0);
+            stage = 'terminate-connection';
+          }
           // MySQL exposes no idle BEGIN without an InnoDB statement in innodb_trx;
           // terminate only connections to this freshly-created fixture database.
           for (const id of ids) {
@@ -128,19 +136,29 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         await rollback.waitForEnabled({ timeout: 20000 });
         stage = 'terminate-fixture-session';
         await withSafeModeOff(() => terminate(true));
-        stage = 'loss-detection';
+        stage = 'rollback-click';
         await rollback.click();
+        stage = 'recovery-button-wait';
         const recovery = await $('[data-testid="table-session-open-new"]');
         await recovery.waitForDisplayed({ timeout: 20000 });
         // The original failure remains visible until the user explicitly recovers.
-        const interrupted = await recovery.parentElement().getText();
-        expect(interrupted).toContain('resourceLost');
-        expect(interrupted).toContain('unknown');
+        stage = 'receipt-observation';
+        receiptMarkers = await browser.execute(() => {
+          const receipt = document.querySelector('[data-testid="table-transaction-error"]');
+          const text = receipt?.textContent ?? '';
+          return { receiptPresent: Boolean(receipt), resourceLost: text.includes('resourceLost'), unknown: text.includes('unknown') };
+        });
+        stage = 'receipt-resource-lost-check';
+        expect(receiptMarkers.receiptPresent).toBe(true);
+        expect(receiptMarkers.resourceLost).toBe(true);
+        stage = 'receipt-unknown-check';
+        expect(receiptMarkers.unknown).toBe(true);
+        stage = 'recovery-button-click';
         await recovery.click();
         stage = 'explicit-recovery';
         await browser.waitUntil(async () => !(await $('[data-testid="table-session-open-new"]').isExisting()), { timeout: 20000 });
         // Successful explicit recovery clears the stale toolbar error.
-        expect(await $('body').getText()).not.toContain('resourceLost');
+        expect(await browser.execute(() => document.body.textContent?.includes('resourceLost') ?? false)).toBe(false);
         await $('[data-testid="table-tx-begin"]').waitForEnabled({ timeout: 20000 });
         await $('[data-testid="table-tx-begin"]').click();
         stage = 'reopened-transaction';
@@ -158,7 +176,16 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
       } catch (error) {
         const category = error instanceof Error && ['WebDriverError', 'TimeoutError', 'AssertionError', 'Error'].includes(error.name)
           ? error.name : 'Error';
-        throw new Error(`P4 table recovery failed at ${stage} (${category})`);
+        // Even a button wait failure records the known receipt markers, without
+        // returning its text, SQL, connection identity or WebDriver message.
+        try {
+          receiptMarkers = await browser.execute(() => {
+            const receipt = document.querySelector('[data-testid="table-transaction-error"]');
+            const text = receipt?.textContent ?? '';
+            return { receiptPresent: Boolean(receipt), resourceLost: text.includes('resourceLost'), unknown: text.includes('unknown') };
+          });
+        } catch { /* Keep the last safe observation if the window is unavailable. */ }
+        throw new Error(`P4 table recovery failed at ${stage} (${category}); receiptPresent=${receiptMarkers.receiptPresent}; resourceLost=${receiptMarkers.resourceLost}; unknown=${receiptMarkers.unknown}`);
       } finally {
         try {
           await closeExtraWindows(mainWindow);

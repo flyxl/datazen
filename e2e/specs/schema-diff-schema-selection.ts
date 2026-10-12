@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import { API_ERROR_CODES } from '@datazen/backend-client';
 import {
   clickSchemaDiffNext,
   closeExtraWindows,
@@ -14,26 +15,40 @@ import { PG_SYNC_DB, pgConnectionConfig } from '../lib/schemaDiffFixtures.js';
 // Wait for the actual asynchronously-loaded option, and never toggle an
 // already-open listbox during retry. Generic helpers search only once per open.
 async function selectEndpointOption(testId: string, label: string): Promise<void> {
-  await browser.waitUntil(async () => browser.execute((id: string, wanted: string) => {
-    const diagnostic = document.querySelector('[data-testid="schema-diff-window"] [data-testid="copyable-error-message"]')?.textContent?.trim()
-      .match(/^databaseDiscovery\.(source|target):([A-Za-z]+)$/);
-    // The product emits only its allowlisted API code, never a raw error message.
-    if (diagnostic) throw new Error(`Schema endpoint discovery failed (${diagnostic[1]}:${diagnostic[2]})`);
-    const trigger = document.querySelector(`[data-testid="${id}"] button[aria-haspopup="listbox"]`) as HTMLElement | null;
-    if (!trigger) return false;
-    if (trigger.textContent?.trim() === wanted) return true;
-    if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
-    const listId = trigger.getAttribute('aria-controls');
-    const list = listId ? document.getElementById(listId) : null;
-    // The selected option appends a checkmark outside its label span.
-    // Read the label and only this trigger's listbox, never another open picker.
-    const option = Array.from(list?.querySelectorAll('[role="option"]') ?? [])
-      .find((node) => node.querySelector('span')?.textContent?.trim() === wanted);
-    if (!option) return false;
-    option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    return true;
-  }, testId, label), { timeout: 20000, timeoutMsg: `Endpoint option unavailable: ${testId}` });
-  await browser.waitUntil(async () => (await $(`[data-testid="${testId}"]`).getText()).includes(label), { timeout: 5000 });
+  let observed = { optionCount: 0, matched: false, triggerExpanded: false, selected: false };
+  let discoveryCode = '';
+  try {
+    await browser.waitUntil(async () => {
+      const result = await browser.execute((id: string, wanted: string, allowedCodes: readonly string[]) => {
+        const diagnostic = document.querySelector('[data-testid="schema-diff-window"] [data-testid="copyable-error-message"]')?.textContent?.trim()
+          .match(/^databaseDiscovery\.(source|target):([A-Za-z]+)$/);
+        // The product emits only its allowlisted API code, never a raw error message.
+        const discoveryCode = diagnostic && (allowedCodes.includes(diagnostic[2]) || diagnostic[2] === 'unknown')
+          ? `databaseDiscovery.${diagnostic[1]}:${diagnostic[2]}` : '';
+        const trigger = document.querySelector(`[data-testid="${id}"] > button[aria-haspopup="listbox"]`) as HTMLButtonElement | null;
+        const selected = trigger?.querySelector('span')?.textContent?.trim() === wanted;
+        const triggerExpanded = trigger?.getAttribute('aria-expanded') === 'true';
+        const listId = trigger?.getAttribute('aria-controls');
+        const list = listId ? document.getElementById(listId) : null;
+        const options = Array.from(list?.querySelectorAll('[role="option"]') ?? []);
+        const option = options.find((node) => node.querySelector('span')?.textContent?.trim() === wanted);
+        const state = { optionCount: options.length, matched: Boolean(option), triggerExpanded, selected, discoveryCode };
+        if (discoveryCode || selected) return state;
+        if (trigger && !triggerExpanded) trigger.click();
+        if (option) option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        // Selection is confirmed on the next observation after React commits.
+        return state;
+      }, testId, label, API_ERROR_CODES);
+      observed = result;
+      discoveryCode = result.discoveryCode;
+      if (discoveryCode) throw new Error('Endpoint discovery rejected');
+      return result.selected;
+    }, { timeout: 20000, timeoutMsg: 'Endpoint option wait expired' });
+  } catch {
+    // Labels, option contents and WebDriver exception messages can contain
+    // connection/database identities. Only structural fields leave this helper.
+    throw new Error(`Endpoint option unavailable: ${testId}; optionCount=${observed.optionCount}; matched=${observed.matched}; triggerExpanded=${observed.triggerExpanded}; selected=${observed.selected}${discoveryCode ? `; ${discoveryCode}` : ''}`);
+  }
 }
 
 describe('Schema Diff PostgreSQL selected schema', function () {
