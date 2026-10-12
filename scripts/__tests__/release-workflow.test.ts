@@ -11,6 +11,17 @@ import {
 
 const root = resolve(import.meta.dirname, '../..');
 const releaseWorkflow = readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8');
+// The serialisation point ahead of the release matrix, read from the parsed
+// tree rather than matched as raw text. A substring assertion
+// (`needs: [a, b]`) pins today's *spelling* and silently rots the moment a
+// third gate is added — which is exactly what happened when `pre-release-guards`
+// joined. Comparing the parsed job SET states the invariant that actually
+// matters: these three jobs, no more, no fewer. Dropping `pre-release-guards`
+// from the workflow now fails this test, instead of passing while the release
+// gate quietly stops gating.
+const BUILD_NEEDS = ['prepare-pro-extension', 'union-typecheck', 'pre-release-guards'] as const;
+const buildNeeds = (YAML.parse(releaseWorkflow) as { jobs: Record<string, { needs?: unknown }> })
+  .jobs.build.needs;
 const windowsConfig = JSON.parse(
   readFileSync(resolve(root, 'src-tauri/tauri.windows.conf.json'), 'utf8'),
 );
@@ -89,7 +100,7 @@ describe('Windows release packaging', () => {
     // Every Pro variant consumes that artifact rather than re-cloning the repo.
     expect(releaseWorkflow).toContain('actions/download-artifact@v4');
     expect(releaseWorkflow).toContain('name: pro-extension');
-    expect(releaseWorkflow).toContain('needs: [prepare-pro-extension, union-typecheck]');
+    expect(buildNeeds).toEqual([...BUILD_NEEDS]);
     // The .dzx is packed from the Pro source checkout, so it is produced once in
     // the prepare job too and downloaded by the one variant that ships it.
     expect(releaseWorkflow).toContain('Pack the signed Pro .dzx');
@@ -124,9 +135,11 @@ describe('Release build time optimisation', () => {
     // from the previous run. See docs/development/ci-test-matrix.md §6.1.
     expect(releaseWorkflow).not.toContain('warm-driver-deps');
     expect(releaseWorkflow).not.toContain('ci-driver-warmup.mjs');
-    // Needs is the serialisation point, so it must name only the two jobs that
-    // still earn their place ahead of the matrix.
-    expect(releaseWorkflow).toContain('needs: [prepare-pro-extension, union-typecheck]');
+    // Needs is the serialisation point, so it must name exactly the three jobs
+    // that still earn their place ahead of the matrix: the Pro artifact, the
+    // one union typecheck, and the release guards (version / ci-docs /
+    // structure-editor / i18n completeness). A fourth job must fail here.
+    expect(buildNeeds).toEqual([...BUILD_NEEDS]);
     // ...and the job must not exist as a `needs:` target of anything either.
     expect(releaseWorkflow).not.toMatch(/^\s*needs:.*warm-driver-deps/m);
   });
@@ -162,7 +175,7 @@ describe('Release build time optimisation', () => {
     expect(typecheckJob).toContain('--drivers=all,kiwi,superset');
     expect(typecheckJob).toContain('node scripts/ci-union-typecheck.mjs');
     // It gates the build, or a broken union would ship untyped.
-    expect(releaseWorkflow).toContain('needs: [prepare-pro-extension, union-typecheck]');
+    expect(buildNeeds).toEqual([...BUILD_NEEDS]);
     // The union script must not compile anything — that is what the removed
     // warmup did, and nothing needs it any more. Match code only: a prose
     // comment may legitimately name cargo to explain why it is absent.

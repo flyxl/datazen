@@ -391,19 +391,43 @@ describe('allow-list', () => {
     expect(result.err).toBe('');
   });
 
-  it('shipped allow-list is exactly the two coordinator-ruled redis fixtures, no globs', () => {
-    expect(ALLOWLIST).toHaveLength(2);
+  it('shipped allow-list carries only coordinator-ruled entries, no globs', () => {
+    // 2 条 R1（redis 测试直接用宿主组件）+ 4 条 R3（测试夹具加载驱动 UI meta）。
+    // 裁定过程见 scripts/check-driver-import-boundaries.mjs 的 RULES.R3 文档注释。
+    expect(ALLOWLIST).toHaveLength(6);
+
     for (const item of ALLOWLIST) {
-      expect(item.rule).toBe('R1');
-      expect(item.file).toBe('packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx');
-      expect(item.specifier).toMatch(/^(\.\.\/)+src\/[^*?]+$/);
+      // 三元组按 (rule, file, specifier) 精确匹配，所以不能出现通配
+      expect(item.rule).not.toMatch(/[*?]/);
+      expect(item.file).not.toMatch(/[*?]/);
+      expect(item.specifier).not.toMatch(/[*?]/);
       expect(item.reason.length).toBeGreaterThan(10);
       expect(item.milestone.length).toBeGreaterThan(3);
     }
-    expect(ALLOWLIST.map((i) => i.specifier).sort()).toEqual([
+
+    const r1 = ALLOWLIST.filter((i) => i.rule === 'R1');
+    expect(r1).toHaveLength(2);
+    for (const item of r1) {
+      expect(item.file).toBe('packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx');
+      expect(item.specifier).toMatch(/^(\.\.\/)+src\/[^*?]+$/);
+    }
+    expect(r1.map((i) => i.specifier).sort()).toEqual([
       '../../../../../src/components/ui/WebContextMenu',
       '../../../../../src/stores/contextMenuStore',
     ]);
+
+    // R3 的豁免只许落在测试与测试夹具上。生产代码里的 host → driver 引用是真实
+    // 分层破坏，只能靠把文档视图改走 SDK 修，不许用 allowlist 抹掉。
+    const r3 = ALLOWLIST.filter((i) => i.rule === 'R3');
+    expect(r3).toHaveLength(4);
+    for (const item of r3) {
+      const isTest = /\.test\.tsx?$/.test(item.file);
+      const isHarness = item.file === 'src/test/driverUiSetup.ts';
+      expect(isTest || isHarness).toBe(true);
+    }
+    expect(ALLOWLIST.map((i) => i.file)).not.toContain(
+      'src/windows/connection/DocumentConnectionView.tsx',
+    );
   });
 });
 
@@ -566,9 +590,10 @@ describe('guard plumbing', () => {
     const report = out.join('\n');
     expect(err.join('')).toBe('');
     expect(code).toBe(0);
-    // both shipped exemptions are live on the current baseline …
-    expect(report).toContain('2 allow-listed reference(s) skipped');
-    // … and the known host → driver references stay advisory-only.
+    // all six shipped exemptions are live on the current baseline …
+    expect(report).toContain('6 allow-listed reference(s) skipped');
+    // … and the one known host → driver production reference stays advisory-only
+    // (deliberately not exempted — it is a real layering break, see RULES.R3).
     expect(report).toContain('R3 (advisory) src/windows/connection/DocumentConnectionView.tsx:25');
   });
 

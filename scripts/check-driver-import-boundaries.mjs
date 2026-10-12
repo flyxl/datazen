@@ -35,11 +35,17 @@
  *       `packages/drivers/**`, skipping the gitignored codegen registries
  *       `src/extensions/generated*.ts` — importing drivers there is the
  *       sanctioned mechanism.
- *       **Advisory (non-blocking)**: the current baseline still carries real
- *       findings (host test harnesses + `DocumentConnectionView.tsx`); they are
- *       reported for the record and left to the coordinator's ruling rather
- *       than being papered over with new exemptions. Flip `blocking` in
- *       `RULES.R3` once that ruling lands.
+ *       **Advisory (non-blocking), coordinator ruling recorded**: the four
+ *       host test-harness findings were ruled legitimate and moved to
+ *       `ALLOWLIST` (vitest setupFile + the runtime registration path those
+ *       suites assert). One finding remains and is DELIBERATELY not exempted:
+ *       `src/windows/connection/DocumentConnectionView.tsx` imports six symbols
+ *       from `packages/drivers/mongodb/ui/mongodbFind`, a real host→driver
+ *       internals break. `blocking` stays `false` because fixing it is a
+ *       feature-sized refactor (route the document view through the driver SDK /
+ *       generated registry), and flipping it now would hand the team a gate that
+ *       is red on every PR until that refactor lands. Flip `RULES.R3.blocking`
+ *       to `true` in the same commit that moves those imports behind the SDK.
  *
  *   R4  The shared design system must stay host-free and runtime-free.
  *       Scans **every string literal** in `packages/ui/**`: no
@@ -198,6 +204,49 @@ export const ALLOWLIST = [
       'same fixture asserts against the host contextMenuStore (importing it is what triggers bindContextMenuBridge)',
     milestone:
       'Wave 4 import-guard (coordinator ruling); remove together with the WebContextMenuHost exemption above',
+  },
+  // ── R3 test-harness ruling ────────────────────────────────────────────────
+  // The four R3 findings that are NOT DocumentConnectionView.tsx are test
+  // scaffolding, not host product code. `src/test/driverUiSetup.ts` is the
+  // setupFile of `vitest.drivers.config.ts` (line 24) — it must import driver
+  // entry modules for driver UI suites to get real strings, which the file's
+  // own header states. `locales.test.ts` imports a driver locale entry to
+  // MIRROR what `src/extensions/generated.ts` does at runtime; the host never
+  // aggregates driver keys itself. Test-only access to a driver entry is the
+  // same sanctioned mechanism R3 already exempts in `SKIPPED_CODEGEN_FILES`.
+  // Baseline after this ruling: 1 finding, DocumentConnectionView.tsx (real
+  // production break, deliberately NOT exempted — see RULES.R3 doc comment).
+  {
+    rule: 'R3',
+    file: 'src/locales/locales.test.ts',
+    specifier: '../../packages/drivers/redis/locales',
+    reason:
+      'test mirrors the runtime registration path: imports the driver locale entry the way generated.ts loads driver UI meta, to assert the shared registry sees driver packs',
+    milestone: 'Wave 4 import-guard (coordinator ruling); remove when the registry contract can be asserted without the driver entry import',
+  },
+  {
+    rule: 'R3',
+    file: 'src/locales/locales.test.ts',
+    specifier: '../../packages/drivers/mongodb/locales',
+    reason: 'same registry-contract assertion as the redis pack above',
+    milestone:
+      'Wave 4 import-guard (coordinator ruling); remove together with the redis locale-pack exemption',
+  },
+  {
+    rule: 'R3',
+    file: 'src/test/driverUiSetup.ts',
+    specifier: '../../packages/drivers/redis/ui/shared/meta',
+    reason:
+      'vitest.drivers.config.ts setupFile (line 24); driver UI suites need the driver entry registered to render with real strings',
+    milestone: 'Wave 4 import-guard (coordinator ruling); remove only if the drivers vitest config can register driver entries without host-side imports',
+  },
+  {
+    rule: 'R3',
+    file: 'src/test/driverUiSetup.ts',
+    specifier: '../../packages/drivers/mongodb/ui/meta',
+    reason: 'same vitest.drivers.config.ts setupFile contract as the redis entry above',
+    milestone:
+      'Wave 4 import-guard (coordinator ruling); remove together with the redis driver-ui entry exemption',
   },
 ];
 
