@@ -35,6 +35,7 @@ describe('Schema Diff PostgreSQL selected schema', function () {
     const stamp = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     const connectionId = `e2e_sd_schema_${stamp}`;
     const connectionName = `Schema selection ${stamp}`;
+    const connectionLabel = `${connectionName} (postgresql)`;
     const sourceSchema = `sd_source_${stamp}`;
     const targetSchema = `sd_target_${stamp}`;
     const emptySchema = `sd_empty_${stamp}`;
@@ -63,8 +64,9 @@ describe('Schema Diff PostgreSQL selected schema', function () {
         }
       });
       await openSchemaDiffWindow();
-      await selectEndpointOption('schema-diff-source', connectionName);
-      await selectEndpointOption('schema-diff-target', connectionName);
+      // Endpoint options include the driver type, unlike navigator card names.
+      await selectEndpointOption('schema-diff-source', connectionLabel);
+      await selectEndpointOption('schema-diff-target', connectionLabel);
       await selectEndpointOption('schema-diff-source-database', PG_SYNC_DB);
       await selectEndpointOption('schema-diff-target-database', PG_SYNC_DB);
       // An empty schema must be selectable from catalog.schemas, independent of relations.

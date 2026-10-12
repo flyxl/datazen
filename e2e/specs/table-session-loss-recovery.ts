@@ -3,7 +3,7 @@ import {
   clickNavigatorRefresh, closeExtraWindows, disconnectBackend, expandSchemaTableCategory,
   expandAllGroups, expandConnectedConnectionInNavigator, invokeBackend,
   openConnectionsWorkspace, parseQueryRows, queryScalar, waitForConnectionToolbar,
-  withSafeModeOff, type QueryResultPayload,
+  setNavigatorSearch, withSafeModeOff, type QueryResultPayload,
 } from '../helpers.js';
 import {
   MYSQL_SYNC_DB, PG_SYNC_DB, mysqlConnectionConfig, pgConnectionConfig,
@@ -75,15 +75,24 @@ for (const dialect of ['postgresql', 'mysql'] as const) {
         tableSchema = relation?.schema ?? undefined;
         await disconnectBackend(setup);
         setup = undefined;
+        const persisted = await invokeBackend<Array<{ id: string; name: string; database?: string }>>('get_connections');
+        expect(persisted.some((connection) => connection.id === connectionId && connection.name === name && connection.database === database)).toBe(true);
+        // Raw save_connection does not perform the frontend store's refresh or
+        // emit datazen:connections-changed. Mount MainPage to load saved configs.
+        await browser.url('tauri://localhost');
+        await $('[data-testid="workspace-nav-databases"]').waitForDisplayed({ timeout: 20000 });
         await openConnectionsWorkspace();
         await expandAllGroups();
+        // Filter the virtualized navigator so the exact fixture card is mounted.
+        await setNavigatorSearch(name);
         await browser.waitUntil(async () => browser.execute((wanted: string) => {
-          const card = Array.from(document.querySelectorAll('[data-conn-item]')).find((node) => node.textContent?.includes(wanted));
+          const card = Array.from(document.querySelectorAll('[data-conn-item]')).find((node) => node.getAttribute('data-conn-name') === wanted);
           if (!card) return false;
           card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
           return true;
         }, name), { timeout: 15000, timeoutMsg: 'Fresh recovery fixture connection unavailable' });
         await waitForConnectionToolbar();
+        await setNavigatorSearch('');
         await expandConnectedConnectionInNavigator(name);
         await clickNavigatorRefresh();
         await expandSchemaTableCategory(tableSchema, database);
