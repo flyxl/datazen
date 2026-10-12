@@ -796,7 +796,7 @@ tail -n 40 "$LOG"
 
 | # | 断言 | 为什么必须 | 失败形态 |
 | --- | --- | --- | --- |
-| **A-1** | **`validate_legacy_pk_columns` 的逻辑在目录化后仍然存在**：新链路 `src-tauri/src/commands/data/row_change_plan.rs` 里有承接 W-1 的行身份校验，且 `data/tests.rs` 里仍有「行身份为空 → 拒绝」的用例 | 它是**今天仓库里唯一**真正阻止空 `WHERE` 落到 `build_delete_sql` / `build_update_sql` 的检查，而它恰好位于 DB-04 Step 1 要拆分的 `commands/data.rs`（1331 行）里。一次「拆分文件」最容易把它连同测试一起漏掉 | 目录化后 `cargo test` 全绿（因为**根本没有这条用例了**），但 DB-04 上线后空 `WHERE` 重新可达 |
+| **A-1** | **`validate_legacy_pk_columns` 的逻辑在目录化后仍然存在**：新链路 `src-tauri/src/commands/data/row_change_plan.rs` 里有承接 W-1 的行身份校验，且 `data/tests.rs` 里仍有「行身份为空 → 拒绝」的用例 | 它是**今天仓库里唯一**真正阻止空 `WHERE` 落到 `build_delete_sql` / `build_update_sql` 的检查，而它恰好位于 DB-04 Step 1 要拆分的 `commands/data.rs`（1416 行）里。一次「拆分文件」最容易把它连同测试一起漏掉 | 目录化后 `cargo test` 全绿（因为**根本没有这条用例了**），但 DB-04 上线后空 `WHERE` 重新可达 |
 | **A-2** | **C-1 删除遗留写入口后，`generate_handler!` 里不再出现 `commit_row_updates` / `commit_row_deletes`** | 删 `bootstrap/run.rs` 的注册项与删函数体是**两件事**。只删函数体 → 编译失败（好事）；只删注册项 → 前端 `invoke` 在运行时才失败（坏）。这条断言把「运行时才发现」提前到单测 | 删了函数忘了删注册（或反之）→ `pnpm typecheck` 与 `cargo test` 都过，只有用户点到某个入口才炸 |
 | **A-3** | **W-1/W-3 的拒绝发生在 SQL 生成之前**：构造「复合主键只给一列」的输入，断言 `build_update_sql` **从未被调用**（mock 上计数为 0），且返回 `CommandError::Validation` | `build_update_sql` 拿到空 WHERE 片段**不会报错**，会照常产出一条无条件语句。若守卫放在 SQL 之后，测试也能绿 | 断言写成「返回了错误」就算过，而错误其实发生在语句已被生成之后 —— 真实库里那一步可能已经发出去了 |
 | **A-4** | **W-6：写入拒绝的用户可见文案不含数据库原文**：提交一条必失败语句（唯一约束冲突），断言 IPC 返回体里**不含**驱动原始错误文本，也不含任何绝对路径 | `CommandError` 的序列化只调 `redact_secrets_for_log`，而它**只覆盖 4 类凭据模式，不处理绝对路径**。文案若直接透传，本机目录结构会出现在界面和日志里 | 界面把 `duplicate key value violates unique constraint "x" ... at /Users/<name>/…` 整段显示出来 |

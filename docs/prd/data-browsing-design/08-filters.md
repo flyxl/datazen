@@ -64,7 +64,7 @@
 - `packages/driver-api/src/traits.rs`：`DatabaseDriver` trait 本体；同目录 `packages/driver-api/src/traits/` 下已有 `sql_text` / `streaming` / `command_api` / `key_value` / `schema_target` 子模块，`traits.rs` 用 `mod` + `pub use` 再导出。既有的引用与字面量入口是 `quote_ident` / `format_sql_literal` / `pagination_syntax` / `skip_count_query` / `supports_offset` / `has_schema_level`。
 - `packages/driver-api/src/mock_driver.rs`：`MockDriver`、`MockDriverOptions`。**它没有覆盖任何筛选相关方法**——这正是「默认实现 == 今天行为」的可测基座。宿主通过 `src-tauri/src/testing/mod.rs` 的 `pub use datazen_driver_api::mock_driver;` 以 `crate::testing::mock_driver` 使用它。
 
-### 2.2 宿主 SQL 生成（`src-tauri/src/services/query_executor.rs`，797 行）
+### 2.2 宿主 SQL 生成（`src-tauri/src/services/query_executor.rs`，811 行）
 
 - `SortCondition { column, #[serde(default)] descending }`、`OrderBy { column, descending }`。
 - `pub use datazen_driver_api::filters::{FilterCondition, FilterOperator};` —— 宿主与驱动看到**同一个类型**。
@@ -210,7 +210,7 @@ fn like_is_case_insensitive(&self) -> bool {
 
 ### 3.3 Rust：宿主渲染与校验模块（`src-tauri/src/services/query_executor/filter_sql.rs`，新增）
 
-把筛选相关逻辑从 `query_executor` 的生产文件里抽出，既解决 797/800 行的上限问题，又让「纯字符串生成」可以脱离 `QueryExecutor` 单测。
+把筛选相关逻辑从 `query_executor` 的生产文件里抽出，既解决 811/800 行的上限问题，又让「纯字符串生成」可以脱离 `QueryExecutor` 单测。
 
 **与分册 09 的拆分形态合并（重要，避免两条分支各拆一次同一个文件）**：分册 09 已规划把 `src-tauri/src/services/query_executor.rs` **目录化**为 `query_executor/mod.rs`（生产代码）+ `query_executor/tests.rs`（整块测试）。本册沿用同一形态，只在其下新增 `filter_sql.rs` 子模块：
 
@@ -990,7 +990,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 ### Step 3 · 抽出 `filter_sql` 子模块（`src-tauri/src/services/query_executor/filter_sql.rs` 新增；`query_executor` 目录化，`query_executor/mod.rs`、`services/mod.rs` 修改）
 
 改：把 `format_condition` / `filter_is_complete` / `filter_join` 搬到新子模块，加上 §3.3 的 19 算子渲染与 `Result` 化；`build_select_sql` / `build_count_sql` 改为 `Result<String, FilterRejection>`；新增 §3.6.2 的 **`join_filters`**（`filter_join` 原样保留为全局回落）；两处的 `parts` 改成 **`Vec<(String, Option<FilterConnector>)>`** 配对结构，并在**丢弃空片段之前**把 `c.connector` 一起带出；`get_table_data` 把 `FilterRejection` 映射为 `DriverError::NotSupported(contract_message())`；`services/mod.rs` 增 `pub(crate) use query_executor::filter_sql::{join_filters, validate_filters, FilterRejection};`。
-为什么：`query_executor.rs` 今天 797 行，本册的 match 分支与校验逻辑必然突破 800 行上限（§6 有拆分方案）；同时让纯字符串生成可以脱离数据库单测。**与分册 09 的拆分形态已对齐，且归属唯一裁定给本册**（§3.3、契约 §9.1：提交序上 08 早于 09，因此 `query_executor.rs → query_executor/` 目录化由**本册 Step 3** 完成，09 只改 `mod.rs` / 往 `tests.rs` 补用例）。原先「谁先合并谁做」的说法已废止——它把正确性押在不可知的时序上，会让 09 在 rebase 时撞上一整块搬迁 diff。
+为什么：`query_executor.rs` 今天 811 行，本册的 match 分支与校验逻辑必然突破 800 行上限（§6 有拆分方案）；同时让纯字符串生成可以脱离数据库单测。**与分册 09 的拆分形态已对齐，且归属唯一裁定给本册**（§3.3、契约 §9.1：提交序上 08 早于 09，因此 `query_executor.rs → query_executor/` 目录化由**本册 Step 3** 完成，09 只改 `mod.rs` / 往 `tests.rs` 补用例）。原先「谁先合并谁做」的说法已废止——它把正确性押在不可知的时序上，会让 09 在 rebase 时撞上一整块搬迁 diff。
 ⚠️ **不要删 `.filter(|s| !s.is_empty())`**：`format_condition` 改成 `Result` 之后，不支持的算子已被 Step 4/5 的 `validate_filters` 前置拒绝，**正常路径不再产生空片段**——这正是它看起来「该清理」的原因。但它仍是唯一一道防御：驱动可以通过 `filter_operator_sql` 返回 `Some(String::new())`（`Option` 的 `Some` 包着空串是合法载荷，表示「不产出片段」）。删掉过滤就会拼出 `WHERE  AND …` 的坏 SQL。**正确做法是保留过滤，并让连接符跟着片段一起走**，这样即使发生丢弃也不会错位（§3.6.2）。
 自测：把 §2.2 里与筛选直接相关的既有用例**连断言文本一起**搬进 `filter_sql` 的测试模块，再补 §9 的 19 算子用例；保留 `QueryExecutor::filter_is_complete` 转发并加一条「转发与 `filter_sql::filter_is_complete` 同结果」的用例（分册 09 依赖这个谓词唯一）；`cargo test -p datazen --lib`。
 
@@ -1086,7 +1086,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 | `packages/driver-api/src/filters.rs` | 修改 | 22 变体 + 3 常量 + 辅助方法 + **`FilterConnector` 枚举与 `FilterCondition.connector`**（§3.6） | +105 / −2 | 否（< 150） |
 | `packages/driver-api/src/traits.rs` | 修改 | **五个**带默认实现的新方法（含 `like_pattern_escape` / `like_escape_clause` 这一对，§3.3.1） | +55 | 否（trait 文件本就很大，但 +35 不改变量级） |
 | `src-tauri/src/services/query_executor/filter_sql.rs` | **新增** | 19 算子渲染 + 转义 + 校验 + 拒绝类型 + **`join_filters` 逐条连接符拼接**（含单测） | ~440 | 否 |
-| `src-tauri/src/services/query_executor.rs` → `query_executor/{mod.rs,tests.rs}` | **目录化 + 修改** | **拆出**筛选渲染到 `filter_sql.rs` 子模块；`build_select_sql` / `build_count_sql` 变 fallible；`get_table_data` 兜底校验；`filter_is_complete` 保留一行转发 | 搬运 + −150 / +60 | **是**：现状 797 行。目录化（同时搬走整块测试）后生产文件约 340 行，本册与 09 的净增都装得下。若不拆，本册**必然**突破 800。**拆分形态必须与 09 一致**（§3.3） ⚠️ **给 09 的移交说明**：`build_select_sql` 的 `parts` 是 §3.6.2 的配对结构 `Vec<(String, Option<FilterConnector>)>`，09 改排序时必须沿用，**不得改回 `Vec<String>`**（会重新引入连接符错位）。 |
+| `src-tauri/src/services/query_executor.rs` → `query_executor/{mod.rs,tests.rs}` | **目录化 + 修改** | **拆出**筛选渲染到 `filter_sql.rs` 子模块；`build_select_sql` / `build_count_sql` 变 fallible；`get_table_data` 兜底校验；`filter_is_complete` 保留一行转发 | 搬运 + −150 / +60 | **是**：现状 811 行。目录化（同时搬走整块测试）后生产文件约 340 行，本册与 09 的净增都装得下。若不拆，本册**必然**突破 800。**拆分形态必须与 09 一致**（§3.3） ⚠️ **给 09 的移交说明**：`build_select_sql` 的 `parts` 是 §3.6.2 的配对结构 `Vec<(String, Option<FilterConnector>)>`，09 改排序时必须沿用，**不得改回 `Vec<String>`**（会重新引入连接符错位）。 |
 | `src-tauri/src/services/mod.rs` | 修改 | `pub(crate) use query_executor::filter_sql::{join_filters, validate_filters, FilterRejection};` | +2 | 否 |
 | `src-tauri/src/commands/schema.rs` | 修改 | `get_table_data_impl` 前置 `validate_filters` | +18 | 否 |
 | `src-tauri/src/commands/schema/tests.rs` | 修改 | 前缀断言用例 | +45 | 否 |
@@ -1145,7 +1145,7 @@ setDraftFilters(prev => prev.map((f, i) => (i === idx ? { ...f, connector } : f)
 
 **四个必须盯 800 行的文件（其中两个是与分册 09 的共用热文件）**：
 
-1. `src-tauri/src/services/query_executor.rs`（797）：**必须目录化**，拆出 `filter_sql.rs` 子模块与整块测试；形态与 09 一致（§3.3）。
+1. `src-tauri/src/services/query_executor.rs`（811）：**必须目录化**，拆出 `filter_sql.rs` 子模块与整块测试；形态与 09 一致（§3.3）。
 2. `src/components/FilterEditor.tsx`（558）：拆出 `src/components/filter/*` 子组件后约 330。
 3. `src/windows/connection/TableView.tsx`（770）：**本册与 09 合计必超 800**，必须在合并前抽 `TableFilterToolbar.tsx`（Q-13）。
 4. `src/stores/tableDataStore.ts`（722）：本册与 09 合计约 764，余量仅约 36 行；再叠加 DB-02 的快捷键或 DB-11 的多列排序就必须先抽 `fetchedPage.ts`。

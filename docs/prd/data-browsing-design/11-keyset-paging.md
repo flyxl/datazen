@@ -56,7 +56,7 @@
 - `QueryExecutor::build_count_sql` 第一行就丢弃入参 `columns`，只发 `SELECT COUNT(*) FROM t WHERE ...`。
 - `QueryExecutor::format_condition` 只渲染 10 个算子（`Eq` / `Ne` / `Gt` / `Lt` / `Gte` / `Lte` / `Like` / `In` / `IsNull` / `IsNotNull`），值经 `driver.format_sql_literal` **内联为字面量**；`filter_is_complete` 会静默丢弃不完整筛选；`filter_join` 只有全局单一 `AND` / `OR`。
 - 文件末尾 `#[cfg(test)] mod tests` 里的既有语义锚点（**键集接入后必须继续成立**）：`tsql_pagination_emits_offset_fetch_and_never_limit`、`tsql_pagination_keeps_pk_order_without_fallback`、`no_explicit_sort_uses_primary_key_order`、`no_explicit_sort_composite_pk_uses_all_pk_columns`、`explicit_sort_overrides_default_pk_order`、`no_pk_no_explicit_sort_still_has_order_by_first_column`、`build_select_sql_without_offset_when_unsupported`。测试用的 `PaginationSyntax` 由本地 helper `limit_syntax` / `limit_only_syntax` / `tsql_syntax` 手工构造。
-- 该文件**已经 797 行**（`wc -l`），逼近 800 行上限：键集逻辑**不能**直接加在这里（见第 6 节拆分方案）。
+- 该文件**已经 811 行**（`wc -l`），逼近 800 行上限：键集逻辑**不能**直接加在这里（见第 6 节拆分方案）。
 
 ### 2.2 分页子句为什么属于驱动（既有）
 
@@ -573,7 +573,7 @@ export function nextRequestCursor(
 
 改：`src-tauri/src/services/table_read_sql.rs`（**新增**，把 `build_select_sql` / `build_count_sql` / `format_condition` / `filter_is_complete` / `filter_join` **机械搬迁**过来）、`src-tauri/src/services/query_executor/mod.rs`（调用新模块、只留编排）。**注意路径**：本册排在提交序末位，此时 `query_executor/` 目录**已由 08 完成目录化**，基线里的单文件 `query_executor.rs` 不复存在——凡本册仍写 `query_executor.rs` 的地方，一律读作 `query_executor/mod.rs`。
 加：`build_paged_select_sql` + `PagedSelectSql`；`build_select_sql` 保留原签名、原语义（作为无游标适配器）。
-为什么：`query_executor.rs` 已 797 行（2.1），键集逻辑必须落在新文件（第 6 节）；搬迁是纯位移，**搬迁前后 SQL 文本必须逐字节相同**。
+为什么：`query_executor.rs` 已 811 行（2.1），键集逻辑必须落在新文件（第 6 节）；搬迁是纯位移，**搬迁前后 SQL 文本必须逐字节相同**。
 自测：`cargo test -p datazen --lib`，**先确认既有的 5 个语义锚点用例（A1 列出的）在搬迁后原样通过**，再跑新增的黄金 SQL 用例（第 9 节 H7~H12）。
 
 ### Step 5 · 宿主读链路与 IPC 接线（默认不启用）
@@ -619,9 +619,9 @@ export function nextRequestCursor(
 | --- | --- | --- | --- | --- |
 | `packages/driver-api/src/keyset.rs` | **新增** | 公开类型 + `lexicographic_seek_predicate` + 用例 | ~200（含 ~90 行测试） | 否 |
 | `packages/driver-api/src/lib.rs` | 修改 | 加 `pub mod keyset;` | +1 | 否 |
-| `packages/driver-api/src/traits.rs` | 修改 | 两个方法（逐字契约） | +22 | 否（现 1020 行，**已超限**，见下） |
+| `packages/driver-api/src/traits.rs` | 修改 | 两个方法（逐字契约） | +22 | 否（现 1062 行，**已超限**，见下） |
 | `packages/driver-api/src/reuse.rs` | 修改 | 转发两个能力位 + 转发用例 | +16 | **是（现 1159 行，已超限）**，见下 |
-| `packages/driver-api/src/types.rs` | 修改 | `TableDataResult` 加可选 `paging` | +4 | 否（现 939 行，**已超限**，见下） |
+| `packages/driver-api/src/types.rs` | 修改 | `TableDataResult` 加可选 `paging` | +4 | 否（现 958 行，**已超限**，见下） |
 | `packages/driver-api/src/mock_driver.rs` | 修改 | `MockDriverOptions` 加 `supports_keyset_pagination` / `keyset_predicate_returns_none`；`MockDriver` 覆盖两个方法 | +30 | 否（文件较大，需自查） |
 | `src-tauri/src/services/table_paging.rs` | **新增** | `OrderSpec` / `keyset_decision` / `cursor_from_row` + 用例 | ~230（含 ~110 行测试） | 否 |
 | `src-tauri/src/services/table_read_sql.rs` | **新增** | SQL 文本层（搬迁既有 5 个函数 + 新增 `build_paged_select_sql` + 既有/新增用例） | ~620（含 ~300 行测试） | **接近**：若超 800，再把 `format_condition` / `filter_is_complete` / `filter_join` 拆到 `table_filter_sql.rs` |
@@ -647,9 +647,9 @@ export function nextRequestCursor(
 
 ### 6.1 必须处理的三个「已超限」文件（诚实记录）
 
-1. `src-tauri/src/services/query_executor/`（**基线 797 行，但本册合并时 08 已完成目录化**，`mod.rs` 约 340 行、`tests.rs` 约 460 行）——本册**仍需**把 SQL 文本层整体搬出，否则加键集会越线。方案：把 SQL 文本层整体搬到 `table_read_sql.rs`，`QueryExecutor` 只留「取缓存 → 组装 → 发查询 → 组装结果」。搬迁后约 330 行，留出约 470 行余量。既有 `#[cfg(test)] mod tests` **随函数一起搬**，用例名不改（它们是 A1 的口径）。
+1. `src-tauri/src/services/query_executor/`（**基线 811 行，但本册合并时 08 已完成目录化**，`mod.rs` 约 340 行、`tests.rs` 约 460 行）——本册**仍需**把 SQL 文本层整体搬出，否则加键集会越线。方案：把 SQL 文本层整体搬到 `table_read_sql.rs`，`QueryExecutor` 只留「取缓存 → 组装 → 发查询 → 组装结果」。搬迁后约 330 行，留出约 470 行余量。既有 `#[cfg(test)] mod tests` **随函数一起搬**，用例名不改（它们是 A1 的口径）。
 2. `packages/driver-api/src/reuse.rs`（**现 1159 行，早于本册就超限**）——本册要加约 16 行。两个选择，**二选一但必须写进提交信息**：(a) 本册提交内先把 `impl DatabaseDriver for ReuseDriver` 整体搬到 `packages/driver-api/src/reuse/driver_impl.rs`（`reuse.rs` 变 `reuse/mod.rs` + `driver_impl.rs`，纯位移，转发用例跟着走），原始 1159 行降到约 550 + 约 620；(b) 记为既有技术债、本册只加 16 行，并在 `progress.md` 与提交信息里注明。**建议 (a)**：本册是「新增 trait 方法」的批次，转发块正是相关代码，顺手拆成本最低。
-3. `packages/driver-api/src/types.rs`（**现 939 行**）、`packages/driver-api/src/traits.rs`（**现 1020 行**）——同样早于本册超限。本册只加 4 / 22 行，且都是契约要求的位置，**不建议在本册顺手拆**（拆 DTO 与 trait 的爆炸半径远大于收益）。记录为既有技术债（K-10），提交信息里注明「未新增超限文件，仅触碰既有超限文件」。
+3. `packages/driver-api/src/types.rs`（**现 958 行**）、`packages/driver-api/src/traits.rs`（**现 1062 行**）——同样早于本册超限。本册只加 4 / 22 行，且都是契约要求的位置，**不建议在本册顺手拆**（拆 DTO 与 trait 的爆炸半径远大于收益）。记录为既有技术债（K-10），提交信息里注明「未新增超限文件，仅触碰既有超限文件」。
 
 ---
 
@@ -841,5 +841,5 @@ export function nextRequestCursor(
 | K-7 | **稳定全序的唯一键来源**：`CachedColumns` 没有唯一索引信息，今天只能用主键；契约第 1.6 节还要求用 `effective_primary_keys()` 而不是自己过滤 `is_primary_key`，而 `build_select_sql` 今天恰恰是自己过滤 | (a) v1 只用主键且沿用产出 `ORDER BY` 的那一份（本册方案）；(b) 扩展 `SchemaCache` 拿 `TableSchema.indexes`（`IndexInfo::is_unique`），让唯一索引也能支撑键集；(c) 顺手把 PK 来源收敛到 `cached.primary_keys` | **(a)** 先落地；**(c) 归 09 分册**（它拥有默认排序策略，且「收敛 PK 来源」会改变既有 SQL，必须有独立回归）；**(b)** 记为后续增强——它能让「按 `email` 排序」这类常见诉求也用上键集 |
 | K-8 | **漂移提示策略**：`driftSuspected` 只在「本页行数 < 每页条数但 COUNT 说还有后页」时置真；是否要做更主动的漂移检测（翻页时重算 COUNT） | (a) 只做这个廉价信号 + 一次按需重算；(b) 每次键集翻页都重算 COUNT | **(a)**。翻页时重算 COUNT 会把「深翻页快」这件事重新拖慢（既有 `skipCount: true` 就是为省这次 COUNT 才存在的）；(b) 的收益只是提示更及时 |
 | K-9 | **与 09 的落点一致性**（**已核对，非未决**）：稳定全序的唯一键来源由 **09 拥有**——本册 K-7 的方案 (c)「把 PK 来源收敛到 `cached.primary_keys`」已明确归 09，因为它会改变既有 `ORDER BY` SQL，必须有独立回归；同时 09 的「不包含」小节把键集分页整体划归本册。⇒ **依赖是单向的**（本册 → 09），没有环。实施约束：① 冻结提交顺序里 `09` 排在 `11` **之前**（见总纲第 4 节），所以 09 必须**只依赖列元数据、不引用任何键集类型**，否则两册任意颠倒顺序都会编不过；② 两册共用同一批「不稳定排序」i18n key，**以 09 的 key 为准**，本册不再另起名 |
-| K-10 | **既有超限文件**：`reuse.rs`(1159) / `types.rs`(939) / `traits.rs`(1020) 早于本册就超过 800 行；本册必须往其中两三个文件加行 | (a) 本册顺手拆 `reuse.rs`（转发块位移）；(b) 全部记为既有技术债，本册只加行 | **(a) 仅对 `reuse.rs`**（本册改的正是转发块，位移成本最低、收益最直接）；`types.rs` / `traits.rs` **建议 (b)**（拆 DTO 与 trait 的爆炸半径远大于收益），但要在提交信息里明确「未新增超限文件，仅触碰既有超限文件」，避免被误判为本册引入 |
+| K-10 | **既有超限文件**：`reuse.rs`(1159) / `types.rs`(958) / `traits.rs`(1062) 早于本册就超过 800 行；本册必须往其中两三个文件加行 | (a) 本册顺手拆 `reuse.rs`（转发块位移）；(b) 全部记为既有技术债，本册只加行 | **(a) 仅对 `reuse.rs`**（本册改的正是转发块，位移成本最低、收益最直接）；`types.rs` / `traits.rs` **建议 (b)**（拆 DTO 与 trait 的爆炸半径远大于收益），但要在提交信息里明确「未新增超限文件，仅触碰既有超限文件」，避免被误判为本册引入 |
 | K-11 | **`en.ts` 口径冲突**：仓库 `AGENTS.md` 的 i18n 规则与总纲 §6 DoD 第 9 条写「新增 key 只在 `en.ts`」，但已核实 `src/locales/en.ts` 只有 `export { default } from './en/index'`（两行），改它无效；00 契约第 8 节与总纲 §5.4 已改为「领域包」 | (a) 按领域包执行，并把两处旧表述按事实修正；(b) 按旧表述改 `en.ts` | **(a)**。本册只改 `src/locales/en/query.ts`（第 8 节）。修正旧表述不在本册授权范围（不得改其它文档），因此**在此登记**，请文档 owner 收口 |

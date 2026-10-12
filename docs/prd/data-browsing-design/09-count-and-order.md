@@ -116,7 +116,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
   - `tsql_pagination_emits_offset_fetch_and_never_limit` / `tsql_pagination_keeps_pk_order_without_fallback`：分页子句与中性 fallback 的边界。
   - `build_select_sql_without_offset_when_unsupported`、`build_count_sql_with_eq_filter`、`build_select_sql_joins_filters_with_or`、`build_count_sql_joins_filters_with_or`、`filter_join_defaults_to_and`、`format_condition_in_and_is_null`、`incomplete_eq_filter_is_skipped`、`complete_filters_kept_while_incomplete_skipped`、`filter_literals_use_formatter`。
   - `get_table_data_uses_schema_cache_and_returns_total`：用 `crate::testing::mock_driver::{MockDriver, MockDriverOptions}`，断言 `total_rows == Some(99)`、`rows.len() == 1`、`mock.query_calls() == 2`（count + data）。
-- 该文件当前**总计 797 行**（生产代码到 `filter_join` 结束，其后全部是 `#[cfg(test)] mod tests`）——这直接决定了第 6 节的拆分结论。
+- 该文件当前**总计 811 行**（生产代码到 `filter_join` 结束，其后全部是 `#[cfg(test)] mod tests`）——这直接决定了第 6 节的拆分结论。
 
 **三条约束本册设计、必须逐字承认的现状事实（契约 §1.5 事实 7 / 8 / 9）**：
 
@@ -146,7 +146,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 - `DatabaseDriver::quote_char` / `quote_ident`（默认转发 `traits::sql_text::quote_ident`）、`format_sql_literal`（默认转发 `traits::sql_text::format_sql_literal`）、`has_schema_level`（默认 `false`）、`has_multi_database`（默认 `false`）、`default_schema`（默认 `None`）。
 - `DatabaseDriver::get_columns` 的默认实现转发到 `traits::streaming::get_columns`，后者用 `get_table_schema` + `TableSchema::effective_primary_keys()` 产出 `(columns, pks)`。
 - 文件顶部自带说明：trait 是**故意**保持单文件的（「the interface driver authors read」），非契约的实现细节一律放到 `traits/` 子模块（`sql_text` / `streaming` / `command_api` / `key_value` / `schema_target`）。
-- 该文件当前约 1020 行，**已经超过 800 行的单文件纪律**（既有负债）。
+- 该文件当前约 1062 行，**已经超过 800 行的单文件纪律**（既有负债）。
 
 **`packages/driver-api/src/types.rs`**（既有）：
 
@@ -155,7 +155,7 @@ pnpm e2e:minimal -- --spec e2e/specs/table-count-and-order.ts
 - `ColumnSchema { name, data_type, nullable, default_value, comment, is_primary_key, is_auto_increment }`。
 - `TableSchema { table_name, columns, primary_keys, indexes, foreign_keys, check_constraints, table_options }` 与 `TableSchema::effective_primary_keys()`（优先 `primary_keys` 字段，回退到列上的 `is_primary_key`）。
 - `TableInfo { name, schema, table_type, row_count: Option<i64> }` —— `auto` 阈值模式的先验输入来源。
-- 该文件当前约 939 行，同样**已经超过 800 行**（既有负债）。
+- 该文件当前约 958 行，同样**已经超过 800 行**（既有负债）。
 
 **`packages/driver-api/src/reuse.rs`**（既有）：
 
@@ -613,7 +613,7 @@ estimateTableRows: (
 
 - **改哪个文件**：`src-tauri/src/services/query_executor.rs` → 目录模块 `src-tauri/src/services/query_executor/mod.rs` + 新增 `src-tauri/src/services/query_executor/tests.rs`；`src-tauri/src/services/mod.rs` 的 `mod query_executor;` 声明不变（目录模块对声明透明）。
 - **加什么符号**：`mod.rs` 末尾保留 `#[cfg(test)] mod tests;`；测试体原样搬到 `tests.rs`，只把 `use super::*;` 改为 `use super::*;`（同层级引用，符号路径不变）。
-- **为什么**：该文件当前 797 行，其中约 460 行是测试；本册在 `get_table_data` / `build_select_sql` 上净增约 30~40 行生产代码，不拆分**必然越过 800 行红线**（第 6 节有账）。
+- **为什么**：该文件当前 811 行，其中约 460 行是测试；本册在 `get_table_data` / `build_select_sql` 上净增约 30~40 行生产代码，不拆分**必然越过 800 行红线**（第 6 节有账）。
 - **怎么自测**：`cargo test -p datazen --lib query_executor` 必须与原样全绿、用例数不变（这是纯搬运，任何一条由红转绿或消失都说明搬错了）。
 
 ### Step 1：契约层——类型 + 4 个带默认实现的方法 + `ReuseDriver` 转发 + mock 扩展
@@ -699,13 +699,13 @@ estimateTableRows: (
 
 | 文件 | 新增 / 修改 | 职责 | 预估行数 | 是否触及 800 行上限 |
 | --- | --- | --- | --- | --- |
-| `packages/driver-api/src/types.rs` | 修改 | 新增 `CountStrategy`；`TableDataResult` 新增 `total_rows_kind` | +18 / -0 | **已超限（既有约 939 行）**；本次净增 18，不再往里加逻辑，且列为第 11 节待裁定 |
-| `packages/driver-api/src/traits.rs` | 修改 | 4 个新方法的声明与文档（方法体不写在这里） | +40 / -0 | **已超限（既有约 1020 行）**；新方法体一律放 `traits/browsing.rs`，本文件只加签名（与既有 `pagination_syntax` 转发 `sql_text` 的做法一致） |
+| `packages/driver-api/src/types.rs` | 修改 | 新增 `CountStrategy`；`TableDataResult` 新增 `total_rows_kind` | +18 / -0 | **已超限（既有约 958 行）**；本次净增 18，不再往里加逻辑，且列为第 11 节待裁定 |
+| `packages/driver-api/src/traits.rs` | 修改 | 4 个新方法的声明与文档（方法体不写在这里） | +40 / -0 | **已超限（既有约 1062 行）**；新方法体一律放 `traits/browsing.rs`，本文件只加签名（与既有 `pagination_syntax` 转发 `sql_text` 的做法一致） |
 | `packages/driver-api/src/traits/browsing.rs` | **新增** | 4 个新方法的可复用实现（默认实现体） | ~50 | 否 |
 | `packages/driver-api/src/traits.rs` 的 `mod` 声明 | 修改 | 声明 `mod browsing;` | +1 | — |
 | `packages/driver-api/src/reuse.rs` | 修改 | 4 条转发（`count_strategy` / `count_estimate_sql` / `default_order_columns` / `allow_first_column_fallback_order`） | +24 | 否（既有约 1159 行，**已超限**；本次只补转发，属最小必要改动） |
 | `packages/driver-api/src/mock_driver.rs` | 修改 | `MockDriverOptions` 新增 `skip_count_query`、`count_estimate_rows`，并在 `Default` 与 `impl DatabaseDriver` 接通 | +20 | 否 |
-| ~~`src-tauri/src/services/query_executor.rs`~~ | **目录化归属冻结给 08**（契约 §9.1；提交序 08 早于 09） | 本册合并时 `query_executor/` 目录**必然已存在**，本册**不做搬迁**，只改 `mod.rs` 与 `tests.rs` | 0（搬迁由 08 完成） | **拆除红线风险**：现状 797 行，**由 08 完成**目录化后生产文件约 340 行，本册净增 30~40 后仍在 380 行以内 |
+| ~~`src-tauri/src/services/query_executor.rs`~~ | **目录化归属冻结给 08**（契约 §9.1；提交序 08 早于 09） | 本册合并时 `query_executor/` 目录**必然已存在**，本册**不做搬迁**，只改 `mod.rs` 与 `tests.rs` | 0（搬迁由 08 完成） | **拆除红线风险**：现状 811 行，**由 08 完成**目录化后生产文件约 340 行，本册净增 30~40 后仍在 380 行以内 |
 | `src-tauri/src/services/query_executor/mod.rs` | 修改 | `build_select_sql` 新增 `default_order` 参数并删除内部主键推导；`get_table_data` 新增两个参数、改用 `cached.primary_keys` 调 `resolve_default_order`（**行为变更，见 §1.1**）、接 `resolve_count_strategy`、补 `total_rows_kind`；新增 `estimate_row_count` 与估算分支的并发结构 | +55 / -25 | 否（约 370 行） |
 | `src-tauri/src/services/query_executor/tests.rs` | 修改（**搬迁已由 08 完成**，本册只补用例） | 四条等价性用例 + 一条新语义用例 + 三态与并发用例 | 新增约 150（不含 08 搬出的约 460） | 否 |
 | `src-tauri/src/services/table_browsing.rs` | **新增** | `resolve_count_strategy` / `resolve_default_order` 两个纯函数 + 单测 | ~120（含测试） | 否 |
@@ -736,7 +736,7 @@ estimateTableRows: (
 | `src/lib/__tests__/totalRowsDisplay.test.ts` | **新增** | 纯函数用例 | ~70 | 否 |
 | `src/components/DataTable/__tests__/Pagination.countKind.test.tsx` | **新增** | 三态组件用例（避免把既有 `Pagination.test.tsx` 撑大） | ~110 | 否 |
 
-> **800 行红线的结论**：本册有 **两处**必须处理的既有超限/临界文件 —— `src-tauri/src/services/query_executor.rs`（797，**目录化拆测试已由 08 完成**，本册合并时生产文件约 340 行，净增 30~40 后仍有余量）与 `src/stores/tableDataStore.ts`（722，净增需节制）。`packages/driver-api/src/traits.rs`（1020）与 `types.rs`（939）**已经超限**，本册按契约强制位置只做最小净增，并把「是否拆分这两个文件」列入第 11 节。
+> **800 行红线的结论**：本册有 **两处**必须处理的既有超限/临界文件 —— `src-tauri/src/services/query_executor.rs`（811，**目录化拆测试已由 08 完成**，本册合并时生产文件约 340 行，净增 30~40 后仍有余量）与 `src/stores/tableDataStore.ts`（722，净增需节制）。`packages/driver-api/src/traits.rs`（1062）与 `types.rs`（958）**已经超限**，本册按契约强制位置只做最小净增，并把「是否拆分这两个文件」列入第 11 节。
 
 ---
 
@@ -953,7 +953,7 @@ estimateTableRows: (
 | Q5 | **精确分支的 count 失败是否也降级为「未知行数」**（估算分支已在 §3.3 定案，不再是问题） | （A）保持今天：`tokio::try_join!` 失败 ⇒ 整次加载失败（**最保守，本册默认**）；（B）**建议**：精确分支的 count 失败也降级 ⇒ `totalRowsKind = 'unsupported'` + 数据照常渲染 + `tracing::warn!`，理由是「三态」存在的意义就是让行数不再绑架数据可见性。这是明确的行为变更（**会改变今天的错误语义**），**需要人工裁定后才实现**（B9） |
 | Q6 | **`estimate_table_rows` 是否真的需要独立 IPC** | 契约 §6.1 已定该命令存在。本册把它的定位收窄为「不重新取页地刷新估计值 / 供 `auto` 之外的显式刷新按钮使用」。（A）**建议**：保留命令，但首版只有「面板估算过期后刷新」一处调用，避免与 `getTableData` 的估算路径出现两份实现——两条路径必须共用 `QueryExecutor::estimate_row_count`；（B）若无人调用则推迟到有需求时再加（但这会与契约冲突，需先改契约）。请裁定是否接受「命令先落地、调用点暂只有一处」 |
 | Q7 | ~~**估算语句缺 `database` 上下文**~~ **已裁定并已修契约** | 原签名 `count_estimate_sql(&self, quoted_table)` 确实缺库上下文（MySQL `information_schema.TABLES`、SQL Server `sys.dm_db_partition_stats` 都无法安全实现）。**契约册 §5.3 已改为 `count_estimate_sql(&self, database: &str, schema: Option<&str>, table: &str)`：传未引用的原始表名 + 显式库/schema，引用由驱动自己做**（与 `get_columns` / `get_table_schema` 的既有惯例一致）。**因此本册的落地范围不再限于 PostgreSQL**：MySQL / SQL Server 在有 `DATABASE()` 歧义顾虑时，现在可以用显式库名安全实现估算。落地顺序仍建议先只做 PostgreSQL（`pg_class.reltuples`），把方言估算作为后续增量；但**不再需要**把「估算能否实现」立为契约修订项 |
-| Q8 | **`driver-api` 的 `types.rs`（约 939 行）与 `traits.rs`（约 1020 行）已超 800 行红线** | 本册按契约强制位置只做最小净增（`types.rs` +18；`traits.rs` 只加签名，方法体放新增 `traits/browsing.rs`）。**建议：本册不动它们的既有内容**，把「是否拆分这两个文件」立为独立的存量治理项。（A）**推荐**：本次豁免，仅记录；（B）借本册一并拆分 `types.rs` 为 `types/{core,ddl,transfer}.rs`——改动面覆盖全仓所有 `use datazen_driver_api::...`，风险与收益不成比例 |
+| Q8 | **`driver-api` 的 `types.rs`（约 958 行）与 `traits.rs`（约 1062 行）已超 800 行红线** | 本册按契约强制位置只做最小净增（`types.rs` +18；`traits.rs` 只加签名，方法体放新增 `traits/browsing.rs`）。**建议：本册不动它们的既有内容**，把「是否拆分这两个文件」立为独立的存量治理项。（A）**推荐**：本次豁免，仅记录；（B）借本册一并拆分 `types.rs` 为 `types/{core,ddl,transfer}.rs`——改动面覆盖全仓所有 `use datazen_driver_api::...`，风险与收益不成比例 |
 | Q9 | **`grid.count.estimateUnavailable` 的触发时机** | （A）**建议**：只在「用户显式要求估算（`rowCountMode = 'estimated'` 或点了估算刷新）而驱动 `count_estimate_sql` 为 `None`」时提示一次；（B）`auto` 模式下驱动不支持估算是**预期内**的降级，静默退回精确即可，不提示。请确认这个二分 |
 | Q10 | **未知态下 `Page N` 的 N 从哪来** | 未知态没有总数，`page` 只能来自面板自身的请求页码（`TableState.page + 1`）。**建议**：直接显示 `TableState.page + 1`，并在用户翻到空页时按 B10 处理。备选：显示「第 N 页（未知总数）」，但会与 `pagination.pageOnly` 的文案取舍绑定，请一并裁定用哪种措辞 |
 | Q11 | **§1.1 的行为变更要不要给用户一个可见提示** | 变更只影响「`primary_keys` 非空但列未打标志」的表（树内 15 个 path 驱动均不受影响，见 §1.1）。（A）**建议**：只在 PR 描述与 `tracing::debug!` 里交代，UI 不提示 —— 因为对绝大多数用户它只是「排序终于对了」，提示反而制造困惑；（B）跟随更新日志给一句「无主键判定改为以真实主键为准」。请裁定是否需要面向用户披露 |

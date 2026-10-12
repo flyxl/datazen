@@ -38,7 +38,7 @@
 
 > 本节只列**我亲自读过**的符号。**不含行号**，不做推测。凡「没有」的结论都由 grep 给出。
 
-### 2.1 `src-tauri/src/commands/data.rs`（现状 **1331 行**，见 §6）
+### 2.1 `src-tauri/src/commands/data.rs`（现状 **1416 行**，见 §6）
 
 **DTO（全部已存在）**：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContext`、`PendingRowChange`、`PlannedStatement`、`ChangeWarning`、`RowChangePlan`、`CommitPendingChangesRequest`、`RowCommitStatementResult`、`CommitPendingChangesResponse`。
 
@@ -65,7 +65,7 @@
 - `packages/driver-api/src/traits/sql_text.rs`：`quote_ident`（按 `quote_char` 选 `` ` `` 或 `"`，并把引号字符翻倍）、`format_sql_literal`（`None | Some(Null)` → `NULL`，字符串/时间戳/JSON 都先 `replace('\\', "\\\\")` 再 `replace('\'', "''")`，Bytes → `X'…hex…'`）、`build_update_sql`（`UPDATE {q(table)} SET {…} WHERE {…}`，列名与值分别经 `driver.quote_ident` / `driver.format_sql_literal`）、`build_delete_sql`（同构 `DELETE FROM {q(table)} WHERE {…}`）、`pagination_syntax`、`qualified_sql`、`split_restore_sql`，以及私有 `bytes_to_hex`。
 - `packages/driver-api/src/reuse.rs`：`ReuseDriver`（MySQL 协议族 / PostgreSQL wire 的兼容包装器）**逐方法转发**给 `inner`，其中就有 `pagination_syntax`、`format_sql_literal`、`build_update_sql`、`build_delete_sql`。→ **新增 trait 方法如果不在 `ReuseDriver` 里补一行转发，包装驱动就会丢掉内层驱动的覆盖。**
 - `packages/driver-api/src/types.rs`：`Value`（`#[serde(untagged)]`，`Null`/`Bool`/`Integer`/`Float`/`String`/`Bytes`/`Timestamp`/`Json`，`Default = Null`）、`ColumnSchema { name, data_type, nullable, default_value: Option<String>, comment, is_primary_key, is_auto_increment }`、`TableSchema::effective_primary_keys()`、`TableDataResult`、`PaginationSyntax`。**`CellWrite` 不存在。**
-- `packages/driver-api/src/lib.rs`：`PROTOCOL_VERSION: u32 = 4`、`MIN_PROTOCOL_VERSION: u32 = 1`；`packages/driver-api/src/capabilities.rs` 的判定是「低于 MIN 拒绝 / 高于 PROTOCOL 拒绝 / 区间内接受」。
+- `packages/driver-api/src/lib.rs`：`PROTOCOL_VERSION: u32 = 5`、`MIN_PROTOCOL_VERSION: u32 = 1`；`packages/driver-api/src/capabilities.rs` 的判定是「低于 MIN 拒绝 / 高于 PROTOCOL 拒绝 / 区间内接受」。
 - `packages/driver-api/src/mock_driver.rs`：`MockDriver` 与 `MockDriverOptions`；`execute_rows_affected` **默认为 0**；访问器有 `execute_calls()`、`commit_calls()`、`open_transaction_count()`、`query_calls()`，以及 `set_table_schema_for_test` / `add_table_for_test`；`query_rows` 可配置返回行。
 
 ### 2.3 驱动覆盖现状（grep 结论）
@@ -399,7 +399,7 @@ export interface TableState {
 
 ### 3.8 兼容性结论
 
-**是否提升 `PROTOCOL_VERSION`：不需要，保持 4；`MIN_PROTOCOL_VERSION` 保持 1。** 理由：
+**是否提升 `PROTOCOL_VERSION`：不需要，保持 5；`MIN_PROTOCOL_VERSION` 保持 1。** 理由：
 
 1. 只**新增** trait 方法（`build_insert_sql` / `insert_returning_clause`），两者都有默认实现，默认行为等于今天（不产生任何 INSERT 语句）；`capabilities.rs` 的区间判定因此对 1..4 全部照旧接受。
 2. 不改任何既有方法签名（`build_update_sql` / `build_delete_sql` / `format_sql_literal` / `pagination_syntax` / `execute` / `query` / `begin_transaction` / `commit` / `rollback` 全部逐字不变）。
@@ -449,14 +449,14 @@ export interface TableState {
 
 > 每步都写「改哪个文件 / 加什么符号 / 为什么 / 怎么自测」。顺序即推荐提交顺序。
 
-### Step 1 · 先拆 `src-tauri/src/commands/data.rs`（1331 行 → 三个文件）
+### Step 1 · 先拆 `src-tauri/src/commands/data.rs`（1416 行 → 三个文件）
 
 - **改哪个文件**：`src-tauri/src/commands/data.rs` → 变成 `src-tauri/src/commands/data/mod.rs`，并新增 `src-tauri/src/commands/data/row_change_plan.rs`、`src-tauri/src/commands/data/row_change_execute.rs`、`src-tauri/src/commands/data/tests.rs`。
 - **加什么符号**：`mod row_change_plan; mod row_change_execute;`（在 `mod.rs` 内）；`row_change_plan.rs` 承载 `RowChangeTableContext` / `PendingRowChange` / `PlannedStatement` / `ChangeWarning` / `RowChangePlan` / `CommitPendingChangesRequest` / `RowCommitStatementResult` / `CommitPendingChangesResponse` + `canonicalize_changes` / `identity_key` / `effective_identity` / `validate_table_context` / `changes_fingerprint` / `value_summary` / `build_row_change_plan` / `plan_changes` / `validate_immutable_plan` / `preview_pending_changes_impl` / `preview_pending_changes`；`row_change_execute.rs` 承载 `execute_row_change_plan_impl` / `commit_pending_changes_impl` / `commit_pending_changes`；`tests.rs` 搬走 `mod tests`（`#[cfg(test)] mod tests;`）。
-- **为什么**：该文件**今天就已 1331 行、超过 800 行上限**；本册还要往里加插入逻辑与测试，不拆会同时违反规模纪律并让 review 无法聚焦。模块路径 `commands::data::*` 对外不变（`mod.rs` 兼容），所以拆分是纯结构提交，可独立回滚。
+- **为什么**：该文件**今天就已 1416 行、超过 800 行上限**；本册还要往里加插入逻辑与测试，不拆会同时违反规模纪律并让 review 无法聚焦。模块路径 `commands::data::*` 对外不变（`mod.rs` 兼容），所以拆分是纯结构提交，可独立回滚。
 - **怎么自测**：`cargo test -p datazen --lib` 退出码 `0` 且用例数与拆分前**逐个不变**（先记下旧用例清单再比对）；`test result: ok`；`wc -l` 三个文件均 ≤ 800。**不得**在同一提交里改行为。
 
-- **迁移清单（不是可选项，契约 §4.5 硬性要求）**：本 Step 拆的是 `commands/data.rs`（1331 行），而该文件里恰好藏着**今天仓库中唯一**真正阻止空 `WHERE` 落到 `build_delete_sql` / `build_update_sql` 的检查——`validate_legacy_pk_columns`。它必须被**逐项**搬进新树，不能只写「拆分文件」：
+- **迁移清单（不是可选项，契约 §4.5 硬性要求）**：本 Step 拆的是 `commands/data.rs`（1416 行），而该文件里恰好藏着**今天仓库中唯一**真正阻止空 `WHERE` 落到 `build_delete_sql` / `build_update_sql` 的检查——`validate_legacy_pk_columns`。它必须被**逐项**搬进新树，不能只写「拆分文件」：
   1. `validate_legacy_pk_columns` 的函数体 → `row_change_plan.rs`，并按 **W-3 加强**：既有实现只校验「非空且值非 NULL」，**不校验键集是否等于 `CachedColumns.primary_keys`**，因此一张 `(tenant_id, order_no)` 复合主键表只要前端传了 `{tenant_id: 7}` 就会静默生成 `WHERE "tenant_id" = 7` 命中成千上万行。搬过去时补上列集相等断言，语义升级为 W-1。
   2. 其配套测试 `commit_row_deletes_rejects_empty_pk` → `data/tests.rs`，**改名并扩充**为同时覆盖 W-1（行身份为空）、W-2（拒绝发生在 SQL 生成之前）、W-3（复合主键漏一列）的三条用例。
   3. `generate_handler!`（`src-tauri/src/bootstrap/run.rs`）里 `commit_row_updates` / `commit_row_deletes` 两个**遗留写入口**按 **C-1 已裁定删除**：注销注册项 + 删 `commit_row_updates_impl` / `commit_row_deletes_impl` + 删 `tableDataStore.test.ts` 里 4 处 mock + 加回归断言「这两个命令名不再出现在 `generate_handler!` 中」（见分册 12 §7.2.1 的 A-2）。
@@ -581,13 +581,13 @@ export interface TableState {
 
 | 文件 | 新增/修改 | 职责 | 预估行数 | 触及 800 行上限？ |
 | --- | --- | --- | --- | --- |
-| `src-tauri/src/commands/data.rs` → `data/mod.rs` | 改造 + 迁移 | 保留 IPC 命令壳、遗留批量入口（`commit_row_updates*` / `commit_row_deletes*`）、`get_table_data` 相关命令 | 迁出后 ≈ 700（净 0 新增） | **是（现状 1331 行已超限）→ 必须按 Step 1 拆分** |
+| `src-tauri/src/commands/data.rs` → `data/mod.rs` | 改造 + 迁移 | 保留 IPC 命令壳、遗留批量入口（`commit_row_updates*` / `commit_row_deletes*`）、`get_table_data` 相关命令 | 迁出后 ≈ 700（净 0 新增） | **是（现状 1416 行已超限）→ 必须按 Step 1 拆分** |
 | `src-tauri/src/commands/data/row_change_plan.rs` | 新增 | DTO、`canonicalize_changes`、`canonicalize_inserts`、指纹、计划构建、`plan_changes` | ≈ 620（迁移 ≈ 440 + 插入 ≈ 180） | 否 |
 | `src-tauri/src/commands/data/row_change_execute.rs` | 新增 | `execute_row_change_plan_impl`、`commit_pending_changes_impl`、回填 | ≈ 350（迁移 ≈ 240 + 插入/回填 ≈ 110） | 否 |
 | `src-tauri/src/commands/data/tests.rs` | 新增 | 从 `data.rs` 迁出的 `mod tests` + 本册新增用例 | ≈ 700（迁移 ≈ 460 + 新用例 ≈ 240） | 否（若超 800 再按 plan/execute 拆测试模块） |
-| `packages/driver-api/src/types.rs` | 修改 | `CellWrite` | +45 | 否（现 ≈ 939 行 → 加后 **仍超 800，属既有超限**；本册不引入新超限，建议随手登记为技术债） |
+| `packages/driver-api/src/types.rs` | 修改 | `CellWrite` | +45 | 否（现 ≈ 958 行 → 加后 **仍超 800，属既有超限**；本册不引入新超限，建议随手登记为技术债） |
 | `packages/driver-api/src/traits/sql_text.rs` | 修改 | `build_insert_sql` 默认实现 | +35 | 否（现 161 行） |
-| `packages/driver-api/src/traits.rs` | 修改 | 两个新 trait 方法 + 文档注释 | +45 | 否（现 1020 行 → **已超限**，同上，属既有技术债） |
+| `packages/driver-api/src/traits.rs` | 修改 | 两个新 trait 方法 + 文档注释 | +45 | 否（现 1062 行 → **已超限**，同上，属既有技术债） |
 | `packages/driver-api/src/reuse.rs` | 修改 | `ReuseDriver` 转发两行 | +12 | 否（现 1159 行 → **已超限**，同上） |
 | `packages/drivers/{mysql,postgres,sqlite,sqlserver}/src/*.rs` | 修改 | 方言覆盖 | 每驱动 +15~35 | 否 |
 | `packages/drivers/*/src/tests.rs`（4 个） | 修改 | 三态断言 | 每驱动 +40 | 否 |
@@ -605,8 +605,8 @@ export interface TableState {
 
 ### 拆分方案（`data.rs` 与 `tableDataStore.ts` 都已逼近/越线）
 
-1. **Rust（强制，Step 1）**：`data.rs`（1331 行）→ `data/mod.rs` + `data/row_change_plan.rs` + `data/row_change_execute.rs` + `data/tests.rs`，四个文件目标均 ≤ 800。模块路径对 `commands` 外部保持 `commands::data::*` 不变，因此拆分是独立可回滚的纯结构提交。
-2. **Rust 既有超限（登记，不在本册强改）**：`packages/driver-api/src/types.rs`（939）、`traits.rs`（1020）、`reuse.rs`（1159）**今天已超 800**。本册只做加法，不做无关重构；建议在 `docs/development/` 的规模纪律条目里登记为技术债（拆法示例：`types.rs` → `types/value.rs` + `types/schema.rs`；`traits.rs` → `traits/` 目录下按域拆并保留 re-export）。
+1. **Rust（强制，Step 1）**：`data.rs`（1416 行）→ `data/mod.rs` + `data/row_change_plan.rs` + `data/row_change_execute.rs` + `data/tests.rs`，四个文件目标均 ≤ 800。模块路径对 `commands` 外部保持 `commands::data::*` 不变，因此拆分是独立可回滚的纯结构提交。
+2. **Rust 既有超限（登记，不在本册强改）**：`packages/driver-api/src/types.rs`（958）、`traits.rs`（1062）、`reuse.rs`（1159）**今天已超 800**。本册只做加法，不做无关重构；建议在 `docs/development/` 的规模纪律条目里登记为技术债（拆法示例：`types.rs` → `types/value.rs` + `types/schema.rs`；`traits.rs` → `traits/` 目录下按域拆并保留 re-export）。
 3. **前端（强制）**：`src/stores/tableDataStore.ts` 现 722 行，本册 +170 会越线 → 把草稿行逻辑放进新文件 `src/stores/tableData/draftInserts.ts`（纯函数：增删改、复制、`draftsForWire`、`pendingWorkSignature` 的草稿部分），`tableDataStore.ts` 只保留薄接线（每个动作 3~6 行），加后 ≈ 760 行，仍在 800 以内。
 
 ---

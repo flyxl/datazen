@@ -322,7 +322,7 @@ export type Value = string | number | boolean | null | Record<string, unknown> |
 位置：`packages/driver-api/src/lib.rs` 与 `capabilities.rs`。
 
 ```rust
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 pub const MIN_PROTOCOL_VERSION: u32 = 1;
 ```
 
@@ -692,7 +692,7 @@ CellCoord.rowIndex
 
 既有函数 `validate_legacy_pk_columns(columns, operation)`（位于 `src-tauri/src/commands/data.rs`，由 `build_row_change_plan` 链路在「Row update」/「Row delete」两处调用，配套测试 `commit_row_deletes_rejects_empty_pk`）是**当前仓库中唯一**真正阻止空 WHERE 落到 `build_delete_sql` / `build_update_sql` 的检查。
 
-它此前**在 14 份文档的盲区里无人提及**，而它所在的 `src-tauri/src/commands/data.rs`（1331 行）正是 DB-04 Step 1 要目录化为 `src-tauri/src/commands/data/{mod.rs,plan.rs,tests.rs}` 的那个文件——一次目录化就可能把它连同测试一起遗漏。
+它此前**在 14 份文档的盲区里无人提及**，而它所在的 `src-tauri/src/commands/data.rs`（1416 行）正是 DB-04 Step 1 要目录化为 `src-tauri/src/commands/data/{mod.rs,plan.rs,tests.rs}` 的那个文件——一次目录化就可能把它连同测试一起遗漏。
 
 **必须落地**：
 
@@ -1185,9 +1185,9 @@ export interface DataGridCapabilities {
 | `src/lib/gridErrors.ts` | 新建（骨架 ~60 行） | **01**（见 §8 归属总则与下方裁定说明） | **只允许按 §8 三步追加**，禁止整文件覆盖 |
 | `src/lib/cellTypes.ts`（`resolveCellType` / `CellType`） | 新建 | **05** | 只消费 |
 | `src/lib/databaseMeta.ts` 的 `DataGridCapabilities` + `dataGrid?` | 既有文件 | **08**（按合并序最早需要它） | 只加自己那一项，且必须已存在于本契约 §7 |
-| `src-tauri/src/services/query_executor.rs` → `query_executor/{mod.rs,tests.rs}` | **既有 797 行** ⚠ | **08**（目录化） | 只新增子模块文件（如 `filter_sql.rs`） |
+| `src-tauri/src/services/query_executor.rs` → `query_executor/{mod.rs,tests.rs}` | **既有 811 行** ⚠ | **08**（目录化） | 只新增子模块文件（如 `filter_sql.rs`） |
 | `packages/driver-api/src/traits/browsing.rs` | 新建 | **09**（DB-09 的第一个新 trait 方法落在这里） | 后续新方法继续追加到同一文件 |
-| `src-tauri/src/commands/data.rs` → `data/{mod.rs,row_change_plan.rs,row_change_execute.rs,tests.rs}` | **既有 1331 行** ⚠⚠ | **04**（Step 1，目录化；**必须显式迁移 `validate_legacy_pk_columns` 及其测试**，见 §4.5） | 只新增子模块文件；**任何分册要改这个文件，必须先 rebase 到 04 的目录化之后** |
+| `src-tauri/src/commands/data.rs` → `data/{mod.rs,row_change_plan.rs,row_change_execute.rs,tests.rs}` | **既有 1416 行** ⚠⚠ | **04**（Step 1，目录化；**必须显式迁移 `validate_legacy_pk_columns` 及其测试**，见 §4.5） | 只新增子模块文件；**任何分册要改这个文件，必须先 rebase 到 04 的目录化之后** |
 | `src/stores/panelStore.ts` | **既有 728 行** ⚠ | 不新增归属；**10** 只允许在其上加 ≤15 行接线 | 07 把返回栈放进**新文件** `src/stores/fkNavigationStore.ts`；10 的判定逻辑放进 `src/stores/panelResultEdit.ts`。超出 15 行者必须把逻辑整体搬进新文件，**不得**放任它突破 800 |
 
 #### 行数总账的读法（先读这段，否则下表会被误用）
@@ -1233,7 +1233,7 @@ export interface DataGridCapabilities {
 
 > 原文三处数字（契约「−~70」、05 的「~495」、07 的「~450」）彼此不相容，根因是把 01 的抽取规模从 225 误记成 70。实测基线 **403** 而非 ~558 / ~500，因此该文件的余量远比原先估计的宽裕：**任何分册往它加超过 100 行才需要考虑抽取**（不是原文的 50 行）。若某分册仍按 628 这个旧基线做推算，一律以本表为准。
 
-**其余热文件基线（已实测，分册引用前请先用 `wc -l` 复核）**：`FilterEditor.tsx` 558、`tableDataStore.ts` 722、`panelStore.ts` 728、`ContentViewDrawers.tsx` 228、`VirtualBody.tsx` 207、`query_executor.rs` 797、`commands/data.rs` 1331、`driver-api/src/types.rs` 939、`driver-api/src/traits.rs` 1020。
+**其余热文件基线（已实测，分册引用前请先用 `wc -l` 复核）**：`FilterEditor.tsx` 558、`tableDataStore.ts` 722、`panelStore.ts` 728、`ContentViewDrawers.tsx` 228、`VirtualBody.tsx` 207、`query_executor.rs` 811、`commands/data.rs` 1416、`driver-api/src/types.rs` 958、`driver-api/src/traits.rs` 1062。
 
 **说明：为什么 `gridErrors.ts` 由 01 创建而不是 04/05/08**。01 的原文建议「留给 04/05 首次建立」，理由是「DB-01 不产生后端错误」。但按提交顺序 **01 最先合并**，而 01 自己就要写 `classifyGridError` 的消费侧用例（前缀匹配 + `'unknown'` 回退必须保留原始消息）。若文件不存在，01 的用例无法编译，01 就被一个下游分册卡住。因此按「**提交顺序最靠前、且确实需要该文件的分册负责建骨架**」这一统一规则，改由 **01 建骨架**（~60 行，形状完全照抄本契约 §8），04/05/08/09/10 只追加前缀常量。这条规则同时消除了「两个分册各建一份骨架」的风险。
 
@@ -1270,5 +1270,5 @@ export interface DataGridCapabilities {
 | --- | --- | --- |
 | C-1 | `CellWrite` 是否也替换既有的 `CellUpdate.value: Option<Value>`（遗留批量入口 `commit_row_updates` / `commit_row_deletes`） | **已裁定：删除遗留入口**。原「建议不动」的口径已推翻，理由如下（复核后确认，属高危）：① 两个命令**仍注册在 Tauri IPC**（`bootstrap/run.rs` 的 `generate_handler!` 列表内），任何 IPC 调用方或注入的 JS 都能触达，它们**不只**是死代码；② 两者都直接迭代 `driver.execute(...)` 并**把 affected 计数整个丢弃**，因此**是全仓库唯一不走 `affected == 1` 护栏的写路径**——DB-04 建立的那道护栏它们完全不经过；③ 两者只有 `validate_legacy_pk_columns` 挡空 WHERE，而它只校验「pk_columns 非空」，不校验是否等于真实主键列集；④ 前端**零生产调用点**（仅 `tableDataStore` 的测试 mock 断言 `not.toHaveBeenCalled()`），删除的使用成本为零。**动作**：从 `generate_handler!` 注销两个命令，删除 `commit_row_updates_impl` / `commit_row_deletes_impl` 及其导出，保留并迁移 `validate_legacy_pk_columns` 的校验逻辑到新链路（见 §4.5），同步删除 `tableDataStore.test.ts` 中的 mock 与 `not.toHaveBeenCalled()` 断言。**回归防线**：新增一条契约测试，断言 `tauri::generate_handler!` 注册的命令清单中**不存在** `commit_row_updates` 与 `commit_row_deletes`——否则将来重新注册时无人察觉 |
 | C-2 | ~~`supported_filter_operators()` 默认返回共享算子集，是否意味着所有驱动「宣称支持」新算子但实际 SQL 可能失败~~ **已裁定** | **裁定：默认返回共享的 19 个**（§5.2 与 §7 已按此冻结）。原先的顾虑不成立：共享的 19 个算子**全部由宿主 `format_condition` 渲染**，驱动不需要为它们写任何代码（驱动只提供 `quote_ident` / `format_sql_literal` 这两个已有方法）；只有**方言专有的 3 个**（`Regex` / `NotRegex` / `JsonContains`）必须由驱动显式声明并经 `filter_operator_sql` 渲染。因此缺省给 19 个不会让任何驱动"谎称支持"，也不会造出会报错的入口——真正无法渲染的组合由 `filter_operator_sql` / `supported_filter_operators()` 在**发语句之前显式拒绝**兜住，而不是靠把白名单缩小到 10 个。若按原建议只给 10 个，新算子在**任何未改动的驱动**上都不可用，DB-08 等于白做。残留的真实差异只有 `LIKE` 的大小写与转义（各驱动默认排序规则不同），它由 `like_is_case_insensitive()` 只影响**文案**，不改变 SQL |
-| C-3 | ~~`PROTOCOL_VERSION` 是否随本次改动提升~~ **已裁定：不提升** | **不提升，保持 4**（`MIN_PROTOCOL_VERSION` 保持 1）。分册 04 独立复核后得出同一结论：只新增**带默认实现**的 trait 方法、默认行为等于今天、不动任何既有方法签名与 IPC DTO 字段。唯一残留是「旧 `ref` 的 git 驱动不会覆盖新方法」，那是**驱动覆盖缺口**（登记为刷新 git 驱动 `ref` 的事项），不构成提升协议版本的理由——提升版本会强制所有插件同步升级，代价远大于收益。若后续确需修改**既有**方法签名，再单独提升并同步 git 驱动 `ref` |
+| C-3 | ~~`PROTOCOL_VERSION` 是否随本次改动提升~~ **已裁定：不提升** | **不提升，保持 5**（`MIN_PROTOCOL_VERSION` 保持 1）。分册 04 独立复核后得出同一结论：只新增**带默认实现**的 trait 方法、默认行为等于今天、不动任何既有方法签名与 IPC DTO 字段。唯一残留是「旧 `ref` 的 git 驱动不会覆盖新方法」，那是**驱动覆盖缺口**（登记为刷新 git 驱动 `ref` 的事项），不构成提升协议版本的理由——提升版本会强制所有插件同步升级，代价远大于收益。若后续确需修改**既有**方法签名，再单独提升并同步 git 驱动 `ref` |
 | C-4 | **W-3 与「预览 → 提交」之间的 TOCTOU：列集相等校验比对的是 `SchemaCache::get_columns` 的缓存快照，而计划指纹（`changes_fingerprint`）只覆盖列值、不覆盖表结构。若两次预览之间、或校验通过与语句发出之间，另一会话对表做了 DDL（加列、删列、改主键），本设计的三道防线都会基于过期的 `primary_keys` 判定 | **已裁定：登记为已知残留，不在本批实现**，理由与本批的最小成本缓解如下。理由：① 修彻底需要在 SQL 上附加 `WHERE` 的旧值谓词或引入版本列，那是 **DB-04 范围外**的乐观并发控制，与 W-5「本设计明确不实现乐观并发」同源；② SchemaCache 本来就是缓存，任何基于它的判定都天然带这个窗口，本批若单独给写路径补一层，会与只读路径的判定口径分叉；③ DDL 与本批的 P0 目标（选择、键盘、剪贴板、筛选）正交，把它塞进本批会让 04 的提交链路再增一条与 §4.5 W-1…W-4 平行的规则，增加实习生实现面却不降低真实风险。**本批的最小成本缓解（必须在 04 落地，不得省略）**：W-3 的列集相等校验必须在**紧邻生成 SQL 的那一刻**读取 `SchemaCache::get_columns`（**不得**复用预览阶段缓存下来的主键列表），这样至少把窗口从「整个面板生命周期」压缩到「单次提交调用内」；并在提交失败时把该次读取的主键列集与失败语句的类型一并写进日志，便于事后定位。**明确不做**：不做 schema 版本号、不做表结构指纹、不做「结构变了就禁用编辑」的额外门禁。**遗留影响**：在一个持续 DDL 的表上，仍可能出现「按旧主键列集生成的 WHERE 未命中」（落到 `affected == 0` → 被既有 `affected == 1` 校验拒绝，属于**失败而非误写**）这一可观测后果；真正危险的方向是「旧主键列已不再是主键」而语句仍按它拼 WHERE，此时 W-3 的兜底也失效——该情形需由 DB 的表结构变更纪律（不在 DDL 期间批量编辑数据）承担，不在本批验收范围内。**若将来要求覆盖，须另立需求并单独裁定** |

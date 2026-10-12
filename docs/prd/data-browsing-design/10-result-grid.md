@@ -111,7 +111,7 @@
 
 ### 2.6 既有的计划—提交链路（`00-contracts.md` §1.4，直接复用，不新造）
 
-位置 `src-tauri/src/commands/data.rs`（实测 **1331 行**）。符号：`preview_pending_changes` → `build_row_change_plan` → `changes_fingerprint`；`commit_pending_changes` → `commit_pending_changes_impl` → `execute_row_change_plan_impl`；遗留入口 `commit_row_updates` / `commit_row_deletes`。
+位置 `src-tauri/src/commands/data.rs`（实测 **1416 行**）。符号：`preview_pending_changes` → `build_row_change_plan` → `changes_fingerprint`；`commit_pending_changes` → `commit_pending_changes_impl` → `execute_row_change_plan_impl`；遗留入口 `commit_row_updates` / `commit_row_deletes`。
 
 DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContext`、`PendingRowChange`、`PlannedStatement`、`RowChangePlan`、`CommitPendingChangesRequest`、`RowCommitStatementResult`、`CommitPendingChangesResponse`。
 
@@ -123,7 +123,7 @@ DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContex
 
 ### 2.7 既有的 `CellWrite` 三态（`00-contracts.md` §3）
 
-`CellWrite` 定义为 `Null` / `Value(Value)` / `Unset`，Rust 侧位于 `packages/driver-api/src/types.rs`（实测 **939 行，已超 800**），前端镜像位于 `src/lib/tableChanges.ts`（实测 **227 行**），并配 `cellWriteNull` / `cellWriteValue` / `cellWriteUnset` 构造器；「是否真的改动」一律复用 `valuesEqual`。
+`CellWrite` 定义为 `Null` / `Value(Value)` / `Unset`，Rust 侧位于 `packages/driver-api/src/types.rs`（实测 **958 行，已超 800**），前端镜像位于 `src/lib/tableChanges.ts`（实测 **227 行**），并配 `cellWriteNull` / `cellWriteValue` / `cellWriteUnset` 构造器；「是否真的改动」一律复用 `valuesEqual`。
 
 **本册的取舍**：查询结果链路的**写意图表达**复用 `CellWrite`，但本册不落地 `06-dirty-cells` 的完整脏标记/提交 UI——本册只保证「不可写回时不可能产生任何写意图，可写回时写意图只经计划管线落地」。
 
@@ -132,9 +132,9 @@ DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContex
 | 文件 | 实测行数 | 结论 |
 | --- | --- | --- |
 | `src/stores/panelStore.ts` | 728 | **接近上限**，本册只能在其上加最小接线，新逻辑必须另起文件 |
-| `packages/driver-api/src/types.rs` | 939 | **已超限**，新增类型不得继续堆在这里 |
-| `packages/driver-api/src/traits.rs` | 1020 | **已超限**，只允许追加带默认实现的方法 |
-| `src-tauri/src/commands/data.rs` | 1331 | **已超限**，新命令必须另起模块 |
+| `packages/driver-api/src/types.rs` | 958 | **已超限**，新增类型不得继续堆在这里 |
+| `packages/driver-api/src/traits.rs` | 1062 | **已超限**，只允许追加带默认实现的方法 |
+| `src-tauri/src/commands/data.rs` | 1416 | **已超限**，新命令必须另起模块 |
 | `src/windows/connection/ContentViewDrawers.tsx` | 228 | 有余量 |
 | `src/locales/en/query.ts` | 424 | 有余量 |
 
@@ -144,7 +144,7 @@ DTO：`CellUpdate`、`RowUpdateBatch`、`RowDeleteBatch`、`RowChangeTableContex
 
 ### 3.1 新增驱动契约：结果来源描述（Rust）
 
-**落点**：新增文件 `packages/driver-api/src/result_origin.rs`，并在 `packages/driver-api/src/lib.rs` 中按该文件既有的模块登记与再导出方式登记（该文件已有 `mod traits;` / `mod types;` 一类的写法）。**不放进 `types.rs`**——它已 939 行。
+**落点**：新增文件 `packages/driver-api/src/result_origin.rs`，并在 `packages/driver-api/src/lib.rs` 中按该文件既有的模块登记与再导出方式登记（该文件已有 `mod traits;` / `mod types;` 一类的写法）。**不放进 `types.rs`**——它已 958 行。
 
 ```rust
 // 新增：packages/driver-api/src/result_origin.rs
@@ -261,7 +261,7 @@ pub struct ResultOriginDetail {
 
 ### 3.2 新增 trait 方法（带默认实现）
 
-**落点**：`packages/driver-api/src/traits.rs`（实测 1020 行，只允许追加）。默认实现**必须**返回不可判定。
+**落点**：`packages/driver-api/src/traits.rs`（实测 1062 行，只允许追加）。默认实现**必须**返回不可判定。
 
 ```rust
 // 新增：packages/driver-api/src/traits.rs
@@ -360,7 +360,7 @@ pub fn evaluate_result_editability(
 
 ### 3.4 新增 IPC 命令
 
-**落点**：新增文件 `src-tauri/src/commands/result_origin.rs`，在 `src-tauri/src/commands/mod.rs` 登记（`data.rs` 已 1331 行，不再追加）；前端 wrapper 落在既有 `src/commands/query.ts`。
+**落点**：新增文件 `src-tauri/src/commands/result_origin.rs`，在 `src-tauri/src/commands/mod.rs` 登记（`data.rs` 已 1416 行，不再追加）；前端 wrapper 落在既有 `src/commands/query.ts`。
 
 ```rust
 // 新增：src-tauri/src/commands/result_origin.rs
@@ -685,7 +685,7 @@ export function gridReadOnlyMessageKey(reason: GridReadOnlyReason): string;
 | --- | --- | --- | --- | --- |
 | `packages/driver-api/src/result_origin.rs` | **新增** | 结果来源契约类型（`ResultOrigin` 及配套枚举/结构体） | ~150 | 否（新文件） |
 | `packages/driver-api/src/lib.rs` | 修改 | 登记新模块与再导出 | ~3 | 否（远低于上限） |
-| `packages/driver-api/src/traits.rs` | 修改 | 追加 `describe_result_origin` 默认实现 | ~15 | **已 1020 行，本就超限**；本次仅追加带默认实现的方法，不加剧问题，拆分另立任务 |
+| `packages/driver-api/src/traits.rs` | 修改 | 追加 `describe_result_origin` 默认实现 | ~15 | **已 1062 行，本就超限**；本次仅追加带默认实现的方法，不加剧问题，拆分另立任务 |
 | `src-tauri/src/services/result_edit.rs` | **新增** | 纯函数判定层 + 单测 | ~260（含 `#[cfg(test)]`） | 否（新文件） |
 | `src-tauri/src/services/mod.rs` | 修改 | 登记 `result_edit` | ~2 | 否 |
 | `src-tauri/src/commands/result_origin.rs` | **新增** | `resolve_result_origin` / `preview_result_cell_change` + 写前校验 | ~220（含单测） | 否（新文件） |
