@@ -148,6 +148,7 @@ export interface MultiQueryResult {
 /** IPC events for `execute_query_stream`. Independent of SQL LIMIT. */
 export type QueryStreamEvent =
   | { type: 'executionStarted'; executionId: string }
+  | { type: 'publishedArtifacts'; artifacts: import('../lib/queryResultArtifacts').QueryResultArtifacts }
   | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
   | { type: 'rows'; index: number; rows: (Value | null)[][] }
   | { type: 'statementSnapshot'; index: number; result: StatementResult }

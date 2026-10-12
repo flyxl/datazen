@@ -36,6 +36,7 @@ export interface QueryExecState {
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
   executionId: string | null;
+  publishedArtifacts?: import('../lib/queryResultArtifacts').QueryResultArtifacts;
   streamRunId?: number;
   resultDetailRowIndex: number | null;
 }

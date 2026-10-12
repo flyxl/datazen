@@ -108,6 +108,13 @@ export async function runEditorQuery(
       }
       const view = projection.view;
       if (view && ['succeeded', 'failed', 'cancelled'].includes(view.state)) {
+        // Preserve the finalized published result even when the session is
+        // lost or this execution fails/cancels after publishing a prefix.
+        onEvent({ type: 'publishedArtifacts', artifacts: {
+          executionId: view.executionId,
+          artifactIds: [...view.artifactIds],
+          resultCompleteness: view.resultCompleteness,
+        } });
         // The result and observed context have distinct lifetimes. Refresh only
         // this controller; matching handles prevent an old run moving a replacement.
         await controller.refresh().catch(() => undefined);

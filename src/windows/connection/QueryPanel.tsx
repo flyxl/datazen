@@ -803,6 +803,7 @@ export function QueryPanel({
               data-testid="query-results-host"
             >
               <QueryResultsPane
+                publishedArtifacts={exec.publishedArtifacts}
                 onCellEdit={(row, col, value) => usePanelStore.getState().updateResultCell(panelId, activeResultIdx, row, col, value, ...paneArgs(paneId))}
                 dbSessionId={dbSessionId}
                 databaseType={databaseType}

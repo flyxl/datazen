@@ -1,3 +1,5 @@
+import { QueryArtifactExport } from '../../../components/query/QueryArtifactExport';
+import type { QueryResultArtifacts } from '../../../lib/queryResultArtifacts';
 import {
   editorOwnerForPane,
   getQueryPanelSessionRegistry,
@@ -316,6 +318,7 @@ export function FavoriteNameDialog({
 }
 
 export interface QueryResultsPaneProps {
+  publishedArtifacts?: QueryResultArtifacts;
   onCellEdit?: (row: number, column: string, value: unknown) => Promise<void>;
   dbSessionId: string;
   databaseType?: string;
@@ -356,6 +359,7 @@ export interface QueryResultsPaneProps {
 }
 
 export function QueryResultsPane({
+  publishedArtifacts,
   onCellEdit,
   dbSessionId,
   databaseType,
@@ -415,6 +419,7 @@ export function QueryResultsPane({
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col">
+        {publishedArtifacts && <QueryArtifactExport key={publishedArtifacts.executionId} artifacts={publishedArtifacts} />}
         {showExplain && !running && (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1">

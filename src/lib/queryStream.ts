@@ -6,6 +6,7 @@ export interface StreamableQueryTab {
   error: string | null;
   executionTimeMs: number | null;
   executionId: string | null;
+  publishedArtifacts?: import('./queryResultArtifacts').QueryResultArtifacts;
 }
 
 function emptyStatement(sql: string): StatementResult {
@@ -26,7 +27,9 @@ export function applyQueryStreamEvent<T extends StreamableQueryTab>(
 ): T {
   switch (event.type) {
     case 'executionStarted':
-      return { ...tab, executionId: event.executionId };
+      return { ...tab, executionId: event.executionId, publishedArtifacts: undefined };
+    case 'publishedArtifacts':
+      return { ...tab, publishedArtifacts: event.artifacts };
     case 'statementStart': {
       const targetIndex = event.index + baseOffset;
       const results = tab.results.slice();

@@ -1390,6 +1390,13 @@ describe('[tester] query/QueryResultsPane', () => {
     onAddToDashboardConfirm: vi.fn(),
   };
 
+  it('keeps finalized partial-result export reachable alongside a query error', () => {
+    render(<QueryResultsPane {...baseProps} error="Synthetic execution failure"
+      publishedArtifacts={{ executionId: 'execution-failed', artifactIds: ['artifact-prefix'], resultCompleteness: 'truncated' }} />);
+    expect(screen.getByTestId('query-artifact-export-button')).toBeTruthy();
+    expect(screen.getByText('query.artifactExport.partial')).toBeTruthy();
+  });
+
   it('keeps no idle placeholder of its own', () => {
     // The "press ⌘+Enter" hint moved to the bottom of the editor
     // (QueryEditorSection), so an unexecuted panel no longer reserves height
