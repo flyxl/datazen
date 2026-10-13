@@ -25,7 +25,7 @@ use datazen_driver_api::{MultiQueryResult, QueryExecutionId, StatementResult, Va
 
 use super::capabilities::POSTGRES_PROVIDER_ID;
 use super::observation::{leased_context, parse_search_path, pinned_context, SessionFacts};
-use super::payload::decode_command_result;
+use super::payload::{decode_command_result, StatementOutput};
 use super::tests::{
     catalog_target, provider_with_driver, seed_resource, target, transaction_options, BudgetLedger,
     RecordingSink,
@@ -510,7 +510,7 @@ async fn an_impossible_namespace_target_is_refused_before_the_disposition() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn a_query_payload_is_streamed_row_for_row() {
+async fn a_query_payload_emits_nonempty_rows_and_summaries_in_order() {
     let payload = serde_json::to_value(MultiQueryResult {
         results: vec![
             StatementResult {
@@ -534,24 +534,48 @@ async fn a_query_payload_is_streamed_row_for_row() {
     })
     .expect("the payload serialises");
 
-    let (results, chunks) = decode_command_result(&payload).expect("a query result is carried");
+    let (results, outputs) =
+        decode_command_result(&payload, "").expect("a query result is carried");
     assert_eq!(results.len(), 2);
-    assert_eq!(chunks.len(), 2);
-    assert_eq!(chunks[0].statement_index, 0);
-    assert_eq!(chunks[0].rows.len(), 1);
-    assert_eq!(chunks[1].statement_index, 1);
-    assert_eq!(chunks[1].rows_affected, Some(2));
+    assert_eq!(outputs.len(), 3);
+    match &outputs[0] {
+        StatementOutput::Rows(chunk) => {
+            assert_eq!(chunk.statement_index, 0);
+            assert_eq!(chunk.rows.len(), 1);
+            assert_eq!(chunk.rows_affected, None);
+        }
+        StatementOutput::Summary(_) => panic!("the first output should carry the SELECT row"),
+    }
+    assert!(matches!(
+        &outputs[1],
+        StatementOutput::Summary(summary)
+            if summary.statement_index == 0
+                && summary.sql == "SELECT 1"
+                && summary.rows_affected.is_none()
+    ));
+    assert!(matches!(
+        &outputs[2],
+        StatementOutput::Summary(summary)
+            if summary.statement_index == 1
+                && summary.sql == "UPDATE t SET a = 1"
+                && summary.rows_affected == Some(2)
+    ));
 }
 
 #[tokio::test]
-async fn an_execute_acknowledgement_is_carried_as_a_row_count() {
+async fn an_execute_acknowledgement_is_carried_as_a_statement_summary() {
     let payload = serde_json::json!({ "rowsAffected": 3 });
 
-    let (results, chunks) = decode_command_result(&payload).expect("an ack is carried");
+    let (results, outputs) =
+        decode_command_result(&payload, "UPDATE t SET a = 1").expect("an ack is carried");
     assert!(results.is_empty());
-    assert_eq!(chunks.len(), 1);
-    assert_eq!(chunks[0].rows_affected, Some(3));
-    assert!(chunks[0].rows.is_empty());
+    assert!(matches!(
+        outputs.as_slice(),
+        [StatementOutput::Summary(summary)]
+            if summary.statement_index == 0
+                && summary.sql == "UPDATE t SET a = 1"
+                && summary.rows_affected == Some(3)
+    ));
 }
 
 #[tokio::test]
@@ -559,8 +583,8 @@ async fn a_catalog_payload_is_refused_instead_of_reported_as_an_empty_success() 
     let marker = "s3cret_catalog_value";
     let payload = serde_json::json!({ "tables": [{ "name": marker }] });
 
-    let error = decode_command_result(&payload)
-        .expect_err("a catalog listing has no truthful ResultChunk form");
+    let error = decode_command_result(&payload, "")
+        .expect_err("a catalog listing has no truthful statement-result form");
 
     match &error {
         ResourceError::OperationNotSupported {
@@ -592,7 +616,7 @@ async fn a_payload_with_a_row_count_among_other_keys_is_refused() {
     let payload = serde_json::json!({ "rowsAffected": 1, "warnings": ["truncated"] });
 
     assert!(matches!(
-        decode_command_result(&payload),
+        decode_command_result(&payload, ""),
         Err(ResourceError::OperationNotSupported { .. })
     ));
 }

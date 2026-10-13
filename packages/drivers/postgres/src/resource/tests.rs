@@ -96,6 +96,8 @@ pub(crate) struct RecordingSink {
     chunks: Mutex<Vec<ResultChunk>>,
     completed: AtomicBool,
     failure: Mutex<Option<String>>,
+    // Includes statementSummary and column metadata; never counted as row chunks.
+    outputs: Mutex<Vec<serde_json::Value>>,
 }
 
 impl RecordingSink {
@@ -125,6 +127,14 @@ impl ResultSink for RecordingSink {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .push(chunk);
+        Ok(())
+    }
+
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(output);
         Ok(())
     }
 

@@ -5,19 +5,20 @@ impl DesktopSessionBackend {
         request: OpenResource,
         command: &str,
     ) -> Result<OpenedResource, rc::ProviderError> {
-        let metadata_only = matches!(
-            command,
-            "get_table_schema"
-                | "list_tables"
-                | "list_objects"
-                | "get_object_ddl"
-                | "get_schemas"
-                | "list_databases"
-                | "list_catalog"
-                | "read_relation_columns"
-                | "read_relation_schema"
-                | "refresh_schema_metadata"
-        );
+        // The host's metadata dispatcher is authoritative for every host
+        // metadata command, including structure capability reads and pure DDL
+        // planning. These operations need a short-lived metadata lease, not
+        // a retained interactive backend or stateful-session capability.
+        let metadata_only = crate::services::schema_metadata::is_metadata_command(command)
+            || matches!(
+                command,
+                "get_table_schema"
+                    | "list_tables"
+                    | "list_objects"
+                    | "get_object_ddl"
+                    | "get_schemas"
+                    | "list_databases"
+            );
         let (config, metadata) = self
             .store
             .platform_profile(request.connection_id.as_str())
@@ -35,7 +36,34 @@ impl DesktopSessionBackend {
             &request.connection_id,
             matches!(request.owner, rc::OwnerRef::Editor { .. }),
         )
-        .map_err(|_| {
+        .map_err(|reason| {
+            use datazen_runtime::budget::{ledger::SessionScope, DenialReason};
+            let (category, cap, used) = match reason {
+                DenialReason::SessionQuotaExceeded { scope, cap, used } => (
+                    match scope {
+                        SessionScope::PerUser => "logical_user",
+                        SessionScope::PerOrganization => "logical_organization",
+                    },
+                    Some(cap),
+                    Some(used),
+                ),
+                DenialReason::ConnectedEditorsExhausted { cap, .. } => (
+                    "connected_editors",
+                    Some(cap),
+                    Some(self.budget.with_ledger(|ledger| {
+                        ledger.user_connected(&request.connection_id, &self.principal)
+                    })),
+                ),
+                _ => ("unknown", None, None),
+            };
+            tracing::warn!(
+                source = "logical_reservation",
+                category,
+                cap,
+                used,
+                metadata_only,
+                "resource admission refused"
+            );
             rc::ProviderError::ResourceBusy("logical session or connected editor quota")
         })?;
         let mut provider = self
@@ -78,9 +106,15 @@ impl DesktopSessionBackend {
                 declared_cost
             }
             _ => {
+                tracing::warn!(
+                    source = "descriptor_cost",
+                    category = "invalid_cost_policy",
+                    metadata_only,
+                    "resource admission refused"
+                );
                 return Err(rc::ProviderError::ResourceBusy(
                     "driver connection cost refused under strict budget",
-                ))
+                ));
             }
         };
         let pool_key = datazen_runtime::resource::PoolKeyGeneration {

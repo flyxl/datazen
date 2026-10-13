@@ -46,6 +46,7 @@ impl BudgetPort for DesktopResourceBudget {
         requested: u32,
     ) -> Result<BudgetPermit, ResourceError> {
         if requested == 0 || requested != self.expected_cost {
+            tracing::warn!(source = "physical_scope", category = "cost_mismatch", requested, expected = self.expected_cost, class = ?self.claim.class, "resource admission refused");
             return Err(Self::denied(requested));
         }
         let records = if requested == 1 {
@@ -53,16 +54,28 @@ impl BudgetPort for DesktopResourceBudget {
                 .coordinator
                 .acquire_claim_with(&self.claim, 10_000)
                 .await
-                .map_err(|_| Self::denied(requested))?]
+                .map_err(|_| {
+                    tracing::warn!(source = "physical_scope", category = "single_claim_unknown", requested, class = ?self.claim.class, "resource admission refused");
+                    Self::denied(requested)
+                })?]
         } else {
             self.coordinator
                 .acquire_cost_now(&self.claim)
-                .map_err(|_| Self::denied(requested))?
+                .map_err(|_| {
+                    tracing::warn!(source = "physical_scope", category = "atomic_claim", requested, class = ?self.claim.class, "resource admission refused");
+                    Self::denied(requested)
+                })?
         };
         let id = uuid::Uuid::new_v4().to_string();
         let mut permits = match self.permits.lock() {
             Ok(permits) => permits,
             Err(_) => {
+                tracing::warn!(
+                    source = "physical_scope",
+                    category = "permit_storage_unavailable",
+                    requested,
+                    "resource admission refused"
+                );
                 for record in &records {
                     self.coordinator.release_permit(record, false);
                 }

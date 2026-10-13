@@ -522,6 +522,13 @@ impl PlatformAdapter {
                 );
             }
         }
+        for (command, requirements) in super::target_metadata::host_metadata_command_requirements()
+        {
+            commands.insert(
+                command.into(),
+                super::target_metadata::command_requirements(requirements),
+            );
+        }
         let cache = self.target_metadata.get().cloned().ok_or_else(|| {
             ApiError::new(
                 ApiErrorCode::ServiceUnavailable,

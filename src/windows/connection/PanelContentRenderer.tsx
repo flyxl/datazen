@@ -216,7 +216,7 @@ function SqlPanelContent({
                 connectionId={panel.connectionId}
                 databaseType={panel.databaseType}
                 database={panel.database ?? currentDatabase ?? ''}
-                schema={panel.tableSchema ?? resolveTableSchema(panel.tableName)}
+                schema={panel.tableSchema ?? null}
                 mode="alter"
                 tableName={panel.tableName}
                 showBackButton

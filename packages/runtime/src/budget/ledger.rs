@@ -260,15 +260,14 @@ impl BudgetLedger {
         claims: &[BudgetClaim],
         now_ms: u64,
     ) -> Result<Vec<PermitRecord>, DenialReason> {
-        let backup: BTreeMap<ConnectionId, ServiceState> = claims
+        let backup: BTreeMap<ConnectionId, Option<ServiceState>> = claims
             .iter()
             .map(|claim| claim.connection_id.clone())
             .collect::<BTreeSet<_>>()
             .into_iter()
-            .filter_map(|id| {
-                self.services
-                    .get(&id)
-                    .map(|state| (id.clone(), state.clone()))
+            .map(|id| {
+                let state = self.services.get(&id).cloned();
+                (id, state)
             })
             .collect();
         let permits_before = self.permits.clone();
@@ -278,7 +277,15 @@ impl BudgetLedger {
             match self.try_admit(claim, now_ms) {
                 AdmitOutcome::Granted(record) => granted.push(record),
                 AdmitOutcome::Busy(reason) | AdmitOutcome::Denied(reason) => {
-                    self.services = backup;
+                    // Restore only this batch's services. Other connections
+                    // retain their class occupancy, queues, and session state.
+                    for (id, prior) in backup {
+                        if let Some(state) = prior {
+                            self.services.insert(id, state);
+                        } else {
+                            self.services.remove(&id);
+                        }
+                    }
                     self.permits = permits_before;
                     self.granted_total = granted_before;
                     return Err(reason);

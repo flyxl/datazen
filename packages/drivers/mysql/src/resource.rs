@@ -31,7 +31,7 @@ use datazen_driver_api::namespace::{NamespaceShape, NamespaceTarget, TargetRequi
 use datazen_driver_api::resource::{
     AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, CommandCall, ConnectionCostPolicy,
     DescribeResourceRequest, InitializationRequirement, ResourceDescriptor, ResourceError,
-    ResourceHandle, ResourceProvider, ResultChunk, ResultSink, ReusePolicy,
+    ResourceHandle, ResourceProvider, ResultSink, ReusePolicy, StatementSummary,
 };
 use datazen_driver_api::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
@@ -584,10 +584,9 @@ impl ResourceProvider for MysqlResourceProvider {
                         self.driver.execute_at(&connection, &sql, sql_target).await
                     }
                     .map_err(ResourceError::Driver)?;
-                    sink.write(ResultChunk {
+                    sink.write_statement_summary(StatementSummary {
                         statement_index: 0,
                         sql: sql.clone(),
-                        rows: Vec::new(),
                         rows_affected: Some(rows_affected),
                     })
                     .await?;

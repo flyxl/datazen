@@ -27,6 +27,18 @@ const TABLE_IDX = '_e2e_mysql_indexed';
 
 describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   let mainWindow: string;
+  let queryTabLabel: string;
+
+  async function selectFixtureQueryTab() {
+    const tabs = await $$('[data-testid="panel-tab-select"]');
+    for (const tab of tabs) {
+      if ((await tab.getAttribute('aria-label')) === queryTabLabel) {
+        await tab.click();
+        return;
+      }
+    }
+    throw new Error('MySQL fixture query tab is unavailable');
+  }
 
   before(async () => {
     const handles = await browser.getWindowHandles();
@@ -40,8 +52,16 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     // Create and connect to MySQL
     const { connWindow } = await createAndConnectMySQL();
 
-    // Setup test tables
+    // Setup test tables. Reuse this editor for the whole suite so editor sessions
+    // do not accumulate and consume the database server's connection limit.
     await openQueryTab();
+    queryTabLabel = await browser.execute(
+      () =>
+        document
+          .querySelector<HTMLElement>('[data-testid="panel-tab-select"][aria-selected="true"]')
+          ?.getAttribute('aria-label') ?? '',
+    );
+    if (!queryTabLabel) throw new Error('MySQL fixture query tab did not open');
 
     await executeSQL(`DROP TABLE IF EXISTS ${TABLE_IDX}`);
     await executeSQL(`DROP TABLE IF EXISTS ${TABLE_TYPES}`);
@@ -119,7 +139,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
       const connHandle = handles.find((h) => h !== mainWindow);
       if (connHandle) {
         await browser.switchToWindow(connHandle);
-        await openQueryTab();
+        await selectFixtureQueryTab();
         await executeSQL(`DROP TABLE IF EXISTS ${TABLE_IDX}`);
         await executeSQL(`DROP TABLE IF EXISTS ${TABLE_TYPES}`);
         await executeSQL(`DROP TABLE IF EXISTS ${TABLE_BASIC}`);
@@ -205,7 +225,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   // ── Data Type Tests ──
 
   it('DECIMAL 类型应正确显示数值 (MY-006)', async () => {
-    await openQueryTab();
+    await selectFixtureQueryTab();
     await executeSQL(`SELECT price FROM ${TABLE_TYPES} ORDER BY id`);
     const body = await $('body').getText();
     expect(body).toContain('99.99');
@@ -297,7 +317,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   // ── SQL Query ──
 
   it('应能执行 MySQL 查询并显示结果 (MY-016)', async () => {
-    await openQueryTab();
+    await selectFixtureQueryTab();
     await executeSQL(`SELECT * FROM ${TABLE_BASIC} WHERE score >= 80`);
 
     const body = await $('body').getText();
@@ -308,7 +328,6 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   });
 
   it('应能执行 MySQL 特有的 SHOW 语句 (MY-017)', async () => {
-    await openQueryTab();
     await executeSQL('SHOW TABLES');
 
     const body = await $('body').getText();
@@ -316,7 +335,6 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   });
 
   it('应能执行多条 MySQL 语句 (MY-018)', async () => {
-    await openQueryTab();
     await executeSQL(
       `SELECT COUNT(*) AS cnt FROM ${TABLE_BASIC}; SELECT COUNT(*) AS cnt FROM ${TABLE_TYPES}`,
     );
@@ -329,20 +347,21 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   // ── Data Edit ──
 
   it('应能编辑 MySQL 表数据 (MY-019)', async () => {
-    // Use SQL to update and verify instead of store (not available in production build)
-    await openQueryTab();
+    // Reuse the fixture editor. Each editor owns a live runtime session, and
+    // opening fresh tabs would consume database connections without adding coverage.
     await executeSQL(`UPDATE ${TABLE_BASIC} SET score = 99 WHERE name = 'Alice'`);
     await executeSQL(`SELECT score FROM ${TABLE_BASIC} WHERE name = 'Alice'`);
 
-    const body = await $('body').getText();
-    expect(body).toContain('99');
+    await browser.waitUntil(async () => (await $('body').getText()).includes('99'), {
+      timeout: 10000,
+      timeoutMsg: '更新后的 score=99 未显示',
+    });
   });
 
   // ── Pagination ──
 
   it('大量数据时应支持分页 (MY-020)', async () => {
-    await openQueryTab();
-
+    await selectFixtureQueryTab();
     // Insert more rows for pagination test
     let insertValues = '';
     for (let i = 0; i < 60; i++) {
@@ -357,10 +376,14 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(2000);
     await switchSubTab('data');
-    await browser.pause(1000);
+    const refresh = await $('[data-testid="table-data-refresh"]');
+    await refresh.waitForDisplayed({ timeout: 10000 });
+    await refresh.click();
 
-    // Should show pagination info (more than 50 rows total)
-    const body = await $('body').getText();
-    expect(body).toContain(t('common.rows'));
+    // The grid footer is a stable, locale-independent pagination signal.
+    await browser.waitUntil(async () => /1\s*-\s*\d+\s*\/\s*65/.test(await $('body').getText()), {
+      timeout: 15000,
+      timeoutMsg: '65 行数据的分页范围未显示',
+    });
   });
 });

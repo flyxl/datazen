@@ -183,6 +183,8 @@ impl BudgetPort for BudgetLedger {
 #[derive(Default)]
 struct RecordingSink {
     chunks: Mutex<u32>,
+    // Includes statementSummary and column metadata; never counted as row chunks.
+    outputs: Mutex<Vec<serde_json::Value>>,
 }
 
 impl RecordingSink {
@@ -201,6 +203,14 @@ impl ResultSink for RecordingSink {
             .chunks
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) += 1;
+        Ok(())
+    }
+
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(output);
         Ok(())
     }
 

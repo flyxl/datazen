@@ -385,7 +385,16 @@ pub trait BudgetPort: Send + Sync {
     ) -> Result<(), ResourceError>;
 }
 
-/// One batch of result rows produced by an execution.
+/// Result rows produced by an execution.
+///
+/// Row batches have `rows_affected: None`. Until migrated, buffered providers
+/// may deliver a complete statement result with its total `rows_affected` here.
+/// That value is an authoritative statement total, never an increment to sum
+/// across chunks. An empty chunk is a legacy complete statement result even
+/// when its affected-row count is unknown (`None`), never a heartbeat or an
+/// intermediate batch. Migrated providers deliver the final total through
+/// [`ResultSink::write_statement_summary`], including zero and statements with
+/// no rows; they must not emit a synthetic empty row batch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResultChunk {
@@ -395,7 +404,22 @@ pub struct ResultChunk {
     pub rows_affected: Option<u64>,
 }
 
-/// Where an execution writes its rows.
+/// Final statement total, delivered after all row batches for that statement.
+///
+/// `rows_affected` follows the driver's native command count semantics. It may
+/// differ from the number of delivered rows (for example when truncated).
+/// Each successful statement from a migrated provider has exactly one
+/// summary. A failed or cancelled statement must not publish a successful
+/// summary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatementSummary {
+    pub statement_index: usize,
+    pub sql: String,
+    pub rows_affected: Option<u64>,
+}
+
+/// Where an execution writes its rows and statement summaries.
 ///
 /// Awaiting [`ResultSink::write`] *is* the backpressure signal: a slow sink
 /// slows the driver. The trait deliberately exposes no channel or runtime
@@ -404,6 +428,24 @@ pub struct ResultChunk {
 #[async_trait]
 pub trait ResultSink: Send + Sync {
     async fn write(&self, chunk: ResultChunk) -> Result<(), ResourceError>;
+    /// Publish the authoritative total without representing it as row data.
+    ///
+    /// The default uses the existing typed-output channel, so existing sinks
+    /// that accept output remain source compatible. Row-only sinks explicitly
+    /// reject summaries through `write_output` rather than silently losing them.
+    /// This call has the same backpressure/error semantics as `write`.
+    async fn write_statement_summary(
+        &self,
+        summary: StatementSummary,
+    ) -> Result<(), ResourceError> {
+        self.write_output(serde_json::json!({
+            "kind": "statementSummary",
+            "statementIndex": summary.statement_index,
+            "sql": summary.sql,
+            "rowsAffected": summary.rows_affected,
+        }))
+        .await
+    }
     /// Deliver typed non-tabular command output without disguising it as rows.
     /// Sinks must explicitly opt in; discarding a successful command's output
     /// is an error rather than a silent no-op.

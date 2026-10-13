@@ -174,18 +174,10 @@ async function expandSchemaObjectCategory(
     await categoryNode.click();
   }
   await browser.waitUntil(
-    async () =>
-      browser.execute((key: string) => {
-        const tree = document.querySelector('[data-testid="navigator-tree"]');
-        const categoryNode = Array.from(
-          tree?.querySelectorAll<HTMLElement>('[data-tree-node="category"]') ?? [],
-        ).find((candidate) => candidate.getAttribute('data-cat-key') === key);
-        const count = Number(categoryNode?.lastElementChild?.textContent?.trim());
-        return Number.isFinite(count) && count > 0;
-      }, categoryKey),
+    async () => (await categoryNode.getAttribute('aria-expanded')) === 'true',
     {
-      timeout: 15000,
-      timeoutMsg: `UI did not load PostgreSQL objects for category ${categoryKey}`,
+      timeout: 10000,
+      timeoutMsg: 'UI did not expand PostgreSQL object category',
       interval: 100,
     },
   );

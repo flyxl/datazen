@@ -25,7 +25,7 @@ pub(crate) use datazen_driver_api::namespace::{
 pub(crate) use datazen_driver_api::resource::{
     AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, CommandCall,
     DescribeResourceRequest, IdentityScope, ResourceError, ResourceHandle, ResourceProvider,
-    ResourcePurpose, ResourceScope, ResultChunk, ResultSink,
+    ResourcePurpose, ResourceScope, ResultChunk, ResultSink, StatementSummary,
 };
 pub(crate) use datazen_driver_api::session::{
     CancelDisposition, CloseDisposition, ContextChangeDisposition, EffectOutcome,
@@ -340,10 +340,18 @@ impl DatabaseDriver for FakeMysql {
     ) -> Result<Vec<StatementResult>, ResourceError> {
         let mut results = self.query_multi(handle, sql, limit).await?.results;
         for (statement_index, statement) in results.iter_mut().enumerate() {
-            sink.write(ResultChunk {
+            if !statement.rows.is_empty() {
+                sink.write(ResultChunk {
+                    statement_index,
+                    sql: statement.sql.clone(),
+                    rows: std::mem::take(&mut statement.rows),
+                    rows_affected: None,
+                })
+                .await?;
+            }
+            sink.write_statement_summary(StatementSummary {
                 statement_index,
                 sql: statement.sql.clone(),
-                rows: std::mem::take(&mut statement.rows),
                 rows_affected: statement.rows_affected,
             })
             .await?;

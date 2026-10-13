@@ -46,7 +46,7 @@ use super::capabilities::{
     CONTROL_POOL_CONNECTIONS, POSTGRES_PROVIDER_ID,
 };
 use super::observation;
-use super::payload::decode_command_result;
+use super::payload::{decode_command_result, StatementOutput};
 use super::registry::{LiveResource, OpenTransaction, ResourceRegistry};
 
 /// Each provider instance takes the next epoch. A handle issued by an older
@@ -621,9 +621,23 @@ impl PostgresResourceProvider {
                 .await
                 .map_err(ResourceError::Driver)?;
             if call.command == "execute" {
-                let (statements, chunks) = decode_command_result(&result.data)?;
-                for chunk in chunks {
-                    sink.write(chunk).await?;
+                let sql = call
+                    .input
+                    .get("sql")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| {
+                        ResourceError::Driver(DriverError::InvalidConfig(
+                            "execute command requires string input 'sql'".into(),
+                        ))
+                    })?;
+                let (statements, outputs) = decode_command_result(&result.data, sql)?;
+                for output in outputs {
+                    match output {
+                        StatementOutput::Rows(chunk) => sink.write(chunk).await?,
+                        StatementOutput::Summary(summary) => {
+                            sink.write_statement_summary(summary).await?
+                        }
+                    }
                 }
                 statements
             } else {

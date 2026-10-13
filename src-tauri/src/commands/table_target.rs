@@ -260,18 +260,21 @@ pub async fn read(
         let result_rows: Vec<Vec<Option<Value>>> =
             serde_json::from_value(output["rows"].clone())
                 .map_err(|_| CommandError::Validation("Invalid table result rows".into()))?;
+        let count = result_rows
+            .first()
+            .and_then(|row| row.first())
+            .and_then(Option::as_ref)
+            .and_then(|value| match value {
+                Value::Integer(count) => Some(*count),
+                Value::String(count) => count.parse().ok(),
+                _ => None,
+            });
         if !skip_count && index == 0 {
-            total_rows = result_rows
-                .first()
-                .and_then(|row| row.first())
-                .and_then(|value| value.as_ref())
-                .and_then(|value| {
-                    if let Value::Integer(count) = value {
-                        Some(*count)
-                    } else {
-                        None
-                    }
-                });
+            // Drivers publish a final empty result chunk after each statement.
+            // Do not let that metadata-only chunk erase the count row.
+            if let Some(count) = count {
+                total_rows = Some(count);
+            }
         } else if index == u64::from(!skip_count) {
             rows.extend(result_rows);
         }

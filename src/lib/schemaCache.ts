@@ -149,7 +149,7 @@ export function invalidateSchemaCache(
     if (typeof session !== 'string') return false;
     if (dbSessionId && session !== dbSessionId) return false;
     if (database && db !== database) return false;
-    const relationName = ddl ? name : namespace;
+    const relationName = ddl ? name : parts[3];
     if (tableName && relationName !== tableName) return false;
     if (ddl && identity?.objectKind && kind !== identity.objectKind) return false;
     if (

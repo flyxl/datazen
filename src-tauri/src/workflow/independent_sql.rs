@@ -351,8 +351,12 @@ pub(super) async fn execute(
                         "sql":"", "columns":[], "rows":[], "executionTimeMs":0, "truncated":false,
                     })
                 });
+                if output["kind"] == "rows" || output["kind"] == "statementSummary" {
+                    if output["sql"].is_string() {
+                        statement["sql"] = output["sql"].clone();
+                    }
+                }
                 if output["kind"] == "rows" {
-                    statement["sql"] = output["sql"].clone();
                     if let (Some(rows), Some(incoming)) =
                         (statement["rows"].as_array_mut(), output["rows"].as_array())
                     {

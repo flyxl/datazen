@@ -568,7 +568,7 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
 
     let opened = match opened {
         Ok(opened) => opened,
-        Err(_cause) => {
+        Err(cause) => {
             state.view.state = SessionState::New;
             emit(
                 state,
@@ -580,6 +580,12 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
                 },
             );
             // 登记失败不得返回成功，也不得留下半开的记录。
+            // An admission budget refusal is retryable before execution.
+            // Preserve its classification: UnknownSession would become
+            // SessionNotFound and prevent the caller's bounded busy retry.
+            if matches!(cause, ProviderError::ResourceBusy(_)) {
+                return Err(RuntimeError::BudgetExhausted("resourceOpenBusy"));
+            }
             return Err(RuntimeError::UnknownSession(
                 request.db_session_id.to_string(),
             ));

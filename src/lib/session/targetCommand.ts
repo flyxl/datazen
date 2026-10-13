@@ -9,7 +9,7 @@ import { queryPanelSessionClient } from './queryPanelSessionRoot';
 export async function executeTargetCommand(
   target: ExecutionTarget,
   call: CommandCall,
-  responseKind: 'commandResult' | 'rows' = 'commandResult',
+  responseKind: 'commandResult' | 'rows' | 'completion' = 'commandResult',
   onPhase?: TargetCommandPhaseHook,
 ): Promise<unknown> {
   const client = queryPanelSessionClient();
@@ -20,15 +20,35 @@ export async function executeTargetCommand(
   onPhase?.('submission-token');
   const token = await client.issueSubmissionToken('executeAtTarget', null);
   onPhase?.('target-admission');
-  const receipt = await client.executeAtTarget(
-    {
-      target,
-      expectedConfigRevision: profile.configRevision,
-      call,
-      idempotencyKey: token.idempotencyKey,
-    },
-    token,
-  );
+  const request = {
+    target,
+    expectedConfigRevision: profile.configRevision,
+    call,
+    idempotencyKey: token.idempotencyKey,
+  };
+  const admit = async () => {
+    // Multi-connection resource claims are atomic and cannot wait in the
+    // backend's single-slot queue. Concurrent metadata reads (including Pro
+    // lint/hover enrichment) can therefore briefly exhaust the physical budget.
+    // Retry only admission before a receipt exists, within the same 10-second
+    // acquisition bound as the backend. Reuse the exact request/token so even
+    // an ambiguous admission cannot create or execute a second operation.
+    const deadline = performance.now() + 10_000;
+    for (;;) {
+      try {
+        return await client.executeAtTarget(request, token);
+      } catch (error) {
+        if (
+          !(error instanceof ApiError) ||
+          error.code !== 'ResourceBusy' ||
+          performance.now() >= deadline
+        )
+          throw error;
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      }
+    }
+  };
+  const receipt = await admit();
   const projection = new ExecutionProjection(client, receipt, null, undefined, onPhase);
   try {
     for (;;) {
@@ -37,6 +57,7 @@ export async function executeTargetCommand(
       if (view && ['succeeded', 'failed', 'cancelled'].includes(view.state)) {
         if (view.state !== 'succeeded')
           throw new Error(`${view.errorCode}; effect: ${view.effectOutcome}`);
+        if (responseKind === 'completion') return;
         if (responseKind === 'rows')
           return projection.chunks.flatMap((chunk) => {
             const output = (

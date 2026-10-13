@@ -716,6 +716,7 @@ P2 新增的 `capabilities.rs` / `resource.rs` / `session.rs` 必须逐条过这
 | 注册与协议 | driver crate 内验证固定资源和能力描述；Host 验证发现、版本范围、缺失能力拒绝；未知高版本不得可执行 |
 | 会话/上下文 | 驱动 tests/E2E 验证 pinned identity、初始化与 observation、切换/替代、事务/句柄与清理 |
 | 取消与占用 | 驱动验证精确取消、控制连接及 cluster 子连接计数；Host 验证预算与效果投影 |
+| 结果流 | 每个成功 SQL 语句恰好发布一次 typed `StatementSummary`；`ResultChunk` 只含非空行批次；execute ACK 保留 SQL、statement index 与原生计数。P10 迁移所有剩余 path/Git driver，迁移完成后移除 Host 空块兼容归一化 |
 | 三件套 | 对声明支持的比较/IR/DDL/批次恢复路径跑真实数据库；不支持路径须明确拒绝且无写入 |
 | 桌面与 Web | 共用 application 契约；W1 验证服务节点网络/凭据、浏览器结果与权限；WN 验证 owner 与节点能力匹配 |
 | SDK 与构建 | UI metadata/schema/Command 与 Rust 协议一致；在冻结选型下构建，codegen 产物不提交 |

@@ -2,7 +2,7 @@
 //! statements retain column metadata only; rows exist only in bounded batches.
 use super::sql::is_mysql_result_query;
 use super::*;
-use datazen_driver_api::resource::{ResourceError, ResultChunk, ResultSink};
+use datazen_driver_api::resource::{ResourceError, ResultChunk, ResultSink, StatementSummary};
 use futures_util::{StreamExt, TryStreamExt};
 use sqlx::{Column, Executor, TypeInfo};
 
@@ -296,10 +296,9 @@ impl MysqlDriver {
                     })
                     .collect();
             }
-            sink.write(ResultChunk {
+            sink.write_statement_summary(StatementSummary {
                 statement_index,
                 sql: statement.clone(),
-                rows: Vec::new(),
                 rows_affected: Some(affected),
             })
             .await?;

@@ -415,6 +415,8 @@ ResourceDescriptor 必须包含 providerId、resourceKey、sessionContinuity、r
 
 ExecutionCompletion 必须包含 completionStatus、effectOutcome、statementResults、contextBefore/after、transactionObservation、sessionHandles、protocolDrained、resourceHealth。`sessionHandles` 是本次执行交出的会话级句柄（§6.5）：driver 必须如实返回，没有则为空数组，runtime 只对已登记项负责终态后的句柄生命周期，宿主不直接消费句柄。SessionObservation 的 unknown 字段不能填入 initialTarget 假充确认。ResultSink 提供带字节大小的异步写入/完成/失败方法，写入等待表示背压；不暴露 Tokio channel 类型。
 
+行批次通过 `ResultSink::write(ResultChunk)` 交付，`rows_affected` 为 `None`。MySQL/PostgreSQL 的 ResourceProvider SQL 查询、流式查询和 execute ACK 路径均由驱动在成功语句结束时通过 `write_statement_summary(StatementSummary)` 发布一次语句总计，包含零行与无结果行语句；有结果行时先写行批次，再写摘要。摘要默认经 `write_output` 以 `kind: statementSummary` 发布，不能接收 typed output 的 sink 明确拒绝。尚未迁移的缓冲驱动仍可能通过 `ResultChunk.rows_affected` 携带整条语句的最终值，不得按批次累加；Host 暂时把其空行旧形态归一化为摘要，并保留未知总计 `None`。空行块不能用作心跳或中间批次。P10 迁移其余驱动后，Host 删除该兼容归一化。Runtime 的 Artifact `output` 保留摘要，前端按 statementIndex 更新总计而不追加结果行。该增量方法有默认实现，未变更协议版本。
+
 `BudgetPort` 返回 opaque 许可，并支持按实际物理连接申请/释放。SQLx 驱动必须约束内部 pool 的真实建连；仅在 acquire 时计数会漏掉 idle 连接。第三方 SDK 无法统计实际 socket 时声明保守资源成本/硬上限，或在严格服务端预算模式拒绝该能力，不能报告精确值。
 
 ### 5.2 能力粒度

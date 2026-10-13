@@ -1,9 +1,9 @@
-import { expect, browser, $ } from '@wdio/globals';
+import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
+import { closeWorkspacePanels } from '../lib/testDataLifecycle.js';
 import {
   connectSeededPgInWorkspace,
   closeExtraWindows,
-  executeSQL,
   executeSQLChecked,
   openQueryTab,
   clickTableInSidebar,
@@ -47,6 +47,22 @@ async function commitInlineValue(value: string) {
 
 describe('表数据编辑 (DE-002~DE-005)', () => {
   let mainWindow: string;
+  let queryTabLabel: string;
+
+  // Each query tab owns a retained physical session. These checks need one
+  // fixture editor, not a new editor for each SELECT/UPDATE (which eventually
+  // exhausts the runtime's connected-editor/physical connection quota).
+  async function activateFixtureQuery() {
+    const tabs = await $$('[data-testid="panel-tab-select"]');
+    for (const tab of tabs) {
+      if ((await tab.getAttribute('aria-label')) !== queryTabLabel) continue;
+      await tab.scrollIntoView({ block: 'center' });
+      await tab.click();
+      await $('[data-testid="editor-execute-button"]').waitForDisplayed({ timeout: 10000 });
+      return;
+    }
+    throw new Error('The table-edit fixture query tab is no longer available');
+  }
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
@@ -56,6 +72,10 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     await browser.pause(1500);
 
     await openQueryTab();
+    const activeQueryTab = await $('[data-testid="panel-tab-select"][aria-selected="true"]');
+    const label = await activeQueryTab.getAttribute('aria-label');
+    if (!label) throw new Error('The table-edit fixture query tab has no label');
+    queryTabLabel = label;
     // Checked DDL: a swallowed backend error (stale session bound to a
     // replaced worker DB) used to surface only as a 20s
     // `waitForTableInSidebar` timeout with no hint of the real cause.
@@ -86,13 +106,14 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
   after(async () => {
     try {
       await browser.switchToWindow(mainWindow);
-      await openQueryTab();
-      await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
+      await activateFixtureQuery();
+      await executeSQLChecked(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
     } catch {
       // best-effort cleanup
     }
     await setSafeMode(true);
     await closeExtraWindows(mainWindow);
+    await closeWorkspacePanels(browser);
   });
 
   it('应能在侧边栏看到测试表并打开数据标签', async () => {
@@ -214,18 +235,18 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
       timeout: 10000,
     });
 
-    await openQueryTab();
-    await executeSQL(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
+    await activateFixtureQuery();
+    await executeSQLChecked(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
     expect(await $('body').getText()).toContain('AliceCommitted');
   });
 
   it('通过 SQL 更新后刷新应在 UI 中显示新值 (DE-003)', async () => {
-    await openQueryTab();
-    await executeSQL(`UPDATE ${TEST_TABLE} SET name = 'AliceUpdated' WHERE id = 1`);
+    await activateFixtureQuery();
+    await executeSQLChecked(`UPDATE ${TEST_TABLE} SET name = 'AliceUpdated' WHERE id = 1`);
     await browser.pause(500);
 
     // Verify the update persisted via SELECT query
-    await executeSQL(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
+    await executeSQLChecked(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
     await browser.pause(1000);
 
     const body = await $('body').getText();
@@ -233,17 +254,17 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
   });
 
   it('更新后的数据应持久化到数据库 (DE-004)', async () => {
-    await openQueryTab();
-    await executeSQL(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
+    await activateFixtureQuery();
+    await executeSQLChecked(`SELECT name FROM ${TEST_TABLE} WHERE id = 1`);
 
     const body = await $('body').getText();
     expect(body).toContain('AliceUpdated');
   });
 
   it('更新数值字段应正确保存到数据库 (DE-003b)', async () => {
-    await openQueryTab();
-    await executeSQL(`UPDATE ${TEST_TABLE} SET score = 999 WHERE name = 'Bob'`);
-    await executeSQL(`SELECT score FROM ${TEST_TABLE} WHERE name = 'Bob'`);
+    await activateFixtureQuery();
+    await executeSQLChecked(`UPDATE ${TEST_TABLE} SET score = 999 WHERE name = 'Bob'`);
+    await executeSQLChecked(`SELECT score FROM ${TEST_TABLE} WHERE name = 'Bob'`);
     const body = await $('body').getText();
     expect(body).toContain('999');
   });
@@ -275,8 +296,8 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     await expect(cellAfter).toBeDisplayed();
 
     // Verify DB wasn't changed
-    await openQueryTab();
-    await executeSQL(`SELECT name FROM ${TEST_TABLE} WHERE id = 3`);
+    await activateFixtureQuery();
+    await executeSQLChecked(`SELECT name FROM ${TEST_TABLE} WHERE id = 3`);
     const body = await $('body').getText();
     expect(body).toContain('Charlie');
     expect(body).not.toContain('CharlieBlur');

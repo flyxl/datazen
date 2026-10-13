@@ -548,8 +548,23 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<StructureCapabilities, DriverError> {
-        let info = self.get_server_info(handle).await?;
-        Ok(caps_for_version(&info.server_version))
+        // Capabilities depend only on server version. Read this server-global
+        // fact through the separate control pool so opening the structure
+        // editor cannot stall behind table browsing or query streams that have
+        // saturated the user's data pool.
+        let pool = self
+            .control_pools
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned()
+            .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+        let row = sqlx::query("SELECT version()")
+            .fetch_one(&pool)
+            .await
+            .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+        let version: String = row.try_get(0).unwrap_or_default();
+        Ok(caps_for_version(&version))
     }
 
     pub(crate) async fn plan_structure_changes_impl(
