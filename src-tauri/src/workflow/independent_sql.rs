@@ -149,6 +149,19 @@ pub(super) async fn execute(
     let runtime = adapter
         .runtime()
         .map_err(|error| WorkflowError::Validation(error.to_string()))?;
+    let target = ExecutionTarget::new(ConnectionId::new(connection_id), namespace);
+    let canonical = before_dispatch(
+        deadline,
+        adapter.resolve_execution_target(
+            call.context(),
+            Counter::new(metadata.config_revision),
+            &step.command,
+            &target,
+        ),
+    )
+    .await?
+    .map_err(|error| WorkflowError::Validation(error.message))?;
+    let target = crate::platform::into_execution_target(canonical);
     let token = before_dispatch(
         deadline,
         runtime.issue_submission_token(call.context(), IdempotentOperation::ExecuteAtTarget, None),
@@ -174,7 +187,7 @@ pub(super) async fn execute(
         runtime.execute_at_target(
             call.context(),
             ExecuteAtTargetRequest::new(
-                ExecutionTarget::new(ConnectionId::new(connection_id), namespace),
+                target,
                 Counter::new(metadata.config_revision),
                 CommandCall::new(&step.command, step.input.clone()),
                 token.idempotency_key,

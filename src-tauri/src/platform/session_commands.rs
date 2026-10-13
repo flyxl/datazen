@@ -108,7 +108,30 @@ macro_rules! session_command {
 }
 session_command!(open_session, OpenSessionRequest);
 session_command!(execute_in_session, ExecuteInSessionRequest);
-session_command!(execute_at_target, ExecuteAtTargetRequest);
+#[tauri::command]
+pub async fn execute_at_target(
+    state: State<'_, AppState>,
+    mut request: ExecuteAtTargetRequest,
+) -> Result<serde_json::Value, ApiError> {
+    request.validate()?;
+    let adapter = adapter(&state)?;
+    let call = adapter.begin_call();
+    let canonical = adapter
+        .resolve_execution_target(
+            call.context(),
+            request.expected_config_revision,
+            &request.call.command,
+            &request.target,
+        )
+        .await?;
+    request.target = super::into_execution_target(canonical);
+    encode(
+        adapter
+            .runtime()?
+            .execute_at_target(call.context(), request)
+            .await?,
+    )
+}
 session_command!(set_session_context, SetSessionContextRequest);
 session_command!(close_session, CloseSessionRequest);
 session_command!(attach_session, AttachmentRequest);

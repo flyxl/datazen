@@ -1,4 +1,4 @@
-//! Namespace shape, target DTOs and the validation order (P2).
+//! Namespace shape, target DTOs and the validation order.
 //!
 //! Source of truth: `docs/architecture/platform/connection-management.md` §4.3.
 //!
@@ -419,6 +419,28 @@ pub struct TargetRequirements {
     pub catalog: TargetLevelRequirement,
     pub schema: TargetLevelRequirement,
     pub path_forbidden: bool,
+}
+
+/// Target requirements for one concrete driver command. Namespace constraints live alongside
+/// object and session-default rules so callers never infer them from a command name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandTargetRequirements {
+    pub namespace: TargetRequirements,
+    pub allows_object: bool,
+    pub requires_object: bool,
+    pub allows_session_defaults: bool,
+}
+
+impl Default for CommandTargetRequirements {
+    fn default() -> Self {
+        Self {
+            namespace: TargetRequirements::default(),
+            allows_object: false,
+            requires_object: false,
+            allows_session_defaults: false,
+        }
+    }
 }
 
 impl Default for TargetRequirements {

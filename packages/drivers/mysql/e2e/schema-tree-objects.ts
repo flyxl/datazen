@@ -18,6 +18,7 @@ import {
 } from '../../../../e2e/helpers.js';
 
 const ADMIN_DATABASE = process.env.E2E_MYSQL_DB || 'datazen_test';
+type TableReadResult = { rows?: unknown[][] };
 
 function mysqlConfig(id: string, name: string, database: string) {
   return {
@@ -261,6 +262,30 @@ describe('MySQL Schema Tree object journey', function () {
 
   after(async () => {
     await cleanup();
+  });
+
+  it('reads a table by explicit target through platform metadata', async () => {
+    const result = await invokeBackend<TableReadResult>('get_table_data_at_target', {
+      request: {
+        manualHandle: null,
+        context: {
+          connectionId,
+          dbSessionId: treeSession,
+          driverType: 'mysql',
+          database,
+          schema: null,
+          table,
+        },
+        page: 0,
+        pageSize: 20,
+        filters: null,
+        sorts: null,
+        skipCount: false,
+        filterLogic: null,
+      },
+    });
+
+    expect(JSON.stringify(result.rows ?? [])).toContain('journey-active');
   });
 
   it('shows tables, relationships, views and every supported MySQL routine category', async () => {
