@@ -660,9 +660,9 @@ impl ResetDisposition {
 
 /// 宿主注入的**物理端口**：本模块唯一的驱动侧出入口。
 ///
-/// 为什么自己定义而不是复用 `connection/port.rs`：`connection/port.rs` 冻结的是 DTO
-/// 与 `BudgetPort`，**并没有**资源操作端口；而本模块不得反向依赖尚未存在的
-/// `registry/**`（尚未落地的会话层接缝，冻结）。所有方法只收发**账目标识**，不收发句柄。
+/// 为什么自己定义而不是复用 `connection/port.rs`：`connection/port.rs` 提供共享 DTO
+/// 与驱动端口，但物理资源生命周期由本模块自己的注入式端口承载。会话 actor 位于
+/// `registry/**`；资源清理只接收宿主条件快照与账目标识，不依赖 actor 内部状态，也不收发句柄。
 pub trait PhysicalTransport: Send + Sync + 'static {
     /// 建立一条新的物理连接，返回**账目标识**。
     fn open(&self, request: &LeaseRequest) -> Result<ResourceId, ResourceError>;

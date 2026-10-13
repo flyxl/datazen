@@ -126,7 +126,9 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 回退：新 runtime 仅给已迁移 consumer 使用；不同时维护一条资源的旧 refs 和新 lease。服务暂停/重启前关闭新 session，不能将活事务移回旧 manager。
 
-P3 开始前的 DTO/port 目标契约同步修订已落地，**只有契约与口径，没有任何运行时实现**（`ArtifactStore` 至今零实现方、零调用方）：Artifact 写入期已发布块可读且不可覆盖、abort/截断终结与恢复元数据（`ArtifactLifecycle`、`AbortReason`、`ArtifactMetadata`，端口补 `describe`/`abort`）；取消请求不覆盖实际执行终态（`ExecutionState::resolve_cancel` + `CancelOutcome`，对应 CM-22 四种竞态）；CM-60 对每请求两段耗时求和后计算 p95（`runtime::latency` 的 nearest-rank 口径，禁止两段 p95 相加代替逐请求求和、禁止剔除失败样本）。旧契约修订不得标为现有行为。退出门槛增加流式块读取/重连、writer 异常终结、取消四种竞态与基准口径断言，详见共享边界 §4.6、夹具 §6.3/§11。
+P3 前置阶段同步修订的 DTO/port 契约现已由 runtime 实现：`ArtifactStore` 由 `packages/runtime/src/artifact/` 的 `FileArtifactStore` 实现并接入桌面结果发布；写入期已发布块可读且不可覆盖，取消/失败可显式截断并保留恢复元数据。取消请求与执行终态分离，由 `ExecutionState::resolve_cancel` / `CancelOutcome` 表达并覆盖 CM-22 竞态。CM-60 基准按每个请求的两段附加耗时先求和，再以 nearest-rank 计算 p95；失败样本不从分母剔除。上述行为分别由 runtime artifact journey、CM-22 取消测试与 `cm60-bench` 实现和验证，详见共享边界 §4.6、夹具 §6.3/§11。
+
+P3 收尾不删除旧的 `ConnectionManager`：Tauri 仍有活跃生产调用方。待这些 consumer 迁移完成后再删除，并保留 CM-73/74 的行为测试，避免把仍在使用的连接生命周期路径误删。
 
 ## 8. P4：桌面 QueryPanel、TablePanel、元数据迁移
 
@@ -332,6 +334,8 @@ WDIO 必须使用已注入 driver 的构建；三件套可运行 app 已生成�
 测试标签代表执行层，不代表整条用例只属于某阶段。P3/P4 必须完成 CM-54～56 的 runtime/前端部分；P7 完成单实例适配部分；只有 owner 路由、worker 分区及跨节点预算推迟到 P9。P10 逐层汇总全部 74 条适用用例，不能把未执行的 D/WN 断言计为已通过。
 
 ### 17.1 P2 验收范围的实际落地情况
+
+本节记录 P2 结束时的移交状态；CM-64 / CM-67 后续进入 P3，其当前 runtime 实现见 §7。以下历史说明不代表这些 P3 类型或行为目前仍未实现。
 
 P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖**（①与⑦是本轮补齐的），**CM-64 / CM-67 移交 P3**：它们的实现对象是 P3 的 artifact 结果运行时与 pool / lease 管理器，P2 无法在不越过阶段边界的前提下交付。已落地的是它们各自的 **Host 侧测试夹具**，落在 `packages/runtime/src/connection/testing/`（`#[cfg(any(test, feature = "test-harness"))]`，`cargo test -p datazen-runtime --lib` → `139 passed` / 0 failed，EXIT=0（计数与退出码测于 `5b7c5b49c`）。逐条对照：
 
