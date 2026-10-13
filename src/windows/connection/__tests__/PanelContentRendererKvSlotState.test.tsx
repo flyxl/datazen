@@ -132,7 +132,6 @@ function renderRenderer(kvSlotState?: KvSlotState) {
       onOpenErDiagram={vi.fn()}
       onClosePanel={vi.fn()}
       onRefresh={vi.fn()}
-      resolveTableSchema={() => null}
       onUpdatePanelData={vi.fn()}
       kvSlotState={kvSlotState}
     />,

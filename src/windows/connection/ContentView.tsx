@@ -574,7 +574,6 @@ export function ContentView({
               onOpenErDiagram={handlers.handleOpenErDiagram}
               onClosePanel={handlers.handleClosePanel}
               onRefresh={handlers.handleRefresh}
-              resolveTableSchema={resolveTableSchema}
               onUpdatePanelData={(id, data) =>
                 storeUpdatePanel(id, data as Parameters<typeof storeUpdatePanel>[1])
               }
