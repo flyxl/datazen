@@ -13,7 +13,7 @@ use datazen_platform_api::{
     context::RequestContext,
     dto::{execution::ExecutionState, idempotency::IdempotentOperation},
     id::{ConnectionId, Counter},
-    target::{ExecutionTarget, NamespaceTarget},
+    target::{ExecutionTarget, NamespaceTarget, ObjectTarget},
 };
 use datazen_runtime::application::RuntimeConnectionUseCases;
 use serde::Deserialize;
@@ -33,6 +33,7 @@ pub struct TableReadRequest {
 }
 
 async fn execute(
+    adapter: &crate::platform::PlatformAdapter,
     runtime: &RuntimeConnectionUseCases,
     context: &RequestContext,
     target: &ExecutionTarget,
@@ -74,6 +75,11 @@ async fn execute(
             .await
             .map_err(into_command_error)?
     } else {
+        let canonical = adapter
+            .resolve_execution_target(context, revision, command, target)
+            .await
+            .map_err(into_command_error)?;
+        let target = crate::platform::into_execution_target(canonical);
         let token = runtime
             .issue_submission_token(context, IdempotentOperation::ExecuteAtTarget, None)
             .await
@@ -82,7 +88,7 @@ async fn execute(
             .execute_at_target(
                 context,
                 ExecuteAtTargetRequest {
-                    target: target.clone(),
+                    target,
                     expected_config_revision: revision,
                     call: CommandCall {
                         command: command.into(),
@@ -167,7 +173,8 @@ pub async fn read(
             request.context.schema.clone(),
             Vec::new(),
         ),
-    );
+    )
+    .with_object(ObjectTarget::new("table", request.context.table.clone()));
     let revision = Counter::new(metadata.config_revision);
     let database = request
         .context
@@ -175,6 +182,7 @@ pub async fn read(
         .as_deref()
         .ok_or_else(|| CommandError::Validation("Table database required".into()))?;
     let outputs = execute(
+        adapter,
         &runtime,
         &context,
         &target,
@@ -230,6 +238,7 @@ pub async fn read(
         format!("{count};\n{select}")
     };
     let outputs = execute(
+        adapter,
         &runtime,
         &context,
         &target,

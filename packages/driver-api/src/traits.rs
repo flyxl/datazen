@@ -584,6 +584,36 @@ pub trait DatabaseDriver: Send + Sync {
         defs
     }
 
+    /// Return target requirements for a command exposed by this driver.
+    ///
+    /// Drivers may override this when a custom command has stricter target semantics. The
+    /// default uses explicit rules for object-addressed commands and a conservative namespace-only
+    /// rule for other registered commands. An unregistered command returns `None` so the platform
+    /// can reject it before acquiring a resource.
+    fn target_requirements(
+        &self,
+        command: &str,
+    ) -> Option<crate::namespace::CommandTargetRequirements> {
+        if !self
+            .command_definitions()
+            .iter()
+            .any(|definition| definition.id == command)
+        {
+            return None;
+        }
+
+        let mut requirements = crate::namespace::CommandTargetRequirements::default();
+        match command {
+            "query" | "query_stream" => requirements.allows_object = true,
+            "get_table_schema" | "get_object_ddl" | "get_object_dependencies" => {
+                requirements.allows_object = true;
+                requirements.requires_object = true;
+            }
+            _ => {}
+        }
+        Some(requirements)
+    }
+
     /// Execute a driver command.
     ///
     /// The default implementation maps the existing SQL APIs to commands so

@@ -23,7 +23,11 @@ use std::sync::Arc;
 use datazen_application::error::{ApiError, ApiErrorCode};
 use datazen_application::ApplicationServices;
 use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::id::RequestId;
+use datazen_platform_api::{
+    id::{Counter, RequestId},
+    ports::profile::ProfileRepository,
+    target::{CanonicalTarget, ExecutionTarget},
+};
 
 use super::bridge::{self, BridgeInjection, FrontendBridge};
 use super::handles::SessionHandleRegistry;
@@ -89,6 +93,9 @@ pub struct PlatformAdapter {
     services: std::sync::OnceLock<Arc<ApplicationServices>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
+    driver_registry: std::sync::OnceLock<Arc<crate::db::DriverRegistry>>,
+    target_metadata: std::sync::OnceLock<super::target_metadata::TargetMetadataCache>,
+    target_metadata_gate: std::sync::Mutex<()>,
     /// 出向端口适配器。未接线是配置事实（`None`），不是故障。
     ///
     /// 单独存一份是为了让「接线用的那个实例」与「将来要查询绑定的那个实例」
@@ -116,6 +123,9 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
+            driver_registry: std::sync::OnceLock::new(),
+            target_metadata: std::sync::OnceLock::new(),
+            target_metadata_gate: std::sync::Mutex::new(()),
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
             artifacts: std::sync::OnceLock::new(),
@@ -130,6 +140,9 @@ impl PlatformAdapter {
             services: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
+            driver_registry: std::sync::OnceLock::new(),
+            target_metadata: std::sync::OnceLock::new(),
+            target_metadata_gate: std::sync::Mutex::new(()),
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
             artifacts: std::sync::OnceLock::new(),
@@ -249,7 +262,7 @@ impl PlatformAdapter {
             })?,
         );
         let live = Arc::new(super::live_source::DesktopLiveConnectionSource::new(
-            registry,
+            registry.clone(),
             store,
             backend.clone(),
         ));
@@ -299,14 +312,8 @@ impl PlatformAdapter {
                     "result publisher unavailable",
                 )
             })?;
-        // The shared runtime validates namespace using each real provider. The legacy
-        // standalone resolver has no resource-scoped driver metadata and stays fail-closed.
-        let target = datazen_application::target::TargetResolver::new(
-            Arc::new(|_| None),
-            Arc::new(|_, _| None),
-            Arc::new(|_| None),
-            Arc::new(|_| None),
-        );
+        let target_metadata = Arc::new(std::sync::RwLock::new(std::collections::HashMap::new()));
+        let target = super::target_metadata::resolver(target_metadata.clone());
         let services = Arc::new(ApplicationServices::new(
             target,
             datazen_application::identity_policy::IdentityPolicy::new(),
@@ -317,6 +324,18 @@ impl PlatformAdapter {
         })?;
         self.profiles.set(profiles).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "profiles already injected")
+        })?;
+        self.driver_registry.set(registry).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "driver registry already injected",
+            )
+        })?;
+        self.target_metadata.set(target_metadata).map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ContextConflict,
+                "target metadata already injected",
+            )
         })?;
         self.services.set(services).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "services already injected")
@@ -440,6 +459,111 @@ impl PlatformAdapter {
             .get()
             .cloned()
             .ok_or_else(|| ApiError::new(ApiErrorCode::ServiceUnavailable, "profiles not injected"))
+    }
+
+    /// Resolve an explicit execution target against the connection's actual driver metadata.
+    /// The caller passes the returned canonical namespace to the runtime so the validated target
+    /// is the one used to open the resource and derive its pool identity.
+    pub async fn resolve_execution_target(
+        &self,
+        ctx: &RequestContext,
+        expected_config_revision: Counter,
+        command: &str,
+        target: &ExecutionTarget,
+    ) -> Result<CanonicalTarget, ApiError> {
+        let profile = self
+            .profiles()?
+            .get(ctx, target.connection_id.clone())
+            .await
+            .map_err(|_| ApiError::new(ApiErrorCode::ServiceUnavailable, "profile lookup failed"))?
+            .ok_or_else(|| ApiError::new(ApiErrorCode::NotFound, "profile unavailable"))?;
+        if !profile.enabled {
+            return Err(ApiError::new(ApiErrorCode::NotFound, "profile unavailable"));
+        }
+        if profile.config_revision.counter() != expected_config_revision {
+            return Err(ApiError::new(
+                ApiErrorCode::ConfigRevisionMismatch,
+                "connection configuration changed",
+            ));
+        }
+
+        let registry = self.driver_registry.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "driver registry not injected",
+            )
+        })?;
+        let driver = registry
+            .get_sql_driver_by_name(&profile.driver_id)
+            .await
+            .ok_or_else(|| {
+                ApiError::new(
+                    ApiErrorCode::TargetUnsupported,
+                    "connection driver unavailable",
+                )
+            })?;
+        let provider = registry
+            .resource_provider(&profile.driver_id)
+            .await
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::TargetUnsupported,
+                    "connection driver has no namespace metadata provider",
+                )
+            })?;
+
+        let shape = super::target_metadata::namespace_shape(provider.namespace_shape());
+        let mut commands = std::collections::HashMap::new();
+        for definition in driver.command_definitions() {
+            if let Some(requirements) = driver.target_requirements(&definition.id) {
+                commands.insert(
+                    definition.id,
+                    super::target_metadata::command_requirements(requirements),
+                );
+            }
+        }
+        let cache = self.target_metadata.get().cloned().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "target metadata not injected",
+            )
+        })?;
+        let _metadata_scope = self.target_metadata_gate.lock().map_err(|_| {
+            ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                "target metadata unavailable",
+            )
+        })?;
+        cache
+            .write()
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "target metadata unavailable",
+                )
+            })?
+            .insert(
+                target.connection_id.clone(),
+                super::target_metadata::ConnectionTargetMetadata { shape, commands },
+            );
+
+        let resolved = self.require_application_services()?.target.compute(
+            command,
+            &target.connection_id,
+            &target.namespace,
+            target.object.as_ref(),
+            &datazen_application::target::TargetSource::Request,
+        );
+        cache
+            .write()
+            .map_err(|_| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    "target metadata unavailable",
+                )
+            })?
+            .remove(&target.connection_id);
+        resolved
     }
 }
 

@@ -459,6 +459,13 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.command_definitions()
     }
 
+    fn target_requirements(
+        &self,
+        command: &str,
+    ) -> Option<crate::namespace::CommandTargetRequirements> {
+        self.inner.target_requirements(command)
+    }
+
     async fn execute_command(
         &self,
         handle: &ConnectionHandle,

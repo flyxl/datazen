@@ -4,48 +4,34 @@
 //!
 //! 1. **字段完整性**：四个字段必须都出现在请求里，值不得为空串。
 //! 2. **形状合法性**：按驱动的 `namespaceShape` 拒绝「给不存在的层级发值」。
-//! 3. **别名合并 / 冲突**：同一值被别名指到别的层级 ⇒ `TargetConflict`。
+//! 3. **别名解析**：驱动别名在所属层级内归一；循环别名 ⇒ `TargetConflict`。
 //! 4. **驱动规范化**：`displayName → 驱动身份 id`；驱动不认 ⇒ `TargetUnsupported`。
 //! 5. **操作级要求**：按 Command definition 的 `targetRequirements` 校验 ⇒ `TargetRequired`。
 //! 6. **产出** [`CanonicalTarget`]，ResourceManager、权限、缓存、执行**共用**这一份。
 //!
 //! 顺序本身就是契约：先规范化再校验操作要求，权限比较才落在身份上而不是展示名上。
 //!
-//! ## 为什么驱动器是注入的闭包
-//!
-//! 依赖图里 `APP → PA, DAPI` 明确**没有** `APP → RT`：application 拿不到运行时，
-//! 也拿不到具体驱动（别名表、`ResourceDescriptor` 注册表都在驱动/运行时侧）。
-//! 因此驱动相关能力一律以 `Arc<dyn Fn …>` 注入，P1 只实现「顺序与判定」这段纯逻辑。
-//!
-//! ## P2 待办
-//!
-//! `namespaceShape` 与操作级 `targetRequirements` 的**逐驱动、逐 Command 具体取值**
-//! 属于 P2（详见 `shared-boundaries-and-ports.md`）。P1 只编码连接 §4.3 明文枚举的判定，
-//! 并把这两张表建模为注入源；注入源返回 `None` 时**失败关闭**（`TargetUnsupported`），
-//! 绝不静默跳过第 2/5 步。
+//! The host supplies one atomic, connection-and-command-specific metadata snapshot. The
+//! application remains independent of the runtime and concrete driver crates.
 
 use std::sync::Arc;
 
 use datazen_platform_api::id::ConnectionId;
 use datazen_platform_api::target::{
     CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget, NamespaceTarget, ObjectTarget,
-    TargetNamespaceLayer, TargetNamespaceShape, TargetRequirements,
+    TargetCanonicalizationError, TargetNamespaceLayer, TargetNamespaceShape, TargetRequirements,
 };
 
 use crate::dto::requests::validate_namespace_target;
 use crate::error::{ApiError, ApiErrorCode};
 
-/// 别名解析：把提交态的一个值映射回它所属的层级。返回 `None` 表示不是别名。
-pub type AliasResolver = Arc<dyn Fn(&str) -> Option<TargetNamespaceLayer> + Send + Sync>;
-
-/// 驱动规范化：把提交态标识规范化为驱动身份标识。返回 `None` 表示驱动不认这个标识。
-pub type Canonicalizer = Arc<dyn Fn(TargetNamespaceLayer, &str) -> Option<String> + Send + Sync>;
-
-/// 命名空间形状来源：`connectionId → 驱动注册表里声明的形状`。返回 `None` 表示连接不可解析。
-pub type ShapeProvider = Arc<dyn Fn(&ConnectionId) -> Option<TargetNamespaceShape> + Send + Sync>;
-
-/// 操作级要求来源：`command → Command definition 声明的 targetRequirements`。`None` 表示操作未注册。
-pub type RequirementsProvider = Arc<dyn Fn(&str) -> Option<TargetRequirements> + Send + Sync>;
+/// One atomic snapshot of the selected connection's driver shape and command requirements.
+/// `None` requirements mean the command is not registered for that driver.
+pub type TargetMetadataProvider = Arc<
+    dyn Fn(&ConnectionId, &str) -> Option<(TargetNamespaceShape, Option<TargetRequirements>)>
+        + Send
+        + Sync,
+>;
 
 /// 计算模式。
 #[derive(Debug, Clone, Default)]
@@ -62,29 +48,16 @@ pub enum TargetSource {
     },
 }
 
-/// §4.3 的目标计算器。持有四个注入源，没有具体驱动、没有运行时、没有传输。
+/// §4.3 的目标计算器。每次取同一连接与命令的驱动元数据快照，不依赖具体驱动或运行时。
 #[derive(Clone)]
 pub struct TargetResolver {
-    alias: AliasResolver,
-    canonicalize: Canonicalizer,
-    shape: ShapeProvider,
-    requirements: RequirementsProvider,
+    metadata: TargetMetadataProvider,
 }
 
 impl TargetResolver {
     /// 组装计算器。
-    pub fn new(
-        alias: AliasResolver,
-        canonicalize: Canonicalizer,
-        shape: ShapeProvider,
-        requirements: RequirementsProvider,
-    ) -> Self {
-        Self {
-            alias,
-            canonicalize,
-            shape,
-            requirements,
-        }
+    pub fn new(metadata: TargetMetadataProvider) -> Self {
+        Self { metadata }
     }
 
     /// §4.3 全流程：提交目标 → 规范化目标。
@@ -101,40 +74,56 @@ impl TargetResolver {
 
         // 第 5 步必须先取到操作级要求才能判定「能否用会话默认值」，但**判定顺序**仍是
         // 2 → 3 → 4 → 5：这里只是提前读表，读表本身不产生副作用。
-        let requirements = (self.requirements)(command).ok_or_else(|| {
-            ApiError::new(
-                ApiErrorCode::TargetUnsupported,
-                format!("操作 {command} 未注册目标要求，拒绝放行"),
-            )
-        })?;
-
-        // 第 2 步：形状合法性。形状未知 ⇒ 失败关闭。
-        let shape = (self.shape)(connection_id).ok_or_else(|| {
+        let (shape, requirements) = (self.metadata)(connection_id, command).ok_or_else(|| {
             ApiError::new(
                 ApiErrorCode::TargetUnsupported,
                 format!("连接 {connection_id} 的命名空间形状不可解析"),
             )
         })?;
+        let requirements = requirements.ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::TargetUnsupported,
+                format!("操作 {command} 未注册目标要求，拒绝放行"),
+            )
+        })?;
+        if requirements.requires_object && !requirements.allows_object {
+            return Err(ApiError::new(
+                ApiErrorCode::TargetUnsupported,
+                format!("操作 {command} 的目标要求无效：要求对象但不接受对象"),
+            ));
+        }
+
+        // 第 2 步：形状合法性。形状未知 ⇒ 失败关闭。
         self.reject_unknown_layers(requested, &shape)?;
 
         // 会话默认值：仅在 Command 允许、且会话自认已确认时补齐。
         let effective = self.apply_session_defaults(requested, &requirements, source)?;
+        self.reject_unknown_layers(&effective, &shape)?;
+        self.require_shape_layers(&effective, &shape)?;
 
-        // 第 3 步：别名合并 / 冲突。
-        self.merge_aliases(&effective)?;
-
-        // 第 4 步：驱动规范化。
-        let namespace = self.canonicalize_namespace(&effective)?;
+        // 第 3-4 步：驱动形状负责同层别名与大小写规范化；别名的目标值仍在原层级，
+        // 不把跨层字符串映射误解为 namespace alias。
+        let namespace = self.canonicalize_namespace(&effective, &shape)?;
 
         // 第 5 步：操作级要求。
         self.require_layers(&effective, &requirements)?;
+        if let Some(object) = object {
+            if object.kind.is_empty()
+                || object.name.is_empty()
+                || object.signature.as_deref().is_some_and(str::is_empty)
+            {
+                return Err(ApiError::invalid_argument(
+                    "对象身份的 kind 与 name 必须有效；提供的 signature 不能是空串",
+                ));
+            }
+        }
         if object.is_some() && !requirements.allows_object {
             return Err(ApiError::new(
                 ApiErrorCode::TargetUnsupported,
                 format!("操作 {command} 不接受对象身份"),
             ));
         }
-        if object.is_none() && requires_object(command, &requirements) {
+        if object.is_none() && requirements.requires_object {
             return Err(ApiError::target_required("该操作要求完整对象身份"));
         }
 
@@ -157,6 +146,22 @@ impl TargetResolver {
                     ApiErrorCode::TargetUnsupported,
                     format!("该驱动不存在 {layer:?} 层级"),
                 ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Driver-required namespace levels apply to every command for this connection.
+    fn require_shape_layers(
+        &self,
+        target: &NamespaceTarget,
+        shape: &TargetNamespaceShape,
+    ) -> Result<(), ApiError> {
+        for layer in TargetNamespaceLayer::ALL {
+            if shape.is_required(layer) && !target.has_value(layer) {
+                return Err(ApiError::target_required(format!(
+                    "该连接要求提供 {layer:?} 层级"
+                )));
             }
         }
         Ok(())
@@ -194,49 +199,31 @@ impl TargetResolver {
         Ok(merged)
     }
 
-    /// 第 3 步：别名冲突检测。
-    ///
-    /// 别名指到与提交槽位不同的层级时，`TargetConflict`。同名同层不算冲突——
-    /// 那是合法的重复表达，必须保持一致。
-    fn merge_aliases(&self, target: &NamespaceTarget) -> Result<(), ApiError> {
-        for layer in TargetNamespaceLayer::ALL {
-            let Some(value) = target.get(layer) else {
-                continue;
-            };
-            if let Some(alias_layer) = (self.alias)(value) {
-                if alias_layer != layer {
-                    return Err(ApiError::target_conflict(format!(
-                        "别名 {value} 指向 {alias_layer:?}，但提交在 {layer:?} 槽位"
-                    )));
-                }
-            }
-        }
-        for segment in &target.path {
-            if let Some(alias_layer) = (self.alias)(segment) {
-                if alias_layer != TargetNamespaceLayer::Path {
-                    return Err(ApiError::target_conflict(format!(
-                        "别名 {segment} 指向 {alias_layer:?}，但提交在 path 段"
-                    )));
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// 第 4 步：驱动规范化。
     fn canonicalize_namespace(
         &self,
         target: &NamespaceTarget,
+        shape: &TargetNamespaceShape,
     ) -> Result<CanonicalNamespace, ApiError> {
-        let database =
-            self.canonicalize_layer(TargetNamespaceLayer::Database, target.database.as_deref())?;
-        let catalog =
-            self.canonicalize_layer(TargetNamespaceLayer::Catalog, target.catalog.as_deref())?;
-        let schema =
-            self.canonicalize_layer(TargetNamespaceLayer::Schema, target.schema.as_deref())?;
+        let database = self.canonicalize_layer(
+            shape,
+            TargetNamespaceLayer::Database,
+            target.database.as_deref(),
+        )?;
+        let catalog = self.canonicalize_layer(
+            shape,
+            TargetNamespaceLayer::Catalog,
+            target.catalog.as_deref(),
+        )?;
+        let schema = self.canonicalize_layer(
+            shape,
+            TargetNamespaceLayer::Schema,
+            target.schema.as_deref(),
+        )?;
         let mut path = Vec::with_capacity(target.path.len());
         for segment in &target.path {
-            let canonical = self.canonicalize_layer(TargetNamespaceLayer::Path, Some(segment))?;
+            let canonical =
+                self.canonicalize_layer(shape, TargetNamespaceLayer::Path, Some(segment))?;
             // `segment` 已是 `&String`，`canonicalize_layer` 只会返回 `Some`。
             // 空结果意味着驱动把一个已知非空的片段规范化成了空身份，那在上一步已被拒绝。
             if let Some(canonical) = canonical {
@@ -253,19 +240,21 @@ impl TargetResolver {
 
     fn canonicalize_layer(
         &self,
+        shape: &TargetNamespaceShape,
         layer: TargetNamespaceLayer,
         value: Option<&str>,
     ) -> Result<Option<CanonicalNamespaceId>, ApiError> {
         let Some(value) = value else {
             return Ok(None);
         };
-        let canonical = (self.canonicalize)(layer, value).ok_or_else(|| {
-            ApiError::new(
-                ApiErrorCode::TargetUnsupported,
-                format!("驱动无法把 {layer:?} 的 {value} 规范化为身份"),
-            )
-        })?;
-        if canonical.trim().is_empty() {
+        let canonical = shape
+            .canonicalize_identifier(value)
+            .map_err(|error| match error {
+                TargetCanonicalizationError::AliasConflict => {
+                    ApiError::target_conflict(format!("{layer:?} 标识符别名无法解析"))
+                }
+            })?;
+        if canonical.is_empty() {
             return Err(ApiError::invalid_argument(format!(
                 "驱动把 {layer:?} 的 {value} 规范化成了空标识"
             )));
@@ -323,15 +312,6 @@ impl From<datazen_platform_api::target::LayerRequirement> for LayerCheck {
     }
 }
 
-/// 操作是否要求完整对象身份：`allows_object == false` 且请求没带对象时不算要求，
-/// 因此这里显式读取「要求方」，默认所有操作都**不**额外要求对象。
-///
-/// P2 由 Command definition 补齐 `requires_object` 字段；P1 保留此函数而不是
-/// 直接写 `false`，是为了让 P2 的改动点唯一。
-fn requires_object(_command: &str, _requirements: &TargetRequirements) -> bool {
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,7 +325,7 @@ mod tests {
     }
 
     /// 单目标操作：database 必填、schema 可省、允许对象。
-    fn single_target(command: &str) -> Option<TargetRequirements> {
+    fn single_target(_connection: &ConnectionId, command: &str) -> Option<TargetRequirements> {
         match command {
             "query" => Some(TargetRequirements::single_target(
                 TargetNamespaceLayer::Database,
@@ -377,24 +357,11 @@ mod tests {
     }
 
     fn resolver() -> TargetResolver {
-        TargetResolver::new(
-            Arc::new(|value: &str| match value {
-                "main" => Some(TargetNamespaceLayer::Database),
-                "sales" => Some(TargetNamespaceLayer::Schema),
-                _ => None,
-            }),
-            Arc::new(|_layer: TargetNamespaceLayer, value: &str| {
-                let canonical = match value {
-                    "app" | "main" => "app",
-                    "public" => "public",
-                    "sales" => "sales",
-                    other => other,
-                };
-                Some(canonical.to_string())
-            }),
-            Arc::new(postgres_shape),
-            Arc::new(single_target),
-        )
+        TargetResolver::new(Arc::new(|connection: &ConnectionId, command: &str| {
+            let mut shape = postgres_shape(connection)?;
+            shape.aliases.insert("main".into(), "app".into());
+            Some((shape, single_target(connection, command)))
+        }))
     }
 
     fn target(database: Option<&str>, schema: Option<&str>) -> NamespaceTarget {
@@ -422,8 +389,8 @@ mod tests {
 
     #[test]
     fn the_six_steps_run_in_the_documented_order() {
-        // 一次请求里同时踩到「形状非法」（catalog）与「别名冲突」（schema=main），
-        // 结果必须是第 2 步的形状错误，证明顺序没有被调换。
+        // 一次请求同时包含「形状非法」（catalog）与驱动别名（schema=main），
+        // 结果必须先报告第 2 步的形状错误，不能越过形状校验做别名规范化。
         let bad = NamespaceTarget::new(
             Some("app".into()),
             Some("public".into()),
@@ -447,11 +414,10 @@ mod tests {
     }
 
     #[test]
-    fn alias_in_the_wrong_slot_is_a_target_conflict() {
-        let conflict = target(Some("app"), Some("main"));
-        let error = compute(&resolver(), "query", &conflict).expect_err("must fail");
-        assert_eq!(error.code, ApiErrorCode::TargetConflict);
-        assert!(error.message.contains("main"));
+    fn a_driver_alias_is_canonicalized_in_its_submitted_layer() {
+        let canonical = compute(&resolver(), "query", &target(Some("app"), Some("main")))
+            .expect("same-layer alias canonicalizes");
+        assert_eq!(canonical.namespace_fingerprint(), "app//app");
     }
 
     #[test]
@@ -489,8 +455,8 @@ mod tests {
                 &source,
             )
             .expect_err("must fail");
-        // 会话自认 database=app，但 executeAtTarget 不回填 ⇒ 仍是 TargetRequired，
-        // 而不是 TargetConflict（层可选）或成功（层必填）。补齐只发生在 execute_in_session。
+        // 会话自认 database=app，但 executeAtTarget 不回填 ⇒ 仍是 TargetRequired。
+        // 补齐只发生在明确允许的 execute_in_session。
         assert_eq!(error.code, ApiErrorCode::TargetRequired);
     }
 
@@ -561,12 +527,7 @@ mod tests {
             .expect_err("must fail");
         assert_eq!(unknown_command.code, ApiErrorCode::TargetUnsupported);
 
-        let no_shape = TargetResolver::new(
-            resolver.alias.clone(),
-            resolver.canonicalize.clone(),
-            Arc::new(|_connection: &ConnectionId| None),
-            Arc::new(single_target),
-        );
+        let no_shape = TargetResolver::new(Arc::new(|_, _| None));
         let error = no_shape
             .compute(
                 "query",
