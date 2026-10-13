@@ -623,7 +623,14 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(&shape).expect("serialize"),
-            json!({"required": ["database"], "optional": ["schema"]})
+            json!({
+                "required": ["database"],
+                "optional": ["schema"],
+                "pathSegments": [],
+                "caseRules": {"unquoted": "unknown", "quoted": "unknown"},
+                "canonicalIdRules": {"caseSensitive": false, "delimiter": "."},
+                "aliases": {}
+            })
         );
 
         // 往返：把上面那份字面量**再读回来**并要求完全相等。
