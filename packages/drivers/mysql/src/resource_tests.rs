@@ -289,6 +289,8 @@ async fn query_writes_one_chunk_per_statement_and_completes() {
         EffectOutcome::Completed,
         "with no transaction open the effects are durable"
     );
+    // The row batch carries rows only; the statement total arrives as a typed
+    // summary on the output channel, never disguised as an extra empty row.
     let chunks = sink
         .chunks
         .lock()
@@ -296,7 +298,24 @@ async fn query_writes_one_chunk_per_statement_and_completes() {
         .clone();
     assert_eq!(chunks.len(), 1);
     assert_eq!(chunks[0].sql, "SELECT 1");
-    assert_eq!(chunks[0].rows_affected, Some(1));
+    assert_eq!(chunks[0].rows_affected, None);
+    assert!(
+        !chunks[0].rows.is_empty(),
+        "the SELECT's row rides the batch"
+    );
+    let outputs = sink
+        .outputs
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    assert!(
+        outputs
+            .iter()
+            .any(|output| output["kind"] == "statementSummary"
+                && output["sql"] == "SELECT 1"
+                && output["rowsAffected"] == serde_json::json!(1)),
+        "the statement total is published as a typed summary: {outputs:?}"
+    );
     assert_eq!(sink.completed.load(Ordering::SeqCst), 1);
     // Registered and then deregistered: that is what makes a precise cancel
     // addressable at all.
@@ -319,12 +338,31 @@ async fn execute_reports_rows_affected() {
         .await
         .expect("execute should run");
     assert!(completion.statement_results.is_empty());
+    // A DDL/DML ack is not row data: it is reported through the typed summary,
+    // so the row-batch channel stays empty.
     let chunks = sink
         .chunks
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .clone();
-    assert_eq!(chunks[0].rows_affected, Some(1));
+    assert!(
+        chunks.is_empty(),
+        "an execute ack must not fabricate a row batch: {chunks:?}"
+    );
+    let outputs = sink
+        .outputs
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
+    assert!(
+        matches!(
+            outputs.as_slice(),
+            [output] if output["kind"] == "statementSummary"
+                && output["statementIndex"] == serde_json::json!(0)
+                && output["rowsAffected"] == serde_json::json!(1)
+        ),
+        "the affected-row total rides the typed summary: {outputs:?}"
+    );
     // The driver really ran an `execute`, it was not fabricated from the sink.
     assert_eq!(fake.read(|wire| wire.rows_affected.clone()), vec![1]);
 }

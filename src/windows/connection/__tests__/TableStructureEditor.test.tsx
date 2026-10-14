@@ -509,7 +509,15 @@ describe('TableStructureEditor branches', () => {
     await waitFor(() => {
       expect(mockConfirmApply).toHaveBeenCalled();
     });
-    expect(mockExecuteTargetCommand).not.toHaveBeenCalled();
+    // The risky-alter flow estimates rows *before* the dialog — that number is
+    // what the warning message shows — so the estimate read legitimately runs
+    // even when the user declines. Aborting means the planned DDL never reaches
+    // the target command path, not that no read happened at all.
+    expect(mockExecuteTargetCommand).not.toHaveBeenCalledWith(
+      expect.anything(),
+      { command: 'query', input: { sql: 'DROP COLUMN legacy' } },
+      'completion',
+    );
     expect(onSuccess).not.toHaveBeenCalled();
   });
 

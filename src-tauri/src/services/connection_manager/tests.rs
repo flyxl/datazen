@@ -130,6 +130,12 @@ fn test_config(connection_id: &str) -> ConnectionConfig {
 #[tokio::test]
 async fn resolve_session_for_connection_reuses_existing_runtime() {
     let mgr = test_manager_stub().await;
+    // Target validation reads the persisted profile first, so a session can
+    // only be reused when its owning config actually exists in the store.
+    mgr.store
+        .save_connection(test_config("cfg-2"))
+        .await
+        .unwrap();
     let handle = ConnectionHandle {
         id: "rt-2".into(),
         pool_id: "pool-2".into(),
