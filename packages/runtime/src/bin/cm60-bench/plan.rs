@@ -10,18 +10,6 @@ use std::time::Duration;
 /// 门禁：逐轮 p95 ≤ 10 毫秒。
 pub const GATE_P95_NANOS: u64 = 10_000_000;
 
-/// 指定的环境：4 vCPU。
-///
-/// **这是可复现性锚点，不是容量要求。** 文档没有为这两个数字给出任何理由；
-/// 它们的约束力来自「不删失败样本 + 逐轮判定」——基准必须能把噪声和真实回归
-/// 分开，而分不开的量测没有意义。因此本 harness **不**把环境写进判定式：
-/// 判定式里只有「逐轮 p95」与「失败数」两件。实测环境原样写进产物 `environment` 段，
-/// 在别的机器上跑出来的数字要能被读成「这台机器上跑出来的数字」，而不是「达标」。
-pub const SPEC_VCPUS: u32 = 4;
-
-/// 指定的环境：8 GiB（以字节为单位）。
-pub const SPEC_MEMORY_BYTES: u64 = 8 * 1024 * 1024 * 1024;
-
 /// 固定的 fake 命令耗时（**虚拟时间**消费，见 [`crate::driver`]）。
 pub const SPEC_FAKE_COMMAND: Duration = Duration::from_millis(10);
 
@@ -118,13 +106,6 @@ mod tests {
     fn gate_and_fake_command_match_the_criterion_literal() {
         assert_eq!(GATE_P95_NANOS, 10_000_000);
         assert_eq!(SPEC_FAKE_COMMAND, Duration::from_millis(10));
-    }
-
-    /// 可复现性锚点只用于披露，不参与判定：换机器不应改变判定式的形状。
-    #[test]
-    fn spec_anchors_are_disclosed_not_enforced() {
-        assert_eq!(SPEC_VCPUS, 4);
-        assert_eq!(SPEC_MEMORY_BYTES, 8_589_934_592);
     }
 
     /// 预热 1000 / 每轮 10000 / 5 轮 / 并发 8 —— 默认值必须逐字等于判据。

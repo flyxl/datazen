@@ -11,9 +11,10 @@
 //! * TTL 过期后读取返回 `PortError::ArtifactExpired`，**不得用缓存副本继续服务**。
 //! * HTTP 状态码映射不是端口契约（§4.6 尾注）：`ArtifactExpired` → 404 由 server host 决定。
 //!
-//! ## P3 目标契约（[共享边界 §4.6](../shared-boundaries-and-ports.md#46-结果与事件端口)）
+//! ## 已实现契约（[共享边界 §4.6](../shared-boundaries-and-ports.md#46-结果与事件端口)）
 //!
-//! **本节描述尚未实现的目标行为，当前无任何 `ArtifactStore` 实现。**
+//! 以下行为由 `datazen-runtime::artifact::FileArtifactStore` 实现，并由 runtime 的
+//! artifact journey 与 `p3_live_port` 测试覆盖。其他 host 可以提供自己的实现，但必须遵守同一端口契约。
 //!
 //! * 生命周期 `writing → complete | truncated`，另有 `revoked/expired` 不可读终态。
 //! * **`append_chunk` 顺序分配 index；字节与块元数据提交后才返回并发布 `resultChunk`。

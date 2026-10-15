@@ -221,8 +221,7 @@ fn print_report(run: &BenchRun, written: &report::WriteOutcome) {
         }
     );
     println!(
-        "环境：声明 {} vCPU / {} 字节（判据锚点 4 vCPU / 8589934592 字节；这两个数是\n\
-         命令行声明的，不是探测来的——产物 environment 段里另有真正探测出的 detected_parallelism）",
+        "环境：声明 {} vCPU / {} 字节（命令行声明值；产物 environment 段另有探测出的 detected_parallelism）",
         run.declared_vcpus, run.declared_memory_bytes
     );
     if run.inject_failure_every > 0 {
