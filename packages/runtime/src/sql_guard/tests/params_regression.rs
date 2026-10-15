@@ -65,7 +65,7 @@ fn test_harden_backslash_in_literal() {
 
 #[test]
 fn shared_fixture_bind_cases() {
-    let raw = include_str!("../../../../src/lib/__tests__/fixtures/sqlBindParamCases.json");
+    let raw = include_str!("../../../../../src/lib/__tests__/fixtures/sqlBindParamCases.json");
     let fixture: JsonValue = serde_json::from_str(raw).expect("fixture JSON");
     let cases = fixture["bindCases"].as_array().expect("bindCases array");
     for case in cases {

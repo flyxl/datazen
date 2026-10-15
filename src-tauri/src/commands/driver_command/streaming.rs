@@ -62,8 +62,8 @@ pub(crate) async fn execute_driver_command_stream_impl(
     })?;
 
     if let Some(params) = request.input.get("params").cloned() {
-        let bound_sql =
-            crate::sql_guard::apply_params(&sql, &params).map_err(CommandError::Validation)?;
+        let bound_sql = datazen_runtime::sql_guard::apply_params(&sql, &params)
+            .map_err(CommandError::Validation)?;
         request.input["sql"] = serde_json::Value::String(bound_sql);
     }
     let mut sql = request
@@ -121,7 +121,8 @@ pub(crate) async fn execute_driver_command_stream_impl(
         .map(|c| c.read_only)
         .unwrap_or(false);
     let safe_mode = state.store.get_settings().await.safe_mode;
-    crate::sql_guard::check_sql(&sql, read_only, safe_mode).map_err(CommandError::Validation)?;
+    datazen_runtime::sql_guard::check_sql(&sql, read_only, safe_mode)
+        .map_err(CommandError::Validation)?;
 
     // Every stream gets a fresh opaque execution identity. The driver's
     // prepare hook registers a pending entry before the started event is

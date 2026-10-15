@@ -33,6 +33,10 @@ pub mod resource;
 /// 物理开法是注入式接缝 —— 本模块不认识 SSH / 代理 / WebSocket 任何一种。
 pub mod tunnel;
 
+/// SQL 安全门网：注释剥离扫描、主关键字分类、参数绑定与 Safe Mode / 只读校验。
+/// 宿主与未来的服务端入口共用这一份实现。
+pub mod sql_guard;
+
 /// 夹具门控开关的单一事实源。
 ///
 /// `connection::testing` 模块的可见性完全由此常量决定：编译 `src-tauri`（未开

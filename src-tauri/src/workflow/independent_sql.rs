@@ -117,7 +117,7 @@ pub(super) async fn execute(
         .get("sql")
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| WorkflowError::Validation("SQL input unavailable".into()))?;
-    crate::sql_guard::check_sql(
+    datazen_runtime::sql_guard::check_sql(
         sql,
         config.read_only,
         before_dispatch(deadline, state.store.get_settings())

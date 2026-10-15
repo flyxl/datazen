@@ -16,6 +16,8 @@ src-tauri/src/mcp/
 └── client.rs       # MCP Client 管理
 ```
 
+`permission.rs` 只保留 MCP 专属的权限策略（三档模式、白名单、工具/资源门控）。SQL 主关键字分类（`sql_main_keyword`、`tokenize_sql`、`find_main_verb_index`）与注释剥离等**与传输无关**的 SQL 判读能力已下沉到共享层 `packages/runtime/src/sql_guard/`，宿主直接复用，未来服务端入口共用同一份实现。
+
 Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档，见 `src-tauri/src/workflow/`），MCP 仅通过 Tools/Resources 暴露。
 
 **信任模型（Settings → MCP Server）：**
@@ -53,7 +55,7 @@ datazen --mcp-stdio
 |------|-------|-----------|
 | `mcpAllowedConnectionIds` | 带 `connection_id` 的工具 | `connections`、`query-history`（按条目 `connectionId` 过滤）、`schema/{connectionId}/…` |
 | `read_only` | 屏蔽 `query` / `run_workflow` | `query-history` 从列表隐藏且读取返回 `[]`（不泄露 SQL） |
-| `safe_write` / `high_risk_write` | SQL 分类门控 | 全量 resources（仍受 allowlist 约束） |
+| `safe_write` / `high_risk_write` | SQL 分类门控（分类器来自 `packages/runtime/src/sql_guard/`） | 全量 resources（仍受 allowlist 约束） |
 
 **Server Tools:**
 - `list_connections` / `list_databases` / `list_tables` / `search_tables` / `query` / `get_schema`

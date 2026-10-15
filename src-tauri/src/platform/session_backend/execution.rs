@@ -20,7 +20,7 @@ impl DesktopSessionBackend {
                     .ok_or_else(|| {
                         rc::ProviderError::HostRejected("SQL input unavailable".into())
                     })?;
-                let bound_sql = crate::sql_guard::apply_params(sql, &params)
+                let bound_sql = datazen_runtime::sql_guard::apply_params(sql, &params)
                     .map_err(rc::ProviderError::HostRejected)?;
                 if let Some(object) = input.as_object_mut() {
                     object.insert("sql".into(), serde_json::Value::String(bound_sql));
@@ -60,7 +60,7 @@ impl DesktopSessionBackend {
                 .get("sql")
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| rc::ProviderError::HostRejected("SQL input unavailable".into()))?;
-            crate::sql_guard::check_sql(
+            datazen_runtime::sql_guard::check_sql(
                 sql,
                 config.read_only,
                 self.store.get_settings().await.safe_mode,
