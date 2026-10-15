@@ -333,6 +333,11 @@ export const config: WebdriverIO.Config = {
       '../packages/drivers/mysql/e2e/schema-tree-objects.ts',
       '../packages/drivers/postgres/e2e/schema-tree-objects.ts',
     ],
+    // Driver-owned CM-38/CM-67 journey: per-target pooling, exact physical
+    // accounting, and config-revision rotation on a real PostgreSQL server
+    // (`pnpm e2e:skip-build -- --suite connection-pool`). Not part of the
+    // default full run, which only globs `./specs/**`.
+    'connection-pool': ['../packages/drivers/postgres/e2e/connection-pool-rotation.ts'],
     // Host-owned SQL editor gestures: Mod+D, multi-cursor, rectangular
     // selection (`pnpm e2e:sql-editor-prod`). Both specs are Community
     // behaviour, so this suite runs on any build. The Pro-only counterparts
