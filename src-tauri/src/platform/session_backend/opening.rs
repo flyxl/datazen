@@ -38,6 +38,14 @@ impl DesktopSessionBackend {
         )
         .map_err(|reason| {
             use datazen_runtime::budget::{ledger::SessionScope, DenialReason};
+            // 额度型拒绝与物理/队列型拒绝走不同的对外码：前者的空位只能靠回收
+            // 或用户关闭编辑器腾出来，后者会随并发退去。混成一个 `ResourceBusy`
+            // 会让前端把「额度已满」当成可重试的忙，用户只看到一句通用失败。
+            let quota = matches!(
+                &reason,
+                DenialReason::SessionQuotaExceeded { .. }
+                    | DenialReason::ConnectedEditorsExhausted { .. }
+            );
             let (category, cap, used) = match reason {
                 DenialReason::SessionQuotaExceeded { scope, cap, used } => (
                     match scope {
@@ -64,6 +72,11 @@ impl DesktopSessionBackend {
                 metadata_only,
                 "resource admission refused"
             );
+            if quota {
+                return rc::ProviderError::QuotaExceeded(
+                    "logical session or connected editor quota",
+                );
+            }
             rc::ProviderError::ResourceBusy("logical session or connected editor quota")
         })?;
         let mut provider = self

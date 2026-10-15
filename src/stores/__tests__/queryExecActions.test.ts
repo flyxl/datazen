@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@datazen/backend-client';
+import { t } from '../../locales/t';
 import {
   emptyQueryExecState,
   runBoundQuery as runBoundQueryImpl,
@@ -155,6 +157,25 @@ describe('queryExecActions schema refresh', () => {
 
     expect(mockEmitCrossWindow).not.toHaveBeenCalled();
     expect(exec.get('panel-1')?.error).toBe('syntax error');
+  });
+
+  it('turns an editor-session quota refusal into an actionable message', async () => {
+    // 宿主把额度型拒绝收敛成一句不含细节的通用文案；只有 code 能区分它。
+    // 用户需要看到「该怎么做」，而不是又一个 connection runtime operation failed。
+    mockRunEditorQuery.mockRejectedValueOnce(
+      new ApiError('SessionQuotaExceeded', 'connection runtime operation failed'),
+    );
+    let exec = new Map([['panel-1', emptyQueryExecState()]]);
+    const getExec = () => exec;
+    const setExec = (next: Map<string, ReturnType<typeof emptyQueryExecState>>) => {
+      exec = next;
+    };
+
+    await runStreamingQuery('panel-1', 'conn-1', 'SELECT 1', getExec, setExec);
+
+    expect(exec.get('panel-1')?.error).toBe(t('query.session.editorQuotaExceeded'));
+    expect(exec.get('panel-1')?.error).not.toContain('connection runtime operation failed');
+    expect(exec.get('panel-1')?.running).toBe(false);
   });
 
   async function seedCachedTableRows(dbSessionId: string) {

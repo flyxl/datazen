@@ -101,6 +101,8 @@ const pack = {
   'query.session.openNew': 'Open new session',
   'query.session.disconnected': 'The connection was lost. Re-open a session to continue.',
   'query.session.executionFailed': 'The query failed: {message}',
+  'query.session.editorQuotaExceeded':
+    'The limit of simultaneously connected editor sessions for this connection is reached. Close other query tabs using it; if none are open, reconnect the connection or restart DataZen to release stale editor sessions.',
   'query.session.cancelledRetry': 'The query was cancelled. You can run it again.',
   'query.session.recovered': 'Connection recovered; partial results are available.',
   'query.explainError': 'Explain',

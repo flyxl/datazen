@@ -586,6 +586,11 @@ async fn open(state: &mut ActorState, request: OpenRequest) -> Result<SessionVie
             if matches!(cause, ProviderError::ResourceBusy(_)) {
                 return Err(RuntimeError::BudgetExhausted("resourceOpenBusy"));
             }
+            // 额度耗尽不是「忙」：空位要靠回收旧 session 或用户关闭编辑器腾出来，
+            // 所以它带着自己的原因码上线，不进调用方的有界忙碌重试。
+            if matches!(cause, ProviderError::QuotaExceeded(_)) {
+                return Err(RuntimeError::BudgetExhausted("sessionQuota"));
+            }
             return Err(RuntimeError::UnknownSession(
                 request.db_session_id.to_string(),
             ));

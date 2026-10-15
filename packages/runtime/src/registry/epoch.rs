@@ -147,6 +147,10 @@ pub fn fold_exit(fact: ExitFact<'_>) -> ExitProjection {
             RuntimeError::ContextRevisionMismatch { .. } => {
                 ExitProjection::Code(ApiErrorCode::ContextConflict)
             }
+            // 与 `RuntimeError::api_code()` 同表：额度耗尽与「忙」分开。
+            RuntimeError::BudgetExhausted("sessionQuota") => {
+                ExitProjection::Code(ApiErrorCode::SessionQuotaExceeded)
+            }
             RuntimeError::BudgetExhausted(_) => ExitProjection::Code(ApiErrorCode::ResourceBusy),
             RuntimeError::CloseRejected(_) => {
                 ExitProjection::Code(ApiErrorCode::TransactionResolutionRequired)
@@ -213,7 +217,7 @@ mod tests {
             ),
             (
                 RuntimeError::BudgetExhausted("sessionQuota"),
-                ExitProjection::Code(ApiErrorCode::ResourceBusy),
+                ExitProjection::Code(ApiErrorCode::SessionQuotaExceeded),
             ),
             (
                 RuntimeError::CloseRejected("activeTransaction"),
@@ -265,6 +269,10 @@ mod tests {
             (
                 ProviderError::ResourceBusy("queue"),
                 ApiErrorCode::ResourceBusy,
+            ),
+            (
+                ProviderError::QuotaExceeded("connectedEditors"),
+                ApiErrorCode::SessionQuotaExceeded,
             ),
             (
                 ProviderError::SessionNotFound("db_1".to_owned()),
@@ -338,8 +346,8 @@ mod tests {
             }
         }
         assert_eq!(session.len(), 9, "会话层事实表必须覆盖全部变体");
-        assert_eq!(provider.len(), 18, "provider 层事实表必须覆盖全部变体");
-        assert_eq!(pairs, 162, "9 × 18 必须全部两两折叠");
+        assert_eq!(provider.len(), 19, "provider 层事实表必须覆盖全部变体");
+        assert_eq!(pairs, 171, "9 × 19 必须全部两两折叠");
     }
 
     /// 关键裁定：陈旧 `runtimeEpoch` **不得**对外暴露「被替换过」。
