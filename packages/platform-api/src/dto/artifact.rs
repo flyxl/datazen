@@ -96,7 +96,7 @@ pub enum AbortReason {
 
 /// 产物元数据。客户端每次查询都先授权（§4.6）。
 ///
-/// 这是 **P3 目标契约**，当前无任何实现；不得当作已实现行为。
+/// 这是 `ArtifactStore` 的共享 DTO；runtime 当前由 `FileArtifactStore` 实现对应的存储行为。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactMetadata {

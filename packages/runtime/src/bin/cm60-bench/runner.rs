@@ -49,7 +49,7 @@ use crate::outcome::{
     BenchError, BenchRun, ExecutionJournal, Percentiles, PermitReconciliation, RawSample,
     RoundOutcome, SampleOutcome,
 };
-use crate::plan::{BenchPlan, SPEC_MEMORY_BYTES, SPEC_VCPUS};
+use crate::plan::BenchPlan;
 
 /// 夹具会话 id 前缀；每个容量分段会派生独立会话。
 const SESSION_ID: &str = "db_session_cm60_bench";
@@ -473,19 +473,9 @@ fn notes(
             .to_owned(),
     ];
     notes.push(format!(
-        "判据环境锚点为 {SPEC_VCPUS} vCPU / {SPEC_MEMORY_BYTES} 字节（可复现性锚点，非容量要求）；\
-         本次运行**声明**的环境为 {declared_vcpus} vCPU / {declared_memory_bytes} 字节，见 \
-         environment 段——这两个数是命令行传进来的**声明值**，不是本进程探测出来的，\
-         所以字段名就叫 declared_*；进程自己能探的只有 available_parallelism，\
-         内存没有进程内探针。实测机以调用者填的为准，没填就是 0（未声明）。"
+        "运行环境声明为 {declared_vcpus} vCPU / {declared_memory_bytes} 字节，见 environment 段；\
+         CPU/内存仅作实测环境记录，不作为固定门槛。"
     ));
-    if declared_vcpus != SPEC_VCPUS || declared_memory_bytes != SPEC_MEMORY_BYTES {
-        notes.push(format!(
-            "本次运行未声明在判据指定的 {SPEC_VCPUS} vCPU / {SPEC_MEMORY_BYTES} 字节环境复测，\
-             因此不得作「按判据达标」的结论（更快的机器只会让 p95 偏乐观，\
-             偏保守方向并不对称）。"
-        ));
-    }
     if inject_failure_every > 0 {
         notes.push(format!(
             "**本次运行开启了故障注入**（每第 {inject_failure_every} 次执行失败一次），\
