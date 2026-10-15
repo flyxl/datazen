@@ -415,6 +415,8 @@ ResourceDescriptor 必须包含 providerId、resourceKey、sessionContinuity、r
 
 ExecutionCompletion 必须包含 completionStatus、effectOutcome、statementResults、contextBefore/after、transactionObservation、sessionHandles、protocolDrained、resourceHealth。`sessionHandles` 是本次执行交出的会话级句柄（§6.5）：driver 必须如实返回，没有则为空数组，runtime 只对已登记项负责终态后的句柄生命周期，宿主不直接消费句柄。SessionObservation 的 unknown 字段不能填入 initialTarget 假充确认。ResultSink 提供带字节大小的异步写入/完成/失败方法，写入等待表示背压；不暴露 Tokio channel 类型。
 
+行批次通过 `ResultSink::write(ResultChunk)` 交付，`rows_affected` 为 `None`。MySQL/PostgreSQL 的 ResourceProvider SQL 查询、流式查询和 execute ACK 路径均由驱动在成功语句结束时通过 `write_statement_summary(StatementSummary)` 发布一次语句总计，包含零行与无结果行语句；有结果行时先写行批次，再写摘要。摘要默认经 `write_output` 以 `kind: statementSummary` 发布，不能接收 typed output 的 sink 明确拒绝。尚未迁移的缓冲驱动仍可能通过 `ResultChunk.rows_affected` 携带整条语句的最终值，不得按批次累加；Host 暂时把其空行旧形态归一化为摘要，并保留未知总计 `None`。空行块不能用作心跳或中间批次。P10 迁移其余驱动后，Host 删除该兼容归一化。Runtime 的 Artifact `output` 保留摘要，前端按 statementIndex 更新总计而不追加结果行。该增量方法有默认实现，未变更协议版本。
+
 `BudgetPort` 返回 opaque 许可，并支持按实际物理连接申请/释放。SQLx 驱动必须约束内部 pool 的真实建连；仅在 acquire 时计数会漏掉 idle 连接。第三方 SDK 无法统计实际 socket 时声明保守资源成本/硬上限，或在严格服务端预算模式拒绝该能力，不能报告精确值。
 
 ### 5.2 能力粒度
@@ -646,7 +648,14 @@ MySQL USE 改变当前会话默认数据库；完整限定对象名不等于切�
 
 预算覆盖组织、用户、数据库服务、worker 和 Job。占用集合包含 Opening、InUse、Cleaning、idle pool、Quarantined 和 control sockets。归还到 idle pool不释放物理连接预算，只有实际 close 才释放。
 
-cancel 所需控制连接预留在同一预算内，不能在满池时无限额外建连。多 profile 指向同一服务需 driver 服务身份与管理员资源组辅助聚合；无法可靠识别时使用显式配置组，不能声称自动精确识别。
+cancel 所需控制连接预留在同一预算内，不能在满池时无限额外建连。
+
+PostgreSQL 已实现按同一 profile、server endpoint、登录身份和 SSL 模式共享一个 control pool，业务 database/schema 不参与共享键。数据资源声明和申请只覆盖 data pool；`BudgetPort::acquire_control_connection` 独立申请一个物理名额，桌面适配器使用 `ResourceClass::Control`。共享登记保留首次申请的 budget Arc 与 permit，最后一个资源确认 pool close 后才释放；取消关闭可按同一登记重试。N 个单连接数据资源因此占用 N+1 个物理名额。兼容 BudgetPort 默认实现也走普通物理预算，不能免费建连。
+
+控制连接优先使用原始 profile 的 database，目标业务 database 不覆盖它。原锚点不可连接时，驱动先确认旧 pool 关闭，再依次尝试 `postgres` 与仍登记的业务 database；无维护库权限时允许回退到可访问业务库，不要求额外数据库权限。替换沿用同一 control permit，任何时刻最多一个 control pool 的物理连接存活。取消在发送时解析当前共享 pool，避免执行登记持有过期 pool。控制通道仅执行取消、会话观测和服务器信息等内建短查询，用户 SQL 始终使用 data resource。
+
+资源准入在独立任务中完成；调用者取消等待后，未交付的已打开资源会自行关闭，并在确认后释放许可，避免半途取消遗留未记账 socket。关闭或预算释放暂时失败时，清理任务继续持有连接标识和 budget/permit，以 100ms 起步、上限 5 秒的指数退避重试，直到确认完成。首次准入失败遗留的 control closing 登记由后续同身份准入先重试关闭与释放，确认后才能重新申请，避免没有已返回句柄可驱动清理时永久阻塞该身份。
+多 profile 指向同一服务需 driver 服务身份与管理员资源组辅助聚合；无法可靠识别时使用显式配置组，不能声称自动精确识别。
 
 多 worker 使用节点额度或全局 permit。失去协调器续约停止新建连接；旧额度在确认 worker 隔离/连接关闭之前不重新分配，以免网络分区超额。
 

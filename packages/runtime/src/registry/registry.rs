@@ -151,6 +151,13 @@ impl QuotaLedger {
         let previous = self.outstanding.fetch_add(1, Ordering::SeqCst);
         if previous >= self.limit {
             self.outstanding.fetch_sub(1, Ordering::SeqCst);
+            tracing::warn!(
+                source = "registry_quota",
+                category = "session_limit",
+                used = previous,
+                cap = self.limit,
+                "resource admission refused"
+            );
             return Err(RuntimeError::BudgetExhausted("sessionQuota"));
         }
         Ok(())

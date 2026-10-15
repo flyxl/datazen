@@ -111,6 +111,27 @@ pub(crate) fn command_requirements(requirements: CommandTargetRequirements) -> T
     }
 }
 
+/// Schema metadata commands are intercepted by the host and removed from the
+/// driver's discovered command definitions, so all of them need explicit
+/// target admission rules here. They do not accept an object target or inherit
+/// a session default; catalog listing additionally requires a database.
+pub(crate) fn host_metadata_command_requirements() -> Vec<(&'static str, CommandTargetRequirements)>
+{
+    let namespace_only = CommandTargetRequirements::default();
+    let mut catalog = CommandTargetRequirements::default();
+    catalog.namespace.database = TargetLevelRequirement::Required;
+
+    [
+        ("list_catalog", catalog),
+        ("read_relation_columns", namespace_only),
+        ("read_relation_schema", namespace_only),
+        ("refresh_schema_metadata", namespace_only),
+        ("get_structure_capabilities", namespace_only),
+        ("plan_table_structure_changes", namespace_only),
+    ]
+    .into()
+}
+
 fn namespace_layer(kind: NamespaceLevelKind) -> TargetNamespaceLayer {
     match kind {
         NamespaceLevelKind::Database => TargetNamespaceLayer::Database,

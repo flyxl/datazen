@@ -273,6 +273,16 @@ impl PlatformAdapter {
                 backend.clone(),
             ),
         );
+        // 桌面口径的回收节奏：业务空闲期限仍是 §9.2 的 30 分钟，但扫描要更勤。
+        // `arm_detached_grace` 把「摘掉挂载的会话」的期限收到 60 秒
+        // （`IdlePolicy::DEFAULT_DETACHED_GRACE`），而默认扫描间隔是 3 分钟——宽限最坏会被
+        // 拖到 4 分钟，等于「已经没人用的会话」继续占着 2 槽物理额度（PostgreSQL 元数据一类
+        // 就是数据池 + 控制池）。15 秒一跳让宽限名副其实，也让 §9.2 的 30 分钟期限到期后
+        // 不再多留最多 3 分钟。
+        runtime.with_idle_policy(
+            datazen_runtime::application::IdlePolicy::default()
+                .with_scan_interval(std::time::Duration::from_secs(15)),
+        );
         // 出向端口在此接线。放在 `runtime` 构造之后、`services` 之前：端口是**宿主
         // 装配期**决定的事（与 `RuntimeConnectionUseCases::new` 的三个业务依赖分开），
         // 而 `services` 一旦 set 出去，`assembly_state()` 就报 FullyWired——在那之前
@@ -521,6 +531,13 @@ impl PlatformAdapter {
                     super::target_metadata::command_requirements(requirements),
                 );
             }
+        }
+        for (command, requirements) in super::target_metadata::host_metadata_command_requirements()
+        {
+            commands.insert(
+                command.into(),
+                super::target_metadata::command_requirements(requirements),
+            );
         }
         let cache = self.target_metadata.get().cloned().ok_or_else(|| {
             ApiError::new(

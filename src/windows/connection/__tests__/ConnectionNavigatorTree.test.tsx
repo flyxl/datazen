@@ -218,14 +218,22 @@ vi.mock('../../../commands/database', () => ({
       const tables: TableInfo[] = await mockGetTables(dbSessionId, database);
       return {
         database,
-        schemas: [...new Set(tables.map((table) => table.schema).filter(
-          (schema): schema is string => typeof schema === 'string' && schema.length > 0,
-        ))],
-        relations: tables.filter((table) => table.name).map((table) => ({
-          ref: { database, schema: table.schema ?? null, name: table.name },
-          kind: table.tableType,
-          rowCount: table.rowCount ?? null,
-        })),
+        schemas: [
+          ...new Set(
+            tables
+              .map((table) => table.schema)
+              .filter(
+                (schema): schema is string => typeof schema === 'string' && schema.length > 0,
+              ),
+          ),
+        ],
+        relations: tables
+          .filter((table) => table.name)
+          .map((table) => ({
+            ref: { database, schema: table.schema ?? null, name: table.name },
+            kind: table.tableType,
+            rowCount: table.rowCount ?? null,
+          })),
       };
     },
     useDatabase: (...args: unknown[]) => mockUseDatabase(...args),
@@ -359,6 +367,7 @@ async function ensureDbTableVisible(
   dbName: string,
   tableName: string,
   dbSessionId = 'conn-1',
+  connectionId = 'cfg-mysql',
 ) {
   await waitFor(() => findByText(dbName));
 
@@ -366,7 +375,7 @@ async function ensureDbTableVisible(
 
   fireEvent.click((await findByText(dbName)).closest('button')!);
   await waitFor(() => {
-    expect(mockGetTables).toHaveBeenCalledWith(dbSessionId, dbName);
+    expect(mockGetTables).toHaveBeenCalledWith(dbSessionId, dbName, null, connectionId);
     expect(queryAllByText(tableName).length).toBeGreaterThan(0);
   });
 }
@@ -729,7 +738,7 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
       expect(activeSchema()?.currentDatabase).toBe('db_a');
     });
     await findByText('users');
-    expect(mockGetTables).not.toHaveBeenCalledWith('conn-1', 'db_a');
+    expect(mockGetTables).not.toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-mysql');
   });
 
   it('passes postgresql schema when opening a table under a schema node', async () => {
@@ -765,7 +774,9 @@ describe('ConnectionNavigatorTree multi-db table selection', () => {
 
     await waitFor(() => findByText('db_a'));
     fireEvent.click((await findByText('db_a')).closest('button')!);
-    await waitFor(() => expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a'));
+    await waitFor(() =>
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-pg'),
+    );
     fireEvent.click((await findByText('public')).closest('button')!);
     const tablesCategory = await waitFor(() => {
       const nodes = queryAllByText('schemaTree.tables');
@@ -833,7 +844,7 @@ describe('ConnectionNavigatorTree refresh', () => {
 
     await waitFor(() => {
       expect(mockGetDatabases).toHaveBeenCalledWith('conn-1');
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-mysql');
     });
   });
 
@@ -851,7 +862,7 @@ describe('ConnectionNavigatorTree refresh', () => {
 
     await waitFor(() => {
       expect(mockGetDatabases).toHaveBeenCalledWith('conn-1');
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-mysql');
     });
     expect(viewRefresh).not.toHaveBeenCalled();
   });
@@ -890,7 +901,7 @@ describe('ConnectionNavigatorTree refresh', () => {
     await triggerDatabaseRefresh(findByText, 'db_a');
 
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-mysql');
     });
     expect(mockGetDatabases).not.toHaveBeenCalled();
   });
@@ -923,14 +934,16 @@ describe('ConnectionNavigatorTree refresh', () => {
 
     await waitFor(() => findByText('db_a'));
     fireEvent.click((await findByText('db_a')).closest('button')!);
-    await waitFor(() => expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a'));
+    await waitFor(() =>
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-pg'),
+    );
     mockGetDatabases.mockClear();
     mockGetTables.mockClear();
 
     await triggerSchemaRefresh(findByText, 'public');
 
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-pg');
     });
     expect(mockGetDatabases).not.toHaveBeenCalled();
 
@@ -1139,7 +1152,9 @@ describe('ConnectionNavigatorTree context menu new query', () => {
 
     await waitFor(() => findByText('db_a'));
     fireEvent.click((await findByText('db_a')).closest('button')!);
-    await waitFor(() => expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a'));
+    await waitFor(() =>
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-pg'),
+    );
     fireEvent.click((await findByText('public')).closest('button')!);
     await waitFor(() => {
       expect(activeSchema()?.currentDatabase).toBe('db_a');
@@ -2026,7 +2041,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
     await triggerConnectionRefresh(findByText, 'SQLite Conn');
     await waitFor(() => {
       expect(mockGetDatabases).toHaveBeenCalledWith('conn-sql');
-      expect(mockGetTables).toHaveBeenCalledWith('conn-sql', '/data/app.db');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-sql', '/data/app.db', null, 'cfg-sql');
     });
 
     // Database context menu → refresh → non-multi-db reloads via loadForConnection.
@@ -2141,7 +2156,7 @@ describe('ConnectionNavigatorTree standard single-db trees', () => {
 
     // Schema refresh reloads the tables of the schema's parent database.
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-sql', '/data/app.db');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-sql', '/data/app.db', null, 'cfg-sql');
     });
 
     // The expanded schema-scoped category reloads through its own menu.
@@ -2550,7 +2565,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     // Expand to pick up the table payload.
     fireEvent.click((await findByText('db_a')).closest('button')!);
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-mysql');
       expect(container.querySelector('[data-cat-id="tables"]')).not.toBeNull();
       expect(container.querySelector('[data-tree-node="schema"]')).toBeNull();
     });
@@ -2610,7 +2625,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     findActionItem(items, 'refresh')?.action?.();
 
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-mysql');
     });
   });
 
@@ -2631,7 +2646,7 @@ describe('ConnectionNavigatorTree multi-db tree variants', () => {
     );
     fireEvent.click((await findByText('postgres')).closest('button')!);
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'postgres');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'postgres', null, 'cfg-mysql');
     });
     // Make db_a the active database again by opening one of its tables —
     // only an *active* drop triggers the cached-fallback switch.
@@ -2813,7 +2828,7 @@ describe('ConnectionNavigatorTree schema context menu', () => {
         input: { name: 'public', cascade: true },
         database: 'db_a',
       });
-      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_a', null, 'cfg-pg');
     });
   });
 
@@ -2863,7 +2878,7 @@ describe('ConnectionNavigatorTree schema context menu', () => {
         'db_a',
         'public',
       );
-      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_a', null, 'cfg-pg');
     });
   });
 
@@ -2924,7 +2939,7 @@ describe('ConnectionNavigatorTree schema context menu', () => {
 
     fireEvent.click((await findByText('db_b')).closest('button')!);
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_b');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-pg', 'db_b', null, 'cfg-pg');
     });
     await findByText('analytics');
     mockDriverExecute.mockClear();
@@ -3484,14 +3499,14 @@ describe('ConnectionNavigatorTree imperative refresh guards', () => {
     const dbBtn = (await view.findByText('db_a')).closest('button')!;
     fireEvent.click(dbBtn);
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-mysql');
     });
     mockGetTables.mockClear();
 
     seedSessionSchema('conn-1', { schemaEpoch: 42 });
 
     await waitFor(() => {
-      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db_a', null, 'cfg-mysql');
     });
   });
 

@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, cleanup, screen, fireEvent } from '@testing-library/react';
 import { TableStructureEditor } from '../TableStructureEditor';
 import { invalidateSchemaCache } from '../../../lib/schemaCache';
+import { useSchemaStore } from '../../../stores/schemaStore';
+import { createEmptyConnectionSchema } from '../../../stores/schemaStoreState';
 
 // The mount effect lists `t` in its deps — a fresh function per render would
 // retrigger it endlessly, so the mock must return a stable reference.
@@ -12,20 +14,16 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 const {
   mockPlanTableStructureChanges,
-  mockExecuteQuery,
+  mockExecuteTargetCommand,
   mockGetTableSchema,
   mockGetStructureCapabilities,
-  mockGetConnectionCommands,
-  mockDriverExecute,
   mockConfirmApply,
   mockExportTableStructureToFile,
 } = vi.hoisted(() => ({
   mockPlanTableStructureChanges: vi.fn().mockResolvedValue({ statements: [] }),
-  mockExecuteQuery: vi.fn().mockResolvedValue({}),
+  mockExecuteTargetCommand: vi.fn().mockResolvedValue({}),
   mockGetTableSchema: vi.fn().mockResolvedValue(null),
   mockGetStructureCapabilities: vi.fn().mockResolvedValue({ createTable: true }),
-  mockGetConnectionCommands: vi.fn().mockResolvedValue([]),
-  mockDriverExecute: vi.fn().mockResolvedValue({ data: {} }),
   mockConfirmApply: vi.fn().mockResolvedValue(true),
   mockExportTableStructureToFile: vi.fn().mockResolvedValue('ok'),
 }));
@@ -35,13 +33,6 @@ vi.mock('../../../lib/schemaCache', async (importOriginal) => ({
   getCachedTableSchema: (...args: unknown[]) => mockGetTableSchema(...args),
 }));
 
-vi.mock('../../../commands/driver', () => ({
-  driverCommands: {
-    getConnectionCommands: (...args: unknown[]) => mockGetConnectionCommands(...args),
-    execute: (...args: unknown[]) => mockDriverExecute(...args),
-  },
-}));
-
 vi.mock('../../../commands/structure', () => ({
   structureCommands: {
     getStructureCapabilities: (...args: unknown[]) => mockGetStructureCapabilities(...args),
@@ -49,10 +40,9 @@ vi.mock('../../../commands/structure', () => ({
   },
 }));
 
-vi.mock('../../../commands/query', () => ({
-  queryCommands: {
-    executeQuery: (...args: unknown[]) => mockExecuteQuery(...args),
-  },
+vi.mock('../../../lib/session/targetCommand', () => ({
+  executeTargetCommand: (...args: unknown[]) => mockExecuteTargetCommand(...args),
+  metadataTarget: (...args: unknown[]) => ({ targetArgs: args }),
 }));
 
 vi.mock('../../../hooks/useConfirmDialog', () => ({
@@ -162,12 +152,11 @@ vi.mock('../structure/StructurePlanPreview', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useSchemaStore.setState({ schemas: new Map() });
   mockPlanTableStructureChanges.mockResolvedValue({ statements: [] });
-  mockExecuteQuery.mockResolvedValue({});
+  mockExecuteTargetCommand.mockResolvedValue({});
   mockGetTableSchema.mockResolvedValue(null);
   mockGetStructureCapabilities.mockResolvedValue({ createTable: true });
-  mockGetConnectionCommands.mockResolvedValue([]);
-  mockDriverExecute.mockResolvedValue({ data: {} });
   mockConfirmApply.mockResolvedValue(true);
   mockExportTableStructureToFile.mockResolvedValue('ok');
 });
@@ -227,6 +216,60 @@ describe('TableStructureEditor mount (no use_database IPC)', () => {
 });
 
 describe('TableStructureEditor targets the panel database', () => {
+  it.each([
+    { schema: 'panel_schema', targetSchemas: ['target_schema'], expected: 'panel_schema' },
+    { schema: null, targetSchemas: ['target_schema'], expected: 'target_schema' },
+    { schema: null, targetSchemas: [], expected: null },
+    { schema: null, targetSchemas: ['first_schema', 'second_schema'], expected: null },
+  ])(
+    'keeps the database-qualified relation schema ($expected, $targetSchemas)',
+    async ({ schema, targetSchemas, expected }) => {
+      useSchemaStore.setState({
+        schemas: new Map([
+          [
+            'conn-1',
+            {
+              ...createEmptyConnectionSchema(),
+              currentDatabase: 'db_a',
+              tables: [{ name: 'users', schema: 'active_schema', tableType: 'table' }],
+              tableCatalogs: {
+                db_b: targetSchemas.map((schema) => ({
+                  name: 'users',
+                  schema,
+                  tableType: 'table' as const,
+                })),
+              },
+            },
+          ],
+        ]),
+      });
+      mockGetTableSchema.mockResolvedValue(ALTER_SCHEMA);
+      await mountAndLoad(baseProps('alter', { schema }));
+      expect(mockGetStructureCapabilities).toHaveBeenCalledWith(
+        'conn-1',
+        'db_b',
+        expected,
+        'connection-1',
+      );
+      expect(mockGetTableSchema).toHaveBeenCalledWith(
+        'conn-1',
+        'users',
+        'db_b',
+        expected,
+        'connection-1',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'structEditor.previewSQL' }));
+      await waitFor(() =>
+        expect(mockPlanTableStructureChanges).toHaveBeenCalledWith(
+          'conn-1',
+          expect.objectContaining({ table: 'users', schema: expected }),
+          'db_b',
+          'connection-1',
+        ),
+      );
+    },
+  );
+
   it('previews DDL against the target database', async () => {
     await mountAndLoad({});
     fillTableName('t_f1');
@@ -240,6 +283,7 @@ describe('TableStructureEditor targets the panel database', () => {
       'conn-1',
       expect.objectContaining({ table: 't_f1' }),
       'db_b',
+      'connection-1',
     );
   });
 
@@ -266,15 +310,19 @@ describe('TableStructureEditor targets the panel database', () => {
       'conn-1',
       expect.objectContaining({ table: 't_f1' }),
       'db_b',
+      'connection-1',
     );
-    // Statement execution runs unqualified on the session that the plan call
-    // just pinned to db_b.
-    expect(mockExecuteQuery).toHaveBeenCalledWith(
-      'conn-1',
-      'CREATE TABLE "t_f1" ("id" integer NOT NULL)',
-      undefined,
-      'db_b',
-      null,
+    expect(mockExecuteTargetCommand).toHaveBeenCalledWith(
+      { targetArgs: ['conn-1', 'db_b', null, undefined, 'connection-1'] },
+      {
+        command: 'query',
+        input: { sql: 'CREATE TABLE "t_f1" ("id" integer NOT NULL)' },
+      },
+      'completion',
+    );
+    expect(mockExecuteTargetCommand).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ command: 'refresh_schema_metadata' }),
     );
   });
 
@@ -291,6 +339,7 @@ describe('TableStructureEditor targets the panel database', () => {
       'conn-1',
       expect.objectContaining({ table: 't_f1' }),
       null,
+      'connection-1',
     );
   });
 });
@@ -326,7 +375,12 @@ describe('TableStructureEditor branches', () => {
       'connection-1',
     );
     expect(screen.getByTestId('column-table')).toBeInTheDocument();
-    expect(mockGetStructureCapabilities).toHaveBeenCalledWith('conn-1');
+    expect(mockGetStructureCapabilities).toHaveBeenCalledWith(
+      'conn-1',
+      'db_b',
+      null,
+      'connection-1',
+    );
   });
 
   it('surfaces schema-load failures in alter mode', async () => {
@@ -387,8 +441,8 @@ describe('TableStructureEditor branches', () => {
       ],
     });
     // First statement applies, second fails → partial-failure message.
-    mockExecuteQuery.mockResolvedValueOnce({});
-    mockExecuteQuery.mockRejectedValueOnce(new Error('boom'));
+    mockExecuteTargetCommand.mockResolvedValueOnce({});
+    mockExecuteTargetCommand.mockRejectedValueOnce(new Error('boom'));
     const onSuccess = vi.fn();
     await mountAndLoad({ onSuccess });
     fillTableName('t_f1');
@@ -415,8 +469,7 @@ describe('TableStructureEditor branches', () => {
 
   it('estimates rows and confirms before applying risky alters', async () => {
     mockGetTableSchema.mockResolvedValue(ALTER_SCHEMA);
-    mockGetConnectionCommands.mockResolvedValue([{ id: 'estimate_table_rows' }]);
-    mockDriverExecute.mockResolvedValue({ data: { estimatedRows: 12345 } });
+    mockExecuteTargetCommand.mockResolvedValue({ estimatedRows: 12345 });
     mockPlanTableStructureChanges.mockResolvedValue({
       statements: [{ sql: 'DROP COLUMN legacy', summary: 'drop', risk: 'destructive' }],
     });
@@ -428,27 +481,26 @@ describe('TableStructureEditor branches', () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalled();
     });
-    expect(mockDriverExecute).toHaveBeenCalledWith(
+    // estimate_table_rows carries its target through the command input, not the
+    // ExecutionTarget object: the driver's default target requirements mark it
+    // `allows_object: false`, so a relation identity on the target would be
+    // rejected with TargetUnsupported by runtime admission.
+    expect(mockExecuteTargetCommand).toHaveBeenCalledWith(
+      { targetArgs: ['conn-1', 'db_b', null, undefined, 'connection-1'] },
       expect.objectContaining({
-        dbSessionId: 'conn-1',
         command: 'estimate_table_rows',
         input: expect.objectContaining({ table: 'users' }),
-        database: 'db_b',
-        schema: null,
       }),
     );
     expect(mockConfirmApply).toHaveBeenCalled();
-    expect(mockExecuteQuery).toHaveBeenCalledWith(
-      'conn-1',
-      'DROP COLUMN legacy',
-      undefined,
-      'db_b',
-      null,
+    expect(mockExecuteTargetCommand).toHaveBeenCalledWith(
+      { targetArgs: ['conn-1', 'db_b', null, undefined, 'connection-1'] },
+      { command: 'query', input: { sql: 'DROP COLUMN legacy' } },
+      'completion',
     );
   });
 
   it('aborts risky alters when the user declines the confirmation', async () => {
-    mockGetConnectionCommands.mockResolvedValue([]);
     mockPlanTableStructureChanges.mockResolvedValue({
       statements: [{ sql: 'DROP COLUMN legacy', summary: 'drop', risk: 'destructive' }],
     });
@@ -461,7 +513,15 @@ describe('TableStructureEditor branches', () => {
     await waitFor(() => {
       expect(mockConfirmApply).toHaveBeenCalled();
     });
-    expect(mockExecuteQuery).not.toHaveBeenCalledWith('conn-1', 'DROP COLUMN legacy');
+    // The risky-alter flow estimates rows *before* the dialog — that number is
+    // what the warning message shows — so the estimate read legitimately runs
+    // even when the user declines. Aborting means the planned DDL never reaches
+    // the target command path, not that no read happened at all.
+    expect(mockExecuteTargetCommand).not.toHaveBeenCalledWith(
+      expect.anything(),
+      { command: 'query', input: { sql: 'DROP COLUMN legacy' } },
+      'completion',
+    );
     expect(onSuccess).not.toHaveBeenCalled();
   });
 

@@ -36,19 +36,19 @@ pub(crate) const POSTGRES_PROVIDER_ID: &str = "postgresql";
 /// The crate version the capability snapshot was taken at.
 pub(crate) const POSTGRES_DRIVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// `connection.rs:424-436` opens a **second** pool with `max_connections = 1`
-/// for the sole purpose of issuing `pg_cancel_backend`. A cancel therefore
-/// costs one physical connection beyond the data pool, always.
+/// One shared control connection per profile/server/auth identity, charged
+/// independently through BudgetPort::acquire_control_connection and retained
+/// until the last resource confirms physical closure.
 pub(crate) const CONTROL_POOL_CONNECTIONS: u32 = 1;
 
-/// Metadata commands are short-lived and execute one command at a time. Their
-/// data pool is intentionally bounded to one connection; cancellation still
-/// uses the separate control pool above.
+/// Metadata commands are short-lived and execute one command at a time, so their
+/// data pool is intentionally bounded to one connection. Cancellation uses the
+/// shared driver-internal control connection above and is not charged here.
 pub(crate) const METADATA_POOL_CONNECTIONS: u32 = 1;
 
 pub(crate) fn postgres_metadata_connection_cost() -> ConnectionCostPolicy {
     ConnectionCostPolicy::PoolBounded {
-        max_physical_connections: METADATA_POOL_CONNECTIONS + CONTROL_POOL_CONNECTIONS,
+        max_physical_connections: METADATA_POOL_CONNECTIONS,
     }
 }
 
@@ -107,17 +107,11 @@ pub(crate) fn postgres_namespace_shape() -> NamespaceShape {
     }
 }
 
-/// The physical cost of one PostgreSQL resource.
-///
-/// `connect_impl` opens `effective_max_pool_size()` data connections plus one
-/// control connection, so the honest number is the configured pool size plus
-/// one — not the configured pool size. Reporting the smaller number would let a
-/// caller size a budget that the provider then exceeds.
+/// Data-pool cost only. The shared control connection is charged separately
+/// once per profile/server/auth identity, regardless of business database count.
 pub(crate) fn postgres_connection_cost(config: &ConnectionConfig) -> ConnectionCostPolicy {
     ConnectionCostPolicy::PoolBounded {
-        max_physical_connections: config
-            .effective_max_pool_size()
-            .saturating_add(CONTROL_POOL_CONNECTIONS),
+        max_physical_connections: config.effective_max_pool_size(),
     }
 }
 
@@ -131,7 +125,7 @@ pub(crate) fn postgres_connection_cost(config: &ConnectionConfig) -> ConnectionC
 /// | `transaction_observation` | `Full` | `begin_transaction_impl` pins a real `PoolConnection` (`execution.rs:915-947`) and the commit/rollback path reports the server's answer. |
 /// | `session_scoped_handles` | `Supported` | the transaction handle is registered in `transactions` and dropped on commit/rollback/close. |
 /// | `reset_for_reuse` | `Unsupported` | there is no verified baseline replay; `reset_resource` returns `Discard`. |
-/// | `precise_cancel` | `Supported` | `pg_cancel_backend(<pid of that execution only>)` on a separate control pool (`execution.rs:369-437`). |
+/// | `precise_cancel` | `Supported` | `pg_cancel_backend(<pid of that execution only>)` on the shared driver-internal control connection (`execution.rs:369-437`). |
 /// | `snapshots` | `Unsupported` | `begin_read_snapshot_impl` exists but a per-table/per-database/coordinated guarantee is unverified. |
 /// | `transactions.isolation_levels` | empty | `begin_transaction_impl` sends a bare `BEGIN`, so it cannot honour a named level. |
 /// | `data` | `StreamingReadWrite` | resource_stream.rs publishes bounded batches through an awaitable sink; execute preserves rowsAffected. |
@@ -249,8 +243,9 @@ fn postgres_capability_evidence() -> Vec<(&'static str, String)> {
         (
             "preciseCancel",
             "src/execution.rs cancel_query_with_execution_impl: SELECT pg_cancel_backend($1) \
-             with that execution's backend pid, issued on the dedicated control pool \
-             (src/connection.rs opens it with max_connections = 1)"
+             with that execution's backend pid, issued on the shared driver-internal control \
+             connection (src/connection.rs opens one per connection identity and database, \
+             max_connections = 1, and never charges it to the resource budget)"
                 .to_string(),
         ),
         (
@@ -291,9 +286,11 @@ fn postgres_capability_evidence() -> Vec<(&'static str, String)> {
         (
             "connectionCostPolicy",
             concat!(
-                "InteractiveQuery and AgentSession retain one data connection plus one control connection; ",
-                "MetadataInspection uses one data connection plus one control connection; ",
-                "other pooled resources use effective_max_pool_size plus one control connection",
+                "the declared cost is the data pool only: InteractiveQuery and AgentSession ",
+                "retain one data connection, MetadataInspection uses one data connection, and ",
+                "other pooled resources use effective_max_pool_size. The cancel-only control ",
+                "connection is driver-internal, shared per connection identity and database, and ",
+                "is not charged",
             )
             .to_string(),
         ),

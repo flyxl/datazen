@@ -4,9 +4,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { getCachedTableSchema, invalidateSchemaCache } from '../../lib/schemaCache';
 import { useSchemaStore } from '../../stores/schemaStore';
-import { queryCommands } from '../../commands/query';
 import { structureCommands } from '../../commands/structure';
-import { driverCommands } from '../../commands/driver';
+import { executeTargetCommand, metadataTarget } from '../../lib/session/targetCommand';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { resolveExportScope, supportsAnyExport } from '../../lib/exportCapability';
 import { exportTableStructureToFile } from '../../lib/exportTableStructure';
@@ -23,7 +22,6 @@ import {
 } from '../../lib/structureEditor/draftDefaults';
 import { schemaToDraft } from '../../lib/structureEditor/schemaToDraft';
 import { ESTIMATE_TABLE_ROWS_COMMAND } from '../../lib/driverCommandIds';
-import { hasCommand } from '../../lib/commandSchema';
 import type {
   StructureCapabilities,
   StructureChangePlan,
@@ -76,19 +74,18 @@ function resolveIndexMethods(
 
 async function executePlanStatements(
   dbSessionId: string,
+  connectionId: string,
   plan: StructureChangePlan,
-  database?: string | null,
-  schema?: string | null,
+  database: string | null,
+  schema: string | null,
 ): Promise<{ executed: number; error?: string }> {
   let executed = 0;
   for (const stmt of plan.statements) {
     try {
-      await queryCommands.executeQuery(
-        dbSessionId,
-        stmt.sql,
-        undefined,
-        database ?? null,
-        schema ?? null,
+      await executeTargetCommand(
+        metadataTarget(dbSessionId, database, schema, undefined, connectionId),
+        { command: 'query', input: { sql: stmt.sql } },
+        'completion',
       );
       executed += 1;
     } catch (e) {
@@ -101,25 +98,24 @@ async function executePlanStatements(
 
 async function fetchEstimatedTableRows(args: {
   dbSessionId: string;
+  connectionId: string;
   table: string;
   schema?: string | null;
   database?: string | null;
 }): Promise<number | null> {
   try {
-    const definitions = await driverCommands.getConnectionCommands(args.dbSessionId);
-    if (!hasCommand(definitions, ESTIMATE_TABLE_ROWS_COMMAND)) {
-      return null;
-    }
     const input: Record<string, unknown> = { table: args.table };
     if (args.schema) input.schema = args.schema;
-    const result = await driverCommands.execute({
-      dbSessionId: args.dbSessionId,
-      command: ESTIMATE_TABLE_ROWS_COMMAND,
-      input,
-      database: args.database ?? null,
-      schema: args.schema ?? null,
-    });
-    const data = result.data;
+    const data = await executeTargetCommand(
+      metadataTarget(
+        args.dbSessionId,
+        args.database ?? null,
+        args.schema ?? null,
+        undefined,
+        args.connectionId,
+      ),
+      { command: ESTIMATE_TABLE_ROWS_COMMAND, input },
+    );
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
     const rows = (data as { estimatedRows?: unknown }).estimatedRows;
     return typeof rows === 'number' ? rows : null;
@@ -141,12 +137,21 @@ export function TableStructureEditor({
   onCancel,
 }: TableStructureEditorProps) {
   const { t } = useI18n();
-  // The table's own schema wins over the caller's current-schema default:
-  // a per-table metadata read must target the namespace the table lives in.
-  const tableSchema =
-    useSchemaStore((st) =>
-      initialTableName ? st.schemaOfRelation(initialTableName, dbSessionId) : null,
-    ) ?? requestSchema;
+  // Explicit panel identity wins. Infer only from the target database's
+  // catalog; the session's active database may contain a same-named relation.
+  const inferredSchema = useSchemaStore((st) => {
+    if (requestSchema != null || !initialTableName || !database) return null;
+    const entry = st.schemas.get(dbSessionId);
+    if (!entry) return null;
+    const catalog =
+      entry.tableCatalogs[database] ??
+      (entry.currentDatabase === database ? [...entry.tables, ...entry.views] : []);
+    const owners = new Set(
+      catalog.filter((item) => item.name === initialTableName).map((item) => item.schema ?? null),
+    );
+    return owners.size === 1 ? ([...owners][0] ?? null) : null;
+  });
+  const tableSchema = requestSchema ?? inferredSchema;
   const [confirmApply, confirmApplyDialog] = useConfirmDialog();
   const uiConfig = useMemo(() => resolveUiConfig(databaseType), [databaseType]);
   const structureExportSupported = supportsAnyExport(resolveExportScope(DB_REGISTRY[databaseType]));
@@ -175,7 +180,12 @@ export function TableStructureEditor({
     setLoading(true);
     setError(null);
 
-    const capsPromise = structureCommands.getStructureCapabilities(dbSessionId);
+    const capsPromise = structureCommands.getStructureCapabilities(
+      dbSessionId,
+      database,
+      tableSchema,
+      connectionId,
+    );
     const schemaPromise =
       mode === 'alter' && initialTableName
         ? getCachedTableSchema(dbSessionId, initialTableName, database, tableSchema, connectionId)
@@ -234,13 +244,13 @@ export function TableStructureEditor({
     return buildStructureChangeRequest({
       mode,
       table: tableName.trim(),
-      schema: requestSchema,
+      schema: tableSchema,
       originalColumns,
       currentColumns: columns,
       originalIndexes,
       currentIndexes: indexes,
     });
-  }, [mode, tableName, requestSchema, originalColumns, columns, originalIndexes, indexes, isValid]);
+  }, [mode, tableName, tableSchema, originalColumns, columns, originalIndexes, indexes, isValid]);
 
   const updateColumn = useCallback((id: string, patch: Partial<StructureColumnDraft>) => {
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -308,7 +318,8 @@ export function TableStructureEditor({
       const plan = await structureCommands.planTableStructureChanges(
         dbSessionId,
         request,
-        database ?? null,
+        database,
+        connectionId,
       );
       setPreviewPlan(plan);
     } catch (e) {
@@ -322,7 +333,7 @@ export function TableStructureEditor({
     } finally {
       setPreviewing(false);
     }
-  }, [buildRequest, dbSessionId, database, t]);
+  }, [buildRequest, connectionId, dbSessionId, database, t]);
 
   const handleExecute = useCallback(async () => {
     const request = buildRequest();
@@ -333,7 +344,8 @@ export function TableStructureEditor({
       const plan = await structureCommands.planTableStructureChanges(
         dbSessionId,
         request,
-        database ?? null,
+        database,
+        connectionId,
       );
       if (plan.statements.length === 0) {
         setError(t('structEditor.noChanges'));
@@ -344,8 +356,9 @@ export function TableStructureEditor({
       if (mode === 'alter' && initialTableName) {
         estimatedRows = await fetchEstimatedTableRows({
           dbSessionId,
+          connectionId,
           table: initialTableName,
-          schema: requestSchema,
+          schema: tableSchema,
           database,
         });
       }
@@ -360,7 +373,13 @@ export function TableStructureEditor({
         if (!ok) return;
       }
 
-      const result = await executePlanStatements(dbSessionId, plan, database, requestSchema);
+      const result = await executePlanStatements(
+        dbSessionId,
+        connectionId,
+        plan,
+        database,
+        request.schema ?? tableSchema,
+      );
       if (result.error) {
         if (result.executed > 0) {
           setError(
@@ -375,6 +394,9 @@ export function TableStructureEditor({
         }
         return;
       }
+      // Runtime-target schema reads go directly through the driver, so the
+      // host-owned refresh command cannot clear this path's cache. Invalidate
+      // the frontend snapshot before returning to the structure view.
       if (initialTableName) {
         invalidateSchemaCache(dbSessionId, initialTableName);
       }
@@ -388,6 +410,7 @@ export function TableStructureEditor({
     }
   }, [
     buildRequest,
+    connectionId,
     dbSessionId,
     confirmApply,
     database,
@@ -395,6 +418,7 @@ export function TableStructureEditor({
     mode,
     onSuccess,
     requestSchema,
+    tableSchema,
     t,
   ]);
 

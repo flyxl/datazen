@@ -102,7 +102,18 @@ macro_rules! session_command {
         ) -> Result<serde_json::Value, ApiError> {
             let adapter = adapter(&state)?;
             let call = adapter.begin_call();
-            encode(adapter.runtime()?.$name(call.context(), request).await?)
+            let result = adapter.runtime()?.$name(call.context(), request).await;
+            if let Err(error) = &result {
+                // 会话命令曾经完全静默：被拒的请求在日志里不留一行，一次「执行失败」
+                // 只能靠猜是哪个命令、哪一类原因。`code` 是分类而非细节（消息本身
+                // 已脱敏），可以安全落日志，也是报告问题时唯一的锚点。
+                tracing::warn!(
+                    command = stringify!($name),
+                    code = error.code.as_str(),
+                    "session command rejected"
+                );
+            }
+            encode(result?)
         }
     };
 }

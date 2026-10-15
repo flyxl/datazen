@@ -1,10 +1,21 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
+  readCatalog,
+  readRuntimeCatalog,
+  readRuntimeRelationSchema,
+  RuntimeMetadataProbeError,
+} from '../schema-metadata.js';
+import {
   connectSeededPgInWorkspace,
   closeExtraWindows,
   executeSQL,
   executeSQLChecked,
+  invokeBackend,
+  E2E_PG_CONNECTION_ID,
+  connectConfig,
+  executeQuery,
+  parseQueryRows,
   openQueryTab,
   clickTableInSidebar,
   switchSubTab,
@@ -22,7 +33,7 @@ import {
 
 const TEST_TABLE = '_e2e_structure_test';
 
-describe('表结构编辑 (TS-001~TS-008)', () => {
+describe('表结构编辑 (TS-001~TS-009)', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -137,13 +148,194 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
       )
     `);
 
+    // Probe the CREATE's effect in the same editor, before metadata refresh.
+    // Only boolean values leave the result grid; never report database names.
+    let databaseMatchesConfig = false;
+    let relationVisible = false;
+    let independentDatabaseMatchesConfig = false;
+    let independentRelationVisible = false;
+    let catalogContainsTable = false;
+    let catalogTableKind = false;
+    let catalogSchemaListed = false;
+    let catalogRelationCount = 0;
+    let catalogSchemaCount = 0;
+    let configuredDatabase = '';
+    let catalogTableSchema: string | null = null;
+    try {
+      const connections =
+        await invokeBackend<Array<{ id: string; database?: string }>>('get_connections');
+      const database = connections.find(
+        (connection) => connection.id === E2E_PG_CONNECTION_ID,
+      )?.database;
+      if (!database) throw new Error('Seeded database configuration unavailable');
+      configuredDatabase = database;
+      const databaseLiteral = database.replace(/\\/g, '\\\\').replace(/'/g, "''");
+      await executeSQLChecked(`
+        SELECT current_database() = E'${databaseLiteral}' AS e2e_database_matches_config,
+               to_regclass('${TEST_TABLE}') IS NOT NULL AS e2e_relation_visible
+      `);
+      const grid = await $(
+        '[data-testid="query-results-host"] [data-testid="result-workspace-table"]',
+      );
+      await grid.waitForDisplayed({ timeout: 10000 });
+      const databaseCell = await grid.$(
+        '[data-testid="data-table-cell"][data-dt-row="0"][data-dt-col="e2e_database_matches_config"]',
+      );
+      const relationCell = await grid.$(
+        '[data-testid="data-table-cell"][data-dt-row="0"][data-dt-col="e2e_relation_visible"]',
+      );
+      await databaseCell.waitForDisplayed({ timeout: 10000 });
+      await relationCell.waitForDisplayed({ timeout: 10000 });
+      const databaseText = (await databaseCell.getText()).trim();
+      const relationText = (await relationCell.getText()).trim();
+      databaseMatchesConfig = databaseText === 'true';
+      relationVisible = relationText === 'true';
+      if (databaseMatchesConfig && relationVisible) {
+        // Editor-owned fixed sessions can see their own uncommitted DDL.
+        // The existing IPC query helper uses the independently pooled legacy
+        // connection: verify visibility there without reconnecting the editor.
+        const probeSession = await connectConfig(E2E_PG_CONNECTION_ID);
+        try {
+          const rows = parseQueryRows(
+            await executeQuery(
+              probeSession,
+              `
+            SELECT current_database() = E'${databaseLiteral}',
+                   to_regclass('${TEST_TABLE}') IS NOT NULL
+          `,
+              database,
+            ),
+          );
+          independentDatabaseMatchesConfig = rows[0]?.[0] === true;
+          independentRelationVisible = rows[0]?.[1] === true;
+          const catalog = await readCatalog({ dbSessionId: probeSession, database, schema: null });
+          catalogRelationCount = catalog.relations.length;
+          catalogSchemaCount = catalog.schemas.length;
+          const relation = catalog.relations.find((entry) => entry.ref.name === TEST_TABLE);
+          catalogContainsTable = relation !== undefined;
+          catalogTableKind = relation?.kind === 'table';
+          catalogTableSchema = relation?.ref.schema ?? null;
+          catalogSchemaListed =
+            catalogTableSchema !== null && catalog.schemas.includes(catalogTableSchema);
+        } finally {
+          await invokeBackend('release_connection', { dbSessionId: probeSession });
+        }
+      }
+    } catch {
+      // Never expose config values, SQL literals, or raw backend errors.
+    }
+    if (!databaseMatchesConfig || !relationVisible) {
+      throw new Error(
+        `TS-005 effect: database_matches_config=${databaseMatchesConfig}, relation_visible=${relationVisible}`,
+      );
+    }
+    if (!independentDatabaseMatchesConfig || !independentRelationVisible) {
+      throw new Error(
+        `TS-005 independent visibility: database_matches_config=${independentDatabaseMatchesConfig}, relation_visible=${independentRelationVisible}`,
+      );
+    }
+    if (!catalogContainsTable || !catalogTableKind || !catalogSchemaListed) {
+      throw new Error(
+        `TS-005 catalog: table_visible=${catalogContainsTable}, kind_table=${catalogTableKind}, schema_listed=${catalogSchemaListed}, relations=${catalogRelationCount}, schemas=${catalogSchemaCount}`,
+      );
+    }
+
+    let runtimeCatalogSucceeded = false;
+    let runtimeCatalogTableVisible = false;
+    let runtimeCatalogRelationCount = 0;
+    let runtimeCatalogSchemaCount = 0;
+    let runtimeCatalogFailure = 'none';
+    try {
+      const runtimeCatalog = await readRuntimeCatalog(E2E_PG_CONNECTION_ID, configuredDatabase);
+      runtimeCatalogSucceeded = true;
+      runtimeCatalogTableVisible = runtimeCatalog.relations.some(
+        (relation) => relation.ref.name === TEST_TABLE,
+      );
+      runtimeCatalogRelationCount = runtimeCatalog.relations.length;
+      runtimeCatalogSchemaCount = runtimeCatalog.schemas.length;
+    } catch (error) {
+      // Emit only structural status; never expose raw transport errors.
+      runtimeCatalogFailure =
+        error instanceof RuntimeMetadataProbeError
+          ? `${error.phase}/${error.reason}`
+          : 'unclassified';
+    }
+    console.info(
+      `[e2e] TS-005 runtime catalog: succeeded=${runtimeCatalogSucceeded}, table_visible=${runtimeCatalogTableVisible}, relations=${runtimeCatalogRelationCount}, schemas=${runtimeCatalogSchemaCount}, failure=${runtimeCatalogFailure}`,
+    );
+    if (!runtimeCatalogSucceeded || !runtimeCatalogTableVisible) {
+      throw new Error(
+        `TS-005 runtime catalog: succeeded=${runtimeCatalogSucceeded}, table_visible=${runtimeCatalogTableVisible}, relations=${runtimeCatalogRelationCount}, schemas=${runtimeCatalogSchemaCount}, failure=${runtimeCatalogFailure}`,
+      );
+    }
+
     // Refresh sidebar
     await clickNavigatorRefresh();
     await browser.pause(1500);
     // Refresh rebuilds the tree DOM — re-expand so the table node is visible.
     await expandConnectedConnectionInNavigator();
-    await expandSchemaTableCategory();
-    await waitForTableInSidebar(TEST_TABLE);
+    const navigatorSnapshot = () =>
+      browser.execute(
+        (database: string, schema: string | null, table: string) => {
+          const nav =
+            document.querySelector('[data-testid="connection-navigator-aside"]') ??
+            Array.from(document.querySelectorAll('aside')).find((aside) =>
+              aside.querySelector('[data-conn-item]'),
+            );
+          const nodes = Array.from(nav?.querySelectorAll('[data-testid="schema-tree-node"]') ?? []);
+          const query = document.querySelector<HTMLInputElement>(
+            '[data-testid="connection-search-input"]',
+          );
+          return {
+            navigator_present: nav !== undefined && nav !== null,
+            connections: nav?.querySelectorAll('[data-conn-item]').length ?? 0,
+            databases: nodes.filter((node) => node.getAttribute('data-tree-node') === 'db').length,
+            query_present: query !== null,
+            query_empty: query?.value === '',
+            query_matches_table: query?.value === table,
+            query_length: query?.value.length ?? 0,
+            database_matches_config: nodes.some(
+              (node) =>
+                node.getAttribute('data-tree-node') === 'db' &&
+                node.getAttribute('data-db-name') === database,
+            ),
+            schema_rendered:
+              schema !== null &&
+              nodes.some(
+                (node) =>
+                  node.getAttribute('data-tree-node') === 'schema' &&
+                  node.getAttribute('data-schema-name') === schema,
+              ),
+            tables: nodes.filter((node) => node.getAttribute('data-tree-node') === 'table').length,
+            schemas: nodes.filter((node) => node.getAttribute('data-tree-node') === 'schema')
+              .length,
+            categories: nodes.filter((node) => node.getAttribute('data-tree-node') === 'category')
+              .length,
+          };
+        },
+        configuredDatabase,
+        catalogTableSchema,
+        TEST_TABLE,
+      );
+    let beforeWait = await navigatorSnapshot();
+    try {
+      if (!beforeWait.database_matches_config) throw new Error('Target database absent');
+      await expandSchemaTableCategory(catalogTableSchema ?? undefined, configuredDatabase);
+      beforeWait = await navigatorSnapshot();
+      console.info(`[e2e] TS-005 before wait: ${JSON.stringify(beforeWait)}`);
+      await waitForTableInSidebar(
+        TEST_TABLE,
+        20000,
+        catalogTableSchema ?? undefined,
+        configuredDatabase,
+      );
+      console.info(`[e2e] TS-005 after wait: ${JSON.stringify(await navigatorSnapshot())}`);
+    } catch {
+      const afterWait = await navigatorSnapshot();
+      throw new Error(
+        `TS-005 navigator: catalog_table_visible=${catalogContainsTable}, catalog_relations=${catalogRelationCount}, catalog_schemas=${catalogSchemaCount}, before=${JSON.stringify(beforeWait)}, after=${JSON.stringify(afterWait)}`,
+      );
+    }
   });
 
   // ── 编辑表结构 ─────────────────────────────────────────────────
@@ -223,16 +415,73 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
 
     const saveBtn = await $("[data-testid='struct-editor-execute']");
     await saveBtn.click();
-    await browser.pause(2500);
+    await browser.waitUntil(
+      async () =>
+        !(await $(`[data-testid='struct-editor-title']`)
+          .isDisplayed()
+          .catch(() => false)),
+      { timeout: 15000, timeoutMsg: '结构保存后未返回结构视图' },
+    );
 
     const backBtn = await $("[data-testid='struct-editor-back']");
     if (await backBtn.isExisting()) {
       await backBtn.click();
-      await browser.pause(600);
     }
 
     await switchSubTab('structure');
-    await browser.pause(1200);
+    try {
+      await browser.waitUntil(async () => (await $('body').getText()).includes('e2e_extra_col'), {
+        timeout: 15000,
+        timeoutMsg: '结构视图未加载新增列 e2e_extra_col',
+      });
+    } catch {
+      const database = process.env.E2E_PG_DB || 'datazen_e2e';
+      const ui = (await browser.execute((loadingCopy: string) => {
+        const body = document.body.innerText;
+        return {
+          editor_visible: document.querySelector('[data-testid="struct-editor-title"]') !== null,
+          loading_visible: body.includes(loadingCopy),
+          error_visible: document.querySelector('.text-red-400') !== null,
+          structure_view_visible:
+            document.querySelector('[data-testid="struct-edit-structure"]') !== null,
+          visible_columns: document.querySelectorAll('[data-struct-col]').length,
+        };
+      }, t('common.loadingTableStructure'))) as {
+        editor_visible: boolean;
+        loading_visible: boolean;
+        error_visible: boolean;
+        structure_view_visible: boolean;
+        visible_columns: number;
+      };
+
+      let runtimeCatalogFound = false;
+      let runtimeSchemaSucceeded = false;
+      let runtimeColumnPresent = false;
+      let runtimeFailure = 'none';
+      try {
+        const catalog = await readRuntimeCatalog(E2E_PG_CONNECTION_ID, database);
+        const relation = catalog.relations.find((entry) => entry.ref.name === TEST_TABLE);
+        runtimeCatalogFound = relation !== undefined;
+        if (relation) {
+          const schema = await readRuntimeRelationSchema(E2E_PG_CONNECTION_ID, relation.ref);
+          runtimeSchemaSucceeded = true;
+          runtimeColumnPresent = schema.definition.columns.some(
+            (column) => column.name === 'e2e_extra_col',
+          );
+        }
+      } catch (error) {
+        runtimeFailure =
+          error instanceof RuntimeMetadataProbeError
+            ? `${error.phase}/${error.reason}`
+            : 'unclassified';
+      }
+      console.info(
+        `[e2e] TS-009 diagnostic: catalog_relation=${runtimeCatalogFound}, schema_read=${runtimeSchemaSucceeded}, column_present=${runtimeColumnPresent}, runtime_failure=${runtimeFailure}, editor_visible=${ui.editor_visible}, loading_visible=${ui.loading_visible}, error_visible=${ui.error_visible}, structure_view_visible=${ui.structure_view_visible}, visible_columns=${ui.visible_columns}`,
+      );
+      throw new Error(
+        `TS-009 diagnostic: catalog_relation=${runtimeCatalogFound}, schema_read=${runtimeSchemaSucceeded}, column_present=${runtimeColumnPresent}, runtime_failure=${runtimeFailure}, editor_visible=${ui.editor_visible}, loading_visible=${ui.loading_visible}, error_visible=${ui.error_visible}, structure_view_visible=${ui.structure_view_visible}, visible_columns=${ui.visible_columns}`,
+      );
+    }
     const body = await $('body').getText();
     expect(body).toContain('e2e_extra_col');
   });

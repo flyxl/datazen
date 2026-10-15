@@ -103,7 +103,10 @@ impl DesktopSessionBackend {
             registry,
             store,
             budget: Arc::new(datazen_runtime::budget::InProcessBudgetCoordinator::new(
-                datazen_runtime::budget::BudgetConfig::from_parts(physical_limit, [1, 2, 1, 0]),
+                // PostgreSQL metadata admission requires a data connection and
+                // a control connection atomically. Reserve a complete lease
+                // so retained editors cannot consume its remaining slot.
+                datazen_runtime::budget::BudgetConfig::from_parts(physical_limit, [1, 2, 2, 0]),
                 organization.clone(),
             )),
             organization,
@@ -167,6 +170,19 @@ struct Sink {
 #[async_trait]
 impl dr::ResultSink for Sink {
     async fn write(&self, chunk: dr::ResultChunk) -> Result<(), dr::ResourceError> {
+        // An empty legacy chunk represents a complete zero-row statement,
+        // including providers that cannot report its affected-row count.
+        // Keep its SQL and identity on the summary channel; only non-empty
+        // batches are row data.
+        if chunk.rows.is_empty() {
+            return self
+                .write_statement_summary(dr::StatementSummary {
+                    statement_index: chunk.statement_index,
+                    sql: chunk.sql,
+                    rows_affected: chunk.rows_affected,
+                })
+                .await;
+        }
         if chunk.rows.len() > 1024 {
             return Err(dr::ResourceError::SinkRejected {
                 reason: "driver result block row limit".into(),

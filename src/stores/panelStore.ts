@@ -19,8 +19,15 @@ import {
   runBoundQuery,
 } from './queryExecActions';
 import { panelTargetDatabase, panelTargetSchema } from './panelQueryContext';
-import { cancelAndCleanupExec, cancelAndCleanupPaneExec } from './panelExecCleanup';
-import { DEFAULT_PANE_ID, paneKey, paneKeysOfPanel } from './paneKeys';
+import {
+  cancelAndCleanupExec,
+  cancelAndCleanupPaneExec,
+  canCancelPane,
+  requestPaneCancel,
+  sessionKeysOfPanel,
+} from './panelExecCleanup';
+import { createRunningCloseGuard } from './runningExecutionClose';
+import { DEFAULT_PANE_ID, paneKey } from './paneKeys';
 import { resolveNextActive, resetPanelIdCounter, type Panel } from './panelTypes';
 import { createPanelCloseNotifier } from './panelCloseNotifier';
 
@@ -274,6 +281,9 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const initial = get();
     const panel = initial.panels.find((p) => p.id === panelId);
     if (!panel) return;
+    // 关闭顺序见 `runningExecutionClose`：先问用户 → 停掉语句并等终态 → 才释放会话与标签页。
+    const guard = askBeforeClosingRunningPanes({ panel, panelId });
+    if (guard !== true && !(await guard)) return;
     if (panel.type === 'table' || panel.type === 'view') {
       const registry = getQueryPanelSessionRegistry();
       const key = tableSessionKey(panelId);
@@ -294,7 +304,9 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     }
     if (panel.type === 'query') {
       const registry = getQueryPanelSessionRegistry();
-      for (const key of paneKeysOfPanel(initial.queryExec, panelId)) {
+      // 会话注册表才是权威口径：pane 的会话在编辑器挂载时就开好了，按 exec 表枚举
+      // 会漏掉「开过会话但从未执行」的 pane，那正是额度被占满却只剩一个标签页的来源。
+      for (const key of sessionKeysOfPanel(initial.queryExec, panelId)) {
         if (!registry.peek(key)) continue;
         try {
           await registry.remove(key);
@@ -430,6 +442,9 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
     const panel = get().panels.find((p) => p.id === panelId);
     if (!panel || panel.type !== 'query') return;
     const key = paneKey(panelId, paneId);
+    // 与整屏关闭同一条顺序：先确认 → 停掉语句并等终态 → 才释放会话与摘掉面板。
+    const guard = askBeforeClosingRunningPanes({ panel, panelId, paneId });
+    if (guard !== true && !(await guard)) return;
     const registry = getQueryPanelSessionRegistry();
     if (registry.peek(key)) {
       try {
@@ -753,3 +768,26 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
 // `panelCloseNotifier`). Re-exported so the view layer registers against the
 // notifier for the store it actually renders, without importing the store.
 export const { onPanelClosed } = createPanelCloseNotifier(usePanelStore);
+
+/**
+ * Ask before closing something that is still running.
+ *
+ * The conversation itself lives in `runningExecutionClose`; this only wires it to
+ * this store's state, so the rules are testable without a store and the store
+ * keeps no copy of them.
+ */
+const askBeforeClosingRunningPanes = createRunningCloseGuard({
+  queryExec: () => usePanelStore.getState().queryExec,
+  hasSession: (panelId, paneId) =>
+    getQueryPanelSessionRegistry().peek(paneKey(panelId, paneId)) != null,
+  canCancel: canCancelPane,
+  cancelPane: (panelId, paneId) =>
+    requestPaneCancel(() => usePanelStore.getState(), panelId, paneId),
+  markBlocked: (panelId, paneId) => {
+    usePanelStore.setState((state) => ({
+      queryExec: patchExec(state.queryExec, paneKey(panelId, paneId), {
+        error: t('query.session.closeBlocked'),
+      }),
+    }));
+  },
+});

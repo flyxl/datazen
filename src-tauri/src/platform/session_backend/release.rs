@@ -88,7 +88,22 @@ impl DesktopSessionBackend {
         request: CloseResource,
     ) -> Result<CloseResourceOutcome, rc::ProviderError> {
         let resource = self.resource(&request.resource_id).await?;
+        tracing::debug!(
+            source = "resource_lifecycle",
+            resource_id = %request.resource_id,
+            purpose = ?resource.purpose,
+            "resource close requested"
+        );
         if request.registered_handles != 0 {
+            // 拒绝关闭必须留痕：额度释放依赖这一条路径，而它在调用方那里是
+            // best-effort（`.catch(() => {})`）。不记录的话，「额度没还回去」
+            // 在日志里与「根本没请求关闭」长得一模一样。
+            tracing::warn!(
+                source = "resource_release",
+                resource_id = %request.resource_id,
+                registered_handles = request.registered_handles,
+                "resource close refused: registered handles remain"
+            );
             return Err(rc::ProviderError::CleanupFailed(
                 "registered handles remain".into(),
             ));
@@ -182,6 +197,7 @@ impl DesktopSessionBackend {
                 .take();
             return Ok(CloseResourceOutcome::ReturnedToPool);
         }
+
         // 出向端口绑定与物理资源同帧摘除：`Closed` 与 `Undecidable` 都不该再被借出。
         self.unbind_live_resource_by_resource(&request.resource_id)
             .await;

@@ -9,7 +9,7 @@ use datazen_driver_api::*;
 use sqlx::pool::PoolConnection;
 use sqlx::{PgPool, Postgres};
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU64;
+use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 
 pub struct PostgresDriver {
@@ -26,8 +26,6 @@ pub struct PostgresDriver {
     /// query, so reading a foreign database means selecting the pool connected
     /// to it — never re-pointing the handle's session (BUG-003).
     pub(crate) database_pools: RwLock<HashMap<(String, String), DatabasePoolEntry>>,
-    /// Monotonic clock backing the LRU eviction of [`Self::database_pools`].
-    pub(crate) database_pool_clock: AtomicU64,
     /// Open transactions: connection held for the lifetime of BEGIN…COMMIT/ROLLBACK, keyed by handle.id.
     pub(crate) fixed_contexts: RwLock<HashMap<String, datazen_driver_api::session::SessionContext>>,
     pub(crate) fixed_sessions: RwLock<HashMap<String, i32>>,
@@ -36,14 +34,15 @@ pub struct PostgresDriver {
     /// Exact execution target registry.
     pub(crate) query_executions:
         Mutex<HashMap<QueryExecutionId, crate::execution::PgQueryExecution>>,
-    /// Separate control connections are never used to execute user SQL.
-    pub(crate) control_pools: RwLock<HashMap<String, PgPool>>,
+    /// One independently budgeted control socket per profile/server/auth identity.
+    pub(crate) control_pools: RwLock<HashMap<String, crate::control::ControlPoolEntry>>,
 }
 
-/// A cached pool for one non-active database, plus its LRU stamp.
+/// A cached pool for one non-active database, plus when it was last handed out.
+/// The timestamp drives both LRU eviction and the inactive-database reap.
 pub(crate) struct DatabasePoolEntry {
     pub(crate) pool: PgPool,
-    pub(crate) last_used: u64,
+    pub(crate) last_used: Instant,
 }
 
 impl PostgresDriver {
@@ -54,7 +53,6 @@ impl PostgresDriver {
             pool_lifecycle: Mutex::new(HashMap::new()),
             active_databases: RwLock::new(HashMap::new()),
             database_pools: RwLock::new(HashMap::new()),
-            database_pool_clock: AtomicU64::new(0),
             transactions: Mutex::new(HashMap::new()),
             fixed_sessions: RwLock::new(HashMap::new()),
             fixed_contexts: RwLock::new(HashMap::new()),

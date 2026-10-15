@@ -253,7 +253,10 @@ fn postgres_placeholders_are_dollar_n() {
 #[test]
 fn cancel_sql_targets_one_backend_without_process_scan() {
     assert_eq!(PG_BACKEND_PID_SQL, "SELECT pg_backend_pid()");
-    assert_eq!(PG_CANCEL_BACKEND_SQL, "SELECT pg_cancel_backend($1)");
+    assert_eq!(
+        PG_CANCEL_BACKEND_SQL,
+        "SELECT pg_catalog.pg_cancel_backend($1)"
+    );
     assert!(!PG_CANCEL_BACKEND_SQL.contains("pg_stat_activity"));
 }
 
@@ -353,7 +356,6 @@ async fn transaction_execution_cancel_is_pending_until_target_is_bound() {
             cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             session_id: handle.id.clone(),
             target_pool: None,
-            control_pool: None,
             backend_pid: None,
             cancel_requested: false,
             transactional: true,
@@ -634,7 +636,6 @@ mod stream_target_pool {
                 cancel_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
                 session_id: handle.id.clone(),
                 target_pool: None,
-                control_pool: None,
                 backend_pid: None,
                 cancel_requested: false,
                 transactional: false,
@@ -706,5 +707,64 @@ mod stream_target_pool {
             matches!(err, DriverError::QueryExecutionNotFound(_)),
             "got {err:?}"
         );
+    }
+}
+
+/// 回归：不活跃的库要定期归还连接资源。
+///
+/// 背景：池以前每会话常驻 `min_connections = 2`，且不活跃的库永远不回收——
+/// 实测一个窗口空闲时仍占 17 条后端连接（其中同一个库 6 条）。
+/// 现在会话自身不再常驻连接，浏览过的库在空闲超过 TTL 后整池回收。
+mod inactive_database_reap {
+    use super::*;
+    use crate::connection::POOL_IDLE_TTL;
+    use crate::postgres::DatabasePoolEntry;
+    use sqlx::{postgres::PgPoolOptions, PgPool};
+    use std::time::{Duration, Instant};
+
+    fn lazy_pool() -> PgPool {
+        PgPoolOptions::new()
+            .connect_lazy("postgres://127.0.0.1:1/none")
+            .expect("connect_lazy never dials")
+    }
+
+    fn entry(idle: Duration) -> DatabasePoolEntry {
+        DatabasePoolEntry {
+            pool: lazy_pool(),
+            last_used: Instant::now() - idle,
+        }
+    }
+
+    #[tokio::test]
+    async fn reap_takes_inactive_databases_and_keeps_recent_ones() {
+        let driver = PostgresDriver::new();
+        let pool_id = "test-pool".to_string();
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: pool_id.clone(),
+        };
+        {
+            let mut cache = driver.database_pools.write().await;
+            cache.insert(
+                (pool_id.clone(), "idle_db".into()),
+                entry(POOL_IDLE_TTL + Duration::from_secs(1)),
+            );
+            cache.insert(
+                (pool_id.clone(), "fresh_db".into()),
+                entry(Duration::from_secs(1)),
+            );
+            cache.insert(
+                ("other-pool".into(), "idle_db".into()),
+                entry(POOL_IDLE_TTL + Duration::from_secs(1)),
+            );
+        }
+
+        driver.reap_inactive_databases(&handle).await;
+
+        let cache = driver.database_pools.read().await;
+        assert!(!cache.contains_key(&(pool_id.clone(), "idle_db".into())));
+        assert!(cache.contains_key(&(pool_id.clone(), "fresh_db".into())));
+        // Another handle's pools are none of this handle's business.
+        assert!(cache.contains_key(&("other-pool".into(), "idle_db".into())));
     }
 }

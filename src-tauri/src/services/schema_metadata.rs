@@ -12,6 +12,7 @@ use datazen_driver_api::schema_metadata::{
 use datazen_driver_api::{
     validate_schema_target, CommandAccessLevel, CommandCategory, CommandResult, ConnectionHandle,
     DatabaseDriver, DriverCommandDefinition, DriverCommandMetadata, DriverError, SchemaScope,
+    StructureChangeRequest,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -25,6 +26,8 @@ pub fn is_metadata_command(command: &str) -> bool {
             | "read_relation_columns"
             | "read_relation_schema"
             | "refresh_schema_metadata"
+            | "get_structure_capabilities"
+            | "plan_table_structure_changes"
     )
 }
 
@@ -70,6 +73,18 @@ pub fn command_definitions() -> Vec<DriverCommandDefinition> {
                 "required": ["scope"]
             }),
         ),
+        (
+            "get_structure_capabilities",
+            json!({"type":"object","properties":{}}),
+        ),
+        (
+            "plan_table_structure_changes",
+            json!({
+                "type":"object",
+                "properties":{"request":{"type":"object"}},
+                "required":["request"]
+            }),
+        ),
     ]
     .into_iter()
     .map(|(id, input_schema)| DriverCommandDefinition {
@@ -108,6 +123,12 @@ struct SchemaInput {
 #[serde(deny_unknown_fields)]
 struct RefreshInput {
     scope: MetadataRefreshScope,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StructurePlanInput {
+    request: StructureChangeRequest,
 }
 
 fn decode<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, CommandError> {
@@ -257,6 +278,17 @@ pub async fn execute(
                 .await?;
             json!({ "value": RelationSchema { relation: input.relation, definition } })
         }
+        "get_structure_capabilities" => {
+            serde_json::to_value(driver.structure_capabilities(handle).await?)?
+        }
+        "plan_table_structure_changes" => {
+            let input: StructurePlanInput = decode(input)?;
+            serde_json::to_value(
+                driver
+                    .plan_structure_changes(handle, &input.request)
+                    .await?,
+            )?
+        }
         _ => {
             return Err(CommandError::Validation(
                 "Unsupported metadata command".into(),
@@ -341,6 +373,17 @@ pub async fn execute_on_runtime_resource(
             let input: ColumnsInput = decode(input)?;
             serde_json::to_value(
                 columns::read_on_runtime_resource(&driver, handle, input.relations).await?,
+            )?
+        }
+        "get_structure_capabilities" => {
+            serde_json::to_value(driver.structure_capabilities(handle).await?)?
+        }
+        "plan_table_structure_changes" => {
+            let input: StructurePlanInput = decode(input)?;
+            serde_json::to_value(
+                driver
+                    .plan_structure_changes(handle, &input.request)
+                    .await?,
             )?
         }
         _ => {

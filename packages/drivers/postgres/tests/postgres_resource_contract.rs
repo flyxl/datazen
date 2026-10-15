@@ -65,8 +65,6 @@ mod live_gate;
 
 /// The provider id postgres declares in its capability snapshot.
 const POSTGRES_PROVIDER_ID: &str = "postgresql";
-/// One physical connection is reserved for cancellation, on its own pool.
-const CONTROL_POOL_CONNECTIONS: u32 = 1;
 
 fn factory(driver_id: &str) -> &'static dyn DatabaseDriverFactory {
     iter_driver_factories()
@@ -136,7 +134,12 @@ fn interactive_scope(max_physical_connections: u32) -> ResourceScope {
 fn acquire_request(config: &ConnectionConfig, scope: ResourceScope) -> AcquireResourceRequest {
     AcquireResourceRequest {
         connection_config: config.clone(),
-        target: target(),
+        target: config
+            .database
+            .as_ref()
+            .map_or_else(NamespaceTarget::empty, |database| {
+                NamespaceTarget::empty().with_database(database.clone())
+            }),
         scope,
         identity_scope: IdentityScope::default(),
         baseline: Baseline::new(Vec::new()),
@@ -277,6 +280,8 @@ impl ResultSink for UnreachableSink {
 struct RecordingSink {
     chunks: Mutex<u32>,
     completed: Mutex<bool>,
+    // Includes statementSummary and column metadata; never counted as row chunks.
+    outputs: Mutex<Vec<serde_json::Value>>,
 }
 
 impl RecordingSink {
@@ -298,6 +303,14 @@ impl ResultSink for RecordingSink {
     async fn write(&self, _chunk: ResultChunk) -> Result<(), ResourceError> {
         let mut chunks = self.chunks.lock().unwrap_or_else(|p| p.into_inner());
         *chunks += 1;
+        Ok(())
+    }
+
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(output);
         Ok(())
     }
 
@@ -428,9 +441,9 @@ async fn describe_states_the_real_physical_cost_and_refuses_levels_postgres_has_
         ConnectionCostPolicy::PoolBounded {
             max_physical_connections,
         } => assert_eq!(
-            max_physical_connections,
-            1 + CONTROL_POOL_CONNECTIONS,
-            "an interactive resource retains one backend plus the cancellation control connection"
+            max_physical_connections, 1,
+            "an interactive resource retains one backend; the cancel-only control \
+             connection is independently charged once per identity"
         ),
         other => panic!(
             "postgres fixed sessions are bounded by their retained connections, not {other:?}"
@@ -468,18 +481,18 @@ async fn a_scope_that_cannot_pay_for_the_resource_is_denied_before_anything_is_o
     let ledger = Arc::new(BudgetLedger::default());
     let budget: Arc<dyn BudgetPort> = Arc::clone(&ledger) as Arc<dyn BudgetPort>;
 
-    // An interactive resource retains one backend and a control connection. A
-    // scope that names fewer must be refused before the provider opens either.
+    // An interactive resource retains one backend, so a scope that names none
+    // must be refused before the provider opens anything.
     let error = provider
-        .acquire_resource(&acquire_request(&config, interactive_scope(1)), &budget)
+        .acquire_resource(&acquire_request(&config, interactive_scope(0)), &budget)
         .await
-        .expect_err("a scope of 1 cannot pay for the retained backend and control connection");
+        .expect_err("a scope of 0 cannot pay for the retained backend");
 
     match error {
         ResourceError::BudgetDenied { requested, reason } => {
-            assert_eq!(requested, 1 + CONTROL_POOL_CONNECTIONS);
+            assert_eq!(requested, 1);
             assert!(
-                reason.contains("1"),
+                reason.contains("0"),
                 "the reason must name the scope that was refused: {reason}"
             );
         }
@@ -781,6 +794,11 @@ mod live {
             }
         };
 
+        driver
+            .disconnect(connection)
+            .await
+            .expect("close connectivity probe before budget test");
+
         let ledger = Arc::new(BudgetLedger::default());
         let budget: Arc<dyn BudgetPort> = Arc::clone(&ledger) as Arc<dyn BudgetPort>;
 
@@ -788,7 +806,11 @@ mod live {
             .acquire_resource(&acquire_request(&config, interactive_scope(32)), &budget)
             .await
             .expect("a scope of 32 pays for the pool of 10 plus the control connection");
-        assert_eq!(ledger.acquired().len(), 1, "exactly one charge per acquire");
+        assert_eq!(
+            ledger.acquired(),
+            vec![1, 1],
+            "data and shared control charged independently"
+        );
 
         let execution = datazen_driver_api::QueryExecutionId::new("live-1");
         let sink = RecordingSink::new();
@@ -831,10 +853,8 @@ mod live {
         );
         assert_eq!(
             ledger.released().len(),
-            1,
-            "exactly one release per acquire"
+            2,
+            "data and shared control released after confirmed close"
         );
-
-        let _ = connection;
     }
 }

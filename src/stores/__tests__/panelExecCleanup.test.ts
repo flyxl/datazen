@@ -15,8 +15,13 @@ vi.mock('../../commands/query', () => ({
 }));
 
 const registryRemove = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+/** pane keys the fake session registry reports per panel id. */
+const registryKeys = vi.hoisted(() => new Map<string, string[]>());
 vi.mock('../../lib/session/queryPanelSessionRoot', () => ({
-  getQueryPanelSessionRegistry: () => ({ remove: registryRemove }),
+  getQueryPanelSessionRegistry: () => ({
+    remove: registryRemove,
+    keysOfPanel: (panelId: string) => registryKeys.get(panelId) ?? [],
+  }),
 }));
 
 vi.mock('../activeConnectionStore', () => ({
@@ -55,6 +60,7 @@ function runningExec(): QueryExecState {
 describe('[tester] query panel close drops the pane editor session', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    registryKeys.clear();
     registryRemove.mockResolvedValue(undefined);
   });
 
@@ -103,7 +109,7 @@ describe('[tester] query panel close drops the pane editor session', () => {
     expect(registryRemove).toHaveBeenCalledTimes(1);
   });
 
-  it('skips non-query panels and drivers without cancel capability', () => {
+  it('releases sessions of every panel type but only cancels query panes', () => {
     const tablePanel = {
       id: 'panel-table',
       connectionId: 'cfg-1',
@@ -124,18 +130,47 @@ describe('[tester] query panel close drops the pane editor session', () => {
 
     const next = cancelAndCleanupExec([tablePanel, quietPanel], current);
 
-    expect([...next.keys()]).toEqual([paneKey(tablePanel.id)]);
-    // The quiet panel has no cancel capability, but its session still closes.
-    expect(registryRemove).toHaveBeenCalledTimes(1);
-    expect(registryRemove).toHaveBeenCalledWith(paneKey(quietPanel.id));
+    expect(next.size).toBe(0);
+    // The quiet panel has no cancel capability, but both sessions still close:
+    // a table view owns a session too, and capability only gates cancellation.
+    expect(registryRemove.mock.calls.map(([key]) => key).sort()).toEqual(
+      [paneKey(tablePanel.id), paneKey(quietPanel.id)].sort(),
+    );
     expect(cancelQuery).not.toHaveBeenCalled();
   });
 
-  it('returns the same map when the pane owns no exec state', () => {
+  it('closes a never-executed pane session and returns the same map', () => {
+    // The session exists from editor mount, long before any exec row: skipping
+    // this close is what charged the connected-editor quota with one tab open.
     const panel = queryPanel('panel-1');
     const current = new Map<string, QueryExecState>();
 
     expect(cancelAndCleanupPaneExec(panel, 'main', current)).toBe(current);
-    expect(registryRemove).not.toHaveBeenCalled();
+    expect(registryRemove).toHaveBeenCalledTimes(1);
+    expect(registryRemove).toHaveBeenCalledWith(paneKey(panel.id));
+    expect(cancelQuery).not.toHaveBeenCalled();
+  });
+
+  it('closes a session the exec table never heard of when the tab goes away', () => {
+    const panel = queryPanel('panel-1');
+    const lazy = paneKey(panel.id, 'pane-lazy');
+    registryKeys.set(panel.id, [lazy]);
+    const current = new Map<string, QueryExecState>();
+
+    const next = cancelAndCleanupExec([panel], current);
+
+    expect(next.size).toBe(0);
+    expect(registryRemove.mock.calls.map(([key]) => key)).toEqual([lazy]);
+  });
+
+  it('closes each session once when both sources name the same pane', () => {
+    const panel = queryPanel('panel-1');
+    const key = paneKey(panel.id);
+    registryKeys.set(panel.id, [key]);
+    const current = new Map<string, QueryExecState>([[key, runningExec()]]);
+
+    expect(cancelAndCleanupExec([panel], current).size).toBe(0);
+    expect(registryRemove.mock.calls.map(([k]) => k)).toEqual([key]);
+    expect(cancelQuery).toHaveBeenCalledTimes(1);
   });
 });

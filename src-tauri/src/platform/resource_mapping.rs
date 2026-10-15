@@ -67,7 +67,14 @@ pub fn state(state: ds::ExecutionState) -> rc::ExecutionState {
 pub fn error(error: ResourceError) -> rc::ProviderError {
     match error {
         ResourceError::OperationNotSupported { .. } => rc::ProviderError::CapabilityUnsupported,
-        ResourceError::BudgetDenied { .. } => {
+        ResourceError::BudgetDenied { requested, .. } => {
+            // Provider reason strings may contain identifiers; never log them.
+            tracing::warn!(
+                source = "provider_budget",
+                category = "unknown",
+                requested,
+                "resource admission refused"
+            );
             rc::ProviderError::ResourceBusy("physical connection budget")
         }
         ResourceError::MissingRequiredNamespaceLevel { .. } => {

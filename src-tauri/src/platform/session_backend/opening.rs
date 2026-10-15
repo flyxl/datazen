@@ -5,19 +5,20 @@ impl DesktopSessionBackend {
         request: OpenResource,
         command: &str,
     ) -> Result<OpenedResource, rc::ProviderError> {
-        let metadata_only = matches!(
-            command,
-            "get_table_schema"
-                | "list_tables"
-                | "list_objects"
-                | "get_object_ddl"
-                | "get_schemas"
-                | "list_databases"
-                | "list_catalog"
-                | "read_relation_columns"
-                | "read_relation_schema"
-                | "refresh_schema_metadata"
-        );
+        // The host's metadata dispatcher is authoritative for every host
+        // metadata command, including structure capability reads and pure DDL
+        // planning. These operations need a short-lived metadata lease, not
+        // a retained interactive backend or stateful-session capability.
+        let metadata_only = crate::services::schema_metadata::is_metadata_command(command)
+            || matches!(
+                command,
+                "get_table_schema"
+                    | "list_tables"
+                    | "list_objects"
+                    | "get_object_ddl"
+                    | "get_schemas"
+                    | "list_databases"
+            );
         let (config, metadata) = self
             .store
             .platform_profile(request.connection_id.as_str())
@@ -35,7 +36,47 @@ impl DesktopSessionBackend {
             &request.connection_id,
             matches!(request.owner, rc::OwnerRef::Editor { .. }),
         )
-        .map_err(|_| {
+        .map_err(|reason| {
+            use datazen_runtime::budget::{ledger::SessionScope, DenialReason};
+            // 额度型拒绝与物理/队列型拒绝走不同的对外码：前者的空位只能靠回收
+            // 或用户关闭编辑器腾出来，后者会随并发退去。混成一个 `ResourceBusy`
+            // 会让前端把「额度已满」当成可重试的忙，用户只看到一句通用失败。
+            let quota = matches!(
+                &reason,
+                DenialReason::SessionQuotaExceeded { .. }
+                    | DenialReason::ConnectedEditorsExhausted { .. }
+            );
+            let (category, cap, used) = match reason {
+                DenialReason::SessionQuotaExceeded { scope, cap, used } => (
+                    match scope {
+                        SessionScope::PerUser => "logical_user",
+                        SessionScope::PerOrganization => "logical_organization",
+                    },
+                    Some(cap),
+                    Some(used),
+                ),
+                DenialReason::ConnectedEditorsExhausted { cap, .. } => (
+                    "connected_editors",
+                    Some(cap),
+                    Some(self.budget.with_ledger(|ledger| {
+                        ledger.user_connected(&request.connection_id, &self.principal)
+                    })),
+                ),
+                _ => ("unknown", None, None),
+            };
+            tracing::warn!(
+                source = "logical_reservation",
+                category,
+                cap,
+                used,
+                metadata_only,
+                "resource admission refused"
+            );
+            if quota {
+                return rc::ProviderError::QuotaExceeded(
+                    "logical session or connected editor quota",
+                );
+            }
             rc::ProviderError::ResourceBusy("logical session or connected editor quota")
         })?;
         let mut provider = self
@@ -78,9 +119,15 @@ impl DesktopSessionBackend {
                 declared_cost
             }
             _ => {
+                tracing::warn!(
+                    source = "descriptor_cost",
+                    category = "invalid_cost_policy",
+                    metadata_only,
+                    "resource admission refused"
+                );
                 return Err(rc::ProviderError::ResourceBusy(
                     "driver connection cost refused under strict budget",
-                ))
+                ));
             }
         };
         let pool_key = datazen_runtime::resource::PoolKeyGeneration {
@@ -262,6 +309,16 @@ impl DesktopSessionBackend {
         // 是为了让「绑定 ⇒ 资源在册」这条不变式在代码里看得见，而不是靠调用顺序）。
         self.bind_live_resource(request.db_session_id.as_str(), &resource_id)
             .await;
+        // 资源开关是额度账的权威流水：额度被占满时，"有没有请求过关闭"与"请求被拒"
+        // 在调用方那里是同一个静默 best-effort，只有这条流水能把两者分开。
+        tracing::debug!(
+            source = "resource_lifecycle",
+            resource_id = %resource_id,
+            connection_id = %request.connection_id,
+            editor = matches!(request.owner, rc::OwnerRef::Editor { .. }),
+            metadata_only,
+            "resource opened"
+        );
         Ok(opened)
     }
 

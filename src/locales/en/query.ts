@@ -87,15 +87,22 @@ const pack = {
   'query.cancelled': 'Query cancelled',
   'query.session.closeBlocked':
     'The session could not be closed. Resolve its transaction or running execution, then close it again.',
-  'query.session.transactionSwitchConfirm': 'A transaction is active. Roll it back and switch database?',
+  'query.session.transactionSwitchConfirm':
+    'A transaction is active. Roll it back and switch database?',
   'query.session.revisionConflict':
     'The context changed since you started. Reload the latest state and try again.',
   'query.session.switchFailed': 'Could not switch database: {message}',
   'query.session.closeTabActiveExecution': 'This tab has a running query. Close it anyway?',
+  'query.session.closeTabActiveExecutionTitle': 'Close a tab with a running query?',
+  'query.session.closeTabActiveExecutionConfirm': 'Stop and close',
+  'query.session.closeTabActiveExecutionMany':
+    'This tab has {count} running queries. Close it anyway?',
   'query.resultEditRequiresRefresh': 'Execute the query again before editing this retained result.',
   'query.session.openNew': 'Open new session',
   'query.session.disconnected': 'The connection was lost. Re-open a session to continue.',
   'query.session.executionFailed': 'The query failed: {message}',
+  'query.session.editorQuotaExceeded':
+    'The limit of simultaneously connected editor sessions for this connection is reached. Close other query tabs using it; if none are open, reconnect the connection or restart DataZen to release stale editor sessions.',
   'query.session.cancelledRetry': 'The query was cancelled. You can run it again.',
   'query.session.recovered': 'Connection recovered; partial results are available.',
   'query.explainError': 'Explain',

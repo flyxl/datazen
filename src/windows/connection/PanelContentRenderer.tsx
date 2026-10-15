@@ -53,7 +53,6 @@ export interface PanelContentRendererProps {
   onOpenErDiagram: (focus?: string, database?: string) => void;
   onClosePanel: (panelId: string) => void;
   onRefresh: () => void;
-  resolveTableSchema: (table: string) => string | null;
   /** 将进程/仪表盘面板自身数据写回对应面板（与 connectionId 绑定）。 */
   onUpdatePanelData: (panelId: string, data: unknown) => void;
   /** S3-B2: Navigation and AI draft bridge callbacks from ContentView. */
@@ -78,7 +77,6 @@ export function PanelContentRenderer({
   onOpenErDiagram,
   onClosePanel,
   onRefresh,
-  resolveTableSchema,
   onUpdatePanelData,
   callbacks,
   kvSlotState,
@@ -132,7 +130,6 @@ export function PanelContentRenderer({
       onOpenErDiagram={onOpenErDiagram}
       onClosePanel={onClosePanel}
       onRefresh={onRefresh}
-      resolveTableSchema={resolveTableSchema}
       onUpdatePanelData={onUpdatePanelData}
       callbacks={callbacks}
     />
@@ -152,7 +149,6 @@ interface SqlPanelContentProps {
   onOpenErDiagram: (focus?: string, database?: string) => void;
   onClosePanel: (panelId: string) => void;
   onRefresh: () => void;
-  resolveTableSchema: (table: string) => string | null;
   onUpdatePanelData: (panelId: string, data: unknown) => void;
   callbacks?: ContentViewCallbacks;
 }
@@ -169,7 +165,6 @@ function SqlPanelContent({
   onOpenErDiagram,
   onClosePanel,
   onRefresh,
-  resolveTableSchema,
   onUpdatePanelData,
   callbacks,
 }: SqlPanelContentProps) {
@@ -216,7 +211,7 @@ function SqlPanelContent({
                 connectionId={panel.connectionId}
                 databaseType={panel.databaseType}
                 database={panel.database ?? currentDatabase ?? ''}
-                schema={panel.tableSchema ?? resolveTableSchema(panel.tableName)}
+                schema={panel.tableSchema ?? null}
                 mode="alter"
                 tableName={panel.tableName}
                 showBackButton

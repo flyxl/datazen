@@ -324,8 +324,6 @@ pub fn run() {
             crate::commands::get_table_data_at_target,
             crate::commands::commit_query_result_cell,
             // ── 表结构编辑 ──
-            crate::commands::get_structure_capabilities,
-            crate::commands::plan_table_structure_changes,
             // ── 行数据读写 ──
             crate::commands::commit_pending_changes,
             crate::commands::commit_row_deletes,

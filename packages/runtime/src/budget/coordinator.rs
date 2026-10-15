@@ -413,6 +413,13 @@ impl InProcessBudgetCoordinator {
         let now = self.clock.now_ms();
         let mut ledger = lock_ledger(&self.ledger);
         if claim.slots == 0 || claim.slots > ledger.config().service_quota.total {
+            tracing::warn!(
+                source = "atomic_budget",
+                category = "invalid_cost",
+                requested = claim.slots,
+                cap = ledger.config().service_quota.total,
+                "resource admission refused"
+            );
             return Err(PortError::QuotaExceeded("declared physical cost".into()));
         }
         ledger.ensure_service(&claim.connection_id);
@@ -427,7 +434,27 @@ impl InProcessBudgetCoordinator {
                     .map(|record| record.to_port_permit())
                     .collect()
             })
-            .map_err(|reason| port_error(&reason))
+            .map_err(|reason| {
+                let category = match &reason {
+                    DenialReason::PhysicalExhausted { .. } => "physical_limit",
+                    DenialReason::Exhausted { .. } => "class_capacity_or_queue",
+                    DenialReason::ServiceDraining { .. } => "service_draining",
+                    DenialReason::NodeLost { .. } => "node_unavailable",
+                    DenialReason::UnknownConnection { .. } => "service_unavailable",
+                    _ => "unknown",
+                };
+                tracing::warn!(
+                    source = "atomic_budget", category, class = ?claim.class,
+                    requested = claim.slots,
+                    physical = ledger.physical(&claim.connection_id),
+                    physical_cap = ledger.config().service_physical_connections,
+                    reserved_headroom = ledger.reserved_headroom(&claim.connection_id, claim.class),
+                    shared_headroom = ledger.shared_headroom(&claim.connection_id),
+                    queue_depth = ledger.queue_depth(&claim.connection_id, claim.class),
+                    "resource admission refused"
+                );
+                port_error(&reason)
+            })
     }
 
     fn claim_of(&self, request: &BudgetRequest) -> BudgetClaim {

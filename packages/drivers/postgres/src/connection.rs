@@ -5,7 +5,7 @@ use datazen_driver_api::*;
 use sqlx::postgres::{PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Upper bound on cached per-database pools for one handle. Browsing many
 /// databases must not translate into unbounded server connections.
@@ -22,6 +22,22 @@ pub(crate) const DEFAULT_PORT: u16 = 5432;
 /// Connection ceiling for a cached foreign-database pool. Schema reads are
 /// short and serialized by the caller, so a small pool is enough.
 const DATABASE_POOL_MAX_CONNECTIONS: u32 = 2;
+
+/// Give idle sockets back to the server instead of holding them for the lifetime
+/// of a session. Measured before this: one window held 17 server backends while
+/// idle — every pool kept its `min_connections` open forever, and a session that
+/// only browsed a database kept two connections on it until the window closed.
+const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Recycle sockets eventually so a long-lived window cannot pin server state
+/// (per-backend memory, prepared statements, snapshots) indefinitely.
+const POOL_MAX_LIFETIME: Duration = Duration::from_secs(30 * 60);
+
+/// A foreign database this handle has not touched for this long loses its pool
+/// entirely: the periodic cleanup of opened-but-inactive databases. The session's
+/// own pool is exempt — it is the session (see `is_active_database`) — but it
+/// keeps no idle connection either, now that it has no minimum.
+pub(crate) const POOL_IDLE_TTL: Duration = Duration::from_secs(300);
 
 pub(crate) fn build_pg_options(
     config: &ConnectionConfig,
@@ -101,7 +117,9 @@ impl PostgresDriver {
     ) -> Result<PgPool, DriverError> {
         let mut builder = PgPoolOptions::new()
             .max_connections(max_connections)
-            .acquire_timeout(timeout);
+            .acquire_timeout(timeout)
+            .idle_timeout(Some(POOL_IDLE_TIMEOUT))
+            .max_lifetime(Some(POOL_MAX_LIFETIME));
         if min_connections > 0 {
             builder = builder.min_connections(min_connections);
         }
@@ -231,11 +249,10 @@ impl PostgresDriver {
             return Self::get_pool(&pools, handle).cloned();
         }
         let db = Self::validate_database_name(db)?;
+        self.reap_inactive_databases(handle).await;
 
         let key = (handle.pool_id.clone(), db.clone());
-        let now = self
-            .database_pool_clock
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let now = Instant::now();
 
         {
             let mut cache = self.database_pools.write().await;
@@ -273,13 +290,42 @@ impl PostgresDriver {
         Ok(pool)
     }
 
+    /// Close this handle's foreign-database pools that have been inactive for
+    /// [`POOL_IDLE_TTL`] — the periodic cleanup of opened-but-inactive databases.
+    ///
+    /// Runs from the paths that already touch this handle's cache (resolving a
+    /// target, disconnecting), so cleanup needs no background task and a window
+    /// that sits idle still returns its inactive databases the next time it does
+    /// anything at all. The session's own database is never a candidate: closing
+    /// it would break the session that is asking.
+    pub(crate) async fn reap_inactive_databases(&self, handle: &ConnectionHandle) {
+        let now = Instant::now();
+        let expired: Vec<PgPool> = {
+            let mut cache = self.database_pools.write().await;
+            let stale: Vec<(String, String)> = cache
+                .iter()
+                .filter(|((owner, _), entry)| {
+                    owner == &handle.pool_id && now.duration_since(entry.last_used) >= POOL_IDLE_TTL
+                })
+                .map(|(key, _)| key.clone())
+                .collect();
+            stale
+                .into_iter()
+                .filter_map(|key| cache.remove(&key).map(|entry| entry.pool))
+                .collect()
+        };
+        for pool in expired {
+            pool.close().await;
+        }
+    }
+
     /// Drop the least-recently-used foreign-database pools beyond the per-handle
     /// cap, returning them so the caller can close them outside the lock.
     fn evict_database_pools(
         cache: &mut HashMap<(String, String), crate::postgres::DatabasePoolEntry>,
         pool_id: &str,
     ) -> Vec<PgPool> {
-        let mut owned: Vec<((String, String), u64)> = cache
+        let mut owned: Vec<((String, String), Instant)> = cache
             .iter()
             .filter(|((owner, _), _)| owner == pool_id)
             .map(|(key, entry)| (key.clone(), entry.last_used))
@@ -416,13 +462,24 @@ impl PostgresDriver {
         &self,
         config: &ConnectionConfig,
     ) -> Result<ConnectionHandle, DriverError> {
+        self.connect_with_control(config, config, None).await
+    }
+
+    pub(crate) async fn connect_with_control(
+        &self,
+        config: &ConnectionConfig,
+        anchor: &ConnectionConfig,
+        budget: Option<std::sync::Arc<dyn datazen_driver_api::resource::BudgetPort>>,
+    ) -> Result<ConnectionHandle, DriverError> {
         let opts = build_pg_options(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);
         let resolved_db = Self::resolve_connect_database(config).to_string();
 
         let max = config.effective_max_pool_size();
-        let min = 2u32.min(max);
-        let pool = Self::open_pool(opts, timeout, max, min).await?;
+        // No permanent minimum: two connections per session meant a user with a
+        // few tabs held a dozen server backends while doing nothing at all. The
+        // connect check below still proves the pool can reach the server.
+        let pool = Self::open_pool(opts, timeout, max, 0).await?;
 
         let acquire_result: Result<(), DriverError> = async {
             let _c1 = pool
@@ -455,19 +512,16 @@ impl PostgresDriver {
             .write()
             .await
             .insert(pool_id.clone(), resolved_db);
-        let control_opts = build_pg_options(config)?;
-        let control_pool = match Self::open_pool(control_opts, timeout, 1, 0).await {
-            Ok(p) => p,
-            Err(e) => {
-                pool.close().await;
-                return Err(e);
-            }
-        };
-        self.pools.write().await.insert(pool_id.clone(), pool);
-        self.control_pools
-            .write()
+        if let Err(error) = self
+            .acquire_control_pool(&pool_id, config, anchor, budget)
             .await
-            .insert(pool_id.clone(), control_pool);
+        {
+            pool.close().await;
+            self.connect_configs.write().await.remove(&pool_id);
+            self.active_databases.write().await.remove(&pool_id);
+            return Err(error);
+        }
+        self.pools.write().await.insert(pool_id.clone(), pool);
 
         Ok(ConnectionHandle {
             id: connection_id,
@@ -492,6 +546,7 @@ impl PostgresDriver {
         // Retain every original pool until all close futures confirm closure.
         // A host timeout may cancel this future at any await; the next close
         // must still find and await those same pools, including foreign catalogs.
+        self.reap_inactive_databases(&handle).await;
         let foreign_pools: Vec<PgPool> = self
             .database_pools
             .read()
@@ -507,21 +562,16 @@ impl PostgresDriver {
         if let Some(pool) = pool {
             pool.close().await;
         }
-        let control_pool = self
-            .control_pools
-            .read()
-            .await
-            .get(&handle.pool_id)
-            .cloned();
-        if let Some(pool) = control_pool {
-            pool.close().await;
-        }
+        // The control connection is shared by every resource of one connection
+        // identity, so this drops a reference rather than closing it: the last
+        // resource out closes it. Runs while `connect_configs` still holds the
+        // config the identity key is derived from.
+        self.release_control_pool(&handle.pool_id).await?;
         self.database_pools
             .write()
             .await
             .retain(|(owner, _), _| owner != &handle.pool_id);
         self.pools.write().await.remove(&handle.pool_id);
-        self.control_pools.write().await.remove(&handle.pool_id);
         self.fixed_sessions.write().await.remove(&handle.id);
         self.fixed_contexts.write().await.remove(&handle.id);
         self.active_databases.write().await.remove(&handle.pool_id);

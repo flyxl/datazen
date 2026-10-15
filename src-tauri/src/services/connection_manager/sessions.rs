@@ -19,11 +19,31 @@ impl ConnectionManager {
                 .clone()
         };
         let _guard = lock.lock().await;
+        let config = self
+            .store
+            .get_connection(connection_id)
+            .await
+            .ok_or_else(|| ConnectionError::ConnectionConfigNotFound(connection_id.to_owned()))?;
+        let config = self.resolve_tunnel_ref(config).await?;
+        let pool_size = crate::store::clamp_connection_pool_size(
+            self.store.get_settings().await.connection_pool_size,
+        );
         {
             let owner_map = self.session_owner_map.read().await;
             let connections = self.connections.read().await;
             for (session_id, owner_connection_id) in owner_map.iter() {
-                if owner_connection_id == connection_id && connections.contains_key(session_id) {
+                // A saved profile can change namespace while an existing session
+                // still belongs to its original database. Keep that session's
+                // ownership intact, but never return it to a new connect request
+                // for a different target (for either SQL driver).
+                let same_target = connections.get(session_id).is_some_and(|active| {
+                    same_connection_identity(&active.identity_config, &config)
+                        // A dedicated session can override its saved database.
+                        && active.config.database == config.database
+                        && active.config.schema == config.schema
+                        && active.config.max_pool_size == pool_size
+                });
+                if owner_connection_id == connection_id && same_target {
                     let mut refs = self.ref_counts.write().await;
                     *refs.entry(session_id.clone()).or_insert(0) += 1;
                     return Ok(session_id.clone());
@@ -231,5 +251,35 @@ impl ConnectionManager {
         db_session_id: &str,
     ) -> Result<ServerInfo, ConnectionError> {
         self.server_info(db_session_id).await
+    }
+}
+
+/// Compare every execution/physical connection option, including resolved
+/// tunnel credentials, without exposing the serialized values in diagnostics.
+/// Presentation and observed metadata changes do not change connection identity.
+fn same_connection_identity(
+    previous: &crate::db::ConnectionConfig,
+    requested: &crate::db::ConnectionConfig,
+) -> bool {
+    fn identity(config: &crate::db::ConnectionConfig) -> Option<serde_json::Value> {
+        let mut value = serde_json::to_value(config).ok()?;
+        let object = value.as_object_mut()?;
+        for field in [
+            "name",
+            "colorTag",
+            "group",
+            "lastConnectedAt",
+            "serverVersion",
+            "pinned",
+            // The host injects the authoritative settings value separately.
+            "maxPoolSize",
+        ] {
+            object.remove(field);
+        }
+        Some(value)
+    }
+    match (identity(previous), identity(requested)) {
+        (Some(previous), Some(requested)) => previous == requested,
+        _ => false,
     }
 }

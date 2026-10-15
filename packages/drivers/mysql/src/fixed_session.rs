@@ -101,12 +101,11 @@ impl MysqlDriver {
             // the transaction instrumentation and its consumer are enabled for
             // this exact thread. The control query cannot observe its own
             // autocommit SELECT as the target transaction.
-            let control = self
-                .control_pools
-                .read()
-                .await
-                .get(&handle.pool_id)
-                .cloned();
+            // The control connection is shared per (connection identity,
+            // database); `None` means it could not be opened for this resource, in
+            // which case the instrumentation probe is skipped and the state stays
+            // `Unknown` rather than being guessed at.
+            let control = self.control_pool_for(handle).await;
             if let Some(control) = control {
                 let evidence = sqlx::query("SELECT t.INSTRUMENTED = 'YES' AND EXISTS (SELECT 1 FROM performance_schema.setup_instruments WHERE NAME = 'transaction' AND ENABLED = 'YES') AND EXISTS (SELECT 1 FROM performance_schema.setup_consumers WHERE NAME = 'events_transactions_current' AND ENABLED = 'YES') AND EXISTS (SELECT 1 FROM performance_schema.setup_consumers WHERE NAME = 'global_instrumentation' AND ENABLED = 'YES') AND EXISTS (SELECT 1 FROM performance_schema.setup_consumers WHERE NAME = 'thread_instrumentation' AND ENABLED = 'YES') AS observable, e.STATE FROM performance_schema.threads t LEFT JOIN performance_schema.events_transactions_current e ON e.THREAD_ID = t.THREAD_ID WHERE t.PROCESSLIST_ID = ?")
                     .bind(expected_id).fetch_optional(&control).await;

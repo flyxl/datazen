@@ -96,6 +96,8 @@ pub(crate) struct RecordingSink {
     chunks: Mutex<Vec<ResultChunk>>,
     completed: AtomicBool,
     failure: Mutex<Option<String>>,
+    // Includes statementSummary and column metadata; never counted as row chunks.
+    outputs: Mutex<Vec<serde_json::Value>>,
 }
 
 impl RecordingSink {
@@ -128,6 +130,14 @@ impl ResultSink for RecordingSink {
         Ok(())
     }
 
+    async fn write_output(&self, output: serde_json::Value) -> Result<(), ResourceError> {
+        self.outputs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(output);
+        Ok(())
+    }
+
     async fn complete(&self) -> Result<(), ResourceError> {
         self.completed.store(true, Ordering::SeqCst);
         Ok(())
@@ -145,6 +155,63 @@ impl ResultSink for RecordingSink {
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
+
+/// Business databases and schemas share one server-wide control identity.
+/// Server, profile and authentication identities remain isolated.
+#[test]
+fn the_control_pool_key_shares_databases_but_isolates_identity() {
+    let app_db = config();
+    let mut reporting = config();
+    reporting.database = Some("reporting".into());
+    reporting.schema = Some("analytics".into());
+    let mut other_password = config();
+    other_password.password = Some("rotated".into());
+
+    assert_eq!(
+        PostgresDriver::control_pool_key(&app_db),
+        PostgresDriver::control_pool_key(&reporting),
+        "all business databases share the server-wide control channel"
+    );
+    assert_eq!(
+        PostgresDriver::control_pool_key(&app_db),
+        PostgresDriver::control_pool_key(&other_password),
+        "the password is a secret, not an identity: it stays out of the key"
+    );
+
+    // Same database reached through a differently-written profile is still the
+    // same pool: the key resolves the database the way the connect options do.
+    let mut blank_database = config();
+    blank_database.database = None;
+    let mut explicit_postgres = config();
+    explicit_postgres.database = Some("postgres".into());
+    assert_eq!(
+        PostgresDriver::control_pool_key(&blank_database),
+        PostgresDriver::control_pool_key(&explicit_postgres),
+        "a blank database resolves to the same fallback the connect options use"
+    );
+
+    let mut other_server = config();
+    other_server.host = Some("other.internal".into());
+    let mut other_port = config();
+    other_port.port = Some(6432);
+    let mut other_user = config();
+    other_user.username = Some("reporting".into());
+    let mut other_profile = config();
+    other_profile.id = "cfg-2".into();
+
+    for (variant, label) in [
+        (other_server, "a different server"),
+        (other_port, "a different port"),
+        (other_user, "a different user"),
+        (other_profile, "a different connection profile"),
+    ] {
+        assert_ne!(
+            PostgresDriver::control_pool_key(&app_db),
+            PostgresDriver::control_pool_key(&variant),
+            "{label} must not share another server's cancel connection"
+        );
+    }
+}
 
 pub(crate) fn config() -> ConnectionConfig {
     ConnectionConfig {
@@ -471,7 +538,7 @@ async fn every_evidence_entry_that_names_a_source_file_names_a_real_one() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn a_described_resource_charges_the_pool_plus_the_control_connection() {
+async fn a_described_resource_charges_the_data_pool_but_not_the_control_connection() {
     let (_driver, provider) = provider_with_driver();
     let config = config();
 
@@ -484,14 +551,15 @@ async fn a_described_resource_charges_the_pool_plus_the_control_connection() {
     assert_eq!(
         descriptor.connection_cost_policy,
         ConnectionCostPolicy::PoolBounded {
-            max_physical_connections: 2,
+            max_physical_connections: 1,
         },
-        "the real cost is the data pool plus the pg_cancel_backend control connection"
+        "a fixed editor session retains exactly one backend; the cancel-only control \
+         connection is driver-internal, shared per connection identity, and never billed"
     );
     assert_eq!(
         descriptor.connection_cost_policy,
         ConnectionCostPolicy::PoolBounded {
-            max_physical_connections: 2
+            max_physical_connections: 1
         }
     );
     assert_eq!(
@@ -503,6 +571,69 @@ async fn a_described_resource_charges_the_pool_plus_the_control_connection() {
     assert!(descriptor.initialization_requirements.is_empty());
     assert_eq!(descriptor.namespace_shape, postgres_namespace_shape());
     assert_ne!(descriptor.resource_key, "");
+}
+
+/// Metadata resources cost exactly their data connection. PostgreSQL cannot read
+/// another database's catalog from one session, so a navigator browsing N
+/// databases opens N resources; billing the instance-scoped control connection
+/// once per namespace would double every one of them (measured: 7 databases held
+/// 14 of the desktop's 16 slots and the 8th claim was refused).
+#[tokio::test]
+async fn a_metadata_resource_costs_one_connection_for_any_number_of_databases() {
+    let (_driver, provider) = provider_with_driver();
+    for database in ["app_db", "reporting", "archive"] {
+        let mut config = config();
+        config.database = Some(database.to_string());
+        config.max_pool_size = 20;
+        let request = DescribeResourceRequest {
+            connection_config: config,
+            identity_scope: IdentityScope::default(),
+            target: target(),
+            purpose: ResourcePurpose::MetadataInspection,
+        };
+
+        let descriptor = provider
+            .describe_resource(&request)
+            .await
+            .expect("a metadata request describes cleanly");
+
+        assert_eq!(
+            descriptor.connection_cost_policy,
+            ConnectionCostPolicy::PoolBounded {
+                max_physical_connections: 1
+            },
+            "metadata on {database} must cost one data connection, not data plus control"
+        );
+    }
+}
+
+/// The pooled (non-fixed) branch declares the configured pool size and nothing
+/// else: the control connection is bounded by connection identity, so it cannot
+/// be charged per resource without double-billing one physical connection.
+#[tokio::test]
+async fn a_pooled_resource_declares_its_pool_size_without_the_control_connection() {
+    let (_driver, provider) = provider_with_driver();
+    let mut config = config();
+    config.max_pool_size = 10;
+    let request = DescribeResourceRequest {
+        connection_config: config.clone(),
+        identity_scope: IdentityScope::default(),
+        target: target(),
+        purpose: ResourcePurpose::ExportJob,
+    };
+
+    let descriptor = provider
+        .describe_resource(&request)
+        .await
+        .expect("a pooled request describes cleanly");
+
+    assert_eq!(
+        descriptor.connection_cost_policy,
+        ConnectionCostPolicy::PoolBounded {
+            max_physical_connections: config.effective_max_pool_size(),
+        },
+        "the pool branch charges the configured pool size only"
+    );
 }
 
 #[tokio::test]
@@ -530,8 +661,10 @@ async fn a_catalog_target_is_refused_because_postgres_has_no_catalog_level() {
 async fn an_acquire_smaller_than_the_real_cost_is_denied() {
     let (_driver, provider) = provider_with_driver();
     let config = config();
+    // A fixed session retains one backend, so only a scope that names none can
+    // be refused for cost.
     let scope = ResourceScope {
-        max_physical_connections: 1,
+        max_physical_connections: 0,
         ..interactive_scope()
     };
 
@@ -547,9 +680,9 @@ async fn an_acquire_smaller_than_the_real_cost_is_denied() {
         // meaning `BudgetPort::acquire_physical_connections` gives it. The
         // scope's own smaller ceiling is in the reason.
         Err(ResourceError::BudgetDenied { requested, reason }) => {
-            assert_eq!(requested, 2);
+            assert_eq!(requested, 1);
             assert!(
-                reason.contains("1"),
+                reason.contains("0"),
                 "the reason must name the scope that was refused: {reason}"
             );
         }
@@ -567,7 +700,12 @@ async fn streaming_acquisition_keeps_the_fixed_connection_budget() {
             ..interactive_scope()
         },
     );
-    assert_eq!(provider.validate_acquisition(&request).unwrap(), 2);
+    assert_eq!(
+        provider.validate_acquisition(&request).unwrap(),
+        1,
+        "a pinned streaming session retains one backend; the cancel-only control \
+         connection is driver-internal and is not charged"
+    );
 }
 
 #[tokio::test]
@@ -602,7 +740,7 @@ async fn no_refused_acquire_ever_charged_the_budget() {
         acquire_request(
             &config,
             ResourceScope {
-                max_physical_connections: 1,
+                max_physical_connections: 0,
                 ..interactive_scope()
             },
         ),
@@ -644,7 +782,7 @@ async fn a_connection_the_driver_cannot_open_is_reported_and_charges_nothing() {
         Err(ResourceError::Driver(DriverError::ConnectionFailed(_))) => {}
         other => panic!("expected the connect failure to surface, got {other:?}"),
     }
-    assert_eq!(ledger.acquired(), vec![2]);
+    assert_eq!(ledger.acquired(), vec![1]);
     assert_eq!(
         ledger.released().len(),
         1,

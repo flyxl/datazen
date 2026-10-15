@@ -2,8 +2,8 @@
 //!
 //! This is the narrowest possible decoder, and the narrowness is the point. A
 //! catalog listing or an admin command answers with free-form JSON that has no
-//! truthful representation as a `ResultChunk`. Decoding it as "no rows,
-//! succeeded" would be the shell behaviour the contract forbids — the caller
+//! truthful representation as statement rows and a `StatementSummary`.
+//! Decoding it as "no rows, succeeded" would be the shell behaviour the contract forbids — the caller
 //! would believe a command ran and saw nothing, when in fact it saw something
 //! this channel cannot express. So an unrecognised payload is an explicit
 //! [`ResourceError::OperationNotSupported`], and the caller is told which
@@ -13,7 +13,7 @@
 //! result carries object names and row data, which do not belong in an error
 //! string.
 
-use datazen_driver_api::resource::{ResourceError, ResultChunk};
+use datazen_driver_api::resource::{ResourceError, ResultChunk, StatementSummary};
 use datazen_driver_api::{MultiQueryResult, StatementResult};
 
 use super::capabilities::POSTGRES_PROVIDER_ID;
@@ -33,40 +33,43 @@ fn execute_rows_affected(data: &serde_json::Value) -> Option<u64> {
 }
 
 /// Split a Driver Command payload into the statement results and the chunks the
-/// sink receives.
+/// sink receives. Empty results are represented only by a typed summary.
 ///
 /// Exactly two shapes are accepted, both produced by
 /// `execute_standard_sql_command`: `query` → `MultiQueryResult`, and `execute` →
 /// `{"rowsAffected": n}`. Anything else is refused, not emptied.
 pub(super) fn decode_command_result(
     data: &serde_json::Value,
-) -> Result<(Vec<StatementResult>, Vec<ResultChunk>), ResourceError> {
+    execute_sql: &str,
+) -> Result<(Vec<StatementResult>, Vec<StatementOutput>), ResourceError> {
     if let Ok(multi) = serde_json::from_value::<MultiQueryResult>(data.clone()) {
-        let chunks = multi
-            .results
-            .iter()
-            .enumerate()
-            .map(|(statement_index, result)| ResultChunk {
+        let mut output = Vec::with_capacity(multi.results.len() * 2);
+        for (statement_index, result) in multi.results.iter().enumerate() {
+            if !result.rows.is_empty() {
+                output.push(StatementOutput::Rows(ResultChunk {
+                    statement_index,
+                    sql: result.sql.clone(),
+                    rows: result.rows.clone(),
+                    rows_affected: None,
+                }));
+            }
+            output.push(StatementOutput::Summary(StatementSummary {
                 statement_index,
                 sql: result.sql.clone(),
-                rows: result.rows.clone(),
                 rows_affected: result.rows_affected,
-            })
-            .collect();
-        return Ok((multi.results, chunks));
+            }));
+        }
+        return Ok((multi.results, output));
     }
 
     if let Some(rows_affected) = execute_rows_affected(data) {
         return Ok((
             Vec::new(),
-            vec![ResultChunk {
+            vec![StatementOutput::Summary(StatementSummary {
                 statement_index: 0,
-                // The `execute` path reports no statement text; an empty string
-                // is the honest placeholder for "not carried by this command".
-                sql: String::new(),
-                rows: Vec::new(),
+                sql: execute_sql.to_owned(),
                 rows_affected: Some(rows_affected),
-            }],
+            })],
         ));
     }
 
@@ -74,12 +77,19 @@ pub(super) fn decode_command_result(
         driver: POSTGRES_PROVIDER_ID.to_string(),
         operation: "execute_on_resource".to_string(),
         reason: format!(
-            "the command returned {}, which the ResultSink channel cannot carry as a \
-             ResultChunk. Reporting it as an empty success would hide the result; run this \
+            "the command returned {}, which the statement-result decoder cannot represent. \
+             Reporting it as an empty success would hide the result; run this \
              command through the driver command API on a connection handle instead.",
             describe_shape(data)
         ),
     })
+}
+
+/// Preserve row batches and completion summaries in their statement order.
+#[derive(Debug)]
+pub(super) enum StatementOutput {
+    Rows(ResultChunk),
+    Summary(StatementSummary),
 }
 
 /// Name the payload's shape for an error message without echoing its contents.
